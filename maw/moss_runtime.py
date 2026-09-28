@@ -28,6 +28,8 @@ MOSS_RUNTIME_ROOT_NAME: Final = "local-runtime-moss"
 MOSS_REQUIREMENTS: Final[tuple[str, ...]] = (
     "av>=14.0",
     "librosa>=0.11.0",
+    # MOSS 模型下载的 Hugging Face → ModelScope 回退需要 modelscope。
+    "modelscope>=1.39",
     "numba>=0.61.0",
     "packaging>=24.0",
     "safetensors>=0.6.2",
@@ -36,11 +38,9 @@ MOSS_REQUIREMENTS: Final[tuple[str, ...]] = (
     "transformers>=5.6.0,<6.0.0",
     "moss-transcribe-diarize @ https://github.com/OpenMOSS/MOSS-Transcribe-Diarize/archive/e607537b1b870475e7898969d40b864de8b691b6.zip",
 )
-MOSS_PACKAGE_DIRS: Final[tuple[str, ...]] = ("moss_transcribe_diarize", "transformers", "torch", "torchaudio")
-MOSS_VERIFY_IMPORT: Final = (
-    "from moss_transcribe_diarize import parse_transcript; "
-    "import transformers, torch, torchaudio; print('MAW_LOCAL_RUNTIME_READY')"
-)
+# 其余常量直接从 RuntimeSpec 派生，避免与 moss_spec 的真源漂移。
+MOSS_PACKAGE_DIRS: Final[tuple[str, ...]] = MOSS.spec.package_dirs
+MOSS_VERIFY_IMPORT: Final = MOSS.spec.verify_command
 
 
 def default_runtime_root() -> Path:

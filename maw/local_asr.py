@@ -34,6 +34,7 @@ from generate_subtitle_qwen_api import (
 )
 from maw.ffmpeg import resolve_ffmpeg_tool
 from maw.alignment_models import FIRERED_ASR2_CTC_MODEL_ID
+from maw.hub_download import prepare_hub_snapshot
 from maw.local_debug import debug_json_value
 from maw.punctuation import PunctuationError, punctuate_timed_tokens
 from maw.language import (
@@ -627,6 +628,29 @@ _QWEN_LANGUAGE_NAMES = {
     "ko": "Korean", "fr": "French", "de": "German", "es": "Spanish",
 }
 
+
+def resolve_engine_model_source(
+    value: str | Path | None,
+    *,
+    emit: ProgressCallback | None = None,
+    revision: str = "",
+) -> str | Path | None:
+    """Repo ID → 本地快照目录；显式目录与短别名原样返回。
+
+    Hugging Face 仓库 ID（含 ``/``）先复用本地缓存，未命中时走
+    ``prepare_hub_snapshot``（Hugging Face 失败自动回退 ModelScope），
+    让上游加载器只面对本地目录，不再自行联网。``revision`` 仅约束
+    Hugging Face 下载路径的 commit pin。
+    """
+    if value is None:
+        return None
+    text = str(value).strip()
+    if not text or "/" not in text or Path(text).is_dir():
+        return value
+    snapshot = prepare_hub_snapshot(text, emit=emit, revision=revision)
+    return str(snapshot.path)
+
+
 class QwenAsrEngine:
     """Lazy Qwen3-ASR runtime adapter."""
 
@@ -662,6 +686,15 @@ class QwenAsrEngine:
             raise _missing_dependency("torch", cause=error) from error
 
         resolved_device = resolve_device(self.device, allow_mps=True)
+        # 主模型与 Forced Aligner 都可能是 HF 仓库 ID：先解析成本地快照
+        # （复用缓存；Hugging Face 失败时回退 ModelScope），避免上游加载器
+        # 各自联网时无法享受统一的回退与缓存布局。
+        model_source = resolve_engine_model_source(self.model_path, emit=on_event)
+        aligner_source = (
+            resolve_engine_model_source(self.forced_aligner, emit=on_event)
+            if self.forced_aligner
+            else None
+        )
 
         def load_runtime(target_device: str) -> Any:
             device_map = "cuda:0" if target_device == "cuda" else target_device
@@ -674,15 +707,15 @@ class QwenAsrEngine:
                 # room for timestamp tokens and a dense speech segment.
                 "max_new_tokens": QWEN_MAX_NEW_TOKENS,
             }
-            if self.forced_aligner:
-                kwargs["forced_aligner"] = self.forced_aligner
+            if aligner_source:
+                kwargs["forced_aligner"] = aligner_source
                 kwargs["forced_aligner_kwargs"] = {
                     "dtype": kwargs["dtype"],
                     "device_map": device_map,
                 }
             if on_event:
-                on_event(f"[local] loading QwenASR: {self.model_path} ({target_device})")
-            return Qwen3ASRModel.from_pretrained(self.model_path, **kwargs)
+                on_event(f"[local] loading QwenASR: {model_source} ({target_device})")
+            return Qwen3ASRModel.from_pretrained(model_source, **kwargs)
 
         self._runtime = load_runtime(resolved_device)
         if on_event:
@@ -1257,7 +1290,7 @@ class MossDiarizeEngine:
             return self._runtime
         try:
             import torch  # type: ignore[import-not-found]
-            from transformers import AutoModelForCausalLM, AutoProcessor  # type: ignore[import-not-found]
+            from transformers import AutoProcessor  # type: ignore[import-not-found]
             from moss_transcribe_diarize.attention import load_model_with_attention_fallback  # type: ignore[import-not-found]
         except ImportError as error:
             raise _missing_moss_dependency(error) from error
@@ -1268,26 +1301,17 @@ class MossDiarizeEngine:
         if on_event:
             on_event(f"[local] loading MOSS-Transcribe-Diarize: {self.model_path} ({device})")
         revision = MOSS_DEFAULT_REVISION if self.model == MOSS_DEFAULT_MODEL else ""
-        model_loader = None
-        if revision:
-            def model_loader(model_path: str, **kwargs: Any) -> Any:
-                return AutoModelForCausalLM.from_pretrained(model_path, revision=revision, **kwargs)
-
+        # 默认模型的 commit pin 在快照下载阶段生效（Hugging Face 路径，
+        # 失败回退 ModelScope 时无法对齐 MS 侧 commit）；解析结果总是本地
+        # 目录或显式透传路径，加载阶段不再携带 revision。
+        model_source = resolve_engine_model_source(self.model_path, emit=on_event, revision=revision)
         model, attention_report = load_model_with_attention_fallback(
-            self.model_path,
+            model_source,
             device=device,
             dtype=dtype,
-            model_loader=model_loader,
         )
         model = model.to(dtype=dtype).to(device).eval()
-        if revision:
-            processor = AutoProcessor.from_pretrained(
-                self.model_path,
-                revision=revision,
-                trust_remote_code=True,
-            )
-        else:
-            processor = AutoProcessor.from_pretrained(self.model_path, trust_remote_code=True)
+        processor = AutoProcessor.from_pretrained(model_source, trust_remote_code=True)
         self._runtime = (model, processor, attention_report)
         if on_event:
             on_event("[local] MOSS-Transcribe-Diarize loaded")
@@ -1770,6 +1794,9 @@ class WhisperEngine:
                 f"[local] loading faster-whisper: {self.model_path}"
                 f" ({resolved_device}, compute_type={compute_type})"
             )
+        # 仓库 ID 先解析为本地快照（HF 失败回退 ModelScope）；短别名
+        # （large-v3 等）与显式目录原样透传，由上游加载器处理。
+        model_source = resolve_engine_model_source(self.model_path, emit=on_event)
         kwargs: dict[str, Any] = {
             "device": resolved_device,
             "compute_type": compute_type,
@@ -1788,11 +1815,11 @@ class WhisperEngine:
             cache_root = os.environ.get("MAW_MODEL_CACHE_ROOT", "").strip()
             if cache_root:
                 hub_cache = str(Path(cache_root) / "huggingface" / "hub")
-        if hub_cache and not Path(self.model_path).is_dir():
+        if hub_cache and not Path(str(model_source)).is_dir():
             kwargs["download_root"] = hub_cache
         requested_device = self.device.strip().lower()
         try:
-            self._runtime = WhisperModel(self.model_path, **kwargs)
+            self._runtime = WhisperModel(model_source, **kwargs)
         except RuntimeError as error:
             # ``auto`` 可能只验证了 Torch 的 CUDA，而 CTranslate2 还需要
             # 自己的 CUDA 12/cuDNN 9 DLL。遇到这类 CUDA 初始化错误时回退
@@ -1811,7 +1838,7 @@ class WhisperEngine:
                 )
             fallback_kwargs = {**kwargs, "device": "cpu", "compute_type": "int8"}
             try:
-                self._runtime = WhisperModel(self.model_path, **fallback_kwargs)
+                self._runtime = WhisperModel(model_source, **fallback_kwargs)
             except (TypeError, ValueError, RuntimeError) as fallback_error:
                 raise LocalAsrError(
                     "faster-whisper 模型加载失败；CUDA 错误："

@@ -84,6 +84,7 @@ datas = [
     (str(ROOT / "maw" / "runtimes" / "moss_spec.py"), "local-runtime/maw/runtimes"),
     (str(ROOT / "maw" / "runtimes" / "ocr_spec.py"), "local-runtime/maw/runtimes"),
     (str(ROOT / "maw" / "alignment_models.py"), "local-runtime/maw"),
+    (str(ROOT / "maw" / "hub_download.py"), "local-runtime/maw"),
     (str(ROOT / "maw" / "timestamp_alignment.py"), "local-runtime/maw"),
     (str(ROOT / "maw" / "postprocess_io.py"), "local-runtime/maw"),
     (str(ROOT / "maw" / "local_runtime_worker.py"), "local-runtime/maw"),

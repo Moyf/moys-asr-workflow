@@ -22,6 +22,7 @@ from maw.alignment_models import (
     FIRERED_ASR2_CTC_TOKENS_FILE,
     find_alignment_model_path,
 )
+from maw.hub_download import modelscope_repo_id
 from maw.local_runtime import (
     LocalRuntimeStatus,
     managed_runtime_status,
@@ -328,10 +329,11 @@ def prepare_local_model(
 ) -> LocalModelStatus:
     """Load a local engine once so its upstream runtime prepares model caches.
 
-    QwenASR and FunASR currently download through their own loaders.  Their
-    completed cache files are reused on a later attempt, while cancellation
-    stops the child loader process without promising byte-level resume for an
-    individual temporary file.
+    HF 线模型（Qwen / MOSS / Faster-Whisper / Qwen 对齐器）由引擎加载前的
+    ``prepare_hub_snapshot`` 统一准备缓存（Hugging Face 失败自动回退
+    ModelScope）；FunASR 仍通过自身加载器从 ModelScope 下载。已完成缓存
+    会在后续尝试中复用，取消终止子加载进程，不承诺单个临时文件的
+    字节级续传。
     """
     status = inspect_local_model(model, model_path, model_cache_root=model_cache_root)
     if status.status == "path_invalid":
@@ -590,6 +592,13 @@ def _model_watch_paths(
     if model.engine in {"qwen-asr", "qwen", "qwen3-asr", "moss", "whisper"}:
         for ref in (model.model_ref, *model.required_model_refs):
             paths.extend(_huggingface_repo_paths(ref, model_cache_root))
+            # 回退下载可能写入 ModelScope 缓存（含组织名不同的镜像仓库）。
+            for hub_ref in _modelscope_ref_candidates(ref):
+                parts = [part for part in hub_ref.split("/") if part]
+                if not parts:
+                    continue
+                for root in _modelscope_cache_roots(model_cache_root):
+                    paths.extend(_modelscope_repo_candidates(root, parts))
     elif model.engine in {"funasr", "fun-asr"}:
         for ref in (model.model_ref, *model.cache_refs):
             parts = [part for part in ref.split("/") if part]
@@ -759,16 +768,14 @@ def _find_model_paths(
             missing.append("FunASR ct-punc（自动标点）")
         return (ctc_path or punc_path, missing)
     if model.engine in {"qwen-asr", "qwen", "qwen3-asr", "moss", "whisper"}:
-        find_cached_model = (
-            _find_hub_model if model.engine in {"qwen-asr", "qwen", "qwen3-asr"}
-            else _find_huggingface_model
-        )
-        main = find_cached_model(model.model_ref, model_cache_root)
+        # 全部走 HF → MS 双缓存发现：MOSS / Faster-Whisper / Qwen 对齐器
+        # 的回退下载会落在 ModelScope 缓存里，同样视为已安装。
+        main = _find_hub_model(model.model_ref, model_cache_root)
         if main is None:
             return None
         missing = [
             ref for ref in model.required_model_refs
-            if find_cached_model(ref, model_cache_root) is None
+            if _find_hub_model(ref, model_cache_root) is None
         ]
         return main, missing
     if model.engine in {"funasr", "fun-asr"}:
@@ -782,6 +789,15 @@ def _find_model_paths(
 
 def _find_ct_punc_model(model_cache_root: str | Path | None) -> Path | None:
     return _find_modelscope_model(CT_PUNC_MODEL_REF, model_cache_root)
+
+
+def _modelscope_ref_candidates(model_ref: str) -> list[str]:
+    """HF 仓库 ID 及其 ModelScope 镜像 ID（不同名时返回两者）。"""
+    refs = [model_ref]
+    mapped = modelscope_repo_id(model_ref)
+    if mapped != model_ref:
+        refs.append(mapped)
+    return refs
 
 
 def _find_huggingface_model(
@@ -826,23 +842,29 @@ def _find_modelscope_model(
     model_name = model_ref.strip()
     if not model_name:
         return None
-    parts = [part for part in model_name.split("/") if part]
-    for root in _modelscope_cache_roots(model_cache_root):
-        for candidate in _modelscope_repo_candidates(root, parts):
-            resolved = _modelscope_snapshot_dir(candidate)
-            if resolved is not None:
-                return resolved
-        for parent in (root, root / "models", root / "hub"):
-            if not parent.is_dir():
-                continue
-            try:
-                for candidate in parent.iterdir():
-                    if candidate.is_dir() and model_name.lower() in candidate.name.lower():
-                        resolved = _modelscope_snapshot_dir(candidate)
-                        if resolved is not None:
-                            return resolved
-            except OSError:
-                continue
+    # HF 回退下载可能落在组织名不同的 ModelScope 镜像仓库（如 MOSS）。
+    refs = [model_name]
+    mapped = modelscope_repo_id(model_name)
+    if mapped != model_name:
+        refs.append(mapped)
+    for ref in refs:
+        parts = [part for part in ref.split("/") if part]
+        for root in _modelscope_cache_roots(model_cache_root):
+            for candidate in _modelscope_repo_candidates(root, parts):
+                resolved = _modelscope_snapshot_dir(candidate)
+                if resolved is not None:
+                    return resolved
+            for parent in (root, root / "models", root / "hub"):
+                if not parent.is_dir():
+                    continue
+                try:
+                    for candidate in parent.iterdir():
+                        if candidate.is_dir() and ref.lower() in candidate.name.lower():
+                            resolved = _modelscope_snapshot_dir(candidate)
+                            if resolved is not None:
+                                return resolved
+                except OSError:
+                    continue
     return None
 
 
