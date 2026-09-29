@@ -62,6 +62,35 @@ window.MAWE.register('utils-ass-style', function createUtilsModule(dependencies)
 
   const ASS_COLOR_STYLE_VALUES = Object.freeze(['text', 'speaker', 'stroke', 'none']);
 
+  // Markers are editor syntax only; the ASS event contains override tags instead.
+  function assEmphasisRuns(text, syntax) {
+    const source = String(text ?? '');
+    if (syntax !== 'single' && syntax !== 'double') return [{ text: source, emphasized: false }];
+    const marker = syntax === 'double' ? '**' : '*';
+    const width = marker.length;
+    const runs = [];
+    let cursor = 0;
+    let plainStart = 0;
+    while (cursor < source.length) {
+      if (!source.startsWith(marker, cursor)
+        || source[cursor - 1] === '*' || source[cursor + width] === '*') {
+        cursor += 1;
+        continue;
+      }
+      const end = source.indexOf(marker, cursor + width);
+      if (end <= cursor + width || source[end - 1] === '*' || source[end + width] === '*') {
+        cursor += width;
+        continue;
+      }
+      if (cursor > plainStart) runs.push({ text: source.slice(plainStart, cursor), emphasized: false });
+      runs.push({ text: source.slice(cursor + width, end), emphasized: true });
+      cursor = end + width;
+      plainStart = cursor;
+    }
+    if (plainStart < source.length || !runs.length) runs.push({ text: source.slice(plainStart), emphasized: false });
+    return runs;
+  }
+
 
   function normalizeAssColorStyle(value) {
     if (value === 'underline') return 'text';
@@ -76,6 +105,10 @@ window.MAWE.register('utils-ass-style', function createUtilsModule(dependencies)
     fontName: 'Arial',
     fontSize: 18,
     primaryColor: '#ffffff',
+    emphasisSyntax: 'double',
+    emphasisColor: '#ffd34d',
+    emphasisScale: 1,
+    emphasisStyle: 'text',
     secondaryColor: '#ffffff',
     outlineColor: '#000000',
     backColor: '#000000',
@@ -198,6 +231,12 @@ window.MAWE.register('utils-ass-style', function createUtilsModule(dependencies)
       fontName: normalizeAssLibraryText(source.fontName, fallback.fontName || ASS_DEFAULT_FONT_FAMILY, ASS_STYLE_LIBRARY_MAX_FONT_LENGTH),
       fontSize: normalizeAssLibraryNumber(source.fontSize, fallback.fontSize || 18, 1, 512),
       primaryColor: normalizeAssLibraryColor(source.primaryColor, fallback.primaryColor || '#ffffff'),
+      emphasisSyntax: ['none', 'single', 'double'].includes(source.emphasisSyntax)
+        ? source.emphasisSyntax : (fallback.emphasisSyntax || 'double'),
+      emphasisColor: normalizeAssLibraryColor(source.emphasisColor, fallback.emphasisColor || '#ffd34d'),
+      emphasisScale: Math.round(normalizeAssLibraryNumber(source.emphasisScale, fallback.emphasisScale ?? 1, 1, 1.5, false) * 20) / 20,
+      emphasisStyle: ['text', 'stroke'].includes(source.emphasisStyle)
+        ? source.emphasisStyle : (fallback.emphasisStyle || 'text'),
       secondaryColor: normalizeAssLibraryColor(source.secondaryColor, fallback.secondaryColor || '#ffffff'),
       outlineColor: normalizeAssLibraryColor(source.outlineColor, fallback.outlineColor || '#000000'),
       backColor: normalizeAssLibraryColor(source.backColor, fallback.backColor || '#000000'),
@@ -599,5 +638,5 @@ window.MAWE.register('utils-ass-style', function createUtilsModule(dependencies)
     };
   }
 
-  return Object.freeze({ ASS_COLOR_STYLE_NAMES, ASS_DEFAULT_ANIMATIONS, ASS_DEFAULT_ASS_STYLE, ASS_DEFAULT_COLOR, ASS_DEFAULT_EXTENSION_STYLE, ASS_DEFAULT_PLAY_RES_X, ASS_DEFAULT_PLAY_RES_Y, ASS_DEFAULT_PROFILE, ASS_DEFAULT_STYLE, ASS_EVENT_FORMAT, ASS_FALLBACK_COLOR_PALETTE, ASS_REFERENCE_PLAY_RES_Y, ASS_STYLE_FORMAT, ASS_STYLE_LIBRARY_SCHEMA, assColorFromHex, assDefaultFontFamily, assOverrideColorFromHex, assPreviewStyleAt, assProfileForId, assStyleForId, assStyleLine, assTransformStyleTargets, defaultAssStyleLibrary, escapeAssText, formatAssTime, normalizeAssAnimations, normalizeAssColorStyle, normalizeAssFontFamily, normalizeAssFontSize, normalizeAssLibraryColor, normalizeAssPlayResolution, normalizeAssProfile, normalizeAssStyle, normalizeAssStyleLibrary, normalizeAssTimeMs, resolveAssFontSize });
+  return Object.freeze({ ASS_COLOR_STYLE_NAMES, ASS_DEFAULT_ANIMATIONS, ASS_DEFAULT_ASS_STYLE, ASS_DEFAULT_COLOR, ASS_DEFAULT_EXTENSION_STYLE, ASS_DEFAULT_PLAY_RES_X, ASS_DEFAULT_PLAY_RES_Y, ASS_DEFAULT_PROFILE, ASS_DEFAULT_STYLE, ASS_EVENT_FORMAT, ASS_FALLBACK_COLOR_PALETTE, ASS_REFERENCE_PLAY_RES_Y, ASS_STYLE_FORMAT, ASS_STYLE_LIBRARY_SCHEMA, assColorFromHex, assDefaultFontFamily, assEmphasisRuns, assOverrideColorFromHex, assPreviewStyleAt, assProfileForId, assStyleForId, assStyleLine, assTransformStyleTargets, defaultAssStyleLibrary, escapeAssText, formatAssTime, normalizeAssAnimations, normalizeAssColorStyle, normalizeAssFontFamily, normalizeAssFontSize, normalizeAssLibraryColor, normalizeAssPlayResolution, normalizeAssProfile, normalizeAssStyle, normalizeAssStyleLibrary, normalizeAssTimeMs, resolveAssFontSize });
 });

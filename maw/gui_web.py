@@ -1507,8 +1507,9 @@ class LauncherApi:
             srt_style = find_ass_style(style_library, style_id)
             result = process_burn_subtitles(
                 BurnSubtitleRequest(
-                    media_path=Path(str(payload.get("mediaPath") or "")),
+                    media_path=Path(str(payload.get("mediaPath"))) if payload.get("mediaPath") else None,
                     subtitle_path=Path(str(payload.get("subtitlePath") or "")),
+                    green_screen=payload.get("greenScreen") is True,
                     srt_style=srt_style,
                     video_encoder=str(payload.get("videoEncoder") or "auto"),
                     crf=_burn_crf_override(payload.get("crf")),
@@ -1528,7 +1529,7 @@ class LauncherApi:
             self._finish_media_tool(cancel_event)
         return {
             "ok": True,
-            "sourceMediaPath": str(result.source_media_path),
+            "sourceMediaPath": str(result.source_media_path) if result.source_media_path else "",
             "subtitlePath": str(result.subtitle_path),
             "mediaPath": str(result.media_path),
             "videoEncoder": str(getattr(result, "video_encoder", "auto") or "auto"),

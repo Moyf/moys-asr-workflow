@@ -156,6 +156,58 @@ test('ASS preview preserves explicit line breaks without container wrapping', as
   await expect(page.locator('#overlay-main-text')).toHaveCSS('word-break', 'break-word');
 });
 
+test('ASS emphasis controls drive preview and inline export color', async ({ page }) => {
+  await disableOnboarding(page);
+  await stubSavePicker(page);
+  await page.goto(server.url);
+  await page.locator('#editor-settings-toggle').click();
+  await page.locator('#editor-settings-tab-subtitle-style').click();
+  await page.locator('#ass-style-manager-open').click();
+  await page.locator('#ass-style-list [data-ass-selection-id="ass"]').click();
+  await expect(page.locator('#ass-style-emphasis-syntax')).toHaveValue('double');
+  await expect(page.locator('#ass-style-emphasis-scale')).toHaveAttribute('step', '0.05');
+  await expect(page.locator('#ass-style-emphasis-options')).toBeVisible();
+  const gap = await page.locator('#ass-style-emphasis-options').evaluate((element) => {
+    const previous = element.previousElementSibling;
+    return element.getBoundingClientRect().top - previous.getBoundingClientRect().bottom;
+  });
+  expect(gap).toBeGreaterThanOrEqual(8);
+  await page.locator('#ass-style-emphasis-color').fill('#ff0000');
+  await page.locator('#ass-style-emphasis-scale').fill('1.25');
+  await page.locator('#ass-style-emphasis-style').selectOption('text');
+  await page.locator('#ass-style-emphasis-syntax').selectOption('none');
+  await expect(page.locator('#ass-style-emphasis-options')).toBeHidden();
+  await page.locator('#ass-style-emphasis-syntax').selectOption('double');
+  await page.locator('#ass-style-window-close').click();
+  await page.locator('#editor-settings-close').click();
+
+  const preview = await page.evaluate(() => {
+    MaweBoot.DATA.segments = [{ start: 0, end: 4000, text: '前 **重点** 后' }];
+    MaweSettings.EDITOR_SETTINGS.assMode = true;
+    MaweDom.overlayToggle.checked = true;
+    MawePlaybackLoop.refreshSubtitlePreview(1000, 0);
+    const element = document.getElementById('overlay-main-text');
+    const run = element.querySelector('.ass-emphasis-run');
+    return { text: element.textContent, color: getComputedStyle(run).color,
+      scale: parseFloat(getComputedStyle(run).fontSize) / parseFloat(getComputedStyle(element).fontSize) };
+  });
+  expect(preview.text).toBe('前 重点 后');
+  expect(preview.color).toBe('rgb(255, 0, 0)');
+  expect(preview.scale).toBeCloseTo(1.25);
+
+  await page.locator('#subtitle-export-btn').click();
+  await page.locator('#download-full-ass').click();
+  await expect.poll(() => page.evaluate(() => window.__exportSaves.length)).toBe(1);
+  const ass = await page.evaluate(() => window.__exportSaves[0].content);
+  expect(ass).toMatch(/前 \{\\1c&H000000FF&\\fs\d+\}重点\{\\1c&H00FFFFFF&\\fs\d+\} 后/);
+
+  await page.evaluate(() => {
+    MaweSettings.EDITOR_SETTINGS.assMode = false;
+    MawePlaybackLoop.refreshSubtitlePreview(1000, 0);
+  });
+  await expect(page.locator('#overlay-main-text')).toHaveText('前 **重点** 后');
+});
+
 test('writes the project title, source resolution, palette styles and speaker names to ASS', async ({ page }) => {
   await disableOnboarding(page);
   await stubSavePicker(page);

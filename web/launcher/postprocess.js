@@ -735,12 +735,14 @@
       action.classList.toggle("hidden", action.dataset.toolAction !== tool || toolboxOpenMode === "auto-config");
     });
     $("toolboxInputDropZone").classList.toggle("hidden", section !== "postprocess");
-    $("toolboxUtilityMediaDropZone").classList.toggle("hidden", section !== "utilities");
+    $("toolboxUtilityMediaDropZone").classList.toggle("hidden", section !== "utilities"
+      || (tool === "burnSubtitle" && $("toolboxGreenScreen").checked));
     $("toolboxAudioTrackField").classList.toggle("hidden", !(section === "utilities" && ["waveform", "extractAudio"].includes(tool)));
     $("toolboxChain").classList.toggle("hidden", section !== "postprocess" || !$("toolboxChainList").children.length);
     const configOnly = toolboxOpenMode === "auto-config";
     $("toolboxOutputField").classList.toggle("hidden", section !== "postprocess" || configOnly);
     $("toolboxConfigOnlyHint")?.classList.toggle("hidden", !configOnly);
+    renderMediaToolAction();
   }
 
   function moveToolFocus(event) {
@@ -981,6 +983,7 @@
     const stop = $("stopToolboxMedia");
     if (!burn || !extract || !stop) return;
     burn.disabled = busy;
+    burn.textContent = t($("toolboxGreenScreen").checked ? "toolbox_green_screen" : "toolbox_burn_subtitle");
     extract.disabled = busy;
     stop.textContent = t(mediaToolCancelling ? "toolbox_status_cancelling" : "toolbox_stop_media");
     stop.classList.toggle("hidden", !mediaToolRunning);
@@ -2088,13 +2091,14 @@
 
   async function runBurnSubtitle() {
     if (busy) return;
+    const greenScreen = $("toolboxGreenScreen").checked;
     const mediaPath = $("toolboxUtilityMediaPath").value.trim();
     const subtitlePath = $("toolboxBurnSubtitlePath").value.trim();
-    if (!mediaPath) {
+    if (!greenScreen && !mediaPath) {
       setResult(t("toolbox_need_media"), "error");
       return;
     }
-    if (!VIDEO_EXTS.has(extension(mediaPath))) {
+    if (!greenScreen && !VIDEO_EXTS.has(extension(mediaPath))) {
       const message = t("toolbox_utility_video_required");
       setFieldError("toolboxUtilityMediaPath", message);
       setResult(message, "error");
@@ -2115,8 +2119,9 @@
     setBusy(true, "toolbox_status_burning");
     try {
       const result = await bridge("run_burn_subtitles", {
-        mediaPath,
+        mediaPath: greenScreen ? "" : mediaPath,
         subtitlePath,
+        greenScreen,
         videoEncoder: $("toolboxBurnVideoEncoder")?.value || "auto",
         ...burnEncodingPayload(),
       });
@@ -2125,7 +2130,7 @@
         $("toolboxUtilityMediaPath").value = result.mediaPath;
         syncPaths();
         void refreshAudioTracks();
-        setResult(`${t("toolbox_burn_done")}\n${result.mediaPath}`, "success");
+        setResult(`${t(greenScreen ? "toolbox_green_screen_done" : "toolbox_burn_done")}\n${result.mediaPath}`, "success");
       } else {
         const message = mediaToolErrorMessage(result);
         if (result.field) setFieldError(result.field, message);
@@ -2281,6 +2286,11 @@
   $("runFixedProcess").addEventListener("click", runFixedProcess);
   $("runFfconcatRebuild").addEventListener("click", runFfconcat);
   $("runBurnSubtitle").addEventListener("click", runBurnSubtitle);
+  $("toolboxGreenScreen").addEventListener("change", () => {
+    $("toolboxUtilityMediaDropZone").classList.toggle("hidden", $("toolboxGreenScreen").checked);
+    setFieldError("toolboxUtilityMediaPath", "");
+    renderMediaToolAction();
+  });
   $("saveBurnSubtitleSettings").addEventListener("click", saveBurnSubtitleSettings);
   $("runExtractAudio").addEventListener("click", runExtractAudio);
   $("stopToolboxMedia").addEventListener("click", () => { void stopMediaTool(); });

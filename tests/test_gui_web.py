@@ -1986,6 +1986,23 @@ class GuiWebBridgeTests(unittest.TestCase):
         self.assertIsInstance(burn.call_args.kwargs["cancel_event"], threading.Event)
         self.assertEqual(result["mediaPath"], str(output.resolve()))
 
+    def test_green_screen_burn_bridge_does_not_require_media_path(self) -> None:
+        subtitle = self.root / "green.ass"
+        subtitle.write_text("[Events]\nFormat: Layer, Start, End, Text\n", encoding="utf-8")
+        ffmpeg = self.root / ("ffmpeg.exe" if os.name == "nt" else "ffmpeg")
+        ffmpeg.write_bytes(b"exe")
+        output = self.root / "green.green-screen.mp4"
+        with mock.patch("maw.gui_web._postprocess_ffmpeg_tools", return_value=FfmpegTools(ffmpeg=ffmpeg, ffprobe=None)):
+            with mock.patch("maw.gui_web.process_burn_subtitles") as burn:
+                burn.return_value = SimpleNamespace(source_media_path=None, subtitle_path=subtitle,
+                                                    media_path=output, video_encoder="cpu")
+                result = self.api.run_burn_subtitles({"subtitlePath": str(subtitle), "greenScreen": True})
+        self.assertTrue(result["ok"])
+        self.assertIsNone(burn.call_args.args[0].media_path)
+        self.assertTrue(burn.call_args.args[0].green_screen)
+        self.assertEqual(result["sourceMediaPath"], "")
+        self.assertEqual(result["mediaPath"], str(output))
+
     def test_media_tool_progress_is_compact_and_latest_message_ready(self) -> None:
         self.assertEqual(
             _format_media_tool_progress({"frame": "42", "fps": "24.0", "out_time": "00:00:01.75", "speed": "1.2x"}),

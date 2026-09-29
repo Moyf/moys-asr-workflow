@@ -68,6 +68,26 @@ class AssStyleLibraryTests(unittest.TestCase):
         self.assertEqual(default_extension["fontSize"], 54)
         self.assertEqual(default_extension["marginV"], 166)
 
+    def test_emphasis_style_settings_survive_server_normalization(self) -> None:
+        library = normalize_ass_style_library({
+            "styles": [{"id": "ass", "emphasisSyntax": "single",
+                        "emphasisColor": "#aabbcc", "emphasisScale": 1.27,
+                        "emphasisStyle": "stroke"}],
+        })
+        style = find_ass_style(library, "ass")
+        self.assertEqual((style["emphasisSyntax"], style["emphasisColor"], style["emphasisStyle"]),
+                         ("single", "#aabbcc", "stroke"))
+        self.assertEqual(style["emphasisScale"], 1.25)
+        invalid = normalize_ass_style_library({
+            "styles": [{"id": "ass", "emphasisSyntax": {},
+                        "emphasisColor": "invalid", "emphasisScale": "bad", "emphasisStyle": []}],
+        })
+        self.assertEqual(find_ass_style(invalid, "ass")["emphasisSyntax"], "double")
+        self.assertEqual(find_ass_style(invalid, "ass")["emphasisColor"], "#ffd34d")
+        self.assertEqual(find_ass_style(invalid, "ass")["emphasisStyle"], "text")
+        self.assertEqual(find_ass_style(invalid, "ass")["emphasisScale"], 1.0)
+        self.assertEqual(find_ass_style(normalize_ass_style_library({"styles": [{"id": "ass", "emphasisScale": 9}]}), "ass")["emphasisScale"], 1.5)
+
     def test_legacy_full_library_keeps_every_custom_style(self) -> None:
         # 旧版满员库（2 内置 + 62 自定义 = 64）：归一化补入第三个内置
         # 副字幕样式后总数 65，不得截断丢弃任何自定义样式。

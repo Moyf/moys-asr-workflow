@@ -187,6 +187,9 @@ function restoreCssSubtitlePreviewElement(element, appearance, fallbackSize, fal
 }
 
 function restoreCssSubtitlePreview() {
+  clearAssEmphasisPreview(MaweDom.overlayTextEl);
+  clearAssEmphasisPreview(MaweDom.overlayExtensionTextEl);
+  clearAssEmphasisPreview(overlayTrackTextEl);
   MaweDom.overlayEl.removeAttribute('data-ass-mode');
   MaweDom.overlayEl.classList.remove('ass-preview-active');
   delete MaweDom.overlayTextEl.dataset.colorUnderline;
@@ -211,6 +214,54 @@ function restoreCssSubtitlePreview() {
   );
   clearAssPreviewSpeakerLabelStyle(MaweDom.overlayMainSpeakerLabelEl);
   restoreAssOverlayTrackPreview();
+}
+
+function clearAssEmphasisPreview(element) {
+  const wrapper = element?.querySelector(':scope > .ass-emphasis-runs');
+  wrapper?.remove();
+  if (element) delete element.dataset.assEmphasisKey;
+}
+
+function renderAssEmphasisPreview(element, textNode, text, style, metrics) {
+  if (!element) return;
+  const source = String(text ?? '');
+  const key = JSON.stringify([source, style.emphasisSyntax, style.emphasisStyle,
+    style.emphasisColor, style.emphasisScale, style.fontSize, style.primaryColor,
+    style.outlineColor, style.outline, metrics.scaleY, metrics.stageHeight]);
+  if (element.dataset.assEmphasisKey === key) return;
+  clearAssEmphasisPreview(element);
+  const runs = window.AsrEditorUtils.assEmphasisRuns(source, style.emphasisSyntax);
+  if (!runs.some((run) => run.emphasized)) {
+    if (textNode) textNode.nodeValue = source;
+    else element.textContent = source;
+    element.dataset.assEmphasisKey = key;
+    return;
+  }
+  if (textNode) textNode.nodeValue = '';
+  else element.textContent = '';
+  const wrapper = document.createElement('span');
+  wrapper.className = 'ass-emphasis-runs';
+  runs.forEach((run) => {
+    if (!run.emphasized) {
+      wrapper.append(document.createTextNode(run.text));
+      return;
+    }
+    const span = document.createElement('span');
+    span.className = 'ass-emphasis-run';
+    span.textContent = run.text;
+    if (style.emphasisScale > 1) {
+      span.style.fontSize = `${assPreviewFontSize(style, metrics) * style.emphasisScale}px`;
+    }
+    if (style.emphasisStyle === 'stroke') {
+      span.style.webkitTextStroke = `${Math.max(0, Number(style.outline) || 0) * metrics.scaleY}px ${style.emphasisColor}`;
+      span.style.paintOrder = 'stroke fill';
+    } else {
+      span.style.color = style.emphasisColor;
+    }
+    wrapper.append(span);
+  });
+  element.append(wrapper);
+  element.dataset.assEmphasisKey = key;
 }
 
 function applyAssSubtitlePreview({ tMs, segment, extension, overlay, overlaySegments, mainColorName, speakerLabelVisible }) {
@@ -325,10 +376,14 @@ function applyAssSubtitlePreview({ tMs, segment, extension, overlay, overlaySegm
   MaweDom.overlayEl.style.boxSizing = 'border-box';
   MaweDom.overlayEl.style.padding = `${margins.vertical}px ${margins.right}px ${margins.vertical}px ${margins.left}px`;
   applyAssPreviewElement(MaweDom.overlayTextEl, animatedMainStyle, mainAnimation, metrics, alignment, margins);
+  renderAssEmphasisPreview(MaweDom.overlayTextEl, MaweDom.overlayMainTextNode,
+    segment?.text || '', animatedMainStyle, metrics);
   applyAssAnchoredPreviewElement(
     MaweDom.overlayExtensionTextEl, animatedExtensionStyle, extensionAnimation, metrics,
     extensionAlignment, extensionMargins, extensionMargins.vertical,
   );
+  renderAssEmphasisPreview(MaweDom.overlayExtensionTextEl, null,
+    extension?.text || '', animatedExtensionStyle, metrics);
 
   if (speakerLabelVisible) {
     applyAssPreviewSpeakerLabel(MaweDom.overlayMainSpeakerLabelEl, animatedMainStyle, metrics);
@@ -354,6 +409,8 @@ function applyAssSubtitlePreview({ tMs, segment, extension, overlay, overlaySegm
     extensionTrackActive ? extensionMargins : margins,
     overlayOffsetPx,
   );
+  renderAssEmphasisPreview(overlayTrackTextEl, overlayTrackTextNode,
+    overlay?.text || '', animatedOverlayTrackStyle, metrics);
 }
 
 // 锚定渲染：副字幕/叠加轨不参与容器的 flex 布局（CSS 模式下叠加文字

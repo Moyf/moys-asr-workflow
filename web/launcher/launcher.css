@@ -2418,6 +2418,9 @@ textarea::placeholder {
   margin: 0 0 10px;
 }
 
+.toolbox-green-screen-option { margin: 0 0 12px; }
+.toolbox-green-screen-option .hint { margin: 8px 0 0; }
+
 .toolbox-waveform-spectral-field {
   margin-top: 14px;
 }

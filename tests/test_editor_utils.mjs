@@ -3233,6 +3233,45 @@ test('builds ASS subtitles with the selected font, size, color and safe text', (
   assert.doesNotMatch(ass, /disabled/);
 });
 
+test('ASS emphasis syntax colors only marked runs and preserves other export modes', () => {
+  const cue = [{ start: 0, end: 1000, text: '前 **重点** 后 **再次**', color: { name: 'yellow' } }];
+  const options = {
+    assProfile: { id: 'ass', styleId: 'ass', animations: {} },
+    assStyle: { id: 'ass', primaryColor: '#123456', outlineColor: '#000000',
+      emphasisSyntax: 'double', emphasisColor: '#ff0000', emphasisStyle: 'text' },
+    appearance: { ass_color_style: 'text' },
+  };
+  const ass = helpers.buildAssPayload(cue, options);
+  assert.match(ass, /前 \{\\1c&H000000FF&\}重点\{\\1c&H0019A0C4&\} 后 \{\\1c&H000000FF&\}再次\{\\1c&H0019A0C4&\}/);
+  assert.doesNotMatch(ass, /\\fs\d+/);
+  const enlarged = helpers.buildAssPayload(cue, {
+    ...options, assStyle: { ...options.assStyle, fontSize: 40, emphasisScale: 1.25 },
+  });
+  assert.match(enlarged, /\{\\1c&H000000FF&\\fs50\}重点\{\\1c&H0019A0C4&\\fs40\}/);
+  assert.doesNotMatch(ass, /\*\*/);
+  const stroke = helpers.buildAssPayload(cue, {
+    ...options, assStyle: { ...options.assStyle, emphasisStyle: 'stroke' },
+  });
+  assert.match(stroke, /\{\\3c&H000000FF&\}重点\{\\3c&H00000000&\}/);
+  const disabled = helpers.buildAssPayload(cue, {
+    ...options, assStyle: { ...options.assStyle, emphasisSyntax: 'none' },
+  });
+  assert.match(disabled, /前 \*\*重点\*\* 后 \*\*再次\*\*/);
+  assert.match(helpers.buildAssPayload(cue), /前 \*\*重点\*\* 后/);
+  assert.deepEqual(Array.from(helpers.assEmphasisRuns('a *b* **c**', 'single'), (run) => run.emphasized), [false, true, false]);
+  const tracks = helpers.buildAssPayload(cue, {
+    ...options,
+    assExtensionStyle: { id: 'ass-extension', emphasisSyntax: 'single', emphasisColor: '#00ff00', emphasisScale: 1.5 },
+    extensionSegments: [{ start: 0, end: 1000, text: '副 *重点*' }],
+    overlaySegments: [{ start: 0, end: 1000, text: '叠 **重点**' }],
+  });
+  assert.match(tracks, /Dialogue: 1,[^\n]*副 \{\\1c&H0000FF00&\\fs81\}重点\{\\1c&H004DD3FF&\\fs54\}/);
+  assert.match(tracks, /Dialogue: 2,[^\n]*叠 \{\\1c&H000000FF&\}重点/);
+  assert.equal(helpers.normalizeAssStyle({ emphasisScale: 1.27 }).emphasisScale, 1.25);
+  assert.equal(helpers.normalizeAssStyle({ emphasisScale: 5 }).emphasisScale, 1.5);
+  assert.equal(helpers.normalizeAssStyle({ emphasisScale: 'bad' }).emphasisScale, 1);
+});
+
 test('builds ASS metadata and five palette styles at the source video resolution', () => {
   const ass = helpers.buildAssPayload([
     { start: 0, end: 1000, text: 'red line', color: { name: 'red' } },

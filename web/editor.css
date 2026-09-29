@@ -1671,6 +1671,7 @@
   }
   .ass-style-builtin-badge[hidden] { display: none; }
   .ass-style-fields { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 10px; }
+  .ass-style-emphasis-options[hidden] { display: none; }
   .ass-style-fields-main { grid-template-columns: repeat(4, minmax(0, 1fr)); }
   .ass-style-form-section { display: flex; flex-direction: column; gap: 10px; }
   .ass-style-fields-basic { grid-template-columns: repeat(4, minmax(0, 1fr)); }

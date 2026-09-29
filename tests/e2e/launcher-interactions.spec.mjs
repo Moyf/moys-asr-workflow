@@ -478,6 +478,38 @@ test('FFmpeg media log stays above the utility notice and renders the latest pro
   ))).toBeTruthy();
 });
 
+test('green-screen burn accepts subtitles without a video source', async ({ page }) => {
+  await openLauncher(page);
+  await page.locator('#toolboxUtilitiesPrimaryTab').click();
+  await page.locator('#toolboxBurnSubtitleTab').click();
+  await page.evaluate(() => {
+    window.__greenBurnCalls = [];
+    const original = window.MAWLauncher.callBackend;
+    window.MAWLauncher.callBackend = async (method, payload) => {
+      if (method === 'run_burn_subtitles') {
+        window.__greenBurnCalls.push(payload);
+        return { ok: true, mediaPath: 'D:\\Demo\\captions.green-screen.mp4' };
+      }
+      return original(method, payload);
+    };
+  });
+  await page.locator('#toolboxGreenScreen').check();
+  await expect(page.locator('#toolboxUtilityMediaDropZone')).toBeHidden();
+  await expect(page.locator('#runBurnSubtitle')).toHaveText('生成绿幕视频');
+  const gap = await page.locator('.toolbox-green-screen-option .hint').evaluate((element) =>
+    element.getBoundingClientRect().top - element.previousElementSibling.getBoundingClientRect().bottom);
+  expect(gap).toBeGreaterThanOrEqual(8);
+  await page.locator('#toolboxBurnSubtitlePath').fill('D:\\Demo\\captions.ass');
+  await page.locator('#runBurnSubtitle').click();
+  await expect.poll(() => page.evaluate(() => window.__greenBurnCalls.length)).toBe(1);
+  const call = await page.evaluate(() => window.__greenBurnCalls[0]);
+  expect(call).toMatchObject({ mediaPath: '', subtitlePath: 'D:\\Demo\\captions.ass', greenScreen: true });
+  await expect(page.locator('#toolboxUtilityMediaPath')).toHaveValue('D:\\Demo\\captions.green-screen.mp4');
+  await page.locator('#toolboxGreenScreen').uncheck();
+  await expect(page.locator('#toolboxUtilityMediaDropZone')).toBeVisible();
+  await expect(page.locator('#runBurnSubtitle')).toHaveText('烧录字幕');
+});
+
 test('Launcher settings switch between accessible tabs and deep links', async ({ page }) => {
   await page.goto(`file://${launcherPath}`);
   await page.waitForFunction(() => window.MAWLauncher?.config?.postprocessProviders?.length > 0);

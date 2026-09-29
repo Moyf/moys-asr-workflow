@@ -1,7 +1,7 @@
 // ass-export: private helpers; dependencies are injected by editor-utils.js.
 window.MAWE.register('utils-ass-export', function createUtilsModule(dependencies) {
   'use strict';
-  const { ASS_COLOR_STYLE_NAMES, ASS_DEFAULT_ASS_STYLE, ASS_DEFAULT_COLOR, ASS_DEFAULT_EXTENSION_STYLE, ASS_EVENT_FORMAT, ASS_FALLBACK_COLOR_PALETTE, ASS_REFERENCE_PLAY_RES_Y, ASS_STYLE_FORMAT, DEFAULT_SPEAKER_LABEL_SEPARATOR, assAnimationOverrideTags, assColorFromHex, assOverrideColorFromHex, assStyleLine, effectiveColorName, escapeAssText, formatAssTime, formatSpeakerLabelledText, getSrtExportFirstIndex, normalizeAssColorStyle, normalizeAssFontFamily, normalizeAssFontSize, normalizeAssLibraryColor, normalizeAssPlayResolution, normalizeAssProfile, normalizeAssStyle, normalizeAssTimeMs, normalizeSpeakerLabelSeparator, normalizeSpeakerLabels, resolveAssFontSize, speakerLabelForSegment } = dependencies;
+  const { ASS_COLOR_STYLE_NAMES, ASS_DEFAULT_ASS_STYLE, ASS_DEFAULT_COLOR, ASS_DEFAULT_EXTENSION_STYLE, ASS_EVENT_FORMAT, ASS_FALLBACK_COLOR_PALETTE, ASS_REFERENCE_PLAY_RES_Y, ASS_STYLE_FORMAT, DEFAULT_SPEAKER_LABEL_SEPARATOR, assAnimationOverrideTags, assColorFromHex, assEmphasisRuns, assOverrideColorFromHex, assStyleLine, effectiveColorName, escapeAssText, formatAssTime, formatSpeakerLabelledText, getSrtExportFirstIndex, normalizeAssColorStyle, normalizeAssFontFamily, normalizeAssFontSize, normalizeAssLibraryColor, normalizeAssPlayResolution, normalizeAssProfile, normalizeAssStyle, normalizeAssTimeMs, normalizeSpeakerLabelSeparator, normalizeSpeakerLabels, resolveAssFontSize, speakerLabelForSegment } = dependencies;
 
 
   function normalizeAssHeaderValue(value, fallback = 'MAW') {
@@ -59,11 +59,27 @@ window.MAWE.register('utils-ass-export', function createUtilsModule(dependencies
     return variant;
   }
 
+  function assEmphasizedText(text, style, fontSize) {
+    const runs = assEmphasisRuns(text, style.emphasisSyntax);
+    return runs.map((run) => {
+      const content = escapeAssText(run.text);
+      if (!run.emphasized) return content;
+      const tag = style.emphasisStyle === 'stroke' ? '3c' : '1c';
+      const baseColor = style.emphasisStyle === 'stroke' ? style.outlineColor : style.primaryColor;
+      const scaledFontSize = style.emphasisScale > 1 ? Math.round(fontSize * style.emphasisScale) : fontSize;
+      const sizeStart = scaledFontSize !== fontSize ? `\\fs${scaledFontSize}` : '';
+      const sizeEnd = scaledFontSize !== fontSize ? `\\fs${fontSize}` : '';
+      return `{\\${tag}${assOverrideColorFromHex(style.emphasisColor)}${sizeStart}}${content}`
+        + `{\\${tag}${assOverrideColorFromHex(baseColor)}${sizeEnd}}`;
+    }).join('');
+  }
+
 
   function assEventText({ segment, text, speakerName, speakerLabelSeparator, colorName,
-    colorStyles, style, colorStyle, speakerLabels, assMode }) {
+    colorStyles, style, fontSize, colorStyle, speakerLabels, assMode }) {
     const content = String(text ?? '');
-    if (!speakerLabels || !speakerName) return escapeAssText(content);
+    if (!speakerLabels || !speakerName) return assMode
+      ? assEmphasizedText(content, style, fontSize) : escapeAssText(content);
     const paletteSpeakerColor = colorStyles.find((item) => item.name === colorName)?.value
       || style.primaryColor;
     // ASS can reproduce the existing text-colour mapping and stroke-colour
@@ -79,7 +95,7 @@ window.MAWE.register('utils-ass-export', function createUtilsModule(dependencies
     const eventTextColor = style.primaryColor;
     const label = `${speakerName}${speakerLabelSeparator}`;
     if (!assMode) return escapeAssText(`${label}${content}`);
-    return `{\\c${assOverrideColorFromHex(speakerColor)}}${escapeAssText(label)}{\\c${assOverrideColorFromHex(eventTextColor)}}${escapeAssText(content)}`;
+    return `{\\c${assOverrideColorFromHex(speakerColor)}}${escapeAssText(label)}{\\c${assOverrideColorFromHex(eventTextColor)}}${assEmphasizedText(content, style, fontSize)}`;
   }
 
 
@@ -173,6 +189,7 @@ window.MAWE.register('utils-ass-export', function createUtilsModule(dependencies
         colorName,
         colorStyles,
         style: styleForEvent,
+        fontSize,
         colorStyle,
         speakerLabels,
         assMode,
@@ -206,8 +223,9 @@ window.MAWE.register('utils-ass-export', function createUtilsModule(dependencies
         if (rawEnd <= rawStart) return;
         const startCentiseconds = Math.max(0, Math.round(rawStart / 10));
         const endCentiseconds = Math.max(startCentiseconds + 1, Math.round(rawEnd / 10));
+        const extensionContent = assEmphasizedText(segment.text, extensionStyle, extensionScaledFontSize);
         const extensionText = extensionAnimationTags
-          ? `{${extensionAnimationTags}}${escapeAssText(segment.text)}` : escapeAssText(segment.text);
+          ? `{${extensionAnimationTags}}${extensionContent}` : extensionContent;
         events.push(
           `Dialogue: 1,${formatAssTime(startCentiseconds * 10)},${formatAssTime(endCentiseconds * 10)},Extension,,0,0,0,,${extensionText}`,
         );
@@ -273,8 +291,11 @@ window.MAWE.register('utils-ass-export', function createUtilsModule(dependencies
       const startCentiseconds = Math.max(0, Math.round(rawStart / 10));
       const endCentiseconds = Math.max(startCentiseconds + 1, Math.round(rawEnd / 10));
       const overlayColorName = effectiveColorName(segment, overlaySource);
+      const overlayContent = assMode
+        ? assEmphasizedText(segment.text, overlayStyleFor(overlayColorName), fontSize)
+        : escapeAssText(segment.text);
       const overlayText = overlayAnimationTags
-        ? `{${overlayAnimationTags}}${escapeAssText(segment.text)}` : escapeAssText(segment.text);
+        ? `{${overlayAnimationTags}}${overlayContent}` : overlayContent;
       events.push(
         `Dialogue: 2,${formatAssTime(startCentiseconds * 10)},${formatAssTime(endCentiseconds * 10)},${overlayStyleNameFor(overlayColorName)},,0,0,0,,${overlayText}`,
       );

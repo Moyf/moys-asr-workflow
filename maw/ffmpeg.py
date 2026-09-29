@@ -20,6 +20,7 @@ from typing import Final
 
 FFMPEG_PATH_ENV: Final = "FFMPEG_PATH"
 MACOS_FFMPEG_CANDIDATE_DIRECTORIES: Final[tuple[str, ...]] = (
+    "/opt/homebrew/opt/ffmpeg-full/bin",
     "/opt/homebrew/bin",
     "/usr/local/bin",
 )

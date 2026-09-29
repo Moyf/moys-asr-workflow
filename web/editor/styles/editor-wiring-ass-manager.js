@@ -198,6 +198,8 @@ function syncAssStyleForm(style) {
     else if (field.type === 'radio') field.checked = String(value) === field.value;
     else if (value !== undefined && value !== null) field.value = String(value);
   });
+  const emphasisOptions = document.getElementById('ass-style-emphasis-options');
+  if (emphasisOptions) emphasisOptions.hidden = safeStyle.emphasisSyntax === 'none';
   if (assStylePreviewSample) {
     const preview = safeStyle;
     assStylePreviewSample.textContent = 'Aa 字幕预览 / 字幕样例';

@@ -2642,6 +2642,46 @@ class MediaToolTests(unittest.TestCase):
         self.assertTrue(result.media_path.read_bytes())
         self.assertEqual(self.media.read_bytes(), b"media")
 
+    def test_green_screen_burn_uses_subtitle_timing_without_source_video(self) -> None:
+        subtitle = self.root / "green.ass"
+        subtitle.write_text(
+            "[Script Info]\nPlayResX: 321\nPlayResY: 181\n"
+            "[Events]\nFormat: Layer, Start, End, Style, Name, Text\n"
+            "Dialogue: 0,0:00:00.00,0:00:02.00,Default,,Hello\n",
+            encoding="utf-8",
+        )
+        with mock.patch("maw.postprocess_ffmpeg.subprocess.Popen", side_effect=self._fake_process) as popen:
+            result = run_burn_subtitles(
+                BurnSubtitleRequest(media_path=None, subtitle_path=subtitle,
+                                    green_screen=True, video_encoder="cpu"),
+                ffmpeg_path=Path("ffmpeg"),
+            )
+        command = popen.call_args.args[0]
+        self.assertIn("color=c=0x00ff00:s=322x182:r=30:d=2.500", command)
+        self.assertIn("-an", command)
+        self.assertNotIn(str(self.media), command)
+        self.assertEqual(result.source_media_path, None)
+        self.assertEqual(result.media_path.name, "green.green-screen.mp4")
+        self.assertTrue(result.media_path.is_file())
+
+        self.subtitle.write_text("1\n00:00:00,000 --> 00:00:03,250\nHello\n", encoding="utf-8")
+        with mock.patch("maw.postprocess_ffmpeg.subprocess.Popen", side_effect=self._fake_process) as popen:
+            run_burn_subtitles(
+                BurnSubtitleRequest(media_path=None, subtitle_path=self.subtitle,
+                                    green_screen=True, video_encoder="cpu"),
+                ffmpeg_path=Path("ffmpeg"),
+            )
+        self.assertIn("color=c=0x00ff00:s=1920x1080:r=30:d=3.767", popen.call_args.args[0])
+
+    def test_green_screen_rejects_subtitles_without_timing(self) -> None:
+        subtitle = self.root / "empty.ass"
+        subtitle.write_text("[Events]\nFormat: Layer, Start, End, Text\n", encoding="utf-8")
+        with self.assertRaisesRegex(MediaToolError, "没有可用的结束时间"):
+            run_burn_subtitles(
+                BurnSubtitleRequest(media_path=None, subtitle_path=subtitle, green_screen=True, video_encoder="cpu"),
+                ffmpeg_path=Path("ffmpeg"),
+            )
+
     def test_burn_subtitles_applies_selected_srt_style_to_converted_ass(self) -> None:
         generated = self.root / "generated.ass"
         generated.write_text(

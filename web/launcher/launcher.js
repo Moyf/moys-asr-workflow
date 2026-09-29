@@ -354,9 +354,15 @@
   });
   Object.assign(STRINGS.zh, {
     toolbox_burn_subtitle_style_hint: "选择 SRT 字幕时，会使用 ASS 样式库中的「SRT 烧录样式」对应的样式；选择 ASS 字幕时，使用 ASS 字幕自身的样式。",
+    toolbox_green_screen: "生成绿幕视频",
+    toolbox_green_screen_hint: "无需视频源；用字幕时长生成带字幕的绿色背景视频。默认 1920×1080、30 fps，ASS 优先使用自身画布尺寸；不含音轨。",
+    toolbox_green_screen_done: "绿幕视频已生成，已切换到新媒体：",
   });
   Object.assign(STRINGS.en, {
     toolbox_burn_subtitle_style_hint: "SRT subtitles are burned with the style assigned as the SRT burn style in the ASS style library; ASS / SSA subtitles keep their own embedded styles.",
+    toolbox_green_screen: "Generate green-screen video",
+    toolbox_green_screen_hint: "No source video needed. Creates a green background with burned subtitles through the last cue. Defaults to 1920×1080 at 30 fps; ASS canvas size takes priority. No audio track.",
+    toolbox_green_screen_done: "Green-screen video created; switched to the new media:",
   });
   Object.assign(STRINGS.zh, {
     toolbox_burn_crf: "画质 CRF", toolbox_burn_crf_hint: "数值越小画质越高、文件越大；常用 16–23，默认 18。", toolbox_burn_crf_invalid: "CRF 需要是 0–51 之间的整数。", toolbox_burn_preset: "编码预设", toolbox_burn_preset_hint: "仅 CPU 编码使用：越慢压缩率越高、耗时越长；一般保持 medium。", toolbox_burn_audio_bitrate: "音频码率", toolbox_burn_audio_bitrate_hint: "码率越高音质越好、文件越大；默认 192k。", toolbox_burn_save_defaults: "保存为默认参数", toolbox_burn_settings_saved: "已保存为默认参数，之后烧录会自动预填。"

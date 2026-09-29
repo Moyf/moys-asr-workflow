@@ -1528,6 +1528,17 @@ __WAVEFORM_CSS__
           </div>
           <small class="editor-settings-hint">有颜色的字幕会使用对应颜色覆盖主色/描边，取决于 <button type="button" class="ass-style-settings-link" id="ass-style-settings-link" title="打开全局设置中的字幕样式">字幕样式</button> 中的设置。</small>
         </section>
+        <section class="ass-style-form-section" aria-labelledby="ass-style-emphasis-heading">
+          <div class="ass-style-subheading" id="ass-style-emphasis-heading">强调文本</div>
+          <div class="ass-style-fields ass-style-fields-basic">
+            <label class="ass-style-field">强调文本语法<select id="ass-style-emphasis-syntax" data-ass-style-field="emphasisSyntax"><option value="none">无</option><option value="single">单星号 *</option><option value="double">双星号 **</option></select></label>
+          </div>
+          <div id="ass-style-emphasis-options" class="ass-style-fields ass-style-fields-basic ass-style-emphasis-options">
+            <label class="ass-style-color-field">强调色<input type="color" id="ass-style-emphasis-color" data-ass-style-field="emphasisColor"></label>
+            <label class="ass-style-field">文字放大比例<input type="number" id="ass-style-emphasis-scale" data-ass-style-field="emphasisScale" min="1" max="1.5" step="0.05" value="1"></label>
+            <label class="ass-style-field">强调样式<select id="ass-style-emphasis-style" data-ass-style-field="emphasisStyle"><option value="stroke">描边颜色</option><option value="text">文本颜色</option></select></label>
+          </div>
+        </section>
         <section class="ass-style-form-section ass-style-extended-section" aria-labelledby="ass-style-extended-heading">
           <div class="ass-style-subheading" id="ass-style-extended-heading">拓展样式</div>
           <div class="ass-style-fields ass-style-fields-extended">
