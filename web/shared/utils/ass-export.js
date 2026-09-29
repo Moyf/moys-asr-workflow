@@ -1,7 +1,7 @@
 // ass-export: private helpers; dependencies are injected by editor-utils.js.
 window.MAWE.register('utils-ass-export', function createUtilsModule(dependencies) {
   'use strict';
-  const { ASS_COLOR_STYLE_NAMES, ASS_DEFAULT_ASS_STYLE, ASS_DEFAULT_COLOR, ASS_DEFAULT_EXTENSION_STYLE, ASS_EVENT_FORMAT, ASS_FALLBACK_COLOR_PALETTE, ASS_REFERENCE_PLAY_RES_Y, ASS_STYLE_FORMAT, DEFAULT_SPEAKER_LABEL_SEPARATOR, assAnimationOverrideTags, assColorFromHex, assEmphasisRuns, assOverrideColorFromHex, assStyleLine, effectiveColorName, escapeAssText, formatAssTime, formatSpeakerLabelledText, getSrtExportFirstIndex, normalizeAssColorStyle, normalizeAssFontFamily, normalizeAssFontSize, normalizeAssLibraryColor, normalizeAssPlayResolution, normalizeAssProfile, normalizeAssStyle, normalizeAssTimeMs, normalizeSpeakerLabelSeparator, normalizeSpeakerLabels, resolveAssFontSize, speakerLabelForSegment } = dependencies;
+  const { ASS_COLOR_STYLE_NAMES, ASS_DEFAULT_ASS_STYLE, ASS_DEFAULT_COLOR, ASS_DEFAULT_EXTENSION_STYLE, ASS_EVENT_FORMAT, ASS_FALLBACK_COLOR_PALETTE, ASS_REFERENCE_PLAY_RES_Y, ASS_STYLE_FORMAT, DEFAULT_SPEAKER_LABEL_SEPARATOR, assAnimationOverrideTags, assColorFromHex, assInlineStyleRuns, assOverrideColorFromHex, assStyleLine, effectiveColorName, escapeAssText, formatAssTime, formatSpeakerLabelledText, getSrtExportFirstIndex, normalizeAssColorStyle, normalizeAssFontFamily, normalizeAssFontSize, normalizeAssLibraryColor, normalizeAssPlayResolution, normalizeAssProfile, normalizeAssStyle, normalizeAssTimeMs, normalizeSpeakerLabelSeparator, normalizeSpeakerLabels, resolveAssFontSize, speakerLabelForSegment } = dependencies;
 
 
   function normalizeAssHeaderValue(value, fallback = 'MAW') {
@@ -60,17 +60,27 @@ window.MAWE.register('utils-ass-export', function createUtilsModule(dependencies
   }
 
   function assEmphasizedText(text, style, fontSize) {
-    const runs = assEmphasisRuns(text, style.emphasisSyntax);
+    const runs = assInlineStyleRuns(text, style.emphasisSyntax);
     return runs.map((run) => {
       const content = escapeAssText(run.text);
-      if (!run.emphasized) return content;
-      const tag = style.emphasisStyle === 'stroke' ? '3c' : '1c';
-      const baseColor = style.emphasisStyle === 'stroke' ? style.outlineColor : style.primaryColor;
-      const scaledFontSize = style.emphasisScale > 1 ? Math.round(fontSize * style.emphasisScale) : fontSize;
-      const sizeStart = scaledFontSize !== fontSize ? `\\fs${scaledFontSize}` : '';
-      const sizeEnd = scaledFontSize !== fontSize ? `\\fs${fontSize}` : '';
-      return `{\\${tag}${assOverrideColorFromHex(style.emphasisColor)}${sizeStart}}${content}`
-        + `{\\${tag}${assOverrideColorFromHex(baseColor)}${sizeEnd}}`;
+      let startTags = '';
+      let endTags = '';
+      if (run.emphasized) {
+        const tag = style.emphasisStyle === 'stroke' ? '3c' : '1c';
+        const baseColor = style.emphasisStyle === 'stroke' ? style.outlineColor : style.primaryColor;
+        const scaledFontSize = style.emphasisScale > 1 ? Math.round(fontSize * style.emphasisScale) : fontSize;
+        startTags += `\\${tag}${assOverrideColorFromHex(style.emphasisColor)}`;
+        endTags += `\\${tag}${assOverrideColorFromHex(baseColor)}`;
+        if (scaledFontSize !== fontSize) {
+          startTags += `\\fs${scaledFontSize}`;
+          endTags += `\\fs${fontSize}`;
+        }
+      }
+      if (run.underlined && !style.underline) {
+        startTags += '\\u1';
+        endTags += '\\u0';
+      }
+      return startTags ? `{${startTags}}${content}{${endTags}}` : content;
     }).join('');
   }
 

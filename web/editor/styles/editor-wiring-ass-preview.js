@@ -226,12 +226,12 @@ function renderAssEmphasisPreview(element, textNode, text, style, metrics) {
   if (!element) return;
   const source = String(text ?? '');
   const key = JSON.stringify([source, style.emphasisSyntax, style.emphasisStyle,
-    style.emphasisColor, style.emphasisScale, style.fontSize, style.primaryColor,
+    style.emphasisColor, style.emphasisScale, style.fontSize, style.underline, style.primaryColor,
     style.outlineColor, style.outline, metrics.scaleY, metrics.stageHeight]);
   if (element.dataset.assEmphasisKey === key) return;
   clearAssEmphasisPreview(element);
-  const runs = window.AsrEditorUtils.assEmphasisRuns(source, style.emphasisSyntax);
-  if (!runs.some((run) => run.emphasized)) {
+  const runs = window.AsrEditorUtils.assInlineStyleRuns(source, style.emphasisSyntax);
+  if (!runs.some((run) => run.emphasized || run.underlined)) {
     if (textNode) textNode.nodeValue = source;
     else element.textContent = source;
     element.dataset.assEmphasisKey = key;
@@ -242,20 +242,26 @@ function renderAssEmphasisPreview(element, textNode, text, style, metrics) {
   const wrapper = document.createElement('span');
   wrapper.className = 'ass-emphasis-runs';
   runs.forEach((run) => {
-    if (!run.emphasized) {
+    if (!run.emphasized && !run.underlined) {
       wrapper.append(document.createTextNode(run.text));
       return;
     }
     const span = document.createElement('span');
-    span.className = 'ass-emphasis-run';
+    span.className = [run.emphasized ? 'ass-emphasis-run' : '', run.underlined ? 'ass-underline-run' : ''].filter(Boolean).join(' ');
     span.textContent = run.text;
-    if (style.emphasisScale > 1) {
+    if (run.underlined && !style.underline) {
+      span.style.textDecorationLine = 'underline';
+      span.style.textDecorationColor = run.emphasized && style.emphasisStyle === 'text'
+        ? style.emphasisColor : style.primaryColor;
+      span.style.textUnderlineOffset = '0.16em';
+    }
+    if (run.emphasized && style.emphasisScale > 1) {
       span.style.fontSize = `${assPreviewFontSize(style, metrics) * style.emphasisScale}px`;
     }
-    if (style.emphasisStyle === 'stroke') {
+    if (run.emphasized && style.emphasisStyle === 'stroke') {
       span.style.webkitTextStroke = `${Math.max(0, Number(style.outline) || 0) * metrics.scaleY}px ${style.emphasisColor}`;
       span.style.paintOrder = 'stroke fill';
-    } else {
+    } else if (run.emphasized) {
       span.style.color = style.emphasisColor;
     }
     wrapper.append(span);

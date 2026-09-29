@@ -63,32 +63,71 @@ window.MAWE.register('utils-ass-style', function createUtilsModule(dependencies)
   const ASS_COLOR_STYLE_VALUES = Object.freeze(['text', 'speaker', 'stroke', 'none']);
 
   // Markers are editor syntax only; the ASS event contains override tags instead.
-  function assEmphasisRuns(text, syntax) {
-    const source = String(text ?? '');
-    if (syntax !== 'single' && syntax !== 'double') return [{ text: source, emphasized: false }];
-    const marker = syntax === 'double' ? '**' : '*';
+  function assMarkedRanges(source, marker) {
     const width = marker.length;
-    const runs = [];
+    const ranges = [];
     let cursor = 0;
-    let plainStart = 0;
     while (cursor < source.length) {
       if (!source.startsWith(marker, cursor)
-        || source[cursor - 1] === '*' || source[cursor + width] === '*') {
+        || source[cursor - 1] === marker[0] || source[cursor + width] === marker[0]
+        || (marker === '_' && /[a-z0-9]/iu.test(source[cursor - 1] || ''))) {
         cursor += 1;
         continue;
       }
       const end = source.indexOf(marker, cursor + width);
-      if (end <= cursor + width || source[end - 1] === '*' || source[end + width] === '*') {
+      if (end <= cursor + width || source[end - 1] === marker[0] || source[end + width] === marker[0]
+        || (marker === '_' && (/[a-z0-9]/iu.test(source[end + width] || '')
+          || source.slice(cursor + width, end).includes('\n')))) {
         cursor += width;
         continue;
       }
-      if (cursor > plainStart) runs.push({ text: source.slice(plainStart, cursor), emphasized: false });
-      runs.push({ text: source.slice(cursor + width, end), emphasized: true });
+      ranges.push({ start: cursor, end, width });
       cursor = end + width;
-      plainStart = cursor;
     }
-    if (plainStart < source.length || !runs.length) runs.push({ text: source.slice(plainStart), emphasized: false });
+    return ranges;
+  }
+
+  function assMarkedRuns(text, syntax, includeUnderline) {
+    const source = String(text ?? '');
+    const markers = new Map();
+    const emphasisMarker = syntax === 'double' ? '**' : syntax === 'single' ? '*' : '';
+    const addMarkers = (ranges, field) => ranges.forEach(({ start, end, width }) => {
+      markers.set(start, { field, active: true, width });
+      markers.set(end, { field, active: false, width });
+    });
+    if (emphasisMarker) addMarkers(assMarkedRanges(source, emphasisMarker), 'emphasized');
+    if (includeUnderline) addMarkers(assMarkedRanges(source, '_'), 'underlined');
+    const runs = [];
+    let content = '';
+    let emphasized = false;
+    let underlined = false;
+    const flush = () => {
+      if (content) runs.push({ text: content, emphasized, underlined });
+      content = '';
+    };
+    for (let cursor = 0; cursor < source.length;) {
+      const marker = markers.get(cursor);
+      if (marker) {
+        flush();
+        if (marker.field === 'emphasized') emphasized = marker.active;
+        else underlined = marker.active;
+        cursor += marker.width;
+      } else {
+        content += source[cursor];
+        cursor += 1;
+      }
+    }
+    flush();
+    if (!runs.length) runs.push({ text: '', emphasized: false, underlined: false });
     return runs;
+  }
+
+  function assEmphasisRuns(text, syntax) {
+    return assMarkedRuns(text, syntax, false).map(({ text, emphasized }) => ({ text, emphasized }));
+  }
+
+  function assInlineStyleRuns(text, syntax) {
+    return assMarkedRuns(text, syntax, true);
   }
 
 
@@ -638,5 +677,5 @@ window.MAWE.register('utils-ass-style', function createUtilsModule(dependencies)
     };
   }
 
-  return Object.freeze({ ASS_COLOR_STYLE_NAMES, ASS_DEFAULT_ANIMATIONS, ASS_DEFAULT_ASS_STYLE, ASS_DEFAULT_COLOR, ASS_DEFAULT_EXTENSION_STYLE, ASS_DEFAULT_PLAY_RES_X, ASS_DEFAULT_PLAY_RES_Y, ASS_DEFAULT_PROFILE, ASS_DEFAULT_STYLE, ASS_EVENT_FORMAT, ASS_FALLBACK_COLOR_PALETTE, ASS_REFERENCE_PLAY_RES_Y, ASS_STYLE_FORMAT, ASS_STYLE_LIBRARY_SCHEMA, assColorFromHex, assDefaultFontFamily, assEmphasisRuns, assOverrideColorFromHex, assPreviewStyleAt, assProfileForId, assStyleForId, assStyleLine, assTransformStyleTargets, defaultAssStyleLibrary, escapeAssText, formatAssTime, normalizeAssAnimations, normalizeAssColorStyle, normalizeAssFontFamily, normalizeAssFontSize, normalizeAssLibraryColor, normalizeAssPlayResolution, normalizeAssProfile, normalizeAssStyle, normalizeAssStyleLibrary, normalizeAssTimeMs, resolveAssFontSize });
+  return Object.freeze({ ASS_COLOR_STYLE_NAMES, ASS_DEFAULT_ANIMATIONS, ASS_DEFAULT_ASS_STYLE, ASS_DEFAULT_COLOR, ASS_DEFAULT_EXTENSION_STYLE, ASS_DEFAULT_PLAY_RES_X, ASS_DEFAULT_PLAY_RES_Y, ASS_DEFAULT_PROFILE, ASS_DEFAULT_STYLE, ASS_EVENT_FORMAT, ASS_FALLBACK_COLOR_PALETTE, ASS_REFERENCE_PLAY_RES_Y, ASS_STYLE_FORMAT, ASS_STYLE_LIBRARY_SCHEMA, assColorFromHex, assDefaultFontFamily, assEmphasisRuns, assInlineStyleRuns, assOverrideColorFromHex, assPreviewStyleAt, assProfileForId, assStyleForId, assStyleLine, assTransformStyleTargets, defaultAssStyleLibrary, escapeAssText, formatAssTime, normalizeAssAnimations, normalizeAssColorStyle, normalizeAssFontFamily, normalizeAssFontSize, normalizeAssLibraryColor, normalizeAssPlayResolution, normalizeAssProfile, normalizeAssStyle, normalizeAssStyleLibrary, normalizeAssTimeMs, resolveAssFontSize });
 });

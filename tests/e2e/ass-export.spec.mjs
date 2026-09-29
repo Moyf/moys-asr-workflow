@@ -208,6 +208,41 @@ test('ASS emphasis controls drive preview and inline export color', async ({ pag
   await expect(page.locator('#overlay-main-text')).toHaveText('前 **重点** 后');
 });
 
+test('ASS underscore markers underline only the marked preview and export text', async ({ page }) => {
+  await disableOnboarding(page);
+  await stubSavePicker(page);
+  await page.goto(server.url);
+  const preview = await page.evaluate(() => {
+    MaweBoot.DATA.segments = [{ start: 0, end: 4000, text: '前 _下划线_ 与 _**共同**_ 后' }];
+    MaweSettings.EDITOR_SETTINGS.assMode = true;
+    MaweDom.overlayToggle.checked = true;
+    MawePlaybackLoop.refreshSubtitlePreview(1000, 0);
+    const element = document.getElementById('overlay-main-text');
+    const runs = [...element.querySelectorAll('.ass-underline-run')];
+    return { text: element.textContent, runs: runs.map((run) => ({
+      text: run.textContent,
+      decoration: getComputedStyle(run).textDecorationLine,
+    })) };
+  });
+  expect(preview).toEqual({ text: '前 下划线 与 共同 后', runs: [
+    { text: '下划线', decoration: 'underline' },
+    { text: '共同', decoration: 'underline' },
+  ] });
+
+  await page.locator('#subtitle-export-btn').click();
+  await page.locator('#download-full-ass').click();
+  await expect.poll(() => page.evaluate(() => window.__exportSaves.length)).toBe(1);
+  const ass = await page.evaluate(() => window.__exportSaves[0].content);
+  expect(ass).toMatch(/\{\\u1\}下划线\{\\u0\}/);
+  expect(ass).toMatch(/\\u1\}共同\{[^}]*\\u0\}/);
+
+  await page.evaluate(() => {
+    MaweSettings.EDITOR_SETTINGS.assMode = false;
+    MawePlaybackLoop.refreshSubtitlePreview(1000, 0);
+  });
+  await expect(page.locator('#overlay-main-text')).toHaveText('前 _下划线_ 与 _**共同**_ 后');
+});
+
 test('writes the project title, source resolution, palette styles and speaker names to ASS', async ({ page }) => {
   await disableOnboarding(page);
   await stubSavePicker(page);

@@ -3272,6 +3272,37 @@ test('ASS emphasis syntax colors only marked runs and preserves other export mod
   assert.equal(helpers.normalizeAssStyle({ emphasisScale: 'bad' }).emphasisScale, 1);
 });
 
+test('ASS underscore markers render as local underline alongside emphasis', () => {
+  const text = '前 _下划线_ 与 _**共同**_ 后';
+  const runs = Array.from(helpers.assInlineStyleRuns(text, 'double'), (run) => ({ ...run }));
+  assert.deepEqual(runs, [
+    { text: '前 ', emphasized: false, underlined: false },
+    { text: '下划线', emphasized: false, underlined: true },
+    { text: ' 与 ', emphasized: false, underlined: false },
+    { text: '共同', emphasized: true, underlined: true },
+    { text: ' 后', emphasized: false, underlined: false },
+  ]);
+  const options = {
+    assProfile: { id: 'ass', styleId: 'ass', animations: {} },
+    assStyle: { id: 'ass', primaryColor: '#ffffff', emphasisColor: '#ff0000', emphasisScale: 1.25 },
+  };
+  const ass = helpers.buildAssPayload([{ start: 0, end: 1000, text }], options);
+  assert.match(ass, /前 \{\\u1\}下划线\{\\u0\} 与 \{\\1c&H000000FF&\\fs90\\u1\}共同\{\\1c&H00FFFFFF&\\fs72\\u0\} 后/);
+  assert.doesNotMatch(ass, /_下划线_|_\*\*共同\*\*_/);
+  const disabledEmphasis = helpers.buildAssPayload([{ start: 0, end: 1000, text: '_下划线_ **原文**' }], {
+    ...options, assStyle: { ...options.assStyle, emphasisSyntax: 'none' },
+  });
+  assert.match(disabledEmphasis, /\{\\u1\}下划线\{\\u0\} \*\*原文\*\*/);
+  const alreadyUnderlined = helpers.buildAssPayload([{ start: 0, end: 1000, text: '_下划线_' }], {
+    ...options, assStyle: { ...options.assStyle, underline: true },
+  });
+  assert.match(alreadyUnderlined, /Dialogue: 0,[^\n]*,,下划线/);
+  assert.doesNotMatch(alreadyUnderlined, /\\u0/);
+  assert.match(helpers.buildAssPayload([{ start: 0, end: 1000, text: '_下划线_' }]), /_下划线_/);
+  assert.deepEqual(Array.from(helpers.assInlineStyleRuns('foo_bar_baz _未闭合', 'double'), (run) => run.text),
+    ['foo_bar_baz _未闭合']);
+});
+
 test('builds ASS metadata and five palette styles at the source video resolution', () => {
   const ass = helpers.buildAssPayload([
     { start: 0, end: 1000, text: 'red line', color: { name: 'red' } },
