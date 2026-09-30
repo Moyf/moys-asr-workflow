@@ -32,6 +32,7 @@ from maw.postprocess import (
     run_fixed_process,
     run_llm_postprocess,
 )
+from maw.postprocess_ai_cleanup import AiCleanupRequest, llm_complete, run_ai_cleanup
 from maw.postprocess_io import SubtitleArtifact, read_project, write_artifacts
 from maw.postprocess_llm import (
     DEFAULT_REASONING_MODE,
@@ -78,6 +79,8 @@ def default_postprocess_plan() -> dict[str, object]:
                 "enabled": False,
                 "scriptPath": "",
                 "matchMode": "script",
+                "aiCleanup": False,
+                "providerId": "deepseek",
                 "extraSplitPunctuation": list(DEFAULT_EXTRA_SPLIT_PUNCTUATION),
                 "preservePunctuation": ["？", "！"],
                 "cleanMarkdownSymbols": True,
@@ -144,6 +147,8 @@ def normalize_plan(raw: object) -> dict[str, object]:
                 step[key] = bool(value)
             elif key == "matchMode":
                 step[key] = str(value or "script") if str(value or "script") in {"script", "text"} else "script"
+            elif key == "aiCleanup":
+                step[key] = bool(value)
             elif key == "cleanMarkdownSymbols":
                 step[key] = bool(value)
             elif key == "videoPathMode":
@@ -288,7 +293,11 @@ def snapshot_postprocess_llm_settings(
 
     snapshot: dict[str, dict[str, str]] = {}
     for step in enabled_steps(plan):
-        if str(step.get("id") or "") not in {"proofread", "resegment", "translate"}:
+        step_id = str(step.get("id") or "")
+        if step_id == "match":
+            if step.get("aiCleanup") is not True:
+                continue
+        elif step_id not in {"proofread", "resegment", "translate"}:
             continue
         provider_id = str(step.get("providerId") or "deepseek")
         if provider_id in snapshot:
@@ -307,6 +316,27 @@ def snapshot_postprocess_llm_settings(
             ),
         }
     return snapshot
+
+
+def _llm_provider_error(
+    step: Mapping[str, object],
+    *,
+    env_path: Path,
+    llm_settings: Mapping[str, Mapping[str, str]] | None,
+) -> dict[str, str] | None:
+    """Return the blocking provider configuration error for one LLM step."""
+
+    provider_id = str(step.get("providerId") or "deepseek")
+    status = _snapshot_provider_status(llm_settings.get(provider_id)) if llm_settings and provider_id in llm_settings else postprocess_provider_status(env_path, provider_id)
+    if not status["hasApiKey"]:
+        return {"step": str(step.get("id") or ""), "field": "llmApiKey", "message": "LLM 供应商缺少 API Key，请在工具箱设置中填写并保存。"}
+    if not status["hasBaseUrl"]:
+        return {"step": str(step.get("id") or ""), "field": "llmBaseUrl", "message": "LLM 供应商缺少 API URL，请在工具箱设置中填写并保存。"}
+    if not status["hasModel"]:
+        return {"step": str(step.get("id") or ""), "field": "llmModel", "message": "LLM 供应商缺少模型，请在工具箱设置中填写并保存。"}
+    if not status["verified"]:
+        return {"step": str(step.get("id") or ""), "field": "llmModel", "message": "LLM 连接尚未验证，请在设置中点击“测试连接”。"}
+    return None
 
 
 def validate_plan(
@@ -330,17 +360,14 @@ def validate_plan(
             path = Path(str(step.get("scriptPath") or "")).expanduser()
             if path.suffix.lower() not in SCRIPT_EXTENSIONS or not path.is_file():
                 errors.append({"step": step_id, "field": "postprocessScriptPath", "message": "文稿匹配需要一个存在的 .txt、.md 或 .markdown 文稿文件。"})
+            if step.get("aiCleanup") is True:
+                provider_error = _llm_provider_error(step, env_path=env_path, llm_settings=llm_settings)
+                if provider_error is not None:
+                    errors.append(provider_error)
         elif step_id in {"proofread", "resegment", "translate"}:
-            provider_id = str(step.get("providerId") or "deepseek")
-            status = _snapshot_provider_status(llm_settings.get(provider_id)) if llm_settings and provider_id in llm_settings else postprocess_provider_status(env_path, provider_id)
-            if not status["hasApiKey"]:
-                errors.append({"step": step_id, "field": "llmApiKey", "message": "LLM 供应商缺少 API Key，请在工具箱设置中填写并保存。"})
-            elif not status["hasBaseUrl"]:
-                errors.append({"step": step_id, "field": "llmBaseUrl", "message": "LLM 供应商缺少 API URL，请在工具箱设置中填写并保存。"})
-            elif not status["hasModel"]:
-                errors.append({"step": step_id, "field": "llmModel", "message": "LLM 供应商缺少模型，请在工具箱设置中填写并保存。"})
-            elif not status["verified"]:
-                errors.append({"step": step_id, "field": "llmModel", "message": "LLM 连接尚未验证，请在设置中点击“测试连接”。"})
+            provider_error = _llm_provider_error(step, env_path=env_path, llm_settings=llm_settings)
+            if provider_error is not None:
+                errors.append(provider_error)
             if step_id == "translate" and str(step.get("target") or "zh") not in TRANSLATION_TARGETS:
                 errors.append({"step": step_id, "field": "autoTranslateTarget", "message": "翻译目标必须是中文或英文。"})
             if step_id == "translate" and bool(step.get("mergeBilingual")) and bool(step.get("embedTranslations")):
@@ -454,6 +481,9 @@ def _pipeline_artifact_path(
 
 def _pipeline_step_operation(step: Mapping[str, object]) -> str:
     step_id = str(step.get("id") or "")
+    if step_id == "match":
+        if step.get("aiCleanup") is True:
+            return "ai_cleanup"
     if step_id == "translate":
         target = str(step.get("target") or "zh")
         return f"translate-{target}"
@@ -913,6 +943,18 @@ def _run_step(
     step_id = str(step["id"])
     output_mode = OutputMode.BOTH
     if step_id == "match":
+        if step.get("aiCleanup") is True:
+            return _run_ai_cleanup_step(
+                step,
+                project_path=project_path,
+                srt_path=srt_path,
+                media_path=media_path,
+                env_path=env_path,
+                output_directory=output_directory,
+                cancel_event=cancel_event,
+                on_event=on_event,
+                llm_settings=llm_settings,
+            )
         return run_script_match(ScriptMatchRequest(
             project_path=project_path,
             srt_path=srt_path,
@@ -1035,6 +1077,48 @@ def _run_step(
         output_directory=output_directory,
         media_path=media_path,
         bilingual_line_order=str(step.get("bilingualLineOrder") or ""),
+    ), complete=complete, on_status=on_status)
+
+
+def _run_ai_cleanup_step(
+    step: Mapping[str, object],
+    *,
+    project_path: Path,
+    srt_path: Path,
+    media_path: Path,
+    env_path: Path,
+    output_directory: Path,
+    cancel_event: Event,
+    on_event: PipelineEvent | None,
+    llm_settings: Mapping[str, Mapping[str, str]] | None,
+) -> SubtitleArtifact:
+    provider_id = str(step.get("providerId") or "deepseek")
+    values = dict(llm_settings.get(provider_id)) if llm_settings and provider_id in llm_settings else _llm_values(env_path, provider_id)
+    settings = LlmSettings(
+        provider_id=provider_id,
+        api_key=values["apiKey"],
+        base_url=values["baseUrl"],
+        model=values["model"],
+        reasoning_mode=normalize_reasoning_mode(values.get("reasoningMode", DEFAULT_REASONING_MODE)),
+    )
+    transport = llm_complete(settings)
+
+    def complete(prompt: str, clips: list[dict[str, str]]) -> Mapping[str, object]:
+        _check_cancel(cancel_event)
+        return transport(prompt, clips)
+
+    def on_status(key: str) -> None:
+        _check_cancel(cancel_event)
+        _emit(on_event, {"stage": "detail", "step": "match", "key": key})
+
+    return run_ai_cleanup(AiCleanupRequest(
+        project_path=project_path,
+        srt_path=srt_path,
+        script_path=Path(str(step.get("scriptPath") or "")).expanduser(),
+        output_mode=OutputMode.BOTH,
+        output_directory=output_directory,
+        media_path=media_path,
+        clean_markdown_symbols=step.get("cleanMarkdownSymbols", True) is not False,
     ), complete=complete, on_status=on_status)
 
 

@@ -46,6 +46,8 @@ window.MAWE.register('waveform-cue-blocks', function createWaveformModule(depend
 
       this.appendGapBlocks(row, startMs, endMs);
       this.appendCueBlocks(row, startMs, endMs, groupBadges || computeGroupBadges(this.options.getSegments('main')));
+      // 通用 Marker / Region 轨道：最顶层独立手势，无标记时不渲染。
+      this.appendMarkerTrack(row, startMs, endMs);
 
       row.addEventListener('pointerdown', (event) => {
         // 每次按下时读取最新模式；设置切换会重绘空隙块，但不会重建仍在

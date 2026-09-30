@@ -58,7 +58,7 @@ const CANONICAL_PROJECT_FIELDS = new Set([
   'schema', 'media', 'language', 'language_source', 'split_mode', 'timestamp_granularity',
   'model', 'sticker_root', 'timebase', 'segments', 'multi_subtitle', 'overlay_track', 'waveform',
   'media_metadata', 'media_time_reference', 'spectral', 'waveform_reapeaks', 'loudness',
-  'gap_remove', 'script_alignment', 'workspace', 'preview',
+  'gap_remove', 'script_alignment', 'markers', 'workspace', 'preview',
 ]);
 let projectExtensionFields = Object.fromEntries(
   Object.entries(MaweBoot.DATA).filter(([key]) => !CANONICAL_PROJECT_FIELDS.has(key)),

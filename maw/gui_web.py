@@ -94,6 +94,7 @@ from maw.postprocess import FixedProcessRequest, LlmPostprocessRequest, OutputMo
 from maw.postprocess_io import PostprocessFileError, read_project, read_srt
 from maw.project_io import write_mosp
 from maw.project import ProjectValidationFailed, normalize_project
+from maw.postprocess_ai_cleanup import AiCleanupError, AiCleanupRequest, llm_complete, run_ai_cleanup as process_ai_cleanup
 from maw.postprocess_ffmpeg import (
     AUDIO_BITRATES,
     MAX_BURN_CRF,
@@ -1330,6 +1331,62 @@ class LauncherApi:
             return _error_result("postprocessScriptPath", "subtitle_invalid", str(error))
         except SubtitleMatchError as error:
             return _error_result("postprocessScriptPath", "subtitle_invalid", str(error))
+        except (OSError, UnicodeError, ValueError) as error:
+            return {"ok": False, "field": "postprocessScriptPath", "code": "postprocess_failed", "detail": str(error), "error": str(error)}
+        return _subtitle_artifact_result(result)
+
+    def run_ai_cleanup(self, payload: Mapping[str, object]) -> dict[str, object]:
+        """Recording-first AI spoken-word cleanup behind the toolbox toggle."""
+
+        script_path = _optional_path(payload.get("scriptPath"))
+        if script_path is None:
+            return _error_result("postprocessScriptPath", "script_invalid", "A script file is required.")
+        project_path = _optional_path(payload.get("projectPath"))
+        srt_path = _optional_path(payload.get("srtPath"))
+        preset = preset_by_id(str(payload.get("providerId") or "deepseek"))
+        file_values = _postprocess_values(self.paths.env_path, preset.env_prefix)
+        try:
+            reasoning_mode = _postprocess_reasoning_mode(payload, file_values)
+        except ValueError as error:
+            return _error_result("postprocessReasoningMode", "invalid_reasoning_mode", str(error))
+        settings = LlmSettings(
+            provider_id=preset.id,
+            api_key=str(payload.get("apiKey") or "").strip() or file_values["apiKey"],
+            base_url=str(payload.get("baseUrl") or "").strip() or file_values["baseUrl"] or preset.base_url,
+            model=str(payload.get("model") or "").strip() or file_values["model"] or preset.model,
+            reasoning_mode=reasoning_mode,
+        )
+        if not settings.api_key:
+            return _error_result("postprocessApiKey", "api_key_missing", "Post-processing API key is required.")
+        if not settings.base_url or not settings.model:
+            return {"ok": False, "field": "postprocessProvider", "code": "postprocess_failed", "detail": "LLM API URL and model are required.", "error": "LLM API URL and model are required."}
+        self._emit_postprocess_status("toolbox_status_reading")
+        try:
+            self._emit_postprocess_status("toolbox_status_ai_cleanup")
+            result = process_ai_cleanup(
+                AiCleanupRequest(
+                    project_path=project_path,
+                    srt_path=srt_path,
+                    script_path=script_path,
+                    output_mode=_output_mode(payload.get("outputMode")),
+                    media_path=_optional_path(payload.get("mediaPath")),
+                    clean_markdown_symbols=payload.get("cleanMarkdownSymbols", True) is not False,
+                ),
+                complete=llm_complete(settings),
+            )
+            self._emit_postprocess_status("toolbox_status_writing")
+        except PostprocessFileError as error:
+            code = _script_match_input_error_code(
+                error,
+                script_path=script_path,
+                project_path=project_path,
+                srt_path=srt_path,
+            )
+            return _error_result("postprocessScriptPath", code, str(error))
+        except ProjectValidationFailed as error:
+            return _error_result("postprocessScriptPath", "subtitle_invalid", str(error))
+        except (AiCleanupError, LlmClientError) as error:
+            return _llm_error_result("postprocessScriptPath", "postprocess_failed", error)
         except (OSError, UnicodeError, ValueError) as error:
             return {"ok": False, "field": "postprocessScriptPath", "code": "postprocess_failed", "detail": str(error), "error": str(error)}
         return _subtitle_artifact_result(result)
@@ -4426,6 +4483,7 @@ def _postprocess_provider_payloads(env_path: Path) -> list[dict[str, object]]:
 
 
 def _subtitle_artifact_result(result: object) -> dict[str, object]:
+    stats = getattr(result, "stats", None)
     return {
         "ok": True,
         "sourceProjectPath": str(getattr(result, "source_project_path", None) or ""),
@@ -4434,6 +4492,7 @@ def _subtitle_artifact_result(result: object) -> dict[str, object]:
         "srtPath": str(getattr(result, "srt_path", None) or ""),
         "translatedSrtPath": str(getattr(result, "translated_srt_path", None) or ""),
         "warnings": list(getattr(result, "warnings", ())),
+        "stats": dict(stats) if isinstance(stats, Mapping) else None,
     }
 
 

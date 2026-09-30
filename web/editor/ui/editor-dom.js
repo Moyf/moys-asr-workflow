@@ -923,6 +923,42 @@
   const gapRemoveClearAllButton = document.getElementById('gap-remove-clear-all');
 
 
+  const MARKERS_PANEL_POSITION_KEY = 'moy.asr.markers.panel.v1';
+
+
+  const markersPanel = document.getElementById('markers-panel');
+
+
+  const markersDragHandle = document.getElementById('markers-drag-handle');
+
+
+  const markersCloseButton = document.getElementById('markers-close');
+
+
+  const markersManageButton = document.getElementById('markers-manage');
+
+
+  const markersSummary = document.getElementById('markers-summary');
+
+
+  const markersAddCurrentButton = document.getElementById('markers-add-current');
+
+
+  const markersSearchInput = document.getElementById('markers-search');
+
+
+  const markersFilterKind = document.getElementById('markers-filter-kind');
+
+
+  const markersFilterColor = document.getElementById('markers-filter-color');
+
+
+  const markersFilterReview = document.getElementById('markers-filter-review');
+
+
+  const markersList = document.getElementById('markers-list');
+
+
   const HELP_PANEL_POSITION_KEY = 'moy.asr.help.panel.v1';
 
 
@@ -1316,6 +1352,18 @@
     gapRemoveSkipPlayback,
     gapRemoveList,
     gapRemoveClearAllButton,
+    MARKERS_PANEL_POSITION_KEY,
+    markersPanel,
+    markersDragHandle,
+    markersCloseButton,
+    markersManageButton,
+    markersSummary,
+    markersAddCurrentButton,
+    markersSearchInput,
+    markersFilterKind,
+    markersFilterColor,
+    markersFilterReview,
+    markersList,
     HELP_PANEL_POSITION_KEY,
     HELP_PANEL_SIZE_KEY,
     EDITOR_SETTINGS_WINDOW_POSITION_KEY,

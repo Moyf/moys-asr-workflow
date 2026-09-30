@@ -1,0 +1,452 @@
+// waveform-markers: 每个可见波形行顶部的通用 Marker / Region 轨道。
+// 轨道与字幕块、静音空隙的手势完全分离：空点按 = 添加单点 Marker，
+// 横向拖动 = 拖出 Region，拖旗标/条身 = 移动，拖条身两端 = 调整边界。
+// 跨行拖动按指针当前所在行换算时间，并支持视口边缘自动滚动；预览裁剪到可见行。
+// 数据变更不在这里发生：拖动只更新 DOM 预览，提交经 options 回调进入
+// MaweMarkerEditing（撤销/重做与保存状态统一在那一层处理）。
+window.MAWE.register('waveform-markers', function createWaveformModule(dependencies) {
+  'use strict';
+  const { clamp, roundMs } = dependencies;
+
+  const MARKER_DRAG_THRESHOLD_PX = 4;
+  const MARKER_EDGE_SCROLL_PX = 36;
+  const MARKER_EDGE_SCROLL_STEP_PX = 12;
+  // 拖出距离低于该毫秒数时视为点击添加单点 Marker，而不是 Region。
+  const MARKER_REGION_MIN_SPAN_MS = 150;
+
+  // 纯函数：按 clientY 挑选指针所在行（含行间隙时取最近行）。
+  // rows 是 [{top, bottom, startMs, endMs}] 的普通对象，便于单测。
+  function pickMarkerRow(rows, clientY) {
+    let nearest = null;
+    let nearestDistance = Infinity;
+    for (const row of rows || []) {
+      if (!row) continue;
+      if (clientY >= row.top && clientY <= row.bottom) return row;
+      const distance = clientY < row.top ? row.top - clientY : clientY - row.bottom;
+      if (distance < nearestDistance) {
+        nearestDistance = distance;
+        nearest = row;
+      }
+    }
+    return nearest;
+  }
+
+  // 纯函数：行几何 + clientX -> 行内时间（毫秒），钳制到该行范围。
+  function markerRowTimeMs(geometry, clientX) {
+    const width = Math.max(1, Number(geometry?.width) || 0);
+    const ratio = clamp((clientX - Number(geometry?.left) || 0) / width, 0, 1);
+    const startMs = Number(geometry?.startMs);
+    const endMs = Number(geometry?.endMs);
+    return startMs + ratio * (endMs - startMs);
+  }
+
+  class WaveformMethods {
+
+    getMarkers() {
+      return this.options.getMarkers?.() || [];
+    }
+
+
+    appendMarkerTrack(row, startMs, endMs) {
+      const markers = this.getMarkers();
+      if (!markers.length) return;
+      const track = document.createElement('div');
+      track.className = 'waveform-marker-track';
+      track.addEventListener('pointerdown', (event) => {
+        // 只有轨道空白区才进入“点击添加 / 拖出 Region”；已有标记元素
+        // 会自行 stopPropagation，不会走到这里。
+        if (event.button !== 0 || event.target !== track) return;
+        this.beginMarkerCreateDrag(event, row);
+      });
+      track.addEventListener('dblclick', (event) => {
+        event.preventDefault();
+        event.stopPropagation();
+      });
+      track.addEventListener('contextmenu', (event) => {
+        if (event.target !== track) return;
+        event.preventDefault();
+        event.stopPropagation();
+      });
+      for (const marker of markers) {
+        this.appendMarkerElement(track, row, marker, startMs, endMs);
+      }
+      row.appendChild(track);
+    }
+
+
+    appendMarkerElement(track, row, marker, startMs, endMs) {
+      const visible = window.AsrEditorUtils.markerVisibleRange(marker, startMs, endMs);
+      if (!visible) return;
+      const isRegion = window.AsrEditorUtils.markerKind(marker) === 'region';
+      const element = document.createElement('div');
+      element.className = `waveform-marker-item ${isRegion ? 'region' : 'point'}`;
+      element.dataset.markerId = marker.id;
+      element.style.setProperty('--marker-color', marker.color || '#3e63dd');
+      const duration = Math.max(1, endMs - startMs);
+      const left = ((visible.start - startMs) / duration) * 100;
+      const widthPercent = Math.max(
+        window.AsrEditorUtils.MARKER_MIN_VISIBLE_PERCENT,
+        ((visible.end - visible.start) / duration) * 100,
+      );
+      element.style.left = `${left}%`;
+      element.style.width = `${widthPercent}%`;
+      const timeLabel = isRegion
+        ? `${marker.start} → ${marker.end}`
+        : String(marker.start);
+      element.title = `${marker.name || (isRegion ? '区段' : '标记')} · ${timeLabel}${marker.note ? `\n${marker.note}` : ''}`;
+      element.setAttribute('aria-label', element.title);
+      if (marker.review?.status === 'pending') element.classList.add('review-pending');
+      if (marker.review?.status === 'confirmed') element.classList.add('review-confirmed');
+      if (isRegion) {
+        const label = document.createElement('span');
+        label.className = 'waveform-marker-label';
+        label.textContent = marker.name || '';
+        element.appendChild(label);
+        if (marker.start >= startMs) {
+          const leftHandle = document.createElement('span');
+          leftHandle.className = 'waveform-marker-handle left';
+          leftHandle.title = '拖动调整区段起点';
+          element.appendChild(leftHandle);
+        }
+        if (marker.end <= endMs) {
+          const rightHandle = document.createElement('span');
+          rightHandle.className = 'waveform-marker-handle right';
+          rightHandle.title = '拖动调整区段终点';
+          element.appendChild(rightHandle);
+        }
+      }
+      element.addEventListener('pointerdown', (event) => {
+        if (event.button !== 0) return;
+        const handle = event.target.closest('.waveform-marker-handle');
+        const mode = handle
+          ? (handle.classList.contains('left') ? 'resize-start' : 'resize-end')
+          : 'move';
+        this.beginMarkerDrag(event, marker.id, row, mode);
+      });
+      element.addEventListener('dblclick', (event) => {
+        event.preventDefault();
+        event.stopPropagation();
+      });
+      element.addEventListener('contextmenu', (event) => {
+        event.preventDefault();
+        event.stopPropagation();
+      });
+      track.appendChild(element);
+    }
+
+
+    refreshMarkerOverlay() {
+      if (!this.payload) return;
+      this.content.querySelectorAll('.waveform-marker-track').forEach((element) => element.remove());
+      this.content.querySelectorAll('.waveform-row').forEach((row) => {
+        this.appendMarkerTrack(row, Number(row.dataset.startMs), Number(row.dataset.endMs));
+      });
+    }
+
+
+    // 拖动期间的时间换算：以指针当前所在行为准（跨行拖动按新行换算），
+    // 行间隙取最近行。基础模式只有一行，行为与旧行几何一致。
+    findMarkerRowAtClientY(clientY, fallbackRow = null) {
+      const rows = (this.renderedRows?.length
+        ? this.renderedRows
+        : [...this.content.querySelectorAll('.waveform-row')])
+        .map((row) => {
+          const rect = row.getBoundingClientRect();
+          return {
+            row,
+            top: rect.top,
+            bottom: rect.bottom,
+            left: rect.left + row.clientLeft,
+            width: Math.max(1, row.clientWidth),
+            startMs: Number(row.dataset.startMs),
+            endMs: Number(row.dataset.endMs),
+          };
+        });
+      const hit = pickMarkerRow(rows, clientY);
+      if (hit) return hit;
+      return fallbackRow ? {
+        row: fallbackRow,
+        ...this.captureRowGeometry(fallbackRow),
+      } : null;
+    }
+
+
+    markerPointerGeometry(event) {
+      const drag = this.markerDrag || this.markerCreateDrag || null;
+      const hit = this.findMarkerRowAtClientY(event.clientY, drag?.row || null);
+      if (!hit) return null;
+      return hit;
+    }
+
+
+    markerPointerTimeMs(event) {
+      const geometry = this.markerPointerGeometry(event);
+      if (!geometry) return NaN;
+      return clamp(
+        markerRowTimeMs(geometry, event.clientX),
+        0,
+        Math.max(0, this.durationMs),
+      );
+    }
+
+
+    _beginMarkerPointerTracking(drag) {
+      try { drag.captureTarget?.setPointerCapture?.(drag.pointerId); } catch (_) {}
+      this._markerDragMove = (moveEvent) => this.moveMarkerDrag(moveEvent);
+      this._markerDragEnd = (upEvent) => this.endMarkerDrag(upEvent);
+      window.addEventListener('pointermove', this._markerDragMove);
+      window.addEventListener('pointerup', this._markerDragEnd, { once: true });
+      window.addEventListener('pointercancel', this._markerDragEnd, { once: true });
+    }
+
+
+    _teardownMarkerPointerTracking(drag) {
+      window.removeEventListener('pointermove', this._markerDragMove);
+      window.removeEventListener('pointerup', this._markerDragEnd);
+      window.removeEventListener('pointercancel', this._markerDragEnd);
+      try { drag.captureTarget?.releasePointerCapture?.(drag.pointerId); } catch (_) {}
+      this.stopMarkerEdgeAutoScroll();
+    }
+
+    beginMarkerDrag(event, markerId, row, mode) {
+      const marker = this.getMarkers().find((candidate) => candidate?.id === markerId);
+      if (!marker) return;
+      event.preventDefault();
+      event.stopPropagation();
+      this.focusWaveform?.();
+      this.markerDrag = {
+        pointerId: event.pointerId,
+        markerId,
+        mode,
+        row,
+        captureTarget: event.currentTarget,
+        startClientX: event.clientX,
+        startClientY: event.clientY,
+        original: { ...marker },
+        pointerStartMs: this.markerPointerTimeMs(event),
+        pending: { ...marker },
+        moved: false,
+        frame: 0,
+        lastEvent: null,
+      };
+      this._beginMarkerPointerTracking(this.markerDrag);
+    }
+
+
+    beginMarkerCreateDrag(event, row) {
+      event.preventDefault();
+      event.stopPropagation();
+      this.focusWaveform?.();
+      const startMs = this.markerPointerTimeMs(event);
+      this.markerCreateDrag = {
+        pointerId: event.pointerId,
+        mode: 'create',
+        row,
+        captureTarget: event.currentTarget,
+        startClientX: event.clientX,
+        startClientY: event.clientY,
+        startMs,
+        endMs: startMs,
+        moved: false,
+        frame: 0,
+        lastEvent: null,
+      };
+      this._beginMarkerPointerTracking(this.markerCreateDrag);
+    }
+
+
+    moveMarkerDrag(event) {
+      const drag = this.markerDrag || this.markerCreateDrag;
+      if (!drag || event.pointerId !== drag.pointerId) return;
+      if (!drag.moved) {
+        const dx = event.clientX - drag.startClientX;
+        const dy = event.clientY - drag.startClientY;
+        if (dx * dx + dy * dy < MARKER_DRAG_THRESHOLD_PX ** 2) return;
+        drag.moved = true;
+        drag.captureTarget?.classList?.add('dragging');
+      }
+      event.preventDefault();
+      drag.lastEvent = event;
+      this.markerEdgeAutoScroll(event);
+      this.applyMarkerDragTime(drag, event);
+      if (!drag.frame) {
+        drag.frame = requestAnimationFrame(() => {
+          drag.frame = 0;
+          if ((this.markerDrag === drag) || (this.markerCreateDrag === drag)) {
+            this.updateMarkerDragPreview(drag);
+          }
+        });
+      }
+    }
+
+
+    // moveMarkerDrag 的时间换算主体（move / resize / create 三种模式共用）。
+    // 视口边缘自动滚动循环也复用：滚动改变指针下的行，需按最后一次指针事件重算。
+    applyMarkerDragTime(drag, event) {
+      if (drag.mode === 'create') {
+        drag.endMs = this.markerPointerTimeMs(event);
+        return;
+      }
+      const pointerMs = this.markerPointerTimeMs(event);
+      const duration = Math.max(0, this.durationMs);
+      if (drag.mode === 'move') {
+        const deltaMs = roundMs(pointerMs - drag.pointerStartMs);
+        const length = window.AsrEditorUtils.markerKind(drag.original) === 'region'
+          ? drag.original.end - drag.original.start : 0;
+        const start = clamp(drag.original.start + deltaMs, 0, Math.max(0, duration - length));
+        drag.pending = length
+          ? { ...drag.original, start, end: start + length }
+          : { ...drag.original, start };
+      } else {
+        const edge = drag.mode === 'resize-start' ? 'start' : 'end';
+        const anchor = edge === 'start' ? drag.original.end : drag.original.start;
+        const min = edge === 'start' ? 0 : anchor + 1;
+        const max = edge === 'start' ? anchor - 1 : duration;
+        const value = clamp(roundMs(pointerMs), min, Math.max(min, max));
+        drag.pending = { ...drag.original, [edge]: value };
+      }
+    }
+
+
+    // 视口边缘自动滚动：指针贴近滚动容器上下边缘时持续滚动；
+    // 滚动会改变指针下的行，因此每帧用最后一次指针事件重算预览。
+    markerEdgeAutoScroll(event) {
+      const rect = this.scroll.getBoundingClientRect();
+      const direction = event.clientY < rect.top + MARKER_EDGE_SCROLL_PX
+        ? -1
+        : event.clientY > rect.bottom - MARKER_EDGE_SCROLL_PX ? 1 : 0;
+      if (direction === 0) {
+        this.stopMarkerEdgeAutoScroll();
+        return;
+      }
+      if (this.markerEdgeScrollDirection === direction && this.markerEdgeScrollFrame) return;
+      this.stopMarkerEdgeAutoScroll();
+      this.markerEdgeScrollDirection = direction;
+      const step = () => {
+        if (!(this.markerDrag || this.markerCreateDrag)) {
+          this.stopMarkerEdgeAutoScroll();
+          return;
+        }
+        this.scroll.scrollTop += this.markerEdgeScrollDirection * MARKER_EDGE_SCROLL_STEP_PX;
+        const drag = this.markerDrag || this.markerCreateDrag;
+        const lastEvent = drag?.lastEvent;
+        if (drag && lastEvent) {
+          // 复用 move 的时间换算并立即重绘预览（本回调已在 rAF 帧内）。
+          this.applyMarkerDragTime(drag, lastEvent);
+          this.updateMarkerDragPreview(drag);
+        }
+        this.markerEdgeScrollFrame = requestAnimationFrame(step);
+      };
+      this.markerEdgeScrollFrame = requestAnimationFrame(step);
+    }
+
+
+    stopMarkerEdgeAutoScroll() {
+      if (this.markerEdgeScrollFrame) {
+        cancelAnimationFrame(this.markerEdgeScrollFrame);
+        this.markerEdgeScrollFrame = 0;
+      }
+      this.markerEdgeScrollDirection = 0;
+    }
+
+
+    clearMarkerDragPreviews() {
+      this.content.querySelectorAll('.waveform-marker-item.drag-preview').forEach((element) => element.remove());
+    }
+
+
+    updateMarkerDragPreview(drag) {
+      this.clearMarkerDragPreviews();
+      let range = null;
+      if (drag.mode === 'create') {
+        const start = Math.min(drag.startMs, drag.endMs);
+        const end = Math.max(drag.startMs, drag.endMs);
+        if (drag.moved && end - start >= 1) range = { start, end, region: true };
+      } else {
+        const pending = drag.pending;
+        if (window.AsrEditorUtils.markerKind(pending) === 'region') {
+          range = { start: pending.start, end: pending.end, region: true };
+        } else {
+          range = { start: pending.start, end: pending.start + 1, region: false };
+        }
+      }
+      if (!range) return;
+      if (drag.mode !== 'create') {
+        // 拖既有标记时隐藏原元素，避免同一标记出现两份。
+        this.content.querySelectorAll(
+          `.waveform-marker-item[data-marker-id="${CSS.escape(String(drag.markerId))}"]`,
+        ).forEach((element) => { element.hidden = true; });
+      }
+      this.content.querySelectorAll('.waveform-row').forEach((row) => {
+        const rowStart = Number(row.dataset.startMs);
+        const rowEnd = Number(row.dataset.endMs);
+        const visibleStart = Math.max(range.start, rowStart);
+        const visibleEnd = Math.min(range.end, rowEnd);
+        if (visibleEnd <= visibleStart) return;
+        const duration = Math.max(1, rowEnd - rowStart);
+        const preview = document.createElement('div');
+        preview.className = `waveform-marker-item drag-preview ${range.region ? 'region' : 'point'}`;
+        preview.style.setProperty('--marker-color', drag.original?.color || drag.pending?.color || '#3e63dd');
+        preview.style.left = `${((visibleStart - rowStart) / duration) * 100}%`;
+        preview.style.width = `${Math.max(
+          window.AsrEditorUtils.MARKER_MIN_VISIBLE_PERCENT,
+          ((visibleEnd - visibleStart) / duration) * 100,
+        )}%`;
+        if (range.region) {
+          const label = document.createElement('span');
+          label.className = 'waveform-marker-label';
+          label.textContent = drag.mode === 'create' ? '新区段' : (drag.original?.name || '');
+          preview.appendChild(label);
+        }
+        row.appendChild(preview);
+      });
+    }
+
+
+    endMarkerDrag(event) {
+      const drag = this.markerDrag || this.markerCreateDrag;
+      if (!drag || event.pointerId !== drag.pointerId) return;
+      this._teardownMarkerPointerTracking(drag);
+      drag.captureTarget?.classList?.remove('dragging');
+      this.clearMarkerDragPreviews();
+      this.content.querySelectorAll('.waveform-marker-item[hidden]').forEach((element) => {
+        element.hidden = false;
+      });
+      if (this.markerDrag === drag) this.markerDrag = null;
+      if (this.markerCreateDrag === drag) this.markerCreateDrag = null;
+      if (event.type === 'pointercancel') return;
+      if (drag.mode === 'create') {
+        const start = roundMs(Math.min(drag.startMs, drag.endMs));
+        const end = roundMs(Math.max(drag.startMs, drag.endMs));
+        if (drag.moved && end - start >= MARKER_REGION_MIN_SPAN_MS) {
+          this.options.onMarkerCreateRegion?.(start, end);
+        } else {
+          this.options.onMarkerAdd?.(start);
+        }
+        return;
+      }
+      if (!drag.moved) {
+        // 点击（未拖动）：定位试听。单点跳到标记处，区段跳到起点。
+        this.options.seek(drag.original.start / 1000, { mouseClick: true });
+        this.updatePlayback();
+        return;
+      }
+      if (drag.mode === 'move') {
+        const deltaMs = roundMs(drag.pending.start - drag.original.start);
+        if (deltaMs) this.options.onMarkerMove?.(drag.markerId, deltaMs);
+        return;
+      }
+      const edge = drag.mode === 'resize-start' ? 'start' : 'end';
+      const value = roundMs(drag.pending[edge]);
+      if (value !== drag.original[edge]) {
+        this.options.onMarkerResize?.(drag.markerId, edge, value);
+      }
+    }
+  }
+  const descriptors = Object.getOwnPropertyDescriptors(WaveformMethods.prototype);
+  delete descriptors.constructor;
+  return Object.assign(descriptors, {
+    pickMarkerRow: { value: pickMarkerRow },
+    markerRowTimeMs: { value: markerRowTimeMs },
+  });
+});
