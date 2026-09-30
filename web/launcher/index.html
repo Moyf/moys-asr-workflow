@@ -776,6 +776,13 @@
           <p id="postprocessScriptPathError" class="field-error"></p>
         </div>
         <div class="field">
+          <label class="check-field" for="postprocessAiCleanup">
+            <input id="postprocessAiCleanup" type="checkbox">
+            <span data-i18n="toolbox_ai_cleanup">使用 AI 整理（录音优先）</span>
+          </label>
+          <p class="hint" data-i18n="toolbox_ai_cleanup_hint">由 AI 判断并移除重录废片、试麦和流程对话；文稿只作证据，不替换字幕文字。自动移除与待复核会写入工程，待复核项需在编辑器中确认。</p>
+        </div>
+        <div class="field" id="postprocessMatchModeField">
           <label for="postprocessMatchMode" data-i18n="toolbox_match_mode">换行来源</label>
          <select id="postprocessMatchMode">
             <option value="script" data-i18n="toolbox_match_mode_script">按文稿换行（默认）</option>
@@ -791,7 +798,7 @@
           </label>
           <p class="hint" data-i18n="toolbox_clean_markdown_symbols_hint">匹配前移除粗体、斜体、删除线、行内代码和 ==高亮== 标记，只保留可见文字。</p>
         </div>
-       <p class="hint"><button id="openPunctSettings" class="inline-link" type="button" data-i18n="toolbox_punct_open_settings">在 ⚙️ 设置中配置断句与保留符号</button></p>
+       <p class="hint" id="postprocessPunctHint"><button id="openPunctSettings" class="inline-link" type="button" data-i18n="toolbox_punct_open_settings">在 ⚙️ 设置中配置断句与保留符号</button></p>
      </section>
 
     <section id="toolboxTimestampsPanel" class="toolbox-panel hidden" role="tabpanel" aria-labelledby="toolboxTimestampsTab">

@@ -5,7 +5,7 @@ window.MAWE.register('utils-history', function createUtilsModule(dependencies) {
 
 
   const HISTORY_RECORD_DEFAULT_LABELS = Object.freeze({
-    segments: '编辑', layout: '调整工作区', gap_remove: '空隙移除', preview: '预览',
+    segments: '编辑', layout: '调整工作区', gap_remove: '空隙移除', preview: '预览', markers: '标记',
   });
 
   function buildSegmentsHistorySnapshot(segments, multiSubtitle, overlayTrack = null) {
@@ -27,6 +27,8 @@ window.MAWE.register('utils-history', function createUtilsModule(dependencies) {
     else if (recordKind === 'gap_remove') {
       record.gapRemove = cloneJsonValue(payload?.gapRemove ?? null);
       record.gapRemoveDirty = payload?.gapRemoveDirty === true;
+    } else if (recordKind === 'markers') {
+      record.markers = cloneJsonValue(Array.isArray(payload) ? payload : []);
     } else record.preview = cloneJsonValue(payload);
     return record;
   }

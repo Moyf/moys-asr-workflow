@@ -7,6 +7,7 @@
   const GAP_PROVENANCE_SCHEMA = 'moy.asr.gap_provenance.v1';
   const GAP_PROVENANCE_SOURCES = Object.freeze([
     'script_alignment',
+    'ai_cleanup',
     'audio_gate',
     'manual',
     'legacy',
@@ -294,6 +295,7 @@
       schema: GAP_PROVENANCE_SCHEMA,
       sources: {
         script_alignment: normalizeProvenanceRangeList(rawSources.script_alignment, 'script_alignment', {sort: true}),
+        ai_cleanup: normalizeProvenanceRangeList(rawSources.ai_cleanup, 'ai_cleanup', {sort: true}),
         audio_gate: normalizeProvenanceRangeList(
           [...(Array.isArray(rawSources.audio_gate) ? rawSources.audio_gate : []), ...legacyAudioGaps],
           'audio_gate',
@@ -412,6 +414,9 @@
     provenance.sources.script_alignment.forEach((gap) => {
       result = applyGapStateRange(result, gap.start, gap.end, true);
     });
+    provenance.sources.ai_cleanup.forEach((gap) => {
+      result = applyGapStateRange(result, gap.start, gap.end, true);
+    });
     provenance.sources.audio_gate.forEach((gap) => {
       result = applyGapStateRange(result, gap.start, gap.end, true);
     });
@@ -433,6 +438,7 @@
     const provenance = normalizeGapRemoveProvenance(value, finalGaps);
     const records = [
       ...provenance.sources.script_alignment,
+      ...provenance.sources.ai_cleanup,
       ...provenance.sources.audio_gate,
       ...provenance.manual_overrides.filter((record) => (
         !isBoundaryResizeRecord(record) && !isGapMoveRecord(record)
@@ -485,7 +491,7 @@
 
   function replaceGapRemoveProvenanceSource(value, source, ranges, fallbackGaps = []) {
     const next = normalizeGapRemoveProvenance(value, fallbackGaps);
-    if (source === 'script_alignment' || source === 'audio_gate') {
+    if (source === 'script_alignment' || source === 'ai_cleanup' || source === 'audio_gate') {
       next.sources[source] = normalizeProvenanceRangeList(ranges, source, {sort: true});
     }
     return next;
@@ -545,10 +551,12 @@
     const has = (source) => origins.includes(source);
     const hasAudio = has('audio_gate');
     const hasScript = has('script_alignment');
+    const hasAiCleanup = has('ai_cleanup');
     const hasManual = has('manual');
-    const automaticOriginCount = [hasAudio, hasScript].filter(Boolean).length;
+    const automaticOriginCount = [hasAudio, hasScript, hasAiCleanup].filter(Boolean).length;
     if (automaticOriginCount > 1) return hasManual ? 'multi_source_manual' : 'multi_source';
     if (hasScript) return hasManual ? 'script_alignment_manual' : 'script_alignment';
+    if (hasAiCleanup) return hasManual ? 'ai_cleanup_manual' : 'ai_cleanup';
     if (hasAudio) return hasManual ? 'audio_gate_manual' : 'audio_gate';
     if (hasManual) return 'manual';
     return 'unknown';
@@ -594,6 +602,7 @@
       schema: GAP_PROVENANCE_SCHEMA,
       sources: {
         script_alignment: removeFrom(provenance.sources.script_alignment, 'script_alignment', true),
+        ai_cleanup: removeFrom(provenance.sources.ai_cleanup, 'ai_cleanup', true),
         audio_gate: removeFrom(provenance.sources.audio_gate, 'audio_gate', true),
       },
       manual_overrides: removeFrom(provenance.manual_overrides, 'manual', false),
@@ -619,6 +628,7 @@
       schema: GAP_PROVENANCE_SCHEMA,
       sources: {
         script_alignment: removeFrom(provenance.sources.script_alignment, 'script_alignment', true),
+        ai_cleanup: removeFrom(provenance.sources.ai_cleanup, 'ai_cleanup', true),
         audio_gate: removeFrom(provenance.sources.audio_gate, 'audio_gate', true),
       },
       manual_overrides: normalizeProvenanceRangeList(
@@ -713,6 +723,7 @@
       schema: GAP_PROVENANCE_SCHEMA,
       sources: {
         script_alignment: removeFrom(provenance.sources.script_alignment, 'script_alignment', true),
+        ai_cleanup: removeFrom(provenance.sources.ai_cleanup, 'ai_cleanup', true),
         audio_gate: removeFrom(provenance.sources.audio_gate, 'audio_gate', true),
       },
       manual_overrides: normalizeProvenanceRangeList(manual, 'manual'),

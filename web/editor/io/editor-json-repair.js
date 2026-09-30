@@ -115,6 +115,9 @@
   const mediaMetadata = MaweTimeline.normalizeMediaMetadata(MaweBoot.DATA.media_metadata);
   if (mediaMetadata) out.media_metadata = mediaMetadata;
   if (MaweBoot.DATA.gap_remove) out.gap_remove = MaweGapRemoveData.normalizedGapRemoveData(MaweBoot.DATA.gap_remove);
+  // 通用 Marker / Region：无标记时不写字段，保持旧工程 diff 干净。
+  const markersField = window.AsrEditorUtils.markersToProjectField(MaweBoot.DATA.markers);
+  if (markersField) out.markers = markersField;
   if (MaweBoot.DATA.script_alignment) out.script_alignment = MaweBoot.DATA.script_alignment;
   const workspace = MaweExportTimeline.buildCurrentWorkspaceData();
   if (workspace) out.workspace = workspace;

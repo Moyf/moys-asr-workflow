@@ -1566,6 +1566,11 @@ textarea::placeholder {
   margin: 0;
 }
 
+/* 断句提示行紧跟 .field（.field 只有 margin-top），提示行必须自带间隔。 */
+#postprocessPunctHint {
+  margin-top: 8px;
+}
+
 .match-stats.success {
   color: var(--green);
 }

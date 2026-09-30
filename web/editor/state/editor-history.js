@@ -94,6 +94,15 @@
   }
 
 
+  function pushMarkersUndo(label, markersSnapshot = null) {
+    editorHistory.push(window.AsrEditorUtils.buildHistoryRecord(
+      // 撤销栈存「变更前」快照：performUndo 会把当前状态推入 redo 栈并应用本记录。
+      'markers', label, markersSnapshot ?? (MaweBoot.DATA.markers || []),
+    ));
+    updateUndoRedoButtons();
+  }
+
+
   function pushPreviewUndo(label, preview) {
     editorHistory.push(window.AsrEditorUtils.buildHistoryRecord('preview', label, preview));
     updateUndoRedoButtons();
@@ -141,6 +150,11 @@
         gapRemove: MaweBoot.DATA.gap_remove,
         gapRemoveDirty: MaweState.changes.gapRemoveDirty,
       });
+    }
+    if (kind === 'markers') {
+      return window.AsrEditorUtils.buildHistoryRecord(
+        'markers', label, window.AsrEditorUtils.cloneMarkerValue(MaweBoot.DATA.markers || []),
+      );
     }
     if (kind === 'preview') {
       return window.AsrEditorUtils.buildHistoryRecord('preview', label, snapshotPreviewState());
@@ -229,6 +243,11 @@
     MaweBoot.DATA.gap_remove = record.gapRemove;
     MaweState.changes.gapRemoveDirty = record.gapRemoveDirty;
     MaweGapRemoveUi.updateGapRemoveUi();
+    return true;
+  }
+  if (record.kind === 'markers') {
+    MaweBoot.DATA.markers = window.AsrEditorUtils.normalizeMarkers(record.markers || []);
+    MaweMarkerEditing.afterExternalMarkersChange();
     return true;
   }
   if (record.kind === 'preview') {
@@ -349,6 +368,7 @@
     pushPreviewUndo,
     snapshotPreviewState,
     applyPreviewState,
+    pushMarkersUndo,
     snapshotCurrentForKind,
     restoreEditorSelection,
     applyHistoryRecord,

@@ -46,6 +46,7 @@ class EditorAssetContractTests(unittest.TestCase):
                 "shared/utils/settings.js",
                 "shared/utils/gap-remove.js",
                 "shared/utils/history.js",
+                "shared/utils/markers.js",
                 "shared/utils/multi-subtitle.js",
                 "shared/utils/word-split.js",
                 "shared/utils/srt.js",
@@ -82,6 +83,7 @@ class EditorAssetContractTests(unittest.TestCase):
                 "editor/media/waveform/cue-drag.js",
                 "editor/media/waveform/cue-commands.js",
                 "editor/media/waveform/gap-drag.js",
+                "editor/media/waveform/markers.js",
                 "editor/media/waveform/cue-drag-update.js",
                 "editor/media/waveform/playback.js",
                 "editor/media/waveform.js",
@@ -141,6 +143,8 @@ class EditorAssetContractTests(unittest.TestCase):
                 "editor/ui/editor-help-panel.js",
                 "editor/ui/editor-theme.js",
                 "editor/ui/editor-gap-remove-ui.js",
+                "editor/markers/editor-marker-editing.js",
+                "editor/markers/editor-markers-panel.js",
                 "editor/cues/editor-selection.js",
                 "editor/cues/editor-binding-align.js",
                 "editor/cues/editor-cue-panel.js",
@@ -168,6 +172,7 @@ class EditorAssetContractTests(unittest.TestCase):
                 "editor/ui/editor-wiring-display-behavior.js",
                 "editor/styles/editor-wiring-appearance-settings.js",
                 "editor/ui/editor-wiring-gap-panel.js",
+                "editor/markers/editor-wiring-markers.js",
                 "editor/cues/editor-wiring-cue-panel.js",
                 "editor/cues/editor-wiring-search-filter.js",
                 "editor/cues/editor-wiring-overlay-split-merge.js",
@@ -192,7 +197,7 @@ class EditorAssetContractTests(unittest.TestCase):
                 "editor/io/editor-wiring-file-drop.js",
                 "editor/boot/editor-startup.js",
                 "editor/boot/editor-onboarding.js",
-            ),
+        ),
         )
 
     def test_editor_script_payload_follows_manifest_order(self) -> None:

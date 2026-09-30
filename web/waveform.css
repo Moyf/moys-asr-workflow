@@ -1088,3 +1088,108 @@
 .waveform-cue-badge.waveform-overlay-cue-badge {
   bottom: calc(50% + 37px + var(--badge-stack-index, 0) * 16px);
 }
+
+/* === 通用 Marker / Region 轨道 ===
+   每个可见波形行顶部的一条独立细轨：空白点击 = 添加标记，横向拖动 = 拉出
+   区段；旗标 / 区段条与字幕块、静音空隙手势完全分离。无标记时不渲染轨道。 */
+.waveform-marker-track {
+  position: absolute;
+  z-index: 6;
+  left: 0;
+  right: 0;
+  top: 0;
+  height: 12px;
+  cursor: crosshair;
+  touch-action: none;
+}
+.waveform-marker-item {
+  position: absolute;
+  top: 0;
+  height: 12px;
+  background: var(--marker-color, #3e63dd);
+  border-radius: 2px;
+  cursor: grab;
+  touch-action: none;
+}
+.waveform-marker-item.point {
+  transform: translateX(-50%);
+  border-radius: 1px 3px 3px 1px;
+  box-shadow: 0 0 0 1px color-mix(in srgb, var(--marker-color, #3e63dd) 70%, black);
+}
+.waveform-marker-item.point::before {
+  content: "";
+  position: absolute;
+  left: 50%;
+  top: 0;
+  width: 7px;
+  height: 7px;
+  transform: translateX(-50%);
+  border-radius: 50%;
+  background: inherit;
+  box-shadow: 0 0 0 1px color-mix(in srgb, var(--marker-color, #3e63dd) 70%, black);
+}
+.waveform-marker-item.region {
+  height: 9px;
+  top: 1px;
+  opacity: 0.92;
+  box-shadow: 0 0 0 1px color-mix(in srgb, var(--marker-color, #3e63dd) 70%, black);
+}
+.waveform-marker-item.region .waveform-marker-label {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  padding: 0 9px;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  color: #fff;
+  font: 600 9px/1 var(--font-ui, sans-serif);
+  text-shadow: 0 1px 1px rgba(0, 0, 0, 0.45);
+  pointer-events: none;
+}
+.waveform-marker-handle {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  width: 8px;
+  cursor: ew-resize;
+}
+.waveform-marker-handle.left { left: 0; }
+.waveform-marker-handle.right { right: 0; }
+.waveform-marker-handle::after {
+  content: "";
+  position: absolute;
+  top: 2px;
+  bottom: 2px;
+  width: 2px;
+  left: 3px;
+  border-radius: 1px;
+  background: rgba(255, 255, 255, 0.85);
+}
+.waveform-marker-handle.right::after { left: auto; right: 3px; }
+.waveform-marker-item:hover { filter: brightness(1.12); }
+.waveform-marker-item.dragging,
+.waveform-marker-item.drag-preview { cursor: grabbing; }
+.waveform-marker-item.drag-preview {
+  pointer-events: none;
+  z-index: 12;
+  opacity: 0.85;
+  box-shadow: 0 0 0 1.5px var(--wave-split-flash, #ffd43b);
+}
+.waveform-marker-item.review-pending {
+  animation: marker-review-pulse 1.8s ease-in-out infinite;
+}
+.waveform-marker-item.review-confirmed::after {
+  content: "✓";
+  position: absolute;
+  right: 1px;
+  top: -1px;
+  color: #fff;
+  font: 700 8px/1 var(--font-ui, sans-serif);
+  pointer-events: none;
+}
+@keyframes marker-review-pulse {
+  0%, 100% { box-shadow: 0 0 0 1px color-mix(in srgb, var(--marker-color, #3e63dd) 70%, black); }
+  50% { box-shadow: 0 0 0 2.5px var(--amber, #f5a623); }
+}

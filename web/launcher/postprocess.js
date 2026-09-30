@@ -347,7 +347,7 @@
       enabled: false,
       retainIntermediate: true,
       steps: [
-        { id: "match", enabled: false, scriptPath: "", matchMode: "script", extraSplitPunctuation: ["？", "！", ","], preservePunctuation: ["？", "！"], cleanMarkdownSymbols: true },
+        { id: "match", enabled: false, scriptPath: "", matchMode: "script", aiCleanup: false, extraSplitPunctuation: ["？", "！", ","], preservePunctuation: ["？", "！"], cleanMarkdownSymbols: true },
         { id: "replace", enabled: false, replacements: [], conversion: "off" },
         { id: "proofread", enabled: false, providerId: "deepseek", customPrompt: "" },
         { id: "resegment", enabled: false, providerId: "deepseek", customPrompt: "" },
@@ -1219,6 +1219,7 @@
 
   function chainLabel(kind, operation = "") {
     if (kind === "match") return t("toolbox_chain_match");
+    if (kind === "ai_cleanup") return t("toolbox_chain_ai_cleanup");
     if (kind === "timestamps") return t("toolbox_chain_timestamps");
     if (kind === "ocr") return t("toolbox_chain_ocr");
     if (kind === "fixed" || kind === "replace") return t("toolbox_chain_replace");
@@ -1350,11 +1351,25 @@
     inputManual = false;
     syncPaths();
     addChainResult(chain, result);
-    setMatchStats("");
+    setMatchStats(chain?.kind === "ai_cleanup" && result.stats ? aiCleanupStatsText(result.stats) : "");
     void refreshScriptPreview();
     const warnings = Array.isArray(result.warnings) ? [...result.warnings] : [];
     if (result.reportPath) warnings.push(`${t("toolbox_ocr_report_path")} ${result.reportPath}`);
     setResult(`${t("toolbox_done")}${warnings.length ? `\n${warnings.join("\n")}` : ""}`, "success");
+  }
+
+  // AI 整理统计：五个分项计数；有待复核时只陈述事实并提示确认，不宣称已完成人工校对。
+  function aiCleanupStatsText(stats) {
+    const summary = t("ai_cleanup_stats_summary")
+      .replace("{matched}", String(stats.matchedLines ?? 0))
+      .replace("{rephrased}", String(stats.rephrased ?? 0))
+      .replace("{extras}", String(stats.extrasKept ?? 0))
+      .replace("{removed}", String(stats.removed ?? 0))
+      .replace("{review}", String(stats.pendingReview ?? 0));
+    const pending = Number(stats.pendingReview ?? 0) > 0
+      ? t("ai_cleanup_stats_review_pending")
+      : t("ai_cleanup_stats_review_clear");
+    return `${summary}\n${pending}`;
   }
 
   function replacementSeparator() {
@@ -1464,7 +1479,7 @@
       retainIntermediate: Boolean($("autoPostprocessRetain")?.checked),
       steps: [
         // 始终上报用户的单文件勾选；批量运行由后端统一跳过文稿匹配，前端不改写、不持久化批量态。
-        { id: "match", enabled: Boolean($("autoStepMatch")?.checked), scriptPath: $("postprocessScriptPath").value.trim(), matchMode: $("postprocessMatchMode").value, extraSplitPunctuation: punctuationLines("postprocessExtraSplitPunctuation"), preservePunctuation: punctuationLines("postprocessPreservePunctuation"), cleanMarkdownSymbols: Boolean($("postprocessCleanMarkdownSymbols")?.checked) },
+        { id: "match", enabled: Boolean($("autoStepMatch")?.checked), scriptPath: $("postprocessScriptPath").value.trim(), matchMode: $("postprocessMatchMode").value, aiCleanup: Boolean($("postprocessAiCleanup")?.checked), providerId, extraSplitPunctuation: punctuationLines("postprocessExtraSplitPunctuation"), preservePunctuation: punctuationLines("postprocessPreservePunctuation"), cleanMarkdownSymbols: Boolean($("postprocessCleanMarkdownSymbols")?.checked) },
         { id: "replace", enabled: Boolean($("autoStepReplace")?.checked), replacements: parseReplacements(), replacementSeparator: $("postprocessReplacementSeparator").value, replacementTrim: $("postprocessReplacementTrim").checked, replacementCustomSeparator: $("postprocessReplacementCustomSeparator").value, conversion: $("postprocessConversion").value },
         { id: "proofread", enabled: Boolean($("autoStepProofread")?.checked), providerId, customPrompt: getLlmPrompt("proofread") },
         { id: "resegment", enabled: Boolean($("autoStepResegment")?.checked), providerId, customPrompt: getLlmPrompt("resegment") },
@@ -1483,7 +1498,8 @@
   function autoStepReady(stepId) {
     if (stepId === "match") {
       const path = $("postprocessScriptPath").value.trim();
-      return Boolean(path && SCRIPT_EXTS.has(extension(path)));
+      if (!path || !SCRIPT_EXTS.has(extension(path))) return false;
+      return !$("postprocessAiCleanup")?.checked || autoLlmReady($("postprocessProvider").value);
     }
     if (stepId === "replace") return parseReplacements().length > 0 || $("postprocessConversion").value !== "off";
     if (["proofread", "resegment", "translate"].includes(stepId)) return autoLlmReady($("postprocessProvider").value);
@@ -1667,6 +1683,8 @@
     $("postprocessExtraSplitPunctuation").value = Array.isArray(match.extraSplitPunctuation) ? match.extraSplitPunctuation.join("\n") : "";
     $("postprocessPreservePunctuation").value = Array.isArray(match.preservePunctuation) ? match.preservePunctuation.join("\n") : "";
     $("postprocessCleanMarkdownSymbols").checked = match.cleanMarkdownSymbols !== false;
+    $("postprocessAiCleanup").checked = match.aiCleanup === true;
+    renderAiCleanupMode();
     validateMatchPunctuation();
     void refreshScriptPreview();
     const replace = byId.get("replace") || {};
@@ -1735,6 +1753,10 @@
       setResult(t("toolbox_need_script"), "error");
       return;
     }
+    if ($("postprocessAiCleanup").checked) {
+      await runAiCleanup(paths, scriptPath);
+      return;
+    }
     if (!validateMatchPunctuation()) {
       setResult(t("toolbox_preserve_punctuation_invalid"), "error");
       return;
@@ -1755,6 +1777,35 @@
     } finally {
       setBusy(false);
     }
+  }
+
+  async function runAiCleanup(paths, scriptPath) {
+    const providerId = $("postprocessProvider").value || "deepseek";
+    if (!autoLlmReady(providerId)) {
+      setResult(t("toolbox_ai_cleanup_need_provider"), "error");
+      return;
+    }
+    setFieldError("postprocessScriptPath", "");
+    setBusy(true, "toolbox_status_ai_cleanup");
+    try {
+      const result = await bridge("run_ai_cleanup", {
+        ...paths,
+        scriptPath,
+        providerId,
+        cleanMarkdownSymbols: $("postprocessCleanMarkdownSymbols").checked,
+      });
+      if (result.ok) applySubtitleResult(result, { kind: "ai_cleanup" });
+      else setResult(postprocessErrorText(result), "error");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  // AI 整理模式下录音优先：换行来源与断句符号不参与，收起对应控件。
+  function renderAiCleanupMode() {
+    const aiEnabled = Boolean($("postprocessAiCleanup")?.checked);
+    $("postprocessMatchModeField")?.classList.toggle("hidden", aiEnabled);
+    $("postprocessPunctHint")?.classList.toggle("hidden", aiEnabled);
   }
 
   async function runTimestampAlignment() {
@@ -2290,6 +2341,7 @@
   $("postprocessExtraSplitPunctuation").addEventListener("input", () => { validateMatchPunctuation(); void refreshScriptPreview(); persistAutoPlanSoon(); });
   $("postprocessPreservePunctuation").addEventListener("input", () => { validateMatchPunctuation(); void refreshScriptPreview(); persistAutoPlanSoon(); });
   $("postprocessMatchMode").addEventListener("change", () => { validateMatchPunctuation(); void refreshScriptPreview(); persistAutoPlanSoon(); });
+  $("postprocessAiCleanup").addEventListener("change", () => { renderAiCleanupMode(); renderAutoPostprocessState(); persistAutoPlanSoon(); });
   $("runOcrDedup").addEventListener("click", runOcrDedup);
   $("ocrModel").addEventListener("change", renderOcrModel);
   $("openOcrSettings").addEventListener("click", () => window.MAWLauncher.openSettings("ocrSettingsSection"));

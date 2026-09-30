@@ -142,6 +142,13 @@
     resizeGapBoundary: MaweGapRemoveUi.resizeManualGapBoundary,
     moveGap: (index, deltaMs) => MaweGapRemoveUi.translateManualGap(index, deltaMs, 'move'),
     copyGap: (index, deltaMs) => MaweGapRemoveUi.translateManualGap(index, deltaMs, 'copy'),
+    // 通用 Marker / Region：数据读取与全部变更都收敛在 MaweMarkerEditing，
+    // 波形模块只负责手势与预览。
+    getMarkers: () => MaweMarkerEditing.getMarkers(),
+    onMarkerAdd: (startMs) => MaweMarkerEditing.addMarkerAt(startMs),
+    onMarkerCreateRegion: (startMs, endMs) => MaweMarkerEditing.createMarkerRegion(startMs, endMs),
+    onMarkerMove: (markerId, deltaMs) => MaweMarkerEditing.moveMarker(markerId, deltaMs),
+    onMarkerResize: (markerId, edge, valueMs) => MaweMarkerEditing.resizeMarker(markerId, edge, valueMs),
     previewGapAt: MawePlaybackLoop.previewGapAt,
     showGapContextMenu: (x, y, index) => MaweContextMenus.showGapContextMenu(x, y, index),
     showContextMenu: (x, y, idx, timeMs) => MaweContextMenus.showContextMenu(x, y, idx, timeMs),
