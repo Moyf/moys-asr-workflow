@@ -426,23 +426,28 @@ test('normalizes timeline OTIO export options and defaults them to enabled', () 
   assert.equal(defaults.otioExportIncludeSrt, true);
   assert.equal(defaults.otioExportIncludeStickers, true);
   assert.equal(defaults.otioExportIncludeMarkers, true);
+  assert.equal(defaults.otioExportIncludeMarkerRegions, true);
   const disabled = helpers.normalizeEditorSettings({
     otioExportIncludeSrt: false,
     otioExportIncludeStickers: false,
     otioExportIncludeMarkers: false,
+    otioExportIncludeMarkerRegions: false,
   });
   assert.equal(disabled.otioExportIncludeSrt, false);
   assert.equal(disabled.otioExportIncludeStickers, false);
   assert.equal(disabled.otioExportIncludeMarkers, false);
+  assert.equal(disabled.otioExportIncludeMarkerRegions, false);
   // 只有显式 false 会关闭选项；其它假值一律回退为默认勾选，避免损坏的持久化数据关闭导出能力。
   const repaired = helpers.normalizeEditorSettings({
     otioExportIncludeSrt: 0,
     otioExportIncludeStickers: null,
     otioExportIncludeMarkers: undefined,
+    otioExportIncludeMarkerRegions: 0,
   });
   assert.equal(repaired.otioExportIncludeSrt, true);
   assert.equal(repaired.otioExportIncludeStickers, true);
   assert.equal(repaired.otioExportIncludeMarkers, true);
+  assert.equal(repaired.otioExportIncludeMarkerRegions, true);
 });
 
 test('converts and formats the parallel frame timebase', () => {

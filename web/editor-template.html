@@ -187,8 +187,11 @@ __WAVEFORM_CSS__
             <label class="dropdown-setting-toggle" title="把表情包作为一条叠加的视频轨道合并进同一个 OTIO 工程，无需再单独导出表情包 OTIO">
               <input type="checkbox" data-otio-export-option="stickers" checked> 时间线包含表情包
             </label>
-            <label class="dropdown-setting-toggle" title="把每条字幕的文本与时间作为标记写入时间线片段">
+            <label class="dropdown-setting-toggle" title="把每条字幕的文本与时间作为标记写入时间线片段（备注标注为 MAW 字幕）">
               <input type="checkbox" data-otio-export-option="markers" checked> 将字幕内容作为标记写入
+            </label>
+            <label class="dropdown-setting-toggle" title="把工程「标记与区段」（含名称与备注）作为标记写入时间线片段">
+              <input type="checkbox" data-otio-export-option="markerRegions" checked> 将标记与区段写入
             </label>
           </div>
         </div>
@@ -219,8 +222,11 @@ __WAVEFORM_CSS__
             <label class="dropdown-setting-toggle" title="把表情包作为一条叠加的视频轨道合并进同一个 OTIO 工程，无需再单独导出表情包 OTIO">
               <input type="checkbox" data-otio-export-option="stickers" checked> 时间线包含表情包
             </label>
-            <label class="dropdown-setting-toggle" title="把每条字幕的文本与时间作为标记写入时间线片段">
+            <label class="dropdown-setting-toggle" title="把每条字幕的文本与时间作为标记写入时间线片段（备注标注为 MAW 字幕）">
               <input type="checkbox" data-otio-export-option="markers" checked> 将字幕内容作为标记写入
+            </label>
+            <label class="dropdown-setting-toggle" title="把工程「标记与区段」（含名称与备注）作为标记写入时间线片段">
+              <input type="checkbox" data-otio-export-option="markerRegions" checked> 将标记与区段写入
             </label>
           </div>
         </div>
@@ -412,15 +418,14 @@ __WAVEFORM_CSS__
     <button type="button" id="markers-close" class="gap-remove-close" title="关闭（Esc）" aria-label="关闭标记与区段工具窗">×</button>
   </header>
   <div class="gap-remove-panel-body">
-    <div class="markers-summary" id="markers-summary" aria-live="polite">尚无标记；在波形顶部标记轨道空白处点击或拖动即可添加。</div>
     <div class="markers-actions">
       <button type="button" id="markers-add-current" class="markers-inline-button">在播放头添加标记</button>
     </div>
+    <div class="markers-summary-row">
+      <div class="markers-summary" id="markers-summary" aria-live="polite">尚无标记；在波形顶部标记轨道空白处点击或拖动即可添加。</div>
+      <input type="search" id="markers-search" class="markers-search-input" placeholder="按名称或备注搜索" maxlength="200" aria-label="按名称或备注搜索">
+    </div>
     <div class="markers-filters-field">
-      <label class="gap-remove-field">
-        <span class="gap-remove-field-label">搜索</span>
-        <input type="search" id="markers-search" placeholder="按名称或备注搜索" maxlength="200">
-      </label>
       <div class="markers-filters">
         <label class="markers-filter-item">类型
           <select id="markers-filter-kind">
