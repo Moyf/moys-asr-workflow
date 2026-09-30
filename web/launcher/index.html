@@ -673,10 +673,6 @@
 
       <section id="toolboxBurnSubtitlePanel" class="toolbox-panel hidden toolbox-utility-panel" role="tabpanel" aria-labelledby="toolboxBurnSubtitleTab">
         <p class="hint toolbox-panel-hint" data-i18n="toolbox_burn_subtitle_hint">将 SRT / ASS 字幕直接绘制进新的视频文件；会重新编码视频，不覆盖源文件。</p>
-        <div class="toolbox-green-screen-option">
-          <label class="check-field" for="toolboxGreenScreen"><input id="toolboxGreenScreen" type="checkbox"><span data-i18n="toolbox_green_screen">生成绿幕视频</span></label>
-          <p class="hint" data-i18n="toolbox_green_screen_hint">无需视频源；用字幕时长生成带字幕的绿色背景视频。默认 1920×1080、30 fps，ASS 优先使用自身画布尺寸；不含音轨。</p>
-        </div>
         <div id="toolboxBurnSubtitleDropZone" class="field toolbox-input">
           <div class="toolbox-input-heading">
             <label for="toolboxBurnSubtitlePath" data-i18n="toolbox_burn_subtitle_input">字幕文件</label>
@@ -688,6 +684,10 @@
           </div>
           <p class="hint" data-i18n="toolbox_burn_subtitle_style_hint">选择 SRT 字幕时，会使用 ASS 样式库中的「SRT 烧录样式」对应的样式；选择 ASS 字幕时，使用 ASS 字幕自身的样式。</p>
           <p id="toolboxBurnSubtitlePathError" class="field-error"></p>
+        </div>
+        <div class="toolbox-green-screen-option">
+          <label class="check-field" for="toolboxGreenScreen"><input id="toolboxGreenScreen" type="checkbox"><span data-i18n="toolbox_green_screen">生成绿幕视频</span></label>
+          <p class="hint" data-i18n="toolbox_green_screen_hint">无需视频源；用字幕时长生成带字幕的绿色背景视频。默认 1920×1080、30 fps，ASS 优先使用自身画布尺寸；不含音轨。</p>
         </div>
         <div id="toolboxBurnVideoEncoderField" class="field">
           <label for="toolboxBurnVideoEncoder" data-i18n="toolbox_burn_video_encoder">视频编码器</label>

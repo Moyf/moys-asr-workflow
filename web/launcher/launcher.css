@@ -2135,6 +2135,11 @@ textarea::placeholder {
   background: var(--bg-input);
 }
 
+#toolboxUtilityMediaDropZone.is-disabled {
+  opacity: .55;
+  pointer-events: none;
+}
+
 #toolboxInputPath {
   direction: ltr;
   text-align: right;
@@ -2418,7 +2423,7 @@ textarea::placeholder {
   margin: 0 0 10px;
 }
 
-.toolbox-green-screen-option { margin: 0 0 12px; }
+.toolbox-green-screen-option { margin: 10px 0 12px; }
 .toolbox-green-screen-option .hint { margin: 8px 0 0; }
 
 .toolbox-waveform-spectral-field {

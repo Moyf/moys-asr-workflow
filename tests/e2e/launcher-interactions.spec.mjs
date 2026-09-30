@@ -494,7 +494,10 @@ test('green-screen burn accepts subtitles without a video source', async ({ page
     };
   });
   await page.locator('#toolboxGreenScreen').check();
-  await expect(page.locator('#toolboxUtilityMediaDropZone')).toBeHidden();
+  await expect(page.locator('#toolboxUtilityMediaDropZone')).toBeVisible();
+  await expect(page.locator('#toolboxUtilityMediaDropZone')).toHaveAttribute('aria-disabled', 'true');
+  await expect(page.locator('#toolboxUtilityMediaPath')).toBeDisabled();
+  await expect(page.locator('#pickToolboxUtilityMedia')).toBeDisabled();
   await expect(page.locator('#runBurnSubtitle')).toHaveText('生成绿幕视频');
   const gap = await page.locator('.toolbox-green-screen-option .hint').evaluate((element) =>
     element.getBoundingClientRect().top - element.previousElementSibling.getBoundingClientRect().bottom);
@@ -505,8 +508,14 @@ test('green-screen burn accepts subtitles without a video source', async ({ page
   const call = await page.evaluate(() => window.__greenBurnCalls[0]);
   expect(call).toMatchObject({ mediaPath: '', subtitlePath: 'D:\\Demo\\captions.ass', greenScreen: true });
   await expect(page.locator('#toolboxUtilityMediaPath')).toHaveValue('D:\\Demo\\captions.green-screen.mp4');
+  await page.locator('#toolboxFfconcatTab').click();
+  await expect(page.locator('#toolboxUtilityMediaPath')).toBeEnabled();
+  await expect(page.locator('#pickToolboxUtilityMedia')).toBeEnabled();
+  await page.locator('#toolboxBurnSubtitleTab').click();
+  await expect(page.locator('#toolboxUtilityMediaPath')).toBeDisabled();
   await page.locator('#toolboxGreenScreen').uncheck();
-  await expect(page.locator('#toolboxUtilityMediaDropZone')).toBeVisible();
+  await expect(page.locator('#toolboxUtilityMediaPath')).toBeEnabled();
+  await expect(page.locator('#pickToolboxUtilityMedia')).toBeEnabled();
   await expect(page.locator('#runBurnSubtitle')).toHaveText('烧录字幕');
 });
 
