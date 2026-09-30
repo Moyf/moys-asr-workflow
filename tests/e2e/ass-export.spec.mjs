@@ -177,9 +177,28 @@ test('ASS emphasis controls drive preview and inline export color', async ({ pag
   await page.goto(server.url);
   await page.locator('#editor-settings-toggle').click();
   await page.locator('#editor-settings-tab-subtitle-style').click();
+  await expect(page.locator('#ass-inline-text-settings')).toBeHidden();
+  await page.locator('#ass-mode-toggle').check();
+  await expect(page.locator('#ass-inline-text-settings')).toBeVisible();
+  await expect(page.locator('#ass-inline-text-settings input[type=checkbox]')).toHaveCount(5);
+  await expect(page.locator('#ass-inline-text-title')).toHaveText('特殊文本格式');
+  await expect(page.locator('#ass-special-symbol-rule')).toHaveValue('double');
+  await expect(page.locator('[data-ass-symbol="_"]')).toHaveText('__下划线__');
+  await page.locator('#ass-special-symbol-rule').selectOption('none');
+  await expect(page.locator('#ass-inline-text-options')).toBeHidden();
+  await page.locator('#ass-special-symbol-rule').selectOption('single');
+  await expect(page.locator('#ass-inline-text-options')).toBeVisible();
+  await expect(page.locator('[data-ass-symbol="_"]')).toHaveText('_下划线_');
+  await page.locator('#ass-special-symbol-rule').selectOption('both');
+  await expect(page.locator('[data-ass-symbol="*"]')).toHaveText('*强调*/**强调**');
+  await page.locator('#ass-special-symbol-rule').selectOption('double');
   await page.locator('#ass-style-manager-open').click();
   await page.locator('#ass-style-list [data-ass-selection-id="ass"]').click();
-  await expect(page.locator('#ass-style-emphasis-syntax')).toHaveValue('double');
+  await expect(page.locator('#ass-style-emphasis-syntax')).toHaveCount(0);
+  await expect(page.locator('#ass-emphasis-syntax')).toBeChecked();
+  await expect(page.locator('#ass-style-emphasis-heading')).toHaveText('特殊文本样式');
+  await expect(page.locator('#ass-style-small-text-scale')).toHaveValue('0.8');
+  await expect(page.locator('#ass-style-large-text-scale')).toHaveValue('1.5');
   await expect(page.locator('#ass-style-emphasis-scale')).toHaveValue('1.1');
   await expect(page.locator('#ass-style-emphasis-scale')).toHaveAttribute('step', '0.05');
   await expect(page.locator('#ass-style-emphasis-options')).toBeVisible();
@@ -191,10 +210,13 @@ test('ASS emphasis controls drive preview and inline export color', async ({ pag
   await page.locator('#ass-style-emphasis-color').fill('#ff0000');
   await page.locator('#ass-style-emphasis-scale').fill('1.25');
   await page.locator('#ass-style-emphasis-style').selectOption('text');
-  await page.locator('#ass-style-emphasis-syntax').selectOption('none');
-  await expect(page.locator('#ass-style-emphasis-options')).toBeHidden();
-  await page.locator('#ass-style-emphasis-syntax').selectOption('double');
   await page.locator('#ass-style-window-close').click();
+  await page.locator('#ass-emphasis-syntax').uncheck();
+  await page.locator('#ass-style-manager-open').click();
+  await expect(page.locator('#ass-style-emphasis-options')).toBeHidden();
+  await page.locator('#ass-style-window-close').click();
+  await page.locator('#ass-emphasis-syntax').check();
+  await expect(page.locator('#ass-special-symbol-rule')).toHaveValue('double');
   await page.locator('#editor-settings-close').click();
 
   const preview = await page.evaluate(() => {

@@ -225,13 +225,17 @@ function clearAssEmphasisPreview(element) {
 function renderAssEmphasisPreview(element, textNode, text, style, metrics) {
   if (!element) return;
   const source = String(text ?? '');
-  const key = JSON.stringify([source, style.emphasisSyntax, style.emphasisStyle,
+  const emphasisSyntax = MaweSettings.EDITOR_SETTINGS.assEmphasisSyntax;
+  const key = JSON.stringify([source, emphasisSyntax, style.emphasisStyle,
     style.emphasisColor, style.emphasisScale, style.fontSize, style.underline, style.primaryColor,
-    style.outlineColor, style.outline, metrics.scaleY, metrics.stageHeight]);
+    style.outlineColor, style.outline, style.strikeOut, metrics.scaleY, metrics.stageHeight,
+    style.smallTextScale, style.largeTextScale, MaweSettings.EDITOR_SETTINGS.assUnderlineEnabled,
+    MaweSettings.EDITOR_SETTINGS.assSpecialSymbolRule, MaweSettings.EDITOR_SETTINGS.assStrikeEnabled, MaweSettings.EDITOR_SETTINGS.assSmallTextEnabled,
+    MaweSettings.EDITOR_SETTINGS.assLargeTextEnabled]);
   if (element.dataset.assEmphasisKey === key) return;
   clearAssEmphasisPreview(element);
-  const runs = window.AsrEditorUtils.assInlineStyleRuns(source, style.emphasisSyntax);
-  if (!runs.some((run) => run.emphasized || run.underlined)) {
+  const runs = window.AsrEditorUtils.assInlineStyleRuns(source, emphasisSyntax, MaweSettings.EDITOR_SETTINGS);
+  if (!runs.some((run) => run.emphasized || run.underlined || run.struck || run.size)) {
     if (textNode) textNode.nodeValue = source;
     else element.textContent = source;
     element.dataset.assEmphasisKey = key;
@@ -242,22 +246,24 @@ function renderAssEmphasisPreview(element, textNode, text, style, metrics) {
   const wrapper = document.createElement('span');
   wrapper.className = 'ass-emphasis-runs';
   runs.forEach((run) => {
-    if (!run.emphasized && !run.underlined) {
+    if (!run.emphasized && !run.underlined && !run.struck && !run.size) {
       wrapper.append(document.createTextNode(run.text));
       return;
     }
     const span = document.createElement('span');
-    span.className = [run.emphasized ? 'ass-emphasis-run' : '', run.underlined ? 'ass-underline-run' : ''].filter(Boolean).join(' ');
+    span.className = ['ass-inline-run', run.emphasized ? 'ass-emphasis-run' : '', run.underlined ? 'ass-underline-run' : ''].filter(Boolean).join(' ');
     span.textContent = run.text;
-    if (run.underlined && !style.underline) {
-      span.style.textDecorationLine = 'underline';
+    if (run.underlined || run.struck) {
+      span.style.textDecorationLine = [run.underlined || style.underline ? 'underline' : '',
+        run.struck || style.strikeOut ? 'line-through' : ''].filter(Boolean).join(' ');
       span.style.textDecorationColor = run.emphasized && style.emphasisStyle === 'text'
         ? style.emphasisColor : style.primaryColor;
       span.style.textUnderlineOffset = '0.16em';
     }
-    if (run.emphasized && style.emphasisScale > 1) {
-      span.style.fontSize = `${assPreviewFontSize(style, metrics) * style.emphasisScale}px`;
-    }
+    const sizeScale = run.size === 'small' ? style.smallTextScale
+      : run.size === 'large' ? style.largeTextScale : 1;
+    const scale = sizeScale * (run.emphasized ? style.emphasisScale : 1);
+    if (scale !== 1) span.style.fontSize = `${assPreviewFontSize(style, metrics) * scale}px`;
     if (run.emphasized && style.emphasisStyle === 'stroke') {
       span.style.webkitTextStroke = `${Math.max(0, Number(style.outline) || 0) * metrics.scaleY}px ${style.emphasisColor}`;
       span.style.paintOrder = 'stroke fill';

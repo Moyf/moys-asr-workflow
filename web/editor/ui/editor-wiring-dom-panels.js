@@ -50,6 +50,9 @@ const assColorSpeakerExportLink = document.getElementById('ass-color-speaker-exp
 
 
 const assModeToggle = document.getElementById('ass-mode-toggle');
+const assInlineTextSettings = document.getElementById('ass-inline-text-settings');
+const assInlineTextTitle = document.getElementById('ass-inline-text-title');
+const assInlineTextToggles = [...document.querySelectorAll('[data-ass-inline-setting]')];
 const assStyleManagerOpenButton = document.getElementById('ass-style-manager-open');
 const assStyleSummary = document.getElementById('ass-style-summary');
 

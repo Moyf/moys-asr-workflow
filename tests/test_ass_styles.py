@@ -95,20 +95,25 @@ class AssStyleLibraryTests(unittest.TestCase):
         library = normalize_ass_style_library({
             "styles": [{"id": "ass", "emphasisSyntax": "single",
                         "emphasisColor": "#aabbcc", "emphasisScale": 1.27,
-                        "emphasisStyle": "stroke"}],
+                        "emphasisStyle": "stroke", "smallTextScale": 0.63, "largeTextScale": 2.2}],
         })
         style = find_ass_style(library, "ass")
-        self.assertEqual((style["emphasisSyntax"], style["emphasisColor"], style["emphasisStyle"]),
-                         ("single", "#aabbcc", "stroke"))
+        self.assertNotIn("emphasisSyntax", style)
+        self.assertEqual((style["emphasisColor"], style["emphasisStyle"]),
+                         ("#aabbcc", "stroke"))
         self.assertEqual(style["emphasisScale"], 1.25)
+        self.assertEqual(style["smallTextScale"], 0.65)
+        self.assertEqual(style["largeTextScale"], 2.2)
         invalid = normalize_ass_style_library({
             "styles": [{"id": "ass", "emphasisSyntax": {},
                         "emphasisColor": "invalid", "emphasisScale": "bad", "emphasisStyle": []}],
         })
-        self.assertEqual(find_ass_style(invalid, "ass")["emphasisSyntax"], "double")
+        self.assertNotIn("emphasisSyntax", find_ass_style(invalid, "ass"))
         self.assertEqual(find_ass_style(invalid, "ass")["emphasisColor"], "#ffd34d")
         self.assertEqual(find_ass_style(invalid, "ass")["emphasisStyle"], "text")
         self.assertEqual(find_ass_style(invalid, "ass")["emphasisScale"], 1.1)
+        self.assertEqual(find_ass_style(invalid, "ass")["smallTextScale"], 0.8)
+        self.assertEqual(find_ass_style(invalid, "ass")["largeTextScale"], 1.5)
         self.assertEqual(find_ass_style(normalize_ass_style_library({"styles": [{"id": "ass", "emphasisScale": 9}]}), "ass")["emphasisScale"], 1.5)
 
     def test_legacy_full_library_keeps_every_custom_style(self) -> None:

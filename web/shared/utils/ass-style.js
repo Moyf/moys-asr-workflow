@@ -65,18 +65,23 @@ window.MAWE.register('utils-ass-style', function createUtilsModule(dependencies)
   // Markers are editor syntax only; the ASS event contains override tags instead.
   function assMarkedRanges(source, marker) {
     const width = marker.length;
+    const wordMarker = ['_', '-', '+'].includes(marker[0]);
     const ranges = [];
     let cursor = 0;
     while (cursor < source.length) {
       if (!source.startsWith(marker, cursor)
         || source[cursor - 1] === marker[0] || source[cursor + width] === marker[0]
-        || (marker === '_' && /[a-z0-9]/iu.test(source[cursor - 1] || ''))) {
+        || (wordMarker && /[a-z0-9]/iu.test(source[cursor - 1] || ''))) {
         cursor += 1;
         continue;
       }
-      const end = source.indexOf(marker, cursor + width);
+      let end = source.indexOf(marker, cursor + width);
+      // Skip a different delimiter width (e.g. ** inside a *...* pair).
+      while (end >= 0 && (source[end - 1] === marker[0] || source[end + width] === marker[0])) {
+        end = source.indexOf(marker, end + width);
+      }
       if (end <= cursor + width || source[end - 1] === marker[0] || source[end + width] === marker[0]
-        || (marker === '_' && (/[a-z0-9]/iu.test(source[end + width] || '')
+        || (wordMarker && (/[a-z0-9]/iu.test(source[end + width] || '')
           || source.slice(cursor + width, end).includes('\n')))) {
         cursor += width;
         continue;
@@ -87,30 +92,38 @@ window.MAWE.register('utils-ass-style', function createUtilsModule(dependencies)
     return ranges;
   }
 
-  function assMarkedRuns(text, syntax, includeUnderline) {
+  function assMarkedRuns(text, syntax, includeUnderline, options = {}) {
     const source = String(text ?? '');
     const markers = new Map();
-    const emphasisMarker = syntax === 'double' ? '**' : syntax === 'single' ? '*' : '';
-    const addMarkers = (ranges, field) => ranges.forEach(({ start, end, width }) => {
-      markers.set(start, { field, active: true, width });
-      markers.set(end, { field, active: false, width });
+    const rule = options.assSpecialSymbolRule;
+    const widths = rule === 'none' ? [] : rule === 'single' ? [1] : rule === 'double' ? [2] : [1, 2];
+    const addMarkers = (marker, field) => widths.forEach((width) => {
+      assMarkedRanges(source, marker.repeat(width)).forEach(({ start, end }) => {
+        markers.set(start, { field, active: true, width });
+        markers.set(end, { field, active: false, width });
+      });
     });
-    if (emphasisMarker) addMarkers(assMarkedRanges(source, emphasisMarker), 'emphasized');
-    if (includeUnderline) addMarkers(assMarkedRanges(source, '_'), 'underlined');
+    if (['single', 'double', 'both'].includes(syntax)) addMarkers('*', 'emphasized');
+    if (includeUnderline) {
+      if (options.assUnderlineEnabled !== false) addMarkers('_', 'underlined');
+      if (options.assStrikeEnabled !== false) addMarkers('~', 'struck');
+      if (options.assSmallTextEnabled !== false) addMarkers('-', 'small');
+      if (options.assLargeTextEnabled !== false) addMarkers('+', 'large');
+    }
     const runs = [];
     let content = '';
-    let emphasized = false;
-    let underlined = false;
+    const active = { emphasized: 0, underlined: 0, struck: 0, small: 0, large: 0 };
     const flush = () => {
-      if (content) runs.push({ text: content, emphasized, underlined });
+      if (content) runs.push({ text: content, emphasized: active.emphasized > 0,
+        underlined: active.underlined > 0, struck: active.struck > 0,
+        size: active.large > 0 ? 'large' : active.small > 0 ? 'small' : null });
       content = '';
     };
     for (let cursor = 0; cursor < source.length;) {
       const marker = markers.get(cursor);
       if (marker) {
         flush();
-        if (marker.field === 'emphasized') emphasized = marker.active;
-        else underlined = marker.active;
+        active[marker.field] += marker.active ? 1 : -1;
         cursor += marker.width;
       } else {
         content += source[cursor];
@@ -118,7 +131,7 @@ window.MAWE.register('utils-ass-style', function createUtilsModule(dependencies)
       }
     }
     flush();
-    if (!runs.length) runs.push({ text: '', emphasized: false, underlined: false });
+    if (!runs.length) runs.push({ text: '', emphasized: false, underlined: false, struck: false, size: null });
     return runs;
   }
 
@@ -126,8 +139,8 @@ window.MAWE.register('utils-ass-style', function createUtilsModule(dependencies)
     return assMarkedRuns(text, syntax, false).map(({ text, emphasized }) => ({ text, emphasized }));
   }
 
-  function assInlineStyleRuns(text, syntax) {
-    return assMarkedRuns(text, syntax, true);
+  function assInlineStyleRuns(text, syntax, options = {}) {
+    return assMarkedRuns(text, syntax, true, options);
   }
 
 
@@ -144,9 +157,10 @@ window.MAWE.register('utils-ass-style', function createUtilsModule(dependencies)
     fontName: 'Arial',
     fontSize: 18,
     primaryColor: '#ffffff',
-    emphasisSyntax: 'double',
     emphasisColor: '#ffd34d',
     emphasisScale: 1.1,
+    smallTextScale: 0.8,
+    largeTextScale: 1.5,
     emphasisStyle: 'text',
     secondaryColor: '#ffffff',
     outlineColor: '#000000',
@@ -261,6 +275,7 @@ window.MAWE.register('utils-ass-style', function createUtilsModule(dependencies)
   function normalizeAssStyle(value, fallback = ASS_DEFAULT_ASS_STYLE, styleId = '') {
     const source = value && typeof value === 'object' && !Array.isArray(value) ? value : {};
     const base = { ...fallback };
+    delete base.emphasisSyntax;
     const resolvedId = normalizeAssStyleId(styleId || source.id || fallback.id, fallback.id || 'ass');
     return {
       ...base,
@@ -270,10 +285,10 @@ window.MAWE.register('utils-ass-style', function createUtilsModule(dependencies)
       fontName: normalizeAssLibraryText(source.fontName, fallback.fontName || ASS_DEFAULT_FONT_FAMILY, ASS_STYLE_LIBRARY_MAX_FONT_LENGTH),
       fontSize: normalizeAssLibraryNumber(source.fontSize, fallback.fontSize || 18, 1, 512),
       primaryColor: normalizeAssLibraryColor(source.primaryColor, fallback.primaryColor || '#ffffff'),
-      emphasisSyntax: ['none', 'single', 'double'].includes(source.emphasisSyntax)
-        ? source.emphasisSyntax : (fallback.emphasisSyntax || 'double'),
       emphasisColor: normalizeAssLibraryColor(source.emphasisColor, fallback.emphasisColor || '#ffd34d'),
       emphasisScale: Math.round(normalizeAssLibraryNumber(source.emphasisScale, fallback.emphasisScale ?? 1.1, 1, 1.5, false) * 20) / 20,
+      smallTextScale: Math.round(normalizeAssLibraryNumber(source.smallTextScale, fallback.smallTextScale ?? 0.8, 0.1, 1, false) * 20) / 20,
+      largeTextScale: Math.round(normalizeAssLibraryNumber(source.largeTextScale, fallback.largeTextScale ?? 1.5, 1, 3, false) * 20) / 20,
       emphasisStyle: ['text', 'stroke'].includes(source.emphasisStyle)
         ? source.emphasisStyle : (fallback.emphasisStyle || 'text'),
       secondaryColor: normalizeAssLibraryColor(source.secondaryColor, fallback.secondaryColor || '#ffffff'),

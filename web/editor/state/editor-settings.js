@@ -115,6 +115,11 @@
   extensionOverlayEnabled: true,
   // ASS 字幕模式只改变播放器预览，默认关闭以保持原有 CSS 预览。
   assMode: false,
+  assEmphasisSyntax: 'both', assSpecialSymbolRule: 'double',
+  assUnderlineEnabled: true,
+  assStrikeEnabled: true,
+  assSmallTextEnabled: true,
+  assLargeTextEnabled: true,
   // 多重字幕开启时使用的波形行高度；关闭多重字幕后恢复「配置」中的高度。
   multiSubtitleRowHeight: 168,
   exportStartAtZero: false,
@@ -269,8 +274,10 @@
 
   function readEditorSettings() {
     let saved = {};
+    let legacyAssStyleLibrary = null;
     try { saved = JSON.parse(MaweHost.storage.getItem(EDITOR_SETTINGS_KEY) || '{}'); } catch (_) { /* invalid storage */ }
-    return window.AsrEditorUtils.normalizeEditorSettings({
+    try { legacyAssStyleLibrary = JSON.parse(MaweHost.storage.getItem('moy.asr.ass.styles.v1') || 'null'); } catch (_) { /* invalid storage */ }
+    const settings = window.AsrEditorUtils.normalizeEditorSettings({
       ...saved,
       cueListAutoScrollOnClick: saved.cueListAutoScrollOnClick !== false,
       cueListShowIndex: saved.cueListShowIndex !== false,
@@ -286,7 +293,9 @@
       otioExportIncludeSrt: saved.otioExportIncludeSrt !== false,
       otioExportIncludeStickers: saved.otioExportIncludeStickers !== false,
       otioExportIncludeMarkers: saved.otioExportIncludeMarkers !== false,
-    });
+    }, legacyAssStyleLibrary);
+    if (saved?.assSpecialSymbolRule === undefined) saveEditorSettings(settings);
+    return settings;
   }
 
 

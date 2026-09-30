@@ -198,8 +198,14 @@ function syncAssStyleForm(style) {
     else if (field.type === 'radio') field.checked = String(value) === field.value;
     else if (value !== undefined && value !== null) field.value = String(value);
   });
+  const emphasisSection = document.getElementById('ass-style-emphasis-section');
+  if (emphasisSection) emphasisSection.hidden = MaweSettings.EDITOR_SETTINGS.assMode !== true;
   const emphasisOptions = document.getElementById('ass-style-emphasis-options');
-  if (emphasisOptions) emphasisOptions.hidden = safeStyle.emphasisSyntax === 'none';
+  if (emphasisOptions) emphasisOptions.hidden = MaweSettings.EDITOR_SETTINGS.assEmphasisSyntax === 'none';
+  const smallTextField = document.getElementById('ass-style-small-text-field');
+  const largeTextField = document.getElementById('ass-style-large-text-field');
+  if (smallTextField) smallTextField.hidden = MaweSettings.EDITOR_SETTINGS.assSmallTextEnabled === false;
+  if (largeTextField) largeTextField.hidden = MaweSettings.EDITOR_SETTINGS.assLargeTextEnabled === false;
   if (assStylePreviewSample) {
     const preview = safeStyle;
     assStylePreviewSample.textContent = 'Aa 字幕预览 / 字幕样例';
@@ -460,6 +466,17 @@ function openAssStyleManagerForStyle(select) {
   assStyleFloatingPanel.open();
 }
 mainAssStyleEditButton?.addEventListener('click', () => openAssStyleManagerForStyle(mainAssStyleSelect));
+document.getElementById('ass-special-style-edit')?.addEventListener('click', async () => {
+  assStyleFloatingPanel.open();
+  await loadAssStyleLibrary({ force: true });
+  if (!assStyleWindow.classList.contains('show')) return;
+  const profileId = ASS_STYLE_LIBRARY.assignments?.assExportProfileId || 'ass';
+  const profile = ASS_STYLE_LIBRARY.assProfiles?.find((entry) => entry.id === profileId);
+  assStyleManagerSetSelection('style', profile?.styleId || 'ass');
+  requestAnimationFrame(() => {
+    document.getElementById('ass-style-emphasis-section')?.scrollIntoView({ block: 'start', inline: 'nearest' });
+  });
+});
 extensionAssStyleEditButton?.addEventListener('click', () => openAssStyleManagerForStyle(extensionAssStyleSelect));
 // 「读取本机字体」：与设置页共用同一个本机字体扫描；扫描结果进入共享的
 // subtitleLocalFontFamilies，ASS 字体下拉在下次展开时即包含这些字体。
@@ -574,6 +591,11 @@ function syncSubtitleStyleAssControls() {
   // 样式库选择器；主字幕选择即当前 ASS 输出方案关联的样式，与样式库窗口
   // 中的选择同步，副字幕选择对应库中的「副字幕样式」槽位。
   const assMode = MaweSettings.EDITOR_SETTINGS.assMode === true;
+  if (assInlineTextSettings) assInlineTextSettings.hidden = !assMode;
+  if (assInlineTextTitle) assInlineTextTitle.hidden = !assMode;
+  assInlineTextToggles.forEach((input) => {
+    if (input) input.disabled = !assMode;
+  });
   if (subtitleStyleAssModeHint) subtitleStyleAssModeHint.hidden = !assMode;
   if (mainSubtitleCssFields) mainSubtitleCssFields.hidden = assMode;
   if (mainAssStyleFields) mainAssStyleFields.hidden = !assMode;
@@ -614,9 +636,41 @@ function syncAssModeDependentControls() {
   syncSubtitleStyleAssControls();
 }
 
+const assSpecialSymbolRule = document.getElementById('ass-special-symbol-rule');
+function syncAssSymbolRule() {
+  const rule = MaweSettings.EDITOR_SETTINGS.assSpecialSymbolRule;
+  if (assSpecialSymbolRule) assSpecialSymbolRule.value = rule;
+  const options = document.getElementById('ass-inline-text-options');
+  if (options) options.hidden = rule === 'none';
+  const formatHint = document.getElementById('ass-special-format-hint');
+  if (formatHint) {
+    const examples = [['*', '强调'], ['~', '删除'], ['-', '缩小'], ['+', '放大']].map(([marker, label]) => {
+      const sample = (width) => `${marker.repeat(width)}${label}${marker.repeat(width)}`;
+      return rule === 'both' ? `${sample(1)}/${sample(2)}` : sample(rule === 'single' ? 1 : 2);
+    });
+    formatHint.textContent = rule === 'none' ? '特殊符号规则已关闭，字幕中的符号将保留原文。'
+      : `你可以使用 ${examples.join('、')} 等符号来对特定字词添加特殊样式。`;
+  }
+  document.querySelectorAll('[data-ass-symbol]').forEach((hint) => {
+    const { assSymbol: marker, assSymbolLabel: label } = hint.dataset;
+    const sample = (width) => `${marker.repeat(width)}${label}${marker.repeat(width)}`;
+    hint.textContent = rule === 'both' ? `${sample(1)}/${sample(2)}` : sample(rule === 'single' ? 1 : 2);
+  });
+}
+assSpecialSymbolRule?.addEventListener('change', () => {
+  MaweSettings.updateEditorSettings({ assSpecialSymbolRule: assSpecialSymbolRule.value });
+  syncAssSymbolRule();
+  MawePlaybackLoop.refreshSubtitlePreview();
+});
 function syncAssModeControl() {
+  syncAssSymbolRule();
   syncAssModeDependentControls();
   updateAssStylePreviewModeHints();
+  assInlineTextToggles.forEach((input) => {
+    const key = input.dataset.assInlineSetting;
+    input.checked = key === 'assEmphasisSyntax' ? MaweSettings.EDITOR_SETTINGS[key] !== 'none' : MaweSettings.EDITOR_SETTINGS[key] !== false;
+  });
+  if (assStyleForm && !assStyleForm.hidden) syncAssStyleForm(selectedAssStyle());
   if (!assModeToggle) return;
   assModeToggle.checked = MaweSettings.EDITOR_SETTINGS.assMode === true;
   assModeToggle.setAttribute('aria-checked', String(assModeToggle.checked));
@@ -628,4 +682,14 @@ assModeToggle?.addEventListener('change', () => {
   MawePreviewGeometry.refreshPreviewGeometryEditable();
   MawePlaybackLoop.refreshSubtitlePreview();
   MaweHint.flashHint(assModeToggle.checked ? '已开启 ASS 字幕模式预览' : '已恢复原有字幕预览', 'success');
+});
+
+assInlineTextToggles.forEach((input) => {
+  input.addEventListener('change', () => {
+    const key = input.dataset.assInlineSetting;
+    const value = key === 'assEmphasisSyntax' ? (input.checked ? 'both' : 'none') : input.checked;
+    MaweSettings.updateEditorSettings({ [key]: value });
+    syncAssStyleManager();
+    MawePlaybackLoop.refreshSubtitlePreview();
+  });
 });

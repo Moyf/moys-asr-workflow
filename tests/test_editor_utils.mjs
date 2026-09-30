@@ -353,6 +353,10 @@ test('normalizes editor settings without preserving invalid persisted values', (
   assert.equal(settings.assMode, false);
   assert.equal(helpers.normalizeEditorSettings({ assMode: true }).assMode, true);
   assert.equal(helpers.normalizeEditorSettings({ assMode: 1 }).assMode, false);
+  assert.equal(settings.assEmphasisSyntax, 'both');
+  assert.equal(helpers.normalizeEditorSettings({ assEmphasisSyntax: 'none' }).assEmphasisSyntax, 'none');
+  assert.equal(helpers.normalizeEditorSettings({ assEmphasisSyntax: 'single' }).assEmphasisSyntax, 'both');
+  assert.equal(helpers.normalizeEditorSettings({ assEmphasisSyntax: 'invalid' }).assEmphasisSyntax, 'both');
   assert.equal(settings.pauseOnMouseClick, false);
   assert.equal(helpers.normalizeEditorSettings({ pauseOnMouseClick: true }).pauseOnMouseClick, true);
   assert.equal(helpers.normalizeEditorSettings({ pauseOnMouseClick: 1 }).pauseOnMouseClick, false);
@@ -3233,12 +3237,24 @@ test('builds ASS subtitles with the selected font, size, color and safe text', (
   assert.doesNotMatch(ass, /disabled/);
 });
 
+test('global ASS emphasis syntax migrates from the active main style and respects explicit settings', () => {
+  const legacy = {
+    assignments: { assExportProfileId: 'custom-profile' },
+    assProfiles: [{ id: 'custom-profile', styleId: 'custom-style' }],
+    styles: [{ id: 'ass', emphasisSyntax: 'none' }, { id: 'custom-style', emphasisSyntax: 'single' }],
+  };
+  assert.equal(helpers.normalizeEditorSettings({}, legacy).assEmphasisSyntax, 'both');
+  assert.equal(helpers.normalizeEditorSettings({ assEmphasisSyntax: 'double' }, legacy).assEmphasisSyntax, 'both');
+  assert.equal(helpers.normalizeEditorSettings({}, { styles: [{ id: 'ass', emphasisSyntax: 'none' }] }).assEmphasisSyntax, 'none');
+  assert.equal(Object.hasOwn(helpers.normalizeAssStyle({ emphasisSyntax: 'single' }), 'emphasisSyntax'), false);
+});
+
 test('ASS emphasis syntax colors only marked runs and preserves other export modes', () => {
   const cue = [{ start: 0, end: 1000, text: '前 **重点** 后 **再次**', color: { name: 'yellow' } }];
   const options = {
     assProfile: { id: 'ass', styleId: 'ass', animations: {} },
     assStyle: { id: 'ass', primaryColor: '#123456', outlineColor: '#000000',
-      emphasisSyntax: 'double', emphasisColor: '#ff0000', emphasisStyle: 'text' },
+      emphasisColor: '#ff0000', emphasisStyle: 'text' },
     appearance: { ass_color_style: 'text' },
   };
   const ass = helpers.buildAssPayload(cue, options);
@@ -3254,15 +3270,15 @@ test('ASS emphasis syntax colors only marked runs and preserves other export mod
   });
   assert.match(stroke, /\{\\3c&H000000FF&\\fs\d+\}重点\{\\3c&H00000000&\\fs\d+\}/);
   const disabled = helpers.buildAssPayload(cue, {
-    ...options, assStyle: { ...options.assStyle, emphasisSyntax: 'none' },
+    ...options, assEmphasisSyntax: 'none',
   });
   assert.match(disabled, /前 \*\*重点\*\* 后 \*\*再次\*\*/);
   assert.match(helpers.buildAssPayload(cue), /前 \*\*重点\*\* 后/);
-  assert.deepEqual(Array.from(helpers.assEmphasisRuns('a *b* **c**', 'single'), (run) => run.emphasized), [false, true, false]);
+  assert.deepEqual(Array.from(helpers.assEmphasisRuns('a *b* **c**', 'single'), (run) => run.emphasized), [false, true, false, true]);
   const tracks = helpers.buildAssPayload(cue, {
     ...options,
-    assExtensionStyle: { id: 'ass-extension', emphasisSyntax: 'single', emphasisColor: '#00ff00', emphasisScale: 1.5 },
-    extensionSegments: [{ start: 0, end: 1000, text: '副 *重点*' }],
+    assExtensionStyle: { id: 'ass-extension', emphasisSyntax: 'none', emphasisColor: '#00ff00', emphasisScale: 1.5 },
+    extensionSegments: [{ start: 0, end: 1000, text: '副 **重点**' }],
     overlaySegments: [{ start: 0, end: 1000, text: '叠 **重点**' }],
   });
   assert.match(tracks, /Dialogue: 1,[^\n]*副 \{\\1c&H0000FF00&\\fs81\}重点\{\\1c&H004DD3FF&\\fs54\}/);
@@ -3276,11 +3292,11 @@ test('ASS underscore markers render as local underline alongside emphasis', () =
   const text = '前 _下划线_ 与 _**共同**_ 后';
   const runs = Array.from(helpers.assInlineStyleRuns(text, 'double'), (run) => ({ ...run }));
   assert.deepEqual(runs, [
-    { text: '前 ', emphasized: false, underlined: false },
-    { text: '下划线', emphasized: false, underlined: true },
-    { text: ' 与 ', emphasized: false, underlined: false },
-    { text: '共同', emphasized: true, underlined: true },
-    { text: ' 后', emphasized: false, underlined: false },
+    { text: '前 ', emphasized: false, underlined: false, struck: false, size: null },
+    { text: '下划线', emphasized: false, underlined: true, struck: false, size: null },
+    { text: ' 与 ', emphasized: false, underlined: false, struck: false, size: null },
+    { text: '共同', emphasized: true, underlined: true, struck: false, size: null },
+    { text: ' 后', emphasized: false, underlined: false, struck: false, size: null },
   ]);
   const options = {
     assProfile: { id: 'ass', styleId: 'ass', animations: {} },
@@ -3290,7 +3306,7 @@ test('ASS underscore markers render as local underline alongside emphasis', () =
   assert.match(ass, /前 \{\\u1\}下划线\{\\u0\} 与 \{\\1c&H000000FF&\\fs90\\u1\}共同\{\\1c&H00FFFFFF&\\fs72\\u0\} 后/);
   assert.doesNotMatch(ass, /_下划线_|_\*\*共同\*\*_/);
   const disabledEmphasis = helpers.buildAssPayload([{ start: 0, end: 1000, text: '_下划线_ **原文**' }], {
-    ...options, assStyle: { ...options.assStyle, emphasisSyntax: 'none' },
+    ...options, assEmphasisSyntax: 'none',
   });
   assert.match(disabledEmphasis, /\{\\u1\}下划线\{\\u0\} \*\*原文\*\*/);
   const alreadyUnderlined = helpers.buildAssPayload([{ start: 0, end: 1000, text: '_下划线_' }], {
@@ -3301,6 +3317,102 @@ test('ASS underscore markers render as local underline alongside emphasis', () =
   assert.match(helpers.buildAssPayload([{ start: 0, end: 1000, text: '_下划线_' }]), /_下划线_/);
   assert.deepEqual(Array.from(helpers.assInlineStyleRuns('foo_bar_baz _未闭合', 'double'), (run) => run.text),
     ['foo_bar_baz _未闭合']);
+});
+
+test('ASS accepts single and double stars and tildes together, including nested delimiter widths', () => {
+  const text = '*单星* **双星** ~单波浪~ ~~双波浪~~';
+  for (const syntax of ['both', 'single', 'double']) {
+    const runs = Array.from(helpers.assInlineStyleRuns(text, syntax), (run) => ({ ...run }));
+    assert.equal(runs.map((run) => run.text).join(''), '单星 双星 单波浪 双波浪');
+    assert.deepEqual(runs.filter((run) => run.emphasized).map((run) => run.text), ['单星', '双星']);
+    assert.deepEqual(runs.filter((run) => run.struck).map((run) => run.text), ['单波浪', '双波浪']);
+  }
+  for (const text of ['*前 **内层** 后*', '**前 *内层* 后**']) {
+    const runs = Array.from(helpers.assInlineStyleRuns(text, 'both'));
+    assert.equal(runs.map((run) => run.text).join(''), '前 内层 后');
+    assert.ok(runs.every((run) => run.emphasized));
+  }
+  const strikeRuns = Array.from(helpers.assInlineStyleRuns('~前 ~~内层~~ 后~', 'none'));
+  assert.equal(strikeRuns.map((run) => run.text).join(''), '前 内层 后');
+  assert.ok(strikeRuns.every((run) => run.struck));
+  assert.equal(helpers.assInlineStyleRuns('***原文*** ~未闭合 **未闭合', 'both')
+    .map((run) => run.text).join(''), '***原文*** ~未闭合 **未闭合');
+  const cues = [{ start: 0, end: 1000, text }];
+  const ass = helpers.buildAssPayload(cues, {
+    assProfile: { id: 'ass', styleId: 'ass', animations: {} },
+    assStyle: { id: 'ass', emphasisScale: 1 },
+    assExtensionStyle: { id: 'ass-extension', emphasisScale: 1 },
+    extensionSegments: cues, overlaySegments: cues,
+  });
+  const events = ass.split('\n').filter((line) => line.startsWith('Dialogue:'));
+  assert.equal(events.length, 3);
+  events.forEach((line) => {
+    assert.doesNotMatch(line, /[~*]/);
+    assert.match(line, /\{\\s1\}单波浪\{\\s0\} \{\\s1\}双波浪\{\\s0\}/);
+    assert.match(line, /\}单星\{/);
+    assert.match(line, /\}双星\{/);
+  });
+  assert.ok(helpers.buildSrtPayload(cues).includes(text));
+});
+
+test('ASS special text checkboxes independently disable marker parsing and preserve disabled markers', () => {
+  const text = '*强调* _下划线_ ~删除~ -小字- +大字+';
+  const switches = [
+    ['assEmphasisSyntax', 'none', '*强调*'],
+    ['assUnderlineEnabled', false, '_下划线_'],
+    ['assStrikeEnabled', false, '~删除~'],
+    ['assSmallTextEnabled', false, '-小字-'],
+    ['assLargeTextEnabled', false, '+大字+'],
+  ];
+  for (const [key, value, marker] of switches) {
+    const options = { [key]: value };
+    const runs = helpers.assInlineStyleRuns(text, options.assEmphasisSyntax || 'both', options);
+    assert.ok(runs.map((run) => run.text).join('').includes(marker));
+    const cues = [{ start: 0, end: 1000, text }];
+    const ass = helpers.buildAssPayload(cues, {
+      ...options, assProfile: { id: 'ass', styleId: 'ass', animations: {} },
+      assStyle: { id: 'ass' }, assExtensionStyle: { id: 'ass-extension' },
+      extensionSegments: cues, overlaySegments: cues,
+    });
+    ass.split('\n').filter((line) => line.startsWith('Dialogue:')).forEach((line) => assert.ok(line.includes(marker)));
+    if (key !== 'assEmphasisSyntax') {
+      assert.equal(helpers.normalizeEditorSettings(options)[key], false);
+      assert.equal(helpers.normalizeEditorSettings()[key], true);
+    }
+  }
+  const off = Object.fromEntries(switches.map(([key, value]) => [key, value]));
+  assert.equal(helpers.assInlineStyleRuns(text, 'none', off).map((run) => run.text).join(''), text);
+});
+
+test('ASS inline strike and size markers restore the base style and use each track style scale', () => {
+  const text = '前 ~~删除~~ -小字- +大字+ 后';
+  const options = {
+    assProfile: { id: 'ass', styleId: 'ass', animations: {} },
+    assStyle: { id: 'ass', fontSize: 40 },
+    assExtensionStyle: { id: 'ass-extension', fontSize: 40 },
+    extensionSegments: [{ start: 0, end: 1000, text }],
+    overlaySegments: [{ start: 0, end: 1000, text }],
+  };
+  const cues = [{ start: 0, end: 1000, text }];
+  const events = helpers.buildAssPayload(cues, options).split('\n').filter((line) => line.startsWith('Dialogue:'));
+  assert.equal(events.length, 3);
+  events.forEach((line) => assert.match(line, /前 \{\\s1\}删除\{\\s0\} \{\\fs32\}小字\{\\fs40\} \{\\fs60\}大字\{\\fs40\} 后/));
+  const custom = helpers.buildAssPayload(cues, { ...options, assStyle: { ...options.assStyle, smallTextScale: 0.6, largeTextScale: 2 } });
+  assert.match(custom, /\{\\fs24\}小字\{\\fs40\} \{\\fs80\}大字\{\\fs40\}/);
+  assert.match(custom.split('\n').find((line) => line.startsWith('Dialogue: 1,')), /\{\\fs32\}小字\{\\fs40\} \{\\fs60\}大字\{\\fs40\}/);
+  const strikeBase = helpers.buildAssPayload(cues, { ...options, assStyle: { ...options.assStyle, strikeOut: true } });
+  assert.match(strikeBase, /Dialogue: 0,[^\n]*,,前 删除 /);
+  assert.doesNotMatch(strikeBase.split('\n').find((line) => line.startsWith('Dialogue: 0,')), /\\s0/);
+  assert.match(helpers.buildAssPayload(cues), /~~删除~~ -小字- \+大字\+/);
+  assert.deepEqual(Array.from(helpers.assInlineStyleRuns('foo-bar-baz C++ 1+2+3 -未闭合', 'none'), (run) => run.text),
+    ['foo-bar-baz C++ 1+2+3 -未闭合']);
+  const combined = Array.from(helpers.assInlineStyleRuns('~~-**组合**-~~', 'double'), (run) => ({ ...run }));
+  assert.deepEqual(combined, [{ text: '组合', emphasized: true, underlined: false, struck: true, size: 'small' }]);
+  const style = helpers.normalizeAssStyle({ smallTextScale: 0.63, largeTextScale: 5 });
+  assert.equal(style.smallTextScale, 0.65);
+  assert.equal(style.largeTextScale, 3);
+  assert.equal(helpers.normalizeAssStyle().smallTextScale, 0.8);
+  assert.equal(helpers.normalizeAssStyle().largeTextScale, 1.5);
 });
 
 test('builds ASS metadata and five palette styles at the source video resolution', () => {
@@ -6071,4 +6183,38 @@ test('alignItemsToText bails out to no alignment on absurd inputs', () => {
     JSON.parse(JSON.stringify(helpers.alignItemsToText(text, items))),
     JSON.parse(JSON.stringify(new Array(length).fill(null))),
   );
+});
+
+
+test('ASS special symbol rules apply to all five formats across preview runs and exports', () => {
+  assert.equal(helpers.normalizeEditorSettings().assSpecialSymbolRule, 'double');
+  assert.equal(helpers.normalizeEditorSettings({ assSpecialSymbolRule: 'invalid' }).assSpecialSymbolRule, 'double');
+  const single = '*强调* _下划线_ ~删除~ -缩小- +放大+';
+  const double = '**强调** __下划线__ ~~删除~~ --缩小-- ++放大++';
+  const text = `${single} / ${double}`;
+  for (const rule of ['none', 'single', 'double', 'both']) {
+    const settings = helpers.normalizeEditorSettings({ assSpecialSymbolRule: rule });
+    assert.equal(helpers.normalizeEditorSettings(settings).assSpecialSymbolRule, rule);
+    const runs = Array.from(helpers.assInlineStyleRuns(text, settings.assEmphasisSyntax, settings));
+    const result = runs.map(run => run.text).join('');
+    const clean = '强调 下划线 删除 缩小 放大';
+    assert.equal(result, `${['single', 'both'].includes(rule) ? clean : single} / ${['double', 'both'].includes(rule) ? clean : double}`);
+    const cues = [{ start: 0, end: 1000, text }];
+    const ass = helpers.buildAssPayload(cues, { ...settings,
+      assProfile: { id: 'ass', styleId: 'ass', animations: {} }, assStyle: { id: 'ass' },
+      assExtensionStyle: { id: 'ass-extension' }, extensionSegments: cues, overlaySegments: cues });
+    const events = ass.split('\n').filter(line => line.startsWith('Dialogue:'));
+    assert.equal(events.length, 3);
+    events.forEach(line => {
+      if (rule === 'none') assert.ok(line.includes(text));
+      else {
+        assert.match(line, /\\s1/);
+        assert.match(line, /\\u1/);
+        if (rule === 'single') assert.ok(line.includes(double));
+        if (rule === 'double') assert.ok(line.includes(single));
+      }
+    });
+  }
+  const off = helpers.normalizeEditorSettings({ assSpecialSymbolRule: 'both', assStrikeEnabled: false });
+  assert.ok(helpers.assInlineStyleRuns(text, 'both', off).map(run => run.text).join('').includes('~~删除~~'));
 });
