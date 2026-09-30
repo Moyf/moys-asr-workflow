@@ -126,27 +126,49 @@ test('ASS preview preserves explicit line breaks without container wrapping', as
     MaweBoot.DATA.segments = [{
       start: 0,
       end: 4000,
-      text: '第一行\nAnd Jev can solve these two problems',
+      text: '第一行\nAnd **Jev can solve these two problems**',
     }];
+    MaweDom.playerStage.style.cssText = 'flex: 0 0 auto; width: 180px; height: 90px;';
     MaweSettings.EDITOR_SETTINGS.assMode = true;
     MaweDom.overlayToggle.checked = true;
     MawePlaybackLoop.refreshSubtitlePreview(1000, 0);
     const element = document.getElementById('overlay-main-text');
     const range = document.createRange();
     range.selectNodeContents(element);
-    const lineTops = Array.from(range.getClientRects()).map((rect) => Math.round(rect.top));
     const style = getComputedStyle(element);
+    // 混排字号（强调 1.1×）会让同一行内片段的 box 顶部相差约 0.1em，
+    // 直接对 rect.top 去重会把一行误算成两行；按字号相关容差聚簇后再数行。
+    const tolerance = Math.max(2, Math.round(parseFloat(style.fontSize) / 2));
+    const lineTops = Array.from(range.getClientRects())
+      .map((rect) => Math.round(rect.top))
+      .sort((a, b) => a - b)
+      .filter((top, index, tops) => index === 0 || top - tops[index - 1] > tolerance);
+    const lineCount = lineTops.length;
+    const wrapper = element.querySelector('.ass-emphasis-runs');
+    const run = element.querySelector('.ass-emphasis-run');
+    const wrapperStyle = getComputedStyle(wrapper);
+    const runStyle = getComputedStyle(run);
     return {
-      lineCount: new Set(lineTops).size,
+      lineCount,
       maxWidth: style.maxWidth,
       whiteSpace: style.whiteSpace,
       wordBreak: style.wordBreak,
+      fontSize: parseFloat(style.fontSize),
+      wrapperDisplay: wrapperStyle.display,
+      wrapperPadding: wrapperStyle.padding,
+      wrapperFontSize: parseFloat(wrapperStyle.fontSize),
+      runFontRatio: parseFloat(runStyle.fontSize) / parseFloat(style.fontSize),
     };
   });
   expect(preview.lineCount).toBe(2);
   expect(preview.maxWidth).toBe('none');
   expect(preview.whiteSpace).toBe('pre');
   expect(preview.wordBreak).toBe('normal');
+  expect(preview.fontSize).toBeLessThan(10);
+  expect(preview.wrapperDisplay).toBe('inline');
+  expect(preview.wrapperPadding).toBe('0px');
+  expect(preview.wrapperFontSize).toBe(preview.fontSize);
+  expect(preview.runFontRatio).toBeCloseTo(1.1, 1);
 
   await page.evaluate(() => {
     MaweSettings.EDITOR_SETTINGS.assMode = false;
@@ -154,6 +176,118 @@ test('ASS preview preserves explicit line breaks without container wrapping', as
   });
   await expect(page.locator('#overlay-main-text')).toHaveCSS('white-space', 'pre-wrap');
   await expect(page.locator('#overlay-main-text')).toHaveCSS('word-break', 'break-word');
+});
+
+test('ASS emphasis controls drive preview and inline export color', async ({ page }) => {
+  await disableOnboarding(page);
+  await stubSavePicker(page);
+  await page.goto(server.url);
+  await page.locator('#editor-settings-toggle').click();
+  await page.locator('#editor-settings-tab-subtitle-style').click();
+  await expect(page.locator('#ass-inline-text-settings')).toBeHidden();
+  await page.locator('#ass-mode-toggle').check();
+  await expect(page.locator('#ass-inline-text-settings')).toBeVisible();
+  await expect(page.locator('#ass-inline-text-settings input[type=checkbox]')).toHaveCount(5);
+  await expect(page.locator('#ass-inline-text-title')).toHaveText('特殊文本格式');
+  await expect(page.locator('#ass-special-symbol-rule')).toHaveValue('double');
+  await expect(page.locator('[data-ass-symbol="_"]')).toHaveText('__下划线__');
+  await page.locator('#ass-special-symbol-rule').selectOption('none');
+  await expect(page.locator('#ass-inline-text-options')).toBeHidden();
+  await page.locator('#ass-special-symbol-rule').selectOption('single');
+  await expect(page.locator('#ass-inline-text-options')).toBeVisible();
+  await expect(page.locator('[data-ass-symbol="_"]')).toHaveText('_下划线_');
+  await page.locator('#ass-special-symbol-rule').selectOption('both');
+  await expect(page.locator('[data-ass-symbol="*"]')).toHaveText('*强调*/**强调**');
+  await page.locator('#ass-special-symbol-rule').selectOption('double');
+  await page.locator('#ass-style-manager-open').click();
+  await page.locator('#ass-style-list [data-ass-selection-id="ass"]').click();
+  await expect(page.locator('#ass-style-emphasis-syntax')).toHaveCount(0);
+  await expect(page.locator('#ass-emphasis-syntax')).toBeChecked();
+  await expect(page.locator('#ass-style-emphasis-heading')).toHaveText('特殊文本样式');
+  await expect(page.locator('#ass-style-small-text-scale')).toHaveValue('0.8');
+  await expect(page.locator('#ass-style-large-text-scale')).toHaveValue('1.5');
+  await expect(page.locator('#ass-style-emphasis-scale')).toHaveValue('1.1');
+  await expect(page.locator('#ass-style-emphasis-scale')).toHaveAttribute('step', '0.05');
+  await expect(page.locator('#ass-style-emphasis-options')).toBeVisible();
+  const gap = await page.locator('#ass-style-emphasis-options').evaluate((element) => {
+    const previous = element.previousElementSibling;
+    return element.getBoundingClientRect().top - previous.getBoundingClientRect().bottom;
+  });
+  expect(gap).toBeGreaterThanOrEqual(8);
+  await page.locator('#ass-style-emphasis-color').fill('#ff0000');
+  await page.locator('#ass-style-emphasis-scale').fill('1.25');
+  await page.locator('#ass-style-emphasis-style').selectOption('text');
+  await page.locator('#ass-style-window-close').click();
+  await page.locator('#ass-emphasis-syntax').uncheck();
+  await page.locator('#ass-style-manager-open').click();
+  await expect(page.locator('#ass-style-emphasis-options')).toBeHidden();
+  await page.locator('#ass-style-window-close').click();
+  await page.locator('#ass-emphasis-syntax').check();
+  await expect(page.locator('#ass-special-symbol-rule')).toHaveValue('double');
+  await page.locator('#editor-settings-close').click();
+
+  const preview = await page.evaluate(() => {
+    MaweBoot.DATA.segments = [{ start: 0, end: 4000, text: '前 **重点** 后' }];
+    MaweSettings.EDITOR_SETTINGS.assMode = true;
+    MaweDom.overlayToggle.checked = true;
+    MawePlaybackLoop.refreshSubtitlePreview(1000, 0);
+    const element = document.getElementById('overlay-main-text');
+    const run = element.querySelector('.ass-emphasis-run');
+    return { text: element.textContent, color: getComputedStyle(run).color,
+      scale: parseFloat(getComputedStyle(run).fontSize) / parseFloat(getComputedStyle(element).fontSize) };
+  });
+  expect(preview.text).toBe('前 重点 后');
+  expect(preview.color).toBe('rgb(255, 0, 0)');
+  expect(preview.scale).toBeCloseTo(1.25);
+
+  await page.locator('#subtitle-export-btn').click();
+  await page.locator('#download-full-ass').click();
+  await expect.poll(() => page.evaluate(() => window.__exportSaves.length)).toBe(1);
+  const ass = await page.evaluate(() => window.__exportSaves[0].content);
+  expect(ass).toMatch(/前 \{\\1c&H000000FF&\\fs\d+\}重点\{\\1c&H00FFFFFF&\\fs\d+\} 后/);
+
+  await page.evaluate(() => {
+    MaweSettings.EDITOR_SETTINGS.assMode = false;
+    MawePlaybackLoop.refreshSubtitlePreview(1000, 0);
+  });
+  await expect(page.locator('#overlay-main-text')).toHaveText('前 **重点** 后');
+});
+
+test('ASS underscore markers underline only the marked preview and export text', async ({ page }) => {
+  await disableOnboarding(page);
+  await stubSavePicker(page);
+  await page.goto(server.url);
+  const preview = await page.evaluate(() => {
+    MaweBoot.DATA.segments = [{ start: 0, end: 4000, text: '前 _下划线_ 与 _**共同**_ 后' }];
+    // 单符号样例（_下划线_）需要「单双均可」规则；默认双符号下它们保留原文。
+    MaweSettings.EDITOR_SETTINGS.assSpecialSymbolRule = 'both';
+    MaweSettings.EDITOR_SETTINGS.assMode = true;
+    MaweDom.overlayToggle.checked = true;
+    MawePlaybackLoop.refreshSubtitlePreview(1000, 0);
+    const element = document.getElementById('overlay-main-text');
+    const runs = [...element.querySelectorAll('.ass-underline-run')];
+    return { text: element.textContent, runs: runs.map((run) => ({
+      text: run.textContent,
+      decoration: getComputedStyle(run).textDecorationLine,
+    })) };
+  });
+  expect(preview).toEqual({ text: '前 下划线 与 共同 后', runs: [
+    { text: '下划线', decoration: 'underline' },
+    { text: '共同', decoration: 'underline' },
+  ] });
+
+  await page.locator('#subtitle-export-btn').click();
+  await page.locator('#download-full-ass').click();
+  await expect.poll(() => page.evaluate(() => window.__exportSaves.length)).toBe(1);
+  const ass = await page.evaluate(() => window.__exportSaves[0].content);
+  expect(ass).toMatch(/\{\\u1\}下划线\{\\u0\}/);
+  expect(ass).toMatch(/\\u1\}共同\{[^}]*\\u0\}/);
+
+  await page.evaluate(() => {
+    MaweSettings.EDITOR_SETTINGS.assMode = false;
+    MawePlaybackLoop.refreshSubtitlePreview(1000, 0);
+  });
+  await expect(page.locator('#overlay-main-text')).toHaveText('前 _下划线_ 与 _**共同**_ 后');
 });
 
 test('writes the project title, source resolution, palette styles and speaker names to ASS', async ({ page }) => {

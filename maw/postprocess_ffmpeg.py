@@ -5,12 +5,13 @@
 from __future__ import annotations
 
 import json
+import math
 import os
 import re
 import subprocess
 import tempfile
 from dataclasses import dataclass
-from threading import Event
+from threading import Event, Thread
 from pathlib import Path
 from typing import Callable, Final, Mapping
 
@@ -68,6 +69,16 @@ class MediaToolCancelled(MediaToolError):
     """The user stopped an active FFmpeg operation."""
 
 
+class SubtitleFontGlyphMissingError(MediaToolError):
+    """libass could not find a glyph required by the subtitle text."""
+
+
+_ASS_MISSING_GLYPH_RE: Final = re.compile(
+    r"fontselect:\s*failed to find any fallback(?: with glyph 0x([0-9a-f]+))?\s+for font:\s*\(([^,\r\n]+),",
+    re.IGNORECASE,
+)
+
+
 @dataclass(frozen=True, slots=True)
 class AudioTrack:
     audio_index: int
@@ -82,8 +93,9 @@ class AudioTrack:
 
 @dataclass(frozen=True, slots=True)
 class BurnSubtitleRequest:
-    media_path: Path
+    media_path: Path | None
     subtitle_path: Path
+    green_screen: bool = False
     # Optional normalized style supplied by a caller; when omitted, the
     # shared user-level SRT default slot is loaded automatically.
     srt_style: Mapping[str, object] | None = None
@@ -99,7 +111,7 @@ class BurnSubtitleRequest:
 
 @dataclass(frozen=True, slots=True)
 class BurnSubtitleResult:
-    source_media_path: Path
+    source_media_path: Path | None
     media_path: Path
     subtitle_path: Path
     video_encoder: str
@@ -334,6 +346,61 @@ def _video_encoder_options(mode: str, crf: int, preset: str) -> list[str]:
     raise ValueError(f"unsupported video encoder mode: {mode}")
 
 
+def _subtitle_time_ms(value: str) -> int | None:
+    match = re.fullmatch(r"\s*(\d+):(\d{2}):(\d{2})[.,](\d{1,3})\s*", value)
+    if not match:
+        return None
+    hours, minutes, seconds, fraction = match.groups()
+    if int(minutes) >= 60 or int(seconds) >= 60:
+        return None
+    return ((int(hours) * 60 + int(minutes)) * 60 + int(seconds)) * 1000 + int(fraction.ljust(3, "0"))
+
+
+def _green_screen_input(subtitle: Path) -> list[str]:
+    """Make a finite green canvas from subtitle timing; no source video is needed."""
+    try:
+        contents = subtitle.read_text(encoding="utf-8-sig", errors="replace")
+    except OSError as error:
+        raise MediaToolError(f"无法读取字幕时间轴：{error}") from error
+    ends: list[int] = []
+    width, height = 1920, 1080
+    if subtitle.suffix.lower() == ".srt":
+        for match in re.finditer(r"-->\s*(\d+:\d{2}:\d{2}[.,]\d{1,3})", contents):
+            end = _subtitle_time_ms(match.group(1))
+            if end is not None:
+                ends.append(end)
+    else:
+        resolution = re.search(r"(?im)^PlayResX:\s*(\d+)\s*$", contents)
+        vertical = re.search(r"(?im)^PlayResY:\s*(\d+)\s*$", contents)
+        if resolution and vertical:
+            raw_width, raw_height = int(resolution.group(1)), int(vertical.group(1))
+            if 16 <= raw_width <= 3840 and 16 <= raw_height <= 2160:
+                width, height = raw_width + raw_width % 2, raw_height + raw_height % 2
+        fields = ["layer", "start", "end"]
+        in_events = False
+        for raw_line in contents.splitlines():
+            line = raw_line.strip()
+            if line.startswith("["):
+                in_events = line.lower() == "[events]"
+                continue
+            if not in_events:
+                continue
+            if line.lower().startswith("format:"):
+                fields = [field.strip().lower() for field in line.partition(":")[2].split(",")]
+            elif line.lower().startswith("dialogue:") and "end" in fields:
+                columns = line.partition(":")[2].split(",", max(0, len(fields) - 1))
+                end_index = fields.index("end")
+                if end_index < len(columns):
+                    end = _subtitle_time_ms(columns[end_index])
+                    if end is not None:
+                        ends.append(end)
+    if not ends or max(ends) <= 0:
+        raise MediaToolError("字幕文件没有可用的结束时间，无法确定绿幕视频时长。")
+    # Keep half a second after the last cue so its final frame is fully visible.
+    frame_count = max(30, math.ceil(max(ends) * 30 / 1000) + 15)
+    return ["-f", "lavfi", "-i", f"color=c=0x00ff00:s={width}x{height}:r=30:d={frame_count / 30:.3f}"]
+
+
 def run_burn_subtitles(
     request: BurnSubtitleRequest,
     *,
@@ -343,13 +410,23 @@ def run_burn_subtitles(
     on_progress: Callable[[Mapping[str, str]], None] | None = None,
 ) -> BurnSubtitleResult:
     """Render SRT/ASS subtitles into a new H.264 MP4."""
-    media = _validated_media_path(request.media_path, extensions=VIDEO_EXTENSIONS, label="video")
     subtitle = _validated_media_path(request.subtitle_path, extensions=SUBTITLE_EXTENSIONS, label="subtitle")
+    green_screen = request.green_screen is True
+    media = None if green_screen else _validated_media_path(
+        request.media_path or Path(""), extensions=VIDEO_EXTENSIONS, label="video"
+    )
     crf, preset, audio_bitrate = _burn_encoding_settings(request)
-    output = _available_media_output(media, suffix="subtitled", extension=".mp4")
+    output_source = subtitle if green_screen else media
+    assert output_source is not None
+    output = _available_media_output(
+        output_source,
+        suffix="green-screen" if green_screen else "subtitled",
+        extension=".mp4",
+    )
     temporary = output.with_name(f"{output.stem}.part{output.suffix}")
     requested_encoder = normalize_video_encoder(request.video_encoder)
     attempts = _video_encoder_attempts(ffmpeg_path, requested_encoder)
+    green_input = _green_screen_input(subtitle) if green_screen else []
     prepared_subtitle = subtitle
     converted_subtitle: Path | None = None
     last_error: MediaToolError | None = None
@@ -364,25 +441,22 @@ def run_burn_subtitles(
                 on_progress=on_progress,
             )
             prepared_subtitle = converted_subtitle
+        input_command = ["-i", str(media)] if media is not None else green_input
         common_command = [
             str(ffmpeg_path),
             "-y",
             "-nostdin",
             "-hide_banner",
             "-loglevel",
-            "error",
+            "warning",
             "-progress",
             "pipe:1",
-            "-i",
-            str(media),
+            *input_command,
             "-vf",
             _subtitle_filter(prepared_subtitle),
             "-map",
             "0:v:0",
-            "-map",
-            "0:a?",
-            "-map_metadata",
-            "0",
+            *([] if green_screen else ["-map", "0:a?", "-map_metadata", "0"]),
         ]
         for encoder in attempts:
             temporary.unlink(missing_ok=True)
@@ -391,10 +465,7 @@ def run_burn_subtitles(
                 *_video_encoder_options(encoder, crf, preset),
                 "-pix_fmt",
                 "yuv420p",
-                "-c:a",
-                "aac",
-                "-b:a",
-                audio_bitrate,
+                *(["-an"] if green_screen else ["-c:a", "aac", "-b:a", audio_bitrate]),
                 "-movflags",
                 "+faststart",
                 str(temporary),
@@ -406,8 +477,11 @@ def run_burn_subtitles(
                     cancel_event=cancel_event,
                     on_process=on_process,
                     on_progress=on_progress,
+                    check_ass_glyphs=True,
                 )
             except MediaToolCancelled:
+                raise
+            except SubtitleFontGlyphMissingError:
                 raise
             except MediaToolError as error:
                 last_error = error
@@ -681,6 +755,7 @@ def _run_ffmpeg_process(
     cancel_event: Event | None,
     on_process: Callable[[subprocess.Popen[str]], None] | None,
     on_progress: Callable[[Mapping[str, str]], None] | None,
+    check_ass_glyphs: bool = False,
 ) -> None:
     try:
         process = subprocess.Popen(
@@ -698,6 +773,14 @@ def _run_ffmpeg_process(
         raise MediaToolError(f"ffmpeg could not start: {error}") from error
     if on_process is not None:
         on_process(process)
+    stderr_chunks: list[str] = []
+
+    def collect_stderr() -> None:
+        if process.stderr is not None:
+            stderr_chunks.extend(process.stderr)
+
+    stderr_thread = Thread(target=collect_stderr, daemon=True)
+    stderr_thread.start()
     progress: dict[str, str] = {}
     try:
         stdout = process.stdout
@@ -716,8 +799,8 @@ def _run_ffmpeg_process(
                 continue
             if process.poll() is not None:
                 break
-        stderr = process.stderr.read() if process.stderr is not None else ""
         returncode = process.wait()
+        stderr_thread.join()
     except MediaToolCancelled:
         raise
     except OSError as error:
@@ -725,9 +808,21 @@ def _run_ffmpeg_process(
             terminate_process_tree(process)
         raise MediaToolError(f"ffmpeg failed: {error}") from error
     finally:
+        if stderr_thread.is_alive():
+            stderr_thread.join(timeout=5)
         release_process_tree(process)
+    stderr = "".join(stderr_chunks)
     if cancel_event is not None and cancel_event.is_set():
         raise MediaToolCancelled("ffmpeg operation cancelled")
+    if check_ass_glyphs:
+        match = _ASS_MISSING_GLYPH_RE.search(stderr)
+        if match:
+            glyph = f" U+{match.group(1).upper()}" if match.group(1) else ""
+            family = re.sub(r"[\x00-\x1f\x7f]", "", match.group(2)).strip()[:100] or "当前字体"
+            raise SubtitleFontGlyphMissingError(
+                f"字幕字体「{family}」缺少字形{glyph}，已中止烧录以避免输出方框。"
+                "请安装或更换为包含该字符的字体后重试。"
+            )
     if returncode != 0:
         detail = (stderr or "ffmpeg operation failed").strip()
         raise MediaToolError(detail[-4000:])

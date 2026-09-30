@@ -62,6 +62,87 @@ window.MAWE.register('utils-ass-style', function createUtilsModule(dependencies)
 
   const ASS_COLOR_STYLE_VALUES = Object.freeze(['text', 'speaker', 'stroke', 'none']);
 
+  // Markers are editor syntax only; the ASS event contains override tags instead.
+  function assMarkedRanges(source, marker) {
+    const width = marker.length;
+    const wordMarker = ['_', '-', '+'].includes(marker[0]);
+    const ranges = [];
+    let cursor = 0;
+    while (cursor < source.length) {
+      if (!source.startsWith(marker, cursor)
+        || source[cursor - 1] === marker[0] || source[cursor + width] === marker[0]
+        || (wordMarker && /[a-z0-9]/iu.test(source[cursor - 1] || ''))) {
+        cursor += 1;
+        continue;
+      }
+      let end = source.indexOf(marker, cursor + width);
+      // Skip a different delimiter width (e.g. ** inside a *...* pair).
+      while (end >= 0 && (source[end - 1] === marker[0] || source[end + width] === marker[0])) {
+        end = source.indexOf(marker, end + width);
+      }
+      if (end <= cursor + width || source[end - 1] === marker[0] || source[end + width] === marker[0]
+        || (wordMarker && (/[a-z0-9]/iu.test(source[end + width] || '')
+          || source.slice(cursor + width, end).includes('\n')))) {
+        cursor += width;
+        continue;
+      }
+      ranges.push({ start: cursor, end, width });
+      cursor = end + width;
+    }
+    return ranges;
+  }
+
+  function assMarkedRuns(text, syntax, includeUnderline, options = {}) {
+    const source = String(text ?? '');
+    const markers = new Map();
+    const rule = options.assSpecialSymbolRule;
+    const widths = rule === 'none' ? [] : rule === 'single' ? [1] : rule === 'double' ? [2] : [1, 2];
+    const addMarkers = (marker, field) => widths.forEach((width) => {
+      assMarkedRanges(source, marker.repeat(width)).forEach(({ start, end }) => {
+        markers.set(start, { field, active: true, width });
+        markers.set(end, { field, active: false, width });
+      });
+    });
+    if (['single', 'double', 'both'].includes(syntax)) addMarkers('*', 'emphasized');
+    if (includeUnderline) {
+      if (options.assUnderlineEnabled !== false) addMarkers('_', 'underlined');
+      if (options.assStrikeEnabled !== false) addMarkers('~', 'struck');
+      if (options.assSmallTextEnabled !== false) addMarkers('-', 'small');
+      if (options.assLargeTextEnabled !== false) addMarkers('+', 'large');
+    }
+    const runs = [];
+    let content = '';
+    const active = { emphasized: 0, underlined: 0, struck: 0, small: 0, large: 0 };
+    const flush = () => {
+      if (content) runs.push({ text: content, emphasized: active.emphasized > 0,
+        underlined: active.underlined > 0, struck: active.struck > 0,
+        size: active.large > 0 ? 'large' : active.small > 0 ? 'small' : null });
+      content = '';
+    };
+    for (let cursor = 0; cursor < source.length;) {
+      const marker = markers.get(cursor);
+      if (marker) {
+        flush();
+        active[marker.field] += marker.active ? 1 : -1;
+        cursor += marker.width;
+      } else {
+        content += source[cursor];
+        cursor += 1;
+      }
+    }
+    flush();
+    if (!runs.length) runs.push({ text: '', emphasized: false, underlined: false, struck: false, size: null });
+    return runs;
+  }
+
+  function assEmphasisRuns(text, syntax) {
+    return assMarkedRuns(text, syntax, false).map(({ text, emphasized }) => ({ text, emphasized }));
+  }
+
+  function assInlineStyleRuns(text, syntax, options = {}) {
+    return assMarkedRuns(text, syntax, true, options);
+  }
+
 
   function normalizeAssColorStyle(value) {
     if (value === 'underline') return 'text';
@@ -76,6 +157,11 @@ window.MAWE.register('utils-ass-style', function createUtilsModule(dependencies)
     fontName: 'Arial',
     fontSize: 18,
     primaryColor: '#ffffff',
+    emphasisColor: '#ffd34d',
+    emphasisScale: 1.1,
+    smallTextScale: 0.8,
+    largeTextScale: 1.5,
+    emphasisStyle: 'text',
     secondaryColor: '#ffffff',
     outlineColor: '#000000',
     backColor: '#000000',
@@ -189,6 +275,7 @@ window.MAWE.register('utils-ass-style', function createUtilsModule(dependencies)
   function normalizeAssStyle(value, fallback = ASS_DEFAULT_ASS_STYLE, styleId = '') {
     const source = value && typeof value === 'object' && !Array.isArray(value) ? value : {};
     const base = { ...fallback };
+    delete base.emphasisSyntax;
     const resolvedId = normalizeAssStyleId(styleId || source.id || fallback.id, fallback.id || 'ass');
     return {
       ...base,
@@ -198,6 +285,12 @@ window.MAWE.register('utils-ass-style', function createUtilsModule(dependencies)
       fontName: normalizeAssLibraryText(source.fontName, fallback.fontName || ASS_DEFAULT_FONT_FAMILY, ASS_STYLE_LIBRARY_MAX_FONT_LENGTH),
       fontSize: normalizeAssLibraryNumber(source.fontSize, fallback.fontSize || 18, 1, 512),
       primaryColor: normalizeAssLibraryColor(source.primaryColor, fallback.primaryColor || '#ffffff'),
+      emphasisColor: normalizeAssLibraryColor(source.emphasisColor, fallback.emphasisColor || '#ffd34d'),
+      emphasisScale: Math.round(normalizeAssLibraryNumber(source.emphasisScale, fallback.emphasisScale ?? 1.1, 1, 1.5, false) * 20) / 20,
+      smallTextScale: Math.round(normalizeAssLibraryNumber(source.smallTextScale, fallback.smallTextScale ?? 0.8, 0.1, 1, false) * 20) / 20,
+      largeTextScale: Math.round(normalizeAssLibraryNumber(source.largeTextScale, fallback.largeTextScale ?? 1.5, 1, 3, false) * 20) / 20,
+      emphasisStyle: ['text', 'stroke'].includes(source.emphasisStyle)
+        ? source.emphasisStyle : (fallback.emphasisStyle || 'text'),
       secondaryColor: normalizeAssLibraryColor(source.secondaryColor, fallback.secondaryColor || '#ffffff'),
       outlineColor: normalizeAssLibraryColor(source.outlineColor, fallback.outlineColor || '#000000'),
       backColor: normalizeAssLibraryColor(source.backColor, fallback.backColor || '#000000'),
@@ -289,7 +382,7 @@ window.MAWE.register('utils-ass-style', function createUtilsModule(dependencies)
   function defaultAssStyleLibrary() {
     return {
       schema: ASS_STYLE_LIBRARY_SCHEMA,
-      version: 1,
+      version: 2,
       styles: [
         cloneJsonValue(ASS_DEFAULT_STYLE),
         cloneJsonValue(ASS_DEFAULT_ASS_STYLE),
@@ -303,6 +396,7 @@ window.MAWE.register('utils-ass-style', function createUtilsModule(dependencies)
 
   function normalizeAssStyleLibrary(value) {
     const source = value && typeof value === 'object' && !Array.isArray(value) ? value : {};
+    const previousVersion = Number.isInteger(source.version) ? source.version : 1;
     const styleMap = new Map([
       ['default', normalizeAssStyle(ASS_DEFAULT_STYLE, ASS_DEFAULT_STYLE, 'default')],
       ['ass', normalizeAssStyle(ASS_DEFAULT_ASS_STYLE, ASS_DEFAULT_ASS_STYLE, 'ass')],
@@ -320,6 +414,15 @@ window.MAWE.register('utils-ass-style', function createUtilsModule(dependencies)
       });
     }
     const styles = [...styleMap.values()].slice(0, 64);
+    // v1 used 1.0 as the built-in emphasis default. Migrate only that old
+    // built-in value so custom styles and explicit v2 values remain intact.
+    if (previousVersion < 2) {
+      styles.forEach((style) => {
+        if (['default', 'ass', 'ass-extension'].includes(style.id) && style.emphasisScale === 1) {
+          style.emphasisScale = 1.1;
+        }
+      });
+    }
     // 内置条目若仍使用旧默认名，迁移到当前默认名；用户自定义过的名字不动。
     const legacyBuiltinStyleNames = { ass: 'ASS' };
     styles.forEach((style) => {
@@ -364,7 +467,7 @@ window.MAWE.register('utils-ass-style', function createUtilsModule(dependencies)
       ? normalizeAssStyleId(assignments.assExtensionStyleId) : 'ass-extension';
     return {
       schema: ASS_STYLE_LIBRARY_SCHEMA,
-      version: 1,
+      version: 2,
       styles,
       assProfiles: profiles.length ? profiles : [normalizeAssProfile(ASS_DEFAULT_PROFILE)],
       assignments: { srtBurnStyleId, assExportProfileId, assExtensionStyleId },
@@ -599,5 +702,5 @@ window.MAWE.register('utils-ass-style', function createUtilsModule(dependencies)
     };
   }
 
-  return Object.freeze({ ASS_COLOR_STYLE_NAMES, ASS_DEFAULT_ANIMATIONS, ASS_DEFAULT_ASS_STYLE, ASS_DEFAULT_COLOR, ASS_DEFAULT_EXTENSION_STYLE, ASS_DEFAULT_PLAY_RES_X, ASS_DEFAULT_PLAY_RES_Y, ASS_DEFAULT_PROFILE, ASS_DEFAULT_STYLE, ASS_EVENT_FORMAT, ASS_FALLBACK_COLOR_PALETTE, ASS_REFERENCE_PLAY_RES_Y, ASS_STYLE_FORMAT, ASS_STYLE_LIBRARY_SCHEMA, assColorFromHex, assDefaultFontFamily, assOverrideColorFromHex, assPreviewStyleAt, assProfileForId, assStyleForId, assStyleLine, assTransformStyleTargets, defaultAssStyleLibrary, escapeAssText, formatAssTime, normalizeAssAnimations, normalizeAssColorStyle, normalizeAssFontFamily, normalizeAssFontSize, normalizeAssLibraryColor, normalizeAssPlayResolution, normalizeAssProfile, normalizeAssStyle, normalizeAssStyleLibrary, normalizeAssTimeMs, resolveAssFontSize });
+  return Object.freeze({ ASS_COLOR_STYLE_NAMES, ASS_DEFAULT_ANIMATIONS, ASS_DEFAULT_ASS_STYLE, ASS_DEFAULT_COLOR, ASS_DEFAULT_EXTENSION_STYLE, ASS_DEFAULT_PLAY_RES_X, ASS_DEFAULT_PLAY_RES_Y, ASS_DEFAULT_PROFILE, ASS_DEFAULT_STYLE, ASS_EVENT_FORMAT, ASS_FALLBACK_COLOR_PALETTE, ASS_REFERENCE_PLAY_RES_Y, ASS_STYLE_FORMAT, ASS_STYLE_LIBRARY_SCHEMA, assColorFromHex, assDefaultFontFamily, assEmphasisRuns, assInlineStyleRuns, assOverrideColorFromHex, assPreviewStyleAt, assProfileForId, assStyleForId, assStyleLine, assTransformStyleTargets, defaultAssStyleLibrary, escapeAssText, formatAssTime, normalizeAssAnimations, normalizeAssColorStyle, normalizeAssFontFamily, normalizeAssFontSize, normalizeAssLibraryColor, normalizeAssPlayResolution, normalizeAssProfile, normalizeAssStyle, normalizeAssStyleLibrary, normalizeAssTimeMs, resolveAssFontSize });
 });

@@ -214,6 +214,12 @@
     assProfile,
     assStyle,
     assExtensionStyle,
+    assEmphasisSyntax: MaweSettings.EDITOR_SETTINGS.assEmphasisSyntax,
+    assSpecialSymbolRule: MaweSettings.EDITOR_SETTINGS.assSpecialSymbolRule,
+    assUnderlineEnabled: MaweSettings.EDITOR_SETTINGS.assUnderlineEnabled,
+    assStrikeEnabled: MaweSettings.EDITOR_SETTINGS.assStrikeEnabled,
+    assSmallTextEnabled: MaweSettings.EDITOR_SETTINGS.assSmallTextEnabled,
+    assLargeTextEnabled: MaweSettings.EDITOR_SETTINGS.assLargeTextEnabled,
   };
 }
 

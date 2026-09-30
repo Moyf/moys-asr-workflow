@@ -435,6 +435,10 @@ export async function startServer(projectJsonPath, mediaPath, port) {
     PYTHONUNBUFFERED: '1',
     LOCALAPPDATA: settingsRoot,
     XDG_CONFIG_HOME: settingsRoot,
+    // macOS ignores both keys above; the app-level override isolates the
+    // MAW user-data root on every platform so local saved styles never
+    // leak into assertions.
+    MAW_APP_DATA_ROOT: settingsRoot,
   }), { waitForStartup: true });
 }
 
@@ -453,6 +457,7 @@ export async function startBlankServer(port, settingsRoot) {
     PYTHONUNBUFFERED: '1',
     LOCALAPPDATA: settingsRoot,
     XDG_CONFIG_HOME: settingsRoot,
+    MAW_APP_DATA_ROOT: settingsRoot,
   }));
 }
 
