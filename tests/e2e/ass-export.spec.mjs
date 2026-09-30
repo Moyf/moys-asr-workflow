@@ -135,14 +135,21 @@ test('ASS preview preserves explicit line breaks without container wrapping', as
     const element = document.getElementById('overlay-main-text');
     const range = document.createRange();
     range.selectNodeContents(element);
-    const lineTops = Array.from(range.getClientRects()).map((rect) => Math.round(rect.top));
     const style = getComputedStyle(element);
+    // 混排字号（强调 1.1×）会让同一行内片段的 box 顶部相差约 0.1em，
+    // 直接对 rect.top 去重会把一行误算成两行；按字号相关容差聚簇后再数行。
+    const tolerance = Math.max(2, Math.round(parseFloat(style.fontSize) / 2));
+    const lineTops = Array.from(range.getClientRects())
+      .map((rect) => Math.round(rect.top))
+      .sort((a, b) => a - b)
+      .filter((top, index, tops) => index === 0 || top - tops[index - 1] > tolerance);
+    const lineCount = lineTops.length;
     const wrapper = element.querySelector('.ass-emphasis-runs');
     const run = element.querySelector('.ass-emphasis-run');
     const wrapperStyle = getComputedStyle(wrapper);
     const runStyle = getComputedStyle(run);
     return {
-      lineCount: new Set(lineTops).size,
+      lineCount,
       maxWidth: style.maxWidth,
       whiteSpace: style.whiteSpace,
       wordBreak: style.wordBreak,
@@ -252,6 +259,8 @@ test('ASS underscore markers underline only the marked preview and export text',
   await page.goto(server.url);
   const preview = await page.evaluate(() => {
     MaweBoot.DATA.segments = [{ start: 0, end: 4000, text: '前 _下划线_ 与 _**共同**_ 后' }];
+    // 单符号样例（_下划线_）需要「单双均可」规则；默认双符号下它们保留原文。
+    MaweSettings.EDITOR_SETTINGS.assSpecialSymbolRule = 'both';
     MaweSettings.EDITOR_SETTINGS.assMode = true;
     MaweDom.overlayToggle.checked = true;
     MawePlaybackLoop.refreshSubtitlePreview(1000, 0);

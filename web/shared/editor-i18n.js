@@ -287,14 +287,16 @@
     '启用（* 或 **）': 'Enabled (* or **)',
     '需要调整强调色或者字体比例，可以前往': 'To adjust the emphasis color or font scale, go to', '编辑特殊文本样式': 'Edit special text styles',
     '特殊符号规则': 'Special symbol rule', '单个符号': 'Single symbols', '双个符号': 'Double symbols', '单双均可': 'Single or double symbols',
+    '特殊符号规则已关闭，字幕中的符号将保留原文。': 'Special symbol rules are off; symbols in subtitles keep their literal text.',
     '特殊文本样式': 'Special text styles', '特殊文本格式': 'Special text formatting',
     '强调': 'Emphasis', '缩小': 'Smaller', '放大': 'Larger',
-    '*强调*/**强调**': '*emphasis*/**emphasis**', '_下划线_': '_underline_',
-    '~删除线~/~~删除线~~': '~strike~/~~strike~~', '-缩小-': '-smaller-', '+放大+': '+larger+',
     '下划线文本': 'Underlined text', '删除线文本': 'Struck text', '缩小文本': 'Smaller text', '放大文本': 'Larger text',
     '强调文字比例': 'Emphasis text scale', '缩小文字比例': 'Small text scale', '放大文字比例': 'Large text scale',
     '用成对符号标记特殊文本；开启的语法统一用于 ASS 主字幕、副字幕和叠加字幕的预览与导出。颜色与字号比例在 ASS 样式库中配置。': 'Mark special text with paired symbols. Enabled syntax applies to preview and export for all ASS caption tracks. Configure colors and size ratios in the ASS style library.',
-    '你可以使用 *强调*、~~删除~~、-缩小-、+放大+ 等符号来对特定字词添加特殊样式。': 'Use *emphasis*, ~~strike~~, -smaller-, and +larger+ to apply special styles to individual words.',
+    // 符号示例与下方 translateText 的模式按规则动态拼接，这里只放完整句子。
+    '你可以使用 *强调*、~删除~、-缩小-、+放大+ 等符号来对特定字词添加特殊样式。': 'Use *emphasis*, ~strike~, -smaller-, and +larger+ to apply special styles to individual words.',
+    '你可以使用 **强调**、~~删除~~、--缩小--、++放大++ 等符号来对特定字词添加特殊样式。': 'Use **emphasis**, ~~strike~~, --smaller--, and ++larger++ to apply special styles to individual words.',
+    '你可以使用 *强调*/**强调**、~删除~/~~删除~~、-缩小-/--缩小--、+放大+/++放大++ 等符号来对特定字词添加特殊样式。': 'Use *emphasis*/**emphasis**, ~strike~/~~strike~~, -smaller-/--smaller--, and +larger+/++larger++ to apply special styles to individual words.',
     '强调文本': 'Emphasis text', '强调文本语法': 'Emphasis syntax', '文字放大比例': 'Text scale', '强调样式': 'Emphasis style',
     '统一用于 ASS 主字幕、副字幕和叠加字幕的预览与导出。': 'Applies to ASS preview and export for main, extension, and overlay captions.',
     '单星号 *': 'Single asterisk *', '双星号 **': 'Double asterisks **',
@@ -1030,6 +1032,14 @@
     // 叠加轨字幕行的紧凑序号徽标（叠N），英文用 OVL（overlay 缩写）
     match = /^叠\s*(\d+)$/.exec(text);
     if (match) return `OVL${match[1]}`;
+    // 特殊文本格式的符号示例（*强调*、**强调**、*强调*/**强调** 等），
+    // 标记符号原样保留，仅翻译中间的标签词。
+    match = /^([*_~+-]{1,2})(强调|下划线|删除线|缩小|放大)\1(?:\/([*_~+-]{1,2})(强调|下划线|删除线|缩小|放大)\3)?$/.exec(text);
+    if (match) {
+      const first = `${match[1]}${translateText(match[2], EN).toLowerCase()}${match[1]}`;
+      if (!match[3]) return first;
+      return `${first}/${match[3]}${translateText(match[4], EN).toLowerCase()}${match[3]}`;
+    }
     match = /^(主字幕|副字幕)(?:（(.+)）)?\s*·\s*(\d+)\s*条$/.exec(text);
     if (match) {
       const label = translateText(match[1], EN);

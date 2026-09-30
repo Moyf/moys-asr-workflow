@@ -183,6 +183,42 @@ test('translates the ASS style manager labels and dynamic summaries', () => {
   );
 });
 
+test('translates ASS special text format samples and rule hints for every symbol rule', () => {
+  // data-ass-symbol 示例由 syncAssSymbolRule 按规则动态拼接，标记原样保留。
+  assert.equal(i18n.translateText('*强调*', 'en'), '*emphasis*');
+  assert.equal(i18n.translateText('**强调**', 'en'), '**emphasis**');
+  assert.equal(i18n.translateText('*强调*/**强调**', 'en'), '*emphasis*/**emphasis**');
+  assert.equal(i18n.translateText('_下划线_', 'en'), '_underline_');
+  assert.equal(i18n.translateText('__下划线__', 'en'), '__underline__');
+  assert.equal(i18n.translateText('_下划线_/__下划线__', 'en'), '_underline_/__underline__');
+  assert.equal(i18n.translateText('~删除线~', 'en'), '~strikeout~');
+  assert.equal(i18n.translateText('~~删除线~~', 'en'), '~~strikeout~~');
+  assert.equal(i18n.translateText('~删除线~/~~删除线~~', 'en'), '~strikeout~/~~strikeout~~');
+  assert.equal(i18n.translateText('-缩小-', 'en'), '-smaller-');
+  assert.equal(i18n.translateText('--缩小--', 'en'), '--smaller--');
+  assert.equal(i18n.translateText('-缩小-/--缩小--', 'en'), '-smaller-/--smaller--');
+  assert.equal(i18n.translateText('+放大+', 'en'), '+larger+');
+  assert.equal(i18n.translateText('++放大++', 'en'), '++larger++');
+  assert.equal(i18n.translateText('+放大+/++放大++', 'en'), '+larger+/++larger++');
+  // 不会把普通字幕文本误判成示例。
+  assert.equal(i18n.translateText('*重要*', 'en'), '*重要*');
+  assert.equal(i18n.translateText('**强调** 前后', 'en'), '**强调** 前后');
+  assert.equal(i18n.translateText('特殊符号规则已关闭，字幕中的符号将保留原文。', 'en'),
+    'Special symbol rules are off; symbols in subtitles keep their literal text.');
+  assert.equal(
+    i18n.translateText('你可以使用 *强调*、~删除~、-缩小-、+放大+ 等符号来对特定字词添加特殊样式。', 'en'),
+    'Use *emphasis*, ~strike~, -smaller-, and +larger+ to apply special styles to individual words.',
+  );
+  assert.equal(
+    i18n.translateText('你可以使用 **强调**、~~删除~~、--缩小--、++放大++ 等符号来对特定字词添加特殊样式。', 'en'),
+    'Use **emphasis**, ~~strike~~, --smaller--, and ++larger++ to apply special styles to individual words.',
+  );
+  assert.equal(
+    i18n.translateText('你可以使用 *强调*/**强调**、~删除~/~~删除~~、-缩小-/--缩小--、+放大+/++放大++ 等符号来对特定字词添加特殊样式。', 'en'),
+    'Use *emphasis*/**emphasis**, ~strike~/~~strike~~, -smaller-/--smaller--, and +larger+/++larger++ to apply special styles to individual words.',
+  );
+});
+
 // XML assertions are part of the Node unit suite, but still need a Python
 // subprocess. Keep it on the same locked project environment as E2E instead
 // of silently selecting whichever python.exe happens to be on PATH.
