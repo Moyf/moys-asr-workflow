@@ -190,7 +190,7 @@
     '微软雅黑 / 苹方': 'Microsoft YaHei / PingFang', '黑体': 'SimHei', '宋体': 'SimSun', 'Arial / Segoe UI': 'Arial / Segoe UI',
     '读取本机字体': 'Read local fonts', '点击读取本机字体（首次需要授权）': 'Click to read local fonts (permission required the first time)', '读取本机字体，填充字体下拉列表': 'Read local fonts to fill the font dropdown list',
     '未读取到可用的本机字体': 'No usable local fonts were returned',
-    '当前环境不支持自动读取本机字体': 'This environment cannot list local fonts automatically',
+    '当前浏览器不支持该功能': 'This browser does not support this feature',
     '未获准读取本机字体': 'Permission to read local fonts was not granted',
     '读取本机字体失败，请重试': 'Could not read local fonts; try again',
     '文字颜色': 'Text color', '背景颜色': 'Background color', '背景不透明度': 'Background opacity',

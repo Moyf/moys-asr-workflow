@@ -161,7 +161,7 @@ test('translates the ASS style manager labels and dynamic summaries', () => {
   assert.equal(i18n.translateText('读取本机字体', 'en'), 'Read local fonts');
   assert.equal(i18n.translateText('已读取 3 种本机字体', 'en'), 'Read 3 local font families');
   assert.equal(i18n.translateText('未读取到可用的本机字体', 'en'), 'No usable local fonts were returned');
-  assert.equal(i18n.translateText('当前环境不支持自动读取本机字体', 'en'), 'This environment cannot list local fonts automatically');
+  assert.equal(i18n.translateText('当前浏览器不支持该功能', 'en'), 'This browser does not support this feature');
   assert.equal(i18n.translateText('未获准读取本机字体', 'en'), 'Permission to read local fonts was not granted');
   assert.equal(i18n.translateText('读取本机字体失败，请重试', 'en'), 'Could not read local fonts; try again');
   assert.equal(i18n.translateText('基础样式', 'en'), 'Basic style');
