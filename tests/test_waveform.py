@@ -415,7 +415,7 @@ class EditorAssetTests(unittest.TestCase):
         self.assertIn('function triggerNinjaSplitFeedback(', page)
         # 帮助按钮改用 🤔 文本图标后，SVG 工具图标只剩选择/分割两个
         self.assertEqual(page.count('class="toolbar-button-icon"'), 2)
-        self.assertIn('.waveform-cue-block.selected {', page)
+        self.assertIn('.waveform-cue-block.selected,', page)
         # 选中字幕块只用 outline + 阴影高亮（颜色走 --selection-* 变量），不再改 border-color
         self.assertIn('outline: 2px solid var(--selection-yellow);', page)
         self.assertIn('filter: brightness(1.08);', page)
@@ -534,7 +534,7 @@ class EditorAssetTests(unittest.TestCase):
             + page.count('class="editor-settings-group subtitle-preview-style-group"')
             + page.count('class="editor-settings-group subtitle-color-settings-group"')
             + page.count('class="editor-settings-group subtitle-speaker-settings-group"'),
-            19,
+            20,
         )
         self.assertEqual(page.count('class="editor-settings-group split-language-type-group"'), 1)
         self.assertEqual(page.count('class="editor-settings-group subtitle-color-settings-group"'), 1)

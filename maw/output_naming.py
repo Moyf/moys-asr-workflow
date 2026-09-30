@@ -60,6 +60,7 @@ OPERATION_NAMES: Final[dict[str, dict[str, str]]] = {
 MEDIA_SUFFIX_NAMES: Final[dict[str, dict[str, str]]] = {
     "gap-removed": {"zh": "去空隙", "en": "gap-removed"},
     "subtitled": {"zh": "压字幕", "en": "subtitled"},
+    "green-screen": {"zh": "绿幕", "en": "green-screen"},
     "audio": {"zh": "音频", "en": "audio"},
 }
 

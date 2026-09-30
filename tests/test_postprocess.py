@@ -2642,6 +2642,46 @@ class MediaToolTests(unittest.TestCase):
         self.assertTrue(result.media_path.read_bytes())
         self.assertEqual(self.media.read_bytes(), b"media")
 
+    def test_green_screen_burn_uses_subtitle_timing_without_source_video(self) -> None:
+        subtitle = self.root / "green.ass"
+        subtitle.write_text(
+            "[Script Info]\nPlayResX: 321\nPlayResY: 181\n"
+            "[Events]\nFormat: Layer, Start, End, Style, Name, Text\n"
+            "Dialogue: 0,0:00:00.00,0:00:02.00,Default,,Hello\n",
+            encoding="utf-8",
+        )
+        with mock.patch("maw.postprocess_ffmpeg.subprocess.Popen", side_effect=self._fake_process) as popen:
+            result = run_burn_subtitles(
+                BurnSubtitleRequest(media_path=None, subtitle_path=subtitle,
+                                    green_screen=True, video_encoder="cpu"),
+                ffmpeg_path=Path("ffmpeg"),
+            )
+        command = popen.call_args.args[0]
+        self.assertIn("color=c=0x00ff00:s=322x182:r=30:d=2.500", command)
+        self.assertIn("-an", command)
+        self.assertNotIn(str(self.media), command)
+        self.assertEqual(result.source_media_path, None)
+        self.assertEqual(result.media_path.name, "green.green-screen.mp4")
+        self.assertTrue(result.media_path.is_file())
+
+        self.subtitle.write_text("1\n00:00:00,000 --> 00:00:03,250\nHello\n", encoding="utf-8")
+        with mock.patch("maw.postprocess_ffmpeg.subprocess.Popen", side_effect=self._fake_process) as popen:
+            run_burn_subtitles(
+                BurnSubtitleRequest(media_path=None, subtitle_path=self.subtitle,
+                                    green_screen=True, video_encoder="cpu"),
+                ffmpeg_path=Path("ffmpeg"),
+            )
+        self.assertIn("color=c=0x00ff00:s=1920x1080:r=30:d=3.767", popen.call_args.args[0])
+
+    def test_green_screen_rejects_subtitles_without_timing(self) -> None:
+        subtitle = self.root / "empty.ass"
+        subtitle.write_text("[Events]\nFormat: Layer, Start, End, Text\n", encoding="utf-8")
+        with self.assertRaisesRegex(MediaToolError, "没有可用的结束时间"):
+            run_burn_subtitles(
+                BurnSubtitleRequest(media_path=None, subtitle_path=subtitle, green_screen=True, video_encoder="cpu"),
+                ffmpeg_path=Path("ffmpeg"),
+            )
+
     def test_burn_subtitles_applies_selected_srt_style_to_converted_ass(self) -> None:
         generated = self.root / "generated.ass"
         generated.write_text(
@@ -2665,6 +2705,36 @@ class MediaToolTests(unittest.TestCase):
         self.assertEqual(len(popen.call_args_list), 1)
         command = popen.call_args.args[0]
         self.assertEqual(command[command.index("-vf") + 1], "ass=filename='clip.ass'")
+
+    def test_burn_subtitles_aborts_when_libass_reports_a_missing_glyph(self) -> None:
+        subtitle = self.root / "clip.ass"
+        _ = subtitle.write_text("[Script Info]\n", encoding="utf-8")
+        warning = (
+            "[Parsed_ass_0 @ 0x123] fontselect: failed to find any fallback "
+            "with glyph 0x4E2D for font: (PingFang SC, 700, 0)\n"
+        )
+
+        def missing_glyph_process(command: list[str], **kwargs: object):
+            process = self._fake_process(command, **kwargs)
+            process.stderr = StringIO(warning)
+            return process
+
+        with mock.patch(
+            "maw.postprocess_ffmpeg._video_encoder_attempts", return_value=("nvenc", "cpu"),
+        ), mock.patch(
+            "maw.postprocess_ffmpeg.subprocess.Popen", side_effect=missing_glyph_process,
+        ) as popen:
+            with self.assertRaisesRegex(MediaToolError, r"PingFang SC.*U\+4E2D.*方框"):
+                run_burn_subtitles(
+                    BurnSubtitleRequest(media_path=self.media, subtitle_path=subtitle, video_encoder="auto"),
+                    ffmpeg_path=Path("ffmpeg"),
+                )
+
+        command = popen.call_args.args[0]
+        self.assertEqual(command[command.index("-loglevel") + 1], "warning")
+        self.assertEqual(popen.call_count, 1)
+        self.assertFalse(list(self.root.glob("*.part.mp4")))
+        self.assertFalse((self.root / "clip.subtitled.mp4").exists())
 
     def test_burn_subtitles_supports_amd_amf_encoder(self) -> None:
         encoders = mock.Mock(returncode=0, stdout=" V....D h264_amf AMD AMF H.264 Encoder\n", stderr="")

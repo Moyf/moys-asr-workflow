@@ -1423,6 +1423,8 @@ class GuiWebBridgeTests(unittest.TestCase):
         self.assertIn('id="toolboxAlignmentGapLeadOut" type="number" min="0" max="2000" step="10" value="80"', page)
         self.assertNotIn('id="toolboxAlignmentGapHysteresis"', page)
         self.assertLess(page.index('id="toolboxUtilityMediaDropZone"'), page.index('id="toolboxUtilitiesTabList"'))
+        self.assertLess(page.index('id="toolboxBurnSubtitleDropZone"'), page.index('id="toolboxGreenScreen"'))
+        self.assertLess(page.index('id="toolboxGreenScreen"'), page.index('id="toolboxBurnVideoEncoderField"'))
         self.assertIn('data-tool="alignment"', page)
         alignment_tab = page.index('id="toolboxAlignmentTab"')
         self.assertLess(alignment_tab, page.index('id="toolboxWaveformTab"'))
@@ -1436,7 +1438,9 @@ class GuiWebBridgeTests(unittest.TestCase):
         self.assertIn('target === "toolboxAlignmentScript"', launcher_script)
         self.assertNotIn('target === "toolboxAlignmentMedia"', launcher_script)
         self.assertIn('return ["alignment", "waveform", "ffconcat", "burnSubtitle", "extractAudio"].includes(tool)', postprocess_script)
-        self.assertIn('$("toolboxUtilityMediaDropZone").classList.toggle("hidden", section !== "utilities")', postprocess_script)
+        self.assertIn('$("toolboxUtilityMediaDropZone").classList.toggle("hidden", section !== "utilities"', postprocess_script)
+        self.assertIn('function syncUtilityMediaFieldState()', postprocess_script)
+        self.assertIn('$("toolboxUtilityMediaPath").disabled = disabled', postprocess_script)
         self.assertIn('mediaPath: $("toolboxUtilityMediaPath").value.trim()', postprocess_script)
         self.assertNotIn("toolboxAlignmentMediaPath", postprocess_script)
         self.assertIn('const ALIGNMENT_GAP_REMOVE_KEY = "maw.launcher.alignment.gap_remove";', postprocess_script)
@@ -1985,6 +1989,23 @@ class GuiWebBridgeTests(unittest.TestCase):
         self.assertEqual(result["videoEncoder"], "auto")
         self.assertIsInstance(burn.call_args.kwargs["cancel_event"], threading.Event)
         self.assertEqual(result["mediaPath"], str(output.resolve()))
+
+    def test_green_screen_burn_bridge_does_not_require_media_path(self) -> None:
+        subtitle = self.root / "green.ass"
+        subtitle.write_text("[Events]\nFormat: Layer, Start, End, Text\n", encoding="utf-8")
+        ffmpeg = self.root / ("ffmpeg.exe" if os.name == "nt" else "ffmpeg")
+        ffmpeg.write_bytes(b"exe")
+        output = self.root / "green.green-screen.mp4"
+        with mock.patch("maw.gui_web._postprocess_ffmpeg_tools", return_value=FfmpegTools(ffmpeg=ffmpeg, ffprobe=None)):
+            with mock.patch("maw.gui_web.process_burn_subtitles") as burn:
+                burn.return_value = SimpleNamespace(source_media_path=None, subtitle_path=subtitle,
+                                                    media_path=output, video_encoder="cpu")
+                result = self.api.run_burn_subtitles({"subtitlePath": str(subtitle), "greenScreen": True})
+        self.assertTrue(result["ok"])
+        self.assertIsNone(burn.call_args.args[0].media_path)
+        self.assertTrue(burn.call_args.args[0].green_screen)
+        self.assertEqual(result["sourceMediaPath"], "")
+        self.assertEqual(result["mediaPath"], str(output))
 
     def test_media_tool_progress_is_compact_and_latest_message_ready(self) -> None:
         self.assertEqual(

@@ -705,6 +705,17 @@
     return activeToolboxSection === "postprocess" ? $("toolboxPostprocessView") : $("toolboxUtilitiesView");
   }
 
+  function syncUtilityMediaFieldState() {
+    const disabled = busy || (!$("toolboxBurnSubtitlePanel").classList.contains("hidden")
+      && $("toolboxGreenScreen").checked);
+    const field = $("toolboxUtilityMediaDropZone");
+    field.classList.toggle("is-disabled", disabled);
+    field.setAttribute("aria-disabled", String(disabled));
+    field.classList.remove("drag-over");
+    $("toolboxUtilityMediaPath").disabled = disabled;
+    $("pickToolboxUtilityMedia").disabled = disabled;
+  }
+
   function selectToolboxSection(section) {
     activeToolboxSection = section;
     document.querySelectorAll("[data-toolbox-section]").forEach((tab) => {
@@ -731,6 +742,7 @@
       tab.tabIndex = active ? 0 : -1;
     });
     Object.entries(panels).forEach(([name, id]) => $(id).classList.toggle("hidden", name !== tool));
+    syncUtilityMediaFieldState();
     document.querySelectorAll("[data-tool-action]").forEach((action) => {
       action.classList.toggle("hidden", action.dataset.toolAction !== tool || toolboxOpenMode === "auto-config");
     });
@@ -741,6 +753,7 @@
     const configOnly = toolboxOpenMode === "auto-config";
     $("toolboxOutputField").classList.toggle("hidden", section !== "postprocess" || configOnly);
     $("toolboxConfigOnlyHint")?.classList.toggle("hidden", !configOnly);
+    renderMediaToolAction();
   }
 
   function moveToolFocus(event) {
@@ -953,9 +966,10 @@
   function setBusy(nextBusy, statusKey = "toolbox_running") {
     busy = nextBusy;
     $("toolboxProgress").classList.toggle("hidden", !busy);
-    ["generateWaveform", "runWaveform", "toolboxGenerateSpectral", "runScriptMatch", "runTimestampAlignment", "runOcrDedup", "runLlmPostprocess", "runFixedProcess", "runFfconcatRebuild", "runBurnSubtitle", "runExtractAudio", "runToolboxAlignment", "stopToolboxAlignment", "saveLlmSettings", "testLlmConnection", "getLlmModels", "toolboxInputPath", "pickToolboxInput", "toolboxUtilityMediaPath", "pickToolboxUtilityMedia", "toolboxTimestampModel", "toolboxTimestampMode", "toolboxTimestampMediaPath", "pickToolboxTimestampMedia", "toolboxBurnSubtitlePath", "pickToolboxBurnSubtitle", "toolboxAudioTrack", "toolboxAlignmentProjectPath", "pickToolboxAlignmentProject", "toolboxAlignmentScriptPath", "pickToolboxAlignmentScript", "toolboxAlignmentGapMinimum", "toolboxAlignmentGapThreshold", "toolboxAlignmentGapLeadIn", "toolboxAlignmentGapLeadOut", "postprocessProvider", "llmProvider", "llmApiKey", "llmBaseUrl", "llmModel", "llmModelChoicesToggle", "llmReasoningMode", "llmCustomDisplayName", "ocrModel", "openOcrSettings", "ocrVideoPath", "pickOcrVideo", "ocrRegionMode", "ocrRegionX1", "ocrRegionY1", "ocrRegionX2", "ocrRegionY2", "ocrThreshold", "ocrReport", "postprocessConversion"].forEach((id) => {
+    ["generateWaveform", "runWaveform", "toolboxGenerateSpectral", "runScriptMatch", "runTimestampAlignment", "runOcrDedup", "runLlmPostprocess", "runFixedProcess", "runFfconcatRebuild", "runBurnSubtitle", "runExtractAudio", "runToolboxAlignment", "stopToolboxAlignment", "saveLlmSettings", "testLlmConnection", "getLlmModels", "toolboxInputPath", "pickToolboxInput", "toolboxUtilityMediaPath", "pickToolboxUtilityMedia", "toolboxTimestampModel", "toolboxTimestampMode", "toolboxTimestampMediaPath", "pickToolboxTimestampMedia", "toolboxBurnSubtitlePath", "pickToolboxBurnSubtitle", "toolboxGreenScreen", "toolboxAudioTrack", "toolboxAlignmentProjectPath", "pickToolboxAlignmentProject", "toolboxAlignmentScriptPath", "pickToolboxAlignmentScript", "toolboxAlignmentGapMinimum", "toolboxAlignmentGapThreshold", "toolboxAlignmentGapLeadIn", "toolboxAlignmentGapLeadOut", "postprocessProvider", "llmProvider", "llmApiKey", "llmBaseUrl", "llmModel", "llmModelChoicesToggle", "llmReasoningMode", "llmCustomDisplayName", "ocrModel", "openOcrSettings", "ocrVideoPath", "pickOcrVideo", "ocrRegionMode", "ocrRegionX1", "ocrRegionY1", "ocrRegionX2", "ocrRegionY2", "ocrThreshold", "ocrReport", "postprocessConversion"].forEach((id) => {
       $(id).disabled = busy;
     });
+    syncUtilityMediaFieldState();
     renderOcrModel();
     renderTimestampModel();
     applyBatchModeLocks();
@@ -981,6 +995,7 @@
     const stop = $("stopToolboxMedia");
     if (!burn || !extract || !stop) return;
     burn.disabled = busy;
+    burn.textContent = t($("toolboxGreenScreen").checked ? "toolbox_green_screen" : "toolbox_burn_subtitle");
     extract.disabled = busy;
     stop.textContent = t(mediaToolCancelling ? "toolbox_status_cancelling" : "toolbox_stop_media");
     stop.classList.toggle("hidden", !mediaToolRunning);
@@ -2139,13 +2154,14 @@
 
   async function runBurnSubtitle() {
     if (busy) return;
+    const greenScreen = $("toolboxGreenScreen").checked;
     const mediaPath = $("toolboxUtilityMediaPath").value.trim();
     const subtitlePath = $("toolboxBurnSubtitlePath").value.trim();
-    if (!mediaPath) {
+    if (!greenScreen && !mediaPath) {
       setResult(t("toolbox_need_media"), "error");
       return;
     }
-    if (!VIDEO_EXTS.has(extension(mediaPath))) {
+    if (!greenScreen && !VIDEO_EXTS.has(extension(mediaPath))) {
       const message = t("toolbox_utility_video_required");
       setFieldError("toolboxUtilityMediaPath", message);
       setResult(message, "error");
@@ -2166,8 +2182,9 @@
     setBusy(true, "toolbox_status_burning");
     try {
       const result = await bridge("run_burn_subtitles", {
-        mediaPath,
+        mediaPath: greenScreen ? "" : mediaPath,
         subtitlePath,
+        greenScreen,
         videoEncoder: $("toolboxBurnVideoEncoder")?.value || "auto",
         ...burnEncodingPayload(),
       });
@@ -2176,7 +2193,7 @@
         $("toolboxUtilityMediaPath").value = result.mediaPath;
         syncPaths();
         void refreshAudioTracks();
-        setResult(`${t("toolbox_burn_done")}\n${result.mediaPath}`, "success");
+        setResult(`${t(greenScreen ? "toolbox_green_screen_done" : "toolbox_burn_done")}\n${result.mediaPath}`, "success");
       } else {
         const message = mediaToolErrorMessage(result);
         if (result.field) setFieldError(result.field, message);
@@ -2333,6 +2350,11 @@
   $("runFixedProcess").addEventListener("click", runFixedProcess);
   $("runFfconcatRebuild").addEventListener("click", runFfconcat);
   $("runBurnSubtitle").addEventListener("click", runBurnSubtitle);
+  $("toolboxGreenScreen").addEventListener("change", () => {
+    syncUtilityMediaFieldState();
+    setFieldError("toolboxUtilityMediaPath", "");
+    renderMediaToolAction();
+  });
   $("saveBurnSubtitleSettings").addEventListener("click", saveBurnSubtitleSettings);
   $("runExtractAudio").addEventListener("click", runExtractAudio);
   $("stopToolboxMedia").addEventListener("click", () => { void stopMediaTool(); });

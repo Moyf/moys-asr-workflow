@@ -1068,6 +1068,42 @@ __WAVEFORM_CSS__
     </div>
   </div>
   <small class="editor-settings-hint" id="subtitle-style-ass-mode-hint" hidden>⬆️ 当前预览样式由 ASS 字幕模式控制</small>
+  <span class="editor-settings-group-heading" id="ass-inline-text-title" hidden>特殊文本格式</span>
+  <div id="ass-inline-text-settings" class="editor-settings-group" role="group" aria-labelledby="ass-inline-text-title" hidden>
+    <div class="ass-inline-text-content">
+      <small class="editor-settings-hint">用成对符号标记特殊文本；开启的语法统一用于 ASS 主字幕、副字幕和叠加字幕的预览与导出。颜色与字号比例在 ASS 样式库中配置。</small>
+      <label class="subtitle-preview-setting-row"><span>特殊符号规则</span>
+        <select id="ass-special-symbol-rule"><option value="none">关闭</option><option value="single">单个符号</option><option value="double" selected>双个符号</option><option value="both">单双均可</option></select>
+      </label>
+      <div class="ass-inline-text-options" id="ass-inline-text-options">
+        <div class="ass-inline-text-row">
+          <div class="ass-inline-text-option">
+            <label class="toggle editor-settings-item"><input type="checkbox" id="ass-emphasis-syntax" data-ass-inline-setting="assEmphasisSyntax"> 强调</label>
+            <small class="editor-settings-hint" data-ass-symbol="*" data-ass-symbol-label="强调">**强调**</small>
+          </div>
+          <div class="ass-inline-text-option">
+            <label class="toggle editor-settings-item"><input type="checkbox" id="ass-underline-enabled" data-ass-inline-setting="assUnderlineEnabled"> 下划线</label>
+            <small class="editor-settings-hint" data-ass-symbol="_" data-ass-symbol-label="下划线">__下划线__</small>
+          </div>
+          <div class="ass-inline-text-option">
+            <label class="toggle editor-settings-item"><input type="checkbox" id="ass-strike-enabled" data-ass-inline-setting="assStrikeEnabled"> 删除线</label>
+            <small class="editor-settings-hint" data-ass-symbol="~" data-ass-symbol-label="删除线">~~删除线~~</small>
+          </div>
+        </div>
+        <div class="ass-inline-text-row">
+          <div class="ass-inline-text-option">
+            <label class="toggle editor-settings-item"><input type="checkbox" id="ass-small-text-enabled" data-ass-inline-setting="assSmallTextEnabled"> 缩小</label>
+            <small class="editor-settings-hint" data-ass-symbol="-" data-ass-symbol-label="缩小">--缩小--</small>
+          </div>
+          <div class="ass-inline-text-option">
+            <label class="toggle editor-settings-item"><input type="checkbox" id="ass-large-text-enabled" data-ass-inline-setting="assLargeTextEnabled"> 放大</label>
+            <small class="editor-settings-hint" data-ass-symbol="+" data-ass-symbol-label="放大">++放大++</small>
+          </div>
+        </div>
+      </div>
+      <small class="editor-settings-hint">需要调整强调色或者字体比例，可以前往 <button type="button" class="editor-settings-inline-action ass-style-edit-open" id="ass-special-style-edit">编辑特殊文本样式</button>。</small>
+    </div>
+  </div>
   <span class="editor-settings-group-heading" id="subtitle-preview-style-title">主字幕</span>
   <div class="editor-settings-group subtitle-preview-style-group" id="main-subtitle-preview-settings" role="group" aria-labelledby="subtitle-preview-style-title">
     <div class="subtitle-preview-settings-fields" id="main-subtitle-css-fields">
@@ -1630,6 +1666,19 @@ __WAVEFORM_CSS__
               <label class="ass-style-field">纵向缩放<input type="number" id="ass-style-scale-y" data-ass-style-field="scaleY" min="0" max="1000" step="1"><span class="ass-style-unit">%</span></label>
               <label class="ass-style-field">旋转<input type="number" id="ass-style-angle" data-ass-style-field="angle" min="-360" max="360" step="1"><span class="ass-style-unit">°</span></label>
             </div>
+          </div>
+        </section>
+        <section class="ass-style-form-section" id="ass-style-emphasis-section" aria-labelledby="ass-style-emphasis-heading" hidden>
+          <div class="ass-style-subheading" id="ass-style-emphasis-heading">特殊文本样式</div>
+          <small class="editor-settings-hint" id="ass-special-format-hint">你可以使用 **强调**、~~删除~~、--缩小--、++放大++ 等符号来对特定字词添加特殊样式。</small>
+          <div id="ass-style-emphasis-options" class="ass-style-fields ass-style-fields-special ass-style-emphasis-options">
+            <label class="ass-style-color-field">强调色<input type="color" id="ass-style-emphasis-color" data-ass-style-field="emphasisColor"></label>
+            <label class="ass-style-field">强调样式<select id="ass-style-emphasis-style" data-ass-style-field="emphasisStyle"><option value="stroke">描边颜色</option><option value="text">文本颜色</option></select></label>
+            <label class="ass-style-field">强调文字比例<input type="number" id="ass-style-emphasis-scale" data-ass-style-field="emphasisScale" min="1" max="1.5" step="0.05" value="1.1"></label>
+          </div>
+          <div class="ass-style-fields ass-style-fields-text-size ass-style-emphasis-options">
+            <label class="ass-style-field" id="ass-style-small-text-field">缩小文字比例<input type="number" id="ass-style-small-text-scale" data-ass-style-field="smallTextScale" min="0.1" max="1" step="0.05" value="0.8"></label>
+            <label class="ass-style-field" id="ass-style-large-text-field">放大文字比例<input type="number" id="ass-style-large-text-scale" data-ass-style-field="largeTextScale" min="1" max="3" step="0.05" value="1.5"></label>
           </div>
         </section>
         <div class="ass-style-preview-card"><span class="ass-style-preview-label">ASS 预览</span><span id="ass-style-preview-sample">Aa 字幕预览 / 字幕样例</span></div>
