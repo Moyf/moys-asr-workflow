@@ -402,6 +402,55 @@ __WAVEFORM_CSS__
   </div>
 </aside>
 
+<!-- 可拖动的非模态「标记与区段」管理窗（通用 Marker / Region） -->
+<aside class="gap-remove-panel markers-panel" id="markers-panel" role="dialog" aria-modal="false" aria-hidden="true" aria-labelledby="markers-panel-title">
+  <header class="gap-remove-panel-header" id="markers-drag-handle">
+    <div class="gap-remove-heading">
+      <span class="gap-remove-eyebrow">媒体标记</span>
+      <h3 id="markers-panel-title">标记与区段</h3>
+    </div>
+    <button type="button" id="markers-close" class="gap-remove-close" title="关闭（Esc）" aria-label="关闭标记与区段工具窗">×</button>
+  </header>
+  <div class="gap-remove-panel-body">
+    <div class="markers-summary" id="markers-summary" aria-live="polite">尚无标记；在波形顶部标记轨道空白处点击或拖动即可添加。</div>
+    <div class="markers-actions">
+      <button type="button" id="markers-add-current" class="markers-inline-button">在播放头添加标记</button>
+    </div>
+    <div class="markers-filters-field">
+      <label class="gap-remove-field">
+        <span class="gap-remove-field-label">搜索</span>
+        <input type="search" id="markers-search" placeholder="按名称或备注搜索" maxlength="200">
+      </label>
+      <div class="markers-filters">
+        <label class="markers-filter-item">类型
+          <select id="markers-filter-kind">
+            <option value="all">全部</option>
+            <option value="marker">标记</option>
+            <option value="region">区段</option>
+          </select>
+        </label>
+        <label class="markers-filter-item">颜色
+          <select id="markers-filter-color">
+            <option value="all">全部</option>
+          </select>
+        </label>
+        <label class="markers-filter-item">复核
+          <select id="markers-filter-review">
+            <option value="all">全部</option>
+            <option value="pending">待复核</option>
+            <option value="confirmed">已确认</option>
+            <option value="plain">普通标记</option>
+          </select>
+        </label>
+      </div>
+    </div>
+    <div class="markers-list" id="markers-list" aria-live="polite"></div>
+    <footer class="gap-remove-panel-footer">
+      <span>点击列表项定位试听 · Esc 关闭</span>
+    </footer>
+  </div>
+</aside>
+
 <!-- 可拖动的非模态拼接/合并字幕工具窗 -->
 <aside class="gap-remove-panel auto-merge-panel" id="auto-merge-panel" role="dialog" aria-modal="false" aria-hidden="true" aria-labelledby="auto-merge-panel-title">
   <header class="gap-remove-panel-header" id="auto-merge-drag-handle">
@@ -1808,6 +1857,8 @@ __WAVEFORM_CSS__
       <span class="sep"></span>
       <button type="button" id="auto-merge-manage" title="将间隔过短的前后字幕直接吸附在一起，去除中间的短暂空白（可直接吸收短字幕）" aria-expanded="false" aria-controls="auto-merge-panel">拼接/合并字幕</button>
       <button type="button" id="subtitle-extend-manage" title="打开可拖动的延长字幕工具窗" aria-expanded="false" aria-controls="subtitle-extend-panel">延长字幕</button>
+      <span class="sep"></span>
+      <button type="button" id="markers-manage" title="打开「标记与区段」管理窗：查看、筛选、编辑通用标记与区段（含 AI 复核项）" aria-expanded="false" aria-controls="markers-panel">标记与区段</button>
       <span class="sep"></span>
       <span class="multi-subtitle-controls multi-subtitle-waveform-controls" id="multi-subtitle-waveform-controls" hidden>
         <button type="button" id="multi-subtitle-align" title="将当前选中的副字幕批量对齐到各自绑定的主字幕时间范围">批量对齐</button>

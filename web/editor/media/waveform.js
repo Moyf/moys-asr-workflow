@@ -199,6 +199,8 @@ constructor(options) {
   installMethods(WaveformEditor.prototype, window.MAWE.resolve('waveform-cue-drag', helpers));
   installMethods(WaveformEditor.prototype, window.MAWE.resolve('waveform-cue-commands', helpers));
   installMethods(WaveformEditor.prototype, window.MAWE.resolve('waveform-gap-drag', helpers));
+  const markerDescriptors = window.MAWE.resolve('waveform-markers', helpers);
+  installMethods(WaveformEditor.prototype, markerDescriptors);
   installMethods(WaveformEditor.prototype, window.MAWE.resolve('waveform-cue-drag-update', helpers));
   installMethods(WaveformEditor.prototype, window.MAWE.resolve('waveform-playback', helpers));
 
@@ -263,6 +265,9 @@ window.AsrWaveform = {
       restoreWaveformTopEdgeMs,
       computeGroupBadges,
       cueBlockContinuationEdges,
+      // waveform-markers 的纯函数单测入口：跨行挑选与行内时间换算。
+      pickMarkerRow: markerDescriptors.pickMarkerRow.value,
+      markerRowTimeMs: markerDescriptors.markerRowTimeMs.value,
     },
   };
   if (window.MAWE?.register) {

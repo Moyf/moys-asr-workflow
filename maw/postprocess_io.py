@@ -8,6 +8,7 @@ import json
 import os
 import re
 import tempfile
+from collections.abc import Mapping
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -25,6 +26,9 @@ class SubtitleArtifact:
     warnings: tuple[str, ...] = ()
     translated_srt_path: Path | None = None
     media_path: Path | None = None
+    # Operation-specific counters (currently the AI cleanup pass); surfaced by
+    # the toolbox bridge but never part of the written files themselves.
+    stats: Mapping[str, int] | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -118,6 +122,7 @@ def write_artifacts(
     warnings: tuple[str, ...] = (),
     output_directory: Path | None = None,
     media_path: Path | None = None,
+    stats: Mapping[str, int] | None = None,
 ) -> SubtitleArtifact:
     normalized = normalize_project(project)
     raw_media = normalized.get("media")
@@ -143,6 +148,7 @@ def write_artifacts(
         project_path=project_path,
         srt_path=srt_path,
         warnings=warnings,
+        stats=stats,
     )
 
 

@@ -74,7 +74,7 @@ window.MAWE.register('editor-state', function createEditorState(project) {
     cuePanelTextEditSnapshot: null, cuePanelCanceling: false,
   });
   const editing = Object.seal({ editingState: null, extensionEditingState: null });
-  const changes = Object.seal({ projectImportDirty: false, gapRemoveDirty: false, previewGeometryDirty: false });
+  const changes = Object.seal({ projectImportDirty: false, gapRemoveDirty: false, previewGeometryDirty: false, markersDirty: false });
 
   // Compare only subtitle truth, never DOM, playback or rebuildable waveform caches.
   function segmentsFingerprint() {
@@ -104,6 +104,7 @@ window.MAWE.register('editor-state', function createEditorState(project) {
   function hasProjectChanges(pendingText = false) {
     const dirty = track => Boolean(track?._dirty) || (track?.segments || []).some(segment => segment._dirty);
     return Boolean(pendingText || changes.projectImportDirty || changes.gapRemoveDirty || changes.previewGeometryDirty
+      || changes.markersDirty
       || (project.segments || []).some(segment => segment._dirty)
       || dirty(project.overlay_track) || dirty(project.multi_subtitle)
       || (project.multi_subtitle?.tracks || []).some(dirty));
