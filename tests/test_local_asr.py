@@ -1417,7 +1417,7 @@ class LocalAsrFlowTests(unittest.TestCase):
             mock.patch.dict(os.environ, {}, clear=True),
             mock.patch.dict("sys.modules", {"torch": fake_torch, "qwen_asr": fake_qwen}),
         ):
-            QwenAsrEngine(model="test-model", device="auto")._load()
+            QwenAsrEngine(model="test-model", device="auto", forced_aligner="test-aligner")._load()
             self.assertNotIn("PYTORCH_ENABLE_MPS_FALLBACK", os.environ)
 
         self.assertEqual(calls, ["cpu"])
@@ -1490,7 +1490,7 @@ class LocalAsrFlowTests(unittest.TestCase):
                 return_value=HubSnapshot(Path("/tmp/hf-snapshot"), "huggingface"),
             ) as prepare:
                 resolved = resolve_engine_model_source("Qwen/Qwen3-ASR-0.6B")
-            self.assertEqual(resolved, "/tmp/hf-snapshot")
+            self.assertEqual(resolved, str(Path("/tmp/hf-snapshot")))
             self.assertEqual(prepare.call_args.args[0], "Qwen/Qwen3-ASR-0.6B")
 
         with mock.patch(
@@ -1501,7 +1501,7 @@ class LocalAsrFlowTests(unittest.TestCase):
                 "OpenMOSS-Team/MOSS-Transcribe-Diarize",
                 revision="e8681d68",
             )
-            self.assertEqual(resolved, "/tmp/ms-snapshot")
+            self.assertEqual(resolved, str(Path("/tmp/ms-snapshot")))
             self.assertEqual(prepare.call_args.kwargs["revision"], "e8681d68")
 
     def test_default_output_uses_engine_tag(self) -> None:

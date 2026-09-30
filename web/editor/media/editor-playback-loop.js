@@ -183,6 +183,7 @@ MaweCueListAnchor.scrollCueIntoViewIfNeeded(MaweCueListAnchor.playbackCueListEle
     : '';
   const mainText = mainVisible ? String(seg.text || '') : '';
   const extensionText = extensionVisible ? (extension.text || '') : '';
+  const assMode = MaweSettings.EDITOR_SETTINGS.assMode === true;
   if (MaweDom.overlayMainSpeakerLabelEl.classList.contains('hidden') === speakerLabelVisible) {
     MaweDom.overlayMainSpeakerLabelEl.classList.toggle('hidden', !speakerLabelVisible);
   }
@@ -193,11 +194,10 @@ MaweCueListAnchor.scrollCueIntoViewIfNeeded(MaweCueListAnchor.playbackCueListEle
     MaweDom.overlayMainSpeakerLabelEl.dataset.color = speakerLabelColor;
     MaweDom.overlayMainSpeakerLabelEl.style.color = speakerLabelColor;
   }
-  if (MaweDom.overlayMainTextNode.nodeValue !== mainText) MaweDom.overlayMainTextNode.nodeValue = mainText;
-  if (extensionVisible && MaweDom.overlayExtensionTextEl.textContent !== extensionText) {
+  if (!assMode && MaweDom.overlayMainTextNode.nodeValue !== mainText) MaweDom.overlayMainTextNode.nodeValue = mainText;
+  if (!assMode && extensionVisible && MaweDom.overlayExtensionTextEl.textContent !== extensionText) {
     MaweDom.overlayExtensionTextEl.textContent = extensionText;
   }
-  const assMode = MaweSettings.EDITOR_SETTINGS.assMode === true;
   if (assMode) {
     applyAssSubtitlePreview({
       tMs,
@@ -210,6 +210,8 @@ MaweCueListAnchor.scrollCueIntoViewIfNeeded(MaweCueListAnchor.playbackCueListEle
     });
   } else if (MaweDom.overlayEl.dataset.assMode === 'true') {
     restoreCssSubtitlePreview();
+    MaweDom.overlayMainTextNode.nodeValue = mainText;
+    MaweDom.overlayExtensionTextEl.textContent = extensionText;
   }
   const overlayCueText = overlayCueVisible ? String(overlayCue.text || '') : '';
   // 叠加轨说话人标签：颜色→说话人映射按叠加轨自身数组解析，与主字幕同源。
@@ -249,7 +251,7 @@ MaweCueListAnchor.scrollCueIntoViewIfNeeded(MaweCueListAnchor.playbackCueListEle
     overlayTrackSpeakerLabelEl.dataset.color = overlaySpeakerLabelColor;
     overlayTrackSpeakerLabelEl.style.color = overlaySpeakerLabelColor;
   }
-  if (overlayTrackTextNode.nodeValue !== overlayCueText) {
+  if (!assMode && overlayTrackTextNode.nodeValue !== overlayCueText) {
     overlayTrackTextNode.nodeValue = overlayCueText;
   }
   // 预览字幕颜色：读取当前字幕的颜色快照（head/color_ref），按设置应用到

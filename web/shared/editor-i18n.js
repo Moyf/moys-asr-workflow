@@ -281,6 +281,26 @@
     '自定义颜色会同步用于字幕列表、波形、预览和 ASS 导出；恢复默认即可使用内置色值。': 'Custom colors apply to the subtitle list, waveform, preview, and ASS export; restore defaults to use the built-in values.',
     '已恢复内置字幕颜色': 'Built-in subtitle colors restored',
     '基础样式': 'Basic style', '拓展样式': 'Extended style', '边框与阴影': 'Border and shadow', '对齐': 'Alignment',
+    '缩小文本比例 (-文本-)': 'Small text scale (-text-)', '放大文本比例 (+文本+)': 'Large text scale (+text+)',
+    '缩小文本比例': 'Small text scale', '放大文本比例': 'Large text scale',
+    '_下划线_ 和 ~删除线~（也支持 ~~）可局部添加文字装饰。': '_Underline_ and ~strikethrough~ (also ~~) apply local text decoration.',
+    '启用（* 或 **）': 'Enabled (* or **)',
+    '需要调整强调色或者字体比例，可以前往': 'To adjust the emphasis color or font scale, go to', '编辑特殊文本样式': 'Edit special text styles',
+    '特殊符号规则': 'Special symbol rule', '单个符号': 'Single symbols', '双个符号': 'Double symbols', '单双均可': 'Single or double symbols',
+    '特殊符号规则已关闭，字幕中的符号将保留原文。': 'Special symbol rules are off; symbols in subtitles keep their literal text.',
+    '特殊文本样式': 'Special text styles', '特殊文本格式': 'Special text formatting',
+    '强调': 'Emphasis', '缩小': 'Smaller', '放大': 'Larger',
+    '下划线文本': 'Underlined text', '删除线文本': 'Struck text', '缩小文本': 'Smaller text', '放大文本': 'Larger text',
+    '强调文字比例': 'Emphasis text scale', '缩小文字比例': 'Small text scale', '放大文字比例': 'Large text scale',
+    '用成对符号标记特殊文本；开启的语法统一用于 ASS 主字幕、副字幕和叠加字幕的预览与导出。颜色与字号比例在 ASS 样式库中配置。': 'Mark special text with paired symbols. Enabled syntax applies to preview and export for all ASS caption tracks. Configure colors and size ratios in the ASS style library.',
+    // 符号示例与下方 translateText 的模式按规则动态拼接，这里只放完整句子。
+    '你可以使用 *强调*、~删除~、-缩小-、+放大+ 等符号来对特定字词添加特殊样式。': 'Use *emphasis*, ~strike~, -smaller-, and +larger+ to apply special styles to individual words.',
+    '你可以使用 **强调**、~~删除~~、--缩小--、++放大++ 等符号来对特定字词添加特殊样式。': 'Use **emphasis**, ~~strike~~, --smaller--, and ++larger++ to apply special styles to individual words.',
+    '你可以使用 *强调*/**强调**、~删除~/~~删除~~、-缩小-/--缩小--、+放大+/++放大++ 等符号来对特定字词添加特殊样式。': 'Use *emphasis*/**emphasis**, ~strike~/~~strike~~, -smaller-/--smaller--, and +larger+/++larger++ to apply special styles to individual words.',
+    '强调文本': 'Emphasis text', '强调文本语法': 'Emphasis syntax', '文字放大比例': 'Text scale', '强调样式': 'Emphasis style',
+    '统一用于 ASS 主字幕、副字幕和叠加字幕的预览与导出。': 'Applies to ASS preview and export for main, extension, and overlay captions.',
+    '单星号 *': 'Single asterisk *', '双星号 **': 'Double asterisks **',
+    '描边颜色': 'Outline color', '文本颜色': 'Text color',
     '媒体': 'Media', '外观': 'Appearance', '语言': 'Language', '主题': 'Theme', '明亮模式': 'Light mode', '暗色模式': 'Dark mode', '跟随系统': 'Follow System', '预览字幕': 'Subtitle preview', '预览副字幕': 'Secondary subtitle preview', '预览表情包': 'Sticker preview', '媒体播放控制': 'Media playback controls',
     '视频预览': 'Video preview', '播放控制': 'Playback controls', '自动预览鼠标位置画面': 'Automatically preview the frame under the pointer', 'JKL 按键播放控制': 'JKL playback controls',
     '在播放器画面内预览主字幕': 'Preview the main subtitle in the player', '在波形区悬停鼠标时，播放器自动预览指针位置的画面': 'While hovering the waveform, the player automatically previews the frame at the pointer',
@@ -1012,6 +1032,14 @@
     // 叠加轨字幕行的紧凑序号徽标（叠N），英文用 OVL（overlay 缩写）
     match = /^叠\s*(\d+)$/.exec(text);
     if (match) return `OVL${match[1]}`;
+    // 特殊文本格式的符号示例（*强调*、**强调**、*强调*/**强调** 等），
+    // 标记符号原样保留，仅翻译中间的标签词。
+    match = /^([*_~+-]{1,2})(强调|下划线|删除线|缩小|放大)\1(?:\/([*_~+-]{1,2})(强调|下划线|删除线|缩小|放大)\3)?$/.exec(text);
+    if (match) {
+      const first = `${match[1]}${translateText(match[2], EN).toLowerCase()}${match[1]}`;
+      if (!match[3]) return first;
+      return `${first}/${match[3]}${translateText(match[4], EN).toLowerCase()}${match[3]}`;
+    }
     match = /^(主字幕|副字幕)(?:（(.+)）)?\s*·\s*(\d+)\s*条$/.exec(text);
     if (match) {
       const label = translateText(match[1], EN);

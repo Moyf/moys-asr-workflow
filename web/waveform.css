@@ -587,10 +587,6 @@
 .waveform-row.multi-subtitle-row .waveform-cue-block[data-track="extension"] .waveform-cue-label {
   color: var(--text-secondary);
 }
-.waveform-row.multi-subtitle-row .waveform-cue-block[data-track="extension"].selected {
-  outline-style: solid;
-  outline-color: var(--accent-hover);
-}
 .waveform-playhead {
   position: absolute;
   z-index: 9;
@@ -849,11 +845,6 @@
 .waveform-basic .waveform-cue-badge {
   bottom: calc(9px + max(35px, min(72px, 40%)) + var(--badge-stack-index, 0) * 16px);
 }
-.waveform-cue-block.selected {
-  z-index: 6;
-  outline: 2px solid var(--selection-yellow);
-  box-shadow: 0 0 0 1px rgba(89, 62, 0, .72), 0 0 8px var(--selection-yellow-glow);
-}
 /* 框选拖动中的命中预览：比正式选中的实线弱一档的虚线；
    松开后由选中契约替换为 .selected。 */
 .waveform-cue-block.marquee-preview {
@@ -1023,6 +1014,16 @@
   );
 }
 .waveform-row.multi-subtitle-row .waveform-cue-block.disabled:hover { opacity: 0.7; }
+/* Selection wins over track, disabled, and hover decoration on every lane. */
+.waveform-cue-block.selected,
+.waveform-cue-block.selected:hover,
+.waveform-row.multi-subtitle-row .waveform-cue-block.selected,
+.waveform-row.multi-subtitle-row .waveform-cue-block.selected:hover {
+  z-index: 6;
+  opacity: 1;
+  outline: 2px solid var(--selection-yellow);
+  box-shadow: 0 0 0 1px rgba(89, 62, 0, .72), 0 0 8px var(--selection-yellow-glow);
+}
 
 /* Ctrl(Cmd)+左键拖动空白处：使用和正式字幕块一致的几何形状，
    以半透明虚影预览将要创建的时间范围。 */

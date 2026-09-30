@@ -124,6 +124,19 @@ class FfmpegResolverTests(unittest.TestCase):
         self.assertEqual(result.ffmpeg, homebrew["ffmpeg"].resolve())
         self.assertEqual(result.ffprobe, homebrew["ffprobe"].resolve())
 
+    def test_macos_full_ffmpeg_precedes_regular_homebrew_ffmpeg(self) -> None:
+        full = self._write_tools(self.root / "ffmpeg-full" / "bin", "ffmpeg", "ffprobe")
+        regular = self._write_tools(self.root / "homebrew" / "bin", "ffmpeg", "ffprobe")
+        result = resolve_ffmpeg_tools(
+            environment={"PATH": ""},
+            platform="darwin",
+            macos_directories=(self.root / "ffmpeg-full" / "bin", self.root / "homebrew" / "bin"),
+            include_bundled=False,
+        )
+        self.assertEqual(result.ffmpeg, full["ffmpeg"].resolve())
+        self.assertEqual(result.ffprobe, full["ffprobe"].resolve())
+        self.assertNotEqual(result.ffmpeg, regular["ffmpeg"].resolve())
+
     def test_frozen_bundle_is_checked_beside_launcher_executable(self) -> None:
         executable = self.root / "MAW.exe"
         executable.write_bytes(b"launcher")

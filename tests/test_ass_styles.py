@@ -28,6 +28,7 @@ class AssStyleLibraryTests(unittest.TestCase):
         library = default_ass_style_library()
 
         self.assertEqual(library["schema"], ASS_STYLE_LIBRARY_SCHEMA)
+        self.assertEqual(library["version"], 2)
         self.assertEqual(library["assignments"], {
             "srtBurnStyleId": "default",
             "assExportProfileId": "ass",
@@ -40,6 +41,28 @@ class AssStyleLibraryTests(unittest.TestCase):
         self.assertEqual([profile["id"] for profile in library["assProfiles"]], ["ass"])
         self.assertTrue(library["styles"][0]["builtin"])
         self.assertTrue(library["assProfiles"][0]["builtin"])
+        self.assertEqual(find_ass_style(library, "ass")["emphasisScale"], 1.1)
+
+    def test_v1_emphasis_scale_default_migrates_for_builtin_styles_only(self) -> None:
+        legacy = normalize_ass_style_library({
+            "version": 1,
+            "styles": [
+                {"id": "default", "emphasisScale": 1.0},
+                {"id": "ass", "emphasisScale": 1.0},
+                {"id": "ass-extension", "emphasisScale": 1.0},
+                {"id": "custom-one", "emphasisScale": 1.0},
+            ],
+        })
+        self.assertEqual(legacy["version"], 2)
+        for style_id in ("default", "ass", "ass-extension"):
+            self.assertEqual(find_ass_style(legacy, style_id)["emphasisScale"], 1.1)
+        self.assertEqual(find_ass_style(legacy, "custom-one")["emphasisScale"], 1.0)
+
+        current = normalize_ass_style_library({
+            "version": 2,
+            "styles": [{"id": "ass", "emphasisScale": 1.0}],
+        })
+        self.assertEqual(find_ass_style(current, "ass")["emphasisScale"], 1.0)
 
     def test_extension_style_slot_is_protected_and_repaired(self) -> None:
         # 旧版库没有 ass-extension 槽位：归一化补齐内置副字幕样式，
@@ -67,6 +90,31 @@ class AssStyleLibraryTests(unittest.TestCase):
         self.assertEqual(default_extension["primaryColor"], "#ffd34d")
         self.assertEqual(default_extension["fontSize"], 54)
         self.assertEqual(default_extension["marginV"], 166)
+
+    def test_emphasis_style_settings_survive_server_normalization(self) -> None:
+        library = normalize_ass_style_library({
+            "styles": [{"id": "ass", "emphasisSyntax": "single",
+                        "emphasisColor": "#aabbcc", "emphasisScale": 1.27,
+                        "emphasisStyle": "stroke", "smallTextScale": 0.63, "largeTextScale": 2.2}],
+        })
+        style = find_ass_style(library, "ass")
+        self.assertNotIn("emphasisSyntax", style)
+        self.assertEqual((style["emphasisColor"], style["emphasisStyle"]),
+                         ("#aabbcc", "stroke"))
+        self.assertEqual(style["emphasisScale"], 1.25)
+        self.assertEqual(style["smallTextScale"], 0.65)
+        self.assertEqual(style["largeTextScale"], 2.2)
+        invalid = normalize_ass_style_library({
+            "styles": [{"id": "ass", "emphasisSyntax": {},
+                        "emphasisColor": "invalid", "emphasisScale": "bad", "emphasisStyle": []}],
+        })
+        self.assertNotIn("emphasisSyntax", find_ass_style(invalid, "ass"))
+        self.assertEqual(find_ass_style(invalid, "ass")["emphasisColor"], "#ffd34d")
+        self.assertEqual(find_ass_style(invalid, "ass")["emphasisStyle"], "text")
+        self.assertEqual(find_ass_style(invalid, "ass")["emphasisScale"], 1.1)
+        self.assertEqual(find_ass_style(invalid, "ass")["smallTextScale"], 0.8)
+        self.assertEqual(find_ass_style(invalid, "ass")["largeTextScale"], 1.5)
+        self.assertEqual(find_ass_style(normalize_ass_style_library({"styles": [{"id": "ass", "emphasisScale": 9}]}), "ass")["emphasisScale"], 1.5)
 
     def test_legacy_full_library_keeps_every_custom_style(self) -> None:
         # 旧版满员库（2 内置 + 62 自定义 = 64）：归一化补入第三个内置
