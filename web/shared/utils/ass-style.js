@@ -146,7 +146,7 @@ window.MAWE.register('utils-ass-style', function createUtilsModule(dependencies)
     primaryColor: '#ffffff',
     emphasisSyntax: 'double',
     emphasisColor: '#ffd34d',
-    emphasisScale: 1,
+    emphasisScale: 1.1,
     emphasisStyle: 'text',
     secondaryColor: '#ffffff',
     outlineColor: '#000000',
@@ -273,7 +273,7 @@ window.MAWE.register('utils-ass-style', function createUtilsModule(dependencies)
       emphasisSyntax: ['none', 'single', 'double'].includes(source.emphasisSyntax)
         ? source.emphasisSyntax : (fallback.emphasisSyntax || 'double'),
       emphasisColor: normalizeAssLibraryColor(source.emphasisColor, fallback.emphasisColor || '#ffd34d'),
-      emphasisScale: Math.round(normalizeAssLibraryNumber(source.emphasisScale, fallback.emphasisScale ?? 1, 1, 1.5, false) * 20) / 20,
+      emphasisScale: Math.round(normalizeAssLibraryNumber(source.emphasisScale, fallback.emphasisScale ?? 1.1, 1, 1.5, false) * 20) / 20,
       emphasisStyle: ['text', 'stroke'].includes(source.emphasisStyle)
         ? source.emphasisStyle : (fallback.emphasisStyle || 'text'),
       secondaryColor: normalizeAssLibraryColor(source.secondaryColor, fallback.secondaryColor || '#ffffff'),
@@ -367,7 +367,7 @@ window.MAWE.register('utils-ass-style', function createUtilsModule(dependencies)
   function defaultAssStyleLibrary() {
     return {
       schema: ASS_STYLE_LIBRARY_SCHEMA,
-      version: 1,
+      version: 2,
       styles: [
         cloneJsonValue(ASS_DEFAULT_STYLE),
         cloneJsonValue(ASS_DEFAULT_ASS_STYLE),
@@ -381,6 +381,7 @@ window.MAWE.register('utils-ass-style', function createUtilsModule(dependencies)
 
   function normalizeAssStyleLibrary(value) {
     const source = value && typeof value === 'object' && !Array.isArray(value) ? value : {};
+    const previousVersion = Number.isInteger(source.version) ? source.version : 1;
     const styleMap = new Map([
       ['default', normalizeAssStyle(ASS_DEFAULT_STYLE, ASS_DEFAULT_STYLE, 'default')],
       ['ass', normalizeAssStyle(ASS_DEFAULT_ASS_STYLE, ASS_DEFAULT_ASS_STYLE, 'ass')],
@@ -398,6 +399,15 @@ window.MAWE.register('utils-ass-style', function createUtilsModule(dependencies)
       });
     }
     const styles = [...styleMap.values()].slice(0, 64);
+    // v1 used 1.0 as the built-in emphasis default. Migrate only that old
+    // built-in value so custom styles and explicit v2 values remain intact.
+    if (previousVersion < 2) {
+      styles.forEach((style) => {
+        if (['default', 'ass', 'ass-extension'].includes(style.id) && style.emphasisScale === 1) {
+          style.emphasisScale = 1.1;
+        }
+      });
+    }
     // 内置条目若仍使用旧默认名，迁移到当前默认名；用户自定义过的名字不动。
     const legacyBuiltinStyleNames = { ass: 'ASS' };
     styles.forEach((style) => {
@@ -442,7 +452,7 @@ window.MAWE.register('utils-ass-style', function createUtilsModule(dependencies)
       ? normalizeAssStyleId(assignments.assExtensionStyleId) : 'ass-extension';
     return {
       schema: ASS_STYLE_LIBRARY_SCHEMA,
-      version: 1,
+      version: 2,
       styles,
       assProfiles: profiles.length ? profiles : [normalizeAssProfile(ASS_DEFAULT_PROFILE)],
       assignments: { srtBurnStyleId, assExportProfileId, assExtensionStyleId },

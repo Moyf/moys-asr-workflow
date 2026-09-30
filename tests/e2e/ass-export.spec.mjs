@@ -126,8 +126,9 @@ test('ASS preview preserves explicit line breaks without container wrapping', as
     MaweBoot.DATA.segments = [{
       start: 0,
       end: 4000,
-      text: '第一行\nAnd Jev can solve these two problems',
+      text: '第一行\nAnd **Jev can solve these two problems**',
     }];
+    MaweDom.playerStage.style.cssText = 'flex: 0 0 auto; width: 180px; height: 90px;';
     MaweSettings.EDITOR_SETTINGS.assMode = true;
     MaweDom.overlayToggle.checked = true;
     MawePlaybackLoop.refreshSubtitlePreview(1000, 0);
@@ -136,17 +137,31 @@ test('ASS preview preserves explicit line breaks without container wrapping', as
     range.selectNodeContents(element);
     const lineTops = Array.from(range.getClientRects()).map((rect) => Math.round(rect.top));
     const style = getComputedStyle(element);
+    const wrapper = element.querySelector('.ass-emphasis-runs');
+    const run = element.querySelector('.ass-emphasis-run');
+    const wrapperStyle = getComputedStyle(wrapper);
+    const runStyle = getComputedStyle(run);
     return {
       lineCount: new Set(lineTops).size,
       maxWidth: style.maxWidth,
       whiteSpace: style.whiteSpace,
       wordBreak: style.wordBreak,
+      fontSize: parseFloat(style.fontSize),
+      wrapperDisplay: wrapperStyle.display,
+      wrapperPadding: wrapperStyle.padding,
+      wrapperFontSize: parseFloat(wrapperStyle.fontSize),
+      runFontRatio: parseFloat(runStyle.fontSize) / parseFloat(style.fontSize),
     };
   });
   expect(preview.lineCount).toBe(2);
   expect(preview.maxWidth).toBe('none');
   expect(preview.whiteSpace).toBe('pre');
   expect(preview.wordBreak).toBe('normal');
+  expect(preview.fontSize).toBeLessThan(10);
+  expect(preview.wrapperDisplay).toBe('inline');
+  expect(preview.wrapperPadding).toBe('0px');
+  expect(preview.wrapperFontSize).toBe(preview.fontSize);
+  expect(preview.runFontRatio).toBeCloseTo(1.1, 1);
 
   await page.evaluate(() => {
     MaweSettings.EDITOR_SETTINGS.assMode = false;
@@ -165,6 +180,7 @@ test('ASS emphasis controls drive preview and inline export color', async ({ pag
   await page.locator('#ass-style-manager-open').click();
   await page.locator('#ass-style-list [data-ass-selection-id="ass"]').click();
   await expect(page.locator('#ass-style-emphasis-syntax')).toHaveValue('double');
+  await expect(page.locator('#ass-style-emphasis-scale')).toHaveValue('1.1');
   await expect(page.locator('#ass-style-emphasis-scale')).toHaveAttribute('step', '0.05');
   await expect(page.locator('#ass-style-emphasis-options')).toBeVisible();
   const gap = await page.locator('#ass-style-emphasis-options').evaluate((element) => {

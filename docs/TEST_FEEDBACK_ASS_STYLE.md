@@ -1,6 +1,6 @@
 # ASS 样式库与字幕模式反馈记录
 
-本记录对应 `feat/ass-style-library` 的 ASS 样式库、ASS 字幕模式和样式设置反馈，覆盖两轮用户反馈（截图仅作视觉参考）。已全部处理完毕，无「进行中」「待处理」「阻塞」项。
+本记录对应 ASS 样式库、ASS 字幕模式和样式设置反馈。前两轮反馈已完成；2026-09-30 的后续反馈与验证结果记录在文末。
 
 ## 修改项
 
@@ -37,3 +37,25 @@
 - 移动端窄屏（≤760px）侧栏双列网格已按显式定位重写，真机观感待人工过目。
 - 浏览器中的拖动、播放、Seek 以及 ASS 大字号和动画视觉效果需要真实页面检查。
 - `blank-editor.html` 暂不生成；仓库约定要求发布前统一生成内联副本（`test_blank_editor_inlines_modular_assets` 使用现渲染构建，不受影响）。
+
+## 后续测试反馈（2026-09-30）
+
+附件图片仅作为 ASS 预览与绿幕烧录出现字形方框的现象参考，不包含额外操作指令。
+
+| 状态 | 反馈 | 处理决定 / 涉及文件 | 验证 |
+| --- | --- | --- | --- |
+| 已修复 | ASS 强调片段继承普通字幕 `span` 的内边距，拉开相邻文字并可能诱发换行 | `web/editor.css` 对 ASS 强调包装层、强调片段和下划线片段清除通用字幕盒的 padding、限宽、背景与行内块布局 | `node --test tests/test_editor_utils.mjs` 276/276 通过；e2e 回归已补，运行受 Playwright CLI 不可用限制 |
+| 已修复 | 小预览中强调文字可能小于普通文字 | ASS 标记包装层和片段继承父级计算字号，强调片段按样式比例局部放大（`web/editor.css`） | e2e 小预览回归覆盖父/子字号比例；`node --check tests/e2e/ass-export.spec.mjs` 通过，浏览器运行未验证 |
+| 已修复 | 强调文字放大比例默认改为 1.1 | JS/Python 默认样式及输入初值更新；样式库版本升至 2，将 v1 内置样式的旧默认 1.0 迁移为 1.1，保留自定义样式和 v2 显式 1.0；文档同步 | `tests.test_ass_styles`、`tests.test_editor_utils.mjs` 通过；e2e 输入初值断言已补，浏览器运行未验证 |
+| 已修复 | ASS 预览似乎在少数字符后提前换行 | 根因为强调片段被通用 `span` 规则设成带内边距、限宽的行内块，现已重置；ASS 预览继续只按字幕中的显式换行分行，不按预览容器自动折行；ASS 导出 `WrapStyle: 0` 仍由 libass 按画布与边距排版 | 小预览/长行 e2e 回归已补但浏览器不可运行；`node --check tests/e2e/ass-export.spec.mjs` 通过 |
+| 已修复 | 烧录缺字时可能静默输出方框 | 最终烧录命令捕获 FFmpeg warning；识别 libass `fontselect: failed to find any fallback ... glyph` 后取消输出并提示字体名和缺失码点，且不触发编码器重试（`maw/postprocess_ffmpeg.py`） | `tests.test_postprocess.MediaToolTests` 通过；缺字 warning 单测通过；本机 FFmpeg 无 `ass`/`subtitles` 滤镜，真实烧录未验证 |
+
+### 本轮整体验证
+
+- `UV_CACHE_DIR=/tmp/maw-uv-cache uv run --no-sync python -m unittest tests.test_ass_styles tests.test_postprocess`：119 项通过，1 项跳过。
+- `UV_CACHE_DIR=/tmp/maw-uv-cache node --test tests/test_editor_utils.mjs`：276 项通过。
+- `node --test tests/test_editor_script_syntax.mjs tests/test_editor_script_order.mjs`：脚本语法通过；顺序断言因缺少 `acorn` 被跳过。
+- `node --check tests/e2e/ass-export.spec.mjs` 与 `git diff --check` 通过。
+- 全量 Python 测试运行 1724 项，44 项因沙箱禁止绑定 `127.0.0.1` 报 `PermissionError`，其余通过或跳过；错误均来自本地服务器绑定测试。
+- `npm test -- --grep 'ASS preview preserves|ASS emphasis controls'` 未能启动：环境没有本地 `@playwright/test` CLI，调用到的 `playwright` 命令不识别 `test` 子命令，浏览器视觉回归未运行。
+- 本机 FFmpeg 构建没有 `ass`/`subtitles` 滤镜；缺字提示路径以合成 libass warning 的单测验证，真实媒体烧录未验证。

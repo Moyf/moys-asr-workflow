@@ -11,7 +11,7 @@ import re
 import subprocess
 import tempfile
 from dataclasses import dataclass
-from threading import Event
+from threading import Event, Thread
 from pathlib import Path
 from typing import Callable, Final, Mapping
 
@@ -67,6 +67,16 @@ class MediaToolError(RuntimeError):
 
 class MediaToolCancelled(MediaToolError):
     """The user stopped an active FFmpeg operation."""
+
+
+class SubtitleFontGlyphMissingError(MediaToolError):
+    """libass could not find a glyph required by the subtitle text."""
+
+
+_ASS_MISSING_GLYPH_RE: Final = re.compile(
+    r"fontselect:\s*failed to find any fallback(?: with glyph 0x([0-9a-f]+))?\s+for font:\s*\(([^,\r\n]+),",
+    re.IGNORECASE,
+)
 
 
 @dataclass(frozen=True, slots=True)
@@ -438,7 +448,7 @@ def run_burn_subtitles(
             "-nostdin",
             "-hide_banner",
             "-loglevel",
-            "error",
+            "warning",
             "-progress",
             "pipe:1",
             *input_command,
@@ -467,8 +477,11 @@ def run_burn_subtitles(
                     cancel_event=cancel_event,
                     on_process=on_process,
                     on_progress=on_progress,
+                    check_ass_glyphs=True,
                 )
             except MediaToolCancelled:
+                raise
+            except SubtitleFontGlyphMissingError:
                 raise
             except MediaToolError as error:
                 last_error = error
@@ -742,6 +755,7 @@ def _run_ffmpeg_process(
     cancel_event: Event | None,
     on_process: Callable[[subprocess.Popen[str]], None] | None,
     on_progress: Callable[[Mapping[str, str]], None] | None,
+    check_ass_glyphs: bool = False,
 ) -> None:
     try:
         process = subprocess.Popen(
@@ -759,6 +773,14 @@ def _run_ffmpeg_process(
         raise MediaToolError(f"ffmpeg could not start: {error}") from error
     if on_process is not None:
         on_process(process)
+    stderr_chunks: list[str] = []
+
+    def collect_stderr() -> None:
+        if process.stderr is not None:
+            stderr_chunks.extend(process.stderr)
+
+    stderr_thread = Thread(target=collect_stderr, daemon=True)
+    stderr_thread.start()
     progress: dict[str, str] = {}
     try:
         stdout = process.stdout
@@ -777,8 +799,8 @@ def _run_ffmpeg_process(
                 continue
             if process.poll() is not None:
                 break
-        stderr = process.stderr.read() if process.stderr is not None else ""
         returncode = process.wait()
+        stderr_thread.join()
     except MediaToolCancelled:
         raise
     except OSError as error:
@@ -786,9 +808,21 @@ def _run_ffmpeg_process(
             terminate_process_tree(process)
         raise MediaToolError(f"ffmpeg failed: {error}") from error
     finally:
+        if stderr_thread.is_alive():
+            stderr_thread.join(timeout=5)
         release_process_tree(process)
+    stderr = "".join(stderr_chunks)
     if cancel_event is not None and cancel_event.is_set():
         raise MediaToolCancelled("ffmpeg operation cancelled")
+    if check_ass_glyphs:
+        match = _ASS_MISSING_GLYPH_RE.search(stderr)
+        if match:
+            glyph = f" U+{match.group(1).upper()}" if match.group(1) else ""
+            family = re.sub(r"[\x00-\x1f\x7f]", "", match.group(2)).strip()[:100] or "当前字体"
+            raise SubtitleFontGlyphMissingError(
+                f"字幕字体「{family}」缺少字形{glyph}，已中止烧录以避免输出方框。"
+                "请安装或更换为包含该字符的字体后重试。"
+            )
     if returncode != 0:
         detail = (stderr or "ffmpeg operation failed").strip()
         raise MediaToolError(detail[-4000:])

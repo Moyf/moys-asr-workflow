@@ -127,7 +127,7 @@ def _style_defaults(style_id: str, name: str) -> dict[str, object]:
         "primaryColor": "#ffffff",
         "emphasisSyntax": "double",
         "emphasisColor": "#ffd34d",
-        "emphasisScale": 1.0,
+        "emphasisScale": 1.1,
         "emphasisStyle": "text",
         "secondaryColor": "#ffffff",
         "outlineColor": "#000000",
@@ -235,7 +235,7 @@ def _normalize_style(raw: object, fallback: Mapping[str, object], *, style_id: s
         "primaryColor": _color(source.get("primaryColor"), str(fallback.get("primaryColor") or "#ffffff")),
         "emphasisSyntax": source.get("emphasisSyntax") if isinstance(source.get("emphasisSyntax"), str) and source.get("emphasisSyntax") in {"none", "single", "double"} else fallback.get("emphasisSyntax", "double"),
         "emphasisColor": _color(source.get("emphasisColor"), str(fallback.get("emphasisColor") or "#ffd34d")),
-        "emphasisScale": round(_number(source.get("emphasisScale"), fallback.get("emphasisScale", 1.0), 1.0, 1.5, integer=False) * 20 + 1e-9) / 20,
+        "emphasisScale": round(_number(source.get("emphasisScale"), fallback.get("emphasisScale", 1.1), 1.0, 1.5, integer=False) * 20 + 1e-9) / 20,
         "emphasisStyle": source.get("emphasisStyle") if isinstance(source.get("emphasisStyle"), str) and source.get("emphasisStyle") in {"text", "stroke"} else fallback.get("emphasisStyle", "text"),
         "secondaryColor": _color(source.get("secondaryColor"), str(fallback.get("secondaryColor") or "#ffffff")),
         "outlineColor": _color(source.get("outlineColor"), str(fallback.get("outlineColor") or "#000000")),
@@ -328,7 +328,7 @@ def default_ass_style_library() -> dict[str, object]:
 
     return {
         "schema": ASS_STYLE_LIBRARY_SCHEMA,
-        "version": 1,
+        "version": 2,
         "styles": [
             _copy(DEFAULT_SRT_STYLE),
             _copy(DEFAULT_ASS_STYLE),
@@ -347,6 +347,8 @@ def normalize_ass_style_library(payload: object) -> dict[str, object]:
     """Repair untrusted persisted data while preserving valid user entries."""
 
     source = payload if isinstance(payload, Mapping) else {}
+    previous_version = source.get("version", 1)
+    previous_version = previous_version if isinstance(previous_version, int) and not isinstance(previous_version, bool) else 1
     result = default_ass_style_library()
     builtin_styles: Final[dict[str, dict[str, object]]] = {
         "default": DEFAULT_SRT_STYLE,
@@ -380,6 +382,12 @@ def normalize_ass_style_library(payload: object) -> dict[str, object]:
                 entry["name"] = default_entry["name"]
     styles = [style_map["default"], style_map["ass"], style_map["ass-extension"]]
     styles.extend(style for style_id, style in style_map.items() if style_id not in builtin_styles)
+    # v1 used 1.0 as the built-in emphasis default. Migrate only that old
+    # built-in value so custom styles and explicit v2 values remain intact.
+    if previous_version < 2:
+        for style in styles:
+            if style.get("id") in builtin_styles and style.get("emphasisScale") == 1.0:
+                style["emphasisScale"] = 1.1
     result["styles"] = styles[:MAX_STYLE_COUNT]
 
     profile_map: dict[str, dict[str, object]] = {"ass": _copy(DEFAULT_ASS_PROFILE)}

@@ -2706,6 +2706,36 @@ class MediaToolTests(unittest.TestCase):
         command = popen.call_args.args[0]
         self.assertEqual(command[command.index("-vf") + 1], "ass=filename='clip.ass'")
 
+    def test_burn_subtitles_aborts_when_libass_reports_a_missing_glyph(self) -> None:
+        subtitle = self.root / "clip.ass"
+        _ = subtitle.write_text("[Script Info]\n", encoding="utf-8")
+        warning = (
+            "[Parsed_ass_0 @ 0x123] fontselect: failed to find any fallback "
+            "with glyph 0x4E2D for font: (PingFang SC, 700, 0)\n"
+        )
+
+        def missing_glyph_process(command: list[str], **kwargs: object):
+            process = self._fake_process(command, **kwargs)
+            process.stderr = StringIO(warning)
+            return process
+
+        with mock.patch(
+            "maw.postprocess_ffmpeg._video_encoder_attempts", return_value=("nvenc", "cpu"),
+        ), mock.patch(
+            "maw.postprocess_ffmpeg.subprocess.Popen", side_effect=missing_glyph_process,
+        ) as popen:
+            with self.assertRaisesRegex(MediaToolError, r"PingFang SC.*U\+4E2D.*方框"):
+                run_burn_subtitles(
+                    BurnSubtitleRequest(media_path=self.media, subtitle_path=subtitle, video_encoder="auto"),
+                    ffmpeg_path=Path("ffmpeg"),
+                )
+
+        command = popen.call_args.args[0]
+        self.assertEqual(command[command.index("-loglevel") + 1], "warning")
+        self.assertEqual(popen.call_count, 1)
+        self.assertFalse(list(self.root.glob("*.part.mp4")))
+        self.assertFalse((self.root / "clip.subtitled.mp4").exists())
+
     def test_burn_subtitles_supports_amd_amf_encoder(self) -> None:
         encoders = mock.Mock(returncode=0, stdout=" V....D h264_amf AMD AMF H.264 Encoder\n", stderr="")
         with mock.patch("maw.postprocess_ffmpeg.subprocess.run", return_value=encoders), mock.patch(

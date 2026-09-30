@@ -1819,6 +1819,13 @@
   .subtitle-overlay[data-ass-mode="true"] > #overlay-main-text { padding: 2px 4px; }
   .subtitle-overlay[data-ass-mode="true"] > .subtitle-extension-text { padding: 2px 4px; }
   .subtitle-overlay[data-ass-mode="true"] .subtitle-speaker-label { font: inherit; }
+  .subtitle-overlay[data-ass-mode="true"] .ass-emphasis-runs,
+  .subtitle-overlay[data-ass-mode="true"] .ass-emphasis-run,
+  .subtitle-overlay[data-ass-mode="true"] .ass-underline-run {
+    display: inline; max-width: none; background: transparent; padding: 0; border-radius: 0;
+    font: inherit; line-height: inherit; white-space: inherit; word-break: inherit;
+    text-shadow: inherit;
+  }
 
   @media (max-width: 760px) {
     .ass-style-window { width: calc(100vw - 12px); min-width: 0; height: calc(100vh - 24px); min-height: 0; }

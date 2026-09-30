@@ -3242,8 +3242,8 @@ test('ASS emphasis syntax colors only marked runs and preserves other export mod
     appearance: { ass_color_style: 'text' },
   };
   const ass = helpers.buildAssPayload(cue, options);
-  assert.match(ass, /前 \{\\1c&H000000FF&\}重点\{\\1c&H0019A0C4&\} 后 \{\\1c&H000000FF&\}再次\{\\1c&H0019A0C4&\}/);
-  assert.doesNotMatch(ass, /\\fs\d+/);
+  assert.match(ass, /前 \{\\1c&H000000FF&\\fs\d+\}重点\{\\1c&H0019A0C4&\\fs\d+\} 后 \{\\1c&H000000FF&\\fs\d+\}再次\{\\1c&H0019A0C4&\\fs\d+\}/);
+  assert.match(ass, /\\fs79/);
   const enlarged = helpers.buildAssPayload(cue, {
     ...options, assStyle: { ...options.assStyle, fontSize: 40, emphasisScale: 1.25 },
   });
@@ -3252,7 +3252,7 @@ test('ASS emphasis syntax colors only marked runs and preserves other export mod
   const stroke = helpers.buildAssPayload(cue, {
     ...options, assStyle: { ...options.assStyle, emphasisStyle: 'stroke' },
   });
-  assert.match(stroke, /\{\\3c&H000000FF&\}重点\{\\3c&H00000000&\}/);
+  assert.match(stroke, /\{\\3c&H000000FF&\\fs\d+\}重点\{\\3c&H00000000&\\fs\d+\}/);
   const disabled = helpers.buildAssPayload(cue, {
     ...options, assStyle: { ...options.assStyle, emphasisSyntax: 'none' },
   });
@@ -3266,10 +3266,10 @@ test('ASS emphasis syntax colors only marked runs and preserves other export mod
     overlaySegments: [{ start: 0, end: 1000, text: '叠 **重点**' }],
   });
   assert.match(tracks, /Dialogue: 1,[^\n]*副 \{\\1c&H0000FF00&\\fs81\}重点\{\\1c&H004DD3FF&\\fs54\}/);
-  assert.match(tracks, /Dialogue: 2,[^\n]*叠 \{\\1c&H000000FF&\}重点/);
+  assert.match(tracks, /Dialogue: 2,[^\n]*叠 \{\\1c&H000000FF&\\fs\d+\}重点/);
   assert.equal(helpers.normalizeAssStyle({ emphasisScale: 1.27 }).emphasisScale, 1.25);
   assert.equal(helpers.normalizeAssStyle({ emphasisScale: 5 }).emphasisScale, 1.5);
-  assert.equal(helpers.normalizeAssStyle({ emphasisScale: 'bad' }).emphasisScale, 1);
+  assert.equal(helpers.normalizeAssStyle({ emphasisScale: 'bad' }).emphasisScale, 1.1);
 });
 
 test('ASS underscore markers render as local underline alongside emphasis', () => {
@@ -3345,6 +3345,30 @@ test('migrates legacy builtin names while preserving custom names', () => {
   });
   assert.equal(helpers.assStyleForId(renamed, 'ass').name, '我的字幕样式');
   assert.equal(helpers.assProfileForId(renamed, 'ass').name, '我的方案');
+});
+
+test('migrates v1 emphasis defaults for builtins without changing custom or current values', () => {
+  const legacy = helpers.normalizeAssStyleLibrary({
+    version: 1,
+    styles: [
+      { id: 'default', emphasisScale: 1 },
+      { id: 'ass', emphasisScale: 1 },
+      { id: 'ass-extension', emphasisScale: 1 },
+      { id: 'custom-one', emphasisScale: 1 },
+    ],
+  });
+  assert.equal(legacy.version, 2);
+  for (const id of ['default', 'ass', 'ass-extension']) {
+    assert.equal(helpers.assStyleForId(legacy, id).emphasisScale, 1.1);
+  }
+  assert.equal(helpers.assStyleForId(legacy, 'custom-one').emphasisScale, 1);
+  const current = helpers.normalizeAssStyleLibrary({
+    version: 2,
+    styles: [{ id: 'ass', emphasisScale: 1 }],
+  });
+  assert.equal(helpers.assStyleForId(current, 'ass').emphasisScale, 1);
+  assert.equal(helpers.defaultAssStyleLibrary().version, 2);
+  assert.equal(helpers.assStyleForId(helpers.defaultAssStyleLibrary(), 'ass').emphasisScale, 1.1);
 });
 
 test('normalizes ASS libraries without corrupting comma-delimited animation tags', () => {
