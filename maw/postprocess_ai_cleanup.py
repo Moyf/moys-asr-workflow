@@ -31,6 +31,7 @@ from maw.postprocess_llm import (
 )
 from maw.postprocess_match import _load_input, _normalize_text, _read_script, clean_markdown_inline_symbols
 from maw.postprocess_match import _NormalizedText
+from maw.project_preview import JsonDict, JsonValue
 from maw.script_alignment import (
     DEFAULT_GAP_REMOVE_OPERATION_MODE,
     MAWE_GAP_REMOVE_DEFAULTS,
@@ -115,7 +116,7 @@ def llm_complete(settings: LlmSettings) -> Callable[[str, list[dict[str, str]]],
         last_error = "响应不是有效的 JSON。"
         for attempt in range(MAX_RESPONSE_ATTEMPTS):
             current_prompt = prompt if not attempt else _retry_prompt(prompt, last_error)
-            body = _request_completion(settings, current_prompt, clips)
+            body = _request_completion(settings, current_prompt, clips, on_delta=None)
             content = _response_content(body)
             try:
                 return json.loads(_strip_json_fence(content))

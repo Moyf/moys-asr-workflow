@@ -454,5 +454,35 @@ class MarkersRoundTripTest(AiCleanupTestCase):
         self.assertEqual(markers["items"][0]["review"], {"status": "pending", "reason": "题外话待确认"})
 
 
+class LlmCompleteTransportTest(unittest.TestCase):
+    def test_llm_complete_calls_transport_with_signature_and_retries_json(self) -> None:
+        """llm_complete 走真实传输闭包：on_delta 以关键字传递，坏 JSON 重试一次。"""
+
+        import maw.postprocess_ai_cleanup as cleanup_module
+        from maw.postprocess_llm import LlmSettings
+
+        seen: list[dict[str, object]] = []
+
+        def fake_completion(settings, prompt, cues, *, on_delta):
+            attempt = len(seen)
+            seen.append({"prompt": prompt, "cues": cues, "onDelta": on_delta})
+            content = '{"decisions": []}' if attempt else "{not json"
+            return {"choices": [{"message": {"content": content}}]}
+
+        settings = LlmSettings(provider_id="custom", api_key="key", base_url="https://example.invalid/v4", model="demo")
+        original = cleanup_module._request_completion
+        cleanup_module._request_completion = fake_completion
+        try:
+            result = cleanup_module.llm_complete(settings)("system prompt", [{"id": "c001", "asrText": "文字"}])
+        finally:
+            cleanup_module._request_completion = original
+        self.assertEqual(result, {"decisions": []})
+        self.assertEqual(len(seen), 2)
+        self.assertIsNone(seen[0]["onDelta"])
+        self.assertIsNone(seen[1]["onDelta"])
+        self.assertNotIn("未通过本地协议校验", str(seen[0]["prompt"]))
+        self.assertIn("未通过本地协议校验", str(seen[1]["prompt"]))
+
+
 if __name__ == "__main__":
     unittest.main()

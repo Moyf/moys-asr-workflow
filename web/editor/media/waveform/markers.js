@@ -162,7 +162,7 @@ window.MAWE.register('waveform-markers', function createWaveformModule(dependenc
             endMs: Number(row.dataset.endMs),
           };
         });
-      const hit = pickMarkerRow(rows, clientY) || (fallbackRow ? null : null);
+      const hit = pickMarkerRow(rows, clientY);
       if (hit) return hit;
       return fallbackRow ? {
         row: fallbackRow,
@@ -268,30 +268,7 @@ window.MAWE.register('waveform-markers', function createWaveformModule(dependenc
       event.preventDefault();
       drag.lastEvent = event;
       this.markerEdgeAutoScroll(event);
-      if (drag.mode === 'create') {
-        drag.endMs = this.markerPointerTimeMs(event);
-      } else {
-        const pointerMs = this.markerPointerTimeMs(event);
-        const duration = Math.max(0, this.durationMs);
-        if (drag.mode === 'move') {
-          const deltaMs = roundMs(pointerMs - drag.pointerStartMs);
-          const length = window.AsrEditorUtils.markerKind(drag.original) === 'region'
-            ? drag.original.end - drag.original.start : 0;
-          let start = clamp(drag.original.start + deltaMs, 0, Math.max(0, duration - length));
-          if (length) {
-            drag.pending = { ...drag.original, start, end: start + length };
-          } else {
-            drag.pending = { ...drag.original, start };
-          }
-        } else {
-          const edge = drag.mode === 'resize-start' ? 'start' : 'end';
-          const anchor = edge === 'start' ? drag.original.end : drag.original.start;
-          const min = edge === 'start' ? 0 : anchor + 1;
-          const max = edge === 'start' ? anchor - 1 : duration;
-          const value = clamp(roundMs(pointerMs), min, Math.max(min, max));
-          drag.pending = { ...drag.original, [edge]: value };
-        }
-      }
+      this.applyMarkerDragTime(drag, event);
       if (!drag.frame) {
         drag.frame = requestAnimationFrame(() => {
           drag.frame = 0;
@@ -299,6 +276,34 @@ window.MAWE.register('waveform-markers', function createWaveformModule(dependenc
             this.updateMarkerDragPreview(drag);
           }
         });
+      }
+    }
+
+
+    // moveMarkerDrag 的时间换算主体（move / resize / create 三种模式共用）。
+    // 视口边缘自动滚动循环也复用：滚动改变指针下的行，需按最后一次指针事件重算。
+    applyMarkerDragTime(drag, event) {
+      if (drag.mode === 'create') {
+        drag.endMs = this.markerPointerTimeMs(event);
+        return;
+      }
+      const pointerMs = this.markerPointerTimeMs(event);
+      const duration = Math.max(0, this.durationMs);
+      if (drag.mode === 'move') {
+        const deltaMs = roundMs(pointerMs - drag.pointerStartMs);
+        const length = window.AsrEditorUtils.markerKind(drag.original) === 'region'
+          ? drag.original.end - drag.original.start : 0;
+        const start = clamp(drag.original.start + deltaMs, 0, Math.max(0, duration - length));
+        drag.pending = length
+          ? { ...drag.original, start, end: start + length }
+          : { ...drag.original, start };
+      } else {
+        const edge = drag.mode === 'resize-start' ? 'start' : 'end';
+        const anchor = edge === 'start' ? drag.original.end : drag.original.start;
+        const min = edge === 'start' ? 0 : anchor + 1;
+        const max = edge === 'start' ? anchor - 1 : duration;
+        const value = clamp(roundMs(pointerMs), min, Math.max(min, max));
+        drag.pending = { ...drag.original, [edge]: value };
       }
     }
 
@@ -323,10 +328,12 @@ window.MAWE.register('waveform-markers', function createWaveformModule(dependenc
           return;
         }
         this.scroll.scrollTop += this.markerEdgeScrollDirection * MARKER_EDGE_SCROLL_STEP_PX;
-        const lastEvent = (this.markerDrag || this.markerCreateDrag)?.lastEvent;
-        if (lastEvent) {
-          // 复用 move 的时间换算：直接改写 pending 并重绘预览。
-          this.moveMarkerDragApply(lastEvent);
+        const drag = this.markerDrag || this.markerCreateDrag;
+        const lastEvent = drag?.lastEvent;
+        if (drag && lastEvent) {
+          // 复用 move 的时间换算并立即重绘预览（本回调已在 rAF 帧内）。
+          this.applyMarkerDragTime(drag, lastEvent);
+          this.updateMarkerDragPreview(drag);
         }
         this.markerEdgeScrollFrame = requestAnimationFrame(step);
       };
@@ -340,35 +347,6 @@ window.MAWE.register('waveform-markers', function createWaveformModule(dependenc
         this.markerEdgeScrollFrame = 0;
       }
       this.markerEdgeScrollDirection = 0;
-    }
-
-
-    // moveMarkerDrag 的时间换算主体（自动滚动循环复用；事件已通过阈值检查）。
-    moveMarkerDragApply(event) {
-      const drag = this.markerDrag;
-      if (!drag) return;
-      if (drag.mode === 'create') {
-        drag.endMs = this.markerPointerTimeMs(event);
-        return;
-      }
-      const pointerMs = this.markerPointerTimeMs(event);
-      const duration = Math.max(0, this.durationMs);
-      if (drag.mode === 'move') {
-        const deltaMs = roundMs(pointerMs - drag.pointerStartMs);
-        const length = window.AsrEditorUtils.markerKind(drag.original) === 'region'
-          ? drag.original.end - drag.original.start : 0;
-        const start = clamp(drag.original.start + deltaMs, 0, Math.max(0, duration - length));
-        drag.pending = length
-          ? { ...drag.original, start, end: start + length }
-          : { ...drag.original, start };
-      } else {
-        const edge = drag.mode === 'resize-start' ? 'start' : 'end';
-        const anchor = edge === 'start' ? drag.original.end : drag.original.start;
-        const min = edge === 'start' ? 0 : anchor + 1;
-        const max = edge === 'start' ? anchor - 1 : duration;
-        const value = clamp(roundMs(pointerMs), min, Math.max(min, max));
-        drag.pending = { ...drag.original, [edge]: value };
-      }
     }
 
 

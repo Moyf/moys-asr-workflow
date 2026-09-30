@@ -101,6 +101,7 @@ function applyCanonicalProject(data, filename) {
   MaweBoot.DATA.script_alignment = data.script_alignment || null;
   MaweBoot.DATA.preview = (data.preview && typeof data.preview === 'object') ? data.preview : null;
   MaweHistory.gapRemoveDirty = false;
+  MaweState.changes.markersDirty = false;
   MaweAppearance.previewGeometryDirty = false;
   MaweServerSave.projectImportDirty = false;
   // 外部载入的工程没有页面持有的文件句柄；新建/另存为会在载入后重新绑定句柄。
@@ -356,6 +357,7 @@ function applyCanonicalProject(data, filename) {
     MULTI_SUBTITLE_UTILS.normalizeMultiSubtitleProject(MaweBoot.DATA);
     MaweBoot.DATA.gap_remove = null;
     MaweHistory.gapRemoveDirty = false;
+    MaweState.changes.markersDirty = false;
     MaweServerSave.projectImportDirty = true;
     MaweHistory.updateUndoRedoButtons();
     MaweSelection.clearSelection({ commitCuePanel: false });
