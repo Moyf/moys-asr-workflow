@@ -6265,6 +6265,40 @@ test('alignItemsToText bails out to no alignment on absurd inputs', () => {
 });
 
 
+test('combines bilingual SRT at actual boundaries without losing unmatched or multiline text', () => {
+  const main = [{ start: 100, end: 500, text: '主一' }, { start: 500, end: 900, text: '主二' }];
+  const secondary = [{ start: 200, end: 700, text: 'Secondary\r\nline' },
+    { start: 1000, end: 1100, text: 'unmatched' },
+    { start: 0, end: 1200, text: 'disabled', disabled: true },
+    { start: 'bad', end: 1200, text: 'invalid' }, { start: 900, end: 900, text: 'empty duration' }];
+  const snapshot = JSON.stringify([main, secondary]);
+  assert.equal(helpers.buildBilingualSrtPayload(main, secondary), [
+    '1', '100 --> 200', '主一', '',
+    '2', '200 --> 500', '主一\nSecondary\nline', '',
+    '3', '500 --> 700', '主二\nSecondary\nline', '',
+    '4', '700 --> 900', '主二', '',
+    '5', '1000 --> 1100', 'unmatched', '',
+  ].join('\n'));
+  assert.equal(JSON.stringify([main, secondary]), snapshot);
+});
+
+test('bilingual SRT preserves speaker color contexts and only extends the first main cue to zero', () => {
+  const main = [{ start: 500, end: 1000, text: 'Main', color: { name: 'red' } },
+    { start: 1500, end: 2000, text: 'Later', color_ref: { headIdx: 0, name: 'red' } }];
+  const secondary = [{ start: 500, end: 1000, text: 'Translation', color: { name: 'blue' } },
+    { start: 1500, end: 2000, text: 'Second', color_ref: { headIdx: 0, name: 'blue' } }];
+  const result = helpers.buildBilingualSrtPayload(main, secondary, {
+    alignFirstStart: true, speakerLabelsEnabled: true,
+    speakerLabels: { red: 'A', blue: 'B' }, speakerLabelSeparator: '：',
+  });
+  assert.equal(result, [
+    '1', '0 --> 500', 'A：Main', '',
+    '2', '500 --> 1000', 'A：Main\nB：Translation', '',
+    '3', '1500 --> 2000', 'A：Later\nB：Second', '',
+  ].join('\n'));
+  assert.equal(helpers.buildBilingualSrtPayload([], []), '');
+});
+
 test('ASS special symbol rules apply to all five formats across preview runs and exports', () => {
   assert.equal(helpers.normalizeEditorSettings().assSpecialSymbolRule, 'both');
   assert.equal(helpers.normalizeEditorSettings({ assSpecialSymbolRule: 'invalid' }).assSpecialSymbolRule, 'both');

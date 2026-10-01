@@ -426,7 +426,82 @@ test('groups SRT, color-split SRT and styled ASS exports in order', async ({ pag
   await page.locator('#subtitle-export-btn').click();
   await expect(page.locator('#subtitle-export-separator')).toBeVisible();
   await expect(page.locator('#subtitle-export-menu > .dropdown-item:visible').allTextContents())
-    .resolves.toEqual(['完整 SRT 字幕', '按颜色拆分导出 SRT 字幕', '带样式的 ASS 字幕']);
+    .resolves.toEqual(['SRT 字幕', '按颜色拆分导出 SRT 字幕', '带样式的 ASS 字幕']);
+});
+
+test('exports main, secondary and combined bilingual SRT from one menu', async ({ page }) => {
+  await disableOnboarding(page);
+  await stubSavePicker(page);
+  await page.goto(server.url);
+  await page.evaluate(() => {
+    MaweBoot.DATA.segments[0].text = 'Main line';
+    MaweBoot.DATA.multi_subtitle = {
+      schema: 'moy.asr.multi_subtitle.v1', enabled: true, display_mode: 'both', bindings: [],
+      tracks: [{ id: 'extension-1', role: 'extension', name: 'English', language: 'English',
+        segments: [{ id: 'ext-1', start: 1000, end: 2500, text: 'Secondary line' },
+          { id: 'ext-2', start: 3000, end: 4000, text: 'Unmatched secondary' },
+          { id: 'ext-3', start: 4500, end: 5000, text: 'Disabled secondary', disabled: true }] }],
+    };
+    MaweCuePanel.renderAll();
+  });
+  await page.locator('#subtitle-export-btn').click();
+  const menu = page.locator('#subtitle-export-menu');
+  await expect(menu.locator(':scope > .dropdown-item:visible').allTextContents())
+    .resolves.toEqual(['主字幕 SRT', '副字幕 SRT', '双语整合字幕 SRT', '带样式的 ASS 字幕']);
+  await expect(page.locator('.right-group > #download-multi-srt')).toHaveCount(0);
+  await expect(page.locator('#subtitle-export-separator')).toBeVisible();
+  const rowGaps = await menu.locator(':scope > .dropdown-item:visible').evaluateAll((items) => {
+    const textBounds = items.map((item) => {
+      const range = document.createRange();
+      range.selectNodeContents(item);
+      return range.getBoundingClientRect();
+    });
+    return textBounds.slice(1).map((bounds, index) => bounds.top - textBounds[index].bottom);
+  });
+  expect(Math.min(...rowGaps)).toBeGreaterThanOrEqual(8);
+  await menu.screenshot({ path: test.info().outputPath('bilingual-export-menu.png') });
+  await page.locator('#download-bilingual-srt').click();
+  await expect(menu).toBeHidden();
+  await expect.poll(() => page.evaluate(() => window.__exportSaves.length)).toBe(1);
+  const combined = await page.evaluate(() => window.__exportSaves[0]);
+  expect(combined.suggestedName).toMatch(/_bilingual\.srt$/);
+  expect(combined.content).toBe([
+    '1', '00:00:01,000 --> 00:00:02,500', 'Main line\nSecondary line', '',
+    '2', '00:00:03,000 --> 00:00:04,000', 'Unmatched secondary', '',
+  ].join('\n'));
+  await page.locator('#subtitle-export-btn').click();
+  await page.locator('#download-multi-srt').click();
+  await expect.poll(() => page.evaluate(() => window.__exportSaves.length)).toBe(2);
+  const secondary = await page.evaluate(() => window.__exportSaves[1]);
+  expect(secondary.suggestedName).toMatch(/_extension\.srt$/);
+  expect(secondary.content).toContain('Secondary line');
+  expect(secondary.content).not.toContain('Main line');
+  expect(secondary.content).not.toContain('Disabled secondary');
+  await page.locator('#subtitle-export-btn').click();
+  await page.locator('#download-full-srt').click();
+  await expect.poll(() => page.evaluate(() => window.__exportSaves.length)).toBe(3);
+  expect(await page.evaluate(() => window.__exportSaves[2].content)).not.toContain('Secondary line');
+  await page.locator('#multi-subtitle-toggle').uncheck();
+  await page.locator('#subtitle-export-btn').click();
+  await expect(page.locator('#download-full-srt')).toHaveText('SRT 字幕');
+  await expect(page.locator('#download-multi-srt')).toBeHidden();
+  await expect(page.locator('#download-bilingual-srt')).toBeHidden();
+  await expect(page.locator('#subtitle-export-separator')).toBeHidden();
+});
+
+test('shows disabled secondary export entries when bilingual mode has no second track', async ({ page }) => {
+  await disableOnboarding(page);
+  await stubSavePicker(page);
+  await page.goto(server.url);
+  page.once('dialog', (dialog) => dialog.dismiss());
+  await page.locator('#multi-subtitle-toggle').check();
+  await page.locator('#subtitle-export-btn').click();
+  await expect(page.locator('#download-full-srt')).toHaveText('主字幕 SRT');
+  await expect(page.locator('#download-multi-srt')).toBeVisible();
+  await expect(page.locator('#download-multi-srt')).toHaveAttribute('aria-disabled', 'true');
+  await expect(page.locator('#download-bilingual-srt')).toHaveAttribute('aria-disabled', 'true');
+  await page.locator('#download-bilingual-srt').click({ force: true });
+  expect(await page.evaluate(() => window.__exportSaves.length)).toBe(0);
 });
 
 test('exports a gap-removed styled ASS subtitle with shifted timing', async ({ page }) => {

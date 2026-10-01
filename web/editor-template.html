@@ -155,11 +155,12 @@ __WAVEFORM_CSS__
   </span>
 
   <span class="right-group">
-    <button type="button" id="download-multi-srt" hidden title="导出当前副字幕轨（SRT）">导出副字幕</button>
     <span class="dropdown" id="subtitle-export-dropdown">
       <button id="subtitle-export-btn" title="导出 SRT/ASS 字幕或按颜色拆分导出 SRT 字幕" aria-expanded="false" aria-controls="subtitle-export-menu" aria-haspopup="menu">导出字幕 ▾</button>
       <div class="dropdown-menu" id="subtitle-export-menu" role="menu">
-        <div class="dropdown-item" id="download-full-srt" role="menuitem" tabindex="0">完整 SRT 字幕</div>
+        <div class="dropdown-item" id="download-full-srt" role="menuitem" tabindex="0">SRT 字幕</div>
+        <div class="dropdown-item" id="download-multi-srt" role="menuitem" tabindex="0" hidden title="导出当前副字幕轨（SRT）">副字幕 SRT</div>
+        <div class="dropdown-item" id="download-bilingual-srt" role="menuitem" tabindex="0" hidden title="按两轨实际时间合并；重叠时主字幕在上、副字幕在下">双语整合字幕 SRT</div>
         <div class="dropdown-item" id="download-color-srt" role="menuitem" tabindex="0" hidden>按颜色拆分导出 SRT 字幕</div>
         <div class="dropdown-separator" id="subtitle-export-separator" role="separator" hidden></div>
         <div class="dropdown-item" id="download-full-ass" role="menuitem" tabindex="0">带样式的 ASS 字幕</div>

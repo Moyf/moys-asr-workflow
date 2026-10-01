@@ -262,6 +262,18 @@
     });
   }
 
+  function buildBilingualSrt() {
+    if (MaweMultiSubtitleCore.getMultiSubtitleState().enabled !== true) return '';
+    const { segments, overlaySet, overlaySegments } = mergedExportSegments();
+    return window.AsrEditorUtils.buildBilingualSrtPayload(segments,
+      MaweMultiSubtitleCore.getActiveExtensionTrack()?.segments || [], {
+        alignFirstStart: MaweSettings.EDITOR_SETTINGS.exportStartAtZero,
+        colorContextResolver: exportColorContextResolver(overlaySet, overlaySegments),
+        ...MaweSpeakerLabels.speakerLabelExportOptions(),
+        formatTime: MaweCueElements.fmtSrtTime,
+      });
+  }
+
 
 
   function buildGapRemovedSrt() {
@@ -330,14 +342,23 @@
 
 
   function updateSubtitleExportUi() {
+    const bilingual = MaweMultiSubtitleCore.getMultiSubtitleState().enabled === true;
+    const hasSecondary = MaweMultiSubtitleCore.getActiveExtensionTrack()?.segments
+      ?.some((segment) => segment && segment.disabled !== true && String(segment.text || '').trim());
+    const mainItem = document.getElementById('download-full-srt');
+    if (mainItem) mainItem.textContent = window.MAWE_I18N?.translateText?.(bilingual ? '主字幕 SRT' : 'SRT 字幕')
+      || (bilingual ? '主字幕 SRT' : 'SRT 字幕');
     const hasColors = usedSubtitleColors().some((color) => color.name !== 'default');
     if (MaweDom.downloadColorSrtItem) MaweDom.downloadColorSrtItem.hidden = !hasColors;
-    if (MaweDom.subtitleExportSeparator) MaweDom.subtitleExportSeparator.hidden = !hasColors;
+    if (MaweDom.subtitleExportSeparator) MaweDom.subtitleExportSeparator.hidden = !(hasColors || bilingual);
     if (MaweDom.downloadGapRemovedColorSrtItem) MaweDom.downloadGapRemovedColorSrtItem.hidden = !hasColors;
     if (MaweDom.gapRemovedSubtitleExportSeparator) MaweDom.gapRemovedSubtitleExportSeparator.hidden = !hasColors;
     if (MaweDom.subtitleExportDropdown) MaweDom.subtitleExportDropdown.hidden = false;
-    if (MaweDom.downloadMultiSrtButton) {
-      MaweDom.downloadMultiSrtButton.hidden = !(MaweMultiSubtitleCore.multiSubtitleVisible() && MaweMultiSubtitleCore.getActiveExtensionTrack()?.segments?.length);
+    for (const item of [MaweDom.downloadMultiSrtButton, document.getElementById('download-bilingual-srt')]) {
+      if (!item) continue;
+      item.hidden = !bilingual;
+      item.classList.toggle('disabled', !hasSecondary);
+      item.setAttribute('aria-disabled', String(!hasSecondary));
     }
   }
 
@@ -369,6 +390,7 @@
     assExportOptions,
     buildAss,
     buildExtensionSrt,
+    buildBilingualSrt,
     buildGapRemovedSrt,
     buildGapRemovedAss,
     usedSubtitleColors,

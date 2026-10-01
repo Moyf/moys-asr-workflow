@@ -148,6 +148,55 @@ window.MAWE.register('utils-srt', function createUtilsModule(dependencies) {
   }
 
 
+  // Preserve both tracks' timing; active main text appears above secondary text.
+  function buildBilingualSrtPayload(mainSegments, secondarySegments, options = {}) {
+    const main = Array.isArray(mainSegments) ? mainSegments : [];
+    const secondary = Array.isArray(secondarySegments) ? secondarySegments : [];
+    const labels = options.speakerLabelsEnabled === true ? normalizeSpeakerLabels(options.speakerLabels) : null;
+    const separator = normalizeSpeakerLabelSeparator(options.speakerLabelSeparator);
+    const firstMain = getSrtExportFirstIndex(main, options.alignFirstStart === true);
+    const events = new Map();
+    const addEvent = (time, record, entering) => {
+      if (!events.has(time)) events.set(time, []);
+      events.get(time).push({ record, entering });
+    };
+    [main, secondary].forEach((source, track) => source.forEach((segment, index) => {
+      if (!segment || segment.disabled === true) return;
+      const rawStart = Number(segment.start);
+      const rawEnd = Number(segment.end);
+      if (!Number.isFinite(rawStart) || !Number.isFinite(rawEnd)) return;
+      const start = track === 0 && index === firstMain ? 0 : Math.max(0, Math.round(rawStart));
+      const end = Math.max(0, Math.round(rawEnd));
+      if (end <= start) return;
+      const context = track === 0 && typeof options.colorContextResolver === 'function'
+        ? options.colorContextResolver(segment) || source : source;
+      const text = String(labels ? formatSpeakerLabelledText(segment.text, segment, context, labels, separator)
+        : segment.text || '').replace(/\r\n?/g, '\n');
+      if (!text.trim()) return;
+      const record = { track, index, text };
+      addEvent(start, record, true);
+      addEvent(end, record, false);
+    }));
+    const times = [...events.keys()].sort((a, b) => a - b);
+    const active = [new Set(), new Set()];
+    const merged = [];
+    times.forEach((start, index) => {
+      for (const { record, entering } of events.get(start)) {
+        if (entering) active[record.track].add(record);
+        else active[record.track].delete(record);
+      }
+      const end = times[index + 1];
+      if (end === undefined) return;
+      const text = active.flatMap((records) => [...records].sort((a, b) => a.index - b.index)
+        .map((record) => record.text)).join('\n');
+      if (!text) return;
+      const previous = merged[merged.length - 1];
+      if (previous && previous.end === start && previous.text === text) previous.end = end;
+      else merged.push({ start, end, text });
+    });
+    return buildSrtPayload(merged, { formatTime: options.formatTime });
+  }
+
   function buildPlainTextPayload(segments) {
     return (Array.isArray(segments) ? segments : [])
       .filter((segment) => segment && !segment.disabled)
@@ -160,5 +209,5 @@ window.MAWE.register('utils-srt', function createUtilsModule(dependencies) {
     return String(value || '').trim().split(/[\\/]/).pop() || '';
   }
 
-  return Object.freeze({ buildPlainTextPayload, buildSrtPayload, fileBasename, getSrtExportFirstIndex, getSrtExportOffset, repairGroupReferenceIndices, shiftGroupReferenceIndices, shiftSelectionAfterRemoval });
+  return Object.freeze({ buildBilingualSrtPayload, buildPlainTextPayload, buildSrtPayload, fileBasename, getSrtExportFirstIndex, getSrtExportOffset, repairGroupReferenceIndices, shiftGroupReferenceIndices, shiftSelectionAfterRemoval });
 });
