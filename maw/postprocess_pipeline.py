@@ -41,7 +41,14 @@ from maw.postprocess_llm import (
     normalize_reasoning_mode,
     preset_by_id,
 )
-from maw.postprocess_match import ScriptMatchRequest, run_script_match
+from maw.postprocess_match import (
+    DEFAULT_EXTRA_SPLIT_PUNCTUATION,
+    DEFAULT_PRESERVE_PUNCTUATION,
+    DEFAULT_STRONG_PUNCT,
+    DEFAULT_STRIP_TAIL_PUNCT,
+    ScriptMatchRequest,
+    run_script_match,
+)
 from maw.postprocess_ocr import OcrDedupArtifact, OcrDedupRequest, OcrRegion, run_ocr_dedup
 from maw.postprocess_ffmpeg import BurnSubtitleRequest, MediaToolCancelled, normalize_video_encoder, run_burn_subtitles
 from maw.ocr_runtime import OCR_MODEL_ID, run_ocr_in_runtime
@@ -49,7 +56,7 @@ from maw.project_preview import JsonValue
 from maw.text_conversion import TextConversion, normalize_text_conversion_mode
 
 
-POSTPROCESS_PLAN_VERSION: Final[int] = 1
+POSTPROCESS_PLAN_VERSION: Final[int] = 2
 POSTPROCESS_CONFIG_FILENAME: Final[str] = "maw-postprocess.json"
 STEP_ORDER: Final[tuple[str, ...]] = (
     "match",
@@ -62,7 +69,8 @@ STEP_ORDER: Final[tuple[str, ...]] = (
 )
 TRANSLATION_TARGETS: Final[frozenset[str]] = frozenset({"zh", "en"})
 SCRIPT_EXTENSIONS: Final[frozenset[str]] = frozenset({".txt", ".md", ".markdown"})
-DEFAULT_EXTRA_SPLIT_PUNCTUATION: Final[tuple[str, ...]] = ("？", "！", ",")
+# 断句符号的唯一真源：文稿匹配与转写共用。不再有隐式基础断句集，
+# 默认值即完整清单，用户删除某行 = 该符号不再断句、也不再从句尾剥除。
 VIDEO_EXTENSIONS: Final[frozenset[str]] = frozenset({
     ".mp4", ".mkv", ".avi", ".mov", ".wmv", ".flv", ".webm", ".ts", ".m4v",
 })
@@ -82,7 +90,7 @@ def default_postprocess_plan() -> dict[str, object]:
                 "aiCleanup": False,
                 "providerId": "deepseek",
                 "extraSplitPunctuation": list(DEFAULT_EXTRA_SPLIT_PUNCTUATION),
-                "preservePunctuation": ["？", "！"],
+                "preservePunctuation": list(DEFAULT_PRESERVE_PUNCTUATION),
                 "cleanMarkdownSymbols": True,
             },
             {"id": "replace", "enabled": False, "replacements": [], "replacementSeparator": "arrow", "replacementTrim": True, "replacementCustomSeparator": "", "conversion": TextConversion.OFF.value},
@@ -101,6 +109,9 @@ def normalize_plan(raw: object) -> dict[str, object]:
     defaults = default_postprocess_plan()
     if not isinstance(raw, Mapping):
         return defaults
+    # v1 计划依赖隐式基础断句集（，。,. + 换行）；v2 起断句符号完全来自
+    # 配置。旧计划一次性并入默认断句清单，避免 ，。 断句行为倒退。
+    legacy_plan = raw.get("version") != POSTPROCESS_PLAN_VERSION
     plan: dict[str, object] = {
         "version": POSTPROCESS_PLAN_VERSION,
         "enabled": bool(raw.get("enabled")),
@@ -172,6 +183,14 @@ def normalize_plan(raw: object) -> dict[str, object]:
                 ]
                 if migrated:
                     step["extraSplitPunctuation"] = [*extra, *migrated]
+            if legacy_plan and isinstance(step.get("extraSplitPunctuation"), list):
+                merged = [str(item) for item in step["extraSplitPunctuation"] if str(item)]
+                merged.extend(
+                    symbol
+                    for symbol in DEFAULT_EXTRA_SPLIT_PUNCTUATION
+                    if symbol not in merged
+                )
+                step["extraSplitPunctuation"] = merged
         normalized_steps.append(step)
     plan["steps"] = normalized_steps
     return plan

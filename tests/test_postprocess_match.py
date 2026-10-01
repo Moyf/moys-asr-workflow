@@ -7,7 +7,7 @@ from pathlib import Path
 
 from maw.postprocess import OutputMode
 from maw.postprocess_io import read_project
-from maw.postprocess_match import MatchCoverageError, ScriptMatchRequest, prepare_script_text, processed_script_text, run_script_match
+from maw.postprocess_match import DEFAULT_EXTRA_SPLIT_PUNCTUATION, DEFAULT_PRESERVE_PUNCTUATION, MatchCoverageError, ScriptMatchRequest, prepare_script_text, processed_script_text, run_script_match
 from scripts.mosp_match_text import clean_markdown_inline_symbols
 
 
@@ -207,7 +207,7 @@ class ScriptMatchTests(unittest.TestCase):
         text, warning = prepare_script_text("甲？乙！丙~", ("？", "！", "~"), ("？", "~"))
 
         self.assertEqual(text, "甲？乙！丙~")
-        self.assertIn("额外断句符号：3 个", warning)
+        self.assertIn("断句符号：3 个", warning)
 
     def test_clean_markdown_inline_symbols_keeps_visible_text(self) -> None:
         self.assertEqual(
@@ -215,12 +215,24 @@ class ScriptMatchTests(unittest.TestCase):
             "粗体 斜体 粗斜体 粗体 粗斜体 斜体 删除 高亮 代码",
         )
 
+    def test_trailing_question_mark_is_stripped_when_configured_but_not_preserved(self) -> None:
+        # 用户场景回归：问号在断句清单、不在保留清单 → 断句并从句尾删除。
+        self.assertEqual(
+            processed_script_text(
+                "这个过程吗？好的",
+                extra_split_punctuation=("？",),
+                preserve_punctuation=(),
+            ),
+            "这个过程吗\n好的",
+        )
+
     def test_processed_script_text_matches_default_split_and_punctuation_policy(self) -> None:
+        # 默认清单：，。？！；,. 断句；，。；,. 句尾剥除，？！保留。
         self.assertEqual(
             processed_script_text(
                 "第一句，第二句？第三句。",
-                extra_split_punctuation=("？",),
-                preserve_punctuation=("？",),
+                extra_split_punctuation=DEFAULT_EXTRA_SPLIT_PUNCTUATION,
+                preserve_punctuation=DEFAULT_PRESERVE_PUNCTUATION,
             ),
             "第一句\n第二句？\n第三句",
         )
@@ -332,12 +344,21 @@ class ScriptMatchTests(unittest.TestCase):
         assert preserved.project_path is not None
         self.assertEqual(read_project(preserved.project_path)["segments"][0]["text"], "**这样**")
 
-    def test_preserved_punctuation_may_use_default_split_symbols(self) -> None:
-        # 基础断句集（逗号、句号、换行）始终生效。
-        text, warning = prepare_script_text("甲，乙。", (), ("，", "。"))
+    def test_preserved_punctuation_requires_configured_split_symbols(self) -> None:
+        # 没有隐式基础集：保留符号必须已配置为断句符号。
+        with self.assertRaisesRegex(ValueError, "保留符号"):
+            prepare_script_text("甲，乙。", (), ("，", "。"))
+
+        text, warning = prepare_script_text("甲，乙。", ("，", "。"), ("，", "。"))
 
         self.assertEqual(text, "甲，乙。")
-        self.assertIn("未配置额外断句符号", warning)
+        self.assertIn("断句符号：2 个", warning)
+
+    def test_empty_split_configuration_still_splits_at_newlines(self) -> None:
+        text, warning = prepare_script_text("甲，乙。\n丙。", (), ())
+
+        self.assertEqual(text, "甲，乙。\n丙。")
+        self.assertIn("仅按换行断句", warning)
 
     def test_question_and_exclamation_must_be_declared_as_extra_split_symbols(self) -> None:
         with self.assertRaisesRegex(ValueError, "保留符号"):

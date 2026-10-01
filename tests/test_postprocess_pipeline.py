@@ -14,6 +14,7 @@ from maw.postprocess_io import SubtitleArtifact
 from maw.postprocess_llm import LlmClientError
 from maw.postprocess_ocr import OcrDedupArtifact
 from maw.postprocess_pipeline import (
+    POSTPROCESS_PLAN_VERSION,
     PostprocessCancelled,
     PostprocessPipelineError,
     default_postprocess_plan,
@@ -82,7 +83,7 @@ class PostprocessPipelineTests(unittest.TestCase):
         translate_step = next(step for step in plan["steps"] if step["id"] == "translate")
         self.assertFalse(translate_step["mergeBilingual"])
         self.assertEqual(plan["steps"][0]["matchMode"], "script")
-        self.assertEqual(plan["steps"][0]["extraSplitPunctuation"], ["？", "！", ","])
+        self.assertEqual(plan["steps"][0]["extraSplitPunctuation"], ["，", "。", "？", "！", "；", ",", "."])
         self.assertEqual(plan["steps"][0]["preservePunctuation"], ["？", "！"])
         self.assertTrue(plan["steps"][0]["cleanMarkdownSymbols"])
         self.assertEqual(plan["steps"][-1]["videoEncoder"], "auto")
@@ -94,6 +95,47 @@ class PostprocessPipelineTests(unittest.TestCase):
         normalized = normalize_plan(plan)
 
         self.assertEqual(normalized["steps"][0]["extraSplitPunctuation"], ["？", "！"])
+
+    def test_normalize_plan_migrates_v1_plan_to_full_default_split_symbols(self) -> None:
+        # v1 计划依赖隐式基础断句集（，。,.）；迁移把默认清单一次性并入，
+        # 用户自定义符号顺序保持在前、缺失的默认符号追加在后。
+        raw = {
+            "version": 1,
+            "enabled": False,
+            "steps": [
+                {
+                    "id": "match",
+                    "enabled": True,
+                    "extraSplitPunctuation": ["？", "！", ","],
+                    "preservePunctuation": ["？", "！"],
+                },
+            ],
+        }
+
+        normalized = normalize_plan(raw)
+
+        self.assertEqual(
+            normalized["steps"][0]["extraSplitPunctuation"],
+            ["？", "！", ",", "，", "。", "；", "."],
+        )
+
+    def test_normalize_plan_keeps_customized_current_plan_split_symbols(self) -> None:
+        raw = {
+            "version": POSTPROCESS_PLAN_VERSION,
+            "enabled": False,
+            "steps": [
+                {
+                    "id": "match",
+                    "enabled": True,
+                    "extraSplitPunctuation": ["~"],
+                    "preservePunctuation": [],
+                },
+            ],
+        }
+
+        normalized = normalize_plan(raw)
+
+        self.assertEqual(normalized["steps"][0]["extraSplitPunctuation"], ["~"])
 
     def test_normalize_plan_defaults_retain_intermediate_for_legacy_plan(self) -> None:
         normalized = normalize_plan({"enabled": True, "steps": []})
@@ -742,7 +784,7 @@ class PostprocessPipelineTests(unittest.TestCase):
         plan = save_postprocess_plan(self.env_path, self.plan(self.replace_step()))
         config = load_postprocess_config(self.root / "maw-postprocess.json")
 
-        self.assertEqual(plan["version"], 1)
+        self.assertEqual(plan["version"], 2)
         self.assertTrue(config["plan"]["enabled"])
         self.assertNotIn("apiKey", json.dumps(config, ensure_ascii=False))
 
@@ -1188,17 +1230,17 @@ class PostprocessPreflightTests(unittest.TestCase):
             default_postprocess_plan()["steps"][0]["preservePunctuation"],
             ["？", "！"],
         )
-        # 默认保留 ？！ → 转写剥尾只剥逗号和句号。
-        self.assertEqual(_transcribe_strip_tail_punct(self.env_path), "，。")
+        # 默认保留 ？！ → 转写剥尾剥其余断句符号（，。；,.）。
+        self.assertEqual(_transcribe_strip_tail_punct(self.env_path), "，。；,.")
 
     def test_transcribe_strip_tail_punct_follows_saved_preserve_symbols(self) -> None:
         plan = default_postprocess_plan()
         plan["steps"][0]["preservePunctuation"] = ["。"]
         save_postprocess_plan(self.env_path, plan)
 
-        self.assertEqual(_transcribe_strip_tail_punct(self.env_path), "，")
+        self.assertEqual(_transcribe_strip_tail_punct(self.env_path), "，？！；,.")
 
         plan["steps"][0]["preservePunctuation"] = ["。", "，"]
         save_postprocess_plan(self.env_path, plan)
 
-        self.assertEqual(_transcribe_strip_tail_punct(self.env_path), "")
+        self.assertEqual(_transcribe_strip_tail_punct(self.env_path), "？！；,.")
