@@ -29,6 +29,7 @@ from maw.language import (  # noqa: E402
     DEFAULT_MAX_WORDS,
     DEFAULT_MIN_WORDS,
 )
+from maw.energy_valley import snap_cue_boundaries  # noqa: E402
 from maw.local_asr import (  # noqa: E402
     FUNASR_DEFAULT_MODEL,
     QWEN_DEFAULT_CHUNK_SECONDS,
@@ -306,6 +307,9 @@ def main(argv: Sequence[str] | None = None) -> int:
                 min_words=args.min_words,
                 strip_tail_punct=args.strip_tail_punct,
             )
+            snapped = snap_cue_boundaries(segments, audio_path)
+            if snapped:
+                print(f"[输出] 已将 {snapped} 个插值切点吸附到语音能量谷")
             if args.speaker_colors:
                 from maw.speaker import apply_speaker_colors
 

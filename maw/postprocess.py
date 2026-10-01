@@ -13,6 +13,7 @@ from typing import Final
 
 from maw.output_naming import TRANSLATION_TARGET_NAMES, translation_marker_name
 from maw.postprocess_io import SubtitleArtifact, read_project, read_srt, write_artifacts
+from maw.postprocess_llm import LlmClientError
 from maw.project import normalize_project
 from maw.project_preview import JsonDict, JsonValue
 from maw.text_conversion import TextConversion, apply_text_conversion
@@ -297,6 +298,8 @@ def run_llm_postprocess(
     skipped_source_ids: set[str] = set()
     response_warnings: list[str] = []
     response_modes: list[str] = []
+    network_failure_warnings: list[str] = []
+    network_failed_batches = 0
     for index, batch in enumerate(batches, 1):
         _notify_status(on_status, "toolbox_status_llm_batch", current=index, total=len(batches))
         if strict_translation:
@@ -313,11 +316,47 @@ def run_llm_postprocess(
             )
             response_mode = "cues"
         else:
+            first_id = batch[0]["id"] if batch else "?"
+            last_id = batch[-1]["id"] if batch else "?"
             try:
                 response = complete(system_prompt, batch)
+            except LlmClientError as error:
+                if error.category != "network":
+                    raise _postprocess_step_error(
+                        f"第 {index}/{len(batches)} 批（{first_id}–{last_id}）处理失败：{error}",
+                        error,
+                    ) from error
+                # 传输类失败（网络/超时/HTTP 状态）：该批字幕按原文透传，
+                # 避免长字幕因单批网络抖动整体失败；警告随产物写出。
+                network_failed_batches += 1
+                network_failure_warnings.append(
+                    f"第 {index}/{len(batches)} 批（{first_id}–{last_id}）网络请求失败，该批字幕保留原文。"
+                )
+                if item_aware_resegment:
+                    passthrough: JsonDict = {
+                        "groups": [
+                            {"atom_ids": [str(item.get("id")) for item in cue.get("items", [])]}
+                            for cue in batch
+                        ]
+                    }
+                else:
+                    passthrough = {
+                        "groups": [{"id": str(cue["id"]), "text": str(cue.get("text") or "")} for cue in batch]
+                    }
+                clean_response, batch_skipped, batch_warnings, response_mode = _sanitize_llm_response(
+                    passthrough,
+                    batch,
+                    batch_number=index,
+                    strict_translation=False,
+                    item_aware_resegment=item_aware_resegment,
+                )
+                responses.append(clean_response)
+                response_modes.append(response_mode)
+                skipped_source_ids.update(batch_skipped)
+                response_warnings.extend(batch_warnings)
+                _notify_status(on_status, "toolbox_status_llm_batch_done", current=index, total=len(batches))
+                continue
             except RuntimeError as error:
-                first_id = batch[0]["id"] if batch else "?"
-                last_id = batch[-1]["id"] if batch else "?"
                 raise _postprocess_step_error(
                     f"第 {index}/{len(batches)} 批（{first_id}–{last_id}）处理失败：{error}",
                     error,
@@ -334,6 +373,8 @@ def run_llm_postprocess(
         skipped_source_ids.update(batch_skipped)
         response_warnings.extend(batch_warnings)
         _notify_status(on_status, "toolbox_status_llm_batch_done", current=index, total=len(batches))
+    if network_failed_batches and network_failed_batches == len(batches):
+        raise ValueError("所有批次的网络请求都失败，字幕没有任何改动，未写出输出产物。")
     source_ids = {str(cue["id"]) for cue in cues}
     if source_ids and skipped_source_ids >= source_ids:
         report = _format_skip_report(skipped_source_ids, response_warnings)
@@ -385,6 +426,8 @@ def run_llm_postprocess(
         )
     else:
         warnings = tuple(warnings)
+    if network_failure_warnings:
+        warnings = (*network_failure_warnings, *warnings)
     if preserved_blank_source_ids:
         warnings = (
             f"翻译时已跳过并原样保留 {len(preserved_blank_source_ids)} 条空字幕；这些字幕未发送给模型。",
@@ -794,7 +837,7 @@ def _format_skip_detail(
 
 
 def _format_skip_summary(skipped_source_ids: Collection[str]) -> str:
-    return f"已跳过 {len(set(skipped_source_ids))} 条不合规字幕。"
+    return f"已跳过 {len(set(skipped_source_ids))} 条字幕（保留原文）。"
 
 
 def _format_skip_report_lines(details: Sequence[str]) -> tuple[str, ...]:

@@ -35,6 +35,7 @@ from maw.project import repair_segment_durations
 from maw.qwen_audio import parse_qwen_audio_hotwords
 from maw.speaker import apply_speaker_colors, split_items_by_speaker
 from maw.console import configure_utf8_stdio
+from maw.energy_valley import snap_cue_boundaries
 from maw.ffmpeg import resolve_ffmpeg_tool, resolve_ffmpeg_tools
 from maw.language import (
     DEFAULT_MAX_WORDS,
@@ -2546,6 +2547,10 @@ def main():
                 min_words=args.min_words,
                 split_mode=split_mode,
             )
+            if audio_path and Path(audio_path).is_file():
+                snapped = snap_cue_boundaries(segments, audio_path)
+                if snapped:
+                    print(f"[输出] 已将 {snapped} 个插值切点吸附到语音能量谷")
             print(f"[解析] 字幕整理完成：{len(segments)} 条（保留云端句子边界）。")
         elif not items:
             print("[警告] 未获得时间戳，输出整段为单条字幕")
