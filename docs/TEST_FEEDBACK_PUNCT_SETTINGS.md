@@ -111,5 +111,6 @@
 | --- | --- | --- | --- | --- |
 | 6 | 契约 | Python 侧默认清单在 7 个转写 CLI 与 `maw/local_asr.py` 中为独立字面量，此前无漂移守卫；新增 `tests/test_punctuation_defaults_contract.py`，从 `maw/postprocess_match.py` 规范常量派生期望值、以源码文本钉住全部副本（JS 侧已有 LauncherAssetContractTests 守护） | 修改 | 已修复 |
 | 7 | 文案 | `_transcribe_extra_strong_punct` docstring 残留旧术语「额外断句符号」，改为「断句符号」 | 修改 | 已修复 |
+| 8 | lint | `postprocess_pipeline.py` 导入未使用的 `DEFAULT_STRONG_PUNCT` / `DEFAULT_STRIP_TAIL_PUNCT`，会挂 CI 的 Ruff 检查；移除导入，两个常量的契约职责改由 `tests/test_punctuation_defaults_contract.py` 承担（断言其与派生默认值一致） | 修改 | 已修复 |
 
-验证记录：全量 `unittest discover` 1749 项通过（跳过 8，含新增契约测试 4 项）；`git diff --check` 通过。
+验证记录：全量 `unittest discover` 1749 项通过（跳过 8，含新增契约测试 4 项）；`ruff check` 全仓通过、新测试文件 `ruff format --check` 通过；`git diff --check` 通过。

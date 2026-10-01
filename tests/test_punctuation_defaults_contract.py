@@ -13,6 +13,8 @@ import unittest
 from maw.postprocess_match import (
     DEFAULT_EXTRA_SPLIT_PUNCTUATION,
     DEFAULT_PRESERVE_PUNCTUATION,
+    DEFAULT_STRONG_PUNCT,
+    DEFAULT_STRIP_TAIL_PUNCT,
 )
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -40,6 +42,9 @@ class PunctuationDefaultsContractTests(unittest.TestCase):
         self.assertEqual(EXPECTED_BREAK, "，。？！；,.")
         self.assertEqual(EXPECTED_KEEP, "？！")
         self.assertEqual(EXPECTED_STRIP, "，。；,.")
+        # CLI 默认值的规范声明常量与派生值一致。
+        self.assertEqual(DEFAULT_STRONG_PUNCT, EXPECTED_BREAK)
+        self.assertEqual(DEFAULT_STRIP_TAIL_PUNCT, EXPECTED_STRIP)
 
     def test_qwen_script_defaults_follow_shared_constants(self) -> None:
         text = source_text("generate_subtitle_qwen_api.py")

@@ -44,8 +44,6 @@ from maw.postprocess_llm import (
 from maw.postprocess_match import (
     DEFAULT_EXTRA_SPLIT_PUNCTUATION,
     DEFAULT_PRESERVE_PUNCTUATION,
-    DEFAULT_STRONG_PUNCT,
-    DEFAULT_STRIP_TAIL_PUNCT,
     ScriptMatchRequest,
     run_script_match,
 )
