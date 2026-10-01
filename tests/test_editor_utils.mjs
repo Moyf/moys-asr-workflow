@@ -6254,3 +6254,66 @@ test('ASS special symbol rules apply to all five formats across preview runs and
   const off = helpers.normalizeEditorSettings({ assSpecialSymbolRule: 'both', assStrikeEnabled: false });
   assert.ok(helpers.assInlineStyleRuns(text, 'both', off).map(run => run.text).join('').includes('~~删除~~'));
 });
+
+
+test('parseLrcSegments derives gapless timings from successive timestamps', () => {
+  const segments = JSON.parse(JSON.stringify(helpers.parseLrcSegments([
+    '[ti:Demo]',
+    '[00:10.00]First line',
+    '[00:15.500]Second line',
+    '[01:02]Third line',
+  ].join('\n'))));
+  // 每句持续到下一时间戳；最后一句没有后续时间戳时兜底 5s。
+  assert.deepEqual(segments, [
+    { start: 10000, end: 15500, text: 'First line' },
+    { start: 15500, end: 62000, text: 'Second line' },
+    { start: 62000, end: 67000, text: 'Third line' },
+  ]);
+});
+
+test('parseLrcSegments expands multi-timestamp lines and sorts out-of-order cues', () => {
+  const segments = JSON.parse(JSON.stringify(helpers.parseLrcSegments([
+    '[00:20.00]Chorus',
+    '[00:10.00][00:40.00]Verse',
+  ].join('\n'))));
+  assert.deepEqual(segments.map((segment) => [segment.start, segment.end]), [
+    [10000, 20000],
+    [20000, 40000],
+    [40000, 45000],
+  ]);
+  assert.deepEqual(segments.map((segment) => segment.text), ['Verse', 'Chorus', 'Verse']);
+});
+
+test('parseLrcSegments applies the offset tag, strips enhanced word tags and keeps boundaries', () => {
+  const segments = JSON.parse(JSON.stringify(helpers.parseLrcSegments([
+    '[offset:+2500]',
+    '[ar:Artist][al:Album]',
+    '[00:10.00]<00:10.00>Enhanced <00:12.00>words',
+    '[00:12.00]',
+    '[00:15.00]After the gap marker',
+  ].join('\n'))));
+  // 空文本时间戳只作为上一句的结束边界，不生成字幕；
+  // offset 正值按主流播放器约定让歌词提前 2500ms。
+  assert.deepEqual(segments, [
+    { start: 7500, end: 9500, text: 'Enhanced words' },
+    // 最后一句没有后续时间戳，按 5s 兜底。
+    { start: 12500, end: 17500, text: 'After the gap marker' },
+  ]);
+});
+
+test('parseLrcSegments merges duplicate timestamps and preserves bracketed lyric text', () => {
+  const segments = JSON.parse(JSON.stringify(helpers.parseLrcSegments([
+    '[00:10.00]Left [Chorus] part',
+    '[00:10.00]Right part',
+    '[01:00.000][01:00.0]Same stamp twice',
+  ].join('\n'))));
+  assert.deepEqual(segments, [
+    { start: 10000, end: 60000, text: 'Left [Chorus] part\nRight part' },
+    { start: 60000, end: 65000, text: 'Same stamp twice' },
+  ]);
+});
+
+test('parseLrcSegments rejects files without any lyric cues', () => {
+  assert.throws(() => helpers.parseLrcSegments('[ti:Only metadata]\n[ar:Someone]\n'), /没有可导入的歌词时间轴/);
+  assert.throws(() => helpers.parseLrcSegments(''), /没有可导入的歌词时间轴/);
+});

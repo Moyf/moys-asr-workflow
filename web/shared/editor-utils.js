@@ -26,6 +26,7 @@
   Object.assign(helpers, window.MAWE.resolve('utils-multi-subtitle', helpers));
   Object.assign(helpers, window.MAWE.resolve('utils-word-split', helpers));
   Object.assign(helpers, window.MAWE.resolve('utils-srt', helpers));
+  Object.assign(helpers, window.MAWE.resolve('utils-lrc', helpers));
   Object.assign(helpers, window.MAWE.resolve('utils-ass-style', helpers));
   Object.assign(helpers, window.MAWE.resolve('utils-ass-animation', helpers));
   Object.assign(helpers, window.MAWE.resolve('utils-ass-export', helpers));
@@ -248,6 +249,7 @@
     normalizeTimelineTimecodeSeparator,
     parseBwfTimeReference,
     parseFrameTimecode,
+    parseLrcSegments,
     parseSplitTrimSymbolInput,
     placeUnalignedSplitItems,
     planAutoMerge,
@@ -312,6 +314,7 @@ window.AsrEditorUtils = {
     speakerLabelForSegment,
     formatSpeakerLabelledText,
     decodeSubtitleText,
+    parseLrcSegments,
     parseBwfTimeReference,
     readBwfTimeReferenceFromFile,
     normalizeKeyboardOperationReferenceMode,
