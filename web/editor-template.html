@@ -1751,12 +1751,16 @@ __WAVEFORM_CSS__
     </div>
     <div class="ass-frame-caption" id="ass-frame-caption" hidden></div>
     <div class="ass-frame-warnings" id="ass-frame-warnings" hidden></div>
+    <div class="ass-frame-options">
+      <label class="toggle ass-frame-option" title="暂停时把 libass 实际渲染帧直接叠加在播放器画面上（播放时仍使用即时预览）"><input type="checkbox" id="ass-frame-stage-toggle"> 暂停时在播放器画面显示实际帧</label>
+      <label class="toggle ass-frame-option" title="开启后，暂停 / seek 停止 / 样式修改时自动重新渲染；关闭后仅在点击「渲染当前帧」时更新"><input type="checkbox" id="ass-frame-auto-toggle" checked> 自动渲染实际帧</label>
+    </div>
     <div class="ass-frame-actions">
       <button type="button" id="ass-frame-render" class="primary">📷 渲染当前帧</button>
       <button type="button" id="ass-frame-size" aria-pressed="false">原尺寸查看</button>
       <button type="button" id="ass-frame-close-footer">关闭</button>
     </div>
-    <small class="editor-settings-hint ass-frame-hint">暂停时播放器自动显示 libass 实际画面，播放时使用即时预览。实际帧按源分辨率输出无损 PNG；原尺寸查看可检查文字边缘。预览跟随字幕轨道显隐，导出内容不受影响。</small>
+    <small class="editor-settings-hint ass-frame-hint">实际帧按源分辨率输出无损 PNG；「原尺寸查看」可检查文字边缘。预览跟随字幕轨道显隐，导出内容不受影响。</small>
   </div>
 </aside>
 

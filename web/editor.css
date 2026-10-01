@@ -1933,6 +1933,12 @@
   }
   .ass-frame-caption { color: var(--text-secondary); font: 12px var(--font-mono); }
   .ass-frame-warnings { margin: 0; color: var(--amber-hover); font-size: 12px; white-space: pre-line; }
+  .ass-frame-options {
+    display: flex; flex: 0 0 auto; flex-direction: column; gap: 6px;
+    padding: 8px 10px; background: var(--bg-raised); border: 1px solid var(--border-subtle); border-radius: var(--radius-md);
+  }
+  .ass-frame-option { margin: 0; color: var(--text-secondary); font-size: 12px; }
+  .ass-frame-option input[type="checkbox"] { accent-color: var(--accent); }
   .ass-frame-actions { display: flex; flex: 0 0 auto; align-items: center; gap: 8px; }
   .ass-frame-actions button {
     min-height: 28px; padding: 4px 11px; color: var(--btn-text); background: var(--btn-bg);
@@ -1942,6 +1948,12 @@
   .ass-frame-actions button:focus-visible { outline: 2px solid var(--accent-line); outline-offset: 1px; }
   .ass-frame-actions button.primary { color: var(--accent-active-fg, var(--bg-base)); background: var(--accent); border-color: var(--accent); font-weight: 600; }
   .ass-frame-actions button.primary:hover:not(:disabled) { background: var(--accent-hover); border-color: var(--accent-hover); }
+  /* 「原尺寸查看」是按下式开关：激活态用强调色与常态区分。 */
+  .ass-frame-actions button[aria-pressed="true"] {
+    color: var(--accent); background: var(--accent-tint);
+    border-color: var(--accent); font-weight: 600;
+  }
+  .ass-frame-actions button[aria-pressed="true"]:hover:not(:disabled) { background: var(--accent-tint-strong, var(--accent-tint)); border-color: var(--accent); }
   .ass-frame-actions button:disabled { opacity: .45; cursor: not-allowed; }
   .ass-frame-hint { margin: 0; }
 
@@ -3828,7 +3840,9 @@
   .timed-text-edit-rows,
   .timed-text-edit-report,
   .timed-text-edit-single-textarea,
-  .hint-project-preview-value {
+  .hint-project-preview-value,
+  .ass-frame-window-body,
+  .ass-frame-image-wrap.ass-frame-native {
     scrollbar-width: thin;
     scrollbar-color: var(--scroll-thumb) var(--scroll-track);
   }
@@ -3845,7 +3859,9 @@
   .timed-text-edit-rows::-webkit-scrollbar,
   .timed-text-edit-report::-webkit-scrollbar,
   .timed-text-edit-single-textarea::-webkit-scrollbar,
-  .hint-project-preview-value::-webkit-scrollbar { width: 6px; height: 6px; }
+  .hint-project-preview-value::-webkit-scrollbar,
+  .ass-frame-window-body::-webkit-scrollbar,
+  .ass-frame-image-wrap.ass-frame-native::-webkit-scrollbar { width: 6px; height: 6px; }
   .cues-container::-webkit-scrollbar-track,
   .waveform-scroll::-webkit-scrollbar-track,
   .toolbar.cue-list-toolbar::-webkit-scrollbar-track,
@@ -3859,7 +3875,9 @@
   .timed-text-edit-rows::-webkit-scrollbar-track,
   .timed-text-edit-report::-webkit-scrollbar-track,
   .timed-text-edit-single-textarea::-webkit-scrollbar-track,
-  .hint-project-preview-value::-webkit-scrollbar-track { background: var(--scroll-track); }
+  .hint-project-preview-value::-webkit-scrollbar-track,
+  .ass-frame-window-body::-webkit-scrollbar-track,
+  .ass-frame-image-wrap.ass-frame-native::-webkit-scrollbar-track { background: var(--scroll-track); }
   .cues-container::-webkit-scrollbar-thumb,
   .waveform-scroll::-webkit-scrollbar-thumb,
   .toolbar.cue-list-toolbar::-webkit-scrollbar-thumb,
@@ -3873,7 +3891,9 @@
   .timed-text-edit-rows::-webkit-scrollbar-thumb,
   .timed-text-edit-report::-webkit-scrollbar-thumb,
   .timed-text-edit-single-textarea::-webkit-scrollbar-thumb,
-  .hint-project-preview-value::-webkit-scrollbar-thumb {
+  .hint-project-preview-value::-webkit-scrollbar-thumb,
+  .ass-frame-window-body::-webkit-scrollbar-thumb,
+  .ass-frame-image-wrap.ass-frame-native::-webkit-scrollbar-thumb {
     background: var(--scroll-thumb); border-radius: 4px;
     border: 2px solid transparent; background-clip: padding-box;
   }
@@ -3890,7 +3910,9 @@
   .timed-text-edit-rows::-webkit-scrollbar-thumb:hover,
   .timed-text-edit-report::-webkit-scrollbar-thumb:hover,
   .timed-text-edit-single-textarea::-webkit-scrollbar-thumb:hover,
-  .hint-project-preview-value::-webkit-scrollbar-thumb:hover { background: var(--scroll-thumb-hover); background-clip: padding-box; }
+  .hint-project-preview-value::-webkit-scrollbar-thumb:hover,
+  .ass-frame-window-body::-webkit-scrollbar-thumb:hover,
+  .ass-frame-image-wrap.ass-frame-native::-webkit-scrollbar-thumb:hover { background: var(--scroll-thumb-hover); background-clip: padding-box; }
 
 /* === 标记与区段管理窗 —— 复用 .gap-remove-panel 家族样式，只补充自有差异 ===
    间距约定：区块之间保持 ≥8px 垂直间隔；.gap-remove-field 自带 0 外边距，

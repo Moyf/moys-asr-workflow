@@ -59,7 +59,9 @@ window.MAWE.register('utils-settings', function createUtilsModule(dependencies) 
     splitKey: 'enter', splitUseWordTimestamps: true, splitAutoSubmit: true,
     mainSplitModeOverride: null,
     splitTrimSymbols: [...DEFAULT_SPLIT_TRIM_SYMBOLS],
-    overlayEnabled: true, extensionOverlayEnabled: true, assMode: false, assEmphasisSyntax: 'both', assSpecialSymbolRule: 'double', assUnderlineEnabled: true, assStrikeEnabled: true, assSmallTextEnabled: true, assLargeTextEnabled: true, multiSubtitleRowHeight: 168,
+    overlayEnabled: true, extensionOverlayEnabled: true, assMode: false,
+    assFrameStagePreview: false, assFrameAutoRender: true,
+    assEmphasisSyntax: 'both', assSpecialSymbolRule: 'double', assUnderlineEnabled: true, assStrikeEnabled: true, assSmallTextEnabled: true, assLargeTextEnabled: true, multiSubtitleRowHeight: 168,
     subtitleColorPaletteEnabled: false,
     exportStartAtZero: false, cueListShowIndex: true, cueListShowTime: true,
     cueListShowSticker: true, cueListShowCharcount: true, cueListAutoScrollOnClick: true,
@@ -119,6 +121,9 @@ window.MAWE.register('utils-settings', function createUtilsModule(dependencies) 
       extensionOverlayEnabled: savedSettings.extensionOverlayEnabled !== false,
       // ASS 字幕模式是预览偏好，默认关闭以保持旧版 CSS 预览行为。
       assMode: savedSettings.assMode === true,
+      // 暂停叠加实际帧默认关闭；自动渲染默认开启（保持既有体验）。
+      assFrameStagePreview: savedSettings.assFrameStagePreview === true,
+      assFrameAutoRender: savedSettings.assFrameAutoRender !== false,
       assEmphasisSyntax: emphasisSyntax === 'none' ? 'none' : 'both',
       assSpecialSymbolRule: ['none', 'single', 'double', 'both'].includes(savedSettings.assSpecialSymbolRule)
         ? savedSettings.assSpecialSymbolRule : 'double',

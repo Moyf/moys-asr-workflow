@@ -445,6 +445,17 @@ test('normalizes timeline OTIO export options and defaults them to enabled', () 
   assert.equal(repaired.otioExportIncludeMarkers, true);
 });
 
+test('defaults ASS frame toggles to stage-off and auto-render-on', () => {
+  const defaults = helpers.normalizeEditorSettings({});
+  assert.equal(defaults.assFrameStagePreview, false);
+  assert.equal(defaults.assFrameAutoRender, true);
+  // 暂停叠加实际帧需显式开启；自动渲染只有显式 false 才关闭。
+  assert.equal(helpers.normalizeEditorSettings({ assFrameStagePreview: true }).assFrameStagePreview, true);
+  assert.equal(helpers.normalizeEditorSettings({ assFrameStagePreview: 1 }).assFrameStagePreview, false);
+  assert.equal(helpers.normalizeEditorSettings({ assFrameAutoRender: false }).assFrameAutoRender, false);
+  assert.equal(helpers.normalizeEditorSettings({ assFrameAutoRender: null }).assFrameAutoRender, true);
+});
+
 test('converts and formats the parallel frame timebase', () => {
   assert.deepEqual(JSON.parse(JSON.stringify(
     helpers.normalizeTimelineTimebase({ unit: 'frames', fps: 29.97 }),

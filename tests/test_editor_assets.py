@@ -220,14 +220,26 @@ class EditorAssetContractTests(unittest.TestCase):
         self.assertIn('id="ass-frame-render"', template)
         # 播放中的陈旧画面提示：灰色斜纹 + 暂停后自动重渲染。
         self.assertIn('id="ass-frame-stale"', template)
+        # 窗口内两个开关：暂停叠加实际帧（默认关）与自动渲染（默认开）。
+        self.assertIn('id="ass-frame-stage-toggle"', template)
+        self.assertIn('id="ass-frame-auto-toggle"', template)
+        self.assertIn('id="ass-frame-size"', template)
         module = edit.read_web_asset("editor/styles/editor-wiring-ass-frame.js")
         self.assertIn("assFrameUrl", module)
         self.assertIn("MaweExportSrt.buildAss({ preview: true })", module)
         self.assertIn("addEventListener('seeked'", module)
         self.assertIn("addEventListener('pause'", module)
+        self.assertIn("assFrameStagePreview", module)
+        self.assertIn("assFrameAutoRender", module)
+        settings = edit.read_web_asset("shared/utils/settings.js")
+        self.assertIn("assFrameStagePreview: savedSettings.assFrameStagePreview === true", settings)
+        self.assertIn("assFrameAutoRender: savedSettings.assFrameAutoRender !== false", settings)
         styles = edit.read_web_asset("editor.css")
         self.assertIn(".ass-frame-window {", styles)
         self.assertIn(".ass-frame-stale {", styles)
+        self.assertIn('.ass-frame-actions button[aria-pressed="true"]', styles)
+        # 实际画面窗口的滚动容器使用项目统一滚动条样式。
+        self.assertIn(".ass-frame-window-body::-webkit-scrollbar-thumb", styles)
 
     def test_waveform_gap_display_type_uses_shared_core_and_subtle_protected_style(self) -> None:
         waveform = edit.build_editor_scripts()

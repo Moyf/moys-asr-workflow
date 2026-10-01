@@ -14,6 +14,8 @@
   const renderButton = document.getElementById('ass-frame-render');
   const windowStatus = document.getElementById('ass-frame-window-status');
   const staleEl = document.getElementById('ass-frame-stale');
+  const stageToggle = document.getElementById('ass-frame-stage-toggle');
+  const autoToggle = document.getElementById('ass-frame-auto-toggle');
   let timer = 0;
   let pending = false;
   let desired = null;
@@ -30,6 +32,10 @@
   const translate = (text) => global.MAWE_I18N?.translateText?.(text) || text;
   const enabled = () => Boolean(global.MaweBoot?.SERVER_CONFIG?.assFrameUrl)
     && global.MaweSettings?.EDITOR_SETTINGS?.assMode === true;
+  // 暂停时把实际帧叠加到播放器画面：默认关闭，窗口内开关控制。
+  const stageOverlayEnabled = () => global.MaweSettings?.EDITOR_SETTINGS?.assFrameStagePreview === true;
+  // 自动渲染：默认开启；关闭后仅在点击「渲染当前帧」时更新。
+  const autoRenderEnabled = () => global.MaweSettings?.EDITOR_SETTINGS?.assFrameAutoRender !== false;
 
   function boundVideo() {
     // A browser-only blob upload can differ from the server's bound project.
@@ -98,6 +104,7 @@
   }
 
   function showStageFrame(frame) {
+    if (!stageOverlayEnabled()) return;
     if (!stageImage || !desired || frame.key !== desired.key || !player.paused || player.seeking) return;
     if (stageImage.getAttribute('src') !== frame.url) stageImage.src = frame.url;
     stageImage.dataset.timeMs = String(frame.timeMs);
@@ -127,7 +134,7 @@
     if (!player.paused || player.seeking) {
       desired = null;
       hideStage();
-      setStageStatus('ASS 即时预览');
+      setStageStatus(stageOverlayEnabled() ? 'ASS 即时预览' : '');
       global.clearTimeout(timer);
       timer = 0;
       syncStaleOverlay();
@@ -138,16 +145,24 @@
     desired = null;
     hideStage();
     syncStaleOverlay();
-    setStageStatus(capabilityFailure ? 'ASS 即时预览 · 实际渲染不可用' : 'ASS 实际画面渲染中…', failureMessage);
+    // 自动渲染关闭：保留最近一次手动帧，等「渲染当前帧」或状态变化再更新。
+    if (!autoRenderEnabled()) {
+      setStageStatus('');
+      return;
+    }
+    if (stageOverlayEnabled()) {
+      setStageStatus(capabilityFailure ? 'ASS 即时预览 · 实际渲染不可用' : 'ASS 实际画面渲染中…', failureMessage);
+    }
     global.clearTimeout(timer);
     timer = global.setTimeout(() => { timer = 0; refreshDesired(); }, 200);
   }
 
   function refreshDesired() {
     if (!enabled() || !boundVideo() || !player.paused || player.seeking) return;
+    if (!autoRenderEnabled()) return;
     if (capabilityFailure) {
       hideStage();
-      setStageStatus('ASS 即时预览 · 实际渲染不可用', failureMessage);
+      setStageStatus(stageOverlayEnabled() ? 'ASS 即时预览 · 实际渲染不可用' : '', failureMessage);
       return;
     }
     desired = snapshot();
@@ -158,10 +173,10 @@
     }
     hideStage();
     if (desired?.key === failedKey) {
-      setStageStatus('ASS 即时预览 · 实际渲染不可用', failureMessage);
+      setStageStatus(stageOverlayEnabled() ? 'ASS 即时预览 · 实际渲染不可用' : '', failureMessage);
       return;
     }
-    setStageStatus('ASS 实际画面渲染中…');
+    if (stageOverlayEnabled()) setStageStatus('ASS 实际画面渲染中…');
     // One request at a time. Changes during rendering are coalesced and retried
     // in finally; old responses never replace the new playback/style state.
     if (desired && !pending) void capture(desired);
@@ -192,7 +207,12 @@
       const url = `data:image/png;base64,${payload.image}`;
       const decoded = new Image();
       decoded.src = url;
-      await decoded.decode();
+      // 个别内核的 decode() 可能悬挂，且不受 abort 信号保护；限时竞争，
+      // 超时也照常出图（<img> 自身会继续加载），绝不让 pending 卡死。
+      await Promise.race([
+        decoded.decode().catch(() => {}),
+        new Promise((resolve) => global.setTimeout(resolve, 5000)),
+      ]);
       const frame = { key: request.key, url, timeMs: request.frameTimeMs,
         width: decoded.naturalWidth, height: decoded.naturalHeight,
         warnings: Array.isArray(payload.warnings) ? payload.warnings.filter(Boolean) : [] };
@@ -223,8 +243,9 @@
       if (renderButton) renderButton.disabled = false;
       // Don't hide a successfully decoded, current frame again just to queue a
       // redundant refresh. Read latest state once to drain edits made in flight.
-      refreshDesired();
-      syncStaleOverlay();
+      // 手动模式下不自动补渲染，只刷新过期标记。
+      if (autoRenderEnabled()) refreshDesired();
+      else syncStaleOverlay();
     }
   }
 
@@ -249,8 +270,10 @@
     positionKey: 'moy.asr.ass_frame.window.v1',
     onOpen: () => {
       syncPreview();
-      if (cached && cached.key === snapshot()?.key) showWindowFrame(cached);
-      else void renderAssFrame();
+      const request = snapshot();
+      if (cached && request && cached.key === request.key) showWindowFrame(cached);
+      else if (autoRenderEnabled()) void renderAssFrame();
+      else if (cached) showWindowFrame(cached);
       syncStaleOverlay();
     },
   });
@@ -258,6 +281,10 @@
   function syncAssFrameControls() {
     openButton.hidden = !enabled();
     if (openButton.hidden && floatingPanel.isOpen()) floatingPanel.close();
+    // 自动渲染开启时「渲染当前帧」没有意义，隐藏；关闭后作为手动更新入口显示。
+    if (renderButton) renderButton.hidden = autoRenderEnabled();
+    if (stageToggle) stageToggle.checked = stageOverlayEnabled();
+    if (autoToggle) autoToggle.checked = autoRenderEnabled();
     syncPreview();
   }
 
@@ -307,6 +334,14 @@
     document.getElementById(id)?.addEventListener('click', () => floatingPanel.close());
   }
   document.getElementById('ass-mode-toggle')?.addEventListener('change', syncAssFrameControls);
+  stageToggle?.addEventListener('change', () => {
+    global.MaweSettings?.updateEditorSettings({ assFrameStagePreview: stageToggle.checked });
+    syncAssFrameControls();
+  });
+  autoToggle?.addEventListener('change', () => {
+    global.MaweSettings?.updateEditorSettings({ assFrameAutoRender: autoToggle.checked });
+    syncAssFrameControls();
+  });
   document.getElementById('ass-frame-size')?.addEventListener('click', (event) => {
     const native = document.querySelector('.ass-frame-image-wrap')?.classList.toggle('ass-frame-native');
     event.currentTarget.setAttribute('aria-pressed', String(Boolean(native)));

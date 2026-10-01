@@ -35,6 +35,15 @@ async function enableAss(page) {
   await page.locator('#editor-settings-close').click();
 }
 
+async function enableStage(page) {
+  // 暂停叠加实际帧是窗口内开关且默认关闭；舞台相关断言先打开它。
+  await page.locator('#editor-settings-toggle').click();
+  await page.locator('#ass-frame-preview-open').click();
+  await page.locator('#ass-frame-stage-toggle').check();
+  await page.locator('#ass-frame-close-footer').click();
+  await page.locator('#editor-settings-close').click();
+}
+
 async function seek(page, seconds) {
   await page.evaluate((time) => { window.MaweCoreState.player.currentTime = time; }, seconds);
   await expect.poll(() => page.evaluate(() => window.MaweCoreState.player.seeking)).toBe(false);
@@ -44,6 +53,7 @@ test('paused video uses native libass, updates after edits, and falls back immed
   const errors = [];
   page.on('pageerror', (error) => errors.push(error.message));
   await enableAss(page);
+  await enableStage(page);
   await seek(page, 1.5);
   const frame = page.locator('#ass-stage-frame');
   await expect(frame).toBeVisible();
@@ -100,6 +110,7 @@ test('old responses cannot overwrite a new seek and failures keep CSS usable', a
     await route.continue();
   });
   await enableAss(page);
+  await enableStage(page);
   await expect.poll(() => intercepted).toBe(true);
   await seek(page, 1.5);
   release();
@@ -118,6 +129,7 @@ test('old responses cannot overwrite a new seek and failures keep CSS usable', a
 
 test('preview visibility and speaker labels remain independent from exports and browser-only media', async ({ page }) => {
   await enableAss(page);
+  await enableStage(page);
   await seek(page, 1.5);
   await expect(page.locator('#ass-stage-frame')).toBeVisible();
   const options = await page.evaluate(() => {
@@ -147,6 +159,7 @@ test('preview visibility and speaker labels remain independent from exports and 
 
 test('coalesces ASS serialization and avoids reloading an unchanged cached image', async ({ page }) => {
   await enableAss(page);
+  await enableStage(page);
   await seek(page, 1.5);
   await expect(page.locator('#ass-stage-frame')).toBeVisible();
   await page.evaluate(() => {
@@ -175,10 +188,16 @@ test('does not retry missing libass on every seek and allows explicit recovery',
       code: 'ASS_FRAME_LIBASS_UNAVAILABLE' } });
   });
   await enableAss(page);
+  await enableStage(page);
+  // 打开窗口本身算一次显式渲染尝试（会清除能力失败并重试）；此后 seek
+  // 不允许再发起任何请求，直到用户手动恢复。
+  const requestsAfterSetup = requests;
   await expect(page.locator('#ass-stage-status')).toHaveText('ASS 即时预览 · 实际渲染不可用');
   await seek(page, 1.5);
   await expect(page.locator('#ass-stage-status')).toHaveText('ASS 即时预览 · 实际渲染不可用');
-  expect(requests).toBe(1);
+  // 覆盖 seek 后的渲染防抖窗口，确认没有隐藏的重试。
+  await page.waitForTimeout(350);
+  expect(requests).toBe(requestsAfterSetup);
   await page.unroute('**/api/ass-frame');
   await page.evaluate(() => window.MaweAssFrame.renderAssFrame());
   await expect(page.locator('#ass-stage-frame')).toBeVisible();
@@ -196,6 +215,7 @@ test('times out a stalled frame request without disabling manual retry', async (
       : originalFetch(url, options);
   });
   await enableAss(page);
+  await enableStage(page);
   await expect(page.locator('#ass-stage-status')).toHaveText('ASS 即时预览 · 实际渲染不可用');
   await expect(page.locator('#ass-frame-render')).toBeEnabled();
   await expect(page.locator('#ass-stage-frame')).toBeHidden();
@@ -214,6 +234,7 @@ test('drops an in-flight response after reloading the same media URL', async ({ 
     } else await route.continue();
   });
   await enableAss(page);
+  await enableStage(page);
   await expect.poll(() => count).toBe(1);
   await page.evaluate(() => window.MaweCoreState.player.load());
   await expect.poll(() => page.evaluate(() => window.MaweCoreState.player.readyState)).toBeGreaterThan(0);
@@ -224,6 +245,7 @@ test('drops an in-flight response after reloading the same media URL', async ({ 
 
 test('renders the displayed frame instead of the next frame at fractional seek times', async ({ page }) => {
   await enableAss(page);
+  await enableStage(page);
   for (const position of [1.505, 1.367]) {
     const pts = await page.evaluate((seconds) => {
       const video = window.MaweCoreState.player;
@@ -271,6 +293,7 @@ test('renders the displayed frame instead of the next frame at fractional seek t
 
 test('renders the final presented frame at the media duration', async ({ page }) => {
   await enableAss(page);
+  await enableStage(page);
   const pts = await page.evaluate(() => {
     const video = window.MaweCoreState.player;
     const frame = new Promise((resolve) => video.requestVideoFrameCallback((now, metadata) => resolve(metadata.mediaTime)));
@@ -286,12 +309,16 @@ test('renders the final presented frame at the media duration', async ({ page })
 
 test('manual capture during playback keeps the clicked frame and marks it stale', async ({ page }) => {
   await enableAss(page);
+  await enableStage(page);
   await seek(page, 1.5);
   await expect(page.locator('#ass-stage-frame')).toBeVisible();
   await page.locator('#editor-settings-toggle').click();
   await page.locator('#editor-settings-tab-subtitle-style').click();
   await page.locator('#ass-frame-preview-open').click();
   await expect(page.locator('#ass-frame-image')).toBeVisible();
+  // 手动模式：关闭自动渲染，让「渲染当前帧」成为唯一更新入口。
+  await page.locator('#ass-frame-auto-toggle').uncheck();
+  await expect(page.locator('#ass-frame-render')).toBeVisible();
   await page.locator('#editor-settings-close').click();
   await page.evaluate(() => window.MaweCoreState.player.play());
   await expect(page.locator('#ass-stage-frame')).toBeHidden();
@@ -310,4 +337,38 @@ test('manual capture during playback keeps the clicked frame and marks it stale'
   await expect(page.locator('#ass-frame-stale')).toBeVisible();
   await expect(page.locator('#ass-frame-stale')).toContainText('暂停后重新渲染');
   await expect(page.locator('#ass-stage-frame')).toBeHidden();
+});
+
+test('stage overlay defaults to off while auto rendering defaults to on', async ({ page }) => {
+  await enableAss(page);
+  await seek(page, 1.5);
+  // 默认关闭舞台叠加：暂停时仍是 CSS 预览，也没有舞台角标。
+  await expect(page.locator('#ass-stage-frame')).toBeHidden();
+  await expect(page.locator('#ass-stage-status')).toBeHidden();
+  await expect(page.locator('#overlay')).toHaveCSS('visibility', 'visible');
+  await page.locator('#editor-settings-toggle').click();
+  await page.locator('#ass-frame-preview-open').click();
+  await expect(page.locator('#ass-frame-stage-toggle')).toBeVisible();
+  await expect(page.locator('#ass-frame-auto-toggle')).toBeChecked();
+  // 自动渲染开启时「渲染当前帧」没有意义，隐藏。
+  await expect(page.locator('#ass-frame-render')).toBeHidden();
+  // 关闭自动渲染：按钮显示；开启舞台叠加：手动渲染一帧后叠到播放器画面。
+  await page.locator('#ass-frame-auto-toggle').uncheck();
+  await expect(page.locator('#ass-frame-render')).toBeVisible();
+  await page.locator('#ass-frame-stage-toggle').check();
+  await page.locator('#ass-frame-render').click();
+  await expect(page.locator('#ass-stage-frame')).toBeVisible();
+  await expect(page.locator('#overlay')).toHaveCSS('visibility', 'hidden');
+  // 自动渲染已关：seek 后舞台回到 CSS 预览，窗口帧标记过期。
+  await seek(page, 2);
+  await expect(page.locator('#ass-stage-frame')).toBeHidden();
+  await expect(page.locator('#overlay')).toHaveCSS('visibility', 'visible');
+  await expect(page.locator('#ass-frame-stale')).toBeVisible();
+  await expect(page.locator('#ass-frame-stale')).toContainText('画面已过期');
+  // 开关状态持久化到编辑器设置。
+  const persisted = await page.evaluate(() => ({
+    stage: window.MaweSettings.EDITOR_SETTINGS.assFrameStagePreview,
+    auto: window.MaweSettings.EDITOR_SETTINGS.assFrameAutoRender,
+  }));
+  expect(persisted).toEqual({ stage: true, auto: false });
 });
