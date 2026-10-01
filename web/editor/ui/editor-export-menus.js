@@ -145,7 +145,12 @@
       }
       if (open) MaweFloatingPanel.bringFloatingSurfaceToFront(dd);
       else MaweFloatingPanel.syncFloatingSurfaceLayers();
-      if (open && positioner) requestAnimationFrame(positioner);
+      if (open && positioner) {
+        // 同步先定位一次：类切换后布局已可测量，避免菜单一帧落在 CSS 兜底
+        // 的视口左上角；rAF 再校准一次，吸收定位期间的布局变化。
+        positioner();
+        requestAnimationFrame(positioner);
+      }
       if (!open && restoreFocus) btn.focus();
     };
     btn.addEventListener('click', (e) => {

@@ -11,6 +11,12 @@
   // 起始值高于普通设置弹窗（420），但低于拖拽遮罩和加载层（500/510）。
   const FLOATING_SURFACE_Z_INDEX_BASE = 430;
 
+  // DESIGN.md 第 6 节：sticky 工具栏内的下拉弹层不靠自身 z-index 竞争，而是
+  // 提升 owner（cue-list-toolbar）。栈基线（430+）高于旧的静态提升值（60），
+  // owner 提升值因此改为跟随栈顶增长的 CSS 变量，每次层级同步时刷新；
+  // 未同步前回退到旧静态值。settings-panel-owner 仍用静态 80，原因见 DESIGN.md。
+  const OWNER_PROMOTED_Z_PROPERTY = '--mawe-owner-promoted-z';
+
 
   const floatingSurfaceStack = [];
 
@@ -45,6 +51,10 @@
       const zIndex = FLOATING_SURFACE_Z_INDEX_BASE + index;
       surface.style.zIndex = String(zIndex);
     });
+    // owner 提升值始终高于栈内所有成员；面板关闭后残留无害（仅在 owner 被
+    // 提升时生效）。拖拽遮罩（500）与加载层（510）仍在其上。
+    document.documentElement.style
+      .setProperty(OWNER_PROMOTED_Z_PROPERTY, String(FLOATING_SURFACE_Z_INDEX_BASE + floatingSurfaceStack.length));
   }
 
 
@@ -66,6 +76,8 @@
     if (!floatingSurfaceRoots.has(root)) {
       floatingSurfaceRoots.add(root);
       floatingSurfaceStack.push(root);
+      // 迟到的登记会让栈顶 z 增长，同步刷新 owner 提升值，保持“提升值 > 全体成员”。
+      syncFloatingSurfaceLayers();
     }
     if (floatingSurfaceActivationTargets.has(surface)) return;
     const activate = () => bringFloatingSurfaceToFront(root);
@@ -229,6 +241,7 @@
     autoMergeFloatingPanel,
     subtitleExtendFloatingPanel,
     FLOATING_SURFACE_Z_INDEX_BASE,
+    OWNER_PROMOTED_Z_PROPERTY,
     floatingSurfaceStack,
     floatingSurfaceRoots,
     floatingSurfaceActivationTargets,

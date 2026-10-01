@@ -2479,10 +2479,13 @@
   /* 层级陷阱：cue-list-toolbar 是 sticky（z-index: 30），自身形成 stacking context；
      布局拖动条（.layout-resizer，z-index: 50）在 paint 顺序上高于整个工具栏。
      工具栏内任何弹层（颜色过滤、批量操作等下拉菜单）即使 position: fixed +
-     更高 z-index，也会被困在工具栏层级内被拖动条盖住。任何下拉打开时统一把
-     工具栏提升到 60；新增弹层不要再单独打补丁（契约见 DESIGN.md 第 6 节）。 */
+     更高 z-index，也会被困在工具栏层级内。提升值不能写死：浮层前置栈
+     （MaweFloatingPanel，基线 430+）在页面层级高于任何静态工具栏提升值，
+     会盖住菜单；因此由 syncFloatingSurfaceLayers 把 --mawe-owner-promoted-z
+     保持在栈顶之上（未同步前回退 60）。任何下拉打开时统一提升工具栏；
+     新增弹层不要再单独打补丁（契约见 DESIGN.md 第 6 节）。 */
   .cues-container > .cue-list-toolbar:has(.dropdown.open) {
-    z-index: 60;
+    z-index: var(--mawe-owner-promoted-z, 60);
   }
   /* 布局编辑模式下，dock-handle 已在文档流中占位（顶部圆角归把手），
      工具栏 sticky 让出把手高度即可。 */
