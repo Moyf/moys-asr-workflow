@@ -165,6 +165,8 @@ window.MAWE.register('utils-ass-style', function createUtilsModule(dependencies)
     secondaryColor: '#ffffff',
     outlineColor: '#000000',
     backColor: '#000000',
+    outlineOpacity: 100,
+    backOpacity: 100,
     bold: false,
     italic: false,
     underline: false,
@@ -294,6 +296,8 @@ window.MAWE.register('utils-ass-style', function createUtilsModule(dependencies)
       secondaryColor: normalizeAssLibraryColor(source.secondaryColor, fallback.secondaryColor || '#ffffff'),
       outlineColor: normalizeAssLibraryColor(source.outlineColor, fallback.outlineColor || '#000000'),
       backColor: normalizeAssLibraryColor(source.backColor, fallback.backColor || '#000000'),
+      outlineOpacity: normalizeAssLibraryNumber(source.outlineOpacity, fallback.outlineOpacity ?? 100, 0, 100),
+      backOpacity: normalizeAssLibraryNumber(source.backOpacity, fallback.backOpacity ?? 100, 0, 100),
       bold: normalizeAssLibraryBoolean(source.bold, Boolean(fallback.bold)),
       italic: normalizeAssLibraryBoolean(source.italic, Boolean(fallback.italic)),
       underline: normalizeAssLibraryBoolean(source.underline, Boolean(fallback.underline)),
@@ -498,8 +502,8 @@ window.MAWE.register('utils-ass-style', function createUtilsModule(dependencies)
       fontSizeOverride || normalized.fontSize,
       assColorFromHex(normalized.primaryColor),
       assColorFromHex(normalized.secondaryColor),
-      assColorFromHex(normalized.outlineColor),
-      assColorFromHex(normalized.backColor),
+      assColorFromHex(normalized.outlineColor, ASS_DEFAULT_COLOR, normalized.outlineOpacity),
+      assColorFromHex(normalized.backColor, ASS_DEFAULT_COLOR, normalized.backOpacity),
       boolValue('bold'),
       boolValue('italic'),
       boolValue('underline'),
@@ -619,13 +623,36 @@ window.MAWE.register('utils-ass-style', function createUtilsModule(dependencies)
   }
 
 
-  function assColorFromHex(value, fallback = ASS_DEFAULT_COLOR) {
+  function assAlphaFromOpacity(opacity, fallbackOpacity = 100) {
+    // ASS 的 AA 通道与直觉相反：00 = 不透明，FF = 全透明；这里用常见的
+    // 「不透明度百分比」（100 = 不透明）换算成 ASS alpha 字节。
+    const value = Number(opacity);
+    const normalized = Number.isFinite(value) ? Math.min(100, Math.max(0, value)) : fallbackOpacity;
+    return Math.round(((100 - normalized) * 255) / 100);
+  }
+
+
+  function assColorFromHex(value, fallback = ASS_DEFAULT_COLOR, opacity = 100) {
     const raw = String(value ?? '').trim();
     const fallbackColor = String(fallback ?? ASS_DEFAULT_COLOR).trim();
     const hex = /^#[0-9a-f]{6}$/i.test(raw) ? raw
       : (/^#[0-9a-f]{6}$/i.test(fallbackColor) ? fallbackColor : ASS_DEFAULT_COLOR);
     // ASS stores colours as &HAABBGGRR; AA=00 is fully opaque.
-    return `&H00${hex.slice(5, 7)}${hex.slice(3, 5)}${hex.slice(1, 3)}`.toUpperCase();
+    const alphaHex = assAlphaFromOpacity(opacity).toString(16).padStart(2, '0');
+    return `&H${alphaHex}${hex.slice(5, 7)}${hex.slice(3, 5)}${hex.slice(1, 3)}`.toUpperCase();
+  }
+
+
+  function assCssColorWithOpacity(value, opacity = 100, fallback = ASS_DEFAULT_COLOR) {
+    // CSS 预览侧的对应换算：rgba 的 alpha 就是「不透明度」本身（1 = 不透明）。
+    // 注意与 ASS 的 AA 通道方向相反，不能复用 assAlphaFromOpacity。
+    const raw = String(value ?? '').trim();
+    const fallbackColor = String(fallback ?? ASS_DEFAULT_COLOR).trim();
+    const hex = /^#[0-9a-f]{6}$/i.test(raw) ? raw
+      : (/^#[0-9a-f]{6}$/i.test(fallbackColor) ? fallbackColor : ASS_DEFAULT_COLOR);
+    const numeric = Number(opacity);
+    const alpha = Math.round((Number.isFinite(numeric) ? Math.min(100, Math.max(0, numeric)) : 100)) / 100;
+    return `rgba(${parseInt(hex.slice(1, 3), 16)}, ${parseInt(hex.slice(3, 5), 16)}, ${parseInt(hex.slice(5, 7), 16)}, ${alpha})`;
   }
 
 
@@ -702,5 +729,5 @@ window.MAWE.register('utils-ass-style', function createUtilsModule(dependencies)
     };
   }
 
-  return Object.freeze({ ASS_COLOR_STYLE_NAMES, ASS_DEFAULT_ANIMATIONS, ASS_DEFAULT_ASS_STYLE, ASS_DEFAULT_COLOR, ASS_DEFAULT_EXTENSION_STYLE, ASS_DEFAULT_PLAY_RES_X, ASS_DEFAULT_PLAY_RES_Y, ASS_DEFAULT_PROFILE, ASS_DEFAULT_STYLE, ASS_EVENT_FORMAT, ASS_FALLBACK_COLOR_PALETTE, ASS_REFERENCE_PLAY_RES_Y, ASS_STYLE_FORMAT, ASS_STYLE_LIBRARY_SCHEMA, assColorFromHex, assDefaultFontFamily, assEmphasisRuns, assInlineStyleRuns, assOverrideColorFromHex, assPreviewStyleAt, assProfileForId, assStyleForId, assStyleLine, assTransformStyleTargets, defaultAssStyleLibrary, escapeAssText, formatAssTime, normalizeAssAnimations, normalizeAssColorStyle, normalizeAssFontFamily, normalizeAssFontSize, normalizeAssLibraryColor, normalizeAssPlayResolution, normalizeAssProfile, normalizeAssStyle, normalizeAssStyleLibrary, normalizeAssTimeMs, resolveAssFontSize });
+  return Object.freeze({ ASS_COLOR_STYLE_NAMES, ASS_DEFAULT_ANIMATIONS, ASS_DEFAULT_ASS_STYLE, ASS_DEFAULT_COLOR, ASS_DEFAULT_EXTENSION_STYLE, ASS_DEFAULT_PLAY_RES_X, ASS_DEFAULT_PLAY_RES_Y, ASS_DEFAULT_PROFILE, ASS_DEFAULT_STYLE, ASS_EVENT_FORMAT, ASS_FALLBACK_COLOR_PALETTE, ASS_REFERENCE_PLAY_RES_Y, ASS_STYLE_FORMAT, ASS_STYLE_LIBRARY_SCHEMA, assAlphaFromOpacity, assColorFromHex, assCssColorWithOpacity, assDefaultFontFamily, assEmphasisRuns, assInlineStyleRuns, assOverrideColorFromHex, assPreviewStyleAt, assProfileForId, assStyleForId, assStyleLine, assTransformStyleTargets, defaultAssStyleLibrary, escapeAssText, formatAssTime, normalizeAssAnimations, normalizeAssColorStyle, normalizeAssFontFamily, normalizeAssFontSize, normalizeAssLibraryColor, normalizeAssPlayResolution, normalizeAssProfile, normalizeAssStyle, normalizeAssStyleLibrary, normalizeAssTimeMs, resolveAssFontSize });
 });

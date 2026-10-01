@@ -1063,6 +1063,7 @@ __WAVEFORM_CSS__
       <small class="editor-settings-hint">关闭时保持原有 CSS 预览；开启后使用 ASS 的字体、颜色、粗体、斜体、下划线、描边、阴影、对齐和动画预览，并只保留字幕文本中的显式换行，不自动折行。</small>
       <div class="ass-manager-open-row">
         <button type="button" id="ass-style-manager-open" class="editor-settings-inline-action ass-style-manager-open" title="打开 ASS 样式库">🎨 管理 ASS 样式</button>
+        <button type="button" id="ass-frame-preview-open" class="editor-settings-inline-action ass-frame-preview-open" title="用 FFmpeg (libass) 渲染当前播放位置的实际 ASS 画面" hidden>📷 实际画面预览</button>
       </div>
       <small class="editor-settings-hint" id="ass-style-summary">样式库正在加载…</small>
     </div>
@@ -1610,6 +1611,7 @@ __WAVEFORM_CSS__
             <label class="ass-style-color-field">主色<input type="color" id="ass-style-primary-color" data-ass-style-field="primaryColor"></label>
             <label class="ass-style-color-field">描边<input type="color" id="ass-style-outline-color" data-ass-style-field="outlineColor"></label>
             <label class="ass-style-field">描边宽度<input type="number" id="ass-style-outline" data-ass-style-field="outline" min="0" max="100" step="1"></label>
+            <label class="ass-style-field">描边不透明度<input type="number" id="ass-style-outline-opacity" data-ass-style-field="outlineOpacity" min="0" max="100" step="5" title="0 = 全透明（描边消失），100 = 不透明；对应 ASS 颜色的 alpha 通道"><span class="ass-style-unit">%</span></label>
           </div>
           <small class="editor-settings-hint">有颜色的字幕会使用对应颜色覆盖主色/描边，取决于 <button type="button" class="ass-style-settings-link" id="ass-style-settings-link" title="打开全局设置中的字幕样式">字幕样式</button> 中的设置。</small>
         </section>
@@ -1640,6 +1642,7 @@ __WAVEFORM_CSS__
             <label class="ass-style-field">边框样式<select id="ass-style-border-style" data-ass-style-field="borderStyle"><option value="1">描边</option><option value="3">不透明底框</option></select></label>
             <label class="ass-style-color-field">阴影/背景<input type="color" id="ass-style-back-color" data-ass-style-field="backColor"></label>
             <label class="ass-style-field">阴影距离<input type="number" id="ass-style-shadow" data-ass-style-field="shadow" min="0" max="100" step="1"></label>
+            <label class="ass-style-field">阴影不透明度<input type="number" id="ass-style-back-opacity" data-ass-style-field="backOpacity" min="0" max="100" step="5" title="0 = 全透明（阴影/底框消失），100 = 不透明；对应 ASS 颜色的 alpha 通道"><span class="ass-style-unit">%</span></label>
           </div>
           <div class="ass-style-layout-row">
             <fieldset class="ass-style-alignment-field" id="ass-style-alignment">
@@ -1732,6 +1735,28 @@ __WAVEFORM_CSS__
     <span id="ass-style-library-path-hint">样式库将根据打开方式保存。</span>
     <div><button type="button" id="ass-style-save" class="primary">保存样式库</button><button type="button" id="ass-style-window-close-footer">完成</button></div>
   </footer>
+</aside>
+
+<aside class="editor-settings-window ass-frame-window" id="ass-frame-window" role="dialog" aria-modal="false" aria-label="ASS 实际画面预览" aria-hidden="true">
+  <header class="editor-settings-window-header" id="ass-frame-drag-handle">
+    <span class="editor-settings-window-title">📷 ASS 实际画面</span>
+    <span class="ass-frame-window-status" id="ass-frame-window-status" role="status" aria-live="polite"></span>
+    <button type="button" class="editor-settings-window-close" id="ass-frame-window-close" title="关闭（Esc）" aria-label="关闭 ASS 实际画面预览">×</button>
+  </header>
+  <div class="ass-frame-window-body">
+    <div class="ass-frame-image-wrap">
+      <img class="ass-frame-image" id="ass-frame-image" alt="ASS 实际渲染画面" hidden>
+      <p class="ass-frame-placeholder" id="ass-frame-placeholder">点击下方按钮，用 libass 渲染当前播放位置的实际画面。</p>
+      <div class="ass-frame-stale" id="ass-frame-stale" hidden><span>暂停后重新渲染</span></div>
+    </div>
+    <div class="ass-frame-caption" id="ass-frame-caption" hidden></div>
+    <div class="ass-frame-warnings" id="ass-frame-warnings" hidden></div>
+    <div class="ass-frame-actions">
+      <button type="button" id="ass-frame-render" class="primary">📷 渲染当前帧</button>
+      <button type="button" id="ass-frame-close-footer">关闭</button>
+    </div>
+    <small class="editor-settings-hint ass-frame-hint">单帧预览使用 FFmpeg (libass) 按当前 ASS 导出方案渲染，即最终烧录的实际效果，可与播放器预览对比。</small>
+  </div>
 </aside>
 
 <input type="file" id="open-project-file" accept=".json,.mosp,application/json" style="display:none">

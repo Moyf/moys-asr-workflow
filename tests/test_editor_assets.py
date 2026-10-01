@@ -182,6 +182,7 @@ class EditorAssetContractTests(unittest.TestCase):
                 "editor/cues/editor-wiring-edit-shortcuts.js",
                 "editor/styles/editor-wiring-font-geometry.js",
                 "editor/styles/editor-wiring-ass-preview.js",
+                "editor/styles/editor-wiring-ass-frame.js",
                 "editor/media/editor-wiring-sticker-preview.js",
                 "editor/io/editor-wiring-export-context.js",
                 "editor/io/editor-wiring-export-actions.js",
@@ -210,6 +211,23 @@ class EditorAssetContractTests(unittest.TestCase):
             current_index = payload.index(source, previous_end)
             self.assertGreaterEqual(current_index, previous_end, asset_name)
             previous_end = current_index + len(source)
+
+    def test_ass_frame_preview_wires_template_module_and_styles(self) -> None:
+        # 单帧实际画面预览：设置页入口按钮、浮层窗口、接线模块与样式必须同时存在。
+        template = (ROOT / "web" / "editor-template.html").read_text(encoding="utf-8")
+        self.assertIn('id="ass-frame-preview-open"', template)
+        self.assertIn('id="ass-frame-window"', template)
+        self.assertIn('id="ass-frame-render"', template)
+        # 播放中的陈旧画面提示：灰色斜纹 + 暂停后自动重渲染。
+        self.assertIn('id="ass-frame-stale"', template)
+        module = edit.read_web_asset("editor/styles/editor-wiring-ass-frame.js")
+        self.assertIn("assFrameUrl", module)
+        self.assertIn("MaweExportSrt.buildAss()", module)
+        self.assertIn("addEventListener('seeked'", module)
+        self.assertIn("addEventListener('pause'", module)
+        styles = edit.read_web_asset("editor.css")
+        self.assertIn(".ass-frame-window {", styles)
+        self.assertIn(".ass-frame-stale {", styles)
 
     def test_waveform_gap_display_type_uses_shared_core_and_subtle_protected_style(self) -> None:
         waveform = edit.build_editor_scripts()

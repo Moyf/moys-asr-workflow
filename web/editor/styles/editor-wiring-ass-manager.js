@@ -215,12 +215,14 @@ function syncAssStyleForm(style) {
     assStylePreviewSample.style.fontStyle = preview.italic ? 'italic' : 'normal';
     assStylePreviewSample.style.textDecorationLine = [preview.underline ? 'underline' : '', preview.strikeOut ? 'line-through' : ''].filter(Boolean).join(' ') || 'none';
     assStylePreviewSample.style.color = preview.primaryColor;
-    assStylePreviewSample.style.webkitTextStroke = preview.outline > 0 ? `${Math.min(8, preview.outline)}px ${preview.outlineColor}` : '';
+    assStylePreviewSample.style.webkitTextStroke = preview.outline > 0
+      ? `${Math.min(8, preview.outline)}px ${window.AsrEditorUtils.assCssColorWithOpacity(preview.outlineColor, preview.outlineOpacity)}` : '';
     assStylePreviewSample.style.paintOrder = preview.outline > 0 ? 'stroke fill' : '';
-    assStylePreviewSample.style.filter = preview.shadow > 0 ? `drop-shadow(${preview.shadow}px ${preview.shadow}px 0 ${preview.backColor})` : '';
+    assStylePreviewSample.style.filter = preview.shadow > 0 ? `drop-shadow(${preview.shadow}px ${preview.shadow}px 0 ${window.AsrEditorUtils.assCssColorWithOpacity(preview.backColor, preview.backOpacity)})` : '';
     assStylePreviewSample.style.letterSpacing = `${preview.spacing}px`;
-    assStylePreviewSample.style.transform = `scale(${Number(preview.scaleX) / 100 || 1}, ${Number(preview.scaleY) / 100 || 1}) rotate(${Number(preview.angle) || 0}deg)`;
-    assStylePreviewSample.style.background = Number(preview.borderStyle) === 3 ? preview.backColor : 'transparent';
+    assStylePreviewSample.style.transform = `scale(${(Number(preview.scaleX) / 100) || 1}, ${(Number(preview.scaleY) / 100) || 1}) rotate(${Number(preview.angle) || 0}deg)`;
+    assStylePreviewSample.style.background = Number(preview.borderStyle) === 3
+      ? window.AsrEditorUtils.assCssColorWithOpacity(preview.backColor, preview.backOpacity) : 'transparent';
   }
   updateAssStylePreviewModeHints();
 }

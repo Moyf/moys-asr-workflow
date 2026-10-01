@@ -3451,6 +3451,31 @@ test('ASS inline strike and size markers restore the base style and use each tra
   assert.equal(helpers.normalizeAssStyle().largeTextScale, 1.5);
 });
 
+test('ASS outline and shadow opacity map to alpha bytes and rgba previews', () => {
+  // 旧样式没有不透明度字段：归一化补 100（不透明），导出与旧字节一致。
+  const legacy = helpers.normalizeAssStyle({ id: 'legacy', outlineColor: '#112233' });
+  assert.equal(legacy.outlineOpacity, 100);
+  assert.equal(legacy.backOpacity, 100);
+  assert.match(helpers.assStyleLine(legacy, 'Legacy'), /&H00332211,&H00000000/);
+
+  const style = helpers.normalizeAssStyle({
+    id: 'alpha', outlineColor: '#112233', backColor: '#445566', outlineOpacity: 50, backOpacity: 0,
+  });
+  const line = helpers.assStyleLine(style, 'Alpha');
+  assert.match(line, /&H80332211,&HFF665544/);
+  assert.equal(helpers.assAlphaFromOpacity(100), 0);
+  assert.equal(helpers.assAlphaFromOpacity(50), 128);
+  assert.equal(helpers.assAlphaFromOpacity(0), 255);
+  assert.equal(helpers.assAlphaFromOpacity(150), 0);
+  assert.equal(helpers.assColorFromHex('#112233', '#000000', 50), '&H80332211');
+  assert.equal(helpers.assCssColorWithOpacity('#112233', 100), 'rgba(17, 34, 51, 1)');
+  assert.equal(helpers.assCssColorWithOpacity('#112233', 0), 'rgba(17, 34, 51, 0)');
+  assert.equal(helpers.assCssColorWithOpacity('#112233', 40), 'rgba(17, 34, 51, 0.4)');
+  // 非法值回落默认色与默认不透明度。
+  assert.equal(helpers.assCssColorWithOpacity('not-a-color', 30), 'rgba(255, 255, 255, 0.3)');
+  assert.equal(helpers.assColorFromHex('nope', '#112233', 50), '&H80332211');
+});
+
 test('builds ASS metadata and five palette styles at the source video resolution', () => {
   const ass = helpers.buildAssPayload([
     { start: 0, end: 1000, text: 'red line', color: { name: 'red' } },

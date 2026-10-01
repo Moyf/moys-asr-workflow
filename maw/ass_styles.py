@@ -133,6 +133,8 @@ def _style_defaults(style_id: str, name: str) -> dict[str, object]:
         "secondaryColor": "#ffffff",
         "outlineColor": "#000000",
         "backColor": "#000000",
+        "outlineOpacity": 100,
+        "backOpacity": 100,
         "bold": False,
         "italic": False,
         "underline": False,
@@ -242,6 +244,8 @@ def _normalize_style(raw: object, fallback: Mapping[str, object], *, style_id: s
         "secondaryColor": _color(source.get("secondaryColor"), str(fallback.get("secondaryColor") or "#ffffff")),
         "outlineColor": _color(source.get("outlineColor"), str(fallback.get("outlineColor") or "#000000")),
         "backColor": _color(source.get("backColor"), str(fallback.get("backColor") or "#000000")),
+        "outlineOpacity": _number(source.get("outlineOpacity"), fallback.get("outlineOpacity", 100), 0, 100),
+        "backOpacity": _number(source.get("backOpacity"), fallback.get("backOpacity", 100), 0, 100),
         "bold": _bool(source.get("bold"), bool(fallback.get("bold", False))),
         "italic": _bool(source.get("italic"), bool(fallback.get("italic", False))),
         "underline": _bool(source.get("underline"), bool(fallback.get("underline", False))),
@@ -488,11 +492,19 @@ def find_ass_profile(library: Mapping[str, object], profile_id: object) -> dict[
     return _copy(DEFAULT_ASS_PROFILE)
 
 
-def ass_color(value: object, fallback: str = "#ffffff") -> str:
+def ass_alpha(value: object, fallback: int = 0) -> int:
+    """Convert an opacity percentage (100 = opaque) into ASS's alpha byte."""
+
+    opacity = _number(value, fallback, 0, 100)
+    return round((100 - opacity) * 255 / 100)
+
+
+def ass_color(value: object, fallback: str = "#ffffff", opacity: object = 100) -> str:
     """Convert a CSS hex colour into ASS's ``&HAABBGGRR`` notation."""
 
     color = _color(value, fallback)
-    return f"&H00{color[5:7]}{color[3:5]}{color[1:3]}".upper()
+    alpha = ass_alpha(opacity)
+    return f"&H{alpha:02X}{color[5:7]}{color[3:5]}{color[1:3]}".upper()
 
 
 def ass_style_line(style: Mapping[str, object], *, name: str = "Default") -> str:
@@ -507,8 +519,8 @@ def ass_style_line(style: Mapping[str, object], *, name: str = "Default") -> str
         normalized["fontSize"],
         ass_color(normalized["primaryColor"]),
         ass_color(normalized["secondaryColor"]),
-        ass_color(normalized["outlineColor"]),
-        ass_color(normalized["backColor"]),
+        ass_color(normalized["outlineColor"], opacity=normalized.get("outlineOpacity", 100)),
+        ass_color(normalized["backColor"], opacity=normalized.get("backOpacity", 100)),
         bool_value("bold"),
         bool_value("italic"),
         bool_value("underline"),
@@ -538,8 +550,8 @@ def ass_style_force_style(style: Mapping[str, object]) -> str:
         ("FontSize", normalized["fontSize"]),
         ("PrimaryColour", ass_color(normalized["primaryColor"])),
         ("SecondaryColour", ass_color(normalized["secondaryColor"])),
-        ("OutlineColour", ass_color(normalized["outlineColor"])),
-        ("BackColour", ass_color(normalized["backColor"])),
+        ("OutlineColour", ass_color(normalized["outlineColor"], opacity=normalized.get("outlineOpacity", 100))),
+        ("BackColour", ass_color(normalized["backColor"], opacity=normalized.get("backOpacity", 100))),
         ("Bold", -1 if normalized["bold"] else 0),
         ("Italic", -1 if normalized["italic"] else 0),
         ("Underline", -1 if normalized["underline"] else 0),

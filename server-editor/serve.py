@@ -7,6 +7,7 @@
 from __future__ import annotations
 
 import argparse
+import base64
 import copy
 import html
 import io
@@ -53,6 +54,7 @@ from maw.app_paths import default_server_settings_path, legacy_server_settings_p
 from maw.ass_styles import load_ass_style_library, save_ass_style_library  # noqa: E402
 from maw.ffmpeg import resolve_ffmpeg_tools  # noqa: E402
 from maw.gui_config import DEFAULT_ENV_PATH, load_env  # noqa: E402
+from maw.postprocess_ffmpeg import libass_missing_glyphs  # noqa: E402
 from maw.project import (  # noqa: E402
     ProjectValidationFailed,
     normalize_project,
@@ -82,6 +84,10 @@ from maw.lottie_glyphs import LottieGlyphError, vectorize_lottie_animation  # no
 
 MAX_RECENT_PROJECTS = 10
 MAX_ASS_STYLE_LIBRARY_BYTES = 512 * 1024
+# 单帧预览请求携带整份 ASS 文本；超长内容更可能是误用而不是真实工程。
+MAX_ASS_FRAME_TEXT_BYTES = 8 * 1024 * 1024
+# libass 单帧渲染是交互动作，超时视为环境异常而不是让请求挂起。
+ASS_FRAME_RENDER_TIMEOUT_SEC = 120
 BUILTIN_WORKSPACE_IDS = frozenset({"classic", "wave-right", "three-fold", "cinema"})
 ONBOARDING_STATUSES = frozenset({"completed", "skipped"})
 PRPROJ_CAPABILITY = {
@@ -343,6 +349,86 @@ def _loaded_media_reference(
     return str(source_media_path)
 
 
+class AssFrameError(ValueError):
+    """单帧 ASS 实际画面渲染失败（缺少 FFmpeg、libass 滤镜或视频画面）。"""
+
+
+def editor_ffmpeg_binary() -> Path | None:
+    """Resolve the FFmpeg binary the same way project media loading does."""
+    configured_ffmpeg = os.environ.get("FFMPEG_PATH") or load_env(DEFAULT_ENV_PATH).get("FFMPEG_PATH", "")
+    return resolve_ffmpeg_tools(configured_path=configured_ffmpeg or None).ffmpeg
+
+
+def ffmpeg_supports_libass(ffmpeg: Path) -> bool:
+    """Probe ``ffmpeg -filters`` for the libass ``ass`` filter.
+
+    发行版构建（如 Homebrew 默认 ffmpeg）可能不编译 libass；结果由调用方
+    缓存，避免每次单帧预览都多启动一个探测进程。
+    """
+    try:
+        probe = subprocess.run(
+            [str(ffmpeg), "-hide_banner", "-loglevel", "error", "-filters"],
+            capture_output=True, text=True, timeout=30,
+        )
+    except (OSError, subprocess.SubprocessError):
+        return False
+    for line in probe.stdout.splitlines():
+        columns = line.split()
+        if len(columns) >= 3 and columns[1] == "ass" and columns[2].startswith("V->"):
+            return True
+    return False
+
+
+def render_ass_frame_png(
+    media_path: Path,
+    ass_text: str,
+    time_ms: int,
+    ffmpeg: Path,
+) -> tuple[bytes, list[str]]:
+    """Render one video frame with the given ASS subtitles burned in.
+
+    与烧录管线共用同一套调用约定：ASS 写入临时目录、滤镜参数只带文件名、
+    进程 cwd 指向该目录，规避盘符冒号等路径转义差异。返回 PNG 字节与
+    libass 字体回退 warning 列表（缺字形时画面可能出现方框）。
+    """
+    seconds = max(0, int(time_ms)) / 1000
+    with tempfile.TemporaryDirectory(prefix="maw-ass-frame-") as tmp:
+        ass_path = Path(tmp) / "frame.ass"
+        with ass_path.open("w", encoding="utf-8", newline="\n") as handle:
+            handle.write(ass_text)
+        command = [
+            str(ffmpeg), "-hide_banner", "-nostdin", "-loglevel", "warning",
+            # 输入侧 -ss 是快速 seek；不加 -copyts 时 ffmpeg 会把时间戳重置为
+            # 从 0 开始，libass 会按错误时间判断事件是否活动，导致字幕不渲染。
+            "-ss", f"{seconds:.3f}", "-copyts",
+            "-i", str(media_path),
+            "-vf", "ass=filename='frame.ass'",
+            "-frames:v", "1",
+            "-c:v", "png", "-f", "image2pipe", "pipe:1",
+        ]
+        try:
+            result = subprocess.run(  # noqa: S603 - 固定参数的单帧渲染
+                command, cwd=tmp, capture_output=True, timeout=ASS_FRAME_RENDER_TIMEOUT_SEC,
+            )
+        except subprocess.TimeoutExpired as error:
+            raise AssFrameError("渲染当前帧超时；请重试，或检查媒体文件是否异常。") from error
+        except OSError as error:
+            raise AssFrameError(f"无法启动 FFmpeg：{error}") from error
+        stderr = (result.stderr or b"").decode("utf-8", errors="replace")
+        if result.returncode != 0 or not result.stdout:
+            detail_lines = stderr.strip().splitlines()
+            detail = detail_lines[-1].strip() if detail_lines else "没有输出画面"
+            raise AssFrameError(
+                "未能渲染当前帧：媒体可能没有视频画面（纯音频工程），或时间已超出媒体时长。"
+                f"（{detail[-300:]}）"
+            )
+        warnings = [
+            f"字幕字体「{family}」缺少字形{glyph}，实际画面可能显示方框。"
+            for glyph, family in libass_missing_glyphs(stderr)
+        ]
+        return result.stdout, warnings
+
+
 def load_project(
     json_path: Path,
     explicit_media: str | None,
@@ -415,10 +501,7 @@ def load_project(
     assert resolution.resolved_path is not None
     source_media_path = resolution.resolved_path
     media_path = source_media_path
-    configured_ffmpeg = os.environ.get("FFMPEG_PATH") or load_env(DEFAULT_ENV_PATH).get("FFMPEG_PATH", "")
-    ffmpeg_path = resolve_ffmpeg_tools(
-        configured_path=configured_ffmpeg or None,
-    ).ffmpeg
+    ffmpeg_path = editor_ffmpeg_binary()
     if resolution.status is MediaStatus.CONVERSION_NEEDED:
         print("[media] flv 无法预览，将会自动转换成 mp4 格式")
         try:
@@ -668,6 +751,7 @@ def build_server_page(
             "settingsUrl": "/api/settings",
             "recentProjects": [item.to_json() for item in settings.recent_projects],
             "assStylesUrl": "/api/ass-styles",
+            "assFrameUrl": "/api/ass-frame",
             "autoOpenLastProject": settings.auto_open_last_project,
             "savedWorkspaces": settings.saved_workspaces,
             "presetWorkspaces": settings.preset_workspaces,
@@ -749,6 +833,8 @@ class EditorServer(ThreadingHTTPServer):
         self.ograf_lock = threading.Lock()
         self.settings_lock = threading.Lock()
         self.reapeaks_lock = threading.Lock()
+        self.ass_frame_lock = threading.Lock()
+        self.libass_supported: bool | None = None
         self.reapeaks_generation = 0
         self.reapeaks_status = "pending" if self.defer_reapeaks else "disabled"
         self.reapeaks_payload: dict[str, dict] = {}
@@ -766,6 +852,13 @@ class EditorServer(ThreadingHTTPServer):
     def persist_settings(self) -> None:
         if self.settings_path:
             write_server_settings(self.settings_path, self.settings)
+
+    def ensure_libass_supported(self, ffmpeg: Path) -> bool:
+        """Probe and cache whether this FFmpeg build can render libass frames."""
+        with self.ass_frame_lock:
+            if self.libass_supported is None:
+                self.libass_supported = ffmpeg_supports_libass(ffmpeg)
+            return self.libass_supported
 
     def persist_settings_async(self) -> None:
         """Persist startup settings without delaying the listening server."""
@@ -1722,6 +1815,8 @@ class EditorRequestHandler(BaseHTTPRequestHandler):
             self.update_settings()
         elif path == "/api/ass-styles":
             self.update_ass_styles()
+        elif path == "/api/ass-frame":
+            self.render_ass_frame()
         elif path == "/api/prproj":
             self.send_json(HTTPStatus.NOT_IMPLEMENTED, PRPROJ_CAPABILITY)
         elif path == "/api/stickers/root":
@@ -2114,6 +2209,48 @@ class EditorRequestHandler(BaseHTTPRequestHandler):
             self.send_json(HTTPStatus.BAD_REQUEST, {"ok": False, "error": str(error)})
             return
         self.send_json(HTTPStatus.OK, library)
+
+    def render_ass_frame(self) -> None:
+        """Render the current project's media at one timestamp with libass.
+
+        接收编辑器导出的完整 ASS 文本与播放头毫秒，返回烧录后的单帧 PNG
+        （base64）。只渲染服务器当前绑定的媒体；页面令牌与其它状态接口一致。
+        """
+        try:
+            request = self.read_json_request(max_bytes=MAX_ASS_FRAME_TEXT_BYTES * 2)
+            self._check_request_token(request)
+            ass_text = request.get("ass")
+            if not isinstance(ass_text, str) or not ass_text.strip():
+                raise ValueError("缺少 ASS 字幕内容")
+            if len(ass_text.encode("utf-8")) > MAX_ASS_FRAME_TEXT_BYTES:
+                raise ValueError(f"ASS 字幕内容超过 {MAX_ASS_FRAME_TEXT_BYTES // (1024 * 1024)} MB")
+            time_ms = request.get("timeMs")
+            if isinstance(time_ms, bool) or not isinstance(time_ms, int) or time_ms < 0:
+                raise ValueError("时间格式不正确")
+            media_path = self.editor_server.project.media_path
+            if media_path is None or not media_path.is_file():
+                raise ValueError("当前工程没有可用的媒体文件")
+            ffmpeg = editor_ffmpeg_binary()
+            if ffmpeg is None:
+                raise AssFrameError("未找到 FFmpeg，无法渲染实际画面；请安装 FFmpeg 或配置 FFMPEG_PATH。")
+            if not self.editor_server.ensure_libass_supported(ffmpeg):
+                raise AssFrameError(
+                    "当前 FFmpeg 未编译 libass（ass 滤镜），无法渲染实际画面；"
+                    "请安装完整版 FFmpeg（如 macOS 的 ffmpeg-full）或将 FFMPEG_PATH 指向带 libass 的构建。"
+                )
+            png_bytes, warnings = render_ass_frame_png(media_path, ass_text, time_ms, ffmpeg)
+        except PermissionError as error:
+            self.send_json(HTTPStatus.FORBIDDEN, {"ok": False, "error": str(error)})
+            return
+        except (UnicodeDecodeError, json.JSONDecodeError, AssFrameError, ValueError, OSError) as error:
+            self.send_json(HTTPStatus.BAD_REQUEST, {"ok": False, "error": str(error)})
+            return
+        self.send_json(HTTPStatus.OK, {
+            "ok": True,
+            "image": base64.b64encode(png_bytes).decode("ascii"),
+            "timeMs": time_ms,
+            "warnings": warnings,
+        })
 
     def _apply_settings_request(self, request: dict[str, object]) -> bool:
         """Apply at most one settings action; returns False when nothing was requested."""

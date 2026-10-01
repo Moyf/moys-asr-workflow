@@ -10,6 +10,7 @@ from unittest import mock
 
 from maw.ass_styles import (
     ASS_STYLE_LIBRARY_SCHEMA,
+    ass_alpha,
     ass_color,
     ass_style_force_style,
     ass_style_line,
@@ -205,6 +206,41 @@ class AssStyleLibraryTests(unittest.TestCase):
         self.assertIn("PrimaryColour=&H00563412", force_style)
         self.assertIn("Bold=-1", force_style)
         self.assertIn("BorderStyle=3", force_style)
+
+    def test_outline_and_shadow_opacity_map_to_ass_alpha(self) -> None:
+        # ASS 的 AA 通道：00 = 不透明，FF = 全透明；样式用「不透明度百分比」表达。
+        self.assertEqual(ass_alpha(100), 0)
+        self.assertEqual(ass_alpha(50), 128)
+        self.assertEqual(ass_alpha(0), 255)
+        # 缺省按 0% 不透明度（= 全透明）处理；实际调用前都会先归一化。
+        self.assertEqual(ass_alpha(None), 255)
+        self.assertEqual(ass_alpha(150), 0)
+        self.assertEqual(ass_color("#123456", opacity=50), "&H80563412")
+
+        style = {
+            "fontName": "Arial",
+            "fontSize": 24,
+            "outlineColor": "#112233",
+            "backColor": "#445566",
+            "outlineOpacity": 50,
+            "backOpacity": 0,
+        }
+        line = ass_style_line(style, name="Alpha")
+        self.assertIn("&H80332211", line)
+        self.assertIn("&HFF665544", line)
+        force_style = ass_style_force_style(style)
+        self.assertIn("OutlineColour=&H80332211", force_style)
+        self.assertIn("BackColour=&HFF665544", force_style)
+
+    def test_opacity_defaults_keep_legacy_styles_opaque(self) -> None:
+        # 旧样式库没有不透明度字段：归一化补 100（完全不透明），导出字节不变。
+        library = normalize_ass_style_library({
+            "styles": [{"id": "legacy", "name": "Legacy", "outlineColor": "#112233"}],
+        })
+        legacy = find_ass_style(library, "legacy")
+        self.assertEqual(legacy["outlineOpacity"], 100)
+        self.assertEqual(legacy["backOpacity"], 100)
+        self.assertIn("&H00332211", ass_style_line(legacy, name="Legacy"))
 
     def test_save_is_atomic_and_loads_normalized_user_library(self) -> None:
         with tempfile.TemporaryDirectory() as directory:

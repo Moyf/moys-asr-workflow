@@ -114,10 +114,11 @@ function applyAssPreviewElement(element, style, animationState, metrics, alignme
   element.style.textDecorationColor = style.primaryColor;
   element.style.textUnderlineOffset = style.underline ? '0.16em' : '';
   element.style.color = style.primaryColor;
-  element.style.webkitTextStroke = outline > 0 ? `${outline}px ${style.outlineColor}` : '';
+  element.style.webkitTextStroke = outline > 0
+    ? `${outline}px ${window.AsrEditorUtils.assCssColorWithOpacity(style.outlineColor, style.outlineOpacity)}` : '';
   element.style.paintOrder = outline > 0 ? 'stroke fill' : '';
   element.style.filter = !borderBox && shadow > 0
-    ? `drop-shadow(${shadow}px ${shadow}px 0 ${style.backColor})` : '';
+    ? `drop-shadow(${shadow}px ${shadow}px 0 ${window.AsrEditorUtils.assCssColorWithOpacity(style.backColor, style.backOpacity)})` : '';
   element.style.letterSpacing = `${spacing}px`;
   element.style.lineHeight = 'normal';
   // ASS 预览采用 no-wrap 策略：只保留字幕文本中的显式换行，
@@ -128,7 +129,8 @@ function applyAssPreviewElement(element, style, animationState, metrics, alignme
   element.style.padding = borderBox
     ? `${Math.max(1, 4 * scaleY)}px ${Math.max(1, 8 * scaleX)}px`
     : `${Math.max(1, scaleY)}px ${Math.max(1, 2 * scaleX)}px`;
-  element.style.backgroundColor = borderBox ? style.backColor : 'transparent';
+  element.style.backgroundColor = borderBox
+    ? window.AsrEditorUtils.assCssColorWithOpacity(style.backColor, style.backOpacity) : 'transparent';
   element.style.borderRadius = '0';
   element.style.opacity = String(opacity);
   element.style.transformOrigin = `${alignment.x * 100}% ${alignment.y * 100}%`;
@@ -149,10 +151,11 @@ function applyAssPreviewSpeakerLabel(element, style, metrics) {
   element.style.textDecorationLine = [style.underline ? 'underline' : '', style.strikeOut ? 'line-through' : ''].filter(Boolean).join(' ') || 'none';
   element.style.textDecorationColor = style.primaryColor;
   element.style.textUnderlineOffset = style.underline ? '0.16em' : '';
-  element.style.webkitTextStroke = outline > 0 ? `${outline}px ${style.outlineColor}` : '';
+  element.style.webkitTextStroke = outline > 0
+    ? `${outline}px ${window.AsrEditorUtils.assCssColorWithOpacity(style.outlineColor, style.outlineOpacity)}` : '';
   element.style.paintOrder = outline > 0 ? 'stroke fill' : '';
   element.style.filter = shadow > 0
-    ? `drop-shadow(${shadow}px ${shadow}px 0 ${style.backColor})` : '';
+    ? `drop-shadow(${shadow}px ${shadow}px 0 ${window.AsrEditorUtils.assCssColorWithOpacity(style.backColor, style.backOpacity)})` : '';
   element.style.letterSpacing = `${spacing}px`;
   element.style.lineHeight = 'normal';
 }
@@ -228,7 +231,7 @@ function renderAssEmphasisPreview(element, textNode, text, style, metrics) {
   const emphasisSyntax = MaweSettings.EDITOR_SETTINGS.assEmphasisSyntax;
   const key = JSON.stringify([source, emphasisSyntax, style.emphasisStyle,
     style.emphasisColor, style.emphasisScale, style.fontSize, style.underline, style.primaryColor,
-    style.outlineColor, style.outline, style.strikeOut, metrics.scaleY, metrics.stageHeight,
+    style.outlineColor, style.outlineOpacity, style.outline, style.strikeOut, metrics.scaleY, metrics.stageHeight,
     style.smallTextScale, style.largeTextScale, MaweSettings.EDITOR_SETTINGS.assUnderlineEnabled,
     MaweSettings.EDITOR_SETTINGS.assSpecialSymbolRule, MaweSettings.EDITOR_SETTINGS.assStrikeEnabled, MaweSettings.EDITOR_SETTINGS.assSmallTextEnabled,
     MaweSettings.EDITOR_SETTINGS.assLargeTextEnabled]);
@@ -407,7 +410,7 @@ function applyAssSubtitlePreview({ tMs, segment, extension, overlay, overlaySegm
       : animatedMainStyle.primaryColor;
     MaweDom.overlayMainSpeakerLabelEl.style.color = labelColor;
     MaweDom.overlayMainSpeakerLabelEl.style.webkitTextStroke = animatedMainStyle.outline > 0
-      ? `${animatedMainStyle.outline * metrics.scaleY}px ${animatedMainStyle.outlineColor}` : '';
+      ? `${animatedMainStyle.outline * metrics.scaleY}px ${window.AsrEditorUtils.assCssColorWithOpacity(animatedMainStyle.outlineColor, animatedMainStyle.outlineOpacity)}` : '';
     MaweDom.overlayMainSpeakerLabelEl.style.paintOrder = animatedMainStyle.outline > 0 ? 'stroke fill' : '';
     MaweDom.overlayMainSpeakerLabelEl.style.textDecorationColor = labelColor;
   } else {

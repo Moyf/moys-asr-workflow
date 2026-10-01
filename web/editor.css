@@ -1876,6 +1876,62 @@
     .ass-style-window-footer > span { align-self: stretch; }
   }
 
+  /* === ASS 单帧实际画面预览 ===
+     server-editor 独有：把当前导出方案交给 FFmpeg (libass) 渲染一帧，
+     供与播放器的 CSS 预览对照。布局沿用工具窗家族的基础样式。 */
+  .ass-manager-open-row .ass-frame-preview-open:not([hidden]) { margin-left: 12px; }
+  .ass-frame-window {
+    width: min(640px, calc(100vw - 24px));
+    min-width: min(480px, calc(100vw - 24px));
+    min-height: 240px;
+    background: var(--bg-panel);
+  }
+  .ass-frame-window-status {
+    flex: 0 1 auto; max-width: 45%; overflow: hidden;
+    color: var(--text-muted); font-size: 11px; text-overflow: ellipsis; white-space: nowrap;
+  }
+  .ass-frame-window-status[data-state="pending"] { color: var(--amber-hover); }
+  .ass-frame-window-status[data-state="error"] { color: var(--red-hover); }
+  .ass-frame-window-status[data-state="success"] { color: var(--green-hover); }
+  .ass-frame-window-body {
+    display: flex; flex: 1 1 auto; flex-direction: column; gap: 10px; min-height: 0;
+    padding: 12px 14px; overflow-y: auto;
+  }
+  .ass-frame-image-wrap {
+    display: flex; flex: 0 1 auto; align-items: center; justify-content: center;
+    min-height: 120px; padding: 8px; overflow: hidden; position: relative;
+    background: var(--bg-raised); border: 1px solid var(--border-subtle); border-radius: var(--radius-md);
+  }
+  .ass-frame-image { display: block; max-width: 100%; max-height: 52vh; border-radius: var(--radius-sm); }
+  .ass-frame-image[hidden] { display: none; }
+  .ass-frame-placeholder { margin: 0; color: var(--text-faint); font-size: 12px; text-align: center; }
+  /* 播放中画面必然滞后于播放头：灰色斜纹压住旧帧并提示暂停后自动重渲染。 */
+  .ass-frame-stale {
+    position: absolute; inset: 8px;
+    display: flex; align-items: center; justify-content: center;
+    background: repeating-linear-gradient(45deg, rgba(54, 58, 66, .62) 0 12px, rgba(54, 58, 66, .38) 12px 24px);
+    border-radius: var(--radius-sm);
+    pointer-events: none;
+  }
+  .ass-frame-stale[hidden] { display: none; }
+  .ass-frame-stale span {
+    padding: 4px 12px; color: var(--text-primary); font-size: 12px; font-weight: 600;
+    background: rgba(22, 24, 29, .78); border: 1px solid var(--border-subtle); border-radius: 99px;
+  }
+  .ass-frame-caption { color: var(--text-secondary); font: 12px var(--font-mono); }
+  .ass-frame-warnings { margin: 0; color: var(--amber-hover); font-size: 12px; white-space: pre-line; }
+  .ass-frame-actions { display: flex; flex: 0 0 auto; align-items: center; gap: 8px; }
+  .ass-frame-actions button {
+    min-height: 28px; padding: 4px 11px; color: var(--btn-text); background: var(--btn-bg);
+    border: 1px solid var(--btn-border); border-radius: var(--radius-sm); cursor: pointer; font-size: 12px;
+  }
+  .ass-frame-actions button:hover:not(:disabled) { background: var(--btn-bg-hover); border-color: var(--btn-border-hover); }
+  .ass-frame-actions button:focus-visible { outline: 2px solid var(--accent-line); outline-offset: 1px; }
+  .ass-frame-actions button.primary { color: var(--accent-active-fg, var(--bg-base)); background: var(--accent); border-color: var(--accent); font-weight: 600; }
+  .ass-frame-actions button.primary:hover:not(:disabled) { background: var(--accent-hover); border-color: var(--accent-hover); }
+  .ass-frame-actions button:disabled { opacity: .45; cursor: not-allowed; }
+  .ass-frame-hint { margin: 0; }
+
   /* === 下拉菜单（导出额外数据）=== */
   .toolbar .dropdown { position: relative; display: inline-block; }
   .toolbar .dropdown[hidden] { display: none; }
