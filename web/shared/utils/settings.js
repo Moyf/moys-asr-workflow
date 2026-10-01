@@ -61,7 +61,7 @@ window.MAWE.register('utils-settings', function createUtilsModule(dependencies) 
     splitTrimSymbols: [...DEFAULT_SPLIT_TRIM_SYMBOLS],
     overlayEnabled: true, extensionOverlayEnabled: true, assMode: false,
     assFrameStagePreview: false, assFrameAutoRender: true,
-    assEmphasisSyntax: 'both', assSpecialSymbolRule: 'double', assUnderlineEnabled: true, assStrikeEnabled: true, assSmallTextEnabled: true, assLargeTextEnabled: true, multiSubtitleRowHeight: 168,
+    assEmphasisSyntax: 'both', assSpecialSymbolRule: 'both', assUnderlineEnabled: true, assStrikeEnabled: true, assSmallTextEnabled: true, assLargeTextEnabled: true, multiSubtitleRowHeight: 168,
     subtitleColorPaletteEnabled: false,
     exportStartAtZero: false, cueListShowIndex: true, cueListShowTime: true,
     cueListShowSticker: true, cueListShowCharcount: true, cueListAutoScrollOnClick: true,
@@ -126,7 +126,7 @@ window.MAWE.register('utils-settings', function createUtilsModule(dependencies) 
       assFrameAutoRender: savedSettings.assFrameAutoRender !== false,
       assEmphasisSyntax: emphasisSyntax === 'none' ? 'none' : 'both',
       assSpecialSymbolRule: ['none', 'single', 'double', 'both'].includes(savedSettings.assSpecialSymbolRule)
-        ? savedSettings.assSpecialSymbolRule : 'double',
+        ? savedSettings.assSpecialSymbolRule : 'both',
       assUnderlineEnabled: savedSettings.assUnderlineEnabled !== false,
       assStrikeEnabled: savedSettings.assStrikeEnabled !== false,
       assSmallTextEnabled: savedSettings.assSmallTextEnabled !== false,

@@ -431,10 +431,18 @@ def render_ass_frame_png(
                 "未能渲染当前帧：媒体可能没有视频画面（纯音频工程），或时间已超出媒体时长。"
                 f"（{detail[-300:]}）"
             )
-        warnings = [
-            f"字幕字体「{family}」缺少字形{glyph}，实际画面可能显示方框。"
-            for glyph, family in libass_missing_glyphs(stderr)
-        ]
+        warnings = []
+        for glyph, family in libass_missing_glyphs(stderr):
+            character = ""
+            if glyph:
+                codepoint = int(glyph.removeprefix(" U+"), 16)
+                if 0 <= codepoint <= 0x10FFFF:
+                    value = chr(codepoint)
+                    if value.isprintable():
+                        character = f"（{value}）"
+            warnings.append(
+                f"字幕字体「{family}」缺少字形{glyph}{character}，实际画面可能显示方框。"
+            )
         return result.stdout, warnings
 
 

@@ -119,7 +119,7 @@
   assFrameStagePreview: false,
   // 暂停 / seek 停止 / 样式修改时自动重新渲染实际帧；关闭后仅手动渲染。
   assFrameAutoRender: true,
-  assEmphasisSyntax: 'both', assSpecialSymbolRule: 'double',
+  assEmphasisSyntax: 'both', assSpecialSymbolRule: 'both',
   assUnderlineEnabled: true,
   assStrikeEnabled: true,
   assSmallTextEnabled: true,

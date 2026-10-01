@@ -1074,7 +1074,7 @@ __WAVEFORM_CSS__
     <div class="ass-inline-text-content">
       <small class="editor-settings-hint">用成对符号标记特殊文本；开启的语法统一用于 ASS 主字幕、副字幕和叠加字幕的预览与导出。颜色与字号比例在 ASS 样式库中配置。</small>
       <label class="subtitle-preview-setting-row"><span>特殊符号规则</span>
-        <select id="ass-special-symbol-rule"><option value="none">关闭</option><option value="single">单个符号</option><option value="double" selected>双个符号</option><option value="both">单双均可</option></select>
+        <select id="ass-special-symbol-rule"><option value="none">关闭</option><option value="single">单个符号</option><option value="double">双个符号</option><option value="both" selected>单双皆可</option></select>
       </label>
       <div class="ass-inline-text-options" id="ass-inline-text-options">
         <div class="ass-inline-text-row">
@@ -1608,15 +1608,12 @@ __WAVEFORM_CSS__
         <section class="ass-style-form-section" aria-labelledby="ass-style-basic-heading">
           <div class="ass-style-subheading" id="ass-style-basic-heading">基础样式</div>
           <div class="ass-style-fields ass-style-fields-basic">
-            <label class="ass-style-color-field">主色<input type="color" id="ass-style-primary-color" data-ass-style-field="primaryColor"></label>
-            <label class="ass-style-color-field">描边<input type="color" id="ass-style-outline-color" data-ass-style-field="outlineColor"></label>
-            <label class="ass-style-field">描边宽度<input type="number" id="ass-style-outline" data-ass-style-field="outline" min="0" max="100" step="1"></label>
-            <label class="ass-style-field">描边不透明度<input type="number" id="ass-style-outline-opacity" data-ass-style-field="outlineOpacity" min="0" max="100" step="5" title="0 = 全透明（描边消失），100 = 不透明；对应 ASS 颜色的 alpha 通道"><span class="ass-style-unit">%</span></label>
+            <label class="ass-style-color-field">字幕颜色<input type="color" id="ass-style-primary-color" data-ass-style-field="primaryColor"></label>
+            <label class="ass-style-color-field"><span id="ass-style-outline-color-label">描边颜色</span><input type="color" id="ass-style-outline-color" data-ass-style-field="outlineColor"></label>
+            <label class="ass-style-field"><span id="ass-style-outline-label">描边宽度</span><input type="number" id="ass-style-outline" data-ass-style-field="outline" min="0" max="100" step="1"></label>
+            <label class="ass-style-field"><span id="ass-style-outline-opacity-label">描边不透明度</span><input type="number" id="ass-style-outline-opacity" data-ass-style-field="outlineOpacity" min="0" max="100" step="5" title="0 = 全透明，100 = 不透明；对应 ASS 颜色的 alpha 通道"><span class="ass-style-unit">%</span></label>
           </div>
-          <small class="editor-settings-hint">有颜色的字幕会使用对应颜色覆盖主色/描边，取决于 <button type="button" class="ass-style-settings-link" id="ass-style-settings-link" title="打开全局设置中的字幕样式">字幕样式</button> 中的设置。</small>
-        </section>
-        <section class="ass-style-form-section ass-style-extended-section" aria-labelledby="ass-style-extended-heading">
-          <div class="ass-style-subheading" id="ass-style-extended-heading">拓展样式</div>
+          <small class="editor-settings-hint">带有颜色的字幕对象会使用对应颜色覆盖掉字幕颜色或描边颜色，取决于 <button type="button" class="ass-style-settings-link" id="ass-style-settings-link" title="打开全局设置中的字幕样式">字幕样式</button> 中的设置。</small>
           <div class="ass-style-fields ass-style-fields-extended">
             <div class="ass-style-field ass-style-field-wide ass-style-font-field">
               <label for="ass-style-font-name">字体</label>
@@ -1639,7 +1636,7 @@ __WAVEFORM_CSS__
           </div>
           <div class="ass-style-subheading ass-style-subheading-nested" id="ass-style-border-shadow-heading">边框与阴影</div>
           <div class="ass-style-fields ass-style-fields-border-shadow" aria-labelledby="ass-style-border-shadow-heading">
-            <label class="ass-style-field">边框样式<select id="ass-style-border-style" data-ass-style-field="borderStyle"><option value="1">描边</option><option value="3">不透明底框</option></select></label>
+            <label class="ass-style-field">边框样式<select id="ass-style-border-style" data-ass-style-field="borderStyle"><option value="1">描边</option><option value="3">背景底框</option></select></label>
             <label class="ass-style-color-field">阴影/背景<input type="color" id="ass-style-back-color" data-ass-style-field="backColor"></label>
             <label class="ass-style-field">阴影距离<input type="number" id="ass-style-shadow" data-ass-style-field="shadow" min="0" max="100" step="1"></label>
             <label class="ass-style-field">阴影不透明度<input type="number" id="ass-style-back-opacity" data-ass-style-field="backOpacity" min="0" max="100" step="5" title="0 = 全透明（阴影/底框消失），100 = 不透明；对应 ASS 颜色的 alpha 通道"><span class="ass-style-unit">%</span></label>
@@ -1685,6 +1682,7 @@ __WAVEFORM_CSS__
           </div>
         </section>
         <div class="ass-style-preview-card"><span class="ass-style-preview-label">ASS 预览</span><span id="ass-style-preview-sample">Aa 字幕预览 / 字幕样例</span></div>
+        <div class="ass-style-preview-actions"><button type="button" id="ass-style-frame-preview-open" hidden>ASS 实际画面预览</button></div>
       </section>
       <section class="ass-style-form" id="ass-profile-form" aria-labelledby="ass-profile-form-title" hidden>
         <div class="ass-style-form-header">
@@ -1752,8 +1750,8 @@ __WAVEFORM_CSS__
     <div class="ass-frame-caption" id="ass-frame-caption" hidden></div>
     <div class="ass-frame-warnings" id="ass-frame-warnings" hidden></div>
     <div class="ass-frame-options">
-      <label class="toggle ass-frame-option" title="暂停时把 libass 实际渲染帧直接叠加在播放器画面上（播放时仍使用即时预览）"><input type="checkbox" id="ass-frame-stage-toggle"> 暂停时在播放器画面显示实际帧</label>
       <label class="toggle ass-frame-option" title="开启后，暂停 / seek 停止 / 样式修改时自动重新渲染；关闭后仅在点击「渲染当前帧」时更新"><input type="checkbox" id="ass-frame-auto-toggle" checked> 自动渲染实际帧</label>
+      <label class="toggle ass-frame-option" title="暂停时把 libass 实际渲染帧直接叠加在播放器画面上（播放时仍使用即时预览）"><input type="checkbox" id="ass-frame-stage-toggle"> 暂停时在播放器画面显示实际帧</label>
     </div>
     <div class="ass-frame-actions">
       <button type="button" id="ass-frame-render" class="primary">📷 渲染当前帧</button>

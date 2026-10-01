@@ -4,6 +4,7 @@
   'use strict';
 
   const openButton = document.getElementById('ass-frame-preview-open');
+  const styleOpenButton = document.getElementById('ass-style-frame-preview-open');
   const windowEl = document.getElementById('ass-frame-window');
   if (!openButton || !windowEl) return;
   const imageEl = document.getElementById('ass-frame-image');
@@ -33,7 +34,8 @@
   const enabled = () => Boolean(global.MaweBoot?.SERVER_CONFIG?.assFrameUrl)
     && global.MaweSettings?.EDITOR_SETTINGS?.assMode === true;
   // 暂停时把实际帧叠加到播放器画面：默认关闭，窗口内开关控制。
-  const stageOverlayEnabled = () => global.MaweSettings?.EDITOR_SETTINGS?.assFrameStagePreview === true;
+  const stageOverlayEnabled = () => autoRenderEnabled()
+    && global.MaweSettings?.EDITOR_SETTINGS?.assFrameStagePreview === true;
   // 自动渲染：默认开启；关闭后仅在点击「渲染当前帧」时更新。
   const autoRenderEnabled = () => global.MaweSettings?.EDITOR_SETTINGS?.assFrameAutoRender !== false;
 
@@ -215,7 +217,7 @@
       ]);
       const frame = { key: request.key, url, timeMs: request.frameTimeMs,
         width: decoded.naturalWidth, height: decoded.naturalHeight,
-        warnings: Array.isArray(payload.warnings) ? payload.warnings.filter(Boolean) : [] };
+        warnings: Array.isArray(payload.warnings) ? [...new Set(payload.warnings.filter(Boolean))] : [] };
       // Check live state after await, including edits and seeks during decode.
       const live = snapshot();
       const current = live?.key === request.key;
@@ -280,10 +282,14 @@
 
   function syncAssFrameControls() {
     openButton.hidden = !enabled();
+    if (styleOpenButton) styleOpenButton.hidden = !enabled();
     if (openButton.hidden && floatingPanel.isOpen()) floatingPanel.close();
     // 自动渲染开启时「渲染当前帧」没有意义，隐藏；关闭后作为手动更新入口显示。
     if (renderButton) renderButton.hidden = autoRenderEnabled();
-    if (stageToggle) stageToggle.checked = stageOverlayEnabled();
+    if (stageToggle) {
+      stageToggle.checked = global.MaweSettings?.EDITOR_SETTINGS?.assFrameStagePreview === true;
+      stageToggle.closest('label').hidden = !autoRenderEnabled();
+    }
     if (autoToggle) autoToggle.checked = autoRenderEnabled();
     syncPreview();
   }
@@ -330,6 +336,7 @@
     player.requestVideoFrameCallback(onFrame);
   }
   renderButton?.addEventListener('click', () => void renderAssFrame());
+  styleOpenButton?.addEventListener('click', () => floatingPanel.open());
   for (const id of ['ass-frame-window-close', 'ass-frame-close-footer']) {
     document.getElementById(id)?.addEventListener('click', () => floatingPanel.close());
   }

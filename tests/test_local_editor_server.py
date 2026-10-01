@@ -181,7 +181,8 @@ class LocalEditorServerTests(unittest.TestCase):
             calls.append((command, kwargs))
             stderr = (
                 "[Parsed_ass_0 @ 0x1] fontselect: failed to find any fallback "
-                "with glyph 0x4e2d for font: (Demo, 400, 0)\n"
+                "with glyph 0x1f914 for font: (Demo, 400, 0)\n"
+                "fontselect: failed to find any fallback with glyph 0x01F914 for font: (Demo, 400, 0)\n"
             ).encode('utf-8')
             return subprocess.CompletedProcess(command, 0, stdout=b'\x89PNG\r\n\x1a\n', stderr=stderr)
 
@@ -191,7 +192,7 @@ class LocalEditorServerTests(unittest.TestCase):
         self.assertTrue(png.startswith(b'\x89PNG'))
         self.assertEqual(len(warnings), 1)
         self.assertIn('Demo', warnings[0])
-        self.assertIn('U+4E2D', warnings[0])
+        self.assertIn('U+1F914（🤔）', warnings[0])
         command, kwargs = calls[0]
         self.assertEqual(command[command.index('-vf') + 1], "format=rgb24,ass=filename='frame.ass'")
         self.assertEqual(command[command.index('-frames:v') + 1], '1')

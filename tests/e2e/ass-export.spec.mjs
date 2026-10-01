@@ -75,6 +75,44 @@ test.afterAll(async () => {
   cleanupTempDir(tempDir);
 });
 
+test('style form groups basic controls and labels background box fields consistently', async ({ page }) => {
+  await disableOnboarding(page);
+  await page.goto(server.url);
+  await page.locator('#editor-settings-toggle').click();
+  await page.locator('#editor-settings-tab-subtitle-style').click();
+  await page.locator('#ass-style-manager-open').click();
+  await page.locator('#ass-style-list [data-ass-selection-id="ass"]').click();
+  await expect(page.locator('#ass-style-extended-heading')).toHaveCount(0);
+  await expect(page.locator('#ass-style-primary-color').locator('..')).toContainText('字幕颜色');
+  await page.locator('#ass-style-border-style').selectOption('3');
+  await expect(page.locator('#ass-style-border-style option:checked')).toHaveText('背景底框');
+  await expect(page.locator('#ass-style-outline-label')).toHaveText('底框宽度');
+  await expect(page.locator('#ass-style-outline-opacity-label')).toHaveText('底框不透明度');
+  await expect(page.locator('#ass-style-outline-color-label')).toHaveText('底框颜色');
+  const layout = await page.locator('#ass-style-form').evaluate((form) => {
+    const bounds = (id) => form.querySelector(`#${id}`).closest('label').getBoundingClientRect();
+    const shadow = bounds('ass-style-shadow');
+    const opacity = bounds('ass-style-back-opacity');
+    const outline = bounds('ass-style-outline');
+    const fields = form.querySelector('.ass-style-fields-extended');
+    const section = form.querySelector('[aria-labelledby="ass-style-basic-heading"]');
+    return { shadowWidth: shadow.width, outlineWidth: outline.width,
+      sameRow: Math.abs(shadow.y - opacity.y), horizontalGap: opacity.left - shadow.right,
+      basicContainsFont: section.contains(fields),
+      fontGap: fields.getBoundingClientRect().top - fields.previousElementSibling.getBoundingClientRect().bottom };
+  });
+  expect(layout.sameRow).toBeLessThan(2);
+  expect(layout.horizontalGap).toBeGreaterThanOrEqual(8);
+  expect(layout.shadowWidth).toBeCloseTo(layout.outlineWidth, 0);
+  expect(layout.basicContainsFont).toBe(true);
+  expect(layout.fontGap).toBeGreaterThanOrEqual(8);
+  await page.locator('#ass-style-form').screenshot({ path: test.info().outputPath('ass-basic-box.png') });
+  await page.locator('#ass-style-border-style').selectOption('1');
+  await expect(page.locator('#ass-style-outline-label')).toHaveText('描边宽度');
+  await expect(page.locator('#ass-style-outline-opacity-label')).toHaveText('描边不透明度');
+  await expect(page.locator('#ass-style-outline-color-label')).toHaveText('描边颜色');
+});
+
 test('exports ASS from the default profile style and keeps enabled subtitle text', async ({ page }) => {
   await disableOnboarding(page);
   await stubSavePicker(page);
@@ -189,8 +227,9 @@ test('ASS emphasis controls drive preview and inline export color', async ({ pag
   await expect(page.locator('#ass-inline-text-settings')).toBeVisible();
   await expect(page.locator('#ass-inline-text-settings input[type=checkbox]')).toHaveCount(5);
   await expect(page.locator('#ass-inline-text-title')).toHaveText('特殊文本格式');
-  await expect(page.locator('#ass-special-symbol-rule')).toHaveValue('double');
-  await expect(page.locator('[data-ass-symbol="_"]')).toHaveText('__下划线__');
+  await expect(page.locator('#ass-special-symbol-rule')).toHaveValue('both');
+  await expect(page.locator('#ass-special-symbol-rule option:checked')).toHaveText('单双皆可');
+  await expect(page.locator('[data-ass-symbol="_"]')).toHaveText('_下划线_/__下划线__');
   await page.locator('#ass-special-symbol-rule').selectOption('none');
   await expect(page.locator('#ass-inline-text-options')).toBeHidden();
   await page.locator('#ass-special-symbol-rule').selectOption('single');
@@ -259,7 +298,7 @@ test('ASS underscore markers underline only the marked preview and export text',
   await page.goto(server.url);
   const preview = await page.evaluate(() => {
     MaweBoot.DATA.segments = [{ start: 0, end: 4000, text: '前 _下划线_ 与 _**共同**_ 后' }];
-    // 单符号样例（_下划线_）需要「单双均可」规则；默认双符号下它们保留原文。
+    // 单符号和双符号样例在「单双皆可」规则下均参与解析。
     MaweSettings.EDITOR_SETTINGS.assSpecialSymbolRule = 'both';
     MaweSettings.EDITOR_SETTINGS.assMode = true;
     MaweDom.overlayToggle.checked = true;

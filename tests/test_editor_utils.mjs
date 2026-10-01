@@ -6266,8 +6266,8 @@ test('alignItemsToText bails out to no alignment on absurd inputs', () => {
 
 
 test('ASS special symbol rules apply to all five formats across preview runs and exports', () => {
-  assert.equal(helpers.normalizeEditorSettings().assSpecialSymbolRule, 'double');
-  assert.equal(helpers.normalizeEditorSettings({ assSpecialSymbolRule: 'invalid' }).assSpecialSymbolRule, 'double');
+  assert.equal(helpers.normalizeEditorSettings().assSpecialSymbolRule, 'both');
+  assert.equal(helpers.normalizeEditorSettings({ assSpecialSymbolRule: 'invalid' }).assSpecialSymbolRule, 'both');
   const single = '*强调* _下划线_ ~删除~ -缩小- +放大+';
   const double = '**强调** __下划线__ ~~删除~~ --缩小-- ++放大++';
   const text = `${single} / ${double}`;

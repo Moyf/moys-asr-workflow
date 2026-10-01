@@ -1699,7 +1699,7 @@
   .ass-style-form-section { display: flex; flex-direction: column; gap: 10px; }
   .ass-style-fields-basic { grid-template-columns: repeat(4, minmax(0, 1fr)); }
   .ass-style-fields-extended { grid-template-columns: repeat(4, minmax(0, 1fr)); }
-  .ass-style-fields-border-shadow { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+  .ass-style-fields-border-shadow { grid-template-columns: repeat(4, minmax(0, 1fr)); }
   .ass-style-fields-margins { flex: 1 1 auto; grid-template-columns: 1fr; gap: 8px; margin-top: 0; min-width: 0; }
   .ass-style-fields-scale-stack { flex: 1 1 auto; grid-template-columns: 1fr; gap: 8px; margin-top: 0; min-width: 0; }
   /* 方案表单：双语开启时「副字幕样式」出现在「主字幕样式」右侧，名称独占一行。 */
@@ -1736,13 +1736,16 @@
   .ass-style-check input { flex: 0 0 auto; }
   .ass-style-font-row { display: flex; gap: 6px; min-width: 0; }
   .ass-style-font-row .font-combobox { flex: 1 1 auto; width: auto; }
-  .ass-style-font-row button {
+  .ass-style-font-row button,
+  .ass-style-preview-actions button {
     flex: 0 0 auto; box-sizing: border-box; min-height: var(--control-h); padding: 6px 9px;
     color: var(--text-muted); background: var(--bg-input);
     border: 1px solid var(--border-subtle); border-radius: var(--radius-sm); cursor: pointer; font-size: 11px; white-space: nowrap;
   }
-  .ass-style-font-row button:hover { color: var(--text-primary); border-color: var(--border-strong); background: var(--btn-bg-hover); }
-  .ass-style-font-row button:focus-visible { outline: 2px solid var(--accent-line); outline-offset: 1px; }
+  .ass-style-font-row button:hover,
+  .ass-style-preview-actions button:hover { color: var(--text-primary); border-color: var(--border-strong); background: var(--btn-bg-hover); }
+  .ass-style-font-row button:focus-visible,
+  .ass-style-preview-actions button:focus-visible { outline: 2px solid var(--accent-line); outline-offset: 1px; }
   .ass-style-layout-row { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); align-items: stretch; gap: 16px; margin-top: 3px; padding-top: 10px; border-top: 1px solid var(--border-subtle); }
   .ass-style-alignment-field { min-width: 0; display: flex; flex-direction: column; margin: 0; padding: 0; border: 0; }
   .ass-style-alignment-field legend { margin: 0 0 6px; padding: 0; color: var(--text-muted); font-size: 11px; }
@@ -1777,6 +1780,8 @@
   }
   .ass-style-preview-card::after { content: ''; position: absolute; inset: 0; pointer-events: none; background: linear-gradient(120deg, transparent 20%, rgba(255,255,255,.04), transparent 70%); }
   .ass-style-preview-label { position: relative; z-index: 1; color: var(--text-secondary); font: 12px var(--font-mono); letter-spacing: .12em; text-transform: uppercase; }
+  .ass-style-preview-actions { display: flex; gap: 8px; }
+  .ass-style-preview-actions:has(button[hidden]) { display: none; }
   #ass-style-preview-sample {
     position: relative; z-index: 1; display: inline-block; align-self: center; max-width: 100%; padding: 4px 9px; color: #fff;
     font-size: 24px; line-height: 1.2; text-align: center; white-space: pre-wrap; word-break: break-word;
@@ -1934,10 +1939,11 @@
   .ass-frame-caption { color: var(--text-secondary); font: 12px var(--font-mono); }
   .ass-frame-warnings { margin: 0; color: var(--amber-hover); font-size: 12px; white-space: pre-line; }
   .ass-frame-options {
-    display: flex; flex: 0 0 auto; flex-direction: column; gap: 6px;
+    display: flex; flex: 0 0 auto; flex-direction: row; gap: 12px;
     padding: 8px 10px; background: var(--bg-raised); border: 1px solid var(--border-subtle); border-radius: var(--radius-md);
   }
   .ass-frame-option { margin: 0; color: var(--text-secondary); font-size: 12px; }
+  .ass-frame-option[hidden] { display: none; }
   .ass-frame-option input[type="checkbox"] { accent-color: var(--accent); }
   .ass-frame-actions { display: flex; flex: 0 0 auto; align-items: center; gap: 8px; }
   .ass-frame-actions button {

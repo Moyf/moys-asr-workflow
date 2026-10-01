@@ -186,6 +186,15 @@ function updateAssProfileField(path, value) {
 function syncAssStyleForm(style) {
   if (!assStyleForm) return;
   const safeStyle = window.AsrEditorUtils.normalizeAssStyle(style);
+  const borderBox = Number(safeStyle.borderStyle) === 3;
+  for (const [id, text] of [
+    ['ass-style-outline-color-label', borderBox ? '底框颜色' : '描边颜色'],
+    ['ass-style-outline-label', borderBox ? '底框宽度' : '描边宽度'],
+    ['ass-style-outline-opacity-label', borderBox ? '底框不透明度' : '描边不透明度'],
+  ]) {
+    const label = document.getElementById(id);
+    if (label) label.textContent = window.MAWE_I18N?.translateText?.(text) || text;
+  }
   if (assStyleFormTitle) assStyleFormTitle.textContent = safeStyle.name;
   if (assStyleBuiltinBadge) assStyleBuiltinBadge.hidden = !safeStyle.builtin;
   const isSrtDefault = safeStyle.id === 'default';

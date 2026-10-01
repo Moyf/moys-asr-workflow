@@ -49,6 +49,32 @@ async function seek(page, seconds) {
   await expect.poll(() => page.evaluate(() => window.MaweCoreState.player.seeking)).toBe(false);
 }
 
+test('style preview opens the actual frame window and displays each missing character once', async ({ page }) => {
+  const warning = '字幕字体「PingFang SC」缺少字形 U+1F914（🤔），实际画面可能显示方框。';
+  await page.route('**/api/ass-frame', async (route) => {
+    const response = await route.fetch();
+    const payload = await response.json();
+    await route.fulfill({ response, json: { ...payload, warnings: [warning, warning] } });
+  });
+  await enableAss(page);
+  await page.locator('#editor-settings-toggle').click();
+  await page.locator('#ass-style-manager-open').click();
+  await page.locator('#ass-style-list [data-ass-selection-id="ass"]').click();
+  const button = page.locator('#ass-style-frame-preview-open');
+  await button.scrollIntoViewIfNeeded();
+  const gap = await button.evaluate((element) => {
+    const row = element.parentElement;
+    return row.getBoundingClientRect().top - row.previousElementSibling.getBoundingClientRect().bottom;
+  });
+  expect(gap).toBeGreaterThanOrEqual(8);
+  await button.screenshot({ path: test.info().outputPath('ass-frame-style-entry.png') });
+  await button.click();
+  await expect(page.locator('#ass-frame-window')).toBeVisible();
+  await expect(page.locator('#ass-frame-warnings')).toHaveText(warning);
+  await expect(page.locator('#ass-frame-image')).toBeVisible();
+  await page.locator('#ass-frame-window').screenshot({ path: test.info().outputPath('ass-frame-options-warnings.png') });
+});
+
 test('paused video uses native libass, updates after edits, and falls back immediately on play', async ({ page }) => {
   const errors = [];
   page.on('pageerror', (error) => errors.push(error.message));
@@ -352,13 +378,20 @@ test('stage overlay defaults to off while auto rendering defaults to on', async 
   await expect(page.locator('#ass-frame-auto-toggle')).toBeChecked();
   // 自动渲染开启时「渲染当前帧」没有意义，隐藏。
   await expect(page.locator('#ass-frame-render')).toBeHidden();
-  // 关闭自动渲染：按钮显示；开启舞台叠加：手动渲染一帧后叠到播放器画面。
+  const autoBounds = await page.locator('#ass-frame-auto-toggle').boundingBox();
+  const stageBounds = await page.locator('#ass-frame-stage-toggle').boundingBox();
+  expect(stageBounds.x).toBeGreaterThan(autoBounds.x + autoBounds.width);
+  expect(Math.abs(stageBounds.y - autoBounds.y)).toBeLessThan(2);
+  await page.locator('#ass-frame-stage-toggle').check();
+  await expect(page.locator('#ass-stage-frame')).toBeVisible();
+  // 关闭自动渲染后，暂停叠加选项隐藏；手动渲染也只更新窗口。
   await page.locator('#ass-frame-auto-toggle').uncheck();
   await expect(page.locator('#ass-frame-render')).toBeVisible();
-  await page.locator('#ass-frame-stage-toggle').check();
+  await expect(page.locator('#ass-frame-stage-toggle')).toBeHidden();
   await page.locator('#ass-frame-render').click();
-  await expect(page.locator('#ass-stage-frame')).toBeVisible();
-  await expect(page.locator('#overlay')).toHaveCSS('visibility', 'hidden');
+  await expect(page.locator('#ass-frame-image')).toBeVisible();
+  await expect(page.locator('#ass-stage-frame')).toBeHidden();
+  await expect(page.locator('#overlay')).toHaveCSS('visibility', 'visible');
   // 自动渲染已关：seek 后舞台回到 CSS 预览，窗口帧标记过期。
   await seek(page, 2);
   await expect(page.locator('#ass-stage-frame')).toBeHidden();
@@ -371,4 +404,8 @@ test('stage overlay defaults to off while auto rendering defaults to on', async 
     auto: window.MaweSettings.EDITOR_SETTINGS.assFrameAutoRender,
   }));
   expect(persisted).toEqual({ stage: true, auto: false });
+  await page.locator('#ass-frame-auto-toggle').check();
+  await expect(page.locator('#ass-frame-stage-toggle')).toBeVisible();
+  await expect(page.locator('#ass-frame-stage-toggle')).toBeChecked();
+  await expect(page.locator('#ass-stage-frame')).toBeVisible();
 });

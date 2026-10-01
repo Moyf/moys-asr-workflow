@@ -87,10 +87,14 @@ def libass_missing_glyphs(stderr: str) -> list[tuple[str, str]]:
     pipeline and the editor's frame preview can word them differently.
     """
     results: list[tuple[str, str]] = []
+    seen: set[tuple[str, str]] = set()
     for match in _ASS_MISSING_GLYPH_RE.finditer(stderr):
-        glyph = f" U+{match.group(1).upper()}" if match.group(1) else ""
+        glyph = f" U+{int(match.group(1), 16):04X}" if match.group(1) else ""
         family = re.sub(r"[\x00-\x1f\x7f]", "", match.group(2)).strip()[:100] or "当前字体"
-        results.append((glyph, family))
+        pair = (glyph, family)
+        if pair not in seen:
+            results.append(pair)
+            seen.add(pair)
     return results
 
 
