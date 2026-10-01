@@ -149,6 +149,9 @@
     onMarkerCreateRegion: (startMs, endMs) => MaweMarkerEditing.createMarkerRegion(startMs, endMs),
     onMarkerMove: (markerId, deltaMs) => MaweMarkerEditing.moveMarker(markerId, deltaMs),
     onMarkerResize: (markerId, edge, valueMs) => MaweMarkerEditing.resizeMarker(markerId, edge, valueMs),
+    // 双击浮层的字段编辑：统一走 MaweMarkerEditing.updateMarkerFields（撤销/标脏/刷新都在那一层）。
+    onMarkerQuickEditFields: (markerId, fields) => MaweMarkerEditing.updateMarkerFields(markerId, fields),
+    onMarkerQuickEditDelete: (markerId) => MaweMarkerEditing.deleteMarker(markerId),
     previewGapAt: MawePlaybackLoop.previewGapAt,
     showGapContextMenu: (x, y, index) => MaweContextMenus.showGapContextMenu(x, y, index),
     showContextMenu: (x, y, idx, timeMs) => MaweContextMenus.showContextMenu(x, y, idx, timeMs),

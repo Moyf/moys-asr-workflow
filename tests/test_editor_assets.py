@@ -50,6 +50,7 @@ class EditorAssetContractTests(unittest.TestCase):
                 "shared/utils/multi-subtitle.js",
                 "shared/utils/word-split.js",
                 "shared/utils/srt.js",
+                "shared/utils/lrc.js",
                 "shared/utils/ass-style.js",
                 "shared/utils/ass-animation.js",
                 "shared/utils/ass-export.js",

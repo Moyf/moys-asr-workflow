@@ -49,6 +49,9 @@ window.MAWE.register('waveform-markers', function createWaveformModule(dependenc
 
     appendMarkerTrack(row, startMs, endMs) {
       const markers = this.getMarkers();
+      // 行时间标签是否需要给标记轨道让位：仅当该行可见范围内确有标记时下移。
+      const hasVisibleMarkers = markers.some((marker) => window.AsrEditorUtils.markerVisibleRange(marker, startMs, endMs));
+      row.classList.toggle('waveform-row-has-markers', hasVisibleMarkers);
       if (!markers.length) return;
       const track = document.createElement('div');
       track.className = 'waveform-marker-track';
@@ -97,11 +100,14 @@ window.MAWE.register('waveform-markers', function createWaveformModule(dependenc
       element.setAttribute('aria-label', element.title);
       if (marker.review?.status === 'pending') element.classList.add('review-pending');
       if (marker.review?.status === 'confirmed') element.classList.add('review-confirmed');
-      if (isRegion) {
+      // 已确认的标记在轨道上只保留色条 / 旗标本身，不再显示名称。
+      if (marker.name && marker.review?.status !== 'confirmed') {
         const label = document.createElement('span');
         label.className = 'waveform-marker-label';
-        label.textContent = marker.name || '';
+        label.textContent = marker.name;
         element.appendChild(label);
+      }
+      if (isRegion) {
         if (marker.start >= startMs) {
           const leftHandle = document.createElement('span');
           leftHandle.className = 'waveform-marker-handle left';
@@ -126,6 +132,7 @@ window.MAWE.register('waveform-markers', function createWaveformModule(dependenc
       element.addEventListener('dblclick', (event) => {
         event.preventDefault();
         event.stopPropagation();
+        this.openMarkerQuickEdit(marker.id, element);
       });
       element.addEventListener('contextmenu', (event) => {
         event.preventDefault();
@@ -141,6 +148,155 @@ window.MAWE.register('waveform-markers', function createWaveformModule(dependenc
       this.content.querySelectorAll('.waveform-row').forEach((row) => {
         this.appendMarkerTrack(row, Number(row.dataset.startMs), Number(row.dataset.endMs));
       });
+    }
+
+
+    // 双击 marker 弹出的小型编辑浮层：名称 / 颜色 / 复核三态。
+    // 浮层挂载在滚动内容层（随内容滚动），点击浮层以外或 Esc 关闭；
+    // 数据变更经 options.onMarkerQuickEditFields 进入 MaweMarkerEditing。
+    openMarkerQuickEdit(markerId, anchorElement) {
+      const utils = window.AsrEditorUtils;
+      const marker = this.getMarkers().find((candidate) => candidate?.id === markerId);
+      if (!marker) return;
+      this.closeMarkerQuickEdit();
+      const popup = document.createElement('div');
+      popup.className = 'waveform-marker-quick-edit';
+
+      const nameField = document.createElement('label');
+      nameField.className = 'markers-edit-field';
+      const nameCaption = document.createElement('span');
+      nameCaption.textContent = '名称';
+      const nameInput = document.createElement('input');
+      nameInput.type = 'text';
+      nameInput.value = marker.name || '';
+      nameInput.maxLength = utils.MARKER_NAME_MAX_LENGTH;
+      nameInput.placeholder = utils.markerKind(marker) === 'region' ? '区段名称' : '标记名称';
+      nameInput.addEventListener('change', () => {
+        this.options.onMarkerQuickEditFields?.(markerId, { name: nameInput.value });
+      });
+      nameField.append(nameCaption, nameInput);
+
+      const swatches = document.createElement('div');
+      swatches.className = 'markers-color-swatches';
+      for (const preset of utils.MARKER_PRESET_COLORS) {
+        const swatch = document.createElement('button');
+        swatch.type = 'button';
+        swatch.className = 'markers-color-swatch';
+        swatch.dataset.color = preset;
+        swatch.style.setProperty('--marker-color', preset);
+        swatch.title = utils.markerPresetColorLabel(preset) || preset;
+        swatch.setAttribute('aria-label', `使用颜色 ${swatch.title}`);
+        swatch.addEventListener('click', () => {
+          this.options.onMarkerQuickEditFields?.(markerId, { color: preset });
+          this.syncMarkerQuickEdit();
+        });
+        swatches.appendChild(swatch);
+      }
+
+      const reviewToggle = document.createElement('button');
+      reviewToggle.type = 'button';
+      reviewToggle.className = 'markers-review-toggle';
+      reviewToggle.addEventListener('click', () => {
+        const latest = this.getMarkers().find((candidate) => candidate?.id === markerId);
+        if (!latest) {
+          this.closeMarkerQuickEdit();
+          return;
+        }
+        this.options.onMarkerQuickEditFields?.(markerId, { review: utils.nextMarkerReviewStatus(latest) });
+        this.syncMarkerQuickEdit();
+      });
+
+      // 底部行：复核三态在左，删除在右（样式与编辑卡的操作行一致）。
+      const actionsRow = document.createElement('div');
+      actionsRow.className = 'markers-item-actions';
+      actionsRow.appendChild(reviewToggle);
+      const deleteButton = document.createElement('button');
+      deleteButton.type = 'button';
+      deleteButton.className = 'danger';
+      deleteButton.textContent = '删除';
+      deleteButton.addEventListener('click', () => {
+        this.options.onMarkerQuickEditDelete?.(markerId);
+        this.closeMarkerQuickEdit();
+      });
+      actionsRow.appendChild(deleteButton);
+
+      popup.append(nameField, swatches, actionsRow);
+      this.content.appendChild(popup);
+      this.markerQuickEdit = { markerId, element: popup };
+      this.syncMarkerQuickEdit();
+      this.positionMarkerQuickEdit(anchorElement);
+
+      this._markerQuickEditOutside = (event) => {
+        if (popup.contains(event.target)) return;
+        this.closeMarkerQuickEdit();
+      };
+      this._markerQuickEditKey = (event) => {
+        if (event.key === 'Escape') {
+          event.stopPropagation();
+          this.closeMarkerQuickEdit();
+        }
+      };
+      document.addEventListener('pointerdown', this._markerQuickEditOutside, true);
+      document.addEventListener('keydown', this._markerQuickEditKey, true);
+    }
+
+
+    // 打开时 / 每次数据变更后同步浮层的动态状态（激活色、复核按钮文案）。
+    syncMarkerQuickEdit() {
+      const popup = this.markerQuickEdit?.element;
+      if (!popup || !popup.isConnected) return;
+      const utils = window.AsrEditorUtils;
+      const marker = this.getMarkers().find((candidate) => candidate?.id === this.markerQuickEdit.markerId);
+      if (!marker) {
+        this.closeMarkerQuickEdit();
+        return;
+      }
+      const currentColor = utils.normalizeMarkerColor(marker.color);
+      popup.querySelectorAll('.markers-color-swatch').forEach((swatch) => {
+        swatch.classList.toggle('active', swatch.dataset.color === currentColor);
+      });
+      const reviewToggle = popup.querySelector('.markers-review-toggle');
+      if (reviewToggle) {
+        // 无前缀，仅状态名；配色与编辑卡一致（待复核琥珀 / 已确认绿）。
+        reviewToggle.textContent = utils.markerReviewStatusLabel(marker);
+        reviewToggle.classList.toggle('has-review', Boolean(marker.review));
+        reviewToggle.classList.toggle('pending', marker.review?.status === 'pending');
+        reviewToggle.classList.toggle('confirmed', marker.review?.status === 'confirmed');
+        if (marker.review?.reason) reviewToggle.title = marker.review.reason;
+        else reviewToggle.removeAttribute('title');
+      }
+    }
+
+
+    positionMarkerQuickEdit(anchorElement) {
+      const popup = this.markerQuickEdit?.element;
+      if (!popup) return;
+      const popupWidth = popup.offsetWidth || 208;
+      const popupHeight = popup.offsetHeight || 120;
+      const contentRect = this.content.getBoundingClientRect();
+      const anchorRect = anchorElement.getBoundingClientRect();
+      const anchorLeft = anchorRect.left - contentRect.left;
+      const anchorTop = anchorRect.top - contentRect.top;
+      const maxLeft = Math.max(0, this.content.clientWidth - popupWidth - 4);
+      const maxTop = Math.max(0, this.content.clientHeight - popupHeight - 4);
+      popup.style.left = `${Math.min(Math.max(4, anchorLeft - 8), maxLeft)}px`;
+      // 默认浮层在标记上方；贴着可视区顶部时放到下方。
+      const aboveTop = anchorTop - popupHeight - 8;
+      popup.style.top = `${Math.min(Math.max(4, aboveTop >= 4 ? aboveTop : anchorTop + anchorRect.height + 8), maxTop)}px`;
+    }
+
+
+    closeMarkerQuickEdit() {
+      if (this._markerQuickEditOutside) {
+        document.removeEventListener('pointerdown', this._markerQuickEditOutside, true);
+        this._markerQuickEditOutside = null;
+      }
+      if (this._markerQuickEditKey) {
+        document.removeEventListener('keydown', this._markerQuickEditKey, true);
+        this._markerQuickEditKey = null;
+      }
+      this.markerQuickEdit?.element?.remove();
+      this.markerQuickEdit = null;
     }
 
 

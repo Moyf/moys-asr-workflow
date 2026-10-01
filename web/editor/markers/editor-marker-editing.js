@@ -132,8 +132,10 @@
   }
 
 
-  // 管理窗字段编辑：name/color/note/start/end 任意子集。
-  // end 传 null 表示移除区段终点（退化为单点标记）。
+  // 管理窗 / 波形浮层字段编辑：name/color/note/start/end/review 任意子集。
+  // end 传 null 表示移除区段终点（退化为单点标记）；
+  // review 传 null 表示清除复核状态（普通标记），'pending' / 'confirmed' 设置
+  // 对应状态并保留原 reason（AI 复核原因不因切换状态而丢失）。
   function updateMarkerFields(markerId, fields = {}) {
     const marker = findMarker(markerId);
     if (!marker) return null;
@@ -153,6 +155,14 @@
         const end = Math.round(Number(fields.end));
         if (Number.isFinite(end) && end > 0) target.end = end;
       }
+      if (fields.review !== undefined) {
+        if (fields.review === null) {
+          delete target.review;
+        } else if (fields.review === 'pending' || fields.review === 'confirmed') {
+          const reason = typeof target.review?.reason === 'string' ? target.review.reason : '';
+          target.review = { status: fields.review, reason };
+        }
+      }
     });
     return getMarkers();
   }
@@ -171,27 +181,18 @@
   }
 
 
-  // 复核确认：保留 reason，仅把 pending 收敛为 confirmed。
-  function confirmReview(markerId) {
-    const marker = findMarker(markerId);
-    if (!marker?.review || marker.review.status !== 'pending') return null;
-    commitMarkerChange('确认复核', (list) => {
-      const target = list.find((item) => item.id === markerId);
-      if (!target?.review) return false;
-      target.review.status = 'confirmed';
-    });
-    MaweHint.flashHint('已确认复核项', 'success');
-    return getMarkers();
-  }
-
-
-  // 定位试听：跳转播放头到标记位置（区段取起点），跟随播放逻辑滚动波形。
-  function locateMarker(markerId) {
+  // 定位：跳转播放头到标记位置（区段取起点），跟随播放逻辑滚动波形；
+  // play: true 时跳转后立即播放（「定位试听」按钮），列表项 / 波形点击仍只跳转。
+  function locateMarker(markerId, { play = false } = {}) {
     const marker = findMarker(markerId);
     if (!marker) return false;
     const player = MaweCoreState.player;
     if (player && Number.isFinite(Number(player.currentTime))) {
       player.currentTime = marker.start / 1000;
+    }
+    if (play && player?.paused) {
+      const promise = player.play?.();
+      promise?.catch?.(() => {});
     }
     MaweCoreState.waveformEditor?.updatePlayback?.();
     return true;
@@ -222,7 +223,6 @@
     resizeMarker,
     updateMarkerFields,
     deleteMarker,
-    confirmReview,
     locateMarker,
     afterExternalMarkersChange,
     pendingReviewCount,

@@ -173,6 +173,7 @@
   otioExportIncludeSrt: true,
   otioExportIncludeStickers: true,
   otioExportIncludeMarkers: true,
+  otioExportIncludeMarkerRegions: true,
   // 字幕单击行为：默认选中并跳转；select-and-play 额外在暂停时开始播放。
   clickBehavior: 'select-and-seek',
   // 波形字幕块的跳转目标，默认使用鼠标所在位置；字幕列表点击始终跳转到字幕开头。
@@ -293,6 +294,7 @@
       otioExportIncludeSrt: saved.otioExportIncludeSrt !== false,
       otioExportIncludeStickers: saved.otioExportIncludeStickers !== false,
       otioExportIncludeMarkers: saved.otioExportIncludeMarkers !== false,
+      otioExportIncludeMarkerRegions: saved.otioExportIncludeMarkerRegions !== false,
     }, legacyAssStyleLibrary);
     if (saved?.assSpecialSymbolRule === undefined) saveEditorSettings(settings);
     return settings;

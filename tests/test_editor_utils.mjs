@@ -161,7 +161,7 @@ test('translates the ASS style manager labels and dynamic summaries', () => {
   assert.equal(i18n.translateText('读取本机字体', 'en'), 'Read local fonts');
   assert.equal(i18n.translateText('已读取 3 种本机字体', 'en'), 'Read 3 local font families');
   assert.equal(i18n.translateText('未读取到可用的本机字体', 'en'), 'No usable local fonts were returned');
-  assert.equal(i18n.translateText('当前环境不支持自动读取本机字体', 'en'), 'This environment cannot list local fonts automatically');
+  assert.equal(i18n.translateText('当前浏览器不支持该功能', 'en'), 'This browser does not support this feature');
   assert.equal(i18n.translateText('未获准读取本机字体', 'en'), 'Permission to read local fonts was not granted');
   assert.equal(i18n.translateText('读取本机字体失败，请重试', 'en'), 'Could not read local fonts; try again');
   assert.equal(i18n.translateText('基础样式', 'en'), 'Basic style');
@@ -426,23 +426,28 @@ test('normalizes timeline OTIO export options and defaults them to enabled', () 
   assert.equal(defaults.otioExportIncludeSrt, true);
   assert.equal(defaults.otioExportIncludeStickers, true);
   assert.equal(defaults.otioExportIncludeMarkers, true);
+  assert.equal(defaults.otioExportIncludeMarkerRegions, true);
   const disabled = helpers.normalizeEditorSettings({
     otioExportIncludeSrt: false,
     otioExportIncludeStickers: false,
     otioExportIncludeMarkers: false,
+    otioExportIncludeMarkerRegions: false,
   });
   assert.equal(disabled.otioExportIncludeSrt, false);
   assert.equal(disabled.otioExportIncludeStickers, false);
   assert.equal(disabled.otioExportIncludeMarkers, false);
+  assert.equal(disabled.otioExportIncludeMarkerRegions, false);
   // 只有显式 false 会关闭选项；其它假值一律回退为默认勾选，避免损坏的持久化数据关闭导出能力。
   const repaired = helpers.normalizeEditorSettings({
     otioExportIncludeSrt: 0,
     otioExportIncludeStickers: null,
     otioExportIncludeMarkers: undefined,
+    otioExportIncludeMarkerRegions: 0,
   });
   assert.equal(repaired.otioExportIncludeSrt, true);
   assert.equal(repaired.otioExportIncludeStickers, true);
   assert.equal(repaired.otioExportIncludeMarkers, true);
+  assert.equal(repaired.otioExportIncludeMarkerRegions, true);
 });
 
 test('converts and formats the parallel frame timebase', () => {
@@ -6253,4 +6258,80 @@ test('ASS special symbol rules apply to all five formats across preview runs and
   }
   const off = helpers.normalizeEditorSettings({ assSpecialSymbolRule: 'both', assStrikeEnabled: false });
   assert.ok(helpers.assInlineStyleRuns(text, 'both', off).map(run => run.text).join('').includes('~~删除~~'));
+});
+
+
+test('parseLrcSegments derives gapless timings from successive timestamps', () => {
+  const segments = JSON.parse(JSON.stringify(helpers.parseLrcSegments([
+    '[ti:Demo]',
+    '[00:10.00]First line',
+    '[00:15.500]Second line',
+    '[01:02]Third line',
+  ].join('\n'))));
+  // 每句持续到下一时间戳；最后一句没有后续时间戳时兜底 5s。
+  assert.deepEqual(segments, [
+    { start: 10000, end: 15500, text: 'First line' },
+    { start: 15500, end: 62000, text: 'Second line' },
+    { start: 62000, end: 67000, text: 'Third line' },
+  ]);
+});
+
+test('parseLrcSegments expands multi-timestamp lines and sorts out-of-order cues', () => {
+  const segments = JSON.parse(JSON.stringify(helpers.parseLrcSegments([
+    '[00:20.00]Chorus',
+    '[00:10.00][00:40.00]Verse',
+  ].join('\n'))));
+  assert.deepEqual(segments.map((segment) => [segment.start, segment.end]), [
+    [10000, 20000],
+    [20000, 40000],
+    [40000, 45000],
+  ]);
+  assert.deepEqual(segments.map((segment) => segment.text), ['Verse', 'Chorus', 'Verse']);
+});
+
+test('parseLrcSegments applies the offset tag, strips enhanced word tags and keeps boundaries', () => {
+  const segments = JSON.parse(JSON.stringify(helpers.parseLrcSegments([
+    '[offset:+2500]',
+    '[ar:Artist][al:Album]',
+    '[00:10.00]<00:10.00>Enhanced <00:12.00>words',
+    '[00:12.00]',
+    '[00:15.00]After the gap marker',
+  ].join('\n'))));
+  // 空文本时间戳只作为上一句的结束边界，不生成字幕；
+  // offset 正值按主流播放器约定让歌词提前 2500ms。
+  assert.deepEqual(segments, [
+    { start: 7500, end: 9500, text: 'Enhanced words' },
+    // 最后一句没有后续时间戳，按 5s 兜底。
+    { start: 12500, end: 17500, text: 'After the gap marker' },
+  ]);
+});
+
+test('parseLrcSegments merges duplicate timestamps and preserves bracketed lyric text', () => {
+  const segments = JSON.parse(JSON.stringify(helpers.parseLrcSegments([
+    '[00:10.00]Left [Chorus] part',
+    '[00:10.00]Right part',
+    '[01:00.000][01:00.0]Same stamp twice',
+  ].join('\n'))));
+  assert.deepEqual(segments, [
+    { start: 10000, end: 60000, text: 'Left [Chorus] part\nRight part' },
+    { start: 60000, end: 65000, text: 'Same stamp twice' },
+  ]);
+});
+
+test('parseLrcSegments rejects files without any lyric cues', () => {
+  assert.throws(() => helpers.parseLrcSegments('[ti:Only metadata]\n[ar:Someone]\n'), /没有可导入的歌词时间轴/);
+  assert.throws(() => helpers.parseLrcSegments(''), /没有可导入的歌词时间轴/);
+});
+
+test('parseLrcSegments applies the offset tag globally regardless of its position', () => {
+  // offset 是整文件级标签；写在部分歌词行之后也要作用到之前的所有时间戳。
+  const segments = JSON.parse(JSON.stringify(helpers.parseLrcSegments([
+    '[00:10.00]Early line',
+    '[offset:+1000]',
+    '[00:20.00]Late line',
+  ].join('\n'))));
+  assert.deepEqual(segments, [
+    { start: 9000, end: 19000, text: 'Early line' },
+    { start: 19000, end: 24000, text: 'Late line' },
+  ]);
 });

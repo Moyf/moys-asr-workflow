@@ -7,7 +7,7 @@
 
 
 
-  // === Drag & Drop：拖入视频/音频/JSON/SRT 自动加载 ===
+  // === Drag & Drop：拖入视频/音频/JSON/SRT/LRC 自动加载 ===
   const dragOverlay = document.getElementById('drag-overlay');
 
 
@@ -22,6 +22,11 @@
   }
 
 
+  function isLrcFile(f) {
+    return f.name.toLowerCase().endsWith('.lrc');
+  }
+
+
   async function handleDroppedFiles(files) {
   if (!files.length) return;
   const finishLoading = MaweLoadingProgress.beginEditorLoading('正在处理拖入文件…', 2);
@@ -29,10 +34,10 @@
   const mediaFile = files.find(MaweCoreState.isMediaFile);
   const reapeaksFile = files.find(MaweCoreState.isReapeaksFile);
   const jsonFile = files.find(isJsonFile);
-  const srtFile = files.find(isSrtFile);
-  let stagedSrtSegments = null;
-  if (!mediaFile && !reapeaksFile && !jsonFile && !srtFile) {
-    MaweHint.flashHint('不支持的文件类型（仅支持视频 / 音频 / JSON / SRT / reapeaks）', 'warning');
+  const subtitleFile = files.find((file) => isSrtFile(file) || isLrcFile(file));
+  let stagedSubtitleSegments = null;
+  if (!mediaFile && !reapeaksFile && !jsonFile && !subtitleFile) {
+    MaweHint.flashHint('不支持的文件类型（仅支持视频 / 音频 / JSON / SRT / LRC / reapeaks）', 'warning');
     return;
   }
   if (jsonFile) {
@@ -55,42 +60,49 @@
     if (opened && mediaFile) await MaweMediaLoad.loadMediaFile(mediaFile);
     return;
   }
-  if (reapeaksFile && !mediaFile && !srtFile) {
+  if (reapeaksFile && !mediaFile && !subtitleFile) {
     await MaweMediaLoad.loadReapeaksFile(reapeaksFile);
     return;
   }
-  if (srtFile && MaweBoot.DATA.segments.length === 0) {
+  if (subtitleFile && MaweBoot.DATA.segments.length === 0) {
     try {
-      stagedSrtSegments = MaweProjectLoad.parseSrtSegments(await MaweLoadingProgress.readFileTextWithProgress(srtFile));
+      stagedSubtitleSegments = await parseDroppedSubtitleFile(subtitleFile);
     } catch (error) {
       MaweHint.flashHint(`导入字幕失败：${error.message || error}`, 'warning');
       return;
     }
   }
-  if ((mediaFile || srtFile) && !await MaweProjectLoad.ensureProjectCheckpointForImport(mediaFile || srtFile, { usePicker: false })) return;
+  if ((mediaFile || subtitleFile) && !await MaweProjectLoad.ensureProjectCheckpointForImport(mediaFile || subtitleFile, { usePicker: false })) return;
   if (mediaFile) {
     const imported = await MaweMediaLoad.loadMediaFile(mediaFile);
     if (imported) MaweServerSave.projectImportDirty = true;
   }
   if (reapeaksFile) await MaweMediaLoad.loadReapeaksFile(reapeaksFile);
-  if (srtFile) {
+  if (subtitleFile) {
     if (MaweBoot.DATA.segments.length > 0) {
       try {
-        const segments = await MaweLoadingProgress.parseSubtitleImportFile(srtFile);
-        await MaweMultiImport.showMultiSubtitleImportChoice(srtFile, segments);
+        const segments = await MaweLoadingProgress.parseSubtitleImportFile(subtitleFile);
+        await MaweMultiImport.showMultiSubtitleImportChoice(subtitleFile, segments);
       } catch (error) {
         MaweHint.flashHint(`导入字幕失败：${error.message || error}`, 'warning');
       }
     } else {
-      MaweProjectLoad.replaceMainTrack(stagedSrtSegments, srtFile.name, { overlaySegments: stagedSrtSegments.overlaySegments || [] });
+      MaweProjectLoad.replaceMainTrack(stagedSubtitleSegments, subtitleFile.name, { overlaySegments: stagedSubtitleSegments.overlaySegments || [] });
     }
   }
-  if ((mediaFile || srtFile) && MaweServerSave.projectSaveTargetEnabled()) await MaweProjectSave.saveCurrentProject({ silent: true });
+  if ((mediaFile || subtitleFile) && MaweServerSave.projectSaveTargetEnabled()) await MaweProjectSave.saveCurrentProject({ silent: true });
   MaweLoadingProgress.updateEditorLoading(100, '文件加载完成');
   } finally {
     finishLoading();
   }
 }
+
+
+  // SRT 与 LRC 都按文本读取（内部自动处理 BOM/GBK），仅解析器不同。
+  async function parseDroppedSubtitleFile(file) {
+    const text = await MaweLoadingProgress.readFileTextWithProgress(file);
+    return isLrcFile(file) ? window.AsrEditorUtils.parseLrcSegments(text) : MaweProjectLoad.parseSrtSegments(text);
+  }
 
 
   let dragCounter = 0;
@@ -99,6 +111,7 @@
     dragOverlay,
     isJsonFile,
     isSrtFile,
+    isLrcFile,
     handleDroppedFiles,
     get dragCounter() { return dragCounter; },
     set dragCounter(v) { dragCounter = v; }

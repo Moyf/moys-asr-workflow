@@ -7,15 +7,26 @@ document.getElementById('load-media')?.addEventListener('click', () => {
   MaweProjectMediaInputs.loadMediaFileInput.value = '';
   MaweProjectMediaInputs.loadMediaFileInput.click();
 });
-document.getElementById('load-srt')?.addEventListener('click', () => {
+// 「加载字幕（.srt）」与「加载歌词（.lrc）」共用一套导入流程与确认文案逻辑。
+function openSubtitleImportInput(input, confirmMessage) {
   MaweMultiSubtitleCore.pendingSrtImportAsExtension = false;
   if (MaweServerSave.hasUnsavedProjectChanges()
-      && !confirm('当前有未保存的改动，是否确定加载字幕？将替换当前字幕。')) return;
-  MaweProjectMediaInputs.loadSrtFileInput.value = '';
-  MaweProjectMediaInputs.loadSrtFileInput.click();
-});
+      && !confirm(confirmMessage)) return;
+  input.value = '';
+  input.click();
+}
+document.getElementById('load-srt')?.addEventListener('click', () => openSubtitleImportInput(
+  MaweProjectMediaInputs.loadSrtFileInput,
+  '当前有未保存的改动，是否确定加载字幕？将替换当前字幕。',
+));
+document.getElementById('load-lrc')?.addEventListener('click', () => openSubtitleImportInput(
+  MaweProjectMediaInputs.loadLrcFileInput,
+  '当前有未保存的改动，是否确定加载歌词？将替换当前字幕。',
+));
 
-MaweProjectMediaInputs.loadSrtFileInput.addEventListener('change', async (event) => {
+// 两个隐藏 input 的 change 走同一导入：副字幕导入标记优先，否则替换主轨
+// （openSubtitleFile 内部按扩展名分流 SRT / LRC 解析）。
+async function importSubtitleFromInput(event) {
   const file = event.target.files?.[0];
   const importAsExtension = MaweMultiSubtitleCore.pendingSrtImportAsExtension;
   MaweMultiSubtitleCore.pendingSrtImportAsExtension = false;
@@ -29,8 +40,10 @@ MaweProjectMediaInputs.loadSrtFileInput.addEventListener('change', async (event)
     }
     return;
   }
-  await MaweMultiImport.openSrtFile(file);
-});
+  await MaweMultiImport.openSubtitleFile(file);
+}
+MaweProjectMediaInputs.loadSrtFileInput.addEventListener('change', importSubtitleFromInput);
+MaweProjectMediaInputs.loadLrcFileInput.addEventListener('change', importSubtitleFromInput);
 
 MaweDom.multiSubtitleImportResultCancel?.addEventListener('click', MaweMultiImport.closeMultiSubtitleImportModal);
 MaweDom.multiSubtitleImportExtension?.addEventListener('click', MaweMultiImport.prepareMultiSubtitleImport);

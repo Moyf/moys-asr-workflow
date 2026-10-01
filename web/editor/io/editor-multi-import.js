@@ -229,10 +229,14 @@
 
 
 
-  async function openSrtFile(file) {
+  // 菜单「加载字幕」与拖入共用入口：SRT 走分层解析，LRC 走歌词时间轴解析。
+  async function openSubtitleFile(file) {
   const finishLoading = MaweLoadingProgress.beginEditorLoading(`正在读取字幕 ${file.name}…`, 5);
   try {
-    const segments = MaweProjectLoad.parseSrtSegments(await MaweLoadingProgress.readFileTextWithProgress(file));
+    const text = await MaweLoadingProgress.readFileTextWithProgress(file);
+    const segments = MaweDragDrop.isLrcFile(file)
+      ? window.AsrEditorUtils.parseLrcSegments(text)
+      : MaweProjectLoad.parseSrtSegments(text);
     MaweLoadingProgress.updateEditorLoading(75, `正在载入字幕 ${file.name}…`);
     if (!await MaweProjectLoad.ensureProjectCheckpointForImport(file)) return false;
     const imported = MaweProjectLoad.replaceMainTrack(segments, file.name, { overlaySegments: segments.overlaySegments || [] });
@@ -320,7 +324,7 @@ const expectedName = window.AsrEditorUtils.fileBasename(MaweBoot.DATA.media);
     prepareMultiSubtitleImport,
     commitMultiSubtitleImport,
     swapMainAndExtensionSubtitles,
-    openSrtFile,
+    openSubtitleFile,
     openProjectFile
   });
 })(typeof window !== 'undefined' ? window : globalThis);
