@@ -6322,3 +6322,16 @@ test('parseLrcSegments rejects files without any lyric cues', () => {
   assert.throws(() => helpers.parseLrcSegments('[ti:Only metadata]\n[ar:Someone]\n'), /没有可导入的歌词时间轴/);
   assert.throws(() => helpers.parseLrcSegments(''), /没有可导入的歌词时间轴/);
 });
+
+test('parseLrcSegments applies the offset tag globally regardless of its position', () => {
+  // offset 是整文件级标签；写在部分歌词行之后也要作用到之前的所有时间戳。
+  const segments = JSON.parse(JSON.stringify(helpers.parseLrcSegments([
+    '[00:10.00]Early line',
+    '[offset:+1000]',
+    '[00:20.00]Late line',
+  ].join('\n'))));
+  assert.deepEqual(segments, [
+    { start: 9000, end: 19000, text: 'Early line' },
+    { start: 19000, end: 24000, text: 'Late line' },
+  ]);
+});

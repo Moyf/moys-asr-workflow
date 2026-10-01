@@ -76,9 +76,11 @@ window.MAWE.register('utils-lrc', function createUtilsModule() {
       if (!stamps.length) continue;
       const cueText = rest.replace(LRC_ENHANCED_WORD_TAG, '').trim();
       for (const stamp of stamps) {
-        entries.push({ time: Math.max(0, stamp - offsetMs), text: cueText, order: entries.length });
+        entries.push({ time: stamp, text: cueText, order: entries.length });
       }
     }
+    // offset 是整文件级标签（主流播放器不关心它出现在哪一行），收集完统一应用。
+    for (const entry of entries) entry.time = Math.max(0, entry.time - offsetMs);
     entries.sort((a, b) => a.time - b.time || a.order - b.order);
     const merged = [];
     for (const entry of entries) {
