@@ -2096,7 +2096,7 @@ def create_local_engine(
     raise ValueError("engine must be one of: qwen-asr, funasr, moss, firered, whisper")
 
 
-_LOCAL_TAIL_PUNCT = "，。"
+_LOCAL_TAIL_PUNCT = "，。；,."
 
 
 def _char_weight_weights(text: str) -> list[float]:

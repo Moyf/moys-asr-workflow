@@ -398,9 +398,9 @@ def build_transcribe_command(
         ):
             command.append("--speaker-colors")
         _append_option(command, "--language", request.language)
-        # 共享断句配置里的「额外断句符号」：作为云端转写的强断句符号下发；
-        # 空串跳过，保持命令行与旧版一致。
-        _append_option(command, "--extra-strong-punct", request.extra_strong_punct)
+        # 共享断句配置里的「需要断句的符号」：作为云端转写的强断句符号
+        # 恒显式下发（含空串）：空串 = 仅按换行断句，不再有内置强标点。
+        command.extend(["--extra-strong-punct", request.extra_strong_punct])
     _append_option(command, "--length-limit", request.length_limit)
     _append_option(command, "--max-len", request.max_len)
     _append_option(command, "--min-len", request.min_len)

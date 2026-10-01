@@ -3838,9 +3838,6 @@ def _segmentation_option(
     return str(value)
 
 
-_TAIL_STRIP_CANDIDATES = "，。"
-
-
 def _match_step_symbols(env_path: Path, key: str) -> list[str]:
     """读取共享后处理 plan 里 match 步骤的符号列表配置。"""
     plan = load_postprocess_plan(env_path)
@@ -3857,18 +3854,20 @@ def _match_step_symbols(env_path: Path, key: str) -> list[str]:
 
 
 def _transcribe_strip_tail_punct(env_path: Path) -> str:
-    """Derive transcription tail-strip set from the shared 保留符号 settings.
+    """Derive transcription tail-strip set from the shared 断句符号 settings.
 
     The ⚙️ settings section edits the same postprocess plan (`match` step) as
-    the 文稿匹配 toolbox; symbols marked as preserved are subtracted from the
-    strip candidates so transcription output keeps them at cue tails.
+    the 文稿匹配 toolbox.  Symbols configured as break symbols are stripped
+    from cue tails unless listed as preserved; only single-character symbols
+    participate (rstrip works per character).
     """
+    extra = _match_step_symbols(env_path, "extraSplitPunctuation")
     preserved = set(_match_step_symbols(env_path, "preservePunctuation"))
-    return "".join(candidate for candidate in _TAIL_STRIP_CANDIDATES if candidate not in preserved)
+    return "".join(symbol for symbol in extra if len(symbol) == 1 and symbol not in preserved)
 
 
 def _transcribe_extra_strong_punct(env_path: Path) -> str:
-    """Derive the transcription extra strong-punct set from shared 额外断句符号."""
+    """Derive the transcription strong-punct set from the shared 断句符号 settings."""
     return "".join(_match_step_symbols(env_path, "extraSplitPunctuation"))
 
 
