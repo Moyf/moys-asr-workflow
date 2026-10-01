@@ -129,3 +129,5 @@ git diff --check
 ```sh
 MAW_E2E_PYTHON=.venv/bin/python node_modules/.bin/playwright test tests/e2e/multi-subtitle.spec.mjs -g 'snaps an extension cue to main-track boundaries' --project=chromium --repeat-each=3 --workers=1 --output=/tmp/maw-snap-retest
 ```
+
+Git / PR 收尾完成：功能提交906d234、主分支同步da93951，已推送并创建 [PR #166](https://github.com/Moyf/moys-asr-workflow/pull/166)。无待处理/进行中/阻塞功能项；无仅说明的新需求，全部按授权实现。原媒体与跨系统字体/高分辨率边界仍未验证，CI结果未用于本机通过结论。
