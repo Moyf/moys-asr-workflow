@@ -6,10 +6,14 @@
 漂移；Launcher JS 默认计划由 test_gui_web.LauncherAssetContractTests
 另行守护。
 """
+
 from pathlib import Path
 import unittest
 
-from maw.postprocess_match import DEFAULT_EXTRA_SPLIT_PUNCTUATION, DEFAULT_PRESERVE_PUNCTUATION
+from maw.postprocess_match import (
+    DEFAULT_EXTRA_SPLIT_PUNCTUATION,
+    DEFAULT_PRESERVE_PUNCTUATION,
+)
 
 ROOT = Path(__file__).resolve().parents[1]
 
@@ -57,7 +61,9 @@ class PunctuationDefaultsContractTests(unittest.TestCase):
         )
         for name in scripts:
             with self.subTest(script=name):
-                self.assertRegex(source_text(name), rf'{STRIP_DEFAULT_PATTERN}{EXPECTED_STRIP}"')
+                self.assertRegex(
+                    source_text(name), rf'{STRIP_DEFAULT_PATTERN}{EXPECTED_STRIP}"'
+                )
 
 
 if __name__ == "__main__":
