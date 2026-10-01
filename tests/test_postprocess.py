@@ -474,8 +474,64 @@ class PostprocessTests(unittest.TestCase):
             self.fail("JSON output mode must create a project")
         output_texts = [segment["text"] for segment in project_segments(read_project(result.project_path))]
         self.assertEqual(output_texts, ["酒很好喝", "改写下一句"])
-        self.assertIn("网络请求失败，该批字幕保留原文", "\n".join(result.warnings))
+        self.assertIn("网络/服务请求失败，该批字幕保留原文", "\n".join(result.warnings))
         self.assertNotIn("已跳过", "\n".join(result.warnings))
+
+    def test_llm_transient_provider_status_degrades_batch_to_original_text(self) -> None:
+        # 429 / 5xx 是长任务中最常见的中途失败，与网络中断同等对待。
+        calls: list[list[dict[str, JsonValue]]] = []
+
+        def complete(_prompt: str, cues: list[dict[str, JsonValue]]) -> JsonDict:
+            calls.append(cues)
+            if len(calls) == 1:
+                raise LlmClientError(
+                    "LLM provider returned HTTP 503: upstream unavailable",
+                    category="provider_response",
+                    status_code=503,
+                )
+            return {"groups": [{"id": cue["id"], "text": f"改写{cue['text']}"} for cue in cues]}
+
+        with mock.patch("maw.postprocess.MAX_LLM_CUES_PER_REQUEST", 1):
+            result = run_llm_postprocess(
+                LlmPostprocessRequest(
+                    project_path=self.project_path,
+                    srt_path=None,
+                    output_mode=OutputMode.JSON,
+                    operation="proofread",
+                    custom_prompt="",
+                ),
+                complete=complete,
+            )
+
+        self.assertEqual(len(calls), 2)
+        if result.project_path is None:
+            self.fail("JSON output mode must create a project")
+        output_texts = [segment["text"] for segment in project_segments(read_project(result.project_path))]
+        self.assertEqual(output_texts, ["酒很好喝", "改写下一句"])
+        self.assertIn("网络/服务请求失败，该批字幕保留原文", "\n".join(result.warnings))
+
+    def test_llm_auth_failure_still_aborts_the_run(self) -> None:
+        # 鉴权 / 配置类 4xx 不降级：降级会静默写出未处理的结果，掩盖配置问题。
+
+        def complete(_prompt: str, _cues: list[dict[str, JsonValue]]) -> JsonDict:
+            raise LlmClientError(
+                "LLM provider returned HTTP 401: invalid api key",
+                category="provider_response",
+                status_code=401,
+            )
+
+        with mock.patch("maw.postprocess.MAX_LLM_CUES_PER_REQUEST", 1):
+            with self.assertRaises(PostprocessStepError):
+                run_llm_postprocess(
+                    LlmPostprocessRequest(
+                        project_path=self.project_path,
+                        srt_path=None,
+                        output_mode=OutputMode.JSON,
+                        operation="proofread",
+                        custom_prompt="",
+                    ),
+                    complete=complete,
+                )
 
     def test_llm_network_failure_on_every_batch_writes_nothing(self) -> None:
         def complete(_prompt: str, _cues: list[dict[str, JsonValue]]) -> JsonDict:

@@ -13,13 +13,14 @@ from __future__ import annotations
 
 from pathlib import Path
 
-import soundfile as sf
-
-try:  # numpy 随本地转写运行时（transformers / FunASR / OCR 组）安装；
-    # 缺失时能量谷吸附静默降级为不生效，绝不阻断转写输出。
+try:  # numpy / soundfile 随本地转写运行时（local dependency group）安装，
+    # 不在默认依赖组内；缺失时能量谷吸附静默降级为不生效，绝不阻断转写
+    # 输出（云端转写 CLI 不带 local 组也要能正常导入本模块）。
     import numpy as np
+    import soundfile as sf
 except ImportError:  # pragma: no cover - 取决于安装的依赖组
     np = None  # type: ignore[assignment]
+    sf = None  # type: ignore[assignment]
 
 FRAME_MS = 100
 DEFAULT_MAX_SHIFT_MS = 400
@@ -35,8 +36,8 @@ def rms_envelope(audio_path: Path, frame_ms: int = FRAME_MS) -> tuple["np.ndarra
     memory; only the small envelope array is kept.
     """
 
-    if np is None:
-        raise RuntimeError("能量谷吸附需要 numpy（本地转写运行时默认携带）")
+    if np is None or sf is None:
+        raise RuntimeError("能量谷吸附需要 numpy 与 soundfile（本地转写运行时默认携带）")
     info = sf.info(str(audio_path))
     frame_size = max(1, int(round(info.samplerate * frame_ms / 1000.0)))
     frame_seconds = frame_size / info.samplerate

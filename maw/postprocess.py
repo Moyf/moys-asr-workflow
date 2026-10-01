@@ -244,6 +244,20 @@ def run_fixed_replacement(request: ReplacementRequest) -> SubtitleArtifact:
     return run_fixed_process(request)
 
 
+# 可降级为「保留原文」的瞬时请求失败：连接 / 超时类网络错误，以及服务端
+# 瞬时状态（408 请求超时、429 限流、5xx 网关或服务错误）。鉴权 / 配置类
+# 4xx 与协议错误不降级——降级会静默写出未处理的结果，掩盖真正的问题。
+TRANSIENT_LLM_HTTP_STATUS = frozenset({408, 429})
+
+
+def _is_transient_llm_failure(error: LlmClientError) -> bool:
+    if error.category == "network":
+        return True
+    if error.category == "provider_response" and error.status_code is not None:
+        return error.status_code in TRANSIENT_LLM_HTTP_STATUS or error.status_code >= 500
+    return False
+
+
 def run_llm_postprocess(
     request: LlmPostprocessRequest,
     *,
@@ -298,8 +312,8 @@ def run_llm_postprocess(
     skipped_source_ids: set[str] = set()
     response_warnings: list[str] = []
     response_modes: list[str] = []
-    network_failure_warnings: list[str] = []
-    network_failed_batches = 0
+    degraded_warnings: list[str] = []
+    degraded_batches = 0
     for index, batch in enumerate(batches, 1):
         _notify_status(on_status, "toolbox_status_llm_batch", current=index, total=len(batches))
         if strict_translation:
@@ -321,16 +335,17 @@ def run_llm_postprocess(
             try:
                 response = complete(system_prompt, batch)
             except LlmClientError as error:
-                if error.category != "network":
+                if not _is_transient_llm_failure(error):
                     raise _postprocess_step_error(
                         f"第 {index}/{len(batches)} 批（{first_id}–{last_id}）处理失败：{error}",
                         error,
                     ) from error
-                # 传输类失败（网络/超时/HTTP 状态）：该批字幕按原文透传，
-                # 避免长字幕因单批网络抖动整体失败；警告随产物写出。
-                network_failed_batches += 1
-                network_failure_warnings.append(
-                    f"第 {index}/{len(batches)} 批（{first_id}–{last_id}）网络请求失败，该批字幕保留原文。"
+                # 瞬时传输类失败（网络中断/超时、服务端 408/429/5xx）：该批
+                # 字幕按原文透传，避免长字幕因单批请求抖动整体失败；警告随
+                # 产物写出。鉴权 / 配置类 4xx 与协议错误不降级。
+                degraded_batches += 1
+                degraded_warnings.append(
+                    f"第 {index}/{len(batches)} 批（{first_id}–{last_id}）网络/服务请求失败，该批字幕保留原文。"
                 )
                 if item_aware_resegment:
                     passthrough: JsonDict = {
@@ -373,8 +388,8 @@ def run_llm_postprocess(
         skipped_source_ids.update(batch_skipped)
         response_warnings.extend(batch_warnings)
         _notify_status(on_status, "toolbox_status_llm_batch_done", current=index, total=len(batches))
-    if network_failed_batches and network_failed_batches == len(batches):
-        raise ValueError("所有批次的网络请求都失败，字幕没有任何改动，未写出输出产物。")
+    if degraded_batches and degraded_batches == len(batches):
+        raise ValueError("所有批次的网络/服务请求都失败，字幕没有任何改动，未写出输出产物。")
     source_ids = {str(cue["id"]) for cue in cues}
     if source_ids and skipped_source_ids >= source_ids:
         report = _format_skip_report(skipped_source_ids, response_warnings)
@@ -426,8 +441,8 @@ def run_llm_postprocess(
         )
     else:
         warnings = tuple(warnings)
-    if network_failure_warnings:
-        warnings = (*network_failure_warnings, *warnings)
+    if degraded_warnings:
+        warnings = (*degraded_warnings, *warnings)
     if preserved_blank_source_ids:
         warnings = (
             f"翻译时已跳过并原样保留 {len(preserved_blank_source_ids)} 条空字幕；这些字幕未发送给模型。",

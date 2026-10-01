@@ -5,6 +5,7 @@ from __future__ import annotations
 import tempfile
 import unittest
 from pathlib import Path
+from unittest import mock
 
 try:
     import numpy as np
@@ -131,6 +132,24 @@ class SnapBoundaryTests(unittest.TestCase):
 
             self.assertEqual(moved, 0)
             self.assertEqual([segment["end"] for segment in segments], [1200, 2400])
+
+
+class AudioDependencyDegradationTests(unittest.TestCase):
+    """numpy / soundfile 不在默认依赖组：缺失时必须整体静默降级。
+
+    云端转写 CLI（默认依赖组）也顶层导入本模块——导入失败会直接崩掉
+    转写入口；这条守卫对应「缺依赖时 snap 静默跳过」的契约，且不依赖
+    任何音频库即可运行。
+    """
+
+    def test_import_succeeds_and_snap_noops_without_audio_libraries(self) -> None:
+        with mock.patch("maw.energy_valley.np", None), mock.patch("maw.energy_valley.sf", None):
+            segments = [{"start": 0, "end": 1200}, {"start": 1200, "end": 2400}]
+
+            moved = snap_cue_boundaries(segments, "irrelevant.wav")
+
+        self.assertEqual(moved, 0)
+        self.assertEqual([segment["end"] for segment in segments], [1200, 2400])
 
 
 if __name__ == "__main__":
