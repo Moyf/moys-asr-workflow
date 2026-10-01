@@ -5,7 +5,7 @@
 
 
 
-// === Drag & Drop：拖入视频/音频/JSON/SRT 自动加载 ===
+// === Drag & Drop：拖入视频/音频/JSON/SRT/LRC 自动加载 ===
 
 
 

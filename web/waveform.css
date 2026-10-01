@@ -522,13 +522,16 @@
   pointer-events: none;
   font-variant-numeric: tabular-nums;
 }
+/* 该行可见范围内有标记时，行时间标签下移给标记轨道让位（见 waveform-markers.js）。 */
+.waveform-row-has-markers .waveform-row-time {
+  top: 22px;
+}
 .waveform-row.multi-subtitle-row::before,
 .waveform-row.multi-subtitle-row::after {
   position: absolute;
   z-index: 8;
   right: 6px;
-  padding: 1px 4px;
-  border-radius: 2px;
+  padding: 1px 4px;  border-radius: 2px;
   color: var(--text-faint);
   background: var(--wave-badge-bg);
   font: 10px/1.25 var(--font-mono);
@@ -1111,14 +1114,14 @@
   left: 0;
   right: 0;
   top: 0;
-  height: 12px;
+  height: 16px;
   cursor: crosshair;
   touch-action: none;
 }
 .waveform-marker-item {
   position: absolute;
   top: 0;
-  height: 12px;
+  height: 16px;
   background: var(--marker-color, #3e63dd);
   border-radius: 2px;
   cursor: grab;
@@ -1129,37 +1132,37 @@
   border-radius: 1px 3px 3px 1px;
   box-shadow: 0 0 0 1px color-mix(in srgb, var(--marker-color, #3e63dd) 70%, black);
 }
-.waveform-marker-item.point::before {
-  content: "";
-  position: absolute;
-  left: 50%;
-  top: 0;
-  width: 7px;
-  height: 7px;
-  transform: translateX(-50%);
-  border-radius: 50%;
-  background: inherit;
-  box-shadow: 0 0 0 1px color-mix(in srgb, var(--marker-color, #3e63dd) 70%, black);
-}
 .waveform-marker-item.region {
-  height: 9px;
-  top: 1px;
+  height: 12px;
+  top: 2px;
   opacity: 0.92;
   box-shadow: 0 0 0 1px color-mix(in srgb, var(--marker-color, #3e63dd) 70%, black);
 }
-.waveform-marker-item.region .waveform-marker-label {
-  position: absolute;
-  inset: 0;
+.waveform-marker-item .waveform-marker-label {
   display: flex;
   align-items: center;
-  padding: 0 9px;
   overflow: hidden;
   white-space: nowrap;
   text-overflow: ellipsis;
   color: #fff;
-  font: 600 9px/1 var(--font-ui, sans-serif);
+  font: 600 10px/1 var(--font-ui, sans-serif);
   text-shadow: 0 1px 1px rgba(0, 0, 0, 0.45);
   pointer-events: none;
+}
+.waveform-marker-item.region .waveform-marker-label {
+  position: absolute;
+  inset: 0;
+  padding: 0 8px;
+}
+/* 单点标记：名称显示在旗标右侧（行边缘由 .waveform-row 的 overflow 裁剪）。 */
+.waveform-marker-item.point .waveform-marker-label {
+  position: absolute;
+  left: calc(100% + 4px);
+  top: 0;
+  height: 100%;
+  max-width: 180px;
+  text-shadow: 0 1px 2px var(--bg-wave-row, #fff), 0 0 4px var(--bg-wave-row, #fff), 0 1px 1px rgba(0, 0, 0, 0.35);
+  color: var(--text-primary, #222);
 }
 .waveform-marker-handle {
   position: absolute;
@@ -1190,19 +1193,68 @@
   opacity: 0.85;
   box-shadow: 0 0 0 1.5px var(--wave-split-flash, #ffd43b);
 }
-.waveform-marker-item.review-pending {
-  animation: marker-review-pulse 1.8s ease-in-out infinite;
+/* 待复核：左侧黄色问号（不做闪烁动画）；已确认：右侧绿色对勾。 */
+.waveform-marker-item.review-pending::before {
+  content: "?";
+  position: absolute;
+  right: calc(100% + 3px);
+  top: 50%;
+  transform: translateY(-50%);
+  color: var(--amber, #f5a623);
+  font: 700 11px/1 var(--font-ui, sans-serif);
+  text-shadow: 0 1px 2px var(--bg-wave-row, #fff), 0 0 3px var(--bg-wave-row, #fff);
+  pointer-events: none;
 }
 .waveform-marker-item.review-confirmed::after {
   content: "✓";
   position: absolute;
   right: 1px;
-  top: -1px;
-  color: #fff;
-  font: 700 8px/1 var(--font-ui, sans-serif);
+  top: 0;
+  color: var(--green, #46a758);
+  font: 700 10px/1 var(--font-ui, sans-serif);
+  text-shadow: 0 1px 1px rgba(0, 0, 0, 0.4);
   pointer-events: none;
 }
-@keyframes marker-review-pulse {
-  0%, 100% { box-shadow: 0 0 0 1px color-mix(in srgb, var(--marker-color, #3e63dd) 70%, black); }
-  50% { box-shadow: 0 0 0 2.5px var(--amber, #f5a623); }
+/* 波形上的标记快速编辑浮层（双击 marker 打开；定位在滚动容器内）。 */
+.waveform-marker-quick-edit {
+  position: absolute;
+  z-index: 30;
+  display: grid;
+  gap: 8px;
+  width: 208px;
+  padding: 9px;
+  color: var(--text-primary);
+  background: var(--bg-panel);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  box-shadow: var(--shadow-2, 0 8px 24px rgba(0, 0, 0, 0.25));
+}
+.waveform-marker-quick-edit .markers-edit-field {
+  display: grid;
+  gap: 5px;
+  margin: 0;
+  color: var(--text-secondary);
+  font-size: 11px;
+  font-weight: 600;
+}
+.waveform-marker-quick-edit input[type="text"] {
+  width: 100%;
+  padding: 5px 7px;
+  box-sizing: border-box;
+  color: var(--text-primary);
+  background: var(--bg-input);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  font-size: 12px;
+}
+.waveform-marker-quick-edit input[type="text"]:focus {
+  outline: none;
+  border-color: var(--accent);
+  box-shadow: var(--focus-ring);
+}
+.waveform-marker-quick-edit .markers-color-swatches {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 5px;
 }

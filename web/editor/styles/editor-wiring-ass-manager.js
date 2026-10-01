@@ -506,7 +506,7 @@ assStyleLocalFontScanButton?.addEventListener('click', async () => {
   const hintByState = {
     success: () => MaweHint.flashHint(`已读取 ${MaweAppearance.subtitleFontFamilyScanCount} 种本机字体`, 'success'),
     empty: () => MaweHint.flashHint('未读取到可用的本机字体', 'warning'),
-    unsupported: () => MaweHint.flashHint('当前环境不支持自动读取本机字体', 'warning'),
+    unsupported: () => MaweHint.flashHint('当前浏览器不支持该功能', 'warning'),
     denied: () => MaweHint.flashHint('未获准读取本机字体', 'warning'),
     failed: () => MaweHint.flashHint('读取本机字体失败，请重试', 'warning'),
   };

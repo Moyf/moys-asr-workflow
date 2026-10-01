@@ -26,6 +26,7 @@
   Object.assign(helpers, window.MAWE.resolve('utils-multi-subtitle', helpers));
   Object.assign(helpers, window.MAWE.resolve('utils-word-split', helpers));
   Object.assign(helpers, window.MAWE.resolve('utils-srt', helpers));
+  Object.assign(helpers, window.MAWE.resolve('utils-lrc', helpers));
   Object.assign(helpers, window.MAWE.resolve('utils-ass-style', helpers));
   Object.assign(helpers, window.MAWE.resolve('utils-ass-animation', helpers));
   Object.assign(helpers, window.MAWE.resolve('utils-ass-export', helpers));
@@ -69,6 +70,7 @@
     MARKER_NAME_MAX_LENGTH,
     MARKER_NOTE_MAX_LENGTH,
     MARKER_PRESET_COLORS,
+    MARKER_PRESET_COLOR_LABELS,
     MARKER_REVIEW_COLOR,
     MARKER_REVIEW_REASON_MAX_LENGTH,
     MARKER_REVIEW_STATUSES,
@@ -197,6 +199,8 @@
     mapGapRemovedTime,
     markerKind,
     markerMatchesFilter,
+    markerPresetColorLabel,
+    markerReviewStatusLabel,
     markerSummary,
     markerVisibleRange,
     markersToProjectField,
@@ -209,6 +213,7 @@
     moveSegmentBetweenTracks,
     nearestSubtitleSplitOffset,
     nextMarkerId,
+    nextMarkerReviewStatus,
     normalizeAssAnimations,
     normalizeAssFontFamily,
     normalizeAssFontSize,
@@ -251,6 +256,7 @@
     normalizeTimelineTimecodeSeparator,
     parseBwfTimeReference,
     parseFrameTimecode,
+    parseLrcSegments,
     parseSplitTrimSymbolInput,
     placeUnalignedSplitItems,
     planAutoMerge,
@@ -315,6 +321,7 @@ window.AsrEditorUtils = {
     speakerLabelForSegment,
     formatSpeakerLabelledText,
     decodeSubtitleText,
+    parseLrcSegments,
     parseBwfTimeReference,
     readBwfTimeReferenceFromFile,
     normalizeKeyboardOperationReferenceMode,
@@ -341,6 +348,7 @@ window.AsrEditorUtils = {
     MARKER_NAME_MAX_LENGTH,
     MARKER_NOTE_MAX_LENGTH,
     MARKER_PRESET_COLORS,
+    MARKER_PRESET_COLOR_LABELS,
     MARKER_REVIEW_COLOR,
     MARKER_REVIEW_REASON_MAX_LENGTH,
     MARKER_REVIEW_STATUSES,
@@ -352,10 +360,13 @@ window.AsrEditorUtils = {
     isRegionMarker,
     markerKind,
     markerMatchesFilter,
+    markerPresetColorLabel,
+    markerReviewStatusLabel,
     markerSummary,
     markerVisibleRange,
     markersToProjectField,
     nextMarkerId,
+    nextMarkerReviewStatus,
     normalizeSegmentTimings,
     normalizeItemTimingRanges,
     normalizeFrameItemTimingRanges,

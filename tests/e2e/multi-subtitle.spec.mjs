@@ -3770,8 +3770,8 @@ test('snaps an extension cue to main-track boundaries when cross-track snapping 
   await expect(page.locator('#multi-subtitle-cross-track-snap')).not.toBeChecked();
   const resetBlock = page.locator('.waveform-cue-block[data-track="extension"]').first();
   await expect(resetBlock).toBeVisible();
-  const resetBox = await resetBlock.boundingBox();
-  if (!resetBox) throw new Error('重新加载后副字幕波形块没有布局');
+  await expect(resetBlock).toHaveAttribute('data-start', '2100');
+  const resetBox = await waitForLayoutBox(resetBlock, '重新加载后副字幕波形块没有布局');
   const resetCenterX = resetBox.x + resetBox.width / 2;
   const resetCenterY = resetBox.y + resetBox.height / 2;
   await page.mouse.move(resetCenterX, resetCenterY);

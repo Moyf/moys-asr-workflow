@@ -17,6 +17,9 @@
   const loadSrtFileInput = document.getElementById('load-srt-file');
 
 
+  const loadLrcFileInput = document.getElementById('load-lrc-file');
+
+
   let currentMediaBlobUrl = null;
 
     // 跟踪 blob URL，便于切换时 revoke 防泄漏
@@ -41,6 +44,7 @@
     openProjectFileInput,
     loadMediaFileInput,
     loadSrtFileInput,
+    loadLrcFileInput,
     get currentMediaBlobUrl() { return currentMediaBlobUrl; },
     set currentMediaBlobUrl(v) { currentMediaBlobUrl = v; },
     get pendingProjectMediaSelection() { return pendingProjectMediaSelection; },

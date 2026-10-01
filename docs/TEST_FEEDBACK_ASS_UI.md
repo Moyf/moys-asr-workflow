@@ -70,7 +70,7 @@ git diff --check
 
 | 状态 | 问题 | 决定 / 验证 |
 | --- | --- | --- |
-| 已修复 | hover 后字幕块外轮廓消失 | 当前父块有 overflow:hidden，hover/dragging 对整个父块使用 filter，可能将盒外 outline 纳入滤镜合成并裁切；样式优先级本身没有移除 outline。将提亮改为块内不接受点击的覆盖层，保持底色/禁用条纹、文字/手柄/轮廓独立。Chromium 深浅主题×主副轨×选中/活动/禁用拖动共12组合的真实hover与盒外轮廓像素验证通过。旧滤镜仍绘制322个变色轮廓像素（并未在本机复现完全消失），原黄色像素0；修复后原黄色轮廓322像素。截图最终自查待同步主分支后检查。 |
+| 已修复 | hover 后字幕块外轮廓消失 | 当前父块有 overflow:hidden，hover/dragging 对整个父块使用 filter，可能将盒外 outline 纳入滤镜合成并裁切；样式优先级本身没有移除 outline。将提亮改为块内不接受点击的覆盖层，保持底色/禁用条纹、文字/手柄/轮廓独立。Chromium 深浅主题×主副轨×选中/活动/禁用拖动共12组合的真实hover与盒外轮廓像素验证通过。旧滤镜仍绘制322个变色轮廓像素（并未在本机复现完全消失），原黄色像素0；修复后原黄色轮廓322像素。同步主分支后的最终主副轨/深浅主题截图已自查。 |
 
 ## 副字幕 ASS 文字颜色（2026-10-02）
 
@@ -115,4 +115,17 @@ MAW_E2E_PYTHON=.venv/bin/python FFMPEG_PATH=/opt/homebrew/opt/ffmpeg-full/bin/ff
 npm run typecheck
 UV_CACHE_DIR=/tmp/maw-uv-cache uv run --no-sync ruff check maw/ass_styles.py tests/test_ass_styles.py tests/test_editor_assets.py
 git diff --check
+```
+
+## 主分支同步后的最终证据
+
+- 功能提交 `906d234`；同步 `origin/main` 的 LRC 导入、浮窗菜单层级、标记与区段及断句标点改动，手工合并 CHANGELOG、WORKFLOW 和播放器模板，双方行为均保留。
+- Node全量431/431；Python全量1763项，1755通过、8跳过；TypeScript、相关Python Ruff、暂存/工作区diff检查通过。
+- Chromium最终六组联合156/157通过，唯一失败是旧跨轨吸附用例在异步重绘期间读取到已替换块的空布局；沿用已有waitForLayoutBox并等待导入后的data-start，连续3/3复验通过。未改变吸附功能；157个不同测试均已通过。全部新增实际帧、颜色、空轨、菜单、间距和轮廓用例在最终联合中通过。
+- 最终窗口拉高、紧凑控制区/蓝字入口、主副轨深浅主题轮廓、空轨菜单、基础样式与字幕颜色截图均已自查。所有功能项已修复；提交与PR收尾见双语反馈记录。
+
+吸附复验：
+
+```sh
+MAW_E2E_PYTHON=.venv/bin/python node_modules/.bin/playwright test tests/e2e/multi-subtitle.spec.mjs -g 'snaps an extension cue to main-track boundaries' --project=chromium --repeat-each=3 --workers=1 --output=/tmp/maw-snap-retest
 ```

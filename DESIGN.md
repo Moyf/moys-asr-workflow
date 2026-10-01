@@ -187,13 +187,26 @@ huge `z-index` (the color-filter menu uses 1000, settings panels use 420) — is
 trapped at level 30 and loses to anything at 50. `position: fixed` does not escape:
 stacking contexts limit paint order, not positioning.
 
+**The promotion value must float above the floating-surface stack.** Non-modal
+panels and toolbar dropdowns share one front stack (`MaweFloatingPanel`, base
+430 + stack index, below the drag mask 500 and loading layer 510). Any static
+owner promotion below that base (the original 60) loses to every panel in the
+stack, so an open batch menu disappears under, say, the help window. The
+dropdown escape therefore reads the `--mawe-owner-promoted-z` custom property,
+which `syncFloatingSurfaceLayers` keeps strictly above the stack top (fallback
+60 applies before the first sync). The settings-panel escape below still uses
+the static 80: promoting whole owner regions (`.cues-container`, ...) above
+long-lived floating windows inverts window recency for as long as the gear
+panel stays open, so lifting them needs a recency-aware design first.
+
 **The contract.**
 
 1. A popover must not rely on its own `z-index` to beat elements outside the
    toolbar's stacking context. Its owner (toolbar / container) must be promoted
    while the popover is open.
 2. Dropdowns (`.dropdown.open` inside the toolbar) are covered by one shared rule:
-   `.cues-container > .cue-list-toolbar:has(.dropdown.open) { z-index: 60; }`.
+   `.cues-container > .cue-list-toolbar:has(.dropdown.open)
+   { z-index: var(--mawe-owner-promoted-z, 60); }`.
    When adding a new dropdown to this toolbar, do nothing — it is covered. Do not
    add per-dropdown `:has(...)` patches; extend the shared rule only if the
    selector stops matching.

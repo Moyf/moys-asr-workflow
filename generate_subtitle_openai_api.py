@@ -683,8 +683,8 @@ def main() -> None:
     parser.add_argument("--keep-punct", action="store_true")
     parser.add_argument(
         "--strip-tail-punct",
-        default="，。",
-        help="句尾剥除的标点集合；传空串禁用剥除（默认剥逗号和句号）",
+        default="，。；,.",
+        help="句尾剥除的标点集合；传空串禁用剥除（默认 = 共享断句配置默认清单 − 默认保留符号）",
     )
     parser.add_argument("--json", dest="json_out", action="store_true")
     parser.add_argument("--with-waveform", action="store_true")
