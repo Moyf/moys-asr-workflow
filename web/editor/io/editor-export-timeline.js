@@ -121,6 +121,26 @@
 
   const OTIO_DEFAULT_MARKER_COLOR = 'WHITE';
 
+  // 工程「标记与区段」色板（见 web/shared/utils/markers.js）→ OTIO 命名色。
+  // 天蓝/可可没有同名 OTIO 色，按最近色相归并（BLUE / ORANGE）。
+  const MARKER_HEX_TO_OTIO_COLORS = Object.freeze({
+    '#3e63dd': 'BLUE',
+    '#00a2c7': 'CYAN',
+    '#46a758': 'GREEN',
+    '#f5d90a': 'YELLOW',
+    '#e5484d': 'RED',
+    '#ef5da8': 'PINK',
+    '#8e4ec6': 'PURPLE',
+    '#d6409f': 'MAGENTA',
+    '#45a3f5': 'BLUE',
+    '#a06e3b': 'ORANGE',
+  });
+
+  function otioMarkerColorForHex(hex) {
+    if (typeof hex !== 'string') return OTIO_DEFAULT_MARKER_COLOR;
+    return MARKER_HEX_TO_OTIO_COLORS[hex.trim().toLowerCase()] || OTIO_DEFAULT_MARKER_COLOR;
+  }
+
 
 
   function buildGapRemovedSubtitleMarkers(interval, sourceStartFrame = 0, segments = MaweBoot.DATA.segments, colorContext = segments) {
@@ -154,6 +174,8 @@
       OTIO_SCHEMA: 'Marker.2',
       metadata: {},
       name: String(segment.text || ''),
+      // 字幕来源的标记在备注里自明来源；名称本身即字幕内容。
+      comment: 'MAW 字幕',
       color: OTIO_MARKER_COLORS[colorName] || OTIO_DEFAULT_MARKER_COLOR,
       marked_range: otioTimeRange(
         markerStartFrame,
@@ -162,6 +184,47 @@
     }];
   });
 }
+
+
+  // 工程「标记与区段」（MOSP markers 字段）→ OTIO Marker：名称写 name，
+  // 备注写 comment（AI 复核原因已包含在 note 中）；单点标记按 1 帧写入
+  // （与达芬奇自建 marker 一致），区段按起止帧写入。只导出与当前区间有
+  // 交集的标记，坐标系处理与字幕标记一致。
+  function buildMarkerFieldMarkers(interval, sourceStartFrame = 0, markers = MaweBoot.DATA.markers) {
+    const intervalStartMs = Math.max(0, Math.round(Number(interval?.start) || 0));
+    const intervalEndMs = Math.max(
+      intervalStartMs,
+      Math.round(Number(interval?.end) || 0),
+    );
+    if (intervalEndMs <= intervalStartMs) return [];
+    if (!Array.isArray(markers)) return [];
+    return markers.flatMap((marker) => {
+      if (!marker) return [];
+      const startMs = Number(marker.start);
+      if (!Number.isFinite(startMs)) return [];
+      const isRegion = window.AsrEditorUtils.markerKind(marker) === 'region';
+      const entry = (rangeStartFrame, durationFrames) => ({
+        OTIO_SCHEMA: 'Marker.2',
+        metadata: {},
+        name: String(marker.name || ''),
+        comment: String(marker.note || ''),
+        color: otioMarkerColorForHex(marker.color),
+        marked_range: otioTimeRange(rangeStartFrame, durationFrames),
+      });
+      // 单点标记：位置落在区间内即导出，按 1 帧写入（与达芬奇自建 marker 一致）。
+      if (!isRegion) {
+        if (startMs < intervalStartMs || startMs > intervalEndMs) return [];
+        return [entry(sourceStartFrame + msToOtioFrames(startMs), 1)];
+      }
+      const endMs = Number(marker.end);
+      const clippedStart = Math.max(intervalStartMs, startMs);
+      const clippedEnd = Math.min(intervalEndMs, Math.max(startMs, endMs));
+      if (clippedEnd <= clippedStart) return [];
+      const markerStartFrame = sourceStartFrame + msToOtioFrames(clippedStart);
+      const markerEndFrame = sourceStartFrame + msToOtioFrames(clippedEnd);
+      return [entry(markerStartFrame, Math.max(1, markerEndFrame - markerStartFrame))];
+    });
+  }
 
 
 
@@ -196,6 +259,7 @@
     interval, index, kind, targetUrl, sourceStartFrame, sourceDurationFrames,
     {
       includeSubtitleMarkers = false,
+      includeMarkerRegions = false,
       gapRemoved = false,
       audioTrack = null,
       audioTrackIndex = 0,
@@ -223,9 +287,14 @@
       name: clipName || `${kind} ${index + 1}`,
       source_range: otioTimeRange(sourceStartFrame + startFrame, durationFrames),
       effects: [],
-      markers: includeSubtitleMarkers
-        ? buildGapRemovedSubtitleMarkers(interval, sourceStartFrame)
-        : [],
+      markers: [
+        ...(includeSubtitleMarkers
+          ? buildGapRemovedSubtitleMarkers(interval, sourceStartFrame)
+          : []),
+        ...(includeMarkerRegions
+          ? buildMarkerFieldMarkers(interval, sourceStartFrame)
+          : []),
+      ],
       enabled: true,
       color: null,
       media_references: {
@@ -248,6 +317,7 @@
   gapRemoved = false,
   includeStickers = false,
   includeSubtitleMarkers = true,
+  includeMarkerRegions = true,
 } = {}) {
   const removed = gapRemoved ? MaweGapRemoveData.getRemovedGapRanges() : [];
   if (gapRemoved && !removed.length) {
@@ -315,6 +385,10 @@
       sourceDurationFrames,
       {
         includeSubtitleMarkers: includeSubtitleMarkers && (
+          track.kind === 'Video'
+          || (track.kind === 'Audio' && MaweCoreState.player?.tagName === 'AUDIO' && trackIndex === 0)
+        ),
+        includeMarkerRegions: includeMarkerRegions && (
           track.kind === 'Video'
           || (track.kind === 'Audio' && MaweCoreState.player?.tagName === 'AUDIO' && trackIndex === 0)
         ),
@@ -411,6 +485,7 @@
       gapRemoved: false,
       includeStickers: MaweSettings.EDITOR_SETTINGS.otioExportIncludeStickers,
       includeSubtitleMarkers: MaweSettings.EDITOR_SETTINGS.otioExportIncludeMarkers,
+      includeMarkerRegions: MaweSettings.EDITOR_SETTINGS.otioExportIncludeMarkerRegions,
     });
   }
 
@@ -421,6 +496,7 @@
       gapRemoved: true,
       includeStickers: MaweSettings.EDITOR_SETTINGS.otioExportIncludeStickers,
       includeSubtitleMarkers: MaweSettings.EDITOR_SETTINGS.otioExportIncludeMarkers,
+      includeMarkerRegions: MaweSettings.EDITOR_SETTINGS.otioExportIncludeMarkerRegions,
     });
   }
 
@@ -901,6 +977,7 @@
     srt: 'otioExportIncludeSrt',
     stickers: 'otioExportIncludeStickers',
     markers: 'otioExportIncludeMarkers',
+    markerRegions: 'otioExportIncludeMarkerRegions',
   };
 
 
@@ -939,7 +1016,10 @@
     mediaStartOtioFrames,
     OTIO_MARKER_COLORS,
     OTIO_DEFAULT_MARKER_COLOR,
+    MARKER_HEX_TO_OTIO_COLORS,
+    otioMarkerColorForHex,
     buildGapRemovedSubtitleMarkers,
+    buildMarkerFieldMarkers,
     stickerTargetUrl,
     mediaTargetUrl,
     buildTimelineMediaClip,

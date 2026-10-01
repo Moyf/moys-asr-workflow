@@ -161,7 +161,7 @@ test('translates the ASS style manager labels and dynamic summaries', () => {
   assert.equal(i18n.translateText('读取本机字体', 'en'), 'Read local fonts');
   assert.equal(i18n.translateText('已读取 3 种本机字体', 'en'), 'Read 3 local font families');
   assert.equal(i18n.translateText('未读取到可用的本机字体', 'en'), 'No usable local fonts were returned');
-  assert.equal(i18n.translateText('当前环境不支持自动读取本机字体', 'en'), 'This environment cannot list local fonts automatically');
+  assert.equal(i18n.translateText('当前浏览器不支持该功能', 'en'), 'This browser does not support this feature');
   assert.equal(i18n.translateText('未获准读取本机字体', 'en'), 'Permission to read local fonts was not granted');
   assert.equal(i18n.translateText('读取本机字体失败，请重试', 'en'), 'Could not read local fonts; try again');
   assert.equal(i18n.translateText('基础样式', 'en'), 'Basic style');
@@ -426,23 +426,28 @@ test('normalizes timeline OTIO export options and defaults them to enabled', () 
   assert.equal(defaults.otioExportIncludeSrt, true);
   assert.equal(defaults.otioExportIncludeStickers, true);
   assert.equal(defaults.otioExportIncludeMarkers, true);
+  assert.equal(defaults.otioExportIncludeMarkerRegions, true);
   const disabled = helpers.normalizeEditorSettings({
     otioExportIncludeSrt: false,
     otioExportIncludeStickers: false,
     otioExportIncludeMarkers: false,
+    otioExportIncludeMarkerRegions: false,
   });
   assert.equal(disabled.otioExportIncludeSrt, false);
   assert.equal(disabled.otioExportIncludeStickers, false);
   assert.equal(disabled.otioExportIncludeMarkers, false);
+  assert.equal(disabled.otioExportIncludeMarkerRegions, false);
   // 只有显式 false 会关闭选项；其它假值一律回退为默认勾选，避免损坏的持久化数据关闭导出能力。
   const repaired = helpers.normalizeEditorSettings({
     otioExportIncludeSrt: 0,
     otioExportIncludeStickers: null,
     otioExportIncludeMarkers: undefined,
+    otioExportIncludeMarkerRegions: 0,
   });
   assert.equal(repaired.otioExportIncludeSrt, true);
   assert.equal(repaired.otioExportIncludeStickers, true);
   assert.equal(repaired.otioExportIncludeMarkers, true);
+  assert.equal(repaired.otioExportIncludeMarkerRegions, true);
 });
 
 test('converts and formats the parallel frame timebase', () => {

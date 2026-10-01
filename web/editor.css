@@ -3827,13 +3827,27 @@
    间距约定：区块之间保持 ≥8px 垂直间隔；.gap-remove-field 自带 0 外边距，
    由本区块的容器 gap / margin-top 负责分隔。 */
 .markers-panel { width: min(470px, calc(100vw - 24px)); }
+.markers-actions { margin-top: 8px; display: flex; justify-content: flex-start; }
+/* 摘要居左（过滤时更新为过滤结果）+ 搜索框居右，一行排布。 */
+.markers-summary-row {
+  margin-top: 8px;
+  display: flex; align-items: center; justify-content: space-between; gap: 8px;
+}
 .markers-summary {
+  flex: 1 1 auto; min-width: 0;
   margin: 0; padding: 8px 10px;
   color: var(--text-secondary); background: var(--bg-panel);
   border: 1px solid var(--border-subtle); border-radius: var(--radius-md);
   font-size: 11px; line-height: 1.5;
 }
-.markers-actions { margin-top: 8px; display: flex; justify-content: flex-start; }
+.markers-search-input {
+  flex: 0 0 auto; width: 168px; margin: 0; padding: 6px 9px; box-sizing: border-box;
+  color: var(--text-primary); background: var(--bg-input);
+  border: 1px solid var(--border); border-radius: var(--radius-sm);
+  font-size: 12px;
+  transition: border-color var(--t-fast), box-shadow var(--t-fast);
+}
+.markers-search-input:focus { outline: none; border-color: var(--accent); box-shadow: var(--focus-ring); }
 .markers-inline-button {
   padding: 5px 10px; color: var(--text-primary); background: var(--btn-bg);
   border: 1px solid var(--border); border-radius: var(--radius-sm);
@@ -3864,6 +3878,8 @@
   background: var(--bg-panel); border: 1px dashed var(--border-subtle); border-radius: var(--radius-md);
 }
 .markers-item {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
   overflow: hidden; color: var(--text-primary);
   background: var(--bg-panel); border: 1px solid var(--border-subtle); border-radius: var(--radius-md);
 }
@@ -3874,6 +3890,16 @@
 }
 .markers-item-main:hover { background: var(--btn-bg-hover); }
 .markers-item-main:focus-visible { outline: 2px solid var(--accent-line); outline-offset: -2px; }
+.markers-item-edit {
+  padding: 0 10px; margin: 4px; align-self: stretch;
+  color: var(--text-secondary); background: transparent;
+  border: 1px solid var(--border); border-radius: var(--radius-sm);
+  font-size: 11px; font-weight: 600; cursor: pointer;
+  transition: color var(--t-fast), background var(--t-fast), border-color var(--t-fast);
+}
+.markers-item-edit:hover { color: var(--text-primary); background: var(--btn-bg-hover); }
+.markers-item-edit.active { color: var(--text-primary); background: var(--btn-bg-hover); border-color: var(--accent-line); }
+.markers-item-edit:focus-visible { outline: 2px solid var(--accent-line); outline-offset: 1px; }
 .markers-item-title {
   flex: 1 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
   font-size: 12px; font-weight: 600;
@@ -3887,6 +3913,7 @@
 .markers-review-badge.confirmed { color: #d9f2e3; background: #2b5b3f; }
 .markers-item-editor {
   display: grid; gap: 8px; padding: 9px;
+  grid-column: 1 / -1;
   border-top: 1px solid var(--border-subtle);
 }
 .markers-edit-field {
@@ -3919,10 +3946,10 @@
 .markers-color-swatch.static { cursor: default; width: 14px; height: 14px; flex: 0 0 auto; }
 .markers-color-swatch.static:hover { filter: none; }
 .markers-edit-hex { width: 84px; flex: 0 0 auto; font: 11px/1.4 var(--font-mono); }
-.markers-time-row { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+.markers-time-row { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; }
 .markers-time-field { display: grid; gap: 4px; color: var(--text-secondary); font-size: 11px; font-weight: 600; }
 .markers-time-field input { font: 600 12px/1.4 var(--font-mono); }
-.markers-item-actions { display: flex; justify-content: flex-end; gap: 8px; }
+.markers-item-actions { display: flex; align-items: center; justify-content: flex-end; gap: 8px; }
 .markers-item-actions button {
   padding: 4px 10px; color: var(--text-secondary); background: var(--btn-bg);
   border: 1px solid var(--border); border-radius: var(--radius-sm);
@@ -3931,7 +3958,14 @@
 }
 .markers-item-actions button:hover:not(:disabled) { color: var(--text-primary); background: var(--btn-bg-hover); }
 .markers-item-actions button:focus-visible { outline: 2px solid var(--accent-line); outline-offset: 1px; }
-.markers-item-actions button.markers-confirm-button { color: #241503; background: var(--amber, #f5a623); border-color: var(--amber, #f5a623); font-weight: 700; }
-.markers-item-actions button.markers-confirm-button:hover:not(:disabled) { color: #241503; background: var(--amber, #f5a623); filter: brightness(1.08); }
+/* 复核三态 toggle（编辑框左下角）：无 → 待复核 → 已确认 → 无。 */
+.markers-item-actions button.markers-review-toggle { margin-right: auto; font-weight: 600; }
+.markers-item-actions button.markers-review-toggle.has-review { color: var(--text-primary); }
+.markers-item-actions button.markers-review-toggle.pending {
+  color: #241503; background: var(--amber, #f5a623); border-color: var(--amber, #f5a623);
+}
+.markers-item-actions button.markers-review-toggle.confirmed {
+  color: #d9f2e3; background: #2b5b3f; border-color: #2b5b3f;
+}
 .markers-item-actions button.danger { color: #e35a62; }
 .markers-item-actions button.danger:hover:not(:disabled) { color: #fff; background: #ad3b42; border-color: #e35a62; }
