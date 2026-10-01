@@ -90,11 +90,11 @@ __WAVEFORM_CSS__
   <span class="sep overlay-track-separator" id="overlay-track-separator" hidden></span>
   <span class="multi-subtitle-controls" id="multi-subtitle-controls" hidden>
     <label class="multi-subtitle-main-toggle" id="multi-subtitle-toggle-label"
-           title="当前工程如果有大于1条字幕，可以开启双语字幕模式，用于双语字幕编辑等。">
-      <input type="checkbox" id="multi-subtitle-toggle" title="当前工程如果有大于1条字幕，可以开启双语字幕模式，用于双语字幕编辑等。">
+           title="开启后显示副字幕轨，可手动添加或导入第二条字幕。">
+      <input type="checkbox" id="multi-subtitle-toggle" title="开启后显示副字幕轨，可手动添加或导入第二条字幕。">
       双语字幕
     </label>
-    <small class="multi-subtitle-empty-hint" id="multi-subtitle-empty-hint" hidden>请拖入第二条字幕以开启双语字幕编辑</small>
+    <small class="multi-subtitle-empty-hint" id="multi-subtitle-empty-hint" hidden title="在波形副轨空白处右键创建副字幕，或从双语字幕设置导入 SRT。">副轨为空，可手动添加或导入</small>
     <span class="dropdown multi-subtitle-settings-dropdown" id="multi-subtitle-settings-dropdown" hidden>
       <button type="button" id="multi-subtitle-settings-toggle" title="双语字幕设置" aria-label="双语字幕设置" aria-expanded="false" aria-controls="multi-subtitle-settings-menu" aria-haspopup="menu">⚙️</button>
       <div class="dropdown-menu multi-subtitle-settings-menu" id="multi-subtitle-settings-menu" role="menu">
@@ -149,6 +149,7 @@ __WAVEFORM_CSS__
           <input type="checkbox" id="multi-subtitle-show-track-badges"> 显示轨道徽标
         </label>
         <div class="dropdown-separator"></div>
+        <div class="dropdown-item" id="multi-subtitle-import" role="menuitem" tabindex="0" title="导入 SRT 到副轨；已有副字幕时可预览并确认替换">导入副字幕</div>
         <div class="dropdown-item" id="multi-subtitle-swap" role="menuitem" tabindex="0" title="交换主字幕和副字幕的文本、时间与绑定关系">交换主副字幕</div>
       </div>
     </span>
@@ -1683,7 +1684,7 @@ __WAVEFORM_CSS__
           </div>
         </section>
         <div class="ass-style-preview-card"><span class="ass-style-preview-label">ASS 预览</span><span id="ass-style-preview-sample">Aa 字幕预览 / 字幕样例</span></div>
-        <div class="ass-style-preview-actions"><button type="button" id="ass-style-frame-preview-open" hidden>ASS 实际画面预览</button></div>
+        <p class="ass-style-preview-actions editor-settings-hint"><span>如果想要查看当前画面的实际 ASS 字幕效果，可以</span> <button type="button" class="ass-preview-link" id="ass-style-frame-preview-open" hidden>打开 ASS 实际画面预览窗口</button></p>
       </section>
       <section class="ass-style-form" id="ass-profile-form" aria-labelledby="ass-profile-form-title" hidden>
         <div class="ass-style-form-header">
@@ -1748,18 +1749,17 @@ __WAVEFORM_CSS__
       <p class="ass-frame-placeholder" id="ass-frame-placeholder">点击下方按钮，用 libass 渲染当前播放位置的实际画面。</p>
       <div class="ass-frame-stale" id="ass-frame-stale" hidden><span>暂停后重新渲染</span></div>
     </div>
-    <div class="ass-frame-caption" id="ass-frame-caption" hidden></div>
+    <div class="ass-frame-caption-row">
+      <div class="ass-frame-caption" id="ass-frame-caption" hidden></div>
+      <button type="button" class="ass-preview-link" id="ass-frame-style-edit">编辑 ASS 字幕样式</button>
+    </div>
     <div class="ass-frame-warnings" id="ass-frame-warnings" hidden></div>
     <div class="ass-frame-options">
       <label class="toggle ass-frame-option" title="开启后，暂停 / seek 停止 / 样式修改时自动重新渲染；关闭后仅在点击「渲染当前帧」时更新"><input type="checkbox" id="ass-frame-auto-toggle" checked> 自动渲染实际帧</label>
       <label class="toggle ass-frame-option" title="暂停时把 libass 实际渲染帧直接叠加在播放器画面上（播放时仍使用即时预览）"><input type="checkbox" id="ass-frame-stage-toggle"> 暂停时在播放器画面显示实际帧</label>
-    </div>
-    <div class="ass-frame-actions">
       <button type="button" id="ass-frame-render" class="primary">📷 渲染当前帧</button>
       <button type="button" id="ass-frame-size" aria-pressed="false">原尺寸查看</button>
-      <button type="button" id="ass-frame-close-footer">关闭</button>
     </div>
-    <small class="editor-settings-hint ass-frame-hint">实际帧按源分辨率输出无损 PNG；「原尺寸查看」可检查文字边缘。预览跟随字幕轨道显隐，导出内容不受影响。</small>
   </div>
 </aside>
 

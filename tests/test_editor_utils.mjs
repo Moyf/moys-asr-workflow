@@ -3300,7 +3300,7 @@ test('ASS emphasis syntax colors only marked runs and preserves other export mod
   const cue = [{ start: 0, end: 1000, text: '前 **重点** 后 **再次**', color: { name: 'yellow' } }];
   const options = {
     assProfile: { id: 'ass', styleId: 'ass', animations: {} },
-    assStyle: { id: 'ass', primaryColor: '#123456', outlineColor: '#000000',
+    assStyle: { id: 'ass', fontSize: 72, emphasisScale: 1.1, primaryColor: '#123456', outlineColor: '#000000',
       emphasisColor: '#ff0000', emphasisStyle: 'text' },
     appearance: { ass_color_style: 'text' },
   };
@@ -3324,7 +3324,7 @@ test('ASS emphasis syntax colors only marked runs and preserves other export mod
   assert.deepEqual(Array.from(helpers.assEmphasisRuns('a *b* **c**', 'single'), (run) => run.emphasized), [false, true, false, true]);
   const tracks = helpers.buildAssPayload(cue, {
     ...options,
-    assExtensionStyle: { id: 'ass-extension', emphasisSyntax: 'none', emphasisColor: '#00ff00', emphasisScale: 1.5 },
+    assExtensionStyle: { id: 'ass-extension', fontSize: 54, emphasisSyntax: 'none', emphasisColor: '#00ff00', emphasisScale: 1.5 },
     extensionSegments: [{ start: 0, end: 1000, text: '副 **重点**' }],
     overlaySegments: [{ start: 0, end: 1000, text: '叠 **重点**' }],
   });
@@ -3332,7 +3332,7 @@ test('ASS emphasis syntax colors only marked runs and preserves other export mod
   assert.match(tracks, /Dialogue: 2,[^\n]*叠 \{\\1c&H000000FF&\\fs\d+\}重点/);
   assert.equal(helpers.normalizeAssStyle({ emphasisScale: 1.27 }).emphasisScale, 1.25);
   assert.equal(helpers.normalizeAssStyle({ emphasisScale: 5 }).emphasisScale, 1.5);
-  assert.equal(helpers.normalizeAssStyle({ emphasisScale: 'bad' }).emphasisScale, 1.1);
+  assert.equal(helpers.normalizeAssStyle({ emphasisScale: 'bad' }).emphasisScale, 1.3);
 });
 
 test('ASS underscore markers render as local underline alongside emphasis', () => {
@@ -3347,7 +3347,7 @@ test('ASS underscore markers render as local underline alongside emphasis', () =
   ]);
   const options = {
     assProfile: { id: 'ass', styleId: 'ass', animations: {} },
-    assStyle: { id: 'ass', primaryColor: '#ffffff', emphasisColor: '#ff0000', emphasisScale: 1.25 },
+    assStyle: { id: 'ass', fontSize: 72, primaryColor: '#ffffff', emphasisColor: '#ff0000', emphasisScale: 1.25 },
   };
   const ass = helpers.buildAssPayload([{ start: 0, end: 1000, text }], options);
   assert.match(ass, /前 \{\\u1\}下划线\{\\u0\} 与 \{\\1c&H000000FF&\\fs90\\u1\}共同\{\\1c&H00FFFFFF&\\fs72\\u0\} 后/);
@@ -3462,9 +3462,27 @@ test('ASS inline strike and size markers restore the base style and use each tra
   assert.equal(helpers.normalizeAssStyle().largeTextScale, 1.5);
 });
 
+test('keeps browser and server ASS defaults identical while preserving saved parameters', () => {
+  const result = spawnSync(PYTHON_COMMAND, pythonCommandArgs(['-c',
+    'import json; from maw.ass_styles import default_ass_style_library; print(json.dumps(default_ass_style_library()))']),
+  { encoding: 'utf8', env: { ...process.env, PYTHONUTF8: '1' } });
+  assert.equal(result.status, 0, result.stderr);
+  const browser = JSON.parse(JSON.stringify(helpers.defaultAssStyleLibrary()));
+  const server = JSON.parse(result.stdout);
+  for (const library of [browser, server]) for (const style of library.styles) delete style.fontName;
+  assert.deepEqual(browser, server);
+  const saved = helpers.defaultAssStyleLibrary();
+  Object.assign(helpers.assStyleForId(saved, 'ass'), {
+    fontName: 'Arial', fontSize: 72, emphasisScale: 1.1, backColor: '#000000', backOpacity: 100,
+    bold: false, outline: 4, marginV: 80,
+  });
+  helpers.assProfileForId(saved, 'ass').animations.fad.enabled = false;
+  assert.deepEqual(JSON.parse(JSON.stringify(helpers.normalizeAssStyleLibrary(saved))), JSON.parse(JSON.stringify(saved)));
+});
+
 test('ASS outline and shadow opacity map to alpha bytes and rgba previews', () => {
   // 旧样式没有不透明度字段：归一化补 100（不透明），导出与旧字节一致。
-  const legacy = helpers.normalizeAssStyle({ id: 'legacy', outlineColor: '#112233' });
+  const legacy = helpers.normalizeAssStyle({ id: 'legacy', outlineColor: '#112233', backColor: '#000000' });
   assert.equal(legacy.outlineOpacity, 100);
   assert.equal(legacy.backOpacity, 100);
   assert.match(helpers.assStyleLine(legacy, 'Legacy'), /&H00332211,&H00000000/);
@@ -3559,7 +3577,7 @@ test('migrates v1 emphasis defaults for builtins without changing custom or curr
   });
   assert.equal(helpers.assStyleForId(current, 'ass').emphasisScale, 1);
   assert.equal(helpers.defaultAssStyleLibrary().version, 2);
-  assert.equal(helpers.assStyleForId(helpers.defaultAssStyleLibrary(), 'ass').emphasisScale, 1.1);
+  assert.equal(helpers.assStyleForId(helpers.defaultAssStyleLibrary(), 'ass').emphasisScale, 1.3);
 });
 
 test('normalizes ASS libraries without corrupting comma-delimited animation tags', () => {
@@ -3605,7 +3623,7 @@ test('uses the selected ASS profile style and adds every configured animation to
     styles: [{
       id: 'caption', name: 'Caption', fontName: 'Microsoft YaHei', fontSize: 30,
       primaryColor: '#123456', outlineColor: '#654321', outline: 4,
-      bold: true, underline: true,
+      bold: true, underline: true, marginV: 80,
     }],
     assProfiles: [{
       id: 'animated', name: 'Animated', styleId: 'caption',
@@ -3648,7 +3666,7 @@ test('keeps ASS palette colours applied when the CSS colour preview toggle is of
     appearance: { color_underline: false, ass_color_style: 'text' },
   });
 
-  assert.match(ass, new RegExp(`Style: RED,${helpers.ASS_DEFAULT_ASS_STYLE.fontName},72,&H006F7FF0,&H006F7FF0,[^\\n]*`));
+  assert.match(ass, new RegExp(`Style: RED,${helpers.ASS_DEFAULT_ASS_STYLE.fontName},${helpers.ASS_DEFAULT_ASS_STYLE.fontSize},&H006F7FF0,&H006F7FF0,[^\\n]*`));
   assert.match(ass, /Dialogue: 0,0:00:00\.00,0:00:01\.00,RED,,0,0,0,,red line/);
 
   const noneAss = helpers.buildAssPayload([
@@ -3674,7 +3692,7 @@ test('keeps speaker labels in the base colour when ASS palette colours are strok
     speakerLabelSeparator: '：',
   });
 
-  assert.match(ass, new RegExp(`Style: YELLOW,${helpers.ASS_DEFAULT_ASS_STYLE.fontName},72,[^\\n]*,&H0019A0C4`));
+  assert.match(ass, new RegExp(`Style: YELLOW,${helpers.ASS_DEFAULT_ASS_STYLE.fontName},${helpers.ASS_DEFAULT_ASS_STYLE.fontSize},[^\\n]*,&H0019A0C4`));
   assert.match(ass, /Dialogue: 0,0:00:00\.00,0:00:01\.00,YELLOW,Host,0,0,0,,\{\\c&H00563412&\}Host：\{\\c&H00563412&\}你好/);
 });
 

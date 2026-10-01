@@ -154,8 +154,8 @@ window.MAWE.register('utils-ass-style', function createUtilsModule(dependencies)
     id: 'default',
     name: 'SRT 默认',
     builtin: true,
-    fontName: 'Arial',
-    fontSize: 18,
+    fontName: ASS_DEFAULT_FONT_FAMILY,
+    fontSize: 86,
     primaryColor: '#ffffff',
     emphasisColor: '#ffd34d',
     emphasisScale: 1.1,
@@ -167,7 +167,7 @@ window.MAWE.register('utils-ass-style', function createUtilsModule(dependencies)
     backColor: '#000000',
     outlineOpacity: 100,
     backOpacity: 100,
-    bold: false,
+    bold: true,
     italic: false,
     underline: false,
     strikeOut: false,
@@ -176,40 +176,33 @@ window.MAWE.register('utils-ass-style', function createUtilsModule(dependencies)
     spacing: 0,
     angle: 0,
     borderStyle: 1,
-    outline: 2,
+    outline: 6,
     shadow: 0,
     alignment: 2,
     marginL: 10,
     marginR: 10,
-    marginV: 40,
+    marginV: 88,
     encoding: 1,
   });
 
-  // ASS 默认样式：字体按操作系统选择、默认加粗，字号按 1080p 参考基准 72，
-  // 垂直边距放宽到 80；SRT 烧录默认样式保持 Arial 18/40 不加粗。
+  // 内置参数与维护者的当前配置一致；字体继续按系统选择。
   const ASS_DEFAULT_ASS_STYLE = Object.freeze({
     ...ASS_DEFAULT_STYLE,
     id: 'ass', name: 'ASS 默认样式',
-    fontName: ASS_DEFAULT_FONT_FAMILY,
-    bold: true,
-    fontSize: 72, marginV: 80,
+    emphasisColor: '#ffaa00', emphasisScale: 1.3,
+    backColor: '#ff8647', backOpacity: 60,
   });
 
-  // ASS 副字幕默认样式：多重字幕的副语言轨在 ASS 导出与预览中共用一个
-  // 样式（副字幕不支持颜色分组）；默认沿用 CSS 预览的副字幕黄色，字号约
-  // 主样式的 75%，垂直边距按「主边距 80 + 1.2 × 主字号 72」固化在主字幕
-  // 上方，与叠加字幕的默认锚定公式一致。
+  // 副字幕位于主字幕下方，使用独立颜色、描边及边距。
   const ASS_DEFAULT_EXTENSION_STYLE = Object.freeze({
     ...ASS_DEFAULT_STYLE,
     id: 'ass-extension', name: 'ASS 副字幕样式',
-    fontName: ASS_DEFAULT_FONT_FAMILY,
-    bold: true,
-    primaryColor: '#ffd34d',
-    fontSize: 54, marginV: 166,
+    primaryColor: '#ffd34d', emphasisColor: '#ffaa00',
+    fontSize: 64, outline: 2, marginV: 36,
   });
 
   const ASS_DEFAULT_ANIMATIONS = Object.freeze({
-    fad: Object.freeze({ enabled: false, inMs: 250, outMs: 250 }),
+    fad: Object.freeze({ enabled: true, inMs: 250, outMs: 250 }),
     fade: Object.freeze({
       enabled: false, alpha1: 0, alpha2: 255, alpha3: 0,
       t1: 0, t2: 250, t3: 750, t4: 1000,
@@ -296,8 +289,9 @@ window.MAWE.register('utils-ass-style', function createUtilsModule(dependencies)
       secondaryColor: normalizeAssLibraryColor(source.secondaryColor, fallback.secondaryColor || '#ffffff'),
       outlineColor: normalizeAssLibraryColor(source.outlineColor, fallback.outlineColor || '#000000'),
       backColor: normalizeAssLibraryColor(source.backColor, fallback.backColor || '#000000'),
-      outlineOpacity: normalizeAssLibraryNumber(source.outlineOpacity, fallback.outlineOpacity ?? 100, 0, 100),
-      backOpacity: normalizeAssLibraryNumber(source.backOpacity, fallback.backOpacity ?? 100, 0, 100),
+      // 旧库缺少透明度字段时保持完全不透明；新内置参数显式携带透明度。
+      outlineOpacity: normalizeAssLibraryNumber(source.outlineOpacity, 100, 0, 100),
+      backOpacity: normalizeAssLibraryNumber(source.backOpacity, 100, 0, 100),
       bold: normalizeAssLibraryBoolean(source.bold, Boolean(fallback.bold)),
       italic: normalizeAssLibraryBoolean(source.italic, Boolean(fallback.italic)),
       underline: normalizeAssLibraryBoolean(source.underline, Boolean(fallback.underline)),

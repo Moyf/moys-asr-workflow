@@ -237,7 +237,7 @@ class EditorAssetContractTests(unittest.TestCase):
         styles = edit.read_web_asset("editor.css")
         self.assertIn(".ass-frame-window {", styles)
         self.assertIn(".ass-frame-stale {", styles)
-        self.assertIn('.ass-frame-actions button[aria-pressed="true"]', styles)
+        self.assertIn('.ass-frame-options button[aria-pressed="true"]', styles)
         # 实际画面窗口的滚动容器使用项目统一滚动条样式。
         self.assertIn(".ass-frame-window-body::-webkit-scrollbar-thumb", styles)
 

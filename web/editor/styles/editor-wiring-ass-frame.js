@@ -69,7 +69,10 @@
     if (!enabled() || !boundVideo()) return null;
     // currentTime can sit between two frames. Seek at/before the presented
     // frame's PTS; rounding up can make FFmpeg discard it and choose the next.
-    const frameTimeMs = Math.max(0, (presentedTime ?? (Number(player.currentTime) || 0)) * 1000);
+    // currentTime 的赋值早于 seeking 事件；尚未收到新帧回调时，
+    // 旧 PTS 不能被当成新播放位置的帧时间。
+    const frameTime = presentedCursor === player.currentTime ? presentedTime : null;
+    const frameTimeMs = Math.max(0, (frameTime ?? (Number(player.currentTime) || 0)) * 1000);
     const timeMs = Math.floor(frameTimeMs + 0.000001);
     const ass = global.MaweExportSrt.buildAss({ preview: true });
     return { ass, timeMs, frameTimeMs, generation: mediaGeneration, seek: seekGeneration, source: player.currentSrc,
@@ -155,8 +158,9 @@
     if (stageOverlayEnabled()) {
       setStageStatus(capabilityFailure ? 'ASS 即时预览 · 实际渲染不可用' : 'ASS 实际画面渲染中…', failureMessage);
     }
-    global.clearTimeout(timer);
-    timer = global.setTimeout(() => { timer = 0; refreshDesired(); }, 200);
+    // 合并这段时间内的最新状态，但不反复推迟截止时间。连续刷新
+    // （例如列表/播放头更新）也必须让自动渲染获得执行机会。
+    if (!timer) timer = global.setTimeout(() => { timer = 0; refreshDesired(); }, 200);
   }
 
   function refreshDesired() {
@@ -170,6 +174,7 @@
     desired = snapshot();
     syncStaleOverlay();
     if (cached?.key === desired?.key) {
+      showWindowFrame(cached);
       showStageFrame(cached);
       return;
     }
@@ -337,9 +342,7 @@
   }
   renderButton?.addEventListener('click', () => void renderAssFrame());
   styleOpenButton?.addEventListener('click', () => floatingPanel.open());
-  for (const id of ['ass-frame-window-close', 'ass-frame-close-footer']) {
-    document.getElementById(id)?.addEventListener('click', () => floatingPanel.close());
-  }
+  document.getElementById('ass-frame-window-close')?.addEventListener('click', () => floatingPanel.close());
   document.getElementById('ass-mode-toggle')?.addEventListener('change', syncAssFrameControls);
   stageToggle?.addEventListener('change', () => {
     global.MaweSettings?.updateEditorSettings({ assFrameStagePreview: stageToggle.checked });

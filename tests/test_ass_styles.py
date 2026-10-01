@@ -42,7 +42,24 @@ class AssStyleLibraryTests(unittest.TestCase):
         self.assertEqual([profile["id"] for profile in library["assProfiles"]], ["ass"])
         self.assertTrue(library["styles"][0]["builtin"])
         self.assertTrue(library["assProfiles"][0]["builtin"])
-        self.assertEqual(find_ass_style(library, "ass")["emphasisScale"], 1.1)
+        self.assertEqual(find_ass_style(library, "ass")["emphasisScale"], 1.3)
+
+    def test_new_defaults_match_configured_parameters_and_keep_saved_library(self) -> None:
+        library = default_ass_style_library()
+        srt, main, extension = library["styles"]
+        for style in (srt, main):
+            self.assertEqual((style["fontSize"], style["outline"], style["marginV"], style["bold"]),
+                             (86, 6, 88, True))
+        self.assertEqual((main["emphasisColor"], main["emphasisScale"], main["backColor"], main["backOpacity"]),
+                         ("#ffaa00", 1.3, "#ff8647", 60))
+        self.assertEqual((extension["fontSize"], extension["outline"], extension["marginV"], extension["primaryColor"]),
+                         (64, 2, 36, "#ffd34d"))
+        self.assertEqual(library["assProfiles"][0]["animations"]["fad"],
+                         {"enabled": True, "inMs": 250, "outMs": 250})
+        main.update(fontName="Arial", fontSize=72, emphasisScale=1.1, backColor="#000000",
+                    backOpacity=100, bold=False, outline=4, marginV=80)
+        library["assProfiles"][0]["animations"]["fad"]["enabled"] = False
+        self.assertEqual(normalize_ass_style_library(library), library)
 
     def test_v1_emphasis_scale_default_migrates_for_builtin_styles_only(self) -> None:
         legacy = normalize_ass_style_library({
@@ -89,8 +106,8 @@ class AssStyleLibraryTests(unittest.TestCase):
         )
         default_extension = find_ass_style(fallback, "ass-extension")
         self.assertEqual(default_extension["primaryColor"], "#ffd34d")
-        self.assertEqual(default_extension["fontSize"], 54)
-        self.assertEqual(default_extension["marginV"], 166)
+        self.assertEqual(default_extension["fontSize"], 64)
+        self.assertEqual(default_extension["marginV"], 36)
 
     def test_emphasis_style_settings_survive_server_normalization(self) -> None:
         library = normalize_ass_style_library({
@@ -110,9 +127,9 @@ class AssStyleLibraryTests(unittest.TestCase):
                         "emphasisColor": "invalid", "emphasisScale": "bad", "emphasisStyle": []}],
         })
         self.assertNotIn("emphasisSyntax", find_ass_style(invalid, "ass"))
-        self.assertEqual(find_ass_style(invalid, "ass")["emphasisColor"], "#ffd34d")
+        self.assertEqual(find_ass_style(invalid, "ass")["emphasisColor"], "#ffaa00")
         self.assertEqual(find_ass_style(invalid, "ass")["emphasisStyle"], "text")
-        self.assertEqual(find_ass_style(invalid, "ass")["emphasisScale"], 1.1)
+        self.assertEqual(find_ass_style(invalid, "ass")["emphasisScale"], 1.3)
         self.assertEqual(find_ass_style(invalid, "ass")["smallTextScale"], 0.8)
         self.assertEqual(find_ass_style(invalid, "ass")["largeTextScale"], 1.5)
         self.assertEqual(find_ass_style(normalize_ass_style_library({"styles": [{"id": "ass", "emphasisScale": 9}]}), "ass")["emphasisScale"], 1.5)

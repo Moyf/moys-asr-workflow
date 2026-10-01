@@ -128,8 +128,8 @@ def _style_defaults(style_id: str, name: str) -> dict[str, object]:
         "id": style_id,
         "name": name,
         "builtin": True,
-        "fontName": "Arial",
-        "fontSize": 18,
+        "fontName": _default_ass_font_name(),
+        "fontSize": 86,
         "primaryColor": "#ffffff",
         "emphasisColor": "#ffd34d",
         "emphasisScale": 1.1,
@@ -141,7 +141,7 @@ def _style_defaults(style_id: str, name: str) -> dict[str, object]:
         "backColor": "#000000",
         "outlineOpacity": 100,
         "backOpacity": 100,
-        "bold": False,
+        "bold": True,
         "italic": False,
         "underline": False,
         "strikeOut": False,
@@ -150,42 +150,39 @@ def _style_defaults(style_id: str, name: str) -> dict[str, object]:
         "spacing": 0,
         "angle": 0,
         "borderStyle": 1,
-        "outline": 2,
+        "outline": 6,
         "shadow": 0,
         "alignment": 2,
         "marginL": 10,
         "marginR": 10,
-        "marginV": 40,
+        "marginV": 88,
         "encoding": 1,
     }
 
 
 DEFAULT_SRT_STYLE: Final[dict[str, object]] = _style_defaults("default", "SRT 默认")
-# ASS 默认样式：字体按操作系统选择、默认加粗，字号按 1080p 参考基准 72，
-# 垂直边距放宽到 80。
+# 内置参数与维护者的当前配置一致；字体继续按系统选择。
 DEFAULT_ASS_STYLE: Final[dict[str, object]] = {
     **_style_defaults("ass", "ASS 默认样式"),
-    "fontName": _default_ass_font_name(),
-    "bold": True,
-    "fontSize": 72,
-    "marginV": 80,
+    "emphasisColor": "#ffaa00",
+    "emphasisScale": 1.3,
+    "backColor": "#ff8647",
+    "backOpacity": 60,
 }
-# ASS 副字幕默认样式：多重字幕的副语言轨在 ASS 导出与预览中共用一个样式
-# （副字幕不支持颜色分组）；默认沿用 CSS 预览的副字幕黄色，字号约主样式
-# 的 75%，垂直边距按「主边距 80 + 1.2 × 主字号 72」固化在主字幕上方。
+# 副字幕位于主字幕下方，使用独立颜色、描边及边距。
 DEFAULT_ASS_EXTENSION_STYLE: Final[dict[str, object]] = {
     **_style_defaults("ass-extension", "ASS 副字幕样式"),
-    "fontName": _default_ass_font_name(),
-    "bold": True,
     "primaryColor": "#ffd34d",
-    "fontSize": 54,
-    "marginV": 166,
+    "emphasisColor": "#ffaa00",
+    "fontSize": 64,
+    "outline": 2,
+    "marginV": 36,
 }
 
 
 def _animation_defaults() -> dict[str, object]:
     return {
-        "fad": {"enabled": False, "inMs": 250, "outMs": 250},
+        "fad": {"enabled": True, "inMs": 250, "outMs": 250},
         # These fields are intentionally part of v1 so newer clients can add
         # tags without changing the on-disk shape.  The first UI exposes fad.
         "fade": {
@@ -250,8 +247,9 @@ def _normalize_style(raw: object, fallback: Mapping[str, object], *, style_id: s
         "secondaryColor": _color(source.get("secondaryColor"), str(fallback.get("secondaryColor") or "#ffffff")),
         "outlineColor": _color(source.get("outlineColor"), str(fallback.get("outlineColor") or "#000000")),
         "backColor": _color(source.get("backColor"), str(fallback.get("backColor") or "#000000")),
-        "outlineOpacity": _opacity(source.get("outlineOpacity", fallback.get("outlineOpacity", 100))),
-        "backOpacity": _opacity(source.get("backOpacity", fallback.get("backOpacity", 100))),
+        # Missing opacity fields belong to legacy opaque styles.
+        "outlineOpacity": _opacity(source.get("outlineOpacity", 100)),
+        "backOpacity": _opacity(source.get("backOpacity", 100)),
         "bold": _bool(source.get("bold"), bool(fallback.get("bold", False))),
         "italic": _bool(source.get("italic"), bool(fallback.get("italic", False))),
         "underline": _bool(source.get("underline"), bool(fallback.get("underline", False))),

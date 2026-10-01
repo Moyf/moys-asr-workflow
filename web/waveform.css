@@ -828,7 +828,19 @@
   border-top-right-radius: 0;
   border-bottom-right-radius: 0;
 }
-.waveform-cue-block:hover { filter: brightness(var(--wave-hover-brightness)); }
+/* 不在块本身使用 filter：滤镜会改变轮廓颜色，并可能影响盒外 outline 的合成。
+   用块内提亮层保留原底色/禁用条纹，文字、手柄与外轮廓不参与合成。 */
+.waveform-cue-block::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+  border-radius: inherit;
+  background: white;
+  opacity: 0;
+  pointer-events: none;
+}
+.waveform-cue-block:hover::before { opacity: calc(var(--wave-hover-brightness) - 1); }
 /* 分组徽章：放在块上方的行内区域（bottom = 块高35 + 块底7 + 间距2），
    纯视觉提示不遮挡块内文字；left 由 JS 按块位置写入 */
 .waveform-cue-badge {
@@ -872,7 +884,8 @@
   );
 }
 .waveform-cue-block.disabled:hover { opacity: 0.7; }
-.waveform-cue-block.dragging { cursor: grabbing; filter: brightness(var(--wave-drag-brightness)); }
+.waveform-cue-block.dragging { cursor: grabbing; }
+.waveform-cue-block.dragging::before { opacity: calc(var(--wave-drag-brightness) - 1); }
 .waveform-cue-handle {
   position: absolute;
   top: 0;
@@ -953,7 +966,7 @@
 .waveform-row.multi-subtitle-row .waveform-cue-boundary[data-track="extension"] {
   bottom: var(--multi-subtitle-bottom-inset);
 }
-.waveform-cue-label { pointer-events: none; }
+.waveform-cue-label { position: relative; z-index: 1; pointer-events: none; }
 .waveform-binding-marker {
   position: absolute;
   z-index: 3;

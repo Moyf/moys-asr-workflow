@@ -4,6 +4,7 @@ import { readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import {
   cleanupTempDir,
+  disableOnboarding,
   findFreePort,
   buildPortableBlankEditor,
   generateWaveformPayload,
@@ -128,51 +129,197 @@ test('explains where to configure automatic timecode splitting', async ({ page }
   await expect(hint).not.toContainText('右上角「🔧 设置 → 拆分与合并」');
 });
 
-test('offers importing a second SRT when enabling multiple subtitles without an extension track', async ({ page }) => {
+test('creates an empty secondary track on enable and imports subtitles optionally', async ({ page }) => {
+  await disableOnboarding(page);
   await page.goto(server.url);
   await dropFiles(page, [srtSpec('main.srt', mainSrt)]);
-
-  await expect(page.locator('#multi-subtitle-controls')).toBeVisible();
-  await expect(page.locator('#multi-subtitle-toggle')).not.toBeDisabled();
+  const dialogs = [];
+  page.on('dialog', async (dialog) => { dialogs.push(dialog.message()); await dialog.dismiss(); });
   await expect(page.locator('#multi-subtitle-settings-toggle')).toBeHidden();
   await expect(page.locator('#multi-subtitle-toggle-label'))
-    .toHaveAttribute('title', '当前工程如果有大于1条字幕，可以开启双语字幕模式，用于双语字幕编辑等。');
-  expect(await page.locator('#multi-subtitle-toggle-label').evaluate((element) => (
-    element.nextElementSibling?.id
-  ))).toBe('multi-subtitle-empty-hint');
-
-  // 开关状态恒等跟随多重字幕编辑模式本身：勾选即开启，
-  // 提示只决定是否现在导入第二条字幕。
-  page.once('dialog', (dialog) => {
-    expect(dialog.message()).toBe('是否导入第二条字幕？（后续也可以将字幕或工程拖入编辑器加载）');
-    dialog.dismiss();
-  });
-  await page.locator('#multi-subtitle-toggle').click();
-  await expect(page.locator('#multi-subtitle-toggle')).toBeChecked();
-  // 已开启但尚未导入副轨：齿轮不显示，改为开关右侧提示拖入第二条字幕。
-  await expect(page.locator('#multi-subtitle-settings-toggle')).toBeHidden();
+    .toHaveAttribute('title', '开启后显示副字幕轨，可手动添加或导入第二条字幕。');
+  await page.locator('#multi-subtitle-toggle').check();
+  await expect(page.locator('#multi-subtitle-settings-toggle')).toBeVisible();
   await expect(page.locator('#multi-subtitle-empty-hint')).toBeVisible();
-
-  // 再次点击 = 关闭多重字幕（回到未开启状态）。
-  await page.locator('#multi-subtitle-toggle').click();
+  const trackId = await page.evaluate(() => MaweMultiSubtitleCore.getActiveExtensionTrack().id);
+  expect(await page.evaluate(() => MaweMultiSubtitleCore.getActiveExtensionTrack().segments.length)).toBe(0);
+  await page.locator('#undo-btn').click();
   await expect(page.locator('#multi-subtitle-toggle')).not.toBeChecked();
-
-  page.once('dialog', (dialog) => {
-    expect(dialog.message()).toBe('是否导入第二条字幕？（后续也可以将字幕或工程拖入编辑器加载）');
-    dialog.accept();
+  expect(await page.evaluate(() => MaweMultiSubtitleCore.getMultiSubtitleState().tracks.length)).toBe(0);
+  await page.locator('#redo-btn').click();
+  await expect(page.locator('#multi-subtitle-toggle')).toBeChecked();
+  await page.locator('#multi-subtitle-toggle').uncheck();
+  await page.locator('#multi-subtitle-toggle').check();
+  expect(await page.evaluate(() => MaweMultiSubtitleCore.getMultiSubtitleState().tracks.length)).toBe(1);
+  expect(dialogs).toEqual(Array(2).fill('是否导入第二条字幕？（后续也可以将字幕或工程拖入编辑器加载）'));
+  await openMultiSubtitleSettings(page);
+  const importGap = await page.locator('#multi-subtitle-import').evaluate((item) => {
+    const previous = item.previousElementSibling.previousElementSibling;
+    const next = item.nextElementSibling;
+    const range = document.createRange();
+    range.selectNodeContents(item);
+    const nextRange = document.createRange();
+    nextRange.selectNodeContents(next);
+    return { above: range.getBoundingClientRect().top - previous.getBoundingClientRect().bottom,
+      below: nextRange.getBoundingClientRect().top - range.getBoundingClientRect().bottom };
   });
+  expect(importGap.above).toBeGreaterThanOrEqual(8);
+  expect(importGap.below).toBeGreaterThanOrEqual(8);
+  await page.locator('#multi-subtitle-settings-menu').screenshot({ path: test.info().outputPath('empty-track-settings.png') });
   const chooserPromise = page.waitForEvent('filechooser');
-  await page.locator('#multi-subtitle-toggle').click();
+  await page.locator('#multi-subtitle-import').click();
   const chooser = await chooserPromise;
-  await chooser.setFiles({
-    name: 'translation.srt',
-    mimeType: 'text/plain',
-    buffer: Buffer.from(extensionSrt, 'utf8'),
-  });
+  await chooser.setFiles({ name: 'translation.srt', mimeType: 'text/plain', buffer: Buffer.from(extensionSrt, 'utf8') });
   await expect(page.locator('#multi-subtitle-import-modal')).toHaveClass(/show/);
   await page.locator('#multi-subtitle-import-result-confirm').click();
+  await expect(page.locator('#multi-subtitle-empty-hint')).toBeHidden();
+  expect(await page.evaluate(() => MaweMultiSubtitleCore.getActiveExtensionTrack().id)).toBe(trackId);
+  expect(await page.evaluate(() => MaweMultiSubtitleCore.getActiveExtensionTrack().segments.length)).toBe(3);
+  await page.locator('#undo-btn').click();
+  await expect(page.locator('#multi-subtitle-empty-hint')).toBeVisible();
+  expect(await page.evaluate(() => MaweMultiSubtitleCore.getActiveExtensionTrack().segments.length)).toBe(0);
+});
+
+test('keeps the quick-import prompt when enabling an empty secondary track', async ({ page }) => {
+  await disableOnboarding(page);
+  await page.goto(server.url);
+  await dropFiles(page, [srtSpec('main.srt', mainSrt)]);
+  let prompt = '';
+  page.once('dialog', async (dialog) => { prompt = dialog.message(); await dialog.accept(); });
+  const chooserPromise = page.waitForEvent('filechooser');
+  await page.locator('#multi-subtitle-toggle').check();
+  const chooser = await chooserPromise;
+  expect(prompt).toBe('是否导入第二条字幕？（后续也可以将字幕或工程拖入编辑器加载）');
   await expect(page.locator('#multi-subtitle-toggle')).toBeChecked();
-  await expect(page.locator('#multi-subtitle-settings-toggle')).toBeVisible();
+  await expect(page.locator('#multi-subtitle-empty-hint')).toBeVisible();
+  const trackId = await page.evaluate(() => MaweMultiSubtitleCore.getActiveExtensionTrack().id);
+  await chooser.setFiles({ name: 'translation.srt', mimeType: 'text/plain', buffer: Buffer.from(extensionSrt, 'utf8') });
+  await expect(page.locator('#multi-subtitle-import-modal')).toHaveClass(/show/);
+  await page.locator('#multi-subtitle-import-result-confirm').click();
+  await expect(page.locator('#multi-subtitle-empty-hint')).toBeHidden();
+  expect(await page.evaluate(() => MaweMultiSubtitleCore.getActiveExtensionTrack().id)).toBe(trackId);
+  expect(await page.evaluate(() => MaweMultiSubtitleCore.getActiveExtensionTrack().segments.length)).toBe(3);
+  await page.locator('#multi-subtitle-toggle').uncheck();
+  const dialogs = [];
+  page.on('dialog', async (dialog) => { dialogs.push(dialog.message()); await dialog.dismiss(); });
+  await page.locator('#multi-subtitle-toggle').check();
+  expect(dialogs).toEqual([]);
+});
+
+test('saves an empty secondary track and supports manual creation, edits, undo and reopen', async ({ page }) => {
+  await disableOnboarding(page);
+  await page.addInitScript(() => {
+    window.showSaveFilePicker = async (options) => ({
+      name: options.suggestedName,
+      async createWritable() { return { async write(blob) { window.__savedEmptyTrackProject = await blob.text(); }, async close() {} }; },
+    });
+  });
+  const project = { segments: [{ id: 'main-1', start: 1000, end: 3000, text: 'Main' }],
+    waveform: generateWaveformPayload(7000) };
+  const dropProject = async (value) => dropFiles(page, [{ name: 'empty-track.json', type: 'application/json',
+    base64: Buffer.from(JSON.stringify(value), 'utf8').toString('base64') }]);
+  await page.goto(server.url);
+  await dropProject(project);
+  await page.locator('#multi-subtitle-toggle').check();
+  await expect(page.locator('.waveform-row.multi-subtitle-row').first()).toBeVisible();
+  await page.locator('#download-json').click();
+  await expect.poll(() => page.evaluate(() => Boolean(window.__savedEmptyTrackProject))).toBe(true);
+  const empty = JSON.parse(await page.evaluate(() => window.__savedEmptyTrackProject));
+  expect(empty.multi_subtitle.enabled).toBe(true);
+  expect(empty.multi_subtitle.tracks).toHaveLength(1);
+  expect(empty.multi_subtitle.tracks[0].segments).toEqual([]);
+  await dropProject(empty);
+  await expect(page.locator('#multi-subtitle-empty-hint')).toBeVisible();
+  await page.screenshot({ path: test.info().outputPath('empty-secondary-lane.png') });
+  // 旧工程已开启双语但没有轨道，同样补齐可编辑空轨。
+  await dropProject({ ...empty, multi_subtitle: { ...empty.multi_subtitle, tracks: [] } });
+  expect(await page.evaluate(() => MaweMultiSubtitleCore.getActiveExtensionTrack().segments.length)).toBe(0);
+  const row = page.locator('.waveform-row.multi-subtitle-row').first();
+  const box = await waitForLayoutBox(row, 'empty secondary lane has no layout');
+  await page.mouse.click(box.x + box.width * 0.8, box.y + box.height - 2, { button: 'right' });
+  await page.locator('#ctxmenu .item').filter({ hasText: '创建副字幕' }).click();
+  const editor = page.locator('.multi-cue-column.extension .text[contenteditable]');
+  await expect(editor).toBeVisible();
+  await editor.fill('手动副字幕');
+  await editor.press('ControlOrMeta+Enter');
+  await expect(page.locator('.waveform-cue-block[data-track="extension"]')).toHaveCount(1);
+  await expect(page.locator('#multi-subtitle-empty-hint')).toBeHidden();
+  await page.locator('#undo-btn').click();
+  expect(await page.evaluate(() => MaweMultiSubtitleCore.getActiveExtensionTrack().segments[0].text)).toBe('');
+  await page.locator('#undo-btn').click();
+  await expect(page.locator('.waveform-cue-block[data-track="extension"]')).toHaveCount(0);
+  await page.locator('#redo-btn').click();
+  await page.locator('#redo-btn').click();
+  expect(await page.evaluate(() => MaweMultiSubtitleCore.getActiveExtensionTrack().segments[0].text)).toBe('手动副字幕');
+  await page.locator('#multi-subtitle-toggle').uncheck();
+  await expect(page.locator('.waveform-row.multi-subtitle-row')).toHaveCount(0);
+  await page.locator('#multi-subtitle-toggle').check();
+  expect(await page.evaluate(() => MaweMultiSubtitleCore.getMultiSubtitleState().tracks.length)).toBe(1);
+  const previousSave = await page.evaluate(() => window.__savedEmptyTrackProject);
+  await page.locator('#download-json').click();
+  await expect.poll(() => page.evaluate(() => window.__savedEmptyTrackProject)).not.toBe(previousSave);
+  const saved = JSON.parse(await page.evaluate(() => window.__savedEmptyTrackProject));
+  expect(saved.multi_subtitle.tracks[0].segments[0].text).toBe('手动副字幕');
+  await dropProject(saved);
+  await expect(page.locator('.waveform-cue-block[data-track="extension"]')).toHaveCount(1);
+  expect(await page.evaluate(() => MaweMultiSubtitleCore.getActiveExtensionTrack().segments[0].text)).toBe('手动副字幕');
+});
+
+test('keeps selected waveform outlines visible through hover and dragging in both themes', async ({ page }) => {
+  await disableOnboarding(page);
+  await page.goto(server.url);
+  const project = { segments: [{ id: 'main-outline', start: 1000, end: 3000, text: 'main outline' }],
+    waveform: generateWaveformPayload(7000), multi_subtitle: { enabled: true,
+      tracks: [{ id: 'secondary-outline', segments: [{ id: 'extension-outline', start: 1000, end: 3000, text: 'secondary outline' }] }] } };
+  await dropFiles(page, [{ name: 'outline.json', type: 'application/json', base64: Buffer.from(JSON.stringify(project)).toString('base64') }]);
+  for (const theme of ['dark', 'light']) {
+    await page.evaluate((value) => { document.documentElement.dataset.theme = value; }, theme);
+    for (const track of ['main', 'extension']) {
+      const cue = page.locator(`.waveform-cue-block[data-track="${track}"]`).first();
+      await cue.click();
+      for (const state of ['selected', 'active', 'disabled-dragging']) {
+        await cue.evaluate((element, value) => {
+          element.classList.add('selected');
+          element.classList.toggle('active', value !== 'selected');
+          element.classList.toggle('disabled', value === 'disabled-dragging');
+          element.classList.toggle('dragging', value === 'disabled-dragging');
+        }, state);
+        await cue.hover();
+        await expect(cue).toHaveCSS('filter', 'none');
+        await expect(cue).toHaveCSS('outline-width', '2px');
+        await expect(cue).toHaveCSS('opacity', '1');
+        const box = await cue.boundingBox();
+        const clip = { x: Math.floor(box.x) - 4, y: Math.floor(box.y) - 4,
+          width: Math.ceil(box.width) + 8, height: Math.ceil(box.height) + 8 };
+        const countOutlinePixels = async (path, brightness = 1) => {
+          const png = await page.screenshot({ clip, ...(path ? { path } : {}) });
+          return page.evaluate(async ({ base64, brightness }) => {
+            const image = new Image(); image.src = `data:image/png;base64,${base64}`; await image.decode();
+            const canvas = document.createElement('canvas'); canvas.width = image.width; canvas.height = image.height;
+            const ctx = canvas.getContext('2d'); ctx.drawImage(image, 0, 0);
+            const probe = document.createElement('span'); probe.style.color = 'var(--selection-yellow)';
+            document.body.append(probe);
+            const expected = getComputedStyle(probe).color.match(/\d+/g).slice(0, 3).map((value) => Math.min(255, Math.round(Number(value) * brightness))); probe.remove();
+            const pixels = ctx.getImageData(0, 0, image.width, 4).data;
+            let count = 0;
+            for (let i = 0; i < pixels.length; i += 4) if (expected.every((value, channel) => Math.abs(value - pixels[i + channel]) <= 2)) count += 1;
+            return count;
+          }, { base64: png.toString('base64'), brightness });
+        };
+        const pixels = await countOutlinePixels(state === 'selected' ? test.info().outputPath(`outline-${theme}-${track}.png`) : undefined);
+        expect(pixels, `${theme} ${track} ${state}: outline must be painted outside the block`).toBeGreaterThan(20);
+        if (theme === 'dark' && track === 'main' && state === 'selected') {
+          // 诊断旧滤镜，不仅检查仍然存在的 computed outline 属性。
+          await cue.evaluate((element) => { element.style.filter = 'brightness(1.16)'; });
+          const legacyPixels = await countOutlinePixels(test.info().outputPath('outline-legacy-filter.png'), 1.16);
+          const legacyOriginalColour = await countOutlinePixels();
+          expect(legacyOriginalColour).toBe(0);
+          console.info(`Outline pixel comparison: legacy adjusted=${legacyPixels}, legacy original colour=${legacyOriginalColour}, fixed=${pixels}`);
+          await cue.evaluate((element) => { element.style.removeProperty('filter'); });
+        }
+      }
+    }
+  }
 });
 
 test('opens multiple-subtitle settings from the split language hint', async ({ page }) => {
@@ -3663,7 +3810,7 @@ test('confirms main replacement and makes both replacement paths undoable', asyn
   await expect(page.locator('#multi-subtitle-controls')).toBeVisible();
   await expect(page.locator('#multi-subtitle-toggle')).not.toBeDisabled();
   await expect(page.locator('#multi-subtitle-toggle-label'))
-    .toHaveAttribute('title', '当前工程如果有大于1条字幕，可以开启双语字幕模式，用于双语字幕编辑等。');
+    .toHaveAttribute('title', '开启后显示副字幕轨，可手动添加或导入第二条字幕。');
   await expect(page.locator('#cues-container .multi-dual-cue')).toHaveCount(0);
   await expect(page.locator('#cues-container .cue .text').first()).toHaveText('Hello world.');
 });
@@ -4115,31 +4262,31 @@ test('ASS mode previews and exports extension cues with the shared extension sty
     };
   });
   const scale = result.stageHeight / 1080;
-  // 副字幕共用样式库的「ASS 副字幕样式」：字号 54（主样式 72 的 75%）、
-  // 默认黄色，按自身边距 166 绝对锚定在主字幕上方。（computed 字号只有
-  // 4 位小数，用比例断言避开截断误差。）
-  expect(result.mainFontSize).toBeCloseTo(72 * scale, 3);
-  expect(result.extensionFontSize).toBeCloseTo(54 * scale, 3);
-  expect(result.extensionFontSize / result.mainFontSize).toBeCloseTo(0.75, 3);
+  // 副字幕共用样式库的「ASS 副字幕样式」：字号 64（主样式 86 的 64/86）、
+  // 默认黄色，按自身边距 36 绝对锚定在主字幕下方。CSS 字号已按
+  // 字体行框校准，具体比例因系统字体而异；仍应保持可见、合理的字号和主副比例。
+  expect(result.mainFontSize).toBeGreaterThan(86 * scale * 0.5);
+  expect(result.mainFontSize).toBeLessThanOrEqual(86 * scale);
+  expect(result.extensionFontSize / result.mainFontSize).toBeCloseTo(64 / 86, 3);
   expect(result.extensionColor).toBe('rgb(255, 211, 77)');
   expect(result.extensionPosition).toBe('absolute');
-  expect(result.extensionBottom).toBe(`${Math.ceil(166 * scale)}px`);
-  // 叠加轨链式上叠：副字幕边距 166 + 1.2 × 副字幕字号 54。
-  expect(result.overlayBottom).toBe(`${Math.ceil(166 * scale + 1.2 * (54 * result.stageHeight) / 1080)}px`);
+  expect(result.extensionBottom).toBe(`${Math.ceil(36 * scale)}px`);
+  // 叠加轨链式上叠：副字幕边距 36 + 1.2 × 副字幕字号 64。
+  expect(result.overlayBottom).toBe(`${Math.ceil(36 * scale + 1.2 * (64 * result.stageHeight) / 1080)}px`);
   // 导出：副字幕 Layer 1 + 独立 Extension 样式；叠加轨 Layer 2 + 固化
-  // 链式边距（166 + round(64.8) = 231）的 Overlay 样式。
+  // 链式边距（36 + round(76.8) = 113）的 Overlay 样式。
   const dialogueLines = result.ass.split('\n').filter((line) => line.startsWith('Dialogue:'));
   expect(dialogueLines).toHaveLength(3);
   expect(dialogueLines[1]).toMatch(/^Dialogue: 1,/);
-  expect(dialogueLines[1]).toContain(',Extension,,0,0,0,,extension cue');
+  expect(dialogueLines[1]).toContain(',Extension,,0,0,0,,{\\fad(250,250)}extension cue');
   expect(dialogueLines[2]).toMatch(/^Dialogue: 2,/);
-  expect(dialogueLines[2]).toContain(',Overlay,,0,0,0,,overlay cue');
+  expect(dialogueLines[2]).toContain(',Overlay,,0,0,0,,{\\fad(250,250)}overlay cue');
   const extensionStyleLine = result.ass.split('\n').find((line) => line.startsWith('Style: Extension,'));
   expect(extensionStyleLine).toBeTruthy();
-  expect(extensionStyleLine.endsWith(',10,10,166,1')).toBe(true);
+  expect(extensionStyleLine.endsWith(',10,10,36,1')).toBe(true);
   const overlayStyleLine = result.ass.split('\n').find((line) => line.startsWith('Style: Overlay,'));
   expect(overlayStyleLine).toBeTruthy();
-  expect(overlayStyleLine.endsWith(',10,10,231,1')).toBe(true);
+  expect(overlayStyleLine.endsWith(',10,10,113,1')).toBe(true);
   expect(pageErrors, `Page errors: ${pageErrors.join(' | ')}`).toEqual([]);
 });
 
@@ -4305,12 +4452,12 @@ test('ASS export gates extension cues on the multi-subtitle toggle and keeps gap
   expect(disabledLines).toHaveLength(2);
   expect(disabledLines.every((line) => !line.startsWith('Dialogue: 1,'))).toBe(true);
   expect(disabled.ass).not.toContain('Style: Extension,');
-  expect(disabledLines[1]).toContain(',Overlay,,0,0,0,,overlay cue');
+  expect(disabledLines[1]).toContain(',Overlay,,0,0,0,,{\\fad(250,250)}overlay cue');
   const gapRemovedLines = disabled.gapRemoved.split('\n').filter((line) => line.startsWith('Dialogue:'));
   expect(gapRemovedLines).toHaveLength(2);
   expect(gapRemovedLines.every((line) => !line.includes(',Extension,'))).toBe(true);
   expect(gapRemovedLines[1]).toContain('0:00:02.30,0:00:02.80');
-  expect(gapRemovedLines[1]).toContain(',Overlay,,0,0,0,,overlay cue');
+  expect(gapRemovedLines[1]).toContain(',Overlay,,0,0,0,,{\\fad(250,250)}overlay cue');
 
   // 开启多重字幕（不重载工程，直接翻转状态）：副字幕恢复导出，
   // 去空隙 ASS 与常规 ASS 同一三轨契约（3200-3700 → 2200-2700）。
@@ -4320,11 +4467,11 @@ test('ASS export gates extension cues on the multi-subtitle toggle and keeps gap
   });
   const enabledLines = enabled.ass.split('\n').filter((line) => line.startsWith('Dialogue:'));
   expect(enabledLines).toHaveLength(3);
-  expect(enabledLines[1]).toContain(',Extension,,0,0,0,,extension cue');
+  expect(enabledLines[1]).toContain(',Extension,,0,0,0,,{\\fad(250,250)}extension cue');
   const enabledGapRemovedLines = enabled.gapRemoved.split('\n').filter((line) => line.startsWith('Dialogue:'));
   expect(enabledGapRemovedLines).toHaveLength(3);
-  expect(enabledGapRemovedLines[1]).toContain(',Extension,,0,0,0,,extension cue');
+  expect(enabledGapRemovedLines[1]).toContain(',Extension,,0,0,0,,{\\fad(250,250)}extension cue');
   expect(enabledGapRemovedLines[1]).toContain('0:00:02.20,0:00:02.70');
-  expect(enabledGapRemovedLines[2]).toContain(',Overlay,,0,0,0,,overlay cue');
+  expect(enabledGapRemovedLines[2]).toContain(',Overlay,,0,0,0,,{\\fad(250,250)}overlay cue');
   expect(pageErrors, `Page errors: ${pageErrors.join(' | ')}`).toEqual([]);
 });

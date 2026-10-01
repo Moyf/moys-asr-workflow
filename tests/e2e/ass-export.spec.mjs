@@ -140,16 +140,16 @@ test('exports ASS from the default profile style and keeps enabled subtitle text
   const save = await page.evaluate(() => window.__exportSaves[0]);
   expect(save.suggestedName).toMatch(/\.ass$/);
   // 工程没有视频分辨率元数据，PlayRes 回退 1920×1080；
-  // 默认方案关联的库样式（默认字体 72 @1080p 参考）按 1:1 输出。
+  // 默认方案关联的库样式（默认字体 86 @1080p 参考）按 1:1 输出。
   // 默认 ASS 字体按操作系统选择，从页面读取期望值保持测试平台无关。
   const assDefaultFont = await page.evaluate(() => window.AsrEditorUtils.ASS_DEFAULT_ASS_STYLE.fontName);
   expect(save.content).toContain(
-    `Style: Default,${assDefaultFont},72,&H00FFFFFF,&H00FFFFFF,`,
+    `Style: Default,${assDefaultFont},86,&H00FFFFFF,&H00FFFFFF,`,
   );
   expect(save.content).not.toContain('SimHei');
   expect(save.content).not.toContain('#12abef');
   expect(save.content).toContain(
-    'Dialogue: 0,0:00:01.00,0:00:02.50,Default,,0,0,0,,第一行\\NSecond, \\{literal\\}\\\\path',
+    'Dialogue: 0,0:00:01.00,0:00:02.50,Default,,0,0,0,,{\\fad(250,250)}第一行\\NSecond, \\{literal\\}\\\\path',
   );
   expect(save.content).not.toContain('不应导出');
   // 本次换行策略只调整播放器预览；ASS 导出仍保持原来的 WrapStyle。
@@ -174,7 +174,7 @@ test('ASS preview preserves explicit line breaks without container wrapping', as
     const range = document.createRange();
     range.selectNodeContents(element);
     const style = getComputedStyle(element);
-    // 混排字号（强调 1.1×）会让同一行内片段的 box 顶部相差约 0.1em，
+    // 混排字号（强调 1.3×）会让同一行内片段的 box 顶部相差约 0.3em，
     // 直接对 rect.top 去重会把一行误算成两行；按字号相关容差聚簇后再数行。
     const tolerance = Math.max(2, Math.round(parseFloat(style.fontSize) / 2));
     const lineTops = Array.from(range.getClientRects())
@@ -206,7 +206,7 @@ test('ASS preview preserves explicit line breaks without container wrapping', as
   expect(preview.wrapperDisplay).toBe('inline');
   expect(preview.wrapperPadding).toBe('0px');
   expect(preview.wrapperFontSize).toBe(preview.fontSize);
-  expect(preview.runFontRatio).toBeCloseTo(1.1, 1);
+  expect(preview.runFontRatio).toBeCloseTo(1.3, 1);
 
   await page.evaluate(() => {
     MaweSettings.EDITOR_SETTINGS.assMode = false;
@@ -214,6 +214,50 @@ test('ASS preview preserves explicit line breaks without container wrapping', as
   });
   await expect(page.locator('#overlay-main-text')).toHaveCSS('white-space', 'pre-wrap');
   await expect(page.locator('#overlay-main-text')).toHaveCSS('word-break', 'break-word');
+});
+
+test('inherits ASS track colours through inline formatting and keeps explicit emphasis colours', async ({ page }) => {
+  await disableOnboarding(page);
+  await page.goto(server.url);
+  await page.evaluate(async () => {
+    await loadAssStyleLibrary({ force: true });
+    ASS_STYLE_LIBRARY = window.AsrEditorUtils.defaultAssStyleLibrary();
+    const main = ASS_STYLE_LIBRARY.styles.find((entry) => entry.id === 'ass');
+    const extension = ASS_STYLE_LIBRARY.styles.find((entry) => entry.id === 'ass-extension');
+    Object.assign(main, { primaryColor: '#22cc55', emphasisStyle: 'stroke', emphasisColor: '#ff0000' });
+    Object.assign(extension, { primaryColor: '#ffd34d', emphasisStyle: 'stroke', emphasisColor: '#ff0000' });
+    const text = '普通 **强调** __下划线__ ~~删除线~~ --缩小-- ++放大++';
+    MaweBoot.DATA.segments = [{ id: 'main-colour', start: 1000, end: 3000, text }];
+    MaweBoot.DATA.multi_subtitle = { enabled: true, tracks: [{ id: 'extension-colour', segments: [{ id: 'ext-colour', start: 1000, end: 3000, text }] }] };
+    Object.assign(MaweSettings.EDITOR_SETTINGS, { assMode: true, assEmphasisSyntax: 'both', assSpecialSymbolRule: 'both',
+      assUnderlineEnabled: true, assStrikeEnabled: true, assSmallTextEnabled: true, assLargeTextEnabled: true });
+    MaweDom.overlayToggle.checked = true;
+    MaweDom.extensionOverlayToggle.checked = true;
+    MaweCoreState.player.currentTime = 1.5;
+    MawePlaybackLoop.refreshSubtitlePreview(1500, 0);
+  });
+  for (const [track, colour] of [['main', 'rgb(34, 204, 85)'], ['extension', 'rgb(255, 211, 77)']]) {
+    const text = page.locator(`#overlay-${track}-text`);
+    await expect(text.locator('.ass-emphasis-runs')).toHaveCSS('color', colour);
+    await expect(text.locator('.ass-inline-run')).toHaveCount(5);
+    expect(await text.locator('.ass-inline-run').evaluateAll((elements) => elements.map((element) => getComputedStyle(element).color)))
+      .toEqual(Array(5).fill(colour));
+  }
+  await page.evaluate(() => {
+    const style = ASS_STYLE_LIBRARY.styles.find((entry) => entry.id === 'ass-extension');
+    Object.assign(style, { primaryColor: '#55aaff', emphasisStyle: 'text' });
+    MawePlaybackLoop.refreshSubtitlePreview(1500, 0);
+  });
+  const extension = page.locator('#overlay-extension-text');
+  await expect(extension.locator('.ass-emphasis-runs')).toHaveCSS('color', 'rgb(85, 170, 255)');
+  await expect(extension.locator('.ass-emphasis-run')).toHaveCSS('color', 'rgb(255, 0, 0)');
+  expect(await extension.locator('.ass-inline-run:not(.ass-emphasis-run)').evaluateAll((elements) => elements.map((element) => getComputedStyle(element).color)))
+    .toEqual(Array(4).fill('rgb(85, 170, 255)'));
+  const exportedColour = await page.evaluate(() => MaweExportSrt.buildAss().split('\n').find((line) => line.startsWith('Style: Extension,')).split(',')[3]);
+  expect(exportedColour).toBe('&H00FFAA55');
+  await page.locator('.player-stage').screenshot({ path: test.info().outputPath('ass-secondary-inline-colour.png') });
+  await page.evaluate(() => { MaweSettings.EDITOR_SETTINGS.assMode = false; MawePlaybackLoop.refreshSubtitlePreview(1500, 0); });
+  await expect(extension.locator('.ass-emphasis-runs')).toHaveCount(0);
 });
 
 test('ASS emphasis controls drive preview and inline export color', async ({ page }) => {
@@ -245,7 +289,7 @@ test('ASS emphasis controls drive preview and inline export color', async ({ pag
   await expect(page.locator('#ass-style-emphasis-heading')).toHaveText('特殊文本样式');
   await expect(page.locator('#ass-style-small-text-scale')).toHaveValue('0.8');
   await expect(page.locator('#ass-style-large-text-scale')).toHaveValue('1.5');
-  await expect(page.locator('#ass-style-emphasis-scale')).toHaveValue('1.1');
+  await expect(page.locator('#ass-style-emphasis-scale')).toHaveValue('1.3');
   await expect(page.locator('#ass-style-emphasis-scale')).toHaveAttribute('step', '0.05');
   await expect(page.locator('#ass-style-emphasis-options')).toBeVisible();
   const gap = await page.locator('#ass-style-emphasis-options').evaluate((element) => {
@@ -277,7 +321,8 @@ test('ASS emphasis controls drive preview and inline export color', async ({ pag
   });
   expect(preview.text).toBe('前 重点 后');
   expect(preview.color).toBe('rgb(255, 0, 0)');
-  expect(preview.scale).toBeCloseTo(1.25);
+  // libass rounds the emphasized font to integer native pixels.
+  expect(preview.scale).toBeCloseTo(Math.round(86 * 1.25) / 86);
 
   await page.locator('#subtitle-export-btn').click();
   await page.locator('#download-full-ass').click();
@@ -363,16 +408,16 @@ test('writes the project title, source resolution, palette styles and speaker na
   expect(save.content).toContain('Title: project');
   expect(save.content).toContain('PlayResX: 3840');
   expect(save.content).toContain('PlayResY: 2160');
-  // 库样式字号按 1080p 参考存储，导出时换算到 PlayResY：72 × 2160/1080 = 144。
+  // 库样式字号按 1080p 参考存储，导出时换算到 PlayResY：86 × 2160/1080 = 172。
   const assDefaultFont = await page.evaluate(() => window.AsrEditorUtils.ASS_DEFAULT_ASS_STYLE.fontName);
-  expect(save.content).toContain(`Style: Default,${assDefaultFont},144,`);
-  expect(save.content).toContain(`Style: YELLOW,${assDefaultFont},144,&H0019A0C4,&H0019A0C4,`);
-  expect(save.content).toContain(`Style: GREEN,${assDefaultFont},144,&H006ABB66,&H006ABB66,`);
-  expect(save.content).toContain(`Style: RED,${assDefaultFont},144,&H006F7FF0,&H006F7FF0,`);
-  expect(save.content).toContain(`Style: PURPLE,${assDefaultFont},144,&H00E689BF,&H00E689BF,`);
-  expect(save.content).toContain(`Style: BLUE,${assDefaultFont},144,&H00FAA761,&H00FAA761,`);
+  expect(save.content).toContain(`Style: Default,${assDefaultFont},172,`);
+  expect(save.content).toContain(`Style: YELLOW,${assDefaultFont},172,&H0019A0C4,&H0019A0C4,`);
+  expect(save.content).toContain(`Style: GREEN,${assDefaultFont},172,&H006ABB66,&H006ABB66,`);
+  expect(save.content).toContain(`Style: RED,${assDefaultFont},172,&H006F7FF0,&H006F7FF0,`);
+  expect(save.content).toContain(`Style: PURPLE,${assDefaultFont},172,&H00E689BF,&H00E689BF,`);
+  expect(save.content).toContain(`Style: BLUE,${assDefaultFont},172,&H00FAA761,&H00FAA761,`);
   expect(save.content).toContain(
-    'Dialogue: 0,0:00:00.00,0:00:01.00,RED,旁白,0,0,0,,{\\c&H006F7FF0&}旁白：{\\c&H006F7FF0&}red line',
+    'Dialogue: 0,0:00:00.00,0:00:01.00,RED,旁白,0,0,0,,{\\fad(250,250)}{\\c&H006F7FF0&}旁白：{\\c&H006F7FF0&}red line',
   );
 });
 
@@ -408,10 +453,10 @@ test('exports speaker-only ASS label colour without a palette style variant', as
   ));
   const baseFont = await page.evaluate(() => window.AsrEditorUtils.ASS_DEFAULT_ASS_STYLE.fontName);
 
-  expect(save.content).toContain(`Style: Default,${baseFont},72,`);
+  expect(save.content).toContain(`Style: Default,${baseFont},86,`);
   expect(save.content).not.toContain('Style: RED,');
   expect(save.content).toContain(
-    `Dialogue: 0,0:00:00.00,0:00:01.00,Default,旁白,0,0,0,,{\\c&H006F7FF0&}旁白：{\\c${baseColor}&}red line`,
+    `Dialogue: 0,0:00:00.00,0:00:01.00,Default,旁白,0,0,0,,{\\fad(250,250)}{\\c&H006F7FF0&}旁白：{\\c${baseColor}&}red line`,
   );
 });
 
@@ -543,10 +588,10 @@ test('exports a gap-removed styled ASS subtitle with shifted timing', async ({ p
   const save = await page.evaluate(() => window.__exportSaves[0]);
   expect(save.suggestedName).toBe('project_去空隙.ass');
   expect(save.content).toContain(
-    'Dialogue: 0,0:00:01.00,0:00:02.00,RED,,0,0,0,,before gap',
+    'Dialogue: 0,0:00:01.00,0:00:02.00,RED,,0,0,0,,{\\fad(250,250)}before gap',
   );
   expect(save.content).toContain(
-    'Dialogue: 0,0:00:03.00,0:00:04.00,Default,,0,0,0,,after gap',
+    'Dialogue: 0,0:00:03.00,0:00:04.00,Default,,0,0,0,,{\\fad(250,250)}after gap',
   );
 });
 
@@ -612,7 +657,7 @@ test('refreshes inline font metrics and interpolates fs tags in native resolutio
     MaweBoot.DATA.segments[0].text = '字幕**强调**';
     const library = window.AsrEditorUtils.defaultAssStyleLibrary();
     const style = library.styles.find((entry) => entry.id === 'ass');
-    style.fontName = 'Arial'; style.fontSize = 72;
+    style.fontName = 'Arial'; style.fontSize = 72; style.emphasisScale = 1.1;
     ASS_STYLE_LIBRARY = library;
     MaweSettings.EDITOR_SETTINGS.assMode = true;
     MawePlaybackLoop.refreshSubtitlePreview(1500, 0);

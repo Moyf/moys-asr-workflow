@@ -440,6 +440,7 @@ const assStyleFloatingPanel = MaweFloatingPanel.createFloatingPanel({
     void loadAssStyleLibrary({ force: true });
   },
 });
+document.getElementById('ass-frame-style-edit')?.addEventListener('click', () => assStyleFloatingPanel.open());
 assStyleWindowClose?.addEventListener('click', () => assStyleFloatingPanel.close());
 assStyleWindowCloseFooter?.addEventListener('click', () => assStyleFloatingPanel.close());
 assStyleNewButton?.addEventListener('click', createAssStyle);
