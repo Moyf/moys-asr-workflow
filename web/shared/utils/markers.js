@@ -10,13 +10,51 @@ window.MAWE.register('utils-markers', function createUtilsModule() {
   const MARKER_NOTE_MAX_LENGTH = 500;
   const MARKER_REVIEW_REASON_MAX_LENGTH = 300;
   const MARKER_DEFAULT_COLOR = '#3e63dd';
-  // 预设色板（管理窗改色与 AI 复核默认色共用）。
+  // 预设色板（管理窗改色与 AI 复核默认色共用）：对齐达芬奇 Resolve 的 marker
+  // 官方色序（Blue/Cyan/Green/Yellow/Red/Pink/Purple/Fuchsia），取前 8 个常用、
+  // 区分度高的颜色。默认色与 Resolve 的 Blue 对齐。
+  // OTIO 官方 Marker 色集为 PINK/RED/ORANGE/YELLOW/GREEN/CYAN/BLUE/PURPLE/
+  // MAGENTA/BLACK/WHITE：与达芬奇的名称级交集（品红按 Fuchsia≈Magenta 计）
+  // 就是前 8 个；末尾两个（天蓝/可可）取自达芬奇扩展色板中区分度最高的颜色，
+  // 导出 OTIO 时会按最近色相归并。
   const MARKER_PRESET_COLORS = Object.freeze([
-    '#e5484d', '#f76b15', '#f5d90a', '#46a758', '#00a2c7', '#3e63dd', '#8e4ec6', '#d6409f',
+    '#3e63dd', '#00a2c7', '#46a758', '#f5d90a', '#e5484d', '#ef5da8', '#8e4ec6', '#d6409f',
+    '#45a3f5', '#a06e3b',
   ]);
+  // 预设色的中文显示名（过滤下拉 / 色板提示用）；非预设色返回空串，调用方回退显示色值。
+  const MARKER_PRESET_COLOR_LABELS = Object.freeze({
+    '#3e63dd': '蓝',
+    '#00a2c7': '青',
+    '#46a758': '绿',
+    '#f5d90a': '黄',
+    '#e5484d': '红',
+    '#ef5da8': '粉',
+    '#8e4ec6': '紫',
+    '#d6409f': '品红',
+    '#45a3f5': '天蓝',
+    '#a06e3b': '可可',
+  });
   const MARKER_REVIEW_COLOR = '#f5a623';
   const MARKER_REVIEW_STATUSES = Object.freeze(['pending', 'confirmed']);
   const HEX_COLOR_PATTERN = /^#[0-9a-fA-F]{6}$/;
+
+  function markerPresetColorLabel(value) {
+    if (typeof value !== 'string') return '';
+    return MARKER_PRESET_COLOR_LABELS[value.trim().toLowerCase()] || '';
+  }
+
+  // 复核三态循环：无（无 review 字段）→ 待复核 → 已确认 → 无。
+  function nextMarkerReviewStatus(marker) {
+    return marker?.review?.status === 'pending'
+      ? 'confirmed'
+      : marker?.review?.status === 'confirmed' ? null : 'pending';
+  }
+
+  function markerReviewStatusLabel(marker) {
+    if (marker?.review?.status === 'pending') return '待复核';
+    if (marker?.review?.status === 'confirmed') return '已确认';
+    return '无';
+  }
 
   function cloneMarkerValue(value) {
     return value === undefined ? undefined : JSON.parse(JSON.stringify(value ?? null));
@@ -180,12 +218,16 @@ window.MAWE.register('utils-markers', function createUtilsModule() {
     MARKERS_SCHEMA,
     MARKER_DEFAULT_COLOR,
     MARKER_PRESET_COLORS,
+    MARKER_PRESET_COLOR_LABELS,
     MARKER_REVIEW_COLOR,
     MARKER_REVIEW_STATUSES,
     MARKER_NAME_MAX_LENGTH,
     MARKER_NOTE_MAX_LENGTH,
     MARKER_REVIEW_REASON_MAX_LENGTH,
     MARKER_MIN_VISIBLE_PERCENT,
+    markerPresetColorLabel,
+    markerReviewStatusLabel,
+    nextMarkerReviewStatus,
     cloneMarkerValue,
     normalizeMarkerColor,
     normalizeMarkerItem,

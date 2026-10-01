@@ -24,12 +24,12 @@
     '最近工程': 'Recent projects', '自动打开上次工程': 'Automatically open last project',
     '服务器连接已断开': 'Server connection lost',
     '请在 Launcher 中确认服务器状态；当前无法自动保存工程，请使用右上角「导出工程」下载当前工程，避免进度丢失。': 'Check the server status in Launcher. Auto-saving is currently unavailable; use “Export project” in the upper-right corner to download the current project and avoid losing your progress.',
-    '加载媒体': 'Load media', '加载字幕': 'Load subtitles', '保存工程': 'Save project', '另存为…': 'Save as…', '保存': 'Save', '保存成功！': 'Saved!', '保存失败': 'Save failed',
+    '加载媒体': 'Load media', '加载字幕': 'Load subtitles', '加载歌词': 'Load lyrics', '选择 .srt 字幕导入': 'Choose an .srt subtitle to import', '选择 .lrc 歌词导入': 'Choose an .lrc lyrics file to import', '保存工程': 'Save project', '另存为…': 'Save as…', '保存': 'Save', '保存成功！': 'Saved!', '保存失败': 'Save failed',
     'item 内容': 'Item content', '字幕内容': 'Subtitle content', '关闭提示': 'Dismiss notification',
-    '拖入工程、媒体或 SRT 开始编辑': 'Drop a project, media, or SRT to start editing',
+    '拖入工程、媒体或 SRT/LRC 字幕开始编辑': 'Drop a project, media, or SRT/LRC subtitles to start editing',
     '拖入媒体后显示波形': 'Drop media to display its waveform',
-    '拖入工程或 SRT 后显示字幕列表': 'Drop a project or SRT to display subtitles',
-    '松开以加载工程、媒体或 SRT': 'Drop to load a project, media, or SRT',
+    '拖入工程或 SRT/LRC 字幕后显示字幕列表': 'Drop a project or SRT/LRC subtitles to display subtitles',
+    '松开以加载工程、媒体或 SRT/LRC 字幕': 'Drop to load a project, media, or SRT/LRC subtitles',
     '自动保存': 'Auto-save', '自动保存间隔': 'Auto-save interval', '秒': 'sec', '说话人': 'Speaker',
     '强调色': 'Accent Color', '自定义颜色': 'Custom color', '自定义': 'Custom', '橙色': 'Orange',
     '显示说话人名称': 'Show speaker names',
@@ -190,7 +190,7 @@
     '微软雅黑 / 苹方': 'Microsoft YaHei / PingFang', '黑体': 'SimHei', '宋体': 'SimSun', 'Arial / Segoe UI': 'Arial / Segoe UI',
     '读取本机字体': 'Read local fonts', '点击读取本机字体（首次需要授权）': 'Click to read local fonts (permission required the first time)', '读取本机字体，填充字体下拉列表': 'Read local fonts to fill the font dropdown list',
     '未读取到可用的本机字体': 'No usable local fonts were returned',
-    '当前环境不支持自动读取本机字体': 'This environment cannot list local fonts automatically',
+    '当前浏览器不支持该功能': 'This browser does not support this feature',
     '未获准读取本机字体': 'Permission to read local fonts was not granted',
     '读取本机字体失败，请重试': 'Could not read local fonts; try again',
     '文字颜色': 'Text color', '背景颜色': 'Background color', '背景不透明度': 'Background opacity',
@@ -759,8 +759,8 @@
     '点击添加表情包': 'Click to add a sticker',
     '请用带工程文件路径的服务器命令启动，才能直接保存':
       'Start the server with a project file path to enable direct saving',
-    'SRT 字幕只能通过导出下载保存为工程文件':
-      'SRT subtitles can only be saved as a project file through export',
+    '导入的字幕只能通过导出下载保存为工程文件':
+      'Imported subtitles can only be saved as a project file through export',
     '字幕预览位置。可拖动调整；方向键移动，按住 Shift 加速，按住 Alt 配合方向键调整大小，Enter 或空格显示控制点，Esc 退出。':
       'Subtitle preview position. Drag to adjust; arrow keys move, hold Shift to speed up, hold Alt with arrows to resize, Enter or Space shows handles, Esc exits.',
     '表情包预览位置。可拖动调整；方向键移动，按住 Shift 加速，按住 Alt 配合方向键调整大小，Enter 或空格显示控制点，Esc 退出。':

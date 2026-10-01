@@ -5,11 +5,10 @@
 (function initMaweMarkersPanel(global) {
   'use strict';
 
-  const PRESET_COLOR_SWATCH_LIMIT = 8;
-
-  // 管理窗私有 UI 状态：过滤条件与当前选中项（不进工程数据）。
+  // 管理窗私有 UI 状态：过滤条件、选中高亮项与展开编辑项（不进工程数据）。
   const filter = { query: '', kind: 'all', color: 'all', review: 'all' };
   let selectedMarkerId = null;
+  let editingMarkerId = null;
   let colorFilterSynced = false;
 
   function markerUtils() {
@@ -65,7 +64,8 @@
     for (const color of colors.slice(0, 64)) {
       const option = document.createElement('option');
       option.value = color;
-      option.textContent = color;
+      // 预设颜色显示中文名称（蓝/青/绿…），自定义颜色显示色值本身。
+      option.textContent = markerUtils().markerPresetColorLabel(color) || color;
       select.appendChild(option);
     }
     filter.color = previous !== 'all' && colors.includes(previous) ? previous : 'all';
@@ -74,14 +74,22 @@
   }
 
 
-  function renderSummary(markers) {
+  // 摘要行：无过滤时显示全部统计；有过滤时左侧更新为过滤结果。
+  function renderSummary(markers, visible) {
     if (!MaweDom.markersSummary) return;
-    const summary = markerUtils().markerSummary(markers);
+    const utils = markerUtils();
+    const filterActive = Boolean(filter.query.trim())
+      || filter.kind !== 'all' || filter.color !== 'all' || filter.review !== 'all';
+    const list = filterActive ? visible : markers;
+    const summary = utils.markerSummary(list);
     if (!summary.total) {
-      MaweDom.markersSummary.textContent = '尚无标记；在波形顶部标记轨道空白处点击或拖动即可添加。';
+      MaweDom.markersSummary.textContent = filterActive
+        ? '没有符合当前过滤条件的标记。'
+        : '尚无标记；在波形顶部标记轨道空白处点击或拖动即可添加。';
       return;
     }
-    const parts = [`共 ${summary.total} 项：标记 ${summary.markers} · 区段 ${summary.regions}`];
+    const head = filterActive ? `过滤 ${summary.total} 项` : `共 ${summary.total} 项`;
+    const parts = [`${head}：标记 ${summary.markers} · 区段 ${summary.regions}`];
     if (summary.pending) parts.push(`待复核 ${summary.pending}`);
     MaweDom.markersSummary.textContent = parts.join('；');
   }
@@ -126,13 +134,13 @@
     const swatches = document.createElement('div');
     swatches.className = 'markers-color-swatches';
     const currentColor = utils.normalizeMarkerColor(marker.color);
-    for (const preset of utils.MARKER_PRESET_COLORS.slice(0, PRESET_COLOR_SWATCH_LIMIT)) {
+    for (const preset of utils.MARKER_PRESET_COLORS) {
       const swatch = document.createElement('button');
       swatch.type = 'button';
       swatch.className = `markers-color-swatch${preset === currentColor ? ' active' : ''}`;
       swatch.style.setProperty('--marker-color', preset);
-      swatch.title = preset;
-      swatch.setAttribute('aria-label', `使用颜色 ${preset}`);
+      swatch.title = utils.markerPresetColorLabel(preset) || preset;
+      swatch.setAttribute('aria-label', `使用颜色 ${swatch.title}`);
       swatch.addEventListener('click', () => {
         MaweMarkerEditing.updateMarkerFields(marker.id, { color: preset });
       });
@@ -219,26 +227,56 @@
       MaweMarkerEditing.updateMarkerFields(marker.id, { end: value });
     });
     endLabel.append(endSpan, endInput);
-    timeRow.append(startLabel, endLabel);
+    // 时长与终点双向联动：时长 = 终点 - 起点；改时长即改终点。
+    const durationLabel = document.createElement('label');
+    durationLabel.className = 'markers-time-field';
+    const durationSpan = document.createElement('span');
+    durationSpan.textContent = '时长 ms';
+    const durationInput = document.createElement('input');
+    durationInput.type = 'number';
+    durationInput.min = '1';
+    durationInput.step = '1';
+    durationInput.inputMode = 'numeric';
+    durationInput.placeholder = '单点标记';
+    if (marker.end != null) durationInput.value = String(marker.end - marker.start);
+    durationInput.addEventListener('change', () => {
+      const raw = durationInput.value.trim();
+      if (!raw) {
+        MaweMarkerEditing.updateMarkerFields(marker.id, { end: null });
+        return;
+      }
+      const value = Number(raw);
+      if (!Number.isFinite(value) || value < 1) {
+        MaweHint.flashHint('时长必须是不小于 1 的整数毫秒；留空表示单点标记', 'warning');
+        durationInput.value = marker.end != null ? String(marker.end - marker.start) : '';
+        return;
+      }
+      MaweMarkerEditing.updateMarkerFields(marker.id, { end: marker.start + Math.round(value) });
+    });
+    durationLabel.append(durationSpan, durationInput);
+    timeRow.append(startLabel, endLabel, durationLabel);
 
     const actions = document.createElement('div');
     actions.className = 'markers-item-actions';
+    // 复核三态 toggle（左下角）：无 → 待复核 → 已确认 → 无；每次点击进撤销历史。
+    const reviewToggle = document.createElement('button');
+    reviewToggle.type = 'button';
+    reviewToggle.className = `markers-review-toggle${marker.review ? ' has-review' : ''}${marker.review?.status === 'pending' ? ' pending' : ''}${marker.review?.status === 'confirmed' ? ' confirmed' : ''}`;
+    reviewToggle.textContent = utils.markerReviewStatusLabel(marker);
+    if (marker.review?.reason) reviewToggle.title = marker.review.reason;
+    reviewToggle.addEventListener('click', () => {
+      MaweMarkerEditing.updateMarkerFields(marker.id, { review: utils.nextMarkerReviewStatus(marker) });
+    });
+    actions.appendChild(reviewToggle);
     const locateButton = document.createElement('button');
     locateButton.type = 'button';
     locateButton.textContent = '定位试听';
     locateButton.addEventListener('click', () => {
-      MaweMarkerEditing.locateMarker(marker.id);
-      MaweHint.flashHint(`已定位到 ${formatMarkerTime(marker.start)}`, 'success');
+      // 「定位试听」= 跳转并播放；列表项点击 / 波形点击仍只跳转。
+      MaweMarkerEditing.locateMarker(marker.id, { play: true });
+      MaweHint.flashHint(`已定位到 ${formatMarkerTime(marker.start)} 并播放`, 'success');
     });
     actions.appendChild(locateButton);
-    if (marker.review?.status === 'pending') {
-      const confirmButton = document.createElement('button');
-      confirmButton.type = 'button';
-      confirmButton.className = 'markers-confirm-button';
-      confirmButton.textContent = '确认复核';
-      confirmButton.addEventListener('click', () => MaweMarkerEditing.confirmReview(marker.id));
-      actions.appendChild(confirmButton);
-    }
     const deleteButton = document.createElement('button');
     deleteButton.type = 'button';
     deleteButton.className = 'danger';
@@ -282,14 +320,35 @@
     main.append(swatch, title, time);
     const badge = buildReviewBadge(marker);
     if (badge) main.appendChild(badge);
+    // 点击列表项：仅选中高亮 + 定位试听；编辑框由右侧「编辑」按钮展开。
     main.addEventListener('click', () => {
       selectedMarkerId = marker.id;
       render();
       MaweMarkerEditing.locateMarker(marker.id);
     });
+    // 双击列表项 = 展开 / 收起编辑框（等同「编辑」按钮）。
+    main.addEventListener('dblclick', (event) => {
+      event.preventDefault();
+      selectedMarkerId = marker.id;
+      editingMarkerId = editingMarkerId === marker.id ? null : marker.id;
+      render();
+    });
     item.appendChild(main);
 
-    if (marker.id === selectedMarkerId) item.appendChild(buildMarkerEditor(marker));
+    const editButton = document.createElement('button');
+    editButton.type = 'button';
+    editButton.className = `markers-item-edit${marker.id === editingMarkerId ? ' active' : ''}`;
+    editButton.textContent = '编辑';
+    editButton.title = '展开编辑此标记（名称 / 颜色 / 备注 / 时间 / 复核）';
+    editButton.setAttribute('aria-label', `编辑 ${marker.name || (isRegion ? '区段' : '标记')}`);
+    editButton.addEventListener('click', () => {
+      selectedMarkerId = marker.id;
+      editingMarkerId = editingMarkerId === marker.id ? null : marker.id;
+      render();
+    });
+    item.appendChild(editButton);
+
+    if (marker.id === editingMarkerId) item.appendChild(buildMarkerEditor(marker));
     return item;
   }
 
@@ -298,12 +357,17 @@
     if (!MaweDom.markersList) return;
     const markers = MaweMarkerEditing.getMarkers();
     syncColorFilterOptions(markers);
-    renderSummary(markers);
     const visible = filteredMarkers();
+    renderSummary(markers, visible);
     if (selectedMarkerId && !markers.some((marker) => marker.id === selectedMarkerId)) {
       selectedMarkerId = null;
     } else if (selectedMarkerId && !visible.some((marker) => marker.id === selectedMarkerId)) {
       selectedMarkerId = null;
+    }
+    if (editingMarkerId && !markers.some((marker) => marker.id === editingMarkerId)) {
+      editingMarkerId = null;
+    } else if (editingMarkerId && !visible.some((marker) => marker.id === editingMarkerId)) {
+      editingMarkerId = null;
     }
     const list = MaweDom.markersList;
     const scrollTop = list.scrollTop;

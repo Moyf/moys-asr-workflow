@@ -456,12 +456,13 @@ LLM 工具支持 DeepSeek、智谱 Coding Plan、阿里云 Qwen 和自定义 Ope
 ## 5. 编辑和导出
 
 - 双击文本改字；右键可以按文字或波形位置拆分、合并与批量替换。
+- 支持导入 LRC 歌词：拖入 `.lrc` 或通过「打开工程 ▾ → 加载歌词」选择，与 SRT 一样可以替换主轨或作为双语副字幕。LRC 没有结束时间，每句持续到下一时间戳（空文本时间戳只作为上一句的结束边界），最后一句兜底 5 秒；`[offset:+n]` 按主流播放器约定整体提前 n 毫秒；增强版 LRC 的字词 `<mm:ss.xx>` 标签会被剥除，不生成逐字时间码。
 - 可拖动波形中的字幕块或边缘微调时间；相邻字幕共享边界时会保持连续。
 - 播放器内的字幕预览可直接拖动；悬停或聚焦后拖动八个手柄可缩放。方向键移动，`Shift` 加速移动，`Alt + 方向键` 调整尺寸。几何保存在工程 `preview.subtitle`，不会改变字幕时间。
 - “移除静音空隙”只建立可逆的压缩时间线，不修改原媒体和原字幕时间。
 - 常规 SRT 或 ASS 通过工具栏导出；ASS 读取「管理 ASS 样式」中选定的默认输出方案及关联样式，并按工程记录的源视频宽高写入 `PlayResX` / `PlayResY`；方案配置的 `\fad`、 `\fade` 、 `\move` 、`\t` 会逐句写入每条启用字幕（副字幕与叠加字幕不包含 `\move`，分别由副字幕样式的边距和链式锚定边距定位），能由 ASS 表达的颜色样式也会随之导出；多重字幕的副字幕以独立样式随 ASS 导出。启用说话人导出时写入 ASS `Name` 字段，并用局部标签保留说话人颜色。若启用了空隙移除，可选择去空隙 SRT、带样式 ASS、OTIO、FFconcat 或保留区域 JSON。播放器的「ASS 字幕模式」默认关闭，开启后尽量复刻该 ASS 方案；它不改变原有 CSS 预览设置。
 - 开启 ASS 字幕模式后，全局设置 → 字幕样式在「主字幕」上方显示独立的「特殊文本格式」组。上方「特殊符号规则」提供关闭、单个符号、双个符号、单双均可，默认双个符号；选择关闭后隐藏下方选项。强调、下划线、删除线、缩小与放大各有一个默认开启的复选框，hint 随规则变化。双符号示例为 `**重点**`、`__下划线__`、`~~删除线~~`、`--缩小--`、`++放大++`；关闭某种语法后，该类符号保留原文。开关统一用于主字幕、副字幕和叠加轨的 ASS 预览与导出。颜色和字号比例在 ASS 样式库「拓展样式」下方的「特殊文本样式」配置：第一行为强调色、强调样式和强调文字比例（默认 1.1，范围 1.0–1.5）；第二行为缩小文字比例（默认 0.8，范围 0.1–1.0）和放大文字比例（默认 1.5，范围 1.0–3.0），比例步进均为 0.05。主、副、叠加轨使用各自关联样式的比例，标记可组合，强调比例与缩小/放大比例相乘。相关设置只在开启 ASS 字幕模式时显示；SRT 导出保留标记原文。
-- 去空隙 OTIO 会把启用字幕作为保留媒体 clip 上的 marker，名称为字幕内容；字幕颜色映射为 Resolve 的 `RED`、`YELLOW`、`GREEN`、`BLUE`、`PURPLE`，跨越被移除空隙的字幕按保留区间拆分，无颜色时使用白色默认标记。marker 的 `marked_range` 使用媒体源坐标，与 clip 的 `source_range` 和外部引用的 `available_range` 保持一致；带 BWF `bext.time_reference` 的 WAV 会保留非零媒体起点，避免 Resolve 导入后片段内容错位。Resolve 的可用颜色参考还包括 Blue、Cyan、Green、Yellow、Red、Pink、Purple、Fuchsia、Rose、Lavender、Sky、Mint、Lemon、Sand、Cocoa、Cream；当前 MAW 使用其中五色。
+- 去空隙 OTIO 会把启用字幕作为保留媒体 clip 上的 marker，名称为字幕内容，备注标注为「MAW 字幕」；字幕颜色映射为 Resolve 的 `RED`、`YELLOW`、`GREEN`、`BLUE`、`PURPLE`，跨越被移除空隙的字幕按保留区间拆分，无颜色时使用白色默认标记。工程「标记与区段」默认一并写入同一 clip：名称与备注分别写入 marker 的名称和备注（待复核原因已含在备注中），单点标记按 1 帧写入，色板颜色映射为最近 OTIO 命名色（天蓝归并 `BLUE`、可可归并 `ORANGE`，其余一一对应），导出菜单提供独立开关。marker 的 `marked_range` 使用媒体源坐标，与 clip 的 `source_range` 和外部引用的 `available_range` 保持一致；带 BWF `bext.time_reference` 的 WAV 会保留非零媒体起点，避免 Resolve 导入后片段内容错位。Resolve 的可用颜色参考还包括 Blue、Cyan、Green、Yellow、Red、Pink、Purple、Fuchsia、Rose、Lavender、Sky、Mint、Lemon、Sand、Cocoa、Cream；当前 MAW 使用其中五色加标记色板映射。
 
 完整 JSON 约束在 [JSON_SCHEMA.md](../JSON_SCHEMA.md)。若你打算用其他 ASR 或 LLM 生成工程，至少保证顶层有 `segments`，时间全部是整数毫秒。
 

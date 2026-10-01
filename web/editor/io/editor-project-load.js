@@ -368,7 +368,7 @@ function applyCanonicalProject(data, filename) {
     const jsonEl = document.getElementById('json-name');
     if (jsonEl) {
       jsonEl.textContent = `导入字幕：${displayName}`;
-      jsonEl.title = 'SRT 字幕只能通过导出下载保存为工程文件';
+      jsonEl.title = '导入的字幕只能通过导出下载保存为工程文件';
       jsonEl.classList.add('empty');
     }
     MaweServerSave.configureServerSaveControls();
