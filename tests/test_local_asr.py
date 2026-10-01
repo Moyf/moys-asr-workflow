@@ -253,6 +253,7 @@ class LocalSegmentationTuningTests(unittest.TestCase):
             max_words=2,
             min_words=1,
             gap_split_ms=1,
+            strip_tail_punct="",
         )
 
         self.assertGreater(len(segments), 1)
@@ -343,8 +344,11 @@ class LocalSegmentationTuningTests(unittest.TestCase):
         segments = build_local_segments(result, duration_ms=12_000, max_len=15, min_len=5, gap_split_ms=300)
 
         self.assertEqual([seg["text"] for seg in segments], [
-            "本地模型，AI校准和翻译",
-            "双语字幕，免费ASR",
+            # 共享断句配置下全角逗号也是强断句，句尾剥除 ，。 保留 ！。
+            "本地模型",
+            "AI校准和翻译",
+            "双语字幕",
+            "免费ASR",
             "这些功能全都加上了",
             "这么长一句话！",
         ])
@@ -678,7 +682,7 @@ class LocalAsrFlowTests(unittest.TestCase):
                     continue
                 self.assertEqual("".join(item["text"] for item in result.items), result.text)
                 self.assertTrue(all(item["end"] > item["start"] for item in result.items))
-                segments = build_local_segments(result, duration_ms=6000, min_words=1)
+                segments = build_local_segments(result, duration_ms=6000, min_words=1, strip_tail_punct="")
                 self.assertGreater(len(segments), 1)
                 self.assertEqual("".join(segment["text"] for segment in segments), result.text)
 
@@ -699,7 +703,7 @@ class LocalAsrFlowTests(unittest.TestCase):
             with mock.patch("maw.local_asr.get_duration_sec", return_value=65.0), \
                     mock.patch("maw.local_asr.subprocess.run"):
                 result = engine.transcribe(audio, language="en", ffmpeg_path="ffmpeg")
-        segments = build_local_segments(result, duration_ms=65000, min_words=1, gap_split_ms=800)
+        segments = build_local_segments(result, duration_ms=65000, min_words=1, gap_split_ms=800, strip_tail_punct="")
         self.assertEqual(len(segments), 6)
         self.assertEqual([s["start"] for s in segments], [0, 1500, 30000, 31500, 60000, 61500])
         self.assertTrue(all(s["end"] - s["start"] < 3000 for s in segments))
@@ -731,7 +735,8 @@ class LocalAsrFlowTests(unittest.TestCase):
         )
         self.assertEqual(
             [segment["text"] for segment in build_local_segments(result, duration_ms=2200)],
-            ["Hello, world.", " Next sentence works!"],
+            # 默认剥尾清单（，。；,.）剥掉英文句尾句号，问叹号保留。
+            ["Hello, world", " Next sentence works!"],
         )
 
     def test_qwen_long_audio_is_split_and_timestamps_are_shifted(self) -> None:
@@ -1003,7 +1008,8 @@ class LocalAsrFlowTests(unittest.TestCase):
         self.assertEqual(result.text, "Hello, world. Next sentence works!")
         self.assertEqual(
             [segment["text"] for segment in build_local_segments(result, duration_ms=2000)],
-            ["Hello, world.", " Next sentence works!"],
+            # 默认剥尾清单剥掉英文句尾句号。
+            ["Hello, world", " Next sentence works!"],
         )
 
     def test_whisper_segment_without_words_keeps_sentence_boundary(self) -> None:
@@ -1320,8 +1326,9 @@ class LocalAsrFlowTests(unittest.TestCase):
         self.assertTrue(runtime.kwargs["sentence_timestamp"])
         segments = build_local_segments(result, duration_ms=2000)
         self.assertEqual([segment["text"] for segment in segments], [
-            "First sentence works here.",
-            " Second sentence works too.",
+            # 默认剥尾清单剥掉英文句尾句号。
+            "First sentence works here",
+            " Second sentence works too",
         ])
 
     def test_fun_asr_runtime_import_is_lazy(self) -> None:

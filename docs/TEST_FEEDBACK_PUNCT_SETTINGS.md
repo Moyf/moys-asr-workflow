@@ -90,3 +90,27 @@
 验证记录：`tests.test_postprocess_match`、`tests.test_gui_web`、`tests.test_postprocess_pipeline`、`tests.test_postprocess_io` 共 332 项通过（跳过 1 项）；Python 编译、两个 Launcher 脚本 `node --check` 与 `git diff --check` 通过。
 
 补充复核：全量 `unittest discover` 共 1453 项，其中本项相关测试未失败；全量结果有 4 个失败、7 个错误，均集中在并行 WIP 的媒体缓存 / `mopeaks` / `quapeaks` 路径契约（当前写入 `_maw` 与既有测试期望不一致），不涉及本项改动文件。
+
+## 2026-10-01 行为变更：断句符号唯一真源 + 转写接入
+
+| 编号 | 范围 | 需求摘要 | 类型 | 状态 |
+| --- | --- | --- | --- | --- |
+| 1 | 语义 | 消灭隐性内置符号：默认清单 `，。？！；,.` 即完整真源，删行即失效；`DEFAULT_SPLIT_PUNCTUATION` 收窄为结构性换行 | 修改 | 已修复 |
+| 2 | 转写 | 剥尾集合改为 `断句符号 − 保留符号`（单字符），`--extra-strong-punct` 恒显式下发（空串=仅换行）；qwen 脚本模块默认值 = 共享默认清单，本地引擎（复用同一 `split_words_to_segments`）随之恢复强断句 | 修改 | 已修复 |
+| 3 | 西文 | 西文句末检测不注入默认清单（逗号词尾会让英文每逗号成句末、破坏合并）；默认清单之外的新增符号（如 `~`）仍然生效 | 修改 | 已修复 |
+| 4 | 迁移 | plan version 1→2：旧计划一次性并入默认断句清单（用户符号在前、缺失默认在后），避免 `，。` 断句倒退 | 修改 | 已修复 |
+| 5 | UI | 「断句后保留的符号」更名「断句末尾保留符号」，hint/placeholder/i18n 中英同步 | 修改 | 已修复 |
+
+处理结论：常量落位 `maw/postprocess_match.py`（`DEFAULT_EXTRA_SPLIT_PUNCTUATION` / `DEFAULT_PRESERVE_PUNCTUATION` / `DEFAULT_STRIP_TAIL_PUNCT` / `DEFAULT_STRONG_PUNCT`，pipeline 反向导入避免循环）；`ScriptMatchRequest` 与各转写脚本 CLI 默认值同步为新清单；多字符号仍只在匹配侧断句（rstrip 逐字符）；超长段兜底的 WEAK_PUNCT 与换行保持内置。
+
+验证记录：全量 `unittest discover` 1744 项通过（跳过 8）；`node --test` 编辑器四件套与两个 Launcher 脚本 `node --check` 通过；`git diff --check` 通过。行为对照：默认转写剥尾 `，。` → `，。；,.`；用户场景（`？` 在断句清单、不在保留清单）转写与匹配均会删除句尾问号（`tests.test_postprocess_match.test_trailing_question_mark_is_stripped_when_configured_but_not_preserved`）。未实机验证 Launcher 桌面端交互（同前述边界）。
+
+## 2026-10-01 PR review 补充（#164 合并前）
+
+| 编号 | 范围 | 需求摘要 | 类型 | 状态 |
+| --- | --- | --- | --- | --- |
+| 6 | 契约 | Python 侧默认清单在 7 个转写 CLI 与 `maw/local_asr.py` 中为独立字面量，此前无漂移守卫；新增 `tests/test_punctuation_defaults_contract.py`，从 `maw/postprocess_match.py` 规范常量派生期望值、以源码文本钉住全部副本（JS 侧已有 LauncherAssetContractTests 守护） | 修改 | 已修复 |
+| 7 | 文案 | `_transcribe_extra_strong_punct` docstring 残留旧术语「额外断句符号」，改为「断句符号」 | 修改 | 已修复 |
+| 8 | lint | `postprocess_pipeline.py` 导入未使用的 `DEFAULT_STRONG_PUNCT` / `DEFAULT_STRIP_TAIL_PUNCT`，会挂 CI 的 Ruff 检查；移除导入，两个常量的契约职责改由 `tests/test_punctuation_defaults_contract.py` 承担（断言其与派生默认值一致） | 修改 | 已修复 |
+
+验证记录：全量 `unittest discover` 1749 项通过（跳过 8，含新增契约测试 4 项）；`ruff check` 全仓通过、新测试文件 `ruff format --check` 通过；`git diff --check` 通过。

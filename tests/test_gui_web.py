@@ -1494,6 +1494,8 @@ class GuiWebBridgeTests(unittest.TestCase):
             "projectPath": str(project),
             "scriptPath": str(script),
             "outputMode": "both",
+            "extraSplitPunctuation": ["，", "。", "？", "！", "；", ",", "."],
+            "preservePunctuation": ["？", "！"],
         })
 
         self.assertTrue(result["ok"])
@@ -1549,8 +1551,8 @@ class GuiWebBridgeTests(unittest.TestCase):
 
         result = self.api.read_script_preview({
             "path": str(script),
-            "extraSplitPunctuation": ["？"],
-            "preservePunctuation": ["？"],
+            "extraSplitPunctuation": ["，", "。", "？", "！", "；", ",", "."],
+            "preservePunctuation": ["？", "！"],
         })
 
         self.assertTrue(result["ok"])
@@ -3630,8 +3632,8 @@ class GuiWebBridgeTests(unittest.TestCase):
             "apiKey": "sk-test",
         }, self.env_path)
 
-        self.assertEqual(request.extra_strong_punct, "?!——")
-        # 保留符号只影响句尾剥除集合，与额外断句符号互不影响。
+        self.assertEqual(request.extra_strong_punct, "?!——，。？！；,.")
+        # 无 version 的旧计划会并入默认断句清单（与保留符号互不影响剥尾集合）。
         self.assertIn("，", request.strip_tail_punct)
 
     def test_start_transcription_rejects_singapore_without_workspace(self) -> None:
@@ -4905,7 +4907,7 @@ class LauncherAssetContractTests(unittest.TestCase):
         stylesheet = (ROOT / "web" / "launcher" / "launcher.css").read_text(encoding="utf-8")
 
         self.assertIn(
-            '{ id: "match", enabled: false, scriptPath: "", matchMode: "script", aiCleanup: false, extraSplitPunctuation: ["？", "！", ","], preservePunctuation: ["？", "！"], cleanMarkdownSymbols: true },',
+            '{ id: "match", enabled: false, scriptPath: "", matchMode: "script", aiCleanup: false, extraSplitPunctuation: ["，", "。", "？", "！", "；", ",", "."], preservePunctuation: ["？", "！"], cleanMarkdownSymbols: true },',
             script,
         )
         self.assertIn('subtitle_invalid: (detail) => `字幕或工程解析失败：', launcher_script)
@@ -4913,18 +4915,18 @@ class LauncherAssetContractTests(unittest.TestCase):
         self.assertIn('else setResult(postprocessErrorText(result), "error");', script)
         self.assertIn('void refreshScriptPreview();', script)
         self.assertIn(
-            'settings_punctuation_hint: "决定哪些标点符号需要换行，以及换行后是否保留标点（文稿匹配与转写共用）"',
+            'settings_punctuation_hint: "决定哪些标点符号需要断句，以及断句后句尾标点的去留（文稿匹配与转写共用）"',
             launcher_script,
         )
         self.assertIn(
-            'settings_punctuation_hint: "Choose which punctuation marks start a new line and whether to keep them after splitting (shared by script matching and transcription)."',
+            'settings_punctuation_hint: "Choose which punctuation marks trigger a split and what happens to tail punctuation after splitting (shared by script matching and transcription)."',
             launcher_script,
         )
-        self.assertIn('class="hint settings-punctuation-hint" data-i18n="settings_punctuation_hint">决定哪些标点符号需要换行，以及换行后是否保留标点（文稿匹配与转写共用）</p>', page)
+        self.assertIn('class="hint settings-punctuation-hint" data-i18n="settings_punctuation_hint">决定哪些标点符号需要断句，以及断句后句尾标点的去留（文稿匹配与转写共用）</p>', page)
         self.assertIn('data-i18n="toolbox_extra_split_punctuation">需要断句的符号</label>', page)
-        self.assertIn('data-i18n="toolbox_preserve_punctuation">断句后保留的符号</label>', page)
-        self.assertIn('toolbox_extra_split_punctuation_hint: "每行一个符号；逗号、句号默认生效。"', launcher_script)
-        self.assertIn('toolbox_preserve_punctuation_hint: "断句后仍然需要保留的符号，默认留在前一句结尾。"', launcher_script)
+        self.assertIn('data-i18n="toolbox_preserve_punctuation">断句末尾保留符号</label>', page)
+        self.assertIn('toolbox_extra_split_punctuation_hint: "每行一个符号；这里是断句与句尾剥除的完整清单，删掉某行即对该符号失效。换行始终生效。"', launcher_script)
+        self.assertIn('toolbox_preserve_punctuation_hint: "断句后保留在上一句末尾的符号；未列出的断句符号会从句尾删除。"', launcher_script)
         self.assertIn('.settings-punctuation-hint {\n  margin-bottom: 10px;\n}', stylesheet)
 
     def test_launcher_match_markdown_cleanup_is_shared_by_previews_and_runs(self) -> None:
