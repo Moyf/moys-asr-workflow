@@ -1753,9 +1753,10 @@ __WAVEFORM_CSS__
     <div class="ass-frame-warnings" id="ass-frame-warnings" hidden></div>
     <div class="ass-frame-actions">
       <button type="button" id="ass-frame-render" class="primary">📷 渲染当前帧</button>
+      <button type="button" id="ass-frame-size" aria-pressed="false">原尺寸查看</button>
       <button type="button" id="ass-frame-close-footer">关闭</button>
     </div>
-    <small class="editor-settings-hint ass-frame-hint">单帧预览使用 FFmpeg (libass) 按当前 ASS 导出方案渲染，即最终烧录的实际效果，可与播放器预览对比。</small>
+    <small class="editor-settings-hint ass-frame-hint">暂停时播放器自动显示 libass 实际画面，播放时使用即时预览。实际帧按源分辨率输出无损 PNG；原尺寸查看可检查文字边缘。预览跟随字幕轨道显隐，导出内容不受影响。</small>
   </div>
 </aside>
 
@@ -1767,6 +1768,8 @@ __WAVEFORM_CSS__
   <div class="player-wrap">
     <div class="player-stage">
       __MEDIA_HTML__
+      <img id="ass-stage-frame" class="ass-stage-frame" alt="ASS 暂停实际画面" hidden>
+      <span id="ass-stage-status" class="ass-stage-status" hidden></span>
           <div class="player-empty" id="player-empty">拖入工程、媒体或 SRT 开始编辑</div>
       <div id="overlay" class="subtitle-overlay geo-box hidden" tabindex="0" role="group" aria-label="字幕预览位置。可拖动调整；方向键移动，按住 Shift 加速，按住 Alt 配合方向键调整大小，Enter 显示控制点，Esc 退出。"><span id="overlay-track-text" class="subtitle-overlay-track-text hidden"></span><span id="overlay-main-text"><span id="overlay-main-speaker-label" class="subtitle-speaker-label hidden"></span></span><span id="overlay-extension-text" class="subtitle-extension-text hidden"></span><span class="overlay-handle" data-handle="nw" aria-hidden="true"></span><span class="overlay-handle" data-handle="n" aria-hidden="true"></span><span class="overlay-handle" data-handle="ne" aria-hidden="true"></span><span class="overlay-handle" data-handle="e" aria-hidden="true"></span><span class="overlay-handle" data-handle="se" aria-hidden="true"></span><span class="overlay-handle" data-handle="s" aria-hidden="true"></span><span class="overlay-handle" data-handle="sw" aria-hidden="true"></span><span class="overlay-handle" data-handle="w" aria-hidden="true"></span></div>
     </div>

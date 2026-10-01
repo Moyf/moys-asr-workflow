@@ -212,9 +212,13 @@ class AssStyleLibraryTests(unittest.TestCase):
         self.assertEqual(ass_alpha(100), 0)
         self.assertEqual(ass_alpha(50), 128)
         self.assertEqual(ass_alpha(0), 255)
-        # 缺省按 0% 不透明度（= 全透明）处理；实际调用前都会先归一化。
+        # 显式 None 与 JS null 一样视为 0%；缺失字段另由样式归一化补齐。
         self.assertEqual(ass_alpha(None), 255)
         self.assertEqual(ass_alpha(150), 0)
+        self.assertEqual(ass_alpha(30), 179)
+        self.assertEqual(ass_alpha(70), 77)
+        self.assertEqual(ass_alpha(50.5), 126)
+        self.assertEqual(ass_alpha(float("nan")), 0)
         self.assertEqual(ass_color("#123456", opacity=50), "&H80563412")
 
         style = {
@@ -231,6 +235,14 @@ class AssStyleLibraryTests(unittest.TestCase):
         force_style = ass_style_force_style(style)
         self.assertIn("OutlineColour=&H80332211", force_style)
         self.assertIn("BackColour=&HFF665544", force_style)
+
+    def test_opacity_rounding_matches_browser_style_library(self) -> None:
+        library = normalize_ass_style_library({
+            "styles": [{"id": "alpha", "outlineOpacity": 50.5, "backOpacity": None}],
+        })
+        style = find_ass_style(library, "alpha")
+        self.assertEqual(style["outlineOpacity"], 51)
+        self.assertEqual(style["backOpacity"], 0)
 
     def test_opacity_defaults_keep_legacy_styles_opaque(self) -> None:
         # 旧样式库没有不透明度字段：归一化补 100（完全不透明），导出字节不变。

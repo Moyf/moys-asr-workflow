@@ -222,7 +222,7 @@ class EditorAssetContractTests(unittest.TestCase):
         self.assertIn('id="ass-frame-stale"', template)
         module = edit.read_web_asset("editor/styles/editor-wiring-ass-frame.js")
         self.assertIn("assFrameUrl", module)
-        self.assertIn("MaweExportSrt.buildAss()", module)
+        self.assertIn("MaweExportSrt.buildAss({ preview: true })", module)
         self.assertIn("addEventListener('seeked'", module)
         self.assertIn("addEventListener('pause'", module)
         styles = edit.read_web_asset("editor.css")

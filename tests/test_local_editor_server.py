@@ -87,6 +87,9 @@ class LocalEditorServerTests(unittest.TestCase):
             {**payload, 'ass': None},
             {**payload, 'timeMs': '1200'},
             {**payload, 'timeMs': -1},
+            {**payload, 'timeMs': True},
+            {**payload, 'timeMs': 9_007_199_254_740_992},
+            {**payload, 'timeMs': 10 ** 1000},
         ):
             handler.read_json_request = mock.Mock(return_value=bad_request)
             handler.render_ass_frame()
@@ -106,7 +109,38 @@ class LocalEditorServerTests(unittest.TestCase):
             handler.render_ass_frame()
         self.assertEqual(handler.send_json.call_args.args[0], 400)
         self.assertIn('libass', handler.send_json.call_args.args[1]['error'])
+        self.assertEqual(handler.send_json.call_args.args[1]['code'], 'ASS_FRAME_LIBASS_UNAVAILABLE')
         handler.server.ensure_libass_supported.assert_called_once_with(Path('ffmpeg'))
+
+    def test_ass_frame_endpoint_reports_missing_ffmpeg_code(self) -> None:
+        handler = self._ass_frame_handler()
+        handler.read_json_request = mock.Mock(return_value={
+            'requestToken': 'test-token', 'ass': '[Script Info]\n', 'timeMs': 0,
+        })
+        with mock.patch.object(server_editor, 'editor_ffmpeg_binary', return_value=None):
+            handler.render_ass_frame()
+        self.assertEqual(handler.send_json.call_args.args[0], 400)
+        self.assertEqual(handler.send_json.call_args.args[1]['code'], 'ASS_FRAME_FFMPEG_MISSING')
+
+    def test_libass_capability_cache_tracks_binary_replacement(self) -> None:
+        server = object.__new__(server_editor.EditorServer)
+        server.ass_frame_lock = threading.Lock()
+        server.libass_supported = None
+        server.libass_binary_signature = None
+        first = self.root / 'first-ffmpeg'
+        second = self.root / 'second-ffmpeg'
+        first.write_bytes(b'old build')
+        second.write_bytes(b'new build')
+        with mock.patch.object(server_editor, 'ffmpeg_supports_libass', side_effect=[False, True, False]) as probe:
+            self.assertFalse(server.ensure_libass_supported(first))
+            self.assertFalse(server.ensure_libass_supported(first))
+            self.assertEqual(probe.call_count, 1)
+            self.assertTrue(server.ensure_libass_supported(second))
+            self.assertTrue(server.ensure_libass_supported(second))
+            self.assertEqual(probe.call_count, 2)
+            second.write_bytes(b'replaced build with different size')
+            self.assertFalse(server.ensure_libass_supported(second))
+            self.assertEqual(probe.call_count, 3)
 
     def test_ass_frame_endpoint_returns_base64_png_and_warnings(self) -> None:
         handler = self._ass_frame_handler()
@@ -159,8 +193,9 @@ class LocalEditorServerTests(unittest.TestCase):
         self.assertIn('Demo', warnings[0])
         self.assertIn('U+4E2D', warnings[0])
         command, kwargs = calls[0]
-        self.assertEqual(command[command.index('-vf') + 1], "ass=filename='frame.ass'")
+        self.assertEqual(command[command.index('-vf') + 1], "format=rgb24,ass=filename='frame.ass'")
         self.assertEqual(command[command.index('-frames:v') + 1], '1')
+        self.assertEqual(command[command.index('-map') + 1], '0:V:0')
         # -copyts 保持原始时间戳，libass 才能按播放头时间命中字幕事件。
         self.assertEqual(command.index('-copyts'), command.index('-ss') + 2)
         self.assertEqual(command[command.index('-ss') + 1], '1.500')
@@ -191,10 +226,10 @@ class LocalEditorServerTests(unittest.TestCase):
             ], capture_output=True, text=True)
             self.assertEqual(encode.returncode, 0, encode.stderr)
             ass_text = (
-                '[Script Info]\nScriptType: v4.00+\nPlayResX: 320\nPlayResY: 180\n\n'
+                '[Script Info]\nScriptType: v4.00+\nPlayResX: 320\nPlayResY: 180\nYCbCr Matrix: None\n\n'
                 '[V4+ Styles]\n'
                 'Format: Name, Fontname, Fontsize, PrimaryColour, SecondaryColour, OutlineColour, BackColour, Bold, Italic, Underline, StrikeOut, ScaleX, ScaleY, Spacing, Angle, BorderStyle, Outline, Shadow, Alignment, MarginL, MarginR, MarginV, Encoding\n'
-                'Style: Default,Arial,24,&H00FFFFFF,&H000000FF,&H00000000,&H00000000,0,0,0,0,100,100,0,0,1,2,0,2,10,10,10,1\n\n'
+                'Style: Default,Arial,24,&H0000FF00,&H000000FF,&H00000000,&H00000000,0,0,0,0,100,100,0,0,1,2,0,2,10,10,10,1\n\n'
                 '[Events]\n'
                 'Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text\n'
                 'Dialogue: 0,0:00:00.00,0:00:01.00,Default,,0,0,0,,帧预览\n'
@@ -208,6 +243,19 @@ class LocalEditorServerTests(unittest.TestCase):
                 '-frames:v', '1', '-c:v', 'png', '-f', 'image2pipe', 'pipe:1',
             ], capture_output=True)
             self.assertEqual(plain.returncode, 0, plain.stderr.decode('utf-8', 'replace'))
+            # Source dimensions are preserved, and RGB glyph composition must
+            # not introduce red/blue chroma fringing around pure green text.
+            self.assertEqual(struct.unpack('>II', png[16:24]), (320, 180))
+            decoded = subprocess.run([
+                str(ffmpeg), '-hide_banner', '-loglevel', 'error',
+                '-i', 'pipe:0', '-frames:v', '1', '-pix_fmt', 'rgb24',
+                '-f', 'rawvideo', 'pipe:1',
+            ], input=png, capture_output=True)
+            self.assertEqual(decoded.returncode, 0, decoded.stderr.decode('utf-8', 'replace'))
+            pixels = decoded.stdout
+            self.assertGreater(sum(value > 0 for value in pixels[1::3]), 50)
+            self.assertLessEqual(max(pixels[0::3]), 1)
+            self.assertLessEqual(max(pixels[2::3]), 1)
         self.assertTrue(png.startswith(b'\x89PNG'))
         self.assertIsInstance(warnings, list)
         self.assertNotEqual(png, plain.stdout)

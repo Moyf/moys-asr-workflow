@@ -352,6 +352,10 @@ def _loaded_media_reference(
 class AssFrameError(ValueError):
     """单帧 ASS 实际画面渲染失败（缺少 FFmpeg、libass 滤镜或视频画面）。"""
 
+    def __init__(self, message: str, *, code: str = "ASS_FRAME_RENDER_FAILED") -> None:
+        super().__init__(message)
+        self.code = code
+
 
 def editor_ffmpeg_binary() -> Path | None:
     """Resolve the FFmpeg binary the same way project media loading does."""
@@ -402,9 +406,14 @@ def render_ass_frame_png(
             # 从 0 开始，libass 会按错误时间判断事件是否活动，导致字幕不渲染。
             "-ss", f"{seconds:.3f}", "-copyts",
             "-i", str(media_path),
-            "-vf", "ass=filename='frame.ass'",
+            # Pick the first real video stream, never a large embedded cover.
+            "-map", "0:V:0",
+            # Render coloured glyphs after conversion to full-resolution RGB;
+            # drawing on YUV420 first subsamples their chroma before PNG encoding.
+            "-sws_flags", "spline+accurate_rnd+full_chroma_int",
+            "-vf", "format=rgb24,ass=filename='frame.ass'",
             "-frames:v", "1",
-            "-c:v", "png", "-f", "image2pipe", "pipe:1",
+            "-c:v", "png", "-pix_fmt", "rgb24", "-f", "image2pipe", "pipe:1",
         ]
         try:
             result = subprocess.run(  # noqa: S603 - 固定参数的单帧渲染
@@ -835,6 +844,7 @@ class EditorServer(ThreadingHTTPServer):
         self.reapeaks_lock = threading.Lock()
         self.ass_frame_lock = threading.Lock()
         self.libass_supported: bool | None = None
+        self.libass_binary_signature: tuple[object, ...] | None = None
         self.reapeaks_generation = 0
         self.reapeaks_status = "pending" if self.defer_reapeaks else "disabled"
         self.reapeaks_payload: dict[str, dict] = {}
@@ -856,8 +866,15 @@ class EditorServer(ThreadingHTTPServer):
     def ensure_libass_supported(self, ffmpeg: Path) -> bool:
         """Probe and cache whether this FFmpeg build can render libass frames."""
         with self.ass_frame_lock:
-            if self.libass_supported is None:
+            resolved = ffmpeg.resolve()
+            try:
+                stat = resolved.stat()
+                signature = (str(resolved), stat.st_mtime_ns, stat.st_size, stat.st_ino)
+            except OSError:
+                signature = (str(resolved),)
+            if self.libass_supported is None or signature != self.libass_binary_signature:
                 self.libass_supported = ffmpeg_supports_libass(ffmpeg)
+                self.libass_binary_signature = signature
             return self.libass_supported
 
     def persist_settings_async(self) -> None:
@@ -2225,25 +2242,29 @@ class EditorRequestHandler(BaseHTTPRequestHandler):
             if len(ass_text.encode("utf-8")) > MAX_ASS_FRAME_TEXT_BYTES:
                 raise ValueError(f"ASS 字幕内容超过 {MAX_ASS_FRAME_TEXT_BYTES // (1024 * 1024)} MB")
             time_ms = request.get("timeMs")
-            if isinstance(time_ms, bool) or not isinstance(time_ms, int) or time_ms < 0:
+            if (isinstance(time_ms, bool) or not isinstance(time_ms, int)
+                    or not 0 <= time_ms <= 9_007_199_254_740_991):
                 raise ValueError("时间格式不正确")
             media_path = self.editor_server.project.media_path
             if media_path is None or not media_path.is_file():
                 raise ValueError("当前工程没有可用的媒体文件")
             ffmpeg = editor_ffmpeg_binary()
             if ffmpeg is None:
-                raise AssFrameError("未找到 FFmpeg，无法渲染实际画面；请安装 FFmpeg 或配置 FFMPEG_PATH。")
+                raise AssFrameError("未找到 FFmpeg，无法渲染实际画面；请安装 FFmpeg 或配置 FFMPEG_PATH。",
+                                    code="ASS_FRAME_FFMPEG_MISSING")
             if not self.editor_server.ensure_libass_supported(ffmpeg):
                 raise AssFrameError(
                     "当前 FFmpeg 未编译 libass（ass 滤镜），无法渲染实际画面；"
-                    "请安装完整版 FFmpeg（如 macOS 的 ffmpeg-full）或将 FFMPEG_PATH 指向带 libass 的构建。"
+                    "请安装完整版 FFmpeg（如 macOS 的 ffmpeg-full）或将 FFMPEG_PATH 指向带 libass 的构建。",
+                    code="ASS_FRAME_LIBASS_UNAVAILABLE",
                 )
             png_bytes, warnings = render_ass_frame_png(media_path, ass_text, time_ms, ffmpeg)
         except PermissionError as error:
             self.send_json(HTTPStatus.FORBIDDEN, {"ok": False, "error": str(error)})
             return
         except (UnicodeDecodeError, json.JSONDecodeError, AssFrameError, ValueError, OSError) as error:
-            self.send_json(HTTPStatus.BAD_REQUEST, {"ok": False, "error": str(error)})
+            self.send_json(HTTPStatus.BAD_REQUEST, {"ok": False, "error": str(error),
+                                                   "code": getattr(error, "code", "")})
             return
         self.send_json(HTTPStatus.OK, {
             "ok": True,

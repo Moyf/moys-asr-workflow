@@ -1,177 +1,317 @@
-// ASS 单帧实际画面预览：把编辑器当前导出的完整 ASS 文本交给 server-editor，
-// 用 FFmpeg (libass) 渲染播放头所在的一帧，作为 CSS 预览与最终烧录效果的对照。
-// 仅 localhost Editor 提供（SERVER_CONFIG.assFrameUrl）；便携 file:// 模式没有
-// 渲染入口，按钮保持隐藏。CSS 预览永远即时，这里只做按需的“实际画面”快照。
+// Paused Server video previews use the same native libass frame as the floating
+// comparison window. Playback/file:// keep the immediate CSS approximation.
 (function initMaweAssFrame(global) {
   'use strict';
 
-  const ASS_FRAME_WINDOW_POSITION_KEY = 'moy.asr.ass_frame.window.v1';
-
   const openButton = document.getElementById('ass-frame-preview-open');
   const windowEl = document.getElementById('ass-frame-window');
-  const dragHandle = document.getElementById('ass-frame-drag-handle');
-  const windowClose = document.getElementById('ass-frame-window-close');
-  const windowStatus = document.getElementById('ass-frame-window-status');
-  const imageEl = document.getElementById('ass-frame-image');
-  const placeholderEl = document.getElementById('ass-frame-placeholder');
-  const captionEl = document.getElementById('ass-frame-caption');
-  const warningsEl = document.getElementById('ass-frame-warnings');
-  const staleEl = document.getElementById('ass-frame-stale');
-  const renderButton = document.getElementById('ass-frame-render');
-  const footerCloseButton = document.getElementById('ass-frame-close-footer');
-  const assModeToggle = document.getElementById('ass-mode-toggle');
-
   if (!openButton || !windowEl) return;
+  const imageEl = document.getElementById('ass-frame-image');
+  const stageImage = document.getElementById('ass-stage-frame');
+  const stageStatus = document.getElementById('ass-stage-status');
+  const stage = global.MaweDom?.playerStage;
+  const player = global.MaweCoreState?.player;
+  const renderButton = document.getElementById('ass-frame-render');
+  const windowStatus = document.getElementById('ass-frame-window-status');
+  const staleEl = document.getElementById('ass-frame-stale');
+  let timer = 0;
+  let pending = false;
+  let desired = null;
+  let cached = null;
+  let failedKey = '';
+  let failureMessage = '';
+  let mediaGeneration = 0;
+  let seekGeneration = 0;
+  let capabilityFailure = '';
+  let presentedTime = null;
+  let presentedCursor = null;
+  const REQUEST_TIMEOUT_MS = 165000;
 
-  let renderPending = false;
-  let pendingRenderTimer = 0;
+  const translate = (text) => global.MAWE_I18N?.translateText?.(text) || text;
+  const enabled = () => Boolean(global.MaweBoot?.SERVER_CONFIG?.assFrameUrl)
+    && global.MaweSettings?.EDITOR_SETTINGS?.assMode === true;
 
-  function translate(text) {
-    return global.MAWE_I18N?.translateText?.(text) || text;
-  }
-
-  function assFrameServerAvailable() {
-    return Boolean(global.MaweBoot?.SERVER_CONFIG?.assFrameUrl);
+  function boundVideo() {
+    // A browser-only blob upload can differ from the server's bound project.
+    // Never replace it with a frame from an unrelated server media file.
+    if (player?.tagName !== 'VIDEO' || !player.videoWidth) return false;
+    const url = new URL(player.currentSrc || player.src || global.location.href, global.location.href);
+    return url.origin === global.location.origin && url.pathname === '/media';
   }
 
   function setWindowStatus(text, state = '') {
     if (!windowStatus) return;
     windowStatus.textContent = text ? translate(text) : '';
-    if (state) windowStatus.dataset.state = state;
-    else delete windowStatus.dataset.state;
+    windowStatus.dataset.state = state;
   }
 
-  function syncAssFrameControls() {
-    // 按钮只在「server 模式 + ASS 字幕模式开启」时出现；关闭 ASS 模式时
-    // 连同预览窗一起收起，避免留下无法刷新的旧画面。
-    openButton.hidden = !assFrameServerAvailable() || global.MaweSettings?.EDITOR_SETTINGS?.assMode !== true;
-    if (openButton.hidden && floatingPanel.isOpen()) floatingPanel.close();
+  function setStageStatus(text, detail = '') {
+    if (!stageStatus) return;
+    stageStatus.textContent = translate(text);
+    stageStatus.title = detail || translate(text);
+    stageStatus.hidden = !text;
   }
 
-  function formatFrameClock(ms) {
+  function hideStage() {
+    if (stageImage) stageImage.hidden = true;
+    stage?.classList.remove('ass-stage-ready');
+  }
+
+  function snapshot() {
+    if (!enabled() || !boundVideo()) return null;
+    // currentTime can sit between two frames. Seek at/before the presented
+    // frame's PTS; rounding up can make FFmpeg discard it and choose the next.
+    const frameTimeMs = Math.max(0, (presentedTime ?? (Number(player.currentTime) || 0)) * 1000);
+    const timeMs = Math.floor(frameTimeMs + 0.000001);
+    const ass = global.MaweExportSrt.buildAss({ preview: true });
+    return { ass, timeMs, frameTimeMs, generation: mediaGeneration, seek: seekGeneration, source: player.currentSrc,
+      key: JSON.stringify([mediaGeneration, player.currentSrc, ass, timeMs]) };
+  }
+
+  function frameClock(ms) {
     const safe = Math.max(0, Math.round(Number(ms) || 0));
     const hours = Math.floor(safe / 3600000);
     const minutes = Math.floor((safe % 3600000) / 60000);
     const seconds = Math.floor((safe % 60000) / 1000);
     const millis = safe % 1000;
-    const hh = hours ? `${String(hours).padStart(2, '0')}:` : '';
-    return `${hh}${String(minutes).padStart(2, '0')}:${String(seconds).padStart(2, '0')}.${String(millis).padStart(3, '0')}`;
+    return `${hours ? `${String(hours).padStart(2, '0')}:` : ''}${String(minutes).padStart(2, '0')}:${String(seconds).padStart(2, '0')}.${String(millis).padStart(3, '0')}`;
   }
 
-  function currentPlaybackMs() {
-    const player = global.MaweCoreState?.player;
-    return Math.max(0, Math.round((Number(player?.currentTime) || 0) * 1000));
+  function showWindowFrame(frame) {
+    if (imageEl) {
+      if (imageEl.getAttribute('src') !== frame.url) imageEl.src = frame.url;
+      imageEl.hidden = false;
+    }
+    const placeholder = document.getElementById('ass-frame-placeholder');
+    if (placeholder) placeholder.hidden = true;
+    const caption = document.getElementById('ass-frame-caption');
+    if (caption) {
+      caption.textContent = `${frameClock(frame.timeMs)} · ${frame.width} × ${frame.height} · ${translate('无损 PNG')}`;
+      caption.hidden = false;
+    }
+    const warnings = document.getElementById('ass-frame-warnings');
+    if (warnings) {
+      warnings.textContent = frame.warnings.join('\n');
+      warnings.hidden = !frame.warnings.length;
+    }
+    setWindowStatus('渲染完成', 'success');
   }
 
-  function showAssFrameError(message) {
-    setWindowStatus(message, 'error');
-    global.MaweHint?.flashHint?.(message, 'invalid');
+  function showStageFrame(frame) {
+    if (!stageImage || !desired || frame.key !== desired.key || !player.paused || player.seeking) return;
+    if (stageImage.getAttribute('src') !== frame.url) stageImage.src = frame.url;
+    stageImage.dataset.timeMs = String(frame.timeMs);
+    stageImage.hidden = false;
+    stage?.classList.add('ass-stage-ready');
+    setStageStatus(frame.warnings.length ? 'ASS 实际画面 · 字体警告' : 'ASS 实际画面', frame.warnings.join('\n'));
   }
 
   function syncStaleOverlay() {
-    // 播放中渲染出来的帧必然在显示前就过时：压灰色斜纹提示，暂停后自动补渲染。
-    const player = global.MaweCoreState?.player;
-    const stale = Boolean(staleEl) && floatingPanel.isOpen() && Boolean(player) && player.paused !== true;
-    if (staleEl) staleEl.hidden = !stale;
+    if (!staleEl) return;
+    staleEl.hidden = !cached || !floatingPanel.isOpen() || (player?.paused === true && !player?.seeking
+      && cached?.key === desired?.key);
+    const label = staleEl.querySelector('span');
+    if (label) label.textContent = translate(player?.paused === true ? '画面已过期' : '暂停后重新渲染');
   }
 
-  function scheduleRender(delayMs = 250) {
-    // seek（方向键步进、波形点击、拖动进度条）会连续触发；合并成最后一次。
-    if (!floatingPanel.isOpen()) return;
-    global.clearTimeout(pendingRenderTimer);
-    pendingRenderTimer = global.setTimeout(() => {
-      pendingRenderTimer = 0;
-      if (floatingPanel.isOpen() && !renderPending) void renderAssFrame();
-    }, delayMs);
-  }
-
-  async function renderAssFrame() {
-    const requestUrl = global.MaweBoot?.SERVER_CONFIG?.assFrameUrl;
-    if (!requestUrl || renderPending) return;
-    if (global.MaweSettings?.EDITOR_SETTINGS?.assMode !== true) {
-      showAssFrameError('需要启用 ASS 字幕模式后再渲染实际画面。');
+  function syncPreview() {
+    if (!enabled() || !boundVideo()) {
+      desired = null;
+      hideStage();
+      setStageStatus('');
+      global.clearTimeout(timer);
+      timer = 0;
+      syncStaleOverlay();
       return;
     }
-    const timeMs = currentPlaybackMs();
-    renderPending = true;
+    if (!player.paused || player.seeking) {
+      desired = null;
+      hideStage();
+      setStageStatus('ASS 即时预览');
+      global.clearTimeout(timer);
+      timer = 0;
+      syncStaleOverlay();
+      return;
+    }
+    // Typing can refresh the preview on every keystroke. Debounce building the
+    // complete ASS too, not just the HTTP request, so long projects stay usable.
+    desired = null;
+    hideStage();
+    syncStaleOverlay();
+    setStageStatus(capabilityFailure ? 'ASS 即时预览 · 实际渲染不可用' : 'ASS 实际画面渲染中…', failureMessage);
+    global.clearTimeout(timer);
+    timer = global.setTimeout(() => { timer = 0; refreshDesired(); }, 200);
+  }
+
+  function refreshDesired() {
+    if (!enabled() || !boundVideo() || !player.paused || player.seeking) return;
+    if (capabilityFailure) {
+      hideStage();
+      setStageStatus('ASS 即时预览 · 实际渲染不可用', failureMessage);
+      return;
+    }
+    desired = snapshot();
+    syncStaleOverlay();
+    if (cached?.key === desired?.key) {
+      showStageFrame(cached);
+      return;
+    }
+    hideStage();
+    if (desired?.key === failedKey) {
+      setStageStatus('ASS 即时预览 · 实际渲染不可用', failureMessage);
+      return;
+    }
+    setStageStatus('ASS 实际画面渲染中…');
+    // One request at a time. Changes during rendering are coalesced and retried
+    // in finally; old responses never replace the new playback/style state.
+    if (desired && !pending) void capture(desired);
+  }
+
+  async function capture(request, manual = false) {
+    if (pending) return;
+    pending = true;
     if (renderButton) renderButton.disabled = true;
     setWindowStatus('正在渲染当前帧…', 'pending');
+    const controller = new AbortController();
+    const timeout = global.setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
     try {
-      // 与「导出 → 带样式的 ASS 字幕」完全同一份内容，保证预览即导出。
-      const assText = global.MaweExportSrt.buildAss();
-      const response = await fetch(requestUrl, {
+      const response = await fetch(global.MaweBoot.SERVER_CONFIG.assFrameUrl, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          requestToken: global.MaweBoot?.SERVER_CONFIG?.requestToken || '',
-          ass: assText,
-          timeMs,
-        }),
+        signal: controller.signal,
+        body: JSON.stringify({ requestToken: global.MaweBoot.SERVER_CONFIG.requestToken || '',
+          ass: request.ass, timeMs: request.timeMs }),
       });
       const payload = await response.json().catch(() => null);
       if (!response.ok || !payload?.ok) {
+        if (['ASS_FRAME_LIBASS_UNAVAILABLE', 'ASS_FRAME_FFMPEG_MISSING'].includes(payload?.code)) {
+          capabilityFailure = payload.code;
+        }
         throw new Error(String(payload?.error || `HTTP ${response.status}`));
       }
-      if (imageEl) {
-        imageEl.src = `data:image/png;base64,${payload.image}`;
-        imageEl.hidden = false;
+      const url = `data:image/png;base64,${payload.image}`;
+      const decoded = new Image();
+      decoded.src = url;
+      await decoded.decode();
+      const frame = { key: request.key, url, timeMs: request.frameTimeMs,
+        width: decoded.naturalWidth, height: decoded.naturalHeight,
+        warnings: Array.isArray(payload.warnings) ? payload.warnings.filter(Boolean) : [] };
+      // Check live state after await, including edits and seeks during decode.
+      const live = snapshot();
+      const current = live?.key === request.key;
+      // A manual capture freezes the clicked frame in the comparison window
+      // even if playback advances, while media/style changes still invalidate it.
+      const manualFrame = manual && live?.generation === request.generation
+        && live?.seek === request.seek && live?.source === request.source && live?.ass === request.ass;
+      if (current || manualFrame) {
+        cached = frame;
+        failedKey = '';
+        failureMessage = '';
+        desired = live;
+        showWindowFrame(frame);
+        showStageFrame(frame);
       }
-      if (placeholderEl) placeholderEl.hidden = true;
-      if (captionEl) {
-        captionEl.textContent = `${formatFrameClock(payload.timeMs ?? timeMs)} · ${translate('libass 实际渲染')}`;
-        captionEl.hidden = false;
-      }
-      if (warningsEl) {
-        const warnings = Array.isArray(payload.warnings) ? payload.warnings.filter(Boolean) : [];
-        warningsEl.textContent = warnings.join('\n');
-        warningsEl.hidden = warnings.length === 0;
-      }
-      setWindowStatus('渲染完成', 'success');
     } catch (error) {
-      showAssFrameError(`渲染失败：${error instanceof Error ? error.message : error}`);
+      failureMessage = controller.signal.aborted ? translate('实际画面请求超时；可点击渲染当前帧重试。')
+        : `渲染失败：${error instanceof Error ? error.message : error}`;
+      failedKey = request.key;
+      setWindowStatus(failureMessage, 'error');
+      if (manual) global.MaweHint?.flashHint?.(failureMessage, 'invalid');
     } finally {
-      renderPending = false;
+      global.clearTimeout(timeout);
+      pending = false;
       if (renderButton) renderButton.disabled = false;
+      // Don't hide a successfully decoded, current frame again just to queue a
+      // redundant refresh. Read latest state once to drain edits made in flight.
+      refreshDesired();
       syncStaleOverlay();
     }
+  }
+
+  async function renderAssFrame() {
+    const request = snapshot();
+    if (!request) {
+      setWindowStatus('请先加载 Server 工程的视频并启用 ASS 字幕模式。', 'error');
+      return;
+    }
+    global.clearTimeout(timer);
+    timer = 0;
+    failedKey = '';
+    capabilityFailure = '';
+    await capture(request, true);
   }
 
   const floatingPanel = global.MaweFloatingPanel.createFloatingPanel({
     panel: windowEl,
-    dragHandle,
+    dragHandle: document.getElementById('ass-frame-drag-handle'),
     manageButton: openButton,
     anchorButton: openButton,
-    positionKey: ASS_FRAME_WINDOW_POSITION_KEY,
-    // 点击入口按钮的开关由 createFloatingPanel 绑定；打开时自动渲染当前帧。
+    positionKey: 'moy.asr.ass_frame.window.v1',
     onOpen: () => {
+      syncPreview();
+      if (cached && cached.key === snapshot()?.key) showWindowFrame(cached);
+      else void renderAssFrame();
       syncStaleOverlay();
-      void renderAssFrame();
     },
   });
 
-  // 窗口开着时的联动：播放 → 立即压上「暂停后重新渲染」斜纹；暂停/seek
-  // 停止后自动重渲染，无需再点按钮。窗口关闭时事件直接短路。
-  const player = global.MaweCoreState?.player;
-  player?.addEventListener('play', () => {
-    syncStaleOverlay();
-    global.clearTimeout(pendingRenderTimer);
-  });
-  player?.addEventListener('pause', () => {
-    syncStaleOverlay();
-    scheduleRender();
-  });
-  player?.addEventListener('seeked', () => {
-    syncStaleOverlay();
-    if (global.MaweCoreState?.player?.paused === true) scheduleRender();
-  });
+  function syncAssFrameControls() {
+    openButton.hidden = !enabled();
+    if (openButton.hidden && floatingPanel.isOpen()) floatingPanel.close();
+    syncPreview();
+  }
 
+  player?.addEventListener('play', syncPreview);
+  player?.addEventListener('pause', syncPreview);
+  player?.addEventListener('seeking', () => {
+    seekGeneration += 1;
+    // Some browsers deliver the new frame callback before the queued seeking
+    // event. Keep that new PTS rather than clearing it with the old one.
+    if (presentedCursor !== player.currentTime) presentedTime = null;
+    syncPreview();
+  });
+  player?.addEventListener('seeked', syncPreview);
+  player?.addEventListener('loadedmetadata', syncPreview);
+  player?.addEventListener('emptied', () => {
+    mediaGeneration += 1;
+    presentedTime = null;
+    presentedCursor = null;
+    cached = null;
+    desired = null;
+    failedKey = '';
+    failureMessage = '';
+    if (imageEl) { imageEl.hidden = true; imageEl.removeAttribute('src'); }
+    if (stageImage) stageImage.removeAttribute('src');
+    for (const id of ['ass-frame-caption', 'ass-frame-warnings']) {
+      const element = document.getElementById(id);
+      if (element) element.hidden = true;
+    }
+    const placeholder = document.getElementById('ass-frame-placeholder');
+    if (placeholder) placeholder.hidden = false;
+    setWindowStatus('');
+    syncPreview();
+  });
+  if (typeof player?.requestVideoFrameCallback === 'function') {
+    const onFrame = (now, metadata) => {
+      if (Number.isFinite(metadata.mediaTime)) {
+        presentedTime = metadata.mediaTime;
+        presentedCursor = player.currentTime;
+      }
+      if (player.paused && !player.seeking) syncPreview();
+      player.requestVideoFrameCallback(onFrame);
+    };
+    player.requestVideoFrameCallback(onFrame);
+  }
   renderButton?.addEventListener('click', () => void renderAssFrame());
-  windowClose?.addEventListener('click', () => floatingPanel.close());
-  footerCloseButton?.addEventListener('click', () => floatingPanel.close());
-  // ASS 模式开关在 editor-wiring-ass-manager 中也有监听；这里只负责本按钮显隐。
-  assModeToggle?.addEventListener('change', syncAssFrameControls);
+  for (const id of ['ass-frame-window-close', 'ass-frame-close-footer']) {
+    document.getElementById(id)?.addEventListener('click', () => floatingPanel.close());
+  }
+  document.getElementById('ass-mode-toggle')?.addEventListener('change', syncAssFrameControls);
+  document.getElementById('ass-frame-size')?.addEventListener('click', (event) => {
+    const native = document.querySelector('.ass-frame-image-wrap')?.classList.toggle('ass-frame-native');
+    event.currentTarget.setAttribute('aria-pressed', String(Boolean(native)));
+  });
 
+  global.MaweAssFrame = Object.freeze({ syncAssFrameControls, renderAssFrame, syncPreview });
   syncAssFrameControls();
-
-  global.MaweAssFrame = Object.freeze({ syncAssFrameControls, renderAssFrame });
 })(typeof window !== 'undefined' ? window : globalThis);

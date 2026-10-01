@@ -225,22 +225,31 @@
 
 
 
-  function buildAss() {
+  function buildAss({ preview = false } = {}) {
+  const speakerOptions = MaweSpeakerLabels.speakerLabelExportOptions();
+  if (preview) {
+    const settings = MaweSpeakerLabels.getSpeakerLabelSettings();
+    speakerOptions.speakerLabelsEnabled = settings.mapping_enabled && settings.enabled;
+  }
   const { overlaySegments } = mergedExportSegments();
   // 副字幕轨随 ASS 导出（多重字幕开启时才存在）；叠加轨与副字幕分层输出。
-  const extensionSegments = activeExtensionSegments();
+  const extensionSegments = preview && !MaweDom.extensionOverlayToggle?.checked
+    ? [] : activeExtensionSegments();
   const firstEnabledIndex = window.AsrEditorUtils.getSrtExportFirstIndex(
     MaweBoot.DATA.segments,
     MaweSettings.EDITOR_SETTINGS.exportStartAtZero,
   );
-  return window.AsrEditorUtils.buildAssPayload(MaweBoot.DATA.segments, {
+  return window.AsrEditorUtils.buildAssPayload(preview && !MaweDom.overlayToggle.checked
+    ? [] : MaweBoot.DATA.segments, {
     ...assExportOptions(),
-    alignFirstStart: MaweSettings.EDITOR_SETTINGS.exportStartAtZero,
+    // Export-only lead-in extension must not make a cue appear before its
+    // actual start when checking the playback timeline.
+    alignFirstStart: !preview && MaweSettings.EDITOR_SETTINGS.exportStartAtZero,
     firstEnabledIndex,
     appearance: MaweAppearance.getSubtitleAppearance(),
     overlaySegments,
     extensionSegments,
-    ...MaweSpeakerLabels.speakerLabelExportOptions(),
+    ...speakerOptions,
   });
 }
 

@@ -3467,6 +3467,13 @@ test('ASS outline and shadow opacity map to alpha bytes and rgba previews', () =
   assert.equal(helpers.assAlphaFromOpacity(50), 128);
   assert.equal(helpers.assAlphaFromOpacity(0), 255);
   assert.equal(helpers.assAlphaFromOpacity(150), 0);
+  assert.equal(helpers.assAlphaFromOpacity(30), 179);
+  assert.equal(helpers.assAlphaFromOpacity(70), 77);
+  assert.equal(helpers.assAlphaFromOpacity(50.5), 126);
+  assert.equal(helpers.assAlphaFromOpacity(NaN), 0);
+  const alphaStyle = helpers.normalizeAssStyle({ outlineOpacity: 50.5, backOpacity: null });
+  assert.equal(alphaStyle.outlineOpacity, 51);
+  assert.equal(alphaStyle.backOpacity, 0);
   assert.equal(helpers.assColorFromHex('#112233', '#000000', 50), '&H80332211');
   assert.equal(helpers.assCssColorWithOpacity('#112233', 100), 'rgba(17, 34, 51, 1)');
   assert.equal(helpers.assCssColorWithOpacity('#112233', 0), 'rgba(17, 34, 51, 0)');

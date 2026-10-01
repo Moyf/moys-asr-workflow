@@ -488,3 +488,99 @@ test('keeps ASS style actions and preview-mode hints attached to the active form
   const deleteButtonParent = await page.locator('#ass-style-delete').evaluate((element) => element.parentElement?.id);
   expect(deleteButtonParent).toBe('ass-profile-delete-slot');
 });
+
+test('refreshes inline font metrics and interpolates fs tags in native resolution', async ({ page }) => {
+  await page.goto(server.url);
+  await page.addStyleTag({ content: '@font-face { font-family: "ASS Metric Test"; src: local("Arial"); size-adjust: 150%; }' });
+  await page.evaluate(async () => { await document.fonts.load('20px "ASS Metric Test"'); });
+  const ratios = await page.evaluate(() => {
+    MaweBoot.DATA.media_metadata = { video_width: 640, video_height: 360 };
+    MaweBoot.DATA.segments[0].text = '字幕**强调**';
+    const library = window.AsrEditorUtils.defaultAssStyleLibrary();
+    const style = library.styles.find((entry) => entry.id === 'ass');
+    style.fontName = 'Arial'; style.fontSize = 72;
+    ASS_STYLE_LIBRARY = library;
+    MaweSettings.EDITOR_SETTINGS.assMode = true;
+    MawePlaybackLoop.refreshSubtitlePreview(1500, 0);
+    const text = document.getElementById('overlay-main-text');
+    const size = () => parseFloat(getComputedStyle(text).fontSize);
+    const runSize = () => parseFloat(getComputedStyle(text.querySelector('.ass-emphasis-run')).fontSize);
+    const before = size();
+    style.fontName = 'ASS Metric Test';
+    MawePlaybackLoop.refreshSubtitlePreview(1500, 0);
+    const after = size();
+    const ratio = runSize() / after;
+    // A 72@1080p style exports 24px at 360p. Halfway towards \fs48 is 36,
+    // so the ordinary text must be 1.5x its unanimated size, not interpolated
+    // between the unrelated library value 72 and the native target 48.
+    MaweBoot.DATA.segments[0].text = '普通字幕';
+    library.assProfiles[0].animations.t = { enabled: true, startMs: 0, endMs: 1000, accel: 1, tags: '\\fs48' };
+    MawePlaybackLoop.refreshSubtitlePreview(1500, 0);
+    return { before, after, ratio, animated: size() };
+  });
+  expect(ratios.after).toBeLessThan(ratios.before * 0.8);
+  expect(ratios.ratio).toBeCloseTo(26 / 24, 2);
+  expect(ratios.animated / ratios.after).toBeCloseTo(1.5, 2);
+});
+
+test('uses outline colour for sample boxes and preserves zero scaling', async ({ page }) => {
+  await disableOnboarding(page);
+  await page.goto(server.url);
+  await page.locator('#editor-settings-toggle').click();
+  await page.locator('#editor-settings-tab-subtitle-style').click();
+  await page.locator('#ass-style-manager-open').click();
+  await page.evaluate(async () => {
+    await loadAssStyleLibrary({ force: true });
+    assStyleManagerSetSelection('style', 'ass');
+    updateAssStyleManagerLibrary((library) => {
+      const style = library.styles.find((entry) => entry.id === 'ass');
+      Object.assign(style, { fontName: 'Arial', fontSize: 40, borderStyle: 3,
+        outline: 4, outlineColor: '#ff0000', outlineOpacity: 50, backColor: '#0000ff', scaleX: 100 });
+    }, { persist: false });
+  });
+  const sample = page.locator('#ass-style-preview-sample');
+  await expect(sample).toHaveCSS('background-color', 'rgba(255, 0, 0, 0.5)');
+  await expect(sample).toHaveCSS('-webkit-text-stroke-width', '0px');
+  await expect(sample).toHaveCSS('padding-top', '4px');
+  const spacing = await sample.evaluate((element) => {
+    const label = document.querySelector('.ass-style-preview-label');
+    return element.getBoundingClientRect().top - label.getBoundingClientRect().bottom;
+  });
+  expect(spacing).toBeGreaterThanOrEqual(8);
+  await sample.scrollIntoViewIfNeeded();
+  await sample.locator('..').screenshot({ path: test.info().outputPath('ass-style-sample.png') });
+  await page.evaluate(() => {
+    MaweSettings.EDITOR_SETTINGS.assMode = true;
+    MawePlaybackLoop.refreshSubtitlePreview(1500, 0);
+  });
+  await expect(page.locator('#overlay-main-text')).toHaveCSS('-webkit-text-stroke-width', '0px');
+  await expect(page.locator('#overlay-main-text')).toHaveCSS('background-color', 'rgba(255, 0, 0, 0.5)');
+  await page.evaluate(() => {
+    const style = ASS_STYLE_LIBRARY.styles.find((entry) => entry.id === 'ass');
+    style.emphasisStyle = 'stroke';
+    style.emphasisColor = '#00ff00';
+    MaweBoot.DATA.segments[0].text = '字幕**强调**';
+    MawePlaybackLoop.refreshSubtitlePreview(1500, 0);
+  });
+  const emphasized = page.locator('#overlay-main-text .ass-emphasis-run');
+  await expect(emphasized).toHaveCSS('-webkit-text-stroke-width', '0px');
+  await expect(emphasized).toHaveCSS('background-color', 'rgba(0, 255, 0, 0.5)');
+  await page.evaluate(() => {
+    const style = ASS_STYLE_LIBRARY.styles.find((entry) => entry.id === 'ass');
+    style.borderStyle = 1;
+    syncAssStyleForm(style);
+    MawePlaybackLoop.refreshSubtitlePreview(1500, 0);
+  });
+  await expect(sample).toHaveCSS('-webkit-text-stroke-width', '8px');
+  await expect(emphasized).toHaveCSS('background-color', 'rgba(0, 0, 0, 0)');
+  expect(await emphasized.evaluate((element) => parseFloat(getComputedStyle(element).webkitTextStrokeWidth)))
+    .toBeGreaterThan(0);
+  await page.evaluate(() => {
+    const style = ASS_STYLE_LIBRARY.styles.find((entry) => entry.id === 'ass');
+    style.scaleX = 0;
+    syncAssStyleForm(style);
+    MawePlaybackLoop.refreshSubtitlePreview(1500, 0);
+  });
+  await expect(sample).toHaveCSS('transform', 'matrix(0, 0, 0, 1, 0, 0)');
+  await expect(page.locator('#overlay-main-text')).toHaveCSS('transform', 'matrix(0, 0, 0, 1, 0, 0)');
+});

@@ -557,6 +557,17 @@
     position: relative; flex: 1 1 auto; min-height: 0; width: 100%;
   }
   .player-stage video { display: block; cursor: pointer; }
+  .ass-stage-frame {
+    position: absolute; inset: 0; width: 100%; height: 100%;
+    object-fit: contain; pointer-events: none;
+  }
+  .ass-stage-frame[hidden], .ass-stage-status[hidden] { display: none; }
+  .player-stage.ass-stage-ready #overlay { visibility: hidden; }
+  .ass-stage-status {
+    position: absolute; top: 8px; left: 8px; z-index: 10; pointer-events: none;
+    padding: 3px 7px; border-radius: var(--radius-sm); font-size: 11px;
+    color: #fff; background: rgba(0, 0, 0, .65);
+  }
   .media-controls {
     display: flex; align-items: center; gap: 6px; flex-wrap: nowrap;
     min-height: 34px; margin-top: 4px; padding: 5px 7px;
@@ -1904,6 +1915,8 @@
   }
   .ass-frame-image { display: block; max-width: 100%; max-height: 52vh; border-radius: var(--radius-sm); }
   .ass-frame-image[hidden] { display: none; }
+  .ass-frame-image-wrap.ass-frame-native { display: block; overflow: auto; max-height: 52vh; }
+  .ass-frame-native .ass-frame-image { max-width: none; max-height: none; border-radius: 0; }
   .ass-frame-placeholder { margin: 0; color: var(--text-faint); font-size: 12px; text-align: center; }
   /* 播放中画面必然滞后于播放头：灰色斜纹压住旧帧并提示暂停后自动重渲染。 */
   .ass-frame-stale {

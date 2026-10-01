@@ -97,6 +97,12 @@ def _bool(value: object, fallback: bool = False) -> bool:
     return value if isinstance(value, bool) else fallback
 
 
+def _opacity(value: object, fallback: int | float = 100) -> int:
+    """Match JavaScript Math.round for the style library's opacity fields."""
+    numeric = _number(0 if value is None else value, fallback, 0, 100, integer=False)
+    return math.floor(numeric + 0.5)
+
+
 def _default_ass_font_name() -> str:
     """ASS 默认字体按操作系统选择：Arial 缺少合适的中文形，容易发虚。"""
 
@@ -244,8 +250,8 @@ def _normalize_style(raw: object, fallback: Mapping[str, object], *, style_id: s
         "secondaryColor": _color(source.get("secondaryColor"), str(fallback.get("secondaryColor") or "#ffffff")),
         "outlineColor": _color(source.get("outlineColor"), str(fallback.get("outlineColor") or "#000000")),
         "backColor": _color(source.get("backColor"), str(fallback.get("backColor") or "#000000")),
-        "outlineOpacity": _number(source.get("outlineOpacity"), fallback.get("outlineOpacity", 100), 0, 100),
-        "backOpacity": _number(source.get("backOpacity"), fallback.get("backOpacity", 100), 0, 100),
+        "outlineOpacity": _opacity(source.get("outlineOpacity", fallback.get("outlineOpacity", 100))),
+        "backOpacity": _opacity(source.get("backOpacity", fallback.get("backOpacity", 100))),
         "bold": _bool(source.get("bold"), bool(fallback.get("bold", False))),
         "italic": _bool(source.get("italic"), bool(fallback.get("italic", False))),
         "underline": _bool(source.get("underline"), bool(fallback.get("underline", False))),
@@ -492,11 +498,11 @@ def find_ass_profile(library: Mapping[str, object], profile_id: object) -> dict[
     return _copy(DEFAULT_ASS_PROFILE)
 
 
-def ass_alpha(value: object, fallback: int = 0) -> int:
+def ass_alpha(value: object, fallback: int = 100) -> int:
     """Convert an opacity percentage (100 = opaque) into ASS's alpha byte."""
 
-    opacity = _number(value, fallback, 0, 100)
-    return round((100 - opacity) * 255 / 100)
+    opacity = _number(0 if value is None else value, fallback, 0, 100, integer=False)
+    return math.floor((100 - opacity) * 255 / 100 + 0.5)
 
 
 def ass_color(value: object, fallback: str = "#ffffff", opacity: object = 100) -> str:
