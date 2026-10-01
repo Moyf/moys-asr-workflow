@@ -104,3 +104,12 @@
 处理结论：常量落位 `maw/postprocess_match.py`（`DEFAULT_EXTRA_SPLIT_PUNCTUATION` / `DEFAULT_PRESERVE_PUNCTUATION` / `DEFAULT_STRIP_TAIL_PUNCT` / `DEFAULT_STRONG_PUNCT`，pipeline 反向导入避免循环）；`ScriptMatchRequest` 与各转写脚本 CLI 默认值同步为新清单；多字符号仍只在匹配侧断句（rstrip 逐字符）；超长段兜底的 WEAK_PUNCT 与换行保持内置。
 
 验证记录：全量 `unittest discover` 1744 项通过（跳过 8）；`node --test` 编辑器四件套与两个 Launcher 脚本 `node --check` 通过；`git diff --check` 通过。行为对照：默认转写剥尾 `，。` → `，。；,.`；用户场景（`？` 在断句清单、不在保留清单）转写与匹配均会删除句尾问号（`tests.test_postprocess_match.test_trailing_question_mark_is_stripped_when_configured_but_not_preserved`）。未实机验证 Launcher 桌面端交互（同前述边界）。
+
+## 2026-10-01 PR review 补充（#164 合并前）
+
+| 编号 | 范围 | 需求摘要 | 类型 | 状态 |
+| --- | --- | --- | --- | --- |
+| 6 | 契约 | Python 侧默认清单在 7 个转写 CLI 与 `maw/local_asr.py` 中为独立字面量，此前无漂移守卫；新增 `tests/test_punctuation_defaults_contract.py`，从 `maw/postprocess_match.py` 规范常量派生期望值、以源码文本钉住全部副本（JS 侧已有 LauncherAssetContractTests 守护） | 修改 | 已修复 |
+| 7 | 文案 | `_transcribe_extra_strong_punct` docstring 残留旧术语「额外断句符号」，改为「断句符号」 | 修改 | 已修复 |
+
+验证记录：全量 `unittest discover` 1749 项通过（跳过 8，含新增契约测试 4 项）；`git diff --check` 通过。

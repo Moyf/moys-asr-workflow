@@ -3867,7 +3867,7 @@ def _transcribe_strip_tail_punct(env_path: Path) -> str:
 
 
 def _transcribe_extra_strong_punct(env_path: Path) -> str:
-    """Derive the transcription extra strong-punct set from shared 额外断句符号."""
+    """Derive the transcription strong-punct set from the shared 断句符号 settings."""
     return "".join(_match_step_symbols(env_path, "extraSplitPunctuation"))
 
 
