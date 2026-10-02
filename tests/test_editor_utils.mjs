@@ -450,6 +450,17 @@ test('normalizes timeline OTIO export options and defaults them to enabled', () 
   assert.equal(repaired.otioExportIncludeMarkerRegions, true);
 });
 
+test('defaults ASS frame toggles to stage-off and auto-render-on', () => {
+  const defaults = helpers.normalizeEditorSettings({});
+  assert.equal(defaults.assFrameStagePreview, false);
+  assert.equal(defaults.assFrameAutoRender, true);
+  // 暂停叠加实际帧需显式开启；自动渲染只有显式 false 才关闭。
+  assert.equal(helpers.normalizeEditorSettings({ assFrameStagePreview: true }).assFrameStagePreview, true);
+  assert.equal(helpers.normalizeEditorSettings({ assFrameStagePreview: 1 }).assFrameStagePreview, false);
+  assert.equal(helpers.normalizeEditorSettings({ assFrameAutoRender: false }).assFrameAutoRender, false);
+  assert.equal(helpers.normalizeEditorSettings({ assFrameAutoRender: null }).assFrameAutoRender, true);
+});
+
 test('converts and formats the parallel frame timebase', () => {
   assert.deepEqual(JSON.parse(JSON.stringify(
     helpers.normalizeTimelineTimebase({ unit: 'frames', fps: 29.97 }),
@@ -3294,7 +3305,7 @@ test('ASS emphasis syntax colors only marked runs and preserves other export mod
   const cue = [{ start: 0, end: 1000, text: '前 **重点** 后 **再次**', color: { name: 'yellow' } }];
   const options = {
     assProfile: { id: 'ass', styleId: 'ass', animations: {} },
-    assStyle: { id: 'ass', primaryColor: '#123456', outlineColor: '#000000',
+    assStyle: { id: 'ass', fontSize: 72, emphasisScale: 1.1, primaryColor: '#123456', outlineColor: '#000000',
       emphasisColor: '#ff0000', emphasisStyle: 'text' },
     appearance: { ass_color_style: 'text' },
   };
@@ -3318,7 +3329,7 @@ test('ASS emphasis syntax colors only marked runs and preserves other export mod
   assert.deepEqual(Array.from(helpers.assEmphasisRuns('a *b* **c**', 'single'), (run) => run.emphasized), [false, true, false, true]);
   const tracks = helpers.buildAssPayload(cue, {
     ...options,
-    assExtensionStyle: { id: 'ass-extension', emphasisSyntax: 'none', emphasisColor: '#00ff00', emphasisScale: 1.5 },
+    assExtensionStyle: { id: 'ass-extension', fontSize: 54, emphasisSyntax: 'none', emphasisColor: '#00ff00', emphasisScale: 1.5 },
     extensionSegments: [{ start: 0, end: 1000, text: '副 **重点**' }],
     overlaySegments: [{ start: 0, end: 1000, text: '叠 **重点**' }],
   });
@@ -3326,7 +3337,7 @@ test('ASS emphasis syntax colors only marked runs and preserves other export mod
   assert.match(tracks, /Dialogue: 2,[^\n]*叠 \{\\1c&H000000FF&\\fs\d+\}重点/);
   assert.equal(helpers.normalizeAssStyle({ emphasisScale: 1.27 }).emphasisScale, 1.25);
   assert.equal(helpers.normalizeAssStyle({ emphasisScale: 5 }).emphasisScale, 1.5);
-  assert.equal(helpers.normalizeAssStyle({ emphasisScale: 'bad' }).emphasisScale, 1.1);
+  assert.equal(helpers.normalizeAssStyle({ emphasisScale: 'bad' }).emphasisScale, 1.3);
 });
 
 test('ASS underscore markers render as local underline alongside emphasis', () => {
@@ -3341,7 +3352,7 @@ test('ASS underscore markers render as local underline alongside emphasis', () =
   ]);
   const options = {
     assProfile: { id: 'ass', styleId: 'ass', animations: {} },
-    assStyle: { id: 'ass', primaryColor: '#ffffff', emphasisColor: '#ff0000', emphasisScale: 1.25 },
+    assStyle: { id: 'ass', fontSize: 72, primaryColor: '#ffffff', emphasisColor: '#ff0000', emphasisScale: 1.25 },
   };
   const ass = helpers.buildAssPayload([{ start: 0, end: 1000, text }], options);
   assert.match(ass, /前 \{\\u1\}下划线\{\\u0\} 与 \{\\1c&H000000FF&\\fs90\\u1\}共同\{\\1c&H00FFFFFF&\\fs72\\u0\} 后/);
@@ -3456,6 +3467,56 @@ test('ASS inline strike and size markers restore the base style and use each tra
   assert.equal(helpers.normalizeAssStyle().largeTextScale, 1.5);
 });
 
+test('keeps browser and server ASS defaults identical while preserving saved parameters', () => {
+  const result = spawnSync(PYTHON_COMMAND, pythonCommandArgs(['-c',
+    'import json; from maw.ass_styles import default_ass_style_library; print(json.dumps(default_ass_style_library()))']),
+  { encoding: 'utf8', env: { ...process.env, PYTHONUTF8: '1' } });
+  assert.equal(result.status, 0, result.stderr);
+  const browser = JSON.parse(JSON.stringify(helpers.defaultAssStyleLibrary()));
+  const server = JSON.parse(result.stdout);
+  for (const library of [browser, server]) for (const style of library.styles) delete style.fontName;
+  assert.deepEqual(browser, server);
+  const saved = helpers.defaultAssStyleLibrary();
+  Object.assign(helpers.assStyleForId(saved, 'ass'), {
+    fontName: 'Arial', fontSize: 72, emphasisScale: 1.1, backColor: '#000000', backOpacity: 100,
+    bold: false, outline: 4, marginV: 80,
+  });
+  helpers.assProfileForId(saved, 'ass').animations.fad.enabled = false;
+  assert.deepEqual(JSON.parse(JSON.stringify(helpers.normalizeAssStyleLibrary(saved))), JSON.parse(JSON.stringify(saved)));
+});
+
+test('ASS outline and shadow opacity map to alpha bytes and rgba previews', () => {
+  // 旧样式没有不透明度字段：归一化补 100（不透明），导出与旧字节一致。
+  const legacy = helpers.normalizeAssStyle({ id: 'legacy', outlineColor: '#112233', backColor: '#000000' });
+  assert.equal(legacy.outlineOpacity, 100);
+  assert.equal(legacy.backOpacity, 100);
+  assert.match(helpers.assStyleLine(legacy, 'Legacy'), /&H00332211,&H00000000/);
+
+  const style = helpers.normalizeAssStyle({
+    id: 'alpha', outlineColor: '#112233', backColor: '#445566', outlineOpacity: 50, backOpacity: 0,
+  });
+  const line = helpers.assStyleLine(style, 'Alpha');
+  assert.match(line, /&H80332211,&HFF665544/);
+  assert.equal(helpers.assAlphaFromOpacity(100), 0);
+  assert.equal(helpers.assAlphaFromOpacity(50), 128);
+  assert.equal(helpers.assAlphaFromOpacity(0), 255);
+  assert.equal(helpers.assAlphaFromOpacity(150), 0);
+  assert.equal(helpers.assAlphaFromOpacity(30), 179);
+  assert.equal(helpers.assAlphaFromOpacity(70), 77);
+  assert.equal(helpers.assAlphaFromOpacity(50.5), 126);
+  assert.equal(helpers.assAlphaFromOpacity(NaN), 0);
+  const alphaStyle = helpers.normalizeAssStyle({ outlineOpacity: 50.5, backOpacity: null });
+  assert.equal(alphaStyle.outlineOpacity, 51);
+  assert.equal(alphaStyle.backOpacity, 0);
+  assert.equal(helpers.assColorFromHex('#112233', '#000000', 50), '&H80332211');
+  assert.equal(helpers.assCssColorWithOpacity('#112233', 100), 'rgba(17, 34, 51, 1)');
+  assert.equal(helpers.assCssColorWithOpacity('#112233', 0), 'rgba(17, 34, 51, 0)');
+  assert.equal(helpers.assCssColorWithOpacity('#112233', 40), 'rgba(17, 34, 51, 0.4)');
+  // 非法值回落默认色与默认不透明度。
+  assert.equal(helpers.assCssColorWithOpacity('not-a-color', 30), 'rgba(255, 255, 255, 0.3)');
+  assert.equal(helpers.assColorFromHex('nope', '#112233', 50), '&H80332211');
+});
+
 test('builds ASS metadata and five palette styles at the source video resolution', () => {
   const ass = helpers.buildAssPayload([
     { start: 0, end: 1000, text: 'red line', color: { name: 'red' } },
@@ -3521,7 +3582,7 @@ test('migrates v1 emphasis defaults for builtins without changing custom or curr
   });
   assert.equal(helpers.assStyleForId(current, 'ass').emphasisScale, 1);
   assert.equal(helpers.defaultAssStyleLibrary().version, 2);
-  assert.equal(helpers.assStyleForId(helpers.defaultAssStyleLibrary(), 'ass').emphasisScale, 1.1);
+  assert.equal(helpers.assStyleForId(helpers.defaultAssStyleLibrary(), 'ass').emphasisScale, 1.3);
 });
 
 test('normalizes ASS libraries without corrupting comma-delimited animation tags', () => {
@@ -3567,7 +3628,7 @@ test('uses the selected ASS profile style and adds every configured animation to
     styles: [{
       id: 'caption', name: 'Caption', fontName: 'Microsoft YaHei', fontSize: 30,
       primaryColor: '#123456', outlineColor: '#654321', outline: 4,
-      bold: true, underline: true,
+      bold: true, underline: true, marginV: 80,
     }],
     assProfiles: [{
       id: 'animated', name: 'Animated', styleId: 'caption',
@@ -3610,7 +3671,7 @@ test('keeps ASS palette colours applied when the CSS colour preview toggle is of
     appearance: { color_underline: false, ass_color_style: 'text' },
   });
 
-  assert.match(ass, new RegExp(`Style: RED,${helpers.ASS_DEFAULT_ASS_STYLE.fontName},72,&H006F7FF0,&H006F7FF0,[^\\n]*`));
+  assert.match(ass, new RegExp(`Style: RED,${helpers.ASS_DEFAULT_ASS_STYLE.fontName},${helpers.ASS_DEFAULT_ASS_STYLE.fontSize},&H006F7FF0,&H006F7FF0,[^\\n]*`));
   assert.match(ass, /Dialogue: 0,0:00:00\.00,0:00:01\.00,RED,,0,0,0,,red line/);
 
   const noneAss = helpers.buildAssPayload([
@@ -3636,7 +3697,7 @@ test('keeps speaker labels in the base colour when ASS palette colours are strok
     speakerLabelSeparator: '：',
   });
 
-  assert.match(ass, new RegExp(`Style: YELLOW,${helpers.ASS_DEFAULT_ASS_STYLE.fontName},72,[^\\n]*,&H0019A0C4`));
+  assert.match(ass, new RegExp(`Style: YELLOW,${helpers.ASS_DEFAULT_ASS_STYLE.fontName},${helpers.ASS_DEFAULT_ASS_STYLE.fontSize},[^\\n]*,&H0019A0C4`));
   assert.match(ass, /Dialogue: 0,0:00:00\.00,0:00:01\.00,YELLOW,Host,0,0,0,,\{\\c&H00563412&\}Host：\{\\c&H00563412&\}你好/);
 });
 
@@ -6227,9 +6288,43 @@ test('alignItemsToText bails out to no alignment on absurd inputs', () => {
 });
 
 
+test('combines bilingual SRT at actual boundaries without losing unmatched or multiline text', () => {
+  const main = [{ start: 100, end: 500, text: '主一' }, { start: 500, end: 900, text: '主二' }];
+  const secondary = [{ start: 200, end: 700, text: 'Secondary\r\nline' },
+    { start: 1000, end: 1100, text: 'unmatched' },
+    { start: 0, end: 1200, text: 'disabled', disabled: true },
+    { start: 'bad', end: 1200, text: 'invalid' }, { start: 900, end: 900, text: 'empty duration' }];
+  const snapshot = JSON.stringify([main, secondary]);
+  assert.equal(helpers.buildBilingualSrtPayload(main, secondary), [
+    '1', '100 --> 200', '主一', '',
+    '2', '200 --> 500', '主一\nSecondary\nline', '',
+    '3', '500 --> 700', '主二\nSecondary\nline', '',
+    '4', '700 --> 900', '主二', '',
+    '5', '1000 --> 1100', 'unmatched', '',
+  ].join('\n'));
+  assert.equal(JSON.stringify([main, secondary]), snapshot);
+});
+
+test('bilingual SRT preserves speaker color contexts and only extends the first main cue to zero', () => {
+  const main = [{ start: 500, end: 1000, text: 'Main', color: { name: 'red' } },
+    { start: 1500, end: 2000, text: 'Later', color_ref: { headIdx: 0, name: 'red' } }];
+  const secondary = [{ start: 500, end: 1000, text: 'Translation', color: { name: 'blue' } },
+    { start: 1500, end: 2000, text: 'Second', color_ref: { headIdx: 0, name: 'blue' } }];
+  const result = helpers.buildBilingualSrtPayload(main, secondary, {
+    alignFirstStart: true, speakerLabelsEnabled: true,
+    speakerLabels: { red: 'A', blue: 'B' }, speakerLabelSeparator: '：',
+  });
+  assert.equal(result, [
+    '1', '0 --> 500', 'A：Main', '',
+    '2', '500 --> 1000', 'A：Main\nB：Translation', '',
+    '3', '1500 --> 2000', 'A：Later\nB：Second', '',
+  ].join('\n'));
+  assert.equal(helpers.buildBilingualSrtPayload([], []), '');
+});
+
 test('ASS special symbol rules apply to all five formats across preview runs and exports', () => {
-  assert.equal(helpers.normalizeEditorSettings().assSpecialSymbolRule, 'double');
-  assert.equal(helpers.normalizeEditorSettings({ assSpecialSymbolRule: 'invalid' }).assSpecialSymbolRule, 'double');
+  assert.equal(helpers.normalizeEditorSettings().assSpecialSymbolRule, 'both');
+  assert.equal(helpers.normalizeEditorSettings({ assSpecialSymbolRule: 'invalid' }).assSpecialSymbolRule, 'both');
   const single = '*强调* _下划线_ ~删除~ -缩小- +放大+';
   const double = '**强调** __下划线__ ~~删除~~ --缩小-- ++放大++';
   const text = `${single} / ${double}`;

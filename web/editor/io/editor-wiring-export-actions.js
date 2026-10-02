@@ -249,6 +249,8 @@ document.addEventListener('keydown', (event) => {
 }, true);
 
 MaweDom.downloadMultiSrtButton?.addEventListener('click', async () => {
+  if (MaweDom.downloadMultiSrtButton.classList.contains('disabled')
+      || MaweMultiSubtitleCore.getMultiSubtitleState().enabled !== true) return;
   if (MaweInlineEdit.extensionEditingState) MaweInlineEdit.finishExtensionEdit(true);
   const track = MaweMultiSubtitleCore.getActiveExtensionTrack();
   if (!track) return;
@@ -256,10 +258,21 @@ MaweDom.downloadMultiSrtButton?.addEventListener('click', async () => {
     desc: '副字幕 SRT 文件', types: { 'text/plain': ['.srt'] },
   });
 });
+document.getElementById('download-bilingual-srt')?.addEventListener('click', async (event) => {
+  if (event.currentTarget.classList.contains('disabled')
+      || MaweMultiSubtitleCore.getMultiSubtitleState().enabled !== true) return;
+  if (MaweInlineEdit.editingState) MaweInlineEdit.finishEdit(true);
+  if (MaweInlineEdit.extensionEditingState) MaweInlineEdit.finishExtensionEdit(true);
+  const payload = MaweExportSrt.buildBilingualSrt();
+  if (!payload) return;
+  await MaweExportTimeline.downloadFile(payload, `${MaweBoot.FILENAME_BASE}_bilingual.srt`, 'text/plain', {
+    desc: '双语整合字幕 SRT', types: { 'text/plain': ['.srt'] },
+  });
+});
 document.getElementById('download-full-srt')?.addEventListener('click', async () => {
   if (MaweInlineEdit.editingState) MaweInlineEdit.finishEdit(true);
   await MaweExportTimeline.downloadFile(MaweExportSrt.buildSrt(), `${MaweBoot.FILENAME_BASE}.srt`, 'text/plain', {
-    desc: '完整 SRT 字幕文件', types: { 'text/plain': ['.srt'] }
+    desc: 'SRT 字幕文件', types: { 'text/plain': ['.srt'] }
   });
 });
 document.getElementById('download-full-ass')?.addEventListener('click', async () => {
