@@ -37,7 +37,7 @@
 
 ## 复验命令
 
-使用开发者已有 Python 与 Node 依赖环境，未安装或同步依赖。Python 解释器直接执行与 `uv run --no-sync` 一样避免重新同步环境。
+Python 使用开发者已有解释器，Node 依赖通过临时链接复用共享目录；未修改依赖清单、锁文件或共享环境。Node 全量测试的既有 uv 子进程在审查工作区建立了忽略的 `.venv`；后续 Python 与浏览器测试直接指定已有解释器，避免重复同步。临时 Node 链接已移入回收站。
 
 ```sh
 node --test tests/test_*.mjs
