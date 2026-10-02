@@ -447,6 +447,226 @@ class PostprocessTests(unittest.TestCase):
         if result.project_path is None:
             self.fail("JSON output mode must create a project")
         self.assertEqual(read_project(result.project_path)["media"], str(self.media))
+
+    def test_llm_network_failure_degrades_batch_to_original_text(self) -> None:
+        calls: list[list[dict[str, JsonValue]]] = []
+
+        def complete(_prompt: str, cues: list[dict[str, JsonValue]]) -> JsonDict:
+            calls.append(cues)
+            if len(calls) == 1:
+                raise LlmClientError("LLM network request failed: connection reset", category="network")
+            return {"groups": [{"id": cue["id"], "text": f"改写{cue['text']}"} for cue in cues]}
+
+        with mock.patch("maw.postprocess.MAX_LLM_CUES_PER_REQUEST", 1):
+            result = run_llm_postprocess(
+                LlmPostprocessRequest(
+                    project_path=self.project_path,
+                    srt_path=None,
+                    output_mode=OutputMode.JSON,
+                    operation="proofread",
+                    custom_prompt="",
+                ),
+                complete=complete,
+            )
+
+        self.assertEqual(len(calls), 2)
+        if result.project_path is None:
+            self.fail("JSON output mode must create a project")
+        output_texts = [segment["text"] for segment in project_segments(read_project(result.project_path))]
+        self.assertEqual(output_texts, ["酒很好喝", "改写下一句"])
+        self.assertIn("网络/服务请求失败，该批字幕保留原文", "\n".join(result.warnings))
+        self.assertNotIn("已跳过", "\n".join(result.warnings))
+
+    def test_translation_network_failure_preserves_entire_source_batch(self) -> None:
+        calls = 0
+        original = project_segments(read_project(self.project_path))[0]
+
+        def complete(_prompt, cues):
+            nonlocal calls
+            calls += 1
+            if calls == 1:
+                raise LlmClientError('timeout', category='network')
+            return {'groups': [{'id': cue['id'], 'text': 'Next sentence'} for cue in cues]}
+
+        with mock.patch('maw.postprocess.MAX_LLM_CUES_PER_REQUEST', 1):
+            result = run_llm_postprocess(LlmPostprocessRequest(
+                project_path=self.project_path, srt_path=None, output_mode=OutputMode.JSON,
+                operation='translate_en', custom_prompt=''), complete=complete)
+        output = project_segments(read_project(result.project_path))
+        self.assertEqual(output[0], original)
+        self.assertEqual(output[1]['text'], 'Next sentence')
+        self.assertIn('保留原文', '\n'.join(result.warnings))
+
+    def test_resegment_network_failure_preserves_source_with_both_success_protocols(self) -> None:
+        for mode, failed_batch in [(mode, batch) for mode in ["cues", "atoms"] for batch in [1, 2]]:
+            with self.subTest(mode=mode, failed_batch=failed_batch):
+                project = sample_project(self.media)
+                project_segments(project)[0]['custom_metadata'] = {'keep': True}
+                project_segments(project)[1]['items'] = [
+                    {'start': 1200, 'end': 1600, 'text': '下'},
+                    {'start': 1600, 'end': 2200, 'text': '一句'},
+                ]
+                self.project_path.write_text(json.dumps(project, ensure_ascii=False), encoding='utf-8')
+                originals = project_segments(read_project(self.project_path))
+                original = originals[failed_batch - 1]
+                calls = 0
+
+                def complete(_prompt, cues):
+                    nonlocal calls
+                    calls += 1
+                    if calls == failed_batch:
+                        raise LlmClientError('timeout', category='network')
+                    if mode == 'cues':
+                        return {'groups': [{'id': cue['id'], 'text': text} for cue in cues
+                                           for text in [cue['text'][:1], cue['text'][1:]]]}
+                    return {'groups': [{'atom_ids': [item['id']]} for cue in cues for item in cue['items']]}
+
+                with mock.patch('maw.postprocess.MAX_LLM_CUES_PER_REQUEST', 1):
+                    result = run_llm_postprocess(LlmPostprocessRequest(
+                        project_path=self.project_path, srt_path=None, output_mode=OutputMode.JSON,
+                        operation='resegment', custom_prompt=''), complete=complete)
+                output = project_segments(read_project(result.project_path))
+                preserved_index = 0 if failed_batch == 1 else len(output) - 1
+                self.assertEqual(output[preserved_index], original)
+                changed = [segment for index, segment in enumerate(output) if index != preserved_index]
+                self.assertEqual(''.join(segment['text'] for segment in changed), originals[2 - failed_batch]['text'])
+
+    def test_translation_repair_network_failure_preserves_the_whole_batch(self) -> None:
+        source = read_project(self.project_path)
+        source["segments"].append({"id": "third", "start": 2500, "end": 3000, "text": "最后一句"})
+        self.project_path.write_text(json.dumps(source, ensure_ascii=False), encoding="utf-8")
+        original = project_segments(read_project(self.project_path))
+        calls = 0
+
+        def complete(_prompt, cues):
+            nonlocal calls
+            calls += 1
+            if calls == 1:
+                return {"groups": [{"id": cues[0]["id"], "text": "Good wine"}]}
+            if calls == 2:
+                raise LlmClientError("repair timeout", category="network")
+            return {"groups": [{"id": cue["id"], "text": "Last sentence"} for cue in cues]}
+
+        with mock.patch("maw.postprocess.MAX_LLM_CUES_PER_REQUEST", 2):
+            result = run_llm_postprocess(LlmPostprocessRequest(
+                project_path=self.project_path, srt_path=None, output_mode=OutputMode.JSON,
+                operation="translate_en", custom_prompt=""), complete=complete)
+        output = project_segments(read_project(result.project_path))
+        self.assertEqual(output[:2], original[:2])
+        self.assertEqual(output[2]["text"], "Last sentence")
+        self.assertEqual(calls, 3)
+
+    def test_failed_batch_and_unusable_response_do_not_write_output(self) -> None:
+        calls = 0
+        before = set(self.root.iterdir())
+
+        def complete(_prompt, cues):
+            nonlocal calls
+            calls += 1
+            if calls == 1:
+                raise LlmClientError("timeout", category="network")
+            return {"groups": [{"id": cues[0]["id"], "text": ""}]}
+
+        with mock.patch("maw.postprocess.MAX_LLM_CUES_PER_REQUEST", 1):
+            with self.assertRaisesRegex(ValueError, "没有生成可用字幕"):
+                run_llm_postprocess(LlmPostprocessRequest(
+                    project_path=self.project_path, srt_path=None, output_mode=OutputMode.JSON,
+                    operation="proofread", custom_prompt=""), complete=complete)
+        self.assertEqual(set(self.root.iterdir()), before)
+
+    def test_llm_transient_provider_status_degrades_batch_to_original_text(self) -> None:
+        # 429 / 5xx 是长任务中最常见的中途失败，与网络中断同等对待。
+        calls: list[list[dict[str, JsonValue]]] = []
+
+        def complete(_prompt: str, cues: list[dict[str, JsonValue]]) -> JsonDict:
+            calls.append(cues)
+            if len(calls) == 1:
+                raise LlmClientError(
+                    "LLM provider returned HTTP 503: upstream unavailable",
+                    category="provider_response",
+                    status_code=503,
+                )
+            return {"groups": [{"id": cue["id"], "text": f"改写{cue['text']}"} for cue in cues]}
+
+        with mock.patch("maw.postprocess.MAX_LLM_CUES_PER_REQUEST", 1):
+            result = run_llm_postprocess(
+                LlmPostprocessRequest(
+                    project_path=self.project_path,
+                    srt_path=None,
+                    output_mode=OutputMode.JSON,
+                    operation="proofread",
+                    custom_prompt="",
+                ),
+                complete=complete,
+            )
+
+        self.assertEqual(len(calls), 2)
+        if result.project_path is None:
+            self.fail("JSON output mode must create a project")
+        output_texts = [segment["text"] for segment in project_segments(read_project(result.project_path))]
+        self.assertEqual(output_texts, ["酒很好喝", "改写下一句"])
+        self.assertIn("网络/服务请求失败，该批字幕保留原文", "\n".join(result.warnings))
+
+    def test_llm_auth_failure_still_aborts_the_run(self) -> None:
+        # 鉴权 / 配置类 4xx 不降级：降级会静默写出未处理的结果，掩盖配置问题。
+
+        def complete(_prompt: str, _cues: list[dict[str, JsonValue]]) -> JsonDict:
+            raise LlmClientError(
+                "LLM provider returned HTTP 401: invalid api key",
+                category="provider_response",
+                status_code=401,
+            )
+
+        with mock.patch("maw.postprocess.MAX_LLM_CUES_PER_REQUEST", 1):
+            with self.assertRaises(PostprocessStepError):
+                run_llm_postprocess(
+                    LlmPostprocessRequest(
+                        project_path=self.project_path,
+                        srt_path=None,
+                        output_mode=OutputMode.JSON,
+                        operation="proofread",
+                        custom_prompt="",
+                    ),
+                    complete=complete,
+                )
+
+    def test_llm_network_failure_on_every_batch_writes_nothing(self) -> None:
+        def complete(_prompt: str, _cues: list[dict[str, JsonValue]]) -> JsonDict:
+            raise LlmClientError("LLM network request failed: timeout", category="network")
+
+        before = set(self.root.iterdir())
+        for operation in ["proofread", "translate_en", "resegment", "custom"]:
+            with self.subTest(operation=operation), mock.patch("maw.postprocess.MAX_LLM_CUES_PER_REQUEST", 1):
+                with self.assertRaises(ValueError):
+                    run_llm_postprocess(
+                        LlmPostprocessRequest(
+                            project_path=self.project_path,
+                            srt_path=None,
+                            output_mode=OutputMode.JSON,
+                            operation=operation,
+                            custom_prompt="",
+                        ),
+                        complete=complete,
+                    )
+            self.assertEqual(set(self.root.iterdir()), before)
+
+    def test_llm_protocol_failure_still_aborts_the_run(self) -> None:
+        def complete(_prompt: str, _cues: list[dict[str, JsonValue]]) -> JsonDict:
+            raise LlmClientError("LLM response violates the JSON protocol after retry", category="protocol")
+
+        with mock.patch("maw.postprocess.MAX_LLM_CUES_PER_REQUEST", 1):
+            with self.assertRaises(PostprocessStepError):
+                run_llm_postprocess(
+                    LlmPostprocessRequest(
+                        project_path=self.project_path,
+                        srt_path=None,
+                        output_mode=OutputMode.JSON,
+                        operation="proofread",
+                        custom_prompt="",
+                    ),
+                    complete=complete,
+                )
+
     def test_llm_groups_can_redistribute_text_but_not_timing(self) -> None:
         project = sample_project(self.media)
         groups: JsonDict = {
