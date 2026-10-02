@@ -154,7 +154,7 @@
     onMarkerQuickEditDelete: (markerId) => MaweMarkerEditing.deleteMarker(markerId),
     previewGapAt: MawePlaybackLoop.previewGapAt,
     showGapContextMenu: (x, y, index) => MaweContextMenus.showGapContextMenu(x, y, index),
-    showContextMenu: (x, y, idx, timeMs) => MaweContextMenus.showContextMenu(x, y, idx, timeMs),
+    showContextMenu: (x, y, idx, timeMs, options) => MaweContextMenus.showContextMenu(x, y, idx, timeMs, options),
     showExtensionContextMenu: (x, y, idx, timeMs) => MaweContextMenus.showExtensionContextMenu(x, y, idx, timeMs),
     showBlankWaveformMenu: (timeMs, x, y, track) => MaweContextMenus.showWaveformBlankMenu(timeMs, x, y, track),
     addCueRange: (startMs, endMs, x, y, track = 'main') => (

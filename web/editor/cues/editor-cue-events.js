@@ -142,8 +142,11 @@
   });
   el.addEventListener('contextmenu', (e) => {
     e.preventDefault();
-    // 按住 Shift 打开菜单时，拆分项切换为「渐进拆分」。
-    MaweContextMenus.showContextMenu(e.clientX, e.clientY, idx, null, { progressiveSplit: e.shiftKey });
+    // 按住 Shift 打开菜单时，拆分项切换为「渐进拆分」；同时按住 Ctrl/Cmd 则为「复制拆分」。
+    const splitTextMode = e.shiftKey
+      ? ((e.ctrlKey || e.metaKey) ? 'duplicate' : 'progressive')
+      : null;
+    MaweContextMenus.showContextMenu(e.clientX, e.clientY, idx, null, { splitTextMode });
   });
 }
 
