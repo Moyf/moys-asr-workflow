@@ -6,19 +6,21 @@ overlong spans by punctuation and interpolates the piece times linearly
 (``build_interpolated_items``), so an interpolated cut point can land
 mid-speech.  This module reads the extracted 16 kHz mono WAV and moves each
 interpolated boundary to the lowest-energy frame within a small window —
-the places where speakers actually pause (breath / silence valleys).
+which can indicate a nearby pause without proving a speech boundary.
 """
 
 from __future__ import annotations
 
+import math
 from pathlib import Path
+from collections.abc import Collection
 
 try:  # numpy / soundfile 随本地转写运行时（local dependency group）安装，
     # 不在默认依赖组内；缺失时能量谷吸附静默降级为不生效，绝不阻断转写
     # 输出（云端转写 CLI 不带 local 组也要能正常导入本模块）。
     import numpy as np
     import soundfile as sf
-except ImportError:  # pragma: no cover - 取决于安装的依赖组
+except (ImportError, OSError):  # pragma: no cover - 取决于安装的依赖组与原生音频库
     np = None  # type: ignore[assignment]
     sf = None  # type: ignore[assignment]
 
@@ -63,12 +65,14 @@ def snap_boundaries_to_valleys(
     *,
     max_shift_ms: int = DEFAULT_MAX_SHIFT_MS,
     dip_ratio: float = DEFAULT_DIP_RATIO,
+    boundary_indices: Collection[int] | None = None,
 ) -> int:
-    """Move boundaries between item-less (interpolated) cues to quiet valleys.
+    """Move selected boundaries between adjacent item-less cues to quiet valleys.
 
-    Only cue pairs where both sides lack ``items`` are touched — word-timed
-    cues carry real timestamps.  A boundary moves only when its window
-    contains a genuine energy dip; both neighbouring cue times are updated
+    The caller supplies interpolated boundary indices; None selects all pairs
+    for low-level envelope use. Word-timed cues and existing gaps stay intact.
+    A boundary moves only when its window contains a clear energy dip;
+    both neighbouring cue times are updated
     to the snapped value so cues stay adjacent and monotonic.  Returns the
     number of moved boundaries.
     """
@@ -76,8 +80,12 @@ def snap_boundaries_to_valleys(
     if envelope.size == 0 or frame_seconds <= 0:
         return 0
     moved = 0
-    for previous, current in zip(segments, segments[1:]):
+    for index, (previous, current) in enumerate(zip(segments, segments[1:]), 1):
+        if boundary_indices is not None and index not in boundary_indices:
+            continue
         if previous.get("items") or current.get("items"):
+            continue
+        if previous.get("end") != current.get("start"):
             continue
         previous_start = previous.get("start")
         current_start = current.get("start")
@@ -89,8 +97,9 @@ def snap_boundaries_to_valleys(
         hi = min(float(current_end) - 1.0, boundary + max_shift_ms)
         if hi <= lo:
             continue
-        first_frame = max(0, int(lo / 1000.0 / frame_seconds))
-        last_frame = min(envelope.size, max(first_frame + 1, int(hi / 1000.0 / frame_seconds) + 1))
+        frame_ms = frame_seconds * 1000.0
+        first_frame = max(0, math.ceil(lo / frame_ms - 0.5))
+        last_frame = min(envelope.size, math.floor(hi / frame_ms - 0.5) + 1)
         window = envelope[first_frame:last_frame]
         if window.size == 0:
             continue
@@ -98,9 +107,11 @@ def snap_boundaries_to_valleys(
         quiet = float(window.min())
         if mean <= 0 or quiet > mean * dip_ratio:
             continue
-        valley = first_frame + int(window.argmin())
-        snapped = int(round((valley + 0.5) * frame_seconds * 1000.0))
-        snapped = min(max(snapped, int(lo) + 1), int(hi) - 1)
+        # Equal-energy valleys prefer the nearest center. Never clip an
+        # out-of-window frame center to an arbitrary non-valley timestamp.
+        candidates = np.flatnonzero(window == window.min()) + first_frame
+        valley = int(candidates[np.argmin(np.abs((candidates + 0.5) * frame_ms - boundary))])
+        snapped = int(round((valley + 0.5) * frame_ms))
         if snapped == int(boundary):
             continue
         previous["end"] = snapped
@@ -115,6 +126,7 @@ def snap_cue_boundaries(
     *,
     max_shift_ms: int = DEFAULT_MAX_SHIFT_MS,
     dip_ratio: float = DEFAULT_DIP_RATIO,
+    boundary_indices: Collection[int] = (),
 ) -> int:
     """Read ``audio_path`` and snap interpolated boundaries; 0 when unavailable.
 
@@ -122,6 +134,10 @@ def snap_cue_boundaries(
     output is never blocked by the snapping pass.
     """
 
+    # Missing word times do not prove a boundary was interpolated. The splitter
+    # records eligible indices in memory; original engine edges stay untouched.
+    if not boundary_indices:
+        return 0
     try:
         envelope, frame_seconds = rms_envelope(Path(audio_path))
     except (OSError, RuntimeError, ValueError):
@@ -132,4 +148,5 @@ def snap_cue_boundaries(
         frame_seconds,
         max_shift_ms=max_shift_ms,
         dip_ratio=dip_ratio,
+        boundary_indices=boundary_indices,
     )

@@ -1240,11 +1240,12 @@ def split_coarse_segments(
     max_words: int = WESTERN_MAX_WORDS,
     min_words: int = WESTERN_MIN_WORDS,
     split_mode: str | None = None,
+    interpolated_boundary_indices: set[int] | None = None,
 ) -> list[dict]:
     """逐段调用 split_coarse_segment（见其 docstring）。"""
     result: list[dict] = []
     for segment in segments:
-        result.extend(split_coarse_segment(
+        pieces = split_coarse_segment(
             segment,
             max_len=max_len,
             min_len=min_len,
@@ -1252,7 +1253,10 @@ def split_coarse_segments(
             max_words=max_words,
             min_words=min_words,
             split_mode=split_mode,
-        ))
+        )
+        if interpolated_boundary_indices is not None and not segment.get("items"):
+            interpolated_boundary_indices.update(range(len(result) + 1, len(result) + len(pieces)))
+        result.extend(pieces)
     return result
 
 
@@ -2548,6 +2552,7 @@ def main():
             coarse_segments = repair_nonpositive_duration_segments([
                 dict(segment) for segment in result["segments"]
             ])
+            interpolated_boundary_indices: set[int] = set()
             segments = split_coarse_segments(
                 coarse_segments,
                 max_len=args.max_len,
@@ -2556,9 +2561,10 @@ def main():
                 max_words=args.max_words,
                 min_words=args.min_words,
                 split_mode=split_mode,
+                interpolated_boundary_indices=interpolated_boundary_indices,
             )
             if audio_path and Path(audio_path).is_file():
-                snapped = snap_cue_boundaries(segments, audio_path)
+                snapped = snap_cue_boundaries(segments, audio_path, boundary_indices=interpolated_boundary_indices)
                 if snapped:
                     print(f"[输出] 已将 {snapped} 个插值切点吸附到语音能量谷")
             print(f"[解析] 字幕整理完成：{len(segments)} 条（保留云端句子边界）。")

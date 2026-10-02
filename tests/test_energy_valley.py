@@ -15,6 +15,8 @@ except ImportError:  # pragma: no cover - 取决于安装的依赖组
     sf = None
 
 from maw.energy_valley import FRAME_MS, rms_envelope, snap_boundaries_to_valleys, snap_cue_boundaries
+from generate_subtitle_qwen_api import split_coarse_segments
+from maw.local_asr import LocalTranscription, build_local_segments
 
 SAMPLE_RATE = 16_000
 
@@ -62,6 +64,53 @@ class RmsEnvelopeTests(unittest.TestCase):
 
 @requires_numpy
 class SnapBoundaryTests(unittest.TestCase):
+    def test_cloud_and_local_splitters_only_snap_internal_interpolated_edges(self) -> None:
+        sources = [
+            {"start": 0, "end": 3000, "text": "你好世界再见世界"},
+            {"start": 3000, "end": 4000, "text": "结束"},
+        ]
+        envelope = np.ones(40, dtype=np.float32)
+        envelope[16] = envelope[32] = 0
+        for local in [False, True]:
+            with self.subTest(local=local):
+                eligible: set[int] = set()
+                if local:
+                    segments = build_local_segments(LocalTranscription(
+                        text="", language="zh", items=[], segments=sources, model="test",
+                        timestamp_granularity="segment", split_mode="continuous"),
+                        duration_ms=4000, max_len=4, min_len=1,
+                        interpolated_boundary_indices=eligible)
+                else:
+                    segments = split_coarse_segments(sources, max_len=4, min_len=1,
+                        gap_split_ms=500, split_mode="continuous",
+                        interpolated_boundary_indices=eligible)
+                self.assertEqual(eligible, {1})
+                with mock.patch("maw.energy_valley.rms_envelope", return_value=(envelope, 0.1)):
+                    self.assertEqual(snap_cue_boundaries(segments, "audio.wav", boundary_indices=eligible), 1)
+                self.assertEqual([segment["end"] for segment in segments], [1650, 3000, 4000])
+                self.assertEqual(segments[2]["start"], 3000)
+
+    def test_valley_center_outside_shift_window_is_not_clipped_into_it(self) -> None:
+        envelope = np.ones(20, dtype=np.float32)
+        envelope[14] = 0
+        segments = [{"start": 0, "end": 1400}, {"start": 1400, "end": 2000}]
+        self.assertEqual(snap_boundaries_to_valleys(segments, envelope, 0.1, max_shift_ms=20), 0)
+        self.assertEqual(segments[0]["end"], 1400)
+
+    def test_unsplit_source_boundaries_are_not_inferred_from_missing_items(self) -> None:
+        with tempfile.TemporaryDirectory() as root:
+            path = _write_wav(Path(root) / 'audio.wav', np.concatenate([_loud(1.5), _silence(0.3), _loud(1.2)]))
+            segments = [{"start": 0, "end": 1400}, {"start": 1400, "end": 3000}]
+            self.assertEqual(snap_cue_boundaries(segments, path), 0)
+            self.assertEqual(segments[0]['end'], 1400)
+
+    def test_existing_gaps_are_preserved(self) -> None:
+        envelope = np.ones(30, dtype=np.float32)
+        envelope[15:18] = 0
+        segments = [{"start": 0, "end": 1000}, {"start": 1400, "end": 3000}]
+        self.assertEqual(snap_boundaries_to_valleys(segments, envelope, 0.1), 0)
+        self.assertEqual([segments[0]['end'], segments[1]['start']], [1000, 1400])
+
     def test_boundary_snaps_into_nearby_silence(self) -> None:
         with tempfile.TemporaryDirectory() as root:
             path = _write_wav(Path(root) / "audio.wav", np.concatenate([_loud(1.5), _silence(0.3), _loud(1.2)]))
@@ -128,7 +177,7 @@ class SnapBoundaryTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as root:
             segments = [{"start": 0, "end": 1200}, {"start": 1200, "end": 2400}]
 
-            moved = snap_cue_boundaries(segments, Path(root) / "missing.wav")
+            moved = snap_cue_boundaries(segments, Path(root) / "missing.wav", boundary_indices={1})
 
             self.assertEqual(moved, 0)
             self.assertEqual([segment["end"] for segment in segments], [1200, 2400])
@@ -146,7 +195,7 @@ class AudioDependencyDegradationTests(unittest.TestCase):
         with mock.patch("maw.energy_valley.np", None), mock.patch("maw.energy_valley.sf", None):
             segments = [{"start": 0, "end": 1200}, {"start": 1200, "end": 2400}]
 
-            moved = snap_cue_boundaries(segments, "irrelevant.wav")
+            moved = snap_cue_boundaries(segments, "irrelevant.wav", boundary_indices={1})
 
         self.assertEqual(moved, 0)
         self.assertEqual([segment["end"] for segment in segments], [1200, 2400])
