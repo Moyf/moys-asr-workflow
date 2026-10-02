@@ -86,6 +86,7 @@ def default_postprocess_plan() -> dict[str, object]:
                 "scriptPath": "",
                 "matchMode": "script",
                 "aiCleanup": False,
+                "aiCleanupNotes": "",
                 "providerId": "deepseek",
                 "extraSplitPunctuation": list(DEFAULT_EXTRA_SPLIT_PUNCTUATION),
                 "preservePunctuation": list(DEFAULT_PRESERVE_PUNCTUATION),
@@ -158,6 +159,8 @@ def normalize_plan(raw: object) -> dict[str, object]:
                 step[key] = str(value or "script") if str(value or "script") in {"script", "text"} else "script"
             elif key == "aiCleanup":
                 step[key] = bool(value)
+            elif key == "aiCleanupNotes":
+                step[key] = str(value or "").strip()
             elif key == "cleanMarkdownSymbols":
                 step[key] = bool(value)
             elif key == "videoPathMode":
@@ -1136,6 +1139,7 @@ def _run_ai_cleanup_step(
         output_directory=output_directory,
         media_path=media_path,
         clean_markdown_symbols=step.get("cleanMarkdownSymbols", True) is not False,
+        notes=str(step.get("aiCleanupNotes") or "").strip(),
     ), complete=complete, on_status=on_status)
 
 
