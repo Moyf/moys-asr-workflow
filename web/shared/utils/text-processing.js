@@ -102,5 +102,27 @@ window.MAWE.register('utils-text-processing', function createUtilsModule(depende
     };
   }
 
-  return Object.freeze({ applyTextProcessing, buildReplacementPreview, buildTextProcessingPreview });
+  // ASS 单句渐入渐出标记：`>>` 在整行行首表示淡入，`<<` 在整行行尾表示淡出，
+  // 两端同时出现即淡入 + 淡出。双符号始终识别；rule 为 both 时单符号
+  // `>` / `<` 也识别（旧值 single 按 double 处理，只认双符号）。
+  function parseSentenceFadeMarkers(text, rule) {
+    const source = String(text == null ? '' : text);
+    const singleAllowed = rule === 'both';
+    let body = source;
+    let fadeIn = false;
+    let fadeOut = false;
+    if (body.startsWith('>>')) body = body.slice(2), fadeIn = true;
+    else if (singleAllowed && body.startsWith('>')) body = body.slice(1), fadeIn = true;
+    if (body.endsWith('<<')) body = body.slice(0, -2), fadeOut = true;
+    else if (singleAllowed && body.endsWith('<')) body = body.slice(0, -1), fadeOut = true;
+    return { text: (fadeIn || fadeOut) ? body : source, fadeIn, fadeOut };
+  }
+
+
+  function stripSentenceFadeMarkers(text, rule) {
+    return parseSentenceFadeMarkers(text, rule).text;
+  }
+
+
+  return Object.freeze({ applyTextProcessing, buildReplacementPreview, buildTextProcessingPreview, parseSentenceFadeMarkers, stripSentenceFadeMarkers });
 });

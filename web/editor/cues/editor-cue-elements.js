@@ -287,9 +287,13 @@
 
 
   function setTextHtml(el, text, query) {
+    // 单句渐入渐出标记是编辑语法，不在字幕列表里显示字面符号。
+    const source = window.AsrEditorUtils.stripSentenceFadeMarkers(
+      String(text ?? ''), MaweSettings.EDITOR_SETTINGS.assSpecialSymbolRule,
+    );
     if (!query) {
       el.innerHTML = '';
-      text.split('\n').forEach((line, i) => {
+      source.split('\n').forEach((line, i) => {
         if (i > 0) el.appendChild(document.createElement('br'));
         el.appendChild(document.createTextNode(line));
       });
@@ -297,7 +301,7 @@
     }
     const re = buildSearchRegex(query, false);
     let html = '';
-    for (const line of text.split('\n').map(escapeHtml)) {
+    for (const line of source.split('\n').map(escapeHtml)) {
       if (html) html += '<br>';
       if (!re) { html += line; continue; }
       html += line.replace(re, m => `<mark>${m}</mark>`);

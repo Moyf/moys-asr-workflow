@@ -1,7 +1,7 @@
 // srt: private helpers; dependencies are injected by editor-utils.js.
 window.MAWE.register('utils-srt', function createUtilsModule(dependencies) {
   'use strict';
-  const { DEFAULT_SPEAKER_LABEL_SEPARATOR, effectiveColorName, formatSpeakerLabelledText, normalizeSpeakerLabelSeparator, normalizeSpeakerLabels } = dependencies;
+  const { DEFAULT_SPEAKER_LABEL_SEPARATOR, effectiveColorName, formatSpeakerLabelledText, normalizeSpeakerLabelSeparator, normalizeSpeakerLabels, stripSentenceFadeMarkers } = dependencies;
 
 
   function getSrtExportFirstIndex(segments, alignFirstEnabled = false) {
@@ -137,11 +137,12 @@ window.MAWE.register('utils-srt', function createUtilsModule(dependencies) {
       outputIndex += 1;
       parts.push(String(outputIndex));
       parts.push(`${formatTime(start)} --> ${formatTime(end)}`);
+      const cueText = String(segment.text ?? '');
       parts.push(disabled ? '' : speakerLabels
         ? formatSpeakerLabelledText(
-          segment.text, segment, colorContext, speakerLabels, speakerLabelSeparator,
+          stripSentenceFadeMarkers(cueText), segment, colorContext, speakerLabels, speakerLabelSeparator,
         )
-        : String(segment.text || ''));
+        : stripSentenceFadeMarkers(cueText));
       parts.push('');
     });
     return parts.join('\n');
@@ -170,8 +171,9 @@ window.MAWE.register('utils-srt', function createUtilsModule(dependencies) {
       if (end <= start) return;
       const context = track === 0 && typeof options.colorContextResolver === 'function'
         ? options.colorContextResolver(segment) || source : source;
-      const text = String(labels ? formatSpeakerLabelledText(segment.text, segment, context, labels, separator)
-        : segment.text || '').replace(/\r\n?/g, '\n');
+      const strippedText = stripSentenceFadeMarkers(String(segment.text ?? ''));
+      const text = String(labels ? formatSpeakerLabelledText(strippedText, segment, context, labels, separator)
+        : strippedText).replace(/\r\n?/g, '\n');
       if (!text.trim()) return;
       const record = { track, index, text };
       addEvent(start, record, true);

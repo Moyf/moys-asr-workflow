@@ -1,16 +1,33 @@
 // ass-animation: private helpers; dependencies are injected by editor-utils.js.
 window.MAWE.register('utils-ass-animation', function createUtilsModule(dependencies) {
   'use strict';
-  const { ASS_DEFAULT_PLAY_RES_X, ASS_DEFAULT_PLAY_RES_Y, normalizeAssAnimations } = dependencies;
+  const { ASS_DEFAULT_PLAY_RES_X, ASS_DEFAULT_PLAY_RES_Y, normalizeAssAnimations, parseSentenceFadeMarkers } = dependencies;
 
 
-  function assAnimationOverrideTags(profile, { includeMove = true } = {}) {
+  // 单句渐入渐出：取整行两端标记，返回剥离后的文本与该句的 fad 时长。
+  // 时长统一取自样式库 profile 的 fad 设置（即使未启用也取其 inMs/outMs），
+  // 单句标记优先级高于全局动画开关。
+  function assSentenceFadeTags(text, profile, rule) {
+    const parsed = parseSentenceFadeMarkers(text, rule);
+    if (!parsed.fadeIn && !parsed.fadeOut) return { text: parsed.text, fad: null };
+    const fad = normalizeAssAnimations(profile?.animations).fad;
+    return {
+      text: parsed.text,
+      fad: { inMs: parsed.fadeIn ? fad.inMs : 0, outMs: parsed.fadeOut ? fad.outMs : 0 },
+    };
+  }
+
+
+  function assAnimationOverrideTags(profile, { includeMove = true, fad = null } = {}) {
     const animations = normalizeAssAnimations(profile?.animations);
     const tags = [];
     // libass/playback behaviour is undefined when both fade forms are present.
     // The more expressive form wins, while the simple fad remains the normal
     // one-click path in the style manager.
-    if (animations.fade.enabled) {
+    if (fad && (fad.inMs > 0 || fad.outMs > 0)) {
+      // 单句 `>>`/`<<` 标记：覆盖全局 fade/fad，只保留该句的淡入淡出。
+      tags.push(`\\fad(${fad.inMs},${fad.outMs})`);
+    } else if (animations.fade.enabled) {
       const { alpha1, alpha2, alpha3, t1, t2, t3, t4 } = animations.fade;
       tags.push(`\\fade(${alpha1},${alpha2},${alpha3},${t1},${t2},${t3},${t4})`);
     } else if (animations.fad.enabled) {
@@ -35,6 +52,7 @@ window.MAWE.register('utils-ass-animation', function createUtilsModule(dependenc
     playResY = ASS_DEFAULT_PLAY_RES_Y,
     stageWidth = 0,
     stageHeight = 0,
+    fad = null,
   } = {}) {
     const animations = normalizeAssAnimations(profile?.animations);
     const elapsed = Math.max(0, Number(elapsedMs) || 0);
@@ -45,7 +63,14 @@ window.MAWE.register('utils-ass-animation', function createUtilsModule(dependenc
       const amount = Math.min(1, Math.max(0, (elapsed - from) / (to - from)));
       return start + (end - start) * amount;
     };
-    if (animations.fade.enabled) {
+    if (fad && (fad.inMs > 0 || fad.outMs > 0)) {
+      // 单句 `>>`/`<<`：预览跟随该句自身的淡入淡出，忽略全局开关。
+      const fadeIn = fad.inMs > 0 && elapsed < fad.inMs ? elapsed / fad.inMs : 1;
+      const fadeOutStart = Math.max(0, duration - fad.outMs);
+      const fadeOut = fad.outMs > 0 && elapsed > fadeOutStart
+        ? Math.max(0, (duration - elapsed) / fad.outMs) : 1;
+      opacity = Math.min(1, fadeIn, fadeOut);
+    } else if (animations.fade.enabled) {
       const fade = animations.fade;
       let alpha = fade.alpha1;
       if (elapsed < fade.t1) alpha = fade.alpha1;
@@ -95,5 +120,5 @@ window.MAWE.register('utils-ass-animation', function createUtilsModule(dependenc
     };
   }
 
-  return Object.freeze({ assAnimationOverrideTags, assPreviewAnimationState });
+  return Object.freeze({ assAnimationOverrideTags, assPreviewAnimationState, assSentenceFadeTags });
 });

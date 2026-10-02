@@ -5101,6 +5101,96 @@ test('buildAssPayload applies fad and transform tags to overlay cues but never m
   assert.ok(!dialogue[1].includes('\\move('));
 });
 
+test('buildAssPayload turns single-cue fade markers into fad tags from the style-library durations', () => {
+  const ass = helpers.buildAssPayload(
+    [{ start: 0, end: 1000, text: '>>淡入<<' }],
+    {
+      assProfile: {
+        id: 'ass', styleId: 'ass',
+        animations: { fad: { enabled: false, inMs: 120, outMs: 240 } },
+      },
+      assStyle: { id: 'ass', primaryColor: '#123456', outlineColor: '#000000', outline: 2 },
+      assExtensionStyle: { id: 'ass-extension' },
+      appearance: {},
+      extensionSegments: [{ start: 0, end: 1000, text: '淡出<<' }],
+      overlaySegments: [{ start: 0, end: 1000, text: '>>叠加' }],
+    },
+  );
+  const dialogue = ass.split('\n').filter((line) => line.startsWith('Dialogue:'));
+  // 主轨：两端标记 → fad(in,out)，字面标记剥离。
+  assert.ok(dialogue[0].includes('{\\fad(120,240)}淡入'), dialogue[0]);
+  assert.ok(!dialogue[0].includes('>>') && !dialogue[0].includes('<<'), dialogue[0]);
+  // 副字幕轨（Layer 1）：只有行尾 << → fad(0,out)。
+  const extension = dialogue.find((line) => line.startsWith('Dialogue: 1,'));
+  assert.ok(extension.includes('{\\fad(0,240)}淡出'), extension);
+  // 叠加轨（Layer 2）：只有行首 >> → fad(in,0)。
+  const overlay = dialogue.find((line) => line.startsWith('Dialogue: 2,'));
+  assert.ok(overlay.includes('{\\fad(120,0)}叠加'), overlay);
+});
+
+test('single-cue fade markers override the global ASS animation switch', () => {
+  const ass = helpers.buildAssPayload(
+    [{ start: 0, end: 1000, text: '>>句子' }],
+    {
+      assProfile: {
+        id: 'ass', styleId: 'ass',
+        animations: {
+          fade: { enabled: true, alpha1: 0, alpha2: 255, alpha3: 0, t1: 0, t2: 250, t3: 750, t4: 1000 },
+          fad: { enabled: true, inMs: 500, outMs: 600 },
+        },
+      },
+      assStyle: { id: 'ass', primaryColor: '#123456', outlineColor: '#000000', outline: 2 },
+      appearance: {},
+    },
+  );
+  const dialogue = ass.split('\n').filter((line) => line.startsWith('Dialogue:'));
+  // 单句标记优先：用句内 fad 覆盖全局 fade/fad 开关。
+  assert.ok(dialogue[0].includes('{\\fad(500,0)}句子'), dialogue[0]);
+  assert.ok(!dialogue[0].includes('\\fade('), dialogue[0]);
+});
+
+test('parses single-cue fade markers with the special-symbol rule', () => {
+  const bothEnds = helpers.parseSentenceFadeMarkers('>>你好<<', 'double');
+  assert.equal(bothEnds.text, '你好');
+  assert.equal(bothEnds.fadeIn, true);
+  assert.equal(bothEnds.fadeOut, true);
+  const inOnly = helpers.parseSentenceFadeMarkers('>>你好', 'double');
+  assert.equal(inOnly.text, '你好');
+  assert.equal(inOnly.fadeIn, true);
+  assert.equal(inOnly.fadeOut, false);
+  const outOnly = helpers.parseSentenceFadeMarkers('你好<<', 'double');
+  assert.equal(outOnly.text, '你好');
+  assert.equal(outOnly.fadeIn, false);
+  assert.equal(outOnly.fadeOut, true);
+  // 双符号默认只认双符号：单符号保持原样。
+  const doubleIgnoresSingle = helpers.parseSentenceFadeMarkers('>你好<', 'double');
+  assert.equal(doubleIgnoresSingle.text, '>你好<');
+  assert.equal(doubleIgnoresSingle.fadeIn, false);
+  assert.equal(doubleIgnoresSingle.fadeOut, false);
+  // both：单符号也识别为 fad。
+  const bothRuleSingle = helpers.parseSentenceFadeMarkers('>你好<', 'both');
+  assert.equal(bothRuleSingle.text, '你好');
+  assert.equal(bothRuleSingle.fadeIn, true);
+  assert.equal(bothRuleSingle.fadeOut, true);
+  // 旧值 single 按 double 处理，避免与另一分支的枚举冲突。
+  const legacySingle = helpers.parseSentenceFadeMarkers('>你好<', 'single');
+  assert.equal(legacySingle.text, '>你好<');
+  assert.equal(legacySingle.fadeIn, false);
+  assert.equal(legacySingle.fadeOut, false);
+  assert.equal(helpers.stripSentenceFadeMarkers('>>你好<<'), '你好');
+  assert.equal(helpers.stripSentenceFadeMarkers('你好'), '你好');
+});
+
+test('SRT export strips single-cue fade markers without touching the text', () => {
+  const srt = helpers.buildSrtPayload(
+    [{ start: 0, end: 1000, text: '>>你好<<' }, { start: 1000, end: 2000, text: '普通' }],
+    { formatTime: (ms) => `T${ms}` },
+  );
+  assert.ok(srt.includes('\n你好\n'), srt);
+  assert.ok(!srt.includes('>>') && !srt.includes('<<'), srt);
+  assert.ok(srt.includes('\n普通\n'), srt);
+});
+
 test('buildAssPayload writes extension cues on layer 1 with a single Extension style', () => {
   const ass = helpers.buildAssPayload(
     [{ start: 100, end: 900, text: 'main' }],
