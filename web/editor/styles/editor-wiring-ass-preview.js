@@ -36,12 +36,20 @@ function assPreviewMetrics() {
   const resolution = MaweExportSrt.currentAssVideoResolution()
     || { width: 1920, height: 1080 };
   const rect = MaweDom.playerStage?.getBoundingClientRect?.();
-  const stageWidth = Math.max(1, Number(rect?.width) || Number(MaweDom.playerStage?.clientWidth) || resolution.width);
-  const stageHeight = Math.max(1, Number(rect?.height) || Number(MaweDom.playerStage?.clientHeight) || resolution.height);
+  const boxWidth = Math.max(1, Number(rect?.width) || Number(MaweDom.playerStage?.clientWidth) || resolution.width);
+  const boxHeight = Math.max(1, Number(rect?.height) || Number(MaweDom.playerStage?.clientHeight) || resolution.height);
+  const player = MaweCoreState.player;
+  const aspect = player?.videoWidth && player?.videoHeight
+    ? player.videoWidth / player.videoHeight : resolution.width / resolution.height;
+  const video = player?.tagName === 'VIDEO';
+  const stageWidth = video ? Math.min(boxWidth, boxHeight * aspect) : boxWidth;
+  const stageHeight = video ? Math.min(boxHeight, boxWidth / aspect) : boxHeight;
   return {
     resolution,
     stageWidth,
     stageHeight,
+    offsetX: (boxWidth - stageWidth) / 2,
+    offsetY: (boxHeight - stageHeight) / 2,
     scaleX: stageWidth / resolution.width,
     scaleY: stageHeight / resolution.height,
   };
@@ -60,19 +68,56 @@ function assPreviewStyleVariant(style, segment, segments, appearance) {
   );
 }
 
-function assPreviewAnimatedStyle(style, profile, animationState) {
+function assPreviewAnimatedStyle(style, profile, animationState, metrics) {
   if (animationState.transformProgress === null) return style;
   const tags = profile?.animations?.t?.tags || '';
-  return window.AsrEditorUtils.assPreviewStyleAt(style, tags, animationState.transformProgress);
+  // \fs targets are in native PlayRes pixels, whereas the library stores its
+  // base size at 1080p. Interpolate both endpoints in native coordinates.
+  const native = { ...style, fontSize: assPreviewExportFontSize(style, metrics) };
+  const result = window.AsrEditorUtils.assPreviewStyleAt(native, tags, animationState.transformProgress);
+  return { ...result, __assNativeFontSize: result.fontSize };
+}
+
+const assPreviewFontMetrics = new Map();
+
+function assPreviewFontScale(style) {
+  // ASS sizes the font by ascent + descent, CSS by unitsPerEm. The browser's
+  // normal line box approximates that ratio without reading local font files.
+  // This remains approximate (fallback fonts and OS/2 vs hhea metrics differ);
+  // the paused Server preview uses libass itself for exact shaping/layout.
+  const family = MaweAppearance.subtitleFontFamilyCss(style.fontName);
+  const key = JSON.stringify([family, style.bold, style.italic]);
+  if (assPreviewFontMetrics.has(key)) return assPreviewFontMetrics.get(key);
+  const probe = document.createElement('div');
+  probe.style.cssText = 'position:absolute;visibility:hidden;pointer-events:none;width:max-content;padding:0;border:0;margin:0;line-height:normal;font-size:200px;';
+  probe.style.fontFamily = family;
+  probe.style.fontWeight = style.bold ? '700' : '400';
+  probe.style.fontStyle = style.italic ? 'italic' : 'normal';
+  probe.textContent = 'Mg';
+  document.body.append(probe);
+  const height = probe.getBoundingClientRect().height;
+  probe.remove();
+  const scale = height > 0 ? 200 / height : 1;
+  assPreviewFontMetrics.set(key, scale);
+  return scale;
+}
+
+function assPreviewExportFontSize(style, metrics) {
+  if (Number.isFinite(style.__assNativeFontSize)) return Math.max(1, style.__assNativeFontSize);
+  return window.AsrEditorUtils.normalizeAssFontSize(
+    Number(style.fontSize) * metrics.resolution.height / ASS_PREVIEW_REFERENCE_HEIGHT,
+  );
 }
 
 function assPreviewFontSize(style, metrics) {
-  // Style-library font sizes use the same 1080p reference as ASS export.
-  // Export scales the value to PlayResY; applying the inverse stage scale here
-  // keeps a 4K source visually consistent with its exported ASS rendering.
-  return Math.max(1, Number(style.fontSize) || 18)
-    * metrics.stageHeight / ASS_PREVIEW_REFERENCE_HEIGHT;
+  // Include export's integer rounding, especially visible on small sources.
+  return assPreviewExportFontSize(style, metrics) * metrics.scaleY * assPreviewFontScale(style);
 }
+
+document.fonts?.addEventListener('loadingdone', () => {
+  assPreviewFontMetrics.clear();
+  window.MawePlaybackLoop?.refreshSubtitlePreview();
+});
 
 function applyAssPreviewElement(element, style, animationState, metrics, alignment, margins, anchorTranslate = '') {
   if (!element) return;
@@ -101,7 +146,7 @@ function applyAssPreviewElement(element, style, animationState, metrics, alignme
     element.style.left = '';
     element.style.top = '';
   }
-  transform.push(`scale(${Math.max(0, Number(style.scaleX) || 100) / 100}, ${Math.max(0, Number(style.scaleY) || 100) / 100})`);
+  transform.push(`scale(${Math.max(0, Number(style.scaleX ?? 100)) / 100}, ${Math.max(0, Number(style.scaleY ?? 100)) / 100})`);
   if (Number(style.rotationX) || Number(style.rotationY)) transform.push('perspective(600px)');
   if (Number(style.rotationX)) transform.push(`rotateX(${Number(style.rotationX)}deg)`);
   if (Number(style.rotationY)) transform.push(`rotateY(${Number(style.rotationY)}deg)`);
@@ -114,10 +159,11 @@ function applyAssPreviewElement(element, style, animationState, metrics, alignme
   element.style.textDecorationColor = style.primaryColor;
   element.style.textUnderlineOffset = style.underline ? '0.16em' : '';
   element.style.color = style.primaryColor;
-  element.style.webkitTextStroke = outline > 0 ? `${outline}px ${style.outlineColor}` : '';
-  element.style.paintOrder = outline > 0 ? 'stroke fill' : '';
-  element.style.filter = !borderBox && shadow > 0
-    ? `drop-shadow(${shadow}px ${shadow}px 0 ${style.backColor})` : '';
+  element.style.webkitTextStroke = !borderBox && outline > 0
+    ? `${2 * outline}px ${window.AsrEditorUtils.assCssColorWithOpacity(style.outlineColor, style.outlineOpacity)}` : '';
+  element.style.paintOrder = !borderBox && outline > 0 ? 'stroke fill' : '';
+  element.style.filter = shadow > 0
+    ? `drop-shadow(${shadow}px ${shadow}px 0 ${window.AsrEditorUtils.assCssColorWithOpacity(style.backColor, style.backOpacity)})` : '';
   element.style.letterSpacing = `${spacing}px`;
   element.style.lineHeight = 'normal';
   // ASS 预览采用 no-wrap 策略：只保留字幕文本中的显式换行，
@@ -125,10 +171,9 @@ function applyAssPreviewElement(element, style, animationState, metrics, alignme
   element.style.whiteSpace = 'pre';
   element.style.wordBreak = 'normal';
   element.style.maxWidth = 'none';
-  element.style.padding = borderBox
-    ? `${Math.max(1, 4 * scaleY)}px ${Math.max(1, 8 * scaleX)}px`
-    : `${Math.max(1, scaleY)}px ${Math.max(1, 2 * scaleX)}px`;
-  element.style.backgroundColor = borderBox ? style.backColor : 'transparent';
+  element.style.padding = borderBox ? `${outline}px ${Math.max(0, Number(style.outline) || 0) * scaleX}px` : '0';
+  element.style.backgroundColor = borderBox
+    ? window.AsrEditorUtils.assCssColorWithOpacity(style.outlineColor, style.outlineOpacity) : 'transparent';
   element.style.borderRadius = '0';
   element.style.opacity = String(opacity);
   element.style.transformOrigin = `${alignment.x * 100}% ${alignment.y * 100}%`;
@@ -139,7 +184,7 @@ function applyAssPreviewSpeakerLabel(element, style, metrics) {
   if (!element) return;
   const scaleY = metrics.scaleY;
   const fontSize = assPreviewFontSize(style, metrics);
-  const outline = Math.max(0, Number(style.outline) || 0) * scaleY;
+  const outline = Number(style.borderStyle) === 3 ? 0 : Math.max(0, Number(style.outline) || 0) * scaleY;
   const shadow = Math.max(0, Number(style.shadow) || 0) * scaleY;
   const spacing = (Number(style.spacing) || 0) * scaleY;
   element.style.fontFamily = MaweAppearance.subtitleFontFamilyCss(style.fontName);
@@ -149,10 +194,11 @@ function applyAssPreviewSpeakerLabel(element, style, metrics) {
   element.style.textDecorationLine = [style.underline ? 'underline' : '', style.strikeOut ? 'line-through' : ''].filter(Boolean).join(' ') || 'none';
   element.style.textDecorationColor = style.primaryColor;
   element.style.textUnderlineOffset = style.underline ? '0.16em' : '';
-  element.style.webkitTextStroke = outline > 0 ? `${outline}px ${style.outlineColor}` : '';
+  element.style.webkitTextStroke = outline > 0
+    ? `${2 * outline}px ${window.AsrEditorUtils.assCssColorWithOpacity(style.outlineColor, style.outlineOpacity)}` : '';
   element.style.paintOrder = outline > 0 ? 'stroke fill' : '';
   element.style.filter = shadow > 0
-    ? `drop-shadow(${shadow}px ${shadow}px 0 ${style.backColor})` : '';
+    ? `drop-shadow(${shadow}px ${shadow}px 0 ${window.AsrEditorUtils.assCssColorWithOpacity(style.backColor, style.backOpacity)})` : '';
   element.style.letterSpacing = `${spacing}px`;
   element.style.lineHeight = 'normal';
 }
@@ -228,10 +274,11 @@ function renderAssEmphasisPreview(element, textNode, text, style, metrics) {
   const emphasisSyntax = MaweSettings.EDITOR_SETTINGS.assEmphasisSyntax;
   const key = JSON.stringify([source, emphasisSyntax, style.emphasisStyle,
     style.emphasisColor, style.emphasisScale, style.fontSize, style.underline, style.primaryColor,
-    style.outlineColor, style.outline, style.strikeOut, metrics.scaleY, metrics.stageHeight,
+    style.outlineColor, style.outlineOpacity, style.outline, style.strikeOut, metrics.scaleY, metrics.stageHeight,
     style.smallTextScale, style.largeTextScale, MaweSettings.EDITOR_SETTINGS.assUnderlineEnabled,
     MaweSettings.EDITOR_SETTINGS.assSpecialSymbolRule, MaweSettings.EDITOR_SETTINGS.assStrikeEnabled, MaweSettings.EDITOR_SETTINGS.assSmallTextEnabled,
-    MaweSettings.EDITOR_SETTINGS.assLargeTextEnabled]);
+    MaweSettings.EDITOR_SETTINGS.assLargeTextEnabled, style.fontName, style.bold, style.italic,
+    metrics.resolution.height, assPreviewFontScale(style), style.__assNativeFontSize, style.borderStyle]);
   if (element.dataset.assEmphasisKey === key) return;
   clearAssEmphasisPreview(element);
   const runs = window.AsrEditorUtils.assInlineStyleRuns(source, emphasisSyntax, MaweSettings.EDITOR_SETTINGS);
@@ -263,10 +310,17 @@ function renderAssEmphasisPreview(element, textNode, text, style, metrics) {
     const sizeScale = run.size === 'small' ? style.smallTextScale
       : run.size === 'large' ? style.largeTextScale : 1;
     const scale = sizeScale * (run.emphasized ? style.emphasisScale : 1);
-    if (scale !== 1) span.style.fontSize = `${assPreviewFontSize(style, metrics) * scale}px`;
+    if (scale !== 1) {
+      const size = Math.max(1, Math.round(assPreviewExportFontSize(style, metrics) * scale));
+      span.style.fontSize = `${size * metrics.scaleY * assPreviewFontScale(style)}px`;
+    }
     if (run.emphasized && style.emphasisStyle === 'stroke') {
-      span.style.webkitTextStroke = `${Math.max(0, Number(style.outline) || 0) * metrics.scaleY}px ${style.emphasisColor}`;
-      span.style.paintOrder = 'stroke fill';
+      const color = window.AsrEditorUtils.assCssColorWithOpacity(style.emphasisColor, style.outlineOpacity);
+      if (Number(style.borderStyle) === 3) span.style.backgroundColor = color;
+      else {
+        span.style.webkitTextStroke = `${2 * Math.max(0, Number(style.outline) || 0) * metrics.scaleY}px ${color}`;
+        span.style.paintOrder = 'stroke fill';
+      }
     } else if (run.emphasized) {
       span.style.color = style.emphasisColor;
     }
@@ -352,22 +406,22 @@ function applyAssSubtitlePreview({ tMs, segment, extension, overlay, overlaySegm
   );
   const animationGroup = profile.animations || {};
   const withMove = (style, state) => ({
-    ...assPreviewAnimatedStyle(style, profile, state),
+    ...assPreviewAnimatedStyle(style, profile, state, metrics),
     __assMove: animationGroup.move?.enabled ? { x: state.moveX, y: state.moveY } : null,
   });
   const animatedMainStyle = withMove(mainStyle, mainAnimation);
   // 副字幕与叠加轨不跟随 \move（绝对 PlayRes 坐标只属于主字幕）；
   // fad/fade/t 与位置无关，预览与导出保持一致。
-  const animatedExtensionStyle = assPreviewAnimatedStyle(extensionStyleBase, profile, extensionAnimation);
-  const animatedOverlayTrackStyle = assPreviewAnimatedStyle(overlayTrackStyle, profile, overlayAnimation);
+  const animatedExtensionStyle = assPreviewAnimatedStyle(extensionStyleBase, profile, extensionAnimation, metrics);
+  const animatedOverlayTrackStyle = assPreviewAnimatedStyle(overlayTrackStyle, profile, overlayAnimation, metrics);
   // 叠加轨锚定 = 下方最近一层的边距 + 1.2 × 该层字号（与导出的固化
   // 公式一致）：有副字幕时叠在副字幕上方，否则叠在主字幕上方。偏移按
   // 动画前的基础字号计算——导出侧 MarginV 固化在样式里，\t(\fs) 只改
   // 变字形大小，不改变锚定边距。
   const extensionTrackActive = extensionSegments
     .some((cue) => cue && cue.disabled !== true);
-  const mainPreviewFontSize = assPreviewFontSize(baseStyle, metrics);
-  const extensionPreviewFontSize = assPreviewFontSize(extensionStyleBase, metrics);
+  const mainPreviewFontSize = assPreviewExportFontSize(baseStyle, metrics) * metrics.scaleY;
+  const extensionPreviewFontSize = assPreviewExportFontSize(extensionStyleBase, metrics) * metrics.scaleY;
   const overlayOffsetPx = extensionTrackActive
     ? extensionMargins.vertical + 1.2 * extensionPreviewFontSize
     : margins.vertical + 1.2 * mainPreviewFontSize;
@@ -376,12 +430,12 @@ function applyAssSubtitlePreview({ tMs, segment, extension, overlay, overlaySegm
   MaweDom.overlayEl.classList.add('ass-preview-active');
   // ASS 的坐标系覆盖整个 PlayRes 画布；旧版 CSS 预览保存的自定义字幕盒
   // 只在 CSS 模式下生效，否则会把 Alignment / Margin 的语义再次套一层。
-  MaweDom.overlayEl.style.left = '0';
-  MaweDom.overlayEl.style.top = '0';
+  MaweDom.overlayEl.style.left = `${metrics.offsetX}px`;
+  MaweDom.overlayEl.style.top = `${metrics.offsetY}px`;
   MaweDom.overlayEl.style.right = 'auto';
   MaweDom.overlayEl.style.bottom = 'auto';
-  MaweDom.overlayEl.style.width = '100%';
-  MaweDom.overlayEl.style.height = '100%';
+  MaweDom.overlayEl.style.width = `${metrics.stageWidth}px`;
+  MaweDom.overlayEl.style.height = `${metrics.stageHeight}px`;
   MaweDom.overlayEl.style.alignItems = alignment.alignItems;
   MaweDom.overlayEl.style.justifyContent = alignment.justifyContent;
   MaweDom.overlayEl.style.textAlign = alignment.textAlign;
@@ -406,9 +460,9 @@ function applyAssSubtitlePreview({ tMs, segment, extension, overlay, overlaySegm
       ? paletteColor || animatedMainStyle.primaryColor
       : animatedMainStyle.primaryColor;
     MaweDom.overlayMainSpeakerLabelEl.style.color = labelColor;
-    MaweDom.overlayMainSpeakerLabelEl.style.webkitTextStroke = animatedMainStyle.outline > 0
-      ? `${animatedMainStyle.outline * metrics.scaleY}px ${animatedMainStyle.outlineColor}` : '';
-    MaweDom.overlayMainSpeakerLabelEl.style.paintOrder = animatedMainStyle.outline > 0 ? 'stroke fill' : '';
+    MaweDom.overlayMainSpeakerLabelEl.style.webkitTextStroke = Number(animatedMainStyle.borderStyle) !== 3 && animatedMainStyle.outline > 0
+      ? `${2 * animatedMainStyle.outline * metrics.scaleY}px ${window.AsrEditorUtils.assCssColorWithOpacity(animatedMainStyle.outlineColor, animatedMainStyle.outlineOpacity)}` : '';
+    MaweDom.overlayMainSpeakerLabelEl.style.paintOrder = Number(animatedMainStyle.borderStyle) !== 3 && animatedMainStyle.outline > 0 ? 'stroke fill' : '';
     MaweDom.overlayMainSpeakerLabelEl.style.textDecorationColor = labelColor;
   } else {
     clearAssPreviewSpeakerLabelStyle(MaweDom.overlayMainSpeakerLabelEl);
@@ -479,6 +533,9 @@ function restoreAssOverlayTrackPreview() {
   delete overlayTrackTextEl.dataset.colorText;
   delete overlayTrackTextEl.dataset.colorStroke;
 }
+
+// The manager also uses the calibrated font metrics after boot has completed.
+window.MaweAssPreview = Object.freeze({ fontScale: assPreviewFontScale });
 
 
 

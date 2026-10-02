@@ -225,22 +225,31 @@
 
 
 
-  function buildAss() {
+  function buildAss({ preview = false } = {}) {
+  const speakerOptions = MaweSpeakerLabels.speakerLabelExportOptions();
+  if (preview) {
+    const settings = MaweSpeakerLabels.getSpeakerLabelSettings();
+    speakerOptions.speakerLabelsEnabled = settings.mapping_enabled && settings.enabled;
+  }
   const { overlaySegments } = mergedExportSegments();
   // 副字幕轨随 ASS 导出（多重字幕开启时才存在）；叠加轨与副字幕分层输出。
-  const extensionSegments = activeExtensionSegments();
+  const extensionSegments = preview && !MaweDom.extensionOverlayToggle?.checked
+    ? [] : activeExtensionSegments();
   const firstEnabledIndex = window.AsrEditorUtils.getSrtExportFirstIndex(
     MaweBoot.DATA.segments,
     MaweSettings.EDITOR_SETTINGS.exportStartAtZero,
   );
-  return window.AsrEditorUtils.buildAssPayload(MaweBoot.DATA.segments, {
+  return window.AsrEditorUtils.buildAssPayload(preview && !MaweDom.overlayToggle.checked
+    ? [] : MaweBoot.DATA.segments, {
     ...assExportOptions(),
-    alignFirstStart: MaweSettings.EDITOR_SETTINGS.exportStartAtZero,
+    // Export-only lead-in extension must not make a cue appear before its
+    // actual start when checking the playback timeline.
+    alignFirstStart: !preview && MaweSettings.EDITOR_SETTINGS.exportStartAtZero,
     firstEnabledIndex,
     appearance: MaweAppearance.getSubtitleAppearance(),
     overlaySegments,
     extensionSegments,
-    ...MaweSpeakerLabels.speakerLabelExportOptions(),
+    ...speakerOptions,
   });
 }
 
@@ -251,6 +260,18 @@
       ...MaweSpeakerLabels.speakerLabelExportOptions(),
       formatTime: MaweCueElements.fmtSrtTime,
     });
+  }
+
+  function buildBilingualSrt() {
+    if (MaweMultiSubtitleCore.getMultiSubtitleState().enabled !== true) return '';
+    const { segments, overlaySet, overlaySegments } = mergedExportSegments();
+    return window.AsrEditorUtils.buildBilingualSrtPayload(segments,
+      MaweMultiSubtitleCore.getActiveExtensionTrack()?.segments || [], {
+        alignFirstStart: MaweSettings.EDITOR_SETTINGS.exportStartAtZero,
+        colorContextResolver: exportColorContextResolver(overlaySet, overlaySegments),
+        ...MaweSpeakerLabels.speakerLabelExportOptions(),
+        formatTime: MaweCueElements.fmtSrtTime,
+      });
   }
 
 
@@ -321,14 +342,23 @@
 
 
   function updateSubtitleExportUi() {
+    const bilingual = MaweMultiSubtitleCore.getMultiSubtitleState().enabled === true;
+    const hasSecondary = MaweMultiSubtitleCore.getActiveExtensionTrack()?.segments
+      ?.some((segment) => segment && segment.disabled !== true && String(segment.text || '').trim());
+    const mainItem = document.getElementById('download-full-srt');
+    if (mainItem) mainItem.textContent = window.MAWE_I18N?.translateText?.(bilingual ? '主字幕 SRT' : 'SRT 字幕')
+      || (bilingual ? '主字幕 SRT' : 'SRT 字幕');
     const hasColors = usedSubtitleColors().some((color) => color.name !== 'default');
     if (MaweDom.downloadColorSrtItem) MaweDom.downloadColorSrtItem.hidden = !hasColors;
-    if (MaweDom.subtitleExportSeparator) MaweDom.subtitleExportSeparator.hidden = !hasColors;
+    if (MaweDom.subtitleExportSeparator) MaweDom.subtitleExportSeparator.hidden = !(hasColors || bilingual);
     if (MaweDom.downloadGapRemovedColorSrtItem) MaweDom.downloadGapRemovedColorSrtItem.hidden = !hasColors;
     if (MaweDom.gapRemovedSubtitleExportSeparator) MaweDom.gapRemovedSubtitleExportSeparator.hidden = !hasColors;
     if (MaweDom.subtitleExportDropdown) MaweDom.subtitleExportDropdown.hidden = false;
-    if (MaweDom.downloadMultiSrtButton) {
-      MaweDom.downloadMultiSrtButton.hidden = !(MaweMultiSubtitleCore.multiSubtitleVisible() && MaweMultiSubtitleCore.getActiveExtensionTrack()?.segments?.length);
+    for (const item of [MaweDom.downloadMultiSrtButton, document.getElementById('download-bilingual-srt')]) {
+      if (!item) continue;
+      item.hidden = !bilingual;
+      item.classList.toggle('disabled', !hasSecondary);
+      item.setAttribute('aria-disabled', String(!hasSecondary));
     }
   }
 
@@ -360,6 +390,7 @@
     assExportOptions,
     buildAss,
     buildExtensionSrt,
+    buildBilingualSrt,
     buildGapRemovedSrt,
     buildGapRemovedAss,
     usedSubtitleColors,

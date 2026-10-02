@@ -20,8 +20,7 @@
 
   const MULTI_SUBTITLE_IMPORT_PROMPT = '是否导入第二条字幕？（后续也可以将字幕或工程拖入编辑器加载）';
 
-
-  const MULTI_SUBTITLE_TOGGLE_TITLE = '当前工程如果有大于1条字幕，可以开启双语字幕模式，用于双语字幕编辑等。';
+  const MULTI_SUBTITLE_TOGGLE_TITLE = '开启后显示副字幕轨，可手动添加或导入第二条字幕。';
 
 
   let normalizedMultiSubtitleReference = null;
@@ -34,6 +33,7 @@
   function normalizeMultiSubtitleState() {
     if (normalizedMultiSubtitleReference === MaweBoot.DATA.multi_subtitle) return MaweBoot.DATA.multi_subtitle;
     window.AsrEditorUtils.normalizeMultiSubtitleProject(MaweBoot.DATA);
+    if (MaweBoot.DATA.multi_subtitle.enabled === true) ensureEmptyExtensionTrack(MaweBoot.DATA.multi_subtitle);
     normalizedMultiSubtitleReference = MaweBoot.DATA.multi_subtitle;
     return MaweBoot.DATA.multi_subtitle;
   }
@@ -42,6 +42,13 @@
 
   function getMultiSubtitleState() {
     return normalizeMultiSubtitleState();
+  }
+
+  function ensureEmptyExtensionTrack(multi) {
+    if (multi.tracks.length) return multi.tracks[0];
+    const track = window.AsrEditorUtils.normalizeMultiSubtitle({ tracks: [{ segments: [] }] }).tracks[0];
+    multi.tracks.push(track);
+    return track;
   }
 
 
@@ -636,6 +643,7 @@
     set pendingSrtImportAsExtension(v) { pendingSrtImportAsExtension = v; },
     normalizeMultiSubtitleState,
     getMultiSubtitleState,
+    ensureEmptyExtensionTrack,
     getExtensionTrack,
     getActiveExtensionTrack,
     multiSubtitleVisible,

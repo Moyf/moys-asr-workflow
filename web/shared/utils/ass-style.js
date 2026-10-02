@@ -154,8 +154,8 @@ window.MAWE.register('utils-ass-style', function createUtilsModule(dependencies)
     id: 'default',
     name: 'SRT 默认',
     builtin: true,
-    fontName: 'Arial',
-    fontSize: 18,
+    fontName: ASS_DEFAULT_FONT_FAMILY,
+    fontSize: 86,
     primaryColor: '#ffffff',
     emphasisColor: '#ffd34d',
     emphasisScale: 1.1,
@@ -165,7 +165,9 @@ window.MAWE.register('utils-ass-style', function createUtilsModule(dependencies)
     secondaryColor: '#ffffff',
     outlineColor: '#000000',
     backColor: '#000000',
-    bold: false,
+    outlineOpacity: 100,
+    backOpacity: 100,
+    bold: true,
     italic: false,
     underline: false,
     strikeOut: false,
@@ -174,40 +176,33 @@ window.MAWE.register('utils-ass-style', function createUtilsModule(dependencies)
     spacing: 0,
     angle: 0,
     borderStyle: 1,
-    outline: 2,
+    outline: 6,
     shadow: 0,
     alignment: 2,
     marginL: 10,
     marginR: 10,
-    marginV: 40,
+    marginV: 88,
     encoding: 1,
   });
 
-  // ASS 默认样式：字体按操作系统选择、默认加粗，字号按 1080p 参考基准 72，
-  // 垂直边距放宽到 80；SRT 烧录默认样式保持 Arial 18/40 不加粗。
+  // 内置参数与维护者的当前配置一致；字体继续按系统选择。
   const ASS_DEFAULT_ASS_STYLE = Object.freeze({
     ...ASS_DEFAULT_STYLE,
     id: 'ass', name: 'ASS 默认样式',
-    fontName: ASS_DEFAULT_FONT_FAMILY,
-    bold: true,
-    fontSize: 72, marginV: 80,
+    emphasisColor: '#ffaa00', emphasisScale: 1.3,
+    backColor: '#ff8647', backOpacity: 60,
   });
 
-  // ASS 副字幕默认样式：多重字幕的副语言轨在 ASS 导出与预览中共用一个
-  // 样式（副字幕不支持颜色分组）；默认沿用 CSS 预览的副字幕黄色，字号约
-  // 主样式的 75%，垂直边距按「主边距 80 + 1.2 × 主字号 72」固化在主字幕
-  // 上方，与叠加字幕的默认锚定公式一致。
+  // 副字幕位于主字幕下方，使用独立颜色、描边及边距。
   const ASS_DEFAULT_EXTENSION_STYLE = Object.freeze({
     ...ASS_DEFAULT_STYLE,
     id: 'ass-extension', name: 'ASS 副字幕样式',
-    fontName: ASS_DEFAULT_FONT_FAMILY,
-    bold: true,
-    primaryColor: '#ffd34d',
-    fontSize: 54, marginV: 166,
+    primaryColor: '#ffd34d', emphasisColor: '#ffaa00',
+    fontSize: 64, outline: 2, marginV: 36,
   });
 
   const ASS_DEFAULT_ANIMATIONS = Object.freeze({
-    fad: Object.freeze({ enabled: false, inMs: 250, outMs: 250 }),
+    fad: Object.freeze({ enabled: true, inMs: 250, outMs: 250 }),
     fade: Object.freeze({
       enabled: false, alpha1: 0, alpha2: 255, alpha3: 0,
       t1: 0, t2: 250, t3: 750, t4: 1000,
@@ -294,6 +289,9 @@ window.MAWE.register('utils-ass-style', function createUtilsModule(dependencies)
       secondaryColor: normalizeAssLibraryColor(source.secondaryColor, fallback.secondaryColor || '#ffffff'),
       outlineColor: normalizeAssLibraryColor(source.outlineColor, fallback.outlineColor || '#000000'),
       backColor: normalizeAssLibraryColor(source.backColor, fallback.backColor || '#000000'),
+      // 旧库缺少透明度字段时保持完全不透明；新内置参数显式携带透明度。
+      outlineOpacity: normalizeAssLibraryNumber(source.outlineOpacity, 100, 0, 100),
+      backOpacity: normalizeAssLibraryNumber(source.backOpacity, 100, 0, 100),
       bold: normalizeAssLibraryBoolean(source.bold, Boolean(fallback.bold)),
       italic: normalizeAssLibraryBoolean(source.italic, Boolean(fallback.italic)),
       underline: normalizeAssLibraryBoolean(source.underline, Boolean(fallback.underline)),
@@ -498,8 +496,8 @@ window.MAWE.register('utils-ass-style', function createUtilsModule(dependencies)
       fontSizeOverride || normalized.fontSize,
       assColorFromHex(normalized.primaryColor),
       assColorFromHex(normalized.secondaryColor),
-      assColorFromHex(normalized.outlineColor),
-      assColorFromHex(normalized.backColor),
+      assColorFromHex(normalized.outlineColor, ASS_DEFAULT_COLOR, normalized.outlineOpacity),
+      assColorFromHex(normalized.backColor, ASS_DEFAULT_COLOR, normalized.backOpacity),
       boolValue('bold'),
       boolValue('italic'),
       boolValue('underline'),
@@ -619,13 +617,36 @@ window.MAWE.register('utils-ass-style', function createUtilsModule(dependencies)
   }
 
 
-  function assColorFromHex(value, fallback = ASS_DEFAULT_COLOR) {
+  function assAlphaFromOpacity(opacity, fallbackOpacity = 100) {
+    // ASS 的 AA 通道与直觉相反：00 = 不透明，FF = 全透明；这里用常见的
+    // 「不透明度百分比」（100 = 不透明）换算成 ASS alpha 字节。
+    const value = Number(opacity);
+    const normalized = Number.isFinite(value) ? Math.min(100, Math.max(0, value)) : fallbackOpacity;
+    return Math.round(((100 - normalized) * 255) / 100);
+  }
+
+
+  function assColorFromHex(value, fallback = ASS_DEFAULT_COLOR, opacity = 100) {
     const raw = String(value ?? '').trim();
     const fallbackColor = String(fallback ?? ASS_DEFAULT_COLOR).trim();
     const hex = /^#[0-9a-f]{6}$/i.test(raw) ? raw
       : (/^#[0-9a-f]{6}$/i.test(fallbackColor) ? fallbackColor : ASS_DEFAULT_COLOR);
     // ASS stores colours as &HAABBGGRR; AA=00 is fully opaque.
-    return `&H00${hex.slice(5, 7)}${hex.slice(3, 5)}${hex.slice(1, 3)}`.toUpperCase();
+    const alphaHex = assAlphaFromOpacity(opacity).toString(16).padStart(2, '0');
+    return `&H${alphaHex}${hex.slice(5, 7)}${hex.slice(3, 5)}${hex.slice(1, 3)}`.toUpperCase();
+  }
+
+
+  function assCssColorWithOpacity(value, opacity = 100, fallback = ASS_DEFAULT_COLOR) {
+    // CSS 预览侧的对应换算：rgba 的 alpha 就是「不透明度」本身（1 = 不透明）。
+    // 注意与 ASS 的 AA 通道方向相反，不能复用 assAlphaFromOpacity。
+    const raw = String(value ?? '').trim();
+    const fallbackColor = String(fallback ?? ASS_DEFAULT_COLOR).trim();
+    const hex = /^#[0-9a-f]{6}$/i.test(raw) ? raw
+      : (/^#[0-9a-f]{6}$/i.test(fallbackColor) ? fallbackColor : ASS_DEFAULT_COLOR);
+    const numeric = Number(opacity);
+    const alpha = Math.round((Number.isFinite(numeric) ? Math.min(100, Math.max(0, numeric)) : 100)) / 100;
+    return `rgba(${parseInt(hex.slice(1, 3), 16)}, ${parseInt(hex.slice(3, 5), 16)}, ${parseInt(hex.slice(5, 7), 16)}, ${alpha})`;
   }
 
 
@@ -702,5 +723,5 @@ window.MAWE.register('utils-ass-style', function createUtilsModule(dependencies)
     };
   }
 
-  return Object.freeze({ ASS_COLOR_STYLE_NAMES, ASS_DEFAULT_ANIMATIONS, ASS_DEFAULT_ASS_STYLE, ASS_DEFAULT_COLOR, ASS_DEFAULT_EXTENSION_STYLE, ASS_DEFAULT_PLAY_RES_X, ASS_DEFAULT_PLAY_RES_Y, ASS_DEFAULT_PROFILE, ASS_DEFAULT_STYLE, ASS_EVENT_FORMAT, ASS_FALLBACK_COLOR_PALETTE, ASS_REFERENCE_PLAY_RES_Y, ASS_STYLE_FORMAT, ASS_STYLE_LIBRARY_SCHEMA, assColorFromHex, assDefaultFontFamily, assEmphasisRuns, assInlineStyleRuns, assOverrideColorFromHex, assPreviewStyleAt, assProfileForId, assStyleForId, assStyleLine, assTransformStyleTargets, defaultAssStyleLibrary, escapeAssText, formatAssTime, normalizeAssAnimations, normalizeAssColorStyle, normalizeAssFontFamily, normalizeAssFontSize, normalizeAssLibraryColor, normalizeAssPlayResolution, normalizeAssProfile, normalizeAssStyle, normalizeAssStyleLibrary, normalizeAssTimeMs, resolveAssFontSize });
+  return Object.freeze({ ASS_COLOR_STYLE_NAMES, ASS_DEFAULT_ANIMATIONS, ASS_DEFAULT_ASS_STYLE, ASS_DEFAULT_COLOR, ASS_DEFAULT_EXTENSION_STYLE, ASS_DEFAULT_PLAY_RES_X, ASS_DEFAULT_PLAY_RES_Y, ASS_DEFAULT_PROFILE, ASS_DEFAULT_STYLE, ASS_EVENT_FORMAT, ASS_FALLBACK_COLOR_PALETTE, ASS_REFERENCE_PLAY_RES_Y, ASS_STYLE_FORMAT, ASS_STYLE_LIBRARY_SCHEMA, assAlphaFromOpacity, assColorFromHex, assCssColorWithOpacity, assDefaultFontFamily, assEmphasisRuns, assInlineStyleRuns, assOverrideColorFromHex, assPreviewStyleAt, assProfileForId, assStyleForId, assStyleLine, assTransformStyleTargets, defaultAssStyleLibrary, escapeAssText, formatAssTime, normalizeAssAnimations, normalizeAssColorStyle, normalizeAssFontFamily, normalizeAssFontSize, normalizeAssLibraryColor, normalizeAssPlayResolution, normalizeAssProfile, normalizeAssStyle, normalizeAssStyleLibrary, normalizeAssTimeMs, resolveAssFontSize });
 });

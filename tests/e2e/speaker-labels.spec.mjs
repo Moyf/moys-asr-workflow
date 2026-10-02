@@ -351,7 +351,10 @@ test('keeps ASS speaker labels in the same style across preview resizing and ful
     };
   });
   expect(smallWindow.stageHeight).toBeCloseTo(540, 0);
-  expect(Number.parseFloat(smallWindow.textFontSize)).toBeCloseTo(36, 0);
+  // Arial's CSS em is smaller than the ASS ascent/descent size. Keep the
+  // resize invariant without assuming the old, uncalibrated 36px CSS value.
+  expect(Number.parseFloat(smallWindow.textFontSize)).toBeGreaterThan(24);
+  expect(Number.parseFloat(smallWindow.textFontSize)).toBeLessThan(36);
   expect(smallWindow.labelFontSize).toBe(smallWindow.textFontSize);
   expect(smallWindow.labelFontFamily).toBe(smallWindow.textFontFamily);
   expect(smallWindow.labelFontWeight).toBe(smallWindow.textFontWeight);
@@ -390,7 +393,8 @@ test('keeps ASS speaker labels in the same style across preview resizing and ful
   });
   expect(fullscreen.fullscreen).toBe(true);
   expect(fullscreen.stageHeight).toBeCloseTo(1080, 0);
-  expect(Number.parseFloat(fullscreen.textFontSize)).toBeCloseTo(72, 0);
+  expect(Number.parseFloat(fullscreen.textFontSize))
+    .toBeCloseTo(2 * Number.parseFloat(smallWindow.textFontSize), 2);
   expect(fullscreen.labelFontSize).toBe(fullscreen.textFontSize);
   expect(fullscreen.labelFontFamily).toBe(smallWindow.textFontFamily);
   expect(fullscreen.labelFontWeight).toBe(smallWindow.textFontWeight);
@@ -419,7 +423,7 @@ test('keeps ASS speaker labels in the same style across preview resizing and ful
     labelFontSize: getComputedStyle(document.getElementById('overlay-main-speaker-label')).fontSize,
   }));
   expect(windowedAgain.fullscreen).toBe(false);
-  expect(Number.parseFloat(windowedAgain.textFontSize)).toBeCloseTo(36, 0);
+  expect(windowedAgain.textFontSize).toBe(smallWindow.textFontSize);
   expect(windowedAgain.labelFontSize).toBe(windowedAgain.textFontSize);
 });
 
