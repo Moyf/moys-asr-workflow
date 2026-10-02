@@ -10,6 +10,8 @@ MAW 当前的正式入口仍然是云端 ASR。这个页面记录本地模型流
 
 Launcher 已提供实验性的「本地模型」识别方式，入口仍复用同一套媒体、输出和 MAWE 流程，而不是另做一套 UI。Windows 打包版可以直接在 Launcher 中安装本地运行环境；详细范围见 [MAW 1.2 本地模型 Launcher 开发记录](dev/MAW%201.2%20本地模型%20Launcher%20开发记录.md)。
 
+对于仅有句级时间码的超长段，二次拆分产生的插值切点会尝试吸附到 ±400ms 内明显的低能量处；原始句子边界、间隙与已有字词时间码不变。能量平坦、音频不可读或缺少 numpy / soundfile 时保持原切点。低能量只提供切点参考，不能保证是准确的语音边界，仍需在编辑器中试听检查。
+
 ## MOSS Transcribe-Diarize
 
 MOSS Transcribe-Diarize 0.9B 是 Apache-2.0 许可的端到端转写与说话人分离模型。官方在 AISHELL-4、Alimeeting、Podcast 和 Movies 多说话人基准上报告了较低的 CER / cpCER，适合会议、访谈、播客和多人视频；说话人标签是当前音频内的相对编号（如 `S01`），不是跨文件的真实身份。

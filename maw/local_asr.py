@@ -2246,6 +2246,7 @@ def build_local_segments(
     max_words: int = DEFAULT_MAX_WORDS,
     min_words: int = DEFAULT_MIN_WORDS,
     strip_tail_punct: str = _LOCAL_TAIL_PUNCT,
+    interpolated_boundary_indices: set[int] | None = None,
 ) -> list[dict[str, Any]]:
     """Turn adapter output into MAW's integer-millisecond subtitle segments."""
     if transcription.segments:
@@ -2266,6 +2267,7 @@ def build_local_segments(
                     max_words=max_words,
                     min_words=min_words,
                     split_mode=transcription.split_mode or None,
+                    interpolated_boundary_indices=interpolated_boundary_indices,
                 )
             )
         else:
