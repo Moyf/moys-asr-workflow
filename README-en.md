@@ -11,6 +11,8 @@
 
 MAW is an API-first subtitle generation and editing workflow. It provides Windows/macOS desktop packages, a public CLI, and a local Server editor. Editing and project storage stay on your machine.
 
+Latest beta: [v1.8.0-beta.1](https://github.com/Moyf/moys-asr-workflow/releases/tag/v1.8.0-beta.1).
+
 ## Quick start
 
 1. [Download the latest release](https://github.com/Moyf/moys-asr-workflow/releases/latest). The default Windows package is `MAW-Windows-x64-v*.zip` and includes FFmpeg; if `ffmpeg` and `ffprobe` are already available, choose the smaller `MAW-lite-Windows-x64-v*.zip`. macOS users can choose the corresponding `MAW.app` or `MAW-lite.app` package.

@@ -1497,7 +1497,7 @@ wheels = [
 
 [[package]]
 name = "moys-asr-workflow"
-version = "1.7.0"
+version = "1.8.0b1"
 source = { virtual = "." }
 dependencies = [
     { name = "fonttools" },
@@ -1512,6 +1512,7 @@ dependencies = [
 
 [package.dev-dependencies]
 build = [
+    { name = "pillow" },
     { name = "pyinstaller" },
 ]
 dev = [
@@ -1554,7 +1555,10 @@ requires-dist = [
 ]
 
 [package.metadata.requires-dev]
-build = [{ name = "pyinstaller", specifier = "==6.16.0" }]
+build = [
+    { name = "pillow", specifier = ">=10.0.0" },
+    { name = "pyinstaller", specifier = "==6.16.0" },
+]
 dev = [{ name = "ruff", specifier = ">=0.16.3" }]
 local = [
     { name = "accelerate", specifier = ">=1.12" },

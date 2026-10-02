@@ -92,6 +92,29 @@ class AiCleanupTestCase(unittest.TestCase):
         )
 
 
+class ExistingMarkersPreservationTest(AiCleanupTestCase):
+    def test_new_review_markers_preserve_existing_annotations_and_ids(self) -> None:
+        existing = {
+            "schema": "moy.asr.markers.v1", "custom": {"keep": True},
+            "items": [
+                {"id": "marker-001", "start": 100, "end": 200, "name": "人工区段",
+                 "color": "#3366ff", "note": "不要丢失", "custom": 7},
+                {"id": "marker-003", "start": 500, "name": "已复核",
+                 "review": {"status": "confirmed", "reason": "人工确认"}},
+            ],
+        }
+        project_path, script_path = self.request(
+            _project([_segment(0, 1000, "需要复核")], markers=existing), ["需要复核"])
+        _artifact, output, _calls = _run(self.directory, project_path, script_path, _decisions(
+            c001={"decision": "review", "scriptLine": "需要复核", "reason": "请试听"}))
+        markers = output["markers"]
+        self.assertEqual(markers["items"][:2], existing["items"])
+        self.assertEqual(markers["custom"], existing["custom"])
+        self.assertEqual(markers["items"][2]["id"], "marker-002")
+        self.assertEqual(markers["items"][2]["review"]["status"], "pending")
+        self.assertEqual(json.loads(project_path.read_text(encoding="utf-8"))["markers"], existing)
+
+
 class RetakeRemovalTest(AiCleanupTestCase):
     def test_discard_with_similar_alt_take_removes_segment(self) -> None:
         script = [

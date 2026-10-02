@@ -96,8 +96,10 @@ window.MAWE.register('waveform-markers', function createWaveformModule(dependenc
       const timeLabel = isRegion
         ? `${marker.start} → ${marker.end}`
         : String(marker.start);
-      element.title = `${marker.name || (isRegion ? '区段' : '标记')} · ${timeLabel}${marker.note ? `\n${marker.note}` : ''}`;
+      const kindLabel = window.MAWE_I18N?.translateText(isRegion ? '区段' : '标记') || (isRegion ? '区段' : '标记');
+      element.title = `${marker.name || kindLabel} · ${timeLabel}${marker.note ? `\n${marker.note}` : ''}`;
       element.setAttribute('aria-label', element.title);
+      element.dataset.markerProjectReason = 'true';
       if (marker.review?.status === 'pending') element.classList.add('review-pending');
       if (marker.review?.status === 'confirmed') element.classList.add('review-confirmed');
       // 已确认的标记在轨道上只保留色条 / 旗标本身，不再显示名称。
@@ -105,6 +107,7 @@ window.MAWE.register('waveform-markers', function createWaveformModule(dependenc
         const label = document.createElement('span');
         label.className = 'waveform-marker-label';
         label.textContent = marker.name;
+        label.dataset.markerProjectContent = 'true';
         element.appendChild(label);
       }
       if (isRegion) {
@@ -262,8 +265,13 @@ window.MAWE.register('waveform-markers', function createWaveformModule(dependenc
         reviewToggle.classList.toggle('has-review', Boolean(marker.review));
         reviewToggle.classList.toggle('pending', marker.review?.status === 'pending');
         reviewToggle.classList.toggle('confirmed', marker.review?.status === 'confirmed');
-        if (marker.review?.reason) reviewToggle.title = marker.review.reason;
-        else reviewToggle.removeAttribute('title');
+        if (marker.review?.reason) {
+          reviewToggle.title = marker.review.reason;
+          reviewToggle.dataset.markerProjectReason = 'true';
+        } else {
+          reviewToggle.removeAttribute('title');
+          delete reviewToggle.dataset.markerProjectReason;
+        }
       }
     }
 
@@ -552,6 +560,7 @@ window.MAWE.register('waveform-markers', function createWaveformModule(dependenc
           const label = document.createElement('span');
           label.className = 'waveform-marker-label';
           label.textContent = drag.mode === 'create' ? '新区段' : (drag.original?.name || '');
+          if (drag.mode !== 'create') label.dataset.markerProjectContent = 'true';
           preview.appendChild(label);
         }
         row.appendChild(preview);

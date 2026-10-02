@@ -100,7 +100,10 @@
     const badge = document.createElement('span');
     badge.className = `markers-review-badge ${marker.review.status}`;
     badge.textContent = marker.review.status === 'pending' ? '待复核' : '已确认';
-    if (marker.review.reason) badge.title = marker.review.reason;
+    if (marker.review.reason) {
+      badge.title = marker.review.reason;
+      badge.dataset.markerProjectReason = 'true';
+    }
     return badge;
   }
 
@@ -263,7 +266,10 @@
     reviewToggle.type = 'button';
     reviewToggle.className = `markers-review-toggle${marker.review ? ' has-review' : ''}${marker.review?.status === 'pending' ? ' pending' : ''}${marker.review?.status === 'confirmed' ? ' confirmed' : ''}`;
     reviewToggle.textContent = utils.markerReviewStatusLabel(marker);
-    if (marker.review?.reason) reviewToggle.title = marker.review.reason;
+    if (marker.review?.reason) {
+      reviewToggle.title = marker.review.reason;
+      reviewToggle.dataset.markerProjectReason = 'true';
+    }
     reviewToggle.addEventListener('click', () => {
       MaweMarkerEditing.updateMarkerFields(marker.id, { review: utils.nextMarkerReviewStatus(marker) });
     });
@@ -310,6 +316,7 @@
     const title = document.createElement('span');
     title.className = 'markers-item-title';
     title.textContent = marker.name || (isRegion ? '区段' : '标记');
+    if (marker.name) title.dataset.markerProjectContent = 'true';
 
     const time = document.createElement('span');
     time.className = 'markers-item-time';

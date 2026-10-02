@@ -30,6 +30,23 @@ test.afterAll(async () => {
   cleanupTempDir(tempDir);
 });
 
+test('English markers panel translates controls and preserves project names', async ({ page }) => {
+  await page.addInitScript(() => localStorage.setItem('mawe.language', 'en'));
+  await page.goto(server.url);
+  await page.locator('#markers-manage').click();
+  await expect(page.locator('#markers-panel-title')).toHaveText('Markers and regions');
+  await expect(page.locator('#markers-add-current')).toHaveText('Add marker at playhead');
+  await page.evaluate(() => MaweMarkerEditing.addMarkerAt(500, { name: '删除' }));
+  await expect(page.locator('.markers-item-title')).toHaveText('删除');
+  await expect(page.locator('.waveform-marker-label').first()).toHaveText('删除');
+  await expect(page.locator('#markers-summary')).toHaveText('Total 1: markers 1 · regions 0');
+  await page.locator('.markers-item-edit').click();
+  await expect(page.locator('.markers-color-swatches button').first()).toHaveAttribute('aria-label', 'Use color Blue');
+  await expect(page.locator('.markers-item-actions button').filter({ hasText: 'Seek and listen' })).toBeVisible();
+  await expect(page.locator('#markers-search')).toHaveAttribute('placeholder', 'Search names or notes');
+  await page.screenshot({ path: test.info().outputPath('markers-english.png') });
+});
+
 test('English locale covers the editor shell and recent-project setting stays first', async ({ page }) => {
   await page.addInitScript(() => localStorage.setItem('mawe.language', 'en'));
   await page.goto(server.url);
