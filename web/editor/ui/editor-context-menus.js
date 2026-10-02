@@ -267,6 +267,8 @@
       }, { danger: true });
     }
     addColorSubmenu(targetIdxs);
+    // 左右添加字符：单条同样可用。淡出淡入（fad 标记）与音符多以单条为使用场景。
+    addWrapCharsSubmenu(targetIdxs);
     if (colorGroupHeadIndex(idx) >= 0) {
       addItem('从颜色组中脱离', '', () => detachColorFromGroup(idx));
     }
