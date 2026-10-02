@@ -371,7 +371,7 @@
     '_下划线_ 和 ~删除线~（也支持 ~~）可局部添加文字装饰。': '_Underline_ and ~strikethrough~ (also ~~) apply local text decoration.',
     '启用（* 或 **）': 'Enabled (* or **)',
     '需要调整强调色或者字体比例，可以前往': 'To adjust the emphasis color or font scale, go to', '编辑特殊文本样式': 'Edit special text styles',
-    '特殊符号规则': 'Special symbol rule', '单个符号': 'Single symbols', '双个符号': 'Double symbols', '单双皆可': 'Single or double symbols',
+    '特殊符号规则': 'Special symbol rule', '无': 'None', '双个符号': 'Double symbols', '单双皆可': 'Single or double symbols', '单双符号': 'Single or double symbols',
     '特殊符号规则已关闭，字幕中的符号将保留原文。': 'Special symbol rules are off; symbols in subtitles keep their literal text.',
     '特殊文本样式': 'Special text styles', '特殊文本格式': 'Special text formatting',
     '强调': 'Emphasis', '缩小': 'Smaller', '放大': 'Larger',

@@ -6375,16 +6375,18 @@ test('wrap chars menu copy has English translations', () => {
 test('ASS special symbol rules apply to all five formats across preview runs and exports', () => {
   assert.equal(helpers.normalizeEditorSettings().assSpecialSymbolRule, 'both');
   assert.equal(helpers.normalizeEditorSettings({ assSpecialSymbolRule: 'invalid' }).assSpecialSymbolRule, 'both');
+  // 旧工程里的 'single' 迁移为 'both'（单双符号规则已收敛为三值）。
+  assert.equal(helpers.normalizeEditorSettings({ assSpecialSymbolRule: 'single' }).assSpecialSymbolRule, 'both');
   const single = '*强调* _下划线_ ~删除~ -缩小- +放大+';
   const double = '**强调** __下划线__ ~~删除~~ --缩小-- ++放大++';
   const text = `${single} / ${double}`;
-  for (const rule of ['none', 'single', 'double', 'both']) {
+  for (const rule of ['none', 'double', 'both']) {
     const settings = helpers.normalizeEditorSettings({ assSpecialSymbolRule: rule });
     assert.equal(helpers.normalizeEditorSettings(settings).assSpecialSymbolRule, rule);
     const runs = Array.from(helpers.assInlineStyleRuns(text, settings.assEmphasisSyntax, settings));
     const result = runs.map(run => run.text).join('');
     const clean = '强调 下划线 删除 缩小 放大';
-    assert.equal(result, `${['single', 'both'].includes(rule) ? clean : single} / ${['double', 'both'].includes(rule) ? clean : double}`);
+    assert.equal(result, `${rule === 'both' ? clean : single} / ${['double', 'both'].includes(rule) ? clean : double}`);
     const cues = [{ start: 0, end: 1000, text }];
     const ass = helpers.buildAssPayload(cues, { ...settings,
       assProfile: { id: 'ass', styleId: 'ass', animations: {} }, assStyle: { id: 'ass' },
@@ -6396,7 +6398,6 @@ test('ASS special symbol rules apply to all five formats across preview runs and
       else {
         assert.match(line, /\\s1/);
         assert.match(line, /\\u1/);
-        if (rule === 'single') assert.ok(line.includes(double));
         if (rule === 'double') assert.ok(line.includes(single));
       }
     });
