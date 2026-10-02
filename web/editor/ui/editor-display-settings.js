@@ -73,8 +73,7 @@
   MaweSplitMode.refreshMergeJoinModeHint();
   if (MaweDom.multiSubtitleControls) MaweDom.multiSubtitleControls.hidden = !hasMainSubtitle;
   if (MaweDom.multiSubtitleSettingsDropdown) {
-    // 齿轮仅在已导入副轨（真正进入多重字幕编辑）时显示；
-    // 已开启但还没有第二条字幕时改在开关右侧显示拖入提示。
+    // 空副轨也可编辑和导入，设置入口随双语模式显示。
     MaweDom.multiSubtitleSettingsDropdown.hidden = !enabled;
     if (MaweDom.multiSubtitleSettingsDropdown.hidden) {
       MaweDom.multiSubtitleSettingsDropdown.classList.remove('open');
@@ -83,15 +82,14 @@
     }
   }
   if (MaweDom.multiSubtitleEmptyHint) {
-    // 提示与齿轮互斥：开启但无副轨 → 显示；其余隐藏。
-    MaweDom.multiSubtitleEmptyHint.hidden = !(MaweMultiSubtitleCore.getMultiSubtitleState().enabled === true && !enabled);
+    MaweDom.multiSubtitleEmptyHint.hidden = !(enabled && !track.segments.length);
   }
   if (MaweDom.splitMultiSubtitleSettingsEnabledHint) MaweDom.splitMultiSubtitleSettingsEnabledHint.hidden = !enabled;
   if (MaweDom.splitMultiSubtitleSettingsDisabledHint) MaweDom.splitMultiSubtitleSettingsDisabledHint.hidden = enabled;
   if (MaweDom.multiSubtitleToggle) {
     // 勾选状态跟随「多重字幕编辑模式」开关本身：未导入副轨时同样保持勾选。
     MaweDom.multiSubtitleToggle.checked = MaweMultiSubtitleCore.getMultiSubtitleState().enabled === true;
-    // 没有副轨时仍允许点击，由 change 处理器询问是否现在导入第二条字幕。
+    // 开启时创建空副轨；导入第二条字幕是可选操作。
     MaweDom.multiSubtitleToggle.disabled = false;
   }
   if (MaweDom.multiSubtitleToggleLabel) {

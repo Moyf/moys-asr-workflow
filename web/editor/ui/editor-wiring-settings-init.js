@@ -186,21 +186,27 @@ MaweDisplaySettings.applyCueEditorDisplaySettings();
 MaweDom.multiSubtitleToggle?.addEventListener('change', () => {
   const multi = MaweMultiSubtitleCore.getMultiSubtitleState();
   const next = MaweDom.multiSubtitleToggle.checked;
-  const promptImportSecondSrt = next && !MaweMultiSubtitleCore.getActiveExtensionTrack();
+  const promptImportSecondSrt = next && !MaweMultiSubtitleCore.getActiveExtensionTrack()?.segments.length;
   multi.enabled = !next;
   return MaweCommands.run(next ? '开启双语字幕' : '关闭双语字幕', (command) => {
     multi.enabled = next;
+    if (next) MaweMultiSubtitleCore.ensureEmptyExtensionTrack(multi);
     multi._dirty = true;
     // 开关会改变波形是否需要副字幕 lane，因此这里才执行完整波形重建。
     command.commit({ cueList: true, waveform: 'full' });
-    if (!promptImportSecondSrt) return;
-    // 多重字幕模式已开启；提示只决定是否现在导入第二条字幕，
-    // 用户取消导入也保持开启，之后仍可拖入 SRT 或重新走导入流程。
-    if (!confirm(MaweMultiSubtitleCore.MULTI_SUBTITLE_IMPORT_PROMPT)) return;
+    // 先启用空副轨；快速导入询问只决定是否立即选择 SRT。
+    if (!promptImportSecondSrt || !confirm(MaweMultiSubtitleCore.MULTI_SUBTITLE_IMPORT_PROMPT)) return;
     MaweMultiSubtitleCore.pendingSrtImportAsExtension = true;
     MaweProjectMediaInputs.loadSrtFileInput.value = '';
     MaweProjectMediaInputs.loadSrtFileInput.click();
   });
+});
+document.getElementById('multi-subtitle-import')?.addEventListener('click', () => {
+  MaweMultiSubtitleCore.pendingSrtImportAsExtension = true;
+  MaweProjectMediaInputs.loadSrtFileInput.value = '';
+  MaweProjectMediaInputs.loadSrtFileInput.click();
+  MaweDom.multiSubtitleSettingsDropdown?.classList.remove('open');
+  MaweDom.multiSubtitleSettingsDropdown?.querySelector('button[aria-expanded]')?.setAttribute('aria-expanded', 'false');
 });
 MaweDom.multiSubtitleDisplayMode?.addEventListener('change', () => {
   const multi = MaweMultiSubtitleCore.getMultiSubtitleState();

@@ -214,6 +214,7 @@ MaweCueListAnchor.scrollCueIntoViewIfNeeded(MaweCueListAnchor.playbackCueListEle
     MaweDom.overlayExtensionTextEl.textContent = extensionText;
   }
   const overlayCueText = overlayCueVisible ? String(overlayCue.text || '') : '';
+  window.MaweAssFrame?.syncPreview();
   // 叠加轨说话人标签：颜色→说话人映射按叠加轨自身数组解析，与主字幕同源。
   const overlayColorContext = getOverlayTrack()?.segments || [];
   const overlaySpeakerLabel = overlayCueVisible

@@ -79,6 +79,25 @@ _ASS_MISSING_GLYPH_RE: Final = re.compile(
 )
 
 
+def libass_missing_glyphs(stderr: str) -> list[tuple[str, str]]:
+    """Return (glyph_suffix, family) pairs from libass font fallback warnings.
+
+    ``glyph_suffix`` is an empty string when libass did not report a code
+    point; callers format user-facing messages themselves so the burn
+    pipeline and the editor's frame preview can word them differently.
+    """
+    results: list[tuple[str, str]] = []
+    seen: set[tuple[str, str]] = set()
+    for match in _ASS_MISSING_GLYPH_RE.finditer(stderr):
+        glyph = f" U+{int(match.group(1), 16):04X}" if match.group(1) else ""
+        family = re.sub(r"[\x00-\x1f\x7f]", "", match.group(2)).strip()[:100] or "当前字体"
+        pair = (glyph, family)
+        if pair not in seen:
+            results.append(pair)
+            seen.add(pair)
+    return results
+
+
 @dataclass(frozen=True, slots=True)
 class AudioTrack:
     audio_index: int
@@ -815,10 +834,7 @@ def _run_ffmpeg_process(
     if cancel_event is not None and cancel_event.is_set():
         raise MediaToolCancelled("ffmpeg operation cancelled")
     if check_ass_glyphs:
-        match = _ASS_MISSING_GLYPH_RE.search(stderr)
-        if match:
-            glyph = f" U+{match.group(1).upper()}" if match.group(1) else ""
-            family = re.sub(r"[\x00-\x1f\x7f]", "", match.group(2)).strip()[:100] or "当前字体"
+        for glyph, family in libass_missing_glyphs(stderr):
             raise SubtitleFontGlyphMissingError(
                 f"字幕字体「{family}」缺少字形{glyph}，已中止烧录以避免输出方框。"
                 "请安装或更换为包含该字符的字体后重试。"

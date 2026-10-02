@@ -475,17 +475,17 @@ test('ASS mode previews overlay cues in the main style with fad and exports tags
     };
   });
   // 叠加轨与主字幕使用完全相同的 ASS 样式（字号/字体一致），锚定在主
-  // 字幕上方：MarginV = 样式垂直边距 80 + 1.2 × 字号 72（按 PlayRes 1080
+  // 字幕上方：MarginV = 样式垂直边距 88 + 1.2 × 字号 86（按 PlayRes 1080
   // 等比换算）。
   expect(result.overlayFontSize).toBe(result.mainFontSize);
   expect(result.overlayFontFamily.length).toBeGreaterThan(0);
   const scale = result.stageHeight / 1080;
-  const expectedOffset = Math.ceil(80 * scale + 1.2 * ((72 * result.stageHeight) / 1080));
+  const expectedOffset = Math.ceil(88 * scale + 1.2 * ((86 * result.stageHeight) / 1080));
   expect(result.overlayBottom).toBe(`${expectedOffset}px`);
   // t=600ms、fad(in=1000ms)：淡入进行到 60%。
   expect(result.overlayOpacity).toBeCloseTo(0.6, 5);
   // 导出侧：主轨携带 fad + move；叠加轨只带与位置无关的 fad，不带 move，
-  // 引用固化了锚定边距（80 + round(86.4) = 166）的 Overlay 样式。
+  // 引用固化了锚定边距（88 + round(103.2) = 191）的 Overlay 样式。
   const dialogueLines = result.ass.split('\n').filter((line) => line.startsWith('Dialogue:'));
   expect(dialogueLines).toHaveLength(2);
   expect(dialogueLines[0]).toContain('{\\fad(1000,1000)\\move(0,960,0,500,0,1000)}main cue');
@@ -493,7 +493,7 @@ test('ASS mode previews overlay cues in the main style with fad and exports tags
   expect(dialogueLines[1]).not.toContain('\\move(');
   const overlayStyleLine = result.ass.split('\n').find((line) => line.startsWith('Style: Overlay,'));
   expect(overlayStyleLine).toBeTruthy();
-  expect(overlayStyleLine.endsWith(',10,10,166,1')).toBe(true);
+  expect(overlayStyleLine.endsWith(',10,10,191,1')).toBe(true);
   expect(pageErrors, `Page errors: ${pageErrors.join(' | ')}`).toEqual([]);
 });
 
