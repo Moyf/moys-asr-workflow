@@ -38,6 +38,8 @@
     && global.MaweSettings?.EDITOR_SETTINGS?.assFrameStagePreview === true;
   // 自动渲染：默认开启；关闭后仅在点击「渲染当前帧」时更新。
   const autoRenderEnabled = () => global.MaweSettings?.EDITOR_SETTINGS?.assFrameAutoRender !== false;
+  // Avoid serializing the project or spawning FFmpeg when neither view needs it.
+  const previewNeeded = () => floatingPanel.isOpen() || stageOverlayEnabled();
 
   function boundVideo() {
     // A browser-only blob upload can differ from the server's bound project.
@@ -127,7 +129,7 @@
   }
 
   function syncPreview() {
-    if (!enabled() || !boundVideo()) {
+    if (!enabled() || !previewNeeded() || !boundVideo()) {
       desired = null;
       hideStage();
       setStageStatus('');
@@ -147,13 +149,14 @@
     }
     // Typing can refresh the preview on every keystroke. Debounce building the
     // complete ASS too, not just the HTTP request, so long projects stay usable.
-    desired = null;
+    // Keep the last checked manual snapshot until the debounced comparison,
+    // so repeated UI refreshes don't flash the stale mask over a current frame.
+    if (autoRenderEnabled()) desired = null;
     hideStage();
     syncStaleOverlay();
     // 自动渲染关闭：保留最近一次手动帧，等「渲染当前帧」或状态变化再更新。
     if (!autoRenderEnabled()) {
       setStageStatus('');
-      return;
     }
     if (stageOverlayEnabled()) {
       setStageStatus(capabilityFailure ? 'ASS 即时预览 · 实际渲染不可用' : 'ASS 实际画面渲染中…', failureMessage);
@@ -164,15 +167,18 @@
   }
 
   function refreshDesired() {
-    if (!enabled() || !boundVideo() || !player.paused || player.seeking) return;
-    if (!autoRenderEnabled()) return;
-    if (capabilityFailure) {
+    if (!enabled() || !previewNeeded() || !boundVideo() || !player.paused || player.seeking) return;
+    if (autoRenderEnabled() && capabilityFailure) {
       hideStage();
       setStageStatus(stageOverlayEnabled() ? 'ASS 即时预览 · 实际渲染不可用' : '', failureMessage);
       return;
     }
     desired = snapshot();
     syncStaleOverlay();
+    // Manual frames still need freshness checks after UI-only refreshes. A
+    // matching snapshot reuses the frame; actual edits mark it stale without
+    // requesting a replacement until the user clicks Render.
+    if (!autoRenderEnabled()) return;
     if (cached?.key === desired?.key) {
       showWindowFrame(cached);
       showStageFrame(cached);
@@ -278,7 +284,10 @@
     onOpen: () => {
       syncPreview();
       const request = snapshot();
-      if (cached && request && cached.key === request.key) showWindowFrame(cached);
+      if (cached && request && cached.key === request.key) {
+        desired = request;
+        showWindowFrame(cached);
+      }
       else if (autoRenderEnabled()) void renderAssFrame();
       else if (cached) showWindowFrame(cached);
       syncStaleOverlay();
@@ -300,7 +309,14 @@
   }
 
   player?.addEventListener('play', syncPreview);
-  player?.addEventListener('pause', syncPreview);
+  player?.addEventListener('pause', () => {
+    // Playback's clock advances between frame callbacks. Once paused, its
+    // final cursor still represents the last presented frame; keep that PTS
+    // rather than falling back to the between-frame clock. A seek continues
+    // to invalidate it until the browser presents the destination frame.
+    if (!player.seeking) presentedCursor = player.currentTime;
+    syncPreview();
+  });
   player?.addEventListener('seeking', () => {
     seekGeneration += 1;
     // Some browsers deliver the new frame callback before the queued seeking

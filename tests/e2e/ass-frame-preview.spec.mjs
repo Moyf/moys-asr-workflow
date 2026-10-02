@@ -49,6 +49,73 @@ async function seek(page, seconds) {
   await expect.poll(() => page.evaluate(() => window.MaweCoreState.player.seeking)).toBe(false);
 }
 
+test('only auto-renders while the comparison window or stage overlay needs a frame', async ({ page }) => {
+  let requests = 0;
+  await page.route('**/api/ass-frame', async (route) => { requests += 1; await route.continue(); });
+  await enableAss(page);
+  await seek(page, 1.5);
+  // Cover the render timer: neither consumer is visible by default.
+  await page.waitForTimeout(350);
+  expect(requests).toBe(0);
+  await page.locator('#editor-settings-toggle').click();
+  await page.locator('#ass-frame-preview-open').click();
+  await page.locator('#editor-settings-close').click();
+  await expect(page.locator('#ass-frame-image')).toBeVisible();
+  await expect(page.locator('#ass-frame-window-status')).toHaveText('渲染完成');
+  await page.locator('#ass-frame-window-close').click();
+  const before = requests;
+  await seek(page, 2);
+  await page.evaluate(() => {
+    window.MaweBoot.DATA.segments[0].text = '关闭窗口后的编辑';
+    window.MawePlaybackLoop.refreshSubtitlePreview();
+  });
+  await page.waitForTimeout(350);
+  expect(requests).toBe(before);
+  await page.locator('#editor-settings-toggle').click();
+  await page.locator('#ass-frame-preview-open').click();
+  await expect(page.locator('#ass-frame-caption')).toContainText('00:02.000');
+  await expect.poll(() => requests).toBeGreaterThan(before);
+  await expect(page.locator('#ass-frame-stale')).toBeHidden();
+  await page.locator('#ass-frame-stage-toggle').check();
+  await page.locator('#ass-frame-window-close').click();
+  await page.locator('#editor-settings-close').click();
+  await seek(page, 2.5);
+  await expect(page.locator('#ass-stage-frame')).toBeVisible();
+  await expect(page.locator('#ass-stage-frame')).toHaveAttribute('data-time-ms', '2500');
+});
+
+test('manual frames remain current through unchanged preview refreshes', async ({ page }) => {
+  let requests = 0;
+  await page.route('**/api/ass-frame', async (route) => { requests += 1; await route.continue(); });
+  await enableAss(page);
+  await seek(page, 1.5);
+  await page.locator('#editor-settings-toggle').click();
+  await page.locator('#ass-frame-preview-open').click();
+  await expect(page.locator('#ass-frame-window-status')).toHaveText('渲染完成');
+  await page.locator('#ass-frame-auto-toggle').uncheck();
+  await page.locator('#ass-frame-render').click();
+  await expect(page.locator('#ass-frame-window-status')).toHaveText('渲染完成');
+  await expect(page.locator('#ass-frame-stale')).toBeHidden();
+  const before = requests;
+  await page.evaluate(() => {
+    for (let i = 0; i < 30; i += 1) window.MawePlaybackLoop.refreshSubtitlePreview();
+    window.__manualRefreshTimer = setInterval(() => window.MawePlaybackLoop.refreshSubtitlePreview(), 40);
+  });
+  try {
+    await page.waitForTimeout(350);
+    await expect(page.locator('#ass-frame-stale')).toBeHidden();
+    expect(requests).toBe(before);
+  } finally {
+    await page.evaluate(() => clearInterval(window.__manualRefreshTimer));
+  }
+  await page.evaluate(() => {
+    window.MaweBoot.DATA.segments[0].text = '手动帧之后的编辑';
+    window.MawePlaybackLoop.refreshSubtitlePreview();
+  });
+  await expect(page.locator('#ass-frame-stale')).toBeVisible();
+  expect(requests).toBe(before);
+});
+
 test('style preview opens the actual frame window and displays each missing character once', async ({ page }) => {
   const warning = '字幕字体「PingFang SC」缺少字形 U+1F914（🤔），实际画面可能显示方框。';
   await page.route('**/api/ass-frame', async (route) => {
@@ -444,6 +511,27 @@ test('renders the final presented frame at the media duration', async ({ page })
   await expect(page.locator('#ass-stage-frame')).toBeVisible();
   expect(await page.locator('#ass-stage-frame').evaluate((element) => Number(element.dataset.timeMs)))
     .toBeCloseTo(pts * 1000, 2);
+});
+
+test('keeps the presented frame timestamp when playback pauses between frame callbacks', async ({ page }) => {
+  await enableAss(page);
+  await enableStage(page);
+  await seek(page, 1);
+  const paused = await page.evaluate(() => new Promise((resolve) => {
+    const video = window.MaweCoreState.player;
+    const onFrame = (now, metadata) => {
+      if (metadata.mediaTime < 1.2) { video.requestVideoFrameCallback(onFrame); return; }
+      setTimeout(() => {
+        video.pause();
+        resolve({ pts: metadata.mediaTime, cursor: video.currentTime });
+      }, 5);
+    };
+    video.requestVideoFrameCallback(onFrame);
+    void video.play();
+  }));
+  await expect(page.locator('#ass-stage-frame')).toBeVisible();
+  const time = await page.locator('#ass-stage-frame').evaluate((element) => Number(element.dataset.timeMs));
+  expect(time, JSON.stringify(paused)).toBeCloseTo(paused.pts * 1000, 2);
 });
 
 test('manual capture during playback keeps the clicked frame and marks it stale', async ({ page }) => {
