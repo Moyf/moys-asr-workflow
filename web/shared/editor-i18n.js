@@ -781,6 +781,7 @@
     '按音频位置拆分主字幕': 'Split main subtitle at audio position',
     '按音频位置拆分副字幕': 'Split secondary subtitle at audio position',
     '按文字位置拆分': 'Split at text position', '跳转到字幕并播放': 'Seek to subtitle and play',
+    '渐进拆分': 'Progressive split', '复制拆分': 'Duplicate split',
     '分配表情包…': 'Assign sticker…', '删除表情包': 'Remove sticker',
     '标记颜色': 'Mark color', '清除颜色': 'Clear color',
     '从颜色组中脱离': 'Detach from color group', '已从颜色组中脱离': 'Detached from color group',

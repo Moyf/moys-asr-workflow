@@ -142,7 +142,8 @@
   });
   el.addEventListener('contextmenu', (e) => {
     e.preventDefault();
-    MaweContextMenus.showContextMenu(e.clientX, e.clientY, idx);
+    // 按住 Shift 打开菜单时，拆分项切换为「渐进拆分」。
+    MaweContextMenus.showContextMenu(e.clientX, e.clientY, idx, null, { progressiveSplit: e.shiftKey });
   });
 }
 

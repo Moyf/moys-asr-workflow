@@ -26,6 +26,11 @@ test('translates macOS help gestures after platform labels are applied', () => {
   assert.equal(i18n.translateText('Cmd+点击', 'zh'), 'Cmd+点击');
 });
 
+test('translates the progressive and duplicate split menu labels', () => {
+  assert.equal(i18n.translateText('渐进拆分', 'en'), 'Progressive split');
+  assert.equal(i18n.translateText('复制拆分', 'en'), 'Duplicate split');
+});
+
 test('accepts legacy and current project schemas but rejects unknown versions', () => {
   assert.equal(helpers.supportsProjectSchema({ segments: [] }), true);
   assert.equal(helpers.supportsProjectSchema({ schema: helpers.PROJECT_SCHEMA, segments: [] }), true);

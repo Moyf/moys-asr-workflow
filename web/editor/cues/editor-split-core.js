@@ -1677,10 +1677,13 @@
 
   function splitAtCursor(
     feedbackPoint = null,
-    { listFeedback = true, cueListAnchor: suppliedCueListAnchor = null } = {},
+    { listFeedback = true, cueListAnchor: suppliedCueListAnchor = null, splitTextMode = null } = {},
   ) {
     if (!MaweInlineEdit.editingState) return false;
     const force = MaweInlineEdit.editingState.forceSplitArmed === true;
+    // 渐进拆分：前半句保留左半，后半句保留整句原文；复制拆分：两侧都是整句原文。
+    const progressiveSplit = splitTextMode === 'progressive';
+    const duplicateSplit = splitTextMode === 'duplicate';
     const { el, idx, textEl } = MaweInlineEdit.editingState;
     const sel = window.getSelection();
     if (!sel.rangeCount) {
@@ -1719,6 +1722,14 @@
 
     let leftText = window.AsrEditorUtils.applySplitEdgeTrim(fullText.slice(0, cursorOffset), 'end');
     let rightText = window.AsrEditorUtils.applySplitEdgeTrim(fullText.slice(cursorOffset), 'start');
+    if (duplicateSplit) {
+      // 复制拆分：两侧都保留整句原文。
+      leftText = fullText;
+      rightText = fullText;
+    } else if (progressiveSplit) {
+      // 渐进拆分：前半句仍是左半，后半句保留整句原文（含被拆走的前缀）。
+      rightText = fullText;
+    }
     if (!leftText || !rightText) {
       MaweInlineEdit.finishEdit(false);
       MaweHint.flashHint('拆分后任一段为空，已取消', 'warning');
@@ -1801,11 +1812,15 @@
     // 左右边界已在上文（含强制重试的降级调和）结算完毕，这里直接消费。
     const leftItemsClean = cleanSplitItems(itemSplit.leftItems, 'left');
     const rightItemsClean = cleanSplitItems(itemSplit.rightItems, 'right');
+    // 复制拆分两侧都是全文、渐进拆分后半句带上复制来的前缀：逐词时间码再也
+    // 对不上文本，清空对应一侧的 items；渐进拆分前半句仍是原文左半，保留。
+    const leftItemsFinal = duplicateSplit ? [] : leftItemsClean;
+    const rightItemsFinal = (duplicateSplit || progressiveSplit) ? [] : rightItemsClean;
 
     const leftSeg = {
       id: window.AsrEditorUtils.uniqueStableSegmentId([seg], `${seg.id || `main-${idx}`}-a`, 'main'),
       start: seg.start, end: leftEnd, text: leftText,
-      items: leftItemsClean.length ? leftItemsClean : null,
+      items: leftItemsFinal.length ? leftItemsFinal : null,
       sticker: seg.sticker || null,
       sticker_ref: seg.sticker_ref || null,
       color: seg.color || null,
@@ -1816,7 +1831,7 @@
     const rightSeg = {
       id: window.AsrEditorUtils.uniqueStableSegmentId([seg], `${seg.id || `main-${idx}`}-b`, 'main'),
       start: rightStart, end: seg.end, text: rightText,
-      items: rightItemsClean.length ? rightItemsClean : null,
+      items: rightItemsFinal.length ? rightItemsFinal : null,
       sticker: null,
       // 如果原 seg 是被引用的 head，右段也成为同一表情包的延续 → 给 ref
       // 如果原 seg 自己是 ref，右段也保持 ref
@@ -1846,7 +1861,9 @@
 
     // 拆分会改变 idx；先在任何写入前保存完整快照，再静默清选中，等列表
     // 和波形块覆盖层一次性更新后再选中后半段。这样撤销会恢复原 item 时间。
-    return MaweCommands.run('拆分字幕', (command) => {
+    return MaweCommands.run(
+      duplicateSplit ? '复制拆分字幕' : progressiveSplit ? '渐进拆分字幕' : '拆分字幕',
+      (command) => {
       MaweSelection.clearSelection({ silent: true });
       // 关闭多字幕模式时，绑定关系仍保存在工程中；拆分主轨后旧 ID 不再存在，
       // 只移除这条关系，保留隐藏的副字幕供用户重新绑定。

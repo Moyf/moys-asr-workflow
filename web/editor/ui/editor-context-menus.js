@@ -111,7 +111,7 @@
   let ctxLastClickX = 0, ctxLastClickY = 0;
 
 
-  function showContextMenu(x, y, idx, waveformTimeMs = null) {
+  function showContextMenu(x, y, idx, waveformTimeMs = null, { progressiveSplit = false } = {}) {
   ctxLastClickX = x; ctxLastClickY = y;
   MaweDom.ctxmenu.innerHTML = '';
   // 当前条不在选中里 → 立刻选中（但不改变多选）
@@ -178,13 +178,18 @@
   }
 
   if (!isMulti) {
-    // 组 1：拆分与跳转。拆分是字幕行右键菜单的首要动作。
-    const splitLabel = Number.isFinite(waveformTimeMs)
-      ? '按音频位置拆分'
-      : '按文字位置拆分';
-    // 「按音频位置拆分」对应波形上的 B；「按文字位置拆分」对应列表内悬停已选行时的 B。
-    const splitKbd = 'B';
-    addItem(splitLabel, splitKbd, () => MaweSplitContext.splitFromContextMenu(idx, x, y, waveformTimeMs));
+    // 组 1：拆分与跳转。拆分是字幕行右键菜单的首要动作；按住 Shift 时
+    // 换成「渐进拆分」（后半句保留整句原文）。
+    const splitLabel = progressiveSplit
+      ? '渐进拆分'
+      : Number.isFinite(waveformTimeMs)
+        ? '按音频位置拆分'
+        : '按文字位置拆分';
+    // 「按音频位置拆分」对应波形上的 B；「渐进拆分」对应 Shift+B。
+    const splitKbd = progressiveSplit ? 'Shift+B' : 'B';
+    addItem(splitLabel, splitKbd, () => MaweSplitContext.splitFromContextMenu(
+      idx, x, y, waveformTimeMs, { splitTextMode: progressiveSplit ? 'progressive' : null },
+    ));
     // 仅「仅选中」模式提供「跳转并播放」——其它两种单击行为本身就会跳转。
     if (MaweSettings.EDITOR_SETTINGS.clickBehavior === 'select-only') {
       addItem('跳转并播放', 'F', () => {
