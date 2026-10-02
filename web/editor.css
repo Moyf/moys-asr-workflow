@@ -3150,6 +3150,14 @@
     display: grid; gap: 6px; margin-top: 2px; padding: 9px 10px;
     background: var(--bg-panel); border: 1px solid var(--border-subtle); border-radius: var(--radius-sm);
   }
+  /* 「左右添加字符」批量预设：与上方操作列表保持垂直间隔。 */
+  .text-process-wrap-presets {
+    margin-top: 12px; padding: 9px 10px;
+    background: var(--bg-panel); border: 1px solid var(--border-subtle); border-radius: var(--radius-sm);
+  }
+  .text-process-wrap-presets-head { color: var(--text-muted); font-size: 12px; margin-bottom: 8px; }
+  .text-process-wrap-preset-buttons { display: flex; flex-wrap: wrap; gap: 6px; }
+  .text-process-wrap-preset-buttons button { padding: 5px 10px; font-size: 12px; border-radius: var(--radius-sm); }
   .text-process-operation {
     display: grid; grid-template-columns: auto max-content minmax(0, 1fr); align-items: center; gap: 7px;
     margin: 0 !important; color: var(--text-secondary) !important; cursor: pointer; min-height: 28px;

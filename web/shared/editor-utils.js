@@ -298,6 +298,9 @@
     timedTextItemCoverage,
     timedTextItemReuse,
     uniqueStableSegmentId,
+    WRAP_CHAR_PRESETS,
+    isTextWrappedBy,
+    wrapCharsAroundText,
   } = helpers;
 
 window.AsrEditorUtils = {
@@ -329,6 +332,9 @@ window.AsrEditorUtils = {
     buildReplacementPreview,
     applyTextProcessing,
     buildTextProcessingPreview,
+    WRAP_CHAR_PRESETS,
+    isTextWrappedBy,
+    wrapCharsAroundText,
     buildTimedTextDiff,
     timedTextItemCoverage,
     timedTextItemReuse,

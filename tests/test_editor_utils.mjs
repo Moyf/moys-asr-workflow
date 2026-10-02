@@ -6322,6 +6322,56 @@ test('bilingual SRT preserves speaker color contexts and only extends the first 
   assert.equal(helpers.buildBilingualSrtPayload([], []), '');
 });
 
+test('wrap chars presets insert at both ends and skip already wrapped text', () => {
+  assert.deepEqual(
+    Array.from(helpers.WRAP_CHAR_PRESETS, (preset) => ({ ...preset })),
+    [
+      { id: 'emphasis', label: '强调文本', left: '**', right: '**' },
+      { id: 'large', label: '放大文本', left: '++', right: '++' },
+      { id: 'small', label: '缩小文本', left: '--', right: '--' },
+      { id: 'underline', label: '下划线', left: '__', right: '__' },
+      { id: 'strike', label: '删除线', left: '~~', right: '~~' },
+      { id: 'fade', label: '淡出淡入', left: '>>', right: '<<' },
+      { id: 'note', label: '音符', left: '♪', right: '♪' },
+    ],
+  );
+  assert.deepEqual({ ...helpers.wrapCharsAroundText('你好', '**', '**') },
+    { changed: true, skipped: false, text: '**你好**' });
+  // 同一对双符号不重复包裹。
+  assert.deepEqual({ ...helpers.wrapCharsAroundText('**你好**', '**', '**') },
+    { changed: false, skipped: true, text: '**你好**' });
+  assert.deepEqual({ ...helpers.wrapCharsAroundText('你好', '>>', '<<') },
+    { changed: true, skipped: false, text: '>>你好<<' });
+  // 音符是纯装饰字符，也不重复堆叠。
+  assert.deepEqual({ ...helpers.wrapCharsAroundText('♪你好♪', '♪', '♪') },
+    { changed: false, skipped: true, text: '♪你好♪' });
+  assert.deepEqual({ ...helpers.wrapCharsAroundText('', '**', '**') },
+    { changed: false, skipped: false, text: '' });
+  assert.deepEqual({ ...helpers.wrapCharsAroundText('文', '', '') },
+    { changed: false, skipped: false, text: '文' });
+  assert.equal(helpers.isTextWrappedBy('**文**', '**', '**'), true);
+  assert.equal(helpers.isTextWrappedBy('**文**', '>>', '<<'), false);
+});
+
+test('wrap chars menu copy has English translations', () => {
+  for (const preset of helpers.WRAP_CHAR_PRESETS) {
+    assert.notEqual(i18n.translateText(preset.label, 'en'), preset.label, preset.label);
+  }
+  const keys = [
+    '左右添加字符', '自定义左右字符', '左侧字符', '右侧字符', '插入',
+    '左右添加字符（插入到字幕两端）',
+    '在选中字幕文本两端原样插入字符；不做样式转换，也不受「单双符号」规则影响。',
+    '选中字幕已包裹相同符号，未重复添加', '没有可添加字符的字幕',
+    '请至少输入一侧字符', '请先选择要处理的字幕',
+  ];
+  for (const key of keys) assert.notEqual(i18n.translateText(key, 'en'), key, key);
+  assert.equal(i18n.translateText('已为 3 条字幕添加字符', 'en'), 'Added characters to 3 subtitles');
+  assert.equal(
+    i18n.translateText('已为 3 条字幕添加字符；1 条已包裹相同符号，已跳过', 'en'),
+    'Added characters to 3 subtitles; skipped 1 already wrapped with the same characters',
+  );
+});
+
 test('ASS special symbol rules apply to all five formats across preview runs and exports', () => {
   assert.equal(helpers.normalizeEditorSettings().assSpecialSymbolRule, 'both');
   assert.equal(helpers.normalizeEditorSettings({ assSpecialSymbolRule: 'invalid' }).assSpecialSymbolRule, 'both');

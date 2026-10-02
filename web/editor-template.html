@@ -2235,10 +2235,33 @@ __WAVEFORM_CSS__
         <span class="modal-hint">移除常见 Markdown 标记</span>
       </label>
     </div>
+    <div class="text-process-wrap-presets" aria-label="左右添加字符预设">
+      <div class="text-process-wrap-presets-head">左右添加字符（插入到字幕两端）</div>
+      <div class="text-process-wrap-preset-buttons" id="text-process-wrap-presets"></div>
+    </div>
     <div class="preview text-process-preview" id="text-process-preview">选择操作后查看预览</div>
     <div class="actions">
       <button type="button" id="text-process-cancel">取消</button>
       <button type="button" id="text-process-confirm" class="primary" disabled>应用处理</button>
+    </div>
+  </div>
+</div>
+
+<!-- 「左右添加字符」自定义输入：在选中字幕两端原样插入用户输入的字符。 -->
+<div class="modal-mask" id="wrap-chars-modal">
+  <div class="modal" role="dialog" aria-modal="true"
+       aria-labelledby="wrap-chars-title" aria-describedby="wrap-chars-description">
+    <h3 id="wrap-chars-title">自定义左右字符</h3>
+    <p class="modal-desc" id="wrap-chars-description">
+      在选中字幕文本两端原样插入字符；不做样式转换，也不受「单双符号」规则影响。
+    </p>
+    <label for="wrap-chars-left">左侧字符</label>
+    <input type="text" id="wrap-chars-left" placeholder="插入到字幕开头">
+    <label for="wrap-chars-right">右侧字符</label>
+    <input type="text" id="wrap-chars-right" placeholder="插入到字幕结尾">
+    <div class="actions">
+      <button type="button" id="wrap-chars-cancel">取消</button>
+      <button type="button" id="wrap-chars-confirm" class="primary">插入</button>
     </div>
   </div>
 </div>

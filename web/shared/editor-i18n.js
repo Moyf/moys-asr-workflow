@@ -383,6 +383,15 @@
     '你可以使用 **强调**、~~删除~~、--缩小--、++放大++ 等符号来对特定字词添加特殊样式。': 'Use **emphasis**, ~~strike~~, --smaller--, and ++larger++ to apply special styles to individual words.',
     '你可以使用 *强调*/**强调**、~删除~/~~删除~~、-缩小-/--缩小--、+放大+/++放大++ 等符号来对特定字词添加特殊样式。': 'Use *emphasis*/**emphasis**, ~strike~/~~strike~~, -smaller-/--smaller--, and +larger+/++larger++ to apply special styles to individual words.',
     '强调文本': 'Emphasis text', '强调文本语法': 'Emphasis syntax', '文字放大比例': 'Text scale', '强调样式': 'Emphasis style',
+    '左右添加字符': 'Wrap with characters', '自定义左右字符': 'Custom wrap characters',
+    '左侧字符': 'Left characters', '右侧字符': 'Right characters', '插入': 'Insert',
+    '音符': 'Music note', '淡出淡入': 'Fade in/out',
+    '左右添加字符（插入到字幕两端）': 'Wrap with characters (inserted at both ends)',
+    '在选中字幕文本两端原样插入字符；不做样式转换，也不受「单双符号」规则影响。': 'Insert characters verbatim at both ends of the selected subtitles; no style conversion and unaffected by the single or double symbol rule.',
+    '选中字幕已包裹相同符号，未重复添加': 'The selected subtitles are already wrapped with the same characters; nothing was added',
+    '没有可添加字符的字幕': 'No subtitle to add characters to',
+    '请至少输入一侧字符': 'Enter characters for at least one side',
+    '请先选择要处理的字幕': 'Select the subtitles to process first',
     '统一用于 ASS 主字幕、副字幕和叠加字幕的预览与导出。': 'Applies to ASS preview and export for main, extension, and overlay captions.',
     '单星号 *': 'Single asterisk *', '双星号 **': 'Double asterisks **',
     '描边颜色': 'Outline color', '文本颜色': 'Text color',
@@ -1260,6 +1269,10 @@
         + (match[2] ? `; removed ${match[2]} empty subtitle row${match[2] === '1' ? '' : 's'}` : '')
         + (match[3] ? `; word timings cleared for ${match[3]}` : '');
     }
+    match = /^已为\s*(\d+)\s*条字幕添加字符；\s*(\d+)\s*条已包裹相同符号，已跳过$/.exec(text);
+    if (match) return `Added characters to ${match[1]} subtitle${match[1] === '1' ? '' : 's'}; skipped ${match[2]} already wrapped with the same characters`;
+    match = /^已为\s*(\d+)\s*条字幕添加字符$/.exec(text);
+    if (match) return `Added characters to ${match[1]} subtitle${match[1] === '1' ? '' : 's'}`;
     match = /^总长度\s+(.+)$/.exec(text);
     if (match) return `Total length ${match[1]}`;
     match = /^字\/秒\s+(.+)$/.exec(text);
