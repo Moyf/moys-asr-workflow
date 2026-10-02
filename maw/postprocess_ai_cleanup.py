@@ -12,6 +12,7 @@ or protocol failure leaves the source files untouched.
 from __future__ import annotations
 
 import difflib
+import copy
 import json
 import re
 from collections.abc import Callable, Mapping, Sequence
@@ -201,7 +202,7 @@ def run_ai_cleanup(
     if removed_ranges:
         project["gap_remove"] = _build_gap_remove(project, removed_ranges)
     if review_markers:
-        project["markers"] = _build_markers_field(review_markers)
+        project["markers"] = _build_markers_field(review_markers, project.get("markers"))
 
     warnings = (
         f"文稿来源：{script_path}",
@@ -524,16 +525,18 @@ def _build_gap_remove(project: JsonDict, removed_ranges: Sequence[Mapping[str, i
     return base
 
 
-def _build_markers_field(review_markers: list[dict[str, object]]) -> dict[str, object]:
+def _build_markers_field(review_markers: list[dict[str, object]], existing: object = None) -> dict[str, object]:
     """Assemble the canonical ``markers`` project field for review items.
 
-    IDs are assigned after time-sorting so ``marker-001`` is always the
-    earliest marker (the same contract as the editor's normalizer).
+    Preserve existing annotations and allocate fresh IDs for new review items.
+    Only new review items are time-sorted; existing stable IDs never change.
     """
 
-    items: list[dict[str, object]] = []
+    base = copy.deepcopy(dict(existing)) if isinstance(existing, Mapping) else {}
+    raw_items = base.get("items")
+    items = list(raw_items) if isinstance(raw_items, list) else []
     ordered = sorted(review_markers, key=lambda marker: (int(marker["start"]), str(marker["name"])))
-    used: set[str] = set()
+    used = {str(marker["id"]) for marker in items if isinstance(marker, Mapping) and isinstance(marker.get("id"), str)}
     for marker in ordered:
         index = 1
         while f"marker-{index:03d}" in used:
@@ -553,7 +556,8 @@ def _build_markers_field(review_markers: list[dict[str, object]]) -> dict[str, o
                 "reason": _sanitize_marker_text(review["reason"], MARKER_REVIEW_REASON_MAX_LENGTH),
             },
         })
-    return {"schema": MARKERS_SCHEMA, "items": items}
+    base.update({"schema": MARKERS_SCHEMA, "items": items})
+    return base
 
 
 def _sanitize_marker_text(value: object, max_length: int) -> str:

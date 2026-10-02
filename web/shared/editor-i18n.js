@@ -9,6 +9,49 @@
   // The editor keeps one source template. Exact UI strings are translated at
   // the DOM boundary; project content is excluded from traversal below.
   const EN_TEXT = {
+    '媒体标记': 'Media markers',
+    '新区段': 'New region',
+    '拖动调整区段起点': 'Drag to adjust region start',
+    '拖动调整区段终点': 'Drag to adjust region end',
+    '品红': 'Fuchsia', '天蓝': 'Sky blue', '可可': 'Cocoa',
+    '把每条字幕的文本与时间作为标记写入时间线片段（备注标注为 MAW 字幕）': 'Write subtitle text and timing onto timeline clips (notes identify MAW subtitles)',
+    "标记与区段": "Markers and regions",
+    "打开「标记与区段」管理窗：查看、筛选、编辑通用标记与区段（含 AI 复核项）": "Open markers and regions: view, filter and edit annotations, including AI review items",
+    "关闭标记与区段工具窗": "Close markers and regions",
+    "在播放头添加标记": "Add marker at playhead",
+    "尚无标记；在波形顶部标记轨道空白处点击或拖动即可添加。": "No markers yet. Click or drag the marker lane above the waveform to add one.",
+    "按名称或备注搜索": "Search names or notes",
+    "复核": "Review",
+    "待复核": "Pending review",
+    "已确认": "Confirmed",
+    "普通标记": "No review status",
+    "点击列表项定位试听 · Esc 关闭": "Click an item to seek and listen · Esc to close",
+    "区段": "Region",
+    "标记": "Marker",
+    "将标记与区段写入": "Include markers and regions",
+    "把工程「标记与区段」（含名称与备注）作为标记写入时间线片段": "Write project markers and regions, including names and notes, onto timeline clips",
+    "没有符合当前过滤条件的标记。": "No markers match the current filters.",
+    "标记名称": "Marker name",
+    "区段名称": "Region name",
+    "自定义颜色（HEX）": "Custom color (HEX)",
+    "可选备注（AI 复核项会写入原因）": "Optional note (AI review items include a reason)",
+    "起点 ms": "Start ms",
+    "终点 ms": "End ms",
+    "时长 ms": "Duration ms",
+    "单点标记": "Point marker",
+    "定位试听": "Seek and listen",
+    "展开编辑此标记（名称 / 颜色 / 备注 / 时间 / 复核）": "Edit this marker: name, color, note, time and review status",
+    "尚无标记；在波形顶部标记轨道空白处点击（添加标记）或横向拖动（拉出区段）。": "No markers yet. Click the marker lane above the waveform to add a marker, or drag to create a region.",
+    "没有符合当前搜索 / 过滤条件的标记。": "No markers match the current search or filters.",
+    "媒体尚未就绪，无法在播放头添加标记": "Media is not ready; cannot add a marker at the playhead",
+    "备注": "Note",
+    "类型": "Type",
+    "全部": "All",
+    "青": "Cyan",
+    "橙": "Orange",
+    "粉": "Pink",
+    "灰": "Gray",
+    "棕": "Brown",
     '跟随播放': 'Follow playback',
     '定位当前播放头并恢复字幕跟随；手动翻看后可再次点击': 'Locate the playhead and resume subtitle following; click again after browsing manually',
     '备份工程': 'Back up project',
@@ -992,11 +1035,11 @@
   const attributeOriginals = new WeakMap();
   const SKIP_SELECTOR = [
     '#cue-list', '#cue-panel-text', '#overlay', '#sticker-overlay-layer',
-    '#media-name', '#json-name', '#sticker-grid', '.hint-project-preview-value', 'script', 'style'
+    '#media-name', '#json-name', '#sticker-grid', '.hint-project-preview-value', '[data-marker-project-content]', 'script', 'style'
   ].join(',');
   const ATTRIBUTE_SKIP_SELECTOR = [
     // .waveform-cue-block 的 title 是用户字幕原文，不能参与翻译
-    '#cue-list', '#overlay', '#sticker-overlay-layer', '.waveform-cue-block',
+    '#cue-list', '#overlay', '#sticker-overlay-layer', '.waveform-cue-block', '[data-marker-project-content]',
     '#media-name', '#json-name', '#sticker-grid', 'script', 'style'
   ].join(',');
 
@@ -1067,7 +1110,19 @@
     if (text.startsWith('Cmd+')) {
       return translateText('Ctrl' + text.slice(3), EN).replace(/^Ctrl/, 'Cmd');
     }
-    let match = /^(主字幕|副字幕)\s+(\d+)$/.exec(text);
+    let match = /^(共|过滤) (\d+) 项：标记 (\d+) · 区段 (\d+)(?:；待复核 (\d+))?$/.exec(text);
+    if (match) return `${match[1] === '过滤' ? 'Filtered' : 'Total'} ${match[2]}: markers ${match[3]} · regions ${match[4]}${match[5] ? `; pending review ${match[5]}` : ''}`;
+    match = /^(标记|区段) (\d.*)$/.exec(text);
+    if (match) return `${translateText(match[1], EN)} ${match[2]}`;
+    match = /^(编辑|使用颜色) (.+)$/.exec(text);
+    if (match) return match[1] === '编辑' ? `Edit ${match[2]}` : `Use color ${translateText(match[2], EN)}`;
+    match = /^已在 (.+) 添加标记$/.exec(text);
+    if (match) return `Added marker at ${match[1]}`;
+    match = /^已添加区段 (.+)$/.exec(text);
+    if (match) return `Added region ${match[1]}`;
+    match = /^已删除(标记|区段)「(.+)」$/.exec(text);
+    if (match) return `Deleted ${translateText(match[1], EN).toLowerCase()} “${match[2]}”`;
+    match = /^(主字幕|副字幕)\s+(\d+)$/.exec(text);
     if (match) return `${translateText(match[1], EN)} ${match[2]}`;
     match = /^已读取\s+(\d+)\s+种本机字体$/.exec(text);
     if (match) return `Read ${match[1]} local font families`;
@@ -1314,6 +1369,7 @@
   }
 
   function translateAttributes(element) {
+    if (element.matches?.('[data-marker-project-reason]')) return;
     if (element.closest?.(ATTRIBUTE_SKIP_SELECTOR)) return;
     if (!attributeOriginals.has(element)) attributeOriginals.set(element, {});
     const originals = attributeOriginals.get(element);
