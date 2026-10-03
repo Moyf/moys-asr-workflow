@@ -347,7 +347,7 @@
       enabled: false,
       retainIntermediate: true,
       steps: [
-        { id: "match", enabled: false, scriptPath: "", matchMode: "script", aiCleanup: false, extraSplitPunctuation: ["，", "。", "？", "！", "；", ",", "."], preservePunctuation: ["？", "！"], cleanMarkdownSymbols: true },
+        { id: "match", enabled: false, scriptPath: "", matchMode: "script", aiCleanup: false, aiCleanupNotes: "", extraSplitPunctuation: ["，", "。", "？", "！", "；", ",", "."], preservePunctuation: ["？", "！"], cleanMarkdownSymbols: true },
         { id: "replace", enabled: false, replacements: [], conversion: "off" },
         { id: "proofread", enabled: false, providerId: "deepseek", customPrompt: "" },
         { id: "resegment", enabled: false, providerId: "deepseek", customPrompt: "" },
@@ -1479,7 +1479,7 @@
       retainIntermediate: Boolean($("autoPostprocessRetain")?.checked),
       steps: [
         // 始终上报用户的单文件勾选；批量运行由后端统一跳过文稿匹配，前端不改写、不持久化批量态。
-        { id: "match", enabled: Boolean($("autoStepMatch")?.checked), scriptPath: $("postprocessScriptPath").value.trim(), matchMode: $("postprocessMatchMode").value, aiCleanup: Boolean($("postprocessAiCleanup")?.checked), providerId, extraSplitPunctuation: punctuationLines("postprocessExtraSplitPunctuation"), preservePunctuation: punctuationLines("postprocessPreservePunctuation"), cleanMarkdownSymbols: Boolean($("postprocessCleanMarkdownSymbols")?.checked) },
+        { id: "match", enabled: Boolean($("autoStepMatch")?.checked), scriptPath: $("postprocessScriptPath").value.trim(), matchMode: $("postprocessMatchMode").value, aiCleanup: Boolean($("postprocessAiCleanup")?.checked), aiCleanupNotes: $("postprocessAiCleanupNotes")?.value.trim() || "", providerId, extraSplitPunctuation: punctuationLines("postprocessExtraSplitPunctuation"), preservePunctuation: punctuationLines("postprocessPreservePunctuation"), cleanMarkdownSymbols: Boolean($("postprocessCleanMarkdownSymbols")?.checked) },
         { id: "replace", enabled: Boolean($("autoStepReplace")?.checked), replacements: parseReplacements(), replacementSeparator: $("postprocessReplacementSeparator").value, replacementTrim: $("postprocessReplacementTrim").checked, replacementCustomSeparator: $("postprocessReplacementCustomSeparator").value, conversion: $("postprocessConversion").value },
         { id: "proofread", enabled: Boolean($("autoStepProofread")?.checked), providerId, customPrompt: getLlmPrompt("proofread") },
         { id: "resegment", enabled: Boolean($("autoStepResegment")?.checked), providerId, customPrompt: getLlmPrompt("resegment") },
@@ -1685,6 +1685,9 @@
     $("postprocessCleanMarkdownSymbols").checked = match.cleanMarkdownSymbols !== false;
     $("postprocessAiCleanup").checked = match.aiCleanup === true;
     renderAiCleanupMode();
+    const aiCleanupNotesField = $("postprocessAiCleanupNotesField");
+    aiCleanupNotesField?.classList.toggle("hidden", match.aiCleanup !== true);
+    $("postprocessAiCleanupNotes").value = typeof match.aiCleanupNotes === "string" ? match.aiCleanupNotes : "";
     validateMatchPunctuation();
     void refreshScriptPreview();
     const replace = byId.get("replace") || {};
@@ -1793,6 +1796,7 @@
         scriptPath,
         providerId,
         cleanMarkdownSymbols: $("postprocessCleanMarkdownSymbols").checked,
+        notes: $("postprocessAiCleanupNotes")?.value.trim() || "",
       });
       if (result.ok) applySubtitleResult(result, { kind: "ai_cleanup" });
       else setResult(postprocessErrorText(result), "error");
@@ -1806,6 +1810,7 @@
     const aiEnabled = Boolean($("postprocessAiCleanup")?.checked);
     $("postprocessMatchModeField")?.classList.toggle("hidden", aiEnabled);
     $("postprocessPunctHint")?.classList.toggle("hidden", aiEnabled);
+    $("postprocessAiCleanupNotesField")?.classList.toggle("hidden", !aiEnabled);
   }
 
   async function runTimestampAlignment() {
@@ -2342,6 +2347,7 @@
   $("postprocessPreservePunctuation").addEventListener("input", () => { validateMatchPunctuation(); void refreshScriptPreview(); persistAutoPlanSoon(); });
   $("postprocessMatchMode").addEventListener("change", () => { validateMatchPunctuation(); void refreshScriptPreview(); persistAutoPlanSoon(); });
   $("postprocessAiCleanup").addEventListener("change", () => { renderAiCleanupMode(); renderAutoPostprocessState(); persistAutoPlanSoon(); });
+  $("postprocessAiCleanupNotes").addEventListener("input", () => { persistAutoPlanSoon(); });
   $("runOcrDedup").addEventListener("click", runOcrDedup);
   $("ocrModel").addEventListener("change", renderOcrModel);
   $("openOcrSettings").addEventListener("click", () => window.MAWLauncher.openSettings("ocrSettingsSection"));

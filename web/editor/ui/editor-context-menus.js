@@ -111,7 +111,7 @@
   let ctxLastClickX = 0, ctxLastClickY = 0;
 
 
-  function showContextMenu(x, y, idx, waveformTimeMs = null) {
+  function showContextMenu(x, y, idx, waveformTimeMs = null, { splitTextMode = null } = {}) {
   ctxLastClickX = x; ctxLastClickY = y;
   MaweDom.ctxmenu.innerHTML = '';
   // 当前条不在选中里 → 立刻选中（但不改变多选）
@@ -177,14 +177,89 @@
     }
   }
 
+  // 「左右添加字符」子菜单：数据驱动预设 + 自定义输入。插入一律双符号形式；
+  // 「单双符号」设置只影响识别/解析，不影响这里插入的内容。
+  function addWrapCharsSubmenu(targets) {
+    const wrapPresets = window.AsrEditorUtils.WRAP_CHAR_PRESETS;
+    const row = document.createElement('div');
+    row.className = 'item';
+    row.style.cssText = 'cursor:default;display:block;';
+    row.addEventListener('click', (e) => e.stopPropagation());
+    const head = document.createElement('div');
+    head.style.cssText = 'display:flex;align-items:center;cursor:pointer;';
+    const lbl = document.createElement('span');
+    lbl.textContent = '左右添加字符';
+    head.appendChild(lbl);
+    const arrow = document.createElement('kbd');
+    arrow.textContent = '›';
+    arrow.style.marginLeft = 'auto';
+    head.appendChild(arrow);
+    row.appendChild(head);
+    const list = document.createElement('div');
+    list.style.cssText = 'display:none;flex-direction:column;margin-top:8px;gap:2px;';
+    let expanded = false;
+    head.addEventListener('click', () => {
+      expanded = !expanded;
+      list.style.display = expanded ? 'flex' : 'none';
+      arrow.textContent = expanded ? '⌄' : '›';
+      // 展开后菜单变高，重新贴合视口下沿（与 showContextMenu 的溢出处理一致）。
+      const rect = MaweDom.ctxmenu.getBoundingClientRect();
+      if (ctxLastClickY + rect.height > window.innerHeight) {
+        MaweDom.ctxmenu.style.top = `${Math.max(4, window.innerHeight - rect.height - 4)}px`;
+      }
+    });
+    wrapPresets.forEach((preset) => {
+      const entry = document.createElement('div');
+      entry.className = 'item';
+      entry.style.cssText = 'padding:5px 10px;border-radius:var(--radius-sm);';
+      const name = document.createElement('span');
+      name.textContent = preset.label;
+      entry.appendChild(name);
+      const sample = document.createElement('kbd');
+      sample.textContent = `${preset.left}文${preset.right}`;
+      entry.appendChild(sample);
+      entry.addEventListener('click', (e) => {
+        e.stopPropagation();
+        MaweDom.ctxmenu.classList.remove('show');
+        MaweTextProcess.applyWrapChars(targets, preset.left, preset.right, preset.label);
+      });
+      list.appendChild(entry);
+    });
+    const custom = document.createElement('div');
+    custom.className = 'item';
+    custom.style.cssText = 'padding:5px 10px;border-radius:var(--radius-sm);';
+    const customName = document.createElement('span');
+    customName.textContent = '自定义…';
+    custom.appendChild(customName);
+    custom.addEventListener('click', (e) => {
+      e.stopPropagation();
+      MaweDom.ctxmenu.classList.remove('show');
+      MaweTextProcess.openWrapCharsModal(targets);
+    });
+    list.appendChild(custom);
+    row.appendChild(list);
+    MaweDom.ctxmenu.appendChild(row);
+  }
+
   if (!isMulti) {
-    // 组 1：拆分与跳转。拆分是字幕行右键菜单的首要动作。
-    const splitLabel = Number.isFinite(waveformTimeMs)
-      ? '按音频位置拆分'
-      : '按文字位置拆分';
-    // 「按音频位置拆分」对应波形上的 B；「按文字位置拆分」对应列表内悬停已选行时的 B。
-    const splitKbd = 'B';
-    addItem(splitLabel, splitKbd, () => MaweSplitContext.splitFromContextMenu(idx, x, y, waveformTimeMs));
+    // 组 1：拆分与跳转。拆分是字幕行右键菜单的首要动作；按住 Shift 时
+    // 换成「渐进拆分」（后半句保留整句原文），再按住 Ctrl/Cmd 换成「复制拆分」。
+    const splitLabel = splitTextMode === 'progressive'
+      ? '渐进拆分'
+      : splitTextMode === 'duplicate'
+        ? '复制拆分'
+        : Number.isFinite(waveformTimeMs)
+          ? '按音频位置拆分'
+          : '按文字位置拆分';
+    // 「按音频位置拆分」对应波形上的 B；「渐进拆分」对应 Shift+B；「复制拆分」对应 Ctrl/Cmd+Shift+B。
+    const splitKbd = splitTextMode === 'progressive'
+      ? 'Shift+B'
+      : splitTextMode === 'duplicate'
+        ? 'Ctrl/Cmd+Shift+B'
+        : 'B';
+    addItem(splitLabel, splitKbd, () => MaweSplitContext.splitFromContextMenu(
+      idx, x, y, waveformTimeMs, { splitTextMode },
+    ));
     // 仅「仅选中」模式提供「跳转并播放」——其它两种单击行为本身就会跳转。
     if (MaweSettings.EDITOR_SETTINGS.clickBehavior === 'select-only') {
       addItem('跳转并播放', 'F', () => {
@@ -203,6 +278,8 @@
       }, { danger: true });
     }
     addColorSubmenu(targetIdxs);
+    // 左右添加字符：单条同样可用。淡出淡入（fad 标记）与音符多以单条为使用场景。
+    addWrapCharsSubmenu(targetIdxs);
     if (colorGroupHeadIndex(idx) >= 0) {
       addItem('从颜色组中脱离', '', () => detachColorFromGroup(idx));
     }
@@ -229,6 +306,7 @@
     // 组 1：合并与批量文本操作
     addItem(`合并 ${targetIdxs.length} 条字幕`, 'C', () => MaweSegmentOps.mergeSegments(targetIdxs));
     addItem('批量替换选中字幕…', '', () => MaweFindReplace.openReplaceModal(targetIdxs));
+    addWrapCharsSubmenu(targetIdxs);
     addSep();
     // 组 2：外观（表情包与颜色）；「拓展表情包时长」仅在范围内已有表情包时显示
     const hasStickerInRange = targetIdxs.some(i =>

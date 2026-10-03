@@ -7,7 +7,7 @@
 
 
 
-  function splitFromContextMenu(idx, x, y, waveformTimeMs = null) {
+  function splitFromContextMenu(idx, x, y, waveformTimeMs = null, { splitTextMode = null } = {}) {
     const el = MaweCoreState.container.querySelector(`.cue[data-idx="${idx}"]`);
     if (!el) return false;
     if (Number.isFinite(waveformTimeMs)) {
@@ -35,7 +35,7 @@
           }
           : {};
       if (waveformFeedbackPoint) initial.feedbackPoint = waveformFeedbackPoint;
-      MaweSplitCore.pendingLinkedSplit = MaweSplitCore.linkedSplitState(idx, initial);
+      MaweSplitCore.pendingLinkedSplit = MaweSplitCore.linkedSplitState(idx, { ...initial, splitTextMode });
       if (!MaweSplitCore.pendingLinkedSplit) return false;
       MaweDom.multiSubtitleSplitModal?.classList.add('show');
       MaweSplitCore.renderLinkedSplitText(MaweSplitCore.pendingLinkedSplit);
@@ -44,7 +44,7 @@
     if (Number.isFinite(waveformTimeMs)) {
       if (!MaweSplitCore.shouldUseMainSplitTimestamps(MaweBoot.DATA.segments[idx])) {
         MaweSplitCore.notifyMainSplitTimestampFallback(MaweBoot.DATA.segments[idx]);
-        MaweSplitCore.openMainWaveformSplitModal(idx, waveformTimeMs);
+        MaweSplitCore.openMainWaveformSplitModal(idx, waveformTimeMs, { splitTextMode });
         return false;
       }
       const segment = MaweBoot.DATA.segments[idx];
@@ -63,7 +63,7 @@
         MaweHint.flashHint('无法定位波形中的拆分位置', 'warning');
         return false;
       }
-      const didSplit = MaweSplitCore.splitAtCursor(waveformFeedbackPoint, { listFeedback: false });
+      const didSplit = MaweSplitCore.splitAtCursor(waveformFeedbackPoint, { listFeedback: false, splitTextMode });
       return didSplit;
     }
     // 字幕列表：在指定位置进入编辑，光标定位到 (x,y) 后立即拆分
@@ -75,7 +75,7 @@
     if (Number.isFinite(caretInfo?.offset)) MaweInlineEdit.setEditingCaretOffset(caretInfo.offset);
     return MaweSplitCore.splitAtCursor(
       { clientX: markerX, clientY: caretInfo?.rect?.top ?? y },
-      { listFeedback: true, cueListAnchor },
+      { listFeedback: true, cueListAnchor, splitTextMode },
     );
   }
 

@@ -270,7 +270,10 @@ function clearAssEmphasisPreview(element) {
 
 function renderAssEmphasisPreview(element, textNode, text, style, metrics) {
   if (!element) return;
-  const source = String(text ?? '');
+  // 预览剥离单句渐入渐出标记：`>>`/`<<` 由 fad 动画表现，不显示为文字。
+  const source = window.AsrEditorUtils.stripSentenceFadeMarkers(
+    String(text ?? ''), MaweSettings.EDITOR_SETTINGS.assSpecialSymbolRule,
+  );
   const emphasisSyntax = MaweSettings.EDITOR_SETTINGS.assEmphasisSyntax;
   const key = JSON.stringify([source, emphasisSyntax, style.emphasisStyle,
     style.emphasisColor, style.emphasisScale, style.fontSize, style.underline, style.primaryColor,
@@ -377,6 +380,9 @@ function applyAssSubtitlePreview({ tMs, segment, extension, overlay, overlaySegm
       playResY: metrics.resolution.height,
       stageWidth: metrics.stageWidth,
       stageHeight: metrics.stageHeight,
+      fad: window.AsrEditorUtils.assSentenceFadeTags(
+        segment?.text || '', profile, MaweSettings.EDITOR_SETTINGS.assSpecialSymbolRule,
+      ).fad,
     },
   );
   const extensionAnimation = window.AsrEditorUtils.assPreviewAnimationState(
@@ -388,6 +394,9 @@ function applyAssSubtitlePreview({ tMs, segment, extension, overlay, overlaySegm
       playResY: metrics.resolution.height,
       stageWidth: metrics.stageWidth,
       stageHeight: metrics.stageHeight,
+      fad: window.AsrEditorUtils.assSentenceFadeTags(
+        extension?.text || '', profile, MaweSettings.EDITOR_SETTINGS.assSpecialSymbolRule,
+      ).fad,
     },
   );
   // 叠加轨不跟随 \move（绝对 PlayRes 坐标只属于主字幕）；fad/fade/t 与
@@ -402,6 +411,9 @@ function applyAssSubtitlePreview({ tMs, segment, extension, overlay, overlaySegm
       playResY: metrics.resolution.height,
       stageWidth: metrics.stageWidth,
       stageHeight: metrics.stageHeight,
+      fad: window.AsrEditorUtils.assSentenceFadeTags(
+        overlay?.text || '', profile, MaweSettings.EDITOR_SETTINGS.assSpecialSymbolRule,
+      ).fad,
     },
   );
   const animationGroup = profile.animations || {};

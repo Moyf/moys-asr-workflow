@@ -22,6 +22,7 @@
     keepDisabledPlaceholder: EXPORT_KEEP_DISABLED_PLACEHOLDER,
     colorContextResolver: exportColorContextResolver(overlaySet, overlaySegments),
     ...MaweSpeakerLabels.speakerLabelExportOptions(),
+    assSpecialSymbolRule: MaweSettings.EDITOR_SETTINGS.assSpecialSymbolRule,
     formatTime: MaweCueElements.fmtSrtTime,
   });
 }
@@ -64,6 +65,7 @@
       : undefined,
     ensurePositiveDuration: gapRemoved,
     ...MaweSpeakerLabels.speakerLabelExportOptions(),
+    assSpecialSymbolRule: MaweSettings.EDITOR_SETTINGS.assSpecialSymbolRule,
     formatTime: MaweCueElements.fmtSrtTime,
   });
   let filenameBase = `${MaweBoot.FILENAME_BASE}${gapSuffix}`;
@@ -258,6 +260,7 @@
   function buildExtensionSrt(track = MaweMultiSubtitleCore.getActiveExtensionTrack()) {
     return window.AsrEditorUtils.buildSrtPayload(track?.segments || [], {
       ...MaweSpeakerLabels.speakerLabelExportOptions(),
+      assSpecialSymbolRule: MaweSettings.EDITOR_SETTINGS.assSpecialSymbolRule,
       formatTime: MaweCueElements.fmtSrtTime,
     });
   }
@@ -270,6 +273,7 @@
         alignFirstStart: MaweSettings.EDITOR_SETTINGS.exportStartAtZero,
         colorContextResolver: exportColorContextResolver(overlaySet, overlaySegments),
         ...MaweSpeakerLabels.speakerLabelExportOptions(),
+        assSpecialSymbolRule: MaweSettings.EDITOR_SETTINGS.assSpecialSymbolRule,
         formatTime: MaweCueElements.fmtSrtTime,
       });
   }
@@ -294,6 +298,7 @@
     ensurePositiveDuration: true,
     colorContextResolver: exportColorContextResolver(overlaySet, overlaySegments),
     ...MaweSpeakerLabels.speakerLabelExportOptions(),
+    assSpecialSymbolRule: MaweSettings.EDITOR_SETTINGS.assSpecialSymbolRule,
     formatTime: MaweCueElements.fmtSrtTime,
   });
 }

@@ -3478,3 +3478,8 @@ select[multiple] option {
 .asr-preset-modal-actions { flex-wrap: wrap; }
   #asrPresetRootSection .path-row { grid-template-columns: minmax(0, 1fr); }
 }
+
+#postprocessAiCleanupNotesField:not(.hidden) {
+  display: grid;
+  gap: 8px;
+}

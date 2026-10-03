@@ -1,7 +1,7 @@
 // ass-export: private helpers; dependencies are injected by editor-utils.js.
 window.MAWE.register('utils-ass-export', function createUtilsModule(dependencies) {
   'use strict';
-  const { ASS_COLOR_STYLE_NAMES, ASS_DEFAULT_ASS_STYLE, ASS_DEFAULT_COLOR, ASS_DEFAULT_EXTENSION_STYLE, ASS_EVENT_FORMAT, ASS_FALLBACK_COLOR_PALETTE, ASS_REFERENCE_PLAY_RES_Y, ASS_STYLE_FORMAT, DEFAULT_SPEAKER_LABEL_SEPARATOR, assAnimationOverrideTags, assColorFromHex, assInlineStyleRuns, assOverrideColorFromHex, assStyleLine, effectiveColorName, escapeAssText, formatAssTime, formatSpeakerLabelledText, getSrtExportFirstIndex, normalizeAssColorStyle, normalizeAssFontFamily, normalizeAssFontSize, normalizeAssLibraryColor, normalizeAssPlayResolution, normalizeAssProfile, normalizeAssStyle, normalizeAssTimeMs, normalizeSpeakerLabelSeparator, normalizeSpeakerLabels, resolveAssFontSize, speakerLabelForSegment } = dependencies;
+  const { ASS_COLOR_STYLE_NAMES, ASS_DEFAULT_ASS_STYLE, ASS_DEFAULT_COLOR, ASS_DEFAULT_EXTENSION_STYLE, ASS_EVENT_FORMAT, ASS_FALLBACK_COLOR_PALETTE, ASS_REFERENCE_PLAY_RES_Y, ASS_STYLE_FORMAT, DEFAULT_SPEAKER_LABEL_SEPARATOR, assAnimationOverrideTags, assColorFromHex, assInlineStyleRuns, assOverrideColorFromHex, assSentenceFadeTags, assStyleLine, effectiveColorName, escapeAssText, formatAssTime, formatSpeakerLabelledText, getSrtExportFirstIndex, normalizeAssColorStyle, normalizeAssFontFamily, normalizeAssFontSize, normalizeAssLibraryColor, normalizeAssPlayResolution, normalizeAssProfile, normalizeAssStyle, normalizeAssTimeMs, normalizeSpeakerLabelSeparator, normalizeSpeakerLabels, resolveAssFontSize, speakerLabelForSegment } = dependencies;
 
 
   function normalizeAssHeaderValue(value, fallback = 'MAW') {
@@ -188,11 +188,17 @@ window.MAWE.register('utils-ass-export', function createUtilsModule(dependencies
       const endCentiseconds = Math.max(startCentiseconds + 1, Math.round(rawEnd / 10));
       const speakerName = speakerLabels
         ? speakerLabelForSegment(segment, source, speakerLabels) : '';
+      // 单句 `>>`/`<<` 渐入渐出标记只在 ASS 模式解析：先剥离行首行尾标记，
+      // 再用剩余文本走强调/颜色管线，并用该句自身的 fad 覆盖全局动画。
+      const sentenceFade = assMode
+        ? assSentenceFadeTags(segment.text, profile, inlineOptions.assSpecialSymbolRule)
+        : null;
+      const segmentText = sentenceFade ? sentenceFade.text : String(segment.text ?? '');
       const text = speakerLabels
         ? formatSpeakerLabelledText(
-          segment.text, segment, source, speakerLabels, speakerLabelSeparator,
+          segmentText, segment, source, speakerLabels, speakerLabelSeparator,
         )
-        : String(segment.text ?? '');
+        : segmentText;
       const colorName = effectiveColorName(segment, source);
       const styleName = assColorGroupsSupported && ASS_COLOR_STYLE_NAMES.includes(colorName)
         ? colorName.toUpperCase() : 'Default';
@@ -201,7 +207,7 @@ window.MAWE.register('utils-ass-export', function createUtilsModule(dependencies
         : baseStyle;
       const eventText = assEventText({
         segment,
-        text: speakerLabels ? String(segment.text ?? '') : text,
+        text: speakerLabels ? segmentText : text,
         speakerName,
         speakerLabelSeparator,
         colorName,
@@ -214,7 +220,8 @@ window.MAWE.register('utils-ass-export', function createUtilsModule(dependencies
         emphasisSyntax,
         inlineOptions,
       });
-      const animationTags = assMode ? assAnimationOverrideTags(profile) : '';
+      const animationTags = assMode
+        ? assAnimationOverrideTags(profile, { fad: sentenceFade?.fad || null }) : '';
       const decoratedText = animationTags ? `{${animationTags}}${eventText}` : eventText;
       events.push(
         `Dialogue: 0,${formatAssTime(startCentiseconds * 10)},${formatAssTime(endCentiseconds * 10)},${styleName},${normalizeAssEventField(speakerName)},0,0,0,,${decoratedText}`,
@@ -233,8 +240,6 @@ window.MAWE.register('utils-ass-export', function createUtilsModule(dependencies
     const extensionScaledFontSize = extensionStyle
       ? normalizeAssFontSize(extensionStyle.fontSize * resolution.height / ASS_REFERENCE_PLAY_RES_Y)
       : 0;
-    const extensionAnimationTags = assMode && extensionStyle
-      ? assAnimationOverrideTags(profile, { includeMove: false }) : '';
     if (assMode && extensionStyle) {
       extensionSource.forEach((segment) => {
         if (!segment || segment.disabled === true) return;
@@ -243,7 +248,9 @@ window.MAWE.register('utils-ass-export', function createUtilsModule(dependencies
         if (rawEnd <= rawStart) return;
         const startCentiseconds = Math.max(0, Math.round(rawStart / 10));
         const endCentiseconds = Math.max(startCentiseconds + 1, Math.round(rawEnd / 10));
-        const extensionContent = assEmphasizedText(segment.text, extensionStyle, extensionScaledFontSize, emphasisSyntax, inlineOptions);
+        const extensionFade = assSentenceFadeTags(segment.text, profile, inlineOptions.assSpecialSymbolRule);
+        const extensionAnimationTags = assAnimationOverrideTags(profile, { includeMove: false, fad: extensionFade.fad });
+        const extensionContent = assEmphasizedText(extensionFade.text, extensionStyle, extensionScaledFontSize, emphasisSyntax, inlineOptions);
         const extensionText = extensionAnimationTags
           ? `{${extensionAnimationTags}}${extensionContent}` : extensionContent;
         events.push(
@@ -261,8 +268,6 @@ window.MAWE.register('utils-ass-export', function createUtilsModule(dependencies
     // 样式库（用户可改），legacy 模式主字幕固定 80。
     const overlaySource = Array.isArray(options.overlaySegments) ? options.overlaySegments : [];
     const hasOverlayCues = overlaySource.some((segment) => segment && segment.disabled !== true);
-    const overlayAnimationTags = assMode
-      ? assAnimationOverrideTags(profile, { includeMove: false }) : '';
     const overlayMarginV = assMode
       ? (extensionStyle && hasExtensionCues
         ? Math.max(0, Number(extensionStyle.marginV) || 0) + Math.round(1.2 * extensionScaledFontSize)
@@ -311,8 +316,12 @@ window.MAWE.register('utils-ass-export', function createUtilsModule(dependencies
       const startCentiseconds = Math.max(0, Math.round(rawStart / 10));
       const endCentiseconds = Math.max(startCentiseconds + 1, Math.round(rawEnd / 10));
       const overlayColorName = effectiveColorName(segment, overlaySource);
+      const overlayFade = assMode
+        ? assSentenceFadeTags(segment.text, profile, inlineOptions.assSpecialSymbolRule) : null;
+      const overlayAnimationTags = assMode
+        ? assAnimationOverrideTags(profile, { includeMove: false, fad: overlayFade.fad }) : '';
       const overlayContent = assMode
-        ? assEmphasizedText(segment.text, overlayStyleFor(overlayColorName), fontSize, emphasisSyntax, inlineOptions)
+        ? assEmphasizedText(overlayFade.text, overlayStyleFor(overlayColorName), fontSize, emphasisSyntax, inlineOptions)
         : escapeAssText(segment.text);
       const overlayText = overlayAnimationTags
         ? `{${overlayAnimationTags}}${overlayContent}` : overlayContent;
