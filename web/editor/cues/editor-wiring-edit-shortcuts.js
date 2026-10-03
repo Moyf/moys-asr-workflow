@@ -700,11 +700,16 @@ document.addEventListener('keydown', (e) => {
   if (MaweDom.projectMediaModal.classList.contains('show')) return;
   if (document.getElementById('sticker-root-modal').classList.contains('show')) return;
   if (MaweDom.ctxmenu.classList.contains('show')) return;
-  if (e.ctrlKey || e.altKey || e.metaKey || e.shiftKey) return;
+  // Shift+B = 渐进拆分，Ctrl/Cmd+Shift+B = 复制拆分；其余修饰组合不抢占输入。
+  if (e.altKey) return;
+  if ((e.ctrlKey || e.metaKey) && !e.shiftKey) return;
+  const splitTextMode = e.shiftKey
+    ? ((e.ctrlKey || e.metaKey) ? 'duplicate' : 'progressive')
+    : null;
   if (forceMainEdit) {
     e.preventDefault();
     e.stopImmediatePropagation();
-    MaweSplitCore.splitAtCursor();
+    MaweSplitCore.splitAtCursor(null, { splitTextMode });
     return;
   }
   const splitAt = (idx, x, y, timeMs) => {
@@ -712,7 +717,7 @@ document.addEventListener('keydown', (e) => {
     // B 打开弹窗后，事件仍会继续传播到后面注册的弹窗快捷键监听器；
     // 立即停止同一事件，避免“按 B 打开”被误当成“按 B 确认”。
     e.stopImmediatePropagation();
-    MaweSplitContext.splitFromContextMenu(idx, x, y, timeMs);
+    MaweSplitContext.splitFromContextMenu(idx, x, y, timeMs, { splitTextMode });
   };
   // 多重字幕下，只有副字幕是当前编辑焦点时，B 才直接打开副字幕拆分流程。
   // 绑定关系会让点击主字幕时同时选中副字幕；不能仅凭 selectedExtensionIdxs

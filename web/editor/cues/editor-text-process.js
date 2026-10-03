@@ -47,6 +47,19 @@
   const textProcessStripMarkdown = document.getElementById('text-process-strip-markdown');
 
 
+  const wrapCharsModal = document.getElementById('wrap-chars-modal');
+
+
+  const wrapCharsLeftInput = document.getElementById('wrap-chars-left');
+
+
+  const wrapCharsRightInput = document.getElementById('wrap-chars-right');
+
+
+  let wrapCharsScope = [];
+  let textProcessWrapPreset = null;
+
+
   let textProcessSelectionSnapshot = [];
 
 
@@ -123,6 +136,9 @@
       addSuffix: textProcessSuffix.checked,
       suffix: textProcessSuffixInput.value,
       stripMarkdown: textProcessStripMarkdown.checked,
+      skipWrapped: Boolean(textProcessWrapPreset
+        && textProcessWrapPreset.left === textProcessPrefixInput.value
+        && textProcessWrapPreset.right === textProcessSuffixInput.value),
     };
   }
 
@@ -207,8 +223,66 @@
   }
 
 
+  // 「左右添加字符」：在主字幕文本两端插入字符（支持多选批量）。插入一律双符号形式；
+  // 已用同一对符号包裹的条目跳过，不重复包裹。
+  function applyWrapChars(scope, left, right, label = '左右添加字符') {
+    if (MaweInlineEdit.editingState) MaweInlineEdit.finishEdit(true);
+    const indexes = [...new Set((Array.isArray(scope) ? scope : [])
+      .filter((index) => Number.isInteger(index) && index >= 0 && index < MaweBoot.DATA.segments.length))]
+      .sort((a, b) => a - b);
+    if (!indexes.length) return;
+    const { wrapCharsAroundText } = window.AsrEditorUtils;
+    const previews = indexes.map((index) => ({
+      index,
+      ...wrapCharsAroundText(MaweBoot.DATA.segments[index]?.text, left, right),
+    }));
+    const skipped = previews.filter((row) => row.skipped).length;
+    if (!previews.some((row) => row.changed)) {
+      MaweHint.flashHint(skipped ? '选中字幕已包裹相同符号，未重复添加' : '没有可添加字符的字幕', 'invalid');
+      return;
+    }
+    return MaweCommands.run(label, (command) => {
+      let changed = 0;
+      previews.forEach((row) => {
+        if (!row.changed) return;
+        const segment = MaweBoot.DATA.segments[row.index];
+        segment.text = row.text;
+        segment._dirty = true;
+        changed += 1;
+      });
+      command.commit({ cueList: true, waveform: 'overlay', preview: 'update' });
+      MaweHistory.updateUndoRedoButtons();
+      MaweHint.flashHint(
+        skipped ? `已为 ${changed} 条字幕添加字符；${skipped} 条已包裹相同符号，已跳过` : `已为 ${changed} 条字幕添加字符`,
+        'success',
+      );
+    });
+  }
+
+
+  function openWrapCharsModal(scope) {
+    if (MaweInlineEdit.editingState) MaweInlineEdit.finishEdit(true);
+    wrapCharsScope = (Array.isArray(scope) ? scope : [...MaweSelection.selectedIdxs])
+      .filter((index) => Number.isInteger(index) && index >= 0 && index < MaweBoot.DATA.segments.length);
+    if (!wrapCharsScope.length) {
+      MaweHint.flashHint('请先选择要处理的字幕', 'invalid');
+      return;
+    }
+    if (wrapCharsLeftInput) wrapCharsLeftInput.value = '';
+    if (wrapCharsRightInput) wrapCharsRightInput.value = '';
+    wrapCharsModal?.classList.add('show');
+    setTimeout(() => wrapCharsLeftInput?.focus(), 50);
+  }
+
+
+  function closeWrapCharsModal() {
+    wrapCharsModal?.classList.remove('show');
+  }
+
+
 
   function openTextProcessModal() {
+    textProcessWrapPreset = null;
     if (!MaweBoot.DATA.segments.length && !MaweMultiSubtitleCore.getActiveExtensionTrack()?.segments?.length) {
       MaweHint.flashHint('当前没有可处理的字幕', 'invalid');
       return;
@@ -257,6 +331,15 @@
     renderTextProcessPreview,
     refreshTextProcessInputState,
     closeTextProcessModal,
-    openTextProcessModal
+    openTextProcessModal,
+    set textProcessWrapPreset(value) { textProcessWrapPreset = value; },
+    wrapCharsModal,
+    wrapCharsLeftInput,
+    wrapCharsRightInput,
+    get wrapCharsScope() { return wrapCharsScope; },
+    set wrapCharsScope(v) { wrapCharsScope = v; },
+    applyWrapChars,
+    openWrapCharsModal,
+    closeWrapCharsModal
   });
 })(typeof window !== 'undefined' ? window : globalThis);

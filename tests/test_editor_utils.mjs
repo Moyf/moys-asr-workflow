@@ -26,6 +26,11 @@ test('translates macOS help gestures after platform labels are applied', () => {
   assert.equal(i18n.translateText('Cmd+点击', 'zh'), 'Cmd+点击');
 });
 
+test('translates the progressive and duplicate split menu labels', () => {
+  assert.equal(i18n.translateText('渐进拆分', 'en'), 'Progressive split');
+  assert.equal(i18n.translateText('复制拆分', 'en'), 'Duplicate split');
+});
+
 test('accepts legacy and current project schemas but rejects unknown versions', () => {
   assert.equal(helpers.supportsProjectSchema({ segments: [] }), true);
   assert.equal(helpers.supportsProjectSchema({ schema: helpers.PROJECT_SCHEMA, segments: [] }), true);
@@ -5101,6 +5106,96 @@ test('buildAssPayload applies fad and transform tags to overlay cues but never m
   assert.ok(!dialogue[1].includes('\\move('));
 });
 
+test('buildAssPayload turns single-cue fade markers into fad tags from the style-library durations', () => {
+  const ass = helpers.buildAssPayload(
+    [{ start: 0, end: 1000, text: '>>淡入<<' }],
+    {
+      assProfile: {
+        id: 'ass', styleId: 'ass',
+        animations: { fad: { enabled: false, inMs: 120, outMs: 240 } },
+      },
+      assStyle: { id: 'ass', primaryColor: '#123456', outlineColor: '#000000', outline: 2 },
+      assExtensionStyle: { id: 'ass-extension' },
+      appearance: {},
+      extensionSegments: [{ start: 0, end: 1000, text: '淡出<<' }],
+      overlaySegments: [{ start: 0, end: 1000, text: '>>叠加' }],
+    },
+  );
+  const dialogue = ass.split('\n').filter((line) => line.startsWith('Dialogue:'));
+  // 主轨：两端标记 → fad(in,out)，字面标记剥离。
+  assert.ok(dialogue[0].includes('{\\fad(120,240)}淡入'), dialogue[0]);
+  assert.ok(!dialogue[0].includes('>>') && !dialogue[0].includes('<<'), dialogue[0]);
+  // 副字幕轨（Layer 1）：只有行尾 << → fad(0,out)。
+  const extension = dialogue.find((line) => line.startsWith('Dialogue: 1,'));
+  assert.ok(extension.includes('{\\fad(0,240)}淡出'), extension);
+  // 叠加轨（Layer 2）：只有行首 >> → fad(in,0)。
+  const overlay = dialogue.find((line) => line.startsWith('Dialogue: 2,'));
+  assert.ok(overlay.includes('{\\fad(120,0)}叠加'), overlay);
+});
+
+test('single-cue fade markers override the global ASS animation switch', () => {
+  const ass = helpers.buildAssPayload(
+    [{ start: 0, end: 1000, text: '>>句子' }],
+    {
+      assProfile: {
+        id: 'ass', styleId: 'ass',
+        animations: {
+          fade: { enabled: true, alpha1: 0, alpha2: 255, alpha3: 0, t1: 0, t2: 250, t3: 750, t4: 1000 },
+          fad: { enabled: true, inMs: 500, outMs: 600 },
+        },
+      },
+      assStyle: { id: 'ass', primaryColor: '#123456', outlineColor: '#000000', outline: 2 },
+      appearance: {},
+    },
+  );
+  const dialogue = ass.split('\n').filter((line) => line.startsWith('Dialogue:'));
+  // 单句标记优先：用句内 fad 覆盖全局 fade/fad 开关。
+  assert.ok(dialogue[0].includes('{\\fad(500,0)}句子'), dialogue[0]);
+  assert.ok(!dialogue[0].includes('\\fade('), dialogue[0]);
+});
+
+test('parses single-cue fade markers with the special-symbol rule', () => {
+  const bothEnds = helpers.parseSentenceFadeMarkers('>>你好<<', 'double');
+  assert.equal(bothEnds.text, '你好');
+  assert.equal(bothEnds.fadeIn, true);
+  assert.equal(bothEnds.fadeOut, true);
+  const inOnly = helpers.parseSentenceFadeMarkers('>>你好', 'double');
+  assert.equal(inOnly.text, '你好');
+  assert.equal(inOnly.fadeIn, true);
+  assert.equal(inOnly.fadeOut, false);
+  const outOnly = helpers.parseSentenceFadeMarkers('你好<<', 'double');
+  assert.equal(outOnly.text, '你好');
+  assert.equal(outOnly.fadeIn, false);
+  assert.equal(outOnly.fadeOut, true);
+  // 双符号默认只认双符号：单符号保持原样。
+  const doubleIgnoresSingle = helpers.parseSentenceFadeMarkers('>你好<', 'double');
+  assert.equal(doubleIgnoresSingle.text, '>你好<');
+  assert.equal(doubleIgnoresSingle.fadeIn, false);
+  assert.equal(doubleIgnoresSingle.fadeOut, false);
+  // both：单符号也识别为 fad。
+  const bothRuleSingle = helpers.parseSentenceFadeMarkers('>你好<', 'both');
+  assert.equal(bothRuleSingle.text, '你好');
+  assert.equal(bothRuleSingle.fadeIn, true);
+  assert.equal(bothRuleSingle.fadeOut, true);
+  // 旧值 single 与设置归一化一致，迁移为 both。
+  const legacySingle = helpers.parseSentenceFadeMarkers('>你好<', 'single');
+  assert.equal(legacySingle.text, '你好');
+  assert.equal(legacySingle.fadeIn, true);
+  assert.equal(legacySingle.fadeOut, true);
+  assert.equal(helpers.stripSentenceFadeMarkers('>>你好<<'), '你好');
+  assert.equal(helpers.stripSentenceFadeMarkers('你好'), '你好');
+});
+
+test('SRT export strips single-cue fade markers without touching the text', () => {
+  const srt = helpers.buildSrtPayload(
+    [{ start: 0, end: 1000, text: '>>你好<<' }, { start: 1000, end: 2000, text: '普通' }],
+    { formatTime: (ms) => `T${ms}` },
+  );
+  assert.ok(srt.includes('\n你好\n'), srt);
+  assert.ok(!srt.includes('>>') && !srt.includes('<<'), srt);
+  assert.ok(srt.includes('\n普通\n'), srt);
+});
+
 test('buildAssPayload writes extension cues on layer 1 with a single Extension style', () => {
   const ass = helpers.buildAssPayload(
     [{ start: 100, end: 900, text: 'main' }],
@@ -6322,19 +6417,71 @@ test('bilingual SRT preserves speaker color contexts and only extends the first 
   assert.equal(helpers.buildBilingualSrtPayload([], []), '');
 });
 
+test('wrap chars presets insert at both ends and skip already wrapped text', () => {
+  assert.deepEqual(
+    Array.from(helpers.WRAP_CHAR_PRESETS, (preset) => ({ ...preset })),
+    [
+      { id: 'emphasis', label: '强调文本', left: '**', right: '**' },
+      { id: 'large', label: '放大文本', left: '++', right: '++' },
+      { id: 'small', label: '缩小文本', left: '--', right: '--' },
+      { id: 'underline', label: '下划线', left: '__', right: '__' },
+      { id: 'strike', label: '删除线', left: '~~', right: '~~' },
+      { id: 'fade', label: '淡出淡入', left: '>>', right: '<<' },
+      { id: 'note', label: '音符', left: '♪', right: '♪' },
+    ],
+  );
+  assert.deepEqual({ ...helpers.wrapCharsAroundText('你好', '**', '**') },
+    { changed: true, skipped: false, text: '**你好**' });
+  // 同一对双符号不重复包裹。
+  assert.deepEqual({ ...helpers.wrapCharsAroundText('**你好**', '**', '**') },
+    { changed: false, skipped: true, text: '**你好**' });
+  assert.deepEqual({ ...helpers.wrapCharsAroundText('你好', '>>', '<<') },
+    { changed: true, skipped: false, text: '>>你好<<' });
+  // 音符是纯装饰字符，也不重复堆叠。
+  assert.deepEqual({ ...helpers.wrapCharsAroundText('♪你好♪', '♪', '♪') },
+    { changed: false, skipped: true, text: '♪你好♪' });
+  assert.deepEqual({ ...helpers.wrapCharsAroundText('', '**', '**') },
+    { changed: false, skipped: false, text: '' });
+  assert.deepEqual({ ...helpers.wrapCharsAroundText('文', '', '') },
+    { changed: false, skipped: false, text: '文' });
+  assert.equal(helpers.isTextWrappedBy('**文**', '**', '**'), true);
+  assert.equal(helpers.isTextWrappedBy('**文**', '>>', '<<'), false);
+});
+
+test('wrap chars menu copy has English translations', () => {
+  for (const preset of helpers.WRAP_CHAR_PRESETS) {
+    assert.notEqual(i18n.translateText(preset.label, 'en'), preset.label, preset.label);
+  }
+  const keys = [
+    '左右添加字符', '左右添加字符预设', '自定义左右字符', '左侧字符', '右侧字符', '插入',
+    '左右添加字符（插入到字幕两端）',
+    '在选中字幕文本两端原样插入字符；不做样式转换，也不受「单双符号」规则影响。',
+    '选中字幕已包裹相同符号，未重复添加', '没有可添加字符的字幕',
+    '请至少输入一侧字符', '请先选择要处理的字幕',
+  ];
+  for (const key of keys) assert.notEqual(i18n.translateText(key, 'en'), key, key);
+  assert.equal(i18n.translateText('已为 3 条字幕添加字符', 'en'), 'Added characters to 3 subtitles');
+  assert.equal(
+    i18n.translateText('已为 3 条字幕添加字符；1 条已包裹相同符号，已跳过', 'en'),
+    'Added characters to 3 subtitles; skipped 1 already wrapped with the same characters',
+  );
+});
+
 test('ASS special symbol rules apply to all five formats across preview runs and exports', () => {
   assert.equal(helpers.normalizeEditorSettings().assSpecialSymbolRule, 'both');
   assert.equal(helpers.normalizeEditorSettings({ assSpecialSymbolRule: 'invalid' }).assSpecialSymbolRule, 'both');
+  // 旧工程里的 'single' 迁移为 'both'（单双符号规则已收敛为三值）。
+  assert.equal(helpers.normalizeEditorSettings({ assSpecialSymbolRule: 'single' }).assSpecialSymbolRule, 'both');
   const single = '*强调* _下划线_ ~删除~ -缩小- +放大+';
   const double = '**强调** __下划线__ ~~删除~~ --缩小-- ++放大++';
   const text = `${single} / ${double}`;
-  for (const rule of ['none', 'single', 'double', 'both']) {
+  for (const rule of ['none', 'double', 'both']) {
     const settings = helpers.normalizeEditorSettings({ assSpecialSymbolRule: rule });
     assert.equal(helpers.normalizeEditorSettings(settings).assSpecialSymbolRule, rule);
     const runs = Array.from(helpers.assInlineStyleRuns(text, settings.assEmphasisSyntax, settings));
     const result = runs.map(run => run.text).join('');
     const clean = '强调 下划线 删除 缩小 放大';
-    assert.equal(result, `${['single', 'both'].includes(rule) ? clean : single} / ${['double', 'both'].includes(rule) ? clean : double}`);
+    assert.equal(result, `${rule === 'both' ? clean : single} / ${['double', 'both'].includes(rule) ? clean : double}`);
     const cues = [{ start: 0, end: 1000, text }];
     const ass = helpers.buildAssPayload(cues, { ...settings,
       assProfile: { id: 'ass', styleId: 'ass', animations: {} }, assStyle: { id: 'ass' },
@@ -6346,7 +6493,6 @@ test('ASS special symbol rules apply to all five formats across preview runs and
       else {
         assert.match(line, /\\s1/);
         assert.match(line, /\\u1/);
-        if (rule === 'single') assert.ok(line.includes(double));
         if (rule === 'double') assert.ok(line.includes(single));
       }
     });
@@ -6429,4 +6575,41 @@ test('parseLrcSegments applies the offset tag globally regardless of its positio
     { start: 9000, end: 19000, text: 'Early line' },
     { start: 19000, end: 24000, text: 'Late line' },
   ]);
+});
+
+test('sentence fade markers respect disabled and migrated symbol rules', () => {
+  assert.deepEqual({ ...helpers.parseSentenceFadeMarkers('>>原文<<', 'none') },
+    { text: '>>原文<<', fadeIn: false, fadeOut: false });
+  assert.equal(helpers.parseSentenceFadeMarkers('>原文<', 'single').text, '原文');
+});
+
+test('explicit zero-duration sentence fade suppresses global fades', () => {
+  const profile = { animations: { fad: { enabled: true, inMs: 0, outMs: 500 } } };
+  const sentence = helpers.assSentenceFadeTags('>>原文', profile, 'both');
+  assert.equal(helpers.assAnimationOverrideTags(profile, { fad: sentence.fad }), '\\fad(0,0)');
+  assert.equal(helpers.assPreviewAnimationState(profile, 950, 1000, { fad: sentence.fad }).opacity, 1);
+});
+
+test('SRT and bilingual SRT strip the active single-symbol fade syntax', () => {
+  for (const build of [
+    () => helpers.buildSrtPayload([{ start: 0, end: 1000, text: '>原文<' }], { assSpecialSymbolRule: 'both' }),
+    () => helpers.buildBilingualSrtPayload([{ start: 0, end: 1000, text: '>原文<' }], [], { assSpecialSymbolRule: 'both' }),
+  ]) assert.ok(build().includes('\n原文\n'));
+  assert.ok(helpers.buildSrtPayload([{ start: 0, end: 1000, text: '>>原文<<' }],
+    { assSpecialSymbolRule: 'none' }).includes('>>原文<<'));
+});
+
+
+test('bilingual SRT parses fade syntax once and preserves disabled literal markers', () => {
+  const cues = [{ start: 0, end: 1000, text: '>>原文<<' }];
+  assert.ok(helpers.buildBilingualSrtPayload(cues, [], { assSpecialSymbolRule: 'none' }).includes('>>原文<<'));
+  assert.ok(helpers.buildBilingualSrtPayload([{ ...cues[0], text: '>>>>原文<<<<' }], [],
+    { assSpecialSymbolRule: 'double' }).includes('>>原文<<'));
+});
+
+test('wrap preset tooltips translate their literal characters', () => {
+  for (const preset of helpers.WRAP_CHAR_PRESETS) {
+    assert.equal(i18n.translateText(`在字幕两端插入 ${preset.left} 和 ${preset.right}`, 'en'),
+      `Insert ${preset.left} and ${preset.right} at the subtitle ends`);
+  }
 });

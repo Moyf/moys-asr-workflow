@@ -73,6 +73,19 @@ class PostprocessPipelineTests(unittest.TestCase):
         script.write_text("正字\n保留\n", encoding="utf-8")
         return {"id": "match", "enabled": enabled, "scriptPath": str(script)}
 
+    def test_ai_cleanup_notes_survive_plan_normalization_and_request(self) -> None:
+        step = self.match_step()
+        step.update(aiCleanup=True, aiCleanupNotes="  保留所有数字  ")
+        plan = normalize_plan(self.plan(step))
+        self.assertEqual(plan["steps"][0]["aiCleanupNotes"], "保留所有数字")
+        with mock.patch("maw.postprocess_pipeline.run_ai_cleanup",
+                        return_value=SubtitleArtifact(self.project, self.srt, self.project, self.srt)) as cleanup:
+            run_postprocess_pipeline(plan, media_path=self.media, project_path=self.project,
+                                     srt_path=self.srt, env_path=self.env_path, ffmpeg_path=None,
+                                     cancel_event=Event(), llm_settings={"deepseek": {
+                                         "apiKey": "fake", "baseUrl": "https://example.test", "model": "fake", "verified": "1"}})
+        self.assertEqual(cleanup.call_args.args[0].notes, "保留所有数字")
+
     def test_default_plan_is_disabled_and_ordered(self) -> None:
         plan = default_postprocess_plan()
 

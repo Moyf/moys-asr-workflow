@@ -276,9 +276,9 @@ test('ASS emphasis controls drive preview and inline export color', async ({ pag
   await expect(page.locator('[data-ass-symbol="_"]')).toHaveText('_下划线_/__下划线__');
   await page.locator('#ass-special-symbol-rule').selectOption('none');
   await expect(page.locator('#ass-inline-text-options')).toBeHidden();
-  await page.locator('#ass-special-symbol-rule').selectOption('single');
+  await page.locator('#ass-special-symbol-rule').selectOption('double');
   await expect(page.locator('#ass-inline-text-options')).toBeVisible();
-  await expect(page.locator('[data-ass-symbol="_"]')).toHaveText('_下划线_');
+  await expect(page.locator('[data-ass-symbol="_"]')).toHaveText('__下划线__');
   await page.locator('#ass-special-symbol-rule').selectOption('both');
   await expect(page.locator('[data-ass-symbol="*"]')).toHaveText('*强调*/**强调**');
   await page.locator('#ass-special-symbol-rule').selectOption('double');

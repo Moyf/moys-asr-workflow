@@ -96,7 +96,7 @@ window.MAWE.register('utils-ass-style', function createUtilsModule(dependencies)
     const source = String(text ?? '');
     const markers = new Map();
     const rule = options.assSpecialSymbolRule;
-    const widths = rule === 'none' ? [] : rule === 'single' ? [1] : rule === 'double' ? [2] : [1, 2];
+    const widths = rule === 'none' ? [] : rule === 'double' ? [2] : [1, 2];
     const addMarkers = (marker, field) => widths.forEach((width) => {
       assMarkedRanges(source, marker.repeat(width)).forEach(({ start, end }) => {
         markers.set(start, { field, active: true, width });

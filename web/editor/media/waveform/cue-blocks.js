@@ -339,7 +339,11 @@ window.MAWE.register('waveform-cue-blocks', function createWaveformModule(depend
           event.preventDefault();
           event.stopPropagation();
           const timeMs = this.pointerTimeMs(event, row);
-          this.options.showContextMenu?.(event.clientX, event.clientY, index, timeMs);
+          // 与字幕列表右键一致：Shift = 渐进拆分，Ctrl/Cmd+Shift = 复制拆分。
+          const splitTextMode = event.shiftKey
+            ? ((event.ctrlKey || event.metaKey) ? 'duplicate' : 'progressive')
+            : null;
+          this.options.showContextMenu?.(event.clientX, event.clientY, index, timeMs, { splitTextMode });
         });
         block.addEventListener('dblclick', (event) => {
           event.preventDefault();

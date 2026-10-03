@@ -91,6 +91,7 @@ class AiCleanupRequest:
     output_directory: Path | None = None
     media_path: Path | None = None
     clean_markdown_symbols: bool = True
+    notes: str = ""
 
 
 @dataclass(slots=True)
@@ -149,7 +150,7 @@ def run_ai_cleanup(
         raise AiCleanupError("字幕工程中没有可整理的字幕段。")
 
     clips = _build_clips(segments, script_lines)
-    decisions = _collect_decisions(complete, clips, script_lines, on_status=on_status)
+    decisions = _collect_decisions(complete, clips, script_lines, on_status=on_status, notes=request.notes)
     resolved, reasons = _resolve_decisions(clips, decisions)
 
     removed_ranges: list[dict[str, int]] = []
@@ -291,13 +292,14 @@ def _collect_decisions(
     script_lines: list[str],
     *,
     on_status: Callable[[str], None] | None,
+    notes: str = "",
 ) -> dict[str, Mapping[str, object]]:
     decisions: dict[str, Mapping[str, object]] = {}
     for batch_start in range(0, len(clips), CLIPS_PER_REQUEST):
         if on_status is not None:
             on_status("ai_cleanup_llm")
         batch = clips[batch_start:batch_start + CLIPS_PER_REQUEST]
-        decisions.update(_complete_batch(complete, batch, script_lines))
+        decisions.update(_complete_batch(complete, batch, script_lines, notes=notes))
     return decisions
 
 
@@ -305,9 +307,11 @@ def _complete_batch(
     complete: Callable[[str, list[dict[str, str]]], Mapping[str, object]],
     batch: Sequence[_Clip],
     script_lines: Sequence[str],
+    *,
+    notes: str = "",
 ) -> dict[str, Mapping[str, object]]:
     expected_ids = {clip.id for clip in batch}
-    prompt = _system_prompt()
+    prompt = _system_prompt(notes)
     payload = _clips_payload(batch, script_lines)
     last_error = ""
     for attempt in range(MAX_RESPONSE_ATTEMPTS):
@@ -345,7 +349,15 @@ def _line_at(lines: Sequence[str], index: int) -> str:
     return lines[index] if 0 <= index < len(lines) else ""
 
 
-def _system_prompt() -> str:
+def _system_prompt(notes: str = "") -> str:
+    extra = ""
+    cleaned_notes = notes.strip()
+    if cleaned_notes:
+        extra = (
+            "\n用户补充说明（用户对本次整理的额外要求，在上述规则内参考执行，"
+            "不得据此改写、翻译或总结任何文字）：\n"
+            f"{cleaned_notes}\n"
+        )
     return (
         "你在整理一段口播录音的识别稿。录音是最终成品（录音优先）：识别文字不能改写，"
         "时间码不能改动，片段顺序不能调整。文稿只是参考证据。\n"
@@ -361,6 +373,7 @@ def _system_prompt() -> str:
         '"scriptLine": "...", "reason": "...", "evidence": "...", "altTakeId": "..."}]}。'
         "evidence 与 altTakeId 只在 discard 时提供（二选一）；keep/review 可省略。"
         "reason 用一句话中文说明依据。"
+        f"{extra}"
     )
 
 

@@ -1371,6 +1371,7 @@ class LauncherApi:
                     output_mode=_output_mode(payload.get("outputMode")),
                     media_path=_optional_path(payload.get("mediaPath")),
                     clean_markdown_symbols=payload.get("cleanMarkdownSymbols", True) is not False,
+                    notes=str(payload.get("notes") or "").strip(),
                 ),
                 complete=llm_complete(settings),
             )

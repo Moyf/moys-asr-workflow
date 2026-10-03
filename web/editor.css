@@ -3150,6 +3150,20 @@
     display: grid; gap: 6px; margin-top: 2px; padding: 9px 10px;
     background: var(--bg-panel); border: 1px solid var(--border-subtle); border-radius: var(--radius-sm);
   }
+  /* 「左右添加字符」批量预设：与上方操作列表保持垂直间隔。 */
+  .text-process-wrap-presets {
+    margin-top: 12px; padding: 9px 10px;
+    background: var(--bg-panel); border: 1px solid var(--border-subtle); border-radius: var(--radius-sm);
+  }
+  #wrap-chars-modal label { margin-bottom: 8px; }
+  .text-process-wrap-presets-head { color: var(--text-muted); font-size: 12px; margin-bottom: 8px; }
+  .text-process-wrap-preset-buttons { display: flex; flex-wrap: wrap; gap: 6px; }
+  .text-process-wrap-preset-buttons button {
+    padding: 5px 10px; font-size: 12px; border-radius: var(--radius-sm);
+    background: var(--btn-bg); color: var(--btn-text); border: 1px solid var(--btn-border); cursor: pointer;
+  }
+  .text-process-wrap-preset-buttons button:hover { background: var(--btn-bg-hover); border-color: var(--btn-border-hover); }
+  .text-process-wrap-preset-buttons button:focus-visible { outline: 2px solid var(--accent-line); outline-offset: 1px; }
   .text-process-operation {
     display: grid; grid-template-columns: auto max-content minmax(0, 1fr); align-items: center; gap: 7px;
     margin: 0 !important; color: var(--text-secondary) !important; cursor: pointer; min-height: 28px;
@@ -3595,6 +3609,7 @@
     position: fixed; background: var(--bg-overlay); border: 1px solid var(--border-subtle);
     border-radius: var(--radius-md); padding: 4px 0; min-width: 180px; font-size: 13px;
     box-shadow: var(--shadow-3);
+    max-height: calc(100vh - 8px); overflow-y: auto;
     /* 高于浮层前置栈（430+），低于 hint（490）、拖拽遮罩（500）和加载层（510），
        否则在 ASS 样式库等浮层窗口内右键时菜单会被窗口盖住。 */
     z-index: 480;

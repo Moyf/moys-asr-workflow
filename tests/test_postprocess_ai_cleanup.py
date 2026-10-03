@@ -507,5 +507,37 @@ class LlmCompleteTransportTest(unittest.TestCase):
         self.assertIn("未通过本地协议校验", str(seen[1]["prompt"]))
 
 
+class CleanupNotesTest(AiCleanupTestCase):
+    def test_notes_survive_batches_and_protocol_retry_without_changing_recording(self) -> None:
+        from unittest import mock
+        from maw import postprocess_ai_cleanup as cleanup
+        original = [_segment(0, 1000, "第一句"), _segment(1000, 2000, "第二句")]
+        project, script = self.request(_project(original), ["第一句", "第二句"])
+        prompts = []
+
+        def complete(prompt, clips):
+            prompts.append(prompt)
+            if len(prompts) == 1:
+                return {"decisions": []}
+            return {"decisions": [{"id": row["id"], "decision": "keep", "reason": "保留", "scriptLine": row["scriptLine"]} for row in clips]}
+
+        with mock.patch.object(cleanup, "CLIPS_PER_REQUEST", 1):
+            artifact = run_ai_cleanup(AiCleanupRequest(
+                project_path=project, srt_path=None, script_path=script, output_mode=OutputMode.BOTH,
+                output_directory=self.directory, notes="  保留所有数字\n去除试麦  "), complete=complete)
+        self.assertEqual(len(prompts), 3)
+        for prompt in prompts:
+            self.assertIn("保留所有数字\n去除试麦", prompt)
+            self.assertIn("不得据此改写、翻译或总结任何文字", prompt)
+        output = json.loads(artifact.project_path.read_text(encoding="utf-8"))
+        for before, after in zip(original, output["segments"], strict=True):
+            for key in ("text", "start", "end", "items"):
+                self.assertEqual(before[key], after[key])
+
+    def test_blank_notes_keep_the_default_prompt(self) -> None:
+        from maw.postprocess_ai_cleanup import _system_prompt
+        self.assertEqual(_system_prompt(" \n "), _system_prompt())
+
+
 if __name__ == "__main__":
     unittest.main()

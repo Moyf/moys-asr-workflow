@@ -585,16 +585,21 @@ test('B splits at the pointer inside the cue list and at the playhead outside it
 
   // 列表内悬停：按鼠标所指文字位置拆分
   const text = cue.locator('.text');
-  const splitPoint = await text.evaluate((element) => {
-    const node = element.firstChild;
-    const range = document.createRange();
-    range.setStart(node, 6);
-    range.setEnd(node, 6);
-    const rect = range.getBoundingClientRect();
-    return { x: rect.x, y: rect.y + rect.height / 2 };
-  });
-  await page.mouse.move(splitPoint.x, splitPoint.y);
-  await expect(page.locator('.cue-split-preview')).toHaveCount(1);
+  // Undo redraws lazy rows. Re-read the live caret geometry until hovering
+  // produces the preview instead of retaining coordinates from that redraw.
+  let splitPoint;
+  await expect.poll(async () => {
+    await text.scrollIntoViewIfNeeded();
+    splitPoint = await text.evaluate((element) => {
+      const range = document.createRange();
+      range.setStart(element.firstChild, 6);
+      range.setEnd(element.firstChild, 6);
+      const rect = range.getBoundingClientRect();
+      return { x: rect.x, y: rect.y + rect.height / 2 };
+    });
+    await page.mouse.move(splitPoint.x, splitPoint.y);
+    return page.locator('.cue-split-preview').count();
+  }).toBe(1);
   const previewBox = await page.locator('.cue-split-preview').boundingBox();
   expect(previewBox).not.toBeNull();
   expect(Math.abs(previewBox.x + previewBox.width / 2 - splitPoint.x)).toBeLessThan(1.5);
