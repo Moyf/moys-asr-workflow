@@ -35,7 +35,7 @@
           }
           : {};
       if (waveformFeedbackPoint) initial.feedbackPoint = waveformFeedbackPoint;
-      MaweSplitCore.pendingLinkedSplit = MaweSplitCore.linkedSplitState(idx, initial);
+      MaweSplitCore.pendingLinkedSplit = MaweSplitCore.linkedSplitState(idx, { ...initial, splitTextMode });
       if (!MaweSplitCore.pendingLinkedSplit) return false;
       MaweDom.multiSubtitleSplitModal?.classList.add('show');
       MaweSplitCore.renderLinkedSplitText(MaweSplitCore.pendingLinkedSplit);
@@ -44,7 +44,7 @@
     if (Number.isFinite(waveformTimeMs)) {
       if (!MaweSplitCore.shouldUseMainSplitTimestamps(MaweBoot.DATA.segments[idx])) {
         MaweSplitCore.notifyMainSplitTimestampFallback(MaweBoot.DATA.segments[idx]);
-        MaweSplitCore.openMainWaveformSplitModal(idx, waveformTimeMs);
+        MaweSplitCore.openMainWaveformSplitModal(idx, waveformTimeMs, { splitTextMode });
         return false;
       }
       const segment = MaweBoot.DATA.segments[idx];

@@ -206,6 +206,7 @@ MaweTextProcess.textProcessConfirm?.addEventListener('click', () => {
     btn.textContent = preset.label;
     btn.title = `在字幕两端插入 ${preset.left} 和 ${preset.right}`;
     btn.addEventListener('click', () => {
+      MaweTextProcess.textProcessWrapPreset = preset;
       MaweTextProcess.textProcessPrefix.checked = true;
       MaweTextProcess.textProcessSuffix.checked = true;
       MaweTextProcess.textProcessPrefixInput.value = preset.left;

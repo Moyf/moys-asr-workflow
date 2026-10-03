@@ -383,6 +383,7 @@
     '你可以使用 **强调**、~~删除~~、--缩小--、++放大++ 等符号来对特定字词添加特殊样式。': 'Use **emphasis**, ~~strike~~, --smaller--, and ++larger++ to apply special styles to individual words.',
     '你可以使用 *强调*/**强调**、~删除~/~~删除~~、-缩小-/--缩小--、+放大+/++放大++ 等符号来对特定字词添加特殊样式。': 'Use *emphasis*/**emphasis**, ~strike~/~~strike~~, -smaller-/--smaller--, and +larger+/++larger++ to apply special styles to individual words.',
     '强调文本': 'Emphasis text', '强调文本语法': 'Emphasis syntax', '文字放大比例': 'Text scale', '强调样式': 'Emphasis style',
+    '左右添加字符预设': 'Character wrapping presets',
     '左右添加字符': 'Wrap with characters', '自定义左右字符': 'Custom wrap characters',
     '左侧字符': 'Left characters', '右侧字符': 'Right characters', '插入': 'Insert',
     '音符': 'Music note', '淡出淡入': 'Fade in/out',
@@ -1272,6 +1273,8 @@
     }
     match = /^已为\s*(\d+)\s*条字幕添加字符；\s*(\d+)\s*条已包裹相同符号，已跳过$/.exec(text);
     if (match) return `Added characters to ${match[1]} subtitle${match[1] === '1' ? '' : 's'}; skipped ${match[2]} already wrapped with the same characters`;
+    match = /^在字幕两端插入 (.+) 和 (.+)$/.exec(text);
+    if (match) return `Insert ${match[1]} and ${match[2]} at the subtitle ends`;
     match = /^已为\s*(\d+)\s*条字幕添加字符$/.exec(text);
     if (match) return `Added characters to ${match[1]} subtitle${match[1] === '1' ? '' : 's'}`;
     match = /^总长度\s+(.+)$/.exec(text);

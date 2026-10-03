@@ -69,6 +69,8 @@ window.MAWE.register('utils-text-processing', function createUtilsModule(depende
     if (options.stripMarkdown) result = stripMarkdownFormatting(result);
     if (options.trim) result = result.trim();
     if (options.capitalize) result = capitalizeFirstLetter(result);
+    if (options.skipWrapped && options.addPrefix && options.addSuffix
+        && isTextWrappedBy(result, options.prefix, options.suffix)) return result;
     if (options.addPrefix) result = `${String(options.prefix == null ? '' : options.prefix)}${result}`;
     if (options.addSuffix) result = `${result}${String(options.suffix == null ? '' : options.suffix)}`;
     return result;
@@ -103,11 +105,12 @@ window.MAWE.register('utils-text-processing', function createUtilsModule(depende
   }
 
   // ASS 单句渐入渐出标记：`>>` 在整行行首表示淡入，`<<` 在整行行尾表示淡出，
-  // 两端同时出现即淡入 + 淡出。双符号始终识别；rule 为 both 时单符号
-  // `>` / `<` 也识别（旧值 single 按 double 处理，只认双符号）。
+  // 两端同时出现即淡入 + 淡出。none 保留原文；both（含旧值 single）
+  // 也识别单个 `>` / `<`。未指定规则时仅识别双符号。
   function parseSentenceFadeMarkers(text, rule) {
     const source = String(text == null ? '' : text);
-    const singleAllowed = rule === 'both';
+    if (rule === 'none') return { text: source, fadeIn: false, fadeOut: false };
+    const singleAllowed = rule === 'both' || rule === 'single';
     let body = source;
     let fadeIn = false;
     let fadeOut = false;

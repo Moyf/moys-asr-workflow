@@ -287,10 +287,7 @@
 
 
   function setTextHtml(el, text, query) {
-    // 单句渐入渐出标记是编辑语法，不在字幕列表里显示字面符号。
-    const source = window.AsrEditorUtils.stripSentenceFadeMarkers(
-      String(text ?? ''), MaweSettings.EDITOR_SETTINGS.assSpecialSymbolRule,
-    );
+    const source = String(text ?? '');
     if (!query) {
       el.innerHTML = '';
       source.split('\n').forEach((line, i) => {

@@ -74,6 +74,14 @@ class GuiWebBridgeTests(unittest.TestCase):
         prefs_patcher.start()
         self.addCleanup(prefs_patcher.stop)
 
+    def test_ai_cleanup_notes_reach_the_manual_request(self) -> None:
+        with mock.patch("maw.gui_web.process_ai_cleanup", return_value=SimpleNamespace()) as cleanup:
+            result = self.api.run_ai_cleanup({"scriptPath": str(self.root / "script.txt"),
+                                             "apiKey": "fake", "providerId": "deepseek",
+                                             "notes": "  保留所有数字  "})
+        self.assertTrue(result["ok"])
+        self.assertEqual(cleanup.call_args.args[0].notes, "保留所有数字")
+
     def tearDown(self) -> None:
         self.temp_dir.cleanup()
 

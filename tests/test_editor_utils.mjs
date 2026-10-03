@@ -5177,11 +5177,11 @@ test('parses single-cue fade markers with the special-symbol rule', () => {
   assert.equal(bothRuleSingle.text, '你好');
   assert.equal(bothRuleSingle.fadeIn, true);
   assert.equal(bothRuleSingle.fadeOut, true);
-  // 旧值 single 按 double 处理，避免与另一分支的枚举冲突。
+  // 旧值 single 与设置归一化一致，迁移为 both。
   const legacySingle = helpers.parseSentenceFadeMarkers('>你好<', 'single');
-  assert.equal(legacySingle.text, '>你好<');
-  assert.equal(legacySingle.fadeIn, false);
-  assert.equal(legacySingle.fadeOut, false);
+  assert.equal(legacySingle.text, '你好');
+  assert.equal(legacySingle.fadeIn, true);
+  assert.equal(legacySingle.fadeOut, true);
   assert.equal(helpers.stripSentenceFadeMarkers('>>你好<<'), '你好');
   assert.equal(helpers.stripSentenceFadeMarkers('你好'), '你好');
 });
@@ -6453,7 +6453,7 @@ test('wrap chars menu copy has English translations', () => {
     assert.notEqual(i18n.translateText(preset.label, 'en'), preset.label, preset.label);
   }
   const keys = [
-    '左右添加字符', '自定义左右字符', '左侧字符', '右侧字符', '插入',
+    '左右添加字符', '左右添加字符预设', '自定义左右字符', '左侧字符', '右侧字符', '插入',
     '左右添加字符（插入到字幕两端）',
     '在选中字幕文本两端原样插入字符；不做样式转换，也不受「单双符号」规则影响。',
     '选中字幕已包裹相同符号，未重复添加', '没有可添加字符的字幕',
@@ -6575,4 +6575,41 @@ test('parseLrcSegments applies the offset tag globally regardless of its positio
     { start: 9000, end: 19000, text: 'Early line' },
     { start: 19000, end: 24000, text: 'Late line' },
   ]);
+});
+
+test('sentence fade markers respect disabled and migrated symbol rules', () => {
+  assert.deepEqual({ ...helpers.parseSentenceFadeMarkers('>>原文<<', 'none') },
+    { text: '>>原文<<', fadeIn: false, fadeOut: false });
+  assert.equal(helpers.parseSentenceFadeMarkers('>原文<', 'single').text, '原文');
+});
+
+test('explicit zero-duration sentence fade suppresses global fades', () => {
+  const profile = { animations: { fad: { enabled: true, inMs: 0, outMs: 500 } } };
+  const sentence = helpers.assSentenceFadeTags('>>原文', profile, 'both');
+  assert.equal(helpers.assAnimationOverrideTags(profile, { fad: sentence.fad }), '\\fad(0,0)');
+  assert.equal(helpers.assPreviewAnimationState(profile, 950, 1000, { fad: sentence.fad }).opacity, 1);
+});
+
+test('SRT and bilingual SRT strip the active single-symbol fade syntax', () => {
+  for (const build of [
+    () => helpers.buildSrtPayload([{ start: 0, end: 1000, text: '>原文<' }], { assSpecialSymbolRule: 'both' }),
+    () => helpers.buildBilingualSrtPayload([{ start: 0, end: 1000, text: '>原文<' }], [], { assSpecialSymbolRule: 'both' }),
+  ]) assert.ok(build().includes('\n原文\n'));
+  assert.ok(helpers.buildSrtPayload([{ start: 0, end: 1000, text: '>>原文<<' }],
+    { assSpecialSymbolRule: 'none' }).includes('>>原文<<'));
+});
+
+
+test('bilingual SRT parses fade syntax once and preserves disabled literal markers', () => {
+  const cues = [{ start: 0, end: 1000, text: '>>原文<<' }];
+  assert.ok(helpers.buildBilingualSrtPayload(cues, [], { assSpecialSymbolRule: 'none' }).includes('>>原文<<'));
+  assert.ok(helpers.buildBilingualSrtPayload([{ ...cues[0], text: '>>>>原文<<<<' }], [],
+    { assSpecialSymbolRule: 'double' }).includes('>>原文<<'));
+});
+
+test('wrap preset tooltips translate their literal characters', () => {
+  for (const preset of helpers.WRAP_CHAR_PRESETS) {
+    assert.equal(i18n.translateText(`在字幕两端插入 ${preset.left} 和 ${preset.right}`, 'en'),
+      `Insert ${preset.left} and ${preset.right} at the subtitle ends`);
+  }
 });

@@ -140,9 +140,9 @@ window.MAWE.register('utils-srt', function createUtilsModule(dependencies) {
       const cueText = String(segment.text ?? '');
       parts.push(disabled ? '' : speakerLabels
         ? formatSpeakerLabelledText(
-          stripSentenceFadeMarkers(cueText), segment, colorContext, speakerLabels, speakerLabelSeparator,
+          stripSentenceFadeMarkers(cueText, options.assSpecialSymbolRule), segment, colorContext, speakerLabels, speakerLabelSeparator,
         )
-        : stripSentenceFadeMarkers(cueText));
+        : stripSentenceFadeMarkers(cueText, options.assSpecialSymbolRule));
       parts.push('');
     });
     return parts.join('\n');
@@ -171,7 +171,7 @@ window.MAWE.register('utils-srt', function createUtilsModule(dependencies) {
       if (end <= start) return;
       const context = track === 0 && typeof options.colorContextResolver === 'function'
         ? options.colorContextResolver(segment) || source : source;
-      const strippedText = stripSentenceFadeMarkers(String(segment.text ?? ''));
+      const strippedText = stripSentenceFadeMarkers(String(segment.text ?? ''), options.assSpecialSymbolRule);
       const text = String(labels ? formatSpeakerLabelledText(strippedText, segment, context, labels, separator)
         : strippedText).replace(/\r\n?/g, '\n');
       if (!text.trim()) return;
@@ -196,7 +196,8 @@ window.MAWE.register('utils-srt', function createUtilsModule(dependencies) {
       if (previous && previous.end === start && previous.text === text) previous.end = end;
       else merged.push({ start, end, text });
     });
-    return buildSrtPayload(merged, { formatTime: options.formatTime });
+    // 每条原字幕已按规则清理；合并后再次解析会剥掉被禁用或剩余的字面符号。
+    return buildSrtPayload(merged, { formatTime: options.formatTime, assSpecialSymbolRule: 'none' });
   }
 
   function buildPlainTextPayload(segments) {

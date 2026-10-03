@@ -375,16 +375,18 @@
   idBase,
   includeItems = true,
   splitMode = null,
-  { preserveCutMs = false, forceCut = false, duplicateText = false } = {},
+  { preserveCutMs = false, forceCut = false, duplicateText = false, splitTextMode = null } = {},
 ) {
   const text = String(segment?.text || '');
   const mode = MULTI_SUBTITLE_UTILS.MULTI_SUBTITLE_SPLIT_MODES.has(splitMode)
     ? splitMode : MULTI_SUBTITLE_UTILS.detectSubtitleSplitMode(text);
   const safeOffset = Math.max(0, Math.min(text.length, Math.round(Number(offset) || 0)));
-  const parts = duplicateText
+  const duplicateOutputText = duplicateText || splitTextMode === 'duplicate';
+  const parts = duplicateOutputText
     ? (text ? { left: text, right: text, offset: safeOffset } : null)
     : MULTI_SUBTITLE_UTILS.splitSubtitleText(text, safeOffset, mode);
   if (!parts) return null;
+  if (splitTextMode === 'progressive') parts.right = text;
   const itemParts = splitItemsAtChar(
     includeItems ? segment : { ...segment, items: [] },
     parts.offset,
@@ -393,8 +395,8 @@
   );
   // 复制原文后，原有逐词时间码无法再与两侧文本一一对应；清空 items，
   // 避免把只属于一半文本的时间码带到重复文本上。
-  const leftItems = duplicateText ? [] : cleanSplitItems(itemParts.leftItems, 'left');
-  const rightItems = duplicateText ? [] : cleanSplitItems(itemParts.rightItems, 'right');
+  const leftItems = duplicateOutputText ? [] : cleanSplitItems(itemParts.leftItems, 'left');
+  const rightItems = (duplicateOutputText || splitTextMode === 'progressive') ? [] : cleanSplitItems(itemParts.rightItems, 'right');
   const splitMs = Number.isFinite(itemParts.splitMs) ? itemParts.splitMs : Math.round(cutMs);
   // 左右两段可各自贴合自家词边界（词间有静音空隙时非对称）。
   const leftEnd = Number.isFinite(itemParts.leftEndMs) ? itemParts.leftEndMs : splitMs;
@@ -489,6 +491,7 @@
   ) ?? splitOffsetNearTimeForModal(extension, initialMainCutMs, extensionMode);
   return {
     kind: 'linked',
+    splitTextMode: initial.splitTextMode || null,
     mainIndex,
     mainId: main.id,
     extensionId: extension.id,
@@ -1256,7 +1259,13 @@
   }
   if (MaweDom.multiSubtitleSplitPreview) {
     MaweDom.multiSubtitleSplitPreview.replaceChildren();
-    if (mainParts && !extensionOnly) setSplitPreviewLine('主', mainParts);
+    if (mainParts && !extensionOnly) {
+      const mainText = String(main.text || '');
+      const previewParts = state.splitTextMode === 'duplicate'
+        ? { ...mainParts, left: mainText, right: mainText }
+        : state.splitTextMode === 'progressive' ? { ...mainParts, right: mainText } : mainParts;
+      setSplitPreviewLine('主', previewParts);
+    }
     if (extensionParts && !mainOnly) setSplitPreviewLine('副', extensionParts);
     if (!mainValid || !extensionValid) {
       const error = document.createElement('div');
@@ -1295,8 +1304,9 @@
 
 
 
-  function openMainWaveformSplitModal(mainIndex, timeMs) {
+  function openMainWaveformSplitModal(mainIndex, timeMs, { splitTextMode = null } = {}) {
     const state = mainWaveformSplitState(mainIndex, { timeMs });
+    if (state) state.splitTextMode = splitTextMode;
     if (!state) {
       MaweHint.flashHint('这条字幕没有可用的文字边界', 'invalid');
       return false;
@@ -1363,7 +1373,7 @@
     main.id || `main-${mainIndex}`,
     true,
     state.mainMode,
-    { ...splitAlignmentOptions, duplicateText },
+    { ...splitAlignmentOptions, duplicateText, splitTextMode: state.splitTextMode },
   );
   if (!pair) {
     if (!force && !duplicateText) {
@@ -1595,7 +1605,7 @@
     main.id || `main-${mainIndex}`,
     true,
     state.mainMode,
-    { preserveCutMs: true, forceCut: force, duplicateText },
+    { preserveCutMs: true, forceCut: force, duplicateText, splitTextMode: state.splitTextMode },
   );
   const extensionPair = buildSplitPair(
     extension,
@@ -1707,6 +1717,7 @@
         mainOffset: cursorOffset,
         feedbackPoint: ninjaFeedbackPoint,
         ninjaFromList: true,
+        splitTextMode,
       });
       if (!pendingLinkedSplit) return;
       MaweDom.multiSubtitleSplitModal?.classList.add('show');

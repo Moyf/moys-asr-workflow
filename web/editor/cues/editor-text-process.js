@@ -57,6 +57,7 @@
 
 
   let wrapCharsScope = [];
+  let textProcessWrapPreset = null;
 
 
   let textProcessSelectionSnapshot = [];
@@ -135,6 +136,9 @@
       addSuffix: textProcessSuffix.checked,
       suffix: textProcessSuffixInput.value,
       stripMarkdown: textProcessStripMarkdown.checked,
+      skipWrapped: Boolean(textProcessWrapPreset
+        && textProcessWrapPreset.left === textProcessPrefixInput.value
+        && textProcessWrapPreset.right === textProcessSuffixInput.value),
     };
   }
 
@@ -222,6 +226,7 @@
   // 「左右添加字符」：在主字幕文本两端插入字符（支持多选批量）。插入一律双符号形式；
   // 已用同一对符号包裹的条目跳过，不重复包裹。
   function applyWrapChars(scope, left, right, label = '左右添加字符') {
+    if (MaweInlineEdit.editingState) MaweInlineEdit.finishEdit(true);
     const indexes = [...new Set((Array.isArray(scope) ? scope : [])
       .filter((index) => Number.isInteger(index) && index >= 0 && index < MaweBoot.DATA.segments.length))]
       .sort((a, b) => a - b);
@@ -277,6 +282,7 @@
 
 
   function openTextProcessModal() {
+    textProcessWrapPreset = null;
     if (!MaweBoot.DATA.segments.length && !MaweMultiSubtitleCore.getActiveExtensionTrack()?.segments?.length) {
       MaweHint.flashHint('当前没有可处理的字幕', 'invalid');
       return;
@@ -326,6 +332,7 @@
     refreshTextProcessInputState,
     closeTextProcessModal,
     openTextProcessModal,
+    set textProcessWrapPreset(value) { textProcessWrapPreset = value; },
     wrapCharsModal,
     wrapCharsLeftInput,
     wrapCharsRightInput,

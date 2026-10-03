@@ -24,7 +24,7 @@ window.MAWE.register('utils-ass-animation', function createUtilsModule(dependenc
     // libass/playback behaviour is undefined when both fade forms are present.
     // The more expressive form wins, while the simple fad remains the normal
     // one-click path in the style manager.
-    if (fad && (fad.inMs > 0 || fad.outMs > 0)) {
+    if (fad) {
       // 单句 `>>`/`<<` 标记：覆盖全局 fade/fad，只保留该句的淡入淡出。
       tags.push(`\\fad(${fad.inMs},${fad.outMs})`);
     } else if (animations.fade.enabled) {
@@ -63,7 +63,7 @@ window.MAWE.register('utils-ass-animation', function createUtilsModule(dependenc
       const amount = Math.min(1, Math.max(0, (elapsed - from) / (to - from)));
       return start + (end - start) * amount;
     };
-    if (fad && (fad.inMs > 0 || fad.outMs > 0)) {
+    if (fad) {
       // 单句 `>>`/`<<`：预览跟随该句自身的淡入淡出，忽略全局开关。
       const fadeIn = fad.inMs > 0 && elapsed < fad.inMs ? elapsed / fad.inMs : 1;
       const fadeOutStart = Math.max(0, duration - fad.outMs);
