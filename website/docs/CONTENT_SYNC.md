@@ -1,24 +1,24 @@
-# 文档同步
+# 官网文档同步
 
-官网的 `/docs/` 页面不是手工复制的一份说明，而是由 `scripts/sync-maw-docs.mjs` 从当前仓库根目录的 MAW 文档生成的静态 Markdown 页面。
+源文档位于本仓库根 README、JSON_SCHEMA 和 docs；`website/src/pages/docs/*.md` 是生成副本，不手工编辑正文。
 
-## 本地刷新
+## 刷新与检查
 
-在 MAW 仓库根目录运行：
+在仓库根目录运行：
 
-```powershell
+```sh
+npm --prefix website ci
 npm --prefix website run sync:docs
+npm --prefix website run check
+npm --prefix website run build
 ```
 
-默认读取 `../moys-asr-workflow`。如果原始库位于其他位置，可以指定：
+脚本 `website/scripts/sync-maw-docs.mjs` 默认读取当前仓库根目录。只有从其他仓库取源文档时，才设置 `MAW_SOURCE_DIR`。某个源文件不存在时，脚本尝试从 GitHub main 获取；离线同步须确保源文件完整。
 
-```powershell
-$env:MAW_SOURCE_DIR = 'D:\Projects\moys-asr-workflow'
-npm --prefix website run sync:docs
-```
+同步清单显式列出公开页面，不自动发布 TEST_FEEDBACK 或 dev 内部记录。没有独立官网页面的文档通过 GitHub 原文访问；已有页面的相对 Markdown 链接会转换为本站路由。
 
-脚本只同步公开导航中的文档，写入 `website/src/pages/docs/`，并把原库内部的 Markdown 链接改成网站路由；没有对应页面的图片和文档链接会指向 MAW GitHub 原文。生成文件需要和网站代码一起提交，这样 Vercel 或 GitHub Pages 构建时不依赖本机存在 MAW 原始库。
+文档引用的本地图片会同步到 `website/public/docs-assets/`，保留源仓库目录结构，并转换为本站相对地址，支持 `BASE_PATH`。与 Markdown 副本一样，这些文件是生成产物；修改原图后重新运行同步，不手改副本。外部图片继续使用原地址。本地图片缺失时尝试从 GitHub main 获取；离线同步须同时保留原图。
 
-README 中的共享演示凭据段不会同步到官网，只保留使用自有 API Key 的提示。
+新增公开专题时，同步维护脚本清单、docs 首页和 DocLayout 导航。生成副本与源文件一起提交，部署时不依赖本机其他仓库。脚本保留旧 README 演示凭据段的过滤防护；当前 README 没有共享凭据。
 
-如果本地没有原始库，脚本会尝试从 MAW GitHub `main` 分支读取源文件。同步完成后仍应运行 `npm run check` 和 `npm run build`，确认上游文档的 Markdown 变化没有破坏页面。
+只修改文档不需要生成根目录 `blank-editor.html`。网站构建与线上部署是不同验证层；本地构建成功不能当作已发布。

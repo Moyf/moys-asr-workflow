@@ -18,8 +18,10 @@
 
 ## 代码风格
 
-- Python：遵循现有代码风格，`uv run pytest` 通过
+- Python：遵循现有代码风格；安装环境后使用 `uv run --no-sync python -m unittest discover -s tests -p "test_*.py"`。
 - 前端（web/）：LF 换行，保持既有缩进风格
+
+前端装配检查、类型检查与浏览器回归见 [开发概览](docs/DEVELOPMENT.md)。修改 `web/` 时只维护源码，内联副本待发布前统一重生成。所有文本使用 UTF-8 与 LF。
 
 ## 许可
 

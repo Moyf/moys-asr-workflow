@@ -7,8 +7,6 @@ source: "docs/KEYBOARD_ADJUSTMENT.md"
 
 <!-- Generated from docs/KEYBOARD_ADJUSTMENT.md. Run npm run sync:docs to refresh. -->
 
-# MAWE 字幕按键调整
-
 本文专门说明 MAWE 中用于微调字幕时间的键盘操作。它们适合在波形区快速修正字幕的整体位置、起点和终点，不需要拖动边界手柄。
 
 ## 开始使用
