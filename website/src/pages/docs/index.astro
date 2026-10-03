@@ -1,45 +1,11 @@
 ---
 import BaseLayout from '../../layouts/BaseLayout.astro';
 import { sitePath } from '../../lib/site-path';
+import { docsNavigation } from '../../lib/docs-navigation';
 import '../../styles/docs.css';
 
 const repoUrl = 'https://github.com/Moyf/moys-asr-workflow';
-const groups = [
-  {
-    label: '开始与转写',
-    docs: [
-      ['getting-started', '开始使用 MAW', '产品简介与下载入口。'],
-      ['workflow', '第一次字幕工程', '安装、配置、转写、编辑与交付。'],
-      ['launcher', 'Launcher 指南', '识别预设、音轨、批量任务与输出设置。'],
-      ['providers', '服务商配置', 'Key、地域、模型与数据边界。'],
-      ['local-asr', '实验性本地 ASR', '模型、运行环境、设备与时间码对齐。'],
-      ['faq', '常见问题', '启动、FFmpeg、API 与保存排错。'],
-    ],
-  },
-  {
-    label: '编辑与处理',
-    docs: [
-      ['editor-guide', '编辑器指南', '时间轴编辑、保存、备份与导出。'],
-      ['keyboard-adjustment', '按键调整', '精确调整字幕位置与边界。'],
-      ['multi-subtitle', '多重字幕', '主副轨导入、绑定与联动。'],
-      ['ass-styles', 'ASS 样式', '样式库、预览与特殊文本格式。'],
-      ['toolbox', '工具箱', '匹配、AI 整理、翻译与媒体处理。'],
-      ['postprocess-pipeline', '自动处理', '转写后串接步骤与失败恢复。'],
-      ['ocr-subtitle-dedup', 'OCR 去重', '视频画面字幕检测与报告。'],
-    ],
-  },
-  {
-    label: '契约与维护',
-    docs: [
-      ['cli', '命令行 CLI', '公开参数、底层脚本与自动化。'],
-      ['json-schema', '工程格式', 'MOSP / JSON 字段与时间码契约。'],
-      ['llm-postprocess', 'LLM 协议', 'ID 校验与本地时间映射。'],
-      ['mose', 'MAW / MAWE / MOSE', '当前产品与实验桌面目录的关系。'],
-      ['development', '开发概览', '代码地图、数据边界与验证。'],
-      ['documentation-index', '全部文档与历史记录', '专题索引、开发计划和测试账本。'],
-    ],
-  },
-];
+
 ---
 
 <BaseLayout title="MAW 文档" description="MAW 的使用、编辑器、工程格式和开发文档。">
@@ -60,7 +26,7 @@ const groups = [
       <p>这里的内容直接同步自 MAW 原始仓库，覆盖从第一次转写到编辑器快捷键、工程格式和维护者信息。</p>
     </div>
 
-    {groups.map((group) => (
+    {docsNavigation.map((group) => (
       <section class="docs-group">
         <p class="docs-kicker">{group.label}</p>
         <div class="docs-card-grid">

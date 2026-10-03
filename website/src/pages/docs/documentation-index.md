@@ -9,6 +9,13 @@ source: "docs/README.md"
 
 第一次使用从 [WORKFLOW](../workflow/) 开始。本文按任务组织文档；日常使用说明与开发记录分开维护。
 
+## 推荐阅读顺序
+
+1. [工作流](../workflow/)：先完成一次安装、转写、保存与导出，无需先读全部参数。
+2. [Launcher 指南](../launcher/) 与 [编辑器指南](../editor-guide/)：掌握日常识别与校对；遇到问题再查 [FAQ](../faq/)。
+3. 按需阅读 [多重字幕](../multi-subtitle/)、[ASS 样式](../ass-styles/)、[工具箱](../toolbox/) 和 [自动处理](../postprocess-pipeline/)；本地模型与 OCR 需要额外环境。
+4. 自动化或开发时再查 [CLI](../cli/)、[工程格式](../json-schema/) 与 [开发概览](../development/)。
+
 ## 安装与转写
 
 | 文档 | 内容 |

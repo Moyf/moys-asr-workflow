@@ -39,8 +39,13 @@
 }
 
 .docs-sidebar { position: sticky; top: 96px; max-height: calc(100vh - 120px); overflow-y: auto; }
-.docs-sidebar-label { margin-bottom: 12px; color: var(--dim); font: 11px/1.4 var(--mono); letter-spacing: 0.12em; text-transform: uppercase; }
-.docs-sidebar nav { display: grid; gap: 8px; }
+.docs-sidebar-label { margin-bottom: 12px; color: var(--dim); font: 11px/1.4 var(--mono); letter-spacing: 0.12em; text-transform: uppercase; cursor: pointer; list-style: none; }
+.docs-sidebar-label::-webkit-details-marker { display: none; }
+.docs-sidebar-label::after { content: '+'; float: right; }
+.docs-directory[open] > .docs-sidebar-label::after { content: '−'; }
+.docs-sidebar nav { display: grid; gap: 24px; }
+.docs-nav-group { display: grid; gap: 8px; }
+.docs-nav-group-label { margin: 0; color: var(--dim); font: 11px/1.4 var(--mono); }
 .docs-sidebar a { padding: 7px 10px; border-left: 1px solid transparent; color: var(--muted); font-size: 13px; }
 .docs-sidebar a:hover, .docs-sidebar a[aria-current="page"] { border-left-color: var(--mint); color: var(--mint); background: rgba(127, 214, 178, 0.06); }
 .docs-sidebar .docs-source { display: block; margin-top: 28px; color: var(--dim); font-size: 12px; line-height: 1.6; }
@@ -79,6 +84,7 @@
 .docs-card h2 { margin: 14px 0 8px; border: 0; padding: 0; color: var(--ink); font-size: 17px; }
 .docs-card p { margin: 0; color: var(--muted); font-size: 13px; line-height: 1.65; }
 .docs-card-arrow { align-self: flex-end; color: var(--dim); font: 16px/1 var(--mono); }
+.docs-group + .docs-group { margin-top: 40px; }
 
 .docs-footer { padding-block: 28px; border-top: 1px solid var(--line-soft); color: var(--dim); font-size: 12px; }
 .docs-footer a:hover { color: var(--mint); }
@@ -86,7 +92,9 @@
 @media (max-width: 820px) {
   .docs-layout { grid-template-columns: 1fr; gap: 34px; }
   .docs-sidebar { position: static; max-height: none; overflow: visible; }
-  .docs-sidebar nav { display: flex; flex-wrap: wrap; gap: 8px; }
+  .docs-sidebar-label { color: var(--muted); font-size: 13px; }
+  .docs-nav-group { display: flex; flex-wrap: wrap; gap: 8px; }
+  .docs-nav-group-label { flex-basis: 100%; }
   .docs-sidebar a { border-left: 0; border-bottom: 1px solid transparent; }
   .docs-sidebar a:hover, .docs-sidebar a[aria-current="page"] { border-bottom-color: var(--mint); border-left-color: transparent; }
 }

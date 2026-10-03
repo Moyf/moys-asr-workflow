@@ -2,6 +2,13 @@
 
 第一次使用从 [WORKFLOW](WORKFLOW.md) 开始。本文按任务组织文档；日常使用说明与开发记录分开维护。
 
+## 推荐阅读顺序
+
+1. [工作流](WORKFLOW.md)：先完成一次安装、转写、保存与导出，无需先读全部参数。
+2. [Launcher 指南](LAUNCHER_GUIDE.md) 与 [编辑器指南](EDITOR_GUIDE.md)：掌握日常识别与校对；遇到问题再查 [FAQ](FAQ.md)。
+3. 按需阅读 [多重字幕](MULTI_SUBTITLE.md)、[ASS 样式](ASS_STYLES.md)、[工具箱](TOOLBOX.md) 和 [自动处理](POSTPROCESS_PIPELINE.md)；本地模型与 OCR 需要额外环境。
+4. 自动化或开发时再查 [CLI](CLI.md)、[工程格式](../JSON_SCHEMA.md) 与 [开发概览](DEVELOPMENT.md)。
+
 ## 安装与转写
 
 | 文档 | 内容 |
