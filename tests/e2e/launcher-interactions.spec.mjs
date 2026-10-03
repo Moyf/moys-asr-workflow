@@ -1718,3 +1718,37 @@ test('toolbox resize preserves the other axis and converts pointer deltas throug
   expect(afterWidth.cssWidth - afterHeight.cssWidth).toBeCloseTo(40, 0);
   expect(afterWidth.cssHeight).toBeCloseTo(afterHeight.cssHeight, 0);
 });
+
+test('AI cleanup notes persist in the automatic plan and reach the manual request', async ({ page }) => {
+  await openLauncher(page);
+  await page.evaluate(() => {
+    Object.assign(window.MAWLauncher.config.postprocessProviders.find(p => p.id === 'deepseek'),
+      { verified: true, hasApiKey: true, hasBaseUrl: true, hasModel: true });
+    window.__notesPlans = [];
+    window.__cleanupPayload = null;
+    const original = window.MAWLauncher.callBackend;
+    window.MAWLauncher.callBackend = async (method, payload) => {
+      if (method === 'save_postprocess_plan') window.__notesPlans.push(payload.plan);
+      if (method === 'run_ai_cleanup') {
+        window.__cleanupPayload = payload;
+        return { ok: false, error: 'test stopped before sending to a model' };
+      }
+      return original(method, payload);
+    };
+  });
+  await page.locator('#toolboxMatchTab').click();
+  await expect(page.locator('#postprocessAiCleanupNotesField')).toBeHidden();
+  await page.locator('#postprocessAiCleanup').check();
+  await expect(page.locator('#postprocessAiCleanupNotesField')).toBeVisible();
+  await page.locator('#postprocessAiCleanupNotes').fill('  保留所有数字\n去除试麦  ');
+  await expect.poll(() => page.evaluate(() => window.__notesPlans.at(-1)?.steps
+    .find(s => s.id === 'match')?.aiCleanupNotes)).toBe('保留所有数字\n去除试麦');
+  await page.locator('#toolboxInputPath').fill('source.mosp');
+  await page.locator('#postprocessScriptPath').fill('script.txt');
+  await page.locator('#runScriptMatch').click();
+  await expect.poll(() => page.evaluate(() => window.__cleanupPayload?.notes)).toBe('保留所有数字\n去除试麦');
+  await page.locator('#postprocessAiCleanup').uncheck();
+  await expect(page.locator('#postprocessAiCleanupNotesField')).toBeHidden();
+  await page.locator('#postprocessAiCleanup').check();
+  await expect(page.locator('#postprocessAiCleanupNotes')).toHaveValue('  保留所有数字\n去除试麦  ');
+});

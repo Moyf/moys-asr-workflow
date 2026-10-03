@@ -126,8 +126,11 @@ window.MAWE.register('utils-settings', function createUtilsModule(dependencies) 
       assFrameStagePreview: savedSettings.assFrameStagePreview === true,
       assFrameAutoRender: savedSettings.assFrameAutoRender !== false,
       assEmphasisSyntax: emphasisSyntax === 'none' ? 'none' : 'both',
-      assSpecialSymbolRule: ['none', 'single', 'double', 'both'].includes(savedSettings.assSpecialSymbolRule)
-        ? savedSettings.assSpecialSymbolRule : 'both',
+      // 单双符号规则三值：none / double / both。旧数据里的 'single' 迁移为 'both'。
+      assSpecialSymbolRule: savedSettings.assSpecialSymbolRule === 'single'
+        ? 'both'
+        : (['none', 'double', 'both'].includes(savedSettings.assSpecialSymbolRule)
+          ? savedSettings.assSpecialSymbolRule : 'both'),
       assUnderlineEnabled: savedSettings.assUnderlineEnabled !== false,
       assStrikeEnabled: savedSettings.assStrikeEnabled !== false,
       assSmallTextEnabled: savedSettings.assSmallTextEnabled !== false,

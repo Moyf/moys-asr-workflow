@@ -196,6 +196,51 @@ MaweTextProcess.textProcessConfirm?.addEventListener('click', () => {
   });
 });
 
+// 「左右添加字符」批量预设：填充前缀/后缀输入并勾选，复用上方预览与应用流程。
+(() => {
+  const presetHost = document.getElementById('text-process-wrap-presets');
+  if (!presetHost) return;
+  (window.AsrEditorUtils.WRAP_CHAR_PRESETS || []).forEach((preset) => {
+    const btn = document.createElement('button');
+    btn.type = 'button';
+    btn.textContent = preset.label;
+    btn.title = `在字幕两端插入 ${preset.left} 和 ${preset.right}`;
+    btn.addEventListener('click', () => {
+      MaweTextProcess.textProcessWrapPreset = preset;
+      MaweTextProcess.textProcessPrefix.checked = true;
+      MaweTextProcess.textProcessSuffix.checked = true;
+      MaweTextProcess.textProcessPrefixInput.value = preset.left;
+      MaweTextProcess.textProcessSuffixInput.value = preset.right;
+      MaweTextProcess.refreshTextProcessInputState();
+      MaweTextProcess.renderTextProcessPreview();
+    });
+    presetHost.appendChild(btn);
+  });
+})();
+
+// 「左右添加字符」自定义弹窗：左右两个输入框原样插入到选中字幕两端。
+document.getElementById('wrap-chars-cancel')?.addEventListener('click', MaweTextProcess.closeWrapCharsModal);
+MaweTextProcess.wrapCharsModal?.addEventListener('click', (event) => {
+  if (event.target === MaweTextProcess.wrapCharsModal) MaweTextProcess.closeWrapCharsModal();
+});
+document.getElementById('wrap-chars-confirm')?.addEventListener('click', () => {
+  const left = MaweTextProcess.wrapCharsLeftInput?.value || '';
+  const right = MaweTextProcess.wrapCharsRightInput?.value || '';
+  if (!left && !right) {
+    MaweHint.flashHint('请至少输入一侧字符', 'invalid');
+    return;
+  }
+  MaweTextProcess.applyWrapChars([...MaweTextProcess.wrapCharsScope], left, right, '左右添加字符');
+  MaweTextProcess.closeWrapCharsModal();
+});
+// 弹窗开启时 Esc 关闭；用 capture 抢在其他 Esc 处理前拦截，避免误清空字幕选择。
+document.addEventListener('keydown', (event) => {
+  if (event.key !== 'Escape' || !MaweTextProcess.wrapCharsModal?.classList.contains('show')) return;
+  event.preventDefault();
+  event.stopPropagation();
+  MaweTextProcess.closeWrapCharsModal();
+}, true);
+
 // === 纯文本编辑（支持调整字幕行结构的 MVP） ===
 
 
