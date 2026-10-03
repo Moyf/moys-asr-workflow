@@ -154,6 +154,7 @@ def run_ai_cleanup(
     resolved, reasons = _resolve_decisions(clips, decisions)
 
     removed_ranges: list[dict[str, int]] = []
+    discarded_main_ids: set[str] = set()
     review_markers: list[dict[str, object]] = []
     stats = {"matchedLines": 0, "rephrased": 0, "extrasKept": 0, "removed": 0, "pendingReview": 0}
     clip_segments = {clip.segment_index for clip in clips}
@@ -163,6 +164,7 @@ def run_ai_cleanup(
         assert isinstance(segment, dict)
         if outcome == DECISION_DISCARD:
             segment["disabled"] = True
+            discarded_main_ids.add(str(segment["id"]))
             removed_ranges.append({"start": int(segment.get("start", 0)), "end": int(segment.get("end", 0))})
             stats["removed"] += 1
             continue
@@ -200,6 +202,8 @@ def run_ai_cleanup(
         })
         stats["pendingReview"] += 1
 
+    if discarded_main_ids:
+        _disable_bound_extensions(project, discarded_main_ids)
     if removed_ranges:
         project["gap_remove"] = _build_gap_remove(project, removed_ranges)
     if review_markers:
@@ -501,6 +505,30 @@ def _is_repeated_text(clip: _Clip, norms: Mapping[str, str]) -> bool:
 def _marker_name(text: str) -> str:
     compact = _CONTROL_CHARS.sub(" ", text).strip()
     return compact[:20] if len(compact) > 20 else compact or "待复核"
+
+
+def _disable_bound_extensions(project: JsonDict, main_ids: set[str]) -> None:
+    """Match the editor's main-driven disabling without touching independent tracks."""
+    multi = project.get("multi_subtitle")
+    if not isinstance(multi, Mapping):
+        return
+    targets: dict[str, set[str]] = {}
+    for binding in multi.get("bindings", []):
+        if not isinstance(binding, Mapping):
+            continue
+        if not main_ids.intersection(binding.get("main_segment_ids", [])):
+            continue
+        targets.setdefault(str(binding.get("track_id")), set()).update(
+            binding.get("extension_segment_ids", []),
+        )
+    # Bindings remain meaningful when bilingual display is switched off.
+    for track in multi.get("tracks", []):
+        if not isinstance(track, Mapping):
+            continue
+        extension_ids = targets.get(str(track.get("id")), set())
+        for segment in track.get("segments", []):
+            if isinstance(segment, dict) and segment.get("id") in extension_ids:
+                segment["disabled"] = True
 
 
 def _build_gap_remove(project: JsonDict, removed_ranges: Sequence[Mapping[str, int]]) -> dict[str, object]:

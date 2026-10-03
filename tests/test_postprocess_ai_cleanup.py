@@ -151,6 +151,52 @@ class RetakeRemovalTest(AiCleanupTestCase):
 
 
 class MicTestRemovalTest(AiCleanupTestCase):
+    def test_discard_disables_only_its_bound_translation_even_when_hidden(self) -> None:
+        for enabled in (True, False):
+            with self.subTest(enabled=enabled):
+                segments = [
+                    {**_segment(0, 2000, "试麦试麦听得到吗"), "id": "trial"},
+                    {**_segment(2000, 6000, "大家好欢迎回到我的频道"), "id": "kept"},
+                    {**_segment(6000, 8000, "这一句请再听一下"), "id": "review"},
+                ]
+                translations = [
+                    {"id": "ext-trial", "start": 100, "end": 1900, "text": "Mic test"},
+                    {"id": "ext-kept", "start": 2000, "end": 6000, "text": "Welcome", "disabled": True},
+                    {"id": "ext-review", "start": 6000, "end": 8000, "text": "Please review"},
+                    {"id": "ext-free", "start": 8000, "end": 9000, "text": "Independent"},
+                ]
+                multi = {
+                    "schema": "moy.asr.multi_subtitle.v1", "enabled": enabled, "display_mode": "both",
+                    "tracks": [
+                        {"id": "translation", "role": "extension", "name": "译文",
+                         "split_mode": "word", "segments": translations},
+                        {"id": "independent", "role": "extension", "name": "独立副轨",
+                         "split_mode": "word", "segments": [
+                             {"id": "overlapping", "start": 0, "end": 2000, "text": "Independent"}]},
+                    ],
+                    "bindings": [
+                        {"id": f"binding-{main}", "track_id": "translation",
+                         "main_segment_ids": [main], "extension_segment_ids": [extension]}
+                        for main, extension in (("trial", "ext-trial"), ("kept", "ext-kept"), ("review", "ext-review"))
+                    ],
+                }
+                source = _project(segments, multi_subtitle=multi)
+                project_path, script_path = self.request(source, [segments[1]["text"]])
+                artifact, output, _ = _run(self.directory, project_path, script_path, _decisions(
+                    c001={"decision": "discard", "scriptLine": "", "reason": "试麦", "evidence": "听得到吗"},
+                    c002={"decision": "keep", "scriptLine": segments[1]["text"], "reason": "对应文稿"},
+                    c003={"decision": "review", "scriptLine": "", "reason": "请试听"},
+                ))
+                self.assertTrue(output["segments"][0]["disabled"])
+                result = output["multi_subtitle"]["tracks"][0]["segments"]
+                self.assertEqual(result[0], {**translations[0], "disabled": True})
+                self.assertEqual(result[1:], translations[1:])
+                self.assertEqual(output["multi_subtitle"]["tracks"][1]["segments"], multi["tracks"][1]["segments"])
+                self.assertEqual(output["multi_subtitle"]["enabled"], enabled)
+                self.assertEqual(len(output["multi_subtitle"]["bindings"]), 3)
+                self.assertEqual(json.loads(project_path.read_text(encoding="utf-8")), source)
+                self.assertEqual(artifact.stats["removed"], 1)
+
     def test_process_talk_discard_with_evidence_is_removed(self) -> None:
         script = ["大家好欢迎回到我的频道"]
         segments = [
