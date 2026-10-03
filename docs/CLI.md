@@ -120,7 +120,7 @@ MAW.exe -i INPUT -o SRT [MOSP] [转写选项]
 - 不写 `-o` / `--output` 时，脚本自行命名输出，且默认名不附带任何倍速或实时率段。多数脚本保留时间戳与供应商/模型标识段，例如 `[202609061234]clip.qwen3-asr-api.srt`；腾讯云与 OpenAI 兼容脚本的默认名只有媒体主名（`clip.srt`）；本地 CLI 使用引擎标识段（如 `clip.qwen-asr-local.srt`）。
 - `--no-model-tag` ：省略默认名中的标识段（`clip.qwen3-asr-api.srt` → `clip.srt`）。腾讯云 CLI 的默认文件名本来就不含任何标识段，此开关对它无效果。
 - 显式指定 `-o` / `--output` 时完全按给定路径输出，不注入以上任何段。
-- `--debug-raw` ：单独保存完整 ASR 原始返回。未指定 `-o` 时，`asr-response.json` 写入媒体旁的 `_maw` 目录；指定了 `-o` 时与输出同目录。（本地 CLI 的该参数仅为兼容保留，不额外落盘。）
+- `--debug-raw` ：在线模型单独保存完整 ASR 原始返回；本地模型按引擎保存可用的原始/中间调试产物，并生成 `<输出名>.local-debug.json` 清单。清单旁会按阶段生成 `*.local-debug.*.json`，例如 FireRed 的 CTC 原始字词时间码、ct-punc 标点结果、最终断句结果；Launcher 开启「将所有输出文件放入子文件夹」后，这些调试文件统一放入对应 `_maw/调试`（英文界面为 `_maw/debug`），并继续遵循「每个视频单独创建子文件夹」；关闭时未指定 `-o` 的在线响应仍放在 `_maw`，显式输出则与输出同目录。
 - 转写开始与结束时各输出一行时间码（如 `转写开始: 2026-09-06 14:32:05`）；完成后输出转写耗时、媒体时长以及实时率说明（`转写时长为媒体时长的 0.12 倍`）。实时率（RTF）= 转写耗时 ÷ 媒体原长，数值越小越快。
 - 费用估算：使用阿里云百炼服务（Qwen / Fun-ASR / Qwen-Audio）时，按媒体时长以 `0.00022 元/秒` 输出预计费用，如 `预计费用: 约 0.34 元（0.00022 元/秒 × 1548.0 秒）`；其他服务商暂无公开单价，不显示估算。
 - 转写成功时在 stdout 末尾输出一行机器可读的 `MAW_STAT rtf=0.123`（rtf 为保留三位小数的实时率）。`MAW.exe` 转写也会透出这一行，脚本可直接用它解析实时率，不必依赖人读的进度文本。
@@ -136,7 +136,7 @@ MAW.exe -i INPUT -o SRT [MOSP] [转写选项]
 | `-o PATH [PATH]`, `--output PATH [PATH]` | 第一个路径为 SRT，第二个可选路径为 `.mosp`；最多两个路径。 |
 | `--mosp PATH` | 单独指定 `.mosp` 输出路径；不能和 `-o` 的第二个路径同时使用。 |
 | `--provider qwen\|soniox\|doubao\|tencent\|openai\|bcut` | 选择供应商，默认 `qwen`。`openai` 使用 OpenAI 官方或兼容的转写接口；`doubao` 使用豆包（火山引擎）录音文件识别；`tencent` 使用腾讯云录音文件识别；`bcut` 为免 Key 的实验性非官方接口。 |
-| `--model MODEL` | 覆盖供应商的模型。Qwen 常用值为 `qwen-audio-3.0-asr-flash-filetrans`、`qwen3-asr-flash-filetrans`、`fun-asr`；Soniox 默认读取 `.env`；豆包为资源 ID（默认 `volc.seedasr.auc`，可选 `volc.bigasr.auc` / `volc.bigasr.auc_idle`）；OpenAI 兼容接口默认使用 `whisper-1`。OpenRouter CLI 请显式使用完整模型 ID，例如 `openai/whisper-1`；其他中转站也请按服务商文档填写完整模型名。 |
+| `--model MODEL` | 覆盖供应商的模型。Qwen 常用值为 `qwen-audio-3.0-asr-flash-filetrans`（默认）、`qwen-audio-3.1-asr-flash-filetrans`、`qwen3-asr-flash-filetrans`、`fun-asr`；Soniox 默认读取 `.env`；豆包为资源 ID（默认 `volc.seedasr.auc`，可选 `volc.bigasr.auc` / `volc.bigasr.auc_idle`）；OpenAI 兼容接口默认使用 `whisper-1`。OpenRouter CLI 请显式使用完整模型 ID，例如 `openai/whisper-1`；其他中转站也请按服务商文档填写完整模型名。 |
 
 ### 4.2 字幕切分、说话人和工程内容
 
@@ -147,8 +147,9 @@ MAW.exe -i INPUT -o SRT [MOSP] [转写选项]
 | `--max-words N` | 单词型（英文等空格分词语言）每条字幕最大单词数；未指定时使用默认值 `13`。 |
 | `--min-words N` | 单词型短句合并阈值；未指定时使用默认值 `3`。 |
 | `--language VALUE` | 语言提示。Qwen 可写 `zh`、`en` 等；Soniox 可写逗号分隔的 `zh,en`。不确定语言时可以省略，让供应商自动识别。 |
+| `--firered-punc none\|ct-punc` | FireRedASR2 是否调用 FunASR `ct-punc` 生成标点并改善断句；默认 `ct-punc`。选择 `none` 时保留 FireRed CTC 原始字词时间码，适合后续用文稿匹配或其他步骤生成字幕文本的场景。 |
 | `--keep-punct` | 保留每条字幕末尾的逗号和句号；默认会去掉。 |
-| `--gap-split MS` | 相邻文字停顿超过指定毫秒数时强制切句；默认 `800`。 |
+| `--gap-split MS` | 相邻文字停顿超过指定毫秒数时强制切句；默认 `500`。 |
 | `--extra-strong-punct CHARS` | 额外强断句符号集合（如 `"?!;"`），其中每个字符都会作为云端转写切句的强断句符号；与 Launcher「断句与标点」共享配置对应，默认空。仅 `--provider qwen` 支持并下发。 |
 | `--speaker` | 启用说话人分离，并把匿名 speaker 标签写入 `.mosp`。需要选择支持该功能的模型。 |
 | `--speaker-colors` | 启用说话人分离，并按首次出现顺序写入一次性的字幕颜色快照；之后仍可在编辑器中修改。 |
@@ -177,8 +178,9 @@ MAW.exe -i INPUT -o SRT [MOSP] [转写选项]
 | `--hotword-weight VALUE` | 设置即时热词权重，可用 `1` 到 `5` 或 `50`。 |
 | `--context TEXT` | 提供 Qwen-Audio 的领域背景或前文，最多发送 400 字符。 |
 | `--context-file PATH` | 从 UTF-8 文件读取 context；和 `--context` 二选一。 |
+| `--keep-dialect` | 保留方言表达，不转写为普通话文本；仅 `qwen-audio-3.1-asr-flash-filetrans` 支持，与其他模型混用会报参数错误。 |
 
-热词文件也支持 `热词: 权重` 或 `热词：权重`，可以对单条热词覆盖全局权重。即时热词和 context 主要由 `qwen-audio-3.0-asr-flash-filetrans` 使用；切换到 Qwen3-ASR 或 Fun-ASR 时，具体能力由模型决定，CLI 不会把它们伪装成通用能力。
+热词文件也支持 `热词: 权重` 或 `热词：权重`，可以对单条热词覆盖全局权重。即时热词和 context 主要由 `qwen-audio-3.0-asr-flash-filetrans` / `qwen-audio-3.1-asr-flash-filetrans` 使用；切换到 Qwen3-ASR 或 Fun-ASR 时，具体能力由模型决定，CLI 不会把它们伪装成通用能力。
 
 ### 4.4 Soniox 专用参数
 

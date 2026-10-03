@@ -1,0 +1,19 @@
+{
+  "file": "editor-segment-ops.js",
+  "ns": "MaweSegmentOps",
+  "header": "段落操作：连续合并、主/副合并与范围延展。",
+  "symbols": [
+    "mergeContiguousIndices",
+    "mergeSegments",
+    "mergeExtensionSegments",
+    "parseSubtitleExtendMs",
+    "extendSubtitleRanges",
+    "syncAutoMergePanelInputs",
+    "syncAutoMergeAbsorbFields",
+    "autoMergeSegments",
+    "applyAutoMergeSnapsWithBindings",
+    "splitGroupsAtCutPoints",
+    "deleteSegments",
+    "deleteExtensionSegments"
+  ]
+}

@@ -106,7 +106,7 @@ async function clickWaveformCue(page, idx) {
 // Ctrl+click a waveform cue block to toggle it into the selection.
 async function ctrlClickWaveformCue(page, idx) {
   const block = page.locator(`.waveform-cue-block[data-idx="${idx}"]`);
-  await block.first().click({ modifiers: ['Control'] });
+  await block.first().click({ modifiers: ['ControlOrMeta'] });
   // Wait for the selected class to appear on this block in the cue list
   await page.waitForSelector(`.cue[data-idx="${idx}"].selected`, { timeout: 5000 });
 }
@@ -128,7 +128,7 @@ async function shiftClickWaveformCue(page, idx) {
 
 // Read the text of all segments from DATA (observable JS state).
 async function getSegmentTexts(page) {
-  return page.evaluate(() => DATA.segments.map((s) => s.text));
+  return page.evaluate(() => MaweBoot.DATA.segments.map((s) => s.text));
 }
 
 // Read the selected indices from the cue list DOM.
@@ -142,7 +142,7 @@ async function getSelectedIndices(page) {
 async function pressDeleteAndWait(page, expectedSegmentCount) {
   await page.keyboard.press('Delete');
   await page.waitForFunction(
-    (expected) => DATA.segments.length === expected,
+    (expected) => MaweBoot.DATA.segments.length === expected,
     expectedSegmentCount,
     { timeout: 5000 },
   );
@@ -159,7 +159,7 @@ async function pressDeleteAndExpectRefusal(page, expectedSegmentCount) {
   );
   // Verify segment count is unchanged
   await page.waitForFunction(
-    (expected) => DATA.segments.length === expected,
+    (expected) => MaweBoot.DATA.segments.length === expected,
     expectedSegmentCount,
     { timeout: 2000 },
   );

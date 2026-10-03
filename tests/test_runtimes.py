@@ -17,7 +17,7 @@ from unittest import mock
 
 import maw.runtimes as runtimes  # noqa: F401  (intentionally imported for registry coverage)
 import maw.runtimes.base as base_mod
-from maw.runtime_manifest import STATUS_INSTALLING, write_runtime_manifest
+from maw.runtime_manifest import STATUS_INSTALLING, STATUS_READY, write_runtime_manifest
 from maw.runtimes import LOCAL, MOSS, OCR, get_runtime
 from maw.runtimes.base import ManagedRuntime, ManagedRuntimeError, RuntimeSpec
 from maw.runtimes.local_spec import LOCAL_SPEC, PYTORCH_INDEX, LocalRuntimeError
@@ -66,9 +66,17 @@ class RuntimeRegistryTests(unittest.TestCase):
         # 无 install_uv 占位、无手写 requirements 列表。
         self.assertFalse(getattr(MOSS.spec, "install_uv", False))
         self.assertIsNone(MOSS.spec.requirements)
-        self.assertEqual(MOSS.spec.package_dirs, ("moss_transcribe_diarize", "transformers", "torch", "torchaudio"))
+        self.assertEqual(MOSS.spec.package_dirs, ("moss_transcribe_diarize", "modelscope", "transformers", "torch", "torchaudio"))
         self.assertEqual(MOSS.spec.requirements_key, "moss")
         self.assertEqual(MOSS.spec.requirements_bundle_name, "requirements-moss.txt")
+
+    def test_verify_command_imports_every_package_dir(self) -> None:
+        # 安装自检必须 import 齐 package_dirs 的全部关键包：依赖清单与 spec
+        # 脱节（如 reapeaks→quapeaks 改名后仍按陈旧清单装旧包）时，安装要在
+        # verify 阶段当场报错，而不是静默成功后陷入「需要修复」循环。
+        for runtime in (LOCAL, OCR, MOSS):
+            for package in runtime.spec.package_dirs:
+                self.assertIn(package, runtime.spec.verify_command, f"{runtime.spec.key}: {package}")
 
 
 class RuntimePathTests(unittest.TestCase):
@@ -96,7 +104,7 @@ class RuntimeInstallCommandTests(unittest.TestCase):
                 calls.append(command)
                 if "install" in command:
                     site = root / "site-packages"
-                    for name in ("faster_whisper", "funasr", "qwen_asr", "jieba", "torch", "torchaudio", "quapeaks"):
+                    for name in ("faster_whisper", "funasr", "qwen_asr", "jieba", "torch", "torchaudio", "quapeaks", "sherpa_onnx", "soundfile"):
                         (site / name).mkdir(parents=True, exist_ok=True)
                 return 0
 
@@ -171,7 +179,7 @@ class RuntimeInstallCommandTests(unittest.TestCase):
                 calls.append(command)
                 if "install" in command:
                     site = root / "site-packages"
-                    for name in ("faster_whisper", "funasr", "qwen_asr", "jieba", "torch", "torchaudio", "quapeaks"):
+                    for name in ("faster_whisper", "funasr", "qwen_asr", "jieba", "torch", "torchaudio", "quapeaks", "sherpa_onnx", "soundfile"):
                         (site / name).mkdir(parents=True, exist_ok=True)
                 return 0
 
@@ -250,7 +258,7 @@ class RuntimeInstallCommandTests(unittest.TestCase):
                 calls.append(command)
                 if "install" in command:
                     site = root / "site-packages"
-                    for name in ("faster_whisper", "funasr", "qwen_asr", "jieba", "torch", "torchaudio", "quapeaks"):
+                    for name in ("faster_whisper", "funasr", "qwen_asr", "jieba", "torch", "torchaudio", "quapeaks", "sherpa_onnx", "soundfile"):
                         (site / name).mkdir(parents=True, exist_ok=True)
                 return 0
 
@@ -293,7 +301,7 @@ class RuntimeInstallCommandTests(unittest.TestCase):
                 calls.append(command)
                 if "install" in command:
                     site = root / "site-packages"
-                    for name in ("moss_transcribe_diarize", "transformers", "torch", "torchaudio"):
+                    for name in ("moss_transcribe_diarize", "modelscope", "transformers", "torch", "torchaudio"):
                         (site / name).mkdir(parents=True, exist_ok=True)
                 return 0
 
@@ -332,7 +340,7 @@ class SourceModeInstallTests(unittest.TestCase):
                 calls.append(command)
                 if "install" in command:
                     site = root / "site-packages"
-                    for name in ("moss_transcribe_diarize", "transformers", "torch", "torchaudio"):
+                    for name in ("moss_transcribe_diarize", "modelscope", "transformers", "torch", "torchaudio"):
                         (site / name).mkdir(parents=True, exist_ok=True)
                 return 0
 
@@ -344,8 +352,9 @@ class SourceModeInstallTests(unittest.TestCase):
                     with mock.patch.object(MOSS, "requirements_path", return_value=requirements_txt):
                         with mock.patch("maw.runtimes.base._has_cuda", return_value=True):
                             with mock.patch("maw.runtimes.base.pick_fastest_mirror", return_value="https://pypi.org/simple"):
-                                with mock.patch("maw.runtimes.base._run_process", side_effect=fake_run):
-                                    status = MOSS.install(runtime_root=root)
+                                with mock.patch.object(MOSS, "_ensure_frozen_requirements"):
+                                    with mock.patch("maw.runtimes.base._run_process", side_effect=fake_run):
+                                        status = MOSS.install(runtime_root=root)
 
             self.assertTrue(status.ready)
             # 源码模式没有解压/get-pip 步骤：只有 install + verify 两段。
@@ -405,6 +414,52 @@ class RuntimeStatusTransitionTests(unittest.TestCase):
             json.dumps(status.to_payload())
             self.assertIsInstance(status.model_cache_path, str)
 
+    def test_ready_status_accepts_top_level_module_file(self) -> None:
+        """soundfile 安装为 soundfile.py 时不能被误判为缺少依赖。"""
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir) / "local-runtime"
+            site = root / "site-packages"
+            site.mkdir(parents=True)
+            for name in LOCAL_SPEC.package_dirs:
+                if name == "soundfile":
+                    (site / "soundfile.py").write_text("", encoding="utf-8")
+                else:
+                    (site / name).mkdir()
+            write_runtime_manifest(
+                root,
+                status=STATUS_READY,
+                runtime_version=LOCAL_SPEC.runtime_version,
+                python_version=LOCAL_SPEC.python_version,
+            )
+
+            status = LOCAL.status(runtime_root=root)
+
+            self.assertTrue(status.ready)
+            self.assertEqual(status.status, STATUS_READY)
+
+    def test_dist_info_alone_does_not_satisfy_missing_target_dependency(self) -> None:
+        """状态检查必须以目标 site-packages 的可导入条目为准。"""
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir) / "local-runtime"
+            site = root / "site-packages"
+            site.mkdir(parents=True)
+            for name in LOCAL_SPEC.package_dirs:
+                if name != "soundfile":
+                    (site / name).mkdir()
+            (site / "soundfile-0.14.0.dist-info").mkdir()
+            write_runtime_manifest(
+                root,
+                status=STATUS_READY,
+                runtime_version=LOCAL_SPEC.runtime_version,
+                python_version=LOCAL_SPEC.python_version,
+            )
+
+            status = LOCAL.status(runtime_root=root)
+
+            self.assertFalse(status.ready)
+            self.assertEqual(status.status, "broken")
+            self.assertEqual(LOCAL.missing_package_dirs(root), ("soundfile",))
+
 
 @mock.patch("maw.runtimes.base.sys.frozen", True, create=True)
 @mock.patch("maw.runtimes.base.sys.platform", "linux")
@@ -445,7 +500,7 @@ class VenvRuntimeInstallTests(unittest.TestCase):
                     python.parent.mkdir(parents=True, exist_ok=True)
                     python.write_bytes(b"python")
                 elif "install" in command:
-                    for name in ("faster_whisper", "funasr", "qwen_asr", "jieba", "torch", "torchaudio", "quapeaks"):
+                    for name in ("faster_whisper", "funasr", "qwen_asr", "jieba", "torch", "torchaudio", "quapeaks", "sherpa_onnx", "soundfile"):
                         (self._venv_site_packages(canonical_root) / name).mkdir(parents=True, exist_ok=True)
                 return 0
 
@@ -510,7 +565,7 @@ class VenvRuntimeInstallTests(unittest.TestCase):
                     python.parent.mkdir(parents=True, exist_ok=True)
                     python.write_bytes(b"python")
                 elif "install" in command:
-                    for name in ("faster_whisper", "funasr", "qwen_asr", "jieba", "torch", "torchaudio", "quapeaks"):
+                    for name in ("faster_whisper", "funasr", "qwen_asr", "jieba", "torch", "torchaudio", "quapeaks", "sherpa_onnx", "soundfile"):
                         (self._venv_site_packages(root) / name).mkdir(parents=True, exist_ok=True)
                 return 0
 
@@ -607,13 +662,50 @@ class AutoFreezeRequirementsTests(unittest.TestCase):
 
     def test_existing_txt_skips_generation(self) -> None:
         build = self._temp_build_dir()
-        (build / "requirements-local.txt").write_text("funasr==1.4.2\n", encoding="utf-8")
+        self._write_fake_pyproject(build, 'local = ["funasr==1.4.2", "quapeaks>=2026.0.0"]\n')
+        (build / "requirements-local.txt").write_text(
+            "funasr==1.4.2\nquapeaks==2026.6.0\n", encoding="utf-8"
+        )
         with mock.patch.object(base_mod, "_build_dir", return_value=build):
             with mock.patch("maw.runtimes.base._run_process", side_effect=AssertionError("must not run")):
                 LOCAL._ensure_frozen_requirements(
                     Path("C:/tools/uv.exe"), cpu=False,
                     emit=lambda *event: None, cancel=Event(),
                 )
+
+    def test_stale_txt_missing_new_dependencies_regenerates(self) -> None:
+        # runtime 7 案例：build/ 里留着旧清单（reapeaks 时代，缺 sherpa-onnx /
+        # quapeaks），升级声明后修复运行环境不得按旧清单安装，应强制重新冻结。
+        build = self._temp_build_dir()
+        self._write_fake_pyproject(build, 'local = ["funasr==1.4.2", "quapeaks>=2026.0.0"]\n')
+        (build / "requirements-local.txt").write_text("funasr==1.4.2\n", encoding="utf-8")
+        calls: list[list[str]] = []
+        emitted: list[str] = []
+
+        def fake_run(command: list[str], **_kwargs: object) -> int:
+            calls.append(command)
+            index = command.index("-o")
+            Path(command[index + 1]).write_text(
+                "funasr==1.4.2\nquapeaks==2026.6.0\n", encoding="utf-8"
+            )
+            return 0
+
+        with mock.patch.object(base_mod, "_build_dir", return_value=build):
+            with mock.patch("maw.runtimes.base._run_process", side_effect=fake_run):
+                LOCAL._ensure_frozen_requirements(
+                    Path("C:/tools/uv.exe"), cpu=False,
+                    emit=lambda message, _percent, _stage: emitted.append(message),
+                    cancel=Event(),
+                )
+
+        self.assertEqual(calls[0][1:3], ["export", "--frozen"])
+        self.assertIn("重新冻结", "".join(emitted))
+        self.assertIn("quapeaks", (build / "requirements-local.txt").read_text(encoding="utf-8"))
+
+    def _write_fake_pyproject(self, build: Path, local_group: str) -> None:
+        (build.parent / "pyproject.toml").write_text(
+            "[dependency-groups]\n" + local_group, encoding="utf-8"
+        )
 
     def test_missing_moss_cpu_txt_is_generated_for_no_nvidia_machines(self) -> None:
         # MOSS 无 GPU 首装走 moss-cpu 清单（from moss-requirements.in 剥离生成，

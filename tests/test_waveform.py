@@ -313,22 +313,30 @@ class WaveformExtractionTests(unittest.TestCase):
 
 class EditorAssetTests(unittest.TestCase):
     def test_project_waveform_survives_loading_media(self) -> None:
-        editor = (ROOT / "web" / "editor.js").read_text(encoding="utf-8")
-        waveform = (ROOT / "web" / "waveform.js").read_text(encoding="utf-8")
-        self.assertIn("let waveformLoadedFromProject = false;", editor)
+        editor = (ROOT / "web" / "editor/boot/editor.js").read_text(encoding="utf-8")
+        core_state = (ROOT / "web" / "editor/state/editor-core-state.js").read_text(encoding="utf-8")
+        state = (ROOT / "web" / "editor/state/editor-state.js").read_text(encoding="utf-8")
+        media_load = (ROOT / "web" / "editor/media/editor-media-load.js").read_text(encoding="utf-8")
+        waveform_init = (ROOT / "web" / "editor/media/editor-waveform-init.js").read_text(encoding="utf-8")
+        waveform = edit.build_editor_scripts()
+        self.assertIn("waveformLoadedFromProject: false", state)
+        self.assertIn("get waveformLoadedFromProject() { return MaweState.runtime.waveformLoadedFromProject; }", core_state)
         self.assertIn(
-            "waveformLoadedFromProject = waveformEditor.setPayload(DATA.waveform, { render: false });",
-            editor,
+            "MaweCoreState.waveformLoadedFromProject = MaweCoreState.waveformEditor.setPayload(MaweBoot.DATA.waveform",
+            waveform_init,
         )
-        self.assertIn("const preserveProjectWaveform = waveformLoadedFromProject", editor)
-        self.assertIn("if (waveformEditor && !preserveProjectWaveform)", editor)
+        self.assertIn("const preserveProjectWaveform = MaweCoreState.waveformLoadedFromProject", media_load)
+        self.assertIn("if (MaweCoreState.waveformEditor && !preserveProjectWaveform)", media_load)
         self.assertIn("getPayload()", waveform)
 
     def test_reapeaks_waveform_is_the_default_shape_source(self) -> None:
-        editor = (ROOT / "web" / "editor.js").read_text(encoding="utf-8")
+        editor = (ROOT / "web" / "editor/boot/editor.js").read_text(encoding="utf-8")
+        settings = (ROOT / "web" / "editor/state/editor-settings.js").read_text(encoding="utf-8")
+        waveform_init = (ROOT / "web" / "editor/media/editor-waveform-init.js").read_text(encoding="utf-8")
         template = (ROOT / "web" / "editor-template.html").read_text(encoding="utf-8")
-        waveform = (ROOT / "web" / "waveform.js").read_text(encoding="utf-8")
-        self.assertIn("waveShapeSource: 'reapeaks'", editor)
+        waveform = edit.build_editor_scripts()
+        self.assertIn("waveShapeSource: 'reapeaks'", settings)
+        self.assertIn("getWaveShapeSource: () => MaweSettings.EDITOR_SETTINGS.waveShapeSource", waveform_init)
         self.assertIn("getWaveShapeSource?.() || 'reapeaks'", waveform)
         self.assertIn('<option value="reapeaks" selected>REAPER 波形</option>', template)
         self.assertIn('<option value="self">原生波形</option>', template)
@@ -347,7 +355,7 @@ class EditorAssetTests(unittest.TestCase):
         self.assertNotIn("peaks: this.peaks", detection)
 
     def test_long_media_waveform_hint_points_to_maw_gui(self) -> None:
-        waveform = (ROOT / "web" / "waveform.js").read_text(encoding="utf-8")
+        waveform = edit.build_editor_scripts()
         self.assertIn("请使用 MAW GUI 预生成波形", waveform)
         self.assertIn("use the MAW GUI to pre-generate the waveform", waveform)
         self.assertNotIn("请用 edit.py 预生成波形", waveform)
@@ -387,6 +395,8 @@ class EditorAssetTests(unittest.TestCase):
             'value="pointer" selected>鼠标所在位置' in page,
             '点击字幕块的默认跳转目标应为鼠标所在位置',
         )
+        self.assertIn('id="pause-on-mouse-click"> 播放过程中点击鼠标自动暂停', page)
+        self.assertIn('pauseOnMouseClick: false', page)
         self.assertIn('id="cues-empty"', page)
         self.assertIn('加载工程后显示字幕列表', page)
         self.assertIn('id="workspace-preset"', page)
@@ -405,7 +415,7 @@ class EditorAssetTests(unittest.TestCase):
         self.assertIn('function triggerNinjaSplitFeedback(', page)
         # 帮助按钮改用 🤔 文本图标后，SVG 工具图标只剩选择/分割两个
         self.assertEqual(page.count('class="toolbar-button-icon"'), 2)
-        self.assertIn('.waveform-cue-block.selected {', page)
+        self.assertIn('.waveform-cue-block.selected,', page)
         # 选中字幕块只用 outline + 阴影高亮（颜色走 --selection-* 变量），不再改 border-color
         self.assertIn('outline: 2px solid var(--selection-yellow);', page)
         self.assertIn('filter: brightness(1.08);', page)
@@ -420,9 +430,9 @@ class EditorAssetTests(unittest.TestCase):
         self.assertIn('id="layout-drop-preview"', page)
         self.assertIn('layout-insert-preview', page)
         self.assertIn('insertLayoutModuleAtEdge', page)
-        self.assertIn('const dockHandle = container.querySelector', page)
-        self.assertIn("const cueElements = container.querySelectorAll(':scope > .cue');", page)
-        self.assertIn('onLayoutUndo: (label, snapshot) => pushLayoutUndo(label, snapshot)', page)
+        self.assertIn('const dockHandle = MaweCoreState.container.querySelector', page)
+        self.assertIn("const cueElements = MaweCoreState.container.querySelectorAll(':scope > .cue');", page)
+        self.assertIn('onLayoutUndo: (label, snapshot) => MaweHistory.pushLayoutUndo(label, snapshot)', page)
         self.assertIn('this.cues = document.getElementById(\'cues-container\')', page)
         self.assertIn('flex-direction: column;', page)
         self.assertIn("class WaveformEditor", page)
@@ -483,11 +493,17 @@ class EditorAssetTests(unittest.TestCase):
         self.assertIn('具体用法详见帮助的「微调字幕」区', page)
         waveform_pane_start = page.index('<section class="waveform-pane"')
         editor_settings = page[page.index('id="editor-settings-panel"'):waveform_pane_start]
-        editor_settings_panel_end = page.index('</section>\n\n<input type="file" id="open-project-file"', page.index('id="editor-settings-panel"'))
+        editor_settings_panel_end = page.index(
+            '</section>\n\n<aside class="editor-settings-window ass-style-window"',
+            page.index('id="editor-settings-panel"'),
+        )
         editor_settings_panel = page[page.index('id="editor-settings-panel"'):editor_settings_panel_end]
         self.assertNotIn('音频波形区', editor_settings)
-        self.assertNotIn('静音空隙', editor_settings)
-        self.assertNotIn('id="cue-move-step"', editor_settings_panel)
+        # 波形区操作类设置（拖动指针、按键微调、空隙操作方式等）已并入全局设置「通用操作」页，
+        # 波形 ⚙️ 面板只保留波形样式外观。
+        self.assertIn('id="cue-move-step"', editor_settings_panel)
+        self.assertIn('id="gap-remove-operation-mode"', editor_settings_panel)
+        self.assertIn('id="waveform-drag-playhead"', editor_settings_panel)
         # 分区标题由左侧标签页承担，设置窗口内不再重复书写页面标题
         for section_title in ('通用操作', '视频预览', '字幕样式', '字幕颜色', '时间基准', '拆分与合并', '导出', '保存', '表情包', '彩蛋'):
             self.assertNotIn(f'<span class="editor-settings-title">{section_title}</span>', page)
@@ -509,21 +525,32 @@ class EditorAssetTests(unittest.TestCase):
         self.assertNotIn('split-language-type-field', page)
         self.assertNotIn('editor-settings-item split-language-type-title', page)
         self.assertIn('id="split-multi-subtitle-settings-link"', page)
-        self.assertIn('>多重字幕的设置</button>', page)
+        self.assertIn('>双语字幕的设置</button>', page)
         self.assertIn('id="split-multi-subtitle-settings-disabled"', page)
-        self.assertIn('多重字幕的设置（需要先启用多重字幕）', page)
+        self.assertIn('双语字幕的设置（需要先开启双语字幕）', page)
         self.assertEqual(
             page.count('class="editor-settings-group"')
             + page.count('class="editor-settings-group playback-controls-group"')
             + page.count('class="editor-settings-group subtitle-preview-style-group"')
             + page.count('class="editor-settings-group subtitle-color-settings-group"')
             + page.count('class="editor-settings-group subtitle-speaker-settings-group"'),
-            16,
+            20,
         )
         self.assertEqual(page.count('class="editor-settings-group split-language-type-group"'), 1)
         self.assertEqual(page.count('class="editor-settings-group subtitle-color-settings-group"'), 1)
         self.assertEqual(page.count('class="editor-settings-group subtitle-speaker-settings-group"'), 1)
-        self.assertLess(page.index('id="cue-move-step"'), page.index('<span class="settings-panel-title waveform-settings-title">静音空隙</span>'))
+        self.assertLess(page.index('id="cue-move-step"'), page.index('id="gap-remove-operation-mode"'))
+        # 波形 ⚙️ 面板不再包含操作类设置，但保留样式外观项与「禁用波形显示」
+        waveform_panel_slice = page[page.index('id="waveform-settings-panel"'):page.index('<span class="waveform-mode-switch"')]
+        self.assertNotIn('id="cue-move-step"', waveform_panel_slice)
+        self.assertNotIn('id="gap-remove-operation-mode"', waveform_panel_slice)
+        self.assertNotIn('id="waveform-drag-playhead"', waveform_panel_slice)
+        self.assertNotIn('id="adjacent-boundary-mode"', waveform_panel_slice)
+        self.assertNotIn('静音空隙', waveform_panel_slice)
+        self.assertIn('id="waveform-show-group-badges"', waveform_panel_slice)
+        self.assertIn('禁用波形显示', waveform_panel_slice)
+        self.assertIn('id="waveform-disabled-display"', waveform_panel_slice)
+        self.assertIn('id="waveform-operation-settings-title">波形区操作</span>', page)
         self.assertIn('字幕（编辑状态下）拆分按键', page)
         self.assertNotIn('波形区拆分按键', page)
         self.assertEqual(page.count('class="editor-settings-item editor-settings-list-fields editor-settings-display-row"'), 0)
@@ -550,11 +577,33 @@ class EditorAssetTests(unittest.TestCase):
         self.assertIn('id="subtitle-speaker-mapping-enabled"', page)
         self.assertIn('id="subtitle-speaker-labels-enabled-wrap"', page)
         self.assertIn('在预览字幕中显示说话人', page)
+        self.assertIn('id="subtitle-speaker-labels-enabled" checked', page)
         self.assertIn('id="subtitle-color-style-control"', page)
         self.assertIn('id="subtitle-color-style"', page)
-        self.assertIn('value="underline"', page)
+        # 字幕颜色页：CSS 预览颜色样式（下划线默认）。
+        self.assertIn('value="underline" selected>下划线', page)
+        self.assertIn('value="text">文字颜色', page)
+        self.assertIn('value="stroke">描边', page)
         self.assertNotIn('value="shadow"', page)
-        self.assertIn('>颜色样式</span>', page)
+        self.assertIn('>预览颜色样式</span>', page)
+        # 字幕颜色页：ASS 颜色映射（text / speaker / stroke / none），勾选 ASS 字幕模式时替代预览颜色样式。
+        self.assertIn('id="ass-color-style-row"', page)
+        self.assertIn('id="ass-color-style"', page)
+        self.assertIn('id="ass-color-speaker-hint"', page)
+        self.assertIn('id="ass-color-speaker-export-link"', page)
+        self.assertIn('value="text" selected>作为字幕颜色', page)
+        self.assertIn('value="speaker">作为说话人名称颜色', page)
+        self.assertIn('value="stroke">作为描边颜色', page)
+        self.assertIn('value="none">无影响', page)
+        self.assertIn('>颜色字幕样式</span>', page)
+        # 自定义颜色独立分组（位于「说话人」上方）；checkbox 控制显隐，恢复默认作为第 6 个网格项。
+        self.assertIn('id="subtitle-color-palette-title">自定义颜色</span>', page)
+        self.assertIn('id="subtitle-color-palette-enabled"', page)
+        self.assertIn('id="subtitle-color-palette-grid" hidden', page)
+        self.assertIn('自定义颜色色值', page)
+        self.assertNotIn('subtitle-color-palette-section', page)
+        self.assertNotIn('>恢复内置色值</button>', page)
+        self.assertIn('>恢复默认</button>', page)
         self.assertIn('>文字大小</span>', page)
         self.assertNotIn('>字幕大小</span>', page)
         self.assertIn('文字颜色', page)
@@ -612,7 +661,7 @@ class EditorAssetTests(unittest.TestCase):
         self.assertLess(page.index('id="main-subtitle-preview-settings"'), page.index('id="extension-subtitle-preview-title"'))
         self.assertLess(page.index('id="extension-subtitle-preview-title"'), page.index('id="extension-subtitle-preview-settings"'))
         self.assertNotIn('<span class="editor-settings-title">播放控制</span>', video_preview_page)
-        self.assertEqual(general_page.count('class="editor-settings-group"'), 1)
+        self.assertEqual(general_page.count('class="editor-settings-group"'), 4)
         self.assertIn('id="language-toggle"', interface_page)
         self.assertIn('data-editor-theme="light"', interface_page)
         self.assertIn('data-editor-theme="dark"', interface_page)
@@ -660,7 +709,7 @@ class EditorAssetTests(unittest.TestCase):
         self.assertIn('const MEDIA_SEEK_STEP_MIN_MS = 10;', page)
         self.assertIn('mediaSeekStepForValue', page)
         self.assertIn('nextMediaSeekStepValue', page)
-        self.assertIn('seekMediaBy(-timelineMediaSeekStepMilliseconds() / 1000)', page)
+        self.assertIn('seekMediaBy(-MaweTimeline.timelineMediaSeekStepMilliseconds() / 1000)', page)
         self.assertIn('id="timeline-timebase"', page)
         self.assertIn('id="timeline-fps"', page)
         self.assertIn('id="timeline-snap-to-frame"', page)
@@ -668,7 +717,7 @@ class EditorAssetTests(unittest.TestCase):
         self.assertIn('timelineSnapToFrame: true', page)
         self.assertIn('timelineSnapToFrame: savedSettings.timelineSnapToFrame !== false', page)
         self.assertIn(
-            'getSnapToFrame: () => timelineIsFrameMode() && EDITOR_SETTINGS.timelineSnapToFrame',
+            'getSnapToFrame: () => MaweTimeline.timelineIsFrameMode() && MaweSettings.EDITOR_SETTINGS.timelineSnapToFrame',
             page,
         )
         self.assertEqual(page.count('id="timeline-timebase"'), 1)
@@ -683,29 +732,29 @@ class EditorAssetTests(unittest.TestCase):
         self.assertIn("rowGrid: get('--wave-row-grid'", page)
         self.assertIn('timeline-settings-field', editor_settings_panel)
         self.assertNotIn('timeline-settings-field', page[waveform_pane_start:])
-        self.assertIn('function confirmTimelineFrameRemap(current, nextUnit, nextFps)', page)
+        self.assertIn('function confirmTimelineFrameRemap(current, nextUnit, nextFps)', edit.read_web_asset("editor/cues/editor-timeline.js"))
         self.assertIn(
             'if (!confirmTimelineFrameRemap(current, nextUnit, nextFps)) {\n'
-            '    refreshTimelineSettingsUi();\n'
-            '    return;\n'
-            '  }',
-            page,
+            '      refreshTimelineSettingsUi();\n'
+            '      return;\n'
+            '    }',
+            edit.read_web_asset("editor/cues/editor-timeline.js"),
         )
         self.assertIn(
-            "updateEditorSettings({ timelineTimecodeSeparator: separator });\n"
-            "  refreshTimelineSettingsUi();\n"
-            "  waveformEditor?.refreshPointerLine?.();\n"
+            "MaweSettings.updateEditorSettings({ timelineTimecodeSeparator: separator });\n"
+            "  MaweTimeline.refreshTimelineSettingsUi();\n"
+            "  MaweCoreState.waveformEditor?.refreshPointerLine?.();\n"
             "  // 时间码分隔符会影响字幕列表里的时间范围文本；设置变更后立即重建列表，\n"
             "  // 不必等到下一次字幕编辑操作才看到新格式。\n"
-            "  renderAll({ waveform: 'none' });",
+            "  MaweCuePanel.renderAll({ waveform: 'none' });",
             page,
         )
         self.assertIn('function syncProjectTimebaseAndBindingOffsets(', page)
         self.assertIn('window.AsrEditorUtils.normalizeFrameItemTimingRanges(segment);', page)
         self.assertIn(
             'function buildJson() {\n'
-            '  syncProjectTimebaseAndBindingOffsets(DATA, { preferFrames: false });',
-            page,
+            '  MaweTimeline.syncProjectTimebaseAndBindingOffsets(MaweBoot.DATA, { preferFrames: false });',
+            edit.read_web_asset("editor/io/editor-json-repair.js"),
         )
         self.assertIn('id="help-media-seek-step"', page)
         self.assertIn('class="help-break"', page)
@@ -733,6 +782,8 @@ class EditorAssetTests(unittest.TestCase):
             '          <span class="help-break" aria-hidden="true"></span>\n'
             '          <span><kbd data-mod-key>Ctrl+拖拽空白处</kbd> 拖动创建指定时长字幕</span>\n'
             '          <span class="help-break" aria-hidden="true"></span>\n'
+            '          <span><kbd data-mod-key>Ctrl+拖拽已有字幕</kbd> 启用「叠加字幕」后在叠加轨创建</span>\n'
+            '          <span class="help-break" aria-hidden="true"></span>\n'
             '          <span class="help-important"><kbd>Shift+拖拽空白处</kbd> 框选字幕</span>',
             page,
         )
@@ -749,10 +800,12 @@ class EditorAssetTests(unittest.TestCase):
         self.assertIn('⚙️设置按钮', page)
         self.assertIn('在波形区的', page)
         self.assertIn('中，可调整音频波形外观的具体参数。', page)
-        self.assertIn('id="help-open-waveform-keyboard-settings"', page)
+        self.assertIn('id="help-open-keyboard-settings"', page)
+        self.assertIn('data-help-open-editor-settings', page)
+        self.assertIn('id="help-open-gap-settings"', page)
         self.assertIn('<button type="button" class="help-inline-action" id="help-open-media-settings"', page)
         self.assertIn('data-help-open-media-settings', page)
-        self.assertIn('⚙️设置', page)
+        self.assertIn('⚙️全局设置', page)
         self.assertNotIn('红色播放指针', page)
         self.assertEqual(page.count('data-help-tab='), 7)
         self.assertIn('id="help-tab-panel-basic"', page)
@@ -823,9 +876,9 @@ class EditorAssetTests(unittest.TestCase):
             '          <span><kbd>拖动边界</kbd> 调整空隙范围</span>',
             page,
         )
-        self.assertIn('具体操作取决于波形区的', page)
+        self.assertIn('具体操作取决于', page)
         self.assertIn('id="help-open-gap-settings"', page)
-        self.assertIn('中的「空隙区段操作方式」，其中「边界与中键」可同时使用两套操作。', page)
+        self.assertIn('「通用操作」中的「空隙区段操作方式」，其中「边界与中键」可同时使用两套操作。', page)
         self.assertIn(
             '<span><kbd>Shift+滚轮</kbd> 调整波形振幅</span>\n'
             '          <span class="help-break" aria-hidden="true"></span>\n'
@@ -861,12 +914,13 @@ class EditorAssetTests(unittest.TestCase):
         self.assertNotIn('id="export-open-subtitle-color-settings-arrow"', page)
         for field in ('index', 'time', 'charcount'):
             self.assertIn(f'id="cue-list-show-{field}" checked', page)
-            self.assertIn(f"container.classList.toggle('hide-cue-{field}'", page)
+            self.assertIn(f"MaweCoreState.container.classList.toggle('hide-cue-{field}'", page)
         self.assertIn('id="cue-list-show-sticker" checked> 表情包', page)
-        self.assertIn("container.classList.toggle('hide-cue-sticker'", page)
+        self.assertIn("MaweCoreState.container.classList.toggle('hide-cue-sticker'", page)
         self.assertIn('id="cue-list-auto-scroll-on-click" checked', page)
         self.assertIn('cueListAutoScrollOnClick: saved.cueListAutoScrollOnClick !== false', page)
-        self.assertIn('if (EDITOR_SETTINGS.cueListAutoScrollOnClick && !state?.preserveListScroll)', page)
+        self.assertIn('if (MaweSettings.EDITOR_SETTINGS.cueListAutoScrollOnClick && !state?.preserveListScroll)', page)
+        self.assertIn("const inset = Math.min(120, Math.max(48, (bottom - top) * 0.2));", page)
         self.assertIn('id="cue-list-follow" aria-pressed="true"', page)
         self.assertIn('function resumeCueListFollowing()', page)
         self.assertIn('content-visibility: auto;', page)
@@ -874,6 +928,7 @@ class EditorAssetTests(unittest.TestCase):
         self.assertIn('cueListShowTime: saved.cueListShowTime !== false', page)
         self.assertIn('cueListShowSticker: saved.cueListShowSticker !== false', page)
         self.assertIn('cueListShowCharcount: saved.cueListShowCharcount !== false', page)
+        self.assertIn('pauseOnMouseClick: savedSettings.pauseOnMouseClick === true', page)
         self.assertNotIn('id="cue-editor-show-navigation" checked', page)
         self.assertNotIn('id="cue-editor-show-time-actions" checked', page)
         self.assertIn('cueEditorShowTimeActions: saved.cueEditorShowTimeActions === true', page)
@@ -888,7 +943,7 @@ class EditorAssetTests(unittest.TestCase):
         self.assertIn('当前未启用相邻字幕自动吸附，按住 Alt 可以临时启用。', page)
         self.assertNotIn('altSnapReversal', page)
         self.assertNotIn('cancelSubtitleDragOnEscape', page)
-        self.assertIn('if (EDITOR_SETTINGS.cueEditorCancelOnEscape) cancelCuePanelTextEdit();', page)
+        self.assertIn('if (MaweSettings.EDITOR_SETTINGS.cueEditorCancelOnEscape) MaweCuePanel.cancelCuePanelTextEdit();', page)
         self.assertIn("cuePanel.classList.toggle('hide-cue-editor-navigation'", page)
         self.assertIn("cuePanel.classList.toggle('hide-cue-editor-sticker'", page)
         self.assertIn('class="toolbar main-toolbar"', page)
@@ -907,11 +962,22 @@ class EditorAssetTests(unittest.TestCase):
         self.assertNotIn('id="player" controls', page)
         self.assertIn('id="overlay-toggle" checked> 预览字幕', page)
         self.assertIn('id="sticker-overlay-toggle"> 预览表情包', page)
-        self.assertIn('.player-wrap.fullscreen-preview .subtitle-overlay span', page)
-        self.assertIn("playerWrap?.classList.toggle('fullscreen-preview', document.fullscreenElement === playerWrap);", page)
+        self.assertIn('.player-wrap.fullscreen-preview .subtitle-overlay:not([data-ass-mode="true"]) > #overlay-main-text', page)
+        self.assertIn('.subtitle-overlay[data-ass-mode="true"] .subtitle-speaker-label { font: inherit; }', page)
+        self.assertIn("MaweDom.playerWrap?.classList.toggle('fullscreen-preview', fullscreenPreview);", page)
+        self.assertIn('function scheduleAssSubtitlePreviewRefresh()', page)
+        self.assertNotIn('class="ass-style-editor-toolbar"', page)
+        self.assertIn('id="ass-style-delete-slot"', page)
+        self.assertIn('id="ass-profile-delete-slot"', page)
+        self.assertIn('id="ass-style-preview-mode-hint"', page)
+        self.assertIn('id="ass-style-srt-hint"', page)
+        self.assertIn('class="ass-style-preview-mode-hint-status"', page)
+        self.assertIn('id="ass-style-settings-link"', page)
+        self.assertIn('SRT 默认', page)
+        self.assertIn('这里用来配置 SRT 字幕默认烧录样式，用于工具箱的「烧录字幕」功能。', page)
         self.assertIn("overlayTextEl.style.setProperty(", page)
-        self.assertIn('appearance.font_size || SUBTITLE_DEFAULT_FONT_SIZE', page)
-        self.assertIn('appearance.font_size || EXTENSION_SUBTITLE_DEFAULT_FONT_SIZE', page)
+        self.assertIn('appearance.font_size || MaweSettings.SUBTITLE_DEFAULT_FONT_SIZE', page)
+        self.assertIn('appearance.font_size || MaweSettings.EXTENSION_SUBTITLE_DEFAULT_FONT_SIZE', page)
         self.assertIn('id="merge-join-text-continuous"', page)
         self.assertIn('id="merge-join-text-word"', page)
         self.assertIn('id="subtitle-extend-manage"', page)
@@ -922,15 +988,17 @@ class EditorAssetTests(unittest.TestCase):
         self.assertIn('播放时跳过空隙', page)
         self.assertIn('const DEFAULT_LAYOUT_ROWS = [42, 16, 42];', page)
         self.assertIn("rows: [42, 16, 42], tree: DEFAULT_RIGHT_LAYOUT_TREE", page)
-        self.assertIn('const projectHasStickers = DATA.segments.some(segment => segment.sticker || segment.sticker_ref);', page)
-        self.assertIn('!EDITOR_SETTINGS.cueListShowSticker || !projectHasStickers,', page)
-        self.assertIn("DATA.segments.forEach((seg, i) => cueFragment.appendChild(buildCueEl(seg, i)));", page)
-        self.assertIn("const multiVisible = multiSubtitleVisible();", page)
+        self.assertIn('const projectHasStickers = MaweBoot.DATA.segments.some((segment) => segment.sticker || segment.sticker_ref)', page)
+        self.assertIn('overlaySegments.some((segment) => segment.sticker || segment.sticker_ref)', page)
+        self.assertIn('!MaweSettings.EDITOR_SETTINGS.cueListShowSticker || !projectHasStickers,', page)
+        self.assertIn('rows.sort((a, b) => a.start - b.start || a.order - b.order);', page)
+        self.assertIn('overlaySegments.forEach((seg, i) => rows.push({ start: seg.start, order: 1, el: buildOverlayCueEl(seg, i) }));', page)
+        self.assertIn("const multiVisible = MaweMultiSubtitleCore.multiSubtitleVisible();", page)
         self.assertIn('id="multi-subtitle-toggle"', page)
         self.assertIn("cuePanelText?.addEventListener('keydown'", page)
-        self.assertIn('const action = getConfiguredEnterAction(event);', page)
-        self.assertIn("if (action === 'split') splitCuePanelAtCursor();", page)
-        self.assertIn('if (e.target === cuePanelText) return;', page)
+        self.assertIn('const action = MaweCueEvents.getConfiguredEnterAction(event);', page)
+        self.assertIn("if (action === 'split') MaweCuePanel.splitCuePanelAtCursor();", page)
+        self.assertIn('if (e.target === MaweDom.cuePanelText) return;', page)
         self.assertIn('.cue .sticker-slot {\n    flex: 0 1 80px; min-width: 40px;', page)
         self.assertIn('.cue .time {\n    font-size: 11px;', page)
         # 时间码列由字幕列表容器统一切换：宽时单行，窄于 700px 时所有行一起变成两行。
@@ -1015,7 +1083,7 @@ class EditorAssetTests(unittest.TestCase):
         self.assertIn('id="fcp7-export-fps"', page)
         self.assertIn('id="fcp7-export-subtitle-tracks"', page)
         self.assertIn('id="fcp7-export-native-text"', page)
-        self.assertNotIn('id="fcp7-export-native-text" checked', page)
+        self.assertIn('id="fcp7-export-native-text" checked', page)
         self.assertIn('id="fcp7-export-confirm"', page)
         self.assertIn('exportFcp7Xml(', page)
         self.assertNotIn('gap-remove-subtitle-warning', page)
@@ -1027,7 +1095,7 @@ class EditorAssetTests(unittest.TestCase):
         self.assertIn("schema: 'moy.asr.gap_removed_keep_regions.v1'", page)
         self.assertIn('waveform-gap-block', page)
         self.assertIn('waveform-gap-handle', page)
-        self.assertIn("addItem('添加空隙', '', () => addGapAtWaveformTime(timeMs));", page)
+        self.assertIn("addItem('添加空隙', '', () => MaweGapRemoveUi.addGapAtWaveformTime(timeMs));", page)
         self.assertIn('function addGapAtWaveformTime(timeMs)', page)
         self.assertIn('moveGapRemoveRange', page)
         self.assertIn('copyGapRemoveRange', page)
@@ -1060,7 +1128,7 @@ class EditorAssetTests(unittest.TestCase):
         self.assertLess(extra_menu.index('id="download-plain-text"'), extra_menu.index('id="download-resolve-json"'))
         self.assertIn('showGapContextMenu?.(event.clientX, event.clientY, index)', page)
         self.assertIn("gap.removed === false ? '移除区段' : '恢复区段'", page)
-        self.assertIn("addItem('清理空隙', () => clearGap(index), { danger: true });", page)
+        self.assertIn("addItem('清理空隙', () => MaweGapRemoveUi.clearGap(index), { danger: true });", page)
         self.assertIn('id="waveform-pane" aria-label="音频波形" tabindex="-1"', page)
         self.assertIn("this.pane.addEventListener('pointerdown', () => {", page)
         self.assertIn("this.autoScrollTarget = null;", page)
@@ -1069,6 +1137,12 @@ class EditorAssetTests(unittest.TestCase):
         self.assertIn('id="subtitle-font-size"', page)
         self.assertIn('id="subtitle-font-family"', page)
         self.assertIn('id="subtitle-font-family-scan"', page)
+        # 字体输入框是 combobox（文本输入 + 可筛选下拉列表）；ASS 样式库可一键应用预览字体。
+        self.assertIn('id="subtitle-font-family-options"', page)
+        self.assertIn('role="combobox"', page)
+        self.assertIn('class="font-combobox-toggle"', page)
+        self.assertIn('id="ass-font-name-options"', page)
+        self.assertIn('id="ass-style-local-font-scan"', page)
         self.assertIn('id="subtitle-background-color"', page)
         self.assertIn('id="subtitle-background-alpha"', page)
         self.assertIn('id="subtitle-speaker-label-separator"', page)
@@ -1094,10 +1168,10 @@ class EditorAssetTests(unittest.TestCase):
         self.assertIn("flashHint('请先加载媒体，然后才能预览', 'invalid');", page)
         self.assertIn("flashHint('保存成功！', 'success');", page)
         self.assertIn("当前服务器未绑定工程；请先导出 .mosp，再重新打开该文件", page)
-        self.assertIn('event.composedPath?.().includes(player)', page)
+        self.assertIn('event.composedPath?.().includes(MaweCoreState.player)', page)
         self.assertIn('function isTextEditingTarget(event)', page)
         self.assertIn('function isPlaybackKeyboardTarget(event)', page)
-        self.assertIn('if (editingState || isTextEditingTarget(e)) return;', page)
+        self.assertIn('if (MaweInlineEdit.editingState || MaweKeyboardTargets.isTextEditingTarget(e)) return;', page)
         self.assertIn('let interceptedSpace = false;', page)
         self.assertIn('e.stopImmediatePropagation();', page)
         self.assertIn('width: 74px; aspect-ratio: 1;', page)
@@ -1237,6 +1311,23 @@ class EditorAssetTests(unittest.TestCase):
             ".layout-resizer-h1::after, .layout-resizer-h2::after { left: 0; right: 0; top: 2px; height: 2px; }",
             styles,
         )
+
+    def test_all_boundary_handles_use_system_cursor_and_seam_keeps_svg_cursor(self) -> None:
+        # 左右手柄在两种模式下都使用系统左右箭头；中缝保留专属 SVG 光标。
+        styles = (ROOT / "web" / "waveform.css").read_text(encoding="utf-8")
+        script = edit.build_editor_scripts()
+        handles_start = styles.index(".waveform-cue-handle {")
+        handles_end = styles.index(".waveform-cue-handle.left {", handles_start)
+        self.assertIn("cursor: ew-resize;", styles[handles_start:handles_end])
+        left_start = styles.index(".waveform-cue-handle.left {")
+        left_end = styles.index(".waveform-cue-handle.right {", left_start)
+        right_start = left_end
+        right_end = styles.index(".waveform-cue-handle:hover", right_start)
+        self.assertNotIn("cursor:", styles[left_start:left_end])
+        self.assertNotIn("cursor:", styles[right_start:right_end])
+        self.assertIn("cursor: var(--wave-shared-boundary-cursor);", styles)
+        self.assertIn("--wave-shared-boundary-cursor: url(\"data:image/svg+xml,", styles)
+        self.assertNotIn("boundary-mode-classic", styles + script)
 
 if __name__ == "__main__":
     unittest.main()

@@ -11,6 +11,8 @@
 
 MAW is an API-first subtitle generation and editing workflow. It provides Windows/macOS desktop packages, a public CLI, and a local Server editor. Editing and project storage stay on your machine.
 
+Latest beta: [v1.8.0-beta.1](https://github.com/Moyf/moys-asr-workflow/releases/tag/v1.8.0-beta.1).
+
 ## Quick start
 
 1. [Download the latest release](https://github.com/Moyf/moys-asr-workflow/releases/latest). The Release provides the FFmpeg-enabled `MAW-Windows-x64-v*.zip`, the smaller `MAW-lite-Windows-x64-v*.zip`, the Windows x64 `MAW-Setup-Windows-x64-v*.exe` Installer containing MOSE, and the corresponding macOS packages. Source and packaging notes are in the [MOSE documentation](docs/MOSE.md).
@@ -44,7 +46,7 @@ The official Windows Installer checks for updates at startup at most once per da
 ## Data and limitations
 
 - When a cloud provider is selected, media is uploaded directly to that provider. MAW has no hosted transcription service and does not manage your API keys.
-- The `.mosp` project is the source of truth. SRT is useful for ordinary delivery, while ASS preserves the selected main-subtitle preview font, size, and text color and uses the recorded source-video resolution for its script coordinates; neither format preserves all word-level timing, waveform, or project metadata.
+- The `.mosp` project is the source of truth. SRT is useful for ordinary delivery, while ASS uses the default output profile and linked style from Editor’s “ASS style library” and the recorded source-video resolution for its script coordinates. Launcher uses a separate SRT default style for SRT burn-in. The localhost Editor and Launcher share the user-level style library; the portable `file://` Editor keeps a browser-local copy. Neither subtitle format preserves all word-level timing, waveform, or project metadata.
 - Keep the official suite layout as `MAW\MAW.exe` and `MAW\MOSE\MOSE.exe`; MOSE cannot run without the sibling `MAW.exe`. The `.mosp` association points to `MAW.exe --open-project`, so a double-click passes through the update check before opening MOSE. It is registered only for the current user, respects an existing Windows default-app choice, and still accepts legacy `.json` files without associating that extension.
 - Pricing, retention, and availability depend on each provider; see [ASR providers and configuration](docs/PROVIDERS.md).
 - [Three-minute video overview](https://www.bilibili.com/video/BV1hXum6yELT)

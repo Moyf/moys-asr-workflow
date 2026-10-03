@@ -13,6 +13,8 @@
 
 MAW 是一个以 API 转写为主的字幕生成与编辑工作流。它提供 Windows/macOS 图形版、公开 CLI 和本机 Server 编辑器；字幕编辑与工程保存都在本机完成。
 
+最新测试版：[v1.8.0-beta.1](https://github.com/Moyf/moys-asr-workflow/releases/tag/v1.8.0-beta.1)。稳定版下载入口保持不变。
+
 ## 快速开始
 
 1. [下载最新版](https://github.com/Moyf/moys-asr-workflow/releases/latest)。Release 提供带 FFmpeg 的 `MAW-Windows-x64-v*.zip`、不带 FFmpeg 的 `MAW-lite-Windows-x64-v*.zip`、包含 MOSE 的 Windows x64 `MAW-Setup-Windows-x64-v*.exe` Installer，以及 macOS 对应包；源码和打包说明见 [MOSE 文档](docs/MOSE.md)。
@@ -26,10 +28,10 @@ Windows 官方安装版会在 Launcher 启动时每天最多检查一次新版�
 
 ## 核心能力
 
-- 使用 Qwen / Fun-ASR / Soniox / 腾讯云录音文件识别 / 豆包（火山引擎），或 OpenAI（及兼容接口）转写，生成 SRT 与 `.mosp` 工程。
+- 使用 Qwen / Fun-ASR / Soniox / 腾讯云录音文件识别 / 豆包（火山引擎），或 OpenAI 格式通用接口转写，生成 SRT 与 `.mosp` 工程。
 - MAWE Server 编辑器支持波形定位、拆分合并、静音空隙处理、画面预览和多种导出格式。
 - Windows 套件提供优先使用的 MOSE Electron 独立编辑器；它与 MAW 共用同一 Server、`.mosp` 工程、波形、媒体和导出契约。Launcher 找不到 MOSE 时会自动回退到 Server 版。
-- MAWE 支持可选的多重字幕：拖入第二条字幕作为副轨，支持主副字幕交换、绑定/解绑、联动编辑、跨轨道吸附，以及 `G` / `Shift+G` / `H` / `B` 快捷操作。
+- MAWE 支持可选的多重字幕：开启后即可在空副轨手动添加字幕，也可从双语设置导入或拖入第二条字幕，支持主副字幕交换、绑定/解绑、联动编辑、跨轨道吸附，以及 `G` / `Shift+G` / `H` / `B` 快捷操作。
 - 公开 CLI 可用于批处理和 AI 自动化，详见[命令行文档](docs/CLI.md)。
 - [本地 Qwen3-ASR / FunASR / Faster-Whisper](docs/LOCAL_ASR.md) 和免 Key 的必剪 ASR 均属于实验性入口，仅适合体验。
 
@@ -50,7 +52,7 @@ Windows 官方安装版会在 Launcher 启动时每天最多检查一次新版�
 ## 重要说明
 
 - 选择云端服务转写时，媒体会直接上传到对应服务商；MAW 没有自己的云端服务器，也不会代管 API Key。
-- `.mosp` 工程是字幕真源；SRT 适合普通交付，ASS 会保留主字幕预览选择的字体、字号和文字颜色，并按工程记录的源视频分辨率设置脚本坐标；两者都不会保留全部字级时间码、波形和其他工程数据。
+- `.mosp` 工程是字幕真源；SRT 适合普通交付，ASS 使用 Editor「管理 ASS 样式」中的默认输出方案与关联样式，并按工程记录的源视频分辨率设置脚本坐标；Launcher 烧录 SRT 时使用单独的 SRT 默认样式。localhost Editor 与 Launcher 共享用户级样式库，便携 `file://` Editor 使用浏览器本地副本；两种字幕格式都不会保留全部字级时间码、波形和其他工程数据。
 - 官方 MAW + MOSE 套件中的目录必须保持 `MAW\MAW.exe` 与 `MAW\MOSE\MOSE.exe` 的相对关系；MOSE 不能脱离同套件的 `MAW.exe` 单独运行。`.mosp` 关联指向 `MAW.exe --open-project`，双击工程会先完成更新检查再打开 MOSE；关联只在当前用户范围生效，不会强制覆盖 Windows 的已有默认应用选择。旧 `.json` 仍兼容打开但不建立系统关联。
 - 费用、数据保留和服务可用性以服务商当前政策为准，详见[ASR 服务与配置](docs/PROVIDERS.md)。
 - [3 分钟视频速览](https://www.bilibili.com/video/BV1hXum6yELT)

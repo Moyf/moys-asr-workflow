@@ -24,7 +24,7 @@ test('OpenAI ASR exposes official and OpenRouter models with a conditional Custo
   await openLauncher(page);
   await page.locator('#provider').selectOption('openai');
 
-  await expect(page.locator('#provider option[value="openai"]')).toHaveText('OpenAI（及兼容接口）');
+  await expect(page.locator('#provider option[value="openai"]')).toHaveText('OpenAI 格式通用接口');
   await expect(page.locator('#model')).toHaveValue('whisper-1');
   await expect(page.locator('#model option')).toHaveCount(8);
   expect(await page.locator('#model option').allTextContents()).toEqual([
@@ -110,6 +110,28 @@ test('project and tutorial hero links open their configured URLs', async ({ page
   ]);
 });
 
+test('support link opens the sponsor QR modal and closes on Escape or backdrop', async ({ page }) => {
+  await page.goto(`file://${launcherPath}`);
+  await page.waitForFunction(() => window.MAWLauncher?.config?.postprocessProviders?.length > 0);
+
+  await page.locator('#supportLink').click();
+  await expect(page.locator('#supportModal')).toBeVisible();
+  await expect(page.locator('#supportModal .support-qr')).toHaveAttribute('src', /support-qr\.png$/);
+  await expect(page.locator('#supportModal .support-desc')).toContainText('前往B站小店赞助');
+  await expect(page.locator('#supportModal .support-note')).toHaveText([
+    '软件免费使用，但我为此花了非常多的心血 ❤️',
+    '你的支持将帮助 Moy 把它做得更好  :)',
+  ]);
+
+  await page.keyboard.press('Escape');
+  await expect(page.locator('#supportModal')).toBeHidden();
+
+  await page.locator('#supportLink').click();
+  await expect(page.locator('#supportModal')).toBeVisible();
+  await page.locator('#supportBackdrop').click({ position: { x: 5, y: 5 } });
+  await expect(page.locator('#supportModal')).toBeHidden();
+});
+
 test('OCR video source follows a newly dropped video media', async ({ page }) => {
   await openLauncher(page);
   await page.locator('#toolboxOcrTab').click();
@@ -142,6 +164,23 @@ test('automatic OCR video source is not persisted as a manual override', async (
     window.MAWLauncher.onBackendEvent({ type: 'dropMedia', path: 'D:\\Demo\\2.mov' });
   });
   await expect(page.locator('#ocrVideoPath')).toHaveValue('D:\\Demo\\2.mov');
+});
+
+test('automatic subtitle burning follows the selected video', async ({ page }) => {
+  await openLauncher(page);
+  await page.locator('#mediaPath').fill('D:\\Demo\\clip.mp4');
+  await page.locator('#autoPostprocessEnabled').check();
+  await expect(page.locator('[data-auto-step-row="burn"]')).toBeVisible();
+  await expect(page.locator('[data-auto-step-row="burn"]')).toContainText('烧录字幕');
+
+  await page.locator('#autoStepBurn').check();
+
+  await expect(page.locator('#autoStepBurnStatus')).toHaveClass(/ready/);
+  await expect(page.locator('#autoStepBurnHint')).toContainText('clip.mp4');
+  await expect(page.locator('#configureAutoBurn')).toBeVisible();
+  await expect.poll(() => page.evaluate(() => (
+    window.MAWLauncher.getAutoPostprocessPayload().steps.find((step) => step.id === 'burn')
+  ))).toMatchObject({ id: 'burn', enabled: true, videoEncoder: 'auto' });
 });
 
 test('waveform tool sends the selected and container-default audio tracks', async ({ page }) => {
@@ -254,7 +293,7 @@ test('automatic LLM setup highlights test connection until clicked', async ({ pa
       hasBaseUrl: true,
       hasModel: true,
       baseUrl: 'https://api.deepseek.com',
-      model: 'deepseek-v4-flash',
+      model: 'deepseek-flash',
     });
   });
 
@@ -382,32 +421,102 @@ test('cancelling a transcription stays quiet', async ({ page }) => {
   await expect.poll(() => page.evaluate(() => window.__mockNotifications || [])).toEqual([]);
 });
 
-test('Utilities use a vertical tab rail with arrow-key navigation', async ({ page }) => {
+test('Utilities use a horizontal tab strip with arrow-key navigation', async ({ page }) => {
   await openLauncher(page);
   await page.locator('#toolboxUtilitiesPrimaryTab').click();
 
   await expect(page.locator('#toolboxUtilitiesContent')).toBeVisible();
-  await expect(page.locator('#toolboxUtilitiesTabList')).toHaveAttribute('aria-orientation', 'vertical');
-  const layout = await page.locator('#toolboxUtilitiesContent').evaluate((element) => {
-    const style = getComputedStyle(element);
-    const tabListStyle = getComputedStyle(element.querySelector('.toolbox-utility-tab-list'));
+  // 横向 tab 条：ARIA 方向保持默认 horizontal，不得声明 vertical（契约见
+  // test_gui_web.test_launcher_toolbox_uses_primary_tabs…）。
+  await expect(page.locator('#toolboxUtilitiesTabList')).not.toHaveAttribute('aria-orientation', 'vertical');
+  const layout = await page.evaluate(() => {
+    const style = getComputedStyle(document.getElementById('toolboxUtilitiesContent'));
+    // beta.4 重构后 tablist 导航是 content 的兄弟节点；tab 条横向一行五列。
+    const tabList = document.querySelector('#toolboxUtilitiesTabList .toolbox-tab-list');
+    const tabListStyle = getComputedStyle(tabList);
     return {
       columns: style.gridTemplateColumns.split(' ').length,
       tabColumnCount: tabListStyle.gridTemplateColumns.split(' ').length,
     };
   });
-  expect(layout.columns).toBe(2);
-  expect(layout.tabColumnCount).toBe(1);
+  expect(layout.columns).toBe(1);
+  expect(layout.tabColumnCount).toBe(5);
 
+  // beta.4 重构后工具顺序：烧录字幕、媒体重组、口播对齐、提取音频、生成波形。
   await page.locator('#toolboxAlignmentTab').focus();
   await page.keyboard.press('ArrowDown');
-  await expect(page.locator('#toolboxWaveformTab')).toBeFocused();
-  await expect(page.locator('#toolboxWaveformPanel')).toBeVisible();
+  await expect(page.locator('#toolboxExtractAudioTab')).toBeFocused();
+  await expect(page.locator('#toolboxExtractAudioPanel')).toBeVisible();
   await expect(page.locator('#toolboxAlignmentPanel')).toBeHidden();
 
   await page.keyboard.press('ArrowUp');
   await expect(page.locator('#toolboxAlignmentTab')).toBeFocused();
   await expect(page.locator('#toolboxAlignmentPanel')).toBeVisible();
+});
+
+test('FFmpeg media log stays above the utility notice and renders the latest progress', async ({ page }) => {
+  await openLauncher(page);
+  await page.locator('#toolboxUtilitiesPrimaryTab').click();
+  await page.locator('#toolboxBurnSubtitleTab').click();
+
+  await page.evaluate(() => {
+    for (let frame = 1; frame <= 5; frame += 1) {
+      window.MAWLauncher.onBackendEvent({
+        type: 'media_tool_log',
+        message: `frame=${frame} fps=24.0 time=00:00:01.75 speed=1.2x`,
+      });
+    }
+  });
+
+  await expect(page.locator('#toolboxMediaLog')).toBeVisible();
+  await expect(page.locator('#toolboxMediaLogText')).toHaveText(
+    'frame=3 fps=24.0 time=00:00:01.75 speed=1.2x\nframe=4 fps=24.0 time=00:00:01.75 speed=1.2x\nframe=5 fps=24.0 time=00:00:01.75 speed=1.2x',
+  );
+  expect(await page.evaluate(() => (
+    document.getElementById('toolboxMediaLog').compareDocumentPosition(document.querySelector('#toolboxBurnSubtitlePanel .toolbox-notice'))
+      & Node.DOCUMENT_POSITION_FOLLOWING
+  ))).toBeTruthy();
+});
+
+test('green-screen burn accepts subtitles without a video source', async ({ page }) => {
+  await openLauncher(page);
+  await page.locator('#toolboxUtilitiesPrimaryTab').click();
+  await page.locator('#toolboxBurnSubtitleTab').click();
+  await page.evaluate(() => {
+    window.__greenBurnCalls = [];
+    const original = window.MAWLauncher.callBackend;
+    window.MAWLauncher.callBackend = async (method, payload) => {
+      if (method === 'run_burn_subtitles') {
+        window.__greenBurnCalls.push(payload);
+        return { ok: true, mediaPath: 'D:\\Demo\\captions.green-screen.mp4' };
+      }
+      return original(method, payload);
+    };
+  });
+  await page.locator('#toolboxGreenScreen').check();
+  await expect(page.locator('#toolboxUtilityMediaDropZone')).toBeVisible();
+  await expect(page.locator('#toolboxUtilityMediaDropZone')).toHaveAttribute('aria-disabled', 'true');
+  await expect(page.locator('#toolboxUtilityMediaPath')).toBeDisabled();
+  await expect(page.locator('#pickToolboxUtilityMedia')).toBeDisabled();
+  await expect(page.locator('#runBurnSubtitle')).toHaveText('生成绿幕视频');
+  const gap = await page.locator('.toolbox-green-screen-option .hint').evaluate((element) =>
+    element.getBoundingClientRect().top - element.previousElementSibling.getBoundingClientRect().bottom);
+  expect(gap).toBeGreaterThanOrEqual(8);
+  await page.locator('#toolboxBurnSubtitlePath').fill('D:\\Demo\\captions.ass');
+  await page.locator('#runBurnSubtitle').click();
+  await expect.poll(() => page.evaluate(() => window.__greenBurnCalls.length)).toBe(1);
+  const call = await page.evaluate(() => window.__greenBurnCalls[0]);
+  expect(call).toMatchObject({ mediaPath: '', subtitlePath: 'D:\\Demo\\captions.ass', greenScreen: true });
+  await expect(page.locator('#toolboxUtilityMediaPath')).toHaveValue('D:\\Demo\\captions.green-screen.mp4');
+  await page.locator('#toolboxFfconcatTab').click();
+  await expect(page.locator('#toolboxUtilityMediaPath')).toBeEnabled();
+  await expect(page.locator('#pickToolboxUtilityMedia')).toBeEnabled();
+  await page.locator('#toolboxBurnSubtitleTab').click();
+  await expect(page.locator('#toolboxUtilityMediaPath')).toBeDisabled();
+  await page.locator('#toolboxGreenScreen').uncheck();
+  await expect(page.locator('#toolboxUtilityMediaPath')).toBeEnabled();
+  await expect(page.locator('#pickToolboxUtilityMedia')).toBeEnabled();
+  await expect(page.locator('#runBurnSubtitle')).toHaveText('烧录字幕');
 });
 
 test('Launcher settings switch between accessible tabs and deep links', async ({ page }) => {
@@ -443,11 +552,16 @@ test('Launcher settings switch between accessible tabs and deep links', async ({
   expect(llmScroll).toBe(initialScroll.clientWidth);
 
   await page.locator('#settingsLlmTab').press('ArrowRight');
+  await expect(page.locator('#settingsGeneralTab')).toBeFocused();
+  await expect(page.locator('#settingsGeneralPanel')).toBeVisible();
+  await page.locator('#settingsGeneralTab').press('ArrowRight');
   await expect(page.locator('#settingsProcessingTab')).toBeFocused();
   await expect(page.locator('#settingsProcessingPanel')).toBeVisible();
-  await page.locator('#settingsProcessingTab').press('End');
+  await page.locator('#settingsProcessingTab').press('ArrowRight');
   await expect(page.locator('#settingsRuntimeTab')).toBeFocused();
   await expect(page.locator('#settingsRuntimePanel')).toBeVisible();
+  await page.locator('#settingsRuntimeTab').press('End');
+  await expect(page.locator('#settingsLlmTab')).toBeFocused();
 
   await page.evaluate(() => window.MAWLauncher.openSettings('ffmpegSettingsSection'));
   await expect(page.locator('#settingsRuntimeTab')).toHaveAttribute('aria-selected', 'true');
@@ -649,7 +763,7 @@ test('does not start local transcription while model status is still checking', 
   await page.goto(`file://${launcherPath}`);
   await page.waitForFunction(() => window.MAWLauncher?.config?.postprocessProviders?.length > 0);
   await page.locator('#provider').selectOption('local');
-  await expect(page.locator('#localModelPanel')).toBeVisible();
+  await expect(page.locator('#localModelSettingsEntry')).toBeVisible();
   await page.locator('#mediaPath').fill('D:\\Demo\\clip.mp4');
   await page.locator('#srtPath').fill('D:\\Demo\\clip.local.srt');
 
@@ -692,14 +806,14 @@ test('keeps local runtime events working after the page learns that installation
   await expect(page.locator('#status')).toHaveText('本地模型支持已安装完成');
 });
 
-test('local runtime check sits above the model panel and deep-links to the Runtime tab top', async ({ page }) => {
+test('local runtime check sits above the local model settings entry and deep-links to the Runtime tab top', async ({ page }) => {
   await page.goto(`file://${launcherPath}`);
   await page.waitForFunction(() => window.MAWLauncher?.config?.postprocessProviders?.length > 0);
   await page.locator('#provider').selectOption('local');
   await expect(page.locator('#localRuntimeCheckField')).toBeVisible();
   const checkRow = await page.locator('#localRuntimeCheckField').boundingBox();
-  const modelPanel = await page.locator('#localModelPanel').boundingBox();
-  expect(checkRow.y + checkRow.height).toBeLessThan(modelPanel.y);
+  const modelEntry = await page.locator('#localModelSettingsEntry').boundingBox();
+  expect(checkRow.y + checkRow.height).toBeLessThan(modelEntry.y);
   await expect(page.locator('#localModelCachePathLine')).toContainText('模型缓存：D:\\Models\\MAW');
   await expect(page.locator('#localRuntimeCheckStatus')).toHaveText('本地运行环境未安装');
   await page.locator('#openLocalRuntimeSettings').click();
@@ -714,12 +828,12 @@ test('local runtime check sits above the model panel and deep-links to the Runti
 test('English mode localizes provider, model, and language labels from the backend config', async ({ page }) => {
   await page.goto(`file://${launcherPath}`);
   await page.waitForFunction(() => window.MAWLauncher?.config?.postprocessProviders?.length > 0);
-  await page.locator('#langToggle').click();
+  await page.evaluate(() => document.getElementById('langEn').click());
   await page.locator('#provider').selectOption('local');
 
   await expect(page.locator('#provider option[value="local"]')).toHaveText('Local models (Beta)');
   await expect(page.locator('#model option[value="qwen3-asr-local"]')).toHaveText('Qwen3-ASR 0.6B (recommended)');
-  await expect(page.locator('#modelNote')).toHaveText('Runs locally; the first preparation downloads Qwen3-ASR and the Forced Aligner.');
+  await expect(page.locator('#modelNote')).toHaveText('Lightweight multilingual recognition with native word/character timestamps; shares the Qwen3-ForcedAligner cache.');
   await expect(page.locator('#language option').first()).toHaveText('Auto detect');
 });
 
@@ -736,6 +850,13 @@ test('local runtime accepts a custom root directory in Settings', async ({ page 
 
   await expect(page.locator('#localRuntimePaths')).toContainText('D:\\Demo\\custom-runtime');
   await expect(page.locator('#localRuntimePathError')).toHaveText('');
+
+  await page.locator('#localRuntimePath').fill('D:\\演示\\运行环境');
+  await page.locator('#localRuntimePath').dispatchEvent('change');
+
+  await expect(page.locator('#localRuntimePathError')).toContainText('非 ASCII');
+  await expect(page.locator('#localRuntimePath')).toHaveClass(/invalid/);
+  await expect(page.locator('#localRuntimePaths')).not.toContainText('演示');
 });
 
 test('LLM settings refill the saved key and save only after a successful connection test', async ({ page }) => {
@@ -747,7 +868,7 @@ test('LLM settings refill the saved key and save only after a successful connect
       providerId: 'deepseek',
       apiKey: 'sk-saved-for-test',
       baseUrl: 'https://api.deepseek.com',
-      model: 'deepseek-v4-flash',
+      model: 'deepseek-flash',
     });
     const select = document.querySelector('#postprocessProvider');
     select.value = 'zhipu';
@@ -784,12 +905,12 @@ test('Custom provider labels and missing-key errors follow the selected language
 
   const customOption = page.locator('#postprocessProvider option[value="custom"]');
   const settingsCustomOption = page.locator('#llmProvider option[value="custom"]');
-  await expect(customOption).toHaveText('自定义（兼容 OpenAI）');
-  await expect(settingsCustomOption).toHaveText('自定义（兼容 OpenAI）');
+  await expect(customOption).toHaveText('OpenAI 通用接口');
+  await expect(settingsCustomOption).toHaveText('OpenAI 通用接口');
 
-  await page.locator('#langToggle').click();
-  await expect(customOption).toHaveText('Custom (OpenAI-compatible)');
-  await expect(settingsCustomOption).toHaveText('Custom (OpenAI-compatible)');
+  await page.evaluate(() => document.getElementById('langEn').click());
+  await expect(customOption).toHaveText('OpenAI-compatible API');
+  await expect(settingsCustomOption).toHaveText('OpenAI-compatible API');
   await page.locator('#toolboxLlmTab').click();
   await page.locator('#openLlmSettings').click();
   await page.evaluate(() => {
@@ -863,7 +984,7 @@ test('LLM HTTP failures give provider-aware actions without showing the key', as
   await expect(page.locator('#llmSettingsSaveStatus')).toContainText('当前供应商：DeepSeek 官网');
   await expect(page.locator('#llmSettingsSaveStatus')).toContainText('API URL');
   await expect(page.locator('#llmSettingsSaveStatus')).toContainText('官方控制台');
-  await expect(page.locator('#llmSettingsSaveStatus')).toContainText('自定义（兼容 OpenAI）');
+  await expect(page.locator('#llmSettingsSaveStatus')).toContainText('OpenAI 通用接口');
   await expect(page.locator('#llmSettingsSaveStatus')).not.toContainText('正确配置模型名');
   await expect(page.locator('#llmSettingsSaveStatus')).not.toContainText('test-only-key');
 
@@ -889,7 +1010,7 @@ test('LLM HTTP failures give provider-aware actions without showing the key', as
   await page.evaluate(() => { window.__llmFailureStatus = 401; window.__llmFailureProvider = 'custom'; });
   await page.locator('#testLlmConnection').click();
   await expect(page.locator('#llmSettingsSaveStatus')).toContainText('认证失败（HTTP 401');
-  await expect(page.locator('#llmSettingsSaveStatus')).toContainText('当前供应商：自定义（兼容 OpenAI）');
+  await expect(page.locator('#llmSettingsSaveStatus')).toContainText('当前供应商：OpenAI 通用接口');
   await expect(page.locator('#llmSettingsSaveStatus')).toContainText('API URL、API Key 是否来自同一服务商');
   await expect(page.locator('#llmSettingsSaveStatus')).toContainText('正确配置模型名');
   await expect(page.locator('#llmSettingsSaveStatus')).toContainText('请勿在错误报告中粘贴你的个人 API Key');
@@ -1173,6 +1294,46 @@ test('launcher reports a server disconnect without manual refresh', async ({ pag
   expect(await page.evaluate(() => window.__serverStatusCalls)).toBeGreaterThanOrEqual(2);
 });
 
+test('restarting after a server disconnect does not reopen the editor page', async ({ page }) => {
+  await page.goto(`file://${launcherPath}`);
+  await page.waitForFunction(() => window.MAWLauncher?.config?.postprocessProviders?.length > 0);
+  await page.locator('#settingsButton').click();
+  await page.locator('#langZh').click();
+  await page.locator('#settingsClose').click();
+  await page.evaluate(() => {
+    const original = window.MAWLauncher.callBackend;
+    window.__openUrlCalls = [];
+    // openServerEditor 走内部 bridge → mockApi.open_url → window.open，直接拦截 window.open。
+    window.open = (url) => { window.__openUrlCalls.push(String(url)); return null; };
+    window.MAWLauncher.callBackend = async (method, payload) => {
+      if (method === 'get_server_status') {
+        // 服务器先在线、后断开，让监控进入 disconnected 状态。
+        return { ok: true, running: window.__serverHealthy !== false, url: 'http://127.0.0.1:8250/' };
+      }
+      return original(method, payload);
+    };
+  });
+
+  // 先让服务器上线，使监控启动并处于 connected 状态。
+  await page.locator('#openMawe').click();
+  await expect(page.locator('#openMawe')).toContainText('打开字幕编辑器', { timeout: 10_000 });
+  await page.waitForFunction(() => window.__openUrlCalls.length === 1);
+
+  // 模拟断开。
+  await page.evaluate(() => { window.__serverHealthy = false; });
+  await expect(page.locator('#status')).toContainText('字幕编辑服务器已断开', { timeout: 10_000 });
+  await expect(page.locator('#openMawe')).toContainText('启动字幕编辑器');
+
+  // 模拟重启成功：只更新提示，不再调用 open_url 打开新页面。
+  await page.evaluate(() => { window.__serverHealthy = true; });
+  await page.locator('#openMawe').click();
+  await expect(page.locator('#status')).toContainText('回到原编辑器页面', { timeout: 10_000 });
+  await expect(page.locator('#openMawe')).toContainText('打开字幕编辑器');
+  await expect(page.locator('#stopServer')).toBeVisible();
+  await page.waitForFunction(() => window.__openUrlCalls.length === 1, undefined, { timeout: 5_000 });
+  expect(await page.evaluate(() => window.__openUrlCalls[0])).toBe('http://127.0.0.1:8250/');
+});
+
 test('unknown errors stay generic and do not expose FFmpeg actions', async ({ page }) => {
   await page.goto(`file://${launcherPath}`);
   await page.waitForFunction(() => window.MAWLauncher?.config?.postprocessProviders?.length > 0);
@@ -1262,7 +1423,7 @@ test('artifact rows localize type labels while preserving MOSP-first and SRT-onl
   await expect(artifacts.nth(0)).toHaveAttribute('title', 'source.fixed.mosp\nD:\\Demo\\source.fixed.mosp');
   await expect(artifacts.nth(0)).toHaveAttribute('aria-label', /MOSP 工程.*source\.fixed\.mosp.*D:\\Demo\\source\.fixed\.mosp/);
 
-  await page.locator('#langToggle').click();
+  await page.evaluate(() => document.getElementById('langEn').click());
   await expect(artifacts.nth(0)).toHaveText('MOSP project');
   await expect(artifacts.nth(1)).toHaveText('SRT subtitles');
 
@@ -1304,7 +1465,7 @@ test('server media accepts a dropped file even when batch mode is selected', asy
 test('artifact context menu exposes exactly three actions and closes on every required path', async ({ page }) => {
   await openLauncher(page);
   await runReplacement(page);
-  await page.locator('#langToggle').click();
+  await page.evaluate(() => document.getElementById('langEn').click());
   await page.evaluate(() => {
     window.__artifactCalls = [];
     const callBackend = window.MAWLauncher.callBackend;
@@ -1362,7 +1523,7 @@ test('artifact context menu exposes exactly three actions and closes on every re
 test('artifact context menu remains inside the viewport and reports failed bridge actions', async ({ page }) => {
   await openLauncher(page);
   await runReplacement(page);
-  await page.locator('#langToggle').click();
+  await page.evaluate(() => document.getElementById('langEn').click());
   await page.evaluate(() => {
     window.MAWLauncher.callBackend = async (method) => (
       method === 'open_file' ? { ok: false, error: 'File does not exist' } : { ok: true }
@@ -1679,4 +1840,38 @@ test('toolbox resize preserves the other axis and converts pointer deltas throug
   expect(afterHeight.cssHeight - before.cssHeight).toBeCloseTo(40, 0);
   expect(afterWidth.cssWidth - afterHeight.cssWidth).toBeCloseTo(40, 0);
   expect(afterWidth.cssHeight).toBeCloseTo(afterHeight.cssHeight, 0);
+});
+
+test('AI cleanup notes persist in the automatic plan and reach the manual request', async ({ page }) => {
+  await openLauncher(page);
+  await page.evaluate(() => {
+    Object.assign(window.MAWLauncher.config.postprocessProviders.find(p => p.id === 'deepseek'),
+      { verified: true, hasApiKey: true, hasBaseUrl: true, hasModel: true });
+    window.__notesPlans = [];
+    window.__cleanupPayload = null;
+    const original = window.MAWLauncher.callBackend;
+    window.MAWLauncher.callBackend = async (method, payload) => {
+      if (method === 'save_postprocess_plan') window.__notesPlans.push(payload.plan);
+      if (method === 'run_ai_cleanup') {
+        window.__cleanupPayload = payload;
+        return { ok: false, error: 'test stopped before sending to a model' };
+      }
+      return original(method, payload);
+    };
+  });
+  await page.locator('#toolboxMatchTab').click();
+  await expect(page.locator('#postprocessAiCleanupNotesField')).toBeHidden();
+  await page.locator('#postprocessAiCleanup').check();
+  await expect(page.locator('#postprocessAiCleanupNotesField')).toBeVisible();
+  await page.locator('#postprocessAiCleanupNotes').fill('  保留所有数字\n去除试麦  ');
+  await expect.poll(() => page.evaluate(() => window.__notesPlans.at(-1)?.steps
+    .find(s => s.id === 'match')?.aiCleanupNotes)).toBe('保留所有数字\n去除试麦');
+  await page.locator('#toolboxInputPath').fill('source.mosp');
+  await page.locator('#postprocessScriptPath').fill('script.txt');
+  await page.locator('#runScriptMatch').click();
+  await expect.poll(() => page.evaluate(() => window.__cleanupPayload?.notes)).toBe('保留所有数字\n去除试麦');
+  await page.locator('#postprocessAiCleanup').uncheck();
+  await expect(page.locator('#postprocessAiCleanupNotesField')).toBeHidden();
+  await page.locator('#postprocessAiCleanup').check();
+  await expect(page.locator('#postprocessAiCleanupNotes')).toHaveValue('  保留所有数字\n去除试麦  ');
 });

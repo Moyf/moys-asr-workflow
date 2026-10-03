@@ -22,8 +22,24 @@ from pathlib import Path
 from threading import Event, Lock
 from typing import BinaryIO, Final, final
 
-from maw.app_paths import default_app_data_root, default_emoji_font_path
-from maw.ffmpeg import FfmpegTools, media_duration_seconds, resolve_ffmpeg_tools
+from send2trash import send2trash
+
+from maw.app_paths import default_emoji_font_path
+from maw.app_paths import application_directory, default_app_data_root
+from maw.asr_presets import (
+    MAX_NAME_LENGTH,
+    create_preset,
+    inspect_migration,
+    list_presets,
+    migrate_presets,
+    preset_path,
+    read_preset_document,
+    rename_preset,
+    validate_options,
+    write_preset,
+)
+from maw.ass_styles import find_ass_style, load_ass_style_library
+from maw.ffmpeg import MACOS_FFMPEG_CANDIDATE_DIRECTORIES, FfmpegTools, ffmpeg_search_path, media_duration_seconds, resolve_ffmpeg_tools
 from maw.media_cache import embed_media_caches
 from maw.gui_config import (
     DEFAULT_ENV_PATH,
@@ -52,23 +68,39 @@ from maw.gui_workflow import TranscriptionCancelledError, TranscriptionProcessEr
 from maw.launcher_batch import BatchItem, run_batch
 from maw.output_naming import format_elapsed, maw_root
 from maw.local_log import LocalLogSink, TeeWriter, default_log_directory, install_stdio_tee, redact_sensitive_text
+from maw.local_debug import local_debug_manifest_path
+from maw.alignment_models import ALIGNMENT_MODELS, alignment_model_by_id, alignment_models_payload, inspect_alignment_model, normalize_alignment_model_id
 from maw.local_runtime import (
     LocalRuntimeCancelled,
     LocalRuntimeError,
     LocalRuntimeStatus,
     install_local_runtime,
+    local_runtime_inventory,
     managed_runtime_status,
+    prepare_alignment_model_in_process,
+    prepare_alignment_model_in_runtime,
     recover_local_runtime_install,
     resolve_model_cache_root,
+    run_timestamp_alignment_in_runtime,
 )
-from maw.local_models import inspect_local_model, local_model_payload, prepare_local_model as prepare_model
+from maw.local_models import (
+    firered_components_ready,
+    inspect_local_model,
+    local_model_payload,
+    prepare_local_model as prepare_model,
+)
 from maw.media import resolve_default_audio_track, resolve_project_media
 from maw.notify import send_system_notification
 from maw.postprocess import FixedProcessRequest, LlmPostprocessRequest, OutputMode, PostprocessStepError, Replacement, run_fixed_process as process_fixed_process, run_llm_postprocess as process_llm_postprocess
 from maw.postprocess_io import PostprocessFileError, read_project, read_srt
 from maw.project_io import write_mosp
 from maw.project import ProjectValidationFailed, normalize_project
+from maw.postprocess_ai_cleanup import AiCleanupError, AiCleanupRequest, llm_complete, run_ai_cleanup as process_ai_cleanup
 from maw.postprocess_ffmpeg import (
+    AUDIO_BITRATES,
+    MAX_BURN_CRF,
+    MIN_BURN_CRF,
+    X264_PRESETS,
     BurnSubtitleRequest,
     ExtractAudioRequest,
     MediaToolCancelled,
@@ -96,6 +128,11 @@ from maw.postprocess_pipeline import (
     validate_plan,
 )
 from maw.postprocess_pipeline import PostprocessPipelineError
+from maw.timestamp_alignment import (
+    TimestampAlignmentError,
+    TimestampAlignmentRequest,
+    run_timestamp_alignment as process_timestamp_alignment,
+)
 from maw.script_alignment import normalize_gap_remove_settings
 from maw.text_conversion import TextConversionUnavailable, normalize_text_conversion_mode
 from maw.ocr_runtime import OCR_MODEL_ID, OCR_MODEL_IDS, OCR_MODEL_LABELS, OCR_MODEL_TYPES, OcrRuntimeCancelled, OcrRuntimeError, install_ocr_runtime, managed_ocr_runtime_status, ocr_model_type, ocr_models_payload, recover_ocr_runtime_install, run_ocr_in_runtime
@@ -124,7 +161,7 @@ EDITOR_HEALTH_PROBE_PATH: Final = "/api/startup-status"
 # 短暂超过默认 0.25s，但仍远小于 SERVER_START_TIMEOUT 的总预算。
 EDITOR_HEALTH_PROBE_TIMEOUT: Final = 2.0
 # Keep this aligned with pyproject.toml; release workflows synchronize and verify it.
-BUNDLED_APP_VERSION = "1.6.0-beta.4"
+BUNDLED_APP_VERSION = "1.8.0-beta.1"
 # MOSE ships inside the same suite as MAW, so its registry marker must follow
 # the public project version rather than retaining the prototype 0.1.x value.
 MOSE_VERSION = BUNDLED_APP_VERSION
@@ -148,6 +185,12 @@ ERROR_MESSAGES: Final[dict[str, str]] = {
     "model_cache_path_invalid": "模型缓存目录不能是一个文件。",
     "local_prepare_running": "本地模型正在准备中。",
     "local_prepare_failed": "本地模型准备失败。",
+    "alignment_model_missing": "对齐模型尚未安装，请先下载对齐模型。",
+    "alignment_model_incomplete": "对齐模型不完整，请重新下载或选择正确目录。",
+    "alignment_model_path_invalid": "对齐模型目录不存在，或所选路径不是有效目录。",
+    "alignment_prepare_running": "对齐模型正在准备中。",
+    "alignment_prepare_failed": "对齐模型准备失败。",
+    "alignment_failed": "字词时间码生成失败。",
     "ocr_runtime_missing": "OCR 支持尚未安装，请打开设置下载安装。",
     "ocr_runtime_install_failed": "OCR 运行环境安装失败。",
     "ocr_runtime_cancelled": "OCR 运行环境安装已取消。",
@@ -178,6 +221,7 @@ ERROR_MESSAGES: Final[dict[str, str]] = {
     "server_stop_failed": "Unable to stop the MAW editor server.",
     "sticker_dir_invalid": "Sticker directory does not exist.",
     "config_save_failed": "Local configuration could not be saved.",
+    "burn_settings_invalid": "压制参数无效：CRF 需为 0–51 整数，预设与音频码率需从列表中选择。",
     "custom_prompt_required": "A custom prompt is required.",
     "postprocess_config_invalid": "自动后处理配置不完整。",
     "postprocess_failed": "转写已完成，但自动后处理失败。",
@@ -575,6 +619,48 @@ class LauncherPaths:
     data_root: Path | None = None
 
 
+ASR_PRESET_ROOT_ENV = "MAW_ASR_PRESET_ROOT"
+LEGACY_ASR_PRESET_DIRECTORY_ENV = "MAW_ASR_PRESET_DIRECTORY"
+
+
+def _default_asr_preset_directory() -> Path:
+    return default_app_data_root() / "asr-presets"
+
+
+def _asr_preset_directory(env_path: Path) -> tuple[Path, bool]:
+    values = load_env(env_path)
+    configured = os.environ.get(ASR_PRESET_ROOT_ENV, "").strip() or values.get(ASR_PRESET_ROOT_ENV, "").strip()
+    if configured:
+        return Path(configured).expanduser().resolve(strict=False), True
+    if ASR_PRESET_ROOT_ENV in values or ASR_PRESET_ROOT_ENV in os.environ:
+        return _default_asr_preset_directory().resolve(strict=False), True
+    return _default_asr_preset_directory().resolve(strict=False), False
+
+
+def _legacy_asr_preset_directory(env_path: Path) -> Path | None:
+    values = load_env(env_path)
+    for value in (
+        os.environ.get(LEGACY_ASR_PRESET_DIRECTORY_ENV, "") or values.get(LEGACY_ASR_PRESET_DIRECTORY_ENV, ""),
+        str(application_directory() / "asr-presets"),
+    ):
+        if not value.strip():
+            continue
+        candidate = Path(value).expanduser()
+        if candidate.is_dir():
+            return candidate.resolve()
+    return None
+
+
+def _writable_existing_directory(value: object) -> Path:
+    text = str(value or "").strip()
+    path = Path(text).expanduser().resolve(strict=True) if text else _default_asr_preset_directory().resolve(strict=False)
+    if not path.is_dir():
+        raise ValueError("Preset folder is not a directory")
+    with tempfile.TemporaryFile(dir=path):
+        pass
+    return path
+
+
 def default_paths() -> LauncherPaths:
     # 冻结（PyInstaller / AppImage）时资源在 sys._MEIPASS（如 dist/MAW/_internal），
     # 源码运行时在仓库根；与 maw.gui_platform.asset_path 的取法保持一致。
@@ -700,6 +786,8 @@ class LauncherApi:
         self.batch_cancel_event: Event | None = None
         self.local_prepare_cancel_event: Event | None = None
         self.local_prepare_worker: threading.Thread | None = None
+        self.alignment_prepare_cancel_event: Event | None = None
+        self.alignment_prepare_worker: threading.Thread | None = None
         self.local_runtime_cancel_event: Event | None = None
         self.local_runtime_worker: threading.Thread | None = None
         self.local_runtime_worker_engine = ""
@@ -722,6 +810,7 @@ class LauncherApi:
         self.postprocess_retry_context: dict[str, object] | None = None
         self.postprocess_workspace_directory: Path | None = None
         self.postprocess_translation_srt_path: Path | None = None
+        self.postprocess_media_path: Path | None = None
         self._last_postprocess_progress_at = 0.0
         update_root = self.paths.data_root or (self.paths.root / ".maw-data")
         self.updater = UpdateClient(data_root=update_root, current_version=_app_version(self.paths))
@@ -734,6 +823,7 @@ class LauncherApi:
         self.update_lock = threading.Lock()
         self._toolbox_busy_count = 0
         self._toolbox_busy_lock = threading.Lock()
+        self._last_media_tool_log_at = 0.0
         self.pump = EventPump(window_getter=self.window_getter)
         _sync_local_runtime_root(self.paths.env_path)
 
@@ -820,6 +910,7 @@ class LauncherApi:
         )
         selected_api_key = api_key_for_provider(provider.id, self.paths.env_path)
         stored_env = load_env(self.paths.env_path)
+        asr_preset_root, asr_preset_root_configured = _asr_preset_directory(self.paths.env_path)
         ocr_runtime_root = effective_config_value(self.paths.env_path, "MAW_OCR_RUNTIME_ROOT")
         # Do not inspect managed runtimes or model caches on the critical
         # get_config request.  A large Hugging Face/ModelScope cache can make
@@ -858,7 +949,30 @@ class LauncherApi:
             }
             for model_id in OCR_MODEL_IDS
         ]
+        alignment_models = [
+            {
+                "id": model.id,
+                "modelId": model.id,
+                "engine": model.engine,
+                "modelRef": model.model_ref,
+                "label": model.label,
+                "note": model.note,
+                "estimatedSize": model.estimated_size,
+                "deviceSupport": model.device_support,
+                "resourceLevel": model.resource_level,
+                "supportsWordTimestamps": model.supports_word_timestamps,
+                "languages": list(model.languages),
+                "status": "checking",
+                "runtimeAvailable": False,
+                "installed": False,
+                "path": "",
+                "detail": "",
+                "installedSize": "",
+            }
+            for model in ALIGNMENT_MODELS
+        ]
         return {
+            "platform": sys.platform,
             "providerId": provider.id,
             "modelId": selected_model.id,
             "apiKey": selected_api_key,
@@ -870,6 +984,8 @@ class LauncherApi:
             "language": config.language,
             "guiLang": config.gui_lang,
             "appVersion": _app_version(self.paths),
+            "asrPresetRoot": str(asr_preset_root),
+            "asrPresetRootConfigured": asr_preset_root_configured,
             "stickerDir": config.sticker_dir,
             "showRareLangs": config.show_rare_langs,
             "outputSubfolder": config.output_subfolder,
@@ -883,7 +999,9 @@ class LauncherApi:
             "ocrRuntime": ocr_runtime,
             "ocrModels": ocr_models,
             "ocrModelId": OCR_MODEL_ID,
+            "alignmentModels": alignment_models,
             "modelCacheRoot": config.model_cache_root,
+            "localModelPaths": _local_model_paths_config(self.paths.env_path),
             "models": [
                 _model_payload(
                     item,
@@ -1127,6 +1245,19 @@ class LauncherApi:
 
     def save_prefs(self, payload: Mapping[str, object]) -> dict[str, object]:
         updates: dict[str, str] = {}
+        if "localModelPaths" in payload:
+            paths = payload["localModelPaths"]
+            valid_ids = {model.id for model in provider_by_id("local").models}
+            if not isinstance(paths, dict) or any(
+                model_id not in valid_ids or not isinstance(path, str) or "\x00" in path or "\n" in path or "\r" in path
+                for model_id, path in paths.items()
+            ):
+                return _error_result("localModelPath", "config_save_failed", "Invalid local model paths")
+            updates["MAW_GUI_LOCAL_MODEL_PATHS"] = json.dumps(
+                {model_id: path.strip() for model_id, path in paths.items() if path.strip()},
+                ensure_ascii=False,
+                separators=(",", ":"),
+            )
         if "guiLang" in payload:
             updates["MAW_GUI_LANG"] = _gui_lang(payload)
         if "modelId" in payload:
@@ -1355,6 +1486,77 @@ class LauncherApi:
             return {"ok": False, "field": "postprocessInput", "code": "postprocess_failed", "detail": str(error), "error": str(error)}
         return _subtitle_artifact_result(result)
 
+    def run_timestamp_alignment(self, payload: Mapping[str, object]) -> dict[str, object]:
+        model_id = normalize_alignment_model_id(str(payload.get("modelId") or ""))
+        try:
+            model = alignment_model_by_id(model_id)
+        except ValueError as error:
+            return _error_result("alignmentModel", "alignment_model_missing", str(error))
+        project_path = _optional_path(payload.get("projectPath"))
+        srt_path = _optional_path(payload.get("srtPath"))
+        media_path = _optional_path(payload.get("mediaPath"))
+        model_cache_root = effective_config(self.paths.env_path).model_cache_root
+        runtime = self._local_runtime_status(model_cache_root)
+        status = inspect_alignment_model(
+            model.id,
+            str(payload.get("modelPath") or "").strip(),
+            model_cache_root=model_cache_root,
+            runtime_available=True if runtime.ready else None,
+            runtime_source="managed" if runtime.ready else "current",
+            runtime_python=runtime.python_path if runtime.ready else "",
+        )
+        if status.status == "path_invalid":
+            return _error_result("alignmentModelPath", "alignment_model_path_invalid", status.detail)
+        if not status.installed:
+            code = "local_runtime_missing" if not status.runtime_available else "alignment_model_missing"
+            return _error_result("alignmentModel", code, status.detail)
+        self._emit_postprocess_status("toolbox_status_reading")
+        try:
+            self._emit_postprocess_status("toolbox_status_aligning")
+            alignment_mode = str(payload.get("alignmentMode") or "fill")
+            # 字词时间码只存在于工程 items；SRT 没有字词字段，产出内容与
+            # 输入完全相同。时间码工具固定只更新工程，忽略共享输出选择。
+            output_mode = OutputMode.JSON.value
+            requested_model_path = _optional_path(payload.get("modelPath"))
+            if runtime.ready:
+                worker_result = run_timestamp_alignment_in_runtime(
+                    project_path=project_path,
+                    srt_path=srt_path,
+                    media_path=media_path,
+                    model_id=model.id,
+                    output_mode=output_mode,
+                    alignment_mode=alignment_mode,
+                    model_path=requested_model_path,
+                    output_directory=_optional_path(payload.get("outputDirectory")),
+                    device=str(payload.get("device") or "auto"),
+                    model_cache_root=model_cache_root,
+                    on_event=lambda line: self._emit({"type": "log", "message": line}),
+                )
+                artifact_result = worker_result.get("artifact")
+                report_result = worker_result.get("report")
+                if not isinstance(artifact_result, Mapping) or not isinstance(report_result, Mapping):
+                    raise LocalRuntimeError("本地字词时间码命令返回了无效结果。")
+                self._emit_postprocess_status("toolbox_status_writing")
+                return {"ok": True, **dict(artifact_result), "report": dict(report_result)}
+            artifact, report = process_timestamp_alignment(
+                TimestampAlignmentRequest(
+                    project_path=project_path,
+                    srt_path=srt_path,
+                    media_path=media_path,
+                    model_id=model.id,
+                    output_mode=output_mode,
+                    mode=alignment_mode,
+                    model_path=requested_model_path,
+                    model_cache_root=Path(model_cache_root) if model_cache_root else None,
+                    device=str(payload.get("device") or "auto"),
+                    output_directory=_optional_path(payload.get("outputDirectory")),
+                )
+            )
+            self._emit_postprocess_status("toolbox_status_writing")
+        except (OSError, UnicodeError, ValueError, RuntimeError, TimestampAlignmentError) as error:
+            return _error_result("postprocessInput", "alignment_failed", str(error))
+        return {**_subtitle_artifact_result(artifact), "report": report.to_payload()}
+
     def run_fixed_replacement(self, payload: Mapping[str, object]) -> dict[str, object]:
         """Compatibility bridge for callers using the old toolbox method name."""
 
@@ -1398,6 +1600,64 @@ class LauncherApi:
             return _error_result("postprocessScriptPath", "subtitle_invalid", str(error))
         except SubtitleMatchError as error:
             return _error_result("postprocessScriptPath", "subtitle_invalid", str(error))
+        except (OSError, UnicodeError, ValueError) as error:
+            return {"ok": False, "field": "postprocessScriptPath", "code": "postprocess_failed", "detail": str(error), "error": str(error)}
+        return _subtitle_artifact_result(result)
+
+    @_toolbox_operation
+    def run_ai_cleanup(self, payload: Mapping[str, object]) -> dict[str, object]:
+        """Recording-first AI spoken-word cleanup behind the toolbox toggle."""
+
+        script_path = _optional_path(payload.get("scriptPath"))
+        if script_path is None:
+            return _error_result("postprocessScriptPath", "script_invalid", "A script file is required.")
+        project_path = _optional_path(payload.get("projectPath"))
+        srt_path = _optional_path(payload.get("srtPath"))
+        preset = preset_by_id(str(payload.get("providerId") or "deepseek"))
+        file_values = _postprocess_values(self.paths.env_path, preset.env_prefix)
+        try:
+            reasoning_mode = _postprocess_reasoning_mode(payload, file_values)
+        except ValueError as error:
+            return _error_result("postprocessReasoningMode", "invalid_reasoning_mode", str(error))
+        settings = LlmSettings(
+            provider_id=preset.id,
+            api_key=str(payload.get("apiKey") or "").strip() or file_values["apiKey"],
+            base_url=str(payload.get("baseUrl") or "").strip() or file_values["baseUrl"] or preset.base_url,
+            model=str(payload.get("model") or "").strip() or file_values["model"] or preset.model,
+            reasoning_mode=reasoning_mode,
+        )
+        if not settings.api_key:
+            return _error_result("postprocessApiKey", "api_key_missing", "Post-processing API key is required.")
+        if not settings.base_url or not settings.model:
+            return {"ok": False, "field": "postprocessProvider", "code": "postprocess_failed", "detail": "LLM API URL and model are required.", "error": "LLM API URL and model are required."}
+        self._emit_postprocess_status("toolbox_status_reading")
+        try:
+            self._emit_postprocess_status("toolbox_status_ai_cleanup")
+            result = process_ai_cleanup(
+                AiCleanupRequest(
+                    project_path=project_path,
+                    srt_path=srt_path,
+                    script_path=script_path,
+                    output_mode=_output_mode(payload.get("outputMode")),
+                    media_path=_optional_path(payload.get("mediaPath")),
+                    clean_markdown_symbols=payload.get("cleanMarkdownSymbols", True) is not False,
+                    notes=str(payload.get("notes") or "").strip(),
+                ),
+                complete=llm_complete(settings),
+            )
+            self._emit_postprocess_status("toolbox_status_writing")
+        except PostprocessFileError as error:
+            code = _script_match_input_error_code(
+                error,
+                script_path=script_path,
+                project_path=project_path,
+                srt_path=srt_path,
+            )
+            return _error_result("postprocessScriptPath", code, str(error))
+        except ProjectValidationFailed as error:
+            return _error_result("postprocessScriptPath", "subtitle_invalid", str(error))
+        except (AiCleanupError, LlmClientError) as error:
+            return _llm_error_result("postprocessScriptPath", "postprocess_failed", error)
         except (OSError, UnicodeError, ValueError) as error:
             return {"ok": False, "field": "postprocessScriptPath", "code": "postprocess_failed", "detail": str(error), "error": str(error)}
         return _subtitle_artifact_result(result)
@@ -1572,10 +1832,20 @@ class LauncherApi:
             return _error_result("toolboxBurnSubtitlePath", "media_tool_busy", "Another media operation is already running.")
         self._emit_postprocess_status("toolbox_status_burning")
         try:
+            style_library = load_ass_style_library()
+            assignments = style_library.get("assignments")
+            style_id = assignments.get("srtBurnStyleId") if isinstance(assignments, Mapping) else "default"
+            srt_style = find_ass_style(style_library, style_id)
             result = process_burn_subtitles(
                 BurnSubtitleRequest(
-                    media_path=Path(str(payload.get("mediaPath") or "")),
+                    media_path=Path(str(payload.get("mediaPath"))) if payload.get("mediaPath") else None,
                     subtitle_path=Path(str(payload.get("subtitlePath") or "")),
+                    green_screen=payload.get("greenScreen") is True,
+                    srt_style=srt_style,
+                    video_encoder=str(payload.get("videoEncoder") or "auto"),
+                    crf=_burn_crf_override(payload.get("crf")),
+                    preset=str(payload.get("preset") or "").strip() or None,
+                    audio_bitrate=str(payload.get("audioBitrate") or "").strip() or None,
                 ),
                 ffmpeg_path=tools.ffmpeg,
                 cancel_event=cancel_event,
@@ -1590,10 +1860,53 @@ class LauncherApi:
             self._finish_media_tool(cancel_event)
         return {
             "ok": True,
-            "sourceMediaPath": str(result.source_media_path),
+            "sourceMediaPath": str(result.source_media_path) if result.source_media_path else "",
             "subtitlePath": str(result.subtitle_path),
             "mediaPath": str(result.media_path),
+            "videoEncoder": str(getattr(result, "video_encoder", "auto") or "auto"),
+            "srtStyleName": str(srt_style.get("name") or "SRT 默认"),
         }
+
+    def get_burn_subtitle_settings(self, _payload: Mapping[str, object] | None = None) -> dict[str, object]:
+        """Return the saved toolbox burn-subtitle encoding defaults."""
+
+        return {
+            "ok": True,
+            "crf": effective_config_value(self.paths.env_path, "MAW_GUI_BURN_CRF").strip(),
+            "preset": effective_config_value(self.paths.env_path, "MAW_GUI_BURN_PRESET").strip(),
+            "audioBitrate": effective_config_value(self.paths.env_path, "MAW_GUI_BURN_AUDIO_BITRATE").strip(),
+        }
+
+    def save_burn_subtitle_settings(self, payload: Mapping[str, object]) -> dict[str, object]:
+        """Persist the toolbox burn-subtitle encoding defaults to user-level config."""
+
+        crf_text = str(payload.get("crf") or "").strip()
+        preset = str(payload.get("preset") or "").strip()
+        audio_bitrate = str(payload.get("audioBitrate") or "").strip()
+        try:
+            crf = int(crf_text)
+        except ValueError:
+            crf = MIN_BURN_CRF - 1
+        if not MIN_BURN_CRF <= crf <= MAX_BURN_CRF:
+            return _error_result("toolboxBurnCrf", "burn_settings_invalid", f"invalid CRF value: {crf_text}")
+        if preset and preset not in X264_PRESETS:
+            return _error_result("toolboxBurnPreset", "burn_settings_invalid", f"unsupported x264 preset: {preset}")
+        if audio_bitrate and audio_bitrate not in AUDIO_BITRATES:
+            return _error_result("toolboxBurnAudioBitrate", "burn_settings_invalid", f"unsupported audio bitrate: {audio_bitrate}")
+        try:
+            save_env(self.paths.env_path, {
+                "MAW_GUI_BURN_CRF": crf_text,
+                "MAW_GUI_BURN_PRESET": preset,
+                "MAW_GUI_BURN_AUDIO_BITRATE": audio_bitrate,
+            })
+        except (OSError, UnicodeError, ValueError) as error:
+            return _error_result("", "config_save_failed", f"{self.paths.env_path}: {error}")
+        return {"ok": True, "message": "burn subtitle settings saved"}
+
+    def get_ass_style_library(self, _payload: Mapping[str, object] | None = None) -> dict[str, object]:
+        """Expose the shared style library to Launcher UI integrations."""
+
+        return {"ok": True, **load_ass_style_library()}
 
     def run_extract_audio(self, payload: Mapping[str, object]) -> dict[str, object]:
         tools = _postprocess_ffmpeg_tools(self.paths.env_path)
@@ -1640,7 +1953,15 @@ class LauncherApi:
         if cancel_event is not None:
             cancel_event.set()
         if process is not None and process.poll() is None:
-            terminate_process_tree(process)
+            # Do not make the pywebview API call wait for taskkill/process.wait.
+            # The worker also observes the event, while this daemon thread
+            # interrupts a potentially blocked stdout.readline().
+            threading.Thread(
+                target=self._terminate_media_tool_process,
+                args=(process,),
+                name="maw-media-tool-cancel",
+                daemon=True,
+            ).start()
         return {"ok": True, "cancelling": active}
 
     def _begin_media_tool(self) -> Event | None:
@@ -1650,12 +1971,30 @@ class LauncherApi:
             cancel_event = Event()
             self.media_tool_cancel_event = cancel_event
             self.media_tool_process = None
+            self._last_media_tool_log_at = 0.0
             return cancel_event
 
     def _set_media_tool_process(self, process: subprocess.Popen[str]) -> None:
+        cancel_requested = False
         with self._media_tool_lock:
-            if self.media_tool_cancel_event is not None:
+            cancel_event = self.media_tool_cancel_event
+            if cancel_event is not None:
                 self.media_tool_process = process
+                cancel_requested = cancel_event.is_set()
+        if cancel_requested:
+            # Cancellation can arrive between Popen() and this callback. In
+            # that window cancel_media_tool has no process to terminate.
+            self._terminate_media_tool_process(process)
+
+    @staticmethod
+    def _terminate_media_tool_process(process: subprocess.Popen[str]) -> None:
+        if process.poll() is None:
+            try:
+                terminate_process_tree(process)
+            except (OSError, subprocess.TimeoutExpired):
+                # The worker will still observe the cancellation event and
+                # convert the operation into the normal cancelled result.
+                pass
 
     def _finish_media_tool(self, cancel_event: Event) -> None:
         with self._media_tool_lock:
@@ -1668,6 +2007,182 @@ class LauncherApi:
         if now - self._last_postprocess_progress_at >= 0.8:
             self._last_postprocess_progress_at = now
             self._emit_postprocess_status(key)
+        self._emit_media_tool_log(_details)
+
+    def _emit_media_tool_log(self, details: Mapping[str, object]) -> None:
+        now = time.monotonic()
+        if now - self._last_media_tool_log_at < 0.8 and str(details.get("progress") or "") != "end":
+            return
+        self._last_media_tool_log_at = now
+        message = _format_media_tool_progress(details)
+        if message:
+            self._emit({"type": "media_tool_log", "message": message})
+
+    def _active_asr_preset_root(self, *, create_default: bool = False) -> Path:
+        root, configured = _asr_preset_directory(self.paths.env_path)
+        if not configured and create_default:
+            root.mkdir(parents=True, exist_ok=True)
+        if not root.is_dir():
+            raise ValueError(f"Preset folder does not exist: {root}")
+        return root.resolve(strict=True)
+
+    def _asr_preset_migration_source(self) -> Path | None:
+        root, configured = _asr_preset_directory(self.paths.env_path)
+        if configured:
+            return root if root.is_dir() else None
+        legacy = _legacy_asr_preset_directory(self.paths.env_path)
+        if legacy is not None:
+            return legacy
+        return root if root.is_dir() else None
+
+    def asr_preset_library(self, _payload: Mapping[str, object] | None = None) -> dict[str, object]:
+        try:
+            root = self._active_asr_preset_root(create_default=True)
+            return {"ok": True, "root": str(root), "items": list_presets(root)}
+        except (OSError, UnicodeError, ValueError) as error:
+            return {"ok": False, "detail": str(error)}
+
+    def asr_preset_migration_preview(self, payload: Mapping[str, object]) -> dict[str, object]:
+        try:
+            path_text = str(payload.get("path") or "").strip()
+            if path_text:
+                target = _writable_existing_directory(path_text)
+            else:
+                target = _default_asr_preset_directory().resolve(strict=False)
+                target.mkdir(parents=True, exist_ok=True)
+                target = _writable_existing_directory(target)
+            source = self._asr_preset_migration_source()
+            if source is None:
+                return {"ok": True, "root": str(target), "source": "", "files": [], "conflicts": []}
+            plan = inspect_migration(source, target)
+            return {"ok": True, "root": str(target), **plan}
+        except (OSError, UnicodeError, ValueError) as error:
+            return {"ok": False, "detail": str(error)}
+
+    def set_asr_preset_root(self, payload: Mapping[str, object]) -> dict[str, object]:
+        path_text = str(payload.get("path") or "").strip()
+        reset_default = not path_text
+        copied: list[str] = []
+        unmigrated: list[str] = []
+        source: Path | None = None
+        target: Path | None = None
+        try:
+            if reset_default:
+                target = _default_asr_preset_directory().resolve(strict=False)
+                target.mkdir(parents=True, exist_ok=True)
+                target = _writable_existing_directory(target)
+            else:
+                target = _writable_existing_directory(path_text)
+            source = self._asr_preset_migration_source()
+            if payload.get("migrate") is True and source is not None:
+                plan = inspect_migration(source, target)
+                if plan["conflicts"]:
+                    raise FileExistsError("Preset name conflicts: " + ", ".join(plan["conflicts"]))
+                result = migrate_presets(source, target, recycle_sources=False)
+                copied = list(result["migrated"])
+                unmigrated = list(result["sourceRemaining"])
+            try:
+                save_env(self.paths.env_path, {ASR_PRESET_ROOT_ENV: "" if reset_default else str(target)})
+            except (OSError, UnicodeError, ValueError):
+                for name in copied:
+                    try:
+                        send2trash(str(target / name))
+                    except OSError:
+                        pass
+                raise
+            source_remaining: list[str] = list(unmigrated)
+            if payload.get("migrate") is True and source is not None and target != source:
+                for name in copied:
+                    try:
+                        send2trash(str(source / name))
+                    except OSError:
+                        source_remaining.append(name)
+            return {
+                "ok": True,
+                "root": str(target),
+                "configured": True,
+                "migrated": copied,
+                "sourceRemaining": source_remaining,
+            }
+        except (OSError, UnicodeError, ValueError) as error:
+            return {"ok": False, "detail": str(error)}
+
+    def open_asr_preset_folder(self, _payload: Mapping[str, object] | None = None) -> dict[str, object]:
+        try:
+            root, configured = _asr_preset_directory(self.paths.env_path)
+            if not configured:
+                root.mkdir(parents=True, exist_ok=True)
+            if not root.is_dir():
+                raise ValueError(f"Preset folder does not exist: {root}")
+            return _open_existing_path(root.resolve(strict=True))
+        except (OSError, ValueError) as error:
+            return {"ok": False, "error": str(error)}
+
+    def open_asr_preset_file(self, payload: Mapping[str, object]) -> dict[str, object]:
+        try:
+            root = self._active_asr_preset_root()
+            return _open_existing_path(preset_path(root, payload.get("name")))
+        except (OSError, UnicodeError, ValueError) as error:
+            return {"ok": False, "error": str(error)}
+
+    def recognition_presets(self, payload: Mapping[str, object]) -> dict[str, object]:
+        try:
+            root = self._active_asr_preset_root(create_default=True)
+            action = str(payload.get("action") or "")
+            name = payload.get("name")
+            if action == "create":
+                safe_name = create_preset(root, name, payload.get("options"), payload.get("description", ""))
+                return {"ok": True, "name": safe_name}
+            if action == "preview":
+                path = preset_path(root, name)
+                document = read_preset_document(path)
+                return {"ok": True, "name": path.stem, "options": document["options"]}
+            if action == "load":
+                path = preset_path(root, name)
+                document = read_preset_document(path)
+                options = document["options"]
+                hotwords = str(options.get("qwenAudioHotwordsFile", "")) if options.get("qwenAudioHotwordsMode") == "file" else ""
+                return {
+                    "ok": True,
+                    "name": path.stem,
+                    "description": document["description"],
+                    "options": options,
+                    "missingHotwords": bool(hotwords and not Path(hotwords).is_file()),
+                }
+            if action in {"save_info", "update", "copy", "delete"}:
+                path = preset_path(root, name)
+                if action == "delete":
+                    send2trash(str(path))
+                    return {"ok": True, "name": path.stem}
+                document = read_preset_document(path)
+                if action == "save_info":
+                    safe_name = rename_preset(root, name, payload.get("newName"), payload.get("description", ""))
+                    return {"ok": True, "name": safe_name}
+                if action == "update":
+                    options = validate_options(payload.get("options"))
+                    write_preset(path, options, document["description"])
+                    return {"ok": True, "name": path.stem}
+                if action == "copy":
+                    requested_name = payload.get("newName")
+                    if requested_name:
+                        safe_name = create_preset(root, requested_name, document["options"], document["description"])
+                    else:
+                        suffix = str(payload.get("suffix") or "copy")
+                        if suffix not in {"copy", "副本"}:
+                            suffix = "copy"
+                        base = f"{path.stem[:MAX_NAME_LENGTH - len(suffix) - 1].rstrip()} {suffix}"
+                        safe_name = ""
+                        counter = 1
+                        while not safe_name:
+                            candidate = base if counter == 1 else f"{base[:MAX_NAME_LENGTH - len(f' ({counter})')].rstrip()} ({counter})"
+                            if not any(item.name.casefold() == f"{candidate}.json".casefold() for item in root.iterdir()):
+                                safe_name = create_preset(root, candidate, document["options"], document["description"])
+                            else:
+                                counter += 1
+                    return {"ok": True, "name": safe_name}
+            raise ValueError("Invalid preset action")
+        except (OSError, UnicodeError, ValueError) as error:
+            return {"ok": False, "detail": str(error)}
 
     def choose_file(self, payload: Mapping[str, object]) -> dict[str, object]:
         kind = str(payload.get("kind") or "media")
@@ -1737,7 +2252,7 @@ class LauncherApi:
             return {"ok": False, "preview": "", "errorCode": "missing_source"}
         try:
             try:
-                project = read_project(project_path) if project_path is not None else read_srt(srt_path)
+                project = read_project(project_path) if project_path is not None else read_srt(srt_path, strict=True)
             except (PostprocessFileError, ProjectValidationFailed) as error:
                 return {"ok": False, "preview": "", "errorCode": "subtitle_invalid", "code": "subtitle_invalid", "detail": str(error)}
             try:
@@ -2291,6 +2806,7 @@ class LauncherApi:
         self.cancel_event = Event()
         self.postprocess_workspace_directory = None
         self.postprocess_translation_srt_path = None
+        self.postprocess_media_path = None
         self._last_postprocess_progress_at = 0.0
         self.pump.start()
         self.worker = threading.Thread(target=self._worker_main, args=(request, self.cancel_event), daemon=True)
@@ -2299,7 +2815,21 @@ class LauncherApi:
             "ok": True,
             "outputPath": str(request.srt_path),
             "outputRenamed": output_renamed,
-            "rawPath": str(raw_response_path(request.srt_path)) if request.debug_raw and request.provider != "local" else "",
+            "rawPath": (
+                str(
+                    local_debug_manifest_path(
+                        request.srt_path,
+                        media_path=request.media_path,
+                        explicit_output=True,
+                    )
+                )
+                if request.debug_raw and request.provider == "local"
+                else (
+                    str(raw_response_path(request.srt_path, request.media_path))
+                    if request.debug_raw
+                    else ""
+                )
+            ),
         }
 
     def start_batch_transcription(self, payload: Mapping[str, object]) -> dict[str, object]:
@@ -2506,6 +3036,15 @@ class LauncherApi:
         model_cache_root = effective_config(self.paths.env_path).model_cache_root
         selected_id = str((payload or {}).get("modelId") or "")
         selected_path = str((payload or {}).get("modelPath") or "").strip()
+        saved_paths = _local_model_paths_config(self.paths.env_path)
+        requested_paths = (payload or {}).get("modelPaths")
+        if isinstance(requested_paths, dict):
+            valid_ids = {model.id for model in provider.models}
+            saved_paths.update({
+                model_id: path.strip()
+                for model_id, path in requested_paths.items()
+                if model_id in valid_ids and isinstance(path, str)
+            })
         visible_models = tuple(item for item in provider.models if not item.hidden)
         selected_model = next((item for item in visible_models if item.id == selected_id), visible_models[0])
         runtime_by_engine: dict[str, LocalRuntimeStatus] = {}
@@ -2518,7 +3057,7 @@ class LauncherApi:
             "models": [
                 _model_payload(
                     model,
-                    model_path=selected_path if model.id == selected_id else "",
+                    model_path=selected_path if model.id == selected_id else saved_paths.get(model.id, ""),
                     model_cache_root=model_cache_root,
                     runtime_status=runtime_by_engine[model.engine],
                 )
@@ -2526,12 +3065,94 @@ class LauncherApi:
             ],
         }
 
+    def get_alignment_models(self, _payload: Mapping[str, object] | None = None) -> dict[str, object]:
+        model_cache_root = effective_config(self.paths.env_path).model_cache_root
+        runtime = self._local_runtime_status(model_cache_root)
+        # When the host process does not contain optional packages, the managed
+        # runtime is still a valid preparation/inference source.
+        use_managed = bool(runtime.ready)
+        return {
+            "ok": True,
+            "runtime": runtime.to_payload(),
+            "modelCacheRoot": model_cache_root,
+            "models": alignment_models_payload(
+                model_cache_root,
+                runtime_available=True if use_managed else None,
+                runtime_source="managed" if use_managed else "current",
+                runtime_python=runtime.python_path if use_managed else "",
+            ),
+        }
+
+    def cancel_alignment_model(self, _payload: Mapping[str, object] | None = None) -> dict[str, object]:
+        event = self.alignment_prepare_cancel_event
+        worker = self.alignment_prepare_worker
+        active = bool(event and worker and worker.is_alive())
+        if active:
+            event.set()
+        return {"ok": True, "cancelling": active}
+
+    def prepare_alignment_model(self, payload: Mapping[str, object]) -> dict[str, object]:
+        if self.worker and self.worker.is_alive():
+            return {"ok": False, "error": "Transcription is already running."}
+        if self.local_prepare_worker and self.local_prepare_worker.is_alive():
+            return _error_result("alignmentModel", "alignment_prepare_running")
+        if self.alignment_prepare_worker and self.alignment_prepare_worker.is_alive():
+            return _error_result("alignmentModel", "alignment_prepare_running")
+        requested = str(payload.get("modelId") or "").strip()
+        try:
+            model_id = normalize_alignment_model_id(requested)
+            model = alignment_model_by_id(model_id)
+        except ValueError as error:
+            return _error_result("alignmentModel", "alignment_model_missing", str(error))
+        model_cache_root = effective_config(self.paths.env_path).model_cache_root
+        runtime = self._local_runtime_status(model_cache_root)
+        status = inspect_alignment_model(
+            model.id,
+            str(payload.get("modelPath") or "").strip(),
+            model_cache_root=model_cache_root,
+            runtime_available=True if runtime.ready else None,
+            runtime_source="managed" if runtime.ready else "current",
+            runtime_python=runtime.python_path if runtime.ready else "",
+        )
+        if status.status == "installed":
+            return {"ok": True, "alreadyInstalled": True, "modelId": model.id, "status": status.to_payload()}
+        if not status.runtime_available:
+            return _error_result("alignmentModel", "local_runtime_missing", status.detail)
+        if status.status == "path_invalid":
+            return _error_result("alignmentModelPath", "alignment_model_path_invalid", status.detail)
+        self.alignment_prepare_cancel_event = Event()
+        self.pump.start()
+        self.alignment_prepare_worker = threading.Thread(
+            target=self._alignment_prepare_main,
+            args=(
+                model.id,
+                str(payload.get("modelPath") or "").strip(),
+                model_cache_root,
+                runtime.ready,
+                self.alignment_prepare_cancel_event,
+            ),
+            daemon=True,
+            name="maw-alignment-model-prepare",
+        )
+        self.alignment_prepare_worker.start()
+        return {"ok": True, "preparing": True, "modelId": model.id}
+
     def get_local_runtime(self, _payload: Mapping[str, object] | None = None) -> dict[str, object]:
         model_cache_root = effective_config(self.paths.env_path).model_cache_root
         requested_model = str((_payload or {}).get("modelId") or "")
         model = next((item for item in provider_by_id("local").models if item.id == requested_model), None)
         engine = model.engine if model else ""
         return {"ok": True, **self._local_runtime_status(model_cache_root, engine=engine).to_payload()}
+
+    def get_local_runtime_inventory(self, _payload: Mapping[str, object] | None = None) -> dict[str, object]:
+        """Return the non-MOSS local runtime inventory for the settings panel."""
+        model_cache_root = effective_config(self.paths.env_path).model_cache_root
+        status = self._local_runtime_status(model_cache_root)
+        return {
+            "ok": True,
+            **status.to_payload(),
+            "inventory": local_runtime_inventory(model_cache_root),
+        }
 
     def get_ocr_runtime(self, _payload: Mapping[str, object] | None = None) -> dict[str, object]:
         status = self._ocr_runtime_status()
@@ -2676,7 +3297,12 @@ class LauncherApi:
             return _error_result("localModelPath", "local_model_path_invalid", status.detail)
         if status.status == "path_mismatch":
             return _error_result("localModelPath", "local_model_path_mismatch", status.detail)
-        if status.status == "installed":
+        ctc_ready, punc_ready = firered_components_ready(
+            model,
+            model_path,
+            model_cache_root=model_cache_root,
+        )
+        if status.status == "installed" and not (model.engine == "firered" and ctc_ready and not punc_ready):
             return {"ok": True, "alreadyInstalled": True, "modelId": model.id}
         self.local_prepare_cancel_event = Event()
         self.pump.start()
@@ -2804,6 +3430,8 @@ class LauncherApi:
         self.cancel_media_tool()
         if self.local_prepare_cancel_event:
             self.local_prepare_cancel_event.set()
+        if self.alignment_prepare_cancel_event:
+            self.alignment_prepare_cancel_event.set()
         if self.local_runtime_cancel_event:
             self.local_runtime_cancel_event.set()
         if self.ocr_runtime_cancel_event:
@@ -2870,6 +3498,30 @@ class LauncherApi:
                 self.worker = None
             self.pump.flush()
             return
+        if request.alignment_model and str(request.engine or "").strip().casefold() == "moss":
+            try:
+                result = self._align_transcription_result(request, result, cancel_event)
+            except (LocalRuntimeCancelled, TimestampAlignmentError, LocalRuntimeError, OSError, ValueError) as error:
+                if isinstance(error, LocalRuntimeCancelled) or cancel_event.is_set():
+                    self._emit({
+                        "type": "error",
+                        "code": "transcription_cancelled",
+                        "detail": str(error),
+                        "originalProjectPath": str(result.json_path),
+                        "originalSrtPath": str(result.srt_path),
+                    })
+                else:
+                    self._emit({
+                        "type": "error",
+                        "code": "alignment_failed",
+                        "detail": str(error),
+                        "originalProjectPath": str(result.json_path),
+                        "originalSrtPath": str(result.srt_path),
+                    })
+                if self.worker is threading.current_thread():
+                    self.worker = None
+                self.pump.flush()
+                return
         self.result = result
         transcription_elapsed = time.perf_counter() - flow_t0
         self.postprocess_retry_context = None
@@ -2891,6 +3543,7 @@ class LauncherApi:
                 )
                 auto_run_directory = auto_result.run_directory
                 self.postprocess_translation_srt_path = auto_result.translated_srt_path
+                self.postprocess_media_path = auto_result.media_path
                 self.result = replace(result, srt_path=auto_result.srt_path, json_path=auto_result.project_path)
             except PostprocessCancelled as error:
                 self._emit({
@@ -2961,10 +3614,78 @@ class LauncherApi:
                     "message": f"[计时] 全程耗时为媒体时长的 {total_elapsed / media_duration:.2f} 倍",
                 })
         self.postprocess_workspace_directory = auto_run_directory if auto_run_directory and auto_run_directory.is_dir() else None
-        self._emit({"type": "done", "result": {"srtPath": str(result.srt_path), "translatedSrtPath": str(self.postprocess_translation_srt_path or ""), "jsonPath": str(result.json_path), "htmlPath": str(result.html_path or ""), "rawPath": str(result.raw_path or ""), "postprocessRunDirectory": str(self.postprocess_workspace_directory or "")}})
+        self._emit({"type": "done", "result": {"srtPath": str(result.srt_path), "translatedSrtPath": str(self.postprocess_translation_srt_path or ""), "jsonPath": str(result.json_path), "htmlPath": str(result.html_path or ""), "rawPath": str(result.raw_path or ""), "videoPath": str(self.postprocess_media_path or ""), "postprocessRunDirectory": str(self.postprocess_workspace_directory or "")}})
         if self.worker is threading.current_thread():
             self.worker = None
         self.pump.flush()
+
+    def _align_transcription_result(
+        self,
+        request: TranscriptionRequest,
+        result: TranscriptionResult,
+        cancel_event: Event,
+    ) -> TranscriptionResult:
+        """Run a shared aligner after a segment-only local engine completes."""
+        model_cache_root = effective_config(self.paths.env_path).model_cache_root
+        runtime = self._local_runtime_status(model_cache_root)
+        self._emit_postprocess_status("toolbox_status_aligning")
+        self._emit({
+            "type": "log",
+            "message": f"[aligner] MOSS 已完成段级转写，开始使用 {request.alignment_model} 补齐字词时间码。",
+        })
+        if runtime.ready:
+            worker_result = run_timestamp_alignment_in_runtime(
+                project_path=result.json_path,
+                srt_path=result.srt_path,
+                media_path=request.media_path,
+                model_id=request.alignment_model,
+                output_mode="both",
+                alignment_mode="fill",
+                model_path=request.alignment_model_path or None,
+                device=request.device,
+                model_cache_root=model_cache_root,
+                cancel_event=cancel_event,
+                on_event=lambda line: self._emit({"type": "log", "message": line}),
+            )
+            artifact = worker_result.get("artifact")
+            report = worker_result.get("report")
+            if not isinstance(artifact, Mapping):
+                raise LocalRuntimeError("本地字词时间码命令返回了无效产物。")
+            if isinstance(report, Mapping):
+                self._emit({
+                    "type": "log",
+                    "message": (
+                        f"[aligner] 已对齐 {report.get('alignedSegments', 0)} 段，"
+                        f"跳过 {report.get('skippedSegments', 0)} 段。"
+                    ),
+                })
+        else:
+            artifact_obj, report_obj = process_timestamp_alignment(
+                TimestampAlignmentRequest(
+                    project_path=result.json_path,
+                    srt_path=result.srt_path,
+                    media_path=request.media_path,
+                    model_id=request.alignment_model,
+                    output_mode="both",
+                    mode="fill",
+                    model_path=Path(request.alignment_model_path) if request.alignment_model_path else None,
+                    model_cache_root=Path(model_cache_root) if model_cache_root else None,
+                    device=request.device,
+                )
+            )
+            artifact = {
+                "projectPath": str(artifact_obj.project_path or ""),
+                "srtPath": str(artifact_obj.srt_path or ""),
+            }
+            report = report_obj.to_payload()
+        project_path = Path(str(artifact.get("projectPath") or ""))
+        srt_path = Path(str(artifact.get("srtPath") or ""))
+        if not project_path.is_file() or not srt_path.is_file():
+            raise LocalRuntimeError("字词时间码产物未生成完整的 SRT / MOSP 文件。")
+        warnings = artifact.get("warnings")
+        for warning in warnings if isinstance(warnings, list) else ():
+            self._emit({"type": "log", "message": f"[aligner] [warning] {warning}"})
+        return replace(result, srt_path=srt_path, json_path=project_path)
 
     def _retry_postprocess_main(self, context: Mapping[str, object], cancel_event: Event) -> None:
         result = self.result
@@ -3038,9 +3759,10 @@ class LauncherApi:
             return
         self.result = replace(result, srt_path=auto_result.srt_path, json_path=auto_result.project_path)
         self.postprocess_translation_srt_path = auto_result.translated_srt_path
+        self.postprocess_media_path = auto_result.media_path
         self.postprocess_retry_context = None
         self.postprocess_workspace_directory = auto_result.run_directory if auto_result.run_directory.is_dir() else None
-        self._emit({"type": "done", "result": {"srtPath": str(self.result.srt_path), "translatedSrtPath": str(self.postprocess_translation_srt_path or ""), "jsonPath": str(self.result.json_path), "htmlPath": str(self.result.html_path or ""), "rawPath": str(self.result.raw_path or ""), "postprocessRunDirectory": str(self.postprocess_workspace_directory or "")}})
+        self._emit({"type": "done", "result": {"srtPath": str(self.result.srt_path), "translatedSrtPath": str(self.postprocess_translation_srt_path or ""), "jsonPath": str(self.result.json_path), "htmlPath": str(self.result.html_path or ""), "rawPath": str(self.result.raw_path or ""), "videoPath": str(self.postprocess_media_path or ""), "postprocessRunDirectory": str(self.postprocess_workspace_directory or "")}})
         if self.worker is threading.current_thread():
             self.worker = None
         self.pump.flush()
@@ -3067,21 +3789,24 @@ class LauncherApi:
         stage = str(event.get("stage") or "")
         labels = {
             "match": "文稿匹配",
-            "replace": "固定处理",
+            "replace": "固定替换",
             "proofread": "LLM 校对",
             "resegment": "重新断句",
             "ocr": "OCR 字幕去重",
             "translate": "翻译",
+            "burn": "烧录字幕",
         }
         step = labels.get(str(event.get("step") or ""), str(event.get("step") or "后处理"))
         if stage == "start":
             self._emit({"type": "log", "message": f"[后处理] 已开始，共 {event.get('total', 0)} 步"})
         elif stage == "step_start":
+            if str(event.get("step") or "") == "burn":
+                self._last_media_tool_log_at = 0.0
             self._emit({"type": "log", "message": f"[后处理 {event.get('index', '?')}/{event.get('total', '?')}] {step}：开始"})
         elif stage == "step_done":
             artifacts = " / ".join(
                 name
-                for name in (str(event.get("projectName") or ""), str(event.get("srtName") or ""), str(event.get("translatedSrtName") or ""))
+                for name in (str(event.get("projectName") or ""), str(event.get("srtName") or ""), str(event.get("translatedSrtName") or ""), str(event.get("mediaName") or ""))
                 if name
             )
             suffix = f"（{artifacts}）" if artifacts else ""
@@ -3089,7 +3814,7 @@ class LauncherApi:
         elif stage == "done":
             artifacts = " / ".join(
                 name
-                for name in (str(event.get("projectName") or ""), str(event.get("srtName") or ""), str(event.get("translatedSrtName") or ""))
+                for name in (str(event.get("projectName") or ""), str(event.get("srtName") or ""), str(event.get("translatedSrtName") or ""), str(event.get("mediaName") or ""))
                 if name
             )
             self._emit({"type": "log", "message": f"[后处理] 全部完成：{artifacts}"})
@@ -3097,13 +3822,17 @@ class LauncherApi:
             self._emit({"type": "log", "message": "[后处理] 已取消；原始转写产物仍然保留。"})
         elif stage == "failed":
             self._emit({"type": "log", "message": "[后处理] 失败；原始转写产物和中间产物已保留。"})
-        elif stage == "detail" and str(event.get("key") or "") in {"toolbox_status_llm_batch", "toolbox_status_ocr_frame"}:
-            now = time.monotonic()
-            current = event.get("current")
-            total = event.get("total")
-            if now - self._last_postprocess_progress_at >= 1.0 or current == total:
-                self._last_postprocess_progress_at = now
-                self._emit({"type": "log", "message": f"[后处理] {step} 进度 {current}/{total}"})
+        elif stage == "detail":
+            key = str(event.get("key") or "")
+            if key == "toolbox_status_burning":
+                self._emit_media_tool_log(event)
+            elif key in {"toolbox_status_llm_batch", "toolbox_status_ocr_frame"}:
+                now = time.monotonic()
+                current = event.get("current")
+                total = event.get("total")
+                if now - self._last_postprocess_progress_at >= 1.0 or current == total:
+                    self._last_postprocess_progress_at = now
+                    self._emit({"type": "log", "message": f"[后处理] {step} 进度 {current}/{total}"})
 
     def _local_runtime_main(
         self,
@@ -3241,6 +3970,66 @@ class LauncherApi:
         finally:
             self.pump.flush()
 
+    def _alignment_prepare_main(
+        self,
+        model_id: str,
+        model_path: str,
+        model_cache_root: str,
+        use_managed_runtime: bool,
+        cancel_event: Event,
+    ) -> None:
+        def on_event(message: str) -> None:
+            if not cancel_event.is_set():
+                self._emit({"type": "log", "message": message})
+                self._emit({"type": "alignmentModelProgress", "message": message})
+
+        try:
+            if use_managed_runtime:
+                prepare_alignment_model_in_runtime(
+                    model_id=model_id,
+                    model_path=model_path,
+                    model_cache_root=model_cache_root,
+                    on_event=on_event,
+                    cancel_event=cancel_event,
+                )
+            else:
+                prepare_alignment_model_in_process(
+                    model_id=model_id,
+                    model_path=model_path,
+                    model_cache_root=model_cache_root,
+                    on_event=on_event,
+                    cancel_event=cancel_event,
+                )
+            if cancel_event.is_set():
+                self._emit({"type": "alignmentPrepareCancelled", "modelId": model_id})
+                return
+            runtime = self._local_runtime_status(model_cache_root)
+            status = inspect_alignment_model(
+                model_id,
+                model_path,
+                model_cache_root=model_cache_root,
+                runtime_available=True if use_managed_runtime else None,
+                runtime_source="managed" if use_managed_runtime else "current",
+                runtime_python=runtime.python_path if use_managed_runtime else "",
+            )
+            self._emit({
+                "type": "alignmentModelPrepared",
+                "modelId": model_id,
+                "status": status.to_payload(),
+            })
+        except Exception as error:  # noqa: BLE001 - optional runtime boundary
+            if cancel_event.is_set():
+                self._emit({"type": "alignmentPrepareCancelled", "modelId": model_id})
+            else:
+                self._emit({
+                    "type": "error",
+                    "code": "alignment_prepare_failed",
+                    "field": "alignmentModel",
+                    "detail": str(error),
+                })
+        finally:
+            self.pump.flush()
+
     def _emit(self, event: Mapping[str, object]) -> None:
         if self._log_sink is not None:
             self._log_sink.append(event)
@@ -3360,9 +4149,6 @@ def _segmentation_option(
     return str(value)
 
 
-_TAIL_STRIP_CANDIDATES = "，。"
-
-
 def _match_step_symbols(env_path: Path, key: str) -> list[str]:
     """读取共享后处理 plan 里 match 步骤的符号列表配置。"""
     plan = load_postprocess_plan(env_path)
@@ -3379,18 +4165,20 @@ def _match_step_symbols(env_path: Path, key: str) -> list[str]:
 
 
 def _transcribe_strip_tail_punct(env_path: Path) -> str:
-    """Derive transcription tail-strip set from the shared 保留符号 settings.
+    """Derive transcription tail-strip set from the shared 断句符号 settings.
 
     The ⚙️ settings section edits the same postprocess plan (`match` step) as
-    the 文稿匹配 toolbox; symbols marked as preserved are subtracted from the
-    strip candidates so transcription output keeps them at cue tails.
+    the 文稿匹配 toolbox.  Symbols configured as break symbols are stripped
+    from cue tails unless listed as preserved; only single-character symbols
+    participate (rstrip works per character).
     """
+    extra = _match_step_symbols(env_path, "extraSplitPunctuation")
     preserved = set(_match_step_symbols(env_path, "preservePunctuation"))
-    return "".join(candidate for candidate in _TAIL_STRIP_CANDIDATES if candidate not in preserved)
+    return "".join(symbol for symbol in extra if len(symbol) == 1 and symbol not in preserved)
 
 
 def _transcribe_extra_strong_punct(env_path: Path) -> str:
-    """Derive the transcription extra strong-punct set from shared 额外断句符号."""
+    """Derive the transcription strong-punct set from the shared 断句符号 settings."""
     return "".join(_match_step_symbols(env_path, "extraSplitPunctuation"))
 
 
@@ -3509,6 +4297,13 @@ def _request_from_payload(payload: Mapping[str, object], env_path: Path) -> Tran
     local_model_path = str(payload.get("localModelPath") or "").strip()
     device = str(payload.get("device") or "auto").strip().lower()
     model_cache_root = ""
+    firered_punc = "ct-punc"
+    if provider.kind == "local" and model.engine == "firered":
+        firered_punc = (
+            "none"
+            if str(payload.get("fireredPunc") or "ct-punc").strip().casefold() == "none"
+            else "ct-punc"
+        )
     if provider.kind == "local":
         model_cache_root = effective_config(env_path).model_cache_root
         local_status = inspect_local_model(
@@ -3526,9 +4321,54 @@ def _request_from_payload(payload: Mapping[str, object], env_path: Path) -> Tran
             raise PreflightError("model", "local_model_missing", local_status.detail)
         if local_status.status == "partial":
             raise PreflightError("model", "local_model_incomplete", local_status.detail)
+        if model.engine == "firered" and firered_punc == "ct-punc":
+            _ctc_ready, punc_ready = firered_components_ready(
+                model,
+                local_model_path,
+                model_cache_root=model_cache_root,
+            )
+            if not punc_ready:
+                raise PreflightError(
+                    "model",
+                    "local_model_incomplete",
+                    "FireRedASR2 的 FunASR ct-punc 尚未准备，请选择“不使用”或先下载 ct-punc。",
+                )
         runtime_python = local_status.runtime_python
-        if device not in {"auto", "cpu", "cuda"}:
-            raise PreflightError("device", "local_model_path_invalid", "设备必须是 auto、cpu 或 cuda。")
+        allowed_devices = {"auto", "cpu", "cuda"}
+        if sys.platform == "darwin" and model.engine == "qwen-asr":
+            allowed_devices.add("mps")
+        if device not in allowed_devices:
+            raise PreflightError(
+                "device", "local_model_path_invalid",
+                "设备必须是 auto、cpu、cuda 或 mps。" if "mps" in allowed_devices
+                else "设备必须是 auto、cpu 或 cuda。",
+            )
+    alignment_model = ""
+    alignment_model_path = str(payload.get("alignmentModelPath") or "").strip()
+    if provider.kind == "local":
+        alignment_model = normalize_alignment_model_id(str(payload.get("alignmentModel") or ""))
+        if alignment_model:
+            # MOSS has a deliberately isolated runtime.  Alignment status must
+            # be checked against the shared local runtime (or this process),
+            # never against MOSS's Transformers 5.x environment.
+            alignment_runtime = managed_runtime_status(model_cache_root)
+            try:
+                alignment_status = inspect_alignment_model(
+                    alignment_model,
+                    alignment_model_path,
+                    model_cache_root=model_cache_root,
+                    runtime_available=True if alignment_runtime.ready else None,
+                    runtime_source="managed" if alignment_runtime.ready else "current",
+                    runtime_python=alignment_runtime.python_path if alignment_runtime.ready else "",
+                )
+            except ValueError as error:
+                raise PreflightError("alignmentModel", "alignment_model_missing", str(error)) from error
+            if alignment_status.status == "path_invalid":
+                raise PreflightError("alignmentModelPath", "alignment_model_path_invalid", alignment_status.detail)
+            if not alignment_status.runtime_available:
+                raise PreflightError("alignmentModel", "local_runtime_missing", alignment_status.detail)
+            if not alignment_status.installed:
+                raise PreflightError("alignmentModel", "alignment_model_missing", alignment_status.detail)
     if provider.requires_api_key and not api_key:
         raise PreflightError("apiKey", "api_key_missing", "API key is required.")
     if provider.id == "qwen" and region == "singapore" and not workspace_id:
@@ -3619,6 +4459,7 @@ def _request_from_payload(payload: Mapping[str, object], env_path: Path) -> Tran
             str(payload.get("qwenAudioHotwordWeight") or "").strip()
             if model.supports_hotwords else ""
         ),
+        qwen_keep_dialect=bool(payload.get("qwenKeepDialect")) and model.supports_keep_dialect,
         soniox_context=soniox_context,
         region=region,
         workspace_id=workspace_id,
@@ -3630,10 +4471,13 @@ def _request_from_payload(payload: Mapping[str, object], env_path: Path) -> Tran
         srt_only=bool(payload.get("batchSrtOnly")),
         debug_raw=bool(payload.get("debugRaw")),
         engine=model.engine if provider.kind == "local" else "",
+        firered_punc=firered_punc,
         model_path=local_model_path if provider.kind == "local" else "",
         model_cache_root=model_cache_root,
         device=device,
         forced_aligner=str(payload.get("forcedAligner") or "").strip(),
+        alignment_model=alignment_model,
+        alignment_model_path=alignment_model_path,
         base_url=custom_base_url,
         openai_prompt=openai_prompt,
         openai_keywords=openai_keywords,
@@ -3644,13 +4488,14 @@ def _request_from_payload(payload: Mapping[str, object], env_path: Path) -> Tran
     )
 
 
-def _file_dialog(*, open_dialog: bool, file_types: tuple[str, ...], save_filename: str = "", multiple: bool = False) -> tuple[str, ...] | None:
+def _file_dialog(*, open_dialog: bool, file_types: tuple[str, ...], save_filename: str = "", multiple: bool = False, directory: str = "") -> tuple[str, ...] | None:
     import webview
 
     if not webview.windows:
         return None
     dialog_type = OPEN_DIALOG if open_dialog else SAVE_DIALOG
-    selected = webview.windows[0].create_file_dialog(dialog_type, save_filename=save_filename, file_types=file_types, allow_multiple=multiple)
+    extra = {"directory": directory} if directory else {}
+    selected = webview.windows[0].create_file_dialog(dialog_type, save_filename=save_filename, file_types=file_types, allow_multiple=multiple, **extra)
     return tuple(selected) if selected else None
 
 
@@ -3739,6 +4584,18 @@ def _free_local_port() -> int:
 
 def _error_result(field: str, code: str, detail: str = "") -> dict[str, object]:
     return {"ok": False, "field": field, "code": code, "detail": detail, "error": ERROR_MESSAGES.get(code, detail or code)}
+
+
+def _burn_crf_override(raw: object) -> int | None:
+    """Parse an optional CRF override from a bridge payload, raising ValueError."""
+
+    text = str(raw if raw is not None else "").strip()
+    if not text:
+        return None
+    try:
+        return int(text)
+    except ValueError as error:
+        raise ValueError(f"invalid CRF value: {text}") from error
 
 
 def _script_match_input_error_code(
@@ -3936,6 +4793,7 @@ def _postprocess_provider_payloads(env_path: Path) -> list[dict[str, object]]:
 
 
 def _subtitle_artifact_result(result: object) -> dict[str, object]:
+    stats = getattr(result, "stats", None)
     return {
         "ok": True,
         "sourceProjectPath": str(getattr(result, "source_project_path", None) or ""),
@@ -3944,6 +4802,7 @@ def _subtitle_artifact_result(result: object) -> dict[str, object]:
         "srtPath": str(getattr(result, "srt_path", None) or ""),
         "translatedSrtPath": str(getattr(result, "translated_srt_path", None) or ""),
         "warnings": list(getattr(result, "warnings", ())),
+        "stats": dict(stats) if isinstance(stats, Mapping) else None,
     }
 
 
@@ -4139,6 +4998,27 @@ def _postprocess_ffmpeg(env_path: Path) -> Path | None:
     return _postprocess_ffmpeg_tools(env_path).ffmpeg
 
 
+def _format_media_tool_progress(details: Mapping[str, object]) -> str:
+    fields = (
+        ("frame", "frame"),
+        ("fps", "fps"),
+        ("out_time", "time"),
+        ("speed", "speed"),
+        ("bitrate", "bitrate"),
+        ("total_size", "size"),
+    )
+    parts: list[str] = []
+    for key, label in fields:
+        value = details.get(key)
+        text = "" if value is None else str(value).strip()
+        if text and text.lower() not in {"n/a", "nan"}:
+            parts.append(f"{label}={text}")
+    if parts:
+        return " ".join(parts)
+    progress = str(details.get("progress") or "").strip()
+    return f"progress={progress}" if progress else ""
+
+
 def _postprocess_ffmpeg_tools(env_path: Path) -> FfmpegTools:
     configured = effective_config_value(env_path, "FFMPEG_PATH")
     return resolve_ffmpeg_tools(
@@ -4180,7 +5060,11 @@ def _check_ffmpeg(env_path: Path, override: str = "") -> dict[str, object]:
     tools = resolve_ffmpeg_tools(
         configured_path=configured_value or None,
         platform=sys.platform,
-        search_path=_ffmpeg_search_path() or "",
+        # 候选目录读取当前模块全局而非依赖默认参数（默认参数在函数定义时
+        # 绑定，测试 patch maw.ffmpeg.MACOS_FFMPEG_CANDIDATE_DIRECTORIES
+        # 才能生效），搜索路径由同一份候选列表推导，保证二者一致。
+        macos_directories=MACOS_FFMPEG_CANDIDATE_DIRECTORIES,
+        search_path=ffmpeg_search_path(platform=sys.platform, macos_directories=MACOS_FFMPEG_CANDIDATE_DIRECTORIES) or "",
         strict_config=bool(override.strip()),
     )
     ffmpeg_path = str(tools.ffmpeg) if tools.ffmpeg is not None else ""
@@ -4198,6 +5082,21 @@ def effective_config_value(env_path: Path, key: str) -> str:
     from maw.gui_config import load_env
 
     return os.environ.get(key) or load_env(env_path).get(key, "")
+
+
+def _local_model_paths_config(env_path: Path) -> dict[str, str]:
+    try:
+        saved = json.loads(effective_config_value(env_path, "MAW_GUI_LOCAL_MODEL_PATHS") or "{}")
+    except (TypeError, ValueError):
+        return {}
+    if not isinstance(saved, dict):
+        return {}
+    valid_ids = {model.id for model in provider_by_id("local").models}
+    return {
+        model_id: path.strip()
+        for model_id, path in saved.items()
+        if model_id in valid_ids and isinstance(path, str) and path.strip()
+    }
 
 
 def _sync_local_runtime_root(env_path: Path) -> None:
@@ -4223,6 +5122,7 @@ def _provider_payload(
     return {
         "id": provider.id,
         "label": provider.label,
+        "keyButtonLabel": provider.key_label,
         "kind": provider.kind,
         "keyUrl": provider.key_url,
         "secondaryKeyUrl": provider.secondary_key_url,
@@ -4232,6 +5132,7 @@ def _provider_payload(
         "supportsSpeaker": provider.supports_speaker,
         "multiLanguage": provider.multi_language,
         "supportsLanguage": provider.supports_language,
+        "dividerBefore": provider.divider_before,
         "note": provider.note,
         "commonLanguages": list(provider.common_languages),
         "models": [
@@ -4270,6 +5171,11 @@ def _model_payload(
         "supportsContext": model.supports_context,
         "supportsHotwords": model.supports_hotwords,
         "supportsVocabulary": model.supports_vocabulary,
+        "supportsKeepDialect": model.supports_keep_dialect,
+        "supportsWordTimestamps": model.supports_word_timestamps,
+        "deviceSupport": model.device_support,
+        "resourceLevel": model.resource_level,
+        "estimatedSize": model.estimated_size,
         "kind": model.kind,
         "engine": model.engine,
         "modelRef": model.model_ref,
@@ -4294,11 +5200,14 @@ def _model_payload(
                 "installed": False,
                 "path": "",
                 "detail": "",
+                "installedSize": "",
                 "runtimeSource": "checking",
                 "runtimePython": "",
                 "engine": model.engine,
                 "modelRef": model.model_ref,
                 "requiredModelRefs": list(model.required_model_refs),
                 "canPrepare": False,
+                "ctcReady": False,
+                "puncReady": False,
             }
     return payload

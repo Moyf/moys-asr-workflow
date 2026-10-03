@@ -122,6 +122,52 @@ class MawRootTests(unittest.TestCase):
         self.assertEqual(candidates[0], self.root / "_maw")
 
 
+class DebugArtifactPathTests(unittest.TestCase):
+    def setUp(self) -> None:
+        self.temp_dir = tempfile.TemporaryDirectory()
+        self.root = Path(self.temp_dir.name).resolve()
+        self.media = self.root / "clip.mp4"
+        self.output = self.root / "exports" / "clip.srt"
+
+    def tearDown(self) -> None:
+        self.temp_dir.cleanup()
+
+    def test_debug_artifacts_keep_explicit_output_directory_when_subfolder_is_off(self) -> None:
+        with _patch_config(_config()):
+            self.assertEqual(
+                output_naming.debug_artifact_path(
+                    self.media,
+                    self.output,
+                    ".local-debug.json",
+                    explicit_output=True,
+                ),
+                self.output.parent / "clip.local-debug.json",
+            )
+
+    def test_debug_artifacts_use_shared_debug_directory_when_subfolder_is_on(self) -> None:
+        with _patch_config(_config(all_subfolder=True, gui_lang="zh")):
+            self.assertEqual(
+                output_naming.debug_artifact_path(
+                    self.media,
+                    self.output,
+                    ".asr-response.json",
+                    explicit_output=True,
+                ),
+                self.root / "_maw" / "调试" / "clip.asr-response.json",
+            )
+
+    def test_debug_artifacts_use_per_video_debug_directory_and_language_name(self) -> None:
+        with _patch_config(_config(all_subfolder=True, per_video=True, gui_lang="en")):
+            self.assertEqual(
+                output_naming.debug_artifact_dir(
+                    self.media,
+                    self.output,
+                    explicit_output=True,
+                ),
+                self.root / "clip_maw" / "debug",
+            )
+
+
 class PostprocessWorkspaceTests(unittest.TestCase):
     def setUp(self) -> None:
         self.temp_dir = tempfile.TemporaryDirectory()
@@ -179,6 +225,8 @@ class OperationSuffixTests(unittest.TestCase):
     def test_operation_suffix_localizes_per_language(self) -> None:
         self.assertEqual(output_naming.operation_suffix("postprocess", "zh"), ".后处理")
         self.assertEqual(output_naming.operation_suffix("postprocess", "en"), ".postprocess")
+        self.assertEqual(output_naming.operation_suffix("original", "zh"), ".原始")
+        self.assertEqual(output_naming.operation_suffix("original", "en"), ".original")
         self.assertEqual(output_naming.operation_suffix("ocr-dedup", "zh"), ".OCR去重")
         self.assertEqual(output_naming.operation_suffix("ocr-dedup", "en"), ".ocr-dedup")
         self.assertEqual(output_naming.operation_suffix("match", "zh"), ".文稿匹配")
@@ -442,6 +490,29 @@ class EstimateDashscopeCostTests(unittest.TestCase):
         self.assertIsNone(output_naming.estimate_dashscope_cost(None))
         self.assertIsNone(output_naming.estimate_dashscope_cost(0))
         self.assertIsNone(output_naming.estimate_dashscope_cost(-5))
+
+
+class EstimateQwenAudio31CostTests(unittest.TestCase):
+    def test_cost_uses_input_and_output_token_prices(self) -> None:
+        cost = output_naming.estimate_qwen_audio_31_cost(1_000_000, 1_000_000)
+        self.assertAlmostEqual(
+            cost,
+            output_naming.DASHSCOPE_QWEN_AUDIO_31_INPUT_PRICE_PER_MILLION_TOKENS
+            + output_naming.DASHSCOPE_QWEN_AUDIO_31_OUTPUT_PRICE_PER_MILLION_TOKENS,
+        )
+        self.assertAlmostEqual(
+            output_naming.estimate_qwen_audio_31_cost(2006, 256),
+            2006 * 0.8 / 1_000_000 + 256 * 2.7 / 1_000_000,
+        )
+
+    def test_zero_tokens_cost_nothing(self) -> None:
+        self.assertAlmostEqual(output_naming.estimate_qwen_audio_31_cost(0, 0), 0.0)
+
+    def test_invalid_token_counts_return_none(self) -> None:
+        self.assertIsNone(output_naming.estimate_qwen_audio_31_cost(None, 10))
+        self.assertIsNone(output_naming.estimate_qwen_audio_31_cost(10, None))
+        self.assertIsNone(output_naming.estimate_qwen_audio_31_cost(-1, 10))
+        self.assertIsNone(output_naming.estimate_qwen_audio_31_cost(10, -1))
 
 
 if __name__ == "__main__":

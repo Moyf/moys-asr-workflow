@@ -13,6 +13,9 @@
 #       https://download.pytorch.org/whl/cu130 --index-strategy unsafe-best-match
 av>=14.0
 librosa>=0.11.0
+# MOSS 模型下载的 Hugging Face → ModelScope 回退需要 modelscope
+# （与 local 组经 funasr 拉到的是同一包）。
+modelscope>=1.39
 numba>=0.61.0
 packaging>=24.0
 safetensors>=0.6.2

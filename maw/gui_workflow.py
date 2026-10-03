@@ -18,12 +18,13 @@ from typing import BinaryIO, Final, TextIO, final
 
 from maw.console import configure_utf8_environment
 from maw.ffmpeg import MACOS_FFMPEG_CANDIDATE_DIRECTORIES, bundled_ffmpeg_directory, ffmpeg_search_path, resolve_ffmpeg_tools
-from maw.gui_config import QWEN_AUDIO_MODEL_ID, DEFAULT_MODEL_ID, DEFAULT_ENV_PATH, effective_config, load_env
+from maw.gui_config import QWEN_AUDIO_31_MODEL_ID, QWEN_AUDIO_MODEL_ID, DEFAULT_MODEL_ID, DEFAULT_ENV_PATH, effective_config, load_env
 from maw.gui_platform import asset_path, popen_process_tree, process_group_kwargs, release_process_tree, terminate_process_tree
 from maw.media import read_bwf_time_reference
-from maw.output_naming import maw_root
+from maw.output_naming import debug_artifact_path, maw_root
 from maw.qwen_audio import split_qwen_audio_hotwords
 from maw.local_runtime import default_runtime_root, model_cache_environment
+from maw.local_debug import local_debug_manifest_path
 from maw.runtimes import LOCAL
 
 
@@ -52,6 +53,7 @@ class TranscriptionRequest:
     qwen_audio_hotwords_file: str = ""
     qwen_audio_vocabulary_id: str = ""
     qwen_audio_hotword_weight: str = ""
+    qwen_keep_dialect: bool = False
     soniox_context: dict[str, object] | None = None
     region: str = ""
     workspace_id: str = ""
@@ -64,10 +66,13 @@ class TranscriptionRequest:
     srt_only: bool = False
     debug_raw: bool = False
     engine: str = ""
+    firered_punc: str = "ct-punc"
     model_path: str = ""
     model_cache_root: str = ""
     device: str = "auto"
     forced_aligner: str = ""
+    alignment_model: str = ""
+    alignment_model_path: str = ""
     openai_prompt: str = ""
     openai_keywords: tuple[str, ...] = ()
     openai_diarize: bool = False
@@ -112,9 +117,31 @@ class TranscriptionProcessError(Exception):
         self.output = tuple(output)
         detail = _tail_output(self.output)
         message = f"Transcription failed with exit code {exit_code}"
+        hint = _native_crash_hint(exit_code)
+        if hint:
+            message += f" {hint}"
         if detail:
             message += f": {detail}"
         super().__init__(message)
+
+
+_WINDOWS_ACCESS_VIOLATION = 0xC0000005
+
+
+def _native_crash_hint(exit_code: int) -> str:
+    """识别 Windows 原生崩溃退出码，给出可操作的排查提示。
+
+    子进程被 OS 直接终止（而非 Python 异常退出）时，returncode 是
+    NTSTATUS 码；0xC0000005（访问冲突）最常见于本地 GPU 引擎在显卡驱动
+    CUDA 初始化阶段原生崩溃。机器无恙时表现为偶发，驱动状态损坏时逐次
+    复现，重启或更新驱动后恢复。
+    """
+    if (exit_code & 0xFFFFFFFF) != _WINDOWS_ACCESS_VIOLATION:
+        return ""
+    return (
+        "（0xC0000005：子进程原生访问冲突，常见于显卡驱动 CUDA 初始化失败。"
+        "请重启电脑后重试；仍崩溃时更新 NVIDIA 驱动，或把设备改为 CPU 再试一次。）"
+    )
 
 
 def _tail_output(output: Sequence[str], limit: int = 1) -> str:
@@ -152,8 +179,16 @@ def build_output_paths(srt_path: Path, media_path: Path | None = None) -> Output
     return OutputPaths(srt=srt, json=srt.with_suffix(".mosp"), html=html)
 
 
-def raw_response_path(srt_path: Path) -> Path:
-    return Path(srt_path).expanduser().resolve().with_suffix(".asr-response.json")
+def raw_response_path(srt_path: Path, media_path: Path | None = None) -> Path:
+    output = Path(srt_path).expanduser().resolve()
+    if media_path is None:
+        return output.with_suffix(".asr-response.json")
+    return debug_artifact_path(
+        media_path,
+        output,
+        ".asr-response.json",
+        explicit_output=True,
+    )
 
 
 def unique_output_path(srt_path: Path, media_path: Path | None = None) -> Path:
@@ -198,7 +233,7 @@ def _srt_model_tag(provider: str, model: str) -> str:
     """返回带前导点的模型/供应商文件名段（local 细分引擎；qwen 细分音频模型）。"""
     if provider == "qwen" and model.startswith("fun-asr"):
         return ".fun-asr"
-    if provider == "qwen" and model == QWEN_AUDIO_MODEL_ID:
+    if provider == "qwen" and model in (QWEN_AUDIO_MODEL_ID, QWEN_AUDIO_31_MODEL_ID):
         return ".qwen-audio"
     if provider == "local":
         local_model = model.casefold()
@@ -210,6 +245,8 @@ def _srt_model_tag(provider: str, model: str) -> str:
             return ".qwen3-asr-1.7b-local"
         if "moss" in local_model:
             return ".moss-local"
+        if "firered" in local_model or "fire-red" in local_model:
+            return ".firered-local"
         if "whisper" in local_model:
             return ".whisper-local"
         return ".qwen-asr-local"
@@ -298,7 +335,7 @@ def build_transcribe_command(
         command.extend(["--default-audio-track", str(request.default_audio_track)])
     if request.generate_spectral:
         command.append("--with-spectral")
-    if request.debug_raw and not is_local:
+    if request.debug_raw:
         command.append("--debug-raw")
     if is_local:
         _append_option(command, "--engine", request.engine or "qwen-asr")
@@ -306,7 +343,18 @@ def build_transcribe_command(
         _append_option(command, "--model-path", request.model_path)
         _append_option(command, "--device", request.device)
         _append_option(command, "--forced-aligner", request.forced_aligner)
-        if request.speaker_colors and request.engine == "moss":
+        # MOSS runs in its own Transformers 5.x environment.  The shared
+        # Qwen/FireRed aligner belongs to the normal local runtime, so MOSS is
+        # aligned by the Launcher after its coarse project has been written.
+        # Keeping the flags out of the MOSS child prevents it from importing a
+        # conflicting qwen-asr installation before the hand-off.
+        local_engine = str(request.engine or "").strip().casefold()
+        if local_engine == "firered":
+            _append_option(command, "--firered-punc", request.firered_punc)
+        if local_engine != "moss":
+            _append_option(command, "--alignment-model", request.alignment_model)
+            _append_option(command, "--alignment-model-path", request.alignment_model_path)
+        if request.speaker_colors and local_engine == "moss":
             command.append("--speaker-colors")
     elif is_soniox:
         _append_option(command, "--model", request.model if request.model != DEFAULT_MODEL_ID else "")
@@ -346,13 +394,13 @@ def build_transcribe_command(
         _append_option(command, "--region", request.region)
         if request.speaker_colors and (
             request.model.startswith("fun-asr")
-            or request.model == QWEN_AUDIO_MODEL_ID
+            or request.model in (QWEN_AUDIO_MODEL_ID, QWEN_AUDIO_31_MODEL_ID)
         ):
             command.append("--speaker-colors")
         _append_option(command, "--language", request.language)
-        # 共享断句配置里的「额外断句符号」：作为云端转写的强断句符号下发；
-        # 空串跳过，保持命令行与旧版一致。
-        _append_option(command, "--extra-strong-punct", request.extra_strong_punct)
+        # 共享断句配置里的「需要断句的符号」：作为云端转写的强断句符号
+        # 恒显式下发（含空串）：空串 = 仅按换行断句，不再有内置强标点。
+        command.extend(["--extra-strong-punct", request.extra_strong_punct])
     _append_option(command, "--length-limit", request.length_limit)
     _append_option(command, "--max-len", request.max_len)
     _append_option(command, "--min-len", request.min_len)
@@ -361,10 +409,12 @@ def build_transcribe_command(
     _append_option(command, "--gap-split", request.gap_split)
     # 始终显式下发（含空串）：空串表示共享保留符号配置要求完全不剥尾。
     command.extend(["--strip-tail-punct", request.strip_tail_punct])
-    if request.provider == "qwen" and request.model == QWEN_AUDIO_MODEL_ID:
+    if request.provider == "qwen" and request.model in (QWEN_AUDIO_MODEL_ID, QWEN_AUDIO_31_MODEL_ID):
         _append_option(command, "--vocabulary-id", request.qwen_audio_vocabulary_id)
         _append_option(command, "--hotword-weight", request.qwen_audio_hotword_weight)
         _append_option(command, "--context", request.qwen_audio_context)
+        if request.qwen_keep_dialect and request.model == QWEN_AUDIO_31_MODEL_ID:
+            command.append("--keep-dialect")
         if request.qwen_audio_hotwords_file:
             _append_option(command, "--hotword-file", request.qwen_audio_hotwords_file)
         else:
@@ -476,9 +526,21 @@ def run_transcription(
         raise TranscriptionProcessError(process.returncode, output=collected)
     _require_output(paths.srt, "SRT")
     _require_output(paths.json, "JSON")
-    raw_path = raw_response_path(paths.srt) if request.debug_raw and request.provider != "local" else None
+    raw_path = (
+        local_debug_manifest_path(
+            paths.srt,
+            media_path=request.media_path,
+            explicit_output=True,
+        )
+        if request.debug_raw and request.provider == "local"
+        else (
+            raw_response_path(paths.srt, request.media_path)
+            if request.debug_raw
+            else None
+        )
+    )
     if raw_path is not None:
-        _require_output(raw_path, "raw ASR response")
+        _require_output(raw_path, "debug response/artifact manifest")
     html_path = None
     if request.generate_html:
         try:
@@ -662,7 +724,13 @@ def _prepend_ffmpeg_path(env: dict[str, str], configured_path: str) -> bool:
     if not directory.exists():
         return False
     old_path = env.get("PATH", "")
-    env["PATH"] = str(directory) if not old_path else str(directory) + os.pathsep + old_path
+    entries = old_path.split(os.pathsep) if old_path else []
+    directory_text = str(directory)
+    if entries and entries[0] == directory_text and entries.count(directory_text) == 1:
+        return False
+    # 已在 PATH 后段的目录也必须移到最前，确保子进程使用解析器选中的工具。
+    # ffprobe 和 ffmpeg 同目录时只保留一份。
+    env["PATH"] = os.pathsep.join([directory_text, *(entry for entry in entries if entry != directory_text)])
     return True
 
 

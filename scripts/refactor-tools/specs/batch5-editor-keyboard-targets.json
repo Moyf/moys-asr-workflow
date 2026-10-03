@@ -1,0 +1,19 @@
+{
+  "file": "editor-keyboard-targets.js",
+  "ns": "MaweKeyboardTargets",
+  "header": "键盘目标判定：输入焦点守卫、播放目标与字幕重叠查找。",
+  "symbols": [
+    "renderedCueBoundaryTarget",
+    "navigateCueListBoundary",
+    "isSpaceKey",
+    "TEXT_INPUT_TYPES",
+    "isPlayerKeyboardTarget",
+    "isTextEditingTarget",
+    "isPlaybackKeyboardTarget",
+    "isNativeKeyboardControl",
+    "subtitleTemporalOverlap",
+    "nearestSubtitleIndex",
+    "boundSegmentIndex",
+    "switchMultiSubtitleTrack"
+  ]
+}

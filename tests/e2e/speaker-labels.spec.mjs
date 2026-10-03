@@ -35,13 +35,13 @@ test.afterAll(async () => {
 
 async function revealSpeakerCue(page) {
   await page.evaluate(() => {
-    const segment = DATA.segments[0];
+    const segment = MaweBoot.DATA.segments[0];
     segment.color = { name: 'yellow' };
     const media = document.getElementById('player');
     media.currentTime = 1;
     media.dispatchEvent(new Event('seeked'));
     media.dispatchEvent(new Event('timeupdate'));
-    refreshSubtitlePreview(1000, 0);
+    MawePlaybackLoop.refreshSubtitlePreview(1000, 0);
   });
   await expect(page.locator('#overlay')).toBeVisible();
 }
@@ -66,10 +66,13 @@ test('configures preview-only speaker labels and independently controls SRT expo
   expect(colorStyleWidth).toBeLessThan(220);
   await expect(page.locator('#subtitle-color-style option[value="both"]')).toHaveCount(0);
   await expect(page.locator('#subtitle-color-style option[value="shadow"]')).toHaveCount(0);
+  await expect(page.locator('#subtitle-color-style option[value="none"]')).toHaveCount(0);
+  await expect(page.locator('#subtitle-color-style option[value="underline"]')).toHaveCount(1);
+  await expect(page.locator('#subtitle-color-style option[value="text"]')).toHaveCount(1);
   await expect(page.locator('#subtitle-color-style option[value="stroke"]')).toHaveCount(1);
   await expect(page.locator('#subtitle-speaker-mapping-enabled')).not.toBeChecked();
   await expect(page.locator('#subtitle-speaker-labels-enabled-wrap')).toBeHidden();
-  await expect(page.locator('#subtitle-speaker-labels-enabled')).not.toBeChecked();
+  await expect(page.locator('#subtitle-speaker-labels-enabled')).toBeChecked();
   await expect(page.locator('#subtitle-speaker-labels-settings')).toBeHidden();
   await expect(page.locator('#subtitle-speaker-label-separator')).toBeHidden();
   await expect(page.locator('#subtitle-speaker-label-yellow')).toHaveValue('SP1');
@@ -77,7 +80,8 @@ test('configures preview-only speaker labels and independently controls SRT expo
 
   await page.locator('#subtitle-speaker-mapping-enabled').check();
   await expect(page.locator('#subtitle-speaker-labels-enabled-wrap')).toBeVisible();
-  await expect(page.locator('#subtitle-speaker-labels-enabled')).not.toBeChecked();
+  await expect(page.locator('#subtitle-speaker-labels-enabled')).toBeChecked();
+  await expect(page.locator('#export-speaker-labels')).toBeChecked();
   await expect(page.locator('#subtitle-speaker-labels-settings')).toBeVisible();
   await page.locator('#subtitle-speaker-labels-enabled').check();
   await expect(page.locator('#subtitle-speaker-labels-settings')).toBeVisible();
@@ -125,7 +129,7 @@ test('configures preview-only speaker labels and independently controls SRT expo
   await expect(page.locator('#overlay-main-speaker-label')).toHaveText('Host：');
   await expect(page.locator('#overlay-main-speaker-label')).toBeVisible();
   await expect(page.locator('#overlay-main-text')).toHaveText('Host：Alpha');
-  expect(await page.evaluate(() => DATA.segments[0].text)).toBe('Alpha');
+  expect(await page.evaluate(() => MaweBoot.DATA.segments[0].text)).toBe('Alpha');
 
   await page.locator('#subtitle-color-style').selectOption('text');
   await expect(page.locator('#subtitle-color-style')).toHaveValue('text');
@@ -172,7 +176,9 @@ test('configures preview-only speaker labels and independently controls SRT expo
     };
   });
   expect(strokeLabelColors.label).toBe(strokeLabelColors.mainText);
+  // 下划线模式：说话人标签沿用颜色快照，不回退到字幕默认颜色。
   await page.locator('#subtitle-color-style').selectOption('underline');
+  await expect(page.locator('#subtitle-color-style')).toHaveValue('underline');
   await expect(page.locator('#overlay-main-speaker-label')).toHaveCSS('color', 'rgb(196, 160, 25)');
   await page.locator('#subtitle-color-style').selectOption('stroke');
   await page.locator('#subtitle-color-underline').uncheck();
@@ -217,7 +223,7 @@ test('configures preview-only speaker labels and independently controls SRT expo
   await page.locator('#editor-settings-tab-export').click();
   const exportToggle = page.locator('#export-speaker-labels');
   await expect(exportToggle).toBeChecked();
-  expect(await page.evaluate(() => buildSrt())).toContain('Host"Alpha');
+  expect(await page.evaluate(() => MaweExportSrt.buildSrt())).toContain('Host"Alpha');
   const suffixToggle = page.locator('#export-speaker-names-as-suffix');
   await expect(suffixToggle).not.toBeChecked();
   await suffixToggle.check();
@@ -225,13 +231,13 @@ test('configures preview-only speaker labels and independently controls SRT expo
   const collectDownload = (download) => downloads.push(download.suggestedFilename());
   page.on('download', collectDownload);
   const { filenameBase } = await page.evaluate(async () => {
-    const previousColor = DATA.segments[1].color;
-    DATA.segments[1].color = { name: 'green' };
+    const previousColor = MaweBoot.DATA.segments[1].color;
+    MaweBoot.DATA.segments[1].color = { name: 'green' };
     window.showSaveFilePicker = undefined;
-    await downloadColorSrts(false);
-    if (previousColor) DATA.segments[1].color = previousColor;
-    else delete DATA.segments[1].color;
-    return { filenameBase: FILENAME_BASE };
+    await MaweExportSrt.downloadColorSrts(false);
+    if (previousColor) MaweBoot.DATA.segments[1].color = previousColor;
+    else delete MaweBoot.DATA.segments[1].color;
+    return { filenameBase: MaweBoot.FILENAME_BASE };
   });
   await expect.poll(() => downloads.length).toBe(3);
   page.off('download', collectDownload);
@@ -252,12 +258,12 @@ test('configures preview-only speaker labels and independently controls SRT expo
 
   await exportToggle.uncheck();
   await expect(exportToggle).not.toBeChecked();
-  expect(await page.evaluate(() => buildSrt())).not.toContain('Host"Alpha');
-  expect(await page.evaluate(() => buildSrt())).toContain('Alpha');
+  expect(await page.evaluate(() => MaweExportSrt.buildSrt())).not.toContain('Host"Alpha');
+  expect(await page.evaluate(() => MaweExportSrt.buildSrt())).toContain('Alpha');
 
   await page.locator('#editor-settings-close').click();
   await page.getByRole('button', { name: '保存工程', exact: true }).click();
-  await expect.poll(() => page.evaluate(() => previewGeometryDirty)).toBe(false);
+  await expect.poll(() => page.evaluate(() => MaweAppearance.previewGeometryDirty)).toBe(false);
 
   const onDisk = JSON.parse(readFileSync(projectPath, 'utf-8'));
   expect(onDisk.preview.subtitle.speaker_labels).toEqual({
@@ -284,4 +290,201 @@ test('configures preview-only speaker labels and independently controls SRT expo
   await expect(page.locator('#subtitle-speaker-label-yellow')).toHaveValue('Host');
   await expect(page.locator('#subtitle-speaker-label-separator')).toHaveValue('"');
   await expect(page.locator('#subtitle-color-style')).toHaveValue('stroke');
+});
+
+test('keeps ASS speaker labels in the same style across preview resizing and fullscreen', async ({ page }) => {
+  await page.goto(server.url);
+  await revealSpeakerCue(page);
+
+  const smallWindow = await page.evaluate(() => {
+    MaweBoot.DATA.media_metadata = { video_width: 1920, video_height: 1080 };
+    MaweBoot.DATA.preview.subtitle = {
+      ...MaweBoot.DATA.preview.subtitle,
+      speaker_labels: {
+        mapping_enabled: true,
+        enabled: true,
+        separator: '：',
+        names: { yellow: 'Host', green: 'Guest', red: 'Narrator', purple: 'Stage', blue: 'Caption' },
+      },
+    };
+    const library = window.AsrEditorUtils.defaultAssStyleLibrary();
+    const sourceStyle = window.AsrEditorUtils.assStyleForId(library, 'ass');
+    library.styles = library.styles.map((style) => style.id === 'ass'
+      ? {
+        ...sourceStyle,
+        fontName: 'Arial',
+        fontSize: 72,
+        bold: true,
+        italic: true,
+        underline: true,
+        outline: 4,
+        outlineColor: '#112233',
+      }
+      : style);
+    ASS_STYLE_LIBRARY = library;
+    MaweSettings.EDITOR_SETTINGS.assMode = true;
+    MaweDom.overlayToggle.checked = true;
+    MaweDom.playerWrap.style.height = '540px';
+    MaweDom.playerWrap.style.minHeight = '540px';
+    MaweDom.playerWrap.style.flex = '0 0 540px';
+    MaweDom.playerStage.style.width = '960px';
+    MaweDom.playerStage.style.height = '540px';
+    MaweDom.playerStage.style.minHeight = '540px';
+    MaweDom.playerStage.style.flex = '0 0 540px';
+    MawePlaybackLoop.refreshSubtitlePreview(1000, 0);
+    const text = document.getElementById('overlay-main-text');
+    const label = document.getElementById('overlay-main-speaker-label');
+    const textStyle = getComputedStyle(text);
+    const labelStyle = getComputedStyle(label);
+    return {
+      stageHeight: MaweDom.playerStage.getBoundingClientRect().height,
+      textFontSize: textStyle.fontSize,
+      labelFontSize: labelStyle.fontSize,
+      textFontFamily: textStyle.fontFamily,
+      labelFontFamily: labelStyle.fontFamily,
+      textFontWeight: textStyle.fontWeight,
+      labelFontWeight: labelStyle.fontWeight,
+      textFontStyle: textStyle.fontStyle,
+      labelFontStyle: labelStyle.fontStyle,
+      textDecoration: textStyle.textDecorationLine,
+      labelDecoration: labelStyle.textDecorationLine,
+    };
+  });
+  expect(smallWindow.stageHeight).toBeCloseTo(540, 0);
+  // Arial's CSS em is smaller than the ASS ascent/descent size. Keep the
+  // resize invariant without assuming the old, uncalibrated 36px CSS value.
+  expect(Number.parseFloat(smallWindow.textFontSize)).toBeGreaterThan(24);
+  expect(Number.parseFloat(smallWindow.textFontSize)).toBeLessThan(36);
+  expect(smallWindow.labelFontSize).toBe(smallWindow.textFontSize);
+  expect(smallWindow.labelFontFamily).toBe(smallWindow.textFontFamily);
+  expect(smallWindow.labelFontWeight).toBe(smallWindow.textFontWeight);
+  expect(smallWindow.labelFontStyle).toBe(smallWindow.textFontStyle);
+  expect(smallWindow.labelDecoration).toBe(smallWindow.textDecoration);
+
+  await page.evaluate(() => {
+    Object.defineProperty(document, 'fullscreenElement', {
+      configurable: true,
+      get: () => MaweDom.playerWrap,
+    });
+    MaweDom.playerStage.style.height = '1080px';
+    MaweDom.playerStage.style.minHeight = '1080px';
+    MaweDom.playerStage.style.flexBasis = '1080px';
+    MaweDom.playerWrap.style.height = '1080px';
+    MaweDom.playerWrap.style.minHeight = '1080px';
+    MaweDom.playerWrap.style.flexBasis = '1080px';
+    document.dispatchEvent(new Event('fullscreenchange'));
+  });
+  await page.evaluate(() => new Promise((resolve) => {
+    requestAnimationFrame(() => requestAnimationFrame(resolve));
+  }));
+  const fullscreen = await page.evaluate(() => {
+    const text = document.getElementById('overlay-main-text');
+    const label = document.getElementById('overlay-main-speaker-label');
+    return {
+      stageHeight: MaweDom.playerStage.getBoundingClientRect().height,
+      fullscreen: MaweDom.playerWrap.classList.contains('fullscreen-preview'),
+      textFontSize: getComputedStyle(text).fontSize,
+      labelFontSize: getComputedStyle(label).fontSize,
+      labelFontFamily: getComputedStyle(label).fontFamily,
+      labelFontWeight: getComputedStyle(label).fontWeight,
+      labelFontStyle: getComputedStyle(label).fontStyle,
+      labelDecoration: getComputedStyle(label).textDecorationLine,
+    };
+  });
+  expect(fullscreen.fullscreen).toBe(true);
+  expect(fullscreen.stageHeight).toBeCloseTo(1080, 0);
+  expect(Number.parseFloat(fullscreen.textFontSize))
+    .toBeCloseTo(2 * Number.parseFloat(smallWindow.textFontSize), 2);
+  expect(fullscreen.labelFontSize).toBe(fullscreen.textFontSize);
+  expect(fullscreen.labelFontFamily).toBe(smallWindow.textFontFamily);
+  expect(fullscreen.labelFontWeight).toBe(smallWindow.textFontWeight);
+  expect(fullscreen.labelFontStyle).toBe(smallWindow.textFontStyle);
+  expect(fullscreen.labelDecoration).toBe(smallWindow.textDecoration);
+
+  await page.evaluate(() => {
+    Object.defineProperty(document, 'fullscreenElement', {
+      configurable: true,
+      get: () => null,
+    });
+    MaweDom.playerStage.style.height = '540px';
+    MaweDom.playerStage.style.minHeight = '540px';
+    MaweDom.playerStage.style.flexBasis = '540px';
+    MaweDom.playerWrap.style.height = '540px';
+    MaweDom.playerWrap.style.minHeight = '540px';
+    MaweDom.playerWrap.style.flexBasis = '540px';
+    document.dispatchEvent(new Event('fullscreenchange'));
+  });
+  await page.evaluate(() => new Promise((resolve) => {
+    requestAnimationFrame(() => requestAnimationFrame(resolve));
+  }));
+  const windowedAgain = await page.evaluate(() => ({
+    fullscreen: MaweDom.playerWrap.classList.contains('fullscreen-preview'),
+    textFontSize: getComputedStyle(document.getElementById('overlay-main-text')).fontSize,
+    labelFontSize: getComputedStyle(document.getElementById('overlay-main-speaker-label')).fontSize,
+  }));
+  expect(windowedAgain.fullscreen).toBe(false);
+  expect(windowedAgain.textFontSize).toBe(smallWindow.textFontSize);
+  expect(windowedAgain.labelFontSize).toBe(windowedAgain.textFontSize);
+});
+
+test('uses ASS speaker-only colour for the label while preserving the base text style', async ({ page }) => {
+  await page.goto(server.url);
+  await revealSpeakerCue(page);
+
+  const preview = await page.evaluate(() => {
+    MaweBoot.DATA.media_metadata = { video_width: 1920, video_height: 1080 };
+    MaweBoot.DATA.preview.subtitle = {
+      ...MaweBoot.DATA.preview.subtitle,
+      ass_color_style: 'speaker',
+      speaker_labels: {
+        mapping_enabled: true,
+        enabled: true,
+        separator: '：',
+        names: { yellow: 'Host', green: 'Guest', red: 'Narrator', purple: 'Stage', blue: 'Caption' },
+      },
+    };
+    const library = window.AsrEditorUtils.defaultAssStyleLibrary();
+    const sourceStyle = window.AsrEditorUtils.assStyleForId(library, 'ass');
+    library.styles = library.styles.map((style) => style.id === 'ass'
+      ? {
+        ...sourceStyle,
+        fontName: 'Arial',
+        fontSize: 72,
+        primaryColor: '#123456',
+        outlineColor: '#112233',
+        outline: 4,
+        bold: true,
+        italic: true,
+      }
+      : style);
+    ASS_STYLE_LIBRARY = library;
+    MaweSettings.EDITOR_SETTINGS.assMode = true;
+    MaweDom.overlayToggle.checked = true;
+    MawePlaybackLoop.refreshSubtitlePreview(1000, 0);
+    const text = document.getElementById('overlay-main-text');
+    const label = document.getElementById('overlay-main-speaker-label');
+    return {
+      text: text.textContent,
+      label: label.textContent,
+      textColor: getComputedStyle(text).color,
+      labelColor: getComputedStyle(label).color,
+      textFontFamily: getComputedStyle(text).fontFamily,
+      labelFontFamily: getComputedStyle(label).fontFamily,
+      textFontWeight: getComputedStyle(text).fontWeight,
+      labelFontWeight: getComputedStyle(label).fontWeight,
+      textFontStyle: getComputedStyle(text).fontStyle,
+      labelFontStyle: getComputedStyle(label).fontStyle,
+      textStroke: text.style.getPropertyValue('-webkit-text-stroke'),
+      labelStroke: label.style.getPropertyValue('-webkit-text-stroke'),
+    };
+  });
+
+  expect(preview.text).toBe('Host：Alpha');
+  expect(preview.label).toBe('Host：');
+  expect(preview.textColor).toBe('rgb(18, 52, 86)');
+  expect(preview.labelColor).toBe('rgb(196, 160, 25)');
+  expect(preview.labelFontFamily).toBe(preview.textFontFamily);
+  expect(preview.labelFontWeight).toBe(preview.textFontWeight);
+  expect(preview.labelFontStyle).toBe(preview.textFontStyle);
+  expect(preview.labelStroke).toBe(preview.textStroke);
 });

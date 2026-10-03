@@ -1,0 +1,793 @@
+{
+  "base": "28f33e2",
+  "source": "editor/media/waveform.js",
+  "modules": [
+    {
+      "name": "constants",
+      "ranges": [
+        [
+          6,
+          13
+        ],
+        [
+          149,
+          169
+        ],
+        [
+          258,
+          260
+        ]
+      ],
+      "methods": false,
+      "names": [
+        "BROWSER_DECODE_LIMIT",
+        "BROWSER_PCM_ESTIMATE_LIMIT",
+        "DEFAULT_LAYOUT_ROWS",
+        "ENCODING",
+        "LOUDNESS_SCHEMA",
+        "MAX_WAVEFORM_SCALE",
+        "MIN_CUE_MS",
+        "MIN_WAVEFORM_SCALE",
+        "MULTI_ROW_BUFFER",
+        "PLAYHEAD_DRAG_SEEK_INTERVAL_MS",
+        "POINTER_DRAG_THRESHOLD_PX",
+        "ROUND_MS",
+        "ROW_GAP",
+        "ROW_HEIGHT_PRESETS",
+        "ROW_PRESETS",
+        "SCHEMA",
+        "SETTINGS_KEY",
+        "SNAP_MS",
+        "SPECTRAL_ENCODING",
+        "SPECTRAL_SCHEMA",
+        "SPLIT_FLASH_DURATION_MS",
+        "WAVEFORM_ADJUST_DEBOUNCE_MS",
+        "WORKSPACE_SCHEMA",
+        "ZOOM_PRESETS",
+        "clamp"
+      ],
+      "dependencies": []
+    },
+    {
+      "name": "labels",
+      "ranges": [
+        [
+          15,
+          54
+        ]
+      ],
+      "methods": false,
+      "names": [
+        "gapOperationAllowsBoundary",
+        "gapOperationAllowsMiddle",
+        "gapRemoveDisplayLabel",
+        "localizedWaveformMessage"
+      ],
+      "dependencies": [],
+      "hostSubstitutions": [
+        [
+          "window.MAWE_I18N?.language",
+          "getLanguage()"
+        ],
+        [
+          "window.AsrGapRemoveCore",
+          "gapRemoveCore"
+        ]
+      ]
+    },
+    {
+      "name": "scale",
+      "ranges": [
+        [
+          972,
+          1074
+        ]
+      ],
+      "methods": false,
+      "names": [
+        "buildWaveformEnvelope",
+        "clampWaveformScale",
+        "sampleInterpolatedPeak",
+        "waveformAmplitude",
+        "waveformScaleAfterStep",
+        "waveformScaleFromLoudness",
+        "wheelScrollDelta"
+      ],
+      "dependencies": [
+        "MAX_WAVEFORM_SCALE",
+        "MIN_WAVEFORM_SCALE",
+        "clamp"
+      ]
+    },
+    {
+      "name": "layout",
+      "ranges": [
+        [
+          58,
+          148
+        ],
+        [
+          170,
+          244
+        ],
+        [
+          395,
+          632
+        ]
+      ],
+      "methods": false,
+      "names": [
+        "BUILTIN_WORKSPACES",
+        "BUILTIN_WORKSPACE_IDS",
+        "DEFAULT_RIGHT_LAYOUT_TREE",
+        "DEFAULT_SETTINGS",
+        "MODULE_LABELS",
+        "cloneLayoutTree",
+        "collectLayoutModules",
+        "directionLabel",
+        "insertLayoutModuleAtEdge",
+        "insertLayoutModuleAtRootEdge",
+        "isCompleteLayoutTree",
+        "layoutDropIntent",
+        "layoutDropPreviewRect",
+        "layoutRootDropIntent",
+        "normalizeLayoutData",
+        "normalizeLayoutRows",
+        "normalizeLayoutTree",
+        "swapLayoutModuleOrder",
+        "swapLayoutTreeModules"
+      ],
+      "dependencies": [
+        "DEFAULT_LAYOUT_ROWS",
+        "ROW_HEIGHT_PRESETS",
+        "ROW_PRESETS",
+        "WORKSPACE_SCHEMA",
+        "ZOOM_PRESETS",
+        "clamp",
+        "clampWaveformScale"
+      ]
+    },
+    {
+      "name": "settings",
+      "ranges": [
+        [
+          634,
+          684
+        ]
+      ],
+      "methods": false,
+      "names": [
+        "readSettings",
+        "saveSettings"
+      ],
+      "dependencies": [
+        "DEFAULT_RIGHT_LAYOUT_TREE",
+        "DEFAULT_SETTINGS",
+        "ROW_HEIGHT_PRESETS",
+        "ROW_PRESETS",
+        "SETTINGS_KEY",
+        "ZOOM_PRESETS",
+        "clampWaveformScale",
+        "cloneLayoutTree",
+        "normalizeLayoutData"
+      ],
+      "hostSubstitutions": [
+        [
+          "localStorage.getItem(",
+          "storage.getItem("
+        ],
+        [
+          "localStorage.setItem(",
+          "storage.setItem("
+        ]
+      ]
+    },
+    {
+      "name": "payload",
+      "ranges": [
+        [
+          686,
+          970
+        ]
+      ],
+      "methods": false,
+      "names": [
+        "bytesToBase64",
+        "decodePayload",
+        "decodeReapeaksFile",
+        "decodeSpectralPayload",
+        "freqColor",
+        "peaksRateOf",
+        "publishPeakRate",
+        "sameSource",
+        "sourceForFile"
+      ],
+      "dependencies": [
+        "ENCODING",
+        "SCHEMA",
+        "SPECTRAL_ENCODING",
+        "SPECTRAL_SCHEMA",
+        "clamp"
+      ]
+    },
+    {
+      "name": "colors",
+      "ranges": [
+        [
+          247,
+          256
+        ],
+        [
+          1076,
+          1089
+        ]
+      ],
+      "methods": false,
+      "names": [
+        "colorForSegment",
+        "hasSubtitleColor",
+        "setColorPalette"
+      ],
+      "dependencies": []
+    },
+    {
+      "name": "timing",
+      "ranges": [
+        [
+          321,
+          393
+        ],
+        [
+          1091,
+          1510
+        ]
+      ],
+      "methods": false,
+      "names": [
+        "applyBoundaryStep",
+        "applyIndependentEdge",
+        "applyMoveStep",
+        "applySharedBoundary",
+        "formatCompact",
+        "isAttached",
+        "normalizeNewCueRange",
+        "normalizedIndices",
+        "planBoundaryStep",
+        "planMoveStep",
+        "remapItems",
+        "resolveTiming",
+        "restoreTiming",
+        "roundMs",
+        "shouldAdjustAdjacentCuesIndependently",
+        "shouldAdjustSharedBoundaryHandleIndependently",
+        "snapPointerTimeToTimingGrid",
+        "snapshotTiming",
+        "splitSegmentAtTime",
+        "waveformGridStepMs"
+      ],
+      "dependencies": [
+        "MIN_CUE_MS",
+        "ROUND_MS",
+        "SNAP_MS",
+        "clamp"
+      ]
+    },
+    {
+      "name": "visibility",
+      "ranges": [
+        [
+          262,
+          319
+        ],
+        [
+          1514,
+          1591
+        ]
+      ],
+      "methods": false,
+      "names": [
+        "computeGroupBadges",
+        "cueBlockContinuationEdges",
+        "findActiveCueIndex",
+        "firstCueIndexOverlapping",
+        "isActiveCueVisualHit",
+        "isMultiRowInComfortZone",
+        "restoreWaveformTopEdgeMs",
+        "syncSpectralColorToggle",
+        "waveformTopEdgeMs"
+      ],
+      "dependencies": [
+        "ROW_GAP",
+        "clamp"
+      ]
+    },
+    {
+      "name": "controls",
+      "ranges": [
+        [
+          1701,
+          1816
+        ]
+      ],
+      "methods": true,
+      "names": [
+        "isAdjacentCueAdjustmentIndependent",
+        "isSharedBoundaryHandleIndependent",
+        "adjacentSnapModeStatusHint",
+        "hasCueDrag",
+        "bindControls"
+      ],
+      "dependencies": [
+        "saveSettings",
+        "shouldAdjustAdjacentCuesIndependently",
+        "shouldAdjustSharedBoundaryHandleIndependently",
+        "syncSpectralColorToggle"
+      ]
+    },
+    {
+      "name": "pointer",
+      "ranges": [
+        [
+          1818,
+          2000
+        ]
+      ],
+      "methods": true,
+      "names": [
+        "pointerTimeMs",
+        "refreshPointerLine",
+        "showPointerLine",
+        "hidePointerLine",
+        "isCueBoundaryDrag",
+        "findVisibleWaveformRowAtPoint",
+        "findVisibleWaveformRowAtY",
+        "findVisibleWaveformRowForTime",
+        "cueBoundaryDragTimeMs",
+        "refreshBoundaryDragPointerLine",
+        "restorePointerLineAfterBoundaryDrag",
+        "scheduleHoverSeekPreview",
+        "cancelHoverSeekPreview",
+        "flushHoverSeekPreview"
+      ],
+      "dependencies": [
+        "clamp",
+        "resolveTiming",
+        "snapPointerTimeToTimingGrid"
+      ]
+    },
+    {
+      "name": "workspace",
+      "ranges": [
+        [
+          2002,
+          2618
+        ]
+      ],
+      "methods": true,
+      "names": [
+        "bindDivider",
+        "bindLayoutResizers",
+        "applyLayoutVariables",
+        "applyLayout",
+        "updateAdvancedSettingsAvailability",
+        "setMode",
+        "setTool",
+        "getTool",
+        "setLayout",
+        "toggleLayoutEditMode",
+        "isMultiMode",
+        "getRowHeight",
+        "getMaxRowHeight",
+        "setRowHeight",
+        "isCustomLayout",
+        "isPresetResizableLayout",
+        "bindDockHandles",
+        "bindWorkspaceDockTarget",
+        "applyLayoutDrop",
+        "showLayoutDropPreview",
+        "clearLayoutDropPreview",
+        "ensureCustomLayoutRoot",
+        "restoreDirectLayoutModules",
+        "createCustomLayoutNode",
+        "applyCustomSplitRatio",
+        "bindCustomLayoutDivider",
+        "applyCustomLayoutTree",
+        "getLayoutData",
+        "getLayoutHistorySnapshot",
+        "recordLayoutUndo",
+        "restoreLayoutHistorySnapshot",
+        "resetLayout",
+        "setLayoutData"
+      ],
+      "dependencies": [
+        "BUILTIN_WORKSPACES",
+        "DEFAULT_RIGHT_LAYOUT_TREE",
+        "DEFAULT_SETTINGS",
+        "MODULE_LABELS",
+        "ROW_HEIGHT_PRESETS",
+        "WORKSPACE_SCHEMA",
+        "clamp",
+        "cloneLayoutTree",
+        "directionLabel",
+        "insertLayoutModuleAtEdge",
+        "insertLayoutModuleAtRootEdge",
+        "isCompleteLayoutTree",
+        "layoutDropIntent",
+        "layoutDropPreviewRect",
+        "layoutRootDropIntent",
+        "normalizeLayoutData",
+        "normalizeLayoutRows",
+        "saveSettings",
+        "swapLayoutTreeModules"
+      ]
+    },
+    {
+      "name": "scale-controls",
+      "ranges": [
+        [
+          2620,
+          2846
+        ]
+      ],
+      "methods": true,
+      "names": [
+        "focusWaveform",
+        "changeWaveformScale",
+        "applyWaveformScaleSteps",
+        "renderWaveformScaleLabel",
+        "setLoudnessStats",
+        "fitWaveformScaleToLoudness",
+        "scheduleWheelScaleChange",
+        "scheduleRowHeightChange",
+        "updateDisabledVisibility",
+        "revealTime",
+        "changeZoom",
+        "setStatus",
+        "setSpectralColorStatus",
+        "scheduleSpectralColorRender"
+      ],
+      "dependencies": [
+        "LOUDNESS_SCHEMA",
+        "ROW_GAP",
+        "ROW_HEIGHT_PRESETS",
+        "WAVEFORM_ADJUST_DEBOUNCE_MS",
+        "ZOOM_PRESETS",
+        "clamp",
+        "isMultiRowInComfortZone",
+        "localizedWaveformMessage",
+        "saveSettings",
+        "syncSpectralColorToggle",
+        "waveformScaleAfterStep",
+        "waveformScaleFromLoudness"
+      ]
+    },
+    {
+      "name": "media",
+      "ranges": [
+        [
+          2848,
+          3104
+        ]
+      ],
+      "methods": true,
+      "names": [
+        "attachPlayer",
+        "setMediaAvailable",
+        "setPayload",
+        "getPayload",
+        "setSpectralPayload",
+        "setReapeaksWaveform",
+        "activeWaveShape",
+        "getGapRemoveDetectionData",
+        "processFile",
+        "waitForPlayerDuration",
+        "durationMs",
+        "currentTimeMs",
+        "centerBasicOnCurrentTime"
+      ],
+      "dependencies": [
+        "BROWSER_DECODE_LIMIT",
+        "BROWSER_PCM_ESTIMATE_LIMIT",
+        "ENCODING",
+        "SCHEMA",
+        "bytesToBase64",
+        "clamp",
+        "decodePayload",
+        "decodeSpectralPayload",
+        "formatCompact",
+        "localizedWaveformMessage",
+        "peaksRateOf",
+        "publishPeakRate",
+        "sameSource",
+        "sourceForFile",
+        "syncSpectralColorToggle"
+      ]
+    },
+    {
+      "name": "render",
+      "ranges": [
+        [
+          3106,
+          3292
+        ]
+      ],
+      "methods": true,
+      "names": [
+        "scheduleRender",
+        "scheduleMultiVisible",
+        "scheduleBasicRender",
+        "scheduleRefreshCueBlocks",
+        "_readWaveColors",
+        "_getWaveColors",
+        "render",
+        "stretchWaveformCanvases",
+        "redrawWaveformCanvases",
+        "renderSegments",
+        "renderBasic",
+        "renderMulti",
+        "renderMultiVisible",
+        "createMultiRow"
+      ],
+      "dependencies": [
+        "MULTI_ROW_BUFFER",
+        "ROW_GAP",
+        "clamp",
+        "computeGroupBadges"
+      ]
+    },
+    {
+      "name": "cue-blocks",
+      "ranges": [
+        [
+          3294,
+          4047
+        ]
+      ],
+      "methods": true,
+      "names": [
+        "createRow",
+        "appendGapBlocks",
+        "appendCueBlocks",
+        "isSegmentHiddenForDisplay",
+        "appendSharedBoundaryZones",
+        "setBindingMarker",
+        "layoutBlock",
+        "layoutGapBlock",
+        "refreshGapOverlay",
+        "refreshCueOverlay",
+        "refreshCueBlocks",
+        "refreshBoundaryZones",
+        "refreshCueLabel",
+        "refreshExtensionCueLabel",
+        "updateSelection"
+      ],
+      "dependencies": [
+        "colorForSegment",
+        "computeGroupBadges",
+        "cueBlockContinuationEdges",
+        "findActiveCueIndex",
+        "firstCueIndexOverlapping",
+        "formatCompact",
+        "gapOperationAllowsBoundary",
+        "gapOperationAllowsMiddle",
+        "gapRemoveDisplayLabel",
+        "hasSubtitleColor",
+        "isActiveCueVisualHit",
+        "localizedWaveformMessage"
+      ]
+    },
+    {
+      "name": "canvas",
+      "ranges": [
+        [
+          4049,
+          4205
+        ]
+      ],
+      "methods": true,
+      "names": [
+        "getWaveformEnvelope",
+        "drawRow"
+      ],
+      "dependencies": [
+        "ZOOM_PRESETS",
+        "buildWaveformEnvelope",
+        "clamp",
+        "freqColor",
+        "waveformAmplitude",
+        "waveformGridStepMs"
+      ]
+    },
+    {
+      "name": "input",
+      "ranges": [
+        [
+          4207,
+          4790
+        ]
+      ],
+      "methods": true,
+      "names": [
+        "seekFromPointer",
+        "seekFromCue",
+        "beginCreateCueDrag",
+        "captureRowGeometry",
+        "trackAtPoint",
+        "isCueTimeOccupied",
+        "clampCreateCueTime",
+        "beginBlockedCueCreateDrag",
+        "timeFromPointer",
+        "timeFromPointerUnbounded",
+        "flashSplitAtTime",
+        "getSplitPointAtTime",
+        "timeMsAtPoint",
+        "beginPlayheadDrag",
+        "beginMarqueeDrag",
+        "handleWheel"
+      ],
+      "dependencies": [
+        "PLAYHEAD_DRAG_SEEK_INTERVAL_MS",
+        "POINTER_DRAG_THRESHOLD_PX",
+        "ROW_HEIGHT_PRESETS",
+        "ROW_PRESETS",
+        "SPLIT_FLASH_DURATION_MS",
+        "clamp",
+        "roundMs",
+        "saveSettings",
+        "wheelScrollDelta"
+      ]
+    },
+    {
+      "name": "cue-drag",
+      "ranges": [
+        [
+          4792,
+          5157
+        ]
+      ],
+      "methods": true,
+      "names": [
+        "beginCueDrag",
+        "isSharedBoundary",
+        "beginIndependentEdgeDrag",
+        "beginSharedBoundaryZoneDrag",
+        "cueDragDurationMs",
+        "cueTiming",
+        "cueTimingDuration",
+        "cueTimingValueFromMs",
+        "cueTimingValueToMs",
+        "formatCueTiming",
+        "captureCueDragOriginals",
+        "rebaseCueDragToTrack"
+      ],
+      "dependencies": [
+        "isAttached",
+        "resolveTiming",
+        "snapshotTiming"
+      ]
+    },
+    {
+      "name": "cue-commands",
+      "ranges": [
+        [
+          5159,
+          5492
+        ]
+      ],
+      "methods": true,
+      "names": [
+        "adjustSelectedByKeyboard",
+        "adjustSelectedBoundaryByKeyboard",
+        "setCueBoundaryToTime",
+        "snapSelectedCueBoundaryByKeyboard",
+        "adjustActiveCueDragBy",
+        "handleHeldCueKey",
+        "snapActiveCueBoundaryByKeyboard",
+        "cancelCueDrag",
+        "applyIndependentBoundaryDrag"
+      ],
+      "dependencies": [
+        "applyBoundaryStep",
+        "applyIndependentEdge",
+        "applyMoveStep",
+        "clamp",
+        "normalizedIndices",
+        "planBoundaryStep",
+        "planMoveStep",
+        "remapItems",
+        "resolveTiming",
+        "restoreTiming",
+        "snapshotTiming"
+      ]
+    },
+    {
+      "name": "gap-drag",
+      "ranges": [
+        [
+          5494,
+          5879
+        ]
+      ],
+      "methods": true,
+      "names": [
+        "beginGapBoundaryDrag",
+        "beginGapMoveDrag",
+        "gapMoveTarget",
+        "moveGapMoveDrag",
+        "scheduleGapMovePreview",
+        "clearGapMovePreview",
+        "previewGapMoveDrag",
+        "endGapMoveDrag",
+        "refreshGapBlocks",
+        "clearGapBoundaryPreview",
+        "appendGapBoundaryPreview",
+        "previewGapBoundaryDrag",
+        "moveGapBoundaryDrag",
+        "scheduleGapPreview",
+        "endGapBoundaryDrag",
+        "beginGapRangeDrag",
+        "gapRangePointerTime",
+        "clearGapRangePreviews",
+        "layoutGapRangePreview",
+        "moveGapRangeDrag",
+        "endGapRangeDrag"
+      ],
+      "dependencies": [
+        "POINTER_DRAG_THRESHOLD_PX",
+        "ROUND_MS",
+        "clamp",
+        "gapOperationAllowsBoundary",
+        "roundMs"
+      ]
+    },
+    {
+      "name": "cue-drag-update",
+      "ranges": [
+        [
+          5881,
+          6260
+        ]
+      ],
+      "methods": true,
+      "names": [
+        "moveCueDrag",
+        "applyMoveDrag",
+        "applyResizeDrag",
+        "applyBoundaryDrag",
+        "endCueDrag"
+      ],
+      "dependencies": [
+        "clamp",
+        "remapItems",
+        "resolveTiming",
+        "restoreTiming",
+        "snapshotTiming"
+      ]
+    },
+    {
+      "name": "playback",
+      "ranges": [
+        [
+          6262,
+          6420
+        ]
+      ],
+      "methods": true,
+      "names": [
+        "updatePlayback",
+        "getNavigationSnapshot",
+        "restoreNavigation",
+        "positionPlayheads"
+      ],
+      "dependencies": [
+        "ROW_GAP",
+        "clamp",
+        "findActiveCueIndex",
+        "isActiveCueVisualHit",
+        "isMultiRowInComfortZone",
+        "restoreWaveformTopEdgeMs",
+        "waveformTopEdgeMs"
+      ]
+    }
+  ]
+}

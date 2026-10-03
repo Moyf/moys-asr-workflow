@@ -31,7 +31,7 @@ from maw.postprocess import (
     run_fixed_replacement,
     run_llm_postprocess,
 )
-from maw.postprocess_ffmpeg import AudioTrack, BurnSubtitleRequest, ExtractAudioRequest, FfconcatRequest, parse_ffconcat, probe_audio_tracks, run_burn_subtitles, run_extract_audio, run_ffconcat_rebuild
+from maw.postprocess_ffmpeg import AudioTrack, BurnSubtitleRequest, ExtractAudioRequest, FfconcatRequest, MediaToolError, _rewrite_ass_default_style, parse_ffconcat, probe_audio_tracks, run_burn_subtitles, run_extract_audio, run_ffconcat_rebuild
 from maw.postprocess_io import PostprocessFileError, _atomic_write, read_project, read_srt, render_srt
 from maw.postprocess_llm import MAX_PROVIDER_DIAGNOSTIC_CHARS, LlmClientError, LlmSettings, _chat_endpoint, _models_endpoint, _reasoning_parameters, complete_subtitle_groups, list_llm_models, normalize_reasoning_mode, test_llm_connection as check_llm_connection
 from maw.project_preview import JsonDict, JsonValue
@@ -447,6 +447,226 @@ class PostprocessTests(unittest.TestCase):
         if result.project_path is None:
             self.fail("JSON output mode must create a project")
         self.assertEqual(read_project(result.project_path)["media"], str(self.media))
+
+    def test_llm_network_failure_degrades_batch_to_original_text(self) -> None:
+        calls: list[list[dict[str, JsonValue]]] = []
+
+        def complete(_prompt: str, cues: list[dict[str, JsonValue]]) -> JsonDict:
+            calls.append(cues)
+            if len(calls) == 1:
+                raise LlmClientError("LLM network request failed: connection reset", category="network")
+            return {"groups": [{"id": cue["id"], "text": f"改写{cue['text']}"} for cue in cues]}
+
+        with mock.patch("maw.postprocess.MAX_LLM_CUES_PER_REQUEST", 1):
+            result = run_llm_postprocess(
+                LlmPostprocessRequest(
+                    project_path=self.project_path,
+                    srt_path=None,
+                    output_mode=OutputMode.JSON,
+                    operation="proofread",
+                    custom_prompt="",
+                ),
+                complete=complete,
+            )
+
+        self.assertEqual(len(calls), 2)
+        if result.project_path is None:
+            self.fail("JSON output mode must create a project")
+        output_texts = [segment["text"] for segment in project_segments(read_project(result.project_path))]
+        self.assertEqual(output_texts, ["酒很好喝", "改写下一句"])
+        self.assertIn("网络/服务请求失败，该批字幕保留原文", "\n".join(result.warnings))
+        self.assertNotIn("已跳过", "\n".join(result.warnings))
+
+    def test_translation_network_failure_preserves_entire_source_batch(self) -> None:
+        calls = 0
+        original = project_segments(read_project(self.project_path))[0]
+
+        def complete(_prompt, cues):
+            nonlocal calls
+            calls += 1
+            if calls == 1:
+                raise LlmClientError('timeout', category='network')
+            return {'groups': [{'id': cue['id'], 'text': 'Next sentence'} for cue in cues]}
+
+        with mock.patch('maw.postprocess.MAX_LLM_CUES_PER_REQUEST', 1):
+            result = run_llm_postprocess(LlmPostprocessRequest(
+                project_path=self.project_path, srt_path=None, output_mode=OutputMode.JSON,
+                operation='translate_en', custom_prompt=''), complete=complete)
+        output = project_segments(read_project(result.project_path))
+        self.assertEqual(output[0], original)
+        self.assertEqual(output[1]['text'], 'Next sentence')
+        self.assertIn('保留原文', '\n'.join(result.warnings))
+
+    def test_resegment_network_failure_preserves_source_with_both_success_protocols(self) -> None:
+        for mode, failed_batch in [(mode, batch) for mode in ["cues", "atoms"] for batch in [1, 2]]:
+            with self.subTest(mode=mode, failed_batch=failed_batch):
+                project = sample_project(self.media)
+                project_segments(project)[0]['custom_metadata'] = {'keep': True}
+                project_segments(project)[1]['items'] = [
+                    {'start': 1200, 'end': 1600, 'text': '下'},
+                    {'start': 1600, 'end': 2200, 'text': '一句'},
+                ]
+                self.project_path.write_text(json.dumps(project, ensure_ascii=False), encoding='utf-8')
+                originals = project_segments(read_project(self.project_path))
+                original = originals[failed_batch - 1]
+                calls = 0
+
+                def complete(_prompt, cues):
+                    nonlocal calls
+                    calls += 1
+                    if calls == failed_batch:
+                        raise LlmClientError('timeout', category='network')
+                    if mode == 'cues':
+                        return {'groups': [{'id': cue['id'], 'text': text} for cue in cues
+                                           for text in [cue['text'][:1], cue['text'][1:]]]}
+                    return {'groups': [{'atom_ids': [item['id']]} for cue in cues for item in cue['items']]}
+
+                with mock.patch('maw.postprocess.MAX_LLM_CUES_PER_REQUEST', 1):
+                    result = run_llm_postprocess(LlmPostprocessRequest(
+                        project_path=self.project_path, srt_path=None, output_mode=OutputMode.JSON,
+                        operation='resegment', custom_prompt=''), complete=complete)
+                output = project_segments(read_project(result.project_path))
+                preserved_index = 0 if failed_batch == 1 else len(output) - 1
+                self.assertEqual(output[preserved_index], original)
+                changed = [segment for index, segment in enumerate(output) if index != preserved_index]
+                self.assertEqual(''.join(segment['text'] for segment in changed), originals[2 - failed_batch]['text'])
+
+    def test_translation_repair_network_failure_preserves_the_whole_batch(self) -> None:
+        source = read_project(self.project_path)
+        source["segments"].append({"id": "third", "start": 2500, "end": 3000, "text": "最后一句"})
+        self.project_path.write_text(json.dumps(source, ensure_ascii=False), encoding="utf-8")
+        original = project_segments(read_project(self.project_path))
+        calls = 0
+
+        def complete(_prompt, cues):
+            nonlocal calls
+            calls += 1
+            if calls == 1:
+                return {"groups": [{"id": cues[0]["id"], "text": "Good wine"}]}
+            if calls == 2:
+                raise LlmClientError("repair timeout", category="network")
+            return {"groups": [{"id": cue["id"], "text": "Last sentence"} for cue in cues]}
+
+        with mock.patch("maw.postprocess.MAX_LLM_CUES_PER_REQUEST", 2):
+            result = run_llm_postprocess(LlmPostprocessRequest(
+                project_path=self.project_path, srt_path=None, output_mode=OutputMode.JSON,
+                operation="translate_en", custom_prompt=""), complete=complete)
+        output = project_segments(read_project(result.project_path))
+        self.assertEqual(output[:2], original[:2])
+        self.assertEqual(output[2]["text"], "Last sentence")
+        self.assertEqual(calls, 3)
+
+    def test_failed_batch_and_unusable_response_do_not_write_output(self) -> None:
+        calls = 0
+        before = set(self.root.iterdir())
+
+        def complete(_prompt, cues):
+            nonlocal calls
+            calls += 1
+            if calls == 1:
+                raise LlmClientError("timeout", category="network")
+            return {"groups": [{"id": cues[0]["id"], "text": ""}]}
+
+        with mock.patch("maw.postprocess.MAX_LLM_CUES_PER_REQUEST", 1):
+            with self.assertRaisesRegex(ValueError, "没有生成可用字幕"):
+                run_llm_postprocess(LlmPostprocessRequest(
+                    project_path=self.project_path, srt_path=None, output_mode=OutputMode.JSON,
+                    operation="proofread", custom_prompt=""), complete=complete)
+        self.assertEqual(set(self.root.iterdir()), before)
+
+    def test_llm_transient_provider_status_degrades_batch_to_original_text(self) -> None:
+        # 429 / 5xx 是长任务中最常见的中途失败，与网络中断同等对待。
+        calls: list[list[dict[str, JsonValue]]] = []
+
+        def complete(_prompt: str, cues: list[dict[str, JsonValue]]) -> JsonDict:
+            calls.append(cues)
+            if len(calls) == 1:
+                raise LlmClientError(
+                    "LLM provider returned HTTP 503: upstream unavailable",
+                    category="provider_response",
+                    status_code=503,
+                )
+            return {"groups": [{"id": cue["id"], "text": f"改写{cue['text']}"} for cue in cues]}
+
+        with mock.patch("maw.postprocess.MAX_LLM_CUES_PER_REQUEST", 1):
+            result = run_llm_postprocess(
+                LlmPostprocessRequest(
+                    project_path=self.project_path,
+                    srt_path=None,
+                    output_mode=OutputMode.JSON,
+                    operation="proofread",
+                    custom_prompt="",
+                ),
+                complete=complete,
+            )
+
+        self.assertEqual(len(calls), 2)
+        if result.project_path is None:
+            self.fail("JSON output mode must create a project")
+        output_texts = [segment["text"] for segment in project_segments(read_project(result.project_path))]
+        self.assertEqual(output_texts, ["酒很好喝", "改写下一句"])
+        self.assertIn("网络/服务请求失败，该批字幕保留原文", "\n".join(result.warnings))
+
+    def test_llm_auth_failure_still_aborts_the_run(self) -> None:
+        # 鉴权 / 配置类 4xx 不降级：降级会静默写出未处理的结果，掩盖配置问题。
+
+        def complete(_prompt: str, _cues: list[dict[str, JsonValue]]) -> JsonDict:
+            raise LlmClientError(
+                "LLM provider returned HTTP 401: invalid api key",
+                category="provider_response",
+                status_code=401,
+            )
+
+        with mock.patch("maw.postprocess.MAX_LLM_CUES_PER_REQUEST", 1):
+            with self.assertRaises(PostprocessStepError):
+                run_llm_postprocess(
+                    LlmPostprocessRequest(
+                        project_path=self.project_path,
+                        srt_path=None,
+                        output_mode=OutputMode.JSON,
+                        operation="proofread",
+                        custom_prompt="",
+                    ),
+                    complete=complete,
+                )
+
+    def test_llm_network_failure_on_every_batch_writes_nothing(self) -> None:
+        def complete(_prompt: str, _cues: list[dict[str, JsonValue]]) -> JsonDict:
+            raise LlmClientError("LLM network request failed: timeout", category="network")
+
+        before = set(self.root.iterdir())
+        for operation in ["proofread", "translate_en", "resegment", "custom"]:
+            with self.subTest(operation=operation), mock.patch("maw.postprocess.MAX_LLM_CUES_PER_REQUEST", 1):
+                with self.assertRaises(ValueError):
+                    run_llm_postprocess(
+                        LlmPostprocessRequest(
+                            project_path=self.project_path,
+                            srt_path=None,
+                            output_mode=OutputMode.JSON,
+                            operation=operation,
+                            custom_prompt="",
+                        ),
+                        complete=complete,
+                    )
+            self.assertEqual(set(self.root.iterdir()), before)
+
+    def test_llm_protocol_failure_still_aborts_the_run(self) -> None:
+        def complete(_prompt: str, _cues: list[dict[str, JsonValue]]) -> JsonDict:
+            raise LlmClientError("LLM response violates the JSON protocol after retry", category="protocol")
+
+        with mock.patch("maw.postprocess.MAX_LLM_CUES_PER_REQUEST", 1):
+            with self.assertRaises(PostprocessStepError):
+                run_llm_postprocess(
+                    LlmPostprocessRequest(
+                        project_path=self.project_path,
+                        srt_path=None,
+                        output_mode=OutputMode.JSON,
+                        operation="proofread",
+                        custom_prompt="",
+                    ),
+                    complete=complete,
+                )
+
     def test_llm_groups_can_redistribute_text_but_not_timing(self) -> None:
         project = sample_project(self.media)
         groups: JsonDict = {
@@ -764,7 +984,7 @@ class PostprocessTests(unittest.TestCase):
                 project_path=self.project_path,
                 srt_path=None,
                 output_mode=OutputMode.SRT,
-                # 空规则现在会跳过固定处理；这里用一条不命中的规则驱动 SRT 输出路径。
+                # 空规则现在会跳过固定替换；这里用一条不命中的规则驱动 SRT 输出路径。
                 replacements=(Replacement(source="不会出现的字", target="x"),),
             )
         )
@@ -804,6 +1024,60 @@ class PostprocessTests(unittest.TestCase):
 
         with self.assertRaisesRegex(PostprocessFileError, "cue 2 has no timing line"):
             _ = read_srt(malformed)
+
+    def test_srt_reader_places_overlapping_cues_in_overlay_track(self) -> None:
+        source = self.root / "overlap.srt"
+        _ = source.write_text(
+            "1\n00:00:00,000 --> 00:00:02,000\n主\n\n"
+            "2\n00:00:00,500 --> 00:00:01,500\n叠\n",
+            encoding="utf-8",
+        )
+
+        project = read_srt(source)
+
+        self.assertEqual([segment["text"] for segment in project["segments"]], ["主"])
+        self.assertEqual(
+            [segment["text"] for segment in project["overlay_track"]["segments"]],
+            ["叠"],
+        )
+
+    def test_srt_reader_rejects_a_third_overlapping_layer(self) -> None:
+        source = self.root / "three-layers.srt"
+        _ = source.write_text(
+            "1\n00:00:00,000 --> 00:00:03,000\n一\n\n"
+            "2\n00:00:00,500 --> 00:00:02,500\n二\n\n"
+            "3\n00:00:01,000 --> 00:00:02,000\n三\n",
+            encoding="utf-8",
+        )
+
+        with self.assertRaisesRegex(PostprocessFileError, "cue 3 cannot fit"):
+            _ = read_srt(source)
+
+    def test_render_srt_merges_main_and_overlay_tracks_by_time(self) -> None:
+        project = {
+            "segments": [
+                {"start": 0, "end": 1000, "text": "主一"},
+                {"start": 2000, "end": 3000, "text": "主二"},
+            ],
+            "overlay_track": {
+                "enabled": True,
+                "segments": [
+                    {"start": 500, "end": 1500, "text": "叠一"},
+                    {"start": 2000, "end": 2500, "text": "叠二"},
+                    {"start": 3000, "end": 3500, "text": "已禁用", "disabled": True},
+                ],
+            },
+        }
+
+        rendered = render_srt(project)
+
+        self.assertEqual(
+            rendered,
+            "1\n00:00:00,000 --> 00:00:01,000\n主一\n\n"
+            "2\n00:00:00,500 --> 00:00:01,500\n叠一\n\n"
+            "3\n00:00:02,000 --> 00:00:03,000\n主二\n\n"
+            "4\n00:00:02,000 --> 00:00:02,500\n叠二\n",
+        )
 
     def test_atomic_write_removes_temporary_file_after_encoding_failure(self) -> None:
         target = self.root / "result.json"
@@ -2500,7 +2774,23 @@ class MediaToolTests(unittest.TestCase):
                 return 0
 
         process = FakeProcess()
-        _ = Path(command[-1]).write_bytes(b"encoded")
+        output = Path(command[-1])
+        if output.suffix.lower() == ".ass":
+            _ = output.write_text(
+                "[Script Info]\n"
+                "ScriptType: v4.00+\n"
+                "PlayResX: 384\n"
+                "PlayResY: 288\n\n"
+                "[V4+ Styles]\n"
+                "Format: Name, Fontname, Fontsize, PrimaryColour, SecondaryColour, OutlineColour, BackColour, Bold, Italic, Underline, StrikeOut, ScaleX, ScaleY, Spacing, Angle, BorderStyle, Outline, Shadow, Alignment, MarginL, MarginR, MarginV, Encoding\n"
+                "Style: Default,Arial,16,&Hffffff,&Hffffff,&H0,&H0,0,0,0,0,100,100,0,0,1,1,0,2,10,10,10,1\n\n"
+                "[Events]\n"
+                "Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text\n"
+                "Dialogue: 0,0:00:00.00,0:00:01.00,Default,,0,0,0,,你好\n",
+                encoding="utf-8",
+            )
+        else:
+            _ = output.write_bytes(b"encoded")
         return process
 
     def test_probe_audio_tracks_parses_stream_metadata_and_default_flag(self) -> None:
@@ -2551,17 +2841,204 @@ class MediaToolTests(unittest.TestCase):
     def test_burn_subtitles_reencodes_to_new_mp4_and_uses_subtitles_filter(self) -> None:
         with mock.patch("maw.postprocess_ffmpeg.subprocess.Popen", side_effect=self._fake_process) as popen:
             result = run_burn_subtitles(
-                BurnSubtitleRequest(media_path=self.media, subtitle_path=self.subtitle),
+                BurnSubtitleRequest(media_path=self.media, subtitle_path=self.subtitle, video_encoder="cpu"),
+                ffmpeg_path=Path("ffmpeg"),
+            )
+
+        convert_command = popen.call_args_list[0].args[0]
+        command = popen.call_args_list[-1].args[0]
+        self.assertIn("-c:s", convert_command)
+        self.assertIn("ass", convert_command)
+        self.assertIn("-vf", command)
+        self.assertIn("ass=filename='.clip.maw-burn-", command[command.index("-vf") + 1])
+        self.assertNotIn("clip.srt'", command[command.index("-vf") + 1])
+        self.assertIn("libx264", command)
+        self.assertEqual(command[command.index("-preset") + 1], "medium")
+        self.assertEqual(command[command.index("-crf") + 1], "18")
+        self.assertEqual(command[command.index("-b:a") + 1], "192k")
+        self.assertEqual(len(popen.call_args_list), 2)
+        self.assertFalse(list(self.root.glob(".*.ass")))
+        self.assertEqual(result.media_path.name, "clip.subtitled.mp4")
+        self.assertTrue(result.media_path.read_bytes())
+        self.assertEqual(self.media.read_bytes(), b"media")
+
+    def test_green_screen_burn_uses_subtitle_timing_without_source_video(self) -> None:
+        subtitle = self.root / "green.ass"
+        subtitle.write_text(
+            "[Script Info]\nPlayResX: 321\nPlayResY: 181\n"
+            "[Events]\nFormat: Layer, Start, End, Style, Name, Text\n"
+            "Dialogue: 0,0:00:00.00,0:00:02.00,Default,,Hello\n",
+            encoding="utf-8",
+        )
+        with mock.patch("maw.postprocess_ffmpeg.subprocess.Popen", side_effect=self._fake_process) as popen:
+            result = run_burn_subtitles(
+                BurnSubtitleRequest(media_path=None, subtitle_path=subtitle,
+                                    green_screen=True, video_encoder="cpu"),
+                ffmpeg_path=Path("ffmpeg"),
+            )
+        command = popen.call_args.args[0]
+        self.assertIn("color=c=0x00ff00:s=322x182:r=30:d=2.500", command)
+        self.assertIn("-an", command)
+        self.assertNotIn(str(self.media), command)
+        self.assertEqual(result.source_media_path, None)
+        self.assertEqual(result.media_path.name, "green.green-screen.mp4")
+        self.assertTrue(result.media_path.is_file())
+
+        self.subtitle.write_text("1\n00:00:00,000 --> 00:00:03,250\nHello\n", encoding="utf-8")
+        with mock.patch("maw.postprocess_ffmpeg.subprocess.Popen", side_effect=self._fake_process) as popen:
+            run_burn_subtitles(
+                BurnSubtitleRequest(media_path=None, subtitle_path=self.subtitle,
+                                    green_screen=True, video_encoder="cpu"),
+                ffmpeg_path=Path("ffmpeg"),
+            )
+        self.assertIn("color=c=0x00ff00:s=1920x1080:r=30:d=3.767", popen.call_args.args[0])
+
+    def test_green_screen_rejects_subtitles_without_timing(self) -> None:
+        subtitle = self.root / "empty.ass"
+        subtitle.write_text("[Events]\nFormat: Layer, Start, End, Text\n", encoding="utf-8")
+        with self.assertRaisesRegex(MediaToolError, "没有可用的结束时间"):
+            run_burn_subtitles(
+                BurnSubtitleRequest(media_path=None, subtitle_path=subtitle, green_screen=True, video_encoder="cpu"),
+                ffmpeg_path=Path("ffmpeg"),
+            )
+
+    def test_burn_subtitles_applies_selected_srt_style_to_converted_ass(self) -> None:
+        generated = self.root / "generated.ass"
+        generated.write_text(
+            "[V4+ Styles]\nStyle: Default,Arial,16,old\n",
+            encoding="utf-8",
+        )
+
+        _rewrite_ass_default_style(generated, {"fontName": "Microsoft YaHei", "fontSize": 24})
+
+        self.assertIn("Style: Default,Microsoft YaHei,24", generated.read_text(encoding="utf-8"))
+
+    def test_burn_subtitles_keeps_existing_ass_input_without_conversion(self) -> None:
+        subtitle = self.root / "clip.ass"
+        _ = subtitle.write_text("[Script Info]\n", encoding="utf-8")
+        with mock.patch("maw.postprocess_ffmpeg.subprocess.Popen", side_effect=self._fake_process) as popen:
+            _ = run_burn_subtitles(
+                BurnSubtitleRequest(media_path=self.media, subtitle_path=subtitle, video_encoder="cpu"),
+                ffmpeg_path=Path("ffmpeg"),
+            )
+
+        self.assertEqual(len(popen.call_args_list), 1)
+        command = popen.call_args.args[0]
+        self.assertEqual(command[command.index("-vf") + 1], "ass=filename='clip.ass'")
+
+    def test_burn_subtitles_aborts_when_libass_reports_a_missing_glyph(self) -> None:
+        subtitle = self.root / "clip.ass"
+        _ = subtitle.write_text("[Script Info]\n", encoding="utf-8")
+        warning = (
+            "[Parsed_ass_0 @ 0x123] fontselect: failed to find any fallback "
+            "with glyph 0x4E2D for font: (PingFang SC, 700, 0)\n"
+        )
+
+        def missing_glyph_process(command: list[str], **kwargs: object):
+            process = self._fake_process(command, **kwargs)
+            process.stderr = StringIO(warning)
+            return process
+
+        with mock.patch(
+            "maw.postprocess_ffmpeg._video_encoder_attempts", return_value=("nvenc", "cpu"),
+        ), mock.patch(
+            "maw.postprocess_ffmpeg.subprocess.Popen", side_effect=missing_glyph_process,
+        ) as popen:
+            with self.assertRaisesRegex(MediaToolError, r"PingFang SC.*U\+4E2D.*方框"):
+                run_burn_subtitles(
+                    BurnSubtitleRequest(media_path=self.media, subtitle_path=subtitle, video_encoder="auto"),
+                    ffmpeg_path=Path("ffmpeg"),
+                )
+
+        command = popen.call_args.args[0]
+        self.assertEqual(command[command.index("-loglevel") + 1], "warning")
+        self.assertEqual(popen.call_count, 1)
+        self.assertFalse(list(self.root.glob("*.part.mp4")))
+        self.assertFalse((self.root / "clip.subtitled.mp4").exists())
+
+    def test_burn_subtitles_supports_amd_amf_encoder(self) -> None:
+        encoders = mock.Mock(returncode=0, stdout=" V....D h264_amf AMD AMF H.264 Encoder\n", stderr="")
+        with mock.patch("maw.postprocess_ffmpeg.subprocess.run", return_value=encoders), mock.patch(
+            "maw.postprocess_ffmpeg.subprocess.Popen", side_effect=self._fake_process
+        ) as popen:
+            result = run_burn_subtitles(
+                BurnSubtitleRequest(media_path=self.media, subtitle_path=self.subtitle, video_encoder="amf"),
                 ffmpeg_path=Path("ffmpeg"),
             )
 
         command = popen.call_args.args[0]
-        self.assertIn("-vf", command)
-        self.assertIn("subtitles=filename='clip.srt'", command[command.index("-vf") + 1])
-        self.assertIn("libx264", command)
-        self.assertEqual(result.media_path.name, "clip.subtitled.mp4")
-        self.assertTrue(result.media_path.read_bytes())
-        self.assertEqual(self.media.read_bytes(), b"media")
+        self.assertIn("h264_amf", command)
+        self.assertIn("cqp", command)
+        self.assertEqual(result.video_encoder, "amf")
+
+    def test_auto_burn_prefers_an_available_hardware_encoder(self) -> None:
+        encoders = mock.Mock(returncode=0, stdout=" V....D h264_amf AMD AMF H.264 Encoder\n", stderr="")
+        with mock.patch("maw.postprocess_ffmpeg.subprocess.run", return_value=encoders), mock.patch(
+            "maw.postprocess_ffmpeg.subprocess.Popen", side_effect=self._fake_process
+        ) as popen:
+            result = run_burn_subtitles(
+                BurnSubtitleRequest(media_path=self.media, subtitle_path=self.subtitle),
+                ffmpeg_path=Path("ffmpeg"),
+            )
+
+        self.assertIn("h264_amf", popen.call_args.args[0])
+        self.assertEqual(result.video_encoder, "amf")
+
+    def test_explicit_hardware_encoder_reports_when_ffmpeg_does_not_provide_it(self) -> None:
+        encoders = mock.Mock(returncode=0, stdout=" V....D libx264 H.264\n", stderr="")
+        with mock.patch("maw.postprocess_ffmpeg.subprocess.run", return_value=encoders):
+            with self.assertRaisesRegex(MediaToolError, "h264_amf"):
+                run_burn_subtitles(
+                    BurnSubtitleRequest(media_path=self.media, subtitle_path=self.subtitle, video_encoder="amf"),
+                    ffmpeg_path=Path("ffmpeg"),
+                )
+
+    def test_burn_subtitles_maps_crf_override_to_hardware_quality(self) -> None:
+        encoders = mock.Mock(returncode=0, stdout=" V....D h264_amf AMD AMF H.264 Encoder\n", stderr="")
+        with mock.patch("maw.postprocess_ffmpeg.subprocess.run", return_value=encoders), mock.patch(
+            "maw.postprocess_ffmpeg.subprocess.Popen", side_effect=self._fake_process
+        ) as popen:
+            _ = run_burn_subtitles(
+                BurnSubtitleRequest(media_path=self.media, subtitle_path=self.subtitle, video_encoder="amf", crf=23),
+                ffmpeg_path=Path("ffmpeg"),
+            )
+
+        command = popen.call_args.args[0]
+        self.assertEqual(command[command.index("-qp_i") + 1], "23")
+        self.assertEqual(command[command.index("-qp_p") + 1], "23")
+
+    def test_burn_subtitles_applies_crf_preset_and_audio_bitrate_overrides(self) -> None:
+        # 默认 auto 编码器会先探测硬件编码器；这里让它探测不到、走 CPU 分支。
+        encoders = mock.Mock(returncode=1, stdout="", stderr="")
+        with mock.patch("maw.postprocess_ffmpeg.subprocess.run", return_value=encoders), mock.patch(
+            "maw.postprocess_ffmpeg.subprocess.Popen", side_effect=self._fake_process
+        ) as popen:
+            _ = run_burn_subtitles(
+                BurnSubtitleRequest(media_path=self.media, subtitle_path=self.subtitle, crf=23, preset="fast", audio_bitrate="128k"),
+                ffmpeg_path=Path("ffmpeg"),
+            )
+
+        command = popen.call_args.args[0]
+        self.assertEqual(command[command.index("-preset") + 1], "fast")
+        self.assertEqual(command[command.index("-crf") + 1], "23")
+        self.assertEqual(command[command.index("-b:a") + 1], "128k")
+
+    def test_burn_subtitles_rejects_invalid_encoding_overrides(self) -> None:
+        with self.assertRaises(MediaToolError):
+            run_burn_subtitles(
+                BurnSubtitleRequest(media_path=self.media, subtitle_path=self.subtitle, crf=99),
+                ffmpeg_path=Path("ffmpeg"),
+            )
+        with self.assertRaises(MediaToolError):
+            run_burn_subtitles(
+                BurnSubtitleRequest(media_path=self.media, subtitle_path=self.subtitle, preset="nope"),
+                ffmpeg_path=Path("ffmpeg"),
+            )
+        with self.assertRaises(MediaToolError):
+            run_burn_subtitles(
+                BurnSubtitleRequest(media_path=self.media, subtitle_path=self.subtitle, audio_bitrate="500k"),
+                ffmpeg_path=Path("ffmpeg"),
+            )
 
     def test_extract_audio_probes_selected_stream_and_writes_m4a(self) -> None:
         probe_result = mock.Mock(

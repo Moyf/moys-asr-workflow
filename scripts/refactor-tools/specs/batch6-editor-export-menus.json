@@ -1,0 +1,11 @@
+{
+  "file": "editor-export-menus.js",
+  "ns": "MaweExportMenus",
+  "header": "导出菜单：工具栏导出下拉与批量操作菜单定位。",
+  "symbols": [
+    "SUBMENU_CLOSE_DELAY_MS",
+    "SUBMENU_AIM_TOLERANCE_PX",
+    "bindToolbarExportDropdown",
+    "positionBatchOperationsMenu"
+  ]
+}

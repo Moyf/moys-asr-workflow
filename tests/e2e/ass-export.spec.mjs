@@ -75,7 +75,45 @@ test.afterAll(async () => {
   cleanupTempDir(tempDir);
 });
 
-test('exports ASS with the current font, size, color and enabled subtitle text', async ({ page }) => {
+test('style form groups basic controls and labels background box fields consistently', async ({ page }) => {
+  await disableOnboarding(page);
+  await page.goto(server.url);
+  await page.locator('#editor-settings-toggle').click();
+  await page.locator('#editor-settings-tab-subtitle-style').click();
+  await page.locator('#ass-style-manager-open').click();
+  await page.locator('#ass-style-list [data-ass-selection-id="ass"]').click();
+  await expect(page.locator('#ass-style-extended-heading')).toHaveCount(0);
+  await expect(page.locator('#ass-style-primary-color').locator('..')).toContainText('字幕颜色');
+  await page.locator('#ass-style-border-style').selectOption('3');
+  await expect(page.locator('#ass-style-border-style option:checked')).toHaveText('背景底框');
+  await expect(page.locator('#ass-style-outline-label')).toHaveText('底框宽度');
+  await expect(page.locator('#ass-style-outline-opacity-label')).toHaveText('底框不透明度');
+  await expect(page.locator('#ass-style-outline-color-label')).toHaveText('底框颜色');
+  const layout = await page.locator('#ass-style-form').evaluate((form) => {
+    const bounds = (id) => form.querySelector(`#${id}`).closest('label').getBoundingClientRect();
+    const shadow = bounds('ass-style-shadow');
+    const opacity = bounds('ass-style-back-opacity');
+    const outline = bounds('ass-style-outline');
+    const fields = form.querySelector('.ass-style-fields-extended');
+    const section = form.querySelector('[aria-labelledby="ass-style-basic-heading"]');
+    return { shadowWidth: shadow.width, outlineWidth: outline.width,
+      sameRow: Math.abs(shadow.y - opacity.y), horizontalGap: opacity.left - shadow.right,
+      basicContainsFont: section.contains(fields),
+      fontGap: fields.getBoundingClientRect().top - fields.previousElementSibling.getBoundingClientRect().bottom };
+  });
+  expect(layout.sameRow).toBeLessThan(2);
+  expect(layout.horizontalGap).toBeGreaterThanOrEqual(8);
+  expect(layout.shadowWidth).toBeCloseTo(layout.outlineWidth, 0);
+  expect(layout.basicContainsFont).toBe(true);
+  expect(layout.fontGap).toBeGreaterThanOrEqual(8);
+  await page.locator('#ass-style-form').screenshot({ path: test.info().outputPath('ass-basic-box.png') });
+  await page.locator('#ass-style-border-style').selectOption('1');
+  await expect(page.locator('#ass-style-outline-label')).toHaveText('描边宽度');
+  await expect(page.locator('#ass-style-outline-opacity-label')).toHaveText('描边不透明度');
+  await expect(page.locator('#ass-style-outline-color-label')).toHaveText('描边颜色');
+});
+
+test('exports ASS from the default profile style and keeps enabled subtitle text', async ({ page }) => {
   await disableOnboarding(page);
   await stubSavePicker(page);
   await page.goto(server.url);
@@ -83,7 +121,10 @@ test('exports ASS with the current font, size, color and enabled subtitle text',
   await page.locator('#editor-settings-toggle').click();
   await page.locator('#editor-settings-tab-subtitle-style').click();
   await expect(page.locator('#editor-settings-page-subtitle-style')).toBeVisible();
-  await page.locator('#subtitle-font-family').selectOption('hei');
+  // 预览字体是带 datalist 搜索的输入框；预览设置只影响播放器画面，
+  // 不应写进按样式库导出的 ASS。
+  await page.locator('#subtitle-font-family').fill('黑体');
+  await page.locator('#subtitle-font-family').blur();
   await page.locator('#subtitle-font-size').selectOption('40');
   await page.locator('#subtitle-color').evaluate((input) => {
     input.value = '#12abef';
@@ -98,13 +139,239 @@ test('exports ASS with the current font, size, color and enabled subtitle text',
   await expect.poll(() => page.evaluate(() => window.__exportSaves.length)).toBe(1);
   const save = await page.evaluate(() => window.__exportSaves[0]);
   expect(save.suggestedName).toMatch(/\.ass$/);
+  // 工程没有视频分辨率元数据，PlayRes 回退 1920×1080；
+  // 默认方案关联的库样式（默认字体 86 @1080p 参考）按 1:1 输出。
+  // 默认 ASS 字体按操作系统选择，从页面读取期望值保持测试平台无关。
+  const assDefaultFont = await page.evaluate(() => window.AsrEditorUtils.ASS_DEFAULT_ASS_STYLE.fontName);
   expect(save.content).toContain(
-    'Style: Default,SimHei,160,&H00EFAB12,&H00EFAB12,',
+    `Style: Default,${assDefaultFont},86,&H00FFFFFF,&H00FFFFFF,`,
   );
+  expect(save.content).not.toContain('SimHei');
+  expect(save.content).not.toContain('#12abef');
   expect(save.content).toContain(
-    'Dialogue: 0,0:00:01.00,0:00:02.50,Default,,0,0,0,,第一行\\NSecond, \\{literal\\}\\\\path',
+    'Dialogue: 0,0:00:01.00,0:00:02.50,Default,,0,0,0,,{\\fad(250,250)}第一行\\NSecond, \\{literal\\}\\\\path',
   );
   expect(save.content).not.toContain('不应导出');
+  // 本次换行策略只调整播放器预览；ASS 导出仍保持原来的 WrapStyle。
+  expect(save.content).toContain('WrapStyle: 0');
+});
+
+test('ASS preview preserves explicit line breaks without container wrapping', async ({ page }) => {
+  await disableOnboarding(page);
+  await page.goto(server.url);
+
+  const preview = await page.evaluate(() => {
+    MaweBoot.DATA.segments = [{
+      start: 0,
+      end: 4000,
+      text: '第一行\nAnd **Jev can solve these two problems**',
+    }];
+    MaweDom.playerStage.style.cssText = 'flex: 0 0 auto; width: 180px; height: 90px;';
+    MaweSettings.EDITOR_SETTINGS.assMode = true;
+    MaweDom.overlayToggle.checked = true;
+    MawePlaybackLoop.refreshSubtitlePreview(1000, 0);
+    const element = document.getElementById('overlay-main-text');
+    const range = document.createRange();
+    range.selectNodeContents(element);
+    const style = getComputedStyle(element);
+    // 混排字号（强调 1.3×）会让同一行内片段的 box 顶部相差约 0.3em，
+    // 直接对 rect.top 去重会把一行误算成两行；按字号相关容差聚簇后再数行。
+    const tolerance = Math.max(2, Math.round(parseFloat(style.fontSize) / 2));
+    const lineTops = Array.from(range.getClientRects())
+      .map((rect) => Math.round(rect.top))
+      .sort((a, b) => a - b)
+      .filter((top, index, tops) => index === 0 || top - tops[index - 1] > tolerance);
+    const lineCount = lineTops.length;
+    const wrapper = element.querySelector('.ass-emphasis-runs');
+    const run = element.querySelector('.ass-emphasis-run');
+    const wrapperStyle = getComputedStyle(wrapper);
+    const runStyle = getComputedStyle(run);
+    return {
+      lineCount,
+      maxWidth: style.maxWidth,
+      whiteSpace: style.whiteSpace,
+      wordBreak: style.wordBreak,
+      fontSize: parseFloat(style.fontSize),
+      wrapperDisplay: wrapperStyle.display,
+      wrapperPadding: wrapperStyle.padding,
+      wrapperFontSize: parseFloat(wrapperStyle.fontSize),
+      runFontRatio: parseFloat(runStyle.fontSize) / parseFloat(style.fontSize),
+    };
+  });
+  expect(preview.lineCount).toBe(2);
+  expect(preview.maxWidth).toBe('none');
+  expect(preview.whiteSpace).toBe('pre');
+  expect(preview.wordBreak).toBe('normal');
+  expect(preview.fontSize).toBeLessThan(10);
+  expect(preview.wrapperDisplay).toBe('inline');
+  expect(preview.wrapperPadding).toBe('0px');
+  expect(preview.wrapperFontSize).toBe(preview.fontSize);
+  expect(preview.runFontRatio).toBeCloseTo(1.3, 1);
+
+  await page.evaluate(() => {
+    MaweSettings.EDITOR_SETTINGS.assMode = false;
+    MawePlaybackLoop.refreshSubtitlePreview(1000, 0);
+  });
+  await expect(page.locator('#overlay-main-text')).toHaveCSS('white-space', 'pre-wrap');
+  await expect(page.locator('#overlay-main-text')).toHaveCSS('word-break', 'break-word');
+});
+
+test('inherits ASS track colours through inline formatting and keeps explicit emphasis colours', async ({ page }) => {
+  await disableOnboarding(page);
+  await page.goto(server.url);
+  await page.evaluate(async () => {
+    await loadAssStyleLibrary({ force: true });
+    ASS_STYLE_LIBRARY = window.AsrEditorUtils.defaultAssStyleLibrary();
+    const main = ASS_STYLE_LIBRARY.styles.find((entry) => entry.id === 'ass');
+    const extension = ASS_STYLE_LIBRARY.styles.find((entry) => entry.id === 'ass-extension');
+    Object.assign(main, { primaryColor: '#22cc55', emphasisStyle: 'stroke', emphasisColor: '#ff0000' });
+    Object.assign(extension, { primaryColor: '#ffd34d', emphasisStyle: 'stroke', emphasisColor: '#ff0000' });
+    const text = '普通 **强调** __下划线__ ~~删除线~~ --缩小-- ++放大++';
+    MaweBoot.DATA.segments = [{ id: 'main-colour', start: 1000, end: 3000, text }];
+    MaweBoot.DATA.multi_subtitle = { enabled: true, tracks: [{ id: 'extension-colour', segments: [{ id: 'ext-colour', start: 1000, end: 3000, text }] }] };
+    Object.assign(MaweSettings.EDITOR_SETTINGS, { assMode: true, assEmphasisSyntax: 'both', assSpecialSymbolRule: 'both',
+      assUnderlineEnabled: true, assStrikeEnabled: true, assSmallTextEnabled: true, assLargeTextEnabled: true });
+    MaweDom.overlayToggle.checked = true;
+    MaweDom.extensionOverlayToggle.checked = true;
+    MaweCoreState.player.currentTime = 1.5;
+    MawePlaybackLoop.refreshSubtitlePreview(1500, 0);
+  });
+  for (const [track, colour] of [['main', 'rgb(34, 204, 85)'], ['extension', 'rgb(255, 211, 77)']]) {
+    const text = page.locator(`#overlay-${track}-text`);
+    await expect(text.locator('.ass-emphasis-runs')).toHaveCSS('color', colour);
+    await expect(text.locator('.ass-inline-run')).toHaveCount(5);
+    expect(await text.locator('.ass-inline-run').evaluateAll((elements) => elements.map((element) => getComputedStyle(element).color)))
+      .toEqual(Array(5).fill(colour));
+  }
+  await page.evaluate(() => {
+    const style = ASS_STYLE_LIBRARY.styles.find((entry) => entry.id === 'ass-extension');
+    Object.assign(style, { primaryColor: '#55aaff', emphasisStyle: 'text' });
+    MawePlaybackLoop.refreshSubtitlePreview(1500, 0);
+  });
+  const extension = page.locator('#overlay-extension-text');
+  await expect(extension.locator('.ass-emphasis-runs')).toHaveCSS('color', 'rgb(85, 170, 255)');
+  await expect(extension.locator('.ass-emphasis-run')).toHaveCSS('color', 'rgb(255, 0, 0)');
+  expect(await extension.locator('.ass-inline-run:not(.ass-emphasis-run)').evaluateAll((elements) => elements.map((element) => getComputedStyle(element).color)))
+    .toEqual(Array(4).fill('rgb(85, 170, 255)'));
+  const exportedColour = await page.evaluate(() => MaweExportSrt.buildAss().split('\n').find((line) => line.startsWith('Style: Extension,')).split(',')[3]);
+  expect(exportedColour).toBe('&H00FFAA55');
+  await page.locator('.player-stage').screenshot({ path: test.info().outputPath('ass-secondary-inline-colour.png') });
+  await page.evaluate(() => { MaweSettings.EDITOR_SETTINGS.assMode = false; MawePlaybackLoop.refreshSubtitlePreview(1500, 0); });
+  await expect(extension.locator('.ass-emphasis-runs')).toHaveCount(0);
+});
+
+test('ASS emphasis controls drive preview and inline export color', async ({ page }) => {
+  await disableOnboarding(page);
+  await stubSavePicker(page);
+  await page.goto(server.url);
+  await page.locator('#editor-settings-toggle').click();
+  await page.locator('#editor-settings-tab-subtitle-style').click();
+  await expect(page.locator('#ass-inline-text-settings')).toBeHidden();
+  await page.locator('#ass-mode-toggle').check();
+  await expect(page.locator('#ass-inline-text-settings')).toBeVisible();
+  await expect(page.locator('#ass-inline-text-settings input[type=checkbox]')).toHaveCount(5);
+  await expect(page.locator('#ass-inline-text-title')).toHaveText('特殊文本格式');
+  await expect(page.locator('#ass-special-symbol-rule')).toHaveValue('both');
+  await expect(page.locator('#ass-special-symbol-rule option:checked')).toHaveText('单双皆可');
+  await expect(page.locator('[data-ass-symbol="_"]')).toHaveText('_下划线_/__下划线__');
+  await page.locator('#ass-special-symbol-rule').selectOption('none');
+  await expect(page.locator('#ass-inline-text-options')).toBeHidden();
+  await page.locator('#ass-special-symbol-rule').selectOption('double');
+  await expect(page.locator('#ass-inline-text-options')).toBeVisible();
+  await expect(page.locator('[data-ass-symbol="_"]')).toHaveText('__下划线__');
+  await page.locator('#ass-special-symbol-rule').selectOption('both');
+  await expect(page.locator('[data-ass-symbol="*"]')).toHaveText('*强调*/**强调**');
+  await page.locator('#ass-special-symbol-rule').selectOption('double');
+  await page.locator('#ass-style-manager-open').click();
+  await page.locator('#ass-style-list [data-ass-selection-id="ass"]').click();
+  await expect(page.locator('#ass-style-emphasis-syntax')).toHaveCount(0);
+  await expect(page.locator('#ass-emphasis-syntax')).toBeChecked();
+  await expect(page.locator('#ass-style-emphasis-heading')).toHaveText('特殊文本样式');
+  await expect(page.locator('#ass-style-small-text-scale')).toHaveValue('0.8');
+  await expect(page.locator('#ass-style-large-text-scale')).toHaveValue('1.5');
+  await expect(page.locator('#ass-style-emphasis-scale')).toHaveValue('1.3');
+  await expect(page.locator('#ass-style-emphasis-scale')).toHaveAttribute('step', '0.05');
+  await expect(page.locator('#ass-style-emphasis-options')).toBeVisible();
+  const gap = await page.locator('#ass-style-emphasis-options').evaluate((element) => {
+    const previous = element.previousElementSibling;
+    return element.getBoundingClientRect().top - previous.getBoundingClientRect().bottom;
+  });
+  expect(gap).toBeGreaterThanOrEqual(8);
+  await page.locator('#ass-style-emphasis-color').fill('#ff0000');
+  await page.locator('#ass-style-emphasis-scale').fill('1.25');
+  await page.locator('#ass-style-emphasis-style').selectOption('text');
+  await page.locator('#ass-style-window-close').click();
+  await page.locator('#ass-emphasis-syntax').uncheck();
+  await page.locator('#ass-style-manager-open').click();
+  await expect(page.locator('#ass-style-emphasis-options')).toBeHidden();
+  await page.locator('#ass-style-window-close').click();
+  await page.locator('#ass-emphasis-syntax').check();
+  await expect(page.locator('#ass-special-symbol-rule')).toHaveValue('double');
+  await page.locator('#editor-settings-close').click();
+
+  const preview = await page.evaluate(() => {
+    MaweBoot.DATA.segments = [{ start: 0, end: 4000, text: '前 **重点** 后' }];
+    MaweSettings.EDITOR_SETTINGS.assMode = true;
+    MaweDom.overlayToggle.checked = true;
+    MawePlaybackLoop.refreshSubtitlePreview(1000, 0);
+    const element = document.getElementById('overlay-main-text');
+    const run = element.querySelector('.ass-emphasis-run');
+    return { text: element.textContent, color: getComputedStyle(run).color,
+      scale: parseFloat(getComputedStyle(run).fontSize) / parseFloat(getComputedStyle(element).fontSize) };
+  });
+  expect(preview.text).toBe('前 重点 后');
+  expect(preview.color).toBe('rgb(255, 0, 0)');
+  // libass rounds the emphasized font to integer native pixels.
+  expect(preview.scale).toBeCloseTo(Math.round(86 * 1.25) / 86);
+
+  await page.locator('#subtitle-export-btn').click();
+  await page.locator('#download-full-ass').click();
+  await expect.poll(() => page.evaluate(() => window.__exportSaves.length)).toBe(1);
+  const ass = await page.evaluate(() => window.__exportSaves[0].content);
+  expect(ass).toMatch(/前 \{\\1c&H000000FF&\\fs\d+\}重点\{\\1c&H00FFFFFF&\\fs\d+\} 后/);
+
+  await page.evaluate(() => {
+    MaweSettings.EDITOR_SETTINGS.assMode = false;
+    MawePlaybackLoop.refreshSubtitlePreview(1000, 0);
+  });
+  await expect(page.locator('#overlay-main-text')).toHaveText('前 **重点** 后');
+});
+
+test('ASS underscore markers underline only the marked preview and export text', async ({ page }) => {
+  await disableOnboarding(page);
+  await stubSavePicker(page);
+  await page.goto(server.url);
+  const preview = await page.evaluate(() => {
+    MaweBoot.DATA.segments = [{ start: 0, end: 4000, text: '前 _下划线_ 与 _**共同**_ 后' }];
+    // 单符号和双符号样例在「单双皆可」规则下均参与解析。
+    MaweSettings.EDITOR_SETTINGS.assSpecialSymbolRule = 'both';
+    MaweSettings.EDITOR_SETTINGS.assMode = true;
+    MaweDom.overlayToggle.checked = true;
+    MawePlaybackLoop.refreshSubtitlePreview(1000, 0);
+    const element = document.getElementById('overlay-main-text');
+    const runs = [...element.querySelectorAll('.ass-underline-run')];
+    return { text: element.textContent, runs: runs.map((run) => ({
+      text: run.textContent,
+      decoration: getComputedStyle(run).textDecorationLine,
+    })) };
+  });
+  expect(preview).toEqual({ text: '前 下划线 与 共同 后', runs: [
+    { text: '下划线', decoration: 'underline' },
+    { text: '共同', decoration: 'underline' },
+  ] });
+
+  await page.locator('#subtitle-export-btn').click();
+  await page.locator('#download-full-ass').click();
+  await expect.poll(() => page.evaluate(() => window.__exportSaves.length)).toBe(1);
+  const ass = await page.evaluate(() => window.__exportSaves[0].content);
+  expect(ass).toMatch(/\{\\u1\}下划线\{\\u0\}/);
+  expect(ass).toMatch(/\\u1\}共同\{[^}]*\\u0\}/);
+
+  await page.evaluate(() => {
+    MaweSettings.EDITOR_SETTINGS.assMode = false;
+    MawePlaybackLoop.refreshSubtitlePreview(1000, 0);
+  });
+  await expect(page.locator('#overlay-main-text')).toHaveText('前 _下划线_ 与 _**共同**_ 后');
 });
 
 test('writes the project title, source resolution, palette styles and speaker names to ASS', async ({ page }) => {
@@ -112,13 +379,13 @@ test('writes the project title, source resolution, palette styles and speaker na
   await stubSavePicker(page);
   await page.goto(server.url);
   await page.evaluate(() => {
-    DATA.media_metadata = { video_width: 3840, video_height: 2160 };
-    DATA.segments = [
+    MaweBoot.DATA.media_metadata = { video_width: 3840, video_height: 2160 };
+    MaweBoot.DATA.segments = [
       { start: 0, end: 1000, text: 'red line', items: [], color: { name: 'red', value: '#f07f6f' } },
       { start: 1200, end: 2200, text: 'plain line', items: [] },
     ];
-    DATA.preview.subtitle = {
-      ...DATA.preview.subtitle,
+    MaweBoot.DATA.preview.subtitle = {
+      ...MaweBoot.DATA.preview.subtitle,
       font_size: 32,
       font_family: 'sans',
       color: '#ffffff',
@@ -129,8 +396,8 @@ test('writes the project title, source resolution, palette styles and speaker na
         names: { yellow: '主持', green: '嘉宾', red: '旁白', purple: '现场', blue: '字幕' },
       },
     };
-    EDITOR_SETTINGS.exportSpeakerLabels = true;
-    renderAll();
+    MaweSettings.EDITOR_SETTINGS.exportSpeakerLabels = true;
+    MaweCuePanel.renderAll();
   });
 
   await page.locator('#subtitle-export-btn').click();
@@ -141,27 +408,145 @@ test('writes the project title, source resolution, palette styles and speaker na
   expect(save.content).toContain('Title: project');
   expect(save.content).toContain('PlayResX: 3840');
   expect(save.content).toContain('PlayResY: 2160');
-  expect(save.content).toContain('Style: Default,Arial,256,');
-  expect(save.content).toContain('Style: YELLOW,Arial,256,&H0019A0C4,&H0019A0C4,');
-  expect(save.content).toContain('Style: GREEN,Arial,256,&H006ABB66,&H006ABB66,');
-  expect(save.content).toContain('Style: RED,Arial,256,&H006F7FF0,&H006F7FF0,');
-  expect(save.content).toContain('Style: PURPLE,Arial,256,&H00E689BF,&H00E689BF,');
-  expect(save.content).toContain('Style: BLUE,Arial,256,&H00FAA761,&H00FAA761,');
-  expect(save.content).toContain('Dialogue: 0,0:00:00.00,0:00:01.00,RED,旁白,0,0,0,,旁白：red line');
+  // 库样式字号按 1080p 参考存储，导出时换算到 PlayResY：86 × 2160/1080 = 172。
+  const assDefaultFont = await page.evaluate(() => window.AsrEditorUtils.ASS_DEFAULT_ASS_STYLE.fontName);
+  expect(save.content).toContain(`Style: Default,${assDefaultFont},172,`);
+  expect(save.content).toContain(`Style: YELLOW,${assDefaultFont},172,&H0019A0C4,&H0019A0C4,`);
+  expect(save.content).toContain(`Style: GREEN,${assDefaultFont},172,&H006ABB66,&H006ABB66,`);
+  expect(save.content).toContain(`Style: RED,${assDefaultFont},172,&H006F7FF0,&H006F7FF0,`);
+  expect(save.content).toContain(`Style: PURPLE,${assDefaultFont},172,&H00E689BF,&H00E689BF,`);
+  expect(save.content).toContain(`Style: BLUE,${assDefaultFont},172,&H00FAA761,&H00FAA761,`);
+  expect(save.content).toContain(
+    'Dialogue: 0,0:00:00.00,0:00:01.00,RED,旁白,0,0,0,,{\\fad(250,250)}{\\c&H006F7FF0&}旁白：{\\c&H006F7FF0&}red line',
+  );
+});
+
+test('exports speaker-only ASS label colour without a palette style variant', async ({ page }) => {
+  await disableOnboarding(page);
+  await stubSavePicker(page);
+  await page.goto(server.url);
+  await page.evaluate(() => {
+    MaweBoot.DATA.media_metadata = { video_width: 1920, video_height: 1080 };
+    MaweBoot.DATA.segments = [
+      { start: 0, end: 1000, text: 'red line', items: [], color: { name: 'red', value: '#f07f6f' } },
+    ];
+    MaweBoot.DATA.preview.subtitle = {
+      ...MaweBoot.DATA.preview.subtitle,
+      ass_color_style: 'speaker',
+      speaker_labels: {
+        mapping_enabled: true,
+        enabled: true,
+        separator: '：',
+        names: { yellow: '主持', green: '嘉宾', red: '旁白', purple: '现场', blue: '字幕' },
+      },
+    };
+    MaweSettings.EDITOR_SETTINGS.exportSpeakerLabels = true;
+    MaweCuePanel.renderAll();
+  });
+
+  await page.locator('#subtitle-export-btn').click();
+  await page.locator('#download-full-ass').click();
+  await expect.poll(() => page.evaluate(() => window.__exportSaves.length)).toBe(1);
+  const save = await page.evaluate(() => window.__exportSaves[0]);
+  const baseColor = await page.evaluate(() => (
+    window.AsrEditorUtils.assColorFromHex(window.AsrEditorUtils.ASS_DEFAULT_ASS_STYLE.primaryColor)
+  ));
+  const baseFont = await page.evaluate(() => window.AsrEditorUtils.ASS_DEFAULT_ASS_STYLE.fontName);
+
+  expect(save.content).toContain(`Style: Default,${baseFont},86,`);
+  expect(save.content).not.toContain('Style: RED,');
+  expect(save.content).toContain(
+    `Dialogue: 0,0:00:00.00,0:00:01.00,Default,旁白,0,0,0,,{\\fad(250,250)}{\\c&H006F7FF0&}旁白：{\\c${baseColor}&}red line`,
+  );
 });
 
 test('groups SRT, color-split SRT and styled ASS exports in order', async ({ page }) => {
   await disableOnboarding(page);
   await page.goto(server.url);
   await page.evaluate(() => {
-    DATA.segments[0].color = { name: 'red', value: '#e74c3c', start: 1000, end: 2500 };
-    renderAll();
+    MaweBoot.DATA.segments[0].color = { name: 'red', value: '#e74c3c', start: 1000, end: 2500 };
+    MaweCuePanel.renderAll();
   });
 
   await page.locator('#subtitle-export-btn').click();
   await expect(page.locator('#subtitle-export-separator')).toBeVisible();
   await expect(page.locator('#subtitle-export-menu > .dropdown-item:visible').allTextContents())
-    .resolves.toEqual(['完整 SRT 字幕', '按颜色拆分导出 SRT 字幕', '带样式的 ASS 字幕']);
+    .resolves.toEqual(['SRT 字幕', '按颜色拆分导出 SRT 字幕', '带样式的 ASS 字幕']);
+});
+
+test('exports main, secondary and combined bilingual SRT from one menu', async ({ page }) => {
+  await disableOnboarding(page);
+  await stubSavePicker(page);
+  await page.goto(server.url);
+  await page.evaluate(() => {
+    MaweBoot.DATA.segments[0].text = 'Main line';
+    MaweBoot.DATA.multi_subtitle = {
+      schema: 'moy.asr.multi_subtitle.v1', enabled: true, display_mode: 'both', bindings: [],
+      tracks: [{ id: 'extension-1', role: 'extension', name: 'English', language: 'English',
+        segments: [{ id: 'ext-1', start: 1000, end: 2500, text: 'Secondary line' },
+          { id: 'ext-2', start: 3000, end: 4000, text: 'Unmatched secondary' },
+          { id: 'ext-3', start: 4500, end: 5000, text: 'Disabled secondary', disabled: true }] }],
+    };
+    MaweCuePanel.renderAll();
+  });
+  await page.locator('#subtitle-export-btn').click();
+  const menu = page.locator('#subtitle-export-menu');
+  await expect(menu.locator(':scope > .dropdown-item:visible').allTextContents())
+    .resolves.toEqual(['主字幕 SRT', '副字幕 SRT', '双语整合字幕 SRT', '带样式的 ASS 字幕']);
+  await expect(page.locator('.right-group > #download-multi-srt')).toHaveCount(0);
+  await expect(page.locator('#subtitle-export-separator')).toBeVisible();
+  const rowGaps = await menu.locator(':scope > .dropdown-item:visible').evaluateAll((items) => {
+    const textBounds = items.map((item) => {
+      const range = document.createRange();
+      range.selectNodeContents(item);
+      return range.getBoundingClientRect();
+    });
+    return textBounds.slice(1).map((bounds, index) => bounds.top - textBounds[index].bottom);
+  });
+  expect(Math.min(...rowGaps)).toBeGreaterThanOrEqual(8);
+  await menu.screenshot({ path: test.info().outputPath('bilingual-export-menu.png') });
+  await page.locator('#download-bilingual-srt').click();
+  await expect(menu).toBeHidden();
+  await expect.poll(() => page.evaluate(() => window.__exportSaves.length)).toBe(1);
+  const combined = await page.evaluate(() => window.__exportSaves[0]);
+  expect(combined.suggestedName).toMatch(/_bilingual\.srt$/);
+  expect(combined.content).toBe([
+    '1', '00:00:01,000 --> 00:00:02,500', 'Main line\nSecondary line', '',
+    '2', '00:00:03,000 --> 00:00:04,000', 'Unmatched secondary', '',
+  ].join('\n'));
+  await page.locator('#subtitle-export-btn').click();
+  await page.locator('#download-multi-srt').click();
+  await expect.poll(() => page.evaluate(() => window.__exportSaves.length)).toBe(2);
+  const secondary = await page.evaluate(() => window.__exportSaves[1]);
+  expect(secondary.suggestedName).toMatch(/_extension\.srt$/);
+  expect(secondary.content).toContain('Secondary line');
+  expect(secondary.content).not.toContain('Main line');
+  expect(secondary.content).not.toContain('Disabled secondary');
+  await page.locator('#subtitle-export-btn').click();
+  await page.locator('#download-full-srt').click();
+  await expect.poll(() => page.evaluate(() => window.__exportSaves.length)).toBe(3);
+  expect(await page.evaluate(() => window.__exportSaves[2].content)).not.toContain('Secondary line');
+  await page.locator('#multi-subtitle-toggle').uncheck();
+  await page.locator('#subtitle-export-btn').click();
+  await expect(page.locator('#download-full-srt')).toHaveText('SRT 字幕');
+  await expect(page.locator('#download-multi-srt')).toBeHidden();
+  await expect(page.locator('#download-bilingual-srt')).toBeHidden();
+  await expect(page.locator('#subtitle-export-separator')).toBeHidden();
+});
+
+test('shows disabled secondary export entries when bilingual mode has no second track', async ({ page }) => {
+  await disableOnboarding(page);
+  await stubSavePicker(page);
+  await page.goto(server.url);
+  page.once('dialog', (dialog) => dialog.dismiss());
+  await page.locator('#multi-subtitle-toggle').check();
+  await page.locator('#subtitle-export-btn').click();
+  await expect(page.locator('#download-full-srt')).toHaveText('主字幕 SRT');
+  await expect(page.locator('#download-multi-srt')).toBeVisible();
+  await expect(page.locator('#download-multi-srt')).toHaveAttribute('aria-disabled', 'true');
+  await expect(page.locator('#download-bilingual-srt')).toHaveAttribute('aria-disabled', 'true');
+  await page.locator('#download-bilingual-srt').click({ force: true });
+  expect(await page.evaluate(() => window.__exportSaves.length)).toBe(0);
 });
 
 test('exports a gap-removed styled ASS subtitle with shifted timing', async ({ page }) => {
@@ -169,12 +554,12 @@ test('exports a gap-removed styled ASS subtitle with shifted timing', async ({ p
   await stubSavePicker(page);
   await page.goto(server.url);
   await page.evaluate(() => {
-    DATA.segments.length = 0;
-    DATA.segments.push(
+    MaweBoot.DATA.segments.length = 0;
+    MaweBoot.DATA.segments.push(
       { id: 'before-gap', start: 1000, end: 2000, text: 'before gap', items: [], color: { name: 'red', value: '#e74c3c', start: 1000, end: 2000 } },
       { id: 'after-gap', start: 4000, end: 5000, text: 'after gap', items: [] },
     );
-    DATA.gap_remove = {
+    MaweBoot.DATA.gap_remove = {
       schema: 'moy.asr.gap_remove.v1',
       detector: 'audio_gate',
       minimum_ms: 500,
@@ -187,8 +572,8 @@ test('exports a gap-removed styled ASS subtitle with shifted timing', async ({ p
       manual_corrections: false,
       gaps: [{ start: 2000, end: 3000, removed: true }],
     };
-    updateGapRemoveUi();
-    renderAll();
+    MaweGapRemoveUi.updateGapRemoveUi();
+    MaweCuePanel.renderAll();
   });
 
   await page.locator('#gap-removed-export-btn').click();
@@ -203,9 +588,158 @@ test('exports a gap-removed styled ASS subtitle with shifted timing', async ({ p
   const save = await page.evaluate(() => window.__exportSaves[0]);
   expect(save.suggestedName).toBe('project_去空隙.ass');
   expect(save.content).toContain(
-    'Dialogue: 0,0:00:01.00,0:00:02.00,RED,,0,0,0,,before gap',
+    'Dialogue: 0,0:00:01.00,0:00:02.00,RED,,0,0,0,,{\\fad(250,250)}before gap',
   );
   expect(save.content).toContain(
-    'Dialogue: 0,0:00:03.00,0:00:04.00,Default,,0,0,0,,after gap',
+    'Dialogue: 0,0:00:03.00,0:00:04.00,Default,,0,0,0,,{\\fad(250,250)}after gap',
   );
+});
+
+test('keeps ASS style actions and preview-mode hints attached to the active form', async ({ page }) => {
+  await disableOnboarding(page);
+  await page.goto(server.url);
+
+  await page.locator('#editor-settings-toggle').click();
+  await page.locator('#editor-settings-tab-subtitle-style').click();
+  await page.locator('#ass-style-manager-open').click();
+  await expect(page.locator('#ass-style-window')).toBeVisible();
+  await expect(page.locator('.ass-style-editor-toolbar')).toHaveCount(0);
+  await expect(page.locator('#ass-style-form #ass-style-delete')).toBeAttached();
+  await expect(page.locator('#ass-style-list .ass-style-list-preview-hint')).toHaveCount(0);
+  await expect(page.locator('#ass-style-preview-mode-hint'))
+    .toBeVisible();
+  await expect(page.locator('.ass-style-preview-mode-hint-prefix'))
+    .toHaveText('需要启用 ASS 字幕模式来预览效果。');
+  await expect(page.locator('.ass-style-preview-mode-hint-status'))
+    .toHaveText('当前未启用。');
+  await expect(page.locator('#ass-style-preview-mode-hint'))
+    .toHaveAttribute('data-ass-preview-mode', 'disabled');
+  await expect(page.locator('#ass-style-preview-mode-hint'))
+    .toHaveCSS('font-size', '12px');
+
+  await page.locator('#ass-style-list [data-ass-selection-id="default"]').click();
+  await expect(page.locator('#ass-style-form-title')).toHaveText('SRT 默认');
+  await expect(page.locator('#ass-style-srt-hint'))
+    .toHaveText('这里用来配置 SRT 字幕默认烧录样式，用于工具箱的「烧录字幕」功能。');
+  await expect(page.locator('#ass-style-srt-hint')).toBeVisible();
+  await expect(page.locator('#ass-style-preview-mode-hint')).toBeHidden();
+  await expect(page.locator('.ass-style-assignment-title-row')).toHaveCount(0);
+  await expect(page.locator('label[for="ass-srt-default-style"] + small'))
+    .toHaveText('工具箱的「烧录字幕」功能会使用这里选中的样式。');
+
+  await page.locator('#ass-style-list [data-ass-selection-id="ass"]').click();
+  await expect(page.locator('#ass-style-preview-mode-hint')).toBeVisible();
+
+  await page.locator('#ass-style-settings-link').click();
+  await expect(page.locator('#editor-settings-page-subtitle-style')).toBeVisible();
+  await page.evaluate(() => {
+    assModeToggle.checked = true;
+    assModeToggle.dispatchEvent(new Event('change', { bubbles: true }));
+  });
+  await expect(page.locator('.ass-style-preview-mode-hint-prefix'))
+    .toHaveText('需要启用 ASS 字幕模式来预览效果。');
+  await expect(page.locator('.ass-style-preview-mode-hint-status'))
+    .toHaveText('当前已启用。');
+  await expect(page.locator('#ass-style-preview-mode-hint'))
+    .toHaveAttribute('data-ass-preview-mode', 'enabled');
+
+  await page.locator('#ass-profile-list [role="option"]').first().click();
+  const deleteButtonParent = await page.locator('#ass-style-delete').evaluate((element) => element.parentElement?.id);
+  expect(deleteButtonParent).toBe('ass-profile-delete-slot');
+});
+
+test('refreshes inline font metrics and interpolates fs tags in native resolution', async ({ page }) => {
+  await page.goto(server.url);
+  await page.addStyleTag({ content: '@font-face { font-family: "ASS Metric Test"; src: local("Arial"); size-adjust: 150%; }' });
+  await page.evaluate(async () => { await document.fonts.load('20px "ASS Metric Test"'); });
+  const ratios = await page.evaluate(() => {
+    MaweBoot.DATA.media_metadata = { video_width: 640, video_height: 360 };
+    MaweBoot.DATA.segments[0].text = '字幕**强调**';
+    const library = window.AsrEditorUtils.defaultAssStyleLibrary();
+    const style = library.styles.find((entry) => entry.id === 'ass');
+    style.fontName = 'Arial'; style.fontSize = 72; style.emphasisScale = 1.1;
+    ASS_STYLE_LIBRARY = library;
+    MaweSettings.EDITOR_SETTINGS.assMode = true;
+    MawePlaybackLoop.refreshSubtitlePreview(1500, 0);
+    const text = document.getElementById('overlay-main-text');
+    const size = () => parseFloat(getComputedStyle(text).fontSize);
+    const runSize = () => parseFloat(getComputedStyle(text.querySelector('.ass-emphasis-run')).fontSize);
+    const before = size();
+    style.fontName = 'ASS Metric Test';
+    MawePlaybackLoop.refreshSubtitlePreview(1500, 0);
+    const after = size();
+    const ratio = runSize() / after;
+    // A 72@1080p style exports 24px at 360p. Halfway towards \fs48 is 36,
+    // so the ordinary text must be 1.5x its unanimated size, not interpolated
+    // between the unrelated library value 72 and the native target 48.
+    MaweBoot.DATA.segments[0].text = '普通字幕';
+    library.assProfiles[0].animations.t = { enabled: true, startMs: 0, endMs: 1000, accel: 1, tags: '\\fs48' };
+    MawePlaybackLoop.refreshSubtitlePreview(1500, 0);
+    return { before, after, ratio, animated: size() };
+  });
+  expect(ratios.after).toBeLessThan(ratios.before * 0.8);
+  expect(ratios.ratio).toBeCloseTo(26 / 24, 2);
+  expect(ratios.animated / ratios.after).toBeCloseTo(1.5, 2);
+});
+
+test('uses outline colour for sample boxes and preserves zero scaling', async ({ page }) => {
+  await disableOnboarding(page);
+  await page.goto(server.url);
+  await page.locator('#editor-settings-toggle').click();
+  await page.locator('#editor-settings-tab-subtitle-style').click();
+  await page.locator('#ass-style-manager-open').click();
+  await page.evaluate(async () => {
+    await loadAssStyleLibrary({ force: true });
+    assStyleManagerSetSelection('style', 'ass');
+    updateAssStyleManagerLibrary((library) => {
+      const style = library.styles.find((entry) => entry.id === 'ass');
+      Object.assign(style, { fontName: 'Arial', fontSize: 40, borderStyle: 3,
+        outline: 4, outlineColor: '#ff0000', outlineOpacity: 50, backColor: '#0000ff', scaleX: 100 });
+    }, { persist: false });
+  });
+  const sample = page.locator('#ass-style-preview-sample');
+  await expect(sample).toHaveCSS('background-color', 'rgba(255, 0, 0, 0.5)');
+  await expect(sample).toHaveCSS('-webkit-text-stroke-width', '0px');
+  await expect(sample).toHaveCSS('padding-top', '4px');
+  const spacing = await sample.evaluate((element) => {
+    const label = document.querySelector('.ass-style-preview-label');
+    return element.getBoundingClientRect().top - label.getBoundingClientRect().bottom;
+  });
+  expect(spacing).toBeGreaterThanOrEqual(8);
+  await sample.scrollIntoViewIfNeeded();
+  await sample.locator('..').screenshot({ path: test.info().outputPath('ass-style-sample.png') });
+  await page.evaluate(() => {
+    MaweSettings.EDITOR_SETTINGS.assMode = true;
+    MawePlaybackLoop.refreshSubtitlePreview(1500, 0);
+  });
+  await expect(page.locator('#overlay-main-text')).toHaveCSS('-webkit-text-stroke-width', '0px');
+  await expect(page.locator('#overlay-main-text')).toHaveCSS('background-color', 'rgba(255, 0, 0, 0.5)');
+  await page.evaluate(() => {
+    const style = ASS_STYLE_LIBRARY.styles.find((entry) => entry.id === 'ass');
+    style.emphasisStyle = 'stroke';
+    style.emphasisColor = '#00ff00';
+    MaweBoot.DATA.segments[0].text = '字幕**强调**';
+    MawePlaybackLoop.refreshSubtitlePreview(1500, 0);
+  });
+  const emphasized = page.locator('#overlay-main-text .ass-emphasis-run');
+  await expect(emphasized).toHaveCSS('-webkit-text-stroke-width', '0px');
+  await expect(emphasized).toHaveCSS('background-color', 'rgba(0, 255, 0, 0.5)');
+  await page.evaluate(() => {
+    const style = ASS_STYLE_LIBRARY.styles.find((entry) => entry.id === 'ass');
+    style.borderStyle = 1;
+    syncAssStyleForm(style);
+    MawePlaybackLoop.refreshSubtitlePreview(1500, 0);
+  });
+  await expect(sample).toHaveCSS('-webkit-text-stroke-width', '8px');
+  await expect(emphasized).toHaveCSS('background-color', 'rgba(0, 0, 0, 0)');
+  expect(await emphasized.evaluate((element) => parseFloat(getComputedStyle(element).webkitTextStrokeWidth)))
+    .toBeGreaterThan(0);
+  await page.evaluate(() => {
+    const style = ASS_STYLE_LIBRARY.styles.find((entry) => entry.id === 'ass');
+    style.scaleX = 0;
+    syncAssStyleForm(style);
+    MawePlaybackLoop.refreshSubtitlePreview(1500, 0);
+  });
+  await expect(sample).toHaveCSS('transform', 'matrix(0, 0, 0, 1, 0, 0)');
+  await expect(page.locator('#overlay-main-text')).toHaveCSS('transform', 'matrix(0, 0, 0, 1, 0, 0)');
 });

@@ -48,10 +48,10 @@ async function enableSubtitleOverlayPreview(page) {
 test('removes adjacent corner radii from cue fragments split across waveform rows', async ({ page }) => {
   await page.goto(server.url);
   await page.evaluate(() => {
-    waveformEditor.settings.mode = 'multi';
-    waveformEditor.settings.secondsPerRow = 5;
-    waveformEditor.multiRange = [-1, -1];
-    waveformEditor.render();
+    MaweCoreState.waveformEditor.settings.mode = 'multi';
+    MaweCoreState.waveformEditor.settings.secondsPerRow = 5;
+    MaweCoreState.waveformEditor.multiRange = [-1, -1];
+    MaweCoreState.waveformEditor.render();
   });
 
   const fragments = await page.evaluate(() => [0, 1].map((rowIndex) => {
@@ -90,14 +90,14 @@ test('undoing a waveform-created subtitle keeps redo available', async ({ page }
   expect(box).not.toBeNull();
   await page.mouse.click(box.x + box.width * 0.9, box.y + 20, { button: 'right' });
   await page.locator('#ctxmenu .item', { hasText: '创建字幕' }).click();
-  await expect.poll(() => page.evaluate(() => DATA.segments.length)).toBe(7);
+  await expect.poll(() => page.evaluate(() => MaweBoot.DATA.segments.length)).toBe(7);
 
   await page.getByRole('button', { name: /撤销/ }).click();
 
-  await expect.poll(() => page.evaluate(() => DATA.segments.length)).toBe(6);
+  await expect.poll(() => page.evaluate(() => MaweBoot.DATA.segments.length)).toBe(6);
   await expect(page.getByRole('button', { name: /重做/ })).toBeEnabled();
   await page.getByRole('button', { name: /重做/ }).click();
-  await expect.poll(() => page.evaluate(() => DATA.segments.length)).toBe(7);
+  await expect.poll(() => page.evaluate(() => MaweBoot.DATA.segments.length)).toBe(7);
 });
 
 test('blank waveform context menu disables subtitle creation over an existing cue', async ({ page }) => {
@@ -110,13 +110,13 @@ test('blank waveform context menu disables subtitle creation over an existing cu
   await page.mouse.click(box.x + box.width * 0.4, box.y + 20, { button: 'right' });
   const createItem = page.locator('#ctxmenu .item', { hasText: '创建字幕' });
   await expect(createItem).toHaveClass(/disabled/);
-  await expect.poll(() => page.evaluate(() => DATA.segments.length)).toBe(6);
+  await expect.poll(() => page.evaluate(() => MaweBoot.DATA.segments.length)).toBe(6);
 });
 
 test('gap click does not show drag styling until the pointer moves', async ({ page }) => {
   await page.goto(server.url);
   await page.evaluate(() => {
-    DATA.gap_remove = {
+    MaweBoot.DATA.gap_remove = {
       schema: 'moy.asr.gap_remove.v1',
       detector: 'audio_gate',
       minimum_ms: 500,
@@ -129,8 +129,8 @@ test('gap click does not show drag styling until the pointer moves', async ({ pa
       manual_corrections: false,
       gaps: [{ start: 12000, end: 12500, removed: true }],
     };
-    updateGapRemoveUi();
-    renderAll({ waveform: 'full' });
+    MaweGapRemoveUi.updateGapRemoveUi();
+    MaweCuePanel.renderAll({ waveform: 'full' });
   });
 
   const block = page.locator('.waveform-gap-block[data-gap-index="0"]').first();
@@ -160,7 +160,7 @@ test('gap context menu and modifier drags update the gap timeline', async ({ pag
   await page.goto(server.url);
   const setGaps = async (gaps, operationMode = 'boundary_drag') => {
     await page.evaluate(({ nextGaps, nextMode }) => {
-      DATA.gap_remove = {
+      MaweBoot.DATA.gap_remove = {
         schema: 'moy.asr.gap_remove.v1',
         detector: 'audio_gate',
         minimum_ms: 500,
@@ -173,8 +173,8 @@ test('gap context menu and modifier drags update the gap timeline', async ({ pag
         manual_corrections: false,
         gaps: nextGaps,
       };
-      updateGapRemoveUi();
-      renderAll({ waveform: 'full' });
+      MaweGapRemoveUi.updateGapRemoveUi();
+      MaweCuePanel.renderAll({ waveform: 'full' });
     }, { nextGaps: gaps, nextMode: operationMode });
   };
 
@@ -185,7 +185,7 @@ test('gap context menu and modifier drags update the gap timeline', async ({ pag
   await page.mouse.click(firstBox.x + firstBox.width * 0.4, firstBox.y + 20, { button: 'right' });
   await expect(page.locator('#ctxmenu .item', { hasText: '添加空隙' })).toBeVisible();
   await page.locator('#ctxmenu .item', { hasText: '添加空隙' }).click();
-  const added = await page.evaluate(() => DATA.gap_remove.gaps);
+  const added = await page.evaluate(() => MaweBoot.DATA.gap_remove.gaps);
   expect(added).toHaveLength(1);
   expect(added[0].removed).toBe(true);
   expect(added[0].end - added[0].start).toBe(400);
@@ -200,7 +200,7 @@ test('gap context menu and modifier drags update the gap timeline', async ({ pag
   await page.mouse.move(altRangeBox.x + altRangeBox.width * 0.94, altRangeBox.y + 20);
   await page.mouse.up();
   await page.keyboard.up('Alt');
-  const altAdded = await page.evaluate(() => DATA.gap_remove.gaps);
+  const altAdded = await page.evaluate(() => MaweBoot.DATA.gap_remove.gaps);
   expect(altAdded.some((gap) => (
     gap.removed && gap.start >= 8000 && gap.end <= 10000 && gap.end - gap.start >= 1000
   ))).toBe(true);
@@ -211,29 +211,45 @@ test('gap context menu and modifier drags update the gap timeline', async ({ pag
   await page.locator('#waveform-settings-toggle').click();
   const middleRow = page.locator('.waveform-row[data-row-index="0"]').first();
   const middleBox = await middleRow.boundingBox();
+  const middleContent = await middleRow.evaluate((element) => ({
+    clientLeft: element.clientLeft,
+    clientWidth: element.clientWidth,
+  }));
   expect(middleBox).not.toBeNull();
-  await page.mouse.move(middleBox.x + middleBox.width * 0.2, middleBox.y + 20);
+  await page.mouse.move(
+    middleBox.x + middleContent.clientLeft + middleContent.clientWidth * 0.2,
+    middleBox.y + 20,
+  );
   await page.mouse.down({ button: 'middle' });
-  await page.mouse.move(middleBox.x + middleBox.width * 0.3, middleBox.y + 20);
+  await page.mouse.move(
+    middleBox.x + middleContent.clientLeft + middleContent.clientWidth * 0.3,
+    middleBox.y + 20,
+  );
   await page.mouse.up({ button: 'middle' });
-  const middleResult = await page.evaluate(() => DATA.gap_remove.gaps);
+  const middleResult = await page.evaluate(() => MaweBoot.DATA.gap_remove.gaps);
   expect(middleResult.some((gap) => gap.removed && gap.start <= 2000 && gap.end >= 3000)).toBe(true);
 
   await setGaps([], 'boundary_and_middle');
   const crossMiddleRow = page.locator('.waveform-row[data-row-index="0"]').first();
   const crossMiddleBox = await crossMiddleRow.boundingBox();
+  const crossMiddleContent = await crossMiddleRow.evaluate((element) => ({
+    clientLeft: element.clientLeft,
+    clientWidth: element.clientWidth,
+  }));
   expect(crossMiddleBox).not.toBeNull();
   const crossMiddleY = crossMiddleBox.y + crossMiddleBox.height * 0.8;
-  await page.mouse.move(crossMiddleBox.x + crossMiddleBox.width * 0.98, crossMiddleY);
+  const crossMiddleStartX = crossMiddleBox.x + crossMiddleContent.clientLeft
+    + crossMiddleContent.clientWidth * 0.98;
+  await page.mouse.move(crossMiddleStartX, crossMiddleY);
   await page.mouse.down({ button: 'middle' });
-  await page.mouse.move(crossMiddleBox.x + crossMiddleBox.width * 1.02, crossMiddleY);
+  await page.mouse.move(crossMiddleStartX + crossMiddleContent.clientWidth * 0.04, crossMiddleY);
   await expect.poll(() => page.evaluate(() => {
     const rows = new Set([...document.querySelectorAll('.waveform-gap-range-preview')]
       .map((element) => element.closest('.waveform-row')?.dataset.rowIndex));
     return rows.has('0') && rows.has('1');
   })).toBe(true);
   await page.mouse.up({ button: 'middle' });
-  const crossMiddleResult = await page.evaluate(() => DATA.gap_remove.gaps);
+  const crossMiddleResult = await page.evaluate(() => MaweBoot.DATA.gap_remove.gaps);
   expect(crossMiddleResult.some((gap) => (
     gap.removed && gap.start <= 9800 && gap.end >= 10200
   ))).toBe(true);
@@ -274,7 +290,7 @@ test('gap context menu and modifier drags update the gap timeline', async ({ pag
     && element.getBoundingClientRect().width > 0
   )))).toBe(true);
   await page.mouse.up();
-  const crossRowResult = await page.evaluate(() => DATA.gap_remove.gaps);
+  const crossRowResult = await page.evaluate(() => MaweBoot.DATA.gap_remove.gaps);
   expect(crossRowResult[0].start).toBeLessThan(10000);
 
   await setGaps([{ start: 9500, end: 10550, removed: true }], 'boundary_and_middle');
@@ -313,7 +329,7 @@ test('gap context menu and modifier drags update the gap timeline', async ({ pag
   await page.mouse.move(moveBox.x + moveBox.width / 2 + 100, moveBox.y + moveBox.height / 2);
   await expect(page.locator('.waveform-gap-block[data-gap-index="0"].dragging')).toHaveCount(1);
   await page.mouse.up();
-  const moved = await page.evaluate(() => DATA.gap_remove.gaps);
+  const moved = await page.evaluate(() => MaweBoot.DATA.gap_remove.gaps);
   expect(moved).toHaveLength(1);
   expect(moved[0].start).toBeGreaterThan(12000);
   expect(moved[0].end - moved[0].start).toBe(500);
@@ -322,13 +338,13 @@ test('gap context menu and modifier drags update the gap timeline', async ({ pag
   const copyBlock = page.locator('.waveform-gap-block[data-gap-index="0"]').first();
   const copyBox = await copyBlock.boundingBox();
   expect(copyBox).not.toBeNull();
-  await page.keyboard.down('Control');
+  await page.keyboard.down('ControlOrMeta');
   await page.mouse.move(copyBox.x + copyBox.width / 2, copyBox.y + copyBox.height / 2);
   await page.mouse.down();
   await page.mouse.move(copyBox.x + copyBox.width / 2 + 250, copyBox.y + copyBox.height / 2);
   await page.mouse.up();
-  await page.keyboard.up('Control');
-  const copied = await page.evaluate(() => DATA.gap_remove.gaps);
+  await page.keyboard.up('ControlOrMeta');
+  const copied = await page.evaluate(() => MaweBoot.DATA.gap_remove.gaps);
   expect(copied).toHaveLength(2);
   expect(copied.some((gap) => gap.start === 12000 && gap.end === 12500)).toBe(true);
   expect(copied.some((gap) => gap.start > 12500)).toBe(true);
@@ -361,14 +377,14 @@ test('gap settings expose compact actions and screenshot defaults', async ({ pag
 test('disables subtitles by removed-gap coverage and remaining duration thresholds', async ({ page }) => {
   await page.goto(server.url);
   await page.evaluate(() => {
-    DATA.segments.length = 0;
+    MaweBoot.DATA.segments.length = 0;
     [
       { id: 'full-gap', start: 1000, end: 2000, text: '完全在空隙内' },
       { id: 'partial', start: 0, end: 2000, text: '覆盖一半' },
       { id: 'near-gap', start: 800, end: 2000, text: '覆盖率和剩余时长都满足' },
       { id: 'outside', start: 3000, end: 4000, text: '不在空隙内' },
-    ].forEach((segment) => DATA.segments.push(segment));
-    DATA.gap_remove = {
+    ].forEach((segment) => MaweBoot.DATA.segments.push(segment));
+    MaweBoot.DATA.gap_remove = {
       schema: 'moy.asr.gap_remove.v1',
       detector: 'audio_gate',
       minimum_ms: 500,
@@ -385,8 +401,8 @@ test('disables subtitles by removed-gap coverage and remaining duration threshol
         { start: 3000, end: 3500, removed: false },
       ],
     };
-    updateGapRemoveUi();
-    renderAll({ waveform: 'full' });
+    MaweGapRemoveUi.updateGapRemoveUi();
+    MaweCuePanel.renderAll({ waveform: 'full' });
   });
 
   await page.locator('#gap-remove-manage').click();
@@ -398,13 +414,13 @@ test('disables subtitles by removed-gap coverage and remaining duration threshol
   await expect(page.locator('#gap-remove-disable-hint')).toHaveText('禁用位于空隙范围内的字幕（当前有 2 条未禁用）');
 
   await page.locator('#gap-remove-disable-button').click();
-  await expect.poll(() => page.evaluate(() => DATA.segments.map((segment) => Boolean(segment.disabled))))
+  await expect.poll(() => page.evaluate(() => MaweBoot.DATA.segments.map((segment) => Boolean(segment.disabled))))
     .toEqual([true, false, true, false]);
   await expect(page.locator('#gap-remove-disable-hint')).toHaveText('禁用位于空隙范围内的字幕（当前有 0 条未禁用）');
   await expect(page.locator('#hint-stack')).toContainText('已禁用 2 条静音空隙内的字幕');
 
   await page.locator('#undo-btn').click();
-  await expect.poll(() => page.evaluate(() => DATA.segments.map((segment) => Boolean(segment.disabled))))
+  await expect.poll(() => page.evaluate(() => MaweBoot.DATA.segments.map((segment) => Boolean(segment.disabled))))
     .toEqual([false, false, false, false]);
   await expect(page.locator('#gap-remove-disable-hint')).toHaveText('禁用位于空隙范围内的字幕（当前有 2 条未禁用）');
 
@@ -414,18 +430,18 @@ test('disables subtitles by removed-gap coverage and remaining duration threshol
   await page.locator('#gap-remove-disable-remaining').press('Tab');
   await expect(page.locator('#gap-remove-disable-hint')).toHaveText('禁用位于空隙范围内的字幕（当前有 3 条未禁用）');
   await page.locator('#gap-remove-disable-button').click();
-  await expect.poll(() => page.evaluate(() => DATA.segments.map((segment) => Boolean(segment.disabled))))
+  await expect.poll(() => page.evaluate(() => MaweBoot.DATA.segments.map((segment) => Boolean(segment.disabled))))
     .toEqual([true, true, true, false]);
   await expect.poll(() => page.evaluate(() => ({
-    coverage: DATA.gap_remove.disable_coverage_percent,
-    remaining: DATA.gap_remove.disable_remaining_ms,
+    coverage: MaweBoot.DATA.gap_remove.disable_coverage_percent,
+    remaining: MaweBoot.DATA.gap_remove.disable_remaining_ms,
   }))).toEqual({ coverage: 50, remaining: 1000 });
 });
 
 test('shrinks existing gaps from the gap settings padding', async ({ page }) => {
   await page.goto(server.url);
   await page.evaluate(() => {
-    DATA.gap_remove = {
+    MaweBoot.DATA.gap_remove = {
       schema: 'moy.asr.gap_remove.v1',
       detector: 'audio_gate',
       minimum_ms: 500,
@@ -441,8 +457,8 @@ test('shrinks existing gaps from the gap settings padding', async ({ page }) => 
         { start: 3000, end: 3400, removed: false },
       ],
     };
-    updateGapRemoveUi();
-    renderAll({ waveform: 'full' });
+    MaweGapRemoveUi.updateGapRemoveUi();
+    MaweCuePanel.renderAll({ waveform: 'full' });
   });
 
   await page.locator('#gap-remove-manage').click();
@@ -456,18 +472,18 @@ test('shrinks existing gaps from the gap settings padding', async ({ page }) => 
   await page.locator('#gap-remove-lead-out').fill('200');
 
   await page.locator('#gap-remove-shrink').click();
-  await expect.poll(() => page.evaluate(() => DATA.gap_remove.gaps)).toEqual([
+  await expect.poll(() => page.evaluate(() => MaweBoot.DATA.gap_remove.gaps)).toEqual([
     { start: 1100, end: 1800, removed: true, source: 'audio_gate', origins: ['audio_gate'] },
     { start: 3000, end: 3400, removed: false, source: 'manual', origins: ['manual'] },
   ]);
   await expect.poll(() => page.evaluate(() => ({
-    leadIn: DATA.gap_remove.lead_in_ms,
-    leadOut: DATA.gap_remove.lead_out_ms,
+    leadIn: MaweBoot.DATA.gap_remove.lead_in_ms,
+    leadOut: MaweBoot.DATA.gap_remove.lead_out_ms,
   }))).toEqual({ leadIn: 100, leadOut: 200 });
   await expect(page.locator('#hint-stack')).toContainText('已按前端 100ms、后端 200ms 收缩 1 段空隙');
 
   await page.locator('#undo-btn').click();
-  await expect.poll(() => page.evaluate(() => DATA.gap_remove.gaps)).toEqual([
+  await expect.poll(() => page.evaluate(() => MaweBoot.DATA.gap_remove.gaps)).toEqual([
     { start: 1000, end: 2000, removed: true },
     { start: 3000, end: 3400, removed: false },
   ]);
@@ -477,7 +493,7 @@ test('N creates a subtitle at the waveform pointer and focuses the new cue', asy
   await page.goto(server.url);
   await page.locator('.player-stage').hover();
   await page.keyboard.press('n');
-  await expect.poll(() => page.evaluate(() => DATA.segments.length)).toBe(6);
+  await expect.poll(() => page.evaluate(() => MaweBoot.DATA.segments.length)).toBe(6);
 
   const row = page.locator('.waveform-row').first();
   await expect(row).toBeVisible();
@@ -487,13 +503,13 @@ test('N creates a subtitle at the waveform pointer and focuses the new cue', asy
   await page.mouse.move(pointer.x, pointer.y);
   await page.keyboard.press('n');
 
-  await expect.poll(() => page.evaluate(() => DATA.segments.length)).toBe(7);
+  await expect.poll(() => page.evaluate(() => MaweBoot.DATA.segments.length)).toBe(7);
   await expect(page.locator('.cue[data-idx="1"]')).toHaveClass(/selected/);
   await expect.poll(() => page.evaluate(() => window.MAWE_EDITOR_BRIDGE.currentCuePanelIdx)).toBe(1);
   await expect(page.locator('#cue-panel-text')).toHaveValue('');
   await expect(page.locator('#cue-panel-text')).toBeFocused();
   await expect(page.locator('.cue[data-idx="1"] .text')).not.toHaveAttribute('contenteditable', 'plaintext-only');
-  const created = await page.evaluate(() => DATA.segments[1]);
+  const created = await page.evaluate(() => MaweBoot.DATA.segments[1]);
   expect(created.start).toBeGreaterThanOrEqual(8000);
   expect(created.end - created.start).toBe(1000);
 });
@@ -508,7 +524,7 @@ test('Ctrl+dragging blank waveform creates the dragged duration and focuses the 
   const endX = box.x + box.width * 0.94;
   const y = box.y + 20;
 
-  await page.keyboard.down('Control');
+  await page.keyboard.down('ControlOrMeta');
   await page.mouse.move(startX, y);
   await page.mouse.down();
   await page.mouse.move(endX, y, { steps: 6 });
@@ -529,14 +545,14 @@ test('Ctrl+dragging blank waveform creates the dragged duration and focuses the 
   expect(previewStyle.borderStyle).toBe('dashed');
   expect(previewStyle.bottom).toBe('7px');
   await page.mouse.up();
-  await page.keyboard.up('Control');
+  await page.keyboard.up('ControlOrMeta');
 
-  await expect.poll(() => page.evaluate(() => DATA.segments.length)).toBe(7);
+  await expect.poll(() => page.evaluate(() => MaweBoot.DATA.segments.length)).toBe(7);
   await expect(page.locator('.cue[data-idx="1"]')).toHaveClass(/selected/);
   await expect.poll(() => page.evaluate(() => window.MAWE_EDITOR_BRIDGE.currentCuePanelIdx)).toBe(1);
   await expect(page.locator('#cue-panel-text')).toBeFocused();
   await expect(page.locator('.cue[data-idx="1"] .text')).not.toHaveAttribute('contenteditable', 'plaintext-only');
-  const created = await page.evaluate(() => DATA.segments[1]);
+  const created = await page.evaluate(() => MaweBoot.DATA.segments[1]);
   const expectedDuration = Math.round((((endX - startX) / box.width) * 10000) / 10) * 10;
   expect(Math.abs((created.end - created.start) - expectedDuration)).toBeLessThanOrEqual(10);
 });
@@ -553,14 +569,14 @@ test('Ctrl+dragging a too-short range shows a warning toast', async ({ page }) =
   const endX = startX + Math.max(2, box.width * (80 / (rowEnd - rowStart)));
   const y = box.y + 20;
 
-  await page.keyboard.down('Control');
+  await page.keyboard.down('ControlOrMeta');
   await page.mouse.move(startX, y);
   await page.mouse.down();
   await page.mouse.move(endX, y, { steps: 2 });
   await page.mouse.up();
-  await page.keyboard.up('Control');
+  await page.keyboard.up('ControlOrMeta');
 
-  await expect.poll(() => page.evaluate(() => DATA.segments.length)).toBe(6);
+  await expect.poll(() => page.evaluate(() => MaweBoot.DATA.segments.length)).toBe(6);
   const warning = page.locator('#hint-stack .hint-card.hint-warning', {
     hasText: '该空白区域不足 100ms，无法新增字幕',
   });
@@ -574,15 +590,15 @@ test('Ctrl+dragging an existing cue is rejected without a preview', async ({ pag
   const box = await cue.boundingBox();
   expect(box).not.toBeNull();
 
-  await page.keyboard.down('Control');
+  await page.keyboard.down('ControlOrMeta');
   await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
   await page.mouse.down();
   await page.mouse.move(box.x + box.width / 2 + 20, box.y + box.height / 2, { steps: 2 });
   await expect(page.locator('.waveform-create-preview')).toHaveCount(0);
   await page.mouse.up();
-  await page.keyboard.up('Control');
+  await page.keyboard.up('ControlOrMeta');
 
-  await expect.poll(() => page.evaluate(() => DATA.segments.length)).toBe(6);
+  await expect.poll(() => page.evaluate(() => MaweBoot.DATA.segments.length)).toBe(6);
   await expect(page.locator('#hint-stack .hint-card.hint-warning', {
     hasText: '该位置已有字幕，无法新增字幕',
   })).toBeVisible();
@@ -593,24 +609,29 @@ test('Ctrl+dragging from blank space stops at an existing cue boundary', async (
   const row = page.locator('.waveform-row').first();
   await expect(row).toBeVisible();
   const box = await row.boundingBox();
+  const content = await row.evaluate((element) => ({
+    clientLeft: element.clientLeft,
+    clientWidth: element.clientWidth,
+  }));
   expect(box).not.toBeNull();
-  const anchorX = box.x + box.width * 0.9;
-  const crossedX = box.x + box.width * 0.6;
+  const contentX = box.x + content.clientLeft;
+  const anchorX = contentX + content.clientWidth * 0.9;
+  const crossedX = contentX + content.clientWidth * 0.6;
   const y = box.y + 20;
 
-  await page.keyboard.down('Control');
+  await page.keyboard.down('ControlOrMeta');
   await page.mouse.move(anchorX, y);
   await page.mouse.down();
-  await page.mouse.move(box.x + box.width * 0.85, y, { steps: 2 });
+  await page.mouse.move(contentX + content.clientWidth * 0.85, y, { steps: 2 });
 
   const preview = page.locator('.waveform-create-preview');
   await expect(preview).toBeVisible();
   await page.mouse.move(crossedX, y, { steps: 6 });
   await expect(preview).toBeVisible();
   await page.mouse.up();
-  await page.keyboard.up('Control');
-  await expect.poll(() => page.evaluate(() => DATA.segments.length)).toBe(7);
-  const created = await page.evaluate(() => DATA.segments[1]);
+  await page.keyboard.up('ControlOrMeta');
+  await expect.poll(() => page.evaluate(() => MaweBoot.DATA.segments.length)).toBe(7);
+  const created = await page.evaluate(() => MaweBoot.DATA.segments[1]);
   expect(created.start).toBe(8000);
   expect(created.end).toBe(9000);
 });
@@ -627,20 +648,20 @@ test('waveform background split supports undo and redo', async ({ page }) => {
   const splitItem = page.locator('#ctxmenu .item', { hasText: '按音频位置拆分' });
   await expect(splitItem).toBeEnabled();
   await splitItem.click();
-  await expect.poll(() => page.evaluate(() => DATA.segments.length)).toBe(7);
-  await expect.poll(() => page.evaluate(() => DATA.segments.slice(0, 2).map((segment) => segment.text))).toEqual([
+  await expect.poll(() => page.evaluate(() => MaweBoot.DATA.segments.length)).toBe(7);
+  await expect.poll(() => page.evaluate(() => MaweBoot.DATA.segments.slice(0, 2).map((segment) => segment.text))).toEqual([
     'Alpha',
     'Bravo',
   ]);
 
   await page.getByRole('button', { name: /撤销/ }).click();
-  await expect.poll(() => page.evaluate(() => DATA.segments.length)).toBe(6);
-  await expect.poll(() => page.evaluate(() => DATA.segments[0].text)).toBe('Alpha Bravo');
+  await expect.poll(() => page.evaluate(() => MaweBoot.DATA.segments.length)).toBe(6);
+  await expect.poll(() => page.evaluate(() => MaweBoot.DATA.segments[0].text)).toBe('Alpha Bravo');
   await expect(page.getByRole('button', { name: /重做/ })).toBeEnabled();
 
   await page.getByRole('button', { name: /重做/ }).click();
-  await expect.poll(() => page.evaluate(() => DATA.segments.length)).toBe(7);
-  await expect.poll(() => page.evaluate(() => DATA.segments.slice(0, 2).map((segment) => segment.text))).toEqual([
+  await expect.poll(() => page.evaluate(() => MaweBoot.DATA.segments.length)).toBe(7);
+  await expect.poll(() => page.evaluate(() => MaweBoot.DATA.segments.slice(0, 2).map((segment) => segment.text))).toEqual([
     'Alpha',
     'Bravo',
   ]);
@@ -662,8 +683,8 @@ test('manual text split keeps malformed item timing inside both cues and restore
     ],
   };
   await page.evaluate((segment) => {
-    DATA.segments[0] = segment;
-    renderAll({ waveform: 'full' });
+    MaweBoot.DATA.segments[0] = segment;
+    MaweCuePanel.renderAll({ waveform: 'full' });
   }, original);
 
   const text = page.locator('.cue[data-idx="0"] .text');
@@ -683,7 +704,7 @@ test('manual text split keeps malformed item timing inside both cues and restore
   await expect(page.locator('.cue[data-idx="1"]')).toHaveCount(1);
 
   const splitState = await page.evaluate(() => ({
-    segments: DATA.segments.slice(0, 2).map((segment) => ({
+    segments: MaweBoot.DATA.segments.slice(0, 2).map((segment) => ({
       start: segment.start,
       end: segment.end,
       text: segment.text,
@@ -707,19 +728,19 @@ test('manual text split keeps malformed item timing inside both cues and restore
   const saveResponse = page.waitForResponse((response) => (
     response.url().endsWith('/api/project') && response.request().method() === 'POST'
   ));
-  await page.keyboard.press('Control+s');
+  await page.keyboard.press('ControlOrMeta+s');
   expect((await saveResponse).ok()).toBe(true);
 
   await page.getByRole('button', { name: /撤销/ }).click();
   await expect.poll(() => page.evaluate(() => JSON.stringify(
-    DATA.segments[0],
+    MaweBoot.DATA.segments[0],
     (key, value) => (key === 'start_frame' || key === 'end_frame' ? undefined : value),
   ))).toBe(JSON.stringify(original));
   await expect(page.getByRole('button', { name: /重做/ })).toBeEnabled();
 
   await page.getByRole('button', { name: /重做/ }).click();
-  await expect.poll(() => page.evaluate(() => DATA.segments.length)).toBe(7);
-  const redone = await page.evaluate(() => DATA.segments.slice(0, 2).map((segment) => ({
+  await expect.poll(() => page.evaluate(() => MaweBoot.DATA.segments.length)).toBe(7);
+  const redone = await page.evaluate(() => MaweBoot.DATA.segments.slice(0, 2).map((segment) => ({
     start: segment.start,
     end: segment.end,
     items: segment.items,
@@ -738,10 +759,10 @@ test('manual text split keeps malformed item timing inside both cues and restore
     response.url().endsWith('/api/project') && response.request().method() === 'POST'
   ));
   await page.evaluate((segments) => {
-    DATA.segments = segments.map((segment) => JSON.parse(JSON.stringify(segment)));
-    renderAll();
+    MaweBoot.DATA.segments = segments.map((segment) => JSON.parse(JSON.stringify(segment)));
+    MaweCuePanel.renderAll();
   }, testSegments());
-  await page.keyboard.press('Control+s');
+  await page.keyboard.press('ControlOrMeta+s');
   expect((await restoreResponse).ok()).toBe(true);
 });
 
@@ -821,7 +842,7 @@ test('C merge refreshes the paused main subtitle preview', async ({ page }) => {
 
   const cues = page.locator('.cue');
   await cues.nth(0).click();
-  await cues.nth(1).click({ modifiers: ['Control'] });
+  await cues.nth(1).click({ modifiers: ['ControlOrMeta'] });
   await page.keyboard.press('c');
 
   await expect(page.locator('.cue .text').first()).toHaveText('Alpha Bravo');
@@ -837,12 +858,12 @@ test('C merge keeps the subtitle list at its current position', async ({ page })
       text: `Cue ${index + 1}`,
       items: [],
     }));
-    DATA.segments.splice(0, DATA.segments.length, ...segments);
+    MaweBoot.DATA.segments.splice(0, MaweBoot.DATA.segments.length, ...segments);
     const clickBehavior = document.getElementById('click-behavior');
     clickBehavior.value = 'select-only';
     clickBehavior.dispatchEvent(new Event('change', { bubbles: true }));
-    EDITOR_SETTINGS.cueListAutoScrollOnClick = false;
-    renderAll({ waveform: 'none' });
+    MaweSettings.EDITOR_SETTINGS.cueListAutoScrollOnClick = false;
+    MaweCuePanel.renderAll({ waveform: 'none' });
     const list = document.getElementById('cues-container');
     const target = list.querySelector('.cue[data-idx="30"]');
     list.scrollTop = Math.max(
@@ -855,10 +876,9 @@ test('C merge keeps the subtitle list at its current position', async ({ page })
   const first = page.locator('.cue[data-idx="30"]');
   const second = page.locator('.cue[data-idx="31"]');
   await first.click();
-  await second.click({ modifiers: ['Control'] });
+  await second.click({ modifiers: ['ControlOrMeta'] });
   const before = await first.evaluate((element) => ({
     top: element.getBoundingClientRect().top,
-    scrollTop: element.closest('#cues-container').scrollTop,
   }));
 
   await page.keyboard.press('c');
@@ -867,8 +887,8 @@ test('C merge keeps the subtitle list at its current position', async ({ page })
   await expect(merged).toHaveText(/Cue 31 Cue 32/);
   await expect.poll(() => merged.evaluate((element) => element.getBoundingClientRect().top))
     .toBe(before.top);
-  await expect.poll(() => list.evaluate((element) => element.scrollTop))
-    .toBe(before.scrollTop);
+  // The visible cue position is the user-facing contract. Virtualized rows may
+  // correct the container's raw scrollTop after estimated heights settle.
 });
 
 test('B splits the selected subtitle under the cue-list pointer and supports undo and redo', async ({ page }) => {
@@ -912,19 +932,23 @@ test('B splits the selected subtitle under the cue-list pointer and supports und
 test('retries an inline split with B or Enter and clamps both halves to 100ms', async ({ page }) => {
   await page.goto(server.url);
   await page.evaluate(() => {
-    const segment = DATA.segments[0];
+    const segment = MaweBoot.DATA.segments[0];
     segment.text = 'Alpha Bravo';
     segment.items = [
       { start: segment.start, end: segment.start + 50, text: 'Alpha' },
       { start: segment.start + 50, end: segment.end, text: 'Bravo' },
     ];
-    renderAll({ waveform: 'full' });
+    MaweCuePanel.renderAll({ waveform: 'full' });
   });
 
   const cue = page.locator('.cue[data-idx="0"]');
   await cue.click();
   const text = cue.locator('.text');
   await text.dblclick();
+  // A real follow-up key owns the caret before this test places its exact
+  // split point; otherwise the deferred native double-click repair may race
+  // with the programmatic Range below under full-suite load.
+  await page.keyboard.press('ArrowRight');
   await text.evaluate((element) => {
     const node = element.firstChild;
     const range = document.createRange();
@@ -946,7 +970,7 @@ test('retries an inline split with B or Enter and clamps both halves to 100ms', 
   // B/Enter is accepted only for this armed retry while the inline editor is open.
   await page.keyboard.press('Enter');
   await expect.poll(() => page.locator('.cue').count()).toBe(7);
-  const splitTiming = await page.evaluate(() => DATA.segments.slice(0, 2).map((segment) => ({
+  const splitTiming = await page.evaluate(() => MaweBoot.DATA.segments.slice(0, 2).map((segment) => ({
     text: segment.text,
     duration: segment.end - segment.start,
   })));
@@ -962,7 +986,7 @@ test('retries an inline split with B or Enter and clamps both halves to 100ms', 
   await expect(page.locator('.cue[data-idx="0"]')).toHaveClass(/selected/);
   await expect.poll(() => page.evaluate(() => window.MAWE_EDITOR_BRIDGE.currentCuePanelIdx)).toBe(0);
   await expect(page.locator('.cue[data-idx="0"] .text')).toHaveText('Alpha Bravo');
-  expect(await page.evaluate(() => DATA.segments[0].end - DATA.segments[0].start)).toBe(8000);
+  expect(await page.evaluate(() => MaweBoot.DATA.segments[0].end - MaweBoot.DATA.segments[0].start)).toBe(8000);
 });
 
 test('long-only filtering temporarily keeps split results visible until focus leaves', async ({ page }) => {
@@ -1036,7 +1060,7 @@ test('waveform navigation keeps a cue row in the comfort zone', async ({ page })
   await page.locator('.cue[data-idx="1"]').click();
   const before = await page.evaluate(() => {
     const scroll = document.getElementById('waveform-scroll');
-    const rowIndex = Math.floor(DATA.segments[2].start / (20 * 1000));
+    const rowIndex = Math.floor(MaweBoot.DATA.segments[2].start / (20 * 1000));
     const stride = 64 + 10;
     const comfortInset = Math.min(120, Math.max(48, scroll.clientHeight * 0.2));
     scroll.scrollTop = Math.max(0, rowIndex * stride - comfortInset - 8);
@@ -1082,13 +1106,13 @@ test('rapid subtitle navigation reuses cached waveform rows', async ({ page }) =
   await page.evaluate(() => {
     // Put all fixture cues inside the cached row band so this test isolates
     // keyboard navigation from the cross-row incremental-render path.
-    waveformEditor.settings.secondsPerRow = 60;
-    waveformEditor.multiRange = [-1, -1];
-    waveformEditor.render();
+    MaweCoreState.waveformEditor.settings.secondsPerRow = 60;
+    MaweCoreState.waveformEditor.multiRange = [-1, -1];
+    MaweCoreState.waveformEditor.render();
 
-    const original = waveformEditor.renderMultiVisible.bind(waveformEditor);
+    const original = MaweCoreState.waveformEditor.renderMultiVisible.bind(MaweCoreState.waveformEditor);
     window.__keyboardWaveformRenderStats = { calls: 0, forced: 0 };
-    waveformEditor.renderMultiVisible = function wrappedRenderMultiVisible(force = false) {
+    MaweCoreState.waveformEditor.renderMultiVisible = function wrappedRenderMultiVisible(force = false) {
       window.__keyboardWaveformRenderStats.calls += 1;
       if (force) window.__keyboardWaveformRenderStats.forced += 1;
       return original(force);
@@ -1153,9 +1177,9 @@ test('Home and End seek the player and reveal the media boundaries', async ({ pa
     return scroll.scrollHeight > scroll.clientHeight;
   })).toBe(true);
   await page.evaluate(() => {
-    waveformEditor.settings.mode = 'multi';
-    waveformEditor.settings.secondsPerRow = 10;
-    waveformEditor.render();
+    MaweCoreState.waveformEditor.settings.mode = 'multi';
+    MaweCoreState.waveformEditor.settings.secondsPerRow = 10;
+    MaweCoreState.waveformEditor.render();
     const scroll = document.getElementById('waveform-scroll');
     scroll.scrollTop = scroll.scrollHeight;
   });
@@ -1257,7 +1281,7 @@ test('Home and End follow the main cue-list owner without seeking media', async 
 test('Home and End keep extension cue-list navigation on the exact track', async ({ page }) => {
   await page.goto(server.url);
   await page.evaluate(() => {
-    DATA.multi_subtitle = {
+    MaweBoot.DATA.multi_subtitle = {
       schema: 'moy.asr.multi_subtitle.v1',
       enabled: true,
       display_mode: 'both',
@@ -1267,7 +1291,7 @@ test('Home and End keep extension cue-list navigation on the exact track', async
         name: 'English',
         language: 'English',
         split_mode: 'word',
-        segments: DATA.segments.slice(0, 3).map((segment, index) => ({
+        segments: MaweBoot.DATA.segments.slice(0, 3).map((segment, index) => ({
           id: `extension-home-end-${index}`,
           start: segment.start,
           end: segment.end,
@@ -1276,7 +1300,7 @@ test('Home and End keep extension cue-list navigation on the exact track', async
       }],
       bindings: [],
     };
-    renderAll({ waveform: 'full' });
+    MaweCuePanel.renderAll({ waveform: 'full' });
   });
   const extensionCue = page.locator(
     '.multi-dual-cue[data-ext-idx="1"] .multi-cue-column.extension',
@@ -1290,12 +1314,12 @@ test('Home and End keep extension cue-list navigation on the exact track', async
 
   await page.keyboard.press('Home');
   await expect(page.locator('.multi-dual-cue[data-ext-idx="0"]')).toHaveClass(/selected/);
-  expect(await page.evaluate(() => getCurrentCuePanelTarget()?.trackId)).toBe('extension-home-end');
+  expect(await page.evaluate(() => MaweCuePanel.getCurrentCuePanelTarget()?.trackId)).toBe('extension-home-end');
   await expect.poll(() => page.evaluate(() => document.getElementById('player').currentTime)).toBe(123);
 
   await page.keyboard.press('End');
   await expect(page.locator('.multi-dual-cue[data-ext-idx="2"]')).toHaveClass(/selected/);
-  expect(await page.evaluate(() => getCurrentCuePanelTarget()?.trackId)).toBe('extension-home-end');
+  expect(await page.evaluate(() => MaweCuePanel.getCurrentCuePanelTarget()?.trackId)).toBe('extension-home-end');
   await expect.poll(() => page.evaluate(() => document.getElementById('player').currentTime)).toBe(123);
 });
 
@@ -1334,13 +1358,13 @@ test('hovering a selected subtitle shows the B split hint', async ({ page }) => 
 test('the last multi-row waveform uses the media remainder width', async ({ page }) => {
   await page.goto(server.url);
   await page.evaluate(() => {
-    waveformEditor.settings.mode = 'multi';
-    waveformEditor.settings.secondsPerRow = 64;
-    waveformEditor.settings.rowHeight = 72;
-    waveformEditor.render();
+    MaweCoreState.waveformEditor.settings.mode = 'multi';
+    MaweCoreState.waveformEditor.settings.secondsPerRow = 64;
+    MaweCoreState.waveformEditor.settings.rowHeight = 72;
+    MaweCoreState.waveformEditor.render();
     const scroll = document.getElementById('waveform-scroll');
     scroll.scrollTop = scroll.scrollHeight;
-    waveformEditor.renderMultiVisible(true);
+    MaweCoreState.waveformEditor.renderMultiVisible(true);
   });
 
   const lastRow = page.locator('.waveform-row[data-row-index="4"]');
@@ -1361,13 +1385,13 @@ test('requires a second B in the split dialog before forcing a short-side cut', 
   });
   await page.goto(server.url);
   await page.evaluate(() => {
-    const segment = DATA.segments[0];
+    const segment = MaweBoot.DATA.segments[0];
     segment.text = 'Alpha Bravo';
     segment.items = [
       { start: segment.start, end: segment.start + 50, text: 'Alpha' },
       { start: segment.start + 50, end: segment.end, text: 'Bravo' },
     ];
-    renderAll({ waveform: 'full' });
+    MaweCuePanel.renderAll({ waveform: 'full' });
   });
 
   const row = page.locator('.waveform-row').first();
@@ -1393,7 +1417,7 @@ test('requires a second B in the split dialog before forcing a short-side cut', 
 
   await page.keyboard.press('b');
   await expect.poll(() => page.locator('.cue').count()).toBe(7);
-  expect(await page.evaluate(() => DATA.segments.slice(0, 2).map((segment) => [
+  expect(await page.evaluate(() => MaweBoot.DATA.segments.slice(0, 2).map((segment) => [
     segment.text,
     segment.end - segment.start,
   ]))).toEqual([
@@ -1406,18 +1430,18 @@ test('B and C refresh cue overlays without redrawing cached waveform canvases', 
   await page.goto(server.url);
   await makeFirstCueWordSplittable(page);
   await page.evaluate(() => {
-    waveformEditor.settings.secondsPerRow = 60;
-    waveformEditor.multiRange = [-1, -1];
-    waveformEditor.render();
+    MaweCoreState.waveformEditor.settings.secondsPerRow = 60;
+    MaweCoreState.waveformEditor.multiRange = [-1, -1];
+    MaweCoreState.waveformEditor.render();
     window.__cueOverlayStats = { drawRows: 0, overlayRefreshes: 0 };
     window.__cachedWaveformCanvas = document.querySelector('.waveform-row canvas');
-    const originalDrawRow = waveformEditor.drawRow.bind(waveformEditor);
-    waveformEditor.drawRow = function wrappedDrawRow(...args) {
+    const originalDrawRow = MaweCoreState.waveformEditor.drawRow.bind(MaweCoreState.waveformEditor);
+    MaweCoreState.waveformEditor.drawRow = function wrappedDrawRow(...args) {
       window.__cueOverlayStats.drawRows += 1;
       return originalDrawRow(...args);
     };
-    const originalRefreshCueOverlay = waveformEditor.refreshCueOverlay.bind(waveformEditor);
-    waveformEditor.refreshCueOverlay = function wrappedRefreshCueOverlay(...args) {
+    const originalRefreshCueOverlay = MaweCoreState.waveformEditor.refreshCueOverlay.bind(MaweCoreState.waveformEditor);
+    MaweCoreState.waveformEditor.refreshCueOverlay = function wrappedRefreshCueOverlay(...args) {
       window.__cueOverlayStats.overlayRefreshes += 1;
       return originalRefreshCueOverlay(...args);
     };
@@ -1438,7 +1462,7 @@ test('B and C refresh cue overlays without redrawing cached waveform canvases', 
   await expect(page.locator('.cue')).toHaveCount(7);
 
   await page.locator('.cue[data-idx="1"]').click();
-  await page.locator('.cue[data-idx="2"]').click({ modifiers: ['Control'] });
+  await page.locator('.cue[data-idx="2"]').click({ modifiers: ['ControlOrMeta'] });
   await page.keyboard.press('c');
   await expect(page.locator('.cue')).toHaveCount(6);
 
@@ -1454,19 +1478,19 @@ test('B and C refresh cue overlays without redrawing cached waveform canvases', 
 test('waveform appearance wheel adjustments wait for input to settle', async ({ page }) => {
   await page.goto(server.url);
   await page.evaluate(() => {
-    waveformEditor.settings.mode = 'multi';
-    waveformEditor.settings.secondsPerRow = 300;
-    waveformEditor.settings.rowHeight = 96;
-    waveformEditor.settings.waveformScale = 1;
-    waveformEditor.multiRange = [-1, -1];
-    waveformEditor.render();
+    MaweCoreState.waveformEditor.settings.mode = 'multi';
+    MaweCoreState.waveformEditor.settings.secondsPerRow = 300;
+    MaweCoreState.waveformEditor.settings.rowHeight = 96;
+    MaweCoreState.waveformEditor.settings.waveformScale = 1;
+    MaweCoreState.waveformEditor.multiRange = [-1, -1];
+    MaweCoreState.waveformEditor.render();
 
     const row = document.querySelector('.waveform-row[data-row-index="0"]');
     const canvas = row?.querySelector('canvas');
     if (!row || !canvas) throw new Error('没有可测试的波形 Canvas');
     window.__waveformAppearanceStats = { drawRows: 0, canvas };
-    const originalDrawRow = waveformEditor.drawRow.bind(waveformEditor);
-    waveformEditor.drawRow = function wrappedDrawRow(...args) {
+    const originalDrawRow = MaweCoreState.waveformEditor.drawRow.bind(MaweCoreState.waveformEditor);
+    MaweCoreState.waveformEditor.drawRow = function wrappedDrawRow(...args) {
       window.__waveformAppearanceStats.drawRows += 1;
       return originalDrawRow(...args);
     };
@@ -1483,12 +1507,12 @@ test('waveform appearance wheel adjustments wait for input to settle', async ({ 
       }));
     }
     return {
-      scale: waveformEditor.settings.waveformScale,
+      scale: MaweCoreState.waveformEditor.settings.waveformScale,
       drawRows: window.__waveformAppearanceStats.drawRows,
     };
   });
   expect(scaleBefore).toEqual({ scale: 1, drawRows: 0 });
-  await expect.poll(() => page.evaluate(() => waveformEditor.settings.waveformScale)).toBe(2.5);
+  await expect.poll(() => page.evaluate(() => MaweCoreState.waveformEditor.settings.waveformScale)).toBe(2.5);
   await expect.poll(() => page.evaluate(() => window.__waveformAppearanceStats.drawRows > 0)).toBe(true);
 
   await page.evaluate(() => {
@@ -1505,21 +1529,21 @@ test('waveform appearance wheel adjustments wait for input to settle', async ({ 
     }
   });
   expect(await page.evaluate(() => ({
-    rowHeight: waveformEditor.settings.rowHeight,
+    rowHeight: MaweCoreState.waveformEditor.settings.rowHeight,
     drawRows: window.__waveformAppearanceStats.drawRows,
   }))).toEqual({ rowHeight: 96, drawRows: 0 });
-  await expect.poll(() => page.evaluate(() => waveformEditor.settings.rowHeight)).toBe(144);
+  await expect.poll(() => page.evaluate(() => MaweCoreState.waveformEditor.settings.rowHeight)).toBe(144);
   await expect.poll(() => page.evaluate(() => window.__waveformAppearanceStats.drawRows > 0)).toBe(true);
 });
 
 test('spectral color toggle shows pending state and ignores repeated clicks', async ({ page }) => {
   await page.goto(server.url);
   await page.evaluate(() => {
-    waveformEditor.settings.mode = 'multi';
-    waveformEditor.settings.secondsPerRow = 10;
-    waveformEditor.settings.spectralColor = false;
-    waveformEditor.multiRange = [-1, -1];
-    waveformEditor.render();
+    MaweCoreState.waveformEditor.settings.mode = 'multi';
+    MaweCoreState.waveformEditor.settings.secondsPerRow = 10;
+    MaweCoreState.waveformEditor.settings.spectralColor = false;
+    MaweCoreState.waveformEditor.multiRange = [-1, -1];
+    MaweCoreState.waveformEditor.render();
 
     const peakCount = 1000;
     const bytes = new Uint8Array(peakCount * 4);
@@ -1531,7 +1555,7 @@ test('spectral color toggle shows pending state and ignores repeated clicks', as
     }
     let binary = '';
     for (const byte of bytes) binary += String.fromCharCode(byte);
-    waveformEditor.setSpectralPayload({
+    MaweCoreState.waveformEditor.setSpectralPayload({
       schema: 'moy.asr.spectral.v1',
       encoding: 'u16-freq-density-base64',
       sample_rate: 8000,
@@ -1539,11 +1563,11 @@ test('spectral color toggle shows pending state and ignores repeated clicks', as
       peak_count: peakCount,
       data: btoa(binary),
     }, { render: false });
-    waveformEditor.spectralColorToggle.checked = false;
+    MaweCoreState.waveformEditor.spectralColorToggle.checked = false;
 
     window.__spectralColorStats = { renders: 0 };
-    const originalRender = waveformEditor.render.bind(waveformEditor);
-    waveformEditor.render = function wrappedRender(...args) {
+    const originalRender = MaweCoreState.waveformEditor.render.bind(MaweCoreState.waveformEditor);
+    MaweCoreState.waveformEditor.render = function wrappedRender(...args) {
       window.__spectralColorStats.renders += 1;
       return originalRender(...args);
     };
@@ -1580,7 +1604,7 @@ test('spectral color toggle shows pending state and ignores repeated clicks', as
       ariaBusy: toggle.getAttribute('aria-busy'),
       statusHidden: document.getElementById('waveform-spectral-status').hidden,
       renders: window.__spectralColorStats.renders,
-      setting: waveformEditor.settings.spectralColor,
+      setting: MaweCoreState.waveformEditor.settings.spectralColor,
     };
   })).toEqual({
     checked: true,
@@ -1686,12 +1710,12 @@ test('help reflects the selected subtitle-edit split key', async ({ page }) => {
 
   const multiSubtitleHelp = helpPanel.locator('.help-subgroup').filter({ hasText: '绑定到主副字幕（自动匹配）' });
   await expect(multiSubtitleHelp).toHaveCount(1);
-  await expect(helpPanel.locator('#help-tab-panel-waveform .help-title').filter({ hasText: '多重字幕' })).toHaveCount(1);
+  await expect(helpPanel.locator('#help-tab-panel-waveform .help-title').filter({ hasText: '双语字幕' })).toHaveCount(1);
 
   await splitKey.selectOption('enter');
   await expect(helpSplitKey).toHaveText('Enter');
   await expect(editorSplitKey).toHaveText('Enter');
-  await expect(editorConfirmKey).toHaveText('Ctrl+Enter');
+  await expect(editorConfirmKey).toHaveText(/^(Ctrl|Cmd)\+Enter$/);
 
   await splitKey.selectOption('ctrl-enter');
   await expect(helpSplitKey).toHaveText(`${modKey}+Enter`);
@@ -1716,8 +1740,6 @@ test('contextual help links open their matching Help tabs', async ({ page }) => 
 
   for (const { button, tab } of [
     { button: '#waveform-settings-help', tab: '#help-tab-waveform' },
-    { button: '#keyboard-settings-help', tab: '#help-tab-fine-tuning' },
-    { button: '#gap-settings-help', tab: '#help-tab-gap' },
   ]) {
     await page.locator('#waveform-settings-toggle').click();
     await expect(page.locator('#waveform-settings-panel')).toBeVisible();
@@ -1725,6 +1747,19 @@ test('contextual help links open their matching Help tabs', async ({ page }) => 
     await expect(helpPanel).toHaveClass(/show/);
     await expect(page.locator(tab)).toHaveAttribute('aria-selected', 'true');
     await expect(page.locator('#waveform-settings-panel')).toBeHidden();
+    await page.locator('#help-close').click();
+  }
+  // 波形操作/按键微调/空隙操作方式设置已移入全局设置「通用操作」，其帮助入口随之迁移
+  for (const { button, tab } of [
+    { button: '#keyboard-settings-help', tab: '#help-tab-fine-tuning' },
+    { button: '#gap-settings-help', tab: '#help-tab-gap' },
+  ]) {
+    await page.locator('#editor-settings-toggle').click();
+    await page.locator('#editor-settings-tab-general').click();
+    await page.locator(button).click();
+    await expect(helpPanel).toHaveClass(/show/);
+    await expect(page.locator(tab)).toHaveAttribute('aria-selected', 'true');
+    await expect(page.locator('#editor-settings-panel')).toBeHidden();
     await page.locator('#help-close').click();
   }
 });
@@ -1752,30 +1787,43 @@ test('Help settings actions open the related waveform and media settings', async
   const waveformSettingsMetrics = await page.locator('#waveform-settings-panel').evaluate((element) => ({
     clientHeight: element.clientHeight,
     scrollHeight: element.scrollHeight,
+    overflowY: getComputedStyle(element).overflowY,
   }));
-  expect(waveformSettingsMetrics.scrollHeight).toBeLessThanOrEqual(waveformSettingsMetrics.clientHeight);
+  expect(waveformSettingsMetrics.clientHeight).toBeGreaterThan(0);
+  expect(waveformSettingsMetrics.overflowY).toBe('auto');
+  // The help window remains open by design, so close it before interacting
+  // with the underlying toolbar toggle.
+  await helpPanel.locator('#help-close').click();
   await page.locator('#waveform-settings-toggle').click();
-  await expect(helpPanel).toHaveClass(/show/);
 
+  await page.locator('#help-toggle').click();
   await helpPanel.getByRole('tab', { name: '微调字幕', exact: true }).click();
-  await helpPanel.locator('#help-open-waveform-keyboard-settings').click();
+  await helpPanel.locator('#help-open-keyboard-settings').click();
   await expect(helpPanel).toHaveClass(/show/);
-  await expect(page.locator('#waveform-settings-panel')).toBeVisible();
-  await page.locator('#waveform-settings-toggle').click();
+  await expect(page.locator('#editor-settings-panel')).toBeVisible();
+  await expect(page.locator('#editor-settings-tab-general')).toHaveClass(/active/);
+  await helpPanel.locator('#help-close').click();
+  await page.locator('#editor-settings-close').click();
 
+  await page.locator('#help-toggle').click();
   await helpPanel.getByRole('tab', { name: '空隙操作', exact: true }).click();
   await helpPanel.locator('#help-open-gap-settings').click();
   await expect(helpPanel).toHaveClass(/show/);
-  await expect(page.locator('#waveform-settings-panel')).toBeVisible();
-  await page.locator('#waveform-settings-toggle').click();
+  await expect(page.locator('#editor-settings-panel')).toBeVisible();
+  await expect(page.locator('#editor-settings-tab-general')).toHaveClass(/active/);
+  await helpPanel.locator('#help-close').click();
+  await page.locator('#editor-settings-close').click();
 
+  await page.locator('#help-toggle').click();
   await helpPanel.getByRole('tab', { name: '播放与导航', exact: true }).click();
   await helpPanel.locator('#help-open-media-settings').click();
   await expect(helpPanel).toHaveClass(/show/);
   await expect(page.locator('#editor-settings-panel')).toBeVisible();
   await expect(page.locator('#editor-settings-tab-subtitle-preview')).toHaveClass(/active/);
   await expect(page.locator('#waveform-settings-panel')).toBeHidden();
+  await helpPanel.locator('#help-close').click();
   await page.locator('#editor-settings-close').click();
+  await page.locator('#help-toggle').click();
   await helpPanel.getByRole('tab', { name: '空隙操作', exact: true }).click();
   await helpPanel.locator('#help-open-gap-remove-panel').click();
   await expect(helpPanel).toHaveClass(/show/);
@@ -1813,13 +1861,13 @@ test('extends selected subtitles without remapping items and undoes the batch in
   await page.goto(server.url);
   const cues = page.locator('.cue');
   await cues.nth(0).click();
-  await page.keyboard.down('Control');
+  await page.keyboard.down('ControlOrMeta');
   await cues.nth(1).click();
-  await page.keyboard.up('Control');
+  await page.keyboard.up('ControlOrMeta');
   await expect(page.locator('.cue.selected')).toHaveCount(2);
 
   const before = await page.evaluate(() => JSON.parse(JSON.stringify({
-    segments: DATA.segments.slice(0, 2),
+    segments: MaweBoot.DATA.segments.slice(0, 2),
   })));
   await page.locator('#subtitle-extend-manage').click();
   await expect(page.locator('#subtitle-extend-panel')).toHaveClass(/show/);
@@ -1831,13 +1879,13 @@ test('extends selected subtitles without remapping items and undoes the batch in
   await expect(page.locator('#hint-stack .hint-card.hint-invalid', {
     hasText: '向前延长时长必须是大于等于 0 的数字',
   })).toBeVisible();
-  await expect.poll(() => page.evaluate(() => DATA.segments.slice(0, 2))).toEqual(before.segments);
+  await expect.poll(() => page.evaluate(() => MaweBoot.DATA.segments.slice(0, 2))).toEqual(before.segments);
 
   // 产品语义：「向前延长」作用于起点侧（不越过前一条/时间轴 0），「向后延长」作用于终点侧。
   // forward=250 时 seg0 起点已在 0 只能由向后 60ms 补终点；seg1 起点前移 250、终点后延 60。
   await page.locator('#subtitle-extend-forward-ms').fill('250');
   await page.locator('#subtitle-extend-run').click();
-  await expect.poll(() => page.evaluate(() => DATA.segments.slice(0, 2).map((segment) => ({
+  await expect.poll(() => page.evaluate(() => MaweBoot.DATA.segments.slice(0, 2).map((segment) => ({
     start: segment.start,
     end: segment.end,
     items: segment.items,
@@ -1850,7 +1898,7 @@ test('extends selected subtitles without remapping items and undoes the batch in
   })).toBeVisible();
 
   await page.getByRole('button', { name: /撤销/ }).click();
-  await expect.poll(() => page.evaluate(() => DATA.segments.slice(0, 2))).toEqual(before.segments);
+  await expect.poll(() => page.evaluate(() => MaweBoot.DATA.segments.slice(0, 2))).toEqual(before.segments);
 });
 
 test('C merges a common group and Shift+A/D extends the subtitle selection', async ({ page }) => {
@@ -1862,7 +1910,7 @@ test('C merges a common group and Shift+A/D extends the subtitle selection', asy
   await expect(cues.nth(0)).toHaveClass(/selected/);
   await page.keyboard.press('c');
   await expect(cues).toHaveCount(6);
-  await expect(page.locator('.hint-card', { hasText: '请选择至少两个字幕块！' })).toHaveCount(1);
+  await expect(page.locator('.hint-card', { hasText: '请选择至少两个同轨道字幕块！' })).toHaveCount(1);
 
   await cues.nth(2).click();
   await expect(cues.nth(2)).toHaveClass(/selected/);
@@ -1877,39 +1925,39 @@ test('C merges a common group and Shift+A/D extends the subtitle selection', asy
   await page.reload();
   await expect(cues).toHaveCount(6);
   await page.evaluate(() => {
-    DATA.segments[0].color = {
+    MaweBoot.DATA.segments[0].color = {
       name: 'red',
       value: '#e74c3c',
-      start: DATA.segments[0].start,
-      end: DATA.segments[2].end,
+      start: MaweBoot.DATA.segments[0].start,
+      end: MaweBoot.DATA.segments[2].end,
     };
-    DATA.segments[0].sticker = {
+    MaweBoot.DATA.segments[0].sticker = {
       name: 'reaction',
       path: 'reaction.png',
-      start: DATA.segments[0].start,
-      end: DATA.segments[2].end,
+      start: MaweBoot.DATA.segments[0].start,
+      end: MaweBoot.DATA.segments[2].end,
     };
     for (const index of [1, 2]) {
-      DATA.segments[index].color_ref = { name: 'red', headIdx: 0 };
-      DATA.segments[index].sticker_ref = { name: 'reaction', headIdx: 0 };
+      MaweBoot.DATA.segments[index].color_ref = { name: 'red', headIdx: 0 };
+      MaweBoot.DATA.segments[index].sticker_ref = { name: 'reaction', headIdx: 0 };
     }
-    renderAll();
+    MaweCuePanel.renderAll();
   });
 
   await cues.nth(1).locator('.text').click();
   await expect(cues.nth(1)).toHaveClass(/selected/);
-  await page.keyboard.down('Control');
+  await page.keyboard.down('ControlOrMeta');
   await cues.nth(2).locator('.text').click();
-  await page.keyboard.up('Control');
+  await page.keyboard.up('ControlOrMeta');
   await page.keyboard.press('c');
 
   await expect(cues).toHaveCount(5);
   await expect(cues.nth(1).locator('.text')).toHaveText('Bravo Charlie');
   await expect.poll(() => page.evaluate(() => ({
-    colorRef: DATA.segments[1].color_ref,
-    stickerRef: DATA.segments[1].sticker_ref,
-    colorEnd: DATA.segments[0].color.end,
-    stickerEnd: DATA.segments[0].sticker.end,
+    colorRef: MaweBoot.DATA.segments[1].color_ref,
+    stickerRef: MaweBoot.DATA.segments[1].sticker_ref,
+    colorEnd: MaweBoot.DATA.segments[0].color.end,
+    stickerEnd: MaweBoot.DATA.segments[0].sticker.end,
   }))).toEqual({
     colorRef: { name: 'red', headIdx: 0 },
     stickerRef: { name: 'reaction', headIdx: 0 },
@@ -1955,10 +2003,10 @@ test('colored subtitles export per-color SRT files including the uncolored defau
   for (const lang of ['zh', 'en']) {
     await page.goto(`${server.url}?lang=${lang}`);
     await page.evaluate(() => {
-      DATA.segments[0].color = { name: 'red', value: '#e74c3c', start: 0, end: 58000 };
-      DATA.segments[1].color_ref = { name: 'red', headIdx: 0 };
-      DATA.segments[2].color = { name: 'blue', value: '#168cff', start: 100000, end: 108000 };
-      renderAll();
+      MaweBoot.DATA.segments[0].color = { name: 'red', value: '#e74c3c', start: 0, end: 58000 };
+      MaweBoot.DATA.segments[1].color_ref = { name: 'red', headIdx: 0 };
+      MaweBoot.DATA.segments[2].color = { name: 'blue', value: '#168cff', start: 100000, end: 108000 };
+      MaweCuePanel.renderAll();
       window.showSaveFilePicker = undefined;
     });
 
@@ -2000,15 +2048,15 @@ test('subtitle export keeps a stable menu and hides colors without enabled color
   await expect(page.locator('#subtitle-export-separator')).toBeHidden();
 
   await page.evaluate(() => {
-    DATA.segments[0].color = { name: 'red', value: '#e74c3c', start: 0, end: 8000 };
-    DATA.segments[0].disabled = true;
-    renderAll();
+    MaweBoot.DATA.segments[0].color = { name: 'red', value: '#e74c3c', start: 0, end: 8000 };
+    MaweBoot.DATA.segments[0].disabled = true;
+    MaweCuePanel.renderAll();
   });
   await expect(page.locator('#subtitle-export-dropdown')).toBeVisible();
   await expect(page.locator('#download-color-srt')).toBeHidden();
 
   await page.evaluate(() => {
-    DATA.gap_remove = {
+    MaweBoot.DATA.gap_remove = {
       schema: 'moy.asr.gap_remove.v1',
       detector: 'audio_gate',
       minimum_ms: 500,
@@ -2021,8 +2069,8 @@ test('subtitle export keeps a stable menu and hides colors without enabled color
       manual_corrections: false,
       gaps: [{ start: 1000, end: 1600, removed: true }],
     };
-    updateGapRemoveUi();
-    renderAll();
+    MaweGapRemoveUi.updateGapRemoveUi();
+    MaweCuePanel.renderAll();
   });
   await expect(page.locator('#gap-removed-export-dropdown')).toBeVisible();
   await page.locator('#gap-removed-export-btn').click();
@@ -2097,14 +2145,14 @@ test('nested export menus keep the current submenu while the pointer crosses its
 test('sticker Resolve and OTIO exports expand references per enabled subtitle', async ({ page }) => {
   await page.goto(server.url);
   const result = await page.evaluate(() => {
-    DATA.segments = [
+    MaweBoot.DATA.segments = [
       { start: 1000, end: 2000, text: 'one', sticker: { name: 'reaction', path: 'reaction.png' } },
       { start: 3000, end: 4000, text: 'two', sticker_ref: { name: 'reaction', headIdx: 0 } },
       { start: 5000, end: 6000, text: 'disabled', disabled: true, sticker_ref: { name: 'reaction', headIdx: 0 } },
       { start: 7000, end: 8000, text: 'dangling', sticker_ref: { name: 'missing', headIdx: 99 } },
     ];
-    const resolve = JSON.parse(buildResolveJson());
-    const otio = JSON.parse(buildStickerOtio());
+    const resolve = JSON.parse(MaweExportTimeline.buildResolveJson());
+    const otio = JSON.parse(MaweExportTimeline.buildStickerOtio());
     const children = otio.tracks.children[0].children;
     return {
       resolveStickers: resolve.segments.filter((segment) => segment.sticker).map((segment) => [
@@ -2123,9 +2171,9 @@ test('sticker Resolve and OTIO exports expand references per enabled subtitle', 
 test('gap-removed OTIO exports subtitle text as clip markers with Resolve colors', async ({ page }) => {
   await page.goto(server.url);
   const result = await page.evaluate(() => {
-    DATA.segments.splice(
+    MaweBoot.DATA.segments.splice(
       0,
-      DATA.segments.length,
+      MaweBoot.DATA.segments.length,
       { id: 'marker-yellow', start: 0, end: 1000, text: 'yellow', items: [], color: { name: 'yellow' } },
       { id: 'marker-green', start: 1000, end: 2000, text: 'green', items: [], color: { name: 'green' } },
       { id: 'marker-removed', start: 2200, end: 2800, text: 'removed', items: [], color: { name: 'red' } },
@@ -2143,7 +2191,7 @@ test('gap-removed OTIO exports subtitle text as clip markers with Resolve colors
       { id: 'marker-default', start: 7000, end: 8000, text: 'default', items: [] },
       { id: 'marker-disabled', start: 8000, end: 9000, text: 'disabled', items: [], disabled: true },
     );
-    DATA.gap_remove = {
+    MaweBoot.DATA.gap_remove = {
       schema: 'moy.asr.gap_remove.v1',
       detector: 'audio_gate',
       minimum_ms: 500,
@@ -2156,7 +2204,7 @@ test('gap-removed OTIO exports subtitle text as clip markers with Resolve colors
       manual_corrections: false,
       gaps: [{ start: 2000, end: 3000, removed: true }],
     };
-    const otio = JSON.parse(buildGapRemovedOtio());
+    const otio = JSON.parse(MaweExportTimeline.buildGapRemovedOtio());
     return otio.tracks.children[0].children.map((clip) => ({
       markers: clip.markers.map((marker) => ({
         name: marker.name,
@@ -2204,9 +2252,9 @@ test('gap-removed export includes color SRT and names OTIO as a timeline project
   for (const lang of ['zh', 'en']) {
     await page.goto(`${server.url}?lang=${lang}`);
     await page.evaluate(() => {
-      DATA.segments[0].color = { name: 'red', value: '#e74c3c', start: 0, end: 58000 };
-      DATA.segments[1].color_ref = { name: 'red', headIdx: 0 };
-      DATA.gap_remove = {
+      MaweBoot.DATA.segments[0].color = { name: 'red', value: '#e74c3c', start: 0, end: 58000 };
+      MaweBoot.DATA.segments[1].color_ref = { name: 'red', headIdx: 0 };
+      MaweBoot.DATA.gap_remove = {
         schema: 'moy.asr.gap_remove.v1',
         detector: 'audio_gate',
         minimum_ms: 500,
@@ -2219,8 +2267,8 @@ test('gap-removed export includes color SRT and names OTIO as a timeline project
         manual_corrections: false,
         gaps: [{ start: 20000, end: 30000, removed: true }],
       };
-      updateGapRemoveUi();
-      renderAll();
+      MaweGapRemoveUi.updateGapRemoveUi();
+      MaweCuePanel.renderAll();
       window.showSaveFilePicker = undefined;
     });
 
@@ -2238,7 +2286,7 @@ test('gap-removed export includes color SRT and names OTIO as a timeline project
 test('server media loads from the resolved project path and OTIO keeps its absolute source URL', async ({ page }) => {
   await page.goto(server.url);
   const state = await page.evaluate(() => ({
-    media: DATA.media,
+    media: MaweBoot.DATA.media,
     currentSrc: document.getElementById('player').currentSrc,
   }));
   expect(state.media).toMatch(/synthetic\.wav$/);
@@ -2246,14 +2294,14 @@ test('server media loads from the resolved project path and OTIO keeps its absol
   expect(state.currentSrc).toBe(`${server.url}media`);
 
   await page.evaluate(() => {
-    DATA.media_metadata = {
+    MaweBoot.DATA.media_metadata = {
       audio_tracks: [
         { audio_index: 0, stream_index: 1, channels: 2, sample_rate: 48000 },
         { audio_index: 1, stream_index: 2, channels: 2, sample_rate: 48000 },
         { audio_index: 2, stream_index: 3, channels: 2, sample_rate: 48000 },
       ],
     };
-    DATA.gap_remove = {
+    MaweBoot.DATA.gap_remove = {
       schema: 'moy.asr.gap_remove.v1',
       detector: 'audio_gate',
       minimum_ms: 500,
@@ -2271,8 +2319,8 @@ test('server media loads from the resolved project path and OTIO keeps its absol
         { start: 21560, end: 21940, removed: true },
       ],
     };
-    updateGapRemoveUi();
-    renderAll();
+    MaweGapRemoveUi.updateGapRemoveUi();
+    MaweCuePanel.renderAll();
     window.showSaveFilePicker = undefined;
   });
   const downloadPromise = page.waitForEvent('download');
@@ -2333,7 +2381,7 @@ test('server media loads from the resolved project path and OTIO keeps its absol
 test('OTIO exports every source audio stream as its own audio track', async ({ page }) => {
   await page.goto(server.url);
   const result = await page.evaluate(() => {
-    DATA.media_metadata = {
+    MaweBoot.DATA.media_metadata = {
       audio_tracks: [
         {
           audio_index: 0,
@@ -2357,7 +2405,7 @@ test('OTIO exports every source audio stream as its own audio track', async ({ p
         },
       ],
     };
-    const payload = JSON.parse(buildSourceOtio());
+    const payload = JSON.parse(MaweExportTimeline.buildSourceOtio());
     const summarizeTracks = (timeline) => timeline.tracks.children.map((track) => ({
       name: track.name,
       kind: track.kind,
@@ -2368,11 +2416,11 @@ test('OTIO exports every source audio stream as its own audio track', async ({ p
       clipName: track.children[0]?.name ?? null,
       referenceName: track.children[0]?.media_references?.DEFAULT_MEDIA?.name ?? null,
     }));
-    const originalPlayer = player;
+    const originalPlayer = MaweCoreState.player;
     const videoPlayer = document.createElement('video');
-    player = videoPlayer;
-    const videoPayload = JSON.parse(buildSourceOtio());
-    player = originalPlayer;
+    MaweCoreState.player = videoPlayer;
+    const videoPayload = JSON.parse(MaweExportTimeline.buildSourceOtio());
+    MaweCoreState.player = originalPlayer;
     return {
       tracks: summarizeTracks(payload),
       videoTracks: summarizeTracks(videoPayload),

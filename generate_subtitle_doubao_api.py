@@ -49,7 +49,7 @@ from maw.doubao import (
 )
 from maw.media_cache import embed_media_caches, merge_media_caches
 from maw.media import resolve_default_audio_track
-from maw.output_naming import format_elapsed, format_maw_stat, maw_root
+from maw.output_naming import debug_artifact_path, format_elapsed, format_maw_stat
 from maw.speaker import apply_speaker_colors
 from maw.language import (
     resolve_language,
@@ -141,12 +141,12 @@ def main() -> int:
         help="保留每条字幕末尾的逗号和句号（默认去除）",
     )
     parser.add_argument(
-        "--strip-tail-punct", default="，。",
-        help="句尾剥除的标点集合；传空串禁用剥除（默认剥逗号和句号）",
+        "--strip-tail-punct", default="，。；,.",
+        help="句尾剥除的标点集合；传空串禁用剥除（默认 = 共享断句配置默认清单 − 默认保留符号）",
     )
     parser.add_argument(
-        "--gap-split", type=int, default=800,
-        help="静音切句阈值（毫秒），相邻字停顿超过此值则切句（默认 800）",
+        "--gap-split", type=int, default=500,
+        help="静音切句阈值（毫秒），相邻字停顿超过此值则切句（默认 500）",
     )
     parser.add_argument(
         "--speaker", action="store_true",
@@ -385,10 +385,11 @@ def main() -> int:
     if args.debug_raw:
         if raw_response is None:
             raise RuntimeError("调试模式未获得豆包 query 原始返回数据")
-        raw_path = (
-            maw_root(input_path) / f"{output_path.stem}.asr-response.json"
-            if not args.output
-            else output_path.with_suffix(".asr-response.json")
+        raw_path = debug_artifact_path(
+            input_path,
+            output_path,
+            ".asr-response.json",
+            explicit_output=bool(args.output),
         )
         raw_path.parent.mkdir(parents=True, exist_ok=True)
         with raw_path.open("w", encoding="utf-8", newline="\n") as raw_file:

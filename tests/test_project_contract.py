@@ -547,6 +547,59 @@ class ProjectContractTests(unittest.TestCase):
         self.assertTrue(result.ok)
         self.assertNotIn("preview", result.project)
 
+    def test_validate_project_accepts_overlay_track_overlapping_main_track(self) -> None:
+        project = {
+            "segments": [{"start": 0, "end": 2000, "text": "主字幕"}],
+            "overlay_track": {
+                "enabled": True,
+                "segments": [{"start": 500, "end": 1500, "text": "叠加字幕"}],
+            },
+        }
+
+        result = validate_project(project)
+
+        self.assertTrue(result.ok, msg=str([error.to_json() for error in result.errors]))
+        self.assertEqual(result.project["overlay_track"]["segments"][0]["id"], "overlay-001")
+
+    def test_validate_project_rejects_overlay_track_internal_overlap(self) -> None:
+        project = {
+            "segments": [{"start": 0, "end": 2000, "text": "主字幕"}],
+            "overlay_track": {
+                "segments": [
+                    {"start": 0, "end": 1200, "text": "第一条"},
+                    {"start": 1000, "end": 1800, "text": "第二条"},
+                ],
+            },
+        }
+
+        result = validate_project(project)
+
+        self.assertFalse(result.ok)
+        self.assertIn(
+            ("$.overlay_track.segments[1].start", "must be >= previous segment end"),
+            {(error.path, error.message) for error in result.errors},
+        )
+
+    def test_validate_project_scopes_overlay_color_reference_to_overlay_track(self) -> None:
+        project = {
+            "segments": [{"start": 0, "end": 1000, "text": "主字幕"}],
+            "overlay_track": {
+                "segments": [
+                    {"start": 0, "end": 1000, "text": "叠加头", "color": {"name": "red"}},
+                    {
+                        "start": 1000,
+                        "end": 2000,
+                        "text": "叠加从属",
+                        "color_ref": {"name": "red", "headIdx": 0},
+                    },
+                ],
+            },
+        }
+
+        result = validate_project(project)
+
+        self.assertTrue(result.ok, msg=str([error.to_json() for error in result.errors]))
+
     def test_validate_project_accepts_valid_preview_subtitle_geometry(self) -> None:
         project = {
             "segments": [{"start": 0, "end": 1000, "text": "hi"}],
@@ -742,6 +795,54 @@ class ProjectContractTests(unittest.TestCase):
         self.assertIn("$.preview.subtitle.background_color", paths)
         self.assertIn("$.preview.subtitle.background_alpha", paths)
         self.assertIn("$.preview.subtitle.color_style", paths)
+
+    def test_validate_project_accepts_current_and_legacy_color_styles(self) -> None:
+        # CSS 预览 color_style：underline / text / stroke（shadow 兼容读取）；
+        # ASS 的 ass_color_style：text / speaker / stroke / none。
+        for color_style in ("underline", "text", "stroke", "shadow"):
+            project = {
+                "segments": [{"start": 0, "end": 1000, "text": "hi"}],
+                "preview": {"subtitle": {
+                    "x": 0.1, "y": 0.76, "width": 0.8, "height": 0.16,
+                    "color_style": color_style,
+                }},
+            }
+
+            result = validate_project(project)
+
+            self.assertTrue(result.ok, color_style)
+            self.assertEqual(result.project["preview"]["subtitle"]["color_style"], color_style)
+        for ass_color_style in ("text", "speaker", "stroke", "none"):
+            project = {
+                "segments": [{"start": 0, "end": 1000, "text": "hi"}],
+                "preview": {"subtitle": {
+                    "x": 0.1, "y": 0.76, "width": 0.8, "height": 0.16,
+                    "ass_color_style": ass_color_style,
+                }},
+            }
+
+            result = validate_project(project)
+
+            self.assertTrue(result.ok, ass_color_style)
+            self.assertEqual(
+                result.project["preview"]["subtitle"]["ass_color_style"], ass_color_style,
+            )
+
+    def test_validate_project_rejects_invalid_ass_color_style(self) -> None:
+        # ass_color_style 只接受 text / speaker / stroke / none；CSS 预览的历史值 underline
+        # 不属于 ASS 语义，必须拒绝。
+        project = {
+            "segments": [{"start": 0, "end": 1000, "text": "hi"}],
+            "preview": {"subtitle": {
+                "x": 0.1, "y": 0.76, "width": 0.8, "height": 0.16,
+                "ass_color_style": "underline",
+            }},
+        }
+
+        result = validate_project(project)
+        paths = {error.path for error in result.errors}
+
+        self.assertIn("$.preview.subtitle.ass_color_style", paths)
 
     def test_validate_project_rejects_non_object_preview(self) -> None:
         project = {

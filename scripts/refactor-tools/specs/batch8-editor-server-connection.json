@@ -1,0 +1,22 @@
+{
+  "file": "editor-server-connection.js",
+  "ns": "MaweServerConnection",
+  "header": "服务器连接：健康检查、断联横幅与启动进度轮询。",
+  "symbols": [
+    "SERVER_CONNECTION_CHECK_INTERVAL_MS",
+    "SERVER_CONNECTION_REQUEST_TIMEOUT_MS",
+    "SERVER_CONNECTION_FAILURE_THRESHOLD",
+    "serverConnectionBanner",
+    "serverConnectionCheckTimer",
+    "serverConnectionCheckInFlight",
+    "serverConnectionFailureCount",
+    "serverConnectionCheckUrl",
+    "renderServerConnectionBanner",
+    "scheduleServerConnectionCheck",
+    "checkServerConnection",
+    "startServerConnectionMonitor",
+    "SERVER_STARTUP_LABELS",
+    "serverStartupLabel",
+    "loadServerStartup"
+  ]
+}

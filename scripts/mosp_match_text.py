@@ -23,7 +23,16 @@ from typing import Iterable, Sequence
 PRESERVED_END_PUNCTUATION = frozenset("！？：!?:")
 REMOVED_END_PUNCTUATION = frozenset("，。；、,.;")
 SPLIT_PUNCTUATION = PRESERVED_END_PUNCTUATION | REMOVED_END_PUNCTUATION | frozenset("\n")
-CLOSING_PUNCTUATION = frozenset("”’」』】〕〉》）)]}」』】〕〉》")
+# Common unambiguous right-side marks.  Symmetric ASCII quotes are omitted:
+# ``\"`` and ``'`` can also open a quote or act as an apostrophe, so treating
+# them as closing marks would attach text after a colon/comma to the previous
+# cue incorrectly.
+CLOSING_PUNCTUATION = frozenset(
+    "”’»›"
+    "」』】〕〉》）］｝"
+    ")]}"
+    "〞〟〙〗〛｠｣"
+)
 MARKDOWN_EXTENSIONS = frozenset({".md", ".markdown"})
 PROJECT_SCHEMA = "moy.asr.project.v1"
 _MARKDOWN_HEADING_PREFIX = re.compile(r"^[ \t]{0,3}#{1,6}(?:[ \t]+|$)", re.MULTILINE)
@@ -396,9 +405,12 @@ def align_character_timings(
         raise AlignmentError("内部错误：部分文稿字符未能获得时间")
 
     low_confidence: list[dict[str, object]] = []
+    unmatched_source_char_indexes: set[int] = set()
     for tag, i1, i2, j1, j2 in opcodes:
         if tag == "equal":
             continue
+        if tag == "delete":
+            unmatched_source_char_indexes.update(range(i1, i2))
         region: dict[str, object] = {
             "operation": tag,
             "asr_range": [i1, i2],
@@ -411,6 +423,20 @@ def align_character_timings(
             region["estimated_end_ms"] = round(resolved[j2 - 1][1])
         low_confidence.append(region)
 
+    source_character_counts: dict[int, int] = {}
+    unmatched_source_character_counts: dict[int, int] = {}
+    for index, source in enumerate(asr_chars):
+        source_character_counts[source.cue_index] = source_character_counts.get(source.cue_index, 0) + 1
+        if index in unmatched_source_char_indexes:
+            unmatched_source_character_counts[source.cue_index] = (
+                unmatched_source_character_counts.get(source.cue_index, 0) + 1
+            )
+    unmatched_source_segment_indexes = sorted(
+        cue_index
+        for cue_index, count in source_character_counts.items()
+        if unmatched_source_character_counts.get(cue_index, 0) == count
+    )
+
     denominator = max(len(asr_text), len(manuscript_text), 1)
     report: dict[str, object] = {
         "policy": policy,
@@ -421,6 +447,7 @@ def align_character_timings(
         "asr_unmatched_characters": asr_unmatched,
         "manuscript_unmatched_characters": manuscript_unmatched,
         "low_confidence_regions": low_confidence,
+        "unmatched_source_segment_indexes": unmatched_source_segment_indexes,
     }
     return resolved, report
 

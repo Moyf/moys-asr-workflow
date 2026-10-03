@@ -1,0 +1,21 @@
+{
+  "file": "editor-timeline.js",
+  "ns": "MaweTimeline",
+  "header": "时间基准与时间线：帧/毫秒换算、时码格式化、工程时间基准同步与步长取值。",
+  "symbols": [
+    "normalizeTimelineTimebase", "normalizeTimelineFps", "normalizeTimelineTimecodeSeparator",
+    "normalizeMediaMetadata", "DEFAULT_TIMELINE_FPS", "frameNumberFromMilliseconds",
+    "millisecondsFromFrameNumber", "formatFrameTimecode", "formatTimelineTimecode",
+    "parseFrameTimecode", "MIN_TIMELINE_FPS", "MAX_TIMELINE_FPS", "TIMELINE_ROUND_MS",
+    "roundTimelineMilliseconds", "hasValidFramePair", "syncTimeRangeObjectTimebase",
+    "syncSegmentTimebase", "syncTrackTimebase", "projectTimebase", "hasExplicitTimelineFps",
+    "projectMediaVideoFps", "timelineFpsManuallySet", "captureProjectVideoDimensions",
+    "clearProjectVideoDimensions", "syncProjectTimebase", "syncProjectTimebaseAndBindingOffsets",
+    "timelineIsFrameMode", "timelineMinimumDurationMs", "timelineMinimumDurationValue",
+    "timelineTimingAdapter", "formatTimelineMilliseconds", "timelineMediaSeekStepValue",
+    "timelineCueMoveStepValue", "timelineValueToMilliseconds", "timelineFrameAlignedMilliseconds",
+    "timelineUiText", "timelineMediaSeekStepMilliseconds", "timelineHasSubtitleData",
+    "confirmTimelineFrameRemap", "refreshTimelineSettingsUi", "setTimelineTimebase",
+    "refreshAdjacentBoundaryModeUi"
+  ]
+}

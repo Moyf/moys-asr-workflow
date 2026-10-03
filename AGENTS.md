@@ -19,7 +19,9 @@ JSON_SCHEMA.md                # JSON 工程契约
 generate_subtitle_qwen_api.py # API 转写入口
 edit.py + maw/waveform.py     # 单文件编辑器生成和波形缓存
 server-editor/serve.py        # 推荐的 localhost 编辑器
-web/                          # 所有前端源码
+web/editor-scripts.txt        # 编辑器源码装配顺序
+web/editor/ + web/shared/     # 编辑器领域模块与共享能力
+web/launcher/                # Launcher 前端
 docs/LOCAL_ASR.md             # 实验性本地 Qwen3-ASR / FunASR CLI
 ```
 
@@ -40,12 +42,15 @@ uv run python edit.py --blank
 
 ```powershell
 uv sync
-node --check web\editor.js
-node --check web\waveform.js
+node --test tests\test_editor_script_syntax.mjs tests\test_editor_script_order.mjs
 node --test tests\test_editor_utils.mjs tests\test_waveform_js.mjs
 uv run python -m unittest discover -s tests -p "test_*.py"
 git diff --check
 ```
+
+`web/editor/boot/editor.js` 是加载守卫入口；连续接线位于各领域的
+`editor-wiring-*.js` 中，按 `web/editor-scripts.txt` 原序装配为一个 classic script。
+新增业务逻辑写入所属领域模块，避免再扩大入口。目录位置不决定执行顺序。
 
 ### Agent 命令执行：避免 uv 超时卡住
 
@@ -110,6 +115,13 @@ git diff
 - JSON 的 `segments[*].start/end/items[*].start/end` 都是整数毫秒。修改 schema 必须同步更新 `JSON_SCHEMA.md`、测试与 changelog。
 - `waveform` 是可重建缓存，不能变成工程唯一真源；`segments` 才是字幕真源。
 - 删除文件时移入回收站，绝不使用 `rm -rf`。
+
+## UI 间距约定
+
+- 新增按钮、输入框、提示行等 UI 元素时，必须与上下相邻元素保持垂直间隔（用 `margin` 或父容器 `gap`），不得紧贴；移动、新增一行按钮或区块后，要检查它与上方元素的间距。
+- 注意本项目 `.field` 只有 `margin-top`（没有下边距）、`.hint` 是 `margin: 0`：紧跟在 `.field` 后面的提示行 / 按钮行 / 独立区块必须自带 `margin-top`，不能指望对方留白。
+- 间距验收必须用实测数据（如 `getComputedStyle` 的 `marginTop`、相邻元素的实际像素距离 ≥ 8px），不能凭截图目测「看起来有间距」——这条规则反复被违反过，目测判断不可靠。
+- 凡是改动 Launcher / 编辑器布局的任务，收尾前把涉及区域截图自查一遍。
 
 ## 发布检查
 

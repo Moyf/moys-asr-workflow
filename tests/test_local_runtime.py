@@ -53,6 +53,14 @@ class LocalRuntimeTests(unittest.TestCase):
                 Path(__file__).resolve().parents[1] / "maw" / "media.py",
                 package_root / "media.py",
             )
+            shutil.copyfile(
+                Path(__file__).resolve().parents[1] / "maw" / "local_debug.py",
+                package_root / "local_debug.py",
+            )
+            shutil.copyfile(
+                Path(__file__).resolve().parents[1] / "maw" / "energy_valley.py",
+                package_root / "energy_valley.py",
+            )
             (package_root / "console.py").write_text(
                 "def configure_utf8_stdio():\n"
                 "    pass\n",
@@ -63,6 +71,7 @@ class LocalRuntimeTests(unittest.TestCase):
                 "QWEN_DEFAULT_CHUNK_SECONDS = 30\n"
                 "QWEN_DEFAULT_FORCED_ALIGNER = 'aligner'\n"
                 "QWEN_DEFAULT_MODEL = 'qwen'\n"
+                "FIRERED_DEFAULT_MODEL = 'firered'\n"
                 "WHISPER_DEFAULT_MODEL = 'whisper'\n"
                 "def build_local_segments(*args, **kwargs): pass\n"
                 "def create_local_engine(*args, **kwargs): pass\n"
@@ -237,7 +246,7 @@ class LocalRuntimeTests(unittest.TestCase):
             def fake_run(command: list[str], **_kwargs: object) -> int:
                 if "install" in command:
                     packages = root / "site-packages"
-                    for name in ("faster_whisper", "funasr", "qwen_asr", "jieba", "torch", "torchaudio", "quapeaks"):
+                    for name in ("faster_whisper", "funasr", "qwen_asr", "jieba", "torch", "torchaudio", "quapeaks", "sherpa_onnx", "soundfile"):
                         (packages / name).mkdir(parents=True, exist_ok=True)
                 return 0
 

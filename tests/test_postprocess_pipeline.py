@@ -14,6 +14,7 @@ from maw.postprocess_io import SubtitleArtifact
 from maw.postprocess_llm import LlmClientError
 from maw.postprocess_ocr import OcrDedupArtifact
 from maw.postprocess_pipeline import (
+    POSTPROCESS_PLAN_VERSION,
     PostprocessCancelled,
     PostprocessPipelineError,
     default_postprocess_plan,
@@ -72,18 +73,33 @@ class PostprocessPipelineTests(unittest.TestCase):
         script.write_text("正字\n保留\n", encoding="utf-8")
         return {"id": "match", "enabled": enabled, "scriptPath": str(script)}
 
+    def test_ai_cleanup_notes_survive_plan_normalization_and_request(self) -> None:
+        step = self.match_step()
+        step.update(aiCleanup=True, aiCleanupNotes="  保留所有数字  ")
+        plan = normalize_plan(self.plan(step))
+        self.assertEqual(plan["steps"][0]["aiCleanupNotes"], "保留所有数字")
+        with mock.patch("maw.postprocess_pipeline.run_ai_cleanup",
+                        return_value=SubtitleArtifact(self.project, self.srt, self.project, self.srt)) as cleanup:
+            run_postprocess_pipeline(plan, media_path=self.media, project_path=self.project,
+                                     srt_path=self.srt, env_path=self.env_path, ffmpeg_path=None,
+                                     cancel_event=Event(), llm_settings={"deepseek": {
+                                         "apiKey": "fake", "baseUrl": "https://example.test", "model": "fake", "verified": "1"}})
+        self.assertEqual(cleanup.call_args.args[0].notes, "保留所有数字")
+
     def test_default_plan_is_disabled_and_ordered(self) -> None:
         plan = default_postprocess_plan()
 
         self.assertFalse(plan["enabled"])
-        self.assertFalse(plan["retainIntermediate"])
-        self.assertEqual([step["id"] for step in plan["steps"]], ["match", "replace", "proofread", "resegment", "ocr", "translate"])
+        self.assertTrue(plan["retainIntermediate"])
+        self.assertEqual([step["id"] for step in plan["steps"]], ["match", "replace", "proofread", "resegment", "ocr", "translate", "burn"])
         self.assertEqual(plan["steps"][1]["conversion"], "off")
-        self.assertFalse(plan["steps"][-1]["mergeBilingual"])
+        translate_step = next(step for step in plan["steps"] if step["id"] == "translate")
+        self.assertFalse(translate_step["mergeBilingual"])
         self.assertEqual(plan["steps"][0]["matchMode"], "script")
-        self.assertEqual(plan["steps"][0]["extraSplitPunctuation"], ["？", "！", ","])
+        self.assertEqual(plan["steps"][0]["extraSplitPunctuation"], ["，", "。", "？", "！", "；", ",", "."])
         self.assertEqual(plan["steps"][0]["preservePunctuation"], ["？", "！"])
         self.assertTrue(plan["steps"][0]["cleanMarkdownSymbols"])
+        self.assertEqual(plan["steps"][-1]["videoEncoder"], "auto")
 
     def test_normalize_plan_migrates_legacy_preserved_question_marks(self) -> None:
         plan = default_postprocess_plan()
@@ -92,6 +108,56 @@ class PostprocessPipelineTests(unittest.TestCase):
         normalized = normalize_plan(plan)
 
         self.assertEqual(normalized["steps"][0]["extraSplitPunctuation"], ["？", "！"])
+
+    def test_normalize_plan_migrates_v1_plan_to_full_default_split_symbols(self) -> None:
+        # v1 计划依赖隐式基础断句集（，。,.）；迁移把默认清单一次性并入，
+        # 用户自定义符号顺序保持在前、缺失的默认符号追加在后。
+        raw = {
+            "version": 1,
+            "enabled": False,
+            "steps": [
+                {
+                    "id": "match",
+                    "enabled": True,
+                    "extraSplitPunctuation": ["？", "！", ","],
+                    "preservePunctuation": ["？", "！"],
+                },
+            ],
+        }
+
+        normalized = normalize_plan(raw)
+
+        self.assertEqual(
+            normalized["steps"][0]["extraSplitPunctuation"],
+            ["？", "！", ",", "，", "。", "；", "."],
+        )
+
+    def test_normalize_plan_keeps_customized_current_plan_split_symbols(self) -> None:
+        raw = {
+            "version": POSTPROCESS_PLAN_VERSION,
+            "enabled": False,
+            "steps": [
+                {
+                    "id": "match",
+                    "enabled": True,
+                    "extraSplitPunctuation": ["~"],
+                    "preservePunctuation": [],
+                },
+            ],
+        }
+
+        normalized = normalize_plan(raw)
+
+        self.assertEqual(normalized["steps"][0]["extraSplitPunctuation"], ["~"])
+
+    def test_normalize_plan_defaults_retain_intermediate_for_legacy_plan(self) -> None:
+        normalized = normalize_plan({"enabled": True, "steps": []})
+
+        self.assertTrue(normalized["retainIntermediate"])
+
+        normalized = normalize_plan({"enabled": True, "retainIntermediate": False, "steps": []})
+
+        self.assertFalse(normalized["retainIntermediate"])
 
     def test_normalize_plan_preserves_ocr_video_path_mode(self) -> None:
         plan = default_postprocess_plan()
@@ -461,16 +527,30 @@ class PostprocessPipelineTests(unittest.TestCase):
         self.assertEqual(zh_srt.name, "clip.后处理.双语合一.srt")
         self.assertIsNone(zh_translated)
         self.assertTrue(result.run_directory.is_dir())
-        self.assertTrue((result.run_directory / translated_project.name).is_file())
-        self.assertTrue((result.run_directory / translated_srt.name).is_file())
-        self.assertIn("Translation one", (result.run_directory / translated_srt.name).read_text(encoding="utf-8"))
+        initial_project = result.run_directory / "clip.postprocess.0.original.mosp"
+        initial_srt = result.run_directory / "clip.postprocess.0.original.srt"
+        intermediate_project = result.run_directory / "clip.postprocess.1.translate-en.mosp"
+        intermediate_srt = result.run_directory / "clip.postprocess.1.translate-en.srt"
+        merged_project = result.run_directory / "clip.postprocess.2.bilingual.mosp"
+        merged_srt = result.run_directory / "clip.postprocess.2.bilingual.srt"
+        for path in (initial_project, initial_srt, intermediate_project, intermediate_srt, merged_project, merged_srt):
+            self.assertTrue(path.is_file(), path)
+        self.assertEqual(initial_project.read_text(encoding="utf-8"), self.project.read_text(encoding="utf-8"))
+        self.assertEqual(initial_srt.read_text(encoding="utf-8"), self.srt.read_text(encoding="utf-8"))
+        self.assertIn("Translation one", intermediate_srt.read_text(encoding="utf-8"))
+        self.assertFalse((result.run_directory / translated_project.name).exists())
+        self.assertFalse((result.run_directory / translated_srt.name).exists())
         self.assertNotIn("multi_subtitle", json.loads(result.project_path.read_text(encoding="utf-8")))
         self.assertFalse((self.root / "clip.postprocess.translate-en.srt").exists())
         manifest = json.loads((result.run_directory / "manifest.json").read_text(encoding="utf-8"))
+        self.assertEqual(manifest["initialProjectPath"], str(initial_project.resolve()))
+        self.assertEqual(manifest["initialSrtPath"], str(initial_srt.resolve()))
         self.assertNotIn("finalTranslatedSrtPath", manifest)
         step_manifest = manifest["steps"][0]
-        self.assertEqual(step_manifest["translationIntermediateProjectPath"], str((result.run_directory / translated_project.name).resolve()))
-        self.assertEqual(step_manifest["translationIntermediateSrtPath"], str((result.run_directory / translated_srt.name).resolve()))
+        self.assertEqual(step_manifest["translationIntermediateProjectPath"], str(intermediate_project.resolve()))
+        self.assertEqual(step_manifest["translationIntermediateSrtPath"], str(intermediate_srt.resolve()))
+        self.assertEqual(step_manifest["projectPath"], str(merged_project.resolve()))
+        self.assertEqual(step_manifest["srtPath"], str(merged_srt.resolve()))
 
     def test_translation_embed_publishes_single_track_and_keeps_translation_intermediate(self) -> None:
         # 回填单语：译文替换对应原文（与主字幕相同的句子逐字节保留），最终只
@@ -543,12 +623,18 @@ class PostprocessPipelineTests(unittest.TestCase):
         self.assertEqual(zh_project.name, "clip.后处理.回填.mosp")
         self.assertEqual(zh_srt.name, "clip.后处理.回填.srt")
         self.assertIsNone(zh_translated)
-        self.assertTrue((result.run_directory / translated_srt.name).is_file())
+        intermediate_srt = result.run_directory / "clip.postprocess.1.translate-en.srt"
+        backfill_srt = result.run_directory / "clip.postprocess.2.backfill.srt"
+        self.assertTrue(intermediate_srt.is_file())
+        self.assertTrue(backfill_srt.is_file())
+        self.assertFalse((result.run_directory / translated_srt.name).exists())
         manifest = json.loads((result.run_directory / "manifest.json").read_text(encoding="utf-8"))
         self.assertNotIn("finalTranslatedSrtPath", manifest)
         step_manifest = manifest["steps"][0]
-        self.assertEqual(step_manifest["translationIntermediateProjectPath"], str((result.run_directory / translated_project.name).resolve()))
-        self.assertEqual(step_manifest["translationIntermediateSrtPath"], str((result.run_directory / translated_srt.name).resolve()))
+        self.assertEqual(step_manifest["translationIntermediateProjectPath"], str((result.run_directory / "clip.postprocess.1.translate-en.mosp").resolve()))
+        self.assertEqual(step_manifest["translationIntermediateSrtPath"], str(intermediate_srt.resolve()))
+        self.assertEqual(step_manifest["projectPath"], str((result.run_directory / "clip.postprocess.2.backfill.mosp").resolve()))
+        self.assertEqual(step_manifest["srtPath"], str(backfill_srt.resolve()))
 
     def test_attach_translation_track_skips_extension_segments_identical_to_main(self) -> None:
         # 副轨去重：译文与主字幕相同的句子不再重复进入副轨与绑定。
@@ -671,6 +757,19 @@ class PostprocessPipelineTests(unittest.TestCase):
         self.assertIn("ocrRegionX2", fields)
         self.assertIn("ocrVideoPath", fields)
 
+    def test_validation_checks_burn_video_and_ffmpeg_dependencies(self) -> None:
+        video = self.root / "clip.mp4"
+        video.write_bytes(b"video")
+        ffmpeg = self.root / "ffmpeg.exe"
+        ffmpeg.write_bytes(b"ffmpeg")
+        burn = {"id": "burn", "enabled": True}
+
+        _, errors = validate_plan(self.plan(burn), env_path=self.env_path, media_path=self.media, ffmpeg_path=None)
+        self.assertEqual([error["field"] for error in errors], ["mediaPath", "mediaPath"])
+
+        _, errors = validate_plan(self.plan(burn), env_path=self.env_path, media_path=video, ffmpeg_path=ffmpeg)
+        self.assertEqual(errors, ())
+
     def test_llm_verification_is_fingerprinted_without_storing_key(self) -> None:
         self.env_path.write_text(
             "MAW_POSTPROCESS_CUSTOM_API_KEY=sk-private\n"
@@ -698,7 +797,7 @@ class PostprocessPipelineTests(unittest.TestCase):
         plan = save_postprocess_plan(self.env_path, self.plan(self.replace_step()))
         config = load_postprocess_config(self.root / "maw-postprocess.json")
 
-        self.assertEqual(plan["version"], 1)
+        self.assertEqual(plan["version"], 2)
         self.assertTrue(config["plan"]["enabled"])
         self.assertNotIn("apiKey", json.dumps(config, ensure_ascii=False))
 
@@ -827,6 +926,35 @@ class PostprocessPipelineTests(unittest.TestCase):
         self.assertIsNone(result.translated_srt_path)
         self.assertTrue(result.project_path.is_file())
         self.assertTrue(result.srt_path.is_file())
+
+    def test_pipeline_burns_the_current_srt_and_reports_new_video(self) -> None:
+        video = self.root / "clip.mp4"
+        video.write_bytes(b"video")
+        ffmpeg = self.root / "ffmpeg.exe"
+        ffmpeg.write_bytes(b"ffmpeg")
+        burned = self.root / "clip.压字幕.mp4"
+        plan = self.plan({"id": "burn", "enabled": True, "videoEncoder": "amf"})
+
+        with mock.patch(
+            "maw.postprocess_pipeline.run_burn_subtitles",
+            return_value=SimpleNamespace(media_path=burned),
+        ) as run_burn:
+            result = run_postprocess_pipeline(
+                plan,
+                media_path=video,
+                project_path=self.project,
+                srt_path=self.srt,
+                env_path=self.env_path,
+                ffmpeg_path=ffmpeg,
+                cancel_event=Event(),
+            )
+
+        request = run_burn.call_args.args[0]
+        self.assertEqual(request.media_path, video)
+        self.assertEqual(request.subtitle_path, self.srt)
+        self.assertEqual(request.video_encoder, "amf")
+        self.assertEqual(result.media_path, burned)
+        self.assertEqual(result.completed_steps, ("burn",))
 
     def test_pipeline_uses_managed_ocr_runtime_when_runtime_root_is_supplied(self) -> None:
         video = self.root / "clip.mp4"
@@ -1115,17 +1243,17 @@ class PostprocessPreflightTests(unittest.TestCase):
             default_postprocess_plan()["steps"][0]["preservePunctuation"],
             ["？", "！"],
         )
-        # 默认保留 ？！ → 转写剥尾只剥逗号和句号。
-        self.assertEqual(_transcribe_strip_tail_punct(self.env_path), "，。")
+        # 默认保留 ？！ → 转写剥尾剥其余断句符号（，。；,.）。
+        self.assertEqual(_transcribe_strip_tail_punct(self.env_path), "，。；,.")
 
     def test_transcribe_strip_tail_punct_follows_saved_preserve_symbols(self) -> None:
         plan = default_postprocess_plan()
         plan["steps"][0]["preservePunctuation"] = ["。"]
         save_postprocess_plan(self.env_path, plan)
 
-        self.assertEqual(_transcribe_strip_tail_punct(self.env_path), "，")
+        self.assertEqual(_transcribe_strip_tail_punct(self.env_path), "，？！；,.")
 
         plan["steps"][0]["preservePunctuation"] = ["。", "，"]
         save_postprocess_plan(self.env_path, plan)
 
-        self.assertEqual(_transcribe_strip_tail_punct(self.env_path), "")
+        self.assertEqual(_transcribe_strip_tail_punct(self.env_path), "？！；,.")

@@ -76,7 +76,7 @@ PRESETS: Final[tuple[LlmProviderPreset, ...]] = (
         id="deepseek",
         label="DeepSeek",
         base_url="https://api.deepseek.com",
-        model="deepseek-v4-flash",
+        model="deepseek-flash",
         env_prefix="MAW_POSTPROCESS_DEEPSEEK",
     ),
     LlmProviderPreset(
@@ -95,7 +95,7 @@ PRESETS: Final[tuple[LlmProviderPreset, ...]] = (
     ),
     LlmProviderPreset(
         id="custom",
-        label="Custom (OpenAI-compatible)",
+        label="OpenAI-compatible API",
         base_url="",
         model="",
         env_prefix="MAW_POSTPROCESS_CUSTOM",

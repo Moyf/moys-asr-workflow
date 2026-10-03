@@ -1,0 +1,8 @@
+{
+  "file": "editor-theme.js",
+  "ns": "MaweTheme",
+  "header": "主题：明暗色应用。",
+  "symbols": [
+    "applyTheme"
+  ]
+}

@@ -1,0 +1,21 @@
+{
+  "file": "editor-media-playback.js",
+  "ns": "MaweMediaPlayback",
+  "header": "媒体播放：播放器事件、占位符、速率与 seek 控制。",
+  "symbols": [
+    "togglePlayback",
+    "hasLoadedMedia",
+    "formatMediaTime",
+    "mediaSeekStepLabel",
+    "refreshMediaSeekStepHelp",
+    "refreshMediaSeekControlLabels",
+    "syncPlaybackRateOption",
+    "syncMediaControls",
+    "stopPlaybackRefresh",
+    "startPlaybackRefresh",
+    "bindPlayerEvents",
+    "seekMediaBy",
+    "seekMediaTo",
+    "syncPlayerPlaceholder"
+  ]
+}

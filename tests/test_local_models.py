@@ -13,7 +13,7 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 
 from maw.gui_config import provider_by_id  # noqa: E402
-from maw.local_models import LocalModelStatus, _prepare_progress_payload, inspect_local_model, prepare_local_model  # noqa: E402
+from maw.local_models import LocalModelStatus, _prepare_progress_payload, inspect_local_model, local_model_payload, prepare_local_model  # noqa: E402
 
 
 def local_model(model_id: str):
@@ -21,6 +21,36 @@ def local_model(model_id: str):
 
 
 class LocalModelDiscoveryTests(unittest.TestCase):
+    def test_firered_asr_ctc_is_ready_without_optional_punc(self) -> None:
+        model = local_model("firered-asr2-ctc-local")
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            ctc = root / "aligners" / "sherpa-onnx-fire-red-asr2-ctc-zh_en-int8-2026-02-25"
+            ctc.mkdir(parents=True)
+            (ctc / "model.int8.onnx").write_bytes(b"onnx")
+            (ctc / "tokens.txt").write_text("a 1\n", encoding="utf-8")
+
+            with mock.patch("maw.local_models.importlib.util.find_spec", return_value=mock.Mock()):
+                with mock.patch("maw.local_models._modelscope_cache_roots", return_value=[root / "modelscope"]):
+                    partial = inspect_local_model(model, model_cache_root=root)
+                    punc = (
+                        root
+                        / "modelscope"
+                        / "models"
+                        / "iic--punc_ct-transformer_cn-en-common-vocab471067-large"
+                        / "snapshots"
+                        / "main"
+                    )
+                    punc.mkdir(parents=True)
+                    (punc / "model.pt").write_bytes(b"weights")
+                    ready = inspect_local_model(model, model_cache_root=root)
+
+        self.assertEqual(partial.status, "installed")
+        self.assertIn("可选 FunASR ct-punc", partial.detail)
+        self.assertTrue(partial.installed)
+        self.assertEqual(ready.status, "installed")
+        self.assertTrue(ready.installed)
+
     def test_missing_runtime_is_reported_without_scanning_model_imports(self) -> None:
         model = local_model("qwen3-asr-local")
         not_ready = mock.Mock(ready=False, python_path="", model_cache_path="")
@@ -53,6 +83,30 @@ class LocalModelDiscoveryTests(unittest.TestCase):
         self.assertEqual(installed.status, "installed")
         self.assertEqual(Path(installed.path).resolve(), main.resolve())
 
+    def test_qwen_modelscope_cache_is_detected_with_huggingface_aligner(self) -> None:
+        model = local_model("qwen3-asr-1.7b-local")
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            modelscope = root / "modelscope"
+            main = modelscope / "models" / "Qwen" / "Qwen3-ASR-1.7B"
+            main.mkdir(parents=True)
+            (main / "model.safetensors").write_bytes(b"weights")
+            huggingface = root / "huggingface"
+            aligner = huggingface / "models--Qwen--Qwen3-ForcedAligner-0.6B" / "snapshots" / "main"
+            aligner.mkdir(parents=True)
+            (aligner / "model.safetensors").write_bytes(b"aligner")
+
+            with (
+                mock.patch("maw.local_models._modelscope_cache_roots", return_value=[modelscope]),
+                mock.patch("maw.local_models._huggingface_cache_roots", return_value=[huggingface]),
+                mock.patch("maw.local_models.importlib.util.find_spec", return_value=mock.Mock()),
+            ):
+                status = inspect_local_model(model)
+
+        self.assertEqual(status.status, "installed")
+        self.assertTrue(status.installed)
+        self.assertEqual(Path(status.path).resolve(), main.resolve())
+
     def test_whisper_huggingface_cache_is_detected(self) -> None:
         model = local_model("whisper-large-v3-local")
         with tempfile.TemporaryDirectory() as temp_dir:
@@ -70,6 +124,23 @@ class LocalModelDiscoveryTests(unittest.TestCase):
         self.assertEqual(missing.status, "missing")
         self.assertEqual(installed.status, "installed")
         self.assertEqual(Path(installed.path).resolve(), main.resolve())
+
+    def test_installed_model_size_is_reported_from_detected_directory(self) -> None:
+        model = local_model("whisper-large-v3-local")
+        with tempfile.TemporaryDirectory() as temp_dir:
+            cache = Path(temp_dir)
+            main = cache / "models--Systran--faster-whisper-large-v3" / "snapshots" / "main"
+            main.mkdir(parents=True)
+            (main / "model.bin").write_bytes(b"weights")
+            (main / "config.json").write_bytes(b"{}")
+
+            with mock.patch("maw.local_models.importlib.util.find_spec", return_value=mock.Mock()):
+                status = inspect_local_model(model, model_cache_root=cache)
+                payload = local_model_payload(model, model_cache_root=cache)
+
+        self.assertEqual(status.status, "installed")
+        self.assertEqual(status.installed_size, "9 B")
+        self.assertEqual(payload["installedSize"], "9 B")
 
     def test_whisper_flat_managed_cache_layout_is_detected(self) -> None:
         """download_root 曾被指向缓存根本体，models--* 仓库直接落在其下；
@@ -89,7 +160,73 @@ class LocalModelDiscoveryTests(unittest.TestCase):
         self.assertEqual(installed.status, "installed")
         self.assertEqual(Path(installed.path).resolve(), main.resolve())
 
-    def test_explicit_folder_is_used_without_persisting_it(self) -> None:
+    def test_moss_modelscope_mirror_cache_is_detected(self) -> None:
+        """MOSS 回退下载写入组织名不同的 ModelScope 镜像仓库（OpenMOSS），
+        缓存发现必须按映射 ID 兼容，否则已安装会被判「未检测到」。"""
+        model = local_model("moss-transcribe-diarize-local")
+        with tempfile.TemporaryDirectory() as temp_dir:
+            modelscope = Path(temp_dir) / "modelscope"
+            main = (
+                modelscope
+                / "models"
+                / "OpenMOSS--MOSS-Transcribe-Diarize"
+                / "snapshots"
+                / "master"
+            )
+            main.mkdir(parents=True)
+
+            with mock.patch.dict(os.environ, {"MODELSCOPE_CACHE": str(modelscope)}):
+                with mock.patch("maw.local_models._huggingface_cache_roots", return_value=[]):
+                    with mock.patch("maw.local_models.importlib.util.find_spec", return_value=mock.Mock()):
+                        missing = inspect_local_model(model)
+                        (main / "model.safetensors").write_bytes(b"weights")
+                        installed = inspect_local_model(model)
+
+        self.assertEqual(missing.status, "missing")
+        self.assertEqual(installed.status, "installed")
+        self.assertEqual(Path(installed.path).resolve(), main.resolve())
+
+    def test_whisper_modelscope_cache_is_detected(self) -> None:
+        model = local_model("whisper-large-v3-local")
+        with tempfile.TemporaryDirectory() as temp_dir:
+            modelscope = Path(temp_dir) / "modelscope"
+            main = (
+                modelscope
+                / "models"
+                / "Systran--faster-whisper-large-v3"
+                / "snapshots"
+                / "master"
+            )
+            main.mkdir(parents=True)
+
+            with mock.patch.dict(os.environ, {"MODELSCOPE_CACHE": str(modelscope)}):
+                with mock.patch("maw.local_models._huggingface_cache_roots", return_value=[]):
+                    with mock.patch("maw.local_models.importlib.util.find_spec", return_value=mock.Mock()):
+                        missing = inspect_local_model(model)
+                        (main / "model.bin").write_bytes(b"weights")
+                        installed = inspect_local_model(model)
+
+        self.assertEqual(missing.status, "missing")
+        self.assertEqual(installed.status, "installed")
+        self.assertEqual(Path(installed.path).resolve(), main.resolve())
+
+    def test_prepare_watch_paths_cover_modelscope_fallback_caches(self) -> None:
+        """准备进度监视必须覆盖 ModelScope 回退缓存，否则长时间 MS 下载
+        会一直显示「尚未报告新的缓存写入」。"""
+        from maw.local_models import _model_watch_paths
+
+        model = local_model("moss-transcribe-diarize-local")
+        with tempfile.TemporaryDirectory() as temp_dir:
+            modelscope = Path(temp_dir) / "modelscope"
+
+            with mock.patch.dict(os.environ, {"MODELSCOPE_CACHE": str(modelscope)}):
+                paths = _model_watch_paths(model, "", Path(temp_dir))
+
+        joined = {str(path) for path in paths}
+        self.assertTrue(any("OpenMOSS--MOSS-Transcribe-Diarize" in value for value in joined))
+        self.assertTrue(any("models--OpenMOSS-Team--MOSS-Transcribe-Diarize" in value for value in joined))
+
+    def test_explicit_folder_is_used(self) -> None:
         model = local_model("funasr-local")
         with tempfile.TemporaryDirectory() as temp_dir:
             (Path(temp_dir) / "model.pt").write_bytes(b"weights")

@@ -12,7 +12,7 @@ import shutil
 import tempfile
 import time
 from collections.abc import Callable, Mapping, Sequence
-from dataclasses import dataclass
+from dataclasses import dataclass, is_dataclass, replace
 from datetime import datetime
 from pathlib import Path
 from threading import Event
@@ -27,10 +27,12 @@ from maw.postprocess import (
     OutputMode,
     Replacement,
     embed_translated_project,
+    fixed_process_operation,
     merge_bilingual_project,
     run_fixed_process,
     run_llm_postprocess,
 )
+from maw.postprocess_ai_cleanup import AiCleanupRequest, llm_complete, run_ai_cleanup
 from maw.postprocess_io import SubtitleArtifact, read_project, write_artifacts
 from maw.postprocess_llm import (
     DEFAULT_REASONING_MODE,
@@ -39,14 +41,20 @@ from maw.postprocess_llm import (
     normalize_reasoning_mode,
     preset_by_id,
 )
-from maw.postprocess_match import ScriptMatchRequest, run_script_match
+from maw.postprocess_match import (
+    DEFAULT_EXTRA_SPLIT_PUNCTUATION,
+    DEFAULT_PRESERVE_PUNCTUATION,
+    ScriptMatchRequest,
+    run_script_match,
+)
 from maw.postprocess_ocr import OcrDedupArtifact, OcrDedupRequest, OcrRegion, run_ocr_dedup
+from maw.postprocess_ffmpeg import BurnSubtitleRequest, MediaToolCancelled, normalize_video_encoder, run_burn_subtitles
 from maw.ocr_runtime import OCR_MODEL_ID, run_ocr_in_runtime
 from maw.project_preview import JsonValue
 from maw.text_conversion import TextConversion, normalize_text_conversion_mode
 
 
-POSTPROCESS_PLAN_VERSION: Final[int] = 1
+POSTPROCESS_PLAN_VERSION: Final[int] = 2
 POSTPROCESS_CONFIG_FILENAME: Final[str] = "maw-postprocess.json"
 STEP_ORDER: Final[tuple[str, ...]] = (
     "match",
@@ -55,10 +63,12 @@ STEP_ORDER: Final[tuple[str, ...]] = (
     "resegment",
     "ocr",
     "translate",
+    "burn",
 )
 TRANSLATION_TARGETS: Final[frozenset[str]] = frozenset({"zh", "en"})
 SCRIPT_EXTENSIONS: Final[frozenset[str]] = frozenset({".txt", ".md", ".markdown"})
-DEFAULT_EXTRA_SPLIT_PUNCTUATION: Final[tuple[str, ...]] = ("？", "！", ",")
+# 断句符号的唯一真源：文稿匹配与转写共用。不再有隐式基础断句集，
+# 默认值即完整清单，用户删除某行 = 该符号不再断句、也不再从句尾剥除。
 VIDEO_EXTENSIONS: Final[frozenset[str]] = frozenset({
     ".mp4", ".mkv", ".avi", ".mov", ".wmv", ".flv", ".webm", ".ts", ".m4v",
 })
@@ -68,15 +78,18 @@ def default_postprocess_plan() -> dict[str, object]:
     return {
         "version": POSTPROCESS_PLAN_VERSION,
         "enabled": False,
-        "retainIntermediate": False,
+        "retainIntermediate": True,
         "steps": [
             {
                 "id": "match",
                 "enabled": False,
                 "scriptPath": "",
                 "matchMode": "script",
+                "aiCleanup": False,
+                "aiCleanupNotes": "",
+                "providerId": "deepseek",
                 "extraSplitPunctuation": list(DEFAULT_EXTRA_SPLIT_PUNCTUATION),
-                "preservePunctuation": ["？", "！"],
+                "preservePunctuation": list(DEFAULT_PRESERVE_PUNCTUATION),
                 "cleanMarkdownSymbols": True,
             },
             {"id": "replace", "enabled": False, "replacements": [], "replacementSeparator": "arrow", "replacementTrim": True, "replacementCustomSeparator": "", "conversion": TextConversion.OFF.value},
@@ -84,6 +97,7 @@ def default_postprocess_plan() -> dict[str, object]:
             {"id": "resegment", "enabled": False, "providerId": "deepseek", "customPrompt": ""},
             {"id": "ocr", "enabled": False, "videoPath": "", "videoPathMode": "", "regionMode": "full", "regionX1": 0, "regionY1": 0, "regionX2": 100, "regionY2": 100, "threshold": 0.5, "report": False},
             {"id": "translate", "enabled": False, "providerId": "deepseek", "target": "zh", "mergeBilingual": False, "embedTranslations": False, "bilingualLineOrder": "", "customPrompt": ""},
+            {"id": "burn", "enabled": False, "videoEncoder": "auto"},
         ],
     }
 
@@ -94,10 +108,13 @@ def normalize_plan(raw: object) -> dict[str, object]:
     defaults = default_postprocess_plan()
     if not isinstance(raw, Mapping):
         return defaults
+    # v1 计划依赖隐式基础断句集（，。,. + 换行）；v2 起断句符号完全来自
+    # 配置。旧计划一次性并入默认断句清单，避免 ，。 断句行为倒退。
+    legacy_plan = raw.get("version") != POSTPROCESS_PLAN_VERSION
     plan: dict[str, object] = {
         "version": POSTPROCESS_PLAN_VERSION,
         "enabled": bool(raw.get("enabled")),
-        "retainIntermediate": bool(raw.get("retainIntermediate")),
+        "retainIntermediate": bool(raw.get("retainIntermediate", defaults["retainIntermediate"])),
         "steps": [],
     }
     by_id: dict[str, Mapping[str, object]] = {}
@@ -140,11 +157,17 @@ def normalize_plan(raw: object) -> dict[str, object]:
                 step[key] = bool(value)
             elif key == "matchMode":
                 step[key] = str(value or "script") if str(value or "script") in {"script", "text"} else "script"
+            elif key == "aiCleanup":
+                step[key] = bool(value)
+            elif key == "aiCleanupNotes":
+                step[key] = str(value or "").strip()
             elif key == "cleanMarkdownSymbols":
                 step[key] = bool(value)
             elif key == "videoPathMode":
                 mode = str(value or "").strip()
                 step[key] = mode if mode in {"", "auto", "manual"} else ""
+            elif key == "videoEncoder":
+                step[key] = normalize_video_encoder(value)
             elif key in {"extraSplitPunctuation", "preservePunctuation"}:
                 step[key] = [str(item).strip() for item in value if str(item).strip()] if isinstance(value, Sequence) and not isinstance(value, (str, bytes)) else []
             else:
@@ -161,6 +184,14 @@ def normalize_plan(raw: object) -> dict[str, object]:
                 ]
                 if migrated:
                     step["extraSplitPunctuation"] = [*extra, *migrated]
+            if legacy_plan and isinstance(step.get("extraSplitPunctuation"), list):
+                merged = [str(item) for item in step["extraSplitPunctuation"] if str(item)]
+                merged.extend(
+                    symbol
+                    for symbol in DEFAULT_EXTRA_SPLIT_PUNCTUATION
+                    if symbol not in merged
+                )
+                step["extraSplitPunctuation"] = merged
         normalized_steps.append(step)
     plan["steps"] = normalized_steps
     return plan
@@ -282,7 +313,11 @@ def snapshot_postprocess_llm_settings(
 
     snapshot: dict[str, dict[str, str]] = {}
     for step in enabled_steps(plan):
-        if str(step.get("id") or "") not in {"proofread", "resegment", "translate"}:
+        step_id = str(step.get("id") or "")
+        if step_id == "match":
+            if step.get("aiCleanup") is not True:
+                continue
+        elif step_id not in {"proofread", "resegment", "translate"}:
             continue
         provider_id = str(step.get("providerId") or "deepseek")
         if provider_id in snapshot:
@@ -301,6 +336,27 @@ def snapshot_postprocess_llm_settings(
             ),
         }
     return snapshot
+
+
+def _llm_provider_error(
+    step: Mapping[str, object],
+    *,
+    env_path: Path,
+    llm_settings: Mapping[str, Mapping[str, str]] | None,
+) -> dict[str, str] | None:
+    """Return the blocking provider configuration error for one LLM step."""
+
+    provider_id = str(step.get("providerId") or "deepseek")
+    status = _snapshot_provider_status(llm_settings.get(provider_id)) if llm_settings and provider_id in llm_settings else postprocess_provider_status(env_path, provider_id)
+    if not status["hasApiKey"]:
+        return {"step": str(step.get("id") or ""), "field": "llmApiKey", "message": "LLM 供应商缺少 API Key，请在工具箱设置中填写并保存。"}
+    if not status["hasBaseUrl"]:
+        return {"step": str(step.get("id") or ""), "field": "llmBaseUrl", "message": "LLM 供应商缺少 API URL，请在工具箱设置中填写并保存。"}
+    if not status["hasModel"]:
+        return {"step": str(step.get("id") or ""), "field": "llmModel", "message": "LLM 供应商缺少模型，请在工具箱设置中填写并保存。"}
+    if not status["verified"]:
+        return {"step": str(step.get("id") or ""), "field": "llmModel", "message": "LLM 连接尚未验证，请在设置中点击“测试连接”。"}
+    return None
 
 
 def validate_plan(
@@ -324,17 +380,14 @@ def validate_plan(
             path = Path(str(step.get("scriptPath") or "")).expanduser()
             if path.suffix.lower() not in SCRIPT_EXTENSIONS or not path.is_file():
                 errors.append({"step": step_id, "field": "postprocessScriptPath", "message": "文稿匹配需要一个存在的 .txt、.md 或 .markdown 文稿文件。"})
+            if step.get("aiCleanup") is True:
+                provider_error = _llm_provider_error(step, env_path=env_path, llm_settings=llm_settings)
+                if provider_error is not None:
+                    errors.append(provider_error)
         elif step_id in {"proofread", "resegment", "translate"}:
-            provider_id = str(step.get("providerId") or "deepseek")
-            status = _snapshot_provider_status(llm_settings.get(provider_id)) if llm_settings and provider_id in llm_settings else postprocess_provider_status(env_path, provider_id)
-            if not status["hasApiKey"]:
-                errors.append({"step": step_id, "field": "llmApiKey", "message": "LLM 供应商缺少 API Key，请在工具箱设置中填写并保存。"})
-            elif not status["hasBaseUrl"]:
-                errors.append({"step": step_id, "field": "llmBaseUrl", "message": "LLM 供应商缺少 API URL，请在工具箱设置中填写并保存。"})
-            elif not status["hasModel"]:
-                errors.append({"step": step_id, "field": "llmModel", "message": "LLM 供应商缺少模型，请在工具箱设置中填写并保存。"})
-            elif not status["verified"]:
-                errors.append({"step": step_id, "field": "llmModel", "message": "LLM 连接尚未验证，请在设置中点击“测试连接”。"})
+            provider_error = _llm_provider_error(step, env_path=env_path, llm_settings=llm_settings)
+            if provider_error is not None:
+                errors.append(provider_error)
             if step_id == "translate" and str(step.get("target") or "zh") not in TRANSLATION_TARGETS:
                 errors.append({"step": step_id, "field": "autoTranslateTarget", "message": "翻译目标必须是中文或英文。"})
             if step_id == "translate" and bool(step.get("mergeBilingual")) and bool(step.get("embedTranslations")):
@@ -365,6 +418,11 @@ def validate_plan(
                 errors.append({"step": step_id, "field": "ocrThreshold", "message": "OCR 相似度阈值必须在 0 到 1 之间。"})
             if ffmpeg_path is None or not ffmpeg_path.is_file():
                 errors.append({"step": step_id, "field": "ocrVideoPath", "message": "找不到 FFmpeg，无法执行 OCR 字幕去重。"})
+        elif step_id == "burn":
+            if media_path.suffix.lower() not in VIDEO_EXTENSIONS or not media_path.is_file():
+                errors.append({"step": step_id, "field": "mediaPath", "message": "烧录字幕需要一个存在的视频文件。"})
+            if ffmpeg_path is None or not ffmpeg_path.is_file():
+                errors.append({"step": step_id, "field": "mediaPath", "message": "找不到 FFmpeg，无法烧录字幕。"})
     return plan, tuple(errors)
 
 
@@ -376,6 +434,7 @@ class PipelineResult:
     completed_steps: tuple[str, ...]
     warnings: tuple[str, ...] = ()
     translated_srt_path: Path | None = None
+    media_path: Path | None = None
 
 
 class PostprocessCancelled(RuntimeError):
@@ -413,6 +472,155 @@ class PostprocessPipelineError(RuntimeError):
 PipelineEvent = Callable[[Mapping[str, object]], None]
 
 
+def _pipeline_artifact_label(operation: str, *, lang: str) -> str:
+    """Return the concise stage label used inside an automatic run directory."""
+    marker = operation.rsplit("-", 1)[-1] if operation.startswith("translate-") else ""
+    if marker in {"bilingual", "combined", "backfill"}:
+        return translation_marker_name(marker, lang=lang)
+    return operation_suffix(operation, lang=lang).lstrip(".")
+
+
+def _pipeline_artifact_base(source_stem: str, index: int, operation: str, *, lang: str) -> str:
+    stem = sanitize_component(source_stem, "字幕")
+    postprocess = operation_suffix("postprocess", lang=lang).lstrip(".")
+    label = sanitize_component(_pipeline_artifact_label(operation, lang=lang), "产物")
+    return f"{stem}.{postprocess}.{index}.{label}"
+
+
+def _pipeline_artifact_path(
+    run_directory: Path,
+    source_stem: str,
+    index: int,
+    operation: str,
+    suffix: str,
+    *,
+    lang: str,
+) -> Path:
+    return run_directory / f"{_pipeline_artifact_base(source_stem, index, operation, lang=lang)}{suffix}"
+
+
+def _pipeline_step_operation(step: Mapping[str, object]) -> str:
+    step_id = str(step.get("id") or "")
+    if step_id == "match":
+        if step.get("aiCleanup") is True:
+            return "ai_cleanup"
+    if step_id == "translate":
+        target = str(step.get("target") or "zh")
+        return f"translate-{target}"
+    if step_id == "replace":
+        replacements = tuple(
+            Replacement(source=str(item.get("source") or ""), target=str(item.get("target") or ""))
+            for item in _normalize_replacements(step.get("replacements"))
+            if isinstance(item, Mapping) and str(item.get("source") or "")
+        )
+        return fixed_process_operation(replacements, normalize_text_conversion_mode(step.get("conversion")))
+    if step_id == "ocr":
+        return "ocr-dedup"
+    return step_id
+
+
+def _available_pipeline_destinations(
+    run_directory: Path,
+    source_stem: str,
+    index: int,
+    operation: str,
+    paths: Sequence[Path],
+    *,
+    lang: str,
+) -> tuple[Path, ...]:
+    base = _pipeline_artifact_base(source_stem, index, operation, lang=lang)
+    counter = 1
+    while True:
+        marker = "" if counter == 1 else f"-{counter}"
+        destinations = tuple(run_directory / f"{base}{marker}{path.suffix}" for path in paths)
+        if all(
+            not destination.exists()
+            or destination.resolve() == path.expanduser().resolve()
+            for destination, path in zip(destinations, paths, strict=True)
+        ):
+            return destinations
+        counter += 1
+
+
+def _relocate_pipeline_artifact(path: Path, destination: Path) -> Path:
+    source = path.expanduser().resolve()
+    target = destination.expanduser().resolve()
+    if source == target:
+        return target
+    target.parent.mkdir(parents=True, exist_ok=True)
+    if source.parent == target.parent:
+        source.replace(target)
+    else:
+        _copy_atomic(source, target)
+    return target
+
+
+def _number_pipeline_artifact(
+    artifact: SubtitleArtifact | OcrDedupArtifact,
+    *,
+    run_directory: Path,
+    source_stem: str,
+    index: int,
+    operation: str,
+    lang: str,
+) -> tuple[SubtitleArtifact | OcrDedupArtifact, int]:
+    paths = tuple(path for path in (artifact.project_path, artifact.srt_path) if isinstance(path, Path))
+    if not paths:
+        return artifact, index
+    destinations = _available_pipeline_destinations(
+        run_directory,
+        source_stem,
+        index,
+        operation,
+        paths,
+        lang=lang,
+    )
+    renamed = iter(destinations)
+    project_path = _relocate_pipeline_artifact(artifact.project_path, next(renamed)) if artifact.project_path is not None else None
+    srt_path = _relocate_pipeline_artifact(artifact.srt_path, next(renamed)) if artifact.srt_path is not None else None
+    if is_dataclass(artifact):
+        renamed = replace(artifact, project_path=project_path, srt_path=srt_path)
+    else:
+        # 保持对旧版 OCR 适配器（只提供最小属性对象）的兼容。
+        renamed = SubtitleArtifact(
+            source_project_path=getattr(artifact, "source_project_path", None),
+            source_srt_path=getattr(artifact, "source_srt_path", None),
+            project_path=project_path,
+            srt_path=srt_path,
+            warnings=tuple(getattr(artifact, "warnings", ()) or ()),
+            translated_srt_path=getattr(artifact, "translated_srt_path", None),
+        )
+    return renamed, index + 1
+
+
+def _ensure_initial_pipeline_artifacts(
+    run_directory: Path,
+    source_project_path: Path,
+    source_srt_path: Path,
+    *,
+    source_stem: str,
+    lang: str,
+    manifest: Mapping[str, object],
+) -> tuple[Path, Path]:
+    defaults = (
+        _pipeline_artifact_path(run_directory, source_stem, 0, "original", source_project_path.suffix, lang=lang),
+        _pipeline_artifact_path(run_directory, source_stem, 0, "original", source_srt_path.suffix, lang=lang),
+    )
+    targets: list[Path] = []
+    for key, default in zip(("initialProjectPath", "initialSrtPath"), defaults, strict=True):
+        raw = str(manifest.get(key) or "").strip()
+        candidate = Path(raw).expanduser().resolve() if raw else default
+        if candidate.parent != run_directory.expanduser().resolve():
+            candidate = default
+        targets.append(candidate)
+    project_target, srt_target = targets
+    if not project_target.is_file():
+        _copy_atomic(source_project_path, project_target)
+    if not srt_target.is_file():
+        _copy_atomic(source_srt_path, srt_target)
+    return project_target, srt_target
+
+
 def run_postprocess_pipeline(
     plan: Mapping[str, object],
     *,
@@ -441,6 +649,7 @@ def run_postprocess_pipeline(
     run_directory = resume_directory.expanduser().resolve() if resume_directory is not None else _create_run_directory(media_path, lang=language)
     if resume_directory is not None and not run_directory.is_dir():
         raise ValueError(f"找不到可恢复的后处理目录：{run_directory}")
+    source_stem = srt_path.stem or project_path.stem
     manifest: dict[str, object]
     if resume_directory is not None:
         manifest = _load_manifest(run_directory)
@@ -453,10 +662,27 @@ def run_postprocess_pipeline(
             "retainIntermediate": bool(normalized.get("retainIntermediate")),
             "steps": [{"id": str(step["id"]), "status": "pending"} for step in steps],
         }
+    initial_project_path, initial_srt_path = _ensure_initial_pipeline_artifacts(
+        run_directory,
+        project_path,
+        srt_path,
+        source_stem=source_stem,
+        lang=language,
+        manifest=manifest,
+    )
+    manifest["initialProjectPath"] = str(initial_project_path)
+    manifest["initialSrtPath"] = str(initial_srt_path)
+    try:
+        artifact_index = int(manifest.get("nextArtifactIndex") or 1)
+    except (TypeError, ValueError):
+        artifact_index = 1
+    artifact_index = max(1, artifact_index)
+    manifest["nextArtifactIndex"] = artifact_index
     _write_manifest(run_directory, manifest)
     _emit(on_event, {"stage": "start", "total": len(steps), "resumed": resume_directory is not None, "runDirectory": str(run_directory)})
     current_project = resume_project_path or project_path
     current_srt = resume_srt_path or srt_path
+    current_media = media_path
     current_translated_srt: Path | None = None
     translation_target: str | None = None
     bilingual_output = False
@@ -464,15 +690,19 @@ def run_postprocess_pipeline(
     resume_count = max(0, resume_from)
     manifest_steps = manifest.get("steps")
     for previous_index, previous_step in enumerate(steps[:resume_count]):
+        previous_manifest_step = (
+            manifest_steps[previous_index]
+            if isinstance(manifest_steps, list) and previous_index < len(manifest_steps)
+            else None
+        )
+        if isinstance(previous_manifest_step, Mapping):
+            previous_media = str(previous_manifest_step.get("mediaPath") or "").strip()
+            if previous_media:
+                current_media = Path(previous_media).expanduser().resolve()
         if str(previous_step.get("id") or "") == "translate":
             translation_target = str(previous_step.get("target") or "zh")
             bilingual_output = bool(previous_step.get("mergeBilingual"))
             embed_output = bool(previous_step.get("embedTranslations")) and not bilingual_output
-            previous_manifest_step = (
-                manifest_steps[previous_index]
-                if isinstance(manifest_steps, list) and previous_index < len(manifest_steps)
-                else None
-            )
             if isinstance(previous_manifest_step, Mapping):
                 previous_path = str(previous_manifest_step.get("translatedSrtPath") or "").strip()
                 if previous_path:
@@ -497,7 +727,7 @@ def run_postprocess_pipeline(
                     step,
                     project_path=current_project,
                     srt_path=current_srt,
-                    media_path=media_path,
+                    media_path=current_media,
                     env_path=env_path,
                     ffmpeg_path=ffmpeg_path,
                     ocr_runtime_root=ocr_runtime_root,
@@ -510,12 +740,26 @@ def run_postprocess_pipeline(
                     translation_target = str(step.get("target") or "zh")
                     bilingual_output = bool(step.get("mergeBilingual"))
                     embed_output = bool(step.get("embedTranslations")) and not bilingual_output
+                    artifact, artifact_index = _number_pipeline_artifact(
+                        artifact,
+                        run_directory=run_directory,
+                        source_stem=source_stem,
+                        index=artifact_index,
+                        operation=f"translate-{translation_target}",
+                        lang=language,
+                    )
+                    manifest["nextArtifactIndex"] = artifact_index
+                    translation_intermediate_project = artifact.project_path
+                    translation_intermediate_srt = artifact.srt_path
+                    if translation_intermediate_project is not None:
+                        manifest_steps[index - 1]["translationIntermediateProjectPath"] = str(translation_intermediate_project)
+                    if translation_intermediate_srt is not None:
+                        manifest_steps[index - 1]["translationIntermediateSrtPath"] = str(translation_intermediate_srt)
+                    _write_manifest(run_directory, manifest)
                     if bool(step.get("mergeBilingual")):
                         # Keep the standalone translation in the run directory
                         # as an inspectable intermediate; only the merged
                         # artifact is published as the final output.
-                        translation_intermediate_project = artifact.project_path
-                        translation_intermediate_srt = artifact.srt_path
                         artifact = _merge_bilingual_subtitles(
                             source_project_path=current_project,
                             source_srt_path=current_srt,
@@ -525,11 +769,17 @@ def run_postprocess_pipeline(
                             output_directory=run_directory,
                             media_path=media_path,
                         )
+                        artifact, artifact_index = _number_pipeline_artifact(
+                            artifact,
+                            run_directory=run_directory,
+                            source_stem=source_stem,
+                            index=artifact_index,
+                            operation=f"translate-{translation_target}-bilingual",
+                            lang=language,
+                        )
                     elif embed_output:
                         # 回填单语：翻译结果替换原字幕对应句子，只发布单条字幕；
                         # 独立翻译产物与双语路径一样保留为可检查的中间产物。
-                        translation_intermediate_project = artifact.project_path
-                        translation_intermediate_srt = artifact.srt_path
                         artifact = _embed_translated_subtitles(
                             source_project_path=current_project,
                             source_srt_path=current_srt,
@@ -537,6 +787,14 @@ def run_postprocess_pipeline(
                             target=str(step.get("target") or "zh"),
                             output_directory=run_directory,
                             media_path=media_path,
+                        )
+                        artifact, artifact_index = _number_pipeline_artifact(
+                            artifact,
+                            run_directory=run_directory,
+                            source_stem=source_stem,
+                            index=artifact_index,
+                            operation=f"translate-{translation_target}-backfill",
+                            lang=language,
                         )
                     else:
                         artifact = _attach_translation_track(
@@ -547,6 +805,23 @@ def run_postprocess_pipeline(
                             output_directory=run_directory,
                             media_path=media_path,
                         )
+                        artifact, artifact_index = _number_pipeline_artifact(
+                            artifact,
+                            run_directory=run_directory,
+                            source_stem=source_stem,
+                            index=artifact_index,
+                            operation=f"translate-{translation_target}-combined",
+                            lang=language,
+                        )
+                else:
+                    artifact, artifact_index = _number_pipeline_artifact(
+                        artifact,
+                        run_directory=run_directory,
+                        source_stem=source_stem,
+                        index=artifact_index,
+                        operation=_pipeline_step_operation(step),
+                        lang=language,
+                    )
             except PostprocessCancelled:
                 raise
             except Exception as error:
@@ -563,6 +838,9 @@ def run_postprocess_pipeline(
             _check_cancel(cancel_event)
             current_project = artifact.project_path or current_project
             current_srt = artifact.srt_path or current_srt
+            artifact_media_path = getattr(artifact, "media_path", None)
+            if artifact_media_path is not None:
+                current_media = artifact_media_path
             translated_srt_path = getattr(artifact, "translated_srt_path", None)
             if isinstance(translated_srt_path, Path):
                 current_translated_srt = translated_srt_path
@@ -573,12 +851,15 @@ def run_postprocess_pipeline(
             manifest_steps[index - 1]["elapsedSeconds"] = round(step_elapsed, 3)
             manifest_steps[index - 1]["projectPath"] = str(current_project)
             manifest_steps[index - 1]["srtPath"] = str(current_srt)
+            if current_media != media_path:
+                manifest_steps[index - 1]["mediaPath"] = str(current_media)
             if current_translated_srt is not None:
                 manifest_steps[index - 1]["translatedSrtPath"] = str(current_translated_srt)
             if translation_intermediate_project is not None:
                 manifest_steps[index - 1]["translationIntermediateProjectPath"] = str(translation_intermediate_project)
             if translation_intermediate_srt is not None:
                 manifest_steps[index - 1]["translationIntermediateSrtPath"] = str(translation_intermediate_srt)
+            manifest["nextArtifactIndex"] = artifact_index
             _write_manifest(run_directory, manifest)
             print(f"后处理步骤 {step_id} 耗时 {format_elapsed(step_elapsed)}")
             _emit(on_event, {
@@ -590,6 +871,7 @@ def run_postprocess_pipeline(
                 "projectName": current_project.name,
                 "srtName": current_srt.name,
                 "translatedSrtName": current_translated_srt.name if current_translated_srt is not None else "",
+                "mediaName": current_media.name if current_media != media_path else "",
             })
         final_project, final_srt, final_translated_srt = _publish_final(
             project_path,
@@ -605,6 +887,8 @@ def run_postprocess_pipeline(
         manifest["status"] = "done"
         manifest["finalProjectPath"] = str(final_project)
         manifest["finalSrtPath"] = str(final_srt)
+        if current_media != media_path:
+            manifest["finalMediaPath"] = str(current_media)
         pipeline_elapsed = time.perf_counter() - pipeline_t0
         manifest["elapsedSeconds"] = round(pipeline_elapsed, 3)
         if final_translated_srt is not None:
@@ -618,8 +902,17 @@ def run_postprocess_pipeline(
             "projectName": final_project.name,
             "srtName": final_srt.name,
             "translatedSrtName": final_translated_srt.name if final_translated_srt is not None else "",
+            "mediaName": current_media.name if current_media != media_path else "",
         })
-        result = PipelineResult(final_project, final_srt, run_directory, tuple(completed), tuple(warnings), final_translated_srt)
+        result = PipelineResult(
+            final_project,
+            final_srt,
+            run_directory,
+            tuple(completed),
+            tuple(warnings),
+            final_translated_srt,
+            current_media if current_media != media_path else None,
+        )
         if not bool(normalized.get("retainIntermediate")):
             shutil.rmtree(run_directory, ignore_errors=True)
             # 中间产物清掉后，只为这次运行而建的「后处理」根目录如果是空的也一并移除；
@@ -670,6 +963,18 @@ def _run_step(
     step_id = str(step["id"])
     output_mode = OutputMode.BOTH
     if step_id == "match":
+        if step.get("aiCleanup") is True:
+            return _run_ai_cleanup_step(
+                step,
+                project_path=project_path,
+                srt_path=srt_path,
+                media_path=media_path,
+                env_path=env_path,
+                output_directory=output_directory,
+                cancel_event=cancel_event,
+                on_event=on_event,
+                llm_settings=llm_settings,
+            )
         return run_script_match(ScriptMatchRequest(
             project_path=project_path,
             srt_path=srt_path,
@@ -733,6 +1038,36 @@ def _run_step(
                 cancel_event=cancel_event,
             ))
         return run_ocr_dedup(request, ffmpeg_path=ffmpeg_path, on_status=on_status)
+    if step_id == "burn":
+        if ffmpeg_path is None:
+            raise ValueError("找不到 FFmpeg，无法烧录字幕。")
+
+        def on_progress(details: Mapping[str, str]) -> None:
+            _check_cancel(cancel_event)
+            _emit(on_event, {"stage": "detail", "step": step_id, "key": "toolbox_status_burning", **dict(details)})
+
+        try:
+            result = run_burn_subtitles(
+                BurnSubtitleRequest(
+                    media_path=media_path,
+                    subtitle_path=srt_path,
+                    video_encoder=normalize_video_encoder(step.get("videoEncoder")),
+                ),
+                ffmpeg_path=ffmpeg_path,
+                cancel_event=cancel_event,
+                on_progress=on_progress,
+            )
+        except MediaToolCancelled as error:
+            raise PostprocessCancelled(str(error)) from error
+        # 烧录不修改字幕产物，project/srt 保持 None 以跳过产物重编号；
+        # 新视频通过 SubtitleArtifact.media_path 进入 manifest 链。
+        return SubtitleArtifact(
+            source_project_path=project_path,
+            source_srt_path=srt_path,
+            project_path=None,
+            srt_path=None,
+            media_path=result.media_path,
+        )
     operation = "translate_zh" if step_id == "translate" and str(step.get("target") or "zh") == "zh" else (
         "translate_en" if step_id == "translate" else step_id
     )
@@ -762,6 +1097,49 @@ def _run_step(
         output_directory=output_directory,
         media_path=media_path,
         bilingual_line_order=str(step.get("bilingualLineOrder") or ""),
+    ), complete=complete, on_status=on_status)
+
+
+def _run_ai_cleanup_step(
+    step: Mapping[str, object],
+    *,
+    project_path: Path,
+    srt_path: Path,
+    media_path: Path,
+    env_path: Path,
+    output_directory: Path,
+    cancel_event: Event,
+    on_event: PipelineEvent | None,
+    llm_settings: Mapping[str, Mapping[str, str]] | None,
+) -> SubtitleArtifact:
+    provider_id = str(step.get("providerId") or "deepseek")
+    values = dict(llm_settings.get(provider_id)) if llm_settings and provider_id in llm_settings else _llm_values(env_path, provider_id)
+    settings = LlmSettings(
+        provider_id=provider_id,
+        api_key=values["apiKey"],
+        base_url=values["baseUrl"],
+        model=values["model"],
+        reasoning_mode=normalize_reasoning_mode(values.get("reasoningMode", DEFAULT_REASONING_MODE)),
+    )
+    transport = llm_complete(settings)
+
+    def complete(prompt: str, clips: list[dict[str, str]]) -> Mapping[str, object]:
+        _check_cancel(cancel_event)
+        return transport(prompt, clips)
+
+    def on_status(key: str) -> None:
+        _check_cancel(cancel_event)
+        _emit(on_event, {"stage": "detail", "step": "match", "key": key})
+
+    return run_ai_cleanup(AiCleanupRequest(
+        project_path=project_path,
+        srt_path=srt_path,
+        script_path=Path(str(step.get("scriptPath") or "")).expanduser(),
+        output_mode=OutputMode.BOTH,
+        output_directory=output_directory,
+        media_path=media_path,
+        clean_markdown_symbols=step.get("cleanMarkdownSymbols", True) is not False,
+        notes=str(step.get("aiCleanupNotes") or "").strip(),
     ), complete=complete, on_status=on_status)
 
 

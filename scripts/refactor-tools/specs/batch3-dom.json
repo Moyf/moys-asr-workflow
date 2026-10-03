@@ -1,0 +1,6 @@
+{
+  "file": "editor-dom.js",
+  "ns": "MaweDom",
+  "header": "DOM 元素登记表：全部 getElementById 缓存与浮层/存储键常量（纯引用表，无业务状态）。",
+  "ranges": [[604, 939], [1668, 1668]]
+}

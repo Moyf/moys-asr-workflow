@@ -5,22 +5,39 @@
 from __future__ import annotations
 
 import json
+import math
 import os
 import re
 import subprocess
+import tempfile
 from dataclasses import dataclass
-from threading import Event
+from threading import Event, Thread
 from pathlib import Path
 from typing import Callable, Final, Mapping
 
 from maw.gui_platform import creationflags, release_process_tree, startupinfo, terminate_process_tree
 from maw.output_naming import media_suffix
+from maw.ass_styles import DEFAULT_SRT_STYLE, ass_style_force_style, ass_style_line, find_ass_style, load_ass_style_library
 
 
 ALLOWED_DIRECTIVES: Final = frozenset({"ffconcat", "file", "inpoint", "outpoint", "duration"})
 VIDEO_EXTENSIONS: Final = frozenset({".mp4", ".mkv", ".avi", ".mov", ".wmv", ".flv", ".webm", ".ts", ".m4v"})
 MEDIA_EXTENSIONS: Final = frozenset((*VIDEO_EXTENSIONS, ".mp3", ".wav", ".m4a", ".flac", ".aac", ".ogg"))
 SUBTITLE_EXTENSIONS: Final = frozenset({".srt", ".ass", ".ssa"})
+X264_PRESETS: Final = frozenset({"veryfast", "fast", "medium", "slow", "veryslow"})
+AUDIO_BITRATES: Final = frozenset({"96k", "128k", "160k", "192k", "224k", "256k", "320k"})
+MIN_BURN_CRF: Final = 0
+MAX_BURN_CRF: Final = 51
+DEFAULT_BURN_CRF: Final = 18
+DEFAULT_BURN_PRESET: Final = "medium"
+DEFAULT_BURN_AUDIO_BITRATE: Final = "192k"
+VIDEO_ENCODER_MODES: Final[frozenset[str]] = frozenset({"auto", "cpu", "nvenc", "amf", "qsv"})
+VIDEO_ENCODER_CODECS: Final[dict[str, str]] = {
+    "nvenc": "h264_nvenc",
+    "amf": "h264_amf",
+    "qsv": "h264_qsv",
+}
+AUTO_VIDEO_ENCODER_ORDER: Final[tuple[str, ...]] = ("nvenc", "amf", "qsv", "cpu")
 
 
 @dataclass(frozen=True, slots=True)
@@ -52,6 +69,35 @@ class MediaToolCancelled(MediaToolError):
     """The user stopped an active FFmpeg operation."""
 
 
+class SubtitleFontGlyphMissingError(MediaToolError):
+    """libass could not find a glyph required by the subtitle text."""
+
+
+_ASS_MISSING_GLYPH_RE: Final = re.compile(
+    r"fontselect:\s*failed to find any fallback(?: with glyph 0x([0-9a-f]+))?\s+for font:\s*\(([^,\r\n]+),",
+    re.IGNORECASE,
+)
+
+
+def libass_missing_glyphs(stderr: str) -> list[tuple[str, str]]:
+    """Return (glyph_suffix, family) pairs from libass font fallback warnings.
+
+    ``glyph_suffix`` is an empty string when libass did not report a code
+    point; callers format user-facing messages themselves so the burn
+    pipeline and the editor's frame preview can word them differently.
+    """
+    results: list[tuple[str, str]] = []
+    seen: set[tuple[str, str]] = set()
+    for match in _ASS_MISSING_GLYPH_RE.finditer(stderr):
+        glyph = f" U+{int(match.group(1), 16):04X}" if match.group(1) else ""
+        family = re.sub(r"[\x00-\x1f\x7f]", "", match.group(2)).strip()[:100] or "当前字体"
+        pair = (glyph, family)
+        if pair not in seen:
+            results.append(pair)
+            seen.add(pair)
+    return results
+
+
 @dataclass(frozen=True, slots=True)
 class AudioTrack:
     audio_index: int
@@ -66,15 +112,28 @@ class AudioTrack:
 
 @dataclass(frozen=True, slots=True)
 class BurnSubtitleRequest:
-    media_path: Path
+    media_path: Path | None
     subtitle_path: Path
+    green_screen: bool = False
+    # Optional normalized style supplied by a caller; when omitted, the
+    # shared user-level SRT default slot is loaded automatically.
+    srt_style: Mapping[str, object] | None = None
+    video_encoder: str = "auto"
+    # Optional encoding overrides exposed by the toolbox UI; None keeps the
+    # built-in defaults (CRF 18 / preset medium / audio 192k). CRF 与音频码率
+    # 对所有编码器生效（硬件编码器映射到 cq/qp/global_quality）；preset 仅
+    # libx264 支持，硬件编码器使用各自的固定预设。
+    crf: int | None = None
+    preset: str | None = None
+    audio_bitrate: str | None = None
 
 
 @dataclass(frozen=True, slots=True)
 class BurnSubtitleResult:
-    source_media_path: Path
+    source_media_path: Path | None
     media_path: Path
     subtitle_path: Path
+    video_encoder: str
 
 
 @dataclass(frozen=True, slots=True)
@@ -248,6 +307,119 @@ def probe_audio_tracks(media_path: Path, *, ffprobe_path: Path) -> tuple[AudioTr
     return tuple(tracks)
 
 
+def normalize_video_encoder(value: object) -> str:
+    mode = str(value or "").strip().lower()
+    return mode if mode in VIDEO_ENCODER_MODES else "auto"
+
+
+def _available_video_encoder_modes(ffmpeg_path: Path) -> frozenset[str]:
+    """Return hardware encoders advertised by this FFmpeg build."""
+    try:
+        completed = subprocess.run(
+            [str(ffmpeg_path), "-hide_banner", "-encoders"],
+            capture_output=True,
+            text=True,
+            encoding="utf-8",
+            errors="replace",
+            timeout=30,
+            check=False,
+            startupinfo=startupinfo(),
+            creationflags=creationflags(),
+        )
+    except (OSError, subprocess.TimeoutExpired):
+        return frozenset()
+    if completed.returncode != 0:
+        return frozenset()
+    output = f"{completed.stdout or ''}\n{completed.stderr or ''}"
+    return frozenset(
+        mode
+        for mode, codec in VIDEO_ENCODER_CODECS.items()
+        if re.search(rf"^\s*V\S*\s+{re.escape(codec)}\b", output, re.MULTILINE)
+    )
+
+
+def _video_encoder_attempts(ffmpeg_path: Path, requested: str) -> tuple[str, ...]:
+    mode = normalize_video_encoder(requested)
+    if mode == "cpu":
+        return ("cpu",)
+    available = _available_video_encoder_modes(ffmpeg_path)
+    if mode != "auto":
+        if mode not in available:
+            codec = VIDEO_ENCODER_CODECS[mode]
+            raise MediaToolError(f"当前 FFmpeg 不支持所选视频编码器：{codec}。请改用自动或 CPU 编码。")
+        return (mode,)
+    return tuple(candidate for candidate in AUTO_VIDEO_ENCODER_ORDER if candidate == "cpu" or candidate in available)
+
+
+def _video_encoder_options(mode: str, crf: int, preset: str) -> list[str]:
+    # CRF 与 libx264 的 cq/qp/global_quality 同为 0–51、越小画质越高，因此
+    # 用户设置的画质值直接映射到硬件编码器；preset 仅 libx264 支持。
+    if mode == "cpu":
+        return ["-c:v", "libx264", "-preset", preset, "-crf", str(crf)]
+    if mode == "nvenc":
+        return ["-c:v", "h264_nvenc", "-preset", "p5", "-rc", "vbr", "-cq", str(crf), "-b:v", "0"]
+    if mode == "amf":
+        return ["-c:v", "h264_amf", "-quality", "quality", "-rc", "cqp", "-qp_i", str(crf), "-qp_p", str(crf)]
+    if mode == "qsv":
+        return ["-c:v", "h264_qsv", "-preset", "medium", "-global_quality", str(crf)]
+    raise ValueError(f"unsupported video encoder mode: {mode}")
+
+
+def _subtitle_time_ms(value: str) -> int | None:
+    match = re.fullmatch(r"\s*(\d+):(\d{2}):(\d{2})[.,](\d{1,3})\s*", value)
+    if not match:
+        return None
+    hours, minutes, seconds, fraction = match.groups()
+    if int(minutes) >= 60 or int(seconds) >= 60:
+        return None
+    return ((int(hours) * 60 + int(minutes)) * 60 + int(seconds)) * 1000 + int(fraction.ljust(3, "0"))
+
+
+def _green_screen_input(subtitle: Path) -> list[str]:
+    """Make a finite green canvas from subtitle timing; no source video is needed."""
+    try:
+        contents = subtitle.read_text(encoding="utf-8-sig", errors="replace")
+    except OSError as error:
+        raise MediaToolError(f"无法读取字幕时间轴：{error}") from error
+    ends: list[int] = []
+    width, height = 1920, 1080
+    if subtitle.suffix.lower() == ".srt":
+        for match in re.finditer(r"-->\s*(\d+:\d{2}:\d{2}[.,]\d{1,3})", contents):
+            end = _subtitle_time_ms(match.group(1))
+            if end is not None:
+                ends.append(end)
+    else:
+        resolution = re.search(r"(?im)^PlayResX:\s*(\d+)\s*$", contents)
+        vertical = re.search(r"(?im)^PlayResY:\s*(\d+)\s*$", contents)
+        if resolution and vertical:
+            raw_width, raw_height = int(resolution.group(1)), int(vertical.group(1))
+            if 16 <= raw_width <= 3840 and 16 <= raw_height <= 2160:
+                width, height = raw_width + raw_width % 2, raw_height + raw_height % 2
+        fields = ["layer", "start", "end"]
+        in_events = False
+        for raw_line in contents.splitlines():
+            line = raw_line.strip()
+            if line.startswith("["):
+                in_events = line.lower() == "[events]"
+                continue
+            if not in_events:
+                continue
+            if line.lower().startswith("format:"):
+                fields = [field.strip().lower() for field in line.partition(":")[2].split(",")]
+            elif line.lower().startswith("dialogue:") and "end" in fields:
+                columns = line.partition(":")[2].split(",", max(0, len(fields) - 1))
+                end_index = fields.index("end")
+                if end_index < len(columns):
+                    end = _subtitle_time_ms(columns[end_index])
+                    if end is not None:
+                        ends.append(end)
+    if not ends or max(ends) <= 0:
+        raise MediaToolError("字幕文件没有可用的结束时间，无法确定绿幕视频时长。")
+    # Keep half a second after the last cue so its final frame is fully visible.
+    frame_count = max(30, math.ceil(max(ends) * 30 / 1000) + 15)
+    return ["-f", "lavfi", "-i", f"color=c=0x00ff00:s={width}x{height}:r=30:d={frame_count / 30:.3f}"]
+
+
 def run_burn_subtitles(
     request: BurnSubtitleRequest,
     *,
@@ -257,58 +429,100 @@ def run_burn_subtitles(
     on_progress: Callable[[Mapping[str, str]], None] | None = None,
 ) -> BurnSubtitleResult:
     """Render SRT/ASS subtitles into a new H.264 MP4."""
-    media = _validated_media_path(request.media_path, extensions=VIDEO_EXTENSIONS, label="video")
     subtitle = _validated_media_path(request.subtitle_path, extensions=SUBTITLE_EXTENSIONS, label="subtitle")
-    output = _available_media_output(media, suffix="subtitled", extension=".mp4")
+    green_screen = request.green_screen is True
+    media = None if green_screen else _validated_media_path(
+        request.media_path or Path(""), extensions=VIDEO_EXTENSIONS, label="video"
+    )
+    crf, preset, audio_bitrate = _burn_encoding_settings(request)
+    output_source = subtitle if green_screen else media
+    assert output_source is not None
+    output = _available_media_output(
+        output_source,
+        suffix="green-screen" if green_screen else "subtitled",
+        extension=".mp4",
+    )
     temporary = output.with_name(f"{output.stem}.part{output.suffix}")
-    command = [
-        str(ffmpeg_path),
-        "-y",
-        "-nostdin",
-        "-hide_banner",
-        "-loglevel",
-        "error",
-        "-progress",
-        "pipe:1",
-        "-i",
-        str(media),
-        "-vf",
-        _subtitle_filter(subtitle),
-        "-map",
-        "0:v:0",
-        "-map",
-        "0:a?",
-        "-map_metadata",
-        "0",
-        "-c:v",
-        "libx264",
-        "-preset",
-        "medium",
-        "-crf",
-        "18",
-        "-pix_fmt",
-        "yuv420p",
-        "-c:a",
-        "aac",
-        "-b:a",
-        "192k",
-        "-movflags",
-        "+faststart",
-        str(temporary),
-    ]
+    requested_encoder = normalize_video_encoder(request.video_encoder)
+    attempts = _video_encoder_attempts(ffmpeg_path, requested_encoder)
+    green_input = _green_screen_input(subtitle) if green_screen else []
+    prepared_subtitle = subtitle
+    converted_subtitle: Path | None = None
+    last_error: MediaToolError | None = None
     try:
-        _run_ffmpeg_process(
-            command,
-            cwd=subtitle.parent,
-            cancel_event=cancel_event,
-            on_process=on_process,
-            on_progress=on_progress,
-        )
-        _replace_media_output(temporary, output)
+        if subtitle.suffix.lower() == ".srt":
+            converted_subtitle = _convert_srt_to_ass(
+                subtitle,
+                ffmpeg_path=ffmpeg_path,
+                srt_style=request.srt_style,
+                cancel_event=cancel_event,
+                on_process=on_process,
+                on_progress=on_progress,
+            )
+            prepared_subtitle = converted_subtitle
+        input_command = ["-i", str(media)] if media is not None else green_input
+        common_command = [
+            str(ffmpeg_path),
+            "-y",
+            "-nostdin",
+            "-hide_banner",
+            "-loglevel",
+            "warning",
+            "-progress",
+            "pipe:1",
+            *input_command,
+            "-vf",
+            _subtitle_filter(prepared_subtitle),
+            "-map",
+            "0:v:0",
+            *([] if green_screen else ["-map", "0:a?", "-map_metadata", "0"]),
+        ]
+        for encoder in attempts:
+            temporary.unlink(missing_ok=True)
+            command = [
+                *common_command,
+                *_video_encoder_options(encoder, crf, preset),
+                "-pix_fmt",
+                "yuv420p",
+                *(["-an"] if green_screen else ["-c:a", "aac", "-b:a", audio_bitrate]),
+                "-movflags",
+                "+faststart",
+                str(temporary),
+            ]
+            try:
+                _run_ffmpeg_process(
+                    command,
+                    cwd=subtitle.parent,
+                    cancel_event=cancel_event,
+                    on_process=on_process,
+                    on_progress=on_progress,
+                    check_ass_glyphs=True,
+                )
+            except MediaToolCancelled:
+                raise
+            except SubtitleFontGlyphMissingError:
+                raise
+            except MediaToolError as error:
+                last_error = error
+                if requested_encoder != "auto" or encoder == "cpu":
+                    raise
+                continue
+            _replace_media_output(temporary, output)
+            return BurnSubtitleResult(
+                source_media_path=media,
+                media_path=output,
+                subtitle_path=subtitle,
+                video_encoder=encoder,
+            )
+        if last_error is not None:
+            raise last_error
+        raise MediaToolError("没有可用的视频编码器。")
     except (MediaToolError, OSError):
         temporary.unlink(missing_ok=True)
         raise
-    return BurnSubtitleResult(source_media_path=media, media_path=output, subtitle_path=subtitle)
+    finally:
+        if converted_subtitle is not None:
+            converted_subtitle.unlink(missing_ok=True)
 
 
 def run_extract_audio(
@@ -388,6 +602,13 @@ def _available_media_output(media: Path, *, suffix: str = "gap-removed", extensi
     return candidate.resolve()
 
 
+_MEDIA_LABEL_NAMES: Final[dict[str, str]] = {
+    "video": "视频文件",
+    "subtitle": "字幕文件",
+    "media": "媒体文件",
+}
+
+
 def _validated_media_path(
     path: Path,
     *,
@@ -395,10 +616,13 @@ def _validated_media_path(
     label: str = "media",
 ) -> Path:
     resolved = path.expanduser().resolve()
+    name = _MEDIA_LABEL_NAMES.get(label, "媒体文件")
     if not resolved.is_file():
-        raise MediaToolError(f"{label} must be an existing file")
+        # 明确区分是视频还是字幕缺失：手动烧录里两个文件都由用户选择，
+        # 自动后处理里则都来自流水线上一步，提示需要能定位到具体文件。
+        raise MediaToolError(f"{name}不存在：{resolved}")
     if resolved.suffix.lower() not in extensions:
-        raise MediaToolError(f"unsupported {label} extension: {resolved.suffix or '(none)'}")
+        raise MediaToolError(f"{name}格式不支持：{resolved.suffix or '(无后缀)'}")
     return resolved
 
 
@@ -429,11 +653,117 @@ def _escape_filter_value(value: str) -> str:
     return escaped
 
 
-def _subtitle_filter(subtitle: Path) -> str:
+def _srt_burn_style(srt_style: Mapping[str, object] | None) -> Mapping[str, object]:
+    if srt_style is not None:
+        return srt_style
+    library = load_ass_style_library()
+    assignments = library.get("assignments")
+    style_id = assignments.get("srtBurnStyleId") if isinstance(assignments, Mapping) else "default"
+    return find_ass_style(library, style_id)
+
+
+def _rewrite_ass_default_style(ass_path: Path, srt_style: Mapping[str, object] | None) -> None:
+    try:
+        content = ass_path.read_text(encoding="utf-8-sig")
+    except (OSError, UnicodeError) as error:
+        raise MediaToolError(f"无法读取 FFmpeg 生成的临时 ASS 字幕：{error}") from error
+    if not content.strip():
+        raise MediaToolError("FFmpeg 生成了空的 ASS 字幕文件。")
+    style = {**DEFAULT_SRT_STYLE, **dict(_srt_burn_style(srt_style))}
+    replacement = ass_style_line(style, name="Default")
+    lines = content.splitlines()
+    for index, line in enumerate(lines):
+        if line.startswith("Style: Default,"):
+            lines[index] = replacement
+            break
+    else:
+        raise MediaToolError("FFmpeg 生成的 ASS 字幕缺少 Default 样式。")
+    try:
+        with ass_path.open("w", encoding="utf-8", newline="\n") as handle:
+            handle.write("\n".join(lines) + "\n")
+    except (OSError, UnicodeError) as error:
+        raise MediaToolError(f"无法写入临时 ASS 字幕：{error}") from error
+
+
+def _convert_srt_to_ass(
+    subtitle: Path,
+    *,
+    ffmpeg_path: Path,
+    srt_style: Mapping[str, object] | None,
+    cancel_event: Event | None,
+    on_process: Callable[[subprocess.Popen[str]], None] | None,
+    on_progress: Callable[[Mapping[str, str]], None] | None,
+) -> Path:
+    try:
+        descriptor, temporary_name = tempfile.mkstemp(
+            prefix=f".{subtitle.stem}.maw-burn-",
+            suffix=".ass",
+            dir=subtitle.parent,
+        )
+        os.close(descriptor)
+    except OSError as error:
+        raise MediaToolError(f"无法创建临时 ASS 字幕：{error}") from error
+    converted = Path(temporary_name)
+    command = [
+        str(ffmpeg_path),
+        "-y",
+        "-nostdin",
+        "-hide_banner",
+        "-loglevel",
+        "error",
+        "-progress",
+        "pipe:1",
+        "-i",
+        str(subtitle),
+        "-map",
+        "0:0",
+        "-c:s",
+        "ass",
+        "-f",
+        "ass",
+        str(converted),
+    ]
+    try:
+        _run_ffmpeg_process(
+            command,
+            cwd=subtitle.parent,
+            cancel_event=cancel_event,
+            on_process=on_process,
+            on_progress=on_progress,
+        )
+        _rewrite_ass_default_style(converted, srt_style)
+    except (MediaToolError, OSError):
+        converted.unlink(missing_ok=True)
+        raise
+    return converted
+
+
+def _burn_encoding_settings(request: BurnSubtitleRequest) -> tuple[int, str, str]:
+    """Return validated (crf, preset, audio_bitrate), falling back to defaults."""
+    crf = DEFAULT_BURN_CRF if request.crf is None else request.crf
+    if not MIN_BURN_CRF <= crf <= MAX_BURN_CRF:
+        raise MediaToolError(f"CRF must be an integer between {MIN_BURN_CRF} and {MAX_BURN_CRF}")
+    preset = DEFAULT_BURN_PRESET if not str(request.preset or "").strip() else str(request.preset).strip()
+    if preset not in X264_PRESETS:
+        raise MediaToolError(f"unsupported x264 preset: {preset}")
+    audio_bitrate = DEFAULT_BURN_AUDIO_BITRATE if not str(request.audio_bitrate or "").strip() else str(request.audio_bitrate).strip()
+    if audio_bitrate not in AUDIO_BITRATES:
+        raise MediaToolError(f"unsupported audio bitrate: {audio_bitrate}")
+    return crf, preset, audio_bitrate
+
+
+def _subtitle_filter(
+    subtitle: Path,
+    srt_style: Mapping[str, object] | None = None,
+) -> str:
     filename = _escape_filter_value(subtitle.name)
     if subtitle.suffix.lower() in {".ass", ".ssa"}:
         return f"ass=filename='{filename}'"
-    force_style = "Fontname=Arial,FontSize=18,PrimaryColour=&H00FFFFFF,OutlineColour=&H00000000,BorderStyle=1,Outline=2,Shadow=0,Alignment=2,MarginV=40"
+    style = _srt_burn_style(srt_style)
+    # force_style 内部的逗号/等号是 ASS 样式语法层；整个表达式还要作为
+    # 单引号 filter 参数再转义一层，否则 O'Brien 这类字体会截断引号、
+    # 破坏整个 -vf 滤镜链。
+    force_style = _escape_filter_value(ass_style_force_style(style))
     return f"subtitles=filename='{filename}':force_style='{force_style}'"
 
 
@@ -444,6 +774,7 @@ def _run_ffmpeg_process(
     cancel_event: Event | None,
     on_process: Callable[[subprocess.Popen[str]], None] | None,
     on_progress: Callable[[Mapping[str, str]], None] | None,
+    check_ass_glyphs: bool = False,
 ) -> None:
     try:
         process = subprocess.Popen(
@@ -461,6 +792,14 @@ def _run_ffmpeg_process(
         raise MediaToolError(f"ffmpeg could not start: {error}") from error
     if on_process is not None:
         on_process(process)
+    stderr_chunks: list[str] = []
+
+    def collect_stderr() -> None:
+        if process.stderr is not None:
+            stderr_chunks.extend(process.stderr)
+
+    stderr_thread = Thread(target=collect_stderr, daemon=True)
+    stderr_thread.start()
     progress: dict[str, str] = {}
     try:
         stdout = process.stdout
@@ -479,8 +818,8 @@ def _run_ffmpeg_process(
                 continue
             if process.poll() is not None:
                 break
-        stderr = process.stderr.read() if process.stderr is not None else ""
         returncode = process.wait()
+        stderr_thread.join()
     except MediaToolCancelled:
         raise
     except OSError as error:
@@ -488,9 +827,18 @@ def _run_ffmpeg_process(
             terminate_process_tree(process)
         raise MediaToolError(f"ffmpeg failed: {error}") from error
     finally:
+        if stderr_thread.is_alive():
+            stderr_thread.join(timeout=5)
         release_process_tree(process)
+    stderr = "".join(stderr_chunks)
     if cancel_event is not None and cancel_event.is_set():
         raise MediaToolCancelled("ffmpeg operation cancelled")
+    if check_ass_glyphs:
+        for glyph, family in libass_missing_glyphs(stderr):
+            raise SubtitleFontGlyphMissingError(
+                f"字幕字体「{family}」缺少字形{glyph}，已中止烧录以避免输出方框。"
+                "请安装或更换为包含该字符的字体后重试。"
+            )
     if returncode != 0:
         detail = (stderr or "ffmpeg operation failed").strip()
         raise MediaToolError(detail[-4000:])

@@ -10,7 +10,8 @@ import json
 import unicodedata
 from dataclasses import dataclass
 from pathlib import Path
-from collections.abc import Sequence
+from collections.abc import Mapping, Sequence
+from typing import Final
 
 from maw.postprocess import OutputMode, _reconcile_items
 from maw.postprocess_io import SubtitleArtifact, PostprocessFileError, read_project, read_srt, write_artifacts
@@ -18,6 +19,7 @@ from maw.project import normalize_project
 from maw.project_preview import JsonDict, JsonValue
 from scripts.mosp_match_text import (
     AlignmentError,
+    CLOSING_PUNCTUATION,
     MARKDOWN_EXTENSIONS,
     clean_markdown_text,
     clean_markdown_inline_symbols,
@@ -27,7 +29,24 @@ from scripts.mosp_match_text import (
 
 SCRIPT_EXTENSIONS = frozenset({".txt", *MARKDOWN_EXTENSIONS})
 MIN_MATCH_COVERAGE = 0.55
-DEFAULT_SPLIT_PUNCTUATION = frozenset({"，", "。", ",", ".", "\n"})
+# 结构性断句：换行始终生效，不可配置。其余断句符号完全来自共享配置
+# （「需要断句的符号」默认清单，见 DEFAULT_EXTRA_SPLIT_PUNCTUATION）。
+DEFAULT_SPLIT_PUNCTUATION = frozenset({"\n"})
+# 共享断句配置的默认值：文稿匹配与转写共用的唯一真源，没有隐式基础集。
+# 转写脚本（generate_subtitle_*）的 CLI 参数默认值与本清单保持一致。
+DEFAULT_EXTRA_SPLIT_PUNCTUATION: Final[tuple[str, ...]] = (
+    "，",
+    "。",
+    "？",
+    "！",
+    "；",
+    ",",
+    ".",
+)
+DEFAULT_PRESERVE_PUNCTUATION: Final[tuple[str, ...]] = ("？", "！")
+# CLI 参数默认值（strip = 默认断句 − 默认保留；strong = 完整默认断句）。
+DEFAULT_STRIP_TAIL_PUNCT: Final[str] = "，。；,."
+DEFAULT_STRONG_PUNCT: Final[str] = "，。？！；,."
 
 
 class MatchCoverageError(ValueError):
@@ -54,8 +73,8 @@ class ScriptMatchRequest:
     output_mode: OutputMode
     output_directory: Path | None = None
     media_path: Path | None = None
-    extra_split_punctuation: tuple[str, ...] = ()
-    preserve_punctuation: tuple[str, ...] = ()
+    extra_split_punctuation: tuple[str, ...] = DEFAULT_EXTRA_SPLIT_PUNCTUATION
+    preserve_punctuation: tuple[str, ...] = DEFAULT_PRESERVE_PUNCTUATION
     match_mode: str = "script"
     clean_markdown_symbols: bool = True
 
@@ -137,20 +156,20 @@ def prepare_script_text(
     prepared_text = clean_markdown_inline_symbols(script_text) if clean_markdown_symbols else script_text
     split_symbols = tuple(symbol for symbol in extra_split_punctuation if symbol)
     preserve_symbols = tuple(symbol for symbol in preserve_punctuation if symbol)
-    # 基础断句集（逗号、句号、换行）始终生效；问号和感叹号由额外
-    # 断句符号配置提供。
+    # 断句符号完全由共享配置提供，换行始终生效；保留符号必须是已配置
+    # 的断句符号之一。
     missing = tuple(
         symbol
         for symbol in preserve_symbols
-        if symbol not in split_symbols and symbol not in DEFAULT_SPLIT_PUNCTUATION
+        if symbol not in split_symbols
     )
     if missing:
         raise ValueError(
-            "保留符号必须来自额外断句符号：" + "、".join(missing)
+            "保留符号必须来自断句符号：" + "、".join(missing)
         )
     if not split_symbols:
-        return prepared_text, "未配置额外断句符号。"
-    return prepared_text, f"额外断句符号：{len(split_symbols)} 个；保留：{len(preserve_symbols)} 个。"
+        return prepared_text, "未配置断句符号，仅按换行断句。"
+    return prepared_text, f"断句符号：{len(split_symbols)} 个；保留：{len(preserve_symbols)} 个。"
 
 
 def processed_script_text(
@@ -252,12 +271,19 @@ def _match_project_with_character_timings(
     if not isinstance(raw_matched, dict):
         raise ValueError("character matcher returned an invalid project")
     _preserve_equal_count_segment_metadata(matcher_project, raw_matched)
+    preserved_extras = _merge_unmatched_source_segments(
+        matcher_project.get("segments"),
+        raw_matched,
+        report,
+    )
     raw_matched["segments"] = _merge_disabled_segments(source_segments, raw_matched)
     matched = normalize_project(raw_matched)
-    warnings = (
+    warnings: list[str] = [
         f"文稿匹配度：{coverage:.0%}；已按字词时间码重新生成字幕段。",
-    )
-    return matched, warnings
+    ]
+    if preserved_extras:
+        warnings.append(f"已保留 {preserved_extras} 个文稿之外的 ASR 字幕段。")
+    return matched, tuple(warnings)
 
 
 def _report_integer(report: dict[str, object], key: str) -> int:
@@ -296,6 +322,46 @@ def _merge_disabled_segments(
         )
     )
     return combined
+
+
+def _merge_unmatched_source_segments(
+    matcher_segments: object,
+    matched: JsonDict,
+    report: Mapping[str, object],
+) -> int:
+    """Keep complete source cues covered only by ASR-side deletions.
+
+    The timed matcher intentionally builds output cues from manuscript
+    characters.  A source cue that is deleted by the character alignment has
+    no manuscript character to anchor it, so it would otherwise disappear
+    from the regenerated project.  Keep those complete cues at their source
+    timestamps; gaps around them are already left by the neighbouring
+    manuscript character timings.
+    """
+
+    matched_segments = matched.get("segments")
+    if not isinstance(matched_segments, list) or not isinstance(matcher_segments, list):
+        raise ValueError("character matcher returned invalid segments")
+    raw_indexes = report.get("unmatched_source_segment_indexes")
+    if not isinstance(raw_indexes, list):
+        return 0
+    extras: list[JsonValue] = []
+    for raw_index in raw_indexes:
+        if type(raw_index) is not int or raw_index < 0 or raw_index >= len(matcher_segments):
+            continue
+        source_segment = matcher_segments[raw_index]
+        if isinstance(source_segment, dict):
+            extras.append(copy.deepcopy(source_segment))
+    if not extras:
+        return 0
+    matched["segments"] = [*matched_segments, *extras]
+    matched["segments"].sort(
+        key=lambda segment: (
+            segment.get("start", 0) if isinstance(segment, dict) else 0,
+            segment.get("end", 0) if isinstance(segment, dict) else 0,
+        )
+    )
+    return len(extras)
 
 
 def _preserve_equal_count_segment_metadata(
@@ -355,6 +421,7 @@ def _match_project(
         raise ValueError("script text is empty")
 
     matcher = difflib.SequenceMatcher(None, source_text, script.value, autojunk=False)
+    opcodes = tuple(matcher.get_opcodes())
     blocks = tuple(block for block in matcher.get_matching_blocks() if block.size)
     matched_chars = sum(block.size for block in blocks)
     coverage = matched_chars / max(1, min(len(source_text), len(script.value)))
@@ -362,7 +429,23 @@ def _match_project(
     has_manuscript_boundaries = len(punctuation_segments) > 1 and (
         "\n" in script_text or "\r" in script_text or any(symbol in script_text for symbol in split_punctuation)
     )
-    if match_mode == "script" and has_manuscript_boundaries and len(punctuation_segments) != len(spans):
+    script_boundary_positions = {0}
+    script_offset = 0
+    for manuscript_segment in punctuation_segments:
+        script_offset += len(_normalize_text(manuscript_segment).value)
+        script_boundary_positions.add(script_offset)
+    has_boundary_source_only_text = any(
+        tag == "delete"
+        and i1 < i2
+        and j1 == j2
+        and j1 in script_boundary_positions
+        for tag, i1, i2, j1, j2 in opcodes
+    )
+    if (
+        match_mode == "script"
+        and has_manuscript_boundaries
+        and (len(punctuation_segments) != len(spans) or has_boundary_source_only_text)
+    ):
         result = _resegment_project(
             project,
             segments,
@@ -371,6 +454,7 @@ def _match_project(
             source_text,
             script,
             _alignment_boundaries(len(source_text), len(script.value), blocks),
+            opcodes,
             blocks[-1].a + blocks[-1].size if blocks else 0,
         )
         if result is not None:
@@ -463,6 +547,7 @@ def _resegment_project(
     source_text: str,
     script: _NormalizedText,
     boundaries: tuple[tuple[int, int], ...],
+    opcodes: Sequence[tuple[str, int, int, int, int]],
     matched_source_end: int,
 ) -> JsonDict | None:
     if any(isinstance(segment, dict) and segment.get("disabled") is True for segment in segments):
@@ -479,8 +564,33 @@ def _resegment_project(
     for value in manuscript_segments:
         offset += len(_normalize_text(value).value)
         script_offsets.append(offset)
-    source_offsets = [_map_script_boundary(boundary, boundaries, source_length) for boundary in (0, *script_offsets)]
+    script_boundaries = (0, *script_offsets)
+    source_offsets = [
+        _map_script_boundary(boundary, boundaries, source_length)
+        for boundary in script_boundaries
+    ]
     source_offsets = [min(offset, matched_source_end) for offset in source_offsets]
+    source_starts = list(source_offsets)
+    source_ends = list(source_offsets)
+    # A deletion at a manuscript boundary has two valid source positions: the
+    # previous manuscript cue must end before the deleted source range, while
+    # the next cue must start after it.  The old single boundary mapping chose
+    # the left side for both and consequently swallowed the deletion into the
+    # next cue.
+    for tag, source_start, source_end, script_start, script_end in opcodes:
+        if tag != "delete" or script_start != script_end or source_start >= source_end:
+            continue
+        for boundary_index, boundary in enumerate(script_boundaries):
+            if boundary != script_start:
+                continue
+            source_starts[boundary_index] = max(
+                source_starts[boundary_index],
+                min(source_end, matched_source_end),
+            )
+            source_ends[boundary_index] = min(
+                source_ends[boundary_index],
+                min(source_start, matched_source_end),
+            )
 
     def source_time(position: int) -> int:
         for span in spans:
@@ -493,27 +603,90 @@ def _resegment_project(
         segment = original_segments[-1]
         return _integer_field(segment, "end")
 
-    rebuilt: list[JsonDict] = []
+    rebuilt: list[tuple[int, int, JsonDict]] = []
     for index, text in enumerate(manuscript_segments):
-        start = source_time(source_offsets[index])
-        end = source_time(source_offsets[index + 1])
+        start = source_time(source_starts[index])
+        end = source_time(source_ends[index + 1])
         if end <= start:
             return None
-        source_index = min(len(original_segments) - 1, next((span.segment_index for span in spans if span.normalized_end > source_offsets[index]), 0))
+        source_index = min(
+            len(original_segments) - 1,
+            next(
+                (span.segment_index for span in spans if span.normalized_end > source_starts[index]),
+                0,
+            ),
+        )
         segment = copy.deepcopy(original_segments[source_index])
         segment["id"] = f"main-matched-{index + 1:03d}"
         segment["start"] = start
         segment["end"] = end
         segment["text"] = text
         segment.pop("items", None)
-        rebuilt.append(segment)
-    last_end = _integer_field(rebuilt[-1], "end") if rebuilt else 0
-    untouched = [
-        copy.deepcopy(segment)
-        for segment in segments
-        if isinstance(segment, dict) and _integer_field(segment, "start", 0) >= last_end
+        rebuilt.append((source_starts[index], source_ends[index + 1], segment))
+
+    delete_ranges = [
+        (i1, i2)
+        for tag, i1, i2, _j1, _j2 in opcodes
+        if tag == "delete" and i1 < i2
     ]
-    result["segments"] = [*rebuilt, *untouched]
+    extra_segments: list[tuple[int, int, JsonDict]] = []
+    extra_piece_index = 0
+    matched_ranges = [
+        (start, end)
+        for start, end, _segment in rebuilt
+        if start < end
+    ]
+    for delete_start, delete_end in delete_ranges:
+        # A deletion inside one manuscript cue cannot be represented as an
+        # additional non-overlapping cue without splitting that manuscript
+        # cue as well.  Boundary deletions (the common "extra sentence between
+        # two script lines" case) are unambiguous and are retained below.
+        if any(
+            delete_start < matched_end and delete_end > matched_start
+            for matched_start, matched_end in matched_ranges
+        ):
+            continue
+        for span in spans:
+            overlap_start = max(delete_start, span.normalized_start)
+            overlap_end = min(delete_end, span.normalized_end)
+            if overlap_start >= overlap_end:
+                continue
+            source_segment = original_segments[span.segment_index]
+            source_text = str(source_segment.get("text") or "")
+            normalized_source = _normalize_text(source_text)
+            local_start = overlap_start - span.normalized_start
+            local_end = overlap_end - span.normalized_start
+            original_start = normalized_source.original_boundary(local_start, len(source_text))
+            original_end = normalized_source.original_boundary(local_end, len(source_text))
+            text = source_text[original_start:original_end].strip()
+            if not text or not _normalize_text(text).value:
+                continue
+            extra_piece_index += 1
+            piece = copy.deepcopy(source_segment)
+            is_full_segment = local_start == 0 and local_end == len(normalized_source.value)
+            if not is_full_segment:
+                start = source_time(overlap_start)
+                end = source_time(overlap_end)
+                if end <= start:
+                    continue
+                piece["start"] = start
+                piece["end"] = end
+                piece["text"] = text
+                piece.pop("items", None)
+                base_id = str(piece.get("id") or f"main-{span.segment_index + 1:03d}")
+                suffix = f"-unmatched-{extra_piece_index:03d}"
+                piece["id"] = f"{base_id[:160 - len(suffix)]}{suffix}"
+            extra_segments.append((overlap_start, overlap_end, piece))
+
+    entries: list[tuple[int, int, int, JsonDict]] = [
+        (start, end, 1, segment)
+        for start, end, segment in rebuilt
+    ] + [
+        (start, end, 0, segment)
+        for start, end, segment in extra_segments
+    ]
+    entries.sort(key=lambda item: (item[0], item[1], item[2]))
+    result["segments"] = [segment for _start, _end, _kind, segment in entries]
     return normalize_project(result)
 
 
@@ -554,11 +727,16 @@ def _split_script_segments(
             index += len(symbol)
             while index < len(text):
                 following = next((candidate for candidate in symbols if text.startswith(candidate, index)), "")
-                if not following:
-                    break
-                if following in preserve_punctuation:
-                    current.append(following)
-                index += len(following)
+                if following:
+                    if following in preserve_punctuation or following in CLOSING_PUNCTUATION:
+                        current.append(following)
+                    index += len(following)
+                    continue
+                if text[index] in CLOSING_PUNCTUATION:
+                    current.append(text[index])
+                    index += 1
+                    continue
+                break
             value = "".join(current).strip()
             if _normalize_text(value).value:
                 segments.append(value)
@@ -649,5 +827,5 @@ def _load_input(project_path: Path | None, srt_path: Path | None) -> tuple[JsonD
         return read_project(resolved), resolved, srt_path.expanduser().resolve() if srt_path else None
     if srt_path is not None:
         resolved = srt_path.expanduser().resolve()
-        return read_srt(resolved), None, resolved
+        return read_srt(resolved, strict=True), None, resolved
     raise ValueError("a project or SRT input is required")

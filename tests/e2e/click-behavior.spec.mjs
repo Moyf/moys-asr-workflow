@@ -35,6 +35,14 @@ test.afterAll(async () => {
 
 test.beforeEach(async ({ page }) => {
   await disableOnboarding(page);
+  // These cases assert click/edit semantics against a shared on-disk fixture.
+  // Save behavior has its own suite; do not let a completed edit rewrite the
+  // fixture loaded by the next case or by the Escape reload assertion.
+  await page.addInitScript(() => {
+    const key = 'moy.asr.editor.settings.v1';
+    const settings = JSON.parse(localStorage.getItem(key) || '{}');
+    localStorage.setItem(key, JSON.stringify({ ...settings, autoSaveProject: false }));
+  });
 });
 
 test('jump target is shown for both jump behaviors and hidden for select-only', async ({ page }) => {
@@ -177,12 +185,12 @@ test('list click auto-scroll can be disabled without disabling seek', async ({ p
   await autoScroll.uncheck();
 
   await page.evaluate(() => {
-    DATA.segments.push(...Array.from({ length: 34 }, (_, offset) => {
-      const index = DATA.segments.length + offset;
+    MaweBoot.DATA.segments.push(...Array.from({ length: 34 }, (_, offset) => {
+      const index = MaweBoot.DATA.segments.length + offset;
       const start = index * 5000;
       return { start, end: start + 1000, text: `Extra ${index}`, items: [] };
     }));
-    renderAll();
+    MaweCuePanel.renderAll();
     document.getElementById('cues-container').scrollTop = 0;
   });
   const target = page.locator('.cue[data-idx="30"]');
@@ -202,16 +210,16 @@ test('list click auto-scroll can be disabled without disabling seek', async ({ p
 test('default list click keeps a cue already in the middle in place', async ({ page }) => {
   await page.goto(server.url);
   await page.evaluate(() => {
-    DATA.segments.push(...Array.from({ length: 34 }, (_, offset) => {
-      const index = DATA.segments.length + offset;
+    MaweBoot.DATA.segments.push(...Array.from({ length: 34 }, (_, offset) => {
+      const index = MaweBoot.DATA.segments.length + offset;
       const start = index * 5000;
       return { start, end: start + 1000, text: `Extra ${index}`, items: [] };
     }));
-    renderAll();
+    MaweCuePanel.renderAll();
     const cue = document.querySelector('.cue[data-idx="30"]');
-    scrollCueToCenter(cue);
+    MaweCueListAnchor.scrollCueToCenter(cue);
   });
-  await page.waitForFunction(() => !cueListScroll.owner);
+  await page.waitForFunction(() => !MaweCueListAnchor.cueListScroll.owner);
   const before = await page.locator('.cue[data-idx="30"]').evaluate(el => el.getBoundingClientRect().top);
   await page.evaluate(() => {
     const cue = document.querySelector('.cue[data-idx="30"]');
@@ -244,11 +252,52 @@ test('default list click selects and seeks to cue start while keeping playback',
   await expect(page.locator('.cue[data-idx="4"]')).toHaveClass(/selected/, { timeout: 150 });
   await page.waitForFunction(() => {
     const player = document.getElementById('player');
-    const seg = DATA.segments[4];
+    const seg = MaweBoot.DATA.segments[4];
     const delta = player.currentTime - seg.start / 1000;
     return delta > -0.1 && delta < 1;
   }, undefined, { timeout: 5000 });
   await page.waitForFunction(() => !document.getElementById('player').paused);
+});
+
+test('mouse-click pause setting seeks and pauses active playback', async ({ page }) => {
+  await page.goto(server.url);
+  await page.locator('#editor-settings-toggle').click();
+  await page.locator('#editor-settings-tab-general').click();
+  const pauseOnMouseClick = page.locator('#pause-on-mouse-click');
+  await expect(pauseOnMouseClick).not.toBeChecked();
+  await pauseOnMouseClick.check();
+  await expect.poll(() => page.evaluate(() => JSON.parse(
+    localStorage.getItem('moy.asr.editor.settings.v1') || '{}',
+  ).pauseOnMouseClick)).toBe(true);
+  await page.locator('#editor-settings-close').click();
+
+  await page.waitForFunction(() => {
+    const player = document.getElementById('player');
+    return player.readyState >= 1 && Number.isFinite(player.duration) && player.duration > 0;
+  });
+  await page.evaluate(() => { document.getElementById('player').currentTime = 1; });
+  await page.keyboard.press(' ');
+  await page.waitForFunction(() => !document.getElementById('player').paused);
+
+  await page.locator('.cue[data-idx="4"]').click();
+
+  await page.waitForFunction(() => {
+    const player = document.getElementById('player');
+    const seg = MaweBoot.DATA.segments[4];
+    return Math.abs(player.currentTime - seg.start / 1000) < 0.25 && player.paused;
+  }, undefined, { timeout: 5000 });
+
+  // 波形字幕块也是鼠标跳转入口；开启后同样应在定位后暂停。
+  await page.evaluate(() => {
+    document.getElementById('player').currentTime = 1;
+    document.getElementById('waveform-scroll').scrollTop = 0;
+  });
+  await page.keyboard.press(' ');
+  await page.waitForFunction(() => !document.getElementById('player').paused);
+  const waveformCue = page.locator('.waveform-cue-block[data-track="main"][data-idx="0"]').first();
+  await expect(waveformCue).toBeVisible();
+  await waveformCue.click();
+  await expect.poll(() => page.evaluate(() => document.getElementById('player').paused)).toBe(true);
 });
 
 test('list cue selects on pointerdown and double-click still enters edit', async ({ page }) => {
@@ -319,7 +368,7 @@ test('the unconfigured Enter shortcut commits and exits cue-panel editing', asyn
   await panel.fill('Alpha committed by Ctrl Enter');
   await panel.press('Control+Enter');
   await expect(panel).not.toBeFocused();
-  await expect.poll(() => page.evaluate(() => DATA.segments[0].text))
+  await expect.poll(() => page.evaluate(() => MaweBoot.DATA.segments[0].text))
     .toBe('Alpha committed by Ctrl Enter');
 
   await splitKey.selectOption('ctrl-enter');
@@ -327,7 +376,7 @@ test('the unconfigured Enter shortcut commits and exits cue-panel editing', asyn
   await panel.fill('Alpha committed by Enter');
   await panel.press('Enter');
   await expect(panel).not.toBeFocused();
-  await expect.poll(() => page.evaluate(() => DATA.segments[0].text))
+  await expect.poll(() => page.evaluate(() => MaweBoot.DATA.segments[0].text))
     .toBe('Alpha committed by Enter');
 });
 
@@ -341,12 +390,14 @@ test('Escape keeps cue-panel text edits by default and cancels when the setting 
   const original = await panel.inputValue();
   await panel.focus();
   await panel.fill('This edit is kept');
-  await expect(page.locator('#undo-btn')).toBeEnabled();
+  expect(await page.evaluate(() => MaweHistory.editorHistory.undoLength())).toBe(0);
   await panel.press('Escape');
+
+  await expect(page.locator('#undo-btn')).toBeEnabled();
 
   await expect(panel).not.toBeFocused();
   await expect(panel).toHaveValue('This edit is kept');
-  await expect.poll(() => page.evaluate(() => DATA.segments[0].text)).toBe('This edit is kept');
+  await expect.poll(() => page.evaluate(() => MaweBoot.DATA.segments[0].text)).toBe('This edit is kept');
 
   // 开启「操作 → Esc 取消编辑」后：Esc 恢复进入本次编辑前的文本。
   await page.evaluate(() => {
@@ -364,7 +415,7 @@ test('Escape keeps cue-panel text edits by default and cancels when the setting 
 
   await expect(panelAfterReload).not.toBeFocused();
   await expect(panelAfterReload).toHaveValue(original);
-  await expect.poll(() => page.evaluate(() => DATA.segments[0].text)).toBe(original);
+  await expect.poll(() => page.evaluate(() => MaweBoot.DATA.segments[0].text)).toBe(original);
 });
 
 test('Escape exits inline cue editing without saving the text', async ({ page }) => {
@@ -380,7 +431,7 @@ test('Escape exits inline cue editing without saving the text', async ({ page })
 
   await expect(cue).not.toHaveClass(/editing/);
   await expect(text).toHaveText(original);
-  await expect.poll(() => page.evaluate(() => DATA.segments[0].text)).toBe(original);
+  await expect.poll(() => page.evaluate(() => MaweBoot.DATA.segments[0].text)).toBe(original);
   await expect(cue).not.toHaveClass(/dirty/);
   await expect(page.locator('#undo-btn')).toBeDisabled();
 });
@@ -420,17 +471,16 @@ test('double-click places the inline caret at the pointer text position', async 
 
   await page.mouse.dblclick(point.x, point.y);
   await expect(cue).toHaveClass(/editing/);
-  const caret = await page.evaluate(() => {
+  // Inline editing reapplies the caret in the next event-loop turn after the
+  // browser's native double-click selection. Wait for that observable result.
+  await expect.poll(() => page.evaluate(() => {
     const selection = window.getSelection();
     return {
       collapsed: selection?.isCollapsed ?? false,
       offset: selection?.anchorOffset ?? null,
       text: selection?.anchorNode?.textContent ?? null,
     };
-  });
-  expect(caret.collapsed).toBe(true);
-  expect(caret.text).toBe('Alpha');
-  expect(caret.offset).toBe(expectedOffset);
+  })).toEqual({ collapsed: true, text: 'Alpha', offset: expectedOffset });
 });
 
 test('current cue panel keeps the same height before and after selection', async ({ page }) => {
@@ -500,7 +550,7 @@ test('Enter focuses the current subtitle editor after list or waveform clicks', 
   const rowBox = await page.locator('.waveform-row').nth(1).boundingBox();
   await page.mouse.click(rowBox.x + rowBox.width * 0.95, rowBox.y + rowBox.height / 2);
   // 空白处点击会清除选择；不经过列表重新选中第一条（区域仍停留在波形）
-  await page.evaluate(() => selectOnly(0));
+  await page.evaluate(() => MaweSelection.selectOnly(0));
   await page.keyboard.press('Enter');
   await expect(cue).not.toHaveClass(/editing/);
   await expect(panelText).toBeFocused();
@@ -535,16 +585,21 @@ test('B splits at the pointer inside the cue list and at the playhead outside it
 
   // 列表内悬停：按鼠标所指文字位置拆分
   const text = cue.locator('.text');
-  const splitPoint = await text.evaluate((element) => {
-    const node = element.firstChild;
-    const range = document.createRange();
-    range.setStart(node, 6);
-    range.setEnd(node, 6);
-    const rect = range.getBoundingClientRect();
-    return { x: rect.x, y: rect.y + rect.height / 2 };
-  });
-  await page.mouse.move(splitPoint.x, splitPoint.y);
-  await expect(page.locator('.cue-split-preview')).toHaveCount(1);
+  // Undo redraws lazy rows. Re-read the live caret geometry until hovering
+  // produces the preview instead of retaining coordinates from that redraw.
+  let splitPoint;
+  await expect.poll(async () => {
+    await text.scrollIntoViewIfNeeded();
+    splitPoint = await text.evaluate((element) => {
+      const range = document.createRange();
+      range.setStart(element.firstChild, 6);
+      range.setEnd(element.firstChild, 6);
+      const rect = range.getBoundingClientRect();
+      return { x: rect.x, y: rect.y + rect.height / 2 };
+    });
+    await page.mouse.move(splitPoint.x, splitPoint.y);
+    return page.locator('.cue-split-preview').count();
+  }).toBe(1);
   const previewBox = await page.locator('.cue-split-preview').boundingBox();
   expect(previewBox).not.toBeNull();
   expect(Math.abs(previewBox.x + previewBox.width / 2 - splitPoint.x)).toBeLessThan(1.5);
@@ -573,7 +628,7 @@ test('B split keeps the source cue visually anchored while lazy rows relayout', 
       '较长字幕用于模拟采访视频中的自然断句和不同的列表行高',
       '中等长度字幕内容',
     ];
-    DATA.segments = Array.from({ length: 90 }, (_, index) => {
+    MaweBoot.DATA.segments = Array.from({ length: 90 }, (_, index) => {
       const start = index * 2000;
       return {
         start,
@@ -582,8 +637,8 @@ test('B split keeps the source cue visually anchored while lazy rows relayout', 
         items: [],
       };
     });
-    renderAll();
-    scrollCueToCenter(document.querySelector('.cue[data-idx="56"]'));
+    MaweCuePanel.renderAll();
+    MaweCueListAnchor.scrollCueToCenter(document.querySelector('.cue[data-idx="56"]'));
   });
 
   // 只等目标附近的可见行稳定，不能滚遍整张列表预热，否则会掩盖重绘后的
@@ -651,7 +706,20 @@ test('B split keeps the source cue visually anchored while lazy rows relayout', 
     bubbles: true, detail: 1,
     clientX: secondSplitPoint.x, clientY: secondSplitPoint.y,
   });
-  await page.mouse.move(secondSplitPoint.x, secondSplitPoint.y);
+  await expect(right).toHaveClass(/selected/);
+  // The click may rebuild lazy rows; use the rendered text's current position
+  // for the hover split instead of the coordinates captured before the click.
+  const liveSecondSplitPoint = await secondText.evaluate((element) => {
+    const node = element.firstChild;
+    const range = document.createRange();
+    const offset = Math.max(1, Math.floor(node.textContent.length / 2));
+    range.setStart(node, offset);
+    range.setEnd(node, offset);
+    const rect = range.getBoundingClientRect();
+    return { x: rect.x, y: rect.y + rect.height / 2 };
+  });
+  await page.mouse.move(liveSecondSplitPoint.x, liveSecondSplitPoint.y);
+  await expect(page.locator('.cue-split-preview')).toHaveCount(1);
   const secondBeforeTop = await right.evaluate((element) => element.getBoundingClientRect().top);
   await page.keyboard.press('b');
 
@@ -680,7 +748,7 @@ test('C merge keeps the source cue visually anchored while lazy rows relayout', 
       '较长字幕用于模拟采访视频中的自然断句和不同的列表行高',
       '中等长度字幕内容',
     ];
-    DATA.segments = Array.from({ length: 90 }, (_, index) => {
+    MaweBoot.DATA.segments = Array.from({ length: 90 }, (_, index) => {
       const start = index * 2000;
       return {
         start,
@@ -689,8 +757,8 @@ test('C merge keeps the source cue visually anchored while lazy rows relayout', 
         items: [],
       };
     });
-    renderAll();
-    scrollCueToCenter(document.querySelector('.cue[data-idx="56"]'));
+    MaweCuePanel.renderAll();
+    MaweCueListAnchor.scrollCueToCenter(document.querySelector('.cue[data-idx="56"]'));
   });
 
   const first = page.locator('.cue[data-idx="56"]');
@@ -736,7 +804,7 @@ test('C merge keeps the extension cue visually anchored while lazy rows relayout
       'A longer translated subtitle simulates interviews with uneven rows in the cue list',
       'Medium length extension subtitle',
     ];
-    DATA.multi_subtitle = {
+    MaweBoot.DATA.multi_subtitle = {
       schema: 'moy.asr.multi_subtitle.v1',
       enabled: true,
       display_mode: 'extension',
@@ -759,9 +827,9 @@ test('C merge keeps the extension cue visually anchored while lazy rows relayout
       }],
       bindings: [],
     };
-    normalizedMultiSubtitleReference = null;
-    renderAll();
-    scrollCueToCenter(document.querySelector('.cue[data-ext-idx="56"]'));
+    MaweMultiSubtitleCore.normalizedMultiSubtitleReference = null;
+    MaweCuePanel.renderAll();
+    MaweCueListAnchor.scrollCueToCenter(document.querySelector('.cue[data-ext-idx="56"]'));
   });
 
   const first = page.locator('.cue[data-ext-idx="56"]');
@@ -793,7 +861,7 @@ test('B flashes a yellow marker after splitting at the waveform pointer without 
   await page.goto(server.url);
   // 默认主字幕按单词模式拆分；'Alpha' 单词内无词边界，先改造成两词再测拆分闪光。
   await makeFirstCueWordSplittable(page);
-  await page.evaluate(() => clearSelection());
+  await page.evaluate(() => MaweSelection.clearSelection());
   await expect(page.locator('.cue.selected')).toHaveCount(0);
 
   const waveformCue = page.locator('.waveform-cue-block[data-idx="0"]').first();
@@ -931,7 +999,7 @@ test('list click with select-and-seek seeks to cue start but stays paused', asyn
 
   await page.waitForFunction(() => {
     const player = document.getElementById('player');
-    const seg = DATA.segments[4];
+    const seg = MaweBoot.DATA.segments[4];
     return Math.abs(player.currentTime - seg.start / 1000) < 0.25;
   }, undefined, { timeout: 5000 });
   const paused = await page.evaluate(() => document.getElementById('player').paused);
@@ -955,7 +1023,7 @@ test('list click with select-and-play seeks to cue start and starts playback', a
 
   await page.waitForFunction(() => {
     const player = document.getElementById('player');
-    const seg = DATA.segments[4];
+    const seg = MaweBoot.DATA.segments[4];
     return Math.abs(player.currentTime - seg.start / 1000) < 0.5 && !player.paused;
   }, undefined, { timeout: 5000 });
 });

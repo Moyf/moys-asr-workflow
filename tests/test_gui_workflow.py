@@ -31,8 +31,26 @@ from maw.gui_workflow import (  # noqa: E402
     render_editor_html,
     run_transcription,
 )
+from maw.local_debug import local_debug_manifest_path  # noqa: E402
 from maw.gui_platform import _terminate_registered_job, terminate_process_tree  # noqa: E402
 from maw_gui import _is_ffmpeg_missing_error, _startup_error_log_path, _write_startup_error_log  # noqa: E402
+
+
+class TranscriptionProcessErrorMessageTests(unittest.TestCase):
+    def test_access_violation_exit_code_appends_driver_hint(self) -> None:
+        for code in (3221225477, -1073741819):
+            with self.subTest(code=code):
+                error = TranscriptionProcessError(code, output=["[local] 正在准备加载模型……"])
+                self.assertEqual(error.exit_code, code)
+                self.assertIn("0xC0000005", str(error))
+                self.assertIn("重启电脑", str(error))
+                self.assertIn("正在准备加载模型", str(error))
+
+    def test_ordinary_exit_code_keeps_plain_message(self) -> None:
+        error = TranscriptionProcessError(1, output=["错误: 未识别到任何内容"])
+        self.assertNotIn("0xC0000005", str(error))
+        self.assertIn("exit code 1", str(error))
+        self.assertIn("未识别到任何内容", str(error))
 
 
 def _write_bwf_wav(path: Path, sample_rate: int, time_reference_samples: int) -> None:
@@ -212,7 +230,7 @@ class GuiWorkflowTests(unittest.TestCase):
         self.assertEqual(empty_command[empty_command.index("--strip-tail-punct") + 1], "")
 
     def test_build_transcribe_command_sends_extra_strong_punct_when_configured(self) -> None:
-        # 仅在配置了额外断句符号时下发；空配置保持命令行与旧版一致。
+        # 恒显式下发（含空串）：空配置 = 仅按换行断句，不回退到内置强标点。
         request = TranscriptionRequest(
             media_path=self.media_path,
             srt_path=self.srt_path,
@@ -231,7 +249,7 @@ class GuiWorkflowTests(unittest.TestCase):
 
         empty_command = build_transcribe_command(empty, executable=Path("python.exe"), frozen=False)
 
-        self.assertNotIn("--extra-strong-punct", empty_command)
+        self.assertEqual(empty_command[empty_command.index("--extra-strong-punct") + 1], "")
 
     def test_build_transcribe_command_debug_raw_saves_full_response(self) -> None:
         request = TranscriptionRequest(
@@ -245,7 +263,15 @@ class GuiWorkflowTests(unittest.TestCase):
         self.assertIn("--debug-raw", command)
         self.assertEqual(raw_response_path(self.srt_path), self.srt_path.with_suffix(".asr-response.json"))
 
-    def test_build_transcribe_command_local_ignores_debug_raw(self) -> None:
+    def test_raw_response_path_uses_debug_directory_when_output_subfolder_is_on(self) -> None:
+        with mock.patch("maw.output_naming.subfolder_prefs", return_value=(True, False)):
+            with mock.patch("maw.output_naming.resolve_lang", return_value="zh"):
+                self.assertEqual(
+                    raw_response_path(self.srt_path, self.media_path),
+                    self.root / "_maw" / "调试" / "out.asr-response.json",
+                )
+
+    def test_build_transcribe_command_local_routes_debug_raw_to_local_artifacts(self) -> None:
         request = TranscriptionRequest(
             media_path=self.media_path,
             srt_path=self.srt_path,
@@ -257,7 +283,38 @@ class GuiWorkflowTests(unittest.TestCase):
 
         command = build_transcribe_command(request, executable=Path("python.exe"), frozen=False)
 
-        self.assertNotIn("--debug-raw", command)
+        self.assertIn("--debug-raw", command)
+
+    def test_run_transcription_local_debug_returns_artifact_manifest(self) -> None:
+        request = TranscriptionRequest(
+            media_path=self.media_path,
+            srt_path=self.srt_path,
+            provider="local",
+            engine="firered",
+            model="firered-asr2-ctc-local",
+            runtime_python="runtime-python",
+            debug_raw=True,
+            generate_html=False,
+        )
+        self.srt_path.write_text("1\n", encoding="utf-8")
+        self.srt_path.with_suffix(".mosp").write_text('{"segments": []}\n', encoding="utf-8")
+        manifest = local_debug_manifest_path(self.srt_path)
+        manifest.write_text('{"schema": "moy.asr.local_debug.v1"}\n', encoding="utf-8")
+
+        class FakeProcess:
+            returncode = 0
+            stdout = ["本地调试清单已保存\n"]
+
+            def poll(self) -> int | None:
+                return 0
+
+            def wait(self, timeout: float | None = None) -> int:
+                return 0
+
+        with mock.patch("maw.gui_workflow.subprocess.Popen", return_value=FakeProcess()):
+            result = run_transcription(request)
+
+        self.assertEqual(result.raw_path, manifest)
 
     def test_build_transcribe_command_qwen_audio_passes_one_shot_context_hotwords_and_vocabulary(self) -> None:
         request = TranscriptionRequest(
@@ -277,6 +334,51 @@ class GuiWorkflowTests(unittest.TestCase):
         self.assertEqual(command[command.index("--hotword-weight") + 1], "50")
         hotword_positions = [index for index, value in enumerate(command) if value == "--hotword"]
         self.assertEqual([command[index + 1] for index in hotword_positions], ["张三", "李四", "阿里云"])
+
+    def test_build_transcribe_command_qwen_audio_31_passes_keep_dialect(self) -> None:
+        request = TranscriptionRequest(
+            media_path=self.media_path,
+            srt_path=self.srt_path,
+            model="qwen-audio-3.1-asr-flash-filetrans",
+            qwen_audio_context="产品名和专业术语",
+            qwen_audio_hotwords="张三",
+            qwen_keep_dialect=True,
+        )
+
+        command = build_transcribe_command(request, executable=Path("python.exe"), frozen=False)
+
+        self.assertIn("--keep-dialect", command)
+        self.assertIn("--context", command)
+        self.assertIn("--hotword", command)
+
+    def test_build_transcribe_command_qwen_audio_31_without_keep_dialect_omits_flag(self) -> None:
+        request = TranscriptionRequest(
+            media_path=self.media_path,
+            srt_path=self.srt_path,
+            model="qwen-audio-3.1-asr-flash-filetrans",
+        )
+
+        command = build_transcribe_command(request, executable=Path("python.exe"), frozen=False)
+
+        self.assertNotIn("--keep-dialect", command)
+
+    def test_build_transcribe_command_qwen_audio_30_ignores_keep_dialect(self) -> None:
+        request = TranscriptionRequest(
+            media_path=self.media_path,
+            srt_path=self.srt_path,
+            model="qwen-audio-3.0-asr-flash-filetrans",
+            qwen_keep_dialect=True,
+        )
+
+        command = build_transcribe_command(request, executable=Path("python.exe"), frozen=False)
+
+        self.assertNotIn("--keep-dialect", command)
+
+    def test_srt_model_tag_groups_both_qwen_audio_versions(self) -> None:
+        from maw.gui_workflow import _srt_model_tag
+
+        self.assertEqual(_srt_model_tag("qwen", "qwen-audio-3.1-asr-flash-filetrans"), ".qwen-audio")
+        self.assertEqual(_srt_model_tag("qwen", "qwen-audio-3.0-asr-flash-filetrans"), ".qwen-audio")
 
     def test_build_transcribe_command_soniox_passes_context_json(self) -> None:
         request = TranscriptionRequest(
@@ -628,6 +730,23 @@ class GuiWorkflowTests(unittest.TestCase):
 
         self.assertEqual(env["PATH"].split(os.pathsep)[0], str(ffmpeg_dir))
 
+    def test_child_environment_moves_configured_ffmpeg_directory_to_front(self) -> None:
+        ffmpeg_dir = self.root / "ffmpeg" / "bin"
+        ffmpeg_dir.mkdir(parents=True)
+        (ffmpeg_dir / ("ffmpeg.exe" if os.name == "nt" else "ffmpeg")).write_bytes(b"exe")
+        (ffmpeg_dir / ("ffprobe.exe" if os.name == "nt" else "ffprobe")).write_bytes(b"exe")
+        other_dir = self.root / "other"
+        other_dir.mkdir()
+        inherited_path = os.pathsep.join((str(other_dir), str(ffmpeg_dir), str(ffmpeg_dir)))
+
+        with mock.patch("maw.gui_workflow.MACOS_FFMPEG_CANDIDATE_DIRECTORIES", ()):
+            with mock.patch("maw.gui_workflow.load_env", return_value={}):
+                env = _child_environment(
+                    {"PATH": inherited_path, "FFMPEG_PATH": str(ffmpeg_dir)}, "", ""
+                )
+
+        self.assertEqual(env["PATH"].split(os.pathsep), [str(ffmpeg_dir), str(other_dir)])
+
     def test_child_environment_uses_bundled_ffmpeg_when_no_path_is_configured(self) -> None:
         ffmpeg_dir = self.root / "ffmpeg" / "bin"
         ffmpeg_dir.mkdir(parents=True)
@@ -655,14 +774,20 @@ class GuiWorkflowTests(unittest.TestCase):
         self.assertEqual(env["PATH"].split(os.pathsep)[0], str(ffmpeg_dir))
 
     def test_child_environment_appends_macos_candidate_directories(self) -> None:
+        # 本用例验证「继承 PATH + 追加 macOS 候选目录」的顺序语义；候选目录
+        # 必须用不包含真实 ffmpeg 的临时目录。真实 Homebrew 路径在装了
+        # FFmpeg 的机器上会被候选探测命中并前置进 PATH，断言随机器变化。
+        homebrew = self.root / "homebrew" / "bin"
+        local = self.root / "usr" / "local" / "bin"
         with mock.patch.object(sys, "platform", "darwin"):
-                with mock.patch("maw.gui_workflow.MACOS_FFMPEG_CANDIDATE_DIRECTORIES", ("/opt/homebrew/bin", "/usr/local/bin")):
-                    with mock.patch("maw.gui_workflow.load_env", return_value={}):
-                        env = _child_environment({"PATH": "/usr/bin"}, "", "")
+                with mock.patch("maw.gui_workflow.MACOS_FFMPEG_CANDIDATE_DIRECTORIES", (str(homebrew), str(local))):
+                    with mock.patch("maw.ffmpeg.shutil.which", return_value=None):
+                        with mock.patch("maw.gui_workflow.load_env", return_value={}):
+                            env = _child_environment({"PATH": "/usr/bin"}, "", "")
 
         self.assertEqual(
             env["PATH"].split(os.pathsep),
-            ["/usr/bin", "/opt/homebrew/bin", "/usr/local/bin"],
+            ["/usr/bin", str(homebrew), str(local)],
         )
 
     def test_run_transcription_reports_child_pid_after_popen(self) -> None:
@@ -867,6 +992,64 @@ class GuiWorkflowTests(unittest.TestCase):
         self.assertEqual(command[command.index("--device") + 1], "cpu")
         self.assertNotIn("--region", command)
 
+    def test_build_transcribe_command_passes_optional_alignment_model_for_local_cli(self) -> None:
+        request = TranscriptionRequest(
+            media_path=self.media_path,
+            srt_path=self.srt_path,
+            provider="local",
+            model="Qwen/Qwen3-ASR-0.6B",
+            engine="qwen-asr",
+            alignment_model="qwen3-forced-aligner-0.6b",
+            alignment_model_path="D:\\Models\\aligners",
+        )
+
+        command = build_transcribe_command(request, executable=Path("python.exe"), frozen=False)
+
+        self.assertEqual(command[command.index("--alignment-model") + 1], "qwen3-forced-aligner-0.6b")
+        self.assertEqual(command[command.index("--alignment-model-path") + 1], "D:\\Models\\aligners")
+
+    def test_build_transcribe_command_passes_firered_punc_mode_only_to_firered(self) -> None:
+        request = TranscriptionRequest(
+            media_path=self.media_path,
+            srt_path=self.srt_path,
+            provider="local",
+            model="firered-asr2-ctc",
+            engine="firered",
+            firered_punc="none",
+        )
+
+        command = build_transcribe_command(request, executable=Path("python.exe"), frozen=False)
+
+        self.assertEqual(command[command.index("--firered-punc") + 1], "none")
+
+        qwen = build_transcribe_command(
+            TranscriptionRequest(
+                media_path=self.media_path,
+                srt_path=self.srt_path,
+                provider="local",
+                model="Qwen/Qwen3-ASR-0.6B",
+                engine="qwen-asr",
+            ),
+            executable=Path("python.exe"),
+            frozen=False,
+        )
+        self.assertNotIn("--firered-punc", qwen)
+
+    def test_build_transcribe_command_defers_moss_alignment_to_shared_runtime(self) -> None:
+        request = TranscriptionRequest(
+            media_path=self.media_path,
+            srt_path=self.srt_path,
+            provider="local",
+            model="OpenMOSS-Team/MOSS-Transcribe-Diarize",
+            engine="moss",
+            alignment_model="qwen3-forced-aligner-0.6b",
+        )
+
+        command = build_transcribe_command(request, executable=Path("python.exe"), frozen=False)
+
+        self.assertNotIn("--alignment-model", command)
+        self.assertNotIn("--alignment-model-path", command)
+
     def test_build_transcribe_command_frozen_local_dispatches_local_flag(self) -> None:
         request = TranscriptionRequest(media_path=self.media_path, srt_path=self.srt_path, provider="local")
 
@@ -973,6 +1156,7 @@ class GuiWorkflowTests(unittest.TestCase):
         self.assertEqual(default_srt_path(Path("clip.mp4"), provider="local", model="sensevoice-small-local", attach_model_name=True).name, "clip.sensevoice-local.srt")
         self.assertEqual(default_srt_path(Path("clip.mp4"), provider="local", model="fun-asr-nano-local", attach_model_name=True).name, "clip.funasr-local.srt")
         self.assertEqual(default_srt_path(Path("clip.mp4"), provider="local", model="funasr-local", attach_model_name=True).name, "clip.funasr-local.srt")
+        self.assertEqual(default_srt_path(Path("clip.mp4"), provider="local", model="firered-asr2-ctc-local", attach_model_name=True).name, "clip.firered-local.srt")
 
     def test_default_srt_path_attach_model_name_off_drops_all_tags(self) -> None:
         from maw.gui_workflow import default_srt_path

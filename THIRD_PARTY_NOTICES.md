@@ -12,7 +12,7 @@
 | [quapeaks](https://pypi.org/project/quapeaks/) | Rust kernel that generates the `.quapeaks` peak container (REAPER-compatible `RPKN` layout plus MAW's own waveform layer) beside media files; renamed from `reapeaks-rs` | MIT OR Apache-2.0 |
 | [RapidOCR](https://github.com/RapidAI/RapidOCR) / PP-OCRv6 | Local CPU OCR for the 「OCR 字幕去重」 toolbox; the frozen bundle includes the PP-OCRv6 tiny model files | Apache-2.0; bundled model files remain subject to upstream model terms |
 | [ONNX Runtime](https://onnxruntime.ai/) | CPU inference runtime for RapidOCR | MIT |
-| [Pillow](https://python-pillow.github.io/) | Decode, crop, and resize video frames before OCR | HPND |
+| [Pillow](https://python-pillow.github.io/) | Decode, crop, and resize video frames before OCR; generate and verify macOS icon assets during builds | HPND |
 | [sv-ttk](https://github.com/rdbende/Sun-Valley-ttk-theme) | Sun Valley themed ttk widgets for the desktop GUI | MIT |
 | [PyQt6](https://riverbankcomputing.com/software/pyqt/) / [QtPy](https://github.com/spyder-ide/qtpy) | Linux desktop GUI backend for pywebview (Launcher) | PyQt6: GPL-3.0 or a commercial license from Riverbank Computing; Qt: LGPL-3.0 |
 | [Noto Color Emoji](https://github.com/googlefonts/noto-emoji) | Color emoji font for the Linux launcher keycap headers (1️⃣ etc.). On first launch the app downloads it to the user cache directory (`MAW_EMOJI_FONT_URL` can override the source), then the page references it locally; subsequent runs are offline. Not bundled or shipped. File sha256 at integration time: `72a635cb3d2f3524c51620cdde406b217204e8a6a06c6a096ff8ed4b5fd6e27b` | SIL OFL 1.1 |
@@ -24,6 +24,7 @@
 | [Qwen3-ASR](https://github.com/QwenLM/Qwen3-ASR) / `qwen-asr` | Optional local Qwen speech-recognition runtime | Not installed by default and not bundled; runtime code and downloaded model checkpoints remain subject to their upstream licenses and terms |
 | [FunASR](https://github.com/modelscope/FunASR) / `funasr` | Optional local speech-recognition runtime | Not installed by default and not bundled; runtime code and downloaded model checkpoints remain subject to their upstream licenses and terms |
 | [faster-whisper](https://github.com/SYSTRAN/faster-whisper) / [CTranslate2](https://github.com/OpenNMT/CTranslate2) | Optional local Whisper speech-recognition runtime (MIT) | MIT; not installed by default and not bundled; runtime code and downloaded model checkpoints remain subject to their upstream licenses and terms |
+| [sherpa-onnx](https://github.com/k2-fsa/sherpa-onnx) / [FireRedASR2-CTC](https://k2-fsa.github.io/sherpa/onnx/FireRedAsr/pretrained.html) | Optional local CPU CTC ASR and token-level alignment runtime | sherpa-onnx: Apache-2.0; not installed by default and not bundled; the downloaded FireRed model archive remains subject to its upstream release terms |
 | Alibaba Cloud Model Studio / Qwen ASR | Speech recognition API | External service; subject to Alibaba Cloud terms, billing, and privacy policy |
 | [Soniox](https://soniox.com/) | Speech recognition API | External service; subject to Soniox terms, billing, and privacy policy |
 | [OpenAI](https://openai.com/) | Speech recognition API | External service; subject to OpenAI terms, billing, and privacy policy |

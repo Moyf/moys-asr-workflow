@@ -47,7 +47,8 @@ def _fake_extract(_zip_path: Path, target_dir: Path) -> None:
 
 class MossRuntimeConstantTests(unittest.TestCase):
     def test_constant_values(self) -> None:
-        self.assertEqual(MOSS_RUNTIME_VERSION, "1")
+        # 版本 2：新增 modelscope（MOSS 模型下载的 HF → ModelScope 回退）。
+        self.assertEqual(MOSS_RUNTIME_VERSION, "2")
         self.assertEqual(MOSS_PYTHON_VERSION, "3.11")
         self.assertEqual(MOSS_RUNTIME_ROOT_NAME, "local-runtime-moss")
 
@@ -55,13 +56,15 @@ class MossRuntimeConstantTests(unittest.TestCase):
         self.assertIn("transformers>=5.6.0,<6.0.0", MOSS_REQUIREMENTS)
         self.assertIn("av>=14.0", MOSS_REQUIREMENTS)
         self.assertIn("librosa>=0.11.0", MOSS_REQUIREMENTS)
+        self.assertIn("modelscope>=1.39", MOSS_REQUIREMENTS)
         self.assertTrue(
             any(value.startswith("moss-transcribe-diarize @ https://github.com/OpenMOSS/MOSS-Transcribe-Diarize/archive/") for value in MOSS_REQUIREMENTS)
         )
 
     def test_package_dirs_cover_runtime_imports(self) -> None:
-        self.assertEqual(MOSS_PACKAGE_DIRS, ("moss_transcribe_diarize", "transformers", "torch", "torchaudio"))
+        self.assertEqual(MOSS_PACKAGE_DIRS, ("moss_transcribe_diarize", "modelscope", "transformers", "torch", "torchaudio"))
         self.assertIn("moss_transcribe_diarize", MOSS_VERIFY_IMPORT)
+        self.assertIn("import modelscope", MOSS_VERIFY_IMPORT)
         self.assertIn("MAW_LOCAL_RUNTIME_READY", MOSS_VERIFY_IMPORT)
 
 
@@ -112,7 +115,7 @@ class MossRuntimeStatusTests(unittest.TestCase):
             for name in MOSS_PACKAGE_DIRS:
                 (site_packages / name).mkdir(parents=True, exist_ok=True)
             (root / "runtime.json").write_text(
-                '{"status": "ready", "runtimeVersion": "1"}\n',
+                f'{{"status": "ready", "runtimeVersion": "{MOSS_RUNTIME_VERSION}"}}\n',
                 encoding="utf-8",
                 newline="\n",
             )
@@ -131,8 +134,9 @@ class MossRuntimeStatusTests(unittest.TestCase):
             python.write_bytes(b"python")
             for name in MOSS_PACKAGE_DIRS:
                 ((root / "site-packages") / name).mkdir(parents=True, exist_ok=True)
+            stale_version = str(int(MOSS_RUNTIME_VERSION) - 1)
             (root / "runtime.json").write_text(
-                '{"status": "ready", "runtimeVersion": "2"}\n',
+                f'{{"status": "ready", "runtimeVersion": "{stale_version}"}}\n',
                 encoding="utf-8",
                 newline="\n",
             )
@@ -141,7 +145,7 @@ class MossRuntimeStatusTests(unittest.TestCase):
 
         self.assertEqual(status.status, "broken")
         self.assertFalse(status.ready)
-        self.assertEqual(status.runtime_version, "2")
+        self.assertEqual(status.runtime_version, stale_version)
 
     def test_recover_install_turns_stale_installing_manifest_into_broken(self) -> None:
         """#127 缺陷 1：MOSS 安装中断后的 installing 残留同样要能自愈为 broken。"""

@@ -1,0 +1,20 @@
+{
+  "file": "editor-playback-loop.js",
+  "ns": "MawePlaybackLoop",
+  "header": "播放循环：活动字幕追踪、预览刷新与统一渲染帧。",
+  "symbols": [
+    "lastActive",
+    "suppressCueListAutoScroll",
+    "waveformPlayheadDragging",
+    "findActiveSegmentIndex",
+    "findActive",
+    "isSubtitlePreviewActive",
+    "extensionSegmentAtTime",
+    "previewGapAt",
+    "updateActiveCue",
+    "updatePlaybackFrame",
+    "refreshSubtitlePreview",
+    "update",
+    "updateWithoutCueListAutoScroll"
+  ]
+}

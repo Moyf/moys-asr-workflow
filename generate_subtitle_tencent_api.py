@@ -10,7 +10,7 @@ from datetime import datetime
 from pathlib import Path
 
 from maw.stickers import get_default_sticker_dir
-from maw.output_naming import format_elapsed, format_maw_stat, maw_root
+from maw.output_naming import debug_artifact_path, format_elapsed, format_maw_stat
 from generate_subtitle_qwen_api import (
     build_segments_from_api_sentences,
     configure_console_output,
@@ -42,7 +42,7 @@ def main() -> int:
     parser.add_argument("--min-words", type=int, default=WESTERN_MIN_WORDS, help="英文短句合并阈值（单词数）")
     parser.add_argument("--language", help="保留参数；腾讯云录音文件识别由引擎自动识别")
     parser.add_argument("--keep-punct", action="store_true", help="保留字幕末尾标点")
-    parser.add_argument("--gap-split", type=int, default=800, help="静音切句阈值（毫秒，默认 800）")
+    parser.add_argument("--gap-split", type=int, default=500, help="静音切句阈值（毫秒，默认 500）")
     parser.add_argument("--speaker", action="store_true", help="请求腾讯云说话人分离并保留 speaker 标签")
     parser.add_argument("--speaker-colors", action="store_true", help="请求说话人分离并写入一次性的字幕颜色快照")
     parser.add_argument("--json", dest="json_out", action="store_true", help="同时输出 .mosp 工程")
@@ -58,7 +58,7 @@ def main() -> int:
     parser.add_argument("-ll", "--length-limit", type=parse_duration, help="只处理媒体前 N 秒")
     parser.add_argument("--file-url", help="公网或 COS 音频 URL；大于 5MB 时必须使用")
     parser.add_argument("--model", default=None, help=f"腾讯云引擎（默认 {DEFAULT_ENGINE}）")
-    parser.add_argument("--strip-tail-punct", default="，。", help="句尾剥除的标点集合；传空串禁用剥除")
+    parser.add_argument("--strip-tail-punct", default="，。；,.", help="句尾剥除的标点集合；传空串禁用剥除")
     parser.add_argument("--debug", action="store_true", help="输出 API 调试摘要")
     parser.add_argument("--debug-raw", action="store_true", help="保存完整 API 原始 JSON")
     parser.add_argument("--no-model-tag", action="store_true", help="输出文件名不附加 tencent 供应商标识段")
@@ -209,10 +209,11 @@ def main() -> int:
     output_path.write_text(generate_srt(segments), encoding="utf-8", newline="\n")
     print(f"字幕已保存到: {output_path}")
     if args.debug_raw:
-        raw_path = (
-            maw_root(input_path) / f"{output_path.stem}.asr-response.json"
-            if not args.output
-            else output_path.with_suffix(".asr-response.json")
+        raw_path = debug_artifact_path(
+            input_path,
+            output_path,
+            ".asr-response.json",
+            explicit_output=bool(args.output),
         )
         raw_path.parent.mkdir(parents=True, exist_ok=True)
         raw_path.write_text(json.dumps(raw_response, ensure_ascii=False, indent=2), encoding="utf-8", newline="\n")

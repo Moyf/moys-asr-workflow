@@ -13,6 +13,7 @@ from typing import Final
 
 from maw.output_naming import TRANSLATION_TARGET_NAMES, translation_marker_name
 from maw.postprocess_io import SubtitleArtifact, read_project, read_srt, write_artifacts
+from maw.postprocess_llm import LlmClientError
 from maw.project import normalize_project
 from maw.project_preview import JsonDict, JsonValue
 from maw.text_conversion import TextConversion, apply_text_conversion
@@ -167,7 +168,7 @@ FIXED_CONVERSION_OPERATIONS: Final[dict[TextConversion, str]] = {
 
 
 def fixed_process_operation(replacements: tuple[Replacement, ...], conversion: TextConversion) -> str:
-    """按固定处理实际启用的部分计算产物 operation。
+    """按固定替换实际启用的部分计算产物 operation。
 
     批量替换规则非空计 "replace"，转换方向非 off 计对应方向；两者以点连接。
     都未启用时返回空串，调用方应跳过该步骤，不写出文件也不加后缀。
@@ -190,7 +191,7 @@ def run_fixed_process(request: FixedProcessRequest) -> SubtitleArtifact:
             source_srt_path=source_srt,
             project_path=None,
             srt_path=None,
-            warnings=("固定处理未启用批量替换或简繁转换，已跳过该步骤。",),
+            warnings=("固定替换未启用批量替换或简繁转换，已跳过该步骤。",),
         )
     segments = _segments(project)
     for segment in segments:
@@ -241,6 +242,20 @@ def run_fixed_replacement(request: ReplacementRequest) -> SubtitleArtifact:
     """Compatibility wrapper for the pre-1.4 fixed-replacement API."""
 
     return run_fixed_process(request)
+
+
+# 可降级为「保留原文」的瞬时请求失败：连接 / 超时类网络错误，以及服务端
+# 瞬时状态（408 请求超时、429 限流、5xx 网关或服务错误）。鉴权 / 配置类
+# 4xx 与协议错误不降级——降级会静默写出未处理的结果，掩盖真正的问题。
+TRANSIENT_LLM_HTTP_STATUS = frozenset({408, 429})
+
+
+def _is_transient_llm_failure(error: LlmClientError | PostprocessStepError) -> bool:
+    if error.category == "network":
+        return True
+    if error.category == "provider_response" and error.status_code is not None:
+        return error.status_code in TRANSIENT_LLM_HTTP_STATUS or 500 <= error.status_code <= 599
+    return False
 
 
 def run_llm_postprocess(
@@ -297,44 +312,54 @@ def run_llm_postprocess(
     skipped_source_ids: set[str] = set()
     response_warnings: list[str] = []
     response_modes: list[str] = []
+    degraded_warnings: list[str] = []
+    degraded_batches = 0
+    degraded_source_ids: set[str] = set()
     for index, batch in enumerate(batches, 1):
         _notify_status(on_status, "toolbox_status_llm_batch", current=index, total=len(batches))
-        if strict_translation:
-            repair_budget = _TranslationRepairBudget(
-                tuple(str(cue["id"]) for cue in batch)
-            )
-            clean_response, batch_skipped, batch_warnings = _complete_strict_translation_batch(
-                complete,
-                system_prompt,
-                batch,
-                batch_number=index,
-                total_batches=len(batches),
-                repair_budget=repair_budget,
-            )
-            response_mode = "cues"
-        else:
-            try:
+        first_id = batch[0]["id"] if batch else "?"
+        last_id = batch[-1]["id"] if batch else "?"
+        try:
+            if strict_translation:
+                repair_budget = _TranslationRepairBudget(tuple(str(cue["id"]) for cue in batch))
+                clean_response, batch_skipped, batch_warnings = _complete_strict_translation_batch(
+                    complete, system_prompt, batch, batch_number=index,
+                    total_batches=len(batches), repair_budget=repair_budget,
+                )
+                response_mode = "cues"
+            else:
                 response = complete(system_prompt, batch)
-            except RuntimeError as error:
-                first_id = batch[0]["id"] if batch else "?"
-                last_id = batch[-1]["id"] if batch else "?"
+                clean_response, batch_skipped, batch_warnings, response_mode = _sanitize_llm_response(
+                    response, batch, batch_number=index, strict_translation=False,
+                    item_aware_resegment=item_aware_resegment,
+                )
+        except (LlmClientError, PostprocessStepError) as error:
+            if not _is_transient_llm_failure(error):
                 raise _postprocess_step_error(
-                    f"第 {index}/{len(batches)} 批（{first_id}–{last_id}）处理失败：{error}",
-                    error,
+                    f"第 {index}/{len(batches)} 批（{first_id}–{last_id}）处理失败：{error}", error,
                 ) from error
-            clean_response, batch_skipped, batch_warnings, response_mode = _sanitize_llm_response(
-                response,
-                batch,
-                batch_number=index,
-                strict_translation=False,
-                item_aware_resegment=item_aware_resegment,
+            # A failed batch has no response protocol. Preserve its original
+            # cues independently, including IDs, word times and metadata, and
+            # let only successful batches determine the final response mode.
+            degraded_batches += 1
+            degraded_source_ids.update(str(cue["id"]) for cue in batch)
+            degraded_warnings.append(
+                f"第 {index}/{len(batches)} 批（{first_id}–{last_id}）网络/服务请求失败，该批字幕保留原文。"
             )
+            _notify_status(on_status, "toolbox_status_llm_batch_done", current=index, total=len(batches))
+            continue
+        except RuntimeError as error:
+            raise _postprocess_step_error(
+                f"第 {index}/{len(batches)} 批（{first_id}–{last_id}）处理失败：{error}", error,
+            ) from error
         responses.append(clean_response)
         response_modes.append(response_mode)
         skipped_source_ids.update(batch_skipped)
         response_warnings.extend(batch_warnings)
         _notify_status(on_status, "toolbox_status_llm_batch_done", current=index, total=len(batches))
-    source_ids = {str(cue["id"]) for cue in cues}
+    if degraded_batches and degraded_batches == len(batches):
+        raise ValueError("所有批次的网络/服务请求都失败，字幕没有任何改动，未写出输出产物。")
+    source_ids = {str(cue["id"]) for cue in cues} - degraded_source_ids
     if source_ids and skipped_source_ids >= source_ids:
         report = _format_skip_report(skipped_source_ids, response_warnings)
         detail = f"\n{report}" if report else ""
@@ -349,31 +374,33 @@ def run_llm_postprocess(
         processed, warnings = _apply_llm_atom_groups_with_warnings(
             project,
             response,
-            skipped_source_ids=skipped_source_ids,
+            skipped_source_ids=skipped_source_ids | degraded_source_ids,
+            preserve_skipped_source_ids=degraded_source_ids,
         )
     elif item_aware_resegment and all(mode == "cues" for mode in response_modes):
         processed, warnings = _apply_llm_groups_with_warnings(
             project,
             response,
             strict_translation=strict_translation,
-            skipped_source_ids=skipped_source_ids,
+            skipped_source_ids=skipped_source_ids | degraded_source_ids,
+            preserve_skipped_source_ids=degraded_source_ids,
             preserve_items_on_equal_text=False,
             drop_items=True,
         )
         warnings = (
-            "模型未返回字词边界，已使用字幕级安全重分句；本次不保留逐词时间码。",
+            "模型未返回字词边界，已使用字幕级安全重分句；成功处理的字幕不保留逐词时间码，失败批次原样保留。",
             *warnings,
         )
     elif item_aware_resegment:
         raise ValueError("LLM 分批返回了不一致的字词边界协议，未写出输出产物。")
     else:
-        application_skipped_source_ids = skipped_source_ids | preserved_blank_source_ids | preserved_target_source_ids
+        application_skipped_source_ids = skipped_source_ids | degraded_source_ids | preserved_blank_source_ids | preserved_target_source_ids
         processed, warnings = _apply_llm_groups_with_warnings(
             project,
             response,
             strict_translation=strict_translation,
             skipped_source_ids=application_skipped_source_ids,
-            preserve_skipped_source_ids=preserved_blank_source_ids | preserved_target_source_ids,
+            preserve_skipped_source_ids=degraded_source_ids | preserved_blank_source_ids | preserved_target_source_ids,
             preserve_items_on_equal_text=not strict_translation,
             drop_items=strict_translation,
         )
@@ -385,6 +412,8 @@ def run_llm_postprocess(
         )
     else:
         warnings = tuple(warnings)
+    if degraded_warnings:
+        warnings = (*degraded_warnings, *warnings)
     if preserved_blank_source_ids:
         warnings = (
             f"翻译时已跳过并原样保留 {len(preserved_blank_source_ids)} 条空字幕；这些字幕未发送给模型。",
@@ -1043,8 +1072,6 @@ def _apply_llm_groups_with_warnings(
     all_expected = [f"c{index:04d}" for index in range(1, len(source_segments) + 1)]
     skipped = set(skipped_source_ids) & set(all_expected)
     preserved = set(preserve_skipped_source_ids) & skipped
-    if preserved and not strict_translation:
-        raise ValueError("only one-to-one translation can preserve skipped source cues")
     expected = [cue_id for cue_id in all_expected if cue_id not in skipped]
     if strict_translation and (
         len(parsed) != len(expected)
@@ -1064,14 +1091,25 @@ def _apply_llm_groups_with_warnings(
             raise ValueError(f"LLM split groups for {cue_id} must contain only one source ID")
     index_by_id = {cue_id: index for index, cue_id in enumerate(all_expected)}
     regrouped = any(len(ids) != 1 for ids, _text in parsed) or len(parsed) != len(expected)
+    # Insert preserved original cues in source order only after validating the
+    # successful response's coverage. Each parsed group produces one segment.
+    build_groups = list(parsed)
+    if preserved and not strict_translation:
+        build_groups.extend(((source_id,), str(source_segments[index_by_id[source_id]]["text"]))
+                            for source_id in preserved)
+        build_groups.sort(key=lambda group: index_by_id[group[0][0]])
     new_segments = _build_segments(
         source_segments,
-        parsed,
+        build_groups,
         index_by_id,
         preserve_items_on_equal_text=preserve_items_on_equal_text,
         drop_items=drop_items,
     )
-    if preserved:
+    if preserved and not strict_translation:
+        for index, (source_ids, _text) in enumerate(build_groups):
+            if len(source_ids) == 1 and source_ids[0] in preserved:
+                new_segments[index] = copy.deepcopy(source_segments[index_by_id[source_ids[0]]])
+    if preserved and strict_translation:
         # 空字幕没有可翻译内容，但仍可能携带时间或展示元数据；按原位置完整放回。
         translated = iter(new_segments)
         rebuilt_segments: list[JsonValue] = []
@@ -1100,6 +1138,7 @@ def _apply_llm_atom_groups_with_warnings(
     response: Mapping[str, JsonValue],
     *,
     skipped_source_ids: Collection[str] = (),
+    preserve_skipped_source_ids: Collection[str] = (),
 ) -> tuple[JsonDict, tuple[str, ...]]:
     """Rebuild resegmented cues from original item atoms only.
 
@@ -1110,6 +1149,7 @@ def _apply_llm_atom_groups_with_warnings(
     source_segments = _segments(project)
     all_source_ids = [f"c{index:04d}" for index in range(1, len(source_segments) + 1)]
     skipped = set(skipped_source_ids) & set(all_source_ids)
+    preserved = set(preserve_skipped_source_ids) & skipped
     active_source_ids = [source_id for source_id in all_source_ids if source_id not in skipped]
     source_index_by_id = {source_id: index for index, source_id in enumerate(all_source_ids)}
 
@@ -1173,10 +1213,17 @@ def _apply_llm_atom_groups_with_warnings(
 
     output_segments: list[JsonValue] = []
     split_positions: dict[str, int] = {}
-    used_output_ids: set[str] = set()
+    preserved_indexes = iter(sorted(source_index_by_id[source_id] for source_id in preserved))
+    next_preserved = next(preserved_indexes, None)
+    used_output_ids = {str(source_segments[source_index_by_id[source_id]].get("id")) for source_id in preserved}
     for atom_ids in parsed:
         group_source_ids = tuple(dict.fromkeys(atom_source_id[atom_id] for atom_id in atom_ids))
         source_indexes = [source_index_by_id[source_id] for source_id in group_source_ids]
+        while next_preserved is not None and next_preserved < source_indexes[0]:
+            output_segments.append(copy.deepcopy(source_segments[next_preserved]))
+            next_preserved = next(preserved_indexes, None)
+        if next_preserved is not None and next_preserved <= source_indexes[-1]:
+            raise ValueError("LLM atom groups cannot merge across a preserved source cue")
         source_group = [source_segments[index] for index in source_indexes]
         disabled_states = {source.get("disabled") is True for source in source_group}
         if len(disabled_states) > 1:
@@ -1217,6 +1264,9 @@ def _apply_llm_atom_groups_with_warnings(
                 segment[field] = copy.deepcopy(first_value)
         output_segments.append(segment)
 
+    while next_preserved is not None:
+        output_segments.append(copy.deepcopy(source_segments[next_preserved]))
+        next_preserved = next(preserved_indexes, None)
     result = copy.deepcopy(project)
     result["segments"] = output_segments
     warnings: list[str] = []

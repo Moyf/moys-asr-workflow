@@ -1,0 +1,32 @@
+{
+  "file": "editor-cue-elements.js",
+  "ns": "MaweCueElements",
+  "header": "字幕行元素构建：单列/双列 DOM、颜色与表情包呈现。",
+  "symbols": [
+    "updateCueColorPresentation",
+    "updateCueStickerPresentation",
+    "buildCueEl",
+    "buildMultiTimeEl",
+    "buildMultiCueColumn",
+    "buildExtensionCueEl",
+    "buildDualCueEl",
+    "fmtShort",
+    "fmtSrtTime",
+    "escapeHtml",
+    "setTextHtml",
+    "buildSearchRegex",
+    "calcCharWidth",
+    "getCharCountThreshold",
+    "syncCharCountThresholdInputs",
+    "handleCharCountThresholdInput",
+    "updateTimedTextEditSingleGuide",
+    "applyCharCount",
+    "splitCueVisibilityKey",
+    "temporaryVisibleSplitCueKeysForElement",
+    "cueElementHasTemporarySplitVisibility",
+    "clearTemporaryVisibleSplitCues",
+    "rememberTemporaryVisibleSplitCues",
+    "releaseTemporaryVisibleSplitCuesUnless",
+    "refreshAllCharCounts"
+  ]
+}

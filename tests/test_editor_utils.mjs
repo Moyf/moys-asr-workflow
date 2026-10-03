@@ -1,3 +1,4 @@
+import { loadEditorModule } from './helpers/editor-module-loader.mjs';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import path from 'node:path';
@@ -10,21 +11,217 @@ import vm from 'node:vm';
 
 
 const context = { window: {}, TextDecoder, TextEncoder, Uint8Array };
-const gapCoreSource = fs.readFileSync(new URL('../web/gap-remove-core.js', import.meta.url), 'utf8');
-vm.runInNewContext(gapCoreSource, context);
-const source = fs.readFileSync(new URL('../web/editor-utils.js', import.meta.url), 'utf8');
-vm.runInNewContext(source, context);
+loadEditorModule(context, 'shared/editor-utils.js');
 const gapCore = context.window.AsrGapRemoveCore;
 const helpers = context.window.AsrEditorUtils;
-const i18nSource = fs.readFileSync(new URL('../web/editor-i18n.js', import.meta.url), 'utf8');
+const i18nSource = fs.readFileSync(new URL('../web/shared/editor-i18n.js', import.meta.url), 'utf8');
 const i18nContext = { window: {} };
 vm.runInNewContext(i18nSource, i18nContext);
 const i18n = i18nContext.window.MAWE_I18N;
+
+test('translates macOS help gestures after platform labels are applied', () => {
+  assert.equal(i18n.translateText('Cmd+点击', 'en'), 'Cmd+click');
+  assert.equal(i18n.translateText('Cmd+拖拽空白处', 'en'), 'Cmd+drag blank area');
+  assert.equal(i18n.translateText('Cmd+Shift+滚轮', 'en'), 'Cmd+Shift+wheel');
+  assert.equal(i18n.translateText('Cmd+点击', 'zh'), 'Cmd+点击');
+});
+
+test('translates the progressive and duplicate split menu labels', () => {
+  assert.equal(i18n.translateText('渐进拆分', 'en'), 'Progressive split');
+  assert.equal(i18n.translateText('复制拆分', 'en'), 'Duplicate split');
+});
 
 test('accepts legacy and current project schemas but rejects unknown versions', () => {
   assert.equal(helpers.supportsProjectSchema({ segments: [] }), true);
   assert.equal(helpers.supportsProjectSchema({ schema: helpers.PROJECT_SCHEMA, segments: [] }), true);
   assert.equal(helpers.supportsProjectSchema({ schema: 'moy.asr.project.v2', segments: [] }), false);
+});
+
+test('maps searchable font input text back to stored family keys', () => {
+  const presets = helpers.SUBTITLE_FONT_FAMILY_PRESETS;
+  const presetLabel = (preset) => preset.label;
+  const familyDisplay = (family) => helpers.subtitleFontFamilyDisplayName(family, 'zh');
+  const localFamilies = ['Microsoft YaHei', 'Microsoft YaHei UI', 'PingFang SC', 'Fira Code'];
+
+  assert.equal(helpers.subtitleFontFamilyInputToStored('黑体', { presets, presetLabel }), 'hei');
+  assert.equal(helpers.subtitleFontFamilyInputToStored('默认无衬线', { presets, presetLabel }), 'default');
+  // datalist 展示的本地化别名必须还原成真实字体族名，浏览器才能解析选中字体。
+  assert.equal(
+    helpers.subtitleFontFamilyInputToStored('微软雅黑', { presets, presetLabel, localFamilies, familyDisplay }),
+    'Microsoft YaHei',
+  );
+  assert.equal(
+    helpers.subtitleFontFamilyInputToStored('Fira Code', { presets, presetLabel, localFamilies, familyDisplay }),
+    'Fira Code',
+  );
+  assert.equal(
+    helpers.subtitleFontFamilyInputToStored('Some Unknown Font', { presets, presetLabel, localFamilies, familyDisplay }),
+    'Some Unknown Font',
+  );
+  assert.equal(helpers.subtitleFontFamilyInputToStored('   ', { presets, presetLabel }), 'default');
+  assert.equal(helpers.subtitleFontFamilyInputToStored('yahei', { presets, presetLabel }), 'yahei');
+
+  // 存储值 → 输入框展示：预设显示本地化标签，本机字体显示别名。
+  assert.equal(helpers.subtitleFontFamilyStoredToInput('hei', { presetLabel }), '黑体');
+  assert.equal(helpers.subtitleFontFamilyStoredToInput('default', { presetLabel }), '默认无衬线');
+  assert.equal(
+    helpers.subtitleFontFamilyStoredToInput('Microsoft YaHei', { presetLabel, familyDisplay }),
+    '微软雅黑',
+  );
+  assert.equal(
+    helpers.subtitleFontFamilyStoredToInput('Fira Code', { presetLabel, familyDisplay }),
+    'Fira Code',
+  );
+});
+
+test('merges and filters font combobox dropdown options without duplicates', () => {
+  const merged = helpers.mergeFontFamilyOptions([
+    { value: 'Arial', label: 'Arial' },
+    { value: 'Microsoft YaHei', label: '微软雅黑' },
+    { value: 'SimSun', label: '宋体' },
+    // 本机扫描与内置建议同名重复（如 Arial / 宋体）：按显示名去重，保留先出现项。
+    { value: 'Arial', label: 'Arial' },
+    { value: 'SimSun', label: '宋体' },
+    { value: 'arial black', label: 'ARIAL' },
+    { value: '  ' },
+    null,
+  ]);
+  // merge 结果（及其数组）在 vm 沙箱里创建，先摊开成宿主数组再断言，避免跨 realm 原型差异。
+  assert.deepEqual(Array.from(merged, (entry) => ({ ...entry })), [
+    { value: 'Arial', label: 'Arial' },
+    { value: 'Microsoft YaHei', label: '微软雅黑' },
+    { value: 'SimSun', label: '宋体' },
+  ]);
+
+  // 空输入与非法项安全返回。
+  assert.equal(helpers.mergeFontFamilyOptions().length, 0);
+  assert.deepEqual(
+    Array.from(helpers.mergeFontFamilyOptions([null, { value: 'Fira' }]), (entry) => ({ ...entry })),
+    [{ value: 'Fira', label: 'Fira' }],
+  );
+
+  const entries = [
+    { value: 'Arial', label: 'Arial' },
+    { value: 'Microsoft YaHei', label: '微软雅黑' },
+    { value: 'Fira Code', label: 'Fira Code' },
+  ];
+  assert.equal(helpers.filterFontFamilyOptions(entries, ''), entries);
+  assert.equal(helpers.filterFontFamilyOptions(entries, '   '), entries);
+  // 过滤结果数组在 vm 沙箱里创建，同样先摊开成宿主数组再断言。
+  assert.deepEqual(
+    Array.from(helpers.filterFontFamilyOptions(entries, '雅黑'), (entry) => ({ ...entry })),
+    [{ value: 'Microsoft YaHei', label: '微软雅黑' }],
+  );
+  assert.deepEqual(
+    Array.from(helpers.filterFontFamilyOptions(entries, 'fira'), (entry) => ({ ...entry })),
+    [{ value: 'Fira Code', label: 'Fira Code' }],
+  );
+  assert.deepEqual(
+    Array.from(helpers.filterFontFamilyOptions(entries, '不存在的字体'), (entry) => ({ ...entry })),
+    [],
+  );
+  assert.equal(helpers.filterFontFamilyOptions(undefined, 'arial').length, 0);
+
+  // 前缀优先：开头匹配排在前、包含匹配在后，同组内保持原有相对顺序。
+  assert.deepEqual(
+    Array.from(
+      helpers.filterFontFamilyOptions([entries[2], entries[0], entries[1]], 'a'),
+      (entry) => ({ ...entry }),
+    ),
+    [
+      { value: 'Arial', label: 'Arial' },
+      { value: 'Fira Code', label: 'Fira Code' },
+    ],
+  );
+});
+
+test('translates the ASS style manager labels and dynamic summaries', () => {
+  assert.equal(i18n.translateText('\\fad', 'en'), '\\fad');
+  assert.equal(i18n.translateText('淡入淡出', 'en'), 'Fade in/out');
+  assert.equal(i18n.translateText('\\fade', 'en'), '\\fade');
+  assert.equal(i18n.translateText('\\move', 'en'), '\\move');
+  assert.equal(i18n.translateText('\\t', 'en'), '\\t');
+  assert.equal(i18n.translateText('2 个样式 · 3 个 ASS 方案', 'en'), '2 styles · 3 ASS profiles');
+  assert.equal(i18n.translateText('SRT 默认', 'en'), 'SRT default');
+  assert.equal(i18n.translateText('工具箱的「烧录字幕」功能会使用这里选中的样式。', 'en'), 'The Toolbox “Burn subtitles” feature uses the style selected here.');
+  assert.equal(i18n.translateText('需要启用 ASS 字幕模式来预览效果。', 'en'), 'Enable ASS subtitle mode to preview this style.');
+  assert.equal(i18n.translateText('当前已启用。', 'en'), 'Currently enabled.');
+  assert.equal(i18n.translateText('当前未启用。', 'en'), 'Currently disabled.');
+  assert.equal(i18n.translateText('Studio · 无逐句动画', 'en'), 'Studio · No per-cue animations');
+  assert.equal(i18n.translateText('颜色字幕样式', 'en'), 'Color caption style');
+  assert.equal(i18n.translateText('设为主字幕样式', 'en'), 'Set as main subtitle style');
+  assert.equal(i18n.translateText('设为副字幕样式', 'en'), 'Set as secondary subtitle style');
+  assert.equal(i18n.translateText('设为 SRT 烧录样式', 'en'), 'Set as SRT burn-in style');
+  assert.equal(i18n.translateText('设为 ASS 导出方案', 'en'), 'Set as ASS export profile');
+  assert.equal(
+    i18n.translateText('⬆️ 当前预览样式由 ASS 字幕模式控制', 'en'),
+    '⬆️ Current preview styling is controlled by ASS subtitle mode',
+  );
+  assert.equal(i18n.translateText('作为字幕颜色', 'en'), 'As text color');
+  assert.equal(i18n.translateText('作为说话人名称颜色', 'en'), 'As speaker name color');
+  assert.equal(i18n.translateText('作为描边颜色', 'en'), 'As outline color');
+  assert.equal(i18n.translateText('无影响', 'en'), 'No effect');
+  assert.equal(i18n.translateText('自定义颜色色值', 'en'), 'Custom color values');
+  assert.equal(i18n.translateText('恢复默认', 'en'), 'Restore defaults');
+  assert.equal(i18n.translateText('读取本机字体', 'en'), 'Read local fonts');
+  assert.equal(i18n.translateText('已读取 3 种本机字体', 'en'), 'Read 3 local font families');
+  assert.equal(i18n.translateText('未读取到可用的本机字体', 'en'), 'No usable local fonts were returned');
+  assert.equal(i18n.translateText('当前浏览器不支持该功能', 'en'), 'This browser does not support this feature');
+  assert.equal(i18n.translateText('未获准读取本机字体', 'en'), 'Permission to read local fonts was not granted');
+  assert.equal(i18n.translateText('读取本机字体失败，请重试', 'en'), 'Could not read local fonts; try again');
+  assert.equal(i18n.translateText('基础样式', 'en'), 'Basic style');
+  assert.equal(i18n.translateText('拓展样式', 'en'), 'Extended style');
+  assert.equal(i18n.translateText('边框与阴影', 'en'), 'Border and shadow');
+  assert.equal(i18n.translateText('对齐', 'en'), 'Alignment');
+  assert.equal(i18n.translateText('黄字幕颜色十六进制值', 'en'), 'Yellow subtitle color hex value');
+  assert.equal(
+    i18n.translateText('本地已保存，服务器同步失败：HTTP 503', 'en'),
+    'Saved locally; server sync failed: HTTP 503',
+  );
+  assert.equal(
+    i18n.translateText('仅保存在当前浏览器（便携模式）', 'en'),
+    'Saved only in this browser (portable mode)',
+  );
+  assert.equal(
+    i18n.translateText('便携 Editor 仅保存到当前浏览器；请用 server-editor 打开后，才会与 Launcher 共享。', 'en'),
+    'Portable Editor saves only to this browser; open it in server-editor to share it with Launcher.',
+  );
+});
+
+test('translates ASS special text format samples and rule hints for every symbol rule', () => {
+  // data-ass-symbol 示例由 syncAssSymbolRule 按规则动态拼接，标记原样保留。
+  assert.equal(i18n.translateText('*强调*', 'en'), '*emphasis*');
+  assert.equal(i18n.translateText('**强调**', 'en'), '**emphasis**');
+  assert.equal(i18n.translateText('*强调*/**强调**', 'en'), '*emphasis*/**emphasis**');
+  assert.equal(i18n.translateText('_下划线_', 'en'), '_underline_');
+  assert.equal(i18n.translateText('__下划线__', 'en'), '__underline__');
+  assert.equal(i18n.translateText('_下划线_/__下划线__', 'en'), '_underline_/__underline__');
+  assert.equal(i18n.translateText('~删除线~', 'en'), '~strikeout~');
+  assert.equal(i18n.translateText('~~删除线~~', 'en'), '~~strikeout~~');
+  assert.equal(i18n.translateText('~删除线~/~~删除线~~', 'en'), '~strikeout~/~~strikeout~~');
+  assert.equal(i18n.translateText('-缩小-', 'en'), '-smaller-');
+  assert.equal(i18n.translateText('--缩小--', 'en'), '--smaller--');
+  assert.equal(i18n.translateText('-缩小-/--缩小--', 'en'), '-smaller-/--smaller--');
+  assert.equal(i18n.translateText('+放大+', 'en'), '+larger+');
+  assert.equal(i18n.translateText('++放大++', 'en'), '++larger++');
+  assert.equal(i18n.translateText('+放大+/++放大++', 'en'), '+larger+/++larger++');
+  // 不会把普通字幕文本误判成示例。
+  assert.equal(i18n.translateText('*重要*', 'en'), '*重要*');
+  assert.equal(i18n.translateText('**强调** 前后', 'en'), '**强调** 前后');
+  assert.equal(i18n.translateText('特殊符号规则已关闭，字幕中的符号将保留原文。', 'en'),
+    'Special symbol rules are off; symbols in subtitles keep their literal text.');
+  assert.equal(
+    i18n.translateText('你可以使用 *强调*、~删除~、-缩小-、+放大+ 等符号来对特定字词添加特殊样式。', 'en'),
+    'Use *emphasis*, ~strike~, -smaller-, and +larger+ to apply special styles to individual words.',
+  );
+  assert.equal(
+    i18n.translateText('你可以使用 **强调**、~~删除~~、--缩小--、++放大++ 等符号来对特定字词添加特殊样式。', 'en'),
+    'Use **emphasis**, ~~strike~~, --smaller--, and ++larger++ to apply special styles to individual words.',
+  );
+  assert.equal(
+    i18n.translateText('你可以使用 *强调*/**强调**、~删除~/~~删除~~、-缩小-/--缩小--、+放大+/++放大++ 等符号来对特定字词添加特殊样式。', 'en'),
+    'Use *emphasis*/**emphasis**, ~strike~/~~strike~~, -smaller-/--smaller--, and +larger+/++larger++ to apply special styles to individual words.',
+  );
 });
 
 // XML assertions are part of the Node unit suite, but still need a Python
@@ -175,6 +372,8 @@ test('normalizes editor settings without preserving invalid persisted values', (
     autoMergeShortCount: 99,
   });
   assert.equal(settings.multiSubtitleRowHeight, 168);
+  // 192 档位与主波形行高预设一致，属于合法副字幕行高
+  assert.equal(helpers.normalizeEditorSettings({ multiSubtitleRowHeight: 192 }).multiSubtitleRowHeight, 192);
   assert.equal(settings.mediaSeekStepMs, 2000);
   assert.equal(settings.cueMoveStepMs, 10);
   assert.equal(settings.theme, 'light');
@@ -192,6 +391,25 @@ test('normalizes editor settings without preserving invalid persisted values', (
   assert.equal(helpers.normalizeEditorSettings({ accentColorCustom: 'invalid' }).accentColorCustom, '#6ca5e8');
   assert.equal(settings.stickerOtioExportMode, 'portable');
   assert.equal(settings.autoMergeShortCount, 20);
+  assert.equal(settings.assMode, false);
+  assert.equal(helpers.normalizeEditorSettings({ assMode: true }).assMode, true);
+  assert.equal(helpers.normalizeEditorSettings({ assMode: 1 }).assMode, false);
+  assert.equal(settings.assEmphasisSyntax, 'both');
+  assert.equal(helpers.normalizeEditorSettings({ assEmphasisSyntax: 'none' }).assEmphasisSyntax, 'none');
+  assert.equal(helpers.normalizeEditorSettings({ assEmphasisSyntax: 'single' }).assEmphasisSyntax, 'both');
+  assert.equal(helpers.normalizeEditorSettings({ assEmphasisSyntax: 'invalid' }).assEmphasisSyntax, 'both');
+  assert.equal(settings.pauseOnMouseClick, false);
+  assert.equal(helpers.normalizeEditorSettings({ pauseOnMouseClick: true }).pauseOnMouseClick, true);
+  assert.equal(helpers.normalizeEditorSettings({ pauseOnMouseClick: 1 }).pauseOnMouseClick, false);
+  assert.equal(settings.subtitleColorPaletteEnabled, false);
+  assert.equal(
+    helpers.normalizeEditorSettings({ subtitleColorPaletteEnabled: true }).subtitleColorPaletteEnabled,
+    true,
+  );
+  assert.equal(
+    helpers.normalizeEditorSettings({ subtitleColorPaletteEnabled: 1 }).subtitleColorPaletteEnabled,
+    false,
+  );
   assert.equal(settings.autoSaveProject, true);
   assert.equal(settings.projectBackupEnabled, true);
   assert.equal(
@@ -213,23 +431,39 @@ test('normalizes timeline OTIO export options and defaults them to enabled', () 
   assert.equal(defaults.otioExportIncludeSrt, true);
   assert.equal(defaults.otioExportIncludeStickers, true);
   assert.equal(defaults.otioExportIncludeMarkers, true);
+  assert.equal(defaults.otioExportIncludeMarkerRegions, true);
   const disabled = helpers.normalizeEditorSettings({
     otioExportIncludeSrt: false,
     otioExportIncludeStickers: false,
     otioExportIncludeMarkers: false,
+    otioExportIncludeMarkerRegions: false,
   });
   assert.equal(disabled.otioExportIncludeSrt, false);
   assert.equal(disabled.otioExportIncludeStickers, false);
   assert.equal(disabled.otioExportIncludeMarkers, false);
+  assert.equal(disabled.otioExportIncludeMarkerRegions, false);
   // 只有显式 false 会关闭选项；其它假值一律回退为默认勾选，避免损坏的持久化数据关闭导出能力。
   const repaired = helpers.normalizeEditorSettings({
     otioExportIncludeSrt: 0,
     otioExportIncludeStickers: null,
     otioExportIncludeMarkers: undefined,
+    otioExportIncludeMarkerRegions: 0,
   });
   assert.equal(repaired.otioExportIncludeSrt, true);
   assert.equal(repaired.otioExportIncludeStickers, true);
   assert.equal(repaired.otioExportIncludeMarkers, true);
+  assert.equal(repaired.otioExportIncludeMarkerRegions, true);
+});
+
+test('defaults ASS frame toggles to stage-off and auto-render-on', () => {
+  const defaults = helpers.normalizeEditorSettings({});
+  assert.equal(defaults.assFrameStagePreview, false);
+  assert.equal(defaults.assFrameAutoRender, true);
+  // 暂停叠加实际帧需显式开启；自动渲染只有显式 false 才关闭。
+  assert.equal(helpers.normalizeEditorSettings({ assFrameStagePreview: true }).assFrameStagePreview, true);
+  assert.equal(helpers.normalizeEditorSettings({ assFrameStagePreview: 1 }).assFrameStagePreview, false);
+  assert.equal(helpers.normalizeEditorSettings({ assFrameAutoRender: false }).assFrameAutoRender, false);
+  assert.equal(helpers.normalizeEditorSettings({ assFrameAutoRender: null }).assFrameAutoRender, true);
 });
 
 test('converts and formats the parallel frame timebase', () => {
@@ -1291,7 +1525,10 @@ test('translates editor project controls and dynamic save messages to English', 
   assert.equal(i18n.translateText('自定义颜色', 'en'), 'Custom color');
   assert.equal(i18n.translateText('视频预览', 'en'), 'Video preview');
   assert.equal(i18n.translateText('播放控制', 'en'), 'Playback controls');
-  assert.equal(i18n.translateText('颜色样式', 'en'), 'Color style');
+  assert.equal(i18n.translateText('ASS 副字幕样式', 'en'), 'ASS extension subtitle style');
+  assert.equal(i18n.translateText('主', 'en'), 'Main');
+  assert.equal(i18n.translateText('副', 'en'), 'Secondary');
+  assert.equal(i18n.translateText('预览颜色样式', 'en'), 'Preview color style');
   assert.equal(i18n.translateText('字幕预览设置', 'en'), 'Subtitle preview settings');
   assert.equal(i18n.translateText('空隙检测与调整', 'en'), 'Gap detection and adjustment');
   assert.equal(i18n.translateText('进一步收缩空隙', 'en'), 'Shrink gaps further');
@@ -1311,16 +1548,16 @@ test('translates editor project controls and dynamic save messages to English', 
   assert.equal(i18n.translateText('将选中的副字幕的时长对齐到绑定主字幕', 'en'), 'Align the selected secondary subtitle durations to their bound main subtitles');
   assert.equal(i18n.translateText('无选中时前后跳转（时长：', 'en'), 'Seek back/forward with no selection (duration:');
   assert.equal(i18n.translateText('⚙️设置按钮', 'en'), '⚙️ Settings button');
-  assert.equal(i18n.translateText('⚙️设置', 'en'), '⚙️ settings');
+  assert.equal(i18n.translateText('⚙️全局设置', 'en'), '⚙️ Global settings');
   assert.equal(i18n.translateText('仅在拖动边界模式生效', 'en'), 'Only active in Boundary drag mode');
   assert.equal(i18n.translateText('仅在中键拖动模式生效', 'en'), 'Only active in Middle-button drag mode');
   assert.equal(
-    i18n.translateText('具体操作取决于波形区的', 'en'),
-    'The exact behavior depends on the waveform area’s',
+    i18n.translateText('具体操作取决于', 'en'),
+    'The exact behavior depends on',
   );
   assert.equal(
-    i18n.translateText('中的「空隙区段操作方式」，其中「边界与中键」可同时使用两套操作。', 'en'),
-    '“Gap region operation” in the settings; “Boundary and middle” enables both operation sets.',
+    i18n.translateText('「通用操作」中的「空隙区段操作方式」，其中「边界与中键」可同时使用两套操作。', 'en'),
+    '“Gap region operation” under “General” in Global settings; “Boundary and middle” enables both operation sets.',
   );
   assert.equal(i18n.translateText('操作支持撤销/重做。', 'en'), 'Operations support undo/redo.');
   assert.equal(i18n.translateText('处理范围', 'en'), 'Scope');
@@ -1333,8 +1570,9 @@ test('translates editor project controls and dynamic save messages to English', 
     i18n.translateText('批量替换和文本处理支持勾选「仅处理选中的字幕」限定范围', 'en'),
     'Batch replace and text processing can be limited by checking “Only process selected subtitles”',
   );
-  assert.equal(i18n.translateText('注：微调幅度可在波形区的', 'en'), 'Note: Adjust the fine-tuning amount in the waveform area’s');
-  assert.equal(i18n.translateText('中调节，默认 50ms', 'en'), 'to adjust it; the default is 50 ms');
+  assert.equal(i18n.translateText('注：微调幅度可在', 'en'), 'Note: Adjust the fine-tuning amount in');
+  assert.equal(i18n.translateText('「通用操作」中调节，默认 50ms', 'en'), 'under “General” in Global settings; the default is 50 ms');
+  assert.equal(i18n.translateText('波形区操作', 'en'), 'Waveform actions');
   assert.equal(i18n.translateText('切换空隙的启用/禁用状态', 'en'), 'Toggle whether the gap is enabled');
   assert.equal(i18n.translateText('添加新的移除空隙', 'en'), 'Add a new removed gap');
   assert.equal(
@@ -3056,6 +3294,234 @@ test('builds ASS subtitles with the selected font, size, color and safe text', (
   assert.doesNotMatch(ass, /disabled/);
 });
 
+test('global ASS emphasis syntax migrates from the active main style and respects explicit settings', () => {
+  const legacy = {
+    assignments: { assExportProfileId: 'custom-profile' },
+    assProfiles: [{ id: 'custom-profile', styleId: 'custom-style' }],
+    styles: [{ id: 'ass', emphasisSyntax: 'none' }, { id: 'custom-style', emphasisSyntax: 'single' }],
+  };
+  assert.equal(helpers.normalizeEditorSettings({}, legacy).assEmphasisSyntax, 'both');
+  assert.equal(helpers.normalizeEditorSettings({ assEmphasisSyntax: 'double' }, legacy).assEmphasisSyntax, 'both');
+  assert.equal(helpers.normalizeEditorSettings({}, { styles: [{ id: 'ass', emphasisSyntax: 'none' }] }).assEmphasisSyntax, 'none');
+  assert.equal(Object.hasOwn(helpers.normalizeAssStyle({ emphasisSyntax: 'single' }), 'emphasisSyntax'), false);
+});
+
+test('ASS emphasis syntax colors only marked runs and preserves other export modes', () => {
+  const cue = [{ start: 0, end: 1000, text: '前 **重点** 后 **再次**', color: { name: 'yellow' } }];
+  const options = {
+    assProfile: { id: 'ass', styleId: 'ass', animations: {} },
+    assStyle: { id: 'ass', fontSize: 72, emphasisScale: 1.1, primaryColor: '#123456', outlineColor: '#000000',
+      emphasisColor: '#ff0000', emphasisStyle: 'text' },
+    appearance: { ass_color_style: 'text' },
+  };
+  const ass = helpers.buildAssPayload(cue, options);
+  assert.match(ass, /前 \{\\1c&H000000FF&\\fs\d+\}重点\{\\1c&H0019A0C4&\\fs\d+\} 后 \{\\1c&H000000FF&\\fs\d+\}再次\{\\1c&H0019A0C4&\\fs\d+\}/);
+  assert.match(ass, /\\fs79/);
+  const enlarged = helpers.buildAssPayload(cue, {
+    ...options, assStyle: { ...options.assStyle, fontSize: 40, emphasisScale: 1.25 },
+  });
+  assert.match(enlarged, /\{\\1c&H000000FF&\\fs50\}重点\{\\1c&H0019A0C4&\\fs40\}/);
+  assert.doesNotMatch(ass, /\*\*/);
+  const stroke = helpers.buildAssPayload(cue, {
+    ...options, assStyle: { ...options.assStyle, emphasisStyle: 'stroke' },
+  });
+  assert.match(stroke, /\{\\3c&H000000FF&\\fs\d+\}重点\{\\3c&H00000000&\\fs\d+\}/);
+  const disabled = helpers.buildAssPayload(cue, {
+    ...options, assEmphasisSyntax: 'none',
+  });
+  assert.match(disabled, /前 \*\*重点\*\* 后 \*\*再次\*\*/);
+  assert.match(helpers.buildAssPayload(cue), /前 \*\*重点\*\* 后/);
+  assert.deepEqual(Array.from(helpers.assEmphasisRuns('a *b* **c**', 'single'), (run) => run.emphasized), [false, true, false, true]);
+  const tracks = helpers.buildAssPayload(cue, {
+    ...options,
+    assExtensionStyle: { id: 'ass-extension', fontSize: 54, emphasisSyntax: 'none', emphasisColor: '#00ff00', emphasisScale: 1.5 },
+    extensionSegments: [{ start: 0, end: 1000, text: '副 **重点**' }],
+    overlaySegments: [{ start: 0, end: 1000, text: '叠 **重点**' }],
+  });
+  assert.match(tracks, /Dialogue: 1,[^\n]*副 \{\\1c&H0000FF00&\\fs81\}重点\{\\1c&H004DD3FF&\\fs54\}/);
+  assert.match(tracks, /Dialogue: 2,[^\n]*叠 \{\\1c&H000000FF&\\fs\d+\}重点/);
+  assert.equal(helpers.normalizeAssStyle({ emphasisScale: 1.27 }).emphasisScale, 1.25);
+  assert.equal(helpers.normalizeAssStyle({ emphasisScale: 5 }).emphasisScale, 1.5);
+  assert.equal(helpers.normalizeAssStyle({ emphasisScale: 'bad' }).emphasisScale, 1.3);
+});
+
+test('ASS underscore markers render as local underline alongside emphasis', () => {
+  const text = '前 _下划线_ 与 _**共同**_ 后';
+  const runs = Array.from(helpers.assInlineStyleRuns(text, 'double'), (run) => ({ ...run }));
+  assert.deepEqual(runs, [
+    { text: '前 ', emphasized: false, underlined: false, struck: false, size: null },
+    { text: '下划线', emphasized: false, underlined: true, struck: false, size: null },
+    { text: ' 与 ', emphasized: false, underlined: false, struck: false, size: null },
+    { text: '共同', emphasized: true, underlined: true, struck: false, size: null },
+    { text: ' 后', emphasized: false, underlined: false, struck: false, size: null },
+  ]);
+  const options = {
+    assProfile: { id: 'ass', styleId: 'ass', animations: {} },
+    assStyle: { id: 'ass', fontSize: 72, primaryColor: '#ffffff', emphasisColor: '#ff0000', emphasisScale: 1.25 },
+  };
+  const ass = helpers.buildAssPayload([{ start: 0, end: 1000, text }], options);
+  assert.match(ass, /前 \{\\u1\}下划线\{\\u0\} 与 \{\\1c&H000000FF&\\fs90\\u1\}共同\{\\1c&H00FFFFFF&\\fs72\\u0\} 后/);
+  assert.doesNotMatch(ass, /_下划线_|_\*\*共同\*\*_/);
+  const disabledEmphasis = helpers.buildAssPayload([{ start: 0, end: 1000, text: '_下划线_ **原文**' }], {
+    ...options, assEmphasisSyntax: 'none',
+  });
+  assert.match(disabledEmphasis, /\{\\u1\}下划线\{\\u0\} \*\*原文\*\*/);
+  const alreadyUnderlined = helpers.buildAssPayload([{ start: 0, end: 1000, text: '_下划线_' }], {
+    ...options, assStyle: { ...options.assStyle, underline: true },
+  });
+  assert.match(alreadyUnderlined, /Dialogue: 0,[^\n]*,,下划线/);
+  assert.doesNotMatch(alreadyUnderlined, /\\u0/);
+  assert.match(helpers.buildAssPayload([{ start: 0, end: 1000, text: '_下划线_' }]), /_下划线_/);
+  assert.deepEqual(Array.from(helpers.assInlineStyleRuns('foo_bar_baz _未闭合', 'double'), (run) => run.text),
+    ['foo_bar_baz _未闭合']);
+});
+
+test('ASS accepts single and double stars and tildes together, including nested delimiter widths', () => {
+  const text = '*单星* **双星** ~单波浪~ ~~双波浪~~';
+  for (const syntax of ['both', 'single', 'double']) {
+    const runs = Array.from(helpers.assInlineStyleRuns(text, syntax), (run) => ({ ...run }));
+    assert.equal(runs.map((run) => run.text).join(''), '单星 双星 单波浪 双波浪');
+    assert.deepEqual(runs.filter((run) => run.emphasized).map((run) => run.text), ['单星', '双星']);
+    assert.deepEqual(runs.filter((run) => run.struck).map((run) => run.text), ['单波浪', '双波浪']);
+  }
+  for (const text of ['*前 **内层** 后*', '**前 *内层* 后**']) {
+    const runs = Array.from(helpers.assInlineStyleRuns(text, 'both'));
+    assert.equal(runs.map((run) => run.text).join(''), '前 内层 后');
+    assert.ok(runs.every((run) => run.emphasized));
+  }
+  const strikeRuns = Array.from(helpers.assInlineStyleRuns('~前 ~~内层~~ 后~', 'none'));
+  assert.equal(strikeRuns.map((run) => run.text).join(''), '前 内层 后');
+  assert.ok(strikeRuns.every((run) => run.struck));
+  assert.equal(helpers.assInlineStyleRuns('***原文*** ~未闭合 **未闭合', 'both')
+    .map((run) => run.text).join(''), '***原文*** ~未闭合 **未闭合');
+  const cues = [{ start: 0, end: 1000, text }];
+  const ass = helpers.buildAssPayload(cues, {
+    assProfile: { id: 'ass', styleId: 'ass', animations: {} },
+    assStyle: { id: 'ass', emphasisScale: 1 },
+    assExtensionStyle: { id: 'ass-extension', emphasisScale: 1 },
+    extensionSegments: cues, overlaySegments: cues,
+  });
+  const events = ass.split('\n').filter((line) => line.startsWith('Dialogue:'));
+  assert.equal(events.length, 3);
+  events.forEach((line) => {
+    assert.doesNotMatch(line, /[~*]/);
+    assert.match(line, /\{\\s1\}单波浪\{\\s0\} \{\\s1\}双波浪\{\\s0\}/);
+    assert.match(line, /\}单星\{/);
+    assert.match(line, /\}双星\{/);
+  });
+  assert.ok(helpers.buildSrtPayload(cues).includes(text));
+});
+
+test('ASS special text checkboxes independently disable marker parsing and preserve disabled markers', () => {
+  const text = '*强调* _下划线_ ~删除~ -小字- +大字+';
+  const switches = [
+    ['assEmphasisSyntax', 'none', '*强调*'],
+    ['assUnderlineEnabled', false, '_下划线_'],
+    ['assStrikeEnabled', false, '~删除~'],
+    ['assSmallTextEnabled', false, '-小字-'],
+    ['assLargeTextEnabled', false, '+大字+'],
+  ];
+  for (const [key, value, marker] of switches) {
+    const options = { [key]: value };
+    const runs = helpers.assInlineStyleRuns(text, options.assEmphasisSyntax || 'both', options);
+    assert.ok(runs.map((run) => run.text).join('').includes(marker));
+    const cues = [{ start: 0, end: 1000, text }];
+    const ass = helpers.buildAssPayload(cues, {
+      ...options, assProfile: { id: 'ass', styleId: 'ass', animations: {} },
+      assStyle: { id: 'ass' }, assExtensionStyle: { id: 'ass-extension' },
+      extensionSegments: cues, overlaySegments: cues,
+    });
+    ass.split('\n').filter((line) => line.startsWith('Dialogue:')).forEach((line) => assert.ok(line.includes(marker)));
+    if (key !== 'assEmphasisSyntax') {
+      assert.equal(helpers.normalizeEditorSettings(options)[key], false);
+      assert.equal(helpers.normalizeEditorSettings()[key], true);
+    }
+  }
+  const off = Object.fromEntries(switches.map(([key, value]) => [key, value]));
+  assert.equal(helpers.assInlineStyleRuns(text, 'none', off).map((run) => run.text).join(''), text);
+});
+
+test('ASS inline strike and size markers restore the base style and use each track style scale', () => {
+  const text = '前 ~~删除~~ -小字- +大字+ 后';
+  const options = {
+    assProfile: { id: 'ass', styleId: 'ass', animations: {} },
+    assStyle: { id: 'ass', fontSize: 40 },
+    assExtensionStyle: { id: 'ass-extension', fontSize: 40 },
+    extensionSegments: [{ start: 0, end: 1000, text }],
+    overlaySegments: [{ start: 0, end: 1000, text }],
+  };
+  const cues = [{ start: 0, end: 1000, text }];
+  const events = helpers.buildAssPayload(cues, options).split('\n').filter((line) => line.startsWith('Dialogue:'));
+  assert.equal(events.length, 3);
+  events.forEach((line) => assert.match(line, /前 \{\\s1\}删除\{\\s0\} \{\\fs32\}小字\{\\fs40\} \{\\fs60\}大字\{\\fs40\} 后/));
+  const custom = helpers.buildAssPayload(cues, { ...options, assStyle: { ...options.assStyle, smallTextScale: 0.6, largeTextScale: 2 } });
+  assert.match(custom, /\{\\fs24\}小字\{\\fs40\} \{\\fs80\}大字\{\\fs40\}/);
+  assert.match(custom.split('\n').find((line) => line.startsWith('Dialogue: 1,')), /\{\\fs32\}小字\{\\fs40\} \{\\fs60\}大字\{\\fs40\}/);
+  const strikeBase = helpers.buildAssPayload(cues, { ...options, assStyle: { ...options.assStyle, strikeOut: true } });
+  assert.match(strikeBase, /Dialogue: 0,[^\n]*,,前 删除 /);
+  assert.doesNotMatch(strikeBase.split('\n').find((line) => line.startsWith('Dialogue: 0,')), /\\s0/);
+  assert.match(helpers.buildAssPayload(cues), /~~删除~~ -小字- \+大字\+/);
+  assert.deepEqual(Array.from(helpers.assInlineStyleRuns('foo-bar-baz C++ 1+2+3 -未闭合', 'none'), (run) => run.text),
+    ['foo-bar-baz C++ 1+2+3 -未闭合']);
+  const combined = Array.from(helpers.assInlineStyleRuns('~~-**组合**-~~', 'double'), (run) => ({ ...run }));
+  assert.deepEqual(combined, [{ text: '组合', emphasized: true, underlined: false, struck: true, size: 'small' }]);
+  const style = helpers.normalizeAssStyle({ smallTextScale: 0.63, largeTextScale: 5 });
+  assert.equal(style.smallTextScale, 0.65);
+  assert.equal(style.largeTextScale, 3);
+  assert.equal(helpers.normalizeAssStyle().smallTextScale, 0.8);
+  assert.equal(helpers.normalizeAssStyle().largeTextScale, 1.5);
+});
+
+test('keeps browser and server ASS defaults identical while preserving saved parameters', () => {
+  const result = spawnSync(PYTHON_COMMAND, pythonCommandArgs(['-c',
+    'import json; from maw.ass_styles import default_ass_style_library; print(json.dumps(default_ass_style_library()))']),
+  { encoding: 'utf8', env: { ...process.env, PYTHONUTF8: '1' } });
+  assert.equal(result.status, 0, result.stderr);
+  const browser = JSON.parse(JSON.stringify(helpers.defaultAssStyleLibrary()));
+  const server = JSON.parse(result.stdout);
+  for (const library of [browser, server]) for (const style of library.styles) delete style.fontName;
+  assert.deepEqual(browser, server);
+  const saved = helpers.defaultAssStyleLibrary();
+  Object.assign(helpers.assStyleForId(saved, 'ass'), {
+    fontName: 'Arial', fontSize: 72, emphasisScale: 1.1, backColor: '#000000', backOpacity: 100,
+    bold: false, outline: 4, marginV: 80,
+  });
+  helpers.assProfileForId(saved, 'ass').animations.fad.enabled = false;
+  assert.deepEqual(JSON.parse(JSON.stringify(helpers.normalizeAssStyleLibrary(saved))), JSON.parse(JSON.stringify(saved)));
+});
+
+test('ASS outline and shadow opacity map to alpha bytes and rgba previews', () => {
+  // 旧样式没有不透明度字段：归一化补 100（不透明），导出与旧字节一致。
+  const legacy = helpers.normalizeAssStyle({ id: 'legacy', outlineColor: '#112233', backColor: '#000000' });
+  assert.equal(legacy.outlineOpacity, 100);
+  assert.equal(legacy.backOpacity, 100);
+  assert.match(helpers.assStyleLine(legacy, 'Legacy'), /&H00332211,&H00000000/);
+
+  const style = helpers.normalizeAssStyle({
+    id: 'alpha', outlineColor: '#112233', backColor: '#445566', outlineOpacity: 50, backOpacity: 0,
+  });
+  const line = helpers.assStyleLine(style, 'Alpha');
+  assert.match(line, /&H80332211,&HFF665544/);
+  assert.equal(helpers.assAlphaFromOpacity(100), 0);
+  assert.equal(helpers.assAlphaFromOpacity(50), 128);
+  assert.equal(helpers.assAlphaFromOpacity(0), 255);
+  assert.equal(helpers.assAlphaFromOpacity(150), 0);
+  assert.equal(helpers.assAlphaFromOpacity(30), 179);
+  assert.equal(helpers.assAlphaFromOpacity(70), 77);
+  assert.equal(helpers.assAlphaFromOpacity(50.5), 126);
+  assert.equal(helpers.assAlphaFromOpacity(NaN), 0);
+  const alphaStyle = helpers.normalizeAssStyle({ outlineOpacity: 50.5, backOpacity: null });
+  assert.equal(alphaStyle.outlineOpacity, 51);
+  assert.equal(alphaStyle.backOpacity, 0);
+  assert.equal(helpers.assColorFromHex('#112233', '#000000', 50), '&H80332211');
+  assert.equal(helpers.assCssColorWithOpacity('#112233', 100), 'rgba(17, 34, 51, 1)');
+  assert.equal(helpers.assCssColorWithOpacity('#112233', 0), 'rgba(17, 34, 51, 0)');
+  assert.equal(helpers.assCssColorWithOpacity('#112233', 40), 'rgba(17, 34, 51, 0.4)');
+  // 非法值回落默认色与默认不透明度。
+  assert.equal(helpers.assCssColorWithOpacity('not-a-color', 30), 'rgba(255, 255, 255, 0.3)');
+  assert.equal(helpers.assColorFromHex('nope', '#112233', 50), '&H80332211');
+});
+
 test('builds ASS metadata and five palette styles at the source video resolution', () => {
   const ass = helpers.buildAssPayload([
     { start: 0, end: 1000, text: 'red line', color: { name: 'red' } },
@@ -3068,6 +3534,7 @@ test('builds ASS metadata and five palette styles at the source video resolution
 
   assert.match(ass, /Title: project-name/);
   assert.match(ass, /PlayResX: 3840[\s\S]*PlayResY: 2160/);
+  // 无 assProfile 时走 legacy 外观导出：预览字体键 'sans' 固定映射 Arial。
   assert.match(ass, /Style: Default,Arial,256,/);
   assert.match(ass, /Style: YELLOW,Arial,256,&H0019A0C4,&H0019A0C4,/);
   assert.match(ass, /Style: GREEN,Arial,256,&H006ABB66,&H006ABB66,/);
@@ -3076,6 +3543,236 @@ test('builds ASS metadata and five palette styles at the source video resolution
   assert.match(ass, /Style: BLUE,Arial,256,&H00FAA761,&H00FAA761,/);
   assert.match(ass, /Dialogue: 0,0:00:00\.00,0:00:01\.00,RED,,0,0,0,,red line/);
   assert.match(ass, /Dialogue: 0,0:00:01\.20,0:00:02\.20,Default,,0,0,0,,plain line/);
+});
+
+test('migrates legacy builtin names while preserving custom names', () => {
+  const library = helpers.normalizeAssStyleLibrary({
+    styles: [
+      { id: 'ass', name: 'ASS' },
+      { id: 'default', name: 'SRT 默认' },
+    ],
+    assProfiles: [{ id: 'ass', name: 'ASS' }],
+  });
+  assert.equal(helpers.assStyleForId(library, 'ass').name, 'ASS 默认样式');
+  assert.equal(helpers.assProfileForId(library, 'ass').name, 'ASS 输出方案');
+  assert.equal(helpers.assStyleForId(library, 'default').name, 'SRT 默认');
+
+  // 用户自定义过的名字不被迁移覆盖。
+  const renamed = helpers.normalizeAssStyleLibrary({
+    styles: [{ id: 'ass', name: '我的字幕样式' }],
+    assProfiles: [{ id: 'ass', name: '我的方案' }],
+  });
+  assert.equal(helpers.assStyleForId(renamed, 'ass').name, '我的字幕样式');
+  assert.equal(helpers.assProfileForId(renamed, 'ass').name, '我的方案');
+});
+
+test('migrates v1 emphasis defaults for builtins without changing custom or current values', () => {
+  const legacy = helpers.normalizeAssStyleLibrary({
+    version: 1,
+    styles: [
+      { id: 'default', emphasisScale: 1 },
+      { id: 'ass', emphasisScale: 1 },
+      { id: 'ass-extension', emphasisScale: 1 },
+      { id: 'custom-one', emphasisScale: 1 },
+    ],
+  });
+  assert.equal(legacy.version, 2);
+  for (const id of ['default', 'ass', 'ass-extension']) {
+    assert.equal(helpers.assStyleForId(legacy, id).emphasisScale, 1.1);
+  }
+  assert.equal(helpers.assStyleForId(legacy, 'custom-one').emphasisScale, 1);
+  const current = helpers.normalizeAssStyleLibrary({
+    version: 2,
+    styles: [{ id: 'ass', emphasisScale: 1 }],
+  });
+  assert.equal(helpers.assStyleForId(current, 'ass').emphasisScale, 1);
+  assert.equal(helpers.defaultAssStyleLibrary().version, 2);
+  assert.equal(helpers.assStyleForId(helpers.defaultAssStyleLibrary(), 'ass').emphasisScale, 1.3);
+});
+
+test('normalizes ASS libraries without corrupting comma-delimited animation tags', () => {
+  const library = helpers.normalizeAssStyleLibrary({
+    styles: [{ id: 'motion', name: 'Motion' }],
+    assProfiles: [{
+      id: 'motion-profile', styleId: 'motion',
+      animations: { t: { enabled: true, tags: String.raw`{\pos(10,20)\clip(0,0,100,100)}` } },
+    }],
+  });
+  const profile = helpers.assProfileForId(library, 'motion-profile');
+
+  assert.equal(
+    profile.animations.t.tags,
+    String.raw`\pos(10,20)\clip(0,0,100,100)`,
+  );
+  assert.equal(
+    helpers.assAnimationOverrideTags(profile),
+    String.raw`\t(0,1000,1,\pos(10,20)\clip(0,0,100,100))`,
+  );
+});
+
+test('keeps complex ASS animation time ranges monotonic and within bounds', () => {
+  const animations = helpers.normalizeAssAnimations({
+    fade: { t1: 900, t2: -10, t3: 70000, t4: 2 },
+    move: { t1: 800, t2: 20 },
+    t: { startMs: 700, endMs: -5, accel: 0, tags: '' },
+  });
+
+  assert.deepEqual(JSON.parse(JSON.stringify({
+    fade: [animations.fade.t1, animations.fade.t2, animations.fade.t3, animations.fade.t4],
+    move: [animations.move.t1, animations.move.t2],
+    transform: [animations.t.startMs, animations.t.endMs, animations.t.accel],
+  })), {
+    fade: [900, 900, 60000, 60000],
+    move: [800, 800],
+    transform: [700, 700, 0.01],
+  });
+});
+
+test('uses the selected ASS profile style and adds every configured animation to each cue', () => {
+  const library = helpers.normalizeAssStyleLibrary({
+    styles: [{
+      id: 'caption', name: 'Caption', fontName: 'Microsoft YaHei', fontSize: 30,
+      primaryColor: '#123456', outlineColor: '#654321', outline: 4,
+      bold: true, underline: true, marginV: 80,
+    }],
+    assProfiles: [{
+      id: 'animated', name: 'Animated', styleId: 'caption',
+      animations: {
+        fad: { enabled: true, inMs: 120, outMs: 240 },
+        move: { enabled: true, x1: 100, y1: 200, x2: 300, y2: 400, t1: 50, t2: 900 },
+        t: { enabled: true, startMs: 10, endMs: 800, accel: 1.5, tags: String.raw`\fs42\pos(10,20)` },
+      },
+    }],
+  });
+  const profile = helpers.assProfileForId(library, 'animated');
+  const style = helpers.assStyleForId(library, profile.styleId);
+  const ass = helpers.buildAssPayload([
+    { start: 0, end: 1000, text: '你好', color: { name: 'yellow' } },
+    { start: 1200, end: 2200, text: '第二句' },
+  ], {
+    assProfile: profile,
+    assStyle: style,
+    appearance: { color_underline: false },
+    mediaMetadata: { video_width: 1920, video_height: 1080 },
+    speakerLabelsEnabled: true,
+    speakerLabels: { yellow: 'Host' },
+    speakerLabelSeparator: '：',
+  });
+
+  assert.match(ass, /Style: Default,Microsoft YaHei,30,\&H00563412,[^\n]*,-1,0,-1,0,100,100,0,0,1,4,0,2,10,10,80,1/);
+  const dialogue = ass.split('\n').filter((line) => line.startsWith('Dialogue:'));
+  assert.equal(dialogue.length, 2);
+  // color_underline 只控制 CSS 预览；ASS 导出的颜色映射不受它影响。
+  assert.match(dialogue[0], /\{\\fad\(120,240\)\\move\(100,200,300,400,50,900\)\\t\(10,800,1\.5,\\fs42\\pos\(10,20\)\)\}\{\\c&H0019A0C4&\}Host：\{\\c&H0019A0C4&\}你好/);
+  assert.match(dialogue[1], /\{\\fad\(120,240\)\\move\(100,200,300,400,50,900\)\\t\(10,800,1\.5,\\fs42\\pos\(10,20\)\)\}第二句/);
+});
+
+test('keeps ASS palette colours applied when the CSS colour preview toggle is off', () => {
+  const ass = helpers.buildAssPayload([
+    { start: 0, end: 1000, text: 'red line', color: { name: 'red' } },
+  ], {
+    assProfile: { id: 'ass', styleId: 'ass', animations: {} },
+    assStyle: { id: 'ass', primaryColor: '#123456', outlineColor: '#000000', outline: 2 },
+    appearance: { color_underline: false, ass_color_style: 'text' },
+  });
+
+  assert.match(ass, new RegExp(`Style: RED,${helpers.ASS_DEFAULT_ASS_STYLE.fontName},${helpers.ASS_DEFAULT_ASS_STYLE.fontSize},&H006F7FF0,&H006F7FF0,[^\\n]*`));
+  assert.match(ass, /Dialogue: 0,0:00:00\.00,0:00:01\.00,RED,,0,0,0,,red line/);
+
+  const noneAss = helpers.buildAssPayload([
+    { start: 0, end: 1000, text: 'red line', color: { name: 'red' } },
+  ], {
+    assProfile: { id: 'ass', styleId: 'ass', animations: {} },
+    assStyle: { id: 'ass', primaryColor: '#123456', outlineColor: '#000000', outline: 2 },
+    appearance: { color_underline: false, ass_color_style: 'none' },
+  });
+  assert.doesNotMatch(noneAss, /Style: RED,/);
+  assert.match(noneAss, /Dialogue: 0,0:00:00\.00,0:00:01\.00,Default,,0,0,0,,red line/);
+});
+
+test('keeps speaker labels in the base colour when ASS palette colours are strokes', () => {
+  const ass = helpers.buildAssPayload([
+    { start: 0, end: 1000, text: '你好', color: { name: 'yellow' } },
+  ], {
+    assProfile: { id: 'ass', styleId: 'ass', animations: {} },
+    assStyle: { id: 'ass', primaryColor: '#123456', outlineColor: '#000000', outline: 2 },
+    appearance: { color_underline: true, ass_color_style: 'stroke' },
+    speakerLabelsEnabled: true,
+    speakerLabels: { yellow: 'Host' },
+    speakerLabelSeparator: '：',
+  });
+
+  assert.match(ass, new RegExp(`Style: YELLOW,${helpers.ASS_DEFAULT_ASS_STYLE.fontName},${helpers.ASS_DEFAULT_ASS_STYLE.fontSize},[^\\n]*,&H0019A0C4`));
+  assert.match(ass, /Dialogue: 0,0:00:00\.00,0:00:01\.00,YELLOW,Host,0,0,0,,\{\\c&H00563412&\}Host：\{\\c&H00563412&\}你好/);
+});
+
+test('applies ASS speaker-only colour to the label without a palette style variant', () => {
+  const ass = helpers.buildAssPayload([
+    { start: 0, end: 1000, text: '你好', color: { name: 'yellow' } },
+  ], {
+    assProfile: {
+      id: 'speaker-label', styleId: 'ass',
+      animations: { fad: { enabled: true, inMs: 120, outMs: 240 } },
+    },
+    assStyle: {
+      id: 'ass', fontName: 'Arial', fontSize: 72,
+      primaryColor: '#123456', outlineColor: '#112233', outline: 4, shadow: 2,
+    },
+    appearance: { ass_color_style: 'speaker' },
+    speakerLabelsEnabled: true,
+    speakerLabels: { yellow: 'Host' },
+    speakerLabelSeparator: '：',
+  });
+
+  assert.match(ass, /Style: Default,Arial,72,&H00563412,&H00FFFFFF,&H00332211,/);
+  assert.doesNotMatch(ass, /Style: YELLOW,/);
+  assert.match(
+    ass,
+    /Dialogue: 0,0:00:00\.00,0:00:01\.00,Default,Host,0,0,0,,\{\\fad\(120,240\)\}\{\\c&H0019A0C4&\}Host：\{\\c&H00563412&\}你好/,
+  );
+
+  const withoutLabels = helpers.buildAssPayload([
+    { start: 0, end: 1000, text: '你好', color: { name: 'yellow' } },
+  ], {
+    assProfile: { id: 'speaker-label', styleId: 'ass', animations: {} },
+    assStyle: { id: 'ass', primaryColor: '#123456', outlineColor: '#112233', outline: 4 },
+    appearance: { ass_color_style: 'speaker' },
+  });
+  assert.match(withoutLabels, /Dialogue: 0,0:00:00\.00,0:00:01\.00,Default,,0,0,0,,你好/);
+});
+
+test('previews ASS fade, movement, and transform timing at the cue playhead', () => {
+  const profile = {
+    animations: {
+      fad: { enabled: true, inMs: 200, outMs: 200 },
+      move: { enabled: true, x1: 10, y1: 20, x2: 110, y2: 220, t1: 100, t2: 900 },
+      t: { enabled: true, startMs: 200, endMs: 800, accel: 2, tags: String.raw`\fs40\bord6` },
+    },
+  };
+  const state = helpers.assPreviewAnimationState(profile, 500, 1000, {
+    playResX: 1920, playResY: 1080, stageWidth: 960, stageHeight: 540,
+  });
+  assert.equal(state.opacity, 1);
+  assert.equal(state.moveX, 60);
+  assert.equal(state.moveY, 120);
+  assert.equal(state.moveOffsetX, 25);
+  assert.equal(state.moveOffsetY, 50);
+  assert.equal(state.transformProgress, 0.25);
+  const animatedStyle = helpers.assPreviewStyleAt(
+    { fontSize: 20, outline: 2 },
+    profile.animations.t.tags,
+    state.transformProgress,
+  );
+  assert.deepEqual(
+    {
+      fontSize: animatedStyle.fontSize,
+      outline: animatedStyle.outline,
+      rotationX: animatedStyle.rotationX,
+      rotationY: animatedStyle.rotationY,
+      alpha: animatedStyle.alpha,
+    },
+    { fontSize: 25, outline: 3, rotationX: 0, rotationY: 0, alpha: 0 },
+  );
 });
 
 test('converts the responsive default ASS font size at the source video resolution', () => {
@@ -3092,8 +3789,8 @@ test('converts the responsive default ASS font size at the source video resoluti
 
   assert.equal(helpers.resolveAssFontSize(null, 1080), 72);
   assert.equal(helpers.resolveAssFontSize(32, 1080), 128);
-  assert.match(withoutStoredSize, /Style: Default,Arial,144,/);
-  assert.match(explicitAuto, /Style: Default,Arial,144,/);
+  assert.match(withoutStoredSize, new RegExp(`Style: Default,${helpers.ASS_DEFAULT_ASS_STYLE.fontName},144,`));
+  assert.match(explicitAuto, new RegExp(`Style: Default,${helpers.ASS_DEFAULT_ASS_STYLE.fontName},144,`));
 });
 
 test('optionally prefixes configured speaker names in ASS output', () => {
@@ -3168,6 +3865,8 @@ test('normalizes speaker label settings with defaults and safe names', () => {
     },
   });
   assert.equal(helpers.normalizeSpeakerLabelSettings({}).mapping_enabled, false);
+  assert.equal(helpers.normalizeSpeakerLabelSettings({}).enabled, true);
+  assert.equal(helpers.normalizeSpeakerLabelSettings({ enabled: false }).enabled, false);
   assert.equal(helpers.normalizeSpeakerLabelSettings({ enabled: true }).mapping_enabled, true);
   assert.equal(
     helpers.normalizeSpeakerLabelSettings({ enabled: true, mapping_enabled: false }).mapping_enabled,
@@ -3259,6 +3958,34 @@ test('builds a color SRT on the shared full-export timeline and excludes disable
     'member',
     '',
   ].join('\n'));
+});
+
+test('resolves overlay color references through per-track contexts in merged exports', () => {
+  // 合并数组里叠加段的 color_ref.headIdx 指向叠加轨自身下标；
+  // 没有按轨上下文时会错解析到主轨 head，导致按色过滤丢失叠加字幕。
+  const main = [{ start: 0, end: 1000, text: 'main red', color: { name: 'red' } }];
+  const overlay = [
+    { start: 200, end: 400, text: 'overlay blue head', color: { name: 'blue' } },
+    { start: 500, end: 700, text: 'overlay blue ref', color_ref: { name: 'blue', headIdx: 0 } },
+  ];
+  const merged = helpers.mergeMainAndOverlaySegments(main, overlay);
+  const overlaySet = new Set(overlay);
+  const resolver = (segment) => (overlaySet.has(segment) ? overlay : main);
+  const blueSrt = helpers.buildSrtPayload(merged, {
+    colorName: 'blue',
+    colorContextResolver: resolver,
+    formatTime: (timeMs) => `${timeMs}ms`,
+  });
+  assert.ok(blueSrt.includes('overlay blue head'));
+  assert.ok(blueSrt.includes('overlay blue ref'));
+  assert.ok(!blueSrt.includes('main red'));
+  const redSrt = helpers.buildSrtPayload(merged, {
+    colorName: 'red',
+    colorContextResolver: resolver,
+    formatTime: (timeMs) => `${timeMs}ms`,
+  });
+  assert.ok(redSrt.includes('main red'));
+  assert.ok(!redSrt.includes('overlay blue'));
 });
 
 test('optionally prefixes configured speaker names in SRT output', () => {
@@ -3842,14 +4569,29 @@ test('defines a portable export-options contract from synthetic fixture data', (
   assert.equal(Object.isFrozen(options), true);
 });
 
+test('reads paired positive-integer video size metadata for export canvas defaults', () => {
+  assert.equal(helpers.exportVideoSize(null), null);
+  assert.equal(helpers.exportVideoSize({}), null);
+  assert.equal(helpers.exportVideoSize({ media_metadata: null }), null);
+  assert.equal(helpers.exportVideoSize({ media_metadata: { video_width: 1920 } }), null);
+  assert.equal(helpers.exportVideoSize({ media_metadata: { video_height: 1080 } }), null);
+  assert.equal(helpers.exportVideoSize({ media_metadata: { video_width: 0, video_height: 1080 } }), null);
+  assert.equal(helpers.exportVideoSize({ media_metadata: { video_width: 1.5, video_height: 1080 } }), null);
+  assert.equal(JSON.stringify(
+    helpers.exportVideoSize({ media_metadata: { video_width: 3840, video_height: 2160 } }),
+  ), JSON.stringify({ width: 3840, height: 2160 }));
+});
+
 test('normalizes closed FPS and track choices without guessing unsupported values', () => {
   for (const fps of [24, 25, 30, 50, 60, '30000/1001', '60000/1001']) {
     assert.equal(helpers.normalizeExportOptions({ fps }).fps, String(fps));
   }
   assert.equal(helpers.normalizeExportOptions({ subtitleTracks: 'main_and_extension' }).subtitleTracks, 'main_and_extension');
+  assert.equal(helpers.normalizeExportOptions({ subtitleTracks: 'overlay' }).subtitleTracks, 'overlay');
+  assert.equal(helpers.normalizeExportOptions({ subtitleTracks: 'all' }).subtitleTracks, 'all');
   assert.throws(() => helpers.normalizeExportOptions({ fps: 29.97 }), /unsupported export FPS/);
   assert.throws(() => helpers.normalizeExportOptions({ dropFrame: true }), /drop-frame/);
-  assert.throws(() => helpers.normalizeExportOptions({ subtitleTracks: 'all' }), /unsupported subtitle tracks/);
+  assert.throws(() => helpers.normalizeExportOptions({ subtitleTracks: 'bogus' }), /unsupported subtitle tracks/);
   assert.throws(() => helpers.normalizeExportOptions([]), /export options must be an object/);
   assert.throws(() => helpers.normalizeExportOptions({ unknownOption: true }), /unknown export option: unknownOption/);
 });
@@ -3928,8 +4670,8 @@ test('serializes the shared plan as deterministic FCP 7 XML and mapped SRT', () 
   assert.equal((xml.match(/<clipitem\b/g) || []).length, 7);
   assert.equal((xml.match(/<generatoritem\b/g) || []).length, 0);
   assert.equal(xmlElements(xml, 'track').length, 3);
-  assert.ok(xml.includes('<duration>149</duration>'));
-  assert.ok(xml.includes('<in>47</in><out>120</out>'));
+  assert.ok(xml.includes('<duration>147</duration>'));
+  assert.ok(xml.includes('<in>47</in><out>119</out>'));
   assert.ok(xml.includes('file://localhost/C:/fixtures/%E6%B5%8B%E8%AF%95%20%26%20take.mp4'));
   assert.ok(xml.includes('file:///icons/%E6%B5%8B%E8%AF%95%20%26%20icon.png'));
   assert.deepEqual(parseSrt(srt).map(({ start, end }) => [start, end]), [
@@ -3939,6 +4681,44 @@ test('serializes the shared plan as deterministic FCP 7 XML and mapped SRT', () 
   ]);
   assert.equal(helpers.serializeFcp7Xml(plan, { nativeTextObjects: false }), xml);
   assert.equal(helpers.serializeMappedSrt(plan), srt);
+});
+
+test('places gap-removed media clips and cues on one ms-mapped frame grid', () => {
+  // 保留区间边界故意取非整帧毫秒：旧实现逐段「向外取整再累加」会让片段位置随
+  // 空隙数量漂移（本例 2 个空隙累计偏 3-4 帧），字幕因此越往后越提前。
+  const plan = helpers.buildProjectExportPlan({
+    media: { path: 'C:\\fixtures\\drift.mp4', type: 'video', durationMs: 20000 },
+    gaps: [
+      { start: 1001, end: 1633, removed: true },
+      { start: 5007, end: 5999, removed: true },
+    ],
+    segments: [
+      { id: 'a', start: 500, end: 1000, text: 'first' },
+      { id: 'b', start: 1633, end: 2100, text: 'boundary' },
+      { id: 'c', start: 5999, end: 6500, text: 'second boundary' },
+    ],
+  }, { fps: 30 });
+  const xml = helpers.serializeFcp7Xml(plan, { nativeTextObjects: true });
+  const clipFrames = (id) => {
+    const match = new RegExp(`<clipitem id="${id}">[\\s\\S]*?<start>(\\d+)</start><end>(\\d+)</end>`).exec(xml);
+    return match ? [Number(match[1]), Number(match[2])] : null;
+  };
+  // 输出 ms 边界 0 / 1001 / 4375 在 30fps 帧网格上 floor → 0 / 30 / 131；末边界 ceil(551.28) = 552。
+  assert.deepEqual(clipFrames('video-clip-1'), [0, 30]);
+  assert.deepEqual(clipFrames('video-clip-2'), [30, 131]);
+  assert.deepEqual(clipFrames('video-clip-3'), [131, 552]);
+  assert.deepEqual(clipFrames('audio-clip-2'), [30, 131]);
+  // 恰好落在保留区间开头的字幕必须与片段边界同帧（修复前 video-clip-2 从 31 开始，
+  // 字幕 30 提前 1 帧；空隙越多偏移越大）。
+  assert.deepEqual(clipFrames('text-main-2'), [30, 45]);
+  assert.deepEqual(clipFrames('text-main-3'), [131, 147]);
+  assert.match(xml, /<sequence id="MAW-sequence"><name>MAW FCP 7 Premiere handoff<\/name><duration>552<\/duration>/);
+  // 每个媒体片段的源区间必须与时间线区间等长（1:1 播放速率）。
+  for (const match of xml.matchAll(/<clipitem id="(?:video|audio)-clip-\d+">[\s\S]*?<duration>(\d+)<\/duration>[\s\S]*?<start>(\d+)<\/start><end>(\d+)<\/end>[\s\S]*?<in>(\d+)<\/in><out>(\d+)<\/out>/g)) {
+    const [duration, start, end, inFrame, outFrame] = match.slice(1).map(Number);
+    assert.equal(duration, end - start);
+    assert.equal(outFrame - inFrame, end - start);
+  }
 });
 
 test('resolves sticker media from sticker_root and emits one clip per subtitle occurrence', () => {
@@ -3967,7 +4747,7 @@ test('resolves sticker media from sticker_root and emits one clip per subtitle o
   assert.equal((xml.match(/<file id="file-sticker-[^"]+">/g) || []).length, 1);
   assert.match(xml, /<pathurl>file:\/\/localhost\/E(?:%3A|:)\/%E7%B4%A0%E6%9D%90\/%E8%A1%A8%E6%83%85%E5%8C%85\/%E6%8F%8F%E8%BE%B9gif\/.+<\/pathurl>/);
   assert.match(xml, /<clipitem id="sticker-clip-1"><masterclipid>master-sticker-1<\/masterclipid><name>[^<]+<\/name><enabled>TRUE<\/enabled><alphatype>straight<\/alphatype><pixelaspectratio>square<\/pixelaspectratio>/);
-  assert.match(xml, /<file id="file-sticker-[^"]+">[\s\S]*?<timecode><rate><timebase>30\/1<\/timebase><ntsc>FALSE<\/ntsc><\/rate><string>00:00:00:00<\/string><frame>0<\/frame><displayformat>NDF<\/displayformat><\/timecode>[\s\S]*?<media><video><samplecharacteristics>[\s\S]*?<width>720<\/width><height>480<\/height>/);
+  assert.match(xml, /<file id="file-sticker-[^"]+">[\s\S]*?<timecode><rate><timebase>30<\/timebase><ntsc>FALSE<\/ntsc><\/rate><string>00:00:00:00<\/string><frame>0<\/frame><displayformat>NDF<\/displayformat><\/timecode>[\s\S]*?<media><video><samplecharacteristics>[\s\S]*?<width>720<\/width><height>480<\/height>/);
   assert.match(xml, /<clipitem id="sticker-clip-1">[\s\S]*?<start>30<\/start><end>60<\/end>/);
   assert.match(xml, /<clipitem id="sticker-clip-2">[\s\S]*?<start>90<\/start><end>120<\/end>/);
 });
@@ -4051,14 +4831,22 @@ test('encodes native GraphicAndType text as Premiere UTF-16LE payload', () => {
     segments: [{ id: 'cue', start: 100, end: 400, text: 'TETe 改名' }],
   }, { mode: 'source', fps: 30 });
   const xml = helpers.serializeFcp7Xml(plan, { nativeTextObjects: true });
-  const encoded = /<parameterid>1<\/parameterid>[\s\S]*?<value>([^<]+)<\/value>/.exec(xml)?.[1];
+  const effect = /<effectid>GraphicAndType<\/effectid>[\s\S]*?<\/effect>/.exec(xml)?.[0];
+  const encoded = /<parameterid>1<\/parameterid>[\s\S]*?<value>([^<]+)<\/value>/.exec(effect)?.[1];
   assert.ok(encoded);
   const bytes = Buffer.from(encoded, 'base64');
   assert.equal(bytes[0], 0xf6);
   assert.deepEqual([...bytes.subarray(1, 8)], [10, 0, 0, 0, 0, 0, 0]);
   const payload = JSON.parse(bytes.subarray(8).toString('utf16le'));
   assert.equal(payload.mTextParam.mStyleSheet.mText, 'TETe 改名');
+  assert.equal(payload.mTextParam.mAlignment, 2);
+  assert.equal(payload.mTextParam.mStyleSheet.mFontSize.mParamValues[0][1], 60);
   assert.equal(payload.mVersion, 1);
+  // 顶层与样式表结构必须逐字段对齐真实 Premiere 导出的单一样式 run payload：
+  // 实机验证多余或异形字段（mUnderline / mShadowFontMapHash 等）会让 PR 静默
+  // 丢弃整个样式表——文字渲染但字体、字号回落默认。
+  assert.deepEqual(Object.keys(payload), ['mTextParam', 'mVersion']);
+  assert.equal(payload.mTextParam.mStyleSheet.mUnderline, undefined);
 });
 
 test('writes the preview subtitle font into the GraphicAndType payload', () => {
@@ -4068,10 +4856,96 @@ test('writes the preview subtitle font into the GraphicAndType payload', () => {
     segments: [{ id: 'cue', start: 100, end: 400, text: '字体' }],
   }, { mode: 'source', fps: 30 });
   const xml = helpers.serializeFcp7Xml(plan, { nativeTextObjects: true });
-  const encoded = /<parameterid>1<\/parameterid>[\s\S]*?<value>([^<]+)<\/value>/.exec(xml)?.[1];
+  const effect = /<effectid>GraphicAndType<\/effectid>[\s\S]*?<\/effect>/.exec(xml)?.[0];
+  const encoded = /<parameterid>1<\/parameterid>[\s\S]*?<value>([^<]+)<\/value>/.exec(effect)?.[1];
   const bytes = Buffer.from(encoded, 'base64');
   const payload = JSON.parse(bytes.subarray(8).toString('utf16le'));
   assert.equal(payload.mTextParam.mStyleSheet.mFontName.mParamValues[0][1], 'FangSong');
+});
+
+test('maps the default preview font to a platform CJK family instead of Arial', () => {
+  const plan = helpers.buildProjectExportPlan({
+    media: { path: 'fixture.mp4', type: 'video', durationMs: 1000 },
+    segments: [{ id: 'cue', start: 100, end: 400, text: '默认字体' }],
+  }, { mode: 'source', fps: 30 });
+  assert.equal(plan.subtitleFontFamily, 'Noto Sans CJK SC');
+  const yaheiPlan = helpers.buildProjectExportPlan({
+    media: { path: 'fixture.mp4', type: 'video', durationMs: 1000 },
+    preview: { subtitle: { font_family: 'yahei' } },
+    segments: [{ id: 'cue', start: 100, end: 400, text: '字体' }],
+  }, { mode: 'source', fps: 30 });
+  assert.equal(yaheiPlan.subtitleFontFamily, 'Microsoft YaHei');
+  const localPlan = helpers.buildProjectExportPlan({
+    media: { path: 'fixture.mp4', type: 'video', durationMs: 1000 },
+    preview: { subtitle: { font_family: 'AlimamaFangYuanTiVF-SemiBoldRound' } },
+    segments: [{ id: 'cue', start: 100, end: 400, text: '字体' }],
+  }, { mode: 'source', fps: 30 });
+  assert.equal(localPlan.subtitleFontFamily, 'AlimamaFangYuanTiVF-SemiBoldRound');
+});
+
+test('declares the sequence frame size and integer timebase for Premiere import', () => {
+  const sizedPlan = helpers.buildProjectExportPlan({
+    media: { path: 'fixture.mp4', type: 'video', durationMs: 1000 },
+    media_metadata: { video_width: 3840, video_height: 2160 },
+    segments: [{ id: 'cue', start: 100, end: 400, text: '尺寸' }],
+  }, { mode: 'source', fps: '30000/1001' });
+  const sizedXml = helpers.serializeFcp7Xml(sizedPlan);
+  const videoFormat = /<video><format><samplecharacteristics>[\s\S]*?<\/samplecharacteristics><\/format>/.exec(sizedXml)?.[0];
+  assert.ok(videoFormat, 'sequence video format should be declared');
+  assert.match(videoFormat, /<timebase>30<\/timebase><ntsc>TRUE<\/ntsc>/);
+  assert.match(videoFormat, /<width>3840<\/width><height>2160<\/height><anamorphic>FALSE<\/anamorphic><pixelaspectratio>square<\/pixelaspectratio>/);
+  assert.match(sizedXml, /<audio><format><samplecharacteristics><depth>16<\/depth><samplerate>48000<\/samplerate><\/samplecharacteristics><\/format>/);
+  assert.doesNotMatch(sizedXml, /<timebase>\d+\/\d+<\/timebase>/);
+  const legacyPlan = helpers.buildProjectExportPlan({
+    media: { path: 'fixture.mp4', type: 'video', durationMs: 1000 },
+    segments: [{ id: 'cue', start: 100, end: 400, text: '旧工程' }],
+  }, { mode: 'source', fps: 60 });
+  const legacyXml = helpers.serializeFcp7Xml(legacyPlan);
+  const legacyFormat = /<video><format><samplecharacteristics>[\s\S]*?<\/samplecharacteristics><\/format>/.exec(legacyXml)?.[0];
+  assert.match(legacyFormat, /<timebase>60<\/timebase><ntsc>FALSE<\/ntsc>/);
+  assert.match(legacyFormat, /<width>1920<\/width><height>1080<\/height>/);
+});
+
+test('writes the full transform parameter set with a centered lower-third Position into GraphicAndType clips', () => {
+  const plan = helpers.buildProjectExportPlan({
+    media: { path: 'fixture.mp4', type: 'video', durationMs: 1000 },
+    media_metadata: { video_width: 3840, video_height: 2160 },
+    segments: [{ id: 'cue', start: 100, end: 400, text: '位置' }],
+  }, { mode: 'source', fps: 30 });
+  const xml = helpers.serializeFcp7Xml(plan, { nativeTextObjects: true });
+  const effect = /<effectid>GraphicAndType<\/effectid>[\s\S]*?<\/effect>/.exec(xml)?.[0];
+  assert.ok(effect, 'GraphicAndType effect should be serialized');
+  for (const parameterid of [2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22]) {
+    assert.match(effect, new RegExp(`<parameterid>${parameterid}</parameterid>`), `transform parameter ${parameterid} should exist`);
+  }
+  assert.match(effect, /<parameterid>2<\/parameterid><name>Transform<\/name><ParameterControlType>11<\/ParameterControlType><UpperBound>false<\/UpperBound><value>-91445760000000000,false,0,0,0,0,0,0<\/value><\/parameter>/);
+  assert.match(effect, /<parameterid>3<\/parameterid><name>Position<\/name><value>-91445760000000000,0\.5:0\.85,0,0,0,0,0,0,5,4,0,0,0,0<\/value><\/parameter>/);
+  assert.match(effect, /<parameterid>4<\/parameterid><name>Scale<\/name><LowerBound>0<\/LowerBound><UpperBound>4000<\/UpperBound><value>-91445760000000000,100\.,0,0,0,0,0,0<\/value><\/parameter>/);
+  assert.match(effect, /<parameterid>8<\/parameterid><name>Opacity<\/name><LowerBound>0<\/LowerBound><UpperBound>100<\/UpperBound><value>-91445760000000000,100\.,0,0,0,0,0,0<\/value><\/parameter>/);
+  assert.match(effect, /<parameterid>9<\/parameterid><name>Anchor Point<\/name><value>-91445760000000000,0:0,0,0,0,0,0,0,5,4,0,0,0,0<\/value><\/parameter>/);
+  assert.match(effect, /<parameterid>21<\/parameterid><name>Parent Rotation<\/name><ParameterControlType>3<\/ParameterControlType><LowerBound>-32768<\/LowerBound><UpperBound>32767<\/UpperBound><value>-91445760000000000,0\.,0,0,0,0,0,0<\/value><\/parameter>/);
+  const encoded = /<parameterid>1<\/parameterid>[\s\S]*?<value>([^<]+)<\/value>/.exec(effect)?.[1];
+  const payload = JSON.parse(Buffer.from(encoded, 'base64').subarray(8).toString('utf16le'));
+  assert.equal(payload.mTextParam.mStyleSheet.mFontSize.mParamValues[0][1], 120);
+});
+
+test('declares sequence-sized Graphic canvas and Vector Motion for native text clips', () => {
+  const plan = helpers.buildProjectExportPlan({
+    media: { path: 'fixture.mp4', type: 'video', durationMs: 1000 },
+    media_metadata: { video_width: 3840, video_height: 2160 },
+    segments: [{ id: 'cue', start: 100, end: 400, text: '画布' }],
+  }, { mode: 'source', fps: 30 });
+  const xml = helpers.serializeFcp7Xml(plan, { nativeTextObjects: true });
+  const textFile = /<file id="file-text-main-1">[\s\S]*?<\/file>/.exec(xml)?.[0];
+  assert.ok(textFile, 'text file should be serialized');
+  assert.match(textFile, /<samplecharacteristics><rate><timebase>30<\/timebase><ntsc>FALSE<\/ntsc><\/rate><width>3840<\/width><height>2160<\/height><anamorphic>FALSE<\/anamorphic><pixelaspectratio>square<\/pixelaspectratio><fielddominance>none<\/fielddominance><\/samplecharacteristics>/);
+  const vectorMotion = /<effectid>GraphicGroup<\/effectid>[\s\S]*?<\/effect>/.exec(xml)?.[0];
+  assert.ok(vectorMotion, 'Vector Motion (GraphicGroup) effect should be serialized before GraphicAndType');
+  assert.match(xml, /<name>Vector Motion<\/name><effectid>GraphicGroup<\/effectid>/);
+  assert.match(vectorMotion, /<parameterid>1<\/parameterid><name>Position<\/name><value>-91445760000000000,0:0,0,0,0,0,0,0,5,4,0,0,0,0<\/value><\/parameter>/);
+  assert.match(vectorMotion, /<parameterid>2<\/parameterid><name>Scale<\/name><LowerBound>0<\/LowerBound><UpperBound>10000<\/UpperBound><UpperUIBound>200<\/UpperUIBound><value>-91445760000000000,100\.,0,0,0,0,0,0<\/value><\/parameter>/);
+  assert.match(vectorMotion, /<parameterid>6<\/parameterid><name>Anchor Point<\/name><value>-91445760000000000,0:0,0,0,0,0,0,0,5,4,0,0,0,0<\/value><\/parameter>/);
+  assert.ok(xml.indexOf('<effectid>GraphicGroup</effectid>') < xml.indexOf('<effectid>GraphicAndType</effectid>'), 'Vector Motion should precede GraphicAndType');
 });
 
 test('selects main, extension, and both subtitle tracks in XML and SRT', () => {
@@ -4086,6 +4960,347 @@ test('selects main, extension, and both subtitle tracks in XML and SRT', () => {
     assert.equal((xml.match(/<clipitem id="text-/g) || []).length, subtitleTracks === 'main' ? 1 : 2);
     assert.equal(parseSrt(srt).length, subtitleTracks === 'main' ? 1 : 2);
   }
+});
+
+test('exports the overlay track as its own cues, text track, and sticker tracks', () => {
+  const plan = helpers.buildProjectExportPlan({
+    media: { path: 'fixture.mp4', type: 'video', durationMs: 5000 },
+    sticker_root: 'C:/stickers',
+    segments: [{ start: 100, end: 300, text: 'main' }],
+    overlay_track: {
+      enabled: true,
+      segments: [
+        { start: 400, end: 700, text: 'overlay one', sticker: { name: 'cat', rel: 'cat.png', width: 320, height: 240 } },
+        { start: 800, end: 1100, text: 'overlay two', sticker_ref: { name: 'cat', headIdx: 0 } },
+      ],
+    },
+  }, { mode: 'source' });
+  assert.equal(plan.cues.overlay.length, 2);
+  assert.equal(plan.cues.overlay[0].text, 'overlay one');
+  assert.equal(plan.overlayStickers.length, 2);
+  assert.equal(plan.overlayStickers[0].track, 'overlay');
+  assert.equal(plan.overlayStickers[0].path, 'C:/stickers/cat.png');
+  assert.equal(plan.overlayStickers[1].path, 'C:/stickers/cat.png');
+
+  // 叠加轨字幕独立成轨；主轨 stickers 与叠加轨 stickers 各用各的轨道。
+  const xml = helpers.serializeFcp7Xml(plan, { subtitleTracks: 'all', nativeTextObjects: true });
+  assert.equal((xml.match(/<clipitem id="text-main-/g) || []).length, 1);
+  assert.equal((xml.match(/<clipitem id="text-overlay-/g) || []).length, 2);
+  assert.ok(xml.includes('<name>overlay one</name>'));
+  assert.ok(xml.includes('clipitem id="overlay-sticker-clip-1"'));
+  assert.ok(xml.includes('<name>MAW sticker - cat</name>'));
+  assert.equal((xml.match(/<track>/g) || []).length >= 4, true);
+  // 仅叠加轨 / 映射 SRT 选择。
+  const overlayOnlyXml = helpers.serializeFcp7Xml(plan, { subtitleTracks: 'overlay', nativeTextObjects: true });
+  assert.equal((overlayOnlyXml.match(/<clipitem id="text-/g) || []).length, 2);
+  const overlaySrt = helpers.serializeMappedSrt(plan, { subtitleTracks: 'overlay' });
+  assert.equal(parseSrt(overlaySrt).length, 2);
+  // 关闭叠加轨（schema：enabled=false 不导出）→ 没有叠加 cue，也没有表情包。
+  const disabledPlan = helpers.buildProjectExportPlan({
+    media: { path: 'fixture.mp4', type: 'video', durationMs: 5000 },
+    segments: [{ start: 100, end: 300, text: 'main' }],
+    overlay_track: { enabled: false, segments: [{ start: 400, end: 700, text: 'hidden' }] },
+  }, { mode: 'source' });
+  assert.equal(disabledPlan.cues.overlay.length, 0);
+  assert.equal(disabledPlan.overlayStickers.length, 0);
+});
+
+test('buildAssPayload writes overlay cues on layer 2 with a baked Overlay style', () => {
+  const ass = helpers.buildAssPayload(
+    [{ start: 100, end: 300, text: 'main' }],
+    { overlaySegments: [
+      { start: 150, end: 350, text: 'overlay' },
+      { start: 400, end: 200, text: 'invalid' },
+      { start: 500, end: 600, text: 'skip me', disabled: true },
+    ] },
+  );
+  const dialogueLines = ass.split('\n').filter((line) => line.startsWith('Dialogue:'));
+  assert.equal(dialogueLines.length, 2);
+  assert.match(dialogueLines[0], /^Dialogue: 0,/);
+  assert.match(dialogueLines[1], /^Dialogue: 2,/);
+  assert.ok(dialogueLines[1].includes(',Overlay,,0,0,0,'));
+  // 叠加轨引用独立样式，MarginV 固化进样式行（legacy：80 + 1.2×72 = 166），
+  // 事件行不再携带边距覆盖。
+  const overlayStyle = ass.split('\n').find((line) => line.startsWith('Style: Overlay,'));
+  assert.ok(overlayStyle);
+  assert.ok(overlayStyle.endsWith(',10,10,166,1'));
+});
+
+test('buildAssPayload anchors overlay cues to the active main style margin', () => {
+  // ASS 模式：主字幕垂直边距来自样式库（用户可改），叠加轨按
+  // 「主样式边距 + 1.2 × 字号」固化（120 + round(86.4) = 206）。
+  const styled = helpers.buildAssPayload(
+    [{ start: 100, end: 300, text: 'main' }],
+    {
+      assProfile: { id: 'ass', styleId: 'ass', animations: {} },
+      assStyle: { id: 'ass', fontSize: 72, marginV: 120, primaryColor: '#ffffff', outlineColor: '#000000', outline: 2 },
+      overlaySegments: [{ start: 150, end: 350, text: 'overlay' }],
+      appearance: {},
+    },
+  );
+  const styledOverlay = styled.split('\n').find((line) => line.startsWith('Dialogue: 2,'));
+  assert.ok(styledOverlay.includes(',Overlay,,0,0,0,'));
+  const overlayStyleLine = styled.split('\n').find((line) => line.startsWith('Style: Overlay,'));
+  assert.ok(overlayStyleLine.endsWith(',10,10,206,1'));
+  const defaultStyleLine = styled.split('\n').find((line) => line.startsWith('Style: Default,'));
+  assert.ok(defaultStyleLine.endsWith(',10,10,120,1'));
+});
+
+test('buildAssPayload styles overlay cues exactly like main cues in every ass_color_style mode', () => {
+  const overlaySegments = [
+    { start: 150, end: 350, text: 'overlay blue', color: { name: 'blue' } },
+    { start: 400, end: 600, text: 'overlay plain' },
+  ];
+  const options = {
+    assProfile: { id: 'ass', styleId: 'ass', animations: {} },
+    assStyle: { id: 'ass', primaryColor: '#123456', outlineColor: '#000000', outline: 2 },
+    overlaySegments,
+    appearance: {},
+  };
+  // text（默认）：叠加轨带颜色标记的句子与主字幕一样引用调色板变体，
+  // 但挂在独立的 Overlay 前缀样式上。
+  const textMode = helpers.buildAssPayload(
+    [{ start: 100, end: 300, text: 'main red', color: { name: 'red' } }],
+    { ...options, appearance: { ass_color_style: 'text' } },
+  );
+  const textOverlay = textMode.split('\n').filter((line) => line.startsWith('Dialogue: 2,'));
+  assert.equal(textOverlay.length, 2);
+  assert.ok(textOverlay[0].includes(',Overlay BLUE,'));
+  assert.ok(textOverlay[1].includes(',Overlay,'));
+  assert.ok(textMode.includes('Style: Overlay,'));
+  assert.ok(textMode.includes('Style: Overlay BLUE,'));
+  // none：调色板样式不导出，主轨与叠加轨一起回落，不再悬挂未定义引用。
+  const noneMode = helpers.buildAssPayload(
+    [{ start: 100, end: 300, text: 'main red', color: { name: 'red' } }],
+    { ...options, appearance: { ass_color_style: 'none' } },
+  );
+  const noneOverlay = noneMode.split('\n').filter((line) => line.startsWith('Dialogue: 2,'));
+  assert.equal(noneOverlay.length, 2);
+  assert.ok(noneOverlay.every((line) => line.includes(',Overlay,')));
+  assert.ok(!noneMode.split('\n').some((line) => line.startsWith('Style: Overlay BLUE,')));
+});
+
+test('buildAssPayload applies fad and transform tags to overlay cues but never move', () => {
+  const ass = helpers.buildAssPayload(
+    [{ start: 100, end: 900, text: 'main' }],
+    {
+      assProfile: {
+        id: 'ass', styleId: 'ass',
+        animations: {
+          fad: { enabled: true, inMs: 200, outMs: 300 },
+          move: { enabled: true, x1: 0, y1: 960, x2: 100, y2: 500, t1: 0, t2: 1000 },
+          t: { enabled: true, startMs: 0, endMs: 500, accel: 1, tags: String.raw`\fs40` },
+        },
+      },
+      assStyle: { id: 'ass', primaryColor: '#123456', outlineColor: '#000000', outline: 2 },
+      overlaySegments: [{ start: 150, end: 850, text: 'overlay' }],
+      appearance: {},
+    },
+  );
+  const dialogue = ass.split('\n').filter((line) => line.startsWith('Dialogue:'));
+  assert.equal(dialogue.length, 2);
+  // 主轨：fad + move + t 全量应用。
+  assert.ok(dialogue[0].includes('{\\fad(200,300)\\move(0,960,100,500,0,1000)\\t(0,500,1,\\fs40)}main'));
+  // 叠加轨：与位置无关的 fad/t 逐句应用；\move 的绝对坐标只属于主字幕。
+  assert.ok(dialogue[1].includes('{\\fad(200,300)\\t(0,500,1,\\fs40)}overlay'));
+  assert.ok(!dialogue[1].includes('\\move('));
+});
+
+test('buildAssPayload turns single-cue fade markers into fad tags from the style-library durations', () => {
+  const ass = helpers.buildAssPayload(
+    [{ start: 0, end: 1000, text: '>>淡入<<' }],
+    {
+      assProfile: {
+        id: 'ass', styleId: 'ass',
+        animations: { fad: { enabled: false, inMs: 120, outMs: 240 } },
+      },
+      assStyle: { id: 'ass', primaryColor: '#123456', outlineColor: '#000000', outline: 2 },
+      assExtensionStyle: { id: 'ass-extension' },
+      appearance: {},
+      extensionSegments: [{ start: 0, end: 1000, text: '淡出<<' }],
+      overlaySegments: [{ start: 0, end: 1000, text: '>>叠加' }],
+    },
+  );
+  const dialogue = ass.split('\n').filter((line) => line.startsWith('Dialogue:'));
+  // 主轨：两端标记 → fad(in,out)，字面标记剥离。
+  assert.ok(dialogue[0].includes('{\\fad(120,240)}淡入'), dialogue[0]);
+  assert.ok(!dialogue[0].includes('>>') && !dialogue[0].includes('<<'), dialogue[0]);
+  // 副字幕轨（Layer 1）：只有行尾 << → fad(0,out)。
+  const extension = dialogue.find((line) => line.startsWith('Dialogue: 1,'));
+  assert.ok(extension.includes('{\\fad(0,240)}淡出'), extension);
+  // 叠加轨（Layer 2）：只有行首 >> → fad(in,0)。
+  const overlay = dialogue.find((line) => line.startsWith('Dialogue: 2,'));
+  assert.ok(overlay.includes('{\\fad(120,0)}叠加'), overlay);
+});
+
+test('single-cue fade markers override the global ASS animation switch', () => {
+  const ass = helpers.buildAssPayload(
+    [{ start: 0, end: 1000, text: '>>句子' }],
+    {
+      assProfile: {
+        id: 'ass', styleId: 'ass',
+        animations: {
+          fade: { enabled: true, alpha1: 0, alpha2: 255, alpha3: 0, t1: 0, t2: 250, t3: 750, t4: 1000 },
+          fad: { enabled: true, inMs: 500, outMs: 600 },
+        },
+      },
+      assStyle: { id: 'ass', primaryColor: '#123456', outlineColor: '#000000', outline: 2 },
+      appearance: {},
+    },
+  );
+  const dialogue = ass.split('\n').filter((line) => line.startsWith('Dialogue:'));
+  // 单句标记优先：用句内 fad 覆盖全局 fade/fad 开关。
+  assert.ok(dialogue[0].includes('{\\fad(500,0)}句子'), dialogue[0]);
+  assert.ok(!dialogue[0].includes('\\fade('), dialogue[0]);
+});
+
+test('parses single-cue fade markers with the special-symbol rule', () => {
+  const bothEnds = helpers.parseSentenceFadeMarkers('>>你好<<', 'double');
+  assert.equal(bothEnds.text, '你好');
+  assert.equal(bothEnds.fadeIn, true);
+  assert.equal(bothEnds.fadeOut, true);
+  const inOnly = helpers.parseSentenceFadeMarkers('>>你好', 'double');
+  assert.equal(inOnly.text, '你好');
+  assert.equal(inOnly.fadeIn, true);
+  assert.equal(inOnly.fadeOut, false);
+  const outOnly = helpers.parseSentenceFadeMarkers('你好<<', 'double');
+  assert.equal(outOnly.text, '你好');
+  assert.equal(outOnly.fadeIn, false);
+  assert.equal(outOnly.fadeOut, true);
+  // 双符号默认只认双符号：单符号保持原样。
+  const doubleIgnoresSingle = helpers.parseSentenceFadeMarkers('>你好<', 'double');
+  assert.equal(doubleIgnoresSingle.text, '>你好<');
+  assert.equal(doubleIgnoresSingle.fadeIn, false);
+  assert.equal(doubleIgnoresSingle.fadeOut, false);
+  // both：单符号也识别为 fad。
+  const bothRuleSingle = helpers.parseSentenceFadeMarkers('>你好<', 'both');
+  assert.equal(bothRuleSingle.text, '你好');
+  assert.equal(bothRuleSingle.fadeIn, true);
+  assert.equal(bothRuleSingle.fadeOut, true);
+  // 旧值 single 与设置归一化一致，迁移为 both。
+  const legacySingle = helpers.parseSentenceFadeMarkers('>你好<', 'single');
+  assert.equal(legacySingle.text, '你好');
+  assert.equal(legacySingle.fadeIn, true);
+  assert.equal(legacySingle.fadeOut, true);
+  assert.equal(helpers.stripSentenceFadeMarkers('>>你好<<'), '你好');
+  assert.equal(helpers.stripSentenceFadeMarkers('你好'), '你好');
+});
+
+test('SRT export strips single-cue fade markers without touching the text', () => {
+  const srt = helpers.buildSrtPayload(
+    [{ start: 0, end: 1000, text: '>>你好<<' }, { start: 1000, end: 2000, text: '普通' }],
+    { formatTime: (ms) => `T${ms}` },
+  );
+  assert.ok(srt.includes('\n你好\n'), srt);
+  assert.ok(!srt.includes('>>') && !srt.includes('<<'), srt);
+  assert.ok(srt.includes('\n普通\n'), srt);
+});
+
+test('buildAssPayload writes extension cues on layer 1 with a single Extension style', () => {
+  const ass = helpers.buildAssPayload(
+    [{ start: 100, end: 900, text: 'main' }],
+    {
+      assProfile: {
+        id: 'ass', styleId: 'ass',
+        animations: {
+          fad: { enabled: true, inMs: 150, outMs: 250 },
+          move: { enabled: true, x1: 0, y1: 900, x2: 0, y2: 400, t1: 0, t2: 800 },
+        },
+      },
+      assStyle: { id: 'ass', primaryColor: '#123456', outlineColor: '#000000', outline: 2 },
+      assExtensionStyle: { id: 'ass-extension', fontSize: 54, marginV: 166, primaryColor: '#ffd34d' },
+      extensionSegments: [
+        { start: 120, end: 880, text: 'extension line' },
+        { start: 900, end: 950, text: 'disabled', disabled: true },
+      ],
+      overlaySegments: [{ start: 150, end: 850, text: 'overlay' }],
+      appearance: {},
+    },
+  );
+  const dialogue = ass.split('\n').filter((line) => line.startsWith('Dialogue:'));
+  assert.equal(dialogue.length, 3);
+  assert.match(dialogue[1], /^Dialogue: 1,/);
+  assert.ok(dialogue[1].includes(',Extension,,0,0,0,'));
+  // 副字幕与叠加轨同样只应用与位置无关的动画标签。
+  assert.ok(dialogue[1].includes('{\\fad(150,250)}extension line'));
+  assert.ok(!dialogue[1].includes('\\move('));
+  assert.match(dialogue[2], /^Dialogue: 2,/);
+  // 副字幕样式：独立样式行，字号按 1080p 参考换算，边距完全来自样式。
+  const extensionStyle = ass.split('\n').find((line) => line.startsWith('Style: Extension,'));
+  assert.ok(extensionStyle);
+  assert.ok(extensionStyle.includes(',54,'));
+  assert.ok(extensionStyle.endsWith(',10,10,166,1'));
+});
+
+test('buildAssPayload chains the overlay anchor above the extension track', () => {
+  const options = {
+    assProfile: { id: 'ass', styleId: 'ass', animations: {} },
+    assStyle: { id: 'ass', fontSize: 72, marginV: 80, primaryColor: '#ffffff', outlineColor: '#000000', outline: 2 },
+    overlaySegments: [{ start: 150, end: 850, text: 'overlay' }],
+    appearance: {},
+  };
+  // 无副字幕：叠加锚定 = 主样式边距 80 + 1.2 × 72 = 166。
+  const withoutExtension = helpers.buildAssPayload(
+    [{ start: 100, end: 900, text: 'main' }], options,
+  );
+  const overlayStyleOnly = withoutExtension.split('\n')
+    .find((line) => line.startsWith('Style: Overlay,'));
+  assert.ok(overlayStyleOnly.endsWith(',10,10,166,1'));
+  // 有副字幕（边距 166、字号 54）：叠加锚定链式上叠 = 166 + round(64.8) = 231。
+  const withExtension = helpers.buildAssPayload(
+    [{ start: 100, end: 900, text: 'main' }],
+    {
+      ...options,
+      assExtensionStyle: { id: 'ass-extension', fontSize: 54, marginV: 166 },
+      extensionSegments: [{ start: 120, end: 880, text: 'extension line' }],
+    },
+  );
+  const overlayStyleChained = withExtension.split('\n')
+    .find((line) => line.startsWith('Style: Overlay,'));
+  assert.ok(overlayStyleChained.endsWith(',10,10,231,1'));
+});
+
+test('buildAssPayload overlay style inherits the anchor layer alignment and side margins', () => {
+  const options = {
+    videoWidth: 1920,
+    videoHeight: 1080,
+    assProfile: { id: 'ass', styleId: 'ass', animations: {} },
+    assStyle: { id: 'ass', fontSize: 72, marginV: 80, primaryColor: '#ffffff', outlineColor: '#000000', outline: 2 },
+    overlaySegments: [{ start: 150, end: 850, text: 'overlay' }],
+    appearance: {},
+  };
+  // 副字幕样式为顶部居中（Alignment 8，MarginV 100、左右边距 40/50）：
+  // 叠加轨链在其上方时继承该对齐与水平边距，固化边距按同一基准边解释
+  // （100 + round(1.2 × 54) = 165），而不是落回主样式的底部居中。
+  const topExtension = helpers.buildAssPayload(
+    [{ start: 100, end: 900, text: 'main' }],
+    {
+      ...options,
+      assExtensionStyle: {
+        id: 'ass-extension', fontSize: 54, marginV: 100, marginL: 40, marginR: 50, alignment: 8,
+      },
+      extensionSegments: [{ start: 120, end: 880, text: 'extension line' }],
+    },
+  );
+  const overlayStyleChained = topExtension.split('\n')
+    .find((line) => line.startsWith('Style: Overlay,'));
+  assert.ok(overlayStyleChained);
+  assert.match(overlayStyleChained, /,8,40,50,165,1$/);
+  // 副字幕全部禁用：不链式，叠加样式回到主样式的底部居中（80 + 86.4 → 166）。
+  const disabledExtension = helpers.buildAssPayload(
+    [{ start: 100, end: 900, text: 'main' }],
+    {
+      ...options,
+      assExtensionStyle: {
+        id: 'ass-extension', fontSize: 54, marginV: 100, marginL: 40, marginR: 50, alignment: 8,
+      },
+      extensionSegments: [{ start: 120, end: 880, text: 'extension line', disabled: true }],
+    },
+  );
+  const overlayStyleFallback = disabledExtension.split('\n')
+    .find((line) => line.startsWith('Style: Overlay,'));
+  assert.ok(overlayStyleFallback);
+  assert.match(overlayStyleFallback, /,2,10,10,166,1$/);
 });
 
 test('reports malformed intervals, missing sticker paths, and stale serializer warnings', () => {
@@ -4170,15 +5385,29 @@ test('rejects serializer input that lacks media path, duration, or frame profile
   assert.throws(() => helpers.serializeFcp7Xml({ ...plan, frameProfile: null }), /frame profile/);
 });
 
+test('rejects export plans whose overlay stickers fall outside the output duration', () => {
+  const plan = helpers.buildProjectExportPlan({
+    media: { path: 'fixture.mp4', type: 'video', durationMs: 1000 }, segments: [],
+  }, { mode: 'source' });
+  assert.throws(
+    () => helpers.serializeMappedSrt({ ...plan, overlayStickers: [{ startMs: 0, endMs: 1200 }] }),
+    /export sticker outside output duration/,
+  );
+  assert.doesNotThrow(() => helpers.serializeMappedSrt({
+    ...plan, overlayStickers: [{ startMs: 0, endMs: 800 }],
+  }, { subtitleTracks: 'main' }));
+});
+
 test('translates every project-export option, outcome, and warning key in both locales', () => {
   const keys = [
     '导出时间线模式', '去空隙时间线', '原始时间线', '导出帧率', '写入原生字幕文本对象',
+    '自定义…', '宽度', '高度', '自定义合成尺寸需要 16–7680 之间的整数宽高',
     '导出副字幕轨', '主轨字幕', '主轨与副轨字幕', '导出文件名', '导出媒体路径缺失',
     '导出媒体时长缺失', '导出文件名无效', '导出警告',
     'Premiere FCP 7 XML（实验性）',
     '实验性 Premiere 交接：导出 FCP 7 XML',
     '导出 FCP 7 XML 供 Premiere 交接。此交接尚未完成目标应用验证。',
-    '原生文本仅作为可选交接数据，不承诺样式或位置还原；SRT 可通过独立按钮导出。',
+    '原生文本仅作为可选交接数据，不承诺样式或位置还原；SRT 可通过独立按钮导出。未写入原生文本时「导出字幕轨」不生效。',
     '导出 XML', 'FCP 7 XML 已保存', 'FCP 7 XML 下载已发起',
     'FCP 7 XML 保存已取消', 'FCP 7 XML 保存失败', 'FCP 7 XML 导出失败',
   ];
@@ -4700,6 +5929,122 @@ test('normalizes legacy multi-subtitle data with stable IDs and preserves option
 });
 
 
+test('normalizes an enabled overlay track with stable IDs without creating a bilingual track', () => {
+  const project = {
+    segments: [{ start: 0, end: 1000, text: '主字幕' }],
+    overlay_track: {
+      enabled: true,
+      segments: [{ start: 400, end: 800, text: '叠加字幕' }],
+    },
+  };
+
+  helpers.normalizeMultiSubtitleProject(project);
+
+  assert.equal(project.overlay_track.enabled, true);
+  assert.equal(project.overlay_track.segments[0].id, 'overlay-001');
+  assert.deepEqual(JSON.parse(JSON.stringify(project.multi_subtitle.tracks)), []);
+});
+
+
+test('merges main and overlay cues by start time with main track tie priority', () => {
+  const merged = helpers.mergeMainAndOverlaySegments(
+    [
+      { start: 0, end: 1000, text: '主一' },
+      { start: 2000, end: 3000, text: '主二' },
+    ],
+    [
+      { start: 500, end: 1500, text: '叠一' },
+      { start: 2000, end: 2500, text: '叠二' },
+    ],
+  );
+
+  assert.deepEqual(JSON.parse(JSON.stringify(merged.map((segment) => segment.text))), [
+    '主一', '叠一', '主二', '叠二',
+  ]);
+});
+
+
+test('includes overlay track data in a segment history snapshot', () => {
+  const snapshot = helpers.buildSegmentsHistorySnapshot(
+    [{ text: '主字幕' }],
+    { enabled: false },
+    { enabled: true, segments: [{ text: '叠加字幕' }] },
+  );
+
+  assert.deepEqual(JSON.parse(JSON.stringify(snapshot.overlay_track)), {
+    enabled: true, segments: [{ text: '叠加字幕' }],
+  });
+});
+
+
+test('moves a segment between main and overlay tracks keeping target start order', () => {
+  const main = [
+    { id: 'a', start: 0, end: 1000 },
+    { id: 'b', start: 2000, end: 3000 },
+  ];
+  const overlay = [{ id: 'o1', start: 500, end: 1200 }];
+
+  // 主轨 index 0（start 0）应插到 overlay 的 start 500 之前。
+  assert.equal(helpers.moveSegmentBetweenTracks(main, overlay, 0), 0);
+  assert.equal(main.length, 1);
+  assert.equal(main[0].id, 'b');
+  assert.deepEqual(overlay.map((segment) => segment.id), ['a', 'o1']);
+
+  // 越界与无效下标安全返回 -1，不改动两侧数组。
+  assert.equal(helpers.moveSegmentBetweenTracks(main, overlay, 5), -1);
+  assert.equal(helpers.moveSegmentBetweenTracks(main, overlay, -1), -1);
+  assert.equal(main.length, 1);
+  assert.equal(overlay.length, 2);
+
+  // 反向：把 overlay 的 'a' 移回主轨，应按 start 升序插到 'b' 之前。
+  assert.equal(helpers.moveSegmentBetweenTracks(overlay, main, 0), 0);
+  assert.deepEqual(main.map((segment) => segment.id), ['a', 'b']);
+  assert.deepEqual(overlay.map((segment) => segment.id), ['o1']);
+
+  // 同 start 时插到既有段之后，保持目标轨稳定排序。
+  const target = [{ id: 't1', start: 1000, end: 1500 }];
+  assert.equal(helpers.moveSegmentBetweenTracks([main[1]], target, 0), 1);
+  assert.deepEqual(target.map((segment) => segment.id), ['t1', 'b']);
+});
+
+
+test('shifts selection sets and the range anchor after a cue is removed', () => {
+  // 被移除的下标本身被选中：移出选中集，其后选中项前移一位（5 前移为 4），
+  // 锚点在被移除下标之后时同样前移（5 前移为 4）。
+  const selection = new Set([1, 3, 5]);
+  const result = helpers.shiftSelectionAfterRemoval(selection, 5, 3);
+  assert.equal(result.wasSelected, true);
+  assert.deepEqual([...selection].sort(), [1, 4]);
+  assert.equal(result.nextAnchor, 4);
+
+  // 锚点正好是被移除的下标：锚点清空为 -1，避免 Shift 范围选悬空。
+  const anchorSelection = new Set([2, 7]);
+  const anchorReset = helpers.shiftSelectionAfterRemoval(anchorSelection, 2, 2);
+  assert.equal(anchorReset.wasSelected, true);
+  assert.deepEqual([...anchorSelection].sort(), [6]);
+  assert.equal(anchorReset.nextAnchor, -1);
+
+  // 被移除的下标未被选中：选中集仅做前移（4 前移为 3），锚点不变。
+  const untouched = new Set([0, 4]);
+  const notSelected = helpers.shiftSelectionAfterRemoval(untouched, 1, 2);
+  assert.equal(notSelected.wasSelected, false);
+  assert.deepEqual([...untouched].sort(), [0, 3]);
+  assert.equal(notSelected.nextAnchor, 1);
+
+  // 锚点与选中项都在被移除下标之前：完全不受影响。
+  const before = new Set([0, 1]);
+  const unchanged = helpers.shiftSelectionAfterRemoval(before, 1, 4);
+  assert.equal(unchanged.wasSelected, false);
+  assert.deepEqual([...before].sort(), [0, 1]);
+  assert.equal(unchanged.nextAnchor, 1);
+
+  // 非法输入不抛错：返回未选中与原锚点。
+  const invalid = helpers.shiftSelectionAfterRemoval(null, 3, Number.NaN);
+  assert.equal(invalid.wasSelected, false);
+  assert.equal(invalid.nextAnchor, 3);
+});
+
+
 test('browser ID repair reserves later explicit IDs like the server contract', () => {
   const project = {
     segments: [
@@ -4885,4 +6230,386 @@ test('builds bindings with offsets and aligns bound/unbound dual display rows', 
     { mainIndex: 1, extensionIndex: null },
     { mainIndex: null, extensionIndex: 1 },
   ]);
+});
+
+test('alignItemsToText keeps order-preserving optimal alignment for rewritten words', () => {
+  // 真实案例 A（main-182-b-b）：「傲」被人工改写成「Alt(noir)」后，
+  // 贪心 indexOf 会让重复词互相抢位；最优对齐应让傲(1)让位、其余归位。
+  const text = '这Alt(noir)骨燕的傲骨要被践踏到什么程度';
+  const items = ['这', '傲', '骨', '燕', '的', '傲', '骨', '要被', '践踏', '到什么', '程', '度']
+    .map((t) => ({ text: t }));
+  assert.deepEqual(JSON.parse(JSON.stringify(
+    helpers.alignItemsToText(text, items).map((record) => (record ? record.textStart : null)),
+  )), [0, null, 10, 11, 12, 13, 14, 15, 17, 19, 22, 23]);
+});
+
+test('alignItemsToText aligns fully matchable items leftmost like the old greedy path', () => {
+  assert.deepEqual(JSON.parse(JSON.stringify(
+    helpers.alignItemsToText('模型训练完成', [{ text: '模型' }, { text: '训练' }, { text: '完成' }])
+      .map((record) => record.textStart),
+  )), [0, 2, 4]);
+  // item 不含词间空格、原文带空格的常见工程格式
+  assert.deepEqual(JSON.parse(JSON.stringify(
+    helpers.alignItemsToText('模型 训练 完成', [{ text: '模型' }, { text: '训练' }, { text: '完成' }])
+      .map((record) => record.textStart),
+  )), [0, 3, 6]);
+});
+
+test('alignItemsToText drops the extra item when occurrences run out', () => {
+  // 只有 2 处「A」：前两个对齐 1、3，最后一个为 null（丢尾不丢首）。
+  assert.deepEqual(JSON.parse(JSON.stringify(
+    helpers.alignItemsToText('xAyA', [{ text: 'A' }, { text: 'A' }, { text: 'A' }])
+      .map((record) => (record ? record.textStart : null)),
+  )), [1, 3, null]);
+});
+
+test('alignItemsToText skips empty-text items without consuming positions', () => {
+  assert.deepEqual(JSON.parse(JSON.stringify(
+    helpers.alignItemsToText('甲乙', [{ text: '甲' }, { text: '' }, { text: '乙' }])
+      .map((record) => (record ? record.textStart : null)),
+  )), [0, null, 1]);
+  assert.deepEqual(JSON.parse(JSON.stringify(helpers.alignItemsToText('', []))), []);
+});
+
+test('placeUnalignedSplitItems assigns by time and keeps items in start order', () => {
+  const left = [{ text: '甲', start: 100, end: 200 }];
+  const right = [{ text: '戊', start: 800, end: 900 }];
+  const unaligned = [
+    { text: '丁', start: 700, end: 800 }, // 完全在切点右侧，且要插到「戊」之前
+    { text: '乙', start: 200, end: 300 }, // 完全在切点左侧
+    { text: '丙', start: 450, end: 550 }, // 跨切点：两侧等距，归右
+    { text: '坏', start: 900, end: 900 }, // 零长区间：忽略
+  ];
+  const placed = helpers.placeUnalignedSplitItems(left, right, unaligned, 500);
+  assert.deepEqual(JSON.parse(JSON.stringify(placed.leftItems.map((item) => item.text))), ['甲', '乙']);
+  assert.deepEqual(JSON.parse(JSON.stringify(placed.rightItems.map((item) => item.text))), ['丙', '丁', '戊']);
+});
+
+test('splitAlignmentDriftMs treats bracketed cuts as zero and measures nearest edge', () => {
+  // 下刀落在左右词边界的静音空隙内：空隙再宽也算贴合
+  assert.equal(helpers.splitAlignmentDriftMs(100, 900, 500), 0);
+  assert.equal(helpers.splitAlignmentDriftMs(100, 200, 100), 0);
+  // 切分边界整体偏离下刀：取到最近边界的距离
+  assert.equal(helpers.splitAlignmentDriftMs(300, 300, 100), 200);
+  assert.equal(helpers.splitAlignmentDriftMs(100, 100, 400), 300);
+  // 缺下刀时间或缺边界时无从衡量
+  assert.equal(helpers.splitAlignmentDriftMs(100, 200, null), null);
+  assert.equal(helpers.splitAlignmentDriftMs(null, null, 400), null);
+});
+
+test('placeUnalignedSplitItems extends side bounds to wrap unaligned words', () => {
+  // A2 复现：右段文本 Alt(noir) 的发音是失配词「傲」（846000–846200），
+  // 右段起点必须前移到它的 start，而不是让词先于段起点、保存时被时间码
+  // 兜底二次改写。
+  const left = [{ text: '你了', start: 845360, end: 845720 }];
+  const right = [
+    { text: '骨', start: 846200, end: 846400 },
+    { text: '燕', start: 846400, end: 846720 },
+  ];
+  const placed = helpers.placeUnalignedSplitItems(
+    left,
+    right,
+    [{ text: '傲', start: 846000, end: 846200 }],
+    845720,
+    { leftEndMs: 845720, rightStartMs: 846200 },
+  );
+  assert.deepEqual(JSON.parse(JSON.stringify(placed.bounds)), { leftEndMs: 845720, rightStartMs: 846000 });
+  assert.deepEqual(JSON.parse(JSON.stringify(placed.leftItems.map((item) => item.text))), ['你了']);
+  assert.deepEqual(JSON.parse(JSON.stringify(placed.rightItems.map((item) => [item.text, item.start, item.end]))), [
+    ['傲', 846000, 846200],
+    ['骨', 846200, 846400],
+    ['燕', 846400, 846720],
+  ]);
+});
+
+test('placeUnalignedSplitItems resets bounds and clips pathological unaligned words', () => {
+  // 病态失配词把扩展后的两侧拉爆时：回退原边界，词按原边界钳制。
+  const pathological = helpers.placeUnalignedSplitItems(
+    [{ text: '甲', start: 100, end: 400 }],
+    [{ text: '乙', start: 500, end: 600 }],
+    [{ text: '坏', start: 50, end: 600 }],
+    450,
+    { leftEndMs: 400, rightStartMs: 500 },
+  );
+  assert.deepEqual(JSON.parse(JSON.stringify(pathological.bounds)), { leftEndMs: 400, rightStartMs: 500 });
+  assert.deepEqual(JSON.parse(JSON.stringify(pathological.leftItems.map((item) => item.text))), ['甲']);
+  assert.deepEqual(JSON.parse(JSON.stringify(pathological.rightItems.map((item) => item.text))), ['乙', '坏']);
+  assert.deepEqual(JSON.parse(JSON.stringify(
+    pathological.rightItems.find((item) => item.text === '坏'),
+  )), { text: '坏', start: 500, end: 600 });
+});
+
+test('placeUnalignedSplitItems honors explicit side and strips the helper field', () => {
+  // 刀点左侧替换词（问题1）：显式 side 压过时间比较（否则傲会被分到右段）。
+  const placed = helpers.placeUnalignedSplitItems(
+    [{ text: '甲', start: 0, end: 1000 }],
+    [{ text: '乙', start: 2200, end: 3000 }],
+    [{ text: '傲', start: 1000, end: 2000, side: 'left' }],
+    1000,
+    { leftEndMs: 1000, rightStartMs: 2200 },
+  );
+  assert.deepEqual(JSON.parse(JSON.stringify(placed.bounds)), { leftEndMs: 2000, rightStartMs: 2200 });
+  assert.deepEqual(JSON.parse(JSON.stringify(placed.leftItems.map((item) => [item.text, item.start, item.end]))), [
+    ['甲', 0, 1000],
+    ['傲', 1000, 2000],
+  ]);
+  assert.deepEqual(JSON.parse(JSON.stringify(placed.rightItems.map((item) => item.text))), ['乙']);
+  // side 只参与决策，不残留在结果 item 上。
+  for (const item of [...placed.leftItems, ...placed.rightItems]) {
+    assert.equal(item.side, undefined);
+  }
+});
+
+test('alignItemsToText handles pathological repeated tokens with bounded work', () => {
+  // 重复单字 × 高频出现曾是近似立方的最坏情况；单调 + 二分后应瞬时完成
+  // 且保持完整的左most对齐。
+  const length = 400;
+  const text = '甲'.repeat(length);
+  const items = Array.from({ length }, () => ({ text: '甲' }));
+  const aligned = helpers.alignItemsToText(text, items).map((record) => record?.textStart);
+  assert.deepEqual(JSON.parse(JSON.stringify(aligned)), Array.from({ length }, (_, index) => index));
+});
+
+test('alignItemsToText bails out to no alignment on absurd inputs', () => {
+  // 2600 词 × 2602 坐标超过 2_000_000 守卫：放弃对齐返回全 null（等长），
+  // 拆分随后走失配词的时间/词序回退，而不是冻结编辑器。
+  const length = 2600;
+  const text = '甲'.repeat(length);
+  const items = Array.from({ length }, () => ({ text: '甲' }));
+  assert.deepEqual(
+    JSON.parse(JSON.stringify(helpers.alignItemsToText(text, items))),
+    JSON.parse(JSON.stringify(new Array(length).fill(null))),
+  );
+});
+
+
+test('combines bilingual SRT at actual boundaries without losing unmatched or multiline text', () => {
+  const main = [{ start: 100, end: 500, text: '主一' }, { start: 500, end: 900, text: '主二' }];
+  const secondary = [{ start: 200, end: 700, text: 'Secondary\r\nline' },
+    { start: 1000, end: 1100, text: 'unmatched' },
+    { start: 0, end: 1200, text: 'disabled', disabled: true },
+    { start: 'bad', end: 1200, text: 'invalid' }, { start: 900, end: 900, text: 'empty duration' }];
+  const snapshot = JSON.stringify([main, secondary]);
+  assert.equal(helpers.buildBilingualSrtPayload(main, secondary), [
+    '1', '100 --> 200', '主一', '',
+    '2', '200 --> 500', '主一\nSecondary\nline', '',
+    '3', '500 --> 700', '主二\nSecondary\nline', '',
+    '4', '700 --> 900', '主二', '',
+    '5', '1000 --> 1100', 'unmatched', '',
+  ].join('\n'));
+  assert.equal(JSON.stringify([main, secondary]), snapshot);
+});
+
+test('bilingual SRT preserves speaker color contexts and only extends the first main cue to zero', () => {
+  const main = [{ start: 500, end: 1000, text: 'Main', color: { name: 'red' } },
+    { start: 1500, end: 2000, text: 'Later', color_ref: { headIdx: 0, name: 'red' } }];
+  const secondary = [{ start: 500, end: 1000, text: 'Translation', color: { name: 'blue' } },
+    { start: 1500, end: 2000, text: 'Second', color_ref: { headIdx: 0, name: 'blue' } }];
+  const result = helpers.buildBilingualSrtPayload(main, secondary, {
+    alignFirstStart: true, speakerLabelsEnabled: true,
+    speakerLabels: { red: 'A', blue: 'B' }, speakerLabelSeparator: '：',
+  });
+  assert.equal(result, [
+    '1', '0 --> 500', 'A：Main', '',
+    '2', '500 --> 1000', 'A：Main\nB：Translation', '',
+    '3', '1500 --> 2000', 'A：Later\nB：Second', '',
+  ].join('\n'));
+  assert.equal(helpers.buildBilingualSrtPayload([], []), '');
+});
+
+test('wrap chars presets insert at both ends and skip already wrapped text', () => {
+  assert.deepEqual(
+    Array.from(helpers.WRAP_CHAR_PRESETS, (preset) => ({ ...preset })),
+    [
+      { id: 'emphasis', label: '强调文本', left: '**', right: '**' },
+      { id: 'large', label: '放大文本', left: '++', right: '++' },
+      { id: 'small', label: '缩小文本', left: '--', right: '--' },
+      { id: 'underline', label: '下划线', left: '__', right: '__' },
+      { id: 'strike', label: '删除线', left: '~~', right: '~~' },
+      { id: 'fade', label: '淡出淡入', left: '>>', right: '<<' },
+      { id: 'note', label: '音符', left: '♪', right: '♪' },
+    ],
+  );
+  assert.deepEqual({ ...helpers.wrapCharsAroundText('你好', '**', '**') },
+    { changed: true, skipped: false, text: '**你好**' });
+  // 同一对双符号不重复包裹。
+  assert.deepEqual({ ...helpers.wrapCharsAroundText('**你好**', '**', '**') },
+    { changed: false, skipped: true, text: '**你好**' });
+  assert.deepEqual({ ...helpers.wrapCharsAroundText('你好', '>>', '<<') },
+    { changed: true, skipped: false, text: '>>你好<<' });
+  // 音符是纯装饰字符，也不重复堆叠。
+  assert.deepEqual({ ...helpers.wrapCharsAroundText('♪你好♪', '♪', '♪') },
+    { changed: false, skipped: true, text: '♪你好♪' });
+  assert.deepEqual({ ...helpers.wrapCharsAroundText('', '**', '**') },
+    { changed: false, skipped: false, text: '' });
+  assert.deepEqual({ ...helpers.wrapCharsAroundText('文', '', '') },
+    { changed: false, skipped: false, text: '文' });
+  assert.equal(helpers.isTextWrappedBy('**文**', '**', '**'), true);
+  assert.equal(helpers.isTextWrappedBy('**文**', '>>', '<<'), false);
+});
+
+test('wrap chars menu copy has English translations', () => {
+  for (const preset of helpers.WRAP_CHAR_PRESETS) {
+    assert.notEqual(i18n.translateText(preset.label, 'en'), preset.label, preset.label);
+  }
+  const keys = [
+    '左右添加字符', '左右添加字符预设', '自定义左右字符', '左侧字符', '右侧字符', '插入',
+    '左右添加字符（插入到字幕两端）',
+    '在选中字幕文本两端原样插入字符；不做样式转换，也不受「单双符号」规则影响。',
+    '选中字幕已包裹相同符号，未重复添加', '没有可添加字符的字幕',
+    '请至少输入一侧字符', '请先选择要处理的字幕',
+  ];
+  for (const key of keys) assert.notEqual(i18n.translateText(key, 'en'), key, key);
+  assert.equal(i18n.translateText('已为 3 条字幕添加字符', 'en'), 'Added characters to 3 subtitles');
+  assert.equal(
+    i18n.translateText('已为 3 条字幕添加字符；1 条已包裹相同符号，已跳过', 'en'),
+    'Added characters to 3 subtitles; skipped 1 already wrapped with the same characters',
+  );
+});
+
+test('ASS special symbol rules apply to all five formats across preview runs and exports', () => {
+  assert.equal(helpers.normalizeEditorSettings().assSpecialSymbolRule, 'both');
+  assert.equal(helpers.normalizeEditorSettings({ assSpecialSymbolRule: 'invalid' }).assSpecialSymbolRule, 'both');
+  // 旧工程里的 'single' 迁移为 'both'（单双符号规则已收敛为三值）。
+  assert.equal(helpers.normalizeEditorSettings({ assSpecialSymbolRule: 'single' }).assSpecialSymbolRule, 'both');
+  const single = '*强调* _下划线_ ~删除~ -缩小- +放大+';
+  const double = '**强调** __下划线__ ~~删除~~ --缩小-- ++放大++';
+  const text = `${single} / ${double}`;
+  for (const rule of ['none', 'double', 'both']) {
+    const settings = helpers.normalizeEditorSettings({ assSpecialSymbolRule: rule });
+    assert.equal(helpers.normalizeEditorSettings(settings).assSpecialSymbolRule, rule);
+    const runs = Array.from(helpers.assInlineStyleRuns(text, settings.assEmphasisSyntax, settings));
+    const result = runs.map(run => run.text).join('');
+    const clean = '强调 下划线 删除 缩小 放大';
+    assert.equal(result, `${rule === 'both' ? clean : single} / ${['double', 'both'].includes(rule) ? clean : double}`);
+    const cues = [{ start: 0, end: 1000, text }];
+    const ass = helpers.buildAssPayload(cues, { ...settings,
+      assProfile: { id: 'ass', styleId: 'ass', animations: {} }, assStyle: { id: 'ass' },
+      assExtensionStyle: { id: 'ass-extension' }, extensionSegments: cues, overlaySegments: cues });
+    const events = ass.split('\n').filter(line => line.startsWith('Dialogue:'));
+    assert.equal(events.length, 3);
+    events.forEach(line => {
+      if (rule === 'none') assert.ok(line.includes(text));
+      else {
+        assert.match(line, /\\s1/);
+        assert.match(line, /\\u1/);
+        if (rule === 'double') assert.ok(line.includes(single));
+      }
+    });
+  }
+  const off = helpers.normalizeEditorSettings({ assSpecialSymbolRule: 'both', assStrikeEnabled: false });
+  assert.ok(helpers.assInlineStyleRuns(text, 'both', off).map(run => run.text).join('').includes('~~删除~~'));
+});
+
+
+test('parseLrcSegments derives gapless timings from successive timestamps', () => {
+  const segments = JSON.parse(JSON.stringify(helpers.parseLrcSegments([
+    '[ti:Demo]',
+    '[00:10.00]First line',
+    '[00:15.500]Second line',
+    '[01:02]Third line',
+  ].join('\n'))));
+  // 每句持续到下一时间戳；最后一句没有后续时间戳时兜底 5s。
+  assert.deepEqual(segments, [
+    { start: 10000, end: 15500, text: 'First line' },
+    { start: 15500, end: 62000, text: 'Second line' },
+    { start: 62000, end: 67000, text: 'Third line' },
+  ]);
+});
+
+test('parseLrcSegments expands multi-timestamp lines and sorts out-of-order cues', () => {
+  const segments = JSON.parse(JSON.stringify(helpers.parseLrcSegments([
+    '[00:20.00]Chorus',
+    '[00:10.00][00:40.00]Verse',
+  ].join('\n'))));
+  assert.deepEqual(segments.map((segment) => [segment.start, segment.end]), [
+    [10000, 20000],
+    [20000, 40000],
+    [40000, 45000],
+  ]);
+  assert.deepEqual(segments.map((segment) => segment.text), ['Verse', 'Chorus', 'Verse']);
+});
+
+test('parseLrcSegments applies the offset tag, strips enhanced word tags and keeps boundaries', () => {
+  const segments = JSON.parse(JSON.stringify(helpers.parseLrcSegments([
+    '[offset:+2500]',
+    '[ar:Artist][al:Album]',
+    '[00:10.00]<00:10.00>Enhanced <00:12.00>words',
+    '[00:12.00]',
+    '[00:15.00]After the gap marker',
+  ].join('\n'))));
+  // 空文本时间戳只作为上一句的结束边界，不生成字幕；
+  // offset 正值按主流播放器约定让歌词提前 2500ms。
+  assert.deepEqual(segments, [
+    { start: 7500, end: 9500, text: 'Enhanced words' },
+    // 最后一句没有后续时间戳，按 5s 兜底。
+    { start: 12500, end: 17500, text: 'After the gap marker' },
+  ]);
+});
+
+test('parseLrcSegments merges duplicate timestamps and preserves bracketed lyric text', () => {
+  const segments = JSON.parse(JSON.stringify(helpers.parseLrcSegments([
+    '[00:10.00]Left [Chorus] part',
+    '[00:10.00]Right part',
+    '[01:00.000][01:00.0]Same stamp twice',
+  ].join('\n'))));
+  assert.deepEqual(segments, [
+    { start: 10000, end: 60000, text: 'Left [Chorus] part\nRight part' },
+    { start: 60000, end: 65000, text: 'Same stamp twice' },
+  ]);
+});
+
+test('parseLrcSegments rejects files without any lyric cues', () => {
+  assert.throws(() => helpers.parseLrcSegments('[ti:Only metadata]\n[ar:Someone]\n'), /没有可导入的歌词时间轴/);
+  assert.throws(() => helpers.parseLrcSegments(''), /没有可导入的歌词时间轴/);
+});
+
+test('parseLrcSegments applies the offset tag globally regardless of its position', () => {
+  // offset 是整文件级标签；写在部分歌词行之后也要作用到之前的所有时间戳。
+  const segments = JSON.parse(JSON.stringify(helpers.parseLrcSegments([
+    '[00:10.00]Early line',
+    '[offset:+1000]',
+    '[00:20.00]Late line',
+  ].join('\n'))));
+  assert.deepEqual(segments, [
+    { start: 9000, end: 19000, text: 'Early line' },
+    { start: 19000, end: 24000, text: 'Late line' },
+  ]);
+});
+
+test('sentence fade markers respect disabled and migrated symbol rules', () => {
+  assert.deepEqual({ ...helpers.parseSentenceFadeMarkers('>>原文<<', 'none') },
+    { text: '>>原文<<', fadeIn: false, fadeOut: false });
+  assert.equal(helpers.parseSentenceFadeMarkers('>原文<', 'single').text, '原文');
+});
+
+test('explicit zero-duration sentence fade suppresses global fades', () => {
+  const profile = { animations: { fad: { enabled: true, inMs: 0, outMs: 500 } } };
+  const sentence = helpers.assSentenceFadeTags('>>原文', profile, 'both');
+  assert.equal(helpers.assAnimationOverrideTags(profile, { fad: sentence.fad }), '\\fad(0,0)');
+  assert.equal(helpers.assPreviewAnimationState(profile, 950, 1000, { fad: sentence.fad }).opacity, 1);
+});
+
+test('SRT and bilingual SRT strip the active single-symbol fade syntax', () => {
+  for (const build of [
+    () => helpers.buildSrtPayload([{ start: 0, end: 1000, text: '>原文<' }], { assSpecialSymbolRule: 'both' }),
+    () => helpers.buildBilingualSrtPayload([{ start: 0, end: 1000, text: '>原文<' }], [], { assSpecialSymbolRule: 'both' }),
+  ]) assert.ok(build().includes('\n原文\n'));
+  assert.ok(helpers.buildSrtPayload([{ start: 0, end: 1000, text: '>>原文<<' }],
+    { assSpecialSymbolRule: 'none' }).includes('>>原文<<'));
+});
+
+
+test('bilingual SRT parses fade syntax once and preserves disabled literal markers', () => {
+  const cues = [{ start: 0, end: 1000, text: '>>原文<<' }];
+  assert.ok(helpers.buildBilingualSrtPayload(cues, [], { assSpecialSymbolRule: 'none' }).includes('>>原文<<'));
+  assert.ok(helpers.buildBilingualSrtPayload([{ ...cues[0], text: '>>>>原文<<<<' }], [],
+    { assSpecialSymbolRule: 'double' }).includes('>>原文<<'));
+});
+
+test('wrap preset tooltips translate their literal characters', () => {
+  for (const preset of helpers.WRAP_CHAR_PRESETS) {
+    assert.equal(i18n.translateText(`在字幕两端插入 ${preset.left} 和 ${preset.right}`, 'en'),
+      `Insert ${preset.left} and ${preset.right} at the subtitle ends`);
+  }
 });

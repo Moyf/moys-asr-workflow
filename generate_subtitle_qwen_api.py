@@ -35,6 +35,7 @@ from maw.project import repair_segment_durations
 from maw.qwen_audio import parse_qwen_audio_hotwords
 from maw.speaker import apply_speaker_colors, split_items_by_speaker
 from maw.console import configure_utf8_stdio
+from maw.energy_valley import snap_cue_boundaries
 from maw.ffmpeg import resolve_ffmpeg_tool, resolve_ffmpeg_tools
 from maw.language import (
     DEFAULT_MAX_WORDS,
@@ -52,10 +53,13 @@ from maw.media_cache import embed_media_caches, merge_media_caches
 from maw.media import resolve_default_audio_track
 from maw.output_naming import (
     DASHSCOPE_PRICE_PER_SECOND,
+    DASHSCOPE_QWEN_AUDIO_31_INPUT_PRICE_PER_MILLION_TOKENS,
+    DASHSCOPE_QWEN_AUDIO_31_OUTPUT_PRICE_PER_MILLION_TOKENS,
     estimate_dashscope_cost,
+    estimate_qwen_audio_31_cost,
     format_elapsed,
     format_maw_stat,
-    maw_root,
+    debug_artifact_path,
 )
 
 
@@ -66,6 +70,7 @@ ENV_FILE = default_env_path()
 
 QWEN3_ASR_FILETRANS_MODEL = "qwen3-asr-flash-filetrans"
 QWEN_AUDIO_FILETRANS_MODEL = "qwen-audio-3.0-asr-flash-filetrans"
+QWEN_AUDIO_31_FILETRANS_MODEL = "qwen-audio-3.1-asr-flash-filetrans"
 FILETRANS_MODEL = QWEN_AUDIO_FILETRANS_MODEL
 FUNASR_MODEL = "fun-asr"
 POLL_HEARTBEAT_SECONDS = 15
@@ -185,16 +190,35 @@ def parse_hotword_weight(value: str) -> int:
         raise argparse.ArgumentTypeError(str(exc)) from exc
 
 
+QWEN_AUDIO_FILETRANS_MODELS = frozenset({
+    QWEN_AUDIO_FILETRANS_MODEL,
+    QWEN_AUDIO_31_FILETRANS_MODEL,
+})
+
+
 def is_funasr_model(model: str) -> bool:
     return model == FUNASR_MODEL or model.startswith("fun-asr-") or model.startswith("fun-asr-mtl")
 
 
 def is_qwen_audio_model(model: str) -> bool:
-    return model == QWEN_AUDIO_FILETRANS_MODEL
+    return model in QWEN_AUDIO_FILETRANS_MODELS
+
+
+def is_qwen_audio_31_model(model: str) -> bool:
+    return model == QWEN_AUDIO_31_FILETRANS_MODEL
 
 
 def is_qwen3_model(model: str) -> bool:
     return model == QWEN3_ASR_FILETRANS_MODEL
+
+
+def _usage_int(usage: dict, key: str) -> int:
+    """从云端 usage 字典里取非负整数；缺失或非法时返回 0。"""
+    try:
+        value = int(usage.get(key) or 0)
+    except (TypeError, ValueError):
+        return 0
+    return value if value >= 0 else 0
 
 
 def supports_speaker_diarization(model: str) -> bool:
@@ -406,13 +430,17 @@ def generate_srt(segments: list[dict]) -> str:
 
 # ===== 切句逻辑（与本地版 _split_words_to_segments 一致，纯 Python 复制） =====
 
-# 共享断句配置里的「额外断句符号」，并入转写侧强断句符号。
-# CLI 进程内只需配置一次（见 configure_extra_strong_punct），因此使用模块级集合。
-_EXTRA_STRONG_PUNCT: set[str] = set()
+# 共享断句配置里的「需要断句符号」：转写侧强断句符号的唯一来源。
+# 模块默认值与 CLI 参数默认值、Launcher 默认计划保持一致（无隐式内置
+# 强标点）；configure_extra_strong_punct 按运行时配置整体覆盖，空集合 =
+# 仅按换行断句。
+_DEFAULT_EXTRA_STRONG_PUNCT = "，。？！；,."
+_DEFAULT_STRIP_TAIL_PUNCT = "，。；,."
+_EXTRA_STRONG_PUNCT: set[str] = {ch for ch in _DEFAULT_EXTRA_STRONG_PUNCT if not ch.isspace()}
 
 
 def configure_extra_strong_punct(chars: object) -> None:
-    """注册额外断句符号（来自 Launcher 共享断句配置），并入转写强断句符号。"""
+    """按共享断句配置整体设置转写强断句符号（换行始终生效）。"""
     global _EXTRA_STRONG_PUNCT
     _EXTRA_STRONG_PUNCT = {ch for ch in str(chars or "") if not ch.isspace()}
 
@@ -678,12 +706,12 @@ def split_words_to_segments(items: list[dict], max_len: int, min_len: int = 5,
 
     切分策略（与本地版一致）：
     0. 按静音间隔（>= gap_split_ms）预切
-    1. 每个静音组内按强标点（。！？；\\n）继续切句
-    2. 合并过短片段（< min_len 字符）
-    3. 对超长片段，按弱标点（，、：,;）拆分
+    1. 每个静音组内按强标点（共享断句配置 + 换行）继续切句
+    2. 合并过短片段（< min_len 字符），但合并后不得超过 max_len
+    3. 对本身超长的片段，按弱标点（，、：,;）拆分
     4. 没有弱标点时，用 jieba 分词找最佳断点
     """
-    STRONG_PUNCT = _strong_punct_set("。！？；\n")
+    STRONG_PUNCT = _strong_punct_set("\n")
     WEAK_PUNCT = set("，、：,;")
 
     def to_seg(group):
@@ -713,12 +741,17 @@ def split_words_to_segments(items: list[dict], max_len: int, min_len: int = 5,
         for grp in raw_groups:
             seg_text = "".join(it["text"] for it in grp)
             if merged and len(seg_text) < min_len:
-                merged[-1].extend(grp)
+                previous_length = sum(len(item.get("text", "")) for item in merged[-1])
+                if previous_length + len(seg_text) <= max_len:
+                    merged[-1].extend(grp)
+                else:
+                    merged.append(list(grp))
             else:
                 merged.append(list(grp))
         if len(merged) >= 2:
             last_text = "".join(it["text"] for it in merged[-1])
-            if len(last_text) < min_len:
+            previous_text = "".join(it["text"] for it in merged[-2])
+            if len(last_text) < min_len and len(previous_text) + len(last_text) <= max_len:
                 merged[-2].extend(merged.pop())
 
         for grp in merged:
@@ -751,8 +784,14 @@ _TRAILING_QUOTES = "\"'”’)]}』」"
 
 
 def _western_strong_end() -> str:
-    """西文句末强标点（含额外断句符号）。"""
-    return WESTERN_STRONG_END + "".join(_EXTRA_STRONG_PUNCT)
+    """西文句末强标点。
+
+    西文按「词尾字符」判句末。共享配置默认清单不注入西文句末（默认
+    里的逗号会把英文口语的每个逗号都变成句末，破坏短句合并）；用户
+    在默认清单之外新增的断句符号仍然生效（如 ~）。
+    """
+    extra = _EXTRA_STRONG_PUNCT - set(_DEFAULT_EXTRA_STRONG_PUNCT)
+    return WESTERN_STRONG_END + "".join(sorted(extra))
 
 
 def is_cjk_char(char: str) -> bool:
@@ -804,8 +843,8 @@ def split_words_to_segments_western(items: list[dict], max_words: int = WESTERN_
 
     0. 按静音间隔（>= gap_split_ms）预切
     1. 按句末强标点（. ! ? 及全角）切出完整句子
-    2. 合并过短句子（< min_words 词），避免单词成条
-    3. 超长句子（> max_words 词）优先按弱标点断，兜底硬切
+    2. 合并过短句子（< min_words 词），但合并后不得超过 max_words
+    3. 本身超长的句子（> max_words 词）优先按弱标点断，兜底硬切
     """
     def to_seg(group: list[dict]) -> dict:
         return {
@@ -830,10 +869,17 @@ def split_words_to_segments_western(items: list[dict], max_words: int = WESTERN_
         merged: list[list[dict]] = []
         for grp in raw_groups:
             if merged and len(grp) < min_words:
-                merged[-1].extend(grp)
+                if len(merged[-1]) + len(grp) <= max_words:
+                    merged[-1].extend(grp)
+                else:
+                    merged.append(list(grp))
             else:
                 merged.append(list(grp))
-        if len(merged) >= 2 and len(merged[-1]) < min_words:
+        if (
+            len(merged) >= 2
+            and len(merged[-1]) < min_words
+            and len(merged[-2]) + len(merged[-1]) <= max_words
+        ):
             merged[-2].extend(merged.pop())
 
         for grp in merged:
@@ -926,6 +972,11 @@ def repair_nonpositive_duration_segments(segments: list[dict]) -> list[dict]:
                     break
                 timestamp = normalize_timestamp_range(item.get("start"), item.get("end"))
                 if timestamp is None:
+                    # 零宽词（begin == end）是确定时间点而非损坏数据，保留
+                    # 给 repair_segment_durations 拉宽；否则合并段会整段
+                    # 丢弃词级时间码。
+                    timestamp = _zero_duration_range(item.get("start"), item.get("end"))
+                if timestamp is None:
                     items_complete = False
                     break
                 normalized = dict(item)
@@ -975,6 +1026,10 @@ def repair_nonpositive_duration_segments(segments: list[dict]) -> list[dict]:
                         normalized_items = []
                         break
                     timestamp = normalize_timestamp_range(item.get("start"), item.get("end"))
+                    if timestamp is None:
+                        # 零宽词保留（确定时间点），交给 repair_segment_durations
+                        # 拉宽；否则含零宽词的段会整段丢失词级时间码。
+                        timestamp = _zero_duration_range(item.get("start"), item.get("end"))
                     if timestamp is None:
                         normalized_items = []
                         break
@@ -1185,11 +1240,12 @@ def split_coarse_segments(
     max_words: int = WESTERN_MAX_WORDS,
     min_words: int = WESTERN_MIN_WORDS,
     split_mode: str | None = None,
+    interpolated_boundary_indices: set[int] | None = None,
 ) -> list[dict]:
     """逐段调用 split_coarse_segment（见其 docstring）。"""
     result: list[dict] = []
     for segment in segments:
-        result.extend(split_coarse_segment(
+        pieces = split_coarse_segment(
             segment,
             max_len=max_len,
             min_len=min_len,
@@ -1197,7 +1253,10 @@ def split_coarse_segments(
             max_words=max_words,
             min_words=min_words,
             split_mode=split_mode,
-        ))
+        )
+        if interpolated_boundary_indices is not None and not segment.get("items"):
+            interpolated_boundary_indices.update(range(len(result) + 1, len(result) + len(pieces)))
+        result.extend(pieces)
     return result
 
 
@@ -1315,7 +1374,8 @@ def submit_filetrans(base_url: str, api_key: str, file_url: str,
                      vocabulary_id: str | None = None,
                      hotwords: list[str] | None = None,
                      hotword_weight: int = 5,
-                     context: list[dict] | None = None) -> str:
+                     context: list[dict] | None = None,
+                     keep_dialect: bool = False) -> str:
     """提交异步 ASR 任务，返回 task_id。"""
     if is_qwen_audio_model(model):
         params: dict = {
@@ -1332,6 +1392,10 @@ def submit_filetrans(base_url: str, api_key: str, file_url: str,
             params["vocabulary"] = {entry.text: entry.weight for entry in entries}
             if not params["vocabulary"]:
                 params.pop("vocabulary")
+        # keep_dialect 仅 qwen-audio-3.1-asr-flash-filetrans 支持：
+        # false（默认）把方言转写为普通话文本，true 保留方言原文。
+        if keep_dialect and is_qwen_audio_31_model(model):
+            params["keep_dialect"] = True
         input_payload = {"file_urls": [file_url]}
         if context:
             input_payload["messages"] = context
@@ -1468,6 +1532,44 @@ def download_transcription(transcription_url: str) -> dict:
 
 # ===== filetrans 结果 → 本地版 transcribe() 输出格式 =====
 
+def _zero_duration_range(begin_time: object, end_time: object) -> tuple[int, int] | None:
+    """把云端偶发的零时长句子/词（begin == end）保留为一个确定时间点。
+
+    qwen3-asr-flash-filetrans 会为语气词等占位句返回 begin_time == end_time
+    （实测"啊。"600640→600640），也会对部分正常词给出零宽时间码（实测
+    "玩"2000→2000，紧贴前词结束点）。范围虽然零宽但时间点真实：句子保留
+    为零长段、词保留为零宽 item，交给下游修复/插值；1.6.x 曾因这类数据
+    触发保险把整份时间码废弃成整段单条字幕，2 句废掉全片。
+    """
+    if (
+        isinstance(begin_time, int)
+        and isinstance(end_time, int)
+        and begin_time == end_time
+        and begin_time >= 0
+    ):
+        return (begin_time, end_time)
+    return None
+
+
+def _emit_sentence_diagnostics(
+    missing_range_sentences: int,
+    text_mismatch: tuple[int, int] | None,
+) -> None:
+    """句子级数据不完整时把可读原因写进日志（没有 raw 也能从日志定位）。"""
+    if missing_range_sentences:
+        print(
+            f"[警告] {missing_range_sentences} 个云端句子缺少有效时间范围，"
+            "已跳过这些句子，其余句子不受影响。"
+        )
+    if text_mismatch:
+        print(
+            "[警告] 云端整段文本与句子拼接不一致"
+            f"（text {text_mismatch[0]} 字符 vs 句子拼接 {text_mismatch[1]} 字符），"
+            "句子数组可能不完整；已按句子时间码输出，缺失的内容不会有字幕，"
+            "可勾选「调试运行」保存原始返回以便排查。"
+        )
+
+
 def parse_transcription_result(result: dict) -> dict:
     """把 filetrans JSON 转成本地版 transcribe() 的输出格式。
 
@@ -1497,7 +1599,8 @@ def parse_transcription_result(result: dict) -> dict:
     detected_language = normalize_language_code(result.get("language") or result.get("lang"))
     has_word_timestamps = False
     has_fallback_segment = False
-    has_unranged_text = False
+    missing_range_sentences = 0
+    text_mismatch: tuple[int, int] | None = None
 
     raw_sentences = t.get("sentences", [])
     raw_sentences = raw_sentences if isinstance(raw_sentences, list) else []
@@ -1525,6 +1628,10 @@ def parse_transcription_result(result: dict) -> dict:
             timestamp = normalize_timestamp_range(
                 word.get("begin_time"), word.get("end_time")
             )
+            if timestamp is None:
+                timestamp = _zero_duration_range(
+                    word.get("begin_time"), word.get("end_time")
+                )
             if timestamp is None:
                 invalid_word_timestamp = True
                 continue
@@ -1564,6 +1671,10 @@ def parse_transcription_result(result: dict) -> dict:
         sentence_range = normalize_timestamp_range(
             sent.get("begin_time"), sent.get("end_time")
         )
+        if sentence_range is None:
+            sentence_range = _zero_duration_range(
+                sent.get("begin_time"), sent.get("end_time")
+            )
         if sentence_range is None and valid_item_range is not None:
             # Even when one word is malformed, the valid word envelope is a
             # useful conservative sentence range.  Never expose those words
@@ -1579,7 +1690,7 @@ def parse_transcription_result(result: dict) -> dict:
             )
         if sentence_range is None or not segment_text.strip():
             if segment_text.strip():
-                has_unranged_text = True
+                missing_range_sentences += 1
             continue
         segment = {
             "start": sentence_range[0],
@@ -1596,24 +1707,21 @@ def parse_transcription_result(result: dict) -> dict:
         # while keeping sentence text.  Do not reject an otherwise usable
         # timestamped response just because this redundant field is absent.
         text = "".join(sentence_texts)
-    if (
-        text
-        and sentence_texts
-        and _re.sub(r"\s+", "", text) != _re.sub(r"\s+", "", "".join(sentence_texts))
-    ):
-        # Do not let a partial sentence array silently discard text present in
-        # the transcript-level field.  The caller will use a whole-media cue.
-        has_unranged_text = True
-    if has_unranged_text:
-        all_items = []
-        segments = []
+    plain_text = _re.sub(r"\s+", "", text)
+    plain_joined = _re.sub(r"\s+", "", "".join(sentence_texts))
+    if text and sentence_texts and plain_text != plain_joined:
+        # 云端整段文本与句子拼接不一致说明句子数组可能不完整（漏句）。保留
+        # 有效句子的时间码并提示缺漏，比把整份时间码废弃成整段单条字幕
+        # （1.6.x 之前的行为）诚实得多：坏句子不该废掉全部好句子。
+        text_mismatch = (len(plain_text), len(plain_joined))
+    _emit_sentence_diagnostics(missing_range_sentences, text_mismatch)
     return {
         "text": text,
         "language": detected_language,
         "items": all_items,
         "segments": segments if has_fallback_segment else [],
         "timestamp_granularity": (
-            "word" if has_word_timestamps and not has_fallback_segment and not has_unranged_text
+            "word" if has_word_timestamps and not has_fallback_segment
             else "segment" if segments
             else "unknown"
         ),
@@ -1639,7 +1747,8 @@ def parse_funasr_transcription_result(result: dict) -> dict:
     detected_language = normalize_language_code(result.get("language") or result.get("lang"))
     has_word_timestamps = False
     has_fallback_sentence = False
-    has_unranged_text = False
+    missing_range_sentences = 0
+    text_mismatch: tuple[int, int] | None = None
     raw_sentences = transcript.get("sentences", [])
     raw_sentences = raw_sentences if isinstance(raw_sentences, list) else []
     for sentence in raw_sentences:
@@ -1665,6 +1774,10 @@ def parse_funasr_transcription_result(result: dict) -> dict:
             timestamp = normalize_timestamp_range(
                 word.get("begin_time"), word.get("end_time")
             )
+            if timestamp is None:
+                timestamp = _zero_duration_range(
+                    word.get("begin_time"), word.get("end_time")
+                )
             if timestamp is None:
                 invalid_word_timestamp = True
                 continue
@@ -1706,6 +1819,10 @@ def parse_funasr_transcription_result(result: dict) -> dict:
         sentence_range = normalize_timestamp_range(
             sentence.get("begin_time"), sentence.get("end_time")
         )
+        if sentence_range is None:
+            sentence_range = _zero_duration_range(
+                sentence.get("begin_time"), sentence.get("end_time")
+            )
         if sentence_range is None and valid_item_range is not None:
             # A malformed word list still has usable outer bounds in some
             # responses.  Keep the sentence as coarse, never partial words.
@@ -1719,7 +1836,7 @@ def parse_funasr_transcription_result(result: dict) -> dict:
             )
         if sentence_range is None or not sentence_text.strip():
             if sentence_text.strip():
-                has_unranged_text = True
+                missing_range_sentences += 1
             continue
         parsed_sentence: dict[str, object] = {
             "text": sentence_text.strip(),
@@ -1736,22 +1853,20 @@ def parse_funasr_transcription_result(result: dict) -> dict:
     if not text:
         # Fun-ASR variants may only expose text on sentence entries.
         text = "".join(sentence_texts)
-    if (
-        text
-        and sentence_texts
-        and _re.sub(r"\s+", "", text) != _re.sub(r"\s+", "", "".join(sentence_texts))
-    ):
-        has_unranged_text = True
-    if has_unranged_text:
-        all_items = []
-        parsed_sentences = []
+    plain_text = _re.sub(r"\s+", "", text)
+    plain_joined = _re.sub(r"\s+", "", "".join(sentence_texts))
+    if text and sentence_texts and plain_text != plain_joined:
+        # 与 parse_transcription_result 同策略：坏句子不该废掉全部好句子，
+        # 保留有效句子的时间码并把缺漏写进日志。
+        text_mismatch = (len(plain_text), len(plain_joined))
+    _emit_sentence_diagnostics(missing_range_sentences, text_mismatch)
     return {
         "text": text,
         "language": detected_language,
         "items": all_items,
         "sentences": parsed_sentences,
         "timestamp_granularity": (
-            "word" if has_word_timestamps and not has_fallback_sentence and not has_unranged_text
+            "word" if has_word_timestamps and not has_fallback_sentence
             else "segment" if parsed_sentences
             else "unknown"
         ),
@@ -1829,6 +1944,10 @@ def build_segments_from_api_sentences(
             timestamp = normalize_timestamp_range(
                 raw_item.get("start"), raw_item.get("end")
             )
+            if timestamp is None:
+                timestamp = _zero_duration_range(
+                    raw_item.get("start"), raw_item.get("end")
+                )
             if timestamp is None:
                 invalid_item = True
                 continue
@@ -1963,6 +2082,7 @@ def transcribe(audio_path: str, language: str | None, hotwords: list[str],
                vocabulary_id: str | None = None,
                context_text: str | None = None,
                hotword_weight: int | None = None,
+               keep_dialect: bool = False,
                capture_raw: bool = False) -> dict:
     """调 DashScope filetrans API 做转录。
 
@@ -2018,6 +2138,11 @@ def transcribe(audio_path: str, language: str | None, hotwords: list[str],
             print(f"[上下文] 已启用 Qwen-Audio context（{context_chars} 字符，最多发送 400 字符）。")
         else:
             print("[上下文] 当前模型不支持 Qwen-Audio context，已忽略。")
+    if keep_dialect:
+        if is_qwen_audio_31_model(model):
+            print("[方言] keep_dialect 已启用：保留方言原文，不转写为普通话文本。")
+        else:
+            print("[方言] 当前模型不支持 keep_dialect，已忽略。")
 
     # 1) 准备 file_url
     if file_url_override:
@@ -2055,6 +2180,7 @@ def transcribe(audio_path: str, language: str | None, hotwords: list[str],
         hotwords=hotwords if is_qwen_audio_model(model) else None,
         hotword_weight=resolved_hotword_weight,
         context=context if is_qwen_audio_model(model) else None,
+        keep_dialect=keep_dialect,
     )
     print(f"[filetrans] 任务已提交: task_id={task_id}")
 
@@ -2069,7 +2195,17 @@ def transcribe(audio_path: str, language: str | None, hotwords: list[str],
     elapsed_poll = time.perf_counter() - t0
     if uses_file_urls(model):
         audio_secs = task_usage.get("duration", 0)
-        print(f"[filetrans] 任务完成，耗时 {elapsed_poll:.1f}s | 计费语音 {audio_secs}s")
+        if is_qwen_audio_31_model(model):
+            input_tokens = _usage_int(task_usage, "input_tokens")
+            output_tokens = _usage_int(task_usage, "output_tokens")
+            token_cost = estimate_qwen_audio_31_cost(input_tokens, output_tokens)
+            cost_note = f"，约 {token_cost:.4f} 元" if token_cost is not None else ""
+            print(
+                f"[filetrans] 任务完成，耗时 {elapsed_poll:.1f}s | 计费语音 {audio_secs}s"
+                f"（3.1 按 Token：输入 {input_tokens} tok / 输出 {output_tokens} tok{cost_note}）"
+            )
+        else:
+            print(f"[filetrans] 任务完成，耗时 {elapsed_poll:.1f}s | 计费语音 {audio_secs}s")
     else:
         audio_secs = task_usage.get("seconds", 0)
         est_tokens = audio_secs * 25  # 文档：每秒音频 = 25 tokens
@@ -2138,16 +2274,16 @@ def main():
         help="保留每条字幕末尾的逗号和句号（默认去除）",
     )
     parser.add_argument(
-        "--strip-tail-punct", default="，。",
-        help="句尾剥除的标点集合；传空串禁用剥除（默认剥逗号和句号）",
+        "--strip-tail-punct", default=_DEFAULT_STRIP_TAIL_PUNCT,
+        help="句尾剥除的标点集合；传空串禁用剥除（默认 = 共享断句配置默认清单 − 默认保留符号）",
     )
     parser.add_argument(
-        "--extra-strong-punct", default="",
-        help="额外强断句符号集合（来自共享断句配置；每个字符并入强断句符号，默认空）",
+        "--extra-strong-punct", default=_DEFAULT_EXTRA_STRONG_PUNCT,
+        help="强断句符号集合（与 Launcher 共享断句配置默认清单一致；每个字符并入强断句符号，仅换行始终生效）",
     )
     parser.add_argument(
-        "--gap-split", type=int, default=800,
-        help="静音切句阈值（毫秒），相邻字停顿超过此值则切句（默认 800）",
+        "--gap-split", type=int, default=500,
+        help="静音切句阈值（毫秒），相邻字停顿超过此值则切句（默认 500）",
     )
     parser.add_argument(
         "--speaker", action="store_true",
@@ -2196,7 +2332,8 @@ def main():
     )
     parser.add_argument(
         "--model", default=FILETRANS_MODEL,
-        help=f"覆盖 ASR 模型（默认 {FILETRANS_MODEL}；可选 {QWEN_AUDIO_FILETRANS_MODEL} / {FUNASR_MODEL}）",
+        help=f"覆盖 ASR 模型（默认 {FILETRANS_MODEL}；可选 "
+             f"{QWEN_AUDIO_31_FILETRANS_MODEL} / {QWEN_AUDIO_FILETRANS_MODEL} / {FUNASR_MODEL}）",
     )
     parser.add_argument(
         "--vocabulary-id", default=None,
@@ -2221,6 +2358,10 @@ def main():
     parser.add_argument(
         "--context-file", default=None,
         help="从 UTF-8 文件读取 Qwen-Audio context（与 --context 二选一）",
+    )
+    parser.add_argument(
+        "--keep-dialect", action="store_true",
+        help="保留方言表达，不转写为普通话文本（仅 qwen-audio-3.1-asr-flash-filetrans 支持）",
     )
     parser.add_argument(
         "--debug", action="store_true",
@@ -2250,6 +2391,8 @@ def main():
         parser.error("--speaker / --speaker-colors 仅适用于 Qwen-Audio 或 Fun-ASR 模型")
     if args.context is not None and args.context_file:
         parser.error("--context 与 --context-file 只能二选一")
+    if args.keep_dialect and not is_qwen_audio_31_model(args.model):
+        parser.error("--keep-dialect 仅适用于 qwen-audio-3.1-asr-flash-filetrans")
     configure_extra_strong_punct(args.extra_strong_punct)
 
     input_path = Path(args.input)
@@ -2367,6 +2510,7 @@ def main():
             vocabulary_id=args.vocabulary_id,
             context_text=context_text,
             hotword_weight=args.hotword_weight,
+            keep_dialect=args.keep_dialect,
             capture_raw=args.debug_raw,
         )
         elapsed = time.perf_counter() - t0
@@ -2408,6 +2552,7 @@ def main():
             coarse_segments = repair_nonpositive_duration_segments([
                 dict(segment) for segment in result["segments"]
             ])
+            interpolated_boundary_indices: set[int] = set()
             segments = split_coarse_segments(
                 coarse_segments,
                 max_len=args.max_len,
@@ -2416,7 +2561,12 @@ def main():
                 max_words=args.max_words,
                 min_words=args.min_words,
                 split_mode=split_mode,
+                interpolated_boundary_indices=interpolated_boundary_indices,
             )
+            if audio_path and Path(audio_path).is_file():
+                snapped = snap_cue_boundaries(segments, audio_path, boundary_indices=interpolated_boundary_indices)
+                if snapped:
+                    print(f"[输出] 已将 {snapped} 个插值切点吸附到语音能量谷")
             print(f"[解析] 字幕整理完成：{len(segments)} 条（保留云端句子边界）。")
         elif not items:
             print("[警告] 未获得时间戳，输出整段为单条字幕")
@@ -2501,6 +2651,7 @@ def main():
         if not args.no_model_tag:
             model_tag = (
                 "fun-asr" if is_funasr_model(args.model)
+                else "qwen-audio-3.1-asr-api" if is_qwen_audio_31_model(args.model)
                 else "qwen-audio-asr-api" if is_qwen_audio_model(args.model)
                 else "qwen3-asr-api"
             )
@@ -2516,10 +2667,11 @@ def main():
     if args.debug_raw:
         if raw_response is None:
             raise RuntimeError("调试模式未获得 ASR 原始返回数据")
-        raw_path = (
-            maw_root(input_path) / f"{output_path.stem}.asr-response.json"
-            if not args.output
-            else output_path.with_suffix(".asr-response.json")
+        raw_path = debug_artifact_path(
+            input_path,
+            output_path,
+            ".asr-response.json",
+            explicit_output=bool(args.output),
         )
         raw_path.parent.mkdir(parents=True, exist_ok=True)
         with raw_path.open("w", encoding="utf-8", newline="\n") as raw_file:
@@ -2531,12 +2683,30 @@ def main():
         print(f"媒体时长: {format_elapsed(duration)}")
         print(f"转写时长为媒体时长的 {rtf:.2f} 倍")
         print(f"实际 RTF: {rtf:.3f} ({speed:.1f}x 实时)")
-        cost = estimate_dashscope_cost(duration)
-        if cost is not None:
-            print(
-                f"预计费用: 约 {cost:.2f} 元"
-                f"（{DASHSCOPE_PRICE_PER_SECOND} 元/秒 × {duration:.1f} 秒）"
+        if is_qwen_audio_31_model(args.model):
+            usage_stats = result.get("usage") if isinstance(result, dict) else None
+            input_tokens = _usage_int(usage_stats or {}, "input_tokens")
+            output_tokens = _usage_int(usage_stats or {}, "output_tokens")
+            token_cost = (
+                estimate_qwen_audio_31_cost(input_tokens, output_tokens)
+                if input_tokens or output_tokens else None
             )
+            if token_cost is not None:
+                print(
+                    f"预计费用: 约 {token_cost:.4f} 元（按 Token：输入 {input_tokens} tok × "
+                    f"{DASHSCOPE_QWEN_AUDIO_31_INPUT_PRICE_PER_MILLION_TOKENS} 元/百万 + "
+                    f"输出 {output_tokens} tok × "
+                    f"{DASHSCOPE_QWEN_AUDIO_31_OUTPUT_PRICE_PER_MILLION_TOKENS} 元/百万）"
+                )
+            else:
+                print("预计费用: 按 Token 计费（北京 输入 ¥0.8 / 百万 Token、输出 ¥2.7 / 百万 Token），以百炼账单为准")
+        else:
+            cost = estimate_dashscope_cost(duration)
+            if cost is not None:
+                print(
+                    f"预计费用: 约 {cost:.2f} 元"
+                    f"（{DASHSCOPE_PRICE_PER_SECOND} 元/秒 × {duration:.1f} 秒）"
+                )
 
     if args.json_out:
         json_path = output_path.with_suffix(".mosp")
@@ -2557,6 +2727,7 @@ def main():
             ),
             "model": (
                 args.model if is_funasr_model(args.model)
+                else "qwen-audio-3.1-asr-api" if is_qwen_audio_31_model(args.model)
                 else "qwen-audio-asr-api" if is_qwen_audio_model(args.model)
                 else "qwen3-asr-api"
             ),

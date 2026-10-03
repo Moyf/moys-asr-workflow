@@ -76,7 +76,10 @@ def _ocr_runtime_import_graph() -> set[str]:
 def _local_runtime_spec_entry(relative_path: str) -> str:
     parts = Path(relative_path).parts
     expression = " / ".join(["ROOT", *(f'"{part}"' for part in parts)])
-    target = "local-runtime/maw" if parts[0] == "maw" else "local-runtime"
+    if parts[0] == "maw":
+        target = "local-runtime/" + "/".join(parts[:-1])
+    else:
+        target = "local-runtime"
     return f"(str({expression}), \"{target}\")"
 
 
@@ -158,6 +161,33 @@ class PackagingContractTests(unittest.TestCase):
         self.assertIsNone(re.search(r'(?s)dependencies = \[[^\]]*"pyinstaller', pyproject))
         self.assertRegex(pyproject, r'(?s)\[dependency-groups\].*build = \[[^\]]*"pyinstaller==6\.16\.0"')
         self.assertIn('name = "pyinstaller"', lockfile)
+
+    def test_local_runtime_sherpa_pair_is_pinned_together(self) -> None:
+        """Given uv lock drops sherpa-onnx's transitive core edge, When the local group is read, Then both packages are declared directly with the same exact pin."""
+        project = tomllib.loads(read_text("pyproject.toml"))
+        pins: dict[str, str] = {}
+        for requirement in project["dependency-groups"]["local"]:
+            match = re.fullmatch(r"sherpa-onnx(-core)?==(\d+\.\d+\.\d+)(?:\s*;.*)?", requirement)
+            if match:
+                pins["sherpa-onnx-core" if match.group(1) else "sherpa-onnx"] = match.group(2)
+
+        self.assertEqual(
+            set(pins),
+            {"sherpa-onnx", "sherpa-onnx-core"},
+            "local 组必须同时以 == 精确声明 sherpa-onnx 与 sherpa-onnx-core（uv 通用解析会丢弃 core 的传递依赖边）",
+        )
+        self.assertEqual(
+            pins["sherpa-onnx"],
+            pins["sherpa-onnx-core"],
+            "sherpa-onnx 与 sherpa-onnx-core 必须同版本：core 的 DLL 解包进 sherpa_onnx/lib，错配会导致 import 失败",
+        )
+
+        lockfile = read_text("uv.lock")
+        for name, version in sorted(pins.items()):
+            self.assertIsNotNone(
+                re.search(rf'name = "{re.escape(name)}"\r?\nversion = "{re.escape(version)}"', lockfile),
+                f"uv.lock 缺少 {name}=={version} 的锁定条目",
+            )
 
     def test_gitignore_keeps_local_windows_bundle_and_generated_build_state_untracked(self) -> None:
         """Given local EXE builds are retained, When ignore rules are read, Then binaries stay local."""
@@ -268,7 +298,7 @@ class PackagingContractTests(unittest.TestCase):
         self.assertIn("maw.runtimes.freezer", release)
         self.assertNotIn("uv export --frozen", release)
 
-        self.assertIn('RUNTIME_VERSION = "6"', local_spec)
+        self.assertIn('RUNTIME_VERSION = "7"', local_spec)
         self.assertIn('OCR_RUNTIME_VERSION = "3"', ocr_spec)
 
         self.assertIn("_has_cuda", runtimes_base)
@@ -370,6 +400,9 @@ class PackagingContractTests(unittest.TestCase):
         self.assertIn("jieba>=0.42", local_dependencies)
         self.assertIn("requests>=2.28", local_dependencies)
         self.assertIn("quapeaks>=2026.0.0", local_dependencies)
+        self.assertIn("sherpa-onnx==1.13.8", local_dependencies)
+        self.assertIn("sherpa-onnx-core==1.13.8", local_dependencies)
+        self.assertIn("soundfile>=0.12", local_dependencies)
         self.assertFalse(any(value.startswith("pywebview") for value in local_dependencies))
         self.assertFalse(any(value.startswith("opencc-") for value in local_dependencies))
         self.assertFalse(any(value.startswith("fonttools") for value in local_dependencies))

@@ -1,0 +1,9 @@
+{
+    "symbols":  [
+                    "normalizeSubtitleColorStyle"
+                ],
+    "ns":  "MaweAppearance",
+    "header":  "append ??????????????",
+    "file":  "editor-appearance.js",
+    "append":  true
+}

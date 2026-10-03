@@ -234,7 +234,7 @@ class GuiConfigTests(unittest.TestCase):
 
     def test_model_registry_resolves_env_key_and_shape(self) -> None:
         """Given the v1 registry, When inspected, Then model metadata is complete."""
-        self.assertEqual(len(gui_config.MODELS), 3)
+        self.assertEqual(len(gui_config.MODELS), 4)
         model = gui_config.MODELS[0]
 
         self.assertEqual(model.id, "qwen-audio-3.0-asr-flash-filetrans")
@@ -244,16 +244,26 @@ class GuiConfigTests(unittest.TestCase):
         self.assertTrue(model.supports_context)
         self.assertTrue(model.supports_hotwords)
         self.assertTrue(model.supports_vocabulary)
-        self.assertEqual(model.label, "qwen-audio-3.0-asr（热词 / 上下文）")
+        self.assertFalse(model.supports_keep_dialect)
         self.assertIn("热词", model.note)
         self.assertIn(("yue", "粤语 / Cantonese"), model.languages)
-        funasr = gui_config.MODELS[1]
+        model_31 = gui_config.MODELS[1]
+        self.assertEqual(model_31.id, "qwen-audio-3.1-asr-flash-filetrans")
+        self.assertEqual(model_31.env_key, "DASHSCOPE_API_KEY")
+        self.assertTrue(model_31.supports_speaker)
+        self.assertTrue(model_31.supports_context)
+        self.assertTrue(model_31.supports_hotwords)
+        self.assertTrue(model_31.supports_vocabulary)
+        self.assertTrue(model_31.supports_keep_dialect)
+        self.assertEqual(model_31.label, "qwen-audio-3.1-asr（方言 / 热词 / 上下文）")
+        self.assertIn(("yue", "粤语 / Cantonese"), model_31.languages)
+        funasr = gui_config.MODELS[2]
         self.assertEqual(funasr.id, "fun-asr")
         self.assertEqual(funasr.env_key, "DASHSCOPE_API_KEY")
         self.assertTrue(funasr.supports_speaker)
         self.assertIn(("zh", "中文 / Chinese"), funasr.languages)
         self.assertEqual(len(funasr.languages), 32)
-        qwen3 = gui_config.MODELS[2]
+        qwen3 = gui_config.MODELS[3]
         self.assertEqual(qwen3.id, "qwen3-asr-flash-filetrans")
         self.assertEqual(qwen3.env_key, "DASHSCOPE_API_KEY")
         self.assertFalse(qwen3.supports_speaker)
@@ -267,26 +277,30 @@ class GuiConfigTests(unittest.TestCase):
         provider = gui_config.PROVIDERS[0]
 
         self.assertEqual(provider.id, "qwen")
+        self.assertEqual(provider.label, "阿里云百炼（千问）")
         self.assertEqual(provider.key_url, "https://platform.qianwenai.com/home/")
+        self.assertEqual(provider.key_label, "千问AI平台")
         self.assertEqual(provider.models[0].id, "qwen-audio-3.0-asr-flash-filetrans")
         self.assertEqual(provider.regions[0][0], "beijing")
         self.assertEqual(provider.languages[0][0], "")
         self.assertTrue(provider.supports_speaker)
         self.assertEqual([model.id for model in provider.models], [
             "qwen-audio-3.0-asr-flash-filetrans",
+            "qwen-audio-3.1-asr-flash-filetrans",
             "fun-asr",
             "qwen3-asr-flash-filetrans",
         ])
         self.assertTrue(provider.models[0].supports_speaker)
         self.assertTrue(provider.models[1].supports_speaker)
-        self.assertFalse(provider.models[2].supports_speaker)
+        self.assertTrue(provider.models[2].supports_speaker)
+        self.assertFalse(provider.models[3].supports_speaker)
         self.assertIn("0.00022", provider.models[0].price_note)
 
     def test_provider_registry_contains_soniox_with_speaker_support(self) -> None:
         """Given the provider registry, When inspected, Then Soniox is registered with speaker support and no regions."""
         provider = gui_config.provider_by_id("soniox")
 
-        self.assertEqual(provider.label, "Soniox STT")
+        self.assertEqual(provider.label, "Soniox STT（海外 / 小语种）")
         self.assertIn("console.soniox.com", provider.key_url)
         self.assertEqual(provider.models[0].id, "stt-async-v5")
         self.assertEqual(provider.models[0].env_key, "SONIOX_API_KEY")
@@ -310,12 +324,22 @@ class GuiConfigTests(unittest.TestCase):
     def test_provider_registry_contains_doubao_api_key_url(self) -> None:
         provider = gui_config.provider_by_id("doubao")
 
+        self.assertEqual(provider.label, "火山引擎（豆包）")
         self.assertEqual(provider.key_url, "https://console.volcengine.com/speech/new/setting/apikeys")
+        self.assertTrue(provider.divider_before)
+
+    def test_provider_registry_groups_main_providers_before_divider(self) -> None:
+        """Given the provider registry, When read in order, Then main entries precede the divider and niche ones follow."""
+        visible = [item for item in gui_config.PROVIDERS if not item.hidden]
+        divider_index = next(index for index, item in enumerate(visible) if item.divider_before)
+
+        self.assertEqual([item.id for item in visible[:divider_index]], ["qwen", "openai", "local"])
+        self.assertEqual([item.id for item in visible[divider_index:]], ["doubao", "soniox", "bcut"])
 
     def test_provider_registry_contains_custom_openai_compatible_asr(self) -> None:
         provider = gui_config.provider_by_id("openai")
 
-        self.assertEqual(provider.label, "OpenAI（及兼容接口）")
+        self.assertEqual(provider.label, "OpenAI 格式通用接口")
         self.assertEqual(gui_config.OPENAI_ASR_DEFAULT_BASE_URL, "https://api.openai.com/v1")
         self.assertEqual(gui_config.OPENAI_ASR_DEFAULT_MODEL, "whisper-1")
         self.assertEqual(provider.key_url, "https://platform.openai.com/api-keys")
@@ -383,6 +407,7 @@ class GuiConfigTests(unittest.TestCase):
                 "funasr-local",
                 "sensevoice-small-local",
                 "moss-transcribe-diarize-local",
+                "firered-asr2-ctc-local",
                 "whisper-large-v3-local",
             ],
         )
@@ -394,7 +419,8 @@ class GuiConfigTests(unittest.TestCase):
                 "Fun-ASR-Nano 2512（GPU）",
                 "FunASR paraformer-zh",
                 "SenseVoice Small",
-                "MOSS Transcribe-Diarize 0.9B（无字词时间码）",
+                "MOSS Transcribe-Diarize 0.9B",
+                "FireRedASR2",
                 "Faster-Whisper large-v3（实验）",
             ],
         )
@@ -412,12 +438,24 @@ class GuiConfigTests(unittest.TestCase):
         sensevoice = provider.models[4]
         self.assertEqual(sensevoice.model_ref, "iic/SenseVoiceSmall")
         self.assertIn("funasr", sensevoice.requires_runtime)
-        moss = provider.models[-2]
+        moss = provider.models[-3]
         self.assertEqual(moss.engine, "moss")
         self.assertTrue(moss.supports_speaker)
         self.assertIn("transformers", moss.requires_runtime)
         # MOSS 输出契约只有段级时间戳（docs/LOCAL_ASR.md），说明里必须提前提醒。
-        self.assertIn("无字词级时间码", moss.note)
+        self.assertIn("仅段级时间码", moss.note)
+        firered = provider.models[-2]
+        self.assertEqual(firered.engine, "firered")
+        self.assertEqual(firered.model_ref, "firered-asr2-ctc")
+        self.assertIn("funasr", firered.requires_runtime)
+        self.assertIn("sherpa_onnx", firered.requires_runtime)
+        self.assertIn("soundfile", firered.requires_runtime)
+        self.assertIn("ct-punc", firered.note)
+        self.assertEqual(qwen06.device_support, "cpu_gpu")
+        self.assertEqual(qwen06.resource_level, "medium")
+        self.assertEqual(qwen06.estimated_size, "1.7G+")
+        self.assertEqual(moss.device_support, "gpu_preferred")
+        self.assertEqual(firered.device_support, "cpu")
         whisper = provider.models[-1]
         self.assertEqual(whisper.engine, "whisper")
         self.assertEqual(whisper.model_ref, "Systran/faster-whisper-large-v3")
@@ -425,8 +463,7 @@ class GuiConfigTests(unittest.TestCase):
         self.assertFalse(whisper.supports_speaker)
         self.assertEqual(
             whisper.note,
-            "OpenAI Whisper 多语种本地识别；CTranslate2 运行时自带 VAD，无说话人分离；"
-            "GPU 运行需要用户自行安装 CUDA 12 和 cuDNN 9，否则自动回退到 CPU",
+            "多语种识别；原生词级时间码；CPU/GPU 均可运行；GPU 速度更佳；无说话人分离",
         )
         self.assertEqual(gui_config.api_key_for_provider("local"), "")
 
@@ -497,7 +534,7 @@ class GuiConfigTests(unittest.TestCase):
             env_path = Path(temp_dir) / ".env"
             with mock.patch.dict(os.environ, {}, clear=True):
                 config = gui_config.effective_config(env_path)
-            self.assertFalse(config.output_subfolder)
+            self.assertTrue(config.output_subfolder)
             self.assertFalse(config.per_video_subfolder)
             self.assertFalse(config.attach_model_name)
 
@@ -558,7 +595,7 @@ class GuiConfigTests(unittest.TestCase):
 
             with mock.patch.dict(os.environ, {}, clear=True):
                 config = gui_config.effective_config(env_path)
-            self.assertFalse(config.output_subfolder)
+            self.assertTrue(config.output_subfolder)
             self.assertFalse(config.attach_model_name)
 
     def test_model_by_label_searches_all_providers(self) -> None:

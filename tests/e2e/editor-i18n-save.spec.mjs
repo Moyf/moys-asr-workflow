@@ -30,6 +30,23 @@ test.afterAll(async () => {
   cleanupTempDir(tempDir);
 });
 
+test('English markers panel translates controls and preserves project names', async ({ page }) => {
+  await page.addInitScript(() => localStorage.setItem('mawe.language', 'en'));
+  await page.goto(server.url);
+  await page.locator('#markers-manage').click();
+  await expect(page.locator('#markers-panel-title')).toHaveText('Markers and regions');
+  await expect(page.locator('#markers-add-current')).toHaveText('Add marker at playhead');
+  await page.evaluate(() => MaweMarkerEditing.addMarkerAt(500, { name: '删除' }));
+  await expect(page.locator('.markers-item-title')).toHaveText('删除');
+  await expect(page.locator('.waveform-marker-label').first()).toHaveText('删除');
+  await expect(page.locator('#markers-summary')).toHaveText('Total 1: markers 1 · regions 0');
+  await page.locator('.markers-item-edit').click();
+  await expect(page.locator('.markers-color-swatches button').first()).toHaveAttribute('aria-label', 'Use color Blue');
+  await expect(page.locator('.markers-item-actions button').filter({ hasText: 'Seek and listen' })).toBeVisible();
+  await expect(page.locator('#markers-search')).toHaveAttribute('placeholder', 'Search names or notes');
+  await page.screenshot({ path: test.info().outputPath('markers-english.png') });
+});
+
 test('English locale covers the editor shell and recent-project setting stays first', async ({ page }) => {
   await page.addInitScript(() => localStorage.setItem('mawe.language', 'en'));
   await page.goto(server.url);
@@ -264,9 +281,11 @@ test('small subtitle-segment overlap can be auto-repaired and saved again', asyn
   });
 
   await page.evaluate(() => {
-    DATA.segments[0].end = DATA.segments[1].start + 1;
-    DATA.segments[0]._dirty = true;
-    renderAll({ waveform: 'overlay' });
+    // 重叠修复 UX 针对毫秒时间基准；帧模式下 1ms 会被帧吸附抹平。
+    MaweBoot.DATA.timebase = { unit: 'milliseconds', fps: 30 };
+    MaweBoot.DATA.segments[0].end = MaweBoot.DATA.segments[1].start + 1;
+    MaweBoot.DATA.segments[0]._dirty = true;
+    MaweCuePanel.renderAll({ waveform: 'overlay' });
   });
   await page.keyboard.press('Control+s');
   const hint = page.locator('.hint-project-error');
@@ -278,7 +297,7 @@ test('small subtitle-segment overlap can be auto-repaired and saved again', asyn
   ));
   await hint.locator('.hint-project-repair-auto').click();
   expect((await retry).ok()).toBe(true);
-  await expect.poll(() => page.evaluate(() => DATA.segments[1].start)).toBe(50001);
+  await expect.poll(() => page.evaluate(() => MaweBoot.DATA.segments[1].start)).toBe(50001);
   await expect(page.locator('.hint-card').last()).toContainText('保存成功！');
   expect(saveAttempts).toBe(2);
 });
@@ -301,9 +320,11 @@ test('larger subtitle-segment overlap requires an explicit repair direction', as
     });
   });
   await page.evaluate(() => {
-    DATA.segments[0].end = DATA.segments[1].start + 2000;
-    DATA.segments[0]._dirty = true;
-    renderAll({ waveform: 'overlay' });
+    // 同上：钉住毫秒时间基准，避免帧吸附改写时间边界。
+    MaweBoot.DATA.timebase = { unit: 'milliseconds', fps: 30 };
+    MaweBoot.DATA.segments[0].end = MaweBoot.DATA.segments[1].start + 2000;
+    MaweBoot.DATA.segments[0]._dirty = true;
+    MaweCuePanel.renderAll({ waveform: 'overlay' });
   });
 
   await page.keyboard.press('Control+s');

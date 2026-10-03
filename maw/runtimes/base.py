@@ -94,7 +94,7 @@ class RuntimeSpec:
     - 布局：dir_name（app-data 下目录名）/ root_env（覆盖环境变量）/
       bundle_dir（打包版资产目录）
     - 验证与运行：verify_command（python -c 自检）/ package_dirs（site-
-      packages 关键包目录）/ worker_module
+      packages 关键包条目）/ worker_module
     - 扩展：model_id / model_id_label（OCR 用）/ has_model_cache（local 用）
     - 异常：error_class / cancelled_class / cancelled_message
     - 迁移标记：install_uv（moss 尚未迁 embedded，占用后删除）
@@ -263,9 +263,20 @@ class ManagedRuntime:
         return target / "site-packages"
 
     def package_dirs_ok(self, root: str | Path | None = None) -> bool:
-        """site-packages 里关键包目录是否齐全（spec.package_dirs）。"""
+        """site-packages 里关键包条目是否齐全（spec.package_dirs）。"""
+        return not self.missing_package_dirs(root)
+
+    def missing_package_dirs(self, root: str | Path | None = None) -> tuple[str, ...]:
+        """返回托管 ``site-packages`` 中缺失的关键包条目。
+
+        ``package_dirs`` 是历史字段名，但 Python 依赖不一定安装成目录：
+        ``soundfile`` 就是顶层的 ``soundfile.py``，原先只检查同名目录会
+        把已经安装好的运行时误判为 broken。
+        """
         site = self.site_packages(root)
-        return all((site / name).exists() for name in self.spec.package_dirs)
+        return tuple(
+            name for name in self.spec.package_dirs if not _site_package_entry_exists(site, name)
+        )
 
     def bundle_root(self) -> Path:
         """打包版 = bundle 内 runtime 目录；源码模式 = 仓库根。"""
@@ -587,6 +598,14 @@ class ManagedRuntime:
         )
         _may_cancel(cancel, spec)
 
+        missing = self.missing_package_dirs(root)
+        if missing:
+            missing_names = "、".join(missing)
+            raise self._error(
+                f"{spec.message_prefix}安装后仍缺少关键依赖：{missing_names}。"
+                f"请点击“{spec.fix_action_label}”重试。"
+            )
+
         extra = {"modelId": spec.model_id} if spec.model_id else None
         write_runtime_manifest(
             root,
@@ -667,14 +686,6 @@ class ManagedRuntime:
             # 理论上不可达：install() 门槛已保证 uv 存在；防御时给出同款警告。
             emit(f"[警告] {UV_MISSING_WARNING}", 22, "bootstrap")
             raise self._error(UV_MISSING_WARNING)
-        # 清单已可用（打包版随包分发 / 此前已生成）则直接跳过：requirements_path
-        # 才是权威判定，避免对 build/ 目录的偶然状态敏感（干净 checkout 的
-        # build/ 为空，但在线用户无需任何冻结步骤）。
-        try:
-            self.requirements_path(cpu=cpu)
-            return
-        except self.spec.error_class:
-            pass
 
         def run(command: list[str]) -> int:
             return self.run(
@@ -687,6 +698,49 @@ class ManagedRuntime:
 
         def notify(message: str) -> None:
             emit(message, 22, "bootstrap")
+
+        # 清单已可用（打包版随包分发 / 此前已生成）则通常直接跳过：
+        # requirements_path 才是权威判定，避免对 build/ 目录的偶然状态敏感
+        # （干净 checkout 的 build/ 为空，但在线用户无需任何冻结步骤）。
+        try:
+            self.requirements_path(cpu=cpu)
+        except self.spec.error_class:
+            pass
+        else:
+            # 但清单内容可能早于当前依赖声明（例如 runtime 版本升级新增
+            # 依赖后复用旧产物，runtime 7 的 quapeaks / sherpa-onnx 案例）。
+            # 覆盖度不满足时按当前声明强制重新冻结，而不是装出缺包的运行时
+            # 后让 verify 阶段才失败。
+            main_stale = freezer.requirements_stale(self.spec, _build_dir(), cpu=False)
+            cpu_stale = cpu and freezer.requirements_stale(self.spec, _build_dir(), cpu=True)
+            if not main_stale and not cpu_stale:
+                return
+            emit("依赖清单与当前依赖声明不一致，正在重新冻结……", 22, "bootstrap")
+            try:
+                if main_stale:
+                    freezer.ensure_frozen(
+                        uv_executable,
+                        self.spec,
+                        cpu=False,
+                        build_dir=_build_dir(),
+                        run=run,
+                        emit=notify,
+                        force=True,
+                    )
+                if cpu_stale:
+                    # 主清单刚按当前声明重冻结，CPU 变体从它提取直接依赖。
+                    freezer.ensure_frozen(
+                        uv_executable,
+                        self.spec,
+                        cpu=True,
+                        build_dir=_build_dir(),
+                        run=run,
+                        emit=notify,
+                        force=True,
+                    )
+            except self.spec.error_class as error:
+                raise self._error(f"自动生成依赖清单失败：{error}") from error
+            return
 
         try:
             freezer.ensure_frozen(
@@ -758,6 +812,21 @@ class ManagedRuntime:
 # ---------------------------------------------------------------------------
 # 共享内部工具
 # ---------------------------------------------------------------------------
+
+
+def _site_package_entry_exists(site: Path, name: str) -> bool:
+    """Return whether an importable top-level package/module exists in ``site``."""
+    if (site / name).exists() or (site / f"{name}.py").is_file():
+        return True
+    # Native-only modules carry an ABI suffix on Windows/Linux (for example
+    # ``module.cp311-win_amd64.pyd``), so they cannot be checked by one exact
+    # filename.  The glob is restricted to import-name prefixes and does not
+    # match the usual ``name-version.dist-info`` metadata directory.
+    return any(
+        path.is_file()
+        for pattern in (f"{name}*.pyd", f"{name}*.so", f"{name}*.dylib")
+        for path in site.glob(pattern)
+    )
 
 
 def _uses_host_venv() -> bool:
