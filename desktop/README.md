@@ -23,8 +23,8 @@ moys-open-subtitle-editor/   (MOSE 发布仓库，独立)
 cargo --version   # 能出版本号 = OK
 
 # 进入 desktop/ 开发
-cd D:\Codes\moys-asr-workflow\desktop
-npm install       # 首次：安装 @tauri-apps/cli（package.json 里已声明）
+cd desktop
+npm ci            # 按 lockfile 安装开发依赖
 npx tauri dev     # 启动开发模式（编译 Rust + 从 web/ 生成 index.html + 开 webview 窗口）
 npx tauri build   # 仅构建本地开发包；MOSE 暂不随 MAW Release 分发
 ```
@@ -48,14 +48,9 @@ npx tauri build   # 仅构建本地开发包；MOSE 暂不随 MAW Release 分发
 
 MOSE 与 MAW/MAWE 共享同一份工程文件契约：内容是 UTF-8 JSON，推荐扩展名为 `.mosp`，同时兼容旧的 `.json`。`.workspace.json` 是独立的工作区迁移文件，不是字幕工程。
 
-## 同步到 MOSE 发布仓库
+## 发布边界
 
-每次 MOSE release 时，将 `desktop/` + `../web/` 快照同步到 `moys-open-subtitle-editor` 仓库：
-
-```powershell
-# 同步脚本尚未纳入当前 MAW 开发流程
-.\scripts\sync-to-mose-release.ps1
-```
+当前仓库没有可调用的 MOSE 发布仓库同步脚本。不要运行历史文档中的 `sync-to-mose-release.ps1` 示例；后续独立分发流程需另行建立。
 
 ## 当前状态
 

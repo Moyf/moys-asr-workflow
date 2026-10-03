@@ -1,435 +1,175 @@
-# MAW 命令行 CLI
+# MAW 命令行与自动化
 
-MAW 的 Release 包除了图形 Launcher，也支持直接用命令行完成转写和本机编辑器 Server 管理。本文以 Windows PowerShell 和 Release 包中的 `MAW.exe` 为例；源码运行时，把示例中的 `MAW.exe` 替换为 `uv run python maw_gui.py` 即可。
+公开 CLI 通过 Release 包的 `MAW.exe` 调用；源码中把它替换为 `uv run --no-sync python maw_gui.py`。下面的 Windows 示例使用 PowerShell，其他系统请使用实际的可执行文件路径。
 
-> 本文介绍公开 CLI。`--transcribe`、`--transcribe-soniox`、`--transcribe-doubao`、`--transcribe-bcut`、`--transcribe-tencent`、`--transcribe-openai` 和 `--serve` 是保留给旧 Launcher/内部调用的兼容入口，新脚本应使用本文的参数。
+先运行 `--help` 确认所用版本支持的参数。帮助不会调用 ASR。配置字段与 `.env` 位置统一见 [服务商配置](PROVIDERS.md)。
 
-## 1. 能做什么
+## 入口与输出
 
-公开 CLI 有三种模式：
+| 入口 | 行为 |
+| --- | --- |
+| 无参数 | 启动 Launcher。 |
+| `-dbg` / `--debug`，且无转写参数 | 启动 Launcher 调试。 |
+| `-dt` / `--devtools` | 启动 Launcher 并打开 DevTools。 |
+| `-i INPUT` | 转写，默认生成 SRT 与 `.mosp`。 |
+| `--server` / `--stop-server` | 启动或停止本机编辑器。 |
 
-| 模式 | 入口 | 行为 |
-| --- | --- | --- |
-| Launcher | 不带参数 | 启动图形 Launcher，保持原来的双击行为 |
-| Launcher 调试 | `-dbg` / `--debug` | 启动 Launcher 的 pywebview 调试能力；不自动打开 DevTools |
-| Launcher DevTools | `-dt` / `--devtools` | 启动 Launcher 并自动打开 DevTools |
-| 转写 | `-i` / `--input` | 调用 Qwen/Fun-ASR、Soniox、腾讯云、自定义 OpenAI 兼容接口或必剪（实验性），生成 SRT 和 `.mosp` |
-| Server 管理 | `--server` / `--stop-server` | 启动或停止只监听 `127.0.0.1` 的 MAW 编辑器 Server |
-
-先查看当前版本的帮助：
+公开 CLI 只选择云端供应商和实验性必剪；本地 ASR 使用独立脚本，见 [LOCAL_ASR](LOCAL_ASR.md)。`--transcribe*`、`--serve` 是内部兼容入口，不用于新脚本。
 
 ```powershell
 .\MAW.exe --help
+.\MAW.exe -i "D:\Videos\clip.mp4" -o "D:\Output\clip.srt" -ll 2m
 ```
 
-`-h` 是 `--help` 的短写法。帮助和参数错误不会调用 ASR API；自动化工具可以先执行它确认实际参数。
+- `-o SRT [MOSP]` 最多接受两个路径；只给 SRT 时生成同名 `.mosp`。
+- `--mosp PATH` 可单独指定工程位置，与 `-o` 的第二个路径互斥。
+- 未给 `-o` 时按媒体、供应商与模型命名；自动化应显式指定路径。
+- 输出父目录会创建。不要假设所有入口都有 Launcher 的防覆盖规则，应使用新的输出路径。
+- 默认不生成 HTML，`--html` 额外生成 `.edit.html`；`--json` 是历史兼容参数，公开 CLI 已默认生成工程。
 
-开发 Launcher 时，可以使用 `MAW.exe -dbg` 或 `MAW.exe --debug` 开启 pywebview 调试能力，使用 `MAW.exe -dt` 或 `MAW.exe --devtools` 在启动后直接打开 DevTools。由于 `--debug` 也保留为转写模式的 API 调试参数，和 `-i`、`--server` 等 CLI 参数一起使用时仍按原有转写或 Server CLI 处理。
+`-ll 2m` 只处理前两分钟；完整转写时移除该参数。不要默默截断用户要求的完整媒体。
 
-## 2. 准备工作
+## 公开转写参数
 
-### Release 包
+### 输入与通用处理
 
-请保留 Release 解压后的整个目录，不要只复制 `MAW.exe`。默认 `MAW` 包已经把 `ffmpeg.exe` 和 `ffprobe.exe` 放在包内；`MAW-lite` 包需要系统 PATH 中已有这两个命令。MAW 运行 CLI 时会自动把随包的 FFmpeg 加入当前进程环境。
-
-### API Key
-
-CLI 不接受 API Key 参数，也不应把 Key 写在命令行、脚本参数、日志或 AI 对话中。使用环境变量，或在 MAW 配置目录的 `.env` 中配置：
-
-```ini
-# Qwen-Audio、Qwen3-ASR、Fun-ASR
-DASHSCOPE_API_KEY=你的百炼密钥
-
-# Soniox；只使用 Soniox 时填写这一项即可
-SONIOX_API_KEY=你的 Soniox 密钥
-
-# OpenAI 官方、OpenRouter 或兼容 ASR；只使用 OpenAI 兼容接口时填写这一组
-MAW_OPENAI_ASR_API_KEY=你的 ASR 密钥
-MAW_OPENAI_ASR_BASE_URL=https://api.openai.com/v1
-MAW_OPENAI_ASR_MODEL=whisper-1
-```
-
-Windows Release 包会优先读取 `MAW.exe` 同目录的 `.env`；该文件不存在时回退到 `%LOCALAPPDATA%\MAW\.env`。macOS / Linux 也优先读取应用程序同目录的 `.env`，再回退到对应的 MAW 用户数据目录；源码方式继续读取仓库根 `.env`。环境变量优先于 `.env`。API Key 的获取或查看方式见 [ASR 服务与配置](PROVIDERS.md)；OpenAI 用户可在 [OpenAI Platform](https://platform.openai.com/api-keys) 或 [OpenRouter](https://openrouter.ai/keys) 获取 API Key。
-
-### PowerShell 路径
-
-媒体、输出、工程、热词和上下文文件的路径只要包含空格，就必须加双引号。自动化脚本建议始终使用绝对路径，并提前选择不会与已有结果冲突的输出路径。
-
-## 3. 转写语法和输出
-
-最常用的语法是：
-
-```text
-MAW.exe -i INPUT -o SRT [MOSP] [转写选项]
-```
-
-### 最小示例
-
-```powershell
-.\MAW.exe -i "D:\Videos\meeting.mp4" -o "D:\Output\meeting.srt" "D:\Output\meeting.mosp"
-```
-
-这个命令会：
-
-1. 读取本地音频或视频；
-2. 使用默认的 Qwen-Audio 模型转写；
-3. 输出指定的 SRT 和 `.mosp` 工程；
-4. 在成功结束时打印 `SRT: ...`、`MOSP: ...`，并返回退出码 `0`。
-
-### 输出路径规则
-
-- `-o` / `--output` 最多接受两个路径。第一个是 SRT，第二个是 `.mosp`。
-- 只给一个输出路径时，它被视为 SRT；`.mosp` 会使用相同目录和文件名自动生成。
-- 不写 `-o` 时，SRT 会按输入媒体名、供应商和模型自动命名。需要脚本稳定定位结果时，建议显式写 `-o`。
-- `--mosp PATH` 可以单独指定工程输出路径；它不能和 `-o` 的第二个路径同时使用。
-- 输出目录不存在时，CLI 会创建 SRT 和 `.mosp` 所需的父目录。
-- CLI 默认生成 SRT 和 `.mosp`，不生成便携 `.edit.html`。需要 HTML 时加 `--html`。
-- `--json` 只是旧 CLI 的兼容参数。它表示“同时生成工程文件”，当前工程扩展名仍是 `.mosp`，不是要求生成 `.json`。
-
-例如，只固定 SRT 路径，让工程自动使用同名路径：
-
-```powershell
-.\MAW.exe -i "D:\Videos\meeting.mp4" -o "D:\Output\meeting.srt"
-```
-
-或者使用 `--mosp` 把工程放到另一个目录：
-
-```powershell
-.\MAW.exe -i "D:\Videos\meeting.mp4" `
-    -o "D:\Output\meeting.srt" `
-    --mosp "D:\Projects\meeting.mosp"
-```
-
-### 先跑小样本
-
-第一次调用或调试 API 时，建议先限制时长，避免误传整部视频：
-
-```powershell
-.\MAW.exe -i "D:\Videos\long-video.mp4" `
-    -o "D:\Output\long-video-test.srt" `
-    --mosp "D:\Output\long-video-test.mosp" `
-    -ll 2m
-```
-
-`-ll` / `--length-limit` 支持数字秒数以及 `s`、`m`、`h` 后缀，例如 `90`、`20s`、`2m`、`1h`。它会在 FFmpeg 提取阶段限制输入范围；不需要测试截取时不要长期保留这个参数。
-
-### 六个转写 CLI 的默认命名与公共开关
-
-仓库根目录还提供可直接运行的转写脚本：`generate_subtitle_qwen_api.py`、`generate_subtitle_bcut_api.py`、`generate_subtitle_soniox_api.py`、`generate_subtitle_doubao_api.py`、`generate_subtitle_tencent_api.py`、`generate_subtitle_openai_api.py` 和 `generate_subtitle_local.py`（合称七个转写 CLI）。它们是 `MAW.exe` 转写时调用的底层脚本，也可像工作流文档那样在源码环境用 `uv run python generate_subtitle_*.py` 直接运行。`MAW.exe` 总会把最终 SRT / `.mosp` 路径显式传给它们，因此下面的命名规则只在这些脚本自己决定输出名时生效：
-
-- 不写 `-o` / `--output` 时，脚本自行命名输出，且默认名不附带任何倍速或实时率段。多数脚本保留时间戳与供应商/模型标识段，例如 `[202609061234]clip.qwen3-asr-api.srt`；腾讯云与 OpenAI 兼容脚本的默认名只有媒体主名（`clip.srt`）；本地 CLI 使用引擎标识段（如 `clip.qwen-asr-local.srt`）。
-- `--no-model-tag` ：省略默认名中的标识段（`clip.qwen3-asr-api.srt` → `clip.srt`）。腾讯云 CLI 的默认文件名本来就不含任何标识段，此开关对它无效果。
-- 显式指定 `-o` / `--output` 时完全按给定路径输出，不注入以上任何段。
-- `--debug-raw` ：在线模型单独保存完整 ASR 原始返回；本地模型按引擎保存可用的原始/中间调试产物，并生成 `<输出名>.local-debug.json` 清单。清单旁会按阶段生成 `*.local-debug.*.json`，例如 FireRed 的 CTC 原始字词时间码、ct-punc 标点结果、最终断句结果；Launcher 开启「将所有输出文件放入子文件夹」后，这些调试文件统一放入对应 `_maw/调试`（英文界面为 `_maw/debug`），并继续遵循「每个视频单独创建子文件夹」；关闭时未指定 `-o` 的在线响应仍放在 `_maw`，显式输出则与输出同目录。
-- 转写开始与结束时各输出一行时间码（如 `转写开始: 2026-09-06 14:32:05`）；完成后输出转写耗时、媒体时长以及实时率说明（`转写时长为媒体时长的 0.12 倍`）。实时率（RTF）= 转写耗时 ÷ 媒体原长，数值越小越快。
-- 费用估算：使用阿里云百炼服务（Qwen / Fun-ASR / Qwen-Audio）时，按媒体时长以 `0.00022 元/秒` 输出预计费用，如 `预计费用: 约 0.34 元（0.00022 元/秒 × 1548.0 秒）`；其他服务商暂无公开单价，不显示估算。
-- 转写成功时在 stdout 末尾输出一行机器可读的 `MAW_STAT rtf=0.123`（rtf 为保留三位小数的实时率）。`MAW.exe` 转写也会透出这一行，脚本可直接用它解析实时率，不必依赖人读的进度文本。
-
-## 4. 完整参数
-
-### 4.1 帮助、输入和输出
-
-| 参数 | 说明 |
+| 参数 | 含义 |
 | --- | --- |
-| `-h`, `--help` | 显示 CLI 帮助并退出。 |
-| `-i PATH`, `--input PATH` | 转写模式下必填；音频或视频路径。Server 模式不能使用。 |
-| `-o PATH [PATH]`, `--output PATH [PATH]` | 第一个路径为 SRT，第二个可选路径为 `.mosp`；最多两个路径。 |
-| `--mosp PATH` | 单独指定 `.mosp` 输出路径；不能和 `-o` 的第二个路径同时使用。 |
-| `--provider qwen\|soniox\|doubao\|tencent\|openai\|bcut` | 选择供应商，默认 `qwen`。`openai` 使用 OpenAI 官方或兼容的转写接口；`doubao` 使用豆包（火山引擎）录音文件识别；`tencent` 使用腾讯云录音文件识别；`bcut` 为免 Key 的实验性非官方接口。 |
-| `--model MODEL` | 覆盖供应商的模型。Qwen 常用值为 `qwen-audio-3.0-asr-flash-filetrans`（默认）、`qwen-audio-3.1-asr-flash-filetrans`、`qwen3-asr-flash-filetrans`、`fun-asr`；Soniox 默认读取 `.env`；豆包为资源 ID（默认 `volc.seedasr.auc`，可选 `volc.bigasr.auc` / `volc.bigasr.auc_idle`）；OpenAI 兼容接口默认使用 `whisper-1`。OpenRouter CLI 请显式使用完整模型 ID，例如 `openai/whisper-1`；其他中转站也请按服务商文档填写完整模型名。 |
+| `-h` / `--help` | 显示帮助。 |
+| `-i` / `--input PATH` | 输入音频或视频，转写必填。 |
+| `-o` / `--output SRT [MOSP]` | 输出路径。 |
+| `--mosp PATH` | 单独指定工程输出。 |
+| `--provider VALUE` | `qwen`（默认）、`soniox`、`doubao`、`tencent`、`openai`、`bcut`。 |
+| `--model MODEL` | 覆盖模型；各供应商默认值见 [PROVIDERS](PROVIDERS.md)。 |
+| `--language VALUE` | 语言提示；Soniox 可用 `zh,en`；必剪不支持。 |
+| `--max-len N` / `--min-len N` | 字符型最大长度/短句合并阈值，生成器默认 18 / 5。 |
+| `--max-words N` / `--min-words N` | 单词型最大长度/短句阈值，默认 13 / 3。 |
+| `--gap-split MS` | 停顿切句阈值，默认 500 毫秒。 |
+| `--keep-punct` | 保留句尾标点；默认剥除 `，。；,.`，问叹号保留。 |
+| `--strip-tail-punct CHARS` | 指定剥除的句尾标点；公开入口不转发空字符串，需禁用剥除时使用底层脚本。 |
+| `--extra-strong-punct CHARS` | 额外强断句符号，仅向 Qwen 下发。 |
+| `--speaker` / `--speaker-colors` | 请求说话人分离；后者同时写颜色快照，无需重复前者。能力取决于模型。 |
+| `-ll` / `--length-limit VALUE` | 限制处理时长，支持 `90`、`20s`、`2m`、`1h`。 |
+| `--json` | 兼容旧调用；输出仍为 `.mosp`。 |
+| `--with-waveform` | 提前生成外置波形缓存，工程落盘不内嵌缓存。 |
+| `--with-spectral` | 额外生成频谱层，要求 `--with-waveform`。 |
+| `--html` / `--no-html` | 生成/关闭便携 HTML，二者互斥，默认关闭。 |
+| `--debug` | 输出 API 调试信息。 |
+| `-s` / `--stickers PATH` | 表情包目录，也可用于 Server。 |
 
-### 4.2 字幕切分、说话人和工程内容
+Qwen3-ASR 不支持说话人开关；必剪不支持模型、语言或说话人参数。OpenAI 兼容接口的说话人模式需要 Launcher 或底层脚本专用入口，不通过公开 CLI 的 `--speaker` 请求。
 
-| 参数 | 说明 |
-| --- | --- |
-| `--max-len N` | 字符型（主要是 CJK）每条字幕最大字符数；未指定时使用生成器默认值 `18`。 |
-| `--min-len N` | 字符型短句合并阈值；未指定时使用默认值 `5`。 |
-| `--max-words N` | 单词型（英文等空格分词语言）每条字幕最大单词数；未指定时使用默认值 `13`。 |
-| `--min-words N` | 单词型短句合并阈值；未指定时使用默认值 `3`。 |
-| `--language VALUE` | 语言提示。Qwen 可写 `zh`、`en` 等；Soniox 可写逗号分隔的 `zh,en`。不确定语言时可以省略，让供应商自动识别。 |
-| `--firered-punc none\|ct-punc` | FireRedASR2 是否调用 FunASR `ct-punc` 生成标点并改善断句；默认 `ct-punc`。选择 `none` 时保留 FireRed CTC 原始字词时间码，适合后续用文稿匹配或其他步骤生成字幕文本的场景。 |
-| `--keep-punct` | 保留每条字幕末尾的逗号和句号；默认会去掉。 |
-| `--gap-split MS` | 相邻文字停顿超过指定毫秒数时强制切句；默认 `500`。 |
-| `--extra-strong-punct CHARS` | 额外强断句符号集合（如 `"?!;"`），其中每个字符都会作为云端转写切句的强断句符号；与 Launcher「断句与标点」共享配置对应，默认空。仅 `--provider qwen` 支持并下发。 |
-| `--speaker` | 启用说话人分离，并把匿名 speaker 标签写入 `.mosp`。需要选择支持该功能的模型。 |
-| `--speaker-colors` | 启用说话人分离，并按首次出现顺序写入一次性的字幕颜色快照；之后仍可在编辑器中修改。 |
-| `-ll VALUE`, `--length-limit VALUE` | 只处理媒体前指定时长，例如 `2m`、`20s`、`1h`、`90`。 |
-| `--json` | 旧 CLI 兼容参数；MAW 公开 CLI 默认已经生成 `.mosp`，通常不需要写。 |
-| `--with-waveform` | 在媒体旁生成 `.quapeaks` 波形缓存（不再写进工程文件）。会额外使用 FFmpeg 扫描媒体；不指定时波形由编辑器按需建立 `.mopeaks` 缓存。 |
-| `--html` | 在 SRT 和 `.mosp` 之外，再生成便携 `.edit.html`。 |
-| `--no-html` | 明确关闭便携 HTML；这是默认行为，也保留用于兼容旧脚本。不能和 `--html` 同时使用。 |
-| `--debug` | 输出更多 API 调试信息。调试日志仍不会输出 API Key。 |
-| `-s PATH`, `--stickers PATH` | 指定表情包目录。它会传递给转写后生成的编辑器工程，也可用于 Server。 |
+### 服务商专用参数
 
-`--speaker-colors` 已经包含说话人分离，不必同时重复写 `--speaker`。Qwen3-ASR 不支持说话人开关；Qwen-Audio、Fun-ASR、Soniox、豆包和腾讯云 `16k_zh_en_2.0` 支持情况以当前供应商及账户能力为准。OpenAI 兼容接口的说话人分离使用专用的 `--diarize`，而不是通用的 `--speaker`；自定义接口需要自行保证对应能力。腾讯云大于 5MB 的媒体需要 `--file-url`。
+| 参数 | 供应商 | 含义 |
+| --- | --- | --- |
+| `--region REGION` | Qwen | 百炼地域，默认读取配置，缺省北京。 |
+| `--workspace-id ID` | Qwen | Workspace ID；新加坡必填。 |
+| `--file-url URL` | Qwen、腾讯云 | 已上传的 OSS / 公网文件；仍需 `-i` 参与本地输出流程。 |
+| `--vocabulary-id ID` | Qwen | 为目标模型创建的预编译词表。 |
+| `--hotword WORD` | Qwen、豆包 | 即时热词，可重复。 |
+| `--hotword-file PATH` | Qwen | UTF-8 热词文件；空行与 `#` 注释忽略，支持 `词: 权重`。 |
+| `--hotword-weight VALUE` | Qwen | 1–5 或 50，单项权重可覆盖。 |
+| `--context TEXT` / `--context-file PATH` | Qwen | 二选一，Qwen-Audio 最多发送 400 字符。 |
+| `--keep-dialect` | Qwen-Audio 3.1 | 保留方言表达，其他模型会拒绝该组合。 |
+| `--soniox-context-json JSON` | Soniox | context 对象：general / text / terms / translation_terms。 |
+| `--base-url URL` | OpenAI 兼容 | 接口根地址、`/v1` 或完整转写地址。 |
 
-### 4.3 Qwen / 百炼专用参数
+不同供应商的参数不能随意混用，不支持的组合会报错。完整配置与限制见 [PROVIDERS](PROVIDERS.md)。
 
-以下参数只用于 `--provider qwen`。和 `--provider soniox`、`--provider openai` 或 `--provider bcut` 混用时，CLI 会直接报参数错误（`bcut` 额外还不支持 `--language`、`--model`、`--speaker` / `--speaker-colors`）：
+## 常用命令
 
-| 参数 | 说明 |
-| --- | --- |
-| `--region REGION` | 覆盖百炼地域，例如 `beijing` 或 `singapore`。默认读取 `DASHSCOPE_REGION`，未配置时为北京。 |
-| `--workspace-id ID` | 覆盖 `DASHSCOPE_WORKSPACE_ID`。新加坡地域必须配置；北京地域可选。 |
-| `--file-url URL` | 使用已经上传到公网/OSS 的文件 URL，交给 Qwen 的 file-trans 模式处理；仍建议保留 `-i` 作为本地输入/输出流程的媒体参数。 |
-| `--vocabulary-id ID` | 指定百炼预编译词表 ID。词表必须为当前模型创建。 |
-| `--hotword WORD` | 追加一个即时热词；可以重复写多个。 |
-| `--hotword-file PATH` | 从 UTF-8 文本文件读取即时热词，每行一个，空行和 `#` 注释行会忽略。未指定时会尝试读取仓库/包内的 `hotwords.txt`。 |
-| `--hotword-weight VALUE` | 设置即时热词权重，可用 `1` 到 `5` 或 `50`。 |
-| `--context TEXT` | 提供 Qwen-Audio 的领域背景或前文，最多发送 400 字符。 |
-| `--context-file PATH` | 从 UTF-8 文件读取 context；和 `--context` 二选一。 |
-| `--keep-dialect` | 保留方言表达，不转写为普通话文本；仅 `qwen-audio-3.1-asr-flash-filetrans` 支持，与其他模型混用会报参数错误。 |
-
-热词文件也支持 `热词: 权重` 或 `热词：权重`，可以对单条热词覆盖全局权重。即时热词和 context 主要由 `qwen-audio-3.0-asr-flash-filetrans` / `qwen-audio-3.1-asr-flash-filetrans` 使用；切换到 Qwen3-ASR 或 Fun-ASR 时，具体能力由模型决定，CLI 不会把它们伪装成通用能力。
-
-### 4.4 Soniox 专用参数
-
-以下参数只用于 `--provider soniox`：
-
-| 参数 | 说明 |
-| --- | --- |
-| `--soniox-context-json JSON` | 传入 Soniox `context` 对象，支持 `general`、`text`、`terms`、`translation_terms` 四个分区；总量约不超过 8,000 tokens（约 10,000 个字符）。 |
-
-示例：
+Qwen-Audio 热词、上下文和说话人颜色：
 
 ```powershell
-.\MAW.exe `
-    --provider soniox `
-    -i "D:\Videos\panel.mp4" `
-    -o "D:\Output\panel.srt" `
-    --soniox-context-json '{"general":[{"key":"domain","value":"Healthcare"}],"terms":["MRI","Amoxicillin"]}'
+.\MAW.exe -i "D:\Videos\interview.mp4" -o "D:\Output\interview.srt" --speaker-colors --hotword "专有名词" --context-file "D:\Config\context.txt"
 ```
 
-PowerShell 中如果 context JSON 含有空格，请将整个 JSON 放在引号中。Launcher 的「高级选项」会把 `general`、`text`、`terms` 和 `translation_terms` 的文本填写转换成同一对象。
-
-### 4.5 OpenAI 兼容 ASR 专用参数
-
-以下参数只用于 `--provider openai`：
-
-| 参数 | 说明 |
-| --- | --- |
-| `--base-url URL` | OpenAI 官方或兼容服务的根地址、带 `/v1` 的地址，或完整的 `/audio/transcriptions` 地址；省略时读取 `MAW_OPENAI_ASR_BASE_URL`，默认 `https://api.openai.com/v1`。 |
-| `--prompt TEXT` | 给支持该能力的模型补充领域背景、专有名词或前文。`whisper-1` 的提示词最多支持 224 tokens；模型不支持时不要使用。 |
-| `--keyword WORD` | 给支持该能力的模型追加关键词；可重复指定，每个参数一个词或短语。当前 OpenAI 官方只对 `gpt-transcribe` 发送该参数；关键词不能包含 `<`、`>` 或换行。 |
-| `--diarize` | 为支持说话人分离的模型请求 `diarized_json` 和自动分块。目前用于 `gpt-4o-transcribe-diarize`；不能与 `--prompt` / `--keyword` 同时使用。OpenRouter 不支持该模型。 |
-
-普通模式要求接口接受 `POST /audio/transcriptions` 的 multipart 请求，并返回 `segments` 或 `words` 时间戳；MAW 会请求 `verbose_json`、segment 和 word 时间戳。`--diarize` 模式改请求 `diarized_json`，并读取段级 `speaker` 标签。只有文本而没有时间戳的响应会被拒绝。API Key 使用 `MAW_OPENAI_ASR_API_KEY`，不接受命令行参数。
-
-### 4.6 豆包专用参数
-
-以下参数只用于 `--provider doubao`：
-
-| 参数 | 说明 |
-| --- | --- |
-| `--hotword WORD` | 追加一个即时热词；可以重复写多个。热词直传豆包 `corpus.context`。 |
-
-豆包使用单一 `VOLC_API_KEY`（新版控制台），不支持地域、词表 ID 或 file-url 参数。MAW 会先把媒体提取为 ogg + opus 24kbps 单声道音频再 base64 直传，官方限制单文件 ≤25MB 且 ≤120 分钟，超限任务请先用 `-ll` 截取或分割文件。
-
-示例：
+Fun-ASR、Soniox、豆包和腾讯云：
 
 ```powershell
-.\MAW.exe `
-    --provider doubao `
-    -i "D:\Videos\panel.mp4" `
-    -o "D:\Output\panel.srt" `
-    --speaker-colors `
-    --hotword "希沃白板"
+.\MAW.exe --model fun-asr -i "clip.mp4" -o "clip-funasr.srt" --speaker
+.\MAW.exe --provider soniox -i "clip.mp4" -o "clip-soniox.srt" --language zh,en --speaker
+.\MAW.exe --provider doubao -i "clip.mp4" -o "clip-doubao.srt" --hotword "专有名词"
+.\MAW.exe --provider tencent -i "clip.mp4" -o "clip-tencent.srt" --file-url "https://example.com/clip.wav"
 ```
 
-### 4.7 Server 参数
+OpenAI 兼容服务与实验必剪：
 
-| 参数 | 说明 |
+```powershell
+.\MAW.exe --provider openai --model whisper-1 -i "clip.mp4" -o "clip-openai.srt"
+.\MAW.exe --provider openai --base-url "https://openrouter.ai/api/v1" --model "openai/whisper-1" -i "clip.mp4" -o "clip-router.srt"
+.\MAW.exe --provider bcut -i "clip.mp4" -o "clip-bcut.srt" -ll 2m
+```
+
+CLI 不为 OpenRouter 模型自动补前缀，必须填服务商实际模型 ID。兼容接口只返回纯文本时不能生成字幕。以上 URL 示例需替换为真实、可访问且允许提交的地址。
+
+## 底层转写脚本与公开 CLI 的区别
+
+源码提供七个 `generate_subtitle_*.py` 脚本：Qwen、Soniox、豆包、腾讯云、OpenAI、必剪与本地。它们使用位置参数输入媒体，通常通过 `--json` 请求工程；HTML 默认值与公开 CLI 不完全相同，需要时明确加 `--no-html`。各脚本参数以自己的 `--help` 为准。
+
+```sh
+uv run --no-sync python generate_subtitle_qwen_api.py "clip.mp4" -o "clip.srt" --json --no-html
+```
+
+| 参数 | 仅在对应底层脚本使用 |
 | --- | --- |
-| `--server [PORT]` | 启动本机 MAW Server；省略端口时使用 `8250`。Server 在前台运行，按 `Ctrl+C` 停止。 |
-| `--stop-server [PORT]` | 停止指定端口的 MAW Server；省略端口时使用 `8250`。 |
-| `--port PORT` | 用另一种写法指定 `--server` 或 `--stop-server` 的端口，范围为 `1` 到 `65535`。 |
-| `PROJECT` | Server 启动时打开的 `.mosp` 或旧 `.json` 工程；只能和 `--server` 一起使用。 |
-| `--media PATH` | 覆盖工程中记录的媒体路径；必须和 `PROJECT` 一起使用。 |
-| `--no-open` | 启动 Server 后不自动打开浏览器，适合脚本或 AI 管理。 |
-| `--no-waveform` | 启动 Server 时跳过波形预计算。 |
-| `--waveform-peaks-per-second N` | 指定 Server 生成波形时的峰值密度。 |
-| `-s PATH`, `--stickers PATH` | 指定 Server 使用的表情包目录。 |
+| `--prompt`、`--keyword`、`--diarize` | `generate_subtitle_openai_api.py`；公开 CLI 未提供。说话人模式与 prompt/keyword 互斥。 |
+| `--engine`、`--device`、`--firered-punc` 等 | `generate_subtitle_local.py`，见 [本地 ASR](LOCAL_ASR.md)。 |
+| `--audio-track` | 支持该参数的底层生成器；公开 CLI 未提供。 |
+| `--debug-raw`、`--no-model-tag` | 底层生成器调试与命名参数；公开 CLI 未提供。 |
 
-`--server` 后的可选值如果是整数，会被解释为端口；如果不是整数，会被解释为工程路径。为了让脚本更清晰，带工程时推荐使用显式的 `--port`：
+底层脚本默认命名按供应商不同，不能统一假设带时间戳或模型名。在线 `--debug-raw` 保存原始响应，本地保存阶段文件与 `.local-debug.json` 清单，可能包含原始字幕，应按素材隐私要求处理。
 
-```powershell
-.\MAW.exe --server --port 8250 `
-    "D:\Projects\meeting.mosp" `
-    --media "D:\Videos\meeting.mp4" `
-    --no-open
-```
+成功日志包含耗时与实时率，`MAW_STAT rtf=0.123` 可供脚本解析。RTF 是耗时/媒体时长，越小越快；费用估算使用程序参考配置，不代替服务商账单。
 
-Server 永远只监听 `127.0.0.1`，不会把本地媒体和编辑器暴露到局域网。启动命令是前台进程；需要让当前终端继续工作时，在 PowerShell 中放到后台：
+## Server 管理
 
 ```powershell
-$server = Start-Process `
-    -FilePath ".\MAW.exe" `
-    -ArgumentList @("--server", "--port", "8250", "--no-open") `
-    -WorkingDirectory (Get-Location) `
-    -PassThru
-```
-
-使用完后通过 CLI 停止，而不是按 PID 猜测进程：
-
-```powershell
+.\MAW.exe --server --port 8250 "D:\Projects\clip.mosp" --media "D:\Videos\clip.mp4" --no-open
 .\MAW.exe --stop-server --port 8250
 ```
 
-停止命令优先请求 MAW Server 的 loopback 控制接口；对旧版 Windows Server，才会回退到经过命令行校验的 MAW 进程。停止前请先保存浏览器中的未保存工程修改。没有找到可安全停止的 Server 时会返回非零退出码。
+| 参数 | 含义 |
+| --- | --- |
+| `--server [PORT]` | 前台启动，默认端口 8250。也可把工程路径放在该参数后。 |
+| `--stop-server [PORT]` | 停止指定端口的 MAW Server，默认 8250。 |
+| `--port PORT` | 显式端口，公开 CLI 接受 1–65535。 |
+| `PROJECT` | 启动时打开 `.mosp` / `.json`，只能与 `--server` 同用。 |
+| `--media PATH` | 覆盖媒体引用，需指定工程。 |
+| `--no-open` | 不自动打开浏览器。 |
+| `--no-waveform` | 跳过启动波形预计算。 |
+| `--waveform-peaks-per-second N` | 波形峰值密度。 |
+| `-s` / `--stickers PATH` | 表情包目录。 |
 
-## 5. 常用范例
+Server 只监听 `127.0.0.1`，转写参数不能与 Server 模式混用。`--server` 是持续运行的前台进程；自动化需自行后台启动并等待服务可用。源码 `server-editor/serve.py` 另支持 `--blank`、自动顺延端口和 `--port 0`，这些不是公开 CLI 参数，见 [Server README](../server-editor/README.md)。
 
-### Qwen-Audio：中文、说话人颜色和内嵌波形
+停止前保存浏览器中的修改。停止命令优先调用 loopback 控制接口，旧 Windows 服务才回退到经命令行校验的进程；不会按名称随意结束其他 Python 进程。
 
-```powershell
-.\MAW.exe `
-    --provider qwen `
-    --model qwen-audio-3.0-asr-flash-filetrans `
-    -i "D:\Videos\interview.mp4" `
-    -o "D:\Output\interview.srt" "D:\Output\interview.mosp" `
-    --language zh `
-    --speaker-colors `
-    --with-waveform
-```
+## 自动化验收与退出码
 
-### Qwen-Audio：热词和上下文
-
-```powershell
-.\MAW.exe `
-    -i "D:\Videos\product-demo.mp4" `
-    -o "D:\Output\product-demo.srt" `
-    --hotword-file "D:\Config\hotwords.txt" `
-    --hotword-weight 5 `
-    --context-file "D:\Config\product-context.txt"
-```
-
-### Soniox：多语言和说话人
-
-```powershell
-.\MAW.exe `
-    --provider soniox `
-    -i "D:\Videos\panel.mp4" `
-    -o "D:\Output\panel.srt" "D:\Output\panel.mosp" `
-    --language zh,en `
-    --speaker-colors
-```
-
-### 豆包：中文和热词
-
-```powershell
-.\MAW.exe `
-    --provider doubao `
-    -i "D:\Videos\panel.mp4" `
-    -o "D:\Output\panel.srt" "D:\Output\panel.mosp" `
-    --speaker-colors `
-    --hotword "专业名词A" `
-    --hotword "专业名词B"
-```
-
-### OpenAI 兼容 ASR：官方、OpenRouter 或其他中转
-
-先在 `.env` 中配置 `MAW_OPENAI_ASR_API_KEY`；兼容服务再设置 `MAW_OPENAI_ASR_BASE_URL` 和 `MAW_OPENAI_ASR_MODEL`：
-
-```powershell
-.\MAW.exe `
-    --provider openai `
-    --base-url "https://api.openai.com/v1" `
-    --model whisper-1 `
-    -i "D:\Videos\panel.mp4" `
-    -o "D:\Output\panel.srt" "D:\Output\panel.mosp" `
-    --language en
-```
-
-OpenRouter 的 CLI 配置需要使用完整的 OpenRouter 模型 ID：
-
-```powershell
-.\MAW.exe `
-    --provider openai `
-    --base-url "https://openrouter.ai/api/v1" `
-    --model "openai/whisper-1" `
-    -i "D:\Videos\panel.mp4" `
-    -o "D:\Output\panel.srt" "D:\Output\panel.mosp"
-```
-
-Launcher 在 OpenRouter 下会为内置模型自动补上 `openai/`；CLI 不做这个猜测。使用其他中转站时，请在 Launcher 选择“自定义（Custom）”，或在 CLI 直接填写服务商提供的完整模型名。服务必须返回带时间戳的 `segments` 或 `words`；只返回文本的兼容接口不能生成可靠字幕。OpenAI 官方模型的 `prompt` / `keywords` / `diarize` 能力并不代表每个中转站都实现，遇到 400 时请检查模型名称、`response_format` 和服务商文档。
-
-### 必剪：免 Key 快速体验（实验性，仅中文）
-
-```powershell
-.\MAW.exe `
-    --provider bcut `
-    -i "D:\Videos\clip.mp4" `
-    -o "D:\Output\clip.srt" `
-    -ll 2m
-```
-
-必剪是非官方免费接口，无需配置任何 Key；不支持语言、模型和说话人参数，单文件默认上限 2 小时，请勿高频调用。
-
-### 只生成便携 HTML
-
-CLI 总是先生成 SRT 和 `.mosp`；如果还需要带工程数据的便携 HTML：
-
-```powershell
-.\MAW.exe `
-    -i "D:\Videos\clip.mp3" `
-    -o "D:\Output\clip.srt" `
-    --html
-```
-
-## 6. 给 AI 和自动化工具的调用指引
-
-如果让 AI、脚本或 CI 调用 MAW，可以把本节和本文路径 `docs/CLI.md` 作为工具说明。推荐遵守下面的规则：
-
-1. 先确认 `MAW.exe` 的绝对路径，并在执行前调用 `MAW.exe --help`；不要假设当前目录就是 Release 包目录。
-2. 使用 PowerShell 时给每个含空格的路径加双引号；自动化任务优先使用绝对输入、SRT 和 `.mosp` 路径。
-3. 不要把 `DASHSCOPE_API_KEY`、`SONIOX_API_KEY`、`VOLC_API_KEY` 或 `MAW_OPENAI_ASR_API_KEY` 放进命令行。要求用户在环境变量或 `.env` 中配置，日志和对话也不要回显它们。
-4. 第一次处理大文件时先用 `-ll 2m` 做小样本；只有用户明确需要完整媒体时，才移除时长限制。不要默默截断用户要求的完整转写。
-5. 转写完成后同时检查进程退出码和输出文件。退出码为 `0` 且 SRT、`.mosp` 都存在，才报告成功；不要只根据终端出现了“开始”或“任务完成”字样判断成功。
-6. 如果用户要求启动 Server，使用 `--server --port PORT --no-open`；这是前台服务进程，自动化工具需要自行后台启动并等待端口可用。
-7. 用户要求关闭 Server 时使用 `--stop-server PORT`，不要自行结束不相关的 Python 或 MAW 进程。关闭前提醒用户保存浏览器中的修改。
-8. 不要在新脚本中使用旧的 `--transcribe`、`--transcribe-soniox`、`--transcribe-doubao` 或 `--serve` 内部入口；它们不是面向用户的稳定 CLI。
-
-一个最小的 PowerShell 自动化模板：
+1. 确认程序路径与版本，先读取 `--help`。
+2. 为含空格路径加引号；指定新的输入/输出绝对路径，避免覆盖已有结果。
+3. Key 由环境变量或本机 `.env` 提供，不放命令行。
+4. 同时检查退出码与 SRT / MOSP 文件；仅出现进度信息不算成功。
 
 ```powershell
 $maw = "D:\Apps\MAW\MAW.exe"
-$inputPath = "D:\Videos\clip.mp4"
 $srtPath = "D:\Output\clip.srt"
 $mospPath = "D:\Output\clip.mosp"
-
-& $maw -i $inputPath -o $srtPath $mospPath -ll 2m
-$exitCode = $LASTEXITCODE
-if ($exitCode -ne 0) {
-    throw "MAW 转写失败，退出码: $exitCode"
-}
-if (-not (Test-Path -LiteralPath $srtPath)) {
-    throw "MAW 未生成 SRT: $srtPath"
-}
-if (-not (Test-Path -LiteralPath $mospPath)) {
-    throw "MAW 未生成 MOSP: $mospPath"
+& $maw -i "D:\Videos\clip.mp4" -o $srtPath $mospPath
+if ($LASTEXITCODE -ne 0) { throw "MAW 转写失败" }
+if (-not (Test-Path -LiteralPath $srtPath) -or -not (Test-Path -LiteralPath $mospPath)) {
+    throw "MAW 未生成预期产物"
 }
 ```
 
-## 7. 退出码和排错
+| 结果 | 退出码与处理 |
+| --- | --- |
+| 帮助或转写成功 | `0`；转写还需检查产物。 |
+| 公开 CLI 参数错误 | 通常 `2`，修正命令再运行。 |
+| 媒体、配置、网络或模型失败 | 非零，保留具体 stderr；底层脚本可能用 `2` 表示空识别。 |
+| 生成器返回成功但缺少文件 | `1`。 |
+| 没有可安全停止的 Server | `1`，确认端口与状态。 |
 
-公开 CLI 遵循“成功为 `0`，失败为非零”的约定：
-
-| 情况 | 常见退出码 | 处理方式 |
-| --- | --- | --- |
-| `--help` 成功显示 | `0` | 读取帮助或继续执行。 |
-| 转写成功，SRT 和 `.mosp` 已生成 | `0` | 可以继续下游编辑、打包或导入。 |
-| 参数组合错误、缺少 `-i`、端口非法 | `2` | 修正命令；不要重试相同参数。 |
-| API Key、媒体、FFmpeg、网络或供应商任务失败 | 非 `0` | 查看 stderr 和进度日志，确认配置后再重试。 |
-| 转写返回但预期文件缺失 | `1` | 检查输出目录权限、磁盘空间和生成器日志。 |
-| `--stop-server` 没找到可安全停止的 Server | `1` | 确认端口和 Server 是否仍在运行。 |
-
-常见问题：
-
-- `ffmpeg` 或 `ffprobe` 找不到：改用默认的 `MAW` 包，或把 FFmpeg 安装目录加入 PATH。
-- 报未配置 API Key：检查对应供应商的环境变量名，或检查 `.env` 是否位于 Release 的 `MAW.exe` 同目录；若未放置同目录文件，再检查 `%LOCALAPPDATA%\MAW\.env`。
-- OpenAI 兼容接口报时间戳错误：确认服务支持 `verbose_json`，并返回 `segments` 或 `words` 的 `start` / `end` 时间戳；仅有 `text` 的响应会被拒绝。
-- 输出路径包含空格但文件没有生成：检查 PowerShell 命令是否给路径加了双引号。
-- Server 打不开工程媒体：工程里的媒体路径可能已失效，使用 `PROJECT --media PATH` 指定当前媒体。
-- Server 端口被占用：选择其他 `--port`，或先对正确的端口执行 `--stop-server`。
-
-完整工作流和 API 配置仍可参考 [WORKFLOW.md](WORKFLOW.md)；编辑 `.mosp`、波形和导出格式请看 [EDITOR_GUIDE.md](EDITOR_GUIDE.md)。
+启动或配置排错见 [FAQ](FAQ.md)；编辑和保存见 [EDITOR_GUIDE](EDITOR_GUIDE.md)。

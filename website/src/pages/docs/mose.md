@@ -1,18 +1,20 @@
 ---
 layout: "../../layouts/DocLayout.astro"
 title: "与 MOSE 的关系"
-description: "MAW、MAWE 和未来 MOSE 之间的定位与工程格式边界。"
+description: "MAW、MAWE 与当前实验桌面目录的定位和工程格式边界。"
 source: "docs/MOSE.md"
 ---
 
 <!-- Generated from docs/MOSE.md. Run npm run sync:docs to refresh. -->
 
-# 与 MOSE 的关系
+| 名称 | 当前定位 |
+| --- | --- |
+| MAW — Moy's ASR Workflow | 当前可用的转写与处理工作流，包含 Launcher、公开 CLI 与本机服务。 |
+| MAWE — Moy's ASR Workflow Editor | MAW 的浏览器字幕编辑器；Server 为日常入口，HTML 为兼容入口。 |
+| MOSE — Moy's Open Subtitle Editor | 后续独立编辑器方向；本工作树保留 Tauri 实验开发目录。 |
 
-Moy's ASR Workflow（**MAW**）是一个小而直白的命令行工作流：用户自己提供阿里云百炼 Key，在自己的电脑上运行脚本和编辑器。
+当前 `desktop/` 是 Tauri 项目，开发方式见 [desktop README](https://github.com/Moyf/moys-asr-workflow/blob/main/desktop/README.md)。它不是已经交付的稳定 MOSE 产品；MAW Release 的正式编辑入口仍为 Server，MOSE 暂不随该发布流程分发，Launcher 入口隐藏。
 
-未来的 **Moy's Open Subtitle Editor（MOSE）** 计划提供三种共享工程格式的入口：网页版本、Tauri 桌面版本和便携 HTML 版本。网页版本的设计目标是让原始媒体保持在用户本机，只将需要识别的音频直接发送给用户选择的 ASR 服务。
+三者共享 `.mosp` / 兼容 `.json` 工程契约。未来形态与发布时间不作承诺；历史设计和其他开发分支的状态不能代替本工作树的实现。
 
-本仓库不是 MOSE 的临时分支，也不承诺自动升级或固定时间表。它的价值是现在就能独立使用，并作为工程文件契约、波形编辑和导出流程的稳定参考。当前工程文件以 `.mosp` 为推荐扩展名，内容仍是普通 UTF-8 JSON；MAW/MAWE 会继续兼容旧的 `.json` 工程。
-
-若未来迁移工具可用，优先保留 `.mosp` / `.json` 工程文件和原始媒体；不要把 `.workspace.json`、Resolve JSON 或 SRT 当作工程真源。SRT 只能保留字幕文本与时间，不能保留字级时间戳、编辑器工作区、波形缓存或空隙移除决定。
+保留原始媒体与工程最利于后续迁移。SRT、Resolve JSON、保留区域 JSON 和 `.workspace.json` 分别是交付、交换或配置文件，不能代替字幕工程。契约见 [JSON_SCHEMA](../json-schema/)。

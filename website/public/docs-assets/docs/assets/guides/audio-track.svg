@@ -1,0 +1,26 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="640" height="360" viewBox="0 0 640 360" role="img" aria-labelledby="title desc">
+  <title id="title">多音轨视频的声音轨道选择示意</title>
+  <desc id="desc">一个视频包含默认混音、人声和游戏声音三条音轨。手动选择人声后，转写、波形和频谱均使用同一条音轨；默认轨不一定最适合语音识别。音轨名称只是示例。</desc>
+  <defs><marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0 0L10 5L0 10Z" fill="#7fd6b2"/></marker></defs>
+  <rect width="640" height="360" rx="16" fill="#151d23"/>
+  <g font-family="system-ui, -apple-system, 'Microsoft YaHei', sans-serif">
+    <text x="28" y="42" fill="#edf6f1" font-size="24" font-weight="700">先确认识别哪一条音轨</text>
+    <text x="28" y="74" fill="#b7cbd2" font-size="17">示例：同一视频包含以下三条声音轨道</text>
+    <g fill="#202e36" stroke="#42575f">
+      <rect x="28" y="98" width="270" height="56" rx="8"/>
+      <rect x="28" y="169" width="270" height="56" rx="8" stroke="#7fd6b2" stroke-width="2"/>
+      <rect x="28" y="240" width="270" height="56" rx="8"/>
+      <rect x="386" y="125" width="226" height="145" rx="10"/>
+    </g>
+    <g font-size="20">
+      <text x="44" y="133" fill="#b7cbd2">音轨 1 · 混音（默认）</text>
+      <text x="44" y="204" fill="#7fd6b2" font-weight="700">音轨 2 · 人声（已选择）</text>
+      <text x="44" y="275" fill="#b7cbd2">音轨 3 · 游戏声音</text>
+      <text x="408" y="163" fill="#edf6f1" font-weight="600">统一使用所选音轨</text>
+      <text x="408" y="201" fill="#b7cbd2">ASR 转写</text>
+      <text x="408" y="239" fill="#b7cbd2">波形 / 频谱</text>
+    </g>
+    <text x="28" y="333" fill="#b7cbd2" font-size="17">默认轨未必适合识别人声；名称与内容需自行确认。</text>
+  </g>
+  <path d="M306 197H377" stroke="#7fd6b2" stroke-width="2" marker-end="url(#arrow)"/>
+</svg>

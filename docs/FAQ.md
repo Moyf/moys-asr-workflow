@@ -1,39 +1,59 @@
 # 常见问题
 
-## Windows 下载后启动时报 `Python.Runtime.Loader.Initialize` 错误
+安装与第一次转写见 [工作流](WORKFLOW.md)，配置字段见 [服务商配置](PROVIDERS.md)。
 
-如果从 GitHub 下载 `MAW` 压缩包、解压后启动失败，并在错误信息中看到 `Python.Runtime.dll` 或 `Python.Runtime.Loader.Initialize`，通常是 Windows 给“来自 Internet 的文件”添加的安全标记，导致运行时 DLL 被阻止加载。这个问题的实际案例见 [Issue #40](https://github.com/Moyf/moys-asr-workflow/issues/40)。
+## Windows 启动时报 Python.Runtime 错误
 
-请按下面步骤处理：
+`Python.Runtime.dll` 或 `Python.Runtime.Loader.Initialize` 可能由下载文件的安全标记阻止 DLL 加载，实例见 [Issue #40](https://github.com/Moyf/moys-asr-workflow/issues/40)。
 
-1. 找到最初下载的 `MAW-*.zip`，右键打开“属性”。
-2. 在“常规”页勾选“解除锁定”（英文 Windows 为 `Unblock`），点击“应用”。
-3. 删除或移走旧的解压目录，再从已经解除锁定的 ZIP 重新解压到新目录。
-4. 不要只复制 `MAW.exe`；必须保留完整的 `MAW` 目录及其中的运行时文件，然后从这个完整目录启动程序。
+1. 在原始 ZIP 的属性中选择「解除锁定 / Unblock」。
+2. 将旧解压目录移走，再把已解除锁定的 ZIP 解压到新目录。
+3. 保留完整目录，从其中启动 `MAW.exe`，不要只复制可执行文件。
 
-如果属性窗口中没有“解除锁定”，可以尝试重新下载压缩包，或使用 Bandizip 等可靠的解压软件重新解压；仍然建议先对原始 ZIP 执行“解除锁定”。不要只复制 `MAW.exe`，也不要在旧的解压目录上覆盖文件。
+没有解除锁定选项时，可重新下载或换可靠解压软件。只有错误明确指向旧系统的 .NET Framework 时才检查 Framework 4.8，现代 .NET Runtime 不能直接替代它。
 
-如果解除锁定并重新解压后仍然报错，不要先把现代 .NET Runtime 8/9 当作替代品安装。Python.NET 使用的是 Windows .NET Framework；只有当错误明确指向 Framework 版本且系统版本过旧时，才检查是否已安装 .NET Framework 4.8。
+## 找不到 FFmpeg / FFprobe，或报 WinError 2
 
-## 转写时提示“找不到文件”或 `[WinError 2] 系统找不到指定的文件`
+完整版 MAW 包含二者；Lite 包需要系统安装。确认两个命令都有版本输出，重新打开应用或终端，让 PATH 更新生效。
 
-看到“找不到 FFmpeg，请下载完整版 MAW”时，请下载带内置 FFmpeg 的完整版 `MAW` 包；这个提示通常表示使用了不包含 FFmpeg/FFprobe 的 `MAW-lite`。
+macOS 从 Finder 启动不一定继承终端 PATH。程序会尝试 Homebrew 路径；仍失败时，在 Launcher 配置 FFmpeg 路径，并确认对应 FFprobe 也存在。烧录 ASS 需要支持 libass 的构建，程序会优先尝试 Homebrew `ffmpeg-full`；显式 `FFMPEG_PATH` 优先。
 
-如果日志停在“正在读取原始视频时长”，并且你下载的是 `MAW-lite`，通常是 Lite 包不包含 FFmpeg 和 FFprobe。请下载带内置 FFmpeg 的完整版 `MAW` 包，不要下载文件名带 `lite` 的版本。
+## Key 已填写但提示未配置
 
-如果必须继续使用 `MAW-lite`，请自行安装 FFmpeg，并确保 `ffmpeg` 与 `ffprobe` 都已加入 PATH，然后重新打开 MAW。完整包与 Lite 包的差异也见 [工作流说明](WORKFLOW.md#找不到-ffmpeg-或-ffprobe)。
+确认保存到了当前入口读取的 `.env`：源码在仓库根目录，打包版优先应用程序同目录，再回退用户数据目录。不是 `.env.example`，也没有被同名环境变量覆盖。不要为排错打印完整 Key。
+
+## Qwen / Fun-ASR 返回 403，或任务上传失败
+
+核对 Key、地域、Workspace ID 与模型权限；新加坡需要 Workspace ID。日志会显示业务 code、message 和 request_id：
+
+| 错误 | 核对项 |
+| --- | --- |
+| `AllocationQuota.FreeTierOnly` | 账户是否限制仅使用免费额度，额度是否已用完。 |
+| `AccessDenied` / API-Key restrictions | Key 的模型权限、IP 白名单及业务空间授权。 |
+| `Workspace.AccessDenied` / `WorkSpaceNotFound` | Key、地域和 Workspace ID 是否属于同一空间。 |
+
+超时先检查网络与服务状态；百炼可调整 `DASHSCOPE_POLL_TIMEOUT`，不要无限重试同一个权限错误。数据保留、额度和文件限制以服务控制台为准。
+
+## OpenAI 兼容服务只返回文字或报 400
+
+MAW 需要 `segments` / `words` 时间戳，纯 `{ "text": "..." }` 不足以生成可靠字幕。检查接口支持的 response_format、模型 ID 与增强参数。OpenRouter 的公开 CLI 模型名必须填完整前缀；其他服务使用其实际模型 ID。
+
+`MAW.exe` 不接受底层 OpenAI 脚本的 `--prompt`、`--keyword`、`--diarize`。参数边界见 [CLI](CLI.md)。
+
+## 工程打开了，媒体却没有加载
+
+工程的媒体引用可能失效。通过 Launcher 重新选择，或源码启动时用 `-m` 覆盖。直接拖入工程不一定能让 Server 接管；没有写入绑定时需导出工程保存。条件见 [Server README](../server-editor/README.md)。
+
+便携 HTML 的 file:// 媒体权限与 Seek 兼容性有限，日常优先使用 Server。不要用普通 `python -m http.server` 替代专用媒体 Range 服务。
+
+## 字幕不在媒体旁，或缓存重新生成
+
+Launcher 默认输出到 `_maw`；每视频子文件夹和模型名开关另行设置。波形缓存不是工程真源，可以重建；旧 `*.waveform.json` 已不再读取。规则见 [Launcher 指南](LAUNCHER_GUIDE.md)。
+
+## 如何保存或恢复修改
+
+先确认当前工程是 Server 绑定、浏览器文件句柄还是下载式导入。Server 另存为只允许当前目录内文件名；服务退出时仍可从页面导出工程。备份副本需复制到原目录并恢复工程扩展名，见 [编辑器指南](EDITOR_GUIDE.md#5-保存另存为与备份)。
 
 ## 如何反馈问题
 
-如果常见问题没有解决你的情况，请在 GitHub 提交 [Issue](https://github.com/Moyf/moys-asr-workflow/issues/new)，方便我们继续排查。
-
-反馈时请尽量提供：
-
-- MAW 版本号，以及下载的包名（例如 `MAW-Windows-x64-...zip`）。
-- 操作系统和架构，例如 Windows 11 x64。
-- 从启动到报错的具体操作步骤。
-- 完整的错误信息、终端输出或截图。
-- 是否已经尝试解除 ZIP 锁定并重新解压。
-- 是否使用过 Bandizip 等其他解压软件重新解压完整 ZIP。
-
-请先删除 API Key、访问令牌、原始媒体和其他隐私内容；本地路径也可以脱敏后再提交。
+提交 [GitHub Issue](https://github.com/Moyf/moys-asr-workflow/issues/new)，提供版本、包名、系统与架构、具体步骤、完整错误及已尝试的方法。先移除 API Key、令牌、私人媒体与识别内容，本地路径可脱敏。
