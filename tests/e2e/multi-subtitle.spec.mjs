@@ -3962,6 +3962,7 @@ test('can split a hand-created subtitle while keeping the original text on both 
     type: 'application/json',
     base64: Buffer.from(JSON.stringify(project), 'utf8').toString('base64'),
   }]);
+  await expect(page.locator('.cue[data-idx="0"] .text')).toHaveText('AABBCC');
   expect(await page.evaluate(() => MaweSplitCore.openMainWaveformSplitModal(0, 3000))).toBe(true);
   await expect(page.locator('#multi-subtitle-split-modal')).toHaveClass(/show/);
   await expect(page.locator('#multi-subtitle-split-duplicate'))

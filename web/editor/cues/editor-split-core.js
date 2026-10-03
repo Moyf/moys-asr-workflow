@@ -368,6 +368,39 @@
 
 
 
+  // Modal and caret splits share segment inheritance. Timing/text decisions
+  // stay with their callers; metadata and group references must not vary by UI path.
+  function createSplitSegments(segment, {
+    idBase, headIndex = 0, leftText, rightText, leftEnd, rightStart, leftItems, rightItems,
+  }) {
+    const left = {
+      ...segment,
+      id: MULTI_SUBTITLE_UTILS.uniqueStableSegmentId([segment], `${idBase}-a`, 'segment'),
+      end: leftEnd,
+      text: leftText,
+      items: leftItems.length ? leftItems : null,
+      _dirty: true,
+    };
+    const right = {
+      ...segment,
+      id: MULTI_SUBTITLE_UTILS.uniqueStableSegmentId([segment, left], `${idBase}-b`, 'segment'),
+      start: rightStart,
+      text: rightText,
+      items: rightItems.length ? rightItems : null,
+      _dirty: true,
+    };
+    if (segment.sticker) {
+      right.sticker = null;
+      right.sticker_ref = { name: segment.sticker.name, headIdx: headIndex };
+    } else if (segment.sticker_ref) right.sticker_ref = { ...segment.sticker_ref };
+    if (segment.color) {
+      right.color = null;
+      right.color_ref = { name: segment.color.name, headIdx: headIndex };
+    } else if (segment.color_ref) right.color_ref = { ...segment.color_ref };
+    return { left, right };
+  }
+
+
   function buildSplitPair(
   segment,
   offset,
@@ -410,32 +443,9 @@
       || leftEnd - segmentStart < MaweMultiSubtitleCore.SUBTITLE_MIN_DURATION_MS
       || segmentEnd - rightStart < MaweMultiSubtitleCore.SUBTITLE_MIN_DURATION_MS
       || rightStart < leftEnd) return null;
-  const left = {
-    ...segment,
-    id: MULTI_SUBTITLE_UTILS.uniqueStableSegmentId([segment], `${idBase}-a`, 'segment'),
-    start: segment.start,
-    end: leftEnd,
-    text: parts.left,
-    items: leftItems.length ? leftItems : null,
-    _dirty: true,
-  };
-  const right = {
-    ...segment,
-    id: MULTI_SUBTITLE_UTILS.uniqueStableSegmentId([segment, left], `${idBase}-b`, 'segment'),
-    start: rightStart,
-    end: segment.end,
-    text: parts.right,
-    items: rightItems.length ? rightItems : null,
-    _dirty: true,
-  };
-  if (segment.sticker) {
-    right.sticker = null;
-    right.sticker_ref = { name: segment.sticker.name, headIdx: 0 };
-  }
-  if (segment.color) {
-    right.color = null;
-    right.color_ref = { name: segment.color.name, headIdx: 0 };
-  }
+  const { left, right } = createSplitSegments(segment, {
+    idBase, leftText: parts.left, rightText: parts.right, leftEnd, rightStart, leftItems, rightItems,
+  });
   return {
     left,
     right,
@@ -1828,35 +1838,11 @@
     const leftItemsFinal = duplicateSplit ? [] : leftItemsClean;
     const rightItemsFinal = (duplicateSplit || progressiveSplit) ? [] : rightItemsClean;
 
-    const leftSeg = {
-      id: window.AsrEditorUtils.uniqueStableSegmentId([seg], `${seg.id || `main-${idx}`}-a`, 'main'),
-      start: seg.start, end: leftEnd, text: leftText,
-      items: leftItemsFinal.length ? leftItemsFinal : null,
-      sticker: seg.sticker || null,
-      sticker_ref: seg.sticker_ref || null,
-      color: seg.color || null,
-      color_ref: seg.color_ref || null,
-      disabled: !!seg.disabled,  // 拆分后两段都继承原禁用状态
-      _dirty: true,
-    };
-    const rightSeg = {
-      id: window.AsrEditorUtils.uniqueStableSegmentId([seg], `${seg.id || `main-${idx}`}-b`, 'main'),
-      start: rightStart, end: seg.end, text: rightText,
-      items: rightItemsFinal.length ? rightItemsFinal : null,
-      sticker: null,
-      // 如果原 seg 是被引用的 head，右段也成为同一表情包的延续 → 给 ref
-      // 如果原 seg 自己是 ref，右段也保持 ref
-      sticker_ref: seg.sticker
-        ? { name: seg.sticker.name, headIdx: idx }  /* 暂用 idx，下面会修正 */
-        : (seg.sticker_ref ? { ...seg.sticker_ref } : null),
-      // color 同理：原 seg 是 head → 右段降级为 ref；原 seg 是 ref → 复制 ref
-      color: null,
-      color_ref: seg.color
-        ? { name: seg.color.name, headIdx: idx }
-        : (seg.color_ref ? { ...seg.color_ref } : null),
-      disabled: !!seg.disabled,  // 拆分后两段都继承原禁用状态
-      _dirty: true,
-    };
+    const { left: leftSeg, right: rightSeg } = createSplitSegments(seg, {
+      idBase: seg.id || `main-${idx}`, headIndex: idx,
+      leftText, rightText, leftEnd, rightStart,
+      leftItems: leftItemsFinal, rightItems: rightItemsFinal,
+    });
 
     // renderAll() 会重建整张字幕列表。content-visibility 会在重建后先用估算
     // 行高占位，再为视口附近的行回填真实高度；只保存 scrollTop 无法阻止

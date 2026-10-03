@@ -67,6 +67,41 @@ test('cue-list text offsets preserve the editable fade prefix', async ({ page })
   await expect(page.locator('.cue[data-idx="0"] .text')).toHaveText('>>甲乙丙丁<<');
 });
 
+for (const path of ['timed', 'untimed', 'linked']) {
+  test(`splitting and project save preserve the source speaker through the ${path} path`, async ({ page }) => {
+    await seed(page, { timed: path === 'timed', linked: path === 'linked' });
+    await page.evaluate(() => {
+      const segment = MaweBoot.DATA.segments[0];
+      segment.speaker = 'opaque-speaker';
+      segment.items?.forEach(item => { item.speaker = segment.speaker; });
+      MaweSplitContext.splitFromContextMenu(0, 10, 10, 3000, { splitTextMode: 'progressive' });
+    });
+    if (path !== 'timed') await page.locator('#multi-subtitle-split-confirm').click();
+    expect(await page.evaluate(() => MaweBoot.DATA.segments.map(s => s.speaker)))
+      .toEqual(['opaque-speaker', 'opaque-speaker']);
+    const saved = await page.evaluate(() => JSON.parse(MaweJsonRepair.buildJson()));
+    expect(saved.segments.map(s => s.speaker)).toEqual(['opaque-speaker', 'opaque-speaker']);
+    expect(saved.segments.map(s => s.text)).toEqual(['甲乙', '甲乙丙丁']);
+    await page.locator('#undo-btn').click();
+    expect(await page.evaluate(() => MaweBoot.DATA.segments.map(s => s.speaker))).toEqual(['opaque-speaker']);
+    await page.locator('#redo-btn').click();
+    expect(await page.evaluate(() => MaweBoot.DATA.segments.map(s => s.speaker)))
+      .toEqual(['opaque-speaker', 'opaque-speaker']);
+    // Reopen through the real project drop loader in a fresh portable editor.
+    await page.goto(`file://${portable}`);
+    await expect(page.locator('#cues-container')).toBeVisible();
+    const dataTransfer = await page.evaluateHandle((project) => {
+      const transfer = new DataTransfer();
+      transfer.items.add(new File([JSON.stringify(project)], 'speakers.mosp', { type: 'application/json' }));
+      return transfer;
+    }, saved);
+    await page.dispatchEvent('body', 'drop', { dataTransfer });
+    await dataTransfer.dispose();
+    await expect.poll(() => page.evaluate(() => MaweBoot.DATA.segments.map(s => s.speaker)))
+      .toEqual(['opaque-speaker', 'opaque-speaker']);
+  });
+}
+
 test('custom wrapping isolates Delete and B while a button has focus', async ({ page }) => {
   await seed(page);
   await page.evaluate(() => { MaweSelection.selectOnly(0); MaweTextProcess.openWrapCharsModal([0]); });
