@@ -2126,13 +2126,18 @@
     notice.dataset.action = "";
     clearErrorReport();
   }
-  function showErrorNotice(message, code = "", detail = "", diagnostics = "") {
+  function showErrorNotice(message, code = "", detail = "", diagnostics = "", context = null) {
     const notice = $("errorNotice");
     const action = $("errorNoticeAction");
     const issue = $("errorNoticeIssue");
     clearErrorReport();
     const diagnostic = diagnosticText(diagnostics);
-    state.errorReport = { code: code || "backend_error", message: String(message || ""), detail: String(detail || ""), diagnostics: diagnostic };
+    const version = context?.version || state.config?.appVersion || $("appVersion")?.textContent?.trim().replace(/^v/, "") || "unknown";
+    const occurredAt = context?.occurredAt || new Date().toISOString();
+    state.errorReport = { code: code || "backend_error", message: String(message || ""), detail: String(detail || ""), diagnostics: diagnostic, version, occurredAt };
+    const contextText = `MAW v${version} · ${occurredAt.replace("T", " ")}`;
+    $("errorNoticeContext").textContent = contextText;
+    appendLog(`[error] ${contextText}`);
     $("errorNoticeTitle").textContent = t("error_notice_title");
     renderMessage($("errorNoticeMessage"), message);
     const diagnosticNode = $("errorNoticeDiagnostics");
@@ -2159,7 +2164,7 @@
   function errorReportText() {
     const report = state.errorReport;
     if (!report) return "";
-    const version = state.config?.appVersion || $("appVersion")?.textContent?.trim() || "unknown";
+    const version = report.version;
     const log = redactSensitive($("log")?.textContent || "");
     const labels = state.lang === "zh"
       ? { title: "MAW Launcher 错误报告", version: "版本", code: "错误码", message: "提示", detail: "详细信息", diagnostics: "诊断信息", log: "日志" }
@@ -2171,6 +2176,7 @@
       labels.title,
       ...(diagnostics ? [labels.diagnostics + ": " + redactSensitive(report.diagnostics)] : []),
       `${labels.version}: ${redactSensitive(version)}`,
+      `${state.lang === "zh" ? "发生时间" : "Occurred at"}: ${report.occurredAt}`,
       `${labels.code}: ${redactSensitive(report.code)}`,
       `${labels.message}: ${redactSensitive(report.message)}`,
       ...(detail && detail !== message ? [`${labels.detail}: ${redactSensitive(report.detail)}`] : []),
@@ -3907,7 +3913,7 @@
     setStatus(message);
     if (logDetail && detail) appendLog(`[detail] ${detail}`);
     if (logDetail && diagnostics) appendLog("[diagnostics] " + diagnostics);
-    showErrorNotice(message, result.code || "", detail, diagnostics);
+    showErrorNotice(message, result.code || "", detail, diagnostics, result.errorContext);
   }
   function validateSegmentation(data) { for (const [field, minimum] of [["maxLen", 1], ["minLen", 1], ["maxWords", 1], ["minWords", 1], ["gapSplit", 0]]) { const value = data[field]; if (!value) continue; if (!/^\d+$/u.test(value) || !Number.isSafeInteger(Number(value)) || Number(value) < minimum) return fail(field, errText("segmentation_invalid", "")); } if (data.maxLen && data.minLen && Number(data.maxLen) < Number(data.minLen)) return fail("maxLen", errText("segmentation_invalid", "")); if (data.maxWords && data.minWords && Number(data.maxWords) < Number(data.minWords)) return fail("maxWords", errText("segmentation_invalid", "")); return true; }
   function validateLocal() { clearErrors(); const data = formPayload(); if (!data.mediaPath) return fail("mediaPath", errText("media_not_found", "")); if (!data.srtPath) return fail("srtPath", errText("output_missing", "")); if (!validateSegmentation(data)) return false; if (isLocalProvider()) { const runtime = state.config.localRuntime || {}; const status = localStatus(); if (state.localRuntimeInstalling || runtime.status === "installing") return fail("model", t("local_runtime_installing")); if (state.localPreparing) return fail("model", t("local_prepare_running")); if (runtime.status === "checking") return fail("model", t("local_runtime_checking")); if (!runtime.ready && runtime.status !== "ready") return fail("model", errText("local_runtime_missing", "")); if (!status.status || status.status === "checking") return fail("model", t("local_checking")); if (status.status === "runtime_missing") return fail("model", errText("local_runtime_missing", "")); if (status.status === "path_invalid") return fail("localModelPath", errText("local_model_path_invalid", "")); if (status.status === "path_mismatch") return fail("localModelPath", errText("local_model_path_mismatch", "")); if (status.status === "missing") return fail("model", errText("local_model_missing", "")); if (status.status === "partial") return fail("model", errText("local_model_incomplete", "")); if (isFireRedModel() && data.fireredPunc === "ct-punc" && !status.puncReady) return fail("model", errText("firered_punc_missing", "")); if (data.alignmentModel) { const alignment = (state.config.alignmentModels || []).find((item) => item.id === data.alignmentModel); if (!alignment || alignment.status === "checking") return fail("recognitionAlignmentModel", t("alignment_model_checking")); if (alignment.status === "runtime_missing" || alignment.runtimeAvailable === false) return fail("recognitionAlignmentModel", t("alignment_model_runtime_missing")); if (!alignment.installed) return fail("recognitionAlignmentModel", errText("alignment_model_missing", "")); } return true; } if (provider().requiresApiKey !== false && !data.apiKey && !provider().apiKey) return fail("apiKey", errText("api_key_missing", "")); if (provider().id === "openai" && !data.openaiBaseUrl) return fail("openaiBaseUrl", errText("custom_asr_base_url_missing", "")); if (isCustomOpenAiModel() && !data.openaiModel) return fail("openaiModel", errText("custom_asr_model_missing", "")); if (provider().id === "openai" && selectedModel().supportsKeywords && /[<>]/u.test(data.openaiKeywords)) return fail("openaiKeywords", errText("openai_keywords_invalid", "")); if (provider().id === "openai" && selectedModel().supportsDiarization && isOpenRouterBaseUrl(data.openaiBaseUrl)) return fail("model", errText("openai_diarize_openrouter_unsupported", "")); if (provider().regions.length > 0 && data.region === "singapore" && !data.workspaceId) return fail("workspaceId", errText("workspace_missing", "")); if (provider().id === "qwen" && selectedModel().supportsContext && Array.from(data.qwenAudioContext).length > 400) return fail("qwenAudioContext", errText("context_too_long", "")); if (provider().id === "soniox" && selectedModel().supportsContext && Array.from([data.sonioxContextGeneral, data.sonioxContextText, data.sonioxContextTerms, data.sonioxContextTranslationTerms].join("\n")).length > 10000) return fail("sonioxContextText", errText("soniox_context_too_long", "")); if (provider().id === "qwen" && selectedModel().supportsHotwords && data.qwenAudioHotwordsMode === "file" && ext(data.qwenAudioHotwordsFile) !== ".txt") return fail("qwenAudioHotwordsFile", errText("hotwords_file_missing", "")); return true; }
@@ -4480,7 +4486,7 @@
       setStatus(message);
       if (detail) appendLog(`[detail] ${detail}`);
       if (diagnostics) appendLog("[diagnostics] " + diagnostics);
-      showErrorNotice(message, event.code || "", detail, diagnostics);
+      showErrorNotice(message, event.code || "", detail, diagnostics, event.errorContext);
       renderLocalModelStatus();
     }
     if (event.type === "done") {

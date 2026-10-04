@@ -90,12 +90,11 @@ class PackagingContractTests(unittest.TestCase):
         version = project["project"]["version"]
         launcher_html = read_text("web/launcher/index.html")
         launcher_js = read_text("web/launcher/launcher.js")
-        gui = read_text("maw/gui_web.py")
         editor = read_text("edit.py")
 
         self.assertIn(f'id="appVersion">v{version}</span>', launcher_html)
         self.assertIn(f'appVersion: "{version}"', launcher_js)
-        self.assertIn(f'BUNDLED_APP_VERSION = "{version}"', gui)
+        self.assertIn(f'BUNDLED_APP_VERSION = "{version}"', read_text("maw/diagnostics.py"))
         self.assertIn(f'BUNDLED_EDITOR_VERSION = "{version}"', editor)
 
     def test_pyinstaller_build_dependency_is_locked_outside_runtime_dependencies(self) -> None:

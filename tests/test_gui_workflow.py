@@ -1453,7 +1453,8 @@ class GuiWorkflowTests(unittest.TestCase):
                         exit_code = maw_gui.run_entrypoint([])
 
         self.assertEqual(exit_code, 1)
-        show_error.assert_called_once_with(error, log_path)
+        show_error.assert_called_once_with(error, log_path, context=mock.ANY)
+        self.assertIn("occurredAt", show_error.call_args.kwargs["context"])
         message = maw_gui._startup_error_message(error, log_path)
         self.assertIn("解除锁定", message)
         self.assertIn("完整解压", message)
@@ -1470,7 +1471,7 @@ class GuiWorkflowTests(unittest.TestCase):
                         maw_gui.run_entrypoint([])
 
         self.assertIs(raised.exception, error)
-        show_hint.assert_called_once_with()
+        show_hint.assert_called_once_with(context=mock.ANY, log_path=mock.ANY)
 
     def test_entrypoint_python_runtime_marker_is_not_owned_on_non_windows(self) -> None:
         import maw_gui
@@ -1530,7 +1531,7 @@ class GuiWorkflowTests(unittest.TestCase):
 
         self.assertIs(raised.exception, error)
         show_error.assert_not_called()
-        show_hint.assert_called_once_with()
+        show_hint.assert_called_once_with(context=mock.ANY, log_path=mock.ANY)
 
     def test_entrypoint_unknown_internal_failure_is_reraised_unchanged(self) -> None:
         import maw_gui
@@ -1542,7 +1543,8 @@ class GuiWorkflowTests(unittest.TestCase):
                     maw_gui.run_entrypoint(["--transcribe"])
 
         self.assertIs(raised.exception, error)
-        print_message.assert_not_called()
+        print_message.assert_called_once()
+        self.assertIn("[MAW v", print_message.call_args.args[0])
 
     def test_entrypoint_serve_ffmpeg_failure_is_not_reclassified(self) -> None:
         import maw_gui
