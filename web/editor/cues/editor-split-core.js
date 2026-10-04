@@ -371,7 +371,7 @@
   // Modal and caret splits share segment inheritance. Timing/text decisions
   // stay with their callers; metadata and group references must not vary by UI path.
   function createSplitSegments(segment, {
-    idBase, headIndex = 0, leftText, rightText, leftEnd, rightStart, leftItems, rightItems,
+    idBase, headIndex, leftText, rightText, leftEnd, rightStart, leftItems, rightItems,
   }) {
     const left = {
       ...segment,
@@ -401,6 +401,20 @@
   }
 
 
+  // A split inserts one array entry. Keep group references in that track's
+  // coordinate system, including linked splits whose two indices differ.
+  function replaceSegmentWithSplit(segments, index, { left, right }) {
+    segments.splice(index, 1, left, right);
+    for (let cursor = index + 2; cursor < segments.length; cursor++) {
+      const segment = segments[cursor];
+      if (segment.sticker_ref?.headIdx > index) segment.sticker_ref.headIdx += 1;
+      if (segment.color_ref?.headIdx > index) segment.color_ref.headIdx += 1;
+    }
+    if (left.sticker) right.sticker_ref = { name: left.sticker.name, headIdx: index };
+    if (left.color) right.color_ref = { name: left.color.name, headIdx: index };
+  }
+
+
   function buildSplitPair(
   segment,
   offset,
@@ -408,7 +422,7 @@
   idBase,
   includeItems = true,
   splitMode = null,
-  { preserveCutMs = false, forceCut = false, duplicateText = false, splitTextMode = null } = {},
+  { preserveCutMs = false, forceCut = false, duplicateText = false, splitTextMode = null, headIndex } = {},
 ) {
   const text = String(segment?.text || '');
   const mode = MULTI_SUBTITLE_UTILS.MULTI_SUBTITLE_SPLIT_MODES.has(splitMode)
@@ -444,7 +458,7 @@
       || segmentEnd - rightStart < MaweMultiSubtitleCore.SUBTITLE_MIN_DURATION_MS
       || rightStart < leftEnd) return null;
   const { left, right } = createSplitSegments(segment, {
-    idBase, leftText: parts.left, rightText: parts.right, leftEnd, rightStart, leftItems, rightItems,
+    idBase, headIndex, leftText: parts.left, rightText: parts.right, leftEnd, rightStart, leftItems, rightItems,
   });
   return {
     left,
@@ -1383,7 +1397,7 @@
     main.id || `main-${mainIndex}`,
     true,
     state.mainMode,
-    { ...splitAlignmentOptions, duplicateText, splitTextMode: state.splitTextMode },
+    { ...splitAlignmentOptions, duplicateText, splitTextMode: state.splitTextMode, headIndex: mainIndex },
   );
   if (!pair) {
     if (!force && !duplicateText) {
@@ -1399,14 +1413,7 @@
   return MaweCommands.run(duplicateText ? '拆分字幕并保留原文' : '拆分字幕', (command) => {
     MaweSelection.clearSelection({ commitCuePanel: false });
     MaweMultiSubtitleCore.removeBindingsForSegmentIds([oldMainId], []);
-    MaweBoot.DATA.segments.splice(mainIndex, 1, pair.left, pair.right);
-    for (let index = mainIndex + 2; index < MaweBoot.DATA.segments.length; index++) {
-      const segment = MaweBoot.DATA.segments[index];
-      if (segment.sticker_ref?.headIdx > mainIndex) segment.sticker_ref.headIdx += 1;
-      if (segment.color_ref?.headIdx > mainIndex) segment.color_ref.headIdx += 1;
-    }
-    if (pair.left.sticker) pair.right.sticker_ref = { name: pair.left.sticker.name, headIdx: mainIndex };
-    if (pair.left.color) pair.right.color_ref = { name: pair.left.color.name, headIdx: mainIndex };
+    replaceSegmentWithSplit(MaweBoot.DATA.segments, mainIndex, pair);
     MaweMultiSubtitleCore.markMainSegmentsDirty([pair.left, pair.right]);
     MaweCueElements.rememberTemporaryVisibleSplitCues({ mainSegments: [pair.left, pair.right] });
     closeLinkedSplitModal();
@@ -1486,7 +1493,7 @@
     extension.id || `${track.id}-segment-${extensionIndex}`,
     true,
     state.extensionMode,
-    { ...splitAlignmentOptions, duplicateText },
+    { ...splitAlignmentOptions, duplicateText, headIndex: extensionIndex },
   );
   if (!pair) {
     if (!force && !duplicateText) {
@@ -1505,7 +1512,7 @@
     // 一对一绑定无法让一个主段同时指向拆出的两条副轨段；独立拆分后
     // 保留两条副字幕，但解除旧关系，等待用户按需要重新绑定。
     MaweMultiSubtitleCore.removeBindingsForSegmentIds([], [oldExtensionId]);
-    track.segments.splice(extensionIndex, 1, pair.left, pair.right);
+    replaceSegmentWithSplit(track.segments, extensionIndex, pair);
     MaweMultiSubtitleCore.markMultiSubtitleDirty();
     MaweCueElements.rememberTemporaryVisibleSplitCues({
       extensionSegments: [pair.left, pair.right],
@@ -1615,7 +1622,7 @@
     main.id || `main-${mainIndex}`,
     true,
     state.mainMode,
-    { preserveCutMs: true, forceCut: force, duplicateText, splitTextMode: state.splitTextMode },
+    { preserveCutMs: true, forceCut: force, duplicateText, splitTextMode: state.splitTextMode, headIndex: mainIndex },
   );
   const extensionPair = buildSplitPair(
     extension,
@@ -1624,7 +1631,7 @@
     extension.id || `extension-${extensionIndex}`,
     true,
     state.extensionMode,
-    { preserveCutMs: true, forceCut: force, duplicateText },
+    { preserveCutMs: true, forceCut: force, duplicateText, headIndex: extensionIndex },
   );
   if (!mainPair || !extensionPair || extensionIndex < 0) {
     // 前置时长检查已拦截常见不可拆场景；这里兜底提示，避免弹窗内按键完全无反应。
@@ -1639,16 +1646,8 @@
   const oldExtensionId = extension.id;
   return MaweCommands.run(duplicateText ? '联动拆分并保留原文' : '联动拆分字幕', (command) => {
     MaweMultiSubtitleCore.removeBindingsForSegmentIds([oldMainId], [oldExtensionId]);
-    MaweBoot.DATA.segments.splice(mainIndex, 1, mainPair.left, mainPair.right);
-    if (track) track.segments.splice(extensionIndex, 1, extensionPair.left, extensionPair.right);
-    // 主轨数组增加了一项，沿用原有表情包/颜色 headIdx 维护规则。
-    for (let index = mainIndex + 2; index < MaweBoot.DATA.segments.length; index++) {
-      const segment = MaweBoot.DATA.segments[index];
-      if (segment.sticker_ref?.headIdx > mainIndex) segment.sticker_ref.headIdx += 1;
-      if (segment.color_ref?.headIdx > mainIndex) segment.color_ref.headIdx += 1;
-    }
-    if (mainPair.left.sticker) mainPair.right.sticker_ref.headIdx = mainIndex;
-    if (mainPair.left.color) mainPair.right.color_ref.headIdx = mainIndex;
+    replaceSegmentWithSplit(MaweBoot.DATA.segments, mainIndex, mainPair);
+    if (track) replaceSegmentWithSplit(track.segments, extensionIndex, extensionPair);
     const multi = MaweMultiSubtitleCore.getMultiSubtitleState();
     multi.bindings.push(
       MULTI_SUBTITLE_UTILS.buildSubtitleBinding(mainPair.left, extensionPair.left, track.id),
@@ -1865,16 +1864,7 @@
       // 关闭多字幕模式时，绑定关系仍保存在工程中；拆分主轨后旧 ID 不再存在，
       // 只移除这条关系，保留隐藏的副字幕供用户重新绑定。
       MaweMultiSubtitleCore.removeBindingsForSegmentIds([seg.id], []);
-      MaweBoot.DATA.segments.splice(idx, 1, leftSeg, rightSeg);
-
-      // 修正所有 *_ref.headIdx：在 idx 之后的引用都右移 1
-      // 但 leftSeg 在 idx 位置仍是 head（如果它有 sticker/color），rightSeg 的 ref.headIdx=idx 正好对应 leftSeg
-      for (let i = idx + 2; i < MaweBoot.DATA.segments.length; i++) {
-        const sref = MaweBoot.DATA.segments[i].sticker_ref;
-        if (sref && sref.headIdx > idx) sref.headIdx += 1;
-        const cref = MaweBoot.DATA.segments[i].color_ref;
-        if (cref && cref.headIdx > idx) cref.headIdx += 1;
-      }
+      replaceSegmentWithSplit(MaweBoot.DATA.segments, idx, { left: leftSeg, right: rightSeg });
 
       MaweCueElements.rememberTemporaryVisibleSplitCues({ mainSegments: [leftSeg, rightSeg] });
       command.commit({ cueList: true, cueListAnchor });
@@ -1963,6 +1953,7 @@
     armForcedSplit,
     splitItemsAtChar,
     buildSplitPair,
+    replaceSegmentWithSplit,
     linkedSplitState,
     mainWaveformSplitState,
     extensionOnlySplitState,
