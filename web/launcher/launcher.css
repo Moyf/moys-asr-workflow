@@ -1837,6 +1837,7 @@ textarea::placeholder {
 
 .error-notice-context {
   margin: 0;
+  white-space: pre-line;
   color: var(--text-muted);
   font-size: 12px;
   line-height: 1.5;

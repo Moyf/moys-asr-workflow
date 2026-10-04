@@ -18,7 +18,6 @@ from pathlib import Path
 from typing import TextIO
 
 from maw.app_paths import default_log_directory
-from maw.diagnostics import context_label, error_context
 
 # 启动时清理多少天前的日志文件。
 LOG_RETENTION_DAYS = 7
@@ -97,9 +96,6 @@ def format_log_line(event: Mapping[str, object], *, now: datetime) -> str:
     body = _format_event(event)
     if not body:
         return ""
-    if event.get("type") == "error":
-        context = error_context(event.get("errorContext"), now=now)
-        return redact_sensitive_text(f"[{context_label(context)}] {body}")
     stamp = now.strftime("%H:%M:%S.%f")[:-3]
     return f"{stamp} {body}"
 

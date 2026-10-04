@@ -209,6 +209,12 @@ def _is_windows_blocked_runtime_error(error: Exception) -> bool:
     return any(marker in detail for marker in _WINDOWS_BLOCKED_RUNTIME_MARKERS)
 
 
+def _startup_context_text(context: object = None) -> str:
+    captured = error_context(context)
+    occurred_at = captured["occurredAt"].replace("T", " ")
+    return f"版本：{captured['version']}\n发生时间：{occurred_at}"
+
+
 def _show_unknown_startup_hint(*, context: object = None, log_path: Path | None = None) -> None:
     """Give Windows users a short owner/FAQ route before the native traceback."""
     if sys.platform != "win32":
@@ -220,7 +226,7 @@ def _show_unknown_startup_hint(*, context: object = None, log_path: Path | None 
         "https://github.com/Moyf/moys-asr-workflow/issues/new\n\n"
         "随后将保留并显示原始错误详情。"
     )
-    message += "\n\n" + context_label(error_context(context))
+    message += "\n\n" + _startup_context_text(context)
     if log_path is not None:
         message += f"\n\n诊断日志：{log_path}"
     try:
@@ -324,7 +330,7 @@ def _startup_error_message(error: Exception, log_path: Path | None = None, *, co
         message = f"MAW 启动失败：{summary}\n\n请查看发布包内的 FAQ-常见问题.txt。"
     if log_path is not None:
         message += f"\n\n诊断日志：{log_path}"
-    message += "\n\n" + context_label(error_context(context))
+    message += "\n\n" + _startup_context_text(context)
     return message
 
 
