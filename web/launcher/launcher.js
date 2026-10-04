@@ -1303,6 +1303,7 @@
       intermediate_path_too_long: "中间文件创建失败：文件名或路径过长。请缩短原文件名，或将文件移到更浅的目录，重新选择文件后重试。已有转写产物仍保留。",
       file_path_too_long: "文件创建或访问失败：文件名或路径过长。请缩短原文件名，或将文件移到更浅的目录，重新选择文件后重试。",
       intermediate_file_failed: "中间文件创建或写入失败。请检查目录权限、剩余磁盘空间和文件占用后重试；已有产物仍保留。",
+      file_write_failed: "文件创建或写入失败。请检查目录权限、剩余磁盘空间和文件占用后重试。",
       transcription_failed: "转写失败，本次任务已停止。请查看日志后修正问题，再重新尝试。",
       transcription_cancelled: "转写已停止。",
       ffprobe_start_failed: "FFprobe 被 Windows 阻止启动。请退出 MAW，对下载的 ZIP 解除锁定后重新完整解压，并检查 Windows 安全中心的拦截记录。",
@@ -1383,6 +1384,7 @@
       intermediate_path_too_long: "Could not create an intermediate file: the filename or path is too long. Shorten the source filename or move it to a shallower folder, select it again, and retry. Existing transcription files are preserved.",
       file_path_too_long: "Could not create or access a file: the filename or path is too long. Shorten the source filename or move it to a shallower folder, select it again, and retry.",
       intermediate_file_failed: "Could not create or write an intermediate file. Check folder permissions, free disk space, and whether another app is using the file, then retry. Existing outputs are preserved.",
+      file_write_failed: "Could not create or write a file. Check folder permissions, free disk space, and whether another app is using the file, then retry.",
       transcription_failed: "Transcription failed and this run has stopped. Check the log, fix the problem, and retry.",
       transcription_cancelled: "Transcription stopped.",
       ffprobe_start_failed: "Windows blocked FFprobe from starting. Close MAW, unblock the downloaded ZIP, extract the complete package again, and check Windows Security protection history.",
@@ -2012,6 +2014,7 @@
       const tooLong = /\[WinError 206\]|\[Errno 36\]|\bENAMETOOLONG\b|file(?:name| name) too long/iu.test(String(detail || ""));
       if (tooLong) code = intermediate ? "intermediate_path_too_long" : "file_path_too_long";
       else if (intermediate) code = "intermediate_file_failed";
+      else if (String(detail || "").includes("文件创建或写入失败")) code = "file_write_failed";
     }
     const builtInGuidance = ["postprocess_connection_failed", "postprocess_models_failed"].includes(code) && !Number.isInteger(Number(context?.httpStatus))
       ? llmBuiltInProviderKeyGuidance(context)

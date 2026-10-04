@@ -18,7 +18,7 @@ from pathlib import Path
 from threading import Event
 from typing import Final
 
-from maw.file_errors import intermediate_file_operation
+from maw.file_errors import file_write_operation, intermediate_file_operation
 from maw.gui_config import load_env
 from maw.output_naming import format_elapsed, operation_suffix, postprocess_workspace, resolve_lang, sanitize_component, translation_marker_name
 from maw.postprocess import (
@@ -595,6 +595,7 @@ def _number_pipeline_artifact(
     return renamed, index + 1
 
 
+@intermediate_file_operation
 def _ensure_initial_pipeline_artifacts(
     run_directory: Path,
     source_project_path: Path,
@@ -1489,7 +1490,7 @@ def _publish_final(
         counter += 1
 
 
-@intermediate_file_operation
+@file_write_operation
 def _copy_atomic(source: Path, destination: Path) -> None:
     destination.parent.mkdir(parents=True, exist_ok=True)
     descriptor, temporary_name = tempfile.mkstemp(prefix=f".{destination.name}.", suffix=".tmp", dir=destination.parent)

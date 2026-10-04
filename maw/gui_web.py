@@ -222,6 +222,7 @@ ERROR_MESSAGES: Final[dict[str, str]] = {
     "intermediate_path_too_long": "中间文件创建失败：文件名或路径过长，请缩短原文件名或目录路径，重新选择文件后重试。",
     "file_path_too_long": "文件名或路径过长，请缩短原文件名或目录路径，重新选择文件后重试。",
     "intermediate_file_failed": "中间文件创建或写入失败，请检查目录权限、磁盘空间和文件占用。",
+    "file_write_failed": "文件创建或写入失败，请检查目录权限、磁盘空间和文件占用。",
     "subtitle_invalid": "Subtitle or project could not be parsed.",
     "script_invalid": "Script could not be parsed.",
     "match_too_low": "Script and subtitle match coverage is too low.",

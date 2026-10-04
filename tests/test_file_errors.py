@@ -6,9 +6,9 @@ import unittest
 from pathlib import Path
 from unittest import mock
 
-from maw.file_errors import IntermediateFileError, file_error_code
+from maw.file_errors import FileWriteError, IntermediateFileError, file_error_code
 from maw.postprocess_io import _atomic_write
-from maw.postprocess_pipeline import _copy_atomic, _create_run_directory
+from maw.postprocess_pipeline import _copy_atomic, _create_run_directory, _publish_final, _ensure_initial_pipeline_artifacts
 
 
 class FileErrorTests(unittest.TestCase):
@@ -69,7 +69,7 @@ class FileErrorTests(unittest.TestCase):
             path.write_text("old", encoding="utf-8")
             failure = PermissionError(errno.EACCES, "access denied")
             with mock.patch("maw.postprocess_io.os.replace", side_effect=failure):
-                with self.assertRaises(IntermediateFileError) as caught:
+                with self.assertRaises(FileWriteError) as caught:
                     _atomic_write(path, "new")
             self.assertIs(caught.exception.__cause__, failure)
             self.assertEqual(path.read_text(encoding="utf-8"), "old")
@@ -81,7 +81,7 @@ class FileErrorTests(unittest.TestCase):
             failure = OSError(errno.ENOSPC, "disk full")
             with (mock.patch("maw.postprocess_io.os.replace", side_effect=failure),
                   mock.patch.object(Path, "unlink", side_effect=PermissionError("cleanup denied"))):
-                with self.assertRaises(IntermediateFileError) as caught:
+                with self.assertRaises(FileWriteError) as caught:
                     _atomic_write(path, "new")
             self.assertIs(caught.exception.__cause__, failure)
 
@@ -91,6 +91,38 @@ class FileErrorTests(unittest.TestCase):
             with self.assertRaises(IntermediateFileError) as caught:
                 _create_run_directory(Path("clip.mp4"), lang="en")
         self.assertEqual(file_error_code(caught.exception), "intermediate_path_too_long")
+
+    def test_final_publication_failure_is_not_labeled_intermediate(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            for name in ("clip.mosp", "clip.srt", "step.mosp", "step.srt"):
+                (root / name).write_text("original", encoding="utf-8")
+            for failure, code in (
+                (PermissionError(errno.EACCES, "denied"), "file_write_failed"),
+                (OSError(errno.ENAMETOOLONG, "File name too long"), "file_path_too_long"),
+            ):
+                with self.subTest(code=code), mock.patch("maw.postprocess_pipeline.os.replace", side_effect=failure):
+                    with self.assertRaises(FileWriteError) as caught:
+                        _publish_final(root / "clip.mosp", root / "clip.srt", root / "step.mosp", root / "step.srt", ui_language="en")
+                self.assertEqual(file_error_code(caught.exception), code)
+                self.assertEqual(file_error_code(str(caught.exception)), code)
+                self.assertNotIn("中间文件", str(caught.exception))
+                self.assertIs(caught.exception.__cause__, failure)
+                self.assertEqual((root / "clip.srt").read_text(encoding="utf-8"), "original")
+
+    def test_initial_copy_keeps_intermediate_context(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            project = root / "clip.mosp"
+            srt = root / "clip.srt"
+            project.write_text("{}", encoding="utf-8")
+            srt.write_text("subtitle", encoding="utf-8")
+            failure = PermissionError(errno.EACCES, "denied")
+            with mock.patch("maw.postprocess_pipeline.os.replace", side_effect=failure):
+                with self.assertRaises(IntermediateFileError) as caught:
+                    _ensure_initial_pipeline_artifacts(root / "run", project, srt, source_stem="clip", lang="en", manifest={})
+            self.assertEqual(file_error_code(caught.exception), "intermediate_file_failed")
+            self.assertIs(caught.exception.__cause__, failure)
 
 
 if __name__ == "__main__":

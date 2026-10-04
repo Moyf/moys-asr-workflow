@@ -39,6 +39,13 @@ for (const language of ['zh', 'en']) {
     await expect(message).toContainText(language === 'zh' ? '剩余磁盘空间' : 'free disk space');
     await expect(message).not.toContainText(language === 'zh' ? '缩短原文件名' : 'Shorten the source filename');
     await expect(page.locator('#retryPostprocess')).toBeVisible();
+    await page.evaluate(() => window.MAWLauncher.onBackendEvent({
+      type: 'error', code: 'file_write_failed', detail: '[Errno 13] final destination denied', canRetry: false,
+    }));
+    await expect(message).toContainText(language === 'zh' ? '文件创建或写入失败' : 'Could not create or write a file');
+    await expect(message).not.toContainText(language === 'zh' ? '中间文件' : 'intermediate file');
+    await expect(page.locator('#retryPostprocess')).toBeHidden();
+    await page.locator('#errorNotice').screenshot({ path: testInfo.outputPath(`file-write-${language}.png`) });
     // A synchronous/legacy catch-all must use the same actionable text.
     await page.evaluate(() => window.MAWLauncher.onBatchError({
       ok: false, code: 'postprocess_failed', detail: '[WinError 206] filename too long',
