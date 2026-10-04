@@ -1,12 +1,14 @@
 from __future__ import annotations
 
 import json
+from threading import Event
 from unittest import mock
 
 from maw.postprocess import OutputMode
 from maw.postprocess_ai_cleanup import AiCleanupRequest, run_ai_cleanup
 from maw.postprocess_ai_cleanup_review import readthrough_batches
 from maw.postprocess_llm import LlmClientError
+from maw.postprocess_pipeline import PostprocessCancelled, _run_ai_cleanup_step
 from tests.test_postprocess_ai_cleanup import AiCleanupTestCase, _project, _segment
 
 
@@ -101,3 +103,38 @@ class ReadthroughTest(AiCleanupTestCase):
             self.execute({"reviews": []}, on_status=status)
         self.assertEqual(len(self.calls), 1)
         self.assertEqual(list(self.directory.glob("*.mosp")), [self.source])
+
+    def test_pipeline_cancel_during_final_readthrough_does_not_write_artifacts(self):
+        source, script = self.request(_project([
+            _segment(0, 1000, "试麦听得到吗"),
+            _segment(1000, 2000, "这是关键方法"),
+        ]), ["这是关键方法"])
+        original = source.read_bytes()
+        cancelled = Event()
+        calls = []
+
+        def transport(prompt, rows):
+            calls.append(rows)
+            if "第二道工序" in prompt:
+                cancelled.set()
+                return {"reviews": []}
+            return {"decisions": [
+                {"id": "c001", "decision": "discard", "scriptLine": "",
+                 "reason": "删除：试麦", "evidence": "试麦"},
+                {"id": "c002", "decision": "keep", "scriptLine": "这是关键方法",
+                 "reason": "保留：有效内容"},
+            ]}
+
+        with mock.patch("maw.postprocess_pipeline.llm_complete", return_value=transport):
+            with self.assertRaises(PostprocessCancelled):
+                _run_ai_cleanup_step(
+                    {"scriptPath": str(script)}, project_path=source,
+                    srt_path=self.directory / "input.srt", media_path=self.directory / "media.wav",
+                    env_path=self.directory / "unused.env", output_directory=self.directory,
+                    cancel_event=cancelled, on_event=None,
+                    llm_settings={"deepseek": {"apiKey": "test", "baseUrl": "https://example.com", "model": "test"}},
+                )
+        self.assertEqual(len(calls), 2)
+        self.assertEqual(source.read_bytes(), original)
+        self.assertEqual(list(self.directory.glob("*.mosp")), [source])
+        self.assertFalse(list(self.directory.glob("*.srt")))
