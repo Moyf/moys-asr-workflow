@@ -181,6 +181,20 @@
   }
 
 
+  function deleteMarkers(markerIds) {
+    const ids = new Set(Array.isArray(markerIds) ? markerIds : []);
+    const count = getMarkers().filter((marker) => ids.has(marker.id)).length;
+    if (!count) return null;
+    commitMarkerChange('批量删除标记与区段', (list) => {
+      for (let index = list.length - 1; index >= 0; index -= 1) {
+        if (ids.has(list[index].id)) list.splice(index, 1);
+      }
+    });
+    MaweHint.flashHint(`已删除 ${count} 项标记与区段`, 'success');
+    return getMarkers();
+  }
+
+
   // 定位：跳转播放头到标记位置（区段取起点），跟随播放逻辑滚动波形；
   // play: true 时跳转后立即播放（「定位试听」按钮），列表项 / 波形点击仍只跳转。
   function locateMarker(markerId, { play = false } = {}) {
@@ -223,6 +237,7 @@
     resizeMarker,
     updateMarkerFields,
     deleteMarker,
+    deleteMarkers,
     locateMarker,
     afterExternalMarkersChange,
     pendingReviewCount,

@@ -755,6 +755,47 @@ test('places the overlay lane above the main lane in multi-subtitle rows', async
   expect(lanes.main.bottom).toBeLessThanOrEqual(lanes.extension.top + 1);
 });
 
+test('overlay disabling stays independent of the main-secondary binding at the same index', async ({ page }) => {
+  await page.goto(server.url);
+  await dropProject(page, {
+    segments: [{ id: 'main-1', start: 0, end: 2000, text: 'main cue' }],
+    multi_subtitle: {
+      schema: 'moy.asr.multi_subtitle.v1', enabled: true, display_mode: 'both',
+      tracks: [{ id: 'translation', role: 'extension', name: '译文', split_mode: 'word',
+        segments: [{ id: 'extension-1', start: 0, end: 2000, text: 'translation cue' }] }],
+      bindings: [{ id: 'binding-1', track_id: 'translation',
+        main_segment_ids: ['main-1'], extension_segment_ids: ['extension-1'] }],
+    },
+    overlay_track: { enabled: true,
+      segments: [{ id: 'overlay-1', start: 200, end: 1800, text: 'overlay cue' }] },
+    waveform: generateWaveformPayload(3000),
+  });
+  await expect(page.locator('.overlay-track-cue')).toHaveCount(1);
+  const disabledState = () => page.evaluate(() => [
+    MaweBoot.DATA.segments[0].disabled === true,
+    MaweBoot.DATA.multi_subtitle.tracks[0].segments[0].disabled === true,
+    MaweBoot.DATA.overlay_track.segments[0].disabled === true,
+  ]);
+  await page.locator('.overlay-track-cue').click({ button: 'right', force: true });
+  await page.getByText('禁用此条', { exact: true }).click();
+  expect(await disabledState()).toEqual([false, false, true]);
+  expect(await page.evaluate(() => MaweExportSrt.buildBilingualSrt())).toContain('translation cue');
+  await page.locator('#undo-btn').click();
+  expect(await disabledState()).toEqual([false, false, false]);
+  await page.locator('#redo-btn').click();
+  expect(await disabledState()).toEqual([false, false, true]);
+  await page.locator('.overlay-track-cue').click({ button: 'right', force: true });
+  await page.getByText('启用此条', { exact: true }).click();
+  expect(await disabledState()).toEqual([false, false, false]);
+  // Main remains the controlling side; a separately disabled translation must
+  // stay disabled when the independent overlay changes state.
+  await page.evaluate(() => MaweStickerPicker.toggleDisabled([0], 'main'));
+  expect(await disabledState()).toEqual([true, true, false]);
+  await page.evaluate(() => MaweStickerPicker.toggleDisabled([0], 'overlay'));
+  await page.evaluate(() => MaweStickerPicker.toggleDisabled([0], 'overlay'));
+  expect(await disabledState()).toEqual([true, true, false]);
+});
+
 test('assigns colors and disabled state to overlay cues with main-track parity', async ({ page }) => {
   const project = {
     segments: [{ id: 'main-001', start: 0, end: 2000, text: 'main cue' }],

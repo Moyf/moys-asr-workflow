@@ -98,6 +98,7 @@ function applyCanonicalProject(data, filename) {
   MaweBoot.DATA.workspace = data.workspace || null;
   MaweBoot.DATA.gap_remove = data.gap_remove || null;
   MaweBoot.DATA.markers = window.AsrEditorUtils.normalizeMarkers(data.markers);
+  window.MaweMarkersPanel?.resetSelection?.();
   MaweBoot.DATA.script_alignment = data.script_alignment || null;
   MaweBoot.DATA.preview = (data.preview && typeof data.preview === 'object') ? data.preview : null;
   MaweHistory.gapRemoveDirty = false;

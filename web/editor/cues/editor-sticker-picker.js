@@ -297,7 +297,7 @@
       segments[index].disabled = nextDisabled;
       segments[index]._dirty = true;
     });
-    if (!isExtension) {
+    if (!isExtension && !isOverlay) {
       // 主字幕是绑定关系的控制端：禁用/启用时同步同一绑定的副字幕；
       // 副字幕自身的操作不反向修改主字幕，保持它可以单独禁用。
       validIdxs.forEach((index) => {

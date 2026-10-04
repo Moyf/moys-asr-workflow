@@ -1125,7 +1125,9 @@ def _run_ai_cleanup_step(
 
     def complete(prompt: str, clips: list[dict[str, str]]) -> Mapping[str, object]:
         _check_cancel(cancel_event)
-        return transport(prompt, clips)
+        response = transport(prompt, clips)
+        _check_cancel(cancel_event)
+        return response
 
     def on_status(key: str) -> None:
         _check_cancel(cancel_event)

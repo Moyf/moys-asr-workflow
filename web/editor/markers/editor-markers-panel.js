@@ -10,6 +10,31 @@
   let selectedMarkerId = null;
   let editingMarkerId = null;
   let colorFilterSynced = false;
+  let batchMode = false;
+  const checkedMarkerIds = new Set();
+
+  function renderBatchActions(visible = filteredMarkers()) {
+    if (MaweDom.markersBatchSelectButton) {
+      MaweDom.markersBatchSelectButton.textContent = batchMode ? '退出批量选择' : '批量选择';
+      MaweDom.markersBatchSelectButton.setAttribute('aria-pressed', String(batchMode));
+    }
+    if (MaweDom.markersBatchActions) MaweDom.markersBatchActions.hidden = !batchMode;
+    if (MaweDom.markersSelectAllButton) {
+      MaweDom.markersSelectAllButton.disabled = !visible.length;
+      MaweDom.markersSelectAllButton.textContent = visible.length && visible.every(marker => checkedMarkerIds.has(marker.id))
+        ? '取消全选' : '全选';
+    }
+    if (MaweDom.markersDeleteSelectedButton) MaweDom.markersDeleteSelectedButton.disabled = !checkedMarkerIds.size;
+    if (MaweDom.markersSelectionSummary) MaweDom.markersSelectionSummary.textContent = `已选 ${checkedMarkerIds.size} 项`;
+  }
+
+  function resetSelection() {
+    batchMode = false;
+    checkedMarkerIds.clear();
+    selectedMarkerId = null;
+    editingMarkerId = null;
+    render();
+  }
 
   function markerUtils() {
     return window.AsrEditorUtils;
@@ -301,10 +326,29 @@
     const item = document.createElement('div');
     item.className = `markers-item ${isRegion ? 'kind-region' : 'kind-marker'}${marker.id === selectedMarkerId ? ' selected' : ''}`;
     item.dataset.markerId = marker.id;
+    if (batchMode) item.classList.add('batch-mode');
 
     const main = document.createElement('button');
     main.type = 'button';
     main.className = 'markers-item-main';
+    const checkbox = batchMode ? document.createElement('input') : null;
+    if (checkbox) {
+      checkbox.type = 'checkbox';
+      checkbox.className = 'markers-item-checkbox';
+      checkbox.checked = checkedMarkerIds.has(marker.id);
+      checkbox.setAttribute('aria-label', '选择此标记或区段');
+      item.classList.toggle('checked', checkbox.checked);
+      main.setAttribute('aria-pressed', String(checkbox.checked));
+      // Update only this row and the controls so keyboard focus survives a check.
+      checkbox.addEventListener('change', () => {
+        if (checkbox.checked) checkedMarkerIds.add(marker.id);
+        else checkedMarkerIds.delete(marker.id);
+        item.classList.toggle('checked', checkbox.checked);
+        main.setAttribute('aria-pressed', String(checkbox.checked));
+        renderBatchActions();
+      });
+      item.appendChild(checkbox);
+    }
     main.title = isRegion
       ? `区段 ${formatMarkerTime(marker.start)} → ${formatMarkerTime(marker.end)}`
       : `标记 ${formatMarkerTime(marker.start)}`;
@@ -329,6 +373,11 @@
     if (badge) main.appendChild(badge);
     // 点击列表项：仅选中高亮 + 定位试听；编辑框由右侧「编辑」按钮展开。
     main.addEventListener('click', () => {
+      if (checkbox) {
+        checkbox.checked = !checkbox.checked;
+        checkbox.dispatchEvent(new Event('change'));
+        return;
+      }
       selectedMarkerId = marker.id;
       render();
       MaweMarkerEditing.locateMarker(marker.id);
@@ -336,6 +385,7 @@
     // 双击列表项 = 展开 / 收起编辑框（等同「编辑」按钮）。
     main.addEventListener('dblclick', (event) => {
       event.preventDefault();
+      if (batchMode) return;
       selectedMarkerId = marker.id;
       editingMarkerId = editingMarkerId === marker.id ? null : marker.id;
       render();
@@ -353,9 +403,9 @@
       editingMarkerId = editingMarkerId === marker.id ? null : marker.id;
       render();
     });
-    item.appendChild(editButton);
+    if (!batchMode) item.appendChild(editButton);
 
-    if (marker.id === editingMarkerId) item.appendChild(buildMarkerEditor(marker));
+    if (!batchMode && marker.id === editingMarkerId) item.appendChild(buildMarkerEditor(marker));
     return item;
   }
 
@@ -365,6 +415,11 @@
     const markers = MaweMarkerEditing.getMarkers();
     syncColorFilterOptions(markers);
     const visible = filteredMarkers();
+    const visibleIds = new Set(visible.map(marker => marker.id));
+    for (const id of checkedMarkerIds) {
+      if (!visibleIds.has(id)) checkedMarkerIds.delete(id);
+    }
+    renderBatchActions(visible);
     renderSummary(markers, visible);
     if (selectedMarkerId && !markers.some((marker) => marker.id === selectedMarkerId)) {
       selectedMarkerId = null;
@@ -454,6 +509,26 @@
   MaweDom.markersAddCurrentButton?.addEventListener('click', () => {
     MaweMarkerEditing.addMarkerAtCurrentTime();
   });
+  MaweDom.markersBatchSelectButton?.addEventListener('click', () => {
+    batchMode = !batchMode;
+    checkedMarkerIds.clear();
+    editingMarkerId = null;
+    render();
+  });
+  MaweDom.markersSelectAllButton?.addEventListener('click', () => {
+    const visible = filteredMarkers();
+    const allSelected = visible.length && visible.every(marker => checkedMarkerIds.has(marker.id));
+    checkedMarkerIds.clear();
+    if (!allSelected) visible.forEach(marker => checkedMarkerIds.add(marker.id));
+    render();
+  });
+  MaweDom.markersDeleteSelectedButton?.addEventListener('click', () => {
+    if (!batchMode) return;
+    const ids = filteredMarkers().filter(marker => checkedMarkerIds.has(marker.id)).map(marker => marker.id);
+    MaweMarkerEditing.deleteMarkers(ids);
+    checkedMarkerIds.clear();
+    render();
+  });
 
   global.MaweMarkersPanel = Object.freeze({
     render,
@@ -462,6 +537,7 @@
     togglePanel,
     isOpen,
     openAndLocate,
+    resetSelection,
     getSelectedMarkerId: () => selectedMarkerId,
   });
 })(typeof window !== 'undefined' ? window : globalThis);

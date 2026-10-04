@@ -1366,6 +1366,7 @@ class LauncherApi:
                     notes=str(payload.get("notes") or "").strip(),
                 ),
                 complete=llm_complete(settings),
+                on_status=self._emit_postprocess_status,
             )
             self._emit_postprocess_status("toolbox_status_writing")
         except PostprocessFileError as error:
