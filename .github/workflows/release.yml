@@ -92,7 +92,9 @@ jobs:
         run: .\scripts\build-windows.ps1 -SkipTests
 
       - name: Install Electron dependencies
-        run: npm ci --prefix desktop
+        run: |
+          npm ci --prefix desktop
+          npm ci --ignore-scripts
 
       - name: Run Electron unit tests
         run: npm test --prefix desktop
@@ -314,6 +316,12 @@ jobs:
           $MoseIncrementBytes = (Get-ChildItem -LiteralPath $SuiteMose -File -Recurse | Measure-Object -Property Length -Sum).Sum
           Write-Host ("Electron win-unpacked size: {0:N0} bytes" -f $ElectronUnpackedBytes)
           Write-Host ("MOSE suite increment: {0:N0} bytes" -f $MoseIncrementBytes)
+
+      - name: Run packaged MOSE interaction tests
+        shell: pwsh
+        run: |
+          $env:MOSE_TEST_EXECUTABLE = (Resolve-Path 'build\release\mose\MAW\MOSE\MOSE.exe').Path
+          node --test desktop/e2e/*.mjs
 
       - name: Install Inno Setup
         if: startsWith(github.ref, 'refs/tags/v')
@@ -649,7 +657,7 @@ jobs:
           test -x "$MoseApp/Contents/Resources/backend/MAW.app/Contents/MacOS/MAW"
           test -f "$MoseApp/Contents/Resources/mosp.icns"
           "$MoseApp/Contents/MacOS/MOSE" --mose-smoke
-          MAW_MOSE_PYTHON="$PWD/.venv/bin/python" node --test desktop/e2e/*.mjs
+          MOSE_TEST_EXECUTABLE="$PWD/$MoseApp/Contents/MacOS/MOSE" node --test desktop/e2e/*.mjs
 
       - name: Install system dependencies
         if: matrix.platform == 'linux'
@@ -770,7 +778,7 @@ jobs:
           test -x desktop/dist/linux-unpacked/resources/backend/MAW/MAW
           test -f desktop/dist/linux-unpacked/resources/assets/mosp.png
           timeout 60 xvfb-run -a desktop/dist/linux-unpacked/mose --mose-smoke
-          MAW_MOSE_PYTHON="$PWD/.venv/bin/python" xvfb-run -a node --test desktop/e2e/*.mjs
+          MOSE_TEST_EXECUTABLE="$PWD/desktop/dist/linux-unpacked/mose" xvfb-run -a node --test desktop/e2e/*.mjs
 
       - name: Upload MOSE artifacts
         uses: actions/upload-artifact@v6

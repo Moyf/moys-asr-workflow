@@ -7,8 +7,18 @@ function forwardProjectPath(projectPath) {
   window.postMessage({ source: 'mose-desktop', type: 'open-project', path: projectPath }, window.location.origin);
 }
 
+function preferenceOperation(operation, key, value) {
+  const result = ipcRenderer.sendSync('mose:storage', { operation, key, value });
+  if (!result?.ok) throw new Error(result?.error || '桌面偏好不可用。');
+  return result.value;
+}
+
 contextBridge.exposeInMainWorld('MOSEDesktop', Object.freeze({
   available: true,
+  storage: Object.freeze({
+    getItem: (key) => preferenceOperation('get', key),
+    setItem: (key, value) => preferenceOperation('set', key, String(value)),
+  }),
   chooseProject: () => ipcRenderer.invoke('mose:choose-project'),
   pathForFile(file) {
     try { return webUtils.getPathForFile(file); } catch { return ''; }

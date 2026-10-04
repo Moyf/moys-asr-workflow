@@ -15,7 +15,7 @@ if (MaweDom.editorSettingsPanel) {
     MaweSettingsPanels.editorSettingsPanelSizeSaveTimer = setTimeout(() => {
       const rect = MaweDom.editorSettingsPanel.getBoundingClientRect();
       try {
-        localStorage.setItem(MaweDom.EDITOR_SETTINGS_WINDOW_SIZE_KEY, JSON.stringify({
+        MaweHost.storage.setItem(MaweDom.EDITOR_SETTINGS_WINDOW_SIZE_KEY, JSON.stringify({
           width: Math.round(rect.width), height: Math.round(rect.height),
         }));
       } catch (_) {

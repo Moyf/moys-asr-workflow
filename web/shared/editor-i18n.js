@@ -1063,7 +1063,7 @@
   }
 
   function persistLanguage(nextLanguage) {
-    try { global.localStorage?.setItem(STORAGE_KEY, nextLanguage); } catch (_) {}
+    try { (global.MaweHost?.storage || global.localStorage)?.setItem(STORAGE_KEY, nextLanguage); } catch (_) {}
   }
 
   function languageFromLaunchUrl() {
@@ -1089,12 +1089,18 @@
       persistLanguage(launched);
       return launched;
     }
+    if (global.MOSEDesktop?.available) {
+      try {
+        const saved = global.MaweHost?.storage.getItem(STORAGE_KEY);
+        if (saved === ZH || saved === EN) return saved;
+      } catch (_) {}
+    }
     if (GENERATED_LANGUAGE === ZH || GENERATED_LANGUAGE === EN) {
       persistLanguage(GENERATED_LANGUAGE);
       return GENERATED_LANGUAGE;
     }
     try {
-      return normalizeLanguage(global.localStorage?.getItem(STORAGE_KEY) || ZH);
+      return normalizeLanguage((global.MaweHost?.storage || global.localStorage)?.getItem(STORAGE_KEY) || ZH);
     } catch (_) {
       return ZH;
     }

@@ -23,8 +23,19 @@
 | 7 | 文档与变更说明 | 实际使用方式、平台矩阵、已知验证边界和 CHANGELOG | 修改 | 已修复 |
 | 8 | 验证 | 单元/服务器/交互/本地打包检查，分别记录实测与未验证项 | 修改 | 阻塞 |
 | 9 | 浏览器本质限制 | Chromium 解码内存、新增 ASR/导出格式不由 Electron 自动解决 | 说明 | 仅说明 |
+| 10 | 桌面偏好持久化 | 随机 localhost 端口导致编辑器偏好在重启后丢失 | 修改 | 已修复 |
 
 ## 处理记录
+
+### 10. 桌面偏好持久化
+
+- 文档合并提交 `fb0bbd52` 已包含最新 main `10db8968`，祖先检查通过；工作区已收拢为干净状态。
+- 收尾源码核对确认 `MaweHost.storage` 仍直接读取 origin 隔离的 localStorage。MOSE 每次随机端口，最近工程和引导虽已持久化，但普通编辑器偏好可能在重启后丢失。本项接入桌面固定位置的受限偏好存储，普通浏览器保留原机制。
+- 主进程仅向 Electron userData 的固定 `editor-preferences.json` 写入受限命名空间、字符串值与限定大小，原子发布并保留上一版本；IPC 继续校验当前主 frame。主题、语言、编辑设置、波形和浮窗通过共享宿主存储恢复，不改普通浏览器行为。
+- 原生桥接、旧值迁移、文件损坏恢复及写入边界检查通过。实际 Windows 包新增重启测试，在两个不同 localhost 端口间、清空测试 profile 的浏览器存储后，主题、语言、字数阈值、波形与设置页选择仍恢复。首次测试使用了不存在的偏好字段，改为现有 `cueListCharcountThreshold` 后通过。
+- 再次完成当前源码 PyInstaller、Electron build 与 staging；打包 E2E 3/3、packaged smoke 退出码 0、desktop 单元 27/27、根目录全部 Node、typecheck、完整 Python 1852 项（1825 通过、27 跳过）均通过。打包测试继续使用开发者现有 FFmpeg，仅用于本地验证，不作为发行包。
+- 三端 CI 的 E2E 统一指向实际打包程序及其随包后端；Windows 补入交互检查，macOS/Linux 不再以源码运行代替包交互。Release YAML 解析和 packaging/release-notes 34 项通过，原生 CI 仍未触发。
+- MOSE、desktop、编辑器和开发说明已更新，并同步官网；Astro check 0 错误/警告，22 页构建通过。`blank-editor.html` 保持未生成。
 
 ### 1. 分支集成
 
@@ -101,7 +112,7 @@
 
 ### 最终本地验证（文档集成后）
 
-- 完整 Python：`python -m unittest discover -s tests -p "test_*.py"`，1852 项通过、27 跳过。旧波形字符串契约已修正，完整复测没有失败；Ruff 发现的三处既有冗余变量/字符串前缀已移除，相关 42 项补测通过。
+- 完整 Python：`python -m unittest discover -s tests -p "test_*.py"`，共 1852 项，1825 通过、27 跳过。旧波形字符串契约已修正，完整复测没有失败；Ruff 发现的三处既有冗余变量/字符串前缀已移除，相关 42 项补测通过。
 - 根目录全部 `tests/*.mjs`、`npm run typecheck` 和桌面 `npm test --prefix desktop` 通过；桌面 24/24 包含实际 Windows 子进程树清理。相关 Python Ruff、Release YAML 解析通过。
 - 图标 PNG/ICO/ICNS 验证通过；开发者 Python 未安装 Pillow，使用预装工具 Python 执行检查，CI 已在 build 依赖组包含 Pillow。
 - 重新构建 Windows Electron 并 staging 后，实际打包程序的 `desktop/e2e/*.mjs` 2/2 通过：原生打开、真实 File 路径、最近列表、取消另存为、跨目录持续保存、新建、媒体/字幕、坏媒体回滚、目录选择、系统字体、未保存取消、单实例与确认退出。对话框选值由替身提供，IPC/Server/写盘/Chromium 为真实产品代码。
@@ -113,9 +124,15 @@
 | 层级 | 命令或方法 | 实际结果 | 未验证边界 |
 | --- | --- | --- | --- |
 | Git | fetch、status、分支与提交对比，diff check | 初始无 WIP，main 两次文档/代码冲突已解决，桌面实现已本地提交 | 无推送 |
-| 语法/单元 | 根目录全部 Node tests、desktop tests、typecheck、Ruff | 全部通过；desktop 24/24 | 不等同于桌面交互 |
-| Server/契约 | 完整 Python unittest discover，相关契约补测 | 1852 项通过、27 跳过；清理 Ruff 后 42 项补测通过 | 既有可选依赖跳过；不等同于打包产物 |
-| 桌面/浏览器交互 | 打包程序执行 `node --test desktop/e2e/*.mjs` | Windows 2/2 综合流程通过，实测间距并截图 | 原生对话框选值由测试替身提供；macOS/Linux 需对应系统 |
+| 语法/单元 | 根目录全部 Node tests、desktop tests、typecheck、Ruff | 全部通过；desktop 27/27 | 不等同于桌面交互 |
+| Server/契约 | 完整 Python unittest discover，相关契约补测 | 共 1852 项：1825 通过、27 跳过；相关补测均通过 | 既有可选依赖跳过；不等同于打包产物 |
+| 桌面/浏览器交互 | 打包程序执行 `node --test desktop/e2e/*.mjs` | Windows 3/3 综合流程通过，包含跨端口偏好恢复，实测间距并截图 | 原生对话框选值由测试替身提供；macOS/Linux 需对应系统 |
 | 打包/系统关联 | 当前源码 Windows PyInstaller/Electron build、staging、packaged smoke；图标/配置契约 | 本地 Windows 实际包交互、启动与退出通过 | 无 Inno Setup，安装后双击未实测；macOS/Linux 须对应系统验收 |
 | 官网文档 | sync:docs、Astro check、build | 20 篇同步、0 错误/警告、22 页构建通过 | 本地构建，未发布 |
 | CI/外部服务 | 无发布或 push 授权 | 未触发远端 CI | 不创建 tag、Release 或远端推送 |
+
+## 收尾状态
+
+- 已修复：1–7、10；仅说明：9。没有待处理或进行中项。
+- 仍阻塞：8 中的 Windows Installer 安装/卸载与 Explorer 双击、macOS/Linux 原生运行和系统关联验收。原因分别为本机缺 Inno Setup、无 macOS 主机，以及 WSL 缺完整应用依赖；下一步在相应原生 CI/测试机执行打包交互与实际安装检查。
+- 远端 main 最终核对仍为 `10db8968`，已是本地 `starlit-main` 的祖先。改动仅本地提交，没有推送、tag 或 Release；内联 HTML 待发布前统一重生成。

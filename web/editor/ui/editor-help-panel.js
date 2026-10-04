@@ -53,7 +53,7 @@
     if (!MaweDom.helpPanel) return;
     let saved = null;
     try {
-      saved = JSON.parse(localStorage.getItem(MaweDom.HELP_PANEL_SIZE_KEY) || 'null');
+      saved = JSON.parse(MaweHost.storage.getItem(MaweDom.HELP_PANEL_SIZE_KEY) || 'null');
     } catch (_) {
       saved = null;
     }

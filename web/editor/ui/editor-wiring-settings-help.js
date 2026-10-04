@@ -198,7 +198,7 @@ if (MaweDom.helpPanel) {
     MaweHelpPanel.helpPanelSizeSaveTimer = setTimeout(() => {
       const rect = MaweDom.helpPanel.getBoundingClientRect();
       try {
-        localStorage.setItem(MaweDom.HELP_PANEL_SIZE_KEY, JSON.stringify({
+        MaweHost.storage.setItem(MaweDom.HELP_PANEL_SIZE_KEY, JSON.stringify({
           width: Math.round(rect.width), height: Math.round(rect.height),
         }));
       } catch (_) {

@@ -27,7 +27,7 @@ MOSE 与浏览器入口都复用 Server；Launcher 优先查找 MOSE，不可用
 | 波形、频谱 | `.quapeaks` / `.mopeaks` 等缓存 | 可重建，当前工程落盘剥离内联缓存；仍兼容旧内嵌工程。 |
 | `workspace` | 可选工程字段 | 随工程携带的布局。 |
 | 最近工程与命名工作区 | 用户级 `server-editor-settings.json` | Server 本机状态，活动工作区可覆盖页面布局。 |
-| 编辑器偏好 | 浏览器存储 | origin/端口隔离，file:// 不承诺共享。 |
+| 编辑器偏好 | 浏览器存储 / MOSE userData 的 `editor-preferences.json` | 普通浏览器按 origin 隔离；MOSE 使用受限存储跨重启恢复。 |
 | ASS 样式库 | 用户级 `ass-styles.json`，便携版浏览器副本 | Launcher 与 localhost Editor 共用，不写入工程。 |
 | Key 与路径配置 | 本机 `.env` / 环境变量 | 不进入工程、日志或测试夹具。 |
 

@@ -67,7 +67,7 @@ function readOnboardingStatus() {
     return typeof status === 'string' ? status : '';
   }
   try {
-    return localStorage.getItem(ONBOARDING_STORAGE_KEY) || '';
+    return MaweHost.storage.getItem(ONBOARDING_STORAGE_KEY) || '';
   } catch (_) {
     return '';
   }
@@ -75,7 +75,7 @@ function readOnboardingStatus() {
 
 function saveOnboardingStatus(status) {
   try {
-    localStorage.setItem(ONBOARDING_STORAGE_KEY, status);
+    MaweHost.storage.setItem(ONBOARDING_STORAGE_KEY, status);
   } catch (_) {
     // file:// 隐私模式下可能拒绝 localStorage；本次页面仍可继续引导。
   }

@@ -31,7 +31,7 @@ Windows 必须保留 `MAW/MAW.exe` 与 `MAW/MOSE/MOSE.exe` 的相对布局；mac
 
 工程媒体已移动时仍可打开、修改和保存字幕。点击“加载媒体”重新选择，或同时拖入工程与媒体来覆盖失效引用；加载失败保留原工程。工程名左键复制完整路径，右键在文件管理器显示。
 
-最近工程、工作区库、ASS 样式与引导状态复用 MAW 用户级设置；浏览器 `localStorage` 的其他偏好仍可能按 origin 隔离。MOSE 每次使用随机 localhost 端口，但最近工程和引导完成状态不会因此丢失。
+最近工程、工作区库、ASS 样式与引导状态复用 MAW 用户级设置。MOSE 的主题、语言、编辑选项、波形与浮窗偏好保存在 Electron 用户数据目录的 `editor-preferences.json`；重启后的随机 localhost 端口不会导致偏好丢失，原端口中可读取的旧偏好会在首次读取时迁入。普通浏览器仍使用 origin 隔离的 `localStorage`。
 
 ## 媒体与本机资源
 

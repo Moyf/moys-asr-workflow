@@ -14,7 +14,7 @@ server-editor/serve.py        MAW 与 MOSE 共用的本机服务
 
 | 平台 | MOSE 后端位置 | 构建产物 |
 | --- | --- | --- |
-| Windows x64 | `MAW/MAW.exe`，编辑器在 `MAW/MOSE/MOSE.exe` | 共享套件 ZIP、MAW Installer |
+| Windows x64 | `MAW/MAW.exe`，编辑器在 `MAW/MOSE/MOSE.exe` | 共享套件目录、MAW Installer |
 | macOS arm64 | `MOSE.app/Contents/Resources/backend/MAW.app/Contents/MacOS/MAW` | DMG、ZIP |
 | Linux x64 | `MOSE/resources/backend/MAW/MAW` | AppImage、DEB |
 
@@ -69,6 +69,7 @@ npm run build --prefix desktop
 - 媒体移动后仍可打开和保存字幕，点击“加载媒体”重新定位。工程和媒体一起拖入时可直接覆盖旧媒体引用。
 - 点击工程名复制路径，右键在文件管理器显示。媒体使用后端 Range 与相邻波形缓存；表情包根目录可通过原生文件夹对话框选择。
 - 未保存关闭或退出时可取消返回编辑器。macOS/Linux 提供原生菜单与平台快捷键；退出只清理本次拥有的后端进程树。
+- 主题、语言、编辑选项、波形和浮窗偏好保存在 Electron userData 的 `editor-preferences.json`，跨重启和随机端口恢复；可读取的旧浏览器偏好自动迁入。
 
 ## 系统打开方式与更新
 
@@ -88,7 +89,7 @@ node --test desktop/e2e/*.mjs
 
 E2E 可设置 `MOSE_TEST_EXECUTABLE` 指向实际打包的编辑器，否则运行源码壳；原生对话框返回路径由测试替身提供，后续 IPC、Server、Chromium 和写盘使用产品实现。Windows 打包复核前要重新 staging。
 
-窗口启用 `contextIsolation`、sandbox 并关闭 `nodeIntegration`；IPC 只接受当前编辑器主 frame 的精确 localhost origin。后端仅监听 `127.0.0.1`，令牌通过子进程环境与请求头传递，不放入命令行或日志。原生写入目标只取主进程保存对话框，HTTP 不提供任意路径写入。
+窗口启用 `contextIsolation`、sandbox 并关闭 `nodeIntegration`；IPC 只接受当前编辑器主 frame 的精确 localhost origin。后端仅监听 `127.0.0.1`，令牌通过子进程环境与请求头传递，不放入命令行或日志。工程写入目标只取主进程保存对话框；偏好仅写固定的 userData 文件，限制键名与体积并保留上一个磁盘版本。HTTP 不提供任意路径写入。
 
 当前 Windows 已进行源码与打包交互检查；macOS/Linux 原生 CI 已接线，尚未运行。Installer 安装/卸载及三端文件管理器双击仍需原生验收，详细证据见 [检查记录](../docs/TEST_FEEDBACK_ELECTRON_INTEGRATION.md)。
 

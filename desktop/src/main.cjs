@@ -14,6 +14,7 @@ const path = require('node:path');
 const { spawn } = require('node:child_process');
 const { writeSelectedProject } = require('./native_files.cjs');
 const { installLinuxIntegration } = require('./linux_integration.cjs');
+const { createPreferenceStore } = require('./preferences.cjs');
 const {
   appendBoundedOutput,
   childExited,
@@ -209,13 +210,17 @@ function isExactBackendUrl(url, origin) {
   }
 }
 
+function assertTrustedIpc(event) {
+  if (!backend || !mainWindow || event.sender !== mainWindow.webContents
+      || event.senderFrame !== event.sender.mainFrame
+      || !isExactBackendUrl(event.senderFrame.url, backend.origin)) {
+    throw new Error('桌面操作只能由当前编辑器主页面发起。');
+  }
+}
+
 function trustedIpc(channel, handler) {
   ipcMain.handle(channel, (event, ...args) => {
-    if (!backend || !mainWindow || event.sender !== mainWindow.webContents
-        || event.senderFrame !== event.sender.mainFrame
-        || !isExactBackendUrl(event.senderFrame.url, backend.origin)) {
-      throw new Error('桌面操作只能由当前编辑器主页面发起。');
-    }
+    assertTrustedIpc(event);
     return handler(...args);
   });
 }
@@ -456,6 +461,20 @@ async function smokeBackendPage(state) {
 }
 
 function registerIpc() {
+  const preferences = createPreferenceStore(path.join(app.getPath('userData'), 'editor-preferences.json'));
+  // Settings must be available while the classic editor script initializes.
+  // This small bounded store preserves the synchronous Storage contract.
+  ipcMain.on('mose:storage', (event, request) => {
+    try {
+      assertTrustedIpc(event);
+      if (!request || !['get', 'set'].includes(request.operation)) throw new Error('无效的偏好操作。');
+      const value = request.operation === 'get'
+        ? preferences.getItem(request.key) : preferences.setItem(request.key, request.value);
+      event.returnValue = { ok: true, value };
+    } catch (error) {
+      event.returnValue = { ok: false, error: String(error.message || error) };
+    }
+  });
   trustedIpc('mose:choose-project', chooseProject);
   trustedIpc('mose:save-project-as', saveProjectAs);
   trustedIpc('mose:choose-media', async () => {
