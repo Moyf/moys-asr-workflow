@@ -7,8 +7,6 @@ source: "docs/OCR_SUBTITLE_DEDUP.md"
 
 <!-- Generated from docs/OCR_SUBTITLE_DEDUP.md. Run npm run sync:docs to refresh. -->
 
-# OCR 字幕去重
-
 「OCR 字幕去重」是 Launcher「工具箱」中「后处理」类别的本地字幕清理功能，用于处理以下情况：视频画面已经烧录了一条字幕，而 ASR 工程或 SRT 中又存在同一条字幕。功能会识别视频画面文字，将高度相似的字幕标记为禁用，从而避免导出或播放时出现重复字幕。
 
 当前版本是只处理画面的 MVP，不分析音频，也不修改原始视频。
@@ -37,7 +35,7 @@ clip.ocr-dedup.srt
 
 1. 取字幕时间段的中点，从视频中抽取一帧画面。
 2. 按所选区域裁剪画面，并将输入宽度缩放到约 960 像素。
-3. 使用 CPU 版 RapidOCR PP-OCRv6 tiny 识别画面文字。
+3. 使用所选的 CPU 版 RapidOCR PP-OCRv6 tiny 或 small 识别画面文字。
 4. 清除空白和标点后，分别计算 Jaccard、包含度和 Levenshtein 相似度，取三者最高值。
 5. 最高值大于等于阈值时，将工程中的该段设置为 `disabled: true`。
 

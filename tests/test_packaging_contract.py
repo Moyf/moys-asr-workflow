@@ -93,7 +93,7 @@ class PackagingContractTests(unittest.TestCase):
         gui = read_text("maw/gui_web.py")
         editor = read_text("edit.py")
 
-        self.assertIn(f'id="appVersion"', launcher_html)
+        self.assertIn('id="appVersion"', launcher_html)
         self.assertIn(f'>v{version}</button>', launcher_html)
         self.assertIn(f'appVersion: "{version}"', launcher_js)
         self.assertIn(f'BUNDLED_APP_VERSION = "{version}"', gui)

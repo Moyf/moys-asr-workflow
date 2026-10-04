@@ -20,7 +20,7 @@
 | 4 | 媒体与相邻资源 | 媒体/字幕拖拽、路径识别、重定位、sidecar、目录选择 | 修改 | 已修复 |
 | 5 | 三端打包 | Windows/macOS/Linux 后端布局、Electron 产物、关联与工程图标 | 修改 | 已修复 |
 | 6 | 桌面生命周期 | 安全 IPC、单实例、未保存确认、窗口标题、后端清理与平台菜单 | 修改 | 已修复 |
-| 7 | 文档与变更说明 | 实际使用方式、平台矩阵、已知验证边界和 CHANGELOG | 修改 | 进行中 |
+| 7 | 文档与变更说明 | 实际使用方式、平台矩阵、已知验证边界和 CHANGELOG | 修改 | 已修复 |
 | 8 | 验证 | 单元/服务器/交互/本地打包检查，分别记录实测与未验证项 | 修改 | 阻塞 |
 | 9 | 浏览器本质限制 | Chromium 解码内存、新增 ASR/导出格式不由 Electron 自动解决 | 说明 | 仅说明 |
 
@@ -28,6 +28,7 @@
 
 ### 1. 分支集成
 
+- 桌面实现已提交为 `24c09742`。收尾 fetch 时 main 又新增 `10db8968`（使用指南与官网阅读导航重构），已按新版阅读结构解决文档冲突并整合实际 Electron 能力；功能代码没有新增冲突。
 - 解决 README、Launcher、Server、测试、新手引导与旧单体脚本冲突；弃用脚本移入回收站，打开工程逻辑迁移到 `editor-server-save.js` 与接线模块。
 - 保留 main 的 ASS 样式接口、工程比较语义、模型与预设能力，保留集成分支的更新器与桌面工程切换保护；恢复 main 的断线重启不重复开页行为。
 - Electron、Launcher、GUI 与 lockfile 版本统一为 `1.8.0-beta.1`。
@@ -91,13 +92,30 @@
 - 本机没有 Inno Setup，不能验证 Installer 安装/卸载及 Explorer 双击；macOS 无对应系统可运行。WSL Ubuntu-26.04 仅有 Python，缺 Node、uv、FFmpeg、Xvfb；Linux 安装脚本已通过 WSL shell 语法检查，完整应用需原生 CI/测试机验收。
 - 这些平台与安装验收记录为 `阻塞`，并明确下一步是原生 CI 打包/交互及安装双击检查。不会把静态配置、源模式测试或 Windows smoke 作为三端实测结论。
 
+### 7. 文档与变更说明
+
+- README 中英文、WORKFLOW、EDITOR_GUIDE、FAQ、MOSE、desktop README、开发与 Server 说明已对齐 Electron 的原生路径、新建/另存为、缺媒体处理、最近工程、三端布局、工程图标和系统关联。
+- 保留 main 新的专题指南、配图与分组导航；通过 `npm run sync:docs --prefix website` 生成 20 篇官网文档，未手改生成副本。`npm run check --prefix website` 无错误/警告，`npm run build --prefix website` 成功生成 22 页。
+- THIRD_PARTY_NOTICES 更新为 Windows 共用后端、macOS/Linux 独立包内置原生后端和 FFmpeg；LICENSE 保持原样。Windows 更新沿用 Launcher，macOS/Linux 独立包手动更新，未承诺已发布或已验收的三端能力。
+- CHANGELOG 按完整 MOSE 特性归为一条；未生成 `blank-editor.html`，内联副本待发布前统一重生成。参考笔记未修改，商业计划及自定义快捷键重映射不在本轮实现范围。
+
+### 最终本地验证（文档集成后）
+
+- 完整 Python：`python -m unittest discover -s tests -p "test_*.py"`，1852 项通过、27 跳过。旧波形字符串契约已修正，完整复测没有失败；Ruff 发现的三处既有冗余变量/字符串前缀已移除，相关 42 项补测通过。
+- 根目录全部 `tests/*.mjs`、`npm run typecheck` 和桌面 `npm test --prefix desktop` 通过；桌面 24/24 包含实际 Windows 子进程树清理。相关 Python Ruff、Release YAML 解析通过。
+- 图标 PNG/ICO/ICNS 验证通过；开发者 Python 未安装 Pillow，使用预装工具 Python 执行检查，CI 已在 build 依赖组包含 Pillow。
+- 重新构建 Windows Electron 并 staging 后，实际打包程序的 `desktop/e2e/*.mjs` 2/2 通过：原生打开、真实 File 路径、最近列表、取消另存为、跨目录持续保存、新建、媒体/字幕、坏媒体回滚、目录选择、系统字体、未保存取消、单实例与确认退出。对话框选值由替身提供，IPC/Server/写盘/Chromium 为真实产品代码。
+- 最终 packaged `--mose-smoke` 启动/页面/退出检查通过，退出码 0。首次 PowerShell Start-Process 测试因继承的 Electron Node 模式环境失败，改用明确清除该变量的子进程环境后通过；这不是编辑器启动失败。
+- 新增目录选择行实测 gap 和上方距离均至少 8px；已查看最终打包流程截图，无布局问题。原生三端安装/关联验收仍按第 8 项保留为 `阻塞`。
+
 ## 验证账本
 
 | 层级 | 命令或方法 | 实际结果 | 未验证边界 |
 | --- | --- | --- | --- |
-| Git | fetch、status、分支与提交对比，diff check | 初始无 WIP，冲突已解决，diff check 通过 | 后续实现尚未提交 |
-| 语法/单元 | 四组 Node editor 检查、desktop tests、script order 补测 | 369 项全部覆盖（初次 1 跳过后补测通过）；desktop 17/17 | 不等同于桌面交互 |
-| Server/契约 | local_editor_server、gui_web、editor_assets、packaging_contract | 初次 463 项中 2 失败已修复并重测通过，1 既有跳过 | 收尾执行完整复测；不等同于打包产物 |
-| 桌面/浏览器交互 | `node --test desktop/e2e/project-flow.mjs` | Windows 1/1 综合流程通过，实测间距并截图 | 原生对话框选值由测试替身提供；macOS/Linux 需对应系统 |
-| 打包/系统关联 | Windows Electron/PyInstaller build、staging、packaged smoke；图标/配置契约 | 本地 Windows 打包启动与退出通过 | 无 Inno Setup，安装后双击未实测；macOS/Linux 须对应系统验收 |
+| Git | fetch、status、分支与提交对比，diff check | 初始无 WIP，main 两次文档/代码冲突已解决，桌面实现已本地提交 | 无推送 |
+| 语法/单元 | 根目录全部 Node tests、desktop tests、typecheck、Ruff | 全部通过；desktop 24/24 | 不等同于桌面交互 |
+| Server/契约 | 完整 Python unittest discover，相关契约补测 | 1852 项通过、27 跳过；清理 Ruff 后 42 项补测通过 | 既有可选依赖跳过；不等同于打包产物 |
+| 桌面/浏览器交互 | 打包程序执行 `node --test desktop/e2e/*.mjs` | Windows 2/2 综合流程通过，实测间距并截图 | 原生对话框选值由测试替身提供；macOS/Linux 需对应系统 |
+| 打包/系统关联 | 当前源码 Windows PyInstaller/Electron build、staging、packaged smoke；图标/配置契约 | 本地 Windows 实际包交互、启动与退出通过 | 无 Inno Setup，安装后双击未实测；macOS/Linux 须对应系统验收 |
+| 官网文档 | sync:docs、Astro check、build | 20 篇同步、0 错误/警告、22 页构建通过 | 本地构建，未发布 |
 | CI/外部服务 | 无发布或 push 授权 | 未触发远端 CI | 不创建 tag、Release 或远端推送 |

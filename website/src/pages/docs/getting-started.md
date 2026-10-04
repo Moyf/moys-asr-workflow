@@ -7,62 +7,62 @@ source: "README.md"
 
 <!-- Generated from README.md. Run npm run sync:docs to refresh. -->
 
-# Moy's ASR Workflow（MAW）
-
 [![English README](https://img.shields.io/badge/README-English-2563eb?style=flat-square)](https://github.com/Moyf/moys-asr-workflow/blob/main/README-en.md)
-
 [![GitHub Release](https://img.shields.io/github/v/release/Moyf/moys-asr-workflow?display_name=tag&sort=semver)](https://github.com/Moyf/moys-asr-workflow/releases/latest)
 [![GitHub Downloads](https://img.shields.io/github/downloads/Moyf/moys-asr-workflow/total?label=downloads)](https://github.com/Moyf/moys-asr-workflow/releases)
 [![GitHub Stars](https://img.shields.io/github/stars/Moyf/moys-asr-workflow)](https://github.com/Moyf/moys-asr-workflow/stargazers)
 [![License](https://img.shields.io/github/license/Moyf/moys-asr-workflow)](https://github.com/Moyf/moys-asr-workflow/blob/main/LICENSE)
 
-> 本地媒体 → AI 转写 → SRT + `.mosp` 工程 → MAWE 编辑 → 导出。
+> 本地媒体 → ASR 转写 → SRT + `.mosp` 工程 → MAWE 编辑 → 导出。
 
-官网：[MAW 官网](https://moyf.github.io/moys-asr-workflow/) · [在线编辑器](https://moyf.github.io/moys-asr-workflow/editor/)
+MAW 是以云端 API 转写为主的字幕生成与编辑工作流，提供图形 Launcher、命令行和本机浏览器编辑器。你可以生成字幕、检查字词时间码、调整波形时间轴，再交付字幕或剪辑交换文件。
 
-MAW 是一个以 API 转写为主的字幕生成与编辑工作流。它提供 Windows/macOS 图形版、公开 CLI 和本机 Server 编辑器；字幕编辑与工程保存都在本机完成。
+[官网](https://moyf.github.io/moys-asr-workflow/) · [在线编辑器](https://moyf.github.io/moys-asr-workflow/editor/) · [3 分钟视频速览](https://www.bilibili.com/video/BV1hXum6yELT)
 
-## 快速开始
+<img src="../../docs-assets/docs/assets/1.6.0/overlay-track.webp" alt="MAWE 编辑器：左侧视频与字幕列表，右侧多行波形和叠加字幕" loading="lazy" decoding="async" />
 
-1. [下载最新版](https://github.com/Moyf/moys-asr-workflow/releases/latest)。Release 提供带 FFmpeg 的 `MAW-Windows-x64-v*.zip`、不带 FFmpeg 的 `MAW-lite-Windows-x64-v*.zip`、包含 MOSE 的 Windows x64 `MAW-Setup-Windows-x64-v*.exe` Installer，以及 macOS 对应包；源码和打包说明见 [MOSE 文档](../mose/)。
-2. 启动便携版 `MAW.exe` 或 `MAW.app`；如果取得官方 Installer，它按当前用户安装到 `%LOCALAPPDATA%\Programs\MAW`，不需要管理员权限。MOSE 套件中的 `MAW\MOSE\MOSE.exe` 也可以直接启动，或双击 `.mosp` 工程。
-3. 在 Launcher 配置转写服务的 API Key，选择媒体并点击生成。
-4. 在 MAWE 中检查、编辑字幕，导出 SRT、ASS 或其他格式。
+*编辑器界面示例（1.6.0）：左侧校对文字与预览，右侧结合波形调整字幕时间。布局可按工作区修改。*
 
-第一次使用、API 配置、编辑和排错：请从[完整工作流](../workflow/)开始。
+## 开始使用
 
-Windows 官方安装版会在 Launcher 启动时每天最多检查一次新版本，也可以在「配置 → 软件更新」手动检查；更新器会从公开 GitHub Release 下载并校验新版 Installer。便携版、macOS 和 Linux 会打开对应发布页供手动下载。更新不会删除 `%LOCALAPPDATA%\MAW` 下的 `.env`、日志、模型缓存或更新状态。当前 Windows Installer 未配置代码签名，首次运行可能出现 SmartScreen 提示；请核验官方来源和文件哈希。
+最新测试版：[v1.8.0-beta.1](https://github.com/Moyf/moys-asr-workflow/releases/tag/v1.8.0-beta.1)。下方 Releases 入口提供稳定版。
 
-## 核心能力
+1. 从 [Releases](https://github.com/Moyf/moys-asr-workflow/releases/latest) 选择与你的系统和架构对应的包。完整版 `MAW` 包含 FFmpeg / FFprobe；`MAW-lite` 需要自行安装这两个工具。实际可下载平台以该版本附件为准。
+2. 解压完整目录，启动 Windows 的 `MAW.exe` 或 macOS 的 `MAW.app`。
+3. 在 Launcher 选择服务商、配置自己的 API Key，选择媒体并生成字幕。首次配置可先用 `2m` 做短片验证。
+4. 打开 MAWE 检查文字和时间，保存 `.mosp` 工程，再导出 SRT 或 ASS。
 
-- 使用 Qwen / Fun-ASR / Soniox / 腾讯云录音文件识别 / 豆包（火山引擎），或 OpenAI 格式通用接口转写，生成 SRT 与 `.mosp` 工程。
-- MAWE Server 编辑器支持波形定位、拆分合并、静音空隙处理、画面预览和多种导出格式。
-- Windows 套件提供优先使用的 MOSE Electron 独立编辑器；它与 MAW 共用同一 Server、`.mosp` 工程、波形、媒体和导出契约。Launcher 找不到 MOSE 时会自动回退到 Server 版。
-- MAWE 支持可选的多重字幕：拖入第二条字幕作为副轨，支持主副字幕交换、绑定/解绑、联动编辑、跨轨道吸附，以及 `G` / `Shift+G` / `H` / `B` 快捷操作。
-- 公开 CLI 可用于批处理和 AI 自动化，详见[命令行文档](../cli/)。
-- [本地 Qwen3-ASR / FunASR / Faster-Whisper](../local-asr/) 和免 Key 的必剪 ASR 均属于实验性入口，仅适合体验。
+源码安装、命令行起步和媒体迁移见 [从零完成一次字幕工程](../workflow/)；遇到启动或转写问题看 [常见问题](../faq/)。
 
-## 文档
+本分支提供 [MOSE Electron 桌面编辑器](../mose/)：Windows 使用 MAW + MOSE 套件或 Installer，macOS/Linux 配置独立 DMG/ZIP 与 AppImage/DEB。原生打开、拖入和另存为会绑定真实文件路径并记录最近工程；Windows Installer 的更新入口保留在 Launcher。实际可下载平台以 Release 附件为准，当前平台验证范围见 [检查记录](https://github.com/Moyf/moys-asr-workflow/blob/main/docs/TEST_FEEDBACK_ELECTRON_INTEGRATION.md)。
 
-- [完整工作流](../workflow/) ：安装、配置、转写、编辑、导出和排错。
-- [常见问题](https://github.com/Moyf/moys-asr-workflow/blob/main/docs/FAQ.md) ：Windows 下载解压、启动故障与问题反馈。
-- [ASR 服务与配置](../providers/) ：服务商选择、Key、费用和隐私边界。
-- [编辑器指南](../editor-guide/) ：MAWE 的编辑、保存和导出。
-- [字幕按键调整](../keyboard-adjustment/) ：快捷键和时间微调规则。
-- [命令行与自动化](../cli/) ：完整参数、范例、Server 管理和退出码。
-- [LLM 字幕后处理协议](../llm-postprocess/) ：后处理的输入输出与安全边界。
-- [OCR 字幕去重](../ocr-subtitle-dedup/) ：画面字幕识别、禁用规则、视频输入、报告和性能说明。
-- [转写后自动处理](https://github.com/Moyf/moys-asr-workflow/blob/main/docs/POSTPROCESS_PIPELINE.md) ：固定步骤、配置预检、LLM 验证、中间产物和失败恢复。
-- [JSON 工程文件规范](../json-schema/) ：`.mosp` / `.json` 数据契约。
-- [开发说明](../development/) ：产品边界、数据契约和开发检查。
+## 可以做什么
 
-## 重要说明
+- 云端转写：Qwen-Audio / Qwen3-ASR / Fun-ASR、Soniox、豆包、腾讯云，以及返回时间戳的 OpenAI 兼容接口。
+- 图形任务：单文件与顺序批量转写、识别预设、转写后自动处理，以及字幕和媒体工具箱。
+- 字幕编辑：波形定位、拆分合并、多重字幕（可直接新建空副轨）、颜色与表情包、标记与区段、可撤销的空隙移除。
+- 桌面编辑：MOSE 复用同一 Server 和工程格式，提供原生保存、媒体重定位、系统工程打开方式与文档图标；Launcher 未找到 MOSE 时回退到浏览器 Server。
+- 导出：SRT、ASS、TXT，以及按用途提供的 OTIO、FFconcat 等交换文件。
+- 实验性入口：Launcher 与 CLI 的本地模型、免 Key 的必剪 ASR。范围和运行环境见 [本地 ASR](../local-asr/)。
 
-- 选择云端服务转写时，媒体会直接上传到对应服务商；MAW 没有自己的云端服务器，也不会代管 API Key。
-- `.mosp` 工程是字幕真源；SRT 适合普通交付，ASS 使用 Editor「管理 ASS 样式」中的默认输出方案与关联样式，并按工程记录的源视频分辨率设置脚本坐标；Launcher 烧录 SRT 时使用单独的 SRT 默认样式。localhost Editor 与 Launcher 共享用户级样式库，便携 `file://` Editor 使用浏览器本地副本；两种字幕格式都不会保留全部字级时间码、波形和其他工程数据。
-- 官方 MAW + MOSE 套件中的目录必须保持 `MAW\MAW.exe` 与 `MAW\MOSE\MOSE.exe` 的相对关系；MOSE 不能脱离同套件的 `MAW.exe` 单独运行。`.mosp` 关联指向 `MAW.exe --open-project`，双击工程会先完成更新检查再打开 MOSE；关联只在当前用户范围生效，不会强制覆盖 Windows 的已有默认应用选择。旧 `.json` 仍兼容打开但不建立系统关联。
-- 费用、数据保留和服务可用性以服务商当前政策为准，详见[ASR 服务与配置](../providers/)。
-- [3 分钟视频速览](https://www.bilibili.com/video/BV1hXum6yELT)
+## 按任务查文档
+
+| 你要做的事 | 文档 |
+| --- | --- |
+| 第一次安装并完成字幕 | [完整工作流](../workflow/) |
+| 配置模型、热词、预设或批量任务 | [Launcher 指南](../launcher/) · [服务商配置](../providers/) |
+| 校对、匹配文稿、翻译或处理媒体 | [工具箱](../toolbox/) · [自动处理](../postprocess-pipeline/) |
+| 编辑时间轴、保存和导出 | [编辑器指南](../editor-guide/) · [ASS 样式](../ass-styles/) |
+| 写批处理或接入自动化 | [CLI](../cli/) |
+| 开发与数据集成 | [开发概览](../development/) · [工程格式](../json-schema/) |
+
+全部专题、技术契约与历史记录见 [文档索引](../documentation-index/)。
+
+## 文件与数据
+
+保留原始媒体和 `.mosp` 工程；工程内容是 UTF-8 JSON，旧 `.json` 工程继续支持。SRT / ASS 是交付格式，不能代替包含字词时间码、编辑状态与其他数据的工程。波形是可重建缓存。
+
+云端转写会将音频发送给你选择的服务商；LLM 后处理会发送字幕文字，AI 整理还会发送文稿文字。MAW 没有自己的云端转写服务器，编辑和保存默认在本机完成。API Key 在本机配置，费用和数据政策见 [服务商配置](../providers/)。
 
 ## Star History
 
@@ -76,6 +76,6 @@ Windows 官方安装版会在 Launcher 启动时每天最多检查一次新版�
 
 ## 反馈与许可
 
-问题和建议请提 [GitHub Issues](https://github.com/Moyf/moys-asr-workflow/issues)；交流可加入 [QQ 群 1079160201](https://qm.qq.com/q/4YtxZIpzxC)。
+问题和建议请提 [GitHub Issues](https://github.com/Moyf/moys-asr-workflow/issues)；交流可加入 [QQ 群 1079160201](https://qm.qq.com/q/4YtxZIpzxC)。反馈前请移除密钥与私人素材。
 
-本项目采用 [AGPL-3.0-only](https://github.com/Moyf/moys-asr-workflow/blob/main/LICENSE)。
+本项目采用 [AGPL-3.0-only](https://github.com/Moyf/moys-asr-workflow/blob/main/LICENSE)。贡献要求见 [CONTRIBUTING.md](https://github.com/Moyf/moys-asr-workflow/blob/main/CONTRIBUTING.md)。
