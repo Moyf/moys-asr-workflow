@@ -32,14 +32,11 @@ class LogLineFormattingTests(unittest.TestCase):
 
     def test_error_event_renders_code_and_detail(self) -> None:
         line = format_log_line({"type": "error", "code": "transcription_failed", "detail": "出错了"}, now=_now())
-        self.assertIn("2026-08-29T14:32:01", line)
-        self.assertIn("[MAW v", line)
-        self.assertTrue(line.endswith("[error:transcription_failed] 出错了"))
+        self.assertEqual(line, "14:32:01.123 [error:transcription_failed] 出错了")
 
     def test_error_event_without_code_uses_placeholder(self) -> None:
         line = format_log_line({"type": "error", "detail": "boom"}, now=_now())
-        self.assertIn("2026-08-29T14:32:01", line)
-        self.assertTrue(line.endswith("[error:?] boom"))
+        self.assertEqual(line, "14:32:01.123 [error:?] boom")
 
     def test_postprocess_stream_is_skipped(self) -> None:
         line = format_log_line({"type": "postprocess_stream", "kind": "text", "text": "token"}, now=_now())
