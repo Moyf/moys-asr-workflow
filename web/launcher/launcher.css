@@ -1835,6 +1835,14 @@ textarea::placeholder {
   overflow-wrap: anywhere;
 }
 
+.error-notice-context {
+  margin: 0;
+  color: var(--text-muted);
+  font-size: 12px;
+  line-height: 1.5;
+  overflow-wrap: anywhere;
+}
+
 .error-notice-detail {
   max-height: 160px;
   margin-top: 8px !important;

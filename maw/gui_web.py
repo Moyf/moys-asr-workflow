@@ -67,6 +67,7 @@ from maw.gui_workflow import TranscriptionCancelledError, TranscriptionProcessEr
 from maw.launcher_batch import BatchItem, run_batch
 from maw.output_naming import format_elapsed, maw_root
 from maw.local_log import LocalLogSink, TeeWriter, default_log_directory, install_stdio_tee, redact_sensitive_text
+from maw.diagnostics import app_version, error_context
 from maw.local_debug import local_debug_manifest_path
 from maw.alignment_models import ALIGNMENT_MODELS, alignment_model_by_id, alignment_models_payload, inspect_alignment_model, normalize_alignment_model_id
 from maw.local_runtime import (
@@ -157,8 +158,6 @@ EDITOR_HEALTH_PROBE_PATH: Final = "/api/startup-status"
 # 单次探测超时与总超时分离：后台加载工程期间 GIL 繁忙，轻量端点也可能
 # 短暂超过默认 0.25s，但仍远小于 SERVER_START_TIMEOUT 的总预算。
 EDITOR_HEALTH_PROBE_TIMEOUT: Final = 2.0
-# Keep this aligned with pyproject.toml; release workflows synchronize and verify it.
-BUNDLED_APP_VERSION = "1.8.0-beta.1"
 MOSE_VERSION = "0.1.0"
 
 
@@ -238,14 +237,7 @@ ERROR_MESSAGES: Final[dict[str, str]] = {
 
 def _app_version(paths: object) -> str:
     """Read project.version from pyproject.toml for the hero wordmark; fall back to the bundled release."""
-    root = getattr(paths, "root", None)
-    pyproject = (root / "pyproject.toml") if root else Path("pyproject.toml")
-    try:
-        text = Path(pyproject).read_text(encoding="utf-8")
-    except OSError:
-        return BUNDLED_APP_VERSION
-    match = re.search(r'(?m)^version = "([^"]+)"\r?$', text)
-    return match.group(1) if match else BUNDLED_APP_VERSION
+    return app_version(getattr(paths, "root", None))
 
 
 def _is_ffprobe_start_failure(lines: Sequence[str]) -> bool:
@@ -2160,8 +2152,8 @@ class LauncherApi:
         except OSError as error:
             self._close_server_log()
             detail = f"{url} | {error}"
-            self._persist_start_failure("server_start_failed", detail)
-            return _error_result("port", "server_start_failed", detail)
+            context = self._persist_start_failure("server_start_failed", detail)
+            return _error_result("port", "server_start_failed", detail, context=context)
         if not _wait_for_server(
             url,
             timeout=SERVER_START_TIMEOUT,
@@ -2172,9 +2164,9 @@ class LauncherApi:
             if exit_code is not None:
                 detail = redact_sensitive_text(self._read_server_log())
                 detail = f"{url} | 进程退出码 {exit_code}" + (f"：{detail}" if detail else "")
-                self._persist_start_failure("server_start_failed", detail)
+                context = self._persist_start_failure("server_start_failed", detail)
                 _ = self._stop_owned_server()
-                return _error_result("port", "server_start_failed", detail)
+                return _error_result("port", "server_start_failed", detail, context=context)
             diagnostics = self._server_no_response_diagnostics(
                 url,
                 probe_path=EDITOR_HEALTH_PROBE_PATH,
@@ -2183,10 +2175,10 @@ class LauncherApi:
             detail = f"{url} | 启动超时 {int(SERVER_START_TIMEOUT)} 秒"
             startup_log = str(diagnostics.get("startupLogTail") or "")
             detail += f"：{startup_log}" if startup_log else "：子进程未输出日志"
-            self._persist_start_failure("server_no_response", detail)
+            context = self._persist_start_failure("server_no_response", detail)
             _ = self._stop_owned_server(close_log=False)
             self._close_server_log()
-            result = _error_result("port", "server_no_response", url)
+            result = _error_result("port", "server_no_response", url, context=context)
             result["diagnostics"] = diagnostics
             return result
         self._close_server_log()
@@ -2303,24 +2295,24 @@ class LauncherApi:
             self.alignment_media_path = None
             self.alignment_gap_remove = None
             detail = f"{url} | {error}"
-            self._persist_start_failure("alignment_server_start_failed", detail)
-            return _error_result("", "alignment_server_start_failed", detail)
+            context = self._persist_start_failure("alignment_server_start_failed", detail)
+            return _error_result("", "alignment_server_start_failed", detail, context=context)
 
         if not _wait_for_server(url, timeout=SERVER_START_TIMEOUT):
             exit_code = self.alignment_process.poll() if self.alignment_process else None
             if exit_code is not None:
                 detail = redact_sensitive_text(self._read_alignment_log())
                 detail = f"{url} | process exited with code {exit_code}" + (f": {detail}" if detail else "")
-                self._persist_start_failure("alignment_server_start_failed", detail)
+                context = self._persist_start_failure("alignment_server_start_failed", detail)
                 _ = self._stop_owned_alignment_server()
-                return _error_result("", "alignment_server_start_failed", detail)
+                return _error_result("", "alignment_server_start_failed", detail, context=context)
             _ = self._stop_owned_alignment_server(close_log=False)
             child_log = redact_sensitive_text(self._read_alignment_log())
             self._close_alignment_log()
             detail = f"{url} | 启动超时 {int(SERVER_START_TIMEOUT)} 秒"
             detail += f"：{child_log}" if child_log else "：子进程未输出日志"
-            self._persist_start_failure("alignment_server_no_response", detail)
-            return _error_result("", "alignment_server_no_response", detail)
+            context = self._persist_start_failure("alignment_server_no_response", detail)
+            return _error_result("", "alignment_server_no_response", detail, context=context)
         self._close_alignment_log()
         return {
             "ok": True,
@@ -2448,9 +2440,11 @@ class LauncherApi:
             if close_log:
                 self._close_alignment_log()
 
-    def _persist_start_failure(self, code: str, detail: str) -> None:
+    def _persist_start_failure(self, code: str, detail: str) -> dict[str, str]:
+        context = error_context()
         if self._log_sink is not None:
-            self._log_sink.append({"type": "error", "code": code, "detail": detail})
+            self._log_sink.append({"type": "error", "code": code, "detail": detail, "errorContext": context})
+        return context
 
     def _read_alignment_log(self) -> str:
         log_file = self.alignment_log_file
@@ -3741,6 +3735,8 @@ class LauncherApi:
             self.pump.flush()
 
     def _emit(self, event: Mapping[str, object]) -> None:
+        if event.get("type") == "error":
+            event = {**event, "errorContext": error_context(event.get("errorContext"))}
         if self._log_sink is not None:
             self._log_sink.append(event)
         self.pump.enqueue(event)
@@ -3762,6 +3758,7 @@ def run_app(*, debug: bool = False, devtools: bool = False, server_port: int | N
     paths = default_paths()
     # 事件流与进程内 print/traceback 共用同一个 sink：单锁单文件。
     log_sink = LocalLogSink()
+    log_sink.write_text("MAW v" + _app_version(paths), label="session")
     api = LauncherApi(paths=paths, default_server_port=server_port, log_sink=log_sink)
     install_stdio_tee(log_sink)
     launcher_url = paths.launcher_html.resolve().as_uri()
@@ -4272,8 +4269,8 @@ def _free_local_port() -> int:
         return int(sock.getsockname()[1])
 
 
-def _error_result(field: str, code: str, detail: str = "") -> dict[str, object]:
-    return {"ok": False, "field": field, "code": code, "detail": detail, "error": ERROR_MESSAGES.get(code, detail or code)}
+def _error_result(field: str, code: str, detail: str = "", *, context: object = None) -> dict[str, object]:
+    return {"ok": False, "field": field, "code": code, "detail": detail, "error": ERROR_MESSAGES.get(code, detail or code), "errorContext": error_context(context)}
 
 
 def _burn_crf_override(raw: object) -> int | None:

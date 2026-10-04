@@ -4309,7 +4309,10 @@ class LauncherLogSinkTests(unittest.TestCase):
         api._emit({"type": "log", "message": "hello"})
         api._emit({"type": "error", "code": "transcription_failed", "detail": "boom"})
         self.assertEqual(sink.events[0], {"type": "log", "message": "hello"})
-        self.assertEqual(sink.events[1], {"type": "error", "code": "transcription_failed", "detail": "boom"})
+        context = sink.events[1]["errorContext"]
+        self.assertIn("occurredAt", context)
+        self.assertIn("version", context)
+        self.assertEqual(sink.events[1], {"type": "error", "code": "transcription_failed", "detail": "boom", "errorContext": context})
 
     def test_emit_without_sink_does_not_crash(self) -> None:
         api = LauncherApi(paths=self.paths, window_getter=lambda: self.window)
