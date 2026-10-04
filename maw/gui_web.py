@@ -68,6 +68,7 @@ from maw.launcher_batch import BatchItem, run_batch
 from maw.output_naming import format_elapsed, maw_root
 from maw.local_log import LocalLogSink, TeeWriter, default_log_directory, install_stdio_tee, redact_sensitive_text
 from maw.diagnostics import app_version, error_context
+from maw.file_errors import file_error_code
 from maw.local_debug import local_debug_manifest_path
 from maw.alignment_models import ALIGNMENT_MODELS, alignment_model_by_id, alignment_models_payload, inspect_alignment_model, normalize_alignment_model_id
 from maw.local_runtime import (
@@ -218,6 +219,9 @@ ERROR_MESSAGES: Final[dict[str, str]] = {
     "custom_prompt_required": "A custom prompt is required.",
     "postprocess_config_invalid": "自动后处理配置不完整。",
     "postprocess_failed": "转写已完成，但自动后处理失败。",
+    "intermediate_path_too_long": "中间文件创建失败：文件名或路径过长，请缩短原文件名或目录路径，重新选择文件后重试。",
+    "file_path_too_long": "文件名或路径过长，请缩短原文件名或目录路径，重新选择文件后重试。",
+    "intermediate_file_failed": "中间文件创建或写入失败，请检查目录权限、磁盘空间和文件占用。",
     "subtitle_invalid": "Subtitle or project could not be parsed.",
     "script_invalid": "Script could not be parsed.",
     "match_too_low": "Script and subtitle match coverage is too low.",
@@ -1207,7 +1211,7 @@ class LauncherApi:
             )
             self._emit_postprocess_status("toolbox_status_writing")
         except (OSError, UnicodeError, ValueError, TextConversionUnavailable) as error:
-            return {"ok": False, "field": "postprocessInput", "code": "postprocess_failed", "detail": str(error), "error": str(error)}
+            return {"ok": False, "field": "postprocessInput", "code": file_error_code(error) or "postprocess_failed", "detail": str(error), "error": str(error)}
         return _subtitle_artifact_result(result)
 
     def run_timestamp_alignment(self, payload: Mapping[str, object]) -> dict[str, object]:
@@ -1324,7 +1328,7 @@ class LauncherApi:
         except SubtitleMatchError as error:
             return _error_result("postprocessScriptPath", "subtitle_invalid", str(error))
         except (OSError, UnicodeError, ValueError) as error:
-            return {"ok": False, "field": "postprocessScriptPath", "code": "postprocess_failed", "detail": str(error), "error": str(error)}
+            return {"ok": False, "field": "postprocessScriptPath", "code": file_error_code(error) or "postprocess_failed", "detail": str(error), "error": str(error)}
         return _subtitle_artifact_result(result)
 
     def run_ai_cleanup(self, payload: Mapping[str, object]) -> dict[str, object]:
@@ -1382,7 +1386,7 @@ class LauncherApi:
         except (AiCleanupError, LlmClientError) as error:
             return _llm_error_result("postprocessScriptPath", "postprocess_failed", error)
         except (OSError, UnicodeError, ValueError) as error:
-            return {"ok": False, "field": "postprocessScriptPath", "code": "postprocess_failed", "detail": str(error), "error": str(error)}
+            return {"ok": False, "field": "postprocessScriptPath", "code": file_error_code(error) or "postprocess_failed", "detail": str(error), "error": str(error)}
         return _subtitle_artifact_result(result)
 
     def run_ocr_dedup(self, payload: Mapping[str, object]) -> dict[str, object]:
@@ -1423,7 +1427,7 @@ class LauncherApi:
         except OcrRuntimeCancelled as error:
             return _error_result("ocrModel", "ocr_runtime_cancelled", str(error))
         except (OSError, UnicodeError, ValueError, OcrRuntimeError) as error:
-            return {"ok": False, "field": "ocrVideoPath", "code": "postprocess_failed", "detail": str(error), "error": str(error)}
+            return {"ok": False, "field": "ocrVideoPath", "code": file_error_code(error) or "postprocess_failed", "detail": str(error), "error": str(error)}
         return {"ok": True, **result}
 
     def run_llm_postprocess(self, payload: Mapping[str, object]) -> dict[str, object]:
@@ -1481,7 +1485,7 @@ class LauncherApi:
         except (OSError, UnicodeError, ValueError, RuntimeError) as error:
             if isinstance(error, (LlmClientError, PostprocessStepError)):
                 return _llm_error_result("postprocessInput", "postprocess_failed", error)
-            return {"ok": False, "field": "postprocessInput", "code": "postprocess_failed", "detail": str(error), "error": str(error)}
+            return {"ok": False, "field": "postprocessInput", "code": file_error_code(error) or "postprocess_failed", "detail": str(error), "error": str(error)}
         return _subtitle_artifact_result(result)
 
     def run_ffconcat_rebuild(self, payload: Mapping[str, object]) -> dict[str, object]:
@@ -1499,7 +1503,7 @@ class LauncherApi:
                 ffmpeg_path=ffmpeg,
             )
         except (OSError, ValueError, RuntimeError) as error:
-            return {"ok": False, "field": "postprocessFfconcat", "code": "postprocess_failed", "detail": str(error), "error": str(error)}
+            return {"ok": False, "field": "postprocessFfconcat", "code": file_error_code(error) or "postprocess_failed", "detail": str(error), "error": str(error)}
         return {
             "ok": True,
             "sourceMediaPath": str(result.source_media_path),
@@ -3191,14 +3195,14 @@ class LauncherApi:
                     "detail": str(error),
                 })
             else:
-                self._emit({"type": "error", "code": "transcription_failed", "detail": str(error)})
+                self._emit({"type": "error", "code": file_error_code(error) or "transcription_failed", "detail": str(error)})
             if self.worker is threading.current_thread():
                 self.worker = None
             self.pump.flush()
             return
         # The pywebview worker boundary must report every backend failure to JS.
         except Exception as error:  # noqa: BLE001
-            self._emit({"type": "error", "code": "transcription_failed", "detail": str(error)})
+            self._emit({"type": "error", "code": file_error_code(error) or "transcription_failed", "detail": str(error)})
             if self.worker is threading.current_thread():
                 self.worker = None
             self.pump.flush()
@@ -3288,7 +3292,7 @@ class LauncherApi:
             except Exception as error:  # noqa: BLE001 - postprocess boundary reports separately from ASR.
                 self._emit({
                     "type": "error",
-                    "code": "postprocess_failed",
+                    "code": file_error_code(error) or "postprocess_failed",
                     "detail": str(error),
                     "canRetry": False,
                     "postprocessRunDirectory": str(self.postprocess_workspace_directory or ""),
@@ -3451,7 +3455,7 @@ class LauncherApi:
         except Exception as error:  # noqa: BLE001 - retry boundary reports to the Launcher.
             self._emit({
                 "type": "error",
-                "code": "postprocess_failed",
+                "code": file_error_code(error) or "postprocess_failed",
                 "detail": str(error),
                 "canRetry": True,
                 "postprocessRunDirectory": str(self.postprocess_workspace_directory or ""),
@@ -3737,6 +3741,12 @@ class LauncherApi:
 
     def _emit(self, event: Mapping[str, object]) -> None:
         if event.get("type") == "error":
+            if event.get("code") in {"postprocess_failed", "transcription_failed"}:
+                code = file_error_code(str(event.get("detail") or ""))
+                if code:
+                    event = {**event, "code": code}
+            if event.get("code") in {"file_path_too_long", "intermediate_path_too_long"}:
+                event = {**event, "canRetry": False}
             event = {**event, "errorContext": error_context(event.get("errorContext"))}
         if self._log_sink is not None:
             self._log_sink.append(event)
@@ -4357,12 +4367,12 @@ def _postprocess_pipeline_error_event(
     """Expose retry state and original transcription paths without provider secrets."""
 
     category = str(getattr(error, "category", "") or "")
-    code = "postprocess_provider_response" if category == "provider_response" else "postprocess_failed"
+    code = file_error_code(error) or ("postprocess_provider_response" if category == "provider_response" else "postprocess_failed")
     event: dict[str, object] = {
         "type": "error",
         "code": code,
         "detail": str(error),
-        "canRetry": can_retry,
+        "canRetry": can_retry and not code.endswith("path_too_long"),
         "postprocessRunDirectory": str(error.run_directory),
         "failedStep": error.failed_step,
         "failedIndex": error.failed_index,

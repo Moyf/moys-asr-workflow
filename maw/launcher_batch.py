@@ -11,6 +11,7 @@ from dataclasses import dataclass, replace
 from pathlib import Path
 from threading import Event
 
+from maw.file_errors import file_error_code
 from maw.app_paths import default_env_path
 from maw.ffmpeg import media_duration_seconds
 from maw.gui_workflow import (
@@ -168,7 +169,7 @@ def run_batch(
                 "id": item.item_id,
                 "status": "failed",
                 "index": index,
-                "code": "postprocess_failed" if isinstance(error, PostprocessPipelineError) else "transcription_failed",
+                "code": file_error_code(error) or ("postprocess_failed" if isinstance(error, PostprocessPipelineError) else "transcription_failed"),
                 "error": str(error),
             }
         outcomes.append(outcome)

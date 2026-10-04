@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import errno
 import tempfile
 import unittest
 from pathlib import Path
@@ -1102,17 +1103,85 @@ class PostprocessPipelineTests(unittest.TestCase):
         self.assertTrue(workspace.is_dir())
         self.assertEqual(len(tuple(workspace.iterdir())), 1)
 
+    def test_shared_short_workspace_isolates_same_time_runs(self) -> None:
+        with (
+            mock.patch("maw.output_naming.subfolder_prefs", return_value=(True, True)),
+            mock.patch("maw.postprocess_pipeline.datetime") as clock,
+        ):
+            clock.now.return_value.strftime.return_value = "20261004-120000"
+            first = _create_run_directory(self.media, lang="en")
+            second = _create_run_directory(self.root / "other.mp4", lang="en")
+        self.assertEqual(first.parent, (self.root / "_maw" / "postprocess").resolve())
+        self.assertNotEqual(first, second)
+        self.assertTrue(first.is_dir() and second.is_dir())
+
+    def test_long_media_name_pipeline_fits_without_repeating_stem(self) -> None:
+        stem = "v" * 110
+        media = self.root / (stem + ".mp3")
+        project = self.root / (stem + ".mosp")
+        srt = self.root / (stem + ".srt")
+        media.write_bytes(b"audio")
+        project.write_bytes(self.project.read_bytes())
+        srt.write_bytes(self.srt.read_bytes())
+        real_mkstemp = tempfile.mkstemp
+        paths = []
+
+        def limited_mkstemp(**kwargs):
+            # Model Windows MAX_PATH even on hosts with long paths enabled.
+            estimated = Path(kwargs["dir"]) / (kwargs["prefix"] + "12345678" + kwargs["suffix"])
+            if len(str(estimated)) >= 260:
+                raise OSError(errno.ENAMETOOLONG, "File name too long", str(estimated))
+            fd, name = real_mkstemp(**kwargs)
+            paths.append(Path(name))
+            return fd, name
+
+        with mock.patch("tempfile.mkstemp", side_effect=limited_mkstemp):
+            result = run_postprocess_pipeline(
+                self.plan(self.replace_step(), retain=True), media_path=media, project_path=project,
+                srt_path=srt, env_path=self.env_path, ffmpeg_path=None,
+                cancel_event=Event(), ui_language="en",
+            )
+        self.assertTrue(result.srt_path.is_file())
+        self.assertTrue((result.run_directory / (stem + ".postprocess.0.original.mosp")).is_file())
+        self.assertNotIn(stem, str(result.run_directory))
+        self.assertTrue(all(not path.exists() for path in paths))
+        old_path = result.run_directory.parent / (stem + "-20261004-120000") / ("." + stem + ".postprocess.0.original.mosp.12345678.tmp")
+        self.assertGreaterEqual(len(str(old_path)), 260)
+
+    def test_secondary_manifest_failure_preserves_step_error_and_recovery(self) -> None:
+        from maw.file_errors import IntermediateFileError
+        from maw.postprocess_pipeline import _write_manifest
+        failure = IntermediateFileError(OSError(errno.ENOSPC, "disk full"))
+
+        def write_manifest(directory, payload):
+            if payload.get("status") == "failed":
+                raise PermissionError("secondary manifest failure")
+            return _write_manifest(directory, payload)
+
+        with (
+            mock.patch("maw.postprocess_pipeline._write_manifest", side_effect=write_manifest),
+            mock.patch("maw.postprocess_pipeline.run_fixed_process", side_effect=failure),
+        ):
+            with self.assertRaises(PostprocessPipelineError) as caught:
+                run_postprocess_pipeline(
+                    self.plan(self.replace_step()), media_path=self.media, project_path=self.project,
+                    srt_path=self.srt, env_path=self.env_path, ffmpeg_path=None, cancel_event=Event(),
+                )
+        self.assertIs(caught.exception.__cause__, failure)
+        self.assertTrue(caught.exception.run_directory.is_dir())
+        self.assertTrue(self.project.is_file() and self.srt.is_file())
+
     def test_new_run_directories_live_under_localized_workspace(self) -> None:
         chinese_media = self.root / "我的视频.mp3"
         chinese_media.write_bytes(b"audio")
 
         zh_run = _create_run_directory(chinese_media, lang="zh")
         self.assertEqual(zh_run.parent, (self.root / "_maw" / "后处理").resolve())
-        self.assertTrue(zh_run.name.startswith("我的视频-"))
+        self.assertTrue(zh_run.name.startswith("run-"))
 
         en_run = _create_run_directory(self.media, lang="en")
         self.assertEqual(en_run.parent, (self.root / "_maw" / "postprocess").resolve())
-        self.assertTrue(en_run.name.startswith("clip-"))
+        self.assertTrue(en_run.name.startswith("run-"))
 
     def test_resume_still_accepts_an_explicit_legacy_workspace_path(self) -> None:
         old_run = self.root / "MAW-Postprocess" / "run-20260101-120000"

@@ -4209,6 +4209,42 @@ class GuiWebBridgeTests(unittest.TestCase):
         self.assertIn('"code": "transcription_cancelled"', event_script)
         self.assertNotIn('"code": "transcription_failed"', event_script)
 
+    def test_worker_reports_intermediate_creation_failure_before_first_step(self) -> None:
+        import errno
+        from maw.file_errors import IntermediateFileError
+        request = TranscriptionRequest(
+            media_path=self.root / "clip.wav", srt_path=self.root / "clip.srt",
+            postprocess_plan={"enabled": True},
+        )
+        result = TranscriptionResult(self.root / "clip.srt", self.root / "clip.mosp", None)
+        failure = IntermediateFileError(OSError(errno.ENAMETOOLONG, "File name too long"))
+        with (
+            mock.patch("maw.gui_web.run_transcription", return_value=result),
+            mock.patch("maw.gui_web.run_postprocess_pipeline", side_effect=failure),
+        ):
+            self.api._worker_main(request, threading.Event())
+        event_script = self.window.scripts[-1]
+        self.assertIn('"code": "intermediate_path_too_long"', event_script)
+        self.assertIn('"canRetry": false', event_script)
+        self.assertIn('"originalSrtPath":', event_script)
+        self.assertIn('"errorContext":', event_script)
+        self.assertIs(self.api.result, result)
+
+    def test_worker_reports_long_path_from_transcription_subprocess(self) -> None:
+        request = TranscriptionRequest(media_path=self.root / "clip.wav", srt_path=self.root / "clip.srt")
+        failure = TranscriptionProcessError(1, ["OSError: [WinError 206] filename too long"])
+        with mock.patch("maw.gui_web.run_transcription", side_effect=failure):
+            self.api._worker_main(request, threading.Event())
+        self.assertIn('"code": "file_path_too_long"', self.window.scripts[-1])
+
+    def test_long_path_events_never_offer_retry_with_stale_paths(self) -> None:
+        self.api._emit({
+            "type": "error", "code": "intermediate_path_too_long",
+            "detail": "source must be renamed", "canRetry": True,
+        })
+        self.api.pump.flush()
+        self.assertIn('"canRetry": false', self.window.scripts[-1])
+
     def test_worker_exposes_retry_and_original_transcription_for_provider_failure(self) -> None:
         request = TranscriptionRequest(
             media_path=self.root / "clip.wav",
