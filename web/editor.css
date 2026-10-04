@@ -3940,7 +3940,13 @@
    间距约定：区块之间保持 ≥8px 垂直间隔；.gap-remove-field 自带 0 外边距，
    由本区块的容器 gap / margin-top 负责分隔。 */
 .markers-panel { width: min(470px, calc(100vw - 24px)); }
-.markers-actions { margin-top: 8px; display: flex; justify-content: flex-start; }
+.markers-actions { margin-top: 8px; display: flex; flex-wrap: wrap; gap: 8px; justify-content: flex-start; }
+.markers-batch-actions { margin-top: 8px; display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+.markers-batch-actions[hidden] { display: none; }
+#markers-selection-summary { color: var(--text-secondary); font-size: 11px; }
+.markers-item.batch-mode { grid-template-columns: auto minmax(0, 1fr); }
+.markers-item-checkbox { align-self: center; margin: 0 0 0 9px; accent-color: var(--accent); cursor: pointer; }
+.markers-item.checked { border-color: var(--accent-line); background: var(--btn-bg-hover); }
 /* 摘要居左（过滤时更新为过滤结果）+ 搜索框居右，一行排布。 */
 .markers-summary-row {
   margin-top: 8px;

@@ -423,6 +423,7 @@ __WAVEFORM_CSS__
   <div class="gap-remove-panel-body">
     <div class="markers-actions">
       <button type="button" id="markers-add-current" class="markers-inline-button">在播放头添加标记</button>
+      <button type="button" id="markers-batch-select" class="markers-inline-button" aria-pressed="false">批量选择</button>
     </div>
     <div class="markers-summary-row">
       <div class="markers-summary" id="markers-summary" aria-live="polite">尚无标记；在波形顶部标记轨道空白处点击或拖动即可添加。</div>
@@ -451,6 +452,11 @@ __WAVEFORM_CSS__
           </select>
         </label>
       </div>
+    </div>
+    <div class="markers-batch-actions" id="markers-batch-actions" hidden>
+      <button type="button" id="markers-select-all" class="markers-inline-button" title="仅选择当前筛选结果">全选</button>
+      <button type="button" id="markers-delete-selected" class="markers-inline-button danger" disabled>批量删除</button>
+      <span id="markers-selection-summary" aria-live="polite">已选 0 项</span>
     </div>
     <div class="markers-list" id="markers-list" aria-live="polite"></div>
     <footer class="gap-remove-panel-footer">
