@@ -65,6 +65,7 @@ def _run(directory: Path, project_path: Path, script_path: Path, decisions: list
         script_path=script_path,
         output_mode=OutputMode.BOTH,
         output_directory=directory,
+        review_enabled=False,
     )
     artifact = run_ai_cleanup(request, complete=complete)
     output_project = json.loads(
@@ -93,6 +94,17 @@ class AiCleanupTestCase(unittest.TestCase):
 
 
 class ExistingMarkersPreservationTest(AiCleanupTestCase):
+    def test_ai_notes_have_one_prefix_and_outcome_operation(self) -> None:
+        from maw.postprocess_ai_cleanup import _ai_annotation
+        segment = _segment(100, 900, "原文")
+        deletion = _ai_annotation(segment, "删除", "[AI] [AI] 删除: 口误", pending=False)
+        self.assertEqual(deletion["note"], "[AI] 删除：口误")
+        self.assertNotIn("review", deletion)
+        uncertain = _ai_annotation(segment, "替代项", "删除：版本尚不能覆盖原句")
+        self.assertEqual(uncertain["note"], "[AI] 替代项：版本尚不能覆盖原句")
+        self.assertEqual(uncertain["end"], 900)
+        self.assertEqual(uncertain["review"]["status"], "pending")
+
     def test_new_review_markers_preserve_existing_annotations_and_ids(self) -> None:
         existing = {
             "schema": "moy.asr.markers.v1", "custom": {"keep": True},
@@ -116,6 +128,41 @@ class ExistingMarkersPreservationTest(AiCleanupTestCase):
 
 
 class RetakeRemovalTest(AiCleanupTestCase):
+    def test_alt_take_must_preserve_facts_conditions_and_steps(self) -> None:
+        cases = [
+            ("这个方案最多支持10个人同时使用", "这个方案最多支持100个人同时使用"),
+            ("这个方案最多支持十个人同时使用", "这个方案最多支持一百个人同时使用"),
+            ("这个方案的成功率是10%", "这个方案的成功率是10"),
+            ("这个方案不支持离线使用", "这个方案支持离线使用"),
+            ("这个方案可能适合初学者使用", "这个方案适合初学者使用"),
+            ("找到客户后先确认预算再安排演示", "找到客户后先安排演示"),
+            ("This method supports offline use", "This method does not support offline use"),
+        ]
+        for source, replacement in cases:
+            with self.subTest(source=source):
+                project_path, script_path = self.request(_project([
+                    _segment(0, 2000, source), _segment(2000, 4000, replacement),
+                ]), [source, replacement])
+                artifact, output, _ = _run(self.directory, project_path, script_path, _decisions(
+                    c001={"decision": "discard", "scriptLine": source, "reason": "重录", "altTakeId": "c002"},
+                    c002={"decision": "keep", "scriptLine": replacement, "reason": "保留"},
+                ))
+                self.assertFalse(output["segments"][0].get("disabled"))
+                self.assertEqual(artifact.stats["pendingReview"], 1)
+                self.assertTrue(output["markers"]["items"][0]["note"].startswith("[AI] 替代项："))
+
+    def test_matching_number_with_only_filler_removed_is_safe(self) -> None:
+        source, replacement = "最多支持10个人同时使用啊", "最多支持10个人同时使用"
+        project_path, script_path = self.request(_project([
+            _segment(0, 2000, source), _segment(2000, 4000, replacement),
+        ]), [replacement])
+        artifact, output, _ = _run(self.directory, project_path, script_path, _decisions(
+            c001={"decision": "discard", "scriptLine": replacement, "reason": "重录", "altTakeId": "c002"},
+            c002={"decision": "keep", "scriptLine": "", "reason": "保留"},
+        ))
+        self.assertTrue(output["segments"][0].get("disabled"))
+        self.assertEqual(artifact.stats["removed"], 1)
+
     def test_discard_with_similar_alt_take_removes_segment(self) -> None:
         script = [
             "今天我们来讲一个非常重要的知识点",
@@ -142,7 +189,11 @@ class RetakeRemovalTest(AiCleanupTestCase):
         ai_ranges = gap_remove["provenance"]["sources"]["ai_cleanup"]
         self.assertEqual([(item["start"], item["end"]) for item in ai_ranges], [(4000, 8000)])
         self.assertTrue(any(gap["start"] == 4000 and gap["end"] == 8000 for gap in gap_remove["gaps"]))
-        self.assertNotIn("markers", output)
+        annotation = output["markers"]["items"][0]
+        self.assertEqual((annotation["start"], annotation["end"]), (4000, 8000))
+        self.assertTrue(annotation["note"].startswith("[AI] 删除："))
+        self.assertIn("替代字幕", annotation["note"])
+        self.assertNotIn("review", annotation)
         stats = artifact.stats
         assert stats is not None
         self.assertEqual(stats["removed"], 1)
@@ -151,6 +202,52 @@ class RetakeRemovalTest(AiCleanupTestCase):
 
 
 class MicTestRemovalTest(AiCleanupTestCase):
+    def test_discard_disables_only_its_bound_translation_even_when_hidden(self) -> None:
+        for enabled in (True, False):
+            with self.subTest(enabled=enabled):
+                segments = [
+                    {**_segment(0, 2000, "试麦试麦听得到吗"), "id": "trial"},
+                    {**_segment(2000, 6000, "大家好欢迎回到我的频道"), "id": "kept"},
+                    {**_segment(6000, 8000, "这一句请再听一下"), "id": "review"},
+                ]
+                translations = [
+                    {"id": "ext-trial", "start": 100, "end": 1900, "text": "Mic test"},
+                    {"id": "ext-kept", "start": 2000, "end": 6000, "text": "Welcome", "disabled": True},
+                    {"id": "ext-review", "start": 6000, "end": 8000, "text": "Please review"},
+                    {"id": "ext-free", "start": 8000, "end": 9000, "text": "Independent"},
+                ]
+                multi = {
+                    "schema": "moy.asr.multi_subtitle.v1", "enabled": enabled, "display_mode": "both",
+                    "tracks": [
+                        {"id": "translation", "role": "extension", "name": "译文",
+                         "split_mode": "word", "segments": translations},
+                        {"id": "independent", "role": "extension", "name": "独立副轨",
+                         "split_mode": "word", "segments": [
+                             {"id": "overlapping", "start": 0, "end": 2000, "text": "Independent"}]},
+                    ],
+                    "bindings": [
+                        {"id": f"binding-{main}", "track_id": "translation",
+                         "main_segment_ids": [main], "extension_segment_ids": [extension]}
+                        for main, extension in (("trial", "ext-trial"), ("kept", "ext-kept"), ("review", "ext-review"))
+                    ],
+                }
+                source = _project(segments, multi_subtitle=multi)
+                project_path, script_path = self.request(source, [segments[1]["text"]])
+                artifact, output, _ = _run(self.directory, project_path, script_path, _decisions(
+                    c001={"decision": "discard", "scriptLine": "", "reason": "试麦", "evidence": "听得到吗"},
+                    c002={"decision": "keep", "scriptLine": segments[1]["text"], "reason": "对应文稿"},
+                    c003={"decision": "review", "scriptLine": "", "reason": "请试听"},
+                ))
+                self.assertTrue(output["segments"][0]["disabled"])
+                result = output["multi_subtitle"]["tracks"][0]["segments"]
+                self.assertEqual(result[0], {**translations[0], "disabled": True})
+                self.assertEqual(result[1:], translations[1:])
+                self.assertEqual(output["multi_subtitle"]["tracks"][1]["segments"], multi["tracks"][1]["segments"])
+                self.assertEqual(output["multi_subtitle"]["enabled"], enabled)
+                self.assertEqual(len(output["multi_subtitle"]["bindings"]), 3)
+                self.assertEqual(json.loads(project_path.read_text(encoding="utf-8")), source)
+                self.assertEqual(artifact.stats["removed"], 1)
+
     def test_process_talk_discard_with_evidence_is_removed(self) -> None:
         script = ["大家好欢迎回到我的频道"]
         segments = [
@@ -168,7 +265,7 @@ class MicTestRemovalTest(AiCleanupTestCase):
         assert stats is not None
         self.assertEqual(stats["removed"], 1)
         self.assertEqual(stats["extrasKept"], 0)
-        self.assertNotIn("markers", output)
+        self.assertEqual(output["markers"]["items"][0]["note"], "[AI] 删除：试麦")
 
 
 class RephraseKeptTest(AiCleanupTestCase):
@@ -205,6 +302,18 @@ class LocalSlipKeptTest(AiCleanupTestCase):
 
 
 class UnsafeDiscardDowngradeTest(AiCleanupTestCase):
+    def test_repetition_cannot_remove_every_copy_of_information(self) -> None:
+        text = "先确认预算然后安排演示"
+        project, script = self.request(_project([
+            _segment(0, 2000, text), _segment(2000, 4000, text),
+        ]), ["其他参考文稿"])
+        artifact, output, _ = _run(self.directory, project, script, _decisions(
+            c001={"decision": "discard", "scriptLine": "", "reason": "重复", "evidence": text},
+            c002={"decision": "discard", "scriptLine": "", "reason": "重复", "evidence": text},
+        ))
+        self.assertTrue(any(not segment.get("disabled") for segment in output["segments"]))
+        self.assertGreaterEqual(artifact.stats["pendingReview"], 1)
+
     def test_tangent_without_local_pattern_becomes_review(self) -> None:
         # 额外信息：LLM 想删，但 evidence 命中不了本地流程模式 → 降级复核。
         script = ["大家好欢迎回到我的频道"]
@@ -341,6 +450,52 @@ class ClipPayloadPrivacyTest(AiCleanupTestCase):
         self.assertNotIn("/Users/", joined)
         self.assertNotIn("start", joined)
         self.assertNotIn("end", joined)
+
+
+class BatchContextTest(AiCleanupTestCase):
+    def test_neighboring_takes_are_read_only_but_can_be_referenced(self) -> None:
+        from unittest import mock
+        from maw import postprocess_ai_cleanup as cleanup
+        lines = ["开始讲这个功能", "这个功能提升效率啊", "这个功能提升效率", "继续讲使用方法", "最后总结"]
+        project, script = self.request(_project([
+            _segment(i * 1000, (i + 1) * 1000, text) for i, text in enumerate(lines)
+        ]), lines)
+        batches = []
+
+        def complete(_prompt, rows):
+            batches.append(rows)
+            return {"decisions": [
+                {"id": row["id"], "scriptLine": row["scriptLine"], "reason": "保留",
+                 **({"decision": "discard", "altTakeId": "c003"} if row["id"] == "c002" else {"decision": "keep"})}
+                for row in rows if row.get("contextOnly") != "true"
+            ]}
+
+        with mock.patch.object(cleanup, "CLIPS_PER_REQUEST", 2):
+            artifact = run_ai_cleanup(AiCleanupRequest(
+                project_path=project, srt_path=None, script_path=script,
+                output_mode=OutputMode.BOTH, output_directory=self.directory, review_enabled=False), complete=complete)
+        self.assertEqual([[row["id"] for row in rows if row.get("contextOnly") != "true"]
+                          for rows in batches], [["c001", "c002"], ["c003", "c004"], ["c005"]])
+        self.assertEqual([row["id"] for row in batches[0] if row.get("contextOnly") == "true"], ["c003", "c004", "c005"])
+        self.assertEqual([row["id"] for row in batches[-1] if row.get("contextOnly") == "true"], ["c002", "c003", "c004"])
+        self.assertTrue(json.loads(artifact.project_path.read_text(encoding="utf-8"))["segments"][1]["disabled"])
+        self.assertTrue(all("start" not in row and "speaker" not in row for rows in batches for row in rows))
+
+    def test_deciding_a_context_row_is_rejected_without_output(self) -> None:
+        from unittest import mock
+        from maw import postprocess_ai_cleanup as cleanup
+        project, script = self.request(_project([
+            _segment(i * 1000, (i + 1) * 1000, "保留内容") for i in range(3)
+        ]), ["保留内容"])
+
+        def complete(_prompt, rows):
+            return {"decisions": [{"id": row["id"], "decision": "keep", "scriptLine": row["scriptLine"]}
+                                   for row in rows]}
+
+        with mock.patch.object(cleanup, "CLIPS_PER_REQUEST", 2), self.assertRaises(LlmClientError):
+            run_ai_cleanup(AiCleanupRequest(project_path=project, srt_path=None, script_path=script,
+                                           output_mode=OutputMode.BOTH), complete=complete)
+        self.assertEqual(list(self.directory.glob("*.mosp")), [project])
 
 
 class InvalidResponseTest(AiCleanupTestCase):
@@ -519,7 +674,8 @@ class CleanupNotesTest(AiCleanupTestCase):
             prompts.append(prompt)
             if len(prompts) == 1:
                 return {"decisions": []}
-            return {"decisions": [{"id": row["id"], "decision": "keep", "reason": "保留", "scriptLine": row["scriptLine"]} for row in clips]}
+            return {"decisions": [{"id": row["id"], "decision": "keep", "reason": "保留", "scriptLine": row["scriptLine"]}
+                                  for row in clips if row.get("contextOnly") != "true"]}
 
         with mock.patch.object(cleanup, "CLIPS_PER_REQUEST", 1):
             artifact = run_ai_cleanup(AiCleanupRequest(

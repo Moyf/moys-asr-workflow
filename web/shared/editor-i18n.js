@@ -19,6 +19,14 @@
     "打开「标记与区段」管理窗：查看、筛选、编辑通用标记与区段（含 AI 复核项）": "Open markers and regions: view, filter and edit annotations, including AI review items",
     "关闭标记与区段工具窗": "Close markers and regions",
     "在播放头添加标记": "Add marker at playhead",
+    "批量选择": "Batch select",
+    "退出批量选择": "Exit batch selection",
+    "全选": "Select all",
+    "取消全选": "Deselect all",
+    "批量删除": "Delete selected",
+    "批量删除标记与区段": "Delete selected markers and regions",
+    "仅选择当前筛选结果": "Select only the current filtered results",
+    "选择此标记或区段": "Select this marker or region",
     "尚无标记；在波形顶部标记轨道空白处点击或拖动即可添加。": "No markers yet. Click or drag the marker lane above the waveform to add one.",
     "按名称或备注搜索": "Search names or notes",
     "复核": "Review",
@@ -1133,6 +1141,10 @@
     if (match) return `Added region ${match[1]}`;
     match = /^已删除(标记|区段)「(.+)」$/.exec(text);
     if (match) return `Deleted ${translateText(match[1], EN).toLowerCase()} “${match[2]}”`;
+    match = /^已选 (\d+) 项$/.exec(text);
+    if (match) return `Selected ${match[1]} item(s)`;
+    match = /^已删除 (\d+) 项标记与区段$/.exec(text);
+    if (match) return `Deleted ${match[1]} marker(s) and region(s)`;
     match = /^(主字幕|副字幕)\s+(\d+)$/.exec(text);
     if (match) return `${translateText(match[1], EN)} ${match[2]}`;
     match = /^已读取\s+(\d+)\s+种本机字体$/.exec(text);

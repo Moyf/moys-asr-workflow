@@ -336,6 +336,8 @@ window.MAWE.register('utils-multi-subtitle', function createUtilsModule(dependen
         copy.items = segment.items.map((item) => ({ ...item }));
       }
       copySubtitleColorFields(segment, copy);
+      if (segment.speaker != null) copy.speaker = segment.speaker;
+      if (typeof segment.disabled === 'boolean') copy.disabled = segment.disabled;
       if (segment._dirty) copy._dirty = true;
       return copy;
     });

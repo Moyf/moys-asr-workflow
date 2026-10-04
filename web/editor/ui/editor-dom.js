@@ -942,6 +942,11 @@
 
 
   const markersAddCurrentButton = document.getElementById('markers-add-current');
+  const markersBatchSelectButton = document.getElementById('markers-batch-select');
+  const markersBatchActions = document.getElementById('markers-batch-actions');
+  const markersSelectAllButton = document.getElementById('markers-select-all');
+  const markersDeleteSelectedButton = document.getElementById('markers-delete-selected');
+  const markersSelectionSummary = document.getElementById('markers-selection-summary');
 
 
   const markersSearchInput = document.getElementById('markers-search');
@@ -1359,6 +1364,11 @@
     markersManageButton,
     markersSummary,
     markersAddCurrentButton,
+    markersBatchSelectButton,
+    markersBatchActions,
+    markersSelectAllButton,
+    markersDeleteSelectedButton,
+    markersSelectionSummary,
     markersSearchInput,
     markersFilterKind,
     markersFilterColor,
