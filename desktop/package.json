@@ -3,11 +3,14 @@
   "private": true,
   "version": "1.8.0-beta.1",
   "description": "MOSE — Moy's Open Subtitle Editor (Electron desktop app)",
+  "homepage": "https://github.com/Moyf/moys-asr-workflow",
+  "license": "AGPL-3.0-only",
   "main": "src/main.cjs",
   "scripts": {
     "dev": "electron .",
     "start": "electron .",
-    "build": "electron-builder --win --x64 --dir",
+    "build": "node scripts/build.mjs",
+    "build:dir": "node scripts/build.mjs --dir",
     "smoke": "electron . --mose-smoke",
     "test": "node --test tests/*.mjs"
   },
@@ -30,6 +33,25 @@
       {
         "from": "../assets/maw.ico",
         "to": "assets/maw.ico"
+      },
+      {
+        "from": "../assets/maw-icon-rounded.png",
+        "to": "assets/maw.png"
+      },
+      {
+        "from": "../assets",
+        "to": "assets",
+        "filter": [
+          "mosp.*"
+        ]
+      },
+      {
+        "from": "../LICENSE",
+        "to": "LICENSE-MAW"
+      },
+      {
+        "from": "../THIRD_PARTY_NOTICES.md",
+        "to": "THIRD_PARTY_NOTICES.md"
       }
     ],
     "win": {
@@ -43,5 +65,6 @@
       ],
       "icon": "../assets/maw.ico"
     }
-  }
+  },
+  "author": "Moyf"
 }

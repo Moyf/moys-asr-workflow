@@ -33,6 +33,32 @@
     return serverProjectSavingEnabled() || projectFileHandle !== null;
   }
 
+  function bindNativeProject(result) {
+    if (!MaweBoot.SERVER_CONFIG) return;
+    projectFileHandle = null;
+    const bound = result.bound === true;
+    Object.assign(MaweBoot.SERVER_CONFIG, {
+      canSave: bound,
+      canPortableStickerExport: bound, canOtozStickerExport: bound, canOtozTimelineExport: bound,
+      canLottieExport: bound, canOgrafExport: bound,
+      projectPath: bound ? result.projectPath || result.path : '',
+      ...(result.recentProjects ? { recentProjects: result.recentProjects } : {}),
+    });
+    projectCheckpointed = true;
+    configureRecentProjects();
+    configureServerSaveControls();
+    scheduleAutoSave();
+    MaweDynamicExports.updateLottieExportButton();
+    MaweDynamicExports.updateOgrafExportButton();
+    const label = document.getElementById('json-name');
+    if (label && bound) {
+      const nativePath = MaweBoot.SERVER_CONFIG.projectPath;
+      label.title = nativePath;
+      label.onclick = () => MaweExportTimeline.copyText(nativePath, `已复制：${nativePath}`);
+    }
+    if (!bound) MaweHint.flashHint(`工程已保存，但重新绑定失败：${result.error || ''}。请重新打开新文件。`, 'warning');
+  }
+
 
 
   function parseProjectValidationTarget(detail) {
@@ -293,8 +319,9 @@
     if (MaweDom.saveProjectDropdown) MaweDom.saveProjectDropdown.hidden = !(hasServer || projectFileHandle !== null);
     [MaweDom.saveProjectButton, document.getElementById('save-project-menu-btn')].forEach((button) => {
       if (!button) return;
-      button.disabled = !projectSaveTargetEnabled();
-       if (!projectSaveTargetEnabled()) button.title = '当前服务器未绑定工程；请先导出 .mosp，再重新打开该文件';
+      button.disabled = !projectSaveTargetEnabled() && !window.MOSEDesktop?.available;
+      if (!projectSaveTargetEnabled()) button.title = window.MOSEDesktop?.available
+        ? '选择文件位置并保存工程' : '当前服务器未绑定工程；请先导出 .mosp，再重新打开该文件';
     });
     if (MaweDom.saveProjectButton && projectSaveTargetEnabled()) {
       MaweDom.saveProjectButton.title = '保存回当前工程文件（Ctrl(Cmd)+S）';
@@ -375,22 +402,31 @@
 
   let suppressBeforeUnload = false;
 
-  async function openDesktopProjectPath(projectPath) {
+  async function openDesktopProjectPath(projectPath, { confirmed = false, mediaPath = null } = {}) {
     if (!MaweBoot.SERVER_CONFIG?.desktopOpenProjectUrl || typeof projectPath !== 'string' || !projectPath.trim()) return;
-    if (hasUnsavedProjectChanges()
+    if (projectSaveInFlight || projectCheckpointInFlight) {
+      MaweHint.flashHint('工程正在保存，请稍候再试', 'warning');
+      return false;
+    }
+    if (!confirmed && hasUnsavedProjectChanges()
         && !confirm('当前有未保存的改动，是否确定打开新工程？将丢失未保存内容。')) return;
+    const finishLoading = MaweLoadingProgress.beginEditorLoading('正在打开工程…', 5);
     try {
       const response = await MaweHost.server.fetch(MaweBoot.SERVER_CONFIG.desktopOpenProjectUrl, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ path: projectPath }),
+        body: JSON.stringify({ path: projectPath, ...(mediaPath ? { mediaPath } : {}) }),
       });
       const result = await response.json().catch(() => ({}));
       if (!response.ok || !result.ok) throw new Error(result.error || `服务器返回 ${response.status}`);
       suppressBeforeUnload = true;
       window.location.reload();
+      return true;
     } catch (error) {
       MaweHint.flashHint(`打开工程失败：${error.message || error}`, 'warning');
+      return false;
+    } finally {
+      finishLoading();
     }
   }
 
@@ -432,6 +468,7 @@
         error.missing = result.missing === true;
         throw error;
       }
+      suppressBeforeUnload = true;
       window.location.reload();
     } catch (error) {
       if (error?.missing) {
@@ -606,6 +643,7 @@
     scheduleAutoSave,
     configureServerAutoSave,
     hasUnsavedProjectChanges,
+    bindNativeProject,
     openDesktopProjectPath,
     get suppressBeforeUnload() { return suppressBeforeUnload; },
     scheduleAutoSaveFlush,

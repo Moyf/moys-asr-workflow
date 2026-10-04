@@ -160,6 +160,13 @@ function applyCanonicalProject(data, filename) {
     }
     MaweServerSave.projectCheckpointInFlight = true;
     try {
+      if (window.MOSEDesktop?.available) {
+        const result = await window.MOSEDesktop.saveProjectAs({ project, suggestedName, newProject: true });
+        if (result.canceled) return false;
+        applyCanonicalProject(result.project, result.filename);
+        MaweServerSave.bindNativeProject(result);
+        return true;
+      }
       if (!MaweHost.files.hasSavePicker() || !MaweHost.runtime.hasUserActivation()) {
         // 检查点只用于确认后续导入可以继续；无用户手势时不能弹出保存对话框，
         // 直接建立内存工程检查点，后续仍通过显式导出保存。
@@ -215,6 +222,7 @@ function applyCanonicalProject(data, filename) {
       MaweBoot.SERVER_CONFIG.canPortableStickerExport = false;
       MaweBoot.SERVER_CONFIG.canLottieExport = false;
       MaweBoot.SERVER_CONFIG.canOgrafExport = false;
+      if (MaweBoot.SERVER_CONFIG.desktopMode) MaweBoot.SERVER_CONFIG.projectPath = '';
     }
     MaweServerSave.configureServerSaveControls();
     MaweDynamicExports.updateLottieExportButton();

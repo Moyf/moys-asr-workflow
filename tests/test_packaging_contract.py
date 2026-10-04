@@ -494,15 +494,21 @@ class PackagingContractTests(unittest.TestCase):
         self.assertIn(b"ic07", icon)
         self.assertIn(b"ic08", icon)
 
-    def test_macos_release_workflow_publishes_maw_archives_without_mose_or_checksums(self) -> None:
-        """Given a macOS arm64 release, When packaging runs, Then only MAW app variants are uploaded."""
+    def test_native_release_workflow_builds_mose_with_backend_and_project_icons(self) -> None:
+        """Native Electron artifacts include a backend and run packaged smoke on their own OS."""
         workflow = read_text(".github/workflows/release.yml")
 
         self.assertIn("os: macos-14", workflow)
         self.assertIn("arch: arm64", workflow)
         self.assertIn("https://www.osxexperts.net/ffmpeg81arm.zip", workflow)
         self.assertIn("https://www.osxexperts.net/ffprobe81arm.zip", workflow)
-        self.assertNotIn("MOSE.app", workflow)
+        self.assertIn("MOSE.app", workflow)
+        self.assertIn("MOSE-macOS-arm64-*.dmg", workflow)
+        self.assertIn("MOSE-Linux-x64-*.AppImage", workflow)
+        self.assertIn("MOSE-Linux-x64-*.deb", workflow)
+        self.assertIn("linux-unpacked/mose --mose-smoke", workflow)
+        self.assertIn("Contents/Resources/backend/MAW.app", workflow)
+        self.assertIn("scripts.build_project_icon --check", workflow)
         self.assertNotIn("MAW-MOSE-Windows-x64-${{ steps.version.outputs.version }}.zip", workflow)
         self.assertIn("actions/setup-node@v4", workflow)
         self.assertNotIn("dtolnay/rust-toolchain@stable", workflow)
@@ -538,7 +544,7 @@ class PackagingContractTests(unittest.TestCase):
         self.assertIn('zip -qry "$GITHUB_WORKSPACE/$StandardArchive" MAW.app', macos_workflow)
         self.assertIn('zip -qry "$GITHUB_WORKSPACE/$LiteArchive" MAW-lite.app', macos_workflow)
         self.assertIn('FAQ-常见问题.txt', macos_workflow)
-        self.assertNotIn("MOSE.app", macos_workflow)
+        self.assertIn("MOSE.app", macos_workflow)
         self.assertIn("MAW-lite-macOS-arm64-*.zip", macos_workflow)
         self.assertNotIn(".zip.sha256", macos_workflow)
 

@@ -30,6 +30,21 @@ if (!MaweStickerRoot.stickerRootServerEnabled) {
   MaweStickerRoot.stickerRootInput.disabled = true;
   MaweStickerRoot.stickerRootRead.disabled = true;
 }
+const stickerRootBrowse = document.getElementById('sticker-root-browse');
+if (stickerRootBrowse && window.MOSEDesktop?.available) {
+  stickerRootBrowse.hidden = false;
+  stickerRootBrowse.addEventListener('click', async () => {
+    try {
+      const directory = await window.MOSEDesktop.chooseDirectory();
+      if (directory) {
+        MaweStickerRoot.stickerRootInput.value = directory;
+        MaweStickerRoot.stickerRootRead.click();
+      }
+    } catch (error) {
+      MaweStickerRoot.flashStickerRootHint(error.message || String(error), 'warning');
+    }
+  });
+}
 
 document.getElementById('sticker-root-btn')?.addEventListener('click', () => {
   MaweStickerRoot.stickerRootInput.value = MaweBoot.STICKER_ROOT || '';

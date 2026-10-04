@@ -325,8 +325,8 @@ class EditorAssetTests(unittest.TestCase):
             "MaweCoreState.waveformLoadedFromProject = MaweCoreState.waveformEditor.setPayload(MaweBoot.DATA.waveform",
             waveform_init,
         )
-        self.assertIn("const preserveProjectWaveform = MaweCoreState.waveformLoadedFromProject", media_load)
-        self.assertIn("if (MaweCoreState.waveformEditor && !preserveProjectWaveform)", media_load)
+        self.assertRegex(media_load, r"const preserveProjectWaveform = [^\n]*MaweCoreState\.waveformLoadedFromProject")
+        self.assertRegex(media_load, r"if \(MaweCoreState\.waveformEditor && !preserveProjectWaveform(?: && !native)?\)")
         self.assertIn("getPayload()", waveform)
 
     def test_reapeaks_waveform_is_the_default_shape_source(self) -> None:

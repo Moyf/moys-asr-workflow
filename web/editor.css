@@ -2879,6 +2879,7 @@
   .modal .modal-check-row input { margin: 0; }
   .modal .batch-selected-only-hint { margin: 0; color: var(--text-faint); }
   .modal .modal-field-row { display: flex; gap: 6px; align-items: stretch; }
+  #sticker-root-modal .modal-field-row { gap: 8px; margin-top: 8px; }
   .modal .modal-field-row input[type=text] { flex: 1 1 auto; width: auto; }
   .modal .modal-field-row button {
     flex: 0 0 auto; padding: 0 12px;

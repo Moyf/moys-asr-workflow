@@ -54,14 +54,18 @@ def build_download_section(tag: str, failed_platforms: frozenset[str]) -> str:
     """Build the per-platform download list; asset names mirror the CI workflow."""
     sections = [
         ("windows", "Windows 🪟", [
+            ("MAW + MOSE 安装版", f"MAW-Setup-Windows-x64-{tag}.exe"),
             ("默认下载", f"MAW-Windows-x64-{tag}.zip"),
             ("装有 ffmpeg 时，可下载轻量版", f"MAW-lite-Windows-x64-{tag}.zip"),
         ]),
         ("macos", "macOS 🍎", [
+            ("MOSE 独立编辑器", f"MOSE-macOS-arm64-{tag}.dmg"),
             ("默认下载", f"MAW-macOS-arm64-{tag}.zip"),
             ("装有 ffmpeg 时，可下载轻量版", f"MAW-lite-macOS-arm64-{tag}.zip"),
         ]),
         ("linux", "Linux 🐧", [
+            ("MOSE 独立编辑器", f"MOSE-Linux-x64-{tag}.AppImage"),
+            ("MOSE Debian / Ubuntu 安装包", f"MOSE-Linux-x64-{tag}.deb"),
             ("默认下载", f"MAW-Linux-x86_64-{tag}.AppImage"),
         ]),
     ]

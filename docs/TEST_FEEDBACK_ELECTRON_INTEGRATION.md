@@ -15,13 +15,13 @@
 | 编号 | 范围 | 处理项 | 类型 | 状态 |
 | --- | --- | --- | --- | --- |
 | 1 | 分支集成 | 合入最新 main，解决旧单体前端与模块拆分、Launcher、Server 冲突 | 修改 | 已修复 |
-| 2 | 工程打开 | 原生选择、文件关联、命令行、拖拽统一真实路径并更新最近工程 | 修改 | 进行中 |
-| 3 | 工程保存 | 原生新建/另存为，持续保存绑定、相对媒体路径和取消恢复 | 修改 | 待处理 |
-| 4 | 媒体与相邻资源 | 媒体/字幕拖拽、路径识别、重定位、sidecar、目录选择 | 修改 | 待处理 |
-| 5 | 三端打包 | Windows/macOS/Linux 后端布局、Electron 产物、关联与工程图标 | 修改 | 待处理 |
-| 6 | 桌面生命周期 | 安全 IPC、单实例、未保存确认、窗口标题、后端清理与平台菜单 | 修改 | 待处理 |
-| 7 | 文档与变更说明 | 实际使用方式、平台矩阵、已知验证边界和 CHANGELOG | 修改 | 待处理 |
-| 8 | 验证 | 单元/服务器/交互/本地打包检查，分别记录实测与未验证项 | 修改 | 待处理 |
+| 2 | 工程打开 | 原生选择、文件关联、命令行、拖拽统一真实路径并更新最近工程 | 修改 | 已修复 |
+| 3 | 工程保存 | 原生新建/另存为，持续保存绑定、相对媒体路径和取消恢复 | 修改 | 已修复 |
+| 4 | 媒体与相邻资源 | 媒体/字幕拖拽、路径识别、重定位、sidecar、目录选择 | 修改 | 已修复 |
+| 5 | 三端打包 | Windows/macOS/Linux 后端布局、Electron 产物、关联与工程图标 | 修改 | 已修复 |
+| 6 | 桌面生命周期 | 安全 IPC、单实例、未保存确认、窗口标题、后端清理与平台菜单 | 修改 | 已修复 |
+| 7 | 文档与变更说明 | 实际使用方式、平台矩阵、已知验证边界和 CHANGELOG | 修改 | 进行中 |
+| 8 | 验证 | 单元/服务器/交互/本地打包检查，分别记录实测与未验证项 | 修改 | 阻塞 |
 | 9 | 浏览器本质限制 | Chromium 解码内存、新增 ASR/导出格式不由 Electron 自动解决 | 说明 | 仅说明 |
 
 ## 处理记录
@@ -36,7 +36,60 @@
 
 ### 2. 工程打开
 
-- 现有原生对话框只覆盖按钮；拖拽和网页 input 仍走 Blob 流程，macOS 缺 `open-file` 事件、Linux 没有关联入口，继续完善。
+- 原生选择、input 和拖拽工程都使用 Electron `webUtils.getPathForFile` 提供的真实路径；与媒体一起拖入时把媒体覆盖路径一次传入，保留“作为副字幕”的原有选择。
+- 桌面模式允许打开媒体已移动的工程并绑定保存、记录最近工程；普通 Server 的缺媒体错误契约保持原样。补齐 macOS `open-file` 与关闭后重新激活窗口入口，平台关联产物在第 5 项验收。
+- `tests.test_desktop_editor` 4/4：缺媒体可编辑可保存及最近记录、公开加载契约、损坏文件不替换当前工程、桌面状态接口鉴权与公开模式 404。
+- 实际 Windows Electron 交互 1/1：原生按钮（对话框返回路径由测试替身提供）、真实 file input 的路径识别、两项最近记录、绑定保存与缺媒体提示，未出现页面 JS 错误。首次启动失败因 Electron 44 的 npm 包延迟下载二进制；完成下载后 smoke 与交互测试通过。
+- 未验证边界：Explorer/Finder/桌面环境中的安装后双击、原生对话框人工选择与 macOS/Linux 运行需分别验证。
+
+### 阶段汇总（1–2）
+
+最新 main 已合入，真实工程打开链路已恢复并通过 Server 与 Windows Electron 检查；下一步实现原生新建/另存为和媒体重定位。三端系统集成仍未验收。
+
+### 3. 工程保存
+
+- 原生 Save Dialog 返回的目标只在 Electron 主进程写入；Renderer 没有任意路径写入 IPC，Server 新接口只校验载荷、不写任意路径。
+- 新建/另存为原子写入 UTF-8/LF，覆盖前保留 `.bak`；随后通过现有打开契约绑定新文件并更新最近记录。相对媒体按旧工程目录解析，另存到其他目录仍指向原媒体。取消不修改绑定和脏状态。
+- 保留请求在途的新编辑；如果磁盘写入成功但重新绑定失败，明确提示并停用旧工程写回。
+- Node 桌面辅助测试 19/19，桌面 Server 测试 5/5；Windows Electron 交互扩展覆盖取消另存为、跨目录另存为、原文件保留、持续保存新文件和原生新建，全部通过。原生对话框返回值由测试替身选择，实际保存/绑定/文件写入由产品代码完成。
+
+### 4. 媒体与相邻资源
+
+- 原生媒体选择与真实 File 路径通过 Server 生成 metadata、波形与相邻缓存，字幕导入保留所选媒体的绝对路径；不再使用 Blob 解码来处理桌面本地媒体。
+- 媒体先暂存、播放器 metadata 成功后再接管；损坏媒体失败时保留当前工程及绑定，过期 ticket 不能替换后来打开的工程。公开 Server 不开放这些路径接口。
+- 表情包目录支持原生文件夹选择，继续使用既有授权扫描；新按钮行的 gap 和上方间距实测均至少 8px，已截图自查。
+- `tests.test_desktop_editor` 6/6；Windows `desktop/e2e/project-flow.mjs` 1/1 综合流程通过，涵盖 WAV 加载、波形、SRT 后保存、损坏媒体回滚、目录选择和间距；页面无 JS 错误。前端语法/顺序与 `git diff --check` 通过。
+- 未验证边界：操作系统原生对话框由测试替身提供选择结果；macOS/Linux 运行与安装后关联尚未实测。
+
+### 阶段汇总（3–4）
+
+原生新建、另存为、持续保存和本地媒体/目录流程已通过 Windows Electron 交互及 Server 契约检查。接下来完善跨平台后端布局、工程文件图标与系统关联。
+
+### 5. 三端打包与工程关联
+
+- Windows 保持单套 MAW/Python/FFmpeg 的套件布局；macOS/Linux 增加随应用携带原生后端的 DMG/ZIP、AppImage/DEB，按原生系统和架构构建，不能拿 Windows 二进制跨平台运行。
+- 新增可重现的 MOSP 文档 PNG/ICO/ICNS；Windows Installer 与便携注册使用该图标并添加 OpenWithProgids，尊重已有默认应用。macOS 声明 MOSP UTI 与文档图标；Linux DEB 安装 MIME，AppImage 提供“添加工程打开方式”菜单，仅写当前用户 XDG 数据，不改默认应用。
+- Linux 保留 electron-builder 原有 sandbox/AppArmor 安装处理，滤除后端里会污染 Mesa 的旧运行库。Launcher 补充 Linux MOSE 查找。
+- Release workflow 增加原生构建、打包后 smoke、Electron 交互与独立 MOSE 产物；修复合并后重复下载步骤和 Python heredoc 缩进。没有触发远端工作流或发布。
+- `npm test --prefix desktop` 22/22、MOSP 三格式检查、Ruff 与 workflow YAML 解析通过；Windows Electron build、当前源码 PyInstaller build、staging 和打包后 backend/page/exit smoke 通过。此前错误的 Release notes 测试模块名已识别，收尾使用实际 `tests.test_release_notes`。
+- 未验证边界：Windows 安装后 Explorer 双击尚未实测（本机无 Inno Setup）；macOS/Linux 原生产物与 OS 关联必须在相应系统/CI 验收，不能由配置与单元检查替代。本地打包检查使用开发者已有 FFmpeg，仅作为测试产物，不是发行包。
+
+### 6. 桌面生命周期
+
+- IPC 限于当前编辑器的主 frame 和精确后端 origin；窗口禁用 Node API，原生写入目标只取主进程 Save Dialog。标题、macOS represented filename、系统最近文档与工程真实路径同步，Windows 使用固定 AppUserModelId。
+- 关闭/退出先处理未保存确认，取消时继续保留后端。macOS 关闭后可重新激活，文件关联事件也会重建窗口；macOS/Linux 提供原生文件菜单与平台快捷键。
+- 确认退出后在根进程仍存活时停止整个已拥有的进程树，避免 daemon 缓存线程的 FFmpeg 成为孤儿。Windows 使用精确 PID 的 taskkill /T；POSIX 使用本次 detached backend 的进程组并在必要时升级信号，不按端口或名称发现进程。
+- Windows 交互 2/2 综合流程通过：取消关闭与退出仍可保存、第二次真实启动在原窗口打开工程、最近列表、确认丢弃后端端口关闭；Node 24/24，包含真实 Windows 根进程与后代的清理检查。当前 Electron 能读取系统字体，交互测试验证字体目录非空，没有新增另一套字体扫描器。
+- 未验证边界：macOS 菜单/Dock/Finder、POSIX 原生进程组回收仍需对应系统实测。
+
+### 阶段汇总（5–6）
+
+原生三端构建/系统关联契约已补齐，Windows 打包启动与生命周期检查通过。全量 Python 初跑 1852 项有 1 个旧源码字符串断言失败（媒体逻辑新增桌面分支后前缀变化），已更新该契约，保留浏览器缓存条件并由 Electron 流程覆盖 native 波形；等待收尾复测。前端完整 Node 检查与 typecheck 通过。
+
+### 8. 验证边界
+
+- 本机没有 Inno Setup，不能验证 Installer 安装/卸载及 Explorer 双击；macOS 无对应系统可运行。WSL Ubuntu-26.04 仅有 Python，缺 Node、uv、FFmpeg、Xvfb；Linux 安装脚本已通过 WSL shell 语法检查，完整应用需原生 CI/测试机验收。
+- 这些平台与安装验收记录为 `阻塞`，并明确下一步是原生 CI 打包/交互及安装双击检查。不会把静态配置、源模式测试或 Windows smoke 作为三端实测结论。
 
 ## 验证账本
 
@@ -45,6 +98,6 @@
 | Git | fetch、status、分支与提交对比，diff check | 初始无 WIP，冲突已解决，diff check 通过 | 后续实现尚未提交 |
 | 语法/单元 | 四组 Node editor 检查、desktop tests、script order 补测 | 369 项全部覆盖（初次 1 跳过后补测通过）；desktop 17/17 | 不等同于桌面交互 |
 | Server/契约 | local_editor_server、gui_web、editor_assets、packaging_contract | 初次 463 项中 2 失败已修复并重测通过，1 既有跳过 | 收尾执行完整复测；不等同于打包产物 |
-| 桌面/浏览器交互 | 待执行 | 未执行 | macOS/Linux 本机实测需对应系统 |
-| 打包/系统关联 | 待执行 | 未执行 | 不能用静态配置冒充安装双击实测 |
+| 桌面/浏览器交互 | `node --test desktop/e2e/project-flow.mjs` | Windows 1/1 综合流程通过，实测间距并截图 | 原生对话框选值由测试替身提供；macOS/Linux 需对应系统 |
+| 打包/系统关联 | Windows Electron/PyInstaller build、staging、packaged smoke；图标/配置契约 | 本地 Windows 打包启动与退出通过 | 无 Inno Setup，安装后双击未实测；macOS/Linux 须对应系统验收 |
 | CI/外部服务 | 无发布或 push 授权 | 未触发远端 CI | 不创建 tag、Release 或远端推送 |

@@ -9,6 +9,10 @@
   // The editor keeps one source template. Exact UI strings are translated at
   // the DOM boundary; project content is excluded from traversal below.
   const EN_TEXT = {
+    '选择文件夹…': 'Choose folder…',
+    '选择文件位置并保存工程': 'Choose a file location and save the project',
+    '正在打开工程…': 'Opening project…',
+    '工程媒体未找到。请点击“加载媒体”重新定位文件。': 'Project media was not found. Click “Load media” to locate it.',
     '媒体标记': 'Media markers',
     '新区段': 'New region',
     '拖动调整区段起点': 'Drag to adjust region start',

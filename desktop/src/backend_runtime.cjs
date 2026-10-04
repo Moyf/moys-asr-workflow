@@ -53,6 +53,9 @@ function childExited(child) {
 function terminateBackendTree(child, {
   platform = process.platform,
   execFileImpl = defaultExecFile,
+  processGroup = false,
+  signal = 'SIGTERM',
+  killImpl = process.kill,
 } = {}) {
   // Never issue a PID-based kill after the ChildProcess has reported an exit:
   // the numeric PID may already have been reused by an unrelated process.
@@ -72,7 +75,13 @@ function terminateBackendTree(child, {
     });
   }
   try {
-    return Promise.resolve(Boolean(child.kill('SIGTERM')));
+    if (processGroup) {
+      // Only use this for a child spawned with detached:true: its group is
+      // exactly the owned backend plus FFmpeg/cache subprocesses.
+      killImpl(-pid, signal);
+      return Promise.resolve(true);
+    }
+    return Promise.resolve(Boolean(child.kill(signal)));
   } catch {
     return Promise.resolve(false);
   }

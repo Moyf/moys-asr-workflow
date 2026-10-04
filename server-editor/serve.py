@@ -32,7 +32,7 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from typing import NamedTuple
 from hmac import compare_digest
-from urllib.parse import quote, unquote, urlsplit
+from urllib.parse import parse_qs, quote, unquote, urlsplit
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -458,6 +458,8 @@ def load_project(
     load_reapeaks: bool = True,
     peaks_per_second: int,
     progress: ProjectLoadProgressCallback | None = None,
+    project_data: dict | None = None,
+    allow_missing_media: bool = False,
 ) -> ServerProject:
     def report(stage: str, progress_value: int) -> None:
         if progress is not None:
@@ -465,9 +467,9 @@ def load_project(
 
     json_path = json_path.resolve()
     report("reading_project", 5)
-    if not json_path.exists():
+    if project_data is None and not json_path.exists():
         raise FileNotFoundError(f"JSON 文件不存在 - {json_path}")
-    raw_data = json.loads(json_path.read_text(encoding="utf-8"))
+    raw_data = copy.deepcopy(project_data) if project_data is not None else json.loads(json_path.read_text(encoding="utf-8"))
     # 兜底：上游（或旧版工具）可能写入 0 长/倒挂的段、词时间码，
     # 加载时先拉齐到至少 100ms，避免编辑器里出现看不见的字幕块、保存被校验拒绝。
     repaired_count = repair_project_timing_ranges(raw_data)
@@ -517,6 +519,15 @@ def load_project(
 
     resolution = resolve_project_media(json_path, data, explicit_media)
     if not resolution.loadable:
+        if allow_missing_media and explicit_media is None:
+            report("finalizing", 95)
+            metadata = data.get("media_metadata")
+            selected = selected_audio_track_from_metadata(metadata)
+            return ServerProject(
+                data, json_path, None, sticker_root, stickers,
+                audio_track=payload_audio_track if selected is None else selected,
+                default_audio_track=default_audio_track_from_metadata(metadata),
+            )
         raise MediaResolutionError(resolution)
     assert resolution.resolved_path is not None
     source_media_path = resolution.resolved_path
@@ -775,6 +786,9 @@ def build_server_page(
     if desktop_mode:
         server_config["desktopMode"] = True
         server_config["desktopOpenProjectUrl"] = "/api/desktop/project/open"
+        server_config["projectPath"] = project.json_path.as_posix() if project.json_path else ""
+        server_config["mediaPath"] = project.source_media_path.as_posix() if project.source_media_path else ""
+        server_config["missingMedia"] = bool(project.data.get("media") and project.media_path is None)
     page = edit.render_editor_page(
         title=title,
         media_html=media_html,
@@ -879,6 +893,8 @@ class EditorServer(ThreadingHTTPServer):
         # overwrite a newer desktop/recent-project switch.
         self.project_lock = threading.RLock()
         self.project_generation = 0
+        self.native_media_candidates: dict[str, tuple[int, ServerProject]] = {}
+        self.active_native_media_ticket = ""
         self.startup_lock = threading.Lock()
         self.project_loader = project_loader
         self.startup_thread: threading.Thread | None = None
@@ -954,6 +970,8 @@ class EditorServer(ThreadingHTTPServer):
             if generation is not None and generation != self.project_generation:
                 return False
             self.project = project
+            self.native_media_candidates.clear()
+            self.active_native_media_ticket = ""
             if project.json_path is not None:
                 try:
                     self.remember_project(project.json_path)
@@ -1256,6 +1274,7 @@ class EditorServer(ThreadingHTTPServer):
                 no_waveform=self.no_waveform,
                 load_reapeaks=not self.defer_reapeaks,
                 peaks_per_second=self.peaks_per_second,
+                allow_missing_media=self.desktop_mode,
             )
         except Exception as error:  # noqa: BLE001 - preserve the HTTP error while settling startup state
             if startup_loading:
@@ -1269,7 +1288,7 @@ class EditorServer(ThreadingHTTPServer):
         self.start_deferred_reapeaks_load()
         return project
 
-    def open_project_path(self, project_path: str) -> ServerProject:
+    def open_project_path(self, project_path: str, media_path: str | None = None) -> ServerProject:
         """Load an on-disk project requested by the Electron desktop host."""
         candidate = Path(project_path).expanduser().resolve()
         if candidate.suffix.lower() not in {".json", ".mosp"}:
@@ -1282,11 +1301,12 @@ class EditorServer(ThreadingHTTPServer):
         try:
             project = load_project(
                 candidate,
-                None,
+                media_path,
                 self.stickers_dir,
                 no_waveform=self.no_waveform,
                 load_reapeaks=not self.defer_reapeaks,
                 peaks_per_second=self.peaks_per_second,
+                allow_missing_media=self.desktop_mode,
             )
         except Exception as error:  # noqa: BLE001 - preserve the HTTP error while settling startup state
             if startup_loading:
@@ -1299,6 +1319,85 @@ class EditorServer(ThreadingHTTPServer):
         self.mark_project_ready(generation)
         self.start_deferred_reapeaks_load()
         return project
+
+    def desktop_project_info(self) -> dict:
+        project = self.project
+        return {
+            "ok": True,
+            "projectPath": project.json_path.as_posix() if project.json_path else "",
+            "mediaPath": project.source_media_path.as_posix() if project.source_media_path else "",
+            "recentProjects": [item.to_json() for item in self.settings.recent_projects],
+        }
+
+    def prepare_desktop_project(self, project_data: dict, *, new_project: bool = False) -> dict:
+        """Validate a native-save snapshot without writing an arbitrary path."""
+        if not isinstance(project_data, dict):
+            raise ValueError("工程内容必须是对象")
+        repaired = copy.deepcopy(project_data)
+        repair_project_timing_ranges(repaired, repair_segment_ranges=False)
+        normalized = normalize_project(repaired)
+        media_value = normalized.get("media")
+        if not new_project and isinstance(media_value, str) and media_value.strip():
+            media = Path(media_value).expanduser()
+            if not media.is_absolute():
+                if self.project.json_path is not None:
+                    normalized["media"] = (self.project.json_path.parent / media).resolve().as_posix()
+                elif self.project.source_media_path is not None:
+                    normalized["media"] = self.project.source_media_path.as_posix()
+        return strip_inline_caches(normalized)
+
+    def stage_desktop_media(self, media_path: str, project_data: dict, *, bind_current: bool = True) -> dict:
+        """Prepare only a user-selected media file, without replacing active media."""
+        candidate = Path(media_path).expanduser()
+        if not candidate.is_absolute() or candidate.suffix.lower() not in MEDIA_EXTENSIONS:
+            raise ValueError("请选择音视频文件的绝对路径")
+        candidate = candidate.resolve(strict=True)
+        if not candidate.is_file():
+            raise ValueError("媒体文件不存在")
+        if not isinstance(project_data, dict):
+            raise ValueError("工程内容必须是对象")
+        data = copy.deepcopy(project_data)
+        for key in INLINE_CACHE_KEYS:
+            data.pop(key, None)
+        with self.project_lock:
+            previous = self.project
+            generation = self.project_generation
+        if previous.source_media_path != candidate:
+            data.pop("media_metadata", None)
+            data.pop("media_time_reference", None)
+        hint = previous.json_path or candidate.with_suffix(".mosp")
+        project = load_project(
+            hint, str(candidate), self.stickers_dir,
+            project_data=data, no_waveform=self.no_waveform,
+            load_reapeaks=not self.defer_reapeaks, peaks_per_second=self.peaks_per_second,
+        )
+        project = replace(project, json_path=previous.json_path if bind_current else None)
+        project.data["media"] = candidate.as_posix()
+        if self.defer_reapeaks:
+            project = without_deferred_reapeaks(project)
+        ticket = secrets.token_urlsafe(24)
+        with self.project_lock:
+            if generation != self.project_generation:
+                raise ProjectMutationInProgressError("工程已切换，请重新选择媒体")
+            self.native_media_candidates = {
+                key: value for key, value in self.native_media_candidates.items()
+                if key == self.active_native_media_ticket
+            }
+            self.native_media_candidates[ticket] = (generation, project)
+        return {"ok": True, "ticket": ticket, "mediaUrl": f"/api/desktop/media?ticket={ticket}", "project": project.data}
+
+    def commit_desktop_media(self, ticket: str) -> dict:
+        with self.project_lock:
+            pending = self.native_media_candidates.get(ticket)
+            if pending is None or pending[0] != self.project_generation:
+                raise ProjectMutationInProgressError("媒体预览已失效，请重新选择媒体")
+            generation = self.begin_project_switch()
+            self.commit_project(pending[1], generation)
+            self.active_native_media_ticket = ticket
+            self.native_media_candidates = {ticket: (generation, pending[1])}
+        self.mark_project_ready(generation)
+        self.start_deferred_reapeaks_load()
+        return self.desktop_project_info()
 
     def attach_project(self, file_name: str, browser_project: dict) -> ServerProject:
         """Bind a project opened through the browser to its on-disk file.
@@ -1973,6 +2072,10 @@ class EditorRequestHandler(BaseHTTPRequestHandler):
                 self.open_desktop_project()
             else:
                 self.send_localized_error(HTTPStatus.NOT_FOUND, "未知 API")
+        elif path == "/api/desktop/project/prepare" and self.editor_server.desktop_mode:
+            self.prepare_desktop_project()
+        elif path in {"/api/desktop/media/load", "/api/desktop/media/commit"} and self.editor_server.desktop_mode:
+            self.desktop_media_operation(commit=path.endswith("/commit"))
         elif path == "/api/recent-projects/open":
             self.open_recent_project()
         elif path == "/api/settings":
@@ -2364,7 +2467,10 @@ class EditorRequestHandler(BaseHTTPRequestHandler):
             project_path = request.get("path")
             if not isinstance(project_path, str) or not project_path.strip():
                 raise ValueError("工程路径格式不正确")
-            project = self.editor_server.open_project_path(project_path)
+            media_path = request.get("mediaPath")
+            if media_path is not None and (not isinstance(media_path, str) or not media_path.strip()):
+                raise ValueError("媒体路径格式不正确")
+            project = self.editor_server.open_project_path(project_path, media_path)
         except FileNotFoundError as error:
             self.send_json(HTTPStatus.BAD_REQUEST, {"ok": False, "error": str(error), "missing": True})
             return
@@ -2382,6 +2488,34 @@ class EditorRequestHandler(BaseHTTPRequestHandler):
             "name": project.json_path.name if project.json_path else "",
             "mediaName": (project.source_media_path or project.media_path).name if project.media_path else "",
         })
+
+    def prepare_desktop_project(self) -> None:
+        try:
+            request = self.read_json_request()
+            project = self.editor_server.prepare_desktop_project(
+                request.get("project"), new_project=request.get("newProject") is True,
+            )
+        except (UnicodeDecodeError, json.JSONDecodeError, ValueError, ProjectValidationFailed) as error:
+            self.send_json(HTTPStatus.BAD_REQUEST, {"ok": False, "error": str(error)})
+            return
+        self.send_json(HTTPStatus.OK, {"ok": True, "project": project})
+
+    def desktop_media_operation(self, *, commit: bool) -> None:
+        try:
+            request = self.read_json_request()
+            value = request.get("ticket" if commit else "path")
+            if not isinstance(value, str) or not value.strip():
+                raise ValueError("媒体路径或预览标记格式不正确")
+            result = self.editor_server.commit_desktop_media(value) if commit else self.editor_server.stage_desktop_media(
+                value, request.get("project"), bind_current=request.get("detached") is not True,
+            )
+        except ProjectMutationInProgressError as error:
+            self.send_json(HTTPStatus.CONFLICT, {"ok": False, "error": str(error)})
+            return
+        except (UnicodeDecodeError, json.JSONDecodeError, ValueError, OSError, ProjectValidationFailed, MediaResolutionError, MediaConversionError) as error:
+            self.send_json(HTTPStatus.BAD_REQUEST, {"ok": False, "error": str(error)})
+            return
+        self.send_json(HTTPStatus.OK, result)
 
     def update_settings(self) -> None:
         try:
@@ -2556,6 +2690,18 @@ class EditorRequestHandler(BaseHTTPRequestHandler):
         if not self._desktop_request_allowed():
             return
         path = urlsplit(self.path).path
+        if path == "/api/desktop/state" and self.editor_server.desktop_mode:
+            self.send_json(HTTPStatus.OK, self.editor_server.desktop_project_info())
+            return
+        if path == "/api/desktop/media" and self.editor_server.desktop_mode:
+            ticket = parse_qs(urlsplit(self.path).query).get("ticket", [""])[0]
+            with self.editor_server.project_lock:
+                candidate = self.editor_server.native_media_candidates.get(ticket)
+            if candidate is None or candidate[1].media_path is None:
+                self.send_localized_error(HTTPStatus.NOT_FOUND, "媒体预览已失效")
+            else:
+                self.send_file(candidate[1].media_path, include_body)
+            return
         if path == "/api/prproj-capability":
             self.send_json(HTTPStatus.OK, PRPROJ_CAPABILITY)
             return
@@ -2809,6 +2955,7 @@ def main() -> int:
                 load_reapeaks=not defer_reapeaks,
                 peaks_per_second=args.waveform_peaks_per_second,
                 progress=progress,
+                allow_missing_media=args.desktop_mode,
             )
 
         project_loader = load_requested_project
@@ -2827,6 +2974,7 @@ def main() -> int:
                 load_reapeaks=not defer_reapeaks,
                 peaks_per_second=args.waveform_peaks_per_second,
                 progress=progress,
+                allow_missing_media=args.desktop_mode,
             )
             print(f"已恢复上次打开的工程: {project.json_path}")
             return project

@@ -151,6 +151,9 @@ markProjectSaved(MaweServerSave.projectFileHandle.name, null, { silent, fingerpr
 
   // 统一保存入口：句柄目标优先（最近一次新建/另存为选定的文件），否则写回服务器绑定工程。
   async function saveCurrentProject({ silent = false } = {}) {
+    if (window.MOSEDesktop?.available && !MaweServerSave.serverProjectSavingEnabled()) {
+      return silent ? false : saveProjectAsToFile();
+    }
     if (MaweServerSave.projectFileHandle) return saveProjectToHandle({ silent });
     return saveProjectToServer({ silent });
   }
@@ -161,10 +164,32 @@ markProjectSaved(MaweServerSave.projectFileHandle.name, null, { silent, fingerpr
   // 与「导出工程」的区别：保存成功后当前工程名跟随新文件（标题、导出默认名随之更新），
   // 且后续 Ctrl(Cmd)+S / 自动保存都写回这个新选定的文件。
   async function saveProjectAsToFile() {
+    if (MaweServerSave.projectSaveInFlight || MaweServerSave.projectCheckpointInFlight) return false;
     if (MaweInlineEdit.editingState) MaweInlineEdit.finishEdit(true);
     if (MaweInlineEdit.extensionEditingState) MaweInlineEdit.finishExtensionEdit(true);
     MaweCuePanel.commitCuePanelEdit();
     const suggested = `${MaweBoot.FILENAME_BASE}.mosp`;
+    if (window.MOSEDesktop?.available) {
+      MaweServerSave.projectSaveInFlight = true;
+      try {
+        flushInlineEditsForSave();
+        const fingerprint = projectSaveFingerprint();
+        const contentFingerprint = MaweState.segmentsFingerprint();
+        const result = await window.MOSEDesktop.saveProjectAs({
+          project: JSON.parse(MaweJsonRepair.buildJson()), suggestedName: suggested,
+        });
+        if (result.canceled) return false;
+        MaweBoot.DATA.media = result.project.media || '';
+        markProjectSaved(result.filename, result.backup, { fingerprint, contentFingerprint });
+        MaweServerSave.bindNativeProject(result);
+        return true;
+      } catch (error) {
+        MaweServerSave.showProjectSaveError(error.message || error);
+        return false;
+      } finally {
+        MaweServerSave.projectSaveInFlight = false;
+      }
+    }
     // 无原生保存对话框的浏览器：退化为普通下载（文件名不可考，标题保持不变）。
     if (!MaweHost.files.hasSavePicker()) {
       await MaweExportTimeline.downloadFile(MaweJsonRepair.buildJson(), suggested, 'application/json', {

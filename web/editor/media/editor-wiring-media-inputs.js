@@ -4,6 +4,10 @@
 // 如果媒体类型与当前播放器标签不一致（video<->audio），会原地替换整个 <video>/<audio> 元素。
 document.getElementById('load-media')?.addEventListener('click', () => {
   MaweProjectMediaInputs.pendingProjectMediaSelection = null;
+  if (window.MOSEDesktop?.available) {
+    void MaweMediaLoad.chooseNativeMedia();
+    return;
+  }
   MaweProjectMediaInputs.loadMediaFileInput.value = '';
   MaweProjectMediaInputs.loadMediaFileInput.click();
 });
@@ -76,8 +80,8 @@ MaweDom.multiSubtitleImportResultConfirm?.addEventListener('click', async () => 
   if (pending.choice === 'open-project') {
     const { projectFile, projectMediaFile } = pending;
     MaweMultiImport.closeMultiSubtitleImportModal();
-    const opened = await MaweMultiImport.openProjectFile(projectFile, { suppressMediaPrompt: Boolean(projectMediaFile) });
-    if (opened && projectMediaFile) await MaweMediaLoad.loadMediaFile(projectMediaFile);
+    const opened = await MaweMultiImport.openProjectFile(projectFile, { suppressMediaPrompt: Boolean(projectMediaFile), mediaFile: projectMediaFile });
+    if (opened && projectMediaFile && !window.MOSEDesktop?.pathForFile?.(projectFile)) await MaweMediaLoad.loadMediaFile(projectMediaFile);
     return;
   }
   if (pending.choice === 'replace-main') {
