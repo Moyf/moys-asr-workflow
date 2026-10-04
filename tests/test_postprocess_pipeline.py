@@ -1103,50 +1103,36 @@ class PostprocessPipelineTests(unittest.TestCase):
         self.assertTrue(workspace.is_dir())
         self.assertEqual(len(tuple(workspace.iterdir())), 1)
 
-    def test_shared_short_workspace_isolates_same_time_runs(self) -> None:
+    def test_per_video_workspace_and_same_time_run_isolation(self) -> None:
         with (
             mock.patch("maw.output_naming.subfolder_prefs", return_value=(True, True)),
             mock.patch("maw.postprocess_pipeline.datetime") as clock,
         ):
             clock.now.return_value.strftime.return_value = "20261004-120000"
             first = _create_run_directory(self.media, lang="en")
-            second = _create_run_directory(self.root / "other.mp4", lang="en")
-        self.assertEqual(first.parent, (self.root / "_maw" / "postprocess").resolve())
-        self.assertNotEqual(first, second)
+            second = _create_run_directory(self.media, lang="en")
+        self.assertEqual(first.parent, (self.root / "clip_maw" / "postprocess").resolve())
+        self.assertEqual(first.name, "clip-20261004-120000")
+        self.assertEqual(second.name, "clip-20261004-120000-2")
         self.assertTrue(first.is_dir() and second.is_dir())
 
-    def test_long_media_name_pipeline_fits_without_repeating_stem(self) -> None:
-        stem = "v" * 110
-        media = self.root / (stem + ".mp3")
-        project = self.root / (stem + ".mosp")
-        srt = self.root / (stem + ".srt")
-        media.write_bytes(b"audio")
-        project.write_bytes(self.project.read_bytes())
-        srt.write_bytes(self.srt.read_bytes())
-        real_mkstemp = tempfile.mkstemp
-        paths = []
-
-        def limited_mkstemp(**kwargs):
-            # Model Windows MAX_PATH even on hosts with long paths enabled.
-            estimated = Path(kwargs["dir"]) / (kwargs["prefix"] + "12345678" + kwargs["suffix"])
-            if len(str(estimated)) >= 260:
-                raise OSError(errno.ENAMETOOLONG, "File name too long", str(estimated))
-            fd, name = real_mkstemp(**kwargs)
-            paths.append(Path(name))
-            return fd, name
-
-        with mock.patch("tempfile.mkstemp", side_effect=limited_mkstemp):
-            result = run_postprocess_pipeline(
-                self.plan(self.replace_step(), retain=True), media_path=media, project_path=project,
-                srt_path=srt, env_path=self.env_path, ffmpeg_path=None,
-                cancel_event=Event(), ui_language="en",
-            )
-        self.assertTrue(result.srt_path.is_file())
-        self.assertTrue((result.run_directory / (stem + ".postprocess.0.original.mosp")).is_file())
-        self.assertNotIn(stem, str(result.run_directory))
-        self.assertTrue(all(not path.exists() for path in paths))
-        old_path = result.run_directory.parent / (stem + "-20261004-120000") / ("." + stem + ".postprocess.0.original.mosp.12345678.tmp")
-        self.assertGreaterEqual(len(str(old_path)), 260)
+    def test_long_intermediate_path_reports_rename_guidance_before_processing(self) -> None:
+        from maw.file_errors import IntermediateFileError, file_error_code
+        failure = OSError(errno.ENAMETOOLONG, "File name too long")
+        with (
+            mock.patch("maw.postprocess_pipeline.tempfile.mkstemp", side_effect=failure),
+            mock.patch("maw.postprocess_pipeline._run_step") as run_step,
+        ):
+            with self.assertRaises(IntermediateFileError) as caught:
+                run_postprocess_pipeline(
+                    self.plan(self.replace_step()), media_path=self.media, project_path=self.project,
+                    srt_path=self.srt, env_path=self.env_path, ffmpeg_path=None, cancel_event=Event(),
+                )
+        self.assertEqual(file_error_code(caught.exception), "intermediate_path_too_long")
+        self.assertIn("缩短原文件名", str(caught.exception))
+        self.assertIs(caught.exception.__cause__, failure)
+        run_step.assert_not_called()
+        self.assertTrue(self.project.is_file() and self.srt.is_file())
 
     def test_secondary_manifest_failure_preserves_step_error_and_recovery(self) -> None:
         from maw.file_errors import IntermediateFileError
@@ -1177,11 +1163,11 @@ class PostprocessPipelineTests(unittest.TestCase):
 
         zh_run = _create_run_directory(chinese_media, lang="zh")
         self.assertEqual(zh_run.parent, (self.root / "_maw" / "后处理").resolve())
-        self.assertTrue(zh_run.name.startswith("run-"))
+        self.assertTrue(zh_run.name.startswith("我的视频-"))
 
         en_run = _create_run_directory(self.media, lang="en")
         self.assertEqual(en_run.parent, (self.root / "_maw" / "postprocess").resolve())
-        self.assertTrue(en_run.name.startswith("run-"))
+        self.assertTrue(en_run.name.startswith("clip-"))
 
     def test_resume_still_accepts_an_explicit_legacy_workspace_path(self) -> None:
         old_run = self.root / "MAW-Postprocess" / "run-20260101-120000"

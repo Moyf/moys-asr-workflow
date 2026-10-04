@@ -39,10 +39,10 @@ class FileErrorTests(unittest.TestCase):
         self.assertEqual(file_error_code(outer), "intermediate_path_too_long")
         self.assertIn("重新选择文件", str(wrapped))
 
-    def test_atomic_write_and_copy_use_short_names_and_preserve_outputs(self):
+    def test_atomic_write_and_copy_keep_original_naming_and_preserve_outputs(self):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
-            destination = root / ("x" * 240 + ".srt")
+            destination = root / "clip.srt"
             source = root / "source.srt"
             source.write_text("source", encoding="utf-8")
             real_mkstemp = tempfile.mkstemp
@@ -52,7 +52,8 @@ class FileErrorTests(unittest.TestCase):
                 fd, name = real_mkstemp(**kwargs)
                 names.append(Path(name))
                 self.assertEqual(Path(name).parent, root)
-                self.assertLess(len(Path(name).name), 32)
+                self.assertTrue(Path(name).name.startswith(".clip.srt."))
+                self.assertTrue(Path(name).name.endswith(".tmp"))
                 return fd, name
 
             with mock.patch("tempfile.mkstemp", side_effect=record):

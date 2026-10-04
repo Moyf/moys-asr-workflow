@@ -1432,10 +1432,11 @@ def _embed_translated_subtitles(
 
 @intermediate_file_operation
 def _create_run_directory(media_path: Path, *, lang: str | None = None) -> Path:
-    root = postprocess_workspace(media_path, lang=lang, per_video=False)
+    root = postprocess_workspace(media_path, lang=lang)
     root.mkdir(parents=True, exist_ok=True)
+    stem = sanitize_component(media_path.stem, "media")
     timestamp = datetime.now().strftime("%Y%m%d-%H%M%S")
-    base = root / f"run-{timestamp}"
+    base = root / f"{stem}-{timestamp}"
     candidate = base
     counter = 2
     while True:
@@ -1491,7 +1492,7 @@ def _publish_final(
 @intermediate_file_operation
 def _copy_atomic(source: Path, destination: Path) -> None:
     destination.parent.mkdir(parents=True, exist_ok=True)
-    descriptor, temporary_name = tempfile.mkstemp(prefix=".maw-", suffix=".tmp", dir=destination.parent)
+    descriptor, temporary_name = tempfile.mkstemp(prefix=f".{destination.name}.", suffix=".tmp", dir=destination.parent)
     os.close(descriptor)
     try:
         shutil.copyfile(source, temporary_name)

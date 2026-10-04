@@ -258,7 +258,7 @@ def _known_operation_token(operation: str, *, lang: str | None = None) -> str:
 @intermediate_file_operation
 def _atomic_write(path: Path, text: str) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
-    descriptor, temporary_name = tempfile.mkstemp(prefix=".maw-", suffix=".tmp", dir=path.parent)
+    descriptor, temporary_name = tempfile.mkstemp(prefix=f".{path.name}.", suffix=".tmp", dir=path.parent)
     try:
         encoding = "utf-8-sig" if path.suffix.lower() == ".srt" else "utf-8"
         with os.fdopen(descriptor, "w", encoding=encoding, newline="\n") as handle:
