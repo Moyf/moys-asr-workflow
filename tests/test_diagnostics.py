@@ -31,7 +31,8 @@ class ErrorContextTests(unittest.TestCase):
             sink = LocalLogSink(directory=Path(directory), now=lambda: later)
             sink.append({"type": "error", "code": "failed", "detail": "TOKEN=test-secret", "errorContext": original})
             content = (Path(directory) / "maw-2026-10-04.log").read_text(encoding="utf-8")
-            self.assertIn(context_label(original), content)
+            self.assertIn("00:00:00.000 [error:failed]", content)
+            self.assertNotIn("MAW v", content)
             self.assertNotIn("test-secret", content)
 
     def test_startup_log_and_message_share_context(self):
@@ -44,7 +45,7 @@ class ErrorContextTests(unittest.TestCase):
             content = target.read_text(encoding="utf-8")
             self.assertIn(context_label(context), content)
             self.assertNotIn("test-secret", content)
-            self.assertIn(context_label(context), maw_gui._startup_error_message(error, target, context=context))
+            self.assertIn("版本：1.2.3\n发生时间：2026-10-03 23:59:59+08:00", maw_gui._startup_error_message(error, target, context=context))
 
     def test_broken_stderr_does_not_replace_original_transcription_exception(self):
         error = UnicodeEncodeError("gbk", "아", 0, 1, "illegal multibyte sequence")
