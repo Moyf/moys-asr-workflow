@@ -78,6 +78,20 @@ class BatchRunnerTests(unittest.TestCase):
         self.assertEqual(result["outcomes"][1]["code"], "transcription_failed")
         self.assertEqual(result["outcomes"][1]["error"], "provider failed")
 
+    def test_file_failure_is_classified_and_later_items_continue(self) -> None:
+        import errno
+        from maw.file_errors import IntermediateFileError
+
+        def transcribe(request, *, cancel_event):
+            if request.media_path.stem == "clip-0":
+                raise IntermediateFileError(OSError(errno.ENAMETOOLONG, "File name too long"))
+            return TranscriptionResult(request.srt_path, request.srt_path.with_suffix(".mosp"), None)
+
+        result = run_batch(self._items(2), settings={}, manifest_path=self.root / "manifest.json",
+                           cancel_event=threading.Event(), transcribe=transcribe)
+        self.assertEqual(result["outcomes"][0]["code"], "intermediate_path_too_long")
+        self.assertEqual(result["outcomes"][1]["status"], "done")
+
     def test_cancel_marks_remaining_items_without_running_them(self) -> None:
         cancel = threading.Event()
         started: list[str] = []

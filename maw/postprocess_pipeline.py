@@ -18,6 +18,7 @@ from pathlib import Path
 from threading import Event
 from typing import Final
 
+from maw.file_errors import file_write_operation, intermediate_file_operation
 from maw.gui_config import load_env
 from maw.output_naming import format_elapsed, operation_suffix, postprocess_workspace, resolve_lang, sanitize_component, translation_marker_name
 from maw.postprocess import (
@@ -542,6 +543,7 @@ def _available_pipeline_destinations(
         counter += 1
 
 
+@intermediate_file_operation
 def _relocate_pipeline_artifact(path: Path, destination: Path) -> Path:
     source = path.expanduser().resolve()
     target = destination.expanduser().resolve()
@@ -593,6 +595,7 @@ def _number_pipeline_artifact(
     return renamed, index + 1
 
 
+@intermediate_file_operation
 def _ensure_initial_pipeline_artifacts(
     run_directory: Path,
     source_project_path: Path,
@@ -924,12 +927,12 @@ def run_postprocess_pipeline(
         return result
     except PostprocessCancelled:
         manifest["status"] = "cancelled"
-        _write_manifest(run_directory, manifest)
+        _write_failure_manifest(run_directory, manifest)
         _emit(on_event, {"stage": "cancelled", "completed": len(completed), "total": len(steps), "runDirectory": str(run_directory)})
         raise
     except PostprocessPipelineError as error:
         manifest["status"] = "failed"
-        _write_manifest(run_directory, manifest)
+        _write_failure_manifest(run_directory, manifest)
         _emit(on_event, {
             "stage": "failed",
             "completed": len(completed),
@@ -941,7 +944,7 @@ def run_postprocess_pipeline(
         raise
     except Exception:
         manifest["status"] = "failed"
-        _write_manifest(run_directory, manifest)
+        _write_failure_manifest(run_directory, manifest)
         _emit(on_event, {"stage": "failed", "completed": len(completed), "total": len(steps), "runDirectory": str(run_directory)})
         raise
 
@@ -1428,6 +1431,7 @@ def _embed_translated_subtitles(
     )
 
 
+@intermediate_file_operation
 def _create_run_directory(media_path: Path, *, lang: str | None = None) -> Path:
     root = postprocess_workspace(media_path, lang=lang)
     root.mkdir(parents=True, exist_ok=True)
@@ -1486,6 +1490,7 @@ def _publish_final(
         counter += 1
 
 
+@file_write_operation
 def _copy_atomic(source: Path, destination: Path) -> None:
     destination.parent.mkdir(parents=True, exist_ok=True)
     descriptor, temporary_name = tempfile.mkstemp(prefix=f".{destination.name}.", suffix=".tmp", dir=destination.parent)
@@ -1494,10 +1499,14 @@ def _copy_atomic(source: Path, destination: Path) -> None:
         shutil.copyfile(source, temporary_name)
         os.replace(temporary_name, destination)
     except OSError:
-        Path(temporary_name).unlink(missing_ok=True)
+        try:
+            Path(temporary_name).unlink(missing_ok=True)
+        except OSError:
+            pass  # Do not hide the write failure if cleanup also fails.
         raise
 
 
+@intermediate_file_operation
 def _write_manifest(directory: Path, payload: Mapping[str, object]) -> None:
     target = directory / "manifest.json"
     text = json.dumps(payload, ensure_ascii=False, indent=2) + "\n"
@@ -1507,8 +1516,19 @@ def _write_manifest(directory: Path, payload: Mapping[str, object]) -> None:
             handle.write(text)
         os.replace(temporary_name, target)
     except (OSError, UnicodeError):
-        Path(temporary_name).unlink(missing_ok=True)
+        try:
+            Path(temporary_name).unlink(missing_ok=True)
+        except OSError:
+            pass  # Do not hide the write failure if cleanup also fails.
         raise
+
+
+def _write_failure_manifest(directory: Path, payload: Mapping[str, object]) -> None:
+    try:
+        _write_manifest(directory, payload)
+    except (OSError, UnicodeError):
+        # The original failure/cancellation is more useful than a second write error.
+        pass
 
 
 def _load_manifest(directory: Path) -> dict[str, object]:
