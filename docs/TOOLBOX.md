@@ -66,6 +66,8 @@ LLM 收到临时 ID、字幕和文稿文字，不收到音频、路径或时间�
 
 ## 生成时间码
 
+已有准确文稿与录音但没有工程时，将处理方式切为「文稿 + 录音（跳过 ASR）」。每个非空行生成一条字幕，同时输出新 MOSP 与 SRT；短录音整段对齐，长录音使用静音或人工锚点。此模式只使用 Qwen ForcedAligner，需听审录音，详见 [文稿驱动对齐（实验性）](SCRIPT_DRIVEN_ALIGNMENT.md)。
+
 为 SRT 或缺少字词时间码的工程选择原始媒体，再使用 Qwen3-ForcedAligner 或 FireRedASR2-CTC：
 
 - 「补充缺失」只处理缺少完整 `items` 的段。

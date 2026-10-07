@@ -1216,6 +1216,7 @@ class LauncherApi:
         return _subtitle_artifact_result(result)
 
     def run_timestamp_alignment(self, payload: Mapping[str, object]) -> dict[str, object]:
+        script_mode = str(payload.get("alignmentMode") or "fill") == "script"
         model_id = normalize_alignment_model_id(str(payload.get("modelId") or ""))
         try:
             model = alignment_model_by_id(model_id)
@@ -1224,6 +1225,11 @@ class LauncherApi:
         project_path = _optional_path(payload.get("projectPath"))
         srt_path = _optional_path(payload.get("srtPath"))
         media_path = _optional_path(payload.get("mediaPath"))
+        if script_mode:
+            if model.engine != "qwen":
+                return _error_result("toolboxTimestampModel", "alignment_failed", "文稿驱动对齐仅支持 Qwen ForcedAligner（不调用 ASR）。")
+            if not media_path or not _optional_path(payload.get("scriptPath")):
+                return _error_result("toolboxTimestampScriptPath", "alignment_failed", "文稿驱动对齐需要文稿与媒体文件。")
         model_cache_root = effective_config(self.paths.env_path).model_cache_root
         runtime = self._local_runtime_status(model_cache_root)
         status = inspect_alignment_model(
@@ -1247,6 +1253,15 @@ class LauncherApi:
             # 输入完全相同。时间码工具固定只更新工程，忽略共享输出选择。
             output_mode = OutputMode.JSON.value
             requested_model_path = _optional_path(payload.get("modelPath"))
+            script_options = {}
+            if script_mode:
+                script_options = {
+                    "script_path": _optional_path(payload.get("scriptPath")),
+                    "language": str(payload.get("language") or "zh"),
+                    "silence_db": float(str(payload.get("silenceDb", -35))),
+                    "silence_ms": int(str(payload.get("silenceMs", 500))),
+                    "anchors_path": _optional_path(payload.get("anchorsPath")),
+                }
             if runtime.ready:
                 worker_result = run_timestamp_alignment_in_runtime(
                     project_path=project_path,
@@ -1260,6 +1275,7 @@ class LauncherApi:
                     device=str(payload.get("device") or "auto"),
                     model_cache_root=model_cache_root,
                     on_event=lambda line: self._emit({"type": "log", "message": line}),
+                    **script_options,
                 )
                 artifact_result = worker_result.get("artifact")
                 report_result = worker_result.get("report")
@@ -1267,6 +1283,19 @@ class LauncherApi:
                     raise LocalRuntimeError("本地字词时间码命令返回了无效结果。")
                 self._emit_postprocess_status("toolbox_status_writing")
                 return {"ok": True, **dict(artifact_result), "report": dict(report_result)}
+            if script_mode:
+                from maw.script_timestamp_alignment import ScriptAlignmentRequest, run_script_alignment
+
+                artifact, report = run_script_alignment(ScriptAlignmentRequest(
+                    media_path=media_path,
+                    model_path=requested_model_path,
+                    model_cache_root=Path(model_cache_root) if model_cache_root else None,
+                    device=str(payload.get("device") or "auto"),
+                    output_directory=_optional_path(payload.get("outputDirectory")),
+                    **script_options,
+                ))
+                self._emit_postprocess_status("toolbox_status_writing")
+                return {**_subtitle_artifact_result(artifact), "report": report.to_payload()}
             artifact, report = process_timestamp_alignment(
                 TimestampAlignmentRequest(
                     project_path=project_path,

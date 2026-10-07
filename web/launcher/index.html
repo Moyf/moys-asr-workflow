@@ -831,10 +831,49 @@
             <select id="toolboxTimestampMode">
               <option value="fill" data-i18n="toolbox_timestamp_mode_fill">只补充缺失时间码</option>
               <option value="generate" data-i18n="toolbox_timestamp_mode_generate">重新生成全部时间码</option>
+              <option value="script" data-i18n="toolbox_timestamp_mode_script">文稿 + 录音（跳过 ASR）</option>
             </select>
           </div>
         </div>
         <p class="hint toolbox-settings-hint" data-i18n="toolbox_timestamp_model_hint">Qwen3-ForcedAligner 与 FireRedASR2-CTC 都可独立下载；Qwen 复用 Qwen Local 的 Hugging Face 缓存。</p>
+      </div>
+      <div id="toolboxTimestampScriptInputs" class="adv-group hidden">
+        <h3 data-i18n="toolbox_script_alignment_heading">文稿驱动对齐</h3>
+        <div id="toolboxTimestampScriptDropZone" class="field toolbox-input">
+          <label for="toolboxTimestampScriptPath" data-i18n="toolbox_script_alignment_script">准确文稿（UTF-8）</label>
+          <div class="path-row">
+            <input id="toolboxTimestampScriptPath" type="text" autocomplete="off" placeholder=".txt / .md / .markdown">
+            <button id="pickToolboxTimestampScript" class="ghost" type="button" data-i18n="choose">选择</button>
+          </div>
+          <p id="toolboxTimestampScriptPathError" class="field-error"></p>
+        </div>
+        <div class="toolbox-grid">
+          <div class="field">
+            <label for="toolboxTimestampLanguage" data-i18n="toolbox_script_alignment_language">对齐语言</label>
+            <select id="toolboxTimestampLanguage">
+              <option value="zh">中文 / Chinese</option><option value="en">English</option>
+              <option value="yue">粤语 / Cantonese</option><option value="ja">日本語</option>
+              <option value="ko">한국어</option><option value="fr">Français</option>
+              <option value="de">Deutsch</option><option value="es">Español</option>
+            </select>
+          </div>
+          <div class="field">
+            <label for="toolboxTimestampSilenceMs" data-i18n="toolbox_script_alignment_pause">最短停顿（ms）</label>
+            <input id="toolboxTimestampSilenceMs" type="number" min="80" max="10000" value="500">
+          </div>
+          <div class="field">
+            <label for="toolboxTimestampSilenceDb" data-i18n="toolbox_script_alignment_db">静音阈值（dB）</label>
+            <input id="toolboxTimestampSilenceDb" type="number" min="-100" max="-1" value="-35">
+          </div>
+        </div>
+        <div class="field">
+          <label for="toolboxTimestampAnchorsPath" data-i18n="toolbox_script_alignment_anchors">人工锚点 JSON（可选）</label>
+          <div class="path-row">
+            <input id="toolboxTimestampAnchorsPath" type="text" autocomplete="off" placeholder=".json">
+            <button id="pickToolboxTimestampAnchors" class="ghost" type="button" data-i18n="choose">选择</button>
+          </div>
+        </div>
+        <p class="hint toolbox-settings-hint" data-i18n="toolbox_script_alignment_hint">每个非空行生成一条字幕，保留标点，输出新 MOSP 和 SRT。仅用 Qwen ForcedAligner；≤5 分钟整段对齐，长录音要求每行对应一个停顿分隔的语音区间，否则需人工锚点。跳行、重读和口误可能被忽略，请听审。默认使用容器默认音轨。</p>
       </div>
     </section>
 

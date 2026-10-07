@@ -1188,6 +1188,14 @@
     toolbox_timestamp_mode: "处理方式",
     toolbox_timestamp_mode_fill: "只补充缺失时间码",
     toolbox_timestamp_mode_generate: "重新生成全部时间码",
+    toolbox_timestamp_mode_script: "文稿 + 录音（跳过 ASR）",
+    toolbox_script_alignment_heading: "文稿驱动对齐",
+    toolbox_script_alignment_script: "准确文稿（UTF-8）",
+    toolbox_script_alignment_language: "对齐语言",
+    toolbox_script_alignment_pause: "最短停顿（ms）",
+    toolbox_script_alignment_db: "静音阈值（dB）",
+    toolbox_script_alignment_anchors: "人工锚点 JSON（可选）",
+    toolbox_script_alignment_hint: "每个非空行生成一条字幕，保留标点，输出新 MOSP 和 SRT。仅用 Qwen ForcedAligner；≤5 分钟整段对齐，长录音要求每行对应一个停顿分隔的语音区间，否则需人工锚点。跳行、重读和口误可能被忽略，请听审。默认使用容器默认音轨。",
     toolbox_timestamp_media: "媒体来源",
     toolbox_timestamp_media_placeholder: "选择或拖入媒体文件",
     toolbox_timestamp_media_reject: "请选择支持的媒体文件。",
@@ -1228,6 +1236,14 @@
     toolbox_timestamp_mode: "Mode",
     toolbox_timestamp_mode_fill: "Fill missing timestamps only",
     toolbox_timestamp_mode_generate: "Regenerate all timestamps",
+    toolbox_timestamp_mode_script: "Script + audio (skip ASR)",
+    toolbox_script_alignment_heading: "Script-driven alignment",
+    toolbox_script_alignment_script: "Accurate script (UTF-8)",
+    toolbox_script_alignment_language: "Alignment language",
+    toolbox_script_alignment_pause: "Minimum pause (ms)",
+    toolbox_script_alignment_db: "Silence threshold (dB)",
+    toolbox_script_alignment_anchors: "Manual anchor JSON (optional)",
+    toolbox_script_alignment_hint: "Each non-empty line becomes one cue; punctuation is preserved. Writes new MOSP and SRT files with Qwen ForcedAligner only. Up to 5 minutes aligns in one pass. Longer audio needs one silence-separated speech span per line, or manual anchors. Skipped lines, retakes and mistakes may be ignored; review by listening. Uses the container's default audio track.",
     toolbox_timestamp_media: "Media source",
     toolbox_timestamp_media_placeholder: "Choose or drop a media file",
     toolbox_timestamp_media_reject: "Choose a supported media file.",
@@ -4008,6 +4024,11 @@
       else setError("toolboxTimestampMediaPath", t("toolbox_timestamp_media_reject"));
       return;
     }
+    if (target === "toolboxTimestampScript") {
+      if (SCRIPT_EXTS.has(suffix)) setDroppedPath("toolboxTimestampScriptPath", value);
+      else setError("toolboxTimestampScriptPath", t("toolbox_alignment_script_missing"));
+      return;
+    }
     if (target === "toolboxBurnSubtitle") {
       if (SUBTITLE_BURN_EXTS.has(suffix)) setDroppedPath("toolboxBurnSubtitlePath", value);
       else setError("toolboxBurnSubtitlePath", t("toolbox_burn_subtitle_invalid"));
@@ -4660,6 +4681,7 @@
   bindDropField("toolboxInputDropZone", "toolboxInput", "toolboxInputDropZone");
   bindDropField("toolboxUtilityMediaDropZone", "toolboxUtilityMedia", "toolboxUtilityMediaDropZone");
   bindDropField("toolboxTimestampMediaDropZone", "toolboxTimestampMedia", "toolboxTimestampMediaDropZone");
+  bindDropField("toolboxTimestampScriptDropZone", "toolboxTimestampScript", "toolboxTimestampScriptDropZone");
   bindDropField("toolboxBurnSubtitleDropZone", "toolboxBurnSubtitle", "toolboxBurnSubtitleDropZone");
   bindDropField("toolboxFfconcatDropZone", "toolboxFfconcat", "toolboxFfconcatDropZone");
   bindDropField("toolboxAlignmentProjectDropZone", "toolboxAlignmentProject", "toolboxAlignmentProjectDropZone");
