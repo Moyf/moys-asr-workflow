@@ -1057,6 +1057,7 @@
   const PROJECT_TEXT_SELECTOR = [
     '.cue .text', '.multi-cue-column .text', '.waveform-cue-label',
     '.timed-text-edit-diff-part',
+    '.multi-subtitle-split-char',
     '.multi-subtitle-split-preview-left', '.multi-subtitle-split-preview-right',
     '.cue .sticker-slot .sname', '.cue .sticker-slot .sref', '.cue .sticker-slot img',
     '#sticker-preview-name', '#cue-panel-sticker .ref',

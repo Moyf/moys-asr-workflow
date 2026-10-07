@@ -124,6 +124,12 @@ test('English split preview preserves both subtitle halves', async ({ page }) =>
   await expect(page.locator('.multi-subtitle-split-preview-right').first()).toHaveText('保存');
   await expect(page.locator('html')).toHaveAttribute('lang', 'en');
   await page.screenshot({ path: test.info().outputPath('literal-split-preview.png') });
+  await page.evaluate(() => {
+    MaweBoot.DATA.segments[0].text = '主副无';
+    MaweSplitCore.openMainWaveformSplitModal(0, 4000);
+  });
+  await expect(page.locator('#multi-subtitle-split-main-text .multi-subtitle-split-char'))
+    .toHaveText(['主', '副', '无']);
 });
 
 test('English locale covers the editor shell and recent-project setting stays first', async ({ page }) => {
