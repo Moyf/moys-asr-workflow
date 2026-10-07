@@ -13,7 +13,6 @@
 .word-timing-advanced > summary::after { content: '›'; }
 .word-timing-advanced[open] > summary::after { content: '⌄'; }
 .word-timing-advanced > button { margin-top: 8px; width: 100%; }
-.toolbar.waveform-toolbar > .word-timing-toggle { flex: 0 0 auto; white-space: nowrap; margin-bottom: 2px; }
   /* ============================================================
      MAWE 设计令牌系统
      单一真源：所有颜色、圆角、阴影、动效均由此处派生。
@@ -1057,6 +1056,8 @@
     white-space: nowrap;
   }
   .waveform-settings-section { width: 100%; }
+  .waveform-settings-options { display: grid; gap: 8px; flex: 0 0 100%; }
+  .waveform-settings-options > label { white-space: normal; }
   .waveform-settings-title { text-transform: none; }
   .waveform-settings-section .editor-settings-item {
     flex: 0 0 auto; color: var(--text-secondary); font-size: 12px;

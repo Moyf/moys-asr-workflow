@@ -28,31 +28,58 @@ test.beforeEach(async ({ page }) => {
 });
 const word = (page, index) => page.locator(`.waveform-word-block[data-segment-idx="0"][data-item-idx="${index}"]`).first();
 const source = page => page.evaluate(() => JSON.parse(JSON.stringify(MaweBoot.DATA.segments[0])));
+async function setWordTiming(page, enabled = true) {
+  if (!await page.locator('#waveform-settings-panel').isVisible()) {
+    await page.locator('#waveform-settings-toggle').click();
+  }
+  await page.locator('#word-timing-toggle').setChecked(enabled);
+  await page.locator('#waveform-settings-toggle').click();
+}
+
+test('waveform settings contain both toggles with spaced rows and working behavior', async ({ page }, testInfo) => {
+  await expect(page.locator('.waveform-toolbar > .word-timing-toggle, .waveform-toolbar > .gap-skip-toggle')).toHaveCount(0);
+  await page.locator('#waveform-settings-toggle').click();
+  const panel = page.locator('#waveform-settings-panel');
+  await expect(panel.locator('#word-timing-toggle')).toBeVisible();
+  await expect(panel.locator('#gap-skip-playback')).toBeChecked();
+  const spacing = await panel.locator('.waveform-settings-options').evaluate(el => {
+    const previous = el.previousElementSibling.getBoundingClientRect();
+    const [word, gap] = [...el.children].map(child => child.getBoundingClientRect());
+    return { before: word.top - previous.bottom, between: gap.top - word.bottom };
+  });
+  expect(spacing.before).toBeGreaterThanOrEqual(8);
+  expect(spacing.between).toBeGreaterThanOrEqual(8);
+  await testInfo.attach('settings spacing', { body: JSON.stringify(spacing), contentType: 'application/json' });
+  await panel.locator('#word-timing-toggle').check();
+  await expect(word(page, 0)).toBeVisible();
+  await panel.locator('#gap-skip-playback').uncheck();
+  expect(await page.evaluate(() => MaweBoot.DATA.gap_remove.skip_playback)).toBe(false);
+  await panel.locator('#gap-skip-playback').check();
+  expect(await page.evaluate(() => MaweBoot.DATA.gap_remove.skip_playback)).toBe(true);
+  await page.screenshot({ path: testInfo.outputPath('waveform-options.png') });
+  await page.locator('#waveform-settings-toggle').click();
+  await expect(panel).toBeHidden();
+  await expect(word(page, 0)).toBeVisible();
+});
 
 test('temporary display handles partial and absent timings in both waveform modes', async ({ page }, testInfo) => {
   const errors = [];
   page.on('pageerror', error => errors.push(error.message));
   await expect(page.locator('#word-timing-toggle')).not.toBeChecked();
-  await page.locator('#word-timing-toggle').check();
+  await setWordTiming(page);
   await expect(word(page, 1)).toContainText('很喜欢！');
   await expect(word(page, 1)).toHaveAttribute('title', /00:03\.000.*00:06\.000/s);
   await expect(page.locator('.waveform-word-time')).toHaveCount(0);
   await expect(page.locator('.waveform-word-block[data-segment-idx="1"]')).toHaveCount(0);
   await expect(page.locator('.waveform-word-block[data-segment-idx="2"]')).toHaveCount(1);
   await expect(page.locator('.word-timing-background .waveform-cue-handle')).toHaveCount(0);
-  const toggleSpacing = await page.locator('#word-timing-toggle').evaluate(el => {
-    const toggle = el.closest('label').getBoundingClientRect();
-    const row = document.querySelector('.waveform-row').getBoundingClientRect();
-    return row.top - toggle.bottom;
-  });
-  expect(toggleSpacing).toBeGreaterThanOrEqual(8);
   await page.locator('[data-waveform-mode="basic"]').click();
   await expect(word(page, 0)).toBeVisible();
   await page.locator('#waveform-pane').screenshot({ path: testInfo.outputPath('word-basic.png') });
   await page.locator('[data-waveform-mode="multi"]').click();
   await expect(word(page, 0)).toBeVisible();
   await page.locator('#waveform-pane').screenshot({ path: testInfo.outputPath('word-multi.png') });
-  await page.locator('#word-timing-toggle').uncheck();
+  await setWordTiming(page, false);
   await expect(page.locator('.waveform-word-block')).toHaveCount(0);
   await expect(page.locator('.waveform-cue-block[data-track="main"] .waveform-cue-handle').first()).toBeVisible();
   expect(errors).toEqual([]);
@@ -60,7 +87,7 @@ test('temporary display handles partial and absent timings in both waveform mode
 
 test('partially missing text displays matched word punctuation but stays unavailable for conversion', async ({ page }) => {
   await page.evaluate(() => { MaweBoot.DATA.segments[0].text = '我，真的很喜欢！'; });
-  await page.locator('#word-timing-toggle').check();
+  await setWordTiming(page);
   await expect(word(page, 0).locator('.waveform-word-label')).toHaveText('我，');
   await expect(word(page, 1).locator('.waveform-word-label')).toHaveText('很喜欢！');
   expect((await source(page)).items.map(item => item.text)).toEqual(['我', '很喜欢']);
@@ -70,7 +97,7 @@ test('partially missing text displays matched word punctuation but stays unavail
 });
 
 test('drag only changes items, cancellation and undo restore exact data', async ({ page }) => {
-  await page.locator('#word-timing-toggle').check();
+  await setWordTiming(page);
   const before = await source(page);
   const box = await word(page, 0).boundingBox();
   await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
@@ -94,7 +121,7 @@ test('drag only changes items, cancellation and undo restore exact data', async 
 });
 
 test('range selection merges items and unsupported shortcuts never edit the parent', async ({ page }) => {
-  await page.locator('#word-timing-toggle').check();
+  await setWordTiming(page);
   await word(page, 0).click();
   await page.keyboard.press('Delete');
   await page.keyboard.press('r');
@@ -114,7 +141,7 @@ test('range selection merges items and unsupported shortcuts never edit the pare
 });
 
 test('word context menu preserves multi-selection until merge is applied', async ({ page }) => {
-  await page.locator('#word-timing-toggle').check();
+  await setWordTiming(page);
   await word(page, 0).click();
   await word(page, 1).click({ modifiers: ['Control'] });
   await word(page, 1).click({ button: 'right' });
@@ -125,7 +152,7 @@ test('word context menu preserves multi-selection until merge is applied', async
 });
 
 test('Tab outside the waveform cannot redirect word shortcuts to their parent sentence', async ({ page }) => {
-  await page.locator('#word-timing-toggle').check();
+  await setWordTiming(page);
   const before = await source(page);
   await word(page, 0).click();
   await word(page, 1).click({ modifiers: ['Shift'] });
@@ -189,7 +216,7 @@ test('conversion reviews skips and bindings, is atomic and preserves items on sa
   const saved = await page.evaluate(() => JSON.parse(MaweJsonRepair.buildJson()));
   expect(saved.segments[1].items[0].text).toBe('很喜欢！');
   expect(JSON.stringify(saved)).not.toContain('wordTiming');
-  await page.locator('#word-timing-toggle').check();
+  await setWordTiming(page);
   await page.evaluate(data => MaweProjectLoad.applyCanonicalProject(data, 'reloaded.mosp'), saved);
   await expect(page.locator('#word-timing-toggle')).not.toBeChecked();
   expect(await page.evaluate(() => MaweBoot.DATA.segments[1].items[0].text)).toBe('很喜欢！');
@@ -202,7 +229,7 @@ test('classic linked edges and Alt independence edit only in-sentence items', as
     MaweSettings.EDITOR_SETTINGS.adjacentBoundaryMode = 'classic';
     MaweBoot.DATA.segments[0].items = [{ text: '我', start: 1000, end: 3000 }, { text: '很喜欢', start: 3000, end: 6000 }];
   });
-  await page.locator('#word-timing-toggle').check();
+  await setWordTiming(page);
   let handle = await word(page, 0).locator('.right').boundingBox();
   await page.mouse.move(handle.x + handle.width / 2, handle.y + handle.height / 2);
   await page.mouse.down();
@@ -233,7 +260,7 @@ test('dual seam links both sides, cross-row fragments retain only their real edg
     MaweCoreState.waveformEditor.settings.secondsPerRow = 5;
     MaweCoreState.waveformEditor.render();
   });
-  await page.locator('#word-timing-toggle').check();
+  await setWordTiming(page);
   const fragments = page.locator('.waveform-word-block[data-segment-idx="0"][data-item-idx="1"]');
   await expect(fragments).toHaveCount(2);
   await expect(fragments.first()).toHaveClass(/continues-to-next-row/);
@@ -260,7 +287,7 @@ test('frame editing and conversion preserve narrow one-frame words through save 
       { text: '很喜欢', start: 3000, end: 6000, start_frame: 90, end_frame: 180 },
     ];
   });
-  await page.locator('#word-timing-toggle').check();
+  await setWordTiming(page);
   await expect(word(page, 0)).toHaveAttribute('title', /00:00:01:00.*00:00:01:01/s);
   await expect(page.locator('.waveform-word-time')).toHaveCount(0);
   await page.locator('#waveform-pane').screenshot({ path: testInfo.outputPath('word-narrow-frame.png') });
@@ -286,7 +313,7 @@ test('narrow word centers move without stretching and both edge handles remain u
     MaweBoot.DATA.timebase = { unit: 'milliseconds', fps: 30 };
     MaweBoot.DATA.segments[0].items[0] = { text: '我', start: 1000, end: 1033 };
   });
-  await page.locator('#word-timing-toggle').check();
+  await setWordTiming(page);
   const box = await word(page, 0).boundingBox();
   const center = { x: box.x + box.width / 2, y: box.y + box.height / 2 };
   expect(await page.evaluate(point => Boolean(document.elementFromPoint(point.x, point.y)?.closest('.waveform-cue-handle')), center)).toBe(false);
@@ -316,7 +343,7 @@ test('narrow word centers move without stretching and both edge handles remain u
 });
 
 test('redo during an active word drag cancels the gesture and preserves pending redo', async ({ page }) => {
-  await page.locator('#word-timing-toggle').check();
+  await setWordTiming(page);
   const before = (await source(page)).items;
   const startDrag = async distance => {
     const box = await word(page, 0).boundingBox();
@@ -340,7 +367,7 @@ test('redo during an active word drag cancels the gesture and preserves pending 
 });
 
 test('merge cannot nest inside an active word drag or be overwritten by its snapshot', async ({ page }) => {
-  await page.locator('#word-timing-toggle').check();
+  await setWordTiming(page);
   await word(page, 0).click();
   await word(page, 1).click({ modifiers: ['Control'] });
   const box = await word(page, 0).boundingBox();
@@ -382,7 +409,7 @@ test('English UI does not translate project words or their hover text', async ({
     MaweBoot.DATA.segments[0].items = [{ text: '字词时间码', start: 1000, end: 6000 }];
     MAWE_I18N.applyLanguage('en');
   });
-  await page.locator('#word-timing-toggle').check();
+  await setWordTiming(page);
   await expect(page.locator('.word-timing-toggle')).toContainText('Word timings');
   await expect(word(page, 0).locator('.waveform-word-label')).toHaveText('字词时间码');
   await expect(word(page, 0)).toHaveAttribute('title', /^字词时间码/);
@@ -391,7 +418,7 @@ test('English UI does not translate project words or their hover text', async ({
 });
 
 test('no-op gestures do not create undo history and leaving words clears their highlight', async ({ page }) => {
-  await page.locator('#word-timing-toggle').check();
+  await setWordTiming(page);
   await expect(page.locator('#undo-btn')).toBeDisabled();
   await word(page, 0).click();
   await expect(page.locator('#undo-btn')).toBeDisabled();

@@ -18,7 +18,7 @@
     '调整字词起点': 'Adjust timed text start',
     '调整字词终点': 'Adjust timed text end',
     '拖动调整贴合字词边界（两侧一起移动）': 'Drag the shared timed text boundary',
-    '开启「字词时间码」查看和调整主轨已有 items；整句块淡化为背景，缺少时间码的位置不补建。': 'Enable Word timings to view and edit existing main-track items. Sentence blocks become dim backgrounds; missing timings are not generated.',
+    '在波形区 ⚙️ 设置中开启「字词时间码」查看和调整主轨已有 items；整句块淡化为背景，缺少时间码的位置不补建。': 'Enable Word timings in the waveform ⚙️ settings to view and edit existing main-track items. Sentence blocks become dim backgrounds; missing timings are not generated.',
     '点击选中，Ctrl(Cmd) 多选，Shift 范围选择；拖动移动或调整边界，C 合并同句内连续块，Esc 取消拖动。': 'Click to select, Ctrl(Cmd) to toggle, Shift to select a range. Drag to move or resize; C merges consecutive blocks in one sentence; Esc cancels a drag.',
     '一个块可能包含多个共享时间的字词；新增文字不代表重新对齐音频。高级操作可将选中的完整句子转为独立字幕，确认前会列出跳过原因与解绑数量。': 'One block may contain several words sharing a range. Added text is not realigned to audio. Advanced actions can convert fully covered selected sentences to subtitles, with skipped reasons and binding removals listed before confirmation.',
     '此操作会替换选中的整句结构，并解除相关副字幕绑定；副字幕内容与时间保留。字词范围可能更短，产生更多空隙。新增文字可能共用旧时间范围，没有重新对齐音频。每个块转为一条字幕，不按字数细分时间。可通过撤销恢复，不提供反向转换工具。': 'This replaces selected sentence structures and removes their secondary subtitle bindings, keeping secondary text and timing. Word ranges may be shorter and leave more gaps. Added text may share an old range and has not been realigned to audio. Each block becomes one subtitle; timing is not subdivided by character count. Undo is available; there is no reverse conversion tool.',

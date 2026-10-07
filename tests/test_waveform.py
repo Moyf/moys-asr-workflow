@@ -540,13 +540,16 @@ class EditorAssetTests(unittest.TestCase):
         self.assertEqual(page.count('class="editor-settings-group subtitle-color-settings-group"'), 1)
         self.assertEqual(page.count('class="editor-settings-group subtitle-speaker-settings-group"'), 1)
         self.assertLess(page.index('id="cue-move-step"'), page.index('id="gap-remove-operation-mode"'))
-        # 波形 ⚙️ 面板不再包含操作类设置，但保留样式外观项与「禁用波形显示」
+        # 波形 ⚙️ 保留外观项，并集中提供字词显示与空隙播放开关。
+        # 拖动、联动和空隙检测等操作设置仍在独立工具窗中。
         waveform_panel_slice = page[page.index('id="waveform-settings-panel"'):page.index('<span class="waveform-mode-switch"')]
         self.assertNotIn('id="cue-move-step"', waveform_panel_slice)
         self.assertNotIn('id="gap-remove-operation-mode"', waveform_panel_slice)
         self.assertNotIn('id="waveform-drag-playhead"', waveform_panel_slice)
         self.assertNotIn('id="adjacent-boundary-mode"', waveform_panel_slice)
-        self.assertNotIn('静音空隙', waveform_panel_slice)
+        self.assertNotIn('id="gap-remove-manage"', waveform_panel_slice)
+        self.assertIn('id="word-timing-toggle"', waveform_panel_slice)
+        self.assertIn('id="gap-skip-playback" checked', waveform_panel_slice)
         self.assertIn('id="waveform-show-group-badges"', waveform_panel_slice)
         self.assertIn('禁用波形显示', waveform_panel_slice)
         self.assertIn('id="waveform-disabled-display"', waveform_panel_slice)
