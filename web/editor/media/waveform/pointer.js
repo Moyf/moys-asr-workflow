@@ -169,7 +169,7 @@ window.MAWE.register('waveform-pointer', function createWaveformModule(dependenc
     // 最新事件合并到每帧最多一次；真正 seek 前重新检查开关与播放状态，
     // 避免调度之后状态已变化（开始播放、关闭开关、行被虚拟化重建）仍执行。
     scheduleHoverSeekPreview(event, row) {
-      if (this.playheadDragActive || this.isCueBoundaryDrag()
+      if (this.playheadDragActive || this.wordDrag || this.isCueBoundaryDrag()
           || this.options.getHoverSeekPreview?.() !== true) return;
       this.hoverSeekPreviewLastEvent = event;
       this.hoverSeekPreviewRow = row;

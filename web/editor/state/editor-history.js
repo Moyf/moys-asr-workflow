@@ -231,6 +231,7 @@
 
 
   function applyHistoryRecord(record) {
+  MaweWordTiming.clearSelection();
   if (record.kind === 'layout') {
     if (!MaweCoreState.waveformEditor?.restoreLayoutHistorySnapshot?.(record.layout)) {
       MaweHint.flashHint('工作区恢复失败：波形模块尚未加载', 'warning');

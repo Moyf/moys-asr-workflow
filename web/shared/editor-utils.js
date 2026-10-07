@@ -24,6 +24,7 @@
   Object.assign(helpers, window.MAWE.resolve('utils-gap-remove', helpers));
   Object.assign(helpers, window.MAWE.resolve('utils-history', helpers));
   Object.assign(helpers, window.MAWE.resolve('utils-multi-subtitle', helpers));
+  const wordTimingHelpers = window.MAWE.resolve('utils-word-timing', helpers);
   Object.assign(helpers, window.MAWE.resolve('utils-word-split', helpers));
   Object.assign(helpers, window.MAWE.resolve('utils-srt', helpers));
   Object.assign(helpers, window.MAWE.resolve('utils-lrc', helpers));
@@ -307,6 +308,7 @@
   } = helpers;
 
 window.AsrEditorUtils = {
+  ...wordTimingHelpers,
     PROJECT_SCHEMA,
     supportsProjectSchema,
     subtitleFontFamilyDisplayName,

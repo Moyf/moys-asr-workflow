@@ -320,13 +320,13 @@ window.MAWE.register('waveform-cue-blocks', function createWaveformModule(depend
             row.appendChild(badgeEl);
           });
         }
-        if (segment.start >= startMs) {
+        if (!this.options.wordTiming?.enabled && segment.start >= startMs) {
           const leftHandle = document.createElement('span');
           leftHandle.className = 'waveform-cue-handle left';
           leftHandle.title = localizedWaveformMessage('调节字幕的左边界（开始时间）', 'Adjust subtitle left boundary (start time)');
           block.appendChild(leftHandle);
         }
-        if (segment.end <= endMs) {
+        if (!this.options.wordTiming?.enabled && segment.end <= endMs) {
           const rightHandle = document.createElement('span');
           rightHandle.className = 'waveform-cue-handle right';
           rightHandle.title = localizedWaveformMessage('调节字幕的右边界（结束时间）', 'Adjust subtitle right boundary (end time)');
@@ -334,7 +334,16 @@ window.MAWE.register('waveform-cue-blocks', function createWaveformModule(depend
         }
         this.layoutBlock(block, segment, startMs, endMs, row);
         block.dataset.track = 'main';
-        block.addEventListener('pointerdown', (event) => this.beginCueDrag(event, index, row, 'main'));
+        if (this.options.wordTiming?.enabled) block.classList.add('word-timing-background');
+        block.addEventListener('pointerdown', (event) => {
+          if (!this.options.wordTiming?.enabled) return this.beginCueDrag(event, index, row, 'main');
+          event.preventDefault(); event.stopPropagation();
+          if (event.button !== 0) return;
+          this.focusWaveform();
+          if (event.ctrlKey || event.metaKey) this.options.toggleCueSelection?.(index);
+          else if (event.shiftKey) this.options.selectCueRange?.(index);
+          else this.options.selectCue(index);
+        });
         block.addEventListener('contextmenu', (event) => {
           event.preventDefault();
           event.stopPropagation();
@@ -353,8 +362,9 @@ window.MAWE.register('waveform-cue-blocks', function createWaveformModule(depend
           else this.options.activateCue?.(index);
         });
         row.appendChild(block);
+        this.appendWordBlocks(row, index, startMs, endMs);
       }
-      this.appendSharedBoundaryZones(row, startMs, endMs, 'main');
+      if (!this.options.wordTiming?.enabled) this.appendSharedBoundaryZones(row, startMs, endMs, 'main');
 
       // 独立叠加轨：与主/副字幕互不绑定，绘制在主字幕块上方（bottom 50% 独立一层）。
       // 交互为点击选中、双击编辑、拖动移动、右键菜单；badge 与主块同款，挂在叠加块上方。
@@ -632,7 +642,7 @@ window.MAWE.register('waveform-cue-blocks', function createWaveformModule(depend
       rows.forEach((row) => {
         // 绑定、解绑和字幕时间变化只影响覆盖层；保留已有行与 Canvas，
         // 避免重新采样/绘制波形导致操作出现一帧卡顿。
-        row.querySelectorAll('.waveform-cue-block, .waveform-cue-badge, .waveform-cue-boundary')
+        row.querySelectorAll('.waveform-cue-block, .waveform-cue-badge, .waveform-cue-boundary, .waveform-word-block, .waveform-word-boundary')
           .forEach((element) => element.remove());
         this.appendCueBlocks(
           row,

@@ -1,3 +1,19 @@
+.word-conversion-dialog {
+  width: min(560px, calc(100vw - 32px)); max-height: 80vh; overflow: auto;
+  padding: 24px; box-sizing: border-box; border: 1px solid var(--border);
+  border-radius: 12px; background: var(--bg-panel); color: var(--text-primary);
+}
+.word-conversion-dialog::backdrop { background: rgba(0, 0, 0, 0.55); }
+.word-conversion-dialog h3 { margin: 0; }
+.word-conversion-dialog p, .word-conversion-dialog ul { margin: 16px 0 0; line-height: 1.6; }
+.word-conversion-dialog ul:empty { display: none; }
+.word-conversion-actions { display: flex; justify-content: flex-end; gap: 12px; margin-top: 20px; }
+.word-conversion-actions .danger:not(:disabled) { color: var(--red); border-color: var(--red); }
+.word-timing-advanced > summary { list-style: none; }
+.word-timing-advanced > summary::after { content: '›'; }
+.word-timing-advanced[open] > summary::after { content: '⌄'; }
+.word-timing-advanced > button { margin-top: 8px; width: 100%; }
+.toolbar.waveform-toolbar > .word-timing-toggle { flex: 0 0 auto; white-space: nowrap; margin-bottom: 2px; }
   /* ============================================================
      MAWE 设计令牌系统
      单一真源：所有颜色、圆角、阴影、动效均由此处派生。

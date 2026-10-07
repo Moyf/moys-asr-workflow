@@ -121,6 +121,24 @@
     MaweSelection.lastClickedIdx = idx;
   }
   const targetIdxs = isMulti ? [...MaweSelection.selectedIdxs] : [idx];
+  const advanced = document.createElement('details');
+  advanced.className = 'word-timing-advanced';
+  const advancedHeading = document.createElement('summary');
+  advancedHeading.className = 'item';
+  advancedHeading.textContent = '高级操作';
+  const convertWords = document.createElement('button');
+  convertWords.type = 'button';
+  convertWords.className = 'item danger';
+  convertWords.textContent = '字词转为独立字幕…';
+  convertWords.addEventListener('click', () => {
+    MaweDom.ctxmenu.classList.remove('show');
+    MaweWordTiming.openConversion(targetIdxs);
+  });
+  advanced.append(advancedHeading, convertWords);
+  advanced.addEventListener('toggle', () => {
+    const rect = MaweDom.ctxmenu.getBoundingClientRect();
+    MaweDom.ctxmenu.style.top = `${Math.max(4, Math.min(y, window.innerHeight - rect.height - 4))}px`;
+  });
 
   function addItem(label, kbd, fn, opts = {}) {
     const it = document.createElement('div');
@@ -331,6 +349,8 @@
     addItem('取消选择', `${MaweDisplaySettings.modKeyLabel()}+D`, () => MaweSelection.clearSelection());
   }
 
+  addSep();
+  MaweDom.ctxmenu.appendChild(advanced);
   // 调整 ctxmenu 位置（避免溢出）
   MaweDom.ctxmenu.classList.add('show');
   const rect = MaweDom.ctxmenu.getBoundingClientRect();
