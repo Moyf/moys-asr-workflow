@@ -333,6 +333,7 @@ MaweDom.saveProjectAsButton?.addEventListener('click', () => MaweProjectSave.sav
 // Project-level save shortcuts intentionally override the browser page-save
 // command. finishEdit() inside saveProjectToServer commits an active text edit.
 document.addEventListener('keydown', (event) => {
+  event = MaweShortcuts.resolveEvent(event);
   if (!(event.ctrlKey || event.metaKey) || event.altKey || event.key.toLowerCase() !== 's') return;
   event.preventDefault();
   if (event.shiftKey) {

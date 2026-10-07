@@ -14,6 +14,7 @@ document.addEventListener('click', (event) => {
 // 空格播放/暂停。捕获阶段先于原生媒体控件处理，避免控件获得焦点后执行默认行为。
 
 document.addEventListener('keydown', (e) => {
+  e = MaweShortcuts.resolveEvent(e);
   if (!MaweKeyboardTargets.isSpaceKey(e)) return;
   if (MaweInlineEdit.editingState || MaweKeyboardTargets.isTextEditingTarget(e)) return;
   if (MaweDom.textProcessModal.classList.contains('show')) return;
@@ -33,6 +34,7 @@ document.addEventListener('keydown', (e) => {
 }, true);
 
 document.addEventListener('keyup', (e) => {
+  e = MaweShortcuts.resolveEvent(e);
   if (!MaweKeyboardTargets.isSpaceKey(e) || !MaweShortcuts.interceptedSpace) return;
   e.preventDefault();
   e.stopImmediatePropagation();
@@ -48,6 +50,7 @@ window.addEventListener('blur', () => { MaweShortcuts.interceptedSpace = false; 
 
 
 document.addEventListener('keydown', (e) => {
+  e = MaweShortcuts.resolveEvent(e);
   if (e.key !== 'j' && e.key !== 'J' && e.key !== 'k' && e.key !== 'K' && e.key !== 'l' && e.key !== 'L') return;
   if (MaweInlineEdit.editingState) return;
   if (MaweDom.textProcessModal.classList.contains('show')) return;
@@ -103,6 +106,7 @@ document.addEventListener('keydown', (e) => {
 // 播放中以播放头所在字幕为基准；播放头处于空隙时，按方向选择其前方/后方字幕。
 // 暂停时仍以当前选中字幕为基准。跳转本身不改变播放状态。
 document.addEventListener('keydown', (e) => {
+  e = MaweShortcuts.resolveEvent(e);
   const key = e.key.toLowerCase();
   if (key !== 'a' && key !== 'd' && key !== 'w' && key !== 's') return;
   if (MaweInlineEdit.editingState) return;
@@ -197,6 +201,7 @@ document.addEventListener('keydown', (e) => {
 // Ctrl(Cmd)+Shift+A/D：把当前主/副字幕与前一条/后一条直接粘合。
 // 不改变 Ctrl(Cmd)+A/D 的全选与清除选择语义。
 document.addEventListener('keydown', (e) => {
+  e = MaweShortcuts.resolveEvent(e);
   if (!['a', 'A', 'd', 'D'].includes(e.key)) return;
   if (!(e.ctrlKey || e.metaKey) || !e.shiftKey || e.altKey || e.repeat) return;
   if (MaweInlineEdit.editingState || e.target === MaweDom.cuePanelText) return;
@@ -216,6 +221,7 @@ document.addEventListener('keydown', (e) => {
 // Ctrl(Cmd)+A：选中所有字幕。仅在「非编辑字幕」状态下生效；
 // 焦点在输入框/文本域/可编辑元素或内联编辑态时，保留浏览器原生的「全选文本」行为。
 document.addEventListener('keydown', (e) => {
+  e = MaweShortcuts.resolveEvent(e);
   if (e.key !== 'a' && e.key !== 'A') return;
   if (!e.ctrlKey && !e.metaKey) return;
   if (e.altKey || e.shiftKey) return;
@@ -240,6 +246,7 @@ document.addEventListener('keydown', (e) => {
 // Ctrl(Cmd)+D：取消选中（清空当前字幕选择）。浏览器默认是「添加书签」，这里接管；
 // 与 Ctrl(Cmd)+A 同样仅在非编辑字幕状态下生效。ESC 清除选中的行为保持不变。
 document.addEventListener('keydown', (e) => {
+  e = MaweShortcuts.resolveEvent(e);
   if (e.key !== 'd' && e.key !== 'D') return;
   if (!e.ctrlKey && !e.metaKey) return;
   if (e.altKey || e.shiftKey) return;
@@ -264,6 +271,7 @@ document.addEventListener('keydown', (e) => {
 
 // T：给选中字幕分配表情包。单选直接分配本条，多选统一分配（与右键菜单一致）。
 document.addEventListener('keydown', (e) => {
+  e = MaweShortcuts.resolveEvent(e);
   if (e.key !== 't' && e.key !== 'T') return;
   if (MaweInlineEdit.editingState || e.repeat) return;
   const a = document.activeElement;
@@ -292,6 +300,7 @@ document.addEventListener('keydown', (e) => {
 
 // 数字键使用当前工程的五/九色槽位；用途决定分配身份或普通分类色。
 document.addEventListener('keydown', (e) => {
+  e = MaweShortcuts.resolveEvent(e);
   if (!/^[0-9]$/.test(e.key)) return;
   const slot = Number(e.key);
   const color = slot ? MaweColors.ACTIVE_COLOR_PALETTE[slot - 1] : null;
@@ -329,6 +338,7 @@ document.addEventListener('keydown', (e) => {
 // Enter：聚焦最后点击的主/副字幕对应的字幕编辑区，并把光标置于末尾。
 // 绑定字幕同时选中时仍以最后点击的一侧为准；内联编辑态、已聚焦编辑区或模态打开时不触发。
 document.addEventListener('keydown', (e) => {
+  e = MaweShortcuts.resolveEvent(e);
   if (e.key !== 'Enter') return;
   if (MaweInlineEdit.editingState || MaweInlineEdit.extensionEditingState) return;  // 内联编辑态的 Enter 交给 split/commit 处理
   if (e.target === MaweDom.cuePanelText) return;  // 已在字幕编辑区
@@ -359,6 +369,7 @@ document.addEventListener('keydown', (e) => {
 
 // C：合并连续选中的字幕块。少于两条时只提示，不改动工程。
 document.addEventListener('keydown', (e) => {
+  e = MaweShortcuts.resolveEvent(e);
   if (e.key !== 'c' && e.key !== 'C') return;
   if (MaweInlineEdit.editingState || e.repeat) return;
   const a = document.activeElement;
@@ -395,6 +406,7 @@ document.addEventListener('keydown', (e) => {
 
 // Ctrl(Cmd)+Z 撤销；Ctrl(Cmd)+Shift+Z 或 Ctrl(Cmd)+Y 重做
 document.addEventListener('keydown', (e) => {
+  e = MaweShortcuts.resolveEvent(e);
   const isZ = e.key === 'z' || e.key === 'Z';
   const isY = e.key === 'y' || e.key === 'Y';
   if (!isZ && !isY) return;
@@ -409,6 +421,7 @@ document.addEventListener('keydown', (e) => {
 
 // Delete 键删除选中的字幕（最小命令面，供回归测试与键盘操作）
 document.addEventListener('keydown', (e) => {
+  e = MaweShortcuts.resolveEvent(e);
   if (e.key !== 'Delete' && e.key !== 'Backspace') return;
   // 编辑文本时让浏览器自己处理
   const a = document.activeElement;
@@ -441,6 +454,7 @@ document.addEventListener('keydown', (e) => {
 // 波形工具切换：V=选择（默认），R=剃刀，Esc=切回选择。与 J/K/L 一样只在
 // 非输入/非模态/非编辑态下触发，避免抢占文本编辑与弹窗按键。
 document.addEventListener('keydown', (e) => {
+  e = MaweShortcuts.resolveEvent(e);
   if (e.key !== 'v' && e.key !== 'V' && e.key !== 'r' && e.key !== 'R' && e.key !== 'Escape') return;
   if (!MaweCoreState.waveformEditor) return;
   // Escape：上下文菜单/弹窗/编辑态各自先处理；只有波形工具在 razor 时才切回。
@@ -482,6 +496,7 @@ document.addEventListener('keydown', (e) => {
 // F：试听选中的字幕（多选取第一条），到字幕终点自动暂停。任意单击行为下都生效；
 // 文本编辑、弹窗和修饰键状态下不抢占输入。
 document.addEventListener('keydown', (e) => {
+  e = MaweShortcuts.resolveEvent(e);
   if (e.key !== 'f' && e.key !== 'F') return;
   if (MaweInlineEdit.editingState || e.repeat) return;
   const a = document.activeElement;
@@ -507,6 +522,7 @@ document.addEventListener('keydown', (e) => {
 
 // I/O：跳到当前字幕的开头/结尾并保持暂停。
 document.addEventListener('keydown', (e) => {
+  e = MaweShortcuts.resolveEvent(e);
   if (e.key !== 'i' && e.key !== 'I' && e.key !== 'o' && e.key !== 'O') return;
   if (MaweInlineEdit.editingState || MaweInlineEdit.extensionEditingState || e.repeat || MaweKeyboardTargets.isTextEditingTarget(e)) return;
   if (MaweDom.textProcessModal.classList.contains('show')) return;
@@ -526,6 +542,7 @@ document.addEventListener('keydown', (e) => {
 // N：仅在鼠标位于波形行时，从指针音频位置创建字幕；创建后单选新字幕，
 // 切换当前字幕面板并聚焦面板文本框。
 document.addEventListener('keydown', (e) => {
+  e = MaweShortcuts.resolveEvent(e);
   if (e.key !== 'n' && e.key !== 'N') return;
   if (MaweInlineEdit.editingState || e.repeat || MaweKeyboardTargets.isTextEditingTarget(e)) return;
   const a = document.activeElement;
@@ -554,6 +571,7 @@ document.addEventListener('keydown', (e) => {
 // G：绑定当前单选的副字幕。若同时选中一条主字幕则直接绑定，否则沿用
 // 右键「绑定到主字幕」的自动匹配/等待选择流程。
 document.addEventListener('keydown', (e) => {
+  e = MaweShortcuts.resolveEvent(e);
   if (e.key !== 'g' && e.key !== 'G') return;
   if (MaweInlineEdit.editingState || MaweInlineEdit.extensionEditingState || e.repeat) return;
   const a = document.activeElement;
@@ -620,6 +638,7 @@ document.addEventListener('keydown', (e) => {
 
 // H：把当前选中的副字幕批量对齐到各自绑定的主字幕时间轴。
 document.addEventListener('keydown', (e) => {
+  e = MaweShortcuts.resolveEvent(e);
   if (e.key !== 'h' && e.key !== 'H') return;
   if (MaweInlineEdit.editingState || MaweInlineEdit.extensionEditingState || e.repeat) return;
   const a = document.activeElement;
@@ -653,6 +672,7 @@ document.addEventListener('keydown', (e) => {
 // 3) 其它位置：按当前键盘时间基准拆分。
 // 文本编辑、弹窗和修饰键状态下不抢占输入。
 document.addEventListener('keydown', (e) => {
+  e = MaweShortcuts.resolveEvent(e);
   if (e.key !== 'b' && e.key !== 'B') return;
   if (e.repeat) return;
   const forceMainEdit = MaweInlineEdit.editingState?.forceSplitArmed === true;

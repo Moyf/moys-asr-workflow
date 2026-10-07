@@ -29,11 +29,13 @@ document.addEventListener('pointerdown', (event) => {
 MaweCoreState.container.addEventListener('wheel', MaweCueListAnchor.interruptCueListFollowing, { passive: true });
 MaweCoreState.container.addEventListener('touchstart', MaweCueListAnchor.interruptCueListFollowing, { passive: true });
 document.addEventListener('keydown', (event) => {
+  event = MaweShortcuts.resolveEvent(event);
   MaweCueListAnchor.invalidateCueListVisualAnchorRestore({ preserveLayoutAnchor: true });
 }, true);
 // 等播放、弹窗及目标控件先处理输入；被消费的空格不再误归为列表滚动。
 // 应用自己消费的列表导航在其导航入口交出跟随，其余原生滚动在冒泡时处理。
 document.addEventListener('keydown', (event) => {
+  event = MaweShortcuts.resolveEvent(event);
   if (event.defaultPrevented || event.isComposing || MaweInlineEdit.editingState || MaweInlineEdit.extensionEditingState
       || MaweKeyboardTargets.isTextEditingTarget(event) || MaweKeyboardTargets.isNativeKeyboardControl(event) || MaweKeyboardTargets.isPlayerKeyboardTarget(event)) return;
   if (document.querySelector('.modal-mask.show, #ctxmenu.show')
@@ -126,8 +128,8 @@ document.addEventListener('pointermove', (e) => {
 // 只允许一个逻辑字幕，避免把多选误当成批量边界调整。
 
 
-document.addEventListener('keydown', (event) => MaweNavPreview.handlePointerBoundaryShortcut(event, 'start'));
-document.addEventListener('keydown', (event) => MaweNavPreview.handlePointerBoundaryShortcut(event, 'end'));
+document.addEventListener('keydown', (event) => MaweNavPreview.handlePointerBoundaryShortcut(MaweShortcuts.resolveEvent(event), 'start'));
+document.addEventListener('keydown', (event) => MaweNavPreview.handlePointerBoundaryShortcut(MaweShortcuts.resolveEvent(event), 'end'));
 
 
 

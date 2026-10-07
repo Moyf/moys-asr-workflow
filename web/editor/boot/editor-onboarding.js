@@ -609,6 +609,7 @@ function scheduleOnboardingAfterRender() {
 // 这个监听器放在 WASD / C 的真实快捷键之后，确保读取到已经更新的选区。
 document.addEventListener('keydown', (event) => {
   if (!onboardingIsOpen()) return;
+  event = MaweShortcuts.resolveEvent(event);
   if (event.key === 'Escape') {
     event.preventDefault();
     event.stopImmediatePropagation();

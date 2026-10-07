@@ -426,6 +426,12 @@
       "exportName": "initMaweSettingsInitWiring"
     },
     {
+      "file": "editor/ui/editor-wiring-shortcut-settings.js",
+      "kind": "init",
+      "name": "shortcut-settings-wiring-init",
+      "exportName": "initMaweShortcutSettingsWiring"
+    },
+    {
       "file": "editor/cues/editor-wiring-cue-panel.js",
       "kind": "init",
       "name": "cue-panel-wiring-init",
