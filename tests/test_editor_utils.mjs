@@ -1499,6 +1499,13 @@ test('builds immutable-shaped history records for each editor history kind', () 
   });
 });
 
+test('buildHistoryRecord can attach a pre-cloned snapshot without re-cloning', () => {
+  const preCloned = { segments: [{ text: 'a' }] };
+  const record = helpers.buildHistoryRecord('segments', '', preCloned, null, { clone: false });
+  assert.equal(record.segs, preCloned);
+  assert.equal(record.label, '编辑');
+});
+
 
 test('translates editor project controls and dynamic save messages to English', () => {
   assert.equal(i18n.translateText('保存工程', 'en'), 'Save project');
