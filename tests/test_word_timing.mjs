@@ -24,6 +24,21 @@ test('displays valid partial timings but refuses conversion with missing audible
   assert.equal(utils.planWordTimingConversion([source], [0]).skipped[0].reason, 'text');
   assert.equal(utils.getWordTimingEntries({ ...source, items: null }).length, 0);
 });
+
+test('partial unique text keeps untimed insertions missing while attaching sentence punctuation', () => {
+  const source = { ...sentence(), text: '（新增）我，真的很喜欢！ ' };
+  const entries = utils.getWordTimingEntries(source);
+  assert.deepEqual(plain(entries.map(entry => entry.text)), ['（）我，', '很喜欢！ ']);
+  assert.deepEqual(plain(entries.map(entry => [entry.start, entry.end])), [[120, 200], [300, 550]]);
+  assert.equal(utils.planWordTimingConversion([source], [0]).skipped[0].reason, 'text');
+  assert.equal(source.items[0].text, '我');
+});
+
+test('ambiguous repeated text does not guess punctuation ownership in partial display', () => {
+  const source = { ...sentence(), text: '我，真的我很喜欢！' };
+  assert.deepEqual(plain(utils.getWordTimingEntries(source).map(entry => entry.text)), ['我', '很喜欢']);
+  assert.equal(utils.planWordTimingConversion([source], [0]).skipped[0].reason, 'text');
+});
 test('does not show or invent timing for neutral or invalid items', () => {
   const source = { start: 0, end: 500, text: '甲，乙。', items: [
     { text: '甲', start: 0, end: 50 }, { text: '，', start: 50, end: 50 },

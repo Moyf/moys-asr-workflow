@@ -57,6 +57,17 @@ test('temporary display handles partial and absent timings in both waveform mode
   expect(errors).toEqual([]);
 });
 
+test('partially missing text displays matched word punctuation but stays unavailable for conversion', async ({ page }) => {
+  await page.evaluate(() => { MaweBoot.DATA.segments[0].text = '我，真的很喜欢！'; });
+  await page.locator('#word-timing-toggle').check();
+  await expect(word(page, 0).locator('.waveform-word-label')).toHaveText('我，');
+  await expect(word(page, 1).locator('.waveform-word-label')).toHaveText('很喜欢！');
+  expect((await source(page)).items.map(item => item.text)).toEqual(['我', '很喜欢']);
+  await page.evaluate(() => MaweWordTiming.openConversion([0]));
+  await expect(page.locator('#word-conversion-confirm')).toBeDisabled();
+  await expect(page.locator('#word-conversion-skipped')).toContainText('文字未被完整覆盖');
+});
+
 test('drag only changes items, cancellation and undo restore exact data', async ({ page }) => {
   await page.locator('#word-timing-toggle').check();
   const before = await source(page);

@@ -28,7 +28,7 @@ window.MAWE.register('utils-word-timing', function createWordTiming(dependencies
       entries.push({ index, item: cloneJsonValue(item), start, end, text: item.text });
       previousEnd = end;
     });
-    const texts = wordTextsFromSource(segment?.text, entries);
+    const texts = wordTextsFromSource(segment?.text, entries) || partialWordTextsFromSource(segment?.text, entries);
     if (texts) entries.forEach((entry, index) => { entry.text = texts[index]; });
     return entries;
   }
@@ -49,6 +49,47 @@ window.MAWE.register('utils-word-timing', function createWordTiming(dependencies
       }
       texts[owner] += ch;
       if (!neutral(ch)) used += 1;
+    }
+    return texts;
+  }
+
+  // Missing audible text stays on the sentence background. Project only when
+  // earliest and latest ordered matches agree, so repeated text is unambiguous.
+  function partialWordTextsFromSource(text, entries) {
+    if (!entries.length) return null;
+    const source = Array.from(String(text || ''));
+    const tokens = audible(text);
+    const words = entries.map(entry => audible(entry.item.text));
+    const matches = (word, position) => word.every((token, offset) => tokens[position + offset] === token);
+    let cursor = 0;
+    const earliest = words.map(word => {
+      let position = cursor;
+      while (position + word.length <= tokens.length && !matches(word, position)) position += 1;
+      cursor = position + word.length;
+      return cursor <= tokens.length ? position : -1;
+    });
+    cursor = tokens.length;
+    const latest = words.map(() => -1);
+    for (let index = words.length - 1; index >= 0; index -= 1) {
+      const word = words[index];
+      let position = cursor - word.length;
+      while (position >= 0 && !matches(word, position)) position -= 1;
+      latest[index] = position;
+      cursor = position;
+    }
+    if (earliest.some((position, index) => position < 0 || position !== latest[index])) return null;
+    const owners = new Map();
+    words.forEach((word, index) => word.forEach((_, offset) => owners.set(earliest[index] + offset, index)));
+    const texts = entries.map(() => '');
+    let owner = 0, audibleIndex = 0;
+    for (const token of source) {
+      if (neutral(token)) texts[owner] += token;
+      else {
+        const matchedOwner = owners.get(audibleIndex++);
+        if (matchedOwner === undefined) continue;
+        owner = matchedOwner;
+        texts[owner] += token;
+      }
     }
     return texts;
   }
