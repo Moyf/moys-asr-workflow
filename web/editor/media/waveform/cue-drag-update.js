@@ -388,7 +388,8 @@ window.MAWE.register('waveform-cue-drag-update', function createWaveformModule(d
       const commitIndices = [...(drag.commitIndices || drag.indices)];
       const segments = this.options.getSegments(drag.track || 'main');
       commitIndices.forEach((idx) => { if (segments[idx]) segments[idx]._dirty = true; });
-      this.options.onCommitEdit(commitIndices, drag.kind, drag.track || 'main', drag.independent === true);
+      this.options.onCommitEdit(commitIndices, drag.kind, drag.track || 'main', drag.independent === true,
+        { trackChanged: drag.trackChanged === true });
       this.refreshCueOverlay();
       restorePointerLine();
     }

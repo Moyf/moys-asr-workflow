@@ -375,6 +375,9 @@ window.MAWE.register('waveform-cue-drag', function createWaveformModule(dependen
       drag.squeezeOriginals = null;
       drag.allowSqueeze = false;
       drag.convertedToOverlay = track === 'overlay';
+      // Shift+拖动换轨（主↔叠加）改变了行结构：提交时列表必须全量重建，
+      // 不能走受影响行补丁（见 onCommitEdit 的 cueListPatch 门控）。
+      drag.trackChanged = true;
       const original = snapshotTiming(this.options.getSegments(track)[index], clock);
       drag.originals = new Map([[index, original]]);
       drag.cancelOriginals = new Map([[index, original]]);

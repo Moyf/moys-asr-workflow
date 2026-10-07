@@ -65,8 +65,11 @@
 
 
   function captureSegmentsRecord(label, { captureView = false } = {}) {
+    // snapshotSegments() 已是深克隆；让 buildHistoryRecord 跳过二次克隆，
+    // 长工程下省掉一遍 O(工程体积) 的 JSON 序列化。
     const record = window.AsrEditorUtils.buildHistoryRecord(
       'segments', label, snapshotSegments(), captureView ? snapshotEditorSelection() : null,
+      { clone: false },
     );
     record.projectChanges = { projectImportDirty: MaweState.changes.projectImportDirty };
     return record;
