@@ -47,6 +47,85 @@ test('English markers panel translates controls and preserves project names', as
   await page.screenshot({ path: test.info().outputPath('markers-english.png') });
 });
 
+test('English waveform and sticker names preserve project text', async ({ page }) => {
+  await disableOnboarding(page);
+  await page.goto(`${server.url}?lang=en`);
+  await page.evaluate(() => {
+    const segment = MaweBoot.DATA.segments[0];
+    segment.text = '删除';
+    segment.items = [];
+    segment.sticker = { name: '保存', path: 'data:image/svg+xml,%3Csvg xmlns="http://www.w3.org/2000/svg" width="8" height="8"/%3E' };
+    MaweCuePanel.renderAll({ waveform: 'full' });
+  });
+  await expect(page.locator('.waveform-cue-block[data-idx="0"] .waveform-cue-label').first()).toHaveText('删除');
+  const row = page.locator('.cue[data-idx="0"]');
+  await expect(row.locator('.sname')).toHaveText('保存');
+  await expect(row.locator('.sticker-slot img')).toHaveAttribute('title', '保存');
+  await row.locator('.sticker-slot img').click();
+  await expect(page.locator('#sticker-preview-name')).toHaveText('保存');
+  await page.evaluate(() => {
+    window.MAWE_I18N.applyLanguage('zh');
+    window.MAWE_I18N.applyLanguage('en');
+  });
+  await expect(page.locator('#sticker-preview-name')).toHaveText('保存');
+  await expect(row.locator('.sname')).toHaveText('保存');
+  await page.screenshot({ path: test.info().outputPath('literal-sticker-name.png') });
+});
+
+test('English overlay subtitles and the editing panel preserve literal input', async ({ page }) => {
+  await disableOnboarding(page);
+  await page.goto(`${server.url}?lang=en`);
+  await page.evaluate(() => {
+    MaweBoot.DATA.overlay_track = { enabled: true, segments: [
+      { id: 'literal-overlay', start: 1000, end: 3000, text: '删除', items: [] },
+    ] };
+    MaweCuePanel.renderAll({ waveform: 'full' });
+  });
+  const text = page.locator('.overlay-track-cue .text').first();
+  await expect(text).toHaveText('删除');
+  await text.click();
+  const panel = page.locator('#cue-panel-text');
+  await panel.fill('');
+  await page.keyboard.insertText('甲');
+  expect(await panel.evaluate((element) => element.selectionStart)).toBe(1);
+  await page.keyboard.insertText('乙');
+  await expect(panel).toHaveValue('甲乙');
+  await expect(text).toHaveText('甲乙');
+});
+
+test('English timed-text differences preserve literal subtitle content', async ({ page }) => {
+  await disableOnboarding(page);
+  await page.goto(`${server.url}?lang=en`);
+  await page.evaluate(() => {
+    MaweBoot.DATA.segments[0].text = '删除';
+    MaweBoot.DATA.segments[0].items = [];
+    MaweCuePanel.renderAll({ waveform: 'full' });
+  });
+  await page.locator('#batch-operations-btn').click();
+  await page.locator('#timed-text-edit-btn').click();
+  await page.locator('#timed-text-edit-rows textarea').first().fill('保存');
+  const row = page.locator('.timed-text-edit-row[data-index="0"]');
+  await expect(row.locator('.timed-text-edit-diff-part').filter({ hasText: '删除' }).first()).toHaveText('删除');
+  await expect(row.locator('.timed-text-edit-diff-part').filter({ hasText: '保存' }).first()).toHaveText('保存');
+  await expect(row.locator('.timed-text-edit-diff-label').first()).toHaveText('Before:');
+  await page.screenshot({ path: test.info().outputPath('literal-diff.png') });
+});
+
+test('English split preview preserves both subtitle halves', async ({ page }) => {
+  await disableOnboarding(page);
+  await page.goto(`${server.url}?lang=en`);
+  await page.evaluate(() => {
+    MaweBoot.DATA.segments[0].text = '删除保存';
+    MaweBoot.DATA.segments[0].items = [];
+    MaweCuePanel.renderAll({ waveform: 'full' });
+    MaweSplitCore.openMainWaveformSplitModal(0, 4000);
+  });
+  await expect(page.locator('.multi-subtitle-split-preview-left').first()).toHaveText('删除');
+  await expect(page.locator('.multi-subtitle-split-preview-right').first()).toHaveText('保存');
+  await expect(page.locator('html')).toHaveAttribute('lang', 'en');
+  await page.screenshot({ path: test.info().outputPath('literal-split-preview.png') });
+});
+
 test('English locale covers the editor shell and recent-project setting stays first', async ({ page }) => {
   await page.addInitScript(() => localStorage.setItem('mawe.language', 'en'));
   await page.goto(server.url);
@@ -81,7 +160,7 @@ test('English locale covers the editor shell and recent-project setting stays fi
     .filter((line) => /[\u3400-\u9fff]/u.test(line) && line !== '🌐中文');
   expect(untranslatedShellLines).toEqual([]);
   const untranslatedUiStrings = await page.evaluate(() => {
-    const skip = '#cue-list, #cue-panel-text, #overlay, #sticker-overlay-layer, #media-name, #json-name, #sticker-grid, #language-toggle, script, style';
+    const skip = '.cue .text, .multi-cue-column .text, #cue-panel-text, #overlay, #sticker-overlay-layer, #media-name, #json-name, #sticker-grid, #language-toggle, script, style';
     const found = new Set();
     const walker = document.createTreeWalker(document.body, NodeFilter.SHOW_TEXT);
     let node;
