@@ -55,12 +55,16 @@ test('English waveform and sticker names preserve project text', async ({ page }
     segment.text = '删除';
     segment.items = [];
     segment.sticker = { name: '保存', path: 'data:image/svg+xml,%3Csvg xmlns="http://www.w3.org/2000/svg" width="8" height="8"/%3E' };
+    MaweBoot.DATA.segments[1].sticker_ref = { headIdx: 0, name: '保存' };
     MaweCuePanel.renderAll({ waveform: 'full' });
   });
   await expect(page.locator('.waveform-cue-block[data-idx="0"] .waveform-cue-label').first()).toHaveText('删除');
   const row = page.locator('.cue[data-idx="0"]');
   await expect(row.locator('.sname')).toHaveText('保存');
   await expect(row.locator('.sticker-slot img')).toHaveAttribute('title', '保存');
+  const reference = page.locator('.cue[data-idx="1"] .sref');
+  await expect(reference).toHaveText('↑ 保存');
+  await expect(reference).toHaveAttribute('title', 'Inherits the sticker of subtitle 1');
   await row.locator('.sticker-slot img').click();
   await expect(page.locator('#sticker-preview-name')).toHaveText('保存');
   await page.evaluate(() => {

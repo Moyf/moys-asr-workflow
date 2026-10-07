@@ -1059,10 +1059,11 @@
     '.timed-text-edit-diff-part',
     '.multi-subtitle-split-char',
     '.multi-subtitle-split-preview-left', '.multi-subtitle-split-preview-right',
-    '.cue .sticker-slot .sname', '.cue .sticker-slot .sref', '.cue .sticker-slot img',
-    '#sticker-preview-name', '#cue-panel-sticker .ref',
+    '.cue .sticker-slot .sname', '.cue .sticker-slot img', '#sticker-preview-name',
   ].join(',');
   const SKIP_SELECTOR = [
+    // Reference text includes the project name, but its title is a UI hint.
+    '.cue .sticker-slot .sref', '#cue-panel-sticker .ref',
     PROJECT_TEXT_SELECTOR, '#cue-panel-text', '#overlay', '#sticker-overlay-layer',
     '#media-name', '#json-name', '#sticker-grid', '.hint-project-preview-value', '[data-marker-project-content]', 'script', 'style'
   ].join(',');
