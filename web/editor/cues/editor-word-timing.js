@@ -167,11 +167,15 @@
     if (dialog()?.open) { event.stopImmediatePropagation(); return; }
     if (!enabled || event.target.closest?.('input, textarea, select, [contenteditable="true"]')) return;
     const waveform = MaweCoreState.waveformEditor;
-    if (waveform?.wordDrag && (event.ctrlKey || event.metaKey) && event.key.toLowerCase() === 'z') {
-      event.preventDefault(); event.stopImmediatePropagation(); waveform.cancelWordDrag(); return;
-    }
-    if (event.key === 'Escape' && waveform?.wordDrag) {
-      event.preventDefault(); event.stopImmediatePropagation(); waveform.cancelWordDrag(); return;
+    if (waveform?.wordDrag) {
+      const key = event.key.toLowerCase();
+      if (event.key === 'Escape' || ((event.ctrlKey || event.metaKey) && ['z', 'y'].includes(key))) {
+        event.preventDefault(); event.stopImmediatePropagation(); waveform.cancelWordDrag();
+      } else if (!['alt', 'control', 'meta', 'shift', 'j', 'k', 'l', ' '].includes(key)) {
+        // Finish or cancel the gesture before running another project command.
+        event.preventDefault(); event.stopImmediatePropagation();
+      }
+      return;
     }
     if (event.key === 'Escape' && MaweDom.ctxmenu.classList.contains('show')) {
       event.preventDefault(); event.stopImmediatePropagation(); MaweDom.ctxmenu.classList.remove('show'); return;

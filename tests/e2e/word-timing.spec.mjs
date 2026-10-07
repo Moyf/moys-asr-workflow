@@ -269,6 +269,84 @@ test('frame editing and conversion preserve narrow one-frame words through save 
   expect((await source(page)).items[0]).toMatchObject({ start: 1000, end: 1033, start_frame: 30, end_frame: 31 });
 });
 
+test('narrow word centers move without stretching and both edge handles remain usable', async ({ page }) => {
+  await page.evaluate(() => {
+    MaweBoot.DATA.timebase = { unit: 'milliseconds', fps: 30 };
+    MaweBoot.DATA.segments[0].items[0] = { text: '我', start: 1000, end: 1033 };
+  });
+  await page.locator('#word-timing-toggle').check();
+  const box = await word(page, 0).boundingBox();
+  const center = { x: box.x + box.width / 2, y: box.y + box.height / 2 };
+  expect(await page.evaluate(point => Boolean(document.elementFromPoint(point.x, point.y)?.closest('.waveform-cue-handle')), center)).toBe(false);
+  await page.mouse.move(center.x, center.y);
+  await page.mouse.down();
+  await page.mouse.move(center.x + 15, center.y, { steps: 3 });
+  await page.mouse.up();
+  const moved = (await source(page)).items[0];
+  expect(moved.start).toBeGreaterThan(1000);
+  expect(moved.end - moved.start).toBe(33);
+  for (const edge of ['right', 'left']) {
+    const before = (await source(page)).items[0];
+    const handle = await word(page, 0).locator(`.${edge}`).boundingBox();
+    await page.mouse.move(handle.x + handle.width / 2, handle.y + handle.height / 2);
+    await page.mouse.down();
+    await page.mouse.move(handle.x + handle.width / 2 + (edge === 'right' ? 10 : -10), handle.y + handle.height / 2, { steps: 3 });
+    await page.mouse.up();
+    const after = (await source(page)).items[0];
+    if (edge === 'right') {
+      expect(after.start).toBe(before.start);
+      expect(after.end).toBeGreaterThan(before.end);
+    } else {
+      expect(after.end).toBe(before.end);
+      expect(after.start).toBeLessThan(before.start);
+    }
+  }
+});
+
+test('redo during an active word drag cancels the gesture and preserves pending redo', async ({ page }) => {
+  await page.locator('#word-timing-toggle').check();
+  const before = (await source(page)).items;
+  const startDrag = async distance => {
+    const box = await word(page, 0).boundingBox();
+    await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
+    await page.mouse.down();
+    await page.mouse.move(box.x + box.width / 2 + distance, box.y + box.height / 2, { steps: 3 });
+  };
+  await startDrag(12);
+  await page.mouse.up();
+  const committed = (await source(page)).items;
+  await page.keyboard.press('Control+z');
+  expect((await source(page)).items).toEqual(before);
+  await startDrag(18);
+  await page.keyboard.press('Control+y');
+  await page.mouse.up();
+  expect(await page.evaluate(() => Boolean(MaweCoreState.waveformEditor.wordDrag))).toBe(false);
+  expect((await source(page)).items).toEqual(before);
+  expect(await page.evaluate(() => MaweHistory.editorHistory.redoLength())).toBe(1);
+  await page.keyboard.press('Control+y');
+  expect((await source(page)).items).toEqual(committed);
+});
+
+test('merge cannot nest inside an active word drag or be overwritten by its snapshot', async ({ page }) => {
+  await page.locator('#word-timing-toggle').check();
+  await word(page, 0).click();
+  await word(page, 1).click({ modifiers: ['Control'] });
+  const box = await word(page, 0).boundingBox();
+  await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
+  await page.mouse.down();
+  await page.mouse.move(box.x + box.width / 2 + 12, box.y + box.height / 2, { steps: 3 });
+  await page.keyboard.press('c');
+  expect((await source(page)).items.length).toBe(2);
+  expect(await page.evaluate(() => MaweHistory.editorHistory.undoLength())).toBe(0);
+  await page.mouse.up();
+  const moved = (await source(page)).items;
+  expect(await page.evaluate(() => MaweHistory.editorHistory.undoLength())).toBe(1);
+  await page.keyboard.press('c');
+  expect((await source(page)).items.length).toBe(1);
+  await page.keyboard.press('Control+z');
+  expect((await source(page)).items).toEqual(moved);
+});
+
 test('conversion disables unavailable targets and requires review if data changes while open', async ({ page }) => {
   await page.evaluate(() => MaweWordTiming.openConversion([1, 2]));
   await expect(page.locator('#word-conversion-confirm')).toBeDisabled();

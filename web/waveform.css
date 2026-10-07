@@ -908,7 +908,7 @@
 }
 .waveform-word-block.selected { outline: 2px solid var(--selection-yellow); }
 .waveform-word-block.disabled { opacity: 0.55; }
-.waveform-pane .waveform-word-block .waveform-cue-handle { cursor: ew-resize; }
+.waveform-pane .waveform-word-block .waveform-cue-handle { cursor: ew-resize; width: min(7px, 25%); }
 .waveform-word-block.continues-from-previous-row { border-top-left-radius: 0; border-bottom-left-radius: 0; }
 .waveform-word-block.continues-to-next-row { border-top-right-radius: 0; border-bottom-right-radius: 0; }
 .waveform-word-boundary {
