@@ -36,6 +36,7 @@ test('temporary display handles partial and absent timings in both waveform mode
   await page.locator('#word-timing-toggle').check();
   await expect(word(page, 1)).toContainText('很喜欢！');
   await expect(word(page, 1)).toHaveAttribute('title', /00:03\.000.*00:06\.000/s);
+  await expect(page.locator('.waveform-word-time')).toHaveCount(0);
   await expect(page.locator('.waveform-word-block[data-segment-idx="1"]')).toHaveCount(0);
   await expect(page.locator('.waveform-word-block[data-segment-idx="2"]')).toHaveCount(1);
   await expect(page.locator('.word-timing-background .waveform-cue-handle')).toHaveCount(0);
@@ -261,7 +262,7 @@ test('frame editing and conversion preserve narrow one-frame words through save 
   });
   await page.locator('#word-timing-toggle').check();
   await expect(word(page, 0)).toHaveAttribute('title', /00:00:01:00.*00:00:01:01/s);
-  expect(await word(page, 0).locator('.waveform-word-time').isVisible()).toBe(false);
+  await expect(page.locator('.waveform-word-time')).toHaveCount(0);
   await page.locator('#waveform-pane').screenshot({ path: testInfo.outputPath('word-narrow-frame.png') });
   const handle = await word(page, 1).locator('.right').boundingBox();
   await page.mouse.move(handle.x + handle.width / 2, handle.y + handle.height / 2);

@@ -26,10 +26,7 @@ window.MAWE.register('waveform-word-blocks', function createWordBlocks(dependenc
         label.className = 'waveform-word-label';
         label.dataset.wordProjectContent = 'true';
         label.textContent = entry.text;
-        const stamp = document.createElement('span');
-        stamp.className = 'waveform-word-time';
-        stamp.textContent = time;
-        block.append(label, stamp);
+        block.append(label);
         if (range.start >= startMs) {
           const handle = document.createElement('span');
           handle.className = 'waveform-cue-handle left';

@@ -895,16 +895,11 @@
   outline: 1px solid color-mix(in srgb, var(--cue-color) 80%, white);
   background: color-mix(in srgb, var(--cue-color) 65%, var(--wave-cue-mix));
   color: var(--wave-cue-text); box-shadow: 0 1px 5px var(--wave-cue-shadow);
-  overflow: hidden; cursor: grab; touch-action: none; container-type: inline-size;
+  overflow: hidden; cursor: grab; touch-action: none;
 }
-.waveform-word-label, .waveform-word-time {
+.waveform-word-label {
   display: block; font-size: 11px; line-height: 26px;
   overflow: hidden; white-space: nowrap; text-overflow: ellipsis;
-}
-.waveform-word-time { display: none; font: 10px/13px var(--font-mono); }
-@container (min-width: 150px) {
-  .waveform-word-label { line-height: 13px; }
-  .waveform-word-time { display: block; }
 }
 .waveform-word-block.selected { outline: 2px solid var(--selection-yellow); }
 .waveform-word-block.disabled { opacity: 0.55; }
