@@ -564,7 +564,10 @@
   function syncPaths() {
     if (!inputManual) $("toolboxInputPath").value = autoSourcePath();
     if (!utilityMediaManual) $("toolboxUtilityMediaPath").value = $("mediaPath").value.trim();
-    if (!timestampMediaManual) $("toolboxTimestampMediaPath").value = $("mediaPath").value.trim();
+    if (!timestampMediaManual && $("toolboxTimestampMediaPath").value !== $("mediaPath").value.trim()) {
+      $("toolboxTimestampMediaPath").value = $("mediaPath").value.trim();
+      clearScriptAlignmentCheck();
+    }
     if (!subtitleBurnManual) {
       const source = $("srtPath").value.trim();
       $("toolboxBurnSubtitlePath").value = SUBTITLE_BURN_EXTS.has(extension(source)) ? source : "";
@@ -658,6 +661,11 @@
     $("toolboxTimestampModelStatus").textContent = t(statusKey);
     $("toolboxTimestampModelStatus").classList.toggle("error", !ready);
     $("runTimestampAlignment").disabled = busy || !ready;
+    $("checkScriptAlignment").disabled = busy;
+    const scriptMode = $("toolboxTimestampMode").value === "script";
+    const hint = $("toolboxTimestampModeHint");
+    hint.dataset.i18n = scriptMode ? "toolbox_timestamp_script_hint" : "toolbox_timestamp_existing_hint";
+    hint.textContent = t(hint.dataset.i18n);
   }
 
   function renderProvider(providerId = $("postprocessProvider").value) {
@@ -970,7 +978,7 @@
   function setBusy(nextBusy, statusKey = "toolbox_running") {
     busy = nextBusy;
     $("toolboxProgress").classList.toggle("hidden", !busy);
-    ["toolboxTimestampScriptPath", "pickToolboxTimestampScript", "toolboxTimestampLanguage", "toolboxTimestampSilenceMs", "toolboxTimestampSilenceDb", "toolboxTimestampAnchorsPath", "pickToolboxTimestampAnchors"].forEach((id) => { $(id).disabled = busy; });
+    ["toolboxTimestampScriptPath", "pickToolboxTimestampScript", "toolboxTimestampLanguage", "toolboxTimestampSilenceMs", "toolboxTimestampSilenceDb", "toolboxTimestampAnchorsPath", "pickToolboxTimestampAnchors", "toolboxTimestampAudioTrack", "toolboxTimestampOutputDirectory", "pickToolboxTimestampOutput", "checkScriptAlignment"].forEach((id) => { $(id).disabled = busy; });
     ["generateWaveform", "runWaveform", "toolboxGenerateSpectral", "runScriptMatch", "runTimestampAlignment", "runOcrDedup", "runLlmPostprocess", "runFixedProcess", "runFfconcatRebuild", "runBurnSubtitle", "runExtractAudio", "runToolboxAlignment", "stopToolboxAlignment", "saveLlmSettings", "testLlmConnection", "getLlmModels", "toolboxInputPath", "pickToolboxInput", "toolboxUtilityMediaPath", "pickToolboxUtilityMedia", "toolboxTimestampModel", "toolboxTimestampMode", "toolboxTimestampMediaPath", "pickToolboxTimestampMedia", "toolboxBurnSubtitlePath", "pickToolboxBurnSubtitle", "toolboxGreenScreen", "toolboxAudioTrack", "toolboxAlignmentProjectPath", "pickToolboxAlignmentProject", "toolboxAlignmentScriptPath", "pickToolboxAlignmentScript", "toolboxAlignmentGapMinimum", "toolboxAlignmentGapThreshold", "toolboxAlignmentGapLeadIn", "toolboxAlignmentGapLeadOut", "postprocessProvider", "llmProvider", "llmApiKey", "llmBaseUrl", "llmModel", "llmModelChoicesToggle", "llmReasoningMode", "llmCustomDisplayName", "ocrModel", "openOcrSettings", "ocrVideoPath", "pickOcrVideo", "ocrRegionMode", "ocrRegionX1", "ocrRegionY1", "ocrRegionX2", "ocrRegionY2", "ocrThreshold", "ocrReport", "postprocessConversion"].forEach((id) => {
       $(id).disabled = busy;
     });
@@ -1818,9 +1826,61 @@
     $("postprocessAiCleanupNotesField")?.classList.toggle("hidden", !aiEnabled);
   }
 
+  function scriptAlignmentPayload() {
+    return {
+      mediaPath: $("toolboxTimestampMediaPath").value.trim(),
+      scriptPath: $("toolboxTimestampScriptPath").value.trim(),
+      language: $("toolboxTimestampLanguage").value,
+      silenceDb: $("toolboxTimestampSilenceDb").value,
+      silenceMs: $("toolboxTimestampSilenceMs").value,
+      anchorsPath: $("toolboxTimestampAnchorsPath").value.trim(),
+      audioTrack: $("toolboxTimestampAudioTrack").value,
+      outputDirectory: $("toolboxTimestampOutputDirectory").value.trim(),
+    };
+  }
+
+  function scriptAlignmentSummary(report) {
+    if (!report || !["single", "manual_anchors", "silence_anchors"].includes(report.strategy)) return "";
+    return t("toolbox_script_alignment_summary")
+      .replace("{strategy}", t(`toolbox_script_alignment_${report.strategy}`))
+      .replace("{lines}", String(report.scriptLines ?? 0))
+      .replace("{chunks}", String(report.chunks ?? 0))
+      .replace("{seconds}", String(Math.round(Number(report.durationMs || 0) / 100) / 10))
+      .replace("{track}", String(report.audioTrack ?? 0));
+  }
+
+  function clearScriptAlignmentCheck() {
+    if (!$("toolboxTimestampCheckResult").classList.contains("hidden")) setResult("");
+    $("toolboxTimestampCheckResult").textContent = "";
+    $("toolboxTimestampCheckResult").classList.add("hidden");
+  }
+
+  async function checkScriptAlignment() {
+    if (busy) return;
+    const payload = scriptAlignmentPayload();
+    if (!payload.mediaPath || !MEDIA_EXTS.has(extension(payload.mediaPath)) || !SCRIPT_EXTS.has(extension(payload.scriptPath))) {
+      setResult(t("toolbox_timestamp_script_hint"), "error");
+      return;
+    }
+    clearScriptAlignmentCheck();
+    setBusy(true, "toolbox_script_alignment_check_pending");
+    try {
+      const result = await bridge("check_script_alignment", payload);
+      if (result.ok) {
+        const text = `${scriptAlignmentSummary(result.report)}\n${t("toolbox_script_alignment_check_done")}`;
+        $("toolboxTimestampCheckResult").textContent = text;
+        $("toolboxTimestampCheckResult").classList.remove("hidden");
+        setResult(text, "success");
+      } else setResult(postprocessErrorText(result), "error");
+    } finally {
+      setBusy(false);
+    }
+  }
+
   async function runTimestampAlignment() {
     if (busy) return;
     const scriptMode = $("toolboxTimestampMode").value === "script";
+    if (scriptMode) clearScriptAlignmentCheck();
     const paths = scriptMode ? {} : resolveInputPaths();
     if (!paths) return;
     const mediaPath = $("toolboxTimestampMediaPath").value.trim();
@@ -1857,14 +1917,12 @@
         modelId,
         alignmentMode: $("toolboxTimestampMode").value,
         device: $("localDevice")?.value || "auto",
-        ...(scriptMode ? {
-          scriptPath, language: $("toolboxTimestampLanguage").value,
-          silenceDb: $("toolboxTimestampSilenceDb").value,
-          silenceMs: $("toolboxTimestampSilenceMs").value,
-          anchorsPath: $("toolboxTimestampAnchorsPath").value.trim(),
-        } : {}),
+        ...(scriptMode ? scriptAlignmentPayload() : {}),
       });
-      if (result.ok) applySubtitleResult(result, { kind: "timestamps" });
+      if (result.ok) {
+        applySubtitleResult(result, { kind: "timestamps" });
+        if (scriptMode) setResult([t("toolbox_done"), scriptAlignmentSummary(result.report), ...(result.warnings || [])].filter(Boolean).join("\n"), "success");
+      }
       else {
         const message = postprocessErrorText(result);
         if (result.field) setFieldError(result.field, message);
@@ -2423,6 +2481,7 @@
     if (result.ok) {
       timestampMediaManual = true;
       $("toolboxTimestampMediaPath").value = result.path;
+      clearScriptAlignmentCheck();
       setFieldError("toolboxTimestampMediaPath", "");
       syncTimestampMediaName();
     }
@@ -2592,14 +2651,27 @@
   });
   $("toolboxTimestampModel").addEventListener("change", renderTimestampModel);
   $("toolboxTimestampMode").addEventListener("change", () => {
+    clearScriptAlignmentCheck();
     renderTimestampModel();
     selectTool("timestamps");
   });
   ["toolboxTimestampScript", "toolboxTimestampAnchors"].forEach((name) => {
     $(name.replace("toolbox", "pickToolbox")).addEventListener("click", async () => {
       const result = await bridge("choose_file", { kind: name.endsWith("Script") ? "script" : "json" });
-      if (result.ok) $(name + "Path").value = result.path;
+      if (result.ok) {
+        $(name + "Path").value = result.path;
+        clearScriptAlignmentCheck();
+      }
     });
+  });
+  $("checkScriptAlignment").addEventListener("click", checkScriptAlignment);
+  $("pickToolboxTimestampOutput").addEventListener("click", async () => {
+    const result = await bridge("choose_folder", { kind: "output" });
+    if (result.ok) $("toolboxTimestampOutputDirectory").value = result.path;
+  });
+  ["toolboxTimestampScriptPath", "toolboxTimestampMediaPath", "toolboxTimestampLanguage", "toolboxTimestampAudioTrack", "toolboxTimestampSilenceMs", "toolboxTimestampSilenceDb", "toolboxTimestampAnchorsPath"].forEach((id) => {
+    $(id).addEventListener("input", clearScriptAlignmentCheck);
+    $(id).addEventListener("change", clearScriptAlignmentCheck);
   });
   $("toolboxTimestampMediaPath").addEventListener("input", () => {
     timestampMediaManual = true;
@@ -2639,6 +2711,7 @@
   };
   window.MAWLauncher.getAutoPostprocessPayload = autoPlanFromControls;
   window.MAWLauncher.onLanguageChanged = () => {
+    clearScriptAlignmentCheck();
     syncProviderOptionLabels();
     if (window.MAWLauncher.config?.postprocessProviders?.length) renderProviderKeyStatus(provider());
     renderOcrModel();

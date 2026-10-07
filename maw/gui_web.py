@@ -1215,6 +1215,32 @@ class LauncherApi:
             return {"ok": False, "field": "postprocessInput", "code": file_error_code(error) or "postprocess_failed", "detail": str(error), "error": str(error)}
         return _subtitle_artifact_result(result)
 
+    def check_script_alignment(self, payload: Mapping[str, object]) -> dict[str, object]:
+        """Input/chunk check runs in the main runtime; no model is needed."""
+        from maw.script_timestamp_alignment import ScriptAlignmentRequest, check_script_alignment
+
+        media_path = _optional_path(payload.get("mediaPath"))
+        if not media_path or not _optional_path(payload.get("scriptPath")):
+            return _error_result("toolboxTimestampScriptPath", "alignment_failed", "文稿驱动对齐需要文稿与媒体文件。")
+        self._emit_postprocess_status("toolbox_status_reading")
+        try:
+            report = check_script_alignment(ScriptAlignmentRequest(media_path=media_path, **self._script_alignment_options(payload)))
+            return {"ok": True, "report": report.to_payload()}
+        except (OSError, UnicodeError, ValueError, RuntimeError) as error:
+            return _error_result("toolboxTimestampScriptPath", "alignment_failed", str(error))
+
+    @staticmethod
+    def _script_alignment_options(payload: Mapping[str, object]) -> dict[str, object]:
+        track = str(payload.get("audioTrack") if payload.get("audioTrack") is not None else "").strip()
+        return {
+            "script_path": _optional_path(payload.get("scriptPath")),
+            "language": str(payload.get("language") or "zh"),
+            "silence_db": float(str(payload.get("silenceDb", -35))),
+            "silence_ms": int(str(payload.get("silenceMs", 500))),
+            "anchors_path": _optional_path(payload.get("anchorsPath")),
+            "audio_track": int(track) if track else None,
+        }
+
     def run_timestamp_alignment(self, payload: Mapping[str, object]) -> dict[str, object]:
         script_mode = str(payload.get("alignmentMode") or "fill") == "script"
         model_id = normalize_alignment_model_id(str(payload.get("modelId") or ""))
@@ -1255,13 +1281,7 @@ class LauncherApi:
             requested_model_path = _optional_path(payload.get("modelPath"))
             script_options = {}
             if script_mode:
-                script_options = {
-                    "script_path": _optional_path(payload.get("scriptPath")),
-                    "language": str(payload.get("language") or "zh"),
-                    "silence_db": float(str(payload.get("silenceDb", -35))),
-                    "silence_ms": int(str(payload.get("silenceMs", 500))),
-                    "anchors_path": _optional_path(payload.get("anchorsPath")),
-                }
+                script_options = self._script_alignment_options(payload)
             if runtime.ready:
                 worker_result = run_timestamp_alignment_in_runtime(
                     project_path=project_path,

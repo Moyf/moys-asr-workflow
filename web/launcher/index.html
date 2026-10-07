@@ -807,7 +807,7 @@
      </section>
 
     <section id="toolboxTimestampsPanel" class="toolbox-panel hidden" role="tabpanel" aria-labelledby="toolboxTimestampsTab">
-      <p class="hint toolbox-panel-hint" data-i18n="toolbox_timestamps_hint">给 .srt 或 .mosp/.json 工程的字幕段生成或补充字词级时间码；需要原始媒体。</p>
+      <p id="toolboxTimestampModeHint" class="hint toolbox-panel-hint" data-i18n="toolbox_timestamps_hint">保留已有字幕文字并补充字词时间码；或从准确文稿与录音新建字幕。两种方式均需要原始媒体。</p>
       <div class="adv-group">
         <h3 data-i18n="toolbox_group_timestamp_media">媒体来源</h3>
         <div id="toolboxTimestampMediaDropZone" class="field toolbox-input">
@@ -858,6 +858,12 @@
             </select>
           </div>
           <div class="field">
+            <label for="toolboxTimestampAudioTrack" data-i18n="toolbox_script_alignment_track">音轨序号（可选，从 0 开始）</label>
+            <input id="toolboxTimestampAudioTrack" type="number" min="0" step="1" placeholder="默认音轨" data-i18n-placeholder="toolbox_script_alignment_track_default">
+          </div>
+        </div>
+        <div class="toolbox-grid">
+          <div class="field">
             <label for="toolboxTimestampSilenceMs" data-i18n="toolbox_script_alignment_pause">最短停顿（ms）</label>
             <input id="toolboxTimestampSilenceMs" type="number" min="80" max="10000" value="500">
           </div>
@@ -873,7 +879,18 @@
             <button id="pickToolboxTimestampAnchors" class="ghost" type="button" data-i18n="choose">选择</button>
           </div>
         </div>
-        <p class="hint toolbox-settings-hint" data-i18n="toolbox_script_alignment_hint">每个非空行生成一条字幕，保留标点，输出新 MOSP 和 SRT。仅用 Qwen ForcedAligner；≤5 分钟整段对齐，长录音要求每行对应一个停顿分隔的语音区间，否则需人工锚点。跳行、重读和口误可能被忽略，请听审。默认使用容器默认音轨。</p>
+        <div class="field">
+          <label for="toolboxTimestampOutputDirectory" data-i18n="toolbox_script_alignment_output">输出目录（可选，默认文稿所在目录）</label>
+          <div class="path-row">
+            <input id="toolboxTimestampOutputDirectory" type="text" autocomplete="off">
+            <button id="pickToolboxTimestampOutput" class="ghost" type="button" data-i18n="choose_folder">选择文件夹</button>
+          </div>
+        </div>
+        <p class="hint toolbox-settings-hint" data-i18n="toolbox_script_alignment_hint">每个非空行生成一条字幕，保留标点，输出新 MOSP 和 SRT。≤5 分钟整段对齐；静音参数仅用于长录音自动分块，人工锚点不依赖静音检测。长录音须每行对应一个语音区间，否则需人工锚点。跳行、重读和口误可能被忽略，请听审。</p>
+        <div class="script-alignment-check-actions">
+          <button id="checkScriptAlignment" class="ghost" type="button" data-i18n="toolbox_script_alignment_check">检查输入与分块（无需模型）</button>
+        </div>
+        <p id="toolboxTimestampCheckResult" class="hint hidden" aria-live="polite"></p>
       </div>
     </section>
 

@@ -18,6 +18,7 @@
 | [服务商配置](PROVIDERS.md) | 各服务的配置字段、能力边界、费用与数据政策入口。 |
 | [本地 ASR](LOCAL_ASR.md) | 实验性模型、独立运行环境、缓存、设备和时间码。 |
 | [文稿驱动对齐](SCRIPT_DRIVEN_ALIGNMENT.md) | 准确文稿与录音直接生成字词时间码字幕，跳过 ASR；静音与人工锚点。 |
+| [相近能力对比](ALIGNMENT_FEATURES.md) | 文稿生成、时间码修复、文稿匹配、口播对齐与 AI 整理的差异、选择和演进建议。 |
 | [CLI](CLI.md) | 公开命令行参数、底层脚本区别、Server 管理和自动化。 |
 | [FAQ](FAQ.md) | 启动、FFmpeg、API、媒体加载、保存与反馈。 |
 

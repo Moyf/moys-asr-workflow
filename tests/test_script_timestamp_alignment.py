@@ -6,14 +6,14 @@ import tempfile
 import unittest
 import wave
 from array import array
-from contextlib import redirect_stderr
+from contextlib import redirect_stderr, redirect_stdout
 from pathlib import Path
 from types import SimpleNamespace
 from unittest import mock
 
 from maw.script_timestamp_alignment import (
     ScriptAlignmentRequest, ScriptAnchor, plan_script_anchors, read_anchors,
-    read_script_lines, run_script_alignment, speech_ranges, tokens_to_script_segments,
+    check_script_alignment, read_script_lines, run_script_alignment, speech_ranges, tokens_to_script_segments,
 )
 from maw.timestamp_alignment import TimedToken, TimestampAlignmentError
 
@@ -44,6 +44,15 @@ class ScriptTimestampTests(unittest.TestCase):
     def test_token_crossing_line_is_split_within_its_actual_range(self):
         result = tokens_to_script_segments(["你", "好"], [TimedToken("你好", 80, 240)], 0, 500)
         self.assertEqual([(cue["start"], cue["end"]) for cue in result], [(80, 160), (160, 240)])
+
+    def test_composed_tokens_restore_original_combining_characters(self):
+        for original, token in (("cafe\u0301!", "café"), ("か\u3099。", "が"), ("\u1100\u1161!", "가")):
+            with self.subTest(original=original):
+                cue = tokens_to_script_segments([original], [TimedToken(token, 50, 500)], 1000, 2000)[0]
+                self.assertEqual(cue["text"], original)
+                self.assertEqual(cue["items"], [{"text": original, "start": 1050, "end": 1500}])
+        cue = tokens_to_script_segments(["cafe\u0301 bon."], [TimedToken("café", 0, 300), TimedToken("bon", 400, 800)], 0, 1000)[0]
+        self.assertEqual([item["text"] for item in cue["items"]], ["cafe\u0301", " bon."])
 
     def test_invalid_timings_and_incomplete_text_are_rejected(self):
         for tokens in (
@@ -78,10 +87,15 @@ class ScriptTimestampTests(unittest.TestCase):
         for lines, duration, spans in (
             (["你好"] * 2, 660000, [(0, 10000)]),
             (["你好"], 660000, [(0, 660000)]),
-            (["你好"], 1000, []),
+            (["你好"], 660000, []),
         ):
             with self.subTest(duration=duration), self.assertRaises(TimestampAlignmentError):
                 plan_script_anchors(lines, duration, spans)
+
+    def test_short_and_manual_modes_do_not_require_silence_spans(self):
+        self.assertEqual(plan_script_anchors(["你好"], 1000, [])[0], "single")
+        anchors = [ScriptAnchor(0, 1, 1000, 2000)]
+        self.assertEqual(plan_script_anchors(["你好"], 660000, [], anchors), ("manual_anchors", anchors))
 
     def test_manual_anchors_require_full_ordered_nonoverlapping_coverage(self):
         anchors = [ScriptAnchor(0, 2, 1000, 200000), ScriptAnchor(2, 3, 500000, 600000)]
@@ -130,18 +144,82 @@ class ScriptTimestampTests(unittest.TestCase):
             self.assertEqual(project["segments"][1]["items"][0]["start"], 1000)
             self.assertEqual(project["media"], str(media.resolve()))
             self.assertEqual(project["media_metadata"]["selected_audio_track"], 0)
+            self.assertTrue(project["preserve_punctuation"])
             self.assertTrue(report.warnings)
             self.assertIsNone(artifact.source_srt_path)
 
+    @unittest.skipUnless(shutil.which("ffmpeg"), "FFmpeg unavailable")
+    def test_low_volume_and_nfd_input_align_without_silence_gate(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            media, script, anchors = root / "quiet.wav", root / "script.txt", root / "anchors.json"
+            script.write_text("cafe\u0301!", encoding="utf-8")
+            anchors.write_text('[{"first_line":1,"last_line":1,"start":0,"end":1000}]', encoding="utf-8")
+            with wave.open(str(media), "wb") as wav:
+                wav.setparams((1, 2, 16000, 0, "NONE", "not compressed"))
+                wav.writeframes(array("h", (round(8 * math.sin(i * 0.1)) for i in range(16000))).tobytes())
+            backend = mock.Mock()
+            backend.align.return_value = [TimedToken("café", 50, 900)]
+            for manual in (None, anchors):
+                with self.subTest(manual=manual):
+                    artifact, _ = run_script_alignment(ScriptAlignmentRequest(script, media, language="fr", anchors_path=manual), backend=backend)
+                    self.assertEqual(backend.align.call_args.args[1], "café!")
+                    self.assertEqual(json.loads(artifact.project_path.read_text())["segments"][0]["text"], "cafe\u0301!")
+            with wave.open(str(media), "wb") as wav:
+                wav.setparams((1, 2, 16000, 0, "NONE", "not compressed"))
+                wav.writeframes(bytes(32000))
+            with self.assertRaisesRegex(TimestampAlignmentError, "全零"):
+                run_script_alignment(ScriptAlignmentRequest(script, media), backend=backend)
+            self.assertEqual(backend.align.call_count, 2)
+
     def test_cli_dispatch_never_calls_transcription(self):
         from maw import cli
+        from maw.script_timestamp_alignment import ScriptAlignmentReport
 
         artifact = SimpleNamespace(project_path=Path("out.mosp"), srt_path=Path("out.srt"))
-        with mock.patch("maw.local_runtime.managed_runtime_status", return_value=SimpleNamespace(ready=False)), mock.patch("maw.script_timestamp_alignment.run_script_alignment", return_value=(artifact, SimpleNamespace(warnings=()))) as align, mock.patch("maw.cli._run_transcription", side_effect=AssertionError("ASR")):
+        with mock.patch("maw.local_runtime.managed_runtime_status", return_value=SimpleNamespace(ready=False)), mock.patch("maw.script_timestamp_alignment.run_script_alignment", return_value=(artifact, ScriptAlignmentReport("single", 1000, 1, 1, ()))) as align, mock.patch("maw.cli._run_transcription", side_effect=AssertionError("ASR")):
             self.assertEqual(cli.main(["--align-script", "script.txt", "-i", "audio.wav"]), 0)
         self.assertEqual(align.call_args.args[0].script_path, Path("script.txt"))
         with redirect_stderr(io.StringIO()), self.assertRaises(SystemExit):
             cli.main(["--align-script", "script.txt", "-i", "audio.wav", "--server"])
+
+    def test_cli_check_bypasses_model_runtime_and_outputs_plan_json(self):
+        from maw import cli
+        from maw.script_timestamp_alignment import ScriptAlignmentReport
+
+        report = ScriptAlignmentReport("single", 1000, 1, 1, ())
+        output = io.StringIO()
+        with mock.patch("maw.script_timestamp_alignment.check_script_alignment", return_value=report), mock.patch("maw.local_runtime.managed_runtime_status", side_effect=AssertionError("model runtime must not be checked")), redirect_stdout(output):
+            self.assertEqual(cli.main(["--align-script", "script.txt", "-i", "audio.wav", "--alignment-check"]), 0)
+        self.assertEqual(json.loads(output.getvalue())["scriptLines"], 1)
+        with redirect_stderr(io.StringIO()), self.assertRaises(SystemExit):
+            cli.main(["--alignment-check", "-i", "audio.wav"])
+
+    @unittest.skipUnless(shutil.which("ffmpeg"), "FFmpeg unavailable")
+    def test_real_preflight_never_loads_model_or_writes_artifacts(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            script, media = root / "script.txt", root / "audio.wav"
+            script.write_text("你好。", encoding="utf-8")
+            with wave.open(str(media), "wb") as wav:
+                wav.setparams((1, 2, 16000, 0, "NONE", "not compressed"))
+                wav.writeframes(array("h", (round(6000 * math.sin(i * 0.1)) for i in range(16000))).tobytes())
+            with mock.patch("maw.script_timestamp_alignment.QwenForcedAlignerBackend", side_effect=AssertionError("must not load model")):
+                report = check_script_alignment(ScriptAlignmentRequest(script, media))
+            self.assertEqual(report.to_payload()["anchors"], [{"first_line": 1, "last_line": 1, "start": 0, "end": 1000}])
+            self.assertEqual(sorted(path.name for path in root.iterdir()), ["audio.wav", "script.txt"])
+
+    def test_gui_check_works_without_model_configuration(self):
+        from maw.gui_web import LauncherApi, LauncherPaths
+        from maw.script_timestamp_alignment import ScriptAlignmentReport
+
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            api = LauncherApi(paths=LauncherPaths(root=root, env_path=root / "unused-config", launcher_html=root / "launcher.html"), window_getter=lambda: None)
+            with mock.patch("maw.script_timestamp_alignment.check_script_alignment", return_value=ScriptAlignmentReport("manual_anchors", 1000, 1, 2, ())) as check, mock.patch.object(api, "_local_runtime_status", side_effect=AssertionError("no model runtime")):
+                result = api.check_script_alignment({"scriptPath": "script.txt", "mediaPath": "audio.wav", "audioTrack": "1"})
+            self.assertTrue(result["ok"])
+            self.assertEqual(check.call_args.args[0].audio_track, 1)
 
     def test_runtime_worker_script_command_is_independent_of_project(self):
         from maw.local_runtime_worker import build_parser
@@ -157,10 +235,12 @@ class ScriptTimestampTests(unittest.TestCase):
             root = Path(directory)
             api = LauncherApi(paths=LauncherPaths(root=root, env_path=root / "unused-config", launcher_html=root / "launcher.html"), window_getter=lambda: None)
             with mock.patch.object(api, "_local_runtime_status", return_value=SimpleNamespace(ready=True, python_path="python")), mock.patch("maw.gui_web.effective_config", return_value=SimpleNamespace(model_cache_root="")), mock.patch("maw.gui_web.inspect_alignment_model", return_value=SimpleNamespace(status="ready", installed=True)), mock.patch("maw.gui_web.run_timestamp_alignment_in_runtime", return_value={"artifact": {"projectPath": "out.mosp", "srtPath": "out.srt"}, "report": {"strategy": "single"}}) as worker:
-                result = api.run_timestamp_alignment({"alignmentMode": "script", "modelId": "qwen", "scriptPath": "script.txt", "mediaPath": "audio.wav"})
+                result = api.run_timestamp_alignment({"alignmentMode": "script", "modelId": "qwen", "scriptPath": "script.txt", "mediaPath": "audio.wav", "audioTrack": "1", "outputDirectory": "output"})
             self.assertTrue(result["ok"])
             self.assertIsNone(worker.call_args.kwargs["project_path"])
             self.assertEqual(worker.call_args.kwargs["script_path"], Path("script.txt"))
+            self.assertEqual(worker.call_args.kwargs["audio_track"], 1)
+            self.assertEqual(worker.call_args.kwargs["output_directory"], Path("output"))
 
     @unittest.skipUnless(shutil.which("ffmpeg"), "FFmpeg unavailable")
     def test_eleven_minute_real_audio_preserves_acoustic_offsets(self):
@@ -191,10 +271,14 @@ class ScriptTimestampTests(unittest.TestCase):
                     )]
 
             backend = Backend()
+            with mock.patch("maw.script_timestamp_alignment.QwenForcedAlignerBackend", side_effect=AssertionError("no model in check")):
+                plan = check_script_alignment(ScriptAlignmentRequest(script, media))
+            self.assertEqual(plan.to_payload()["anchors"][-1]["last_line"], 33)
             artifact, report = run_script_alignment(ScriptAlignmentRequest(script, media), backend=backend)
             project = json.loads(artifact.project_path.read_text(encoding="utf-8"))
             self.assertEqual(report.duration_ms, 660000)
             self.assertEqual(report.strategy, "silence_anchors")
+            self.assertEqual(plan.to_payload(), report.to_payload())
             self.assertEqual(backend.calls, 3)
             self.assertEqual([cue["start"] for cue in project["segments"]], [index * 20000 + 100 for index in range(33)])
 
@@ -208,6 +292,7 @@ class ScriptTimestampTests(unittest.TestCase):
             with mock.patch("maw.script_timestamp_alignment._run_ffmpeg") as process, mock.patch("maw.script_timestamp_alignment.wave.open") as wav:
                 wav.return_value.__enter__.return_value.getnframes.return_value = 16000
                 wav.return_value.__enter__.return_value.getframerate.return_value = 16000
+                wav.return_value.__enter__.return_value.readframes.side_effect = [b"\x01\x00", b""]
                 process.return_value.stderr = ""
                 backend = mock.Mock()
                 backend.align.return_value = [TimedToken("你", 0, 500)]

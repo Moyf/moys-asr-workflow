@@ -3496,3 +3496,7 @@ select[multiple] option {
   display: grid;
   gap: 8px;
 }
+
+.script-alignment-check-actions, #toolboxTimestampCheckResult { margin-top: 10px; }
+#toolboxTimestampScriptInputs .toolbox-grid + .toolbox-grid { margin-top: 10px; }
+#toolboxTimestampCheckResult { white-space: pre-line; overflow-wrap: anywhere; }

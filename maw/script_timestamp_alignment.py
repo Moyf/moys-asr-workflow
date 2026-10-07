@@ -14,6 +14,8 @@ import subprocess
 import tempfile
 import unicodedata
 import wave
+from collections.abc import Iterator
+from contextlib import contextmanager
 from dataclasses import dataclass, replace
 from pathlib import Path
 from typing import Any
@@ -34,6 +36,9 @@ from maw.timestamp_alignment import (
 
 
 MAX_SCRIPT_ALIGNMENT_MS = 300_000
+SCRIPT_ALIGNMENT_WARNINGS = (
+    "文稿为字幕真值；未使用 ASR。口误、额外语句和重复可能被忽略，时间码不能证明录音与文稿一致，请听审。",
+)
 
 
 @dataclass(frozen=True, slots=True)
@@ -68,11 +73,19 @@ class ScriptAlignmentReport:
     chunks: int
     lines: int
     warnings: tuple[str, ...]
+    audio_track: int = 0
+    anchors: tuple[ScriptAnchor, ...] = ()
 
     def to_payload(self) -> dict[str, object]:
         return {
             "strategy": self.strategy, "durationMs": self.duration_ms,
-            "chunks": self.chunks, "alignedSegments": self.lines,
+            "chunks": self.chunks, "scriptLines": self.lines,
+            "audioTrack": self.audio_track,
+            "anchors": [
+                {"first_line": anchor.first_line + 1, "last_line": anchor.end_line,
+                 "start": anchor.start, "end": anchor.end}
+                for anchor in self.anchors
+            ],
             "warnings": list(self.warnings),
         }
 
@@ -91,11 +104,32 @@ def read_script_lines(path: Path) -> list[str]:
 
 
 def _key(text: str) -> str:
-    # Keep marks (including kana voicing) while ignoring formatting and punctuation.
+    # Compose first: Qwen keeps letters/numbers but drops standalone marks.
     return "".join(
         char for char in unicodedata.normalize("NFKC", text).casefold()
-        if unicodedata.category(char)[0] in {"L", "M", "N"}
+        if unicodedata.category(char)[0] in {"L", "N"}
     )
+
+
+def _lexical_positions(text: str) -> list[int]:
+    """Map normalized lexical units to the end of their original cluster.
+
+    Combining marks and composing Hangul jamo stay with their base, so an
+    item boundary never separates an accent from its letter. No dependency
+    on the model's tokenizer and no rewrite of the subtitle text.
+    """
+    clusters: list[tuple[str, int]] = []
+    for index, char in enumerate(text):
+        if clusters and (unicodedata.category(char).startswith("M") or
+                unicodedata.normalize("NFC", clusters[-1][0] + char) !=
+                unicodedata.normalize("NFC", clusters[-1][0]) + unicodedata.normalize("NFC", char)):
+            clusters[-1] = (clusters[-1][0] + char, index + 1)
+        else:
+            clusters.append((char, index + 1))
+    positions = [end for cluster, end in clusters for _ in _key(cluster)]
+    if "".join(_key(cluster) for cluster, _ in clusters) != _key(text):
+        raise TimestampAlignmentError("文稿含无法映射的组合编码，请先规范化为 NFC UTF-8。")
+    return positions
 
 
 def speech_ranges(log: str, duration_ms: int) -> list[tuple[int, int]]:
@@ -124,13 +158,15 @@ def plan_script_anchors(
     lines: list[str], duration_ms: int, spans: list[tuple[int, int]],
     explicit: list[ScriptAnchor] | None = None,
 ) -> tuple[str, list[ScriptAnchor]]:
-    if duration_ms <= 0 or not spans:
-        raise TimestampAlignmentError("录音没有可检测的语音，请检查音轨与静音阈值。")
+    if duration_ms <= 0:
+        raise TimestampAlignmentError("录音为空，请检查音轨。")
     if explicit is not None:
         validate_anchors(explicit, len(lines), duration_ms)
         return "manual_anchors", explicit
     if duration_ms <= MAX_SCRIPT_ALIGNMENT_MS:
         return "single", [ScriptAnchor(0, len(lines), 0, duration_ms)]
+    if not spans:
+        raise TimestampAlignmentError("长录音没有可检测的语音区间，请降低静音阈值或提供人工锚点。")
     if len(spans) != len(lines):
         raise TimestampAlignmentError(
             f"长录音有 {len(spans)} 个语音区间，文稿有 {len(lines)} 个非空行，无法可靠映射。"
@@ -204,9 +240,7 @@ def tokens_to_script_segments(
     segments = []
     line_offset = 0
     for line in lines:
-        positions = [index for index, char in enumerate(line) for _ in _key(char)]
-        if len(positions) != len(_key(line)):
-            raise TimestampAlignmentError("文稿含跨字符组合编码，请先将文稿规范化为 NFC UTF-8。")
+        positions = _lexical_positions(line)
         line_end = line_offset + len(positions)
         items = []
         raw_cursor = 0
@@ -214,7 +248,7 @@ def tokens_to_script_segments(
             left, right = max(line_offset, token_start), min(line_end, token_end)
             if left >= right:
                 continue
-            raw_end = positions[right - line_offset - 1] + 1
+            raw_end = positions[right - line_offset - 1]
             if raw_end <= raw_cursor:
                 raise TimestampAlignmentError("模型 token 切在单个规范化字符内部，请将文稿中的合字展开后重试。")
             item_start = start + token.start + round((token.end - token.start) * (left - token_start) / (token_end - token_start))
@@ -239,15 +273,39 @@ def _run_ffmpeg(command: list[str]) -> subprocess.CompletedProcess[str]:
         raise TimestampAlignmentError(f"FFmpeg 文稿对齐音频处理失败：{detail}") from error
 
 
-def run_script_alignment(
-    request: ScriptAlignmentRequest, *, backend: AlignmentBackend | None = None,
-    ffmpeg_path: str | Path | None = None, cancel_event: Any = None,
-) -> tuple[SubtitleArtifact, ScriptAlignmentReport]:
+@dataclass(frozen=True, slots=True)
+class _PreparedAlignment:
+    media: Path
+    audio: Path
+    lines: list[str]
+    language: str
+    audio_track: int
+    duration: int
+    strategy: str
+    anchors: list[ScriptAnchor]
+    spans: list[tuple[int, int]]
+    ffmpeg: Path
+
+    def report(self) -> ScriptAlignmentReport:
+        return ScriptAlignmentReport(
+            self.strategy, self.duration, len(self.anchors), len(self.lines),
+            SCRIPT_ALIGNMENT_WARNINGS, self.audio_track, tuple(self.anchors),
+        )
+
+
+@contextmanager
+def _prepare_script_alignment(
+    request: ScriptAlignmentRequest, *, ffmpeg_path: str | Path | None = None,
+    cancel_event: Any = None,
+) -> Iterator[_PreparedAlignment]:
     script = request.script_path.expanduser().resolve()
     media = request.media_path.expanduser().resolve()
     if not media.is_file():
         raise TimestampAlignmentError("录音 / 视频文件不存在。")
     lines = read_script_lines(script)
+    for line in lines:
+        _lexical_positions(line)
+    explicit = read_anchors(request.anchors_path) if request.anchors_path else None
     if (not math.isfinite(request.silence_db) or not -100 <= request.silence_db <= -1
             or type(request.silence_ms) is not int or not 80 <= request.silence_ms <= 10_000):
         raise TimestampAlignmentError("静音阈值应为 -100 至 -1 dB，最短停顿应为 80 至 10000 毫秒。")
@@ -262,9 +320,6 @@ def run_script_alignment(
     from maw.media import resolve_default_audio_track
 
     audio_track = resolve_default_audio_track(media, request.audio_track)
-    aligner = backend or QwenForcedAlignerBackend(
-        model_path=request.model_path or "", model_cache_root=request.model_cache_root, device=request.device,
-    )
     _check_cancel(cancel_event)
     with tempfile.TemporaryDirectory(prefix="maw-script-align-") as temporary:
         root = Path(temporary)
@@ -275,14 +330,53 @@ def run_script_alignment(
         ])
         with wave.open(str(audio), "rb") as stream:
             duration = round(stream.getnframes() * 1000 / stream.getframerate())
+            signal = False
+            while data := stream.readframes(65536):
+                _check_cancel(cancel_event)
+                if any(data):
+                    signal = True
+                    break
+            if not signal:
+                raise TimestampAlignmentError("所选音轨为空或波形全零，请检查录音与音轨。")
         _check_cancel(cancel_event)
-        detection = _run_ffmpeg([
-            str(ffmpeg), "-hide_banner", "-nostats", "-i", str(audio),
-            "-af", f"silencedetect=noise={request.silence_db}dB:d={request.silence_ms / 1000}", "-f", "null", "-",
-        ])
-        spans = speech_ranges(detection.stderr, duration)
+        spans = []
+        if duration > MAX_SCRIPT_ALIGNMENT_MS and request.anchors_path is None:
+            detection = _run_ffmpeg([
+                str(ffmpeg), "-hide_banner", "-nostats", "-i", str(audio),
+                "-af", f"silencedetect=noise={request.silence_db}dB:d={request.silence_ms / 1000}", "-f", "null", "-",
+            ])
+            spans = speech_ranges(detection.stderr, duration)
         strategy, anchors = plan_script_anchors(
-            lines, duration, spans, read_anchors(request.anchors_path) if request.anchors_path else None,
+            lines, duration, spans, explicit,
+        )
+        yield _PreparedAlignment(media, audio, lines, language, audio_track, duration, strategy, anchors, spans, ffmpeg)
+
+
+def check_script_alignment(
+    request: ScriptAlignmentRequest, *, ffmpeg_path: str | Path | None = None,
+    cancel_event: Any = None,
+) -> ScriptAlignmentReport:
+    """Check inputs and acoustic chunk boundaries without a model or outputs.
+
+    Passing this check does not establish that the recording matches the script.
+    The execution path prepares again, so changed files are never trusted from
+    a stale preview.
+    """
+    with _prepare_script_alignment(request, ffmpeg_path=ffmpeg_path, cancel_event=cancel_event) as prepared:
+        return prepared.report()
+
+
+def run_script_alignment(
+    request: ScriptAlignmentRequest, *, backend: AlignmentBackend | None = None,
+    ffmpeg_path: str | Path | None = None, cancel_event: Any = None,
+) -> tuple[SubtitleArtifact, ScriptAlignmentReport]:
+    with _prepare_script_alignment(request, ffmpeg_path=ffmpeg_path, cancel_event=cancel_event) as prepared:
+        media, lines, language, audio_track = prepared.media, prepared.lines, prepared.language, prepared.audio_track
+        audio, strategy = prepared.audio, prepared.strategy
+        anchors, spans, ffmpeg = prepared.anchors, prepared.spans, prepared.ffmpeg
+        root = audio.parent
+        aligner = backend or QwenForcedAlignerBackend(
+            model_path=request.model_path or "", model_cache_root=request.model_cache_root, device=request.device,
         )
         segments = []
         for index, anchor in enumerate(anchors):
@@ -293,7 +387,7 @@ def run_script_alignment(
                 _extract_audio_span(audio, chunk, anchor.start, anchor.end - anchor.start, ffmpeg_path=ffmpeg)
             chunk_lines = lines[anchor.first_line:anchor.end_line]
             try:
-                tokens = aligner.align(chunk, "\n".join(chunk_lines), language=language)
+                tokens = aligner.align(chunk, unicodedata.normalize("NFC", "\n".join(chunk_lines)), language=language)
                 cues = tokens_to_script_segments(chunk_lines, tokens, anchor.start, anchor.end)
             except TimestampAlignmentError as error:
                 raise TimestampAlignmentError(f"文稿第 {anchor.first_line + 1}–{anchor.end_line} 行对齐失败：{error}") from error
@@ -305,15 +399,15 @@ def run_script_alignment(
                         raise TimestampAlignmentError(f"第 {line_index + 1} 行时间码跨越静音锚点，请提供人工锚点或整理录音。")
             segments.extend(cues)
     _check_cancel(cancel_event)
-    warnings = (
-        "文稿为字幕真值；未使用 ASR。口误、额外语句和重复可能被忽略，时间码不能证明录音与文稿一致，请听审。",
-    )
+    warnings = SCRIPT_ALIGNMENT_WARNINGS
+    script = request.script_path.expanduser().resolve()
     mode = split_mode_for_text("".join(lines))
     project = enrich_project_media_metadata({
         "schema": "moy.asr.project.v1", "media": str(media),
         "language": language, "language_source": "hint", "split_mode": mode,
         "timestamp_granularity": "char" if mode == "continuous" else "word",
         "model": QWEN_FORCED_ALIGNER_MODEL_ID, "segments": segments,
+        "preserve_punctuation": True,
         "media_metadata": {"selected_audio_track": audio_track},
     }, media)
     artifact = write_artifacts(
@@ -321,4 +415,4 @@ def run_script_alignment(
         operation="script-aligned", write_project=True, write_srt=True,
         warnings=warnings, output_directory=request.output_directory, media_path=media,
     )
-    return replace(artifact, source_srt_path=None), ScriptAlignmentReport(strategy, duration, len(anchors), len(lines), warnings)
+    return replace(artifact, source_srt_path=None), prepared.report()

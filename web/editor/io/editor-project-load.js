@@ -81,6 +81,7 @@ function applyCanonicalProject(data, filename) {
   MaweBoot.DATA.media = typeof data.media === 'string' ? data.media : '';
   MaweBoot.DATA.language = data.language || '';
   MaweBoot.DATA.language_source = typeof data.language_source === 'string' ? data.language_source : undefined;
+  MaweBoot.DATA.preserve_punctuation = typeof data.preserve_punctuation === 'boolean' ? data.preserve_punctuation : undefined;
   MaweBoot.DATA.split_mode = typeof data.split_mode === 'string' ? data.split_mode : undefined;
   MaweBoot.DATA.timestamp_granularity = typeof data.timestamp_granularity === 'string'
     ? data.timestamp_granularity : undefined;
@@ -241,6 +242,7 @@ function applyCanonicalProject(data, filename) {
 
   function isMawProject(data) {
     if (!data || typeof data !== 'object' || !Array.isArray(data.segments)) return false;
+    if (data.preserve_punctuation !== undefined && typeof data.preserve_punctuation !== 'boolean') return false;
     if (data.media_metadata !== undefined && data.media_metadata !== null
         && !MaweTimeline.normalizeMediaMetadata(data.media_metadata)) return false;
     if (data.timebase !== undefined) {
