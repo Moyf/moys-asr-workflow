@@ -1056,9 +1056,8 @@
     white-space: nowrap;
   }
   .waveform-settings-section { width: 100%; }
-  .waveform-settings-options { display: grid; gap: 8px; flex: 0 0 100%; }
-  .waveform-settings-options > label { white-space: normal; }
-  .waveform-settings-title { text-transform: none; }
+  .waveform-settings-title { text-transform: none; text-align: left; }
+  .waveform-settings-section .editor-settings-item.waveform-settings-toggle-row { flex: 0 0 100%; white-space: normal; }
   .waveform-settings-section .editor-settings-item {
     flex: 0 0 auto; color: var(--text-secondary); font-size: 12px;
   }

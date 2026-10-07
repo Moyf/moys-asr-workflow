@@ -42,13 +42,27 @@ test('waveform settings contain both toggles with spaced rows and working behavi
   const panel = page.locator('#waveform-settings-panel');
   await expect(panel.locator('#word-timing-toggle')).toBeVisible();
   await expect(panel.locator('#gap-skip-playback')).toBeChecked();
-  const spacing = await panel.locator('.waveform-settings-options').evaluate(el => {
-    const previous = el.previousElementSibling.getBoundingClientRect();
-    const [word, gap] = [...el.children].map(child => child.getBoundingClientRect());
-    return { before: word.top - previous.bottom, between: gap.top - word.bottom };
+  await expect(panel.locator('.waveform-settings-title')).toHaveText(['波形外观', '显示', '播放']);
+  await expect(panel.locator('#waveform-settings-appearance #waveform-scale-fit')).toBeVisible();
+  await expect(panel.locator('#waveform-settings-display #word-timing-toggle')).toBeVisible();
+  await expect(panel.locator('#waveform-settings-playback #gap-skip-playback')).toBeVisible();
+  const spacing = await panel.evaluate(el => {
+    const groups = [...el.querySelectorAll('.waveform-settings-section')];
+    const rects = groups.map(group => group.getBoundingClientRect());
+    const word = el.querySelector('.word-timing-toggle');
+    return {
+      groups: rects.slice(1).map((rect, index) => rect.top - rects[index].bottom),
+      titles: groups.map(group => {
+        const title = group.firstElementChild.getBoundingClientRect();
+        const next = [...group.children].slice(1).map(child => child.getBoundingClientRect()).find(rect => rect.height > 0);
+        return next.top - title.bottom;
+      }),
+      word: word.getBoundingClientRect().top - word.previousElementSibling.getBoundingClientRect().bottom,
+    };
   });
-  expect(spacing.before).toBeGreaterThanOrEqual(8);
-  expect(spacing.between).toBeGreaterThanOrEqual(8);
+  for (const distance of [...spacing.groups, ...spacing.titles, spacing.word]) {
+    expect(distance, JSON.stringify(spacing)).toBeGreaterThanOrEqual(8);
+  }
   await testInfo.attach('settings spacing', { body: JSON.stringify(spacing), contentType: 'application/json' });
   await panel.locator('#word-timing-toggle').check();
   await expect(word(page, 0)).toBeVisible();
@@ -56,7 +70,17 @@ test('waveform settings contain both toggles with spaced rows and working behavi
   expect(await page.evaluate(() => MaweBoot.DATA.gap_remove.skip_playback)).toBe(false);
   await panel.locator('#gap-skip-playback').check();
   expect(await page.evaluate(() => MaweBoot.DATA.gap_remove.skip_playback)).toBe(true);
+  await panel.screenshot({ path: testInfo.outputPath('waveform-settings-groups.png') });
   await page.screenshot({ path: testInfo.outputPath('waveform-options.png') });
+  await page.locator('#waveform-settings-toggle').click();
+  await page.locator('[data-waveform-mode="basic"]').click();
+  await page.locator('#waveform-settings-toggle').click();
+  await expect(panel.locator('#waveform-window-setting')).toBeVisible();
+  await expect(panel.locator('#waveform-seconds-per-row-setting')).toBeHidden();
+  const basicWordSpacing = await panel.locator('.word-timing-toggle').evaluate(el =>
+    el.getBoundingClientRect().top - el.previousElementSibling.getBoundingClientRect().bottom);
+  expect(basicWordSpacing).toBeGreaterThanOrEqual(8);
+  await panel.screenshot({ path: testInfo.outputPath('waveform-settings-basic.png') });
   await page.locator('#waveform-settings-toggle').click();
   await expect(panel).toBeHidden();
   await expect(word(page, 0)).toBeVisible();
@@ -411,6 +435,7 @@ test('English UI does not translate project words or their hover text', async ({
   });
   await setWordTiming(page);
   await expect(page.locator('.word-timing-toggle')).toContainText('Word timings');
+  await expect(page.locator('#waveform-settings-panel .waveform-settings-title')).toHaveText(['Waveform appearance', 'Display', 'Play']);
   await expect(word(page, 0).locator('.waveform-word-label')).toHaveText('字词时间码');
   await expect(word(page, 0)).toHaveAttribute('title', /^字词时间码/);
   await page.evaluate(() => MaweWordTiming.openConversion([0]));
