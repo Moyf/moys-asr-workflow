@@ -551,7 +551,8 @@
 
 
 
-  function splitCuePanelAtCursor() {  const target = getCurrentCuePanelTarget();
+  function splitCuePanelAtCursor() {
+  const target = getCurrentCuePanelTarget();
   if (!target) return;
   if (target.kind === 'overlay') {
     commitCuePanelEdit();

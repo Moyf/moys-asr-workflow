@@ -345,9 +345,9 @@
 
   function addExtensionToSelection(index, track = MaweMultiSubtitleCore.getActiveExtensionTrack()) {
   if (!track?.segments?.[index] || isHiddenDisabled(index, track) || selectedExtensionIdxs.has(index)) return;
-  MaweCueElements.releaseTemporaryVisibleSplitCuesUnless('extension', index);
+  MaweCueElements.releaseTemporaryVisibleSplitCuesUnless('extension', index, track);
   MaweState.selection.add('extension', index);
-  syncBoundSelection('extension', index);
+  syncBoundSelection('extension', index, track);
   updateMultiSelectionClasses();
   updateSelectionCountText();
   MaweCoreState.waveformEditor?.updateSelection();

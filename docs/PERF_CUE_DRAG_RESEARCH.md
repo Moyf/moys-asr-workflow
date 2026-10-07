@@ -154,6 +154,7 @@
 
 ## 复现实验
 
-浏览器控制台注入与计时脚本存档于本次会话
-（`%TEMP%\opencode\maw-bench.js`，挂 `window.__mawBench`）；
+在浏览器控制台注入合成工程（N 条字幕、合成波形 payload）与计时脚本，
+用 `performance.now()` 与双层 rAF 计时，手势直接调用
+`waveformEditor.beginCueDrag / moveCueDrag / endCueDrag`；
 服务器启动：`uv run --no-sync python server-editor/serve.py --blank --port 18777`。
