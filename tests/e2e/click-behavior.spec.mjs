@@ -483,6 +483,45 @@ test('double-click places the inline caret at the pointer text position', async 
   })).toEqual({ collapsed: true, text: 'Alpha', offset: expectedOffset });
 });
 
+for (const language of ['zh', 'en']) {
+  for (const clear of ['select-all', 'backspace']) {
+    test(`inline typing after ${clear} keeps the first character caret in ${language}`, async ({ page }) => {
+      await page.goto(`${server.url}?lang=${language}`);
+      const text = page.locator('.cue[data-idx="0"] .text');
+      const caret = () => text.evaluate((element) => {
+        const selection = window.getSelection();
+        const range = document.createRange();
+        range.selectNodeContents(element);
+        range.setEnd(selection.anchorNode, selection.anchorOffset);
+        return { offset: range.toString().length, collapsed: selection.isCollapsed };
+      });
+      for (const characters of ['ab', '甲乙']) {
+        await text.dblclick();
+        await expect(text).toHaveAttribute('contenteditable', 'plaintext-only');
+        if (clear === 'select-all') {
+          await page.keyboard.press(process.platform === 'darwin' ? 'Meta+a' : 'Control+a');
+          await page.keyboard.press('Backspace');
+        } else {
+          await page.keyboard.press(process.platform === 'darwin' ? 'Meta+ArrowRight' : 'End');
+          const length = (await text.textContent()).length;
+          for (let i = 0; i < length; i += 1) await page.keyboard.press('Backspace');
+        }
+        await expect(text).toHaveText('');
+        if (characters === 'ab') await page.keyboard.type(characters[0]);
+        else await page.keyboard.insertText(characters[0]);
+        await expect(text).toHaveText(characters[0]);
+        expect(await caret()).toEqual({ offset: 1, collapsed: true });
+        if (characters === 'ab') await page.keyboard.type(characters[1]);
+        else await page.keyboard.insertText(characters[1]);
+        await expect(text).toHaveText(characters);
+        expect(await caret()).toEqual({ offset: 2, collapsed: true });
+        await page.screenshot({ path: test.info().outputPath(`${characters}-caret.png`) });
+        await page.keyboard.press('Escape');
+      }
+    });
+  }
+}
+
 test('current cue panel keeps the same height before and after selection', async ({ page }) => {
   // 高视口让 --layout-row-middle 的百分比下限超过面板内容高度，
   // 才能覆盖「选中后面板被拖到布局高度、空态又缩回内容高度」的跳变回归。

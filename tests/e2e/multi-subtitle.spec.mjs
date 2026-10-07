@@ -78,6 +78,43 @@ async function importPair(page) {
   return page;
 }
 
+for (const language of ['zh', 'en']) {
+  test(`bilingual inline typing preserves caret and project text in ${language}`, async ({ page }) => {
+    await disableOnboarding(page);
+    await importPair(page);
+    await page.locator('#multi-subtitle-import-extension').click();
+    await page.locator('#multi-subtitle-import-result-confirm').click();
+    await page.evaluate((lang) => window.MAWE_I18N.applyLanguage(lang), language);
+    for (const kind of ['main', 'extension']) {
+      const text = page.locator(`.multi-dual-cue .multi-cue-column.${kind} .text`).first();
+      await text.dblclick();
+      await expect(text).toHaveAttribute('contenteditable', 'plaintext-only');
+      await page.keyboard.press(process.platform === 'darwin' ? 'Meta+a' : 'Control+a');
+      await page.keyboard.press('Backspace');
+      await page.keyboard.insertText('甲');
+      expect(await text.evaluate((element) => {
+        const selection = window.getSelection();
+        return { text: element.textContent, offset: selection.anchorOffset, inside: element.contains(selection.anchorNode) };
+      })).toEqual({ text: '甲', offset: 1, inside: true });
+      await page.keyboard.insertText('乙');
+      await expect(text).toHaveText('甲乙');
+      // A subtitle can exactly match a UI translation key; it must stay raw.
+      await page.keyboard.press(process.platform === 'darwin' ? 'Meta+a' : 'Control+a');
+      await page.keyboard.insertText('删除');
+      await expect(text).toHaveText('删除');
+      await page.keyboard.press(process.platform === 'darwin' ? 'Meta+Enter' : 'Control+Enter');
+      await expect(text).not.toHaveAttribute('contenteditable');
+      await page.evaluate(() => window.MAWE_I18N.applyLanguage('en'));
+      await expect(text).toHaveText('删除');
+      await page.evaluate(() => window.MAWE_I18N.applyLanguage('zh'));
+      await expect(text).toHaveText('删除');
+      await page.evaluate((lang) => window.MAWE_I18N.applyLanguage(lang), language);
+    }
+    if (language === 'en') await expect(page.locator('.multi-cue-column-header .index').first()).toHaveText('Main subtitle 1');
+    await page.screenshot({ path: test.info().outputPath('bilingual-project-text.png') });
+  });
+}
+
 async function openMultiSubtitleSettings(page) {
   await page.locator('#multi-subtitle-settings-toggle').click();
   await expect(page.locator('#multi-subtitle-settings-menu')).toBeVisible();
