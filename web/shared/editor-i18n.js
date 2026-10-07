@@ -1065,13 +1065,24 @@
 
   const textOriginals = new WeakMap();
   const attributeOriginals = new WeakMap();
+  // Project text must remain literal, including newly inserted editable nodes
+  // and read-only previews. Translate their surrounding controls and labels.
+  const PROJECT_TEXT_SELECTOR = [
+    '.cue .text', '.multi-cue-column .text', '.waveform-cue-label',
+    '.timed-text-edit-diff-part', '[data-word-project-content]',
+    '.multi-subtitle-split-char',
+    '.multi-subtitle-split-preview-left', '.multi-subtitle-split-preview-right',
+    '.cue .sticker-slot .sname', '.cue .sticker-slot img', '#sticker-preview-name',
+  ].join(',');
   const SKIP_SELECTOR = [
-    '#cue-list', '#cue-panel-text', '#overlay', '#sticker-overlay-layer',
-    '#media-name', '#json-name', '#sticker-grid', '.hint-project-preview-value', '[data-marker-project-content]', '[data-word-project-content]', 'script', 'style'
+    // Reference text includes the project name, but its title is a UI hint.
+    '.cue .sticker-slot .sref', '#cue-panel-sticker .ref',
+    PROJECT_TEXT_SELECTOR, '#cue-panel-text', '#overlay', '#sticker-overlay-layer',
+    '#media-name', '#json-name', '#sticker-grid', '.hint-project-preview-value', '[data-marker-project-content]', 'script', 'style'
   ].join(',');
   const ATTRIBUTE_SKIP_SELECTOR = [
     // .waveform-cue-block 的 title 是用户字幕原文，不能参与翻译
-    '#cue-list', '#overlay', '#sticker-overlay-layer', '.waveform-cue-block', '.waveform-word-block', '[data-marker-project-content]',
+    PROJECT_TEXT_SELECTOR, '#overlay', '#sticker-overlay-layer', '.waveform-cue-block', '.waveform-word-block', '[data-marker-project-content]',
     '#media-name', '#json-name', '#sticker-grid', 'script', 'style'
   ].join(',');
 
