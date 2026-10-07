@@ -112,6 +112,27 @@ test('word context menu preserves multi-selection until merge is applied', async
   expect((await source(page)).items.length).toBe(2);
 });
 
+test('Tab outside the waveform cannot redirect word shortcuts to their parent sentence', async ({ page }) => {
+  await page.locator('#word-timing-toggle').check();
+  const before = await source(page);
+  await word(page, 0).click();
+  await word(page, 1).click({ modifiers: ['Shift'] });
+  for (let count = 0; count < 30; count += 1) {
+    if (await page.locator('#cue-list-follow').evaluate(el => el === document.activeElement)) break;
+    await page.keyboard.press('Tab');
+  }
+  await expect(page.locator('#cue-list-follow')).toBeFocused();
+  await expect(page.locator('.waveform-word-block.selected')).toHaveCount(2);
+  for (const key of ['Delete', 'b', 'Shift+b', 'Control+Shift+d', 'Alt+ArrowRight']) {
+    await page.keyboard.press(key);
+  }
+  expect(await source(page)).toEqual(before);
+  expect(await page.evaluate(() => MaweBoot.DATA.segments.length)).toBe(3);
+  await page.keyboard.press('c');
+  expect((await source(page)).items.length).toBe(1);
+  expect((await source(page)).text).toBe(before.text);
+});
+
 test('conversion reviews skips and bindings, is atomic and preserves items on save', async ({ page }, testInfo) => {
   await page.evaluate(() => {
     MaweBoot.DATA.multi_subtitle = { schema: 'moy.asr.multi_subtitle.v1', enabled: true, display_mode: 'both',

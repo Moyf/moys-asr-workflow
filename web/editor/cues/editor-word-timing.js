@@ -176,7 +176,7 @@
     if (event.key === 'Escape' && MaweDom.ctxmenu.classList.contains('show')) {
       event.preventDefault(); event.stopImmediatePropagation(); MaweDom.ctxmenu.classList.remove('show'); return;
     }
-    if (!selection || !getSelection(selection.segment).size || !waveform?.pane.contains(document.activeElement)) return;
+    if (!selection || !getSelection(selection.segment).size) return;
     const key = event.key.toLowerCase();
     if ((event.ctrlKey || event.metaKey) && key === 'a' && !event.shiftKey) {
       event.preventDefault(); event.stopImmediatePropagation();
