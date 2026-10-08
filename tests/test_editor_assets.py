@@ -93,6 +93,7 @@ class EditorAssetContractTests(unittest.TestCase):
                 "editor/ui/editor-hint.js",
                 "editor/media/editor-jkl.js",
                 "editor/state/editor-settings.js",
+                "editor/state/editor-project-settings.js",
                 "editor/state/editor-multi-subtitle-core.js",
                 "editor/ui/editor-gap-remove-data.js",
                 "editor/styles/editor-colors.js",
@@ -398,13 +399,13 @@ class EditorAssetContractTests(unittest.TestCase):
         self.assertIn('id="sticker-root-status"', template)
         self.assertIn("SERVER_CONFIG.stickerRootUrl", script)
         self.assertIn("MaweBoot.STICKERS.splice(0, MaweBoot.STICKERS.length, ...result.stickers)", script)
-        self.assertIn("let stickerRootHintCard = null", sticker_root)
-        self.assertIn("stickerRootHintCard?.remove()", script)
-        self.assertIn("function setStickerRootModalOpen(open)", sticker_root)
-        self.assertIn("event.key === 'Escape'", script)
-        self.assertIn("event.key !== 'Tab'", script)
-        self.assertIn("#sticker-root-modal { z-index: 465; }", styles)
-        self.assertIn("width: min(540px, calc(100vw - 32px))", styles)
+        self.assertIn('id="project-sticker-root-override"', template)
+        self.assertIn('id="project-sticker-root-input"', template)
+        self.assertIn("function activateProjectRoot()", sticker_root)
+        self.assertIn("generation !== epoch", sticker_root)
+        self.assertIn("path: root, activate", sticker_root)
+        self.assertIn(".sticker-root-controls", styles)
+        self.assertNotIn('id="sticker-root-modal"', template)
         for removed in (
             "showDirectoryPicker",
             "webkitdirectory",

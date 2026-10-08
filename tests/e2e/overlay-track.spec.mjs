@@ -7,6 +7,8 @@ import {
   generateWaveformPayload,
   makeTempDir,
   startStaticServer,
+  closeSettingsPanels,
+  openSettingsPage,
 } from './helpers.mjs';
 
 let tempDir;
@@ -71,7 +73,9 @@ test('edits an independent overlay track, restores it through history, and expor
   await dropProject(page, project);
 
   const toggle = page.locator('#overlay-track-toggle');
+  await openSettingsPage(page, 'project-tracks');
   await expect(toggle).toBeVisible();
+  await closeSettingsPanels(page);
   const overlayCue = page.locator('.overlay-track-cue[data-overlay-idx="0"]');
   await expect(overlayCue).toHaveCount(1);
   await overlayCue.click();

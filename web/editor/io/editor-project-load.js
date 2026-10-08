@@ -112,7 +112,7 @@ function applyCanonicalProject(data, filename) {
   MaweAppearance.applyExtensionSubtitleAppearance(MaweBoot.DATA.preview?.extension_subtitle);
   MawePreviewGeometry.setStickerGeometry(MawePreviewGeometry.getStickerGeometry(), { markDirty: false });
   MawePreviewGeometry.refreshPreviewGeometryEditable();
-  if (data.sticker_root) MaweBoot.STICKER_ROOT = data.sticker_root;
+  MaweBoot.DATA.sticker_root = typeof data.sticker_root === 'string' ? data.sticker_root : '';
   MaweBoot.DATA.segments.length = 0;
   data.segments.forEach((segment) => MaweBoot.DATA.segments.push(segment));
   MaweBoot.DATA.multi_subtitle = MULTI_SUBTITLE_UTILS.normalizeMultiSubtitle(data.multi_subtitle, MaweBoot.DATA.segments);
@@ -134,6 +134,8 @@ function applyCanonicalProject(data, filename) {
   }
   MaweGapRemoveUi.updateGapRemoveUi();
   MaweCuePanel.renderAll({ waveform: 'full', preserveCueListScroll: false });
+  MaweProjectSettings.syncControls();
+  MaweStickerRoot.activateProjectRoot();
   MaweState.noteSavedSegments();
   MawePlaybackLoop.refreshSubtitlePreview(0, -1);
   updateUnloadedMediaLabel(MaweBoot.DATA.media);

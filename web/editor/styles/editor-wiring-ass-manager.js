@@ -691,6 +691,7 @@ function syncAssModeControl() {
 }
 
 assModeToggle?.addEventListener('change', () => {
+  MaweHistory.pushPreviewUndo('切换 ASS 字幕模式', MaweHistory.snapshotPreviewState());
   MaweSettings.updateEditorSettings({ assMode: assModeToggle.checked });
   syncAssModeControl();
   MawePreviewGeometry.refreshPreviewGeometryEditable();

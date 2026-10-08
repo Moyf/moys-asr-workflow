@@ -32,11 +32,11 @@ document.querySelectorAll('[data-settings-tool="gap"]').forEach((button) => {
     MaweDom.gapRemoveManageButton?.focus();
   });
 });
-MaweSettingsPanels.editorSettingsTabs.forEach((tab) => {
+[...MaweSettingsPanels.editorSettingsTabs, ...MaweSettingsPanels.projectTabs].forEach((tab) => {
   tab.addEventListener('click', () => MaweSettingsPanels.setEditorSettingsActiveTab(tab));
   tab.addEventListener('keydown', (event) => {
     // 方向键只在可见分区之间循环；隐藏分区（如不可用的「保存」）不参与导航。
-    const visibleTabs = MaweSettingsPanels.editorSettingsTabs.filter((item) => !item.hidden);
+    const visibleTabs = [...tab.closest('.editor-settings-nav').querySelectorAll('.editor-settings-nav-tab')].filter((item) => !item.hidden);
     const index = visibleTabs.indexOf(tab);
     let next = -1;
     if (event.key === 'ArrowDown' || event.key === 'ArrowRight') {
@@ -155,14 +155,13 @@ MaweDom.helpOpenWaveformSettingsButtons.forEach((button) => {
 
 MaweDom.exportOpenSubtitleColorSettingsButton?.addEventListener('click', (event) => {
   event.preventDefault();
-  MaweSettingsPanels.openEditorSettingsAtTab('editor-settings-tab-subtitle-color');
+  MaweSettingsPanels.openEditorSettingsAtTab('editor-settings-tab-project-color');
 });
 MaweDom.splitMultiSubtitleSettingsLink?.addEventListener('click', (event) => {
   event.preventDefault();
   event.stopPropagation();
   if (!MaweMultiSubtitleCore.multiSubtitleVisible()) return;
-  MaweDom.multiSubtitleSettingsToggle?.click();
-  MaweDom.multiSubtitleSettingsToggle?.focus();
+  MaweSettingsPanels.openEditorSettingsAtTab('editor-settings-tab-timebase');
 });
 MaweDom.helpOpenMediaSettingsButtons.forEach((button) => {
   button.addEventListener('click', (event) => {
@@ -174,7 +173,8 @@ MaweDom.helpOpenMediaSettingsButtons.forEach((button) => {
 helpOpenEditorSettingsButtons.forEach((button) => {
   button.addEventListener('click', (event) => {
     event.preventDefault();
-    MaweSettingsPanels.openEditorSettingsAtTab('editor-settings-tab-general');
+    MaweSettingsPanels.openEditorSettingsAtTab(button.id === 'help-open-gap-settings' || button.id === 'help-open-keyboard-settings'
+      ? 'editor-settings-tab-special-edit' : 'editor-settings-tab-general');
   });
 });
 MaweDom.helpOpenGapRemovePanelButton?.addEventListener('click', (event) => {

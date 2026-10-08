@@ -62,6 +62,7 @@ window.MAWE.register('utils-speakers', function createUtilsModule(dependencies) 
       // 已配置的说话人名称突然失效；新工程的预览名称默认开启，显式 false 仍保留。
       mapping_enabled: hasMappingEnabled ? source.mapping_enabled === true : source.enabled === true,
       enabled: hasEnabled ? source.enabled === true : true,
+      export_enabled: source.export_enabled === true,
       separator: normalizeSpeakerLabelSeparator(source.separator),
       names: normalizeSpeakerLabels(source.names),
     };

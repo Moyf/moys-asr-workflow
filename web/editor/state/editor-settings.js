@@ -360,7 +360,9 @@
 
   function saveEditorSettings(settings) {
     try {
-      MaweHost.storage.setItem(EDITOR_SETTINGS_KEY, JSON.stringify(settings));
+      const personal = { ...settings };
+      for (const key of ['assMode', 'mainSplitModeOverride', 'exportSpeakerLabels']) delete personal[key];
+      MaweHost.storage.setItem(EDITOR_SETTINGS_KEY, JSON.stringify(personal));
     } catch (_) {
       // file:// 隐私模式可能拒绝 localStorage；本次页面仍保持可用。
     }
@@ -375,6 +377,7 @@
 
   function updateEditorSettings(patch) {
     Object.assign(EDITOR_SETTINGS, patch);
+    if ('assMode' in patch || 'exportSpeakerLabels' in patch) MaweState.changes.previewGeometryDirty = true;
     saveEditorSettings(EDITOR_SETTINGS);
   }
 

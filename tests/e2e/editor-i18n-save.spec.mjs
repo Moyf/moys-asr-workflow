@@ -9,8 +9,7 @@ import {
   generateProjectJson,
   generateWav,
   makeTempDir,
-  startServer,
-} from './helpers.mjs';
+  startServer, closeSettingsPanels, openSettingsPage } from './helpers.mjs';
 
 let tempDir;
 let server;
@@ -120,6 +119,7 @@ test('English split preview preserves both subtitle halves', async ({ page }) =>
   await page.goto(`${server.url}?lang=en`);
   await page.evaluate(() => {
     MaweBoot.DATA.segments[0].text = '删除保存';
+    MaweSettings.EDITOR_SETTINGS.mainSplitModeOverride = 'continuous';
     MaweBoot.DATA.segments[0].items = [];
     MaweCuePanel.renderAll({ waveform: 'full' });
     MaweSplitCore.openMainWaveformSplitModal(0, 4000);
@@ -197,7 +197,7 @@ test('English locale covers the editor shell and recent-project setting stays fi
   await page.keyboard.press('Escape');
 
   await page.locator('#editor-settings-toggle').click();
-  await page.locator('#editor-settings-tab-interface').click();
+  await openSettingsPage(page, 'interface');
   await page.locator('#language-toggle').click();
   await expect(page.locator('#save-project')).toHaveText('保存工程');
   await expect(page.locator('#search')).toHaveAttribute('placeholder', '过滤字幕…');

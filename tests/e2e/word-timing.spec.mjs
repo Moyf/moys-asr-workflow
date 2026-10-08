@@ -36,16 +36,15 @@ async function setWordTiming(page, enabled = true) {
   await page.locator('#waveform-settings-toggle').click();
 }
 
-test('waveform settings contain both toggles with spaced rows and working behavior', async ({ page }, testInfo) => {
+test('waveform settings contain word timing with spaced rows and working behavior', async ({ page }, testInfo) => {
   await expect(page.locator('.waveform-toolbar > .word-timing-toggle, .waveform-toolbar > .gap-skip-toggle')).toHaveCount(0);
   await page.locator('#waveform-settings-toggle').click();
   const panel = page.locator('#waveform-settings-panel');
   await expect(panel.locator('#word-timing-toggle')).toBeVisible();
-  await expect(panel.locator('#gap-skip-playback')).toBeChecked();
-  await expect(panel.locator('.waveform-settings-title')).toHaveText(['波形外观', '显示', '播放']);
+  await expect(panel.locator('#gap-skip-playback')).toHaveCount(0);
+  await expect(panel.locator('.waveform-settings-title')).toHaveText(['波形外观', '显示']);
   await expect(panel.locator('#waveform-settings-appearance #waveform-scale-fit')).toBeVisible();
   await expect(panel.locator('#waveform-settings-display #word-timing-toggle')).toBeVisible();
-  await expect(panel.locator('#waveform-settings-playback #gap-skip-playback')).toBeVisible();
   const spacing = await panel.evaluate(el => {
     const groups = [...el.querySelectorAll('.waveform-settings-section')];
     const rects = groups.map(group => group.getBoundingClientRect());
@@ -66,10 +65,6 @@ test('waveform settings contain both toggles with spaced rows and working behavi
   await testInfo.attach('settings spacing', { body: JSON.stringify(spacing), contentType: 'application/json' });
   await panel.locator('#word-timing-toggle').check();
   await expect(word(page, 0)).toBeVisible();
-  await panel.locator('#gap-skip-playback').uncheck();
-  expect(await page.evaluate(() => MaweBoot.DATA.gap_remove.skip_playback)).toBe(false);
-  await panel.locator('#gap-skip-playback').check();
-  expect(await page.evaluate(() => MaweBoot.DATA.gap_remove.skip_playback)).toBe(true);
   await panel.screenshot({ path: testInfo.outputPath('waveform-settings-groups.png') });
   await page.screenshot({ path: testInfo.outputPath('waveform-options.png') });
   await page.locator('#waveform-settings-toggle').click();
@@ -435,7 +430,7 @@ test('English UI does not translate project words or their hover text', async ({
   });
   await setWordTiming(page);
   await expect(page.locator('.word-timing-toggle')).toContainText('Word timings');
-  await expect(page.locator('#waveform-settings-panel .waveform-settings-title')).toHaveText(['Waveform appearance', 'Display', 'Play']);
+  await expect(page.locator('#waveform-settings-panel .waveform-settings-title')).toHaveText(['Waveform appearance', 'Display']);
   await expect(word(page, 0).locator('.waveform-word-label')).toHaveText('字词时间码');
   await expect(word(page, 0)).toHaveAttribute('title', /^字词时间码/);
   await page.evaluate(() => MaweWordTiming.openConversion([0]));

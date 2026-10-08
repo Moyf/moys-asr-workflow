@@ -13,6 +13,23 @@
     ? Array.from(MaweDom.editorSettingsPanel.querySelectorAll('.editor-settings-nav-tab'))
     : [];
 
+  const projectPanel = document.getElementById('project-settings-panel');
+  const projectTabs = Array.from(projectPanel?.querySelectorAll('.editor-settings-nav-tab') || []);
+  const projectTabKey = 'moy.asr.project.settings.tab.v1';
+  const projectFloatingPanel = MaweFloatingPanel.createFloatingPanel({
+    panel: projectPanel,
+    dragHandle: document.getElementById('project-settings-drag-handle'),
+    manageButton: document.getElementById('project-settings-toggle'),
+    anchorButton: document.getElementById('project-settings-toggle'),
+    positionKey: 'moy.asr.project.settings.position.v1',
+    onOpen: () => {
+      let saved = '';
+      try { saved = localStorage.getItem(projectTabKey) || ''; } catch (_) {}
+      setEditorSettingsActiveTab(projectTabs.find(tab => tab.dataset.settingsTab === saved) || projectTabs[0]);
+    },
+  });
+  document.getElementById('project-settings-close')?.addEventListener('click', () => projectFloatingPanel.close());
+
 
   const editorSettingsFloatingPanel = MaweFloatingPanel.createFloatingPanel({
     panel: MaweDom.editorSettingsPanel,
@@ -33,7 +50,8 @@
   function setEditorSettingsActiveTab(tab, { focus = false } = {}) {
     if (!tab) return;
     updateRegionalSettingsAvailability();
-    for (const item of editorSettingsTabs) {
+    const project = tab.closest('#project-settings-panel');
+    for (const item of project ? projectTabs : editorSettingsTabs) {
       const active = item === tab;
       item.classList.toggle('active', active);
       item.setAttribute('aria-selected', String(active));
@@ -43,7 +61,7 @@
     }
     if (focus) tab.focus();
     try {
-      localStorage.setItem(MaweDom.EDITOR_SETTINGS_WINDOW_TAB_KEY, tab.dataset.settingsTab || '');
+      localStorage.setItem(project ? projectTabKey : MaweDom.EDITOR_SETTINGS_WINDOW_TAB_KEY, tab.dataset.settingsTab || '');
     } catch (_) {
       // file:// 隐私模式可能拒绝 localStorage；切换标签页本身不受影响。
     }
@@ -236,9 +254,12 @@
 
   // 帮助中的「全局设置」入口：打开设置窗口并定位到「视频预览」分区。
   function openEditorSettingsAtTab(tabId) {
+    if (tabId === 'editor-settings-tab-subtitle-color') tabId = 'editor-settings-tab-project-color';
+    const tab = document.getElementById(tabId);
     closeRegionalSettings();
-    MaweSettingsPanels.setEditorSettingsPanelOpen(true);
-    MaweSettingsPanels.setEditorSettingsActiveTab(document.getElementById(tabId), { focus: true });
+    if (tab?.closest('#project-settings-panel')) projectFloatingPanel.open();
+    else setEditorSettingsPanelOpen(true);
+    setEditorSettingsActiveTab(tab, { focus: true });
   }
 
   function closeRegionalSettings() {
@@ -263,8 +284,7 @@
 
   function updateRegionalSettingsAvailability() {
     const enabled = !MaweDom.multiSubtitleSettingsDropdown?.hidden;
-    const button = document.querySelector('[data-settings-region="multi-subtitle"]');
-    if (button) button.disabled = !enabled;
+    document.querySelectorAll('[data-settings-region="multi-subtitle"]').forEach(button => { button.disabled = !enabled; });
     const hint = document.getElementById('settings-region-multi-unavailable');
     if (hint) hint.hidden = enabled;
     const workspaceButton = document.querySelector('[data-settings-region="workspace"]');
@@ -287,7 +307,6 @@
     const entry = regions[region];
     if (!entry || !entry[0] || !entry[1] || entry[1].closest('[hidden]')) return;
     closeRegionalSettings();
-    setEditorSettingsPanelOpen(false);
     const [panel, toggle, open] = entry;
     toggle.scrollIntoView({ block: 'nearest', inline: 'nearest' });
     if (open) open(true);
@@ -304,6 +323,8 @@
     updateRegionalSettingsAvailability,
     openEditorSettingsAtTab,
     editorSettingsTabs,
+    projectTabs,
+    projectFloatingPanel,
     editorSettingsFloatingPanel,
     setEditorSettingsActiveTab,
     restoreEditorSettingsActiveTab,

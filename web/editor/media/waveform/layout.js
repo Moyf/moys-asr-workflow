@@ -423,8 +423,7 @@ window.MAWE.register('waveform-layout', function createWaveformModule(dependenci
         ? { disabledDisplay: rawWaveformSettings.disabledDisplay } : {}),
       ...(typeof rawWaveformSettings.showGroupBadges === 'boolean'
         ? { showGroupBadges: rawWaveformSettings.showGroupBadges } : {}),
-      ...(typeof rawWaveformSettings.dragPlayhead === 'boolean'
-        ? { dragPlayhead: rawWaveformSettings.dragPlayhead } : {}),
+      dragPlayhead: true,
     } : null;
     const candidateTree = normalizeLayoutTree(source.tree);
     const tree = isCompleteLayoutTree(candidateTree)

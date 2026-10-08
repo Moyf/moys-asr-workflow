@@ -1271,7 +1271,7 @@
   .editor-settings-window-close:focus-visible { outline: 2px solid var(--accent-line); outline-offset: 1px; }
   .editor-settings-window-body { display: flex; flex: 1 1 auto; min-height: 0; }
   .editor-settings-nav {
-    display: flex; flex: 0 0 auto; flex-direction: column; align-items: stretch; gap: 2px;
+    display: flex; flex: 0 0 auto; flex-direction: column; align-items: stretch; gap: 8px;
     width: 132px; min-height: 0; padding: 10px 8px;
     overflow-x: hidden; overflow-y: auto; overscroll-behavior: contain;
     background: var(--bg-raised); border-right: 1px solid var(--border-subtle);
@@ -1284,7 +1284,7 @@
   .editor-settings-nav-tab {
     padding: 6px 10px; text-align: left; color: var(--text-secondary); background: none;
     border: 1px solid transparent; border-radius: var(--radius-sm);
-    font-size: 13px; cursor: pointer; white-space: nowrap;
+    font-size: 13px; cursor: pointer; white-space: normal; overflow-wrap: anywhere; line-height: 1.4;
     transition: background var(--t-fast), color var(--t-fast), border-color var(--t-fast);
   }
   .editor-settings-nav-tab:hover { color: var(--text-primary); background: var(--accent-tint); }
@@ -1321,13 +1321,18 @@
   .editor-settings-item[hidden] { display: none; }
   .editor-settings-sub-group > label.toggle.editor-settings-item { flex: 0 0 100%; }
   .editor-settings-field {
-    display: flex; flex: 0 0 100%; flex-direction: column; align-items: flex-start; gap: 3px;
+    display: flex; flex: 0 0 100%; flex-direction: column; align-items: flex-start; gap: 8px;
     min-width: 0;
   }
   #editor-settings-page-general .editor-settings-field,
   #editor-settings-page-subtitle-preview .editor-settings-field,
   #editor-settings-page-export .editor-settings-field { gap: 8px; }
   .editor-settings-field[hidden] { display: none; }
+  .sticker-root-controls { display: flex; flex: 0 0 100%; gap: 8px; min-width: 0; }
+  .editor-settings-panel .sticker-root-controls input[type="text"] { flex: 1 1 auto; width: auto; min-width: 0; }
+  .sticker-root-controls button { flex: 0 0 auto; }
+  #editor-settings-page-project-tracks .editor-settings-item { white-space: normal; }
+  .multi-subtitle-setting-row[hidden] { display: none; }
   .editor-settings-field > .editor-settings-item { width: auto; }
   .editor-settings-field > label.toggle.editor-settings-item { align-self: stretch; width: 100%; }
   .editor-settings-field > .editor-settings-hint { margin: 0; }
@@ -1929,6 +1934,7 @@
   .ass-manager-open-row .ass-frame-preview-open:not([hidden]) { margin-left: 12px; }
   .ass-frame-window {
     width: min(640px, calc(100vw - 24px));
+    height: min(560px, calc(100vh - 24px));
     min-width: min(480px, calc(100vw - 24px));
     min-height: 240px;
     background: var(--bg-panel);
@@ -3133,15 +3139,6 @@
     display: block;
     width: 100%;
     min-width: 0;
-  }
-  /* 从全局设置窗口打开，必须盖住 modal-mask（460）与浮层前置栈。465 只是
-     JS 初始化前的静态兜底；浮层栈启动后由 editor.js 在打开时动态置顶
-     （见 setStickerRootModalOpen）。 */
-  #sticker-root-modal { z-index: 465; }
-  #sticker-root-modal .modal {
-    width: min(540px, calc(100vw - 32px));
-    min-width: 0;
-    max-height: calc(100dvh - 32px);
   }
   .editor-settings-hint { display: block; max-width: 100%; font-size: 12px; line-height: 1.35; color: var(--text-muted); margin: 0; }
   .editor-settings-hint[hidden] { display: none; }

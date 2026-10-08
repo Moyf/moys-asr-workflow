@@ -1563,8 +1563,8 @@ test('translates editor project controls and dynamic save messages to English', 
     'The exact behavior depends on',
   );
   assert.equal(
-    i18n.translateText('「通用操作」中的「空隙区段操作方式」，其中「边界与中键」可同时使用两套操作。', 'en'),
-    '“Gap region operation” under “General” in Global settings; “Boundary and middle” enables both operation sets.',
+    i18n.translateText('「特殊编辑」中的「空隙区段操作方式」，其中「边界与中键」可同时使用两套操作。', 'en'),
+    '“Gap region operation” under “Special editing” in Global settings; “Boundary and middle” enables both operation sets.',
   );
   assert.equal(i18n.translateText('操作支持撤销/重做。', 'en'), 'Operations support undo/redo.');
   assert.equal(i18n.translateText('处理范围', 'en'), 'Scope');
@@ -1578,7 +1578,7 @@ test('translates editor project controls and dynamic save messages to English', 
     'Batch replace and text processing can be limited by checking “Only process selected subtitles”',
   );
   assert.equal(i18n.translateText('注：微调幅度可在', 'en'), 'Note: Adjust the fine-tuning amount in');
-  assert.equal(i18n.translateText('「通用操作」中调节，默认 50ms', 'en'), 'under “General” in Global settings; the default is 50 ms');
+  assert.equal(i18n.translateText('「特殊编辑」中调节，默认 50ms', 'en'), 'under “Special editing” in Global settings; the default is 50 ms');
   assert.equal(i18n.translateText('波形区操作', 'en'), 'Waveform actions');
   assert.equal(i18n.translateText('切换空隙的启用/禁用状态', 'en'), 'Toggle whether the gap is enabled');
   assert.equal(i18n.translateText('添加新的移除空隙', 'en'), 'Add a new removed gap');
@@ -3862,6 +3862,7 @@ test('normalizes speaker label settings with defaults and safe names', () => {
   }))), {
     mapping_enabled: true,
     enabled: true,
+    export_enabled: false,
     separator: ' ',
     names: {
       yellow: 'Host One',
@@ -3873,6 +3874,8 @@ test('normalizes speaker label settings with defaults and safe names', () => {
   });
   assert.equal(helpers.normalizeSpeakerLabelSettings({}).mapping_enabled, false);
   assert.equal(helpers.normalizeSpeakerLabelSettings({}).enabled, true);
+  assert.equal(helpers.normalizeSpeakerLabelSettings({ export_enabled: true }).export_enabled, true);
+  assert.equal(helpers.normalizeSpeakerLabelSettings({ export_enabled: 'true' }).export_enabled, false);
   assert.equal(helpers.normalizeSpeakerLabelSettings({ enabled: false }).enabled, false);
   assert.equal(helpers.normalizeSpeakerLabelSettings({ enabled: true }).mapping_enabled, true);
   assert.equal(

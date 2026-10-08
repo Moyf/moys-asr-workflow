@@ -104,11 +104,11 @@
   }
   if (MaweDom.multiSubtitleMainLanguageMode) {
     MaweDom.multiSubtitleMainLanguageMode.value = MaweMultiSubtitleCore.getMainSubtitleSplitMode(MaweBoot.DATA.segments[0]);
-    MaweDom.multiSubtitleMainLanguageMode.hidden = !enabled;
+    MaweDom.multiSubtitleMainLanguageMode.hidden = false;
   }
   if (MaweDom.multiSubtitleExtensionLanguageMode) {
     MaweDom.multiSubtitleExtensionLanguageMode.value = MaweMultiSubtitleCore.getExtensionSubtitleSplitMode(track, track?.segments?.[0]);
-    MaweDom.multiSubtitleExtensionLanguageMode.hidden = !enabled;
+    MaweDom.multiSubtitleExtensionLanguageMode.closest('.multi-subtitle-setting-row').hidden = !enabled;
   }
   if (MaweDom.multiSubtitleExtensionRowHeight) {
     MaweDom.multiSubtitleExtensionRowHeight.value = String(MaweSettings.EDITOR_SETTINGS.multiSubtitleRowHeight);

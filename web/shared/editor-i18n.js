@@ -9,6 +9,62 @@
   // The editor keeps one source template. Exact UI strings are translated at
   // the DOM boundary; project content is excluded from traversal below.
   const EN_TEXT = {
+    '自定义色板': 'Custom palette', '视频预览': 'Video preview',
+    '功能区': 'Functional areas',
+    '波形区': 'Waveform area',
+    '字幕编辑': 'Subtitle editing',
+    '项目设置': 'Project settings',
+    '打开项目设置窗口': 'Open project settings',
+    '关闭项目设置窗口': 'Close project settings',
+    '项目设置分区': 'Project settings sections',
+    '通用编辑': 'General editing',
+    '特殊编辑': 'Special editing',
+    '字幕选择': 'Subtitle selection',
+    '定位': 'Navigation',
+    '字幕拖动': 'Subtitle dragging',
+    '字幕交界处操作方式': 'Subtitle boundary behavior',
+    '时间显示': 'Time display',
+    '时间分隔码': 'Timecode separator',
+    '时间与语言': 'Time and language',
+    '字幕轨道': 'Subtitle tracks',
+    '自定义颜色': 'Custom colors',
+    '字幕导出': 'Subtitle export',
+    '更多导出': 'More exports',
+    '打开双语字幕显示与联动': 'Open bilingual display and linking',
+    '全局默认表情包目录': 'Default sticker directory',
+    '默认目录': 'Default directory',
+    '工程目录': 'Project directory',
+    '表情包目录': 'Sticker directory',
+    '帧吸附': 'Frame snapping',
+    '个人偏好：预览开关与播放习惯在本机复用；播放跳过空隙随工程保存。': 'Personal preference: preview and playback habits are reused on this device; gap skipping is saved with the project.',
+    '主、副字幕语言类型随当前工程保存。': 'Main and secondary subtitle language types are saved with the project.',
+    '单词型按空格拆分，字符型按字符拆分；语言类型随双语工程保存。': 'Word mode splits on spaces; character mode splits on characters. Language types are saved with the project.',
+    '读取并应用': 'Read and apply',
+    '覆盖全局默认目录': 'Override default directory',
+    '在对应功能区调整显示与操作；打开局部面板时保留此窗口。': 'Adjust display and behavior in each area; this window stays open.',
+    '调整波形外观与显示内容。': 'Adjust waveform appearance and content.',
+    '配置主副轨显示与联动。': 'Configure main and secondary track display and linking.',
+    '个人偏好：选择、定位与字幕拖动习惯在本机复用。': 'Personal preferences: selection, navigation and subtitle dragging are reused on this device.',
+    '个人偏好：微调、静音空隙操作与时间显示格式在本机复用。': 'Personal preferences: fine adjustments, gap editing and time display are reused on this device.',
+    '当前工程：时间单位、FPS 与字幕语言类型随工程保存。': 'Current project: time units, FPS and subtitle language types are saved with the project.',
+    '主、副字幕语言类型随当前工程保存。': 'Main and secondary subtitle language types are saved with the project.',
+    '当前工程：ASS 模式与字幕样式随工程保存。': 'Current project: ASS mode and subtitle appearance are saved with the project.',
+    '当前工程：颜色呈现、说话人映射与导出名称选项随工程保存。': 'Current project: color appearance, speaker mappings and speaker export labels are saved with the project.',
+    '个人偏好：自定义色板在本机复用；工程颜色呈现与说话人在项目设置中配置。': 'Personal preferences: the custom palette is reused on this device; project color appearance and speakers are configured in Project settings.',
+    '当前工程：双语字幕与叠加轨开关随工程保存。': 'Current project: bilingual and overlay track switches are saved with the project.',
+    '个人偏好：时间线与格式专用导出选项在本机复用。': 'Personal preferences: timeline and format-specific export options are reused on this device.',
+    '个人偏好：全局默认表情包目录供未配置覆盖目录的工程使用。': 'Personal preference: the default sticker directory is used by projects without an override.',
+    '项目设置中的覆盖目录优先；清空覆盖后恢复使用默认目录。': 'The project override takes priority; clearing it restores the default directory.',
+    '当前工程：覆盖目录随工程保存，优先于全局默认目录。': 'Current project: the directory override is saved with the project and takes priority over the default.',
+    '关闭覆盖时使用全局默认目录，不把默认路径写入工程。': 'Disabling the override uses the default directory without writing that path into the project.',
+    '便携编辑器保存目录配置；读取本地图片需要 Server 编辑器。': 'The portable editor saves directory settings; reading local images requires the Server editor.',
+    '正在读取并验证表情包目录…': 'Reading and validating the sticker directory…',
+    '目录配置已保存。': 'Directory settings saved.',
+    '「特殊编辑」中调节，默认 50ms': 'under “Special editing” in Global settings; the default is 50 ms',
+    '个人偏好：拆分按键、时间码与标点规则在本机复用；语言类型在项目设置中配置。': 'Personal preferences: split keys, timestamp and punctuation rules are reused on this device; language types are configured in Project settings.',
+    '开启预览说话人会默认勾选导出名称；之后可在此独立调整。': 'Enabling speaker preview also enables speaker export labels; this can be changed independently here.',
+    '打开波形区设置': 'Open waveform area settings',
+    '打开字幕编辑设置': 'Open subtitle editing settings',
     "配置 OTIO 导出": "Configure OTIO exports",
     "OTIO 导出选项…": "OTIO export options…",
     "格式专用参数": "Format-specific options",
@@ -502,7 +558,7 @@
     '字数阈值': 'Character threshold', '仅看超长': 'Long only', '字幕列表设置': 'Subtitle list settings',
     '拆分后临时保留显示': 'Temporarily keep split results visible', '点击字幕后自动滚动': 'Auto-scroll after clicking a subtitle', '显示内容': 'Displayed content',
     '当前': 'Current', '已选': 'Selected', '波形': 'Waveform', '音频波形区': 'Audio waveform', '波形设置': 'Waveform settings', '波形轨道徽标（开启后）：': 'Waveform track badges (when enabled):', '使用频谱缓存按主频给波形着色；关闭时使用原来的纯色波形': 'Color the waveform using the spectral cache by dominant frequency; when disabled, use the original solid-color waveform',
-    '多行': 'Multi-row', '基础': 'Basic', '工程与输出': 'Project & output', '扩展功能': 'Extensions', '隐藏': 'Hidden',
+    '多行': 'Multi-row', '基础': 'Basic', '保存与输出': 'Save & output', '扩展功能': 'Extensions', '隐藏': 'Hidden',
     '选择': 'Select', '分割': 'Razor', '移除静音空隙': 'Remove silent gaps',
     '跳过空隙': 'Skip gaps', '播放时跳过空隙': 'Skip gaps during playback', '未扫描空隙': 'Gaps not scanned', '工作区': 'Workspace',
     '拼合字幕': 'Snap subtitles', '拼合参数': 'Snap parameters',
@@ -659,7 +715,7 @@
     '添加静音区段；': 'add a silent region; ', '添加恢复区段': 'add a restored region',
     '「边界与中键」可同时使用两种操作。': '“Boundary and middle” enables both operations.',
     '具体操作取决于': 'The exact behavior depends on',
-    '「编辑操作」中的「空隙区段操作方式」，其中「边界与中键」可同时使用两套操作。': '“Gap region operation” under “Editing actions” in Global settings; “Boundary and middle” enables both operation sets.',
+    '「特殊编辑」中的「空隙区段操作方式」，其中「边界与中键」可同时使用两套操作。': '“Gap region operation” under “Special editing” in Global settings; “Boundary and middle” enables both operation sets.',
     '仅在拖动边界模式生效': 'Only active in Boundary drag mode',
     '仅在中键拖动模式生效': 'Only active in Middle-button drag mode',
     '点击「生成静音空隙」按当前参数扫描并替换检测结果': 'Click “Generate silence gaps” to scan with the current parameters and replace the detection results',
@@ -1213,6 +1269,12 @@
     if (text.startsWith('Cmd+')) {
       return translateText('Ctrl' + text.slice(3), EN).replace(/^Ctrl/, 'Cmd');
     }
+    let directory = /^目录已应用，读取 (\d+) 张图片。$/.exec(text);
+    if (directory) return `Directory applied; loaded ${directory[1]} images.`;
+    directory = /^读取失败：(.+)。当前有效目录和表情包保持不变。$/.exec(text);
+    if (directory) return `Read failed: ${directory[1]}. The active directory and stickers are unchanged.`;
+    directory = /^目录读取失败：(.+)$/.exec(text);
+    if (directory) return `Directory read failed: ${directory[1]}`;
     let match = /^(共|过滤) (\d+) 项：标记 (\d+) · 区段 (\d+)(?:；待复核 (\d+))?$/.exec(text);
     if (match) return `${match[1] === '过滤' ? 'Filtered' : 'Total'} ${match[2]}: markers ${match[3]} · regions ${match[4]}${match[5] ? `; pending review ${match[5]}` : ''}`;
     match = /^(标记|区段) (\d.*)$/.exec(text);

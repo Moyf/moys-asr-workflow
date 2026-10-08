@@ -114,6 +114,7 @@
 
   function snapshotPreviewState() {
     return {
+      assMode: MaweSettings.EDITOR_SETTINGS.assMode,
       overlay: !!MaweDom.overlayToggle.checked,
       subtitle: { ...MaweAppearance.getPreviewGeometry(), ...MaweAppearance.getSubtitleAppearance() },
       speakerLabels: MaweSpeakerLabels.getSpeakerLabelSettings(),
@@ -136,6 +137,8 @@
     if (state.speakerLabels) MaweSpeakerLabels.setSpeakerLabelSettings(state.speakerLabels, { markDirty: true });
     if (state.extensionSubtitle) MaweAppearance.restoreExtensionSubtitleAppearance(state.extensionSubtitle, { markDirty: true });
     if (state.sticker) MawePreviewGeometry.setStickerGeometry(state.sticker, { markDirty: true });
+    if (typeof state.assMode === 'boolean') MaweSettings.updateEditorSettings({ assMode: state.assMode });
+    window.MaweProjectSettings?.syncControls();
     MawePreviewGeometry.refreshPreviewGeometryEditable();
     MawePlaybackLoop.update();
   }
@@ -343,8 +346,7 @@
       || MaweDom.stickerModal.classList.contains('show')
       || MaweDom.stickerPreviewModal.classList.contains('show')
       || MaweDom.projectMediaModal.classList.contains('show')
-      || assStyleWindow?.classList.contains('show')
-      || document.getElementById('sticker-root-modal').classList.contains('show');
+      || assStyleWindow?.classList.contains('show');
 }
 
 
