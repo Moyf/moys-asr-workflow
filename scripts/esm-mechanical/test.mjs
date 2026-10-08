@@ -62,11 +62,9 @@ test('inventory detects dynamic names and imported-binding write hazards', () =>
   const root = fs.mkdtempSync(path.join(os.tmpdir(), 'maw-esm-inventory-'));
   fs.mkdirSync(path.join(root, 'web'), { recursive: true });
   fs.mkdirSync(path.join(root, 'tests/e2e'), { recursive: true });
-  fs.mkdirSync(path.join(root, 'desktop/src-tauri/src'), { recursive: true });
   fs.writeFileSync(path.join(root, 'web/editor-scripts.txt'), 'owner.js\nconsumer.js\n');
   fs.writeFileSync(path.join(root, 'web/owner.js'), 'let counter = 0;');
   fs.writeFileSync(path.join(root, 'web/consumer.js'), 'counter++; window.MAWE.resolve(getName(), {});');
-  fs.writeFileSync(path.join(root, 'desktop/src-tauri/src/tauri_bridge.js'), '');
   const result = inventory(root);
   assert.equal(result.summary.dynamicResolveNames, 1);
   assert.equal(result.crossLexicalWrites.length, 1);

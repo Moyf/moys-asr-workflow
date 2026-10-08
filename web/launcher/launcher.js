@@ -1318,8 +1318,6 @@
       batch_items_invalid: "批量任务中存在无效项目，请检查媒体文件路径。",
       batch_item_invalid: "该批量项目无效，请检查媒体文件路径。",
       batch_items_required: "请添加至少一个批量任务项目。",
-      mose_not_found: "未找到 MOSE 桌面编辑器，请确认 MAW 完整安装。",
-      mose_start_failed: "MOSE 桌面编辑器启动失败，请查看日志后重试。",
       script_preview_failed: (detail) => `脚本预览失败：${detail || "请检查脚本文件格式。"}`,
       script_preview_missing: "请先选择脚本文件。",
       alignment_media_invalid: "口播对齐的媒体文件不存在或格式不支持。",
@@ -1399,8 +1397,6 @@
       batch_items_invalid: "Some batch items are invalid. Check the media file paths.",
       batch_item_invalid: "This batch item is invalid. Check the media file path.",
       batch_items_required: "Add at least one batch item.",
-      mose_not_found: "MOSE desktop editor was not found. Ensure MAW is fully installed.",
-      mose_start_failed: "MOSE desktop editor failed to start. Check the log and retry.",
       script_preview_failed: (detail) => `Script preview failed: ${detail || "check the script file format."}`,
       script_preview_missing: "Choose a script file first.",
       alignment_media_invalid: "The speech-alignment media file does not exist or is unsupported.",
@@ -1512,7 +1508,7 @@
   const OPENAI_ASR_OFFICIAL_MODEL_IDS = new Set(["whisper-1", "gpt-transcribe", "gpt-4o-transcribe", "gpt-4o-mini-transcribe", "gpt-4o-transcribe-diarize", "whisper-large-v3-turbo", "whisper-large-v3"]);
   const SERVER_STATUS_MONITOR_INTERVAL_MS = 2000;
   const SERVER_STATUS_MONITOR_FAILURE_THRESHOLD = 2;
-  const state = { lang: "zh", serverRunning: false, serverStarting: false, serverStopping: false, serverProjectPath: "", moseStarting: false, running: false, localPreparing: false, localProgressMessage: "", localProgress: null, localModelId: "", localModelPaths: {}, alignmentPreparing: "", alignmentProgressMessage: "", alignmentModelSelection: "", alignmentModelManagementId: "", localRuntimeInstalling: false, localRuntimeProgress: 0, localRuntimeProgressMessage: "", localRuntimeInventoryOpen: false, localRuntimeInventory: null, localRuntimeInventoryError: "", ocrRuntimeInstalling: false, ocrRuntimeProgress: 0, ocrRuntimeProgressMessage: "", lastLogMessage: "", result: null, errorReport: null, errorCopyTimer: 0, config: null, srtAuto: true, testSuffixAdded: false, serverMediaOk: false, detectedServerUrl: "", dropTarget: "", theme: "system", toolboxBusy: false, toolboxOpen: false, audioTracks: [], audioTrack: null, audioTrackPath: "", audioTrackProbeToken: 0, audioTrackProbeTimer: 0, batchNotification: null };
+  const state = { lang: "zh", serverRunning: false, serverStarting: false, serverStopping: false, serverProjectPath: "", running: false, localPreparing: false, localProgressMessage: "", localProgress: null, localModelId: "", localModelPaths: {}, alignmentPreparing: "", alignmentProgressMessage: "", alignmentModelSelection: "", alignmentModelManagementId: "", localRuntimeInstalling: false, localRuntimeProgress: 0, localRuntimeProgressMessage: "", localRuntimeInventoryOpen: false, localRuntimeInventory: null, localRuntimeInventoryError: "", ocrRuntimeInstalling: false, ocrRuntimeProgress: 0, ocrRuntimeProgressMessage: "", lastLogMessage: "", result: null, errorReport: null, errorCopyTimer: 0, config: null, srtAuto: true, testSuffixAdded: false, serverMediaOk: false, detectedServerUrl: "", dropTarget: "", theme: "system", toolboxBusy: false, toolboxOpen: false, audioTracks: [], audioTrack: null, audioTrackPath: "", audioTrackProbeToken: 0, audioTrackProbeTimer: 0, batchNotification: null };
   const dragState = { depth: 0 };
   let api = null;
   let prefsTimer = 0;

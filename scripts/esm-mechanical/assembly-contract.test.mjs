@@ -111,25 +111,6 @@ test('E6: real file and localhost pages satisfy behavioral probes', async () => 
   assert.ok(verdict.checks.projectInjection && verdict.checks.sharedStateWrite && verdict.checks.exportSrt);
 });
 
-test('E7: actual Rust HTML renderer embeds the same artifact', async () => {
-  await api();
-  assert.ok(fs.existsSync(bundlePath), 'E7: full artifact is absent');
-  const fixtureDir = path.join(root, 'rust-assembly-probe');
-  fs.mkdirSync(fixtureDir, { recursive: true });
-  const stub = path.join(fixtureDir, 'tauri_build_stub.rs');
-  const library = path.join(fixtureDir, 'libtauri_build.rlib');
-  const executable = path.join(fixtureDir, process.platform === 'win32' ? 'render.exe' : 'render');
-  fs.writeFileSync(stub, 'pub fn build() {}\n');
-  execFileSync('rustc', ['--crate-name', 'tauri_build', '--crate-type', 'rlib', stub, '-o', library], { windowsHide: true });
-  execFileSync('rustc', ['--edition=2021', path.join(root, 'desktop/src-tauri/build.rs'),
-    '--extern', `tauri_build=${library}`, '-o', executable], { windowsHide: true });
-  execFileSync(executable, [], { windowsHide: true,
-    env: { ...process.env, CARGO_MANIFEST_DIR: path.join(root, 'desktop/src-tauri') } });
-  const html = fs.readFileSync(path.join(root, 'desktop/src/index.html'), 'utf8');
-  assert.ok(html.includes(fs.readFileSync(bundlePath, 'utf8').split('\n')[0]));
-  assert.ok(!html.includes('__DATA_JSON__'));
-});
-
 test('E8: live cross-file writes retain postfix, const and shadowing semantics', async () => {
   const { buildEditor } = await api();
   const codemodPath = path.join(here, 'full-convert.mjs');

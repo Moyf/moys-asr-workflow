@@ -11,9 +11,9 @@ source: "docs/MOSE.md"
 | --- | --- |
 | MAW — Moy's ASR Workflow | 当前可用的转写与处理工作流，包含 Launcher、公开 CLI 与本机服务。 |
 | MAWE — Moy's ASR Workflow Editor | MAW 的浏览器字幕编辑器；Server 为日常入口，HTML 为兼容入口。 |
-| MOSE — Moy's Open Subtitle Editor | 后续独立编辑器方向；本工作树保留 Tauri 实验开发目录。 |
+| MOSE — Moy's Open Subtitle Editor | 后续独立编辑器方向；本仓库不包含桌面实验工程。 |
 
-当前 `desktop/` 是 Tauri 项目，开发方式见 [desktop README](https://github.com/Moyf/moys-asr-workflow/blob/main/desktop/README.md)。它不是已经交付的稳定 MOSE 产品；MAW Release 的正式编辑入口仍为 Server，MOSE 暂不随该发布流程分发，Launcher 入口隐藏。
+MOSE 尚未作为稳定独立产品交付，不随 MAW Release 分发。MAW 的正式编辑入口仍为 Server；移除桌面实验工程不改变 MOSE 的产品方向或现有工程格式。
 
 三者共享 `.mosp` / 兼容 `.json` 工程契约。未来形态与发布时间不作承诺；历史设计和其他开发分支的状态不能代替本工作树的实现。
 

@@ -119,7 +119,7 @@ def snapshot_case(repository, target, parent, *, stage=()):
     env = dict(os.environ, GIT_INDEX_FILE=str(index.resolve()))
     command = ["git", f"--git-dir={repository / '.git'}", f"--work-tree={target}"]
     run(command + ["read-tree", parent], env=env)
-    run(command + ["add", "-A", "--", "web", "edit.py", "desktop/src-tauri/build.rs", "tests", *stage], env=env)
+    run(command + ["add", "-A", "--", "web", "edit.py", "tests", *stage], env=env)
     tree = decode(run(command + ["write-tree"], env=env))
     return commit_tree(repository, tree, parent, "Isolated ESM rehearsal snapshot")
 

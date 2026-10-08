@@ -4,7 +4,7 @@
 
 ## 建立副本
 
-在仓库根目录执行。需要已安装的 Python 环境、Rust 编译器、Chromium，以及包含 esbuild / acorn / eslint-scope / TypeScript / Playwright 的开发依赖。本轮复用了现有试点依赖；不把依赖链接当作产品运行依赖。
+在仓库根目录执行。需要已安装的 Python 环境、Chromium，以及包含 esbuild / acorn / eslint-scope / TypeScript / Playwright 的开发依赖。本轮复用了现有试点依赖；不把依赖链接当作产品运行依赖。
 
 ```powershell
 $repo = (Get-Location).Path
@@ -57,14 +57,14 @@ Pop-Location
 ## 文件职责
 
 - `research.mjs`：AST 盘点与历史 5 文件工厂试验。
-- `full-convert.mjs`：180 文件转换、跨文件读写访问器、外部词法桥，以及 Python / Rust 消费路径适配。
+- `full-convert.mjs`：180 文件转换、跨文件读写访问器、外部词法桥，以及 Python 消费路径适配。
 - `full-build.mjs`：真正的 esbuild 依赖图、显式初始化与纯读新鲜度检查。
-- `assembly-contract.test.mjs`：E1–E10 目标契约及反例。
+- `assembly-contract.test.mjs`：E1–E6、E8–E10 目标契约及反例（原 E7 桌面实验已退役）。
 - `full-verify.mjs`：实际 Python 渲染的基线 / file 页面、真实 localhost 页面及产品行为探针。
 - `adapt-tests.mjs`：只在实验副本迁移 Node 加载器与两项旧 classic 结构测试。
 - `test.mjs` / `verify.mjs`：历史小批次反例与三页验证；不能代替完整装配结果。
 
-原型保留 MAWE 注册表、依赖袋与现有 IIFE；它证明兼容阶段的机械 ESM 装配，不证明所有业务依赖都已变成直接命名 import，也不证明完整桌面运行、发布打包或全部 E2E。
+原型保留 MAWE 注册表、依赖袋与现有 IIFE；它证明兼容阶段的机械 ESM 装配，不证明所有业务依赖都已变成直接命名 import，也不证明发布打包或全部 E2E。
 
 ## 上游合并预演
 

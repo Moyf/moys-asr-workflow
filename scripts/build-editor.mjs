@@ -1,5 +1,5 @@
 // Transitional build: real ESM factories plus one ordered legacy scope.
-// Python, localhost and Tauri embed the same checked-in classic artifact.
+// Portable HTML and localhost embed the same checked-in classic artifact.
 import fs from 'node:fs';
 import path from 'node:path';
 import { createHash } from 'node:crypto';

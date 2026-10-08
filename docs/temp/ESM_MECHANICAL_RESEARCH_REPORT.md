@@ -74,7 +74,7 @@ import 绑定不能直接赋值，因此导出捕获原绑定的活 getter / set
 
 ### 5. E2E 与外部桥
 
-扫描全部 E2E / Tauri 桥发现 116 个外部全局候选，含浏览器 API、测试变量和产品门面，不能都认作公开 API。明细在 inventory.externalBridges。
+历史扫描发现 116 个外部全局候选（冻结 inventory 保留当时桌面桥记录；当前扫描仅覆盖 E2E），含浏览器 API、测试变量和产品门面，不能都认作公开 API。明细在 inventory.externalBridges。
 
 8 个原来借 classic 共享词法环境访问的名称需要额外兼容：loadAssStyleLibrary、ASS_STYLE_LIBRARY、assModeToggle、assStyleManagerSetSelection、updateAssStyleManagerLibrary、syncAssStyleForm、convertOverlayCueToMain、openOverlaySplitModal。原型桥接到同一 ESM 绑定。
 
@@ -84,7 +84,6 @@ import 绑定不能直接赋值，因此导出捕获原绑定的活 getter / set
 
 采用 **全端读同一 classic bundle**。180 个独立 ESM 源文件由 esbuild 形成依赖图；Python 只读取 editor-bundle.js 并做 HTML / 资源 / 数据注入，Server 走同一渲染路径，Rust 读取同一产物。E3 把 Python 源清单读取函数替换为抛错，正式页面仍生成，证明不再由 Python 拼接 JS。
 
-E7 编译并运行实际 build.rs HTML 渲染代码，Tauri SDK 调用使用无操作 stub。它证明 Rust 装配、产物身份与工程注入，**不证明完整 Tauri App 或安装包运行**。
 
 全端 bundle 只维护一种执行产物，便携 file 页面实测通过。Server 原生模块方案要维护第二种装配 / 注入路径，本轮未实施。明确行为变化是 Server 请求不能直接反映未构建源码，需要开发 watch / 构建流程；纯 Python 最终用户无需 Node，但发布必须携带新鲜产物。正式迁移必须写明此开发与发布约定。
 
@@ -144,7 +143,7 @@ E7 编译并运行实际 build.rs HTML 渲染代码，Tauri SDK 调用使用无�
 1. 修类型基线并定义整个图的类型门；适配活访问器生成与环境声明，不能靠不检查文件减少诊断。
 2. 迁移 Python 结构契约，逐项补上表行为意图的运行证据。用新契约替代旧拼接断言，后面不恢复过时的拼接要求。
 3. 固定产物路径、发布携带规则、开发 watch 与 CI 新鲜度门。构建导入和检查纯读，只有显式 --write 写产物。
-4. 逐批落地源码、入口、消费端、加载器及产物；另验完整 Tauri 运行 / 打包和剩余 E2E，再考虑退役注册表、依赖袋与桥。
+4. 逐批落地源码、入口、消费端、加载器及产物；另验正式发布包和剩余 E2E，再考虑退役注册表、依赖袋与桥。
 
 原型未优化大小或性能：产物约 2.41 MB，180 个生成器、565 处访问器引用未做生产性能基准。选定测试未见问题不证明无开销。显式 initialize 调用保证必须执行的副作用保留，相关依赖图 / tree shaking 语义见 [esbuild 官方 API 文档](https://esbuild.github.io/api/)。
 

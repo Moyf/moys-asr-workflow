@@ -170,8 +170,7 @@ export function inventory(root = ROOT) {
     }
   }
   const external = new Map();
-  const externalFiles = [...allFiles(path.join(root, 'tests/e2e'), '.mjs'),
-    path.join(root, 'desktop/src-tauri/src/tauri_bridge.js')];
+  const externalFiles = allFiles(path.join(root, 'tests/e2e'), '.mjs');
   for (const file of externalFiles) {
     const source = fs.readFileSync(file, 'utf8');
     const ast = parse(source, file.endsWith('.mjs') ? 'module' : 'script');

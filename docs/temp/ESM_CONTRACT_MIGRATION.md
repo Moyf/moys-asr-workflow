@@ -1,6 +1,6 @@
 # ESM 契约迁移与红绿实验
 
-日期：2026-10-08；基线 `d4e5dff2`。目标是 **ESM 源码 → esbuild 完整装配 → Python / Server / Rust 嵌入同一产物**。Python 只负责 HTML、资源和工程数据注入，不再装配 JS 源文件。所有实验在隔离副本运行，主工作区现有测试及产品源码保留。
+日期：2026-10-08；基线 `d4e5dff2`。目标是 **ESM 源码 → esbuild 完整装配 → Python / Server 嵌入同一产物**。Python 只负责 HTML、资源和工程数据注入，不再装配 JS 源文件。所有实验在隔离副本运行，主工作区现有测试及产品源码保留。
 
 ## 判定规则
 
@@ -35,7 +35,6 @@
 | `test_sticker_otio_exposes_portable_mode_and_relative_metadata` | 保留意图、迁移实现 | 导出模式及相对元数据正确 |
 | `test_portable_sticker_export_capability_syncs_after_project_binding` | 保留意图、迁移实现 | 工程绑定后导出能力同步 |
 | `test_generated_page_contains_registered_modules_in_order` | 拆分 / 替换 | 保留版本号、生成时间约束；已知模板 token 全部替换；注册 / 启动顺序改为运行断言 |
-| `test_tauri_builder_consumes_the_shared_script_manifest` | 替换 | Rust 消费同一 bundle；用实际 Rust 装配验证，不只查源码字符串 |
 | `test_scan_stickers_keeps_images_when_dimensions_are_unreadable` | 保留 | Python 图片扫描行为，与 ESM 无关 |
 
 `__PURE__` 是构建器注释，不是工程模板 token。新契约检查已知 token 集及注入结果；不能把所有双下划线字符串都判为未替换模板，也不能仅靠压缩选项隐藏旧断言冲突。
@@ -66,7 +65,6 @@
 | E4 | 构建检查纯读、字节稳定；源码语义变化使旧产物失效 | 导入 / 检查偷偷重写产物或门禁是哑弹 |
 | E5 | 错误的 ESM 导出、丢失输入导致构建失败 | 构建器没有真正解析 ESM 依赖 |
 | E6 | file:// / localhost 页面启动、注入、产品桥与基线一致 | 模板 token、加载副作用或浏览器运行断裂 |
-| E7 | Rust 实际装配包含同一产物 | 只更新 Python 路径，桌面路径仍落在旧装配 |
 | E8 | 跨文件可变状态保持读写和返回值语义 | 将共享变量直接替换成只读 import，或状态被复制成快照 |
 | E9 | 跨文件前向函数 / var 提升、let TDZ 仍正确 | 将原脚本声明实例化推迟到各文件的初始化调用 |
 | E10 | 产物故意破坏后，导入构建器不修复产物，检查非零退出 | 构建脚本导入副作用让新鲜度负例变成哑弹 |

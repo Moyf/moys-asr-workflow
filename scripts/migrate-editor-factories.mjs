@@ -51,8 +51,6 @@ export function planMigration(root = ROOT, selectedFiles) {
   if (!outputs.length || outputs.length === files.length) throw new Error('Expected a partial factory batch');
   const externalBridges = new Map();
   const external = walkFiles(path.join(root,'tests/e2e'));
-  const tauri = path.join(root,'desktop/src-tauri/src/tauri_bridge.js');
-  if (fs.existsSync(tauri)) external.push(tauri);
   for (const file of external) {
     const sourceType = file.endsWith('.mjs') ? 'module' : 'script';
     const ast = acorn.parse(fs.readFileSync(file,'utf8'),{ecmaVersion:16,sourceType,ranges:true});
