@@ -43,5 +43,9 @@
 - `node scripts/verify-editor.mjs CLASSIC_BASELINE ROOT PYTHON`：13 项通过，file/HTTP 初始化轨迹均覆盖 180 文件，项目注入、未知扩展保存、整数毫秒、SRT、合并撤销与经典基线一致，0 页面错误。
 - `node scripts/verify-editor-desktop.mjs ROOT PYTHON`：编译并执行实际 Rust 渲染器，产物身份一致、全部模板注入完成、调色板与 Python 相同，页面启动且 180 文件轨迹正确。仅外部 Tauri SDK 构建钩子被替身替代，完整桌面应用与发布包未验证。该检查发现并补齐桌面原有的调色板/加载标记/音效路径注入缺口。
 - 类型诊断 1129 是扩展检查范围后的中间结果，不是把旧全量实验的 235 项误报为退化。旧实验的 TypeScript import 图未覆盖全部波形工厂；本批显式覆盖全部 59 文件。
-- 9 份浏览器 spec（226 项）及 Python 全量正在执行；结果完成后回写。
+- 9 份浏览器 spec：226 项全部通过（2.6 分钟）；Python 全量仍在执行，完成后回写。
 - esbuild 提前拒绝源码中直接对 const 赋值；外部 const 桥写入仍在运行时抛 TypeError。既有源码不存在前者；专门测试覆盖两种边界。
+
+## 类型修复批次 1：既有视图契约
+
+`ViewInvalidation` 补入已有的 `cueListPatch` 形状（主轨/叠加轨索引数组），对应 `patchCueRows` 的真实参数。不修改运行代码。原有 1 项 TS2339 消失；下一步处理 utils 121 项与波形 1007 项。`node --test tests/test_editor_commands.mjs` 验证事务与视图失效行为。
