@@ -889,6 +889,26 @@
 .waveform-cue-block.disabled:hover { opacity: 0.7; }
 .waveform-cue-block.dragging { cursor: grabbing; }
 .waveform-cue-block.word-timing-background { opacity: 0.28; cursor: pointer; }
+/* 字词时间码：选中句去掉黄色描边与辉光，避免与字词块的双层描边叠加；
+   只把不透明度从 0.28 抬到 0.45 作为轻量选中提示。 */
+.waveform-pane.word-timing-mode .waveform-cue-block.word-timing-background.selected,
+.waveform-pane.word-timing-mode .waveform-cue-block.word-timing-background.selected:hover {
+  opacity: 0.45;
+  outline-color: transparent;
+  box-shadow: none;
+}
+/* 字词时间码 + 基础波形：句块文字顶部对齐，上方看整句文本，下方看字词块。 */
+.waveform-basic .waveform-pane.word-timing-mode .waveform-cue-block {
+  align-items: flex-start;
+}
+.waveform-basic .waveform-pane.word-timing-mode .waveform-cue-block .waveform-cue-label {
+  margin-top: 6px;
+}
+/* 选中句的两端手柄在字词模式下仍可拖动整句边界；句块本身是背景，
+   手柄沿用句块透明度之上再提亮，保证可发现。 */
+.waveform-pane.word-timing-mode .waveform-cue-block.word-timing-background .waveform-cue-handle {
+  opacity: 0.9;
+}
 .waveform-word-block {
   position: absolute; z-index: 6; bottom: 9px; height: 31px; min-width: 2px;
   padding: 2px 7px; box-sizing: border-box; border-radius: 4px;

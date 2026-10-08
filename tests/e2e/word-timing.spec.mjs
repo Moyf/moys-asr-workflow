@@ -158,10 +158,10 @@ test('conversion reviews skips and bindings, is atomic and preserves items on sa
     MaweContextMenus.showContextMenu(100, 100, 0);
   });
   await page.locator('.word-timing-advanced summary').click();
-  expect(await page.locator('.word-timing-advanced button').evaluate(el =>
+  expect(await page.locator('.word-timing-advanced .danger').evaluate(el =>
     el.getBoundingClientRect().top - el.previousElementSibling.getBoundingClientRect().bottom,
   )).toBeGreaterThanOrEqual(8);
-  await page.locator('.word-timing-advanced button').click();
+  await page.locator('.word-timing-advanced .danger').click();
   await expect(page.locator('#word-conversion-summary')).toContainText('可转换 1 句，生成 2 条字幕；跳过 2 句，解除 1 个副字幕绑定');
   await expect(page.locator('#word-conversion-skipped')).toContainText('文字未被完整覆盖');
   const spacing = await page.locator('.word-conversion-actions').evaluate(el => ({
@@ -405,4 +405,82 @@ test('no-op gestures do not create undo history and leaving words clears their h
   await page.mouse.move(box.x + box.width / 2, box.y + 10);
   await page.mouse.up();
   await expect(page.locator('#undo-btn')).toBeDisabled();
+});
+
+test('equal-length typo replacement syncs item texts through the cue panel', async ({ page }) => {
+  await page.locator('#word-timing-toggle').check();
+  await page.locator('.cue[data-idx="0"]').click();
+  const panel = page.locator('#cue-panel-text');
+  await expect(panel).toHaveValue('我很喜欢！');
+  await panel.fill('我最喜欢！');
+  await expect(page.locator('#hint-stack')).toContainText('已同步字词时间码文字');
+  expect((await source(page)).items.map(item => item.text)).toEqual(['我', '最喜欢！']);
+  // 追加文字长度变化：静默跳过，字词保持原样
+  await panel.fill('我最喜欢！啊');
+  expect((await source(page)).items.map(item => item.text)).toEqual(['我', '最喜欢！']);
+  // Esc 取消整次编辑：文字与字词一起回到会话开始的状态
+  await panel.fill('我很喜欢！');
+  await page.keyboard.press('Escape');
+  const restored = await source(page);
+  expect([restored.text, restored.items.map(item => item.text)]).toEqual(['我很喜欢！', ['我', '很喜欢']]);
+});
+
+test('selected sentence gains edge handles in word timing mode and drags only its own range', async ({ page }) => {
+  await page.locator('#word-timing-toggle').check();
+  const block = page.locator('.waveform-cue-block[data-track="main"][data-idx="0"]');
+  await expect(block.locator('.waveform-cue-handle')).toHaveCount(0);
+  await block.click();
+  await expect(block).toHaveClass(/selected/);
+  await expect(block.locator('.waveform-cue-handle')).toHaveCount(2);
+  expect(await block.evaluate(el => parseFloat(getComputedStyle(el).opacity))).toBeCloseTo(0.45);
+  const before = await source(page);
+  const handle = block.locator('.waveform-cue-handle.right');
+  const box = await handle.boundingBox();
+  await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
+  await page.mouse.down();
+  await page.mouse.move(box.x + box.width / 2 + 15, box.y + box.height / 2, { steps: 3 });
+  await page.mouse.up();
+  const after = await source(page);
+  expect(after.end).toBeGreaterThan(before.end);
+  expect(after.start).toBe(before.start);
+  expect(after.items.at(-1).end).toBeLessThanOrEqual(after.end);
+  await page.keyboard.press('Control+z');
+  expect((await source(page)).end).toBe(before.end);
+  // 取消选中后手柄再次隐藏
+  await page.keyboard.press('Escape');
+  await expect(block.locator('.waveform-cue-handle')).toHaveCount(0);
+});
+
+test('audition plays the picked range once from both word and sentence menus', async ({ page }) => {
+  await page.locator('#word-timing-toggle').check();
+  // 句块菜单：试听位于跳转区
+  await page.locator('.waveform-cue-block[data-track="main"][data-idx="0"]').click({ button: 'right' });
+  await expect(page.locator('#ctxmenu .item').filter({ hasText: '试听' })).toHaveCount(1);
+  await page.keyboard.press('Escape');
+  // 字词菜单：试听选中字词范围并在终点自动暂停
+  await word(page, 1).click({ button: 'right' });
+  await page.locator('#ctxmenu .item').filter({ hasText: '试听' }).click();
+  await expect.poll(async () => page.evaluate(() => MaweCoreState.player.paused), { timeout: 8000 }).toBe(true);
+  const seconds = await page.evaluate(() => MaweCoreState.player.currentTime);
+  expect(seconds).toBeGreaterThanOrEqual(2.9);
+  expect(seconds).toBeLessThanOrEqual(6.3);
+});
+
+test('context menu keeps clip actions up front and moves low-frequency entries into advanced', async ({ page }) => {
+  await page.locator('.waveform-cue-block[data-track="main"][data-idx="0"]').click({ button: 'right' });
+  const menu = page.locator('#ctxmenu');
+  await expect(menu.locator(':scope > .item').filter({ hasText: '转为叠加字幕' })).toHaveCount(0);
+  await expect(menu.locator(':scope > .item').filter({ hasText: '左右添加字符' })).toHaveCount(0);
+  await menu.locator('.word-timing-advanced summary').click();
+  const overlayButton = menu.locator('.word-timing-advanced button').filter({ hasText: '转为叠加字幕' });
+  const wrapHeading = menu.locator('.word-timing-advanced').locator('span', { hasText: '左右添加字符' });
+  const convertButton = menu.locator('.word-timing-advanced .danger');
+  await expect(overlayButton).toHaveCount(1);
+  await expect(convertButton).toHaveCount(1);
+  expect(await overlayButton.evaluate(el =>
+    el.getBoundingClientRect().top - wrapHeading.evaluate(wrap => wrap.closest('.item').getBoundingClientRect().bottom),
+  )).toBeGreaterThanOrEqual(0);
+  expect(await convertButton.evaluate(el =>
+    el.getBoundingClientRect().top - overlayButton.evaluate(overlay => overlay.getBoundingClientRect().bottom),
+  )).toBeGreaterThanOrEqual(0);
 });

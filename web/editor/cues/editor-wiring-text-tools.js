@@ -55,15 +55,22 @@ document.getElementById('replace-confirm')?.addEventListener('click', () => {
     return;
   }
   return MaweCommands.run('批量替换', (command) => {
-    let changedRows = 0;
+    let changedRows = 0, syncedRows = 0;
     MaweFindReplace.getReplaceTargets().forEach(s => {
       re.lastIndex = 0;
       const newText = s.text.replace(re, repl);
-      if (newText !== s.text) { s.text = newText; s._dirty = true; changedRows++; }
+      if (newText !== s.text) {
+        const previousText = s.text;
+        s.text = newText; s._dirty = true; changedRows++;
+        const result = window.AsrEditorUtils.planWordTimingTextSync(s, previousText);
+        if (result?.items) { s.items = result.items; syncedRows++; }
+      }
     });
     MaweDom.replaceModal.classList.remove('show');
     command.commit({ cueList: true });
-    MaweHint.flashHint(`已修改 ${changedRows} 行`, 'success');
+    MaweHint.flashHint(syncedRows
+      ? `已修改 ${changedRows} 行，其中 ${syncedRows} 行的字词时间码文字已同步`
+      : `已修改 ${changedRows} 行`, 'success');
   });
 });
 

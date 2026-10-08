@@ -24,8 +24,16 @@
     clearSelection();
     const toggle = document.getElementById('word-timing-toggle');
     if (toggle) toggle.checked = enabled;
+    syncQuickToggle();
     MaweCoreState.waveformEditor?.pane.classList.toggle('word-timing-mode', enabled);
     refresh();
+  }
+  // 波形工具栏的快捷按钮（🪶）由模板可选提供；不存在时零开销。
+  function syncQuickToggle() {
+    const quick = document.getElementById('word-timing-quick-toggle');
+    if (!quick) return;
+    quick.classList.toggle('active', enabled);
+    quick.setAttribute('aria-pressed', String(enabled));
   }
   function reset() {
     setEnabled(false);
@@ -61,6 +69,26 @@
     segment.items = items;
     if (selection?.segment === segment) selection.items = items;
   }
+  // 等长替换（改错别字）时同步 items 文字；在文本提交点调用，与文字同一命令快照。
+  // quietMismatch：逐键实时路径（字幕面板输入框）不弹失败提示，避免打字被刷屏。
+  function syncTextChange(segment, previousText, { quietMismatch = false } = {}) {
+    if (!segment || typeof segment.text !== 'string') return;
+    const result = global.AsrEditorUtils.planWordTimingTextSync(segment, previousText);
+    if (!result) return;
+    if (result.items) {
+      segment.items = result.items;
+      if (selection?.segment === segment) selection.items = result.items;
+      MaweHint.flashHint(ui(
+        `已同步字词时间码文字（${result.changed} 处）`,
+        `Synced timed text labels (${result.changed})`,
+      ), 'success');
+    } else if (result.warn && !quietMismatch) {
+      MaweHint.flashHint(ui(
+        '字词时间码未同步：文字不是等长替换，字词文字保持原样',
+        'Timed text not synced: only equal-length replacements update word labels',
+      ), 'warning');
+    }
+  }
   function merge() {
     if (!enabled || !selection || !getSelection(selection.segment).size) return false;
     const segment = selection.segment;
@@ -88,6 +116,18 @@
     if (!global.AsrEditorUtils.mergeWordTimingItems(segment, [...getSelection(segment)], clock())) entry.classList.add('disabled');
     else entry.addEventListener('click', () => { menu.classList.remove('show'); merge(); });
     menu.append(entry);
+    const indices = [...getSelection(segment)];
+    const audition = document.createElement('div');
+    audition.className = 'item';
+    audition.textContent = ui('试听', 'Audition');
+    audition.addEventListener('click', () => {
+      menu.classList.remove('show');
+      const entries = global.AsrEditorUtils.getWordTimingEntries(segment, clock())
+        .filter(e => indices.includes(e.index));
+      if (!entries.length) return;
+      MaweMediaPlayback.auditionRange(entries[0].start, entries[entries.length - 1].end);
+    });
+    menu.append(audition);
     menu.classList.add('show');
     const rect = menu.getBoundingClientRect();
     menu.style.left = `${Math.max(4, Math.min(x, innerWidth - rect.width - 4))}px`;
@@ -157,6 +197,7 @@
   }
   function bind() {
     document.getElementById('word-timing-toggle')?.addEventListener('change', event => setEnabled(event.target.checked));
+    document.getElementById('word-timing-quick-toggle')?.addEventListener('click', () => setEnabled(!enabled));
     document.getElementById('word-conversion-cancel')?.addEventListener('click', () => dialog().close());
     document.getElementById('word-conversion-confirm')?.addEventListener('click', confirmConversion);
     // Native close is queued; it may arrive after a new preview has opened.
@@ -203,5 +244,5 @@
     if (!event.target.closest?.('.waveform-word-block, .waveform-word-boundary, #ctxmenu') && !MaweCoreState.waveformEditor?.wordDrag) clearSelection();
   }, true);
   global.MaweWordTiming = Object.freeze({ get enabled() { return enabled; }, setEnabled, reset, bind,
-    select, getSelection, clearSelection, previewItems, merge, showMenu, openConversion });
+    select, getSelection, clearSelection, previewItems, merge, showMenu, openConversion, syncTextChange });
 })(window);

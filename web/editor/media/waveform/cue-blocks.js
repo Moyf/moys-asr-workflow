@@ -320,17 +320,22 @@ window.MAWE.register('waveform-cue-blocks', function createWaveformModule(depend
             row.appendChild(badgeEl);
           });
         }
-        if (!this.options.wordTiming?.enabled && segment.start >= startMs) {
+        // 字词时间码模式下整句块退为背景，但选中句仍保留两端手柄，
+        // 让用户能在这个模式下拖动整句边界；未选中句不显示，避免与字词块抢指针。
+        const sentenceHandles = !this.options.wordTiming?.enabled || selected.has(index);
+        if (sentenceHandles && segment.start >= startMs) {
           const leftHandle = document.createElement('span');
           leftHandle.className = 'waveform-cue-handle left';
           leftHandle.title = localizedWaveformMessage('调节字幕的左边界（开始时间）', 'Adjust subtitle left boundary (start time)');
           block.appendChild(leftHandle);
+          if (this.options.wordTiming?.enabled) this.bindWordModeSentenceHandle(leftHandle, index, row);
         }
-        if (!this.options.wordTiming?.enabled && segment.end <= endMs) {
+        if (sentenceHandles && segment.end <= endMs) {
           const rightHandle = document.createElement('span');
           rightHandle.className = 'waveform-cue-handle right';
           rightHandle.title = localizedWaveformMessage('调节字幕的右边界（结束时间）', 'Adjust subtitle right boundary (end time)');
           block.appendChild(rightHandle);
+          if (this.options.wordTiming?.enabled) this.bindWordModeSentenceHandle(rightHandle, index, row);
         }
         this.layoutBlock(block, segment, startMs, endMs, row);
         block.dataset.track = 'main';
@@ -593,6 +598,18 @@ window.MAWE.register('waveform-cue-blocks', function createWaveformModule(depend
     }
 
 
+    // 字词时间码模式下，选中句的两端手柄直接进入整句边界拖动；
+    // 阻断冒泡，避免落到句块的「仅选中」pointerdown 处理上。
+    bindWordModeSentenceHandle(handle, index, row) {
+      handle.addEventListener('pointerdown', (event) => {
+        if (event.button !== 0) return;
+        event.preventDefault();
+        event.stopPropagation();
+        this.focusWaveform();
+        this.beginCueDrag(event, index, row, 'main');
+      });
+    }
+
     layoutBlock(block, segment, startMs, endMs, ownerRow = null) {
       const duration = Math.max(1, endMs - startMs);
       const visibleStart = Math.max(startMs, segment.start);
@@ -771,6 +788,12 @@ window.MAWE.register('waveform-cue-blocks', function createWaveformModule(depend
 
 
     updateSelection() {
+      // 字词时间码模式下选中句才有整句手柄；选中集变化需要整层重建，
+      // 轻量 class 切换无法增删手柄。
+      if (this.options.wordTiming?.enabled) {
+        this.refreshCueOverlay();
+        return;
+      }
       const selected = this.options.getSelection('main');
       const extensionSelected = this.options.getExtensionSelection?.() || new Set();
       const overlaySelected = this.options.getOverlaySelection?.() || new Set();

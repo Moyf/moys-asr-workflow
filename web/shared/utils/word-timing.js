@@ -215,5 +215,63 @@ window.MAWE.register('utils-word-timing', function createWordTiming(dependencies
     });
     return { segments: output, conversions, skipped, generatedCount: conversions.reduce((n, c) => n + c.segments.length, 0) };
   }
-  return Object.freeze({ getWordTimingEntries, editWordTiming, mergeWordTimingItems, planWordTimingConversion });
+
+  // Map each audible item to its contiguous [start, end) character span in the
+  // sentence text. Neutral characters attach to the preceding audible item and
+  // leading text to the first one, exactly like full-coverage display. Returns
+  // null unless items cover the audible text completely and in order.
+  function wordCharRanges(text, items) {
+    const source = Array.from(String(text || ''));
+    const counts = items.map(item => audible(item?.text).length);
+    if (audible(text).join('') !== items.map((item, index) => audible(item?.text).join('')).join('')) return null;
+    const spans = items.map(() => null);
+    let owner = counts.findIndex(count => count > 0);
+    if (owner < 0) return null;
+    let used = 0;
+    let spanStart = 0;
+    for (let offset = 0; offset < source.length; offset += 1) {
+      const ch = source[offset];
+      if (!neutral(ch) && used === counts[owner]) {
+        spans[owner] = { start: spanStart, end: offset };
+        do { owner += 1; } while (owner < counts.length && counts[owner] === 0);
+        if (owner >= counts.length) return null;
+        used = 0;
+        spanStart = offset;
+      }
+      if (!neutral(ch)) used += 1;
+    }
+    spans[owner] = { start: spanStart, end: source.length };
+    return spans;
+  }
+
+  // Equal-length text replacement (typo fixes) remaps item texts in place;
+  // other edits stay untouched and only warn when they cross timed ranges.
+  function planWordTimingTextSync(segment, previousText) {
+    const text = segment?.text;
+    const items = segment?.items;
+    if (!Array.isArray(items) || !items.length) return null;
+    if (typeof text !== 'string' || typeof previousText !== 'string' || text === previousText) return null;
+    const ranges = wordCharRanges(previousText, items);
+    if (!ranges) return null;
+    if (text.length === previousText.length) {
+      const nextItems = cloneJsonValue(items);
+      let changed = 0;
+      ranges.forEach((range, index) => {
+        if (!range) return;
+        const next = text.slice(range.start, range.end);
+        if (next && next !== nextItems[index]?.text) { nextItems[index].text = next; changed += 1; }
+      });
+      return changed ? { items: nextItems, changed } : null;
+    }
+    let prefix = 0;
+    const limit = Math.min(previousText.length, text.length);
+    while (prefix < limit && previousText[prefix] === text[prefix]) prefix += 1;
+    let suffix = 0;
+    while (suffix < limit - prefix
+        && previousText[previousText.length - 1 - suffix] === text[text.length - 1 - suffix]) suffix += 1;
+    const regionStart = prefix, regionEnd = previousText.length - suffix;
+    const crosses = ranges.some(range => range && range.start < regionEnd && range.end > regionStart);
+    return crosses ? { warn: true } : null;
+  }
+  return Object.freeze({ getWordTimingEntries, editWordTiming, mergeWordTimingItems, planWordTimingConversion, planWordTimingTextSync });
 });

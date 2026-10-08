@@ -200,6 +200,13 @@
   function bindPlayerEvents(mediaElement) {
     if (!mediaElement) return;
     mediaElement.addEventListener('timeupdate', MawePlaybackLoop.update);
+    mediaElement.addEventListener('timeupdate', () => watchAuditionBoundary(mediaElement));
+    mediaElement.addEventListener('seeking', () => {
+      // 试听自己的起点 seek 不取消；之后的任何 seek（含手动定位）都取消边界。
+      if (auditionSeekPending) { auditionSeekPending = false; return; }
+      auditionStopSeconds = null;
+    });
+    mediaElement.addEventListener('pause', () => { auditionStopSeconds = null; });
     mediaElement.addEventListener('seeked', MawePlaybackLoop.update);
     mediaElement.addEventListener('loadedmetadata', () => {
       MaweTimeline.captureProjectVideoDimensions(mediaElement);
@@ -274,6 +281,32 @@ MaweCoreState.waveformEditor?.revealTime(targetSeconds * 1000, true);
     return true;
   }
 
+  // 试听：从 startMs 播放到 endMs 自动暂停一次；任何手动 seek/暂停都会取消。
+  let auditionStopSeconds = null;
+  let auditionSeekPending = false;
+  function auditionRange(startMs, endMs) {
+    if (!hasLoadedMedia()) {
+      MaweHint.flashHint('请先加载媒体，然后才能试听', 'invalid');
+      return false;
+    }
+    const start = Math.max(0, (Number(startMs) || 0) / 1000);
+    const stop = (Number(endMs) || 0) / 1000;
+    if (!(stop > start)) return false;
+    auditionSeekPending = true;
+    if (!seekMediaTo(start)) { auditionSeekPending = false; return false; }
+    auditionStopSeconds = stop;
+    if (MaweCoreState.player.paused) togglePlayback();
+    return true;
+  }
+  function watchAuditionBoundary(mediaElement) {
+    if (auditionStopSeconds === null) return;
+    if (MaweCoreState.player !== mediaElement || mediaElement.paused) { auditionStopSeconds = null; return; }
+    if (mediaElement.currentTime >= auditionStopSeconds - 0.02) {
+      auditionStopSeconds = null;
+      mediaElement.pause();
+    }
+  }
+
   global.MaweMediaPlayback = Object.freeze({
     syncPlayerPlaceholder,
     togglePlayback,
@@ -288,6 +321,7 @@ MaweCoreState.waveformEditor?.revealTime(targetSeconds * 1000, true);
     startPlaybackRefresh,
     bindPlayerEvents,
     seekMediaBy,
-    seekMediaTo
+    seekMediaTo,
+    auditionRange
   });
 })(typeof window !== 'undefined' ? window : globalThis);
