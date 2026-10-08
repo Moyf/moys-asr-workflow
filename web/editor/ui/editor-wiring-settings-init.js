@@ -205,8 +205,6 @@ document.getElementById('multi-subtitle-import')?.addEventListener('click', () =
   MaweMultiSubtitleCore.pendingSrtImportAsExtension = true;
   MaweProjectMediaInputs.loadSrtFileInput.value = '';
   MaweProjectMediaInputs.loadSrtFileInput.click();
-  MaweDom.multiSubtitleSettingsDropdown?.classList.remove('open');
-  MaweDom.multiSubtitleSettingsDropdown?.querySelector('button[aria-expanded]')?.setAttribute('aria-expanded', 'false');
 });
 MaweDom.multiSubtitleDisplayMode?.addEventListener('change', () => {
   const multi = MaweMultiSubtitleCore.getMultiSubtitleState();

@@ -266,7 +266,7 @@
     setCueListSettingsPanelOpen(false);
     setCueEditorSettingsPanelOpen(false);
     setWaveformSettingsPanelOpen(false);
-    for (const id of ['multi-subtitle-settings-dropdown', 'workspace-transfer-dropdown']) {
+    for (const id of ['workspace-transfer-dropdown']) {
       const dropdown = document.getElementById(id);
       dropdown?.classList.remove('open');
       dropdown?.querySelector('button[aria-expanded]')?.setAttribute('aria-expanded', 'false');
@@ -283,10 +283,6 @@
   }
 
   function updateRegionalSettingsAvailability() {
-    const enabled = !MaweDom.multiSubtitleSettingsDropdown?.hidden;
-    document.querySelectorAll('[data-settings-region="multi-subtitle"]').forEach(button => { button.disabled = !enabled; });
-    const hint = document.getElementById('settings-region-multi-unavailable');
-    if (hint) hint.hidden = enabled;
     const workspaceButton = document.querySelector('[data-settings-region="workspace"]');
     if (workspaceButton) workspaceButton.disabled = Boolean(document.getElementById('workspace-transfer-dropdown')?.hidden);
     document.querySelectorAll('[data-settings-export]').forEach((button) => {
@@ -301,7 +297,6 @@
       waveform: [MaweDom.waveformSettingsPanel, MaweDom.waveformSettingsToggle, setWaveformSettingsPanelOpen],
       'cue-editor': [MaweDom.cueEditorSettingsPanel, MaweDom.cueEditorSettingsToggle, setCueEditorSettingsPanelOpen],
       'cue-list': [MaweDom.cueListSettingsPanel, MaweDom.cueListSettingsToggle, setCueListSettingsPanelOpen],
-      'multi-subtitle': [document.getElementById('multi-subtitle-settings-menu'), MaweDom.multiSubtitleSettingsToggle],
       workspace: [document.getElementById('workspace-transfer-menu'), document.getElementById('workspace-transfer-btn')],
     };
     const entry = regions[region];

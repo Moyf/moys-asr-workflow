@@ -85,58 +85,6 @@ __WAVEFORM_CSS__
   <span class="sep"></span>
 
 
-  <span class="multi-subtitle-controls" id="multi-subtitle-controls" hidden>
-
-
-    <span class="dropdown multi-subtitle-settings-dropdown" id="multi-subtitle-settings-dropdown" hidden>
-      <button type="button" id="multi-subtitle-settings-toggle" title="双语字幕设置" aria-label="双语字幕设置" aria-expanded="false" aria-controls="multi-subtitle-settings-menu" aria-haspopup="menu">⚙️</button>
-      <div class="dropdown-menu multi-subtitle-settings-menu" id="multi-subtitle-settings-menu" role="menu">
-<div class="settings-panel-section multi-subtitle-settings-section" role="group" aria-labelledby="multi-settings-display-title"><span class="settings-panel-title" id="multi-settings-display-title">显示</span>
-<div class="multi-subtitle-setting-row">
-          <span>显示方式</span>
-          <select id="multi-subtitle-display-mode" title="双语字幕列表显示方式">
-            <option value="main">主轨</option>
-            <option value="extension">副轨</option>
-            <option value="both" selected>双列</option>
-          </select>
-        </div>
-<div class="multi-subtitle-setting-row" id="multi-subtitle-extension-row-height-setting">
-          <span>副字幕时波形高度</span>
-          <select id="multi-subtitle-extension-row-height" title="启用双语字幕时使用的波形行高度">
-            <option value="64">64 px</option>
-            <option value="80">80 px</option>
-            <option value="96">96 px</option>
-            <option value="120">120 px</option>
-            <option value="144">144 px</option>
-            <option value="168" selected>168 px</option>
-            <option value="192">192 px</option>
-          </select>
-        </div>
-<label class="multi-subtitle-setting-toggle" title="在双语字幕波形中显示主字幕和副字幕的轨道编号徽标">
-          <input type="checkbox" id="multi-subtitle-show-track-badges"> 显示轨道徽标
-        </label>
-<small class="settings-panel-hint">双语开启时使用此行高；单轨行高在波形设置中配置。</small>
-</div>
-<div class="settings-panel-section multi-subtitle-settings-section" role="group" aria-labelledby="multi-settings-link-title"><span class="settings-panel-title" id="multi-settings-link-title">联动</span>
-<label class="multi-subtitle-setting-toggle" title="拖动副字幕时，允许吸附到主字幕轨道的起点和终点">
-          <input type="checkbox" id="multi-subtitle-cross-track-snap" checked> 跨轨道吸附
-        </label>
-<label class="multi-subtitle-setting-toggle" title="普通点击以最后点击的轨道为准；点击已绑定字幕时，仅补选它实际绑定的另一条字幕">
-          <input type="checkbox" id="multi-subtitle-select-bound-pair" checked> 同时选中主副字幕
-        </label>
-<label class="multi-subtitle-setting-toggle" title="绑定字幕后自动把副字幕的起止时间同步到主字幕，相当于随后按一次 H">
-          <input type="checkbox" id="multi-subtitle-auto-sync-duration" checked> 绑定时自动同步时长
-        </label>
-</div>
-
-<div class="settings-panel-section multi-subtitle-settings-section" role="group" aria-labelledby="multi-settings-manage-title"><span class="settings-panel-title" id="multi-settings-manage-title">字幕管理</span>
-<div class="dropdown-item" id="multi-subtitle-import" role="menuitem" tabindex="0" title="导入 SRT 到副轨；已有副字幕时可预览并确认替换">导入副字幕</div>
-<div class="dropdown-item" id="multi-subtitle-swap" role="menuitem" tabindex="0" title="交换主字幕和副字幕的文本、时间与绑定关系">交换主副字幕</div>
-</div>
-</div>
-    </span>
-  </span>
-
   <span class="right-group">
     <span class="dropdown" id="subtitle-export-dropdown">
       <button id="subtitle-export-btn" title="导出 SRT/ASS 字幕或按颜色拆分导出 SRT 字幕" aria-expanded="false" aria-controls="subtitle-export-menu" aria-haspopup="menu">导出字幕 ▾</button>
@@ -837,7 +785,7 @@ __WAVEFORM_CSS__
 </div>
 
 <section class="editor-settings-panel editor-settings-window" id="project-settings-panel" role="dialog" aria-modal="false" aria-label="项目设置" aria-hidden="true"><header class="editor-settings-window-header" id="project-settings-drag-handle"><span class="editor-settings-window-title">项目设置</span><button type="button" class="editor-settings-window-close" id="project-settings-close" title="关闭（Esc）" aria-label="关闭项目设置窗口">×</button></header><div class="editor-settings-window-body"><nav class="editor-settings-nav" role="tablist" aria-orientation="vertical" aria-label="项目设置分区"><button type="button" class="editor-settings-nav-tab" id="editor-settings-tab-timebase" role="tab" data-settings-tab="timebase" aria-selected="false" aria-controls="editor-settings-page-timebase" tabindex="-1">时间与语言</button><button type="button" class="editor-settings-nav-tab" id="editor-settings-tab-project-tracks" role="tab" data-settings-tab="project-tracks" aria-selected="false" aria-controls="editor-settings-page-project-tracks" tabindex="-1">字幕轨道</button><button type="button" class="editor-settings-nav-tab" id="editor-settings-tab-subtitle-style" role="tab" data-settings-tab="subtitle-style" aria-selected="false" aria-controls="editor-settings-page-subtitle-style" tabindex="-1">字幕样式</button><button type="button" class="editor-settings-nav-tab" id="editor-settings-tab-project-color" role="tab" data-settings-tab="project-color" aria-selected="false" aria-controls="editor-settings-page-project-color" tabindex="-1">颜色与说话人</button><button type="button" class="editor-settings-nav-tab" id="editor-settings-tab-project-sticker" role="tab" data-settings-tab="project-sticker" aria-selected="false" aria-controls="editor-settings-page-project-sticker" tabindex="-1">表情包</button></nav><div class="editor-settings-pages"><div class="editor-settings-page" id="editor-settings-page-timebase" role="tabpanel" aria-labelledby="editor-settings-tab-timebase" hidden>
-  <p class="editor-settings-scope">当前工程：时间单位、FPS 与字幕语言类型随工程保存。</p>
+
   <div class="editor-settings-group">
     <div class="editor-settings-sub-group">
     <div class="editor-settings-field timeline-settings-field">
@@ -874,10 +822,6 @@ __WAVEFORM_CSS__
       </span>
     </div>
     <small class="editor-settings-hint split-language-type-hint">语言类型会影响拆分面板的分隔判断（英文会按单词拆）、计数的规则，以及合并时是否插入空格等。</small>
-    <small class="editor-settings-hint split-multi-subtitle-settings-hint">
-      <span id="split-multi-subtitle-settings-enabled" hidden><span>对于双语字幕，可以在</span><button type="button" class="editor-settings-inline-action" id="split-multi-subtitle-settings-link" title="打开双语字幕设置" aria-label="打开双语字幕设置">双语字幕的设置</button><span>中单独配置两种字幕的语言类型。</span></span>
-      <span id="split-multi-subtitle-settings-disabled">主、副字幕语言类型随当前工程保存。</span>
-    </small>
   </div><div class="settings-panel-section multi-subtitle-settings-section" role="group" aria-labelledby="multi-settings-language-title"><span class="settings-panel-title" id="multi-settings-language-title">语言</span>
 <div class="multi-subtitle-setting-row">
           <span>主字幕语言类型</span>
@@ -894,7 +838,7 @@ __WAVEFORM_CSS__
           </select>
         </div>
 <small class="settings-panel-hint">单词型按空格拆分，字符型按字符拆分；语言类型随双语工程保存。</small>
-</div></div><div class="editor-settings-page" id="editor-settings-page-project-tracks" role="tabpanel" aria-labelledby="editor-settings-tab-project-tracks" hidden><p class="editor-settings-scope">当前工程：双语字幕与叠加轨开关随工程保存。</p><span class="editor-settings-group-heading" id="project-track-settings-title">字幕轨道</span>
+</div></div><div class="editor-settings-page" id="editor-settings-page-project-tracks" role="tabpanel" aria-labelledby="editor-settings-tab-project-tracks" hidden><span class="editor-settings-group-heading" id="project-track-settings-title">字幕轨道</span>
 <div class="editor-settings-group" role="group" aria-labelledby="project-track-settings-title"><div class="editor-settings-sub-group"><label class="toggle editor-settings-item overlay-track-toggle" id="overlay-track-controls"
          title="开启后可在叠加轨创建与主字幕时间重叠的叠加字幕；叠加轨不会与双语字幕建立绑定关系">
     <input type="checkbox" id="overlay-track-toggle">
@@ -903,10 +847,54 @@ __WAVEFORM_CSS__
            title="开启后显示副字幕轨，可手动添加或导入第二条字幕。">
       <input type="checkbox" id="multi-subtitle-toggle" title="开启后显示副字幕轨，可手动添加或导入第二条字幕。">
       双语字幕
-    </label><small class="multi-subtitle-empty-hint" id="multi-subtitle-empty-hint" hidden title="在波形副轨空白处右键创建副字幕，或从双语字幕设置导入 SRT。">副轨为空，可手动添加或导入</small></div></div>
-<button type="button" data-settings-region="multi-subtitle">打开双语字幕显示与联动</button></div>
+    </label><small class="multi-subtitle-empty-hint" id="multi-subtitle-empty-hint" hidden title="在波形副轨空白处右键创建副字幕，或从下方「字幕管理」导入 SRT。">副轨为空，可手动添加或导入</small></div></div>
+<div id="project-multi-subtitle-settings" hidden>
+<span class="editor-settings-group-heading" id="project-multi-settings-title">双语字幕</span>
+<div class="editor-settings-group" role="group" aria-labelledby="project-multi-settings-title">
+<div class="settings-panel-section multi-subtitle-settings-section" role="group" aria-labelledby="multi-settings-display-title"><span class="settings-panel-title" id="multi-settings-display-title">显示</span>
+<div class="multi-subtitle-setting-row">
+          <span>显示方式</span>
+          <select id="multi-subtitle-display-mode" title="双语字幕列表显示方式">
+            <option value="main">主轨</option>
+            <option value="extension">副轨</option>
+            <option value="both" selected>双列</option>
+          </select>
+        </div>
+<div class="multi-subtitle-setting-row" id="multi-subtitle-extension-row-height-setting">
+          <span>副字幕时波形高度</span>
+          <select id="multi-subtitle-extension-row-height" title="启用双语字幕时使用的波形行高度">
+            <option value="64">64 px</option>
+            <option value="80">80 px</option>
+            <option value="96">96 px</option>
+            <option value="120">120 px</option>
+            <option value="144">144 px</option>
+            <option value="168" selected>168 px</option>
+            <option value="192">192 px</option>
+          </select>
+        </div>
+<label class="multi-subtitle-setting-toggle" title="在双语字幕波形中显示主字幕和副字幕的轨道编号徽标">
+          <input type="checkbox" id="multi-subtitle-show-track-badges"> 显示轨道徽标
+        </label>
+<small class="settings-panel-hint">双语开启时使用此行高；单轨行高在波形设置中配置。</small>
+</div>
+<div class="settings-panel-section multi-subtitle-settings-section" role="group" aria-labelledby="multi-settings-link-title"><span class="settings-panel-title" id="multi-settings-link-title">联动</span>
+<label class="multi-subtitle-setting-toggle" title="拖动副字幕时，允许吸附到主字幕轨道的起点和终点">
+          <input type="checkbox" id="multi-subtitle-cross-track-snap" checked> 跨轨道吸附
+        </label>
+<label class="multi-subtitle-setting-toggle" title="普通点击以最后点击的轨道为准；点击已绑定字幕时，仅补选它实际绑定的另一条字幕">
+          <input type="checkbox" id="multi-subtitle-select-bound-pair" checked> 同时选中主副字幕
+        </label>
+<label class="multi-subtitle-setting-toggle" title="绑定字幕后自动把副字幕的起止时间同步到主字幕，相当于随后按一次 H">
+          <input type="checkbox" id="multi-subtitle-auto-sync-duration" checked> 绑定时自动同步时长
+        </label>
+</div>
+<div class="settings-panel-section multi-subtitle-settings-section" role="group" aria-labelledby="multi-settings-manage-title"><span class="settings-panel-title" id="multi-settings-manage-title">字幕管理</span>
+<button type="button" id="multi-subtitle-import" title="导入 SRT 到副轨；已有副字幕时可预览并确认替换">导入副字幕</button>
+<button type="button" id="multi-subtitle-swap" title="交换主字幕和副字幕的文本、时间与绑定关系">交换主副字幕</button>
+</div>
+</div></div>
 <div class="editor-settings-page" id="editor-settings-page-subtitle-style" role="tabpanel" aria-labelledby="editor-settings-tab-subtitle-style" hidden>
-  <p class="editor-settings-scope">当前工程：ASS 模式与字幕样式随工程保存。</p>
+
   <span class="editor-settings-group-heading" id="ass-preview-mode-title">ASS 字幕模式</span>
   <div class="editor-settings-group ass-preview-mode-group" role="group" aria-labelledby="ass-preview-mode-title">
     <div class="editor-settings-sub-group">
@@ -915,8 +903,8 @@ __WAVEFORM_CSS__
       </label>
       <small class="editor-settings-hint">关闭时保持原有 CSS 预览；开启后使用 ASS 的字体、颜色、粗体、斜体、下划线、描边、阴影、对齐和动画预览，并只保留字幕文本中的显式换行，不自动折行。</small>
       <div class="ass-manager-open-row">
-        <button type="button" id="ass-style-manager-open" class="editor-settings-inline-action ass-style-manager-open" title="打开 ASS 样式库">🎨 管理 ASS 样式</button>
-        <button type="button" id="ass-frame-preview-open" class="editor-settings-inline-action ass-frame-preview-open" title="用 FFmpeg (libass) 渲染当前播放位置的实际 ASS 画面" hidden>📷 实际画面预览</button>
+        <button type="button" id="ass-style-manager-open" title="打开 ASS 样式库">🎨 管理 ASS 样式</button>
+        <button type="button" id="ass-frame-preview-open" title="用 FFmpeg (libass) 渲染当前播放位置的实际 ASS 画面" hidden>📷 实际画面预览</button>
       </div>
       <small class="editor-settings-hint" id="ass-style-summary">样式库正在加载…</small>
     </div>
@@ -1041,7 +1029,7 @@ __WAVEFORM_CSS__
     </div>
   </div>
   </div><div class="editor-settings-page" id="editor-settings-page-project-color" role="tabpanel" aria-labelledby="editor-settings-tab-project-color" hidden>
-  <p class="editor-settings-scope">当前工程：颜色呈现、说话人映射与导出名称选项随工程保存。</p>
+
   <div class="editor-settings-group subtitle-color-settings-group" id="subtitle-color-settings" role="group" aria-label="字幕颜色">
     <div class="subtitle-preview-settings-fields">
         <label class="toggle editor-settings-item" title="按字幕颜色快照给预览字幕应用所选颜色样式，便于区分不同颜色的字幕；只影响播放器画面内的预览，不改变字幕文本">
@@ -1116,16 +1104,16 @@ __WAVEFORM_CSS__
   </div>
 
   <small class="editor-settings-hint">开启预览说话人会默认勾选导出名称；之后可在此独立调整。</small>
+  <small class="editor-settings-hint">名称配色在<button type="button" class="editor-settings-inline-action" data-settings-page="subtitle-color" title="打开全局设置的自定义颜色页">自定义色板</button>中调整；色板是本机偏好，随编辑器复用。</small>
   <div class="editor-settings-field">
     <label class="toggle editor-settings-item" title="在导出的字幕开头加上说话人。只影响导出后的字幕，不会改动工程里的字幕文本。">
       <input type="checkbox" id="export-speaker-labels"> 导出时附加说话人名称
     </label>
     <small class="editor-settings-hint">
       在导出的字幕开头加上说话人。只影响导出后的字幕，不会改动工程里的字幕文本。
-      <br>🤓👆 你可以在 <button type="button" class="editor-settings-inline-action" id="export-open-subtitle-color-settings" title="打开颜色与说话人设置" aria-label="打开颜色与说话人设置">颜色与说话人</button> 中配置颜色对应的说话人名。
     </small>
-    </div></div><div class="editor-settings-page" id="editor-settings-page-project-sticker" role="tabpanel" aria-labelledby="editor-settings-tab-project-sticker" hidden><p class="editor-settings-scope">当前工程：覆盖目录随工程保存，优先于全局默认目录。</p><span class="editor-settings-group-heading" id="project-sticker-root-title">表情包目录</span>
-<div class="editor-settings-group" role="group" aria-labelledby="project-sticker-root-title"><div class="editor-settings-sub-group"><label class="toggle editor-settings-item"><input type="checkbox" id="project-sticker-root-override"> 覆盖全局默认目录</label><label class="editor-settings-item" for="project-sticker-root-input">工程目录</label><div class="sticker-root-controls"><input type="text" id="project-sticker-root-input" placeholder="输入绝对路径" autocomplete="off" aria-describedby="project-sticker-root-status"><button type="button" id="project-sticker-root-read">读取并应用</button></div><p class="editor-settings-hint" id="project-sticker-root-status" role="status" aria-live="polite"></p><small class="editor-settings-hint">关闭覆盖时使用全局默认目录，不把默认路径写入工程。</small></div></div>
+    </div></div><div class="editor-settings-page" id="editor-settings-page-project-sticker" role="tabpanel" aria-labelledby="editor-settings-tab-project-sticker" hidden><span class="editor-settings-group-heading" id="project-sticker-root-title">表情包目录</span>
+<div class="editor-settings-group" role="group" aria-labelledby="project-sticker-root-title"><div class="editor-settings-sub-group"><label class="toggle editor-settings-item"><input type="checkbox" id="project-sticker-root-override"> 覆盖全局默认目录</label><label class="editor-settings-item" for="project-sticker-root-input">工程目录</label><div class="sticker-root-controls"><input type="text" id="project-sticker-root-input" placeholder="输入绝对路径" autocomplete="off" aria-describedby="project-sticker-root-status"><button type="button" id="project-sticker-root-read">读取并应用</button></div><p class="editor-settings-hint" id="project-sticker-root-status" role="status" aria-live="polite"></p><small class="editor-settings-hint">关闭覆盖时使用<button type="button" class="editor-settings-inline-action" data-settings-page="sticker" title="打开全局设置的表情包页">全局默认目录</button>，不把默认路径写入工程。</small></div></div>
 </div>
 </div></div></section>
 <section class="editor-settings-panel editor-settings-window" id="editor-settings-panel" role="dialog" aria-modal="false" aria-label="MAWE 设置" aria-hidden="true">
@@ -1155,7 +1143,7 @@ __WAVEFORM_CSS__
     </nav>
     <div class="editor-settings-pages">
   <div class="editor-settings-page" id="editor-settings-page-interface" role="tabpanel" aria-labelledby="editor-settings-tab-interface">
-  <p class="editor-settings-scope">个人偏好：界面主题、强调色与语言在本机复用。</p>
+
   <span class="editor-settings-group-heading" id="interface-appearance-title">外观</span>
   <div class="editor-settings-group" role="group" aria-labelledby="interface-appearance-title">
     <div class="editor-settings-sub-group">
@@ -1187,17 +1175,16 @@ __WAVEFORM_CSS__
   <div class="editor-settings-group" role="group" aria-labelledby="interface-language-title">
     <div class="editor-settings-sub-group">
       <div class="editor-settings-item interface-language-row">
-        <span>语言</span>
+        <span>显示语言</span>
         <button type="button" id="language-toggle" class="language-toggle" title="Switch to English">🌐English</button>
       </div>
     </div>
   </div>
   </div>
-  <div class="editor-settings-page" id="editor-settings-page-regions" role="tabpanel" aria-labelledby="editor-settings-tab-regions" hidden><p class="editor-settings-scope">在对应功能区调整显示与操作；打开局部面板时保留此窗口。</p><div class="editor-settings-region-card"><div><strong>波形区</strong><p class="editor-settings-hint">调整波形外观与显示内容。</p></div><button type="button" data-settings-region="waveform" aria-label="打开波形区设置">打开</button></div>
+  <div class="editor-settings-page" id="editor-settings-page-regions" role="tabpanel" aria-labelledby="editor-settings-tab-regions" hidden><div class="editor-settings-region-card"><div><strong>波形区</strong><p class="editor-settings-hint">调整波形外观与显示内容。</p></div><button type="button" data-settings-region="waveform" aria-label="打开波形区设置">打开</button></div>
 <div class="editor-settings-region-card"><div><strong>字幕编辑</strong><p class="editor-settings-hint">配置编辑区显示内容与 Esc 取消编辑。</p></div><button type="button" data-settings-region="cue-editor" aria-label="打开字幕编辑设置">打开</button></div>
 <div class="editor-settings-region-card"><div><strong>字幕列表</strong><p class="editor-settings-hint">配置筛选、显示列与自动滚动。</p></div><button type="button" data-settings-region="cue-list" aria-label="打开字幕列表设置">打开</button></div>
-<div class="editor-settings-region-card"><div><strong>双语字幕</strong><p class="editor-settings-hint">配置主副轨显示与联动。</p><p class="editor-settings-hint" id="settings-region-multi-unavailable">需先开启双语字幕。</p></div><button type="button" data-settings-region="multi-subtitle" aria-label="打开双语字幕设置">打开</button></div>
-</div><div class="editor-settings-page" id="editor-settings-page-subtitle-color" role="tabpanel" aria-labelledby="editor-settings-tab-subtitle-color" hidden><p class="editor-settings-scope">个人偏好：自定义色板在本机复用；工程颜色呈现与说话人在项目设置中配置。</p><span class="editor-settings-group-heading" id="subtitle-color-palette-title">自定义颜色</span>
+</div><div class="editor-settings-page" id="editor-settings-page-subtitle-color" role="tabpanel" aria-labelledby="editor-settings-tab-subtitle-color" hidden><span class="editor-settings-group-heading" id="subtitle-color-palette-title">自定义颜色</span>
 <div class="editor-settings-group subtitle-color-palette-group" id="subtitle-color-palette-settings" role="group" aria-labelledby="subtitle-color-palette-title">
     <div class="subtitle-preview-settings-fields">
         <label class="toggle editor-settings-item" title="开启后可自定义五种字幕颜色；关闭时使用内置色值">
@@ -1205,6 +1192,7 @@ __WAVEFORM_CSS__
           自定义颜色色值
         </label>
         <small class="editor-settings-hint">自定义颜色会同步用于字幕列表、波形、预览和 ASS 导出；恢复默认即可使用内置色值。</small>
+        <small class="editor-settings-hint">工程颜色的呈现与说话人映射在<button type="button" class="editor-settings-inline-action" data-settings-page="project-color" title="打开项目设置的颜色与说话人页">颜色与说话人</button>中配置，随当前工程保存。</small>
         <div class="subtitle-color-palette-grid" id="subtitle-color-palette-grid" hidden>
           <label class="subtitle-color-palette-field" data-subtitle-palette-name="yellow">
             <span class="subtitle-color-palette-label"><span class="subtitle-color-palette-swatch" data-subtitle-palette-swatch="yellow"></span>黄</span>
@@ -1231,7 +1219,7 @@ __WAVEFORM_CSS__
     </div>
   </div></div>
 
-  <div class="editor-settings-page" id="editor-settings-page-general" role="tabpanel" aria-labelledby="editor-settings-tab-general" hidden><p class="editor-settings-scope">个人偏好：选择、定位与字幕拖动习惯在本机复用。</p><span class="editor-settings-group-heading" id="subtitle-selection-title">字幕选择</span>
+  <div class="editor-settings-page" id="editor-settings-page-general" role="tabpanel" aria-labelledby="editor-settings-tab-general" hidden><span class="editor-settings-group-heading" id="subtitle-selection-title">字幕选择</span>
 <div class="editor-settings-group" role="group" aria-labelledby="subtitle-selection-title"><div class="editor-settings-sub-group"><div class="editor-settings-field">
     <label class="editor-settings-item" title="字幕列表与波形字幕块的普通单击行为；双击编辑不受影响">
       点击字幕块时
@@ -1284,7 +1272,7 @@ __WAVEFORM_CSS__
     </label>
     <small class="editor-settings-hint" id="auto-snap-adjacent-cues-hint">关闭后默认独立调整相邻字幕；按住 Alt 临时反转为联动。开启后默认吸附联动；按住 Alt 临时解除。</small>
     </div>
-  </div></div></div><div class="editor-settings-page" id="editor-settings-page-special-edit" role="tabpanel" aria-labelledby="editor-settings-tab-special-edit" hidden><p class="editor-settings-scope">个人偏好：微调、静音空隙操作与时间显示格式在本机复用。</p><span class="editor-settings-group-heading" id="keyboard-adjust-settings-title">按键微调</span>
+  </div></div></div><div class="editor-settings-page" id="editor-settings-page-special-edit" role="tabpanel" aria-labelledby="editor-settings-tab-special-edit" hidden><span class="editor-settings-group-heading" id="keyboard-adjust-settings-title">按键微调</span>
 <div class="editor-settings-group" role="group" aria-labelledby="keyboard-adjust-settings-title"><div class="editor-settings-sub-group">
 
 <div class="editor-settings-field">
@@ -1367,7 +1355,7 @@ __WAVEFORM_CSS__
 </div>
 
   <div class="editor-settings-page" id="editor-settings-page-subtitle-preview" role="tabpanel" aria-labelledby="editor-settings-tab-subtitle-preview" hidden>
-<p class="editor-settings-scope">个人偏好：预览开关与播放习惯在本机复用；播放跳过空隙随工程保存。</p>
+
   <span class="editor-settings-group-heading" id="preview-content-settings-title">预览内容</span>
   <div class="editor-settings-group" role="group" aria-labelledby="preview-content-settings-title"><div class="editor-settings-sub-group">
 <label class="toggle editor-settings-item" title="在播放器画面内预览主字幕"><input type="checkbox" id="overlay-toggle" checked> 预览字幕</label>
@@ -1410,7 +1398,7 @@ __WAVEFORM_CSS__
 
 
   <div class="editor-settings-page" id="editor-settings-page-split-merge" role="tabpanel" aria-labelledby="editor-settings-tab-split-merge" hidden>
-  <p class="editor-settings-scope">个人偏好：拆分按键、时间码与标点规则在本机复用；语言类型在项目设置中配置。</p>
+
   <div class="editor-settings-group">
     <div class="editor-settings-sub-group">
     <label class="editor-settings-item" title="编辑字幕时，选择 Enter 或 Ctrl(Cmd)+Enter 在文字光标处拆分；另一个按键用于保存">
@@ -1466,7 +1454,7 @@ __WAVEFORM_CSS__
 
   </div>
   <div class="editor-settings-page" id="editor-settings-page-export" role="tabpanel" aria-labelledby="editor-settings-tab-export" hidden>
-  <p class="editor-settings-scope">个人偏好：导出选项在本机复用；只影响输出结果，不修改原字幕。</p>
+
   <span class="editor-settings-group-heading" id="export-srt-title">SRT</span>
   <div class="editor-settings-group" role="group" aria-labelledby="export-srt-title"><div class="editor-settings-sub-group">
 <label class="toggle editor-settings-item" title="只把第一条导出字幕的起点拉到 00:00，保留其结束时间和后续字幕时间码；不改动工程或 OTIO 的时间轴">
@@ -1492,7 +1480,7 @@ __WAVEFORM_CSS__
   </div></div>
 
 
-  </div><div class="editor-settings-page" id="editor-settings-page-export-more" role="tabpanel" aria-labelledby="editor-settings-tab-export-more" hidden><p class="editor-settings-scope">个人偏好：时间线与格式专用导出选项在本机复用。</p><span class="editor-settings-group-heading" id="export-otio-options">OTIO</span>
+  </div><div class="editor-settings-page" id="editor-settings-page-export-more" role="tabpanel" aria-labelledby="editor-settings-tab-export-more" hidden><span class="editor-settings-group-heading" id="export-otio-options">OTIO</span>
 <div class="editor-settings-group" role="group" aria-labelledby="export-otio-options"><div class="editor-settings-sub-group">
 <label class="toggle editor-settings-item" title="导出时间线 OTIO 的同时保存对应的 SRT 字幕文件"><input type="checkbox" data-otio-export-option="srt" checked> 同时导出 SRT 字幕</label>
 <label class="toggle editor-settings-item" title="把表情包作为一条叠加的视频轨道合并进同一个 OTIO 工程，无需再单独导出表情包 OTIO"><input type="checkbox" data-otio-export-option="stickers" checked> 时间线包含表情包</label>
@@ -1516,7 +1504,7 @@ __WAVEFORM_CSS__
   </div></div></div>
 
   <div class="editor-settings-page" id="editor-settings-page-save" role="tabpanel" aria-labelledby="editor-settings-tab-save" hidden>
-  <p class="editor-settings-scope">个人偏好：保存与备份习惯在本机复用，可用性取决于当前工程绑定。</p>
+
   <div class="editor-settings-group">
     <div id="server-auto-save-settings" class="editor-settings-sub-group" hidden>
         <label class="toggle editor-settings-item" title="将改动自动保存回当前工程文件">
@@ -1539,11 +1527,14 @@ __WAVEFORM_CSS__
     </div>
   </div>
   </div>
-  <div class="editor-settings-page" id="editor-settings-page-sticker" role="tabpanel" aria-labelledby="editor-settings-tab-sticker" hidden><p class="editor-settings-scope">个人偏好：全局默认表情包目录供未配置覆盖目录的工程使用。</p><span class="editor-settings-group-heading" id="default-sticker-root-title">全局默认表情包目录</span>
+  <div class="editor-settings-page" id="editor-settings-page-sticker" role="tabpanel" aria-labelledby="editor-settings-tab-sticker" hidden><span class="editor-settings-group-heading" id="sticker-feature-title">表情包功能</span>
+<div class="editor-settings-group" role="group" aria-labelledby="sticker-feature-title"><div class="editor-settings-sub-group"><label class="toggle editor-settings-item" title="关闭后隐藏「预览表情包」开关，右键菜单不再提供分配表情包；工程内已有表情包数据保留"><input type="checkbox" id="sticker-feature-toggle" checked> 启用表情包功能</label>
+<small class="editor-settings-hint">关闭后不影响工程里已设置的表情包数据，重新开启即可恢复预览与分配。</small></div></div>
+<span class="editor-settings-group-heading" id="default-sticker-root-title">全局默认表情包目录</span>
 <div class="editor-settings-group" role="group" aria-labelledby="default-sticker-root-title"><div class="editor-settings-sub-group"><label class="editor-settings-item" for="sticker-root-input">默认目录</label><div class="sticker-root-controls"><input type="text" id="sticker-root-input" placeholder="输入绝对路径" autocomplete="off" aria-describedby="sticker-root-status"><button type="button" id="sticker-root-read">读取并应用</button></div><p class="editor-settings-hint" id="sticker-root-status" role="status" aria-live="polite"></p><small class="editor-settings-hint">项目设置中的覆盖目录优先；清空覆盖后恢复使用默认目录。</small></div></div>
 </div>
   <div class="editor-settings-page" id="editor-settings-page-easter-eggs" role="tabpanel" aria-labelledby="editor-settings-tab-easter-eggs" hidden>
-  <p class="editor-settings-scope">个人偏好：字幕忍者效果在本机复用。</p>
+
   <div class="editor-settings-group">
     <div class="editor-settings-sub-group">
       <div class="editor-settings-toggle-group ninja-toggle-group">
@@ -1971,6 +1962,7 @@ __WAVEFORM_CSS__
         <button type="button" data-waveform-mode="multi">多行</button>
         <button type="button" data-waveform-mode="basic">基础</button>
       </span>
+      <button type="button" id="word-timing-quick-toggle" class="waveform-quick-toggle" title="字词时间码：临时查看和调整主字幕已有的字词时间范围；详细设置在波形 ⚙️ 的「显示」组" aria-pressed="false">🪶</button>
       <span class="sep"></span>
       <button type="button" id="gap-remove-manage" title="打开可拖动的移除静音空隙工具窗" aria-expanded="false" aria-controls="gap-remove-panel">静音空隙</button>
       <span class="sep"></span>

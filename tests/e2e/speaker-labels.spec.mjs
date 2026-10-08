@@ -249,12 +249,11 @@ test('configures preview-only speaker labels and independently controls SRT expo
   await openSettingsPage(page, 'project-color');
   const exportSpeakerHint = page.locator('.editor-settings-field:has(#export-speaker-labels) .editor-settings-hint');
   await expect(exportSpeakerHint).toContainText('在导出的字幕开头加上说话人。只影响导出后的字幕，不会改动工程里的字幕文本。');
-  await expect(exportSpeakerHint).toContainText('🤓👆 你可以在');
-  await expect(page.locator('#export-open-subtitle-color-settings')).toHaveText('颜色与说话人');
-  await expect(page.locator('#export-open-subtitle-color-settings')).toHaveCSS('text-decoration-line', 'underline');
-  await expect(page.locator('#export-open-subtitle-color-settings-arrow')).toHaveCount(0);
-  await page.locator('#export-open-subtitle-color-settings').click();
-  await expect(page.locator('#editor-settings-page-project-color')).toBeVisible();
+  // 颜色与说话人页提供打开自定义色板的反向链接。
+  const paletteLink = page.locator('#editor-settings-page-project-color').locator('button', { hasText: '自定义色板' });
+  await expect(paletteLink).toHaveCount(1);
+  await paletteLink.click();
+  await expect(page.locator('#editor-settings-page-subtitle-color')).toBeVisible();
   await openSettingsPage(page, 'project-color');
 
   await exportToggle.uncheck();

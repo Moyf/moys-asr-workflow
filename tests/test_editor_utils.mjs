@@ -1687,8 +1687,7 @@ test('translates speaker label separator settings to English', () => {
     i18n.translateText('在导出的字幕开头加上说话人。只影响导出后的字幕，不会改动工程里的字幕文本。', 'en'),
     'Add the speaker name at the beginning of exported subtitles. This only affects exported subtitles and does not change the subtitle text in the project.',
   );
-  assert.equal(i18n.translateText('🤓👆 你可以在', 'en'), '🤓👆 You can configure color-to-speaker names in');
-  assert.equal(i18n.translateText('中配置颜色对应的说话人名。', 'en'), ' settings.');
+  assert.equal(i18n.translateText('颜色与说话人', 'en'), 'Colors and speakers');
   assert.equal(
     i18n.translateText('设置说话人名称与字幕内容之间的分隔符；默认「：」，也可以使用空格或英文引号', 'en'),
     'Set the separator between the speaker name and subtitle text; the default is “：”, and spaces or English quotation marks are also supported',

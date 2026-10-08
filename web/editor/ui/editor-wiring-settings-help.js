@@ -152,17 +152,6 @@ MaweDom.helpOpenWaveformSettingsButtons.forEach((button) => {
   });
 });
 // 帮助中的「全局设置」入口：打开设置窗口并定位到「视频预览」分区。
-
-MaweDom.exportOpenSubtitleColorSettingsButton?.addEventListener('click', (event) => {
-  event.preventDefault();
-  MaweSettingsPanels.openEditorSettingsAtTab('editor-settings-tab-project-color');
-});
-MaweDom.splitMultiSubtitleSettingsLink?.addEventListener('click', (event) => {
-  event.preventDefault();
-  event.stopPropagation();
-  if (!MaweMultiSubtitleCore.multiSubtitleVisible()) return;
-  MaweSettingsPanels.openEditorSettingsAtTab('editor-settings-tab-timebase');
-});
 MaweDom.helpOpenMediaSettingsButtons.forEach((button) => {
   button.addEventListener('click', (event) => {
     event.preventDefault();

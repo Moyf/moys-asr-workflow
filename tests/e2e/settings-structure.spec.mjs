@@ -34,8 +34,6 @@ async function settings(page, tab = 'regions') {
 test('region index opens each local panel and Esc returns focus to its visible gear', async ({ page }, testInfo) => {
   const before = await page.evaluate(() => JSON.stringify(MaweBoot.DATA));
   await settings(page);
-  await expect(page.locator('#editor-settings-page-regions [data-settings-region="multi-subtitle"]')).toBeDisabled();
-  await expect(page.locator('#settings-region-multi-unavailable')).toBeVisible();
   await page.locator('#editor-settings-panel').screenshot({ path: testInfo.outputPath('region-index.png') });
   for (const [region, panel, gear] of [
     ['waveform', '#waveform-settings-panel', '#waveform-settings-toggle'],
@@ -57,9 +55,9 @@ test('region index opens each local panel and Esc returns focus to its visible g
 test('functional areas hide workspace and keep availability hints inside their card', async ({ page }) => {
   await settings(page);
   await expect(page.locator('[data-settings-region="workspace"]')).toHaveCount(0);
-  await expect(page.locator('#settings-region-multi-unavailable').locator('..')).toContainText('双语字幕');
+  // 双语字幕设置已并入项目设置的字幕轨道页，功能区不再提供入口。
+  await expect(page.locator('[data-settings-region="multi-subtitle"]')).toHaveCount(0);
   await expect(page.locator('#editor-settings-tab-regions')).toHaveText('功能区');
-  await page.locator('#editor-settings-page-regions [data-settings-region="multi-subtitle"]').first().isDisabled();
 });
 
 test('editing pages separate selection, navigation, adjustment and project time units', async ({ page }, testInfo) => {

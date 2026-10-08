@@ -140,6 +140,8 @@ window.MAWE.register('waveform-markers', function createWaveformModule(dependenc
       element.addEventListener('contextmenu', (event) => {
         event.preventDefault();
         event.stopPropagation();
+        // 右键等同双击：直接打开标记编辑小弹窗。
+        this.openMarkerQuickEdit(marker.id, element);
       });
       track.appendChild(element);
     }

@@ -443,7 +443,6 @@ const assStyleLibraryPathHint = document.getElementById('ass-style-library-path-
   MaweDom.cueListSettingsPanel,
   MaweDom.cueEditorSettingsPanel,
   MaweDom.waveformSettingsPanel,
-  MaweDom.multiSubtitleSettingsDropdown,
   document.getElementById('project-settings-panel'),
   ...document.querySelectorAll('.toolbar .dropdown'),
 ].forEach(MaweFloatingPanel.bindFloatingSurfaceActivation);

@@ -523,17 +523,18 @@ class EditorAssetTests(unittest.TestCase):
         self.assertLess(page.index('id="editor-settings-page-timebase"'), page.index('id="split-language-type-title"'))
         self.assertNotIn('split-language-type-field', page)
         self.assertNotIn('editor-settings-item split-language-type-title', page)
-        self.assertIn('id="split-multi-subtitle-settings-link"', page)
-        self.assertIn('>双语字幕的设置</button>', page)
-        self.assertIn('id="split-multi-subtitle-settings-disabled"', page)
-        self.assertIn('主、副字幕语言类型随当前工程保存。', page)
+        # 双语字幕的显示/联动/管理设置已并入项目设置的字幕轨道页。
+        self.assertIn('id="project-multi-subtitle-settings"', page)
+        self.assertIn('<span class="editor-settings-group-heading" id="project-multi-settings-title">双语字幕</span>', page)
+        self.assertIn('id="multi-subtitle-import"', page)
+        self.assertIn('id="multi-subtitle-swap"', page)
         self.assertEqual(
             page.count('class="editor-settings-group"')
             + page.count('class="editor-settings-group playback-controls-group"')
             + page.count('class="editor-settings-group subtitle-preview-style-group"')
             + page.count('class="editor-settings-group subtitle-color-settings-group"')
             + page.count('class="editor-settings-group subtitle-speaker-settings-group"'),
-            26,
+            28,
         )
         self.assertEqual(page.count('class="editor-settings-group split-language-type-group"'), 1)
         self.assertEqual(page.count('class="editor-settings-group subtitle-color-settings-group"'), 1)
@@ -909,14 +910,14 @@ class EditorAssetTests(unittest.TestCase):
         self.assertIn('id="export-speaker-labels"', settings_page('project-color'))
         self.assertNotIn('id="export-speaker-labels"', settings_page('export'))
         self.assertIn('id="export-speaker-names-as-suffix"', page)
-        self.assertIn('id="export-open-subtitle-color-settings"', page)
         self.assertIn(
             '在导出的字幕开头加上说话人。只影响导出后的字幕，不会改动工程里的字幕文本。',
             page,
         )
-        self.assertIn('🤓👆 你可以在 ', page)
-        self.assertIn('中配置颜色对应的说话人名。', page)
-        self.assertNotIn('id="export-open-subtitle-color-settings-arrow"', page)
+        # 颜色与说话人 ↔ 自定义色板互相提供跳转链接（原「你可以在…」自指提示已移除）。
+        self.assertIn('data-settings-page="subtitle-color"', settings_page('project-color'))
+        self.assertIn('data-settings-page="project-color"', settings_page('subtitle-color'))
+        self.assertNotIn('🤓👆', page)
         for field in ('index', 'time', 'charcount'):
             self.assertIn(f'id="cue-list-show-{field}" checked', page)
             self.assertIn(f"MaweCoreState.container.classList.toggle('hide-cue-{field}'", page)

@@ -429,12 +429,8 @@ test('merge join hint shows detected main type; clicking pins and syncs the mult
   const multiSelect = page.locator('#multi-subtitle-main-language-mode');
   const languageTypeGroup = page.locator('.split-language-type-group');
   const languageTypeHeading = page.locator('#split-language-type-title');
-  const multiSubtitleSettingsLink = page.locator('#split-multi-subtitle-settings-link');
-  const multiSubtitleSettingsDisabledHint = page.locator('#split-multi-subtitle-settings-disabled');
 
   await expect(languageTypeHeading).toHaveText('字幕语言类型');
-  await expect(multiSubtitleSettingsLink).toBeHidden();
-  await expect(multiSubtitleSettingsDisabledHint).toHaveText('主、副字幕语言类型随当前工程保存。');
   expect(await hintText.evaluate((element) => Boolean(element.closest('.split-language-type-group')))).toBe(true);
   expect(await hintText.evaluate((element) => Boolean(element.closest('.merge-join-settings-field')))).toBe(false);
   expect(await languageTypeGroup.evaluate(el => Boolean(el.closest('#project-settings-panel')))).toBe(true);
