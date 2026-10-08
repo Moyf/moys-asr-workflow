@@ -9,7 +9,7 @@ audience: 执行本轮拆分的维护者与 agent
 # MAWE 编辑器模块化拆分台账
 
 > **状态（2026-09-26）**：模块提取已由 #136 合入，首段启动接线已由 #154 合入。
-> 剩余接线、目录分层、utils / waveform 职责拆分与宿主接口已落地，本轮验收完成；维护者明确后续使用 Electron，完整 Tauri 编译已免除，历史未验证边界见验收账本。完整清单和验收标准见
+> 剩余接线、目录分层、utils / waveform 职责拆分与宿主接口已落地，本轮验收完成；维护者明确后续使用 Electron，旧桌面实验已退役，当前验收以浏览器入口为准。完整清单和验收标准见
 > [接线拆分与目录分层计划](MAWE%20接线拆分与目录分层计划.md)。
 
 ## 合并后计划（PR 合入 main 之后的执行顺序）
@@ -45,7 +45,7 @@ audience: 执行本轮拆分的维护者与 agent
 
 ### Step 2 · 目录结构化（阶段二）
 
-- 2026-09-26 已完成：113 个 JS 清单项及全局类型声明按领域迁入 `web/editor/` 与 `web/shared/`；114 份源码移动全部为 100% rename。清单顺序保持，Python / Tauri 允许安全子路径。
+- 2026-09-26 已完成：113 个 JS 清单项及全局类型声明按领域迁入 `web/editor/` 与 `web/shared/`；114 份源码移动全部为 100% rename。清单顺序保持，Python 消费端允许安全子路径。
 - 实际共享第二入口为 `server-align/serve.py`，已同步 `shared/gap-remove-core.js`。
 - 当前目录树、接线文件明细、测试与产物边界，以[本轮完整计划](MAWE%20接线拆分与目录分层计划.md)及 `docs/DEVELOPMENT.md` 的源码地图为准。
 
@@ -75,7 +75,7 @@ Electron 按维护者要求暂缓；实际远端 `merge/starlit-main` 已实现�
 2. 明确状态所有者：工程数据、字幕选择 / 活动行、设置与播放 / 拖动运行态分开；从选择状态开始建立单一写入入口，不复制出第二份字幕真源。
 3. 统一修改事务、dirty 与历史归属，再迁移拆分 / 合并 / 删除 / 时间修改等命令；区分文本原生撤销与工程撤销，拖动预览不入历史，释放时只提交一次。
 4. 命令统一通知受影响视图，逐步取消业务模块间裸引用与兼容桥接；按消费者迁移退役旧出口，不先换框架或再搬目录。
-5. 上述边界稳定后接 Electron 主进程 / preload 与本机文件适配，复用本轮宿主接口；不继续投入 Tauri。
+5. 上述边界稳定后接 Electron 主进程 / preload 与本机文件适配，复用本轮宿主接口。
 
 gap-remove-core、split-core、i18n 等候选只在依赖或具体维护问题要求时继续拆分。文件已经变小不代表状态所有权已解决，下一轮验收以写入与历史边界为准。
 
@@ -221,7 +221,7 @@ E2E 收口（2e375f9b、813246e4）、副字幕 ASS 样式锚定（95c6f1f0）�
 ## 不可动摇的约束（全部承袭外部指南）
 
 1. 产物是单文件 HTML；装配协议 = `web/editor-scripts.txt` 清单顺序，三方消费
-   （edit.py / server-editor / Tauri build.rs）注入同一个 script token。
+   （edit.py / server-editor）注入同一个 script token。
 2. 模块系统 = IIFE + 冻结命名空间；可变状态用 get/set 访问器发布
    （`Object.freeze` 不阻止 setter 写入）。
 3. 行为等价必须可证明：顺序断言 + 清单级语法 + 契约测试 + 单测 + Playwright
@@ -395,7 +395,7 @@ editor.js 余量构成：111 个顶层声明（75 函数 + 36 变量，属 appen
 2. boot 接线连续切段：约 460 条顶层语句按接线域切段（三判据自证）。
 3. 第二注入方核查：`server-editor/serve.py:52` 的 GAP_REMOVE_CORE_PATH 硬编码
    路径在阶段二移动 gap-remove-core.js 时必须同步。
-4. 消费方子目录支持：edit.py:210 与 Tauri build.rs 的 `path.name != entry` 校验
+4. 消费方子目录支持：edit.py:210 的 `path.name != entry` 校验
    在阶段二前须放开（拒绝 `..`/反斜杠/绝对路径，允许 `a/b.js`）。
 5. 运维：`npm install --no-save` 会互相同步修剪 ts-morph/acorn-walk——install 后
    须 `npm install --no-save ts-morph acorn-walk` 重装。

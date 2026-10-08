@@ -1,6 +1,27 @@
 # 编辑器 ESM 迁移：实施台账与上游交接
 
-本批在 `dfd5971f` 的调研基础上落地部分 ESM：59 个独立工厂迁移，121 个接线、门面和共享状态文件保留原有作用域。JavaScript 装配由 esbuild 完成；Python、localhost 与 Tauri 读取同一份 classic 产物，继续支持单文件 `file://` 编辑器。
+本批在 `dfd5971f` 的调研基础上落地部分 ESM：59 个独立工厂迁移，121 个接线、门面和共享状态文件保留原有作用域。JavaScript 装配由 esbuild 完成；便携 HTML 与 localhost 读取同一份 classic 产物，继续支持单文件 `file://` 编辑器。
+
+## 桌面实验清理
+
+维护者决定停止维护桌面实验工程；正式编辑入口保留 localhost Server 和便携 HTML，MOSE 产品方向与 `.mosp` 契约不变。
+
+| 清理项 | 状态 | 处理范围与验证 |
+| --- | --- | --- |
+| 实验目录及专用测试/脚本 | 已修复 | `desktop/` 和专用验证脚本已移入回收站；删除 Rust 装配探针及目录专用测试，定向资产 22、打包 26 项通过 |
+| Launcher 旧集成 | 已修复 | 移除旧 open_mose、可执行文件探测、关联注册及提示；旧 API/实验目录缺席断言通过。Launcher Python 302 项通过（1 skip），浏览器交互 51 项通过 |
+| 活跃开发说明与研究脚本 | 已修复 | 当前文档和官网移除废弃入口；研究脚本不再读取已删目录，classic inventory 夹具定向 1 项通过。历史发布记录、既有反馈及冻结研究 JSON 保留，不作为当前构建说明 |
+| 构建与回归 | 阻塞 | build、新鲜度、类型、Python 1823 项（21 skip）、浏览器 64 项、官网检查/构建、Ruff 与 diff/LF 通过。Node 全量 450/451：现有 OTIO 夹具缺 MaweSpeakerLabels，定向重跑同样 12/13；相关源码/测试相对 HEAD 无 diff，不修改无关逻辑。下一步由该功能任务补齐夹具后重跑全量；不宣称门禁全绿 |
+
+### 清理验证事实
+
+- `npm ci --no-audit --no-fund`、`npm run build:editor`、`npm run check:editor`、`npm run typecheck`：通过。当前 main 合并后 bundle 原已落后于说话人导出等源码；按当前源码重建并保留 `.meta.json`，没有手改产物或重新生成 `blank-editor.html`。
+- `PYTHONUTF8=1 MAW_TEST_PYTHON=已安装解释器 python -m unittest discover -s tests -p 'test_*.py'`：1823 项通过，21 项按既有环境条件跳过。定向资产、打包、Launcher 分别 22、26、302 项通过。
+- `node --test tests/*.mjs`：450 通过、1 失败；`node --test tests/test_editor_markers.mjs` 重跑为 12 通过、1 失败，均为 OTIO 标记测试的 `MaweSpeakerLabels is not defined`。失败文件及 `editor-export-timeline.js` 不含本次 diff。保留该阻塞，不顺带修改其他功能。
+- `MAW_ESM_TEST_ROOT=临时隔离夹具 node --test --test-name-pattern='inventory detects dynamic names' scripts/esm-mechanical/test.mjs`：1 项通过，验证无桌面目录时的 inventory；首次未设实验目录的全实验命令被入口拒绝，随后对当前 ESM 树误用 classic-only inventory 也被解析器拒绝，均非产品失败，不将它们算作完整实验通过。
+- `MAW_ENV_FILE=不存在的临时配置 MAW_E2E_PYTHON=已安装解释器 playwright test --project=chromium tests/e2e/editor-bundle.spec.mjs tests/e2e/editor-transactions.spec.mjs tests/e2e/launcher-interactions.spec.mjs`：64 项通过，含实际启动 localhost Server 与 file 页面。首次未隔离本机配置的 13 项运行有 1 项因非空贴图目录失败；隔离后全部通过，不读取或修改本机 Key 配置。
+- 官网 `sync:docs`、`check`、`build`：同步完成，0 诊断，22 页构建成功。只保留 development、documentation-index、mose 三页的本任务生成 diff；两个无关旧文档同步差异未纳入清理。
+- 修改的 Python 文件 Ruff、`git diff --check` 与 UTF-8/LF 扫描：通过。当前未验证正式打包、线上部署与远端 CI；已删除的桌面实验无需继续构建。原有 `docs/TEST_FEEDBACK_PR180.md` 未修改。
 
 ## 任务台账
 
@@ -42,7 +63,6 @@
 - `node --test tests/*.mjs`：449 通过，0 失败/跳过。保留行为测试体；混合源码 fixture 使用正式构建器，宿主工厂直接 ESM import。
 - `uv run --no-sync python -m unittest discover -s tests -p test_editor_assets.py`：23 通过。旧源码字符串断言移到源码层；完整产物、执行位置和模板注入另行检查。
 - `node scripts/verify-editor.mjs CLASSIC_BASELINE ROOT PYTHON`：13 项通过，file/HTTP 初始化轨迹均覆盖 180 文件，项目注入、未知扩展保存、整数毫秒、SRT、合并撤销与经典基线一致，0 页面错误。
-- `node scripts/verify-editor-desktop.mjs ROOT PYTHON`：编译并执行实际 Rust 渲染器，产物身份一致、全部模板注入完成、调色板与 Python 相同，页面启动且 180 文件轨迹正确。仅外部 Tauri SDK 构建钩子被替身替代，完整桌面应用与发布包未验证。该检查发现并补齐桌面原有的调色板/加载标记/音效路径注入缺口。
 - 类型诊断 1129 是扩展检查范围后的中间结果，不是把旧全量实验的 235 项误报为退化。旧实验的 TypeScript import 图未覆盖全部波形工厂；本批显式覆盖全部 59 文件。
 - 迁移后的 9 份浏览器 spec：226 项全部通过（2.6 分钟）；类型修复后再跑 4 份 spec，61 项全部通过，包括新增 file/HTTP 装配、波形拖动/历史/框选。
 - esbuild 提前拒绝源码中直接对 const 赋值；外部 const 桥写入仍在运行时抛 TypeError。既有源码不存在前者；专门测试覆盖两种边界。
@@ -95,7 +115,7 @@
 
 生产代码提交 `10943876` 的 [Linux 编辑器门禁](https://github.com/Moyf/moys-asr-workflow/actions/runs/37780175510) 已全部通过，包括从 Windows 提交的产物只读检查、0 类型诊断、450 Node、28 Python 装配契约以及 12 项真实 file/HTTP/事务测试；[Ruff](https://github.com/Moyf/moys-asr-workflow/actions/runs/37780175488) 和 [Windows MAW-lite preview](https://github.com/Moyf/moys-asr-workflow/actions/runs/37780175485) 也通过。后者覆盖打包契约、Python 回归、可执行程序构建与 smoke、资源检查和预览归档。此后文档提交的检查状态以 PR 为准。
 
-当前没有待处理的原迁移实现任务。保留的边界是完整 Tauri 应用与正式发布包未验证、上游 #177 四项已有交互失败、#157 原架构冲突，以及当前类型检查尚非全仓 strict。
+当前没有待处理的原迁移实现任务。桌面实验工程已退役，保留的边界是正式发布包未验证、上游 #177 四项已有交互失败、#157 原架构冲突，以及当前类型检查尚非全仓 strict。
 
 ## 合并审阅（压缩提交后）
 
@@ -108,4 +128,4 @@
 | 最终本地验证 | 已修复 | 本地 Python、450 Node、类型、新鲜度、162 浏览器项通过；实际 Rust 渲染器 + 浏览器检查通过（SDK hook stub，2 项旧清单函数未使用警告）；3 个修改的 Python 测试文件 Ruff 与 diff/LF 检查通过 |
 | 最终远端 CI | 仅说明 | 最终提交的外部证据与合并决定在 PR #181 的 checks 和审阅反馈中记录，不以本地测试或旧提交绿灯代替；最终 CI 未绿不得合并 |
 
-实现审阅：59 个工厂未捕获 classic 共享绑定，注册位置和依赖袋保留；其余文件保留单一作用域，提升/TDZ/写入有负例。类型适配没有关闭检查；三端共享已提交产物，产品用户无需 Node。完整 Tauri 应用和正式安装包仍不在本次验证范围。实测 bundle 从 2,284,490 B 减至 1,299,577 B（43.1%），不宣称整包同幅缩小或已测得运行加速。内联副本待发布前统一重生成。
+实现审阅：59 个工厂未捕获 classic 共享绑定，注册位置和依赖袋保留；其余文件保留单一作用域，提升/TDZ/写入有负例。类型适配没有关闭检查；当前两类入口共享已提交产物，产品用户无需 Node。正式安装包不在该次迁移审阅的验证范围；已删除的桌面实验不再要求验收。实测 bundle 从 2,284,490 B 减至 1,299,577 B（43.1%），不宣称整包同幅缩小或已测得运行加速。内联副本待发布前统一重生成。

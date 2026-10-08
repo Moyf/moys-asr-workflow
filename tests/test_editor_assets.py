@@ -486,20 +486,6 @@ class EditorAssetContractTests(unittest.TestCase):
         indices = [re.search(marker, page).start() for marker in markers]
         self.assertEqual(indices, sorted(indices))
 
-    def test_tauri_builder_consumes_the_same_complete_artifact(self) -> None:
-        build_script = (ROOT / "desktop" / "src-tauri" / "build.rs").read_text(encoding="utf-8")
-        self.assertIn('read(&web_dir.join("editor/boot/editor-bundle.js"))', build_script)
-        self.assertNotIn(".join(\"\\n\\n\")", build_script)
-        self.assertIn('("__EDITOR_SCRIPTS_JS__", editor_scripts.as_str())', build_script)
-        for legacy_token in (
-            "__EDITOR_UTILS_JS__",
-            "__EDITOR_I18N_JS__",
-            "__WAVEFORM_JS__",
-            "__EDITOR_JS__",
-        ):
-            self.assertNotIn(legacy_token, build_script)
-
-
 class StickerScanTests(unittest.TestCase):
     def test_scan_stickers_keeps_images_when_dimensions_are_unreadable(self) -> None:
         with tempfile.TemporaryDirectory() as directory:

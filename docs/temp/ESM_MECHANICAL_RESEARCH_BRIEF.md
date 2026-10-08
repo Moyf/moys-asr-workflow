@@ -9,10 +9,9 @@
 ### 架构
 
 - `web/` 下 173 个 JS 文件，**classic script**（非模块），由清单 `web/editor-scripts.txt`（184 行，含注释）规定拼接顺序。顺序即语义：后文件可见先文件的顶层绑定（共享全局作用域）。
-- **三个消费端**读同一份清单装配页面：
+- **两个消费端**读同一份清单装配页面：
   - `edit.py`（纯 Python）：内联生成便携单文件 `blank-editor.html` 与 `.edit.html`，用户 **file:// 双击打开**（产品特性）；
   - `server-editor/serve.py`（纯 Python）：每次请求从 `web/` 实时渲染，http 服务；
-  - `desktop/src-tauri/build.rs`（Rust）：构建期内联进桌面页。
 - **file:// 下 ES modules 被 CORS 硬禁** → 便携页这一消费端必须消费「打包后的 classic 脚本」，这是整个迁移中唯一被迫引入 esbuild 的原因。
 
 ### 重构进度（全部已合并进 main @ d4e5dff2）
@@ -26,7 +25,7 @@
 
 分支把 **4 个模块**（`shared/host/*` 三件套 + `editor/boot/editor-host.js`）转为真 ESM，验证了嵌回机制。关键结论与产物（均在分支内）：
 
-1. **双轨装配**：清单中原四条目替换为单个 `web/editor/boot/esm-bundle.js`（esbuild 打包的 classic IIFE，已提交）。三个消费端**零改动**——清单是纯文本文件，bundle 就是一个普通条目。页面形成双 `<script>` 轨：经典块 + bundle 块，共享全局，桥接靠保留的 `window.MaweHost` 门面。
+1. **双轨装配**：清单中原四条目替换为单个 `web/editor/boot/esm-bundle.js`（esbuild 打包的 classic IIFE，已提交）。两个消费端**零改动**——清单是纯文本文件，bundle 就是一个普通条目。页面形成双 `<script>` 轨：经典块 + bundle 块，共享全局，桥接靠保留的 `window.MaweHost` 门面。
 2. **门禁**（全部非零退出语义）：
    - `scripts/esm-pilot/build-esm-bundle.mjs`：转换集 → 产物（32ms）；`buildBundle()` 纯函数导出，CLI 在 `invokedDirectly` 守卫后；
    - `tests/test_esm_bundle_fresh.mjs`：产物新鲜度逐字节比对（曾因 CLI 顶层副作用成为哑弹，已修——**导入构建脚本不得有副作用**是硬规矩）；
@@ -57,8 +56,8 @@
 3. **跨模块引用改写**：模块间经 window 门面互访（`window.AsrEditorUtils.X`、裸 `MaweBoot.DATA`）。改写引擎已有实战验证的核心：`scripts/refactor-tools/scope-core.mjs` 的 `unresolvedRefs()`（eslint-scope，按词法解析全部绑定形态）与 `ns-rewrite-editor.mjs` 的改写先例。需评估：对每个待转文件，哪些自由引用该变成 import、哪些保留 window（跨轨引用）。
 4. **文件分类学**：纯逻辑文件（可直接转）/ 带加载期副作用的接线文件（转但保持副作用顺序）/ 模板注入文件（`editor-boot.js` 含 `__DATA_JSON__` 等占位符，edit.py 在最终页面做字符串替换——需确认占位符在 bundle 内外均可用）/ DOM 密集文件。分类决定转换模板。
 5. **e2e 与外部桥清单**：`tests/e2e/*.spec.mjs` 经 `page.evaluate` 直访 window 全局（`MAWE_EDITOR_BRIDGE` 等）。需要一份显式桥清单（哪些全局必须保留、哪些随迁移退役），机械盘点可用 acorn 扫 spec。
-6. **消费端终态**：试点让三端读「bundle 条目」。终态两选项待比较：全端消费 bundle（现状外推）vs server 端原生 `<script type="module">`（http 天然支持，零产物）+ 仅便携页打包。后者影响转换器是否需要维护两种装配输出。
-7. **Node 版本语义**：tests 直接 import `.js` ESM 依赖 Node ≥23 的模块语法自动检测；正式迁移需决策 web 源码目录 `"type": "module"` 或 `.mjs` 重命名，及其对三个消费端路径解析的影响。
+6. **消费端终态**：试点让两端读「bundle 条目」。终态两选项待比较：全端消费 bundle（现状外推）vs server 端原生 `<script type="module">`（http 天然支持，零产物）+ 仅便携页打包。后者影响转换器是否需要维护两种装配输出。
+7. **Node 版本语义**：tests 直接 import `.js` ESM 依赖 Node ≥23 的模块语法自动检测；正式迁移需决策 web 源码目录 `"type": "module"` 或 `.mjs` 重命名，及其对两个消费端路径解析的影响。
 
 ### 建议的批次策略（已验证的安全模式）
 
@@ -85,6 +84,6 @@
 ## 六、硬约束（不可协商）
 
 1. `blank-editor.html` 的 file:// 单文件便携性是产品特性，迁移后必须保持；
-2. 三个消费端的装配行为不可静默改变（当前试点方案已做到零改动）；
+2. 两个消费端的装配行为不可静默改变（当前试点方案已做到零改动）；
 3. 每批迁移必须可独立回滚；守门测试红灯只许用「接通缺口」消灭，不许豁免；
 4. 提交不附 AI 署名；所有文本 UTF-8 + LF。

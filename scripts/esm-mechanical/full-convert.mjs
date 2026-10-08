@@ -42,8 +42,6 @@ export async function convertAll(root, { rewriteShared = true } = {}) {
     entry.isDirectory() ? collectFiles(path.join(dir, entry.name))
       : entry.name.endsWith('.mjs') ? [path.join(dir, entry.name)] : []) : [];
   const externalFiles = collectFiles(path.join(root, 'tests/e2e'));
-  const tauriBridge = path.join(root, 'desktop/src-tauri/src/tauri_bridge.js');
-  if (fs.existsSync(tauriBridge)) externalFiles.push(tauriBridge);
   for (const file of externalFiles) {
     const sourceType = file.endsWith('.mjs') ? 'module' : 'script';
     const ast = acorn.parse(fs.readFileSync(file, 'utf8'), { ecmaVersion: 16, sourceType, ranges: true });
@@ -127,13 +125,6 @@ export function adaptConsumers(root) {
   if (!before.includes(original)) throw new Error('Unknown Python assembly shape');
   fs.writeFileSync(pythonPath, before.replace(original,
     'return read_web_asset("editor/boot/editor-bundle.js").rstrip()'));
-  const rustPath = path.join(root, 'desktop/src-tauri/build.rs');
-  const rust = fs.readFileSync(rustPath, 'utf8');
-  const begin = rust.indexOf('fn read_editor_scripts('), end = rust.indexOf('\nfn render_frontend()', begin);
-  if (begin < 0 || end < 0) throw new Error('Unknown Rust assembly shape');
-  fs.writeFileSync(rustPath, rust.slice(0, begin)
-    + 'fn read_editor_scripts(web_dir: &Path) -> String {\n    read(&web_dir.join("editor/boot/editor-bundle.js"))\n}\n'
-    + rust.slice(end));
   // Keep source manifest for research audit; consumers no longer use it.
 }
 
