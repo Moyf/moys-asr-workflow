@@ -47,7 +47,6 @@
     '个人偏好：选择、定位与字幕拖动习惯在本机复用。': 'Personal preferences: selection, navigation and subtitle dragging are reused on this device.',
     '个人偏好：微调、静音空隙操作与时间显示格式在本机复用。': 'Personal preferences: fine adjustments, gap editing and time display are reused on this device.',
     '当前工程：时间单位、FPS 与字幕语言类型随工程保存。': 'Current project: time units, FPS and subtitle language types are saved with the project.',
-    '主、副字幕语言类型随当前工程保存。': 'Main and secondary subtitle language types are saved with the project.',
     '当前工程：ASS 模式与字幕样式随工程保存。': 'Current project: ASS mode and subtitle appearance are saved with the project.',
     '当前工程：颜色呈现、说话人映射与导出名称选项随工程保存。': 'Current project: color appearance, speaker mappings and speaker export labels are saved with the project.',
     '个人偏好：自定义色板在本机复用；工程颜色呈现与说话人在项目设置中配置。': 'Personal preferences: the custom palette is reused on this device; project color appearance and speakers are configured in Project settings.',

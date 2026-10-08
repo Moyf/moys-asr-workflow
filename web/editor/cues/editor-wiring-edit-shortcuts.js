@@ -447,7 +447,7 @@ document.addEventListener('keydown', (e) => {
     if (MaweDom.stickerModal.classList.contains('show')) return;
     if (MaweDom.stickerPreviewModal.classList.contains('show')) return;
     if (MaweDom.projectMediaModal.classList.contains('show')) return;
-      if (MaweCoreState.waveformEditor.cancelCueDrag()) {
+    if (MaweCoreState.waveformEditor.cancelCueDrag()) {
       e.preventDefault();
       e.stopPropagation();
       return;
