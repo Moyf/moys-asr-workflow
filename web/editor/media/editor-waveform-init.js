@@ -121,13 +121,14 @@
       else MaweSelection.selectOnly(idx);
       MaweSelection.lastClickedIdx = idx;
     },
-    // 波形 Shift+框选：把命中的一批下标追加进当前多选（追加语义，不改 Shift 锚点）
+    // 波形 Shift+框选：把命中的一批下标追加进当前多选（追加语义，不改 Shift 锚点）。
+    // 批量入口只做一次列表类刷新/计数/面板切换，避免几千条框选逐条全表扫描。
     addCueSelection: (idxs) => {
-      idxs.forEach((idx) => MaweSelection.addToSelection(idx));
+      MaweSelection.addManyToSelection(idxs);
     },
     addExtensionSelection: (idxs) => {
       const track = MaweMultiSubtitleCore.getActiveExtensionTrack();
-      idxs.forEach((idx) => MaweSelection.addExtensionToSelection(idx, track));
+      MaweSelection.addManyToExtensionSelection(idxs, track);
     },
     seek: (timeSec, options = {}) => {
       MaweTextCleanup.seekFromWaveform(timeSec, options);
@@ -230,8 +231,18 @@
       if (linkedChanged || MaweMultiSubtitleCore.multiSubtitleVisible() || track === 'extension') MaweMultiSubtitleCore.markMultiSubtitleDirty();
       const command = timingCommand;
       timingCommand = null;
-      if (command && !command.commit({ cueList: true })) return;
-      if (!command) MaweViewUpdates.invalidate({ cueList: true });
+      // 长工程优化：多重字幕不可见时，主轨/叠加轨的时间类提交只补丁受影响行，
+      // 不全量重建字幕列表（几千条时 renderAll 每次松手冻结数百毫秒，
+      // 全选状态下秒级，见 docs/PERF_CUE_DRAG_RESEARCH.md）。
+      // 换轨拖动（Shift+拖动主↔叠加）改变行结构，必须回退全量重建。
+      const cueListPatch = (track === 'main' || track === 'overlay')
+        && !(details && details.trackChanged)
+        && !MaweMultiSubtitleCore.multiSubtitleVisible()
+        ? (track === 'main' ? { mainIndices: idxs } : { overlayIndices: idxs })
+        : null;
+      const listInvalidation = cueListPatch ? { cueListPatch } : { cueList: true };
+      if (command && !command.commit(listInvalidation)) return;
+      if (!command) MaweViewUpdates.invalidate(listInvalidation);
       MaweViewUpdates.invalidate({ preview: 'update' });
       MaweHint.flashHint(kind === 'move'
         ? track === 'extension'

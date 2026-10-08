@@ -210,6 +210,7 @@ interface Window {
 }
 
 interface ViewInvalidation {
+  cueListPatch?: { mainIndices?: number[]; overlayIndices?: number[] } | null;
   cueList?: boolean; waveform?: 'none' | 'overlay' | 'full'; preserveCueListScroll?: boolean; cueListAnchor?: unknown;
   preview?: false | 'update' | 'refresh'; save?: boolean;
 }

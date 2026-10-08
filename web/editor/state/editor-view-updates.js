@@ -4,8 +4,9 @@ window.MAWE.register('editor-view-updates', function createViewUpdates(dependenc
   const { renderCues, updatePreview, refreshPreview, scheduleSave } = dependencies;
   /** @param {ViewInvalidation} [options] */
   function invalidate({ cueList = false, waveform = 'overlay', preserveCueListScroll = true,
-    cueListAnchor, preview = false, save = false } = {}) {
-    if (cueList) renderCues({ waveform, preserveCueListScroll, cueListAnchor });
+    cueListAnchor, cueListPatch = null, preview = false, save = false } = {}) {
+    if (cueListPatch) MaweCuePanel.patchCueRows(cueListPatch);
+    else if (cueList) renderCues({ waveform, preserveCueListScroll, cueListAnchor });
     if (preview === 'update') updatePreview();
     else if (preview === 'refresh') refreshPreview();
     if (save) scheduleSave();

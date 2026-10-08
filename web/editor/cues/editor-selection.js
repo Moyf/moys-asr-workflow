@@ -84,13 +84,31 @@
 
 
 
+  // 逐行 querySelector 是 O(选中数 × 列表行数)：全选几千条时主线程会冻结
+  // 数秒（研究见 docs/PERF_CUE_DRAG_RESEARCH.md）。选中数超过阈值后改为
+  // 单次扫描列表行并按选中集合判断；小选区仍走逐行查找（常数更小）。
+  const BULK_SELECTION_CLASS_SCAN_THRESHOLD = 64;
+
+  function applyMainSelectionClasses(classFn) {
+    if (selectedIdxs.size > BULK_SELECTION_CLASS_SCAN_THRESHOLD) {
+      MaweCoreState.container.querySelectorAll(':scope > .cue').forEach((el) => {
+        const idx = el.dataset.idx != null ? Number(el.dataset.idx) : NaN;
+        if (selectedIdxs.has(idx)) classFn(el);
+      });
+      return;
+    }
+    selectedIdxs.forEach((i) => {
+      const el = MaweCoreState.container.querySelector(`.cue[data-idx="${i}"]`);
+      if (el) classFn(el);
+    });
+  }
+
+
+
   function clearSelection({ silent = false, commitCuePanel = true } = {}) {
   MaweNavPreview.hideCueSplitPreview();
   cancelPendingExtensionBinding();
-  selectedIdxs.forEach(i => {
-    const el = MaweCoreState.container.querySelector(`.cue[data-idx="${i}"]`);
-    if (el) el.classList.remove('selected');
-  });
+  applyMainSelectionClasses((el) => el.classList.remove('selected'));
   MaweState.selection.clear('main');
   selectedExtensionIdxs.forEach((index) => {
     MaweCoreState.container.querySelectorAll(`.multi-cue[data-ext-idx="${index}"], .multi-dual-cue[data-ext-idx="${index}"]`)
@@ -279,11 +297,10 @@
     if (isHiddenDisabled(i)) continue;  // 跳过隐藏禁用项
     if (!selectedIdxs.has(i)) {
       MaweState.selection.add('main', i);
-      const el = MaweCoreState.container.querySelector(`.cue[data-idx="${i}"]`);
-      if (el) el.classList.add('selected');
     }
     syncBoundSelection('main', i);
   }
+  applyMainSelectionClasses((el) => el.classList.add('selected'));
   updateSelectionCountText();
   if (MaweCoreState.waveformEditor) MaweCoreState.waveformEditor.updateSelection();
   updateMultiSelectionClasses();
@@ -337,6 +354,41 @@
   MaweCuePanel.setCurrentCuePanelExtensionIndex(index, track);
 }
 
+  // 波形框选/批量追加：语义等同对每个下标调用 addToSelection，但列表类
+  // 刷新、计数与面板切换只做一次，避免几千条框选时逐条全表扫描。
+  function addManyToSelection(idxs) {
+  const added = [];
+  (Array.isArray(idxs) ? idxs : []).forEach((idx) => {
+    if (!Number.isInteger(idx) || !MaweBoot.DATA.segments[idx] || isHiddenDisabled(idx) || selectedIdxs.has(idx)) return;
+    MaweState.selection.add('main', idx);
+    added.push(idx);
+  });
+  if (!added.length) return;
+  MaweCueElements.releaseTemporaryVisibleSplitCuesUnless('main', added[added.length - 1]);
+  MaweNavPreview.hideCueSplitPreview();
+  added.forEach((idx) => syncBoundSelection('main', idx));
+  applyMainSelectionClasses((el) => el.classList.add('selected'));
+  updateSelectionCountText();
+  if (MaweCoreState.waveformEditor) MaweCoreState.waveformEditor.updateSelection();
+  MaweCuePanel.setCurrentCuePanelIndex(added[added.length - 1]);
+}
+
+  function addManyToExtensionSelection(idxs, track = MaweMultiSubtitleCore.getActiveExtensionTrack()) {
+  const added = [];
+  (Array.isArray(idxs) ? idxs : []).forEach((index) => {
+    if (!track?.segments?.[index] || isHiddenDisabled(index, track) || selectedExtensionIdxs.has(index)) return;
+    MaweState.selection.add('extension', index);
+    added.push(index);
+  });
+  if (!added.length) return;
+  MaweCueElements.releaseTemporaryVisibleSplitCuesUnless('extension', added[added.length - 1], track);
+  added.forEach((index) => syncBoundSelection('extension', index, track));
+  updateMultiSelectionClasses();
+  updateSelectionCountText();
+  MaweCoreState.waveformEditor?.updateSelection();
+  MaweCuePanel.setCurrentCuePanelExtensionIndex(added[added.length - 1], track);
+}
+
 
   // 选中全部字幕（跳过「隐藏禁用项」开启时的禁用条目，与其它选择逻辑一致）。
   function selectAll() {
@@ -346,9 +398,8 @@
     if (isHiddenDisabled(idx)) return;
     MaweState.selection.add('main', idx);
     syncBoundSelection('main', idx);
-    const el = MaweCoreState.container.querySelector(`.cue[data-idx="${idx}"]`);
-    if (el) el.classList.add('selected');
   });
+  applyMainSelectionClasses((el) => el.classList.add('selected'));
   const extensionTrack = MaweMultiSubtitleCore.getActiveExtensionTrack();
   extensionTrack?.segments.forEach((_, idx) => {
     if (isHiddenDisabled(idx, extensionTrack)) return;
@@ -412,7 +463,9 @@
     selectRange,
     selectOnly,
     addToSelection,
+    addManyToSelection,
     addExtensionToSelection,
+    addManyToExtensionSelection,
     selectAll
   });
 })(typeof window !== 'undefined' ? window : globalThis);
