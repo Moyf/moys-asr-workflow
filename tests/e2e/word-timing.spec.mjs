@@ -455,7 +455,7 @@ test('no-op gestures do not create undo history and leaving words clears their h
 });
 
 test('equal-length typo replacement syncs item texts through the cue panel', async ({ page }) => {
-  await page.locator('#word-timing-toggle').check();
+  await setWordTiming(page);
   await page.locator('.cue[data-idx="0"]').click();
   const panel = page.locator('#cue-panel-text');
   await expect(panel).toHaveValue('我很喜欢！');
@@ -473,7 +473,7 @@ test('equal-length typo replacement syncs item texts through the cue panel', asy
 });
 
 test('selected sentence gains edge handles in word timing mode and drags only its own range', async ({ page }) => {
-  await page.locator('#word-timing-toggle').check();
+  await setWordTiming(page);
   const block = page.locator('.waveform-cue-block[data-track="main"][data-idx="0"]');
   await expect(block.locator('.waveform-cue-handle')).toHaveCount(0);
   await block.click();
@@ -499,7 +499,7 @@ test('selected sentence gains edge handles in word timing mode and drags only it
 });
 
 test('audition plays the picked range once from both word and sentence menus', async ({ page }) => {
-  await page.locator('#word-timing-toggle').check();
+  await setWordTiming(page);
   // 句块菜单：试听位于跳转区
   await page.locator('.waveform-cue-block[data-track="main"][data-idx="0"]').click({ button: 'right' });
   await expect(page.locator('#ctxmenu .item').filter({ hasText: '试听' })).toHaveCount(1);
