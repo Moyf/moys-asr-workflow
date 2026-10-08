@@ -65,3 +65,9 @@ Pop-Location
 - `test.mjs` / `verify.mjs`：历史小批次反例与三页验证；不能代替完整装配结果。
 
 原型保留 MAWE 注册表、依赖袋与现有 IIFE；它证明兼容阶段的机械 ESM 装配，不证明所有业务依赖都已变成直接命名 import，也不证明完整桌面运行、发布打包或全部 E2E。
+
+## 上游合并预演
+
+`rehearse-upstream.py` 用固定 PR HEAD 测量直接合并冲突，再把上游变更投影到相同 ESM 表示层，三方合并保护 fork 改动。`probe-projection.py` / `verify-upstream.mjs` 保存“Git 零冲突但功能未打包”的反例；`test-upstream.py` 覆盖冲突、双亲历史、严格新增内容合并和工作区保护。
+
+完整命令与边界见 `docs/temp/ESM_UPSTREAM_MERGE_PLAYBOOK.md`，真实结果见 `docs/temp/ESM_UPSTREAM_MERGE_REHEARSAL.md`。新预演不修改主工作区或远端 PR。
