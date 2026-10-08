@@ -1,5 +1,5 @@
 // cue-blocks: waveform class methods with explicit dependencies.
-window.MAWE.register('waveform-cue-blocks', function createWaveformModule(dependencies) {
+export function createWaveformModule(dependencies) {
   'use strict';
   const { colorForSegment, computeGroupBadges, cueBlockContinuationEdges, findActiveCueIndex, firstCueIndexOverlapping, formatCompact, gapOperationAllowsBoundary, gapOperationAllowsMiddle, gapRemoveDisplayLabel, hasSubtitleColor, isActiveCueVisualHit, localizedWaveformMessage } = dependencies;
 
@@ -784,4 +784,4 @@ window.MAWE.register('waveform-cue-blocks', function createWaveformModule(depend
   const descriptors = Object.getOwnPropertyDescriptors(WaveformMethods.prototype);
   delete descriptors.constructor;
   return descriptors;
-});
+}

@@ -1,5 +1,5 @@
 // export-plan: private helpers; dependencies are injected by editor-utils.js.
-window.MAWE.register('utils-export-plan', function createUtilsModule(dependencies) {
+export function createUtilsModule(dependencies) {
   'use strict';
   const { assDefaultFontFamily, buildGapRemovedIntervals, mapGapRemovedTime } = dependencies;
 
@@ -467,4 +467,4 @@ window.MAWE.register('utils-export-plan', function createUtilsModule(dependencie
   }
 
   return Object.freeze({ EXPORT_FRAME_PROFILES, EXPORT_SUBTITLE_TRACKS, assertExportPlan, buildExportNames, buildProjectExportPlan, escapeExportXml, exportMsToFrames, exportPathToFileUrl, exportPlanFrame, exportPolicyMsToFrames, exportVideoSize, freezeExportValue, mapExportTime, normalizeExportOptions, resolveExportFrameProfile, sanitizeExportName, selectedSubtitleTracks, serializeMappedSrt });
-});
+}

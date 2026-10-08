@@ -1,5 +1,5 @@
 // navigation: private helpers; dependencies are injected by editor-utils.js.
-window.MAWE.register('utils-navigation', function createUtilsModule(dependencies) {
+export function createUtilsModule(dependencies) {
   'use strict';
 
 
@@ -108,4 +108,4 @@ window.MAWE.register('utils-navigation', function createUtilsModule(dependencies
   }
 
   return Object.freeze({ findAdjacentCueIndex, findCueNavigationTarget, findCueSelectionExtensionTarget, normalizeKeyboardOperationReferenceMode, resolveKeyboardOperationReference });
-});
+}

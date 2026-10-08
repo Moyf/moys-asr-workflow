@@ -1,5 +1,5 @@
 // workspace: waveform class methods with explicit dependencies.
-window.MAWE.register('waveform-workspace', function createWaveformModule(dependencies) {
+export function createWaveformModule(dependencies) {
   'use strict';
   const { BUILTIN_WORKSPACES, DEFAULT_RIGHT_LAYOUT_TREE, DEFAULT_SETTINGS, MODULE_LABELS, ROW_HEIGHT_PRESETS, WORKSPACE_SCHEMA, clamp, cloneLayoutTree, directionLabel, insertLayoutModuleAtEdge, insertLayoutModuleAtRootEdge, isCompleteLayoutTree, layoutDropIntent, layoutDropPreviewRect, layoutRootDropIntent, normalizeLayoutData, normalizeLayoutRows, saveSettings, swapLayoutTreeModules } = dependencies;
 
@@ -659,4 +659,4 @@ window.MAWE.register('waveform-workspace', function createWaveformModule(depende
   const descriptors = Object.getOwnPropertyDescriptors(WaveformMethods.prototype);
   delete descriptors.constructor;
   return descriptors;
-});
+}

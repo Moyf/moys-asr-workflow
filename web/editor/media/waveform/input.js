@@ -1,5 +1,5 @@
 // input: waveform class methods with explicit dependencies.
-window.MAWE.register('waveform-input', function createWaveformModule(dependencies) {
+export function createWaveformModule(dependencies) {
   'use strict';
   const { PLAYHEAD_DRAG_SEEK_INTERVAL_MS, POINTER_DRAG_THRESHOLD_PX, ROW_HEIGHT_PRESETS, ROW_PRESETS, SPLIT_FLASH_DURATION_MS, clamp, roundMs, saveSettings, wheelScrollDelta } = dependencies;
 
@@ -609,4 +609,4 @@ window.MAWE.register('waveform-input', function createWaveformModule(dependencie
   const descriptors = Object.getOwnPropertyDescriptors(WaveformMethods.prototype);
   delete descriptors.constructor;
   return descriptors;
-});
+}

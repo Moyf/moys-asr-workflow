@@ -1,5 +1,5 @@
 // gap-drag: waveform class methods with explicit dependencies.
-window.MAWE.register('waveform-gap-drag', function createWaveformModule(dependencies) {
+export function createWaveformModule(dependencies) {
   'use strict';
   const { POINTER_DRAG_THRESHOLD_PX, ROUND_MS, clamp, gapOperationAllowsBoundary, roundMs } = dependencies;
 
@@ -416,4 +416,4 @@ window.MAWE.register('waveform-gap-drag', function createWaveformModule(dependen
   const descriptors = Object.getOwnPropertyDescriptors(WaveformMethods.prototype);
   delete descriptors.constructor;
   return descriptors;
-});
+}

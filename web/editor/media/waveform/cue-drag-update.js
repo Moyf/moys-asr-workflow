@@ -1,5 +1,5 @@
 // cue-drag-update: waveform class methods with explicit dependencies.
-window.MAWE.register('waveform-cue-drag-update', function createWaveformModule(dependencies) {
+export function createWaveformModule(dependencies) {
   'use strict';
   const { clamp, remapItems, resolveTiming, restoreTiming, snapshotTiming } = dependencies;
 
@@ -397,4 +397,4 @@ window.MAWE.register('waveform-cue-drag-update', function createWaveformModule(d
   const descriptors = Object.getOwnPropertyDescriptors(WaveformMethods.prototype);
   delete descriptors.constructor;
   return descriptors;
-});
+}

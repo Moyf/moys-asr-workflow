@@ -1,5 +1,5 @@
 // settings: private helpers; dependencies are injected by editor-utils.js.
-window.MAWE.register('utils-settings', function createUtilsModule(dependencies) {
+export function createUtilsModule(dependencies) {
   'use strict';
   const { DEFAULT_SPLIT_TRIM_SYMBOLS, DEFAULT_TIMELINE_TIMECODE_SEPARATOR, clampInteger, clampTimelineFrameStep, normalizeSplitTrimSymbols, normalizeTimelineTimecodeSeparator } = dependencies;
 
@@ -251,4 +251,4 @@ window.MAWE.register('utils-settings', function createUtilsModule(dependencies) 
   function clampAutoMergeShortCount(value) { return clampInteger(value, 3, 1, 20); }
 
   return Object.freeze({ DEFAULT_EDITOR_ACCENT_CUSTOM_COLOR, DEFAULT_EDITOR_SUBTITLE_COLOR_PALETTE, EDITOR_ACCENT_COLOR_VALUES, EDITOR_SUBTITLE_COLOR_NAMES, clampAutoMergeGapMs, clampAutoMergeShortCount, clampAutoSaveInterval, clampCharcountThreshold, clampCueMoveStepMs, clampMediaSeekStepMs, clampNinjaSlashLength, clampNinjaSlashRotateAmplitude, normalizeClickBehavior, normalizeClickTarget, normalizeEditorAccentColor, normalizeEditorAccentCustomColor, normalizeEditorSettings, normalizeJklPlaybackMode, normalizeMultiSubtitleRowHeight, normalizeSubtitleColorPalette });
-});
+}

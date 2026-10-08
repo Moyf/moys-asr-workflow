@@ -1,5 +1,5 @@
 // timeline: private helpers; dependencies are injected by editor-utils.js.
-window.MAWE.register('utils-timeline', function createUtilsModule(dependencies) {
+export function createUtilsModule(dependencies) {
   'use strict';
   const { clampInteger, escapeSplitTrimPatternSource } = dependencies;
 
@@ -186,4 +186,4 @@ window.MAWE.register('utils-timeline', function createUtilsModule(dependencies) 
   }
 
   return Object.freeze({ DEFAULT_TIMELINE_FPS, DEFAULT_TIMELINE_TIMECODE_SEPARATOR, MAX_TIMELINE_FPS, MIN_TIMELINE_FPS, TIMELINE_TIMEBASE_UNITS, clampTimelineFrameStep, formatFrameTimecode, formatTimelineTimecode, frameNumberFromMilliseconds, millisecondsFromFrameNumber, normalizeMediaMetadata, normalizeTimelineFps, normalizeTimelineTimebase, normalizeTimelineTimecodeSeparator, parseFrameTimecode });
-});
+}

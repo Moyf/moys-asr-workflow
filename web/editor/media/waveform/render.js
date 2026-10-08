@@ -1,5 +1,5 @@
 // render: waveform class methods with explicit dependencies.
-window.MAWE.register('waveform-render', function createWaveformModule(dependencies) {
+export function createWaveformModule(dependencies) {
   'use strict';
   const { MULTI_ROW_BUFFER, ROW_GAP, clamp, computeGroupBadges } = dependencies;
 
@@ -210,4 +210,4 @@ window.MAWE.register('waveform-render', function createWaveformModule(dependenci
   const descriptors = Object.getOwnPropertyDescriptors(WaveformMethods.prototype);
   delete descriptors.constructor;
   return descriptors;
-});
+}

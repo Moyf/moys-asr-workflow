@@ -1,5 +1,5 @@
 // canvas: waveform class methods with explicit dependencies.
-window.MAWE.register('waveform-canvas', function createWaveformModule(dependencies) {
+export function createWaveformModule(dependencies) {
   'use strict';
   const { ZOOM_PRESETS, buildWaveformEnvelope, clamp, freqColor, waveformAmplitude, waveformGridStepMs } = dependencies;
 
@@ -168,4 +168,4 @@ window.MAWE.register('waveform-canvas', function createWaveformModule(dependenci
   const descriptors = Object.getOwnPropertyDescriptors(WaveformMethods.prototype);
   delete descriptors.constructor;
   return descriptors;
-});
+}

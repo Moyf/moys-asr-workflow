@@ -1,5 +1,5 @@
 // controls: waveform class methods with explicit dependencies.
-window.MAWE.register('waveform-controls', function createWaveformModule(dependencies) {
+export function createWaveformModule(dependencies) {
   'use strict';
   const { saveSettings, shouldAdjustAdjacentCuesIndependently, shouldAdjustSharedBoundaryHandleIndependently, syncSpectralColorToggle } = dependencies;
 
@@ -130,4 +130,4 @@ window.MAWE.register('waveform-controls', function createWaveformModule(dependen
   const descriptors = Object.getOwnPropertyDescriptors(WaveformMethods.prototype);
   delete descriptors.constructor;
   return descriptors;
-});
+}

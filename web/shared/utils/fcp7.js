@@ -1,5 +1,5 @@
 // fcp7: private helpers; dependencies are injected by editor-utils.js.
-window.MAWE.register('utils-fcp7', function createUtilsModule(dependencies) {
+export function createUtilsModule(dependencies) {
   'use strict';
   const { EXPORT_SUBTITLE_TRACKS, assertExportPlan, buildExportNames, escapeExportXml, exportPathToFileUrl, exportPlanFrame, fileBasename, freezeExportValue, normalizeExportOptions, selectedSubtitleTracks, serializeMappedSrt } = dependencies;
 
@@ -337,4 +337,4 @@ window.MAWE.register('utils-fcp7', function createUtilsModule(dependencies) {
   }
 
   return Object.freeze({ buildFcp7ExportArtifacts, serializeFcp7Xml });
-});
+}

@@ -1,5 +1,5 @@
 // cue-drag: waveform class methods with explicit dependencies.
-window.MAWE.register('waveform-cue-drag', function createWaveformModule(dependencies) {
+export function createWaveformModule(dependencies) {
   'use strict';
   const { isAttached, resolveTiming, snapshotTiming } = dependencies;
 
@@ -390,4 +390,4 @@ window.MAWE.register('waveform-cue-drag', function createWaveformModule(dependen
   const descriptors = Object.getOwnPropertyDescriptors(WaveformMethods.prototype);
   delete descriptors.constructor;
   return descriptors;
-});
+}

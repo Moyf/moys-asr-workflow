@@ -1,5 +1,5 @@
 // timed-text-edit: private helpers; dependencies are injected by editor-utils.js.
-window.MAWE.register('utils-timed-text-edit', function createUtilsModule(dependencies) {
+export function createUtilsModule(dependencies) {
   'use strict';
   const { buildTimedTextBoundaryPlan, buildTimedTextDiff, buildTimedTextStructurePlan, cloneJsonValue, timedTextDiffOpcodes, timedTextItemCoverage, timedTextItemLayout, timedTextItemReuse, timedTextItemsSlice, timedTextNeutralInsertionItems, timedTextStructureRequested, timedTextTokens } = dependencies;
 
@@ -530,4 +530,4 @@ window.MAWE.register('utils-timed-text-edit', function createUtilsModule(depende
   }
 
   return Object.freeze({ applyTimedTextEdit, buildTimedTextEditReport, timedTextEditDirtyFlags });
-});
+}

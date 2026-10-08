@@ -1,5 +1,5 @@
 // cue-commands: waveform class methods with explicit dependencies.
-window.MAWE.register('waveform-cue-commands', function createWaveformModule(dependencies) {
+export function createWaveformModule(dependencies) {
   'use strict';
   const { applyBoundaryStep, applyIndependentEdge, applyMoveStep, clamp, normalizedIndices, planBoundaryStep, planMoveStep, remapItems, resolveTiming, restoreTiming, snapshotTiming } = dependencies;
 
@@ -352,4 +352,4 @@ window.MAWE.register('waveform-cue-commands', function createWaveformModule(depe
   const descriptors = Object.getOwnPropertyDescriptors(WaveformMethods.prototype);
   delete descriptors.constructor;
   return descriptors;
-});
+}

@@ -22,6 +22,8 @@ import { fileURLToPath } from "node:url";
 
 const testDir = dirname(fileURLToPath(import.meta.url));
 const webDir = join(testDir, "..", "web");
+const modules = new Set(JSON.parse(readFileSync(join(webDir,'editor-modules.json'),'utf8'))
+  .modules.map(item => item.file));
 
 function readManifest() {
   return readFileSync(join(webDir, "editor-scripts.txt"), "utf8")
@@ -133,7 +135,7 @@ test("editor-scripts.txt 顺序断言", async (t) => {
     const source = readFileSync(join(webDir, name), "utf8");
     let program;
     assert.doesNotThrow(() => {
-      program = acorn.parse(source, { ecmaVersion: "latest" });
+      program = acorn.parse(source, { ecmaVersion: "latest",sourceType:modules.has(name) ? 'module' : 'script' });
     }, `${name} 语法解析失败`);
     programs.push(program);
     selfBound.set(fileIdx, collectAllBoundNames(program));

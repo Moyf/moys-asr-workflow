@@ -1,5 +1,5 @@
 // pointer: waveform class methods with explicit dependencies.
-window.MAWE.register('waveform-pointer', function createWaveformModule(dependencies) {
+export function createWaveformModule(dependencies) {
   'use strict';
   const { clamp, resolveTiming, snapPointerTimeToTimingGrid } = dependencies;
 
@@ -206,4 +206,4 @@ window.MAWE.register('waveform-pointer', function createWaveformModule(dependenc
   const descriptors = Object.getOwnPropertyDescriptors(WaveformMethods.prototype);
   delete descriptors.constructor;
   return descriptors;
-});
+}

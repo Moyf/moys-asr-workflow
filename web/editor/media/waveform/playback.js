@@ -1,5 +1,5 @@
 // playback: waveform class methods with explicit dependencies.
-window.MAWE.register('waveform-playback', function createWaveformModule(dependencies) {
+export function createWaveformModule(dependencies) {
   'use strict';
   const { ROW_GAP, clamp, findActiveCueIndex, isActiveCueVisualHit, isMultiRowInComfortZone, restoreWaveformTopEdgeMs, waveformTopEdgeMs } = dependencies;
 
@@ -172,4 +172,4 @@ window.MAWE.register('waveform-playback', function createWaveformModule(dependen
   const descriptors = Object.getOwnPropertyDescriptors(WaveformMethods.prototype);
   delete descriptors.constructor;
   return descriptors;
-});
+}

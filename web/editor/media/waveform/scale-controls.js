@@ -1,5 +1,5 @@
 // scale-controls: waveform class methods with explicit dependencies.
-window.MAWE.register('waveform-scale-controls', function createWaveformModule(dependencies) {
+export function createWaveformModule(dependencies) {
   'use strict';
   const { LOUDNESS_SCHEMA, ROW_GAP, ROW_HEIGHT_PRESETS, WAVEFORM_ADJUST_DEBOUNCE_MS, ZOOM_PRESETS, clamp, isMultiRowInComfortZone, localizedWaveformMessage, saveSettings, syncSpectralColorToggle, waveformScaleAfterStep, waveformScaleFromLoudness } = dependencies;
 
@@ -250,4 +250,4 @@ window.MAWE.register('waveform-scale-controls', function createWaveformModule(de
   const descriptors = Object.getOwnPropertyDescriptors(WaveformMethods.prototype);
   delete descriptors.constructor;
   return descriptors;
-});
+}

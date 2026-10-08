@@ -1,5 +1,5 @@
 // media: waveform class methods with explicit dependencies.
-window.MAWE.register('waveform-media', function createWaveformModule(dependencies) {
+export function createWaveformModule(dependencies) {
   'use strict';
   const { BROWSER_DECODE_LIMIT, BROWSER_PCM_ESTIMATE_LIMIT, ENCODING, SCHEMA, bytesToBase64, clamp, decodePayload, decodeSpectralPayload, formatCompact, localizedWaveformMessage, peaksRateOf, publishPeakRate, sameSource, sourceForFile, syncSpectralColorToggle } = dependencies;
 
@@ -279,4 +279,4 @@ window.MAWE.register('waveform-media', function createWaveformModule(dependencie
   const descriptors = Object.getOwnPropertyDescriptors(WaveformMethods.prototype);
   delete descriptors.constructor;
   return descriptors;
-});
+}
