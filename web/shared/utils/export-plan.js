@@ -1,7 +1,7 @@
 // export-plan: private helpers; dependencies are injected by editor-utils.js.
 window.MAWE.register('utils-export-plan', function createUtilsModule(dependencies) {
   'use strict';
-  const { assDefaultFontFamily, buildGapRemovedIntervals, mapGapRemovedTime } = dependencies;
+  const { assDefaultFontFamily, buildGapRemovedIntervals, formatSpeakerLabelledText, mapGapRemovedTime } = dependencies;
 
 
   const EXPORT_FRAME_PROFILES = Object.freeze({
@@ -260,6 +260,10 @@ window.MAWE.register('utils-export-plan', function createUtilsModule(dependencie
     const schemaExtension = Array.isArray(project.multi_subtitle?.tracks)
       ? project.multi_subtitle.tracks.flatMap((track) => Array.isArray(track?.segments) ? track.segments : [])
       : [];
+    const extensionColorContexts = new Map();
+    (Array.isArray(project.multi_subtitle?.tracks) ? project.multi_subtitle.tracks : []).forEach((track) => {
+      (Array.isArray(track?.segments) ? track.segments : []).forEach((segment) => extensionColorContexts.set(segment, track.segments));
+    });
     const projectExtension = project.multi_subtitle?.enabled === true
       ? schemaExtension
       : (project.multi_subtitle == null && Array.isArray(project.extensionSegments)
@@ -284,7 +288,10 @@ window.MAWE.register('utils-export-plan', function createUtilsModule(dependencie
       if (rawStart !== start || rawEnd !== end) warnings.push({ code: 'clamped_cue_to_duration', track, index });
       return {
         id: String(segment.id || `${track}-${index}`), track, index,
-        text: String(segment.text || ''), sourceStartMs: start, sourceEndMs: end,
+        text: options.speakerLabelsEnabled === true
+          ? formatSpeakerLabelledText(segment.text || '', segment, extensionColorContexts.get(segment) || segments, options.speakerLabels, options.speakerLabelSeparator)
+          : String(segment.text || ''),
+        sourceStartMs: start, sourceEndMs: end,
         startMs: mappedStart, endMs: mappedEnd,
       };
     }).filter(Boolean);
