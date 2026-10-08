@@ -886,7 +886,7 @@ class LocalEditorServerTests(unittest.TestCase):
         self.assertIn('id="recent-projects"', page)
         self.assertIn('id="auto-open-last-project"', page)
         self.assertLess(page.index('id="auto-open-last-project"'), page.index('id="recent-projects-list"'))
-        self.assertIn("const STORAGE_KEY = 'mawe.language';", page)
+        self.assertIn('const STORAGE_KEY = "mawe.language";', page)
         self.assertIn('class="waveform-mode-switch"', page)
         self.assertIn('data-saved-workspaces', page)
         self.assertIn('id="workspace-save-as"', page)

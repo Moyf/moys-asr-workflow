@@ -49,3 +49,7 @@
 ## 类型修复批次 1：既有视图契约
 
 `ViewInvalidation` 补入已有的 `cueListPatch` 形状（主轨/叠加轨索引数组），对应 `patchCueRows` 的真实参数。不修改运行代码。原有 1 项 TS2339 消失；下一步处理 utils 121 项与波形 1007 项。`node --test tests/test_editor_commands.mjs` 验证事务与视图失效行为。
+
+## Python 全量契约跟进
+
+首次全量 1833 项发现另外 4 项旧装配断言（3 失败/1 报错）；已迁移到完整产物 fixture、源码形状层和真实页面检查，保留原行为/标记断言。另 7 项原有 subprocess 报错来自 Windows GBK 解码；使用 `PYTHONUTF8=1` 重验，不修改产品逻辑或跳过测试。定向结果：5 个清单、22 个波形、75 个 Server 测试通过（Server 数量以最终输出核对）。
