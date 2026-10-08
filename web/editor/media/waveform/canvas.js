@@ -1,11 +1,12 @@
 // canvas: waveform class methods with explicit dependencies.
-window.MAWE.register('waveform-canvas', function createWaveformModule(dependencies) {
+export function createWaveformModule(dependencies) {
   'use strict';
   const { ZOOM_PRESETS, buildWaveformEnvelope, clamp, freqColor, waveformAmplitude, waveformGridStepMs } = dependencies;
 
   class WaveformMethods {
 
 
+    /** @this {import('./waveform-types.js').WaveformInstance} */
     getWaveformEnvelope(row, width, startMs, endMs, activePeaks, peaksPerSecond, activeCount, useInterpolation) {
       const key = row._waveformEnvelopeKey;
       if (row._waveformEnvelope && key
@@ -41,6 +42,7 @@ window.MAWE.register('waveform-canvas', function createWaveformModule(dependenci
     }
 
 
+    /** @this {import('./waveform-types.js').WaveformInstance} */
     drawRow(row, { measure = true } = {}) {
       const canvas = row.querySelector('canvas');
       if (!canvas || !this.peaks) return;
@@ -168,4 +170,4 @@ window.MAWE.register('waveform-canvas', function createWaveformModule(dependenci
   const descriptors = Object.getOwnPropertyDescriptors(WaveformMethods.prototype);
   delete descriptors.constructor;
   return descriptors;
-});
+}

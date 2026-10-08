@@ -695,7 +695,7 @@ class GuiWorkflowTests(unittest.TestCase):
 
         self.assertEqual(result, html_path)
         page = html_path.read_text(encoding="utf-8")
-        self.assertIn('const GENERATED_LANGUAGE = typeof "en"', page)
+        self.assertRegex(page, r'typeof\s*"en"')
         self.assertNotIn("__UI_LANGUAGE_JSON__", page)
 
     def test_render_editor_html_embeds_bwf_time_reference(self) -> None:

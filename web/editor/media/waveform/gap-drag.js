@@ -1,11 +1,12 @@
 // gap-drag: waveform class methods with explicit dependencies.
-window.MAWE.register('waveform-gap-drag', function createWaveformModule(dependencies) {
+export function createWaveformModule(dependencies) {
   'use strict';
   const { POINTER_DRAG_THRESHOLD_PX, ROUND_MS, clamp, gapOperationAllowsBoundary, roundMs } = dependencies;
 
   class WaveformMethods {
 
 
+    /** @this {import('./waveform-types.js').WaveformInstance} */
     beginGapBoundaryDrag(event, index, row, edge) {
       if (event.button !== 0 || !gapOperationAllowsBoundary(this.options.getGapOperationMode?.())) return;
       event.preventDefault();
@@ -31,6 +32,7 @@ window.MAWE.register('waveform-gap-drag', function createWaveformModule(dependen
     }
 
 
+    /** @this {import('./waveform-types.js').WaveformInstance} */
     beginGapMoveDrag(event, index, row, mode) {
       if (event.button !== 0 || !['move', 'copy'].includes(mode)) return;
       const gaps = this.options.getGapRemoveGaps?.() || [];
@@ -60,6 +62,7 @@ window.MAWE.register('waveform-gap-drag', function createWaveformModule(dependen
     }
 
 
+    /** @this {import('./waveform-types.js').WaveformInstance} */
     gapMoveTarget(original, deltaMs) {
       const length = Math.max(1, Number(original?.end) - Number(original?.start));
       const duration = Number(this.durationMs);
@@ -70,6 +73,7 @@ window.MAWE.register('waveform-gap-drag', function createWaveformModule(dependen
     }
 
 
+    /** @this {import('./waveform-types.js').WaveformInstance} */
     moveGapMoveDrag(event) {
       const drag = this.gapMoveDrag;
       if (!drag || event.pointerId !== drag.pointerId) return;
@@ -97,6 +101,7 @@ window.MAWE.register('waveform-gap-drag', function createWaveformModule(dependen
     }
 
 
+    /** @this {import('./waveform-types.js').WaveformInstance} */
     scheduleGapMovePreview(drag) {
       if (this.gapMovePreviewFrame) return;
       this.gapMovePreviewFrame = requestAnimationFrame(() => {
@@ -106,21 +111,23 @@ window.MAWE.register('waveform-gap-drag', function createWaveformModule(dependen
     }
 
 
+    /** @this {import('./waveform-types.js').WaveformInstance} */
     clearGapMovePreview() {
-      this.content.querySelectorAll('.waveform-gap-drag-preview').forEach((element) => element.remove());
+      (/** @type {NodeListOf<HTMLElement>} */ (this.content.querySelectorAll('.waveform-gap-drag-preview'))).forEach((element) => element.remove());
     }
 
 
+    /** @this {import('./waveform-types.js').WaveformInstance} */
     previewGapMoveDrag(drag) {
       this.clearGapMovePreview();
       this.refreshGapBlocks(drag.originalGaps);
       if (!drag.moved) return;
       if (drag.mode === 'move') {
-        this.content.querySelectorAll(`.waveform-gap-block[data-gap-index="${drag.index}"]`)
+        (/** @type {NodeListOf<HTMLElement>} */ (this.content.querySelectorAll(`.waveform-gap-block[data-gap-index="${drag.index}"]`)))
           .forEach((block) => { block.hidden = true; });
       }
       const target = drag.targetGap;
-      this.content.querySelectorAll('.waveform-row').forEach((row) => {
+      (/** @type {NodeListOf<import('./waveform-types.js').WaveformRow>} */ (this.content.querySelectorAll('.waveform-row'))).forEach((row) => {
         const rowStart = Number(row.dataset.startMs);
         const rowEnd = Number(row.dataset.endMs);
         if (target.end <= rowStart || target.start >= rowEnd) return;
@@ -137,6 +144,7 @@ window.MAWE.register('waveform-gap-drag', function createWaveformModule(dependen
     }
 
 
+    /** @this {import('./waveform-types.js').WaveformInstance} */
     endGapMoveDrag(event) {
       const drag = this.gapMoveDrag;
       if (!drag || event.pointerId !== drag.pointerId) return;
@@ -161,10 +169,11 @@ window.MAWE.register('waveform-gap-drag', function createWaveformModule(dependen
     }
 
 
+    /** @this {import('./waveform-types.js').WaveformInstance} */
     refreshGapBlocks(gaps) {
-      this.content.querySelectorAll('.waveform-gap-block').forEach((block) => {
+      (/** @type {NodeListOf<HTMLElement>} */ (this.content.querySelectorAll('.waveform-gap-block'))).forEach((block) => {
         const gap = gaps[Number(block.dataset.gapIndex)];
-        const row = block.closest('.waveform-row');
+        const row = (/** @type {import('./waveform-types.js').WaveformRow} */ (block.closest('.waveform-row')));
         if (!gap || !row) {
           block.hidden = true;
           return;
@@ -174,11 +183,13 @@ window.MAWE.register('waveform-gap-drag', function createWaveformModule(dependen
     }
 
 
+    /** @this {import('./waveform-types.js').WaveformInstance} */
     clearGapBoundaryPreview() {
-      this.content.querySelectorAll('.waveform-gap-boundary-preview').forEach((element) => element.remove());
+      (/** @type {NodeListOf<HTMLElement>} */ (this.content.querySelectorAll('.waveform-gap-boundary-preview'))).forEach((element) => element.remove());
     }
 
 
+    /** @this {import('./waveform-types.js').WaveformInstance} */
     appendGapBoundaryPreview(row, gap, index) {
       const preview = document.createElement('div');
       preview.className = 'waveform-gap-block waveform-gap-boundary-preview';
@@ -196,6 +207,7 @@ window.MAWE.register('waveform-gap-drag', function createWaveformModule(dependen
     }
 
 
+    /** @this {import('./waveform-types.js').WaveformInstance} */
     previewGapBoundaryDrag(drag) {
       this.clearGapBoundaryPreview();
       this.refreshGapBlocks(drag.originalGaps);
@@ -208,12 +220,12 @@ window.MAWE.register('waveform-gap-drag', function createWaveformModule(dependen
       ));
       if (!target) return;
       const renderTarget = (nextGap, originalIndex) => {
-        this.content.querySelectorAll('.waveform-row').forEach((row) => {
+        (/** @type {NodeListOf<import('./waveform-types.js').WaveformRow>} */ (this.content.querySelectorAll('.waveform-row'))).forEach((row) => {
           const rowStart = Number(row.dataset.startMs);
           const rowEnd = Number(row.dataset.endMs);
-          const existing = [...row.querySelectorAll(
+          const existing = [...(/** @type {NodeListOf<HTMLElement>} */ (row.querySelectorAll(
             `.waveform-gap-block[data-gap-index="${originalIndex}"]`,
-          )].find((block) => !block.classList.contains('waveform-gap-boundary-preview'));
+          )))].find((block) => !block.classList.contains('waveform-gap-boundary-preview'));
           if (existing) {
             this.layoutGapBlock(existing, nextGap, rowStart, rowEnd);
           } else if (nextGap.end > rowStart && nextGap.start < rowEnd) {
@@ -240,6 +252,7 @@ window.MAWE.register('waveform-gap-drag', function createWaveformModule(dependen
     }
 
 
+    /** @this {import('./waveform-types.js').WaveformInstance} */
     moveGapBoundaryDrag(event) {
       const drag = this.gapBoundaryDrag;
       if (!drag || event.pointerId !== drag.pointerId) return;
@@ -268,6 +281,7 @@ window.MAWE.register('waveform-gap-drag', function createWaveformModule(dependen
     }
 
 
+    /** @this {import('./waveform-types.js').WaveformInstance} */
     scheduleGapPreview(drag) {
       // 与字幕块拖拽同理：合并到每帧最多一次预览重排
       if (this.gapPreviewFrame) return;
@@ -278,6 +292,7 @@ window.MAWE.register('waveform-gap-drag', function createWaveformModule(dependen
     }
 
 
+    /** @this {import('./waveform-types.js').WaveformInstance} */
     endGapBoundaryDrag(event) {
       const drag = this.gapBoundaryDrag;
       if (!drag || event.pointerId !== drag.pointerId) return;
@@ -285,7 +300,7 @@ window.MAWE.register('waveform-gap-drag', function createWaveformModule(dependen
       window.removeEventListener('pointerup', this._gapBoundaryEnd);
       window.removeEventListener('pointercancel', this._gapBoundaryEnd);
       try { drag.captureTarget.releasePointerCapture?.(event.pointerId); } catch (_) {}
-      this.content.querySelectorAll('.waveform-gap-block.dragging').forEach((block) => block.classList.remove('dragging'));
+      (/** @type {NodeListOf<HTMLElement>} */ (this.content.querySelectorAll('.waveform-gap-block.dragging'))).forEach((block) => block.classList.remove('dragging'));
       this.clearGapBoundaryPreview();
       this.gapBoundaryDrag = null;
       if (event.type === 'pointercancel' || !drag.changed) {
@@ -297,6 +312,7 @@ window.MAWE.register('waveform-gap-drag', function createWaveformModule(dependen
     }
 
 
+    /** @this {import('./waveform-types.js').WaveformInstance} */
     beginGapRangeDrag(event, row, { removed = !event.altKey } = {}) {
       event.preventDefault();
       event.stopPropagation();
@@ -320,6 +336,7 @@ window.MAWE.register('waveform-gap-drag', function createWaveformModule(dependen
     }
 
 
+    /** @this {import('./waveform-types.js').WaveformInstance} */
     gapRangePointerTime(event, row) {
       return clamp(
         this.timeFromPointerUnbounded(event, row),
@@ -329,11 +346,13 @@ window.MAWE.register('waveform-gap-drag', function createWaveformModule(dependen
     }
 
 
+    /** @this {import('./waveform-types.js').WaveformInstance} */
     clearGapRangePreviews() {
-      this.content.querySelectorAll('.waveform-gap-range-preview').forEach((element) => element.remove());
+      (/** @type {NodeListOf<HTMLElement>} */ (this.content.querySelectorAll('.waveform-gap-range-preview'))).forEach((element) => element.remove());
     }
 
 
+    /** @this {import('./waveform-types.js').WaveformInstance} */
     layoutGapRangePreview(drag) {
       if (!drag.moved) {
         drag.previews = [];
@@ -344,7 +363,7 @@ window.MAWE.register('waveform-gap-drag', function createWaveformModule(dependen
       const end = Math.max(drag.startMs, drag.endMs);
       const previews = [];
       this.clearGapRangePreviews();
-      this.content.querySelectorAll('.waveform-row').forEach((row) => {
+      (/** @type {NodeListOf<import('./waveform-types.js').WaveformRow>} */ (this.content.querySelectorAll('.waveform-row'))).forEach((row) => {
         const rowStart = Number(row.dataset.startMs);
         const rowEnd = Number(row.dataset.endMs);
         if (!Number.isFinite(rowStart) || !Number.isFinite(rowEnd) || rowEnd <= rowStart) return;
@@ -382,6 +401,7 @@ window.MAWE.register('waveform-gap-drag', function createWaveformModule(dependen
     }
 
 
+    /** @this {import('./waveform-types.js').WaveformInstance} */
     moveGapRangeDrag(event) {
       const drag = this.gapRangeDrag;
       if (!drag || event.pointerId !== drag.pointerId) return;
@@ -397,6 +417,7 @@ window.MAWE.register('waveform-gap-drag', function createWaveformModule(dependen
     }
 
 
+    /** @this {import('./waveform-types.js').WaveformInstance} */
     endGapRangeDrag(event) {
       const drag = this.gapRangeDrag;
       if (!drag || event.pointerId !== drag.pointerId) return;
@@ -416,4 +437,4 @@ window.MAWE.register('waveform-gap-drag', function createWaveformModule(dependen
   const descriptors = Object.getOwnPropertyDescriptors(WaveformMethods.prototype);
   delete descriptors.constructor;
   return descriptors;
-});
+}

@@ -1,0 +1,1156 @@
+{
+  "repository": "Moyf/moys-asr-workflow",
+  "retrievedAt": "2026-10-08T12:35:35.382730+00:00",
+  "source": "GitHub REST API via gh",
+  "prs": [
+    {
+      "number": 180,
+      "title": "feat(editor): ASS 字幕预览改用 Canvas 合成描边",
+      "url": "https://github.com/Moyf/moys-asr-workflow/pull/180",
+      "draft": false,
+      "updatedAt": "2026-10-08T10:40:13Z",
+      "base": {
+        "ref": "main",
+        "sha": "d4e5dff2d96b9f64fe453a2a5155a495769cc260"
+      },
+      "head": {
+        "ref": "feat/ass-subtitle-canvas-rendering",
+        "sha": "40d8cca5288d0fd8890f71e54d248eb9ae856088"
+      },
+      "files": [
+        {
+          "path": "CHANGELOG.md",
+          "previousPath": null,
+          "status": "modified",
+          "additions": 1,
+          "deletions": 0
+        },
+        {
+          "path": "docs/ASS_STYLES.md",
+          "previousPath": null,
+          "status": "modified",
+          "additions": 1,
+          "deletions": 1
+        },
+        {
+          "path": "tests/test_ass_canvas_layout.mjs",
+          "previousPath": null,
+          "status": "added",
+          "additions": 92,
+          "deletions": 0
+        },
+        {
+          "path": "tests/test_editor_assets.py",
+          "previousPath": null,
+          "status": "modified",
+          "additions": 2,
+          "deletions": 0
+        },
+        {
+          "path": "web/editor-scripts.txt",
+          "previousPath": null,
+          "status": "modified",
+          "additions": 2,
+          "deletions": 0
+        },
+        {
+          "path": "web/editor.css",
+          "previousPath": null,
+          "status": "modified",
+          "additions": 7,
+          "deletions": 0
+        },
+        {
+          "path": "web/editor/styles/editor-wiring-ass-canvas.js",
+          "previousPath": null,
+          "status": "added",
+          "additions": 437,
+          "deletions": 0
+        },
+        {
+          "path": "web/editor/styles/editor-wiring-ass-preview.js",
+          "previousPath": null,
+          "status": "modified",
+          "additions": 88,
+          "deletions": 254
+        },
+        {
+          "path": "web/shared/editor-utils.js",
+          "previousPath": null,
+          "status": "modified",
+          "additions": 11,
+          "deletions": 0
+        },
+        {
+          "path": "web/shared/utils/ass-canvas-layout.js",
+          "previousPath": null,
+          "status": "added",
+          "additions": 99,
+          "deletions": 0
+        }
+      ]
+    },
+    {
+      "number": 179,
+      "title": "feat(editor): 分离项目与全局设置，整理功能区入口",
+      "url": "https://github.com/Moyf/moys-asr-workflow/pull/179",
+      "draft": false,
+      "updatedAt": "2026-10-08T04:42:24Z",
+      "base": {
+        "ref": "feat/word-timing",
+        "sha": "d1b03850dfe4a7f503025c8acae833b9d11aba8a"
+      },
+      "head": {
+        "ref": "feat/editor-settings",
+        "sha": "6e23fd75ba34a5c403f78674d3074ef2163dbe88"
+      },
+      "files": [
+        {
+          "path": "CHANGELOG.md",
+          "previousPath": null,
+          "status": "modified",
+          "additions": 3,
+          "deletions": 1
+        },
+        {
+          "path": "JSON_SCHEMA.md",
+          "previousPath": null,
+          "status": "modified",
+          "additions": 10,
+          "deletions": 4
+        },
+        {
+          "path": "docs/ASS_STYLES.md",
+          "previousPath": null,
+          "status": "modified",
+          "additions": 2,
+          "deletions": 2
+        },
+        {
+          "path": "docs/EDITOR_GUIDE.md",
+          "previousPath": null,
+          "status": "modified",
+          "additions": 27,
+          "deletions": 3
+        },
+        {
+          "path": "docs/EDITOR_SETTINGS_IMPLEMENTATION.md",
+          "previousPath": null,
+          "status": "added",
+          "additions": 74,
+          "deletions": 0
+        },
+        {
+          "path": "docs/EDITOR_SETTINGS_PLAN.md",
+          "previousPath": null,
+          "status": "added",
+          "additions": 25,
+          "deletions": 0
+        },
+        {
+          "path": "docs/EDITOR_SETTINGS_REVIEW.md",
+          "previousPath": null,
+          "status": "added",
+          "additions": 34,
+          "deletions": 0
+        },
+        {
+          "path": "docs/KEYBOARD_ADJUSTMENT.md",
+          "previousPath": null,
+          "status": "modified",
+          "additions": 3,
+          "deletions": 3
+        },
+        {
+          "path": "docs/WORKFLOW.md",
+          "previousPath": null,
+          "status": "modified",
+          "additions": 3,
+          "deletions": 1
+        },
+        {
+          "path": "docs/reports/editor-settings.html",
+          "previousPath": null,
+          "status": "added",
+          "additions": 936,
+          "deletions": 0
+        },
+        {
+          "path": "docs/reports/editor-settings.md",
+          "previousPath": null,
+          "status": "added",
+          "additions": 139,
+          "deletions": 0
+        },
+        {
+          "path": "maw/project_preview.py",
+          "previousPath": null,
+          "status": "modified",
+          "additions": 4,
+          "deletions": 0
+        },
+        {
+          "path": "server-editor/serve.py",
+          "previousPath": null,
+          "status": "modified",
+          "additions": 11,
+          "deletions": 5
+        },
+        {
+          "path": "tests/e2e/ass-export.spec.mjs",
+          "previousPath": null,
+          "status": "modified",
+          "additions": 20,
+          "deletions": 18
+        },
+        {
+          "path": "tests/e2e/ass-frame-preview.spec.mjs",
+          "previousPath": null,
+          "status": "modified",
+          "additions": 26,
+          "deletions": 26
+        },
+        {
+          "path": "tests/e2e/click-behavior.spec.mjs",
+          "previousPath": null,
+          "status": "modified",
+          "additions": 13,
+          "deletions": 14
+        },
+        {
+          "path": "tests/e2e/cue-color-filter.spec.mjs",
+          "previousPath": null,
+          "status": "modified",
+          "additions": 7,
+          "deletions": 11
+        },
+        {
+          "path": "tests/e2e/editor-i18n-save.spec.mjs",
+          "previousPath": null,
+          "status": "modified",
+          "additions": 3,
+          "deletions": 3
+        },
+        {
+          "path": "tests/e2e/helpers.mjs",
+          "previousPath": null,
+          "status": "modified",
+          "additions": 29,
+          "deletions": 0
+        },
+        {
+          "path": "tests/e2e/hover-seek-preview.spec.mjs",
+          "previousPath": null,
+          "status": "modified",
+          "additions": 4,
+          "deletions": 5
+        },
+        {
+          "path": "tests/e2e/keyboard-timing.spec.mjs",
+          "previousPath": null,
+          "status": "modified",
+          "additions": 11,
+          "deletions": 12
+        },
+        {
+          "path": "tests/e2e/multi-subtitle.spec.mjs",
+          "previousPath": null,
+          "status": "modified",
+          "additions": 90,
+          "deletions": 70
+        },
+        {
+          "path": "tests/e2e/onboarding.spec.mjs",
+          "previousPath": null,
+          "status": "modified",
+          "additions": 3,
+          "deletions": 3
+        },
+        {
+          "path": "tests/e2e/overlay-track.spec.mjs",
+          "previousPath": null,
+          "status": "modified",
+          "additions": 4,
+          "deletions": 0
+        },
+        {
+          "path": "tests/e2e/playback-refresh.spec.mjs",
+          "previousPath": null,
+          "status": "modified",
+          "additions": 7,
+          "deletions": 8
+        },
+        {
+          "path": "tests/e2e/settings-structure.spec.mjs",
+          "previousPath": null,
+          "status": "added",
+          "additions": 323,
+          "deletions": 0
+        },
+        {
+          "path": "tests/e2e/speaker-labels.spec.mjs",
+          "previousPath": null,
+          "status": "modified",
+          "additions": 16,
+          "deletions": 14
+        },
+        {
+          "path": "tests/e2e/subtitle-preview-boot.spec.mjs",
+          "previousPath": null,
+          "status": "modified",
+          "additions": 3,
+          "deletions": 4
+        },
+        {
+          "path": "tests/e2e/subtitle-seek-race.spec.mjs",
+          "previousPath": null,
+          "status": "modified",
+          "additions": 4,
+          "deletions": 5
+        },
+        {
+          "path": "tests/e2e/waveform-history.spec.mjs",
+          "previousPath": null,
+          "status": "modified",
+          "additions": 13,
+          "deletions": 14
+        },
+        {
+          "path": "tests/e2e/word-timing.spec.mjs",
+          "previousPath": null,
+          "status": "modified",
+          "additions": 69,
+          "deletions": 22
+        },
+        {
+          "path": "tests/test_editor_assets.py",
+          "previousPath": null,
+          "status": "modified",
+          "additions": 8,
+          "deletions": 7
+        },
+        {
+          "path": "tests/test_editor_utils.mjs",
+          "previousPath": null,
+          "status": "modified",
+          "additions": 6,
+          "deletions": 3
+        },
+        {
+          "path": "tests/test_local_editor_server.py",
+          "previousPath": null,
+          "status": "modified",
+          "additions": 12,
+          "deletions": 0
+        },
+        {
+          "path": "tests/test_project_contract.py",
+          "previousPath": null,
+          "status": "modified",
+          "additions": 19,
+          "deletions": 0
+        },
+        {
+          "path": "tests/test_waveform.py",
+          "previousPath": null,
+          "status": "modified",
+          "additions": 34,
+          "deletions": 31
+        },
+        {
+          "path": "tests/test_waveform_js.mjs",
+          "previousPath": null,
+          "status": "modified",
+          "additions": 1,
+          "deletions": 1
+        },
+        {
+          "path": "web/editor-scripts.txt",
+          "previousPath": null,
+          "status": "modified",
+          "additions": 1,
+          "deletions": 0
+        },
+        {
+          "path": "web/editor-template.html",
+          "previousPath": null,
+          "status": "modified",
+          "additions": 447,
+          "deletions": 446
+        },
+        {
+          "path": "web/editor.css",
+          "previousPath": null,
+          "status": "modified",
+          "additions": 29,
+          "deletions": 14
+        },
+        {
+          "path": "web/editor/cues/editor-nav-preview.js",
+          "previousPath": null,
+          "status": "modified",
+          "additions": 0,
+          "deletions": 1
+        },
+        {
+          "path": "web/editor/cues/editor-split-mode.js",
+          "previousPath": null,
+          "status": "modified",
+          "additions": 2,
+          "deletions": 2
+        },
+        {
+          "path": "web/editor/cues/editor-wiring-edit-shortcuts.js",
+          "previousPath": null,
+          "status": "modified",
+          "additions": 0,
+          "deletions": 18
+        },
+        {
+          "path": "web/editor/io/editor-json-repair.js",
+          "previousPath": null,
+          "status": "modified",
+          "additions": 2,
+          "deletions": 1
+        },
+        {
+          "path": "web/editor/io/editor-project-load.js",
+          "previousPath": null,
+          "status": "modified",
+          "additions": 3,
+          "deletions": 1
+        },
+        {
+          "path": "web/editor/io/editor-sticker-root.js",
+          "previousPath": null,
+          "status": "modified",
+          "additions": 89,
+          "deletions": 70
+        },
+        {
+          "path": "web/editor/io/editor-wiring-sticker-root.js",
+          "previousPath": null,
+          "status": "modified",
+          "additions": 13,
+          "deletions": 101
+        },
+        {
+          "path": "web/editor/media/editor-wiring-keyboard-guards.js",
+          "previousPath": null,
+          "status": "modified",
+          "additions": 0,
+          "deletions": 1
+        },
+        {
+          "path": "web/editor/media/editor-wiring-media-controls.js",
+          "previousPath": null,
+          "status": "modified",
+          "additions": 0,
+          "deletions": 2
+        },
+        {
+          "path": "web/editor/media/waveform/layout.js",
+          "previousPath": null,
+          "status": "modified",
+          "additions": 1,
+          "deletions": 2
+        },
+        {
+          "path": "web/editor/media/waveform/settings.js",
+          "previousPath": null,
+          "status": "modified",
+          "additions": 1,
+          "deletions": 1
+        },
+        {
+          "path": "web/editor/media/waveform/workspace.js",
+          "previousPath": null,
+          "status": "modified",
+          "additions": 2,
+          "deletions": 0
+        },
+        {
+          "path": "web/editor/state/editor-history.js",
+          "previousPath": null,
+          "status": "modified",
+          "additions": 4,
+          "deletions": 2
+        },
+        {
+          "path": "web/editor/state/editor-multi-subtitle-core.js",
+          "previousPath": null,
+          "status": "modified",
+          "additions": 1,
+          "deletions": 3
+        },
+        {
+          "path": "web/editor/state/editor-project-settings.js",
+          "previousPath": null,
+          "status": "added",
+          "additions": 46,
+          "deletions": 0
+        },
+        {
+          "path": "web/editor/state/editor-settings.js",
+          "previousPath": null,
+          "status": "modified",
+          "additions": 4,
+          "deletions": 1
+        },
+        {
+          "path": "web/editor/styles/editor-wiring-appearance-settings.js",
+          "previousPath": null,
+          "status": "modified",
+          "additions": 1,
+          "deletions": 1
+        },
+        {
+          "path": "web/editor/styles/editor-wiring-ass-manager.js",
+          "previousPath": null,
+          "status": "modified",
+          "additions": 1,
+          "deletions": 0
+        },
+        {
+          "path": "web/editor/ui/editor-display-settings.js",
+          "previousPath": null,
+          "status": "modified",
+          "additions": 3,
+          "deletions": 2
+        },
+        {
+          "path": "web/editor/ui/editor-export-menus.js",
+          "previousPath": null,
+          "status": "modified",
+          "additions": 1,
+          "deletions": 0
+        },
+        {
+          "path": "web/editor/ui/editor-floating-panel.js",
+          "previousPath": null,
+          "status": "modified",
+          "additions": 2,
+          "deletions": 1
+        },
+        {
+          "path": "web/editor/ui/editor-settings-panels.js",
+          "previousPath": null,
+          "status": "modified",
+          "additions": 88,
+          "deletions": 4
+        },
+        {
+          "path": "web/editor/ui/editor-wiring-display-behavior.js",
+          "previousPath": null,
+          "status": "modified",
+          "additions": 1,
+          "deletions": 0
+        },
+        {
+          "path": "web/editor/ui/editor-wiring-dom-panels.js",
+          "previousPath": null,
+          "status": "modified",
+          "additions": 1,
+          "deletions": 1
+        },
+        {
+          "path": "web/editor/ui/editor-wiring-settings-help.js",
+          "previousPath": null,
+          "status": "modified",
+          "additions": 40,
+          "deletions": 6
+        },
+        {
+          "path": "web/shared/editor-i18n.js",
+          "previousPath": null,
+          "status": "modified",
+          "additions": 128,
+          "deletions": 7
+        },
+        {
+          "path": "web/shared/utils/speakers.js",
+          "previousPath": null,
+          "status": "modified",
+          "additions": 1,
+          "deletions": 0
+        }
+      ]
+    },
+    {
+      "number": 178,
+      "title": "feat: 文稿与录音直接生成字词时间码字幕（跳过 ASR）",
+      "url": "https://github.com/Moyf/moys-asr-workflow/pull/178",
+      "draft": true,
+      "updatedAt": "2026-10-08T04:40:36Z",
+      "base": {
+        "ref": "main",
+        "sha": "d4e5dff2d96b9f64fe453a2a5155a495769cc260"
+      },
+      "head": {
+        "ref": "codex/174-script-driven-alignment",
+        "sha": "487bb24f334801d4ef351dd55b6d03c30bfebdf8"
+      },
+      "files": [
+        {
+          "path": "CHANGELOG.md",
+          "previousPath": null,
+          "status": "modified",
+          "additions": 1,
+          "deletions": 0
+        },
+        {
+          "path": "JSON_SCHEMA.md",
+          "previousPath": null,
+          "status": "modified",
+          "additions": 2,
+          "deletions": 0
+        },
+        {
+          "path": "MAW.spec",
+          "previousPath": null,
+          "status": "modified",
+          "additions": 2,
+          "deletions": 0
+        },
+        {
+          "path": "README.md",
+          "previousPath": null,
+          "status": "modified",
+          "additions": 1,
+          "deletions": 0
+        },
+        {
+          "path": "docs/ALIGNMENT_FEATURES.md",
+          "previousPath": null,
+          "status": "added",
+          "additions": 50,
+          "deletions": 0
+        },
+        {
+          "path": "docs/CLI.md",
+          "previousPath": null,
+          "status": "modified",
+          "additions": 2,
+          "deletions": 0
+        },
+        {
+          "path": "docs/FEATURE_SCRIPT_ALIGNMENT_174.md",
+          "previousPath": null,
+          "status": "added",
+          "additions": 66,
+          "deletions": 0
+        },
+        {
+          "path": "docs/README.md",
+          "previousPath": null,
+          "status": "modified",
+          "additions": 2,
+          "deletions": 0
+        },
+        {
+          "path": "docs/SCRIPT_DRIVEN_ALIGNMENT.md",
+          "previousPath": null,
+          "status": "added",
+          "additions": 85,
+          "deletions": 0
+        },
+        {
+          "path": "docs/TOOLBOX.md",
+          "previousPath": null,
+          "status": "modified",
+          "additions": 6,
+          "deletions": 0
+        },
+        {
+          "path": "maw/cli.py",
+          "previousPath": null,
+          "status": "modified",
+          "additions": 69,
+          "deletions": 0
+        },
+        {
+          "path": "maw/gui_web.py",
+          "previousPath": null,
+          "status": "modified",
+          "additions": 49,
+          "deletions": 0
+        },
+        {
+          "path": "maw/local_runtime.py",
+          "previousPath": null,
+          "status": "modified",
+          "additions": 16,
+          "deletions": 1
+        },
+        {
+          "path": "maw/local_runtime_worker.py",
+          "previousPath": null,
+          "status": "modified",
+          "additions": 23,
+          "deletions": 5
+        },
+        {
+          "path": "maw/project.py",
+          "previousPath": null,
+          "status": "modified",
+          "additions": 2,
+          "deletions": 0
+        },
+        {
+          "path": "maw/script_timestamp_alignment.py",
+          "previousPath": null,
+          "status": "added",
+          "additions": 418,
+          "deletions": 0
+        },
+        {
+          "path": "tests/e2e/script-alignment-editor-roundtrip.spec.mjs",
+          "previousPath": null,
+          "status": "added",
+          "additions": 65,
+          "deletions": 0
+        },
+        {
+          "path": "tests/e2e/script-timestamp-alignment.spec.mjs",
+          "previousPath": null,
+          "status": "added",
+          "additions": 106,
+          "deletions": 0
+        },
+        {
+          "path": "tests/test_project_contract.py",
+          "previousPath": null,
+          "status": "modified",
+          "additions": 10,
+          "deletions": 0
+        },
+        {
+          "path": "tests/test_script_timestamp_alignment.py",
+          "previousPath": null,
+          "status": "added",
+          "additions": 305,
+          "deletions": 0
+        },
+        {
+          "path": "web/editor/cues/editor-text-cleanup.js",
+          "previousPath": null,
+          "status": "modified",
+          "additions": 1,
+          "deletions": 0
+        },
+        {
+          "path": "web/editor/io/editor-json-repair.js",
+          "previousPath": null,
+          "status": "modified",
+          "additions": 1,
+          "deletions": 0
+        },
+        {
+          "path": "web/editor/io/editor-project-load.js",
+          "previousPath": null,
+          "status": "modified",
+          "additions": 2,
+          "deletions": 0
+        },
+        {
+          "path": "web/editor/io/editor-wiring-export-context.js",
+          "previousPath": null,
+          "status": "modified",
+          "additions": 1,
+          "deletions": 1
+        },
+        {
+          "path": "web/launcher/index.html",
+          "previousPath": null,
+          "status": "modified",
+          "additions": 57,
+          "deletions": 1
+        },
+        {
+          "path": "web/launcher/launcher.css",
+          "previousPath": null,
+          "status": "modified",
+          "additions": 8,
+          "deletions": 0
+        },
+        {
+          "path": "web/launcher/launcher.js",
+          "previousPath": null,
+          "status": "modified",
+          "additions": 48,
+          "deletions": 2
+        },
+        {
+          "path": "web/launcher/postprocess.js",
+          "previousPath": null,
+          "status": "modified",
+          "additions": 111,
+          "deletions": 8
+        }
+      ]
+    },
+    {
+      "number": 177,
+      "title": "feat(editor): 字词时间码查看、基础编辑与独立字幕转换",
+      "url": "https://github.com/Moyf/moys-asr-workflow/pull/177",
+      "draft": false,
+      "updatedAt": "2026-10-08T10:46:32Z",
+      "base": {
+        "ref": "main",
+        "sha": "d4e5dff2d96b9f64fe453a2a5155a495769cc260"
+      },
+      "head": {
+        "ref": "feat/word-timing",
+        "sha": "1ad2f641daa6f6260c16ac88176aa2c0aad9566a"
+      },
+      "files": [
+        {
+          "path": "CHANGELOG.md",
+          "previousPath": null,
+          "status": "modified",
+          "additions": 2,
+          "deletions": 0
+        },
+        {
+          "path": "JSON_SCHEMA.md",
+          "previousPath": null,
+          "status": "modified",
+          "additions": 7,
+          "deletions": 0
+        },
+        {
+          "path": "docs/EDITOR_GUIDE.md",
+          "previousPath": null,
+          "status": "modified",
+          "additions": 12,
+          "deletions": 0
+        },
+        {
+          "path": "docs/WORKFLOW.md",
+          "previousPath": null,
+          "status": "modified",
+          "additions": 2,
+          "deletions": 0
+        },
+        {
+          "path": "tests/e2e/word-timing.spec.mjs",
+          "previousPath": null,
+          "status": "added",
+          "additions": 486,
+          "deletions": 0
+        },
+        {
+          "path": "tests/test_editor_assets.py",
+          "previousPath": null,
+          "status": "modified",
+          "additions": 4,
+          "deletions": 0
+        },
+        {
+          "path": "tests/test_waveform.py",
+          "previousPath": null,
+          "status": "modified",
+          "additions": 3,
+          "deletions": 1
+        },
+        {
+          "path": "tests/test_word_timing.mjs",
+          "previousPath": null,
+          "status": "added",
+          "additions": 198,
+          "deletions": 0
+        },
+        {
+          "path": "web/editor-scripts.txt",
+          "previousPath": null,
+          "status": "modified",
+          "additions": 4,
+          "deletions": 0
+        },
+        {
+          "path": "web/editor-template.html",
+          "previousPath": null,
+          "status": "modified",
+          "additions": 21,
+          "deletions": 0
+        },
+        {
+          "path": "web/editor.css",
+          "previousPath": null,
+          "status": "modified",
+          "additions": 16,
+          "deletions": 0
+        },
+        {
+          "path": "web/editor/boot/editor-globals.d.ts",
+          "previousPath": null,
+          "status": "modified",
+          "additions": 1,
+          "deletions": 0
+        },
+        {
+          "path": "web/editor/cues/editor-cue-panel.js",
+          "previousPath": null,
+          "status": "modified",
+          "additions": 7,
+          "deletions": 0
+        },
+        {
+          "path": "web/editor/cues/editor-inline-edit.js",
+          "previousPath": null,
+          "status": "modified",
+          "additions": 5,
+          "deletions": 2
+        },
+        {
+          "path": "web/editor/cues/editor-text-process.js",
+          "previousPath": null,
+          "status": "modified",
+          "additions": 6,
+          "deletions": 1
+        },
+        {
+          "path": "web/editor/cues/editor-wiring-cue-panel.js",
+          "previousPath": null,
+          "status": "modified",
+          "additions": 3,
+          "deletions": 0
+        },
+        {
+          "path": "web/editor/cues/editor-wiring-text-tools.js",
+          "previousPath": null,
+          "status": "modified",
+          "additions": 10,
+          "deletions": 3
+        },
+        {
+          "path": "web/editor/cues/editor-wiring-word-timing.js",
+          "previousPath": null,
+          "status": "added",
+          "additions": 1,
+          "deletions": 0
+        },
+        {
+          "path": "web/editor/cues/editor-word-timing.js",
+          "previousPath": null,
+          "status": "added",
+          "additions": 248,
+          "deletions": 0
+        },
+        {
+          "path": "web/editor/io/editor-project-load.js",
+          "previousPath": null,
+          "status": "modified",
+          "additions": 1,
+          "deletions": 0
+        },
+        {
+          "path": "web/editor/media/editor-media-playback.js",
+          "previousPath": null,
+          "status": "modified",
+          "additions": 35,
+          "deletions": 1
+        },
+        {
+          "path": "web/editor/media/editor-waveform-init.js",
+          "previousPath": null,
+          "status": "modified",
+          "additions": 6,
+          "deletions": 0
+        },
+        {
+          "path": "web/editor/media/waveform.js",
+          "previousPath": null,
+          "status": "modified",
+          "additions": 1,
+          "deletions": 0
+        },
+        {
+          "path": "web/editor/media/waveform/cue-blocks.js",
+          "previousPath": null,
+          "status": "modified",
+          "additions": 38,
+          "deletions": 5
+        },
+        {
+          "path": "web/editor/media/waveform/pointer.js",
+          "previousPath": null,
+          "status": "modified",
+          "additions": 1,
+          "deletions": 1
+        },
+        {
+          "path": "web/editor/media/waveform/word-blocks.js",
+          "previousPath": null,
+          "status": "added",
+          "additions": 168,
+          "deletions": 0
+        },
+        {
+          "path": "web/editor/state/editor-history.js",
+          "previousPath": null,
+          "status": "modified",
+          "additions": 1,
+          "deletions": 0
+        },
+        {
+          "path": "web/editor/ui/editor-context-menus.js",
+          "previousPath": null,
+          "status": "modified",
+          "additions": 45,
+          "deletions": 9
+        },
+        {
+          "path": "web/shared/editor-i18n.js",
+          "previousPath": null,
+          "status": "modified",
+          "additions": 15,
+          "deletions": 2
+        },
+        {
+          "path": "web/shared/editor-utils.js",
+          "previousPath": null,
+          "status": "modified",
+          "additions": 2,
+          "deletions": 0
+        },
+        {
+          "path": "web/shared/utils/word-timing.js",
+          "previousPath": null,
+          "status": "added",
+          "additions": 277,
+          "deletions": 0
+        },
+        {
+          "path": "web/waveform.css",
+          "previousPath": null,
+          "status": "modified",
+          "additions": 48,
+          "deletions": 0
+        }
+      ]
+    },
+    {
+      "number": 157,
+      "title": "proposal(draft): 按企划案第 223 行启动 esbuild 轻量打包评估——host 四模块真 ESM 化试点",
+      "url": "https://github.com/Moyf/moys-asr-workflow/pull/157",
+      "draft": true,
+      "updatedAt": "2026-09-28T13:42:59Z",
+      "base": {
+        "ref": "main",
+        "sha": "a6c816eb80f368d9974999747b3ae45f9af77939"
+      },
+      "head": {
+        "ref": "esm-pilot",
+        "sha": "0aaf51bdcf84a188951aad15aa16cbe4943de28c"
+      },
+      "files": [
+        {
+          "path": "docs/temp/ESM_PILOT_REPORT.md",
+          "previousPath": null,
+          "status": "added",
+          "additions": 101,
+          "deletions": 0
+        },
+        {
+          "path": "package-lock.json",
+          "previousPath": null,
+          "status": "modified",
+          "additions": 485,
+          "deletions": 0
+        },
+        {
+          "path": "package.json",
+          "previousPath": null,
+          "status": "modified",
+          "additions": 1,
+          "deletions": 0
+        },
+        {
+          "path": "scripts/esm-pilot/build-esm-bundle.mjs",
+          "previousPath": null,
+          "status": "added",
+          "additions": 68,
+          "deletions": 0
+        },
+        {
+          "path": "scripts/esm-pilot/verify.mjs",
+          "previousPath": null,
+          "status": "added",
+          "additions": 150,
+          "deletions": 0
+        },
+        {
+          "path": "tests/helpers/editor-module-loader.mjs",
+          "previousPath": null,
+          "status": "modified",
+          "additions": 6,
+          "deletions": 3
+        },
+        {
+          "path": "tests/test_editor_assets.py",
+          "previousPath": null,
+          "status": "modified",
+          "additions": 4,
+          "deletions": 4
+        },
+        {
+          "path": "tests/test_editor_host.mjs",
+          "previousPath": null,
+          "status": "modified",
+          "additions": 9,
+          "deletions": 8
+        },
+        {
+          "path": "tests/test_esm_bundle_fresh.mjs",
+          "previousPath": null,
+          "status": "added",
+          "additions": 18,
+          "deletions": 0
+        },
+        {
+          "path": "web/editor-scripts.txt",
+          "previousPath": null,
+          "status": "modified",
+          "additions": 3,
+          "deletions": 4
+        },
+        {
+          "path": "web/editor/boot/editor-host.js",
+          "previousPath": null,
+          "status": "modified",
+          "additions": 11,
+          "deletions": 8
+        },
+        {
+          "path": "web/editor/boot/esm-bundle.js",
+          "previousPath": null,
+          "status": "added",
+          "additions": 57,
+          "deletions": 0
+        },
+        {
+          "path": "web/shared/host/files.js",
+          "previousPath": null,
+          "status": "modified",
+          "additions": 3,
+          "deletions": 4
+        },
+        {
+          "path": "web/shared/host/server-api.js",
+          "previousPath": null,
+          "status": "modified",
+          "additions": 3,
+          "deletions": 4
+        },
+        {
+          "path": "web/shared/host/storage.js",
+          "previousPath": null,
+          "status": "modified",
+          "additions": 4,
+          "deletions": 3
+        }
+      ]
+    }
+  ]
+}

@@ -1,5 +1,5 @@
 // srt: private helpers; dependencies are injected by editor-utils.js.
-window.MAWE.register('utils-srt', function createUtilsModule(dependencies) {
+export function createUtilsModule(dependencies) {
   'use strict';
   const { DEFAULT_SPEAKER_LABEL_SEPARATOR, effectiveColorName, formatSpeakerLabelledText, normalizeSpeakerLabelSeparator, normalizeSpeakerLabels, stripSentenceFadeMarkers } = dependencies;
 
@@ -219,4 +219,4 @@ window.MAWE.register('utils-srt', function createUtilsModule(dependencies) {
   }
 
   return Object.freeze({ buildBilingualSrtPayload, buildPlainTextPayload, buildSrtPayload, fileBasename, getSrtExportFirstIndex, getSrtExportOffset, repairGroupReferenceIndices, shiftGroupReferenceIndices, shiftSelectionAfterRemoval });
-});
+}
