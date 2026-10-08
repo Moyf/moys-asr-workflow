@@ -1,5 +1,5 @@
 // ograf: private helpers; dependencies are injected by editor-utils.js.
-window.MAWE.register('utils-ograf', function createUtilsModule(dependencies) {
+export function createUtilsModule(dependencies) {
   'use strict';
   const { DEFAULT_PREVIEW_GEOMETRY, LOTTIE_DEFAULT_HEIGHT, LOTTIE_DEFAULT_WIDTH, findLottieTextUnits, lottieTextUnits, normalizeLottieCanvasDimension, normalizeLottieFontFamily, normalizeLottieFps, normalizePreviewGeometry } = dependencies;
 
@@ -384,4 +384,4 @@ export default MawDynamicCaptions;
   }
 
   return Object.freeze({ buildOgrafGraphic });
-});
+}

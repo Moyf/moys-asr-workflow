@@ -1,5 +1,5 @@
 // data: private helpers; dependencies are injected by editor-utils.js.
-window.MAWE.register('utils-data', function createUtilsModule(dependencies) {
+export function createUtilsModule(dependencies) {
   'use strict';
 
   const PROJECT_SCHEMA = 'moy.asr.project.v1';
@@ -112,4 +112,4 @@ window.MAWE.register('utils-data', function createUtilsModule(dependencies) {
   }
 
   return Object.freeze({ PROJECT_SCHEMA, clampInteger, cloneJsonValue, countTextUnits, detectSubtitleSplitMode, effectiveColorName, ensureStableSegmentIds, stableId, supportsProjectSchema, uniqueStableSegmentId });
-});
+}
