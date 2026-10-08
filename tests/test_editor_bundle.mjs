@@ -11,6 +11,7 @@ const artifact = path.join(root, 'web/editor/boot/editor-bundle.js');
 
 test('upstream projection freezes the reviewed batch and rejects incomplete selections', async () => {
   const {planMigration} = await import('../scripts/migrate-editor-factories.mjs');
+  fs.mkdirSync(path.join(root, '.worktrees'), {recursive:true});
   const folder = fs.mkdtempSync(path.join(root, '.worktrees/factory-batch-'));
   fs.mkdirSync(path.join(folder, 'web/shared/utils'), {recursive:true});
   fs.mkdirSync(path.join(folder, 'web/shared/new-domain'), {recursive:true});
