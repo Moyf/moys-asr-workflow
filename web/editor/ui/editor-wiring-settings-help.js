@@ -1,3 +1,37 @@
+document.querySelectorAll('[data-settings-region]').forEach((button) => {
+  button.addEventListener('click', (event) => {
+    event.preventDefault();
+    event.stopPropagation();
+    MaweSettingsPanels.openRegionalSettings(button.dataset.settingsRegion, button.dataset.settingsTarget);
+  });
+});
+document.querySelectorAll('[data-settings-page]').forEach((button) => {
+  button.addEventListener('click', (event) => {
+    event.preventDefault();
+    event.stopPropagation();
+    MaweSettingsPanels.openEditorSettingsAtTab(`editor-settings-tab-${button.dataset.settingsPage}`);
+    const target = document.getElementById(button.dataset.settingsTarget || '');
+    target?.scrollIntoView({ block: 'nearest' });
+    const control = target?.matches('input, select, button') ? target
+      : target?.nextElementSibling?.querySelector('input, select, button');
+    control?.focus({ preventScroll: true });
+  });
+});
+document.querySelectorAll('[data-settings-export]').forEach((button) => {
+  button.addEventListener('click', () => {
+    const command = document.getElementById(button.dataset.settingsExport);
+    if (!command || command.getAttribute('aria-disabled') === 'true') return;
+    MaweSettingsPanels.setEditorSettingsPanelOpen(false);
+    command.click();
+  });
+});
+document.querySelectorAll('[data-settings-tool="gap"]').forEach((button) => {
+  button.addEventListener('click', () => {
+    MaweSettingsPanels.setEditorSettingsPanelOpen(false);
+    MaweGapRemoveUi.openGapRemovePanel();
+    MaweDom.gapRemoveManageButton?.focus();
+  });
+});
 MaweSettingsPanels.editorSettingsTabs.forEach((tab) => {
   tab.addEventListener('click', () => MaweSettingsPanels.setEditorSettingsActiveTab(tab));
   tab.addEventListener('keydown', (event) => {

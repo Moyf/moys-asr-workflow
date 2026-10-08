@@ -82,6 +82,7 @@
     }
   }
   if (MaweDom.multiSubtitleEmptyHint) {
+    MaweSettingsPanels.updateRegionalSettingsAvailability();
     MaweDom.multiSubtitleEmptyHint.hidden = !(enabled && !track.segments.length);
   }
   if (MaweDom.splitMultiSubtitleSettingsEnabledHint) MaweDom.splitMultiSubtitleSettingsEnabledHint.hidden = !enabled;

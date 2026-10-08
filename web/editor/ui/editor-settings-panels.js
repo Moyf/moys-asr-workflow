@@ -32,6 +32,7 @@
 
   function setEditorSettingsActiveTab(tab, { focus = false } = {}) {
     if (!tab) return;
+    updateRegionalSettingsAvailability();
     for (const item of editorSettingsTabs) {
       const active = item === tab;
       item.classList.toggle('active', active);
@@ -94,6 +95,7 @@
       editorSettingsFloatingPanel.close();
       return;
     }
+    updateRegionalSettingsAvailability();
     editorSettingsFloatingPanel.open();
   }
 
@@ -234,11 +236,72 @@
 
   // 帮助中的「全局设置」入口：打开设置窗口并定位到「视频预览」分区。
   function openEditorSettingsAtTab(tabId) {
+    closeRegionalSettings();
     MaweSettingsPanels.setEditorSettingsPanelOpen(true);
     MaweSettingsPanels.setEditorSettingsActiveTab(document.getElementById(tabId), { focus: true });
   }
 
+  function closeRegionalSettings() {
+    setCueListSettingsPanelOpen(false);
+    setCueEditorSettingsPanelOpen(false);
+    setWaveformSettingsPanelOpen(false);
+    for (const id of ['multi-subtitle-settings-dropdown', 'workspace-transfer-dropdown']) {
+      const dropdown = document.getElementById(id);
+      dropdown?.classList.remove('open');
+      dropdown?.querySelector('button[aria-expanded]')?.setAttribute('aria-expanded', 'false');
+    }
+    document.querySelectorAll('.toolbar .dropdown.open').forEach((dropdown) => {
+      dropdown.classList.remove('open');
+      dropdown.querySelector('button[aria-expanded]')?.setAttribute('aria-expanded', 'false');
+      dropdown.querySelectorAll('.dropdown-submenu').forEach((submenu) => {
+        submenu.classList.remove('open');
+        submenu.querySelector('[aria-expanded]')?.setAttribute('aria-expanded', 'false');
+      });
+    });
+    MaweFloatingPanel.syncFloatingSurfaceLayers();
+  }
+
+  function updateRegionalSettingsAvailability() {
+    const enabled = !MaweDom.multiSubtitleSettingsDropdown?.hidden;
+    const button = document.querySelector('[data-settings-region="multi-subtitle"]');
+    if (button) button.disabled = !enabled;
+    const hint = document.getElementById('settings-region-multi-unavailable');
+    if (hint) hint.hidden = enabled;
+    const workspaceButton = document.querySelector('[data-settings-region="workspace"]');
+    if (workspaceButton) workspaceButton.disabled = Boolean(document.getElementById('workspace-transfer-dropdown')?.hidden);
+    document.querySelectorAll('[data-settings-export]').forEach((button) => {
+      const command = document.getElementById(button.dataset.settingsExport);
+      button.disabled = !command || command.getAttribute('aria-disabled') === 'true';
+      if (command) button.title = command.title;
+    });
+  }
+
+  function openRegionalSettings(region, targetId) {
+    const regions = {
+      waveform: [MaweDom.waveformSettingsPanel, MaweDom.waveformSettingsToggle, setWaveformSettingsPanelOpen],
+      'cue-editor': [MaweDom.cueEditorSettingsPanel, MaweDom.cueEditorSettingsToggle, setCueEditorSettingsPanelOpen],
+      'cue-list': [MaweDom.cueListSettingsPanel, MaweDom.cueListSettingsToggle, setCueListSettingsPanelOpen],
+      'multi-subtitle': [document.getElementById('multi-subtitle-settings-menu'), MaweDom.multiSubtitleSettingsToggle],
+      workspace: [document.getElementById('workspace-transfer-menu'), document.getElementById('workspace-transfer-btn')],
+    };
+    const entry = regions[region];
+    if (!entry || !entry[0] || !entry[1] || entry[1].closest('[hidden]')) return;
+    closeRegionalSettings();
+    setEditorSettingsPanelOpen(false);
+    const [panel, toggle, open] = entry;
+    toggle.scrollIntoView({ block: 'nearest', inline: 'nearest' });
+    if (open) open(true);
+    else toggle.click();
+    const target = targetId ? document.getElementById(targetId) : null;
+    const control = target || [...panel.querySelectorAll('input, select, button, [tabindex="0"]')]
+      .find(element => !element.disabled && element.getClientRects().length);
+    (control || toggle).focus({ preventScroll: true });
+  }
+
   global.MaweSettingsPanels = Object.freeze({
+    openRegionalSettings,
+    closeRegionalSettings,
+    updateRegionalSettingsAvailability,
     openEditorSettingsAtTab,
     editorSettingsTabs,
     editorSettingsFloatingPanel,

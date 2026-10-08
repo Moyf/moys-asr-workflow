@@ -1055,6 +1055,15 @@
   .cue-editor-settings-display-group .settings-panel-item {
     white-space: nowrap;
   }
+  .multi-subtitle-settings-menu { max-height: min(620px, calc(100vh - 110px)); overflow-y: auto; }
+  .multi-subtitle-settings-section { box-sizing: border-box; }
+  .multi-subtitle-settings-section + .multi-subtitle-settings-section { margin-top: 8px; }
+  .multi-subtitle-settings-section .settings-panel-title { text-align: left; }
+  .multi-subtitle-settings-section .multi-subtitle-setting-row,
+  .multi-subtitle-settings-section .multi-subtitle-setting-toggle,
+  .multi-subtitle-settings-section .settings-panel-hint,
+  .multi-subtitle-settings-section > .dropdown-item { flex: 0 0 100%; box-sizing: border-box; margin: 0; }
+  .multi-subtitle-settings-section .multi-subtitle-setting-toggle { white-space: normal; }
   .waveform-settings-section { width: 100%; }
   .waveform-settings-title { text-transform: none; text-align: left; }
   .waveform-settings-section .editor-settings-item.waveform-settings-toggle-row { flex: 0 0 100%; white-space: normal; }
@@ -1286,6 +1295,12 @@
   }
   .editor-settings-pages { flex: 1 1 auto; min-width: 0; padding: 10px 12px; overflow-y: auto; }
   .editor-settings-page { display: flex; flex-direction: column; gap: 8px; }
+  .editor-settings-scope { margin: 0; padding: 8px 10px; color: var(--text-muted); font-size: 12px; line-height: 1.6; background: var(--bg-raised); border-radius: var(--radius-sm); }
+  .editor-settings-region-card { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 12px; border: 1px solid var(--border-subtle); border-radius: var(--radius-md); }
+  .editor-settings-region-card > div { min-width: 0; }
+  .editor-settings-region-card strong { font-size: 13px; }
+  .editor-settings-region-card .editor-settings-hint { margin: 8px 0 0; }
+  .editor-settings-region-card > button { flex: 0 0 auto; }
   .editor-settings-page[hidden] { display: none; }
   .editor-settings-group {
     display: flex; flex-direction: column; align-items: stretch; gap: 16px;
@@ -1309,6 +1324,9 @@
     display: flex; flex: 0 0 100%; flex-direction: column; align-items: flex-start; gap: 3px;
     min-width: 0;
   }
+  #editor-settings-page-general .editor-settings-field,
+  #editor-settings-page-subtitle-preview .editor-settings-field,
+  #editor-settings-page-export .editor-settings-field { gap: 8px; }
   .editor-settings-field[hidden] { display: none; }
   .editor-settings-field > .editor-settings-item { width: auto; }
   .editor-settings-field > label.toggle.editor-settings-item { align-self: stretch; width: 100%; }
