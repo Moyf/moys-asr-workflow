@@ -63,7 +63,9 @@ export function createUtilsModule(dependencies) {
   ]);
 
 
-  function normalizeExportOptions(options = {}) {
+  /** @param {unknown} [value] */
+  function normalizeExportOptions(value = {}) {
+    const options = /** @type {Record<string, unknown>} */ (value);
     if (!options || typeof options !== 'object' || Array.isArray(options)) {
       throw new Error('export options must be an object');
     }
@@ -80,7 +82,7 @@ export function createUtilsModule(dependencies) {
       throw new Error('drop-frame option must be boolean');
     }
     const subtitleTracks = options.subtitleTracks ?? 'main';
-    if (!EXPORT_SUBTITLE_TRACKS.includes(subtitleTracks)) {
+    if (typeof subtitleTracks !== 'string' || !EXPORT_SUBTITLE_TRACKS.includes(subtitleTracks)) {
       throw new Error(`unsupported subtitle tracks: ${subtitleTracks}`);
     }
     const nativeTextObjects = options.nativeTextObjects ?? false;

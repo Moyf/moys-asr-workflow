@@ -267,6 +267,7 @@ export function createUtilsModule(dependencies) {
   }
 
 
+  /** @param {import('./utils-types.js').MutableValue<typeof ASS_DEFAULT_STYLE> & {emphasisSyntax?: string}} [fallback] */
   function normalizeAssStyle(value, fallback = ASS_DEFAULT_ASS_STYLE, styleId = '') {
     const source = value && typeof value === 'object' && !Array.isArray(value) ? value : {};
     const base = { ...fallback };
@@ -363,6 +364,7 @@ export function createUtilsModule(dependencies) {
   }
 
 
+  /** @param {import('./utils-types.js').MutableValue<typeof ASS_DEFAULT_PROFILE>} [fallback] */
   function normalizeAssProfile(value, fallback = ASS_DEFAULT_PROFILE, profileId = '') {
     const source = value && typeof value === 'object' && !Array.isArray(value) ? value : {};
     const resolvedId = normalizeAssStyleId(profileId || source.id || fallback.id, fallback.id || 'ass');

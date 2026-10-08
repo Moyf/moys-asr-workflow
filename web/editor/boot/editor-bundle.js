@@ -1,4 +1,4 @@
-/* MAW ESM artifact: b53676f45abc18bb5f81c3a61be0da42f60e65dd4d1596020f3fc21857544feb */
+/* MAW ESM artifact: d0d1b378051239f2540e6eb221760538f2fdf911999d0a1d0d4d8541cb501dca */
 'use strict';
 (() => {
   // web/shared/host/storage.js
@@ -2726,7 +2726,7 @@
     function normalizeTimelineTimebase(value, fallback = {}) {
       const raw = value && typeof value === "object" && !Array.isArray(value) ? value : {};
       const fallbackRaw = fallback && typeof fallback === "object" ? fallback : {};
-      const fallbackUnit = TIMELINE_TIMEBASE_UNITS.includes(fallbackRaw.unit) ? fallbackRaw.unit : "milliseconds";
+      const fallbackUnit = typeof fallbackRaw.unit === "string" && TIMELINE_TIMEBASE_UNITS.includes(fallbackRaw.unit) ? fallbackRaw.unit : "milliseconds";
       return {
         unit: TIMELINE_TIMEBASE_UNITS.includes(raw.unit) ? raw.unit : fallbackUnit,
         fps: normalizeTimelineFps(raw.fps, fallbackRaw.fps ?? DEFAULT_TIMELINE_FPS)
@@ -2953,8 +2953,14 @@
       subtitleColorPalette: { ...DEFAULT_EDITOR_SUBTITLE_COLOR_PALETTE },
       waveShapeSource: "reapeaks"
     });
+    function isSettingChoice(choices, value) {
+      return typeof value === "string" && choices.some((choice) => choice === value);
+    }
     function normalizeEditorSettings(saved = {}, legacyAssStyleLibrary = null) {
-      const savedSettings = saved && typeof saved === "object" && !Array.isArray(saved) ? saved : {};
+      const savedSettings = (
+        /** @type {Record<string, unknown>} */
+        saved && typeof saved === "object" && !Array.isArray(saved) ? saved : {}
+      );
       const legacyLibrary = legacyAssStyleLibrary && typeof legacyAssStyleLibrary === "object" ? legacyAssStyleLibrary : {};
       const legacyProfile = (Array.isArray(legacyLibrary.assProfiles) ? legacyLibrary.assProfiles : []).find((profile) => profile?.id === (legacyLibrary.assignments?.assExportProfileId || "ass"));
       const legacySyntax = (Array.isArray(legacyLibrary.styles) ? legacyLibrary.styles : []).find((style) => style?.id === (legacyProfile?.styleId || "ass"))?.emphasisSyntax;
@@ -2967,7 +2973,7 @@
         splitUseWordTimestamps: savedSettings.splitUseWordTimestamps !== false,
         splitAutoSubmit: savedSettings.splitAutoSubmit !== false,
         // 主字幕拆分类型手动指定偏好：word / continuous / null（跟随工程与检测）。
-        mainSplitModeOverride: ["word", "continuous"].includes(savedSettings.mainSplitModeOverride) ? savedSettings.mainSplitModeOverride : null,
+        mainSplitModeOverride: isSettingChoice(["word", "continuous"], savedSettings.mainSplitModeOverride) ? savedSettings.mainSplitModeOverride : null,
         // undefined → 默认集合；显式空数组表示用户关闭了全部符号（仅修剪空白）。
         splitTrimSymbols: Array.isArray(savedSettings.splitTrimSymbols) ? normalizeSplitTrimSymbols(savedSettings.splitTrimSymbols) : [...DEFAULT_SPLIT_TRIM_SYMBOLS],
         overlayEnabled: savedSettings.overlayEnabled !== false,
@@ -2979,7 +2985,7 @@
         assFrameAutoRender: savedSettings.assFrameAutoRender !== false,
         assEmphasisSyntax: emphasisSyntax === "none" ? "none" : "both",
         // 单双符号规则三值：none / double / both。旧数据里的 'single' 迁移为 'both'。
-        assSpecialSymbolRule: savedSettings.assSpecialSymbolRule === "single" ? "both" : ["none", "double", "both"].includes(savedSettings.assSpecialSymbolRule) ? savedSettings.assSpecialSymbolRule : "both",
+        assSpecialSymbolRule: savedSettings.assSpecialSymbolRule === "single" ? "both" : isSettingChoice(["none", "double", "both"], savedSettings.assSpecialSymbolRule) ? savedSettings.assSpecialSymbolRule : "both",
         assUnderlineEnabled: savedSettings.assUnderlineEnabled !== false,
         assStrikeEnabled: savedSettings.assStrikeEnabled !== false,
         assSmallTextEnabled: savedSettings.assSmallTextEnabled !== false,
@@ -3025,11 +3031,11 @@
         otioExportIncludeStickers: savedSettings.otioExportIncludeStickers !== false,
         otioExportIncludeMarkers: savedSettings.otioExportIncludeMarkers !== false,
         otioExportIncludeMarkerRegions: savedSettings.otioExportIncludeMarkerRegions !== false,
-        clickBehavior: ["select-only", "select-and-seek", "select-and-play"].includes(savedSettings.clickBehavior) ? savedSettings.clickBehavior : "select-and-seek",
-        clickTarget: ["cue-start", "pointer"].includes(savedSettings.clickTarget) ? savedSettings.clickTarget : "pointer",
+        clickBehavior: isSettingChoice(["select-only", "select-and-seek", "select-and-play"], savedSettings.clickBehavior) ? savedSettings.clickBehavior : "select-and-seek",
+        clickTarget: isSettingChoice(["cue-start", "pointer"], savedSettings.clickTarget) ? savedSettings.clickTarget : "pointer",
         pauseOnMouseClick: savedSettings.pauseOnMouseClick === true,
         keyboardOperationReference: savedSettings.keyboardOperationReference === "playhead" ? "playhead" : "pointer",
-        jklPlaybackMode: ["speed", "direction"].includes(savedSettings.jklPlaybackMode) ? savedSettings.jklPlaybackMode : "direction",
+        jklPlaybackMode: isSettingChoice(["speed", "direction"], savedSettings.jklPlaybackMode) ? savedSettings.jklPlaybackMode : "direction",
         mediaSeekStepMs: clampInteger(mediaSeekStepMs, 1e3, 10, 6e4),
         mediaSeekStepFrames: clampTimelineFrameStep(savedSettings.mediaSeekStepFrames, 1),
         cueMoveStepMs: clampInteger(savedSettings.cueMoveStepMs, 50, 10, 2e3),
@@ -3049,7 +3055,7 @@
         selectBoundSubtitlePair: savedSettings.selectBoundSubtitlePair !== false,
         multiSubtitleAutoSyncDuration: savedSettings.multiSubtitleAutoSyncDuration !== false,
         multiSubtitleShowTrackBadges: savedSettings.multiSubtitleShowTrackBadges === true,
-        theme: ["light", "dark", "system"].includes(savedSettings.theme) ? savedSettings.theme : "dark",
+        theme: isSettingChoice(["light", "dark", "system"], savedSettings.theme) ? savedSettings.theme : "dark",
         accentColor: normalizeEditorAccentColor(savedSettings.accentColor),
         accentColorCustom: normalizeEditorAccentCustomColor(savedSettings.accentColorCustom),
         subtitleColorPalette: normalizeSubtitleColorPalette(savedSettings.subtitleColorPalette),
@@ -5309,7 +5315,11 @@ ${entry.text}` : entry.text;
       "subtitleTracks",
       "baseName"
     ]);
-    function normalizeExportOptions(options = {}) {
+    function normalizeExportOptions(value = {}) {
+      const options = (
+        /** @type {Record<string, unknown>} */
+        value
+      );
       if (!options || typeof options !== "object" || Array.isArray(options)) {
         throw new Error("export options must be an object");
       }
@@ -5326,7 +5336,7 @@ ${entry.text}` : entry.text;
         throw new Error("drop-frame option must be boolean");
       }
       const subtitleTracks = options.subtitleTracks ?? "main";
-      if (!EXPORT_SUBTITLE_TRACKS.includes(subtitleTracks)) {
+      if (typeof subtitleTracks !== "string" || !EXPORT_SUBTITLE_TRACKS.includes(subtitleTracks)) {
         throw new Error(`unsupported subtitle tracks: ${subtitleTracks}`);
       }
       const nativeTextObjects = options.nativeTextObjects ?? false;
@@ -5814,7 +5824,7 @@ ${String(cue.text || "")}
       const effect = `<effect><name>Vector Motion</name><effectid>GraphicGroup</effectid><effectcategory>graphic</effectcategory><effecttype>filter</effecttype><mediatype>video</mediatype><pproBypass>false</pproBypass>${parameter(1, "Position", "", pointValue(0, 0))}${parameter(2, "Scale", scaleBounds, staticValue("100."))}${parameter(3, "Scale Width", scaleBounds, staticValue("100."))}${parameter(4, " ", "", staticValue("true"))}${parameter(5, "Rotation", rotationBounds, staticValue("0."))}${parameter(6, "Anchor Point", "", pointValue(0, 0))}</effect>`;
       return `<filter>${effect}</filter>`;
     }
-    function fcpClipItem({ id, fileId, name, path, width, height, sourceStartMs, sourceEndMs, sourceStartFrame = null, startMs, endMs, startFrame, endFrame, plan, mediaKind, track, link, defineFile = true, encodeDriveColon = false }) {
+    function fcpClipItem({ id, fileId, name, path, width = void 0, height = void 0, sourceStartMs, sourceEndMs, sourceStartFrame = null, startMs, endMs, startFrame = void 0, endFrame = void 0, plan, mediaKind, track, link = void 0, defineFile = true, encodeDriveColon = false }) {
       const sourceRange = fcpTimeRange(sourceStartMs, sourceEndMs, plan);
       const timeline = fcpTimeRange(startMs, endMs, plan);
       const url = escapeExportXml(exportPathToFileUrl(path, { encodeDriveColon }));

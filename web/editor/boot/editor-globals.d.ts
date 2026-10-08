@@ -148,6 +148,7 @@ declare const activeExtensionSegments: any;
 interface Window {
   AsrEditorUtils: any;
   MAWE_I18N: any;
+  ASR_EDITOR_PALETTE?: Array<{ name: string; value: string }>;
   showSaveFilePicker?: any;
 }
 

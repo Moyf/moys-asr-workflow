@@ -53,3 +53,9 @@
 ## Python 全量契约跟进
 
 首次全量 1833 项发现另外 4 项旧装配断言（3 失败/1 报错）；已迁移到完整产物 fixture、源码形状层和真实页面检查，保留原行为/标记断言。另 7 项原有 subprocess 报错来自 Windows GBK 解码；使用 `PYTHONUTF8=1` 重验，不修改产品逻辑或跳过测试。定向结果：5 个清单、22 个波形、80 个 Server 测试全部通过。波形长测试中的动态源码字符串及模板检查已补齐；模板占位符按真实源码/模板集合检查，避免误把 esbuild 的 PURE 注释当成占位符。
+
+## 类型修复批次 2：共享工具边界
+
+保存设置与导出选项以 `unknown` 接入，验证对象后按 `Record<string, unknown>` 读取；字符串选项使用真实成员校验收窄。冻结 ASS 预设的字面量经保留属性形状的泛型扩宽，兼容自定义样式；FCP XML 参数明确可缺省字段（缺省值仍为 undefined）。补齐可选调色板挂载类型。
+
+`npm run typecheck`：1128 → 1006，只剩波形范围；utils 121 项和波形调色板 1 项消失。`node --test tests/test_editor_utils.mjs tests/test_editor_bundle.mjs`：310 通过，0 失败/跳过。未使用 ts-ignore、ts-nocheck 或新增整体 any；既有非 strict 的注入参数仍是后续更严格建模的边界。

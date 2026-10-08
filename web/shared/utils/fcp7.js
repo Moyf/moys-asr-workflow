@@ -177,7 +177,7 @@ export function createUtilsModule(dependencies) {
   }
 
 
-  function fcpClipItem({ id, fileId, name, path, width, height, sourceStartMs, sourceEndMs, sourceStartFrame = null, startMs, endMs, startFrame, endFrame, plan, mediaKind, track, link, defineFile = true, encodeDriveColon = false }) {
+  function fcpClipItem({ id, fileId, name, path, width = undefined, height = undefined, sourceStartMs, sourceEndMs, sourceStartFrame = null, startMs, endMs, startFrame = undefined, endFrame = undefined, plan, mediaKind, track, link = undefined, defineFile = true, encodeDriveColon = false }) {
     const sourceRange = fcpTimeRange(sourceStartMs, sourceEndMs, plan);
     const timeline = fcpTimeRange(startMs, endMs, plan);
     const url = escapeExportXml(exportPathToFileUrl(path, { encodeDriveColon }));
