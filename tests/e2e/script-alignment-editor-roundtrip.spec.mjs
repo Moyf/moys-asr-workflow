@@ -48,7 +48,7 @@ run_script_alignment(ScriptAlignmentRequest(Path(sys.argv[1]), Path(sys.argv[2])
     await page.reload();
     await page.waitForFunction(() => window.MAWE_EDITOR_BRIDGE?.data?.segments.length === 2);
     expect(await snapshot()).toEqual(expected);
-    await page.screenshot({ path: '/private/tmp/maw-174-editor-roundtrip.png' });
+    await page.screenshot({ path: test.info().outputPath('editor-roundtrip.png') });
     const legacy = JSON.parse(readFileSync(project, 'utf8'));
     delete legacy.preserve_punctuation;
     const legacyPath = join(directory, 'legacy.mosp');

@@ -78,7 +78,7 @@ test('input check needs no model, keeps current project and invalidates on input
   expect(await page.evaluate(() => window.scriptCheckPayload.projectPath)).toBeUndefined();
   expect(await page.locator('#toolboxTimestampCheckResult').evaluate((result) => result.getBoundingClientRect().top - result.previousElementSibling.getBoundingClientRect().bottom)).toBeGreaterThanOrEqual(8);
   await page.locator('#toolboxTimestampCheckResult').scrollIntoViewIfNeeded();
-  await page.screenshot({ path: '/private/tmp/maw-174-input-check.png' });
+  await page.screenshot({ path: test.info().outputPath('input-check.png') });
   await page.locator('#toolboxTimestampAudioTrack').fill('1');
   await expect(page.locator('#toolboxTimestampCheckResult')).toBeHidden();
 });
@@ -99,7 +99,7 @@ test('script controls have measured spacing and bilingual labels', async ({ page
     };
   });
   for (const gap of Object.values(spacing)) expect(gap).toBeGreaterThanOrEqual(8);
-  await page.locator('#toolboxTimestampScriptInputs').screenshot({ path: '/private/tmp/maw-174-script-controls.png' });
+  await page.locator('#toolboxTimestampScriptInputs').screenshot({ path: test.info().outputPath('script-controls.png') });
   await page.evaluate(() => document.getElementById('langEn').click());
   await expect(page.locator('#toolboxTimestampMode option[value="script"]')).toHaveText('Script + audio (skip ASR)');
   await expect(page.locator('#toolboxTimestampScriptInputs h3')).toHaveText('Script-driven alignment');
