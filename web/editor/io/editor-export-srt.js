@@ -121,7 +121,11 @@
   }
 
   function buildDynamicCaptionExportData(segments, gapRemoved) {
-    const source = Array.isArray(segments) ? segments : [];
+    const colorContext = Array.isArray(segments) ? segments : [];
+    const source = colorContext.map((segment) => ({
+      ...segment,
+      text: MaweSpeakerLabels.subtitleExportText(segment, colorContext),
+    }));
     const sourceDurationMs = MaweCoreState.waveformEditor?.durationMs
       || Math.round(Number(MaweCoreState.player?.duration) * 1000)
       || MaweBoot.DATA.waveform?.duration_ms

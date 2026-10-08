@@ -200,10 +200,16 @@ window.MAWE.register('utils-srt', function createUtilsModule(dependencies) {
     return buildSrtPayload(merged, { formatTime: options.formatTime, assSpecialSymbolRule: 'none' });
   }
 
-  function buildPlainTextPayload(segments) {
-    return (Array.isArray(segments) ? segments : [])
+  function buildPlainTextPayload(segments, options = {}) {
+    const source = Array.isArray(segments) ? segments : [];
+    return source
       .filter((segment) => segment && !segment.disabled)
-      .map((segment) => String(segment.text || '').replace(/\r\n?/g, '\n'))
+      .map((segment) => {
+        const text = String(segment.text || '').replace(/\r\n?/g, '\n');
+        return options.speakerLabelsEnabled === true
+          ? formatSpeakerLabelledText(text, segment, source, options.speakerLabels, options.speakerLabelSeparator)
+          : text;
+      })
       .join('\n');
   }
 

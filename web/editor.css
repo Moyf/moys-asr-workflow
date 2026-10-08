@@ -1186,6 +1186,7 @@
     padding-top: 8px; border-top: 1px solid var(--border-subtle);
   }
   .subtitle-speaker-labels-settings[hidden] { display: none; }
+  .subtitle-speaker-labels-settings > .subtitle-speaker-export-hint { margin-top: 1px; }
   .subtitle-speaker-label-list {
     display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 6px 8px; min-width: 0;
   }

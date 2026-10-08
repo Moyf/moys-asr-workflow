@@ -123,6 +123,10 @@ MaweDom.exportOpenSubtitleColorSettingsButton?.addEventListener('click', (event)
   event.preventDefault();
   MaweSettingsPanels.openEditorSettingsAtTab('editor-settings-tab-subtitle-color');
 });
+document.getElementById('subtitle-speaker-open-export-settings')?.addEventListener('click', (event) => {
+  event.preventDefault();
+  MaweSettingsPanels.openEditorSettingsAtTab('editor-settings-tab-export');
+});
 MaweDom.splitMultiSubtitleSettingsLink?.addEventListener('click', (event) => {
   event.preventDefault();
   event.stopPropagation();

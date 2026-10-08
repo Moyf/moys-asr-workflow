@@ -55,6 +55,7 @@
       });
       const plan = window.AsrEditorUtils.buildProjectExportPlan(MaweBoot.DATA, {
         ...options,
+        ...MaweSpeakerLabels.speakerLabelExportOptions(),
         durationMs: Math.round(durationMs),
       });
       const [artifact] = window.AsrEditorUtils.buildFcp7ExportArtifacts(plan, options);
