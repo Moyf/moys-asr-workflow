@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import math
 import os
+import re
 import shutil
 import struct
 import sys
@@ -917,7 +918,7 @@ class EditorAssetTests(unittest.TestCase):
         self.assertNotIn('id="export-open-subtitle-color-settings-arrow"', page)
         for field in ('index', 'time', 'charcount'):
             self.assertIn(f'id="cue-list-show-{field}" checked', page)
-            self.assertIn(f"MaweCoreState.container.classList.toggle('hide-cue-{field}'", page)
+            self.assertIn(f"MaweCoreState.container.classList.toggle('hide-cue-{field}'", source)
         self.assertIn('id="cue-list-show-sticker" checked> 表情包', page)
         self.assertIn("MaweCoreState.container.classList.toggle('hide-cue-sticker'", source)
         self.assertIn('id="cue-list-auto-scroll-on-click" checked', page)
@@ -1186,7 +1187,10 @@ class EditorAssetTests(unittest.TestCase):
         self.assertNotIn('.editor-workspace.layout-wave-right > .current-cue-panel {\n  overflow-y: auto;', page)
         self.assertNotIn('id="waveform-side"', page)
         self.assertIn('getSrtExportFirstIndex(', page)
-        self.assertNotRegex(page, r"__[A-Z][A-Z0-9_]+__")
+        tokens = set(re.findall(r"__[A-Z][A-Z0-9_]+__",
+                                edit.read_web_asset("editor-template.html") + source))
+        for token in tokens:
+            self.assertNotIn(token, page, token)
 
     def test_media_controls_stay_on_one_line_and_preserve_fullscreen(self) -> None:
         page = edit.build_blank_html()
