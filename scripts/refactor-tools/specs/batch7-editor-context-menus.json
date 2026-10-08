@@ -1,0 +1,15 @@
+{
+  "file": "editor-context-menus.js",
+  "ns": "MaweContextMenus",
+  "header": "右键菜单：字幕/副字幕/空隙/波形空白菜单与定位。",
+  "symbols": [
+    "findWaveformCueAtTime",
+    "showWaveformBlankMenu",
+    "ctxLastClickX",
+    "ctxLastClickY",
+    "showContextMenu",
+    "showExtensionContextMenu",
+    "showGapContextMenu",
+    "closeContextMenuOnOutsidePointerDown"
+  ]
+}

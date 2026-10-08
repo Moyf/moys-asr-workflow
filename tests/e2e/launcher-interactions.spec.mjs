@@ -478,6 +478,47 @@ test('FFmpeg media log stays above the utility notice and renders the latest pro
   ))).toBeTruthy();
 });
 
+test('green-screen burn accepts subtitles without a video source', async ({ page }) => {
+  await openLauncher(page);
+  await page.locator('#toolboxUtilitiesPrimaryTab').click();
+  await page.locator('#toolboxBurnSubtitleTab').click();
+  await page.evaluate(() => {
+    window.__greenBurnCalls = [];
+    const original = window.MAWLauncher.callBackend;
+    window.MAWLauncher.callBackend = async (method, payload) => {
+      if (method === 'run_burn_subtitles') {
+        window.__greenBurnCalls.push(payload);
+        return { ok: true, mediaPath: 'D:\\Demo\\captions.green-screen.mp4' };
+      }
+      return original(method, payload);
+    };
+  });
+  await page.locator('#toolboxGreenScreen').check();
+  await expect(page.locator('#toolboxUtilityMediaDropZone')).toBeVisible();
+  await expect(page.locator('#toolboxUtilityMediaDropZone')).toHaveAttribute('aria-disabled', 'true');
+  await expect(page.locator('#toolboxUtilityMediaPath')).toBeDisabled();
+  await expect(page.locator('#pickToolboxUtilityMedia')).toBeDisabled();
+  await expect(page.locator('#runBurnSubtitle')).toHaveText('生成绿幕视频');
+  const gap = await page.locator('.toolbox-green-screen-option .hint').evaluate((element) =>
+    element.getBoundingClientRect().top - element.previousElementSibling.getBoundingClientRect().bottom);
+  expect(gap).toBeGreaterThanOrEqual(8);
+  await page.locator('#toolboxBurnSubtitlePath').fill('D:\\Demo\\captions.ass');
+  await page.locator('#runBurnSubtitle').click();
+  await expect.poll(() => page.evaluate(() => window.__greenBurnCalls.length)).toBe(1);
+  const call = await page.evaluate(() => window.__greenBurnCalls[0]);
+  expect(call).toMatchObject({ mediaPath: '', subtitlePath: 'D:\\Demo\\captions.ass', greenScreen: true });
+  await expect(page.locator('#toolboxUtilityMediaPath')).toHaveValue('D:\\Demo\\captions.green-screen.mp4');
+  await page.locator('#toolboxFfconcatTab').click();
+  await expect(page.locator('#toolboxUtilityMediaPath')).toBeEnabled();
+  await expect(page.locator('#pickToolboxUtilityMedia')).toBeEnabled();
+  await page.locator('#toolboxBurnSubtitleTab').click();
+  await expect(page.locator('#toolboxUtilityMediaPath')).toBeDisabled();
+  await page.locator('#toolboxGreenScreen').uncheck();
+  await expect(page.locator('#toolboxUtilityMediaPath')).toBeEnabled();
+  await expect(page.locator('#pickToolboxUtilityMedia')).toBeEnabled();
+  await expect(page.locator('#runBurnSubtitle')).toHaveText('烧录字幕');
+});
+
 test('Launcher settings switch between accessible tabs and deep links', async ({ page }) => {
   await page.goto(`file://${launcherPath}`);
   await page.waitForFunction(() => window.MAWLauncher?.config?.postprocessProviders?.length > 0);
@@ -1799,4 +1840,38 @@ test('toolbox resize preserves the other axis and converts pointer deltas throug
   expect(afterHeight.cssHeight - before.cssHeight).toBeCloseTo(40, 0);
   expect(afterWidth.cssWidth - afterHeight.cssWidth).toBeCloseTo(40, 0);
   expect(afterWidth.cssHeight).toBeCloseTo(afterHeight.cssHeight, 0);
+});
+
+test('AI cleanup notes persist in the automatic plan and reach the manual request', async ({ page }) => {
+  await openLauncher(page);
+  await page.evaluate(() => {
+    Object.assign(window.MAWLauncher.config.postprocessProviders.find(p => p.id === 'deepseek'),
+      { verified: true, hasApiKey: true, hasBaseUrl: true, hasModel: true });
+    window.__notesPlans = [];
+    window.__cleanupPayload = null;
+    const original = window.MAWLauncher.callBackend;
+    window.MAWLauncher.callBackend = async (method, payload) => {
+      if (method === 'save_postprocess_plan') window.__notesPlans.push(payload.plan);
+      if (method === 'run_ai_cleanup') {
+        window.__cleanupPayload = payload;
+        return { ok: false, error: 'test stopped before sending to a model' };
+      }
+      return original(method, payload);
+    };
+  });
+  await page.locator('#toolboxMatchTab').click();
+  await expect(page.locator('#postprocessAiCleanupNotesField')).toBeHidden();
+  await page.locator('#postprocessAiCleanup').check();
+  await expect(page.locator('#postprocessAiCleanupNotesField')).toBeVisible();
+  await page.locator('#postprocessAiCleanupNotes').fill('  保留所有数字\n去除试麦  ');
+  await expect.poll(() => page.evaluate(() => window.__notesPlans.at(-1)?.steps
+    .find(s => s.id === 'match')?.aiCleanupNotes)).toBe('保留所有数字\n去除试麦');
+  await page.locator('#toolboxInputPath').fill('source.mosp');
+  await page.locator('#postprocessScriptPath').fill('script.txt');
+  await page.locator('#runScriptMatch').click();
+  await expect.poll(() => page.evaluate(() => window.__cleanupPayload?.notes)).toBe('保留所有数字\n去除试麦');
+  await page.locator('#postprocessAiCleanup').uncheck();
+  await expect(page.locator('#postprocessAiCleanupNotesField')).toBeHidden();
+  await page.locator('#postprocessAiCleanup').check();
+  await expect(page.locator('#postprocessAiCleanupNotes')).toHaveValue('  保留所有数字\n去除试麦  ');
 });

@@ -11,6 +11,7 @@ import unicodedata
 from dataclasses import dataclass
 from pathlib import Path
 from collections.abc import Mapping, Sequence
+from typing import Final
 
 from maw.postprocess import OutputMode, _reconcile_items
 from maw.postprocess_io import SubtitleArtifact, PostprocessFileError, read_project, read_srt, write_artifacts
@@ -28,7 +29,24 @@ from scripts.mosp_match_text import (
 
 SCRIPT_EXTENSIONS = frozenset({".txt", *MARKDOWN_EXTENSIONS})
 MIN_MATCH_COVERAGE = 0.55
-DEFAULT_SPLIT_PUNCTUATION = frozenset({"，", "。", ",", ".", "\n"})
+# 结构性断句：换行始终生效，不可配置。其余断句符号完全来自共享配置
+# （「需要断句的符号」默认清单，见 DEFAULT_EXTRA_SPLIT_PUNCTUATION）。
+DEFAULT_SPLIT_PUNCTUATION = frozenset({"\n"})
+# 共享断句配置的默认值：文稿匹配与转写共用的唯一真源，没有隐式基础集。
+# 转写脚本（generate_subtitle_*）的 CLI 参数默认值与本清单保持一致。
+DEFAULT_EXTRA_SPLIT_PUNCTUATION: Final[tuple[str, ...]] = (
+    "，",
+    "。",
+    "？",
+    "！",
+    "；",
+    ",",
+    ".",
+)
+DEFAULT_PRESERVE_PUNCTUATION: Final[tuple[str, ...]] = ("？", "！")
+# CLI 参数默认值（strip = 默认断句 − 默认保留；strong = 完整默认断句）。
+DEFAULT_STRIP_TAIL_PUNCT: Final[str] = "，。；,."
+DEFAULT_STRONG_PUNCT: Final[str] = "，。？！；,."
 
 
 class MatchCoverageError(ValueError):
@@ -55,8 +73,8 @@ class ScriptMatchRequest:
     output_mode: OutputMode
     output_directory: Path | None = None
     media_path: Path | None = None
-    extra_split_punctuation: tuple[str, ...] = ()
-    preserve_punctuation: tuple[str, ...] = ()
+    extra_split_punctuation: tuple[str, ...] = DEFAULT_EXTRA_SPLIT_PUNCTUATION
+    preserve_punctuation: tuple[str, ...] = DEFAULT_PRESERVE_PUNCTUATION
     match_mode: str = "script"
     clean_markdown_symbols: bool = True
 
@@ -138,20 +156,20 @@ def prepare_script_text(
     prepared_text = clean_markdown_inline_symbols(script_text) if clean_markdown_symbols else script_text
     split_symbols = tuple(symbol for symbol in extra_split_punctuation if symbol)
     preserve_symbols = tuple(symbol for symbol in preserve_punctuation if symbol)
-    # 基础断句集（逗号、句号、换行）始终生效；问号和感叹号由额外
-    # 断句符号配置提供。
+    # 断句符号完全由共享配置提供，换行始终生效；保留符号必须是已配置
+    # 的断句符号之一。
     missing = tuple(
         symbol
         for symbol in preserve_symbols
-        if symbol not in split_symbols and symbol not in DEFAULT_SPLIT_PUNCTUATION
+        if symbol not in split_symbols
     )
     if missing:
         raise ValueError(
-            "保留符号必须来自额外断句符号：" + "、".join(missing)
+            "保留符号必须来自断句符号：" + "、".join(missing)
         )
     if not split_symbols:
-        return prepared_text, "未配置额外断句符号。"
-    return prepared_text, f"额外断句符号：{len(split_symbols)} 个；保留：{len(preserve_symbols)} 个。"
+        return prepared_text, "未配置断句符号，仅按换行断句。"
+    return prepared_text, f"断句符号：{len(split_symbols)} 个；保留：{len(preserve_symbols)} 个。"
 
 
 def processed_script_text(

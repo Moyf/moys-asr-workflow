@@ -35,6 +35,7 @@ from maw.alignment_models import (
     resolve_alignment_model_path,
 )
 from maw.ffmpeg import resolve_ffmpeg_tool
+from maw.hub_download import prepare_hub_snapshot
 from maw.language import (
     normalize_language_code,
     split_mode_for_text,
@@ -131,6 +132,8 @@ class QwenForcedAlignerBackend:
     def _load(self) -> Any:
         if self._runtime is not None:
             return self._runtime
+        if self.device.strip().lower() == "mps":
+            os.environ.setdefault("PYTORCH_ENABLE_MPS_FALLBACK", "1")
         try:
             import torch  # type: ignore[import-not-found]
             from qwen_asr import Qwen3ForcedAligner  # type: ignore[import-not-found]
@@ -152,6 +155,9 @@ class QwenForcedAlignerBackend:
             self.model_path,
             model_cache_root=self.model_cache_root,
         )
+        if not Path(str(model)).is_dir() and "/" in str(model):
+            # 未下载过对齐模型：按 HF → ModelScope 回退准备本地快照。
+            model = str(prepare_hub_snapshot(str(model), model_cache_root=self.model_cache_root).path)
         kwargs = {"dtype": dtype, "device_map": device_map}
         with _model_cache_environment(self.model_cache_root):
             try:

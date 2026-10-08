@@ -2,6 +2,7 @@ import json
 import tempfile
 import unittest
 from pathlib import Path
+from unittest import mock
 
 from maw.alignment_models import (
     FIRERED_ASR2_CTC_DIRECTORY,
@@ -46,6 +47,40 @@ class AlignmentModelRegistryTests(unittest.TestCase):
                 ).status,
                 "installed",
             )
+
+    def test_qwen_forced_aligner_reuses_modelscope_fallback_cache(self) -> None:
+        """HF 回退下载写入 <缓存根>/modelscope 的对齐模型同样有效，
+        否则下载完成后会误报「未通过完整性检查」。"""
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            snapshot = (
+                root
+                / "modelscope"
+                / "models"
+                / "Qwen--Qwen3-ForcedAligner-0.6B"
+                / "snapshots"
+                / "master"
+            )
+            snapshot.mkdir(parents=True)
+            (snapshot / "model.safetensors").write_bytes(b"weights")
+            (snapshot / "config.json").write_text("{}", encoding="utf-8")
+            (snapshot / "preprocessor_config.json").write_text("{}", encoding="utf-8")
+            (snapshot / "tokenizer_config.json").write_text("{}", encoding="utf-8")
+
+            # 隔离开发机真实的 HF home 缓存，确保命中的是 ModelScope 快照。
+            with mock.patch(
+                "maw.alignment_models._huggingface_cache_roots",
+                return_value=[],
+            ):
+                found = find_alignment_model_path(QWEN_FORCED_ALIGNER_MODEL_ID, model_cache_root=root)
+                status = inspect_alignment_model(
+                    QWEN_FORCED_ALIGNER_MODEL_ID,
+                    model_cache_root=root,
+                    runtime_available=True,
+                ).status
+
+            self.assertEqual(found, snapshot.resolve())
+            self.assertEqual(status, "installed")
 
     def test_firered_requires_both_onnx_model_and_tokens(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:

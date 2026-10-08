@@ -83,6 +83,30 @@ class LocalModelDiscoveryTests(unittest.TestCase):
         self.assertEqual(installed.status, "installed")
         self.assertEqual(Path(installed.path).resolve(), main.resolve())
 
+    def test_qwen_modelscope_cache_is_detected_with_huggingface_aligner(self) -> None:
+        model = local_model("qwen3-asr-1.7b-local")
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            modelscope = root / "modelscope"
+            main = modelscope / "models" / "Qwen" / "Qwen3-ASR-1.7B"
+            main.mkdir(parents=True)
+            (main / "model.safetensors").write_bytes(b"weights")
+            huggingface = root / "huggingface"
+            aligner = huggingface / "models--Qwen--Qwen3-ForcedAligner-0.6B" / "snapshots" / "main"
+            aligner.mkdir(parents=True)
+            (aligner / "model.safetensors").write_bytes(b"aligner")
+
+            with (
+                mock.patch("maw.local_models._modelscope_cache_roots", return_value=[modelscope]),
+                mock.patch("maw.local_models._huggingface_cache_roots", return_value=[huggingface]),
+                mock.patch("maw.local_models.importlib.util.find_spec", return_value=mock.Mock()),
+            ):
+                status = inspect_local_model(model)
+
+        self.assertEqual(status.status, "installed")
+        self.assertTrue(status.installed)
+        self.assertEqual(Path(status.path).resolve(), main.resolve())
+
     def test_whisper_huggingface_cache_is_detected(self) -> None:
         model = local_model("whisper-large-v3-local")
         with tempfile.TemporaryDirectory() as temp_dir:
@@ -136,7 +160,73 @@ class LocalModelDiscoveryTests(unittest.TestCase):
         self.assertEqual(installed.status, "installed")
         self.assertEqual(Path(installed.path).resolve(), main.resolve())
 
-    def test_explicit_folder_is_used_without_persisting_it(self) -> None:
+    def test_moss_modelscope_mirror_cache_is_detected(self) -> None:
+        """MOSS 回退下载写入组织名不同的 ModelScope 镜像仓库（OpenMOSS），
+        缓存发现必须按映射 ID 兼容，否则已安装会被判「未检测到」。"""
+        model = local_model("moss-transcribe-diarize-local")
+        with tempfile.TemporaryDirectory() as temp_dir:
+            modelscope = Path(temp_dir) / "modelscope"
+            main = (
+                modelscope
+                / "models"
+                / "OpenMOSS--MOSS-Transcribe-Diarize"
+                / "snapshots"
+                / "master"
+            )
+            main.mkdir(parents=True)
+
+            with mock.patch.dict(os.environ, {"MODELSCOPE_CACHE": str(modelscope)}):
+                with mock.patch("maw.local_models._huggingface_cache_roots", return_value=[]):
+                    with mock.patch("maw.local_models.importlib.util.find_spec", return_value=mock.Mock()):
+                        missing = inspect_local_model(model)
+                        (main / "model.safetensors").write_bytes(b"weights")
+                        installed = inspect_local_model(model)
+
+        self.assertEqual(missing.status, "missing")
+        self.assertEqual(installed.status, "installed")
+        self.assertEqual(Path(installed.path).resolve(), main.resolve())
+
+    def test_whisper_modelscope_cache_is_detected(self) -> None:
+        model = local_model("whisper-large-v3-local")
+        with tempfile.TemporaryDirectory() as temp_dir:
+            modelscope = Path(temp_dir) / "modelscope"
+            main = (
+                modelscope
+                / "models"
+                / "Systran--faster-whisper-large-v3"
+                / "snapshots"
+                / "master"
+            )
+            main.mkdir(parents=True)
+
+            with mock.patch.dict(os.environ, {"MODELSCOPE_CACHE": str(modelscope)}):
+                with mock.patch("maw.local_models._huggingface_cache_roots", return_value=[]):
+                    with mock.patch("maw.local_models.importlib.util.find_spec", return_value=mock.Mock()):
+                        missing = inspect_local_model(model)
+                        (main / "model.bin").write_bytes(b"weights")
+                        installed = inspect_local_model(model)
+
+        self.assertEqual(missing.status, "missing")
+        self.assertEqual(installed.status, "installed")
+        self.assertEqual(Path(installed.path).resolve(), main.resolve())
+
+    def test_prepare_watch_paths_cover_modelscope_fallback_caches(self) -> None:
+        """准备进度监视必须覆盖 ModelScope 回退缓存，否则长时间 MS 下载
+        会一直显示「尚未报告新的缓存写入」。"""
+        from maw.local_models import _model_watch_paths
+
+        model = local_model("moss-transcribe-diarize-local")
+        with tempfile.TemporaryDirectory() as temp_dir:
+            modelscope = Path(temp_dir) / "modelscope"
+
+            with mock.patch.dict(os.environ, {"MODELSCOPE_CACHE": str(modelscope)}):
+                paths = _model_watch_paths(model, "", Path(temp_dir))
+
+        joined = {str(path) for path in paths}
+        self.assertTrue(any("OpenMOSS--MOSS-Transcribe-Diarize" in value for value in joined))
+        self.assertTrue(any("models--OpenMOSS-Team--MOSS-Transcribe-Diarize" in value for value in joined))
+
+    def test_explicit_folder_is_used(self) -> None:
         model = local_model("funasr-local")
         with tempfile.TemporaryDirectory() as temp_dir:
             (Path(temp_dir) / "model.pt").write_bytes(b"weights")

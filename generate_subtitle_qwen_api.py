@@ -35,6 +35,7 @@ from maw.project import repair_segment_durations
 from maw.qwen_audio import parse_qwen_audio_hotwords
 from maw.speaker import apply_speaker_colors, split_items_by_speaker
 from maw.console import configure_utf8_stdio
+from maw.energy_valley import snap_cue_boundaries
 from maw.ffmpeg import resolve_ffmpeg_tool, resolve_ffmpeg_tools
 from maw.language import (
     DEFAULT_MAX_WORDS,
@@ -429,13 +430,17 @@ def generate_srt(segments: list[dict]) -> str:
 
 # ===== 切句逻辑（与本地版 _split_words_to_segments 一致，纯 Python 复制） =====
 
-# 共享断句配置里的「额外断句符号」，并入转写侧强断句符号。
-# CLI 进程内只需配置一次（见 configure_extra_strong_punct），因此使用模块级集合。
-_EXTRA_STRONG_PUNCT: set[str] = set()
+# 共享断句配置里的「需要断句符号」：转写侧强断句符号的唯一来源。
+# 模块默认值与 CLI 参数默认值、Launcher 默认计划保持一致（无隐式内置
+# 强标点）；configure_extra_strong_punct 按运行时配置整体覆盖，空集合 =
+# 仅按换行断句。
+_DEFAULT_EXTRA_STRONG_PUNCT = "，。？！；,."
+_DEFAULT_STRIP_TAIL_PUNCT = "，。；,."
+_EXTRA_STRONG_PUNCT: set[str] = {ch for ch in _DEFAULT_EXTRA_STRONG_PUNCT if not ch.isspace()}
 
 
 def configure_extra_strong_punct(chars: object) -> None:
-    """注册额外断句符号（来自 Launcher 共享断句配置），并入转写强断句符号。"""
+    """按共享断句配置整体设置转写强断句符号（换行始终生效）。"""
     global _EXTRA_STRONG_PUNCT
     _EXTRA_STRONG_PUNCT = {ch for ch in str(chars or "") if not ch.isspace()}
 
@@ -701,12 +706,12 @@ def split_words_to_segments(items: list[dict], max_len: int, min_len: int = 5,
 
     切分策略（与本地版一致）：
     0. 按静音间隔（>= gap_split_ms）预切
-    1. 每个静音组内按强标点（。！？；\\n）继续切句
+    1. 每个静音组内按强标点（共享断句配置 + 换行）继续切句
     2. 合并过短片段（< min_len 字符），但合并后不得超过 max_len
     3. 对本身超长的片段，按弱标点（，、：,;）拆分
     4. 没有弱标点时，用 jieba 分词找最佳断点
     """
-    STRONG_PUNCT = _strong_punct_set("。！？；\n")
+    STRONG_PUNCT = _strong_punct_set("\n")
     WEAK_PUNCT = set("，、：,;")
 
     def to_seg(group):
@@ -779,8 +784,14 @@ _TRAILING_QUOTES = "\"'”’)]}』」"
 
 
 def _western_strong_end() -> str:
-    """西文句末强标点（含额外断句符号）。"""
-    return WESTERN_STRONG_END + "".join(_EXTRA_STRONG_PUNCT)
+    """西文句末强标点。
+
+    西文按「词尾字符」判句末。共享配置默认清单不注入西文句末（默认
+    里的逗号会把英文口语的每个逗号都变成句末，破坏短句合并）；用户
+    在默认清单之外新增的断句符号仍然生效（如 ~）。
+    """
+    extra = _EXTRA_STRONG_PUNCT - set(_DEFAULT_EXTRA_STRONG_PUNCT)
+    return WESTERN_STRONG_END + "".join(sorted(extra))
 
 
 def is_cjk_char(char: str) -> bool:
@@ -1229,11 +1240,12 @@ def split_coarse_segments(
     max_words: int = WESTERN_MAX_WORDS,
     min_words: int = WESTERN_MIN_WORDS,
     split_mode: str | None = None,
+    interpolated_boundary_indices: set[int] | None = None,
 ) -> list[dict]:
     """逐段调用 split_coarse_segment（见其 docstring）。"""
     result: list[dict] = []
     for segment in segments:
-        result.extend(split_coarse_segment(
+        pieces = split_coarse_segment(
             segment,
             max_len=max_len,
             min_len=min_len,
@@ -1241,7 +1253,10 @@ def split_coarse_segments(
             max_words=max_words,
             min_words=min_words,
             split_mode=split_mode,
-        ))
+        )
+        if interpolated_boundary_indices is not None and not segment.get("items"):
+            interpolated_boundary_indices.update(range(len(result) + 1, len(result) + len(pieces)))
+        result.extend(pieces)
     return result
 
 
@@ -2259,16 +2274,16 @@ def main():
         help="保留每条字幕末尾的逗号和句号（默认去除）",
     )
     parser.add_argument(
-        "--strip-tail-punct", default="，。",
-        help="句尾剥除的标点集合；传空串禁用剥除（默认剥逗号和句号）",
+        "--strip-tail-punct", default=_DEFAULT_STRIP_TAIL_PUNCT,
+        help="句尾剥除的标点集合；传空串禁用剥除（默认 = 共享断句配置默认清单 − 默认保留符号）",
     )
     parser.add_argument(
-        "--extra-strong-punct", default="",
-        help="额外强断句符号集合（来自共享断句配置；每个字符并入强断句符号，默认空）",
+        "--extra-strong-punct", default=_DEFAULT_EXTRA_STRONG_PUNCT,
+        help="强断句符号集合（与 Launcher 共享断句配置默认清单一致；每个字符并入强断句符号，仅换行始终生效）",
     )
     parser.add_argument(
-        "--gap-split", type=int, default=800,
-        help="静音切句阈值（毫秒），相邻字停顿超过此值则切句（默认 800）",
+        "--gap-split", type=int, default=500,
+        help="静音切句阈值（毫秒），相邻字停顿超过此值则切句（默认 500）",
     )
     parser.add_argument(
         "--speaker", action="store_true",
@@ -2537,6 +2552,7 @@ def main():
             coarse_segments = repair_nonpositive_duration_segments([
                 dict(segment) for segment in result["segments"]
             ])
+            interpolated_boundary_indices: set[int] = set()
             segments = split_coarse_segments(
                 coarse_segments,
                 max_len=args.max_len,
@@ -2545,7 +2561,12 @@ def main():
                 max_words=args.max_words,
                 min_words=args.min_words,
                 split_mode=split_mode,
+                interpolated_boundary_indices=interpolated_boundary_indices,
             )
+            if audio_path and Path(audio_path).is_file():
+                snapped = snap_cue_boundaries(segments, audio_path, boundary_indices=interpolated_boundary_indices)
+                if snapped:
+                    print(f"[输出] 已将 {snapped} 个插值切点吸附到语音能量谷")
             print(f"[解析] 字幕整理完成：{len(segments)} 条（保留云端句子边界）。")
         elif not items:
             print("[警告] 未获得时间戳，输出整段为单条字幕")

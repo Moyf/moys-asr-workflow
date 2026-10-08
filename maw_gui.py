@@ -12,6 +12,7 @@ from pathlib import Path
 
 from maw.app_paths import default_log_directory
 from maw.console import configure_utf8_stdio
+from maw.diagnostics import context_label, error_context
 
 
 _INTERNAL_FLAGS = frozenset(
@@ -179,14 +180,22 @@ def run_entrypoint(argv: Sequence[str] | None = None) -> int:
     try:
         return main(raw_argv)
     except Exception as error:  # noqa: BLE001 - final executable boundary
+        context = error_context()
         if _is_gui_invocation(raw_argv):
             if not _is_windows_blocked_runtime_error(error):
                 if sys.platform == "win32":
-                    _show_unknown_startup_hint()
+                    log_path = _write_startup_error_log(error, context=context)
+                    _show_unknown_startup_hint(context=context, log_path=log_path)
                 raise
-            log_path = _write_startup_error_log(error)
-            _show_startup_error(error, log_path)
+            log_path = _write_startup_error_log(error, context=context)
+            _show_startup_error(error, log_path, context=context)
             return 1
+        if _is_transcription_invocation(raw_argv):
+            # Diagnostic output must never replace the exception being reported.
+            try:
+                print(f"[{context_label(context)}]", file=sys.stderr)
+            except (OSError, ValueError):
+                pass
         if _is_transcription_invocation(raw_argv) and _is_ffmpeg_missing_error(error):
             print(f"错误：{_friendly_child_error(error)}", file=sys.stderr)
             return 1
@@ -208,7 +217,13 @@ def _is_windows_blocked_runtime_error(error: Exception) -> bool:
     return any(marker in detail for marker in _WINDOWS_BLOCKED_RUNTIME_MARKERS)
 
 
-def _show_unknown_startup_hint() -> None:
+def _startup_context_text(context: object = None) -> str:
+    captured = error_context(context)
+    occurred_at = captured["occurredAt"].replace("T", " ")
+    return f"版本：{captured['version']}\n发生时间：{occurred_at}"
+
+
+def _show_unknown_startup_hint(*, context: object = None, log_path: Path | None = None) -> None:
     """Give Windows users a short owner/FAQ route before the native traceback."""
     if sys.platform != "win32":
         return
@@ -219,6 +234,9 @@ def _show_unknown_startup_hint() -> None:
         "https://github.com/Moyf/moys-asr-workflow/issues/new\n\n"
         "随后将保留并显示原始错误详情。"
     )
+    message += "\n\n" + _startup_context_text(context)
+    if log_path is not None:
+        message += f"\n\n诊断日志：{log_path}"
     try:
         import ctypes
 
@@ -275,10 +293,20 @@ def _startup_error_fallback_log_path() -> Path:
     return default_log_directory() / "launcher-startup.log"
 
 
-def _write_startup_error_log(error: Exception) -> Path | None:
+def _write_startup_error_log(error: Exception, *, context: object = None) -> Path | None:
+    try:
+        return _write_startup_error_log_unchecked(error, context=context)
+    except Exception:  # Diagnostics must not replace the original startup error.
+        return None
+
+
+def _write_startup_error_log_unchecked(error: Exception, *, context: object = None) -> Path | None:
     from maw.local_log import redact_sensitive_text
 
-    content = redact_sensitive_text("".join(traceback.format_exception(type(error), error, error.__traceback__)))
+    content = redact_sensitive_text(
+        context_label(error_context(context)) + "\n\n"
+        + "".join(traceback.format_exception(type(error), error, error.__traceback__))
+    )
     paths = [_startup_error_log_path()]
     fallback = _startup_error_fallback_log_path()
     if fallback not in paths:
@@ -286,14 +314,14 @@ def _write_startup_error_log(error: Exception) -> Path | None:
     for path in paths:
         try:
             path.parent.mkdir(parents=True, exist_ok=True)
-            path.write_text(content, encoding="utf-8", newline="\n")
+            path.write_text(content, encoding="utf-8", errors="replace", newline="\n")
         except OSError:
             continue
         return path
     return None
 
 
-def _startup_error_message(error: Exception, log_path: Path | None = None) -> str:
+def _startup_error_message(error: Exception, log_path: Path | None = None, *, context: object = None) -> str:
     detail = str(error).strip()
     if any(marker in detail.casefold() for marker in _WINDOWS_BLOCKED_RUNTIME_MARKERS):
         message = (
@@ -310,11 +338,12 @@ def _startup_error_message(error: Exception, log_path: Path | None = None) -> st
         message = f"MAW 启动失败：{summary}\n\n请查看发布包内的 FAQ-常见问题.txt。"
     if log_path is not None:
         message += f"\n\n诊断日志：{log_path}"
+    message += "\n\n" + _startup_context_text(context)
     return message
 
 
-def _show_startup_error(error: Exception, log_path: Path | None = None) -> None:
-    message = _startup_error_message(error, log_path)
+def _show_startup_error(error: Exception, log_path: Path | None = None, *, context: object = None) -> None:
+    message = _startup_error_message(error, log_path, context=context)
     if sys.platform == "win32":
         try:
             import ctypes

@@ -30,6 +30,112 @@ test.afterAll(async () => {
   cleanupTempDir(tempDir);
 });
 
+test('English markers panel translates controls and preserves project names', async ({ page }) => {
+  await page.addInitScript(() => localStorage.setItem('mawe.language', 'en'));
+  await page.goto(server.url);
+  await page.locator('#markers-manage').click();
+  await expect(page.locator('#markers-panel-title')).toHaveText('Markers and regions');
+  await expect(page.locator('#markers-add-current')).toHaveText('Add marker at playhead');
+  await page.evaluate(() => MaweMarkerEditing.addMarkerAt(500, { name: '删除' }));
+  await expect(page.locator('.markers-item-title')).toHaveText('删除');
+  await expect(page.locator('.waveform-marker-label').first()).toHaveText('删除');
+  await expect(page.locator('#markers-summary')).toHaveText('Total 1: markers 1 · regions 0');
+  await page.locator('.markers-item-edit').click();
+  await expect(page.locator('.markers-color-swatches button').first()).toHaveAttribute('aria-label', 'Use color Blue');
+  await expect(page.locator('.markers-item-actions button').filter({ hasText: 'Seek and listen' })).toBeVisible();
+  await expect(page.locator('#markers-search')).toHaveAttribute('placeholder', 'Search names or notes');
+  await page.screenshot({ path: test.info().outputPath('markers-english.png') });
+});
+
+test('English waveform and sticker names preserve project text', async ({ page }) => {
+  await disableOnboarding(page);
+  await page.goto(`${server.url}?lang=en`);
+  await page.evaluate(() => {
+    const segment = MaweBoot.DATA.segments[0];
+    segment.text = '删除';
+    segment.items = [];
+    segment.sticker = { name: '保存', path: 'data:image/svg+xml,%3Csvg xmlns="http://www.w3.org/2000/svg" width="8" height="8"/%3E' };
+    MaweBoot.DATA.segments[1].sticker_ref = { headIdx: 0, name: '保存' };
+    MaweCuePanel.renderAll({ waveform: 'full' });
+  });
+  await expect(page.locator('.waveform-cue-block[data-idx="0"] .waveform-cue-label').first()).toHaveText('删除');
+  const row = page.locator('.cue[data-idx="0"]');
+  await expect(row.locator('.sname')).toHaveText('保存');
+  await expect(row.locator('.sticker-slot img')).toHaveAttribute('title', '保存');
+  const reference = page.locator('.cue[data-idx="1"] .sref');
+  await expect(reference).toHaveText('↑ 保存');
+  await expect(reference).toHaveAttribute('title', 'Inherits the sticker of subtitle 1');
+  await row.locator('.sticker-slot img').click();
+  await expect(page.locator('#sticker-preview-name')).toHaveText('保存');
+  await page.evaluate(() => {
+    window.MAWE_I18N.applyLanguage('zh');
+    window.MAWE_I18N.applyLanguage('en');
+  });
+  await expect(page.locator('#sticker-preview-name')).toHaveText('保存');
+  await expect(row.locator('.sname')).toHaveText('保存');
+  await page.screenshot({ path: test.info().outputPath('literal-sticker-name.png') });
+});
+
+test('English overlay subtitles and the editing panel preserve literal input', async ({ page }) => {
+  await disableOnboarding(page);
+  await page.goto(`${server.url}?lang=en`);
+  await page.evaluate(() => {
+    MaweBoot.DATA.overlay_track = { enabled: true, segments: [
+      { id: 'literal-overlay', start: 1000, end: 3000, text: '删除', items: [] },
+    ] };
+    MaweCuePanel.renderAll({ waveform: 'full' });
+  });
+  const text = page.locator('.overlay-track-cue .text').first();
+  await expect(text).toHaveText('删除');
+  await text.click();
+  const panel = page.locator('#cue-panel-text');
+  await panel.fill('');
+  await page.keyboard.insertText('甲');
+  expect(await panel.evaluate((element) => element.selectionStart)).toBe(1);
+  await page.keyboard.insertText('乙');
+  await expect(panel).toHaveValue('甲乙');
+  await expect(text).toHaveText('甲乙');
+});
+
+test('English timed-text differences preserve literal subtitle content', async ({ page }) => {
+  await disableOnboarding(page);
+  await page.goto(`${server.url}?lang=en`);
+  await page.evaluate(() => {
+    MaweBoot.DATA.segments[0].text = '删除';
+    MaweBoot.DATA.segments[0].items = [];
+    MaweCuePanel.renderAll({ waveform: 'full' });
+  });
+  await page.locator('#batch-operations-btn').click();
+  await page.locator('#timed-text-edit-btn').click();
+  await page.locator('#timed-text-edit-rows textarea').first().fill('保存');
+  const row = page.locator('.timed-text-edit-row[data-index="0"]');
+  await expect(row.locator('.timed-text-edit-diff-part').filter({ hasText: '删除' }).first()).toHaveText('删除');
+  await expect(row.locator('.timed-text-edit-diff-part').filter({ hasText: '保存' }).first()).toHaveText('保存');
+  await expect(row.locator('.timed-text-edit-diff-label').first()).toHaveText('Before:');
+  await page.screenshot({ path: test.info().outputPath('literal-diff.png') });
+});
+
+test('English split preview preserves both subtitle halves', async ({ page }) => {
+  await disableOnboarding(page);
+  await page.goto(`${server.url}?lang=en`);
+  await page.evaluate(() => {
+    MaweBoot.DATA.segments[0].text = '删除保存';
+    MaweBoot.DATA.segments[0].items = [];
+    MaweCuePanel.renderAll({ waveform: 'full' });
+    MaweSplitCore.openMainWaveformSplitModal(0, 4000);
+  });
+  await expect(page.locator('.multi-subtitle-split-preview-left').first()).toHaveText('删除');
+  await expect(page.locator('.multi-subtitle-split-preview-right').first()).toHaveText('保存');
+  await expect(page.locator('html')).toHaveAttribute('lang', 'en');
+  await page.screenshot({ path: test.info().outputPath('literal-split-preview.png') });
+  await page.evaluate(() => {
+    MaweBoot.DATA.segments[0].text = '主副无';
+    MaweSplitCore.openMainWaveformSplitModal(0, 4000);
+  });
+  await expect(page.locator('#multi-subtitle-split-main-text .multi-subtitle-split-char'))
+    .toHaveText(['主', '副', '无']);
+});
+
 test('English locale covers the editor shell and recent-project setting stays first', async ({ page }) => {
   await page.addInitScript(() => localStorage.setItem('mawe.language', 'en'));
   await page.goto(server.url);
@@ -64,7 +170,7 @@ test('English locale covers the editor shell and recent-project setting stays fi
     .filter((line) => /[\u3400-\u9fff]/u.test(line) && line !== '🌐中文');
   expect(untranslatedShellLines).toEqual([]);
   const untranslatedUiStrings = await page.evaluate(() => {
-    const skip = '#cue-list, #cue-panel-text, #overlay, #sticker-overlay-layer, #media-name, #json-name, #sticker-grid, #language-toggle, script, style';
+    const skip = '.cue .text, .multi-cue-column .text, #cue-panel-text, #overlay, #sticker-overlay-layer, #media-name, #json-name, #sticker-grid, #language-toggle, script, style';
     const found = new Set();
     const walker = document.createTreeWalker(document.body, NodeFilter.SHOW_TEXT);
     let node;
@@ -265,10 +371,10 @@ test('small subtitle-segment overlap can be auto-repaired and saved again', asyn
 
   await page.evaluate(() => {
     // 重叠修复 UX 针对毫秒时间基准；帧模式下 1ms 会被帧吸附抹平。
-    DATA.timebase = { unit: 'milliseconds', fps: 30 };
-    DATA.segments[0].end = DATA.segments[1].start + 1;
-    DATA.segments[0]._dirty = true;
-    renderAll({ waveform: 'overlay' });
+    MaweBoot.DATA.timebase = { unit: 'milliseconds', fps: 30 };
+    MaweBoot.DATA.segments[0].end = MaweBoot.DATA.segments[1].start + 1;
+    MaweBoot.DATA.segments[0]._dirty = true;
+    MaweCuePanel.renderAll({ waveform: 'overlay' });
   });
   await page.keyboard.press('Control+s');
   const hint = page.locator('.hint-project-error');
@@ -280,7 +386,7 @@ test('small subtitle-segment overlap can be auto-repaired and saved again', asyn
   ));
   await hint.locator('.hint-project-repair-auto').click();
   expect((await retry).ok()).toBe(true);
-  await expect.poll(() => page.evaluate(() => DATA.segments[1].start)).toBe(50001);
+  await expect.poll(() => page.evaluate(() => MaweBoot.DATA.segments[1].start)).toBe(50001);
   await expect(page.locator('.hint-card').last()).toContainText('保存成功！');
   expect(saveAttempts).toBe(2);
 });
@@ -304,10 +410,10 @@ test('larger subtitle-segment overlap requires an explicit repair direction', as
   });
   await page.evaluate(() => {
     // 同上：钉住毫秒时间基准，避免帧吸附改写时间边界。
-    DATA.timebase = { unit: 'milliseconds', fps: 30 };
-    DATA.segments[0].end = DATA.segments[1].start + 2000;
-    DATA.segments[0]._dirty = true;
-    renderAll({ waveform: 'overlay' });
+    MaweBoot.DATA.timebase = { unit: 'milliseconds', fps: 30 };
+    MaweBoot.DATA.segments[0].end = MaweBoot.DATA.segments[1].start + 2000;
+    MaweBoot.DATA.segments[0]._dirty = true;
+    MaweCuePanel.renderAll({ waveform: 'overlay' });
   });
 
   await page.keyboard.press('Control+s');

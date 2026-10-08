@@ -47,6 +47,10 @@ npm run dev
 npm start -- "D:\Projects\clip.mosp"
 ```
 
+## 与工程文件格式的关系
+
+MOSE 与 MAW/MAWE 共享同一份工程文件契约：内容是 UTF-8 JSON，推荐扩展名为 `.mosp`，同时兼容旧的 `.json`。`.workspace.json` 是独立的工作区迁移文件，不是字幕工程。
+
 ## 构建统一套件与 Installer
 
 在仓库根目录先构建 MAW 和 MOSE，再进行统一 staging：

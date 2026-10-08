@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import base64
 import importlib.util
 import io
 import json
@@ -64,6 +65,201 @@ class LocalEditorServerTests(unittest.TestCase):
                 handler.open_backup_directory()
             opener.assert_called_once_with(str(self.root / '_maw' / '备份'))
             self.assertEqual(handler.send_json.call_args.args[0], 200)
+
+    def _ass_frame_handler(self) -> object:
+        handler = object.__new__(server_editor.EditorRequestHandler)
+        handler.server = mock.Mock()
+        handler.server.project.media_path = self.media
+        handler.server.request_token = 'test-token'
+        handler.send_json = mock.Mock()
+        return handler
+
+    def test_ass_frame_endpoint_requires_token_and_valid_payload(self) -> None:
+        handler = self._ass_frame_handler()
+        payload = {'requestToken': 'test-token', 'ass': '[Script Info]\n', 'timeMs': 1200}
+
+        handler.read_json_request = mock.Mock(return_value={**payload, 'requestToken': 'wrong'})
+        handler.render_ass_frame()
+        self.assertEqual(handler.send_json.call_args.args[0], 403)
+
+        for bad_request in (
+            {**payload, 'ass': '   '},
+            {**payload, 'ass': None},
+            {**payload, 'timeMs': '1200'},
+            {**payload, 'timeMs': -1},
+            {**payload, 'timeMs': True},
+            {**payload, 'timeMs': 9_007_199_254_740_992},
+            {**payload, 'timeMs': 10 ** 1000},
+        ):
+            handler.read_json_request = mock.Mock(return_value=bad_request)
+            handler.render_ass_frame()
+            self.assertEqual(handler.send_json.call_args.args[0], 400)
+
+        handler.server.project.media_path = None
+        handler.read_json_request = mock.Mock(return_value=payload)
+        handler.render_ass_frame()
+        self.assertEqual(handler.send_json.call_args.args[0], 400)
+        self.assertIn('媒体', handler.send_json.call_args.args[1]['error'])
+
+    def test_ass_frame_endpoint_requires_libass_filter(self) -> None:
+        handler = self._ass_frame_handler()
+        handler.read_json_request = mock.Mock(return_value={'requestToken': 'test-token', 'ass': '[Script Info]\n', 'timeMs': 0})
+        handler.server.ensure_libass_supported = mock.Mock(return_value=False)
+        with mock.patch.object(server_editor, 'editor_ffmpeg_binary', return_value=Path('ffmpeg')):
+            handler.render_ass_frame()
+        self.assertEqual(handler.send_json.call_args.args[0], 400)
+        self.assertIn('libass', handler.send_json.call_args.args[1]['error'])
+        self.assertEqual(handler.send_json.call_args.args[1]['code'], 'ASS_FRAME_LIBASS_UNAVAILABLE')
+        handler.server.ensure_libass_supported.assert_called_once_with(Path('ffmpeg'))
+
+    def test_ass_frame_endpoint_reports_missing_ffmpeg_code(self) -> None:
+        handler = self._ass_frame_handler()
+        handler.read_json_request = mock.Mock(return_value={
+            'requestToken': 'test-token', 'ass': '[Script Info]\n', 'timeMs': 0,
+        })
+        with mock.patch.object(server_editor, 'editor_ffmpeg_binary', return_value=None):
+            handler.render_ass_frame()
+        self.assertEqual(handler.send_json.call_args.args[0], 400)
+        self.assertEqual(handler.send_json.call_args.args[1]['code'], 'ASS_FRAME_FFMPEG_MISSING')
+
+    def test_libass_capability_cache_tracks_binary_replacement(self) -> None:
+        server = object.__new__(server_editor.EditorServer)
+        server.ass_frame_lock = threading.Lock()
+        server.libass_supported = None
+        server.libass_binary_signature = None
+        first = self.root / 'first-ffmpeg'
+        second = self.root / 'second-ffmpeg'
+        first.write_bytes(b'old build')
+        second.write_bytes(b'new build')
+        with mock.patch.object(server_editor, 'ffmpeg_supports_libass', side_effect=[False, True, False]) as probe:
+            self.assertFalse(server.ensure_libass_supported(first))
+            self.assertFalse(server.ensure_libass_supported(first))
+            self.assertEqual(probe.call_count, 1)
+            self.assertTrue(server.ensure_libass_supported(second))
+            self.assertTrue(server.ensure_libass_supported(second))
+            self.assertEqual(probe.call_count, 2)
+            second.write_bytes(b'replaced build with different size')
+            self.assertFalse(server.ensure_libass_supported(second))
+            self.assertEqual(probe.call_count, 3)
+
+    def test_ass_frame_endpoint_returns_base64_png_and_warnings(self) -> None:
+        handler = self._ass_frame_handler()
+        handler.read_json_request = mock.Mock(return_value={'requestToken': 'test-token', 'ass': '[Script Info]\n', 'timeMs': 2500})
+        handler.server.ensure_libass_supported = mock.Mock(return_value=True)
+        warnings = ['字幕字体「Demo」缺少字形 U+4E2D，实际画面可能显示方框。']
+        with mock.patch.object(server_editor, 'editor_ffmpeg_binary', return_value=Path('ffmpeg')), \
+             mock.patch.object(server_editor, 'render_ass_frame_png', return_value=(b'\x89PNG-data', warnings)) as renderer:
+            handler.render_ass_frame()
+        self.assertEqual(handler.send_json.call_args.args[0], 200)
+        body = handler.send_json.call_args.args[1]
+        self.assertTrue(body['ok'])
+        self.assertEqual(base64.b64decode(body['image']), b'\x89PNG-data')
+        self.assertEqual(body['timeMs'], 2500)
+        self.assertEqual(body['warnings'], warnings)
+        media_path, ass_text, time_ms, ffmpeg = renderer.call_args.args
+        self.assertEqual(media_path, self.media)
+        self.assertEqual(ass_text, '[Script Info]\n')
+        self.assertEqual(time_ms, 2500)
+        self.assertEqual(ffmpeg, Path('ffmpeg'))
+
+    def test_ffmpeg_supports_libass_probe_matches_filter_listing(self) -> None:
+        listing = (
+            " T. ass               V->V       Render ASS subtitles onto input video using the libass library.\n"
+            " T. subtitles          V->V       Render text subtitles onto input video using the libass library.\n"
+        )
+        with mock.patch.object(server_editor.subprocess, 'run', return_value=subprocess.CompletedProcess([], 0, stdout=listing, stderr='')):
+            self.assertTrue(server_editor.ffmpeg_supports_libass(Path('ffmpeg')))
+        with mock.patch.object(server_editor.subprocess, 'run', return_value=subprocess.CompletedProcess([], 0, stdout=' T. drawtext V->V Draw text\n', stderr='')):
+            self.assertFalse(server_editor.ffmpeg_supports_libass(Path('ffmpeg')))
+        with mock.patch.object(server_editor.subprocess, 'run', side_effect=OSError('missing')):
+            self.assertFalse(server_editor.ffmpeg_supports_libass(Path('ffmpeg')))
+
+    def test_render_ass_frame_png_builds_burn_style_command(self) -> None:
+        calls = []
+
+        def fake_run(command, **kwargs):
+            calls.append((command, kwargs))
+            stderr = (
+                "[Parsed_ass_0 @ 0x1] fontselect: failed to find any fallback "
+                "with glyph 0x1f914 for font: (Demo, 400, 0)\n"
+                "fontselect: failed to find any fallback with glyph 0x01F914 for font: (Demo, 400, 0)\n"
+            ).encode('utf-8')
+            return subprocess.CompletedProcess(command, 0, stdout=b'\x89PNG\r\n\x1a\n', stderr=stderr)
+
+        with mock.patch.object(server_editor.subprocess, 'run', side_effect=fake_run):
+            png, warnings = server_editor.render_ass_frame_png(self.media, '[Script Info]\n', 1500, Path('ffmpeg'))
+
+        self.assertTrue(png.startswith(b'\x89PNG'))
+        self.assertEqual(len(warnings), 1)
+        self.assertIn('Demo', warnings[0])
+        self.assertIn('U+1F914（🤔）', warnings[0])
+        command, kwargs = calls[0]
+        self.assertEqual(command[command.index('-vf') + 1], "format=rgb24,ass=filename='frame.ass'")
+        self.assertEqual(command[command.index('-frames:v') + 1], '1')
+        self.assertEqual(command[command.index('-map') + 1], '0:V:0')
+        # -copyts 保持原始时间戳，libass 才能按播放头时间命中字幕事件。
+        self.assertEqual(command.index('-copyts'), command.index('-ss') + 2)
+        self.assertEqual(command[command.index('-ss') + 1], '1.500')
+        self.assertEqual(command[-1], 'pipe:1')
+        self.assertTrue(Path(kwargs['cwd']).name.startswith('maw-ass-frame-'))
+
+    def test_render_ass_frame_png_reports_empty_output_as_error(self) -> None:
+        with mock.patch.object(
+            server_editor.subprocess, 'run',
+            return_value=subprocess.CompletedProcess([], 0, stdout=b'', stderr=b'Output file is empty'),
+        ):
+            with self.assertRaisesRegex(server_editor.AssFrameError, '没有视频画面'):
+                server_editor.render_ass_frame_png(self.media, '[Script Info]\n', 0, Path('ffmpeg'))
+
+    def test_ass_frame_render_uses_real_libass_when_available(self) -> None:
+        ffmpeg = server_editor.editor_ffmpeg_binary()
+        if ffmpeg is None:
+            self.skipTest('未找到 FFmpeg，跳过真实单帧渲染验证')
+        if not server_editor.ffmpeg_supports_libass(ffmpeg):
+            # Homebrew 等发行版构建可能不编译 libass（无 ass 滤镜）。
+            self.skipTest('FFmpeg 未编译 ass 滤镜，跳过真实单帧渲染验证')
+        with tempfile.TemporaryDirectory() as directory:
+            media = Path(directory) / 'clip.mp4'
+            encode = subprocess.run([
+                str(ffmpeg), '-hide_banner', '-loglevel', 'error',
+                '-f', 'lavfi', '-i', 'color=black:s=320x180:d=1',
+                '-c:v', 'mpeg4', '-q:v', '20', '-y', str(media),
+            ], capture_output=True, text=True)
+            self.assertEqual(encode.returncode, 0, encode.stderr)
+            ass_text = (
+                '[Script Info]\nScriptType: v4.00+\nPlayResX: 320\nPlayResY: 180\nYCbCr Matrix: None\n\n'
+                '[V4+ Styles]\n'
+                'Format: Name, Fontname, Fontsize, PrimaryColour, SecondaryColour, OutlineColour, BackColour, Bold, Italic, Underline, StrikeOut, ScaleX, ScaleY, Spacing, Angle, BorderStyle, Outline, Shadow, Alignment, MarginL, MarginR, MarginV, Encoding\n'
+                'Style: Default,Arial,24,&H0000FF00,&H000000FF,&H00000000,&H00000000,0,0,0,0,100,100,0,0,1,2,0,2,10,10,10,1\n\n'
+                '[Events]\n'
+                'Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text\n'
+                'Dialogue: 0,0:00:00.00,0:00:01.00,Default,,0,0,0,,帧预览\n'
+            )
+            png, warnings = server_editor.render_ass_frame_png(media, ass_text, 300, ffmpeg)
+            # 回归守卫：字幕必须真实改变像素。输入侧 -ss 若缺 -copyts 会重置
+            # 时间戳，libass 按错误时间判定事件，画面会与无字幕帧完全一致。
+            plain = subprocess.run([
+                str(ffmpeg), '-hide_banner', '-loglevel', 'error',
+                '-ss', '0.300', '-copyts', '-i', str(media),
+                '-frames:v', '1', '-c:v', 'png', '-f', 'image2pipe', 'pipe:1',
+            ], capture_output=True)
+            self.assertEqual(plain.returncode, 0, plain.stderr.decode('utf-8', 'replace'))
+            # Source dimensions are preserved, and RGB glyph composition must
+            # not introduce red/blue chroma fringing around pure green text.
+            self.assertEqual(struct.unpack('>II', png[16:24]), (320, 180))
+            decoded = subprocess.run([
+                str(ffmpeg), '-hide_banner', '-loglevel', 'error',
+                '-i', 'pipe:0', '-frames:v', '1', '-pix_fmt', 'rgb24',
+                '-f', 'rawvideo', 'pipe:1',
+            ], input=png, capture_output=True)
+            self.assertEqual(decoded.returncode, 0, decoded.stderr.decode('utf-8', 'replace'))
+            pixels = decoded.stdout
+            self.assertGreater(sum(value > 0 for value in pixels[1::3]), 50)
+            self.assertLessEqual(max(pixels[0::3]), 1)
+            self.assertLessEqual(max(pixels[2::3]), 1)
+        self.assertTrue(png.startswith(b'\x89PNG'))
+        self.assertIsInstance(warnings, list)
+        self.assertNotEqual(png, plain.stdout)
 
     def test_version_backup_does_not_save_or_remember_snapshot(self) -> None:
         project = server_editor.load_project(
@@ -974,7 +1170,7 @@ class LocalEditorServerTests(unittest.TestCase):
         self.assertIn('"autoLoadedMediaName": "clip.mp3", "recentProjectsUrl": "/api/recent-projects/open", ', page)
         self.assertIn('"attachUrl": "/api/project/attach", "settingsUrl": "/api/settings", ', page)
         self.assertIn('"settingsUrl": "/api/settings", "recentProjects": [{"path": "', page)
-        self.assertIn('"name": "clip.json"}], "assStylesUrl": "/api/ass-styles", "autoOpenLastProject": true, "savedWorkspaces": {}, ', page)
+        self.assertIn('"name": "clip.json"}], "assStylesUrl": "/api/ass-styles", "assFrameUrl": "/api/ass-frame", "autoOpenLastProject": true, "savedWorkspaces": {}, ', page)
         self.assertIn('"presetWorkspaces": {}, ', page)
         self.assertIn('"activeWorkspaceName": "", "onboardingStatus": ""};', page)
         desktop_page = server_editor.build_server_page(

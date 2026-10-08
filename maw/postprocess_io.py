@@ -8,9 +8,11 @@ import json
 import os
 import re
 import tempfile
+from collections.abc import Mapping
 from dataclasses import dataclass
 from pathlib import Path
 
+from maw.file_errors import file_write_operation
 from maw.output_naming import OPERATION_NAMES, is_translation_operation, operation_suffix
 from maw.project import normalize_project
 from maw.project_preview import JsonDict, JsonValue
@@ -25,6 +27,9 @@ class SubtitleArtifact:
     warnings: tuple[str, ...] = ()
     translated_srt_path: Path | None = None
     media_path: Path | None = None
+    # Operation-specific counters (currently the AI cleanup pass); surfaced by
+    # the toolbox bridge but never part of the written files themselves.
+    stats: Mapping[str, int] | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -118,6 +123,7 @@ def write_artifacts(
     warnings: tuple[str, ...] = (),
     output_directory: Path | None = None,
     media_path: Path | None = None,
+    stats: Mapping[str, int] | None = None,
 ) -> SubtitleArtifact:
     normalized = normalize_project(project)
     raw_media = normalized.get("media")
@@ -143,6 +149,7 @@ def write_artifacts(
         project_path=project_path,
         srt_path=srt_path,
         warnings=warnings,
+        stats=stats,
     )
 
 
@@ -248,6 +255,7 @@ def _known_operation_token(operation: str, *, lang: str | None = None) -> str:
     return re.sub(r"[^\w-]+", "-", display, flags=re.UNICODE).strip("-") or "processed"
 
 
+@file_write_operation
 def _atomic_write(path: Path, text: str) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     descriptor, temporary_name = tempfile.mkstemp(prefix=f".{path.name}.", suffix=".tmp", dir=path.parent)
@@ -257,5 +265,8 @@ def _atomic_write(path: Path, text: str) -> None:
             _ = handle.write(text)
         os.replace(temporary_name, path)
     except (OSError, UnicodeError):
-        Path(temporary_name).unlink(missing_ok=True)
+        try:
+            Path(temporary_name).unlink(missing_ok=True)
+        except OSError:
+            pass  # Do not hide the write failure if cleanup also fails.
         raise

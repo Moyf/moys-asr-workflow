@@ -10,6 +10,7 @@ from unittest import mock
 
 from maw.ass_styles import (
     ASS_STYLE_LIBRARY_SCHEMA,
+    ass_alpha,
     ass_color,
     ass_style_force_style,
     ass_style_line,
@@ -28,6 +29,7 @@ class AssStyleLibraryTests(unittest.TestCase):
         library = default_ass_style_library()
 
         self.assertEqual(library["schema"], ASS_STYLE_LIBRARY_SCHEMA)
+        self.assertEqual(library["version"], 2)
         self.assertEqual(library["assignments"], {
             "srtBurnStyleId": "default",
             "assExportProfileId": "ass",
@@ -40,6 +42,45 @@ class AssStyleLibraryTests(unittest.TestCase):
         self.assertEqual([profile["id"] for profile in library["assProfiles"]], ["ass"])
         self.assertTrue(library["styles"][0]["builtin"])
         self.assertTrue(library["assProfiles"][0]["builtin"])
+        self.assertEqual(find_ass_style(library, "ass")["emphasisScale"], 1.3)
+
+    def test_new_defaults_match_configured_parameters_and_keep_saved_library(self) -> None:
+        library = default_ass_style_library()
+        srt, main, extension = library["styles"]
+        for style in (srt, main):
+            self.assertEqual((style["fontSize"], style["outline"], style["marginV"], style["bold"]),
+                             (86, 6, 88, True))
+        self.assertEqual((main["emphasisColor"], main["emphasisScale"], main["backColor"], main["backOpacity"]),
+                         ("#ffaa00", 1.3, "#ff8647", 60))
+        self.assertEqual((extension["fontSize"], extension["outline"], extension["marginV"], extension["primaryColor"]),
+                         (64, 2, 36, "#ffd34d"))
+        self.assertEqual(library["assProfiles"][0]["animations"]["fad"],
+                         {"enabled": True, "inMs": 250, "outMs": 250})
+        main.update(fontName="Arial", fontSize=72, emphasisScale=1.1, backColor="#000000",
+                    backOpacity=100, bold=False, outline=4, marginV=80)
+        library["assProfiles"][0]["animations"]["fad"]["enabled"] = False
+        self.assertEqual(normalize_ass_style_library(library), library)
+
+    def test_v1_emphasis_scale_default_migrates_for_builtin_styles_only(self) -> None:
+        legacy = normalize_ass_style_library({
+            "version": 1,
+            "styles": [
+                {"id": "default", "emphasisScale": 1.0},
+                {"id": "ass", "emphasisScale": 1.0},
+                {"id": "ass-extension", "emphasisScale": 1.0},
+                {"id": "custom-one", "emphasisScale": 1.0},
+            ],
+        })
+        self.assertEqual(legacy["version"], 2)
+        for style_id in ("default", "ass", "ass-extension"):
+            self.assertEqual(find_ass_style(legacy, style_id)["emphasisScale"], 1.1)
+        self.assertEqual(find_ass_style(legacy, "custom-one")["emphasisScale"], 1.0)
+
+        current = normalize_ass_style_library({
+            "version": 2,
+            "styles": [{"id": "ass", "emphasisScale": 1.0}],
+        })
+        self.assertEqual(find_ass_style(current, "ass")["emphasisScale"], 1.0)
 
     def test_extension_style_slot_is_protected_and_repaired(self) -> None:
         # 旧版库没有 ass-extension 槽位：归一化补齐内置副字幕样式，
@@ -65,8 +106,33 @@ class AssStyleLibraryTests(unittest.TestCase):
         )
         default_extension = find_ass_style(fallback, "ass-extension")
         self.assertEqual(default_extension["primaryColor"], "#ffd34d")
-        self.assertEqual(default_extension["fontSize"], 54)
-        self.assertEqual(default_extension["marginV"], 166)
+        self.assertEqual(default_extension["fontSize"], 64)
+        self.assertEqual(default_extension["marginV"], 36)
+
+    def test_emphasis_style_settings_survive_server_normalization(self) -> None:
+        library = normalize_ass_style_library({
+            "styles": [{"id": "ass", "emphasisSyntax": "single",
+                        "emphasisColor": "#aabbcc", "emphasisScale": 1.27,
+                        "emphasisStyle": "stroke", "smallTextScale": 0.63, "largeTextScale": 2.2}],
+        })
+        style = find_ass_style(library, "ass")
+        self.assertNotIn("emphasisSyntax", style)
+        self.assertEqual((style["emphasisColor"], style["emphasisStyle"]),
+                         ("#aabbcc", "stroke"))
+        self.assertEqual(style["emphasisScale"], 1.25)
+        self.assertEqual(style["smallTextScale"], 0.65)
+        self.assertEqual(style["largeTextScale"], 2.2)
+        invalid = normalize_ass_style_library({
+            "styles": [{"id": "ass", "emphasisSyntax": {},
+                        "emphasisColor": "invalid", "emphasisScale": "bad", "emphasisStyle": []}],
+        })
+        self.assertNotIn("emphasisSyntax", find_ass_style(invalid, "ass"))
+        self.assertEqual(find_ass_style(invalid, "ass")["emphasisColor"], "#ffaa00")
+        self.assertEqual(find_ass_style(invalid, "ass")["emphasisStyle"], "text")
+        self.assertEqual(find_ass_style(invalid, "ass")["emphasisScale"], 1.3)
+        self.assertEqual(find_ass_style(invalid, "ass")["smallTextScale"], 0.8)
+        self.assertEqual(find_ass_style(invalid, "ass")["largeTextScale"], 1.5)
+        self.assertEqual(find_ass_style(normalize_ass_style_library({"styles": [{"id": "ass", "emphasisScale": 9}]}), "ass")["emphasisScale"], 1.5)
 
     def test_legacy_full_library_keeps_every_custom_style(self) -> None:
         # 旧版满员库（2 内置 + 62 自定义 = 64）：归一化补入第三个内置
@@ -158,6 +224,53 @@ class AssStyleLibraryTests(unittest.TestCase):
         self.assertIn("Bold=-1", force_style)
         self.assertIn("BorderStyle=3", force_style)
 
+    def test_outline_and_shadow_opacity_map_to_ass_alpha(self) -> None:
+        # ASS 的 AA 通道：00 = 不透明，FF = 全透明；样式用「不透明度百分比」表达。
+        self.assertEqual(ass_alpha(100), 0)
+        self.assertEqual(ass_alpha(50), 128)
+        self.assertEqual(ass_alpha(0), 255)
+        # 显式 None 与 JS null 一样视为 0%；缺失字段另由样式归一化补齐。
+        self.assertEqual(ass_alpha(None), 255)
+        self.assertEqual(ass_alpha(150), 0)
+        self.assertEqual(ass_alpha(30), 179)
+        self.assertEqual(ass_alpha(70), 77)
+        self.assertEqual(ass_alpha(50.5), 126)
+        self.assertEqual(ass_alpha(float("nan")), 0)
+        self.assertEqual(ass_color("#123456", opacity=50), "&H80563412")
+
+        style = {
+            "fontName": "Arial",
+            "fontSize": 24,
+            "outlineColor": "#112233",
+            "backColor": "#445566",
+            "outlineOpacity": 50,
+            "backOpacity": 0,
+        }
+        line = ass_style_line(style, name="Alpha")
+        self.assertIn("&H80332211", line)
+        self.assertIn("&HFF665544", line)
+        force_style = ass_style_force_style(style)
+        self.assertIn("OutlineColour=&H80332211", force_style)
+        self.assertIn("BackColour=&HFF665544", force_style)
+
+    def test_opacity_rounding_matches_browser_style_library(self) -> None:
+        library = normalize_ass_style_library({
+            "styles": [{"id": "alpha", "outlineOpacity": 50.5, "backOpacity": None}],
+        })
+        style = find_ass_style(library, "alpha")
+        self.assertEqual(style["outlineOpacity"], 51)
+        self.assertEqual(style["backOpacity"], 0)
+
+    def test_opacity_defaults_keep_legacy_styles_opaque(self) -> None:
+        # 旧样式库没有不透明度字段：归一化补 100（完全不透明），导出字节不变。
+        library = normalize_ass_style_library({
+            "styles": [{"id": "legacy", "name": "Legacy", "outlineColor": "#112233"}],
+        })
+        legacy = find_ass_style(library, "legacy")
+        self.assertEqual(legacy["outlineOpacity"], 100)
+        self.assertEqual(legacy["backOpacity"], 100)
+        self.assertIn("&H00332211", ass_style_line(legacy, name="Legacy"))
+
     def test_save_is_atomic_and_loads_normalized_user_library(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
             path = Path(directory) / "ass-styles.json"
@@ -214,6 +327,14 @@ class AssStyleLibraryTests(unittest.TestCase):
         ffmpeg = shutil.which("ffmpeg")
         if not ffmpeg:
             self.skipTest("ffmpeg 不在 PATH 上，跳过真实滤镜解析验证")
+        probe = subprocess.run(
+            [ffmpeg, "-hide_banner", "-loglevel", "error", "-filters"],
+            capture_output=True, text=True,
+        )
+        if "subtitles" not in probe.stdout.split():
+            # Homebrew 等发行版构建可能不编译 libass（无 subtitles 滤镜）。
+            # 滤镜参数转义规则已由上方纯解析用例覆盖，此处只补真实解析。
+            self.skipTest("ffmpeg 未编译 subtitles 滤镜，跳过真实滤镜解析验证")
 
         style = {"fontName": "O'Brien", "fontSize": 24}
         with tempfile.TemporaryDirectory() as directory:

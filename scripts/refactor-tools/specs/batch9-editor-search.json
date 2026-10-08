@@ -1,0 +1,11 @@
+{
+  "file": "editor-search.js",
+  "ns": "MaweSearch",
+  "header": "搜索：过滤应用、防抖与清空按钮。",
+  "symbols": [
+    "applySearch",
+    "searchDebounce",
+    "searchWrap",
+    "refreshSearchClearVisibility"
+  ]
+}

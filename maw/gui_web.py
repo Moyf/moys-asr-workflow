@@ -22,9 +22,23 @@ from pathlib import Path
 from threading import Event, Lock
 from typing import BinaryIO, Final, final
 
-from maw.app_paths import default_app_data_root, default_emoji_font_path
+from send2trash import send2trash
+
+from maw.app_paths import application_directory, default_app_data_root, default_emoji_font_path
+from maw.asr_presets import (
+    MAX_NAME_LENGTH,
+    create_preset,
+    inspect_migration,
+    list_presets,
+    migrate_presets,
+    preset_path,
+    read_preset_document,
+    rename_preset,
+    validate_options,
+    write_preset,
+)
 from maw.ass_styles import find_ass_style, load_ass_style_library
-from maw.ffmpeg import FfmpegTools, media_duration_seconds, resolve_ffmpeg_tools
+from maw.ffmpeg import MACOS_FFMPEG_CANDIDATE_DIRECTORIES, FfmpegTools, ffmpeg_search_path, media_duration_seconds, resolve_ffmpeg_tools
 from maw.media_cache import embed_media_caches
 from maw.gui_config import (
     DEFAULT_ENV_PATH,
@@ -53,6 +67,8 @@ from maw.gui_workflow import TranscriptionCancelledError, TranscriptionProcessEr
 from maw.launcher_batch import BatchItem, run_batch
 from maw.output_naming import format_elapsed, maw_root
 from maw.local_log import LocalLogSink, TeeWriter, default_log_directory, install_stdio_tee, redact_sensitive_text
+from maw.diagnostics import app_version, error_context
+from maw.file_errors import file_error_code
 from maw.local_debug import local_debug_manifest_path
 from maw.alignment_models import ALIGNMENT_MODELS, alignment_model_by_id, alignment_models_payload, inspect_alignment_model, normalize_alignment_model_id
 from maw.local_runtime import (
@@ -80,6 +96,7 @@ from maw.postprocess import FixedProcessRequest, LlmPostprocessRequest, OutputMo
 from maw.postprocess_io import PostprocessFileError, read_project, read_srt
 from maw.project_io import write_mosp
 from maw.project import ProjectValidationFailed, normalize_project
+from maw.postprocess_ai_cleanup import AiCleanupError, AiCleanupRequest, llm_complete, run_ai_cleanup as process_ai_cleanup
 from maw.postprocess_ffmpeg import (
     AUDIO_BITRATES,
     MAX_BURN_CRF,
@@ -209,6 +226,10 @@ ERROR_MESSAGES: Final[dict[str, str]] = {
     "custom_prompt_required": "A custom prompt is required.",
     "postprocess_config_invalid": "自动后处理配置不完整。",
     "postprocess_failed": "转写已完成，但自动后处理失败。",
+    "intermediate_path_too_long": "中间文件创建失败：文件名或路径过长，请缩短原文件名或目录路径，重新选择文件后重试。",
+    "file_path_too_long": "文件名或路径过长，请缩短原文件名或目录路径，重新选择文件后重试。",
+    "intermediate_file_failed": "中间文件创建或写入失败，请检查目录权限、磁盘空间和文件占用。",
+    "file_write_failed": "文件创建或写入失败，请检查目录权限、磁盘空间和文件占用。",
     "subtitle_invalid": "Subtitle or project could not be parsed.",
     "script_invalid": "Script could not be parsed.",
     "match_too_low": "Script and subtitle match coverage is too low.",
@@ -265,14 +286,7 @@ def _toolbox_operation(method: Callable[..., object]) -> Callable[..., object]:
 
 def _app_version(paths: object) -> str:
     """Read project.version from pyproject.toml for the hero wordmark; fall back to the bundled release."""
-    root = getattr(paths, "root", None)
-    pyproject = (root / "pyproject.toml") if root else Path("pyproject.toml")
-    try:
-        text = Path(pyproject).read_text(encoding="utf-8")
-    except OSError:
-        return BUNDLED_APP_VERSION
-    match = re.search(r'(?m)^version = "([^"]+)"\r?$', text)
-    return match.group(1) if match else BUNDLED_APP_VERSION
+    return app_version(getattr(paths, "root", None))
 
 
 def _is_ffprobe_start_failure(lines: Sequence[str]) -> bool:
@@ -603,6 +617,48 @@ class LauncherPaths:
     data_root: Path | None = None
 
 
+ASR_PRESET_ROOT_ENV = "MAW_ASR_PRESET_ROOT"
+LEGACY_ASR_PRESET_DIRECTORY_ENV = "MAW_ASR_PRESET_DIRECTORY"
+
+
+def _default_asr_preset_directory() -> Path:
+    return default_app_data_root() / "asr-presets"
+
+
+def _asr_preset_directory(env_path: Path) -> tuple[Path, bool]:
+    values = load_env(env_path)
+    configured = os.environ.get(ASR_PRESET_ROOT_ENV, "").strip() or values.get(ASR_PRESET_ROOT_ENV, "").strip()
+    if configured:
+        return Path(configured).expanduser().resolve(strict=False), True
+    if ASR_PRESET_ROOT_ENV in values or ASR_PRESET_ROOT_ENV in os.environ:
+        return _default_asr_preset_directory().resolve(strict=False), True
+    return _default_asr_preset_directory().resolve(strict=False), False
+
+
+def _legacy_asr_preset_directory(env_path: Path) -> Path | None:
+    values = load_env(env_path)
+    for value in (
+        os.environ.get(LEGACY_ASR_PRESET_DIRECTORY_ENV, "") or values.get(LEGACY_ASR_PRESET_DIRECTORY_ENV, ""),
+        str(application_directory() / "asr-presets"),
+    ):
+        if not value.strip():
+            continue
+        candidate = Path(value).expanduser()
+        if candidate.is_dir():
+            return candidate.resolve()
+    return None
+
+
+def _writable_existing_directory(value: object) -> Path:
+    text = str(value or "").strip()
+    path = Path(text).expanduser().resolve(strict=True) if text else _default_asr_preset_directory().resolve(strict=False)
+    if not path.is_dir():
+        raise ValueError("Preset folder is not a directory")
+    with tempfile.TemporaryFile(dir=path):
+        pass
+    return path
+
+
 def default_paths() -> LauncherPaths:
     # 冻结（PyInstaller / AppImage）时资源在 sys._MEIPASS（如 dist/MAW/_internal），
     # 源码运行时在仓库根；与 maw.gui_platform.asset_path 的取法保持一致。
@@ -852,6 +908,7 @@ class LauncherApi:
         )
         selected_api_key = api_key_for_provider(provider.id, self.paths.env_path)
         stored_env = load_env(self.paths.env_path)
+        asr_preset_root, asr_preset_root_configured = _asr_preset_directory(self.paths.env_path)
         ocr_runtime_root = effective_config_value(self.paths.env_path, "MAW_OCR_RUNTIME_ROOT")
         # Do not inspect managed runtimes or model caches on the critical
         # get_config request.  A large Hugging Face/ModelScope cache can make
@@ -913,6 +970,7 @@ class LauncherApi:
             for model in ALIGNMENT_MODELS
         ]
         return {
+            "platform": sys.platform,
             "providerId": provider.id,
             "modelId": selected_model.id,
             "apiKey": selected_api_key,
@@ -924,6 +982,8 @@ class LauncherApi:
             "language": config.language,
             "guiLang": config.gui_lang,
             "appVersion": _app_version(self.paths),
+            "asrPresetRoot": str(asr_preset_root),
+            "asrPresetRootConfigured": asr_preset_root_configured,
             "stickerDir": config.sticker_dir,
             "showRareLangs": config.show_rare_langs,
             "outputSubfolder": config.output_subfolder,
@@ -939,6 +999,7 @@ class LauncherApi:
             "ocrModelId": OCR_MODEL_ID,
             "alignmentModels": alignment_models,
             "modelCacheRoot": config.model_cache_root,
+            "localModelPaths": _local_model_paths_config(self.paths.env_path),
             "models": [
                 _model_payload(
                     item,
@@ -1182,6 +1243,19 @@ class LauncherApi:
 
     def save_prefs(self, payload: Mapping[str, object]) -> dict[str, object]:
         updates: dict[str, str] = {}
+        if "localModelPaths" in payload:
+            paths = payload["localModelPaths"]
+            valid_ids = {model.id for model in provider_by_id("local").models}
+            if not isinstance(paths, dict) or any(
+                model_id not in valid_ids or not isinstance(path, str) or "\x00" in path or "\n" in path or "\r" in path
+                for model_id, path in paths.items()
+            ):
+                return _error_result("localModelPath", "config_save_failed", "Invalid local model paths")
+            updates["MAW_GUI_LOCAL_MODEL_PATHS"] = json.dumps(
+                {model_id: path.strip() for model_id, path in paths.items() if path.strip()},
+                ensure_ascii=False,
+                separators=(",", ":"),
+            )
         if "guiLang" in payload:
             updates["MAW_GUI_LANG"] = _gui_lang(payload)
         if "modelId" in payload:
@@ -1407,7 +1481,7 @@ class LauncherApi:
             )
             self._emit_postprocess_status("toolbox_status_writing")
         except (OSError, UnicodeError, ValueError, TextConversionUnavailable) as error:
-            return {"ok": False, "field": "postprocessInput", "code": "postprocess_failed", "detail": str(error), "error": str(error)}
+            return {"ok": False, "field": "postprocessInput", "code": file_error_code(error) or "postprocess_failed", "detail": str(error), "error": str(error)}
         return _subtitle_artifact_result(result)
 
     def run_timestamp_alignment(self, payload: Mapping[str, object]) -> dict[str, object]:
@@ -1525,7 +1599,65 @@ class LauncherApi:
         except SubtitleMatchError as error:
             return _error_result("postprocessScriptPath", "subtitle_invalid", str(error))
         except (OSError, UnicodeError, ValueError) as error:
-            return {"ok": False, "field": "postprocessScriptPath", "code": "postprocess_failed", "detail": str(error), "error": str(error)}
+            return {"ok": False, "field": "postprocessScriptPath", "code": file_error_code(error) or "postprocess_failed", "detail": str(error), "error": str(error)}
+        return _subtitle_artifact_result(result)
+
+    def run_ai_cleanup(self, payload: Mapping[str, object]) -> dict[str, object]:
+        """Recording-first AI spoken-word cleanup behind the toolbox toggle."""
+
+        script_path = _optional_path(payload.get("scriptPath"))
+        if script_path is None:
+            return _error_result("postprocessScriptPath", "script_invalid", "A script file is required.")
+        project_path = _optional_path(payload.get("projectPath"))
+        srt_path = _optional_path(payload.get("srtPath"))
+        preset = preset_by_id(str(payload.get("providerId") or "deepseek"))
+        file_values = _postprocess_values(self.paths.env_path, preset.env_prefix)
+        try:
+            reasoning_mode = _postprocess_reasoning_mode(payload, file_values)
+        except ValueError as error:
+            return _error_result("postprocessReasoningMode", "invalid_reasoning_mode", str(error))
+        settings = LlmSettings(
+            provider_id=preset.id,
+            api_key=str(payload.get("apiKey") or "").strip() or file_values["apiKey"],
+            base_url=str(payload.get("baseUrl") or "").strip() or file_values["baseUrl"] or preset.base_url,
+            model=str(payload.get("model") or "").strip() or file_values["model"] or preset.model,
+            reasoning_mode=reasoning_mode,
+        )
+        if not settings.api_key:
+            return _error_result("postprocessApiKey", "api_key_missing", "Post-processing API key is required.")
+        if not settings.base_url or not settings.model:
+            return {"ok": False, "field": "postprocessProvider", "code": "postprocess_failed", "detail": "LLM API URL and model are required.", "error": "LLM API URL and model are required."}
+        self._emit_postprocess_status("toolbox_status_reading")
+        try:
+            self._emit_postprocess_status("toolbox_status_ai_cleanup")
+            result = process_ai_cleanup(
+                AiCleanupRequest(
+                    project_path=project_path,
+                    srt_path=srt_path,
+                    script_path=script_path,
+                    output_mode=_output_mode(payload.get("outputMode")),
+                    media_path=_optional_path(payload.get("mediaPath")),
+                    clean_markdown_symbols=payload.get("cleanMarkdownSymbols", True) is not False,
+                    notes=str(payload.get("notes") or "").strip(),
+                ),
+                complete=llm_complete(settings),
+                on_status=self._emit_postprocess_status,
+            )
+            self._emit_postprocess_status("toolbox_status_writing")
+        except PostprocessFileError as error:
+            code = _script_match_input_error_code(
+                error,
+                script_path=script_path,
+                project_path=project_path,
+                srt_path=srt_path,
+            )
+            return _error_result("postprocessScriptPath", code, str(error))
+        except ProjectValidationFailed as error:
+            return _error_result("postprocessScriptPath", "subtitle_invalid", str(error))
+        except (AiCleanupError, LlmClientError) as error:
+            return _llm_error_result("postprocessScriptPath", "postprocess_failed", error)
+        except (OSError, UnicodeError, ValueError) as error:
+            return {"ok": False, "field": "postprocessScriptPath", "code": file_error_code(error) or "postprocess_failed", "detail": str(error), "error": str(error)}
         return _subtitle_artifact_result(result)
 
     @_toolbox_operation
@@ -1567,7 +1699,7 @@ class LauncherApi:
         except OcrRuntimeCancelled as error:
             return _error_result("ocrModel", "ocr_runtime_cancelled", str(error))
         except (OSError, UnicodeError, ValueError, OcrRuntimeError) as error:
-            return {"ok": False, "field": "ocrVideoPath", "code": "postprocess_failed", "detail": str(error), "error": str(error)}
+            return {"ok": False, "field": "ocrVideoPath", "code": file_error_code(error) or "postprocess_failed", "detail": str(error), "error": str(error)}
         return {"ok": True, **result}
 
     @_toolbox_operation
@@ -1626,7 +1758,7 @@ class LauncherApi:
         except (OSError, UnicodeError, ValueError, RuntimeError) as error:
             if isinstance(error, (LlmClientError, PostprocessStepError)):
                 return _llm_error_result("postprocessInput", "postprocess_failed", error)
-            return {"ok": False, "field": "postprocessInput", "code": "postprocess_failed", "detail": str(error), "error": str(error)}
+            return {"ok": False, "field": "postprocessInput", "code": file_error_code(error) or "postprocess_failed", "detail": str(error), "error": str(error)}
         return _subtitle_artifact_result(result)
 
     @_toolbox_operation
@@ -1645,7 +1777,7 @@ class LauncherApi:
                 ffmpeg_path=ffmpeg,
             )
         except (OSError, ValueError, RuntimeError) as error:
-            return {"ok": False, "field": "postprocessFfconcat", "code": "postprocess_failed", "detail": str(error), "error": str(error)}
+            return {"ok": False, "field": "postprocessFfconcat", "code": file_error_code(error) or "postprocess_failed", "detail": str(error), "error": str(error)}
         return {
             "ok": True,
             "sourceMediaPath": str(result.source_media_path),
@@ -1704,8 +1836,9 @@ class LauncherApi:
             srt_style = find_ass_style(style_library, style_id)
             result = process_burn_subtitles(
                 BurnSubtitleRequest(
-                    media_path=Path(str(payload.get("mediaPath") or "")),
+                    media_path=Path(str(payload.get("mediaPath"))) if payload.get("mediaPath") else None,
                     subtitle_path=Path(str(payload.get("subtitlePath") or "")),
+                    green_screen=payload.get("greenScreen") is True,
                     srt_style=srt_style,
                     video_encoder=str(payload.get("videoEncoder") or "auto"),
                     crf=_burn_crf_override(payload.get("crf")),
@@ -1725,7 +1858,7 @@ class LauncherApi:
             self._finish_media_tool(cancel_event)
         return {
             "ok": True,
-            "sourceMediaPath": str(result.source_media_path),
+            "sourceMediaPath": str(result.source_media_path) if result.source_media_path else "",
             "subtitlePath": str(result.subtitle_path),
             "mediaPath": str(result.media_path),
             "videoEncoder": str(getattr(result, "video_encoder", "auto") or "auto"),
@@ -1882,6 +2015,172 @@ class LauncherApi:
         message = _format_media_tool_progress(details)
         if message:
             self._emit({"type": "media_tool_log", "message": message})
+
+    def _active_asr_preset_root(self, *, create_default: bool = False) -> Path:
+        root, configured = _asr_preset_directory(self.paths.env_path)
+        if not configured and create_default:
+            root.mkdir(parents=True, exist_ok=True)
+        if not root.is_dir():
+            raise ValueError(f"Preset folder does not exist: {root}")
+        return root.resolve(strict=True)
+
+    def _asr_preset_migration_source(self) -> Path | None:
+        root, configured = _asr_preset_directory(self.paths.env_path)
+        if configured:
+            return root if root.is_dir() else None
+        legacy = _legacy_asr_preset_directory(self.paths.env_path)
+        if legacy is not None:
+            return legacy
+        return root if root.is_dir() else None
+
+    def asr_preset_library(self, _payload: Mapping[str, object] | None = None) -> dict[str, object]:
+        try:
+            root = self._active_asr_preset_root(create_default=True)
+            return {"ok": True, "root": str(root), "items": list_presets(root)}
+        except (OSError, UnicodeError, ValueError) as error:
+            return {"ok": False, "detail": str(error)}
+
+    def asr_preset_migration_preview(self, payload: Mapping[str, object]) -> dict[str, object]:
+        try:
+            path_text = str(payload.get("path") or "").strip()
+            if path_text:
+                target = _writable_existing_directory(path_text)
+            else:
+                target = _default_asr_preset_directory().resolve(strict=False)
+                target.mkdir(parents=True, exist_ok=True)
+                target = _writable_existing_directory(target)
+            source = self._asr_preset_migration_source()
+            if source is None:
+                return {"ok": True, "root": str(target), "source": "", "files": [], "conflicts": []}
+            plan = inspect_migration(source, target)
+            return {"ok": True, "root": str(target), **plan}
+        except (OSError, UnicodeError, ValueError) as error:
+            return {"ok": False, "detail": str(error)}
+
+    def set_asr_preset_root(self, payload: Mapping[str, object]) -> dict[str, object]:
+        path_text = str(payload.get("path") or "").strip()
+        reset_default = not path_text
+        copied: list[str] = []
+        unmigrated: list[str] = []
+        source: Path | None = None
+        target: Path | None = None
+        try:
+            if reset_default:
+                target = _default_asr_preset_directory().resolve(strict=False)
+                target.mkdir(parents=True, exist_ok=True)
+                target = _writable_existing_directory(target)
+            else:
+                target = _writable_existing_directory(path_text)
+            source = self._asr_preset_migration_source()
+            if payload.get("migrate") is True and source is not None:
+                plan = inspect_migration(source, target)
+                if plan["conflicts"]:
+                    raise FileExistsError("Preset name conflicts: " + ", ".join(plan["conflicts"]))
+                result = migrate_presets(source, target, recycle_sources=False)
+                copied = list(result["migrated"])
+                unmigrated = list(result["sourceRemaining"])
+            try:
+                save_env(self.paths.env_path, {ASR_PRESET_ROOT_ENV: "" if reset_default else str(target)})
+            except (OSError, UnicodeError, ValueError):
+                for name in copied:
+                    try:
+                        send2trash(str(target / name))
+                    except OSError:
+                        pass
+                raise
+            source_remaining: list[str] = list(unmigrated)
+            if payload.get("migrate") is True and source is not None and target != source:
+                for name in copied:
+                    try:
+                        send2trash(str(source / name))
+                    except OSError:
+                        source_remaining.append(name)
+            return {
+                "ok": True,
+                "root": str(target),
+                "configured": True,
+                "migrated": copied,
+                "sourceRemaining": source_remaining,
+            }
+        except (OSError, UnicodeError, ValueError) as error:
+            return {"ok": False, "detail": str(error)}
+
+    def open_asr_preset_folder(self, _payload: Mapping[str, object] | None = None) -> dict[str, object]:
+        try:
+            root, configured = _asr_preset_directory(self.paths.env_path)
+            if not configured:
+                root.mkdir(parents=True, exist_ok=True)
+            if not root.is_dir():
+                raise ValueError(f"Preset folder does not exist: {root}")
+            return _open_existing_path(root.resolve(strict=True))
+        except (OSError, ValueError) as error:
+            return {"ok": False, "error": str(error)}
+
+    def open_asr_preset_file(self, payload: Mapping[str, object]) -> dict[str, object]:
+        try:
+            root = self._active_asr_preset_root()
+            return _open_existing_path(preset_path(root, payload.get("name")))
+        except (OSError, UnicodeError, ValueError) as error:
+            return {"ok": False, "error": str(error)}
+
+    def recognition_presets(self, payload: Mapping[str, object]) -> dict[str, object]:
+        try:
+            root = self._active_asr_preset_root(create_default=True)
+            action = str(payload.get("action") or "")
+            name = payload.get("name")
+            if action == "create":
+                safe_name = create_preset(root, name, payload.get("options"), payload.get("description", ""))
+                return {"ok": True, "name": safe_name}
+            if action == "preview":
+                path = preset_path(root, name)
+                document = read_preset_document(path)
+                return {"ok": True, "name": path.stem, "options": document["options"]}
+            if action == "load":
+                path = preset_path(root, name)
+                document = read_preset_document(path)
+                options = document["options"]
+                hotwords = str(options.get("qwenAudioHotwordsFile", "")) if options.get("qwenAudioHotwordsMode") == "file" else ""
+                return {
+                    "ok": True,
+                    "name": path.stem,
+                    "description": document["description"],
+                    "options": options,
+                    "missingHotwords": bool(hotwords and not Path(hotwords).is_file()),
+                }
+            if action in {"save_info", "update", "copy", "delete"}:
+                path = preset_path(root, name)
+                if action == "delete":
+                    send2trash(str(path))
+                    return {"ok": True, "name": path.stem}
+                document = read_preset_document(path)
+                if action == "save_info":
+                    safe_name = rename_preset(root, name, payload.get("newName"), payload.get("description", ""))
+                    return {"ok": True, "name": safe_name}
+                if action == "update":
+                    options = validate_options(payload.get("options"))
+                    write_preset(path, options, document["description"])
+                    return {"ok": True, "name": path.stem}
+                if action == "copy":
+                    requested_name = payload.get("newName")
+                    if requested_name:
+                        safe_name = create_preset(root, requested_name, document["options"], document["description"])
+                    else:
+                        suffix = str(payload.get("suffix") or "copy")
+                        if suffix not in {"copy", "副本"}:
+                            suffix = "copy"
+                        base = f"{path.stem[:MAX_NAME_LENGTH - len(suffix) - 1].rstrip()} {suffix}"
+                        safe_name = ""
+                        counter = 1
+                        while not safe_name:
+                            candidate = base if counter == 1 else f"{base[:MAX_NAME_LENGTH - len(f' ({counter})')].rstrip()} ({counter})"
+                            if not any(item.name.casefold() == f"{candidate}.json".casefold() for item in root.iterdir()):
+                                safe_name = create_preset(root, candidate, document["options"], document["description"])
+                            else:
+                                counter += 1
+                    return {"ok": True, "name": safe_name}
+            raise ValueError("Invalid preset action")
+        except (OSError, UnicodeError, ValueError) as error:
+            return {"ok": False, "detail": str(error)}
 
     def choose_file(self, payload: Mapping[str, object]) -> dict[str, object]:
         kind = str(payload.get("kind") or "media")
@@ -2146,8 +2445,8 @@ class LauncherApi:
         except OSError as error:
             self._close_server_log()
             detail = f"{url} | {error}"
-            self._persist_start_failure("server_start_failed", detail)
-            return _error_result("port", "server_start_failed", detail)
+            context = self._persist_start_failure("server_start_failed", detail)
+            return _error_result("port", "server_start_failed", detail, context=context)
         if not _wait_for_server(
             url,
             timeout=SERVER_START_TIMEOUT,
@@ -2158,9 +2457,9 @@ class LauncherApi:
             if exit_code is not None:
                 detail = redact_sensitive_text(self._read_server_log())
                 detail = f"{url} | 进程退出码 {exit_code}" + (f"：{detail}" if detail else "")
-                self._persist_start_failure("server_start_failed", detail)
+                context = self._persist_start_failure("server_start_failed", detail)
                 _ = self._stop_owned_server()
-                return _error_result("port", "server_start_failed", detail)
+                return _error_result("port", "server_start_failed", detail, context=context)
             diagnostics = self._server_no_response_diagnostics(
                 url,
                 probe_path=EDITOR_HEALTH_PROBE_PATH,
@@ -2169,10 +2468,10 @@ class LauncherApi:
             detail = f"{url} | 启动超时 {int(SERVER_START_TIMEOUT)} 秒"
             startup_log = str(diagnostics.get("startupLogTail") or "")
             detail += f"：{startup_log}" if startup_log else "：子进程未输出日志"
-            self._persist_start_failure("server_no_response", detail)
+            context = self._persist_start_failure("server_no_response", detail)
             _ = self._stop_owned_server(close_log=False)
             self._close_server_log()
-            result = _error_result("port", "server_no_response", url)
+            result = _error_result("port", "server_no_response", url, context=context)
             result["diagnostics"] = diagnostics
             return result
         self._close_server_log()
@@ -2289,24 +2588,24 @@ class LauncherApi:
             self.alignment_media_path = None
             self.alignment_gap_remove = None
             detail = f"{url} | {error}"
-            self._persist_start_failure("alignment_server_start_failed", detail)
-            return _error_result("", "alignment_server_start_failed", detail)
+            context = self._persist_start_failure("alignment_server_start_failed", detail)
+            return _error_result("", "alignment_server_start_failed", detail, context=context)
 
         if not _wait_for_server(url, timeout=SERVER_START_TIMEOUT):
             exit_code = self.alignment_process.poll() if self.alignment_process else None
             if exit_code is not None:
                 detail = redact_sensitive_text(self._read_alignment_log())
                 detail = f"{url} | process exited with code {exit_code}" + (f": {detail}" if detail else "")
-                self._persist_start_failure("alignment_server_start_failed", detail)
+                context = self._persist_start_failure("alignment_server_start_failed", detail)
                 _ = self._stop_owned_alignment_server()
-                return _error_result("", "alignment_server_start_failed", detail)
+                return _error_result("", "alignment_server_start_failed", detail, context=context)
             _ = self._stop_owned_alignment_server(close_log=False)
             child_log = redact_sensitive_text(self._read_alignment_log())
             self._close_alignment_log()
             detail = f"{url} | 启动超时 {int(SERVER_START_TIMEOUT)} 秒"
             detail += f"：{child_log}" if child_log else "：子进程未输出日志"
-            self._persist_start_failure("alignment_server_no_response", detail)
-            return _error_result("", "alignment_server_no_response", detail)
+            context = self._persist_start_failure("alignment_server_no_response", detail)
+            return _error_result("", "alignment_server_no_response", detail, context=context)
         self._close_alignment_log()
         return {
             "ok": True,
@@ -2434,9 +2733,11 @@ class LauncherApi:
             if close_log:
                 self._close_alignment_log()
 
-    def _persist_start_failure(self, code: str, detail: str) -> None:
+    def _persist_start_failure(self, code: str, detail: str) -> dict[str, str]:
+        context = error_context()
         if self._log_sink is not None:
-            self._log_sink.append({"type": "error", "code": code, "detail": detail})
+            self._log_sink.append({"type": "error", "code": code, "detail": detail, "errorContext": context})
+        return context
 
     def _read_alignment_log(self) -> str:
         log_file = self.alignment_log_file
@@ -2735,6 +3036,15 @@ class LauncherApi:
         model_cache_root = effective_config(self.paths.env_path).model_cache_root
         selected_id = str((payload or {}).get("modelId") or "")
         selected_path = str((payload or {}).get("modelPath") or "").strip()
+        saved_paths = _local_model_paths_config(self.paths.env_path)
+        requested_paths = (payload or {}).get("modelPaths")
+        if isinstance(requested_paths, dict):
+            valid_ids = {model.id for model in provider.models}
+            saved_paths.update({
+                model_id: path.strip()
+                for model_id, path in requested_paths.items()
+                if model_id in valid_ids and isinstance(path, str)
+            })
         visible_models = tuple(item for item in provider.models if not item.hidden)
         selected_model = next((item for item in visible_models if item.id == selected_id), visible_models[0])
         runtime_by_engine: dict[str, LocalRuntimeStatus] = {}
@@ -2747,7 +3057,7 @@ class LauncherApi:
             "models": [
                 _model_payload(
                     model,
-                    model_path=selected_path if model.id == selected_id else "",
+                    model_path=selected_path if model.id == selected_id else saved_paths.get(model.id, ""),
                     model_cache_root=model_cache_root,
                     runtime_status=runtime_by_engine[model.engine],
                 )
@@ -3176,14 +3486,14 @@ class LauncherApi:
                     "detail": str(error),
                 })
             else:
-                self._emit({"type": "error", "code": "transcription_failed", "detail": str(error)})
+                self._emit({"type": "error", "code": file_error_code(error) or "transcription_failed", "detail": str(error)})
             if self.worker is threading.current_thread():
                 self.worker = None
             self.pump.flush()
             return
         # The pywebview worker boundary must report every backend failure to JS.
         except Exception as error:  # noqa: BLE001
-            self._emit({"type": "error", "code": "transcription_failed", "detail": str(error)})
+            self._emit({"type": "error", "code": file_error_code(error) or "transcription_failed", "detail": str(error)})
             if self.worker is threading.current_thread():
                 self.worker = None
             self.pump.flush()
@@ -3273,7 +3583,7 @@ class LauncherApi:
             except Exception as error:  # noqa: BLE001 - postprocess boundary reports separately from ASR.
                 self._emit({
                     "type": "error",
-                    "code": "postprocess_failed",
+                    "code": file_error_code(error) or "postprocess_failed",
                     "detail": str(error),
                     "canRetry": False,
                     "postprocessRunDirectory": str(self.postprocess_workspace_directory or ""),
@@ -3436,7 +3746,7 @@ class LauncherApi:
         except Exception as error:  # noqa: BLE001 - retry boundary reports to the Launcher.
             self._emit({
                 "type": "error",
-                "code": "postprocess_failed",
+                "code": file_error_code(error) or "postprocess_failed",
                 "detail": str(error),
                 "canRetry": True,
                 "postprocessRunDirectory": str(self.postprocess_workspace_directory or ""),
@@ -3721,6 +4031,14 @@ class LauncherApi:
             self.pump.flush()
 
     def _emit(self, event: Mapping[str, object]) -> None:
+        if event.get("type") == "error":
+            if event.get("code") in {"postprocess_failed", "transcription_failed"}:
+                code = file_error_code(str(event.get("detail") or ""))
+                if code:
+                    event = {**event, "code": code}
+            if event.get("code") in {"file_path_too_long", "intermediate_path_too_long"}:
+                event = {**event, "canRetry": False}
+            event = {**event, "errorContext": error_context(event.get("errorContext"))}
         if self._log_sink is not None:
             self._log_sink.append(event)
         self.pump.enqueue(event)
@@ -3757,6 +4075,7 @@ def run_app(
     paths = default_paths()
     # 事件流与进程内 print/traceback 共用同一个 sink：单锁单文件。
     log_sink = LocalLogSink()
+    log_sink.write_text("MAW v" + _app_version(paths), label="session")
     api = LauncherApi(
         paths=paths,
         default_server_port=server_port,
@@ -3839,9 +4158,6 @@ def _segmentation_option(
     return str(value)
 
 
-_TAIL_STRIP_CANDIDATES = "，。"
-
-
 def _match_step_symbols(env_path: Path, key: str) -> list[str]:
     """读取共享后处理 plan 里 match 步骤的符号列表配置。"""
     plan = load_postprocess_plan(env_path)
@@ -3858,18 +4174,20 @@ def _match_step_symbols(env_path: Path, key: str) -> list[str]:
 
 
 def _transcribe_strip_tail_punct(env_path: Path) -> str:
-    """Derive transcription tail-strip set from the shared 保留符号 settings.
+    """Derive transcription tail-strip set from the shared 断句符号 settings.
 
     The ⚙️ settings section edits the same postprocess plan (`match` step) as
-    the 文稿匹配 toolbox; symbols marked as preserved are subtracted from the
-    strip candidates so transcription output keeps them at cue tails.
+    the 文稿匹配 toolbox.  Symbols configured as break symbols are stripped
+    from cue tails unless listed as preserved; only single-character symbols
+    participate (rstrip works per character).
     """
+    extra = _match_step_symbols(env_path, "extraSplitPunctuation")
     preserved = set(_match_step_symbols(env_path, "preservePunctuation"))
-    return "".join(candidate for candidate in _TAIL_STRIP_CANDIDATES if candidate not in preserved)
+    return "".join(symbol for symbol in extra if len(symbol) == 1 and symbol not in preserved)
 
 
 def _transcribe_extra_strong_punct(env_path: Path) -> str:
-    """Derive the transcription extra strong-punct set from shared 额外断句符号."""
+    """Derive the transcription strong-punct set from the shared 断句符号 settings."""
     return "".join(_match_step_symbols(env_path, "extraSplitPunctuation"))
 
 
@@ -4025,8 +4343,15 @@ def _request_from_payload(payload: Mapping[str, object], env_path: Path) -> Tran
                     "FireRedASR2 的 FunASR ct-punc 尚未准备，请选择“不使用”或先下载 ct-punc。",
                 )
         runtime_python = local_status.runtime_python
-        if device not in {"auto", "cpu", "cuda"}:
-            raise PreflightError("device", "local_model_path_invalid", "设备必须是 auto、cpu 或 cuda。")
+        allowed_devices = {"auto", "cpu", "cuda"}
+        if sys.platform == "darwin" and model.engine == "qwen-asr":
+            allowed_devices.add("mps")
+        if device not in allowed_devices:
+            raise PreflightError(
+                "device", "local_model_path_invalid",
+                "设备必须是 auto、cpu、cuda 或 mps。" if "mps" in allowed_devices
+                else "设备必须是 auto、cpu 或 cuda。",
+            )
     alignment_model = ""
     alignment_model_path = str(payload.get("alignmentModelPath") or "").strip()
     if provider.kind == "local":
@@ -4172,13 +4497,14 @@ def _request_from_payload(payload: Mapping[str, object], env_path: Path) -> Tran
     )
 
 
-def _file_dialog(*, open_dialog: bool, file_types: tuple[str, ...], save_filename: str = "", multiple: bool = False) -> tuple[str, ...] | None:
+def _file_dialog(*, open_dialog: bool, file_types: tuple[str, ...], save_filename: str = "", multiple: bool = False, directory: str = "") -> tuple[str, ...] | None:
     import webview
 
     if not webview.windows:
         return None
     dialog_type = OPEN_DIALOG if open_dialog else SAVE_DIALOG
-    selected = webview.windows[0].create_file_dialog(dialog_type, save_filename=save_filename, file_types=file_types, allow_multiple=multiple)
+    extra = {"directory": directory} if directory else {}
+    selected = webview.windows[0].create_file_dialog(dialog_type, save_filename=save_filename, file_types=file_types, allow_multiple=multiple, **extra)
     return tuple(selected) if selected else None
 
 
@@ -4265,8 +4591,8 @@ def _free_local_port() -> int:
         return int(sock.getsockname()[1])
 
 
-def _error_result(field: str, code: str, detail: str = "") -> dict[str, object]:
-    return {"ok": False, "field": field, "code": code, "detail": detail, "error": ERROR_MESSAGES.get(code, detail or code)}
+def _error_result(field: str, code: str, detail: str = "", *, context: object = None) -> dict[str, object]:
+    return {"ok": False, "field": field, "code": code, "detail": detail, "error": ERROR_MESSAGES.get(code, detail or code), "errorContext": error_context(context)}
 
 
 def _burn_crf_override(raw: object) -> int | None:
@@ -4352,12 +4678,12 @@ def _postprocess_pipeline_error_event(
     """Expose retry state and original transcription paths without provider secrets."""
 
     category = str(getattr(error, "category", "") or "")
-    code = "postprocess_provider_response" if category == "provider_response" else "postprocess_failed"
+    code = file_error_code(error) or ("postprocess_provider_response" if category == "provider_response" else "postprocess_failed")
     event: dict[str, object] = {
         "type": "error",
         "code": code,
         "detail": str(error),
-        "canRetry": can_retry,
+        "canRetry": can_retry and not code.endswith("path_too_long"),
         "postprocessRunDirectory": str(error.run_directory),
         "failedStep": error.failed_step,
         "failedIndex": error.failed_index,
@@ -4476,6 +4802,7 @@ def _postprocess_provider_payloads(env_path: Path) -> list[dict[str, object]]:
 
 
 def _subtitle_artifact_result(result: object) -> dict[str, object]:
+    stats = getattr(result, "stats", None)
     return {
         "ok": True,
         "sourceProjectPath": str(getattr(result, "source_project_path", None) or ""),
@@ -4484,6 +4811,7 @@ def _subtitle_artifact_result(result: object) -> dict[str, object]:
         "srtPath": str(getattr(result, "srt_path", None) or ""),
         "translatedSrtPath": str(getattr(result, "translated_srt_path", None) or ""),
         "warnings": list(getattr(result, "warnings", ())),
+        "stats": dict(stats) if isinstance(stats, Mapping) else None,
     }
 
 
@@ -4741,7 +5069,11 @@ def _check_ffmpeg(env_path: Path, override: str = "") -> dict[str, object]:
     tools = resolve_ffmpeg_tools(
         configured_path=configured_value or None,
         platform=sys.platform,
-        search_path=_ffmpeg_search_path() or "",
+        # 候选目录读取当前模块全局而非依赖默认参数（默认参数在函数定义时
+        # 绑定，测试 patch maw.ffmpeg.MACOS_FFMPEG_CANDIDATE_DIRECTORIES
+        # 才能生效），搜索路径由同一份候选列表推导，保证二者一致。
+        macos_directories=MACOS_FFMPEG_CANDIDATE_DIRECTORIES,
+        search_path=ffmpeg_search_path(platform=sys.platform, macos_directories=MACOS_FFMPEG_CANDIDATE_DIRECTORIES) or "",
         strict_config=bool(override.strip()),
     )
     ffmpeg_path = str(tools.ffmpeg) if tools.ffmpeg is not None else ""
@@ -4759,6 +5091,21 @@ def effective_config_value(env_path: Path, key: str) -> str:
     from maw.gui_config import load_env
 
     return os.environ.get(key) or load_env(env_path).get(key, "")
+
+
+def _local_model_paths_config(env_path: Path) -> dict[str, str]:
+    try:
+        saved = json.loads(effective_config_value(env_path, "MAW_GUI_LOCAL_MODEL_PATHS") or "{}")
+    except (TypeError, ValueError):
+        return {}
+    if not isinstance(saved, dict):
+        return {}
+    valid_ids = {model.id for model in provider_by_id("local").models}
+    return {
+        model_id: path.strip()
+        for model_id, path in saved.items()
+        if model_id in valid_ids and isinstance(path, str) and path.strip()
+    }
 
 
 def _sync_local_runtime_root(env_path: Path) -> None:

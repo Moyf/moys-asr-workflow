@@ -230,7 +230,7 @@ class GuiWorkflowTests(unittest.TestCase):
         self.assertEqual(empty_command[empty_command.index("--strip-tail-punct") + 1], "")
 
     def test_build_transcribe_command_sends_extra_strong_punct_when_configured(self) -> None:
-        # 仅在配置了额外断句符号时下发；空配置保持命令行与旧版一致。
+        # 恒显式下发（含空串）：空配置 = 仅按换行断句，不回退到内置强标点。
         request = TranscriptionRequest(
             media_path=self.media_path,
             srt_path=self.srt_path,
@@ -249,7 +249,7 @@ class GuiWorkflowTests(unittest.TestCase):
 
         empty_command = build_transcribe_command(empty, executable=Path("python.exe"), frozen=False)
 
-        self.assertNotIn("--extra-strong-punct", empty_command)
+        self.assertEqual(empty_command[empty_command.index("--extra-strong-punct") + 1], "")
 
     def test_build_transcribe_command_debug_raw_saves_full_response(self) -> None:
         request = TranscriptionRequest(
@@ -730,6 +730,23 @@ class GuiWorkflowTests(unittest.TestCase):
 
         self.assertEqual(env["PATH"].split(os.pathsep)[0], str(ffmpeg_dir))
 
+    def test_child_environment_moves_configured_ffmpeg_directory_to_front(self) -> None:
+        ffmpeg_dir = self.root / "ffmpeg" / "bin"
+        ffmpeg_dir.mkdir(parents=True)
+        (ffmpeg_dir / ("ffmpeg.exe" if os.name == "nt" else "ffmpeg")).write_bytes(b"exe")
+        (ffmpeg_dir / ("ffprobe.exe" if os.name == "nt" else "ffprobe")).write_bytes(b"exe")
+        other_dir = self.root / "other"
+        other_dir.mkdir()
+        inherited_path = os.pathsep.join((str(other_dir), str(ffmpeg_dir), str(ffmpeg_dir)))
+
+        with mock.patch("maw.gui_workflow.MACOS_FFMPEG_CANDIDATE_DIRECTORIES", ()):
+            with mock.patch("maw.gui_workflow.load_env", return_value={}):
+                env = _child_environment(
+                    {"PATH": inherited_path, "FFMPEG_PATH": str(ffmpeg_dir)}, "", ""
+                )
+
+        self.assertEqual(env["PATH"].split(os.pathsep), [str(ffmpeg_dir), str(other_dir)])
+
     def test_child_environment_uses_bundled_ffmpeg_when_no_path_is_configured(self) -> None:
         ffmpeg_dir = self.root / "ffmpeg" / "bin"
         ffmpeg_dir.mkdir(parents=True)
@@ -757,14 +774,20 @@ class GuiWorkflowTests(unittest.TestCase):
         self.assertEqual(env["PATH"].split(os.pathsep)[0], str(ffmpeg_dir))
 
     def test_child_environment_appends_macos_candidate_directories(self) -> None:
+        # 本用例验证「继承 PATH + 追加 macOS 候选目录」的顺序语义；候选目录
+        # 必须用不包含真实 ffmpeg 的临时目录。真实 Homebrew 路径在装了
+        # FFmpeg 的机器上会被候选探测命中并前置进 PATH，断言随机器变化。
+        homebrew = self.root / "homebrew" / "bin"
+        local = self.root / "usr" / "local" / "bin"
         with mock.patch.object(sys, "platform", "darwin"):
-                with mock.patch("maw.gui_workflow.MACOS_FFMPEG_CANDIDATE_DIRECTORIES", ("/opt/homebrew/bin", "/usr/local/bin")):
-                    with mock.patch("maw.gui_workflow.load_env", return_value={}):
-                        env = _child_environment({"PATH": "/usr/bin"}, "", "")
+                with mock.patch("maw.gui_workflow.MACOS_FFMPEG_CANDIDATE_DIRECTORIES", (str(homebrew), str(local))):
+                    with mock.patch("maw.ffmpeg.shutil.which", return_value=None):
+                        with mock.patch("maw.gui_workflow.load_env", return_value={}):
+                            env = _child_environment({"PATH": "/usr/bin"}, "", "")
 
         self.assertEqual(
             env["PATH"].split(os.pathsep),
-            ["/usr/bin", "/opt/homebrew/bin", "/usr/local/bin"],
+            ["/usr/bin", str(homebrew), str(local)],
         )
 
     def test_run_transcription_reports_child_pid_after_popen(self) -> None:
@@ -1442,7 +1465,8 @@ class GuiWorkflowTests(unittest.TestCase):
                         exit_code = maw_gui.run_entrypoint([])
 
         self.assertEqual(exit_code, 1)
-        show_error.assert_called_once_with(error, log_path)
+        show_error.assert_called_once_with(error, log_path, context=mock.ANY)
+        self.assertIn("occurredAt", show_error.call_args.kwargs["context"])
         message = maw_gui._startup_error_message(error, log_path)
         self.assertIn("解除锁定", message)
         self.assertIn("完整解压", message)
@@ -1459,7 +1483,7 @@ class GuiWorkflowTests(unittest.TestCase):
                         maw_gui.run_entrypoint([])
 
         self.assertIs(raised.exception, error)
-        show_hint.assert_called_once_with()
+        show_hint.assert_called_once_with(context=mock.ANY, log_path=mock.ANY)
 
     def test_entrypoint_python_runtime_marker_is_not_owned_on_non_windows(self) -> None:
         import maw_gui
@@ -1519,7 +1543,7 @@ class GuiWorkflowTests(unittest.TestCase):
 
         self.assertIs(raised.exception, error)
         show_error.assert_not_called()
-        show_hint.assert_called_once_with()
+        show_hint.assert_called_once_with(context=mock.ANY, log_path=mock.ANY)
 
     def test_entrypoint_unknown_internal_failure_is_reraised_unchanged(self) -> None:
         import maw_gui
@@ -1531,7 +1555,8 @@ class GuiWorkflowTests(unittest.TestCase):
                     maw_gui.run_entrypoint(["--transcribe"])
 
         self.assertIs(raised.exception, error)
-        print_message.assert_not_called()
+        print_message.assert_called_once()
+        self.assertIn("[MAW v", print_message.call_args.args[0])
 
     def test_entrypoint_serve_ffmpeg_failure_is_not_reclassified(self) -> None:
         import maw_gui

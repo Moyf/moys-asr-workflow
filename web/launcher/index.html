@@ -40,8 +40,8 @@
       <div class="hero-brand">
         <img class="hero-icon" src="../../assets/show.webp" alt="" aria-hidden="true">
         <div class="hero-copy">
-          <div class="wordmark">Moy's ASR Workflow <button id="appVersion" class="version version-button" type="button" data-i18n-title="update_open_settings" title="检查更新">v1.6.1</button><span id="updateBadge" class="update-badge hidden" data-i18n="update_available_badge">有新版本</span></div>
-          <p data-i18n="hero_desc">📺 本地媒体 ➜  🤖 AI 转写 ➜ ✨ 可编辑字幕工程</p>
+          <div class="wordmark">Moy's ASR Workflow <button id="appVersion" class="version version-button" type="button" data-i18n-title="update_open_settings" title="检查更新">v1.8.0-beta.1</button><span id="updateBadge" class="update-badge hidden" data-i18n="update_available_badge">有新版本</span></div>
+          <p data-i18n="hero_desc">让字幕制作变得超级轻松！</p>
           <span id="demoBadge" class="demo-badge hidden" data-i18n="demo_mode">演示模式</span>
         </div>
       </div>
@@ -162,20 +162,28 @@
           <button id="saveSettings" class="ghost" type="button" data-i18n="save_key">存入本地环境</button>
         </div>
         <p id="keyStatus" class="hint">未配置密钥</p>
-        <p class="hint"><span data-i18n="key_hint_prefix">在</span> <button id="openKeyUrl" class="inline-link" type="button">千问AI平台</button><span id="openKeyHintOr" class="hidden" data-i18n="openai_key_hint_or"> 或 </span><button id="openRouterKeyUrl" class="inline-link hidden" type="button" data-i18n="openrouter">OpenRouter</button> <span id="keyHintSuffix" data-i18n="key_hint_suffix">获取或查看 API Key ↗</span></p>
+        <p class="hint key-hint-callout"><span data-i18n="key_hint_prefix">在</span> <button id="openKeyUrl" class="inline-link" type="button">千问AI平台</button><span id="openKeyHintOr" class="hidden" data-i18n="openai_key_hint_or"> 或 </span><button id="openRouterKeyUrl" class="inline-link hidden" type="button" data-i18n="openrouter">OpenRouter</button> <span id="keyHintSuffix" data-i18n="key_hint_suffix">获取或查看 API Key ↗</span></p>
         <p id="apiKeyError" class="field-error"></p>
       </div>
       <div id="localModelSettingsEntry" class="field hidden">
         <p class="hint local-model-settings-hint"><span data-i18n="local_model_settings_hint_prefix">本地模型的下载和缓存可以在 </span><button id="openLocalModelSettings" class="inline-link" type="button" data-i18n="local_model_settings_open">本地 AI 模型配置</button><span data-i18n="local_model_settings_hint_suffix"> 中管理。</span></p>
       </div>
       <div id="advancedCard" class="sub-accordion collapsed">
+        <div class="advanced-header">
         <button id="advancedToggle" class="accordion-header" type="button"><span class="chevron">▸</span><span data-i18n="advanced">高级选项</span></button>
+          <div class="advanced-preset-actions">
+            <span class="asr-preset-current"><span id="currentAsrPresetPrefix" data-i18n="preset_current">当前预设：</span><span id="currentAsrPresetName" data-i18n="preset_unselected">当前未选择预设</span><em id="currentAsrPresetModified" class="hidden">*</em></span>
+            <button id="updateCurrentAsrPreset" class="ghost small hidden" type="button" data-i18n="preset_update">更新预设</button>
+            <button id="manageAsrPresets" class="ghost small" type="button" data-i18n="preset_manage">预设管理</button>
+          </div>
+        </div>
+        <p id="asrPresetStatus" class="hint hidden" role="status" aria-live="polite"></p>
         <div class="collapse-body">
           <div id="advancedOptionsGrid" class="grid-two">
             <div id="advancedParamsGroup" class="adv-group">
               <h3 data-i18n="advanced_params">识别参数</h3>
               <div class="advanced-col">
-                <div id="localDeviceField" class="field hidden"><label for="localDevice" data-i18n="local_device">设备</label><select id="localDevice"><option value="auto" data-i18n="device_auto">自动</option><option value="cpu" data-i18n="device_cpu">CPU</option><option value="cuda" data-i18n="device_cuda">CUDA</option></select></div>
+                <div id="localDeviceField" class="field hidden"><label for="localDevice" data-i18n="local_device">设备</label><select id="localDevice"><option value="auto" data-i18n="device_auto">自动</option><option value="cpu" data-i18n="device_cpu">CPU</option><option value="cuda" data-i18n="device_cuda">CUDA</option><option value="mps" id="localDeviceMps" hidden disabled>MPS</option></select></div>
                 <div id="fireRedPuncField" class="field hidden"><label for="fireRedPunc" data-i18n="firered_punc">生成标点提升断句</label><select id="fireRedPunc"><option value="none" data-i18n="firered_punc_none">不使用</option><option value="ct-punc" data-i18n="firered_punc_ct_punc" selected>使用 ct-punc</option></select></div>
                 <div id="recognitionAlignmentModelField" class="field hidden">
                   <label for="recognitionAlignmentModel" data-i18n="recognition_alignment_model">对齐模型</label>
@@ -479,6 +487,7 @@
         <button id="errorNoticeCopy" class="ghost small" type="button" data-i18n="error_copy_report">复制错误报告</button>
         <button id="errorNoticeIssue" class="ghost small hidden" type="button" data-i18n="error_open_issue">打开项目主页</button>
       </div>
+      <p id="errorNoticeContext" class="error-notice-context"></p>
       <button id="errorNoticeClose" class="error-notice-close" type="button" data-i18n-aria-label="error_notice_close" aria-label="关闭提示">×</button>
     </div>
     <div id="status" class="status">就绪</div>
@@ -536,10 +545,10 @@
         <nav id="toolboxPostprocessTabList" class="toolbox-tabs" role="tablist" aria-labelledby="toolboxPostprocessPrimaryTab">
           <div class="toolbox-tab-list toolbox-tab-list-5">
             <button id="toolboxMatchTab" class="toolbox-tab active" type="button" role="tab" tabindex="0" aria-selected="true" aria-controls="toolboxMatchPanel" data-tool="match" data-i18n="toolbox_match">文稿匹配</button>
-            <button id="toolboxTimestampsTab" class="toolbox-tab" type="button" role="tab" tabindex="-1" aria-selected="false" aria-controls="toolboxTimestampsPanel" data-tool="timestamps" data-i18n="toolbox_timestamps">生成时间码</button>
             <button id="toolboxOcrTab" class="toolbox-tab" type="button" role="tab" tabindex="-1" aria-selected="false" aria-controls="toolboxOcrPanel" data-tool="ocr" data-i18n="toolbox_ocr_dedup">OCR 字幕去重</button>
             <button id="toolboxLlmTab" class="toolbox-tab" type="button" role="tab" tabindex="-1" aria-selected="false" aria-controls="toolboxLlmPanel" data-tool="llm" data-i18n="toolbox_llm">LLM 处理</button>
             <button id="toolboxReplaceTab" class="toolbox-tab" type="button" role="tab" tabindex="-1" aria-selected="false" aria-controls="toolboxReplacePanel" data-tool="replace" data-i18n="toolbox_replace">固定替换</button>
+            <button id="toolboxTimestampsTab" class="toolbox-tab" type="button" role="tab" tabindex="-1" aria-selected="false" aria-controls="toolboxTimestampsPanel" data-tool="timestamps" data-i18n="toolbox_timestamps">生成时间码</button>
           </div>
         </nav>
       </section>
@@ -685,6 +694,10 @@
           <p class="hint" data-i18n="toolbox_burn_subtitle_style_hint">选择 SRT 字幕时，会使用 ASS 样式库中的「SRT 烧录样式」对应的样式；选择 ASS 字幕时，使用 ASS 字幕自身的样式。</p>
           <p id="toolboxBurnSubtitlePathError" class="field-error"></p>
         </div>
+        <div class="toolbox-green-screen-option">
+          <label class="check-field" for="toolboxGreenScreen"><input id="toolboxGreenScreen" type="checkbox"><span data-i18n="toolbox_green_screen">生成绿幕视频</span></label>
+          <p class="hint" data-i18n="toolbox_green_screen_hint">无需视频源；用字幕时长生成带字幕的绿色背景视频。默认 1920×1080、30 fps，ASS 优先使用自身画布尺寸；不含音轨。</p>
+        </div>
         <div id="toolboxBurnVideoEncoderField" class="field">
           <label for="toolboxBurnVideoEncoder" data-i18n="toolbox_burn_video_encoder">视频编码器</label>
           <select id="toolboxBurnVideoEncoder">
@@ -772,6 +785,17 @@
           <p id="postprocessScriptPathError" class="field-error"></p>
         </div>
         <div class="field">
+          <label class="check-field" for="postprocessAiCleanup">
+            <input id="postprocessAiCleanup" type="checkbox">
+            <span data-i18n="toolbox_ai_cleanup">使用 AI 整理（录音优先）</span>
+          </label>
+          <p class="hint" data-i18n="toolbox_ai_cleanup_hint">由 AI 判断并移除重录废片、试麦和流程对话；文稿只作证据，不替换字幕文字。自动移除与待复核会写入工程，待复核项需在编辑器中确认。</p>
+          <div id="postprocessAiCleanupNotesField" class="hidden" style="margin-top: 8px;">
+            <label for="postprocessAiCleanupNotes" data-i18n="toolbox_ai_cleanup_notes">补充说明</label>
+            <textarea id="postprocessAiCleanupNotes" rows="2" autocomplete="off" data-i18n-placeholder="toolbox_ai_cleanup_notes_placeholder"></textarea>
+          </div>
+        </div>
+        <div class="field" id="postprocessMatchModeField">
           <label for="postprocessMatchMode" data-i18n="toolbox_match_mode">换行来源</label>
          <select id="postprocessMatchMode">
             <option value="script" data-i18n="toolbox_match_mode_script">按文稿换行（默认）</option>
@@ -787,7 +811,7 @@
           </label>
           <p class="hint" data-i18n="toolbox_clean_markdown_symbols_hint">匹配前移除粗体、斜体、删除线、行内代码和 ==高亮== 标记，只保留可见文字。</p>
         </div>
-       <p class="hint"><button id="openPunctSettings" class="inline-link" type="button" data-i18n="toolbox_punct_open_settings">在 ⚙️ 设置中配置断句与保留符号</button></p>
+       <p class="hint" id="postprocessPunctHint"><button id="openPunctSettings" class="inline-link" type="button" data-i18n="toolbox_punct_open_settings">在 ⚙️ 设置中配置断句与保留符号</button></p>
      </section>
 
     <section id="toolboxTimestampsPanel" class="toolbox-panel hidden" role="tabpanel" aria-labelledby="toolboxTimestampsTab">
@@ -1155,6 +1179,20 @@
           <p id="stickerDirError" class="field-error"></p>
         </div>
       </div>
+      <div class="settings-section" id="asrPresetRootSection">
+        <h3 data-i18n="preset_library_title">ASR 识别预设</h3>
+        <p class="hint" data-i18n="preset_library_hint">管理高级选项预设的保存位置。</p>
+        <div class="field">
+          <label for="asrPresetRoot" data-i18n="preset_library_folder">预设库文件夹</label>
+          <div class="path-row">
+            <input id="asrPresetRoot" type="text" autocomplete="off">
+            <button id="pickAsrPresetRoot" class="ghost" type="button" data-i18n="choose_folder">选择文件夹</button>
+          </div>
+          <p id="asrPresetRootError" class="field-error"></p>
+        </div>
+        <p class="hint preset-root-current"><span data-i18n="preset_current_folder">当前预设文件夹：</span><button id="asrPresetRootCurrent" class="inline-link runtime-path-link" type="button" data-i18n-title="open_folder_hint" title="点击打开所在文件夹"></button><button id="resetAsrPresetRoot" class="ghost small" type="button" data-i18n="preset_folder_reset">恢复默认</button></p>
+        <p id="asrPresetRootStatus" class="hint" role="status" aria-live="polite"></p>
+      </div>
       </section>
       <section id="settingsLlmPanel" class="settings-panel hidden" role="tabpanel" aria-labelledby="settingsLlmTab" data-settings-panel="llm" aria-hidden="true">
       <div class="settings-section" id="llmSettingsSection">
@@ -1290,7 +1328,7 @@
           <div class="segmentation-row segmentation-character-row">
             <div class="segmentation-control">
               <label for="gapSplit" data-i18n="gap_split">停顿切句（毫秒）</label>
-              <input id="gapSplit" type="number" min="0" step="1" inputmode="numeric" data-i18n-placeholder="gap_split_placeholder" placeholder="800" autocomplete="off">
+              <input id="gapSplit" type="number" min="0" step="1" inputmode="numeric" data-i18n-placeholder="gap_split_placeholder" placeholder="500" autocomplete="off">
               <p id="gapSplitError" class="field-error"></p>
             </div>
             <div class="segmentation-control">
@@ -1324,18 +1362,18 @@
       </div>
       <div class="settings-section" id="punctuationSettingsSection">
         <h3 data-i18n="settings_punctuation_title">断句与标点</h3>
-        <p class="hint settings-punctuation-hint" data-i18n="settings_punctuation_hint">决定哪些标点符号需要换行，以及换行后是否保留标点（文稿匹配与转写共用）</p>
+        <p class="hint settings-punctuation-hint" data-i18n="settings_punctuation_hint">决定哪些标点符号需要断句，以及断句后句尾标点的去留（文稿匹配与转写共用）</p>
         <div class="punctuation-settings-fields">
           <div class="field">
             <label for="postprocessExtraSplitPunctuation" data-i18n="toolbox_extra_split_punctuation">需要断句的符号</label>
-            <textarea id="postprocessExtraSplitPunctuation" rows="2" autocomplete="off" data-i18n-placeholder="toolbox_extra_split_punctuation_placeholder" placeholder="？\n！\n——\n~"></textarea>
-            <p class="hint" data-i18n="toolbox_extra_split_punctuation_hint">每行一个符号；逗号、句号默认生效。</p>
+            <textarea id="postprocessExtraSplitPunctuation" rows="2" autocomplete="off" data-i18n-placeholder="toolbox_extra_split_punctuation_placeholder" placeholder="，\n。\n？\n！\n；"></textarea>
+            <p class="hint" data-i18n="toolbox_extra_split_punctuation_hint">每行一个符号；这里是断句与句尾剥除的完整清单，删掉某行即对该符号失效。换行始终生效。</p>
           </div>
           <div class="field">
-            <label for="postprocessPreservePunctuation" data-i18n="toolbox_preserve_punctuation">断句后保留的符号</label>
+            <label for="postprocessPreservePunctuation" data-i18n="toolbox_preserve_punctuation">断句末尾保留符号</label>
             <textarea id="postprocessPreservePunctuation" rows="2" autocomplete="off" data-i18n-placeholder="toolbox_preserve_punctuation_placeholder" placeholder="？\n！\n~"></textarea>
             <p id="postprocessPreservePunctuationError" class="field-error"></p>
-            <p class="hint" data-i18n="toolbox_preserve_punctuation_hint">断句后仍然需要保留的符号，默认留在前一句结尾。</p>
+            <p class="hint" data-i18n="toolbox_preserve_punctuation_hint">断句后保留在上一句末尾的符号；未列出的断句符号会从句尾删除。</p>
           </div>
         </div>
       </div>
@@ -1417,6 +1455,54 @@
     </section>
   </div>
 
+  <div id="asrPresetModal" class="modal hidden" role="dialog" aria-modal="true" aria-labelledby="asrPresetTitle">
+    <div id="asrPresetBackdrop" class="modal-backdrop"></div>
+    <section class="modal-card asr-preset-modal-card">
+      <header class="modal-header">
+        <h2 id="asrPresetTitle" data-i18n="preset_manage_title">ASR 识别预设</h2>
+        <button id="asrPresetClose" class="ghost small" type="button" data-i18n-aria-label="close" aria-label="关闭">×</button>
+      </header>
+      <div class="asr-preset-toolbar">
+        <input id="asrPresetSearch" type="search" autocomplete="off" data-i18n-placeholder="preset_search_placeholder" data-i18n-aria-label="preset_search_placeholder" placeholder="搜索名称或描述">
+        <button id="refreshAsrPresets" class="ghost" type="button" data-i18n="preset_refresh">刷新</button>
+      </div>
+      <p id="asrPresetManagerStatus" class="hint" role="status" aria-live="polite"></p>
+      <div class="asr-preset-manager-grid">
+        <div class="asr-preset-list-panel">
+          <div class="asr-preset-list-header">
+            <h3 data-i18n="preset_list_title">预设列表</h3>
+            <span class="hint" data-i18n="preset_list_dblclick_hint">双击可直接加载预设</span>
+          </div>
+          <div id="asrPresetList" class="asr-preset-list" role="listbox" data-i18n-aria-label="preset_list_title" aria-label="预设列表"></div>
+        </div>
+        <section class="asr-preset-details" data-i18n-aria-label="preset_details" aria-label="预设详情">
+          <div class="field">
+            <label for="asrPresetName" data-i18n="preset_name">预设名称</label>
+            <input id="asrPresetName" type="text" maxlength="120" autocomplete="off" data-i18n-placeholder="preset_name_placeholder" placeholder="输入预设名称">
+          </div>
+          <div class="field">
+            <label for="asrPresetDescription" data-i18n="preset_description">描述</label>
+            <textarea id="asrPresetDescription" rows="3" maxlength="2000" data-i18n-placeholder="preset_description_placeholder" placeholder="可选，简单说明适用场景"></textarea>
+          </div>
+          <p id="asrPresetModifiedDate" class="hint"></p>
+          <section id="asrPresetOptionsPreview" class="asr-preset-preview hidden" aria-labelledby="asrPresetPreviewTitle">
+            <h3 id="asrPresetPreviewTitle" data-i18n="preset_preview_title">有效字段</h3>
+            <ul id="asrPresetPreviewList"></ul>
+          </section>
+        </section>
+      </div>
+      <div class="asr-preset-modal-actions">
+        <button id="loadAsrPreset" class="ghost" type="button" data-i18n="preset_load" data-i18n-title="preset_load_title" title="把选中预设的设置应用到当前表单">加载预设</button>
+        <button id="updateAsrPreset" class="ghost" type="button" data-i18n="preset_update_selected" data-i18n-title="preset_update_title" title="用当前表单覆盖选中的预设">覆盖至预设</button>
+        <button id="copyAsrPreset" class="ghost" type="button" data-i18n="preset_copy" data-i18n-title="preset_copy_title" title="先复制选中预设为「×× 副本」，之后再改名">复制预设</button>
+        <button id="deleteAsrPreset" class="danger ghost" type="button" data-i18n="preset_delete" data-i18n-title="preset_delete_title" title="将选中预设移入系统回收站">删除预设</button>
+        <button id="saveAsrPreset" class="primary" type="button" data-i18n="preset_save" data-i18n-title="preset_save_title" title="把当前识别表单保存为新预设">将当前配置存为新预设</button>
+      </div>
+      <footer class="modal-actions">
+        <p class="hint asr-preset-root-hint"><span data-i18n="preset_modal_saved_in">预设文件夹：</span><button id="asrPresetRootInModal" class="inline-link runtime-path-link" type="button" data-i18n-title="open_folder_hint" title="点击打开所在文件夹"></button><span data-i18n="preset_modal_settings_lead">（可在 </span><button id="asrPresetSettingsLink" class="inline-link" type="button" data-i18n="preset_modal_settings_link">设置</button><span data-i18n="preset_modal_settings_tail"> 中更改）</span></p>
+      </footer>
+    </section>
+  </div>
   <div id="batchConfirmModal" class="modal hidden" role="dialog" aria-modal="true" aria-labelledby="batchConfirmTitle">
     <div class="modal-backdrop"></div>
     <section class="modal-card batch-confirm-card">

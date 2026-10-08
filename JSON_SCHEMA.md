@@ -43,6 +43,7 @@
   "waveform": { ... },
   "gap_remove": { ... },
   "script_alignment": { ... },
+  "markers": { ... },
   "workspace": { ... },
   "preview": { ... },
   "overlay_track": { ... },
@@ -66,6 +67,7 @@
 | `waveform` | `object` | 否 | 可丢弃的紧凑波形缓存。由 `edit.py` 或浏览器自动生成；不影响字幕语义 |
 | `gap_remove` | `object` | 否 | 可逆的空隙移除决定。保留原始媒体/字幕时间，仅描述导出与跳过播放时使用的派生时间轴 |
 | `script_alignment` | `object` | 否 | 录制对齐工具写入的选择记录；不改变 MAWE 的字幕与时间码语义 |
+| `markers` | `object` | 否 | 可选的 `moy.asr.markers.v1` 标记与区段。旗标/彩条与 AI 复核项；从不改变字幕、空隙或媒体（见 1.7） |
 | `workspace` | `object` | 否 | 编辑器工作区：四个功能区的窗口布局与显示状态；不影响字幕和波形缓存。服务器版也可使用独立的本机命名工作区库跨工程复用 |
 | `preview` | `object` | 否 | 预览呈现设置。含 `preview.subtitle`（主字幕预览框与样式）、可选的 `preview.extension_subtitle`（副字幕样式）和 `preview.sticker`（表情包预览层）。不影响字幕时间与文本 |
 | `overlay_track` | `object` | 否 | 独立的叠加字幕轨。它的段可以与主轨重叠，但轨内保持时间顺序；用于保存导入 SRT 时出现的双层字幕 |
@@ -309,7 +311,7 @@
 
 - `detector` 固定为 `audio_gate`：扫描波形峰值包络，声音高于 `threshold_db` 时打开 gate，低于 `threshold_db - hysteresis_db` 后才关闭；不会用字幕之间的时间差推断空隙。
 - `gaps[*].source` 和 `gaps[*].origins` 是根据 `provenance` 派生的可读字段：`source` 表示唯一的初始自动来源；`origins` 列出当前区间的全部贡献来源。多个自动来源重叠时 `source` 为 `null`；只有人工覆盖时才为 `manual`。它们不是来源真源，旧客户端可以忽略。
-- `provenance` 是可选的来源真源，当前来源层为 `script_alignment`、`audio_gate` 与 `manual_overrides`；`legacy` 是兼容读取字段，启用的旧范围会迁入 `audio_gate`，旧的 `removed: false` 范围会迁入 `manual_overrides`，规范化输出中的 `legacy` 为空数组。支持它的新客户端据此分层重扫和重建最终 `gaps`。
+- `provenance` 是可选的来源真源，当前来源层为 `script_alignment`、`ai_cleanup`、`audio_gate` 与 `manual_overrides`；`legacy` 是兼容读取字段，启用的旧范围会迁入 `audio_gate`，旧的 `removed: false` 范围会迁入 `manual_overrides`，规范化输出中的 `legacy` 为空数组。支持它的新客户端据此分层重扫和重建最终 `gaps`。`ai_cleanup` 层由 AI 口播整理（Launcher 工具箱 / match 步骤的「使用 AI 整理」模式）写入，与 `script_alignment` 一样始终为移除区间；在编辑器中按层恢复或重扫时，其余来源层保持不变。
 - `minimum_ms` 的允许范围是 100–60000，单位为毫秒；默认 500。判定基于应用前/后端预留后的最终移除区间，预留吃完整段时不纳入移除。
 - `threshold_db` 的范围是 -96–0，默认 -24；`hysteresis_db` 的范围是 0–30，默认 2。比如阈值 -24、滞回 2 时，声音达到 -24 才算有声，低于 -26 才重新算静音。建议使用 1–3dB；过高会延迟回到静音。滞回位于「空隙检测与调整」折叠区内。
 - `lead_in_ms` / `lead_out_ms` 是每段空隙两侧保留的静音毫秒数，范围 0–2000，默认前端 40、后端 80。扫描得到的原始静音区间会在起点加 `lead_in_ms`、终点减 `lead_out_ms` 后再写入 `gaps`，避免剪掉空隙后两句贴得太急；预留后的区间短于 `minimum_ms` 时整段保留。这两个值在扫描生成空隙时继续生效；对已有结果点击「收缩空隙」时，会再次按当前值向内调整现有区间，是额外的可撤销微调。
@@ -532,6 +534,41 @@
 - SRT 导入没有字词时间码，因此扩展段通常不带 `items`；mosp/json 导入和主副交换可以带上可选 `items`，保存、加载和再次交换时保留它们。
 - `continuous`（字符型）允许字符边界，`word`（单词型）只允许空格或安全标点附近的边界，禁止拆碎单词。切分时会清理断点两侧相邻的中英文逗号、句号及空白；两种模式也分别决定字数统计规则。
 - `enabled: false` 时工程仍保留轨道、绑定、语言类型和 ID；主轨 SRT 导出语义不变，扩展轨使用独立 SRT 导出。
+
+### 1.7 markers 标记与区段（可选）
+
+`markers` 是与字幕无关的标注层：波形每行顶部有独立的标记轨道，用于旗标（Marker）、彩条（Region）与 AI 复核项。它从不改变 `segments`、`gap_remove` 或媒体本身；删除工程中的 `markers` 字段不影响任何字幕语义。
+
+```json
+{
+  "schema": "moy.asr.markers.v1",
+  "items": [
+    {
+      "id": "marker-001",
+      "start": 8000,
+      "name": "这段口误重录",
+      "color": "#f5a623",
+      "note": "识别疑似错误，需要人工确认",
+      "review": { "status": "pending", "reason": "识别疑似错误，需要人工确认" }
+    },
+    {
+      "id": "marker-002",
+      "start": 12000,
+      "end": 15000,
+      "name": "开场音乐",
+      "color": "#3e63dd",
+      "note": ""
+    }
+  ]
+}
+```
+
+- `items[*].start` 是原媒体整数毫秒；存在合法 `end`（`end > start`）时为 Region（彩条），否则为单点 Marker（旗标）。区间允许互相重叠。
+- `id` 是稳定字符串。缺失、重复或非法 ID 由规范化按时间序补齐，显式 ID 合法时原样保留。已有稳定 ID 不随移动或新增标记而重排，因此 ID 数字不代表时间顺序。
+- `name` 最长 120 字符，`note` 最长 500 字符，写入前去除控制字符；`color` 为 `#RRGGBB` 六位十六进制，非法值回退默认 `#3e63dd`。
+- `review` 是可选的复核状态：`status` 为 `pending`（待复核）或 `confirmed`（已确认），`reason` 最长 300 字符。带 `review.status: "pending"` 的标记在轨道上以脉冲样式显示，并在「标记与区段」管理窗中计数；确认后置为 `confirmed`。AI 口播整理把待复核段写成 `pending` 复核标记（默认色 `#f5a623`），确认与否完全由用户决定。
+- AI 整理的新注释优先写覆盖源字幕的区段（合法 `end > start`），`note` 统一为 `[AI] 操作：原因`。自动删除使用「删除」且不带 `review`；替代版本存疑使用「替代项」，其他待复核使用「复核」，并带 `pending`。这是已有字段的使用约定，不增加 schema 字段；注释与字幕禁用、`gap_remove` 决定独立，删除注释不撤销剪辑。
+- 读写双方都应容忍未知字段与非法项：规范化丢弃无法解析的项，不抛错。
 
 ---
 
@@ -831,6 +868,7 @@ uv run python edit.py your_generated.mosp
 | `sticker_root` | string | ❌ | 表情包根目录 |
 | `waveform` | object | ❌ | 可丢弃的 `moy.asr.waveform.v1` 峰值缓存 |
 | `gap_remove` | object | ❌ | 可逆的 `moy.asr.gap_remove.v1` 空隙移除决定 |
+| `markers` | object | ❌ | 可选的 `moy.asr.markers.v1` 标记与区段；AI 复核项带 `review` 字段 |
 | `overlay_track` | object | ❌ | 独立叠加字幕轨 `{enabled, segments}` |
 | `multi_subtitle` | object | ❌ | 可选的 `moy.asr.multi_subtitle.v1` 主轨/扩展轨与绑定 |
 | `preview` | object | ❌ | 预览呈现设置容器 |

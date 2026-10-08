@@ -522,13 +522,16 @@
   pointer-events: none;
   font-variant-numeric: tabular-nums;
 }
+/* 该行可见范围内有标记时，行时间标签下移给标记轨道让位（见 waveform-markers.js）。 */
+.waveform-row-has-markers .waveform-row-time {
+  top: 22px;
+}
 .waveform-row.multi-subtitle-row::before,
 .waveform-row.multi-subtitle-row::after {
   position: absolute;
   z-index: 8;
   right: 6px;
-  padding: 1px 4px;
-  border-radius: 2px;
+  padding: 1px 4px;  border-radius: 2px;
   color: var(--text-faint);
   background: var(--wave-badge-bg);
   font: 10px/1.25 var(--font-mono);
@@ -586,10 +589,6 @@
 }
 .waveform-row.multi-subtitle-row .waveform-cue-block[data-track="extension"] .waveform-cue-label {
   color: var(--text-secondary);
-}
-.waveform-row.multi-subtitle-row .waveform-cue-block[data-track="extension"].selected {
-  outline-style: solid;
-  outline-color: var(--accent-hover);
 }
 .waveform-playhead {
   position: absolute;
@@ -832,7 +831,19 @@
   border-top-right-radius: 0;
   border-bottom-right-radius: 0;
 }
-.waveform-cue-block:hover { filter: brightness(var(--wave-hover-brightness)); }
+/* 不在块本身使用 filter：滤镜会改变轮廓颜色，并可能影响盒外 outline 的合成。
+   用块内提亮层保留原底色/禁用条纹，文字、手柄与外轮廓不参与合成。 */
+.waveform-cue-block::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+  border-radius: inherit;
+  background: white;
+  opacity: 0;
+  pointer-events: none;
+}
+.waveform-cue-block:hover::before { opacity: calc(var(--wave-hover-brightness) - 1); }
 /* 分组徽章：放在块上方的行内区域（bottom = 块高35 + 块底7 + 间距2），
    纯视觉提示不遮挡块内文字；left 由 JS 按块位置写入 */
 .waveform-cue-badge {
@@ -848,11 +859,6 @@
    「块底 7 + 实际块高 + 间距 2」计算，否则会嵌进更高的单行块内。 */
 .waveform-basic .waveform-cue-badge {
   bottom: calc(9px + max(35px, min(72px, 40%)) + var(--badge-stack-index, 0) * 16px);
-}
-.waveform-cue-block.selected {
-  z-index: 6;
-  outline: 2px solid var(--selection-yellow);
-  box-shadow: 0 0 0 1px rgba(89, 62, 0, .72), 0 0 8px var(--selection-yellow-glow);
 }
 /* 框选拖动中的命中预览：比正式选中的实线弱一档的虚线；
    松开后由选中契约替换为 .selected。 */
@@ -881,7 +887,8 @@
   );
 }
 .waveform-cue-block.disabled:hover { opacity: 0.7; }
-.waveform-cue-block.dragging { cursor: grabbing; filter: brightness(var(--wave-drag-brightness)); }
+.waveform-cue-block.dragging { cursor: grabbing; }
+.waveform-cue-block.dragging::before { opacity: calc(var(--wave-drag-brightness) - 1); }
 .waveform-cue-handle {
   position: absolute;
   top: 0;
@@ -962,7 +969,7 @@
 .waveform-row.multi-subtitle-row .waveform-cue-boundary[data-track="extension"] {
   bottom: var(--multi-subtitle-bottom-inset);
 }
-.waveform-cue-label { pointer-events: none; }
+.waveform-cue-label { position: relative; z-index: 1; pointer-events: none; }
 .waveform-binding-marker {
   position: absolute;
   z-index: 3;
@@ -1023,6 +1030,16 @@
   );
 }
 .waveform-row.multi-subtitle-row .waveform-cue-block.disabled:hover { opacity: 0.7; }
+/* Selection wins over track, disabled, and hover decoration on every lane. */
+.waveform-cue-block.selected,
+.waveform-cue-block.selected:hover,
+.waveform-row.multi-subtitle-row .waveform-cue-block.selected,
+.waveform-row.multi-subtitle-row .waveform-cue-block.selected:hover {
+  z-index: 6;
+  opacity: 1;
+  outline: 2px solid var(--selection-yellow);
+  box-shadow: 0 0 0 1px rgba(89, 62, 0, .72), 0 0 8px var(--selection-yellow-glow);
+}
 
 /* Ctrl(Cmd)+左键拖动空白处：使用和正式字幕块一致的几何形状，
    以半透明虚影预览将要创建的时间范围。 */
@@ -1086,4 +1103,158 @@
 /* 叠加块的徽章：挂在叠加块（bottom 50% + 高 35px）上方，避免与下半区徽章混叠。 */
 .waveform-cue-badge.waveform-overlay-cue-badge {
   bottom: calc(50% + 37px + var(--badge-stack-index, 0) * 16px);
+}
+
+/* === 通用 Marker / Region 轨道 ===
+   每个可见波形行顶部的一条独立细轨：空白点击 = 添加标记，横向拖动 = 拉出
+   区段；旗标 / 区段条与字幕块、静音空隙手势完全分离。无标记时不渲染轨道。 */
+.waveform-marker-track {
+  position: absolute;
+  z-index: 6;
+  left: 0;
+  right: 0;
+  top: 0;
+  height: 16px;
+  cursor: crosshair;
+  touch-action: none;
+}
+.waveform-marker-item {
+  position: absolute;
+  top: 0;
+  height: 16px;
+  background: var(--marker-color, #3e63dd);
+  border-radius: 2px;
+  cursor: grab;
+  touch-action: none;
+}
+.waveform-marker-item.point {
+  transform: translateX(-50%);
+  border-radius: 1px 3px 3px 1px;
+  box-shadow: 0 0 0 1px color-mix(in srgb, var(--marker-color, #3e63dd) 70%, black);
+}
+.waveform-marker-item.region {
+  height: 12px;
+  top: 2px;
+  opacity: 0.92;
+  box-shadow: 0 0 0 1px color-mix(in srgb, var(--marker-color, #3e63dd) 70%, black);
+}
+.waveform-marker-item .waveform-marker-label {
+  display: flex;
+  align-items: center;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  color: #fff;
+  font: 600 10px/1 var(--font-ui, sans-serif);
+  text-shadow: 0 1px 1px rgba(0, 0, 0, 0.45);
+  pointer-events: none;
+}
+.waveform-marker-item.region .waveform-marker-label {
+  position: absolute;
+  inset: 0;
+  padding: 0 8px;
+}
+/* 单点标记：名称显示在旗标右侧（行边缘由 .waveform-row 的 overflow 裁剪）。 */
+.waveform-marker-item.point .waveform-marker-label {
+  position: absolute;
+  left: calc(100% + 4px);
+  top: 0;
+  height: 100%;
+  max-width: 180px;
+  text-shadow: 0 1px 2px var(--bg-wave-row, #fff), 0 0 4px var(--bg-wave-row, #fff), 0 1px 1px rgba(0, 0, 0, 0.35);
+  color: var(--text-primary, #222);
+}
+.waveform-marker-handle {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  width: 8px;
+  cursor: ew-resize;
+}
+.waveform-marker-handle.left { left: 0; }
+.waveform-marker-handle.right { right: 0; }
+.waveform-marker-handle::after {
+  content: "";
+  position: absolute;
+  top: 2px;
+  bottom: 2px;
+  width: 2px;
+  left: 3px;
+  border-radius: 1px;
+  background: rgba(255, 255, 255, 0.85);
+}
+.waveform-marker-handle.right::after { left: auto; right: 3px; }
+.waveform-marker-item:hover { filter: brightness(1.12); }
+.waveform-marker-item.dragging,
+.waveform-marker-item.drag-preview { cursor: grabbing; }
+.waveform-marker-item.drag-preview {
+  pointer-events: none;
+  z-index: 12;
+  opacity: 0.85;
+  box-shadow: 0 0 0 1.5px var(--wave-split-flash, #ffd43b);
+}
+/* 待复核：左侧黄色问号（不做闪烁动画）；已确认：右侧绿色对勾。 */
+.waveform-marker-item.review-pending::before {
+  content: "?";
+  position: absolute;
+  right: calc(100% + 3px);
+  top: 50%;
+  transform: translateY(-50%);
+  color: var(--amber, #f5a623);
+  font: 700 11px/1 var(--font-ui, sans-serif);
+  text-shadow: 0 1px 2px var(--bg-wave-row, #fff), 0 0 3px var(--bg-wave-row, #fff);
+  pointer-events: none;
+}
+.waveform-marker-item.review-confirmed::after {
+  content: "✓";
+  position: absolute;
+  right: 1px;
+  top: 0;
+  color: var(--green, #46a758);
+  font: 700 10px/1 var(--font-ui, sans-serif);
+  text-shadow: 0 1px 1px rgba(0, 0, 0, 0.4);
+  pointer-events: none;
+}
+/* 波形上的标记快速编辑浮层（双击 marker 打开；定位在滚动容器内）。 */
+.waveform-marker-quick-edit {
+  position: absolute;
+  z-index: 30;
+  display: grid;
+  gap: 8px;
+  width: 208px;
+  padding: 9px;
+  color: var(--text-primary);
+  background: var(--bg-panel);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  box-shadow: var(--shadow-2, 0 8px 24px rgba(0, 0, 0, 0.25));
+}
+.waveform-marker-quick-edit .markers-edit-field {
+  display: grid;
+  gap: 5px;
+  margin: 0;
+  color: var(--text-secondary);
+  font-size: 11px;
+  font-weight: 600;
+}
+.waveform-marker-quick-edit input[type="text"] {
+  width: 100%;
+  padding: 5px 7px;
+  box-sizing: border-box;
+  color: var(--text-primary);
+  background: var(--bg-input);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  font-size: 12px;
+}
+.waveform-marker-quick-edit input[type="text"]:focus {
+  outline: none;
+  border-color: var(--accent);
+  box-shadow: var(--focus-ring);
+}
+.waveform-marker-quick-edit .markers-color-swatches {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 5px;
 }

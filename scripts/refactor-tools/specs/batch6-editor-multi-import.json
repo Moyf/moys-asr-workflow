@@ -1,0 +1,18 @@
+{
+  "file": "editor-multi-import.js",
+  "ns": "MaweMultiImport",
+  "header": "多重字幕导入：导入选择弹窗、预览渲染与主副轨交换。",
+  "symbols": [
+    "pendingMultiImport",
+    "closeMultiSubtitleImportModal",
+    "renderMultiImportPreview",
+    "renderMainImportPreview",
+    "renderProjectImportPreview",
+    "showMultiSubtitleImportChoice",
+    "prepareMultiSubtitleImport",
+    "commitMultiSubtitleImport",
+    "swapMainAndExtensionSubtitles",
+    "openSrtFile",
+    "openProjectFile"
+  ]
+}

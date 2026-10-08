@@ -46,6 +46,7 @@ OPERATION_NAMES: Final[dict[str, dict[str, str]]] = {
     "original": {"zh": "原始", "en": "original"},
     "ocr-dedup": {"zh": "OCR去重", "en": "ocr-dedup"},
     "match": {"zh": "文稿匹配", "en": "match"},
+    "ai_cleanup": {"zh": "AI整理", "en": "ai-cleanup"},
     "replace": {"zh": "批量替换", "en": "replace"},
     "simplified": {"zh": "转简体", "en": "simplified"},
     "traditional": {"zh": "转繁体", "en": "traditional"},
@@ -59,6 +60,7 @@ OPERATION_NAMES: Final[dict[str, dict[str, str]]] = {
 MEDIA_SUFFIX_NAMES: Final[dict[str, dict[str, str]]] = {
     "gap-removed": {"zh": "去空隙", "en": "gap-removed"},
     "subtitled": {"zh": "压字幕", "en": "subtitled"},
+    "green-screen": {"zh": "绿幕", "en": "green-screen"},
     "audio": {"zh": "音频", "en": "audio"},
 }
 

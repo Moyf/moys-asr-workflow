@@ -1,0 +1,6 @@
+{
+  "file": "editor-settings.js",
+  "ns": "MaweSettings",
+  "header": "编辑器设置：键名、默认值、localStorage 读写与 EDITOR_SETTINGS 中心可变对象。",
+  "ranges": [[626, 869], [1828, 1831]]
+}

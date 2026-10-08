@@ -1,0 +1,6 @@
+{
+  "file": "editor-display-settings.js",
+  "ns": "MaweDisplaySettings",
+  "header": "显示设置：字幕列表/编辑区显示项应用、多重字幕行高联动与平台按键标签。",
+  "ranges": [[723, 929]]
+}

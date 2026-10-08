@@ -1,0 +1,23 @@
+{
+  "file": "editor-sticker-overlay.js",
+  "ns": "MaweStickerOverlay",
+  "header": "表情包浮层：叠加层渲染与区间缓存。",
+  "symbols": [
+    "stickerOverlayLayer",
+    "stickerOverlayContent",
+    "stickerOverlayDataVersion",
+    "stickerIntervalCacheVersion",
+    "stickerIntervals",
+    "stickerIntervalBoundaries",
+    "activeStickerCacheVersion",
+    "activeStickerCacheTime",
+    "activeStickerCacheUntil",
+    "activeStickerCache",
+    "renderedStickerSignature",
+    "renderedStickerOverlayEnabled",
+    "rebuildStickerIntervals",
+    "activeStickersAt",
+    "renderStickerOverlay",
+    "stickerAssetRevision"
+  ]
+}

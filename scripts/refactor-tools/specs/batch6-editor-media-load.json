@@ -1,0 +1,11 @@
+{
+  "file": "editor-media-load.js",
+  "ns": "MaweMediaLoad",
+  "header": "媒体加载：媒体与 reapeaks 文件加载、元数据等待。",
+  "symbols": [
+    "loadMediaFile",
+    "loadReapeaksFile",
+    "waitForMediaMetadata",
+    "mediaLoadErrorMessage"
+  ]
+}

@@ -398,9 +398,9 @@ def build_transcribe_command(
         ):
             command.append("--speaker-colors")
         _append_option(command, "--language", request.language)
-        # 共享断句配置里的「额外断句符号」：作为云端转写的强断句符号下发；
-        # 空串跳过，保持命令行与旧版一致。
-        _append_option(command, "--extra-strong-punct", request.extra_strong_punct)
+        # 共享断句配置里的「需要断句的符号」：作为云端转写的强断句符号
+        # 恒显式下发（含空串）：空串 = 仅按换行断句，不再有内置强标点。
+        command.extend(["--extra-strong-punct", request.extra_strong_punct])
     _append_option(command, "--length-limit", request.length_limit)
     _append_option(command, "--max-len", request.max_len)
     _append_option(command, "--min-len", request.min_len)
@@ -724,7 +724,13 @@ def _prepend_ffmpeg_path(env: dict[str, str], configured_path: str) -> bool:
     if not directory.exists():
         return False
     old_path = env.get("PATH", "")
-    env["PATH"] = str(directory) if not old_path else str(directory) + os.pathsep + old_path
+    entries = old_path.split(os.pathsep) if old_path else []
+    directory_text = str(directory)
+    if entries and entries[0] == directory_text and entries.count(directory_text) == 1:
+        return False
+    # 已在 PATH 后段的目录也必须移到最前，确保子进程使用解析器选中的工具。
+    # ffprobe 和 ffmpeg 同目录时只保留一份。
+    env["PATH"] = os.pathsep.join([directory_text, *(entry for entry in entries if entry != directory_text)])
     return True
 
 

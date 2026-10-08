@@ -1,0 +1,14 @@
+{
+  "file": "editor-bound-drag.js",
+  "ns": "MaweBoundDrag",
+  "header": "绑定拖拽：主副字幕联动调整的范围解析与快照恢复。",
+  "symbols": [
+    "getBoundDragTarget",
+    "ensureBoundDragOriginal",
+    "snapshotBoundDragTrack",
+    "ensureBoundDragTimelineOriginals",
+    "restoreBoundDragTimelineOriginals",
+    "getBoundDragEdge",
+    "syncBoundCueDrag"
+  ]
+}

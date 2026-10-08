@@ -7,8 +7,6 @@ source: "docs/MOSE.md"
 
 <!-- Generated from docs/MOSE.md. Run npm run sync:docs to refresh. -->
 
-# MOSE 独立编辑器
-
 MOSE（Moy's Open Subtitle Editor）是 MAW 的 Windows x64 Electron 壳。它复用
 `server-editor/serve.py`、`web/` 前端和 `.mosp` 工程契约，因此保存、备份、媒体
 Range seek、波形、最近工程和导出能力与 MAWE Server 保持一致，不维护第二套编辑器
@@ -44,6 +42,9 @@ Installer 安装的是同一个统一套件：
   但不会建立系统关联。
 - MOSE 支持命令行传入 `.mosp` / `.json`。第二次启动会通过 Electron 单实例锁把
   工程路径转发给现有窗口，并沿用编辑器的 dirty-state 确认。
+- 「快速上手」状态保存在 `%LOCALAPPDATA%\MAW\server-editor-settings.json` 的用户级设置中。
+  MOSE 每次使用随机 localhost 端口也不会因此重复显示；单独打开的 `file://` 编辑器仍按
+  浏览器存储隔离。
 
 ## 本地构建与测试
 
@@ -59,7 +60,7 @@ npm run build
 npm run smoke
 cd ..
 .\scripts\stage-mose-bundle.ps1
-.\scripts\build-installer.ps1 -Version "1.5.3"
+.\scripts\build-installer.ps1 -Version "1.6.0-beta.1"
 ```
 
 `build-installer.ps1` 需要 Inno Setup 6 的 `ISCC.exe`；脚本默认读取

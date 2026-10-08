@@ -1,6 +1,7 @@
 ---
 import BaseLayout from './BaseLayout.astro';
 import { sitePath } from '../lib/site-path';
+import { docsNavigation } from '../lib/docs-navigation';
 import '../styles/docs.css';
 
 const { frontmatter = {} } = Astro.props;
@@ -10,21 +11,6 @@ const source = frontmatter.source ?? Astro.props.source;
 const currentPath = Astro.url.pathname;
 const repoUrl = 'https://github.com/Moyf/moys-asr-workflow';
 
-const navigation = [
-  ['getting-started', '开始使用'],
-  ['workflow', '完整工作流'],
-  ['providers', 'ASR 服务与配置'],
-  ['editor-guide', '编辑器指南'],
-  ['cli', '命令行 CLI'],
-  ['json-schema', '工程文件规范'],
-  ['keyboard-adjustment', '按键调整'],
-  ['local-asr', '实验性本地 ASR'],
-  ['llm-postprocess', 'LLM 字幕后处理'],
-  ['ocr-subtitle-dedup', 'OCR 字幕去重'],
-  ['mose', 'MOSE 独立编辑器'],
-  ['provider-research', 'ASR 供应商调研'],
-  ['development', '开发概览'],
-];
 ---
 
 <BaseLayout title={`${title} — MAW 文档`} description={description}>
@@ -47,17 +33,24 @@ const navigation = [
 
     <div class="docs-layout">
       <aside class="docs-sidebar" aria-label="文档目录">
-        <p class="docs-sidebar-label">目录</p>
-        <nav>
-          {navigation.map(([slug, label]) => (
-            <a href={sitePath(`docs/${slug}/`)} aria-current={currentPath === sitePath(`docs/${slug}/`) ? 'page' : undefined}>{label}</a>
-          ))}
-        </nav>
-        {source && (
-          <a class="docs-source" href={`${repoUrl}/blob/main/${source}`}>
-            来源：{source}<br />在 GitHub 查看原文 ↗
-          </a>
-        )}
+        <details class="docs-directory" data-docs-directory open>
+          <summary class="docs-sidebar-label">文档目录</summary>
+          <nav>
+            {docsNavigation.map((group) => (
+              <div class="docs-nav-group">
+                <p class="docs-nav-group-label">{group.label}</p>
+                {group.docs.map(([slug, label]) => (
+                  <a href={sitePath(`docs/${slug}/`)} aria-current={currentPath === sitePath(`docs/${slug}/`) ? 'page' : undefined}>{label}</a>
+                ))}
+              </div>
+            ))}
+          </nav>
+          {source && (
+            <a class="docs-source" href={`${repoUrl}/blob/main/${source}`}>
+              来源：{source}<br />在 GitHub 查看原文 ↗
+            </a>
+          )}
+        </details>
       </aside>
 
       <article class="docs-content">
@@ -73,3 +66,13 @@ const navigation = [
     </div>
   </footer>
 </BaseLayout>
+
+<script>
+  const directory = document.querySelector<HTMLDetailsElement>('[data-docs-directory]');
+  if (directory) {
+    const desktop = window.matchMedia('(min-width: 821px)');
+    const setDefault = () => { directory.open = desktop.matches; };
+    setDefault();
+    desktop.addEventListener('change', setDefault);
+  }
+</script>

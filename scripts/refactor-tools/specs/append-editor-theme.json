@@ -1,0 +1,21 @@
+{
+    "symbols":  [
+                    "EDITOR_THEME_VALUES",
+                    "EDITOR_ACCENT_COLOR_DEBOUNCE_MS",
+                    "normalizeEditorTheme",
+                    "resolveEditorTheme",
+                    "refreshEditorThemeOptions",
+                    "refreshEditorAccentOptions",
+                    "applyEditorAccentColor",
+                    "editorAccentCustomColorTimer",
+                    "pendingEditorAccentCustomColor",
+                    "flushEditorAccentCustomColor",
+                    "scheduleEditorAccentCustomColor",
+                    "editorSystemThemeMedia",
+                    "refreshEditorSystemTheme"
+                ],
+    "ns":  "MaweTheme",
+    "header":  "append ??????????????",
+    "file":  "editor-theme.js",
+    "append":  true
+}

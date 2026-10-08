@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import errno
 import tempfile
 import unittest
 from pathlib import Path
@@ -14,6 +15,7 @@ from maw.postprocess_io import SubtitleArtifact
 from maw.postprocess_llm import LlmClientError
 from maw.postprocess_ocr import OcrDedupArtifact
 from maw.postprocess_pipeline import (
+    POSTPROCESS_PLAN_VERSION,
     PostprocessCancelled,
     PostprocessPipelineError,
     default_postprocess_plan,
@@ -72,6 +74,19 @@ class PostprocessPipelineTests(unittest.TestCase):
         script.write_text("正字\n保留\n", encoding="utf-8")
         return {"id": "match", "enabled": enabled, "scriptPath": str(script)}
 
+    def test_ai_cleanup_notes_survive_plan_normalization_and_request(self) -> None:
+        step = self.match_step()
+        step.update(aiCleanup=True, aiCleanupNotes="  保留所有数字  ")
+        plan = normalize_plan(self.plan(step))
+        self.assertEqual(plan["steps"][0]["aiCleanupNotes"], "保留所有数字")
+        with mock.patch("maw.postprocess_pipeline.run_ai_cleanup",
+                        return_value=SubtitleArtifact(self.project, self.srt, self.project, self.srt)) as cleanup:
+            run_postprocess_pipeline(plan, media_path=self.media, project_path=self.project,
+                                     srt_path=self.srt, env_path=self.env_path, ffmpeg_path=None,
+                                     cancel_event=Event(), llm_settings={"deepseek": {
+                                         "apiKey": "fake", "baseUrl": "https://example.test", "model": "fake", "verified": "1"}})
+        self.assertEqual(cleanup.call_args.args[0].notes, "保留所有数字")
+
     def test_default_plan_is_disabled_and_ordered(self) -> None:
         plan = default_postprocess_plan()
 
@@ -82,7 +97,7 @@ class PostprocessPipelineTests(unittest.TestCase):
         translate_step = next(step for step in plan["steps"] if step["id"] == "translate")
         self.assertFalse(translate_step["mergeBilingual"])
         self.assertEqual(plan["steps"][0]["matchMode"], "script")
-        self.assertEqual(plan["steps"][0]["extraSplitPunctuation"], ["？", "！", ","])
+        self.assertEqual(plan["steps"][0]["extraSplitPunctuation"], ["，", "。", "？", "！", "；", ",", "."])
         self.assertEqual(plan["steps"][0]["preservePunctuation"], ["？", "！"])
         self.assertTrue(plan["steps"][0]["cleanMarkdownSymbols"])
         self.assertEqual(plan["steps"][-1]["videoEncoder"], "auto")
@@ -94,6 +109,47 @@ class PostprocessPipelineTests(unittest.TestCase):
         normalized = normalize_plan(plan)
 
         self.assertEqual(normalized["steps"][0]["extraSplitPunctuation"], ["？", "！"])
+
+    def test_normalize_plan_migrates_v1_plan_to_full_default_split_symbols(self) -> None:
+        # v1 计划依赖隐式基础断句集（，。,.）；迁移把默认清单一次性并入，
+        # 用户自定义符号顺序保持在前、缺失的默认符号追加在后。
+        raw = {
+            "version": 1,
+            "enabled": False,
+            "steps": [
+                {
+                    "id": "match",
+                    "enabled": True,
+                    "extraSplitPunctuation": ["？", "！", ","],
+                    "preservePunctuation": ["？", "！"],
+                },
+            ],
+        }
+
+        normalized = normalize_plan(raw)
+
+        self.assertEqual(
+            normalized["steps"][0]["extraSplitPunctuation"],
+            ["？", "！", ",", "，", "。", "；", "."],
+        )
+
+    def test_normalize_plan_keeps_customized_current_plan_split_symbols(self) -> None:
+        raw = {
+            "version": POSTPROCESS_PLAN_VERSION,
+            "enabled": False,
+            "steps": [
+                {
+                    "id": "match",
+                    "enabled": True,
+                    "extraSplitPunctuation": ["~"],
+                    "preservePunctuation": [],
+                },
+            ],
+        }
+
+        normalized = normalize_plan(raw)
+
+        self.assertEqual(normalized["steps"][0]["extraSplitPunctuation"], ["~"])
 
     def test_normalize_plan_defaults_retain_intermediate_for_legacy_plan(self) -> None:
         normalized = normalize_plan({"enabled": True, "steps": []})
@@ -742,7 +798,7 @@ class PostprocessPipelineTests(unittest.TestCase):
         plan = save_postprocess_plan(self.env_path, self.plan(self.replace_step()))
         config = load_postprocess_config(self.root / "maw-postprocess.json")
 
-        self.assertEqual(plan["version"], 1)
+        self.assertEqual(plan["version"], 2)
         self.assertTrue(config["plan"]["enabled"])
         self.assertNotIn("apiKey", json.dumps(config, ensure_ascii=False))
 
@@ -1047,6 +1103,60 @@ class PostprocessPipelineTests(unittest.TestCase):
         self.assertTrue(workspace.is_dir())
         self.assertEqual(len(tuple(workspace.iterdir())), 1)
 
+    def test_per_video_workspace_and_same_time_run_isolation(self) -> None:
+        with (
+            mock.patch("maw.output_naming.subfolder_prefs", return_value=(True, True)),
+            mock.patch("maw.postprocess_pipeline.datetime") as clock,
+        ):
+            clock.now.return_value.strftime.return_value = "20261004-120000"
+            first = _create_run_directory(self.media, lang="en")
+            second = _create_run_directory(self.media, lang="en")
+        self.assertEqual(first.parent, (self.root / "clip_maw" / "postprocess").resolve())
+        self.assertEqual(first.name, "clip-20261004-120000")
+        self.assertEqual(second.name, "clip-20261004-120000-2")
+        self.assertTrue(first.is_dir() and second.is_dir())
+
+    def test_long_intermediate_path_reports_rename_guidance_before_processing(self) -> None:
+        from maw.file_errors import IntermediateFileError, file_error_code
+        failure = OSError(errno.ENAMETOOLONG, "File name too long")
+        with (
+            mock.patch("maw.postprocess_pipeline.tempfile.mkstemp", side_effect=failure),
+            mock.patch("maw.postprocess_pipeline._run_step") as run_step,
+        ):
+            with self.assertRaises(IntermediateFileError) as caught:
+                run_postprocess_pipeline(
+                    self.plan(self.replace_step()), media_path=self.media, project_path=self.project,
+                    srt_path=self.srt, env_path=self.env_path, ffmpeg_path=None, cancel_event=Event(),
+                )
+        self.assertEqual(file_error_code(caught.exception), "intermediate_path_too_long")
+        self.assertIn("缩短原文件名", str(caught.exception))
+        self.assertIs(caught.exception.__cause__, failure)
+        run_step.assert_not_called()
+        self.assertTrue(self.project.is_file() and self.srt.is_file())
+
+    def test_secondary_manifest_failure_preserves_step_error_and_recovery(self) -> None:
+        from maw.file_errors import IntermediateFileError
+        from maw.postprocess_pipeline import _write_manifest
+        failure = IntermediateFileError(OSError(errno.ENOSPC, "disk full"))
+
+        def write_manifest(directory, payload):
+            if payload.get("status") == "failed":
+                raise PermissionError("secondary manifest failure")
+            return _write_manifest(directory, payload)
+
+        with (
+            mock.patch("maw.postprocess_pipeline._write_manifest", side_effect=write_manifest),
+            mock.patch("maw.postprocess_pipeline.run_fixed_process", side_effect=failure),
+        ):
+            with self.assertRaises(PostprocessPipelineError) as caught:
+                run_postprocess_pipeline(
+                    self.plan(self.replace_step()), media_path=self.media, project_path=self.project,
+                    srt_path=self.srt, env_path=self.env_path, ffmpeg_path=None, cancel_event=Event(),
+                )
+        self.assertIs(caught.exception.__cause__, failure)
+        self.assertTrue(caught.exception.run_directory.is_dir())
+        self.assertTrue(self.project.is_file() and self.srt.is_file())
+
     def test_new_run_directories_live_under_localized_workspace(self) -> None:
         chinese_media = self.root / "我的视频.mp3"
         chinese_media.write_bytes(b"audio")
@@ -1188,17 +1298,17 @@ class PostprocessPreflightTests(unittest.TestCase):
             default_postprocess_plan()["steps"][0]["preservePunctuation"],
             ["？", "！"],
         )
-        # 默认保留 ？！ → 转写剥尾只剥逗号和句号。
-        self.assertEqual(_transcribe_strip_tail_punct(self.env_path), "，。")
+        # 默认保留 ？！ → 转写剥尾剥其余断句符号（，。；,.）。
+        self.assertEqual(_transcribe_strip_tail_punct(self.env_path), "，。；,.")
 
     def test_transcribe_strip_tail_punct_follows_saved_preserve_symbols(self) -> None:
         plan = default_postprocess_plan()
         plan["steps"][0]["preservePunctuation"] = ["。"]
         save_postprocess_plan(self.env_path, plan)
 
-        self.assertEqual(_transcribe_strip_tail_punct(self.env_path), "，")
+        self.assertEqual(_transcribe_strip_tail_punct(self.env_path), "，？！；,.")
 
         plan["steps"][0]["preservePunctuation"] = ["。", "，"]
         save_postprocess_plan(self.env_path, plan)
 
-        self.assertEqual(_transcribe_strip_tail_punct(self.env_path), "")
+        self.assertEqual(_transcribe_strip_tail_punct(self.env_path), "？！；,.")

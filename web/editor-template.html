@@ -55,7 +55,8 @@ __WAVEFORM_CSS__
     <button type="button" id="open-project-menu-btn" class="split-caret" aria-label="打开更多文件">▾</button>
     <div class="dropdown-menu" id="open-project-menu">
       <div class="dropdown-item" id="load-media" role="menuitem" tabindex="0">加载媒体</div>
-      <div class="dropdown-item" id="load-srt" role="menuitem" tabindex="0">加载字幕</div>
+      <div class="dropdown-item" id="load-srt" role="menuitem" tabindex="0" title="选择 .srt 字幕导入">加载字幕</div>
+      <div class="dropdown-item" id="load-lrc" role="menuitem" tabindex="0" title="选择 .lrc 歌词导入">加载歌词</div>
     </div>
   </span>
   <div class="dropdown" id="recent-projects" hidden>
@@ -90,11 +91,11 @@ __WAVEFORM_CSS__
   <span class="sep overlay-track-separator" id="overlay-track-separator" hidden></span>
   <span class="multi-subtitle-controls" id="multi-subtitle-controls" hidden>
     <label class="multi-subtitle-main-toggle" id="multi-subtitle-toggle-label"
-           title="当前工程如果有大于1条字幕，可以开启双语字幕模式，用于双语字幕编辑等。">
-      <input type="checkbox" id="multi-subtitle-toggle" title="当前工程如果有大于1条字幕，可以开启双语字幕模式，用于双语字幕编辑等。">
+           title="开启后显示副字幕轨，可手动添加或导入第二条字幕。">
+      <input type="checkbox" id="multi-subtitle-toggle" title="开启后显示副字幕轨，可手动添加或导入第二条字幕。">
       双语字幕
     </label>
-    <small class="multi-subtitle-empty-hint" id="multi-subtitle-empty-hint" hidden>请拖入第二条字幕以开启双语字幕编辑</small>
+    <small class="multi-subtitle-empty-hint" id="multi-subtitle-empty-hint" hidden title="在波形副轨空白处右键创建副字幕，或从双语字幕设置导入 SRT。">副轨为空，可手动添加或导入</small>
     <span class="dropdown multi-subtitle-settings-dropdown" id="multi-subtitle-settings-dropdown" hidden>
       <button type="button" id="multi-subtitle-settings-toggle" title="双语字幕设置" aria-label="双语字幕设置" aria-expanded="false" aria-controls="multi-subtitle-settings-menu" aria-haspopup="menu">⚙️</button>
       <div class="dropdown-menu multi-subtitle-settings-menu" id="multi-subtitle-settings-menu" role="menu">
@@ -149,17 +150,19 @@ __WAVEFORM_CSS__
           <input type="checkbox" id="multi-subtitle-show-track-badges"> 显示轨道徽标
         </label>
         <div class="dropdown-separator"></div>
+        <div class="dropdown-item" id="multi-subtitle-import" role="menuitem" tabindex="0" title="导入 SRT 到副轨；已有副字幕时可预览并确认替换">导入副字幕</div>
         <div class="dropdown-item" id="multi-subtitle-swap" role="menuitem" tabindex="0" title="交换主字幕和副字幕的文本、时间与绑定关系">交换主副字幕</div>
       </div>
     </span>
   </span>
 
   <span class="right-group">
-    <button type="button" id="download-multi-srt" hidden title="导出当前副字幕轨（SRT）">导出副字幕</button>
     <span class="dropdown" id="subtitle-export-dropdown">
       <button id="subtitle-export-btn" title="导出 SRT/ASS 字幕或按颜色拆分导出 SRT 字幕" aria-expanded="false" aria-controls="subtitle-export-menu" aria-haspopup="menu">导出字幕 ▾</button>
       <div class="dropdown-menu" id="subtitle-export-menu" role="menu">
-        <div class="dropdown-item" id="download-full-srt" role="menuitem" tabindex="0">完整 SRT 字幕</div>
+        <div class="dropdown-item" id="download-full-srt" role="menuitem" tabindex="0">SRT 字幕</div>
+        <div class="dropdown-item" id="download-multi-srt" role="menuitem" tabindex="0" hidden title="导出当前副字幕轨（SRT）">副字幕 SRT</div>
+        <div class="dropdown-item" id="download-bilingual-srt" role="menuitem" tabindex="0" hidden title="按两轨实际时间合并；重叠时主字幕在上、副字幕在下">双语整合字幕 SRT</div>
         <div class="dropdown-item" id="download-color-srt" role="menuitem" tabindex="0" hidden>按颜色拆分导出 SRT 字幕</div>
         <div class="dropdown-separator" id="subtitle-export-separator" role="separator" hidden></div>
         <div class="dropdown-item" id="download-full-ass" role="menuitem" tabindex="0">带样式的 ASS 字幕</div>
@@ -187,8 +190,11 @@ __WAVEFORM_CSS__
             <label class="dropdown-setting-toggle" title="把表情包作为一条叠加的视频轨道合并进同一个 OTIO 工程，无需再单独导出表情包 OTIO">
               <input type="checkbox" data-otio-export-option="stickers" checked> 时间线包含表情包
             </label>
-            <label class="dropdown-setting-toggle" title="把每条字幕的文本与时间作为标记写入时间线片段">
+            <label class="dropdown-setting-toggle" title="把每条字幕的文本与时间作为标记写入时间线片段（备注标注为 MAW 字幕）">
               <input type="checkbox" data-otio-export-option="markers" checked> 将字幕内容作为标记写入
+            </label>
+            <label class="dropdown-setting-toggle" title="把工程「标记与区段」（含名称与备注）作为标记写入时间线片段">
+              <input type="checkbox" data-otio-export-option="markerRegions" checked> 将标记与区段写入
             </label>
           </div>
         </div>
@@ -219,8 +225,11 @@ __WAVEFORM_CSS__
             <label class="dropdown-setting-toggle" title="把表情包作为一条叠加的视频轨道合并进同一个 OTIO 工程，无需再单独导出表情包 OTIO">
               <input type="checkbox" data-otio-export-option="stickers" checked> 时间线包含表情包
             </label>
-            <label class="dropdown-setting-toggle" title="把每条字幕的文本与时间作为标记写入时间线片段">
+            <label class="dropdown-setting-toggle" title="把每条字幕的文本与时间作为标记写入时间线片段（备注标注为 MAW 字幕）">
               <input type="checkbox" data-otio-export-option="markers" checked> 将字幕内容作为标记写入
+            </label>
+            <label class="dropdown-setting-toggle" title="把工程「标记与区段」（含名称与备注）作为标记写入时间线片段">
+              <input type="checkbox" data-otio-export-option="markerRegions" checked> 将标记与区段写入
             </label>
           </div>
         </div>
@@ -398,6 +407,60 @@ __WAVEFORM_CSS__
     <footer class="gap-remove-panel-footer">
       <span>滚轮可调数值 · Esc 关闭</span>
       <button type="button" id="gap-remove-clear-all" class="danger">全部清理</button>
+    </footer>
+  </div>
+</aside>
+
+<!-- 可拖动的非模态「标记与区段」管理窗（通用 Marker / Region） -->
+<aside class="gap-remove-panel markers-panel" id="markers-panel" role="dialog" aria-modal="false" aria-hidden="true" aria-labelledby="markers-panel-title">
+  <header class="gap-remove-panel-header" id="markers-drag-handle">
+    <div class="gap-remove-heading">
+      <span class="gap-remove-eyebrow">媒体标记</span>
+      <h3 id="markers-panel-title">标记与区段</h3>
+    </div>
+    <button type="button" id="markers-close" class="gap-remove-close" title="关闭（Esc）" aria-label="关闭标记与区段工具窗">×</button>
+  </header>
+  <div class="gap-remove-panel-body">
+    <div class="markers-actions">
+      <button type="button" id="markers-add-current" class="markers-inline-button">在播放头添加标记</button>
+      <button type="button" id="markers-batch-select" class="markers-inline-button" aria-pressed="false">批量选择</button>
+    </div>
+    <div class="markers-summary-row">
+      <div class="markers-summary" id="markers-summary" aria-live="polite">尚无标记；在波形顶部标记轨道空白处点击或拖动即可添加。</div>
+      <input type="search" id="markers-search" class="markers-search-input" placeholder="按名称或备注搜索" maxlength="200" aria-label="按名称或备注搜索">
+    </div>
+    <div class="markers-filters-field">
+      <div class="markers-filters">
+        <label class="markers-filter-item">类型
+          <select id="markers-filter-kind">
+            <option value="all">全部</option>
+            <option value="marker">标记</option>
+            <option value="region">区段</option>
+          </select>
+        </label>
+        <label class="markers-filter-item">颜色
+          <select id="markers-filter-color">
+            <option value="all">全部</option>
+          </select>
+        </label>
+        <label class="markers-filter-item">复核
+          <select id="markers-filter-review">
+            <option value="all">全部</option>
+            <option value="pending">待复核</option>
+            <option value="confirmed">已确认</option>
+            <option value="plain">普通标记</option>
+          </select>
+        </label>
+      </div>
+    </div>
+    <div class="markers-batch-actions" id="markers-batch-actions" hidden>
+      <button type="button" id="markers-select-all" class="markers-inline-button" title="仅选择当前筛选结果">全选</button>
+      <button type="button" id="markers-delete-selected" class="markers-inline-button danger" disabled>批量删除</button>
+      <span id="markers-selection-summary" aria-live="polite">已选 0 项</span>
+    </div>
+    <div class="markers-list" id="markers-list" aria-live="polite"></div>
+    <footer class="gap-remove-panel-footer">
+      <span>点击列表项定位试听 · Esc 关闭</span>
     </footer>
   </div>
 </aside>
@@ -1014,11 +1077,48 @@ __WAVEFORM_CSS__
       <small class="editor-settings-hint">关闭时保持原有 CSS 预览；开启后使用 ASS 的字体、颜色、粗体、斜体、下划线、描边、阴影、对齐和动画预览，并只保留字幕文本中的显式换行，不自动折行。</small>
       <div class="ass-manager-open-row">
         <button type="button" id="ass-style-manager-open" class="editor-settings-inline-action ass-style-manager-open" title="打开 ASS 样式库">🎨 管理 ASS 样式</button>
+        <button type="button" id="ass-frame-preview-open" class="editor-settings-inline-action ass-frame-preview-open" title="用 FFmpeg (libass) 渲染当前播放位置的实际 ASS 画面" hidden>📷 实际画面预览</button>
       </div>
       <small class="editor-settings-hint" id="ass-style-summary">样式库正在加载…</small>
     </div>
   </div>
   <small class="editor-settings-hint" id="subtitle-style-ass-mode-hint" hidden>⬆️ 当前预览样式由 ASS 字幕模式控制</small>
+  <span class="editor-settings-group-heading" id="ass-inline-text-title" hidden>特殊文本格式</span>
+  <div id="ass-inline-text-settings" class="editor-settings-group" role="group" aria-labelledby="ass-inline-text-title" hidden>
+    <div class="ass-inline-text-content">
+      <small class="editor-settings-hint">用成对符号标记特殊文本；开启的语法统一用于 ASS 主字幕、副字幕和叠加字幕的预览与导出。颜色与字号比例在 ASS 样式库中配置。</small>
+      <label class="subtitle-preview-setting-row"><span>特殊符号规则</span>
+        <select id="ass-special-symbol-rule"><option value="none">无</option><option value="double">双个符号</option><option value="both" selected>单双皆可</option></select>
+      </label>
+      <div class="ass-inline-text-options" id="ass-inline-text-options">
+        <div class="ass-inline-text-row">
+          <div class="ass-inline-text-option">
+            <label class="toggle editor-settings-item"><input type="checkbox" id="ass-emphasis-syntax" data-ass-inline-setting="assEmphasisSyntax"> 强调</label>
+            <small class="editor-settings-hint" data-ass-symbol="*" data-ass-symbol-label="强调">**强调**</small>
+          </div>
+          <div class="ass-inline-text-option">
+            <label class="toggle editor-settings-item"><input type="checkbox" id="ass-underline-enabled" data-ass-inline-setting="assUnderlineEnabled"> 下划线</label>
+            <small class="editor-settings-hint" data-ass-symbol="_" data-ass-symbol-label="下划线">__下划线__</small>
+          </div>
+          <div class="ass-inline-text-option">
+            <label class="toggle editor-settings-item"><input type="checkbox" id="ass-strike-enabled" data-ass-inline-setting="assStrikeEnabled"> 删除线</label>
+            <small class="editor-settings-hint" data-ass-symbol="~" data-ass-symbol-label="删除线">~~删除线~~</small>
+          </div>
+        </div>
+        <div class="ass-inline-text-row">
+          <div class="ass-inline-text-option">
+            <label class="toggle editor-settings-item"><input type="checkbox" id="ass-small-text-enabled" data-ass-inline-setting="assSmallTextEnabled"> 缩小</label>
+            <small class="editor-settings-hint" data-ass-symbol="-" data-ass-symbol-label="缩小">--缩小--</small>
+          </div>
+          <div class="ass-inline-text-option">
+            <label class="toggle editor-settings-item"><input type="checkbox" id="ass-large-text-enabled" data-ass-inline-setting="assLargeTextEnabled"> 放大</label>
+            <small class="editor-settings-hint" data-ass-symbol="+" data-ass-symbol-label="放大">++放大++</small>
+          </div>
+        </div>
+      </div>
+      <small class="editor-settings-hint">需要调整强调色或者字体比例，可以前往 <button type="button" class="editor-settings-inline-action ass-style-edit-open" id="ass-special-style-edit">编辑特殊文本样式</button>。</small>
+    </div>
+  </div>
   <span class="editor-settings-group-heading" id="subtitle-preview-style-title">主字幕</span>
   <div class="editor-settings-group subtitle-preview-style-group" id="main-subtitle-preview-settings" role="group" aria-labelledby="subtitle-preview-style-title">
     <div class="subtitle-preview-settings-fields" id="main-subtitle-css-fields">
@@ -1522,14 +1622,12 @@ __WAVEFORM_CSS__
         <section class="ass-style-form-section" aria-labelledby="ass-style-basic-heading">
           <div class="ass-style-subheading" id="ass-style-basic-heading">基础样式</div>
           <div class="ass-style-fields ass-style-fields-basic">
-            <label class="ass-style-color-field">主色<input type="color" id="ass-style-primary-color" data-ass-style-field="primaryColor"></label>
-            <label class="ass-style-color-field">描边<input type="color" id="ass-style-outline-color" data-ass-style-field="outlineColor"></label>
-            <label class="ass-style-field">描边宽度<input type="number" id="ass-style-outline" data-ass-style-field="outline" min="0" max="100" step="1"></label>
+            <label class="ass-style-color-field">字幕颜色<input type="color" id="ass-style-primary-color" data-ass-style-field="primaryColor"></label>
+            <label class="ass-style-color-field"><span id="ass-style-outline-color-label">描边颜色</span><input type="color" id="ass-style-outline-color" data-ass-style-field="outlineColor"></label>
+            <label class="ass-style-field"><span id="ass-style-outline-label">描边宽度</span><input type="number" id="ass-style-outline" data-ass-style-field="outline" min="0" max="100" step="1"></label>
+            <label class="ass-style-field"><span id="ass-style-outline-opacity-label">描边不透明度</span><input type="number" id="ass-style-outline-opacity" data-ass-style-field="outlineOpacity" min="0" max="100" step="5" title="0 = 全透明，100 = 不透明；对应 ASS 颜色的 alpha 通道"><span class="ass-style-unit">%</span></label>
           </div>
-          <small class="editor-settings-hint">有颜色的字幕会使用对应颜色覆盖主色/描边，取决于 <button type="button" class="ass-style-settings-link" id="ass-style-settings-link" title="打开全局设置中的字幕样式">字幕样式</button> 中的设置。</small>
-        </section>
-        <section class="ass-style-form-section ass-style-extended-section" aria-labelledby="ass-style-extended-heading">
-          <div class="ass-style-subheading" id="ass-style-extended-heading">拓展样式</div>
+          <small class="editor-settings-hint">带有颜色的字幕对象会使用对应颜色覆盖掉字幕颜色或描边颜色，取决于 <button type="button" class="ass-style-settings-link" id="ass-style-settings-link" title="打开全局设置中的字幕样式">字幕样式</button> 中的设置。</small>
           <div class="ass-style-fields ass-style-fields-extended">
             <div class="ass-style-field ass-style-field-wide ass-style-font-field">
               <label for="ass-style-font-name">字体</label>
@@ -1552,9 +1650,10 @@ __WAVEFORM_CSS__
           </div>
           <div class="ass-style-subheading ass-style-subheading-nested" id="ass-style-border-shadow-heading">边框与阴影</div>
           <div class="ass-style-fields ass-style-fields-border-shadow" aria-labelledby="ass-style-border-shadow-heading">
-            <label class="ass-style-field">边框样式<select id="ass-style-border-style" data-ass-style-field="borderStyle"><option value="1">描边</option><option value="3">不透明底框</option></select></label>
+            <label class="ass-style-field">边框样式<select id="ass-style-border-style" data-ass-style-field="borderStyle"><option value="1">描边</option><option value="3">背景底框</option></select></label>
             <label class="ass-style-color-field">阴影/背景<input type="color" id="ass-style-back-color" data-ass-style-field="backColor"></label>
             <label class="ass-style-field">阴影距离<input type="number" id="ass-style-shadow" data-ass-style-field="shadow" min="0" max="100" step="1"></label>
+            <label class="ass-style-field">阴影不透明度<input type="number" id="ass-style-back-opacity" data-ass-style-field="backOpacity" min="0" max="100" step="5" title="0 = 全透明（阴影/底框消失），100 = 不透明；对应 ASS 颜色的 alpha 通道"><span class="ass-style-unit">%</span></label>
           </div>
           <div class="ass-style-layout-row">
             <fieldset class="ass-style-alignment-field" id="ass-style-alignment">
@@ -1583,7 +1682,21 @@ __WAVEFORM_CSS__
             </div>
           </div>
         </section>
+        <section class="ass-style-form-section" id="ass-style-emphasis-section" aria-labelledby="ass-style-emphasis-heading" hidden>
+          <div class="ass-style-subheading" id="ass-style-emphasis-heading">特殊文本样式</div>
+          <small class="editor-settings-hint" id="ass-special-format-hint">你可以使用 **强调**、~~删除~~、--缩小--、++放大++ 等符号来对特定字词添加特殊样式。</small>
+          <div id="ass-style-emphasis-options" class="ass-style-fields ass-style-fields-special ass-style-emphasis-options">
+            <label class="ass-style-color-field">强调色<input type="color" id="ass-style-emphasis-color" data-ass-style-field="emphasisColor"></label>
+            <label class="ass-style-field">强调样式<select id="ass-style-emphasis-style" data-ass-style-field="emphasisStyle"><option value="stroke">描边颜色</option><option value="text">文本颜色</option></select></label>
+            <label class="ass-style-field">强调文字比例<input type="number" id="ass-style-emphasis-scale" data-ass-style-field="emphasisScale" min="1" max="1.5" step="0.05" value="1.1"></label>
+          </div>
+          <div class="ass-style-fields ass-style-fields-text-size ass-style-emphasis-options">
+            <label class="ass-style-field" id="ass-style-small-text-field">缩小文字比例<input type="number" id="ass-style-small-text-scale" data-ass-style-field="smallTextScale" min="0.1" max="1" step="0.05" value="0.8"></label>
+            <label class="ass-style-field" id="ass-style-large-text-field">放大文字比例<input type="number" id="ass-style-large-text-scale" data-ass-style-field="largeTextScale" min="1" max="3" step="0.05" value="1.5"></label>
+          </div>
+        </section>
         <div class="ass-style-preview-card"><span class="ass-style-preview-label">ASS 预览</span><span id="ass-style-preview-sample">Aa 字幕预览 / 字幕样例</span></div>
+        <p class="ass-style-preview-actions editor-settings-hint"><span>如果想要查看当前画面的实际 ASS 字幕效果，可以</span> <button type="button" class="ass-preview-link" id="ass-style-frame-preview-open" hidden>打开 ASS 实际画面预览窗口</button></p>
       </section>
       <section class="ass-style-form" id="ass-profile-form" aria-labelledby="ass-profile-form-title" hidden>
         <div class="ass-style-form-header">
@@ -1636,15 +1749,44 @@ __WAVEFORM_CSS__
   </footer>
 </aside>
 
+<aside class="editor-settings-window ass-frame-window" id="ass-frame-window" role="dialog" aria-modal="false" aria-label="ASS 实际画面预览" aria-hidden="true">
+  <header class="editor-settings-window-header" id="ass-frame-drag-handle">
+    <span class="editor-settings-window-title">📷 ASS 实际画面</span>
+    <span class="ass-frame-window-status" id="ass-frame-window-status" role="status" aria-live="polite"></span>
+    <button type="button" class="editor-settings-window-close" id="ass-frame-window-close" title="关闭（Esc）" aria-label="关闭 ASS 实际画面预览">×</button>
+  </header>
+  <div class="ass-frame-window-body">
+    <div class="ass-frame-image-wrap">
+      <img class="ass-frame-image" id="ass-frame-image" alt="ASS 实际渲染画面" hidden>
+      <p class="ass-frame-placeholder" id="ass-frame-placeholder">点击下方按钮，用 libass 渲染当前播放位置的实际画面。</p>
+      <div class="ass-frame-stale" id="ass-frame-stale" hidden><span>暂停后重新渲染</span></div>
+    </div>
+    <div class="ass-frame-caption-row">
+      <div class="ass-frame-caption" id="ass-frame-caption" hidden></div>
+      <button type="button" class="ass-preview-link" id="ass-frame-style-edit">编辑 ASS 字幕样式</button>
+    </div>
+    <div class="ass-frame-warnings" id="ass-frame-warnings" hidden></div>
+    <div class="ass-frame-options">
+      <label class="toggle ass-frame-option" title="开启后，暂停 / seek 停止 / 样式修改时自动重新渲染；关闭后仅在点击「渲染当前帧」时更新"><input type="checkbox" id="ass-frame-auto-toggle" checked> 自动渲染实际帧</label>
+      <label class="toggle ass-frame-option" title="暂停时把 libass 实际渲染帧直接叠加在播放器画面上（播放时仍使用即时预览）"><input type="checkbox" id="ass-frame-stage-toggle"> 暂停时在播放器画面显示实际帧</label>
+      <button type="button" id="ass-frame-render" class="primary">📷 渲染当前帧</button>
+      <button type="button" id="ass-frame-size" aria-pressed="false">原尺寸查看</button>
+    </div>
+  </div>
+</aside>
+
 <input type="file" id="open-project-file" accept=".json,.mosp,application/json" style="display:none">
 <input type="file" id="load-media-file" accept="video/*,audio/*" style="display:none">
 <input type="file" id="load-srt-file" accept=".srt,text/plain" style="display:none">
+<input type="file" id="load-lrc-file" accept=".lrc,text/plain" style="display:none">
 
 <div class="editor-workspace waveform-basic" id="editor-workspace">
   <div class="player-wrap">
     <div class="player-stage">
       __MEDIA_HTML__
-          <div class="player-empty" id="player-empty">拖入工程、媒体或 SRT 开始编辑</div>
+      <img id="ass-stage-frame" class="ass-stage-frame" alt="ASS 暂停实际画面" hidden>
+      <span id="ass-stage-status" class="ass-stage-status" hidden></span>
+          <div class="player-empty" id="player-empty">拖入工程、媒体或 SRT/LRC 字幕开始编辑</div>
       <div id="overlay" class="subtitle-overlay geo-box hidden" tabindex="0" role="group" aria-label="字幕预览位置。可拖动调整；方向键移动，按住 Shift 加速，按住 Alt 配合方向键调整大小，Enter 显示控制点，Esc 退出。"><span id="overlay-track-text" class="subtitle-overlay-track-text hidden"></span><span id="overlay-main-text"><span id="overlay-main-speaker-label" class="subtitle-speaker-label hidden"></span></span><span id="overlay-extension-text" class="subtitle-extension-text hidden"></span><span class="overlay-handle" data-handle="nw" aria-hidden="true"></span><span class="overlay-handle" data-handle="n" aria-hidden="true"></span><span class="overlay-handle" data-handle="ne" aria-hidden="true"></span><span class="overlay-handle" data-handle="e" aria-hidden="true"></span><span class="overlay-handle" data-handle="se" aria-hidden="true"></span><span class="overlay-handle" data-handle="s" aria-hidden="true"></span><span class="overlay-handle" data-handle="sw" aria-hidden="true"></span><span class="overlay-handle" data-handle="w" aria-hidden="true"></span></div>
     </div>
     <div class="media-controls" id="media-controls" role="group" aria-label="媒体播放控制">
@@ -1809,6 +1951,8 @@ __WAVEFORM_CSS__
       <button type="button" id="auto-merge-manage" title="将间隔过短的前后字幕直接吸附在一起，去除中间的短暂空白（可直接吸收短字幕）" aria-expanded="false" aria-controls="auto-merge-panel">拼接/合并字幕</button>
       <button type="button" id="subtitle-extend-manage" title="打开可拖动的延长字幕工具窗" aria-expanded="false" aria-controls="subtitle-extend-panel">延长字幕</button>
       <span class="sep"></span>
+      <button type="button" id="markers-manage" title="打开「标记与区段」管理窗：查看、筛选、编辑通用标记与区段（含 AI 复核项）" aria-expanded="false" aria-controls="markers-panel">标记与区段</button>
+      <span class="sep"></span>
       <span class="multi-subtitle-controls multi-subtitle-waveform-controls" id="multi-subtitle-waveform-controls" hidden>
         <button type="button" id="multi-subtitle-align" title="将当前选中的副字幕批量对齐到各自绑定的主字幕时间范围">批量对齐</button>
       </span>
@@ -1880,7 +2024,7 @@ __WAVEFORM_CSS__
       <span class="sep" id="filter-over-sep"></span>
       <button id="filter-over" title="只显示超过阈值的字幕（再次点击关闭）">仅看超长</button>
     </div>
-      <div class="cues-empty" id="cues-empty">拖入工程或 SRT 后显示字幕列表</div>
+      <div class="cues-empty" id="cues-empty">拖入工程或 SRT/LRC 字幕后显示字幕列表</div>
   </div>
 </div>
 
@@ -2097,10 +2241,33 @@ __WAVEFORM_CSS__
         <span class="modal-hint">移除常见 Markdown 标记</span>
       </label>
     </div>
+    <div class="text-process-wrap-presets" aria-label="左右添加字符预设">
+      <div class="text-process-wrap-presets-head">左右添加字符（插入到字幕两端）</div>
+      <div class="text-process-wrap-preset-buttons" id="text-process-wrap-presets"></div>
+    </div>
     <div class="preview text-process-preview" id="text-process-preview">选择操作后查看预览</div>
     <div class="actions">
       <button type="button" id="text-process-cancel">取消</button>
       <button type="button" id="text-process-confirm" class="primary" disabled>应用处理</button>
+    </div>
+  </div>
+</div>
+
+<!-- 「左右添加字符」自定义输入：在选中字幕两端原样插入用户输入的字符。 -->
+<div class="modal-mask" id="wrap-chars-modal">
+  <div class="modal" role="dialog" aria-modal="true"
+       aria-labelledby="wrap-chars-title" aria-describedby="wrap-chars-description">
+    <h3 id="wrap-chars-title">自定义左右字符</h3>
+    <p class="modal-desc" id="wrap-chars-description">
+      在选中字幕文本两端原样插入字符；不做样式转换，也不受「单双符号」规则影响。
+    </p>
+    <label for="wrap-chars-left">左侧字符</label>
+    <input type="text" id="wrap-chars-left" placeholder="插入到字幕开头">
+    <label for="wrap-chars-right">右侧字符</label>
+    <input type="text" id="wrap-chars-right" placeholder="插入到字幕结尾">
+    <div class="actions">
+      <button type="button" id="wrap-chars-cancel">取消</button>
+      <button type="button" id="wrap-chars-confirm" class="primary">插入</button>
     </div>
   </div>
 </div>
@@ -2285,7 +2452,7 @@ __WAVEFORM_CSS__
 <div class="ctxmenu" id="ctxmenu"></div>
 
 <!-- 拖拽加载遮罩 -->
-<div class="drag-overlay" id="drag-overlay"><div class="drag-hint">松开以加载工程、媒体或 SRT</div></div>
+<div class="drag-overlay" id="drag-overlay"><div class="drag-hint">松开以加载工程、媒体或 SRT/LRC 字幕</div></div>
 
 <!-- 文件读取/媒体解码进度 -->
 <div class="editor-loading" id="editor-loading"__EDITOR_LOADING_HIDDEN__ aria-live="polite" aria-busy="true">

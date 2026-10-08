@@ -29,6 +29,7 @@ from maw.language import (  # noqa: E402
     DEFAULT_MAX_WORDS,
     DEFAULT_MIN_WORDS,
 )
+from maw.energy_valley import snap_cue_boundaries  # noqa: E402
 from maw.local_asr import (  # noqa: E402
     FUNASR_DEFAULT_MODEL,
     QWEN_DEFAULT_CHUNK_SECONDS,
@@ -66,8 +67,8 @@ def build_parser() -> argparse.ArgumentParser:
     )
     parser.add_argument("--model-path", help="显式指定已经下载好的模型目录")
     parser.add_argument(
-        "--device", choices=("auto", "cpu", "cuda"), default="auto",
-        help="推理设备（默认: auto，优先 CUDA；不可用时回退 CPU）",
+        "--device", choices=("auto", "cpu", "cuda", "mps"), default="auto",
+        help="推理设备（默认: auto，优先 CUDA；否则 CPU；MPS 仅用于 macOS 上的 Qwen）",
     )
     parser.add_argument(
         "--forced-aligner", default=QWEN_DEFAULT_FORCED_ALIGNER,
@@ -116,10 +117,10 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--min-len", type=int, default=5, help="中文短句合并阈值")
     parser.add_argument("--max-words", type=int, default=DEFAULT_MAX_WORDS, help="英文单条字幕最大单词数")
     parser.add_argument("--min-words", type=int, default=DEFAULT_MIN_WORDS, help="英文短句合并阈值（单词数）")
-    parser.add_argument("--gap-split", type=int, default=800, help="静音超过多少毫秒时切句")
+    parser.add_argument("--gap-split", type=int, default=500, help="静音超过多少毫秒时切句")
     parser.add_argument(
-        "--strip-tail-punct", default="，。",
-        help="句尾剥除的标点集合；传空串禁用剥除（默认剥逗号和句号）",
+        "--strip-tail-punct", default="，。；,.",
+        help="句尾剥除的标点集合；传空串禁用剥除（默认 = 共享断句配置默认清单 − 默认保留符号）",
     )
     parser.add_argument("--json", action="store_true", help="同时生成 .mosp 工程")
     parser.add_argument("--with-waveform", action="store_true", help="在媒体旁生成 .quapeaks 波形缓存（不再写进工程文件）")
@@ -296,6 +297,7 @@ def main(argv: Sequence[str] | None = None) -> int:
             elapsed = time.perf_counter() - t0
             print(f"转写结束: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
             rtf = (elapsed / duration_sec) if duration_sec > 0 else 0.0
+            interpolated_boundary_indices: set[int] = set()
             segments = build_local_segments(
                 result,
                 duration_ms=duration_ms,
@@ -305,7 +307,11 @@ def main(argv: Sequence[str] | None = None) -> int:
                 max_words=args.max_words,
                 min_words=args.min_words,
                 strip_tail_punct=args.strip_tail_punct,
+                interpolated_boundary_indices=interpolated_boundary_indices,
             )
+            snapped = snap_cue_boundaries(segments, audio_path, boundary_indices=interpolated_boundary_indices)
+            if snapped:
+                print(f"[输出] 已将 {snapped} 个插值切点吸附到语音能量谷")
             if args.speaker_colors:
                 from maw.speaker import apply_speaker_colors
 

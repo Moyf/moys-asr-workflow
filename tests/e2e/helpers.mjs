@@ -275,13 +275,13 @@ export function testSegments() {
 // opt into this two-word shape only in split-specific scenarios.
 export async function makeFirstCueWordSplittable(page) {
   await page.evaluate(() => {
-    const segment = DATA.segments[0];
+    const segment = MaweBoot.DATA.segments[0];
     segment.text = 'Alpha Bravo';
     segment.items = [
       { start: segment.start, end: 4000, text: 'Alpha' },
       { start: 4000, end: segment.end, text: 'Bravo' },
     ];
-    renderAll({ waveform: 'full' });
+    MaweCuePanel.renderAll({ waveform: 'full' });
   });
 }
 
@@ -300,8 +300,8 @@ export async function disableOnboarding(page) {
     // above for editor pages without server persistence.
     const markServerOnboardingComplete = () => {
       try {
-        if (typeof SERVER_CONFIG !== 'undefined' && SERVER_CONFIG) {
-          SERVER_CONFIG.onboardingStatus = 'completed';
+        if (typeof MaweBoot.SERVER_CONFIG !== 'undefined' && MaweBoot.SERVER_CONFIG) {
+          MaweBoot.SERVER_CONFIG.onboardingStatus = 'completed';
         }
       } catch (_) {
         // The standalone editor has no SERVER_CONFIG binding.
@@ -435,6 +435,10 @@ export async function startServer(projectJsonPath, mediaPath, port) {
     PYTHONUNBUFFERED: '1',
     LOCALAPPDATA: settingsRoot,
     XDG_CONFIG_HOME: settingsRoot,
+    // macOS ignores both keys above; the app-level override isolates the
+    // MAW user-data root on every platform so local saved styles never
+    // leak into assertions.
+    MAW_APP_DATA_ROOT: settingsRoot,
   }), { waitForStartup: true });
 }
 
@@ -453,6 +457,7 @@ export async function startBlankServer(port, settingsRoot) {
     PYTHONUNBUFFERED: '1',
     LOCALAPPDATA: settingsRoot,
     XDG_CONFIG_HOME: settingsRoot,
+    MAW_APP_DATA_ROOT: settingsRoot,
   }));
 }
 

@@ -18,6 +18,7 @@ from pathlib import Path
 from threading import Event
 from typing import Final
 
+from maw.file_errors import file_write_operation, intermediate_file_operation
 from maw.gui_config import load_env
 from maw.output_naming import format_elapsed, operation_suffix, postprocess_workspace, resolve_lang, sanitize_component, translation_marker_name
 from maw.postprocess import (
@@ -32,6 +33,7 @@ from maw.postprocess import (
     run_fixed_process,
     run_llm_postprocess,
 )
+from maw.postprocess_ai_cleanup import AiCleanupRequest, llm_complete, run_ai_cleanup
 from maw.postprocess_io import SubtitleArtifact, read_project, write_artifacts
 from maw.postprocess_llm import (
     DEFAULT_REASONING_MODE,
@@ -40,7 +42,12 @@ from maw.postprocess_llm import (
     normalize_reasoning_mode,
     preset_by_id,
 )
-from maw.postprocess_match import ScriptMatchRequest, run_script_match
+from maw.postprocess_match import (
+    DEFAULT_EXTRA_SPLIT_PUNCTUATION,
+    DEFAULT_PRESERVE_PUNCTUATION,
+    ScriptMatchRequest,
+    run_script_match,
+)
 from maw.postprocess_ocr import OcrDedupArtifact, OcrDedupRequest, OcrRegion, run_ocr_dedup
 from maw.postprocess_ffmpeg import BurnSubtitleRequest, MediaToolCancelled, normalize_video_encoder, run_burn_subtitles
 from maw.ocr_runtime import OCR_MODEL_ID, run_ocr_in_runtime
@@ -48,7 +55,7 @@ from maw.project_preview import JsonValue
 from maw.text_conversion import TextConversion, normalize_text_conversion_mode
 
 
-POSTPROCESS_PLAN_VERSION: Final[int] = 1
+POSTPROCESS_PLAN_VERSION: Final[int] = 2
 POSTPROCESS_CONFIG_FILENAME: Final[str] = "maw-postprocess.json"
 STEP_ORDER: Final[tuple[str, ...]] = (
     "match",
@@ -61,7 +68,8 @@ STEP_ORDER: Final[tuple[str, ...]] = (
 )
 TRANSLATION_TARGETS: Final[frozenset[str]] = frozenset({"zh", "en"})
 SCRIPT_EXTENSIONS: Final[frozenset[str]] = frozenset({".txt", ".md", ".markdown"})
-DEFAULT_EXTRA_SPLIT_PUNCTUATION: Final[tuple[str, ...]] = ("？", "！", ",")
+# 断句符号的唯一真源：文稿匹配与转写共用。不再有隐式基础断句集，
+# 默认值即完整清单，用户删除某行 = 该符号不再断句、也不再从句尾剥除。
 VIDEO_EXTENSIONS: Final[frozenset[str]] = frozenset({
     ".mp4", ".mkv", ".avi", ".mov", ".wmv", ".flv", ".webm", ".ts", ".m4v",
 })
@@ -78,8 +86,11 @@ def default_postprocess_plan() -> dict[str, object]:
                 "enabled": False,
                 "scriptPath": "",
                 "matchMode": "script",
+                "aiCleanup": False,
+                "aiCleanupNotes": "",
+                "providerId": "deepseek",
                 "extraSplitPunctuation": list(DEFAULT_EXTRA_SPLIT_PUNCTUATION),
-                "preservePunctuation": ["？", "！"],
+                "preservePunctuation": list(DEFAULT_PRESERVE_PUNCTUATION),
                 "cleanMarkdownSymbols": True,
             },
             {"id": "replace", "enabled": False, "replacements": [], "replacementSeparator": "arrow", "replacementTrim": True, "replacementCustomSeparator": "", "conversion": TextConversion.OFF.value},
@@ -98,6 +109,9 @@ def normalize_plan(raw: object) -> dict[str, object]:
     defaults = default_postprocess_plan()
     if not isinstance(raw, Mapping):
         return defaults
+    # v1 计划依赖隐式基础断句集（，。,. + 换行）；v2 起断句符号完全来自
+    # 配置。旧计划一次性并入默认断句清单，避免 ，。 断句行为倒退。
+    legacy_plan = raw.get("version") != POSTPROCESS_PLAN_VERSION
     plan: dict[str, object] = {
         "version": POSTPROCESS_PLAN_VERSION,
         "enabled": bool(raw.get("enabled")),
@@ -144,6 +158,10 @@ def normalize_plan(raw: object) -> dict[str, object]:
                 step[key] = bool(value)
             elif key == "matchMode":
                 step[key] = str(value or "script") if str(value or "script") in {"script", "text"} else "script"
+            elif key == "aiCleanup":
+                step[key] = bool(value)
+            elif key == "aiCleanupNotes":
+                step[key] = str(value or "").strip()
             elif key == "cleanMarkdownSymbols":
                 step[key] = bool(value)
             elif key == "videoPathMode":
@@ -167,6 +185,14 @@ def normalize_plan(raw: object) -> dict[str, object]:
                 ]
                 if migrated:
                     step["extraSplitPunctuation"] = [*extra, *migrated]
+            if legacy_plan and isinstance(step.get("extraSplitPunctuation"), list):
+                merged = [str(item) for item in step["extraSplitPunctuation"] if str(item)]
+                merged.extend(
+                    symbol
+                    for symbol in DEFAULT_EXTRA_SPLIT_PUNCTUATION
+                    if symbol not in merged
+                )
+                step["extraSplitPunctuation"] = merged
         normalized_steps.append(step)
     plan["steps"] = normalized_steps
     return plan
@@ -288,7 +314,11 @@ def snapshot_postprocess_llm_settings(
 
     snapshot: dict[str, dict[str, str]] = {}
     for step in enabled_steps(plan):
-        if str(step.get("id") or "") not in {"proofread", "resegment", "translate"}:
+        step_id = str(step.get("id") or "")
+        if step_id == "match":
+            if step.get("aiCleanup") is not True:
+                continue
+        elif step_id not in {"proofread", "resegment", "translate"}:
             continue
         provider_id = str(step.get("providerId") or "deepseek")
         if provider_id in snapshot:
@@ -307,6 +337,27 @@ def snapshot_postprocess_llm_settings(
             ),
         }
     return snapshot
+
+
+def _llm_provider_error(
+    step: Mapping[str, object],
+    *,
+    env_path: Path,
+    llm_settings: Mapping[str, Mapping[str, str]] | None,
+) -> dict[str, str] | None:
+    """Return the blocking provider configuration error for one LLM step."""
+
+    provider_id = str(step.get("providerId") or "deepseek")
+    status = _snapshot_provider_status(llm_settings.get(provider_id)) if llm_settings and provider_id in llm_settings else postprocess_provider_status(env_path, provider_id)
+    if not status["hasApiKey"]:
+        return {"step": str(step.get("id") or ""), "field": "llmApiKey", "message": "LLM 供应商缺少 API Key，请在工具箱设置中填写并保存。"}
+    if not status["hasBaseUrl"]:
+        return {"step": str(step.get("id") or ""), "field": "llmBaseUrl", "message": "LLM 供应商缺少 API URL，请在工具箱设置中填写并保存。"}
+    if not status["hasModel"]:
+        return {"step": str(step.get("id") or ""), "field": "llmModel", "message": "LLM 供应商缺少模型，请在工具箱设置中填写并保存。"}
+    if not status["verified"]:
+        return {"step": str(step.get("id") or ""), "field": "llmModel", "message": "LLM 连接尚未验证，请在设置中点击“测试连接”。"}
+    return None
 
 
 def validate_plan(
@@ -330,17 +381,14 @@ def validate_plan(
             path = Path(str(step.get("scriptPath") or "")).expanduser()
             if path.suffix.lower() not in SCRIPT_EXTENSIONS or not path.is_file():
                 errors.append({"step": step_id, "field": "postprocessScriptPath", "message": "文稿匹配需要一个存在的 .txt、.md 或 .markdown 文稿文件。"})
+            if step.get("aiCleanup") is True:
+                provider_error = _llm_provider_error(step, env_path=env_path, llm_settings=llm_settings)
+                if provider_error is not None:
+                    errors.append(provider_error)
         elif step_id in {"proofread", "resegment", "translate"}:
-            provider_id = str(step.get("providerId") or "deepseek")
-            status = _snapshot_provider_status(llm_settings.get(provider_id)) if llm_settings and provider_id in llm_settings else postprocess_provider_status(env_path, provider_id)
-            if not status["hasApiKey"]:
-                errors.append({"step": step_id, "field": "llmApiKey", "message": "LLM 供应商缺少 API Key，请在工具箱设置中填写并保存。"})
-            elif not status["hasBaseUrl"]:
-                errors.append({"step": step_id, "field": "llmBaseUrl", "message": "LLM 供应商缺少 API URL，请在工具箱设置中填写并保存。"})
-            elif not status["hasModel"]:
-                errors.append({"step": step_id, "field": "llmModel", "message": "LLM 供应商缺少模型，请在工具箱设置中填写并保存。"})
-            elif not status["verified"]:
-                errors.append({"step": step_id, "field": "llmModel", "message": "LLM 连接尚未验证，请在设置中点击“测试连接”。"})
+            provider_error = _llm_provider_error(step, env_path=env_path, llm_settings=llm_settings)
+            if provider_error is not None:
+                errors.append(provider_error)
             if step_id == "translate" and str(step.get("target") or "zh") not in TRANSLATION_TARGETS:
                 errors.append({"step": step_id, "field": "autoTranslateTarget", "message": "翻译目标必须是中文或英文。"})
             if step_id == "translate" and bool(step.get("mergeBilingual")) and bool(step.get("embedTranslations")):
@@ -454,6 +502,9 @@ def _pipeline_artifact_path(
 
 def _pipeline_step_operation(step: Mapping[str, object]) -> str:
     step_id = str(step.get("id") or "")
+    if step_id == "match":
+        if step.get("aiCleanup") is True:
+            return "ai_cleanup"
     if step_id == "translate":
         target = str(step.get("target") or "zh")
         return f"translate-{target}"
@@ -492,6 +543,7 @@ def _available_pipeline_destinations(
         counter += 1
 
 
+@intermediate_file_operation
 def _relocate_pipeline_artifact(path: Path, destination: Path) -> Path:
     source = path.expanduser().resolve()
     target = destination.expanduser().resolve()
@@ -543,6 +595,7 @@ def _number_pipeline_artifact(
     return renamed, index + 1
 
 
+@intermediate_file_operation
 def _ensure_initial_pipeline_artifacts(
     run_directory: Path,
     source_project_path: Path,
@@ -874,12 +927,12 @@ def run_postprocess_pipeline(
         return result
     except PostprocessCancelled:
         manifest["status"] = "cancelled"
-        _write_manifest(run_directory, manifest)
+        _write_failure_manifest(run_directory, manifest)
         _emit(on_event, {"stage": "cancelled", "completed": len(completed), "total": len(steps), "runDirectory": str(run_directory)})
         raise
     except PostprocessPipelineError as error:
         manifest["status"] = "failed"
-        _write_manifest(run_directory, manifest)
+        _write_failure_manifest(run_directory, manifest)
         _emit(on_event, {
             "stage": "failed",
             "completed": len(completed),
@@ -891,7 +944,7 @@ def run_postprocess_pipeline(
         raise
     except Exception:
         manifest["status"] = "failed"
-        _write_manifest(run_directory, manifest)
+        _write_failure_manifest(run_directory, manifest)
         _emit(on_event, {"stage": "failed", "completed": len(completed), "total": len(steps), "runDirectory": str(run_directory)})
         raise
 
@@ -913,6 +966,18 @@ def _run_step(
     step_id = str(step["id"])
     output_mode = OutputMode.BOTH
     if step_id == "match":
+        if step.get("aiCleanup") is True:
+            return _run_ai_cleanup_step(
+                step,
+                project_path=project_path,
+                srt_path=srt_path,
+                media_path=media_path,
+                env_path=env_path,
+                output_directory=output_directory,
+                cancel_event=cancel_event,
+                on_event=on_event,
+                llm_settings=llm_settings,
+            )
         return run_script_match(ScriptMatchRequest(
             project_path=project_path,
             srt_path=srt_path,
@@ -1035,6 +1100,51 @@ def _run_step(
         output_directory=output_directory,
         media_path=media_path,
         bilingual_line_order=str(step.get("bilingualLineOrder") or ""),
+    ), complete=complete, on_status=on_status)
+
+
+def _run_ai_cleanup_step(
+    step: Mapping[str, object],
+    *,
+    project_path: Path,
+    srt_path: Path,
+    media_path: Path,
+    env_path: Path,
+    output_directory: Path,
+    cancel_event: Event,
+    on_event: PipelineEvent | None,
+    llm_settings: Mapping[str, Mapping[str, str]] | None,
+) -> SubtitleArtifact:
+    provider_id = str(step.get("providerId") or "deepseek")
+    values = dict(llm_settings.get(provider_id)) if llm_settings and provider_id in llm_settings else _llm_values(env_path, provider_id)
+    settings = LlmSettings(
+        provider_id=provider_id,
+        api_key=values["apiKey"],
+        base_url=values["baseUrl"],
+        model=values["model"],
+        reasoning_mode=normalize_reasoning_mode(values.get("reasoningMode", DEFAULT_REASONING_MODE)),
+    )
+    transport = llm_complete(settings)
+
+    def complete(prompt: str, clips: list[dict[str, str]]) -> Mapping[str, object]:
+        _check_cancel(cancel_event)
+        response = transport(prompt, clips)
+        _check_cancel(cancel_event)
+        return response
+
+    def on_status(key: str) -> None:
+        _check_cancel(cancel_event)
+        _emit(on_event, {"stage": "detail", "step": "match", "key": key})
+
+    return run_ai_cleanup(AiCleanupRequest(
+        project_path=project_path,
+        srt_path=srt_path,
+        script_path=Path(str(step.get("scriptPath") or "")).expanduser(),
+        output_mode=OutputMode.BOTH,
+        output_directory=output_directory,
+        media_path=media_path,
+        clean_markdown_symbols=step.get("cleanMarkdownSymbols", True) is not False,
+        notes=str(step.get("aiCleanupNotes") or "").strip(),
     ), complete=complete, on_status=on_status)
 
 
@@ -1321,6 +1431,7 @@ def _embed_translated_subtitles(
     )
 
 
+@intermediate_file_operation
 def _create_run_directory(media_path: Path, *, lang: str | None = None) -> Path:
     root = postprocess_workspace(media_path, lang=lang)
     root.mkdir(parents=True, exist_ok=True)
@@ -1379,6 +1490,7 @@ def _publish_final(
         counter += 1
 
 
+@file_write_operation
 def _copy_atomic(source: Path, destination: Path) -> None:
     destination.parent.mkdir(parents=True, exist_ok=True)
     descriptor, temporary_name = tempfile.mkstemp(prefix=f".{destination.name}.", suffix=".tmp", dir=destination.parent)
@@ -1387,10 +1499,14 @@ def _copy_atomic(source: Path, destination: Path) -> None:
         shutil.copyfile(source, temporary_name)
         os.replace(temporary_name, destination)
     except OSError:
-        Path(temporary_name).unlink(missing_ok=True)
+        try:
+            Path(temporary_name).unlink(missing_ok=True)
+        except OSError:
+            pass  # Do not hide the write failure if cleanup also fails.
         raise
 
 
+@intermediate_file_operation
 def _write_manifest(directory: Path, payload: Mapping[str, object]) -> None:
     target = directory / "manifest.json"
     text = json.dumps(payload, ensure_ascii=False, indent=2) + "\n"
@@ -1400,8 +1516,19 @@ def _write_manifest(directory: Path, payload: Mapping[str, object]) -> None:
             handle.write(text)
         os.replace(temporary_name, target)
     except (OSError, UnicodeError):
-        Path(temporary_name).unlink(missing_ok=True)
+        try:
+            Path(temporary_name).unlink(missing_ok=True)
+        except OSError:
+            pass  # Do not hide the write failure if cleanup also fails.
         raise
+
+
+def _write_failure_manifest(directory: Path, payload: Mapping[str, object]) -> None:
+    try:
+        _write_manifest(directory, payload)
+    except (OSError, UnicodeError):
+        # The original failure/cancellation is more useful than a second write error.
+        pass
 
 
 def _load_manifest(directory: Path) -> dict[str, object]:
