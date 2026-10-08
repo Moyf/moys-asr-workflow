@@ -1836,6 +1836,13 @@
   .subtitle-overlay[data-ass-mode="true"] > .subtitle-extension-text {
     background: transparent; border-radius: 0; text-shadow: none;
   }
+  /* ASS 文本 Canvas：overlayEl 在 ASS 模式铺满视频画面，画布以 PlayRes
+     原生分辨率为 backing store，由 CSS 拉伸到舞台——缩小获得 libass 式
+     平滑边缘，宽高比不一致时等效 libass 的非等比 PlayRes 映射。 */
+  .ass-preview-canvas {
+    position: absolute; inset: 0; width: 100%; height: 100%;
+    pointer-events: none;
+  }
   .subtitle-overlay[data-ass-mode="true"] > #overlay-main-text,
   .subtitle-overlay[data-ass-mode="true"] > .subtitle-extension-text,
   .subtitle-overlay[data-ass-mode="true"] > .subtitle-overlay-track-text {
