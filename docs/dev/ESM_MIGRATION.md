@@ -95,4 +95,17 @@
 
 生产代码提交 `10943876` 的 [Linux 编辑器门禁](https://github.com/Moyf/moys-asr-workflow/actions/runs/37780175510) 已全部通过，包括从 Windows 提交的产物只读检查、0 类型诊断、450 Node、28 Python 装配契约以及 12 项真实 file/HTTP/事务测试；[Ruff](https://github.com/Moyf/moys-asr-workflow/actions/runs/37780175488) 和 [Windows MAW-lite preview](https://github.com/Moyf/moys-asr-workflow/actions/runs/37780175485) 也通过。后者覆盖打包契约、Python 回归、可执行程序构建与 smoke、资源检查和预览归档。此后文档提交的检查状态以 PR 为准。
 
-当前没有待处理的本批实现任务。保留的边界是完整 Tauri 应用与正式发布包未验证、上游 #177 四项已有交互失败、#157 原架构冲突，以及当前类型检查尚非全仓 strict。
+当前没有待处理的原迁移实现任务。保留的边界是完整 Tauri 应用与正式发布包未验证、上游 #177 四项已有交互失败、#157 原架构冲突，以及当前类型检查尚非全仓 strict。
+
+## 合并审阅（压缩提交后）
+
+早期绿灯不代表最终压缩提交通过：`0f121d59` 的 Windows preview 失败；独立工作树复跑 1833 项 Python 测试，7 项旧源码形状断言失败（21 项按本地环境跳过）。产物新鲜度、类型检查、450 项 Node、12 项 file/HTTP/事务与另 149 项浏览器交互回归通过。
+
+| 审阅项 | 状态 | 处理决定与证据 |
+| --- | --- | --- |
+| 压缩后的 Python 契约 | 已修复 | `tests/test_waveform.py`、`test_local_editor_server.py`、`test_gui_workflow.py` 分离源码形状和页面注入；全量 1833 项通过（21 skip）。新增 bundle E2E 验证非默认工程/路径/语言及空白运行态，13 项通过。Windows 跨盘便携音效 URL 也按实际解析地址检查 |
+| Server 开发说明与 CHANGELOG | 已修复 | `server-editor/README.md` 区分 JS 重建和 CSS/模板刷新；CHANGELOG 合并为一条 JS 体积收益，开发流程留在 DEVELOPMENT/AGENTS |
+| 最终本地验证 | 已修复 | 本地 Python、450 Node、类型、新鲜度、162 浏览器项通过；实际 Rust 渲染器 + 浏览器检查通过（SDK hook stub，2 项旧清单函数未使用警告）；3 个修改的 Python 测试文件 Ruff 与 diff/LF 检查通过 |
+| 最终远端 CI | 仅说明 | 最终提交的外部证据与合并决定在 PR #181 的 checks 和审阅反馈中记录，不以本地测试或旧提交绿灯代替；最终 CI 未绿不得合并 |
+
+实现审阅：59 个工厂未捕获 classic 共享绑定，注册位置和依赖袋保留；其余文件保留单一作用域，提升/TDZ/写入有负例。类型适配没有关闭检查；三端共享已提交产物，产品用户无需 Node。完整 Tauri 应用和正式安装包仍不在本次验证范围。实测 bundle 从 2,284,490 B 减至 1,299,577 B（43.1%），不宣称整包同幅缩小或已测得运行加速。内联副本待发布前统一重生成。
