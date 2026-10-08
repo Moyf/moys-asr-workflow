@@ -2,7 +2,6 @@
 from __future__ import annotations
 
 import importlib.util
-import json
 from pathlib import Path
 import subprocess
 import unittest
@@ -18,7 +17,33 @@ def module(name, file):
 
 replay = module("esm_replay", "rehearse-upstream.py")
 objects = module("esm_git_objects", "fetch-github-objects.py")
+production = module("esm_production", "rehearse-production.py")
 ROOT = Path(__file__).resolve().parents[2]
+
+
+class ReviewedProductionHunks(unittest.TestCase):
+    def test_type_adapter_refuses_primary_workspace(self):
+        result = subprocess.run(['node', ROOT / 'scripts/esm-mechanical/adapt-production-types.mjs', ROOT,
+                                 '180', '40d8cca5288d0fd8890f71e54d248eb9ae856088'],
+                                stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn(b'disposable', result.stderr)
+
+    def test_exact_hunks_preserve_unrelated_content(self):
+        text = 'before\n<<<<<<< ours\nold typed\n=======\nnew business\n>>>>>>> theirs\nafter\n'
+        rules = [{"ours": "old typed\n", "theirs": "new business\n", "replacement": "new typed business\n"}]
+        self.assertEqual(production.resolve_text(text, rules), 'before\nnew typed business\nafter\n')
+        for changed in (text.replace('new business', 'different business'), text.replace('old typed', 'fork logic'), text + text):
+            with self.assertRaises(RuntimeError):
+                production.resolve_text(changed, rules)
+        with self.assertRaises(RuntimeError):
+            production.resolve_text(text, [])
+
+    def test_resolutions_require_exact_head_and_all_conflict_paths(self):
+        attempt = {"conflicts": ["web/one.js"]}
+        for definition in ({"head": "wrong", "files": {"web/one.js": []}}, {"head": "expected", "files": {}}):
+            with self.assertRaises(RuntimeError):
+                production.resolve_reviewed(None, attempt, definition, 'expected')
 
 
 class MergeFixtures(unittest.TestCase):

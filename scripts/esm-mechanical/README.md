@@ -71,3 +71,9 @@ Pop-Location
 `rehearse-upstream.py` 用固定 PR HEAD 测量直接合并冲突，再把上游变更投影到相同 ESM 表示层，三方合并保护 fork 改动。`probe-projection.py` / `verify-upstream.mjs` 保存“Git 零冲突但功能未打包”的反例；`test-upstream.py` 覆盖冲突、双亲历史、严格新增内容合并和工作区保护。
 
 完整命令与边界见 `docs/temp/ESM_UPSTREAM_MERGE_PLAYBOOK.md`，真实结果见 `docs/temp/ESM_UPSTREAM_MERGE_REHEARSAL.md`。新预演不修改主工作区或远端 PR。
+
+## 正式部分迁移的预演
+
+本批实际采用 59 个 ESM 工厂，不能直接套用上方 full 转换器。`rehearse-production.py` 重用固定审查列表，对真实 fork 做三方投影；`adapt-production-types.mjs` 为固定上游 HEAD 补类型，写入前验证 JavaScript AST 一致；解决 JSON 只接受审查过的完整冲突片段。输入变化则停止。
+
+命令、当前 head、冲突数量、逐片段处理与结果索引见 [生产交接文档](../../docs/dev/ESM_UPSTREAM_PRODUCTION.md)。`test-upstream.py` 另覆盖旧规则拒绝、完整冲突路径匹配和主工作区写入保护。

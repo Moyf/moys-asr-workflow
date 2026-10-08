@@ -11,7 +11,7 @@
 | 目标契约红灯 | 已修复 | 新增 `test_editor_bundle.mjs` 在旧实现上 4 项失败，缺少生产打包器；随后实现再验证 |
 | 较大批次部分 ESM 与三个消费端 | 已修复 | 59 个工厂；449 Node、23 资产契约、13 个基线/file/HTTP 探针通过；Rust 真渲染器与浏览器装配通过 |
 | 类型诊断分批修复 | 已修复 | 既有六文件 + 全部 59 个工厂检查：1129 → 1128 → 1006 → 110 → 0；迁移提交后四批修复 |
-| 最终回归与上游 PR | 待处理 | 源码、行为、浏览器、Rust 装配分层记录，检查后创建 PR |
+| 最终回归与上游 PR | 进行中 | 本地生产门禁通过；当前业务 PR 的构建/Node/类型预演完成，最终文档与上游 PR 正在提交 |
 
 ## 已有证据
 
@@ -20,6 +20,7 @@
 - [真实 PR 冲突预演](../temp/ESM_UPSTREAM_MERGE_REHEARSAL.md)、[合并操作手册](../temp/ESM_UPSTREAM_MERGE_PLAYBOOK.md)：五个真实 PR、叠加 PR 顺序、同构投影与保留 fork 改动的方法。
 - [快照](../temp/ESM_UPSTREAM_PR_SNAPSHOT.json)、[预演结果](../temp/ESM_UPSTREAM_MERGE_RESULTS.json)：固定 head/base SHA 与可复查结果。
 - [实验和预演脚本](../../scripts/esm-mechanical/README.md)：隔离实验、真实 Git 对象恢复、顺序合并与负例探针。
+- [当前部分迁移交接](ESM_UPSTREAM_PRODUCTION.md)：59 工厂真实 fork、最新上游 HEAD、具体冲突解决与类型后续脚本。
 
 ## 不可丢失的经验
 
@@ -43,7 +44,7 @@
 - `node scripts/verify-editor.mjs CLASSIC_BASELINE ROOT PYTHON`：13 项通过，file/HTTP 初始化轨迹均覆盖 180 文件，项目注入、未知扩展保存、整数毫秒、SRT、合并撤销与经典基线一致，0 页面错误。
 - `node scripts/verify-editor-desktop.mjs ROOT PYTHON`：编译并执行实际 Rust 渲染器，产物身份一致、全部模板注入完成、调色板与 Python 相同，页面启动且 180 文件轨迹正确。仅外部 Tauri SDK 构建钩子被替身替代，完整桌面应用与发布包未验证。该检查发现并补齐桌面原有的调色板/加载标记/音效路径注入缺口。
 - 类型诊断 1129 是扩展检查范围后的中间结果，不是把旧全量实验的 235 项误报为退化。旧实验的 TypeScript import 图未覆盖全部波形工厂；本批显式覆盖全部 59 文件。
-- 9 份浏览器 spec：226 项全部通过（2.6 分钟）；Python 全量仍在执行，完成后回写。
+- 迁移后的 9 份浏览器 spec：226 项全部通过（2.6 分钟）；类型修复后再跑 4 份 spec，61 项全部通过，包括新增 file/HTTP 装配、波形拖动/历史/框选。
 - esbuild 提前拒绝源码中直接对 const 赋值；外部 const 桥写入仍在运行时抛 TypeError。既有源码不存在前者；专门测试覆盖两种边界。
 
 ## 类型修复批次 1：既有视图契约
@@ -71,3 +72,17 @@
 按渲染器实际创建的 HTML 节点和模板按钮声明查询结果，不全局覆盖 querySelector 或把任意 Element 声明成 HTMLElement。事件冒泡目标、波形行缓存的播放头、指针标记定时器均有明确类型。绑定标记目标按实际返回的 Set 收窄；补入浏览器 AudioContext 兼容挂载与已有静音核心调用。
 
 `npm run typecheck`：110 → 0；`node --test tests/*.mjs`：449 通过，0 失败/跳过。没有 ts-ignore、ts-nocheck、排除工厂或新增整体 any。当前非 strict 契约检查不等于全仓 strict 类型化；121 个 classic 文件的大部分仍未进入类型检查，依赖袋及部分通知回调参数也仍有进一步精细建模空间。
+
+## 最终门禁与验证
+
+- `npm run check:editor`：只读检查通过；`npm run typecheck`：0 诊断。
+- `node --test tests/*.mjs`：450 通过，0 失败/跳过；新增固定迁移批次的负例，要求新上游工厂不自动扩大 ESM 范围。acorn 缺失时顺序检查失败，不再静默跳过。
+- `PYTHONUTF8=1 uv run --no-sync python -m unittest discover -s tests -p "test_*.py"`：1833 项、0 失败/报错，27 项按既有环境/依赖条件跳过。UTF-8 下原 GBK subprocess 报错消失。
+- tracked Python 文件的 Ruff 检查通过；另修正两处既有测试的未使用导入，对应两组各 4 项测试通过。工作区无参数 Ruff 会包含未跟踪的个人实验 WIP；这些文件保留，不提交或覆盖。
+- 最终基线/file/HTTP 的 13 个探针和实际 Rust 渲染器浏览器检查再次通过；每页初始化 180 个输入且无页面错误。Rust 有 2 项既有兼容清单函数未使用警告；完整桌面应用与发布包未验证。
+- `scripts/esm-mechanical/test-upstream.py`：17 个真实冲突/保留/拒绝/工作区保护 fixture 全部通过。
+- 新增 GitHub Actions 编辑器门禁：npm ci 后先检查已提交产物，再类型/Node/Python 装配及真实 file/HTTP/事务测试；不会先重建来消除过期产物。远端 CI 创建 PR 后检查，不能以本地结果代称 CI 通过。
+- CI 中 file/HTTP 与事务两份浏览器 spec 的本地同命令验证：12 项全部通过。
+- 当前部分迁移的四个业务 PR 逐项投影后，构建、Node 与类型均通过；#179 的 12 项设置 E2E、22 项波形契约通过。最新 #177 的 4 项浏览器失败在未迁移 classic 基线同样复现，归为上游功能/测试待修边界；#157 的竞争装配架构明确阻塞，未强行合并。详见生产交接文档与结果 JSON。
+
+生产迁移后，类型修复分别提交为 `7c36c88`（视图契约）、`aa433ce`（utils）、`963b15d`（波形组合实例）、`096ca1ad`（HTML/浏览器边界）；旧装配测试另有独立提交。历史实验的红灯与中间诊断保留，最终实现不靠跳过测试收尾。

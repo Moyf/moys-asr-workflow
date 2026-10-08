@@ -314,7 +314,6 @@ class WaveformExtractionTests(unittest.TestCase):
 
 class EditorAssetTests(unittest.TestCase):
     def test_project_waveform_survives_loading_media(self) -> None:
-        editor = (ROOT / "web" / "editor/boot/editor.js").read_text(encoding="utf-8")
         core_state = (ROOT / "web" / "editor/state/editor-core-state.js").read_text(encoding="utf-8")
         state = (ROOT / "web" / "editor/state/editor-state.js").read_text(encoding="utf-8")
         media_load = (ROOT / "web" / "editor/media/editor-media-load.js").read_text(encoding="utf-8")
@@ -331,7 +330,6 @@ class EditorAssetTests(unittest.TestCase):
         self.assertIn("getPayload()", waveform)
 
     def test_reapeaks_waveform_is_the_default_shape_source(self) -> None:
-        editor = (ROOT / "web" / "editor/boot/editor.js").read_text(encoding="utf-8")
         settings = (ROOT / "web" / "editor/state/editor-settings.js").read_text(encoding="utf-8")
         waveform_init = (ROOT / "web" / "editor/media/editor-waveform-init.js").read_text(encoding="utf-8")
         template = (ROOT / "web" / "editor-template.html").read_text(encoding="utf-8")

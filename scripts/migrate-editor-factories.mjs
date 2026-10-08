@@ -12,7 +12,7 @@ const walkFiles = dir => fs.existsSync(dir) ? fs.readdirSync(dir,{withFileTypes:
   entry.isDirectory() ? walkFiles(path.join(dir,entry.name))
     : entry.name.endsWith('.mjs') ? [path.join(dir,entry.name)] : []) : [];
 
-export function planMigration(root = ROOT) {
+export function planMigration(root = ROOT, selectedFiles) {
   if (fs.existsSync(path.join(root,'web/editor-modules.json'))) throw new Error('Batch already migrated; refusing overwrite');
   if (fs.existsSync(path.join(root,'web/package.json'))) throw new Error('Existing web package scope requires review');
   const files = readSources(root);
@@ -34,7 +34,13 @@ export function planMigration(root = ROOT) {
       }
     }
   }
-  const outputs = sources.filter(item => item.info.simpleFactory).map(item => {
+  if (selectedFiles && (!selectedFiles.length || new Set(selectedFiles).size !== selectedFiles.length
+      || selectedFiles.some(file => !sources.some(item => item.file === file && item.info.simpleFactory)))) {
+    throw new Error('Selected batch contains missing, duplicate or non-factory inputs');
+  }
+  // Projection reuses a reviewed batch; new upstream factories stay classic.
+  const outputs = sources.filter(item => item.info.simpleFactory
+    && (!selectedFiles || selectedFiles.includes(item.file))).map(item => {
     if (!/^(shared\/(host|utils)\/|editor\/media\/waveform\/)/.test(item.file)) {
       throw new Error(`New factory outside the reviewed batch needs review: ${item.file}`);
     }
@@ -59,8 +65,8 @@ export function planMigration(root = ROOT) {
     modules:outputs.map(({code,...item}) => item),externalBridges:[...externalBridges.values()]}};
 }
 
-export function applyMigration(root = ROOT) {
-  const plan = planMigration(root);
+export function applyMigration(root = ROOT, selectedFiles) {
+  const plan = planMigration(root, selectedFiles);
   // All shape, dependency and syntax checks finish before the first write.
   for (const item of plan.outputs) fs.writeFileSync(path.join(root,'web',item.file),item.code);
   fs.writeFileSync(path.join(root,'web/editor-modules.json'),JSON.stringify(plan.config,null,2)+'\n');
