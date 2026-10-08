@@ -53,6 +53,7 @@ class EditorAssetContractTests(unittest.TestCase):
                 "shared/utils/lrc.js",
                 "shared/utils/ass-style.js",
                 "shared/utils/ass-animation.js",
+                "shared/utils/ass-canvas-layout.js",
                 "shared/utils/ass-export.js",
                 "shared/utils/export-plan.js",
                 "shared/utils/fcp7.js",
