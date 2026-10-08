@@ -184,6 +184,7 @@ class EditorAssetContractTests(unittest.TestCase):
                 "editor/cues/editor-wiring-edit-shortcuts.js",
                 "editor/styles/editor-wiring-font-geometry.js",
                 "editor/styles/editor-wiring-ass-preview.js",
+                "editor/styles/editor-wiring-ass-canvas.js",
                 "editor/styles/editor-wiring-ass-frame.js",
                 "editor/media/editor-wiring-sticker-preview.js",
                 "editor/io/editor-wiring-export-context.js",
