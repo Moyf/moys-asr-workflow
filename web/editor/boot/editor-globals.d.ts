@@ -235,4 +235,8 @@ declare const MaweServerSave: any;
 interface Window {
   MaweCommands: MaweCommandsApi;
   MaweViewUpdates: typeof MaweViewUpdates;
+  webkitAudioContext?: typeof AudioContext;
+  AsrGapRemoveCore: {
+    isGapRemoveDisplayProtected(gap: import('../media/waveform/waveform-types.js').Gap): boolean;
+  };
 }

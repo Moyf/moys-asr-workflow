@@ -331,7 +331,7 @@ export function createWaveformModule(dependencies) {
         if (!segment) return;
         restoreTiming(segment, original, drag.timing || this.cueTiming());
       });
-      this.content.querySelectorAll('.waveform-cue-block.dragging, .waveform-cue-boundary.dragging')
+      (/** @type {NodeListOf<HTMLElement>} */ (this.content.querySelectorAll('.waveform-cue-block.dragging, .waveform-cue-boundary.dragging')))
         .forEach((block) => block.classList.remove('dragging'));
       this.pane.classList.remove('cue-drag-active');
       this.pane.classList.remove('shared-boundary-drag-active');

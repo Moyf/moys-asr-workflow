@@ -83,7 +83,7 @@ export function createWaveformModule(dependencies) {
       const viewportTop = viewport.top + this.scroll.clientTop;
       const viewportBottom = viewportTop + this.scroll.clientHeight;
       if (clientY < viewportTop || clientY > viewportBottom) return null;
-      return [...this.content.querySelectorAll('.waveform-row')].find((row) => {
+      return [...(/** @type {NodeListOf<import('./waveform-types.js').WaveformRow>} */ (this.content.querySelectorAll('.waveform-row')))].find((row) => {
         const rect = row.getBoundingClientRect();
         return clientY >= rect.top && clientY <= rect.bottom;
       }) || null;
@@ -92,7 +92,7 @@ export function createWaveformModule(dependencies) {
 
     /** @this {import('./waveform-types.js').WaveformInstance} */
     findVisibleWaveformRowForTime(timeMs) {
-      const rows = [...this.content.querySelectorAll('.waveform-row')];
+      const rows = [...(/** @type {NodeListOf<import('./waveform-types.js').WaveformRow>} */ (this.content.querySelectorAll('.waveform-row')))];
       // 行末时间由前一行持有，和中缝覆盖层的归属规则一致。
       const endingRow = rows.find((row) => Math.abs(Number(row.dataset.endMs) - timeMs) < 1);
       if (endingRow) return endingRow;
@@ -126,12 +126,12 @@ export function createWaveformModule(dependencies) {
       this.pointerLineOverrideActive = true;
       const timeMs = this.cueBoundaryDragTimeMs(drag);
       const row = Number.isFinite(timeMs) ? this.findVisibleWaveformRowForTime(timeMs) : null;
-      this.content.querySelectorAll('.waveform-pointer-line').forEach((marker) => {
+      (/** @type {NodeListOf<import('./waveform-types.js').WaveformPointerMarker>} */ (this.content.querySelectorAll('.waveform-pointer-line'))).forEach((marker) => {
         marker.classList.remove('boundary-snapped');
         marker.hidden = true;
       });
       if (!row) return;
-      const marker = row.querySelector('.waveform-pointer-line');
+      const marker = (/** @type {import('./waveform-types.js').WaveformPointerMarker} */ (row.querySelector('.waveform-pointer-line')));
       if (!marker) return;
       const contentWidth = Math.max(1, row.clientWidth);
       const startMs = Number(row.dataset.startMs);
@@ -150,7 +150,7 @@ export function createWaveformModule(dependencies) {
     /** @this {import('./waveform-types.js').WaveformInstance} */
     restorePointerLineAfterBoundaryDrag(position = null) {
       this.pointerLineOverrideActive = false;
-      this.content.querySelectorAll('.waveform-pointer-line').forEach((marker) => {
+      (/** @type {NodeListOf<import('./waveform-types.js').WaveformPointerMarker>} */ (this.content.querySelectorAll('.waveform-pointer-line'))).forEach((marker) => {
         marker.classList.remove('boundary-snapped');
         marker.hidden = true;
       });
@@ -161,7 +161,7 @@ export function createWaveformModule(dependencies) {
         return;
       }
       const row = this.findVisibleWaveformRowAtPoint(position.clientX, position.clientY);
-      const marker = row?.querySelector('.waveform-pointer-line');
+      const marker = (/** @type {import('./waveform-types.js').WaveformPointerMarker} */ (row?.querySelector('.waveform-pointer-line')));
       if (!row || !marker) {
         this.pointerLineEvent = null;
         this.pointerLineRow = null;

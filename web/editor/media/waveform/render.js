@@ -192,7 +192,7 @@ export function createWaveformModule(dependencies) {
       const wanted = new Set();
       for (let index = first; index <= last; index++) wanted.add(String(index));
       const existing = new Set();
-      this.content.querySelectorAll('.waveform-row').forEach((row) => {
+      (/** @type {NodeListOf<import('./waveform-types.js').WaveformRow>} */ (this.content.querySelectorAll('.waveform-row'))).forEach((row) => {
         if (wanted.has(row.dataset.rowIndex)) existing.add(row.dataset.rowIndex);
         else row.remove();
       });
@@ -201,7 +201,7 @@ export function createWaveformModule(dependencies) {
         if (existing.has(String(index))) continue;
         created.push(this.content.appendChild(this.createMultiRow(index, rowDurationMs, groupBadges)));
       }
-      this.renderedRows = [...this.content.querySelectorAll('.waveform-row')];
+      this.renderedRows = [...(/** @type {NodeListOf<import('./waveform-types.js').WaveformRow>} */ (this.content.querySelectorAll('.waveform-row')))];
       for (const row of created) this.drawRow(row);
       this.updatePlayback(false);
     }

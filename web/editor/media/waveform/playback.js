@@ -16,7 +16,7 @@ export function createWaveformModule(dependencies) {
       if (activeIndex !== this.activeIndex || activeVisualHit !== this.activeVisualHit) {
         this.activeIndex = activeIndex;
         this.activeVisualHit = activeVisualHit;
-        this.content.querySelectorAll('.waveform-cue-block[data-track="main"]').forEach((block) => {
+        (/** @type {NodeListOf<HTMLElement>} */ (this.content.querySelectorAll('.waveform-cue-block[data-track="main"]'))).forEach((block) => {
           block.classList.toggle('active', Number(block.dataset.idx) === activeIndex && activeVisualHit);
         });
       }
@@ -28,7 +28,7 @@ export function createWaveformModule(dependencies) {
           || activeExtensionVisualHit !== this.activeExtensionVisualHit) {
         this.activeExtensionIndex = activeExtensionIndex;
         this.activeExtensionVisualHit = activeExtensionVisualHit;
-        this.content.querySelectorAll('.waveform-cue-block[data-track="extension"]')
+        (/** @type {NodeListOf<HTMLElement>} */ (this.content.querySelectorAll('.waveform-cue-block[data-track="extension"]')))
           .forEach((block) => {
             block.classList.toggle('active', Number(block.dataset.extIdx) === activeExtensionIndex && activeExtensionVisualHit);
           });
@@ -41,7 +41,7 @@ export function createWaveformModule(dependencies) {
           || activeOverlayVisualHit !== this.activeOverlayVisualHit) {
         this.activeOverlayIndex = activeOverlayIndex;
         this.activeOverlayVisualHit = activeOverlayVisualHit;
-        this.content.querySelectorAll('.waveform-cue-block[data-track="overlay"]')
+        (/** @type {NodeListOf<HTMLElement>} */ (this.content.querySelectorAll('.waveform-cue-block[data-track="overlay"]')))
           .forEach((block) => {
             block.classList.toggle('active', Number(block.dataset.overlayIdx) === activeOverlayIndex && activeOverlayVisualHit);
           });
@@ -165,7 +165,7 @@ export function createWaveformModule(dependencies) {
       this.renderedRows.forEach((row) => {
         const startMs = Number(row.dataset.startMs);
         const endMs = Number(row.dataset.endMs);
-        const playhead = row._waveformPlayhead || row.querySelector('.waveform-playhead');
+        const playhead = row._waveformPlayhead || (/** @type {HTMLElement} */ (row.querySelector('.waveform-playhead')));
         if (!playhead) return;
         const visible = now >= startMs && now <= endMs;
         playhead.hidden = !visible;

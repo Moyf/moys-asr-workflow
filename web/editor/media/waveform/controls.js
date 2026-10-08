@@ -47,14 +47,14 @@ export function createWaveformModule(dependencies) {
 
     /** @this {import('./waveform-types.js').WaveformInstance} */
     bindControls() {
-      document.querySelectorAll('[data-waveform-mode]').forEach((button) => {
+      (/** @type {NodeListOf<HTMLElement>} */ (document.querySelectorAll('[data-waveform-mode]'))).forEach((button) => {
         button.addEventListener('click', () => this.setMode(button.dataset.waveformMode));
       });
-      document.querySelectorAll('[data-waveform-tool]').forEach((button) => {
+      (/** @type {NodeListOf<HTMLElement>} */ (document.querySelectorAll('[data-waveform-tool]'))).forEach((button) => {
         button.addEventListener('click', () => this.setTool(button.dataset.waveformTool));
       });
       // 初始工具按钮高亮（默认 select）
-      document.querySelectorAll('[data-waveform-tool]').forEach((button) => {
+      (/** @type {NodeListOf<HTMLElement>} */ (document.querySelectorAll('[data-waveform-tool]'))).forEach((button) => {
         button.classList.toggle('active', button.dataset.waveformTool === this.tool);
       });
       this.pane?.classList.toggle('tool-select', this.tool === 'select');

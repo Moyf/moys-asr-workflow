@@ -146,7 +146,7 @@ export function createWaveformModule(dependencies) {
       if (this.settings.layoutEditing) this.workspace.classList.add('layout-editing');
       this.applyLayoutVariables();
       this.applyCustomLayoutTree();
-      document.querySelectorAll('[data-waveform-mode]').forEach((button) => {
+      (/** @type {NodeListOf<HTMLElement>} */ (document.querySelectorAll('[data-waveform-mode]'))).forEach((button) => {
         button.classList.toggle('active', button.dataset.waveformMode === this.settings.mode);
       });
       this.windowLabel.textContent = `${this.settings.visibleSeconds} 秒`;
@@ -170,8 +170,8 @@ export function createWaveformModule(dependencies) {
     updateAdvancedSettingsAvailability() {
       const basicMode = this.settings.mode === 'basic';
       const multiMode = this.settings.mode === 'multi';
-      document.getElementById('waveform-zoom-in').disabled = !basicMode;
-      document.getElementById('waveform-zoom-out').disabled = !basicMode;
+      (/** @type {HTMLButtonElement} */ (document.getElementById('waveform-zoom-in'))).disabled = !basicMode;
+      (/** @type {HTMLButtonElement} */ (document.getElementById('waveform-zoom-out'))).disabled = !basicMode;
       this.secondsPerRowSelect.disabled = !multiMode;
       if (this.rowHeightSelect) this.rowHeightSelect.disabled = !multiMode;
       // 「显示窗口」仅基础模式有意义；「每行长度」「每行高度」仅多行模式有意义。
@@ -208,7 +208,7 @@ export function createWaveformModule(dependencies) {
       this.tool = tool;
       this.pane?.classList.toggle('tool-razor', tool === 'razor');
       this.pane?.classList.toggle('tool-select', tool === 'select');
-      document.querySelectorAll('[data-waveform-tool]').forEach((button) => {
+      (/** @type {NodeListOf<HTMLElement>} */ (document.querySelectorAll('[data-waveform-tool]'))).forEach((button) => {
         button.classList.toggle('active', button.dataset.waveformTool === tool);
       });
       this.setStatus(tool === 'razor' ? '分割工具：点击字幕块在指针位置拆分' : '选择工具');
@@ -323,7 +323,7 @@ export function createWaveformModule(dependencies) {
       modules.forEach(([id, element]) => {
         if (!element) return;
         element.dataset.dockModule = id;
-        let handle = element.querySelector(':scope > .dock-handle');
+        let handle = (/** @type {HTMLElement} */ (element.querySelector(':scope > .dock-handle')));
         if (!handle) {
           handle = document.createElement('div');
           handle.className = 'dock-handle';
@@ -458,7 +458,7 @@ export function createWaveformModule(dependencies) {
           ? `新位置：${MODULE_LABELS[sourceId]} ${directionLabel(intent.direction)}`
           : `新位置：与${MODULE_LABELS[id]}对换`;
       this.layoutPreview.classList.add('show');
-      this.workspace.querySelectorAll('.layout-drop-target').forEach((target) => {
+      (/** @type {NodeListOf<HTMLElement>} */ (this.workspace.querySelectorAll('.layout-drop-target'))).forEach((target) => {
         target.classList.remove('layout-drop-target');
       });
       if (intent.mode !== 'root-insert') element.classList.add('layout-drop-target');
@@ -471,7 +471,7 @@ export function createWaveformModule(dependencies) {
       this.layoutPreview?.classList.remove('layout-insert-preview');
       this.layoutPreview?.classList.remove('layout-root-insert-preview');
       this.layoutDropIntent = null;
-      this.workspace?.querySelectorAll('.layout-drop-target').forEach((target) => {
+      (/** @type {NodeListOf<HTMLElement>} */ (this.workspace?.querySelectorAll('.layout-drop-target'))).forEach((target) => {
         target.classList.remove('layout-drop-target');
       });
     }

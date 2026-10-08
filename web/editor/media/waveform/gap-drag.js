@@ -113,7 +113,7 @@ export function createWaveformModule(dependencies) {
 
     /** @this {import('./waveform-types.js').WaveformInstance} */
     clearGapMovePreview() {
-      this.content.querySelectorAll('.waveform-gap-drag-preview').forEach((element) => element.remove());
+      (/** @type {NodeListOf<HTMLElement>} */ (this.content.querySelectorAll('.waveform-gap-drag-preview'))).forEach((element) => element.remove());
     }
 
 
@@ -123,11 +123,11 @@ export function createWaveformModule(dependencies) {
       this.refreshGapBlocks(drag.originalGaps);
       if (!drag.moved) return;
       if (drag.mode === 'move') {
-        this.content.querySelectorAll(`.waveform-gap-block[data-gap-index="${drag.index}"]`)
+        (/** @type {NodeListOf<HTMLElement>} */ (this.content.querySelectorAll(`.waveform-gap-block[data-gap-index="${drag.index}"]`)))
           .forEach((block) => { block.hidden = true; });
       }
       const target = drag.targetGap;
-      this.content.querySelectorAll('.waveform-row').forEach((row) => {
+      (/** @type {NodeListOf<import('./waveform-types.js').WaveformRow>} */ (this.content.querySelectorAll('.waveform-row'))).forEach((row) => {
         const rowStart = Number(row.dataset.startMs);
         const rowEnd = Number(row.dataset.endMs);
         if (target.end <= rowStart || target.start >= rowEnd) return;
@@ -171,9 +171,9 @@ export function createWaveformModule(dependencies) {
 
     /** @this {import('./waveform-types.js').WaveformInstance} */
     refreshGapBlocks(gaps) {
-      this.content.querySelectorAll('.waveform-gap-block').forEach((block) => {
+      (/** @type {NodeListOf<HTMLElement>} */ (this.content.querySelectorAll('.waveform-gap-block'))).forEach((block) => {
         const gap = gaps[Number(block.dataset.gapIndex)];
-        const row = block.closest('.waveform-row');
+        const row = (/** @type {import('./waveform-types.js').WaveformRow} */ (block.closest('.waveform-row')));
         if (!gap || !row) {
           block.hidden = true;
           return;
@@ -185,7 +185,7 @@ export function createWaveformModule(dependencies) {
 
     /** @this {import('./waveform-types.js').WaveformInstance} */
     clearGapBoundaryPreview() {
-      this.content.querySelectorAll('.waveform-gap-boundary-preview').forEach((element) => element.remove());
+      (/** @type {NodeListOf<HTMLElement>} */ (this.content.querySelectorAll('.waveform-gap-boundary-preview'))).forEach((element) => element.remove());
     }
 
 
@@ -220,12 +220,12 @@ export function createWaveformModule(dependencies) {
       ));
       if (!target) return;
       const renderTarget = (nextGap, originalIndex) => {
-        this.content.querySelectorAll('.waveform-row').forEach((row) => {
+        (/** @type {NodeListOf<import('./waveform-types.js').WaveformRow>} */ (this.content.querySelectorAll('.waveform-row'))).forEach((row) => {
           const rowStart = Number(row.dataset.startMs);
           const rowEnd = Number(row.dataset.endMs);
-          const existing = [...row.querySelectorAll(
+          const existing = [...(/** @type {NodeListOf<HTMLElement>} */ (row.querySelectorAll(
             `.waveform-gap-block[data-gap-index="${originalIndex}"]`,
-          )].find((block) => !block.classList.contains('waveform-gap-boundary-preview'));
+          )))].find((block) => !block.classList.contains('waveform-gap-boundary-preview'));
           if (existing) {
             this.layoutGapBlock(existing, nextGap, rowStart, rowEnd);
           } else if (nextGap.end > rowStart && nextGap.start < rowEnd) {
@@ -300,7 +300,7 @@ export function createWaveformModule(dependencies) {
       window.removeEventListener('pointerup', this._gapBoundaryEnd);
       window.removeEventListener('pointercancel', this._gapBoundaryEnd);
       try { drag.captureTarget.releasePointerCapture?.(event.pointerId); } catch (_) {}
-      this.content.querySelectorAll('.waveform-gap-block.dragging').forEach((block) => block.classList.remove('dragging'));
+      (/** @type {NodeListOf<HTMLElement>} */ (this.content.querySelectorAll('.waveform-gap-block.dragging'))).forEach((block) => block.classList.remove('dragging'));
       this.clearGapBoundaryPreview();
       this.gapBoundaryDrag = null;
       if (event.type === 'pointercancel' || !drag.changed) {
@@ -348,7 +348,7 @@ export function createWaveformModule(dependencies) {
 
     /** @this {import('./waveform-types.js').WaveformInstance} */
     clearGapRangePreviews() {
-      this.content.querySelectorAll('.waveform-gap-range-preview').forEach((element) => element.remove());
+      (/** @type {NodeListOf<HTMLElement>} */ (this.content.querySelectorAll('.waveform-gap-range-preview'))).forEach((element) => element.remove());
     }
 
 
@@ -363,7 +363,7 @@ export function createWaveformModule(dependencies) {
       const end = Math.max(drag.startMs, drag.endMs);
       const previews = [];
       this.clearGapRangePreviews();
-      this.content.querySelectorAll('.waveform-row').forEach((row) => {
+      (/** @type {NodeListOf<import('./waveform-types.js').WaveformRow>} */ (this.content.querySelectorAll('.waveform-row'))).forEach((row) => {
         const rowStart = Number(row.dataset.startMs);
         const rowEnd = Number(row.dataset.endMs);
         if (!Number.isFinite(rowStart) || !Number.isFinite(rowEnd) || rowEnd <= rowStart) return;

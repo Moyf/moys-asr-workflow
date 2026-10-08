@@ -178,9 +178,9 @@ export function createWaveformModule(dependencies) {
     /** @this {import('./waveform-types.js').WaveformInstance} */
     trackAtPoint(clientX, clientY, row = null) {
       const hit = document.elementFromPoint(clientX, clientY);
-      const hitRow = row || hit?.closest?.('.waveform-row');
+      const hitRow = row || (/** @type {import('./waveform-types.js').WaveformRow} */ (hit?.closest?.('.waveform-row')));
       if (!hitRow || !this.pane?.contains(hitRow)) return 'main';
-      const block = hit?.closest?.('.waveform-cue-block');
+      const block = (/** @type {HTMLElement} */ (hit?.closest?.('.waveform-cue-block')));
       if (block?.dataset.track === 'extension') return 'extension';
       if (!hitRow.classList.contains('multi-subtitle-row')) return 'main';
       const rowRect = hitRow.getBoundingClientRect();
@@ -190,9 +190,9 @@ export function createWaveformModule(dependencies) {
         return Number.isFinite(parsed) ? parsed : fallback;
       };
       const bottomInset = parsePx(rowStyle.getPropertyValue('--multi-subtitle-bottom-inset'), 7);
-      const visibleCue = hitRow.querySelector(
+      const visibleCue = (/** @type {HTMLElement} */ (hitRow.querySelector(
         '.waveform-cue-block[data-track="main"], .waveform-cue-block[data-track="extension"]',
-      );
+      )));
       const visibleCueHeight = visibleCue?.getBoundingClientRect().height || 0;
       const markerStyle = getComputedStyle(hitRow, '::after');
       const markerHeight = parsePx(markerStyle.height, 15);
@@ -330,7 +330,7 @@ export function createWaveformModule(dependencies) {
     /** @this {import('./waveform-types.js').WaveformInstance} */
     flashSplitAtTime(timeMs) {
       if (!Number.isFinite(timeMs)) return false;
-      const rows = [...this.content.querySelectorAll('.waveform-row')];
+      const rows = [...(/** @type {NodeListOf<import('./waveform-types.js').WaveformRow>} */ (this.content.querySelectorAll('.waveform-row')))];
       const row = rows.find((candidate) => {
         const startMs = Number(candidate.dataset.startMs);
         const endMs = Number(candidate.dataset.endMs);
@@ -340,7 +340,7 @@ export function createWaveformModule(dependencies) {
 
       const startMs = Number(row.dataset.startMs);
       const endMs = Number(row.dataset.endMs);
-      const marker = row.querySelector('.waveform-split-flash');
+      const marker = (/** @type {import('./waveform-types.js').WaveformPointerMarker} */ (row.querySelector('.waveform-split-flash')));
       if (!marker) return false;
       if (marker._hideTimer) window.clearTimeout(marker._hideTimer);
       marker.hidden = false;
@@ -362,7 +362,7 @@ export function createWaveformModule(dependencies) {
     /** @this {import('./waveform-types.js').WaveformInstance} */
     getSplitPointAtTime(timeMs, track = 'main') {
       if (!Number.isFinite(timeMs)) return null;
-      const rows = [...this.content.querySelectorAll('.waveform-row')];
+      const rows = [...(/** @type {NodeListOf<import('./waveform-types.js').WaveformRow>} */ (this.content.querySelectorAll('.waveform-row')))];
       const row = rows.find((candidate) => {
         const startMs = Number(candidate.dataset.startMs);
         const endMs = Number(candidate.dataset.endMs);
@@ -374,7 +374,7 @@ export function createWaveformModule(dependencies) {
       const rowRect = row.getBoundingClientRect();
       const ratio = clamp((timeMs - rowStart) / Math.max(1, rowEnd - rowStart), 0, 1);
       const selector = `.waveform-cue-block[data-track="${track === 'extension' ? 'extension' : track === 'overlay' ? 'overlay' : 'main'}"]`;
-      const block = [...row.querySelectorAll(selector)].find((candidate) => {
+      const block = [...(/** @type {NodeListOf<HTMLElement>} */ (row.querySelectorAll(selector)))].find((candidate) => {
         const startMs = Number(candidate.dataset.start);
         const endMs = Number(candidate.dataset.end);
         return timeMs >= startMs && timeMs <= endMs;
@@ -392,7 +392,7 @@ export function createWaveformModule(dependencies) {
     /** @this {import('./waveform-types.js').WaveformInstance} */
     timeMsAtPoint(clientX, clientY) {
       const hit = document.elementFromPoint(clientX, clientY);
-      const row = hit?.closest?.('.waveform-row');
+      const row = (/** @type {import('./waveform-types.js').WaveformRow} */ (hit?.closest?.('.waveform-row')));
       if (!row || !this.pane?.contains(row)) return null;
       const timeMs = this.pointerTimeMs({ clientX }, row);
       return Number.isFinite(timeMs) ? timeMs : null;
@@ -485,7 +485,7 @@ export function createWaveformModule(dependencies) {
       let hits = { main: new Set(), extension: new Set() };
 
       const clearPreview = () => {
-        content.querySelectorAll('.waveform-cue-block.marquee-preview').forEach((block) => {
+        (/** @type {NodeListOf<HTMLElement>} */ (content.querySelectorAll('.waveform-cue-block.marquee-preview'))).forEach((block) => {
           block.classList.remove('marquee-preview');
         });
       };
@@ -514,7 +514,7 @@ export function createWaveformModule(dependencies) {
         overlay.style.height = `${Math.abs(current.y - start.y)}px`;
         const marqueeRect = overlay.getBoundingClientRect();
         const next = { main: new Set(), extension: new Set() };
-        content.querySelectorAll('.waveform-cue-block[data-track="main"], .waveform-cue-block[data-track="extension"]').forEach((block) => {
+        (/** @type {NodeListOf<HTMLElement>} */ (content.querySelectorAll('.waveform-cue-block[data-track="main"], .waveform-cue-block[data-track="extension"]'))).forEach((block) => {
           const blockRect = block.getBoundingClientRect();
           const hit =
             !block.hidden &&

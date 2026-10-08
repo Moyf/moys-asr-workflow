@@ -23,7 +23,7 @@ export function createWaveformModule(dependencies) {
       // 剃刀工具：无修饰键左键点击字幕块（非手柄）时，在指针位置安全拆分。
       // 主轨与叠加轨均可拆分；叠加轨走编辑器的叠加拆分弹窗。
       // 修饰键（Alt/Ctrl(Cmd)/Shift）仍走原行为，便于拆分后立即多选/禁用。
-      const targetHandle = event.target.closest('.waveform-cue-handle');
+      const targetHandle = (/** @type {Element | null} */ ((/** @type {HTMLElement} */ (event.target)).closest('.waveform-cue-handle')));
       const adjacentCueAdjustmentIndependent = this.isAdjacentCueAdjustmentIndependent(event.altKey);
       if ((track === 'main' || track === 'overlay') && this.tool === 'razor' && !targetHandle
           && !event.altKey && !event.ctrlKey && !event.metaKey && !event.shiftKey) {
@@ -395,7 +395,7 @@ export function createWaveformModule(dependencies) {
       drag.cancelOriginals = new Map([[index, original]]);
       if (Number.isFinite(deltaShift) && deltaShift) drag.startPointerTime += deltaShift;
       this.refreshCueOverlay();
-      this.content.querySelectorAll(`.waveform-cue-block[data-track="${track}"][${track === 'overlay' ? 'data-overlay-idx' : 'data-idx'}="${index}"]`)
+      (/** @type {NodeListOf<HTMLElement>} */ (this.content.querySelectorAll(`.waveform-cue-block[data-track="${track}"][${track === 'overlay' ? 'data-overlay-idx' : 'data-idx'}="${index}"]`)))
         .forEach((block) => block.classList.add('dragging'));
     }
   }

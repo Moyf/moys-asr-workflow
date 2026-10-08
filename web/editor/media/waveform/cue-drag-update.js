@@ -351,7 +351,7 @@ export function createWaveformModule(dependencies) {
       window.removeEventListener('pointerup', this._dragEnd);
       window.removeEventListener('pointercancel', this._dragEnd);
       try { drag.captureTarget?.releasePointerCapture?.(drag.pointerId); } catch (_) {}
-      this.content.querySelectorAll('.waveform-cue-block.dragging, .waveform-cue-boundary.dragging')
+      (/** @type {NodeListOf<HTMLElement>} */ (this.content.querySelectorAll('.waveform-cue-block.dragging, .waveform-cue-boundary.dragging')))
         .forEach((block) => block.classList.remove('dragging'));
       this.pane.classList.remove('cue-drag-active');
       this.pane.classList.remove('shared-boundary-drag-active');

@@ -1,4 +1,4 @@
-/* MAW ESM artifact: 638ab642fbac1ff1f5f2f55e481c787ff17df65960649d1bcb826d42051209a3 */
+/* MAW ESM artifact: 5c2c9f5bc21921104d9175ba056d338a28b2c87810e6535e40c9bb0835662352 */
 'use strict';
 (() => {
   // web/shared/host/storage.js
@@ -8249,12 +8249,15 @@ export default MawDynamicCaptions;
       }
       /** @this {import('./waveform-types.js').WaveformInstance} */
       bindControls() {
+        /** @type {NodeListOf<HTMLElement>} */
         document.querySelectorAll("[data-waveform-mode]").forEach((button) => {
           button.addEventListener("click", () => this.setMode(button.dataset.waveformMode));
         });
+        /** @type {NodeListOf<HTMLElement>} */
         document.querySelectorAll("[data-waveform-tool]").forEach((button) => {
           button.addEventListener("click", () => this.setTool(button.dataset.waveformTool));
         });
+        /** @type {NodeListOf<HTMLElement>} */
         document.querySelectorAll("[data-waveform-tool]").forEach((button) => {
           button.classList.toggle("active", button.dataset.waveformTool === this.tool);
         });
@@ -8405,14 +8408,16 @@ export default MawDynamicCaptions;
         const viewportTop = viewport.top + this.scroll.clientTop;
         const viewportBottom = viewportTop + this.scroll.clientHeight;
         if (clientY < viewportTop || clientY > viewportBottom) return null;
-        return [...this.content.querySelectorAll(".waveform-row")].find((row) => {
+        return [.../** @type {NodeListOf<import('./waveform-types.js').WaveformRow>} */
+        this.content.querySelectorAll(".waveform-row")].find((row) => {
           const rect = row.getBoundingClientRect();
           return clientY >= rect.top && clientY <= rect.bottom;
         }) || null;
       }
       /** @this {import('./waveform-types.js').WaveformInstance} */
       findVisibleWaveformRowForTime(timeMs) {
-        const rows = [...this.content.querySelectorAll(".waveform-row")];
+        const rows = [.../** @type {NodeListOf<import('./waveform-types.js').WaveformRow>} */
+        this.content.querySelectorAll(".waveform-row")];
         const endingRow = rows.find((row) => Math.abs(Number(row.dataset.endMs) - timeMs) < 1);
         if (endingRow) return endingRow;
         return rows.find((row) => timeMs >= Number(row.dataset.startMs) && timeMs < Number(row.dataset.endMs)) || rows.find((row) => timeMs >= Number(row.dataset.startMs) && timeMs <= Number(row.dataset.endMs)) || null;
@@ -8433,12 +8438,16 @@ export default MawDynamicCaptions;
         this.pointerLineOverrideActive = true;
         const timeMs = this.cueBoundaryDragTimeMs(drag);
         const row = Number.isFinite(timeMs) ? this.findVisibleWaveformRowForTime(timeMs) : null;
+        /** @type {NodeListOf<import('./waveform-types.js').WaveformPointerMarker>} */
         this.content.querySelectorAll(".waveform-pointer-line").forEach((marker2) => {
           marker2.classList.remove("boundary-snapped");
           marker2.hidden = true;
         });
         if (!row) return;
-        const marker = row.querySelector(".waveform-pointer-line");
+        const marker = (
+          /** @type {import('./waveform-types.js').WaveformPointerMarker} */
+          row.querySelector(".waveform-pointer-line")
+        );
         if (!marker) return;
         const contentWidth = Math.max(1, row.clientWidth);
         const startMs = Number(row.dataset.startMs);
@@ -8455,6 +8464,7 @@ export default MawDynamicCaptions;
       /** @this {import('./waveform-types.js').WaveformInstance} */
       restorePointerLineAfterBoundaryDrag(position = null) {
         this.pointerLineOverrideActive = false;
+        /** @type {NodeListOf<import('./waveform-types.js').WaveformPointerMarker>} */
         this.content.querySelectorAll(".waveform-pointer-line").forEach((marker2) => {
           marker2.classList.remove("boundary-snapped");
           marker2.hidden = true;
@@ -8466,7 +8476,10 @@ export default MawDynamicCaptions;
           return;
         }
         const row = this.findVisibleWaveformRowAtPoint(position.clientX, position.clientY);
-        const marker = row?.querySelector(".waveform-pointer-line");
+        const marker = (
+          /** @type {import('./waveform-types.js').WaveformPointerMarker} */
+          row?.querySelector(".waveform-pointer-line")
+        );
         if (!row || !marker) {
           this.pointerLineEvent = null;
           this.pointerLineRow = null;
@@ -8664,6 +8677,7 @@ export default MawDynamicCaptions;
         if (this.settings.layoutEditing) this.workspace.classList.add("layout-editing");
         this.applyLayoutVariables();
         this.applyCustomLayoutTree();
+        /** @type {NodeListOf<HTMLElement>} */
         document.querySelectorAll("[data-waveform-mode]").forEach((button) => {
           button.classList.toggle("active", button.dataset.waveformMode === this.settings.mode);
         });
@@ -8686,7 +8700,9 @@ export default MawDynamicCaptions;
       updateAdvancedSettingsAvailability() {
         const basicMode = this.settings.mode === "basic";
         const multiMode = this.settings.mode === "multi";
+        /** @type {HTMLButtonElement} */
         document.getElementById("waveform-zoom-in").disabled = !basicMode;
+        /** @type {HTMLButtonElement} */
         document.getElementById("waveform-zoom-out").disabled = !basicMode;
         this.secondsPerRowSelect.disabled = !multiMode;
         if (this.rowHeightSelect) this.rowHeightSelect.disabled = !multiMode;
@@ -8719,6 +8735,7 @@ export default MawDynamicCaptions;
         this.tool = tool;
         this.pane?.classList.toggle("tool-razor", tool === "razor");
         this.pane?.classList.toggle("tool-select", tool === "select");
+        /** @type {NodeListOf<HTMLElement>} */
         document.querySelectorAll("[data-waveform-tool]").forEach((button) => {
           button.classList.toggle("active", button.dataset.waveformTool === tool);
         });
@@ -8808,7 +8825,10 @@ export default MawDynamicCaptions;
         modules.forEach(([id, element]) => {
           if (!element) return;
           element.dataset.dockModule = id;
-          let handle = element.querySelector(":scope > .dock-handle");
+          let handle = (
+            /** @type {HTMLElement} */
+            element.querySelector(":scope > .dock-handle")
+          );
           if (!handle) {
             handle = document.createElement("div");
             handle.className = "dock-handle";
@@ -8920,6 +8940,7 @@ export default MawDynamicCaptions;
         this.layoutPreview.classList.toggle("layout-root-insert-preview", intent.mode === "root-insert");
         this.layoutPreview.textContent = intent.mode === "root-insert" ? `窗口${directionLabel(intent.direction)}：${MODULE_LABELS[sourceId]}` : intent.mode === "insert" ? `新位置：${MODULE_LABELS[sourceId]} ${directionLabel(intent.direction)}` : `新位置：与${MODULE_LABELS[id]}对换`;
         this.layoutPreview.classList.add("show");
+        /** @type {NodeListOf<HTMLElement>} */
         this.workspace.querySelectorAll(".layout-drop-target").forEach((target) => {
           target.classList.remove("layout-drop-target");
         });
@@ -8931,7 +8952,8 @@ export default MawDynamicCaptions;
         this.layoutPreview?.classList.remove("layout-insert-preview");
         this.layoutPreview?.classList.remove("layout-root-insert-preview");
         this.layoutDropIntent = null;
-        this.workspace?.querySelectorAll(".layout-drop-target").forEach((target) => {
+        /** @type {NodeListOf<HTMLElement>} */
+        (this.workspace?.querySelectorAll(".layout-drop-target")).forEach((target) => {
           target.classList.remove("layout-drop-target");
         });
       }
@@ -9768,6 +9790,7 @@ export default MawDynamicCaptions;
         const wanted = /* @__PURE__ */ new Set();
         for (let index = first; index <= last; index++) wanted.add(String(index));
         const existing = /* @__PURE__ */ new Set();
+        /** @type {NodeListOf<import('./waveform-types.js').WaveformRow>} */
         this.content.querySelectorAll(".waveform-row").forEach((row) => {
           if (wanted.has(row.dataset.rowIndex)) existing.add(row.dataset.rowIndex);
           else row.remove();
@@ -9777,7 +9800,8 @@ export default MawDynamicCaptions;
           if (existing.has(String(index))) continue;
           created.push(this.content.appendChild(this.createMultiRow(index, rowDurationMs, groupBadges)));
         }
-        this.renderedRows = [...this.content.querySelectorAll(".waveform-row")];
+        this.renderedRows = [.../** @type {NodeListOf<import('./waveform-types.js').WaveformRow>} */
+        this.content.querySelectorAll(".waveform-row")];
         for (const row of created) this.drawRow(row);
         this.updatePlayback(false);
       }
@@ -9805,7 +9829,10 @@ export default MawDynamicCaptions;
     class WaveformMethods {
       /** @this {import('./waveform-types.js').WaveformInstance} */
       createRow(startMs, endMs, rowIndex, basic, groupBadges = null) {
-        const row = document.createElement("div");
+        const row = (
+          /** @type {import('./waveform-types.js').WaveformRow} */
+          document.createElement("div")
+        );
         row.className = "waveform-row";
         const multiLane = this.options.multiSubtitleVisible?.() === true;
         if (multiLane) {
@@ -9844,11 +9871,15 @@ export default MawDynamicCaptions;
             this.beginGapRangeDrag(event, row);
             return;
           }
-          if (event.button === 0 && event.altKey && !event.ctrlKey && !event.metaKey && !event.shiftKey && !event.target.closest(".waveform-cue-block, .waveform-gap-block")) {
+          if (event.button === 0 && event.altKey && !event.ctrlKey && !event.metaKey && !event.shiftKey && !/** @type {Element | null} */
+          /** @type {HTMLElement} */
+          event.target.closest(".waveform-cue-block, .waveform-gap-block")) {
             this.beginGapRangeDrag(event, row, { removed: true });
             return;
           }
-          if (event.button === 0 && (event.ctrlKey || event.metaKey) && !event.shiftKey && !event.altKey && !event.target.closest(".waveform-cue-block, .waveform-gap-block")) {
+          if (event.button === 0 && (event.ctrlKey || event.metaKey) && !event.shiftKey && !event.altKey && !/** @type {Element | null} */
+          /** @type {HTMLElement} */
+          event.target.closest(".waveform-cue-block, .waveform-gap-block")) {
             let track = this.trackAtPoint(event.clientX, event.clientY, row);
             const pointerMs = this.pointerTimeMs(event, row);
             if (this.isCueTimeOccupied(pointerMs, track)) {
@@ -9866,12 +9897,16 @@ export default MawDynamicCaptions;
             this.beginCreateCueDrag(event, row, track);
             return;
           }
-          if (event.button === 0 && event.shiftKey && !event.ctrlKey && !event.metaKey && !event.altKey && !event.target.closest(".waveform-cue-block, .waveform-gap-block") && !this.isCustomLayout()) {
+          if (event.button === 0 && event.shiftKey && !event.ctrlKey && !event.metaKey && !event.altKey && !/** @type {Element | null} */
+          /** @type {HTMLElement} */
+          event.target.closest(".waveform-cue-block, .waveform-gap-block") && !this.isCustomLayout()) {
             event.preventDefault();
             this.beginMarqueeDrag(event);
             return;
           }
-          if (event.button !== 0 || event.target.closest(".waveform-cue-block, .waveform-gap-block")) return;
+          if (event.button !== 0 || /** @type {Element | null} */
+          /** @type {HTMLElement} */
+          event.target.closest(".waveform-cue-block, .waveform-gap-block")) return;
           event.preventDefault();
           const geometry = this.captureRowGeometry(row);
           this.options.clearSelection?.();
@@ -9909,13 +9944,21 @@ export default MawDynamicCaptions;
           }
         });
         row.addEventListener("dblclick", (event) => {
-          if (event.target.closest(".waveform-cue-block, .waveform-gap-block")) return;
+          if (
+            /** @type {Element | null} */
+            /** @type {HTMLElement} */
+            event.target.closest(".waveform-cue-block, .waveform-gap-block")
+          ) return;
           if (event.ctrlKey || event.metaKey) return;
           event.preventDefault();
           this.options.togglePlayback();
         });
         row.addEventListener("contextmenu", (event) => {
-          if (event.target.closest(".waveform-cue-block, .waveform-gap-block")) return;
+          if (
+            /** @type {Element | null} */
+            /** @type {HTMLElement} */
+            event.target.closest(".waveform-cue-block, .waveform-gap-block")
+          ) return;
           event.preventDefault();
           event.stopPropagation();
           const time2 = this.pointerTimeMs(event, row);
@@ -9967,7 +10010,11 @@ export default MawDynamicCaptions;
           }
           this.layoutGapBlock(block, gap, startMs, endMs);
           block.addEventListener("pointerdown", (event) => {
-            const handle = event.target.closest(".waveform-gap-handle");
+            const handle = (
+              /** @type {Element | null} */
+              /** @type {HTMLElement} */
+              event.target.closest(".waveform-gap-handle")
+            );
             if (event.button === 0 && !handle) {
               this.beginGapMoveDrag(
                 event,
@@ -10272,7 +10319,10 @@ export default MawDynamicCaptions;
       /** @this {import('./waveform-types.js').WaveformInstance} */
       setBindingMarker(block, visible) {
         block.classList.toggle("has-binding-marker", visible);
-        const marker = block.querySelector(".waveform-binding-marker");
+        const marker = (
+          /** @type {HTMLElement} */
+          block.querySelector(".waveform-binding-marker")
+        );
         if (!visible) {
           marker?.remove();
           return;
@@ -10295,7 +10345,8 @@ export default MawDynamicCaptions;
         block.style.left = `${left}%`;
         block.style.width = `${width}%`;
         block.hidden = visibleEnd <= visibleStart;
-        const row = ownerRow || block.closest(".waveform-row");
+        const row = ownerRow || /** @type {import('./waveform-types.js').WaveformRow} */
+        block.closest(".waveform-row");
         const isMultiRow = Boolean(row && row.dataset.basic !== "true");
         const continuation = cueBlockContinuationEdges(segment, startMs, endMs);
         block.classList.toggle("continues-from-previous-row", isMultiRow && continuation.fromPreviousRow);
@@ -10315,7 +10366,9 @@ export default MawDynamicCaptions;
       /** @this {import('./waveform-types.js').WaveformInstance} */
       refreshGapOverlay() {
         if (!this.payload) return;
+        /** @type {NodeListOf<import('./waveform-types.js').WaveformRow>} */
         this.content.querySelectorAll(".waveform-row").forEach((row) => {
+          /** @type {NodeListOf<HTMLElement>} */
           row.querySelectorAll(".waveform-gap-block").forEach((element) => element.remove());
           this.appendGapBlocks(row, Number(row.dataset.startMs), Number(row.dataset.endMs));
         });
@@ -10324,10 +10377,12 @@ export default MawDynamicCaptions;
       /** @this {import('./waveform-types.js').WaveformInstance} */
       refreshCueOverlay() {
         if (!this.payload) return;
-        const rows = [...this.content.querySelectorAll(".waveform-row")];
+        const rows = [.../** @type {NodeListOf<import('./waveform-types.js').WaveformRow>} */
+        this.content.querySelectorAll(".waveform-row")];
         if (!rows.length) return;
         const groupBadges = computeGroupBadges(this.options.getSegments("main"));
         rows.forEach((row) => {
+          /** @type {NodeListOf<HTMLElement>} */
           row.querySelectorAll(".waveform-cue-block, .waveform-cue-badge, .waveform-cue-boundary").forEach((element) => element.remove());
           this.appendCueBlocks(
             row,
@@ -10356,15 +10411,20 @@ export default MawDynamicCaptions;
         const overlaySelected = this.options.getOverlaySelection?.() || /* @__PURE__ */ new Set();
         const boundaryDrag = this.drag?.kind === "resize-boundary" ? this.drag : null;
         const boundaryDragTrack = boundaryDrag?.track || "main";
+        /** @type {NodeListOf<HTMLElement>} */
         this.content.querySelectorAll(".waveform-cue-block").forEach((block) => {
           const trackKind = block.dataset.track;
           const isExtension = trackKind === "extension";
           const isOverlay = trackKind === "overlay";
           const index = isExtension ? Number(block.dataset.extIdx) : isOverlay ? Number(block.dataset.overlayIdx) : Number(block.dataset.idx);
           const segment = isExtension ? extensionSegments[index] : isOverlay ? overlaySegments[index] : segments[index];
-          const row = block.closest(".waveform-row");
+          const row = (
+            /** @type {import('./waveform-types.js').WaveformRow} */
+            block.closest(".waveform-row")
+          );
           if (!segment || !row) return;
           this.layoutBlock(block, segment, Number(row.dataset.startMs), Number(row.dataset.endMs));
+          /** @type {NodeListOf<HTMLElement>} */
           row.querySelectorAll(`.waveform-cue-badge[data-seg-id="${segment.id}"]`).forEach((badge) => {
             const badgeRowStart = Number(row.dataset.startMs);
             const badgeRowDur = Math.max(1, Number(row.dataset.endMs) - badgeRowStart);
@@ -10381,6 +10441,7 @@ export default MawDynamicCaptions;
         });
         this.refreshBoundaryZones();
         if (activeSeamDrag) {
+          /** @type {HTMLElement} */
           this.content.querySelector(
             `.waveform-cue-boundary[data-track="${activeSeamDrag.track}"][data-left-idx="${activeSeamDrag.index}"]`
           )?.classList.add("dragging");
@@ -10392,8 +10453,12 @@ export default MawDynamicCaptions;
       // 重新定位已有中缝区，保证拖动过程中中缝始终跟随贴合边界。
       /** @this {import('./waveform-types.js').WaveformInstance} */
       refreshBoundaryZones() {
+        /** @type {NodeListOf<HTMLElement>} */
         this.content.querySelectorAll(".waveform-cue-boundary").forEach((zone) => {
-          const row = zone.closest(".waveform-row");
+          const row = (
+            /** @type {import('./waveform-types.js').WaveformRow} */
+            zone.closest(".waveform-row")
+          );
           if (!row) return;
           const track = zone.dataset.track === "extension" ? "extension" : "main";
           const index = Number(zone.dataset.leftIdx);
@@ -10416,6 +10481,7 @@ export default MawDynamicCaptions;
       refreshCueLabel(index) {
         const segment = this.options.getSegments("main")[index];
         if (!segment) return;
+        /** @type {NodeListOf<HTMLElement>} */
         this.content.querySelectorAll(`.waveform-cue-block[data-track="main"][data-idx="${index}"] .waveform-cue-label`).forEach((label) => {
           label.textContent = segment.text.replace(/\s+/g, " ");
         });
@@ -10424,6 +10490,7 @@ export default MawDynamicCaptions;
       refreshExtensionCueLabel(index, trackId = null) {
         const segment = this.options.getExtensionSegments?.(trackId)?.[index];
         if (!segment) return;
+        /** @type {NodeListOf<HTMLElement>} */
         this.content.querySelectorAll(`.waveform-cue-block[data-track="extension"][data-ext-idx="${index}"] .waveform-cue-label`).forEach((label) => {
           label.textContent = String(segment.text || "").replace(/\s+/g, " ");
         });
@@ -10434,6 +10501,7 @@ export default MawDynamicCaptions;
         const extensionSelected = this.options.getExtensionSelection?.() || /* @__PURE__ */ new Set();
         const overlaySelected = this.options.getOverlaySelection?.() || /* @__PURE__ */ new Set();
         const bindingMarkerTargets = this.options.getBindingMarkerTargets?.() || {};
+        /** @type {NodeListOf<HTMLElement>} */
         this.content.querySelectorAll(".waveform-cue-block").forEach((block) => {
           const trackKind = block.dataset.track;
           const index = Number(trackKind === "extension" ? block.dataset.extIdx : trackKind === "overlay" ? block.dataset.overlayIdx : block.dataset.idx);
@@ -10758,9 +10826,13 @@ export default MawDynamicCaptions;
       /** @this {import('./waveform-types.js').WaveformInstance} */
       trackAtPoint(clientX, clientY, row = null) {
         const hit = document.elementFromPoint(clientX, clientY);
-        const hitRow = row || hit?.closest?.(".waveform-row");
+        const hitRow = row || /** @type {import('./waveform-types.js').WaveformRow} */
+        hit?.closest?.(".waveform-row");
         if (!hitRow || !this.pane?.contains(hitRow)) return "main";
-        const block = hit?.closest?.(".waveform-cue-block");
+        const block = (
+          /** @type {HTMLElement} */
+          hit?.closest?.(".waveform-cue-block")
+        );
         if (block?.dataset.track === "extension") return "extension";
         if (!hitRow.classList.contains("multi-subtitle-row")) return "main";
         const rowRect = hitRow.getBoundingClientRect();
@@ -10770,8 +10842,11 @@ export default MawDynamicCaptions;
           return Number.isFinite(parsed) ? parsed : fallback;
         };
         const bottomInset = parsePx(rowStyle.getPropertyValue("--multi-subtitle-bottom-inset"), 7);
-        const visibleCue = hitRow.querySelector(
-          '.waveform-cue-block[data-track="main"], .waveform-cue-block[data-track="extension"]'
+        const visibleCue = (
+          /** @type {HTMLElement} */
+          hitRow.querySelector(
+            '.waveform-cue-block[data-track="main"], .waveform-cue-block[data-track="extension"]'
+          )
         );
         const visibleCueHeight = visibleCue?.getBoundingClientRect().height || 0;
         const markerStyle = getComputedStyle(hitRow, "::after");
@@ -10895,7 +10970,8 @@ export default MawDynamicCaptions;
       /** @this {import('./waveform-types.js').WaveformInstance} */
       flashSplitAtTime(timeMs) {
         if (!Number.isFinite(timeMs)) return false;
-        const rows = [...this.content.querySelectorAll(".waveform-row")];
+        const rows = [.../** @type {NodeListOf<import('./waveform-types.js').WaveformRow>} */
+        this.content.querySelectorAll(".waveform-row")];
         const row = rows.find((candidate) => {
           const startMs2 = Number(candidate.dataset.startMs);
           const endMs2 = Number(candidate.dataset.endMs);
@@ -10904,7 +10980,10 @@ export default MawDynamicCaptions;
         if (!row) return false;
         const startMs = Number(row.dataset.startMs);
         const endMs = Number(row.dataset.endMs);
-        const marker = row.querySelector(".waveform-split-flash");
+        const marker = (
+          /** @type {import('./waveform-types.js').WaveformPointerMarker} */
+          row.querySelector(".waveform-split-flash")
+        );
         if (!marker) return false;
         if (marker._hideTimer) window.clearTimeout(marker._hideTimer);
         marker.hidden = false;
@@ -10923,7 +11002,8 @@ export default MawDynamicCaptions;
       /** @this {import('./waveform-types.js').WaveformInstance} */
       getSplitPointAtTime(timeMs, track = "main") {
         if (!Number.isFinite(timeMs)) return null;
-        const rows = [...this.content.querySelectorAll(".waveform-row")];
+        const rows = [.../** @type {NodeListOf<import('./waveform-types.js').WaveformRow>} */
+        this.content.querySelectorAll(".waveform-row")];
         const row = rows.find((candidate) => {
           const startMs = Number(candidate.dataset.startMs);
           const endMs = Number(candidate.dataset.endMs);
@@ -10935,7 +11015,8 @@ export default MawDynamicCaptions;
         const rowRect = row.getBoundingClientRect();
         const ratio = clamp((timeMs - rowStart) / Math.max(1, rowEnd - rowStart), 0, 1);
         const selector = `.waveform-cue-block[data-track="${track === "extension" ? "extension" : track === "overlay" ? "overlay" : "main"}"]`;
-        const block = [...row.querySelectorAll(selector)].find((candidate) => {
+        const block = [.../** @type {NodeListOf<HTMLElement>} */
+        row.querySelectorAll(selector)].find((candidate) => {
           const startMs = Number(candidate.dataset.start);
           const endMs = Number(candidate.dataset.end);
           return timeMs >= startMs && timeMs <= endMs;
@@ -10951,7 +11032,10 @@ export default MawDynamicCaptions;
       /** @this {import('./waveform-types.js').WaveformInstance} */
       timeMsAtPoint(clientX, clientY) {
         const hit = document.elementFromPoint(clientX, clientY);
-        const row = hit?.closest?.(".waveform-row");
+        const row = (
+          /** @type {import('./waveform-types.js').WaveformRow} */
+          hit?.closest?.(".waveform-row")
+        );
         if (!row || !this.pane?.contains(row)) return null;
         const timeMs = this.pointerTimeMs({ clientX }, row);
         return Number.isFinite(timeMs) ? timeMs : null;
@@ -11051,6 +11135,7 @@ export default MawDynamicCaptions;
         let drawing = false;
         let hits = { main: /* @__PURE__ */ new Set(), extension: /* @__PURE__ */ new Set() };
         const clearPreview = () => {
+          /** @type {NodeListOf<HTMLElement>} */
           content.querySelectorAll(".waveform-cue-block.marquee-preview").forEach((block) => {
             block.classList.remove("marquee-preview");
           });
@@ -11080,6 +11165,7 @@ export default MawDynamicCaptions;
           overlay.style.height = `${Math.abs(current.y - start.y)}px`;
           const marqueeRect = overlay.getBoundingClientRect();
           const next = { main: /* @__PURE__ */ new Set(), extension: /* @__PURE__ */ new Set() };
+          /** @type {NodeListOf<HTMLElement>} */
           content.querySelectorAll('.waveform-cue-block[data-track="main"], .waveform-cue-block[data-track="extension"]').forEach((block) => {
             const blockRect = block.getBoundingClientRect();
             const hit = !block.hidden && blockRect.right > marqueeRect.left && blockRect.left < marqueeRect.right && blockRect.bottom > marqueeRect.top && blockRect.top < marqueeRect.bottom;
@@ -11197,7 +11283,11 @@ export default MawDynamicCaptions;
         if ((event.ctrlKey || event.metaKey) && !event.shiftKey && !event.altKey) {
           return this.beginBlockedCueCreateDrag(event, index, track, row);
         }
-        const targetHandle = event.target.closest(".waveform-cue-handle");
+        const targetHandle = (
+          /** @type {Element | null} */
+          /** @type {HTMLElement} */
+          event.target.closest(".waveform-cue-handle")
+        );
         const adjacentCueAdjustmentIndependent = this.isAdjacentCueAdjustmentIndependent(event.altKey);
         if ((track === "main" || track === "overlay") && this.tool === "razor" && !targetHandle && !event.altKey && !event.ctrlKey && !event.metaKey && !event.shiftKey) {
           const timeMs = this.timeFromPointer(event, row);
@@ -11518,6 +11608,7 @@ export default MawDynamicCaptions;
         drag.cancelOriginals = /* @__PURE__ */ new Map([[index, original]]);
         if (Number.isFinite(deltaShift) && deltaShift) drag.startPointerTime += deltaShift;
         this.refreshCueOverlay();
+        /** @type {NodeListOf<HTMLElement>} */
         this.content.querySelectorAll(`.waveform-cue-block[data-track="${track}"][${track === "overlay" ? "data-overlay-idx" : "data-idx"}="${index}"]`).forEach((block) => block.classList.add("dragging"));
       }
     }
@@ -11818,6 +11909,7 @@ export default MawDynamicCaptions;
           if (!segment) return;
           restoreTiming(segment, original, drag.timing || this.cueTiming());
         });
+        /** @type {NodeListOf<HTMLElement>} */
         this.content.querySelectorAll(".waveform-cue-block.dragging, .waveform-cue-boundary.dragging").forEach((block) => block.classList.remove("dragging"));
         this.pane.classList.remove("cue-drag-active");
         this.pane.classList.remove("shared-boundary-drag-active");
@@ -11952,6 +12044,7 @@ export default MawDynamicCaptions;
       }
       /** @this {import('./waveform-types.js').WaveformInstance} */
       clearGapMovePreview() {
+        /** @type {NodeListOf<HTMLElement>} */
         this.content.querySelectorAll(".waveform-gap-drag-preview").forEach((element) => element.remove());
       }
       /** @this {import('./waveform-types.js').WaveformInstance} */
@@ -11960,11 +12053,13 @@ export default MawDynamicCaptions;
         this.refreshGapBlocks(drag.originalGaps);
         if (!drag.moved) return;
         if (drag.mode === "move") {
+          /** @type {NodeListOf<HTMLElement>} */
           this.content.querySelectorAll(`.waveform-gap-block[data-gap-index="${drag.index}"]`).forEach((block) => {
             block.hidden = true;
           });
         }
         const target = drag.targetGap;
+        /** @type {NodeListOf<import('./waveform-types.js').WaveformRow>} */
         this.content.querySelectorAll(".waveform-row").forEach((row) => {
           const rowStart = Number(row.dataset.startMs);
           const rowEnd = Number(row.dataset.endMs);
@@ -12008,9 +12103,13 @@ export default MawDynamicCaptions;
       }
       /** @this {import('./waveform-types.js').WaveformInstance} */
       refreshGapBlocks(gaps) {
+        /** @type {NodeListOf<HTMLElement>} */
         this.content.querySelectorAll(".waveform-gap-block").forEach((block) => {
           const gap = gaps[Number(block.dataset.gapIndex)];
-          const row = block.closest(".waveform-row");
+          const row = (
+            /** @type {import('./waveform-types.js').WaveformRow} */
+            block.closest(".waveform-row")
+          );
           if (!gap || !row) {
             block.hidden = true;
             return;
@@ -12020,6 +12119,7 @@ export default MawDynamicCaptions;
       }
       /** @this {import('./waveform-types.js').WaveformInstance} */
       clearGapBoundaryPreview() {
+        /** @type {NodeListOf<HTMLElement>} */
         this.content.querySelectorAll(".waveform-gap-boundary-preview").forEach((element) => element.remove());
       }
       /** @this {import('./waveform-types.js').WaveformInstance} */
@@ -12049,10 +12149,12 @@ export default MawDynamicCaptions;
         const target = drag.nextGaps.find((gap) => gap.removed === original.removed && gap.start <= anchor && gap.end > anchor);
         if (!target) return;
         const renderTarget = (nextGap, originalIndex) => {
+          /** @type {NodeListOf<import('./waveform-types.js').WaveformRow>} */
           this.content.querySelectorAll(".waveform-row").forEach((row) => {
             const rowStart = Number(row.dataset.startMs);
             const rowEnd = Number(row.dataset.endMs);
-            const existing = [...row.querySelectorAll(
+            const existing = [.../** @type {NodeListOf<HTMLElement>} */
+            row.querySelectorAll(
               `.waveform-gap-block[data-gap-index="${originalIndex}"]`
             )].find((block) => !block.classList.contains("waveform-gap-boundary-preview"));
             if (existing) {
@@ -12118,6 +12220,7 @@ export default MawDynamicCaptions;
           drag.captureTarget.releasePointerCapture?.(event.pointerId);
         } catch (_) {
         }
+        /** @type {NodeListOf<HTMLElement>} */
         this.content.querySelectorAll(".waveform-gap-block.dragging").forEach((block) => block.classList.remove("dragging"));
         this.clearGapBoundaryPreview();
         this.gapBoundaryDrag = null;
@@ -12160,6 +12263,7 @@ export default MawDynamicCaptions;
       }
       /** @this {import('./waveform-types.js').WaveformInstance} */
       clearGapRangePreviews() {
+        /** @type {NodeListOf<HTMLElement>} */
         this.content.querySelectorAll(".waveform-gap-range-preview").forEach((element) => element.remove());
       }
       /** @this {import('./waveform-types.js').WaveformInstance} */
@@ -12173,6 +12277,7 @@ export default MawDynamicCaptions;
         const end = Math.max(drag.startMs, drag.endMs);
         const previews = [];
         this.clearGapRangePreviews();
+        /** @type {NodeListOf<import('./waveform-types.js').WaveformRow>} */
         this.content.querySelectorAll(".waveform-row").forEach((row) => {
           const rowStart = Number(row.dataset.startMs);
           const rowEnd = Number(row.dataset.endMs);
@@ -12353,7 +12458,11 @@ ${marker.note}` : ""}`;
         }
         element.addEventListener("pointerdown", (event) => {
           if (event.button !== 0) return;
-          const handle = event.target.closest(".waveform-marker-handle");
+          const handle = (
+            /** @type {Element | null} */
+            /** @type {HTMLElement} */
+            event.target.closest(".waveform-marker-handle")
+          );
           const mode = handle ? handle.classList.contains("left") ? "resize-start" : "resize-end" : "move";
           this.beginMarkerDrag(event, marker.id, row, mode);
         });
@@ -12371,7 +12480,9 @@ ${marker.note}` : ""}`;
       /** @this {import('./waveform-types.js').WaveformInstance} */
       refreshMarkerOverlay() {
         if (!this.payload) return;
+        /** @type {NodeListOf<HTMLElement>} */
         this.content.querySelectorAll(".waveform-marker-track").forEach((element) => element.remove());
+        /** @type {NodeListOf<import('./waveform-types.js').WaveformRow>} */
         this.content.querySelectorAll(".waveform-row").forEach((row) => {
           this.appendMarkerTrack(row, Number(row.dataset.startMs), Number(row.dataset.endMs));
         });
@@ -12470,10 +12581,14 @@ ${marker.note}` : ""}`;
           return;
         }
         const currentColor = utils.normalizeMarkerColor(marker.color);
+        /** @type {NodeListOf<HTMLElement>} */
         popup.querySelectorAll(".markers-color-swatch").forEach((swatch) => {
           swatch.classList.toggle("active", swatch.dataset.color === currentColor);
         });
-        const reviewToggle = popup.querySelector(".markers-review-toggle");
+        const reviewToggle = (
+          /** @type {HTMLElement} */
+          popup.querySelector(".markers-review-toggle")
+        );
         if (reviewToggle) {
           reviewToggle.textContent = utils.markerReviewStatusLabel(marker);
           reviewToggle.classList.toggle("has-review", Boolean(marker.review));
@@ -12521,7 +12636,8 @@ ${marker.note}` : ""}`;
       // 行间隙取最近行。基础模式只有一行，行为与旧行几何一致。
       /** @this {import('./waveform-types.js').WaveformInstance} */
       findMarkerRowAtClientY(clientY, fallbackRow = null) {
-        const rows = (this.renderedRows?.length ? this.renderedRows : [...this.content.querySelectorAll(".waveform-row")]).map((row) => {
+        const rows = (this.renderedRows?.length ? this.renderedRows : [.../** @type {NodeListOf<import('./waveform-types.js').WaveformRow>} */
+        this.content.querySelectorAll(".waveform-row")]).map((row) => {
           const rect = row.getBoundingClientRect();
           return {
             row,
@@ -12712,6 +12828,7 @@ ${marker.note}` : ""}`;
       }
       /** @this {import('./waveform-types.js').WaveformInstance} */
       clearMarkerDragPreviews() {
+        /** @type {NodeListOf<HTMLElement>} */
         this.content.querySelectorAll(".waveform-marker-item.drag-preview").forEach((element) => element.remove());
       }
       /** @this {import('./waveform-types.js').WaveformInstance} */
@@ -12732,12 +12849,14 @@ ${marker.note}` : ""}`;
         }
         if (!range) return;
         if (drag.mode !== "create") {
+          /** @type {NodeListOf<HTMLElement>} */
           this.content.querySelectorAll(
             `.waveform-marker-item[data-marker-id="${CSS.escape(String(drag.markerId))}"]`
           ).forEach((element) => {
             element.hidden = true;
           });
         }
+        /** @type {NodeListOf<import('./waveform-types.js').WaveformRow>} */
         this.content.querySelectorAll(".waveform-row").forEach((row) => {
           const rowStart = Number(row.dataset.startMs);
           const rowEnd = Number(row.dataset.endMs);
@@ -12770,6 +12889,7 @@ ${marker.note}` : ""}`;
         this._teardownMarkerPointerTracking(drag);
         drag.captureTarget?.classList?.remove("dragging");
         this.clearMarkerDragPreviews();
+        /** @type {NodeListOf<HTMLElement>} */
         this.content.querySelectorAll(".waveform-marker-item[hidden]").forEach((element) => {
           element.hidden = false;
         });
@@ -13112,6 +13232,7 @@ ${marker.note}` : ""}`;
           drag.captureTarget?.releasePointerCapture?.(drag.pointerId);
         } catch (_) {
         }
+        /** @type {NodeListOf<HTMLElement>} */
         this.content.querySelectorAll(".waveform-cue-block.dragging, .waveform-cue-boundary.dragging").forEach((block) => block.classList.remove("dragging"));
         this.pane.classList.remove("cue-drag-active");
         this.pane.classList.remove("shared-boundary-drag-active");
@@ -13183,6 +13304,7 @@ ${marker.note}` : ""}`;
         if (activeIndex !== this.activeIndex || activeVisualHit !== this.activeVisualHit) {
           this.activeIndex = activeIndex;
           this.activeVisualHit = activeVisualHit;
+          /** @type {NodeListOf<HTMLElement>} */
           this.content.querySelectorAll('.waveform-cue-block[data-track="main"]').forEach((block) => {
             block.classList.toggle("active", Number(block.dataset.idx) === activeIndex && activeVisualHit);
           });
@@ -13193,6 +13315,7 @@ ${marker.note}` : ""}`;
         if (activeExtensionIndex !== this.activeExtensionIndex || activeExtensionVisualHit !== this.activeExtensionVisualHit) {
           this.activeExtensionIndex = activeExtensionIndex;
           this.activeExtensionVisualHit = activeExtensionVisualHit;
+          /** @type {NodeListOf<HTMLElement>} */
           this.content.querySelectorAll('.waveform-cue-block[data-track="extension"]').forEach((block) => {
             block.classList.toggle("active", Number(block.dataset.extIdx) === activeExtensionIndex && activeExtensionVisualHit);
           });
@@ -13203,6 +13326,7 @@ ${marker.note}` : ""}`;
         if (activeOverlayIndex !== this.activeOverlayIndex || activeOverlayVisualHit !== this.activeOverlayVisualHit) {
           this.activeOverlayIndex = activeOverlayIndex;
           this.activeOverlayVisualHit = activeOverlayVisualHit;
+          /** @type {NodeListOf<HTMLElement>} */
           this.content.querySelectorAll('.waveform-cue-block[data-track="overlay"]').forEach((block) => {
             block.classList.toggle("active", Number(block.dataset.overlayIdx) === activeOverlayIndex && activeOverlayVisualHit);
           });
@@ -13320,7 +13444,8 @@ ${marker.note}` : ""}`;
         this.renderedRows.forEach((row) => {
           const startMs = Number(row.dataset.startMs);
           const endMs = Number(row.dataset.endMs);
-          const playhead = row._waveformPlayhead || row.querySelector(".waveform-playhead");
+          const playhead = row._waveformPlayhead || /** @type {HTMLElement} */
+          row.querySelector(".waveform-playhead");
           if (!playhead) return;
           const visible = now >= startMs && now <= endMs;
           playhead.hidden = !visible;

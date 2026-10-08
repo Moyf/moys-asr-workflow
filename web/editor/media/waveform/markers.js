@@ -129,7 +129,7 @@ export function createWaveformModule(dependencies) {
       }
       element.addEventListener('pointerdown', (event) => {
         if (event.button !== 0) return;
-        const handle = event.target.closest('.waveform-marker-handle');
+        const handle = (/** @type {Element | null} */ ((/** @type {HTMLElement} */ (event.target)).closest('.waveform-marker-handle')));
         const mode = handle
           ? (handle.classList.contains('left') ? 'resize-start' : 'resize-end')
           : 'move';
@@ -151,8 +151,8 @@ export function createWaveformModule(dependencies) {
     /** @this {import('./waveform-types.js').WaveformInstance} */
     refreshMarkerOverlay() {
       if (!this.payload) return;
-      this.content.querySelectorAll('.waveform-marker-track').forEach((element) => element.remove());
-      this.content.querySelectorAll('.waveform-row').forEach((row) => {
+      (/** @type {NodeListOf<HTMLElement>} */ (this.content.querySelectorAll('.waveform-marker-track'))).forEach((element) => element.remove());
+      (/** @type {NodeListOf<import('./waveform-types.js').WaveformRow>} */ (this.content.querySelectorAll('.waveform-row'))).forEach((row) => {
         this.appendMarkerTrack(row, Number(row.dataset.startMs), Number(row.dataset.endMs));
       });
     }
@@ -261,10 +261,10 @@ export function createWaveformModule(dependencies) {
         return;
       }
       const currentColor = utils.normalizeMarkerColor(marker.color);
-      popup.querySelectorAll('.markers-color-swatch').forEach((swatch) => {
+      (/** @type {NodeListOf<HTMLElement>} */ (popup.querySelectorAll('.markers-color-swatch'))).forEach((swatch) => {
         swatch.classList.toggle('active', swatch.dataset.color === currentColor);
       });
-      const reviewToggle = popup.querySelector('.markers-review-toggle');
+      const reviewToggle = (/** @type {HTMLElement} */ (popup.querySelector('.markers-review-toggle')));
       if (reviewToggle) {
         // 无前缀，仅状态名；配色与编辑卡一致（待复核琥珀 / 已确认绿）。
         reviewToggle.textContent = utils.markerReviewStatusLabel(marker);
@@ -322,7 +322,7 @@ export function createWaveformModule(dependencies) {
     findMarkerRowAtClientY(clientY, fallbackRow = null) {
       const rows = (this.renderedRows?.length
         ? this.renderedRows
-        : [...this.content.querySelectorAll('.waveform-row')])
+        : [...(/** @type {NodeListOf<import('./waveform-types.js').WaveformRow>} */ (this.content.querySelectorAll('.waveform-row')))])
         .map((row) => {
           const rect = row.getBoundingClientRect();
           return {
@@ -535,7 +535,7 @@ export function createWaveformModule(dependencies) {
 
     /** @this {import('./waveform-types.js').WaveformInstance} */
     clearMarkerDragPreviews() {
-      this.content.querySelectorAll('.waveform-marker-item.drag-preview').forEach((element) => element.remove());
+      (/** @type {NodeListOf<HTMLElement>} */ (this.content.querySelectorAll('.waveform-marker-item.drag-preview'))).forEach((element) => element.remove());
     }
 
 
@@ -558,11 +558,11 @@ export function createWaveformModule(dependencies) {
       if (!range) return;
       if (drag.mode !== 'create') {
         // 拖既有标记时隐藏原元素，避免同一标记出现两份。
-        this.content.querySelectorAll(
+        (/** @type {NodeListOf<HTMLElement>} */ (this.content.querySelectorAll(
           `.waveform-marker-item[data-marker-id="${CSS.escape(String(drag.markerId))}"]`,
-        ).forEach((element) => { element.hidden = true; });
+        ))).forEach((element) => { element.hidden = true; });
       }
-      this.content.querySelectorAll('.waveform-row').forEach((row) => {
+      (/** @type {NodeListOf<import('./waveform-types.js').WaveformRow>} */ (this.content.querySelectorAll('.waveform-row'))).forEach((row) => {
         const rowStart = Number(row.dataset.startMs);
         const rowEnd = Number(row.dataset.endMs);
         const visibleStart = Math.max(range.start, rowStart);
@@ -596,7 +596,7 @@ export function createWaveformModule(dependencies) {
       this._teardownMarkerPointerTracking(drag);
       drag.captureTarget?.classList?.remove('dragging');
       this.clearMarkerDragPreviews();
-      this.content.querySelectorAll('.waveform-marker-item[hidden]').forEach((element) => {
+      (/** @type {NodeListOf<HTMLElement>} */ (this.content.querySelectorAll('.waveform-marker-item[hidden]'))).forEach((element) => {
         element.hidden = false;
       });
       if (this.markerDrag === drag) this.markerDrag = null;

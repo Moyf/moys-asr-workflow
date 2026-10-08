@@ -70,7 +70,7 @@ export interface CueDragState {
   started?: boolean; changed?: boolean; independent?: boolean;
   shiftOverlay?: boolean; shiftRangeSelect?: boolean; altToggleDisabledOnClick?: boolean;
   seekedOnPointerDown?: boolean; captureTarget?: HTMLElement;
-  sharedBoundaryZone?: boolean; previewRowIndex?: number; edge?: string;
+  sharedBoundaryZone?: boolean; previewRowIndex?: number; edge?: string; dragIndex?: number;
   pointerId: number; startClientX: number; currentClientX?: number; startClientY?: number;
   lastPointerPosition?: PointerPosition; lastEvent?: PointerEvent; row: HTMLElement;
   geometry?: RowGeometry; kind?: string; track: string; index?: number; boundaryIndex?: number;
@@ -113,7 +113,7 @@ export interface WaveformOptions {
   getGapRemoveGaps?(): Gap[];
   getMarkers?(): Marker[];
   getCueTiming?(): Partial<Clock>;
-  getBindingMarkerTargets?(): {main?: Map<number, unknown>; extension?: Map<number, unknown>};
+  getBindingMarkerTargets?(): {main?: ReadonlySet<number>; extension?: ReadonlySet<number>};
   getCrossTrackSnapTargets?(track?: string): number[];
   getWaveShapeSource?(): string;
   getAutoSnapAdjacentCues?(): boolean;
