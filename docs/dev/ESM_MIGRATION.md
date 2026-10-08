@@ -11,7 +11,7 @@
 | 目标契约红灯 | 已修复 | 新增 `test_editor_bundle.mjs` 在旧实现上 4 项失败，缺少生产打包器；随后实现再验证 |
 | 较大批次部分 ESM 与三个消费端 | 已修复 | 59 个工厂；449 Node、23 资产契约、13 个基线/file/HTTP 探针通过；Rust 真渲染器与浏览器装配通过 |
 | 类型诊断分批修复 | 已修复 | 既有六文件 + 全部 59 个工厂检查：1129 → 1128 → 1006 → 110 → 0；迁移提交后四批修复 |
-| 最终回归与上游 PR | 进行中 | 本地生产门禁、当前业务 PR 预演与资料归档完成；已提交上游 PR #181。正在修正首次 CI 的环境准备顺序 |
+| 最终回归与上游 PR | 已修复 | 已提交上游 PR #181；修正环境顺序后，Linux 编辑器全门禁与远端 Ruff 均通过。Windows preview 独立记录 |
 
 ## 已有证据
 
@@ -91,4 +91,8 @@
 
 已创建并附加 [PR #181](https://github.com/Moyf/moys-asr-workflow/pull/181)，base 为 main，head 为 fork 的 `codex/esm-factory-migration`；GitHub 初次检查显示可合并。生产迁移、四批类型修复、契约迁移与交接门禁分开提交。
 
-首次远端编辑器门禁的产物与类型检查通过，Node 为 443 通过/7 失败：CI 在安装 uv/Python/Chromium 前就执行了包含浏览器和 Python 对比的 Node 集；新 fixture 还假定 .worktrees 已存在。已调整准备顺序、明确 Python 解释器，并让 fixture 自建父目录。Ruff 远端通过，修正后的编辑器 CI 与 Windows preview 待确认。保留的边界是完整桌面/发布包未验证、上游 #177 四项已有交互失败、#157 原架构冲突，以及当前类型检查尚非全仓 strict。
+首次远端编辑器门禁的产物与类型检查通过，Node 为 443 通过/7 失败：CI 在安装 uv/Python/Chromium 前就执行了包含浏览器和 Python 对比的 Node 集；新 fixture 还假定 .worktrees 已存在。已调整准备顺序、明确 Python 解释器，并让 fixture 自建父目录。
+
+生产代码提交 `10943876` 的 [Linux 编辑器门禁](https://github.com/Moyf/moys-asr-workflow/actions/runs/37780175510) 已全部通过，包括从 Windows 提交的产物只读检查、0 类型诊断、450 Node、28 Python 装配契约以及 12 项真实 file/HTTP/事务测试；[Ruff](https://github.com/Moyf/moys-asr-workflow/actions/runs/37780175488) 和 [Windows MAW-lite preview](https://github.com/Moyf/moys-asr-workflow/actions/runs/37780175485) 也通过。后者覆盖打包契约、Python 回归、可执行程序构建与 smoke、资源检查和预览归档。此后文档提交的检查状态以 PR 为准。
+
+当前没有待处理的本批实现任务。保留的边界是完整 Tauri 应用与正式发布包未验证、上游 #177 四项已有交互失败、#157 原架构冲突，以及当前类型检查尚非全仓 strict。

@@ -44,7 +44,7 @@ MAW 是以云端 API 转写为主的字幕生成与编辑工作流，提供图�
 | 校对、匹配文稿、翻译或处理媒体 | [工具箱](docs/TOOLBOX.md) · [自动处理](docs/POSTPROCESS_PIPELINE.md) |
 | 编辑时间轴、保存和导出 | [编辑器指南](docs/EDITOR_GUIDE.md) · [ASS 样式](docs/ASS_STYLES.md) |
 | 写批处理或接入自动化 | [CLI](docs/CLI.md) |
-| 开发与数据集成 | [开发概览](docs/DEVELOPMENT.md) · [工程格式](JSON_SCHEMA.md) |
+| 开发与数据集成 | [开发概览](docs/DEVELOPMENT.md) · [工程格式](JSON_SCHEMA.md) · [ESM 迁移与上游交接](docs/dev/ESM_MIGRATION.md) |
 
 全部专题、技术契约与历史记录见 [文档索引](docs/README.md)。
 
