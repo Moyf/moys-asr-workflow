@@ -219,7 +219,7 @@ class EditorAssetContractTests(unittest.TestCase):
         self.assertEqual(metadata["sourceFiles"], list(edit.read_editor_script_manifest()))
         self.assertEqual(set(metadata["inputs"]), set(metadata["sourceFiles"]))
         modules = json.loads(edit.read_web_asset("editor-modules.json"))["modules"]
-        positions = [payload.index(f'window.MAWE.register({json.dumps(item["name"])}, ') for item in modules]
+        positions = [payload.index(f'MAWE.register({json.dumps(item["name"])},') for item in modules]
         self.assertEqual(positions, sorted(positions))
 
     def test_ass_frame_preview_wires_template_module_and_styles(self) -> None:
@@ -472,16 +472,18 @@ class EditorAssetContractTests(unittest.TestCase):
         # 便携页禁止携带「生成时间：…」式硬编码时间戳；「正在生成时间线 OTIOZ…」
         # 这类把「生成时间」作为前缀子串的普通文案不受限制。
         self.assertNotRegex(page, r"生成时间\s*[:：]")
+        # Bundle minification can rename local parameters and remove whitespace;
+        # assert the public facade assignments and their order, not source spelling.
         markers = (
-            'Object.defineProperty(global, "MAWE", {',
-            "global.AsrGapRemoveCore = Object.freeze({",
-            "window.AsrEditorUtils = {",
-            "global.MAWE_I18N = {",
-            "window.AsrWaveform = {",
-            "window.MAWE_EDITOR_BRIDGE = Object.freeze({",
-            "window.MAWE_ONBOARDING = Object.freeze({",
+            r'Object\.defineProperty\([^,]+,\s*["\']MAWE["\']',
+            r'\b[A-Za-z_$][\w$]*\.AsrGapRemoveCore\s*=',
+            r'\bwindow\.AsrEditorUtils\s*=',
+            r'\b[A-Za-z_$][\w$]*\.MAWE_I18N\s*=',
+            r'\bwindow\.AsrWaveform\s*=',
+            r'\bwindow\.MAWE_EDITOR_BRIDGE\s*=',
+            r'\bwindow\.MAWE_ONBOARDING\s*=',
         )
-        indices = [page.index(marker) for marker in markers]
+        indices = [re.search(marker, page).start() for marker in markers]
         self.assertEqual(indices, sorted(indices))
 
     def test_tauri_builder_consumes_the_same_complete_artifact(self) -> None:
