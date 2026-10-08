@@ -367,7 +367,7 @@
     "editor/boot/editor-onboarding.js": "d9b363fdd75eace296b9ac2034fc42dffb15a212334a180767b8aa7a11c053b3"
   },
   "configHash": "492b585c931e626209a0ea9d6a916ca30da259512d43eef00dc860793dad6798",
-  "builderHash": "824fc4be18dc943aed7886b55d58338c13a0775903be5b2c59163561b23ac8cb",
+  "builderHash": "122553f37f9b72e53617932998851ed53ad26696fe8d6c86da3255da0a5c8e4a",
   "metafile": {
     "inputs": {
       "web/shared/host/storage.js": {
@@ -974,187 +974,187 @@
         "entryPoint": "web/editor-entry.mjs",
         "inputs": {
           "web/shared/host/storage.js": {
-            "bytesInOutput": 236
+            "bytesInOutput": 141
           },
           "web/shared/host/files.js": {
-            "bytesInOutput": 923
+            "bytesInOutput": 526
           },
           "web/shared/host/server-api.js": {
-            "bytesInOutput": 279
+            "bytesInOutput": 153
           },
           "web/shared/utils/data.js": {
-            "bytesInOutput": 3840
+            "bytesInOutput": 1853
           },
           "web/shared/utils/fonts.js": {
-            "bytesInOutput": 3618
+            "bytesInOutput": 1913
           },
           "web/shared/utils/speakers.js": {
-            "bytesInOutput": 3337
+            "bytesInOutput": 1456
           },
           "web/shared/utils/media-metadata.js": {
-            "bytesInOutput": 3414
+            "bytesInOutput": 1690
           },
           "web/shared/utils/navigation.js": {
-            "bytesInOutput": 4026
+            "bytesInOutput": 1807
           },
           "web/shared/utils/text-processing.js": {
-            "bytesInOutput": 6182
+            "bytesInOutput": 3169
           },
           "web/shared/utils/timed-text-core.js": {
-            "bytesInOutput": 19448
+            "bytesInOutput": 7192
           },
           "web/shared/utils/timed-text-plans.js": {
-            "bytesInOutput": 28642
+            "bytesInOutput": 11639
           },
           "web/shared/utils/timed-text-edit.js": {
-            "bytesInOutput": 23947
+            "bytesInOutput": 11039
           },
           "web/shared/utils/text-metrics.js": {
-            "bytesInOutput": 1626
+            "bytesInOutput": 849
           },
           "web/shared/utils/segment-timing.js": {
-            "bytesInOutput": 17061
+            "bytesInOutput": 6923
           },
           "web/shared/utils/split-alignment.js": {
-            "bytesInOutput": 8651
+            "bytesInOutput": 3692
           },
           "web/shared/utils/split-trim.js": {
-            "bytesInOutput": 3216
+            "bytesInOutput": 1448
           },
           "web/shared/utils/timeline.js": {
-            "bytesInOutput": 8162
+            "bytesInOutput": 3727
           },
           "web/shared/utils/settings.js": {
-            "bytesInOutput": 16763
+            "bytesInOutput": 9391
           },
           "web/shared/utils/gap-remove.js": {
-            "bytesInOutput": 5472
+            "bytesInOutput": 2842
           },
           "web/shared/utils/history.js": {
-            "bytesInOutput": 2837
+            "bytesInOutput": 1315
           },
           "web/shared/utils/markers.js": {
-            "bytesInOutput": 8090
+            "bytesInOutput": 3993
           },
           "web/shared/utils/multi-subtitle.js": {
-            "bytesInOutput": 22191
+            "bytesInOutput": 10160
           },
           "web/shared/utils/word-split.js": {
-            "bytesInOutput": 5081
+            "bytesInOutput": 1922
           },
           "web/shared/utils/srt.js": {
-            "bytesInOutput": 9447
+            "bytesInOutput": 4331
           },
           "web/shared/utils/lrc.js": {
-            "bytesInOutput": 3540
+            "bytesInOutput": 1650
           },
           "web/shared/utils/ass-style.js": {
-            "bytesInOutput": 31079
+            "bytesInOutput": 15596
           },
           "web/shared/utils/ass-animation.js": {
-            "bytesInOutput": 4998
+            "bytesInOutput": 2352
           },
           "web/shared/utils/ass-export.js": {
-            "bytesInOutput": 17903
+            "bytesInOutput": 7797
           },
           "web/shared/utils/export-plan.js": {
-            "bytesInOutput": 23620
+            "bytesInOutput": 13030
           },
           "web/shared/utils/fcp7.js": {
-            "bytesInOutput": 20352
+            "bytesInOutput": 11731
           },
           "web/shared/utils/export-workflow.js": {
-            "bytesInOutput": 2074
+            "bytesInOutput": 1174
           },
           "web/shared/utils/platform.js": {
-            "bytesInOutput": 770
+            "bytesInOutput": 458
           },
           "web/shared/utils/preview-geometry.js": {
-            "bytesInOutput": 3511
+            "bytesInOutput": 1572
           },
           "web/shared/utils/lottie.js": {
-            "bytesInOutput": 10047
+            "bytesInOutput": 4199
           },
           "web/shared/utils/ograf.js": {
-            "bytesInOutput": 14359
+            "bytesInOutput": 10937
           },
           "web/editor/media/waveform/constants.js": {
-            "bytesInOutput": 1686
+            "bytesInOutput": 939
           },
           "web/editor/media/waveform/labels.js": {
-            "bytesInOutput": 2198
+            "bytesInOutput": 1532
           },
           "web/editor/media/waveform/scale.js": {
-            "bytesInOutput": 3958
+            "bytesInOutput": 1545
           },
           "web/editor/media/waveform/layout.js": {
-            "bytesInOutput": 18725
+            "bytesInOutput": 8713
           },
           "web/editor/media/waveform/settings.js": {
-            "bytesInOutput": 2590
+            "bytesInOutput": 1311
           },
           "web/editor/media/waveform/payload.js": {
-            "bytesInOutput": 10636
+            "bytesInOutput": 4887
           },
           "web/editor/media/waveform/colors.js": {
-            "bytesInOutput": 1144
+            "bytesInOutput": 686
           },
           "web/editor/media/waveform/timing.js": {
-            "bytesInOutput": 20161
+            "bytesInOutput": 8711
           },
           "web/editor/media/waveform/visibility.js": {
-            "bytesInOutput": 6072
+            "bytesInOutput": 2690
           },
           "web/editor/media/waveform/controls.js": {
-            "bytesInOutput": 6573
+            "bytesInOutput": 4105
           },
           "web/editor/media/waveform/pointer.js": {
-            "bytesInOutput": 9729
+            "bytesInOutput": 4637
           },
           "web/editor/media/waveform/workspace.js": {
-            "bytesInOutput": 31068
+            "bytesInOutput": 17262
           },
           "web/editor/media/waveform/scale-controls.js": {
-            "bytesInOutput": 10320
+            "bytesInOutput": 5319
           },
           "web/editor/media/waveform/media.js": {
-            "bytesInOutput": 12533
+            "bytesInOutput": 5945
           },
           "web/editor/media/waveform/render.js": {
-            "bytesInOutput": 8317
+            "bytesInOutput": 4198
           },
           "web/editor/media/waveform/cue-blocks.js": {
-            "bytesInOutput": 38382
+            "bytesInOutput": 18998
           },
           "web/editor/media/waveform/canvas.js": {
-            "bytesInOutput": 6820
+            "bytesInOutput": 2962
           },
           "web/editor/media/waveform/input.js": {
-            "bytesInOutput": 28736
+            "bytesInOutput": 12032
           },
           "web/editor/media/waveform/cue-drag.js": {
-            "bytesInOutput": 17962
+            "bytesInOutput": 8653
           },
           "web/editor/media/waveform/cue-commands.js": {
-            "bytesInOutput": 15353
+            "bytesInOutput": 7233
           },
           "web/editor/media/waveform/gap-drag.js": {
-            "bytesInOutput": 19337
+            "bytesInOutput": 10013
           },
           "web/editor/media/waveform/markers.js": {
-            "bytesInOutput": 27255
+            "bytesInOutput": 13475
           },
           "web/editor/media/waveform/cue-drag-update.js": {
-            "bytesInOutput": 19209
+            "bytesInOutput": 8402
           },
           "web/editor/media/waveform/playback.js": {
-            "bytesInOutput": 8773
+            "bytesInOutput": 4423
           },
           "web/editor-entry.mjs": {
-            "bytesInOutput": 1615728
+            "bytesInOutput": 977124
           }
         },
-        "bytes": 2284401
+        "bytes": 1299488
       }
     }
   }

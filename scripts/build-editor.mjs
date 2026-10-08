@@ -99,7 +99,7 @@ export async function compileSources(root, files, modules, read, options = {}) {
         if (!byFile.has(file)) return null;
         return {contents:sources.get(file),loader:'js',resolveDir:path.dirname(args.path)};
       });
-    }}], bundle:true,format:'iife',target:['es2022'],charset:'utf8',write:false,
+    }}], bundle:true,format:'iife',target:['es2022'],charset:'utf8',minify:true,write:false,
     metafile:true,logLevel:'silent',legalComments:'none',banner:{js:"'use strict';"}});
   return {code:result.outputFiles[0].text,metafile:result.metafile,sourceFiles:files,modules,entry};
 }
