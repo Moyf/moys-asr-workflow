@@ -1408,7 +1408,11 @@
     const leading = original.match(/^\s*/)?.[0] || '';
     const trailing = original.match(/\s*$/)?.[0] || '';
     const core = original.trim();
-    if (core) node.nodeValue = leading + translateText(core) + trailing;
+    if (core) {
+      const next = leading + translateText(core) + trailing;
+      // Even assigning the same value can reset a live text selection.
+      if (node.nodeValue !== next) node.nodeValue = next;
+    }
   }
 
   function translateAttributes(element) {
