@@ -163,3 +163,36 @@ test('multi-sentence conversion remaps later group heads, member references and 
   assert.equal(plan.segments[4].sticker_ref.headIdx, 2);
   assert.equal(plan.segments[4]._dirty, true);
 });
+
+test('equal-length replacement remaps item texts by their sentence spans', () => {
+  const source = sentence();
+  source.text = '我很喜欢！';
+  const plan = utils.planWordTimingTextSync({ ...source, text: '我最喜欢！' }, source.text);
+  assert.deepEqual(plain(plan.items.map(item => item.text)), ['我', '最喜欢！']);
+  assert.equal(plan.changed, 1);
+  // 标点替换同样按所属 span 同步
+  const punctuation = utils.planWordTimingTextSync({ ...source, text: '我很喜欢？' }, source.text);
+  assert.equal(punctuation.items[1].text, '很喜欢？');
+});
+
+test('leading punctuation attaches to the first item span like display mapping', () => {
+  const source = { text: '，你好', items: [{ text: '你', start: 0, end: 100 }, { text: '好', start: 100, end: 200 }] };
+  const plan = utils.planWordTimingTextSync({ ...source, text: '，你号' }, source.text);
+  assert.deepEqual(plain(plan.items.map(item => item.text)), ['，你', '号']);
+});
+
+test('unequal edits only warn when the changed region crosses timed spans', () => {
+  const source = sentence();
+  // 句中插入文字 → 提示未同步
+  assert.deepEqual(plain(utils.planWordTimingTextSync({ ...source, text: '我很真喜欢！' }, source.text)), { warn: true });
+  // 结尾追加不跨入任何 item span → 静默忽略
+  assert.equal(utils.planWordTimingTextSync({ ...source, text: `${source.text}啊` }, source.text), null);
+  // 开头追加同样不跨入（首 item span 从 0 开始，但 region 为空）
+  assert.equal(utils.planWordTimingTextSync({ ...source, text: `嗯${source.text}` }, source.text), null);
+});
+
+test('text sync skips segments without mappable items', () => {
+  assert.equal(utils.planWordTimingTextSync({ text: '没有items', start: 0, end: 100 }, '没有items'), null);
+  assert.equal(utils.planWordTimingTextSync({ text: '我很喜欢！', items: [{ text: '我', start: 0, end: 10 }], start: 0, end: 100 }, '我很喜欢！'), null);
+  assert.equal(utils.planWordTimingTextSync({ text: '我很喜欢！', items: sentence().items, start: 0, end: 100 }, '我很喜欢！'), null);
+});

@@ -126,6 +126,7 @@
   const advancedHeading = document.createElement('summary');
   advancedHeading.className = 'item';
   advancedHeading.textContent = '高级操作';
+  advanced.append(advancedHeading);
   const convertWords = document.createElement('button');
   convertWords.type = 'button';
   convertWords.className = 'item danger';
@@ -134,11 +135,22 @@
     MaweDom.ctxmenu.classList.remove('show');
     MaweWordTiming.openConversion(targetIdxs);
   });
-  advanced.append(advancedHeading, convertWords);
   advanced.addEventListener('toggle', () => {
     const rect = MaweDom.ctxmenu.getBoundingClientRect();
     MaweDom.ctxmenu.style.top = `${Math.max(4, Math.min(y, window.innerHeight - rect.height - 4))}px`;
   });
+  // 低频动作统一收进「高级操作」，保持菜单主体聚焦剪辑动作。
+  function addAdvancedOverlayConvert(ids) {
+    const convertOverlay = document.createElement('button');
+    convertOverlay.type = 'button';
+    convertOverlay.className = 'item';
+    convertOverlay.textContent = ids.length > 1 ? `转为叠加字幕 ${ids.length} 条` : '转为叠加字幕';
+    convertOverlay.addEventListener('click', () => {
+      MaweDom.ctxmenu.classList.remove('show');
+      convertMainCuesToOverlay(ids);
+    });
+    advanced.appendChild(convertOverlay);
+  }
 
   function addItem(label, kbd, fn, opts = {}) {
     const it = document.createElement('div');
@@ -197,7 +209,7 @@
 
   // 「左右添加字符」子菜单：数据驱动预设 + 自定义输入。插入一律双符号形式；
   // 「单双符号」设置只影响识别/解析，不影响这里插入的内容。
-  function addWrapCharsSubmenu(targets) {
+  function addWrapCharsSubmenu(targets, container = MaweDom.ctxmenu) {
     const wrapPresets = window.AsrEditorUtils.WRAP_CHAR_PRESETS;
     const row = document.createElement('div');
     row.className = 'item';
@@ -256,7 +268,7 @@
     });
     list.appendChild(custom);
     row.appendChild(list);
-    MaweDom.ctxmenu.appendChild(row);
+    container.appendChild(row);
   }
 
   if (!isMulti) {
@@ -285,6 +297,11 @@
         if (MaweCoreState.player.paused) MaweMediaPlayback.togglePlayback();
       });
     }
+    // 试听：只播放该字幕自身的时间范围，到终点自动暂停。
+    addItem('试听', '', () => {
+      const segment = MaweBoot.DATA.segments[idx];
+      MaweMediaPlayback.auditionRange(segment.start, segment.end);
+    });
     addSep();
     // 组 2：外观（表情包与颜色）
     addItem('分配表情包…', 'T', () => MaweStickerPicker.openStickerPicker([idx], false));
@@ -296,8 +313,6 @@
       }, { danger: true });
     }
     addColorSubmenu(targetIdxs);
-    // 左右添加字符：单条同样可用。淡出淡入（fad 标记）与音符多以单条为使用场景。
-    addWrapCharsSubmenu(targetIdxs);
     if (colorGroupHeadIndex(idx) >= 0) {
       addItem('从颜色组中脱离', '', () => detachColorFromGroup(idx));
     }
@@ -317,14 +332,13 @@
         MaweBindingAlign.unbindSelectedSubtitlePair();
       });
     }
-    addSep();
-    // 组 4：叠加字幕轨迁移。叠加轨与多重字幕互相独立，转换随时可用。
-    addItem('转为叠加字幕', '', () => convertMainCuesToOverlay([idx]));
+    // 低频动作收进高级操作：左右添加字符（淡出淡入、音符等单条场景）与叠加轨迁移。
+    addWrapCharsSubmenu(targetIdxs, advanced);
+    addAdvancedOverlayConvert([idx]);
   } else {
     // 组 1：合并与批量文本操作
     addItem(`合并 ${targetIdxs.length} 条字幕`, 'C', () => MaweSegmentOps.mergeSegments(targetIdxs));
     addItem('批量替换选中字幕…', '', () => MaweFindReplace.openReplaceModal(targetIdxs));
-    addWrapCharsSubmenu(targetIdxs);
     addSep();
     // 组 2：外观（表情包与颜色）；「拓展表情包时长」仅在范围内已有表情包时显示
     const hasStickerInRange = targetIdxs.some(i =>
@@ -342,13 +356,15 @@
       '',
       () => MaweStickerPicker.toggleDisabled(targetIdxs)
     );
-    addItem(`转为叠加字幕 ${targetIdxs.length} 条`, '', () => convertMainCuesToOverlay(targetIdxs));
     addItem(`删除 ${targetIdxs.length} 条字幕`, 'Delete', () => {
       MaweSegmentOps.deleteSegments(targetIdxs);
     }, { danger: true });
     addItem('取消选择', `${MaweDisplaySettings.modKeyLabel()}+D`, () => MaweSelection.clearSelection());
+    addWrapCharsSubmenu(targetIdxs, advanced);
+    addAdvancedOverlayConvert(targetIdxs);
   }
 
+  advanced.appendChild(convertWords);
   addSep();
   MaweDom.ctxmenu.appendChild(advanced);
   // 调整 ctxmenu 位置（避免溢出）
