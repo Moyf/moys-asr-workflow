@@ -6,6 +6,7 @@ export function createWaveformModule(dependencies) {
   class WaveformMethods {
 
 
+    /** @this {import('./waveform-types.js').WaveformInstance} */
     createRow(startMs, endMs, rowIndex, basic, groupBadges = null) {
       const row = document.createElement('div');
       row.className = 'waveform-row';
@@ -175,6 +176,7 @@ export function createWaveformModule(dependencies) {
     }
 
 
+    /** @this {import('./waveform-types.js').WaveformInstance} */
     appendGapBlocks(row, startMs, endMs) {
       // Editor/Align 提供的 getter 已经返回共享的最终显示投影；这里不要
       // 对每一行再次做投影，避免多行波形重复扫描同一组 Gap。
@@ -264,6 +266,7 @@ export function createWaveformModule(dependencies) {
     }
 
 
+    /** @this {import('./waveform-types.js').WaveformInstance} */
     appendCueBlocks(row, startMs, endMs, groupBadges = null) {
       // 传统模式沿用旧版系统光标（ew-resize）；原创边界光标只在
       const multiLane = this.options.multiSubtitleVisible?.() === true;
@@ -503,6 +506,7 @@ export function createWaveformModule(dependencies) {
     }
 
 
+    /** @this {import('./waveform-types.js').WaveformInstance} */
     isSegmentHiddenForDisplay(segment) {
       return Boolean(
         segment?.disabled
@@ -514,6 +518,7 @@ export function createWaveformModule(dependencies) {
     // 新模式（中缝联动）下，为相接的字幕对在中缝处渲染一个可拖动区：
     // 拖动中缝 = 两侧边界一起联动；相接侧手柄加宽后仍可单侧独立调整。
     // classic 模式不渲染中缝区，行为与旧版完全一致。
+    /** @this {import('./waveform-types.js').WaveformInstance} */
     appendSharedBoundaryZones(row, startMs, endMs, track = 'main') {
       if (this.options.getAdjacentBoundaryMode?.() !== 'dual') return;
       const segments = this.options.getSegments(track);
@@ -566,6 +571,7 @@ export function createWaveformModule(dependencies) {
     }
 
 
+    /** @this {import('./waveform-types.js').WaveformInstance} */
     setBindingMarker(block, visible) {
       block.classList.toggle('has-binding-marker', visible);
       const marker = block.querySelector('.waveform-binding-marker');
@@ -583,6 +589,7 @@ export function createWaveformModule(dependencies) {
     }
 
 
+    /** @this {import('./waveform-types.js').WaveformInstance} */
     layoutBlock(block, segment, startMs, endMs, ownerRow = null) {
       const duration = Math.max(1, endMs - startMs);
       const visibleStart = Math.max(startMs, segment.start);
@@ -602,6 +609,7 @@ export function createWaveformModule(dependencies) {
     }
 
 
+    /** @this {import('./waveform-types.js').WaveformInstance} */
     layoutGapBlock(block, gap, startMs, endMs) {
       const duration = Math.max(1, endMs - startMs);
       const visibleStart = Math.max(startMs, gap.start);
@@ -614,6 +622,7 @@ export function createWaveformModule(dependencies) {
     }
 
 
+    /** @this {import('./waveform-types.js').WaveformInstance} */
     refreshGapOverlay() {
       if (!this.payload) return;
       this.content.querySelectorAll('.waveform-row').forEach((row) => {
@@ -624,6 +633,7 @@ export function createWaveformModule(dependencies) {
     }
 
 
+    /** @this {import('./waveform-types.js').WaveformInstance} */
     refreshCueOverlay() {
       if (!this.payload) return;
       const rows = [...this.content.querySelectorAll('.waveform-row')];
@@ -645,6 +655,7 @@ export function createWaveformModule(dependencies) {
     }
 
 
+    /** @this {import('./waveform-types.js').WaveformInstance} */
     refreshCueBlocks() {
       const activeSeamDrag = this.drag?.sharedBoundaryZone && this.drag.started ? this.drag : null;
       if (activeSeamDrag) {
@@ -719,6 +730,7 @@ export function createWaveformModule(dependencies) {
 
     // 轻量刷新（拖动中）只重建字幕块，不重建中缝区；这里按当前时间
     // 重新定位已有中缝区，保证拖动过程中中缝始终跟随贴合边界。
+    /** @this {import('./waveform-types.js').WaveformInstance} */
     refreshBoundaryZones() {
       this.content.querySelectorAll('.waveform-cue-boundary').forEach((zone) => {
         const row = zone.closest('.waveform-row');
@@ -744,6 +756,7 @@ export function createWaveformModule(dependencies) {
     }
 
 
+    /** @this {import('./waveform-types.js').WaveformInstance} */
     refreshCueLabel(index) {
       const segment = this.options.getSegments('main')[index];
       if (!segment) return;
@@ -752,6 +765,7 @@ export function createWaveformModule(dependencies) {
     }
 
 
+    /** @this {import('./waveform-types.js').WaveformInstance} */
     refreshExtensionCueLabel(index, trackId = null) {
       const segment = this.options.getExtensionSegments?.(trackId)?.[index];
       if (!segment) return;
@@ -760,6 +774,7 @@ export function createWaveformModule(dependencies) {
     }
 
 
+    /** @this {import('./waveform-types.js').WaveformInstance} */
     updateSelection() {
       const selected = this.options.getSelection('main');
       const extensionSelected = this.options.getExtensionSelection?.() || new Set();

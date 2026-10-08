@@ -6,6 +6,7 @@ export function createWaveformModule(dependencies) {
   class WaveformMethods {
 
 
+    /** @this {import('./waveform-types.js').WaveformInstance} */
     seekFromPointer(
       event,
       row,
@@ -24,6 +25,7 @@ export function createWaveformModule(dependencies) {
     }
 
 
+    /** @this {import('./waveform-types.js').WaveformInstance} */
     seekFromCue(event, row, index, playAfterSeek = false, geometry = null, track = 'main') {
       const segment = this.options.getSegments(track)[index];
       const timeMs = this.options.getClickTarget?.() === 'pointer'
@@ -40,6 +42,7 @@ export function createWaveformModule(dependencies) {
     // Ctrl(Cmd)+左键拖动空白波形：显示字幕块虚影，松开后交给编辑器
     // 创建字幕。时间映射固定使用按下时的行几何，避免虚拟行重建或拖出行边界
     // 后把终点错误地映射到另一行。
+    /** @this {import('./waveform-types.js').WaveformInstance} */
     beginCreateCueDrag(event, row, track = 'main') {
       if (event.button !== 0) return;
       event.preventDefault();
@@ -158,6 +161,7 @@ export function createWaveformModule(dependencies) {
     }
 
 
+    /** @this {import('./waveform-types.js').WaveformInstance} */
     captureRowGeometry(row) {
       const rect = row.getBoundingClientRect();
       // 时间映射与覆盖层/指示线统一用 content-box：行有 1px 边框，
@@ -171,6 +175,7 @@ export function createWaveformModule(dependencies) {
     }
 
 
+    /** @this {import('./waveform-types.js').WaveformInstance} */
     trackAtPoint(clientX, clientY, row = null) {
       const hit = document.elementFromPoint(clientX, clientY);
       const hitRow = row || hit?.closest?.('.waveform-row');
@@ -204,6 +209,7 @@ export function createWaveformModule(dependencies) {
     }
 
 
+    /** @this {import('./waveform-types.js').WaveformInstance} */
     isCueTimeOccupied(timeMs, track = 'main') {
       const time = Number(timeMs);
       if (!Number.isFinite(time)) return false;
@@ -219,6 +225,7 @@ export function createWaveformModule(dependencies) {
 
     // 创建字幕的拖动不能跨过已有字幕；沿拖动方向把当前端点夹到遇到的
     // 第一个字幕边界。这样预览和最终提交使用同一组无重叠时间范围。
+    /** @this {import('./waveform-types.js').WaveformInstance} */
     clampCreateCueTime(anchorMs, requestedMs, track = 'main') {
       if (!Number.isFinite(anchorMs) || !Number.isFinite(requestedMs) || anchorMs === requestedMs) {
         return requestedMs;
@@ -246,6 +253,7 @@ export function createWaveformModule(dependencies) {
     }
 
 
+    /** @this {import('./waveform-types.js').WaveformInstance} */
     beginBlockedCueCreateDrag(event, index, track = 'main', row = null) {
       const target = event.currentTarget;
       const pointerId = event.pointerId;
@@ -293,6 +301,7 @@ export function createWaveformModule(dependencies) {
     }
 
 
+    /** @this {import('./waveform-types.js').WaveformInstance} */
     timeFromPointer(event, row, geometry = null) {
       const contentLeft = geometry ? geometry.left : row.getBoundingClientRect().left + row.clientLeft;
       const contentWidth = Math.max(1, geometry ? geometry.width : row.clientWidth);
@@ -305,6 +314,7 @@ export function createWaveformModule(dependencies) {
 
     // Gap、字幕块和字幕边界拖动都按起始行的横向位移计算；指针越过行边缘时
     // 继续延伸时间，避免拖动在本行末尾饱和或进入另一行时发生跳变。
+    /** @this {import('./waveform-types.js').WaveformInstance} */
     timeFromPointerUnbounded(event, row, geometry = null) {
       const contentLeft = geometry ? geometry.left : row.getBoundingClientRect().left + row.clientLeft;
       const contentWidth = Math.max(1, geometry ? geometry.width : row.clientWidth);
@@ -317,6 +327,7 @@ export function createWaveformModule(dependencies) {
 
     // 在波形指针拆分成功后短暂显示黄色定位光条，帮助用户确认实际操作位置。
     // 光条只覆盖波形行，不参与鼠标命中，也不影响红色播放头。
+    /** @this {import('./waveform-types.js').WaveformInstance} */
     flashSplitAtTime(timeMs) {
       if (!Number.isFinite(timeMs)) return false;
       const rows = [...this.content.querySelectorAll('.waveform-row')];
@@ -348,6 +359,7 @@ export function createWaveformModule(dependencies) {
 
 
     // 返回波形字幕切点的屏幕坐标，供全屏反馈动画把中心落在实际切分位置。
+    /** @this {import('./waveform-types.js').WaveformInstance} */
     getSplitPointAtTime(timeMs, track = 'main') {
       if (!Number.isFinite(timeMs)) return null;
       const rows = [...this.content.querySelectorAll('.waveform-row')];
@@ -377,6 +389,7 @@ export function createWaveformModule(dependencies) {
 
     // 屏幕坐标 -> 波形时间：命中某个波形行时返回该行内的时间（毫秒），否则返回 null。
     // 供键盘快捷键（如 B 按指针音频位置拆分）在不构造指针事件的情况下复用行内映射。
+    /** @this {import('./waveform-types.js').WaveformInstance} */
     timeMsAtPoint(clientX, clientY) {
       const hit = document.elementFromPoint(clientX, clientY);
       const row = hit?.closest?.('.waveform-row');
@@ -390,6 +403,7 @@ export function createWaveformModule(dependencies) {
     // 所在位置。高回报率指针事件用 rAF 合并，并限制连续 seek 的频率，避免
     // 浏览器反复解码和编辑器刷新造成拖动卡顿；松开时以最终位置再 seek 一次
     // 保证落点精确。多行模式下允许拖出当前行边界，并把时间限制在整个媒体范围内。
+    /** @this {import('./waveform-types.js').WaveformInstance} */
     beginPlayheadDrag(event, row, geometry = null) {
       geometry = geometry || this.captureRowGeometry(row);
       try { row.setPointerCapture?.(event.pointerId); } catch (_) {}
@@ -459,6 +473,7 @@ export function createWaveformModule(dependencies) {
     // #waveform-content 内、与行同坐标系，滚动时自动跟随；多行虚拟化重建
     // 会清掉覆盖层与块上的预览类，因此每帧重新挂载、重新命中。位移低于
     // 阈值的 Shift+点击视为空操作，不触发空白区既有的清除选中/seek。
+    /** @this {import('./waveform-types.js').WaveformInstance} */
     beginMarqueeDrag(event) {
       const content = this.content;
       const startRect = content.getBoundingClientRect();
@@ -556,6 +571,7 @@ export function createWaveformModule(dependencies) {
     }
 
 
+    /** @this {import('./waveform-types.js').WaveformInstance} */
     handleWheel(event) {
       const scrollDelta = wheelScrollDelta(event);
       if (!scrollDelta) return;

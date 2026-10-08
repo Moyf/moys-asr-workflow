@@ -6,6 +6,7 @@ export function createWaveformModule(dependencies) {
   class WaveformMethods {
 
 
+    /** @this {import('./waveform-types.js').WaveformInstance} */
     pointerTimeMs(event, row, geometry = null, allowCrossRow = false) {
       const requestedMs = allowCrossRow
         ? this.timeFromPointerUnbounded(event, row, geometry)
@@ -18,6 +19,7 @@ export function createWaveformModule(dependencies) {
     }
 
 
+    /** @this {import('./waveform-types.js').WaveformInstance} */
     refreshPointerLine() {
       if (this.pointerLineOverrideActive) {
         this.refreshBoundaryDragPointerLine();
@@ -29,6 +31,7 @@ export function createWaveformModule(dependencies) {
     }
 
 
+    /** @this {import('./waveform-types.js').WaveformInstance} */
     showPointerLine(event, row, marker) {
       if (!row || !marker) return;
       const rect = row.getBoundingClientRect();
@@ -47,11 +50,13 @@ export function createWaveformModule(dependencies) {
     }
 
 
+    /** @this {import('./waveform-types.js').WaveformInstance} */
     hidePointerLine(marker) {
       if (marker) marker.hidden = true;
     }
 
 
+    /** @this {import('./waveform-types.js').WaveformInstance} */
     isCueBoundaryDrag(drag = this.drag) {
       return Boolean(drag && [
         'resize-left', 'resize-right', 'resize-boundary', 'resize-boundary-independent',
@@ -59,6 +64,7 @@ export function createWaveformModule(dependencies) {
     }
 
 
+    /** @this {import('./waveform-types.js').WaveformInstance} */
     findVisibleWaveformRowAtPoint(clientX, clientY) {
       const viewport = this.scroll.getBoundingClientRect();
       const viewportLeft = viewport.left + this.scroll.clientLeft;
@@ -71,6 +77,7 @@ export function createWaveformModule(dependencies) {
     }
 
 
+    /** @this {import('./waveform-types.js').WaveformInstance} */
     findVisibleWaveformRowAtY(clientY) {
       const viewport = this.scroll.getBoundingClientRect();
       const viewportTop = viewport.top + this.scroll.clientTop;
@@ -83,6 +90,7 @@ export function createWaveformModule(dependencies) {
     }
 
 
+    /** @this {import('./waveform-types.js').WaveformInstance} */
     findVisibleWaveformRowForTime(timeMs) {
       const rows = [...this.content.querySelectorAll('.waveform-row')];
       // 行末时间由前一行持有，和中缝覆盖层的归属规则一致。
@@ -96,6 +104,7 @@ export function createWaveformModule(dependencies) {
     }
 
 
+    /** @this {import('./waveform-types.js').WaveformInstance} */
     cueBoundaryDragTimeMs(drag = this.drag) {
       if (!this.isCueBoundaryDrag(drag)) return NaN;
       const segment = this.options.getSegments(drag.track || 'main')[drag.index];
@@ -110,6 +119,7 @@ export function createWaveformModule(dependencies) {
     }
 
 
+    /** @this {import('./waveform-types.js').WaveformInstance} */
     refreshBoundaryDragPointerLine(force = false) {
       const drag = this.drag;
       if (!this.isCueBoundaryDrag(drag) || (!drag.started && !force)) return;
@@ -137,6 +147,7 @@ export function createWaveformModule(dependencies) {
     }
 
 
+    /** @this {import('./waveform-types.js').WaveformInstance} */
     restorePointerLineAfterBoundaryDrag(position = null) {
       this.pointerLineOverrideActive = false;
       this.content.querySelectorAll('.waveform-pointer-line').forEach((marker) => {
@@ -168,6 +179,7 @@ export function createWaveformModule(dependencies) {
     // 暂停时指针在波形上移动即把画面预览到指针时间。与拖动播放头一样按
     // 最新事件合并到每帧最多一次；真正 seek 前重新检查开关与播放状态，
     // 避免调度之后状态已变化（开始播放、关闭开关、行被虚拟化重建）仍执行。
+    /** @this {import('./waveform-types.js').WaveformInstance} */
     scheduleHoverSeekPreview(event, row) {
       if (this.playheadDragActive || this.isCueBoundaryDrag()
           || this.options.getHoverSeekPreview?.() !== true) return;
@@ -178,6 +190,7 @@ export function createWaveformModule(dependencies) {
     }
 
 
+    /** @this {import('./waveform-types.js').WaveformInstance} */
     cancelHoverSeekPreview() {
       if (this.hoverSeekPreviewFrame) {
         cancelAnimationFrame(this.hoverSeekPreviewFrame);
@@ -188,6 +201,7 @@ export function createWaveformModule(dependencies) {
     }
 
 
+    /** @this {import('./waveform-types.js').WaveformInstance} */
     flushHoverSeekPreview() {
       this.hoverSeekPreviewFrame = 0;
       const event = this.hoverSeekPreviewLastEvent;

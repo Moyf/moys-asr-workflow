@@ -6,6 +6,7 @@ export function createWaveformModule(dependencies) {
   class WaveformMethods {
 
 
+    /** @this {import('./waveform-types.js').WaveformInstance} */
     getWaveformEnvelope(row, width, startMs, endMs, activePeaks, peaksPerSecond, activeCount, useInterpolation) {
       const key = row._waveformEnvelopeKey;
       if (row._waveformEnvelope && key
@@ -41,6 +42,7 @@ export function createWaveformModule(dependencies) {
     }
 
 
+    /** @this {import('./waveform-types.js').WaveformInstance} */
     drawRow(row, { measure = true } = {}) {
       const canvas = row.querySelector('canvas');
       if (!canvas || !this.peaks) return;

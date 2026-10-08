@@ -6,6 +6,7 @@ export function createWaveformModule(dependencies) {
   class WaveformMethods {
 
 
+    /** @this {import('./waveform-types.js').WaveformInstance} */
     beginGapBoundaryDrag(event, index, row, edge) {
       if (event.button !== 0 || !gapOperationAllowsBoundary(this.options.getGapOperationMode?.())) return;
       event.preventDefault();
@@ -31,6 +32,7 @@ export function createWaveformModule(dependencies) {
     }
 
 
+    /** @this {import('./waveform-types.js').WaveformInstance} */
     beginGapMoveDrag(event, index, row, mode) {
       if (event.button !== 0 || !['move', 'copy'].includes(mode)) return;
       const gaps = this.options.getGapRemoveGaps?.() || [];
@@ -60,6 +62,7 @@ export function createWaveformModule(dependencies) {
     }
 
 
+    /** @this {import('./waveform-types.js').WaveformInstance} */
     gapMoveTarget(original, deltaMs) {
       const length = Math.max(1, Number(original?.end) - Number(original?.start));
       const duration = Number(this.durationMs);
@@ -70,6 +73,7 @@ export function createWaveformModule(dependencies) {
     }
 
 
+    /** @this {import('./waveform-types.js').WaveformInstance} */
     moveGapMoveDrag(event) {
       const drag = this.gapMoveDrag;
       if (!drag || event.pointerId !== drag.pointerId) return;
@@ -97,6 +101,7 @@ export function createWaveformModule(dependencies) {
     }
 
 
+    /** @this {import('./waveform-types.js').WaveformInstance} */
     scheduleGapMovePreview(drag) {
       if (this.gapMovePreviewFrame) return;
       this.gapMovePreviewFrame = requestAnimationFrame(() => {
@@ -106,11 +111,13 @@ export function createWaveformModule(dependencies) {
     }
 
 
+    /** @this {import('./waveform-types.js').WaveformInstance} */
     clearGapMovePreview() {
       this.content.querySelectorAll('.waveform-gap-drag-preview').forEach((element) => element.remove());
     }
 
 
+    /** @this {import('./waveform-types.js').WaveformInstance} */
     previewGapMoveDrag(drag) {
       this.clearGapMovePreview();
       this.refreshGapBlocks(drag.originalGaps);
@@ -137,6 +144,7 @@ export function createWaveformModule(dependencies) {
     }
 
 
+    /** @this {import('./waveform-types.js').WaveformInstance} */
     endGapMoveDrag(event) {
       const drag = this.gapMoveDrag;
       if (!drag || event.pointerId !== drag.pointerId) return;
@@ -161,6 +169,7 @@ export function createWaveformModule(dependencies) {
     }
 
 
+    /** @this {import('./waveform-types.js').WaveformInstance} */
     refreshGapBlocks(gaps) {
       this.content.querySelectorAll('.waveform-gap-block').forEach((block) => {
         const gap = gaps[Number(block.dataset.gapIndex)];
@@ -174,11 +183,13 @@ export function createWaveformModule(dependencies) {
     }
 
 
+    /** @this {import('./waveform-types.js').WaveformInstance} */
     clearGapBoundaryPreview() {
       this.content.querySelectorAll('.waveform-gap-boundary-preview').forEach((element) => element.remove());
     }
 
 
+    /** @this {import('./waveform-types.js').WaveformInstance} */
     appendGapBoundaryPreview(row, gap, index) {
       const preview = document.createElement('div');
       preview.className = 'waveform-gap-block waveform-gap-boundary-preview';
@@ -196,6 +207,7 @@ export function createWaveformModule(dependencies) {
     }
 
 
+    /** @this {import('./waveform-types.js').WaveformInstance} */
     previewGapBoundaryDrag(drag) {
       this.clearGapBoundaryPreview();
       this.refreshGapBlocks(drag.originalGaps);
@@ -240,6 +252,7 @@ export function createWaveformModule(dependencies) {
     }
 
 
+    /** @this {import('./waveform-types.js').WaveformInstance} */
     moveGapBoundaryDrag(event) {
       const drag = this.gapBoundaryDrag;
       if (!drag || event.pointerId !== drag.pointerId) return;
@@ -268,6 +281,7 @@ export function createWaveformModule(dependencies) {
     }
 
 
+    /** @this {import('./waveform-types.js').WaveformInstance} */
     scheduleGapPreview(drag) {
       // 与字幕块拖拽同理：合并到每帧最多一次预览重排
       if (this.gapPreviewFrame) return;
@@ -278,6 +292,7 @@ export function createWaveformModule(dependencies) {
     }
 
 
+    /** @this {import('./waveform-types.js').WaveformInstance} */
     endGapBoundaryDrag(event) {
       const drag = this.gapBoundaryDrag;
       if (!drag || event.pointerId !== drag.pointerId) return;
@@ -297,6 +312,7 @@ export function createWaveformModule(dependencies) {
     }
 
 
+    /** @this {import('./waveform-types.js').WaveformInstance} */
     beginGapRangeDrag(event, row, { removed = !event.altKey } = {}) {
       event.preventDefault();
       event.stopPropagation();
@@ -320,6 +336,7 @@ export function createWaveformModule(dependencies) {
     }
 
 
+    /** @this {import('./waveform-types.js').WaveformInstance} */
     gapRangePointerTime(event, row) {
       return clamp(
         this.timeFromPointerUnbounded(event, row),
@@ -329,11 +346,13 @@ export function createWaveformModule(dependencies) {
     }
 
 
+    /** @this {import('./waveform-types.js').WaveformInstance} */
     clearGapRangePreviews() {
       this.content.querySelectorAll('.waveform-gap-range-preview').forEach((element) => element.remove());
     }
 
 
+    /** @this {import('./waveform-types.js').WaveformInstance} */
     layoutGapRangePreview(drag) {
       if (!drag.moved) {
         drag.previews = [];
@@ -382,6 +401,7 @@ export function createWaveformModule(dependencies) {
     }
 
 
+    /** @this {import('./waveform-types.js').WaveformInstance} */
     moveGapRangeDrag(event) {
       const drag = this.gapRangeDrag;
       if (!drag || event.pointerId !== drag.pointerId) return;
@@ -397,6 +417,7 @@ export function createWaveformModule(dependencies) {
     }
 
 
+    /** @this {import('./waveform-types.js').WaveformInstance} */
     endGapRangeDrag(event) {
       const drag = this.gapRangeDrag;
       if (!drag || event.pointerId !== drag.pointerId) return;

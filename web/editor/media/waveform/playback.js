@@ -6,6 +6,7 @@ export function createWaveformModule(dependencies) {
   class WaveformMethods {
 
 
+    /** @this {import('./waveform-types.js').WaveformInstance} */
     updatePlayback(allowFollow = true) {
       if (!this.payload) return;
       const now = this.currentTimeMs();
@@ -99,6 +100,7 @@ export function createWaveformModule(dependencies) {
     }
 
 
+    /** @this {import('./waveform-types.js').WaveformInstance} */
     getNavigationSnapshot() {
       return {
         cueListScrollTop: Math.max(0, Math.round(Number(this.cues?.scrollTop) || 0)),
@@ -114,6 +116,7 @@ export function createWaveformModule(dependencies) {
     }
 
 
+    /** @this {import('./waveform-types.js').WaveformInstance} */
     restoreNavigation(snapshot) {
       if (!snapshot || typeof snapshot !== 'object') return false;
       if (!this.payload) {
@@ -156,6 +159,7 @@ export function createWaveformModule(dependencies) {
     }
 
 
+    /** @this {import('./waveform-types.js').WaveformInstance} */
     positionPlayheads() {
       const now = this.currentTimeMs();
       this.renderedRows.forEach((row) => {

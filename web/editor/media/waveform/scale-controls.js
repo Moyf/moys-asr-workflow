@@ -6,11 +6,13 @@ export function createWaveformModule(dependencies) {
   class WaveformMethods {
 
 
+    /** @this {import('./waveform-types.js').WaveformInstance} */
     focusWaveform() {
       this.pane.focus({ preventScroll: true });
     }
 
 
+    /** @this {import('./waveform-types.js').WaveformInstance} */
     changeWaveformScale(direction) {
       if (this.scaleDebounceTimer) {
         window.clearTimeout(this.scaleDebounceTimer);
@@ -21,6 +23,7 @@ export function createWaveformModule(dependencies) {
     }
 
 
+    /** @this {import('./waveform-types.js').WaveformInstance} */
     applyWaveformScaleSteps(steps) {
       const current = this.settings.waveformScale;
       const numericSteps = Math.trunc(Number(steps));
@@ -49,6 +52,7 @@ export function createWaveformModule(dependencies) {
     }
 
 
+    /** @this {import('./waveform-types.js').WaveformInstance} */
     renderWaveformScaleLabel() {
       if (!this.waveformScaleLabel) return;
       const value = `×${parseFloat(Number(this.settings.waveformScale).toFixed(2))}`;
@@ -58,6 +62,7 @@ export function createWaveformModule(dependencies) {
     }
 
 
+    /** @this {import('./waveform-types.js').WaveformInstance} */
     setLoudnessStats(stats, { render = true } = {}) {
       this.loudnessStats = stats && stats.schema === LOUDNESS_SCHEMA ? stats : null;
       if (!this.loudnessStats) return false;
@@ -77,6 +82,7 @@ export function createWaveformModule(dependencies) {
     }
 
 
+    /** @this {import('./waveform-types.js').WaveformInstance} */
     fitWaveformScaleToLoudness() {
       const previous = this.settings.waveformScaleAuto;
       this.settings.waveformScaleAuto = true;
@@ -94,6 +100,7 @@ export function createWaveformModule(dependencies) {
     }
 
 
+    /** @this {import('./waveform-types.js').WaveformInstance} */
     scheduleWheelScaleChange() {
       if (this.scaleDebounceTimer) window.clearTimeout(this.scaleDebounceTimer);
       this.scaleDebounceTimer = window.setTimeout(() => {
@@ -105,6 +112,7 @@ export function createWaveformModule(dependencies) {
     }
 
 
+    /** @this {import('./waveform-types.js').WaveformInstance} */
     scheduleRowHeightChange(direction) {
       this.pendingRowHeightDirection += direction > 0 ? 1 : -1;
       if (this.rowHeightDebounceTimer) window.clearTimeout(this.rowHeightDebounceTimer);
@@ -119,11 +127,13 @@ export function createWaveformModule(dependencies) {
     }
 
 
+    /** @this {import('./waveform-types.js').WaveformInstance} */
     updateDisabledVisibility() {
       this.refreshCueOverlay();
     }
 
 
+    /** @this {import('./waveform-types.js').WaveformInstance} */
     revealTime(timeMs, center = true) {
       if (!this.payload) return;
       this.autoScrolling = false;
@@ -170,6 +180,7 @@ export function createWaveformModule(dependencies) {
     }
 
 
+    /** @this {import('./waveform-types.js').WaveformInstance} */
     changeZoom(direction) {
       const current = ZOOM_PRESETS.indexOf(this.settings.visibleSeconds);
       const next = clamp(current + direction, 0, ZOOM_PRESETS.length - 1);
@@ -182,6 +193,7 @@ export function createWaveformModule(dependencies) {
     }
 
 
+    /** @this {import('./waveform-types.js').WaveformInstance} */
     setStatus(message, kind = '') {
       this.status.textContent = message;
       this.status.classList.toggle('error', kind === 'error');
@@ -189,6 +201,7 @@ export function createWaveformModule(dependencies) {
     }
 
 
+    /** @this {import('./waveform-types.js').WaveformInstance} */
     setSpectralColorStatus(message = '') {
       if (!this.spectralColorStatus) return;
       const visible = Boolean(message);
@@ -197,6 +210,7 @@ export function createWaveformModule(dependencies) {
     }
 
 
+    /** @this {import('./waveform-types.js').WaveformInstance} */
     scheduleSpectralColorRender() {
       const toggle = this.spectralColorToggle;
       if (!toggle || !this.spectral) {

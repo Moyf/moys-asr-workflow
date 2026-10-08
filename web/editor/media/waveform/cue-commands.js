@@ -6,6 +6,7 @@ export function createWaveformModule(dependencies) {
   class WaveformMethods {
 
 
+    /** @this {import('./waveform-types.js').WaveformInstance} */
     adjustSelectedByKeyboard(deltaMs, altKey = false, track = 'main') {
       const segments = this.options.getSegments(track);
       const indices = normalizedIndices(segments, this.options.getSelection?.(track));
@@ -39,6 +40,7 @@ export function createWaveformModule(dependencies) {
     }
 
 
+    /** @this {import('./waveform-types.js').WaveformInstance} */
     adjustSelectedBoundaryByKeyboard(deltaMs, edge, altKey = false, track = 'main') {
       const segments = this.options.getSegments(track);
       const indices = normalizedIndices(segments, this.options.getSelection?.(track));
@@ -75,6 +77,7 @@ export function createWaveformModule(dependencies) {
     // 把单条字幕的一个边界直接定位到波形指针时间。与方向键微调一样，
     // 保留最短时长和同轨不重叠约束，但不联动同轨邻居；跨轨绑定由编辑器
     // 的提交回调处理。targetIndex 用于“当前没有选中字幕但指针命中字幕”的路径。
+    /** @this {import('./waveform-types.js').WaveformInstance} */
     setCueBoundaryToTime(timeMs, edge, track = 'main', targetIndex = null) {
       const segments = this.options.getSegments(track);
       const selectedIndices = normalizedIndices(segments, this.options.getSelection?.(track));
@@ -141,6 +144,7 @@ export function createWaveformModule(dependencies) {
     }
 
 
+    /** @this {import('./waveform-types.js').WaveformInstance} */
     snapSelectedCueBoundaryByKeyboard(direction, track = 'main') {
       const segments = this.options.getSegments(track);
       const indices = normalizedIndices(segments, this.options.getSelection?.(track));
@@ -182,6 +186,7 @@ export function createWaveformModule(dependencies) {
     }
 
 
+    /** @this {import('./waveform-types.js').WaveformInstance} */
     adjustActiveCueDragBy(deltaMs, altKey = false) {
       const drag = this.drag;
       if (!drag) return false;
@@ -237,6 +242,7 @@ export function createWaveformModule(dependencies) {
     }
 
 
+    /** @this {import('./waveform-types.js').WaveformInstance} */
     handleHeldCueKey(direction, deltaMs, { shiftKey = false, altKey = false, snap = false } = {}) {
       if (!this.drag) return false;
       if (shiftKey) {
@@ -251,6 +257,7 @@ export function createWaveformModule(dependencies) {
     }
 
 
+    /** @this {import('./waveform-types.js').WaveformInstance} */
     snapActiveCueBoundaryByKeyboard(direction) {
       const drag = this.drag;
       if (!drag || drag.kind !== 'move' || (direction !== -1 && direction !== 1)) return false;
@@ -304,6 +311,7 @@ export function createWaveformModule(dependencies) {
     }
 
 
+    /** @this {import('./waveform-types.js').WaveformInstance} */
     cancelCueDrag() {
       if (this.createCueDrag?.finish) {
         this.createCueDrag.finish(false);
@@ -335,6 +343,7 @@ export function createWaveformModule(dependencies) {
     }
 
 
+    /** @this {import('./waveform-types.js').WaveformInstance} */
     applyIndependentBoundaryDrag(drag, rawDelta) {
       const clock = resolveTiming(drag.timing || this.cueTiming());
       const segments = this.options.getSegments(drag.track);

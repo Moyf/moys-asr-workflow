@@ -1,4 +1,4 @@
-/* MAW ESM artifact: d0d1b378051239f2540e6eb221760538f2fdf911999d0a1d0d4d8541cb501dca */
+/* MAW ESM artifact: 638ab642fbac1ff1f5f2f55e481c787ff17df65960649d1bcb826d42051209a3 */
 'use strict';
 (() => {
   // web/shared/host/storage.js
@@ -8218,6 +8218,7 @@ export default MawDynamicCaptions;
     "use strict";
     const { saveSettings, shouldAdjustAdjacentCuesIndependently, shouldAdjustSharedBoundaryHandleIndependently, syncSpectralColorToggle } = dependencies;
     class WaveformMethods {
+      /** @this {import('./waveform-types.js').WaveformInstance} */
       isAdjacentCueAdjustmentIndependent(altKey = false) {
         return shouldAdjustAdjacentCuesIndependently(
           altKey,
@@ -8226,6 +8227,7 @@ export default MawDynamicCaptions;
       }
       // 相接字幕边界手柄命中时的模式判定：dual 模式下手柄始终独立调整
       // （联动由中缝拖动区负责）；classic 模式沿用自动吸附开关 + Alt 反转。
+      /** @this {import('./waveform-types.js').WaveformInstance} */
       isSharedBoundaryHandleIndependent(altKey = false) {
         return shouldAdjustSharedBoundaryHandleIndependently(
           altKey,
@@ -8234,15 +8236,18 @@ export default MawDynamicCaptions;
         );
       }
       // 共享边界拖动期间，在「共享边界」状态文本旁提示当前的贴合边界模式。
+      /** @this {import('./waveform-types.js').WaveformInstance} */
       adjacentSnapModeStatusHint() {
         if (this.options.getAdjacentBoundaryMode?.() === "dual") {
           return "中缝联动：中缝拖动两侧一起移动，手柄只调整单侧字幕。";
         }
         return this.options.getAutoSnapAdjacentCues?.() === true ? "当前为相邻字幕自动吸附模式，按住 Alt 可以临时解除吸附。" : "当前未启用相邻字幕自动吸附，按住 Alt 可以临时启用。";
       }
+      /** @this {import('./waveform-types.js').WaveformInstance} */
       hasCueDrag() {
         return Boolean(this.drag || this.createCueDrag);
       }
+      /** @this {import('./waveform-types.js').WaveformInstance} */
       bindControls() {
         document.querySelectorAll("[data-waveform-mode]").forEach((button) => {
           button.addEventListener("click", () => this.setMode(button.dataset.waveformMode));
@@ -8337,6 +8342,7 @@ export default MawDynamicCaptions;
     "use strict";
     const { clamp, resolveTiming, snapPointerTimeToTimingGrid } = dependencies;
     class WaveformMethods {
+      /** @this {import('./waveform-types.js').WaveformInstance} */
       pointerTimeMs(event, row, geometry = null, allowCrossRow = false) {
         const requestedMs = allowCrossRow ? this.timeFromPointerUnbounded(event, row, geometry) : this.timeFromPointer(event, row, geometry);
         return snapPointerTimeToTimingGrid(
@@ -8345,6 +8351,7 @@ export default MawDynamicCaptions;
           this.options.getSnapToFrame?.() === true
         );
       }
+      /** @this {import('./waveform-types.js').WaveformInstance} */
       refreshPointerLine() {
         if (this.pointerLineOverrideActive) {
           this.refreshBoundaryDragPointerLine();
@@ -8354,6 +8361,7 @@ export default MawDynamicCaptions;
         if (!this.pointerLineRow.isConnected) return;
         this.showPointerLine(this.pointerLineEvent, this.pointerLineRow, this.pointerLineMarker);
       }
+      /** @this {import('./waveform-types.js').WaveformInstance} */
       showPointerLine(event, row, marker) {
         if (!row || !marker) return;
         const rect = row.getBoundingClientRect();
@@ -8368,9 +8376,11 @@ export default MawDynamicCaptions;
         marker.classList.remove("boundary-snapped");
         marker.hidden = false;
       }
+      /** @this {import('./waveform-types.js').WaveformInstance} */
       hidePointerLine(marker) {
         if (marker) marker.hidden = true;
       }
+      /** @this {import('./waveform-types.js').WaveformInstance} */
       isCueBoundaryDrag(drag = this.drag) {
         return Boolean(drag && [
           "resize-left",
@@ -8379,6 +8389,7 @@ export default MawDynamicCaptions;
           "resize-boundary-independent"
         ].includes(drag.kind));
       }
+      /** @this {import('./waveform-types.js').WaveformInstance} */
       findVisibleWaveformRowAtPoint(clientX, clientY) {
         const viewport = this.scroll.getBoundingClientRect();
         const viewportLeft = viewport.left + this.scroll.clientLeft;
@@ -8388,6 +8399,7 @@ export default MawDynamicCaptions;
         if (clientX < viewportLeft || clientX > viewportRight || clientY < viewportTop || clientY > viewportBottom) return null;
         return this.findVisibleWaveformRowAtY(clientY);
       }
+      /** @this {import('./waveform-types.js').WaveformInstance} */
       findVisibleWaveformRowAtY(clientY) {
         const viewport = this.scroll.getBoundingClientRect();
         const viewportTop = viewport.top + this.scroll.clientTop;
@@ -8398,12 +8410,14 @@ export default MawDynamicCaptions;
           return clientY >= rect.top && clientY <= rect.bottom;
         }) || null;
       }
+      /** @this {import('./waveform-types.js').WaveformInstance} */
       findVisibleWaveformRowForTime(timeMs) {
         const rows = [...this.content.querySelectorAll(".waveform-row")];
         const endingRow = rows.find((row) => Math.abs(Number(row.dataset.endMs) - timeMs) < 1);
         if (endingRow) return endingRow;
         return rows.find((row) => timeMs >= Number(row.dataset.startMs) && timeMs < Number(row.dataset.endMs)) || rows.find((row) => timeMs >= Number(row.dataset.startMs) && timeMs <= Number(row.dataset.endMs)) || null;
       }
+      /** @this {import('./waveform-types.js').WaveformInstance} */
       cueBoundaryDragTimeMs(drag = this.drag) {
         if (!this.isCueBoundaryDrag(drag)) return NaN;
         const segment = this.options.getSegments(drag.track || "main")[drag.index];
@@ -8412,6 +8426,7 @@ export default MawDynamicCaptions;
         const edge = drag.kind === "resize-left" ? "start" : drag.kind === "resize-boundary-independent" ? drag.edge : "end";
         return timing.toMs(edge === "start" ? timing.getStart(segment) : timing.getEnd(segment));
       }
+      /** @this {import('./waveform-types.js').WaveformInstance} */
       refreshBoundaryDragPointerLine(force = false) {
         const drag = this.drag;
         if (!this.isCueBoundaryDrag(drag) || !drag.started && !force) return;
@@ -8437,6 +8452,7 @@ export default MawDynamicCaptions;
         marker.classList.add("boundary-snapped");
         marker.hidden = false;
       }
+      /** @this {import('./waveform-types.js').WaveformInstance} */
       restorePointerLineAfterBoundaryDrag(position = null) {
         this.pointerLineOverrideActive = false;
         this.content.querySelectorAll(".waveform-pointer-line").forEach((marker2) => {
@@ -8466,6 +8482,7 @@ export default MawDynamicCaptions;
       // 暂停时指针在波形上移动即把画面预览到指针时间。与拖动播放头一样按
       // 最新事件合并到每帧最多一次；真正 seek 前重新检查开关与播放状态，
       // 避免调度之后状态已变化（开始播放、关闭开关、行被虚拟化重建）仍执行。
+      /** @this {import('./waveform-types.js').WaveformInstance} */
       scheduleHoverSeekPreview(event, row) {
         if (this.playheadDragActive || this.isCueBoundaryDrag() || this.options.getHoverSeekPreview?.() !== true) return;
         this.hoverSeekPreviewLastEvent = event;
@@ -8473,6 +8490,7 @@ export default MawDynamicCaptions;
         if (this.hoverSeekPreviewFrame) return;
         this.hoverSeekPreviewFrame = requestAnimationFrame(() => this.flushHoverSeekPreview());
       }
+      /** @this {import('./waveform-types.js').WaveformInstance} */
       cancelHoverSeekPreview() {
         if (this.hoverSeekPreviewFrame) {
           cancelAnimationFrame(this.hoverSeekPreviewFrame);
@@ -8481,6 +8499,7 @@ export default MawDynamicCaptions;
         this.hoverSeekPreviewLastEvent = null;
         this.hoverSeekPreviewRow = null;
       }
+      /** @this {import('./waveform-types.js').WaveformInstance} */
       flushHoverSeekPreview() {
         this.hoverSeekPreviewFrame = 0;
         const event = this.hoverSeekPreviewLastEvent;
@@ -8506,6 +8525,7 @@ export default MawDynamicCaptions;
     "use strict";
     const { BUILTIN_WORKSPACES, DEFAULT_RIGHT_LAYOUT_TREE, DEFAULT_SETTINGS, MODULE_LABELS, ROW_HEIGHT_PRESETS, WORKSPACE_SCHEMA, clamp, cloneLayoutTree, directionLabel, insertLayoutModuleAtEdge, insertLayoutModuleAtRootEdge, isCompleteLayoutTree, layoutDropIntent, layoutDropPreviewRect, layoutRootDropIntent, normalizeLayoutData, normalizeLayoutRows, saveSettings, swapLayoutTreeModules } = dependencies;
     class WaveformMethods {
+      /** @this {import('./waveform-types.js').WaveformInstance} */
       bindDivider() {
         const bind = (divider, axis) => {
           if (!divider) return;
@@ -8554,6 +8574,7 @@ export default MawDynamicCaptions;
         };
         bind(this.divider, "x");
       }
+      /** @this {import('./waveform-types.js').WaveformInstance} */
       bindLayoutResizers() {
         Object.entries(this.layoutResizers).forEach(([kind, resizer]) => {
           if (!resizer) return;
@@ -8614,6 +8635,7 @@ export default MawDynamicCaptions;
           resizer.addEventListener("pointercancel", finish);
         });
       }
+      /** @this {import('./waveform-types.js').WaveformInstance} */
       applyLayoutVariables() {
         const [top, middle, bottom] = normalizeLayoutRows(this.settings.layoutRows);
         this.settings.layoutRows = [top, middle, bottom];
@@ -8623,6 +8645,7 @@ export default MawDynamicCaptions;
         this.workspace.style.setProperty("--layout-row-middle", `${middle}%`);
         this.workspace.style.setProperty("--layout-row-bottom", `${bottom}%`);
       }
+      /** @this {import('./waveform-types.js').WaveformInstance} */
       applyLayout() {
         this.workspace.classList.remove(
           "waveform-basic",
@@ -8659,6 +8682,7 @@ export default MawDynamicCaptions;
         if (this.layoutResetButton) this.layoutResetButton.hidden = !this.settings.layoutEditing;
         this.updateAdvancedSettingsAvailability();
       }
+      /** @this {import('./waveform-types.js').WaveformInstance} */
       updateAdvancedSettingsAvailability() {
         const basicMode = this.settings.mode === "basic";
         const multiMode = this.settings.mode === "multi";
@@ -8673,6 +8697,7 @@ export default MawDynamicCaptions;
         if (secondsPerRowSetting) secondsPerRowSetting.hidden = !multiMode;
         if (rowHeightSetting) rowHeightSetting.hidden = !multiMode;
       }
+      /** @this {import('./waveform-types.js').WaveformInstance} */
       setMode(mode) {
         if (!["basic", "multi"].includes(mode) || mode === this.settings.mode) return;
         this.settings.mode = mode;
@@ -8687,6 +8712,7 @@ export default MawDynamicCaptions;
       // 工具切换：'select' 为默认选择工具，保留全部 Ctrl/Shift/分组多选与
       // 拖动行为；'razor' 让左键点击字幕块在指针位置安全拆分。切回 select
       // 不会清除已有选中，便于拆分后立即继续操作。
+      /** @this {import('./waveform-types.js').WaveformInstance} */
       setTool(tool) {
         if (tool !== "select" && tool !== "razor") return;
         if (this.tool === tool) return;
@@ -8698,10 +8724,12 @@ export default MawDynamicCaptions;
         });
         this.setStatus(tool === "razor" ? "分割工具：点击字幕块在指针位置拆分" : "选择工具");
       }
+      /** @this {import('./waveform-types.js').WaveformInstance} */
       getTool() {
         return this.tool;
       }
       // 切换到内置工作区：应用其渲染器、波形模式与完整布局树。
+      /** @this {import('./waveform-types.js').WaveformInstance} */
       setLayout(workspaceId) {
         const builtin = BUILTIN_WORKSPACES[workspaceId];
         if (!builtin) return;
@@ -8718,6 +8746,7 @@ export default MawDynamicCaptions;
         this.applyLayout();
         this.render();
       }
+      /** @this {import('./waveform-types.js').WaveformInstance} */
       toggleLayoutEditMode() {
         if (this.settings.layout !== "custom") {
           this.settings.layout = "custom";
@@ -8729,15 +8758,19 @@ export default MawDynamicCaptions;
         this.applyLayout();
         this.render();
       }
+      /** @this {import('./waveform-types.js').WaveformInstance} */
       isMultiMode() {
         return this.settings.mode === "multi";
       }
+      /** @this {import('./waveform-types.js').WaveformInstance} */
       getRowHeight() {
         return this.settings.rowHeight;
       }
+      /** @this {import('./waveform-types.js').WaveformInstance} */
       getMaxRowHeight() {
         return ROW_HEIGHT_PRESETS[ROW_HEIGHT_PRESETS.length - 1];
       }
+      /** @this {import('./waveform-types.js').WaveformInstance} */
       setRowHeight(value) {
         const next = Number(value);
         if (this.rowHeightDebounceTimer) {
@@ -8756,12 +8789,15 @@ export default MawDynamicCaptions;
         this.render();
         return true;
       }
+      /** @this {import('./waveform-types.js').WaveformInstance} */
       isCustomLayout() {
         return this.settings.layout === "custom" && this.settings.layoutEditing;
       }
+      /** @this {import('./waveform-types.js').WaveformInstance} */
       isPresetResizableLayout() {
         return this.settings.layout === "wave-right";
       }
+      /** @this {import('./waveform-types.js').WaveformInstance} */
       bindDockHandles() {
         const modules = [
           ["player", this.playerWrap],
@@ -8821,6 +8857,7 @@ export default MawDynamicCaptions;
         });
         this.bindWorkspaceDockTarget();
       }
+      /** @this {import('./waveform-types.js').WaveformInstance} */
       bindWorkspaceDockTarget() {
         this.workspace.addEventListener("dragover", (event) => {
           if (!this.isCustomLayout() || !this.layoutDragSource || event.defaultPrevented) return;
@@ -8846,6 +8883,7 @@ export default MawDynamicCaptions;
           this.clearLayoutDropPreview();
         });
       }
+      /** @this {import('./waveform-types.js').WaveformInstance} */
       applyLayoutDrop(sourceId, targetId, intent) {
         const tree = isCompleteLayoutTree(this.settings.layoutTree) ? this.settings.layoutTree : cloneLayoutTree(DEFAULT_RIGHT_LAYOUT_TREE);
         const nextTree = intent.mode === "root-insert" ? insertLayoutModuleAtRootEdge(tree, sourceId, intent.direction) : intent.mode === "insert" ? insertLayoutModuleAtEdge(tree, sourceId, targetId, intent.direction) : swapLayoutTreeModules(tree, sourceId, targetId);
@@ -8865,6 +8903,7 @@ export default MawDynamicCaptions;
           this.setStatus(`已交换「${MODULE_LABELS[sourceId]}」与「${MODULE_LABELS[targetId]}」`);
         }
       }
+      /** @this {import('./waveform-types.js').WaveformInstance} */
       showLayoutDropPreview(element, id, sourceId, intent) {
         if (!this.layoutPreview || !element) return;
         const workspaceRect = this.workspace.getBoundingClientRect();
@@ -8886,6 +8925,7 @@ export default MawDynamicCaptions;
         });
         if (intent.mode !== "root-insert") element.classList.add("layout-drop-target");
       }
+      /** @this {import('./waveform-types.js').WaveformInstance} */
       clearLayoutDropPreview() {
         this.layoutPreview?.classList.remove("show");
         this.layoutPreview?.classList.remove("layout-insert-preview");
@@ -8895,6 +8935,7 @@ export default MawDynamicCaptions;
           target.classList.remove("layout-drop-target");
         });
       }
+      /** @this {import('./waveform-types.js').WaveformInstance} */
       ensureCustomLayoutRoot() {
         if (this.customLayoutRoot?.isConnected) return this.customLayoutRoot;
         this.customLayoutRoot = document.createElement("div");
@@ -8902,6 +8943,7 @@ export default MawDynamicCaptions;
         this.workspace.insertBefore(this.customLayoutRoot, this.layoutPreview || null);
         return this.customLayoutRoot;
       }
+      /** @this {import('./waveform-types.js').WaveformInstance} */
       restoreDirectLayoutModules() {
         const elements = {
           player: this.playerWrap,
@@ -8920,6 +8962,7 @@ export default MawDynamicCaptions;
         this.customLayoutRoot = null;
         this.renderedCustomLayoutTree = null;
       }
+      /** @this {import('./waveform-types.js').WaveformInstance} */
       createCustomLayoutNode(node) {
         const elements = {
           player: this.playerWrap,
@@ -8951,9 +8994,11 @@ export default MawDynamicCaptions;
         this.bindCustomLayoutDivider(divider, split, first, node);
         return split;
       }
+      /** @this {import('./waveform-types.js').WaveformInstance} */
       applyCustomSplitRatio(first, ratio) {
         first.style.flex = `0 0 calc(${clamp(Number(ratio) || 50, 20, 80)}% - 3.5px)`;
       }
+      /** @this {import('./waveform-types.js').WaveformInstance} */
       bindCustomLayoutDivider(divider, split, first, node) {
         let drag = null;
         divider.addEventListener("pointerdown", (event) => {
@@ -8989,6 +9034,7 @@ export default MawDynamicCaptions;
         divider.addEventListener("pointerup", finish);
         divider.addEventListener("pointercancel", finish);
       }
+      /** @this {import('./waveform-types.js').WaveformInstance} */
       applyCustomLayoutTree() {
         if (this.settings.layout !== "custom") {
           this.restoreDirectLayoutModules();
@@ -9002,6 +9048,7 @@ export default MawDynamicCaptions;
         root.appendChild(this.createCustomLayoutNode(tree));
         this.renderedCustomLayoutTree = tree;
       }
+      /** @this {import('./waveform-types.js').WaveformInstance} */
       getLayoutData() {
         return {
           schema: WORKSPACE_SCHEMA,
@@ -9024,15 +9071,18 @@ export default MawDynamicCaptions;
           tree: cloneLayoutTree(this.settings.layoutTree)
         };
       }
+      /** @this {import('./waveform-types.js').WaveformInstance} */
       getLayoutHistorySnapshot() {
         return {
           layout: this.getLayoutData(),
           layoutEditing: !!this.settings.layoutEditing
         };
       }
+      /** @this {import('./waveform-types.js').WaveformInstance} */
       recordLayoutUndo(label, snapshot = this.getLayoutHistorySnapshot()) {
         this.options.onLayoutUndo?.(label, snapshot);
       }
+      /** @this {import('./waveform-types.js').WaveformInstance} */
       restoreLayoutHistorySnapshot(snapshot) {
         if (!snapshot || !snapshot.layout) return false;
         const layout = normalizeLayoutData(snapshot.layout);
@@ -9049,11 +9099,13 @@ export default MawDynamicCaptions;
         this.render();
         return true;
       }
+      /** @this {import('./waveform-types.js').WaveformInstance} */
       resetLayout() {
         this.recordLayoutUndo("重置工作区");
         this.setLayout(DEFAULT_SETTINGS.layout);
         this.setStatus("已恢复默认工作区");
       }
+      /** @this {import('./waveform-types.js').WaveformInstance} */
       setLayoutData(value, { render = true } = {}) {
         const layout = normalizeLayoutData(value);
         this.settings.layout = layout.preset;
@@ -9079,9 +9131,11 @@ export default MawDynamicCaptions;
     "use strict";
     const { LOUDNESS_SCHEMA, ROW_GAP, ROW_HEIGHT_PRESETS, WAVEFORM_ADJUST_DEBOUNCE_MS, ZOOM_PRESETS, clamp, isMultiRowInComfortZone, localizedWaveformMessage, saveSettings, syncSpectralColorToggle, waveformScaleAfterStep, waveformScaleFromLoudness } = dependencies;
     class WaveformMethods {
+      /** @this {import('./waveform-types.js').WaveformInstance} */
       focusWaveform() {
         this.pane.focus({ preventScroll: true });
       }
+      /** @this {import('./waveform-types.js').WaveformInstance} */
       changeWaveformScale(direction) {
         if (this.scaleDebounceTimer) {
           window.clearTimeout(this.scaleDebounceTimer);
@@ -9090,6 +9144,7 @@ export default MawDynamicCaptions;
         }
         this.applyWaveformScaleSteps(Math.sign(direction));
       }
+      /** @this {import('./waveform-types.js').WaveformInstance} */
       applyWaveformScaleSteps(steps) {
         const current = this.settings.waveformScale;
         const numericSteps = Math.trunc(Number(steps));
@@ -9113,11 +9168,13 @@ export default MawDynamicCaptions;
         this.renderWaveformScaleLabel();
         this.redrawWaveformCanvases();
       }
+      /** @this {import('./waveform-types.js').WaveformInstance} */
       renderWaveformScaleLabel() {
         if (!this.waveformScaleLabel) return;
         const value = `×${parseFloat(Number(this.settings.waveformScale).toFixed(2))}`;
         this.waveformScaleLabel.textContent = this.settings.waveformScaleAuto === false ? value : `${value} ${localizedWaveformMessage("自动", "auto")}`;
       }
+      /** @this {import('./waveform-types.js').WaveformInstance} */
       setLoudnessStats(stats, { render = true } = {}) {
         this.loudnessStats = stats && stats.schema === LOUDNESS_SCHEMA ? stats : null;
         if (!this.loudnessStats) return false;
@@ -9132,6 +9189,7 @@ export default MawDynamicCaptions;
         if (render) this.redrawWaveformCanvases();
         return true;
       }
+      /** @this {import('./waveform-types.js').WaveformInstance} */
       fitWaveformScaleToLoudness() {
         const previous = this.settings.waveformScaleAuto;
         this.settings.waveformScaleAuto = true;
@@ -9146,6 +9204,7 @@ export default MawDynamicCaptions;
         document.dispatchEvent(new CustomEvent("asr:waveform-loudness-unavailable"));
         return false;
       }
+      /** @this {import('./waveform-types.js').WaveformInstance} */
       scheduleWheelScaleChange() {
         if (this.scaleDebounceTimer) window.clearTimeout(this.scaleDebounceTimer);
         this.scaleDebounceTimer = window.setTimeout(() => {
@@ -9155,6 +9214,7 @@ export default MawDynamicCaptions;
           this.applyWaveformScaleSteps(steps);
         }, WAVEFORM_ADJUST_DEBOUNCE_MS);
       }
+      /** @this {import('./waveform-types.js').WaveformInstance} */
       scheduleRowHeightChange(direction) {
         this.pendingRowHeightDirection += direction > 0 ? 1 : -1;
         if (this.rowHeightDebounceTimer) window.clearTimeout(this.rowHeightDebounceTimer);
@@ -9167,9 +9227,11 @@ export default MawDynamicCaptions;
           if (next !== current) this.setRowHeight(ROW_HEIGHT_PRESETS[next]);
         }, WAVEFORM_ADJUST_DEBOUNCE_MS);
       }
+      /** @this {import('./waveform-types.js').WaveformInstance} */
       updateDisabledVisibility() {
         this.refreshCueOverlay();
       }
+      /** @this {import('./waveform-types.js').WaveformInstance} */
       revealTime(timeMs, center = true) {
         if (!this.payload) return;
         this.autoScrolling = false;
@@ -9210,6 +9272,7 @@ export default MawDynamicCaptions;
           this.autoScrolling = false;
         });
       }
+      /** @this {import('./waveform-types.js').WaveformInstance} */
       changeZoom(direction) {
         const current = ZOOM_PRESETS.indexOf(this.settings.visibleSeconds);
         const next = clamp(current + direction, 0, ZOOM_PRESETS.length - 1);
@@ -9220,17 +9283,20 @@ export default MawDynamicCaptions;
         this.centerBasicOnCurrentTime();
         if (this.settings.mode === "basic") this.renderBasic();
       }
+      /** @this {import('./waveform-types.js').WaveformInstance} */
       setStatus(message, kind = "") {
         this.status.textContent = message;
         this.status.classList.toggle("error", kind === "error");
         this.status.classList.toggle("busy", kind === "busy");
       }
+      /** @this {import('./waveform-types.js').WaveformInstance} */
       setSpectralColorStatus(message = "") {
         if (!this.spectralColorStatus) return;
         const visible = Boolean(message);
         this.spectralColorStatus.hidden = !visible;
         this.spectralColorStatus.textContent = visible ? message : "";
       }
+      /** @this {import('./waveform-types.js').WaveformInstance} */
       scheduleSpectralColorRender() {
         const toggle = this.spectralColorToggle;
         if (!toggle || !this.spectral) {
@@ -9285,6 +9351,7 @@ export default MawDynamicCaptions;
     "use strict";
     const { BROWSER_DECODE_LIMIT, BROWSER_PCM_ESTIMATE_LIMIT, ENCODING, SCHEMA, bytesToBase64, clamp, decodePayload, decodeSpectralPayload, formatCompact, localizedWaveformMessage, peaksRateOf, publishPeakRate, sameSource, sourceForFile, syncSpectralColorToggle } = dependencies;
     class WaveformMethods {
+      /** @this {import('./waveform-types.js').WaveformInstance} */
       attachPlayer(player) {
         if (this.player) {
           this.player.removeEventListener("timeupdate", this._onPlayerTime);
@@ -9299,6 +9366,7 @@ export default MawDynamicCaptions;
         }
         this.updatePlayback();
       }
+      /** @this {import('./waveform-types.js').WaveformInstance} */
       setMediaAvailable(available) {
         const next = Boolean(available);
         if (next === this.mediaAvailable) return;
@@ -9308,6 +9376,7 @@ export default MawDynamicCaptions;
         this.setStatus(next ? `${formatCompact(this.payload.duration_ms)} · ${this.payload.peak_count.toLocaleString()} peaks` : `${formatCompact(this.payload.duration_ms)} · 缓存波形（未加载媒体）`);
         this.render();
       }
+      /** @this {import('./waveform-types.js').WaveformInstance} */
       setPayload(payload, { render = true } = {}) {
         const decoded = decodePayload(payload);
         if (!decoded) {
@@ -9333,9 +9402,11 @@ export default MawDynamicCaptions;
         }
         return true;
       }
+      /** @this {import('./waveform-types.js').WaveformInstance} */
       getPayload() {
         return this.payload;
       }
+      /** @this {import('./waveform-types.js').WaveformInstance} */
       setSpectralPayload(payload, { render = true } = {}) {
         this.spectral = decodeSpectralPayload(payload);
         syncSpectralColorToggle(
@@ -9347,6 +9418,7 @@ export default MawDynamicCaptions;
         if (render) this.render();
         return this.spectral != null;
       }
+      /** @this {import('./waveform-types.js').WaveformInstance} */
       setReapeaksWaveform(payload, { render = true } = {}) {
         this.reapeaksPeaks = decodePayload(payload);
         this.reapeaksPayload = this.reapeaksPeaks ? payload : null;
@@ -9365,6 +9437,7 @@ export default MawDynamicCaptions;
        * 1000 Hz，带限之外的瞬态会被整块削平（实测单样本满幅脉冲 8 个里一个都检不到），
        * 拿它做静音门限会偏激进。
        */
+      /** @this {import('./waveform-types.js').WaveformInstance} */
       activeWaveShape() {
         const shapeSource = this.options.getWaveShapeSource?.() || "reapeaks";
         const useReapeaks = shapeSource === "reapeaks" && this.reapeaksPayload && this.reapeaksPeaks;
@@ -9379,6 +9452,7 @@ export default MawDynamicCaptions;
           peakCount: payload.peak_count
         };
       }
+      /** @this {import('./waveform-types.js').WaveformInstance} */
       getGapRemoveDetectionData() {
         const shape = this.activeWaveShape();
         if (!shape || !shape.peaks) return null;
@@ -9388,6 +9462,7 @@ export default MawDynamicCaptions;
           duration_ms: shape.payload.duration_ms
         };
       }
+      /** @this {import('./waveform-types.js').WaveformInstance} */
       async processFile(file) {
         const signature = sourceForFile(file);
         if (this.payload && sameSource(this.payload.source, signature)) {
@@ -9492,6 +9567,7 @@ export default MawDynamicCaptions;
           }
         }
       }
+      /** @this {import('./waveform-types.js').WaveformInstance} */
       async waitForPlayerDuration() {
         const player = this.player;
         if (!player) return 0;
@@ -9512,13 +9588,19 @@ export default MawDynamicCaptions;
         });
       }
       get durationMs() {
-        if (this.payload) return this.payload.duration_ms;
-        if (this.player && Number.isFinite(this.player.duration)) return Math.round(this.player.duration * 1e3);
+        const waveform = (
+          /** @type {import('./waveform-types.js').WaveformInstance} */
+          this
+        );
+        if (waveform.payload) return waveform.payload.duration_ms;
+        if (waveform.player && Number.isFinite(waveform.player.duration)) return Math.round(waveform.player.duration * 1e3);
         return 0;
       }
+      /** @this {import('./waveform-types.js').WaveformInstance} */
       currentTimeMs() {
         return this.player && Number.isFinite(this.player.currentTime) ? Math.round(this.player.currentTime * 1e3) : 0;
       }
+      /** @this {import('./waveform-types.js').WaveformInstance} */
       centerBasicOnCurrentTime() {
         const windowMs = this.settings.visibleSeconds * 1e3;
         const maxStart = Math.max(0, this.durationMs - windowMs);
@@ -9535,10 +9617,12 @@ export default MawDynamicCaptions;
     "use strict";
     const { MULTI_ROW_BUFFER, ROW_GAP, clamp, computeGroupBadges } = dependencies;
     class WaveformMethods {
+      /** @this {import('./waveform-types.js').WaveformInstance} */
       scheduleRender() {
         cancelAnimationFrame(this.resizeFrame);
         this.resizeFrame = requestAnimationFrame(() => this.render());
       }
+      /** @this {import('./waveform-types.js').WaveformInstance} */
       scheduleMultiVisible() {
         if (this.multiVisibleFrame) return;
         this.multiVisibleFrame = requestAnimationFrame(() => {
@@ -9546,6 +9630,7 @@ export default MawDynamicCaptions;
           this.renderMultiVisible();
         });
       }
+      /** @this {import('./waveform-types.js').WaveformInstance} */
       scheduleBasicRender() {
         if (this.basicRenderFrame) return;
         this.basicRenderFrame = requestAnimationFrame(() => {
@@ -9553,6 +9638,7 @@ export default MawDynamicCaptions;
           this.renderBasic();
         });
       }
+      /** @this {import('./waveform-types.js').WaveformInstance} */
       scheduleRefreshCueBlocks() {
         if (this.cueRefreshFrame) return;
         this.cueRefreshFrame = requestAnimationFrame(() => {
@@ -9561,6 +9647,7 @@ export default MawDynamicCaptions;
         });
       }
       // 画布颜色取自 CSS 令牌，以便跟随暗/亮主题。每次 render() 前刷新缓存。
+      /** @this {import('./waveform-types.js').WaveformInstance} */
       _readWaveColors() {
         const styles = getComputedStyle(document.documentElement);
         const get = (name, fallback) => {
@@ -9576,10 +9663,12 @@ export default MawDynamicCaptions;
           peakDim: get("--wave-peak-dim", "#83909a")
         };
       }
+      /** @this {import('./waveform-types.js').WaveformInstance} */
       _getWaveColors() {
         if (!this._waveColors) this._readWaveColors();
         return this._waveColors;
       }
+      /** @this {import('./waveform-types.js').WaveformInstance} */
       render() {
         this._readWaveColors();
         this.applyLayout();
@@ -9597,6 +9686,7 @@ export default MawDynamicCaptions;
         if (this.settings.mode === "basic") this.renderBasic();
         else this.renderMulti();
       }
+      /** @this {import('./waveform-types.js').WaveformInstance} */
       stretchWaveformCanvases() {
         this.renderedRows.forEach((row) => {
           const canvas = row.querySelector("canvas");
@@ -9605,6 +9695,7 @@ export default MawDynamicCaptions;
           canvas.style.height = "100%";
         });
       }
+      /** @this {import('./waveform-types.js').WaveformInstance} */
       redrawWaveformCanvases({ measure = true } = {}) {
         if (!this.payload || !this.peaks) return;
         if (!this.renderedRows.length) {
@@ -9614,6 +9705,7 @@ export default MawDynamicCaptions;
         this.renderedRows.forEach((row) => this.drawRow(row, { measure }));
         this.updatePlayback(false);
       }
+      /** @this {import('./waveform-types.js').WaveformInstance} */
       renderSegments() {
         if (!this.payload) {
           this.render();
@@ -9622,6 +9714,7 @@ export default MawDynamicCaptions;
         if (this.settings.mode === "basic") this.renderBasic();
         else this.renderMultiVisible(true);
       }
+      /** @this {import('./waveform-types.js').WaveformInstance} */
       renderBasic() {
         if (!this.payload) return;
         const windowMs = this.settings.visibleSeconds * 1e3;
@@ -9637,6 +9730,7 @@ export default MawDynamicCaptions;
         this.drawRow(row);
         this.updatePlayback(false);
       }
+      /** @this {import('./waveform-types.js').WaveformInstance} */
       renderMulti() {
         const rowDurationMs = this.settings.secondsPerRow * 1e3;
         const rowCount = Math.max(1, Math.ceil(this.durationMs / rowDurationMs));
@@ -9645,6 +9739,7 @@ export default MawDynamicCaptions;
         this.multiFollowCheckPending = true;
         this.renderMultiVisible(true);
       }
+      /** @this {import('./waveform-types.js').WaveformInstance} */
       renderMultiVisible(force = false) {
         if (!this.isMultiMode() || !this.payload) return;
         const rowDurationMs = this.settings.secondsPerRow * 1e3;
@@ -9686,6 +9781,7 @@ export default MawDynamicCaptions;
         for (const row of created) this.drawRow(row);
         this.updatePlayback(false);
       }
+      /** @this {import('./waveform-types.js').WaveformInstance} */
       createMultiRow(index, rowDurationMs, groupBadges = null) {
         const startMs = index * rowDurationMs;
         const endMs = Math.min(this.durationMs, startMs + rowDurationMs);
@@ -9707,6 +9803,7 @@ export default MawDynamicCaptions;
     "use strict";
     const { colorForSegment, computeGroupBadges, cueBlockContinuationEdges, findActiveCueIndex, firstCueIndexOverlapping, formatCompact, gapOperationAllowsBoundary, gapOperationAllowsMiddle, gapRemoveDisplayLabel, hasSubtitleColor, isActiveCueVisualHit, localizedWaveformMessage } = dependencies;
     class WaveformMethods {
+      /** @this {import('./waveform-types.js').WaveformInstance} */
       createRow(startMs, endMs, rowIndex, basic, groupBadges = null) {
         const row = document.createElement("div");
         row.className = "waveform-row";
@@ -9827,6 +9924,7 @@ export default MawDynamicCaptions;
         });
         return row;
       }
+      /** @this {import('./waveform-types.js').WaveformInstance} */
       appendGapBlocks(row, startMs, endMs) {
         const gaps = this.options.getGapRemoveGaps?.() || [];
         const gapOperationMode = this.options.getGapOperationMode?.() || "boundary_drag";
@@ -9912,6 +10010,7 @@ export default MawDynamicCaptions;
           row.appendChild(block);
         }
       }
+      /** @this {import('./waveform-types.js').WaveformInstance} */
       appendCueBlocks(row, startMs, endMs, groupBadges = null) {
         const multiLane = this.options.multiSubtitleVisible?.() === true;
         const segments = this.options.getSegments("main");
@@ -10119,6 +10218,7 @@ export default MawDynamicCaptions;
         }
         this.appendSharedBoundaryZones(row, startMs, endMs, "extension");
       }
+      /** @this {import('./waveform-types.js').WaveformInstance} */
       isSegmentHiddenForDisplay(segment) {
         return Boolean(
           segment?.disabled && (this.options.getHideDisabled?.() || this.settings.disabledDisplay === "hidden")
@@ -10127,6 +10227,7 @@ export default MawDynamicCaptions;
       // 新模式（中缝联动）下，为相接的字幕对在中缝处渲染一个可拖动区：
       // 拖动中缝 = 两侧边界一起联动；相接侧手柄加宽后仍可单侧独立调整。
       // classic 模式不渲染中缝区，行为与旧版完全一致。
+      /** @this {import('./waveform-types.js').WaveformInstance} */
       appendSharedBoundaryZones(row, startMs, endMs, track = "main") {
         if (this.options.getAdjacentBoundaryMode?.() !== "dual") return;
         const segments = this.options.getSegments(track);
@@ -10168,6 +10269,7 @@ export default MawDynamicCaptions;
           if (seamMs === endMs) leftBlock?.classList.add("shared-boundary-at-row-end-right");
         }
       }
+      /** @this {import('./waveform-types.js').WaveformInstance} */
       setBindingMarker(block, visible) {
         block.classList.toggle("has-binding-marker", visible);
         const marker = block.querySelector(".waveform-binding-marker");
@@ -10183,6 +10285,7 @@ export default MawDynamicCaptions;
         next.setAttribute("aria-label", "已绑定字幕");
         block.appendChild(next);
       }
+      /** @this {import('./waveform-types.js').WaveformInstance} */
       layoutBlock(block, segment, startMs, endMs, ownerRow = null) {
         const duration = Math.max(1, endMs - startMs);
         const visibleStart = Math.max(startMs, segment.start);
@@ -10198,6 +10301,7 @@ export default MawDynamicCaptions;
         block.classList.toggle("continues-from-previous-row", isMultiRow && continuation.fromPreviousRow);
         block.classList.toggle("continues-to-next-row", isMultiRow && continuation.toNextRow);
       }
+      /** @this {import('./waveform-types.js').WaveformInstance} */
       layoutGapBlock(block, gap, startMs, endMs) {
         const duration = Math.max(1, endMs - startMs);
         const visibleStart = Math.max(startMs, gap.start);
@@ -10208,6 +10312,7 @@ export default MawDynamicCaptions;
         block.style.width = `${width}%`;
         block.hidden = visibleEnd <= visibleStart;
       }
+      /** @this {import('./waveform-types.js').WaveformInstance} */
       refreshGapOverlay() {
         if (!this.payload) return;
         this.content.querySelectorAll(".waveform-row").forEach((row) => {
@@ -10216,6 +10321,7 @@ export default MawDynamicCaptions;
         });
         this.positionPlayheads();
       }
+      /** @this {import('./waveform-types.js').WaveformInstance} */
       refreshCueOverlay() {
         if (!this.payload) return;
         const rows = [...this.content.querySelectorAll(".waveform-row")];
@@ -10232,6 +10338,7 @@ export default MawDynamicCaptions;
         });
         this.updatePlayback(false);
       }
+      /** @this {import('./waveform-types.js').WaveformInstance} */
       refreshCueBlocks() {
         const activeSeamDrag = this.drag?.sharedBoundaryZone && this.drag.started ? this.drag : null;
         if (activeSeamDrag) {
@@ -10283,6 +10390,7 @@ export default MawDynamicCaptions;
       }
       // 轻量刷新（拖动中）只重建字幕块，不重建中缝区；这里按当前时间
       // 重新定位已有中缝区，保证拖动过程中中缝始终跟随贴合边界。
+      /** @this {import('./waveform-types.js').WaveformInstance} */
       refreshBoundaryZones() {
         this.content.querySelectorAll(".waveform-cue-boundary").forEach((zone) => {
           const row = zone.closest(".waveform-row");
@@ -10304,6 +10412,7 @@ export default MawDynamicCaptions;
           zone.classList.toggle("at-row-end", seamMs === endMs);
         });
       }
+      /** @this {import('./waveform-types.js').WaveformInstance} */
       refreshCueLabel(index) {
         const segment = this.options.getSegments("main")[index];
         if (!segment) return;
@@ -10311,6 +10420,7 @@ export default MawDynamicCaptions;
           label.textContent = segment.text.replace(/\s+/g, " ");
         });
       }
+      /** @this {import('./waveform-types.js').WaveformInstance} */
       refreshExtensionCueLabel(index, trackId = null) {
         const segment = this.options.getExtensionSegments?.(trackId)?.[index];
         if (!segment) return;
@@ -10318,6 +10428,7 @@ export default MawDynamicCaptions;
           label.textContent = String(segment.text || "").replace(/\s+/g, " ");
         });
       }
+      /** @this {import('./waveform-types.js').WaveformInstance} */
       updateSelection() {
         const selected = this.options.getSelection("main");
         const extensionSelected = this.options.getExtensionSelection?.() || /* @__PURE__ */ new Set();
@@ -10342,6 +10453,7 @@ export default MawDynamicCaptions;
     "use strict";
     const { ZOOM_PRESETS, buildWaveformEnvelope, clamp, freqColor, waveformAmplitude, waveformGridStepMs } = dependencies;
     class WaveformMethods {
+      /** @this {import('./waveform-types.js').WaveformInstance} */
       getWaveformEnvelope(row, width, startMs, endMs, activePeaks, peaksPerSecond, activeCount, useInterpolation) {
         const key = row._waveformEnvelopeKey;
         if (row._waveformEnvelope && key && key.width === width && key.startMs === startMs && key.endMs === endMs && key.source === activePeaks && key.peaksPerSecond === peaksPerSecond && key.peakCount === activeCount && key.useInterpolation === useInterpolation) {
@@ -10368,6 +10480,7 @@ export default MawDynamicCaptions;
         row._waveformEnvelope = envelope;
         return envelope;
       }
+      /** @this {import('./waveform-types.js').WaveformInstance} */
       drawRow(row, { measure = true } = {}) {
         const canvas = row.querySelector("canvas");
         if (!canvas || !this.peaks) return;
@@ -10494,6 +10607,7 @@ export default MawDynamicCaptions;
     "use strict";
     const { PLAYHEAD_DRAG_SEEK_INTERVAL_MS, POINTER_DRAG_THRESHOLD_PX, ROW_HEIGHT_PRESETS, ROW_PRESETS, SPLIT_FLASH_DURATION_MS, clamp, roundMs, saveSettings, wheelScrollDelta } = dependencies;
     class WaveformMethods {
+      /** @this {import('./waveform-types.js').WaveformInstance} */
       seekFromPointer(event, row, playAfterSeek = false, geometry = null, allowCrossRow = false, dragPreview = false) {
         const requestedMs = this.pointerTimeMs(event, row, geometry, allowCrossRow);
         const timeMs = allowCrossRow ? clamp(requestedMs, 0, Math.max(0, this.durationMs)) : requestedMs;
@@ -10501,6 +10615,7 @@ export default MawDynamicCaptions;
         this.updatePlayback();
         if (playAfterSeek && this.player?.paused) this.options.togglePlayback?.();
       }
+      /** @this {import('./waveform-types.js').WaveformInstance} */
       seekFromCue(event, row, index, playAfterSeek = false, geometry = null, track = "main") {
         const segment = this.options.getSegments(track)[index];
         const timeMs = this.options.getClickTarget?.() === "pointer" ? this.pointerTimeMs(event, row, geometry) : Number(segment?.start);
@@ -10513,6 +10628,7 @@ export default MawDynamicCaptions;
       // Ctrl(Cmd)+左键拖动空白波形：显示字幕块虚影，松开后交给编辑器
       // 创建字幕。时间映射固定使用按下时的行几何，避免虚拟行重建或拖出行边界
       // 后把终点错误地映射到另一行。
+      /** @this {import('./waveform-types.js').WaveformInstance} */
       beginCreateCueDrag(event, row, track = "main") {
         if (event.button !== 0) return;
         event.preventDefault();
@@ -10629,6 +10745,7 @@ export default MawDynamicCaptions;
         window.addEventListener("pointerup", onUp);
         window.addEventListener("pointercancel", onCancel);
       }
+      /** @this {import('./waveform-types.js').WaveformInstance} */
       captureRowGeometry(row) {
         const rect = row.getBoundingClientRect();
         return {
@@ -10638,6 +10755,7 @@ export default MawDynamicCaptions;
           endMs: Number(row.dataset.endMs)
         };
       }
+      /** @this {import('./waveform-types.js').WaveformInstance} */
       trackAtPoint(clientX, clientY, row = null) {
         const hit = document.elementFromPoint(clientX, clientY);
         const hitRow = row || hit?.closest?.(".waveform-row");
@@ -10664,6 +10782,7 @@ export default MawDynamicCaptions;
         const extensionTop = rowRect.height - bottomInset - laneHeight;
         return clientY - rowRect.top >= extensionTop ? "extension" : "main";
       }
+      /** @this {import('./waveform-types.js').WaveformInstance} */
       isCueTimeOccupied(timeMs, track = "main") {
         const time = Number(timeMs);
         if (!Number.isFinite(time)) return false;
@@ -10676,6 +10795,7 @@ export default MawDynamicCaptions;
       }
       // 创建字幕的拖动不能跨过已有字幕；沿拖动方向把当前端点夹到遇到的
       // 第一个字幕边界。这样预览和最终提交使用同一组无重叠时间范围。
+      /** @this {import('./waveform-types.js').WaveformInstance} */
       clampCreateCueTime(anchorMs, requestedMs, track = "main") {
         if (!Number.isFinite(anchorMs) || !Number.isFinite(requestedMs) || anchorMs === requestedMs) {
           return requestedMs;
@@ -10700,6 +10820,7 @@ export default MawDynamicCaptions;
         }
         return Number.isFinite(boundary) ? boundary : requestedMs;
       }
+      /** @this {import('./waveform-types.js').WaveformInstance} */
       beginBlockedCueCreateDrag(event, index, track = "main", row = null) {
         const target = event.currentTarget;
         const pointerId = event.pointerId;
@@ -10749,6 +10870,7 @@ export default MawDynamicCaptions;
         } catch (_) {
         }
       }
+      /** @this {import('./waveform-types.js').WaveformInstance} */
       timeFromPointer(event, row, geometry = null) {
         const contentLeft = geometry ? geometry.left : row.getBoundingClientRect().left + row.clientLeft;
         const contentWidth = Math.max(1, geometry ? geometry.width : row.clientWidth);
@@ -10759,6 +10881,7 @@ export default MawDynamicCaptions;
       }
       // Gap、字幕块和字幕边界拖动都按起始行的横向位移计算；指针越过行边缘时
       // 继续延伸时间，避免拖动在本行末尾饱和或进入另一行时发生跳变。
+      /** @this {import('./waveform-types.js').WaveformInstance} */
       timeFromPointerUnbounded(event, row, geometry = null) {
         const contentLeft = geometry ? geometry.left : row.getBoundingClientRect().left + row.clientLeft;
         const contentWidth = Math.max(1, geometry ? geometry.width : row.clientWidth);
@@ -10769,6 +10892,7 @@ export default MawDynamicCaptions;
       }
       // 在波形指针拆分成功后短暂显示黄色定位光条，帮助用户确认实际操作位置。
       // 光条只覆盖波形行，不参与鼠标命中，也不影响红色播放头。
+      /** @this {import('./waveform-types.js').WaveformInstance} */
       flashSplitAtTime(timeMs) {
         if (!Number.isFinite(timeMs)) return false;
         const rows = [...this.content.querySelectorAll(".waveform-row")];
@@ -10796,6 +10920,7 @@ export default MawDynamicCaptions;
         return true;
       }
       // 返回波形字幕切点的屏幕坐标，供全屏反馈动画把中心落在实际切分位置。
+      /** @this {import('./waveform-types.js').WaveformInstance} */
       getSplitPointAtTime(timeMs, track = "main") {
         if (!Number.isFinite(timeMs)) return null;
         const rows = [...this.content.querySelectorAll(".waveform-row")];
@@ -10823,6 +10948,7 @@ export default MawDynamicCaptions;
       }
       // 屏幕坐标 -> 波形时间：命中某个波形行时返回该行内的时间（毫秒），否则返回 null。
       // 供键盘快捷键（如 B 按指针音频位置拆分）在不构造指针事件的情况下复用行内映射。
+      /** @this {import('./waveform-types.js').WaveformInstance} */
       timeMsAtPoint(clientX, clientY) {
         const hit = document.elementFromPoint(clientX, clientY);
         const row = hit?.closest?.(".waveform-row");
@@ -10834,6 +10960,7 @@ export default MawDynamicCaptions;
       // 所在位置。高回报率指针事件用 rAF 合并，并限制连续 seek 的频率，避免
       // 浏览器反复解码和编辑器刷新造成拖动卡顿；松开时以最终位置再 seek 一次
       // 保证落点精确。多行模式下允许拖出当前行边界，并把时间限制在整个媒体范围内。
+      /** @this {import('./waveform-types.js').WaveformInstance} */
       beginPlayheadDrag(event, row, geometry = null) {
         geometry = geometry || this.captureRowGeometry(row);
         try {
@@ -10913,6 +11040,7 @@ export default MawDynamicCaptions;
       // #waveform-content 内、与行同坐标系，滚动时自动跟随；多行虚拟化重建
       // 会清掉覆盖层与块上的预览类，因此每帧重新挂载、重新命中。位移低于
       // 阈值的 Shift+点击视为空操作，不触发空白区既有的清除选中/seek。
+      /** @this {import('./waveform-types.js').WaveformInstance} */
       beginMarqueeDrag(event) {
         const content = this.content;
         const startRect = content.getBoundingClientRect();
@@ -11001,6 +11129,7 @@ export default MawDynamicCaptions;
         window.addEventListener("pointerup", onUp);
         window.addEventListener("pointercancel", onCancel);
       }
+      /** @this {import('./waveform-types.js').WaveformInstance} */
       handleWheel(event) {
         const scrollDelta = wheelScrollDelta(event);
         if (!scrollDelta) return;
@@ -11059,6 +11188,7 @@ export default MawDynamicCaptions;
     "use strict";
     const { isAttached, resolveTiming, snapshotTiming } = dependencies;
     class WaveformMethods {
+      /** @this {import('./waveform-types.js').WaveformInstance} */
       beginCueDrag(event, index, row, track = "main") {
         if (event.button !== 0) return;
         event.preventDefault();
@@ -11192,6 +11322,7 @@ export default MawDynamicCaptions;
           this.drag.seekedOnPointerDown = true;
         }
       }
+      /** @this {import('./waveform-types.js').WaveformInstance} */
       isSharedBoundary(event, leftIndex, rightIndex, row, track = "main") {
         const segments = this.options.getSegments(track);
         const left = segments[leftIndex];
@@ -11206,6 +11337,7 @@ export default MawDynamicCaptions;
       }
       // Alt-drag 命中共享边界手柄：只拖动被命中一侧，邻居的相反边保持不动。
       // 默认（非 Alt）拖动共享边界会把两侧一起联动；本方法是该联动的独立拆开版本。
+      /** @this {import('./waveform-types.js').WaveformInstance} */
       beginIndependentEdgeDrag(event, index, row, targetHandle, track = "main") {
         const segments = this.options.getSegments(track);
         const isLeftHandle = targetHandle.classList.contains("left");
@@ -11254,6 +11386,7 @@ export default MawDynamicCaptions;
       }
       // 中缝拖动区（dual 模式）：按下即开始共享边界联动拖动，两侧边界
       // 一起移动；plain 点击（未拖动）按点击行为跳转，等价于点击右侧字幕块。
+      /** @this {import('./waveform-types.js').WaveformInstance} */
       beginSharedBoundaryZoneDrag(event, leftIndex, row, track = "main") {
         if (event.button !== 0) return;
         if (this.tool === "razor") return;
@@ -11329,29 +11462,36 @@ export default MawDynamicCaptions;
         window.addEventListener("pointerup", this._dragEnd = (upEvent) => this.endCueDrag(upEvent), { once: true });
         window.addEventListener("pointercancel", this._dragEnd, { once: true });
       }
+      /** @this {import('./waveform-types.js').WaveformInstance} */
       cueDragDurationMs() {
         return Number(this.durationMs) > 0 ? Number(this.durationMs) : Infinity;
       }
+      /** @this {import('./waveform-types.js').WaveformInstance} */
       cueTiming() {
         return resolveTiming(this.options.getCueTiming?.());
       }
+      /** @this {import('./waveform-types.js').WaveformInstance} */
       cueTimingDuration() {
         const clock = this.cueTiming();
         const durationMs = this.cueDragDurationMs();
         return Number.isFinite(durationMs) ? clock.fromMs(durationMs) : Infinity;
       }
+      /** @this {import('./waveform-types.js').WaveformInstance} */
       cueTimingValueFromMs(valueMs, timing = null) {
         const clock = resolveTiming(timing || this.options.getCueTiming?.());
         return clock.fromMs(valueMs);
       }
+      /** @this {import('./waveform-types.js').WaveformInstance} */
       cueTimingValueToMs(value, timing = null) {
         const clock = resolveTiming(timing || this.options.getCueTiming?.());
         return clock.toMs(value);
       }
+      /** @this {import('./waveform-types.js').WaveformInstance} */
       formatCueTiming(value, timing = null) {
         const clock = resolveTiming(timing || this.options.getCueTiming?.());
         return clock.format(value);
       }
+      /** @this {import('./waveform-types.js').WaveformInstance} */
       captureCueDragOriginals(drag) {
         const segments = this.options.getSegments(drag.track || "main");
         drag.originals = new Map(drag.indices.map((idx) => [
@@ -11363,6 +11503,7 @@ export default MawDynamicCaptions;
       // 并把指针基准平移 rawDelta，使后续帧 position = 基准 +（指针 - 新基准）
       // 连续无跳变；整层重建字幕块并让新块继承拖动视觉（旧元素被移除，
       // 指针监听挂在 window 上，不受元素替换影响）。
+      /** @this {import('./waveform-types.js').WaveformInstance} */
       rebaseCueDragToTrack(drag, track, index, clock, deltaShift = 0) {
         drag.track = track;
         drag.index = index;
@@ -11390,6 +11531,7 @@ export default MawDynamicCaptions;
     "use strict";
     const { applyBoundaryStep, applyIndependentEdge, applyMoveStep, clamp, normalizedIndices, planBoundaryStep, planMoveStep, remapItems, resolveTiming, restoreTiming, snapshotTiming } = dependencies;
     class WaveformMethods {
+      /** @this {import('./waveform-types.js').WaveformInstance} */
       adjustSelectedByKeyboard(deltaMs, altKey = false, track = "main") {
         const segments = this.options.getSegments(track);
         const indices = normalizedIndices(segments, this.options.getSelection?.(track));
@@ -11423,6 +11565,7 @@ export default MawDynamicCaptions;
         this.refreshCueOverlay();
         return true;
       }
+      /** @this {import('./waveform-types.js').WaveformInstance} */
       adjustSelectedBoundaryByKeyboard(deltaMs, edge, altKey = false, track = "main") {
         const segments = this.options.getSegments(track);
         const indices = normalizedIndices(segments, this.options.getSelection?.(track));
@@ -11459,6 +11602,7 @@ export default MawDynamicCaptions;
       // 把单条字幕的一个边界直接定位到波形指针时间。与方向键微调一样，
       // 保留最短时长和同轨不重叠约束，但不联动同轨邻居；跨轨绑定由编辑器
       // 的提交回调处理。targetIndex 用于“当前没有选中字幕但指针命中字幕”的路径。
+      /** @this {import('./waveform-types.js').WaveformInstance} */
       setCueBoundaryToTime(timeMs, edge, track = "main", targetIndex = null) {
         const segments = this.options.getSegments(track);
         const selectedIndices = normalizedIndices(segments, this.options.getSelection?.(track));
@@ -11516,6 +11660,7 @@ export default MawDynamicCaptions;
         this.refreshCueOverlay();
         return true;
       }
+      /** @this {import('./waveform-types.js').WaveformInstance} */
       snapSelectedCueBoundaryByKeyboard(direction, track = "main") {
         const segments = this.options.getSegments(track);
         const indices = normalizedIndices(segments, this.options.getSelection?.(track));
@@ -11549,6 +11694,7 @@ export default MawDynamicCaptions;
         this.refreshCueOverlay();
         return true;
       }
+      /** @this {import('./waveform-types.js').WaveformInstance} */
       adjustActiveCueDragBy(deltaMs, altKey = false) {
         const drag = this.drag;
         if (!drag) return false;
@@ -11595,6 +11741,7 @@ export default MawDynamicCaptions;
         this.scheduleRefreshCueBlocks();
         return true;
       }
+      /** @this {import('./waveform-types.js').WaveformInstance} */
       handleHeldCueKey(direction, deltaMs, { shiftKey = false, altKey = false, snap = false } = {}) {
         if (!this.drag) return false;
         if (shiftKey) {
@@ -11604,6 +11751,7 @@ export default MawDynamicCaptions;
         this.adjustActiveCueDragBy(deltaMs, altKey);
         return true;
       }
+      /** @this {import('./waveform-types.js').WaveformInstance} */
       snapActiveCueBoundaryByKeyboard(direction) {
         const drag = this.drag;
         if (!drag || drag.kind !== "move" || direction !== -1 && direction !== 1) return false;
@@ -11647,6 +11795,7 @@ export default MawDynamicCaptions;
         this.scheduleRefreshCueBlocks();
         return true;
       }
+      /** @this {import('./waveform-types.js').WaveformInstance} */
       cancelCueDrag() {
         if (this.createCueDrag?.finish) {
           this.createCueDrag.finish(false);
@@ -11678,6 +11827,7 @@ export default MawDynamicCaptions;
         this.setStatus("已取消字幕调整");
         return true;
       }
+      /** @this {import('./waveform-types.js').WaveformInstance} */
       applyIndependentBoundaryDrag(drag, rawDelta) {
         const clock = resolveTiming(drag.timing || this.cueTiming());
         const segments = this.options.getSegments(drag.track);
@@ -11702,6 +11852,7 @@ export default MawDynamicCaptions;
     "use strict";
     const { POINTER_DRAG_THRESHOLD_PX, ROUND_MS, clamp, gapOperationAllowsBoundary, roundMs } = dependencies;
     class WaveformMethods {
+      /** @this {import('./waveform-types.js').WaveformInstance} */
       beginGapBoundaryDrag(event, index, row, edge) {
         if (event.button !== 0 || !gapOperationAllowsBoundary(this.options.getGapOperationMode?.())) return;
         event.preventDefault();
@@ -11725,6 +11876,7 @@ export default MawDynamicCaptions;
         window.addEventListener("pointerup", this._gapBoundaryEnd = (upEvent) => this.endGapBoundaryDrag(upEvent), { once: true });
         window.addEventListener("pointercancel", this._gapBoundaryEnd, { once: true });
       }
+      /** @this {import('./waveform-types.js').WaveformInstance} */
       beginGapMoveDrag(event, index, row, mode) {
         if (event.button !== 0 || !["move", "copy"].includes(mode)) return;
         const gaps = this.options.getGapRemoveGaps?.() || [];
@@ -11752,6 +11904,7 @@ export default MawDynamicCaptions;
         window.addEventListener("pointerup", this._gapMoveEnd = (upEvent) => this.endGapMoveDrag(upEvent), { once: true });
         window.addEventListener("pointercancel", this._gapMoveEnd, { once: true });
       }
+      /** @this {import('./waveform-types.js').WaveformInstance} */
       gapMoveTarget(original, deltaMs) {
         const length = Math.max(1, Number(original?.end) - Number(original?.start));
         const duration = Number(this.durationMs);
@@ -11759,6 +11912,7 @@ export default MawDynamicCaptions;
         const start = Math.min(maxStart, Math.max(0, Number(original?.start) + deltaMs));
         return { ...original, start, end: start + length };
       }
+      /** @this {import('./waveform-types.js').WaveformInstance} */
       moveGapMoveDrag(event) {
         const drag = this.gapMoveDrag;
         if (!drag || event.pointerId !== drag.pointerId) return;
@@ -11788,6 +11942,7 @@ export default MawDynamicCaptions;
         drag.changed = JSON.stringify(drag.nextGaps) !== JSON.stringify(drag.originalGaps);
         this.scheduleGapMovePreview(drag);
       }
+      /** @this {import('./waveform-types.js').WaveformInstance} */
       scheduleGapMovePreview(drag) {
         if (this.gapMovePreviewFrame) return;
         this.gapMovePreviewFrame = requestAnimationFrame(() => {
@@ -11795,9 +11950,11 @@ export default MawDynamicCaptions;
           if (this.gapMoveDrag === drag) this.previewGapMoveDrag(drag);
         });
       }
+      /** @this {import('./waveform-types.js').WaveformInstance} */
       clearGapMovePreview() {
         this.content.querySelectorAll(".waveform-gap-drag-preview").forEach((element) => element.remove());
       }
+      /** @this {import('./waveform-types.js').WaveformInstance} */
       previewGapMoveDrag(drag) {
         this.clearGapMovePreview();
         this.refreshGapBlocks(drag.originalGaps);
@@ -11823,6 +11980,7 @@ export default MawDynamicCaptions;
           row.appendChild(preview);
         });
       }
+      /** @this {import('./waveform-types.js').WaveformInstance} */
       endGapMoveDrag(event) {
         const drag = this.gapMoveDrag;
         if (!drag || event.pointerId !== drag.pointerId) return;
@@ -11848,6 +12006,7 @@ export default MawDynamicCaptions;
         const callback = drag.mode === "copy" ? this.options.copyGap : this.options.moveGap;
         callback?.(drag.index, drag.deltaMs);
       }
+      /** @this {import('./waveform-types.js').WaveformInstance} */
       refreshGapBlocks(gaps) {
         this.content.querySelectorAll(".waveform-gap-block").forEach((block) => {
           const gap = gaps[Number(block.dataset.gapIndex)];
@@ -11859,9 +12018,11 @@ export default MawDynamicCaptions;
           this.layoutGapBlock(block, gap, Number(row.dataset.startMs), Number(row.dataset.endMs));
         });
       }
+      /** @this {import('./waveform-types.js').WaveformInstance} */
       clearGapBoundaryPreview() {
         this.content.querySelectorAll(".waveform-gap-boundary-preview").forEach((element) => element.remove());
       }
+      /** @this {import('./waveform-types.js').WaveformInstance} */
       appendGapBoundaryPreview(row, gap, index) {
         const preview = document.createElement("div");
         preview.className = "waveform-gap-block waveform-gap-boundary-preview";
@@ -11877,6 +12038,7 @@ export default MawDynamicCaptions;
         this.layoutGapBlock(preview, gap, rowStart, rowEnd);
         row.appendChild(preview);
       }
+      /** @this {import('./waveform-types.js').WaveformInstance} */
       previewGapBoundaryDrag(drag) {
         this.clearGapBoundaryPreview();
         this.refreshGapBlocks(drag.originalGaps);
@@ -11910,6 +12072,7 @@ export default MawDynamicCaptions;
         if (!adjacentTarget) return;
         renderTarget(adjacentTarget, adjacentIndex);
       }
+      /** @this {import('./waveform-types.js').WaveformInstance} */
       moveGapBoundaryDrag(event) {
         const drag = this.gapBoundaryDrag;
         if (!drag || event.pointerId !== drag.pointerId) return;
@@ -11936,6 +12099,7 @@ export default MawDynamicCaptions;
         drag.valueMs = valueMs;
         this.scheduleGapPreview(drag);
       }
+      /** @this {import('./waveform-types.js').WaveformInstance} */
       scheduleGapPreview(drag) {
         if (this.gapPreviewFrame) return;
         this.gapPreviewFrame = requestAnimationFrame(() => {
@@ -11943,6 +12107,7 @@ export default MawDynamicCaptions;
           if (this.gapBoundaryDrag === drag) this.previewGapBoundaryDrag(drag);
         });
       }
+      /** @this {import('./waveform-types.js').WaveformInstance} */
       endGapBoundaryDrag(event) {
         const drag = this.gapBoundaryDrag;
         if (!drag || event.pointerId !== drag.pointerId) return;
@@ -11963,6 +12128,7 @@ export default MawDynamicCaptions;
         this.suppressGapClickUntil = Date.now() + 250;
         this.options.resizeGapBoundary?.(drag.index, drag.edge, drag.valueMs);
       }
+      /** @this {import('./waveform-types.js').WaveformInstance} */
       beginGapRangeDrag(event, row, { removed = !event.altKey } = {}) {
         event.preventDefault();
         event.stopPropagation();
@@ -11984,6 +12150,7 @@ export default MawDynamicCaptions;
         window.addEventListener("pointerup", this._gapRangeEnd = (upEvent) => this.endGapRangeDrag(upEvent), { once: true });
         window.addEventListener("pointercancel", this._gapRangeEnd, { once: true });
       }
+      /** @this {import('./waveform-types.js').WaveformInstance} */
       gapRangePointerTime(event, row) {
         return clamp(
           this.timeFromPointerUnbounded(event, row),
@@ -11991,9 +12158,11 @@ export default MawDynamicCaptions;
           Math.max(0, this.durationMs)
         );
       }
+      /** @this {import('./waveform-types.js').WaveformInstance} */
       clearGapRangePreviews() {
         this.content.querySelectorAll(".waveform-gap-range-preview").forEach((element) => element.remove());
       }
+      /** @this {import('./waveform-types.js').WaveformInstance} */
       layoutGapRangePreview(drag) {
         if (!drag.moved) {
           drag.previews = [];
@@ -12037,6 +12206,7 @@ export default MawDynamicCaptions;
         });
         drag.previews = previews;
       }
+      /** @this {import('./waveform-types.js').WaveformInstance} */
       moveGapRangeDrag(event) {
         const drag = this.gapRangeDrag;
         if (!drag || event.pointerId !== drag.pointerId) return;
@@ -12050,6 +12220,7 @@ export default MawDynamicCaptions;
         drag.endMs = this.gapRangePointerTime(event, drag.row);
         this.layoutGapRangePreview(drag);
       }
+      /** @this {import('./waveform-types.js').WaveformInstance} */
       endGapRangeDrag(event) {
         const drag = this.gapRangeDrag;
         if (!drag || event.pointerId !== drag.pointerId) return;
@@ -12104,9 +12275,11 @@ export default MawDynamicCaptions;
       return startMs + ratio * (endMs - startMs);
     }
     class WaveformMethods {
+      /** @this {import('./waveform-types.js').WaveformInstance} */
       getMarkers() {
         return this.options.getMarkers?.() || [];
       }
+      /** @this {import('./waveform-types.js').WaveformInstance} */
       appendMarkerTrack(row, startMs, endMs) {
         const markers = this.getMarkers();
         const hasVisibleMarkers = markers.some((marker) => window.AsrEditorUtils.markerVisibleRange(marker, startMs, endMs));
@@ -12132,6 +12305,7 @@ export default MawDynamicCaptions;
         }
         row.appendChild(track);
       }
+      /** @this {import('./waveform-types.js').WaveformInstance} */
       appendMarkerElement(track, row, marker, startMs, endMs) {
         const visible = window.AsrEditorUtils.markerVisibleRange(marker, startMs, endMs);
         if (!visible) return;
@@ -12194,6 +12368,7 @@ ${marker.note}` : ""}`;
         });
         track.appendChild(element);
       }
+      /** @this {import('./waveform-types.js').WaveformInstance} */
       refreshMarkerOverlay() {
         if (!this.payload) return;
         this.content.querySelectorAll(".waveform-marker-track").forEach((element) => element.remove());
@@ -12204,6 +12379,7 @@ ${marker.note}` : ""}`;
       // 双击 marker 弹出的小型编辑浮层：名称 / 颜色 / 复核三态。
       // 浮层挂载在滚动内容层（随内容滚动），点击浮层以外或 Esc 关闭；
       // 数据变更经 options.onMarkerQuickEditFields 进入 MaweMarkerEditing。
+      /** @this {import('./waveform-types.js').WaveformInstance} */
       openMarkerQuickEdit(markerId, anchorElement) {
         const utils = window.AsrEditorUtils;
         const marker = this.getMarkers().find((candidate) => candidate?.id === markerId);
@@ -12283,6 +12459,7 @@ ${marker.note}` : ""}`;
         document.addEventListener("keydown", this._markerQuickEditKey, true);
       }
       // 打开时 / 每次数据变更后同步浮层的动态状态（激活色、复核按钮文案）。
+      /** @this {import('./waveform-types.js').WaveformInstance} */
       syncMarkerQuickEdit() {
         const popup = this.markerQuickEdit?.element;
         if (!popup || !popup.isConnected) return;
@@ -12311,6 +12488,7 @@ ${marker.note}` : ""}`;
           }
         }
       }
+      /** @this {import('./waveform-types.js').WaveformInstance} */
       positionMarkerQuickEdit(anchorElement) {
         const popup = this.markerQuickEdit?.element;
         if (!popup) return;
@@ -12326,6 +12504,7 @@ ${marker.note}` : ""}`;
         const aboveTop = anchorTop - popupHeight - 8;
         popup.style.top = `${Math.min(Math.max(4, aboveTop >= 4 ? aboveTop : anchorTop + anchorRect.height + 8), maxTop)}px`;
       }
+      /** @this {import('./waveform-types.js').WaveformInstance} */
       closeMarkerQuickEdit() {
         if (this._markerQuickEditOutside) {
           document.removeEventListener("pointerdown", this._markerQuickEditOutside, true);
@@ -12340,6 +12519,7 @@ ${marker.note}` : ""}`;
       }
       // 拖动期间的时间换算：以指针当前所在行为准（跨行拖动按新行换算），
       // 行间隙取最近行。基础模式只有一行，行为与旧行几何一致。
+      /** @this {import('./waveform-types.js').WaveformInstance} */
       findMarkerRowAtClientY(clientY, fallbackRow = null) {
         const rows = (this.renderedRows?.length ? this.renderedRows : [...this.content.querySelectorAll(".waveform-row")]).map((row) => {
           const rect = row.getBoundingClientRect();
@@ -12360,12 +12540,14 @@ ${marker.note}` : ""}`;
           ...this.captureRowGeometry(fallbackRow)
         } : null;
       }
+      /** @this {import('./waveform-types.js').WaveformInstance} */
       markerPointerGeometry(event) {
         const drag = this.markerDrag || this.markerCreateDrag || null;
         const hit = this.findMarkerRowAtClientY(event.clientY, drag?.row || null);
         if (!hit) return null;
         return hit;
       }
+      /** @this {import('./waveform-types.js').WaveformInstance} */
       markerPointerTimeMs(event) {
         const geometry = this.markerPointerGeometry(event);
         if (!geometry) return NaN;
@@ -12375,6 +12557,7 @@ ${marker.note}` : ""}`;
           Math.max(0, this.durationMs)
         );
       }
+      /** @this {import('./waveform-types.js').WaveformInstance} */
       _beginMarkerPointerTracking(drag) {
         try {
           drag.captureTarget?.setPointerCapture?.(drag.pointerId);
@@ -12386,6 +12569,7 @@ ${marker.note}` : ""}`;
         window.addEventListener("pointerup", this._markerDragEnd, { once: true });
         window.addEventListener("pointercancel", this._markerDragEnd, { once: true });
       }
+      /** @this {import('./waveform-types.js').WaveformInstance} */
       _teardownMarkerPointerTracking(drag) {
         window.removeEventListener("pointermove", this._markerDragMove);
         window.removeEventListener("pointerup", this._markerDragEnd);
@@ -12396,6 +12580,7 @@ ${marker.note}` : ""}`;
         }
         this.stopMarkerEdgeAutoScroll();
       }
+      /** @this {import('./waveform-types.js').WaveformInstance} */
       beginMarkerDrag(event, markerId, row, mode) {
         const marker = this.getMarkers().find((candidate) => candidate?.id === markerId);
         if (!marker) return;
@@ -12419,6 +12604,7 @@ ${marker.note}` : ""}`;
         };
         this._beginMarkerPointerTracking(this.markerDrag);
       }
+      /** @this {import('./waveform-types.js').WaveformInstance} */
       beginMarkerCreateDrag(event, row) {
         event.preventDefault();
         event.stopPropagation();
@@ -12439,6 +12625,7 @@ ${marker.note}` : ""}`;
         };
         this._beginMarkerPointerTracking(this.markerCreateDrag);
       }
+      /** @this {import('./waveform-types.js').WaveformInstance} */
       moveMarkerDrag(event) {
         const drag = this.markerDrag || this.markerCreateDrag;
         if (!drag || event.pointerId !== drag.pointerId) return;
@@ -12464,6 +12651,7 @@ ${marker.note}` : ""}`;
       }
       // moveMarkerDrag 的时间换算主体（move / resize / create 三种模式共用）。
       // 视口边缘自动滚动循环也复用：滚动改变指针下的行，需按最后一次指针事件重算。
+      /** @this {import('./waveform-types.js').WaveformInstance} */
       applyMarkerDragTime(drag, event) {
         if (drag.mode === "create") {
           drag.endMs = this.markerPointerTimeMs(event);
@@ -12487,6 +12675,7 @@ ${marker.note}` : ""}`;
       }
       // 视口边缘自动滚动：指针贴近滚动容器上下边缘时持续滚动；
       // 滚动会改变指针下的行，因此每帧用最后一次指针事件重算预览。
+      /** @this {import('./waveform-types.js').WaveformInstance} */
       markerEdgeAutoScroll(event) {
         const rect = this.scroll.getBoundingClientRect();
         const direction = event.clientY < rect.top + MARKER_EDGE_SCROLL_PX ? -1 : event.clientY > rect.bottom - MARKER_EDGE_SCROLL_PX ? 1 : 0;
@@ -12513,6 +12702,7 @@ ${marker.note}` : ""}`;
         };
         this.markerEdgeScrollFrame = requestAnimationFrame(step);
       }
+      /** @this {import('./waveform-types.js').WaveformInstance} */
       stopMarkerEdgeAutoScroll() {
         if (this.markerEdgeScrollFrame) {
           cancelAnimationFrame(this.markerEdgeScrollFrame);
@@ -12520,9 +12710,11 @@ ${marker.note}` : ""}`;
         }
         this.markerEdgeScrollDirection = 0;
       }
+      /** @this {import('./waveform-types.js').WaveformInstance} */
       clearMarkerDragPreviews() {
         this.content.querySelectorAll(".waveform-marker-item.drag-preview").forEach((element) => element.remove());
       }
+      /** @this {import('./waveform-types.js').WaveformInstance} */
       updateMarkerDragPreview(drag) {
         this.clearMarkerDragPreviews();
         let range = null;
@@ -12571,6 +12763,7 @@ ${marker.note}` : ""}`;
           row.appendChild(preview);
         });
       }
+      /** @this {import('./waveform-types.js').WaveformInstance} */
       endMarkerDrag(event) {
         const drag = this.markerDrag || this.markerCreateDrag;
         if (!drag || event.pointerId !== drag.pointerId) return;
@@ -12623,6 +12816,7 @@ ${marker.note}` : ""}`;
     "use strict";
     const { clamp, remapItems, resolveTiming, restoreTiming, snapshotTiming } = dependencies;
     class WaveformMethods {
+      /** @this {import('./waveform-types.js').WaveformInstance} */
       moveCueDrag(event) {
         const drag = this.drag;
         if (!drag || event.pointerId !== drag.pointerId) return;
@@ -12657,6 +12851,7 @@ ${marker.note}` : ""}`;
         if (this.isCueBoundaryDrag(drag)) this.refreshBoundaryDragPointerLine();
         this.scheduleRefreshCueBlocks();
       }
+      /** @this {import('./waveform-types.js').WaveformInstance} */
       applyMoveDrag(drag, rawDelta, disableSnap, allowSqueeze = false) {
         const clock = resolveTiming(drag.timing || this.cueTiming());
         if (drag.shiftOverlay && drag.indices.length === 1) {
@@ -12841,6 +13036,7 @@ ${marker.note}` : ""}`;
         const deltaLabel = clock.unit === "frames" ? `${delta >= 0 ? "+" : ""}${delta}F` : `${delta >= 0 ? "+" : ""}${delta} ms`;
         this.setStatus(`${allowSqueeze ? "挤压移动" : "移动"} ${drag.indices.length} 条 · ${deltaLabel}`);
       }
+      /** @this {import('./waveform-types.js').WaveformInstance} */
       applyResizeDrag(drag, rawDelta, disableSnap) {
         const clock = resolveTiming(drag.timing || this.cueTiming());
         const segments = this.options.getSegments(drag.track);
@@ -12874,6 +13070,7 @@ ${marker.note}` : ""}`;
         segment.items = remapItems(original.items, original.start, original.end, newStart, newEnd, clock);
         this.setStatus(`${clock.format(newStart)} → ${clock.format(newEnd)}`);
       }
+      /** @this {import('./waveform-types.js').WaveformInstance} */
       applyBoundaryDrag(drag, rawDelta, disableSnap) {
         const clock = resolveTiming(drag.timing || this.cueTiming());
         const segments = this.options.getSegments(drag.track);
@@ -12899,6 +13096,7 @@ ${marker.note}` : ""}`;
         rightSegment.items = remapItems(right.items, right.start, right.end, boundary, right.end, clock);
         this.setStatus(`共享边界 ${clock.format(boundary)} · ${this.adjacentSnapModeStatusHint()}`);
       }
+      /** @this {import('./waveform-types.js').WaveformInstance} */
       endCueDrag(event) {
         const drag = this.drag;
         if (!drag || event.pointerId !== drag.pointerId) return;
@@ -12975,6 +13173,7 @@ ${marker.note}` : ""}`;
     "use strict";
     const { ROW_GAP, clamp, findActiveCueIndex, isActiveCueVisualHit, isMultiRowInComfortZone, restoreWaveformTopEdgeMs, waveformTopEdgeMs } = dependencies;
     class WaveformMethods {
+      /** @this {import('./waveform-types.js').WaveformInstance} */
       updatePlayback(allowFollow = true) {
         if (!this.payload) return;
         const now = this.currentTimeMs();
@@ -13058,6 +13257,7 @@ ${marker.note}` : ""}`;
         }
         this.positionPlayheads();
       }
+      /** @this {import('./waveform-types.js').WaveformInstance} */
       getNavigationSnapshot() {
         return {
           cueListScrollTop: Math.max(0, Math.round(Number(this.cues?.scrollTop) || 0)),
@@ -13071,6 +13271,7 @@ ${marker.note}` : ""}`;
           })
         };
       }
+      /** @this {import('./waveform-types.js').WaveformInstance} */
       restoreNavigation(snapshot) {
         if (!snapshot || typeof snapshot !== "object") return false;
         if (!this.payload) {
@@ -13113,6 +13314,7 @@ ${marker.note}` : ""}`;
         });
         return topEdgeMs !== null || typeof snapshot.cueListScrollTop === "number";
       }
+      /** @this {import('./waveform-types.js').WaveformInstance} */
       positionPlayheads() {
         const now = this.currentTimeMs();
         this.renderedRows.forEach((row) => {

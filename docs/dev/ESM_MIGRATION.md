@@ -59,3 +59,9 @@
 保存设置与导出选项以 `unknown` 接入，验证对象后按 `Record<string, unknown>` 读取；字符串选项使用真实成员校验收窄。冻结 ASS 预设的字面量经保留属性形状的泛型扩宽，兼容自定义样式；FCP XML 参数明确可缺省字段（缺省值仍为 undefined）。补齐可选调色板挂载类型。
 
 `npm run typecheck`：1128 → 1006，只剩波形范围；utils 121 项和波形调色板 1 项消失。`node --test tests/test_editor_utils.mjs tests/test_editor_bundle.mjs`：310 通过，0 失败/跳过。未使用 ts-ignore、ts-nocheck 或新增整体 any；既有非 strict 的注入参数仍是后续更严格建模的边界。
+
+## 类型修复批次 3：波形组合实例
+
+为安装到同一 `WaveformEditor.prototype` 的 199 个方法声明共同接收者。状态、拖动记录、时间轴、设置和回调另行声明；方法签名从真实导出描述符推导，避免动态安装丢失信息或循环推断成 any。getter 无法声明 this 参数，局部声明其实际接收者。还补齐布局模块二元组、数字滚动目标及只携带 clientX 的合成指针事件。
+
+`npm run typecheck`：1006 → 110；剩余集中在 HTML 查询结果、事件目标与两个浏览器挂载。`node --test tests/test_waveform_js.mjs tests/test_editor_bundle.mjs`：66 通过。下一批单独明确 DOM 边界，不关闭检查。

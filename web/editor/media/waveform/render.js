@@ -6,12 +6,14 @@ export function createWaveformModule(dependencies) {
   class WaveformMethods {
 
 
+    /** @this {import('./waveform-types.js').WaveformInstance} */
     scheduleRender() {
       cancelAnimationFrame(this.resizeFrame);
       this.resizeFrame = requestAnimationFrame(() => this.render());
     }
 
 
+    /** @this {import('./waveform-types.js').WaveformInstance} */
     scheduleMultiVisible() {
       // 滚动事件一帧内可能触发多次；合并到每帧最多一次可视区渲染
       if (this.multiVisibleFrame) return;
@@ -22,6 +24,7 @@ export function createWaveformModule(dependencies) {
     }
 
 
+    /** @this {import('./waveform-types.js').WaveformInstance} */
     scheduleBasicRender() {
       // 高频滚轮逐事件全绘单行波形会卡顿；合并到每帧最多一次
       if (this.basicRenderFrame) return;
@@ -32,6 +35,7 @@ export function createWaveformModule(dependencies) {
     }
 
 
+    /** @this {import('./waveform-types.js').WaveformInstance} */
     scheduleRefreshCueBlocks() {
       // 高回报率指针设备一帧内触发多次 pointermove；合并到每帧最多一次块重排
       if (this.cueRefreshFrame) return;
@@ -43,6 +47,7 @@ export function createWaveformModule(dependencies) {
 
 
     // 画布颜色取自 CSS 令牌，以便跟随暗/亮主题。每次 render() 前刷新缓存。
+    /** @this {import('./waveform-types.js').WaveformInstance} */
     _readWaveColors() {
       const styles = getComputedStyle(document.documentElement);
       const get = (name, fallback) => {
@@ -60,12 +65,14 @@ export function createWaveformModule(dependencies) {
     }
 
 
+    /** @this {import('./waveform-types.js').WaveformInstance} */
     _getWaveColors() {
       if (!this._waveColors) this._readWaveColors();
       return this._waveColors;
     }
 
 
+    /** @this {import('./waveform-types.js').WaveformInstance} */
     render() {
       // 主题切换后令牌值变化：每次全量渲染前刷新画布颜色缓存，供 drawRow 读取。
       this._readWaveColors();
@@ -88,6 +95,7 @@ export function createWaveformModule(dependencies) {
     }
 
 
+    /** @this {import('./waveform-types.js').WaveformInstance} */
     stretchWaveformCanvases() {
       // 字幕块/空隙块/播放头均为百分比定位，会随行宽自动跟随；
       // 只有 canvas 位图需要按新尺寸临时拉伸
@@ -100,6 +108,7 @@ export function createWaveformModule(dependencies) {
     }
 
 
+    /** @this {import('./waveform-types.js').WaveformInstance} */
     redrawWaveformCanvases({ measure = true } = {}) {
       if (!this.payload || !this.peaks) return;
       if (!this.renderedRows.length) {
@@ -111,6 +120,7 @@ export function createWaveformModule(dependencies) {
     }
 
 
+    /** @this {import('./waveform-types.js').WaveformInstance} */
     renderSegments() {
       if (!this.payload) {
         this.render();
@@ -121,6 +131,7 @@ export function createWaveformModule(dependencies) {
     }
 
 
+    /** @this {import('./waveform-types.js').WaveformInstance} */
     renderBasic() {
       if (!this.payload) return;
       const windowMs = this.settings.visibleSeconds * 1000;
@@ -138,6 +149,7 @@ export function createWaveformModule(dependencies) {
     }
 
 
+    /** @this {import('./waveform-types.js').WaveformInstance} */
     renderMulti() {
       const rowDurationMs = this.settings.secondsPerRow * 1000;
       const rowCount = Math.max(1, Math.ceil(this.durationMs / rowDurationMs));
@@ -148,6 +160,7 @@ export function createWaveformModule(dependencies) {
     }
 
 
+    /** @this {import('./waveform-types.js').WaveformInstance} */
     renderMultiVisible(force = false) {
       if (!this.isMultiMode() || !this.payload) return;
       const rowDurationMs = this.settings.secondsPerRow * 1000;
@@ -194,6 +207,7 @@ export function createWaveformModule(dependencies) {
     }
 
 
+    /** @this {import('./waveform-types.js').WaveformInstance} */
     createMultiRow(index, rowDurationMs, groupBadges = null) {
       const startMs = index * rowDurationMs;
       const endMs = Math.min(this.durationMs, startMs + rowDurationMs);
