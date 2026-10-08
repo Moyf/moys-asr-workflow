@@ -1,5 +1,5 @@
 // text-metrics: private helpers; dependencies are injected by editor-utils.js.
-window.MAWE.register('utils-text-metrics', function createUtilsModule(dependencies) {
+export function createUtilsModule(dependencies) {
   'use strict';
   const { countTextUnits, detectSubtitleSplitMode } = dependencies;
 
@@ -46,4 +46,4 @@ window.MAWE.register('utils-text-metrics', function createUtilsModule(dependenci
   }
 
   return Object.freeze({ countSubtitleUnits, cueMetrics, isShortSubtitleText, joinSegmentTexts, subtitleTextLength });
-});
+}

@@ -1,5 +1,5 @@
 // payload: waveform helpers with explicit dependencies.
-window.MAWE.register('waveform-payload', function createWaveformModule(dependencies) {
+export function createWaveformModule(dependencies) {
   'use strict';
   const { ENCODING, SCHEMA, SPECTRAL_ENCODING, SPECTRAL_SCHEMA, clamp } = dependencies;
 
@@ -299,4 +299,4 @@ window.MAWE.register('waveform-payload', function createWaveformModule(dependenc
   }
 
   return Object.freeze({ bytesToBase64, decodePayload, decodeReapeaksFile, decodeSpectralPayload, freqColor, peaksRateOf, publishPeakRate, sameSource, sourceForFile });
-});
+}

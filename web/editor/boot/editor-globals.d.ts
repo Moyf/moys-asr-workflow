@@ -148,6 +148,7 @@ declare const activeExtensionSegments: any;
 interface Window {
   AsrEditorUtils: any;
   MAWE_I18N: any;
+  ASR_EDITOR_PALETTE?: Array<{ name: string; value: string }>;
   showSaveFilePicker?: any;
 }
 
@@ -211,6 +212,7 @@ interface Window {
 
 interface ViewInvalidation {
   cueList?: boolean; waveform?: 'none' | 'overlay' | 'full'; preserveCueListScroll?: boolean; cueListAnchor?: unknown;
+  cueListPatch?: { mainIndices?: readonly number[]; overlayIndices?: readonly number[] } | null;
   preview?: false | 'update' | 'refresh'; save?: boolean;
 }
 interface EditorTransaction {
@@ -233,4 +235,8 @@ declare const MaweServerSave: any;
 interface Window {
   MaweCommands: MaweCommandsApi;
   MaweViewUpdates: typeof MaweViewUpdates;
+  webkitAudioContext?: typeof AudioContext;
+  AsrGapRemoveCore: {
+    isGapRemoveDisplayProtected(gap: import('../media/waveform/waveform-types.js').Gap): boolean;
+  };
 }

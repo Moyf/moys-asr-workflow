@@ -1,5 +1,5 @@
 // platform: private helpers; dependencies are injected by editor-utils.js.
-window.MAWE.register('utils-platform', function createUtilsModule(dependencies) {
+export function createUtilsModule(dependencies) {
   'use strict';
   const { getNavigator } = dependencies;
 
@@ -23,4 +23,4 @@ window.MAWE.register('utils-platform', function createUtilsModule(dependencies) 
   }
 
   return Object.freeze({ configuredEnterAction, isMacPlatform });
-});
+}

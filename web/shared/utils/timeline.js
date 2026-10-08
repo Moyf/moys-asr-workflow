@@ -1,5 +1,5 @@
 // timeline: private helpers; dependencies are injected by editor-utils.js.
-window.MAWE.register('utils-timeline', function createUtilsModule(dependencies) {
+export function createUtilsModule(dependencies) {
   'use strict';
   const { clampInteger, escapeSplitTrimPatternSource } = dependencies;
 
@@ -17,6 +17,7 @@ window.MAWE.register('utils-timeline', function createUtilsModule(dependencies) 
   const MAX_TIMELINE_FPS = 240;
 
 
+  /** @param {unknown} [fallback] */
   function normalizeTimelineFps(value, fallback = DEFAULT_TIMELINE_FPS) {
     const fallbackValue = Number.isFinite(Number(fallback))
       ? Number(fallback) : DEFAULT_TIMELINE_FPS;
@@ -38,10 +39,11 @@ window.MAWE.register('utils-timeline', function createUtilsModule(dependencies) 
   }
 
 
+  /** @param {Record<string, unknown>} [fallback] */
   function normalizeTimelineTimebase(value, fallback = {}) {
     const raw = value && typeof value === 'object' && !Array.isArray(value) ? value : {};
     const fallbackRaw = fallback && typeof fallback === 'object' ? fallback : {};
-    const fallbackUnit = TIMELINE_TIMEBASE_UNITS.includes(fallbackRaw.unit)
+    const fallbackUnit = typeof fallbackRaw.unit === 'string' && TIMELINE_TIMEBASE_UNITS.includes(fallbackRaw.unit)
       ? fallbackRaw.unit : 'milliseconds';
     return {
       unit: TIMELINE_TIMEBASE_UNITS.includes(raw.unit) ? raw.unit : fallbackUnit,
@@ -186,4 +188,4 @@ window.MAWE.register('utils-timeline', function createUtilsModule(dependencies) 
   }
 
   return Object.freeze({ DEFAULT_TIMELINE_FPS, DEFAULT_TIMELINE_TIMECODE_SEPARATOR, MAX_TIMELINE_FPS, MIN_TIMELINE_FPS, TIMELINE_TIMEBASE_UNITS, clampTimelineFrameStep, formatFrameTimecode, formatTimelineTimecode, frameNumberFromMilliseconds, millisecondsFromFrameNumber, normalizeMediaMetadata, normalizeTimelineFps, normalizeTimelineTimebase, normalizeTimelineTimecodeSeparator, parseFrameTimecode });
-});
+}

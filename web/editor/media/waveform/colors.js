@@ -1,5 +1,5 @@
 // colors: waveform helpers with explicit dependencies.
-window.MAWE.register('waveform-colors', function createWaveformModule(dependencies) {
+export function createWaveformModule(dependencies) {
   'use strict';
 
   // 调色板数值唯一来源于 maw/speaker.py，渲染时注入 window.ASR_EDITOR_PALETTE；
@@ -34,4 +34,4 @@ window.MAWE.register('waveform-colors', function createWaveformModule(dependenci
   }
 
   return Object.freeze({ colorForSegment, hasSubtitleColor, setColorPalette });
-});
+}

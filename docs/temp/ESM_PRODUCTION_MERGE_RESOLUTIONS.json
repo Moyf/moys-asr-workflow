@@ -1,0 +1,38 @@
+{
+  "179": {
+    "head": "6e23fd75ba34a5c403f78674d3074ef2163dbe88",
+    "files": {
+      "tests/test_waveform.py": [
+        {
+          "ours": "        self.assertIn(\"rowGrid: get('--wave-row-grid'\", source)\n        self.assertIn('timeline-settings-field', editor_settings_panel)\n",
+          "theirs": "        self.assertIn(\"rowGrid: get('--wave-row-grid'\", page)\n        self.assertIn('timeline-settings-field', settings_page('timebase'))\n",
+          "replacement": "        self.assertIn(\"rowGrid: get('--wave-row-grid'\", source)\n        self.assertIn('timeline-settings-field', settings_page('timebase'))\n"
+        }
+      ],
+      "web/editor/media/waveform/cue-blocks.js": [
+        {
+          "ours": "        (/** @type {NodeListOf<HTMLElement>} */ (row.querySelectorAll('.waveform-cue-block, .waveform-cue-badge, .waveform-cue-boundary')))\n",
+          "theirs": "        row.querySelectorAll('.waveform-cue-block, .waveform-cue-badge, .waveform-cue-boundary, .waveform-word-block, .waveform-word-boundary')\n",
+          "replacement": "        (/** @type {NodeListOf<HTMLElement>} */ (row.querySelectorAll('.waveform-cue-block, .waveform-cue-badge, .waveform-cue-boundary, .waveform-word-block, .waveform-word-boundary')))\n"
+        }
+      ]
+    }
+  },
+  "177": {
+    "head": "1ad2f641daa6f6260c16ac88176aa2c0aad9566a",
+    "files": {
+      "web/editor/media/waveform/cue-blocks.js": [
+        {
+          "ours": "    /** @this {import('./waveform-types.js').WaveformInstance} */\n",
+          "theirs": "    // 字词时间码模式下，选中句的两端手柄直接进入整句边界拖动；\n    // 阻断冒泡，避免落到句块的「仅选中」pointerdown 处理上。\n    bindWordModeSentenceHandle(handle, index, row) {\n      handle.addEventListener('pointerdown', (event) => {\n        if (event.button !== 0) return;\n        event.preventDefault();\n        event.stopPropagation();\n        this.focusWaveform();\n        this.beginCueDrag(event, index, row, 'main');\n      });\n    }\n\n",
+          "replacement": "    // 字词时间码模式下，选中句的两端手柄直接进入整句边界拖动；\n    // 阻断冒泡，避免落到句块的「仅选中」pointerdown 处理上。\n    /** @this {import('./waveform-types.js').WaveformInstance} */\n    bindWordModeSentenceHandle(handle, index, row) {\n      handle.addEventListener('pointerdown', (event) => {\n        if (event.button !== 0) return;\n        event.preventDefault();\n        event.stopPropagation();\n        this.focusWaveform();\n        this.beginCueDrag(event, index, row, 'main');\n      });\n    }\n\n    /** @this {import('./waveform-types.js').WaveformInstance} */\n"
+        },
+        {
+          "ours": "        (/** @type {NodeListOf<HTMLElement>} */ (row.querySelectorAll('.waveform-cue-block, .waveform-cue-badge, .waveform-cue-boundary')))\n",
+          "theirs": "        row.querySelectorAll('.waveform-cue-block, .waveform-cue-badge, .waveform-cue-boundary, .waveform-word-block, .waveform-word-boundary')\n",
+          "replacement": "        (/** @type {NodeListOf<HTMLElement>} */ (row.querySelectorAll('.waveform-cue-block, .waveform-cue-badge, .waveform-cue-boundary, .waveform-word-block, .waveform-word-boundary')))\n"
+        }
+      ]
+    }
+  }
+}

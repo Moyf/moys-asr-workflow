@@ -25,11 +25,11 @@ web/launcher/                # Launcher 前端
 docs/LOCAL_ASR.md             # 实验性本地 Qwen3-ASR / FunASR CLI
 ```
 
-`web/` 是唯一前端源码。`edit.py` 将它内联为便携 `.edit.html`，`server-editor` 则在每次请求时从它渲染页面。因此，修改 `web/` 或模板后需要重新生成内联副本：
+`web/` 是唯一前端源码。59 个工厂使用 ESM，其余接线保留 classic 共享作用域；`npm run build:editor` 由 esbuild 装配完整 `web/editor/boot/editor-bundle.js`。Python、localhost 和 Tauri 都读取这个产物，运行时不需要 Node。修改编辑器 JS 或清单后必须重建并提交 bundle 与 `.meta.json`，运行 `npm run check:editor`；localhost 调试可另开 `npm run watch:editor`。CSS 与 HTML 模板仍在渲染时读取。
 
 **但现行约定是：除非维护者主动要求，不要生成 `blank-editor.html`。**
 它是生成产物、体积大，且每次重生成都会带来上百行噪声 diff，review 时淹没真实改动。
-改了 `web/` 就只提交 `web/` 源码，并在 PR 描述里注明「内联副本待发布前统一重生成」；
+改了 `web/` 就提交源码及对应 esbuild 产物，并在 PR 描述里注明「内联副本待发布前统一重生成」；
 发布检查时再一次性重生成，并核对 `git diff --stat blank-editor.html` 符合预期。
 
 ```powershell
@@ -42,6 +42,9 @@ uv run python edit.py --blank
 
 ```powershell
 uv sync
+npm ci
+npm run check:editor
+npm run typecheck
 node --test tests\test_editor_script_syntax.mjs tests\test_editor_script_order.mjs
 node --test tests\test_editor_utils.mjs tests\test_waveform_js.mjs
 uv run python -m unittest discover -s tests -p "test_*.py"
@@ -49,7 +52,8 @@ git diff --check
 ```
 
 `web/editor/boot/editor.js` 是加载守卫入口；连续接线位于各领域的
-`editor-wiring-*.js` 中，按 `web/editor-scripts.txt` 原序装配为一个 classic script。
+`editor-wiring-*.js` 中，构建器按 `web/editor-scripts.txt` 原序执行接线与工厂注册。
+`web/editor-modules.json` 明确列出 ESM 工厂与仍需保留的外部桥。工厂只导出函数，不在模块求值时注册；依赖袋继续由门面注入。
 新增业务逻辑写入所属领域模块，避免再扩大入口。目录位置不决定执行顺序。
 
 ### Agent 命令执行：避免 uv 超时卡住

@@ -1,5 +1,5 @@
 // lrc: private helpers; dependencies are injected by editor-utils.js.
-window.MAWE.register('utils-lrc', function createUtilsModule() {
+export function createUtilsModule() {
   'use strict';
 
 
@@ -106,4 +106,4 @@ window.MAWE.register('utils-lrc', function createUtilsModule() {
 
 
   return Object.freeze({ parseLrcSegments });
-});
+}

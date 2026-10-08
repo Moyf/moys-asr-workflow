@@ -43,7 +43,9 @@ class EditorManifestTests(unittest.TestCase):
             self.manifest("# order\neditor/boot/start.js # boot\n\neditor.js\n"),
             ("editor/boot/start.js", "editor.js"),
         )
-        self.assertEqual(edit.build_editor_scripts(), "// editor/boot/start.js\n\n// editor.js")
+        artifact = self.web / "editor/boot/editor-bundle.js"
+        artifact.write_text("// complete artifact\n",encoding="utf-8")
+        self.assertEqual(edit.build_editor_scripts(), "// complete artifact")
 
     def test_rejects_empty_duplicate_missing_and_directory_entries(self) -> None:
         (self.web / "directory.js").mkdir()

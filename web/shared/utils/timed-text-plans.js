@@ -1,5 +1,5 @@
 // timed-text-plans: private helpers; dependencies are injected by editor-utils.js.
-window.MAWE.register('utils-timed-text-plans', function createUtilsModule(dependencies) {
+export function createUtilsModule(dependencies) {
   'use strict';
   const { cloneJsonValue, countTextUnits, hasTimedTextContent, isTimedTextNeutralToken, sameTimedTextTokens, timedTextItemLayout, timedTextItemsOrdered, timedTextItemsPartition, timedTextItemsSlice, timedTextNeutralInsertionItems, timedTextTokens, uniqueStableSegmentId } = dependencies;
 
@@ -671,4 +671,4 @@ window.MAWE.register('utils-timed-text-plans', function createUtilsModule(depend
   }
 
   return Object.freeze({ buildTimedTextBoundaryPlan, buildTimedTextStructurePlan, timedTextStructureRequested });
-});
+}

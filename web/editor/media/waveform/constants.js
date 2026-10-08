@@ -1,5 +1,5 @@
 // constants: waveform helpers with explicit dependencies.
-window.MAWE.register('waveform-constants', function createWaveformModule(dependencies) {
+export function createWaveformModule(dependencies) {
   'use strict';
 
 
@@ -62,4 +62,4 @@ window.MAWE.register('waveform-constants', function createWaveformModule(depende
   }
 
   return Object.freeze({ BROWSER_DECODE_LIMIT, BROWSER_PCM_ESTIMATE_LIMIT, DEFAULT_LAYOUT_ROWS, ENCODING, LOUDNESS_SCHEMA, MAX_WAVEFORM_SCALE, MIN_CUE_MS, MIN_WAVEFORM_SCALE, MULTI_ROW_BUFFER, PLAYHEAD_DRAG_SEEK_INTERVAL_MS, POINTER_DRAG_THRESHOLD_PX, ROUND_MS, ROW_GAP, ROW_HEIGHT_PRESETS, ROW_PRESETS, SCHEMA, SETTINGS_KEY, SNAP_MS, SPECTRAL_ENCODING, SPECTRAL_SCHEMA, SPLIT_FLASH_DURATION_MS, WAVEFORM_ADJUST_DEBOUNCE_MS, WORKSPACE_SCHEMA, ZOOM_PRESETS, clamp });
-});
+}

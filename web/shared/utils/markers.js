@@ -2,7 +2,7 @@
 // MOSP `markers` 契约见 JSON_SCHEMA.md：稳定 ID、原媒体整数毫秒 start、
 // 可选 end（end > start 时为 Region，否则单点 Marker）、name、color、note，
 // 以及可选的 review（AI 复核项：待复核／已确认 + 原因）。
-window.MAWE.register('utils-markers', function createUtilsModule() {
+export function createUtilsModule() {
   'use strict';
 
   const MARKERS_SCHEMA = 'moy.asr.markers.v1';
@@ -243,4 +243,4 @@ window.MAWE.register('utils-markers', function createUtilsModule() {
     markerSummary,
     markerVisibleRange,
   });
-});
+}

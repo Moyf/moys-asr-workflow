@@ -1,5 +1,5 @@
 // settings: waveform helpers with explicit dependencies.
-window.MAWE.register('waveform-settings', function createWaveformModule(dependencies) {
+export function createWaveformModule(dependencies) {
   'use strict';
   const { storage, DEFAULT_RIGHT_LAYOUT_TREE, DEFAULT_SETTINGS, ROW_HEIGHT_PRESETS, ROW_PRESETS, SETTINGS_KEY, ZOOM_PRESETS, clampWaveformScale, cloneLayoutTree, normalizeLayoutData } = dependencies;
 
@@ -58,4 +58,4 @@ window.MAWE.register('waveform-settings', function createWaveformModule(dependen
   }
 
   return Object.freeze({ readSettings, saveSettings });
-});
+}

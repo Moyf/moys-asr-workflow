@@ -1,5 +1,5 @@
 // ass-animation: private helpers; dependencies are injected by editor-utils.js.
-window.MAWE.register('utils-ass-animation', function createUtilsModule(dependencies) {
+export function createUtilsModule(dependencies) {
   'use strict';
   const { ASS_DEFAULT_PLAY_RES_X, ASS_DEFAULT_PLAY_RES_Y, normalizeAssAnimations, parseSentenceFadeMarkers } = dependencies;
 
@@ -121,4 +121,4 @@ window.MAWE.register('utils-ass-animation', function createUtilsModule(dependenc
   }
 
   return Object.freeze({ assAnimationOverrideTags, assPreviewAnimationState, assSentenceFadeTags });
-});
+}
