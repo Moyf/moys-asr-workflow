@@ -26,6 +26,29 @@ fn project_version(repository_root: &Path) -> String {
     panic!("无法从 pyproject.toml 读取 project.version");
 }
 
+fn project_palette(repository_root: &Path) -> String {
+    // Keep the Python palette as the single source, without requiring Python
+    // during a Rust build. Reject unsupported syntax instead of drifting.
+    let source = read(&repository_root.join("maw/colors.py"));
+    let block = source.split_once("COLOR_PALETTE:")
+        .and_then(|(_, rest)| rest.split_once("= ("))
+        .and_then(|(_, rest)| rest.split_once("\n)"))
+        .map(|(block, _)| block).expect("无法读取 COLOR_PALETTE");
+    let mut colors = Vec::new();
+    for line in block.lines().map(str::trim).filter(|line| !line.is_empty()) {
+        let (name, value) = line.strip_prefix("(\"")
+            .and_then(|line| line.strip_suffix("\"),"))
+            .and_then(|line| line.split_once("\", \""))
+            .expect("COLOR_PALETTE 格式需要人工审核");
+        assert!(!name.is_empty() && name.bytes().all(|byte| byte.is_ascii_lowercase()));
+        assert!(value.len() == 7 && value.starts_with('#')
+            && value[1..].bytes().all(|byte| byte.is_ascii_hexdigit()));
+        colors.push(format!(r##"{{"name":"{name}","value":"{value}"}}"##));
+    }
+    assert!(!colors.is_empty(), "COLOR_PALETTE 不能为空");
+    format!("[{}]", colors.join(","))
+}
+
 fn replace_all(page: &mut String, replacements: &[(&str, &str)]) {
     for (token, value) in replacements {
         *page = page.replace(token, value);
@@ -33,12 +56,7 @@ fn replace_all(page: &mut String, replacements: &[(&str, &str)]) {
 }
 
 fn read_editor_scripts(web_dir: &Path) -> String {
-    editor_assets::editor_script_manifest(web_dir)
-        .unwrap_or_else(|error| panic!("{error}"))
-        .into_iter()
-        .map(|entry| read(&web_dir.join(entry)))
-        .collect::<Vec<_>>()
-        .join("\n\n")
+    read(&web_dir.join("editor/boot/editor-bundle.js"))
 }
 
 fn render_frontend() {
@@ -50,6 +68,7 @@ fn render_frontend() {
         .expect("无法定位 MAW 仓库根目录");
     let web_dir = repository_root.join("web");
     let app_version = project_version(&repository_root);
+    let palette = project_palette(&repository_root);
     let mut page = read(&web_dir.join("editor-template.html"));
     let bridge = read(&manifest_dir.join("src").join("tauri_bridge.js"));
     let editor_css = read(&web_dir.join("editor.css"));
@@ -62,6 +81,9 @@ fn render_frontend() {
             ("__EDITOR_CSS__", editor_css.as_str()),
             ("__WAVEFORM_CSS__", waveform_css.as_str()),
             ("__EDITOR_SCRIPTS_JS__", editor_scripts.as_str()),
+            ("__PALETTE_JSON__", palette.as_str()),
+            ("__EDITOR_LOADING_HIDDEN__", " hidden"),
+            ("__NINJA_SFX_BASE_URL_JSON__", r#""web/sfx/""#),
             ("__DATA_JSON__", BLANK_DATA),
             ("__SERVER_CONFIG_JSON__", SERVER_CONFIG),
             ("__FILENAME_BASE_JSON__", r#""untitled""#),
@@ -104,6 +126,7 @@ fn render_frontend() {
         "cargo:rerun-if-changed={}",
         repository_root.join("pyproject.toml").display()
     );
+    println!("cargo:rerun-if-changed={}", repository_root.join("maw/colors.py").display());
 }
 
 fn main() {

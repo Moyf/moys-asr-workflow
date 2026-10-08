@@ -1,5 +1,5 @@
 // fcp7: private helpers; dependencies are injected by editor-utils.js.
-window.MAWE.register('utils-fcp7', function createUtilsModule(dependencies) {
+export function createUtilsModule(dependencies) {
   'use strict';
   const { EXPORT_SUBTITLE_TRACKS, assertExportPlan, buildExportNames, escapeExportXml, exportPathToFileUrl, exportPlanFrame, fileBasename, freezeExportValue, normalizeExportOptions, selectedSubtitleTracks, serializeMappedSrt } = dependencies;
 
@@ -177,7 +177,7 @@ window.MAWE.register('utils-fcp7', function createUtilsModule(dependencies) {
   }
 
 
-  function fcpClipItem({ id, fileId, name, path, width, height, sourceStartMs, sourceEndMs, sourceStartFrame = null, startMs, endMs, startFrame, endFrame, plan, mediaKind, track, link, defineFile = true, encodeDriveColon = false }) {
+  function fcpClipItem({ id, fileId, name, path, width = undefined, height = undefined, sourceStartMs, sourceEndMs, sourceStartFrame = null, startMs, endMs, startFrame = undefined, endFrame = undefined, plan, mediaKind, track, link = undefined, defineFile = true, encodeDriveColon = false }) {
     const sourceRange = fcpTimeRange(sourceStartMs, sourceEndMs, plan);
     const timeline = fcpTimeRange(startMs, endMs, plan);
     const url = escapeExportXml(exportPathToFileUrl(path, { encodeDriveColon }));
@@ -337,4 +337,4 @@ window.MAWE.register('utils-fcp7', function createUtilsModule(dependencies) {
   }
 
   return Object.freeze({ buildFcp7ExportArtifacts, serializeFcp7Xml });
-});
+}

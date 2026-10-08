@@ -1,5 +1,5 @@
 // labels: waveform helpers with explicit dependencies.
-window.MAWE.register('waveform-labels', function createWaveformModule(dependencies) {
+export function createWaveformModule(dependencies) {
   'use strict';
   const { getLanguage, gapRemoveCore } = dependencies;
 
@@ -54,4 +54,4 @@ window.MAWE.register('waveform-labels', function createWaveformModule(dependenci
   }
 
   return Object.freeze({ gapOperationAllowsBoundary, gapOperationAllowsMiddle, gapRemoveDisplayLabel, localizedWaveformMessage });
-});
+}

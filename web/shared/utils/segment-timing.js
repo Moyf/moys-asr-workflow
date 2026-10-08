@@ -1,5 +1,5 @@
 // segment-timing: private helpers; dependencies are injected by editor-utils.js.
-window.MAWE.register('utils-segment-timing', function createUtilsModule(dependencies) {
+export function createUtilsModule(dependencies) {
   'use strict';
   const { isShortSubtitleText, normalizeTimedTextNeutralItems } = dependencies;
 
@@ -419,4 +419,4 @@ window.MAWE.register('utils-segment-timing', function createUtilsModule(dependen
   }
 
   return Object.freeze({ applyAutoMergeSnaps, applySubtitleExtension, formatGapRemoveDuration, formatHumanDuration, normalizeFrameItemTimingRanges, normalizeItemTimingRanges, normalizeSegmentTimings, planAutoMerge, planSubtitleExtension, repairSegmentOverlap });
-});
+}

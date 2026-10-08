@@ -1,5 +1,5 @@
 // fonts: private helpers; dependencies are injected by editor-utils.js.
-window.MAWE.register('utils-fonts', function createUtilsModule(dependencies) {
+export function createUtilsModule(dependencies) {
   'use strict';
 
 
@@ -106,4 +106,4 @@ window.MAWE.register('utils-fonts', function createUtilsModule(dependencies) {
   }
 
   return Object.freeze({ SUBTITLE_FONT_FAMILY_PRESETS, filterFontFamilyOptions, mergeFontFamilyOptions, subtitleFontFamilyDisplayName, subtitleFontFamilyInputToStored, subtitleFontFamilyStoredToInput });
-});
+}

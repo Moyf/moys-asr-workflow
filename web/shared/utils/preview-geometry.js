@@ -1,5 +1,5 @@
 // preview-geometry: private helpers; dependencies are injected by editor-utils.js.
-window.MAWE.register('utils-preview-geometry', function createUtilsModule(dependencies) {
+export function createUtilsModule(dependencies) {
   'use strict';
 
 
@@ -112,4 +112,4 @@ window.MAWE.register('utils-preview-geometry', function createUtilsModule(depend
   }
 
   return Object.freeze({ DEFAULT_PREVIEW_GEOMETRY, DEFAULT_STICKER_GEOMETRY, PREVIEW_MIN_HEIGHT, PREVIEW_MIN_WIDTH, applyPreviewGeometryDelta, clampPreviewGeometry, normalizePreviewGeometry, previewGeometryToCss });
-});
+}

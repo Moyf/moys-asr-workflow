@@ -1,5 +1,5 @@
 // URL resolution and transport belong to the host; response policy stays in callers.
-window.MAWE.register('host-server-api', function createServerApi(dependencies) {
+export function createServerApi(dependencies) {
   'use strict';
   const { browser, environment } = dependencies;
   return Object.freeze({
@@ -7,4 +7,4 @@ window.MAWE.register('host-server-api', function createServerApi(dependencies) {
       return environment.fetch(new environment.URL(url, browser.location.href), options);
     },
   });
-});
+}

@@ -1,5 +1,5 @@
 // visibility: waveform helpers with explicit dependencies.
-window.MAWE.register('waveform-visibility', function createWaveformModule(dependencies) {
+export function createWaveformModule(dependencies) {
   'use strict';
   const { ROW_GAP, clamp } = dependencies;
 
@@ -155,4 +155,4 @@ window.MAWE.register('waveform-visibility', function createWaveformModule(depend
   }
 
   return Object.freeze({ computeGroupBadges, cueBlockContinuationEdges, findActiveCueIndex, firstCueIndexOverlapping, isActiveCueVisualHit, isMultiRowInComfortZone, restoreWaveformTopEdgeMs, syncSpectralColorToggle, waveformTopEdgeMs });
-});
+}

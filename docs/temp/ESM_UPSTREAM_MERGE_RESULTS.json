@@ -1,0 +1,812 @@
+{
+  "date": "2026-10-08",
+  "base": "dfd5971f0a6676f8943802cc17de7770839649a0",
+  "scope": "full editor ESM compatibility stage; launcher unchanged; primary product sources unchanged; task tools and docs added or updated",
+  "snapshotSha256": "ae80214c8d66b41fed7045ceecc9ecc2cb9f86a2af8abc40b45c4220b0b791b7",
+  "prs": [
+    {
+      "number": 180,
+      "head": "40d8cca5288d0fd8890f71e54d248eb9ae856088",
+      "url": "https://github.com/Moyf/moys-asr-workflow/pull/180",
+      "mergeBase": "d4e5dff2d96b9f64fe453a2a5155a495769cc260",
+      "classic": {
+        "clean": true,
+        "tree": "968c528a34475fd6a1d76730f0ea5084d266c847",
+        "conflicts": []
+      },
+      "direct": {
+        "clean": false,
+        "tree": "6eb64f12fb3445e984f42cecf77cc6cdd909660f",
+        "conflicts": [
+          "web/editor/styles/editor-wiring-ass-preview.js"
+        ],
+        "inputAudit": {
+          "requiredByIncomingClassicManifest": 182,
+          "esmInputCount": 180,
+          "missingEsmInputs": [
+            "shared/utils/ass-canvas-layout.js",
+            "editor/styles/editor-wiring-ass-canvas.js"
+          ]
+        },
+        "conflictHunksByFile": {
+          "web/editor/styles/editor-wiring-ass-preview.js": 1
+        }
+      },
+      "replay": {
+        "status": "built",
+        "commit": "fe74b24986ebaf0eeb7f58c4a565d837c42e1c3a",
+        "conversion": {
+          "files": 182,
+          "factoryExports": 60,
+          "crossFileReferences": 563,
+          "rewriteShared": true
+        },
+        "projected": {
+          "clean": true,
+          "tree": "53b0477a5b2dc73b462ce2eb1058bab5e562f388",
+          "conflicts": []
+        },
+        "changedPaths": [
+          "CHANGELOG.md",
+          "docs/ASS_STYLES.md",
+          "full-conversion.json",
+          "tests/test_ass_canvas_layout.mjs",
+          "tests/test_editor_assets.py",
+          "web/editor-scripts.txt",
+          "web/editor-sources.txt",
+          "web/editor.css",
+          "web/editor/boot/editor-bundle.js",
+          "web/editor/styles/editor-wiring-ass-canvas.js",
+          "web/editor/styles/editor-wiring-ass-preview.js",
+          "web/shared/editor-utils.js",
+          "web/shared/utils/ass-canvas-layout.js"
+        ],
+        "finalCommit": "a2c26269676d3099913a373d913bfab950d70cf5",
+        "validation": {
+          "assembly": {
+            "exit": 0,
+            "log": "pr-180-projected/assembly.log"
+          },
+          "node": {
+            "exit": 0,
+            "log": "pr-180-projected/node.log"
+          }
+        }
+      },
+      "actualTests": {
+        "assembly": {
+          "tests": 10,
+          "pass": 10,
+          "fail": 0,
+          "skipped": 0
+        },
+        "node": {
+          "tests": 450,
+          "pass": 450,
+          "fail": 0,
+          "skipped": 0
+        }
+      }
+    },
+    {
+      "number": 179,
+      "head": "6e23fd75ba34a5c403f78674d3074ef2163dbe88",
+      "url": "https://github.com/Moyf/moys-asr-workflow/pull/179",
+      "mergeBase": "d4e5dff2d96b9f64fe453a2a5155a495769cc260",
+      "classic": {
+        "clean": true,
+        "tree": "b3eaceec9c43bb37a858c40a937f316b2c0b944f",
+        "conflicts": []
+      },
+      "direct": {
+        "clean": false,
+        "tree": "fe3bb6359726cdb96591bea5ea5959ee520843c5",
+        "conflicts": [
+          "web/editor/io/editor-sticker-root.js",
+          "web/editor/io/editor-wiring-sticker-root.js",
+          "web/editor/state/editor-history.js",
+          "web/editor/styles/editor-wiring-ass-manager.js",
+          "web/editor/ui/editor-wiring-settings-help.js"
+        ],
+        "inputAudit": {
+          "requiredByIncomingClassicManifest": 185,
+          "esmInputCount": 180,
+          "missingEsmInputs": [
+            "shared/utils/word-timing.js",
+            "editor/media/waveform/word-blocks.js",
+            "editor/state/editor-project-settings.js",
+            "editor/cues/editor-word-timing.js",
+            "editor/cues/editor-wiring-word-timing.js"
+          ]
+        },
+        "conflictHunksByFile": {
+          "web/editor/io/editor-sticker-root.js": 2,
+          "web/editor/io/editor-wiring-sticker-root.js": 1,
+          "web/editor/state/editor-history.js": 1,
+          "web/editor/styles/editor-wiring-ass-manager.js": 1,
+          "web/editor/ui/editor-wiring-settings-help.js": 1
+        }
+      },
+      "replay": {
+        "status": "built",
+        "commit": "f7a0329d136f48f243c55411ea7c3e691e484198",
+        "conversion": {
+          "files": 185,
+          "factoryExports": 61,
+          "crossFileReferences": 567,
+          "rewriteShared": true
+        },
+        "projected": {
+          "clean": true,
+          "tree": "75941ef9d56343b009551490978c8a04a20020b5",
+          "conflicts": []
+        },
+        "changedPaths": [
+          "CHANGELOG.md",
+          "JSON_SCHEMA.md",
+          "docs/ASS_STYLES.md",
+          "docs/EDITOR_GUIDE.md",
+          "docs/EDITOR_SETTINGS_IMPLEMENTATION.md",
+          "docs/EDITOR_SETTINGS_PLAN.md",
+          "docs/EDITOR_SETTINGS_REVIEW.md",
+          "docs/KEYBOARD_ADJUSTMENT.md",
+          "docs/WORKFLOW.md",
+          "docs/reports/editor-settings.html",
+          "docs/reports/editor-settings.md",
+          "full-conversion.json",
+          "maw/project_preview.py",
+          "server-editor/serve.py",
+          "tests/e2e/ass-export.spec.mjs",
+          "tests/e2e/ass-frame-preview.spec.mjs",
+          "tests/e2e/click-behavior.spec.mjs",
+          "tests/e2e/cue-color-filter.spec.mjs",
+          "tests/e2e/editor-i18n-save.spec.mjs",
+          "tests/e2e/helpers.mjs",
+          "tests/e2e/hover-seek-preview.spec.mjs",
+          "tests/e2e/keyboard-timing.spec.mjs",
+          "tests/e2e/multi-subtitle.spec.mjs",
+          "tests/e2e/onboarding.spec.mjs",
+          "tests/e2e/overlay-track.spec.mjs",
+          "tests/e2e/playback-refresh.spec.mjs",
+          "tests/e2e/settings-structure.spec.mjs",
+          "tests/e2e/speaker-labels.spec.mjs",
+          "tests/e2e/subtitle-preview-boot.spec.mjs",
+          "tests/e2e/subtitle-seek-race.spec.mjs",
+          "tests/e2e/waveform-history.spec.mjs",
+          "tests/e2e/word-timing.spec.mjs",
+          "tests/test_editor_assets.py",
+          "tests/test_editor_utils.mjs",
+          "tests/test_local_editor_server.py",
+          "tests/test_project_contract.py",
+          "tests/test_waveform.py",
+          "tests/test_waveform_js.mjs",
+          "tests/test_word_timing.mjs",
+          "web/editor-scripts.txt",
+          "web/editor-sources.txt",
+          "web/editor-template.html",
+          "web/editor.css",
+          "web/editor/boot/editor-bundle.js",
+          "web/editor/boot/editor-globals.d.ts",
+          "web/editor/cues/editor-nav-preview.js",
+          "web/editor/cues/editor-split-mode.js",
+          "web/editor/cues/editor-wiring-edit-shortcuts.js",
+          "web/editor/cues/editor-wiring-word-timing.js",
+          "web/editor/cues/editor-word-timing.js",
+          "web/editor/io/editor-json-repair.js",
+          "web/editor/io/editor-project-load.js",
+          "web/editor/io/editor-sticker-root.js",
+          "web/editor/io/editor-wiring-sticker-root.js",
+          "web/editor/media/editor-waveform-init.js",
+          "web/editor/media/editor-wiring-keyboard-guards.js",
+          "web/editor/media/editor-wiring-media-controls.js",
+          "web/editor/media/waveform.js",
+          "web/editor/media/waveform/cue-blocks.js",
+          "web/editor/media/waveform/layout.js",
+          "web/editor/media/waveform/pointer.js",
+          "web/editor/media/waveform/settings.js",
+          "web/editor/media/waveform/word-blocks.js",
+          "web/editor/media/waveform/workspace.js",
+          "web/editor/state/editor-history.js",
+          "web/editor/state/editor-multi-subtitle-core.js",
+          "web/editor/state/editor-project-settings.js",
+          "web/editor/state/editor-settings.js",
+          "web/editor/styles/editor-wiring-appearance-settings.js",
+          "web/editor/styles/editor-wiring-ass-manager.js",
+          "web/editor/ui/editor-context-menus.js",
+          "web/editor/ui/editor-display-settings.js",
+          "web/editor/ui/editor-export-menus.js",
+          "web/editor/ui/editor-floating-panel.js",
+          "web/editor/ui/editor-settings-panels.js",
+          "web/editor/ui/editor-wiring-display-behavior.js",
+          "web/editor/ui/editor-wiring-dom-panels.js",
+          "web/editor/ui/editor-wiring-settings-help.js",
+          "web/shared/editor-i18n.js",
+          "web/shared/editor-utils.js",
+          "web/shared/utils/speakers.js",
+          "web/shared/utils/word-timing.js",
+          "web/waveform.css"
+        ],
+        "finalCommit": "a4b999a47dccdffaba67e6a603a6cc8c994e86b2",
+        "validation": {
+          "assembly": {
+            "exit": 0,
+            "log": "pr-179-projected/assembly.log"
+          },
+          "node": {
+            "exit": 0,
+            "log": "pr-179-projected/node.log"
+          }
+        }
+      },
+      "actualTests": {
+        "assembly": {
+          "tests": 10,
+          "pass": 10,
+          "fail": 0,
+          "skipped": 0
+        },
+        "node": {
+          "tests": 462,
+          "pass": 462,
+          "fail": 0,
+          "skipped": 0
+        }
+      },
+      "featureE2E": {
+        "pass": 12
+      }
+    },
+    {
+      "number": 178,
+      "head": "487bb24f334801d4ef351dd55b6d03c30bfebdf8",
+      "url": "https://github.com/Moyf/moys-asr-workflow/pull/178",
+      "mergeBase": "d4e5dff2d96b9f64fe453a2a5155a495769cc260",
+      "classic": {
+        "clean": true,
+        "tree": "934032698725a0ec8542aa60ada0c9289bd97a9d",
+        "conflicts": []
+      },
+      "direct": {
+        "clean": true,
+        "tree": "18d594637038d294c13bae52c1f5001a61a0ffb0",
+        "conflicts": [],
+        "inputAudit": {
+          "requiredByIncomingClassicManifest": 180,
+          "esmInputCount": 180,
+          "missingEsmInputs": []
+        },
+        "conflictHunksByFile": {}
+      },
+      "replay": {
+        "status": "built",
+        "commit": "19ba3dafd98a25efebaa54002668c6b9b4756489",
+        "conversion": {
+          "files": 180,
+          "factoryExports": 59,
+          "crossFileReferences": 565,
+          "rewriteShared": true
+        },
+        "projected": {
+          "clean": true,
+          "tree": "15414f629277eb3dfd9d19c0853d629c4ae34272",
+          "conflicts": []
+        },
+        "changedPaths": [
+          "CHANGELOG.md",
+          "JSON_SCHEMA.md",
+          "MAW.spec",
+          "README.md",
+          "docs/ALIGNMENT_FEATURES.md",
+          "docs/CLI.md",
+          "docs/FEATURE_SCRIPT_ALIGNMENT_174.md",
+          "docs/README.md",
+          "docs/SCRIPT_DRIVEN_ALIGNMENT.md",
+          "docs/TOOLBOX.md",
+          "maw/cli.py",
+          "maw/gui_web.py",
+          "maw/local_runtime.py",
+          "maw/local_runtime_worker.py",
+          "maw/project.py",
+          "maw/script_timestamp_alignment.py",
+          "tests/e2e/script-alignment-editor-roundtrip.spec.mjs",
+          "tests/e2e/script-timestamp-alignment.spec.mjs",
+          "tests/test_project_contract.py",
+          "tests/test_script_timestamp_alignment.py",
+          "web/editor/boot/editor-bundle.js",
+          "web/editor/cues/editor-text-cleanup.js",
+          "web/editor/io/editor-json-repair.js",
+          "web/editor/io/editor-project-load.js",
+          "web/editor/io/editor-wiring-export-context.js",
+          "web/launcher/index.html",
+          "web/launcher/launcher.css",
+          "web/launcher/launcher.js",
+          "web/launcher/postprocess.js"
+        ],
+        "finalCommit": "aa830f3c6ebf5b36de626674bcdfc5ada5653f34",
+        "validation": {
+          "assembly": {
+            "exit": 0,
+            "log": "pr-178-projected/assembly.log"
+          },
+          "node": {
+            "exit": 0,
+            "log": "pr-178-projected/node.log"
+          }
+        }
+      },
+      "actualTests": {
+        "assembly": {
+          "tests": 10,
+          "pass": 10,
+          "fail": 0,
+          "skipped": 0
+        },
+        "node": {
+          "tests": 445,
+          "pass": 445,
+          "fail": 0,
+          "skipped": 0
+        }
+      },
+      "featureE2E": {
+        "pass": 5
+      }
+    },
+    {
+      "number": 177,
+      "head": "d1b03850dfe4a7f503025c8acae833b9d11aba8a",
+      "url": "https://github.com/Moyf/moys-asr-workflow/pull/177",
+      "mergeBase": "d4e5dff2d96b9f64fe453a2a5155a495769cc260",
+      "classic": {
+        "clean": true,
+        "tree": "cb386e5b32f4be5a64bad6398af718aa21ede5ee",
+        "conflicts": []
+      },
+      "direct": {
+        "clean": true,
+        "tree": "91a42d01df2281cf1aa6282f66a5f1cd171496da",
+        "conflicts": [],
+        "inputAudit": {
+          "requiredByIncomingClassicManifest": 184,
+          "esmInputCount": 180,
+          "missingEsmInputs": [
+            "shared/utils/word-timing.js",
+            "editor/media/waveform/word-blocks.js",
+            "editor/cues/editor-word-timing.js",
+            "editor/cues/editor-wiring-word-timing.js"
+          ]
+        },
+        "conflictHunksByFile": {}
+      },
+      "replay": {
+        "status": "built",
+        "commit": "6fb67ddccdf206392c52423a4c2bfa0feeeeccb6",
+        "conversion": {
+          "files": 184,
+          "factoryExports": 61,
+          "crossFileReferences": 565,
+          "rewriteShared": true
+        },
+        "projected": {
+          "clean": true,
+          "tree": "806ce3f39115eba2efe83d7b79179ab21cc8e4b7",
+          "conflicts": []
+        },
+        "changedPaths": [
+          "CHANGELOG.md",
+          "JSON_SCHEMA.md",
+          "docs/EDITOR_GUIDE.md",
+          "docs/WORKFLOW.md",
+          "full-conversion.json",
+          "tests/e2e/word-timing.spec.mjs",
+          "tests/test_editor_assets.py",
+          "tests/test_waveform.py",
+          "tests/test_word_timing.mjs",
+          "web/editor-scripts.txt",
+          "web/editor-sources.txt",
+          "web/editor-template.html",
+          "web/editor.css",
+          "web/editor/boot/editor-bundle.js",
+          "web/editor/boot/editor-globals.d.ts",
+          "web/editor/cues/editor-wiring-word-timing.js",
+          "web/editor/cues/editor-word-timing.js",
+          "web/editor/io/editor-project-load.js",
+          "web/editor/media/editor-waveform-init.js",
+          "web/editor/media/waveform.js",
+          "web/editor/media/waveform/cue-blocks.js",
+          "web/editor/media/waveform/pointer.js",
+          "web/editor/media/waveform/word-blocks.js",
+          "web/editor/state/editor-history.js",
+          "web/editor/ui/editor-context-menus.js",
+          "web/shared/editor-i18n.js",
+          "web/shared/editor-utils.js",
+          "web/shared/utils/word-timing.js",
+          "web/waveform.css"
+        ],
+        "finalCommit": "c828c9b08586429a9af37ab9c441d68f8da9c4e0",
+        "validation": {
+          "assembly": {
+            "exit": 0,
+            "log": "pr-177-projected/assembly.log"
+          },
+          "node": {
+            "exit": 0,
+            "log": "pr-177-projected/node.log"
+          }
+        }
+      },
+      "actualTests": {
+        "assembly": {
+          "tests": 10,
+          "pass": 10,
+          "fail": 0,
+          "skipped": 0
+        },
+        "node": {
+          "tests": 462,
+          "pass": 462,
+          "fail": 0,
+          "skipped": 0
+        }
+      },
+      "featureE2E": {
+        "pass": 16
+      }
+    },
+    {
+      "number": 157,
+      "head": "0aaf51bdcf84a188951aad15aa16cbe4943de28c",
+      "url": "https://github.com/Moyf/moys-asr-workflow/pull/157",
+      "mergeBase": "d20529cdd6ab13b41a941b64a013faf831718044",
+      "classic": {
+        "clean": false,
+        "tree": "0c610bd0182614bdeab62106b6be6f08ddbbf50c",
+        "conflicts": [
+          "tests/test_editor_assets.py",
+          "web/editor-scripts.txt"
+        ]
+      },
+      "direct": {
+        "clean": false,
+        "tree": "405809b8dc92328cd7a87c9a9e9987534f7a65b1",
+        "conflicts": [
+          "tests/helpers/editor-module-loader.mjs",
+          "tests/test_editor_assets.py",
+          "tests/test_editor_host.mjs",
+          "web/editor-scripts.txt",
+          "web/editor/boot/editor-host.js",
+          "web/shared/host/files.js",
+          "web/shared/host/server-api.js",
+          "web/shared/host/storage.js"
+        ],
+        "inputAudit": {
+          "requiredByIncomingClassicManifest": 181,
+          "esmInputCount": 180,
+          "missingEsmInputs": [
+            "editor/boot/esm-bundle.js"
+          ]
+        },
+        "conflictHunksByFile": {
+          "tests/helpers/editor-module-loader.mjs": 1,
+          "tests/test_editor_assets.py": 1,
+          "tests/test_editor_host.mjs": 1,
+          "web/editor-scripts.txt": 1,
+          "web/editor/boot/editor-host.js": 1,
+          "web/shared/host/files.js": 2,
+          "web/shared/host/server-api.js": 2,
+          "web/shared/host/storage.js": 2
+        }
+      },
+      "replay": {
+        "status": "blocked-classic-conflict",
+        "reason": "Resolve original source conflict first; never choose a side automatically"
+      }
+    }
+  ],
+  "combined": {
+    "order": [
+      177,
+      179,
+      178,
+      180
+    ],
+    "steps": [
+      {
+        "number": 177,
+        "oursCommit": "dfd5971f0a6676f8943802cc17de7770839649a0",
+        "theirsCommit": "d1b03850dfe4a7f503025c8acae833b9d11aba8a",
+        "clean": true,
+        "tree": "cb386e5b32f4be5a64bad6398af718aa21ede5ee",
+        "conflicts": []
+      },
+      {
+        "number": 179,
+        "oursCommit": "d2f830aea9cbfbf5ff614ef9016fb2ed31ab43ef",
+        "theirsCommit": "6e23fd75ba34a5c403f78674d3074ef2163dbe88",
+        "clean": true,
+        "tree": "b3eaceec9c43bb37a858c40a937f316b2c0b944f",
+        "conflicts": []
+      },
+      {
+        "number": 178,
+        "oursCommit": "19cdfa3ff2ab3769da801fbb91e0f5039ebef8cd",
+        "theirsCommit": "487bb24f334801d4ef351dd55b6d03c30bfebdf8",
+        "clean": true,
+        "tree": "bf09378e2708e3be7e3845ec6f0ba4e34555afa2",
+        "conflicts": [],
+        "originalConflicts": [
+          "CHANGELOG.md",
+          "tests/test_project_contract.py"
+        ],
+        "additiveResolutions": [
+          {
+            "file": "CHANGELOG.md",
+            "rule": "pure-additions; Python function AST union unchanged",
+            "blob": "4cf76c9521d8e5bc42f533b75101cd5e2f13bc81"
+          },
+          {
+            "file": "tests/test_project_contract.py",
+            "rule": "pure-additions; Python function AST union unchanged",
+            "blob": "2855e91ff4d74b04b0444f8092b13d6226ede713"
+          }
+        ]
+      },
+      {
+        "number": 180,
+        "oursCommit": "a17418185748c2c68548a09a507a8f1fd8f562bf",
+        "theirsCommit": "40d8cca5288d0fd8890f71e54d248eb9ae856088",
+        "clean": true,
+        "tree": "bd306167ee8b4bca914c1350f315e9af44170c67",
+        "conflicts": [],
+        "originalConflicts": [
+          "CHANGELOG.md"
+        ],
+        "additiveResolutions": [
+          {
+            "file": "CHANGELOG.md",
+            "rule": "pure-additions; Python function AST union unchanged",
+            "blob": "25113be270d6b759c2c6e07794d0f7efb9136c78"
+          }
+        ]
+      }
+    ],
+    "status": "built",
+    "conversion": {
+      "files": 187,
+      "factoryExports": 62,
+      "crossFileReferences": 565,
+      "rewriteShared": true
+    },
+    "projected": {
+      "clean": true,
+      "tree": "71939f20d60a34bc3c18d6ad19eaab12fdb151fa",
+      "conflicts": []
+    },
+    "finalCommit": "95b2f9d950ed0106e007b5661e7921cb31c1d362",
+    "classicCommit": "8411bfdd3bd51adfdb277f3d1c2f79e3422519ef",
+    "validation": {
+      "assembly": {
+        "exit": 0,
+        "log": "combined-projected/assembly.log"
+      },
+      "node": {
+        "exit": 0,
+        "log": "combined-projected/node.log"
+      }
+    },
+    "actualTests": {
+      "assembly": {
+        "tests": 10,
+        "pass": 10,
+        "fail": 0,
+        "skipped": 0
+      },
+      "node": {
+        "tests": 467,
+        "pass": 467,
+        "fail": 0,
+        "skipped": 0
+      }
+    },
+    "projectContracts": {
+      "tests": 49,
+      "pass": 49,
+      "fail": 0,
+      "skipped": 0
+    },
+    "featureE2E": {
+      "pass": 34,
+      "skipped": 0
+    },
+    "featureWiring": {
+      "ok": true,
+      "freshness": true,
+      "buildError": null,
+      "expected": {
+        "canvas": true,
+        "wordTiming": true,
+        "projectSettings": true,
+        "fork": false
+      },
+      "file": {
+        "boot": true,
+        "checks": {
+          "canvas": true,
+          "wordTiming": true,
+          "projectSettings": true,
+          "fork": true
+        },
+        "errors": []
+      },
+      "http": {
+        "boot": true,
+        "checks": {
+          "canvas": true,
+          "wordTiming": true,
+          "projectSettings": true,
+          "fork": true
+        },
+        "errors": []
+      }
+    }
+  },
+  "realForkAndCleanMergeCounterexamples": {
+    "nonoverlappingFork": {
+      "merge": {
+        "clean": true,
+        "tree": "4c09a74fbd91955b758ce12054125c3f09f47efb",
+        "conflicts": []
+      },
+      "browser": {
+        "ok": true,
+        "freshness": true,
+        "buildError": null,
+        "expected": {
+          "canvas": true,
+          "wordTiming": false,
+          "projectSettings": false,
+          "fork": true
+        },
+        "file": {
+          "boot": true,
+          "checks": {
+            "canvas": true,
+            "wordTiming": true,
+            "projectSettings": true,
+            "fork": true
+          },
+          "errors": []
+        },
+        "http": {
+          "boot": true,
+          "checks": {
+            "canvas": true,
+            "wordTiming": true,
+            "projectSettings": true,
+            "fork": true
+          },
+          "errors": []
+        }
+      }
+    },
+    "overlappingFork": {
+      "clean": false,
+      "tree": "d2d26a17b2198e474d82aa439b792cc882b5c59f",
+      "conflicts": [
+        "web/editor/styles/editor-wiring-ass-preview.js"
+      ]
+    },
+    "direct177": {
+      "ok": false,
+      "freshness": false,
+      "buildError": null,
+      "expected": {
+        "canvas": false,
+        "wordTiming": true,
+        "projectSettings": false,
+        "fork": false
+      },
+      "file": {
+        "boot": true,
+        "checks": {
+          "canvas": true,
+          "wordTiming": false,
+          "projectSettings": true,
+          "fork": true
+        },
+        "errors": []
+      },
+      "http": {
+        "boot": true,
+        "checks": {
+          "canvas": true,
+          "wordTiming": false,
+          "projectSettings": true,
+          "fork": true
+        },
+        "errors": []
+      }
+    },
+    "direct178": {
+      "ok": false,
+      "freshness": false,
+      "buildError": null,
+      "expected": {
+        "canvas": false,
+        "wordTiming": false,
+        "projectSettings": false,
+        "fork": false
+      },
+      "file": {
+        "boot": true,
+        "checks": {
+          "canvas": true,
+          "wordTiming": true,
+          "projectSettings": true,
+          "fork": true
+        },
+        "errors": []
+      },
+      "http": {
+        "boot": true,
+        "checks": {
+          "canvas": true,
+          "wordTiming": true,
+          "projectSettings": true,
+          "fork": true
+        },
+        "errors": []
+      }
+    }
+  },
+  "fixtureTests": {
+    "tests": 14,
+    "pass": 14,
+    "fail": 0,
+    "skipped": 0,
+    "log": "fixtures-final.log"
+  },
+  "tools": {
+    "git": "2.46.0.windows.1",
+    "node": "25.8.0",
+    "esbuild": "0.28.2"
+  },
+  "coreScriptSha256": {
+    "full-convert.mjs": "13c3a2bbbb041fa832b2bc3380e433b73b99b4a247949189915e429390055e05",
+    "full-build.mjs": "23891bd98a9e201239f8218685e3511f2be95254a009604976ed5b0b0d1a8e50",
+    "research.mjs": "b531d41e9ecc1d74c479c17a3f7a54bfada4385fa31a27f728b06bb0c966378c",
+    "adapt-tests.mjs": "953577e2219b71d38b8e3db681c4c35ec10ce8f406e49427496a250fcca77011"
+  },
+  "newToolSha256": {
+    "snapshot-upstream.py": "9fbe46b7c807dfe102579f742cceffa124eaba3ee8164336abcbce7a308ff51a",
+    "fetch-github-objects.py": "36513404836cb73c2206d643b5f4a4649619170448937082b53c51d8c3e56051",
+    "rehearse-upstream.py": "7f3f2cc60b8a24528d0defa5331a2ff5c107cbcfd1bed8260424f0fa0e4aec0c",
+    "probe-projection.py": "60deee042b5641bbb72f107fc410aff8de3259b70dc9b9d1ce67eedac4e1ccc9",
+    "test-upstream.py": "48a9fbcccbfa31408bcb806d1c7785c1b07f0f88b15402752948f49459377207",
+    "verify-upstream.mjs": "640e561d7c70e56be6dce180e81debbd6be3c661fe60bd42320668c762157934"
+  },
+  "deferred": [
+    "typecheck",
+    "legacy source-text asset contracts"
+  ],
+  "unverified": [
+    "complete desktop application and packaging",
+    "remaining E2E suite",
+    "real model alignment accuracy",
+    "Canvas visual rendering quality",
+    "fork new modules and architecture retirement scenarios"
+  ],
+  "evidenceRoot": ".worktrees/esm-upstream-rehearsal-20261008",
+  "validEvidence": [
+    "run-1/results.json",
+    "sequence-3/results.json",
+    "proof-1/proof.json",
+    "sequence-3/combined-projected/combined-feature-e2e.log",
+    "sequence-3/combined-projected/combined-python.log"
+  ],
+  "discardedEvidence": {
+    "sequence-1": "prototype dropped upstream merge parent; invented conflicts; corrected and covered by fixture"
+  },
+  "historyNote": "Independent run-1 runtime/source facts remain valid; use current scripts with two-parent merges to generate new candidates. Final combined sequence-3 preserves both parents.",
+  "referencesPinnedOnlyInIsolatedRepo": true
+}

@@ -1,5 +1,5 @@
 // media-metadata: private helpers; dependencies are injected by editor-utils.js.
-window.MAWE.register('utils-media-metadata', function createUtilsModule(dependencies) {
+export function createUtilsModule(dependencies) {
   'use strict';
 
 
@@ -96,4 +96,4 @@ window.MAWE.register('utils-media-metadata', function createUtilsModule(dependen
   }
 
   return Object.freeze({ decodeSubtitleText, parseBwfTimeReference, readBwfTimeReferenceFromFile });
-});
+}

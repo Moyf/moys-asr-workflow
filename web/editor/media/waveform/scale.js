@@ -1,5 +1,5 @@
 // scale: waveform helpers with explicit dependencies.
-window.MAWE.register('waveform-scale', function createWaveformModule(dependencies) {
+export function createWaveformModule(dependencies) {
   'use strict';
   const { MAX_WAVEFORM_SCALE, MIN_WAVEFORM_SCALE, clamp } = dependencies;
 
@@ -118,4 +118,4 @@ window.MAWE.register('waveform-scale', function createWaveformModule(dependencie
   }
 
   return Object.freeze({ buildWaveformEnvelope, clampWaveformScale, sampleInterpolatedPeak, waveformAmplitude, waveformScaleAfterStep, waveformScaleFromLoudness, wheelScrollDelta });
-});
+}

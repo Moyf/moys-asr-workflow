@@ -1,5 +1,5 @@
 // Browser file capabilities. A future desktop host can replace this whole service.
-window.MAWE.register('host-files', function createFiles(dependencies) {
+export function createFiles(dependencies) {
   'use strict';
   const { browser, environment } = dependencies;
   return Object.freeze({
@@ -21,4 +21,4 @@ window.MAWE.register('host-files', function createFiles(dependencies) {
       environment.setTimeout(() => environment.URL.revokeObjectURL(url), 1000);
     },
   });
-});
+}

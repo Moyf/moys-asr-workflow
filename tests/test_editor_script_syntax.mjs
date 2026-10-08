@@ -8,6 +8,10 @@ import { dirname, join } from "node:path";
 import test from "node:test";
 import vm from "node:vm";
 import { fileURLToPath } from "node:url";
+import * as acorn from 'acorn';
+
+const modules = new Set(JSON.parse(readFileSync(new URL('../web/editor-modules.json',import.meta.url),'utf8'))
+  .modules.map(item => item.file));
 
 const webDir = join(dirname(fileURLToPath(import.meta.url)), "..", "web");
 
@@ -23,7 +27,8 @@ test("editor-scripts.txt 内每个脚本都是合法的 classic script", () => {
     const source = readFileSync(join(webDir, ...entry.split("/")), "utf8");
     try {
       // 只编译，不执行：与 node --check 同等语法覆盖，不要求目标脚本能独立运行。
-      new vm.Script(source, { filename: entry });
+      if (modules.has(entry)) acorn.parse(source,{ecmaVersion:'latest',sourceType:'module'});
+      else new vm.Script(source, { filename: entry });
     } catch (error) {
       broken.push(`${entry}: ${error.message}`);
     }
