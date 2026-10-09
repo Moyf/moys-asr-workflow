@@ -778,13 +778,23 @@ class RuntimeHostEnvironmentTests(unittest.TestCase):
     表现为 "ensurepip ... returned non-zero exit status 1"，venv 直接建不出来。
     """
 
+    @staticmethod
+    def _home_preserving_env(parent_env: dict[str, str]) -> dict[str, str]:
+        """clear=True 需保留 home 变量：LOCAL 环境构建经 app_paths 依赖 Path.home()。"""
+        return {
+            **parent_env,
+            "USERPROFILE": os.environ.get("USERPROFILE", ""),
+            "HOME": os.environ.get("HOME", ""),
+        }
+
     def test_frozen_linux_drops_bundled_library_path(self) -> None:
         parent_env = {"LD_LIBRARY_PATH": "/app/_internal", "MAW_TEST": "preserved"}
+        patched_env = self._home_preserving_env(parent_env)
         with mock.patch.object(sys, "platform", "linux"):
             with mock.patch.object(sys, "frozen", True, create=True):
-                with mock.patch.dict(os.environ, parent_env, clear=True):
+                with mock.patch.dict(os.environ, patched_env, clear=True):
                     env = OCR.environment(Path("/tmp/ocr-runtime"))
-                    self.assertEqual(dict(os.environ), parent_env)
+                    self.assertEqual(dict(os.environ), patched_env)
 
         self.assertNotIn("LD_LIBRARY_PATH", env)
         self.assertEqual(env["MAW_TEST"], "preserved")
@@ -796,22 +806,23 @@ class RuntimeHostEnvironmentTests(unittest.TestCase):
         }
         with mock.patch.object(sys, "platform", "linux"):
             with mock.patch.object(sys, "frozen", True, create=True):
-                with mock.patch.dict(os.environ, parent_env, clear=True):
+                with mock.patch.dict(os.environ, self._home_preserving_env(parent_env), clear=True):
                     env = LOCAL.environment(Path("/tmp/local-runtime"))
 
         self.assertEqual(env["LD_LIBRARY_PATH"], "/run/current-system/sw/lib")
 
     def test_source_mode_and_non_linux_keep_library_path(self) -> None:
         parent_env = {"LD_LIBRARY_PATH": "/opt/cuda/lib64"}
+        patched_env = self._home_preserving_env(parent_env)
         with mock.patch.object(sys, "platform", "linux"):
             with mock.patch.object(sys, "frozen", False, create=True):
-                with mock.patch.dict(os.environ, parent_env, clear=True):
+                with mock.patch.dict(os.environ, patched_env, clear=True):
                     env = LOCAL.environment(Path("/tmp/local-runtime"))
         self.assertEqual(env["LD_LIBRARY_PATH"], "/opt/cuda/lib64")
 
         with mock.patch.object(sys, "platform", "win32"):
             with mock.patch.object(sys, "frozen", True, create=True):
-                with mock.patch.dict(os.environ, parent_env, clear=True):
+                with mock.patch.dict(os.environ, patched_env, clear=True):
                     env = LOCAL.environment(Path("/tmp/local-runtime"))
         self.assertEqual(env["LD_LIBRARY_PATH"], "/opt/cuda/lib64")
 

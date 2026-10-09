@@ -344,9 +344,15 @@ class LocalRuntimeEnvironmentTests(unittest.TestCase):
 
     def test_runtime_env_drops_bundled_library_path_for_frozen_linux(self) -> None:
         parent_env = {"LD_LIBRARY_PATH": "/app/_internal", "MAW_TEST": "preserved"}
+        # clear=True 需保留 home 变量：环境构建经 app_paths 依赖 Path.home()。
+        patched_env = {
+            **parent_env,
+            "USERPROFILE": os.environ.get("USERPROFILE", ""),
+            "HOME": os.environ.get("HOME", ""),
+        }
         with mock.patch.object(sys, "platform", "linux"):
             with mock.patch.object(sys, "frozen", True, create=True):
-                with mock.patch.dict(os.environ, parent_env, clear=True):
+                with mock.patch.dict(os.environ, patched_env, clear=True):
                     env = _runtime_env(None, Path("/tmp/local-runtime"))
 
         self.assertNotIn("LD_LIBRARY_PATH", env)
