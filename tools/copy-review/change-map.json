@@ -1,0 +1,2749 @@
+[
+  {
+    "from": "1️⃣ 媒体与输出",
+    "to": "1️⃣ 选择媒体",
+    "rowId": "L1-02",
+    "files": [
+      "web\\launcher\\index.html",
+      "web\\launcher\\launcher.js",
+      "tests\\test_gui_web.py"
+    ]
+  },
+  {
+    "from": "一次处理一个媒体文件。",
+    "to": "一次转写一个文件。",
+    "rowId": "L1-04",
+    "files": [
+      "web\\launcher\\index.html",
+      "web\\launcher\\launcher.js"
+    ]
+  },
+  {
+    "from": "拖入音频/视频文件，或点击选择。",
+    "to": "拖入视频或音频，也可点击选择。",
+    "rowId": "L1-05",
+    "files": [
+      "web\\launcher\\index.html",
+      "web\\launcher\\launcher.js"
+    ]
+  },
+  {
+    "from": "声音轨道",
+    "to": "音轨",
+    "rowId": "L1-07",
+    "files": [
+      "web\\launcher\\index.html(x2)",
+      "web\\launcher\\launcher.js(x4)",
+      "docs\\dev\\文档重构记录.md",
+      "docs\\LAUNCHER_GUIDE.md(x2)",
+      "docs\\WORKFLOW.md"
+    ]
+  },
+  {
+    "from": "检测到多个声音轨道，请选择用于转写和波形的轨道。",
+    "to": "这个文件有多条音轨，请选择一条。",
+    "rowId": "L1-08",
+    "files": [
+      "web\\launcher\\index.html",
+      "web\\launcher\\launcher.js"
+    ]
+  },
+  {
+    "from": "拖入多个音频/视频文件，或反复添加文件；所有文件共用下方识别设置。",
+    "to": "处理多个文件，所有文件共用下方识别设置。",
+    "rowId": "L1-11",
+    "files": [
+      "web\\launcher\\index.html",
+      "web\\launcher\\launcher.js"
+    ]
+  },
+  {
+    "from": "只生成 SRT 字幕",
+    "to": "只生成字幕",
+    "rowId": "L1-12",
+    "files": [
+      "web\\launcher\\index.html",
+      "web\\launcher\\launcher.js"
+    ]
+  },
+  {
+    "from": "快速测试已限定前 2 分钟",
+    "to": "快速测试模式：只转写前 2 分钟内容",
+    "rowId": "L1-16",
+    "files": [
+      "web\\launcher\\index.html",
+      "web\\launcher\\launcher.js",
+      "tests\\test_gui_web.py"
+    ]
+  },
+  {
+    "from": "存入本地环境",
+    "to": "保存",
+    "rowId": "L1-17",
+    "files": [
+      "web\\launcher\\index.html(x4)",
+      "web\\launcher\\launcher.js"
+    ]
+  },
+  {
+    "from": "启用转写后自动处理",
+    "to": "启用自动处理",
+    "rowId": "L1-20",
+    "files": [
+      "web\\launcher\\index.html",
+      "web\\launcher\\launcher.js"
+    ]
+  },
+  {
+    "from": "转写完成后按固定顺序处理字幕；首次启用某一步前，请先在工具箱中完成配置。",
+    "to": "转写完成后自动执行；需先在工具箱进行配置。",
+    "rowId": "L1-21",
+    "files": [
+      "web\\launcher\\index.html",
+      "web\\launcher\\launcher.js"
+    ]
+  },
+  {
+    "from": "后处理步骤",
+    "to": "处理步骤",
+    "rowId": "L1-22",
+    "files": [
+      "web\\launcher\\index.html",
+      "web\\launcher\\launcher.js(x2)",
+      "tests\\e2e\\launcher-interactions.spec.mjs",
+      "tests\\test_gui_web.py(x2)",
+      "tests\\test_postprocess_pipeline.py",
+      "docs\\TEST_FEEDBACK_BETA7.md",
+      "CHANGELOG.md"
+    ]
+  },
+  {
+    "from": "LLM 校对",
+    "to": "AI 校对",
+    "rowId": "L1-24",
+    "files": [
+      "web\\launcher\\index.html",
+      "web\\launcher\\launcher.js",
+      "docs\\LLM_POSTPROCESS_PROTOCOL.md(x2)",
+      "docs\\POSTPROCESS_PIPELINE.md(x2)",
+      "docs\\RELEASE_REVIEW_1.3.2_TO_1.4.0.md",
+      "docs\\TOOLBOX.md",
+      "CHANGELOG.md(x5)"
+    ]
+  },
+  {
+    "from": "OCR 字幕去重",
+    "to": "OCR 去重",
+    "rowId": "L1-25",
+    "files": [
+      "web\\launcher\\index.html(x3)",
+      "web\\launcher\\launcher.js(x5)",
+      "docs\\OCR_SUBTITLE_DEDUP.md(x4)",
+      "docs\\POSTPROCESS_PIPELINE.md",
+      "docs\\README.md",
+      "docs\\RELEASE_REVIEW_1.3.2_TO_1.4.0.md",
+      "docs\\TOOLBOX.md(x2)",
+      "CHANGELOG.md(x7)"
+    ]
+  },
+  {
+    "from": "将双语字幕合并为单个字幕",
+    "to": "合并双语字幕",
+    "rowId": "L1-27",
+    "files": [
+      "web\\launcher\\index.html(x2)",
+      "web\\launcher\\launcher.js(x2)",
+      "docs\\LLM_POSTPROCESS_PROTOCOL.md(x2)",
+      "docs\\MULTI_SUBTITLE.md"
+    ]
+  },
+  {
+    "from": "只翻译非中文的字幕",
+    "to": "只翻译外文语句",
+    "rowId": "L1-28",
+    "files": [
+      "web\\launcher\\index.html(x2)",
+      "web\\launcher\\launcher.js(x3)"
+    ]
+  },
+  {
+    "from": "当你仅有少量外文语句需要翻译，可以勾选此项将它们翻译成原文的语言。",
+    "to": "只把少量外文语句翻译成目标语言。",
+    "rowId": "L1-29",
+    "files": [
+      "web\\launcher\\index.html",
+      "web\\launcher\\launcher.js",
+      "tests\\e2e\\launcher-interactions.spec.mjs",
+      "tests\\test_gui_web.py(x2)"
+    ]
+  },
+  {
+    "from": "保留中间产物",
+    "to": "保留中间文件",
+    "rowId": "L1-30",
+    "files": [
+      "web\\launcher\\index.html",
+      "web\\launcher\\launcher.js",
+      "docs\\LLM_POSTPROCESS_PROTOCOL.md",
+      "docs\\POSTPROCESS_PIPELINE.md",
+      "CHANGELOG.md(x2)"
+    ]
+  },
+  {
+    "from": "勾选后将保留处理过程中每一个步骤的产物；否则只留最终产物。任务失败时会自动保留以排查问题。",
+    "to": "保留每一步的结果文件；失败时自动保留。",
+    "rowId": "L1-31",
+    "files": [
+      "web\\launcher\\index.html"
+    ]
+  },
+  {
+    "from": "5️⃣ 字幕编辑器设置",
+    "to": "5️⃣ 编辑器",
+    "rowId": "L1-33",
+    "files": [
+      "web\\launcher\\index.html",
+      "web\\launcher\\launcher.js",
+      "tests\\test_gui_web.py"
+    ]
+  },
+  {
+    "from": "工程 JSON",
+    "to": "工程文件",
+    "rowId": "L1-34",
+    "files": [
+      "web\\editor\\io\\editor-json-repair.js",
+      "web\\launcher\\index.html",
+      "web\\shared\\utils\\split-alignment.js",
+      "tests\\test_media_cache.py",
+      "docs\\dev\\MAW 1.1 开发追踪.md",
+      "docs\\dev\\MAW 1.2 本地模型 Launcher 开发记录.md",
+      "docs\\dev\\Qwen-Audio-Filetrans 开发计划.md(x2)",
+      "CHANGELOG.md(x8)"
+    ]
+  },
+  {
+    "from": "服务器媒体",
+    "to": "媒体文件",
+    "rowId": "L1-35",
+    "files": [
+      "web\\launcher\\index.html",
+      "web\\launcher\\launcher.js",
+      "CHANGELOG.md(x2)"
+    ]
+  },
+  {
+    "from": "工程未记录媒体，或文件已移动，请手动选择。",
+    "to": "工程找不到媒体时，请手动选择。",
+    "rowId": "L1-36",
+    "files": [
+      "web\\launcher\\index.html",
+      "web\\launcher\\launcher.js"
+    ]
+  },
+  {
+    "from": "生成字幕和工程",
+    "to": "开始生成",
+    "rowId": "L1-37",
+    "files": [
+      "web\\launcher\\index.html",
+      "web\\launcher\\launcher.js",
+      "docs\\archived\\README-2026-08-11.md",
+      "docs\\dev\\MAW 1.2 本地模型 Launcher 开发记录.md",
+      "docs\\TEST_FEEDBACK_LAYOUT.md",
+      "CHANGELOG.md"
+    ]
+  },
+  {
+    "from": "✨ 开始批量生成",
+    "to": "开始批量生成",
+    "rowId": "L1-38",
+    "files": [
+      "web\\launcher\\index.html",
+      "web\\launcher\\launcher.js",
+      "tests\\test_gui_web.py"
+    ]
+  },
+  {
+    "from": "启动 Server 版字幕编辑器",
+    "to": "打开编辑器",
+    "rowId": "L1-39",
+    "files": [
+      "web\\launcher\\index.html",
+      "docs\\archived\\README-2026-08-11.md",
+      "CHANGELOG.md"
+    ]
+  },
+  {
+    "from": "打开该工程的 HTML 编辑器",
+    "to": "用便携编辑器打开",
+    "rowId": "L1-40",
+    "files": [
+      "web\\launcher\\index.html",
+      "web\\launcher\\launcher.js",
+      "tests\\test_gui_web.py"
+    ]
+  },
+  {
+    "from": "打开空的 HTML 编辑器",
+    "to": "打开空白编辑器",
+    "rowId": "L1-41",
+    "files": [
+      "web\\launcher\\index.html",
+      "web\\launcher\\launcher.js",
+      "tests\\test_gui_web.py"
+    ]
+  },
+  {
+    "from": "从失败步骤重试后处理",
+    "to": "重新尝试自动处理",
+    "rowId": "L1-43",
+    "files": [
+      "web\\launcher\\index.html",
+      "web\\launcher\\launcher.js",
+      "docs\\POSTPROCESS_PIPELINE.md"
+    ]
+  },
+  {
+    "from": "可多选；不选即自动识别（仅偏向，不限制）。",
+    "to": "可多选；不选时自动识别。",
+    "rowId": "L2-03",
+    "files": [
+      "web\\launcher\\index.html",
+      "web\\launcher\\launcher.js"
+    ]
+  },
+  {
+    "from": "生成标点提升断句",
+    "to": "自动加标点",
+    "rowId": "L2-04",
+    "files": [
+      "web\\launcher\\index.html",
+      "web\\launcher\\launcher.js"
+    ]
+  },
+  {
+    "from": "当前模型没有字词级时间码时，可调用已准备好的对齐模型补齐。",
+    "to": "模型不带时间码时，用对齐模型将它补齐。",
+    "rowId": "L2-06",
+    "files": [
+      "web\\launcher\\index.html",
+      "web\\launcher\\launcher.js"
+    ]
+  },
+  {
+    "from": "Qwen 上下文与热词",
+    "to": "热词与提示",
+    "rowId": "L2-07",
+    "files": [
+      "web\\launcher\\index.html",
+      "web\\launcher\\launcher.js",
+      "tests\\test_gui_web.py"
+    ]
+  },
+  {
+    "from": "附加上下文（Prompt）",
+    "to": "提示词",
+    "rowId": "L2-08",
+    "files": [
+      "web\\launcher\\index.html",
+      "web\\launcher\\launcher.js",
+      "CHANGELOG.md(x2)"
+    ]
+  },
+  {
+    "from": "领域词表或前文提示；本次任务最多发送 400 个字符，不是通用系统指令。",
+    "to": "专业词汇或背景，最多 400 字。",
+    "rowId": "L2-09",
+    "files": [
+      "web\\launcher\\index.html",
+      "web\\launcher\\launcher.js"
+    ]
+  },
+  {
+    "from": "保留方言表达",
+    "to": "保留方言",
+    "rowId": "L2-10",
+    "files": [
+      "web\\launcher\\index.html",
+      "web\\launcher\\launcher.js(x3)",
+      "docs\\CLI.md",
+      "docs\\LAUNCHER_GUIDE.md",
+      "docs\\PROVIDERS.md"
+    ]
+  },
+  {
+    "from": "即时热词",
+    "to": "热词",
+    "rowId": "L2-11",
+    "files": [
+      "web\\launcher\\index.html",
+      "web\\launcher\\launcher.js(x5)",
+      "docs\\ASR_PROVIDER_RESEARCH.md(x3)",
+      "docs\\CLI.md",
+      "docs\\dev\\Qwen-Audio-Filetrans 开发计划.md(x8)",
+      "docs\\PROVIDERS.md(x2)",
+      "CHANGELOG.md(x5)"
+    ]
+  },
+  {
+    "from": "每行一个，也支持逗号分隔；可直接拖入 .txt 文本文件自动填入；只作用于本次 Qwen-Audio 转写。",
+    "to": "每行一个词；只对本次识别生效。可直接拖入文本文件。",
+    "rowId": "L2-12",
+    "files": [
+      "web\\launcher\\index.html"
+    ]
+  },
+  {
+    "from": "默认热词权重",
+    "to": "热词权重",
+    "rowId": "L2-13",
+    "files": [
+      "web\\launcher\\index.html",
+      "web\\launcher\\launcher.js",
+      "CHANGELOG.md"
+    ]
+  },
+  {
+    "from": "权重 50 适合少量必须命中的词，最多 50 个。",
+    "to": "权重 50 = 必须命中，最多填写 50 个词。",
+    "rowId": "L2-14",
+    "files": [
+      "web\\launcher\\index.html",
+      "web\\launcher\\launcher.js"
+    ]
+  },
+  {
+    "from": "给不同说话人分配字幕颜色",
+    "to": "按说话人配色",
+    "rowId": "L2-16",
+    "files": [
+      "web\\launcher\\index.html",
+      "web\\launcher\\launcher.js",
+      "CHANGELOG.md(x2)"
+    ]
+  },
+  {
+    "from": "最多 5 种颜色；说话人超过 5 个时颜色循环复用。",
+    "to": "最多 5 种颜色，超出将循环使用。",
+    "rowId": "L2-17",
+    "files": [
+      "web\\launcher\\index.html",
+      "web\\launcher\\launcher.js"
+    ]
+  },
+  {
+    "from": "生成 reapeaks 频谱数据",
+    "to": "生成频谱数据",
+    "rowId": "L2-18",
+    "files": [
+      "web\\launcher\\index.html(x2)",
+      "web\\launcher\\launcher.js",
+      "tests\\test_gui_web.py"
+    ]
+  },
+  {
+    "from": "调试运行（保存原始/中间数据）",
+    "to": "调试模式",
+    "rowId": "L2-19",
+    "files": [
+      "web\\launcher\\index.html",
+      "web\\launcher\\launcher.js"
+    ]
+  },
+  {
+    "from": "后处理",
+    "to": "字幕处理",
+    "rowId": "L3-01",
+    "files": [
+      "web\\launcher\\index.html(x5)",
+      "web\\launcher\\launcher.js(x12)",
+      "tests\\e2e\\launcher-interactions.spec.mjs",
+      "tests\\test_gui_web.py(x3)",
+      "tests\\test_media.py(x5)",
+      "tests\\test_output_naming.py(x7)",
+      "tests\\test_postprocess_io.py",
+      "tests\\test_postprocess_pipeline.py(x16)",
+      "tests\\test_punctuation_defaults_contract.py",
+      "docs\\archived\\README-2026-08-11.md(x4)",
+      "docs\\LAUNCHER_GUIDE.md(x3)",
+      "docs\\LLM_POSTPROCESS_PROTOCOL.md(x7)",
+      "docs\\LOCAL_ASR.md",
+      "docs\\MULTI_SUBTITLE.md",
+      "docs\\OCR_SUBTITLE_DEDUP.md(x2)",
+      "docs\\POSTPROCESS_PIPELINE.md(x3)",
+      "docs\\PROVIDERS.md",
+      "docs\\PR_REVIEW_165.md(x2)",
+      "docs\\README.md",
+      "docs\\RELEASE_REVIEW_1.3.2_TO_1.4.0.md(x3)",
+      "docs\\REVIEW_RECENT_WORKFLOW.md(x2)",
+      "docs\\TEST_FEEDBACK_AI_CLEANUP_MARKERS.md",
+      "docs\\TEST_FEEDBACK_BETA7.md(x20)",
+      "docs\\TEST_FEEDBACK_PUNCT_SETTINGS.md(x3)",
+      "docs\\TEST_FEEDBACK_RTF_TAG.md",
+      "docs\\TEST_FEEDBACK_RTF_UNDO_MARKERS.md(x2)",
+      "docs\\TEST_FEEDBACK_TRANSLATE_LOCALIZE.md(x2)",
+      "docs\\TOOLBOX.md(x4)",
+      "CHANGELOG.md(x59)"
+    ]
+  },
+  {
+    "from": "实用工具",
+    "to": "媒体工具",
+    "rowId": "L3-02",
+    "files": [
+      "web\\launcher\\index.html",
+      "web\\launcher\\launcher.js",
+      "tests\\test_gui_web.py(x2)",
+      "docs\\TEST_FEEDBACK_AUDIO_TRACKS.md",
+      "docs\\TOOLBOX.md(x3)",
+      "CHANGELOG.md(x8)"
+    ]
+  },
+  {
+    "from": "LLM 处理",
+    "to": "AI 处理",
+    "rowId": "L3-04",
+    "files": [
+      "web\\launcher\\index.html",
+      "web\\launcher\\launcher.js(x5)",
+      "tests\\test_gui_web.py(x2)",
+      "docs\\archived\\README-2026-08-11.md"
+    ]
+  },
+  {
+    "from": "处理产物",
+    "to": "处理结果",
+    "rowId": "L3-09",
+    "files": [
+      "web\\launcher\\index.html",
+      "web\\launcher\\launcher.js",
+      "docs\\TEST_FEEDBACK_BETA7.md",
+      "CHANGELOG.md(x5)"
+    ]
+  },
+  {
+    "from": "点击文件名切换输入",
+    "to": "点击可切换输入",
+    "rowId": "L3-09",
+    "files": [
+      "web\\launcher\\index.html",
+      "web\\launcher\\launcher.js"
+    ]
+  },
+  {
+    "from": "使用 AI 整理",
+    "to": "调用 AI 进行整理",
+    "rowId": "L3-12",
+    "files": [
+      "web\\launcher\\index.html",
+      "web\\launcher\\launcher.js",
+      "docs\\TEST_FEEDBACK_AI_CLEANUP_MARKERS.md",
+      "docs\\TOOLBOX.md",
+      "CHANGELOG.md(x2)"
+    ]
+  },
+  {
+    "from": "自动清理 Markdown 符号",
+    "to": "清理 Markdown 符号",
+    "rowId": "L3-13",
+    "files": [
+      "web\\launcher\\index.html",
+      "web\\launcher\\launcher.js"
+    ]
+  },
+  {
+    "from": "替换分隔符号",
+    "to": "分隔符",
+    "rowId": "L3-17",
+    "files": [
+      "web\\launcher\\index.html",
+      "web\\launcher\\launcher.js"
+    ]
+  },
+  {
+    "from": "只补充缺失时间码",
+    "to": "只补缺失时间码",
+    "rowId": "L3-18",
+    "files": [
+      "web\\launcher\\index.html",
+      "web\\launcher\\launcher.js"
+    ]
+  },
+  {
+    "from": "重新生成全部时间码",
+    "to": "全部重新生成",
+    "rowId": "L3-18",
+    "files": [
+      "web\\launcher\\index.html",
+      "web\\launcher\\launcher.js"
+    ]
+  },
+  {
+    "from": "文稿 + 录音（跳过 ASR）",
+    "to": "仅使用文稿对齐",
+    "rowId": "L3-18",
+    "files": []
+  },
+  {
+    "from": "画面字幕区",
+    "to": "识别区域",
+    "rowId": "L3-19",
+    "files": [
+      "web\\launcher\\index.html",
+      "web\\launcher\\launcher.js",
+      "docs\\OCR_SUBTITLE_DEDUP.md(x2)"
+    ]
+  },
+  {
+    "from": "生成 OCR 判定报告",
+    "to": "生成判定报告",
+    "rowId": "L3-21",
+    "files": [
+      "web\\launcher\\index.html",
+      "web\\launcher\\launcher.js",
+      "docs\\OCR_SUBTITLE_DEDUP.md"
+    ]
+  },
+  {
+    "from": "自动生成空隙",
+    "to": "自动标记静音",
+    "rowId": "L3-23",
+    "files": [
+      "web\\launcher\\index.html",
+      "web\\launcher\\launcher.js",
+      "tests\\test_gui_web.py"
+    ]
+  },
+  {
+    "from": "最小空隙",
+    "to": "最短静音",
+    "rowId": "L3-24",
+    "files": [
+      "web\\editor-template.html",
+      "web\\launcher\\index.html",
+      "web\\launcher\\launcher.js",
+      "web\\shared\\editor-i18n.js",
+      "docs\\TEST_FEEDBACK_GAP.md(x3)",
+      "CHANGELOG.md"
+    ]
+  },
+  {
+    "from": "ms）/ 音量阈值（dB）/ 前端预留（ms）/ 后端预留（ms",
+    "to": "ms） / 音量阈值（dB） / 句首保留（ms） / 句尾保留（ms",
+    "rowId": "L3-24",
+    "files": []
+  },
+  {
+    "from": "执行 OCR 字幕去重",
+    "to": "执行 OCR 去重",
+    "rowId": "L3-26",
+    "files": [
+      "web\\launcher\\index.html",
+      "web\\launcher\\launcher.js",
+      "docs\\OCR_SUBTITLE_DEDUP.md"
+    ]
+  },
+  {
+    "from": "运行处理",
+    "to": "开始处理",
+    "rowId": "L3-26",
+    "files": [
+      "web\\launcher\\index.html",
+      "web\\launcher\\launcher.js"
+    ]
+  },
+  {
+    "from": "执行固定替换",
+    "to": "执行替换",
+    "rowId": "L3-26",
+    "files": [
+      "web\\launcher\\index.html",
+      "web\\launcher\\launcher.js(x2)"
+    ]
+  },
+  {
+    "from": "配置",
+    "to": "设置",
+    "rowId": "L4-01",
+    "files": [
+      "web\\editor\\boot\\editor-boot.js",
+      "web\\editor\\boot\\editor-wiring-initial-config.js",
+      "web\\editor\\cues\\editor-cue-events.js",
+      "web\\editor\\cues\\editor-split-trim.js",
+      "web\\editor\\cues\\editor-sticker-picker.js",
+      "web\\editor\\io\\editor-export-timeline.js",
+      "web\\editor\\io\\editor-sticker-root.js",
+      "web\\editor\\io\\editor-wiring-sticker-root.js",
+      "web\\editor\\state\\editor-multi-subtitle-core.js",
+      "web\\editor\\state\\editor-settings.js",
+      "web\\editor\\styles\\editor-wiring-ass-manager.js(x2)",
+      "web\\editor\\ui\\editor-workspaces.js",
+      "web\\editor-template.html(x17)",
+      "web\\launcher\\index.html(x23)",
+      "web\\launcher\\launcher.js(x33)",
+      "web\\shared\\editor-i18n.js(x21)",
+      "web\\shared\\utils\\ass-style.js",
+      "web\\shared\\utils\\speakers.js",
+      "web\\shared\\utils\\split-trim.js(x2)",
+      "tests\\e2e\\ass-export.spec.mjs",
+      "tests\\e2e\\cue-color-filter.spec.mjs(x3)",
+      "tests\\e2e\\fcp7-export.spec.mjs",
+      "tests\\e2e\\launcher-interactions.spec.mjs(x5)",
+      "tests\\test_asr_presets_browser.mjs",
+      "tests\\test_bcut.py",
+      "tests\\test_editor_utils.mjs(x3)",
+      "tests\\test_gui_web.py(x15)",
+      "tests\\test_gui_workflow.py(x2)",
+      "tests\\test_local_asr.py(x2)",
+      "tests\\test_local_editor_server.py",
+      "tests\\test_media_cache.py",
+      "tests\\test_mopeaks.py(x5)",
+      "tests\\test_output_naming.py(x2)",
+      "tests\\test_packaging_contract.py",
+      "tests\\test_postprocess.py(x2)",
+      "tests\\test_postprocess_match.py",
+      "tests\\test_quapeaks_generation.py",
+      "tests\\test_qwen.py",
+      "tests\\test_reapeaks.py",
+      "tests\\test_waveform.py(x3)",
+      "docs\\archived\\README-2026-08-11.md(x7)",
+      "docs\\ASR_PROVIDER_RESEARCH.md(x3)",
+      "docs\\ASS_STYLES.md(x2)",
+      "docs\\CLI.md(x7)",
+      "docs\\dev\\MAW 1.1 开发追踪.md(x2)",
+      "docs\\dev\\MAW 1.2 本地模型 Launcher 开发记录.md(x2)",
+      "docs\\dev\\MAWE 接线拆分与目录分层计划.md(x2)",
+      "docs\\dev\\MAWE 状态与命令重构进度.md",
+      "docs\\dev\\MAWE 职责拆分与宿主边界进度.md",
+      "docs\\dev\\Parakeet TDT 日文模型接入调研.md(x2)",
+      "docs\\dev\\Qwen-Audio-Filetrans 开发计划.md(x5)",
+      "docs\\dev\\文档重构记录.md",
+      "docs\\DEVELOPMENT.md(x3)",
+      "docs\\FAQ.md(x4)",
+      "docs\\GAP_PROVENANCE.md(x2)",
+      "docs\\LAUNCHER_GUIDE.md",
+      "docs\\LLM_POSTPROCESS_PROTOCOL.md(x4)",
+      "docs\\LOCAL_ASR.md(x3)",
+      "docs\\MOSE.md",
+      "docs\\MULTI_SUBTITLE.md(x2)",
+      "docs\\OCR_SUBTITLE_DEDUP.md",
+      "docs\\POSTPROCESS_PIPELINE.md(x4)",
+      "docs\\PROVIDERS.md(x7)",
+      "docs\\README.md(x2)",
+      "docs\\RELEASE_REVIEW_1.3.2_TO_1.4.0.md(x2)",
+      "docs\\REVIEW_RECENT_WORKFLOW.md(x2)",
+      "docs\\TEST_FEEDBACK_ALIGN_MVP.md(x3)",
+      "docs\\TEST_FEEDBACK_ASR_PRESET_MANAGER.md(x3)",
+      "docs\\TEST_FEEDBACK_ASS_STYLE.md",
+      "docs\\TEST_FEEDBACK_ASS_UI.md(x3)",
+      "docs\\TEST_FEEDBACK_BETA7.md(x16)",
+      "docs\\TEST_FEEDBACK_BILINGUAL_EXPORT.md",
+      "docs\\TEST_FEEDBACK_E2E_MAIN.md",
+      "docs\\TEST_FEEDBACK_LAYOUT.md(x7)",
+      "docs\\TEST_FEEDBACK_MOSS.md(x4)",
+      "docs\\TEST_FEEDBACK_OUTPUT_DIR_WAVE2.md",
+      "docs\\TEST_FEEDBACK_PR170_COMMENTS.md",
+      "docs\\TEST_FEEDBACK_PUNCT_SETTINGS.md(x12)",
+      "docs\\TEST_FEEDBACK_TIMEBASE.md",
+      "docs\\TOOLBOX.md(x3)",
+      "docs\\WORKFLOW.md(x7)",
+      "CHANGELOG.md(x60)"
+    ]
+  },
+  {
+    "from": "AI 模型配置",
+    "to": "AI 模型",
+    "rowId": "L4-05",
+    "files": [
+      "web\\launcher\\index.html(x2)",
+      "web\\launcher\\launcher.js(x2)",
+      "tests\\e2e\\launcher-interactions.spec.mjs",
+      "tests\\test_gui_web.py(x5)",
+      "docs\\LOCAL_ASR.md(x2)",
+      "docs\\PROVIDERS.md",
+      "CHANGELOG.md(x3)"
+    ]
+  },
+  {
+    "from": "明亮模式",
+    "to": "浅色",
+    "rowId": "L4-07",
+    "files": [
+      "web\\editor-template.html",
+      "web\\launcher\\index.html",
+      "web\\launcher\\launcher.js",
+      "web\\shared\\editor-i18n.js",
+      "tests\\test_editor_utils.mjs",
+      "CHANGELOG.md"
+    ]
+  },
+  {
+    "from": "暗色模式",
+    "to": "深色",
+    "rowId": "L4-07",
+    "files": [
+      "web\\editor-template.html",
+      "web\\launcher\\index.html",
+      "web\\launcher\\launcher.js",
+      "web\\shared\\editor-i18n.js",
+      "tests\\test_editor_utils.mjs",
+      "CHANGELOG.md"
+    ]
+  },
+  {
+    "from": "跟随系统设置",
+    "to": "自动",
+    "rowId": "L4-07",
+    "files": [
+      "web\\launcher\\index.html",
+      "web\\launcher\\launcher.js",
+      "CHANGELOG.md"
+    ]
+  },
+  {
+    "from": "显示相对小众的语言",
+    "to": "显示更多语言",
+    "rowId": "L4-08",
+    "files": [
+      "web\\launcher\\index.html",
+      "web\\launcher\\launcher.js",
+      "CHANGELOG.md"
+    ]
+  },
+  {
+    "from": "将所有输出文件放入子文件夹",
+    "to": "将输出放入子文件夹",
+    "rowId": "L4-09",
+    "files": [
+      "web\\launcher\\index.html(x3)",
+      "web\\launcher\\launcher.js(x3)",
+      "docs\\LAUNCHER_GUIDE.md"
+    ]
+  },
+  {
+    "from": "每个视频单独创建子文件夹",
+    "to": "每个视频单独建文件夹",
+    "rowId": "L4-10",
+    "files": [
+      "web\\launcher\\index.html(x2)",
+      "web\\launcher\\launcher.js(x2)",
+      "docs\\LAUNCHER_GUIDE.md"
+    ]
+  },
+  {
+    "from": "在输出文件名中附加模型名称",
+    "to": "文件名内附带模型名称",
+    "rowId": "L4-11",
+    "files": [
+      "web\\launcher\\index.html(x2)",
+      "web\\launcher\\launcher.js(x2)",
+      "docs\\LAUNCHER_GUIDE.md",
+      "CHANGELOG.md(x2)"
+    ]
+  },
+  {
+    "from": "完成通知",
+    "to": "通知",
+    "rowId": "L4-12",
+    "files": [
+      "web\\launcher\\index.html",
+      "web\\launcher\\launcher.js",
+      "docs\\LAUNCHER_GUIDE.md",
+      "CHANGELOG.md(x2)"
+    ]
+  },
+  {
+    "from": "任务完成后发送系统通知",
+    "to": "完成时通知我",
+    "rowId": "L4-13",
+    "files": [
+      "web\\launcher\\index.html(x2)",
+      "web\\launcher\\launcher.js(x2)"
+    ]
+  },
+  {
+    "from": "默认表情包路径",
+    "to": "表情包文件夹",
+    "rowId": "L4-14",
+    "files": [
+      "web\\launcher\\index.html",
+      "web\\launcher\\launcher.js",
+      "CHANGELOG.md"
+    ]
+  },
+  {
+    "from": "ASR 识别预设",
+    "to": "识别预设",
+    "rowId": "L4-15",
+    "files": [
+      "web\\launcher\\index.html(x2)",
+      "web\\launcher\\launcher.js(x2)",
+      "docs\\LAUNCHER_GUIDE.md",
+      "docs\\TEST_FEEDBACK_ASR_PRESET_MANAGER.md",
+      "CHANGELOG.md"
+    ]
+  },
+  {
+    "from": "LLM 后处理",
+    "to": "AI 后处理",
+    "rowId": "L4-17",
+    "files": [
+      "web\\launcher\\index.html",
+      "web\\launcher\\launcher.js",
+      "docs\\archived\\README-2026-08-11.md",
+      "docs\\PROVIDERS.md",
+      "docs\\README.md",
+      "docs\\TOOLBOX.md",
+      "CHANGELOG.md(x3)"
+    ]
+  },
+  {
+    "from": "关闭思考",
+    "to": "关闭",
+    "rowId": "L4-19",
+    "files": [
+      "web\\launcher\\index.html",
+      "web\\launcher\\launcher.js"
+    ]
+  },
+  {
+    "from": "自动（跟随模型默认）",
+    "to": "自动",
+    "rowId": "L4-19",
+    "files": [
+      "web\\launcher\\index.html",
+      "web\\launcher\\launcher.js"
+    ]
+  },
+  {
+    "from": "本地 ASR 模型",
+    "to": "本地识别模型",
+    "rowId": "L4-20",
+    "files": [
+      "web\\launcher\\index.html",
+      "web\\launcher\\launcher.js"
+    ]
+  },
+  {
+    "from": "模型保存目录",
+    "to": "模型文件夹",
+    "rowId": "L4-21",
+    "files": [
+      "web\\launcher\\index.html",
+      "web\\launcher\\launcher.js(x2)",
+      "tests\\test_gui_web.py",
+      "docs\\TEST_FEEDBACK_BETA7.md(x2)",
+      "CHANGELOG.md"
+    ]
+  },
+  {
+    "from": "本地对齐模型",
+    "to": "对齐模型",
+    "rowId": "L4-22",
+    "files": [
+      "web\\launcher\\index.html(x3)",
+      "web\\launcher\\launcher.js(x4)",
+      "tests\\test_gui_web.py"
+    ]
+  },
+  {
+    "from": "阿里云百炼地域与业务空间",
+    "to": "阿里云百炼 地域设置",
+    "rowId": "L4-23",
+    "files": [
+      "web\\launcher\\index.html(x2)",
+      "web\\launcher\\launcher.js(x2)",
+      "tests\\e2e\\launcher-interactions.spec.mjs(x2)",
+      "tests\\test_gui_web.py(x2)"
+    ]
+  },
+  {
+    "from": "本地模型运行时",
+    "to": "本地运行环境",
+    "rowId": "L4-25",
+    "files": [
+      "web\\launcher\\index.html",
+      "web\\launcher\\launcher.js(x3)",
+      "tests\\test_gui_web.py(x3)",
+      "docs\\TEST_FEEDBACK_BETA7.md(x2)",
+      "CHANGELOG.md(x3)"
+    ]
+  },
+  {
+    "from": "本地运行环境目录",
+    "to": "安装位置",
+    "rowId": "L4-26",
+    "files": [
+      "web\\launcher\\index.html",
+      "web\\launcher\\launcher.js",
+      "docs\\TEST_FEEDBACK_BETA7.md"
+    ]
+  },
+  {
+    "from": "需要依赖 ffmpeg 先将视频转成音频后才能发送给服务器转录",
+    "to": "识别前要用 FFmpeg 提取音频。",
+    "rowId": "L4-28",
+    "files": [
+      "web\\launcher\\index.html",
+      "web\\launcher\\launcher.js"
+    ]
+  },
+  {
+    "from": "字幕切句",
+    "to": "断句",
+    "rowId": "L4-29",
+    "files": [
+      "web\\launcher\\index.html",
+      "web\\launcher\\launcher.js",
+      "tests\\test_gui_web.py",
+      "CHANGELOG.md(x4)"
+    ]
+  },
+  {
+    "from": "停顿切句",
+    "to": "停顿断句",
+    "rowId": "L4-30",
+    "files": [
+      "web\\launcher\\index.html",
+      "web\\launcher\\launcher.js",
+      "docs\\CLI.md",
+      "docs\\TEST_FEEDBACK_ASR_PRESET_MANAGER.md",
+      "docs\\TEST_FEEDBACK_MOSS.md(x4)",
+      "CHANGELOG.md(x8)"
+    ]
+  },
+  {
+    "from": "毫秒",
+    "to": "ms",
+    "rowId": "L4-30",
+    "files": [
+      "web\\editor\\cues\\editor-cue-panel.js(x3)",
+      "web\\editor\\cues\\editor-split-core.js(x2)",
+      "web\\editor\\cues\\editor-timeline.js(x8)",
+      "web\\editor\\markers\\editor-markers-panel.js(x3)",
+      "web\\editor\\media\\editor-waveform-init.js",
+      "web\\editor\\media\\waveform\\cue-blocks.js",
+      "web\\editor\\media\\waveform\\input.js",
+      "web\\editor\\media\\waveform\\markers.js(x2)",
+      "web\\editor\\media\\waveform\\payload.js",
+      "web\\editor\\media\\waveform\\timing.js(x2)",
+      "web\\editor\\state\\editor-settings.js",
+      "web\\editor-template.html(x4)",
+      "web\\launcher\\index.html",
+      "web\\launcher\\launcher.js(x2)",
+      "web\\shared\\editor-i18n.js(x6)",
+      "web\\shared\\gap-remove-core.js(x2)",
+      "web\\shared\\utils\\lrc.js(x2)",
+      "web\\shared\\utils\\markers.js",
+      "web\\shared\\utils\\segment-timing.js(x2)",
+      "web\\shared\\utils\\timeline.js",
+      "tests\\e2e\\editor-i18n-save.spec.mjs(x2)",
+      "tests\\e2e\\open-project-drop.spec.mjs(x2)",
+      "tests\\test_editor_markers.mjs",
+      "tests\\test_editor_utils.mjs(x3)",
+      "tests\\test_local_asr.py",
+      "tests\\test_qwen.py",
+      "tests\\test_reapeaks.py",
+      "tests\\test_type_gate.mjs",
+      "docs\\ASR_PROVIDER_RESEARCH.md",
+      "docs\\CLI.md",
+      "docs\\dev\\MAW 1.1 开发追踪.md",
+      "docs\\dev\\MAW 1.2 本地模型 Launcher 开发记录.md",
+      "docs\\dev\\MAWE 前端渐进式重构企划案.md",
+      "docs\\dev\\Parakeet TDT 日文模型接入调研.md(x3)",
+      "docs\\DEVELOPMENT.md",
+      "docs\\EDITOR_GUIDE.md",
+      "docs\\GAP_PROVENANCE.md",
+      "docs\\LLM_POSTPROCESS_PROTOCOL.md",
+      "docs\\LOCAL_ASR.md",
+      "docs\\MULTI_SUBTITLE.md",
+      "docs\\OCR_SUBTITLE_DEDUP.md",
+      "docs\\PLAN_TIMESTAMP_COMPARE.md(x2)",
+      "docs\\PR56_REVIEW.md(x2)",
+      "docs\\README.md",
+      "docs\\TEST_FEEDBACK_AI_CLEANUP_MARKERS.md",
+      "docs\\TEST_FEEDBACK_ASS_PREVIEW_FIDELITY.md",
+      "docs\\TEST_FEEDBACK_BETA7.md(x2)",
+      "docs\\TEST_FEEDBACK_E2E_DRIFT.md(x6)",
+      "docs\\TEST_FEEDBACK_E2E_MAIN.md(x3)",
+      "docs\\TEST_FEEDBACK_LAYOUT.md",
+      "docs\\TEST_FEEDBACK_MOSS.md(x5)",
+      "docs\\TEST_FEEDBACK_TIMEBASE.md(x8)",
+      "CHANGELOG.md(x12)"
+    ]
+  },
+  {
+    "from": "短句合并阈值",
+    "to": "短句合并",
+    "rowId": "L4-31",
+    "files": [
+      "web\\launcher\\index.html(x2)",
+      "web\\launcher\\launcher.js(x3)",
+      "tests\\e2e\\launcher-interactions.spec.mjs",
+      "tests\\test_gui_web.py",
+      "docs\\CLI.md",
+      "docs\\TEST_FEEDBACK_MOSS.md(x4)",
+      "CHANGELOG.md(x7)"
+    ]
+  },
+  {
+    "from": "字",
+    "to": "字数",
+    "rowId": "L4-31",
+    "files": [
+      "web\\editor\\boot\\editor-onboarding.js(x24)",
+      "web\\editor\\boot\\editor-startup.js",
+      "web\\editor\\boot\\editor-wiring-initial-config.js(x3)",
+      "web\\editor\\boot\\editor.js(x2)",
+      "web\\editor\\cues\\editor-add-cue.js(x22)",
+      "web\\editor\\cues\\editor-binding-align.js(x42)",
+      "web\\editor\\cues\\editor-bound-drag.js(x16)",
+      "web\\editor\\cues\\editor-color-filter.js(x8)",
+      "web\\editor\\cues\\editor-cue-elements.js(x7)",
+      "web\\editor\\cues\\editor-cue-events.js(x4)",
+      "web\\editor\\cues\\editor-cue-list-anchor.js(x3)",
+      "web\\editor\\cues\\editor-cue-panel.js(x26)",
+      "web\\editor\\cues\\editor-find-replace.js(x2)",
+      "web\\editor\\cues\\editor-inline-edit.js(x7)",
+      "web\\editor\\cues\\editor-keyboard-targets.js",
+      "web\\editor\\cues\\editor-merge-adjacent.js(x3)",
+      "web\\editor\\cues\\editor-nav-preview.js(x10)",
+      "web\\editor\\cues\\editor-search.js(x2)",
+      "web\\editor\\cues\\editor-segment-ops.js(x49)",
+      "web\\editor\\cues\\editor-selection.js(x11)",
+      "web\\editor\\cues\\editor-split-context.js(x6)",
+      "web\\editor\\cues\\editor-split-core.js(x106)",
+      "web\\editor\\cues\\editor-split-mode.js(x13)",
+      "web\\editor\\cues\\editor-split-trim.js",
+      "web\\editor\\cues\\editor-sticker-picker.js(x14)",
+      "web\\editor\\cues\\editor-text-cleanup.js",
+      "web\\editor\\cues\\editor-text-process.js(x23)",
+      "web\\editor\\cues\\editor-timed-text-edit.js(x50)",
+      "web\\editor\\cues\\editor-timeline.js(x13)",
+      "web\\editor\\cues\\editor-wiring-cue-panel.js(x26)",
+      "web\\editor\\cues\\editor-wiring-edit-shortcuts.js(x60)",
+      "web\\editor\\cues\\editor-wiring-list-navigation.js(x11)",
+      "web\\editor\\cues\\editor-wiring-overlay-actions.js(x20)",
+      "web\\editor\\cues\\editor-wiring-overlay-split-merge.js(x30)",
+      "web\\editor\\cues\\editor-wiring-overlay-transfer.js(x25)",
+      "web\\editor\\cues\\editor-wiring-search-filter.js",
+      "web\\editor\\cues\\editor-wiring-text-tools.js(x21)",
+      "web\\editor\\cues\\editor-word-timing.js(x22)",
+      "web\\editor\\io\\editor-drag-drop.js(x3)",
+      "web\\editor\\io\\editor-dynamic-exports.js(x24)",
+      "web\\editor\\io\\editor-export-srt.js(x13)",
+      "web\\editor\\io\\editor-export-timeline.js(x7)",
+      "web\\editor\\io\\editor-json-repair.js(x5)",
+      "web\\editor\\io\\editor-loading-progress.js(x2)",
+      "web\\editor\\io\\editor-multi-import.js(x35)",
+      "web\\editor\\io\\editor-project-load.js(x12)",
+      "web\\editor\\io\\editor-project-save.js(x2)",
+      "web\\editor\\io\\editor-server-save.js(x17)",
+      "web\\editor\\io\\editor-wiring-export-actions.js(x15)",
+      "web\\editor\\io\\editor-wiring-export-context.js(x6)",
+      "web\\editor\\markers\\editor-marker-editing.js",
+      "web\\editor\\markers\\editor-markers-panel.js",
+      "web\\editor\\media\\editor-media-playback.js(x2)",
+      "web\\editor\\media\\editor-playback-loop.js(x16)",
+      "web\\editor\\media\\editor-preview-geometry.js(x7)",
+      "web\\editor\\media\\editor-sticker-overlay.js",
+      "web\\editor\\media\\editor-waveform-init.js(x29)",
+      "web\\editor\\media\\editor-wiring-keyboard-guards.js(x4)",
+      "web\\editor\\media\\editor-wiring-media-controls.js(x6)",
+      "web\\editor\\media\\editor-wiring-media-inputs.js(x7)",
+      "web\\editor\\media\\editor-wiring-sticker-preview.js(x4)",
+      "web\\editor\\media\\waveform\\constants.js(x3)",
+      "web\\editor\\media\\waveform\\controls.js(x4)",
+      "web\\editor\\media\\waveform\\cue-blocks.js(x36)",
+      "web\\editor\\media\\waveform\\cue-commands.js(x19)",
+      "web\\editor\\media\\waveform\\cue-drag-update.js(x10)",
+      "web\\editor\\media\\waveform\\cue-drag.js(x21)",
+      "web\\editor\\media\\waveform\\gap-drag.js",
+      "web\\editor\\media\\waveform\\input.js(x15)",
+      "web\\editor\\media\\waveform\\layout.js(x16)",
+      "web\\editor\\media\\waveform\\markers.js",
+      "web\\editor\\media\\waveform\\payload.js(x2)",
+      "web\\editor\\media\\waveform\\render.js",
+      "web\\editor\\media\\waveform\\scale-controls.js",
+      "web\\editor\\media\\waveform\\timing.js(x8)",
+      "web\\editor\\media\\waveform\\visibility.js(x6)",
+      "web\\editor\\media\\waveform\\word-blocks.js(x8)",
+      "web\\editor\\media\\waveform\\workspace.js(x5)",
+      "web\\editor\\media\\waveform.js(x2)",
+      "web\\editor\\state\\editor-cue-panel-state.js",
+      "web\\editor\\state\\editor-history.js(x4)",
+      "web\\editor\\state\\editor-multi-subtitle-core.js(x21)",
+      "web\\editor\\state\\editor-settings.js(x43)",
+      "web\\editor\\styles\\editor-appearance-inputs.js(x4)",
+      "web\\editor\\styles\\editor-appearance.js(x15)",
+      "web\\editor\\styles\\editor-colors.js",
+      "web\\editor\\styles\\editor-wiring-appearance-settings.js(x18)",
+      "web\\editor\\styles\\editor-wiring-ass-frame.js(x2)",
+      "web\\editor\\styles\\editor-wiring-ass-manager.js(x42)",
+      "web\\editor\\styles\\editor-wiring-ass-preview.js(x22)",
+      "web\\editor\\styles\\editor-wiring-ass-storage.js(x3)",
+      "web\\editor\\styles\\editor-wiring-font-geometry.js(x11)",
+      "web\\editor\\ui\\editor-behavior-hints.js(x2)",
+      "web\\editor\\ui\\editor-context-menus.js(x46)",
+      "web\\editor\\ui\\editor-display-settings.js(x12)",
+      "web\\editor\\ui\\editor-dom.js(x4)",
+      "web\\editor\\ui\\editor-floating-panel.js(x2)",
+      "web\\editor\\ui\\editor-gap-remove-ui.js(x5)",
+      "web\\editor\\ui\\editor-help-panel.js",
+      "web\\editor\\ui\\editor-ninja.js",
+      "web\\editor\\ui\\editor-wiring-context-menus.js(x7)",
+      "web\\editor\\ui\\editor-wiring-display-behavior.js(x4)",
+      "web\\editor\\ui\\editor-wiring-dom-panels.js(x4)",
+      "web\\editor\\ui\\editor-wiring-gap-panel.js",
+      "web\\editor\\ui\\editor-wiring-settings-help.js",
+      "web\\editor\\ui\\editor-wiring-settings-init.js(x14)",
+      "web\\editor\\ui\\editor-wiring-theme-split-settings.js",
+      "web\\editor\\ui\\editor-workspaces.js",
+      "web\\editor-template.html(x516)",
+      "web\\launcher\\index.html(x68)",
+      "web\\launcher\\launcher.js(x146)",
+      "web\\launcher\\postprocess.js(x8)",
+      "web\\shared\\editor-i18n.js(x888)",
+      "web\\shared\\utils\\ass-animation.js",
+      "web\\shared\\utils\\ass-export.js(x24)",
+      "web\\shared\\utils\\ass-style.js(x12)",
+      "web\\shared\\utils\\export-plan.js(x4)",
+      "web\\shared\\utils\\fcp7.js(x15)",
+      "web\\shared\\utils\\fonts.js(x6)",
+      "web\\shared\\utils\\lottie.js(x9)",
+      "web\\shared\\utils\\lrc.js(x6)",
+      "web\\shared\\utils\\markers.js(x3)",
+      "web\\shared\\utils\\multi-subtitle.js(x7)",
+      "web\\shared\\utils\\ograf.js",
+      "web\\shared\\utils\\preview-geometry.js(x2)",
+      "web\\shared\\utils\\segment-timing.js(x28)",
+      "web\\shared\\utils\\settings.js(x5)",
+      "web\\shared\\utils\\split-alignment.js(x4)",
+      "web\\shared\\utils\\split-trim.js(x4)",
+      "web\\shared\\utils\\srt.js(x6)",
+      "web\\shared\\utils\\text-metrics.js(x12)",
+      "web\\shared\\utils\\text-processing.js(x4)",
+      "web\\shared\\utils\\timed-text-core.js(x11)",
+      "web\\shared\\utils\\timed-text-edit.js(x7)",
+      "web\\shared\\utils\\timed-text-plans.js(x32)",
+      "web\\shared\\utils\\timeline.js(x3)",
+      "web\\shared\\utils\\word-split.js(x2)",
+      "tests\\e2e\\ass-export.spec.mjs(x32)",
+      "tests\\e2e\\ass-frame-preview.spec.mjs(x7)",
+      "tests\\e2e\\click-behavior.spec.mjs(x20)",
+      "tests\\e2e\\cue-color-filter.spec.mjs(x19)",
+      "tests\\e2e\\cue-scroll-fixture.mjs(x5)",
+      "tests\\e2e\\cue-scroll-stability.spec.mjs(x3)",
+      "tests\\e2e\\editor-i18n-save.spec.mjs(x4)",
+      "tests\\e2e\\editor-text-tools.spec.mjs",
+      "tests\\e2e\\fcp7-export.spec.mjs(x2)",
+      "tests\\e2e\\keyboard-timing.spec.mjs(x11)",
+      "tests\\e2e\\launcher-interactions.spec.mjs(x16)",
+      "tests\\e2e\\multi-subtitle.spec.mjs(x234)",
+      "tests\\e2e\\onboarding.spec.mjs(x28)",
+      "tests\\e2e\\open-project-drop.spec.mjs(x13)",
+      "tests\\e2e\\overlay-track.spec.mjs(x65)",
+      "tests\\e2e\\speaker-labels.spec.mjs(x5)",
+      "tests\\e2e\\split-desynced-items.spec.mjs(x7)",
+      "tests\\e2e\\split-word-gap.spec.mjs(x2)",
+      "tests\\e2e\\timed-text-edit.spec.mjs(x2)",
+      "tests\\e2e\\timestamp-compare.spec.mjs(x3)",
+      "tests\\e2e\\waveform-deletion.spec.mjs",
+      "tests\\e2e\\waveform-history.spec.mjs(x39)",
+      "tests\\e2e\\word-timing.spec.mjs(x21)",
+      "tests\\test_ass_styles.py(x9)",
+      "tests\\test_bcut.py(x15)",
+      "tests\\test_doubao.py(x5)",
+      "tests\\test_editor_markers.mjs(x9)",
+      "tests\\test_editor_script_order.mjs(x5)",
+      "tests\\test_editor_utils.mjs(x194)",
+      "tests\\test_freezer.py",
+      "tests\\test_gui_web.py(x32)",
+      "tests\\test_local_asr.py(x10)",
+      "tests\\test_local_editor_server.py(x17)",
+      "tests\\test_local_runtime.py",
+      "tests\\test_media.py(x3)",
+      "tests\\test_mopeaks.py(x5)",
+      "tests\\test_output_naming.py(x5)",
+      "tests\\test_postprocess.py(x32)",
+      "tests\\test_postprocess_ai_cleanup.py(x13)",
+      "tests\\test_postprocess_io.py(x4)",
+      "tests\\test_postprocess_match.py(x8)",
+      "tests\\test_postprocess_ocr.py(x5)",
+      "tests\\test_postprocess_pipeline.py(x22)",
+      "tests\\test_project_contract.py(x20)",
+      "tests\\test_punctuation.py",
+      "tests\\test_punctuation_defaults_contract.py(x2)",
+      "tests\\test_quapeaks_container.py(x3)",
+      "tests\\test_quapeaks_generation.py",
+      "tests\\test_quapeaks_loudness.py(x5)",
+      "tests\\test_qwen.py(x8)",
+      "tests\\test_qwen_audio.py(x22)",
+      "tests\\test_reapeaks_fixture.py",
+      "tests\\test_release_notes.py(x3)",
+      "tests\\test_runtimes.py",
+      "tests\\test_script_alignment.py(x14)",
+      "tests\\test_timestamp_alignment.py",
+      "tests\\test_type_gate.mjs(x2)",
+      "tests\\test_waveform.py(x82)",
+      "tests\\test_waveform_js.mjs(x6)",
+      "tests\\test_word_timing.mjs",
+      "docs\\AGENT_LONG_COMMAND_GUIDE.md(x2)",
+      "docs\\archived\\README-2026-08-11.md(x38)",
+      "docs\\ASR_PROVIDER_RESEARCH.md(x11)",
+      "docs\\ASS_STYLES.md(x51)",
+      "docs\\CLI.md(x6)",
+      "docs\\dev\\MAW 1.1 开发追踪.md(x13)",
+      "docs\\dev\\MAW 1.2 本地模型 Launcher 开发记录.md",
+      "docs\\dev\\MAWE 前端渐进式重构企划案.md(x34)",
+      "docs\\dev\\MAWE 前端重构基线.md(x4)",
+      "docs\\dev\\MAWE 接线拆分与目录分层计划.md(x67)",
+      "docs\\dev\\MAWE 状态与命令重构进度.md(x8)",
+      "docs\\dev\\MAWE 编辑器模块化拆分台账.md(x28)",
+      "docs\\dev\\MAWE 职责拆分与宿主边界进度.md",
+      "docs\\dev\\Parakeet TDT 日文模型接入调研.md(x15)",
+      "docs\\dev\\Qwen-Audio-Filetrans 开发计划.md(x12)",
+      "docs\\dev\\文档重构记录.md(x13)",
+      "docs\\DEVELOPMENT.md(x19)",
+      "docs\\EDITOR_GUIDE.md(x112)",
+      "docs\\FAQ.md(x4)",
+      "docs\\GAP_PROVENANCE.md(x20)",
+      "docs\\KEYBOARD_ADJUSTMENT.md(x63)",
+      "docs\\LAUNCHER_GUIDE.md(x5)",
+      "docs\\LLM_POSTPROCESS_PROTOCOL.md(x67)",
+      "docs\\LOCAL_ASR.md(x11)",
+      "docs\\MOSE.md(x2)",
+      "docs\\MULTI_SUBTITLE.md(x251)",
+      "docs\\OCR_SUBTITLE_DEDUP.md(x38)",
+      "docs\\PERF_CUE_DRAG_RESEARCH.md(x12)",
+      "docs\\PLAN_TIMESTAMP_COMPARE.md(x5)",
+      "docs\\POSTPROCESS_PIPELINE.md(x15)",
+      "docs\\PR56_REVIEW.md(x19)",
+      "docs\\PROVIDERS.md(x9)",
+      "docs\\PR_REVIEW_165.md(x5)",
+      "docs\\PR_REVIEW_166.md(x5)",
+      "docs\\README.md(x8)",
+      "docs\\RELEASE_REVIEW_1.3.2_TO_1.4.0.md(x89)",
+      "docs\\RELEASE_REVIEW_1.8.0-beta.1.md(x4)",
+      "docs\\REVIEW_RECENT_WORKFLOW.md(x10)",
+      "docs\\TEST_FEEDBACK_AI_CLEANUP_MARKERS.md(x17)",
+      "docs\\TEST_FEEDBACK_AI_CLEANUP_REVIEW.md(x18)",
+      "docs\\TEST_FEEDBACK_ALIGN_MVP.md(x7)",
+      "docs\\TEST_FEEDBACK_ASR_PRESET_MANAGER.md(x7)",
+      "docs\\TEST_FEEDBACK_ASS_PREVIEW_FIDELITY.md(x21)",
+      "docs\\TEST_FEEDBACK_ASS_STYLE.md(x80)",
+      "docs\\TEST_FEEDBACK_ASS_UI.md(x55)",
+      "docs\\TEST_FEEDBACK_AUDIO_TRACKS.md(x8)",
+      "docs\\TEST_FEEDBACK_BETA7.md(x267)",
+      "docs\\TEST_FEEDBACK_BILINGUAL_EXPORT.md(x24)",
+      "docs\\TEST_FEEDBACK_E2E_DRIFT.md(x12)",
+      "docs\\TEST_FEEDBACK_E2E_MAIN.md(x8)",
+      "docs\\TEST_FEEDBACK_GAP.md(x45)",
+      "docs\\TEST_FEEDBACK_LAYOUT.md(x37)",
+      "docs\\TEST_FEEDBACK_MACOS_UNIT_TESTS.md(x3)",
+      "docs\\TEST_FEEDBACK_MARKERS_UX.md(x17)",
+      "docs\\TEST_FEEDBACK_MOSS.md(x45)",
+      "docs\\TEST_FEEDBACK_NEW_PROJECT.md(x2)",
+      "docs\\TEST_FEEDBACK_OUTPUT_DIR_WAVE2.md(x4)",
+      "docs\\TEST_FEEDBACK_PR170_COMMENTS.md(x2)",
+      "docs\\TEST_FEEDBACK_PUNCT_SETTINGS.md(x5)",
+      "docs\\TEST_FEEDBACK_RTF_UNDO_MARKERS.md(x11)",
+      "docs\\TEST_FEEDBACK_TIMEBASE.md(x14)",
+      "docs\\TEST_FEEDBACK_TRANSLATE_LOCALIZE.md(x2)",
+      "docs\\TOOLBOX.md(x48)",
+      "docs\\WORKFLOW.md(x16)",
+      "CHANGELOG.md(x620)"
+    ]
+  },
+  {
+    "from": "单句最大字数",
+    "to": "单句上限",
+    "rowId": "L4-32",
+    "files": [
+      "web\\launcher\\index.html(x2)",
+      "web\\launcher\\launcher.js(x2)",
+      "tests\\test_gui_web.py(x2)"
+    ]
+  },
+  {
+    "from": "英文短句合并阈值",
+    "to": "英文短句合并",
+    "rowId": "L4-33",
+    "files": [
+      "web\\launcher\\index.html",
+      "web\\launcher\\launcher.js"
+    ]
+  },
+  {
+    "from": "单词",
+    "to": "单词数",
+    "rowId": "L4-33",
+    "files": [
+      "web\\editor\\cues\\editor-split-mode.js(x2)",
+      "web\\editor\\cues\\editor-wiring-overlay-transfer.js",
+      "web\\editor\\state\\editor-multi-subtitle-core.js(x2)",
+      "web\\editor-template.html(x7)",
+      "web\\launcher\\index.html(x2)",
+      "web\\launcher\\launcher.js(x6)",
+      "web\\shared\\editor-i18n.js(x12)",
+      "web\\shared\\utils\\settings.js",
+      "web\\shared\\utils\\word-split.js(x3)",
+      "tests\\e2e\\click-behavior.spec.mjs(x2)",
+      "tests\\e2e\\cue-color-filter.spec.mjs(x6)",
+      "tests\\e2e\\multi-subtitle.spec.mjs",
+      "tests\\e2e\\waveform-history.spec.mjs",
+      "tests\\test_editor_utils.mjs",
+      "tests\\test_gui_web.py",
+      "tests\\test_local_asr.py(x4)",
+      "tests\\test_qwen.py",
+      "docs\\CLI.md",
+      "docs\\dev\\Qwen-Audio-Filetrans 开发计划.md",
+      "docs\\LAUNCHER_GUIDE.md",
+      "docs\\LOCAL_ASR.md",
+      "docs\\MULTI_SUBTITLE.md(x9)",
+      "docs\\PROVIDERS.md",
+      "docs\\RELEASE_REVIEW_1.3.2_TO_1.4.0.md(x2)",
+      "docs\\TEST_FEEDBACK_LAYOUT.md",
+      "docs\\TEST_FEEDBACK_MOSS.md(x12)",
+      "CHANGELOG.md(x10)"
+    ]
+  },
+  {
+    "from": "英文单句最大字数",
+    "to": "英文单句上限",
+    "rowId": "L4-34",
+    "files": [
+      "web\\launcher\\index.html",
+      "web\\launcher\\launcher.js",
+      "tests\\test_gui_web.py"
+    ]
+  },
+  {
+    "from": "需要断句的符号",
+    "to": "断句符号",
+    "rowId": "L4-35",
+    "files": [
+      "web\\launcher\\index.html",
+      "web\\launcher\\launcher.js",
+      "tests\\test_gui_web.py"
+    ]
+  },
+  {
+    "from": "断句末尾保留符号",
+    "to": "句尾保留符号",
+    "rowId": "L4-36",
+    "files": [
+      "web\\launcher\\index.html",
+      "web\\launcher\\launcher.js",
+      "tests\\test_gui_web.py",
+      "docs\\TEST_FEEDBACK_PUNCT_SETTINGS.md",
+      "CHANGELOG.md"
+    ]
+  },
+  {
+    "from": "覆盖至预设",
+    "to": "覆盖此预设",
+    "rowId": "L4-38",
+    "files": [
+      "web\\launcher\\index.html",
+      "web\\launcher\\launcher.js",
+      "tests\\test_asr_presets_browser.mjs",
+      "docs\\TEST_FEEDBACK_ASR_PRESET_MANAGER.md"
+    ]
+  },
+  {
+    "from": "将当前配置存为新预设",
+    "to": "存为新预设",
+    "rowId": "L4-39",
+    "files": [
+      "web\\launcher\\index.html",
+      "web\\launcher\\launcher.js",
+      "tests\\test_asr_presets_browser.mjs",
+      "docs\\TEST_FEEDBACK_ASR_PRESET_MANAGER.md(x3)"
+    ]
+  },
+  {
+    "from": "加载媒体",
+    "to": "导入媒体",
+    "rowId": "E1-02",
+    "files": [
+      "web\\editor\\boot\\editor-wiring-initial-config.js",
+      "web\\editor\\boot\\editor.js",
+      "web\\editor\\cues\\editor-text-cleanup.js",
+      "web\\editor\\cues\\editor-wiring-edit-shortcuts.js",
+      "web\\editor\\io\\editor-export-srt.js(x2)",
+      "web\\editor\\io\\editor-export-timeline.js",
+      "web\\editor\\io\\editor-multi-import.js",
+      "web\\editor\\io\\editor-project-load.js",
+      "web\\editor\\io\\editor-server-save.js",
+      "web\\editor\\io\\editor-wiring-export-context.js",
+      "web\\editor\\io\\editor-wiring-project-inputs.js",
+      "web\\editor\\media\\editor-jkl.js(x2)",
+      "web\\editor\\media\\editor-media-load.js(x2)",
+      "web\\editor\\media\\editor-media-playback.js(x2)",
+      "web\\editor\\media\\editor-wiring-media-inputs.js",
+      "web\\editor\\media\\waveform\\media.js(x3)",
+      "web\\editor\\state\\editor-core-state.js",
+      "web\\editor\\ui\\editor-gap-remove-ui.js(x3)",
+      "web\\editor-template.html(x2)",
+      "web\\shared\\editor-i18n.js(x10)",
+      "tests\\test_editor_utils.mjs",
+      "tests\\test_local_editor_server.py",
+      "tests\\test_waveform.py(x2)",
+      "docs\\WORKFLOW.md"
+    ]
+  },
+  {
+    "from": "加载字幕",
+    "to": "导入字幕",
+    "rowId": "E1-02",
+    "files": [
+      "web\\editor\\io\\editor-multi-import.js(x2)",
+      "web\\editor\\io\\editor-project-load.js",
+      "web\\editor\\media\\editor-wiring-media-inputs.js(x2)",
+      "web\\editor-template.html",
+      "web\\shared\\editor-i18n.js",
+      "docs\\MULTI_SUBTITLE.md"
+    ]
+  },
+  {
+    "from": "加载歌词",
+    "to": "导入歌词",
+    "rowId": "E1-02",
+    "files": [
+      "web\\editor\\media\\editor-wiring-media-inputs.js(x2)",
+      "web\\editor-template.html",
+      "web\\shared\\editor-i18n.js",
+      "CHANGELOG.md"
+    ]
+  },
+  {
+    "from": "SRT 字幕",
+    "to": "SRT",
+    "rowId": "E1-04",
+    "files": [
+      "web\\editor\\io\\editor-export-srt.js(x3)",
+      "web\\editor\\io\\editor-wiring-export-actions.js(x3)",
+      "web\\editor-template.html(x10)",
+      "web\\launcher\\index.html(x3)",
+      "web\\launcher\\launcher.js(x4)",
+      "web\\shared\\editor-i18n.js(x7)",
+      "tests\\e2e\\ass-export.spec.mjs(x6)",
+      "tests\\e2e\\launcher-interactions.spec.mjs",
+      "tests\\test_editor_utils.mjs(x3)",
+      "tests\\test_waveform.py",
+      "docs\\archived\\README-2026-08-11.md(x2)",
+      "CHANGELOG.md(x3)"
+    ]
+  },
+  {
+    "from": "双语整合字幕 SRT",
+    "to": "SRT（双语合并）",
+    "rowId": "E1-06",
+    "files": [
+      "web\\editor\\io\\editor-wiring-export-actions.js",
+      "web\\editor-template.html",
+      "web\\shared\\editor-i18n.js",
+      "tests\\e2e\\ass-export.spec.mjs",
+      "docs\\MULTI_SUBTITLE.md"
+    ]
+  },
+  {
+    "from": "按颜色拆分导出 SRT 字幕",
+    "to": "SRT（按颜色拆分）",
+    "rowId": "E1-07",
+    "files": [
+      "web\\editor-template.html(x3)",
+      "web\\shared\\editor-i18n.js(x2)",
+      "tests\\e2e\\ass-export.spec.mjs(x2)",
+      "tests\\test_editor_utils.mjs"
+    ]
+  },
+  {
+    "from": "带样式的 ASS 字幕",
+    "to": "ASS（带样式）",
+    "rowId": "E1-08",
+    "files": [
+      "web\\editor-template.html(x3)",
+      "web\\shared\\editor-i18n.js(x2)",
+      "tests\\e2e\\ass-export.spec.mjs(x4)",
+      "tests\\test_editor_utils.mjs"
+    ]
+  },
+  {
+    "from": "导出去空隙版本 ▾",
+    "to": "去空隙导出 ▾",
+    "rowId": "E1-09",
+    "files": [
+      "web\\editor-template.html",
+      "web\\shared\\editor-i18n.js"
+    ]
+  },
+  {
+    "from": "OpenTimelineIO（去空隙菜单）与 OTIO（更多导出菜单）并存",
+    "to": "统一为 OTIO",
+    "rowId": "E1-10",
+    "files": []
+  },
+  {
+    "from": "时间线 OTIO 工程",
+    "to": "时间线 OTIO",
+    "rowId": "E1-11",
+    "files": [
+      "web\\editor-template.html(x2)",
+      "web\\shared\\editor-i18n.js",
+      "tests\\e2e\\waveform-history.spec.mjs",
+      "tests\\test_editor_utils.mjs",
+      "tests\\test_waveform.py",
+      "CHANGELOG.md"
+    ]
+  },
+  {
+    "from": "时间线 OTIOZ 打包工程",
+    "to": "时间线 OTIOZ",
+    "rowId": "E1-11",
+    "files": [
+      "web\\editor\\io\\editor-export-timeline.js",
+      "web\\editor\\io\\editor-wiring-export-actions.js",
+      "web\\editor-template.html(x2)",
+      "web\\shared\\editor-i18n.js(x3)",
+      "tests\\test_editor_utils.mjs",
+      "tests\\test_waveform.py"
+    ]
+  },
+  {
+    "from": "表情包 OTIO 工程",
+    "to": "表情包 OTIO",
+    "rowId": "E1-12",
+    "files": [
+      "web\\editor\\io\\editor-wiring-export-actions.js",
+      "web\\editor-template.html(x2)",
+      "web\\shared\\editor-i18n.js(x2)",
+      "tests\\test_editor_utils.mjs",
+      "tests\\test_waveform.py"
+    ]
+  },
+  {
+    "from": "表情包 OTIOZ 打包工程",
+    "to": "表情包 OTIOZ",
+    "rowId": "E1-12",
+    "files": [
+      "web\\editor\\io\\editor-export-timeline.js",
+      "web\\editor\\io\\editor-wiring-export-actions.js(x2)",
+      "web\\editor-template.html(x2)",
+      "web\\shared\\editor-i18n.js(x3)",
+      "tests\\test_editor_utils.mjs(x2)",
+      "tests\\test_waveform.py"
+    ]
+  },
+  {
+    "from": "动态字幕（Lottie）/ 动态字幕（OGraf）",
+    "to": "Lottie 动态字幕 / OGraf 动态字幕",
+    "rowId": "E1-13",
+    "files": []
+  },
+  {
+    "from": "纯文本 TXT",
+    "to": "TXT 文本",
+    "rowId": "E1-14",
+    "files": [
+      "web\\editor-template.html(x2)",
+      "web\\shared\\editor-i18n.js(x2)",
+      "tests\\test_editor_utils.mjs",
+      "tests\\test_waveform.py"
+    ]
+  },
+  {
+    "from": "Premiere FCP 7 XML（实验性）",
+    "to": "Premiere FCP 7 XML",
+    "rowId": "E1-15",
+    "files": [
+      "web\\editor-template.html(x2)",
+      "web\\shared\\editor-i18n.js",
+      "tests\\test_editor_utils.mjs",
+      "CHANGELOG.md"
+    ]
+  },
+  {
+    "from": "项目设置",
+    "to": "工程设置",
+    "rowId": "E1-21",
+    "files": []
+  },
+  {
+    "from": "⚙️ 全局设置",
+    "to": "全局设置",
+    "rowId": "E1-22",
+    "files": [
+      "web\\editor-template.html",
+      "web\\shared\\editor-i18n.js",
+      "docs\\KEYBOARD_ADJUSTMENT.md",
+      "docs\\TEST_FEEDBACK_BETA7.md",
+      "CHANGELOG.md(x3)"
+    ]
+  },
+  {
+    "from": "🤔 帮助",
+    "to": "帮助",
+    "rowId": "E1-22",
+    "files": [
+      "web\\editor\\boot\\editor-onboarding.js",
+      "web\\editor-template.html(x2)",
+      "web\\shared\\editor-i18n.js(x2)",
+      "tests\\e2e\\onboarding.spec.mjs",
+      "docs\\archived\\README-2026-08-11.md",
+      "CHANGELOG.md(x2)"
+    ]
+  },
+  {
+    "from": "毫秒模式保持原有时间编辑方式。切换为帧模式后，拖动、方向键和 A/D 微调都会按帧执行。",
+    "to": "用帧编辑时，拖动和微调都按整帧。",
+    "rowId": "E2-05",
+    "files": [
+      "web\\editor\\cues\\editor-timeline.js",
+      "web\\editor-template.html",
+      "web\\shared\\editor-i18n.js"
+    ]
+  },
+  {
+    "from": "字幕语言类型",
+    "to": "语言类型",
+    "rowId": "E2-06",
+    "files": [
+      "web\\editor\\cues\\editor-split-mode.js(x2)",
+      "web\\editor\\ui\\editor-wiring-settings-init.js(x3)",
+      "web\\editor-template.html(x5)",
+      "web\\shared\\editor-i18n.js(x4)",
+      "tests\\e2e\\cue-color-filter.spec.mjs(x2)",
+      "tests\\test_waveform.py(x3)",
+      "docs\\MULTI_SUBTITLE.md",
+      "docs\\RELEASE_REVIEW_1.3.2_TO_1.4.0.md",
+      "docs\\TEST_FEEDBACK_LAYOUT.md(x4)",
+      "CHANGELOG.md"
+    ]
+  },
+  {
+    "from": "主字幕语言类型",
+    "to": "主字幕语言",
+    "rowId": "E2-07",
+    "files": [
+      "web\\editor\\cues\\editor-split-mode.js(x2)",
+      "web\\editor\\ui\\editor-wiring-settings-init.js(x2)",
+      "web\\editor-template.html(x2)",
+      "web\\shared\\editor-i18n.js(x2)",
+      "tests\\e2e\\cue-color-filter.spec.mjs"
+    ]
+  },
+  {
+    "from": "副字幕语言类型",
+    "to": "副字幕语言",
+    "rowId": "E2-07",
+    "files": [
+      "web\\editor\\ui\\editor-wiring-settings-init.js",
+      "web\\editor-template.html(x2)",
+      "web\\shared\\editor-i18n.js",
+      "docs\\MULTI_SUBTITLE.md",
+      "docs\\RELEASE_REVIEW_1.3.2_TO_1.4.0.md"
+    ]
+  },
+  {
+    "from": "单词型按空格拆分，字符型按字符拆分；语言类型随双语工程保存。",
+    "to": "英文按词拆，中文按字拆。",
+    "rowId": "E2-08",
+    "files": []
+  },
+  {
+    "from": "副字幕时波形高度",
+    "to": "双语波形高度",
+    "rowId": "E2-13",
+    "files": [
+      "web\\editor-template.html",
+      "web\\shared\\editor-i18n.js",
+      "docs\\MULTI_SUBTITLE.md(x3)"
+    ]
+  },
+  {
+    "from": "同时选中主副字幕",
+    "to": "成对选中",
+    "rowId": "E2-16",
+    "files": [
+      "web\\editor-template.html",
+      "web\\shared\\editor-i18n.js(x2)",
+      "docs\\MULTI_SUBTITLE.md"
+    ]
+  },
+  {
+    "from": "普通点击以最后点击的轨道为准；点击已绑定字幕时，仅补选它实际绑定的另一条字幕。",
+    "to": "点击成对字幕时，连它的绑定字幕一起选中。",
+    "rowId": "E2-17",
+    "files": []
+  },
+  {
+    "from": "绑定时自动同步时长",
+    "to": "绑定时自动对齐",
+    "rowId": "E2-18",
+    "files": [
+      "web\\editor-template.html",
+      "web\\shared\\editor-i18n.js",
+      "docs\\MULTI_SUBTITLE.md",
+      "docs\\RELEASE_REVIEW_1.3.2_TO_1.4.0.md",
+      "docs\\TEST_FEEDBACK_BETA7.md(x3)"
+    ]
+  },
+  {
+    "from": "🎨 管理 ASS 样式",
+    "to": "管理 ASS 样式",
+    "rowId": "E2-22",
+    "files": [
+      "web\\editor-template.html",
+      "web\\shared\\editor-i18n.js",
+      "docs\\TEST_FEEDBACK_ASS_STYLE.md"
+    ]
+  },
+  {
+    "from": "文字大小",
+    "to": "字号",
+    "rowId": "E2-24",
+    "files": [
+      "web\\editor-template.html(x2)",
+      "web\\shared\\editor-i18n.js",
+      "tests\\test_editor_utils.mjs",
+      "tests\\test_waveform.py"
+    ]
+  },
+  {
+    "from": "颜色字幕样式选项「无影响」",
+    "to": "不生效",
+    "rowId": "E2-30",
+    "files": []
+  },
+  {
+    "from": "将颜色映射为说话人",
+    "to": "颜色对应说话人",
+    "rowId": "E2-31",
+    "files": [
+      "web\\editor-template.html(x3)",
+      "web\\shared\\editor-i18n.js(x2)",
+      "tests\\e2e\\multi-subtitle.spec.mjs",
+      "tests\\test_editor_utils.mjs",
+      "CHANGELOG.md(x2)"
+    ]
+  },
+  {
+    "from": "在预览字幕中显示说话人",
+    "to": "预览显示说话人",
+    "rowId": "E2-32",
+    "files": [
+      "web\\editor-template.html(x2)",
+      "web\\shared\\editor-i18n.js",
+      "tests\\test_editor_utils.mjs",
+      "tests\\test_waveform.py"
+    ]
+  },
+  {
+    "from": "导出时附加说话人名称",
+    "to": "导出带上说话人",
+    "rowId": "E2-33",
+    "files": [
+      "web\\editor-template.html(x2)",
+      "web\\shared\\editor-i18n.js",
+      "tests\\e2e\\multi-subtitle.spec.mjs",
+      "CHANGELOG.md"
+    ]
+  },
+  {
+    "from": "覆盖全局默认目录",
+    "to": "覆盖默认文件夹",
+    "rowId": "E2-34",
+    "files": []
+  },
+  {
+    "from": "读取并应用",
+    "to": "应用",
+    "rowId": "E2-35",
+    "files": []
+  },
+  {
+    "from": "预览与播放",
+    "to": "播放预览",
+    "rowId": "E3-01",
+    "files": [
+      "docs\\dev\\MAWE 接线拆分与目录分层计划.md"
+    ]
+  },
+  {
+    "from": "保存与输出",
+    "to": "保存导出",
+    "rowId": "E3-01",
+    "files": []
+  },
+  {
+    "from": "特殊编辑",
+    "to": "高级编辑",
+    "rowId": "E3-04",
+    "files": []
+  },
+  {
+    "from": "拆分与合并",
+    "to": "拆分合并",
+    "rowId": "E3-05",
+    "files": [
+      "web\\editor-template.html(x3)",
+      "web\\shared\\editor-i18n.js(x3)",
+      "tests\\e2e\\multi-subtitle.spec.mjs(x2)",
+      "tests\\test_waveform.py(x2)",
+      "docs\\dev\\MAWE 接线拆分与目录分层计划.md",
+      "docs\\EDITOR_GUIDE.md",
+      "docs\\MULTI_SUBTITLE.md",
+      "docs\\TEST_FEEDBACK_LAYOUT.md",
+      "CHANGELOG.md(x2)"
+    ]
+  },
+  {
+    "from": "播放与预览",
+    "to": "播放预览",
+    "rowId": "E3-06",
+    "files": [
+      "docs\\dev\\MAW 1.1 开发追踪.md"
+    ]
+  },
+  {
+    "from": "自定义色板",
+    "to": "调色板",
+    "rowId": "E3-07",
+    "files": []
+  },
+  {
+    "from": "跟随系统",
+    "to": "自动",
+    "rowId": "E3-09",
+    "files": [
+      "web\\editor-template.html",
+      "web\\launcher\\index.html",
+      "web\\launcher\\launcher.js",
+      "web\\shared\\editor-i18n.js",
+      "tests\\test_editor_utils.mjs",
+      "tests\\test_waveform.py",
+      "docs\\LAUNCHER_GUIDE.md",
+      "CHANGELOG.md"
+    ]
+  },
+  {
+    "from": "波形区 · 调整波形外观与显示内容。",
+    "to": "波形区 · 外观与显示内容",
+    "rowId": "E3-10",
+    "files": []
+  },
+  {
+    "from": "字幕编辑 · 配置编辑区显示内容与 Esc 取消编辑。",
+    "to": "编辑区 · 显示内容与按键行为",
+    "rowId": "E3-11",
+    "files": []
+  },
+  {
+    "from": "字幕列表 · 配置筛选、显示列与自动滚动。",
+    "to": "字幕列表 · 筛选、显示列与自动滚动",
+    "rowId": "E3-12",
+    "files": []
+  },
+  {
+    "from": "字幕选择",
+    "to": "选择",
+    "rowId": "E3-13",
+    "files": [
+      "web\\editor\\cues\\editor-wiring-edit-shortcuts.js",
+      "web\\editor\\cues\\editor-wiring-text-tools.js",
+      "web\\editor\\media\\editor-wiring-keyboard-guards.js",
+      "web\\editor\\styles\\editor-wiring-ass-manager.js(x2)",
+      "web\\editor-template.html",
+      "web\\shared\\editor-i18n.js",
+      "tests\\e2e\\multi-subtitle.spec.mjs(x3)",
+      "docs\\ASS_STYLES.md",
+      "docs\\dev\\MAWE 前端渐进式重构企划案.md",
+      "docs\\dev\\MAWE 编辑器模块化拆分台账.md",
+      "docs\\RELEASE_REVIEW_1.3.2_TO_1.4.0.md",
+      "CHANGELOG.md(x3)"
+    ]
+  },
+  {
+    "from": "点击字幕块时",
+    "to": "点击字幕",
+    "rowId": "E3-14",
+    "files": [
+      "web\\editor-template.html",
+      "web\\shared\\editor-i18n.js"
+    ]
+  },
+  {
+    "from": "选中并跳转 / 仅选中（不跳转）/ 选中并跳转（自动播放）",
+    "to": "选中并跳转 / 仅选中 / 选中并播放",
+    "rowId": "E3-14",
+    "files": []
+  },
+  {
+    "from": "同时选中分组内项目",
+    "to": "选中整组",
+    "rowId": "E3-15",
+    "files": [
+      "web\\editor\\cues\\editor-binding-align.js",
+      "web\\editor\\cues\\editor-wiring-cue-panel.js",
+      "web\\editor-template.html",
+      "web\\shared\\editor-i18n.js",
+      "CHANGELOG.md"
+    ]
+  },
+  {
+    "from": "鼠标所在位置",
+    "to": "鼠标位置",
+    "rowId": "E3-17",
+    "files": [
+      "web\\editor\\state\\editor-settings.js",
+      "web\\editor-template.html",
+      "web\\shared\\editor-i18n.js",
+      "tests\\test_waveform.py(x2)"
+    ]
+  },
+  {
+    "from": "字幕拖动",
+    "to": "拖动",
+    "rowId": "E3-19",
+    "files": [
+      "web\\editor\\cues\\editor-bound-drag.js(x2)",
+      "web\\editor\\cues\\editor-wiring-overlay-actions.js",
+      "web\\editor\\media\\waveform\\cue-drag.js(x3)",
+      "web\\editor\\state\\editor-settings.js",
+      "tests\\e2e\\multi-subtitle.spec.mjs(x2)",
+      "docs\\PERF_CUE_DRAG_RESEARCH.md(x2)",
+      "docs\\TEST_FEEDBACK_BETA7.md(x3)",
+      "CHANGELOG.md(x2)"
+    ]
+  },
+  {
+    "from": "字幕交界处操作方式",
+    "to": "边界拖动",
+    "rowId": "E3-20",
+    "files": []
+  },
+  {
+    "from": "中缝联动（新）/ 传统模式",
+    "to": "中缝联动 / 传统模式",
+    "rowId": "E3-20",
+    "files": []
+  },
+  {
+    "from": "自动吸附调整相邻字幕",
+    "to": "联动调整相邻字幕",
+    "rowId": "E3-21",
+    "files": [
+      "web\\editor\\cues\\editor-bound-drag.js",
+      "web\\editor\\cues\\editor-timeline.js",
+      "web\\editor\\media\\waveform\\cue-drag.js",
+      "web\\editor\\media\\waveform\\timing.js",
+      "web\\editor\\ui\\editor-wiring-display-behavior.js",
+      "web\\editor-template.html",
+      "web\\shared\\editor-i18n.js",
+      "tests\\e2e\\keyboard-timing.spec.mjs",
+      "tests\\test_editor_utils.mjs",
+      "tests\\test_waveform.py(x2)",
+      "tests\\test_waveform_js.mjs",
+      "docs\\EDITOR_GUIDE.md",
+      "docs\\KEYBOARD_ADJUSTMENT.md(x3)",
+      "docs\\MULTI_SUBTITLE.md(x3)",
+      "docs\\TEST_FEEDBACK_BETA7.md(x3)",
+      "CHANGELOG.md(x3)"
+    ]
+  },
+  {
+    "from": "字幕按键微调幅度",
+    "to": "微调幅度",
+    "rowId": "E3-23",
+    "files": [
+      "web\\editor-template.html",
+      "web\\shared\\editor-i18n.js",
+      "docs\\KEYBOARD_ADJUSTMENT.md(x2)"
+    ]
+  },
+  {
+    "from": "空隙区段操作方式",
+    "to": "空隙编辑",
+    "rowId": "E3-25",
+    "files": [
+      "web\\editor-template.html(x2)",
+      "web\\shared\\editor-i18n.js(x3)",
+      "tests\\e2e\\onboarding.spec.mjs",
+      "tests\\test_editor_utils.mjs",
+      "tests\\test_waveform.py(x2)"
+    ]
+  },
+  {
+    "from": "帧吸附",
+    "to": "对齐到帧",
+    "rowId": "E3-27",
+    "files": [
+      "web\\editor\\media\\waveform.js",
+      "tests\\e2e\\editor-i18n-save.spec.mjs(x2)",
+      "docs\\TEST_FEEDBACK_TIMEBASE.md(x8)"
+    ]
+  },
+  {
+    "from": "时间分隔码",
+    "to": "帧分隔符",
+    "rowId": "E3-28",
+    "files": []
+  },
+  {
+    "from": "特殊文本格式",
+    "to": "特殊文本",
+    "rowId": "E3-29",
+    "files": [
+      "web\\editor\\ui\\editor-context-menus.js",
+      "web\\editor-template.html",
+      "web\\shared\\editor-i18n.js(x2)",
+      "web\\shared\\utils\\text-processing.js",
+      "tests\\e2e\\ass-export.spec.mjs",
+      "docs\\ASS_STYLES.md(x2)",
+      "docs\\EDITOR_GUIDE.md(x2)",
+      "docs\\TEST_FEEDBACK_ASS_STYLE.md(x3)"
+    ]
+  },
+  {
+    "from": "特殊符号规则",
+    "to": "符号规则",
+    "rowId": "E3-30",
+    "files": [
+      "web\\editor\\styles\\editor-wiring-ass-manager.js",
+      "web\\editor-template.html",
+      "web\\shared\\editor-i18n.js(x2)",
+      "tests\\test_editor_utils.mjs",
+      "docs\\TEST_FEEDBACK_ASS_STYLE.md",
+      "docs\\TEST_FEEDBACK_ASS_UI.md",
+      "CHANGELOG.md"
+    ]
+  },
+  {
+    "from": "双个符号",
+    "to": "双符号",
+    "rowId": "E3-30",
+    "files": [
+      "web\\editor-template.html",
+      "web\\shared\\editor-i18n.js",
+      "docs\\ASS_STYLES.md",
+      "CHANGELOG.md(x2)"
+    ]
+  },
+  {
+    "from": "预览内容",
+    "to": "预览",
+    "rowId": "E3-31",
+    "files": [
+      "web\\editor\\media\\editor-sticker-overlay.js"
+    ]
+  },
+  {
+    "from": "播放与定位",
+    "to": "播放控制",
+    "rowId": "E3-33",
+    "files": []
+  },
+  {
+    "from": "自动预览鼠标位置画面",
+    "to": "悬停预览画面",
+    "rowId": "E3-34",
+    "files": [
+      "web\\editor-template.html",
+      "web\\shared\\editor-i18n.js",
+      "tests\\e2e\\hover-seek-preview.spec.mjs"
+    ]
+  },
+  {
+    "from": "JKL 按键播放控制",
+    "to": "JKL 播放键",
+    "rowId": "E3-35",
+    "files": [
+      "web\\editor-template.html",
+      "web\\shared\\editor-i18n.js"
+    ]
+  },
+  {
+    "from": "每次跳转时长",
+    "to": "跳转步长",
+    "rowId": "E3-36",
+    "files": [
+      "web\\editor\\cues\\editor-timeline.js",
+      "web\\editor-template.html(x3)",
+      "web\\shared\\editor-i18n.js(x3)"
+    ]
+  },
+  {
+    "from": "播放过程中点击鼠标自动暂停",
+    "to": "点击鼠标时暂停播放",
+    "rowId": "E3-37",
+    "files": [
+      "web\\editor-template.html",
+      "web\\shared\\editor-i18n.js",
+      "tests\\test_waveform.py",
+      "docs\\EDITOR_GUIDE.md",
+      "CHANGELOG.md(x2)"
+    ]
+  },
+  {
+    "from": "播放时跳过空隙",
+    "to": "跳过静音空隙",
+    "rowId": "E3-38",
+    "files": [
+      "web\\editor-template.html",
+      "web\\shared\\editor-i18n.js",
+      "tests\\test_waveform.py"
+    ]
+  },
+  {
+    "from": "自定义颜色色值",
+    "to": "自定义色值",
+    "rowId": "E3-39",
+    "files": [
+      "web\\editor-template.html(x2)",
+      "web\\shared\\editor-i18n.js",
+      "tests\\test_editor_utils.mjs",
+      "tests\\test_waveform.py",
+      "docs\\TEST_FEEDBACK_ASS_STYLE.md"
+    ]
+  },
+  {
+    "from": "自动保存间隔",
+    "to": "保存间隔",
+    "rowId": "E3-41",
+    "files": [
+      "web\\editor-template.html",
+      "web\\shared\\editor-i18n.js"
+    ]
+  },
+  {
+    "from": "备份工程",
+    "to": "自动备份",
+    "rowId": "E3-42",
+    "files": [
+      "web\\editor-template.html",
+      "web\\shared\\editor-i18n.js",
+      "tests\\test_local_editor_server.py",
+      "docs\\EDITOR_GUIDE.md(x2)"
+    ]
+  },
+  {
+    "from": "自动备份间隔（分钟）",
+    "to": "备份间隔",
+    "rowId": "E3-43",
+    "files": [
+      "web\\editor-template.html",
+      "web\\shared\\editor-i18n.js"
+    ]
+  },
+  {
+    "from": "最大保存版本数",
+    "to": "保留版本数",
+    "rowId": "E3-44",
+    "files": [
+      "web\\editor-template.html",
+      "web\\shared\\editor-i18n.js",
+      "docs\\EDITOR_GUIDE.md"
+    ]
+  },
+  {
+    "from": "SRT 首条字幕起始时间从 0 开始",
+    "to": "首条字幕时间从 0 开始",
+    "rowId": "E3-46",
+    "files": [
+      "web\\editor-template.html",
+      "web\\shared\\editor-i18n.js",
+      "tests\\test_waveform.py"
+    ]
+  },
+  {
+    "from": "使用说话人名称替代颜色后缀",
+    "to": "用说话人作为后缀",
+    "rowId": "E3-48",
+    "files": [
+      "web\\editor-template.html",
+      "web\\shared\\editor-i18n.js",
+      "tests\\test_editor_utils.mjs"
+    ]
+  },
+  {
+    "from": "同时导出 SRT 字幕",
+    "to": "同时导出 SRT",
+    "rowId": "E3-49",
+    "files": [
+      "web\\editor-template.html(x2)",
+      "web\\shared\\editor-i18n.js",
+      "CHANGELOG.md"
+    ]
+  },
+  {
+    "from": "时间线包含表情包",
+    "to": "时间线带上表情包",
+    "rowId": "E3-49",
+    "files": [
+      "web\\editor\\io\\editor-export-timeline.js",
+      "web\\editor-template.html(x2)",
+      "web\\shared\\editor-i18n.js",
+      "CHANGELOG.md"
+    ]
+  },
+  {
+    "from": "将字幕内容作为标记写入",
+    "to": "将字幕写为标记",
+    "rowId": "E3-49",
+    "files": [
+      "web\\editor-template.html(x2)",
+      "web\\shared\\editor-i18n.js",
+      "CHANGELOG.md"
+    ]
+  },
+  {
+    "from": "将标记与区段写入",
+    "to": "将工程标记一并写入",
+    "rowId": "E3-49",
+    "files": [
+      "web\\editor-template.html(x2)",
+      "web\\shared\\editor-i18n.js",
+      "docs\\TEST_FEEDBACK_MARKERS_UX.md"
+    ]
+  },
+  {
+    "from": "表情包 OTIO",
+    "to": "表情包素材",
+    "rowId": "E3-50",
+    "files": [
+      "web\\editor\\cues\\editor-selection.js",
+      "web\\editor\\io\\editor-export-timeline.js(x4)",
+      "web\\editor\\io\\editor-project-load.js",
+      "web\\editor\\io\\editor-sticker-otio-export.js(x4)",
+      "web\\editor\\io\\editor-wiring-export-actions.js(x4)",
+      "web\\editor\\io\\editor-wiring-project-inputs.js",
+      "web\\editor\\state\\editor-settings.js",
+      "web\\editor\\ui\\editor-wiring-gap-panel.js",
+      "web\\editor-template.html(x8)",
+      "web\\shared\\editor-i18n.js(x13)",
+      "tests\\test_editor_utils.mjs(x9)",
+      "tests\\test_waveform.py(x3)",
+      "docs\\EDITOR_GUIDE.md",
+      "CHANGELOG.md(x3)"
+    ]
+  },
+  {
+    "from": "引用原始素材",
+    "to": "引用原文件",
+    "rowId": "E3-50",
+    "files": [
+      "web\\editor\\io\\editor-project-load.js",
+      "web\\editor\\io\\editor-wiring-project-inputs.js",
+      "web\\editor-template.html(x2)",
+      "web\\shared\\editor-i18n.js(x2)"
+    ]
+  },
+  {
+    "from": "便携 OTIO 文件夹（工程同目录）",
+    "to": "复制到工程文件旁",
+    "rowId": "E3-50",
+    "files": [
+      "web\\editor-template.html",
+      "web\\shared\\editor-i18n.js"
+    ]
+  },
+  {
+    "from": "格式专用参数",
+    "to": "格式参数",
+    "rowId": "E3-51",
+    "files": []
+  },
+  {
+    "from": "启用表情包功能",
+    "to": "启用表情包",
+    "rowId": "E3-52",
+    "files": []
+  },
+  {
+    "from": "全局默认表情包目录",
+    "to": "默认文件夹",
+    "rowId": "E3-53",
+    "files": []
+  },
+  {
+    "from": "显示刀光特效",
+    "to": "刀光特效",
+    "rowId": "E3-54",
+    "files": [
+      "web\\editor-template.html",
+      "web\\shared\\editor-i18n.js",
+      "tests\\test_editor_utils.mjs",
+      "CHANGELOG.md"
+    ]
+  },
+  {
+    "from": "随机旋转幅度",
+    "to": "随机角度",
+    "rowId": "E3-54",
+    "files": [
+      "web\\editor\\state\\editor-settings.js",
+      "web\\editor-template.html",
+      "web\\shared\\editor-i18n.js",
+      "tests\\test_waveform.py",
+      "CHANGELOG.md"
+    ]
+  },
+  {
+    "from": "波形外观",
+    "to": "外观",
+    "rowId": "E4-01",
+    "files": [
+      "web\\editor-template.html(x2)",
+      "web\\shared\\editor-i18n.js(x2)",
+      "tests\\e2e\\onboarding.spec.mjs(x2)",
+      "tests\\test_waveform.py(x2)",
+      "docs\\TEST_FEEDBACK_GAP.md"
+    ]
+  },
+  {
+    "from": "波形形状来源",
+    "to": "波形来源",
+    "rowId": "E4-02",
+    "files": [
+      "web\\editor\\state\\editor-settings.js",
+      "web\\editor-template.html(x2)",
+      "web\\shared\\editor-i18n.js(x2)",
+      "docs\\TEST_FEEDBACK_BETA7.md",
+      "CHANGELOG.md(x3)"
+    ]
+  },
+  {
+    "from": "原生波形",
+    "to": "内置波形",
+    "rowId": "E4-02",
+    "files": [
+      "web\\editor-template.html",
+      "web\\launcher\\launcher.js",
+      "web\\shared\\editor-i18n.js",
+      "tests\\test_local_editor_server.py(x3)",
+      "tests\\test_waveform.py",
+      "CHANGELOG.md(x2)"
+    ]
+  },
+  {
+    "from": "显示窗口",
+    "to": "显示范围",
+    "rowId": "E4-05",
+    "files": [
+      "web\\editor\\media\\waveform\\workspace.js",
+      "web\\editor-template.html",
+      "web\\shared\\editor-i18n.js",
+      "docs\\TEST_FEEDBACK_TIMEBASE.md(x2)"
+    ]
+  },
+  {
+    "from": "显示分组标记",
+    "to": "分组标记",
+    "rowId": "E4-07",
+    "files": [
+      "web\\editor-template.html",
+      "web\\shared\\editor-i18n.js"
+    ]
+  },
+  {
+    "from": "禁用波形显示",
+    "to": "禁用项",
+    "rowId": "E4-08",
+    "files": [
+      "web\\editor-template.html",
+      "web\\shared\\editor-i18n.js",
+      "tests\\test_waveform.py(x2)"
+    ]
+  },
+  {
+    "from": "淡化",
+    "to": "变淡",
+    "rowId": "E4-08",
+    "files": [
+      "web\\editor-template.html(x2)",
+      "web\\shared\\editor-i18n.js(x2)",
+      "docs\\EDITOR_GUIDE.md"
+    ]
+  },
+  {
+    "from": "完全隐藏",
+    "to": "隐藏",
+    "rowId": "E4-08",
+    "files": [
+      "web\\editor\\media\\editor-preview-geometry.js",
+      "web\\editor\\styles\\editor-wiring-font-geometry.js",
+      "web\\editor-template.html",
+      "web\\shared\\editor-i18n.js"
+    ]
+  },
+  {
+    "from": "Esc 取消编辑",
+    "to": "Esc 放弃修改",
+    "rowId": "E4-11",
+    "files": [
+      "web\\editor-template.html",
+      "web\\shared\\editor-i18n.js",
+      "tests\\e2e\\click-behavior.spec.mjs",
+      "tests\\test_waveform.py",
+      "docs\\EDITOR_GUIDE.md",
+      "docs\\TEST_FEEDBACK_BETA7.md(x2)"
+    ]
+  },
+  {
+    "from": "跟随与浏览",
+    "to": "跟随",
+    "rowId": "E4-12",
+    "files": []
+  },
+  {
+    "from": "拆分后临时保留显示",
+    "to": "保留拆分结果显示",
+    "rowId": "E4-14",
+    "files": [
+      "web\\editor-template.html",
+      "web\\shared\\editor-i18n.js"
+    ]
+  },
+  {
+    "from": "隐藏禁用字幕",
+    "to": "隐藏禁用",
+    "rowId": "E4-15",
+    "files": [
+      "web\\editor\\state\\editor-settings.js",
+      "web\\editor-template.html",
+      "web\\shared\\editor-i18n.js"
+    ]
+  },
+  {
+    "from": "基础",
+    "to": "单行",
+    "rowId": "E4-20",
+    "files": [
+      "web\\editor\\boot\\editor-onboarding.js",
+      "web\\editor\\boot\\editor-wiring-initial-config.js",
+      "web\\editor\\media\\waveform\\cue-blocks.js",
+      "web\\editor\\media\\waveform\\markers.js",
+      "web\\editor\\media\\waveform\\workspace.js",
+      "web\\editor\\styles\\editor-colors.js",
+      "web\\editor\\styles\\editor-wiring-ass-preview.js(x2)",
+      "web\\editor-template.html(x6)",
+      "web\\shared\\editor-i18n.js(x5)",
+      "tests\\e2e\\onboarding.spec.mjs(x4)",
+      "tests\\e2e\\overlay-track.spec.mjs",
+      "tests\\e2e\\waveform-history.spec.mjs",
+      "tests\\test_editor_utils.mjs(x2)",
+      "tests\\test_postprocess_match.py",
+      "tests\\test_postprocess_pipeline.py",
+      "tests\\test_waveform.py(x3)",
+      "docs\\ASR_PROVIDER_RESEARCH.md",
+      "docs\\ASS_STYLES.md",
+      "docs\\dev\\MAW 1.1 开发追踪.md(x4)",
+      "docs\\dev\\MAW 1.2 本地模型 Launcher 开发记录.md(x2)",
+      "docs\\dev\\MAWE 前端渐进式重构企划案.md",
+      "docs\\dev\\文档重构记录.md",
+      "docs\\EDITOR_GUIDE.md",
+      "docs\\GAP_PROVENANCE.md",
+      "docs\\LOCAL_ASR.md",
+      "docs\\MULTI_SUBTITLE.md",
+      "docs\\OCR_SUBTITLE_DEDUP.md",
+      "docs\\PROVIDERS.md",
+      "docs\\RELEASE_REVIEW_1.3.2_TO_1.4.0.md",
+      "docs\\TEST_FEEDBACK_AI_CLEANUP_MARKERS.md",
+      "docs\\TEST_FEEDBACK_ALIGN_MVP.md(x7)",
+      "docs\\TEST_FEEDBACK_ASR_PRESET_MANAGER.md",
+      "docs\\TEST_FEEDBACK_ASS_STYLE.md(x2)",
+      "docs\\TEST_FEEDBACK_ASS_UI.md(x5)",
+      "docs\\TEST_FEEDBACK_GAP.md(x4)",
+      "docs\\TEST_FEEDBACK_MARKERS_UX.md",
+      "docs\\TEST_FEEDBACK_PR150.md",
+      "docs\\TEST_FEEDBACK_PUNCT_SETTINGS.md(x9)",
+      "docs\\TEST_FEEDBACK_TIMEBASE.md",
+      "CHANGELOG.md(x7)"
+    ]
+  },
+  {
+    "from": "移除静音空隙",
+    "to": "静音空隙",
+    "rowId": "E4-21",
+    "files": [
+      "web\\editor\\io\\editor-export-srt.js(x5)",
+      "web\\editor\\io\\editor-export-timeline.js(x3)",
+      "web\\editor\\io\\editor-wiring-export-actions.js",
+      "web\\editor\\ui\\editor-floating-panel.js",
+      "web\\editor\\ui\\editor-gap-remove-ui.js(x3)",
+      "web\\editor\\ui\\editor-wiring-gap-panel.js",
+      "web\\editor-template.html(x10)",
+      "web\\launcher\\index.html",
+      "web\\launcher\\launcher.js",
+      "web\\shared\\editor-i18n.js(x12)",
+      "tests\\test_waveform.py(x3)",
+      "docs\\archived\\README-2026-08-11.md",
+      "docs\\dev\\MAWE 前端渐进式重构企划案.md",
+      "docs\\GAP_PROVENANCE.md",
+      "CHANGELOG.md(x4)"
+    ]
+  },
+  {
+    "from": "按钮「生成静音空隙」",
+    "to": "按钮「扫描静音」",
+    "rowId": "E4-21",
+    "files": []
+  },
+  {
+    "from": "拼接/合并字幕",
+    "to": "拼合字幕",
+    "rowId": "E4-22",
+    "files": [
+      "web\\editor\\cues\\editor-segment-ops.js(x2)",
+      "web\\editor-template.html(x5)",
+      "web\\shared\\editor-i18n.js(x4)",
+      "tests\\test_editor_utils.mjs(x2)",
+      "docs\\EDITOR_GUIDE.md",
+      "docs\\MULTI_SUBTITLE.md",
+      "docs\\TEST_FEEDBACK_GAP.md(x2)",
+      "CHANGELOG.md(x3)"
+    ]
+  },
+  {
+    "from": "拼接字幕",
+    "to": "吸附间隔",
+    "rowId": "E4-22",
+    "files": [
+      "web\\editor-template.html",
+      "web\\shared\\editor-i18n.js"
+    ]
+  },
+  {
+    "from": "吸收合并字幕",
+    "to": "合并短句",
+    "rowId": "E4-22",
+    "files": [
+      "web\\editor-template.html",
+      "web\\shared\\editor-i18n.js"
+    ]
+  },
+  {
+    "from": "间隔阈值",
+    "to": "间隔上限",
+    "rowId": "E4-23",
+    "files": [
+      "web\\editor-template.html",
+      "web\\shared\\editor-i18n.js",
+      "docs\\EDITOR_GUIDE.md",
+      "CHANGELOG.md"
+    ]
+  },
+  {
+    "from": "吸收过短字幕",
+    "to": "合并短句",
+    "rowId": "E4-23",
+    "files": [
+      "web\\editor\\cues\\editor-segment-ops.js",
+      "web\\editor\\cues\\editor-wiring-overlay-split-merge.js",
+      "web\\editor\\state\\editor-settings.js",
+      "web\\editor-template.html",
+      "web\\shared\\editor-i18n.js",
+      "CHANGELOG.md"
+    ]
+  },
+  {
+    "from": "短字幕阈值",
+    "to": "短句上限",
+    "rowId": "E4-23",
+    "files": [
+      "web\\editor-template.html",
+      "web\\shared\\editor-i18n.js",
+      "docs\\EDITOR_GUIDE.md"
+    ]
+  },
+  {
+    "from": "吸收方向",
+    "to": "合并方向",
+    "rowId": "E4-23",
+    "files": [
+      "web\\editor\\cues\\editor-segment-ops.js",
+      "web\\editor\\cues\\editor-wiring-overlay-split-merge.js",
+      "web\\editor-template.html",
+      "web\\shared\\editor-i18n.js",
+      "docs\\EDITOR_GUIDE.md"
+    ]
+  },
+  {
+    "from": "分配表情包… / 统一分配表情包…",
+    "to": "统一为「分配表情包…」",
+    "rowId": "E4-29",
+    "files": []
+  },
+  {
+    "from": "拓展表情包时长",
+    "to": "延长表情包",
+    "rowId": "E4-30",
+    "files": [
+      "web\\editor\\cues\\editor-sticker-picker.js",
+      "web\\editor\\ui\\editor-context-menus.js(x2)",
+      "web\\shared\\editor-i18n.js"
+    ]
+  },
+  {
+    "from": "从颜色组中脱离",
+    "to": "移出颜色组",
+    "rowId": "E4-31",
+    "files": [
+      "web\\editor\\cues\\editor-wiring-overlay-actions.js(x2)",
+      "web\\editor\\ui\\editor-context-menus.js",
+      "web\\shared\\editor-i18n.js(x2)",
+      "tests\\e2e\\cue-color-filter.spec.mjs",
+      "tests\\test_editor_utils.mjs(x2)",
+      "CHANGELOG.md(x2)"
+    ]
+  },
+  {
+    "from": "字词转为独立字幕…",
+    "to": "字词拆成字幕…",
+    "rowId": "E4-32",
+    "files": [
+      "web\\editor\\ui\\editor-context-menus.js",
+      "web\\shared\\editor-i18n.js",
+      "docs\\EDITOR_GUIDE.md"
+    ]
+  },
+  {
+    "from": "🦊 等零散 emoji 图标（表情包入口等）",
+    "to": "统一替换为文字标签或去除",
+    "rowId": "E4-38",
+    "files": []
+  },
+  {
+    "from": "按钮叫「设置」，弹窗标题却叫「配置」",
+    "to": "统一为「设置」",
+    "rowId": "X-01",
+    "files": []
+  },
+  {
+    "from": "帮助里写「🔧 设置 → 拆分与合并」，实际按钮是「⚙️ 全局设置」",
+    "to": "统一为「全局设置 → 拆分合并」的说法",
+    "rowId": "X-02",
+    "files": []
+  },
+  {
+    "from": "去空隙菜单叫「OpenTimelineIO」，更多导出里叫「OTIO」",
+    "to": "统一为「OTIO」",
+    "rowId": "X-03",
+    "files": []
+  },
+  {
+    "from": "「服务器媒体」「启动 Server 版字幕编辑器」",
+    "to": "「媒体文件（可选）」「打开编辑器」",
+    "rowId": "X-04",
+    "files": []
+  },
+  {
+    "from": "aria 名称「MAWE 设置」与可见标题「全局设置」不一致",
+    "to": "统一为「全局设置」",
+    "rowId": "X-05",
+    "files": []
+  }
+]

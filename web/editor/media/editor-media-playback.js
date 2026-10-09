@@ -205,8 +205,9 @@
       // 试听自己的起点 seek 不取消；之后的任何 seek（含手动定位）都取消边界。
       if (auditionSeekPending) { auditionSeekPending = false; return; }
       auditionStopSeconds = null;
+      clearAuditionStopTimer();
     });
-    mediaElement.addEventListener('pause', () => { auditionStopSeconds = null; });
+    mediaElement.addEventListener('pause', () => { auditionStopSeconds = null; clearAuditionStopTimer(); });
     mediaElement.addEventListener('seeked', MawePlaybackLoop.update);
     mediaElement.addEventListener('loadedmetadata', () => {
       MaweTimeline.captureProjectVideoDimensions(mediaElement);
@@ -282,8 +283,18 @@ MaweCoreState.waveformEditor?.revealTime(targetSeconds * 1000, true);
   }
 
   // 试听：从 startMs 播放到 endMs 自动暂停一次；任何手动 seek/暂停都会取消。
+  // timeupdate 最长 ~250ms 才触发一次，只做兜底；边界主要靠精确定时暂停。
   let auditionStopSeconds = null;
   let auditionSeekPending = false;
+  let auditionStopTimer = 0;
+  function clearAuditionStopTimer() {
+    if (auditionStopTimer) { clearTimeout(auditionStopTimer); auditionStopTimer = 0; }
+  }
+  function stopAtAuditionBoundary(mediaElement) {
+    auditionStopSeconds = null;
+    clearAuditionStopTimer();
+    if (!mediaElement.paused) mediaElement.pause();
+  }
   function auditionRange(startMs, endMs) {
     if (!hasLoadedMedia()) {
       MaweHint.flashHint('请先加载媒体，然后才能试听', 'invalid');
@@ -295,16 +306,27 @@ MaweCoreState.waveformEditor?.revealTime(targetSeconds * 1000, true);
     auditionSeekPending = true;
     if (!seekMediaTo(start)) { auditionSeekPending = false; return false; }
     auditionStopSeconds = stop;
+    scheduleAuditionStop(MaweCoreState.player);
     if (MaweCoreState.player.paused) togglePlayback();
     return true;
   }
+  function scheduleAuditionStop(mediaElement) {
+    if (auditionStopSeconds === null || MaweCoreState.player !== mediaElement) return;
+    const rate = Number(mediaElement.playbackRate) || 1;
+    const delayMs = Math.max(0, (auditionStopSeconds - mediaElement.currentTime) * 1000 / rate);
+    clearAuditionStopTimer();
+    auditionStopTimer = setTimeout(() => {
+      auditionStopTimer = 0;
+      if (auditionStopSeconds === null || MaweCoreState.player !== mediaElement) return;
+      if (mediaElement.paused) { auditionStopSeconds = null; return; }
+      if (mediaElement.currentTime >= auditionStopSeconds - 0.005) stopAtAuditionBoundary(mediaElement);
+      else scheduleAuditionStop(mediaElement);
+    }, delayMs + 1);
+  }
   function watchAuditionBoundary(mediaElement) {
     if (auditionStopSeconds === null) return;
-    if (MaweCoreState.player !== mediaElement || mediaElement.paused) { auditionStopSeconds = null; return; }
-    if (mediaElement.currentTime >= auditionStopSeconds - 0.02) {
-      auditionStopSeconds = null;
-      mediaElement.pause();
-    }
+    if (MaweCoreState.player !== mediaElement || mediaElement.paused) { auditionStopSeconds = null; clearAuditionStopTimer(); return; }
+    if (mediaElement.currentTime >= auditionStopSeconds - 0.02) stopAtAuditionBoundary(mediaElement);
   }
 
   global.MaweMediaPlayback = Object.freeze({

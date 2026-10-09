@@ -110,16 +110,16 @@
     if (!getSelection(segment).has(itemIndex)) select(index, itemIndex);
     const menu = MaweDom.ctxmenu;
     menu.replaceChildren();
-    const entry = document.createElement('div');
-    entry.className = 'item';
-    entry.textContent = ui('合并选中的字词块 · C', 'Merge selected timed text blocks · C');
-    if (!global.AsrEditorUtils.mergeWordTimingItems(segment, [...getSelection(segment)], clock())) entry.classList.add('disabled');
-    else entry.addEventListener('click', () => { menu.classList.remove('show'); merge(); });
-    menu.append(entry);
     const indices = [...getSelection(segment)];
+    // 试听放菜单最上方：字词核对场景下最高频的动作。
     const audition = document.createElement('div');
     audition.className = 'item';
-    audition.textContent = ui('试听', 'Audition');
+    const auditionLabel = document.createElement('span');
+    auditionLabel.textContent = ui('试听', 'Audition');
+    audition.appendChild(auditionLabel);
+    const auditionKbd = document.createElement('kbd');
+    auditionKbd.textContent = 'F';
+    audition.appendChild(auditionKbd);
     audition.addEventListener('click', () => {
       menu.classList.remove('show');
       const entries = global.AsrEditorUtils.getWordTimingEntries(segment, clock())
@@ -128,6 +128,17 @@
       MaweMediaPlayback.auditionRange(entries[0].start, entries[entries.length - 1].end);
     });
     menu.append(audition);
+    const entry = document.createElement('div');
+    entry.className = 'item';
+    const entryLabel = document.createElement('span');
+    entryLabel.textContent = ui('合并选中的字词块', 'Merge selected timed text blocks');
+    entry.appendChild(entryLabel);
+    const entryKbd = document.createElement('kbd');
+    entryKbd.textContent = 'C';
+    entry.appendChild(entryKbd);
+    if (!global.AsrEditorUtils.mergeWordTimingItems(segment, indices, clock())) entry.classList.add('disabled');
+    else entry.addEventListener('click', () => { menu.classList.remove('show'); merge(); });
+    menu.append(entry);
     menu.classList.add('show');
     const rect = menu.getBoundingClientRect();
     menu.style.left = `${Math.max(4, Math.min(x, innerWidth - rect.width - 4))}px`;
@@ -198,6 +209,20 @@
   function bind() {
     document.getElementById('word-timing-toggle')?.addEventListener('change', event => setEnabled(event.target.checked));
     document.getElementById('word-timing-quick-toggle')?.addEventListener('click', () => setEnabled(!enabled));
+    // Q：全局切换字词时间码（与波形设置/工具栏按钮互为镜像）。
+    document.addEventListener('keydown', (event) => {
+      if (event.key !== 'q' && event.key !== 'Q') return;
+      if (event.ctrlKey || event.altKey || event.metaKey || event.shiftKey || event.repeat) return;
+      if (dialog()?.open) return;
+      const target = event.target;
+      if (target && (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA'
+        || target.tagName === 'SELECT' || target.isContentEditable)) return;
+      if (MaweCoreState.waveformEditor?.wordDrag) return;
+      if (!document.getElementById('word-timing-quick-toggle')
+        && !document.getElementById('word-timing-toggle')) return;
+      event.preventDefault();
+      setEnabled(!enabled);
+    });
     document.getElementById('word-conversion-cancel')?.addEventListener('click', () => dialog().close());
     document.getElementById('word-conversion-confirm')?.addEventListener('click', confirmConversion);
     // Native close is queued; it may arrive after a new preview has opened.

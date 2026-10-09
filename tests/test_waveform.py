@@ -831,7 +831,7 @@ class EditorAssetTests(unittest.TestCase):
         self.assertIn('<span class="help-important"><kbd data-mod-key>Ctrl+Shift+A/D</kbd> 合并前/后字幕</span>', page)
         self.assertIn('<kbd>Home</kbd>/<kbd>End</kbd> 选择并显示当前轨道首/末条可见字幕', page)
         self.assertIn(
-            '<span class="help-important"><kbd>F</kbd> 跳转并播放选中字幕</span>\n'
+            '<span class="help-important"><kbd>F</kbd> 试听选中的字幕，到字幕终点自动暂停</span>\n'
             '          <span class="help-break" aria-hidden="true"></span>\n'
             '          <span><kbd>Home</kbd>/<kbd>End</kbd> 选择并显示当前轨道首/末条可见字幕</span>',
             page,

@@ -157,7 +157,7 @@ test('conversion reviews skips and bindings, is atomic and preserves items on sa
     MaweSelection.addToSelection(2);
     MaweContextMenus.showContextMenu(100, 100, 0);
   });
-  await page.locator('.word-timing-advanced summary').click();
+  await page.locator('.word-timing-advanced > .item').first().click();
   expect(await page.locator('.word-timing-advanced .danger').evaluate(el =>
     el.getBoundingClientRect().top - el.previousElementSibling.getBoundingClientRect().bottom,
   )).toBeGreaterThanOrEqual(8);
@@ -471,7 +471,7 @@ test('context menu keeps clip actions up front and moves low-frequency entries i
   const menu = page.locator('#ctxmenu');
   await expect(menu.locator(':scope > .item').filter({ hasText: '转为叠加字幕' })).toHaveCount(0);
   await expect(menu.locator(':scope > .item').filter({ hasText: '左右添加字符' })).toHaveCount(0);
-  await menu.locator('.word-timing-advanced summary').click();
+  await menu.locator('.word-timing-advanced > .item').first().click();
   const overlayButton = menu.locator('.word-timing-advanced button').filter({ hasText: '转为叠加字幕' });
   const wrapHeading = menu.locator('.word-timing-advanced').locator('span', { hasText: '左右添加字符' });
   const convertButton = menu.locator('.word-timing-advanced .danger');

@@ -121,12 +121,36 @@
     MaweSelection.lastClickedIdx = idx;
   }
   const targetIdxs = isMulti ? [...MaweSelection.selectedIdxs] : [idx];
-  const advanced = document.createElement('details');
-  advanced.className = 'word-timing-advanced';
-  const advancedHeading = document.createElement('summary');
-  advancedHeading.className = 'item';
-  advancedHeading.textContent = '高级操作';
-  advanced.append(advancedHeading);
+  // 「高级操作」：与「左右添加字符」一致的点击展开式二级菜单，
+  // 收纳低频动作，保持菜单主体聚焦剪辑操作。
+  const advanced = document.createElement('div');
+  advanced.className = 'item word-timing-advanced';
+  advanced.addEventListener('click', (event) => event.stopPropagation());
+  const advancedHead = document.createElement('div');
+  advancedHead.className = 'item';
+  advancedHead.style.cssText = 'display:flex;align-items:center;cursor:pointer;background:none;';
+  const advancedLabel = document.createElement('span');
+  advancedLabel.textContent = '高级操作';
+  advancedHead.appendChild(advancedLabel);
+  const advancedArrow = document.createElement('kbd');
+  advancedArrow.textContent = '›';
+  advancedArrow.style.marginLeft = 'auto';
+  advancedHead.appendChild(advancedArrow);
+  const advancedList = document.createElement('div');
+  advancedList.className = 'word-timing-advanced-list';
+  advancedList.style.cssText = 'display:none;flex-direction:column;margin-top:6px;gap:2px;';
+  let advancedExpanded = false;
+  advancedHead.addEventListener('click', () => {
+    advancedExpanded = !advancedExpanded;
+    advancedList.style.display = advancedExpanded ? 'flex' : 'none';
+    advancedArrow.textContent = advancedExpanded ? '⌄' : '›';
+    // 展开后菜单变高，重新贴合视口下沿（与 showContextMenu 的溢出处理一致）。
+    const rect = MaweDom.ctxmenu.getBoundingClientRect();
+    if (y + rect.height > window.innerHeight) {
+      MaweDom.ctxmenu.style.top = `${Math.max(4, window.innerHeight - rect.height - 4)}px`;
+    }
+  });
+  advanced.append(advancedHead, advancedList);
   const convertWords = document.createElement('button');
   convertWords.type = 'button';
   convertWords.className = 'item danger';
@@ -135,12 +159,7 @@
     MaweDom.ctxmenu.classList.remove('show');
     MaweWordTiming.openConversion(targetIdxs);
   });
-  advanced.addEventListener('toggle', () => {
-    const rect = MaweDom.ctxmenu.getBoundingClientRect();
-    MaweDom.ctxmenu.style.top = `${Math.max(4, Math.min(y, window.innerHeight - rect.height - 4))}px`;
-  });
-  // 低频动作统一收进「高级操作」，保持菜单主体聚焦剪辑动作。
-  function addAdvancedOverlayConvert(ids) {
+  const addAdvancedOverlayConvert = (ids) => {
     const convertOverlay = document.createElement('button');
     convertOverlay.type = 'button';
     convertOverlay.className = 'item';
@@ -149,8 +168,8 @@
       MaweDom.ctxmenu.classList.remove('show');
       convertMainCuesToOverlay(ids);
     });
-    advanced.appendChild(convertOverlay);
-  }
+    advancedList.appendChild(convertOverlay);
+  };
 
   function addItem(label, kbd, fn, opts = {}) {
     const it = document.createElement('div');
@@ -209,8 +228,13 @@
 
   // 「左右添加字符」子菜单：数据驱动预设 + 自定义输入。插入一律双符号形式；
   // 「单双符号」设置只影响识别/解析，不影响这里插入的内容。
+  // ASS 特殊文本格式预设仅在当前工程启用 ASS 字幕模式时展示。
+  function visibleWrapCharPresets() {
+    const assMode = MaweSettings.EDITOR_SETTINGS.assMode === true;
+    return (window.AsrEditorUtils.WRAP_CHAR_PRESETS || []).filter(preset => !preset.ass || assMode);
+  }
   function addWrapCharsSubmenu(targets, container = MaweDom.ctxmenu) {
-    const wrapPresets = window.AsrEditorUtils.WRAP_CHAR_PRESETS;
+    const wrapPresets = visibleWrapCharPresets();
     const row = document.createElement('div');
     row.className = 'item';
     row.style.cssText = 'cursor:default;display:block;';
@@ -292,13 +316,13 @@
     ));
     // 仅「仅选中」模式提供「跳转并播放」——其它两种单击行为本身就会跳转。
     if (MaweSettings.EDITOR_SETTINGS.clickBehavior === 'select-only') {
-      addItem('跳转并播放', 'F', () => {
+      addItem('跳转并播放', '', () => {
         MaweTextCleanup.seekFromWaveform(MaweBoot.DATA.segments[idx].start / 1000);
         if (MaweCoreState.player.paused) MaweMediaPlayback.togglePlayback();
       });
     }
-    // 试听：只播放该字幕自身的时间范围，到终点自动暂停。
-    addItem('试听', '', () => {
+    // 试听：只播放该字幕自身的时间范围，到终点自动暂停；F 为全局快捷键。
+    addItem('试听', 'F', () => {
       const segment = MaweBoot.DATA.segments[idx];
       MaweMediaPlayback.auditionRange(segment.start, segment.end);
     });
@@ -333,7 +357,7 @@
       });
     }
     // 低频动作收进高级操作：左右添加字符（淡出淡入、音符等单条场景）与叠加轨迁移。
-    addWrapCharsSubmenu(targetIdxs, advanced);
+    addWrapCharsSubmenu(targetIdxs, advancedList);
     addAdvancedOverlayConvert([idx]);
   } else {
     // 组 1：合并与批量文本操作
@@ -360,11 +384,11 @@
       MaweSegmentOps.deleteSegments(targetIdxs);
     }, { danger: true });
     addItem('取消选择', `${MaweDisplaySettings.modKeyLabel()}+D`, () => MaweSelection.clearSelection());
-    addWrapCharsSubmenu(targetIdxs, advanced);
+    addWrapCharsSubmenu(targetIdxs, advancedList);
     addAdvancedOverlayConvert(targetIdxs);
   }
 
-  advanced.appendChild(convertWords);
+  advancedList.appendChild(convertWords);
   addSep();
   MaweDom.ctxmenu.appendChild(advanced);
   // 调整 ctxmenu 位置（避免溢出）

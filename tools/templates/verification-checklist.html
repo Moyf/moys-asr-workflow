@@ -1,0 +1,336 @@
+<!doctype html>
+<!--
+  人工核查清单模板（批量功能开发 / 反馈修复收尾用）
+  用法见 AGENTS.md「批量改动的人工核查清单」：
+  1. 复制本文件到仓库外（如 %TEMP%），全文替换标题、副标题、分区内容三处
+     双花括号占位符。注意：本注释与下方脚本注释中刻意不出现占位符原文，
+     避免被全局替换误伤——维护模板时请保持这一约定；
+  2. 分区内容由若干分区卡片组成，每个分区的标准写法：
+       <details class="section" open>
+         <summary>标题文字 <span class="badge pass">通过</span></summary>
+         <div class="body"> …内容… </div>
+       </details>
+     - open 控制默认展开；summary 中的纯文本（或 .sec-title 元素内容）自动进入左侧目录；
+     - 只读说明用 .plain / .note / <table> / .cmd；打勾项用
+       <div class="item"><input type="checkbox" id="唯一ID"><label for="唯一ID">…</label></div>；
+     - 徽标：.badge.pass（通过 / 已完成）.badge.fixed（已修复）.badge.todo（待办 / 阻塞）。
+  3. 分区约定：A 实现 / 审查结论（只读）· B 修复与提交记录 · C 自动化验证结果（写明命令与已知环境性失败）
+     · D 人工核验打勾项（入口 → 操作 → 预期）· E 后续操作步骤；
+  4. 左侧目录、分区进度徽标、总进度由脚本自动生成，无需手写；
+     勾选状态按页面标题存 localStorage；生成物不提交进仓库；确需改进模板时改本文件。
+-->
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>{{TITLE}}</title>
+<style>
+  :root {
+    --bg: #f3f5f8; --paper: #ffffff; --ink: #1a1f27; --ink2: #57606e; --ink3: #8b94a3;
+    --line: #e4e7ec; --accent: #2563eb; --ok: #16a34a; --warn: #b45309;
+    --chip: #eef1f6; --mono: ui-monospace, "Cascadia Mono", Consolas, monospace;
+    --radius: 14px;
+    --shadow: 0 1px 2px rgba(16,24,40,.05), 0 6px 20px rgba(16,24,40,.06);
+    --accent-soft: color-mix(in srgb, var(--accent) 12%, transparent);
+    --ok-soft: color-mix(in srgb, var(--ok) 14%, transparent);
+    --warn-soft: color-mix(in srgb, var(--warn) 16%, transparent);
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #0e1116; --paper: #161b22; --ink: #e8ebf0; --ink2: #a4adba; --ink3: #6e7787;
+      --line: #2a313b; --accent: #6ea8ff; --ok: #4ade80; --warn: #f0b14a; --chip: #1f2630;
+      --shadow: 0 1px 2px rgba(0,0,0,.35), 0 6px 20px rgba(0,0,0,.4);
+    }
+  }
+  * { box-sizing: border-box; }
+  html { scroll-behavior: smooth; }
+  @media (prefers-reduced-motion: reduce) {
+    html { scroll-behavior: auto; }
+    *, *::before, *::after { transition: none !important; }
+  }
+  body { margin: 0; background: var(--bg); color: var(--ink);
+    font: 16px/1.7 -apple-system, "Segoe UI", "PingFang SC", "Microsoft YaHei", sans-serif; }
+  ::selection { background: var(--accent-soft); }
+
+  /* 顶部整体进度条 */
+  .topbar { position: fixed; top: 0; left: 0; right: 0; height: 3px; z-index: 50; }
+  .topbar > i { display: block; height: 100%; width: 0;
+    background: linear-gradient(90deg, var(--accent), var(--ok)); transition: width .3s; }
+
+  .layout { max-width: 1240px; margin: 0 auto; padding: 44px 32px 100px;
+    display: grid; grid-template-columns: 300px minmax(0, 1fr);
+    grid-template-areas: "head head" "side main"; column-gap: 36px; row-gap: 24px;
+    align-items: start; }
+  .page-head { grid-area: head; }
+  .sidebar { grid-area: side; position: sticky; top: 20px;
+    display: flex; flex-direction: column; gap: 16px;
+    max-height: calc(100vh - 40px); overflow-y: auto; }
+  .content { grid-area: main; min-width: 0; }
+
+  header.page-head h1 { font-size: 27px; line-height: 1.3; margin: 0 0 6px; letter-spacing: -.01em; }
+  header.page-head .sub { color: var(--ink2); font-size: 15px; }
+
+  /* 侧栏卡片：总进度 + 目录 */
+  .side-card { background: var(--paper); border: 1px solid var(--line);
+    border-radius: var(--radius); box-shadow: var(--shadow); padding: 18px 20px; }
+  .row { display: flex; align-items: baseline; justify-content: space-between; gap: 10px; }
+  .lbl { font-size: 13px; font-weight: 600; color: var(--ink3); letter-spacing: .06em; }
+  .pct { font: 700 14px var(--mono); color: var(--accent); }
+  .pct.full { color: var(--ok); }
+  .num { font: 700 26px/1.2 var(--mono); margin: 2px 0 10px; }
+  .bar { height: 10px; background: var(--chip); border-radius: 999px; overflow: hidden; }
+  .bar > i { display: block; height: 100%; width: 0; border-radius: 999px;
+    background: linear-gradient(90deg, var(--accent), var(--ok)); transition: width .3s; }
+  .side-actions { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 14px; }
+  button.ghost { border: 1px solid var(--line); background: none; color: var(--ink2);
+    border-radius: 8px; padding: 5px 12px; font-size: 13px; cursor: pointer; }
+  button.ghost:hover { color: var(--ink); border-color: var(--ink3); }
+
+  .toc-title { font: 600 12px var(--mono); letter-spacing: .12em; color: var(--ink3);
+    text-transform: uppercase; margin-bottom: 6px; }
+  .toc a { display: flex; align-items: baseline; gap: 10px; padding: 8px 10px;
+    margin: 0 -10px; border-radius: 8px; color: var(--ink2); font-size: 14.5px;
+    line-height: 1.5; text-decoration: none; }
+  .toc a:hover { background: var(--chip); color: var(--ink); }
+  .toc a.active { background: var(--accent-soft); color: var(--accent); font-weight: 600; }
+  .toc a .m { flex: none; width: 7px; height: 7px; border-radius: 50%;
+    background: var(--ink3); transform: translateY(-1px); }
+  .toc a.active .m { background: var(--accent); }
+  .toc a.done .m { background: var(--ok); }
+  .toc a .t { flex: 1; }
+  .toc a .c { font: 600 12px var(--mono); color: var(--ink3); white-space: nowrap; }
+  .toc a.done .c { color: var(--ok); }
+
+  /* 分区卡片 */
+  .section { background: var(--paper); border: 1px solid var(--line); border-radius: var(--radius);
+    box-shadow: var(--shadow); margin: 0 0 18px; overflow: hidden; scroll-margin-top: 20px; }
+  .section > summary { cursor: pointer; padding: 16px 22px; font-size: 17px; font-weight: 650;
+    line-height: 1.5; display: flex; align-items: center; flex-wrap: wrap; gap: 10px;
+    user-select: none; list-style: none; }
+  .section > summary:hover { background: var(--chip); }
+  .section > summary:focus-visible { outline: 2px solid var(--accent); outline-offset: -3px; }
+  .section > summary::-webkit-details-marker { display: none; }
+  .section > summary::after { content: "⌄"; font-size: 15px; color: var(--ink3);
+    transition: transform .18s; }
+  .section[open] > summary::after { transform: rotate(180deg); }
+  .sec-progress { margin-left: auto; font: 600 12.5px var(--mono); color: var(--ink3);
+    background: var(--chip); padding: 3px 10px; border-radius: 999px; }
+  .sec-progress.done { background: var(--ok-soft); color: var(--ok); }
+  .badge { font: 600 12px/1 var(--mono); padding: 5px 9px; border-radius: 999px;
+    background: var(--chip); color: var(--ink2); }
+  .badge.pass { background: var(--ok-soft); color: var(--ok); }
+  .badge.fixed { background: var(--accent-soft); color: var(--accent); }
+  .badge.todo { background: var(--warn-soft); color: var(--warn); }
+  .body { padding: 8px 22px 18px; border-top: 1px solid var(--line); }
+
+  /* 分区内容元素 */
+  .note { color: var(--ink2); font-size: 14.5px; margin: 10px 0; }
+  .plain { padding: 8px 10px; color: var(--ink2); font-size: 15px; }
+  .plain b { color: var(--ink); font-weight: 600; }
+  .item { display: flex; gap: 12px; align-items: flex-start; padding: 9px 10px;
+    border-radius: 8px; }
+  .item:hover { background: var(--chip); }
+  .item input { appearance: none; -webkit-appearance: none; flex: none; margin: 3px 0 0;
+    width: 20px; height: 20px; border: 1.5px solid var(--ink3); border-radius: 6px;
+    background: var(--paper); cursor: pointer; position: relative;
+    transition: background .15s, border-color .15s; }
+  .item input::after { content: ""; position: absolute; left: 6px; top: 2px;
+    width: 5px; height: 10px; border: solid #fff; border-width: 0 2.5px 2.5px 0;
+    transform: rotate(45deg) scale(0); transition: transform .15s; }
+  .item input:checked { background: var(--ok); border-color: var(--ok); }
+  .item input:checked::after { transform: rotate(45deg) scale(1); }
+  .item input:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+  .item label { cursor: pointer; flex: 1; font-size: 15px; transition: color .2s; }
+  .item.done label { color: var(--ink3); text-decoration: line-through;
+    text-decoration-color: color-mix(in srgb, var(--ink3) 60%, transparent); }
+  .item code, .note code, .plain code, td code { font: 13px var(--mono);
+    background: var(--chip); padding: 2px 6px; border-radius: 5px; }
+  table { width: 100%; border-collapse: collapse; font-size: 14.5px; margin: 8px 0; }
+  th { text-align: left; font: 12px/1.5 var(--mono); letter-spacing: .06em;
+    color: var(--ink3); font-weight: 400; padding: 7px 10px; border-bottom: 1px solid var(--line); }
+  td { padding: 8px 10px; border-bottom: 1px solid var(--line); vertical-align: top; }
+  .cmd { display: block; font: 13px/1.6 var(--mono); background: var(--chip); color: var(--ink2);
+    border-radius: 8px; padding: 8px 14px; margin: 6px 0; overflow-x: auto; white-space: pre; }
+  a { color: var(--accent); text-decoration: none; }
+  a:hover { text-decoration: underline; }
+
+  @media (max-width: 980px) {
+    .layout { grid-template-columns: 1fr; grid-template-areas: "head" "side" "main";
+      padding: 28px 18px 72px; row-gap: 20px; }
+    .sidebar { position: static; max-height: none; overflow: visible; }
+  }
+  @media print {
+    .topbar, .sidebar, .side-actions { display: none !important; }
+    .layout { display: block; padding: 0; }
+    .section { box-shadow: none; break-inside: avoid; }
+  }
+</style>
+</head>
+<body>
+<div class="topbar"><i id="topbar-i"></i></div>
+
+<div class="layout">
+  <header class="page-head">
+    <h1>{{TITLE}}</h1>
+    <div class="sub">{{SUBTITLE}}</div>
+  </header>
+
+  <aside class="sidebar">
+    <div class="side-card">
+      <div class="row"><span class="lbl">核查进度</span><span class="pct" id="pct">0%</span></div>
+      <div class="num" id="num">0 / 0</div>
+      <div class="bar"><i id="bar"></i></div>
+      <div class="side-actions">
+        <button class="ghost" id="reset" type="button">重置勾选</button>
+        <button class="ghost" id="expand" type="button">全部展开</button>
+        <button class="ghost" id="collapse" type="button">全部收起</button>
+      </div>
+    </div>
+    <nav class="side-card toc-card" id="toc-card" aria-label="目录">
+      <div class="toc-title">目录</div>
+      <div class="toc" id="toc"></div>
+    </nav>
+  </aside>
+
+  <main class="content">
+    {{SECTIONS}}
+  </main>
+</div>
+
+<script>
+(function () {
+  // 勾选状态按页面标题隔离存储，刷新不丢；「重置勾选」一键清空。
+  var KEY = 'maw-checklist:' + document.title;
+  var sections = [].slice.call(document.querySelectorAll('details.section'));
+  var boxes = [].slice.call(document.querySelectorAll('.item input[type="checkbox"]'));
+  function load() {
+    try { return JSON.parse(localStorage.getItem(KEY) || '{}'); } catch (e) { return {}; }
+  }
+  function save(state) {
+    try { localStorage.setItem(KEY, JSON.stringify(state)); } catch (e) {}
+  }
+  var state = load();
+
+  // 从 summary 提取纯文本标题（跳过徽标 / 进度等元素），优先取 .sec-title。
+  function summaryTitle(summary) {
+    var titled = summary.querySelector('.sec-title');
+    if (titled) return titled.textContent.replace(/\s+/g, ' ').trim();
+    var text = '';
+    [].forEach.call(summary.childNodes, function (n) {
+      if (n.nodeType === 3) text += n.textContent;
+    });
+    text = text.replace(/\s+/g, ' ').trim();
+    if (text) return text;
+    var clone = summary.cloneNode(true);
+    [].forEach.call(clone.querySelectorAll('.badge,.sec-progress'), function (el) {
+      el.parentNode.removeChild(el);
+    });
+    return clone.textContent.replace(/\s+/g, ' ').trim() || '未命名分区';
+  }
+
+  // 左侧目录与分区进度徽标均由分区卡片自动生成，填写分区内容时无需手写。
+  var toc = document.getElementById('toc');
+  var links = [];
+  sections.forEach(function (sec, i) {
+    if (!sec.id) sec.id = 'sec-' + (i + 1);
+    var summary = sec.querySelector('summary');
+    var a = document.createElement('a');
+    a.href = '#' + sec.id;
+    a.innerHTML = '<span class="m"></span><span class="t"></span><span class="c"></span>';
+    a.querySelector('.t').textContent = summaryTitle(summary);
+    a.addEventListener('click', function () { sec.open = true; setActive(i); });
+    toc.appendChild(a);
+    links.push(a);
+    var prog = document.createElement('span');
+    prog.className = 'sec-progress';
+    summary.appendChild(prog);
+  });
+  if (!sections.length) document.getElementById('toc-card').style.display = 'none';
+
+  function setActive(idx) {
+    links.forEach(function (a, i) { a.classList.toggle('active', i === idx); });
+  }
+
+  function refresh() {
+    var doneAll = 0;
+    sections.forEach(function (sec, i) {
+      var sBoxes = [].slice.call(sec.querySelectorAll('.item input[type="checkbox"]'));
+      var done = sBoxes.filter(function (b) { return b.checked; }).length;
+      var prog = sec.querySelector('.sec-progress');
+      var link = links[i];
+      if (sBoxes.length) {
+        prog.style.display = '';
+        prog.textContent = done + ' / ' + sBoxes.length;
+        prog.classList.toggle('done', done === sBoxes.length);
+        link.querySelector('.c').textContent = done + '/' + sBoxes.length;
+        link.classList.toggle('done', done === sBoxes.length);
+      } else {
+        prog.style.display = 'none';
+        link.querySelector('.c').textContent = '';
+      }
+      doneAll += done;
+    });
+    boxes.forEach(function (box) {
+      box.closest('.item').classList.toggle('done', box.checked);
+    });
+    var pct = boxes.length ? Math.round(doneAll * 100 / boxes.length) : 0;
+    document.getElementById('num').textContent = doneAll + ' / ' + boxes.length;
+    var pctEl = document.getElementById('pct');
+    pctEl.textContent = pct + '%';
+    pctEl.classList.toggle('full', pct === 100 && boxes.length > 0);
+    document.getElementById('bar').style.width = pct + '%';
+    document.getElementById('topbar-i').style.width = pct + '%';
+  }
+
+  boxes.forEach(function (box) {
+    if (state[box.id]) box.checked = true;
+    box.addEventListener('change', function () {
+      state = load();
+      state[box.id] = box.checked;
+      save(state);
+      refresh();
+    });
+  });
+  document.getElementById('reset').addEventListener('click', function () {
+    boxes.forEach(function (box) { box.checked = false; });
+    save({});
+    refresh();
+  });
+  document.getElementById('expand').addEventListener('click', function () {
+    sections.forEach(function (sec) { sec.open = true; });
+  });
+  document.getElementById('collapse').addEventListener('click', function () {
+    sections.forEach(function (sec) { sec.open = false; });
+  });
+
+  // 滚动监听：高亮当前阅读位置对应的目录项。
+  var ticking = false;
+  function spy() {
+    var idx = -1;
+    sections.forEach(function (sec, i) {
+      if (sec.getBoundingClientRect().top <= 120) idx = i;
+    });
+    setActive(idx);
+  }
+  window.addEventListener('scroll', function () {
+    if (!ticking) {
+      ticking = true;
+      requestAnimationFrame(function () { spy(); ticking = false; });
+    }
+  }, { passive: true });
+
+  // 地址栏 hash 直达分区；打印前自动展开全部分区。
+  if (location.hash) {
+    var target = document.getElementById(location.hash.slice(1));
+    if (target && target.tagName === 'DETAILS') target.open = true;
+  }
+  window.addEventListener('beforeprint', function () {
+    sections.forEach(function (sec) { sec.open = true; });
+  });
+
+  refresh();
+  spy();
+})();
+</script>
+</body>
+</html>
