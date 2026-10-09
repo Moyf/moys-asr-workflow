@@ -1,5 +1,5 @@
 // layout: waveform helpers with explicit dependencies.
-window.MAWE.register('waveform-layout', function createWaveformModule(dependencies) {
+export function createWaveformModule(dependencies) {
   'use strict';
   const { DEFAULT_LAYOUT_ROWS, ROW_HEIGHT_PRESETS, ROW_PRESETS, WORKSPACE_SCHEMA, ZOOM_PRESETS, clamp, clampWaveformScale } = dependencies;
 
@@ -423,8 +423,7 @@ window.MAWE.register('waveform-layout', function createWaveformModule(dependenci
         ? { disabledDisplay: rawWaveformSettings.disabledDisplay } : {}),
       ...(typeof rawWaveformSettings.showGroupBadges === 'boolean'
         ? { showGroupBadges: rawWaveformSettings.showGroupBadges } : {}),
-      ...(typeof rawWaveformSettings.dragPlayhead === 'boolean'
-        ? { dragPlayhead: rawWaveformSettings.dragPlayhead } : {}),
+      dragPlayhead: true,
     } : null;
     const candidateTree = normalizeLayoutTree(source.tree);
     const tree = isCompleteLayoutTree(candidateTree)
@@ -453,4 +452,4 @@ window.MAWE.register('waveform-layout', function createWaveformModule(dependenci
   }
 
   return Object.freeze({ BUILTIN_WORKSPACES, BUILTIN_WORKSPACE_IDS, DEFAULT_RIGHT_LAYOUT_TREE, DEFAULT_SETTINGS, MODULE_LABELS, cloneLayoutTree, collectLayoutModules, directionLabel, insertLayoutModuleAtEdge, insertLayoutModuleAtRootEdge, isCompleteLayoutTree, layoutDropIntent, layoutDropPreviewRect, layoutRootDropIntent, normalizeLayoutData, normalizeLayoutRows, normalizeLayoutTree, swapLayoutModuleOrder, swapLayoutTreeModules });
-});
+}

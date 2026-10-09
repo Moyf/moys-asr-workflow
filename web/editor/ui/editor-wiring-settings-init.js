@@ -118,7 +118,7 @@ if (MaweDom.mergeJoinTextWordInput) MaweDom.mergeJoinTextWordInput.value = MaweS
 // 「合并字幕时插入字符」旁的提示：显示当前主字幕拆分类型（自动检测或已指定），
 // 并提供一键切换。手动指定的类型存入 EDITOR_SETTINGS.mainSplitModeOverride
 // （本地偏好，多重字幕开关无关），同时同步 multi_subtitle.main_split_mode，
-// 与多重字幕菜单的「主字幕语言类型」互为镜像。
+// 与多重字幕菜单的「主字幕语言」互为镜像。
 
 
 
@@ -205,8 +205,6 @@ document.getElementById('multi-subtitle-import')?.addEventListener('click', () =
   MaweMultiSubtitleCore.pendingSrtImportAsExtension = true;
   MaweProjectMediaInputs.loadSrtFileInput.value = '';
   MaweProjectMediaInputs.loadSrtFileInput.click();
-  MaweDom.multiSubtitleSettingsDropdown?.classList.remove('open');
-  MaweDom.multiSubtitleSettingsDropdown?.querySelector('button[aria-expanded]')?.setAttribute('aria-expanded', 'false');
 });
 MaweDom.multiSubtitleDisplayMode?.addEventListener('change', () => {
   const multi = MaweMultiSubtitleCore.getMultiSubtitleState();
@@ -225,7 +223,7 @@ MaweDom.multiSubtitleMainLanguageMode?.addEventListener('change', () => {
     ? MaweDom.multiSubtitleMainLanguageMode.value : 'word';
   if (multi.main_split_mode === next
       && MaweSettings.EDITOR_SETTINGS.mainSplitModeOverride === next) return;
-  return MaweCommands.run('切换主字幕语言类型', (command) => {
+  return MaweCommands.run('切换主字幕语言', (command) => {
     multi.main_split_mode = next;
     // 与设置面板的类型提示共用同一个手动指定偏好，两个入口互为镜像。
     MaweSettings.updateEditorSettings({ mainSplitModeOverride: next });
@@ -239,7 +237,7 @@ MaweDom.multiSubtitleExtensionLanguageMode?.addEventListener('change', () => {
   const next = MaweMultiSubtitleCore.isConfiguredSubtitleSplitMode(MaweDom.multiSubtitleExtensionLanguageMode.value)
     ? MaweDom.multiSubtitleExtensionLanguageMode.value : 'word';
   if (track.split_mode === next) return;
-  return MaweCommands.run('切换副字幕语言类型', (command) => {
+  return MaweCommands.run('切换副字幕语言', (command) => {
     track.split_mode = next;
     MaweMultiSubtitleCore.markMultiSubtitleDirty();
     command.commit({ cueList: true, waveform: 'none' });

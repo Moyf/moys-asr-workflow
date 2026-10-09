@@ -44,7 +44,7 @@
     return;
   }
   if (gapRemoved && !removed.length) {
-    MaweHint.flashHint('没有已移除的静音空隙；请先使用「移除静音空隙」扫描并移除', 'invalid');
+    MaweHint.flashHint('没有已移除的静音空隙；请先在「静音空隙」中扫描', 'invalid');
     return;
   }
   const { segments, overlaySet, overlaySegments } = mergedExportSegments();
@@ -104,12 +104,12 @@
   function gapRemovedExportContext() {
     const removed = MaweGapRemoveData.getRemovedGapRanges();
     if (!removed.length) {
-      MaweHint.flashHint('没有已移除的静音空隙；请先使用「移除静音空隙」扫描并移除', 'invalid');
+      MaweHint.flashHint('没有已移除的静音空隙；请先在「静音空隙」中扫描', 'invalid');
       return null;
     }
     const durationMs = MaweCoreState.waveformEditor?.durationMs || Math.round(Number(MaweCoreState.player?.duration) * 1000) || 0;
     if (!durationMs) {
-      MaweHint.flashHint('媒体时长尚不可用；请先加载媒体后再导出', 'invalid');
+      MaweHint.flashHint('媒体时长尚不可用；请先导入媒体再导出', 'invalid');
       return null;
     }
     const intervals = window.AsrEditorUtils.buildGapRemovedIntervals(durationMs, removed);
@@ -121,7 +121,11 @@
   }
 
   function buildDynamicCaptionExportData(segments, gapRemoved) {
-    const source = Array.isArray(segments) ? segments : [];
+    const colorContext = Array.isArray(segments) ? segments : [];
+    const source = colorContext.map((segment) => ({
+      ...segment,
+      text: MaweSpeakerLabels.subtitleExportText(segment, colorContext),
+    }));
     const sourceDurationMs = MaweCoreState.waveformEditor?.durationMs
       || Math.round(Number(MaweCoreState.player?.duration) * 1000)
       || MaweBoot.DATA.waveform?.duration_ms
@@ -150,7 +154,7 @@
     if (!context) return null;
     const media = gapRemovedMediaReference();
     if (!media) {
-      MaweHint.flashHint('无法获得媒体文件名；请先加载媒体后再导出 FFconcat', 'invalid');
+      MaweHint.flashHint('无法获得媒体文件名；请先导入媒体再导出 FFconcat', 'invalid');
       return null;
     }
     return window.AsrEditorUtils.buildFfconcat(media, context.intervals);
@@ -283,7 +287,7 @@
   function buildGapRemovedSrt() {
   const removed = MaweGapRemoveData.getRemovedGapRanges();
   if (!removed.length) {
-    MaweHint.flashHint('没有已移除的静音空隙；请先使用「移除静音空隙」扫描并移除', 'invalid');
+    MaweHint.flashHint('没有已移除的静音空隙；请先在「静音空隙」中扫描', 'invalid');
     return null;
   }
   const { segments, overlaySet, overlaySegments } = mergedExportSegments();
@@ -308,7 +312,7 @@
   function buildGapRemovedAss() {
   const removed = MaweGapRemoveData.getRemovedGapRanges();
   if (!removed.length) {
-    MaweHint.flashHint('没有已移除的静音空隙；请先使用「移除静音空隙」扫描并移除', 'invalid');
+    MaweHint.flashHint('没有已移除的静音空隙；请先在「静音空隙」中扫描', 'invalid');
     return null;
   }
   const firstEnabledIndex = window.AsrEditorUtils.getSrtExportFirstIndex(
@@ -351,8 +355,8 @@
     const hasSecondary = MaweMultiSubtitleCore.getActiveExtensionTrack()?.segments
       ?.some((segment) => segment && segment.disabled !== true && String(segment.text || '').trim());
     const mainItem = document.getElementById('download-full-srt');
-    if (mainItem) mainItem.textContent = window.MAWE_I18N?.translateText?.(bilingual ? '主字幕 SRT' : 'SRT 字幕')
-      || (bilingual ? '主字幕 SRT' : 'SRT 字幕');
+    if (mainItem) mainItem.textContent = window.MAWE_I18N?.translateText?.(bilingual ? '主字幕 SRT' : 'SRT')
+      || (bilingual ? '主字幕 SRT' : 'SRT');
     const hasColors = usedSubtitleColors().some((color) => color.name !== 'default');
     if (MaweDom.downloadColorSrtItem) MaweDom.downloadColorSrtItem.hidden = !hasColors;
     if (MaweDom.subtitleExportSeparator) MaweDom.subtitleExportSeparator.hidden = !(hasColors || bilingual);

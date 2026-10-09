@@ -1,11 +1,12 @@
 // media: waveform class methods with explicit dependencies.
-window.MAWE.register('waveform-media', function createWaveformModule(dependencies) {
+export function createWaveformModule(dependencies) {
   'use strict';
   const { BROWSER_DECODE_LIMIT, BROWSER_PCM_ESTIMATE_LIMIT, ENCODING, SCHEMA, bytesToBase64, clamp, decodePayload, decodeSpectralPayload, formatCompact, localizedWaveformMessage, peaksRateOf, publishPeakRate, sameSource, sourceForFile, syncSpectralColorToggle } = dependencies;
 
   class WaveformMethods {
 
 
+    /** @this {import('./waveform-types.js').WaveformInstance} */
     attachPlayer(player) {
       if (this.player) {
         this.player.removeEventListener('timeupdate', this._onPlayerTime);
@@ -22,6 +23,7 @@ window.MAWE.register('waveform-media', function createWaveformModule(dependencie
     }
 
 
+    /** @this {import('./waveform-types.js').WaveformInstance} */
     setMediaAvailable(available) {
       const next = Boolean(available);
       if (next === this.mediaAvailable) return;
@@ -35,13 +37,14 @@ window.MAWE.register('waveform-media', function createWaveformModule(dependencie
     }
 
 
+    /** @this {import('./waveform-types.js').WaveformInstance} */
     setPayload(payload, { render = true } = {}) {
       const decoded = decodePayload(payload);
       if (!decoded) {
         this.payload = null;
         this.peaks = null;
         this.setStatus('等待波形数据');
-        this.empty.textContent = '加载媒体后显示波形（大媒体需要先用 MAW 生成波形后拖入）';
+        this.empty.textContent = '导入媒体后显示波形（大媒体需要先用 MAW 生成波形后拖入）';
         this.empty.classList.remove('hidden');
         if (render) this.render();
         return false;
@@ -64,11 +67,13 @@ window.MAWE.register('waveform-media', function createWaveformModule(dependencie
     }
 
 
+    /** @this {import('./waveform-types.js').WaveformInstance} */
     getPayload() {
       return this.payload;
     }
 
 
+    /** @this {import('./waveform-types.js').WaveformInstance} */
     setSpectralPayload(payload, { render = true } = {}) {
       this.spectral = decodeSpectralPayload(payload);
       // Without spectral data the feature is visibly and functionally off.
@@ -85,6 +90,7 @@ window.MAWE.register('waveform-media', function createWaveformModule(dependencie
     }
 
 
+    /** @this {import('./waveform-types.js').WaveformInstance} */
     setReapeaksWaveform(payload, { render = true } = {}) {
       this.reapeaksPeaks = decodePayload(payload);
       this.reapeaksPayload = this.reapeaksPeaks ? payload : null;
@@ -105,6 +111,7 @@ window.MAWE.register('waveform-media', function createWaveformModule(dependencie
      * 1000 Hz，带限之外的瞬态会被整块削平（实测单样本满幅脉冲 8 个里一个都检不到），
      * 拿它做静音门限会偏激进。
      */
+    /** @this {import('./waveform-types.js').WaveformInstance} */
     activeWaveShape() {
       const shapeSource = this.options.getWaveShapeSource?.() || 'reapeaks';
       const useReapeaks = shapeSource === 'reapeaks' && this.reapeaksPayload && this.reapeaksPeaks;
@@ -121,6 +128,7 @@ window.MAWE.register('waveform-media', function createWaveformModule(dependencie
     }
 
 
+    /** @this {import('./waveform-types.js').WaveformInstance} */
     getGapRemoveDetectionData() {
       const shape = this.activeWaveShape();
       if (!shape || !shape.peaks) return null;
@@ -132,6 +140,7 @@ window.MAWE.register('waveform-media', function createWaveformModule(dependencie
     }
 
 
+    /** @this {import('./waveform-types.js').WaveformInstance} */
     async processFile(file) {
       const signature = sourceForFile(file);
       if (this.payload && sameSource(this.payload.source, signature)) {
@@ -236,6 +245,7 @@ window.MAWE.register('waveform-media', function createWaveformModule(dependencie
     }
 
 
+    /** @this {import('./waveform-types.js').WaveformInstance} */
     async waitForPlayerDuration() {
       const player = this.player;
       if (!player) return 0;
@@ -258,18 +268,22 @@ window.MAWE.register('waveform-media', function createWaveformModule(dependencie
 
 
     get durationMs() {
-      if (this.payload) return this.payload.duration_ms;
-      if (this.player && Number.isFinite(this.player.duration)) return Math.round(this.player.duration * 1000);
+      // Accessors cannot declare a JSDoc this parameter. They share the same receiver.
+      const waveform = /** @type {import('./waveform-types.js').WaveformInstance} */ (this);
+      if (waveform.payload) return waveform.payload.duration_ms;
+      if (waveform.player && Number.isFinite(waveform.player.duration)) return Math.round(waveform.player.duration * 1000);
       return 0;
     }
 
 
+    /** @this {import('./waveform-types.js').WaveformInstance} */
     currentTimeMs() {
       return this.player && Number.isFinite(this.player.currentTime)
         ? Math.round(this.player.currentTime * 1000) : 0;
     }
 
 
+    /** @this {import('./waveform-types.js').WaveformInstance} */
     centerBasicOnCurrentTime() {
       const windowMs = this.settings.visibleSeconds * 1000;
       const maxStart = Math.max(0, this.durationMs - windowMs);
@@ -279,4 +293,4 @@ window.MAWE.register('waveform-media', function createWaveformModule(dependencie
   const descriptors = Object.getOwnPropertyDescriptors(WaveformMethods.prototype);
   delete descriptors.constructor;
   return descriptors;
-});
+}

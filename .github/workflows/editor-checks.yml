@@ -1,0 +1,55 @@
+name: Editor build and contracts
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: editor-checks-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  editor:
+    runs-on: ubuntu-latest
+    env:
+      PYTHONUTF8: '1'
+      PYTHONIOENCODING: utf-8
+    steps:
+      - uses: actions/checkout@v5
+      - uses: pnpm/action-setup@v6
+        with:
+          version: 11.28.4
+          run_install: false
+      - uses: actions/setup-node@v5
+        with:
+          node-version: '22'
+          cache: pnpm
+          cache-dependency-path: pnpm-lock.yaml
+      - run: pnpm install --frozen-lockfile
+      # Check the committed artifact before anything can regenerate it.
+      - run: pnpm run check:editor
+      - run: pnpm run typecheck
+      - uses: actions/setup-python@v6
+        with:
+          python-version: '3.11'
+      - uses: astral-sh/setup-uv@v7
+        with:
+          enable-cache: true
+      - run: uv sync --frozen
+      # Node tests also launch Chromium and compare against Python exporters.
+      - run: pnpm exec playwright install --with-deps chromium
+      - run: pnpm run test:unit
+        env:
+          MAW_TEST_PYTHON: ${{ github.workspace }}/.venv/bin/python
+      - name: Python assembly contracts
+        run: |
+          uv run --no-sync python -m unittest discover -s tests -p test_editor_assets.py
+          uv run --no-sync python -m unittest discover -s tests -p test_editor_manifest.py
+      - name: Real file and HTTP editor
+        env:
+          MAW_E2E_PYTHON: ${{ github.workspace }}/.venv/bin/python
+        run: pnpm exec playwright test --project=chromium tests/e2e/editor-bundle.spec.mjs tests/e2e/editor-transactions.spec.mjs

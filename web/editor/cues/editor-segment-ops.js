@@ -297,7 +297,7 @@
 
 
   // === 拼合字幕 ===
-  // 把工具窗参数同步到控件；「吸收过短字幕」关闭时禁用短句相关参数。
+  // 把工具窗参数同步到控件；「合并短句」关闭时禁用短句相关参数。
   function syncAutoMergePanelInputs() {
     if (MaweDom.autoMergeGapMsInput) MaweDom.autoMergeGapMsInput.value = String(MaweSettings.EDITOR_SETTINGS.autoMergeGapMs);
     if (MaweDom.autoMergeSnapDirectionSelect) MaweDom.autoMergeSnapDirectionSelect.value = MaweSettings.EDITOR_SETTINGS.autoMergeSnapDirection;
@@ -329,13 +329,13 @@
       absorbDirection: MaweSettings.EDITOR_SETTINGS.autoMergeAbsorbDirection,
     });
     if (!plan.snaps.length && !plan.groups.length) {
-      MaweHint.flashHint('没有需要拼接/合并的间隔或过短字幕', 'invalid');
+      MaweHint.flashHint('没有需要拼合的间隔或过短字幕', 'invalid');
       return;
     }
     if (MaweInlineEdit.editingState) MaweInlineEdit.finishEdit(false);
     MaweCuePanel.commitCuePanelEdit();
     MaweSelection.clearSelection({ silent: true });
-    return MaweCommands.run('拼接/合并字幕', (command) => {
+    return MaweCommands.run('拼合字幕', (command) => {
       const snappedCount = applyAutoMergeSnapsWithBindings(plan.snaps);
       // 合并从后往前进行，保持靠前组的下标仍然有效
       for (let i = plan.groups.length - 1; i >= 0; i--) {
@@ -347,7 +347,7 @@
       const parts = [];
       if (snappedCount) parts.push(`吸附 ${snappedCount} 处间隔`);
       if (mergedCount) parts.push(`吸收 ${mergedCount} 条短字幕`);
-      MaweHint.flashHint(`已拼接/合并字幕：${parts.join('，')}`, 'success');
+      MaweHint.flashHint(`已拼合字幕：${parts.join('，')}`, 'success');
     });
   }
 

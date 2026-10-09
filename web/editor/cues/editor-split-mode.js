@@ -18,8 +18,8 @@
 
   // 「合并字幕时插入字符」旁的提示：显示当前主字幕拆分类型（自动检测或已指定），
   // 并提供一键切换。手动指定的类型存入 EDITOR_SETTINGS.mainSplitModeOverride
-  // （本地偏好，多重字幕开关无关），同时同步 multi_subtitle.main_split_mode，
-  // 与多重字幕菜单的「主字幕语言类型」互为镜像。
+  // （工程设置，与多重字幕开关无关），通过 multi_subtitle.main_split_mode 保存，
+  // 与多重字幕菜单的「主字幕语言」互为镜像。
   const mergeJoinModeHint = document.getElementById('merge-join-mode-hint');
 
 
@@ -62,8 +62,8 @@
   function setMainSubtitleSplitModeBinding(mode) {
     const next = MaweMultiSubtitleCore.isConfiguredSubtitleSplitMode(mode) ? mode : null;
     if (!next || next === MaweSettings.EDITOR_SETTINGS.mainSplitModeOverride) return;
-    return MaweCommands.run('切换主字幕语言类型', (command) => {
-      // 本地偏好立即生效；工程内的 main_split_mode 同步写入，
+    return MaweCommands.run('切换主字幕语言', (command) => {
+      // 工程内的 main_split_mode 立即生效并随工程保存，
       // 保证多重字幕菜单与保存后的工程文件读到同一类型。
       MaweSettings.updateEditorSettings({ mainSplitModeOverride: next });
       MaweMultiSubtitleCore.getMultiSubtitleState().main_split_mode = next;

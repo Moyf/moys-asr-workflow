@@ -12,8 +12,7 @@ import {
   generateProjectJson,
   generateWav,
   makeTempDir,
-  startServer,
-} from './helpers.mjs';
+  startServer, closeSettingsPanels, openSettingsPage } from './helpers.mjs';
 
 let tempDir;
 let server;
@@ -50,8 +49,8 @@ test('a custom preview font family boots without GEO_UTILS TDZ errors', async ({
     return media && media.readyState >= 1;
   });
 
-  await page.locator('#editor-settings-toggle').click();
-  await page.locator('#editor-settings-tab-subtitle-style').click();
+  await openSettingsPage(page, 'subtitle-style');
+  await openSettingsPage(page, 'subtitle-style');
   // 启动期占位是原始族名；共享工具层就绪后统一本地化为「微软雅黑」。
   await expect(page.locator('#subtitle-font-family')).toHaveValue('微软雅黑');
   expect(bootErrors).toEqual([]);

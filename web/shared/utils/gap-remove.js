@@ -1,5 +1,5 @@
 // gap-remove: private helpers; dependencies are injected by editor-utils.js.
-window.MAWE.register('utils-gap-remove', function createUtilsModule(dependencies) {
+export function createUtilsModule(dependencies) {
   'use strict';
   const { gapRemoveCore } = dependencies;
 
@@ -121,4 +121,4 @@ window.MAWE.register('utils-gap-remove', function createUtilsModule(dependencies
   }
 
   return Object.freeze({ GAP_REMOVE_DISABLE_COVERAGE_DEFAULT, GAP_REMOVE_DISABLE_REMAINING_DEFAULT_MS, GAP_REMOVE_DISABLE_REMAINING_MAX_MS, appendGapRemoveManualOverrides, applyGapRemoveRange, buildGapRemovedDynamicSegments, buildGapRemovedIntervals, clampGapRemoveDisableCoverage, clampGapRemoveDisableRemaining, copyGapRemoveRange, decorateGapRemoveGaps, detectAudioGapRemoveGaps, findGapRemoveDisableMatches, gapRangesFromProvenance, getGapRemoveDisplayGaps, getGapRemoveDisplayType, getRemovedGapRanges, isGapRemoveDisplayProtected, mapGapRemovedTime, moveGapRemoveProvenance, moveGapRemoveRange, normalizeGapRemoveData, normalizeGapRemoveGaps, normalizeGapRemoveProvenance, removeGapRemoveProvenanceRange, replaceGapRemoveProvenanceSource, resizeGapRemoveBoundary, resolveGapFillRange, shrinkGapRemoveGaps });
-});
+}

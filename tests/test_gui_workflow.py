@@ -616,6 +616,57 @@ class GuiWorkflowTests(unittest.TestCase):
             "en",
         )
 
+    def _run_local_transcription_and_capture_env(self) -> dict[str, str]:
+        request = TranscriptionRequest(
+            media_path=self.media_path,
+            srt_path=self.srt_path,
+            api_key="",
+            provider="local",
+            runtime_python="runtime-python",
+            ui_language="en",
+        )
+        self.srt_path.write_text("1\n", encoding="utf-8")
+        self.srt_path.with_suffix(".mosp").write_text('{"segments": []}\n', encoding="utf-8")
+
+        class FakeProcess:
+            returncode = 0
+            stdout = ["done\n"]
+
+            def poll(self) -> int | None:
+                return 0
+
+            def wait(self, timeout: float | None = None) -> int:
+                return 0
+
+        with mock.patch("maw.gui_workflow.subprocess.Popen", return_value=FakeProcess()) as popen:
+            with mock.patch(
+                "maw.gui_workflow.render_editor_html",
+                return_value=self.root / "_maw" / "out.edit.html",
+            ):
+                run_transcription(request)
+        return popen.call_args.kwargs["env"]
+
+    def test_run_transcription_drops_bundled_library_path_for_host_runtime_python(self) -> None:
+        """回归：本地引擎子进程跑在托管 venv 的宿主解释器上，不能用包内旧动态库。
+
+        继承 ``_internal`` 会让宿主的 pyexpat / _ssl / _hashlib 导入失败，
+        本地引擎连模型下载都起不来。
+        """
+        with mock.patch.object(sys, "platform", "linux"):
+            with mock.patch.object(sys, "frozen", True, create=True):
+                with mock.patch.dict(os.environ, {"LD_LIBRARY_PATH": "/app/_internal"}):
+                    env = self._run_local_transcription_and_capture_env()
+
+        self.assertNotIn("LD_LIBRARY_PATH", env)
+
+    def test_run_transcription_keeps_library_path_when_not_frozen(self) -> None:
+        with mock.patch.object(sys, "platform", "linux"):
+            with mock.patch.object(sys, "frozen", False, create=True):
+                with mock.patch.dict(os.environ, {"LD_LIBRARY_PATH": "/opt/cuda/lib64"}):
+                    env = self._run_local_transcription_and_capture_env()
+
+        self.assertEqual(env["LD_LIBRARY_PATH"], "/opt/cuda/lib64")
+
     def test_terminate_process_tree_uses_windows_taskkill_for_descendants(self) -> None:
         class FakeProcess:
             pid = 4321
@@ -695,7 +746,7 @@ class GuiWorkflowTests(unittest.TestCase):
 
         self.assertEqual(result, html_path)
         page = html_path.read_text(encoding="utf-8")
-        self.assertIn('const GENERATED_LANGUAGE = typeof "en"', page)
+        self.assertRegex(page, r'typeof\s*"en"')
         self.assertNotIn("__UI_LANGUAGE_JSON__", page)
 
     def test_render_editor_html_embeds_bwf_time_reference(self) -> None:

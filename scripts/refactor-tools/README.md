@@ -14,11 +14,10 @@
 | `fix-e2e-globals.mjs` | 把 e2e spec 里 `page.evaluate` 引用的已私有化全局改写为命名空间限定 | acorn |
 | `scan-implicit-globals.mjs` | 扫描模块中「赋值给未声明标识符」的隐式全局写（严格模式雷） | acorn |
 
-安装依赖：`npm install --save-dev acorn && npm install --no-save ts-morph`
-（ts-morph 仅分析期使用，不进运行时依赖。）
+这些一次性 AST 分析脚本共用根目录的 `acorn` / `acorn-walk` 开发依赖。需要运行使用 `ts-morph` 的分析脚本时，在仓库根目录执行 `pnpm add -D ts-morph`；分析完成后用 `pnpm remove ts-morph` 移除临时依赖。它不进入运行时依赖。
 
 只保留可复用的拆分、审计与冒烟工具；绑定具体 PR、提交、临时目录或某次
 冲突块编号的一次性调试脚本不进入仓库。写入目标被占用时工具直接报错，
 不会先删除目标文件规避锁定。
 
-机械切段与移动的等价审计：`node scripts/check_editor_equivalence.mjs --base <revision>`，核对原序源码字节及 Python / Tauri 装配 AST。
+机械切段与移动的等价审计：`node scripts/check_editor_equivalence.mjs --base <revision>`，核对原序源码字节及装配 AST。

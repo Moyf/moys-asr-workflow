@@ -1,5 +1,5 @@
 // export-workflow: private helpers; dependencies are injected by editor-utils.js.
-window.MAWE.register('utils-export-workflow', function createUtilsModule(dependencies) {
+export function createUtilsModule(dependencies) {
   'use strict';
   const { freezeExportValue } = dependencies;
 
@@ -48,4 +48,4 @@ window.MAWE.register('utils-export-workflow', function createUtilsModule(depende
   }
 
   return Object.freeze({ buildFfconcat, saveSequentialExportArtifacts });
-});
+}

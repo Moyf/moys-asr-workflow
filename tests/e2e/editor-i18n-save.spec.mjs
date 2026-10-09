@@ -9,8 +9,7 @@ import {
   generateProjectJson,
   generateWav,
   makeTempDir,
-  startServer,
-} from './helpers.mjs';
+  startServer, closeSettingsPanels, openSettingsPage } from './helpers.mjs';
 
 let tempDir;
 let server;
@@ -120,6 +119,7 @@ test('English split preview preserves both subtitle halves', async ({ page }) =>
   await page.goto(`${server.url}?lang=en`);
   await page.evaluate(() => {
     MaweBoot.DATA.segments[0].text = '删除保存';
+    MaweSettings.EDITOR_SETTINGS.mainSplitModeOverride = 'continuous';
     MaweBoot.DATA.segments[0].items = [];
     MaweCuePanel.renderAll({ waveform: 'full' });
     MaweSplitCore.openMainWaveformSplitModal(0, 4000);
@@ -197,7 +197,7 @@ test('English locale covers the editor shell and recent-project setting stays fi
   await page.keyboard.press('Escape');
 
   await page.locator('#editor-settings-toggle').click();
-  await page.locator('#editor-settings-tab-interface').click();
+  await openSettingsPage(page, 'interface');
   await page.locator('#language-toggle').click();
   await expect(page.locator('#save-project')).toHaveText('保存工程');
   await expect(page.locator('#search')).toHaveAttribute('placeholder', '过滤字幕…');
@@ -370,7 +370,7 @@ test('small subtitle-segment overlap can be auto-repaired and saved again', asyn
   });
 
   await page.evaluate(() => {
-    // 重叠修复 UX 针对毫秒时间基准；帧模式下 1ms 会被帧吸附抹平。
+    // 重叠修复 UX 针对毫秒时间基准；帧模式下 1ms 会被对齐到帧抹平。
     MaweBoot.DATA.timebase = { unit: 'milliseconds', fps: 30 };
     MaweBoot.DATA.segments[0].end = MaweBoot.DATA.segments[1].start + 1;
     MaweBoot.DATA.segments[0]._dirty = true;
@@ -409,7 +409,7 @@ test('larger subtitle-segment overlap requires an explicit repair direction', as
     });
   });
   await page.evaluate(() => {
-    // 同上：钉住毫秒时间基准，避免帧吸附改写时间边界。
+    // 同上：钉住毫秒时间基准，避免对齐到帧改写时间边界。
     MaweBoot.DATA.timebase = { unit: 'milliseconds', fps: 30 };
     MaweBoot.DATA.segments[0].end = MaweBoot.DATA.segments[1].start + 2000;
     MaweBoot.DATA.segments[0]._dirty = true;

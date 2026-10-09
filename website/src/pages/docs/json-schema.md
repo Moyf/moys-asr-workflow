@@ -5,7 +5,7 @@ description: "定义 .mosp / .json 工程的字段、时间码、波形和工作
 source: "JSON_SCHEMA.md"
 ---
 
-<!-- Generated from JSON_SCHEMA.md. Run npm run sync:docs to refresh. -->
+<!-- Generated from JSON_SCHEMA.md. Run pnpm run sync:docs to refresh. -->
 
 本文档定义 MAWE（Moy's ASR Workflow Editor）、`edit.py` 生成的 `.edit.html` 以及 `blank-editor.html` 共同接受的工程文件格式。工程文件内容是 UTF-8 JSON；`.mosp` 是当前默认和推荐的扩展名，`.json` 作为旧工程与兼容输入/输出扩展名继续支持。
 
@@ -574,6 +574,7 @@ source: "JSON_SCHEMA.md"
 - `id` 是稳定字符串。缺失、重复或非法 ID 由规范化按时间序补齐，显式 ID 合法时原样保留。已有稳定 ID 不随移动或新增标记而重排，因此 ID 数字不代表时间顺序。
 - `name` 最长 120 字符，`note` 最长 500 字符，写入前去除控制字符；`color` 为 `#RRGGBB` 六位十六进制，非法值回退默认 `#3e63dd`。
 - `review` 是可选的复核状态：`status` 为 `pending`（待复核）或 `confirmed`（已确认），`reason` 最长 300 字符。带 `review.status: "pending"` 的标记在轨道上以脉冲样式显示，并在「标记与区段」管理窗中计数；确认后置为 `confirmed`。AI 口播整理把待复核段写成 `pending` 复核标记（默认色 `#f5a623`），确认与否完全由用户决定。
+- AI 整理的新注释优先写覆盖源字幕的区段（合法 `end > start`），`note` 统一为 `[AI] 操作：原因`。自动删除使用「删除」且不带 `review`；替代版本存疑使用「替代项」，其他待复核使用「复核」，并带 `pending`。这是已有字段的使用约定，不增加 schema 字段；注释与字幕禁用、`gap_remove` 决定独立，删除注释不撤销剪辑。
 - 读写双方都应容忍未知字段与非法项：规范化丢弃无法解析的项，不抛错。
 
 ---

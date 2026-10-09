@@ -53,6 +53,6 @@ MAW（Moy's ASR Workflow）是一条刻意收窄、可公开分发的 Qwen ASR A
 - 增加英文版本与语言切换。
 - 设计 Open Graph 社交分享图和 favicon 变体。
 - 加入下载平台卡片，并从 GitHub Release 动态读取版本信息。
-- 继续维护 `npm --prefix website run sync:docs`，让主仓库文档变化可重复同步到 `/docs/`。
+- 继续维护 `pnpm run sync:docs`，让主仓库文档变化可重复同步到 `/docs/`。
 - 按需要接入 Vercel 自定义域名；GitHub Pages workflow 已发布官网、文档和 `/editor/`。
 - 做大陆、海外移动端网络和 Lighthouse 实测。
