@@ -5,7 +5,7 @@ description: "文稿匹配、AI 整理、翻译、时间码与媒体处理。"
 source: "docs/TOOLBOX.md"
 ---
 
-<!-- Generated from docs/TOOLBOX.md. Run npm run sync:docs to refresh. -->
+<!-- Generated from docs/TOOLBOX.md. Run pnpm run sync:docs to refresh. -->
 
 工具箱分为「字幕后处理」与「实用工具」。前者处理字幕文字或时间码，后者处理媒体。希望转写后自动执行多个步骤时，使用 [自动处理链](../postprocess-pipeline/)。
 

@@ -5,7 +5,7 @@ description: "定义 .mosp / .json 工程的字段、时间码、波形和工作
 source: "JSON_SCHEMA.md"
 ---
 
-<!-- Generated from JSON_SCHEMA.md. Run npm run sync:docs to refresh. -->
+<!-- Generated from JSON_SCHEMA.md. Run pnpm run sync:docs to refresh. -->
 
 本文档定义 MAWE（Moy's ASR Workflow Editor）、`edit.py` 生成的 `.edit.html` 以及 `blank-editor.html` 共同接受的工程文件格式。工程文件内容是 UTF-8 JSON；`.mosp` 是当前默认和推荐的扩展名，`.json` 作为旧工程与兼容输入/输出扩展名继续支持。
 

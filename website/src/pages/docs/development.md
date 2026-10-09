@@ -5,7 +5,7 @@ description: "维护者使用的代码边界、数据持久化和发布前检查
 source: "docs/DEVELOPMENT.md"
 ---
 
-<!-- Generated from docs/DEVELOPMENT.md. Run npm run sync:docs to refresh. -->
+<!-- Generated from docs/DEVELOPMENT.md. Run pnpm run sync:docs to refresh. -->
 
 本页说明当前代码与数据边界；贡献流程见 [CONTRIBUTING](https://github.com/Moyf/moys-asr-workflow/blob/main/CONTRIBUTING.md)，仓库约束与发布规则以 [AGENTS](https://github.com/Moyf/moys-asr-workflow/blob/main/AGENTS.md) 为准。用户文档入口见 [文档索引](../documentation-index/)。
 
@@ -54,7 +54,7 @@ Server 的内置预设覆盖、命名工作区和活动名称保存在本机设�
 
 `web/editor-scripts.txt` 是 esbuild 的源码执行顺序，也是 Server、便携 HTML 与 Electron 桌面壳共用的编辑器装配清单；`web/editor-modules.json` 标出 59 个真正的 ESM 工厂与外部桥。其余 121 个文件暂时在同一 classic 作用域中执行，目录不决定顺序。构建器拒绝路径穿越、重复输入及符号链接越界。便携 HTML 与 localhost 都内联同一份已提交的 `web/editor/boot/editor-bundle.js`，用户运行编辑器不需要 Node。
 
-编辑器 JS、清单或构建配置变化后执行 `npm run build:editor`，提交 bundle 和 `.meta.json`；`npm run check:editor` 只读检查新鲜度，不会自动修复。Server 调试时另开 `npm run watch:editor`，CSS 和模板仍按请求读取。构建和 Node 测试要求 Node 22.13+；源码目录显式声明 `type: module`，不依赖语法自动检测。类型检查包括迁移的全部工厂与既有六文件范围。实施、实验及上游合并经验见 [ESM 迁移台账](https://github.com/Moyf/moys-asr-workflow/blob/main/docs/dev/ESM_MIGRATION.md)。
+编辑器 JS、清单或构建配置变化后执行 `pnpm run build:editor`，提交 bundle 和 `.meta.json`；`pnpm run check:editor` 只读检查新鲜度，不会自动修复。Server 调试时另开 `pnpm run watch:editor`，CSS 和模板仍按请求读取。构建和 Node 测试要求 Node 22.13+；源码目录显式声明 `type: module`，不依赖语法自动检测。类型检查包括迁移的全部工厂与既有六文件范围。实施、实验及上游合并经验见 [ESM 迁移台账](https://github.com/Moyf/moys-asr-workflow/blob/main/docs/dev/ESM_MIGRATION.md)。
 
 | 位置 | 职责 |
 | --- | --- |
@@ -89,15 +89,15 @@ Server 的内置预设覆盖、命名工作区和活动名称保存在本机设�
 
 ## 开发检查
 
-开发者手动维护环境：`uv sync --group dev`；前端验证工具使用根目录 `npm ci`。Agent 执行已安装环境中的命令时一律加 `--no-sync`。
+开发者手动维护环境：`uv sync --group dev`；前端验证工具使用根目录 `pnpm install --frozen-lockfile`。Agent 执行已安装环境中的命令时一律加 `--no-sync`。
 
 ```sh
 uv run --no-sync ruff check
-npm run check:editor
+pnpm run check:editor
 node --test tests/test_editor_script_syntax.mjs tests/test_editor_script_order.mjs
 node --test tests/test_editor_utils.mjs tests/test_waveform_js.mjs
 node --test tests/test_editor_state.mjs tests/test_editor_commands.mjs
-npm run typecheck
+pnpm run typecheck
 uv run --no-sync python -m unittest discover -s tests -p "test_*.py"
 git diff --check
 ```

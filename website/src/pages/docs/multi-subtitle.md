@@ -5,7 +5,7 @@ description: "主副字幕导入、绑定、联动与导出的完整规则。"
 source: "docs/MULTI_SUBTITLE.md"
 ---
 
-<!-- Generated from docs/MULTI_SUBTITLE.md. Run npm run sync:docs to refresh. -->
+<!-- Generated from docs/MULTI_SUBTITLE.md. Run pnpm run sync:docs to refresh. -->
 
 本文为当前主副字幕的详细行为与实现规范。快速操作见 [编辑器指南](../editor-guide/)，数据字段以 [JSON_SCHEMA](../json-schema/) 为准。
 

@@ -47,27 +47,33 @@ jobs:
       - name: Install locked Python dependencies
         run: uv sync --frozen --no-group build --no-dev
 
+      - name: Set up pnpm
+        uses: pnpm/action-setup@v6
+        with:
+          version: 11.28.4
+          run_install: false
+
       - name: Set up Node.js
         uses: actions/setup-node@v5
         with:
           node-version: "22"
-          cache: npm
-          cache-dependency-path: website/package-lock.json
+          cache: pnpm
+          cache-dependency-path: website/pnpm-lock.yaml
 
       - name: Install website dependencies
         working-directory: website
-        run: npm ci
+        run: pnpm install --frozen-lockfile
 
       - name: Sync MAW documentation
         working-directory: website
-        run: npm run sync:docs
+        run: pnpm run sync:docs
 
       - name: Build website
         working-directory: website
         env:
           SITE_URL: https://moyf.github.io/moys-asr-workflow
           BASE_PATH: /moys-asr-workflow
-        run: npm run build
+        run: pnpm run build
 
       - name: Add portable editor page
         shell: bash

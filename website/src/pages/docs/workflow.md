@@ -5,7 +5,7 @@ description: "从安装依赖、配置 API Key 到转写、编辑和导出的完
 source: "docs/WORKFLOW.md"
 ---
 
-<!-- Generated from docs/WORKFLOW.md. Run npm run sync:docs to refresh. -->
+<!-- Generated from docs/WORKFLOW.md. Run pnpm run sync:docs to refresh. -->
 
 这份指南只讲一次完整操作：安装 → 配置 → 转写 → 编辑 → 交付。高级设置见 [Launcher 指南](../launcher/)，完整参数见 [CLI](../cli/)。
 

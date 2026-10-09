@@ -45,7 +45,7 @@ node "$full/scripts/esm-mechanical/adapt-tests.mjs" $full
 Push-Location $full
 node --test tests/test_*.mjs
 & $python -m unittest discover -s tests -p 'test_*.py'
-npm run typecheck
+pnpm run typecheck
 node node_modules/@playwright/test/cli.js test --project=chromium tests/e2e/editor-transactions.spec.mjs tests/e2e/speaker-labels.spec.mjs tests/e2e/timed-text-edit.spec.mjs tests/e2e/open-project-attach.spec.mjs tests/e2e/overlay-track.spec.mjs tests/e2e/ass-export.spec.mjs tests/e2e/waveform-deletion.spec.mjs tests/e2e/keyboard-timing.spec.mjs tests/e2e/playback-refresh.spec.mjs
 Pop-Location
 ```

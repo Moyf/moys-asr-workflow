@@ -5,7 +5,7 @@ description: "字幕编辑、波形操作、拆分合并、导出和工程文件
 source: "docs/EDITOR_GUIDE.md"
 ---
 
-<!-- Generated from docs/EDITOR_GUIDE.md. Run npm run sync:docs to refresh. -->
+<!-- Generated from docs/EDITOR_GUIDE.md. Run pnpm run sync:docs to refresh. -->
 
 MAWE 是 MAW 的字幕编辑器。日常使用本机 Server；便携 HTML 与在线页面用于浏览器中的兼容操作。它们共用前端代码与 `.mosp` / 旧 `.json` 工程格式。
 

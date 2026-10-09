@@ -7,10 +7,10 @@
 在仓库根目录运行：
 
 ```sh
-npm --prefix website ci
-npm --prefix website run sync:docs
-npm --prefix website run check
-npm --prefix website run build
+pnpm install --frozen-lockfile
+pnpm run sync:docs
+pnpm run check
+pnpm run build
 ```
 
 脚本 `website/scripts/sync-maw-docs.mjs` 默认读取当前仓库根目录。只有从其他仓库取源文档时，才设置 `MAW_SOURCE_DIR`。某个源文件不存在时，脚本尝试从 GitHub main 获取；离线同步须确保源文件完整。

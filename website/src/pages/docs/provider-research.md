@@ -5,7 +5,7 @@ description: "Fun-ASR、Qwen 和豆包录音文件识别能力的接口对照与
 source: "docs/ASR_PROVIDER_RESEARCH.md"
 ---
 
-<!-- Generated from docs/ASR_PROVIDER_RESEARCH.md. Run npm run sync:docs to refresh. -->
+<!-- Generated from docs/ASR_PROVIDER_RESEARCH.md. Run pnpm run sync:docs to refresh. -->
 
 > 历史调研 / 阶段记录：以下内容保留当时的方案与验证范围，不作为当前操作指南。当前文档见 [文档索引](../documentation-index/)。
 

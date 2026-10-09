@@ -5,7 +5,7 @@ description: "字幕后处理的输入、输出与安全边界。"
 source: "docs/LLM_POSTPROCESS_PROTOCOL.md"
 ---
 
-<!-- Generated from docs/LLM_POSTPROCESS_PROTOCOL.md. Run npm run sync:docs to refresh. -->
+<!-- Generated from docs/LLM_POSTPROCESS_PROTOCOL.md. Run pnpm run sync:docs to refresh. -->
 
 这份协议定义 MAW Launcher 如何让 OpenAI-compatible LLM 修改字幕文字，同时保证模型不能写入字幕时间。它是工具箱实现契约，不是工程 schema 的替代品；工程结构仍以 [JSON_SCHEMA.md](../json-schema/) 为准。
 
