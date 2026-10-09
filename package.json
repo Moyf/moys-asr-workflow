@@ -15,13 +15,14 @@
     "test:unit": "node --test tests/*.mjs"
   },
   "devDependencies": {
-    "@playwright/test": "^1.52.0",
+    "@playwright/test": "1.62.0",
     "acorn": "^8.18.0",
     "acorn-walk": "^8.3.5",
     "diff": "^9.0.0",
+    "esbuild": "0.28.2",
     "eslint-scope": "^9.1.2",
     "magic-string": "^1.4.1",
-    "typescript": "^7.0.2",
-    "esbuild": "0.28.2"
+    "playwright": "1.62.0",
+    "typescript": "^7.0.2"
   }
 }
