@@ -54,6 +54,7 @@ from maw.app_paths import default_server_settings_path, legacy_server_settings_p
 from maw.ass_styles import load_ass_style_library, save_ass_style_library  # noqa: E402
 from maw.ffmpeg import resolve_ffmpeg_tools  # noqa: E402
 from maw.gui_config import DEFAULT_ENV_PATH, load_env  # noqa: E402
+from maw.gui_platform import restore_host_library_path  # noqa: E402
 from maw.postprocess_ffmpeg import libass_missing_glyphs  # noqa: E402
 from maw.project import (  # noqa: E402
     ProjectValidationFailed,
@@ -1917,7 +1918,12 @@ class EditorRequestHandler(BaseHTTPRequestHandler):
             if sys.platform == "win32":
                 os.startfile(str(directory))
             else:
-                subprocess.Popen(["open" if sys.platform == "darwin" else "xdg-open", str(directory)])
+                # open/xdg-open 是宿主桌面程序：继承包内 LD_LIBRARY_PATH 可能
+                # 被旧动态库破坏，先用宿主路径再启动（见 restore_host_library_path）。
+                subprocess.Popen(
+                    ["open" if sys.platform == "darwin" else "xdg-open", str(directory)],
+                    env=restore_host_library_path(os.environ.copy()),
+                )
         except PermissionError as error:
             self.send_json(HTTPStatus.FORBIDDEN, {"ok": False, "error": str(error)})
             return
