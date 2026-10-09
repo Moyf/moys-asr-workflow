@@ -903,7 +903,7 @@ class EditorAssetTests(unittest.TestCase):
         self.assertIn('<span class="help-important"><kbd data-mod-key>Ctrl+Shift+A/D</kbd> 合并前/后字幕</span>', page)
         self.assertIn('<kbd>Home</kbd>/<kbd>End</kbd> 选择并显示当前轨道首/末条可见字幕', page)
         self.assertIn(
-            '<span class="help-important"><kbd>F</kbd> 跳转并播放选中字幕</span>\n'
+            '<span class="help-important"><kbd>F</kbd> 试听选中的字幕，到字幕终点自动暂停</span>\n'
             '          <span class="help-break" aria-hidden="true"></span>\n'
             '          <span><kbd>Home</kbd>/<kbd>End</kbd> 选择并显示当前轨道首/末条可见字幕</span>',
             page,
@@ -965,7 +965,9 @@ class EditorAssetTests(unittest.TestCase):
         self.assertIn('id="help-open-gap-remove-panel"', page)
         self.assertIn('在「', page)
         self.assertIn('」中点击「全部清理」 清除所有空隙', page)
-        self.assertEqual(page.count('<section class="help-subgroup">'), 20)
+        self.assertEqual(page.count('<section class="help-subgroup">'), 21)
+        self.assertIn('id="word-timing-toggle"', page)
+        self.assertIn('id="word-conversion-dialog"', page)
         self.assertNotIn('确定删除第 ${idx + 1} 条字幕', page)
         self.assertNotIn('确定删除选中的 ${targetIdxs.length} 条字幕', page)
         self.assertIn('id="export-start-at-zero"', page)

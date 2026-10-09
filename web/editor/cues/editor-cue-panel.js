@@ -284,6 +284,7 @@
     return false;
   }
   ensureCuePanelUndo();
+  const previousText = seg.text;
   seg.text = nextText;
   seg.start = newStart;
   seg.end = Math.max(newStart + minimumDurationMs, newEnd);
@@ -293,6 +294,7 @@
   }
   if (target.kind === 'main') {
     seg.items = remapPanelItems(seg.items, oldStart, oldEnd, seg.start, seg.end);
+    MaweWordTiming.syncTextChange(seg, previousText);
   }
   seg._dirty = true;
   const timingChanged = seg.start !== oldStart || seg.end !== oldEnd;
@@ -447,6 +449,10 @@
       index: target.index,
       trackId: target.trackId,
       text: target.segment.text || '',
+      // Esc 还原时字词时间码要与文字一起回到会话开始的状态（输入过程可能
+      // 已按等长替换同步过 items）。
+      items: target.kind === 'main' && Array.isArray(target.segment.items)
+        ? JSON.parse(JSON.stringify(target.segment.items)) : null,
       dirty: dirtyFlagSnapshot(target.segment),
       multiDirty: target.kind === 'extension' ? {
         state: dirtyFlagSnapshot(multi),
@@ -468,6 +474,7 @@
         || snapshot.index !== target.index
         || snapshot.trackId !== target.trackId) return false;
     target.segment.text = snapshot.text;
+    if (Array.isArray(snapshot.items)) target.segment.items = JSON.parse(JSON.stringify(snapshot.items));
     restoreDirtyFlag(target.segment, snapshot.dirty);
     if (snapshot.multiDirty) {
       const multi = MaweMultiSubtitleCore.getMultiSubtitleState();

@@ -66,6 +66,7 @@
 
 
 function applyCanonicalProject(data, filename) {
+  MaweWordTiming.reset();
   // 原地换工程：在途/已排期的延迟波形载荷（含响度标尺）全部作废，见
   // deferredReapeaksEpoch 的说明。
   MaweWaveformInit.deferredReapeaksEpoch += 1;
