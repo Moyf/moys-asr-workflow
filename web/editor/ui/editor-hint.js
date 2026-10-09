@@ -8,7 +8,7 @@
 
 
   // === Hint ===
-  // 右上角提示卡片堆栈：样式在 editor.css（#hint-stack / .hint-card）。
+  // 顶部居中提示卡片堆栈：样式在 editor.css（#hint-stack / .hint-card）。
   // 最多同时显示 3 条，新提示追加在下方。
   const HINT_MAX_VISIBLE = 3;
 

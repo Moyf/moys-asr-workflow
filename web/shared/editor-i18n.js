@@ -9,6 +9,10 @@
   // The editor keeps one source template. Exact UI strings are translated at
   // the DOM boundary; project content is excluded from traversal below.
   const EN_TEXT = {
+    '淡紫': 'Lavender',
+    '白': 'White',
+    '显示备注': 'Show notes',
+    '字词与标记': 'Words and markers',
     '启用表情包': 'Enable stickers',
     '关闭后不影响工程里已设置的表情包数据，重新开启即可恢复预览与分配。': 'Existing sticker data in the project is kept; re-enable to restore preview and assignment.',
     '显示语言': 'Display language',
@@ -19,6 +23,8 @@
     '中调整；色板是本机偏好，随编辑器复用。': '; the palette is a personal preference reused across sessions.',
     '打开全局设置的调色板页': 'Open the palette page in Global settings',
     '工程颜色的呈现与说话人映射在': 'Project color presentation and speaker mappings are configured in ',
+    '可以在 [': 'Configure the speaker mapping toggle and related options in [',
+    '] 中配置说话人映射开关等。': '].',
     '颜色与说话人': 'Colors and speakers',
     '中配置，随当前工程保存。': ' and are saved with the current project.',
     '打开工程设置的颜色与说话人页': 'Open the colors-and-speakers page in Project settings',
@@ -48,6 +54,7 @@
     '工程目录': 'Project directory',
     '表情包目录': 'Sticker directory',
     '对齐到帧': 'Snap to frames',
+    '在 [工程设置] 中配置当前工程的 FPS 和时间单位。': 'Configure the current project’s FPS and time unit in [Project settings].',
     '英文按词拆，中文按字拆。': 'English splits by word; Chinese splits by character.',
     '应用': 'Apply',
     '覆盖默认文件夹': 'Override the default folder',
@@ -163,7 +170,7 @@
     "标记名称": "Marker name",
     "区段名称": "Region name",
     "自定义颜色（HEX）": "Custom color (HEX)",
-    "可选备注（AI 复核项会写入原因）": "Optional note (AI review items include a reason)",
+    "可选备注": "Optional note",
     "起点 ms": "Start ms",
     "终点 ms": "End ms",
     "时长 ms": "Duration ms",
@@ -252,7 +259,7 @@
     '叠加字幕': 'Overlay subtitles', '允许字幕重叠': 'Allow overlapping subtitles',
     '开启后可在叠加轨创建与主字幕时间重叠的叠加字幕；叠加轨不会与双语字幕建立绑定关系': 'Allow creating overlay subtitles that overlap the main-subtitle timeline; the overlay track does not bind to bilingual subtitles',
     '正在加载工程…': 'Loading project…',
-    '管理 ASS 样式': 'Manage ASS styles', '打开 ASS 样式库': 'Open the ASS style library',
+    '🎨 管理 ASS 样式': '🎨 Manage ASS styles', '管理 ASS 样式': 'Manage ASS styles', '打开 ASS 样式库': 'Open the ASS style library',
     'ASS 颜色字幕样式': 'ASS color subtitle style',
     '选择 ASS 导出和预览中，颜色字幕的应用方式；「无影响」时所有颜色字幕使用统一样式': 'Choose how colored subtitles apply in ASS export and preview; with “none”, all colored subtitles use a uniform style',
     '开启后可自定义五种字幕颜色；关闭时使用内置色值': 'Enable to customize the five subtitle colors; built-in colors are used when off',
@@ -800,6 +807,9 @@
     '向前多选': 'Extend selection backward', '向后多选': 'Extend selection forward',
     '跳转并播放选中字幕': 'Seek to and play selected subtitle',
     '试听选中的字幕，到字幕终点自动暂停': 'Audition the selected subtitle; playback pauses at its end',
+    '试听': 'Audition',
+    '调整字词时间码': 'Adjust word timings',
+    '请先导入媒体，然后才能试听': 'Import media before auditioning',
     '双音符': 'Double music notes', '中括号': 'Square brackets',
     '跳到当前字幕开头/结尾并保持暂停': 'Seek to the current subtitle start/end and stay paused',
     '倍速 ×0.5/重置/×2': 'Speed ×0.5/reset/×2',
@@ -1261,6 +1271,10 @@
     directory = /^目录读取失败：(.+)$/.exec(text);
     if (directory) return `Directory read failed: ${directory[1]}`;
     let match = /^(共|过滤) (\d+) 项：标记 (\d+) · 区段 (\d+)(?:；待复核 (\d+))?$/.exec(text);
+    const textChanges = /^已修改 (\d+) 行(?:，其中 (\d+) 行的字词时间码文字已同步)?$/.exec(text);
+    if (textChanges) return `Modified ${textChanges[1]} row(s)${textChanges[2] ? `; word-timing text synced in ${textChanges[2]} row(s)` : ''}`;
+    const historyChange = /^已(撤销|重做)：(.+)（剩 (\d+) 步）$/.exec(text);
+    if (historyChange) return `${historyChange[1] === '撤销' ? 'Undone' : 'Redone'}: ${translateText(historyChange[2], EN)} (${historyChange[3]} step(s) remaining)`;
     if (match) return `${match[1] === '过滤' ? 'Filtered' : 'Total'} ${match[2]}: markers ${match[3]} · regions ${match[4]}${match[5] ? `; pending review ${match[5]}` : ''}`;
     match = /^(标记|区段) (\d.*)$/.exec(text);
     if (match) return `${translateText(match[1], EN)} ${match[2]}`;

@@ -368,16 +368,12 @@ test('split trim chips and extra input drive shared trim behavior and persist', 
     window.MAWE_EDITOR_BRIDGE.setEditorSettingsPanelOpen(true);
   });
   await openSettingsPage(page, 'split-merge');
-  const settingsToggle = page.locator('#split-trim-settings-toggle');
   const settingsPanel = page.locator('#split-trim-settings-panel');
   const grid = page.locator('#split-trim-symbol-grid');
-  await expect(settingsToggle).toBeVisible();
-  await expect(settingsPanel).toBeHidden();
-  await expect(grid).toBeHidden();
-  await settingsToggle.click();
+  await expect(page.locator('#split-trim-settings-toggle')).toHaveCount(0);
   await expect(settingsPanel).toBeVisible();
   await expect(grid).toBeVisible();
-  await expect(settingsPanel).toHaveCSS('position', 'fixed');
+  await expect(settingsPanel).toHaveCSS('position', 'static');
   const labels = grid.locator('label');
   // 仅前 5 个高频符号提供 chip；其余走「其他符号」文本框。
   await expect(labels).toHaveCount(
@@ -455,22 +451,19 @@ test('merge join hint shows detected main type; clicking pins and syncs the mult
   await expect(multiSelect).toHaveValue('word');
 
   await openSettingsPage(page, 'split-merge');
-  const mergeSettingsToggle = page.locator('#merge-join-settings-toggle');
   const mergeSettingsPanel = page.locator('#merge-join-settings-panel');
-  await expect(mergeSettingsToggle).toHaveText('配置合并字符');
-  await expect(mergeSettingsPanel).toBeHidden();
-  await mergeSettingsToggle.click();
+  await expect(page.locator('#merge-join-settings-toggle')).toHaveCount(0);
   await expect(mergeSettingsPanel).toBeVisible();
-  await expect(mergeSettingsPanel).toHaveCSS('position', 'fixed');
+  await expect(mergeSettingsPanel).toHaveCSS('position', 'static');
 
-  // 合并字符与拆分标点两个配置按钮保持同一行。
+  // 两组配置直接作为页面卡片展示，垂直分隔并保留至少 8px 间距。
   const actionBoxes = await page.evaluate(() =>
-    [...document.querySelectorAll('.split-join-settings-actions > div')]
-      .map((el) => el.getBoundingClientRect()));
+    ['merge-join-settings-panel', 'split-trim-settings-panel']
+      .map((id) => document.getElementById(id).getBoundingClientRect()));
   expect(actionBoxes).toHaveLength(2);
-  expect(actionBoxes[0].top).toBeCloseTo(actionBoxes[1].top, 0);
+  expect(actionBoxes[1].top - actionBoxes[0].bottom).toBeGreaterThanOrEqual(8);
 
-  // 浮窗内的连续型/单词型两组仍在同一行、各占约一半宽度。
+  // 连续型/单词型两组仍在同一行、各占约一半宽度。
   const rowBoxes = await page.evaluate(() => {
     const rows = [...document.querySelectorAll('.split-join-inline-row > .split-join-row')];
     return rows.map((el) => el.getBoundingClientRect());

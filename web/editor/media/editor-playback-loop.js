@@ -118,7 +118,7 @@ MaweCueListAnchor.scrollCueIntoViewIfNeeded(MaweCueListAnchor.playbackCueListEle
       MaweGapRemoveData.getRemovedGapRanges(),
       tMs,
       {
-        skipPlayback: gapState?.skip_playback === true,
+        skipPlayback: gapState?.skip_playback === true && !MaweMediaPlayback.isAuditioning,
         isPlaying: !MaweCoreState.player.paused,
         previewRange: MaweCuePanelState.gapPreviewRange,
       },
@@ -342,7 +342,7 @@ MaweCueListAnchor.scrollCueIntoViewIfNeeded(MaweCueListAnchor.playbackCueListEle
       MaweGapRemoveData.getRemovedGapRanges(),
       tMs,
       {
-        skipPlayback: gapState?.skip_playback === true,
+        skipPlayback: gapState?.skip_playback === true && !MaweMediaPlayback.isAuditioning,
         isPlaying: !MaweCoreState.player.paused,
         previewRange: MaweCuePanelState.gapPreviewRange,
       },

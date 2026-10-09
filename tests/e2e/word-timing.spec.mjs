@@ -29,7 +29,7 @@ test.beforeEach(async ({ page }) => {
 const word = (page, index) => page.locator(`.waveform-word-block[data-segment-idx="0"][data-item-idx="${index}"]`).first();
 const source = page => page.evaluate(() => JSON.parse(JSON.stringify(MaweBoot.DATA.segments[0])));
 async function setWordTiming(page, enabled = true) {
-  // 字词时间码开关已收敛到工具栏 🪶 快捷按钮（与项目设置镜像联动）。
+  // 字词时间码开关已收敛到工具栏 🔤 快捷按钮（与项目设置镜像联动）。
   const quick = page.locator('#word-timing-quick-toggle');
   if (await quick.getAttribute('aria-pressed') === String(enabled)) return;
   await quick.click();
@@ -198,12 +198,10 @@ test('conversion reviews skips and bindings, is atomic and preserves items on sa
     MaweSelection.selectOnly(0);
     MaweSelection.addToSelection(1);
     MaweSelection.addToSelection(2);
+    MaweWordTiming.setEnabled(true);
     MaweContextMenus.showContextMenu(100, 100, 0);
   });
   await page.locator('.word-timing-advanced > .item').first().click();
-  expect(await page.locator('.word-timing-advanced .danger').evaluate(el =>
-    el.getBoundingClientRect().top - el.previousElementSibling.getBoundingClientRect().bottom,
-  )).toBeGreaterThanOrEqual(8);
   await page.locator('.word-timing-advanced .danger').click();
   await expect(page.locator('#word-conversion-summary')).toContainText('可转换 1 句，生成 2 条字幕；跳过 2 句，解除 1 个副字幕绑定');
   await expect(page.locator('#word-conversion-skipped')).toContainText('文字未被完整覆盖');
@@ -519,16 +517,21 @@ test('context menu keeps clip actions up front and moves low-frequency entries i
   await expect(menu.locator(':scope > .item > span').filter({ hasText: '转为叠加字幕' })).toHaveCount(0);
   await expect(menu.locator(':scope > .item > span').filter({ hasText: '左右添加字符' })).toHaveCount(0);
   await menu.locator('.word-timing-advanced > .item').first().click();
+  await expect(menu.locator('.word-timing-advanced .danger')).toHaveCount(0);
+  await page.evaluate(() => {
+    MaweWordTiming.setEnabled(true);
+    MaweContextMenus.showContextMenu(100, 100, 0);
+  });
+  await menu.locator('.word-timing-advanced > .item').first().hover();
   const overlayButton = menu.locator('.word-timing-advanced button').filter({ hasText: '转为叠加字幕' });
   const wrapHeading = menu.locator('.word-timing-advanced').locator('span', { hasText: '左右添加字符' });
   const convertButton = menu.locator('.word-timing-advanced .danger');
   await expect(overlayButton).toHaveCount(1);
   await expect(convertButton).toHaveCount(1);
-  const wrapBottom = await wrapHeading.evaluate(el => el.closest('.item').getBoundingClientRect().bottom);
-  const overlayBox = await overlayButton.boundingBox();
-  const convertBox = await convertButton.boundingBox();
-  expect(overlayBox.y - wrapBottom).toBeGreaterThanOrEqual(8);
-  expect(convertBox.y - overlayBox.y - overlayBox.height).toBeGreaterThanOrEqual(8);
+  await expect(wrapHeading).toBeVisible();
+  const parentBox = await menu.boundingBox();
+  const submenuBox = await menu.locator('.word-timing-advanced-list').boundingBox();
+  expect(submenuBox.x).toBeGreaterThanOrEqual(parentBox.x + parentBox.width - 2);
 });
 
 for (const trigger of ['menu', 'shortcut']) test(`word audition converts frame ranges to media milliseconds via ${trigger}`, async ({ page }) => {

@@ -1177,8 +1177,15 @@
 }
 .waveform-marker-item.point {
   transform: translateX(-50%);
-  border-radius: 1px 3px 3px 1px;
-  box-shadow: 0 0 0 1px color-mix(in srgb, var(--marker-color, #3e63dd) 70%, black);
+  background: transparent;
+  border-radius: 0;
+  box-shadow: none;
+}
+.waveform-marker-point-shape {
+  position: absolute; inset: 0; pointer-events: none;
+  background: var(--marker-color, #3e63dd);
+  clip-path: polygon(0 0, 100% 0, 100% 75%, 50% 100%, 0 75%);
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--marker-color, #3e63dd) 70%, black);
 }
 .waveform-marker-item.region {
   height: 12px;
@@ -1241,8 +1248,10 @@
   opacity: 0.85;
   box-shadow: 0 0 0 1.5px var(--wave-split-flash, #ffd43b);
 }
-/* 待复核：左侧黄色问号（不做闪烁动画）；已确认：右侧绿色对勾。 */
-.waveform-marker-item.review-pending::before {
+/* 复核状态统一显示在左侧；已确认保留名称，整体降低透明度。 */
+.waveform-marker-item.review-confirmed { opacity: 0.5; }
+.waveform-marker-item.review-pending::before,
+.waveform-marker-item.review-confirmed::before {
   content: "?";
   position: absolute;
   right: calc(100% + 3px);
@@ -1253,15 +1262,9 @@
   text-shadow: 0 1px 2px var(--bg-wave-row, #fff), 0 0 3px var(--bg-wave-row, #fff);
   pointer-events: none;
 }
-.waveform-marker-item.review-confirmed::after {
+.waveform-marker-item.review-confirmed::before {
   content: "✓";
-  position: absolute;
-  right: 1px;
-  top: 0;
   color: var(--green, #46a758);
-  font: 700 10px/1 var(--font-ui, sans-serif);
-  text-shadow: 0 1px 1px rgba(0, 0, 0, 0.4);
-  pointer-events: none;
 }
 /* 波形上的标记快速编辑浮层（双击 marker 打开；定位在滚动容器内）。 */
 .waveform-marker-quick-edit {
