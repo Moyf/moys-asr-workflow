@@ -6430,13 +6430,15 @@ test('wrap chars presets insert at both ends and skip already wrapped text', () 
   assert.deepEqual(
     Array.from(helpers.WRAP_CHAR_PRESETS, (preset) => ({ ...preset })),
     [
-      { id: 'emphasis', label: '强调文本', left: '**', right: '**' },
-      { id: 'large', label: '放大文本', left: '++', right: '++' },
-      { id: 'small', label: '缩小文本', left: '--', right: '--' },
-      { id: 'underline', label: '下划线', left: '__', right: '__' },
-      { id: 'strike', label: '删除线', left: '~~', right: '~~' },
-      { id: 'fade', label: '淡出淡入', left: '>>', right: '<<' },
+      { id: 'emphasis', label: '强调文本', left: '**', right: '**', ass: true },
+      { id: 'large', label: '放大文本', left: '++', right: '++', ass: true },
+      { id: 'small', label: '缩小文本', left: '--', right: '--', ass: true },
+      { id: 'underline', label: '下划线', left: '__', right: '__', ass: true },
+      { id: 'strike', label: '删除线', left: '~~', right: '~~', ass: true },
+      { id: 'fade', label: '淡出淡入', left: '>>', right: '<<', ass: true },
       { id: 'note', label: '音符', left: '♪', right: '♪' },
+      { id: 'music', label: '双音符', left: '♬', right: '♬' },
+      { id: 'bracket', label: '中括号', left: '[', right: ']' },
     ],
   );
   assert.deepEqual({ ...helpers.wrapCharsAroundText('你好', '**', '**') },

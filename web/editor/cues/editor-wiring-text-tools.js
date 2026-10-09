@@ -204,6 +204,7 @@ MaweTextProcess.textProcessConfirm?.addEventListener('click', () => {
 });
 
 // 「左右添加字符」批量预设：填充前缀/后缀输入并勾选，复用上方预览与应用流程。
+// ASS 特殊文本格式预设仅在当前工程启用 ASS 字幕模式时展示。
 (() => {
   const presetHost = document.getElementById('text-process-wrap-presets');
   if (!presetHost) return;
@@ -212,6 +213,7 @@ MaweTextProcess.textProcessConfirm?.addEventListener('click', () => {
     btn.type = 'button';
     btn.textContent = preset.label;
     btn.title = `在字幕两端插入 ${preset.left} 和 ${preset.right}`;
+    if (preset.ass) btn.dataset.assOnly = 'true';
     btn.addEventListener('click', () => {
       MaweTextProcess.textProcessWrapPreset = preset;
       MaweTextProcess.textProcessPrefix.checked = true;
@@ -223,6 +225,13 @@ MaweTextProcess.textProcessConfirm?.addEventListener('click', () => {
     });
     presetHost.appendChild(btn);
   });
+  function refreshWrapPresetVisibility() {
+    const assMode = MaweSettings.EDITOR_SETTINGS.assMode === true;
+    presetHost.querySelectorAll('[data-ass-only]').forEach((btn) => { btn.hidden = !assMode; });
+  }
+  refreshWrapPresetVisibility();
+  document.getElementById('ass-mode-toggle')?.addEventListener('change', refreshWrapPresetVisibility);
+  document.addEventListener('mawe:languagechange', refreshWrapPresetVisibility);
 })();
 
 // 「左右添加字符」自定义弹窗：左右两个输入框原样插入到选中字幕两端。
