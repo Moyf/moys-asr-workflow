@@ -1,0 +1,66 @@
+    <details class="section" open>
+      <summary><span class="sec-title">#188 · 界面文案整理（#179 后续）</span> <span class="badge">功能</span></summary>
+      <div class="body">
+        <table>
+          <tr><th>提交</th><th>日期</th><th>说明</th></tr>
+          <tr><td><code>98d46f2b</code></td><td>10-09</td><td>按日常说法重写 Launcher 与编辑器文案：项目设置→「工程设置」；主题→「浅色/深色/自动」；特殊编辑/自定义色板/帧吸附→「高级编辑/调色板/对齐到帧」；导出菜单精简为 SRT / SRT（双语合并）/ SRT（按颜色拆分）/ ASS（带样式）等短名；工具窗→「拼合字幕」「静音空隙」；去除装饰性 emoji；统一「导入」动词；中英文翻译、帮助与新手引导引用及测试断言同步。已按当前 main 重新落植，不含 #177/#178/#179 内容。</td></tr>
+        </table>
+        <div class="item"><input type="checkbox" id="p188-1"><label for="p188-1">抽查更名处：工程设置、浅色/深色/自动、高级编辑、调色板、对齐到帧、拼合字幕、静音空隙、导出菜单短名 → 与 CHANGELOG 描述一致。</label></div>
+        <div class="item"><input type="checkbox" id="p188-2"><label for="p188-2">中英文界面各过一遍更名处 → 翻译同步；帮助与新手引导里的设置名称引用已更新。</label></div>
+        <div class="item"><input type="checkbox" id="p188-3"><label for="p188-3">按钮上无装饰性 emoji（图标按钮保留）；Launcher 工具箱大标签为「字幕处理 / 媒体工具」，热词分组为「热词与提示」。</label></div>
+      </div>
+    </details>
+
+    <details class="section" open>
+      <summary><span class="sec-title">#189 · 测试日志纪律（CompactContainerAssertions）</span> <span class="badge">工程</span></summary>
+      <div class="body">
+        <table>
+          <tr><th>提交</th><th>日期</th><th>说明</th></tr>
+          <tr><td><code>5cbfac97</code></td><td>10-09</td><td>新增 <code>tests/compact_assertions.py</code> 混入：大容器断言失败只输出 needle 摘要与容器规模，不再 dump 数十万字符；挂载到 4 个资产契约测试套件，行为由守护测试覆盖。AGENTS.md 补充 agent 测试输出与后台进程纪律。</td></tr>
+        </table>
+        <div class="cmd">uv run --no-sync python -m unittest tests.test_compact_assertions -v</div>
+        <div class="item"><input type="checkbox" id="p189-1"><label for="p189-1">运行守护测试 → 通过（行为：失败信息为「needle + 容器规模」摘要）。</label></div>
+        <div class="item"><input type="checkbox" id="p189-2"><label for="p189-2">AGENTS.md 含「Agent 测试输出与后台进程」纪律小节。</label></div>
+      </div>
+    </details>
+
+    <details class="section" open>
+      <summary><span class="sec-title">#185 · 打包版 Linux 运行时修复（含后续补充专项）</span> <span class="badge fixed">修复</span> <span class="badge todo">后续未落实</span></summary>
+      <div class="body">
+        <table>
+          <tr><th>提交</th><th>日期</th><th>说明</th></tr>
+          <tr><td><code>9ca3f75b</code></td><td>10-09</td><td>新增 <code>restore_host_library_path</code>（maw/gui_platform.py:35）：打包版 Linux 上为运行时子进程还原 LD_LIBRARY_PATH_ORIG（无记录则移除）；local_runtime / ocr_runtime / runtimes.base / gui_web / gui_workflow 已接入；<code>_open_external</code> 复用同一实现。修复 AppImage 上安装 OCR / 本地 ASR 运行时必失败的问题。</td></tr>
+          <tr><td><code>60d823bb</code></td><td>10-09</td><td>CHANGELOG 补记上述修复。</td></tr>
+        </table>
+        <div class="item"><input type="checkbox" id="p185-1"><label for="p185-1">Linux AppImage（打包版）→ 安装 OCR / 本地 ASR 运行时 → venv 创建、pip 安装与运行成功（此前必失败）。</label></div>
+        <div class="item"><input type="checkbox" id="p185-2"><label for="p185-2">GUI「打开外部链接/目录」在打包版 Linux 上正常。</label></div>
+        <div class="plain"><b>后续补充 1（贡献者 V-Conet，合并后评论，未应用）</b>：自述「可能下载模型时报错」，补丁两点 —— ① MAW.spec datas 补 <code>maw/moss_runtime.py</code> 与 <code>maw/runtimes/freezer.py</code>（已核对 L72-86：datas 确缺；hiddenimports L201/L205 已有但不能替代 datas 的文件路径导入）；② tests/test_packaging_contract.py <code>_local_import_modules</code> 删除 L45 的 <code>continue</code>，让 <code>from maw.x import y</code> 同时收集子模块别名。当前 main 两点均未应用，也无新 PR 跟进。</div>
+        <div class="plain"><b>后续补充 2（维护者合并评论承认的同族遗漏，未修）</b>：<code>server-editor/serve.py:1920</code> <code>open_backup_directory</code> 的 xdg-open 未还原 LD_LIBRARY_PATH；<code>maw/notify.py:117</code> <code>_notify_linux</code> 同样继承包内路径。均非解释器子进程，实际影响未复现，不阻塞合并。</div>
+        <div class="item"><input type="checkbox" id="p185-3"><label for="p185-3">决策：是否应用 V-Conet 补丁（建议另开 PR，Linux 打包环境实测下载模型路径）。</label></div>
+        <div class="item"><input type="checkbox" id="p185-4"><label for="p185-4">决策：是否顺手修 serve.py / notify.py 两处遗漏（低风险小改），或回复贡献者说明挂起。</label></div>
+      </div>
+    </details>
+
+    <details class="section" open>
+      <summary><span class="sec-title">#186 · JavaScript 工具链迁移 pnpm</span> <span class="badge">工程</span></summary>
+      <div class="body">
+        <table>
+          <tr><th>提交</th><th>日期</th><th>说明</th></tr>
+          <tr><td><code>56ddb9cd</code></td><td>10-09</td><td>根目录与 website 各自固定 pnpm@11.28.4（packageManager），pnpm 锁文件取代 npm 锁文件；编辑器检查、Pages 部署与 Windows E2E 脚本改为 pnpm install --frozen-lockfile / pnpm exec playwright；开发文档与官网文档同步。</td></tr>
+        </table>
+        <div class="note">生成时实测：<code>package-lock.json</code> 已不存在；两处 packageManager 已固定；<code>pnpm run check:editor</code> 通过。</div>
+        <div class="item"><input type="checkbox" id="p186-1"><label for="p186-1">全新目录 <code>pnpm install --frozen-lockfile</code> → 成功；CONTRIBUTING/开发文档命令均为 pnpm 写法。</label></div>
+        <div class="item"><input type="checkbox" id="p186-2"><label for="p186-2">CI（编辑器检查、Pages 部署、Windows E2E）全绿。</label></div>
+      </div>
+    </details>
+
+    <details class="section">
+      <summary><span class="sec-title">#190 · codegraph worktree 使用约定</span> <span class="badge">文档 · 仅说明</span></summary>
+      <div class="body">
+        <table>
+          <tr><th>提交</th><th>日期</th><th>说明</th></tr>
+          <tr><td><code>36040fc4</code></td><td>10-09</td><td>AGENTS.md 新增：worktree 无自带索引时可显式传 projectPath 复用主仓库索引，但内容以主分支为准；重构类分支完全依赖 grep；禁止落到父级混合索引。面向 agent 协作，无用户可感知变化。</td></tr>
+        </table>
+        <div class="item"><input type="checkbox" id="p190-1"><label for="p190-1">已知悉约定（AGENTS.md「Codegraph 使用注意」节），无需功能核验。</label></div>
+      </div>
+    </details>

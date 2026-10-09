@@ -1,0 +1,44 @@
+    <details class="section" open>
+      <summary><span class="sec-title">#168 · 编辑器：左右添加字符、渐入渐出与渐进/复制拆分</span> <span class="badge">功能</span></summary>
+      <div class="body">
+        <table>
+          <tr><th>提交</th><th>日期</th><th>说明</th></tr>
+          <tr><td><code>d9f2e9be</code></td><td>10-03</td><td>左右添加字符、单句渐入渐出（ASS <code>&gt;&gt;文字&lt;&lt;</code>）、渐进拆分（Shift+B）与复制拆分（Ctrl/Cmd+Shift+B）、AI 口播整理补充说明；统一拆分入口与字幕标记规则。</td></tr>
+        </table>
+        <div class="note">自述验证：Node 443/443，Python 1793 OK（22 skipped），Chromium 全量 436 passed，libass 帧预览 17/17，交互专项 14/14，Ruff / typecheck / diff check / PR CI 通过。</div>
+        <div class="item"><input type="checkbox" id="p168-1"><label for="p168-1">编辑器选中单条/多条字幕 → 菜单「左右添加字符」→ 预设与自定义字符均可加入，撤销正常；字符预设支持双音符与中括号，批量预设不重复。</label></div>
+        <div class="item"><input type="checkbox" id="p168-2"><label for="p168-2">ASS 模式对单句应用渐入渐出 → 预览与导出 ASS 均生效；未启用 ASS 模式时不显示 ASS 专用格式入口。</label></div>
+        <div class="item"><input type="checkbox" id="p168-3"><label for="p168-3">Shift+B 渐进拆分（后半句保留完整原文）与 Ctrl/Cmd+Shift+B 复制拆分（两侧保留原文）→ 时间边界、撤销、预览与导出一致。</label></div>
+        <div class="item"><input type="checkbox" id="p168-4"><label for="p168-4">Launcher 勾选「使用 AI 整理」→ 出现补充说明输入框 → 内容参与本次整理判断。</label></div>
+        <div class="item"><input type="checkbox" id="p168-5"><label for="p168-5">新增按钮/入口与上下元素间距实测 ≥8px（getComputedStyle 或实际像素），不紧贴。</label></div>
+      </div>
+    </details>
+
+    <details class="section" open>
+      <summary><span class="sec-title">#169 · 文档重构与官网阅读导航</span> <span class="badge">文档</span></summary>
+      <div class="body">
+        <table>
+          <tr><th>提交</th><th>日期</th><th>说明</th></tr>
+          <tr><td><code>10db8968</code></td><td>10-04</td><td>README 收窄为安装与最短入口；docs 按工作流 / 日常操作 / 进阶专题 / 技术参考重组；官网首页与侧栏共用分组导航，窄屏折叠、操作配图、子路径部署。</td></tr>
+        </table>
+        <div class="note">自述验证：Python 1793 OK（27 skipped）、Node 369/369、Astro check + 两种路径 22 页构建、569 个内部目标、图片一致性与浏览器间距检查。</div>
+        <div class="item"><input type="checkbox" id="p169-1"><label for="p169-1">打开 README.md → 仅含安装与最短路径，全流程细节已移入 docs/。</label></div>
+        <div class="item"><input type="checkbox" id="p169-2"><label for="p169-2">官网首页与文档站 → 分组导航可用，窄屏目录可折叠；抽查 3 个内部链接可达。</label></div>
+        <div class="item"><input type="checkbox" id="p169-3"><label for="p169-3">抽查 docs/WORKFLOW.md 与 JSON_SCHEMA.md → 与当前行为一致（含字幕编辑、ASS、自动处理说明）。</label></div>
+      </div>
+    </details>
+
+    <details class="section" open>
+      <summary><span class="sec-title">#171 + #172 · 错误反馈版本时间与诊断分行</span> <span class="badge fixed">修复</span></summary>
+      <div class="body">
+        <table>
+          <tr><th>提交</th><th>日期</th><th>说明</th></tr>
+          <tr><td><code>9f2a8905</code></td><td>10-04</td><td>#171：错误卡片、复制报告与错误日志补充运行版本与发生时间；跨边界传递与延迟复制保留同一份错误信息。</td></tr>
+          <tr><td><code>ce7f240a</code></td><td>10-04</td><td>#172：错误卡片与启动失败弹窗分行展示版本/时间；日常日志恢复简洁格式并在启动时记录版本；中英文切换刷新诊断标签。</td></tr>
+        </table>
+        <div class="note">自述验证：完整 Python、Node 与 Launcher 浏览器回归通过；CHANGELOG 汇总为一条用户可感知条目。</div>
+        <div class="item"><input type="checkbox" id="p171-1"><label for="p171-1">Launcher 制造一次错误（如填错 Key 转写）→ 错误卡片分行显示版本与发生时间 → 复制报告含同样信息且保留脱敏。</label></div>
+        <div class="item"><input type="checkbox" id="p171-2"><label for="p171-2">查看日志文件 → 启动行有运行版本，日常行简洁不刷屏。</label></div>
+        <div class="item"><input type="checkbox" id="p171-3"><label for="p171-3">错误弹窗停留时切换中英文 → 诊断标签跟随刷新，原始错误时间不变。</label></div>
+      </div>
+    </details>

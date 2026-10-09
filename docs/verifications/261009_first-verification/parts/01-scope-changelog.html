@@ -1,0 +1,27 @@
+    <details class="section" open>
+      <summary><span class="sec-title">范围与审查结论</span> <span class="badge">只读</span></summary>
+      <div class="body">
+        <div class="plain">
+          <b>核查范围</b>：tag <code>v1.8.0-beta.1</code>（2026-10-02）→ HEAD <code>9b7e62b8</code>（main，与 origin/main 同步，2026-10-09）。共 28 个变更提交 + 1 个 merge。
+        </div>
+        <table>
+          <tr><th>项</th><th>结论</th></tr>
+          <tr><td>merge 拓扑</td><td>唯一 merge <code>e4085f6d</code>（10-08）：把 origin/main 上的 <code>f06c7192</code>（#181）并入本地分支；本地侧为 4 个直接提交（84cfd581 / 64e65c85 / 5313a889 / 5c205ba6）。其余提交均为 squash PR（带 # 号）或 main 直接提交。</td></tr>
+          <tr><td>分组方式</td><td>按 merge（及原 PR）分组，时间序排列；无 PR 号的直接提交按主题归组。</td></tr>
+          <tr><td>CHANGELOG</td><td><code>[未发布]</code> 已聚合 15 条提升 / 2 条变更 / 4 条修复，与提交对照基本一一覆盖（见下一区）。</td></tr>
+          <tr><td>工作区注记</td><td><code>docs/TEST_FEEDBACK_PR180.md</code> 处于 AA（未合并冲突）状态，属另一任务 WIP，不在本清单范围内，未触碰。</td></tr>
+          <tr><td>生成基线</td><td><code>pnpm run check:editor</code> 通过（bundle fresh）；<code>git diff --check</code> 仅上述 WIP 文件报冲突标记，已提交内容干净。</td></tr>
+        </table>
+        <div class="item"><input type="checkbox" id="p0-1"><label for="p0-1">已通读本页范围与拓扑说明，确认核查范围无误（v1.8.0-beta.1 之后的全部变更）。</label></div>
+      </div>
+    </details>
+
+    <details class="section" open>
+      <summary><span class="sec-title">CHANGELOG「未发布」对照</span> <span class="badge">核对</span></summary>
+      <div class="body">
+        <div class="plain">对照 <code>CHANGELOG.md</code> 的 <code>[未发布]</code> 区与实际行为。条目 → 来源：文稿驱动对齐（#178）、ASS 即时预览（#180）、界面文案整理（#188）、编辑器设置整理（#179）、字词时间码编辑（#177）、基础波形（be91e264）、说话人导出（64e65c85）、长工程性能（#175）、编辑器体积（#181）、JS 工具链（#186）、错误反馈信息（#171+#172）、文档与官网（#169 + 5313a889）、字幕文字与呈现（#168）、AI 整理补充说明（#168）、AI 整理复查与批量管理（#170）；变更：桌面实验工程（Tauri 移除）、特殊符号规则收敛（#168 引入后续演进）；修复：#173、#170 多轨部分、#176（#161）、#185。</div>
+        <div class="item"><input type="checkbox" id="p1-1"><label for="p1-1">「✨ 提升」15 条逐条与实际行为对照（重点抽查：文稿驱动对齐、ASS 预览、界面文案、设置整理、字词时间码）。</label></div>
+        <div class="item"><input type="checkbox" id="p1-2"><label for="p1-2">「🔄 变更」2 条：Tauri 移除说明、特殊符号规则收敛为「无 / 双个符号 / 单双皆可」（不再提供「单个符号」）。</label></div>
+        <div class="item"><input type="checkbox" id="p1-3"><label for="p1-3">「🐛 修复」4 条与实际修复行为一致；条目间无重复、无遗漏的用户可感知变化。</label></div>
+      </div>
+    </details>
