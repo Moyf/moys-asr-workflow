@@ -132,14 +132,16 @@ git diff
 完成一批功能开发 / 反馈修复（多条目、需要维护者实测确认）后，基于模板生成一份 HTML
 核对清单交给维护者，而不是在对话里罗列长清单：
 
-1. 复制 `tools/templates/verification-checklist.html`，替换 `{{TITLE}}`、`{{SUBTITLE}}`
+1. 复制 `tools/verification-checklist/templates/verification-checklist.html`，替换 `{{TITLE}}`、`{{SUBTITLE}}`
    和 `{{SECTIONS}}`；生成物放在仓库外（如 `%TEMP%`）用浏览器打开，**不提交进仓库**。
 2. 分区卡片用 `<details class="section">` + `summary` 徽标 + `.body` 的标准写法；
    分区约定：实现 / 审查结论（只读）→ 修复与提交记录 → 自动化验证结果（写明命令与
    已知环境性失败，不用自动化冒充人工层）→ 人工核验打勾项 → 后续操作步骤。
 3. 打勾项写成可操作步骤（入口 → 操作 → 预期行为），间距类验收仍按「UI 间距约定」
    要求实测数据。左侧目录、分区与总进度由模板脚本自动生成，无需手写；勾选状态按
-   页面标题存 localStorage，「重置勾选」一键清空。
+   页面标题存 localStorage，「重置勾选」一键清空勾选并保留备注。
+   工具使用说明与生成/更新命令见 `tools/verification-checklist/README.md`；每项可填写备注，
+   核对结果可导出全部或仅未确认项 JSON。
 4. 不要为单次清单改动模板结构；确需改进时直接修改模板本身，让后续复用受益。
 
 ## Codegraph 使用注意

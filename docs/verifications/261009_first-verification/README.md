@@ -2,7 +2,7 @@
 
 ## 任务
 
-按 `tools/templates/verification-checklist.html` 模板，生成「v1.8.0-beta.1 → 当前 main」
+按 `tools/verification-checklist/templates/verification-checklist.html` 模板，生成「v1.8.0-beta.1 → 当前 main」
 的人工核查 HTML，按 merge / 原 PR 分组；另核查 issue/PR #185 的后续补充内容。
 生成物放本目录，不提交进仓库。
 
@@ -18,7 +18,9 @@
 2. `data/issue185-followup.md` — #185 后续补充的核查结论（已确认：补丁未应用、遗漏未修）
 3. `data/baseline.md` — 当前 HEAD 自动化基线（check:editor 已过；git diff --check 仅工作区 AA 文件报冲突）
 4. `parts/` — HTML 分段：`00-head.html`（head+css+侧栏）、`01..N-*.html`（各分区）、`99-tail.html`
-5. 拼装：`cat parts/00-head.html parts/[01..N]*.html parts/99-tail.html > maw-verification-v1.8.0b1-to-main.html`
+5. 拼装：按文件名顺序组合 `parts/*.html`。后续模板升级可用
+   `python tools/verification-checklist/build.py --refresh docs/verifications/261009_first-verification/maw-verification-v1.8.0b1-to-main.html`，
+   保持标题、分区原文与核对项 ID；同步 parts 的头尾后再拼装，避免旧样式覆盖新功能。
 
 ## 中断恢复方法
 
