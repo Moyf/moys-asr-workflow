@@ -40,6 +40,7 @@ from maw.gui_platform import (
     popen_process_tree,
     process_group_kwargs,
     release_process_tree,
+    restore_host_library_path,
     terminate_process_tree,
 )
 from maw.runtime_manifest import (
@@ -781,7 +782,9 @@ class ManagedRuntime:
             env.update(model_cache_environment(model_cache_root))
         if runtime_root is not None:
             env["PYTHONPATH"] = str(self.site_packages(runtime_root))
-        return env
+        # venv 创建 / pip 安装 / verify / worker 全部跑在宿主解释器上，
+        # 不能继承冻结包内更旧的 libexpat / libssl（见 restore_host_library_path）。
+        return restore_host_library_path(env)
 
     def run(
         self,

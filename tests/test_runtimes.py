@@ -9,6 +9,7 @@ from __future__ import annotations
 import json
 import os
 import shutil
+import sys
 import tempfile
 import unittest
 from pathlib import Path
@@ -766,6 +767,53 @@ class AutoFreezeRequirementsTests(unittest.TestCase):
         hint = str(ctx.exception)
         self.assertIn("astral.sh/uv/install.ps1", hint)
         self.assertIn("astral.sh/uv/install.sh", hint)
+
+
+class RuntimeHostEnvironmentTests(unittest.TestCase):
+    """回归：打包版 Linux 的运行时子进程不能继承包内更旧的 LD_LIBRARY_PATH。
+
+    venv 创建（``python3 -m venv`` 内部的 ensurepip）、pip 安装、verify 与 worker
+    都跑在宿主解释器上；继承 AppImage 的 ``_internal`` 会让宿主的 pyexpat / _ssl /
+    _hashlib 因缺少新符号或版本节点而导入失败（宿主 expat / OpenSSL 比包内新），
+    表现为 "ensurepip ... returned non-zero exit status 1"，venv 直接建不出来。
+    """
+
+    def test_frozen_linux_drops_bundled_library_path(self) -> None:
+        parent_env = {"LD_LIBRARY_PATH": "/app/_internal", "MAW_TEST": "preserved"}
+        with mock.patch.object(sys, "platform", "linux"):
+            with mock.patch.object(sys, "frozen", True, create=True):
+                with mock.patch.dict(os.environ, parent_env, clear=True):
+                    env = OCR.environment(Path("/tmp/ocr-runtime"))
+                    self.assertEqual(dict(os.environ), parent_env)
+
+        self.assertNotIn("LD_LIBRARY_PATH", env)
+        self.assertEqual(env["MAW_TEST"], "preserved")
+
+    def test_frozen_linux_restores_recorded_original_library_path(self) -> None:
+        parent_env = {
+            "LD_LIBRARY_PATH": "/app/_internal",
+            "LD_LIBRARY_PATH_ORIG": "/run/current-system/sw/lib",
+        }
+        with mock.patch.object(sys, "platform", "linux"):
+            with mock.patch.object(sys, "frozen", True, create=True):
+                with mock.patch.dict(os.environ, parent_env, clear=True):
+                    env = LOCAL.environment(Path("/tmp/local-runtime"))
+
+        self.assertEqual(env["LD_LIBRARY_PATH"], "/run/current-system/sw/lib")
+
+    def test_source_mode_and_non_linux_keep_library_path(self) -> None:
+        parent_env = {"LD_LIBRARY_PATH": "/opt/cuda/lib64"}
+        with mock.patch.object(sys, "platform", "linux"):
+            with mock.patch.object(sys, "frozen", False, create=True):
+                with mock.patch.dict(os.environ, parent_env, clear=True):
+                    env = LOCAL.environment(Path("/tmp/local-runtime"))
+        self.assertEqual(env["LD_LIBRARY_PATH"], "/opt/cuda/lib64")
+
+        with mock.patch.object(sys, "platform", "win32"):
+            with mock.patch.object(sys, "frozen", True, create=True):
+                with mock.patch.dict(os.environ, parent_env, clear=True):
+                    env = LOCAL.environment(Path("/tmp/local-runtime"))
+        self.assertEqual(env["LD_LIBRARY_PATH"], "/opt/cuda/lib64")
 
 
 if __name__ == "__main__":
