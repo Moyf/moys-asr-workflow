@@ -942,25 +942,7 @@ def resolve_ffmpeg(ffmpeg_bin: str | None = None) -> str | None:
 
 def _parse_wav_header(header: bytes) -> tuple[int, int, int] | None:
     """(channels, sample_rate, data_offset) from an ffmpeg WAV pipe header."""
-    if len(header) < 12 or header[0:4] != b"RIFF" or header[8:12] != b"WAVE":
-        return None
-    channels = 0
-    sample_rate = 0
-    off = 12
-    while off + 8 <= len(header):
-        cid = header[off : off + 4]
-        size = struct.unpack_from("<I", header, off + 4)[0]
-        if cid == b"fmt ":
-            if off + 16 > len(header):
-                return None
-            channels = struct.unpack_from("<H", header, off + 10)[0]
-            sample_rate = struct.unpack_from("<I", header, off + 12)[0]
-        elif cid == b"data":
-            if channels <= 0 or sample_rate <= 0:
-                return None
-            return channels, sample_rate, off + 8
-        off += 8 + size + (size & 1)
-    return None
+    return waveform_module.parse_ffmpeg_wav_header(header)
 
 
 def self_peaks_from_payload(payload: dict) -> tuple[int, int, bytes] | None:

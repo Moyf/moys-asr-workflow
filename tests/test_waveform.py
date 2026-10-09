@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import base64
 import math
 import os
 import re
@@ -81,6 +82,74 @@ class WaveformExtractionTests(unittest.TestCase):
         self.assertTrue(extracted)
         self.assertEqual(lower_density["peaks_per_second"], 50)
         self.assertEqual(lower_density["peak_count"], 20)
+
+    @unittest.skipUnless(shutil.which("ffmpeg"), "ffmpeg is required")
+    def test_low_rate_multichannel_keeps_opposite_and_one_sided_audio(self) -> None:
+        media = self.root / "stereo.wav"
+        frames = bytearray()
+        for index in range(48_000 * 4 // 10):
+            section = index // 4_800
+            value = round(math.sin(2 * math.pi * 330 * index / 48_000) * 22_000)
+            if section == 0:
+                left, right = value, -value
+            elif section == 1:
+                left, right = 0, value
+            elif section == 2:
+                left = right = 30_000 if index % 4_800 == 1 else 0
+            else:
+                left = right = 0
+            frames.extend(struct.pack("<hh", left, right))
+        with wave.open(str(media), "wb") as output:
+            output.setnchannels(2)
+            output.setsampwidth(2)
+            output.setframerate(48_000)
+            output.writeframes(frames)
+
+        current = waveform_module.extract_waveform(media)
+        legacy = waveform_module.extract_waveform(media, preserve_channels=False)
+        self.assertEqual((current["sample_rate"], current["division"]), (1_000, 10))
+        self.assertEqual(current["peak_count"], legacy["peak_count"])
+        self.assertEqual(len(mopeaks.encode_mopeaks(current, media)), len(mopeaks.encode_mopeaks(legacy, media)))
+
+        def peak(payload: dict, first: int, last: int) -> int:
+            values = base64.b64decode(payload["data"])[first * 2 : last * 2]
+            return max(abs(value - 256 if value > 127 else value) for value in values)
+
+        self.assertGreater(peak(current, 0, 10), 70)
+        self.assertLess(peak(legacy, 0, 10), 5)
+        self.assertGreater(peak(current, 10, 20), peak(legacy, 10, 20))
+        self.assertLess(peak(current, 20, 30), 40)  # 仍是轻量降采样，不承诺保留单采样脉冲
+
+    @unittest.skipUnless(shutil.which("ffmpeg"), "ffmpeg is required")
+    def test_mono_stays_identical_and_third_channel_is_included(self) -> None:
+        mono = waveform_module.extract_waveform(self.media_path)
+        legacy_mono = waveform_module.extract_waveform(self.media_path, preserve_channels=False)
+        self.assertEqual(mono["data"], legacy_mono["data"])
+
+        media = self.root / "three-channels.wav"
+        frames = bytearray()
+        for index in range(44_100 // 5):
+            third = round(math.sin(2 * math.pi * 220 * index / 44_100) * 24_000)
+            frames.extend(struct.pack("<hhh", 0, 0, third))
+        with wave.open(str(media), "wb") as output:
+            output.setnchannels(3)
+            output.setsampwidth(2)
+            output.setframerate(44_100)
+            output.writeframes(frames)
+
+        current = waveform_module.extract_waveform(media)
+        legacy = waveform_module.extract_waveform(media, preserve_channels=False)
+        self.assertEqual((current["peak_count"], current["duration_ms"]), (20, 200))
+        self.assertGreater(max(base64.b64decode(current["data"])[1::2]), 70)
+        self.assertGreater(max(base64.b64decode(current["data"])[1::2]), max(base64.b64decode(legacy["data"])[1::2]))
+
+    @unittest.skipUnless(shutil.which("ffmpeg"), "ffmpeg is required")
+    def test_mopeaks_generation_does_not_need_native_quapeaks(self) -> None:
+        with mock.patch.dict(sys.modules, {"quapeaks": None}):
+            payload, extracted = waveform_module.load_or_extract_waveform(None, self.media_path)
+            self.assertTrue(extracted)
+            self.assertEqual(payload["peak_count"], 40)
+            self.assertEqual(mopeaks.load_mopeaks(self.media_path)["data"], payload["data"])
 
     def test_media_signature_invalidates_when_file_changes(self) -> None:
         payload = {
