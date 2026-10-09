@@ -133,6 +133,7 @@ git diff
 
 - 在本仓库调用 `codegraph_explore` **必须显式传 `projectPath="D:\Codes\moys-asr-workflow"`**。省略时使用会话默认项目，可能落到 `D:\Codes\.codegraph` 这个父级混合索引（把 D:\Codes 下所有同级项目建在一个库），返回其他仓库（如 `graph-animation-controller`）的代码并造成误改。
 - 背景：`.codegraph/` 目录若存在但为空，工具会沿目录树向上回退到父级索引；2026-08 已在本仓库运行 `codegraph init` 重建了本仓库自己的索引。若再次出现外仓库结果，先检查 `.codegraph/codegraph.db` 是否还在。
+- **worktree 没有自带索引**，可复用主仓库的：传 `projectPath="D:\Codes\moys-asr-workflow"` 做符号与结构导航（"X 在哪定义 / 被谁调用"），但返回的文件内容是**主分支**的，不能当作 worktree 的编辑依据；编辑定位与内容核验仍用 `Select-String` / `grep`。分支大量增删改文件时（重构类 PR）索引误导性大，此时完全依赖 grep。需要完整支持时可在 worktree 里 `codegraph init` 自建索引（约 64 MB + 常驻 daemon），按需取舍。禁止落到 `D:\Codes\.codegraph` 父级混合索引（见上）。
 
 ## 代码与安全约束
 
