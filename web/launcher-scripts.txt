@@ -1,4 +1,22 @@
 # MAW launcher sources are bundled in this order by scripts/build-launcher.mjs.
 # Keep runtime/bootstrap modules before the modules that consume their exports.
-# 拆分进行中：launcher.js 将按功能域切割为 classic 模块（见 docs/REFACTOR_LAUNCHER_SPLIT.md）。
-launcher/launcher.js
+# 由 scripts/refactor-tools/split-launcher.mjs 自 launcher.js 机械切割而来；
+# 簇边界与等价性说明见 docs/REFACTOR_LAUNCHER_SPLIT.md。
+launcher/i18n/launcher-strings.js
+launcher/boot/launcher-state.js
+launcher/boot/launcher-mock-api.js
+launcher/i18n/launcher-labels.js
+launcher/forms/launcher-form-base.js
+launcher/errors/launcher-errors.js
+launcher/server/launcher-server-monitor.js
+launcher/boot/launcher-theme-bridge.js
+launcher/forms/launcher-form-sync.js
+launcher/local/launcher-local-models.js
+launcher/forms/launcher-provider-language.js
+launcher/presets/launcher-presets.js
+launcher/forms/launcher-prefs-zoom.js
+launcher/forms/launcher-media-form.js
+launcher/server/launcher-media-server.js
+launcher/boot/launcher-settings-startup.js
+launcher/boot/launcher-notify-backend.js
+launcher/boot/launcher-wiring.js
