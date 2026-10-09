@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from tests.compact_assertions import CompactContainerAssertions
+
 import base64
 import math
 import os
@@ -381,7 +383,7 @@ class WaveformExtractionTests(unittest.TestCase):
         )
 
 
-class EditorAssetTests(unittest.TestCase):
+class EditorAssetTests(CompactContainerAssertions, unittest.TestCase):
     def test_project_waveform_survives_loading_media(self) -> None:
         core_state = (ROOT / "web" / "editor/state/editor-core-state.js").read_text(encoding="utf-8")
         state = (ROOT / "web" / "editor/state/editor-state.js").read_text(encoding="utf-8")

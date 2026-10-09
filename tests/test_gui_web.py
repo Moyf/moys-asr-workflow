@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from tests.compact_assertions import CompactContainerAssertions
+
 import json
 import os
 import sys
@@ -4396,7 +4398,7 @@ class OpenRuntimeFolderTests(unittest.TestCase):
 
 
 @final
-class LauncherAssetContractTests(unittest.TestCase):
+class LauncherAssetContractTests(CompactContainerAssertions, unittest.TestCase):
     def test_launcher_exposes_chainable_postprocess_toolbox(self) -> None:
         page = (ROOT / "web" / "launcher" / "index.html").read_text(encoding="utf-8")
         script = (ROOT / "web" / "launcher" / "postprocess.js").read_text(encoding="utf-8")

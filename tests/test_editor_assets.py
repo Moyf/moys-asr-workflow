@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from tests.compact_assertions import CompactContainerAssertions
+
 import sys
 import json
 import re
@@ -17,7 +19,7 @@ sys.path.insert(0, str(ROOT))
 import edit  # noqa: E402
 
 
-class EditorAssetContractTests(unittest.TestCase):
+class EditorAssetContractTests(CompactContainerAssertions, unittest.TestCase):
     def source_contract_text(self) -> str:
         """Historical source-shape checks inspect sources, not esbuild printing."""
         return "\n\n".join(edit.read_web_asset(name) for name in edit.read_editor_script_manifest())

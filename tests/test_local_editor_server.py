@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from tests.compact_assertions import CompactContainerAssertions
+
 import base64
 import importlib.util
 import io
@@ -48,7 +50,7 @@ def _write_reapeaks_for(media_path: Path) -> Path:
     return path
 
 
-class LocalEditorServerTests(unittest.TestCase):
+class LocalEditorServerTests(CompactContainerAssertions, unittest.TestCase):
     def test_open_backup_folder_is_bound_and_requires_token(self) -> None:
         handler = object.__new__(server_editor.EditorRequestHandler)
         handler.server = mock.Mock()
