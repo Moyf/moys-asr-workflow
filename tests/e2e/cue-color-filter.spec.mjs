@@ -12,8 +12,7 @@ import {
   generateWav,
   disableOnboarding,
   startServer,
-  makeTempDir,
-} from './helpers.mjs';
+  makeTempDir, closeSettingsPanels, openSettingsPage } from './helpers.mjs';
 
 let tempDir;
 let server;
@@ -110,7 +109,7 @@ test('detaches a cue from a color group while keeping its color and limiting the
     }));
   });
   const detachItem = page.locator('#ctxmenu .item > span')
-    .filter({ hasText: /^从颜色组中脱离$/u }).locator('..');
+    .filter({ hasText: /^移出颜色组$/u }).locator('..');
 
   // 中间 cue 脱离：前半组保留原 head，后半组提升为新 head。
   await setColorGroup();
@@ -368,7 +367,7 @@ test('split trim chips and extra input drive shared trim behavior and persist', 
   await page.evaluate(() => {
     window.MAWE_EDITOR_BRIDGE.setEditorSettingsPanelOpen(true);
   });
-  await page.locator('#editor-settings-tab-split-merge').click();
+  await openSettingsPage(page, 'split-merge');
   const settingsToggle = page.locator('#split-trim-settings-toggle');
   const settingsPanel = page.locator('#split-trim-settings-panel');
   const grid = page.locator('#split-trim-symbol-grid');
@@ -424,32 +423,23 @@ test('merge join hint shows detected main type; clicking pins and syncs the mult
   await page.evaluate(() => {
     window.MAWE_EDITOR_BRIDGE.setEditorSettingsPanelOpen(true);
   });
-  await page.locator('#editor-settings-tab-split-merge').click();
+  await openSettingsPage(page, 'timebase');
   const hintText = page.locator('#merge-join-mode-text');
   const switchButton = page.locator('#merge-join-mode-switch');
   const multiSelect = page.locator('#multi-subtitle-main-language-mode');
   const languageTypeGroup = page.locator('.split-language-type-group');
   const languageTypeHeading = page.locator('#split-language-type-title');
-  const multiSubtitleSettingsLink = page.locator('#split-multi-subtitle-settings-link');
-  const multiSubtitleSettingsDisabledHint = page.locator('#split-multi-subtitle-settings-disabled');
 
-  await expect(languageTypeHeading).toHaveText('字幕语言类型');
-  await expect(multiSubtitleSettingsLink).toBeHidden();
-  await expect(multiSubtitleSettingsDisabledHint).toHaveText('对于双语字幕，可以在双语字幕的设置（需要先开启双语字幕）中单独配置两种字幕的语言类型。');
+  await expect(languageTypeHeading).toHaveText('语言类型');
   expect(await hintText.evaluate((element) => Boolean(element.closest('.split-language-type-group')))).toBe(true);
   expect(await hintText.evaluate((element) => Boolean(element.closest('.merge-join-settings-field')))).toBe(false);
-  expect(await page.evaluate(() => {
-    const merge = document.querySelector('.merge-join-settings-field');
-    const language = document.querySelector('.split-language-type-group');
-    return Boolean(merge && language
-      && (merge.compareDocumentPosition(language) & Node.DOCUMENT_POSITION_FOLLOWING));
-  })).toBe(true);
+  expect(await languageTypeGroup.evaluate(el => Boolean(el.closest('#project-settings-panel')))).toBe(true);
   await expect(hintText).toHaveClass(/editor-settings-item/);
 
   // 英文工程 → 自动检测为单词型；短提示 + 统一的「切换为」按钮。
   await expect(hintText).toHaveText('当前字幕为「单词型」（适用于英文、俄文等语言）');
   await expect(switchButton).toHaveText('切换为字符型');
-  // 与多重字幕菜单的「主字幕语言类型」共享同一状态（下拉框此时是检测值）。
+  // 与多重字幕菜单的「主字幕语言」共享同一状态（下拉框此时是检测值）。
   await expect(multiSelect).toHaveValue('word');
 
   // 点击 → 指定为字符型；提示统一样式并同步多重字幕下拉框。
@@ -464,6 +454,7 @@ test('merge join hint shows detected main type; clicking pins and syncs the mult
   await expect(hintText).toHaveText('当前字幕为「单词型」（适用于英文、俄文等语言）');
   await expect(multiSelect).toHaveValue('word');
 
+  await openSettingsPage(page, 'split-merge');
   const mergeSettingsToggle = page.locator('#merge-join-settings-toggle');
   const mergeSettingsPanel = page.locator('#merge-join-settings-panel');
   await expect(mergeSettingsToggle).toHaveText('配置合并字符');
@@ -494,5 +485,6 @@ test('merge join hint shows detected main type; clicking pins and syncs the mult
   expect(Math.max(...inputWidths)).toBeLessThanOrEqual(100.5);
 
   // 提示按钮在窄容器下不越界：面板已保持足够宽，这里仅确认元素可点击可见。
+  await openSettingsPage(page, 'timebase');
   await expect(switchButton).toBeVisible();
 });

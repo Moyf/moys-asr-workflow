@@ -7,6 +7,8 @@ import {
   generateWaveformPayload,
   makeTempDir,
   startStaticServer,
+  closeSettingsPanels,
+  openSettingsPage,
 } from './helpers.mjs';
 
 let tempDir;
@@ -71,7 +73,9 @@ test('edits an independent overlay track, restores it through history, and expor
   await dropProject(page, project);
 
   const toggle = page.locator('#overlay-track-toggle');
+  await openSettingsPage(page, 'project-tracks');
   await expect(toggle).toBeVisible();
+  await closeSettingsPanels(page);
   const overlayCue = page.locator('.overlay-track-cue[data-overlay-idx="0"]');
   await expect(overlayCue).toHaveCount(1);
   await overlayCue.click();
@@ -119,6 +123,8 @@ test('converts a selected main cue to overlay from the context menu with undo', 
 
   await page.locator('.cue[data-idx="0"]').click({ button: 'right', force: true });
   await expect(page.locator('#ctxmenu.show')).toBeVisible();
+  // 「转为叠加字幕」收纳在「高级操作」二级菜单内，先展开再点击。
+  await page.locator('.word-timing-advanced > .item').first().click();
   await page.getByText('转为叠加字幕', { exact: true }).click();
 
   // 主轨剩一条；叠加行出现且波形上出现叠加块（外观与主字幕一致，仅位于上层）。
@@ -284,6 +290,8 @@ test('carries the color marking through main ↔ overlay conversions', async ({ 
   // 主轨剩余组员按组拆分语义提升为新 head，不产生跨轨引用。
   await page.locator('.cue[data-idx="0"]').click({ button: 'right', force: true });
   await expect(page.locator('#ctxmenu.show')).toBeVisible();
+  // 「转为叠加字幕」收纳在「高级操作」二级菜单内，先展开再点击。
+  await page.locator('.word-timing-advanced > .item').first().click();
   await page.getByText('转为叠加字幕', { exact: true }).click();
   await expect(page.locator('.overlay-track-cue[data-overlay-idx="0"]')).toHaveCount(1);
   await expect(page.locator('.overlay-track-cue[data-overlay-idx="0"]')).toHaveClass(/has-color/);
@@ -684,6 +692,8 @@ test('keeps color group references valid through an overlay round trip', async (
   // 转出组内成员（index 2），组引用必须保持「指向带 color 的 head」。
   await page.locator('.cue[data-idx="2"]').click({ button: 'right' });
   await expect(page.locator('#ctxmenu.show')).toBeVisible();
+  // 「转为叠加字幕」收纳在「高级操作」二级菜单内，先展开再点击。
+  await page.locator('.word-timing-advanced > .item').first().click();
   await page.getByText('转为叠加字幕', { exact: true }).click();
   await expect(page.locator('.overlay-track-cue')).toHaveCount(1);
   expect(await page.evaluate(() => JSON.parse(MaweJsonRepair.buildJson()).segments.map((s) => s.id)))

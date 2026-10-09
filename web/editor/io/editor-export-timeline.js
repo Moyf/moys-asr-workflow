@@ -41,7 +41,7 @@
         idx,
         start_ms: seg.start,
         end_ms: seg.end,
-        text: seg.text || '',
+        text: MaweSpeakerLabels.subtitleExportText(seg, MaweBoot.DATA.segments),
         color: seg.color || null,
         color_ref: seg.color_ref || null,
         resolve_color: colorName,
@@ -173,7 +173,7 @@
     return [{
       OTIO_SCHEMA: 'Marker.2',
       metadata: {},
-      name: String(segment.text || ''),
+      name: MaweSpeakerLabels.subtitleExportText(segment, colorContext),
       // 字幕来源的标记在备注里自明来源；名称本身即字幕内容。
       comment: 'MAW 字幕',
       color: OTIO_MARKER_COLORS[colorName] || OTIO_DEFAULT_MARKER_COLOR,
@@ -321,12 +321,12 @@
 } = {}) {
   const removed = gapRemoved ? MaweGapRemoveData.getRemovedGapRanges() : [];
   if (gapRemoved && !removed.length) {
-    MaweHint.flashHint('没有已移除的静音空隙；请先使用「移除静音空隙」扫描并移除', 'invalid');
+    MaweHint.flashHint('没有已移除的静音空隙；请先在「静音空隙」中扫描', 'invalid');
     return null;
   }
   const durationMs = MaweCoreState.waveformEditor?.durationMs || Math.round(Number(MaweCoreState.player?.duration) * 1000) || 0;
   if (!durationMs) {
-    MaweHint.flashHint('媒体时长尚不可用；请先加载媒体后再导出 OTIO', 'invalid');
+    MaweHint.flashHint('媒体时长尚不可用；请先导入媒体再导出 OTIO', 'invalid');
     return null;
   }
   const targetUrl = mediaTargetUrl();
@@ -603,7 +603,7 @@
   function buildGapRemovedStickerOtio() {
     const removed = MaweGapRemoveData.getRemovedGapRanges();
     if (!removed.length) {
-      MaweHint.flashHint('没有已移除的静音空隙；请先使用「移除静音空隙」扫描并移除', 'invalid');
+      MaweHint.flashHint('没有已移除的静音空隙；请先在「静音空隙」中扫描', 'invalid');
       return null;
     }
     const collected = collectStickerOtioEntries(removed);

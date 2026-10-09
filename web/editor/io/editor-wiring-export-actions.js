@@ -284,7 +284,7 @@ document.getElementById('download-full-ass')?.addEventListener('click', async ()
 document.getElementById('download-color-srt')?.addEventListener('click', () => MaweExportSrt.downloadColorSrts(false));
 document.getElementById('download-plain-text')?.addEventListener('click', async () => {
   if (MaweInlineEdit.editingState) MaweInlineEdit.finishEdit(true);
-  await MaweExportTimeline.downloadFile(window.AsrEditorUtils.buildPlainTextPayload(MaweBoot.DATA.segments), `${MaweBoot.FILENAME_BASE}.txt`, 'text/plain', {
+  await MaweExportTimeline.downloadFile(window.AsrEditorUtils.buildPlainTextPayload(MaweBoot.DATA.segments, MaweSpeakerLabels.speakerLabelExportOptions()), `${MaweBoot.FILENAME_BASE}.txt`, 'text/plain', {
     desc: '纯文本字幕文件', types: { 'text/plain': ['.txt'] }
   });
 });
@@ -439,7 +439,7 @@ document.getElementById('download-gap-removed-sticker-otioz')?.addEventListener(
   if (MaweExportTimeline.stickerExportBlocked('download-gap-removed-sticker-otioz')) return;
   const removed = MaweGapRemoveData.getRemovedGapRanges();
   if (!removed.length) {
-    const msg = '没有已移除的静音空隙；请先使用「移除静音空隙」扫描并移除';
+    const msg = '没有已移除的静音空隙；请先在「静音空隙」中扫描';
     MaweHint.flashHint(window.MAWE_I18N?.translateText?.(msg) || msg);
     return;
   }

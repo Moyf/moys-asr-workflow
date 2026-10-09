@@ -5,7 +5,7 @@ description: "Release 包的转写参数、Server 管理、退出码和自动化
 source: "docs/CLI.md"
 ---
 
-<!-- Generated from docs/CLI.md. Run npm run sync:docs to refresh. -->
+<!-- Generated from docs/CLI.md. Run pnpm run sync:docs to refresh. -->
 
 公开 CLI 通过 Release 包的 `MAW.exe` 调用；源码中把它替换为 `uv run --no-sync python maw_gui.py`。下面的 Windows 示例使用 PowerShell，其他系统请使用实际的可执行文件路径。
 

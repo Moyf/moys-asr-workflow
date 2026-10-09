@@ -109,7 +109,7 @@ test('quick start teaches WASD, real merge with undo, then real split', async ({
   await page.keyboard.press('Enter');
   await expect.poll(() => page.evaluate(() => MaweBoot.DATA.segments.length)).toBe(7);
   await expect(page.locator('#onboarding-title')).toHaveText('完成！');
-  await expect(page.locator('#onboarding-description')).toHaveText('已掌握基础操作。可以在右上角的【🤔 帮助】中随时查看。');
+  await expect(page.locator('#onboarding-description')).toHaveText('已掌握基础操作。可以在右上角的【帮助】中随时查看。');
   await expect(page.locator('#onboarding-extra-tips')).toContainText('你也可以右键点击字幕后选择拆分');
   await expect(page.locator('#onboarding-extra-tips')).toContainText('鼠标在波形区时，可以右键拆分，也可以按B在鼠标位置拆分');
   await expect(page.locator('#onboarding-extra-tips')).toContainText('编辑字幕时，也可以选择用 Enter 直接拆分——在设置中可修改按键');
@@ -165,7 +165,7 @@ test('quick start can be skipped and replayed from Help', async ({ page }) => {
   const waveformPanel = helpPanel.locator('#help-tab-panel-waveform');
   await expect(waveformPanel).toBeVisible();
   await expect(helpPanel.getByRole('tab', { name: '波形区', exact: true })).toHaveAttribute('aria-selected', 'true');
-  await expect(waveformPanel.locator('.help-subtitle')).toHaveText(['空白波形区', '波形区字幕操作']);
+  await expect(waveformPanel.locator('.help-subtitle')).toHaveText(['字词时间码', '空白波形区', '波形区字幕操作']);
   await expect(waveformPanel).toContainText('按当前时间基准拆分字幕');
   await expect(waveformPanel).not.toContainText('红色播放指针');
   await expect(waveformPanel.locator('.help-important').filter({ hasText: 'Shift+拖拽空白处' })).toHaveCount(1);
@@ -202,7 +202,7 @@ test('quick start can be skipped and replayed from Help', async ({ page }) => {
   await expect(gapPanel).toContainText('仅在中键拖动模式生效');
   await expect(gapPanel).toContainText('具体操作取决于');
   await expect(gapPanel.locator('#help-open-gap-settings')).toHaveText('⚙️全局设置');
-  await expect(gapPanel).toContainText('「通用操作」中的「空隙区段操作方式」，其中「边界与中键」可同时使用两套操作。');
+  await expect(gapPanel).toContainText('「高级编辑」中的「空隙编辑」，其中「边界与中键」可同时使用两套操作。');
   await expect(gapPanel.locator('.help-important').filter({ hasText: 'Alt+左键拖动' })).toHaveCount(1);
   await helpPanel.getByRole('tab', { name: '批量操作', exact: true }).click();
   const batchPanel = helpPanel.locator('#help-tab-panel-batch');
@@ -219,7 +219,7 @@ test('quick start can be skipped and replayed from Help', async ({ page }) => {
   await expect(playbackPanel).toContainText('播放与导航');
   await expect(playbackPanel).toContainText('无选中时前后跳转（时长：1000ms）');
   await expect(playbackPanel.locator('#help-open-media-settings')).toHaveText('全局设置');
-  await expect(playbackPanel).toContainText('的「视频预览」中调整。');
+  await expect(playbackPanel).toContainText('的「播放预览」中调整。');
   await page.locator('#help-onboarding').click();
   await expect(page.locator('#onboarding-layer')).toBeVisible();
   await expect(page.locator('#onboarding-title')).toHaveText('使用 WASD 选择前后字幕——就像游戏一样！');

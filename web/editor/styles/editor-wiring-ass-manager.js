@@ -662,7 +662,7 @@ function syncAssSymbolRule() {
       const sample = (width) => `${marker.repeat(width)}${label}${marker.repeat(width)}`;
       return rule === 'both' ? `${sample(1)}/${sample(2)}` : sample(2);
     });
-    formatHint.textContent = rule === 'none' ? '特殊符号规则已关闭，字幕中的符号将保留原文。'
+      formatHint.textContent = rule === 'none' ? '符号规则已关闭，字幕中的符号将保留原文。'
       : `你可以使用 ${examples.join('、')} 等符号来对特定字词添加特殊样式。`;
   }
   document.querySelectorAll('[data-ass-symbol]').forEach((hint) => {
@@ -691,6 +691,7 @@ function syncAssModeControl() {
 }
 
 assModeToggle?.addEventListener('change', () => {
+  MaweHistory.pushPreviewUndo('切换 ASS 字幕模式', MaweHistory.snapshotPreviewState());
   MaweSettings.updateEditorSettings({ assMode: assModeToggle.checked });
   syncAssModeControl();
   MawePreviewGeometry.refreshPreviewGeometryEditable();

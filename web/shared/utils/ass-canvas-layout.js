@@ -19,6 +19,15 @@ window.MAWE.register('utils-ass-canvas-layout', function createUtilsModule() {
   // 事件锚点（PlayRes 原生坐标）：ASS 按对齐方式把文本块的对应边/中心
   // 贴到锚点上。有 \pos/\move 时，锚点就是移动后的绝对坐标——\pos 的
   // 语义正是「事件的锚点落在该坐标」，与边距无关。
+  /**
+   * @param {{
+   *   alignment?: number,
+   *   margins?: { left?: number, right?: number, vertical?: number },
+   *   playResX?: number,
+   *   playResY?: number,
+   *   move?: { x?: number, y?: number } | null,
+   * }} [options]
+   */
   function assCanvasAnchorPoint({ alignment, margins, playResX, playResY, move } = {}) {
     if (move && Number.isFinite(Number(move.x)) && Number.isFinite(Number(move.y))) {
       return { x: Number(move.x), y: Number(move.y) };

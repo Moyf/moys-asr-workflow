@@ -5,7 +5,7 @@ description: "画面字幕识别、去重规则、报告和性能说明。"
 source: "docs/OCR_SUBTITLE_DEDUP.md"
 ---
 
-<!-- Generated from docs/OCR_SUBTITLE_DEDUP.md. Run npm run sync:docs to refresh. -->
+<!-- Generated from docs/OCR_SUBTITLE_DEDUP.md. Run pnpm run sync:docs to refresh. -->
 
 「OCR 字幕去重」是 Launcher「工具箱」中「后处理」类别的本地字幕清理功能，用于处理以下情况：视频画面已经烧录了一条字幕，而 ASR 工程或 SRT 中又存在同一条字幕。功能会识别视频画面文字，将高度相似的字幕标记为禁用，从而避免导出或播放时出现重复字幕。
 

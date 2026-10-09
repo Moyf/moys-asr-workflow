@@ -704,7 +704,7 @@ def build_server_page(
         )
         filename_base = project.json_path.stem if project.json_path else "untitled"
         json_display = project.json_path.name if project.json_path else "未加载工程"
-        media_display = "未加载媒体"
+        media_display = "未导入媒体"
         media_title = ""
         json_class = "" if project.json_path else "empty"
         media_class = "empty"
@@ -964,10 +964,10 @@ class EditorServer(ThreadingHTTPServer):
             with self.reapeaks_lock:
                 self.reapeaks_status = "disabled"
 
-    def set_sticker_root(self, raw_path: str) -> tuple[Path, list[dict]]:
+    def set_sticker_root(self, raw_path: str) -> tuple[Path | None, list[dict]]:
         """Scan a root before atomically making it the active sticker scope."""
         with self.sticker_lock:
-            root, stickers = validate_sticker_root(raw_path)
+            root, stickers = validate_sticker_root(raw_path) if raw_path else (None, [])
             self.project = replace(self.project, sticker_root=root, stickers=stickers)
             return root, stickers
 
@@ -1931,9 +1931,15 @@ class EditorRequestHandler(BaseHTTPRequestHandler):
             request = self.read_json_request()
             self._check_request_token(request)
             path = request.get("path")
-            if not isinstance(path, str) or not path:
+            if not isinstance(path, str):
                 raise ValueError("表情包根目录格式不正确")
-            root, stickers = self.editor_server.set_sticker_root(path)
+            activate = request.get("activate", True)
+            if not isinstance(activate, bool):
+                raise ValueError("表情包目录应用方式格式不正确")
+            if activate:
+                root, stickers = self.editor_server.set_sticker_root(path)
+            else:
+                root, stickers = validate_sticker_root(path) if path else (None, [])
         except PermissionError as error:
             self.send_json(HTTPStatus.FORBIDDEN, {"ok": False, "error": str(error)})
             return
@@ -1942,7 +1948,7 @@ class EditorRequestHandler(BaseHTTPRequestHandler):
             return
         self.send_json(HTTPStatus.OK, {
             "ok": True,
-            "root": root.as_posix(),
+            "root": root.as_posix() if root else "",
             "count": len(stickers),
             "stickers": stickers,
         })

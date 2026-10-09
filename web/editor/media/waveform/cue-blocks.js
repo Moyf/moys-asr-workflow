@@ -1,13 +1,14 @@
 // cue-blocks: waveform class methods with explicit dependencies.
-window.MAWE.register('waveform-cue-blocks', function createWaveformModule(dependencies) {
+export function createWaveformModule(dependencies) {
   'use strict';
   const { colorForSegment, computeGroupBadges, cueBlockContinuationEdges, findActiveCueIndex, firstCueIndexOverlapping, formatCompact, gapOperationAllowsBoundary, gapOperationAllowsMiddle, gapRemoveDisplayLabel, hasSubtitleColor, isActiveCueVisualHit, localizedWaveformMessage } = dependencies;
 
   class WaveformMethods {
 
 
+    /** @this {import('./waveform-types.js').WaveformInstance} */
     createRow(startMs, endMs, rowIndex, basic, groupBadges = null) {
-      const row = document.createElement('div');
+      const row = /** @type {import('./waveform-types.js').WaveformRow} */ (document.createElement('div'));
       row.className = 'waveform-row';
       const multiLane = this.options.multiSubtitleVisible?.() === true;
       if (multiLane) {
@@ -64,7 +65,7 @@ window.MAWE.register('waveform-cue-blocks', function createWaveformModule(depend
           !event.ctrlKey &&
           !event.metaKey &&
           !event.shiftKey &&
-          !event.target.closest('.waveform-cue-block, .waveform-gap-block')
+          !(/** @type {Element | null} */ ((/** @type {HTMLElement} */ (event.target)).closest('.waveform-cue-block, .waveform-gap-block')))
         ) {
           this.beginGapRangeDrag(event, row, { removed: true });
           return;
@@ -78,7 +79,7 @@ window.MAWE.register('waveform-cue-blocks', function createWaveformModule(depend
           (event.ctrlKey || event.metaKey) &&
           !event.shiftKey &&
           !event.altKey &&
-          !event.target.closest('.waveform-cue-block, .waveform-gap-block')
+          !(/** @type {Element | null} */ ((/** @type {HTMLElement} */ (event.target)).closest('.waveform-cue-block, .waveform-gap-block')))
         ) {
           let track = this.trackAtPoint(event.clientX, event.clientY, row);
           const pointerMs = this.pointerTimeMs(event, row);
@@ -109,14 +110,14 @@ window.MAWE.register('waveform-cue-blocks', function createWaveformModule(depend
           !event.ctrlKey &&
           !event.metaKey &&
           !event.altKey &&
-          !event.target.closest('.waveform-cue-block, .waveform-gap-block') &&
+          !(/** @type {Element | null} */ ((/** @type {HTMLElement} */ (event.target)).closest('.waveform-cue-block, .waveform-gap-block'))) &&
           !this.isCustomLayout()
         ) {
           event.preventDefault();
           this.beginMarqueeDrag(event);
           return;
         }
-        if (event.button !== 0 || event.target.closest('.waveform-cue-block, .waveform-gap-block')) return;
+        if (event.button !== 0 || (/** @type {Element | null} */ ((/** @type {HTMLElement} */ (event.target)).closest('.waveform-cue-block, .waveform-gap-block')))) return;
         event.preventDefault();
         // 清除选中会提交当前字幕面板编辑，而提交可能同步重建虚拟行。
         // 在调用外部回调前保存坐标，后续 seek 不依赖可能已脱离 DOM 的 row。
@@ -158,13 +159,13 @@ window.MAWE.register('waveform-cue-blocks', function createWaveformModule(depend
         }
       });
       row.addEventListener('dblclick', (event) => {
-        if (event.target.closest('.waveform-cue-block, .waveform-gap-block')) return;
+        if ((/** @type {Element | null} */ ((/** @type {HTMLElement} */ (event.target)).closest('.waveform-cue-block, .waveform-gap-block')))) return;
         if (event.ctrlKey || event.metaKey) return;
         event.preventDefault();
         this.options.togglePlayback();
       });
       row.addEventListener('contextmenu', (event) => {
-        if (event.target.closest('.waveform-cue-block, .waveform-gap-block')) return;
+        if ((/** @type {Element | null} */ ((/** @type {HTMLElement} */ (event.target)).closest('.waveform-cue-block, .waveform-gap-block')))) return;
         event.preventDefault();
         event.stopPropagation();
         const time = this.pointerTimeMs(event, row);
@@ -175,6 +176,7 @@ window.MAWE.register('waveform-cue-blocks', function createWaveformModule(depend
     }
 
 
+    /** @this {import('./waveform-types.js').WaveformInstance} */
     appendGapBlocks(row, startMs, endMs) {
       // Editor/Align 提供的 getter 已经返回共享的最终显示投影；这里不要
       // 对每一行再次做投影，避免多行波形重复扫描同一组 Gap。
@@ -219,7 +221,7 @@ window.MAWE.register('waveform-cue-blocks', function createWaveformModule(depend
         }
         this.layoutGapBlock(block, gap, startMs, endMs);
         block.addEventListener('pointerdown', (event) => {
-          const handle = event.target.closest('.waveform-gap-handle');
+          const handle = (/** @type {Element | null} */ ((/** @type {HTMLElement} */ (event.target)).closest('.waveform-gap-handle')));
           if (event.button === 0 && !handle) {
             this.beginGapMoveDrag(
               event,
@@ -264,6 +266,7 @@ window.MAWE.register('waveform-cue-blocks', function createWaveformModule(depend
     }
 
 
+    /** @this {import('./waveform-types.js').WaveformInstance} */
     appendCueBlocks(row, startMs, endMs, groupBadges = null) {
       // 传统模式沿用旧版系统光标（ew-resize）；原创边界光标只在
       const multiLane = this.options.multiSubtitleVisible?.() === true;
@@ -320,21 +323,35 @@ window.MAWE.register('waveform-cue-blocks', function createWaveformModule(depend
             row.appendChild(badgeEl);
           });
         }
-        if (segment.start >= startMs) {
+        // 字词时间码模式下整句块退为背景，但选中句仍保留两端手柄，
+        // 让用户能在这个模式下拖动整句边界；未选中句不显示，避免与字词块抢指针。
+        const sentenceHandles = !this.options.wordTiming?.enabled || selected.has(index);
+        if (sentenceHandles && segment.start >= startMs) {
           const leftHandle = document.createElement('span');
           leftHandle.className = 'waveform-cue-handle left';
           leftHandle.title = localizedWaveformMessage('调节字幕的左边界（开始时间）', 'Adjust subtitle left boundary (start time)');
           block.appendChild(leftHandle);
+          if (this.options.wordTiming?.enabled) this.bindWordModeSentenceHandle(leftHandle, index, row);
         }
-        if (segment.end <= endMs) {
+        if (sentenceHandles && segment.end <= endMs) {
           const rightHandle = document.createElement('span');
           rightHandle.className = 'waveform-cue-handle right';
           rightHandle.title = localizedWaveformMessage('调节字幕的右边界（结束时间）', 'Adjust subtitle right boundary (end time)');
           block.appendChild(rightHandle);
+          if (this.options.wordTiming?.enabled) this.bindWordModeSentenceHandle(rightHandle, index, row);
         }
         this.layoutBlock(block, segment, startMs, endMs, row);
         block.dataset.track = 'main';
-        block.addEventListener('pointerdown', (event) => this.beginCueDrag(event, index, row, 'main'));
+        if (this.options.wordTiming?.enabled) block.classList.add('word-timing-background');
+        block.addEventListener('pointerdown', (event) => {
+          if (!this.options.wordTiming?.enabled) return this.beginCueDrag(event, index, row, 'main');
+          event.preventDefault(); event.stopPropagation();
+          if (event.button !== 0) return;
+          this.focusWaveform();
+          if (event.ctrlKey || event.metaKey) this.options.toggleCueSelection?.(index);
+          else if (event.shiftKey) this.options.selectCueRange?.(index);
+          else this.options.selectCue(index);
+        });
         block.addEventListener('contextmenu', (event) => {
           event.preventDefault();
           event.stopPropagation();
@@ -353,8 +370,9 @@ window.MAWE.register('waveform-cue-blocks', function createWaveformModule(depend
           else this.options.activateCue?.(index);
         });
         row.appendChild(block);
+        this.appendWordBlocks(row, index, startMs, endMs);
       }
-      this.appendSharedBoundaryZones(row, startMs, endMs, 'main');
+      if (!this.options.wordTiming?.enabled) this.appendSharedBoundaryZones(row, startMs, endMs, 'main');
 
       // 独立叠加轨：与主/副字幕互不绑定，绘制在主字幕块上方（bottom 50% 独立一层）。
       // 交互为点击选中、双击编辑、拖动移动、右键菜单；badge 与主块同款，挂在叠加块上方。
@@ -503,6 +521,7 @@ window.MAWE.register('waveform-cue-blocks', function createWaveformModule(depend
     }
 
 
+    /** @this {import('./waveform-types.js').WaveformInstance} */
     isSegmentHiddenForDisplay(segment) {
       return Boolean(
         segment?.disabled
@@ -514,6 +533,7 @@ window.MAWE.register('waveform-cue-blocks', function createWaveformModule(depend
     // 新模式（中缝联动）下，为相接的字幕对在中缝处渲染一个可拖动区：
     // 拖动中缝 = 两侧边界一起联动；相接侧手柄加宽后仍可单侧独立调整。
     // classic 模式不渲染中缝区，行为与旧版完全一致。
+    /** @this {import('./waveform-types.js').WaveformInstance} */
     appendSharedBoundaryZones(row, startMs, endMs, track = 'main') {
       if (this.options.getAdjacentBoundaryMode?.() !== 'dual') return;
       const segments = this.options.getSegments(track);
@@ -566,9 +586,10 @@ window.MAWE.register('waveform-cue-blocks', function createWaveformModule(depend
     }
 
 
+    /** @this {import('./waveform-types.js').WaveformInstance} */
     setBindingMarker(block, visible) {
       block.classList.toggle('has-binding-marker', visible);
-      const marker = block.querySelector('.waveform-binding-marker');
+      const marker = (/** @type {HTMLElement} */ (block.querySelector('.waveform-binding-marker')));
       if (!visible) {
         marker?.remove();
         return;
@@ -583,6 +604,20 @@ window.MAWE.register('waveform-cue-blocks', function createWaveformModule(depend
     }
 
 
+    // 字词时间码模式下，选中句的两端手柄直接进入整句边界拖动；
+    // 阻断冒泡，避免落到句块的「仅选中」pointerdown 处理上。
+    /** @this {import('./waveform-types.js').WaveformInstance} */
+    bindWordModeSentenceHandle(handle, index, row) {
+      handle.addEventListener('pointerdown', (event) => {
+        if (event.button !== 0) return;
+        event.preventDefault();
+        event.stopPropagation();
+        this.focusWaveform();
+        this.beginCueDrag(event, index, row, 'main');
+      });
+    }
+
+    /** @this {import('./waveform-types.js').WaveformInstance} */
     layoutBlock(block, segment, startMs, endMs, ownerRow = null) {
       const duration = Math.max(1, endMs - startMs);
       const visibleStart = Math.max(startMs, segment.start);
@@ -592,7 +627,7 @@ window.MAWE.register('waveform-cue-blocks', function createWaveformModule(depend
       block.style.left = `${left}%`;
       block.style.width = `${width}%`;
       block.hidden = visibleEnd <= visibleStart;
-      const row = ownerRow || block.closest('.waveform-row');
+      const row = ownerRow || (/** @type {import('./waveform-types.js').WaveformRow} */ (block.closest('.waveform-row')));
       // 时间上的多行模式与“多重字幕”双轨不是同一个概念；普通多行波形也
       // 必须在行边界清除相接侧圆角。基础模式的单行窗口则保留完整圆角。
       const isMultiRow = Boolean(row && row.dataset.basic !== 'true');
@@ -602,6 +637,7 @@ window.MAWE.register('waveform-cue-blocks', function createWaveformModule(depend
     }
 
 
+    /** @this {import('./waveform-types.js').WaveformInstance} */
     layoutGapBlock(block, gap, startMs, endMs) {
       const duration = Math.max(1, endMs - startMs);
       const visibleStart = Math.max(startMs, gap.start);
@@ -614,25 +650,27 @@ window.MAWE.register('waveform-cue-blocks', function createWaveformModule(depend
     }
 
 
+    /** @this {import('./waveform-types.js').WaveformInstance} */
     refreshGapOverlay() {
       if (!this.payload) return;
-      this.content.querySelectorAll('.waveform-row').forEach((row) => {
-        row.querySelectorAll('.waveform-gap-block').forEach((element) => element.remove());
+      (/** @type {NodeListOf<import('./waveform-types.js').WaveformRow>} */ (this.content.querySelectorAll('.waveform-row'))).forEach((row) => {
+        (/** @type {NodeListOf<HTMLElement>} */ (row.querySelectorAll('.waveform-gap-block'))).forEach((element) => element.remove());
         this.appendGapBlocks(row, Number(row.dataset.startMs), Number(row.dataset.endMs));
       });
       this.positionPlayheads();
     }
 
 
+    /** @this {import('./waveform-types.js').WaveformInstance} */
     refreshCueOverlay() {
       if (!this.payload) return;
-      const rows = [...this.content.querySelectorAll('.waveform-row')];
+      const rows = [...(/** @type {NodeListOf<import('./waveform-types.js').WaveformRow>} */ (this.content.querySelectorAll('.waveform-row')))];
       if (!rows.length) return;
       const groupBadges = computeGroupBadges(this.options.getSegments('main'));
       rows.forEach((row) => {
         // 绑定、解绑和字幕时间变化只影响覆盖层；保留已有行与 Canvas，
         // 避免重新采样/绘制波形导致操作出现一帧卡顿。
-        row.querySelectorAll('.waveform-cue-block, .waveform-cue-badge, .waveform-cue-boundary')
+        (/** @type {NodeListOf<HTMLElement>} */ (row.querySelectorAll('.waveform-cue-block, .waveform-cue-badge, .waveform-cue-boundary, .waveform-word-block, .waveform-word-boundary')))
           .forEach((element) => element.remove());
         this.appendCueBlocks(
           row,
@@ -645,6 +683,7 @@ window.MAWE.register('waveform-cue-blocks', function createWaveformModule(depend
     }
 
 
+    /** @this {import('./waveform-types.js').WaveformInstance} */
     refreshCueBlocks() {
       const activeSeamDrag = this.drag?.sharedBoundaryZone && this.drag.started ? this.drag : null;
       if (activeSeamDrag) {
@@ -666,7 +705,7 @@ window.MAWE.register('waveform-cue-blocks', function createWaveformModule(depend
       // 显示，松开后由真实选区恢复原状。
       const boundaryDrag = this.drag?.kind === 'resize-boundary' ? this.drag : null;
       const boundaryDragTrack = boundaryDrag?.track || 'main';
-      this.content.querySelectorAll('.waveform-cue-block').forEach((block) => {
+      (/** @type {NodeListOf<HTMLElement>} */ (this.content.querySelectorAll('.waveform-cue-block'))).forEach((block) => {
         const trackKind = block.dataset.track;
         const isExtension = trackKind === 'extension';
         const isOverlay = trackKind === 'overlay';
@@ -680,11 +719,11 @@ window.MAWE.register('waveform-cue-blocks', function createWaveformModule(depend
           : isOverlay
             ? overlaySegments[index]
             : segments[index];
-        const row = block.closest('.waveform-row');
+        const row = (/** @type {import('./waveform-types.js').WaveformRow} */ (block.closest('.waveform-row')));
         if (!segment || !row) return;
         this.layoutBlock(block, segment, Number(row.dataset.startMs), Number(row.dataset.endMs));
         // badge 位置跟随块移动（同一 segment 的 badge 挂在同一 row 上）
-        row.querySelectorAll(`.waveform-cue-badge[data-seg-id="${segment.id}"]`).forEach((badge) => {
+        (/** @type {NodeListOf<HTMLElement>} */ (row.querySelectorAll(`.waveform-cue-badge[data-seg-id="${segment.id}"]`))).forEach((badge) => {
           const badgeRowStart = Number(row.dataset.startMs);
           const badgeRowDur = Math.max(1, Number(row.dataset.endMs) - badgeRowStart);
           const visibleStart = Math.max(badgeRowStart, segment.start);
@@ -708,9 +747,9 @@ window.MAWE.register('waveform-cue-blocks', function createWaveformModule(depend
       });
       this.refreshBoundaryZones();
       if (activeSeamDrag) {
-        this.content.querySelector(
+        (/** @type {HTMLElement} */ (this.content.querySelector(
           `.waveform-cue-boundary[data-track="${activeSeamDrag.track}"][data-left-idx="${activeSeamDrag.index}"]`,
-        )?.classList.add('dragging');
+        )))?.classList.add('dragging');
       }
       this.positionPlayheads();
       this.refreshBoundaryDragPointerLine();
@@ -719,9 +758,10 @@ window.MAWE.register('waveform-cue-blocks', function createWaveformModule(depend
 
     // 轻量刷新（拖动中）只重建字幕块，不重建中缝区；这里按当前时间
     // 重新定位已有中缝区，保证拖动过程中中缝始终跟随贴合边界。
+    /** @this {import('./waveform-types.js').WaveformInstance} */
     refreshBoundaryZones() {
-      this.content.querySelectorAll('.waveform-cue-boundary').forEach((zone) => {
-        const row = zone.closest('.waveform-row');
+      (/** @type {NodeListOf<HTMLElement>} */ (this.content.querySelectorAll('.waveform-cue-boundary'))).forEach((zone) => {
+        const row = (/** @type {import('./waveform-types.js').WaveformRow} */ (zone.closest('.waveform-row')));
         if (!row) return;
         const track = zone.dataset.track === 'extension' ? 'extension' : 'main';
         const index = Number(zone.dataset.leftIdx);
@@ -744,28 +784,37 @@ window.MAWE.register('waveform-cue-blocks', function createWaveformModule(depend
     }
 
 
+    /** @this {import('./waveform-types.js').WaveformInstance} */
     refreshCueLabel(index) {
       const segment = this.options.getSegments('main')[index];
       if (!segment) return;
-      this.content.querySelectorAll(`.waveform-cue-block[data-track="main"][data-idx="${index}"] .waveform-cue-label`)
+      (/** @type {NodeListOf<HTMLElement>} */ (this.content.querySelectorAll(`.waveform-cue-block[data-track="main"][data-idx="${index}"] .waveform-cue-label`)))
         .forEach((label) => { label.textContent = segment.text.replace(/\s+/g, ' '); });
     }
 
 
+    /** @this {import('./waveform-types.js').WaveformInstance} */
     refreshExtensionCueLabel(index, trackId = null) {
       const segment = this.options.getExtensionSegments?.(trackId)?.[index];
       if (!segment) return;
-      this.content.querySelectorAll(`.waveform-cue-block[data-track="extension"][data-ext-idx="${index}"] .waveform-cue-label`)
+      (/** @type {NodeListOf<HTMLElement>} */ (this.content.querySelectorAll(`.waveform-cue-block[data-track="extension"][data-ext-idx="${index}"] .waveform-cue-label`)))
         .forEach((label) => { label.textContent = String(segment.text || '').replace(/\s+/g, ' '); });
     }
 
 
+    /** @this {import('./waveform-types.js').WaveformInstance} */
     updateSelection() {
+      // 字词时间码模式下选中句才有整句手柄；选中集变化需要整层重建，
+      // 轻量 class 切换无法增删手柄。
+      if (this.options.wordTiming?.enabled) {
+        this.refreshCueOverlay();
+        return;
+      }
       const selected = this.options.getSelection('main');
       const extensionSelected = this.options.getExtensionSelection?.() || new Set();
       const overlaySelected = this.options.getOverlaySelection?.() || new Set();
       const bindingMarkerTargets = this.options.getBindingMarkerTargets?.() || {};
-      this.content.querySelectorAll('.waveform-cue-block').forEach((block) => {
+      (/** @type {NodeListOf<HTMLElement>} */ (this.content.querySelectorAll('.waveform-cue-block'))).forEach((block) => {
         const trackKind = block.dataset.track;
         const index = Number(trackKind === 'extension' ? block.dataset.extIdx
           : trackKind === 'overlay' ? block.dataset.overlayIdx : block.dataset.idx);
@@ -784,4 +833,4 @@ window.MAWE.register('waveform-cue-blocks', function createWaveformModule(depend
   const descriptors = Object.getOwnPropertyDescriptors(WaveformMethods.prototype);
   delete descriptors.constructor;
   return descriptors;
-});
+}

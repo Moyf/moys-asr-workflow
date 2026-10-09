@@ -12,8 +12,7 @@ import {
   generateProjectJson,
   generateWav,
   makeTempDir,
-  startServer,
-} from './helpers.mjs';
+  startServer, closeSettingsPanels, openSettingsPage, toggleGlobalSettings } from './helpers.mjs';
 
 let tempDir;
 let projectPath;
@@ -50,12 +49,12 @@ test('configures preview-only speaker labels and independently controls SRT expo
   await page.goto(server.url);
   await revealSpeakerCue(page);
 
-  await page.locator('#editor-settings-toggle').click();
-  await page.locator('#editor-settings-tab-subtitle-style').click();
+  await toggleGlobalSettings(page);
+  await openSettingsPage(page, 'subtitle-style');
   await expect(page.locator('#editor-settings-page-subtitle-style')).toBeVisible();
   await expect(page.locator('#subtitle-font-size')).toBeVisible();
-  await page.locator('#editor-settings-tab-subtitle-color').click();
-  const previewPanel = page.locator('#editor-settings-page-subtitle-color');
+  await openSettingsPage(page, 'project-color');
+  const previewPanel = page.locator('#editor-settings-page-project-color');
   await expect(previewPanel).toBeVisible();
   await expect(page.locator('label.toggle.editor-settings-item:has(#subtitle-color-underline)'))
     .toHaveCount(1);
@@ -219,11 +218,12 @@ test('configures preview-only speaker labels and independently controls SRT expo
   await expect(page.locator('#subtitle-speaker-labels-settings')).toBeVisible();
   await expect(page.locator('#overlay-main-text')).toHaveText('Host"Alpha');
 
-  await expect(page.locator('#editor-settings-panel')).toBeVisible();
-  await page.locator('#editor-settings-tab-export').click();
+  await expect(page.locator('#project-settings-panel')).toBeVisible();
+  await openSettingsPage(page, 'project-color');
   const exportToggle = page.locator('#export-speaker-labels');
   await expect(exportToggle).toBeChecked();
   expect(await page.evaluate(() => MaweExportSrt.buildSrt())).toContain('Host"Alpha');
+  await openSettingsPage(page, 'export');
   const suffixToggle = page.locator('#export-speaker-names-as-suffix');
   await expect(suffixToggle).not.toBeChecked();
   await suffixToggle.check();
@@ -246,22 +246,22 @@ test('configures preview-only speaker labels and independently controls SRT expo
     `${filenameBase}_SP2.srt`,
     `${filenameBase}_默认.srt`,
   ]));
+  await openSettingsPage(page, 'project-color');
   const exportSpeakerHint = page.locator('.editor-settings-field:has(#export-speaker-labels) .editor-settings-hint');
   await expect(exportSpeakerHint).toContainText('在导出的字幕开头加上说话人。只影响导出后的字幕，不会改动工程里的字幕文本。');
-  await expect(exportSpeakerHint).toContainText('🤓👆 你可以在');
-  await expect(page.locator('#export-open-subtitle-color-settings')).toHaveText('字幕颜色');
-  await expect(page.locator('#export-open-subtitle-color-settings')).toHaveCSS('text-decoration-line', 'underline');
-  await expect(page.locator('#export-open-subtitle-color-settings-arrow')).toHaveCount(0);
-  await page.locator('#export-open-subtitle-color-settings').click();
+  // 颜色与说话人页提供打开调色板的反向链接。
+  const paletteLink = page.locator('#editor-settings-page-project-color').locator('button', { hasText: '调色板' });
+  await expect(paletteLink).toHaveCount(1);
+  await paletteLink.click();
   await expect(page.locator('#editor-settings-page-subtitle-color')).toBeVisible();
-  await page.locator('#editor-settings-tab-export').click();
+  await openSettingsPage(page, 'project-color');
 
   await exportToggle.uncheck();
   await expect(exportToggle).not.toBeChecked();
   expect(await page.evaluate(() => MaweExportSrt.buildSrt())).not.toContain('Host"Alpha');
   expect(await page.evaluate(() => MaweExportSrt.buildSrt())).toContain('Alpha');
 
-  await page.locator('#editor-settings-close').click();
+  await closeSettingsPanels(page);
   await page.getByRole('button', { name: '保存工程', exact: true }).click();
   await expect.poll(() => page.evaluate(() => MaweAppearance.previewGeometryDirty)).toBe(false);
 
@@ -269,6 +269,7 @@ test('configures preview-only speaker labels and independently controls SRT expo
   expect(onDisk.preview.subtitle.speaker_labels).toEqual({
     mapping_enabled: true,
     enabled: true,
+    export_enabled: false,
     separator: '"',
     names: {
       yellow: 'Host',
@@ -284,8 +285,8 @@ test('configures preview-only speaker labels and independently controls SRT expo
   await page.reload();
   await revealSpeakerCue(page);
   await expect(page.locator('#overlay-main-text')).toHaveText('Host"Alpha');
-  await page.locator('#editor-settings-toggle').click();
-  await page.locator('#editor-settings-tab-subtitle-color').click();
+  await toggleGlobalSettings(page);
+  await openSettingsPage(page, 'project-color');
   await expect(page.locator('#subtitle-speaker-mapping-enabled')).toBeChecked();
   await expect(page.locator('#subtitle-speaker-label-yellow')).toHaveValue('Host');
   await expect(page.locator('#subtitle-speaker-label-separator')).toHaveValue('"');

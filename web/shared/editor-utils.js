@@ -24,6 +24,7 @@
   Object.assign(helpers, window.MAWE.resolve('utils-gap-remove', helpers));
   Object.assign(helpers, window.MAWE.resolve('utils-history', helpers));
   Object.assign(helpers, window.MAWE.resolve('utils-multi-subtitle', helpers));
+  const wordTimingHelpers = window.MAWE.resolve('utils-word-timing', helpers);
   Object.assign(helpers, window.MAWE.resolve('utils-word-split', helpers));
   Object.assign(helpers, window.MAWE.resolve('utils-srt', helpers));
   Object.assign(helpers, window.MAWE.resolve('utils-lrc', helpers));
@@ -68,6 +69,7 @@
     MARKERS_SCHEMA,
     MARKER_DEFAULT_COLOR,
     MARKER_MIN_VISIBLE_PERCENT,
+    MARKER_POINT_MIN_VISIBLE_PERCENT,
     MARKER_NAME_MAX_LENGTH,
     MARKER_NOTE_MAX_LENGTH,
     MARKER_PRESET_COLORS,
@@ -313,6 +315,7 @@
   } = helpers;
 
 window.AsrEditorUtils = {
+  ...wordTimingHelpers,
     PROJECT_SCHEMA,
     supportsProjectSchema,
     subtitleFontFamilyDisplayName,
@@ -362,6 +365,7 @@ window.AsrEditorUtils = {
     isShortSubtitleText,
     MARKER_DEFAULT_COLOR,
     MARKER_MIN_VISIBLE_PERCENT,
+    MARKER_POINT_MIN_VISIBLE_PERCENT,
     MARKER_NAME_MAX_LENGTH,
     MARKER_NOTE_MAX_LENGTH,
     MARKER_PRESET_COLORS,

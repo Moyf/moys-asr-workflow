@@ -1,20 +1,28 @@
 {
   "name": "moys-asr-workflow-dev",
   "version": "0.0.0",
+  "packageManager": "pnpm@11.28.4",
   "private": true,
   "description": "Dev-only browser regression tooling for MAW (Playwright). No production dependency.",
   "scripts": {
+    "dev": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/dev-editor.ps1",
     "test": "playwright test --project=chromium",
     "test:headed": "playwright test --project=chromium --headed",
-    "typecheck": "tsc -p tsconfig.typecheck.json"
+    "typecheck": "tsc -p tsconfig.typecheck.json",
+    "build:editor": "node scripts/build-editor.mjs --write",
+    "check:editor": "node scripts/build-editor.mjs --check",
+    "watch:editor": "node scripts/build-editor.mjs --watch",
+    "test:unit": "node --test tests/*.mjs"
   },
   "devDependencies": {
-    "@playwright/test": "^1.52.0",
+    "@playwright/test": "1.62.0",
     "acorn": "^8.18.0",
     "acorn-walk": "^8.3.5",
     "diff": "^9.0.0",
+    "esbuild": "0.28.2",
     "eslint-scope": "^9.1.2",
     "magic-string": "^1.4.1",
+    "playwright": "1.62.0",
     "typescript": "^7.0.2"
   }
 }

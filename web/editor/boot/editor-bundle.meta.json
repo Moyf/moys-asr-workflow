@@ -1,0 +1,1201 @@
+{
+  "format": 1,
+  "esbuild": "0.28.2",
+  "sourceFiles": [
+    "editor/boot/editor-boot.js",
+    "editor/boot/editor-runtime.js",
+    "editor/state/editor-state.js",
+    "editor/state/editor-view-updates.js",
+    "editor/state/editor-commands.js",
+    "shared/host/storage.js",
+    "shared/host/files.js",
+    "shared/host/server-api.js",
+    "editor/boot/editor-host.js",
+    "shared/gap-remove-core.js",
+    "shared/utils/data.js",
+    "shared/utils/fonts.js",
+    "shared/utils/speakers.js",
+    "shared/utils/media-metadata.js",
+    "shared/utils/navigation.js",
+    "shared/utils/text-processing.js",
+    "shared/utils/timed-text-core.js",
+    "shared/utils/timed-text-plans.js",
+    "shared/utils/timed-text-edit.js",
+    "shared/utils/text-metrics.js",
+    "shared/utils/segment-timing.js",
+    "shared/utils/split-alignment.js",
+    "shared/utils/split-trim.js",
+    "shared/utils/timeline.js",
+    "shared/utils/settings.js",
+    "shared/utils/gap-remove.js",
+    "shared/utils/history.js",
+    "shared/utils/markers.js",
+    "shared/utils/multi-subtitle.js",
+    "shared/utils/word-timing.js",
+    "shared/utils/word-split.js",
+    "shared/utils/srt.js",
+    "shared/utils/lrc.js",
+    "shared/utils/ass-style.js",
+    "shared/utils/ass-animation.js",
+    "shared/utils/ass-canvas-layout.js",
+    "shared/utils/ass-export.js",
+    "shared/utils/export-plan.js",
+    "shared/utils/fcp7.js",
+    "shared/utils/export-workflow.js",
+    "shared/utils/platform.js",
+    "shared/utils/preview-geometry.js",
+    "shared/utils/lottie.js",
+    "shared/utils/ograf.js",
+    "shared/editor-utils.js",
+    "shared/editor-i18n.js",
+    "editor/media/waveform/constants.js",
+    "editor/media/waveform/labels.js",
+    "editor/media/waveform/scale.js",
+    "editor/media/waveform/layout.js",
+    "editor/media/waveform/settings.js",
+    "editor/media/waveform/payload.js",
+    "editor/media/waveform/colors.js",
+    "editor/media/waveform/timing.js",
+    "editor/media/waveform/visibility.js",
+    "editor/media/waveform/controls.js",
+    "editor/media/waveform/pointer.js",
+    "editor/media/waveform/workspace.js",
+    "editor/media/waveform/scale-controls.js",
+    "editor/media/waveform/media.js",
+    "editor/media/waveform/render.js",
+    "editor/media/waveform/cue-blocks.js",
+    "editor/media/waveform/word-blocks.js",
+    "editor/media/waveform/canvas.js",
+    "editor/media/waveform/input.js",
+    "editor/media/waveform/cue-drag.js",
+    "editor/media/waveform/cue-commands.js",
+    "editor/media/waveform/gap-drag.js",
+    "editor/media/waveform/markers.js",
+    "editor/media/waveform/cue-drag-update.js",
+    "editor/media/waveform/playback.js",
+    "editor/media/waveform.js",
+    "editor/ui/editor-hint.js",
+    "editor/media/editor-jkl.js",
+    "editor/state/editor-settings.js",
+    "editor/state/editor-project-settings.js",
+    "editor/state/editor-multi-subtitle-core.js",
+    "editor/ui/editor-gap-remove-data.js",
+    "editor/styles/editor-colors.js",
+    "editor/ui/editor-dom.js",
+    "editor/state/editor-cue-panel-state.js",
+    "editor/state/editor-history.js",
+    "editor/state/editor-core-state.js",
+    "editor/cues/editor-split-trim.js",
+    "editor/cues/editor-split-mode.js",
+    "editor/ui/editor-display-settings.js",
+    "editor/ui/editor-floating-panel.js",
+    "editor/ui/editor-settings-panels.js",
+    "editor/ui/editor-ninja.js",
+    "editor/media/editor-media-playback.js",
+    "editor/cues/editor-keyboard-targets.js",
+    "editor/cues/editor-shortcuts.js",
+    "editor/cues/editor-merge-adjacent.js",
+    "editor/styles/editor-appearance.js",
+    "editor/media/editor-preview-geometry.js",
+    "editor/media/editor-playback-loop.js",
+    "editor/media/editor-sticker-overlay.js",
+    "editor/io/editor-export-srt.js",
+    "editor/io/editor-export-timeline.js",
+    "editor/io/editor-server-save.js",
+    "editor/ui/editor-workspaces.js",
+    "editor/io/editor-project-save.js",
+    "editor/io/editor-dynamic-exports.js",
+    "editor/ui/editor-export-menus.js",
+    "editor/io/editor-project-media-inputs.js",
+    "editor/io/editor-project-load.js",
+    "editor/io/editor-loading-progress.js",
+    "editor/io/editor-multi-import.js",
+    "editor/media/editor-media-load.js",
+    "editor/io/editor-sticker-root.js",
+    "editor/cues/editor-find-replace.js",
+    "editor/cues/editor-text-process.js",
+    "editor/cues/editor-timed-text-edit.js",
+    "editor/cues/editor-sticker-picker.js",
+    "editor/cues/editor-add-cue.js",
+    "editor/cues/editor-bound-drag.js",
+    "editor/ui/editor-context-menus.js",
+    "editor/cues/editor-text-cleanup.js",
+    "editor/media/editor-waveform-init.js",
+    "editor/cues/editor-word-timing.js",
+    "editor/media/editor-media-step.js",
+    "editor/styles/editor-appearance-inputs.js",
+    "editor/ui/editor-behavior-hints.js",
+    "editor/io/editor-server-connection.js",
+    "editor/io/editor-drag-drop.js",
+    "editor/io/editor-sticker-otio-export.js",
+    "editor/io/editor-json-repair.js",
+    "editor/ui/editor-help-panel.js",
+    "editor/ui/editor-theme.js",
+    "editor/ui/editor-gap-remove-ui.js",
+    "editor/markers/editor-marker-editing.js",
+    "editor/markers/editor-markers-panel.js",
+    "editor/cues/editor-selection.js",
+    "editor/cues/editor-binding-align.js",
+    "editor/cues/editor-cue-panel.js",
+    "editor/cues/editor-cue-elements.js",
+    "editor/cues/editor-color-filter.js",
+    "editor/cues/editor-search.js",
+    "editor/cues/editor-inline-edit.js",
+    "editor/cues/editor-split-core.js",
+    "editor/cues/editor-split-context.js",
+    "editor/cues/editor-segment-ops.js",
+    "editor/cues/editor-nav-preview.js",
+    "editor/cues/editor-cue-events.js",
+    "editor/cues/editor-cue-list-anchor.js",
+    "editor/cues/editor-timeline.js",
+    "editor/styles/editor-speaker-labels.js",
+    "editor/boot/editor.js",
+    "editor/cues/editor-wiring-overlay-transfer.js",
+    "editor/styles/editor-wiring-ass-storage.js",
+    "editor/boot/editor-wiring-initial-config.js",
+    "editor/ui/editor-wiring-dom-panels.js",
+    "editor/styles/editor-wiring-ass-manager.js",
+    "editor/ui/editor-wiring-settings-init.js",
+    "editor/ui/editor-wiring-settings-help.js",
+    "editor/ui/editor-wiring-theme-split-settings.js",
+    "editor/ui/editor-wiring-display-behavior.js",
+    "editor/styles/editor-wiring-appearance-settings.js",
+    "editor/ui/editor-wiring-gap-panel.js",
+    "editor/markers/editor-wiring-markers.js",
+    "editor/cues/editor-wiring-cue-panel.js",
+    "editor/cues/editor-wiring-search-filter.js",
+    "editor/cues/editor-wiring-overlay-split-merge.js",
+    "editor/cues/editor-wiring-list-navigation.js",
+    "editor/media/editor-wiring-keyboard-guards.js",
+    "editor/cues/editor-wiring-word-timing.js",
+    "editor/media/editor-wiring-media-controls.js",
+    "editor/cues/editor-wiring-edit-shortcuts.js",
+    "editor/styles/editor-wiring-font-geometry.js",
+    "editor/styles/editor-wiring-ass-preview.js",
+    "editor/styles/editor-wiring-ass-canvas.js",
+    "editor/styles/editor-wiring-ass-frame.js",
+    "editor/media/editor-wiring-sticker-preview.js",
+    "editor/io/editor-wiring-export-context.js",
+    "editor/io/editor-wiring-export-actions.js",
+    "editor/ui/editor-wiring-toolbar-menus.js",
+    "editor/io/editor-wiring-project-inputs.js",
+    "editor/media/editor-wiring-media-inputs.js",
+    "editor/io/editor-wiring-sticker-root.js",
+    "editor/cues/editor-wiring-text-tools.js",
+    "editor/cues/editor-wiring-overlay-actions.js",
+    "editor/ui/editor-wiring-context-menus.js",
+    "editor/media/editor-wiring-waveform-hints.js",
+    "editor/io/editor-wiring-server-events.js",
+    "editor/io/editor-wiring-file-drop.js",
+    "editor/boot/editor-startup.js",
+    "editor/boot/editor-onboarding.js"
+  ],
+  "esmFactories": 61,
+  "inputs": {
+    "editor/boot/editor-boot.js": "298d5b808393547fe905cde4232e36af4079f07567786cd898fb3005a292a1db",
+    "editor/boot/editor-runtime.js": "5d71c0d776a913d6e1ad3d7ea8cad3ba216d1d587641268ee66c529ce24ae863",
+    "editor/state/editor-state.js": "2ea39ae423e4c8bd2d8f7c15f69eaca3081e410a18089aea745de06281fff319",
+    "editor/state/editor-view-updates.js": "83badf3af565aa9b9b6faf3f2efa00ba51abd31660e9374280dad30b8762013a",
+    "editor/state/editor-commands.js": "75eb40e1b564085bfd65bc46575b69563a960cd74eb0e1b54cfbc739cf3873bb",
+    "shared/host/storage.js": "2a969d1b32bb9ed9e26e7aff2a1c457acff1b20a3e86d965ba12066c6ae26628",
+    "shared/host/files.js": "1beb4a24c0bee93eb2e7fce58aa403796ffee4a4c99ab1e247d972254a5dce5d",
+    "shared/host/server-api.js": "b319e6fd4825c8422c41d79ef5e801f4ffac322b510e91b6ece77ab5306789c4",
+    "editor/boot/editor-host.js": "6063c26cfbf3faec6890a5f46c9b925e1dc0049179643c42626b7bef1bc4d052",
+    "shared/gap-remove-core.js": "4e935bdbbaaf283b6b68228757999989dae942e677ed223ebbfb0af0f980498a",
+    "shared/utils/data.js": "6bab03f16179de53d0a66c2bb4bcd96b69249687432010164b802df2f72da4e5",
+    "shared/utils/fonts.js": "e79c90bc1e0538c1316890643f995c4092c918fc6ea6ad046f1c260b430f1648",
+    "shared/utils/speakers.js": "6549e243fa65b53144f2b19ad6f609df7a6747e2173a34aa1612e2b498c37d46",
+    "shared/utils/media-metadata.js": "0708ed6b70ceb365bdc2400e308463d1a5d6625bc3b09ed30d6646bf39f9188d",
+    "shared/utils/navigation.js": "130b91b4b645ca1545da7ce33c6cee3fa01c9bd4dbc56dc2d114833344945062",
+    "shared/utils/text-processing.js": "6bba4f077395cfc79bb664690ea0c95585915f28758360aa8d4cbe38822718cd",
+    "shared/utils/timed-text-core.js": "b643cd5667e86f6c76659e41590f21814560f37b124358d4cf9168bcff6adb3b",
+    "shared/utils/timed-text-plans.js": "6beda14f3b784ec33ca74d6db0cb7be35c3c4599337c47a32c2930ccbaef4cbb",
+    "shared/utils/timed-text-edit.js": "faa4bb7cc7331382b2091fce1aef3da13896154683a54e2d8376c83f4d82bcfe",
+    "shared/utils/text-metrics.js": "b5e487d57d1bf04fabf9747da4b700683a423499413b3a1124331f978107836f",
+    "shared/utils/segment-timing.js": "398405ac60da03db5ca08b446eb94f48f86a31672be0714049e6c75ca6097c31",
+    "shared/utils/split-alignment.js": "ccfe3b928bf9acd9302e0bb8a0cd1a4cecdd7251cbadc9caca8b9215f88a8d3d",
+    "shared/utils/split-trim.js": "322d10161f098d7730c5c1e3ff9d0c293a2b12e16311bd98d8f0cd69938ac54d",
+    "shared/utils/timeline.js": "906181e39d7a1aa59919ed5b073383d19d4be545f1ff18ec721fcf013a283182",
+    "shared/utils/settings.js": "a4d4de6e1061cda696229c697a4090501e050665618b842ad0c3897f2455815f",
+    "shared/utils/gap-remove.js": "a1b87f7b0990bac026bc38ddb6231777cebd2dc9ef8c803baf70ee09bc9e4350",
+    "shared/utils/history.js": "0929c838e2fb6359d9e441dfc18b663a68b23b17319a43ea5f6855aace5483f7",
+    "shared/utils/markers.js": "3eaaa1bbbb080596f5142591c3388a82ba7dcd158bacbd64679dc991d4bce8a0",
+    "shared/utils/multi-subtitle.js": "030482c28fd76a1fc1241feaad5a96c64511b91de12e8efbc16fffe48603b42b",
+    "shared/utils/word-timing.js": "517e8f52c10fa99bb47fa1c8f0f073f5f7d7103470af580ec8994af9f7e38918",
+    "shared/utils/word-split.js": "28a8d6092bcaf156fe989cb7bb9eea9c4d550d9ca7e50d6787af48307a697ad3",
+    "shared/utils/srt.js": "e46cac86f1685bbbb06bfea449f186104e23c805f5c1a47ee4ced5ba141b24c1",
+    "shared/utils/lrc.js": "febdcceebbb5884cbb75a60cba261af53c92779bb6eb21cedb486563e3f39644",
+    "shared/utils/ass-style.js": "26bccaa899bf8303440e5e77b2cb3e9bd3a09ab90e69c2b8f080136a1ffba125",
+    "shared/utils/ass-animation.js": "5d56e96d2eba1a022951df6925bbe66ca7de650155c9572af0ad69fb182f6791",
+    "shared/utils/ass-canvas-layout.js": "22233e78b3126b5dff7a459042a7942e934e1bec18800597d5516d70e2fe301a",
+    "shared/utils/ass-export.js": "c6b78a7643f4fb46147bda55fed08d332ba4b85828c2102c96da69a1315169c4",
+    "shared/utils/export-plan.js": "ed8e3a513f5ed8bb30d7cdeba8ed5ef6563e2df5a9bae040e60d5c97d68d16a2",
+    "shared/utils/fcp7.js": "1ed3e9af7d41dcefaa4fd3ab53348b5bebc7b3430f2f84d7676401d12086b9cc",
+    "shared/utils/export-workflow.js": "606cdab0c13fe1ba8384a9fbcfcb52afdeb8f63930ab939892601d81799f0b10",
+    "shared/utils/platform.js": "8fd9bf79275b88586f7c7a1b4da620fb9144d29bf3290f9124e43b4d1f849c14",
+    "shared/utils/preview-geometry.js": "7b9a6232d51808e4fb9e342f4bc385079a866557194fa83f41381c13a4ca3b42",
+    "shared/utils/lottie.js": "a74b0332e76eef35299d9567c052584a61383134cf03e9ea5279b11e6d4e69ea",
+    "shared/utils/ograf.js": "94b88b7db9ea4fd862dc49985f1a5e46bcef6bc70837cb656b0cd1b085a40d89",
+    "shared/editor-utils.js": "360489d1efb54cddfd9c732c7daab966a0f6d1bf0cb05a2b09c96d4485048a13",
+    "shared/editor-i18n.js": "8999d72913f566b26b98732268c7d951f08ac2c9bee0eca41c1f1989d19b5963",
+    "editor/media/waveform/constants.js": "d5bd567ad4dcbee81995e275e8bf0be571b47e28952fa944478a66aa78e079e4",
+    "editor/media/waveform/labels.js": "983afc39d173fc6636d0c78b4fdf4f426a4ba49c8ba4d40305e2775ddb28b80b",
+    "editor/media/waveform/scale.js": "fddbd380d9dd9f663bd312d24db44efe5edc9639a7cdb7e208cd3647e2fa8083",
+    "editor/media/waveform/layout.js": "2b561d2c83f860991e907aa1d8ca05d20692af57e426709f226102a8b7b80996",
+    "editor/media/waveform/settings.js": "e300085dc6b6e2d41531d153e8fec1124c3f3e0fe3bb8233d916faf9015e47a3",
+    "editor/media/waveform/payload.js": "93767e171494db90a4a8cf5e13e3c55e6ff65fd472ae0a5efa6fbae987f5b8d5",
+    "editor/media/waveform/colors.js": "c3f8832042957e7880fc5cf70d0269e1032265a827e102ad8f3f85c06c77aa2f",
+    "editor/media/waveform/timing.js": "326273debe1e55ecbc82501110e50a648893b5177f135f3bd15cbc70b43dec37",
+    "editor/media/waveform/visibility.js": "f6519fff991d2f67bc0df13a5676db7e38afdbb62a03fdae5bb922d2858ba106",
+    "editor/media/waveform/controls.js": "4e6270e51515bc31b1f12ca1597b3a90c4d0f526a48f9cacf980b60d6b546685",
+    "editor/media/waveform/pointer.js": "e1215f7a9c2844b21999a9c0a07f928d8341b2d3fdaba3749b5271cf2790ad18",
+    "editor/media/waveform/workspace.js": "b9531c15eea89d94a758dde483d689705fa114a3e8fb25e53ad43e0a2c066679",
+    "editor/media/waveform/scale-controls.js": "53c9fdb569974d6792e00dee04692b8f125ef81bbf6f47521946e20d38b4e348",
+    "editor/media/waveform/media.js": "d9d0f565af7154f8b1071bd80a6adf645f1e4be8470290b261853ab2e652d79c",
+    "editor/media/waveform/render.js": "0e073d415185c83397587bac5714dd7b2671aec1ebfe7621c46641f20327faed",
+    "editor/media/waveform/cue-blocks.js": "d85a647c8d6487ca613eb90d59fa76abc656124e38ae0d334401def37ddc830b",
+    "editor/media/waveform/word-blocks.js": "7e5ece552387ae226199d48aa89fd72b9f9141a24b018163a4a7d5356c7f760e",
+    "editor/media/waveform/canvas.js": "e1293fe124ba78d520a816ea5219b40d2680b9aac7be0355eec34b1e86d88c1c",
+    "editor/media/waveform/input.js": "b2c0b2f6912403b9bbaa92ed22b7405f366238246d3d343712f426edfa56c7b2",
+    "editor/media/waveform/cue-drag.js": "d2b8a860d47c5430d91e76c619c28cf54b5f943077ffecf455877beee20e0d3e",
+    "editor/media/waveform/cue-commands.js": "d421f543da181f8b9ffa19f1114f2da39d36f3223b2e5453b94a8652dbc36132",
+    "editor/media/waveform/gap-drag.js": "1302e527da9eabe277f4c03d18da1054b5e1c33044992c8acad3fc8614a8248a",
+    "editor/media/waveform/markers.js": "9e9f07bbf7e9ee2265ec1bcc3d4668c9f10dcf03c7e0644c0b856d071c9e927c",
+    "editor/media/waveform/cue-drag-update.js": "ce7abbdf95c22654f3c06e21b75cdf6f877d498a70ca5e51f1ac3e076f723812",
+    "editor/media/waveform/playback.js": "b9d282797cf6cc5f702bc842f2ceadfdfc5db5975db8209e12f831a24419abc7",
+    "editor/media/waveform.js": "6a093ad4f8a918b4faeb1f25183af9441a374e337dee2d3215f221009a9161bb",
+    "editor/ui/editor-hint.js": "12ecf85975df5d413fbdc515a4756062c0dc2a9e7439606aee85eb3217e9e53e",
+    "editor/media/editor-jkl.js": "a42a36671df1d63c33d71b7dbae88d7b720681bf1e8b31d7df15efa9c5a9dcae",
+    "editor/state/editor-settings.js": "8682e37329307c2864f278f820ccb22334a6dd4b0c2cebfc58736970b7f4bbc4",
+    "editor/state/editor-project-settings.js": "438a6675b01f06bad1ef82d2134a2db9a532643740de984adee40741eab70aaa",
+    "editor/state/editor-multi-subtitle-core.js": "1629c0de893cca1be2b7bf445fc4cdfac18ffdc80375261d6de52872e4e79b23",
+    "editor/ui/editor-gap-remove-data.js": "de5f3aa77e4fd246cc839e55548c9354b86a470a9f05b2b399089b497d27dd29",
+    "editor/styles/editor-colors.js": "f28d3fea9e6fb45c2e6071c56f7dbe6dfd53cc071e9fa25c912e49fa4b3943d7",
+    "editor/ui/editor-dom.js": "f1303931e86fbea1645504d15edba4042e8449f0e6e5f32ba85b58436421a90a",
+    "editor/state/editor-cue-panel-state.js": "199f2b86cc07e797840355c5278364f5f2ab0b0bbd882b2d94cb7edf2c242689",
+    "editor/state/editor-history.js": "2d15a62473a35f38d4f50d7ab219d50db13880a3606e7ead7a23c6270d0e7d31",
+    "editor/state/editor-core-state.js": "b86e2a02ed809c43729df726d7ad2ed3e235bce3ae60fcfb21dadafcf9cf1730",
+    "editor/cues/editor-split-trim.js": "d1282bb59a2b63190e1d9f3ac7176a7c203fbebaaf89007c38b20c8dc68b4e21",
+    "editor/cues/editor-split-mode.js": "2d9ea2bb8667d2884d17062c3eb8a495783d49986f35bc6d5149b683f76131d9",
+    "editor/ui/editor-display-settings.js": "b786c95071a118e0a5d5884974cb1045e6a3ec4c896e455dd95dbccc277c54a4",
+    "editor/ui/editor-floating-panel.js": "de09dd157d566a1a0e1b9087bd0b64ec3e887d22bc43ed9fb0c3a4df5b11a05c",
+    "editor/ui/editor-settings-panels.js": "566346c533d121768b7dfc784104e2953fd244bd2dbae80ed2a6c1139ac8a7c0",
+    "editor/ui/editor-ninja.js": "65733b263fd0e246403acbc7e82523e7e75b45fdb6c371b58a5d5a63a885a4f0",
+    "editor/media/editor-media-playback.js": "cb741692abca86ea67073a6b2f0c841f3a44ae2176c20351c40ab3bf32c24f7c",
+    "editor/cues/editor-keyboard-targets.js": "dcb2942bd815dc43db5f99bd09c130a7581bfea6cc4d44a94cc7c18b21d096eb",
+    "editor/cues/editor-shortcuts.js": "84c350da6193013d151491e1897d84c37d51dc3af2aabb000ceaa79f1d8cccde",
+    "editor/cues/editor-merge-adjacent.js": "da2c0c93e1b3af9e28b6945723bf274fcb137ef03e8090a9a9c615b2d9765dae",
+    "editor/styles/editor-appearance.js": "4a7758bb250447b2965d96fd6cf0c2e711a2e9186dc6eee564003031903ba38b",
+    "editor/media/editor-preview-geometry.js": "a25ce72a3dcdf49a2a5f6a9e62cfc2241e91aac47e6cbb0fbb47d804b147beca",
+    "editor/media/editor-playback-loop.js": "35f58872d2ea34faf000fcbf25a89bebbe916bc99f7e208ca700137bd484861b",
+    "editor/media/editor-sticker-overlay.js": "5f5799615e6ef890cf7360ee4ae0a85123acdee9d27a79cec801a68a9648c863",
+    "editor/io/editor-export-srt.js": "f8256fbba7eedefbee657f3ef21c54ec961110bf299129f1d1acba070a08d0d4",
+    "editor/io/editor-export-timeline.js": "7cd9e348e1c84e44afccf3d6eb1c9fe260f0842d637641393a1c13593da3e13a",
+    "editor/io/editor-server-save.js": "d49528b92ccfdc8320a1319fa1558ad2e8a12e518d7b18e48cfabbe5b9c09ba8",
+    "editor/ui/editor-workspaces.js": "6a0dcfab40bffcce3b10dae025d4ca20413f059a0905df93a11af9132cc7d58c",
+    "editor/io/editor-project-save.js": "4dc5ce43ba2d97ab0d16f80153da111738c2f43014b223df0ea04c11886bf9ce",
+    "editor/io/editor-dynamic-exports.js": "3fceb191759ed43375d21ebc1cdbd8b6a0d2bc034377977e579d3dce925c7495",
+    "editor/ui/editor-export-menus.js": "cfa4973df5672ea759702ef096c7b71e237d060ed4d8043d04e4ae72904fc213",
+    "editor/io/editor-project-media-inputs.js": "107eaf3c7f006a9c67f9427f82cb85186343c5ddd684edbc8e4fbbab17a8a879",
+    "editor/io/editor-project-load.js": "4055fd443c79a7ee4221c2cfe601051cf7ddbe0fc5773292b1e8d0994d77542f",
+    "editor/io/editor-loading-progress.js": "45a3650422174f11b3d978ec152b5043ba331e714f40e7cb482106d9588bd538",
+    "editor/io/editor-multi-import.js": "8e8e5e313f55befc1bffcefdf50463c096846e0697f8779d40b4dfa9cdcdfc55",
+    "editor/media/editor-media-load.js": "81b7a4d9cb633ee1a920927e67ba4c942b17734f4e266a624bff85138388d452",
+    "editor/io/editor-sticker-root.js": "c28769af4530a413206ee56f022194538d10cdbf2479a4429468a012917c412e",
+    "editor/cues/editor-find-replace.js": "877c71fb4d893526f984fc9487094f3c3c6928c0265b61e7113f1a6d52e20ac4",
+    "editor/cues/editor-text-process.js": "7f6230612b971203f28c58fb1a9268eb99b76c75f0be77949aff88d717c6f86e",
+    "editor/cues/editor-timed-text-edit.js": "a714d2cb371d7f7f873ecf99f8158e94a2bb7b59ffbae2174e343a49535f9f41",
+    "editor/cues/editor-sticker-picker.js": "2d5352b20bd5af02dd448f013a92f035ad3308a105f07b35d9f0efb88466417e",
+    "editor/cues/editor-add-cue.js": "ffc44f10af8f67db85097a85dea78fa43fa343425215353118f1bd08fbe1465f",
+    "editor/cues/editor-bound-drag.js": "9478e2017ffb4e665f452ba18b9e90a991c6936d8222e386dbc72d76ae97f86a",
+    "editor/ui/editor-context-menus.js": "371caa9859520102b6534d07ffc27bbdb178538afd8c8c472b86d407bb64141c",
+    "editor/cues/editor-text-cleanup.js": "526c8a0acbbdbab0fa2f04ee2cd580c26693a9997768b85bfd8bccc1bf423971",
+    "editor/media/editor-waveform-init.js": "9be89de9dddf1b6208a581dee9fef7ec23924f6f0c1f36d15af0b071c280ce78",
+    "editor/cues/editor-word-timing.js": "7af59c12e99209d8a7273213f4e7446c8ebd236b3012c562108c5a29200de13b",
+    "editor/media/editor-media-step.js": "778e52252d7ebd14fdc196687c6bdf333f7527970bf65ffd21c8406c8707323c",
+    "editor/styles/editor-appearance-inputs.js": "233d2aef602beaa26cad764a555837f056c3de44f076232fed093c641bdb5342",
+    "editor/ui/editor-behavior-hints.js": "d581e6819ad54d1a878625a7b96a5d7734bc18a0778693c89132e4bbd8bfb9f9",
+    "editor/io/editor-server-connection.js": "253bfd5c6783fd0f8035130207dff3ba06996015c80eb29883156671cfcded06",
+    "editor/io/editor-drag-drop.js": "ab5228ff0d7b81512ebf3edf4e9b0d7ca0ceb83937313f752201a04cd0bdc80b",
+    "editor/io/editor-sticker-otio-export.js": "0a96a6b629aefa7a982502d2ba54f62c492d42ff4e820e157af1dc89d9e9b0a8",
+    "editor/io/editor-json-repair.js": "2d0b443b6c6466c371f67e58b2be10e497ce495b1700edf9e8bee3cd053f9289",
+    "editor/ui/editor-help-panel.js": "09d0778f0720704c94315df5f2b80b9d24e336ea09d1d336b74fcde832441ab4",
+    "editor/ui/editor-theme.js": "6a8a3a01eb7a4a976fa0dd9f56ea8f374027249270c876f62cde5f7fb6dc1aec",
+    "editor/ui/editor-gap-remove-ui.js": "6dc41c8b56b16e12399ab898111b0df0bfc0917e2d7af78a70784a3f1888ce0d",
+    "editor/markers/editor-marker-editing.js": "2b8d6d0a7f5cbf8f111c2c23c714d6075d7e15981335e2d94fd32926b2cf6ae4",
+    "editor/markers/editor-markers-panel.js": "56ca380f723e9c5ef208288dcceb391a421c13b408612638cdef85393e3458e8",
+    "editor/cues/editor-selection.js": "4fef8b3aaba828227d6b2fe67637b5c43357096b9cf1e538c961704a44b249d4",
+    "editor/cues/editor-binding-align.js": "1ce502fb39e5e453b11740d524b9628372d83117e398e7ffa7a9a3a04110945a",
+    "editor/cues/editor-cue-panel.js": "f47bbc8ec3394507eb0ac60f67e362da85f1907c532b6bafe42c0e8237c2da3d",
+    "editor/cues/editor-cue-elements.js": "c404ee9618352ef11d0579239844a285a63c16412ff515e70950b83ff157bfd4",
+    "editor/cues/editor-color-filter.js": "86f141df17252e6fc45a7cd6fdcb04fab7db8b5ea051aef334824723178470b3",
+    "editor/cues/editor-search.js": "ddc71b64076b00876b9ed4306ba6f55b9f195f73b1f8223cecae4642ddc106a4",
+    "editor/cues/editor-inline-edit.js": "c34a4c91e3092126ce33ec5ec78a3f07a0b8dc1322363f958c0f12f35147c66a",
+    "editor/cues/editor-split-core.js": "03e9fb243e0347c70757b8372103892f20e2ffe4d8c91d523222c2c738c13038",
+    "editor/cues/editor-split-context.js": "8a1923d98b8c4c258fe430edec926f66ceb091811b6a48487a4fc94cf67820f1",
+    "editor/cues/editor-segment-ops.js": "efd0e5b710b88c35b33fad4b044ca8f58755ef883b2486c48a3498f06bc9df84",
+    "editor/cues/editor-nav-preview.js": "9b6037718ea9c17e4883a610164d8974785f1bdf17265f994318559a3f0abef7",
+    "editor/cues/editor-cue-events.js": "d55a8ea5871d231a3817b2d3fb65ead419f0fefd14b72381fa035fd4eaefa1ce",
+    "editor/cues/editor-cue-list-anchor.js": "776b7c951eb4148a6a52a0a4724cbd2b3c7225d46bdf03e0ddda2506c96a3975",
+    "editor/cues/editor-timeline.js": "a30abbb1c8104a57d77d53cbee64cf144c3c513f10563084ed0891b33c92717a",
+    "editor/styles/editor-speaker-labels.js": "96a5d4ac5f054ef9495f42993c318da2d97ae04f269090e39c388878cc67fb2d",
+    "editor/boot/editor.js": "fefbd3d1b7cc2505bd26fb51edce4464704599bc13880cac05a4afd5f256623a",
+    "editor/cues/editor-wiring-overlay-transfer.js": "0f8c44f39d855c0963bb1bec21d48ad3560e6371efcd9f887656a7e2c238fa09",
+    "editor/styles/editor-wiring-ass-storage.js": "60c7f09d7d9904c266f61d3de1a9625cc49c7043247167f185625c0d533392a3",
+    "editor/boot/editor-wiring-initial-config.js": "9647852379c2db5a43a2ab795a1d49aead93a28a38d2bd634cdb38dd329b98e8",
+    "editor/ui/editor-wiring-dom-panels.js": "4fe40213ad4f11839ed79d56639d6f078408f246e4d94b41f8b6aa14d45a7621",
+    "editor/styles/editor-wiring-ass-manager.js": "61dbaa9eea211eb5a40af5e89c928da02605bd88c0690d24256c05f9551ac33c",
+    "editor/ui/editor-wiring-settings-init.js": "282921f5cb5d7f13d59b843633a77e3633b188965f386d21829b153310e688b6",
+    "editor/ui/editor-wiring-settings-help.js": "ecadf39de02093d6b44e846a9f45dda1a456941c097650bd5d72a88f17913ab0",
+    "editor/ui/editor-wiring-theme-split-settings.js": "febb0c7643250c51aadbe6b237b445b50e3375306a2abe6654956b66b70aae34",
+    "editor/ui/editor-wiring-display-behavior.js": "753fd5b80d1a18aafe644e0c776844a1469bec77a5b2782b15e2477e97d0ad07",
+    "editor/styles/editor-wiring-appearance-settings.js": "74d0c8088f7d1a00640956ea25aa3b7127dca7aa0fbb4511396f2141dc1b5ec5",
+    "editor/ui/editor-wiring-gap-panel.js": "8e49a037b144ba0a1f246cfbe8f2dca899953c15ef898632adcff418ca65f551",
+    "editor/markers/editor-wiring-markers.js": "b86ca971f50780484f1817493da9e034e0228d9b5f333457f84a53b2ad73e9ea",
+    "editor/cues/editor-wiring-cue-panel.js": "cb4444b5e2332e2c02c87cbbc7d7c8bb68160235fadc5f06912904ceeeeab69b",
+    "editor/cues/editor-wiring-search-filter.js": "947be9af11eb8ac637d43bae40169cd8f04d5362ecc03e93140b9607921becdb",
+    "editor/cues/editor-wiring-overlay-split-merge.js": "6842c05dec08f50f4640cbc17cedd6f4fa8f03d1c4f7bbde361e28839a60c2eb",
+    "editor/cues/editor-wiring-list-navigation.js": "724204b9dc26435f9edaab5c7f7426e6d0c7ae9504181f2b984b39407a4f5d28",
+    "editor/media/editor-wiring-keyboard-guards.js": "66abe9ade2d7f88bdf86ef62119ae8e95fd29e3ac3985a99b6244eebc1c6beaf",
+    "editor/cues/editor-wiring-word-timing.js": "b85e4b62e9bba28d77d573b1d2d97f7173a4d4b25b6b583c4fe780746e4594fc",
+    "editor/media/editor-wiring-media-controls.js": "978298e2f616be772132c07321187f66ebc5f46d31d4d14ac0a04a0f0815194f",
+    "editor/cues/editor-wiring-edit-shortcuts.js": "353fc928fb8fa370f5f4406fc07f061ed8717fed9639e4a17201a3f481ed0366",
+    "editor/styles/editor-wiring-font-geometry.js": "a6bd47579d3c780c6cbf3d6211584728759fad78e5d26af826f03dcbf3da9c04",
+    "editor/styles/editor-wiring-ass-preview.js": "8976d175b3002698f2b60b271dc3a7ffc84f77347ffc1d9252183f9a4002fe7a",
+    "editor/styles/editor-wiring-ass-canvas.js": "5571bb0cb17ee2312fd50496d5ce730a31c66af244dd1456e8314cf95f8c0134",
+    "editor/styles/editor-wiring-ass-frame.js": "1a3c186069460cde01b86e0c1614b8b71d3f9fa7c4ef377988824b14adff69e5",
+    "editor/media/editor-wiring-sticker-preview.js": "fa46c5d9075247e627f4fea99cd13d36d1492e4bd5ee1c7a51f046168abbbdb8",
+    "editor/io/editor-wiring-export-context.js": "d01cdb5a0acc5ceca8f6172bc9e0b11e70586452fe7c8514fd1e28d29d53a3f7",
+    "editor/io/editor-wiring-export-actions.js": "77d3a1300de2e246c458d07b66820330611b3036d62e43f6552fd960fbc57f5e",
+    "editor/ui/editor-wiring-toolbar-menus.js": "7b6594d2a19ced6990cdacbf1e258861467de9f40cf087e51142d1ffcc737b45",
+    "editor/io/editor-wiring-project-inputs.js": "83f60f05a35b1aa96f88f9cbb50e7f361cc77072c255f148b66c1edd396b3020",
+    "editor/media/editor-wiring-media-inputs.js": "9eade738d68f5873398865ee2ac3ce1380d41f0a796a73e387ea63d17a87d5aa",
+    "editor/io/editor-wiring-sticker-root.js": "a51335f767f7b1c0475afefe53da5888d5d4e1e872cc602e52f026fbc99c9627",
+    "editor/cues/editor-wiring-text-tools.js": "46c90828b9de31d32ad92d1405219ffa7f27b222dd7f2bf0c05db607b393077b",
+    "editor/cues/editor-wiring-overlay-actions.js": "913ee710bb6271d4de9e72a9b09448e89e0d0602d43cde3de8de02c9a097e20a",
+    "editor/ui/editor-wiring-context-menus.js": "716f609fe1ca0c143ec758bdb66b934a0d7c81b948eced51ef789dc6c2f44576",
+    "editor/media/editor-wiring-waveform-hints.js": "78821bb6248fb06325b5950dd8f54c06b5cb50c009fb73f50f0ee2dbd87a31e6",
+    "editor/io/editor-wiring-server-events.js": "1174a484a1122bb02378ccf3ee5bdfe1b9d1669e3950b7fe50ba65ef56842b23",
+    "editor/io/editor-wiring-file-drop.js": "6fcb7821cdd3215433c91913630ac16fdbacf9b3c675f6bb2e709a1bd58d0eb5",
+    "editor/boot/editor-startup.js": "23317684cd154a502a5b8376ae4434886b0a3ec1fc9c8f8afc714a9a983d377e",
+    "editor/boot/editor-onboarding.js": "488416a0a41bb30ad4343e6649f247c1f85970b818514a35a60f3af767177393"
+  },
+  "configHash": "d42937878d91d54ec68f744276454ab2be39c7c87af00aa5bbeda4f7390304f0",
+  "builderHash": "1a0a68295e7f276f7dfd728236489c261424ce86664cad4827cad5cd8c64124d",
+  "metafile": {
+    "inputs": {
+      "web/shared/host/storage.js": {
+        "bytes": 313,
+        "imports": [],
+        "format": "esm"
+      },
+      "web/shared/host/files.js": {
+        "bytes": 970,
+        "imports": [],
+        "format": "esm"
+      },
+      "web/shared/host/server-api.js": {
+        "bytes": 355,
+        "imports": [],
+        "format": "esm"
+      },
+      "web/shared/utils/data.js": {
+        "bytes": 3998,
+        "imports": [],
+        "format": "esm"
+      },
+      "web/shared/utils/fonts.js": {
+        "bytes": 4177,
+        "imports": [],
+        "format": "esm"
+      },
+      "web/shared/utils/speakers.js": {
+        "bytes": 3430,
+        "imports": [],
+        "format": "esm"
+      },
+      "web/shared/utils/media-metadata.js": {
+        "bytes": 3771,
+        "imports": [],
+        "format": "esm"
+      },
+      "web/shared/utils/navigation.js": {
+        "bytes": 4051,
+        "imports": [],
+        "format": "esm"
+      },
+      "web/shared/utils/text-processing.js": {
+        "bytes": 7317,
+        "imports": [],
+        "format": "esm"
+      },
+      "web/shared/utils/timed-text-core.js": {
+        "bytes": 20251,
+        "imports": [],
+        "format": "esm"
+      },
+      "web/shared/utils/timed-text-plans.js": {
+        "bytes": 29517,
+        "imports": [],
+        "format": "esm"
+      },
+      "web/shared/utils/timed-text-edit.js": {
+        "bytes": 24136,
+        "imports": [],
+        "format": "esm"
+      },
+      "web/shared/utils/text-metrics.js": {
+        "bytes": 2005,
+        "imports": [],
+        "format": "esm"
+      },
+      "web/shared/utils/segment-timing.js": {
+        "bytes": 19619,
+        "imports": [],
+        "format": "esm"
+      },
+      "web/shared/utils/split-alignment.js": {
+        "bytes": 10882,
+        "imports": [],
+        "format": "esm"
+      },
+      "web/shared/utils/split-trim.js": {
+        "bytes": 4000,
+        "imports": [],
+        "format": "esm"
+      },
+      "web/shared/utils/timeline.js": {
+        "bytes": 8461,
+        "imports": [],
+        "format": "esm"
+      },
+      "web/shared/utils/settings.js": {
+        "bytes": 16813,
+        "imports": [],
+        "format": "esm"
+      },
+      "web/shared/utils/gap-remove.js": {
+        "bytes": 6228,
+        "imports": [],
+        "format": "esm"
+      },
+      "web/shared/utils/history.js": {
+        "bytes": 3442,
+        "imports": [],
+        "format": "esm"
+      },
+      "web/shared/utils/markers.js": {
+        "bytes": 10092,
+        "imports": [],
+        "format": "esm"
+      },
+      "web/shared/utils/multi-subtitle.js": {
+        "bytes": 23438,
+        "imports": [],
+        "format": "esm"
+      },
+      "web/shared/utils/word-timing.js": {
+        "bytes": 13886,
+        "imports": [],
+        "format": "esm"
+      },
+      "web/shared/utils/word-split.js": {
+        "bytes": 5638,
+        "imports": [],
+        "format": "esm"
+      },
+      "web/shared/utils/srt.js": {
+        "bytes": 10835,
+        "imports": [],
+        "format": "esm"
+      },
+      "web/shared/utils/lrc.js": {
+        "bytes": 4870,
+        "imports": [],
+        "format": "esm"
+      },
+      "web/shared/utils/ass-style.js": {
+        "bytes": 32295,
+        "imports": [],
+        "format": "esm"
+      },
+      "web/shared/utils/ass-animation.js": {
+        "bytes": 5792,
+        "imports": [],
+        "format": "esm"
+      },
+      "web/shared/utils/ass-export.js": {
+        "bytes": 21333,
+        "imports": [],
+        "format": "esm"
+      },
+      "web/shared/utils/export-plan.js": {
+        "bytes": 24135,
+        "imports": [],
+        "format": "esm"
+      },
+      "web/shared/utils/fcp7.js": {
+        "bytes": 22695,
+        "imports": [],
+        "format": "esm"
+      },
+      "web/shared/utils/export-workflow.js": {
+        "bytes": 2100,
+        "imports": [],
+        "format": "esm"
+      },
+      "web/shared/utils/platform.js": {
+        "bytes": 897,
+        "imports": [],
+        "format": "esm"
+      },
+      "web/shared/utils/preview-geometry.js": {
+        "bytes": 4535,
+        "imports": [],
+        "format": "esm"
+      },
+      "web/shared/utils/lottie.js": {
+        "bytes": 10176,
+        "imports": [],
+        "format": "esm"
+      },
+      "web/shared/utils/ograf.js": {
+        "bytes": 14687,
+        "imports": [],
+        "format": "esm"
+      },
+      "web/editor/media/waveform/constants.js": {
+        "bytes": 2175,
+        "imports": [],
+        "format": "esm"
+      },
+      "web/editor/media/waveform/labels.js": {
+        "bytes": 2184,
+        "imports": [],
+        "format": "esm"
+      },
+      "web/editor/media/waveform/scale.js": {
+        "bytes": 4852,
+        "imports": [],
+        "format": "esm"
+      },
+      "web/editor/media/waveform/layout.js": {
+        "bytes": 18441,
+        "imports": [],
+        "format": "esm"
+      },
+      "web/editor/media/waveform/settings.js": {
+        "bytes": 2645,
+        "imports": [],
+        "format": "esm"
+      },
+      "web/editor/media/waveform/payload.js": {
+        "bytes": 12629,
+        "imports": [],
+        "format": "esm"
+      },
+      "web/editor/media/waveform/colors.js": {
+        "bytes": 1395,
+        "imports": [],
+        "format": "esm"
+      },
+      "web/editor/media/waveform/timing.js": {
+        "bytes": 22190,
+        "imports": [],
+        "format": "esm"
+      },
+      "web/editor/media/waveform/visibility.js": {
+        "bytes": 6720,
+        "imports": [],
+        "format": "esm"
+      },
+      "web/editor/media/waveform/controls.js": {
+        "bytes": 6481,
+        "imports": [],
+        "format": "esm"
+      },
+      "web/editor/media/waveform/pointer.js": {
+        "bytes": 9595,
+        "imports": [],
+        "format": "esm"
+      },
+      "web/editor/media/waveform/workspace.js": {
+        "bytes": 31427,
+        "imports": [],
+        "format": "esm"
+      },
+      "web/editor/media/waveform/scale-controls.js": {
+        "bytes": 11244,
+        "imports": [],
+        "format": "esm"
+      },
+      "web/editor/media/waveform/media.js": {
+        "bytes": 12405,
+        "imports": [],
+        "format": "esm"
+      },
+      "web/editor/media/waveform/render.js": {
+        "bytes": 9212,
+        "imports": [],
+        "format": "esm"
+      },
+      "web/editor/media/waveform/cue-blocks.js": {
+        "bytes": 44141,
+        "imports": [],
+        "format": "esm"
+      },
+      "web/editor/media/waveform/word-blocks.js": {
+        "bytes": 15540,
+        "imports": [],
+        "format": "esm"
+      },
+      "web/editor/media/waveform/canvas.js": {
+        "bytes": 7018,
+        "imports": [],
+        "format": "esm"
+      },
+      "web/editor/media/waveform/input.js": {
+        "bytes": 28619,
+        "imports": [],
+        "format": "esm"
+      },
+      "web/editor/media/waveform/cue-drag.js": {
+        "bytes": 20057,
+        "imports": [],
+        "format": "esm"
+      },
+      "web/editor/media/waveform/cue-commands.js": {
+        "bytes": 15656,
+        "imports": [],
+        "format": "esm"
+      },
+      "web/editor/media/waveform/gap-drag.js": {
+        "bytes": 18764,
+        "imports": [],
+        "format": "esm"
+      },
+      "web/editor/media/waveform/markers.js": {
+        "bytes": 28831,
+        "imports": [],
+        "format": "esm"
+      },
+      "web/editor/media/waveform/cue-drag-update.js": {
+        "bytes": 21024,
+        "imports": [],
+        "format": "esm"
+      },
+      "web/editor/media/waveform/playback.js": {
+        "bytes": 8714,
+        "imports": [],
+        "format": "esm"
+      },
+      "web/editor-entry.mjs": {
+        "bytes": 1733315,
+        "imports": [
+          {
+            "path": "web/shared/host/storage.js",
+            "kind": "import-statement",
+            "original": "maw-factory:shared/host/storage.js"
+          },
+          {
+            "path": "web/shared/host/files.js",
+            "kind": "import-statement",
+            "original": "maw-factory:shared/host/files.js"
+          },
+          {
+            "path": "web/shared/host/server-api.js",
+            "kind": "import-statement",
+            "original": "maw-factory:shared/host/server-api.js"
+          },
+          {
+            "path": "web/shared/utils/data.js",
+            "kind": "import-statement",
+            "original": "maw-factory:shared/utils/data.js"
+          },
+          {
+            "path": "web/shared/utils/fonts.js",
+            "kind": "import-statement",
+            "original": "maw-factory:shared/utils/fonts.js"
+          },
+          {
+            "path": "web/shared/utils/speakers.js",
+            "kind": "import-statement",
+            "original": "maw-factory:shared/utils/speakers.js"
+          },
+          {
+            "path": "web/shared/utils/media-metadata.js",
+            "kind": "import-statement",
+            "original": "maw-factory:shared/utils/media-metadata.js"
+          },
+          {
+            "path": "web/shared/utils/navigation.js",
+            "kind": "import-statement",
+            "original": "maw-factory:shared/utils/navigation.js"
+          },
+          {
+            "path": "web/shared/utils/text-processing.js",
+            "kind": "import-statement",
+            "original": "maw-factory:shared/utils/text-processing.js"
+          },
+          {
+            "path": "web/shared/utils/timed-text-core.js",
+            "kind": "import-statement",
+            "original": "maw-factory:shared/utils/timed-text-core.js"
+          },
+          {
+            "path": "web/shared/utils/timed-text-plans.js",
+            "kind": "import-statement",
+            "original": "maw-factory:shared/utils/timed-text-plans.js"
+          },
+          {
+            "path": "web/shared/utils/timed-text-edit.js",
+            "kind": "import-statement",
+            "original": "maw-factory:shared/utils/timed-text-edit.js"
+          },
+          {
+            "path": "web/shared/utils/text-metrics.js",
+            "kind": "import-statement",
+            "original": "maw-factory:shared/utils/text-metrics.js"
+          },
+          {
+            "path": "web/shared/utils/segment-timing.js",
+            "kind": "import-statement",
+            "original": "maw-factory:shared/utils/segment-timing.js"
+          },
+          {
+            "path": "web/shared/utils/split-alignment.js",
+            "kind": "import-statement",
+            "original": "maw-factory:shared/utils/split-alignment.js"
+          },
+          {
+            "path": "web/shared/utils/split-trim.js",
+            "kind": "import-statement",
+            "original": "maw-factory:shared/utils/split-trim.js"
+          },
+          {
+            "path": "web/shared/utils/timeline.js",
+            "kind": "import-statement",
+            "original": "maw-factory:shared/utils/timeline.js"
+          },
+          {
+            "path": "web/shared/utils/settings.js",
+            "kind": "import-statement",
+            "original": "maw-factory:shared/utils/settings.js"
+          },
+          {
+            "path": "web/shared/utils/gap-remove.js",
+            "kind": "import-statement",
+            "original": "maw-factory:shared/utils/gap-remove.js"
+          },
+          {
+            "path": "web/shared/utils/history.js",
+            "kind": "import-statement",
+            "original": "maw-factory:shared/utils/history.js"
+          },
+          {
+            "path": "web/shared/utils/markers.js",
+            "kind": "import-statement",
+            "original": "maw-factory:shared/utils/markers.js"
+          },
+          {
+            "path": "web/shared/utils/multi-subtitle.js",
+            "kind": "import-statement",
+            "original": "maw-factory:shared/utils/multi-subtitle.js"
+          },
+          {
+            "path": "web/shared/utils/word-timing.js",
+            "kind": "import-statement",
+            "original": "maw-factory:shared/utils/word-timing.js"
+          },
+          {
+            "path": "web/shared/utils/word-split.js",
+            "kind": "import-statement",
+            "original": "maw-factory:shared/utils/word-split.js"
+          },
+          {
+            "path": "web/shared/utils/srt.js",
+            "kind": "import-statement",
+            "original": "maw-factory:shared/utils/srt.js"
+          },
+          {
+            "path": "web/shared/utils/lrc.js",
+            "kind": "import-statement",
+            "original": "maw-factory:shared/utils/lrc.js"
+          },
+          {
+            "path": "web/shared/utils/ass-style.js",
+            "kind": "import-statement",
+            "original": "maw-factory:shared/utils/ass-style.js"
+          },
+          {
+            "path": "web/shared/utils/ass-animation.js",
+            "kind": "import-statement",
+            "original": "maw-factory:shared/utils/ass-animation.js"
+          },
+          {
+            "path": "web/shared/utils/ass-export.js",
+            "kind": "import-statement",
+            "original": "maw-factory:shared/utils/ass-export.js"
+          },
+          {
+            "path": "web/shared/utils/export-plan.js",
+            "kind": "import-statement",
+            "original": "maw-factory:shared/utils/export-plan.js"
+          },
+          {
+            "path": "web/shared/utils/fcp7.js",
+            "kind": "import-statement",
+            "original": "maw-factory:shared/utils/fcp7.js"
+          },
+          {
+            "path": "web/shared/utils/export-workflow.js",
+            "kind": "import-statement",
+            "original": "maw-factory:shared/utils/export-workflow.js"
+          },
+          {
+            "path": "web/shared/utils/platform.js",
+            "kind": "import-statement",
+            "original": "maw-factory:shared/utils/platform.js"
+          },
+          {
+            "path": "web/shared/utils/preview-geometry.js",
+            "kind": "import-statement",
+            "original": "maw-factory:shared/utils/preview-geometry.js"
+          },
+          {
+            "path": "web/shared/utils/lottie.js",
+            "kind": "import-statement",
+            "original": "maw-factory:shared/utils/lottie.js"
+          },
+          {
+            "path": "web/shared/utils/ograf.js",
+            "kind": "import-statement",
+            "original": "maw-factory:shared/utils/ograf.js"
+          },
+          {
+            "path": "web/editor/media/waveform/constants.js",
+            "kind": "import-statement",
+            "original": "maw-factory:editor/media/waveform/constants.js"
+          },
+          {
+            "path": "web/editor/media/waveform/labels.js",
+            "kind": "import-statement",
+            "original": "maw-factory:editor/media/waveform/labels.js"
+          },
+          {
+            "path": "web/editor/media/waveform/scale.js",
+            "kind": "import-statement",
+            "original": "maw-factory:editor/media/waveform/scale.js"
+          },
+          {
+            "path": "web/editor/media/waveform/layout.js",
+            "kind": "import-statement",
+            "original": "maw-factory:editor/media/waveform/layout.js"
+          },
+          {
+            "path": "web/editor/media/waveform/settings.js",
+            "kind": "import-statement",
+            "original": "maw-factory:editor/media/waveform/settings.js"
+          },
+          {
+            "path": "web/editor/media/waveform/payload.js",
+            "kind": "import-statement",
+            "original": "maw-factory:editor/media/waveform/payload.js"
+          },
+          {
+            "path": "web/editor/media/waveform/colors.js",
+            "kind": "import-statement",
+            "original": "maw-factory:editor/media/waveform/colors.js"
+          },
+          {
+            "path": "web/editor/media/waveform/timing.js",
+            "kind": "import-statement",
+            "original": "maw-factory:editor/media/waveform/timing.js"
+          },
+          {
+            "path": "web/editor/media/waveform/visibility.js",
+            "kind": "import-statement",
+            "original": "maw-factory:editor/media/waveform/visibility.js"
+          },
+          {
+            "path": "web/editor/media/waveform/controls.js",
+            "kind": "import-statement",
+            "original": "maw-factory:editor/media/waveform/controls.js"
+          },
+          {
+            "path": "web/editor/media/waveform/pointer.js",
+            "kind": "import-statement",
+            "original": "maw-factory:editor/media/waveform/pointer.js"
+          },
+          {
+            "path": "web/editor/media/waveform/workspace.js",
+            "kind": "import-statement",
+            "original": "maw-factory:editor/media/waveform/workspace.js"
+          },
+          {
+            "path": "web/editor/media/waveform/scale-controls.js",
+            "kind": "import-statement",
+            "original": "maw-factory:editor/media/waveform/scale-controls.js"
+          },
+          {
+            "path": "web/editor/media/waveform/media.js",
+            "kind": "import-statement",
+            "original": "maw-factory:editor/media/waveform/media.js"
+          },
+          {
+            "path": "web/editor/media/waveform/render.js",
+            "kind": "import-statement",
+            "original": "maw-factory:editor/media/waveform/render.js"
+          },
+          {
+            "path": "web/editor/media/waveform/cue-blocks.js",
+            "kind": "import-statement",
+            "original": "maw-factory:editor/media/waveform/cue-blocks.js"
+          },
+          {
+            "path": "web/editor/media/waveform/word-blocks.js",
+            "kind": "import-statement",
+            "original": "maw-factory:editor/media/waveform/word-blocks.js"
+          },
+          {
+            "path": "web/editor/media/waveform/canvas.js",
+            "kind": "import-statement",
+            "original": "maw-factory:editor/media/waveform/canvas.js"
+          },
+          {
+            "path": "web/editor/media/waveform/input.js",
+            "kind": "import-statement",
+            "original": "maw-factory:editor/media/waveform/input.js"
+          },
+          {
+            "path": "web/editor/media/waveform/cue-drag.js",
+            "kind": "import-statement",
+            "original": "maw-factory:editor/media/waveform/cue-drag.js"
+          },
+          {
+            "path": "web/editor/media/waveform/cue-commands.js",
+            "kind": "import-statement",
+            "original": "maw-factory:editor/media/waveform/cue-commands.js"
+          },
+          {
+            "path": "web/editor/media/waveform/gap-drag.js",
+            "kind": "import-statement",
+            "original": "maw-factory:editor/media/waveform/gap-drag.js"
+          },
+          {
+            "path": "web/editor/media/waveform/markers.js",
+            "kind": "import-statement",
+            "original": "maw-factory:editor/media/waveform/markers.js"
+          },
+          {
+            "path": "web/editor/media/waveform/cue-drag-update.js",
+            "kind": "import-statement",
+            "original": "maw-factory:editor/media/waveform/cue-drag-update.js"
+          },
+          {
+            "path": "web/editor/media/waveform/playback.js",
+            "kind": "import-statement",
+            "original": "maw-factory:editor/media/waveform/playback.js"
+          }
+        ],
+        "format": "esm"
+      }
+    },
+    "outputs": {
+      "stdin.js": {
+        "imports": [],
+        "exports": [],
+        "entryPoint": "web/editor-entry.mjs",
+        "inputs": {
+          "web/shared/host/storage.js": {
+            "bytesInOutput": 141
+          },
+          "web/shared/host/files.js": {
+            "bytesInOutput": 526
+          },
+          "web/shared/host/server-api.js": {
+            "bytesInOutput": 153
+          },
+          "web/shared/utils/data.js": {
+            "bytesInOutput": 1853
+          },
+          "web/shared/utils/fonts.js": {
+            "bytesInOutput": 1913
+          },
+          "web/shared/utils/speakers.js": {
+            "bytesInOutput": 1493
+          },
+          "web/shared/utils/media-metadata.js": {
+            "bytesInOutput": 1690
+          },
+          "web/shared/utils/navigation.js": {
+            "bytesInOutput": 1807
+          },
+          "web/shared/utils/text-processing.js": {
+            "bytesInOutput": 3317
+          },
+          "web/shared/utils/timed-text-core.js": {
+            "bytesInOutput": 7222
+          },
+          "web/shared/utils/timed-text-plans.js": {
+            "bytesInOutput": 11641
+          },
+          "web/shared/utils/timed-text-edit.js": {
+            "bytesInOutput": 11105
+          },
+          "web/shared/utils/text-metrics.js": {
+            "bytesInOutput": 849
+          },
+          "web/shared/utils/segment-timing.js": {
+            "bytesInOutput": 6941
+          },
+          "web/shared/utils/split-alignment.js": {
+            "bytesInOutput": 3692
+          },
+          "web/shared/utils/split-trim.js": {
+            "bytesInOutput": 1448
+          },
+          "web/shared/utils/timeline.js": {
+            "bytesInOutput": 3733
+          },
+          "web/shared/utils/settings.js": {
+            "bytesInOutput": 9537
+          },
+          "web/shared/utils/gap-remove.js": {
+            "bytesInOutput": 2844
+          },
+          "web/shared/utils/history.js": {
+            "bytesInOutput": 1315
+          },
+          "web/shared/utils/markers.js": {
+            "bytesInOutput": 4070
+          },
+          "web/shared/utils/multi-subtitle.js": {
+            "bytesInOutput": 10188
+          },
+          "web/shared/utils/word-timing.js": {
+            "bytesInOutput": 6054
+          },
+          "web/shared/utils/word-split.js": {
+            "bytesInOutput": 1922
+          },
+          "web/shared/utils/srt.js": {
+            "bytesInOutput": 4465
+          },
+          "web/shared/utils/lrc.js": {
+            "bytesInOutput": 1650
+          },
+          "web/shared/utils/ass-style.js": {
+            "bytesInOutput": 15605
+          },
+          "web/shared/utils/ass-animation.js": {
+            "bytesInOutput": 2352
+          },
+          "web/shared/utils/ass-export.js": {
+            "bytesInOutput": 7799
+          },
+          "web/shared/utils/export-plan.js": {
+            "bytesInOutput": 13402
+          },
+          "web/shared/utils/fcp7.js": {
+            "bytesInOutput": 11750
+          },
+          "web/shared/utils/export-workflow.js": {
+            "bytesInOutput": 1174
+          },
+          "web/shared/utils/platform.js": {
+            "bytesInOutput": 458
+          },
+          "web/shared/utils/preview-geometry.js": {
+            "bytesInOutput": 1574
+          },
+          "web/shared/utils/lottie.js": {
+            "bytesInOutput": 4207
+          },
+          "web/shared/utils/ograf.js": {
+            "bytesInOutput": 10943
+          },
+          "web/editor/media/waveform/constants.js": {
+            "bytesInOutput": 939
+          },
+          "web/editor/media/waveform/labels.js": {
+            "bytesInOutput": 1532
+          },
+          "web/editor/media/waveform/scale.js": {
+            "bytesInOutput": 1547
+          },
+          "web/editor/media/waveform/layout.js": {
+            "bytesInOutput": 8667
+          },
+          "web/editor/media/waveform/settings.js": {
+            "bytesInOutput": 1294
+          },
+          "web/editor/media/waveform/payload.js": {
+            "bytesInOutput": 4897
+          },
+          "web/editor/media/waveform/colors.js": {
+            "bytesInOutput": 686
+          },
+          "web/editor/media/waveform/timing.js": {
+            "bytesInOutput": 8795
+          },
+          "web/editor/media/waveform/visibility.js": {
+            "bytesInOutput": 2690
+          },
+          "web/editor/media/waveform/controls.js": {
+            "bytesInOutput": 4105
+          },
+          "web/editor/media/waveform/pointer.js": {
+            "bytesInOutput": 4652
+          },
+          "web/editor/media/waveform/workspace.js": {
+            "bytesInOutput": 17369
+          },
+          "web/editor/media/waveform/scale-controls.js": {
+            "bytesInOutput": 5319
+          },
+          "web/editor/media/waveform/media.js": {
+            "bytesInOutput": 5949
+          },
+          "web/editor/media/waveform/render.js": {
+            "bytesInOutput": 4198
+          },
+          "web/editor/media/waveform/cue-blocks.js": {
+            "bytesInOutput": 19922
+          },
+          "web/editor/media/waveform/word-blocks.js": {
+            "bytesInOutput": 7868
+          },
+          "web/editor/media/waveform/canvas.js": {
+            "bytesInOutput": 2964
+          },
+          "web/editor/media/waveform/input.js": {
+            "bytesInOutput": 12046
+          },
+          "web/editor/media/waveform/cue-drag.js": {
+            "bytesInOutput": 8656
+          },
+          "web/editor/media/waveform/cue-commands.js": {
+            "bytesInOutput": 7239
+          },
+          "web/editor/media/waveform/gap-drag.js": {
+            "bytesInOutput": 10013
+          },
+          "web/editor/media/waveform/markers.js": {
+            "bytesInOutput": 13849
+          },
+          "web/editor/media/waveform/cue-drag-update.js": {
+            "bytesInOutput": 8406
+          },
+          "web/editor/media/waveform/playback.js": {
+            "bytesInOutput": 4423
+          },
+          "web/editor-entry.mjs": {
+            "bytesInOutput": 1008785
+          }
+        },
+        "bytes": 1347669
+      }
+    }
+  }
+}

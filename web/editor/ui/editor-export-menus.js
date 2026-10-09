@@ -27,6 +27,7 @@
     let previousPointerPoint = null;
     let lastPointInsideOpenWrapper = null;
     const directItems = (container) => [...container.children].flatMap((child) => {
+      if (child.getAttribute('role') === 'group') return directItems(child);
       if (child.classList.contains('dropdown-item')) {
         return child.classList.contains('disabled') || child.hidden ? [] : [child];
       }

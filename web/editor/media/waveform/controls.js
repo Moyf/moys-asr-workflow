@@ -1,11 +1,12 @@
 // controls: waveform class methods with explicit dependencies.
-window.MAWE.register('waveform-controls', function createWaveformModule(dependencies) {
+export function createWaveformModule(dependencies) {
   'use strict';
   const { saveSettings, shouldAdjustAdjacentCuesIndependently, shouldAdjustSharedBoundaryHandleIndependently, syncSpectralColorToggle } = dependencies;
 
   class WaveformMethods {
 
 
+    /** @this {import('./waveform-types.js').WaveformInstance} */
     isAdjacentCueAdjustmentIndependent(altKey = false) {
       return shouldAdjustAdjacentCuesIndependently(
         altKey,
@@ -16,6 +17,7 @@ window.MAWE.register('waveform-controls', function createWaveformModule(dependen
 
     // 相接字幕边界手柄命中时的模式判定：dual 模式下手柄始终独立调整
     // （联动由中缝拖动区负责）；classic 模式沿用自动吸附开关 + Alt 反转。
+    /** @this {import('./waveform-types.js').WaveformInstance} */
     isSharedBoundaryHandleIndependent(altKey = false) {
       return shouldAdjustSharedBoundaryHandleIndependently(
         altKey,
@@ -26,6 +28,7 @@ window.MAWE.register('waveform-controls', function createWaveformModule(dependen
 
 
     // 共享边界拖动期间，在「共享边界」状态文本旁提示当前的贴合边界模式。
+    /** @this {import('./waveform-types.js').WaveformInstance} */
     adjacentSnapModeStatusHint() {
       if (this.options.getAdjacentBoundaryMode?.() === 'dual') {
         return '中缝联动：中缝拖动两侧一起移动，手柄只调整单侧字幕。';
@@ -36,20 +39,22 @@ window.MAWE.register('waveform-controls', function createWaveformModule(dependen
     }
 
 
+    /** @this {import('./waveform-types.js').WaveformInstance} */
     hasCueDrag() {
       return Boolean(this.drag || this.createCueDrag);
     }
 
 
+    /** @this {import('./waveform-types.js').WaveformInstance} */
     bindControls() {
-      document.querySelectorAll('[data-waveform-mode]').forEach((button) => {
+      (/** @type {NodeListOf<HTMLElement>} */ (document.querySelectorAll('[data-waveform-mode]'))).forEach((button) => {
         button.addEventListener('click', () => this.setMode(button.dataset.waveformMode));
       });
-      document.querySelectorAll('[data-waveform-tool]').forEach((button) => {
+      (/** @type {NodeListOf<HTMLElement>} */ (document.querySelectorAll('[data-waveform-tool]'))).forEach((button) => {
         button.addEventListener('click', () => this.setTool(button.dataset.waveformTool));
       });
       // 初始工具按钮高亮（默认 select）
-      document.querySelectorAll('[data-waveform-tool]').forEach((button) => {
+      (/** @type {NodeListOf<HTMLElement>} */ (document.querySelectorAll('[data-waveform-tool]'))).forEach((button) => {
         button.classList.toggle('active', button.dataset.waveformTool === this.tool);
       });
       this.pane?.classList.toggle('tool-select', this.tool === 'select');
@@ -130,4 +135,4 @@ window.MAWE.register('waveform-controls', function createWaveformModule(dependen
   const descriptors = Object.getOwnPropertyDescriptors(WaveformMethods.prototype);
   delete descriptors.constructor;
   return descriptors;
-});
+}

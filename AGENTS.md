@@ -25,11 +25,11 @@ web/launcher/                # Launcher 前端
 docs/LOCAL_ASR.md             # 实验性本地 Qwen3-ASR / FunASR CLI
 ```
 
-`web/` 是唯一前端源码。`edit.py` 将它内联为便携 `.edit.html`，`server-editor` 则在每次请求时从它渲染页面。因此，修改 `web/` 或模板后需要重新生成内联副本：
+`web/` 是唯一前端源码。59 个工厂使用 ESM，其余接线保留 classic 共享作用域；`pnpm run build:editor` 由 esbuild 装配完整 `web/editor/boot/editor-bundle.js`。便携 HTML 与 localhost 都读取这个产物，运行时不需要 Node。修改编辑器 JS 或清单后必须重建并提交 bundle 与 `.meta.json`，运行 `pnpm run check:editor`；localhost 调试可另开 `pnpm run watch:editor`。CSS 与 HTML 模板仍在渲染时读取。
 
 **但现行约定是：除非维护者主动要求，不要生成 `blank-editor.html`。**
 它是生成产物、体积大，且每次重生成都会带来上百行噪声 diff，review 时淹没真实改动。
-改了 `web/` 就只提交 `web/` 源码，并在 PR 描述里注明「内联副本待发布前统一重生成」；
+改了 `web/` 就提交源码及对应 esbuild 产物，并在 PR 描述里注明「内联副本待发布前统一重生成」；
 发布检查时再一次性重生成，并核对 `git diff --stat blank-editor.html` 符合预期。
 
 ```powershell
@@ -42,6 +42,9 @@ uv run python edit.py --blank
 
 ```powershell
 uv sync
+pnpm install --frozen-lockfile
+pnpm run check:editor
+pnpm run typecheck
 node --test tests\test_editor_script_syntax.mjs tests\test_editor_script_order.mjs
 node --test tests\test_editor_utils.mjs tests\test_waveform_js.mjs
 uv run python -m unittest discover -s tests -p "test_*.py"
@@ -49,7 +52,8 @@ git diff --check
 ```
 
 `web/editor/boot/editor.js` 是加载守卫入口；连续接线位于各领域的
-`editor-wiring-*.js` 中，按 `web/editor-scripts.txt` 原序装配为一个 classic script。
+`editor-wiring-*.js` 中，构建器按 `web/editor-scripts.txt` 原序执行接线与工厂注册。
+`web/editor-modules.json` 明确列出 ESM 工厂与仍需保留的外部桥。工厂只导出函数，不在模块求值时注册；依赖袋继续由门面注入。
 新增业务逻辑写入所属领域模块，避免再扩大入口。目录位置不决定执行顺序。
 
 ### Agent 命令执行：避免 uv 超时卡住
@@ -57,6 +61,15 @@ git diff --check
 - `uv run` 每次执行都会重新解析并可能同步环境，冷启动时远超命令工具的默认超时（约 2 分钟），表现为命令"卡住"且长时间无输出。
 - Agent 自动化执行的命令一律使用 `uv run --no-sync`（环境由开发者手动 `uv sync` 维护）。
 - 长命令拆分成多次执行并显式设置超时；不要把 `uv run` 与慢命令（如 `Test-NetConnection`、`Start-Sleep`）串联在同一条链里。
+
+### Agent 测试输出与后台进程：不搬运完整日志，不悬挂服务
+
+- 跑测试只保留退出码、失败用例名与首个错误行。unittest 的 `assertIn` / `assertEqual` 失败会把整个容器（内联脚本、整页 HTML，数十万字符）dump 进输出；用 `Select-String 'AssertionError'`、`grep -E '^(FAIL|ERROR|Ran|OK)'` 之类的过滤只取摘要，禁止把完整测试输出读进上下文。
+- 对页面 / 内联脚本做成员断言的测试类，继承 `tests/compact_assertions.py` 的 `CompactContainerAssertions` 混入：大容器失败信息压缩为「needle + 容器规模」，单次失败不再产生数十万字符日志（行为见 `tests/test_compact_assertions.py`）。
+- 后台长驻进程（serve.py、http.server 等）不要用会等待进程树的方式启动：优先用独立终端，或把输出重定向到文件后再以端口探活（如 `Invoke-WebRequest` 轮询），用完必须终止进程。曾发生后台 server 挂住会话 2 小时以上的事故。
+- 已知时长：全量 Python 套件约 110s、单条 e2e spec 约 2 分钟，命令默认超时 120s 处于临界；这些命令显式设置更大的超时，或按文件拆分执行。
+- 新 worktree 没有现成环境：Python 复用主仓库 venv（`UV_PROJECT_ENVIRONMENT` 指向主仓库 `.venv`）或给 e2e 设 `MAW_E2E_PYTHON`；Node 侧 `pnpm install` 后装配顺序测试才可运行（需要 acorn），e2e 需要 playwright。
+- PowerShell 内联脚本（`node -e "..."`、多层嵌套引号）极易解析失败；复杂逻辑写成临时脚本文件再执行。命令输出为空时，先怀疑参数与引号，而不是重跑同一命令。
 
 自动化测试覆盖数据处理和服务器契约，不能替代真实浏览器中的拖动、播放、Seek 和布局体验。涉及编辑器交互的改动，应至少手动启动：
 
@@ -112,6 +125,21 @@ git diff
 - 最终汇总必须明确列出：已修复项、仅说明项、阻塞/未验证项、验证命令及结果。
 - 检查任务表是否仍有 `进行中`、`待处理` 或 `阻塞`，并对每一项给出下一步或原因；不能只说“基本完成”。
 - 在共享工作区中保留用户和其他任务的 WIP：操作前后都检查状态，只修改本任务文件/代码，不使用 `git reset`、`git clean` 或覆盖无关 diff。
+
+## 批量改动的人工核查清单
+
+完成一批功能开发 / 反馈修复（多条目、需要维护者实测确认）后，基于模板生成一份 HTML
+核对清单交给维护者，而不是在对话里罗列长清单：
+
+1. 复制 `tools/templates/verification-checklist.html`，替换 `{{TITLE}}`、`{{SUBTITLE}}`
+   和 `{{SECTIONS}}`；生成物放在仓库外（如 `%TEMP%`）用浏览器打开，**不提交进仓库**。
+2. 分区卡片用 `<details class="section">` + `summary` 徽标 + `.body` 的标准写法；
+   分区约定：实现 / 审查结论（只读）→ 修复与提交记录 → 自动化验证结果（写明命令与
+   已知环境性失败，不用自动化冒充人工层）→ 人工核验打勾项 → 后续操作步骤。
+3. 打勾项写成可操作步骤（入口 → 操作 → 预期行为），间距类验收仍按「UI 间距约定」
+   要求实测数据。左侧目录、分区与总进度由模板脚本自动生成，无需手写；勾选状态按
+   页面标题存 localStorage，「重置勾选」一键清空。
+4. 不要为单次清单改动模板结构；确需改进时直接修改模板本身，让后续复用受益。
 
 ## Codegraph 使用注意
 

@@ -3,7 +3,7 @@
 2026-09-26，继续在 PR #155 / `codex/editor-wiring-layout` 实施。
 本阶段基线 `28f33e2`；工作区仅有原有未跟踪 `.DS_Store`。
 
-维护者明确：继续同一 PR，补拆 `waveform.js`；Tauri 完整编译不再验收，后续桌面方向为 Electron。
+维护者明确：继续同一 PR，补拆 `waveform.js`；后续桌面方向为 Electron，本阶段不实现桌面壳。
 
 | 项目 | 状态 | 处理与验收 |
 | --- | --- | --- |
@@ -43,6 +43,6 @@
 
 本阶段实现与本地验收完成，仍在统一 PR #155 中。utils 门面 500 行，waveform 门面 / 构造器 271 行；新增领域文件最大为 cue-blocks.js 781 行，不把行数缩减当作状态所有权已经解决。跨接线裸引用与全量 Store / 命令仍是后续范围，Electron 壳未实施。
 
-没有新增用户行为，不新增 CHANGELOG 条目。内联副本待发布前统一重生成；根 blank-editor.html 不变。原有 .DS_Store 未提交。完整 Tauri 编译免除，本阶段没有该阻塞项。远端最终提交和 CI 以 PR 状态为准。
+没有新增用户行为，不新增 CHANGELOG 条目。内联副本待发布前统一重生成；根 blank-editor.html 不变。原有 .DS_Store 未提交。远端最终提交和 CI 以 PR 状态为准。
 
 合并前复查：自定义 runtime 的 getNavigator 方法依赖 this 时，utils 直接传函数引用导致 ASS 默认字体初始化失败。新增回归用例先确认该 TypeError，再改为保留接收者的回调转发。最终 Node 374 / 374 通过；源码审计、typecheck、Ruff、diff 检查通过；实际工程拖动、撤销、播放 / 暂停、seek 与 Server 保存冒烟复跑通过。最初 Node 复跑漏指定已安装 Chromium 路径，属于测试环境配置错误，补齐路径后全量通过。Python 与完整浏览器差分仍采用上述本阶段证据，未把本次冒烟当作完整浏览器全绿。

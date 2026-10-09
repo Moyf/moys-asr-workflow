@@ -1,5 +1,5 @@
 // timed-text-core: private helpers; dependencies are injected by editor-utils.js.
-window.MAWE.register('utils-timed-text-core', function createUtilsModule(dependencies) {
+export function createUtilsModule(dependencies) {
   'use strict';
   const { cloneJsonValue } = dependencies;
 
@@ -512,4 +512,4 @@ window.MAWE.register('utils-timed-text-core', function createUtilsModule(depende
   }
 
   return Object.freeze({ buildTimedTextDiff, hasTimedTextContent, isTimedTextNeutralToken, normalizeTimedTextNeutralItems, sameTimedTextTokens, timedTextDiffOpcodes, timedTextItemCoverage, timedTextItemLayout, timedTextItemReuse, timedTextItemsOrdered, timedTextItemsPartition, timedTextItemsSlice, timedTextNeutralInsertionItems, timedTextTokens });
-});
+}

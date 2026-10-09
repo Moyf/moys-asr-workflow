@@ -228,8 +228,8 @@ def read_editor_script_manifest() -> tuple[str, ...]:
 
 
 def build_editor_scripts() -> str:
-    """Inline editor scripts using the single shared source order."""
-    return "\n\n".join(read_web_asset(name).rstrip() for name in read_editor_script_manifest())
+    """Inline the complete esbuild artifact; Node is only a developer dependency."""
+    return read_web_asset("editor/boot/editor-bundle.js").rstrip()
 
 
 def build_palette_json() -> str:
@@ -302,7 +302,7 @@ def build_blank_html(ninja_sfx_base_url_json: str | None = None) -> str:
         app_version=html.escape(f"v{get_app_version()}"),
         json_display=html.escape("未加载工程"),
         json_name_class="empty",
-        media_name_display=html.escape("未加载媒体"),
+        media_name_display=html.escape("未导入媒体"),
         media_name_title="",
         media_name_class="empty",
     )

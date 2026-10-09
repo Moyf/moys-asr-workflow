@@ -10,8 +10,7 @@ import {
   makeFirstCueWordSplittable,
   makeTempDir,
   startServer,
-  testSegments,
-} from './helpers.mjs';
+  testSegments, closeSettingsPanels, openSettingsPage, toggleGlobalSettings } from './helpers.mjs';
 
 let tempDir;
 let server;
@@ -39,10 +38,10 @@ test.beforeEach(async ({ page }) => {
 
 // 「预览字幕」开关位于全局设置的「视频预览」分区；打开窗口勾选后关闭。
 async function enableSubtitleOverlayPreview(page) {
-  await page.locator('#editor-settings-toggle').click();
-  await page.locator('#editor-settings-tab-subtitle-preview').click();
+  await toggleGlobalSettings(page);
+  await openSettingsPage(page, 'subtitle-preview');
   await page.locator('#overlay-toggle').check();
-  await page.locator('#editor-settings-close').click();
+  await closeSettingsPanels(page);
 }
 
 test('removes adjacent corner radii from cue fragments split across waveform rows', async ({ page }) => {
@@ -1672,8 +1671,8 @@ test('settings gears stay at the end of their headers and rise above dividers', 
 
 test('help reflects the selected subtitle-edit split key', async ({ page }) => {
   await page.goto(server.url);
-  await page.locator('#editor-settings-toggle').click();
-  await page.locator('#editor-settings-tab-split-merge').click();
+  await toggleGlobalSettings(page);
+  await openSettingsPage(page, 'split-merge');
   await page.locator('#help-toggle').click();
   const helpPanel = page.locator('#help-panel');
   await expect(helpPanel).toHaveClass(/show/);
@@ -1754,8 +1753,8 @@ test('contextual help links open their matching Help tabs', async ({ page }) => 
     { button: '#keyboard-settings-help', tab: '#help-tab-fine-tuning' },
     { button: '#gap-settings-help', tab: '#help-tab-gap' },
   ]) {
-    await page.locator('#editor-settings-toggle').click();
-    await page.locator('#editor-settings-tab-general').click();
+    await toggleGlobalSettings(page);
+    await openSettingsPage(page, 'special-edit');
     await page.locator(button).click();
     await expect(helpPanel).toHaveClass(/show/);
     await expect(page.locator(tab)).toHaveAttribute('aria-selected', 'true');
@@ -1801,18 +1800,18 @@ test('Help settings actions open the related waveform and media settings', async
   await helpPanel.locator('#help-open-keyboard-settings').click();
   await expect(helpPanel).toHaveClass(/show/);
   await expect(page.locator('#editor-settings-panel')).toBeVisible();
-  await expect(page.locator('#editor-settings-tab-general')).toHaveClass(/active/);
+  await expect(page.locator('#editor-settings-tab-special-edit')).toHaveClass(/active/);
   await helpPanel.locator('#help-close').click();
-  await page.locator('#editor-settings-close').click();
+  await closeSettingsPanels(page);
 
   await page.locator('#help-toggle').click();
   await helpPanel.getByRole('tab', { name: '空隙操作', exact: true }).click();
   await helpPanel.locator('#help-open-gap-settings').click();
   await expect(helpPanel).toHaveClass(/show/);
   await expect(page.locator('#editor-settings-panel')).toBeVisible();
-  await expect(page.locator('#editor-settings-tab-general')).toHaveClass(/active/);
+  await expect(page.locator('#editor-settings-tab-special-edit')).toHaveClass(/active/);
   await helpPanel.locator('#help-close').click();
-  await page.locator('#editor-settings-close').click();
+  await closeSettingsPanels(page);
 
   await page.locator('#help-toggle').click();
   await helpPanel.getByRole('tab', { name: '播放与导航', exact: true }).click();
@@ -1822,7 +1821,7 @@ test('Help settings actions open the related waveform and media settings', async
   await expect(page.locator('#editor-settings-tab-subtitle-preview')).toHaveClass(/active/);
   await expect(page.locator('#waveform-settings-panel')).toBeHidden();
   await helpPanel.locator('#help-close').click();
-  await page.locator('#editor-settings-close').click();
+  await closeSettingsPanels(page);
   await page.locator('#help-toggle').click();
   await helpPanel.getByRole('tab', { name: '空隙操作', exact: true }).click();
   await helpPanel.locator('#help-open-gap-remove-panel').click();
@@ -2246,7 +2245,7 @@ test('gap-removed export includes color SRT and names OTIO as a timeline project
   // 文件名技术段按界面语言生成：中文「去空隙_红色」，英文「gap-removed_red」；
   // OTIO 菜单项文案同样按语言断言。用 ?lang= 显式指定界面语言，不依赖服务器默认语言。
   const expectedByLang = {
-    zh: { otioLabel: '时间线 OTIO 工程', colorSrtName: 'project_去空隙_红色.srt' },
+    zh: { otioLabel: '时间线 OTIO', colorSrtName: 'project_去空隙_红色.srt' },
     en: { otioLabel: 'Timeline OTIO project', colorSrtName: 'project_gap-removed_red.srt' },
   };
   for (const lang of ['zh', 'en']) {

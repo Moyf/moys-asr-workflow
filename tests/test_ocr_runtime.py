@@ -14,6 +14,7 @@ from maw.ocr_runtime import (
     OCR_SMALL_MODEL_ID,
     OcrRuntimeCancelled,
     OcrRuntimeError,
+    _runtime_env,
     install_ocr_runtime,
     managed_ocr_runtime_status,
     recover_ocr_runtime_install,
@@ -170,6 +171,21 @@ class OcrRuntimeTests(unittest.TestCase):
             json.dumps({"status": "ready", "runtimeVersion": "3"}),
             encoding="utf-8",
         )
+
+
+class OcrRuntimeEnvironmentTests(unittest.TestCase):
+    """回归：OCR worker 跑在托管 venv 的宿主解释器上（见 restore_host_library_path）。"""
+
+    def test_runtime_env_drops_bundled_library_path_for_frozen_linux(self) -> None:
+        parent_env = {"LD_LIBRARY_PATH": "/app/_internal", "MAW_TEST": "preserved"}
+        with mock.patch.object(sys, "platform", "linux"):
+            with mock.patch.object(sys, "frozen", True, create=True):
+                with mock.patch.dict(os.environ, parent_env, clear=True):
+                    env = _runtime_env(Path("/tmp/ocr-runtime"))
+                    self.assertEqual(dict(os.environ), parent_env)
+
+        self.assertNotIn("LD_LIBRARY_PATH", env)
+        self.assertEqual(env["MAW_TEST"], "preserved")
 
 
 if __name__ == "__main__":

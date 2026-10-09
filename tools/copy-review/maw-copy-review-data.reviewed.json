@@ -1,0 +1,2697 @@
+{
+  "meta": {
+    "title": "MAW 文案重写评审 · Launcher + Editor",
+    "subtitle": "#179 设置重构后续 · 只改文案，不改功能",
+    "version": "2026-10-09 v2（已并入首轮反馈）",
+    "branch": "feat/review-merge-prs-177-178-179",
+    "rule": "名称 2–4 字 · 描述 ≤20 字 · 组标题/字段 ≤6 字 · 复选框短句 ≤10 字 · 格式名（SRT/ASS/OTIO 等）保留原文 · 按钮 emoji 统一去除",
+    "exportedAt": "2026-10-09T04:54:51.507Z",
+    "sourceDataFile": "maw-copy-review-data.js"
+  },
+  "decisions": [
+    {
+      "id": "D1",
+      "q": "「项目设置」统一改名「工程设置」？",
+      "selected": "rename"
+    },
+    {
+      "id": "D2a",
+      "q": "「帧吸附」改为「对齐到帧」？",
+      "selected": "rename"
+    },
+    {
+      "id": "D2b",
+      "q": "「叠加字幕 / 叠加轨」改说「重叠」？",
+      "selected": "keep"
+    },
+    {
+      "id": "D2c",
+      "q": "「字词时间码」改为「逐字时间」？",
+      "selected": "keep"
+    },
+    {
+      "id": "D3",
+      "q": "字数规则放宽确认",
+      "selected": "relax"
+    },
+    {
+      "id": "D4",
+      "q": "按钮上的 emoji（⚙️ 🤔 🎨 📷 🪶 ✨ 🦊 等）？",
+      "selected": "remove"
+    },
+    {
+      "id": "D5",
+      "q": "英文界面何时跟上？",
+      "selected": "with-zh"
+    },
+    {
+      "id": "D6",
+      "q": "本轮范围",
+      "selected": "names-only"
+    },
+    {
+      "id": "D7",
+      "q": "Launcher 卡片序号 emoji（1️⃣–5️⃣）？",
+      "selected": "keep"
+    }
+  ],
+  "sections": [
+    {
+      "id": "L1",
+      "app": "Launcher",
+      "title": "主界面与流程",
+      "rows": [
+        {
+          "id": "L1-01",
+          "loc": "顶部标语",
+          "orig": "让字幕制作变得超级轻松！",
+          "prop": null,
+          "final": "让字幕制作变得超级轻松！",
+          "status": "keep",
+          "note": "品牌语气，建议保留"
+        },
+        {
+          "id": "L1-02",
+          "loc": "卡片 1 标题",
+          "orig": "1️⃣ 媒体与输出",
+          "prop": "1️⃣ 选择媒体",
+          "final": "1️⃣ 选择媒体",
+          "status": "approved",
+          "note": "序号 emoji 按 D7 保留"
+        },
+        {
+          "id": "L1-03",
+          "loc": "模式切换",
+          "orig": "单文件 / 批量",
+          "prop": null,
+          "final": "单文件 / 批量",
+          "status": "keep",
+          "note": ""
+        },
+        {
+          "id": "L1-04",
+          "loc": "模式说明",
+          "orig": "一次处理一个媒体文件。",
+          "prop": "一次转写一个文件。",
+          "final": "一次转写一个文件。",
+          "status": "approved",
+          "note": ""
+        },
+        {
+          "id": "L1-05",
+          "loc": "拖放区",
+          "orig": "拖入音频/视频文件，或点击选择。",
+          "prop": "拖入视频或音频，或点击选择。",
+          "final": "拖入视频或音频，也可点击选择。",
+          "status": "edited",
+          "note": ""
+        },
+        {
+          "id": "L1-06",
+          "loc": "字段标签",
+          "orig": "媒体文件",
+          "prop": null,
+          "final": "媒体文件",
+          "status": "keep",
+          "note": ""
+        },
+        {
+          "id": "L1-07",
+          "loc": "字段标签",
+          "orig": "声音轨道",
+          "prop": "音轨",
+          "final": "音轨",
+          "status": "approved",
+          "note": ""
+        },
+        {
+          "id": "L1-08",
+          "loc": "音轨说明",
+          "orig": "检测到多个声音轨道，请选择用于转写和波形的轨道。",
+          "prop": "这个文件有多条音轨，选一条。",
+          "final": "这个文件有多条音轨，请选择一条。",
+          "status": "edited",
+          "note": ""
+        },
+        {
+          "id": "L1-09",
+          "loc": "字段标签",
+          "orig": "SRT 输出",
+          "prop": null,
+          "final": "SRT 输出",
+          "status": "keep",
+          "note": ""
+        },
+        {
+          "id": "L1-10",
+          "loc": "批量区标题",
+          "orig": "文件队列",
+          "prop": null,
+          "final": "文件队列",
+          "status": "keep",
+          "note": ""
+        },
+        {
+          "id": "L1-11",
+          "loc": "批量说明",
+          "orig": "拖入多个音频/视频文件，或反复添加文件；所有文件共用下方识别设置。",
+          "prop": "所有文件共用同一套识别设置。",
+          "final": "处理多个文件，所有文件共用下方识别设置。",
+          "status": "edited",
+          "note": ""
+        },
+        {
+          "id": "L1-12",
+          "loc": "批量选项",
+          "orig": "只生成 SRT 字幕",
+          "prop": "只生成字幕（不建工程）",
+          "final": "只生成字幕",
+          "status": "edited",
+          "note": "把「不建工程」这个关键差异说破"
+        },
+        {
+          "id": "L1-13",
+          "loc": "卡片 2 标题",
+          "orig": "2️⃣ 识别设置",
+          "prop": null,
+          "final": "2️⃣ 识别设置",
+          "status": "keep",
+          "note": ""
+        },
+        {
+          "id": "L1-14",
+          "loc": "字段标签",
+          "orig": "识别方式",
+          "prop": null,
+          "final": "识别方式",
+          "status": "keep",
+          "note": ""
+        },
+        {
+          "id": "L1-15",
+          "loc": "复选框",
+          "orig": "快速测试",
+          "prop": null,
+          "final": "快速测试",
+          "status": "keep",
+          "note": ""
+        },
+        {
+          "id": "L1-16",
+          "loc": "快速测试说明",
+          "orig": "快速测试已限定前 2 分钟",
+          "prop": "只转写前 2 分钟",
+          "final": "快速测试模式：只转写前 2 分钟内容",
+          "status": "edited",
+          "note": ""
+        },
+        {
+          "id": "L1-17",
+          "loc": "API Key 按钮",
+          "orig": "存入本地环境",
+          "prop": "保存",
+          "final": "保存",
+          "status": "approved",
+          "note": "说明文字补「只保存在本机」"
+        },
+        {
+          "id": "L1-18",
+          "loc": "折叠区",
+          "orig": "高级选项",
+          "prop": null,
+          "final": "高级选项",
+          "status": "keep",
+          "note": ""
+        },
+        {
+          "id": "L1-19",
+          "loc": "卡片 3 标题",
+          "orig": "3️⃣ 转写后自动处理",
+          "prop": "3️⃣ 自动处理",
+          "final": "3️⃣ 转写后自动处理",
+          "status": "keep",
+          "note": ""
+        },
+        {
+          "id": "L1-20",
+          "loc": "总开关",
+          "orig": "启用转写后自动处理",
+          "prop": "启用自动处理",
+          "final": "启用自动处理",
+          "status": "approved",
+          "note": ""
+        },
+        {
+          "id": "L1-21",
+          "loc": "卡片说明",
+          "orig": "转写完成后按固定顺序处理字幕；首次启用某一步前，请先在工具箱中完成配置。",
+          "prop": "转写完成后自动执行；先在工具箱配置。",
+          "final": "转写完成后自动执行；需先在工具箱进行配置。",
+          "status": "edited",
+          "note": ""
+        },
+        {
+          "id": "L1-22",
+          "loc": "折叠区",
+          "orig": "后处理步骤",
+          "prop": "处理步骤",
+          "final": "处理步骤",
+          "status": "approved",
+          "note": ""
+        },
+        {
+          "id": "L1-23",
+          "loc": "步骤名",
+          "orig": "文稿匹配 / 固定替换 / 重新断句 / 翻译",
+          "prop": null,
+          "final": "文稿匹配 / 固定替换 / 重新断句 / 翻译",
+          "status": "keep",
+          "note": ""
+        },
+        {
+          "id": "L1-24",
+          "loc": "步骤名",
+          "orig": "LLM 校对",
+          "prop": "AI 校对",
+          "final": "AI 校对",
+          "status": "approved",
+          "note": ""
+        },
+        {
+          "id": "L1-25",
+          "loc": "步骤名",
+          "orig": "OCR 字幕去重",
+          "prop": "OCR 去重",
+          "final": "OCR 去重",
+          "status": "approved",
+          "note": ""
+        },
+        {
+          "id": "L1-26",
+          "loc": "步骤名",
+          "orig": "烧录字幕",
+          "prop": null,
+          "final": "烧录字幕",
+          "status": "keep",
+          "note": "「烧录」是视频圈通用词"
+        },
+        {
+          "id": "L1-27",
+          "loc": "翻译选项",
+          "orig": "将双语字幕合并为单个字幕",
+          "prop": "合并双语字幕",
+          "final": "合并双语字幕",
+          "status": "approved",
+          "note": "说明补：上下两行同屏显示"
+        },
+        {
+          "id": "L1-28",
+          "loc": "翻译选项",
+          "orig": "只翻译非中文的字幕",
+          "prop": "只翻译外文句",
+          "final": "只翻译外文语句",
+          "status": "edited",
+          "note": ""
+        },
+        {
+          "id": "L1-29",
+          "loc": "翻译选项说明",
+          "orig": "当你仅有少量外文语句需要翻译，可以勾选此项将它们翻译成原文的语言。",
+          "prop": "只把外文句子翻译成目标语言。",
+          "final": "只把少量外文语句翻译成目标语言。",
+          "status": "edited",
+          "note": ""
+        },
+        {
+          "id": "L1-30",
+          "loc": "选项",
+          "orig": "保留中间产物",
+          "prop": "保留中间文件",
+          "final": "保留中间文件",
+          "status": "approved",
+          "note": ""
+        },
+        {
+          "id": "L1-31",
+          "loc": "选项说明",
+          "orig": "勾选后将保留处理过程中每一个步骤的产物；否则只留最终产物。任务失败时会自动保留以排查问题。",
+          "prop": "保留每一步的结果文件；失败时自动保留。",
+          "final": "保留每一步的结果文件；失败时自动保留。",
+          "status": "approved",
+          "note": ""
+        },
+        {
+          "id": "L1-32",
+          "loc": "卡片 4 标题",
+          "orig": "4️⃣ 日志",
+          "prop": null,
+          "final": "4️⃣ 日志",
+          "status": "keep",
+          "note": ""
+        },
+        {
+          "id": "L1-33",
+          "loc": "卡片 5 标题",
+          "orig": "5️⃣ 字幕编辑器设置",
+          "prop": "5️⃣ 编辑器",
+          "final": "5️⃣ 编辑器",
+          "status": "approved",
+          "note": ""
+        },
+        {
+          "id": "L1-34",
+          "loc": "字段标签",
+          "orig": "工程 JSON",
+          "prop": "工程文件",
+          "final": "工程文件",
+          "status": "approved",
+          "note": ""
+        },
+        {
+          "id": "L1-35",
+          "loc": "字段标签",
+          "orig": "服务器媒体（可选）",
+          "prop": "媒体文件（可选）",
+          "final": "媒体文件（可选）",
+          "status": "approved",
+          "note": ""
+        },
+        {
+          "id": "L1-36",
+          "loc": "媒体缺失说明",
+          "orig": "工程未记录媒体，或文件已移动，请手动选择。",
+          "prop": "工程找不到媒体时，手动选择。",
+          "final": "工程找不到媒体时，请手动选择。",
+          "status": "edited",
+          "note": ""
+        },
+        {
+          "id": "L1-37",
+          "loc": "主按钮",
+          "orig": "生成字幕和工程",
+          "prop": "开始生成",
+          "final": "开始生成",
+          "status": "approved",
+          "note": ""
+        },
+        {
+          "id": "L1-38",
+          "loc": "批量主按钮",
+          "orig": "✨ 开始批量生成",
+          "prop": "开始批量生成",
+          "final": "开始批量生成",
+          "status": "approved",
+          "note": "emoji 按 D4 去掉"
+        },
+        {
+          "id": "L1-39",
+          "loc": "编辑器按钮",
+          "orig": "启动 Server 版字幕编辑器",
+          "prop": "打开编辑器",
+          "final": "打开编辑器",
+          "status": "approved",
+          "note": "「Server 版」是内部术语"
+        },
+        {
+          "id": "L1-40",
+          "loc": "编辑器下拉项",
+          "orig": "打开该工程的 HTML 编辑器",
+          "prop": "用便携编辑器打开",
+          "final": "用便携编辑器打开",
+          "status": "approved",
+          "note": ""
+        },
+        {
+          "id": "L1-41",
+          "loc": "编辑器下拉项",
+          "orig": "打开空的 HTML 编辑器",
+          "prop": "打开空白编辑器",
+          "final": "打开空白编辑器",
+          "status": "approved",
+          "note": ""
+        },
+        {
+          "id": "L1-42",
+          "loc": "按钮",
+          "orig": "打开输出文件夹",
+          "prop": null,
+          "final": "打开输出文件夹",
+          "status": "keep",
+          "note": ""
+        },
+        {
+          "id": "L1-43",
+          "loc": "按钮",
+          "orig": "从失败步骤重试后处理",
+          "prop": "重试自动处理",
+          "final": "重新尝试自动处理",
+          "status": "edited",
+          "note": ""
+        },
+        {
+          "id": "L1-44",
+          "loc": "错误区按钮",
+          "orig": "查看常见问题 / 复制错误报告",
+          "prop": null,
+          "final": "查看常见问题 / 复制错误报告",
+          "status": "keep",
+          "note": ""
+        },
+        {
+          "id": "L1-45",
+          "loc": "设置入口按钮",
+          "orig": "⚙️ 设置",
+          "prop": "设置",
+          "final": "⚙️ 设置",
+          "status": "keep",
+          "note": "emoji 按 D4 去掉；弹窗标题同步（L4-01）"
+        },
+        {
+          "id": "L1-46",
+          "loc": "工具箱悬浮按钮",
+          "orig": "🧰（纯图标按钮）",
+          "prop": "工具箱",
+          "final": "🧰（纯图标按钮）",
+          "status": "keep",
+          "note": "改为文字按钮；后续可换 lucide 图标"
+        }
+      ]
+    },
+    {
+      "id": "L2",
+      "app": "Launcher",
+      "title": "识别设置 · 高级选项",
+      "rows": [
+        {
+          "id": "L2-01",
+          "loc": "分组标题",
+          "orig": "识别参数",
+          "prop": null,
+          "final": "识别参数",
+          "status": "keep",
+          "note": ""
+        },
+        {
+          "id": "L2-02",
+          "loc": "分组标题",
+          "orig": "语言",
+          "prop": null,
+          "final": "语言",
+          "status": "keep",
+          "note": ""
+        },
+        {
+          "id": "L2-03",
+          "loc": "语言说明",
+          "orig": "可多选；不选即自动识别（仅偏向，不限制）。",
+          "prop": "可多选；不选就自动识别。",
+          "final": "可多选；不选时自动识别。",
+          "status": "edited",
+          "note": ""
+        },
+        {
+          "id": "L2-04",
+          "loc": "字段标签",
+          "orig": "生成标点提升断句",
+          "prop": "自动加标点",
+          "final": "自动加标点",
+          "status": "approved",
+          "note": ""
+        },
+        {
+          "id": "L2-05",
+          "loc": "字段标签",
+          "orig": "对齐模型",
+          "prop": null,
+          "final": "对齐模型",
+          "status": "keep",
+          "note": ""
+        },
+        {
+          "id": "L2-06",
+          "loc": "对齐模型说明",
+          "orig": "当前模型没有字词级时间码时，可调用已准备好的对齐模型补齐。",
+          "prop": "模型不带时间码时，用它补齐。",
+          "final": "模型不带时间码时，用对齐模型将它补齐。",
+          "status": "edited",
+          "note": ""
+        },
+        {
+          "id": "L2-07",
+          "loc": "分组标题",
+          "orig": "Qwen 上下文与热词",
+          "prop": "热词与提示",
+          "final": "热词与提示",
+          "status": "approved",
+          "note": "组内是提示词 + 方言 + 热词"
+        },
+        {
+          "id": "L2-08",
+          "loc": "字段标签",
+          "orig": "附加上下文（Prompt）",
+          "prop": "提示词",
+          "final": "提示词",
+          "status": "approved",
+          "note": ""
+        },
+        {
+          "id": "L2-09",
+          "loc": "提示词说明",
+          "orig": "领域词表或前文提示；本次任务最多发送 400 个字符，不是通用系统指令。",
+          "prop": "专业词汇或背景，最多 400 字。",
+          "final": "专业词汇或背景，最多 400 字。",
+          "status": "approved",
+          "note": ""
+        },
+        {
+          "id": "L2-10",
+          "loc": "复选框",
+          "orig": "保留方言表达",
+          "prop": "保留方言",
+          "final": "保留方言",
+          "status": "approved",
+          "note": ""
+        },
+        {
+          "id": "L2-11",
+          "loc": "分组标题",
+          "orig": "即时热词",
+          "prop": "热词",
+          "final": "热词",
+          "status": "approved",
+          "note": ""
+        },
+        {
+          "id": "L2-12",
+          "loc": "热词说明",
+          "orig": "每行一个，也支持逗号分隔；可直接拖入 .txt 文本文件自动填入；只作用于本次 Qwen-Audio 转写。",
+          "prop": "每行一个词；只对本次识别生效。",
+          "final": "每行一个词；只对本次识别生效。可直接拖入文本文件。",
+          "status": "edited",
+          "note": ""
+        },
+        {
+          "id": "L2-13",
+          "loc": "字段标签",
+          "orig": "默认热词权重",
+          "prop": "热词权重",
+          "final": "热词权重",
+          "status": "approved",
+          "note": ""
+        },
+        {
+          "id": "L2-14",
+          "loc": "权重说明",
+          "orig": "权重 50 适合少量必须命中的词，最多 50 个。",
+          "prop": "50 = 必须命中，最多 50 个词。",
+          "final": "权重 50 = 必须命中，最多填写 50 个词。",
+          "status": "edited",
+          "note": ""
+        },
+        {
+          "id": "L2-15",
+          "loc": "分组标题",
+          "orig": "其他",
+          "prop": null,
+          "final": "其他",
+          "status": "keep",
+          "note": ""
+        },
+        {
+          "id": "L2-16",
+          "loc": "复选框",
+          "orig": "给不同说话人分配字幕颜色",
+          "prop": "按说话人配色",
+          "final": "按说话人配色",
+          "status": "approved",
+          "note": ""
+        },
+        {
+          "id": "L2-17",
+          "loc": "配色说明",
+          "orig": "最多 5 种颜色；说话人超过 5 个时颜色循环复用。",
+          "prop": "最多 5 种颜色，超出循环使用。",
+          "final": "最多 5 种颜色，超出将循环使用。",
+          "status": "edited",
+          "note": ""
+        },
+        {
+          "id": "L2-18",
+          "loc": "复选框",
+          "orig": "生成 reapeaks 频谱数据",
+          "prop": "生成频谱数据",
+          "final": "生成频谱数据",
+          "status": "approved",
+          "note": "reapeaks 写进说明文字"
+        },
+        {
+          "id": "L2-19",
+          "loc": "复选框",
+          "orig": "调试运行（保存原始/中间数据）",
+          "prop": "调试模式",
+          "final": "调试模式",
+          "status": "approved",
+          "note": ""
+        },
+        {
+          "id": "L2-20",
+          "loc": "预设区",
+          "orig": "当前预设：/ 更新预设 / 预设管理",
+          "prop": null,
+          "final": "当前预设：/ 更新预设 / 预设管理",
+          "status": "keep",
+          "note": ""
+        }
+      ]
+    },
+    {
+      "id": "L3",
+      "app": "Launcher",
+      "title": "工具箱",
+      "rows": [
+        {
+          "id": "L3-01",
+          "loc": "大标签",
+          "orig": "后处理",
+          "prop": "字幕处理",
+          "final": "字幕处理",
+          "status": "approved",
+          "note": ""
+        },
+        {
+          "id": "L3-02",
+          "loc": "大标签",
+          "orig": "实用工具",
+          "prop": "媒体工具",
+          "final": "媒体工具",
+          "status": "approved",
+          "note": ""
+        },
+        {
+          "id": "L3-03",
+          "loc": "工具名",
+          "orig": "文稿匹配 / 固定替换",
+          "prop": null,
+          "final": "文稿匹配 / 固定替换",
+          "status": "keep",
+          "note": ""
+        },
+        {
+          "id": "L3-04",
+          "loc": "工具名",
+          "orig": "LLM 处理",
+          "prop": "AI 处理",
+          "final": "AI 处理",
+          "status": "approved",
+          "note": ""
+        },
+        {
+          "id": "L3-05",
+          "loc": "工具名",
+          "orig": "OCR 字幕去重",
+          "prop": "OCR 去重",
+          "final": "OCR 去重",
+          "status": "approved",
+          "note": ""
+        },
+        {
+          "id": "L3-06",
+          "loc": "工具名",
+          "orig": "生成时间码",
+          "prop": "字词时间码",
+          "final": "生成时间码",
+          "status": "keep",
+          "note": "D2c 已确认保留该术语；此处作为工具名沿用"
+        },
+        {
+          "id": "L3-07",
+          "loc": "工具名",
+          "orig": "烧录字幕 / 媒体重组 / 口播对齐 / 提取音频 / 生成波形",
+          "prop": null,
+          "final": "烧录字幕 / 媒体重组 / 口播对齐 / 提取音频 / 生成波形",
+          "status": "keep",
+          "note": ""
+        },
+        {
+          "id": "L3-08",
+          "loc": "字段标签",
+          "orig": "处理文件",
+          "prop": "要处理的文件",
+          "final": "处理文件",
+          "status": "keep",
+          "note": ""
+        },
+        {
+          "id": "L3-09",
+          "loc": "产物链说明",
+          "orig": "处理产物（点击文件名切换输入）",
+          "prop": "处理结果（点击可切换输入）",
+          "final": "处理结果（点击可切换输入）",
+          "status": "approved",
+          "note": ""
+        },
+        {
+          "id": "L3-10",
+          "loc": "匹配 · 字段",
+          "orig": "换行来源",
+          "prop": null,
+          "final": "换行来源",
+          "status": "keep",
+          "note": ""
+        },
+        {
+          "id": "L3-11",
+          "loc": "匹配 · 选项",
+          "orig": "按文稿换行（默认） / 只更正文本",
+          "prop": null,
+          "final": "按文稿换行（默认） / 只更正文本",
+          "status": "keep",
+          "note": ""
+        },
+        {
+          "id": "L3-12",
+          "loc": "匹配 · 复选框",
+          "orig": "使用 AI 整理（录音优先）",
+          "prop": "AI 整理录音稿",
+          "final": "调用 AI 进行整理（录音优先）",
+          "status": "edited",
+          "note": ""
+        },
+        {
+          "id": "L3-13",
+          "loc": "匹配 · 复选框",
+          "orig": "自动清理 Markdown 符号",
+          "prop": "清理 Markdown 符号",
+          "final": "清理 Markdown 符号",
+          "status": "approved",
+          "note": ""
+        },
+        {
+          "id": "L3-14",
+          "loc": "LLM · 字段",
+          "orig": "供应商 / 任务 / 自定义提示词",
+          "prop": null,
+          "final": "供应商 / 任务 / 自定义提示词",
+          "status": "keep",
+          "note": ""
+        },
+        {
+          "id": "L3-15",
+          "loc": "LLM · 任务选项",
+          "orig": "翻译成中文 / 翻译成英文 / 校对文本 / 重新断句 / 自定义",
+          "prop": null,
+          "final": "翻译成中文 / 翻译成英文 / 校对文本 / 重新断句 / 自定义",
+          "status": "keep",
+          "note": ""
+        },
+        {
+          "id": "L3-16",
+          "loc": "替换 · 分组",
+          "orig": "批量替换 / 简繁转换",
+          "prop": null,
+          "final": "批量替换 / 简繁转换",
+          "status": "keep",
+          "note": ""
+        },
+        {
+          "id": "L3-17",
+          "loc": "替换 · 字段",
+          "orig": "替换分隔符号",
+          "prop": "分隔符",
+          "final": "分隔符",
+          "status": "approved",
+          "note": ""
+        },
+        {
+          "id": "L3-18",
+          "loc": "时间码 · 处理方式",
+          "orig": "只补充缺失时间码 / 重新生成全部时间码 / 文稿 + 录音（跳过 ASR）",
+          "prop": "只补缺失的 / 全部重新生成 / 用文稿对齐（免识别）",
+          "final": "只补缺失时间码 / 全部重新生成 / 仅使用文稿对齐",
+          "status": "edited",
+          "note": ""
+        },
+        {
+          "id": "L3-19",
+          "loc": "OCR · 字段",
+          "orig": "画面字幕区",
+          "prop": "识别区域",
+          "final": "识别区域",
+          "status": "approved",
+          "note": ""
+        },
+        {
+          "id": "L3-20",
+          "loc": "OCR · 字段",
+          "orig": "相似度阈值",
+          "prop": "相似度",
+          "final": "相似度阈值",
+          "status": "keep",
+          "note": ""
+        },
+        {
+          "id": "L3-21",
+          "loc": "OCR · 复选框",
+          "orig": "生成 OCR 判定报告（CSV）",
+          "prop": "生成判定报告（CSV）",
+          "final": "生成判定报告（CSV）",
+          "status": "approved",
+          "note": ""
+        },
+        {
+          "id": "L3-22",
+          "loc": "烧录 · 字段",
+          "orig": "画质 CRF / 编码预设 / 音频码率 / 视频编码器",
+          "prop": null,
+          "final": "画质 CRF / 编码预设 / 音频码率 / 视频编码器",
+          "status": "keep",
+          "note": "专业参数，目标用户懂"
+        },
+        {
+          "id": "L3-23",
+          "loc": "口播对齐 · 分组",
+          "orig": "自动生成空隙",
+          "prop": "自动标记静音",
+          "final": "自动标记静音",
+          "status": "approved",
+          "note": ""
+        },
+        {
+          "id": "L3-24",
+          "loc": "口播对齐 · 字段",
+          "orig": "最小空隙（ms）/ 音量阈值（dB）/ 前端预留（ms）/ 后端预留（ms）",
+          "prop": "最短静音 / 音量阈值 / 句首保留 / 句尾保留",
+          "final": "最短静音（ms） / 音量阈值（dB） / 句首保留（ms） / 句尾保留（ms）",
+          "status": "edited",
+          "note": ""
+        },
+        {
+          "id": "L3-25",
+          "loc": "底部 · 输出选项",
+          "orig": "工程 + SRT / 仅工程 / 仅 SRT",
+          "prop": null,
+          "final": "工程 + SRT / 仅工程 / 仅 SRT",
+          "status": "keep",
+          "note": ""
+        },
+        {
+          "id": "L3-26",
+          "loc": "底部 · 执行按钮",
+          "orig": "匹配文稿 / 执行 OCR 字幕去重 / 运行处理 / 执行固定替换 / 生成新媒体 / 生成时间码",
+          "prop": "匹配文稿 / 执行 OCR 去重 / 开始处理 / 执行替换 / 生成新媒体 / 生成时间码",
+          "final": "匹配文稿 / 执行 OCR 去重 / 开始处理 / 执行替换 / 生成新媒体 / 生成时间码",
+          "status": "approved",
+          "note": ""
+        },
+        {
+          "id": "L3-27",
+          "loc": "波形按钮",
+          "orig": "生成波形并打开编辑器",
+          "prop": "生成波形并打开",
+          "final": "生成波形并打开编辑器",
+          "status": "keep",
+          "note": ""
+        }
+      ]
+    },
+    {
+      "id": "L4",
+      "app": "Launcher",
+      "title": "设置弹窗 · 识别预设",
+      "rows": [
+        {
+          "id": "L4-01",
+          "loc": "弹窗标题",
+          "orig": "配置",
+          "prop": "设置",
+          "final": "设置",
+          "status": "approved",
+          "note": "与按钮文字统一"
+        },
+        {
+          "id": "L4-02",
+          "loc": "页签",
+          "orig": "通用",
+          "prop": null,
+          "final": "通用",
+          "status": "keep",
+          "note": ""
+        },
+        {
+          "id": "L4-03",
+          "loc": "页签",
+          "orig": "断句与标点",
+          "prop": "断句标点",
+          "final": "断句与标点",
+          "status": "keep",
+          "note": ""
+        },
+        {
+          "id": "L4-04",
+          "loc": "页签",
+          "orig": "运行环境",
+          "prop": null,
+          "final": "运行环境",
+          "status": "keep",
+          "note": ""
+        },
+        {
+          "id": "L4-05",
+          "loc": "页签",
+          "orig": "AI 模型配置",
+          "prop": "AI 模型",
+          "final": "AI 模型",
+          "status": "approved",
+          "note": ""
+        },
+        {
+          "id": "L4-06",
+          "loc": "分区标题",
+          "orig": "外观 / 语言 / 文件输出",
+          "prop": null,
+          "final": "外观 / 语言 / 文件输出",
+          "status": "keep",
+          "note": ""
+        },
+        {
+          "id": "L4-07",
+          "loc": "主题选项",
+          "orig": "明亮模式 / 暗色模式 / 跟随系统设置",
+          "prop": "浅色 / 深色 / 自动",
+          "final": "浅色 / 深色 / 自动",
+          "status": "approved",
+          "note": "已确认；与 Editor（E3-09）统一为同一套"
+        },
+        {
+          "id": "L4-08",
+          "loc": "复选框",
+          "orig": "显示相对小众的语言",
+          "prop": "显示更多语言",
+          "final": "显示更多语言",
+          "status": "approved",
+          "note": ""
+        },
+        {
+          "id": "L4-09",
+          "loc": "复选框",
+          "orig": "将所有输出文件放入子文件夹",
+          "prop": "输出放进子文件夹",
+          "final": "将输出放入子文件夹",
+          "status": "edited",
+          "note": ""
+        },
+        {
+          "id": "L4-10",
+          "loc": "复选框",
+          "orig": "每个视频单独创建子文件夹",
+          "prop": "每个视频单独建文件夹",
+          "final": "每个视频单独建文件夹",
+          "status": "approved",
+          "note": ""
+        },
+        {
+          "id": "L4-11",
+          "loc": "复选框",
+          "orig": "在输出文件名中附加模型名称",
+          "prop": "文件名带上模型名",
+          "final": "文件名内附带模型名称",
+          "status": "edited",
+          "note": ""
+        },
+        {
+          "id": "L4-12",
+          "loc": "分区标题",
+          "orig": "完成通知",
+          "prop": "通知",
+          "final": "通知",
+          "status": "approved",
+          "note": ""
+        },
+        {
+          "id": "L4-13",
+          "loc": "复选框",
+          "orig": "任务完成后发送系统通知",
+          "prop": "完成时通知我",
+          "final": "完成时通知我",
+          "status": "approved",
+          "note": ""
+        },
+        {
+          "id": "L4-14",
+          "loc": "分区标题",
+          "orig": "默认表情包路径",
+          "prop": "表情包文件夹",
+          "final": "表情包文件夹",
+          "status": "approved",
+          "note": ""
+        },
+        {
+          "id": "L4-15",
+          "loc": "分区标题",
+          "orig": "ASR 识别预设",
+          "prop": "识别预设",
+          "final": "识别预设",
+          "status": "approved",
+          "note": ""
+        },
+        {
+          "id": "L4-16",
+          "loc": "字段标签",
+          "orig": "预设库文件夹",
+          "prop": null,
+          "final": "预设库文件夹",
+          "status": "keep",
+          "note": ""
+        },
+        {
+          "id": "L4-17",
+          "loc": "分区标题",
+          "orig": "LLM 后处理",
+          "prop": "云端 AI",
+          "final": "AI 后处理",
+          "status": "edited",
+          "note": ""
+        },
+        {
+          "id": "L4-18",
+          "loc": "字段标签",
+          "orig": "思考强度",
+          "prop": null,
+          "final": "思考强度",
+          "status": "keep",
+          "note": ""
+        },
+        {
+          "id": "L4-19",
+          "loc": "思考强度选项",
+          "orig": "关闭思考 / 自动（跟随模型默认）",
+          "prop": "关闭 / 自动",
+          "final": "关闭 / 自动",
+          "status": "approved",
+          "note": ""
+        },
+        {
+          "id": "L4-20",
+          "loc": "分区标题",
+          "orig": "本地 ASR 模型",
+          "prop": "本地识别模型",
+          "final": "本地识别模型",
+          "status": "approved",
+          "note": ""
+        },
+        {
+          "id": "L4-21",
+          "loc": "字段标签",
+          "orig": "模型保存目录",
+          "prop": "模型文件夹",
+          "final": "模型文件夹",
+          "status": "approved",
+          "note": ""
+        },
+        {
+          "id": "L4-22",
+          "loc": "分区标题",
+          "orig": "本地对齐模型",
+          "prop": "对齐模型",
+          "final": "对齐模型",
+          "status": "approved",
+          "note": ""
+        },
+        {
+          "id": "L4-23",
+          "loc": "分区标题",
+          "orig": "阿里云百炼地域与业务空间",
+          "prop": "百炼地域",
+          "final": "阿里云百炼 地域设置",
+          "status": "edited",
+          "note": "说明文字补全称"
+        },
+        {
+          "id": "L4-24",
+          "loc": "字段标签",
+          "orig": "工作空间 ID",
+          "prop": null,
+          "final": "工作空间 ID",
+          "status": "keep",
+          "note": ""
+        },
+        {
+          "id": "L4-25",
+          "loc": "分区标题",
+          "orig": "本地模型运行时",
+          "prop": "本地运行环境",
+          "final": "本地运行环境",
+          "status": "approved",
+          "note": ""
+        },
+        {
+          "id": "L4-26",
+          "loc": "字段标签",
+          "orig": "本地运行环境目录",
+          "prop": "安装位置",
+          "final": "安装位置",
+          "status": "approved",
+          "note": ""
+        },
+        {
+          "id": "L4-27",
+          "loc": "分区标题",
+          "orig": "OCR 支持 / FFmpeg",
+          "prop": null,
+          "final": "OCR 支持 / FFmpeg",
+          "status": "keep",
+          "note": ""
+        },
+        {
+          "id": "L4-28",
+          "loc": "FFmpeg 缺失提示",
+          "orig": "需要依赖 ffmpeg 先将视频转成音频后才能发送给服务器转录",
+          "prop": "识别前要用 FFmpeg 提取音频。",
+          "final": "识别前要用 FFmpeg 提取音频。",
+          "status": "approved",
+          "note": ""
+        },
+        {
+          "id": "L4-29",
+          "loc": "分区标题",
+          "orig": "字幕切句",
+          "prop": "断句",
+          "final": "断句",
+          "status": "approved",
+          "note": ""
+        },
+        {
+          "id": "L4-30",
+          "loc": "字段标签",
+          "orig": "停顿切句（毫秒）",
+          "prop": "停顿断句",
+          "final": "停顿断句（ms）",
+          "status": "edited",
+          "note": ""
+        },
+        {
+          "id": "L4-31",
+          "loc": "字段标签",
+          "orig": "短句合并阈值（字）",
+          "prop": "短句合并",
+          "final": "短句合并（字数）",
+          "status": "edited",
+          "note": ""
+        },
+        {
+          "id": "L4-32",
+          "loc": "字段标签",
+          "orig": "单句最大字数（字）",
+          "prop": "单句上限",
+          "final": "单句上限（字数）",
+          "status": "edited",
+          "note": ""
+        },
+        {
+          "id": "L4-33",
+          "loc": "字段标签",
+          "orig": "英文短句合并阈值（单词）",
+          "prop": "英文短句合并",
+          "final": "英文短句合并（单词数）",
+          "status": "edited",
+          "note": ""
+        },
+        {
+          "id": "L4-34",
+          "loc": "字段标签",
+          "orig": "英文单句最大字数（单词）",
+          "prop": "英文单句上限",
+          "final": "英文单句上限（单词数）",
+          "status": "edited",
+          "note": ""
+        },
+        {
+          "id": "L4-35",
+          "loc": "字段标签",
+          "orig": "需要断句的符号",
+          "prop": "断句符号",
+          "final": "断句符号",
+          "status": "approved",
+          "note": ""
+        },
+        {
+          "id": "L4-36",
+          "loc": "字段标签",
+          "orig": "断句末尾保留符号",
+          "prop": "句尾保留符号",
+          "final": "句尾保留符号",
+          "status": "approved",
+          "note": ""
+        },
+        {
+          "id": "L4-37",
+          "loc": "预设弹窗标题",
+          "orig": "ASR 识别预设",
+          "prop": "识别预设",
+          "final": "识别预设",
+          "status": "approved",
+          "note": ""
+        },
+        {
+          "id": "L4-38",
+          "loc": "预设弹窗按钮",
+          "orig": "加载预设 / 覆盖至预设 / 复制预设 / 删除预设",
+          "prop": "加载预设 / 覆盖此预设 / 复制预设 / 删除预设",
+          "final": "加载预设 / 覆盖此预设 / 复制预设 / 删除预设",
+          "status": "approved",
+          "note": ""
+        },
+        {
+          "id": "L4-39",
+          "loc": "预设弹窗按钮",
+          "orig": "将当前配置存为新预设",
+          "prop": "存为新预设",
+          "final": "存为新预设",
+          "status": "approved",
+          "note": ""
+        }
+      ]
+    },
+    {
+      "id": "E1",
+      "app": "Editor",
+      "title": "工具栏与导出菜单",
+      "rows": [
+        {
+          "id": "E1-01",
+          "loc": "工具栏按钮",
+          "orig": "新建工程 / 打开工程 / 最近工程 / 保存工程 / 另存为… / 导出工程",
+          "prop": null,
+          "final": "新建工程 / 打开工程 / 最近工程 / 保存工程 / 另存为… / 导出工程",
+          "status": "keep",
+          "note": ""
+        },
+        {
+          "id": "E1-02",
+          "loc": "打开工程下拉项",
+          "orig": "加载媒体 / 加载字幕 / 加载歌词",
+          "prop": "导入媒体 / 导入字幕 / 导入歌词",
+          "final": "导入媒体 / 导入字幕 / 导入歌词",
+          "status": "approved",
+          "note": ""
+        },
+        {
+          "id": "E1-03",
+          "loc": "菜单",
+          "orig": "导出字幕 ▾",
+          "prop": null,
+          "final": "导出字幕 ▾",
+          "status": "keep",
+          "note": ""
+        },
+        {
+          "id": "E1-04",
+          "loc": "菜单项",
+          "orig": "SRT 字幕",
+          "prop": "SRT",
+          "final": "SRT",
+          "status": "approved",
+          "note": ""
+        },
+        {
+          "id": "E1-05",
+          "loc": "菜单项",
+          "orig": "副字幕 SRT",
+          "prop": null,
+          "final": "副字幕 SRT",
+          "status": "keep",
+          "note": "含格式名，不计字数"
+        },
+        {
+          "id": "E1-06",
+          "loc": "菜单项",
+          "orig": "双语整合字幕 SRT",
+          "prop": "双语合并 SRT",
+          "final": "SRT（双语合并）",
+          "status": "edited",
+          "note": ""
+        },
+        {
+          "id": "E1-07",
+          "loc": "菜单项",
+          "orig": "按颜色拆分导出 SRT 字幕",
+          "prop": "按颜色拆分 SRT",
+          "final": "SRT（按颜色拆分）",
+          "status": "edited",
+          "note": ""
+        },
+        {
+          "id": "E1-08",
+          "loc": "菜单项",
+          "orig": "带样式的 ASS 字幕",
+          "prop": "ASS（带样式）",
+          "final": "ASS（带样式）",
+          "status": "approved",
+          "note": ""
+        },
+        {
+          "id": "E1-09",
+          "loc": "菜单",
+          "orig": "导出去空隙版本 ▾",
+          "prop": "去空隙导出 ▾",
+          "final": "去空隙导出 ▾",
+          "status": "approved",
+          "note": ""
+        },
+        {
+          "id": "E1-10",
+          "loc": "子菜单名",
+          "orig": "OpenTimelineIO（去空隙菜单）与 OTIO（更多导出菜单）并存",
+          "prop": "统一为 OTIO",
+          "final": "统一为 OTIO",
+          "status": "approved",
+          "note": "现存不一致，顺手修"
+        },
+        {
+          "id": "E1-11",
+          "loc": "OTIO 菜单项",
+          "orig": "时间线 OTIO 工程 / 时间线 OTIOZ 打包工程",
+          "prop": "时间线 OTIO / 时间线 OTIOZ",
+          "final": "时间线 OTIO / 时间线 OTIOZ",
+          "status": "approved",
+          "note": ""
+        },
+        {
+          "id": "E1-12",
+          "loc": "OTIO 菜单项",
+          "orig": "表情包 OTIO 工程 / 表情包 OTIOZ 打包工程",
+          "prop": "表情包 OTIO / 表情包 OTIOZ",
+          "final": "表情包 OTIO / 表情包 OTIOZ",
+          "status": "approved",
+          "note": ""
+        },
+        {
+          "id": "E1-13",
+          "loc": "动态图形菜单项",
+          "orig": "动态字幕（Lottie）/ 动态字幕（OGraf）",
+          "prop": "Lottie 动态字幕 / OGraf 动态字幕",
+          "final": "Lottie 动态字幕 / OGraf 动态字幕",
+          "status": "approved",
+          "note": "格式名前置，更好扫读"
+        },
+        {
+          "id": "E1-14",
+          "loc": "数据文件菜单项",
+          "orig": "纯文本 TXT",
+          "prop": "TXT 文本",
+          "final": "TXT 文本",
+          "status": "approved",
+          "note": ""
+        },
+        {
+          "id": "E1-15",
+          "loc": "菜单项",
+          "orig": "Premiere FCP 7 XML（实验性）",
+          "prop": "Premiere FCP 7 XML（实验）",
+          "final": "Premiere FCP 7 XML",
+          "status": "edited",
+          "note": "保守处理：只删「性」，保留格式本名；要更短可再改"
+        },
+        {
+          "id": "E1-16",
+          "loc": "子菜单",
+          "orig": "数据文件 / 动态图形",
+          "prop": null,
+          "final": "数据文件 / 动态图形",
+          "status": "keep",
+          "note": ""
+        },
+        {
+          "id": "E1-17",
+          "loc": "工作区预设",
+          "orig": "右侧整列波形",
+          "prop": "右侧波形",
+          "final": "右侧整列波形",
+          "status": "keep",
+          "note": ""
+        },
+        {
+          "id": "E1-18",
+          "loc": "工作区预设",
+          "orig": "字幕列表编辑",
+          "prop": "列表编辑",
+          "final": "字幕列表编辑",
+          "status": "keep",
+          "note": ""
+        },
+        {
+          "id": "E1-19",
+          "loc": "工作区预设",
+          "orig": "三折叠布局",
+          "prop": "三折叠",
+          "final": "三折叠布局",
+          "status": "keep",
+          "note": ""
+        },
+        {
+          "id": "E1-20",
+          "loc": "工作区预设",
+          "orig": "大荧幕布局",
+          "prop": "大荧幕",
+          "final": "大荧幕布局",
+          "status": "keep",
+          "note": ""
+        },
+        {
+          "id": "E1-21",
+          "loc": "工具栏按钮",
+          "orig": "项目设置",
+          "prop": "工程设置",
+          "final": "工程设置",
+          "status": "approved",
+          "note": "D1 已确认；窗口标题同步改"
+        },
+        {
+          "id": "E1-22",
+          "loc": "工具栏按钮",
+          "orig": "⚙️ 全局设置 / 🤔 帮助",
+          "prop": "全局设置 / 帮助",
+          "final": "全局设置 / 帮助",
+          "status": "approved",
+          "note": "emoji 按 D4 去掉"
+        }
+      ]
+    },
+    {
+      "id": "E2",
+      "app": "Editor",
+      "title": "工程设置（原「项目设置」，D1 已确认改名）",
+      "rows": [
+        {
+          "id": "E2-01",
+          "loc": "页签",
+          "orig": "时间与语言",
+          "prop": null,
+          "final": "时间与语言",
+          "status": "keep",
+          "note": "内容 = 时间单位 + FPS + 语言类型"
+        },
+        {
+          "id": "E2-02",
+          "loc": "页签",
+          "orig": "字幕轨道 / 字幕样式 / 表情包",
+          "prop": null,
+          "final": "字幕轨道 / 字幕样式 / 表情包",
+          "status": "keep",
+          "note": ""
+        },
+        {
+          "id": "E2-03",
+          "loc": "页签",
+          "orig": "颜色与说话人",
+          "prop": "说话人",
+          "final": "颜色与说话人",
+          "status": "keep",
+          "note": "页面说明补「颜色呈现与说话人名称」"
+        },
+        {
+          "id": "E2-04",
+          "loc": "字段标签",
+          "orig": "时间单位（毫秒 / 帧）",
+          "prop": null,
+          "final": "时间单位（毫秒 / 帧）",
+          "status": "keep",
+          "note": ""
+        },
+        {
+          "id": "E2-05",
+          "loc": "时间单位说明",
+          "orig": "毫秒模式保持原有时间编辑方式。切换为帧模式后，拖动、方向键和 A/D 微调都会按帧执行。",
+          "prop": "用帧编辑时，拖动和微调都按整帧。",
+          "final": "用帧编辑时，拖动和微调都按整帧。",
+          "status": "approved",
+          "note": ""
+        },
+        {
+          "id": "E2-06",
+          "loc": "分组标题",
+          "orig": "字幕语言类型",
+          "prop": "语言类型",
+          "final": "语言类型",
+          "status": "approved",
+          "note": ""
+        },
+        {
+          "id": "E2-07",
+          "loc": "字段标签",
+          "orig": "主字幕语言类型 / 副字幕语言类型",
+          "prop": "主字幕语言 / 副字幕语言",
+          "final": "主字幕语言 / 副字幕语言",
+          "status": "approved",
+          "note": "选项「单词型 / 字符型」保留"
+        },
+        {
+          "id": "E2-08",
+          "loc": "语言类型说明",
+          "orig": "单词型按空格拆分，字符型按字符拆分；语言类型随双语工程保存。",
+          "prop": "英文按词拆，中文按字拆。",
+          "final": "英文按词拆，中文按字拆。",
+          "status": "approved",
+          "note": ""
+        },
+        {
+          "id": "E2-09",
+          "loc": "开关",
+          "orig": "允许字幕重叠",
+          "prop": "允许重叠",
+          "final": "允许字幕重叠",
+          "status": "keep",
+          "note": "仅缩短原文案；D2b 已确认「叠加/重叠」术语现状不动"
+        },
+        {
+          "id": "E2-10",
+          "loc": "开关",
+          "orig": "双语字幕",
+          "prop": null,
+          "final": "双语字幕",
+          "status": "keep",
+          "note": ""
+        },
+        {
+          "id": "E2-11",
+          "loc": "分组标题",
+          "orig": "显示 / 联动 / 字幕管理",
+          "prop": null,
+          "final": "显示 / 联动 / 字幕管理",
+          "status": "keep",
+          "note": ""
+        },
+        {
+          "id": "E2-12",
+          "loc": "字段标签",
+          "orig": "显示方式（主轨 / 副轨 / 双列）",
+          "prop": null,
+          "final": "显示方式（主轨 / 副轨 / 双列）",
+          "status": "keep",
+          "note": ""
+        },
+        {
+          "id": "E2-13",
+          "loc": "字段标签",
+          "orig": "副字幕时波形高度",
+          "prop": "双语波形高度",
+          "final": "双语波形高度",
+          "status": "approved",
+          "note": ""
+        },
+        {
+          "id": "E2-14",
+          "loc": "开关",
+          "orig": "显示轨道徽标",
+          "prop": "轨道徽标",
+          "final": "显示轨道徽标",
+          "status": "keep",
+          "note": ""
+        },
+        {
+          "id": "E2-15",
+          "loc": "开关",
+          "orig": "跨轨道吸附",
+          "prop": "跨轨吸附",
+          "final": "跨轨道吸附",
+          "status": "keep",
+          "note": ""
+        },
+        {
+          "id": "E2-16",
+          "loc": "开关",
+          "orig": "同时选中主副字幕",
+          "prop": "成对选中",
+          "final": "成对选中",
+          "status": "approved",
+          "note": ""
+        },
+        {
+          "id": "E2-17",
+          "loc": "成对选中说明",
+          "orig": "普通点击以最后点击的轨道为准；点击已绑定字幕时，仅补选它实际绑定的另一条字幕。",
+          "prop": "点击已绑定字幕时，连它的一对一起选。",
+          "final": "点击成对字幕时，连它的绑定字幕一起选中。",
+          "status": "edited",
+          "note": ""
+        },
+        {
+          "id": "E2-18",
+          "loc": "开关",
+          "orig": "绑定时自动同步时长",
+          "prop": "绑定即对齐",
+          "final": "绑定时自动对齐",
+          "status": "edited",
+          "note": ""
+        },
+        {
+          "id": "E2-19",
+          "loc": "按钮",
+          "orig": "导入副字幕",
+          "prop": null,
+          "final": "导入副字幕",
+          "status": "keep",
+          "note": ""
+        },
+        {
+          "id": "E2-20",
+          "loc": "按钮",
+          "orig": "交换主副字幕",
+          "prop": null,
+          "final": "交换主副字幕",
+          "status": "keep",
+          "note": "曾提议「交换主副轨」；未单独确认，默认保留原文案，可在表中再改"
+        },
+        {
+          "id": "E2-21",
+          "loc": "分组标题",
+          "orig": "ASS 字幕模式",
+          "prop": null,
+          "final": "ASS 字幕模式",
+          "status": "keep",
+          "note": "格式名保留"
+        },
+        {
+          "id": "E2-22",
+          "loc": "按钮",
+          "orig": "🎨 管理 ASS 样式",
+          "prop": "管理样式",
+          "final": "管理 ASS 样式",
+          "status": "edited",
+          "note": "emoji 按 D4 去掉"
+        },
+        {
+          "id": "E2-23",
+          "loc": "按钮",
+          "orig": "📷 实际画面预览",
+          "prop": "真实画面预览",
+          "final": "📷 实际画面预览",
+          "status": "keep",
+          "note": "emoji 按 D4 去掉；「实际 → 真实」更口语"
+        },
+        {
+          "id": "E2-24",
+          "loc": "字段标签",
+          "orig": "文字大小",
+          "prop": "字号",
+          "final": "字号",
+          "status": "approved",
+          "note": ""
+        },
+        {
+          "id": "E2-25",
+          "loc": "字段标签",
+          "orig": "字体 / 文字颜色 / 背景颜色",
+          "prop": "字体 / 颜色 / 背景",
+          "final": "字体 / 文字颜色 / 背景颜色",
+          "status": "keep",
+          "note": ""
+        },
+        {
+          "id": "E2-26",
+          "loc": "字段标签",
+          "orig": "背景不透明度",
+          "prop": "背景透明度",
+          "final": "背景不透明度",
+          "status": "keep",
+          "note": ""
+        },
+        {
+          "id": "E2-27",
+          "loc": "按钮",
+          "orig": "读取本机字体",
+          "prop": null,
+          "final": "读取本机字体",
+          "status": "keep",
+          "note": ""
+        },
+        {
+          "id": "E2-28",
+          "loc": "开关",
+          "orig": "预览字幕颜色",
+          "prop": "预览显示颜色",
+          "final": "预览字幕颜色",
+          "status": "keep",
+          "note": ""
+        },
+        {
+          "id": "E2-29",
+          "loc": "字段标签",
+          "orig": "预览颜色样式（下划线 / 文字颜色 / 描边）",
+          "prop": null,
+          "final": "预览颜色样式（下划线 / 文字颜色 / 描边）",
+          "status": "keep",
+          "note": ""
+        },
+        {
+          "id": "E2-30",
+          "loc": "选项",
+          "orig": "颜色字幕样式选项「无影响」",
+          "prop": "不生效",
+          "final": "不生效",
+          "status": "approved",
+          "note": ""
+        },
+        {
+          "id": "E2-31",
+          "loc": "开关",
+          "orig": "将颜色映射为说话人",
+          "prop": "颜色对应说话人",
+          "final": "颜色对应说话人",
+          "status": "approved",
+          "note": ""
+        },
+        {
+          "id": "E2-32",
+          "loc": "开关",
+          "orig": "在预览字幕中显示说话人",
+          "prop": "预览显示说话人",
+          "final": "预览显示说话人",
+          "status": "approved",
+          "note": ""
+        },
+        {
+          "id": "E2-33",
+          "loc": "开关",
+          "orig": "导出时附加说话人名称",
+          "prop": "导出带上说话人",
+          "final": "导出带上说话人",
+          "status": "approved",
+          "note": ""
+        },
+        {
+          "id": "E2-34",
+          "loc": "开关",
+          "orig": "覆盖全局默认目录",
+          "prop": "覆盖默认文件夹",
+          "final": "覆盖默认文件夹",
+          "status": "approved",
+          "note": ""
+        },
+        {
+          "id": "E2-35",
+          "loc": "按钮",
+          "orig": "读取并应用",
+          "prop": "应用",
+          "final": "应用",
+          "status": "approved",
+          "note": ""
+        }
+      ]
+    },
+    {
+      "id": "E3",
+      "app": "Editor",
+      "title": "全局设置",
+      "rows": [
+        {
+          "id": "E3-01",
+          "loc": "分组",
+          "orig": "基础 / 编辑 / 预览与播放 / 保存与输出 / 扩展功能",
+          "prop": "基础 / 编辑 / 播放预览 / 保存导出 / 扩展功能",
+          "final": "基础 / 编辑 / 播放预览 / 保存导出 / 扩展功能",
+          "status": "approved",
+          "note": ""
+        },
+        {
+          "id": "E3-02",
+          "loc": "页签",
+          "orig": "界面 / 功能区",
+          "prop": null,
+          "final": "界面 / 功能区",
+          "status": "keep",
+          "note": ""
+        },
+        {
+          "id": "E3-03",
+          "loc": "页签",
+          "orig": "通用编辑",
+          "prop": null,
+          "final": "通用编辑",
+          "status": "keep",
+          "note": "曾提议「编辑习惯」；已确认不改"
+        },
+        {
+          "id": "E3-04",
+          "loc": "页签",
+          "orig": "特殊编辑",
+          "prop": "高级编辑",
+          "final": "高级编辑",
+          "status": "approved",
+          "note": "已确认"
+        },
+        {
+          "id": "E3-05",
+          "loc": "页签",
+          "orig": "拆分与合并",
+          "prop": "拆分合并",
+          "final": "拆分合并",
+          "status": "approved",
+          "note": ""
+        },
+        {
+          "id": "E3-06",
+          "loc": "页签",
+          "orig": "播放与预览",
+          "prop": "播放预览",
+          "final": "播放预览",
+          "status": "approved",
+          "note": ""
+        },
+        {
+          "id": "E3-07",
+          "loc": "页签",
+          "orig": "自定义色板",
+          "prop": "调色板",
+          "final": "调色板",
+          "status": "approved",
+          "note": "已确认"
+        },
+        {
+          "id": "E3-08",
+          "loc": "页签",
+          "orig": "保存 / 字幕导出 / 更多导出 / 表情包 / 彩蛋",
+          "prop": null,
+          "final": "保存 / 字幕导出 / 更多导出 / 表情包 / 彩蛋",
+          "status": "keep",
+          "note": ""
+        },
+        {
+          "id": "E3-09",
+          "loc": "界面 · 主题选项",
+          "orig": "明亮模式 / 暗色模式 / 跟随系统",
+          "prop": "浅色 / 深色 / 自动",
+          "final": "浅色 / 深色 / 自动",
+          "status": "approved",
+          "note": "已确认；与 Launcher（L4-07）统一"
+        },
+        {
+          "id": "E3-10",
+          "loc": "功能区卡片",
+          "orig": "波形区 · 调整波形外观与显示内容。",
+          "prop": "波形 · 外观与显示内容",
+          "final": "波形区 · 外观与显示内容",
+          "status": "edited",
+          "note": ""
+        },
+        {
+          "id": "E3-11",
+          "loc": "功能区卡片",
+          "orig": "字幕编辑 · 配置编辑区显示内容与 Esc 取消编辑。",
+          "prop": "编辑区 · 显示内容与 Esc 行为",
+          "final": "编辑区 · 显示内容与按键行为",
+          "status": "edited",
+          "note": ""
+        },
+        {
+          "id": "E3-12",
+          "loc": "功能区卡片",
+          "orig": "字幕列表 · 配置筛选、显示列与自动滚动。",
+          "prop": "字幕列表 · 筛选、显示列与自动滚动",
+          "final": "字幕列表 · 筛选、显示列与自动滚动",
+          "status": "approved",
+          "note": ""
+        },
+        {
+          "id": "E3-13",
+          "loc": "分组标题",
+          "orig": "字幕选择",
+          "prop": "选择",
+          "final": "选择",
+          "status": "approved",
+          "note": ""
+        },
+        {
+          "id": "E3-14",
+          "loc": "字段标签",
+          "orig": "点击字幕块时（选中并跳转 / 仅选中（不跳转）/ 选中并跳转（自动播放））",
+          "prop": "点击字幕（选中并跳转 / 仅选中 / 选中并播放）",
+          "final": "点击字幕（选中并跳转 / 仅选中 / 选中并播放）",
+          "status": "approved",
+          "note": ""
+        },
+        {
+          "id": "E3-15",
+          "loc": "开关",
+          "orig": "同时选中分组内项目",
+          "prop": "选中整组",
+          "final": "选中整组",
+          "status": "approved",
+          "note": "说明：连相同颜色/表情包的一起选"
+        },
+        {
+          "id": "E3-16",
+          "loc": "分组标题",
+          "orig": "定位",
+          "prop": null,
+          "final": "定位",
+          "status": "keep",
+          "note": ""
+        },
+        {
+          "id": "E3-17",
+          "loc": "字段标签",
+          "orig": "跳转目标（字幕开头 / 鼠标所在位置）",
+          "prop": "跳转目标（字幕开头 / 鼠标位置）",
+          "final": "跳转目标（字幕开头 / 鼠标位置）",
+          "status": "approved",
+          "note": ""
+        },
+        {
+          "id": "E3-18",
+          "loc": "字段标签",
+          "orig": "快捷键时间基准",
+          "prop": null,
+          "final": "快捷键时间基准",
+          "status": "keep",
+          "note": "曾提议「按键定位」；已确认不改"
+        },
+        {
+          "id": "E3-19",
+          "loc": "分组标题",
+          "orig": "字幕拖动",
+          "prop": "拖动",
+          "final": "拖动",
+          "status": "approved",
+          "note": ""
+        },
+        {
+          "id": "E3-20",
+          "loc": "字段标签",
+          "orig": "字幕交界处操作方式（中缝联动（新）/ 传统模式）",
+          "prop": "边界拖动（中缝联动 / 传统模式）",
+          "final": "边界拖动（中缝联动 / 传统模式）",
+          "status": "approved",
+          "note": ""
+        },
+        {
+          "id": "E3-21",
+          "loc": "开关",
+          "orig": "自动吸附调整相邻字幕",
+          "prop": "联动相邻字幕",
+          "final": "联动调整相邻字幕",
+          "status": "edited",
+          "note": ""
+        },
+        {
+          "id": "E3-22",
+          "loc": "分组标题",
+          "orig": "按键微调",
+          "prop": null,
+          "final": "按键微调",
+          "status": "keep",
+          "note": ""
+        },
+        {
+          "id": "E3-23",
+          "loc": "字段标签",
+          "orig": "字幕按键微调幅度",
+          "prop": "微调幅度",
+          "final": "微调幅度",
+          "status": "approved",
+          "note": ""
+        },
+        {
+          "id": "E3-24",
+          "loc": "分组标题",
+          "orig": "静音空隙",
+          "prop": null,
+          "final": "静音空隙",
+          "status": "keep",
+          "note": ""
+        },
+        {
+          "id": "E3-25",
+          "loc": "字段标签",
+          "orig": "空隙区段操作方式",
+          "prop": "空隙编辑",
+          "final": "空隙编辑",
+          "status": "approved",
+          "note": "选项 无/拖动边界/中键拖动/边界与中键 保留"
+        },
+        {
+          "id": "E3-26",
+          "loc": "分组标题",
+          "orig": "时间显示",
+          "prop": null,
+          "final": "时间显示",
+          "status": "keep",
+          "note": ""
+        },
+        {
+          "id": "E3-27",
+          "loc": "开关",
+          "orig": "帧吸附",
+          "prop": "对齐到帧",
+          "final": "对齐到帧",
+          "status": "approved",
+          "note": "D2a 已确认"
+        },
+        {
+          "id": "E3-28",
+          "loc": "字段标签",
+          "orig": "时间分隔码",
+          "prop": "帧分隔符",
+          "final": "帧分隔符",
+          "status": "approved",
+          "note": "说明：如 HH:MM:SS;FF 的分号"
+        },
+        {
+          "id": "E3-29",
+          "loc": "分组标题",
+          "orig": "特殊文本格式",
+          "prop": "特殊文本",
+          "final": "特殊文本",
+          "status": "approved",
+          "note": ""
+        },
+        {
+          "id": "E3-30",
+          "loc": "字段标签",
+          "orig": "特殊符号规则（双个符号 / 单双皆可）",
+          "prop": "符号规则（双符号 / 单双皆可）",
+          "final": "符号规则（双符号 / 单双皆可）",
+          "status": "approved",
+          "note": ""
+        },
+        {
+          "id": "E3-31",
+          "loc": "分组标题",
+          "orig": "预览内容",
+          "prop": "预览",
+          "final": "预览",
+          "status": "approved",
+          "note": ""
+        },
+        {
+          "id": "E3-32",
+          "loc": "开关",
+          "orig": "预览字幕 / 预览副字幕 / 预览表情包",
+          "prop": null,
+          "final": "预览字幕 / 预览副字幕 / 预览表情包",
+          "status": "keep",
+          "note": ""
+        },
+        {
+          "id": "E3-33",
+          "loc": "分组标题",
+          "orig": "播放与定位",
+          "prop": "播放控制",
+          "final": "播放控制",
+          "status": "approved",
+          "note": ""
+        },
+        {
+          "id": "E3-34",
+          "loc": "开关",
+          "orig": "自动预览鼠标位置画面",
+          "prop": "悬停预览画面",
+          "final": "悬停预览画面",
+          "status": "approved",
+          "note": ""
+        },
+        {
+          "id": "E3-35",
+          "loc": "字段标签",
+          "orig": "JKL 按键播放控制",
+          "prop": "JKL 播放键",
+          "final": "JKL 播放键",
+          "status": "approved",
+          "note": "选项 慢速和倍速 / 倒放和正放 保留"
+        },
+        {
+          "id": "E3-36",
+          "loc": "字段标签",
+          "orig": "每次跳转时长",
+          "prop": "跳转步长",
+          "final": "跳转步长",
+          "status": "approved",
+          "note": ""
+        },
+        {
+          "id": "E3-37",
+          "loc": "开关",
+          "orig": "播放过程中点击鼠标自动暂停",
+          "prop": "点击时暂停播放",
+          "final": "点击鼠标时暂停播放",
+          "status": "edited",
+          "note": ""
+        },
+        {
+          "id": "E3-38",
+          "loc": "开关",
+          "orig": "播放时跳过空隙",
+          "prop": "跳过静音",
+          "final": "跳过静音空隙",
+          "status": "edited",
+          "note": ""
+        },
+        {
+          "id": "E3-39",
+          "loc": "开关",
+          "orig": "自定义颜色色值",
+          "prop": "自定义色值",
+          "final": "自定义色值",
+          "status": "approved",
+          "note": ""
+        },
+        {
+          "id": "E3-40",
+          "loc": "开关",
+          "orig": "自动保存",
+          "prop": null,
+          "final": "自动保存",
+          "status": "keep",
+          "note": ""
+        },
+        {
+          "id": "E3-41",
+          "loc": "字段标签",
+          "orig": "自动保存间隔",
+          "prop": "保存间隔",
+          "final": "保存间隔",
+          "status": "approved",
+          "note": ""
+        },
+        {
+          "id": "E3-42",
+          "loc": "开关",
+          "orig": "备份工程",
+          "prop": "自动备份",
+          "final": "自动备份",
+          "status": "approved",
+          "note": ""
+        },
+        {
+          "id": "E3-43",
+          "loc": "字段标签",
+          "orig": "自动备份间隔（分钟）",
+          "prop": "备份间隔",
+          "final": "备份间隔",
+          "status": "approved",
+          "note": ""
+        },
+        {
+          "id": "E3-44",
+          "loc": "字段标签",
+          "orig": "最大保存版本数",
+          "prop": "保留版本数",
+          "final": "保留版本数",
+          "status": "approved",
+          "note": ""
+        },
+        {
+          "id": "E3-45",
+          "loc": "按钮",
+          "orig": "打开备份文件夹",
+          "prop": null,
+          "final": "打开备份文件夹",
+          "status": "keep",
+          "note": ""
+        },
+        {
+          "id": "E3-46",
+          "loc": "开关",
+          "orig": "SRT 首条字幕起始时间从 0 开始",
+          "prop": "首条从 0 开始",
+          "final": "首条字幕时间从 0 开始",
+          "status": "edited",
+          "note": ""
+        },
+        {
+          "id": "E3-47",
+          "loc": "开关",
+          "orig": "彩色字幕统一导出",
+          "prop": null,
+          "final": "彩色字幕统一导出",
+          "status": "keep",
+          "note": "曾提议「统一按色导出」；已确认不改"
+        },
+        {
+          "id": "E3-48",
+          "loc": "开关",
+          "orig": "使用说话人名称替代颜色后缀",
+          "prop": "文件名用说话人名",
+          "final": "用说话人作为后缀",
+          "status": "edited",
+          "note": ""
+        },
+        {
+          "id": "E3-49",
+          "loc": "OTIO 选项组",
+          "orig": "同时导出 SRT 字幕 / 时间线包含表情包 / 将字幕内容作为标记写入 / 将标记与区段写入",
+          "prop": "同时导出 SRT / 时间线带上表情包 / 字幕写成标记 / 标记区段一并写入",
+          "final": "同时导出 SRT / 时间线带上表情包 / 将字幕写为标记 / 将工程标记一并写入",
+          "status": "edited",
+          "note": ""
+        },
+        {
+          "id": "E3-50",
+          "loc": "字段标签",
+          "orig": "表情包 OTIO（引用原始素材 / 便携 OTIO 文件夹（工程同目录））",
+          "prop": "表情包素材（引用原文件 / 复制到工程旁）",
+          "final": "表情包素材（引用原文件 / 复制到工程文件旁）",
+          "status": "edited",
+          "note": ""
+        },
+        {
+          "id": "E3-51",
+          "loc": "分组标题",
+          "orig": "格式专用参数",
+          "prop": "格式参数",
+          "final": "格式参数",
+          "status": "approved",
+          "note": ""
+        },
+        {
+          "id": "E3-52",
+          "loc": "开关",
+          "orig": "启用表情包功能",
+          "prop": "启用表情包",
+          "final": "启用表情包",
+          "status": "approved",
+          "note": ""
+        },
+        {
+          "id": "E3-53",
+          "loc": "分组标题",
+          "orig": "全局默认表情包目录",
+          "prop": "默认文件夹",
+          "final": "默认文件夹",
+          "status": "approved",
+          "note": ""
+        },
+        {
+          "id": "E3-54",
+          "loc": "彩蛋页",
+          "orig": "字幕忍者 / 播放音效 / 显示刀光特效 / 刀光长度 / 随机旋转幅度",
+          "prop": "字幕忍者 / 播放音效 / 刀光特效 / 刀光长度 / 随机角度",
+          "final": "字幕忍者 / 播放音效 / 刀光特效 / 刀光长度 / 随机角度",
+          "status": "approved",
+          "note": ""
+        }
+      ]
+    },
+    {
+      "id": "E4",
+      "app": "Editor",
+      "title": "局部面板 · 工具窗 · 右键菜单",
+      "rows": [
+        {
+          "id": "E4-01",
+          "loc": "波形面板分组",
+          "orig": "波形外观 / 显示",
+          "prop": "外观 / 显示",
+          "final": "外观 / 显示",
+          "status": "approved",
+          "note": ""
+        },
+        {
+          "id": "E4-02",
+          "loc": "字段标签",
+          "orig": "波形形状来源（原生波形 / REAPER 波形）",
+          "prop": "波形来源（内置波形 / REAPER 波形）",
+          "final": "波形来源（内置波形 / REAPER 波形）",
+          "status": "approved",
+          "note": ""
+        },
+        {
+          "id": "E4-03",
+          "loc": "开关",
+          "orig": "频谱颜色",
+          "prop": null,
+          "final": "频谱颜色",
+          "status": "keep",
+          "note": ""
+        },
+        {
+          "id": "E4-04",
+          "loc": "按钮",
+          "orig": "响度适配",
+          "prop": null,
+          "final": "响度适配",
+          "status": "keep",
+          "note": ""
+        },
+        {
+          "id": "E4-05",
+          "loc": "字段标签",
+          "orig": "显示窗口",
+          "prop": "显示范围",
+          "final": "显示范围",
+          "status": "approved",
+          "note": ""
+        },
+        {
+          "id": "E4-06",
+          "loc": "字段标签",
+          "orig": "每行长度 / 每行高度",
+          "prop": null,
+          "final": "每行长度 / 每行高度",
+          "status": "keep",
+          "note": ""
+        },
+        {
+          "id": "E4-07",
+          "loc": "开关",
+          "orig": "显示分组标记",
+          "prop": "分组标记",
+          "final": "分组标记",
+          "status": "approved",
+          "note": ""
+        },
+        {
+          "id": "E4-08",
+          "loc": "字段标签",
+          "orig": "禁用波形显示（淡化 / 完全隐藏）",
+          "prop": "禁用项（变淡 / 隐藏）",
+          "final": "禁用项（变淡 / 隐藏）",
+          "status": "approved",
+          "note": ""
+        },
+        {
+          "id": "E4-09",
+          "loc": "开关",
+          "orig": "字词时间码",
+          "prop": null,
+          "final": "字词时间码",
+          "status": "keep",
+          "note": "D2c 已确认保留术语；波形工具栏的 🪶 快捷开关按 D4 改为文字「字词」"
+        },
+        {
+          "id": "E4-10",
+          "loc": "编辑面板开关",
+          "orig": "跳转按钮 / 时间操作 / 表情包",
+          "prop": null,
+          "final": "跳转按钮 / 时间操作 / 表情包",
+          "status": "keep",
+          "note": ""
+        },
+        {
+          "id": "E4-11",
+          "loc": "编辑面板开关",
+          "orig": "Esc 取消编辑",
+          "prop": "Esc 放弃修改",
+          "final": "Esc 放弃修改",
+          "status": "approved",
+          "note": "开启 = 恢复编辑前的文本"
+        },
+        {
+          "id": "E4-12",
+          "loc": "列表面板分组",
+          "orig": "筛选 / 显示 / 跟随与浏览",
+          "prop": "筛选 / 显示 / 跟随",
+          "final": "筛选 / 显示 / 跟随",
+          "status": "approved",
+          "note": ""
+        },
+        {
+          "id": "E4-13",
+          "loc": "列表面板字段",
+          "orig": "字数阈值",
+          "prop": null,
+          "final": "字数阈值",
+          "status": "keep",
+          "note": ""
+        },
+        {
+          "id": "E4-14",
+          "loc": "列表面板开关",
+          "orig": "拆分后临时保留显示",
+          "prop": "保留拆分结果",
+          "final": "保留拆分结果显示",
+          "status": "edited",
+          "note": ""
+        },
+        {
+          "id": "E4-15",
+          "loc": "列表面板开关",
+          "orig": "隐藏禁用字幕",
+          "prop": "隐藏禁用",
+          "final": "隐藏禁用",
+          "status": "approved",
+          "note": ""
+        },
+        {
+          "id": "E4-16",
+          "loc": "列表面板开关",
+          "orig": "点击字幕后自动滚动",
+          "prop": null,
+          "final": "点击字幕后自动滚动",
+          "status": "keep",
+          "note": "9 字但足够直白，建议保留"
+        },
+        {
+          "id": "E4-17",
+          "loc": "列表工具栏按钮",
+          "orig": "跟随播放",
+          "prop": null,
+          "final": "跟随播放",
+          "status": "keep",
+          "note": ""
+        },
+        {
+          "id": "E4-18",
+          "loc": "列表工具栏按钮",
+          "orig": "仅看超长",
+          "prop": "只看超长",
+          "final": "仅看超长",
+          "status": "keep",
+          "note": ""
+        },
+        {
+          "id": "E4-19",
+          "loc": "批量操作菜单",
+          "orig": "批量操作 ▾：批量替换 / 纯文本编辑 / 文本处理",
+          "prop": null,
+          "final": "批量操作 ▾：批量替换 / 纯文本编辑 / 文本处理",
+          "status": "keep",
+          "note": ""
+        },
+        {
+          "id": "E4-20",
+          "loc": "波形模式",
+          "orig": "多行 / 基础",
+          "prop": null,
+          "final": "多行 / 单行",
+          "status": "edited",
+          "note": ""
+        },
+        {
+          "id": "E4-21",
+          "loc": "工具窗",
+          "orig": "移除静音空隙（按钮「生成静音空隙」）",
+          "prop": "静音空隙（按钮「扫描静音」）",
+          "final": "静音空隙（按钮「扫描静音」）",
+          "status": "approved",
+          "note": ""
+        },
+        {
+          "id": "E4-22",
+          "loc": "工具窗",
+          "orig": "拼接/合并字幕（拼接字幕 / 吸收合并字幕）",
+          "prop": "拼合字幕（吸附间隔 / 合并短句）",
+          "final": "拼合字幕（吸附间隔 / 合并短句）",
+          "status": "approved",
+          "note": ""
+        },
+        {
+          "id": "E4-23",
+          "loc": "拼合窗字段",
+          "orig": "间隔阈值 / 吸附方向 / 吸收过短字幕 / 短字幕阈值 / 吸收方向",
+          "prop": "间隔上限 / 吸附方向 / 合并短句 / 短句上限 / 合并方向",
+          "final": "间隔上限 / 吸附方向 / 合并短句 / 短句上限 / 合并方向",
+          "status": "approved",
+          "note": ""
+        },
+        {
+          "id": "E4-24",
+          "loc": "工具窗",
+          "orig": "延长字幕",
+          "prop": null,
+          "final": "延长字幕",
+          "status": "keep",
+          "note": ""
+        },
+        {
+          "id": "E4-25",
+          "loc": "工具窗",
+          "orig": "标记与区段",
+          "prop": "标记区段",
+          "final": "标记与区段",
+          "status": "keep",
+          "note": ""
+        },
+        {
+          "id": "E4-26",
+          "loc": "标记窗按钮",
+          "orig": "在播放头添加标记",
+          "prop": "在此刻加标记",
+          "final": "在播放头添加标记",
+          "status": "keep",
+          "note": ""
+        },
+        {
+          "id": "E4-27",
+          "loc": "右键菜单",
+          "orig": "创建字幕 / 创建叠加字幕 / 试听 / 解绑 / 删除字幕",
+          "prop": null,
+          "final": "创建字幕 / 创建叠加字幕 / 试听 / 解绑 / 删除字幕",
+          "status": "keep",
+          "note": "「叠加」按 D2b 保留"
+        },
+        {
+          "id": "E4-28",
+          "loc": "右键菜单",
+          "orig": "按音频位置拆分 / 按文字位置拆分 / 渐进拆分 / 复制拆分",
+          "prop": null,
+          "final": "按音频位置拆分 / 按文字位置拆分 / 渐进拆分 / 复制拆分",
+          "status": "keep",
+          "note": ""
+        },
+        {
+          "id": "E4-29",
+          "loc": "右键菜单",
+          "orig": "分配表情包… / 统一分配表情包…",
+          "prop": "统一为「分配表情包…」",
+          "final": "统一为「分配表情包…」",
+          "status": "approved",
+          "note": "单选多选用同一个词"
+        },
+        {
+          "id": "E4-30",
+          "loc": "右键菜单",
+          "orig": "拓展表情包时长",
+          "prop": "延长表情包",
+          "final": "延长表情包",
+          "status": "approved",
+          "note": ""
+        },
+        {
+          "id": "E4-31",
+          "loc": "右键菜单",
+          "orig": "从颜色组中脱离",
+          "prop": "移出颜色组",
+          "final": "移出颜色组",
+          "status": "approved",
+          "note": ""
+        },
+        {
+          "id": "E4-32",
+          "loc": "右键菜单",
+          "orig": "高级操作 / 字词转为独立字幕… / 转为叠加字幕",
+          "prop": "高级操作 / 字词拆成字幕… / 转为叠加字幕",
+          "final": "高级操作 / 字词拆成字幕… / 转为叠加字幕",
+          "status": "approved",
+          "note": "「叠加」按 D2b 保留；只改「字词转为独立字幕」"
+        },
+        {
+          "id": "E4-33",
+          "loc": "右键菜单",
+          "orig": "添加空隙 / 填充区间空隙 / 清理空隙",
+          "prop": null,
+          "final": "添加空隙 / 填充区间空隙 / 清理空隙",
+          "status": "keep",
+          "note": "「填充区间空隙」曾提议「合并为空隙」；含义微妙，未确认先保留"
+        },
+        {
+          "id": "E4-34",
+          "loc": "右键菜单",
+          "orig": "启用此条 / 禁用此条 / 启用选中 / 禁用选中",
+          "prop": null,
+          "final": "启用此条 / 禁用此条 / 启用选中 / 禁用选中",
+          "status": "keep",
+          "note": ""
+        },
+        {
+          "id": "E4-35",
+          "loc": "帮助窗导航",
+          "orig": "基础操作 / 快捷操作 / 波形区 / 播放与导航 / 微调字幕 / 空隙操作 / 批量操作",
+          "prop": null,
+          "final": "基础操作 / 快捷操作 / 波形区 / 播放与导航 / 微调字幕 / 空隙操作 / 批量操作",
+          "status": "keep",
+          "note": ""
+        },
+        {
+          "id": "E4-36",
+          "loc": "列表工具栏按钮",
+          "orig": "🎨（按颜色过滤按钮）",
+          "prop": "颜色",
+          "final": "🎨（按颜色过滤按钮）",
+          "status": "keep",
+          "note": "emoji 按 D4 改为文字按钮"
+        },
+        {
+          "id": "E4-37",
+          "loc": "ASS 实际画面窗",
+          "orig": "📷 ASS 实际画面 / 📷 渲染当前帧",
+          "prop": "ASS 实际画面 / 渲染当前帧",
+          "final": "📷 ASS 实际画面 / 📷 渲染当前帧",
+          "status": "keep",
+          "note": "emoji 按 D4 去掉"
+        },
+        {
+          "id": "E4-38",
+          "loc": "零散装饰图标",
+          "orig": "🦊 等零散 emoji 图标（表情包入口等）",
+          "prop": "统一替换为文字标签或去除",
+          "final": "统一替换为文字标签或去除",
+          "status": "approved",
+          "note": "实现时全库扫描装饰性 emoji，逐个核对"
+        }
+      ]
+    },
+    {
+      "id": "X",
+      "app": "通用",
+      "title": "现存不一致（顺手修）",
+      "rows": [
+        {
+          "id": "X-01",
+          "loc": "Launcher 设置入口",
+          "orig": "按钮叫「设置」，弹窗标题却叫「配置」",
+          "prop": "统一为「设置」",
+          "final": "统一为「设置」",
+          "status": "approved",
+          "note": "同 L4-01"
+        },
+        {
+          "id": "X-02",
+          "loc": "Editor 帮助引用",
+          "orig": "帮助里写「🔧 设置 → 拆分与合并」，实际按钮是「⚙️ 全局设置」",
+          "prop": "统一为「全局设置 → 拆分合并」的说法",
+          "final": "统一为「全局设置 → 拆分合并」的说法",
+          "status": "approved",
+          "note": "含 onboarding 同类引用；emoji 按 D4 同步去掉；「拆分合并」随 E3-05"
+        },
+        {
+          "id": "X-03",
+          "loc": "Editor 导出子菜单",
+          "orig": "去空隙菜单叫「OpenTimelineIO」，更多导出里叫「OTIO」",
+          "prop": "统一为「OTIO」",
+          "final": "统一为「OTIO」",
+          "status": "approved",
+          "note": "同 E1-10"
+        },
+        {
+          "id": "X-04",
+          "loc": "Launcher 内部术语",
+          "orig": "「服务器媒体」「启动 Server 版字幕编辑器」",
+          "prop": "「媒体文件（可选）」「打开编辑器」",
+          "final": "「媒体文件（可选）」「打开编辑器」",
+          "status": "approved",
+          "note": "同 L1-35 / L1-39"
+        },
+        {
+          "id": "X-05",
+          "loc": "Editor 设置窗口",
+          "orig": "aria 名称「MAWE 设置」与可见标题「全局设置」不一致",
+          "prop": "统一为「全局设置」",
+          "final": "统一为「全局设置」",
+          "status": "approved",
+          "note": ""
+        }
+      ]
+    }
+  ]
+}

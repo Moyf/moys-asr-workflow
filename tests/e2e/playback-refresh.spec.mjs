@@ -7,8 +7,7 @@ import {
   generateProjectJson,
   generateWav,
   makeTempDir,
-  startServer,
-} from './helpers.mjs';
+  startServer, closeSettingsPanels, openSettingsPage } from './helpers.mjs';
 
 let tempDir;
 let server;
@@ -124,7 +123,7 @@ test('playback follows the playhead within the visible multi-row waveform', asyn
 test('video preview tab owns preview toggles and playback controls', async ({ page }) => {
   await page.goto(server.url);
   await page.locator('#editor-settings-toggle').click();
-  await expect(page.locator('#editor-settings-tab-subtitle-preview')).toHaveText('视频预览');
+  await expect(page.locator('#editor-settings-tab-subtitle-preview')).toHaveText('播放预览');
 
   const structure = await page.evaluate(() => ({
     controlsParent: document.getElementById('playback-controls-title')?.parentElement?.id,
@@ -144,14 +143,14 @@ test('video preview tab owns preview toggles and playback controls', async ({ pa
     pagesAreSiblings: true,
   });
 
-  await page.locator('#editor-settings-tab-subtitle-preview').click();
+  await openSettingsPage(page, 'subtitle-preview');
   await expect(page.locator('#editor-settings-page-subtitle-preview')).toBeVisible();
   await expect(page.locator('#playback-controls-title')).toBeVisible();
   await expect(page.locator('#overlay-toggle')).toBeVisible();
   await expect(page.locator('#hover-seek-preview')).toBeVisible();
   await expect(page.locator('#jkl-playback-mode')).toBeVisible();
 
-  await page.locator('#editor-settings-tab-general').click();
+  await openSettingsPage(page, 'general');
   await expect(page.locator('#playback-controls-title')).toBeHidden();
   await expect(page.locator('#jkl-playback-mode')).toBeHidden();
 });
@@ -174,7 +173,7 @@ test('settings and help navigation scroll independently when panels are short', 
   expect(settingsNavState).toEqual({ overflowY: 'auto', overflowX: 'hidden', canScroll: true });
   await settingsNav.evaluate((element) => { element.scrollTop = element.scrollHeight; });
   expect(await settingsNav.evaluate((element) => element.scrollTop)).toBeGreaterThan(0);
-  await page.locator('#editor-settings-close').click();
+  await closeSettingsPanels(page);
 
   await page.locator('#help-toggle').click();
   const helpPanel = page.locator('#help-panel');
@@ -201,7 +200,7 @@ test('JKL direction mode drives the timeline backward and forward', async ({ pag
   });
 
   await page.locator('#editor-settings-toggle').click();
-  await page.locator('#editor-settings-tab-subtitle-preview').click();
+  await openSettingsPage(page, 'subtitle-preview');
   await expect(page.locator('#jkl-playback-mode')).toHaveValue('direction');
   await expect(page.locator('#jkl-playback-mode-hint')).toContainText('J 倒放');
 
@@ -253,7 +252,7 @@ test('JKL direction mode drives the timeline backward and forward', async ({ pag
   await page.keyboard.press('k');
   await expect(page.locator('#editor-settings-panel')).toBeVisible();
   await page.locator('#jkl-playback-mode').selectOption('speed');
-  await page.locator('#editor-settings-close').click();
+  await closeSettingsPanels(page);
   await page.keyboard.press('j');
   await expect.poll(() => page.evaluate(() => document.getElementById('player').playbackRate)).toBe(0.5);
 });

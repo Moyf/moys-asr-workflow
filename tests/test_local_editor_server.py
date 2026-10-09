@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from tests.compact_assertions import CompactContainerAssertions
+
 import base64
 import importlib.util
 import io
@@ -48,7 +50,7 @@ def _write_reapeaks_for(media_path: Path) -> Path:
     return path
 
 
-class LocalEditorServerTests(unittest.TestCase):
+class LocalEditorServerTests(CompactContainerAssertions, unittest.TestCase):
     def test_open_backup_folder_is_bound_and_requires_token(self) -> None:
         handler = object.__new__(server_editor.EditorRequestHandler)
         handler.server = mock.Mock()
@@ -588,10 +590,11 @@ class LocalEditorServerTests(unittest.TestCase):
 
         page = server_editor.build_server_page(project).decode("utf-8")
 
-        self.assertIn('let FILENAME_BASE = "subtitles-only";', page)
+        self.assertIn('"subtitles-only"', page)
+        self.assertNotIn('__FILENAME_BASE_JSON__', page)
         self.assertIn('id="json-name" title="点击复制工程文件名">subtitles-only.mosp</span>', page)
         self.assertNotIn('class="json-name empty"', page)
-        self.assertIn('id="media-name" title="">未加载媒体</span>', page)
+        self.assertIn('id="media-name" title="">未导入媒体</span>', page)
         self.assertIn('"canSave": true', page)
 
     def test_startup_page_shows_project_loading_overlay_before_javascript_runs(self) -> None:
@@ -842,9 +845,11 @@ class LocalEditorServerTests(unittest.TestCase):
         settings = server_editor.remember_project(server_editor.ServerSettings(), self.project_path)
         page = server_editor.build_server_page(project, settings).decode("utf-8")
         self.assertIn('src="/media"', page)
-        self.assertIn('let STICKER_URL_PREFIX = "/stickers";', page)
-        self.assertIn('const NINJA_SFX_BASE_URL = "/sfx/";', page)
-        self.assertIn('const SERVER_CONFIG = {"saveUrl": "/api/project", ', page)
+        self.assertIn('"/stickers"', page)
+        self.assertIn('"/sfx/"', page)
+        self.assertIn('{"saveUrl": "/api/project", ', page)
+        for token in ('__STICKER_URL_PREFIX_JSON__', '__NINJA_SFX_BASE_URL_JSON__', '__SERVER_CONFIG_JSON__'):
+            self.assertNotIn(token, page)
         self.assertNotIn('createUrl', page)
         self.assertIn('"requestToken": "", "stickerRootUrl": "/api/stickers/root", ', page)
         self.assertIn('"portableStickerExportUrl": "/api/exports/sticker-otio", ', page)
@@ -856,7 +861,7 @@ class LocalEditorServerTests(unittest.TestCase):
         self.assertIn('"settingsUrl": "/api/settings", "recentProjects": [{"path": "', page)
         self.assertIn('"name": "clip.json"}], "assStylesUrl": "/api/ass-styles", "assFrameUrl": "/api/ass-frame", "autoOpenLastProject": true, "savedWorkspaces": {}, ', page)
         self.assertIn('"presetWorkspaces": {}, ', page)
-        self.assertIn('"activeWorkspaceName": "", "onboardingStatus": ""};', page)
+        self.assertIn('"activeWorkspaceName": "", "onboardingStatus": ""}', page)
         completed_page = server_editor.build_server_page(
             project,
             server_editor.replace(settings, onboarding_status="completed"),
@@ -868,8 +873,9 @@ class LocalEditorServerTests(unittest.TestCase):
         self.assertIn('id="open-project-dropdown"', page)
         self.assertIn('id="load-srt"', page)
         self.assertIn('id="load-srt-file"', page)
-        self.assertIn('function parseSrtSegments(text)', page)
-        self.assertIn('function isMawProject(data)', page)
+        source = "\n\n".join(server_editor.edit.read_web_asset(name) for name in server_editor.edit.read_editor_script_manifest())
+        self.assertIn('function parseSrtSegments(text)', source)
+        self.assertIn('function isMawProject(data)', source)
         self.assertIn('请使用 MAW 生成的工程文件', page)
 
         self.assertIn('id="server-auto-save-settings"', page)
@@ -878,19 +884,19 @@ class LocalEditorServerTests(unittest.TestCase):
         self.assertIn('id="auto-save-interval"', page)
         self.assertIn('id="project-backup-enabled"', page)
         self.assertIn('id="project-backup-enabled" checked', page)
-        self.assertIn('> 备份工程</label>', page)
+        self.assertIn('> 自动备份</label>', page)
         self.assertLess(page.index('id="editor-settings-page-export"'), page.index('id="server-auto-save-settings"'))
         self.assertLess(page.index('id="server-auto-save-settings"'), page.index('id="project-backup-settings"'))
-        self.assertIn('function scheduleAutoSave()', page)
-        self.assertIn('hasUnsavedProjectChanges() && !projectSaveInFlight', page)
+        self.assertIn('function scheduleAutoSave()', source)
+        self.assertIn('hasUnsavedProjectChanges() && !projectSaveInFlight', source)
         self.assertIn('id="recent-projects"', page)
         self.assertIn('id="auto-open-last-project"', page)
         self.assertLess(page.index('id="auto-open-last-project"'), page.index('id="recent-projects-list"'))
-        self.assertIn("const STORAGE_KEY = 'mawe.language';", page)
+        self.assertIn("const STORAGE_KEY = 'mawe.language';", source)
         self.assertIn('class="waveform-mode-switch"', page)
         self.assertIn('data-saved-workspaces', page)
         self.assertIn('id="workspace-save-as"', page)
-        self.assertIn('function configureServerWorkspaceLibrary()', page)
+        self.assertIn('function configureServerWorkspaceLibrary()', source)
 
         with server_editor.EditorServer(("127.0.0.1", 0), project) as server:
             thread = threading.Thread(target=server.serve_forever, daemon=True)
@@ -936,6 +942,13 @@ class LocalEditorServerTests(unittest.TestCase):
                 self.assertEqual(status, 403)
                 self.assertFalse(result["ok"])
                 self.assertEqual(server.project.sticker_root, original_root)
+                status, result = post({"requestToken": server.request_token, "path": str(alternate), "activate": False})
+                self.assertEqual(status, 200)
+                self.assertEqual(result["count"], 1)
+                self.assertEqual(server.project.sticker_root, original_root)
+                status, result = post({"requestToken": server.request_token, "path": str(alternate), "activate": "false"})
+                self.assertEqual(status, 400)
+                self.assertEqual(server.project.sticker_root, original_root)
                 status, result = post({"requestToken": server.request_token, "path": str(self.root / "missing")})
                 self.assertEqual(status, 400)
                 self.assertFalse(result["ok"])
@@ -945,6 +958,11 @@ class LocalEditorServerTests(unittest.TestCase):
                 self.assertEqual(result["root"], alternate.as_posix())
                 self.assertEqual(result["count"], 1)
                 self.assertEqual(result["stickers"][0]["rel"], "new.png")
+                status, result = post({"requestToken": server.request_token, "path": ""})
+                self.assertEqual(status, 200)
+                self.assertEqual(result["root"], "")
+                self.assertEqual(result["stickers"], [])
+                self.assertIsNone(server.project.sticker_root)
             finally:
                 server.shutdown()
                 thread.join(timeout=2)

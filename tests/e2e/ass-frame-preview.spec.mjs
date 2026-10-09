@@ -3,7 +3,7 @@ import { execFileSync } from 'node:child_process';
 import { writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { cleanupTempDir, disableOnboarding, findFreePort, generateWaveformPayload,
-  makeTempDir, startServer } from './helpers.mjs';
+  makeTempDir, startServer, closeSettingsPanels, openSettingsPage } from './helpers.mjs';
 
 let tempDir;
 let server;
@@ -29,19 +29,19 @@ async function enableAss(page) {
   await disableOnboarding(page);
   await page.goto(server.url);
   await expect.poll(() => page.evaluate(() => window.MaweCoreState?.player?.videoWidth)).toBe(640);
-  await page.locator('#editor-settings-toggle').click();
-  await page.locator('#editor-settings-tab-subtitle-style').click();
+  await openSettingsPage(page, 'subtitle-style');
+  await openSettingsPage(page, 'subtitle-style');
   await page.locator('#ass-mode-toggle').check();
-  await page.locator('#editor-settings-close').click();
+  await closeSettingsPanels(page);
 }
 
 async function enableStage(page) {
   // 暂停叠加实际帧是窗口内开关且默认关闭；舞台相关断言先打开它。
-  await page.locator('#editor-settings-toggle').click();
+  await openSettingsPage(page, 'subtitle-style');
   await page.locator('#ass-frame-preview-open').click();
   await page.locator('#ass-frame-stage-toggle').check();
   await page.locator('#ass-frame-window-close').click();
-  await page.locator('#editor-settings-close').click();
+  await closeSettingsPanels(page);
 }
 
 async function seek(page, seconds) {
@@ -57,9 +57,9 @@ test('only auto-renders while the comparison window or stage overlay needs a fra
   // Cover the render timer: neither consumer is visible by default.
   await page.waitForTimeout(350);
   expect(requests).toBe(0);
-  await page.locator('#editor-settings-toggle').click();
+  await openSettingsPage(page, 'subtitle-style');
   await page.locator('#ass-frame-preview-open').click();
-  await page.locator('#editor-settings-close').click();
+  await closeSettingsPanels(page);
   await expect(page.locator('#ass-frame-image')).toBeVisible();
   await expect(page.locator('#ass-frame-window-status')).toHaveText('渲染完成');
   await page.locator('#ass-frame-window-close').click();
@@ -71,14 +71,14 @@ test('only auto-renders while the comparison window or stage overlay needs a fra
   });
   await page.waitForTimeout(350);
   expect(requests).toBe(before);
-  await page.locator('#editor-settings-toggle').click();
+  await openSettingsPage(page, 'subtitle-style');
   await page.locator('#ass-frame-preview-open').click();
   await expect(page.locator('#ass-frame-caption')).toContainText('00:02.000');
   await expect.poll(() => requests).toBeGreaterThan(before);
   await expect(page.locator('#ass-frame-stale')).toBeHidden();
   await page.locator('#ass-frame-stage-toggle').check();
   await page.locator('#ass-frame-window-close').click();
-  await page.locator('#editor-settings-close').click();
+  await closeSettingsPanels(page);
   await seek(page, 2.5);
   await expect(page.locator('#ass-stage-frame')).toBeVisible();
   await expect(page.locator('#ass-stage-frame')).toHaveAttribute('data-time-ms', '2500');
@@ -89,7 +89,7 @@ test('manual frames remain current through unchanged preview refreshes', async (
   await page.route('**/api/ass-frame', async (route) => { requests += 1; await route.continue(); });
   await enableAss(page);
   await seek(page, 1.5);
-  await page.locator('#editor-settings-toggle').click();
+  await openSettingsPage(page, 'subtitle-style');
   await page.locator('#ass-frame-preview-open').click();
   await expect(page.locator('#ass-frame-window-status')).toHaveText('渲染完成');
   await page.locator('#ass-frame-auto-toggle').uncheck();
@@ -124,7 +124,7 @@ test('style preview opens the actual frame window and displays each missing char
     await route.fulfill({ response, json: { ...payload, warnings: [warning, warning] } });
   });
   await enableAss(page);
-  await page.locator('#editor-settings-toggle').click();
+  await openSettingsPage(page, 'subtitle-style');
   await page.locator('#ass-style-manager-open').click();
   await page.locator('#ass-style-list [data-ass-selection-id="ass"]').click();
   const button = page.locator('#ass-style-frame-preview-open');
@@ -168,7 +168,7 @@ test('style preview opens the actual frame window and displays each missing char
   await page.locator('#ass-frame-window-close').click();
   await page.locator('#ass-style-window-close').click();
   await page.locator('#ass-frame-preview-open').click();
-  await page.locator('#editor-settings-close').click();
+  await closeSettingsPanels(page);
   await editLink.focus();
   await editLink.press('Enter');
   await expect(page.locator('#ass-style-window')).toBeVisible();
@@ -209,10 +209,10 @@ test('paused video uses native libass, updates after edits, and falls back immed
   await expect(page.locator('#ass-stage-status')).toHaveText('ASS 即时预览');
   await page.evaluate(() => window.MaweCoreState.player.pause());
   await expect(frame).toBeVisible();
-  await page.locator('#editor-settings-toggle').click();
-  await page.locator('#editor-settings-tab-subtitle-style').click();
+  await openSettingsPage(page, 'subtitle-style');
+  await openSettingsPage(page, 'subtitle-style');
   await page.locator('#ass-frame-preview-open').click();
-  await page.locator('#editor-settings-close').click();
+  await closeSettingsPanels(page);
   await expect(page.locator('#ass-frame-image')).toBeVisible();
   await expect(page.locator('#ass-frame-caption')).toContainText('640 × 360');
   const spacing = await page.evaluate(() => {
@@ -232,9 +232,9 @@ test('paused video uses native libass, updates after edits, and falls back immed
 test('expands the preview on resize and keeps controls compact with Escape closing', async ({ page }) => {
   await page.setViewportSize({ width: 1800, height: 1400 });
   await enableAss(page);
-  await page.locator('#editor-settings-toggle').click();
+  await openSettingsPage(page, 'subtitle-style');
   await page.locator('#ass-frame-preview-open').click();
-  await page.locator('#editor-settings-close').click();
+  await closeSettingsPanels(page);
   const panel = page.locator('#ass-frame-window');
   await expect(page.locator('#ass-frame-image')).toBeVisible();
   await panel.evaluate((element) => Object.assign(element.style, { width: '1600px', height: '600px', left: '20px', top: '20px' }));
@@ -277,7 +277,7 @@ test('expands the preview on resize and keeps controls compact with Escape closi
   expect((await measure()).paintedHeight).toBeCloseTo(after.paintedHeight, 1);
   await page.keyboard.press('Escape');
   await expect(panel).toBeHidden();
-  await page.locator('#editor-settings-toggle').click();
+  await openSettingsPage(page, 'subtitle-style');
   await page.locator('#ass-frame-preview-open').click();
   await expect(panel).toBeVisible();
 });
@@ -296,7 +296,7 @@ test('old responses cannot overwrite a new seek and failures keep CSS usable', a
   await seek(page, 1.5);
   release();
   await expect(page.locator('#ass-stage-frame')).toBeVisible();
-  await page.locator('#editor-settings-toggle').click();
+  await openSettingsPage(page, 'subtitle-style');
   await page.locator('#ass-frame-preview-open').click();
   await expect(page.locator('#ass-frame-caption')).toContainText('00:01.500');
   await page.unroute('**/api/ass-frame');
@@ -342,9 +342,9 @@ test('auto-renders a new seek while preview refreshes keep arriving', async ({ p
   const times = [];
   await page.route('**/api/ass-frame', async (route) => { times.push(route.request().postDataJSON().timeMs); await route.continue(); });
   await enableAss(page);
-  await page.locator('#editor-settings-toggle').click();
+  await openSettingsPage(page, 'subtitle-style');
   await page.locator('#ass-frame-preview-open').click();
-  await page.locator('#editor-settings-close').click();
+  await closeSettingsPanels(page);
   await expect(page.locator('#ass-frame-image')).toBeVisible();
   const before = await page.locator('#ass-frame-image').getAttribute('src');
   await page.evaluate(() => {
@@ -539,14 +539,14 @@ test('manual capture during playback keeps the clicked frame and marks it stale'
   await enableStage(page);
   await seek(page, 1.5);
   await expect(page.locator('#ass-stage-frame')).toBeVisible();
-  await page.locator('#editor-settings-toggle').click();
-  await page.locator('#editor-settings-tab-subtitle-style').click();
+  await openSettingsPage(page, 'subtitle-style');
+  await openSettingsPage(page, 'subtitle-style');
   await page.locator('#ass-frame-preview-open').click();
   await expect(page.locator('#ass-frame-image')).toBeVisible();
   // 手动模式：关闭自动渲染，让「渲染当前帧」成为唯一更新入口。
   await page.locator('#ass-frame-auto-toggle').uncheck();
   await expect(page.locator('#ass-frame-render')).toBeVisible();
-  await page.locator('#editor-settings-close').click();
+  await closeSettingsPanels(page);
   await page.evaluate(() => window.MaweCoreState.player.play());
   await expect(page.locator('#ass-stage-frame')).toBeHidden();
   let clickedTime;
@@ -573,7 +573,7 @@ test('stage overlay defaults to off while auto rendering defaults to on', async 
   await expect(page.locator('#ass-stage-frame')).toBeHidden();
   await expect(page.locator('#ass-stage-status')).toBeHidden();
   await expect(page.locator('#overlay')).toHaveCSS('visibility', 'visible');
-  await page.locator('#editor-settings-toggle').click();
+  await openSettingsPage(page, 'subtitle-style');
   await page.locator('#ass-frame-preview-open').click();
   await expect(page.locator('#ass-frame-stage-toggle')).toBeVisible();
   await expect(page.locator('#ass-frame-auto-toggle')).toBeChecked();

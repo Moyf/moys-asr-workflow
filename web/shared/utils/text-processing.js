@@ -1,5 +1,5 @@
 // text-processing: private helpers; dependencies are injected by editor-utils.js.
-window.MAWE.register('utils-text-processing', function createUtilsModule(dependencies) {
+export function createUtilsModule(dependencies) {
   'use strict';
 
 
@@ -130,13 +130,16 @@ window.MAWE.register('utils-text-processing', function createUtilsModule(depende
   // 「左右添加字符」预设：主字幕右键菜单与批量面板共用同一张数据表，便于后续加项。
   // 一律使用双符号形式；「单双符号」设置只影响识别/解析，不影响这里插入的内容。
   const WRAP_CHAR_PRESETS = Object.freeze([
-    { id: 'emphasis', label: '强调文本', left: '**', right: '**' },
-    { id: 'large', label: '放大文本', left: '++', right: '++' },
-    { id: 'small', label: '缩小文本', left: '--', right: '--' },
-    { id: 'underline', label: '下划线', left: '__', right: '__' },
-    { id: 'strike', label: '删除线', left: '~~', right: '~~' },
-    { id: 'fade', label: '淡出淡入', left: '>>', right: '<<' },
+    // ass: true 的预设是 ASS 特殊文本格式，仅在当前工程启用 ASS 字幕模式时展示。
+    { id: 'emphasis', label: '强调文本', left: '**', right: '**', ass: true },
+    { id: 'large', label: '放大文本', left: '++', right: '++', ass: true },
+    { id: 'small', label: '缩小文本', left: '--', right: '--', ass: true },
+    { id: 'underline', label: '下划线', left: '__', right: '__', ass: true },
+    { id: 'strike', label: '删除线', left: '~~', right: '~~', ass: true },
+    { id: 'fade', label: '淡出淡入', left: '>>', right: '<<', ass: true },
     { id: 'note', label: '音符', left: '♪', right: '♪' },
+    { id: 'music', label: '双音符', left: '♬', right: '♬' },
+    { id: 'bracket', label: '中括号', left: '[', right: ']' },
   ]);
 
 
@@ -171,4 +174,4 @@ window.MAWE.register('utils-text-processing', function createUtilsModule(depende
     isTextWrappedBy,
     wrapCharsAroundText,
   });
-});
+}

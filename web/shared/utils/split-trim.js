@@ -1,5 +1,5 @@
 // split-trim: private helpers; dependencies are injected by editor-utils.js.
-window.MAWE.register('utils-split-trim', function createUtilsModule(dependencies) {
+export function createUtilsModule(dependencies) {
   'use strict';
 
   // 拆分边界符号修剪配置：勾选/填写的符号会在拆分后从两侧文本边缘移除。
@@ -96,4 +96,4 @@ window.MAWE.register('utils-split-trim', function createUtilsModule(dependencies
   }
 
   return Object.freeze({ DEFAULT_EXTRA_SPLIT_TRIM_SYMBOLS, DEFAULT_SPLIT_TRIM_SYMBOLS, SPLIT_TRIM_PRIMARY_SYMBOLS, applySplitEdgeTrim, cleanSplitTextParts, escapeSplitTrimPatternSource, normalizeSplitTrimSymbols, parseSplitTrimSymbolInput, setSplitTrimSymbols });
-});
+}

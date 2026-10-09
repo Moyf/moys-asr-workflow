@@ -455,7 +455,7 @@ class PostprocessPipelineTests(unittest.TestCase):
         self.assertEqual(error.category, "provider_response")
         self.assertEqual(error.status_code, 400)
         self.assertEqual(error.diagnostic, "invalid request")
-        self.assertIn("后处理步骤 translate 失败", str(error))
+        self.assertIn("处理步骤 translate 失败", str(error))
         self.assertIn("HTTP 400", str(error))
 
     def test_translation_merge_publishes_one_track_and_keeps_translation_intermediate(self) -> None:

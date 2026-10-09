@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import base64
 import math
+import struct
 import subprocess
 import sys
 from array import array
@@ -151,8 +152,27 @@ def waveform_matches_media(
     return value.get("source") == media_signature(media_path)
 
 
-
-
+def parse_ffmpeg_wav_header(header: bytes) -> tuple[int, int, int] | None:
+    """Return (channels, sample_rate, data_offset) from an FFmpeg WAV pipe."""
+    if len(header) < 12 or header[:4] != b"RIFF" or header[8:12] != b"WAVE":
+        return None
+    channels = 0
+    sample_rate = 0
+    offset = 12
+    while offset + 8 <= len(header):
+        chunk_id = header[offset : offset + 4]
+        size = struct.unpack_from("<I", header, offset + 4)[0]
+        if chunk_id == b"fmt ":
+            if offset + 16 > len(header):
+                return None
+            channels = struct.unpack_from("<H", header, offset + 10)[0]
+            sample_rate = struct.unpack_from("<I", header, offset + 12)[0]
+        elif chunk_id == b"data":
+            if channels <= 0 or sample_rate <= 0:
+                return None
+            return channels, sample_rate, offset + 8
+        offset += 8 + size + (size & 1)
+    return None
 
 
 def _quantize_sample(value: int) -> int:
@@ -173,13 +193,15 @@ def extract_waveform(
     *,
     peaks_per_second: int = DEFAULT_PEAKS_PER_SECOND,
     pcm_sample_rate: int | None = None,
+    preserve_channels: bool = True,
     ffmpeg_bin: str | None = None,
     audio_track: int = 0,
 ) -> dict[str, Any]:
-    """Stream a mono PCM envelope from FFmpeg without retaining decoded audio.
+    """Stream a low-rate PCM envelope without retaining decoded audio.
 
     At the default 100 peaks/second, three hours of audio produces about
     2.9 MiB of base64 data while extraction memory remains effectively flat.
+    The legacy mono path remains available for comparisons.
     """
     media_path = Path(media_path).resolve()
     if not media_path.is_file():
@@ -201,8 +223,6 @@ def extract_waveform(
     if not ffmpeg:
         raise WaveformError("找不到 ffmpeg，无法预生成波形")
 
-    bucket_samples = max(1, round(pcm_sample_rate / peaks_per_second))
-    actual_peaks_per_second = round(pcm_sample_rate / bucket_samples)
     command = [
         ffmpeg,
         "-nostdin",
@@ -214,14 +234,15 @@ def extract_waveform(
         "-map",
         f"0:a:{audio_track}",
         "-vn",
-        "-ac",
-        "1",
-        "-ar",
-        str(pcm_sample_rate),
-        "-f",
-        "s16le",
-        "pipe:1",
     ]
+    if preserve_channels:
+        command.extend(
+            ("-ar", str(pcm_sample_rate), "-acodec", "pcm_s16le", "-f", "wav", "pipe:1")
+        )
+    else:
+        command.extend(
+            ("-ac", "1", "-ar", str(pcm_sample_rate), "-f", "s16le", "pipe:1")
+        )
     try:
         process = subprocess.Popen(
             command,
@@ -233,23 +254,45 @@ def extract_waveform(
 
     assert process.stdout is not None
     assert process.stderr is not None
+    if preserve_channels:
+        header = process.stdout.read(4096)
+        parsed = parse_ffmpeg_wav_header(header)
+        if parsed is None:
+            if process.poll() is None:
+                process.kill()
+            process.wait()
+            stderr = process.stderr.read().decode("utf-8", errors="replace").strip()
+            process.stdout.close()
+            process.stderr.close()
+            raise WaveformError(stderr or "FFmpeg 返回的 WAV 头无法解析")
+        channels, sample_rate, data_offset = parsed
+        first_chunk = header[data_offset:]
+    else:
+        channels, sample_rate = 1, pcm_sample_rate
+        first_chunk = b""
+    bucket_frames = max(1, round(sample_rate / peaks_per_second))
+    bucket_samples = bucket_frames * channels
+    actual_peaks_per_second = round(sample_rate / bucket_frames)
+    frame_bytes = channels * 2
     encoded = bytearray()
     byte_carry = b""
     sample_carry = array("h")
-    total_samples = 0
+    total_frames = 0
 
+    chunk = first_chunk
     while True:
-        chunk = process.stdout.read(64 * 1024)
+        if not chunk:
+            chunk = process.stdout.read(64 * 1024)
         if not chunk:
             break
         raw = byte_carry + chunk
-        even_length = len(raw) - (len(raw) % 2)
-        byte_carry = raw[even_length:]
+        complete_bytes = len(raw) - (len(raw) % frame_bytes)
+        byte_carry = raw[complete_bytes:]
         values = array("h")
-        values.frombytes(raw[:even_length])
+        values.frombytes(raw[:complete_bytes])
         if sys.byteorder != "little":
             values.byteswap()
-        total_samples += len(values)
+        total_frames += len(values) // channels
         if sample_carry:
             sample_carry.extend(values)
             values = sample_carry
@@ -257,6 +300,7 @@ def extract_waveform(
         for offset in range(0, complete_length, bucket_samples):
             _append_bucket(encoded, values[offset : offset + bucket_samples])
         sample_carry = array("h", values[complete_length:])
+        chunk = b""
 
     if sample_carry:
         _append_bucket(encoded, sample_carry)
@@ -271,15 +315,15 @@ def extract_waveform(
         raise WaveformError("ffmpeg 返回了不完整的 PCM 数据")
 
     peak_count = len(encoded) // 2
-    duration_ms = round(total_samples * 1000 / pcm_sample_rate)
+    duration_ms = round(total_frames * 1000 / sample_rate)
     return {
         "schema": WAVEFORM_SCHEMA,
         "encoding": WAVEFORM_ENCODING,
         "peaks_per_second": actual_peaks_per_second,
         # bin i covers [i * division / sample_rate, (i + 1) * ...): the exact
         # pair, so consumers never have to rely on the rounded rate above.
-        "sample_rate": pcm_sample_rate,
-        "division": bucket_samples,
+        "sample_rate": sample_rate,
+        "division": bucket_frames,
         "peak_count": peak_count,
         "duration_ms": duration_ms,
         "data": base64.b64encode(encoded).decode("ascii"),

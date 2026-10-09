@@ -1,3 +1,19 @@
+.word-conversion-dialog {
+  width: min(560px, calc(100vw - 32px)); max-height: 80vh; overflow: auto;
+  padding: 24px; box-sizing: border-box; border: 1px solid var(--border);
+  border-radius: 12px; background: var(--bg-panel); color: var(--text-primary);
+}
+.word-conversion-dialog::backdrop { background: rgba(0, 0, 0, 0.55); }
+.word-conversion-dialog h3 { margin: 0; }
+.word-conversion-dialog p, .word-conversion-dialog ul { margin: 16px 0 0; line-height: 1.6; }
+.word-conversion-dialog ul:empty { display: none; }
+.word-conversion-actions { display: flex; justify-content: flex-end; gap: 12px; margin-top: 20px; }
+.word-conversion-actions .danger:not(:disabled) { color: var(--red); border-color: var(--red); }
+/* 「高级操作」点击展开式二级菜单：外层为菜单行，内层列表承载低频动作按钮。 */
+.word-timing-advanced { cursor: default; display: block; }
+.word-timing-advanced > .item { background: none; }
+.word-timing-advanced-list button.item { width: 100%; text-align: left; }
+.toolbar.waveform-toolbar > .word-timing-toggle { flex: 0 0 auto; white-space: nowrap; margin-bottom: 2px; }
   /* ============================================================
      MAWE 设计令牌系统
      单一真源：所有颜色、圆角、阴影、动效均由此处派生。
@@ -1040,8 +1056,18 @@
   .cue-editor-settings-display-group .settings-panel-item {
     white-space: nowrap;
   }
+  .multi-subtitle-settings-menu { max-height: min(620px, calc(100vh - 110px)); overflow-y: auto; }
+  .multi-subtitle-settings-section { box-sizing: border-box; }
+  .multi-subtitle-settings-section + .multi-subtitle-settings-section { margin-top: 8px; }
+  .multi-subtitle-settings-section .settings-panel-title { text-align: left; }
+  .multi-subtitle-settings-section .multi-subtitle-setting-row,
+  .multi-subtitle-settings-section .multi-subtitle-setting-toggle,
+  .multi-subtitle-settings-section .settings-panel-hint,
+  .multi-subtitle-settings-section > .dropdown-item { flex: 0 0 100%; box-sizing: border-box; margin: 0; }
+  .multi-subtitle-settings-section .multi-subtitle-setting-toggle { white-space: normal; }
   .waveform-settings-section { width: 100%; }
-  .waveform-settings-title { text-transform: none; }
+  .waveform-settings-title { text-transform: none; text-align: left; }
+  .waveform-settings-section .editor-settings-item.waveform-settings-toggle-row { flex: 0 0 100%; white-space: normal; }
   .waveform-settings-section .editor-settings-item {
     flex: 0 0 auto; color: var(--text-secondary); font-size: 12px;
   }
@@ -1186,6 +1212,7 @@
     padding-top: 8px; border-top: 1px solid var(--border-subtle);
   }
   .subtitle-speaker-labels-settings[hidden] { display: none; }
+  .subtitle-speaker-labels-settings > .subtitle-speaker-export-hint { margin-top: 1px; }
   .subtitle-speaker-label-list {
     display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 6px 8px; min-width: 0;
   }
@@ -1246,7 +1273,7 @@
   .editor-settings-window-close:focus-visible { outline: 2px solid var(--accent-line); outline-offset: 1px; }
   .editor-settings-window-body { display: flex; flex: 1 1 auto; min-height: 0; }
   .editor-settings-nav {
-    display: flex; flex: 0 0 auto; flex-direction: column; align-items: stretch; gap: 2px;
+    display: flex; flex: 0 0 auto; flex-direction: column; align-items: stretch; gap: 8px;
     width: 132px; min-height: 0; padding: 10px 8px;
     overflow-x: hidden; overflow-y: auto; overscroll-behavior: contain;
     background: var(--bg-raised); border-right: 1px solid var(--border-subtle);
@@ -1259,7 +1286,7 @@
   .editor-settings-nav-tab {
     padding: 6px 10px; text-align: left; color: var(--text-secondary); background: none;
     border: 1px solid transparent; border-radius: var(--radius-sm);
-    font-size: 13px; cursor: pointer; white-space: nowrap;
+    font-size: 13px; cursor: pointer; white-space: normal; overflow-wrap: anywhere; line-height: 1.4;
     transition: background var(--t-fast), color var(--t-fast), border-color var(--t-fast);
   }
   .editor-settings-nav-tab:hover { color: var(--text-primary); background: var(--accent-tint); }
@@ -1270,6 +1297,11 @@
   }
   .editor-settings-pages { flex: 1 1 auto; min-width: 0; padding: 10px 12px; overflow-y: auto; }
   .editor-settings-page { display: flex; flex-direction: column; gap: 8px; }
+  .editor-settings-region-card { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 12px; border: 1px solid var(--border-subtle); border-radius: var(--radius-md); }
+  .editor-settings-region-card > div { min-width: 0; }
+  .editor-settings-region-card strong { font-size: 13px; }
+  .editor-settings-region-card .editor-settings-hint { margin: 8px 0 0; }
+  .editor-settings-region-card > button { flex: 0 0 auto; }
   .editor-settings-page[hidden] { display: none; }
   .editor-settings-group {
     display: flex; flex-direction: column; align-items: stretch; gap: 16px;
@@ -1290,10 +1322,18 @@
   .editor-settings-item[hidden] { display: none; }
   .editor-settings-sub-group > label.toggle.editor-settings-item { flex: 0 0 100%; }
   .editor-settings-field {
-    display: flex; flex: 0 0 100%; flex-direction: column; align-items: flex-start; gap: 3px;
+    display: flex; flex: 0 0 100%; flex-direction: column; align-items: flex-start; gap: 8px;
     min-width: 0;
   }
+  #editor-settings-page-general .editor-settings-field,
+  #editor-settings-page-subtitle-preview .editor-settings-field,
+  #editor-settings-page-export .editor-settings-field { gap: 8px; }
   .editor-settings-field[hidden] { display: none; }
+  .sticker-root-controls { display: flex; flex: 0 0 100%; gap: 8px; min-width: 0; }
+  .editor-settings-panel .sticker-root-controls input[type="text"] { flex: 1 1 auto; width: auto; min-width: 0; }
+  .sticker-root-controls button { flex: 0 0 auto; }
+  #editor-settings-page-project-tracks .editor-settings-item { white-space: normal; }
+  .multi-subtitle-setting-row[hidden] { display: none; }
   .editor-settings-field > .editor-settings-item { width: auto; }
   .editor-settings-field > label.toggle.editor-settings-item { align-self: stretch; width: 100%; }
   .editor-settings-field > .editor-settings-hint { margin: 0; }
@@ -1902,6 +1942,7 @@
   .ass-manager-open-row .ass-frame-preview-open:not([hidden]) { margin-left: 12px; }
   .ass-frame-window {
     width: min(640px, calc(100vw - 24px));
+    height: min(560px, calc(100vh - 24px));
     min-width: min(480px, calc(100vw - 24px));
     min-height: 240px;
     background: var(--bg-panel);
@@ -3106,15 +3147,6 @@
     display: block;
     width: 100%;
     min-width: 0;
-  }
-  /* 从全局设置窗口打开，必须盖住 modal-mask（460）与浮层前置栈。465 只是
-     JS 初始化前的静态兜底；浮层栈启动后由 editor.js 在打开时动态置顶
-     （见 setStickerRootModalOpen）。 */
-  #sticker-root-modal { z-index: 465; }
-  #sticker-root-modal .modal {
-    width: min(540px, calc(100vw - 32px));
-    min-width: 0;
-    max-height: calc(100dvh - 32px);
   }
   .editor-settings-hint { display: block; max-width: 100%; font-size: 12px; line-height: 1.35; color: var(--text-muted); margin: 0; }
   .editor-settings-hint[hidden] { display: none; }
