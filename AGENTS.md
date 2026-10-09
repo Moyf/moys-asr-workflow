@@ -67,6 +67,7 @@ git diff --check
 - 跑测试只保留退出码、失败用例名与首个错误行。unittest 的 `assertIn` / `assertEqual` 失败会把整个容器（内联脚本、整页 HTML，数十万字符）dump 进输出；用 `Select-String 'AssertionError'`、`grep -E '^(FAIL|ERROR|Ran|OK)'` 之类的过滤只取摘要，禁止把完整测试输出读进上下文。
 - 对页面 / 内联脚本做成员断言的测试类，继承 `tests/compact_assertions.py` 的 `CompactContainerAssertions` 混入：大容器失败信息压缩为「needle + 容器规模」，单次失败不再产生数十万字符日志（行为见 `tests/test_compact_assertions.py`）。
 - 后台长驻进程（serve.py、http.server 等）不要用会等待进程树的方式启动：优先用独立终端，或把输出重定向到文件后再以端口探活（如 `Invoke-WebRequest` 轮询），用完必须终止进程。曾发生后台 server 挂住会话 2 小时以上的事故。
+- 禁止用 bash 后台 `&`（含 `nohup ... &`）启动任何长驻进程：stdin 仍挂在会话管道上永不 EOF，即使重定向 stdout/stderr，命令工具也会等待进程树而永久阻塞（2026-10-09 `python -m http.server ... &` 事故，探活成功后仍卡死）。需要本地服务一律 paseo 独立终端启动、用完 kill；一次性验证（如本地打开生成的 HTML）优先静态校验，不起服务。
 - 已知时长：全量 Python 套件约 110s、单条 e2e spec 约 2 分钟，命令默认超时 120s 处于临界；这些命令显式设置更大的超时，或按文件拆分执行。
 - 新 worktree 没有现成环境：Python 复用主仓库 venv（`UV_PROJECT_ENVIRONMENT` 指向主仓库 `.venv`）或给 e2e 设 `MAW_E2E_PYTHON`；Node 侧 `pnpm install` 后装配顺序测试才可运行（需要 acorn），e2e 需要 playwright。
 - PowerShell 内联脚本（`node -e "..."`、多层嵌套引号）极易解析失败；复杂逻辑写成临时脚本文件再执行。命令输出为空时，先怀疑参数与引号，而不是重跑同一命令。
