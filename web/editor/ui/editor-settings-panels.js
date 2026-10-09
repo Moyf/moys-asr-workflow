@@ -259,7 +259,6 @@
 
   // 帮助中的「全局设置」入口：打开设置窗口并定位到「视频预览」分区。
   function openEditorSettingsAtTab(tabId) {
-    if (tabId === 'editor-settings-tab-subtitle-color') tabId = 'editor-settings-tab-project-color';
     const tab = document.getElementById(tabId);
     closeRegionalSettings();
     if (tab?.closest('#project-settings-panel')) projectFloatingPanel.open();

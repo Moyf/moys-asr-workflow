@@ -990,7 +990,7 @@ class EditorAssetTests(unittest.TestCase):
         # 颜色与说话人 ↔ 自定义色板互相提供跳转链接（原「你可以在…」自指提示已移除）。
         self.assertIn('data-settings-page="subtitle-color"', settings_page('project-color'))
         self.assertIn('data-settings-page="project-color"', settings_page('subtitle-color'))
-        self.assertNotIn('🤓👆', page)
+        self.assertNotIn('🤓👆', edit.read_web_asset('editor-template.html'))
         for field in ('index', 'time', 'charcount'):
             self.assertIn(f'id="cue-list-show-{field}" checked', page)
             self.assertIn(f"MaweCoreState.container.classList.toggle('hide-cue-{field}'", source)

@@ -276,7 +276,7 @@
     "editor/cues/editor-split-mode.js": "b63426115fae3a88fbb95befbe1d1f382a9ec262042c1ac8ffd62d69327ddab8",
     "editor/ui/editor-display-settings.js": "b786c95071a118e0a5d5884974cb1045e6a3ec4c896e455dd95dbccc277c54a4",
     "editor/ui/editor-floating-panel.js": "ca07e5cc4dbc4f08e0dcac0567ef5722001399fab472b038e1a24f283adbf5bc",
-    "editor/ui/editor-settings-panels.js": "bd506119b389ef12b0ff0f6c56d4e42e1214e399c144eaf4349c688ce4df8180",
+    "editor/ui/editor-settings-panels.js": "566346c533d121768b7dfc784104e2953fd244bd2dbae80ed2a6c1139ac8a7c0",
     "editor/ui/editor-ninja.js": "65733b263fd0e246403acbc7e82523e7e75b45fdb6c371b58a5d5a63a885a4f0",
     "editor/media/editor-media-playback.js": "c7e8e9e7c94e75068d15b095588285a0d3f0b0465b74e2c20492d9ce9682e935",
     "editor/cues/editor-keyboard-targets.js": "dcb2942bd815dc43db5f99bd09c130a7581bfea6cc4d44a94cc7c18b21d096eb",
@@ -686,7 +686,7 @@
         "format": "esm"
       },
       "web/editor-entry.mjs": {
-        "bytes": 1720064,
+        "bytes": 1719963,
         "imports": [
           {
             "path": "web/shared/host/storage.js",
@@ -1187,10 +1187,10 @@
             "bytesInOutput": 4423
           },
           "web/editor-entry.mjs": {
-            "bytesInOutput": 1007741
+            "bytesInOutput": 1007659
           }
         },
-        "bytes": 1346625
+        "bytes": 1346543
       }
     }
   }
