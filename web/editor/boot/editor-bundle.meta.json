@@ -367,7 +367,7 @@
     "editor/boot/editor-onboarding.js": "d9b363fdd75eace296b9ac2034fc42dffb15a212334a180767b8aa7a11c053b3"
   },
   "configHash": "492b585c931e626209a0ea9d6a916ca30da259512d43eef00dc860793dad6798",
-  "builderHash": "f228f1e6128bcef03f88a0f45c0d4252f9147716ccbe146abe19201d7f13d578",
+  "builderHash": "1a0a68295e7f276f7dfd728236489c261424ce86664cad4827cad5cd8c64124d",
   "metafile": {
     "inputs": {
       "web/shared/host/storage.js": {

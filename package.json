@@ -1,6 +1,7 @@
 {
   "name": "moys-asr-workflow-dev",
   "version": "0.0.0",
+  "packageManager": "pnpm@11.28.4",
   "private": true,
   "description": "Dev-only browser regression tooling for MAW (Playwright). No production dependency.",
   "scripts": {

@@ -5,7 +5,7 @@ description: "MAW 的产品简介、安装方式和第一次转写的完整入�
 source: "README.md"
 ---
 
-<!-- Generated from README.md. Run npm run sync:docs to refresh. -->
+<!-- Generated from README.md. Run pnpm run sync:docs to refresh. -->
 
 [![English README](https://img.shields.io/badge/README-English-2563eb?style=flat-square)](https://github.com/Moyf/moys-asr-workflow/blob/main/README-en.md)
 [![GitHub Release](https://img.shields.io/github/v/release/Moyf/moys-asr-workflow?display_name=tag&sort=semver)](https://github.com/Moyf/moys-asr-workflow/releases/latest)
@@ -64,7 +64,7 @@ MAW 帮你把字幕生成后的校对、整理和交付接起来。它以云端 
 | 校对、匹配文稿、翻译或处理媒体 | [工具箱](../toolbox/) · [自动处理](../postprocess-pipeline/) |
 | 编辑时间轴、保存和导出 | [编辑器指南](../editor-guide/) · [ASS 样式](../ass-styles/) |
 | 写批处理或接入自动化 | [CLI](../cli/) |
-| 开发与数据集成 | [开发概览](../development/) · [工程格式](../json-schema/) |
+| 开发与数据集成 | [开发概览](../development/) · [工程格式](../json-schema/) · [ESM 迁移与上游交接](https://github.com/Moyf/moys-asr-workflow/blob/main/docs/dev/ESM_MIGRATION.md) |
 
 全部专题、技术契约与历史记录见 [文档索引](../documentation-index/)。
 

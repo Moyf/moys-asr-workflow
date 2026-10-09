@@ -25,7 +25,7 @@ web/launcher/                # Launcher 前端
 docs/LOCAL_ASR.md             # 实验性本地 Qwen3-ASR / FunASR CLI
 ```
 
-`web/` 是唯一前端源码。59 个工厂使用 ESM，其余接线保留 classic 共享作用域；`npm run build:editor` 由 esbuild 装配完整 `web/editor/boot/editor-bundle.js`。便携 HTML 与 localhost 都读取这个产物，运行时不需要 Node。修改编辑器 JS 或清单后必须重建并提交 bundle 与 `.meta.json`，运行 `npm run check:editor`；localhost 调试可另开 `npm run watch:editor`。CSS 与 HTML 模板仍在渲染时读取。
+`web/` 是唯一前端源码。59 个工厂使用 ESM，其余接线保留 classic 共享作用域；`pnpm run build:editor` 由 esbuild 装配完整 `web/editor/boot/editor-bundle.js`。便携 HTML 与 localhost 都读取这个产物，运行时不需要 Node。修改编辑器 JS 或清单后必须重建并提交 bundle 与 `.meta.json`，运行 `pnpm run check:editor`；localhost 调试可另开 `pnpm run watch:editor`。CSS 与 HTML 模板仍在渲染时读取。
 
 **但现行约定是：除非维护者主动要求，不要生成 `blank-editor.html`。**
 它是生成产物、体积大，且每次重生成都会带来上百行噪声 diff，review 时淹没真实改动。
@@ -42,9 +42,9 @@ uv run python edit.py --blank
 
 ```powershell
 uv sync
-npm ci
-npm run check:editor
-npm run typecheck
+pnpm install --frozen-lockfile
+pnpm run check:editor
+pnpm run typecheck
 node --test tests\test_editor_script_syntax.mjs tests\test_editor_script_order.mjs
 node --test tests\test_editor_utils.mjs tests\test_waveform_js.mjs
 uv run python -m unittest discover -s tests -p "test_*.py"

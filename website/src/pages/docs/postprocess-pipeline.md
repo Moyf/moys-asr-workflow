@@ -5,7 +5,7 @@ description: "处理步骤、连接预检、中间产物与失败重试。"
 source: "docs/POSTPROCESS_PIPELINE.md"
 ---
 
-<!-- Generated from docs/POSTPROCESS_PIPELINE.md. Run npm run sync:docs to refresh. -->
+<!-- Generated from docs/POSTPROCESS_PIPELINE.md. Run pnpm run sync:docs to refresh. -->
 
 Launcher 可在转写成功后自动运行字幕处理链。总开关默认关闭，原始转写产物保留；单独处理已有字幕见 [工具箱](../toolbox/)。
 
@@ -55,6 +55,7 @@ AI 整理的「补充说明」也属于任务快照，用法见 [工具箱](../t
 - 「保留中间产物」默认开启；关闭后，成功运行清理该运行目录及因此变空的父目录。
 - 失败、取消或异常时始终保留运行目录和已有结果；原始转写不撤销。
 - 「打开自动处理中间产物」用于检查快照；「从失败步骤重试后处理」从同一次快照继续，不重新转写。
+- 文件创建或写入失败时显示对应原因；文件名或路径过长时，请缩短原文件名或目录路径，重新选择文件后重试。原失败目录中的恢复路径不会自动迁移。
 - 固定替换没有规则且没有简繁转换时会跳过，不生成空产物。
 
 AI 整理的待复核标记仍需到编辑器确认，自动处理结束不表示人工复核完成。
