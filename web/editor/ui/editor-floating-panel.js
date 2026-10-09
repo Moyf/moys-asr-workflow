@@ -210,9 +210,11 @@
       setPosition(rect.left, rect.top, { persist: true });
     });
     document.addEventListener('keydown', (event) => {
-      if (event.key !== 'Escape' || !isOpen() || MaweInlineEdit.editingState) return;
+      if (event.defaultPrevented || event.key !== 'Escape' || !isOpen() || MaweInlineEdit.editingState
+          || floatingSurfaceStack.filter(floatingSurfaceIsOpen).at(-1) !== panel) return;
       event.preventDefault();
       close();
+      manageButton?.focus();
     });
     return { open, close, toggle, isOpen };
   }

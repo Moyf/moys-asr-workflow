@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from tests.compact_assertions import CompactContainerAssertions
+
 import base64
 import math
 import os
@@ -381,7 +383,7 @@ class WaveformExtractionTests(unittest.TestCase):
         )
 
 
-class EditorAssetTests(unittest.TestCase):
+class EditorAssetTests(CompactContainerAssertions, unittest.TestCase):
     def test_project_waveform_survives_loading_media(self) -> None:
         core_state = (ROOT / "web" / "editor/state/editor-core-state.js").read_text(encoding="utf-8")
         state = (ROOT / "web" / "editor/state/editor-state.js").read_text(encoding="utf-8")
@@ -521,10 +523,10 @@ class EditorAssetTests(unittest.TestCase):
             self.assertIn(f'id="editor-settings-tab-{settings_section}"', page)
             self.assertIn(f'id="editor-settings-page-{settings_section}"', page)
         # 全局设置 11 个导航标签；帮助面板垂直标签页复用同款导航类，另有 7 个
-        self.assertEqual(page.count('class="editor-settings-nav-tab"'), 18)
-        self.assertEqual(page.count('class="editor-settings-page"'), 11)
+        self.assertEqual(page.count('class="editor-settings-nav-tab"'), 24)
+        self.assertEqual(page.count('class="editor-settings-page"'), 17)
         self.assertEqual(page.count('class="editor-settings-nav-group-label"'), 5)
-        for group_label in ('基础', '媒体', '编辑', '工程与输出', '扩展功能'):
+        for group_label in ('基础', '预览与播放', '编辑', '保存与输出', '扩展功能'):
             self.assertIn(f'class="editor-settings-nav-group-label" aria-hidden="true">{group_label}</div>', page)
         settings_nav_start = page.index('  .editor-settings-nav {')
         settings_nav_end = page.index('  .editor-settings-nav-group-label {', settings_nav_start)
@@ -539,7 +541,7 @@ class EditorAssetTests(unittest.TestCase):
         self.assertIn('scrollbar-width: thin;', scrollbar_style)
         self.assertIn('scrollbar-color: var(--scroll-thumb) var(--scroll-track);', scrollbar_style)
         self.assertLess(page.index('id="editor-settings-tab-interface"'), page.index('id="editor-settings-tab-general"'))
-        self.assertLess(page.index('>媒体</div>'), page.index('id="editor-settings-tab-subtitle-preview"'))
+        self.assertLess(page.index('>预览与播放</div>'), page.index('id="editor-settings-tab-subtitle-preview"'))
         self.assertIn('id="language-toggle"', page)
         self.assertIn('data-editor-theme="light"', page)
         self.assertIn('data-editor-theme="dark"', page)
@@ -580,11 +582,11 @@ class EditorAssetTests(unittest.TestCase):
         for section_title in ('通用操作', '视频预览', '字幕样式', '字幕颜色', '时间基准', '拆分与合并', '导出', '保存', '表情包', '彩蛋'):
             self.assertNotIn(f'<span class="editor-settings-title">{section_title}</span>', page)
         self.assertNotIn('<span class="editor-settings-title">其他</span>', page)
-        self.assertIn('id="sticker-root-btn"', page)
+        self.assertIn('id="sticker-root-input"', page)
         self.assertIn('id="sticker-otio-export-mode"', page)
         self.assertIn('id="sticker-otio-export-mode-hint"', page)
         self.assertIn('选择引用原始表情包素材；选择便携模式时，服务器会将素材复制到工程同目录。', page)
-        self.assertLess(page.index('id="editor-settings-panel"'), page.index('id="sticker-root-btn"'))
+        self.assertLess(page.index('id="editor-settings-panel"'), page.index('id="sticker-root-input"'))
         sticker_page_start = page.index('id="editor-settings-page-sticker"')
         easter_eggs_page_start = page.index('id="editor-settings-page-easter-eggs"')
         self.assertLess(sticker_page_start, easter_eggs_page_start)
@@ -592,37 +594,40 @@ class EditorAssetTests(unittest.TestCase):
         # 拆分与合并分区：「字幕语言类型」为第二个卡片，heading 置于卡片外上方
         self.assertIn('class="editor-settings-group split-language-type-group" role="group" aria-labelledby="split-language-type-title"', page)
         self.assertIn('<span class="editor-settings-group-heading" id="split-language-type-title">字幕语言类型</span>', page)
-        self.assertIn('字幕语言类型</span>\n  <div class="editor-settings-group split-language-type-group"', page)
-        self.assertLess(page.index('id="split-use-word-timestamps-hint"'), page.index('id="split-language-type-title"'))
+        self.assertLess(page.index('id="editor-settings-page-timebase"'), page.index('id="split-language-type-title"'))
         self.assertNotIn('split-language-type-field', page)
         self.assertNotIn('editor-settings-item split-language-type-title', page)
-        self.assertIn('id="split-multi-subtitle-settings-link"', page)
-        self.assertIn('>双语字幕的设置</button>', page)
-        self.assertIn('id="split-multi-subtitle-settings-disabled"', page)
-        self.assertIn('双语字幕的设置（需要先开启双语字幕）', page)
+        # 双语字幕的显示/联动/管理设置已并入项目设置的字幕轨道页。
+        self.assertIn('id="project-multi-subtitle-settings"', page)
+        self.assertIn('<span class="editor-settings-group-heading" id="project-multi-settings-title">双语字幕</span>', page)
+        self.assertIn('id="multi-subtitle-import"', page)
+        self.assertIn('id="multi-subtitle-swap"', page)
         self.assertEqual(
             page.count('class="editor-settings-group"')
             + page.count('class="editor-settings-group playback-controls-group"')
             + page.count('class="editor-settings-group subtitle-preview-style-group"')
             + page.count('class="editor-settings-group subtitle-color-settings-group"')
             + page.count('class="editor-settings-group subtitle-speaker-settings-group"'),
-            20,
+            28,
         )
         self.assertEqual(page.count('class="editor-settings-group split-language-type-group"'), 1)
         self.assertEqual(page.count('class="editor-settings-group subtitle-color-settings-group"'), 1)
         self.assertEqual(page.count('class="editor-settings-group subtitle-speaker-settings-group"'), 1)
         self.assertLess(page.index('id="cue-move-step"'), page.index('id="gap-remove-operation-mode"'))
-        # 波形 ⚙️ 面板不再包含操作类设置，但保留样式外观项与「禁用波形显示」
+        # 波形 ⚙️ 保留外观与显示项；字词时间码已移到工具栏 🪶 快捷开关（含项目设置镜像）。
+        # 拖动、联动和空隙检测等操作设置仍在独立工具窗中。
         waveform_panel_slice = page[page.index('id="waveform-settings-panel"'):page.index('<span class="waveform-mode-switch"')]
         self.assertNotIn('id="cue-move-step"', waveform_panel_slice)
         self.assertNotIn('id="gap-remove-operation-mode"', waveform_panel_slice)
         self.assertNotIn('id="waveform-drag-playhead"', waveform_panel_slice)
         self.assertNotIn('id="adjacent-boundary-mode"', waveform_panel_slice)
-        self.assertNotIn('静音空隙', waveform_panel_slice)
+        self.assertNotIn('id="gap-remove-manage"', waveform_panel_slice)
+        self.assertNotIn('id="word-timing-toggle"', waveform_panel_slice)
+        self.assertNotIn('id="gap-skip-playback"', waveform_panel_slice)
         self.assertIn('id="waveform-show-group-badges"', waveform_panel_slice)
         self.assertIn('禁用波形显示', waveform_panel_slice)
         self.assertIn('id="waveform-disabled-display"', waveform_panel_slice)
-        self.assertIn('id="waveform-operation-settings-title">波形区操作</span>', page)
+        self.assertIn('id="waveform-operation-settings-title">字幕拖动</span>', page)
         self.assertIn('字幕（编辑状态下）拆分按键', page)
         self.assertNotIn('波形区拆分按键', page)
         self.assertEqual(page.count('class="editor-settings-item editor-settings-list-fields editor-settings-display-row"'), 0)
@@ -687,17 +692,17 @@ class EditorAssetTests(unittest.TestCase):
         self.assertIn('id="jkl-playback-mode"', page)
         self.assertIn('id="media-seek-step" min="10" max="60000" step="100" value="1000"', page)
         interface_page = page[interface_page_start:page.index('id="editor-settings-page-general"')]
-        general_page_start = page.index('id="editor-settings-page-general"')
-        subtitle_preview_page_start = page.index('id="editor-settings-page-subtitle-preview"')
-        subtitle_style_page_start = page.index('id="editor-settings-page-subtitle-style"')
-        subtitle_color_page_start = page.index('id="editor-settings-page-subtitle-color"')
-        subtitle_speaker_title_start = page.index('id="subtitle-speaker-settings-title"')
-        timebase_page_start = page.index('id="editor-settings-page-timebase"')
-        general_page = page[general_page_start:subtitle_preview_page_start]
-        video_preview_page = page[subtitle_preview_page_start:subtitle_style_page_start]
-        subtitle_style_page = page[subtitle_style_page_start:subtitle_color_page_start]
-        subtitle_color_page = page[subtitle_color_page_start:subtitle_speaker_title_start]
-        subtitle_speaker_page = page[subtitle_speaker_title_start:timebase_page_start]
+        def settings_page(key: str) -> str:
+            start = page.index(f'<div class="editor-settings-page" id="editor-settings-page-{key}"')
+            end = page.find('<div class="editor-settings-page"', start + 1)
+            return page[start:end if end >= 0 else len(page)]
+        general_page = settings_page('general')
+        video_preview_page = settings_page('subtitle-preview')
+        subtitle_style_page = settings_page('subtitle-style')
+        project_color_page = settings_page('project-color')
+        subtitle_speaker_title_start = project_color_page.index('id="subtitle-speaker-settings-title"')
+        subtitle_color_page = project_color_page[:subtitle_speaker_title_start]
+        subtitle_speaker_page = project_color_page[subtitle_speaker_title_start:]
         # 「播放控制」组已从「通用操作」移入「视频预览」
         self.assertNotIn('id="jkl-playback-mode"', general_page)
         self.assertNotIn('id="media-seek-step"', general_page)
@@ -715,7 +720,7 @@ class EditorAssetTests(unittest.TestCase):
             'class="editor-settings-group playback-controls-group" role="group" aria-labelledby="playback-controls-title"',
             video_preview_page,
         )
-        self.assertIn('<span class="editor-settings-group-heading" id="playback-controls-title">播放控制</span>', video_preview_page)
+        self.assertIn('<span class="editor-settings-group-heading" id="playback-controls-title">播放与定位</span>', video_preview_page)
         self.assertNotIn(
             'class="editor-settings-group subtitle-preview-style-group" role="group" aria-labelledby="subtitle-preview-style-title"',
             video_preview_page,
@@ -733,7 +738,7 @@ class EditorAssetTests(unittest.TestCase):
         self.assertLess(page.index('id="main-subtitle-preview-settings"'), page.index('id="extension-subtitle-preview-title"'))
         self.assertLess(page.index('id="extension-subtitle-preview-title"'), page.index('id="extension-subtitle-preview-settings"'))
         self.assertNotIn('<span class="editor-settings-title">播放控制</span>', video_preview_page)
-        self.assertEqual(general_page.count('class="editor-settings-group"'), 4)
+        self.assertEqual(general_page.count('class="editor-settings-group"'), 3)
         self.assertIn('id="language-toggle"', interface_page)
         self.assertIn('data-editor-theme="light"', interface_page)
         self.assertIn('data-editor-theme="dark"', interface_page)
@@ -802,7 +807,7 @@ class EditorAssetTests(unittest.TestCase):
         )
         self.assertIn('<option value="2">2 秒</option>', page)
         self.assertIn("rowGrid: get('--wave-row-grid'", source)
-        self.assertIn('timeline-settings-field', editor_settings_panel)
+        self.assertIn('timeline-settings-field', settings_page('timebase'))
         self.assertNotIn('timeline-settings-field', page[waveform_pane_start:])
         self.assertIn('function confirmTimelineFrameRemap(current, nextUnit, nextFps)', edit.read_web_asset("editor/cues/editor-timeline.js"))
         self.assertIn(
@@ -903,7 +908,7 @@ class EditorAssetTests(unittest.TestCase):
         self.assertIn('<span class="help-important"><kbd data-mod-key>Ctrl+Shift+A/D</kbd> 合并前/后字幕</span>', page)
         self.assertIn('<kbd>Home</kbd>/<kbd>End</kbd> 选择并显示当前轨道首/末条可见字幕', page)
         self.assertIn(
-            '<span class="help-important"><kbd>F</kbd> 跳转并播放选中字幕</span>\n'
+            '<span class="help-important"><kbd>F</kbd> 试听选中的字幕，到字幕终点自动暂停</span>\n'
             '          <span class="help-break" aria-hidden="true"></span>\n'
             '          <span><kbd>Home</kbd>/<kbd>End</kbd> 选择并显示当前轨道首/末条可见字幕</span>',
             page,
@@ -950,7 +955,7 @@ class EditorAssetTests(unittest.TestCase):
         )
         self.assertIn('具体操作取决于', page)
         self.assertIn('id="help-open-gap-settings"', page)
-        self.assertIn('「通用操作」中的「空隙区段操作方式」，其中「边界与中键」可同时使用两套操作。', page)
+        self.assertIn('「特殊编辑」中的「空隙区段操作方式」，其中「边界与中键」可同时使用两套操作。', page)
         self.assertIn(
             '<span><kbd>Shift+滚轮</kbd> 调整波形振幅</span>\n'
             '          <span class="help-break" aria-hidden="true"></span>\n'
@@ -965,7 +970,10 @@ class EditorAssetTests(unittest.TestCase):
         self.assertIn('id="help-open-gap-remove-panel"', page)
         self.assertIn('在「', page)
         self.assertIn('」中点击「全部清理」 清除所有空隙', page)
-        self.assertEqual(page.count('<section class="help-subgroup">'), 20)
+        self.assertEqual(page.count('<section class="help-subgroup">'), 21)
+        self.assertIn('id="word-timing-quick-toggle"', page)
+        self.assertIn('id="markers-quick-toggle"', page)
+        self.assertIn('id="word-conversion-dialog"', page)
         self.assertNotIn('确定删除第 ${idx + 1} 条字幕', page)
         self.assertNotIn('确定删除选中的 ${targetIdxs.length} 条字幕', page)
         self.assertIn('id="export-start-at-zero"', page)
@@ -974,16 +982,17 @@ class EditorAssetTests(unittest.TestCase):
             page,
         )
         self.assertNotIn('id="export-start-at-zero" checked', page)
-        self.assertIn('<span class="editor-settings-group-heading" id="export-color-speaker-title">颜色与说话人</span>', page)
+        self.assertIn('id="export-speaker-labels"', settings_page('project-color'))
+        self.assertNotIn('id="export-speaker-labels"', settings_page('export'))
         self.assertIn('id="export-speaker-names-as-suffix"', page)
-        self.assertIn('id="export-open-subtitle-color-settings"', page)
         self.assertIn(
             '在导出的字幕开头加上说话人。只影响导出后的字幕，不会改动工程里的字幕文本。',
             page,
         )
-        self.assertIn('🤓👆 你可以在 ', page)
-        self.assertIn('中配置颜色对应的说话人名。', page)
-        self.assertNotIn('id="export-open-subtitle-color-settings-arrow"', page)
+        # 颜色与说话人 ↔ 自定义色板互相提供跳转链接（原「你可以在…」自指提示已移除）。
+        self.assertIn('data-settings-page="subtitle-color"', settings_page('project-color'))
+        self.assertIn('data-settings-page="project-color"', settings_page('subtitle-color'))
+        self.assertNotIn('🤓👆', edit.read_web_asset('editor-template.html'))
         for field in ('index', 'time', 'charcount'):
             self.assertIn(f'id="cue-list-show-{field}" checked', page)
             self.assertIn(f"MaweCoreState.container.classList.toggle('hide-cue-{field}'", source)
@@ -1183,7 +1192,7 @@ class EditorAssetTests(unittest.TestCase):
         self.assertEqual(gap_menu.count(separator), 1)
         only_separator = gap_menu.index(separator)
         self.assertLess(gap_menu.index('id="download-gap-removed-sticker-otioz"'), only_separator)
-        self.assertLess(only_separator, gap_menu.index('data-otio-export-option'))
+        self.assertLess(only_separator, gap_menu.index('data-settings-target="export-otio-options"'))
         self.assertLess(only_separator, gap_menu.index('id="download-gap-removed-ffconcat"'))
 
         extra_menu_start = page.index('<div class="dropdown-menu" id="extra-export-menu" role="menu">')
@@ -1194,7 +1203,7 @@ class EditorAssetTests(unittest.TestCase):
         only_separator = extra_menu.index(separator)
         self.assertLess(extra_menu.index('id="download-fcp7-export"'), only_separator)
         self.assertLess(extra_menu.index('id="download-sticker-otioz"'), only_separator)
-        self.assertLess(only_separator, extra_menu.index('data-otio-export-option'))
+        self.assertLess(only_separator, extra_menu.index('data-settings-target="export-otio-options"'))
         self.assertLess(only_separator, extra_menu.index('id="download-lottie"'))
         self.assertLess(extra_menu.index('id="download-ograf"'), extra_menu.index('id="download-plain-text"'))
         self.assertLess(extra_menu.index('id="download-plain-text"'), extra_menu.index('id="download-resolve-json"'))

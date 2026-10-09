@@ -683,7 +683,7 @@ test('normalizes waveform display settings carried by a layout', () => {
   assert.deepEqual(JSON.parse(JSON.stringify(normalized.waveformSettings)), {
     visibleSeconds: 30, secondsPerRow: 20, rowHeight: 144, waveformScale: 6,
     waveformScaleAuto: true,
-    side: 'right', disabledDisplay: 'hidden', showGroupBadges: false, dragPlayhead: false,
+    side: 'right', disabledDisplay: 'hidden', showGroupBadges: false, dragPlayhead: true,
   });
   // waveformScaleAuto 必须恒被显式产出：applyLayoutData 用 Object.assign 增量
   // 合并，缺字段会让上一个工程的 false 残留到新媒体上（反过来就是静默不缩放）。

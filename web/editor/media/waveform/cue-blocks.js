@@ -323,21 +323,35 @@ export function createWaveformModule(dependencies) {
             row.appendChild(badgeEl);
           });
         }
-        if (segment.start >= startMs) {
+        // 字词时间码模式下整句块退为背景，但选中句仍保留两端手柄，
+        // 让用户能在这个模式下拖动整句边界；未选中句不显示，避免与字词块抢指针。
+        const sentenceHandles = !this.options.wordTiming?.enabled || selected.has(index);
+        if (sentenceHandles && segment.start >= startMs) {
           const leftHandle = document.createElement('span');
           leftHandle.className = 'waveform-cue-handle left';
           leftHandle.title = localizedWaveformMessage('调节字幕的左边界（开始时间）', 'Adjust subtitle left boundary (start time)');
           block.appendChild(leftHandle);
+          if (this.options.wordTiming?.enabled) this.bindWordModeSentenceHandle(leftHandle, index, row);
         }
-        if (segment.end <= endMs) {
+        if (sentenceHandles && segment.end <= endMs) {
           const rightHandle = document.createElement('span');
           rightHandle.className = 'waveform-cue-handle right';
           rightHandle.title = localizedWaveformMessage('调节字幕的右边界（结束时间）', 'Adjust subtitle right boundary (end time)');
           block.appendChild(rightHandle);
+          if (this.options.wordTiming?.enabled) this.bindWordModeSentenceHandle(rightHandle, index, row);
         }
         this.layoutBlock(block, segment, startMs, endMs, row);
         block.dataset.track = 'main';
-        block.addEventListener('pointerdown', (event) => this.beginCueDrag(event, index, row, 'main'));
+        if (this.options.wordTiming?.enabled) block.classList.add('word-timing-background');
+        block.addEventListener('pointerdown', (event) => {
+          if (!this.options.wordTiming?.enabled) return this.beginCueDrag(event, index, row, 'main');
+          event.preventDefault(); event.stopPropagation();
+          if (event.button !== 0) return;
+          this.focusWaveform();
+          if (event.ctrlKey || event.metaKey) this.options.toggleCueSelection?.(index);
+          else if (event.shiftKey) this.options.selectCueRange?.(index);
+          else this.options.selectCue(index);
+        });
         block.addEventListener('contextmenu', (event) => {
           event.preventDefault();
           event.stopPropagation();
@@ -356,8 +370,9 @@ export function createWaveformModule(dependencies) {
           else this.options.activateCue?.(index);
         });
         row.appendChild(block);
+        this.appendWordBlocks(row, index, startMs, endMs);
       }
-      this.appendSharedBoundaryZones(row, startMs, endMs, 'main');
+      if (!this.options.wordTiming?.enabled) this.appendSharedBoundaryZones(row, startMs, endMs, 'main');
 
       // 独立叠加轨：与主/副字幕互不绑定，绘制在主字幕块上方（bottom 50% 独立一层）。
       // 交互为点击选中、双击编辑、拖动移动、右键菜单；badge 与主块同款，挂在叠加块上方。
@@ -589,6 +604,19 @@ export function createWaveformModule(dependencies) {
     }
 
 
+    // 字词时间码模式下，选中句的两端手柄直接进入整句边界拖动；
+    // 阻断冒泡，避免落到句块的「仅选中」pointerdown 处理上。
+    /** @this {import('./waveform-types.js').WaveformInstance} */
+    bindWordModeSentenceHandle(handle, index, row) {
+      handle.addEventListener('pointerdown', (event) => {
+        if (event.button !== 0) return;
+        event.preventDefault();
+        event.stopPropagation();
+        this.focusWaveform();
+        this.beginCueDrag(event, index, row, 'main');
+      });
+    }
+
     /** @this {import('./waveform-types.js').WaveformInstance} */
     layoutBlock(block, segment, startMs, endMs, ownerRow = null) {
       const duration = Math.max(1, endMs - startMs);
@@ -642,7 +670,7 @@ export function createWaveformModule(dependencies) {
       rows.forEach((row) => {
         // 绑定、解绑和字幕时间变化只影响覆盖层；保留已有行与 Canvas，
         // 避免重新采样/绘制波形导致操作出现一帧卡顿。
-        (/** @type {NodeListOf<HTMLElement>} */ (row.querySelectorAll('.waveform-cue-block, .waveform-cue-badge, .waveform-cue-boundary')))
+        (/** @type {NodeListOf<HTMLElement>} */ (row.querySelectorAll('.waveform-cue-block, .waveform-cue-badge, .waveform-cue-boundary, .waveform-word-block, .waveform-word-boundary')))
           .forEach((element) => element.remove());
         this.appendCueBlocks(
           row,
@@ -776,6 +804,12 @@ export function createWaveformModule(dependencies) {
 
     /** @this {import('./waveform-types.js').WaveformInstance} */
     updateSelection() {
+      // 字词时间码模式下选中句才有整句手柄；选中集变化需要整层重建，
+      // 轻量 class 切换无法增删手柄。
+      if (this.options.wordTiming?.enabled) {
+        this.refreshCueOverlay();
+        return;
+      }
       const selected = this.options.getSelection('main');
       const extensionSelected = this.options.getExtensionSelection?.() || new Set();
       const overlaySelected = this.options.getOverlaySelection?.() || new Set();

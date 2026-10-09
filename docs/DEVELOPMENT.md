@@ -14,6 +14,7 @@
 | `edit.py`、`web/` | 唯一编辑器前端源码及便携 HTML 渲染。 |
 | `maw/waveform.py`、`maw/quapeaks.py`、`maw/mopeaks.py`、`maw/media_cache.py` | 波形提取、容器与缓存编排。 |
 | `server-editor/serve.py` | 仅 loopback 的媒体 Range、受限保存、最近工程与本机设置。 |
+| `desktop/` | Electron MOSE 桌面壳；Tauri 实验已移除，决策见 [desktop README](../desktop/README.md)。 |
 | `website/` | Astro 官网与源文档的静态副本。 |
 
 当前日常编辑以 Server 为主。底层生成器与公开 CLI 的参数、默认输出不同，不应据某个生成器的帮助推断所有入口；区别见 [CLI](CLI.md)。
@@ -44,7 +45,7 @@ Server 的内置预设覆盖、命名工作区和活动名称保存在本机设�
 
 ## 编辑器源码地图
 
-`web/editor-scripts.txt` 是 esbuild 的源码执行顺序；`web/editor-modules.json` 标出 59 个真正的 ESM 工厂与外部桥。其余 121 个文件暂时在同一 classic 作用域中执行，目录不决定顺序。构建器拒绝路径穿越、重复输入及符号链接越界。便携 HTML 与 localhost 都内联同一份已提交的 `web/editor/boot/editor-bundle.js`，用户运行编辑器不需要 Node。
+`web/editor-scripts.txt` 是 esbuild 的源码执行顺序，也是 Server、便携 HTML 与 Electron 桌面壳共用的编辑器装配清单；`web/editor-modules.json` 标出 59 个真正的 ESM 工厂与外部桥。其余 121 个文件暂时在同一 classic 作用域中执行，目录不决定顺序。构建器拒绝路径穿越、重复输入及符号链接越界。便携 HTML 与 localhost 都内联同一份已提交的 `web/editor/boot/editor-bundle.js`，用户运行编辑器不需要 Node。
 
 编辑器 JS、清单或构建配置变化后执行 `pnpm run build:editor`，提交 bundle 和 `.meta.json`；`pnpm run check:editor` 只读检查新鲜度，不会自动修复。Server 调试时另开 `pnpm run watch:editor`，CSS 和模板仍按请求读取。构建和 Node 测试要求 Node 22.13+；源码目录显式声明 `type: module`，不依赖语法自动检测。类型检查包括迁移的全部工厂与既有六文件范围。实施、实验及上游合并经验见 [ESM 迁移台账](dev/ESM_MIGRATION.md)。
 

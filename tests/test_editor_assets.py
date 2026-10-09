@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from tests.compact_assertions import CompactContainerAssertions
+
 import sys
 import json
 import re
@@ -17,7 +19,7 @@ sys.path.insert(0, str(ROOT))
 import edit  # noqa: E402
 
 
-class EditorAssetContractTests(unittest.TestCase):
+class EditorAssetContractTests(CompactContainerAssertions, unittest.TestCase):
     def source_contract_text(self) -> str:
         """Historical source-shape checks inspect sources, not esbuild printing."""
         return "\n\n".join(edit.read_web_asset(name) for name in edit.read_editor_script_manifest())
@@ -55,6 +57,7 @@ class EditorAssetContractTests(unittest.TestCase):
                 "shared/utils/history.js",
                 "shared/utils/markers.js",
                 "shared/utils/multi-subtitle.js",
+                "shared/utils/word-timing.js",
                 "shared/utils/word-split.js",
                 "shared/utils/srt.js",
                 "shared/utils/lrc.js",
@@ -86,6 +89,7 @@ class EditorAssetContractTests(unittest.TestCase):
                 "editor/media/waveform/media.js",
                 "editor/media/waveform/render.js",
                 "editor/media/waveform/cue-blocks.js",
+                "editor/media/waveform/word-blocks.js",
                 "editor/media/waveform/canvas.js",
                 "editor/media/waveform/input.js",
                 "editor/media/waveform/cue-drag.js",
@@ -98,6 +102,7 @@ class EditorAssetContractTests(unittest.TestCase):
                 "editor/ui/editor-hint.js",
                 "editor/media/editor-jkl.js",
                 "editor/state/editor-settings.js",
+                "editor/state/editor-project-settings.js",
                 "editor/state/editor-multi-subtitle-core.js",
                 "editor/ui/editor-gap-remove-data.js",
                 "editor/styles/editor-colors.js",
@@ -141,6 +146,7 @@ class EditorAssetContractTests(unittest.TestCase):
                 "editor/ui/editor-context-menus.js",
                 "editor/cues/editor-text-cleanup.js",
                 "editor/media/editor-waveform-init.js",
+                "editor/cues/editor-word-timing.js",
                 "editor/media/editor-media-step.js",
                 "editor/styles/editor-appearance-inputs.js",
                 "editor/ui/editor-behavior-hints.js",
@@ -186,6 +192,7 @@ class EditorAssetContractTests(unittest.TestCase):
                 "editor/cues/editor-wiring-overlay-split-merge.js",
                 "editor/cues/editor-wiring-list-navigation.js",
                 "editor/media/editor-wiring-keyboard-guards.js",
+                "editor/cues/editor-wiring-word-timing.js",
                 "editor/media/editor-wiring-media-controls.js",
                 "editor/cues/editor-wiring-edit-shortcuts.js",
                 "editor/styles/editor-wiring-font-geometry.js",
@@ -403,13 +410,13 @@ class EditorAssetContractTests(unittest.TestCase):
         self.assertIn('id="sticker-root-status"', template)
         self.assertIn("SERVER_CONFIG.stickerRootUrl", script)
         self.assertIn("MaweBoot.STICKERS.splice(0, MaweBoot.STICKERS.length, ...result.stickers)", script)
-        self.assertIn("let stickerRootHintCard = null", sticker_root)
-        self.assertIn("stickerRootHintCard?.remove()", script)
-        self.assertIn("function setStickerRootModalOpen(open)", sticker_root)
-        self.assertIn("event.key === 'Escape'", script)
-        self.assertIn("event.key !== 'Tab'", script)
-        self.assertIn("#sticker-root-modal { z-index: 465; }", styles)
-        self.assertIn("width: min(540px, calc(100vw - 32px))", styles)
+        self.assertIn('id="project-sticker-root-override"', template)
+        self.assertIn('id="project-sticker-root-input"', template)
+        self.assertIn("function activateProjectRoot()", sticker_root)
+        self.assertIn("generation !== epoch", sticker_root)
+        self.assertIn("path: root, activate", sticker_root)
+        self.assertIn(".sticker-root-controls", styles)
+        self.assertNotIn('id="sticker-root-modal"', template)
         for removed in (
             "showDirectoryPicker",
             "webkitdirectory",

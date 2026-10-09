@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from tests.compact_assertions import CompactContainerAssertions
+
 import base64
 import importlib.util
 import io
@@ -48,7 +50,7 @@ def _write_reapeaks_for(media_path: Path) -> Path:
     return path
 
 
-class LocalEditorServerTests(unittest.TestCase):
+class LocalEditorServerTests(CompactContainerAssertions, unittest.TestCase):
     def test_open_backup_folder_is_bound_and_requires_token(self) -> None:
         handler = object.__new__(server_editor.EditorRequestHandler)
         handler.server = mock.Mock()
@@ -940,6 +942,13 @@ class LocalEditorServerTests(unittest.TestCase):
                 self.assertEqual(status, 403)
                 self.assertFalse(result["ok"])
                 self.assertEqual(server.project.sticker_root, original_root)
+                status, result = post({"requestToken": server.request_token, "path": str(alternate), "activate": False})
+                self.assertEqual(status, 200)
+                self.assertEqual(result["count"], 1)
+                self.assertEqual(server.project.sticker_root, original_root)
+                status, result = post({"requestToken": server.request_token, "path": str(alternate), "activate": "false"})
+                self.assertEqual(status, 400)
+                self.assertEqual(server.project.sticker_root, original_root)
                 status, result = post({"requestToken": server.request_token, "path": str(self.root / "missing")})
                 self.assertEqual(status, 400)
                 self.assertFalse(result["ok"])
@@ -949,6 +958,11 @@ class LocalEditorServerTests(unittest.TestCase):
                 self.assertEqual(result["root"], alternate.as_posix())
                 self.assertEqual(result["count"], 1)
                 self.assertEqual(result["stickers"][0]["rel"], "new.png")
+                status, result = post({"requestToken": server.request_token, "path": ""})
+                self.assertEqual(status, 200)
+                self.assertEqual(result["root"], "")
+                self.assertEqual(result["stickers"], [])
+                self.assertIsNone(server.project.sticker_root)
             finally:
                 server.shutdown()
                 thread.join(timeout=2)
