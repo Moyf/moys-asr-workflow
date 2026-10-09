@@ -1,5 +1,10 @@
 
-// === 当前行高亮 + overlay ===
+// === ASS 预览接线（Canvas 合成） + 当前行高亮 ===
+
+// ASS 模式下文本统一由 MaweAssCanvas 在 PlayRes 原生分辨率画布上绘制
+//（描边质量与 libass 一致的理由见该模块头注）；本文件只负责组装样式、
+// 动画状态与锚定参数，并把 ASS 模式的 DOM 文本元素整体隐藏。
+// SRT/CSS 预览仍走原有的 DOM 路径，退出 ASS 模式时 restore* 恢复。
 
 // 列表点击关闭自动滚动时，避免这次 seek 的同步 active 更新再次滚动列表；
 // 播放指针拖动期间也暂时保持列表位置，避免连续 seek 触发滚动布局。
@@ -15,22 +20,6 @@
 
 
 
-
-
-
-
-function assPreviewAlignment(value) {
-  const alignment = Math.min(9, Math.max(1, Math.round(Number(value) || 2)));
-  const column = (alignment - 1) % 3;
-  const row = Math.floor((alignment - 1) / 3);
-  return {
-    x: column / 2,
-    y: row === 0 ? 1 : row === 1 ? 0.5 : 0,
-    alignItems: column === 0 ? 'flex-start' : column === 1 ? 'center' : 'flex-end',
-    justifyContent: row === 0 ? 'flex-end' : row === 1 ? 'center' : 'flex-start',
-    textAlign: column === 0 ? 'left' : column === 1 ? 'center' : 'right',
-  };
-}
 
 function assPreviewMetrics() {
   const resolution = MaweExportSrt.currentAssVideoResolution()
@@ -109,99 +98,11 @@ function assPreviewExportFontSize(style, metrics) {
   );
 }
 
-function assPreviewFontSize(style, metrics) {
-  // Include export's integer rounding, especially visible on small sources.
-  return assPreviewExportFontSize(style, metrics) * metrics.scaleY * assPreviewFontScale(style);
-}
-
 document.fonts?.addEventListener('loadingdone', () => {
   assPreviewFontMetrics.clear();
+  window.MaweAssCanvas?.clearCaches();
   window.MawePlaybackLoop?.refreshSubtitlePreview();
 });
-
-function applyAssPreviewElement(element, style, animationState, metrics, alignment, margins, anchorTranslate = '') {
-  if (!element) return;
-  const scaleX = metrics.scaleX;
-  const scaleY = metrics.scaleY;
-  const fontSize = assPreviewFontSize(style, metrics);
-  const opacity = Math.max(0, Math.min(1,
-    Number(animationState.opacity) * (1 - Math.max(0, Math.min(255, Number(style.alpha) || 0)) / 255),
-  ));
-  const outline = Math.max(0, Number(style.outline) || 0) * scaleY;
-  const shadow = Math.max(0, Number(style.shadow) || 0) * scaleY;
-  const spacing = (Number(style.spacing) || 0) * scaleY;
-  const borderBox = Number(style.borderStyle) === 3;
-  const transform = [];
-  // 锚定元素（叠加轨/副字幕）的居中平移作为前缀并入，替代 CSS 类里的
-  // translateX(-50%)（此处写 transform 会整体覆盖类内变换）。
-  if (anchorTranslate) transform.push(anchorTranslate);
-  const move = style.__assMove;
-  if (move) {
-    element.style.position = 'absolute';
-    element.style.left = `${move.x * metrics.scaleX}px`;
-    element.style.top = `${move.y * metrics.scaleY}px`;
-    transform.push(`translate(${-alignment.x * 100}%, ${-alignment.y * 100}%)`);
-  } else {
-    element.style.position = '';
-    element.style.left = '';
-    element.style.top = '';
-  }
-  transform.push(`scale(${Math.max(0, Number(style.scaleX ?? 100)) / 100}, ${Math.max(0, Number(style.scaleY ?? 100)) / 100})`);
-  if (Number(style.rotationX) || Number(style.rotationY)) transform.push('perspective(600px)');
-  if (Number(style.rotationX)) transform.push(`rotateX(${Number(style.rotationX)}deg)`);
-  if (Number(style.rotationY)) transform.push(`rotateY(${Number(style.rotationY)}deg)`);
-  if (Number(style.angle)) transform.push(`rotateZ(${Number(style.angle)}deg)`);
-  element.style.fontFamily = MaweAppearance.subtitleFontFamilyCss(style.fontName);
-  element.style.fontSize = `${fontSize}px`;
-  element.style.fontWeight = style.bold ? '700' : '400';
-  element.style.fontStyle = style.italic ? 'italic' : 'normal';
-  element.style.textDecorationLine = [style.underline ? 'underline' : '', style.strikeOut ? 'line-through' : ''].filter(Boolean).join(' ') || 'none';
-  element.style.textDecorationColor = style.primaryColor;
-  element.style.textUnderlineOffset = style.underline ? '0.16em' : '';
-  element.style.color = style.primaryColor;
-  element.style.webkitTextStroke = !borderBox && outline > 0
-    ? `${2 * outline}px ${window.AsrEditorUtils.assCssColorWithOpacity(style.outlineColor, style.outlineOpacity)}` : '';
-  element.style.paintOrder = !borderBox && outline > 0 ? 'stroke fill' : '';
-  element.style.filter = shadow > 0
-    ? `drop-shadow(${shadow}px ${shadow}px 0 ${window.AsrEditorUtils.assCssColorWithOpacity(style.backColor, style.backOpacity)})` : '';
-  element.style.letterSpacing = `${spacing}px`;
-  element.style.lineHeight = 'normal';
-  // ASS 预览采用 no-wrap 策略：只保留字幕文本中的显式换行，
-  // 不因为播放器容器边界重新插入自动换行。
-  element.style.whiteSpace = 'pre';
-  element.style.wordBreak = 'normal';
-  element.style.maxWidth = 'none';
-  element.style.padding = borderBox ? `${outline}px ${Math.max(0, Number(style.outline) || 0) * scaleX}px` : '0';
-  element.style.backgroundColor = borderBox
-    ? window.AsrEditorUtils.assCssColorWithOpacity(style.outlineColor, style.outlineOpacity) : 'transparent';
-  element.style.borderRadius = '0';
-  element.style.opacity = String(opacity);
-  element.style.transformOrigin = `${alignment.x * 100}% ${alignment.y * 100}%`;
-  element.style.transform = transform.join(' ') || 'none';
-}
-
-function applyAssPreviewSpeakerLabel(element, style, metrics) {
-  if (!element) return;
-  const scaleY = metrics.scaleY;
-  const fontSize = assPreviewFontSize(style, metrics);
-  const outline = Number(style.borderStyle) === 3 ? 0 : Math.max(0, Number(style.outline) || 0) * scaleY;
-  const shadow = Math.max(0, Number(style.shadow) || 0) * scaleY;
-  const spacing = (Number(style.spacing) || 0) * scaleY;
-  element.style.fontFamily = MaweAppearance.subtitleFontFamilyCss(style.fontName);
-  element.style.fontSize = `${fontSize}px`;
-  element.style.fontWeight = style.bold ? '700' : '400';
-  element.style.fontStyle = style.italic ? 'italic' : 'normal';
-  element.style.textDecorationLine = [style.underline ? 'underline' : '', style.strikeOut ? 'line-through' : ''].filter(Boolean).join(' ') || 'none';
-  element.style.textDecorationColor = style.primaryColor;
-  element.style.textUnderlineOffset = style.underline ? '0.16em' : '';
-  element.style.webkitTextStroke = outline > 0
-    ? `${2 * outline}px ${window.AsrEditorUtils.assCssColorWithOpacity(style.outlineColor, style.outlineOpacity)}` : '';
-  element.style.paintOrder = outline > 0 ? 'stroke fill' : '';
-  element.style.filter = shadow > 0
-    ? `drop-shadow(${shadow}px ${shadow}px 0 ${window.AsrEditorUtils.assCssColorWithOpacity(style.backColor, style.backOpacity)})` : '';
-  element.style.letterSpacing = `${spacing}px`;
-  element.style.lineHeight = 'normal';
-}
 
 function clearAssPreviewSpeakerLabelStyle(element) {
   if (!element) return;
@@ -233,6 +134,7 @@ function restoreCssSubtitlePreviewElement(element, appearance, fallbackSize, fal
 }
 
 function restoreCssSubtitlePreview() {
+  window.MaweAssCanvas?.hide();
   clearAssEmphasisPreview(MaweDom.overlayTextEl);
   clearAssEmphasisPreview(MaweDom.overlayExtensionTextEl);
   clearAssEmphasisPreview(overlayTrackTextEl);
@@ -268,69 +170,16 @@ function clearAssEmphasisPreview(element) {
   if (element) delete element.dataset.assEmphasisKey;
 }
 
-function renderAssEmphasisPreview(element, textNode, text, style, metrics) {
-  if (!element) return;
-  // 预览剥离单句渐入渐出标记：`>>`/`<<` 由 fad 动画表现，不显示为文字。
+// ASS 文本 run 构建：预览剥离单句渐入渐出标记（`>>`/`<<` 由 fad 动画表现，
+// 不显示为文字），再按编辑器标记语法切成强调/下划线/删除线/大小字号
+// run——与旧 DOM 预览同源，绘制交给 MaweAssCanvas。
+function assPreviewTrackRuns(text) {
   const source = window.AsrEditorUtils.stripSentenceFadeMarkers(
     String(text ?? ''), MaweSettings.EDITOR_SETTINGS.assSpecialSymbolRule,
   );
-  const emphasisSyntax = MaweSettings.EDITOR_SETTINGS.assEmphasisSyntax;
-  const key = JSON.stringify([source, emphasisSyntax, style.emphasisStyle,
-    style.emphasisColor, style.emphasisScale, style.fontSize, style.underline, style.primaryColor,
-    style.outlineColor, style.outlineOpacity, style.outline, style.strikeOut, metrics.scaleY, metrics.stageHeight,
-    style.smallTextScale, style.largeTextScale, MaweSettings.EDITOR_SETTINGS.assUnderlineEnabled,
-    MaweSettings.EDITOR_SETTINGS.assSpecialSymbolRule, MaweSettings.EDITOR_SETTINGS.assStrikeEnabled, MaweSettings.EDITOR_SETTINGS.assSmallTextEnabled,
-    MaweSettings.EDITOR_SETTINGS.assLargeTextEnabled, style.fontName, style.bold, style.italic,
-    metrics.resolution.height, assPreviewFontScale(style), style.__assNativeFontSize, style.borderStyle]);
-  if (element.dataset.assEmphasisKey === key) return;
-  clearAssEmphasisPreview(element);
-  const runs = window.AsrEditorUtils.assInlineStyleRuns(source, emphasisSyntax, MaweSettings.EDITOR_SETTINGS);
-  if (!runs.some((run) => run.emphasized || run.underlined || run.struck || run.size)) {
-    if (textNode) textNode.nodeValue = source;
-    else element.textContent = source;
-    element.dataset.assEmphasisKey = key;
-    return;
-  }
-  if (textNode) textNode.nodeValue = '';
-  else element.textContent = '';
-  const wrapper = document.createElement('span');
-  wrapper.className = 'ass-emphasis-runs';
-  runs.forEach((run) => {
-    if (!run.emphasized && !run.underlined && !run.struck && !run.size) {
-      wrapper.append(document.createTextNode(run.text));
-      return;
-    }
-    const span = document.createElement('span');
-    span.className = ['ass-inline-run', run.emphasized ? 'ass-emphasis-run' : '', run.underlined ? 'ass-underline-run' : ''].filter(Boolean).join(' ');
-    span.textContent = run.text;
-    if (run.underlined || run.struck) {
-      span.style.textDecorationLine = [run.underlined || style.underline ? 'underline' : '',
-        run.struck || style.strikeOut ? 'line-through' : ''].filter(Boolean).join(' ');
-      span.style.textDecorationColor = run.emphasized && style.emphasisStyle === 'text'
-        ? style.emphasisColor : style.primaryColor;
-      span.style.textUnderlineOffset = '0.16em';
-    }
-    const sizeScale = run.size === 'small' ? style.smallTextScale
-      : run.size === 'large' ? style.largeTextScale : 1;
-    const scale = sizeScale * (run.emphasized ? style.emphasisScale : 1);
-    if (scale !== 1) {
-      const size = Math.max(1, Math.round(assPreviewExportFontSize(style, metrics) * scale));
-      span.style.fontSize = `${size * metrics.scaleY * assPreviewFontScale(style)}px`;
-    }
-    if (run.emphasized && style.emphasisStyle === 'stroke') {
-      const color = window.AsrEditorUtils.assCssColorWithOpacity(style.emphasisColor, style.outlineOpacity);
-      if (Number(style.borderStyle) === 3) span.style.backgroundColor = color;
-      else {
-        span.style.webkitTextStroke = `${2 * Math.max(0, Number(style.outline) || 0) * metrics.scaleY}px ${color}`;
-        span.style.paintOrder = 'stroke fill';
-      }
-    } else if (run.emphasized) {
-      span.style.color = style.emphasisColor;
-    }
-    wrapper.append(span);
-  });
-  element.append(wrapper);
-  element.dataset.assEmphasisKey = key;
+  return window.AsrEditorUtils.assInlineStyleRuns(
+    source, MaweSettings.EDITOR_SETTINGS.assEmphasisSyntax, MaweSettings.EDITOR_SETTINGS,
+  );
 }
 
 function applyAssSubtitlePreview({ tMs, segment, extension, overlay, overlaySegments, mainColorName, speakerLabelVisible }) {
@@ -341,11 +190,12 @@ function applyAssSubtitlePreview({ tMs, segment, extension, overlay, overlaySegm
   );
   const baseStyle = window.AsrEditorUtils.assStyleForId(library, profile.styleId);
   const metrics = assPreviewMetrics();
-  const alignment = assPreviewAlignment(baseStyle.alignment);
+  // 边距保持 PlayRes 原生坐标：Canvas 合成层直接在原生坐标系绘制，
+  // 锚点、描边、字号不再各自乘缩放系数。
   const margins = {
-    left: Math.max(0, Number(baseStyle.marginL) || 0) * metrics.scaleX,
-    right: Math.max(0, Number(baseStyle.marginR) || 0) * metrics.scaleX,
-    vertical: Math.max(0, Number(baseStyle.marginV) || 0) * metrics.scaleY,
+    left: Math.max(0, Number(baseStyle.marginL) || 0),
+    right: Math.max(0, Number(baseStyle.marginR) || 0),
+    vertical: Math.max(0, Number(baseStyle.marginV) || 0),
   };
   const appearance = MaweAppearance.getSubtitleAppearance();
   const extensionSegments = activeExtensionSegments();
@@ -355,11 +205,10 @@ function applyAssSubtitlePreview({ tMs, segment, extension, overlay, overlaySegm
   const extensionStyleBase = window.AsrEditorUtils.assStyleForId(
     library, library.assignments?.assExtensionStyleId || 'ass-extension',
   );
-  const extensionAlignment = assPreviewAlignment(extensionStyleBase.alignment);
   const extensionMargins = {
-    left: Math.max(0, Number(extensionStyleBase.marginL) || 0) * metrics.scaleX,
-    right: Math.max(0, Number(extensionStyleBase.marginR) || 0) * metrics.scaleX,
-    vertical: Math.max(0, Number(extensionStyleBase.marginV) || 0) * metrics.scaleY,
+    left: Math.max(0, Number(extensionStyleBase.marginL) || 0),
+    right: Math.max(0, Number(extensionStyleBase.marginR) || 0),
+    vertical: Math.max(0, Number(extensionStyleBase.marginV) || 0),
   };
   // 叠加轨导出引用颜色样式名（无颜色时回落）；预览按同一映射
   // 应用 ass_color_style 的调色板变体，保持与导出一致。
@@ -432,103 +281,109 @@ function applyAssSubtitlePreview({ tMs, segment, extension, overlay, overlaySegm
   // 变字形大小，不改变锚定边距。
   const extensionTrackActive = extensionSegments
     .some((cue) => cue && cue.disabled !== true);
-  const mainPreviewFontSize = assPreviewExportFontSize(baseStyle, metrics) * metrics.scaleY;
-  const extensionPreviewFontSize = assPreviewExportFontSize(extensionStyleBase, metrics) * metrics.scaleY;
-  const overlayOffsetPx = extensionTrackActive
-    ? extensionMargins.vertical + 1.2 * extensionPreviewFontSize
-    : margins.vertical + 1.2 * mainPreviewFontSize;
+  const mainNativeFontSize = assPreviewExportFontSize(baseStyle, metrics);
+  const extensionNativeFontSize = assPreviewExportFontSize(extensionStyleBase, metrics);
+  const overlayOffsetNative = extensionTrackActive
+    ? extensionMargins.vertical + 1.2 * extensionNativeFontSize
+    : margins.vertical + 1.2 * mainNativeFontSize;
 
   MaweDom.overlayEl.dataset.assMode = 'true';
   MaweDom.overlayEl.classList.add('ass-preview-active');
   // ASS 的坐标系覆盖整个 PlayRes 画布；旧版 CSS 预览保存的自定义字幕盒
   // 只在 CSS 模式下生效，否则会把 Alignment / Margin 的语义再次套一层。
+  // overlayEl 只是 Canvas 的定位容器，文字绘制全部在画布内完成。
   MaweDom.overlayEl.style.left = `${metrics.offsetX}px`;
   MaweDom.overlayEl.style.top = `${metrics.offsetY}px`;
   MaweDom.overlayEl.style.right = 'auto';
   MaweDom.overlayEl.style.bottom = 'auto';
   MaweDom.overlayEl.style.width = `${metrics.stageWidth}px`;
   MaweDom.overlayEl.style.height = `${metrics.stageHeight}px`;
-  MaweDom.overlayEl.style.alignItems = alignment.alignItems;
-  MaweDom.overlayEl.style.justifyContent = alignment.justifyContent;
-  MaweDom.overlayEl.style.textAlign = alignment.textAlign;
-  MaweDom.overlayEl.style.boxSizing = 'border-box';
-  MaweDom.overlayEl.style.padding = `${margins.vertical}px ${margins.right}px ${margins.vertical}px ${margins.left}px`;
-  applyAssPreviewElement(MaweDom.overlayTextEl, animatedMainStyle, mainAnimation, metrics, alignment, margins);
-  renderAssEmphasisPreview(MaweDom.overlayTextEl, MaweDom.overlayMainTextNode,
-    segment?.text || '', animatedMainStyle, metrics);
-  applyAssAnchoredPreviewElement(
-    MaweDom.overlayExtensionTextEl, animatedExtensionStyle, extensionAnimation, metrics,
-    extensionAlignment, extensionMargins, extensionMargins.vertical,
-  );
-  renderAssEmphasisPreview(MaweDom.overlayExtensionTextEl, null,
-    extension?.text || '', animatedExtensionStyle, metrics);
+  // ASS 文本由 Canvas 合成，DOM 文本元素整体隐藏（refreshSubtitlePreview
+  // 在 CSS 模式下按可见性切换 hidden，这里每帧强制覆盖）。
+  [MaweDom.overlayTextEl, MaweDom.overlayExtensionTextEl, overlayTrackTextEl, MaweDom.overlayMainSpeakerLabelEl]
+    .forEach((element) => {
+      if (element && !element.classList.contains('hidden')) element.classList.add('hidden');
+    });
 
+  // 说话人标签跟随主字幕合成（画在首行行首）：与导出 assEventText 一致，
+  // text / speaker 模式标签跟随调色板颜色，其余保持基础色。
+  let speaker = null;
   if (speakerLabelVisible) {
-    applyAssPreviewSpeakerLabel(MaweDom.overlayMainSpeakerLabelEl, animatedMainStyle, metrics);
-    // 与导出 assEventText 一致：text / speaker 模式标签跟随调色板颜色，其余保持基础色。
     const paletteColor = MaweColors.COLOR_BY_NAME[mainColorName]?.value;
     const assColorStyle = appearance.ass_color_style || DEFAULT_ASS_COLOR_STYLE;
     const labelColor = assColorStyle === 'text' || assColorStyle === 'speaker'
       ? paletteColor || animatedMainStyle.primaryColor
       : animatedMainStyle.primaryColor;
-    MaweDom.overlayMainSpeakerLabelEl.style.color = labelColor;
-    MaweDom.overlayMainSpeakerLabelEl.style.webkitTextStroke = Number(animatedMainStyle.borderStyle) !== 3 && animatedMainStyle.outline > 0
-      ? `${2 * animatedMainStyle.outline * metrics.scaleY}px ${window.AsrEditorUtils.assCssColorWithOpacity(animatedMainStyle.outlineColor, animatedMainStyle.outlineOpacity)}` : '';
-    MaweDom.overlayMainSpeakerLabelEl.style.paintOrder = Number(animatedMainStyle.borderStyle) !== 3 && animatedMainStyle.outline > 0 ? 'stroke fill' : '';
-    MaweDom.overlayMainSpeakerLabelEl.style.textDecorationColor = labelColor;
-  } else {
-    clearAssPreviewSpeakerLabelStyle(MaweDom.overlayMainSpeakerLabelEl);
+    speaker = {
+      text: String(MaweDom.overlayMainSpeakerLabelEl.textContent || ''),
+      color: labelColor,
+    };
   }
-  // 链在副字幕上方时，叠加元素沿用副字幕样式的对齐与边距（与导出侧
-  // Overlay 样式继承锚定层坐标系保持一致）。
-  applyAssAnchoredPreviewElement(
-    overlayTrackTextEl, animatedOverlayTrackStyle, overlayAnimation, metrics,
-    extensionTrackActive ? extensionAlignment : alignment,
-    extensionTrackActive ? extensionMargins : margins,
-    overlayOffsetPx,
-  );
-  renderAssEmphasisPreview(overlayTrackTextEl, overlayTrackTextNode,
-    overlay?.text || '', animatedOverlayTrackStyle, metrics);
-}
+  // 叠加轨说话人标签同理：映射按叠加轨自身数组解析（与播放循环同源），
+  // 叠加轨 DOM 元素在 ASS 模式已整体隐藏，标签必须进 Canvas 才可见。
+  let overlaySpeaker = null;
+  if (overlay) {
+    const speakerLabels = MaweSpeakerLabels.getSpeakerLabelSettings();
+    const overlayColorContext = overlaySegments || [];
+    const overlayLabel = speakerLabels.mapping_enabled && speakerLabels.enabled
+      ? window.AsrEditorUtils.speakerLabelForSegment(
+        overlay, overlayColorContext, speakerLabels.names,
+      )
+      : '';
+    const overlayColorName = MULTI_SUBTITLE_UTILS.effectiveColorName(overlay, overlayColorContext);
+    if (overlayLabel && overlayColorName && MaweColors.COLOR_BY_NAME[overlayColorName]) {
+      const assColorStyle = appearance.ass_color_style || DEFAULT_ASS_COLOR_STYLE;
+      const paletteColor = MaweColors.COLOR_BY_NAME[overlayColorName].value;
+      const labelColor = assColorStyle === 'text' || assColorStyle === 'speaker'
+        ? paletteColor
+        : animatedOverlayTrackStyle.primaryColor;
+      overlaySpeaker = {
+        text: `${overlayLabel}${speakerLabels.separator}`,
+        color: labelColor,
+      };
+    }
+  }
 
-// 锚定渲染：副字幕/叠加轨不参与容器的 flex 布局（CSS 模式下叠加文字
-// 悬浮在预览框上沿之外，而 ASS 模式 overlayEl 已铺满整个舞台，那套
-// 定位会把文字推出画面），改为按各自样式的对齐与边距绝对定位。垂直
-// 偏移由调用方给出，替代样式的 marginV：副字幕直接用自己的边距，叠加
-// 轨用链式锚定结果。中列/中行以 50% + 锚定平移居中，锚定平移作为前缀
-// 并入 applyAssPreviewElement 的 scale/rotate 变换。
-function applyAssAnchoredPreviewElement(element, style, animationState, metrics, alignment, margins, verticalOffsetPx) {
-  if (!element) return;
-  const anchorTranslate = `translate(${alignment.x === 0.5 ? '-50%' : '0%'}, ${alignment.y === 0.5 ? '-50%' : '0%'})`;
-  applyAssPreviewElement(element, style, animationState, metrics, alignment, margins, anchorTranslate);
-  // 定位须在 applyAssPreviewElement 之后写入：其无 \move 分支会清空
-  // position/left/top，先写会被抹掉。
-  element.style.position = 'absolute';
-  if (alignment.x === 0.5) {
-    element.style.left = '50%';
-    element.style.right = 'auto';
-  } else if (alignment.x === 1) {
-    element.style.left = 'auto';
-    element.style.right = `${Math.max(0, Math.round(margins.right))}px`;
-  } else {
-    element.style.left = `${Math.max(0, Math.round(margins.left))}px`;
-    element.style.right = 'auto';
-  }
-  if (alignment.y === 0.5) {
-    element.style.top = '50%';
-    element.style.bottom = 'auto';
-  } else if (alignment.y === 0) {
-    // ASS 7-9 顶行：锚定边距从画面顶部算起。
-    element.style.top = `${Math.max(0, Math.ceil(verticalOffsetPx))}px`;
-    element.style.bottom = 'auto';
-  } else {
-    // ASS 1-3 底行：锚定边距从画面底部算起。
-    element.style.top = 'auto';
-    element.style.bottom = `${Math.max(0, Math.ceil(verticalOffsetPx))}px`;
-  }
-  element.style.whiteSpace = 'pre';
-  element.style.wordBreak = 'normal';
-  element.style.textAlign = alignment.textAlign;
+  window.MaweAssCanvas?.render({
+    playResX: metrics.resolution.width,
+    playResY: metrics.resolution.height,
+    tracks: [
+      {
+        visible: Boolean(segment),
+        runs: assPreviewTrackRuns(segment?.text || ''),
+        style: animatedMainStyle,
+        animation: mainAnimation,
+        nativeFontSize: assPreviewExportFontSize(animatedMainStyle, metrics),
+        margins,
+        speaker,
+      },
+      {
+        visible: Boolean(extension),
+        runs: assPreviewTrackRuns(extension?.text || ''),
+        style: animatedExtensionStyle,
+        animation: extensionAnimation,
+        nativeFontSize: assPreviewExportFontSize(animatedExtensionStyle, metrics),
+        margins: extensionMargins,
+      },
+      {
+        // 链在副字幕上方时，叠加元素沿用副字幕样式的对齐与边距（与导出
+        // 侧 Overlay 样式继承锚定层坐标系保持一致）；垂直偏移用链式锚定，
+        // 覆盖样式的 marginV。
+        visible: Boolean(overlay),
+        runs: assPreviewTrackRuns(overlay?.text || ''),
+        style: animatedOverlayTrackStyle,
+        animation: overlayAnimation,
+        nativeFontSize: assPreviewExportFontSize(animatedOverlayTrackStyle, metrics),
+        alignment: extensionTrackActive ? extensionStyleBase.alignment : baseStyle.alignment,
+        speaker: overlaySpeaker,
+        margins: {
+          left: extensionTrackActive ? extensionMargins.left : margins.left,
+          right: extensionTrackActive ? extensionMargins.right : margins.right,
+          vertical: overlayOffsetNative,
+        },
+      },
+    ],
+  });
 }
 
 function restoreAssOverlayTrackPreview() {
@@ -546,8 +401,12 @@ function restoreAssOverlayTrackPreview() {
   delete overlayTrackTextEl.dataset.colorStroke;
 }
 
-// The manager also uses the calibrated font metrics after boot has completed.
-window.MaweAssPreview = Object.freeze({ fontScale: assPreviewFontScale });
+// The manager also uses the calibrated font metrics after boot has completed;
+// the Canvas layer reuses exportFontSize for native run sizes.
+window.MaweAssPreview = Object.freeze({
+  fontScale: assPreviewFontScale,
+  exportFontSize: assPreviewExportFontSize,
+});
 
 
 

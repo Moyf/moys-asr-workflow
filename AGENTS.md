@@ -77,6 +77,18 @@ git diff --check
 uv run python server-editor\serve.py --blank
 ```
 
+### Playwright e2e 运行纪律（防长命令挂起）
+
+详见 [docs/E2E_SERVER_HANG.md](docs/E2E_SERVER_HANG.md)。要点：
+
+- e2e 的 serve.py 在运行被中断（以及部分正常结束场景）后会残留并占住管道，
+  使后续命令「永不结束」。**中断/失败后重跑前，先按该文档清理残留进程。**
+- 长命令显式限时：全量 chromium e2e ≤ 15 分钟，单 spec ≤ 10 分钟；优先只跑
+  受影响的 spec，全量留给 CI。连续两轮不过先停下分析，不要循环重跑。
+- 后台任务用 `Start-Process -WindowStyle Hidden`（勿用 `-NoNewWindow`，会占
+  住当前控制台），输出重定向到文件。
+- 浏览器验证是可选项：逻辑验证优先单测；反复卡住就降级为人工验收，不要阻塞。
+
 ## 大型反馈任务的持久化流程
 
 当一次测试反馈包含多个问题时，必须采用“边做边落盘”的方式，避免并行铺开过多修改后失去真实进度，或在中断、上下文压缩后凭摘要误判完成情况。
