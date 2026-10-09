@@ -13,6 +13,7 @@ from unittest import mock
 
 from maw.local_runtime import (
     LocalRuntimeError,
+    _runtime_env,
     install_local_runtime,
     managed_runtime_status,
     model_cache_environment,
@@ -336,6 +337,26 @@ class LocalRuntimeTests(unittest.TestCase):
         with mock.patch("maw.local_runtime._run_process", return_value=0) as run_process:
             prepare_model_in_process(engine="qwen-asr", model="Qwen/Qwen3-ASR-0.6B", device="cpu")
         assert_mapping_kwargs(run_process)
+
+
+class LocalRuntimeEnvironmentTests(unittest.TestCase):
+    """回归：本地 ASR worker 跑在托管 venv 的宿主解释器上。"""
+
+    def test_runtime_env_drops_bundled_library_path_for_frozen_linux(self) -> None:
+        parent_env = {"LD_LIBRARY_PATH": "/app/_internal", "MAW_TEST": "preserved"}
+        # clear=True 需保留 home 变量：环境构建经 app_paths 依赖 Path.home()。
+        patched_env = {
+            **parent_env,
+            "USERPROFILE": os.environ.get("USERPROFILE", ""),
+            "HOME": os.environ.get("HOME", ""),
+        }
+        with mock.patch.object(sys, "platform", "linux"):
+            with mock.patch.object(sys, "frozen", True, create=True):
+                with mock.patch.dict(os.environ, patched_env, clear=True):
+                    env = _runtime_env(None, Path("/tmp/local-runtime"))
+
+        self.assertNotIn("LD_LIBRARY_PATH", env)
+        self.assertEqual(env["MAW_TEST"], "preserved")
 
 
 if __name__ == "__main__":

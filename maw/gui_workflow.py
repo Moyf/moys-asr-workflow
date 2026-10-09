@@ -19,7 +19,7 @@ from typing import BinaryIO, Final, TextIO, final
 from maw.console import configure_utf8_environment
 from maw.ffmpeg import MACOS_FFMPEG_CANDIDATE_DIRECTORIES, bundled_ffmpeg_directory, ffmpeg_search_path, resolve_ffmpeg_tools
 from maw.gui_config import QWEN_AUDIO_31_MODEL_ID, QWEN_AUDIO_MODEL_ID, DEFAULT_MODEL_ID, DEFAULT_ENV_PATH, effective_config, load_env
-from maw.gui_platform import asset_path, popen_process_tree, process_group_kwargs, release_process_tree, terminate_process_tree
+from maw.gui_platform import asset_path, popen_process_tree, process_group_kwargs, release_process_tree, restore_host_library_path, terminate_process_tree
 from maw.media import read_bwf_time_reference
 from maw.output_naming import debug_artifact_path, maw_root
 from maw.qwen_audio import split_qwen_audio_hotwords
@@ -500,6 +500,10 @@ def run_transcription(
         request.engine,
         request.base_url,
     )
+    if request.provider == "local" and request.runtime_python:
+        # 本地引擎子进程跑在托管 venv 的宿主解释器上（见 build_transcribe_command），
+        # 与冻结包内更旧的 libexpat / libssl 不兼容，需要还原系统动态库搜索路径。
+        env = restore_host_library_path(env)
     command = build_transcribe_command(request, executable=executable, frozen=frozen)
     process = popen_process_tree(
         command,

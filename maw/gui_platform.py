@@ -32,6 +32,27 @@ def creationflags() -> int:
     return int(getattr(subprocess, "CREATE_NO_WINDOW", 0))
 
 
+def restore_host_library_path(env: dict[str, str]) -> dict[str, str]:
+    """让非冻结子进程用回宿主的动态库搜索路径。
+
+    AppImage / PyInstaller 引导会把 ``LD_LIBRARY_PATH`` 指向包内 ``_internal``，
+    其中的 libexpat / libssl / libcrypto 等动态库比宿主系统更旧。宿主 CPython 的
+    ``pyexpat`` / ``_ssl`` / ``_hashlib`` 扩展模块会因缺少新符号或版本节点而导入
+    失败，进而让 ``python3 -m venv`` 内的 ensurepip、pip 的 HTTPS 下载以及托管
+    runtime（OCR / 本地 ASR）的 worker 全部启动失败。冻结进程自身仍需要该变量定位
+    包内 Qt 等库，因此只在打包版 Linux 上还原为 AppImage 记录的
+    ``LD_LIBRARY_PATH_ORIG``（不存在则直接移除）。
+    """
+    if sys.platform != "linux" or not getattr(sys, "frozen", False):
+        return env
+    original = env.get("LD_LIBRARY_PATH_ORIG")
+    if original is not None:
+        env["LD_LIBRARY_PATH"] = original
+    else:
+        env.pop("LD_LIBRARY_PATH", None)
+    return env
+
+
 def process_group_kwargs() -> dict[str, object]:
     """Start a child in an independently terminable process group."""
     flags = creationflags()

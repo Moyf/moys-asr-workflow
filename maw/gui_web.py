@@ -62,7 +62,7 @@ from maw.gui_config import (
     provider_for_model,
     save_env,
 )
-from maw.gui_platform import apply_dark_title_bar, asset_path, creationflags, popen_process_tree, process_group_kwargs, release_process_tree, startupinfo, terminate_process_tree
+from maw.gui_platform import apply_dark_title_bar, asset_path, creationflags, popen_process_tree, process_group_kwargs, release_process_tree, restore_host_library_path, startupinfo, terminate_process_tree
 from maw.gui_workflow import TranscriptionCancelledError, TranscriptionProcessError, TranscriptionRequest, TranscriptionResult, _child_environment, _ffmpeg_search_path, build_alignment_serve_command, build_output_paths, build_serve_command, default_srt_path, raw_response_path, run_transcription, unique_output_path, with_test_suffix
 from maw.launcher_batch import BatchItem, run_batch
 from maw.output_naming import format_elapsed, maw_root
@@ -4456,12 +4456,7 @@ def _stop_external_maw_server(port: int) -> bool:
 
 def _open_external(target: str) -> None:
     if sys.platform == "linux" and getattr(sys, "frozen", False):
-        env = os.environ.copy()
-        original = env.get("LD_LIBRARY_PATH_ORIG")
-        if original is not None:
-            env["LD_LIBRARY_PATH"] = original
-        else:
-            env.pop("LD_LIBRARY_PATH", None)
+        env = restore_host_library_path(os.environ.copy())
         subprocess.Popen(["xdg-open", target], env=env)
     else:
         webbrowser.open(target)
