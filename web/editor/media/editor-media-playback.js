@@ -207,7 +207,13 @@
       auditionStopSeconds = null;
       clearAuditionStopTimer();
     });
-    mediaElement.addEventListener('pause', () => { auditionStopSeconds = null; clearAuditionStopTimer(); });
+    ['pause', 'ended', 'emptied'].forEach((name) => mediaElement.addEventListener(name, () => {
+      auditionSeekPending = false;
+      auditionStopSeconds = null;
+      clearAuditionStopTimer();
+    }));
+    mediaElement.addEventListener('seeked', () => { auditionSeekPending = false; });
+    mediaElement.addEventListener('ratechange', () => scheduleAuditionStop(mediaElement));
     mediaElement.addEventListener('seeked', MawePlaybackLoop.update);
     mediaElement.addEventListener('loadedmetadata', () => {
       MaweTimeline.captureProjectVideoDimensions(mediaElement);
@@ -303,9 +309,15 @@ MaweCoreState.waveformEditor?.revealTime(targetSeconds * 1000, true);
     const start = Math.max(0, (Number(startMs) || 0) / 1000);
     const stop = (Number(endMs) || 0) / 1000;
     if (!(stop > start)) return false;
-    auditionSeekPending = true;
-    if (!seekMediaTo(start)) { auditionSeekPending = false; return false; }
+    // seekMediaTo 会同步刷新播放状态；必须先进入试听，避免落入空隙后立即被跳过。
     auditionStopSeconds = stop;
+    auditionSeekPending = true;
+    if (!seekMediaTo(start)) {
+      auditionSeekPending = false;
+      auditionStopSeconds = null;
+      clearAuditionStopTimer();
+      return false;
+    }
     scheduleAuditionStop(MaweCoreState.player);
     if (MaweCoreState.player.paused) togglePlayback();
     return true;
@@ -319,14 +331,14 @@ MaweCoreState.waveformEditor?.revealTime(targetSeconds * 1000, true);
       auditionStopTimer = 0;
       if (auditionStopSeconds === null || MaweCoreState.player !== mediaElement) return;
       if (mediaElement.paused) { auditionStopSeconds = null; return; }
-      if (mediaElement.currentTime >= auditionStopSeconds - 0.005) stopAtAuditionBoundary(mediaElement);
+      if (mediaElement.currentTime >= auditionStopSeconds) stopAtAuditionBoundary(mediaElement);
       else scheduleAuditionStop(mediaElement);
     }, delayMs + 1);
   }
   function watchAuditionBoundary(mediaElement) {
     if (auditionStopSeconds === null) return;
     if (MaweCoreState.player !== mediaElement || mediaElement.paused) { auditionStopSeconds = null; clearAuditionStopTimer(); return; }
-    if (mediaElement.currentTime >= auditionStopSeconds - 0.02) stopAtAuditionBoundary(mediaElement);
+    if (mediaElement.currentTime >= auditionStopSeconds) stopAtAuditionBoundary(mediaElement);
   }
 
   global.MaweMediaPlayback = Object.freeze({
@@ -344,6 +356,7 @@ MaweCoreState.waveformEditor?.revealTime(targetSeconds * 1000, true);
     bindPlayerEvents,
     seekMediaBy,
     seekMediaTo,
+    get isAuditioning() { return auditionStopSeconds !== null; },
     auditionRange
   });
 })(typeof window !== 'undefined' ? window : globalThis);

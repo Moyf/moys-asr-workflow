@@ -19,6 +19,17 @@ const i18nContext = { window: {} };
 vm.runInNewContext(i18nSource, i18nContext);
 const i18n = i18nContext.window.MAWE_I18N;
 
+test('translates word-timing audition, editing history and synced text feedback', () => {
+  assert.equal(i18n.translateText('试听', 'en'), 'Audition');
+  assert.equal(i18n.translateText('请先导入媒体，然后才能试听', 'en'), 'Import media before auditioning');
+  assert.equal(i18n.translateText('调整字词时间码', 'en'), 'Adjust word timings');
+  assert.equal(i18n.translateText('已修改 3 行，其中 2 行的字词时间码文字已同步', 'en'), 'Modified 3 row(s); word-timing text synced in 2 row(s)');
+  assert.equal(i18n.translateText('已修改 3 行', 'en'), 'Modified 3 row(s)');
+  assert.equal(i18n.translateText('已撤销：调整字词时间码（剩 2 步）', 'en'), 'Undone: Adjust word timings (2 step(s) remaining)');
+  assert.equal(i18n.translateText('已重做：调整字词时间码（剩 1 步）', 'en'), 'Redone: Adjust word timings (1 step(s) remaining)');
+  assert.equal(i18n.translateText('试听', 'zh'), '试听');
+});
+
 test('translates macOS help gestures after platform labels are applied', () => {
   assert.equal(i18n.translateText('Cmd+点击', 'en'), 'Cmd+click');
   assert.equal(i18n.translateText('Cmd+拖拽空白处', 'en'), 'Cmd+drag blank area');

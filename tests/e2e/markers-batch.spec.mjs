@@ -36,6 +36,31 @@ async function seed(page) {
   await expect(page.locator('.markers-item')).toHaveCount(3);
 }
 
+test('notes toggle and custom colors preserve marker content', async ({ page }) => {
+  await seed(page);
+  await expect(page.locator('.markers-item-note')).toHaveCount(0);
+  await page.evaluate(() => MaweMarkerEditing.updateMarkerFields('human', { note: '' }));
+  await page.locator('#markers-show-notes').check();
+  await expect(page.locator('[data-marker-id="human"] .markers-item-note')).toHaveText('-');
+  await expect(page.locator('[data-marker-id="ai-delete"] .markers-item-note')).toHaveText('[AI] 删除：试麦');
+  const spacing = await page.locator('.markers-item-note').first().evaluate(el => parseFloat(getComputedStyle(el).marginTop));
+  expect(spacing).toBeGreaterThanOrEqual(8);
+  await page.locator('[data-marker-id="human"] .markers-item-edit').click();
+  await expect(page.locator('.markers-color-swatches button')).toHaveCount(8);
+  await page.locator('.markers-color-picker').evaluate(el => {
+    el.value = '#b18be8';
+    el.dispatchEvent(new Event('input', { bubbles: true }));
+    el.dispatchEvent(new Event('change', { bubbles: true }));
+  });
+  await expect(page.locator('.markers-edit-hex')).toHaveValue('#b18be8');
+  expect(await page.evaluate(() => MaweMarkerEditing.findMarker('human').color)).toBe('#b18be8');
+  await page.locator('.markers-edit-hex').fill('#ffffff');
+  await page.locator('.markers-edit-hex').press('Tab');
+  await expect(page.locator('.markers-color-picker')).toHaveValue('#ffffff');
+  await page.locator('#markers-show-notes').uncheck();
+  await expect(page.locator('.markers-item-note')).toHaveCount(0);
+});
+
 test('filter-select-delete is one undo and preserves manual markers and clip decisions', async ({ page }) => {
   await seed(page);
   await page.locator('#markers-search').fill('[AI]');

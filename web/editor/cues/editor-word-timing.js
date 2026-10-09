@@ -28,7 +28,7 @@
     MaweCoreState.waveformEditor?.pane.classList.toggle('word-timing-mode', enabled);
     refresh();
   }
-  // 波形工具栏的快捷按钮（🪶）与项目设置镜像开关由模板可选提供；不存在时零开销。
+  // 波形工具栏的快捷按钮（🔤）与项目设置镜像开关由模板可选提供；不存在时零开销。
   function syncQuickToggle() {
     const quick = document.getElementById('word-timing-quick-toggle');
     if (quick) {
