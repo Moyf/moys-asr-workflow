@@ -37,6 +37,7 @@
     "shared/utils/lrc.js",
     "shared/utils/ass-style.js",
     "shared/utils/ass-animation.js",
+    "shared/utils/ass-canvas-layout.js",
     "shared/utils/ass-export.js",
     "shared/utils/export-plan.js",
     "shared/utils/fcp7.js",
@@ -171,6 +172,7 @@
     "editor/cues/editor-wiring-edit-shortcuts.js",
     "editor/styles/editor-wiring-font-geometry.js",
     "editor/styles/editor-wiring-ass-preview.js",
+    "editor/styles/editor-wiring-ass-canvas.js",
     "editor/styles/editor-wiring-ass-frame.js",
     "editor/media/editor-wiring-sticker-preview.js",
     "editor/io/editor-wiring-export-context.js",
@@ -225,6 +227,7 @@
     "shared/utils/lrc.js": "febdcceebbb5884cbb75a60cba261af53c92779bb6eb21cedb486563e3f39644",
     "shared/utils/ass-style.js": "26bccaa899bf8303440e5e77b2cb3e9bd3a09ab90e69c2b8f080136a1ffba125",
     "shared/utils/ass-animation.js": "5d56e96d2eba1a022951df6925bbe66ca7de650155c9572af0ad69fb182f6791",
+    "shared/utils/ass-canvas-layout.js": "22233e78b3126b5dff7a459042a7942e934e1bec18800597d5516d70e2fe301a",
     "shared/utils/ass-export.js": "c6b78a7643f4fb46147bda55fed08d332ba4b85828c2102c96da69a1315169c4",
     "shared/utils/export-plan.js": "ed8e3a513f5ed8bb30d7cdeba8ed5ef6563e2df5a9bae040e60d5c97d68d16a2",
     "shared/utils/fcp7.js": "1ed3e9af7d41dcefaa4fd3ab53348b5bebc7b3430f2f84d7676401d12086b9cc",
@@ -233,7 +236,7 @@
     "shared/utils/preview-geometry.js": "7b9a6232d51808e4fb9e342f4bc385079a866557194fa83f41381c13a4ca3b42",
     "shared/utils/lottie.js": "a74b0332e76eef35299d9567c052584a61383134cf03e9ea5279b11e6d4e69ea",
     "shared/utils/ograf.js": "94b88b7db9ea4fd862dc49985f1a5e46bcef6bc70837cb656b0cd1b085a40d89",
-    "shared/editor-utils.js": "f7fb3bcb5450b1c25b74b66e60a545bf4848a9da6b26c2606d5f4e51e271a6e0",
+    "shared/editor-utils.js": "360489d1efb54cddfd9c732c7daab966a0f6d1bf0cb05a2b09c96d4485048a13",
     "shared/editor-i18n.js": "8999d72913f566b26b98732268c7d951f08ac2c9bee0eca41c1f1989d19b5963",
     "editor/media/waveform/constants.js": "d5bd567ad4dcbee81995e275e8bf0be571b47e28952fa944478a66aa78e079e4",
     "editor/media/waveform/labels.js": "983afc39d173fc6636d0c78b4fdf4f426a4ba49c8ba4d40305e2775ddb28b80b",
@@ -358,7 +361,8 @@
     "editor/media/editor-wiring-media-controls.js": "978298e2f616be772132c07321187f66ebc5f46d31d4d14ac0a04a0f0815194f",
     "editor/cues/editor-wiring-edit-shortcuts.js": "353fc928fb8fa370f5f4406fc07f061ed8717fed9639e4a17201a3f481ed0366",
     "editor/styles/editor-wiring-font-geometry.js": "a6bd47579d3c780c6cbf3d6211584728759fad78e5d26af826f03dcbf3da9c04",
-    "editor/styles/editor-wiring-ass-preview.js": "dd1081a80ed9d863904854133fc9f110887759afc46e70405eed96af9d7ea54b",
+    "editor/styles/editor-wiring-ass-preview.js": "8976d175b3002698f2b60b271dc3a7ffc84f77347ffc1d9252183f9a4002fe7a",
+    "editor/styles/editor-wiring-ass-canvas.js": "5571bb0cb17ee2312fd50496d5ce730a31c66af244dd1456e8314cf95f8c0134",
     "editor/styles/editor-wiring-ass-frame.js": "1a3c186069460cde01b86e0c1614b8b71d3f9fa7c4ef377988824b14adff69e5",
     "editor/media/editor-wiring-sticker-preview.js": "fa46c5d9075247e627f4fea99cd13d36d1492e4bd5ee1c7a51f046168abbbdb8",
     "editor/io/editor-wiring-export-context.js": "d01cdb5a0acc5ceca8f6172bc9e0b11e70586452fe7c8514fd1e28d29d53a3f7",
@@ -686,7 +690,7 @@
         "format": "esm"
       },
       "web/editor-entry.mjs": {
-        "bytes": 1716223,
+        "bytes": 1733315,
         "imports": [
           {
             "path": "web/shared/host/storage.js",
@@ -1103,10 +1107,10 @@
             "bytesInOutput": 458
           },
           "web/shared/utils/preview-geometry.js": {
-            "bytesInOutput": 1572
+            "bytesInOutput": 1574
           },
           "web/shared/utils/lottie.js": {
-            "bytesInOutput": 4209
+            "bytesInOutput": 4207
           },
           "web/shared/utils/ograf.js": {
             "bytesInOutput": 10943
@@ -1187,10 +1191,10 @@
             "bytesInOutput": 4423
           },
           "web/editor-entry.mjs": {
-            "bytesInOutput": 1003959
+            "bytesInOutput": 1008785
           }
         },
-        "bytes": 1342843
+        "bytes": 1347669
       }
     }
   }

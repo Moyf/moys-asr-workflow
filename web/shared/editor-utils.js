@@ -30,6 +30,7 @@
   Object.assign(helpers, window.MAWE.resolve('utils-lrc', helpers));
   Object.assign(helpers, window.MAWE.resolve('utils-ass-style', helpers));
   Object.assign(helpers, window.MAWE.resolve('utils-ass-animation', helpers));
+  Object.assign(helpers, window.MAWE.resolve('utils-ass-canvas-layout', helpers));
   Object.assign(helpers, window.MAWE.resolve('utils-ass-export', helpers));
   Object.assign(helpers, window.MAWE.resolve('utils-export-plan', helpers));
   Object.assign(helpers, window.MAWE.resolve('utils-fcp7', helpers));
@@ -103,6 +104,11 @@
     applyTimedTextEdit,
     assAnimationOverrideTags,
     assAlphaFromOpacity,
+    assCanvasAlignmentGrid,
+    assCanvasAnchorPoint,
+    assCanvasBlockTopY,
+    assCanvasLineOffsetX,
+    assCanvasLayoutLines,
     assColorFromHex,
     assCssColorWithOpacity,
     assEmphasisRuns,
@@ -530,6 +536,11 @@ window.AsrEditorUtils = {
     assPreviewStyleAt,
     assPreviewAnimationState,
     assSentenceFadeTags,
+    assCanvasAlignmentGrid,
+    assCanvasAnchorPoint,
+    assCanvasBlockTopY,
+    assCanvasLineOffsetX,
+    assCanvasLayoutLines,
     buildAssPayload,
     buildPlainTextPayload,
     fileBasename,
