@@ -19,6 +19,7 @@
   "split_mode": "word",
   "timestamp_granularity": "word",
   "model": "...",
+  "preserve_punctuation": true,
   "media_metadata": {
     "video_fps": 29.97002997002997,
     "video_fps_ratio": "30000/1001",
@@ -58,6 +59,7 @@
 | `media` | `string` | 否 | 媒体文件路径（绝对/相对均可）。便携 HTML 会在“打开工程”时用它的文件名匹配同一次选择的媒体；只选工程文件时会提示用户继续选择媒体。浏览器安全限制下不能自行读取该路径或跳转其目录。服务器编辑器可按该路径自动加载 |
 | `language` | `string` | 否 | 统一后的语言代码，如 `zh`、`en`、`ja`；无法确定时为空字符串。仅用于显示与选择切句计量方式 |
 | `language_source` | `string` | 否 | 语言来源：`detected`（模型返回）、`hint`（用户提示）、`inferred`（从文字脚本推断）或 `unknown`（未知） |
+| `preserve_punctuation` | `boolean` | 否 | 为 `true` 时，MAWE 启动不执行历史中文逗号 / 句号清理，保留字幕与 items 的原文；保存和重新加载保留此策略。文稿驱动对齐写入 `true`。省略或为 `false` 时保持历史行为；不限制用户后续主动编辑 / 文本处理。此字段是 v1 的可选扩展，不改变整数毫秒契约 |
 | `split_mode` | `string` | 否 | 切句计量方式：`continuous`（字符型，如中文）或 `word`（单词型，如英文） |
 | `timestamp_granularity` | `string` | 否 | 时间码粒度：`char`、`word`、`segment` 或 `unknown`。只有整段 start/end 的模型使用 `segment`；这类工程的字幕段可以没有 `items`，超长段可能已按标点（连续语言）或单词数（单词型）二次拆分，段内时间是插值近似值（不携带 `items` 冒充词级精度） |
 | `model` | `string` | 否 | ASR 模型名，如 `qwen3-asr`。仅用于显示 |

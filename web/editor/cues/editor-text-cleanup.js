@@ -9,6 +9,7 @@
 
   // === cleanPunctuation ===
   function cleanPunctuation() {
+    if (MaweBoot.DATA.preserve_punctuation === true) return;
     const PUNCT_REPL = '  ';
     const REPLACE_INSIDE = /[，。]/g;
     for (const seg of MaweBoot.DATA.segments) {

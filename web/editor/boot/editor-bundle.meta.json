@@ -297,7 +297,7 @@
     "editor/io/editor-dynamic-exports.js": "3fceb191759ed43375d21ebc1cdbd8b6a0d2bc034377977e579d3dce925c7495",
     "editor/ui/editor-export-menus.js": "cfa4973df5672ea759702ef096c7b71e237d060ed4d8043d04e4ae72904fc213",
     "editor/io/editor-project-media-inputs.js": "107eaf3c7f006a9c67f9427f82cb85186343c5ddd684edbc8e4fbbab17a8a879",
-    "editor/io/editor-project-load.js": "4055fd443c79a7ee4221c2cfe601051cf7ddbe0fc5773292b1e8d0994d77542f",
+    "editor/io/editor-project-load.js": "d917d76dc8687001181e6174db7b9ba13cc0e834364d60fe2bbeb50d0ef674fb",
     "editor/io/editor-loading-progress.js": "45a3650422174f11b3d978ec152b5043ba331e714f40e7cb482106d9588bd538",
     "editor/io/editor-multi-import.js": "8e8e5e313f55befc1bffcefdf50463c096846e0697f8779d40b4dfa9cdcdfc55",
     "editor/media/editor-media-load.js": "81b7a4d9cb633ee1a920927e67ba4c942b17734f4e266a624bff85138388d452",
@@ -309,7 +309,7 @@
     "editor/cues/editor-add-cue.js": "ffc44f10af8f67db85097a85dea78fa43fa343425215353118f1bd08fbe1465f",
     "editor/cues/editor-bound-drag.js": "9478e2017ffb4e665f452ba18b9e90a991c6936d8222e386dbc72d76ae97f86a",
     "editor/ui/editor-context-menus.js": "371caa9859520102b6534d07ffc27bbdb178538afd8c8c472b86d407bb64141c",
-    "editor/cues/editor-text-cleanup.js": "526c8a0acbbdbab0fa2f04ee2cd580c26693a9997768b85bfd8bccc1bf423971",
+    "editor/cues/editor-text-cleanup.js": "9bc96ae38c0745e45565e17eaad4ee4cfd2f486770e806ebb84e4f06f8a8c8c7",
     "editor/media/editor-waveform-init.js": "9be89de9dddf1b6208a581dee9fef7ec23924f6f0c1f36d15af0b071c280ce78",
     "editor/cues/editor-word-timing.js": "7af59c12e99209d8a7273213f4e7446c8ebd236b3012c562108c5a29200de13b",
     "editor/media/editor-media-step.js": "778e52252d7ebd14fdc196687c6bdf333f7527970bf65ffd21c8406c8707323c",
@@ -318,7 +318,7 @@
     "editor/io/editor-server-connection.js": "253bfd5c6783fd0f8035130207dff3ba06996015c80eb29883156671cfcded06",
     "editor/io/editor-drag-drop.js": "ab5228ff0d7b81512ebf3edf4e9b0d7ca0ceb83937313f752201a04cd0bdc80b",
     "editor/io/editor-sticker-otio-export.js": "0a96a6b629aefa7a982502d2ba54f62c492d42ff4e820e157af1dc89d9e9b0a8",
-    "editor/io/editor-json-repair.js": "2d0b443b6c6466c371f67e58b2be10e497ce495b1700edf9e8bee3cd053f9289",
+    "editor/io/editor-json-repair.js": "101238bc0e3c415682ccb942c216f395d4c25417f81e59343ec3778ab634cad0",
     "editor/ui/editor-help-panel.js": "09d0778f0720704c94315df5f2b80b9d24e336ea09d1d336b74fcde832441ab4",
     "editor/ui/editor-theme.js": "6a8a3a01eb7a4a976fa0dd9f56ea8f374027249270c876f62cde5f7fb6dc1aec",
     "editor/ui/editor-gap-remove-ui.js": "6dc41c8b56b16e12399ab898111b0df0bfc0917e2d7af78a70784a3f1888ce0d",
@@ -365,7 +365,7 @@
     "editor/styles/editor-wiring-ass-canvas.js": "5571bb0cb17ee2312fd50496d5ce730a31c66af244dd1456e8314cf95f8c0134",
     "editor/styles/editor-wiring-ass-frame.js": "1a3c186069460cde01b86e0c1614b8b71d3f9fa7c4ef377988824b14adff69e5",
     "editor/media/editor-wiring-sticker-preview.js": "fa46c5d9075247e627f4fea99cd13d36d1492e4bd5ee1c7a51f046168abbbdb8",
-    "editor/io/editor-wiring-export-context.js": "d01cdb5a0acc5ceca8f6172bc9e0b11e70586452fe7c8514fd1e28d29d53a3f7",
+    "editor/io/editor-wiring-export-context.js": "89ac0732b2bcb77878991af980335662d739e4d1cfff65152e4878b042545f0e",
     "editor/io/editor-wiring-export-actions.js": "77d3a1300de2e246c458d07b66820330611b3036d62e43f6552fd960fbc57f5e",
     "editor/ui/editor-wiring-toolbar-menus.js": "7b6594d2a19ced6990cdacbf1e258861467de9f40cf087e51142d1ffcc737b45",
     "editor/io/editor-wiring-project-inputs.js": "83f60f05a35b1aa96f88f9cbb50e7f361cc77072c255f148b66c1edd396b3020",
@@ -690,7 +690,7 @@
         "format": "esm"
       },
       "web/editor-entry.mjs": {
-        "bytes": 1733315,
+        "bytes": 1733766,
         "imports": [
           {
             "path": "web/shared/host/storage.js",
@@ -1191,10 +1191,10 @@
             "bytesInOutput": 4423
           },
           "web/editor-entry.mjs": {
-            "bytesInOutput": 1008785
+            "bytesInOutput": 1009154
           }
         },
-        "bytes": 1347669
+        "bytes": 1348038
       }
     }
   }

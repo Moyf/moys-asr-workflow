@@ -42,6 +42,7 @@
     }),
   };
   if (typeof MaweBoot.DATA.language_source === 'string') out.language_source = MaweBoot.DATA.language_source;
+  if (typeof MaweBoot.DATA.preserve_punctuation === 'boolean') out.preserve_punctuation = MaweBoot.DATA.preserve_punctuation;
   if (typeof MaweBoot.DATA.split_mode === 'string') out.split_mode = MaweBoot.DATA.split_mode;
   if (typeof MaweBoot.DATA.timestamp_granularity === 'string') {
     out.timestamp_granularity = MaweBoot.DATA.timestamp_granularity;

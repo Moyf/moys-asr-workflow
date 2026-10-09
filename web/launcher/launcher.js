@@ -1180,7 +1180,7 @@
     alignment_model_failed: "对齐模型准备失败",
     alignment_model_download_again: "重新下载",
     toolbox_timestamps: "生成时间码",
-    toolbox_timestamps_hint: "给 .srt 或 .mosp/.json 工程的字幕段生成或补充字词级时间码；需要原始媒体。",
+    toolbox_timestamps_hint: "保留已有字幕文字并补充字词时间码；或从准确文稿与录音新建字幕。两种方式均需要原始媒体。",
     toolbox_group_alignment_model: "对齐模型",
     toolbox_timestamp_model: "对齐模型",
     toolbox_timestamp_model_hint: "Qwen3-ForcedAligner 与 FireRedASR2-CTC 都可独立下载；Qwen 复用 Qwen Local 的 Hugging Face 缓存。",
@@ -1188,6 +1188,26 @@
     toolbox_timestamp_mode: "处理方式",
     toolbox_timestamp_mode_fill: "只补缺失时间码",
     toolbox_timestamp_mode_generate: "全部重新生成",
+    toolbox_timestamp_mode_script: "仅使用文稿对齐",
+    toolbox_script_alignment_heading: "文稿驱动对齐",
+    toolbox_script_alignment_script: "准确文稿（UTF-8）",
+    toolbox_script_alignment_language: "对齐语言",
+    toolbox_script_alignment_pause: "最短停顿（ms）",
+    toolbox_script_alignment_db: "静音阈值（dB）",
+    toolbox_script_alignment_anchors: "人工锚点 JSON（可选）",
+    toolbox_script_alignment_track: "音轨序号（可选，从 0 开始）",
+    toolbox_script_alignment_track_default: "默认音轨",
+    toolbox_script_alignment_output: "输出目录（可选，默认文稿所在目录）",
+    toolbox_script_alignment_check: "检查输入与分块（无需模型）",
+    toolbox_script_alignment_check_pending: "正在检查文稿、音轨与分块……",
+    toolbox_script_alignment_check_done: "输入与分块检查通过；未加载模型、未生成字幕。这不能证明录音读对了，请继续生成并听审。",
+    toolbox_script_alignment_summary: "{strategy} · {lines} 行 · {chunks} 个块 · {seconds} 秒 · 音轨 {track}",
+    toolbox_script_alignment_single: "整段对齐",
+    toolbox_script_alignment_manual_anchors: "人工锚点",
+    toolbox_script_alignment_silence_anchors: "静音锚点",
+    toolbox_timestamp_existing_hint: "以已有字幕文字为准，在原字幕范围内补充或重生字词时间码；不纠正文案，也不选择重录版本。",
+    toolbox_timestamp_script_hint: "以准确文稿为准，从录音定位时间并新建字幕；不需要已有工程，不识别实际说了什么。",
+    toolbox_script_alignment_hint: "每个非空行生成一条字幕，保留标点，输出新 MOSP 和 SRT。≤5 分钟整段对齐；静音参数仅用于长录音自动分块，人工锚点不依赖静音检测。长录音须每行对应一个语音区间，否则需人工锚点。跳行、重读和口误可能被忽略，请听审。",
     toolbox_timestamp_media: "媒体来源",
     toolbox_timestamp_media_placeholder: "选择或拖入媒体文件",
     toolbox_timestamp_media_reject: "请选择支持的媒体文件。",
@@ -1220,7 +1240,7 @@
     alignment_model_failed: "Aligner preparation failed",
     alignment_model_download_again: "Download again",
     toolbox_timestamps: "Generate timestamps",
-    toolbox_timestamps_hint: "Generate or fill word/character timestamps for an .srt or .mosp/.json project. Original media is required.",
+    toolbox_timestamps_hint: "Keep existing subtitle text and add word/character timestamps, or create subtitles from an accurate script and audio. Both require original media.",
     toolbox_group_alignment_model: "Alignment model",
     toolbox_timestamp_model: "Alignment model",
     toolbox_timestamp_model_hint: "Qwen3-ForcedAligner and FireRedASR2-CTC can be downloaded separately. Qwen reuses the Qwen Local Hugging Face cache.",
@@ -1228,6 +1248,26 @@
     toolbox_timestamp_mode: "Mode",
     toolbox_timestamp_mode_fill: "Fill missing timings only",
     toolbox_timestamp_mode_generate: "Regenerate all timings",
+    toolbox_timestamp_mode_script: "Align from script only",
+    toolbox_script_alignment_heading: "Script-driven alignment",
+    toolbox_script_alignment_script: "Accurate script (UTF-8)",
+    toolbox_script_alignment_language: "Alignment language",
+    toolbox_script_alignment_pause: "Minimum pause (ms)",
+    toolbox_script_alignment_db: "Silence threshold (dB)",
+    toolbox_script_alignment_anchors: "Manual anchor JSON (optional)",
+    toolbox_script_alignment_track: "Audio track index (optional, from 0)",
+    toolbox_script_alignment_track_default: "Default audio track",
+    toolbox_script_alignment_output: "Output folder (optional, defaults to script folder)",
+    toolbox_script_alignment_check: "Check inputs and chunks (no model needed)",
+    toolbox_script_alignment_check_pending: "Checking script, audio track and chunks…",
+    toolbox_script_alignment_check_done: "Input/chunk check passed. No model loaded and no subtitles written. This does not verify spoken content; generate timestamps and review by listening.",
+    toolbox_script_alignment_summary: "{strategy} · {lines} lines · {chunks} chunks · {seconds} s · audio track {track}",
+    toolbox_script_alignment_single: "Whole audio",
+    toolbox_script_alignment_manual_anchors: "Manual anchors",
+    toolbox_script_alignment_silence_anchors: "Silence anchors",
+    toolbox_timestamp_existing_hint: "Use existing subtitle text and add or regenerate word/character timestamps inside its cue ranges. Does not correct text or choose retakes.",
+    toolbox_timestamp_script_hint: "Use an accurate script as the text source and locate it in audio to create subtitles. No existing project needed; does not recognize what was actually spoken.",
+    toolbox_script_alignment_hint: "Each non-empty line becomes one cue; punctuation is preserved. Writes new MOSP and SRT files. Up to 5 minutes aligns in one pass. Silence settings apply only to automatic long-audio chunking; manual anchors bypass detection. Long audio needs one speech span per line or manual anchors. Skipped lines, retakes and mistakes may be ignored; review by listening.",
     toolbox_timestamp_media: "Media source",
     toolbox_timestamp_media_placeholder: "Choose or drop a media file",
     toolbox_timestamp_media_reject: "Choose a supported media file.",
@@ -4004,6 +4044,11 @@
       else setError("toolboxTimestampMediaPath", t("toolbox_timestamp_media_reject"));
       return;
     }
+    if (target === "toolboxTimestampScript") {
+      if (SCRIPT_EXTS.has(suffix)) setDroppedPath("toolboxTimestampScriptPath", value);
+      else setError("toolboxTimestampScriptPath", t("toolbox_alignment_script_missing"));
+      return;
+    }
     if (target === "toolboxBurnSubtitle") {
       if (SUBTITLE_BURN_EXTS.has(suffix)) setDroppedPath("toolboxBurnSubtitlePath", value);
       else setError("toolboxBurnSubtitlePath", t("toolbox_burn_subtitle_invalid"));
@@ -4656,6 +4701,7 @@
   bindDropField("toolboxInputDropZone", "toolboxInput", "toolboxInputDropZone");
   bindDropField("toolboxUtilityMediaDropZone", "toolboxUtilityMedia", "toolboxUtilityMediaDropZone");
   bindDropField("toolboxTimestampMediaDropZone", "toolboxTimestampMedia", "toolboxTimestampMediaDropZone");
+  bindDropField("toolboxTimestampScriptDropZone", "toolboxTimestampScript", "toolboxTimestampScriptDropZone");
   bindDropField("toolboxBurnSubtitleDropZone", "toolboxBurnSubtitle", "toolboxBurnSubtitleDropZone");
   bindDropField("toolboxFfconcatDropZone", "toolboxFfconcat", "toolboxFfconcatDropZone");
   bindDropField("toolboxAlignmentProjectDropZone", "toolboxAlignmentProject", "toolboxAlignmentProjectDropZone");

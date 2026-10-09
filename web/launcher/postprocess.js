@@ -564,7 +564,10 @@
   function syncPaths() {
     if (!inputManual) $("toolboxInputPath").value = autoSourcePath();
     if (!utilityMediaManual) $("toolboxUtilityMediaPath").value = $("mediaPath").value.trim();
-    if (!timestampMediaManual) $("toolboxTimestampMediaPath").value = $("mediaPath").value.trim();
+    if (!timestampMediaManual && $("toolboxTimestampMediaPath").value !== $("mediaPath").value.trim()) {
+      $("toolboxTimestampMediaPath").value = $("mediaPath").value.trim();
+      clearScriptAlignmentCheck();
+    }
     if (!subtitleBurnManual) {
       const source = $("srtPath").value.trim();
       $("toolboxBurnSubtitlePath").value = SUBTITLE_BURN_EXTS.has(extension(source)) ? source : "";
@@ -632,12 +635,14 @@
 
   function renderTimestampModel() {
     const config = window.MAWLauncher.config || {};
-    const models = Array.isArray(config.alignmentModels) && config.alignmentModels.length
+    let models = Array.isArray(config.alignmentModels) && config.alignmentModels.length
       ? config.alignmentModels
       : [
         { id: "qwen3-forced-aligner-0.6b", label: "Qwen3-ForcedAligner 0.6B", installed: false, runtimeAvailable: false, status: "missing" },
         { id: "firered-asr2-ctc", label: "FireRedASR2-CTC（CPU）", installed: false, runtimeAvailable: false, status: "missing" },
       ];
+    if ($("toolboxTimestampMode").value === "script") models = models.filter((model) => model.id === "qwen3-forced-aligner-0.6b");
+    if (!models.length) models = [{ id: "qwen3-forced-aligner-0.6b", installed: false, runtimeAvailable: false }];
     const select = $("toolboxTimestampModel");
     if (!select) return;
     const selected = select.value || config.alignmentModelId || models.find((model) => model.installed)?.id || models[0].id;
@@ -656,6 +661,11 @@
     $("toolboxTimestampModelStatus").textContent = t(statusKey);
     $("toolboxTimestampModelStatus").classList.toggle("error", !ready);
     $("runTimestampAlignment").disabled = busy || !ready;
+    $("checkScriptAlignment").disabled = busy;
+    const scriptMode = $("toolboxTimestampMode").value === "script";
+    const hint = $("toolboxTimestampModeHint");
+    hint.dataset.i18n = scriptMode ? "toolbox_timestamp_script_hint" : "toolbox_timestamp_existing_hint";
+    hint.textContent = t(hint.dataset.i18n);
   }
 
   function renderProvider(providerId = $("postprocessProvider").value) {
@@ -746,12 +756,14 @@
     document.querySelectorAll("[data-tool-action]").forEach((action) => {
       action.classList.toggle("hidden", action.dataset.toolAction !== tool || toolboxOpenMode === "auto-config");
     });
-    $("toolboxInputDropZone").classList.toggle("hidden", section !== "postprocess");
+    const scriptMode = tool === "timestamps" && $("toolboxTimestampMode").value === "script";
+    $("toolboxInputDropZone").classList.toggle("hidden", section !== "postprocess" || scriptMode);
     $("toolboxUtilityMediaDropZone").classList.toggle("hidden", section !== "utilities");
     $("toolboxAudioTrackField").classList.toggle("hidden", !(section === "utilities" && ["waveform", "extractAudio"].includes(tool)));
-    $("toolboxChain").classList.toggle("hidden", section !== "postprocess" || !$("toolboxChainList").children.length);
+    $("toolboxChain").classList.toggle("hidden", section !== "postprocess" || scriptMode || !$("toolboxChainList").children.length);
     const configOnly = toolboxOpenMode === "auto-config";
-    $("toolboxOutputField").classList.toggle("hidden", section !== "postprocess" || configOnly);
+    $("toolboxOutputField").classList.toggle("hidden", section !== "postprocess" || configOnly || scriptMode);
+    $("toolboxTimestampScriptInputs").classList.toggle("hidden", !scriptMode);
     $("toolboxConfigOnlyHint")?.classList.toggle("hidden", !configOnly);
     renderMediaToolAction();
   }
@@ -966,6 +978,7 @@
   function setBusy(nextBusy, statusKey = "toolbox_running") {
     busy = nextBusy;
     $("toolboxProgress").classList.toggle("hidden", !busy);
+    ["toolboxTimestampScriptPath", "pickToolboxTimestampScript", "toolboxTimestampLanguage", "toolboxTimestampSilenceMs", "toolboxTimestampSilenceDb", "toolboxTimestampAnchorsPath", "pickToolboxTimestampAnchors", "toolboxTimestampAudioTrack", "toolboxTimestampOutputDirectory", "pickToolboxTimestampOutput", "checkScriptAlignment"].forEach((id) => { $(id).disabled = busy; });
     ["generateWaveform", "runWaveform", "toolboxGenerateSpectral", "runScriptMatch", "runTimestampAlignment", "runOcrDedup", "runLlmPostprocess", "runFixedProcess", "runFfconcatRebuild", "runBurnSubtitle", "runExtractAudio", "runToolboxAlignment", "stopToolboxAlignment", "saveLlmSettings", "testLlmConnection", "getLlmModels", "toolboxInputPath", "pickToolboxInput", "toolboxUtilityMediaPath", "pickToolboxUtilityMedia", "toolboxTimestampModel", "toolboxTimestampMode", "toolboxTimestampMediaPath", "pickToolboxTimestampMedia", "toolboxBurnSubtitlePath", "pickToolboxBurnSubtitle", "toolboxGreenScreen", "toolboxAudioTrack", "toolboxAlignmentProjectPath", "pickToolboxAlignmentProject", "toolboxAlignmentScriptPath", "pickToolboxAlignmentScript", "toolboxAlignmentGapMinimum", "toolboxAlignmentGapThreshold", "toolboxAlignmentGapLeadIn", "toolboxAlignmentGapLeadOut", "postprocessProvider", "llmProvider", "llmApiKey", "llmBaseUrl", "llmModel", "llmModelChoicesToggle", "llmReasoningMode", "llmCustomDisplayName", "ocrModel", "openOcrSettings", "ocrVideoPath", "pickOcrVideo", "ocrRegionMode", "ocrRegionX1", "ocrRegionY1", "ocrRegionX2", "ocrRegionY2", "ocrThreshold", "ocrReport", "postprocessConversion"].forEach((id) => {
       $(id).disabled = busy;
     });
@@ -1813,17 +1826,78 @@
     $("postprocessAiCleanupNotesField")?.classList.toggle("hidden", !aiEnabled);
   }
 
+  function scriptAlignmentPayload() {
+    return {
+      mediaPath: $("toolboxTimestampMediaPath").value.trim(),
+      scriptPath: $("toolboxTimestampScriptPath").value.trim(),
+      language: $("toolboxTimestampLanguage").value,
+      silenceDb: $("toolboxTimestampSilenceDb").value,
+      silenceMs: $("toolboxTimestampSilenceMs").value,
+      anchorsPath: $("toolboxTimestampAnchorsPath").value.trim(),
+      audioTrack: $("toolboxTimestampAudioTrack").value,
+      outputDirectory: $("toolboxTimestampOutputDirectory").value.trim(),
+    };
+  }
+
+  function scriptAlignmentSummary(report) {
+    if (!report || !["single", "manual_anchors", "silence_anchors"].includes(report.strategy)) return "";
+    return t("toolbox_script_alignment_summary")
+      .replace("{strategy}", t(`toolbox_script_alignment_${report.strategy}`))
+      .replace("{lines}", String(report.scriptLines ?? 0))
+      .replace("{chunks}", String(report.chunks ?? 0))
+      .replace("{seconds}", String(Math.round(Number(report.durationMs || 0) / 100) / 10))
+      .replace("{track}", String(report.audioTrack ?? 0));
+  }
+
+  function clearScriptAlignmentCheck() {
+    if (!$("toolboxTimestampCheckResult").classList.contains("hidden")) setResult("");
+    $("toolboxTimestampCheckResult").textContent = "";
+    $("toolboxTimestampCheckResult").classList.add("hidden");
+  }
+
+  async function checkScriptAlignment() {
+    if (busy) return;
+    const payload = scriptAlignmentPayload();
+    if (!payload.mediaPath || !MEDIA_EXTS.has(extension(payload.mediaPath)) || !SCRIPT_EXTS.has(extension(payload.scriptPath))) {
+      setResult(t("toolbox_timestamp_script_hint"), "error");
+      return;
+    }
+    clearScriptAlignmentCheck();
+    setBusy(true, "toolbox_script_alignment_check_pending");
+    try {
+      const result = await bridge("check_script_alignment", payload);
+      if (result.ok) {
+        const text = `${scriptAlignmentSummary(result.report)}\n${t("toolbox_script_alignment_check_done")}`;
+        $("toolboxTimestampCheckResult").textContent = text;
+        $("toolboxTimestampCheckResult").classList.remove("hidden");
+        setResult(text, "success");
+      } else setResult(postprocessErrorText(result), "error");
+    } finally {
+      setBusy(false);
+    }
+  }
+
   async function runTimestampAlignment() {
     if (busy) return;
-    const paths = resolveInputPaths();
+    const scriptMode = $("toolboxTimestampMode").value === "script";
+    if (scriptMode) clearScriptAlignmentCheck();
+    const paths = scriptMode ? {} : resolveInputPaths();
     if (!paths) return;
     const mediaPath = $("toolboxTimestampMediaPath").value.trim();
-    if (mediaPath && !MEDIA_EXTS.has(extension(mediaPath))) {
+    if ((scriptMode && !mediaPath) || (mediaPath && !MEDIA_EXTS.has(extension(mediaPath)))) {
       const message = t("toolbox_timestamp_media_reject");
       setFieldError("toolboxTimestampMediaPath", message);
       setResult(message, "error");
       return;
     }
+    const scriptPath = $("toolboxTimestampScriptPath").value.trim();
+    if (scriptMode && (!scriptPath || !SCRIPT_EXTS.has(extension(scriptPath)))) {
+      const message = t("toolbox_alignment_script_missing");
+      setFieldError("toolboxTimestampScriptPath", message);
+      setResult(message, "error");
+      return;
+    }
+    setFieldError("toolboxTimestampScriptPath", "");
     const modelId = $("toolboxTimestampModel").value;
     const model = (window.MAWLauncher.config?.alignmentModels || []).find((item) => item.id === modelId);
     const runtimeReady = model?.runtimeAvailable === undefined
@@ -1843,8 +1917,12 @@
         modelId,
         alignmentMode: $("toolboxTimestampMode").value,
         device: $("localDevice")?.value || "auto",
+        ...(scriptMode ? scriptAlignmentPayload() : {}),
       });
-      if (result.ok) applySubtitleResult(result, { kind: "timestamps" });
+      if (result.ok) {
+        applySubtitleResult(result, { kind: "timestamps" });
+        if (scriptMode) setResult([t("toolbox_done"), scriptAlignmentSummary(result.report), ...(result.warnings || [])].filter(Boolean).join("\n"), "success");
+      }
       else {
         const message = postprocessErrorText(result);
         if (result.field) setFieldError(result.field, message);
@@ -2403,6 +2481,7 @@
     if (result.ok) {
       timestampMediaManual = true;
       $("toolboxTimestampMediaPath").value = result.path;
+      clearScriptAlignmentCheck();
       setFieldError("toolboxTimestampMediaPath", "");
       syncTimestampMediaName();
     }
@@ -2571,6 +2650,29 @@
     $(`configureAuto${stepId[0].toUpperCase()}${stepId.slice(1)}`)?.addEventListener("click", () => openAutoStep(stepId, "", { highlightConnection: true }));
   });
   $("toolboxTimestampModel").addEventListener("change", renderTimestampModel);
+  $("toolboxTimestampMode").addEventListener("change", () => {
+    clearScriptAlignmentCheck();
+    renderTimestampModel();
+    selectTool("timestamps");
+  });
+  ["toolboxTimestampScript", "toolboxTimestampAnchors"].forEach((name) => {
+    $(name.replace("toolbox", "pickToolbox")).addEventListener("click", async () => {
+      const result = await bridge("choose_file", { kind: name.endsWith("Script") ? "script" : "json" });
+      if (result.ok) {
+        $(name + "Path").value = result.path;
+        clearScriptAlignmentCheck();
+      }
+    });
+  });
+  $("checkScriptAlignment").addEventListener("click", checkScriptAlignment);
+  $("pickToolboxTimestampOutput").addEventListener("click", async () => {
+    const result = await bridge("choose_folder", { kind: "output" });
+    if (result.ok) $("toolboxTimestampOutputDirectory").value = result.path;
+  });
+  ["toolboxTimestampScriptPath", "toolboxTimestampMediaPath", "toolboxTimestampLanguage", "toolboxTimestampAudioTrack", "toolboxTimestampSilenceMs", "toolboxTimestampSilenceDb", "toolboxTimestampAnchorsPath"].forEach((id) => {
+    $(id).addEventListener("input", clearScriptAlignmentCheck);
+    $(id).addEventListener("change", clearScriptAlignmentCheck);
+  });
   $("toolboxTimestampMediaPath").addEventListener("input", () => {
     timestampMediaManual = true;
     setFieldError("toolboxTimestampMediaPath", "");
@@ -2609,6 +2711,7 @@
   };
   window.MAWLauncher.getAutoPostprocessPayload = autoPlanFromControls;
   window.MAWLauncher.onLanguageChanged = () => {
+    clearScriptAlignmentCheck();
     syncProviderOptionLabels();
     if (window.MAWLauncher.config?.postprocessProviders?.length) renderProviderKeyStatus(provider());
     renderOcrModel();

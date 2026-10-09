@@ -51,6 +51,13 @@ def build_parser() -> argparse.ArgumentParser:
     timestamp_align.add_argument("--model-path", default="")
     timestamp_align.add_argument("--output-directory", default="")
     timestamp_align.add_argument("--device", default="auto")
+    script_align = subparsers.add_parser("script-align", parents=[timestamp_align], add_help=False)
+    script_align.add_argument("--script-path", required=True)
+    script_align.add_argument("--language", default="zh")
+    script_align.add_argument("--audio-track", type=int)
+    script_align.add_argument("--silence-db", type=float, default=-35.0)
+    script_align.add_argument("--silence-ms", type=int, default=500)
+    script_align.add_argument("--anchors-path", default="")
     return parser
 
 
@@ -118,12 +125,24 @@ def main(argv: Sequence[str] | None = None) -> int:
         except Exception as error:  # noqa: BLE001 - worker boundary must return a readable error
             print(json.dumps({"type": "error", "detail": f"FunASR ct-punc 加载或推理失败：{error}"}, ensure_ascii=False))
             return 1
-    if args.command == "timestamp-align":
+    if args.command in {"timestamp-align", "script-align"}:
         from maw.alignment_models import resolve_model_cache_root
         from maw.timestamp_alignment import TimestampAlignmentRequest, run_timestamp_alignment
 
-        artifact, report = run_timestamp_alignment(
-            TimestampAlignmentRequest(
+        if args.command == "script-align":
+            from maw.script_timestamp_alignment import ScriptAlignmentRequest, run_script_alignment
+
+            artifact, report = run_script_alignment(ScriptAlignmentRequest(
+                script_path=Path(args.script_path), media_path=Path(args.media_path),
+                model_path=Path(args.model_path) if args.model_path else None,
+                model_cache_root=resolve_model_cache_root(), device=args.device,
+                language=args.language, audio_track=args.audio_track,
+                silence_db=args.silence_db, silence_ms=args.silence_ms,
+                anchors_path=Path(args.anchors_path) if args.anchors_path else None,
+                output_directory=Path(args.output_directory) if args.output_directory else None,
+            ))
+        else:
+            artifact, report = run_timestamp_alignment(TimestampAlignmentRequest(
                 project_path=Path(args.project_path) if args.project_path else None,
                 srt_path=Path(args.srt_path) if args.srt_path else None,
                 media_path=Path(args.media_path) if args.media_path else None,
@@ -134,8 +153,7 @@ def main(argv: Sequence[str] | None = None) -> int:
                 model_cache_root=resolve_model_cache_root(),
                 device=args.device,
                 output_directory=Path(args.output_directory) if args.output_directory else None,
-            )
-        )
+            ))
         print(json.dumps({
             "type": "result",
             "artifact": {
