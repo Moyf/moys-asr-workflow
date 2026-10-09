@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import base64
+import os
 import sys
 import unittest
 from pathlib import Path
@@ -64,6 +65,8 @@ class SystemNotificationTests(unittest.TestCase):
         self.assertTrue(sent)
         command = popen.call_args.args[0]
         self.assertEqual(command, ["/usr/bin/notify-send", "--app-name=MAW", "完成", "已生成 a.srt"])
+        # 非 frozen 环境还原是恒等操作：env 等于当前环境，保证宿主程序不继承包内库路径。
+        self.assertEqual(popen.call_args.kwargs["env"], dict(os.environ))
 
     def test_linux_without_notify_send_reports_not_sent(self) -> None:
         with mock.patch.object(notify.sys, "platform", "linux"), mock.patch.object(

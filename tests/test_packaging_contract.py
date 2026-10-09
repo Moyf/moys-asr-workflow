@@ -41,8 +41,10 @@ def _local_import_modules(path: Path, module_name: str) -> set[str]:
         else:
             candidate = node.module or ""
         if candidate and _local_module_path(candidate):
+            # 不在此处跳过：即使候选本身是本地模块，也要继续收集
+            # `from maw import x` 形式的子模块别名（如 maw.moss_runtime），
+            # 否则导入图低估依赖、spec 漏带源文件。
             imported.add(candidate)
-            continue
         for alias in node.names:
             child = f"{candidate}.{alias.name}" if candidate else alias.name
             if _local_module_path(child):

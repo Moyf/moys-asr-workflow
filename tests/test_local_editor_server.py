@@ -68,6 +68,23 @@ class LocalEditorServerTests(CompactContainerAssertions, unittest.TestCase):
             opener.assert_called_once_with(str(self.root / '_maw' / '备份'))
             self.assertEqual(handler.send_json.call_args.args[0], 200)
 
+    def test_open_backup_directory_passes_restored_env_to_posix_opener(self) -> None:
+        handler = object.__new__(server_editor.EditorRequestHandler)
+        handler.server = mock.Mock()
+        handler.server.project.json_path = self.project_path
+        handler.server.request_token = 'test-token'
+        handler.send_json = mock.Mock()
+        handler.read_json_request = mock.Mock(return_value={'requestToken': 'test-token'})
+        with mock.patch.object(server_editor.sys, 'platform', 'linux'), mock.patch.object(
+            server_editor.subprocess, 'Popen'
+        ) as popen:
+            handler.open_backup_directory()
+
+        self.assertEqual(handler.send_json.call_args.args[0], 200)
+        self.assertEqual(popen.call_args.args[0][0], 'xdg-open')
+        # open/xdg-open 是宿主桌面程序：必须用还原后的宿主环境（非 frozen 即原环境）。
+        self.assertEqual(popen.call_args.kwargs['env'], dict(os.environ))
+
     def _ass_frame_handler(self) -> object:
         handler = object.__new__(server_editor.EditorRequestHandler)
         handler.server = mock.Mock()
