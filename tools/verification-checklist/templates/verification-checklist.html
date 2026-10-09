@@ -16,9 +16,10 @@
      - 徽标：.badge.pass（通过 / 已完成）.badge.fixed（已修复）.badge.todo（待办 / 阻塞）。
   3. 分区约定：A 实现 / 审查结论（只读）· B 修复与提交记录 · C 自动化验证结果（写明命令与已知环境性失败）
      · D 人工核验打勾项（入口 → 操作 → 预期）· E 后续操作步骤；
-  4. 左侧目录、分区进度徽标、总进度由脚本自动生成，无需手写；
-     勾选与备注按页面标题存 localStorage；JSON 可导出全部或未确认项。
-     详细使用与导出格式见工具目录 README.md；生成物不提交进仓库。
+   4. 左侧目录、分区进度徽标、总进度由脚本自动生成，无需手写；
+      勾选与备注按页面标题存 localStorage；含核对项的分区可悬停标题一键忽略
+      （灰色折叠、计数按已处理、不进入未确认导出）；JSON 可导出全部或未确认项。
+      详细使用与导出格式见工具目录 README.md；生成物不提交进仓库。
 -->
 <html lang="zh-CN">
 <head>
@@ -141,6 +142,8 @@
   .section > summary:hover { background: var(--chip); }
   .section.complete > summary { background: color-mix(in srgb, var(--ok) 7%, var(--paper)); }
   .section.complete > summary:hover { background: color-mix(in srgb, var(--ok) 10%, var(--paper)); }
+  .section.ignored > summary { background: color-mix(in srgb, var(--ink3) 8%, var(--paper)); }
+  .section.ignored > summary:hover { background: color-mix(in srgb, var(--ink3) 12%, var(--paper)); }
   .section > summary:focus-visible { outline: 2px solid var(--accent); outline-offset: -3px; }
   .section > summary::-webkit-details-marker { display: none; }
   .section-chevron { width: 20px; height: 20px; flex: none; margin-left: auto;
@@ -150,6 +153,13 @@
   .sec-progress { margin-left: auto; font: 600 12.5px var(--mono); color: var(--ink3);
     background: var(--chip); padding: 3px 10px; border-radius: 999px; }
   .sec-progress.done { background: var(--ok-soft); color: var(--ok); }
+  /* 「忽略」按钮：悬停/聚焦分区标题时出现在计数左侧，点击整组按已处理折叠。 */
+  button.sec-ignore { display: none; flex: none; border: 1px solid var(--line); background: var(--paper);
+    color: var(--ink2); border-radius: 999px; padding: 3px 10px; font: inherit; font-size: 12px;
+    line-height: 1.4; cursor: pointer; }
+  button.sec-ignore:hover { color: var(--ink); border-color: var(--ink3); background: var(--chip); }
+  .section > summary:hover button.sec-ignore,
+  .section > summary:focus-within button.sec-ignore { display: inline-block; }
   .badge { font: 600 12px/1 var(--mono); padding: 5px 9px; border-radius: 999px;
     background: var(--chip); color: var(--ink2); }
   .badge.pass { background: var(--ok-soft); color: var(--ok); }
@@ -271,6 +281,7 @@
   // 沿用旧页面的勾选存储键与布尔值格式，备注另存，升级不丢已有进度。
   var KEY = 'maw-checklist:' + document.title;
   var NOTES_KEY = KEY + ':notes';
+  var IGNORE_KEY = KEY + ':ignored';
   var VIEW_KEY = KEY + ':view';
   var sections = [].slice.call(document.querySelectorAll('details.section'));
   var boxes = [].slice.call(document.querySelectorAll('.item input[type="checkbox"]'));
@@ -299,6 +310,7 @@
   }
   var state = load(KEY);
   var notes = load(NOTES_KEY);
+  var ignored = load(IGNORE_KEY);
   var view = load(VIEW_KEY);
   var hideConfirmed = view.hideConfirmed === true;
   var autoCollapseCompleted = view.autoCollapseCompleted === true;
@@ -315,7 +327,7 @@
     text = text.replace(/\s+/g, ' ').trim();
     if (text) return text;
     var clone = summary.cloneNode(true);
-    [].forEach.call(clone.querySelectorAll('.badge,.sec-progress,.section-chevron'), function (el) {
+    [].forEach.call(clone.querySelectorAll('.badge,.sec-progress,.sec-ignore,.section-chevron'), function (el) {
       el.parentNode.removeChild(el);
     });
     return clone.textContent.replace(/\s+/g, ' ').trim() || '未命名分区';
@@ -324,6 +336,7 @@
   // 左侧目录与分区进度徽标均由分区卡片自动生成，填写分区内容时无需手写。
   var toc = document.getElementById('toc');
   var links = [];
+  var ignoreButtons = [];
   sections.forEach(function (sec, i) {
     if (!sec.id) sec.id = 'sec-' + (i + 1);
     var summary = sec.querySelector('summary');
@@ -345,6 +358,31 @@
     var prog = document.createElement('span');
     prog.className = 'sec-progress';
     summary.appendChild(prog);
+    // 「忽略」整组：只出现在含核对项的分区；标题变灰并折叠，计数按已处理计算。
+    if (sectionBoxes[i].length) {
+      var ignoreBtn = document.createElement('button');
+      ignoreBtn.type = 'button';
+      ignoreBtn.className = 'sec-ignore';
+      ignoreBtn.textContent = '忽略';
+      ignoreBtn.setAttribute('aria-label', '忽略此分组：整组按已处理计数，不再列入未确认项');
+      summary.insertBefore(ignoreBtn, prog);
+      ignoreBtn.addEventListener('click', function (event) {
+        // 阻止冒泡，避免触发 summary 自身的展开 / 收起切换。
+        event.preventDefault();
+        event.stopPropagation();
+        ignored = load(IGNORE_KEY, ignored);
+        if (ignored[sec.id] === true) {
+          delete ignored[sec.id];
+          sec.open = true;
+        } else {
+          ignored[sec.id] = true;
+          sec.open = false;
+        }
+        save(IGNORE_KEY, ignored);
+        refresh();
+      });
+      ignoreButtons[i] = ignoreBtn;
+    }
     var chevron = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
     chevron.setAttribute('viewBox', '0 0 24 24');
     chevron.setAttribute('class', 'section-chevron');
@@ -363,26 +401,34 @@
     var doneAll = 0;
     sections.forEach(function (sec, i) {
       var sBoxes = sectionBoxes[i];
-      var done = sBoxes.filter(function (b) { return b.checked; }).length;
-      sec.classList.toggle('complete', sBoxes.length > 0 && done === sBoxes.length);
+      // 被忽略的分组整组按已处理计算：分组与总计数、目录均视作完成，
+      // 但标题走灰色（.ignored），不再叠加完成绿色。
+      var isIgnored = ignored[sec.id] === true;
+      var checked = sBoxes.filter(function (b) { return b.checked; }).length;
+      var done = isIgnored ? sBoxes.length : checked;
+      sec.classList.toggle('complete', !isIgnored && sBoxes.length > 0 && checked === sBoxes.length);
+      sec.classList.toggle('ignored', isIgnored);
       var prog = sec.querySelector('.sec-progress');
       var link = links[i];
       if (sBoxes.length) {
         prog.hidden = false;
         prog.textContent = done + ' / ' + sBoxes.length;
-        prog.classList.toggle('done', done === sBoxes.length);
+        prog.classList.toggle('done', !isIgnored && checked === sBoxes.length);
         link.querySelector('.c').textContent = done + '/' + sBoxes.length;
-        link.classList.toggle('done', done === sBoxes.length);
+        link.classList.toggle('done', !isIgnored && checked === sBoxes.length);
+        var ignoreBtn = ignoreButtons[i];
+        if (ignoreBtn) ignoreBtn.textContent = isIgnored ? '取消忽略' : '忽略';
+        doneAll += done;
       } else {
         prog.hidden = true;
         link.querySelector('.c').textContent = '';
       }
-      doneAll += done;
     });
-    boxes.forEach(function (box) {
+    boxes.forEach(function (box, index) {
       var item = box.closest('.item');
       item.classList.toggle('done', box.checked);
-      item.hidden = hideConfirmed && box.checked;
+      // 「隐藏已勾选」视图同时隐藏被忽略分组的核对项（它们已视作处理完毕）。
+      item.hidden = hideConfirmed && (box.checked || ignored[records[index].section.id] === true);
     });
     var hideButton = document.getElementById('hide-confirmed');
     hideButton.textContent = hideConfirmed ? '显示已勾选' : '隐藏已勾选';
@@ -473,7 +519,9 @@
     state = load(KEY, state);
     boxes.forEach(function (box) { box.checked = false; state[box.id] = false; });
     save(KEY, state);
-    if (!storageFailed) status.textContent = '已重置勾选，备注已保留';
+    ignored = {};
+    save(IGNORE_KEY, ignored);
+    if (!storageFailed) status.textContent = '已重置勾选与忽略，备注已保留';
     refresh();
   });
   document.getElementById('expand').addEventListener('click', function () {
@@ -500,11 +548,16 @@
   document.getElementById('export-json').addEventListener('click', function () {
     var scope = document.getElementById('export-scope').value;
     var confirmed = boxes.filter(function (b) { return b.checked; }).length;
+    var ignoredCount = records.filter(function (r) { return ignored[r.section.id] === true; }).length;
     var exportedSections = sections.map(function (sec) {
+      // 「仅未确认项」同时排除已勾选与被忽略分组的核对项；全部导出时忽略项
+      // 原样带出并标记 ignored，核对结果快照不丢信息。
       var items = records.filter(function (r) {
-        return r.section === sec && (scope === 'all' || !r.box.checked);
+        return r.section === sec && (scope === 'all' || (!r.box.checked && ignored[sec.id] !== true));
       }).map(function (r) {
-        return { id: r.box.id, text: r.text, confirmed: r.box.checked, note: r.textarea ? r.textarea.value : r.note };
+        return { id: r.box.id, text: r.text, confirmed: r.box.checked,
+          ignored: ignored[sec.id] === true,
+          note: r.textarea ? r.textarea.value : r.note };
       });
       return { id: sec.id, title: summaryTitle(sec.querySelector('summary')), items: items };
     }).filter(function (sec) { return sec.items.length; });
@@ -514,7 +567,8 @@
       schema: 'maw.verification-checklist.v1', title: document.title,
       subtitle: document.querySelector('.page-head .sub').textContent.trim(),
       exportedAt: timestamp, scope: scope,
-      summary: { total: boxes.length, confirmed: confirmed, unconfirmed: boxes.length - confirmed, exported: exportedCount },
+      summary: { total: boxes.length, confirmed: confirmed, ignored: ignoredCount,
+        unconfirmed: boxes.length - confirmed - ignoredCount, exported: exportedCount },
       sections: exportedSections
     };
     var url;

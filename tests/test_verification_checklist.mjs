@@ -35,7 +35,7 @@ const scopeSelector = "document.getElementById('export-json')";
 function status() {
   return { textContent: '', classList: { add() {} } };
 }
-function exportFixture(scope = 'all', confirmed = [true, false]) {
+function exportFixture(scope = 'all', confirmed = [true, false], ignored = {}) {
   const sections = ['alpha', 'beta', 'readonly'].map(id => ({ id, querySelector: () => ({ title: id }) }));
   const records = confirmed.map((checked, i) => ({
     section: sections[i], box: { id: `check-${i}`, checked }, text: `操作 ${i} → 预期`,
@@ -45,7 +45,7 @@ function exportFixture(scope = 'all', confirmed = [true, false]) {
   let payload;
   let download;
   const context = {
-    sections, records, boxes: records.map(r => r.box), storageFailed: false, status: status(),
+    sections, records, boxes: records.map(r => r.box), storageFailed: false, status: status(), ignored,
     summaryTitle: summary => summary.title,
     document: {
       title: '验证:导出/测试',
@@ -65,9 +65,10 @@ test('exports complete results with section identity, metadata and verbatim mult
   const { result, download } = exportFixture();
   assert.equal(result.schema, 'maw.verification-checklist.v1');
   assert.equal(result.scope, 'all');
-  assert.deepEqual(result.summary, { total: 2, confirmed: 1, unconfirmed: 1, exported: 2 });
+  assert.deepEqual(result.summary, { total: 2, confirmed: 1, ignored: 0, unconfirmed: 1, exported: 2 });
   assert.equal(result.sections.length, 2);
   assert.equal(result.sections[0].items[0].confirmed, true);
+  assert.equal(result.sections[0].items[0].ignored, false);
   assert.equal(result.sections[0].items[0].note, '');
   assert.equal(result.sections[1].items[0].note, '  第一行\n第二行 <script>原样记录</script>  ');
   assert.match(result.exportedAt, /^\d{4}-\d\d-\d\dT/);
@@ -76,9 +77,20 @@ test('exports complete results with section identity, metadata and verbatim mult
 
 test('unconfirmed export omits confirmed items and empty sections but retains whole-page counts', () => {
   const { result } = exportFixture('unconfirmed');
-  assert.deepEqual(result.summary, { total: 2, confirmed: 1, unconfirmed: 1, exported: 1 });
+  assert.deepEqual(result.summary, { total: 2, confirmed: 1, ignored: 0, unconfirmed: 1, exported: 1 });
   assert.deepEqual(result.sections.map(s => s.id), ['beta']);
   assert.equal(result.sections[0].items[0].confirmed, false);
+});
+
+test('ignored group items count as handled and stay out of unconfirmed export', () => {
+  const ignoredAll = exportFixture('all', [true, false], { beta: true }).result;
+  assert.deepEqual(ignoredAll.summary, { total: 2, confirmed: 1, ignored: 1, unconfirmed: 0, exported: 2 });
+  assert.equal(ignoredAll.sections[1].items[0].ignored, true);
+  assert.equal(ignoredAll.sections[0].items[0].ignored, false);
+
+  const ignoredPending = exportFixture('unconfirmed', [true, false], { beta: true }).result;
+  assert.deepEqual(ignoredPending.summary, { total: 2, confirmed: 1, ignored: 1, unconfirmed: 0, exported: 0 });
+  assert.deepEqual(ignoredPending.sections, []);
 });
 
 test('all-confirmed filtered snapshot contains no sections', () => {
@@ -127,11 +139,44 @@ test('invalid or unavailable storage keeps in-memory fallback and exposes warnin
 
 test('checkbox reset preserves notes and unrelated persisted item state', () => {
   const context = storageContext('{"other-check":true}');
-  Object.assign(context, { KEY: 'legacy', state: {}, boxes: [{ id: 'check-0', checked: true }], notes: { 'check-0': '备注' }, refresh() {} });
+  const saved = [];
+  context.localStorage.setItem = (key, value) => saved.push([key, JSON.parse(value)]);
+  Object.assign(context, {
+    KEY: 'legacy', IGNORE_KEY: 'legacy:ignored', state: {}, ignored: { 'sec-1': true },
+    boxes: [{ id: 'check-0', checked: true }], notes: { 'check-0': '备注' }, refresh() {},
+  });
   vm.runInContext(`(${handler("document.getElementById('reset')", 'click')})()`, context);
   assert.equal(context.boxes[0].checked, false);
   assert.equal(context.state['other-check'], true);
   assert.equal(context.notes['check-0'], '备注');
+  // 处理器在 VM realm 内重建对象，JSON 往返后再比较（跨 realm 原型不同）。
+  assert.deepEqual(JSON.parse(JSON.stringify(context.ignored)), {});
+  assert.deepEqual(saved.find(([key]) => key === 'legacy:ignored')[1], {});
+});
+
+test('ignore toggle persists per section, collapses on ignore and reopens on cancel', () => {
+  const context = storageContext('{}');
+  const saved = [];
+  // 存储桩需按 key 回读最新值：取消忽略依赖从存储载入的 ignored 状态。
+  const store = new Map();
+  context.localStorage.getItem = key => store.get(key) ?? null;
+  context.localStorage.setItem = (key, value) => {
+    store.set(key, value);
+    saved.push([key, JSON.parse(value)]);
+  };
+  Object.assign(context, {
+    IGNORE_KEY: 'ignored', ignored: {}, sec: { id: 'alpha', open: true }, refresh() {},
+  });
+  const click = `(${handler('ignoreBtn', 'click')})({ preventDefault() {}, stopPropagation() {} })`;
+  vm.runInContext(click, context);
+  const realmIgnored = () => JSON.parse(JSON.stringify(context.ignored));
+  assert.deepEqual(realmIgnored(), { alpha: true });
+  assert.equal(context.sec.open, false);
+  vm.runInContext(click, context);
+  assert.deepEqual(realmIgnored(), {});
+  assert.equal(context.sec.open, true);
+  const ignoredSave = saved.filter(([key]) => key === 'ignored').map(([, value]) => value);
+  assert.deepEqual(ignoredSave, [{ alpha: true }, {}]);
 });
 
 test('note input persists multiline text without affecting confirmation', () => {

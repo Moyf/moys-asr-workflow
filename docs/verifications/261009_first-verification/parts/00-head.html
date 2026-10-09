@@ -16,9 +16,10 @@
      - 徽标：.badge.pass（通过 / 已完成）.badge.fixed（已修复）.badge.todo（待办 / 阻塞）。
   3. 分区约定：A 实现 / 审查结论（只读）· B 修复与提交记录 · C 自动化验证结果（写明命令与已知环境性失败）
      · D 人工核验打勾项（入口 → 操作 → 预期）· E 后续操作步骤；
-  4. 左侧目录、分区进度徽标、总进度由脚本自动生成，无需手写；
-     勾选与备注按页面标题存 localStorage；JSON 可导出全部或未确认项。
-     详细使用与导出格式见工具目录 README.md；生成物不提交进仓库。
+   4. 左侧目录、分区进度徽标、总进度由脚本自动生成，无需手写；
+      勾选与备注按页面标题存 localStorage；含核对项的分区可悬停标题一键忽略
+      （灰色折叠、计数按已处理、不进入未确认导出）；JSON 可导出全部或未确认项。
+      详细使用与导出格式见工具目录 README.md；生成物不提交进仓库。
 -->
 <html lang="zh-CN">
 <head>
@@ -141,6 +142,8 @@
   .section > summary:hover { background: var(--chip); }
   .section.complete > summary { background: color-mix(in srgb, var(--ok) 7%, var(--paper)); }
   .section.complete > summary:hover { background: color-mix(in srgb, var(--ok) 10%, var(--paper)); }
+  .section.ignored > summary { background: color-mix(in srgb, var(--ink3) 8%, var(--paper)); }
+  .section.ignored > summary:hover { background: color-mix(in srgb, var(--ink3) 12%, var(--paper)); }
   .section > summary:focus-visible { outline: 2px solid var(--accent); outline-offset: -3px; }
   .section > summary::-webkit-details-marker { display: none; }
   .section-chevron { width: 20px; height: 20px; flex: none; margin-left: auto;
@@ -150,6 +153,13 @@
   .sec-progress { margin-left: auto; font: 600 12.5px var(--mono); color: var(--ink3);
     background: var(--chip); padding: 3px 10px; border-radius: 999px; }
   .sec-progress.done { background: var(--ok-soft); color: var(--ok); }
+  /* 「忽略」按钮：悬停/聚焦分区标题时出现在计数左侧，点击整组按已处理折叠。 */
+  button.sec-ignore { display: none; flex: none; border: 1px solid var(--line); background: var(--paper);
+    color: var(--ink2); border-radius: 999px; padding: 3px 10px; font: inherit; font-size: 12px;
+    line-height: 1.4; cursor: pointer; }
+  button.sec-ignore:hover { color: var(--ink); border-color: var(--ink3); background: var(--chip); }
+  .section > summary:hover button.sec-ignore,
+  .section > summary:focus-within button.sec-ignore { display: inline-block; }
   .badge { font: 600 12px/1 var(--mono); padding: 5px 9px; border-radius: 999px;
     background: var(--chip); color: var(--ink2); }
   .badge.pass { background: var(--ok-soft); color: var(--ok); }
