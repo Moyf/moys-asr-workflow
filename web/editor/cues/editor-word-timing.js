@@ -199,7 +199,7 @@
       MaweHint.flashHint(ui('请检查转换预览后再次确认', 'Review the updated conversion preview and confirm again'), 'warning');
       return;
     }
-    MaweCommands.run(ui('字词转为独立字幕', 'Convert timed text blocks to subtitles'), () => {
+    MaweCommands.run(ui('字词拆成字幕', 'Split words into subtitles'), () => {
       MaweSelection.clearSelection({ commitCuePanel: false });
       clearSelection();
       MaweMultiSubtitleCore.removeBindingsForSegmentIds(plan.conversions.map(c => c.id), []);

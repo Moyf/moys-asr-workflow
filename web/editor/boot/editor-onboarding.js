@@ -303,7 +303,7 @@ function renderOnboarding() {
     onboardingTitle.textContent = onboardingText('完成！');
     onboardingDescription.textContent = onboardingSentence([
       '已掌握基础操作。',
-      '可以在右上角的【🤔 帮助】中随时查看。',
+      '可以在右上角的【帮助】中随时查看。',
     ]);
     onboardingSetStatus('');
     onboardingPrimary.textContent = onboardingText('打开完整帮助');

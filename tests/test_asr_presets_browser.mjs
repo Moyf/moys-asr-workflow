@@ -115,7 +115,7 @@ test('ASR preset library manages metadata and options independently with keyboar
       return { gap: hint.left - title.right, sameRow: Math.abs(title.top - hint.top) < 4 };
     });
     assert.ok(hintGap.sameRow && hintGap.gap >= 8 && hintGap.gap <= 40, `the dblclick hint sits beside the list title, got gap ${hintGap.gap}px`);
-    assert.equal(await page.locator('#saveAsrPreset').textContent(), '将当前配置存为新预设');
+    assert.equal(await page.locator('#saveAsrPreset').textContent(), '存为新预设');
     assert.equal(await page.locator('#updateAsrPreset').textContent(), '更新该预设', 'the active preset shows the update label');
     assert.notEqual(await page.locator('.asr-preset-modal-actions').evaluate(el => getComputedStyle(el).marginTop), '0px', 'the action row keeps distance from the grid above');
     assert.match(await page.locator('.asr-preset-root-hint').textContent(), /预设文件夹：.*（可在.*设置.*中更改）/u);
@@ -187,7 +187,7 @@ test('ASR preset library manages metadata and options independently with keyboar
     await page.waitForFunction(() => window.presetStore.has('采访副本') && !window.presetStore.has('采访 副本'));
 
     await page.locator('#qwenAudioContext').fill('覆盖副本的值');
-    assert.equal(await page.locator('#updateAsrPreset').textContent(), '覆盖至预设', 'a non-active preset shows the overwrite label');
+    assert.equal(await page.locator('#updateAsrPreset').textContent(), '覆盖此预设', 'a non-active preset shows the overwrite label');
     await page.locator('#updateAsrPreset').click();
     await page.waitForFunction(() => !document.querySelector('#batchConfirmModal').classList.contains('hidden'));
     assert.match(await page.locator('#batchConfirmMessage').textContent(), /采访副本/);
