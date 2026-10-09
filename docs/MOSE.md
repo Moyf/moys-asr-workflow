@@ -6,6 +6,13 @@ Range seek、波形、最近工程和导出能力与 MAWE Server 保持一致，
 源码或工程 schema。
 
 ## 分发方式
+| 名称 | 当前定位 |
+| --- | --- |
+| MAW — Moy's ASR Workflow | 当前可用的转写与处理工作流，包含 Launcher、公开 CLI 与本机服务。 |
+| MAWE — Moy's ASR Workflow Editor | MAW 的浏览器字幕编辑器；Server 为日常入口，HTML 为兼容入口。 |
+| MOSE — Moy's Open Subtitle Editor | Windows x64 Installer 中随统一套件发布的独立编辑器；本仓库不包含已移除的 Tauri 桌面实验工程。 |
+
+MOSE 作为统一套件中的独立编辑器交付，尚未单独作为稳定产品或单独 Release 分发；移除 Tauri 桌面实验工程不改变现有 Electron 套件、MOSE 产品方向或工程格式。
 
 源码和打包脚本公开；GitHub Release 同时发布 MAW / MAW-lite 便携包，以及包含 MOSE
 的 Windows x64 Installer。Installer 本身不做 License Key 或联网授权校验，用户拿到

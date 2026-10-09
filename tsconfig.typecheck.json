@@ -8,6 +8,9 @@
   },
   "include": [
     "web/editor/boot/editor-globals.d.ts",
+    "web/shared/host/*.js",
+    "web/shared/utils/*.js",
+    "web/editor/media/waveform/*.js",
     "web/editor/boot/editor-boot.js",
     "web/editor/state/editor-state.js",
     "web/editor/state/editor-view-updates.js",

@@ -41,7 +41,7 @@
         idx,
         start_ms: seg.start,
         end_ms: seg.end,
-        text: seg.text || '',
+        text: MaweSpeakerLabels.subtitleExportText(seg, MaweBoot.DATA.segments),
         color: seg.color || null,
         color_ref: seg.color_ref || null,
         resolve_color: colorName,
@@ -173,7 +173,7 @@
     return [{
       OTIO_SCHEMA: 'Marker.2',
       metadata: {},
-      name: String(segment.text || ''),
+      name: MaweSpeakerLabels.subtitleExportText(segment, colorContext),
       // 字幕来源的标记在备注里自明来源；名称本身即字幕内容。
       comment: 'MAW 字幕',
       color: OTIO_MARKER_COLORS[colorName] || OTIO_DEFAULT_MARKER_COLOR,

@@ -2326,24 +2326,6 @@ textarea::placeholder {
   pointer-events: none;
 }
 
-#toolboxInputPath {
-  direction: ltr;
-  text-align: right;
-}
-
-#toolboxInputPath:placeholder-shown {
-  text-align: left;
-}
-
-#toolboxUtilityMediaPath {
-  direction: ltr;
-  text-align: right;
-}
-
-#toolboxUtilityMediaPath:placeholder-shown {
-  text-align: left;
-}
-
 .toolbox-input-heading {
   display: flex;
   align-items: baseline;

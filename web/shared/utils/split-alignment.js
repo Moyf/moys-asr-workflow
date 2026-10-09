@@ -1,5 +1,5 @@
 // split-alignment: private helpers; dependencies are injected by editor-utils.js.
-window.MAWE.register('utils-split-alignment', function createUtilsModule(dependencies) {
+export function createUtilsModule(dependencies) {
   'use strict';
 
 
@@ -245,4 +245,4 @@ window.MAWE.register('utils-split-alignment', function createUtilsModule(depende
   }
 
   return Object.freeze({ alignItemsToText, hasUsableSplitTimestamps, placeUnalignedSplitItems, splitAlignmentDriftMs, splitCharOffsetAtTime });
-});
+}

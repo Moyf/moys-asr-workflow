@@ -1,5 +1,5 @@
 // timing: waveform helpers with explicit dependencies.
-window.MAWE.register('waveform-timing', function createWaveformModule(dependencies) {
+export function createWaveformModule(dependencies) {
   'use strict';
   const { MIN_CUE_MS, ROUND_MS, SNAP_MS, clamp } = dependencies;
 
@@ -519,4 +519,4 @@ window.MAWE.register('waveform-timing', function createWaveformModule(dependenci
   }
 
   return Object.freeze({ applyBoundaryStep, applyIndependentEdge, applyMoveStep, applySharedBoundary, formatCompact, isAttached, normalizeNewCueRange, normalizedIndices, planBoundaryStep, planMoveStep, remapItems, resolveTiming, restoreTiming, roundMs, shouldAdjustAdjacentCuesIndependently, shouldAdjustSharedBoundaryHandleIndependently, snapPointerTimeToTimingGrid, snapshotTiming, splitSegmentAtTime, waveformGridStepMs });
-});
+}

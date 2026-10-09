@@ -28,7 +28,7 @@ status: in_progress
 
 - 当前分支：`refactor/mawe-p0-p1`
 - 当前范围：Phase 0（重构基线）与 Phase 1（统一脚本装配、模块注册）
-- 当前状态：实现已完成，Server / 便携页面主要定向验收通过；Electron 桌面壳改由 Node 测试、source smoke 和 Windows 打包 smoke 验收，整体批次待验收
+- 当前状态：实现已完成，Server / 便携页面主要定向验收通过；Electron 桌面壳改由 Node 测试、source smoke 和 Windows 打包 smoke 验收，另有 1 项既有 i18n 失败待记录处理，整体批次待验收
 - 当前预算：约 30–50 工时；完成后进行继续 / 调整 / 暂停评审
 - 长期预算：Phase 2–3 约 60–100 工时；Phase 4–6 只有在维护压力和验证结果证明值得时才启动
 - 当前不做：React 迁移、Store 全量改造、功能改版和无关 bug 修复

@@ -63,7 +63,9 @@ Server 的内置预设覆盖、命名工作区和活动名称保存在本机设�
 
 ## 编辑器源码地图
 
-`web/editor-scripts.txt` 是所有编辑器入口共用的装配清单。Python 与 Tauri 都按清单顺序把源码内联为一个 classic script；目录只用于导航，不决定执行顺序。清单接受 web 根目录内的 POSIX 相对子路径，拒绝路径穿越和符号链接越界。
+`web/editor-scripts.txt` 是 esbuild 的源码执行顺序；`web/editor-modules.json` 标出 59 个真正的 ESM 工厂与外部桥。其余 121 个文件暂时在同一 classic 作用域中执行，目录不决定顺序。构建器拒绝路径穿越、重复输入及符号链接越界。便携 HTML 与 localhost 都内联同一份已提交的 `web/editor/boot/editor-bundle.js`，用户运行编辑器不需要 Node。
+
+编辑器 JS、清单或构建配置变化后执行 `npm run build:editor`，提交 bundle 和 `.meta.json`；`npm run check:editor` 只读检查新鲜度，不会自动修复。Server 调试时另开 `npm run watch:editor`，CSS 和模板仍按请求读取。构建和 Node 测试要求 Node 22.13+；源码目录显式声明 `type: module`，不依赖语法自动检测。类型检查包括迁移的全部工厂与既有六文件范围。实施、实验及上游合并经验见 [ESM 迁移台账](dev/ESM_MIGRATION.md)。
 
 | 位置 | 职责 |
 | --- | --- |
@@ -102,6 +104,7 @@ Server 的内置预设覆盖、命名工作区和活动名称保存在本机设�
 
 ```sh
 uv run --no-sync ruff check
+npm run check:editor
 node --test tests/test_editor_script_syntax.mjs tests/test_editor_script_order.mjs
 node --test tests/test_editor_utils.mjs tests/test_waveform_js.mjs
 node --test tests/test_editor_state.mjs tests/test_editor_commands.mjs
@@ -128,7 +131,7 @@ Windows 使用 `scripts/run-e2e.ps1`，脚本检查 quapeaks，并在需要时�
 
 README 只保留入口；主线放 WORKFLOW，高级操作放专题，字段放 JSON_SCHEMA。反馈和开发进度写任务账本。官网文档由 [同步脚本](../website/docs/CONTENT_SYNC.md) 生成，不手改副本。
 
-日常改 `web/` 不重生成 `blank-editor.html`。在 PR 描述注明“内联副本待发布前统一重生成”；发布前或维护者明确要求时才执行：
+日常改编辑器 JS 要重建 esbuild 产物，但不重生成 `blank-editor.html`。在 PR 描述注明“内联副本待发布前统一重生成”；发布前或维护者明确要求时才执行：
 
 ```sh
 uv run --no-sync python edit.py --blank

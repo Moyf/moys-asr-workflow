@@ -216,8 +216,6 @@ ERROR_MESSAGES: Final[dict[str, str]] = {
     "alignment_media_invalid": "The selected speech-alignment media file does not exist or is unsupported.",
     "alignment_server_no_response": "Speech-alignment server did not respond.",
     "alignment_server_start_failed": "Speech-alignment server failed to start.",
-    "mose_not_found": "MOSE desktop editor was not found in this MAW package.",
-    "mose_start_failed": "MOSE desktop editor failed to start.",
     "server_stop_not_maw": "The process using this port is not a MAW editor server.",
     "server_stop_failed": "Unable to stop the MAW editor server.",
     "sticker_dir_invalid": "Sticker directory does not exist.",

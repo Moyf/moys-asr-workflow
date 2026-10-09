@@ -21,4 +21,4 @@
 冲突块编号的一次性调试脚本不进入仓库。写入目标被占用时工具直接报错，
 不会先删除目标文件规避锁定。
 
-机械切段与移动的等价审计：`node scripts/check_editor_equivalence.mjs --base <revision>`，核对原序源码字节及 Python / Tauri 装配 AST。
+机械切段与移动的等价审计：`node scripts/check_editor_equivalence.mjs --base <revision>`，核对原序源码字节及装配 AST。

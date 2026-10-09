@@ -5413,6 +5413,7 @@ class LauncherAssetContractTests(unittest.TestCase):
         self.assertIn('$("openServerEditor").addEventListener("click", openServerEditor)', script)
         self.assertIn("open_preferred_editor", script)
         self.assertIn("mose_fallback", script)
+        self.assertFalse((ROOT / 'desktop' / 'src-tauri').exists())
         self.assertIn('function openServerEditor()', script)
         self.assertIn('bridge("start_server"', script)
 

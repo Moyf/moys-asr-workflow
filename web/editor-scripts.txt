@@ -1,5 +1,6 @@
 # MAWE editor scripts are inlined in this order by edit.py and the Server build;
 # Electron loads the same rendered Server page at runtime.
+# MAWE editor sources are bundled in this order for portable HTML and localhost.
 # Keep runtime/bootstrap modules before the modules that consume their exports.
 # editor-boot.js owns the template-injected project/sticker/server tokens and
 # must stay first among the editor modules.

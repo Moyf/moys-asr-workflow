@@ -1,6 +1,9 @@
 from __future__ import annotations
 
 import sys
+import json
+import re
+from unittest.mock import patch
 import tempfile
 import unittest
 from contextlib import redirect_stderr
@@ -15,6 +18,10 @@ import edit  # noqa: E402
 
 
 class EditorAssetContractTests(unittest.TestCase):
+    def source_contract_text(self) -> str:
+        """Historical source-shape checks inspect sources, not esbuild printing."""
+        return "\n\n".join(edit.read_web_asset(name) for name in edit.read_editor_script_manifest())
+
     def test_editor_script_manifest_is_ordered_and_complete(self) -> None:
         self.assertEqual(
             edit.read_editor_script_manifest(),
@@ -202,16 +209,18 @@ class EditorAssetContractTests(unittest.TestCase):
         ),
         )
 
-    def test_editor_script_payload_follows_manifest_order(self) -> None:
-        payload = edit.build_editor_scripts()
-        # 检查整份源码的装配顺序，而不是随物理切段频繁失效的片段 marker。
-        previous_end = 0
-        for asset_name in edit.read_editor_script_manifest():
-            source = edit.read_web_asset(asset_name).rstrip()
-            self.assertTrue(source, asset_name)
-            current_index = payload.index(source, previous_end)
-            self.assertGreaterEqual(current_index, previous_end, asset_name)
-            previous_end = current_index + len(source)
+    def test_editor_script_payload_is_one_complete_artifact(self) -> None:
+        with patch.object(edit, "read_editor_script_manifest", side_effect=AssertionError("runtime source assembly")):
+            payload = edit.build_editor_scripts()
+            page = edit.build_blank_html()
+        self.assertEqual(payload, edit.read_web_asset("editor/boot/editor-bundle.js").rstrip())
+        self.assertIn(payload.splitlines()[0], page)
+        metadata = json.loads(edit.read_web_asset("editor/boot/editor-bundle.meta.json"))
+        self.assertEqual(metadata["sourceFiles"], list(edit.read_editor_script_manifest()))
+        self.assertEqual(set(metadata["inputs"]), set(metadata["sourceFiles"]))
+        modules = json.loads(edit.read_web_asset("editor-modules.json"))["modules"]
+        positions = [payload.index(f'MAWE.register({json.dumps(item["name"])},') for item in modules]
+        self.assertEqual(positions, sorted(positions))
 
     def test_ass_frame_preview_wires_template_module_and_styles(self) -> None:
         # 单帧实际画面预览：设置页入口按钮、浮层窗口、接线模块与样式必须同时存在。
@@ -243,7 +252,7 @@ class EditorAssetContractTests(unittest.TestCase):
         self.assertIn(".ass-frame-window-body::-webkit-scrollbar-thumb", styles)
 
     def test_waveform_gap_display_type_uses_shared_core_and_subtle_protected_style(self) -> None:
-        waveform = edit.build_editor_scripts()
+        waveform = self.source_contract_text()
         styles = edit.read_web_asset("waveform.css")
         self.assertIn("getGapRemoveDisplayType", waveform)
         self.assertIn("isGapRemoveDisplayProtected", waveform)
@@ -253,7 +262,7 @@ class EditorAssetContractTests(unittest.TestCase):
         self.assertIn("this.options.getGapRemoveGaps?.() || []", waveform)
 
     def test_gap_state_labels_match_in_mawe_and_align(self) -> None:
-        waveform = edit.build_editor_scripts()
+        waveform = self.source_contract_text()
         align_page = (ROOT / "server-align" / "index.html").read_text(encoding="utf-8")
         label = "gap.removed === false ? '空隙（未激活）' : '空隙'"
         self.assertIn(label, waveform)
@@ -354,7 +363,7 @@ class EditorAssetContractTests(unittest.TestCase):
         self.assertLess(template.index('id="new-project"'), template.index('id="open-project"'))
 
     def test_editor_sources_expose_checkpointed_import_contract(self) -> None:
-        script = edit.build_editor_scripts()
+        script = self.source_contract_text()
         project_load = edit.read_web_asset("editor/io/editor-project-load.js")
         project_save = edit.read_web_asset("editor/io/editor-project-save.js")
         server_save = edit.read_web_asset("editor/io/editor-server-save.js")
@@ -374,7 +383,7 @@ class EditorAssetContractTests(unittest.TestCase):
         self.assertNotIn("!projectLoadedFromSrt", script + project_load + project_save + server_save)
 
     def test_ass_style_library_saves_require_token_and_flush_before_unload(self) -> None:
-        script = edit.build_editor_scripts()
+        script = self.source_contract_text()
         # 共享样式库写入必须携带页面请求令牌（服务器 403 契约见 test_local_editor_server）。
         self.assertIn("requestToken: MaweBoot.SERVER_CONFIG?.requestToken || ''", script)
         # debounce 定时器在刷新/关闭/切后台时不保证触发；dirty 状态必须用
@@ -386,7 +395,7 @@ class EditorAssetContractTests(unittest.TestCase):
 
     def test_sticker_root_uses_server_validation_without_browser_picker(self) -> None:
         template = edit.read_web_asset("editor-template.html")
-        script = edit.build_editor_scripts()
+        script = self.source_contract_text()
         sticker_root = edit.read_web_asset("editor/io/editor-sticker-root.js")
         styles = edit.read_web_asset("editor.css")
         self.assertIn('id="sticker-root-input"', template)
@@ -413,7 +422,7 @@ class EditorAssetContractTests(unittest.TestCase):
 
     def test_sticker_otio_exposes_portable_mode_and_relative_metadata(self) -> None:
         template = edit.read_web_asset("editor-template.html")
-        script = edit.build_editor_scripts()
+        script = self.source_contract_text()
         self.assertIn('id="sticker-otio-export-mode"', template)
         self.assertIn('option value="portable"', template)
         otio_script = edit.read_web_asset("editor/io/editor-export-timeline.js")
@@ -427,7 +436,7 @@ class EditorAssetContractTests(unittest.TestCase):
         self.assertIn("timeline: JSON.parse(payload)", edit.read_web_asset("editor/io/editor-sticker-otio-export.js"))
 
     def test_portable_sticker_export_capability_syncs_after_project_binding(self) -> None:
-        script = edit.build_editor_scripts()
+        script = self.source_contract_text()
         sticker_otio = edit.read_web_asset("editor/io/editor-sticker-otio-export.js")
         self.assertIn("function syncStickerOtioExportMode()", sticker_otio)
         self.assertIn("portableStickerExportOption.disabled = !available", sticker_otio)
@@ -450,9 +459,12 @@ class EditorAssetContractTests(unittest.TestCase):
         self.assertEqual(edit.read_web_asset("editor/io/editor-server-save.js").count("MaweStickerOtioExport.syncStickerOtioExportMode();"), 1)
         self.assertNotIn("const portableStickerExportEnabled", script)
 
-    def test_generated_page_contains_registered_modules_in_order(self) -> None:
+    def test_generated_page_contains_compatibility_facades_in_order(self) -> None:
         page = edit.build_blank_html()
-        self.assertNotRegex(page, r"__[A-Z][A-Z0-9_]+__")
+        tokens = set(re.findall(r"__[A-Z][A-Z0-9_]+__",
+                                edit.read_web_asset("editor-template.html") + self.source_contract_text()))
+        for token in tokens:
+            self.assertNotIn(token, page, token)
         self.assertIn(
             f'<span class="app-version" id="app-version" data-label="版本号">版本号 v{edit.get_app_version()}</span>',
             page,
@@ -460,16 +472,18 @@ class EditorAssetContractTests(unittest.TestCase):
         # 便携页禁止携带「生成时间：…」式硬编码时间戳；「正在生成时间线 OTIOZ…」
         # 这类把「生成时间」作为前缀子串的普通文案不受限制。
         self.assertNotRegex(page, r"生成时间\s*[:：]")
+        # Bundle minification can rename local parameters and remove whitespace;
+        # assert the public facade assignments and their order, not source spelling.
         markers = (
-            "// Shared frontend runtime registry.",
-            "global.AsrGapRemoveCore = Object.freeze({",
-            "window.AsrEditorUtils = {",
-            "global.MAWE_I18N = {",
-            "window.AsrWaveform = {",
-            "window.MAWE_EDITOR_BRIDGE = Object.freeze({",
-            "window.MAWE_ONBOARDING = Object.freeze({",
+            r'Object\.defineProperty\([^,]+,\s*["\']MAWE["\']',
+            r'\b[A-Za-z_$][\w$]*\.AsrGapRemoveCore\s*=',
+            r'\bwindow\.AsrEditorUtils\s*=',
+            r'\b[A-Za-z_$][\w$]*\.MAWE_I18N\s*=',
+            r'\bwindow\.AsrWaveform\s*=',
+            r'\bwindow\.MAWE_EDITOR_BRIDGE\s*=',
+            r'\bwindow\.MAWE_ONBOARDING\s*=',
         )
-        indices = [page.index(marker) for marker in markers]
+        indices = [re.search(marker, page).start() for marker in markers]
         self.assertEqual(indices, sorted(indices))
 
     def test_electron_uses_the_shared_server_and_frontend_source(self) -> None:

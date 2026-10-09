@@ -697,7 +697,8 @@ class LocalEditorServerTests(unittest.TestCase):
 
         page = server_editor.build_server_page(project).decode("utf-8")
 
-        self.assertIn('let FILENAME_BASE = "subtitles-only";', page)
+        self.assertIn('"subtitles-only"', page)
+        self.assertNotIn('__FILENAME_BASE_JSON__', page)
         self.assertIn('id="json-name" title="点击复制工程文件名">subtitles-only.mosp</span>', page)
         self.assertNotIn('class="json-name empty"', page)
         self.assertIn('id="media-name" title="">未加载媒体</span>', page)
@@ -1158,9 +1159,11 @@ class LocalEditorServerTests(unittest.TestCase):
         settings = server_editor.remember_project(server_editor.ServerSettings(), self.project_path)
         page = server_editor.build_server_page(project, settings).decode("utf-8")
         self.assertIn('src="/media"', page)
-        self.assertIn('let STICKER_URL_PREFIX = "/stickers";', page)
-        self.assertIn('const NINJA_SFX_BASE_URL = "/sfx/";', page)
-        self.assertIn('const SERVER_CONFIG = {"saveUrl": "/api/project", ', page)
+        self.assertIn('"/stickers"', page)
+        self.assertIn('"/sfx/"', page)
+        self.assertIn('{"saveUrl": "/api/project", ', page)
+        for token in ('__STICKER_URL_PREFIX_JSON__', '__NINJA_SFX_BASE_URL_JSON__', '__SERVER_CONFIG_JSON__'):
+            self.assertNotIn(token, page)
         self.assertNotIn('createUrl', page)
         self.assertIn('"requestToken": "", "stickerRootUrl": "/api/stickers/root", ', page)
         self.assertIn('"portableStickerExportUrl": "/api/exports/sticker-otio", ', page)
@@ -1172,7 +1175,7 @@ class LocalEditorServerTests(unittest.TestCase):
         self.assertIn('"settingsUrl": "/api/settings", "recentProjects": [{"path": "', page)
         self.assertIn('"name": "clip.json"}], "assStylesUrl": "/api/ass-styles", "assFrameUrl": "/api/ass-frame", "autoOpenLastProject": true, "savedWorkspaces": {}, ', page)
         self.assertIn('"presetWorkspaces": {}, ', page)
-        self.assertIn('"activeWorkspaceName": "", "onboardingStatus": ""};', page)
+        self.assertIn('"activeWorkspaceName": "", "onboardingStatus": ""}', page)
         desktop_page = server_editor.build_server_page(
             project,
             server_editor.replace(settings, onboarding_status="completed"),
@@ -1191,8 +1194,9 @@ class LocalEditorServerTests(unittest.TestCase):
         self.assertIn('id="open-project-dropdown"', page)
         self.assertIn('id="load-srt"', page)
         self.assertIn('id="load-srt-file"', page)
-        self.assertIn('function parseSrtSegments(text)', page)
-        self.assertIn('function isMawProject(data)', page)
+        source = "\n\n".join(server_editor.edit.read_web_asset(name) for name in server_editor.edit.read_editor_script_manifest())
+        self.assertIn('function parseSrtSegments(text)', source)
+        self.assertIn('function isMawProject(data)', source)
         self.assertIn('请使用 MAW 生成的工程文件', page)
 
         self.assertIn('id="server-auto-save-settings"', page)
@@ -1204,16 +1208,16 @@ class LocalEditorServerTests(unittest.TestCase):
         self.assertIn('> 备份工程</label>', page)
         self.assertLess(page.index('id="editor-settings-page-export"'), page.index('id="server-auto-save-settings"'))
         self.assertLess(page.index('id="server-auto-save-settings"'), page.index('id="project-backup-settings"'))
-        self.assertIn('function scheduleAutoSave()', page)
-        self.assertIn('hasUnsavedProjectChanges() && !projectSaveInFlight', page)
+        self.assertIn('function scheduleAutoSave()', source)
+        self.assertIn('hasUnsavedProjectChanges() && !projectSaveInFlight', source)
         self.assertIn('id="recent-projects"', page)
         self.assertIn('id="auto-open-last-project"', page)
         self.assertLess(page.index('id="auto-open-last-project"'), page.index('id="recent-projects-list"'))
-        self.assertIn("const STORAGE_KEY = 'mawe.language';", page)
+        self.assertIn("const STORAGE_KEY = 'mawe.language';", source)
         self.assertIn('class="waveform-mode-switch"', page)
         self.assertIn('data-saved-workspaces', page)
         self.assertIn('id="workspace-save-as"', page)
-        self.assertIn('function configureServerWorkspaceLibrary()', page)
+        self.assertIn('function configureServerWorkspaceLibrary()', source)
 
         with server_editor.EditorServer(("127.0.0.1", 0), project) as server:
             thread = threading.Thread(target=server.serve_forever, daemon=True)

@@ -9,13 +9,24 @@
 
 > Local media → ASR → SRT + `.mosp` project → MAWE editor → export.
 
-MAW is an API-first subtitle generation and editing workflow. It provides a graphical Launcher, a public CLI, and a local Server editor. Available packages depend on each release. Editing and project storage stay on your machine.
+MAW connects subtitle generation with review, cleanup, and delivery. It provides a graphical Launcher, a public CLI, and the local MAWE browser editor, with cloud ASR as the main transcription path. It is suited to subtitle-heavy recordings such as presentations, interviews, and courses.
+
+Use a script to assist proofreading, try reversible pause removal, edit multiple subtitle tracks, and hand the result to other tools. Keep the `.mosp` project so the next revision can continue from your existing work.
 
 ![MAWE editor with video and subtitle list on the left, waveform and overlapping subtitles on the right](docs/assets/1.6.0/overlay-track.webp)
 
 *Editor example from 1.6.0: review text and video on the left, adjust timing against the waveform on the right. Workspace layouts are configurable.*
 
 Latest beta: [v1.8.0-beta.1](https://github.com/Moyf/moys-asr-workflow/releases/tag/v1.8.0-beta.1).
+
+## Why MAW
+
+- **Connect text with sound:** retain the word or character timing supplied by your ASR provider, then navigate, split, and adjust boundaries on a multi-row waveform. Segment-only timing still needs listening and is not word-level precision.
+- **Put your script to work:** local script matching corrects text without an LLM. Optional AI spoken-recording cleanup treats the transcript as the spoken content and the script as evidence; clear discarded takes can be removed reversibly, while uncertain decisions become review markers.
+- **Try the edit before committing to it:** gap removal records reversible decisions without rewriting the original media or subtitle times. Preview the compressed timeline and export matching subtitles, OTIO, or FFconcat for the next tool.
+- **Reuse a complete workflow:** ASR presets, sequential batch transcription, and automatic post-processing reduce repeated setup. Inspect stage outputs, retry a failed stage, save the project, and deliver subtitles or a burned-in video.
+
+MAW does not replace a full video editor. ASR output and AI decisions still require human review.
 
 ## Quick start
 
@@ -31,8 +42,10 @@ The official Windows Installer checks for updates at startup at most once per da
 ## Core capabilities
 
 - Transcribe with Qwen, Fun-ASR, Soniox, Tencent Cloud, Volcengine Doubao, or an OpenAI-compatible ASR endpoint and generate SRT plus a `.mosp` project.
-- Edit in the MAWE Server editor with waveform navigation, split/merge, silence-gap handling, video preview, and multiple export formats.
-- The Windows suite includes the preferred MOSE Electron editor. It shares the MAW Server, `.mosp` project, waveform, media, and export contracts; the Launcher falls back to the Server editor when MOSE is unavailable.
+- Edit in MAWE with multi-row waveform navigation, split/merge, linked boundaries, reversible gap removal, markers and regions, and main, secondary, and overlapping subtitles. The Windows suite also includes the preferred MOSE Electron editor, which shares the MAW Server, `.mosp` project, waveform, media, and export contracts; the Launcher falls back to the Server editor when MOSE is unavailable.
+- Review ASS styles, including actual rendered frames in the localhost editor; export main, secondary, or combined bilingual SRT, ASS, TXT, OTIO, and FFconcat as appropriate.
+- Match scripts locally or choose AI cleanup, LLM proofreading, translation, and sentence splitting. Automatic processing keeps original snapshots and stage results and can retry from a failed stage.
+- Burn subtitles into video, extract a selected audio track, generate green-screen subtitle video, or rebuild media from retained intervals.
 - Use the public CLI for batch jobs and AI automation: [CLI documentation](docs/CLI.md) (Chinese).
 - [Local ASR models](docs/LOCAL_ASR.md) and the key-free Bcut ASR path are experimental.
 
@@ -47,7 +60,7 @@ The official Windows Installer checks for updates at startup at most once per da
 
 ## Data and limitations
 
-Keep the original media and `.mosp` project. Projects contain UTF-8 JSON; older `.json` projects remain supported. SRT and ASS are delivery formats and cannot restore all word timing or editing state. Waveform data is a rebuildable cache.
+Keep the original media and `.mosp` project. Projects contain UTF-8 JSON; older `.json` projects remain supported. SRT and ASS are delivery formats and cannot restore all available word timing, tracks, markers, or editing state. Waveform data is a rebuildable cache, not project source data. The localhost Server supports versioned backups; see the [editor guide](docs/EDITOR_GUIDE.md) for recovery and media relocation.
 
 Cloud transcription sends audio directly to the selected provider. Optional LLM processing sends subtitle text, and AI cleanup also sends script text. MAW has no hosted transcription server; editing and saving normally happen locally. Keys are configured on your machine. Pricing and data policies depend on the provider.
 

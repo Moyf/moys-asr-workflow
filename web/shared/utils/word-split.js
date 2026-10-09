@@ -1,5 +1,5 @@
 // word-split: private helpers; dependencies are injected by editor-utils.js.
-window.MAWE.register('utils-word-split', function createUtilsModule(dependencies) {
+export function createUtilsModule(dependencies) {
   'use strict';
   const { cleanSplitTextParts } = dependencies;
 
@@ -133,4 +133,4 @@ window.MAWE.register('utils-word-split', function createUtilsModule(dependencies
   }
 
   return Object.freeze({ isWordSplitConnector, nearestSubtitleSplitOffset, splitSubtitleText, subtitleSplitOffsets });
-});
+}
