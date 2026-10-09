@@ -484,7 +484,7 @@ document.addEventListener('keydown', (e) => {
   MaweCoreState.waveformEditor.setTool(tool);
 });
 
-// F：跳转并播放选中字幕（多选跳到第一条）。任意单击行为下都生效；
+// F：试听选中的字幕（多选取第一条），到字幕终点自动暂停。任意单击行为下都生效；
 // 文本编辑、弹窗和修饰键状态下不抢占输入。
 document.addEventListener('keydown', (e) => {
   if (e.key !== 'f' && e.key !== 'F') return;
@@ -506,8 +506,7 @@ document.addEventListener('keydown', (e) => {
   const first = Math.min(...selected);
   const segment = segments[first];
   if (!segment) return;
-  MaweTextCleanup.seekFromWaveform(segment.start / 1000);
-  if (MaweCoreState.player.paused) MaweMediaPlayback.togglePlayback();
+  MaweMediaPlayback.auditionRange(segment.start, segment.end);
 });
 
 

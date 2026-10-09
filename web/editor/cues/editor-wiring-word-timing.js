@@ -1,0 +1,1 @@
+MaweWordTiming.bind();

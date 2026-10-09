@@ -194,6 +194,7 @@ constructor(options) {
   installMethods(WaveformEditor.prototype, window.MAWE.resolve('waveform-media', helpers));
   installMethods(WaveformEditor.prototype, window.MAWE.resolve('waveform-render', helpers));
   installMethods(WaveformEditor.prototype, window.MAWE.resolve('waveform-cue-blocks', helpers));
+  installMethods(WaveformEditor.prototype, window.MAWE.resolve('waveform-word-blocks', helpers));
   installMethods(WaveformEditor.prototype, window.MAWE.resolve('waveform-canvas', helpers));
   installMethods(WaveformEditor.prototype, window.MAWE.resolve('waveform-input', helpers));
   installMethods(WaveformEditor.prototype, window.MAWE.resolve('waveform-cue-drag', helpers));

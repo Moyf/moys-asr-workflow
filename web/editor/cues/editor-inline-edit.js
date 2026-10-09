@@ -308,8 +308,11 @@
       const newText = textEl.innerText.replace(/\r\n?/g, '\n').trimEnd();
       if (newText !== original) {
         MaweCommands.run('编辑文本', () => {
-          MaweBoot.DATA.segments[idx].text = newText;
-          MaweBoot.DATA.segments[idx]._dirty = true;
+          const segment = MaweBoot.DATA.segments[idx];
+          const previousText = segment.text;
+          segment.text = newText;
+          segment._dirty = true;
+          MaweWordTiming.syncTextChange(segment, previousText);
           el.classList.add('dirty');
 
         });

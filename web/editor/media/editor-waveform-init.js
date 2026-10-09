@@ -14,6 +14,12 @@
     return;
   }
   MaweCoreState.waveformEditor = window.AsrWaveform.create({
+    wordTiming: MaweWordTiming,
+    beginWordEdit: () => MaweCommands.begin('调整字词时间码', { captureView: true }),
+    commitWordEdit: (command, segment) => {
+      MaweMultiSubtitleCore.markMainSegmentsDirty([segment]);
+      return command.commit({ cueList: true });
+    },
     getSegments: (track = 'main') => track === 'extension'
       ? (MaweMultiSubtitleCore.getActiveExtensionTrack()?.segments || [])
       : track === 'overlay'

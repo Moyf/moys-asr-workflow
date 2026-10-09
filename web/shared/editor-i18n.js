@@ -9,6 +9,19 @@
   // The editor keeps one source template. Exact UI strings are translated at
   // the DOM boundary; project content is excluded from traversal below.
   const EN_TEXT = {
+    '字词时间码': 'Word timings',
+    '临时查看和调整主字幕已有的字词时间范围；一个块可能包含多个共享时间的字词': 'Temporarily view and edit existing main subtitle word timings; one block may contain several words sharing a time range',
+    '高级操作': 'Advanced actions',
+    '字词转为独立字幕…': 'Convert timed text blocks to subtitles…',
+    '字词转为独立字幕': 'Convert timed text blocks to subtitles',
+    '确认转换': 'Confirm conversion',
+    '调整字词起点': 'Adjust timed text start',
+    '调整字词终点': 'Adjust timed text end',
+    '拖动调整贴合字词边界（两侧一起移动）': 'Drag the shared timed text boundary',
+    '开启「字词时间码」查看和调整主轨已有 items；整句块淡化为背景，缺少时间码的位置不补建。Q 快速开关字词时间码。': 'Enable Word timings to view and edit existing main-track items. Sentence blocks become dim backgrounds; missing timings are not generated. Q toggles word timings.',
+    '点击选中，Ctrl(Cmd) 多选，Shift 范围选择；拖动移动或调整边界，C 合并同句内连续块，Esc 取消拖动。F 试听选中的字幕。': 'Click to select, Ctrl(Cmd) to toggle, Shift to select a range. Drag to move or resize; C merges consecutive blocks in one sentence; Esc cancels a drag. F auditions the selected subtitle.',
+    '一个块可能包含多个共享时间的字词；新增文字不代表重新对齐音频。高级操作可将选中的完整句子转为独立字幕，确认前会列出跳过原因与解绑数量。': 'One block may contain several words sharing a range. Added text is not realigned to audio. Advanced actions can convert fully covered selected sentences to subtitles, with skipped reasons and binding removals listed before confirmation.',
+    '此操作会替换选中的整句结构，并解除相关副字幕绑定；副字幕内容与时间保留。字词范围可能更短，产生更多空隙。新增文字可能共用旧时间范围，没有重新对齐音频。每个块转为一条字幕，不按字数细分时间。可通过撤销恢复，不提供反向转换工具。': 'This replaces selected sentence structures and removes their secondary subtitle bindings, keeping secondary text and timing. Word ranges may be shorter and leave more gaps. Added text may share an old range and has not been realigned to audio. Each block becomes one subtitle; timing is not subdivided by character count. Undo is available; there is no reverse conversion tool.',
     '媒体标记': 'Media markers',
     '新区段': 'New region',
     '拖动调整区段起点': 'Drag to adjust region start',
@@ -685,6 +698,8 @@
     '上一条字幕': 'Previous subtitle', '下一条字幕': 'Next subtitle',
     '向前多选': 'Extend selection backward', '向后多选': 'Extend selection forward',
     '跳转并播放选中字幕': 'Seek to and play selected subtitle',
+    '试听选中的字幕，到字幕终点自动暂停': 'Audition the selected subtitle; playback pauses at its end',
+    '双音符': 'Double music notes', '中括号': 'Square brackets',
     '跳到当前字幕开头/结尾并保持暂停': 'Seek to the current subtitle start/end and stay paused',
     '倍速 ×0.5/重置/×2': 'Speed ×0.5/reset/×2',
     '双击波形': 'Double-click waveform', '右键波形背景': 'Right-click waveform background',
@@ -1059,7 +1074,7 @@
   // and read-only previews. Translate their surrounding controls and labels.
   const PROJECT_TEXT_SELECTOR = [
     '.cue .text', '.multi-cue-column .text', '.waveform-cue-label',
-    '.timed-text-edit-diff-part',
+    '.timed-text-edit-diff-part', '[data-word-project-content]',
     '.multi-subtitle-split-char',
     '.multi-subtitle-split-preview-left', '.multi-subtitle-split-preview-right',
     '.cue .sticker-slot .sname', '.cue .sticker-slot img', '#sticker-preview-name',
@@ -1072,7 +1087,7 @@
   ].join(',');
   const ATTRIBUTE_SKIP_SELECTOR = [
     // .waveform-cue-block 的 title 是用户字幕原文，不能参与翻译
-    PROJECT_TEXT_SELECTOR, '#overlay', '#sticker-overlay-layer', '.waveform-cue-block', '[data-marker-project-content]',
+    PROJECT_TEXT_SELECTOR, '#overlay', '#sticker-overlay-layer', '.waveform-cue-block', '.waveform-word-block', '[data-marker-project-content]',
     '#media-name', '#json-name', '#sticker-grid', 'script', 'style'
   ].join(',');
 
