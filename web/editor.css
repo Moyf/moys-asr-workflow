@@ -1295,7 +1295,6 @@
   }
   .editor-settings-pages { flex: 1 1 auto; min-width: 0; padding: 10px 12px; overflow-y: auto; }
   .editor-settings-page { display: flex; flex-direction: column; gap: 8px; }
-  .editor-settings-scope { margin: 0; padding: 8px 10px; color: var(--text-muted); font-size: 12px; line-height: 1.6; background: var(--bg-raised); border-radius: var(--radius-sm); }
   .editor-settings-region-card { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 12px; border: 1px solid var(--border-subtle); border-radius: var(--radius-md); }
   .editor-settings-region-card > div { min-width: 0; }
   .editor-settings-region-card strong { font-size: 13px; }
