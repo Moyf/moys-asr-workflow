@@ -132,7 +132,7 @@ test('exports ASS from the default profile style and keeps enabled subtitle text
 
   await closeSettingsPanels(page);
   await page.locator('#subtitle-export-btn').click();
-  await expect(page.locator('#download-full-ass')).toHaveText('带样式的 ASS 字幕');
+  await expect(page.locator('#download-full-ass')).toHaveText('ASS（带样式）');
   await page.locator('#download-full-ass').click();
 
   await expect.poll(() => page.evaluate(() => window.__exportSaves.length)).toBe(1);
@@ -272,7 +272,7 @@ test('ASS emphasis controls drive preview and inline export color', async ({ pag
   await openSettingsPage(page, 'special-edit');
   await expect(page.locator('#ass-inline-text-settings')).toBeVisible();
   await expect(page.locator('#ass-inline-text-settings input[type=checkbox]')).toHaveCount(5);
-  await expect(page.locator('#ass-inline-text-title')).toHaveText('特殊文本格式');
+  await expect(page.locator('#ass-inline-text-title')).toHaveText('特殊文本');
   await expect(page.locator('#ass-special-symbol-rule')).toHaveValue('both');
   await expect(page.locator('#ass-special-symbol-rule option:checked')).toHaveText('单双皆可');
   await expect(page.locator('[data-ass-symbol="_"]')).toHaveText('_下划线_/__下划线__');
@@ -473,7 +473,7 @@ test('groups SRT, color-split SRT and styled ASS exports in order', async ({ pag
   await page.locator('#subtitle-export-btn').click();
   await expect(page.locator('#subtitle-export-separator')).toBeVisible();
   await expect(page.locator('#subtitle-export-menu > .dropdown-item:visible').allTextContents())
-    .resolves.toEqual(['SRT 字幕', '按颜色拆分导出 SRT 字幕', '带样式的 ASS 字幕']);
+    .resolves.toEqual(['SRT', 'SRT（按颜色拆分）', 'ASS（带样式）']);
 });
 
 test('exports main, secondary and combined bilingual SRT from one menu', async ({ page }) => {
@@ -494,7 +494,7 @@ test('exports main, secondary and combined bilingual SRT from one menu', async (
   await page.locator('#subtitle-export-btn').click();
   const menu = page.locator('#subtitle-export-menu');
   await expect(menu.locator(':scope > .dropdown-item:visible').allTextContents())
-    .resolves.toEqual(['主字幕 SRT', '副字幕 SRT', '双语整合字幕 SRT', '带样式的 ASS 字幕']);
+    .resolves.toEqual(['主字幕 SRT', '副字幕 SRT', 'SRT（双语合并）', 'ASS（带样式）']);
   await expect(page.locator('.right-group > #download-multi-srt')).toHaveCount(0);
   await expect(page.locator('#subtitle-export-separator')).toBeVisible();
   const rowGaps = await menu.locator(':scope > .dropdown-item:visible').evaluateAll((items) => {
@@ -530,7 +530,7 @@ test('exports main, secondary and combined bilingual SRT from one menu', async (
   expect(await page.evaluate(() => window.__exportSaves[2].content)).not.toContain('Secondary line');
   await setProjectTrackEnabled(page, 'multi-subtitle-toggle', false);
   await page.locator('#subtitle-export-btn').click();
-  await expect(page.locator('#download-full-srt')).toHaveText('SRT 字幕');
+  await expect(page.locator('#download-full-srt')).toHaveText('SRT');
   await expect(page.locator('#download-multi-srt')).toBeHidden();
   await expect(page.locator('#download-bilingual-srt')).toBeHidden();
   await expect(page.locator('#subtitle-export-separator')).toBeHidden();
@@ -581,7 +581,7 @@ test('exports a gap-removed styled ASS subtitle with shifted timing', async ({ p
   await page.locator('#gap-removed-export-btn').click();
   await expect(page.locator('#gap-removed-subtitle-export-separator')).toBeVisible();
   await expect(page.locator('#gap-removed-export-menu > .dropdown-item:visible').allTextContents())
-    .resolves.toEqual(['SRT 字幕', '按颜色拆分导出 SRT 字幕', '带样式的 ASS 字幕']);
+    .resolves.toEqual(['SRT', 'SRT（按颜色拆分）', 'ASS（带样式）']);
   await expect(page.locator('#gap-removed-otio-menu').locator('xpath=preceding-sibling::*[1]'))
     .toHaveText('OpenTimelineIO');
 

@@ -370,7 +370,7 @@ test('small subtitle-segment overlap can be auto-repaired and saved again', asyn
   });
 
   await page.evaluate(() => {
-    // 重叠修复 UX 针对毫秒时间基准；帧模式下 1ms 会被帧吸附抹平。
+    // 重叠修复 UX 针对毫秒时间基准；帧模式下 1ms 会被对齐到帧抹平。
     MaweBoot.DATA.timebase = { unit: 'milliseconds', fps: 30 };
     MaweBoot.DATA.segments[0].end = MaweBoot.DATA.segments[1].start + 1;
     MaweBoot.DATA.segments[0]._dirty = true;
@@ -409,7 +409,7 @@ test('larger subtitle-segment overlap requires an explicit repair direction', as
     });
   });
   await page.evaluate(() => {
-    // 同上：钉住毫秒时间基准，避免帧吸附改写时间边界。
+    // 同上：钉住毫秒时间基准，避免对齐到帧改写时间边界。
     MaweBoot.DATA.timebase = { unit: 'milliseconds', fps: 30 };
     MaweBoot.DATA.segments[0].end = MaweBoot.DATA.segments[1].start + 2000;
     MaweBoot.DATA.segments[0]._dirty = true;

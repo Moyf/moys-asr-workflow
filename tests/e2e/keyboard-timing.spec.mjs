@@ -252,7 +252,7 @@ test('automatic adjacent snapping is on by default and Alt temporarily disables 
 });
 
 test('automatic adjacent snapping links shared-boundary dragging by default and Alt reverses it', async ({ page }) => {
-  // 传统模式：共享边界手柄的联动/独立由「自动吸附调整相邻字幕」开关决定。
+  // 传统模式：共享边界手柄的联动/独立由「联动调整相邻字幕」开关决定。
   await loadAttachedCues(page, true, 'classic');
   const dragSharedBoundary = async (altKey = false) => {
     const handle = page.locator('.waveform-cue-block[data-idx="0"] .waveform-cue-handle.right').first();

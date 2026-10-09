@@ -44,7 +44,7 @@ export function createWaveformModule(dependencies) {
         this.payload = null;
         this.peaks = null;
         this.setStatus('等待波形数据');
-        this.empty.textContent = '加载媒体后显示波形（大媒体需要先用 MAW 生成波形后拖入）';
+        this.empty.textContent = '导入媒体后显示波形（大媒体需要先用 MAW 生成波形后拖入）';
         this.empty.classList.remove('hidden');
         if (render) this.render();
         return false;

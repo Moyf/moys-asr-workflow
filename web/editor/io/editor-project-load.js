@@ -12,7 +12,7 @@
     const mediaNameEl = document.getElementById('media-name');
     if (!mediaNameEl) return;
     if (!mediaName) {
-      mediaNameEl.textContent = '未加载媒体';
+      mediaNameEl.textContent = '未导入媒体';
       mediaNameEl.title = '';
       mediaNameEl.classList.add('empty');
       mediaNameEl.onclick = null;
@@ -377,7 +377,7 @@ function applyCanonicalProject(data, filename) {
     }
     MaweServerSave.configureServerSaveControls();
     MaweServerSave.scheduleAutoSave();
-    MaweHint.flashHint(`已加载字幕：${displayName}（${MaweBoot.DATA.segments.length} 条）`, 'success');
+    MaweHint.flashHint(`已导入字幕：${displayName}（${MaweBoot.DATA.segments.length} 条）`, 'success');
     return true;
   });
 }

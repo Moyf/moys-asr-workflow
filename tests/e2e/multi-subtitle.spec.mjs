@@ -115,7 +115,7 @@ for (const language of ['zh', 'en']) {
 }
 
 async function openMultiSubtitleSettings(page) {
-  // 双语字幕设置已并入项目设置 → 字幕轨道页。
+  // 双语字幕设置已并入工程设置 → 字幕轨道页。
   await openSettingsPage(page, 'project-tracks');
   await expect(page.locator('#project-multi-subtitle-settings')).toBeVisible();
 }
@@ -163,7 +163,7 @@ test('explains where to configure automatic timecode splitting', async ({ page }
   const hint = page.locator('#split-use-word-timestamps-hint');
   await expect(hint).toContainText('开启时，自动按可用时间码拆分');
   await expect(hint).toContainText('关闭后将打开拆分弹窗');
-  await expect(hint).not.toContainText('右上角「🔧 设置 → 拆分与合并」');
+  await expect(hint).not.toContainText('右上角「全局设置 → 拆分合并」');
 });
 
 test('creates an empty secondary track on enable and imports subtitles optionally', async ({ page }) => {
@@ -384,7 +384,7 @@ test('raises the last activated window above older floating surfaces', async ({ 
   await toggleGlobalSettings(page);
   const settingsPanel = page.locator('#editor-settings-panel');
 
-  // 再打开项目设置窗口：后激活的窗口应盖在全局设置之上。
+  // 再打开工程设置窗口：后激活的窗口应盖在全局设置之上。
   await page.locator('#project-settings-toggle').click();
   await expect(page.locator('#project-settings-panel')).toBeVisible();
   let layers = await page.evaluate(() => ({
@@ -393,7 +393,7 @@ test('raises the last activated window above older floating surfaces', async ({ 
   }));
   expect(layers.project).toBeGreaterThan(layers.settings);
 
-  // 点击全局设置窗口内容，窗口应回到最上层，而不是继续被项目设置遮挡。
+  // 点击全局设置窗口内容，窗口应回到最上层，而不是继续被工程设置遮挡。
   await settingsPanel.locator('.editor-settings-window-body').dispatchEvent('pointerdown', {
     bubbles: true,
     button: 0,
@@ -1534,7 +1534,7 @@ test('moves the split point with WASD, switches lanes with Tab and confirms with
   const mainActiveGap = mainLane.locator('.multi-subtitle-split-gap.active');
   await expect(mainActiveGap).toHaveAttribute('data-offset', '4');
 
-  // D/→ 按字词边界步进，A/← 回退；期间不得触发全局的字幕选择跳转。
+  // D/→ 按字词边界步进，A/← 回退；期间不得触发全局的选择跳转。
   const selectedBefore = await page.evaluate(selectedSnapshot);
   await page.keyboard.press('d');
   await expect(mainActiveGap).toHaveAttribute('data-offset', '8');
@@ -3559,7 +3559,7 @@ test('keeps one shared waveform background with two lanes, switch visibility, an
   expect(afterNormal[0]).toBeGreaterThan(before[0]);
   expect(afterNormal[1]).toBeGreaterThan(before[1]);
 
-  // Alt 拖动临时允许挤压相邻字幕；主字幕拖动仍带着绑定的副字幕一起移动，
+  // Alt 拖动临时允许挤压相邻字幕；主字幕拖动仍带着绑定的副字幕一起移动
   // 没有位移的 Alt 点击则切换禁用。
   const beforeAlt = await Promise.all([
     mainBlock.evaluate((element) => parseFloat(element.style.left)),
@@ -4161,7 +4161,7 @@ test('labels a linked split time inferred from main word timestamps', async ({ p
   await expect(page.locator('#multi-subtitle-split-timestamp-hint'))
     .toBeVisible();
   await expect(page.locator('#multi-subtitle-split-timestamp-hint'))
-    .toContainText('右上角「🔧 设置 → 拆分与合并」');
+    .toContainText('右上角「全局设置 → 拆分合并」');
   await page.keyboard.press('Escape');
 
   await toggleGlobalSettings(page);
@@ -4412,8 +4412,8 @@ test('ASS mode swaps subtitle style controls for library selectors and syncs ass
   await expect(page.locator('#subtitle-color-style-control')).toBeHidden();
   await page.locator('#ass-color-style').selectOption('speaker');
   await expect(page.locator('#ass-color-speaker-hint')).toBeVisible();
-  await expect(page.locator('#ass-color-speaker-hint')).toContainText('需要启用「将颜色映射为说话人」');
-  await expect(page.locator('#ass-color-speaker-export-link')).toHaveText('导出时附加说话人名称');
+  await expect(page.locator('#ass-color-speaker-hint')).toContainText('需要启用「颜色对应说话人」');
+  await expect(page.locator('#ass-color-speaker-export-link')).toHaveText('导出带上说话人');
   await page.locator('#ass-color-speaker-export-link').click();
   await expect(page.locator('#editor-settings-page-project-color')).toBeVisible();
   await openSettingsPage(page, 'project-color');

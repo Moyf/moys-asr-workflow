@@ -88,12 +88,12 @@ function detachColorFromGroup(idx) {
     start: segment.start,
     end: segment.end,
   };
-  return MaweCommands.run('从颜色组中脱离', () => {
+    return MaweCommands.run('移出颜色组', () => {
     MaweSegmentOps.splitGroupsAtCutPoints(new Set([idx]), 'color', 'color_ref');
     segment.color = detachedColor;
     segment.color_ref = null;
     MaweColorFilter.refreshColorAssignmentUi();
-    MaweHint.flashHint('已从颜色组中脱离', 'success');
+    MaweHint.flashHint('已移出颜色组', 'success');
     return true;
   });
 }

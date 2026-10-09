@@ -53,7 +53,7 @@ test('swapping once and twice preserves speaker and discarded cues through save 
     MaweCuePanel.renderAll();
   });
   for (let round = 0; round < 2; round++) {
-    // 双语字幕设置已并入项目设置 → 字幕轨道页。
+    // 双语字幕设置已并入工程设置 → 字幕轨道页。
     await page.locator('#project-settings-toggle').click();
     await expect(page.locator('#project-multi-subtitle-settings')).toBeVisible();
     await page.locator('#multi-subtitle-swap').click();

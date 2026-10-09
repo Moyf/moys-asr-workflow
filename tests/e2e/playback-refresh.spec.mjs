@@ -123,7 +123,7 @@ test('playback follows the playhead within the visible multi-row waveform', asyn
 test('video preview tab owns preview toggles and playback controls', async ({ page }) => {
   await page.goto(server.url);
   await page.locator('#editor-settings-toggle').click();
-  await expect(page.locator('#editor-settings-tab-subtitle-preview')).toHaveText('播放与预览');
+  await expect(page.locator('#editor-settings-tab-subtitle-preview')).toHaveText('播放预览');
 
   const structure = await page.evaluate(() => ({
     controlsParent: document.getElementById('playback-controls-title')?.parentElement?.id,

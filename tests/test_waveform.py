@@ -409,7 +409,7 @@ class EditorAssetTests(CompactContainerAssertions, unittest.TestCase):
         self.assertIn("getWaveShapeSource: () => MaweSettings.EDITOR_SETTINGS.waveShapeSource", waveform_init)
         self.assertIn("getWaveShapeSource?.() || 'reapeaks'", waveform)
         self.assertIn('<option value="reapeaks" selected>REAPER 波形</option>', template)
-        self.assertIn('<option value="self">原生波形</option>', template)
+        self.assertIn('<option value="self">内置波形</option>', template)
         self.assertNotIn('<option value="self" selected>', template)
         self.assertIn(
             "const useReapeaks = shapeSource === 'reapeaks' && this.reapeaksPayload && this.reapeaksPeaks;",
@@ -460,15 +460,15 @@ class EditorAssetTests(CompactContainerAssertions, unittest.TestCase):
         self.assertIn('加载媒体后显示视频', page)
         self.assertIn("mediaElement.addEventListener('click'", source)
         self.assertIn('value="select-and-seek" selected>选中并跳转', page)
-        self.assertIn('value="select-only">仅选中（不跳转）', page)
-        self.assertIn('value="select-and-play">选中并跳转（自动播放）', page)
+        self.assertIn('value="select-only">仅选中', page)
+        self.assertIn('value="select-and-play">选中并播放', page)
         self.assertIn('id="click-target-field"', page)
         self.assertIn('value="cue-start">字幕开头', page)
         self.assertTrue(
-            'value="pointer" selected>鼠标所在位置' in page,
+            'value="pointer" selected>鼠标位置' in page,
             '点击字幕块的默认跳转目标应为鼠标所在位置',
         )
-        self.assertIn('id="pause-on-mouse-click"> 播放过程中点击鼠标自动暂停', page)
+        self.assertIn('id="pause-on-mouse-click"> 点击鼠标时暂停播放', page)
         self.assertIn('pauseOnMouseClick: false', source)
         self.assertIn('id="cues-empty"', page)
         self.assertIn('加载工程后显示字幕列表', page)
@@ -526,7 +526,7 @@ class EditorAssetTests(CompactContainerAssertions, unittest.TestCase):
         self.assertEqual(page.count('class="editor-settings-nav-tab"'), 24)
         self.assertEqual(page.count('class="editor-settings-page"'), 17)
         self.assertEqual(page.count('class="editor-settings-nav-group-label"'), 5)
-        for group_label in ('基础', '预览与播放', '编辑', '保存与输出', '扩展功能'):
+        for group_label in ('基础', '播放预览', '编辑', '保存导出', '扩展功能'):
             self.assertIn(f'class="editor-settings-nav-group-label" aria-hidden="true">{group_label}</div>', page)
         settings_nav_start = page.index('  .editor-settings-nav {')
         settings_nav_end = page.index('  .editor-settings-nav-group-label {', settings_nav_start)
@@ -541,7 +541,7 @@ class EditorAssetTests(CompactContainerAssertions, unittest.TestCase):
         self.assertIn('scrollbar-width: thin;', scrollbar_style)
         self.assertIn('scrollbar-color: var(--scroll-thumb) var(--scroll-track);', scrollbar_style)
         self.assertLess(page.index('id="editor-settings-tab-interface"'), page.index('id="editor-settings-tab-general"'))
-        self.assertLess(page.index('>预览与播放</div>'), page.index('id="editor-settings-tab-subtitle-preview"'))
+        self.assertLess(page.index('>播放预览</div>'), page.index('id="editor-settings-tab-subtitle-preview"'))
         self.assertIn('id="language-toggle"', page)
         self.assertIn('data-editor-theme="light"', page)
         self.assertIn('data-editor-theme="dark"', page)
@@ -553,7 +553,7 @@ class EditorAssetTests(CompactContainerAssertions, unittest.TestCase):
         self.assertNotIn('<span class="info layout-toolbar-label">编辑</span>', page)
         self.assertIn('<span class="settings-panel-title">显示</span>', page)
         self.assertIn('<span class="settings-panel-title">操作</span>', page)
-        self.assertIn('id="cue-editor-cancel-on-escape"> Esc 取消编辑', page)
+        self.assertIn('id="cue-editor-cancel-on-escape"> Esc 放弃修改', page)
         self.assertNotIn('id="cue-editor-cancel-on-escape" checked', page)
         self.assertNotIn('id="alt-snap-reversal"', page)
         self.assertNotIn('id="cancel-subtitle-drag-on-escape"', page)
@@ -591,9 +591,9 @@ class EditorAssetTests(CompactContainerAssertions, unittest.TestCase):
         easter_eggs_page_start = page.index('id="editor-settings-page-easter-eggs"')
         self.assertLess(sticker_page_start, easter_eggs_page_start)
         self.assertNotIn('<span class="editor-settings-title">🥷🏻</span>', page)
-        # 拆分与合并分区：「字幕语言类型」为第二个卡片，heading 置于卡片外上方
+        # 拆分合并分区：「语言类型」为第二个卡片，heading 置于卡片外上方
         self.assertIn('class="editor-settings-group split-language-type-group" role="group" aria-labelledby="split-language-type-title"', page)
-        self.assertIn('<span class="editor-settings-group-heading" id="split-language-type-title">字幕语言类型</span>', page)
+        self.assertIn('<span class="editor-settings-group-heading" id="split-language-type-title">语言类型</span>', page)
         self.assertLess(page.index('id="editor-settings-page-timebase"'), page.index('id="split-language-type-title"'))
         self.assertNotIn('split-language-type-field', page)
         self.assertNotIn('editor-settings-item split-language-type-title', page)
@@ -625,9 +625,9 @@ class EditorAssetTests(CompactContainerAssertions, unittest.TestCase):
         self.assertNotIn('id="word-timing-toggle"', waveform_panel_slice)
         self.assertNotIn('id="gap-skip-playback"', waveform_panel_slice)
         self.assertIn('id="waveform-show-group-badges"', waveform_panel_slice)
-        self.assertIn('禁用波形显示', waveform_panel_slice)
+        self.assertIn('禁用项', waveform_panel_slice)
         self.assertIn('id="waveform-disabled-display"', waveform_panel_slice)
-        self.assertIn('id="waveform-operation-settings-title">字幕拖动</span>', page)
+        self.assertIn('id="waveform-operation-settings-title">拖动</span>', page)
         self.assertIn('字幕（编辑状态下）拆分按键', page)
         self.assertNotIn('波形区拆分按键', page)
         self.assertEqual(page.count('class="editor-settings-item editor-settings-list-fields editor-settings-display-row"'), 0)
@@ -653,7 +653,7 @@ class EditorAssetTests(CompactContainerAssertions, unittest.TestCase):
         self.assertIn('id="subtitle-speaker-settings"', page)
         self.assertIn('id="subtitle-speaker-mapping-enabled"', page)
         self.assertIn('id="subtitle-speaker-labels-enabled-wrap"', page)
-        self.assertIn('在预览字幕中显示说话人', page)
+        self.assertIn('预览显示说话人', page)
         self.assertIn('id="subtitle-speaker-labels-enabled" checked', page)
         self.assertIn('id="subtitle-color-style-control"', page)
         self.assertIn('id="subtitle-color-style"', page)
@@ -671,17 +671,17 @@ class EditorAssetTests(CompactContainerAssertions, unittest.TestCase):
         self.assertIn('value="text" selected>作为字幕颜色', page)
         self.assertIn('value="speaker">作为说话人名称颜色', page)
         self.assertIn('value="stroke">作为描边颜色', page)
-        self.assertIn('value="none">无影响', page)
+        self.assertIn('value="none">不生效', page)
         self.assertIn('>颜色字幕样式</span>', page)
         # 自定义颜色独立分组（位于「说话人」上方）；checkbox 控制显隐，恢复默认作为第 6 个网格项。
         self.assertIn('id="subtitle-color-palette-title">自定义颜色</span>', page)
         self.assertIn('id="subtitle-color-palette-enabled"', page)
         self.assertIn('id="subtitle-color-palette-grid" hidden', page)
-        self.assertIn('自定义颜色色值', page)
+        self.assertIn('自定义色值', page)
         self.assertNotIn('subtitle-color-palette-section', page)
         self.assertNotIn('>恢复内置色值</button>', page)
         self.assertIn('>恢复默认</button>', page)
-        self.assertIn('>文字大小</span>', page)
+        self.assertIn('>字号</span>', page)
         self.assertNotIn('>字幕大小</span>', page)
         self.assertIn('文字颜色', page)
         self.assertIn('背景颜色', page)
@@ -720,7 +720,7 @@ class EditorAssetTests(CompactContainerAssertions, unittest.TestCase):
             'class="editor-settings-group playback-controls-group" role="group" aria-labelledby="playback-controls-title"',
             video_preview_page,
         )
-        self.assertIn('<span class="editor-settings-group-heading" id="playback-controls-title">播放与定位</span>', video_preview_page)
+        self.assertIn('<span class="editor-settings-group-heading" id="playback-controls-title">播放控制</span>', video_preview_page)
         self.assertNotIn(
             'class="editor-settings-group subtitle-preview-style-group" role="group" aria-labelledby="subtitle-preview-style-title"',
             video_preview_page,
@@ -743,7 +743,7 @@ class EditorAssetTests(CompactContainerAssertions, unittest.TestCase):
         self.assertIn('data-editor-theme="light"', interface_page)
         self.assertIn('data-editor-theme="dark"', interface_page)
         self.assertIn('data-editor-theme="system"', interface_page)
-        self.assertIn('>跟随系统</button>', interface_page)
+        self.assertIn('>自动</button>', interface_page)
         self.assertIn('data-editor-accent="blue"', interface_page)
         self.assertIn('data-editor-accent="red"', interface_page)
         self.assertIn('data-editor-accent="orange"', interface_page)
@@ -882,7 +882,7 @@ class EditorAssetTests(CompactContainerAssertions, unittest.TestCase):
         self.assertIn('id="help-open-gap-settings"', page)
         self.assertIn('<button type="button" class="help-inline-action" id="help-open-media-settings"', page)
         self.assertIn('data-help-open-media-settings', page)
-        self.assertIn('⚙️全局设置', page)
+        self.assertIn('data-help-open-editor-settings aria-controls="editor-settings-panel">全局设置</button>', page)
         self.assertNotIn('红色播放指针', page)
         self.assertEqual(page.count('data-help-tab='), 7)
         self.assertIn('id="help-tab-panel-basic"', page)
@@ -955,7 +955,7 @@ class EditorAssetTests(CompactContainerAssertions, unittest.TestCase):
         )
         self.assertIn('具体操作取决于', page)
         self.assertIn('id="help-open-gap-settings"', page)
-        self.assertIn('「特殊编辑」中的「空隙区段操作方式」，其中「边界与中键」可同时使用两套操作。', page)
+        self.assertIn('「高级编辑」中的「空隙编辑」，其中「边界与中键」可同时使用两套操作。', page)
         self.assertIn(
             '<span><kbd>Shift+滚轮</kbd> 调整波形振幅</span>\n'
             '          <span class="help-break" aria-hidden="true"></span>\n'
@@ -978,7 +978,7 @@ class EditorAssetTests(CompactContainerAssertions, unittest.TestCase):
         self.assertNotIn('确定删除选中的 ${targetIdxs.length} 条字幕', page)
         self.assertIn('id="export-start-at-zero"', page)
         self.assertIn(
-            '<input type="checkbox" id="export-start-at-zero"> SRT 首条字幕起始时间从 0 开始',
+            '<input type="checkbox" id="export-start-at-zero"> 首条字幕时间从 0 开始',
             page,
         )
         self.assertNotIn('id="export-start-at-zero" checked', page)
@@ -1018,8 +1018,8 @@ class EditorAssetTests(CompactContainerAssertions, unittest.TestCase):
         self.assertIn('cueEditorShowSticker: saved.cueEditorShowSticker === true', source)
         self.assertIn('cueEditorCancelOnEscape: saved.cueEditorCancelOnEscape === true', source)
         self.assertIn('autoSnapAdjacentCues: saved.autoSnapAdjacentCues !== false', source)
-        self.assertIn('id="auto-snap-adjacent-cues" checked> 自动吸附调整相邻字幕', page)
-        self.assertNotIn('id="auto-snap-adjacent-cues"> 自动吸附调整相邻字幕', page)
+        self.assertIn('id="auto-snap-adjacent-cues" checked> 联动调整相邻字幕', page)
+        self.assertNotIn('id="auto-snap-adjacent-cues"> 联动调整相邻字幕', page)
         self.assertIn('当前为相邻字幕自动吸附模式，按住 Alt 可以临时解除吸附。', page)
         self.assertIn('当前未启用相邻字幕自动吸附，按住 Alt 可以临时启用。', page)
         self.assertNotIn('altSnapReversal', page)
@@ -1066,7 +1066,7 @@ class EditorAssetTests(CompactContainerAssertions, unittest.TestCase):
         self.assertIn('id="subtitle-extend-backward-ms" min="0" max="60000" step="50" value="60"', page)
         self.assertIn('id="subtitle-extend-run"', page)
         self.assertIn('id="waveform-drag-playhead"', page)
-        self.assertIn('播放时跳过空隙', page)
+        self.assertIn('跳过静音空隙', page)
         self.assertIn('const DEFAULT_LAYOUT_ROWS = [42, 16, 42];', source)
         self.assertIn("rows: [42, 16, 42], tree: DEFAULT_RIGHT_LAYOUT_TREE", source)
         self.assertIn('const projectHasStickers = MaweBoot.DATA.segments.some((segment) => segment.sticker || segment.sticker_ref)', source)
@@ -1100,7 +1100,7 @@ class EditorAssetTests(CompactContainerAssertions, unittest.TestCase):
         self.assertIn('class="gap-remove-panel help-panel"', page)
         self.assertIn('>静音空隙</button>', page)
         self.assertNotIn('>移除静音空隙…</button>', page)
-        self.assertIn('id="gap-remove-panel-title">移除静音空隙</h3>', page)
+        self.assertIn('id="gap-remove-panel-title">静音空隙</h3>', page)
         self.assertIn('aria-modal="false"', page)
         self.assertIn('id="gap-remove-drag-handle"', page)
         self.assertIn('id="gap-remove-close"', page)
@@ -1108,7 +1108,7 @@ class EditorAssetTests(CompactContainerAssertions, unittest.TestCase):
         self.assertIn('id="gap-remove-threshold" min="100" max="60000" step="50" value="400"', page)
         self.assertIn('id="gap-remove-volume-threshold" min="-96" max="0" step="1" value="-28"', page)
         self.assertIn('id="gap-remove-lead-in" min="0" max="2000" step="10" value="120"', page)
-        self.assertIn('<span>生成静音空隙</span>', page)
+        self.assertIn('<span>扫描静音</span>', page)
         self.assertNotIn('<span>重新生成静音区域</span>', page)
         self.assertNotIn('id="gap-remove-summary"', page)
         self.assertIn('id="gap-remove-shrink" class="gap-remove-inline-button">进一步收缩空隙</button>', page)
@@ -1124,7 +1124,7 @@ class EditorAssetTests(CompactContainerAssertions, unittest.TestCase):
         self.assertIn('<option value="boundary_and_middle">边界与中键</option>', page)
         # 空隙操作已从「移除静音空隙」弹窗移到「设置/波形」分组
         self.assertNotIn('class="gap-remove-operation-section"', page)
-        self.assertIn('空隙区段操作方式', page)
+        self.assertIn('空隙编辑', page)
         self.assertIn('id="gap-remove-operation-mode"', page)
         self.assertIn('id="gap-remove-clear-all" class="danger">全部清理</button>', page)
         self.assertIn('确定要清理全部 ${state.gaps.length} 个空隙区段吗？', source)
@@ -1132,7 +1132,7 @@ class EditorAssetTests(CompactContainerAssertions, unittest.TestCase):
         self.assertIn('class="gap-remove-parameters-heading"', page)
         self.assertIn('id="gap-removed-export-dropdown" hidden', page)
         self.assertIn('id="gap-removed-export-btn"', page)
-        self.assertIn('导出去空隙版本', page)
+        self.assertIn('去空隙导出', page)
         self.assertIn('id="subtitle-export-dropdown"', page)
         self.assertNotIn('id="download-srt"', page)
         self.assertIn('id="download-full-srt"', page)
@@ -1140,14 +1140,14 @@ class EditorAssetTests(CompactContainerAssertions, unittest.TestCase):
         self.assertIn('id="download-gap-removed-srt"', page)
         self.assertIn('id="download-gap-removed-color-srt"', page)
         self.assertIn('id="download-gap-removed-otio"', page)
-        self.assertIn('>OpenTimelineIO</div>', page)
-        self.assertIn('>时间线 OTIO 工程</div>', page)
+        self.assertIn('>OTIO</div>', page)
+        self.assertIn('>时间线 OTIO</div>', page)
         self.assertIn('id="download-gap-removed-otioz"', page)
-        self.assertIn('>时间线 OTIOZ 打包工程</div>', page)
+        self.assertIn('>时间线 OTIOZ</div>', page)
         self.assertIn('id="download-gap-removed-sticker-otio"', page)
-        self.assertIn('>表情包 OTIO 工程</div>', page)
+        self.assertIn('>表情包 OTIO</div>', page)
         self.assertIn('id="download-gap-removed-sticker-otioz"', page)
-        self.assertIn('>表情包 OTIOZ 打包工程</div>', page)
+        self.assertIn('>表情包 OTIOZ</div>', page)
         self.assertIn('id="download-gap-removed-ffconcat"', page)
         self.assertIn('id="download-gap-removed-regions-json"', page)
         self.assertIn('>数据文件</div>', page)
@@ -1155,7 +1155,7 @@ class EditorAssetTests(CompactContainerAssertions, unittest.TestCase):
         self.assertIn('id="download-otio"', page)
         self.assertIn('id="download-otioz"', page)
         self.assertIn('id="download-plain-text"', page)
-        self.assertIn('>纯文本 TXT</div>', page)
+        self.assertIn('>TXT 文本</div>', page)
         self.assertIn('>Resolve JSON</div>', page)
         self.assertNotIn('>下载表情包 OTIO', page)
         self.assertNotIn('>下载 Resolve JSON</div>', page)
@@ -1246,7 +1246,7 @@ class EditorAssetTests(CompactContainerAssertions, unittest.TestCase):
         self.assertIn('accept=".json,.mosp,application/json"', page)
         self.assertNotIn('id="open-project-file" accept=".json,.mosp,application/json" multiple', page)
         self.assertNotIn("confirm('是否同时选择该工程关联的媒体文件？", page)
-        self.assertIn("flashHint('请先加载媒体，然后才能预览', 'invalid');", source)
+        self.assertIn("flashHint('请先导入媒体，然后才能预览', 'invalid');", source)
         self.assertIn("flashHint('保存成功！', 'success');", source)
         self.assertIn("当前服务器未绑定工程；请先导出 .mosp，再重新打开该文件", page)
         self.assertIn('event.composedPath?.().includes(MaweCoreState.player)', source)
@@ -1324,7 +1324,7 @@ class EditorAssetTests(CompactContainerAssertions, unittest.TestCase):
             'sfx_katana_slash_01.opus',
             '播放音效',
             '刀光长度',
-            '随机旋转幅度',
+            '随机角度',
             '打开字幕忍者模式，让拆分字幕变得更加有趣',
             '.ninja-toggle-group {\n    display: flex; flex-wrap: wrap; align-items: center;',
             '.ninja-toggle-group > .editor-settings-hint { flex: 0 0 100%; }',
