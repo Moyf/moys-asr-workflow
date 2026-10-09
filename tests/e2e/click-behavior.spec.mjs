@@ -398,7 +398,7 @@ test('Escape keeps cue-panel text edits by default and cancels when the setting 
   await expect(panel).toHaveValue('This edit is kept');
   await expect.poll(() => page.evaluate(() => MaweBoot.DATA.segments[0].text)).toBe('This edit is kept');
 
-  // 开启「操作 → Esc 取消编辑」后：Esc 恢复进入本次编辑前的文本。
+  // 开启「操作 → Esc 放弃修改」后：Esc 恢复进入本次编辑前的文本。
   await page.evaluate(() => {
     const saved = { ...JSON.parse(localStorage.getItem('moy.asr.editor.settings.v1') || '{}'), cueEditorCancelOnEscape: true };
     localStorage.setItem('moy.asr.editor.settings.v1', JSON.stringify(saved));

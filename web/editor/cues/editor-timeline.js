@@ -427,7 +427,7 @@
           `Number of frames jumped by the controls and left/right arrow keys (current FPS: ${timebase.fps}).`,
         )
         : timelineUiText(
-          '控制按钮和左右方向键的每次跳转时长（单位：ms）。',
+          '控制按钮和左右方向键的跳转步长（单位：ms）。',
           'Duration for each jump from the controls and left/right arrow keys (unit: ms).',
         );
     }

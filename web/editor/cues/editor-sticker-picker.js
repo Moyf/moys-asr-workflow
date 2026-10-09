@@ -182,7 +182,7 @@
       MaweHint.flashHint('选中范围内没有表情包', 'invalid');
       return;
     }
-    return MaweCommands.run('拓展表情包时长', (command) => {
+    return MaweCommands.run('延长表情包', (command) => {
       const sticker = { ...sourceSticker };
       sticker.start = MaweBoot.DATA.segments[sorted[0]].start;
       sticker.end = MaweBoot.DATA.segments[sorted[sorted.length - 1]].end;

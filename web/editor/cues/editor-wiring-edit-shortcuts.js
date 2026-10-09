@@ -74,7 +74,7 @@ document.addEventListener('keydown', (e) => {
       return;
     }
     if (!MaweMediaPlayback.hasLoadedMedia()) {
-      MaweHint.flashHint('请先加载媒体，然后才能预览', 'invalid');
+      MaweHint.flashHint('请先导入媒体，然后才能预览', 'invalid');
       return;
     }
     MaweJklPlayback.jklPlaybackRate = MaweJklPlayback.nextJklDirectionRate(MaweJklPlayback.jklPlaybackRate, k === 'j' ? -1 : 1);

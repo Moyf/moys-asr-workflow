@@ -154,7 +154,7 @@
   const convertWords = document.createElement('button');
   convertWords.type = 'button';
   convertWords.className = 'item danger';
-  convertWords.textContent = '字词转为独立字幕…';
+  convertWords.textContent = '字词拆成字幕…';
   convertWords.addEventListener('click', () => {
     MaweDom.ctxmenu.classList.remove('show');
     MaweWordTiming.openConversion(targetIdxs);
@@ -339,7 +339,7 @@
     }
     addColorSubmenu(targetIdxs);
     if (colorGroupHeadIndex(idx) >= 0) {
-      addItem('从颜色组中脱离', '', () => detachColorFromGroup(idx));
+      addItem('移出颜色组', '', () => detachColorFromGroup(idx));
     }
     addSep();
     // 组 3：状态与删除
@@ -365,14 +365,14 @@
     addItem(`合并 ${targetIdxs.length} 条字幕`, 'C', () => MaweSegmentOps.mergeSegments(targetIdxs));
     addItem('批量替换选中字幕…', '', () => MaweFindReplace.openReplaceModal(targetIdxs));
     addSep();
-    // 组 2：外观（表情包与颜色）；「拓展表情包时长」仅在范围内已有表情包时显示
+    // 组 2：外观（表情包与颜色）；「延长表情包」仅在范围内已有表情包时显示
     const stickersEnabled = MaweSettings.EDITOR_SETTINGS.stickersEnabled !== false;
     const hasStickerInRange = stickersEnabled && targetIdxs.some(i =>
       MaweBoot.DATA.segments[i].sticker || MaweBoot.DATA.segments[i].sticker_ref);
     if (hasStickerInRange) {
-      addItem('拓展表情包时长', '', () => MaweStickerPicker.expandStickerTime(targetIdxs));
+      addItem('延长表情包', '', () => MaweStickerPicker.expandStickerTime(targetIdxs));
     }
-    if (stickersEnabled) addItem('统一分配表情包…', 'T', () => MaweStickerPicker.openStickerPicker(targetIdxs, true));
+    if (stickersEnabled) addItem('分配表情包…', 'T', () => MaweStickerPicker.openStickerPicker(targetIdxs, true));
     addColorSubmenu(targetIdxs);
     addSep();
     // 组 3：状态与删除

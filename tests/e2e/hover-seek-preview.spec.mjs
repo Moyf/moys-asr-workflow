@@ -63,7 +63,7 @@ test('hover seek preview defaults off and hovering the waveform does not seek', 
   await openEditorWithMedia(page);
   await toggleGlobalSettings(page);
   await openSettingsPage(page, 'subtitle-preview');
-  const toggle = page.getByRole('checkbox', { name: '自动预览鼠标位置画面' });
+  const toggle = page.getByRole('checkbox', { name: '悬停预览画面' });
   await expect(toggle).toBeVisible();
   await expect(toggle).not.toBeChecked();
   await closeSettingsPanels(page);

@@ -302,7 +302,7 @@ def build_blank_html(ninja_sfx_base_url_json: str | None = None) -> str:
         app_version=html.escape(f"v{get_app_version()}"),
         json_display=html.escape("未加载工程"),
         json_name_class="empty",
-        media_name_display=html.escape("未加载媒体"),
+        media_name_display=html.escape("未导入媒体"),
         media_name_title="",
         media_name_class="empty",
     )

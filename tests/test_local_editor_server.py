@@ -594,7 +594,7 @@ class LocalEditorServerTests(CompactContainerAssertions, unittest.TestCase):
         self.assertNotIn('__FILENAME_BASE_JSON__', page)
         self.assertIn('id="json-name" title="点击复制工程文件名">subtitles-only.mosp</span>', page)
         self.assertNotIn('class="json-name empty"', page)
-        self.assertIn('id="media-name" title="">未加载媒体</span>', page)
+        self.assertIn('id="media-name" title="">未导入媒体</span>', page)
         self.assertIn('"canSave": true', page)
 
     def test_startup_page_shows_project_loading_overlay_before_javascript_runs(self) -> None:
@@ -884,7 +884,7 @@ class LocalEditorServerTests(CompactContainerAssertions, unittest.TestCase):
         self.assertIn('id="auto-save-interval"', page)
         self.assertIn('id="project-backup-enabled"', page)
         self.assertIn('id="project-backup-enabled" checked', page)
-        self.assertIn('> 备份工程</label>', page)
+        self.assertIn('> 自动备份</label>', page)
         self.assertLess(page.index('id="editor-settings-page-export"'), page.index('id="server-auto-save-settings"'))
         self.assertLess(page.index('id="server-auto-save-settings"'), page.index('id="project-backup-settings"'))
         self.assertIn('function scheduleAutoSave()', source)

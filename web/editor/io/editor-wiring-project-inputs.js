@@ -18,7 +18,7 @@ MaweDom.projectMediaSelectButton.addEventListener('click', () => {
 
 MaweDom.projectMediaLaterButton.addEventListener('click', () => {
   MaweProjectMediaInputs.closeProjectMediaModal(true);
-  MaweHint.flashHint('可稍后点击“加载媒体”选择关联媒体', 'invalid');
+  MaweHint.flashHint('可稍后点击“导入媒体”选择关联媒体', 'invalid');
 });
 
 MaweDom.projectMediaModal.addEventListener('click', (event) => {

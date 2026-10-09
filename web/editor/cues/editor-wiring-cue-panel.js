@@ -48,7 +48,7 @@ function updateSelectionCountText() {
 // 返回与 idx 同属一个表情包/颜色分组的全部字幕下标（含 idx 自身）。
 // head 持有 sticker/color，成员持 sticker_ref/color_ref 指向 head。
 
-// 普通单击字幕时的选择逻辑：开启「同时选中分组内项目」且属于分组时选整组，否则只选本行。
+// 普通单击字幕时的选择逻辑：开启「选中整组」且属于分组时选整组，否则只选本行。
 
 
 

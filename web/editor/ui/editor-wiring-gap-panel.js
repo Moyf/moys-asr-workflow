@@ -61,7 +61,7 @@ document.addEventListener('mawe:languagechange', MaweJklPlayback.refreshJklPlayb
 
 
 
-// 可拖动非模态工具窗（移除静音空隙 / 拼合字幕共用模式）：
+// 可拖动非模态工具窗（静音空隙 / 拼合字幕共用模式）：
 // 负责显示/隐藏、工具栏按钮 active 态、标题栏拖动与位置持久化、窗口缩放回钳、Esc 关闭。
 
 

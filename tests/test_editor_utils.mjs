@@ -160,8 +160,8 @@ test('translates the ASS style manager labels and dynamic summaries', () => {
   assert.equal(i18n.translateText('作为字幕颜色', 'en'), 'As text color');
   assert.equal(i18n.translateText('作为说话人名称颜色', 'en'), 'As speaker name color');
   assert.equal(i18n.translateText('作为描边颜色', 'en'), 'As outline color');
-  assert.equal(i18n.translateText('无影响', 'en'), 'No effect');
-  assert.equal(i18n.translateText('自定义颜色色值', 'en'), 'Custom color values');
+  assert.equal(i18n.translateText('不生效', 'en'), 'No effect');
+  assert.equal(i18n.translateText('自定义色值', 'en'), 'Custom color values');
   assert.equal(i18n.translateText('恢复默认', 'en'), 'Restore defaults');
   assert.equal(i18n.translateText('读取本机字体', 'en'), 'Read local fonts');
   assert.equal(i18n.translateText('已读取 3 种本机字体', 'en'), 'Read 3 local font families');
@@ -208,8 +208,8 @@ test('translates ASS special text format samples and rule hints for every symbol
   // 不会把普通字幕文本误判成示例。
   assert.equal(i18n.translateText('*重要*', 'en'), '*重要*');
   assert.equal(i18n.translateText('**强调** 前后', 'en'), '**强调** 前后');
-  assert.equal(i18n.translateText('特殊符号规则已关闭，字幕中的符号将保留原文。', 'en'),
-    'Special symbol rules are off; symbols in subtitles keep their literal text.');
+  assert.equal(i18n.translateText('符号规则已关闭，字幕中的符号将保留原文。', 'en'),
+    'Symbol rules are off; symbols in subtitles keep their literal text.');
   assert.equal(
     i18n.translateText('你可以使用 *强调*、~删除~、-缩小-、+放大+ 等符号来对特定字词添加特殊样式。', 'en'),
     'Use *emphasis*, ~strike~, -smaller-, and +larger+ to apply special styles to individual words.',
@@ -1515,19 +1515,19 @@ test('translates editor project controls and dynamic save messages to English', 
   assert.equal(i18n.translateText('保存工程', 'en'), 'Save project');
   assert.equal(i18n.translateText('自动打开上次工程', 'en'), 'Automatically open last project');
   assert.equal(i18n.translateText('上次打开：demo.json', 'en'), 'Last opened: demo.json');
-  assert.equal(i18n.translateText('已加载媒体：synthetic.wav', 'en'), 'Media loaded: synthetic.wav');
+  assert.equal(i18n.translateText('已导入媒体：synthetic.wav', 'en'), 'Media loaded: synthetic.wav');
   assert.equal(i18n.translateText('保存成功！', 'en'), 'Saved!');
   assert.equal(i18n.translateText('字幕忍者', 'en'), 'Subtitle Ninja');
-  assert.equal(i18n.translateText('显示刀光特效', 'en'), 'Show slash effect');
-  assert.equal(i18n.translateText('文字大小', 'en'), 'Font size');
+  assert.equal(i18n.translateText('刀光特效', 'en'), 'Slash effect');
+  assert.equal(i18n.translateText('字号', 'en'), 'Font size');
   assert.equal(i18n.translateText('界面', 'en'), 'Interface');
   assert.equal(i18n.translateText('媒体', 'en'), 'Media');
   assert.equal(i18n.translateText('外观', 'en'), 'Appearance');
   assert.equal(i18n.translateText('语言', 'en'), 'Language');
   assert.equal(i18n.translateText('主题', 'en'), 'Theme');
-  assert.equal(i18n.translateText('明亮模式', 'en'), 'Light mode');
-  assert.equal(i18n.translateText('暗色模式', 'en'), 'Dark mode');
-  assert.equal(i18n.translateText('跟随系统', 'en'), 'Follow System');
+  assert.equal(i18n.translateText('浅色', 'en'), 'Light');
+  assert.equal(i18n.translateText('深色', 'en'), 'Dark');
+  assert.equal(i18n.translateText('自动', 'en'), 'Auto');
   assert.equal(i18n.translateText('强调色', 'en'), 'Accent Color');
   assert.equal(i18n.translateText('蓝色', 'en'), 'Blue');
   assert.equal(i18n.translateText('红色', 'en'), 'Red');
@@ -1559,7 +1559,7 @@ test('translates editor project controls and dynamic save messages to English', 
   assert.equal(i18n.translateText('将选中的副字幕的时长对齐到绑定主字幕', 'en'), 'Align the selected secondary subtitle durations to their bound main subtitles');
   assert.equal(i18n.translateText('无选中时前后跳转（时长：', 'en'), 'Seek back/forward with no selection (duration:');
   assert.equal(i18n.translateText('⚙️设置按钮', 'en'), '⚙️ Settings button');
-  assert.equal(i18n.translateText('⚙️全局设置', 'en'), '⚙️ Global settings');
+  assert.equal(i18n.translateText('全局设置', 'en'), 'Global settings');
   assert.equal(i18n.translateText('仅在拖动边界模式生效', 'en'), 'Only active in Boundary drag mode');
   assert.equal(i18n.translateText('仅在中键拖动模式生效', 'en'), 'Only active in Middle-button drag mode');
   assert.equal(
@@ -1567,8 +1567,8 @@ test('translates editor project controls and dynamic save messages to English', 
     'The exact behavior depends on',
   );
   assert.equal(
-    i18n.translateText('「特殊编辑」中的「空隙区段操作方式」，其中「边界与中键」可同时使用两套操作。', 'en'),
-    '“Gap region operation” under “Special editing” in Global settings; “Boundary and middle” enables both operation sets.',
+    i18n.translateText('「高级编辑」中的「空隙编辑」，其中「边界与中键」可同时使用两套操作。', 'en'),
+    '“Gap editing” under “Advanced editing” in Global settings; “Boundary and middle” enables both operation sets.',
   );
   assert.equal(i18n.translateText('操作支持撤销/重做。', 'en'), 'Operations support undo/redo.');
   assert.equal(i18n.translateText('处理范围', 'en'), 'Scope');
@@ -1582,13 +1582,13 @@ test('translates editor project controls and dynamic save messages to English', 
     'Batch replace and text processing can be limited by checking “Only process selected subtitles”',
   );
   assert.equal(i18n.translateText('注：微调幅度可在', 'en'), 'Note: Adjust the fine-tuning amount in');
-  assert.equal(i18n.translateText('「特殊编辑」中调节，默认 50ms', 'en'), 'under “Special editing” in Global settings; the default is 50 ms');
+  assert.equal(i18n.translateText('「高级编辑」中调节，默认 50ms', 'en'), 'under “Advanced editing” in Global settings; the default is 50 ms');
   assert.equal(i18n.translateText('波形区操作', 'en'), 'Waveform actions');
   assert.equal(i18n.translateText('切换空隙的启用/禁用状态', 'en'), 'Toggle whether the gap is enabled');
   assert.equal(i18n.translateText('添加新的移除空隙', 'en'), 'Add a new removed gap');
   assert.equal(
-    i18n.translateText('点击「生成静音空隙」按当前参数扫描并替换检测结果', 'en'),
-    'Click “Generate silence gaps” to scan with the current parameters and replace the detection results',
+    i18n.translateText('点击「扫描静音」按当前参数扫描并替换检测结果', 'en'),
+    'Click “Scan for silence” to scan with the current parameters and replace the results',
   );
   assert.equal(
     i18n.translateText('点击「进一步收缩空隙」在现有结果上继续收缩', 'en'),
@@ -1627,7 +1627,7 @@ test('translates editor project controls and dynamic save messages to English', 
 
 test('translates adjacent adjustment and current-cue operation settings to English', () => {
   assert.equal(i18n.translateText('字幕时间调整', 'en'), 'Subtitle timing adjustment');
-  assert.equal(i18n.translateText('自动吸附调整相邻字幕', 'en'), 'Automatically snap-adjust adjacent subtitles');
+  assert.equal(i18n.translateText('联动调整相邻字幕', 'en'), 'Link adjacent subtitles');
   assert.equal(
     i18n.translateText('开启后，拖动或微调同轨相邻字幕时默认保持联动；按住 Alt 临时解除。关闭后默认独立调整；按住 Alt 临时联动', 'en'),
     'When enabled, dragging or fine-tuning adjacent cues on the same track links them by default; hold Alt to temporarily separate them. When disabled, they adjust independently by default; hold Alt to temporarily link them.',
@@ -1681,11 +1681,11 @@ test('translates speaker label separator settings to English', () => {
   assert.equal(i18n.translateText('字幕颜色', 'en'), 'Subtitle colors');
   assert.equal(i18n.translateText('说话人', 'en'), 'Speaker');
   assert.equal(i18n.translateText('颜色与说话人', 'en'), 'Colors and speakers');
-  assert.equal(i18n.translateText('将颜色映射为说话人', 'en'), 'Map colors to speakers');
-  assert.equal(i18n.translateText('在预览字幕中显示说话人', 'en'), 'Show speaker names in preview subtitles');
+  assert.equal(i18n.translateText('颜色对应说话人', 'en'), 'Map colors to speakers');
+  assert.equal(i18n.translateText('预览显示说话人', 'en'), 'Show speakers in preview');
   assert.equal(
-    i18n.translateText('使用说话人名称替代颜色后缀', 'en'),
-    'Use speaker name instead of the color suffix',
+    i18n.translateText('用说话人作为后缀', 'en'),
+    'Use speaker names as filename suffixes',
   );
   assert.equal(
     i18n.translateText('在导出的字幕开头加上说话人。只影响导出后的字幕，不会改动工程里的字幕文本。', 'en'),
@@ -1700,19 +1700,19 @@ test('translates speaker label separator settings to English', () => {
     i18n.translateText('配置颜色对应的说话人名称；留空可隐藏该颜色的名称。分隔符默认「：」，支持空格和英文引号。仅影响预览，不改变字幕文本。', 'en'),
     'Configure the speaker name for each color; leave a name empty to hide it. The separator defaults to “：” and supports spaces or English quotation marks. Preview only, subtitle text is unchanged.',
   );
-  assert.equal(i18n.translateText('从颜色组中脱离', 'en'), 'Detach from color group');
-  assert.equal(i18n.translateText('已从颜色组中脱离', 'en'), 'Detached from color group');
+  assert.equal(i18n.translateText('移出颜色组', 'en'), 'Remove from color group');
+  assert.equal(i18n.translateText('已移出颜色组', 'en'), 'Removed from color group');
 });
 
 test('translates OTIOZ export labels, mode hints and dynamic messages to English', () => {
   assert.equal(i18n.translateText('完整 SRT 字幕', 'en'), 'Full SRT subtitles');
-  assert.equal(i18n.translateText('按颜色拆分导出 SRT 字幕', 'en'), 'Export SRT subtitles split by color');
-  assert.equal(i18n.translateText('带样式的 ASS 字幕', 'en'), 'Styled ASS subtitles');
-  assert.equal(i18n.translateText('SRT 字幕', 'en'), 'SRT subtitles');
-  assert.equal(i18n.translateText('表情包 OTIO 工程', 'en'), 'Sticker OTIO project');
-  assert.equal(i18n.translateText('表情包 OTIOZ 打包工程', 'en'), 'Sticker OTIOZ bundle');
-  assert.equal(i18n.translateText('时间线 OTIO 工程', 'en'), 'Timeline OTIO project');
-  assert.equal(i18n.translateText('时间线 OTIOZ 打包工程', 'en'), 'Timeline OTIOZ bundle');
+  assert.equal(i18n.translateText('SRT（按颜色拆分）', 'en'), 'SRT (split by color)');
+  assert.equal(i18n.translateText('ASS（带样式）', 'en'), 'ASS (styled)');
+  assert.equal(i18n.translateText('副字幕 SRT', 'en'), 'Secondary subtitles SRT');
+  assert.equal(i18n.translateText('表情包 OTIO', 'en'), 'Sticker OTIO');
+  assert.equal(i18n.translateText('表情包 OTIOZ', 'en'), 'Sticker OTIOZ bundle');
+  assert.equal(i18n.translateText('时间线 OTIO', 'en'), 'Timeline OTIO');
+  assert.equal(i18n.translateText('时间线 OTIOZ', 'en'), 'Timeline OTIOZ bundle');
   assert.equal(i18n.translateText('OpenTimelineIO', 'en'), 'OpenTimelineIO');
   assert.equal(i18n.translateText('OpenTimeline', 'en'), 'OpenTimeline');
   assert.equal(i18n.translateText('OTIO', 'en'), 'OTIO');
@@ -1721,10 +1721,10 @@ test('translates OTIOZ export labels, mode hints and dynamic messages to English
   assert.equal(i18n.translateText('表情包', 'en'), 'Stickers');
   assert.equal(i18n.translateText('彩蛋', 'en'), 'Easter eggs');
   assert.equal(i18n.translateText('动态图形', 'en'), 'Dynamic graphics');
-  assert.equal(i18n.translateText('纯文本 TXT', 'en'), 'Plain text TXT');
+  assert.equal(i18n.translateText('TXT 文本', 'en'), 'Plain text TXT');
   assert.equal(i18n.translateText('Resolve JSON', 'en'), 'Resolve JSON');
   assert.equal(i18n.translateText('下载表情包 OTIOZ 打包工程', 'en'), 'Download sticker OTIOZ bundle');
-  assert.equal(i18n.translateText('表情包 OTIOZ', 'en'), 'Sticker OTIOZ');
+  assert.equal(i18n.translateText('表情包 OTIOZ', 'en'), 'Sticker OTIOZ bundle');
   assert.equal(i18n.translateText('下载表情包 OTIOZ 工程', 'en'), 'Download sticker OTIOZ project');
   const hint = '服务器打包模式不可用：请以 server-editor 打开并绑定工程文件后再导出 OTIOZ';
   assert.equal(
@@ -1749,7 +1749,6 @@ test('translates OTIOZ export labels, mode hints and dynamic messages to English
 test('translates Lottie dynamic-caption export labels and messages to English', () => {
   assert.equal(i18n.translateText('更多导出 ▾', 'en'), 'More exports ▾');
   assert.equal(i18n.translateText('更多导出', 'en'), 'More exports');
-  assert.equal(i18n.translateText('动态字幕（Lottie）', 'en'), 'Dynamic captions (Lottie)');
   assert.equal(i18n.translateText('Lottie 动态字幕', 'en'), 'Lottie dynamic captions');
   assert.equal(i18n.translateText('导出 .lottie', 'en'), 'Export .lottie');
   assert.equal(i18n.translateText('文字渲染', 'en'), 'Text rendering');
@@ -1762,7 +1761,6 @@ test('translates Lottie dynamic-caption export labels and messages to English', 
   assert.equal(i18n.translateText('矢量模式（内置字形，文件更大）', 'en'), 'Vector mode (bundled glyphs, larger file)');
   assert.equal(i18n.translateText('正在生成动态字幕 .lottie…', 'en'), 'Generating dynamic-caption .lottie…');
   assert.equal(i18n.translateText('动态字幕 .lottie 已生成', 'en'), 'Dynamic-caption .lottie generated');
-  assert.equal(i18n.translateText('动态字幕（OGraf）', 'en'), 'Dynamic captions (OGraf)');
   assert.equal(i18n.translateText('OGraf 动态字幕', 'en'), 'OGraf dynamic captions');
   assert.equal(i18n.translateText('导出 .ograf.zip', 'en'), 'Export .ograf.zip');
   assert.equal(
@@ -2814,21 +2812,16 @@ test('never shortens a subtitle when applying snaps', () => {
 });
 
 test('translates snap-subtitles flash hints to English', () => {
-  assert.equal(i18n.translateText('拼合字幕', 'en'), 'Snap subtitles');
-  assert.equal(i18n.translateText('拼接/合并字幕', 'en'), 'Join / merge subtitles');
+  assert.equal(i18n.translateText('拼合字幕', 'en'), 'Join / merge subtitles');
   assert.equal(i18n.translateText('吸附方向', 'en'), 'Snap direction');
-  assert.equal(i18n.translateText('没有需要拼合的间隔或过短字幕', 'en'), 'No intervals or short subtitles to snap');
-  assert.equal(
-    i18n.translateText('没有需要拼接/合并的间隔或过短字幕', 'en'),
-    'No intervals or short subtitles to join / merge',
-  );
+  assert.equal(i18n.translateText('没有需要拼合的间隔或过短字幕', 'en'), 'No intervals or short subtitles to join');
   assert.equal(
     i18n.translateText('已拼合字幕：拼合 2 处间隔，吸收 1 条短字幕', 'en'),
-    'Snap subtitles: snapped 2 intervals, absorbed 1 short subtitles',
+    'Join / merge subtitles: snapped 2 intervals, absorbed 1 short subtitles',
   );
   assert.equal(
     i18n.translateText('已拼合字幕：吸收 3 条短字幕', 'en'),
-    'Snap subtitles: absorbed 3 short subtitles',
+    'Join / merge subtitles: absorbed 3 short subtitles',
   );
   assert.equal(
     i18n.translateText('已拼接/合并字幕：吸附 2 处间隔，吸收 1 条短字幕', 'en'),
@@ -5417,7 +5410,6 @@ test('translates every project-export option, outcome, and warning key in both l
     '自定义…', '宽度', '高度', '自定义合成尺寸需要 16–7680 之间的整数宽高',
     '导出副字幕轨', '主轨字幕', '主轨与副轨字幕', '导出文件名', '导出媒体路径缺失',
     '导出媒体时长缺失', '导出文件名无效', '导出警告',
-    'Premiere FCP 7 XML（实验性）',
     '实验性 Premiere 交接：导出 FCP 7 XML',
     '导出 FCP 7 XML 供 Premiere 交接。此交接尚未完成目标应用验证。',
     '原生文本仅作为可选交接数据，不承诺样式或位置还原；SRT 可通过独立按钮导出。未写入原生文本时「导出字幕轨」不生效。',

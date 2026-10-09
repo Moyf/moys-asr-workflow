@@ -55,7 +55,7 @@ test('region index opens each local panel and Esc returns focus to its visible g
 test('functional areas hide workspace and keep availability hints inside their card', async ({ page }) => {
   await settings(page);
   await expect(page.locator('[data-settings-region="workspace"]')).toHaveCount(0);
-  // 双语字幕设置已并入项目设置的字幕轨道页，功能区不再提供入口。
+  // 双语字幕设置已并入工程设置的字幕轨道页，功能区不再提供入口。
   await expect(page.locator('[data-settings-region="multi-subtitle"]')).toHaveCount(0);
   await expect(page.locator('#editor-settings-tab-regions')).toHaveText('功能区');
 });
@@ -65,7 +65,7 @@ test('editing pages separate selection, navigation, adjustment and project time 
   await expect(page.locator('#editor-settings-tab-general')).toHaveText('通用编辑');
   await expect(page.locator('#editor-settings-page-general #keyboard-operation-reference')).toBeVisible();
   await expect(page.locator('#waveform-drag-playhead')).not.toBeVisible();
-  await expect(page.locator('#subtitle-selection-title')).toHaveText('字幕选择');
+  await expect(page.locator('#subtitle-selection-title')).toHaveText('选择');
   await expect(page.locator('#subtitle-location-title')).toHaveText('定位');
   await page.locator('#editor-settings-panel').screenshot({ path: testInfo.outputPath('general-edit.png') });
   await settings(page, 'special-edit');
@@ -82,7 +82,7 @@ test('editing pages separate selection, navigation, adjustment and project time 
   await page.locator('#editor-settings-close').click();
   await page.locator('#waveform-settings-toggle').click();
   await expect(page.locator('#waveform-settings-panel #gap-skip-playback')).toHaveCount(0);
-  await expect(page.locator('#waveform-settings-panel .waveform-settings-title')).toHaveText(['波形外观', '显示']);
+  await expect(page.locator('#waveform-settings-panel .waveform-settings-title')).toHaveText(['外观', '显示']);
 });
 
 test('bilingual settings are grouped and the index never enables the mode implicitly', async ({ page }, testInfo) => {

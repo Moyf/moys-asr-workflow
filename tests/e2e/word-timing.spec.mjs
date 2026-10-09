@@ -42,7 +42,7 @@ test('word timing lives on the toolbar toggle and waveform settings keep appeara
   const panel = page.locator('#waveform-settings-panel');
   await expect(panel.locator('#word-timing-toggle')).toHaveCount(0);
   await expect(panel.locator('#gap-skip-playback')).toHaveCount(0);
-  await expect(panel.locator('.waveform-settings-title')).toHaveText(['波形外观', '显示']);
+  await expect(panel.locator('.waveform-settings-title')).toHaveText(['外观', '显示']);
   await expect(panel.locator('#waveform-settings-appearance #waveform-scale-fit')).toBeVisible();
   const spacing = await panel.evaluate(el => {
     const groups = [...el.querySelectorAll('.waveform-settings-section')];

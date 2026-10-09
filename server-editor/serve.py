@@ -704,7 +704,7 @@ def build_server_page(
         )
         filename_base = project.json_path.stem if project.json_path else "untitled"
         json_display = project.json_path.name if project.json_path else "未加载工程"
-        media_display = "未加载媒体"
+        media_display = "未导入媒体"
         media_title = ""
         json_class = "" if project.json_path else "empty"
         media_class = "empty"

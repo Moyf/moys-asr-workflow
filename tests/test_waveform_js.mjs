@@ -357,7 +357,7 @@ test('dual boundary mode keeps shared-boundary handles independent; classic fall
   assert.equal(helpers.shouldAdjustSharedBoundaryHandleIndependently(true, true, 'dual'), true);
   assert.equal(helpers.shouldAdjustSharedBoundaryHandleIndependently(false, false, 'dual'), true);
   assert.equal(helpers.shouldAdjustSharedBoundaryHandleIndependently(true, false, 'dual'), true);
-  // classic（传统）：完全沿用“自动吸附调整相邻字幕”开关 + Alt 临时反转。
+  // classic（传统）：完全沿用“联动调整相邻字幕”开关 + Alt 临时反转。
   assert.equal(helpers.shouldAdjustSharedBoundaryHandleIndependently(false, true, 'classic'), false);
   assert.equal(helpers.shouldAdjustSharedBoundaryHandleIndependently(true, true, 'classic'), true);
   assert.equal(helpers.shouldAdjustSharedBoundaryHandleIndependently(false, false, 'classic'), true);

@@ -9,7 +9,7 @@
 
   async function loadMediaFile(file) {
     if (!file) return;
-    const finishLoading = MaweLoadingProgress.beginEditorLoading(`正在加载媒体 ${file.name}…`, 5);
+    const finishLoading = MaweLoadingProgress.beginEditorLoading(`正在导入媒体 ${file.name}…`, 5);
     try {
     MaweJklPlayback.stopJklReversePlayback({ render: false });
     const preserveProjectWaveform = MaweCoreState.waveformLoadedFromProject
@@ -106,7 +106,7 @@
     }
 
     MawePlaybackLoop.lastActive = -1;
-    MaweHint.flashHint(MaweProjectSave.translatedEditorText(`已加载媒体：${file.name}`), 'success');
+    MaweHint.flashHint(MaweProjectSave.translatedEditorText(`已导入媒体：${file.name}`), 'success');
     if (MaweCoreState.waveformEditor && !preserveProjectWaveform) {
       try {
         MaweBoot.DATA.spectral = null;

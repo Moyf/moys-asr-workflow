@@ -109,7 +109,7 @@ test('detaches a cue from a color group while keeping its color and limiting the
     }));
   });
   const detachItem = page.locator('#ctxmenu .item > span')
-    .filter({ hasText: /^从颜色组中脱离$/u }).locator('..');
+    .filter({ hasText: /^移出颜色组$/u }).locator('..');
 
   // 中间 cue 脱离：前半组保留原 head，后半组提升为新 head。
   await setColorGroup();
@@ -430,7 +430,7 @@ test('merge join hint shows detected main type; clicking pins and syncs the mult
   const languageTypeGroup = page.locator('.split-language-type-group');
   const languageTypeHeading = page.locator('#split-language-type-title');
 
-  await expect(languageTypeHeading).toHaveText('字幕语言类型');
+  await expect(languageTypeHeading).toHaveText('语言类型');
   expect(await hintText.evaluate((element) => Boolean(element.closest('.split-language-type-group')))).toBe(true);
   expect(await hintText.evaluate((element) => Boolean(element.closest('.merge-join-settings-field')))).toBe(false);
   expect(await languageTypeGroup.evaluate(el => Boolean(el.closest('#project-settings-panel')))).toBe(true);
@@ -439,7 +439,7 @@ test('merge join hint shows detected main type; clicking pins and syncs the mult
   // 英文工程 → 自动检测为单词型；短提示 + 统一的「切换为」按钮。
   await expect(hintText).toHaveText('当前字幕为「单词型」（适用于英文、俄文等语言）');
   await expect(switchButton).toHaveText('切换为字符型');
-  // 与多重字幕菜单的「主字幕语言类型」共享同一状态（下拉框此时是检测值）。
+  // 与多重字幕菜单的「主字幕语言」共享同一状态（下拉框此时是检测值）。
   await expect(multiSelect).toHaveValue('word');
 
   // 点击 → 指定为字符型；提示统一样式并同步多重字幕下拉框。

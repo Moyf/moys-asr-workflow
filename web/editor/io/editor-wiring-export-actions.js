@@ -439,7 +439,7 @@ document.getElementById('download-gap-removed-sticker-otioz')?.addEventListener(
   if (MaweExportTimeline.stickerExportBlocked('download-gap-removed-sticker-otioz')) return;
   const removed = MaweGapRemoveData.getRemovedGapRanges();
   if (!removed.length) {
-    const msg = '没有已移除的静音空隙；请先使用「移除静音空隙」扫描并移除';
+    const msg = '没有已移除的静音空隙；请先在「静音空隙」中扫描';
     MaweHint.flashHint(window.MAWE_I18N?.translateText?.(msg) || msg);
     return;
   }

@@ -22,7 +22,7 @@
 
 1. 选择「本地模型」及目标模型。
 2. 安装或修复对应运行环境。
-3. 在「AI 模型配置」下载模型或重新扫描已有缓存。
+3. 在「AI 模型」下载模型或重新扫描已有缓存。
 4. 选择设备，先转写约 30 秒，检查结果和速度后再处理长媒体。
 
 Windows 打包版提供独立运行环境安装入口；不将 Torch 和权重放进基础冻结包。普通模型共用 `local-runtime`，MOSS 使用 `local-runtime-moss`，OCR 使用自己的环境。当前普通 runtime 版本为 7，MOSS 为 2；旧环境出现需要修复时应补齐依赖。
@@ -108,7 +108,7 @@ FireRed 识别的 ct-punc 是可选组件：生成标点并改善断句，不为
 
 ## 共享时间码对齐
 
-AI 模型配置的「对齐模型」独立管理 Qwen3-ForcedAligner-0.6B 和 FireRedASR2-CTC。QwenASR、MOSS 与工具箱复用缓存，不重复保存权重。
+AI 模型页的「对齐模型」独立管理 Qwen3-ForcedAligner-0.6B 和 FireRedASR2-CTC。QwenASR、MOSS 与工具箱复用缓存，不重复保存权重。
 
 工具箱「生成时间码」处理 SRT / MOSP / JSON：默认仅补缺失，或重新生成所有字词时间码。输入不覆盖，失败段保留原范围并报告。工程无有效媒体引用时必须指定原始媒体。用法见 [工具箱](TOOLBOX.md)。
 

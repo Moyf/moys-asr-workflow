@@ -23,7 +23,7 @@
 
   function togglePlayback() {
     if (!hasLoadedMedia()) {
-      MaweHint.flashHint('请先加载媒体，然后才能预览', 'invalid');
+      MaweHint.flashHint('请先导入媒体，然后才能预览', 'invalid');
       return;
     }
     if (MaweJklPlayback.jklReversePlaying) {
@@ -297,7 +297,7 @@ MaweCoreState.waveformEditor?.revealTime(targetSeconds * 1000, true);
   }
   function auditionRange(startMs, endMs) {
     if (!hasLoadedMedia()) {
-      MaweHint.flashHint('请先加载媒体，然后才能试听', 'invalid');
+      MaweHint.flashHint('请先导入媒体，然后才能试听', 'invalid');
       return false;
     }
     const start = Math.max(0, (Number(startMs) || 0) / 1000);
