@@ -75,11 +75,22 @@ test('行切分：跨 run 的 \\N 拆行、行内 x 累计、行高取最大 asc
   assert.deepEqual([...midRunBreak.lines.map((line) => line.width)], [10, 10]);
 });
 
-test('空文本仍产出单空行（块高 0，绘制层直接跳过）', () => {
-  const layout = h.assCanvasLayoutLines([{ text: '' }], fakeMeasurer);
-  assert.equal(layout.lines.length, 1);
-  assert.equal(layout.blockWidth, 0);
-  assert.equal(layout.blockHeight, 0);
+test('显式空行按基准 run 行高占位，整条空文本仍为 0 高', () => {
+  const interior = h.assCanvasLayoutLines([{ text: 'A\n\nB' }], fakeMeasurer);
+  assert.equal(interior.lines.length, 3);
+  assert.equal(interior.lines[1].items.length, 0);
+  assert.equal(interior.lines[1].ascent, 8);
+  assert.equal(interior.lines[1].descent, 2);
+  assert.equal(interior.blockHeight, 30);
+
+  const trailing = h.assCanvasLayoutLines([{ text: 'A\n' }], fakeMeasurer);
+  assert.equal(trailing.lines.length, 2);
+  assert.equal(trailing.blockHeight, 20);
+
+  const empty = h.assCanvasLayoutLines([{ text: '' }], fakeMeasurer);
+  assert.equal(empty.lines.length, 1);
+  assert.equal(empty.blockWidth, 0);
+  assert.equal(empty.blockHeight, 0);
 });
 
 test('行偏移与块顶偏移：中列逐行居中、底行块底贴锚点', () => {

@@ -56,8 +56,11 @@ window.MAWE.register('utils-ass-canvas-layout', function createUtilsModule() {
   // measurer(run, fragment) 由绘制层注入（run 内不同字号/间距宽度不同），
   // 返回 { width, ascent, descent }；行高取行内所有 run 的最大 ascent/descent，
   // 与 CSS line-height: normal 的行盒语义一致。
+  // 非空文本中的显式空行（\N\n）按基准 run 的行盒占一行高，与 libass 和
+  // 旧 DOM 预览一致；整条文本为空时仍返回单个 0 高行，绘制层直接跳过。
   function assCanvasLayoutLines(runs, measurer) {
     const source = Array.isArray(runs) ? runs : [];
+    const hasText = source.some((run) => String(run?.text ?? '').length > 0);
     const lines = [];
     let current = null;
     const pushLine = () => {
@@ -79,6 +82,16 @@ window.MAWE.register('utils-ass-canvas-layout', function createUtilsModule() {
         current.descent = Math.max(current.descent, descent);
       });
     });
+    if (hasText) {
+      const probeRun = source.find((run) => String(run?.text ?? '').length > 0) || source[0];
+      const blank = measurer ? measurer(probeRun, ' ') : {};
+      lines.forEach((line) => {
+        if (!line.items.length) {
+          line.ascent = Math.max(0, Number(blank?.ascent) || 0);
+          line.descent = Math.max(0, Number(blank?.descent) || 0);
+        }
+      });
+    }
     let blockWidth = 0;
     let blockHeight = 0;
     lines.forEach((line) => {

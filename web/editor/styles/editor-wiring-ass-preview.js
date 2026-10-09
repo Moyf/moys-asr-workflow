@@ -319,6 +319,30 @@ function applyAssSubtitlePreview({ tMs, segment, extension, overlay, overlaySegm
       color: labelColor,
     };
   }
+  // 叠加轨说话人标签同理：映射按叠加轨自身数组解析（与播放循环同源），
+  // 叠加轨 DOM 元素在 ASS 模式已整体隐藏，标签必须进 Canvas 才可见。
+  let overlaySpeaker = null;
+  if (overlay) {
+    const speakerLabels = MaweSpeakerLabels.getSpeakerLabelSettings();
+    const overlayColorContext = overlaySegments || [];
+    const overlayLabel = speakerLabels.mapping_enabled && speakerLabels.enabled
+      ? window.AsrEditorUtils.speakerLabelForSegment(
+        overlay, overlayColorContext, speakerLabels.names,
+      )
+      : '';
+    const overlayColorName = MULTI_SUBTITLE_UTILS.effectiveColorName(overlay, overlayColorContext);
+    if (overlayLabel && overlayColorName && MaweColors.COLOR_BY_NAME[overlayColorName]) {
+      const assColorStyle = appearance.ass_color_style || DEFAULT_ASS_COLOR_STYLE;
+      const paletteColor = MaweColors.COLOR_BY_NAME[overlayColorName].value;
+      const labelColor = assColorStyle === 'text' || assColorStyle === 'speaker'
+        ? paletteColor
+        : animatedOverlayTrackStyle.primaryColor;
+      overlaySpeaker = {
+        text: `${overlayLabel}${speakerLabels.separator}`,
+        color: labelColor,
+      };
+    }
+  }
 
   window.MaweAssCanvas?.render({
     playResX: metrics.resolution.width,
@@ -351,6 +375,7 @@ function applyAssSubtitlePreview({ tMs, segment, extension, overlay, overlaySegm
         animation: overlayAnimation,
         nativeFontSize: assPreviewExportFontSize(animatedOverlayTrackStyle, metrics),
         alignment: extensionTrackActive ? extensionStyleBase.alignment : baseStyle.alignment,
+        speaker: overlaySpeaker,
         margins: {
           left: extensionTrackActive ? extensionMargins.left : margins.left,
           right: extensionTrackActive ? extensionMargins.right : margins.right,

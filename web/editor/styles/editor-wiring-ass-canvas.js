@@ -9,7 +9,7 @@
 // 复刻范围锁定在 MAW 导出会产生的 tag 集合：fad/fade（合成透明度）、
 // \move（锚点位移）、\t 的 fs/fscx/fscy/frz/bord/shad/颜色插值、
 // BorderStyle 1/3、\fsp、强调/下划线/删除线 run。\frx/\fry 的 3D 透视
-// 是 Canvas 2D 做不到的，忽略（DOM 预览时代的近似也仅是 perspective 模拟）。
+// 是 Canvas 2D 做不到的，以轴向透视缩短近似保留动画表现（见 drawTrack）。
 //
 // 性能模型：行位图按 (文本 run + 样式快照) 缓存，fad/fade 只改合成
 // globalAlpha 不触发重光栅；播放时每帧成本是几次 drawImage，量级远低于
@@ -25,6 +25,7 @@
   let measureCtx = null;
   let letterSpacingSupported = null;
   let resolvedSansFamily = '';
+  let lastRender = null;
 
 
   function ensureCanvas() {
@@ -227,10 +228,11 @@
   }
 
 
-  // 把一行按 libass 顺序光栅化成位图：阴影剪影（描边∪填充，偏移 shad）
-  // → 描边层（整行一次 stroke，2×Outline 线宽等价于向外偏移 Outline）→
-  // 填充层。半透明颜色只在层与层合成时生效，层内先以不透明光栅化，
-  // 避免同色描边/填充叠加造成 alpha 加深。
+  // 把一行按 libass 顺序光栅化成位图：阴影剪影（描边∪填充，合成时偏移
+  // shad）→ 描边层（逐 run strokeText 后作为整层单次 alpha 合成，避免
+  // run 交界接缝）→ 填充层。半透明颜色只在层与层合成时生效，层内先以
+  // 不透明光栅化，避免同色描边/填充叠加造成 alpha 加深。pad 覆盖描边
+  // 外延与阴影偏移，保证右下影子不被位图截断。
   function rasterizeLine(key, line, track, ratio) {
     const cached = lineCache.get(key);
     if (cached) return cached;
@@ -238,7 +240,7 @@
     const outline = Math.max(0, Number(style.outline) || 0);
     const shadow = Math.max(0, Number(style.shadow) || 0);
     const borderBox = Math.round(Number(style.borderStyle) || 1) === 3;
-    const pad = Math.ceil((borderBox ? outline : outline + shadow) + 2);
+    const pad = Math.ceil(outline + shadow + 2);
     const bodyWidth = Math.ceil(line.width);
     const bodyHeight = Math.ceil(line.ascent + line.descent);
     const bitmap = document.createElement('canvas');
@@ -292,11 +294,13 @@
         lg.miterLimit = 2;
         lg.lineWidth = outline * 2;
         eachItem(lg, (item, x, base, info) => paintItemText(lg, item, x, base, info, 'stroke'));
-        eachItem(lg, (item, x, base) => lg.fillText(item.text, x, base));
+        eachItem(lg, (item, x, base, info) => paintItemText(lg, item, x, base, info, 'fill'));
         drawDecorations(lg, () => style.backColor, 0);
       }
       g.globalAlpha = clampOpacityPercent(style.backOpacity);
-      g.drawImage(layer, 0, 0);
+      // 剪影在层内按原位光栅，合成时整体偏移 (shad, shad)；BorderStyle 3
+      // 的影框则在层内直接按偏移绘制（pad 已含 shadow，不会被截断）。
+      g.drawImage(layer, borderBox ? 0 : shadow, borderBox ? 0 : shadow);
       g.globalAlpha = 1;
     }
 
@@ -361,7 +365,7 @@
     const fade = Number.isFinite(Number(animation.opacity)) ? Number(animation.opacity) : 1;
     const alpha = Math.max(0, Math.min(1,
       fade * (1 - Math.min(255, Math.max(0, Number(style.alpha) || 0)) / 255)));
-    if (alpha <= 0) return;
+    if (alpha <= 0) return { skipped: true, opacity: alpha };
     const ratio = fontBoxRatio(style);
     const runs = Array.isArray(track.runs) ? track.runs : [];
     const speaker = track.speaker?.text
@@ -369,7 +373,7 @@
         struck: false, size: null, speakerColor: track.speaker.color }, ...runs]
       : runs;
     const layout = u.assCanvasLayoutLines(speaker, measurerFor(track, ratio));
-    if (!layout.blockHeight) return;
+    if (!layout.blockHeight) return { skipped: true, opacity: alpha };
     // 锚定轨（副字幕/叠加轨）可以覆盖样式自带的 Alignment：叠加轨链在
     // 副字幕上方时沿用副字幕的对齐（与导出侧锚定继承一致）。
     const alignmentValue = track.alignment ?? style.alignment;
@@ -381,13 +385,57 @@
       playResY,
       move: style.__assMove || null,
     });
+    // 渲染参数快照（e2e 断言用）：行/字段尺寸与最终落色直接取自绘制路径，
+    // 保证测试看到的就是画布实际消费的值。
+    const borderBox = Math.round(Number(style.borderStyle) || 1) === 3;
+    const record = {
+      skipped: false,
+      opacity: alpha,
+      nativeFontSize: Number(track.nativeFontSize) || 0,
+      alignment: alignmentValue,
+      anchor: { ...anchor },
+      margins: { ...(track.margins || {}) },
+      blockWidth: layout.blockWidth,
+      blockHeight: layout.blockHeight,
+      speaker: track.speaker ? { ...track.speaker } : null,
+      lines: layout.lines.map((line) => ({
+        width: line.width,
+        ascent: line.ascent,
+        descent: line.descent,
+        items: line.items.map((item) => ({
+          text: item.text,
+          x: item.x,
+          width: item.width,
+          cssSize: spacingInfo(track, item.run, ratio).cssSize,
+          fill: runFillColor(style, item.run),
+          decorColor: runDecorColor(style, item.run),
+        underlined: Boolean(style.underline) || Boolean(item.run.underlined),
+        struck: Boolean(style.strikeOut) || Boolean(item.run.struck),
+        emphasized: Boolean(item.run.emphasized),
+        size: item.run.size || '',
+          emphasisStroke: item.run.emphasized && style.emphasisStyle === 'stroke' && !borderBox
+            ? style.emphasisColor : '',
+          emphasisBox: item.run.emphasized && style.emphasisStyle === 'stroke' && borderBox
+            ? style.emphasisColor : '',
+        })),
+      })),
+    };
     ctx.save();
     ctx.globalAlpha = alpha;
     // 变换顺序 translate → scale → rotate 与 DOM 预览 transform 列表
-    // （translate/anchor、scale、rotateZ）一致，旋转/缩放围绕锚点。
+    //（translate/anchor、scale、rotateZ）一致，旋转/缩放围绕锚点。
     ctx.translate(anchor.x, anchor.y);
-    ctx.scale(Math.max(0, Number(style.scaleX ?? 100)) / 100,
-      Math.max(0, Number(style.scaleY ?? 100)) / 100);
+    // \frx/\fry 是 3D 透视旋转，Canvas 2D 无法真正表达；旧 CSS 预览用
+    // perspective 近似，这里以旋转后的正交投影等价式（rotateX 压缩纵向、
+    // rotateY 压缩横向，>90° 自然镜像）保留动画表现，仅缺少斜切效果。
+    const rotationX = Number(style.rotationX) || 0;
+    const rotationY = Number(style.rotationY) || 0;
+    const foreshortenX = rotationY ? Math.cos(rotationY * Math.PI / 180) : 1;
+    const foreshortenY = rotationX ? Math.cos(rotationX * Math.PI / 180) : 1;
+    ctx.scale(
+      Math.max(0, Number(style.scaleX ?? 100)) / 100 * foreshortenX,
+      Math.max(0, Number(style.scaleY ?? 100)) / 100 * foreshortenY,
+    );
     const angle = Number(style.angle) || 0;
     if (angle) ctx.rotate(angle * Math.PI / 180);
     let lineTop = u.assCanvasBlockTopY(grid.row, layout.blockHeight);
@@ -400,6 +448,7 @@
       lineTop += line.ascent + line.descent;
     });
     ctx.restore();
+    return record;
   }
 
 
@@ -415,9 +464,17 @@
     ctx.clearRect(0, 0, width, height);
     canvas.hidden = false;
     const tracks = Array.isArray(payload?.tracks) ? payload.tracks : [];
+    // 快照槽位与 payload 顺序一致（不可见轨占位 skipped），e2e 断言可按
+    // 主/副/叠加轨固定下标取值。
+    const records = [];
     tracks.forEach((track) => {
-      if (track?.visible !== false) drawTrack(track, width, height);
+      if (track?.visible === false) {
+        records.push({ skipped: true, opacity: 0 });
+        return;
+      }
+      records.push(drawTrack(track, width, height));
     });
+    lastRender = { playResX: width, playResY: height, tracks: records };
   }
 
 
@@ -433,5 +490,11 @@
 
   document.fonts?.addEventListener?.('loadingdone', clearCaches);
 
-  global.MaweAssCanvas = Object.freeze({ render, hide, clearCaches });
+  global.MaweAssCanvas = Object.freeze({
+    render,
+    hide,
+    clearCaches,
+    // 渲染参数快照：e2e 迁移断言用（测试看到的就是画布实际消费的值）。
+    get lastRender() { return lastRender; },
+  });
 })(typeof window !== 'undefined' ? window : globalThis);

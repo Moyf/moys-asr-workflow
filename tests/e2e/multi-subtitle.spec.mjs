@@ -4284,33 +4284,33 @@ test('ASS mode previews and exports extension cues with the shared extension sty
     MaweSettings.EDITOR_SETTINGS.assMode = true;
     MaweDom.overlayToggle.checked = true;
     MawePlaybackLoop.refreshSubtitlePreview(1000, 0);
-    const mainText = document.getElementById('overlay-main-text');
-    const extensionText = document.getElementById('overlay-extension-text');
-    const overlayText = document.getElementById('overlay-track-text');
-    const stageHeight = MaweDom.playerStage.getBoundingClientRect().height;
+    const tracks = window.MaweAssCanvas.lastRender.tracks;
+    const extension = tracks[1] || {};
+    const overlay = tracks[2] || {};
     return {
-      stageHeight,
-      mainFontSize: Number.parseFloat(getComputedStyle(mainText).fontSize),
-      extensionFontSize: Number.parseFloat(getComputedStyle(extensionText).fontSize),
-      extensionColor: getComputedStyle(extensionText).color,
-      extensionBottom: extensionText.style.bottom,
-      extensionPosition: getComputedStyle(extensionText).position,
-      overlayBottom: overlayText.style.bottom,
+      trackDebug: tracks.map((track) => track ? 'ok' : 'undefined'),
+      mainNative: tracks[0].nativeFontSize,
+      extensionNative: extension.nativeFontSize || 0,
+      extensionFill: (extension.lines || []).flatMap((line) => line.items)[0]?.fill || '',
+      extensionAlignment: extension.alignment || 0,
+      extensionAnchor: extension.anchor || { x: 0, y: 0 },
+      overlayOffset: (overlay.margins || {}).vertical || 0,
+      overlayAnchor: overlay.anchor || { x: 0, y: 0 },
       ass: MaweExportSrt.buildAss(),
     };
   });
-  const scale = result.stageHeight / 1080;
   // 副字幕共用样式库的「ASS 副字幕样式」：字号 64（主样式 86 的 64/86）、
-  // 默认黄色，按自身边距 36 绝对锚定在主字幕下方。CSS 字号已按
-  // 字体行框校准，具体比例因系统字体而异；仍应保持可见、合理的字号和主副比例。
-  expect(result.mainFontSize).toBeGreaterThan(86 * scale * 0.5);
-  expect(result.mainFontSize).toBeLessThanOrEqual(86 * scale);
-  expect(result.extensionFontSize / result.mainFontSize).toBeCloseTo(64 / 86, 3);
-  expect(result.extensionColor).toBe('rgb(255, 211, 77)');
-  expect(result.extensionPosition).toBe('absolute');
-  expect(result.extensionBottom).toBe(`${Math.ceil(36 * scale)}px`);
+  // 默认黄色，按自身边距 36 绝对锚定在主字幕下方（底行锚点 y = 1080-36）。
+  expect(result.trackDebug).toEqual(['ok', 'ok', 'ok']);
+  expect(result.mainNative).toBe(86);
+  expect(result.extensionNative).toBe(64);
+  expect(result.extensionFill.toLowerCase()).toBe('#ffd34d');
+  expect(result.extensionAlignment).toBe(2);
+  expect(result.extensionAnchor.y).toBeCloseTo(1080 - 36, 3);
+  expect(result.extensionAnchor.x).toBeCloseTo(960, 3);
   // 叠加轨链式上叠：副字幕边距 36 + 1.2 × 副字幕字号 64。
-  expect(result.overlayBottom).toBe(`${Math.ceil(36 * scale + 1.2 * (64 * result.stageHeight) / 1080)}px`);
+  expect(result.overlayOffset).toBeCloseTo(36 + 1.2 * 64, 3);
+  expect(result.overlayAnchor.y).toBeCloseTo(1080 - (36 + 1.2 * 64), 3);
   // 导出：副字幕 Layer 1 + 独立 Extension 样式；叠加轨 Layer 2 + 固化
   // 链式边距（36 + round(76.8) = 113）的 Overlay 样式。
   const dialogueLines = result.ass.split('\n').filter((line) => line.startsWith('Dialogue:'));

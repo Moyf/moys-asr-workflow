@@ -332,34 +332,28 @@ test('keeps ASS speaker labels in the same style across preview resizing and ful
     MaweDom.playerStage.style.minHeight = '540px';
     MaweDom.playerStage.style.flex = '0 0 540px';
     MawePlaybackLoop.refreshSubtitlePreview(1000, 0);
-    const text = document.getElementById('overlay-main-text');
-    const label = document.getElementById('overlay-main-speaker-label');
-    const textStyle = getComputedStyle(text);
-    const labelStyle = getComputedStyle(label);
+    const canvas = document.querySelector('.ass-preview-canvas');
+    const track = window.MaweAssCanvas.lastRender.tracks[0];
+    const items = track.lines.flatMap((line) => line.items);
     return {
       stageHeight: MaweDom.playerStage.getBoundingClientRect().height,
-      textFontSize: textStyle.fontSize,
-      labelFontSize: labelStyle.fontSize,
-      textFontFamily: textStyle.fontFamily,
-      labelFontFamily: labelStyle.fontFamily,
-      textFontWeight: textStyle.fontWeight,
-      labelFontWeight: labelStyle.fontWeight,
-      textFontStyle: textStyle.fontStyle,
-      labelFontStyle: labelStyle.fontStyle,
-      textDecoration: textStyle.textDecorationLine,
-      labelDecoration: labelStyle.textDecorationLine,
+      canvasSize: [canvas.width, canvas.height],
+      speakerText: track.speaker?.text || '',
+      speakerColor: track.speaker?.color || '',
+      firstItemText: items[0]?.text || '',
+      firstCssSize: items[0]?.cssSize || 0,
+      underlined: Boolean(items[0]?.underlined),
     };
   });
   expect(smallWindow.stageHeight).toBeCloseTo(540, 0);
-  // Arial's CSS em is smaller than the ASS ascent/descent size. Keep the
-  // resize invariant without assuming the old, uncalibrated 36px CSS value.
-  expect(Number.parseFloat(smallWindow.textFontSize)).toBeGreaterThan(24);
-  expect(Number.parseFloat(smallWindow.textFontSize)).toBeLessThan(36);
-  expect(smallWindow.labelFontSize).toBe(smallWindow.textFontSize);
-  expect(smallWindow.labelFontFamily).toBe(smallWindow.textFontFamily);
-  expect(smallWindow.labelFontWeight).toBe(smallWindow.textFontWeight);
-  expect(smallWindow.labelFontStyle).toBe(smallWindow.textFontStyle);
-  expect(smallWindow.labelDecoration).toBe(smallWindow.textDecoration);
+  // Canvas 预览以 PlayRes 原生坐标绘制，说话人标签作为首行行首 run 与
+  // 文本共用同一字号/字体（样式级下划线也作用于标签 run）。
+  expect(smallWindow.canvasSize).toEqual([1920, 1080]);
+  expect(smallWindow.speakerText).toBe('Host：');
+  expect(smallWindow.speakerColor.toLowerCase()).toBe('#c4a019');
+  expect(smallWindow.firstItemText).toBe('Host：');
+  expect(smallWindow.firstCssSize).toBeGreaterThan(0);
+  expect(smallWindow.underlined).toBe(true);
 
   await page.evaluate(() => {
     Object.defineProperty(document, 'fullscreenElement', {
@@ -378,28 +372,28 @@ test('keeps ASS speaker labels in the same style across preview resizing and ful
     requestAnimationFrame(() => requestAnimationFrame(resolve));
   }));
   const fullscreen = await page.evaluate(() => {
-    const text = document.getElementById('overlay-main-text');
-    const label = document.getElementById('overlay-main-speaker-label');
+    MawePlaybackLoop.refreshSubtitlePreview(1000, 0);
+    const track = window.MaweAssCanvas.lastRender.tracks[0];
+    const items = track.lines.flatMap((line) => line.items);
+    const canvas = document.querySelector('.ass-preview-canvas');
+    const { data } = canvas.getContext('2d').getImageData(0, 0, canvas.width, canvas.height);
+    let painted = 0;
+    for (let i = 3; i < data.length; i += 40) if (data[i] > 0) painted++;
     return {
       stageHeight: MaweDom.playerStage.getBoundingClientRect().height,
       fullscreen: MaweDom.playerWrap.classList.contains('fullscreen-preview'),
-      textFontSize: getComputedStyle(text).fontSize,
-      labelFontSize: getComputedStyle(label).fontSize,
-      labelFontFamily: getComputedStyle(label).fontFamily,
-      labelFontWeight: getComputedStyle(label).fontWeight,
-      labelFontStyle: getComputedStyle(label).fontStyle,
-      labelDecoration: getComputedStyle(label).textDecorationLine,
+      cssSize: items[0]?.cssSize || 0,
+      speakerText: track.speaker?.text || '',
+      painted,
     };
   });
   expect(fullscreen.fullscreen).toBe(true);
   expect(fullscreen.stageHeight).toBeCloseTo(1080, 0);
-  expect(Number.parseFloat(fullscreen.textFontSize))
-    .toBeCloseTo(2 * Number.parseFloat(smallWindow.textFontSize), 2);
-  expect(fullscreen.labelFontSize).toBe(fullscreen.textFontSize);
-  expect(fullscreen.labelFontFamily).toBe(smallWindow.textFontFamily);
-  expect(fullscreen.labelFontWeight).toBe(smallWindow.textFontWeight);
-  expect(fullscreen.labelFontStyle).toBe(smallWindow.textFontStyle);
-  expect(fullscreen.labelDecoration).toBe(smallWindow.textDecoration);
+  // 原生分辨率画布与舞台缩放解耦：窗口尺寸翻倍不改变画布内的字形尺寸，
+  // 只改变 CSS 呈现大小；标签与文本仍同 run 绘制。
+  expect(fullscreen.cssSize).toBe(smallWindow.firstCssSize);
+  expect(fullscreen.speakerText).toBe('Host：');
+  expect(fullscreen.painted).toBeGreaterThan(50);
 
   await page.evaluate(() => {
     Object.defineProperty(document, 'fullscreenElement', {
@@ -419,12 +413,11 @@ test('keeps ASS speaker labels in the same style across preview resizing and ful
   }));
   const windowedAgain = await page.evaluate(() => ({
     fullscreen: MaweDom.playerWrap.classList.contains('fullscreen-preview'),
-    textFontSize: getComputedStyle(document.getElementById('overlay-main-text')).fontSize,
-    labelFontSize: getComputedStyle(document.getElementById('overlay-main-speaker-label')).fontSize,
+    cssSize: window.MaweAssCanvas.lastRender.tracks[0].lines
+      .flatMap((line) => line.items)[0]?.cssSize || 0,
   }));
   expect(windowedAgain.fullscreen).toBe(false);
-  expect(windowedAgain.textFontSize).toBe(smallWindow.textFontSize);
-  expect(windowedAgain.labelFontSize).toBe(windowedAgain.textFontSize);
+  expect(windowedAgain.cssSize).toBe(smallWindow.firstCssSize);
 });
 
 test('uses ASS speaker-only colour for the label while preserving the base text style', async ({ page }) => {
@@ -461,30 +454,68 @@ test('uses ASS speaker-only colour for the label while preserving the base text 
     MaweSettings.EDITOR_SETTINGS.assMode = true;
     MaweDom.overlayToggle.checked = true;
     MawePlaybackLoop.refreshSubtitlePreview(1000, 0);
-    const text = document.getElementById('overlay-main-text');
-    const label = document.getElementById('overlay-main-speaker-label');
+    const track = window.MaweAssCanvas.lastRender.tracks[0];
+    const items = track.lines.flatMap((line) => line.items);
     return {
-      text: text.textContent,
-      label: label.textContent,
-      textColor: getComputedStyle(text).color,
-      labelColor: getComputedStyle(label).color,
-      textFontFamily: getComputedStyle(text).fontFamily,
-      labelFontFamily: getComputedStyle(label).fontFamily,
-      textFontWeight: getComputedStyle(text).fontWeight,
-      labelFontWeight: getComputedStyle(label).fontWeight,
-      textFontStyle: getComputedStyle(text).fontStyle,
-      labelFontStyle: getComputedStyle(label).fontStyle,
-      textStroke: text.style.getPropertyValue('-webkit-text-stroke'),
-      labelStroke: label.style.getPropertyValue('-webkit-text-stroke'),
+      text: items.map((item) => item.text).join(''),
+      speakerText: track.speaker?.text || '',
+      speakerColor: track.speaker?.color || '',
+      labelIsFirstRun: items[0]?.text === 'Host：',
+      sameSize: items[0]?.cssSize === items[1]?.cssSize,
+      textColor: items.find((item) => item.text === 'Alpha')?.fill || '',
     };
   });
 
   expect(preview.text).toBe('Host：Alpha');
-  expect(preview.label).toBe('Host：');
-  expect(preview.textColor).toBe('rgb(18, 52, 86)');
-  expect(preview.labelColor).toBe('rgb(196, 160, 25)');
-  expect(preview.labelFontFamily).toBe(preview.textFontFamily);
-  expect(preview.labelFontWeight).toBe(preview.textFontWeight);
-  expect(preview.labelFontStyle).toBe(preview.textFontStyle);
-  expect(preview.labelStroke).toBe(preview.textStroke);
+  expect(preview.speakerText).toBe('Host：');
+  // speaker 模式：标签跟随调色色，正文保持样式主色；两者同一 run 管线绘制。
+  expect(preview.speakerColor.toLowerCase()).toBe('#c4a019');
+  expect(preview.textColor.toLowerCase()).toBe('#123456');
+  expect(preview.labelIsFirstRun).toBe(true);
+  expect(preview.sameSize).toBe(true);
+});
+
+test('overlay track speaker labels render through the canvas in ASS mode', async ({ page }) => {
+  await page.goto(server.url);
+  await revealSpeakerCue(page);
+  const payload = await page.evaluate(() => {
+    MaweBoot.DATA.media_metadata = { video_width: 1920, video_height: 1080 };
+    MaweBoot.DATA.preview.subtitle = {
+      ...MaweBoot.DATA.preview.subtitle,
+      speaker_labels: {
+        mapping_enabled: true,
+        enabled: true,
+        separator: '：',
+        names: { yellow: 'Host', green: 'Guest', red: 'Narrator', purple: 'Stage', blue: 'Caption' },
+      },
+    };
+    MaweBoot.DATA.segments = [{ id: 'main-ov', start: 0, end: 4000, text: 'main cue' }];
+    MaweBoot.DATA.overlay_track = {
+      enabled: true,
+      segments: [{ id: 'ov-1', start: 0, end: 4000, text: 'overlay cue', color: { name: 'yellow' } }],
+    };
+    MaweSettings.EDITOR_SETTINGS.assMode = true;
+    MaweDom.overlayToggle.checked = true;
+    MawePlaybackLoop.refreshSubtitlePreview(1000, 0);
+    const tracks = window.MaweAssCanvas.lastRender.tracks;
+    const overlay = tracks[2];
+    const items = overlay?.lines?.flatMap((line) => line.items) || [];
+    return {
+      overlayDrawn: overlay ? overlay.skipped === false : false,
+      speakerText: overlay?.speaker?.text || '',
+      speakerColor: overlay?.speaker?.color || '',
+      firstItemText: items[0]?.text || '',
+      labelFill: items[0]?.fill || '',
+      domLabelInvisible: document.querySelector('#overlay-track-text .subtitle-speaker-label')
+        ?.getClientRects().length === 0,
+    };
+  });
+  // 叠加轨 DOM 元素在 ASS 模式整体隐藏，说话人标签必须经 Canvas 合成。
+  expect(payload.overlayDrawn).toBe(true);
+  expect(payload.domLabelInvisible).toBe(true);
+  // text 颜色模式：标签跟随调色色，画在叠加轨首行行首。
+  expect(payload.speakerText).toBe('Host：');
+  expect(payload.speakerColor.toLowerCase()).toBe('#c4a019');
+  expect(payload.firstItemText).toBe('Host：');
+  expect(payload.labelFill.toLowerCase()).toBe('#c4a019');
 });
