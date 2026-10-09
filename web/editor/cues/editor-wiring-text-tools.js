@@ -249,12 +249,16 @@ document.getElementById('wrap-chars-confirm')?.addEventListener('click', () => {
   MaweTextProcess.applyWrapChars([...MaweTextProcess.wrapCharsScope], left, right, '左右添加字符');
   MaweTextProcess.closeWrapCharsModal();
 });
-// 弹窗开启时 Esc 关闭；用 capture 抢在其他 Esc 处理前拦截，避免误清空字幕选择。
+// 输入框回车插入，输入法确认时不提交；Esc 关闭且不清空字幕选择。
 document.addEventListener('keydown', (event) => {
-  if (event.key !== 'Escape' || !MaweTextProcess.wrapCharsModal?.classList.contains('show')) return;
+  if (!MaweTextProcess.wrapCharsModal?.classList.contains('show')) return;
+  if (event.isComposing || event.keyCode === 229) return;
+  const input = event.target === MaweTextProcess.wrapCharsLeftInput || event.target === MaweTextProcess.wrapCharsRightInput;
+  if (event.key !== 'Escape' && !(event.key === 'Enter' && input)) return;
   event.preventDefault();
-  event.stopPropagation();
-  MaweTextProcess.closeWrapCharsModal();
+  event.stopImmediatePropagation();
+  if (event.key === 'Escape') MaweTextProcess.closeWrapCharsModal();
+  else if (!event.repeat) document.getElementById('wrap-chars-confirm')?.click();
 }, true);
 
 // === 纯文本编辑（支持调整字幕行结构的 MVP） ===

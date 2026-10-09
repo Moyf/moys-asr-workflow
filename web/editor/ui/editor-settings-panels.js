@@ -113,8 +113,6 @@
   function setEditorSettingsPanelOpen(open) {
     if (!MaweDom.editorSettingsPanel || !MaweDom.editorSettingsToggle) return;
     if (!open) {
-      setMergeJoinSettingsPanelOpen(false);
-      setSplitTrimSettingsPanelOpen(false);
       editorSettingsFloatingPanel.close();
       return;
     }
@@ -144,46 +142,6 @@
     }
     panel.style.left = String(left) + 'px';
     panel.style.top = String(top) + 'px';
-  }
-
-
-
-  function positionMergeJoinSettingsPanel() {
-    positionAnchoredSettingsPanel(MaweDom.mergeJoinSettingsPanel, MaweDom.mergeJoinSettingsToggle);
-  }
-
-
-
-  function setMergeJoinSettingsPanelOpen(open) {
-    if (!MaweDom.mergeJoinSettingsPanel || !MaweDom.mergeJoinSettingsToggle) return;
-    MaweDom.mergeJoinSettingsPanel.hidden = !open;
-    MaweDom.mergeJoinSettingsToggle.classList.toggle('active', open);
-    MaweDom.mergeJoinSettingsToggle.setAttribute('aria-expanded', String(open));
-    if (open) {
-      MaweFloatingPanel.bringFloatingSurfaceToFront(MaweDom.mergeJoinSettingsPanel);
-      positionMergeJoinSettingsPanel();
-    }
-    MaweFloatingPanel.syncFloatingSurfaceLayers();
-  }
-
-
-
-  function positionSplitTrimSettingsPanel() {
-    positionAnchoredSettingsPanel(MaweDom.splitTrimSettingsPanel, MaweDom.splitTrimSettingsToggle);
-  }
-
-
-
-  function setSplitTrimSettingsPanelOpen(open) {
-    if (!MaweDom.splitTrimSettingsPanel || !MaweDom.splitTrimSettingsToggle) return;
-    MaweDom.splitTrimSettingsPanel.hidden = !open;
-    MaweDom.splitTrimSettingsToggle.classList.toggle('active', open);
-    MaweDom.splitTrimSettingsToggle.setAttribute('aria-expanded', String(open));
-    if (open) {
-      MaweFloatingPanel.bringFloatingSurfaceToFront(MaweDom.splitTrimSettingsPanel);
-      positionSplitTrimSettingsPanel();
-    }
-    MaweFloatingPanel.syncFloatingSurfaceLayers();
   }
 
 
@@ -332,10 +290,6 @@
     set editorSettingsPanelSizeSaveTimer(v) { editorSettingsPanelSizeSaveTimer = v; },
     setEditorSettingsPanelOpen,
     positionAnchoredSettingsPanel,
-    positionMergeJoinSettingsPanel,
-    setMergeJoinSettingsPanelOpen,
-    positionSplitTrimSettingsPanel,
-    setSplitTrimSettingsPanelOpen,
     setSettingsPanelOwnerOpen,
     positionCueListSettingsPanel,
     setCueListSettingsPanelOpen,

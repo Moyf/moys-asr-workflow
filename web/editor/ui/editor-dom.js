@@ -759,24 +759,6 @@
   const editorSettingsPanel = document.getElementById('editor-settings-panel');
 
 
-  const mergeJoinSettings = document.getElementById('merge-join-settings');
-
-
-  const mergeJoinSettingsToggle = document.getElementById('merge-join-settings-toggle');
-
-
-  const mergeJoinSettingsPanel = document.getElementById('merge-join-settings-panel');
-
-
-  const splitTrimSettings = document.getElementById('split-trim-settings');
-
-
-  const splitTrimSettingsToggle = document.getElementById('split-trim-settings-toggle');
-
-
-  const splitTrimSettingsPanel = document.getElementById('split-trim-settings-panel');
-
-
   const cueEditorSettings = document.getElementById('cue-editor-settings');
 
 
@@ -1285,12 +1267,6 @@
     multiSubtitleSplitAutoSubmit,
     editorSettingsToggle,
     editorSettingsPanel,
-    mergeJoinSettings,
-    mergeJoinSettingsToggle,
-    mergeJoinSettingsPanel,
-    splitTrimSettings,
-    splitTrimSettingsToggle,
-    splitTrimSettingsPanel,
     cueEditorSettings,
     cueEditorSettingsToggle,
     cueEditorSettingsPanel,

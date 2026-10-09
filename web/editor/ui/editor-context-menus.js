@@ -110,6 +110,72 @@
   // === 右键菜单 ===
   let ctxLastClickX = 0, ctxLastClickY = 0;
 
+  function createContextSubmenu(label, className = '') {
+    const wrapper = document.createElement('div');
+    wrapper.className = `ctxmenu-submenu ${className}`.trim();
+    const head = document.createElement('button');
+    head.type = 'button';
+    head.className = 'item ctxmenu-submenu-toggle';
+    head.setAttribute('aria-haspopup', 'true');
+    head.setAttribute('aria-expanded', 'false');
+    const text = document.createElement('span');
+    text.textContent = label;
+    const arrow = document.createElement('span');
+    arrow.className = 'ctxmenu-submenu-arrow';
+    arrow.textContent = '›';
+    arrow.setAttribute('aria-hidden', 'true');
+    head.append(text, arrow);
+    const list = document.createElement('div');
+    list.className = 'ctxmenu-submenu-list';
+    list.hidden = true;
+    wrapper.append(head, list);
+    let closeTimer;
+    function setOpen(open) {
+      clearTimeout(closeTimer);
+      if (open) {
+        for (const sibling of wrapper.parentElement.children) {
+          if (sibling !== wrapper && sibling.classList.contains('ctxmenu-submenu')) {
+            sibling.dispatchEvent(new Event('close-submenu'));
+          }
+        }
+      }
+      list.hidden = !open;
+      head.setAttribute('aria-expanded', String(open));
+      if (!open) {
+        list.querySelectorAll('.ctxmenu-submenu').forEach(child => child.dispatchEvent(new Event('close-submenu')));
+        return;
+      }
+      const anchor = head.getBoundingClientRect();
+      const rect = list.getBoundingClientRect();
+      const left = anchor.right + rect.width <= window.innerWidth - 4
+        ? anchor.right : anchor.left - rect.width;
+      list.style.left = `${Math.max(4, Math.min(left, window.innerWidth - rect.width - 4))}px`;
+      list.style.top = `${Math.max(4, Math.min(anchor.top - 4, window.innerHeight - rect.height - 4))}px`;
+      arrow.textContent = left < anchor.left ? '‹' : '›';
+    }
+    wrapper.addEventListener('close-submenu', () => setOpen(false));
+    wrapper.addEventListener('pointerenter', () => setOpen(true));
+    wrapper.addEventListener('pointerleave', () => {
+      closeTimer = setTimeout(() => setOpen(false), 180);
+    });
+    head.addEventListener('click', event => {
+      event.stopPropagation();
+      setOpen(true);
+    });
+    wrapper.addEventListener('keydown', event => {
+      if (event.key === 'ArrowRight' && event.target === head) {
+        event.preventDefault(); event.stopPropagation();
+        setOpen(true);
+        list.querySelector('button, [tabindex="0"]')?.focus();
+      } else if (event.key === 'ArrowLeft' || event.key === 'Escape') {
+        event.preventDefault(); event.stopPropagation();
+        setOpen(false);
+        head.focus();
+      }
+    });
+    return { wrapper, list };
+  }
+
 
   function showContextMenu(x, y, idx, waveformTimeMs = null, { splitTextMode = null } = {}) {
   ctxLastClickX = x; ctxLastClickY = y;
@@ -121,36 +187,8 @@
     MaweSelection.lastClickedIdx = idx;
   }
   const targetIdxs = isMulti ? [...MaweSelection.selectedIdxs] : [idx];
-  // 「高级操作」：与「左右添加字符」一致的点击展开式二级菜单，
-  // 收纳低频动作，保持菜单主体聚焦剪辑操作。
-  const advanced = document.createElement('div');
-  advanced.className = 'item word-timing-advanced';
-  advanced.addEventListener('click', (event) => event.stopPropagation());
-  const advancedHead = document.createElement('div');
-  advancedHead.className = 'item';
-  advancedHead.style.cssText = 'display:flex;align-items:center;cursor:pointer;background:none;';
-  const advancedLabel = document.createElement('span');
-  advancedLabel.textContent = '高级操作';
-  advancedHead.appendChild(advancedLabel);
-  const advancedArrow = document.createElement('kbd');
-  advancedArrow.textContent = '›';
-  advancedArrow.style.marginLeft = 'auto';
-  advancedHead.appendChild(advancedArrow);
-  const advancedList = document.createElement('div');
-  advancedList.className = 'word-timing-advanced-list';
-  advancedList.style.cssText = 'display:none;flex-direction:column;margin-top:8px;gap:8px;';
-  let advancedExpanded = false;
-  advancedHead.addEventListener('click', () => {
-    advancedExpanded = !advancedExpanded;
-    advancedList.style.display = advancedExpanded ? 'flex' : 'none';
-    advancedArrow.textContent = advancedExpanded ? '⌄' : '›';
-    // 展开后菜单变高，重新贴合视口下沿（与 showContextMenu 的溢出处理一致）。
-    const rect = MaweDom.ctxmenu.getBoundingClientRect();
-    if (y + rect.height > window.innerHeight) {
-      MaweDom.ctxmenu.style.top = `${Math.max(4, window.innerHeight - rect.height - 4)}px`;
-    }
-  });
-  advanced.append(advancedHead, advancedList);
+  const { wrapper: advanced, list: advancedList } = createContextSubmenu('高级操作', 'word-timing-advanced');
+  advancedList.classList.add('word-timing-advanced-list');
   const convertWords = document.createElement('button');
   convertWords.type = 'button';
   convertWords.className = 'item danger';
@@ -235,33 +273,7 @@
   }
   function addWrapCharsSubmenu(targets, container = MaweDom.ctxmenu) {
     const wrapPresets = visibleWrapCharPresets();
-    const row = document.createElement('div');
-    row.className = 'item';
-    row.style.cssText = 'cursor:default;display:block;';
-    row.addEventListener('click', (e) => e.stopPropagation());
-    const head = document.createElement('div');
-    head.style.cssText = 'display:flex;align-items:center;cursor:pointer;';
-    const lbl = document.createElement('span');
-    lbl.textContent = '左右添加字符';
-    head.appendChild(lbl);
-    const arrow = document.createElement('kbd');
-    arrow.textContent = '›';
-    arrow.style.marginLeft = 'auto';
-    head.appendChild(arrow);
-    row.appendChild(head);
-    const list = document.createElement('div');
-    list.style.cssText = 'display:none;flex-direction:column;margin-top:8px;gap:2px;';
-    let expanded = false;
-    head.addEventListener('click', () => {
-      expanded = !expanded;
-      list.style.display = expanded ? 'flex' : 'none';
-      arrow.textContent = expanded ? '⌄' : '›';
-      // 展开后菜单变高，重新贴合视口下沿（与 showContextMenu 的溢出处理一致）。
-      const rect = MaweDom.ctxmenu.getBoundingClientRect();
-      if (ctxLastClickY + rect.height > window.innerHeight) {
-        MaweDom.ctxmenu.style.top = `${Math.max(4, window.innerHeight - rect.height - 4)}px`;
-      }
-    });
+    const { wrapper: row, list } = createContextSubmenu('左右添加字符');
     wrapPresets.forEach((preset) => {
       const entry = document.createElement('div');
       entry.className = 'item';
@@ -291,7 +303,6 @@
       MaweTextProcess.openWrapCharsModal(targets);
     });
     list.appendChild(custom);
-    row.appendChild(list);
     container.appendChild(row);
   }
 
@@ -390,7 +401,7 @@
     addAdvancedOverlayConvert(targetIdxs);
   }
 
-  advancedList.appendChild(convertWords);
+  if (MaweWordTiming.enabled) advancedList.appendChild(convertWords);
   addSep();
   MaweDom.ctxmenu.appendChild(advanced);
   // 调整 ctxmenu 位置（避免溢出）

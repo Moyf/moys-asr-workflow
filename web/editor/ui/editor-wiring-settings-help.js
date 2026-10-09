@@ -54,14 +54,6 @@ document.querySelectorAll('[data-settings-tool="gap"]').forEach((button) => {
   });
 });
 MaweDom.editorSettingsClose?.addEventListener('click', () => MaweSettingsPanels.setEditorSettingsPanelOpen(false));
-MaweDom.mergeJoinSettingsToggle?.addEventListener('click', (event) => {
-  event.stopPropagation();
-  MaweSettingsPanels.setMergeJoinSettingsPanelOpen(MaweDom.mergeJoinSettingsPanel?.hidden);
-});
-MaweDom.splitTrimSettingsToggle?.addEventListener('click', (event) => {
-  event.stopPropagation();
-  MaweSettingsPanels.setSplitTrimSettingsPanelOpen(MaweDom.splitTrimSettingsPanel?.hidden);
-});
 MaweDom.cueListSettingsToggle?.addEventListener('click', (event) => {
   event.stopPropagation();
   MaweSettingsPanels.setCueListSettingsPanelOpen(MaweDom.cueListSettingsPanel?.hidden);
@@ -91,12 +83,6 @@ document.addEventListener('pointerdown', (event) => {
   if (!MaweDom.cueEditorSettingsPanel?.hidden && !MaweDom.cueEditorSettings?.contains(event.target)) {
     MaweSettingsPanels.setCueEditorSettingsPanelOpen(false);
   }
-  if (!MaweDom.mergeJoinSettingsPanel?.hidden && !MaweDom.mergeJoinSettings?.contains(event.target)) {
-    MaweSettingsPanels.setMergeJoinSettingsPanelOpen(false);
-  }
-  if (!MaweDom.splitTrimSettingsPanel?.hidden && !MaweDom.splitTrimSettings?.contains(event.target)) {
-    MaweSettingsPanels.setSplitTrimSettingsPanelOpen(false);
-  }
 });
 document.addEventListener('keydown', (event) => {
   if (event.key !== 'Escape') return;
@@ -112,19 +98,7 @@ document.addEventListener('keydown', (event) => {
     MaweSettingsPanels.setCueEditorSettingsPanelOpen(false);
     MaweDom.cueEditorSettingsToggle?.focus();
   }
-  if (!MaweDom.mergeJoinSettingsPanel?.hidden) {
-    MaweSettingsPanels.setMergeJoinSettingsPanelOpen(false);
-    MaweDom.mergeJoinSettingsToggle?.focus();
-  }
-  if (!MaweDom.splitTrimSettingsPanel?.hidden) {
-    MaweSettingsPanels.setSplitTrimSettingsPanelOpen(false);
-    MaweDom.splitTrimSettingsToggle?.focus();
-  }
 });
-window.addEventListener('resize', MaweSettingsPanels.positionMergeJoinSettingsPanel);
-window.addEventListener('scroll', MaweSettingsPanels.positionMergeJoinSettingsPanel, true);
-window.addEventListener('resize', MaweSettingsPanels.positionSplitTrimSettingsPanel);
-window.addEventListener('scroll', MaweSettingsPanels.positionSplitTrimSettingsPanel, true);
 window.addEventListener('resize', MaweSettingsPanels.positionCueListSettingsPanel);
 window.addEventListener('scroll', MaweSettingsPanels.positionCueListSettingsPanel, true);
 window.addEventListener('resize', MaweSettingsPanels.positionWaveformSettingsPanel);
