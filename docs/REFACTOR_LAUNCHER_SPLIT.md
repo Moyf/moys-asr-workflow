@@ -45,7 +45,7 @@
 | 4 | AST 等价审计：原 launcher.js 语句序列 vs 拆分后拼接语句序列 | 已修复 | 内建于 split-launcher.mjs（行级，强于 AST 级） |
 | 5 | 清单测试：launcher 版 syntax / order 单测 | 已修复 | syntax + bundle 测试随 commit 1 落地；order 断言由 build-launcher 顺序装配 + e2e 覆盖 |
 | 6 | 验证：`pnpm run check:launcher` + 相关单测 + e2e launcher specs + 手动 serve 冒烟 | 已修复 | 全部通过，见验证记录 |
-| 7 | 收尾：CHANGELOG 条目 + 人工核查 checklist HTML（放 %TEMP%，不提交） | 进行中 | CHANGELOG 已加条目；AGENTS.md 已更新装配约定 |
+| 7 | 收尾：CHANGELOG 条目 + 人工核查 checklist HTML（放 %TEMP%，不提交） | 已修复 | checklist 已生成于 %TEMP%/launcher-split-checklist.html |
 
 ## 验证记录
 
@@ -78,7 +78,7 @@
   统一改为按清单拼接全集断言（当前 launcher.js 仍在清单内，不受影响）。
 - bundle 行为等价性目前由 e2e 冒烟覆盖；拆分 commit 将补 AST 级等价审计。
 
-## 拆分簇规划（待细化）
+## 拆分簇规划（已实施，实际边界以 split-launcher.mjs 为准）
 
 按功能域初步分簇（切割时按符号锚点定位行区间）：
 
