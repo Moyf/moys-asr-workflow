@@ -1,5 +1,5 @@
 // Existing items are timed text ranges, not necessarily individual words.
-window.MAWE.register('utils-word-timing', function createWordTiming(dependencies) {
+export function createWordTiming(dependencies) {
   'use strict';
   const { cloneJsonValue, isTimedTextNeutralToken, uniqueStableSegmentId } = dependencies;
   const neutral = ch => isTimedTextNeutralToken(ch, true);
@@ -112,7 +112,7 @@ window.MAWE.register('utils-word-timing', function createWordTiming(dependencies
       let minDelta = -Infinity, maxDelta = Infinity;
       chosen.forEach(entry => {
         const position = entries.indexOf(entry);
-        const prev = entries.slice(0, position).findLast(e => !indices.includes(e.index));
+        const prev = entries.slice(0, position).reverse().find(e => !indices.includes(e.index));
         const next = entries.slice(position + 1).find(e => !indices.includes(e.index));
         minDelta = Math.max(minDelta, (prev?.end ?? lower) - entry.start);
         maxDelta = Math.min(maxDelta, (next?.start ?? upper) - entry.end);
@@ -253,25 +253,26 @@ window.MAWE.register('utils-word-timing', function createWordTiming(dependencies
     if (typeof text !== 'string' || typeof previousText !== 'string' || text === previousText) return null;
     const ranges = wordCharRanges(previousText, items);
     if (!ranges) return null;
-    if (text.length === previousText.length) {
+    const nextChars = Array.from(text), previousChars = Array.from(previousText);
+    if (nextChars.length === previousChars.length) {
       const nextItems = cloneJsonValue(items);
       let changed = 0;
       ranges.forEach((range, index) => {
         if (!range) return;
-        const next = text.slice(range.start, range.end);
+        const next = nextChars.slice(range.start, range.end).join('');
         if (next && next !== nextItems[index]?.text) { nextItems[index].text = next; changed += 1; }
       });
       return changed ? { items: nextItems, changed } : null;
     }
     let prefix = 0;
-    const limit = Math.min(previousText.length, text.length);
-    while (prefix < limit && previousText[prefix] === text[prefix]) prefix += 1;
+    const limit = Math.min(previousChars.length, nextChars.length);
+    while (prefix < limit && previousChars[prefix] === nextChars[prefix]) prefix += 1;
     let suffix = 0;
     while (suffix < limit - prefix
-        && previousText[previousText.length - 1 - suffix] === text[text.length - 1 - suffix]) suffix += 1;
-    const regionStart = prefix, regionEnd = previousText.length - suffix;
+        && previousChars[previousChars.length - 1 - suffix] === nextChars[nextChars.length - 1 - suffix]) suffix += 1;
+    const regionStart = prefix, regionEnd = previousChars.length - suffix;
     const crosses = ranges.some(range => range && range.start < regionEnd && range.end > regionStart);
     return crosses ? { warn: true } : null;
   }
   return Object.freeze({ getWordTimingEntries, editWordTiming, mergeWordTimingItems, planWordTimingConversion, planWordTimingTextSync });
-});
+}

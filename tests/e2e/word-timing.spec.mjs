@@ -454,6 +454,7 @@ test('no-op gestures do not create undo history and leaving words clears their h
 });
 
 test('equal-length typo replacement syncs item texts through the cue panel', async ({ page }) => {
+  await page.evaluate(() => MaweSettings.updateEditorSettings({ cueEditorCancelOnEscape: true }));
   await setWordTiming(page);
   await page.locator('.cue[data-idx="0"]').click();
   const panel = page.locator('#cue-panel-text');
@@ -475,7 +476,8 @@ test('selected sentence gains edge handles in word timing mode and drags only it
   await setWordTiming(page);
   const block = page.locator('.waveform-cue-block[data-track="main"][data-idx="0"]');
   await expect(block.locator('.waveform-cue-handle')).toHaveCount(0);
-  await block.click();
+  // The upper sentence strip is exposed above the foreground word blocks.
+  await block.click({ position: { x: 10, y: 3 } });
   await expect(block).toHaveClass(/selected/);
   await expect(block.locator('.waveform-cue-handle')).toHaveCount(2);
   expect(await block.evaluate(el => parseFloat(getComputedStyle(el).opacity))).toBeCloseTo(0.45);
@@ -500,7 +502,7 @@ test('selected sentence gains edge handles in word timing mode and drags only it
 test('audition plays the picked range once from both word and sentence menus', async ({ page }) => {
   await setWordTiming(page);
   // 句块菜单：试听位于跳转区
-  await page.locator('.waveform-cue-block[data-track="main"][data-idx="0"]').click({ button: 'right' });
+  await page.locator('.waveform-cue-block[data-track="main"][data-idx="0"]').click({ button: 'right', position: { x: 10, y: 3 } });
   await expect(page.locator('#ctxmenu .item').filter({ hasText: '试听' })).toHaveCount(1);
   await page.keyboard.press('Escape');
   // 字词菜单：试听选中字词范围并在终点自动暂停
@@ -515,18 +517,36 @@ test('audition plays the picked range once from both word and sentence menus', a
 test('context menu keeps clip actions up front and moves low-frequency entries into advanced', async ({ page }) => {
   await page.locator('.waveform-cue-block[data-track="main"][data-idx="0"]').click({ button: 'right' });
   const menu = page.locator('#ctxmenu');
-  await expect(menu.locator(':scope > .item').filter({ hasText: '转为叠加字幕' })).toHaveCount(0);
-  await expect(menu.locator(':scope > .item').filter({ hasText: '左右添加字符' })).toHaveCount(0);
+  await expect(menu.locator(':scope > .item > span').filter({ hasText: '转为叠加字幕' })).toHaveCount(0);
+  await expect(menu.locator(':scope > .item > span').filter({ hasText: '左右添加字符' })).toHaveCount(0);
   await menu.locator('.word-timing-advanced > .item').first().click();
   const overlayButton = menu.locator('.word-timing-advanced button').filter({ hasText: '转为叠加字幕' });
   const wrapHeading = menu.locator('.word-timing-advanced').locator('span', { hasText: '左右添加字符' });
   const convertButton = menu.locator('.word-timing-advanced .danger');
   await expect(overlayButton).toHaveCount(1);
   await expect(convertButton).toHaveCount(1);
-  expect(await overlayButton.evaluate(el =>
-    el.getBoundingClientRect().top - wrapHeading.evaluate(wrap => wrap.closest('.item').getBoundingClientRect().bottom),
-  )).toBeGreaterThanOrEqual(0);
-  expect(await convertButton.evaluate(el =>
-    el.getBoundingClientRect().top - overlayButton.evaluate(overlay => overlay.getBoundingClientRect().bottom),
-  )).toBeGreaterThanOrEqual(0);
+  const wrapBottom = await wrapHeading.evaluate(el => el.closest('.item').getBoundingClientRect().bottom);
+  const overlayBox = await overlayButton.boundingBox();
+  const convertBox = await convertButton.boundingBox();
+  expect(overlayBox.y - wrapBottom).toBeGreaterThanOrEqual(8);
+  expect(convertBox.y - overlayBox.y - overlayBox.height).toBeGreaterThanOrEqual(8);
+});
+
+for (const trigger of ['menu', 'shortcut']) test(`word audition converts frame ranges to media milliseconds via ${trigger}`, async ({ page }) => {
+  await page.evaluate(() => {
+    MaweBoot.DATA.timebase = { unit: 'frames', fps: 30 };
+    MaweWordTiming.setEnabled(true);
+  });
+  if (trigger === 'menu') {
+    await word(page, 1).click({ button: 'right' });
+    await page.locator('#ctxmenu .item').filter({ hasText: '试听' }).click();
+  } else {
+    await word(page, 1).click();
+    await page.keyboard.press('f');
+  }
+  await expect.poll(() => page.evaluate(() => MaweCoreState.player.currentTime)).toBeGreaterThanOrEqual(3);
+  await expect.poll(() => page.evaluate(() => MaweCoreState.player.paused), { timeout: 8000 }).toBe(true);
+  const end = await page.evaluate(() => MaweCoreState.player.currentTime);
+  expect(end).toBeGreaterThanOrEqual(5.9);
+  expect(end).toBeLessThanOrEqual(6.3);
 });

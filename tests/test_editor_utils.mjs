@@ -399,6 +399,10 @@ test('normalizes editor settings without preserving invalid persisted values', (
   assert.equal(helpers.normalizeEditorSettings({ assEmphasisSyntax: 'single' }).assEmphasisSyntax, 'both');
   assert.equal(helpers.normalizeEditorSettings({ assEmphasisSyntax: 'invalid' }).assEmphasisSyntax, 'both');
   assert.equal(settings.pauseOnMouseClick, false);
+  assert.equal(helpers.normalizeEditorSettings({ markerEditingEnabled: true }).markerEditingEnabled, true);
+  assert.equal(helpers.normalizeEditorSettings({ markerEditingEnabled: 1 }).markerEditingEnabled, false);
+  assert.equal(helpers.normalizeEditorSettings({ stickersEnabled: false }).stickersEnabled, false);
+  assert.equal(helpers.normalizeEditorSettings({}).stickersEnabled, true);
   assert.equal(helpers.normalizeEditorSettings({ pauseOnMouseClick: true }).pauseOnMouseClick, true);
   assert.equal(helpers.normalizeEditorSettings({ pauseOnMouseClick: 1 }).pauseOnMouseClick, false);
   assert.equal(settings.subtitleColorPaletteEnabled, false);

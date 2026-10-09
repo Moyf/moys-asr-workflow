@@ -218,6 +218,7 @@ test('OTIO export writes marker fields as Marker.2 with name, comment and mapped
     MaweCoreState: {},
     MaweTimeline: {},
     MaweGapRemoveData: {},
+    MaweSpeakerLabels: { subtitleExportText: (segment) => segment.text },
     MaweHint: { flashHint: () => {} },
     navigator: { userAgent: 'node' },
   };

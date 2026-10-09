@@ -87,20 +87,20 @@ test('editing pages separate selection, navigation, adjustment and project time 
 
 test('bilingual settings are grouped and the index never enables the mode implicitly', async ({ page }, testInfo) => {
   await settings(page);
-  await expect(page.locator('#editor-settings-page-regions [data-settings-region="multi-subtitle"]')).toBeDisabled();
+  await expect(page.locator('#editor-settings-page-regions [data-settings-region="multi-subtitle"]')).toHaveCount(0);
+  expect(await page.evaluate(() => MaweMultiSubtitleCore.getMultiSubtitleState().enabled === true)).toBe(false);
   await page.locator('#editor-settings-close').click();
   await page.locator('#project-settings-toggle').click();
   await page.locator('#editor-settings-tab-project-tracks').click();
+  await expect(page.locator('#project-multi-subtitle-settings')).toBeHidden();
   await page.locator('#multi-subtitle-toggle').check();
-  await page.locator('#project-settings-close').click();
-  await settings(page);
-  await page.locator('#editor-settings-page-regions [data-settings-region="multi-subtitle"]').click();
-  await expect(page.locator('#multi-subtitle-settings-menu .settings-panel-title')).toHaveText(['显示', '联动', '字幕管理']);
+  await expect(page.locator('#project-multi-subtitle-settings')).toBeVisible();
+  await expect(page.locator('#project-multi-subtitle-settings .settings-panel-title')).toHaveText(['显示', '联动', '字幕管理']);
   await page.locator('#multi-subtitle-cross-track-snap').uncheck();
   expect(await page.evaluate(() => MaweSettings.EDITOR_SETTINGS.crossTrackSnap)).toBe(false);
-  await page.locator('#multi-subtitle-settings-menu').screenshot({ path: testInfo.outputPath('bilingual-settings.png') });
+  await page.locator('#project-settings-panel').screenshot({ path: testInfo.outputPath('bilingual-settings.png') });
   await page.keyboard.press('Escape');
-  await expect(page.locator('#multi-subtitle-settings-toggle')).toBeFocused();
+  await expect(page.locator('#project-settings-toggle')).toBeFocused();
 });
 
 test('both OTIO menus route to one persistent configuration and never export on navigation', async ({ page }, testInfo) => {
@@ -147,7 +147,7 @@ test('renamed tabs restore old keys and the English index fits a narrow window',
   await expect(page.locator('#editor-settings-tab-subtitle-color')).toHaveText('Custom palette');
   await page.setViewportSize({ width: 760, height: 700 });
   await settings(page);
-  await expect(page.locator('#editor-settings-page-regions')).toContainText('Adjust display and behavior');
+  await expect(page.locator('#editor-settings-page-regions')).toContainText('Adjust waveform appearance and content.');
   const spacing = await page.locator('#editor-settings-page-regions').evaluate(el => {
     const cards = [...el.querySelectorAll('.editor-settings-region-card')];
     return cards.map(card => card.querySelector('p').getBoundingClientRect().top - card.querySelector('strong').getBoundingClientRect().bottom);
@@ -257,6 +257,10 @@ test('all new settings pages have measured spacing in Chinese and English', asyn
       await page.evaluate(() => { MaweSettingsPanels.setEditorSettingsPanelOpen(false); MaweSettingsPanels.projectFloatingPanel.close(); });
       for (const key of keys) {
         if (scope === 'project') await projectSettings(page, key); else await settings(page, key);
+        await expect(page.locator('#editor-settings-page-' + key)).toBeVisible();
+        if (scope === 'project') {
+          expect(await page.locator('#editor-settings-page-' + key).evaluate(el => el.parentElement.classList.contains('editor-settings-pages'))).toBe(true);
+        }
         const gaps = await page.locator('#editor-settings-page-' + key).evaluate(page => {
           const parents = [page, ...page.querySelectorAll('.editor-settings-group, .editor-settings-sub-group, .editor-settings-field')];
           return parents.flatMap(parent => {
@@ -272,6 +276,20 @@ test('all new settings pages have measured spacing in Chinese and English', asyn
       }
     }
   }
+});
+
+test('personal marker and sticker feature preferences survive a reload', async ({ page }) => {
+  await projectSettings(page, 'project-tracks');
+  await page.locator('#project-marker-track-toggle').check();
+  await page.locator('#project-settings-close').click();
+  await settings(page, 'sticker');
+  await page.locator('#sticker-feature-toggle').uncheck();
+  await page.reload();
+  await projectSettings(page, 'project-tracks');
+  await expect(page.locator('#project-marker-track-toggle')).toBeChecked();
+  await page.locator('#project-settings-close').click();
+  await settings(page, 'sticker');
+  await expect(page.locator('#sticker-feature-toggle')).not.toBeChecked();
 });
 
 test('a new project invalidates an in-flight directory change and keeps the saved override separate', async ({ page }) => {

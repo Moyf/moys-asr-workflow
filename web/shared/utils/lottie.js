@@ -1,5 +1,5 @@
 // lottie: private helpers; dependencies are injected by editor-utils.js.
-window.MAWE.register('utils-lottie', function createUtilsModule(dependencies) {
+export function createUtilsModule(dependencies) {
   'use strict';
   const { DEFAULT_PREVIEW_GEOMETRY, normalizePreviewGeometry } = dependencies;
 
@@ -276,4 +276,4 @@ window.MAWE.register('utils-lottie', function createUtilsModule(dependencies) {
   }
 
   return Object.freeze({ LOTTIE_DEFAULT_HEIGHT, LOTTIE_DEFAULT_WIDTH, buildLottieAnimation, findLottieTextUnits, lottieTextUnits, normalizeLottieCanvasDimension, normalizeLottieFontFamily, normalizeLottieFps });
-});
+}

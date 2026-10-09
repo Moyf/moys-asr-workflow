@@ -1,5 +1,5 @@
 // speakers: private helpers; dependencies are injected by editor-utils.js.
-window.MAWE.register('utils-speakers', function createUtilsModule(dependencies) {
+export function createUtilsModule(dependencies) {
   'use strict';
   const { effectiveColorName } = dependencies;
 
@@ -89,4 +89,4 @@ window.MAWE.register('utils-speakers', function createUtilsModule(dependencies) 
   }
 
   return Object.freeze({ DEFAULT_SPEAKER_LABELS, DEFAULT_SPEAKER_LABEL_SEPARATOR, SPEAKER_LABEL_COLORS, SPEAKER_LABEL_MAX_LENGTH, SPEAKER_LABEL_SEPARATOR_MAX_LENGTH, formatSpeakerLabelledText, normalizeSpeakerLabel, normalizeSpeakerLabelSeparator, normalizeSpeakerLabelSettings, normalizeSpeakerLabels, speakerLabelForSegment });
-});
+}

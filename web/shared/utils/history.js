@@ -1,5 +1,5 @@
 // history: private helpers; dependencies are injected by editor-utils.js.
-window.MAWE.register('utils-history', function createUtilsModule(dependencies) {
+export function createUtilsModule(dependencies) {
   'use strict';
   const { cloneJsonValue } = dependencies;
 
@@ -79,4 +79,4 @@ window.MAWE.register('utils-history', function createUtilsModule(dependencies) {
   }
 
   return Object.freeze({ buildHistoryRecord, buildSegmentsHistorySnapshot, createHistoryStack });
-});
+}

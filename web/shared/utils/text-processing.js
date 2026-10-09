@@ -1,5 +1,5 @@
 // text-processing: private helpers; dependencies are injected by editor-utils.js.
-window.MAWE.register('utils-text-processing', function createUtilsModule(dependencies) {
+export function createUtilsModule(dependencies) {
   'use strict';
 
 
@@ -174,4 +174,4 @@ window.MAWE.register('utils-text-processing', function createUtilsModule(depende
     isTextWrappedBy,
     wrapCharsAroundText,
   });
-});
+}

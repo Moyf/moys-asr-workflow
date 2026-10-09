@@ -214,6 +214,7 @@
           || floatingSurfaceStack.filter(floatingSurfaceIsOpen).at(-1) !== panel) return;
       event.preventDefault();
       close();
+      manageButton?.focus();
     });
     return { open, close, toggle, isOpen };
   }

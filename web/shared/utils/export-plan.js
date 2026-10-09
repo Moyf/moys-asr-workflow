@@ -1,7 +1,7 @@
 // export-plan: private helpers; dependencies are injected by editor-utils.js.
-window.MAWE.register('utils-export-plan', function createUtilsModule(dependencies) {
+export function createUtilsModule(dependencies) {
   'use strict';
-  const { assDefaultFontFamily, buildGapRemovedIntervals, mapGapRemovedTime } = dependencies;
+  const { assDefaultFontFamily, buildGapRemovedIntervals, formatSpeakerLabelledText, mapGapRemovedTime } = dependencies;
 
 
   const EXPORT_FRAME_PROFILES = Object.freeze({
@@ -63,7 +63,9 @@ window.MAWE.register('utils-export-plan', function createUtilsModule(dependencie
   ]);
 
 
-  function normalizeExportOptions(options = {}) {
+  /** @param {unknown} [value] */
+  function normalizeExportOptions(value = {}) {
+    const options = /** @type {Record<string, unknown>} */ (value);
     if (!options || typeof options !== 'object' || Array.isArray(options)) {
       throw new Error('export options must be an object');
     }
@@ -80,7 +82,7 @@ window.MAWE.register('utils-export-plan', function createUtilsModule(dependencie
       throw new Error('drop-frame option must be boolean');
     }
     const subtitleTracks = options.subtitleTracks ?? 'main';
-    if (!EXPORT_SUBTITLE_TRACKS.includes(subtitleTracks)) {
+    if (typeof subtitleTracks !== 'string' || !EXPORT_SUBTITLE_TRACKS.includes(subtitleTracks)) {
       throw new Error(`unsupported subtitle tracks: ${subtitleTracks}`);
     }
     const nativeTextObjects = options.nativeTextObjects ?? false;
@@ -260,6 +262,10 @@ window.MAWE.register('utils-export-plan', function createUtilsModule(dependencie
     const schemaExtension = Array.isArray(project.multi_subtitle?.tracks)
       ? project.multi_subtitle.tracks.flatMap((track) => Array.isArray(track?.segments) ? track.segments : [])
       : [];
+    const extensionColorContexts = new Map();
+    (Array.isArray(project.multi_subtitle?.tracks) ? project.multi_subtitle.tracks : []).forEach((track) => {
+      (Array.isArray(track?.segments) ? track.segments : []).forEach((segment) => extensionColorContexts.set(segment, track.segments));
+    });
     const projectExtension = project.multi_subtitle?.enabled === true
       ? schemaExtension
       : (project.multi_subtitle == null && Array.isArray(project.extensionSegments)
@@ -284,7 +290,10 @@ window.MAWE.register('utils-export-plan', function createUtilsModule(dependencie
       if (rawStart !== start || rawEnd !== end) warnings.push({ code: 'clamped_cue_to_duration', track, index });
       return {
         id: String(segment.id || `${track}-${index}`), track, index,
-        text: String(segment.text || ''), sourceStartMs: start, sourceEndMs: end,
+        text: options.speakerLabelsEnabled === true
+          ? formatSpeakerLabelledText(segment.text || '', segment, extensionColorContexts.get(segment) || segments, options.speakerLabels, options.speakerLabelSeparator)
+          : String(segment.text || ''),
+        sourceStartMs: start, sourceEndMs: end,
         startMs: mappedStart, endMs: mappedEnd,
       };
     }).filter(Boolean);
@@ -467,4 +476,4 @@ window.MAWE.register('utils-export-plan', function createUtilsModule(dependencie
   }
 
   return Object.freeze({ EXPORT_FRAME_PROFILES, EXPORT_SUBTITLE_TRACKS, assertExportPlan, buildExportNames, buildProjectExportPlan, escapeExportXml, exportMsToFrames, exportPathToFileUrl, exportPlanFrame, exportPolicyMsToFrames, exportVideoSize, freezeExportValue, mapExportTime, normalizeExportOptions, resolveExportFrameProfile, sanitizeExportName, selectedSubtitleTracks, serializeMappedSrt });
-});
+}

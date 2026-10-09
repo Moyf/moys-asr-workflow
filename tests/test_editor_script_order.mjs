@@ -12,16 +12,19 @@
 //      函数体、类方法体是延迟执行的，引用后置文件的名字不在此检查范围
 //      （那由真实运行验证），这符合脚本引擎的真实语义。
 //
-// acorn 是 devDependency；缺失时本测试 skip，保证最小验证命令在裸环境可用。
+// acorn 是必需的开发依赖；缺失时验证必须失败，不能跳过装配检查。
 
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
+import * as acorn from "acorn";
 
 const testDir = dirname(fileURLToPath(import.meta.url));
 const webDir = join(testDir, "..", "web");
+const modules = new Set(JSON.parse(readFileSync(join(webDir,'editor-modules.json'),'utf8'))
+  .modules.map(item => item.file));
 
 function readManifest() {
   return readFileSync(join(webDir, "editor-scripts.txt"), "utf8")
@@ -99,15 +102,7 @@ function collectAllBoundNames(root) {
   return names;
 }
 
-test("editor-scripts.txt 顺序断言", async (t) => {
-  let acorn;
-  try {
-    acorn = await import("acorn");
-  } catch {
-    t.skip("acorn 未安装：先在仓库根目录运行 npm install");
-    return;
-  }
-
+test("editor-scripts.txt 顺序断言", () => {
   const manifest = readManifest();
   assert.ok(manifest.length >= 2, "清单至少应有两个脚本");
 
@@ -133,7 +128,7 @@ test("editor-scripts.txt 顺序断言", async (t) => {
     const source = readFileSync(join(webDir, name), "utf8");
     let program;
     assert.doesNotThrow(() => {
-      program = acorn.parse(source, { ecmaVersion: "latest" });
+      program = acorn.parse(source, { ecmaVersion: "latest",sourceType:modules.has(name) ? 'module' : 'script' });
     }, `${name} 语法解析失败`);
     programs.push(program);
     selfBound.set(fileIdx, collectAllBoundNames(program));

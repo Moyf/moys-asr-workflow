@@ -112,7 +112,18 @@
     };
   }
 
+  function subtitleExportText(segment, segments) {
+    const options = speakerLabelExportOptions();
+    const text = String(segment?.text || '');
+    return options.speakerLabelsEnabled
+      ? window.AsrEditorUtils.formatSpeakerLabelledText(
+        text, segment, segments, options.speakerLabels, options.speakerLabelSeparator,
+      )
+      : text;
+  }
+
   global.MaweSpeakerLabels = Object.freeze({
+    subtitleExportText,
     speakerLabelUndoColors,
     get speakerLabelSeparatorUndo() { return speakerLabelSeparatorUndo; },
     set speakerLabelSeparatorUndo(v) { speakerLabelSeparatorUndo = v; },

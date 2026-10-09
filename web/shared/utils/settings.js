@@ -1,5 +1,5 @@
 // settings: private helpers; dependencies are injected by editor-utils.js.
-window.MAWE.register('utils-settings', function createUtilsModule(dependencies) {
+export function createUtilsModule(dependencies) {
   'use strict';
   const { DEFAULT_SPLIT_TRIM_SYMBOLS, DEFAULT_TIMELINE_TIMECODE_SEPARATOR, clampInteger, clampTimelineFrameStep, normalizeSplitTrimSymbols, normalizeTimelineTimecodeSeparator } = dependencies;
 
@@ -74,6 +74,7 @@ window.MAWE.register('utils-settings', function createUtilsModule(dependencies) 
     exportSpeakerLabels: false, exportSpeakerNamesAsSuffix: false,
     autoSaveProject: true, autoSaveIntervalSeconds: 30, projectBackupEnabled: true,
     stickerOverlayEnabled: false,
+    markerEditingEnabled: false, stickersEnabled: true,
     stickerOtioExportMode: 'original', clickBehavior: 'select-and-seek', clickTarget: 'pointer',
     pauseOnMouseClick: false,
     otioExportIncludeSrt: true, otioExportIncludeStickers: true, otioExportIncludeMarkers: true,
@@ -91,8 +92,20 @@ window.MAWE.register('utils-settings', function createUtilsModule(dependencies) 
   });
 
 
+  /**
+   * @template {string} T
+   * @param {readonly T[]} choices
+   * @param {unknown} value
+   * @returns {value is T}
+   */
+  function isSettingChoice(choices, value) {
+    return typeof value === 'string' && choices.some(choice => choice === value);
+  }
+
+  /** @param {unknown} [saved] */
   function normalizeEditorSettings(saved = {}, legacyAssStyleLibrary = null) {
-    const savedSettings = saved && typeof saved === 'object' && !Array.isArray(saved) ? saved : {};
+    const savedSettings = /** @type {Record<string, unknown>} */ (
+      saved && typeof saved === 'object' && !Array.isArray(saved) ? saved : {});
     // Moving syntax out of styles: carry over the cached active main style's
     // choice once, while an explicit global preference always wins.
     const legacyLibrary = legacyAssStyleLibrary && typeof legacyAssStyleLibrary === 'object'
@@ -112,7 +125,7 @@ window.MAWE.register('utils-settings', function createUtilsModule(dependencies) 
       splitUseWordTimestamps: savedSettings.splitUseWordTimestamps !== false,
       splitAutoSubmit: savedSettings.splitAutoSubmit !== false,
       // 主字幕拆分类型手动指定偏好：word / continuous / null（跟随工程与检测）。
-      mainSplitModeOverride: ['word', 'continuous'].includes(savedSettings.mainSplitModeOverride)
+      mainSplitModeOverride: isSettingChoice(['word', 'continuous'], savedSettings.mainSplitModeOverride)
         ? savedSettings.mainSplitModeOverride : null,
       // undefined → 默认集合；显式空数组表示用户关闭了全部符号（仅修剪空白）。
       splitTrimSymbols: Array.isArray(savedSettings.splitTrimSymbols)
@@ -129,7 +142,7 @@ window.MAWE.register('utils-settings', function createUtilsModule(dependencies) 
       // 单双符号规则三值：none / double / both。旧数据里的 'single' 迁移为 'both'。
       assSpecialSymbolRule: savedSettings.assSpecialSymbolRule === 'single'
         ? 'both'
-        : (['none', 'double', 'both'].includes(savedSettings.assSpecialSymbolRule)
+        : (isSettingChoice(['none', 'double', 'both'], savedSettings.assSpecialSymbolRule)
           ? savedSettings.assSpecialSymbolRule : 'both'),
       assUnderlineEnabled: savedSettings.assUnderlineEnabled !== false,
       assStrikeEnabled: savedSettings.assStrikeEnabled !== false,
@@ -175,18 +188,20 @@ window.MAWE.register('utils-settings', function createUtilsModule(dependencies) 
       projectBackupMinutes: clampInteger(savedSettings.projectBackupMinutes, 5, 1, 1440),
       projectBackupLimit: clampInteger(savedSettings.projectBackupLimit, 20, 1, 1000),
       stickerOverlayEnabled: savedSettings.stickerOverlayEnabled === true,
+      markerEditingEnabled: savedSettings.markerEditingEnabled === true,
+      stickersEnabled: savedSettings.stickersEnabled !== false,
       stickerOtioExportMode: savedSettings.stickerOtioExportMode === 'portable' ? 'portable' : 'original',
       // 时间线 OTIO 导出选项：默认同时导出 SRT、合并表情包轨、写入字幕标记与标记区段。
       otioExportIncludeSrt: savedSettings.otioExportIncludeSrt !== false,
       otioExportIncludeStickers: savedSettings.otioExportIncludeStickers !== false,
       otioExportIncludeMarkers: savedSettings.otioExportIncludeMarkers !== false,
       otioExportIncludeMarkerRegions: savedSettings.otioExportIncludeMarkerRegions !== false,
-      clickBehavior: ['select-only', 'select-and-seek', 'select-and-play'].includes(savedSettings.clickBehavior)
+      clickBehavior: isSettingChoice(['select-only', 'select-and-seek', 'select-and-play'], savedSettings.clickBehavior)
         ? savedSettings.clickBehavior : 'select-and-seek',
-      clickTarget: ['cue-start', 'pointer'].includes(savedSettings.clickTarget) ? savedSettings.clickTarget : 'pointer',
+      clickTarget: isSettingChoice(['cue-start', 'pointer'], savedSettings.clickTarget) ? savedSettings.clickTarget : 'pointer',
       pauseOnMouseClick: savedSettings.pauseOnMouseClick === true,
       keyboardOperationReference: savedSettings.keyboardOperationReference === 'playhead' ? 'playhead' : 'pointer',
-      jklPlaybackMode: ['speed', 'direction'].includes(savedSettings.jklPlaybackMode)
+      jklPlaybackMode: isSettingChoice(['speed', 'direction'], savedSettings.jklPlaybackMode)
         ? savedSettings.jklPlaybackMode : 'direction',
       mediaSeekStepMs: clampInteger(mediaSeekStepMs, 1000, 10, 60000),
       mediaSeekStepFrames: clampTimelineFrameStep(savedSettings.mediaSeekStepFrames, 1),
@@ -207,7 +222,7 @@ window.MAWE.register('utils-settings', function createUtilsModule(dependencies) 
       selectBoundSubtitlePair: savedSettings.selectBoundSubtitlePair !== false,
       multiSubtitleAutoSyncDuration: savedSettings.multiSubtitleAutoSyncDuration !== false,
       multiSubtitleShowTrackBadges: savedSettings.multiSubtitleShowTrackBadges === true,
-      theme: ['light', 'dark', 'system'].includes(savedSettings.theme)
+      theme: isSettingChoice(['light', 'dark', 'system'], savedSettings.theme)
         ? savedSettings.theme : 'dark',
       accentColor: normalizeEditorAccentColor(savedSettings.accentColor),
       accentColorCustom: normalizeEditorAccentCustomColor(savedSettings.accentColorCustom),
@@ -251,4 +266,4 @@ window.MAWE.register('utils-settings', function createUtilsModule(dependencies) 
   function clampAutoMergeShortCount(value) { return clampInteger(value, 3, 1, 20); }
 
   return Object.freeze({ DEFAULT_EDITOR_ACCENT_CUSTOM_COLOR, DEFAULT_EDITOR_SUBTITLE_COLOR_PALETTE, EDITOR_ACCENT_COLOR_VALUES, EDITOR_SUBTITLE_COLOR_NAMES, clampAutoMergeGapMs, clampAutoMergeShortCount, clampAutoSaveInterval, clampCharcountThreshold, clampCueMoveStepMs, clampMediaSeekStepMs, clampNinjaSlashLength, clampNinjaSlashRotateAmplitude, normalizeClickBehavior, normalizeClickTarget, normalizeEditorAccentColor, normalizeEditorAccentCustomColor, normalizeEditorSettings, normalizeJklPlaybackMode, normalizeMultiSubtitleRowHeight, normalizeSubtitleColorPalette });
-});
+}
