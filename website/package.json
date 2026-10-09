@@ -1,6 +1,7 @@
 {
   "name": "maw-website",
   "version": "0.1.0",
+  "packageManager": "pnpm@11.28.4",
   "private": true,
   "type": "module",
   "scripts": {

@@ -5,7 +5,7 @@ description: "MAW、MAWE 与当前实验桌面目录的定位和工程格式边�
 source: "docs/MOSE.md"
 ---
 
-<!-- Generated from docs/MOSE.md. Run npm run sync:docs to refresh. -->
+<!-- Generated from docs/MOSE.md. Run pnpm run sync:docs to refresh. -->
 
 | 名称 | 当前定位 |
 | --- | --- |

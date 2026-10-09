@@ -5,7 +5,7 @@ description: "服务商选择、API Key、费用和隐私边界。"
 source: "docs/PROVIDERS.md"
 ---
 
-<!-- Generated from docs/PROVIDERS.md. Run npm run sync:docs to refresh. -->
+<!-- Generated from docs/PROVIDERS.md. Run pnpm run sync:docs to refresh. -->
 
 MAW 不托管转写服务。云端方式把音频直接交给所选服务商，本地方式在本机推理。以下描述 MAW 当前适配范围；服务可用性、额度和限制以账户控制台为准。
 

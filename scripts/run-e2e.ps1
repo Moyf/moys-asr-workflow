@@ -135,5 +135,5 @@ if ($null -eq $hasOutputArgument) {
     $arguments += @("--output", $outputPath)
 }
 
-& npx.cmd playwright test @arguments
+& pnpm.cmd exec playwright test @arguments
 exit $LASTEXITCODE

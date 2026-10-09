@@ -20,14 +20,19 @@ jobs:
       PYTHONIOENCODING: utf-8
     steps:
       - uses: actions/checkout@v5
+      - uses: pnpm/action-setup@v6
+        with:
+          version: 11.28.4
+          run_install: false
       - uses: actions/setup-node@v5
         with:
           node-version: '22'
-          cache: npm
-      - run: npm ci
+          cache: pnpm
+          cache-dependency-path: pnpm-lock.yaml
+      - run: pnpm install --frozen-lockfile
       # Check the committed artifact before anything can regenerate it.
-      - run: npm run check:editor
-      - run: npm run typecheck
+      - run: pnpm run check:editor
+      - run: pnpm run typecheck
       - uses: actions/setup-python@v6
         with:
           python-version: '3.11'
@@ -36,8 +41,8 @@ jobs:
           enable-cache: true
       - run: uv sync --frozen
       # Node tests also launch Chromium and compare against Python exporters.
-      - run: npx playwright install --with-deps chromium
-      - run: npm run test:unit
+      - run: pnpm exec playwright install --with-deps chromium
+      - run: pnpm run test:unit
         env:
           MAW_TEST_PYTHON: ${{ github.workspace }}/.venv/bin/python
       - name: Python assembly contracts
@@ -47,4 +52,4 @@ jobs:
       - name: Real file and HTTP editor
         env:
           MAW_E2E_PYTHON: ${{ github.workspace }}/.venv/bin/python
-        run: npx playwright test --project=chromium tests/e2e/editor-bundle.spec.mjs tests/e2e/editor-transactions.spec.mjs
+        run: pnpm exec playwright test --project=chromium tests/e2e/editor-bundle.spec.mjs tests/e2e/editor-transactions.spec.mjs

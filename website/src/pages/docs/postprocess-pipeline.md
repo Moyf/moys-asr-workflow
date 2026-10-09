@@ -5,7 +5,7 @@ description: "处理步骤、连接预检、中间产物与失败重试。"
 source: "docs/POSTPROCESS_PIPELINE.md"
 ---
 
-<!-- Generated from docs/POSTPROCESS_PIPELINE.md. Run npm run sync:docs to refresh. -->
+<!-- Generated from docs/POSTPROCESS_PIPELINE.md. Run pnpm run sync:docs to refresh. -->
 
 Launcher 可在转写成功后自动运行字幕处理链。总开关默认关闭，原始转写产物保留；单独处理已有字幕见 [工具箱](../toolbox/)。
 

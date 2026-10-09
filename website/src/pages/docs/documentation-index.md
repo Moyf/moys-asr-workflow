@@ -5,7 +5,7 @@ description: "按任务查找使用指南、工程契约与历史记录。"
 source: "docs/README.md"
 ---
 
-<!-- Generated from docs/README.md. Run npm run sync:docs to refresh. -->
+<!-- Generated from docs/README.md. Run pnpm run sync:docs to refresh. -->
 
 第一次使用从 [WORKFLOW](../workflow/) 开始。本文按任务组织文档；日常使用说明与开发记录分开维护。
 
