@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import base64
 import math
 import os
 import re
@@ -82,6 +83,99 @@ class WaveformExtractionTests(unittest.TestCase):
         self.assertEqual(lower_density["peaks_per_second"], 50)
         self.assertEqual(lower_density["peak_count"], 20)
 
+    @unittest.skipUnless(shutil.which("ffmpeg"), "ffmpeg is required")
+    def test_source_rate_stereo_peaks_preserve_phase_and_transients(self) -> None:
+        media = self.root / "stereo.wav"
+        frames = bytearray()
+        for index in range(48_000 * 4 // 10):
+            section = index // 4_800
+            if section == 0:
+                left = round(math.sin(2 * math.pi * 330 * index / 48_000) * 22_000)
+                right = -left
+            elif section == 1:
+                left = 0
+                right = round(math.sin(2 * math.pi * 330 * index / 48_000) * 22_000)
+            elif section == 2:
+                left = right = 30_000 if index % 4_800 == 1 else 0
+            else:
+                left = right = 0
+            frames.extend(struct.pack("<hh", left, right))
+        with wave.open(str(media), "wb") as output:
+            output.setnchannels(2)
+            output.setsampwidth(2)
+            output.setframerate(48_000)
+            output.writeframes(frames)
+
+        improved = waveform_module.extract_waveform(media)
+        legacy = waveform_module.extract_waveform(media, pcm_sample_rate=1_000)
+        self.assertEqual((improved["sample_rate"], improved["division"]), (48_000, 480))
+        self.assertEqual(improved["peak_count"], legacy["peak_count"])
+        self.assertEqual(
+            len(mopeaks.encode_mopeaks(improved, media)),
+            len(mopeaks.encode_mopeaks(legacy, media)),
+        )
+
+        def peak(payload: dict, first: int, last: int) -> int:
+            values = base64.b64decode(payload["data"])[first * 2 : last * 2]
+            return max(abs(value - 256 if value > 127 else value) for value in values)
+
+        self.assertGreater(peak(improved, 0, 10), 70)
+        self.assertLess(peak(legacy, 0, 10), 5)  # 反相声道被单声道混合抵消
+        self.assertGreater(peak(improved, 10, 20), peak(legacy, 10, 20))
+        self.assertGreater(peak(improved, 20, 30), 100)
+        self.assertLess(peak(legacy, 20, 30), 20)
+
+    @unittest.skipUnless(shutil.which("ffmpeg"), "ffmpeg is required")
+    def test_legacy_mopeaks_is_rebuilt_but_remains_failure_fallback(self) -> None:
+        legacy = waveform_module.extract_waveform(self.media_path, pcm_sample_rate=1_000)
+        inline_fresh, extracted = waveform_module.load_or_extract_waveform(legacy, self.media_path)
+        self.assertTrue(extracted)
+        self.assertEqual(inline_fresh["sample_rate"], 8_000)
+        mopeaks.save_mopeaks(legacy, self.media_path)
+
+        fresh, extracted = waveform_module.load_or_extract_waveform(None, self.media_path)
+        self.assertTrue(extracted)
+        self.assertEqual((fresh["sample_rate"], fresh["division"]), (8_000, 80))
+        self.assertEqual(mopeaks.load_mopeaks(self.media_path)["data"], fresh["data"])
+
+        mopeaks.save_mopeaks(legacy, self.media_path)
+        with mock.patch.object(
+            waveform_module,
+            "extract_waveform",
+            side_effect=waveform_module.WaveformError("ffmpeg unavailable"),
+        ):
+            fallback, extracted = waveform_module.load_or_extract_waveform(None, self.media_path)
+        self.assertFalse(extracted)
+        self.assertEqual(fallback["data"], legacy["data"])
+
+        mopeaks.save_mopeaks(fresh, self.media_path)
+        with (
+            mock.patch.object(quapeaks, "load_self_wave_payload", return_value=legacy),
+            mock.patch.object(waveform_module, "extract_waveform") as extractor,
+        ):
+            cached, extracted = waveform_module.load_or_extract_waveform(None, self.media_path)
+        extractor.assert_not_called()
+        self.assertFalse(extracted)
+        self.assertEqual(cached["data"], fresh["data"])
+
+    @unittest.skipUnless(shutil.which("ffmpeg"), "ffmpeg is required")
+    def test_source_rate_extraction_includes_third_channel(self) -> None:
+        media = self.root / "three-channels.wav"
+        frames = bytearray()
+        for index in range(44_100 // 5):
+            third = round(math.sin(2 * math.pi * 220 * index / 44_100) * 24_000)
+            frames.extend(struct.pack("<hhh", 0, 0, third))
+        with wave.open(str(media), "wb") as output:
+            output.setnchannels(3)
+            output.setsampwidth(2)
+            output.setframerate(44_100)
+            output.writeframes(frames)
+
+        payload = waveform_module.extract_waveform(media)
+        self.assertEqual((payload["sample_rate"], payload["division"]), (44_100, 441))
+        self.assertEqual((payload["peak_count"], payload["duration_ms"]), (20, 200))
+        self.assertGreater(max(base64.b64decode(payload["data"])[1::2]), 80)
+
     def test_media_signature_invalidates_when_file_changes(self) -> None:
         payload = {
             "schema": waveform_module.WAVEFORM_SCHEMA,
@@ -97,13 +191,13 @@ class WaveformExtractionTests(unittest.TestCase):
         self.assertFalse(waveform_module.waveform_matches_media(payload, self.media_path))
 
     def test_mopeaks_cache_is_reused_when_project_has_no_embedded_cache(self) -> None:
-        # 波形缓存的唯一落点是 mopeaks 二进制容器；命中它就不该再碰 ffmpeg。
+        # 新版源采样率峰值命中 mopeaks 后不该再碰 ffmpeg。
         payload = {
             "schema": waveform_module.WAVEFORM_SCHEMA,
             "encoding": waveform_module.WAVEFORM_ENCODING,
             "peaks_per_second": 100,
-            "sample_rate": 1000,
-            "division": 10,
+            "sample_rate": 8000,
+            "division": 80,
             "peak_count": 1,
             "duration_ms": 10,
             "data": "AAA=",
