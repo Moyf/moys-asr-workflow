@@ -115,7 +115,6 @@ document.addEventListener('keydown', (e) => {
       || MaweDom.stickerPreviewModal.classList.contains('show') || MaweDom.projectMediaModal.classList.contains('show')
       || MaweDom.multiSubtitleSplitModal?.classList.contains('show')
       || MaweDom.multiSubtitleImportModal?.classList.contains('show')
-      || document.getElementById('sticker-root-modal').classList.contains('show')
       || MaweDom.ctxmenu.classList.contains('show')) return;
   if (MaweNavPreview.navigationOwner === 'cue-list' && MaweCueListAnchor.navigateCueListBoundary(e.key)) {
     e.preventDefault();
@@ -159,7 +158,6 @@ document.addEventListener('keydown', (e) => {
   if (MaweDom.replaceModal.classList.contains('show') || MaweDom.stickerModal.classList.contains('show')
       || MaweDom.stickerPreviewModal.classList.contains('show') || MaweDom.projectMediaModal.classList.contains('show')
       || MaweDom.multiSubtitleSplitModal?.classList.contains('show')
-      || document.getElementById('sticker-root-modal').classList.contains('show')
       || MaweDom.ctxmenu.classList.contains('show')) return;
   if (!MaweKeyboardTargets.switchMultiSubtitleTrack(e.key === 'ArrowUp' ? -1 : 1)) return;
   e.preventDefault();

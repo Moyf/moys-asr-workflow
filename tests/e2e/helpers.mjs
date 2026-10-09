@@ -281,6 +281,7 @@ export async function makeFirstCueWordSplittable(page) {
       { start: segment.start, end: 4000, text: 'Alpha' },
       { start: 4000, end: segment.end, text: 'Bravo' },
     ];
+    MaweSettings.EDITOR_SETTINGS.mainSplitModeOverride = 'word';
     MaweCuePanel.renderAll({ waveform: 'full' });
   });
 }
@@ -320,6 +321,34 @@ export async function disableOnboarding(page) {
     window.addEventListener('DOMContentLoaded', markServerOnboardingComplete, { once: true });
     window.setTimeout(markServerOnboardingComplete, 0);
   });
+}
+
+// Follow the public settings entry points after project/global settings were separated.
+export async function openSettingsPage(page, key) {
+  const project = ['timebase', 'project-tracks', 'subtitle-style', 'project-color', 'project-sticker'].includes(key);
+  const panel = project ? 'project-settings' : 'editor-settings';
+  const other = project ? 'editor-settings' : 'project-settings';
+  if (await page.locator(`#${other}-panel`).isVisible()) await page.locator(`#${other}-close`).click();
+  if (!await page.locator(`#${panel}-panel`).isVisible()) await page.locator(`#${panel}-toggle`).click();
+  await page.locator(`#editor-settings-tab-${key}`).click();
+}
+
+export async function closeSettingsPanels(page) {
+  for (const prefix of ['project-settings', 'editor-settings']) {
+    if (await page.locator(`#${prefix}-panel`).isVisible()) await page.locator(`#${prefix}-close`).click();
+  }
+}
+
+export async function toggleGlobalSettings(page) {
+  const open = await page.locator('#editor-settings-panel').isVisible();
+  await closeSettingsPanels(page);
+  if (!open) await page.locator('#editor-settings-toggle').click();
+}
+
+export async function setProjectTrackEnabled(page, id, enabled) {
+  await openSettingsPage(page, 'project-tracks');
+  await page.locator(`#${id}`).setChecked(enabled);
+  await closeSettingsPanels(page);
 }
 
 export function generateProjectJson(filePath) {

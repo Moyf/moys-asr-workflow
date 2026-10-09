@@ -76,6 +76,7 @@ editor/media/waveform.js
 editor/ui/editor-hint.js
 editor/media/editor-jkl.js
 editor/state/editor-settings.js
+editor/state/editor-project-settings.js
 editor/state/editor-multi-subtitle-core.js
 editor/ui/editor-gap-remove-data.js
 editor/styles/editor-colors.js

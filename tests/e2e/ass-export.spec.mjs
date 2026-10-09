@@ -9,8 +9,7 @@ import {
   generateWav,
   generateWaveformPayload,
   makeTempDir,
-  startServer,
-} from './helpers.mjs';
+  startServer, closeSettingsPanels, openSettingsPage, setProjectTrackEnabled } from './helpers.mjs';
 
 const DURATION_MS = 4_000;
 
@@ -78,8 +77,8 @@ test.afterAll(async () => {
 test('style form groups basic controls and labels background box fields consistently', async ({ page }) => {
   await disableOnboarding(page);
   await page.goto(server.url);
-  await page.locator('#editor-settings-toggle').click();
-  await page.locator('#editor-settings-tab-subtitle-style').click();
+  await openSettingsPage(page, 'subtitle-style');
+  await openSettingsPage(page, 'subtitle-style');
   await page.locator('#ass-style-manager-open').click();
   await page.locator('#ass-style-list [data-ass-selection-id="ass"]').click();
   await expect(page.locator('#ass-style-extended-heading')).toHaveCount(0);
@@ -118,8 +117,8 @@ test('exports ASS from the default profile style and keeps enabled subtitle text
   await stubSavePicker(page);
   await page.goto(server.url);
 
-  await page.locator('#editor-settings-toggle').click();
-  await page.locator('#editor-settings-tab-subtitle-style').click();
+  await openSettingsPage(page, 'subtitle-style');
+  await openSettingsPage(page, 'subtitle-style');
   await expect(page.locator('#editor-settings-page-subtitle-style')).toBeVisible();
   // 预览字体是带 datalist 搜索的输入框；预览设置只影响播放器画面，
   // 不应写进按样式库导出的 ASS。
@@ -131,7 +130,7 @@ test('exports ASS from the default profile style and keeps enabled subtitle text
     input.dispatchEvent(new Event('change', { bubbles: true }));
   });
 
-  await page.locator('#editor-settings-close').click();
+  await closeSettingsPanels(page);
   await page.locator('#subtitle-export-btn').click();
   await expect(page.locator('#download-full-ass')).toHaveText('带样式的 ASS 字幕');
   await page.locator('#download-full-ass').click();
@@ -264,10 +263,13 @@ test('ASS emphasis controls drive preview and inline export color', async ({ pag
   await disableOnboarding(page);
   await stubSavePicker(page);
   await page.goto(server.url);
-  await page.locator('#editor-settings-toggle').click();
-  await page.locator('#editor-settings-tab-subtitle-style').click();
+  await openSettingsPage(page, 'subtitle-style');
+  await openSettingsPage(page, 'subtitle-style');
+  await openSettingsPage(page, 'special-edit');
   await expect(page.locator('#ass-inline-text-settings')).toBeHidden();
+  await openSettingsPage(page, 'subtitle-style');
   await page.locator('#ass-mode-toggle').check();
+  await openSettingsPage(page, 'special-edit');
   await expect(page.locator('#ass-inline-text-settings')).toBeVisible();
   await expect(page.locator('#ass-inline-text-settings input[type=checkbox]')).toHaveCount(5);
   await expect(page.locator('#ass-inline-text-title')).toHaveText('特殊文本格式');
@@ -282,7 +284,7 @@ test('ASS emphasis controls drive preview and inline export color', async ({ pag
   await page.locator('#ass-special-symbol-rule').selectOption('both');
   await expect(page.locator('[data-ass-symbol="*"]')).toHaveText('*强调*/**强调**');
   await page.locator('#ass-special-symbol-rule').selectOption('double');
-  await page.locator('#ass-style-manager-open').click();
+  await page.locator('#ass-special-style-edit').click();
   await page.locator('#ass-style-list [data-ass-selection-id="ass"]').click();
   await expect(page.locator('#ass-style-emphasis-syntax')).toHaveCount(0);
   await expect(page.locator('#ass-emphasis-syntax')).toBeChecked();
@@ -302,12 +304,12 @@ test('ASS emphasis controls drive preview and inline export color', async ({ pag
   await page.locator('#ass-style-emphasis-style').selectOption('text');
   await page.locator('#ass-style-window-close').click();
   await page.locator('#ass-emphasis-syntax').uncheck();
-  await page.locator('#ass-style-manager-open').click();
+  await page.locator('#ass-special-style-edit').click();
   await expect(page.locator('#ass-style-emphasis-options')).toBeHidden();
   await page.locator('#ass-style-window-close').click();
   await page.locator('#ass-emphasis-syntax').check();
   await expect(page.locator('#ass-special-symbol-rule')).toHaveValue('double');
-  await page.locator('#editor-settings-close').click();
+  await closeSettingsPanels(page);
 
   const preview = await page.evaluate(() => {
     MaweBoot.DATA.segments = [{ start: 0, end: 4000, text: '前 **重点** 后' }];
@@ -526,7 +528,7 @@ test('exports main, secondary and combined bilingual SRT from one menu', async (
   await page.locator('#download-full-srt').click();
   await expect.poll(() => page.evaluate(() => window.__exportSaves.length)).toBe(3);
   expect(await page.evaluate(() => window.__exportSaves[2].content)).not.toContain('Secondary line');
-  await page.locator('#multi-subtitle-toggle').uncheck();
+  await setProjectTrackEnabled(page, 'multi-subtitle-toggle', false);
   await page.locator('#subtitle-export-btn').click();
   await expect(page.locator('#download-full-srt')).toHaveText('SRT 字幕');
   await expect(page.locator('#download-multi-srt')).toBeHidden();
@@ -539,7 +541,7 @@ test('shows disabled secondary export entries when bilingual mode has no second 
   await stubSavePicker(page);
   await page.goto(server.url);
   page.once('dialog', (dialog) => dialog.dismiss());
-  await page.locator('#multi-subtitle-toggle').check();
+  await setProjectTrackEnabled(page, 'multi-subtitle-toggle', true);
   await page.locator('#subtitle-export-btn').click();
   await expect(page.locator('#download-full-srt')).toHaveText('主字幕 SRT');
   await expect(page.locator('#download-multi-srt')).toBeVisible();
@@ -599,8 +601,8 @@ test('keeps ASS style actions and preview-mode hints attached to the active form
   await disableOnboarding(page);
   await page.goto(server.url);
 
-  await page.locator('#editor-settings-toggle').click();
-  await page.locator('#editor-settings-tab-subtitle-style').click();
+  await openSettingsPage(page, 'subtitle-style');
+  await openSettingsPage(page, 'subtitle-style');
   await page.locator('#ass-style-manager-open').click();
   await expect(page.locator('#ass-style-window')).toBeVisible();
   await expect(page.locator('.ass-style-editor-toolbar')).toHaveCount(0);
@@ -685,8 +687,8 @@ test('refreshes inline font metrics and interpolates fs tags in native resolutio
 test('uses outline colour for sample boxes and preserves zero scaling', async ({ page }) => {
   await disableOnboarding(page);
   await page.goto(server.url);
-  await page.locator('#editor-settings-toggle').click();
-  await page.locator('#editor-settings-tab-subtitle-style').click();
+  await openSettingsPage(page, 'subtitle-style');
+  await openSettingsPage(page, 'subtitle-style');
   await page.locator('#ass-style-manager-open').click();
   await page.evaluate(async () => {
     await loadAssStyleLibrary({ force: true });

@@ -177,6 +177,8 @@ export function createWaveformModule(dependencies) {
       // 「显示窗口」仅基础模式有意义；「每行长度」「每行高度」仅多行模式有意义。
       const windowSetting = document.getElementById('waveform-window-setting');
       const secondsPerRowSetting = document.getElementById('waveform-seconds-per-row-setting');
+      const rowHeightScope = document.getElementById('waveform-row-height-scope');
+      if (rowHeightScope) rowHeightScope.hidden = this.settings.mode === 'basic';
       const rowHeightSetting = document.getElementById('waveform-row-height-setting');
       if (windowSetting) windowSetting.hidden = !basicMode;
       if (secondsPerRowSetting) secondsPerRowSetting.hidden = !multiMode;

@@ -48,7 +48,6 @@ document.addEventListener('keydown', (e) => {
   if (MaweDom.replaceModal.classList.contains('show')) return;
   if (MaweDom.stickerModal.classList.contains('show')) return;
   if (MaweDom.stickerPreviewModal.classList.contains('show')) return;
-  if (document.getElementById('sticker-root-modal').classList.contains('show')) return;
   const a = document.activeElement;
   if (a && (a.tagName === 'INPUT' || a.tagName === 'TEXTAREA' || a.tagName === 'SELECT' || a.isContentEditable)) return;
   // Ctrl/Alt/Meta 别误触发（让浏览器自己处理 Ctrl+L 等）
@@ -113,7 +112,6 @@ document.addEventListener('keydown', (e) => {
   if (MaweDom.stickerPreviewModal.classList.contains('show')) return;
   if (MaweDom.projectMediaModal.classList.contains('show')) return;
   if (MaweDom.multiSubtitleSplitModal?.classList.contains('show')) return;
-  if (document.getElementById('sticker-root-modal').classList.contains('show')) return;
   if (MaweDom.ctxmenu.classList.contains('show')) return;
   if (e.ctrlKey || e.metaKey) return;
   const direction = (key === 'a' || key === 'w') ? -1 : 1;
@@ -203,7 +201,6 @@ document.addEventListener('keydown', (e) => {
   )) return;
   if (MaweDom.replaceModal.classList.contains('show') || MaweDom.stickerModal.classList.contains('show')
       || MaweDom.stickerPreviewModal.classList.contains('show') || MaweDom.projectMediaModal.classList.contains('show')
-      || document.getElementById('sticker-root-modal').classList.contains('show')
       || MaweDom.ctxmenu.classList.contains('show')) return;
   e.preventDefault();
   e.stopPropagation();
@@ -229,7 +226,6 @@ document.addEventListener('keydown', (e) => {
   if (MaweDom.stickerModal.classList.contains('show')) return;
   if (MaweDom.stickerPreviewModal.classList.contains('show')) return;
   if (MaweDom.projectMediaModal.classList.contains('show')) return;
-  if (document.getElementById('sticker-root-modal').classList.contains('show')) return;
   if (MaweDom.ctxmenu.classList.contains('show')) return;
   e.preventDefault();
   MaweSelection.selectAll();
@@ -254,7 +250,6 @@ document.addEventListener('keydown', (e) => {
   if (MaweDom.stickerModal.classList.contains('show')) return;
   if (MaweDom.stickerPreviewModal.classList.contains('show')) return;
   if (MaweDom.projectMediaModal.classList.contains('show')) return;
-  if (document.getElementById('sticker-root-modal').classList.contains('show')) return;
   if (MaweDom.ctxmenu.classList.contains('show')) return;
   if (MaweSelection.selectedIdxs.size === 0 && MaweSelection.selectedExtensionIdxs.size === 0) return;
   e.preventDefault();
@@ -276,7 +271,6 @@ document.addEventListener('keydown', (e) => {
   if (MaweDom.stickerModal.classList.contains('show')) return;
   if (MaweDom.stickerPreviewModal.classList.contains('show')) return;
   if (MaweDom.projectMediaModal.classList.contains('show')) return;
-  if (document.getElementById('sticker-root-modal').classList.contains('show')) return;
   if (MaweDom.ctxmenu.classList.contains('show')) return;
   if (e.ctrlKey || e.altKey || e.metaKey || e.shiftKey) return;
   if (MaweSelection.selectedIdxs.size === 0 && MaweState.selection.indices('overlay').size === 0) return;
@@ -305,7 +299,6 @@ document.addEventListener('keydown', (e) => {
   if (MaweDom.stickerModal.classList.contains('show')) return;
   if (MaweDom.stickerPreviewModal.classList.contains('show')) return;
   if (MaweDom.projectMediaModal.classList.contains('show')) return;
-  if (document.getElementById('sticker-root-modal').classList.contains('show')) return;
   if (MaweDom.ctxmenu.classList.contains('show')) return;
   if (e.ctrlKey || e.altKey || e.metaKey || e.shiftKey) return;
   if (MaweSelection.selectedIdxs.size === 0 && MaweState.selection.indices('overlay').size === 0) return;
@@ -348,7 +341,6 @@ document.addEventListener('keydown', (e) => {
   if (MaweDom.stickerModal.classList.contains('show')) return;
   if (MaweDom.stickerPreviewModal.classList.contains('show')) return;
   if (MaweDom.projectMediaModal.classList.contains('show')) return;
-  if (document.getElementById('sticker-root-modal').classList.contains('show')) return;
   if (MaweDom.ctxmenu.classList.contains('show')) return;
   if (!MaweCuePanel.getCurrentCuePanelTarget()) {
     e.preventDefault();
@@ -371,7 +363,6 @@ document.addEventListener('keydown', (e) => {
   if (MaweDom.stickerModal.classList.contains('show')) return;
   if (MaweDom.stickerPreviewModal.classList.contains('show')) return;
   if (MaweDom.projectMediaModal.classList.contains('show')) return;
-  if (document.getElementById('sticker-root-modal').classList.contains('show')) return;
   if (MaweDom.ctxmenu.classList.contains('show')) return;
   if (e.ctrlKey || e.altKey || e.metaKey || e.shiftKey) return;
   e.preventDefault();
@@ -423,7 +414,6 @@ document.addEventListener('keydown', (e) => {
   if (MaweDom.stickerModal.classList.contains('show')) return;
   if (MaweDom.stickerPreviewModal.classList.contains('show')) return;
   if (MaweDom.projectMediaModal.classList.contains('show')) return;
-  if (document.getElementById('sticker-root-modal').classList.contains('show')) return;
   if (MaweDom.ctxmenu.classList.contains('show')) return;
   if (e.ctrlKey || e.altKey || e.metaKey) return;
   if (MaweSelection.selectedIdxs.size === 0 && MaweSelection.selectedExtensionIdxs.size > 0) {
@@ -457,7 +447,6 @@ document.addEventListener('keydown', (e) => {
     if (MaweDom.stickerModal.classList.contains('show')) return;
     if (MaweDom.stickerPreviewModal.classList.contains('show')) return;
     if (MaweDom.projectMediaModal.classList.contains('show')) return;
-    if (document.getElementById('sticker-root-modal').classList.contains('show')) return;
     if (MaweCoreState.waveformEditor.cancelCueDrag()) {
       e.preventDefault();
       e.stopPropagation();
@@ -475,7 +464,6 @@ document.addEventListener('keydown', (e) => {
   if (MaweDom.stickerModal.classList.contains('show')) return;
   if (MaweDom.stickerPreviewModal.classList.contains('show')) return;
   if (MaweDom.projectMediaModal.classList.contains('show')) return;
-  if (document.getElementById('sticker-root-modal').classList.contains('show')) return;
   if (MaweDom.ctxmenu.classList.contains('show')) return;
   if (e.ctrlKey || e.altKey || e.metaKey || e.shiftKey) return;
   const tool = (e.key === 'v' || e.key === 'V') ? 'select' : 'razor';
@@ -495,7 +483,6 @@ document.addEventListener('keydown', (e) => {
   if (MaweDom.stickerModal.classList.contains('show')) return;
   if (MaweDom.stickerPreviewModal.classList.contains('show')) return;
   if (MaweDom.projectMediaModal.classList.contains('show')) return;
-  if (document.getElementById('sticker-root-modal').classList.contains('show')) return;
   if (MaweDom.ctxmenu.classList.contains('show')) return;
   if (e.ctrlKey || e.altKey || e.metaKey || e.shiftKey) return;
   const target = MaweCuePanel.getCurrentCuePanelTarget();
@@ -521,7 +508,6 @@ document.addEventListener('keydown', (e) => {
   if (MaweDom.projectMediaModal.classList.contains('show')) return;
   if (MaweDom.multiSubtitleSplitModal?.classList.contains('show')) return;
   if (MaweDom.multiSubtitleImportModal?.classList.contains('show')) return;
-  if (document.getElementById('sticker-root-modal').classList.contains('show')) return;
   if (MaweDom.ctxmenu.classList.contains('show')) return;
   if (e.ctrlKey || e.altKey || e.metaKey || e.shiftKey) return;
   const boundary = e.key.toLowerCase() === 'i' ? 'start' : 'end';
@@ -541,7 +527,6 @@ document.addEventListener('keydown', (e) => {
   if (MaweDom.stickerModal.classList.contains('show')) return;
   if (MaweDom.stickerPreviewModal.classList.contains('show')) return;
   if (MaweDom.projectMediaModal.classList.contains('show')) return;
-  if (document.getElementById('sticker-root-modal').classList.contains('show')) return;
   if (MaweDom.ctxmenu.classList.contains('show')) return;
   if (e.ctrlKey || e.altKey || e.metaKey || e.shiftKey) return;
   const reference = MaweNavPreview.keyboardOperationReference();
@@ -575,7 +560,6 @@ document.addEventListener('keydown', (e) => {
   if (MaweDom.stickerModal.classList.contains('show')) return;
   if (MaweDom.stickerPreviewModal.classList.contains('show')) return;
   if (MaweDom.projectMediaModal.classList.contains('show')) return;
-  if (document.getElementById('sticker-root-modal').classList.contains('show')) return;
   if (MaweDom.ctxmenu.classList.contains('show')) return;
   if (!MaweMultiSubtitleCore.multiSubtitleVisible()) return;
   if (e.ctrlKey || e.altKey || e.metaKey) return;
@@ -642,7 +626,6 @@ document.addEventListener('keydown', (e) => {
   if (MaweDom.stickerModal.classList.contains('show')) return;
   if (MaweDom.stickerPreviewModal.classList.contains('show')) return;
   if (MaweDom.projectMediaModal.classList.contains('show')) return;
-  if (document.getElementById('sticker-root-modal').classList.contains('show')) return;
   if (MaweDom.ctxmenu.classList.contains('show')) return;
   if (e.ctrlKey || e.altKey || e.metaKey || e.shiftKey) return;
   if (!MaweMultiSubtitleCore.multiSubtitleVisible()) return;
@@ -697,7 +680,6 @@ document.addEventListener('keydown', (e) => {
   if (MaweDom.stickerModal.classList.contains('show')) return;
   if (MaweDom.stickerPreviewModal.classList.contains('show')) return;
   if (MaweDom.projectMediaModal.classList.contains('show')) return;
-  if (document.getElementById('sticker-root-modal').classList.contains('show')) return;
   if (MaweDom.ctxmenu.classList.contains('show')) return;
   // Shift+B = 渐进拆分，Ctrl/Cmd+Shift+B = 复制拆分；其余修饰组合不抢占输入。
   if (e.altKey) return;

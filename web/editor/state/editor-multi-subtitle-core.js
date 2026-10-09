@@ -79,9 +79,7 @@
 
 
   function getMainSubtitleSplitMode(segment = null) {
-    // 类型来源三级：用户手动指定（本地偏好，两个入口共享、多重字幕开关无关）
-    // → 工程显式配置的 main_split_mode（仅多重字幕开启时沿用旧契约语义）
-    // → 按主字幕文本实时检测。
+    // 工程 main_split_mode 在单轨与双语模式下都生效；未指定时检测字幕文字。
     const override = MaweSettings.EDITOR_SETTINGS.mainSplitModeOverride;
     if (override === 'word' || override === 'continuous') return override;
     const multi = getMultiSubtitleState();

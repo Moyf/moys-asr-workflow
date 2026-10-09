@@ -41,12 +41,16 @@ function showOverlayContextMenu(x, y, index) {
       if (MaweCoreState.player.paused) MaweMediaPlayback.togglePlayback();
     });
   }
+  // 试听：只播放该叠加字幕自身的时间范围，到终点自动暂停。
+  addItem('试听', () => MaweMediaPlayback.auditionRange(segment.start, segment.end));
   addItem('拆分此叠加字幕', () => openOverlaySplitModal(index, null));
   addItem('转为主字幕', () => convertOverlayCueToMain(index), { disabled: mainOccupied });
   addSep();
   // 组 2：外观（表情包与颜色），交互与主字幕菜单对齐（1~5 快捷键同源）。
-  addItem('分配表情包…', () => MaweStickerPicker.openStickerPicker([index], false, { overlay: true }));
-  if (segment.sticker || segment.sticker_ref) {
+  // 表情包功能总开关关闭时隐藏分配入口，工程数据保留。
+  const stickersEnabled = MaweSettings.EDITOR_SETTINGS.stickersEnabled !== false;
+  if (stickersEnabled) addItem('分配表情包…', () => MaweStickerPicker.openStickerPicker([index], false, { overlay: true }));
+  if (stickersEnabled && (segment.sticker || segment.sticker_ref)) {
     addItem('删除表情包', () => clearOverlaySticker(index));
   }
   const colorRow = document.createElement('div');

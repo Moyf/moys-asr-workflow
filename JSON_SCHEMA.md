@@ -63,7 +63,7 @@
 | `model` | `string` | 否 | ASR 模型名，如 `qwen3-asr`。仅用于显示 |
 | `media_metadata` | `object` | 否 | 源媒体元数据。可包含视频 `video_fps`（1–240 的数字）、`video_fps_ratio`（FFprobe 原始帧率比例字符串）、成对的正整数 `video_width` / `video_height`、非负整数 `selected_audio_track` 和 `audio_tracks` 音轨清单；缺失时按旧工程处理 |
 | `timebase` | `object` | 否 | 字幕编辑时间基准：`unit` 为 `milliseconds` 或 `frames`，`fps` 范围为 1–240。缺失时按毫秒模式兼容读取 |
-| `sticker_root` | `string` | 否 | 表情包根目录绝对路径。打开工程时会覆盖编辑器内的 `STICKER_ROOT` |
+| `sticker_root` | `string` | 否 | 工程覆盖的表情包目录绝对路径；缺失或空字符串表示使用本机全局默认目录。有效覆盖目录优先，默认目录不写入工程 |
 | `waveform` | `object` | 否 | 可丢弃的紧凑波形缓存。由 `edit.py` 或浏览器自动生成；不影响字幕语义 |
 | `gap_remove` | `object` | 否 | 可逆的空隙移除决定。保留原始媒体/字幕时间，仅描述导出与跳过播放时使用的派生时间轴 |
 | `script_alignment` | `object` | 否 | 录制对齐工具写入的选择记录；不改变 MAWE 的字幕与时间码语义 |
@@ -72,7 +72,7 @@
 | `preview` | `object` | 否 | 预览呈现设置。含 `preview.subtitle`（主字幕预览框与样式）、可选的 `preview.extension_subtitle`（副字幕样式）和 `preview.sticker`（表情包预览层）。不影响字幕时间与文本 |
 | `overlay_track` | `object` | 否 | 独立的叠加字幕轨。它的段可以与主轨重叠，但轨内保持时间顺序；用于保存导入 SRT 时出现的双层字幕 |
 
-`media_metadata.video_fps` 是生成工程时从源视频读取的媒体 FPS，仅作为编辑器切入帧模式时的默认值；它不替代编辑器自己的 `timebase.fps`，用户仍可在全局设置中修改。旧工程没有 `media_metadata` 时继续使用编辑器原有默认值。`video_fps_ratio` 用于保留 `30000/1001` 这类非整数帧率的原始比例。
+`media_metadata.video_fps` 是生成工程时从源视频读取的媒体 FPS，仅作为编辑器切入帧模式时的默认值；它不替代编辑器自己的 `timebase.fps`，用户仍可在项目设置中修改。旧工程没有 `media_metadata` 时继续使用编辑器原有默认值。`video_fps_ratio` 用于保留 `30000/1001` 这类非整数帧率的原始比例。
 
 `media_metadata.video_width` / `video_height` 是源视频的实际像素尺寸，由生成工程时的 FFprobe 或浏览器加载视频后的 `HTMLVideoElement.videoWidth` / `videoHeight` 补齐；两个字段必须同时存在。ASS 导出会优先使用这组尺寸作为 `PlayResX` / `PlayResY`，缺失时使用当前浏览器视频尺寸，仍不可用则回退到 1920×1080。旧工程缺少这些字段时不影响读取。
 
@@ -386,6 +386,10 @@
 
 ### 1.4 preview 预览呈现
 
+`preview.ass_mode` 为可选布尔值，记录当前工程是否启用 ASS 字幕模式；缺失时为 `false`，不会从另一工程或浏览器旧偏好继承。字幕样式与颜色呈现继续保存于工程，ASS 样式库与特殊文本规则仍是可复用的本机配置。
+
+`preview.subtitle.speaker_labels.export_enabled` 为可选布尔值，记录是否在字幕导出时附加映射的说话人名称；缺失时为 `false`。它与标签预览的 `enabled` 独立，随工程保存。
+
 `preview` 记录预览呈现层的设置，与字幕时间/文本完全解耦。目前定义两个子几何：`preview.subtitle`（字幕预览框，编辑器里 `#overlay`）与 `preview.sticker`（表情包预览层，编辑器里 `#sticker-overlay-layer`），都是在播放器区域内的几何，以 player-wrap 矩形的**归一化分数**存储，因此在播放器缩放和跨机传输后仍然一致。
 
 ```json
@@ -502,7 +506,7 @@
 | `multi_subtitle.schema` | string | 否 | 固定为 `moy.asr.multi_subtitle.v1` |
 | `multi_subtitle.enabled` | boolean | 否 | 默认 `false`；关闭只隐藏扩展数据，不删除数据 |
 | `multi_subtitle.display_mode` | string | 否 | `main` / `extension` / `both`，默认 `both` |
-| `multi_subtitle.main_split_mode` | string | 否 | 主字幕语言类型：`continuous`（字符型）或 `word`（单词型）；旧工程缺失时按主字幕文本自动判断 |
+| `multi_subtitle.main_split_mode` | string | 否 | 主字幕语言类型：`continuous`（字符型）或 `word`（单词型）；在单轨与双语模式下都生效；旧工程缺失时按主字幕文本自动判断 |
 | `multi_subtitle.tracks` | array | 否 | 扩展轨数组；当前 UI 只管理第一条轨道 |
 | `tracks[i].id` | string | 是 | 轨道稳定 ID |
 | `tracks[i].role` | string | 否 | 当前固定为 `extension` |
@@ -872,13 +876,14 @@ uv run python edit.py your_generated.mosp
 | `media` | string | ❌ | 媒体文件路径 |
 | `language` | string | ❌ | 语言代码 |
 | `model` | string | ❌ | 模型名 |
-| `sticker_root` | string | ❌ | 表情包根目录 |
+| `sticker_root` | string | ❌ | 工程表情包覆盖目录；缺失或为空时使用本机默认目录 |
 | `waveform` | object | ❌ | 可丢弃的 `moy.asr.waveform.v1` 峰值缓存 |
 | `gap_remove` | object | ❌ | 可逆的 `moy.asr.gap_remove.v1` 空隙移除决定 |
 | `markers` | object | ❌ | 可选的 `moy.asr.markers.v1` 标记与区段；AI 复核项带 `review` 字段 |
 | `overlay_track` | object | ❌ | 独立叠加字幕轨 `{enabled, segments}` |
 | `multi_subtitle` | object | ❌ | 可选的 `moy.asr.multi_subtitle.v1` 主轨/扩展轨与绑定 |
 | `preview` | object | ❌ | 预览呈现设置容器 |
+| `preview.ass_mode` | boolean | ❌ | 当前工程的 ASS 字幕模式；缺失时关闭 |
 | `preview.subtitle.x` | number | ❌ | 归一化 `[0,1]`，`x + width <= 1` |
 | `preview.subtitle.y` | number | ❌ | 归一化 `[0,1]`，`y + height <= 1` |
 | `preview.subtitle.width` | number | ❌ | 归一化 `[0,1]`，编辑器最小 0.20 |
@@ -891,6 +896,7 @@ uv run python edit.py your_generated.mosp
 | `preview.subtitle.speaker_labels` | object | ❌ | 颜色到说话人的映射与标签预览设置；默认关闭，名称默认为黄/绿/红/紫/蓝对应 `SP1`～`SP5` |
 | `preview.subtitle.speaker_labels.mapping_enabled` | boolean | ❌ | 是否启用颜色到说话人的映射；关闭时不显示映射配置，也不在预览和导出中使用说话人名称 |
 | `preview.subtitle.speaker_labels.enabled` | boolean | ❌ | 开启后在播放器预览字幕前显示对应颜色的说话人名称；未显式配置时默认开启；不修改字幕文本 |
+| `preview.subtitle.speaker_labels.export_enabled` | boolean | ❌ | 是否在导出时附加说话人名称；缺失时关闭，随工程保存 |
 | `preview.subtitle.speaker_labels.separator` | string | ❌ | 说话人名称与字幕内容之间的分隔符，默认 `：`；最长 16 个字符，允许为空、空格或英文引号，不含控制字符 |
 | `preview.subtitle.speaker_labels.names.<color>` | string | ❌ | 颜色对应名称，最长 64 个字符；允许为空；`<color>` 为 `yellow` / `green` / `red` / `purple` / `blue` |
 | `preview.extension_subtitle` | object | ❌ | 副字幕样式；沿用主字幕预览框 |

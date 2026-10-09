@@ -327,9 +327,10 @@
       MaweMediaPlayback.auditionRange(segment.start, segment.end);
     });
     addSep();
-    // 组 2：外观（表情包与颜色）
-    addItem('分配表情包…', 'T', () => MaweStickerPicker.openStickerPicker([idx], false));
-    if (MaweBoot.DATA.segments[idx].sticker || MaweBoot.DATA.segments[idx].sticker_ref) {
+    // 组 2：外观（表情包与颜色）；表情包功能关闭时隐藏分配入口
+    const stickersEnabled = MaweSettings.EDITOR_SETTINGS.stickersEnabled !== false;
+    if (stickersEnabled) addItem('分配表情包…', 'T', () => MaweStickerPicker.openStickerPicker([idx], false));
+    if (stickersEnabled && (MaweBoot.DATA.segments[idx].sticker || MaweBoot.DATA.segments[idx].sticker_ref)) {
       addItem('删除表情包', '', () => {
         MaweStickerPicker.removeStickerCascade(idx);
         MaweCuePanel.renderAll();
@@ -365,12 +366,13 @@
     addItem('批量替换选中字幕…', '', () => MaweFindReplace.openReplaceModal(targetIdxs));
     addSep();
     // 组 2：外观（表情包与颜色）；「拓展表情包时长」仅在范围内已有表情包时显示
-    const hasStickerInRange = targetIdxs.some(i =>
+    const stickersEnabled = MaweSettings.EDITOR_SETTINGS.stickersEnabled !== false;
+    const hasStickerInRange = stickersEnabled && targetIdxs.some(i =>
       MaweBoot.DATA.segments[i].sticker || MaweBoot.DATA.segments[i].sticker_ref);
     if (hasStickerInRange) {
       addItem('拓展表情包时长', '', () => MaweStickerPicker.expandStickerTime(targetIdxs));
     }
-    addItem('统一分配表情包…', 'T', () => MaweStickerPicker.openStickerPicker(targetIdxs, true));
+    if (stickersEnabled) addItem('统一分配表情包…', 'T', () => MaweStickerPicker.openStickerPicker(targetIdxs, true));
     addColorSubmenu(targetIdxs);
     addSep();
     // 组 3：状态与删除

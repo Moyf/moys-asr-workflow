@@ -171,6 +171,10 @@
   projectBackupLimit: 20,
   // 表情包预览：在视频画面内渲染当前时间的表情包（默认关闭）。
   stickerOverlayEnabled: false,
+  // 标记编辑总开关：默认关闭，启用后显示「标记与区段」入口与标记轨道。
+  markerEditingEnabled: false,
+  // 表情包功能总开关：关闭时隐藏预览与右键分配入口；工程数据保留。
+  stickersEnabled: true,
   // 表情包 OTIO：保留用户偏好的原始素材引用 / 便携文件夹模式。
   stickerOtioExportMode: 'original',
   // 时间线 OTIO / OTIOZ 导出选项：同时导出 SRT、合并表情包轨、写入字幕标记（默认全开）。
@@ -360,7 +364,9 @@
 
   function saveEditorSettings(settings) {
     try {
-      MaweHost.storage.setItem(EDITOR_SETTINGS_KEY, JSON.stringify(settings));
+      const personal = { ...settings };
+      for (const key of ['assMode', 'mainSplitModeOverride', 'exportSpeakerLabels']) delete personal[key];
+      MaweHost.storage.setItem(EDITOR_SETTINGS_KEY, JSON.stringify(personal));
     } catch (_) {
       // file:// 隐私模式可能拒绝 localStorage；本次页面仍保持可用。
     }
@@ -375,6 +381,7 @@
 
   function updateEditorSettings(patch) {
     Object.assign(EDITOR_SETTINGS, patch);
+    if ('assMode' in patch || 'exportSpeakerLabels' in patch) MaweState.changes.previewGeometryDirty = true;
     saveEditorSettings(EDITOR_SETTINGS);
   }
 

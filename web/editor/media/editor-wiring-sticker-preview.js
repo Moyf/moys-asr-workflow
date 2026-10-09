@@ -44,6 +44,29 @@ MaweDom.stickerOverlayToggle?.addEventListener('change', () => {
   MawePlaybackLoop.update();
 });
 
+// 表情包功能总开关：关闭时「预览表情包」不可用（强制关闭并禁用），
+// 右键菜单的分配入口由 context-menus 按同一设置隐藏；工程数据不受影响。
+function applyStickerFeatureEnabled() {
+  const enabled = MaweSettings.EDITOR_SETTINGS.stickersEnabled !== false;
+  const featureToggle = document.getElementById('sticker-feature-toggle');
+  if (featureToggle) featureToggle.checked = enabled;
+  if (MaweDom.stickerOverlayToggle) {
+    MaweDom.stickerOverlayToggle.disabled = !enabled;
+    if (!enabled && MaweDom.stickerOverlayToggle.checked) {
+      MaweDom.stickerOverlayToggle.checked = false;
+      MaweSettings.updateEditorSettings({ stickerOverlayEnabled: false });
+    }
+  }
+  MaweStickerOverlay.stickerOverlayLayer.classList.toggle('hidden', !enabled);
+  MawePreviewGeometry.refreshPreviewGeometryEditable();
+  MawePlaybackLoop.update();
+}
+document.getElementById('sticker-feature-toggle')?.addEventListener('change', (event) => {
+  MaweSettings.updateEditorSettings({ stickersEnabled: event.target.checked });
+  applyStickerFeatureEnabled();
+});
+applyStickerFeatureEnabled();
+
 // 初次应用（不弄脏工程）：字幕与表情包预览几何。必须在 stickerOverlayLayer 创建之后执行（TDZ）。
 MawePreviewGeometry.setPreviewGeometry(MaweAppearance.getPreviewGeometry(), { markDirty: false });
 MawePreviewGeometry.setStickerGeometry(MawePreviewGeometry.getStickerGeometry(), { markDirty: false });

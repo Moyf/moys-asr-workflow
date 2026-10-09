@@ -50,7 +50,7 @@ subtitleColorAssModeHintLink?.addEventListener('click', () => {
 });
 assColorSpeakerExportLink?.addEventListener('click', (event) => {
   event.preventDefault();
-  MaweSettingsPanels.openEditorSettingsAtTab('editor-settings-tab-export');
+  MaweSettingsPanels.openEditorSettingsAtTab('editor-settings-tab-project-color');
   MaweDom.exportSpeakerLabelsToggle?.focus();
 });
 MaweDom.subtitleColorStyleSelect?.addEventListener('change', () => {

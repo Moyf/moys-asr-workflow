@@ -37,7 +37,7 @@ export function createWaveformModule(dependencies) {
         waveformScaleAuto: true,
         disabledDisplay: parsed.disabledDisplay === 'hidden' ? 'hidden' : 'dim',
         showGroupBadges: parsed.showGroupBadges !== false,
-        dragPlayhead: parsed.dragPlayhead !== false,
+        dragPlayhead: true,
         spectralColor: parsed.spectralColor === true,
       };
     } catch (_) {

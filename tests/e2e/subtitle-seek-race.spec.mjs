@@ -7,8 +7,7 @@ import {
   generateProjectJson,
   generateWav,
   makeTempDir,
-  startServer,
-} from './helpers.mjs';
+  startServer, closeSettingsPanels, openSettingsPage, toggleGlobalSettings } from './helpers.mjs';
 
 let tempDir;
 let server;
@@ -145,12 +144,12 @@ test('dragging the waveform playhead crosses multi-row boundaries', async ({ pag
 test('the default waveform subtitle target follows the pointer', async ({ page }) => {
   await page.goto(server.url);
   await waitForMedia(page);
-  await page.locator('#editor-settings-toggle').click();
-  await page.locator('#editor-settings-tab-general').click();
+  await toggleGlobalSettings(page);
+  await openSettingsPage(page, 'general');
   await expect(page.locator('#click-target')).toHaveValue('pointer');
   await expect(page.locator('#click-target-field')).toBeVisible();
   // 关闭设置窗口：浮动窗口悬浮在波形区上方，避免后续点击被窗口拦截。
-  await page.locator('#editor-settings-toggle').click();
+  await toggleGlobalSettings(page);
   await page.evaluate(() => {
     document.getElementById('waveform-scroll').scrollTop = 5 * (120 + 10);
   });

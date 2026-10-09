@@ -220,7 +220,6 @@
         || MaweDom.stickerPreviewModal.classList.contains('show') || MaweDom.projectMediaModal.classList.contains('show')
         || MaweDom.multiSubtitleSplitModal?.classList.contains('show')
         || MaweDom.multiSubtitleImportModal?.classList.contains('show')
-        || document.getElementById('sticker-root-modal').classList.contains('show')
         || MaweDom.ctxmenu.classList.contains('show')) return;
     if (event.ctrlKey || event.altKey || event.metaKey || event.shiftKey) return;
 
