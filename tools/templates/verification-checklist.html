@@ -103,8 +103,11 @@
   .toc a.done .c { color: var(--ok); }
 
   /* 分区卡片 */
+  /* content-visibility：屏外分区跳过排版与绘制，窗口连续缩放时重排成本
+     从 O(整页) 降到 O(视口)——长清单拉伸窗口卡死的根因即在此。 */
   .section { background: var(--paper); border: 1px solid var(--line); border-radius: var(--radius);
-    box-shadow: var(--shadow); margin: 0 0 18px; overflow: hidden; scroll-margin-top: 20px; }
+    box-shadow: var(--shadow); margin: 0 0 18px; overflow: hidden; scroll-margin-top: 20px;
+    content-visibility: auto; contain-intrinsic-size: auto 600px; }
   .section > summary { cursor: pointer; padding: 16px 22px; font-size: 17px; font-weight: 650;
     line-height: 1.5; display: flex; align-items: center; flex-wrap: wrap; gap: 10px;
     user-select: none; list-style: none; }
@@ -163,7 +166,7 @@
   @media print {
     .topbar, .sidebar, .side-actions { display: none !important; }
     .layout { display: block; padding: 0; }
-    .section { box-shadow: none; break-inside: avoid; }
+    .section { box-shadow: none; break-inside: avoid; content-visibility: visible; }
   }
 </style>
 </head>
