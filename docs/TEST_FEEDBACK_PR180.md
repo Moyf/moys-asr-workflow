@@ -2,6 +2,8 @@
 
 反馈来源：Moyf 在 [PR #180](https://github.com/Moyf/moys-asr-workflow/pull/180) 的审阅（审阅对象 `40d8cca5`，对照 base `d4e5dff2`）。结论：暂不 Squash & Merge，先处理渲染/接线回归并决定 3D 兼容方式，补迁移后的浏览器回归。
 
+用户授权：审阅 PR；小问题直接修复后 Squash & Merge，复杂问题在 PR 反馈；合并前整理 CHANGELOG，只保留用户可感知的整体变化。
+
 ## 事实基线（恢复时先读）
 
 ```powershell
