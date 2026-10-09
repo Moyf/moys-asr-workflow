@@ -1,0 +1,246 @@
+{
+  "date": "2026-10-08",
+  "baseline": "d4e5dff2d96b9f64fe453a2a5155a495769cc260",
+  "scope": "isolated research; main tracked product files unchanged",
+  "toolVersions": {
+    "node": "25.8.0",
+    "esbuild": "0.28.2",
+    "acorn": "8.18.0",
+    "eslint-scope": "9.1.2",
+    "typescript": "7.0.2",
+    "playwright": "1.62.0"
+  },
+  "inventory": {
+    "editorFiles": 180,
+    "allWebJs": 183,
+    "extraFiles": 3,
+    "registrations": 68,
+    "resolutions": 63,
+    "categories": {
+      "factory": 59,
+      "wiring": 37,
+      "template": 2,
+      "facade-or-state": 82
+    },
+    "crossLexical": 234,
+    "crossLexicalWrites": 9,
+    "externalGlobalNames": 116,
+    "dynamicRegisterNames": 0,
+    "dynamicResolveNames": 0
+  },
+  "conversion": {
+    "sourceFiles": 180,
+    "factoryExports": 59,
+    "rewrittenReferences": 565,
+    "externalLexicalBridges": [
+      {
+        "file": "editor/styles/editor-wiring-ass-storage.js",
+        "name": "loadAssStyleLibrary",
+        "mutable": true,
+        "kind": "function"
+      },
+      {
+        "file": "editor/styles/editor-wiring-ass-storage.js",
+        "name": "ASS_STYLE_LIBRARY",
+        "mutable": true,
+        "kind": "let"
+      },
+      {
+        "file": "editor/ui/editor-wiring-dom-panels.js",
+        "name": "assModeToggle",
+        "mutable": false,
+        "kind": "const"
+      },
+      {
+        "file": "editor/styles/editor-wiring-ass-manager.js",
+        "name": "assStyleManagerSetSelection",
+        "mutable": true,
+        "kind": "function"
+      },
+      {
+        "file": "editor/styles/editor-wiring-ass-manager.js",
+        "name": "updateAssStyleManagerLibrary",
+        "mutable": true,
+        "kind": "function"
+      },
+      {
+        "file": "editor/styles/editor-wiring-ass-manager.js",
+        "name": "syncAssStyleForm",
+        "mutable": true,
+        "kind": "function"
+      },
+      {
+        "file": "editor/cues/editor-wiring-overlay-transfer.js",
+        "name": "convertOverlayCueToMain",
+        "mutable": true,
+        "kind": "function"
+      },
+      {
+        "file": "editor/cues/editor-wiring-overlay-split-merge.js",
+        "name": "openOverlaySplitModal",
+        "mutable": true,
+        "kind": "function"
+      }
+    ]
+  },
+  "artifact": {
+    "bytes": 2413981,
+    "sha256": "4881c6195fcf661a7f890dfdd05ab7d0a13b013e1f067c18105eee69936aa941",
+    "freshnessCheck": "pass; read-only"
+  },
+  "results": {
+    "targetContracts": {
+      "tests": 10,
+      "pass": 10,
+      "fail": 0,
+      "skipped": 0
+    },
+    "nodeFinal": {
+      "tests": 445,
+      "pass": 445,
+      "fail": 0,
+      "skipped": 0
+    },
+    "browserProbes": {
+      "ok": true,
+      "checks": {
+        "zeroErrors": true,
+        "artifactInFormalPage": true,
+        "fileBoot": true,
+        "serverBoot": true,
+        "projectInjection": true,
+        "sharedStateWrite": true,
+        "integerMilliseconds": true,
+        "exportSrt": true,
+        "mergeAndUndo": true,
+        "fileResultMatchesBaseline": true,
+        "serverResultMatchesBaseline": true,
+        "explicitInitializationOrder": true,
+        "knownTokensReplaced": true
+      },
+      "errors": {
+        "baseline": [],
+        "file": [],
+        "server": []
+      },
+      "initialized": {
+        "file": 180,
+        "server": 180
+      }
+    },
+    "existingE2E": {
+      "pass": 86,
+      "specs": [
+        "editor-transactions",
+        "speaker-labels",
+        "timed-text-edit",
+        "open-project-attach",
+        "overlay-track",
+        "ass-export",
+        "waveform-deletion",
+        "keyboard-timing",
+        "playback-refresh"
+      ],
+      "testBodiesModified": false
+    },
+    "pythonBaseline": {
+      "tests": 1833,
+      "failures": 0,
+      "errors": 7,
+      "skipped": 27,
+      "diagnostics": [
+        "ERROR: test_entrypoint_help_subprocess_is_headless_safe (test_gui_workflow.GuiWorkflowTests.test_entrypoint_help_subprocess_is_headless_safe)",
+        "ERROR: test_openai_gui_command_is_accepted_by_cli_parser (test_gui_workflow.GuiWorkflowTests.test_openai_gui_command_is_accepted_by_cli_parser)",
+        "ERROR: test_soniox_generator_help_declares_debug_raw (test_gui_workflow.GuiWorkflowTests.test_soniox_generator_help_declares_debug_raw)",
+        "ERROR: test_server_help_exposes_short_port_option (test_local_editor_server.LocalEditorServerTests.test_server_help_exposes_short_port_option)",
+        "ERROR: test_local_transcription_script_imports_bundled_maw_without_script_path (test_local_runtime.LocalRuntimeTests.test_local_transcription_script_imports_bundled_maw_without_script_path)",
+        "ERROR: test_runtime_worker_imports_maw_when_started_by_file_path (test_local_runtime.LocalRuntimeTests.test_runtime_worker_imports_maw_when_started_by_file_path)",
+        "ERROR: test_generator_accepts_shared_debug_flag (test_openai_asr.OpenAiAsrTests.test_generator_accepts_shared_debug_flag)"
+      ]
+    },
+    "pythonRawFinal": {
+      "tests": 1833,
+      "failures": 10,
+      "errors": 9,
+      "skipped": 27,
+      "baselineErrorsAlsoPresent": 7,
+      "newDiagnostics": [
+        "ERROR: test_editor_script_payload_follows_manifest_order (test_editor_assets.EditorAssetContractTests.test_editor_script_payload_follows_manifest_order)",
+        "ERROR: test_nested_sources_preserve_order_and_comments (test_editor_manifest.EditorManifestTests.test_nested_sources_preserve_order_and_comments)",
+        "FAIL: test_ass_style_library_saves_require_token_and_flush_before_unload (test_editor_assets.EditorAssetContractTests.test_ass_style_library_saves_require_token_and_flush_before_unload)",
+        "FAIL: test_gap_state_labels_match_in_mawe_and_align (test_editor_assets.EditorAssetContractTests.test_gap_state_labels_match_in_mawe_and_align)",
+        "FAIL: test_generated_page_contains_registered_modules_in_order (test_editor_assets.EditorAssetContractTests.test_generated_page_contains_registered_modules_in_order)",
+        "FAIL: test_sticker_otio_exposes_portable_mode_and_relative_metadata (test_editor_assets.EditorAssetContractTests.test_sticker_otio_exposes_portable_mode_and_relative_metadata)",
+        "FAIL: test_sticker_root_uses_server_validation_without_browser_picker (test_editor_assets.EditorAssetContractTests.test_sticker_root_uses_server_validation_without_browser_picker)",
+        "FAIL: test_waveform_gap_display_type_uses_shared_core_and_subtle_protected_style (test_editor_assets.EditorAssetContractTests.test_waveform_gap_display_type_uses_shared_core_and_subtle_protected_style)",
+        "FAIL: test_server_page_uses_shared_template_and_routes_stickers (test_local_editor_server.LocalEditorServerTests.test_server_page_uses_shared_template_and_routes_stickers)",
+        "FAIL: test_blank_editor_inlines_modular_assets (test_waveform.EditorAssetTests.test_blank_editor_inlines_modular_assets)",
+        "FAIL: test_long_media_waveform_hint_points_to_maw_gui (test_waveform.EditorAssetTests.test_long_media_waveform_hint_points_to_maw_gui)",
+        "FAIL: test_reapeaks_waveform_is_the_default_shape_source (test_waveform.EditorAssetTests.test_reapeaks_waveform_is_the_default_shape_source)"
+      ]
+    },
+    "typecheck": {
+      "baselineDiagnostics": 1,
+      "finalDiagnostics": 235,
+      "codes": {
+        "TS2304": 60,
+        "TS2339": 73,
+        "TS2345": 3,
+        "TS2464": 1,
+        "TS2551": 1,
+        "TS2552": 36,
+        "TS2630": 60,
+        "TS2698": 1
+      },
+      "passed": false
+    },
+    "meaningfulRed": {
+      "location": "naive/intermediate-tests-final.log",
+      "tests": 9,
+      "pass": 7,
+      "fail": 2,
+      "skipped": 0,
+      "failures": [
+        "E2 shared lexical leak",
+        "E6 browser MULTI_SUBTITLE_UTILS undefined"
+      ]
+    }
+  },
+  "unverified": [
+    "full Tauri application and packaging",
+    "remaining existing E2E specs",
+    "production performance",
+    "direct import replacement for all dependency bags",
+    "dedicated behavior checks listed in Python contract mapping",
+    "older Node versions"
+  ],
+  "scriptSha256": {
+    "scripts/esm-mechanical/adapt-tests.mjs": "953577e2219b71d38b8e3db681c4c35ec10ce8f406e49427496a250fcca77011",
+    "scripts/esm-mechanical/assembly-contract.test.mjs": "52ad956be298c7c447272857c7ce1e5f21e13f37ccb6634909599ab34df4b7c5",
+    "scripts/esm-mechanical/full-build.mjs": "23891bd98a9e201239f8218685e3511f2be95254a009604976ed5b0b0d1a8e50",
+    "scripts/esm-mechanical/full-convert.mjs": "13c3a2bbbb041fa832b2bc3380e433b73b99b4a247949189915e429390055e05",
+    "scripts/esm-mechanical/full-verify.mjs": "06c366b5a569ca3f75ba316ac62fd8c2d6b102cc4c1d9278257f9197aca79ac7",
+    "scripts/esm-mechanical/README.md": "a39dc2301e24a36ed12eb91f705d330fdae846ac86d75543f4c62ec7a0dbff9d",
+    "scripts/esm-mechanical/research.mjs": "b531d41e9ecc1d74c479c17a3f7a54bfada4385fa31a27f728b06bb0c966378c",
+    "scripts/esm-mechanical/setup.py": "e2110347d8e169975d6ce8fad3689d6094d8a43e783a8668da8549388178db38",
+    "scripts/esm-mechanical/test.mjs": "b0c066d375807a2a7c15eb90d016daee67c3d799827716c21d8f383f521f24d4",
+    "scripts/esm-mechanical/verify.mjs": "99c936de91c517d6a3e8a66d7fa247da3e3873cbf5263cb2e949ae80f9243069"
+  },
+  "logRoot": ".worktrees/esm-mechanical-research-20261008",
+  "finalLogs": [
+    "full/target-tests-final.log",
+    "full/node-final.log",
+    "full/python-final.log",
+    "full/typecheck-final.log",
+    "full/e2e-expanded.log",
+    "full/full-browser-verdict.json",
+    "baseline/python-all.log",
+    "baseline/typecheck.log",
+    "naive/intermediate-tests-final.log"
+  ],
+  "maintainerDecision": {
+    "commitResearchNow": true,
+    "deferTypeAndLegacyContractResolutionUntilAfterWholeMigration": true,
+    "failedChecksRemainRecorded": true
+  }
+}

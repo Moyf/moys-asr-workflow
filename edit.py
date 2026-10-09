@@ -228,8 +228,8 @@ def read_editor_script_manifest() -> tuple[str, ...]:
 
 
 def build_editor_scripts() -> str:
-    """Inline editor scripts using the single shared source order."""
-    return "\n\n".join(read_web_asset(name).rstrip() for name in read_editor_script_manifest())
+    """Inline the complete esbuild artifact; Node is only a developer dependency."""
+    return read_web_asset("editor/boot/editor-bundle.js").rstrip()
 
 
 def build_palette_json() -> str:

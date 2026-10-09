@@ -4,10 +4,14 @@
 | --- | --- |
 | MAW — Moy's ASR Workflow | 当前可用的转写与处理工作流，包含 Launcher、公开 CLI 与本机服务。 |
 | MAWE — Moy's ASR Workflow Editor | MAW 的浏览器字幕编辑器；Server 为日常入口，HTML 为兼容入口。 |
-| MOSE — Moy's Open Subtitle Editor | 后续独立编辑器方向；本工作树保留 Tauri 实验开发目录。 |
+| MOSE — Moy's Open Subtitle Editor | MAW 的 Windows x64 Electron 独立编辑器，以 MAW + MOSE 统一套件发布。 |
 
-当前 `desktop/` 是 Tauri 项目，开发方式见 [desktop README](../desktop/README.md)。它不是已经交付的稳定 MOSE 产品；MAW Release 的正式编辑入口仍为 Server，MOSE 暂不随该发布流程分发，Launcher 入口隐藏。
+桌面壳路线已于 2026-10-08 确定为 **Electron**：Electron 复用 `web/` 前端与
+`server-editor/serve.py` 后端，不维护第二套实现；配套的 Installer、软件内更新器与
+`.mosp` 关联随统一套件发布。早期保留的 Tauri 实验目录已移除，决策记录见
+[desktop README](../desktop/README.md)；完整的桌面套件代码当前位于
+`merge/starlit-main` 集成分支，合回 main 后以 main 为准。
 
-三者共享 `.mosp` / 兼容 `.json` 工程契约。未来形态与发布时间不作承诺；历史设计和其他开发分支的状态不能代替本工作树的实现。
+三者共享 `.mosp` / 兼容 `.json` 工程契约。
 
 保留原始媒体与工程最利于后续迁移。SRT、Resolve JSON、保留区域 JSON 和 `.workspace.json` 分别是交付、交换或配置文件，不能代替字幕工程。契约见 [JSON_SCHEMA](../JSON_SCHEMA.md)。

@@ -138,7 +138,7 @@
   advancedHead.appendChild(advancedArrow);
   const advancedList = document.createElement('div');
   advancedList.className = 'word-timing-advanced-list';
-  advancedList.style.cssText = 'display:none;flex-direction:column;margin-top:6px;gap:2px;';
+  advancedList.style.cssText = 'display:none;flex-direction:column;margin-top:8px;gap:8px;';
   let advancedExpanded = false;
   advancedHead.addEventListener('click', () => {
     advancedExpanded = !advancedExpanded;

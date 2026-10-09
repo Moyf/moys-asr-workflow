@@ -1,7 +1,8 @@
-window.MAWE.register('waveform-word-blocks', function createWordBlocks(dependencies) {
+export function createWordBlocks(dependencies) {
   'use strict';
   const { colorForSegment, firstCueIndexOverlapping, resolveTiming, localizedWaveformMessage } = dependencies;
   class WordMethods {
+    /** @this {import('./waveform-types.js').WaveformInstance} */
     appendWordBlocks(row, index, startMs, endMs) {
       if (!this.options.wordTiming?.enabled) return;
       const segment = this.options.getSegments('main')[index];
@@ -66,8 +67,9 @@ window.MAWE.register('waveform-word-blocks', function createWordBlocks(dependenc
       });
     }
 
+    /** @this {import('./waveform-types.js').WaveformInstance} */
     refreshWordBlocks() {
-      this.content.querySelectorAll('.waveform-row').forEach(row => {
+      (/** @type {NodeListOf<HTMLElement>} */ (this.content.querySelectorAll('.waveform-row'))).forEach(row => {
         row.querySelectorAll('.waveform-word-block, .waveform-word-boundary').forEach(block => block.remove());
         const start = Number(row.dataset.startMs), end = Number(row.dataset.endMs);
         const segments = this.options.getSegments('main');
@@ -86,6 +88,8 @@ window.MAWE.register('waveform-word-blocks', function createWordBlocks(dependenc
     // 每帧都走局部重建（仍远轻于全量）。
     // 不再每帧 refreshWordBlocks()（删除并重建所有可视行的全部字词块），
     // 那是横向拖动卡顿的根因。
+    /** @this {import('./waveform-types.js').WaveformInstance}
+     * @param {import('./waveform-types.js').WordDragState} drag */
     previewWordBlocks(drag) {
       const index = this.options.getSegments('main').indexOf(drag.segment);
       if (index < 0) return;
@@ -99,12 +103,12 @@ window.MAWE.register('waveform-word-blocks', function createWordBlocks(dependenc
       const dual = this.options.getAdjacentBoundaryMode?.() === 'dual';
       let rebuild = displayable && !entries.length;
       const updates = [];
-      for (const row of this.content.querySelectorAll('.waveform-row')) {
+      for (const row of /** @type {NodeListOf<HTMLElement>} */ (this.content.querySelectorAll('.waveform-row'))) {
         if (rebuild) break;
         const startMs = Number(row.dataset.startMs);
         const endMs = Number(row.dataset.endMs);
-        const blocks = [...row.querySelectorAll(blockSelector)];
-        const zones = [...row.querySelectorAll(zoneSelector)];
+        const blocks = [.../** @type {NodeListOf<HTMLElement>} */ (row.querySelectorAll(blockSelector))];
+        const zones = [.../** @type {NodeListOf<HTMLElement>} */ (row.querySelectorAll(zoneSelector))];
         const expected = displayable
           ? entries.filter(entry => timing.toMs(entry.end) > startMs && timing.toMs(entry.start) < endMs)
           : [];
@@ -163,11 +167,12 @@ window.MAWE.register('waveform-word-blocks', function createWordBlocks(dependenc
     // 结构变化时的局部重建：整行重排受影响行（与该句时间范围重叠、或仍残留
     // 该句旧块的行）的字词层，算法与 refreshWordBlocks 相同，保证块/中缝的
     // 文档序与全量重建一致；其余行不动。
+    /** @this {import('./waveform-types.js').WaveformInstance} */
     rebuildWordBlocksForSegment(index) {
       const segments = this.options.getSegments('main');
       const segment = segments[index];
       const selector = `.waveform-word-block[data-segment-idx="${index}"], .waveform-word-boundary[data-segment-idx="${index}"]`;
-      this.content.querySelectorAll('.waveform-row').forEach(row => {
+      (/** @type {NodeListOf<HTMLElement>} */ (this.content.querySelectorAll('.waveform-row'))).forEach(row => {
         const startMs = Number(row.dataset.startMs);
         const endMs = Number(row.dataset.endMs);
         const overlaps = Boolean(segment) && segment.end > startMs && segment.start < endMs;
@@ -181,6 +186,7 @@ window.MAWE.register('waveform-word-blocks', function createWordBlocks(dependenc
       });
     }
 
+    /** @this {import('./waveform-types.js').WaveformInstance} */
     beginWordDrag(event, index, itemIndex, row, seam = false) {
       if (event.button !== 0) return;
       event.preventDefault(); event.stopPropagation();
@@ -199,6 +205,7 @@ window.MAWE.register('waveform-word-blocks', function createWordBlocks(dependenc
       if (!entry) return;
       const edge = seam || handle?.classList.contains('right') ? 'end' : 'start';
       const resize = seam || Boolean(handle);
+      /** @type {import('./waveform-types.js').WordDragState} */
       const drag = {
         pointerId: event.pointerId, segment, timing, row, geometry, pointer,
         clientX: event.clientX, clientY: event.clientY, moved: false, command: null,
@@ -217,6 +224,7 @@ window.MAWE.register('waveform-word-blocks', function createWordBlocks(dependenc
       this.pane.setPointerCapture?.(event.pointerId);
     }
 
+    /** @this {import('./waveform-types.js').WaveformInstance} */
     updateWordDrag(event) {
       const drag = this.wordDrag;
       if (!drag || event.pointerId !== drag.pointerId) return;
@@ -242,6 +250,7 @@ window.MAWE.register('waveform-word-blocks', function createWordBlocks(dependenc
       });
     }
 
+    /** @this {import('./waveform-types.js').WaveformInstance} */
     detachWordDrag(drag) {
       cancelAnimationFrame(this.wordRefreshFrame);
       this.wordRefreshFrame = 0;
@@ -253,6 +262,7 @@ window.MAWE.register('waveform-word-blocks', function createWordBlocks(dependenc
       this.wordDrag = null;
     }
 
+    /** @this {import('./waveform-types.js').WaveformInstance} */
     endWordDrag(event) {
       const drag = this.wordDrag;
       if (!drag || event.pointerId !== drag.pointerId) return;
@@ -261,6 +271,7 @@ window.MAWE.register('waveform-word-blocks', function createWordBlocks(dependenc
       if (!drag.command || !this.options.commitWordEdit(drag.command, drag.segment)) this.refreshWordBlocks();
     }
 
+    /** @this {import('./waveform-types.js').WaveformInstance} */
     cancelWordDrag() {
       const drag = this.wordDrag;
       if (!drag) return;
@@ -273,4 +284,4 @@ window.MAWE.register('waveform-word-blocks', function createWordBlocks(dependenc
   const descriptors = Object.getOwnPropertyDescriptors(WordMethods.prototype);
   delete descriptors.constructor;
   return descriptors;
-});
+}

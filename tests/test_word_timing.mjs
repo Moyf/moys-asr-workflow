@@ -196,3 +196,23 @@ test('text sync skips segments without mappable items', () => {
   assert.equal(utils.planWordTimingTextSync({ text: '我很喜欢！', items: [{ text: '我', start: 0, end: 10 }], start: 0, end: 100 }, '我很喜欢！'), null);
   assert.equal(utils.planWordTimingTextSync({ text: '我很喜欢！', items: sentence().items, start: 0, end: 100 }, '我很喜欢！'), null);
 });
+
+test('text sync preserves non-BMP characters and uses character counts for replacements', () => {
+  const previous = '𠮷野家';
+  const items = [...previous].map((text, index) => ({ text, start: index * 100, end: (index + 1) * 100 }));
+  for (const text of ['𠮷野佳', '吉野家']) {
+    const result = utils.planWordTimingTextSync({ text, items }, previous);
+    assert.deepEqual(plain(result.items.map(item => item.text)), [...text]);
+    assert.deepEqual(plain(result.items.map(item => [item.start, item.end])), [[0, 100], [100, 200], [200, 300]]);
+  }
+  assert.deepEqual(items.map(item => item.text), [...previous]);
+  // Same UTF-16 length is not the same number of characters.
+  assert.deepEqual(plain(utils.planWordTimingTextSync({ text: '吉祥野家', items }, previous)), { warn: true });
+});
+
+test('text sync keeps emoji punctuation attached without shifting later item spans', () => {
+  const result = utils.planWordTimingTextSync({ text: '🙂你好呀', items: [
+    { text: '你', start: 0, end: 100 }, { text: '好啊', start: 100, end: 200 },
+  ] }, '🙂你好啊');
+  assert.deepEqual(plain(result.items.map(item => item.text)), ['🙂你', '好呀']);
+});

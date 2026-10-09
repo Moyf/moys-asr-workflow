@@ -48,8 +48,8 @@ source: "docs/README.md"
 | [LLM 后处理协议](../llm-postprocess/) | 模型输入输出、ID 校验、本地时间映射和 HTTP 契约。 |
 | [空隙来源与恢复](https://github.com/Moyf/moys-asr-workflow/blob/main/docs/GAP_PROVENANCE.md) | 空隙来源层、恢复语义与数据规则。 |
 | [开发概览](../development/) | 代码地图、持久化边界、测试与发布检查。 |
-| [MAW / MAWE / MOSE](../mose/) | 产品名称、当前入口和实验桌面目录的关系。 |
-| [桌面开发](https://github.com/Moyf/moys-asr-workflow/blob/main/desktop/README.md) | 当前 Tauri 工程的开发方式和未发布边界。 |
+| [MAW / MAWE / MOSE](../mose/) | 产品名称与桌面路线决策（Electron 发布路线，Tauri 实验已移除）。 |
+| [桌面开发](https://github.com/Moyf/moys-asr-workflow/blob/main/desktop/README.md) | Electron 桌面壳的架构定位与 Tauri 移除决策记录。 |
 | [官网文档同步](https://github.com/Moyf/moys-asr-workflow/blob/main/website/docs/CONTENT_SYNC.md) | 从源文档生成官网页面的步骤。 |
 
 ## 历史记录与未完成方案

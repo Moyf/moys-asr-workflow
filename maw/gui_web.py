@@ -63,7 +63,7 @@ from maw.gui_config import (
     save_env,
 )
 from maw.gui_platform import apply_dark_title_bar, asset_path, creationflags, popen_process_tree, process_group_kwargs, release_process_tree, startupinfo, terminate_process_tree
-from maw.gui_workflow import TranscriptionCancelledError, TranscriptionProcessError, TranscriptionRequest, TranscriptionResult, _bundled_ffmpeg_directory, _child_environment, _ffmpeg_search_path, build_alignment_serve_command, build_output_paths, build_serve_command, default_srt_path, raw_response_path, run_transcription, unique_output_path, with_test_suffix
+from maw.gui_workflow import TranscriptionCancelledError, TranscriptionProcessError, TranscriptionRequest, TranscriptionResult, _child_environment, _ffmpeg_search_path, build_alignment_serve_command, build_output_paths, build_serve_command, default_srt_path, raw_response_path, run_transcription, unique_output_path, with_test_suffix
 from maw.launcher_batch import BatchItem, run_batch
 from maw.output_naming import format_elapsed, maw_root
 from maw.local_log import LocalLogSink, TeeWriter, default_log_directory, install_stdio_tee, redact_sensitive_text
@@ -147,8 +147,6 @@ SAVE_DIALOG = 30
 FOLDER_DIALOG = 20
 WINDOW_TITLE = "MAW Launcher"
 MEDIA_EXTS: Final = frozenset({".mp4", ".mkv", ".avi", ".mov", ".wmv", ".flv", ".webm", ".ts", ".m4v", ".mp3", ".wav", ".m4a", ".flac", ".aac", ".ogg"})
-MOSE_REGISTRY_KEY = r"Software\Moy\MOSE"
-MOSE_FILE_TYPE = "Moy.MOSE.Project"
 # 服务端先监听再在后台准备工程；这里的窗口只负责兜底探测进程是否已响应。
 SERVER_START_TIMEOUT: Final = 30.0
 SERVER_DIAGNOSTIC_LOG_LINES: Final = 12
@@ -159,7 +157,6 @@ EDITOR_HEALTH_PROBE_PATH: Final = "/api/startup-status"
 # 单次探测超时与总超时分离：后台加载工程期间 GIL 繁忙，轻量端点也可能
 # 短暂超过默认 0.25s，但仍远小于 SERVER_START_TIMEOUT 的总预算。
 EDITOR_HEALTH_PROBE_TIMEOUT: Final = 2.0
-MOSE_VERSION = "0.1.0"
 
 
 ERROR_MESSAGES: Final[dict[str, str]] = {
@@ -209,8 +206,6 @@ ERROR_MESSAGES: Final[dict[str, str]] = {
     "alignment_media_invalid": "The selected speech-alignment media file does not exist or is unsupported.",
     "alignment_server_no_response": "Speech-alignment server did not respond.",
     "alignment_server_start_failed": "Speech-alignment server failed to start.",
-    "mose_not_found": "MOSE desktop editor was not found in this MAW package.",
-    "mose_start_failed": "MOSE desktop editor failed to start.",
     "server_stop_not_maw": "The process using this port is not a MAW editor server.",
     "server_stop_failed": "Unable to stop the MAW editor server.",
     "sticker_dir_invalid": "Sticker directory does not exist.",
@@ -280,187 +275,6 @@ def _is_ffmpeg_missing_failure(lines: Sequence[str]) -> bool:
         marker in detail for marker in ("ffmpeg", "ffprobe", "get_duration_sec")
     )
     return explicit or legacy_winerror
-
-
-def _registered_mose_executable() -> Path | None:
-    """Read a valid independent MOSE installation registered for this user."""
-    if sys.platform != "win32":
-        return None
-    try:
-        import winreg
-
-        with winreg.OpenKey(winreg.HKEY_CURRENT_USER, MOSE_REGISTRY_KEY) as key:
-            try:
-                value = winreg.QueryValueEx(key, "ExecutablePath")[0]
-            except OSError:
-                install_path = winreg.QueryValueEx(key, "InstallPath")[0]
-                value = Path(str(install_path)) / "MOSE.exe"
-    except (AttributeError, ImportError, OSError, TypeError, ValueError):
-        return None
-    candidate = Path(str(value)).expanduser()
-    if not candidate.is_file():
-        return None
-    try:
-        return candidate.resolve()
-    except OSError:
-        return candidate
-
-
-def _macos_mose_executable(app_path: Path) -> Path | None:
-    """Return the executable inside a macOS MOSE application bundle."""
-    for name in ("mose", "MOSE"):
-        candidate = app_path / "Contents" / "MacOS" / name
-        if candidate.is_file():
-            return candidate
-    return None
-
-
-def _mose_search_paths() -> list[Path]:
-    """Return the optional MOSE paths that the MAW Launcher will inspect."""
-    candidates: list[Path] = []
-    registered = _registered_mose_executable()
-    if registered is not None:
-        candidates.append(registered)
-
-    repo_root = Path(__file__).resolve().parents[1]
-    if sys.platform == "darwin":
-        app_candidates: list[Path] = [
-            repo_root / "MOSE.app",
-            repo_root / "mose.app",
-            repo_root / "desktop" / "target" / "release" / "bundle" / "macos" / "MOSE.app",
-            repo_root / "desktop" / "target" / "release" / "bundle" / "macos" / "mose.app",
-            repo_root / "desktop" / "target" / "debug" / "bundle" / "macos" / "MOSE.app",
-            repo_root / "desktop" / "target" / "debug" / "bundle" / "macos" / "mose.app",
-            asset_path("MOSE.app"),
-            asset_path("mose.app"),
-            Path("/Applications/MOSE.app"),
-            Path("/Applications/mose.app"),
-            Path.home() / "Applications" / "MOSE.app",
-            Path.home() / "Applications" / "mose.app",
-        ]
-        if getattr(sys, "frozen", False):
-            executable_path = Path(sys.executable).resolve()
-            executable_dir = executable_path.parent
-            frozen_app_candidates = [
-                executable_dir / "MOSE.app",
-                executable_dir / "mose.app",
-                executable_dir.parent / "Resources" / "MOSE.app",
-                executable_dir.parent / "Resources" / "mose.app",
-                executable_dir.parent.parent.parent / "MOSE.app",
-                executable_dir.parent.parent.parent / "mose.app",
-            ]
-            # In a normal PyInstaller .app, sys.executable is inside
-            # MAW.app/Contents/MacOS. Derive the sibling from the actual .app
-            # ancestor instead of relying on a fixed number of parent levels;
-            # this also works when the bundle is launched through a symlink or
-            # when PyInstaller changes its internal layout.
-            for bundle_path in executable_path.parents:
-                if bundle_path.suffix.lower() == ".app":
-                    frozen_app_candidates.extend(
-                        (
-                            bundle_path.parent / "MOSE.app",
-                            bundle_path.parent / "mose.app",
-                        )
-                    )
-            app_candidates[0:0] = frozen_app_candidates
-        candidates.extend(app_candidates)
-    else:
-        if getattr(sys, "frozen", False):
-            executable_dir = Path(sys.executable).resolve().parent
-            candidates.extend((executable_dir / "MOSE.exe", executable_dir / "mose.exe"))
-        candidates.extend(
-            (
-                repo_root / "MOSE.exe",
-                repo_root / "mose.exe",
-                repo_root / "desktop" / "target" / "release" / "mose.exe",
-                repo_root / "desktop" / "target" / "debug" / "mose.exe",
-                asset_path("MOSE.exe"),
-                asset_path("mose.exe"),
-            )
-        )
-
-    return candidates
-
-
-def _find_mose_executable() -> Path | None:
-    """Find the optional MOSE executable or macOS app bundle for the MAW Launcher."""
-    seen: set[Path] = set()
-    for candidate in _mose_search_paths():
-        if sys.platform == "darwin" and candidate.suffix.lower() == ".app":
-            executable = _macos_mose_executable(candidate)
-            if executable is None:
-                continue
-            candidate = executable
-        try:
-            candidate = candidate.resolve()
-        except OSError:
-            continue
-        if candidate in seen:
-            continue
-        seen.add(candidate)
-        if candidate.is_file():
-            return candidate
-    return None
-
-
-def _mose_environment() -> dict[str, str]:
-    """Pass the bundled MAW FFmpeg directory to MOSE when the apps are siblings."""
-    environment = os.environ.copy()
-    bundled_directory = _bundled_ffmpeg_directory()
-    if bundled_directory is not None:
-        old_path = environment.get("PATH", "")
-        environment["PATH"] = str(bundled_directory) if not old_path else str(bundled_directory) + os.pathsep + old_path
-    return environment
-
-
-def _register_mosp_association() -> bool:
-    """Register the portable package's .mosp association for the current Windows user."""
-    if sys.platform != "win32":
-        return False
-    registered = _registered_mose_executable()
-    executable = registered or _find_mose_executable()
-    if executable is None:
-        return False
-    # MOSE.exe already embeds the MOSE icon.  Referencing the executable keeps
-    # the association self-contained in the portable bundle and avoids pointing
-    # Explorer at MAW's launcher icon (or at a stale _MEIPASS path).
-    icon = executable
-    try:
-        import winreg
-
-        version = MOSE_VERSION
-        if registered is not None:
-            try:
-                with winreg.OpenKey(winreg.HKEY_CURRENT_USER, MOSE_REGISTRY_KEY) as mose_key:
-                    existing_version = winreg.QueryValueEx(mose_key, "Version")[0]
-                if str(existing_version).strip():
-                    version = str(existing_version).strip()
-            except (AttributeError, OSError, TypeError, ValueError):
-                pass
-
-        with winreg.CreateKey(winreg.HKEY_CURRENT_USER, MOSE_REGISTRY_KEY) as mose_key:
-            winreg.SetValueEx(mose_key, "InstallPath", 0, winreg.REG_SZ, str(executable.parent))
-            winreg.SetValueEx(mose_key, "ExecutablePath", 0, winreg.REG_SZ, str(executable))
-            winreg.SetValueEx(mose_key, "Version", 0, winreg.REG_SZ, version)
-        with winreg.CreateKey(winreg.HKEY_CURRENT_USER, r"Software\Classes\.mosp") as extension_key:
-            winreg.SetValueEx(extension_key, None, 0, winreg.REG_SZ, MOSE_FILE_TYPE)
-            winreg.SetValueEx(extension_key, "Content Type", 0, winreg.REG_SZ, "application/json")
-        with winreg.CreateKey(winreg.HKEY_CURRENT_USER, rf"Software\Classes\{MOSE_FILE_TYPE}") as file_type_key:
-            winreg.SetValueEx(file_type_key, None, 0, winreg.REG_SZ, "MOSE Project")
-        with winreg.CreateKey(winreg.HKEY_CURRENT_USER, rf"Software\Classes\{MOSE_FILE_TYPE}\DefaultIcon") as icon_key:
-            winreg.SetValueEx(icon_key, None, 0, winreg.REG_SZ, f'"{icon}",0')
-        with winreg.CreateKey(winreg.HKEY_CURRENT_USER, rf"Software\Classes\{MOSE_FILE_TYPE}\shell\open\command") as command_key:
-            winreg.SetValueEx(command_key, None, 0, winreg.REG_SZ, f'"{executable}" "%1"')
-    except (AttributeError, ImportError, OSError):
-        return False
-    try:
-        import ctypes
-
-        # Make Explorer invalidate its cached association/icon immediately.
-        ctypes.windll.shell32.SHChangeNotify(0x08000000, 0, None, None)
-    except (AttributeError, OSError, TypeError):
-        pass
-    return True
 
 
 @final
@@ -2083,35 +1897,6 @@ class LauncherApi:
         if not path.is_file():
             return {"ok": False, "error": f"File does not exist: {path}"}
         return _open_existing_path(path.resolve().parent)
-
-    def open_mose(self, payload: Mapping[str, object]) -> dict[str, object]:
-        """Open the packaged MOSE editor and pass it the selected project path."""
-        project_text = str(payload.get("jsonPath") or "").strip()
-        project = Path(project_text).expanduser() if project_text else None
-        if project is not None and not project.is_file():
-            return _error_result("jsonPath", "json_not_found", str(project))
-
-        executable = _find_mose_executable()
-        if executable is None:
-            expected = "MOSE.app" if sys.platform == "darwin" else "MOSE.exe"
-            result = _error_result("editor", "mose_not_found", expected)
-            result["searchPaths"] = [str(path) for path in _mose_search_paths()]
-            return result
-
-        command = [str(executable)]
-        if project is not None:
-            command.append(str(project.resolve()))
-        try:
-            subprocess.Popen(
-                command,
-                cwd=str(executable.parent),
-                startupinfo=startupinfo(),
-                creationflags=creationflags(),
-                env=_mose_environment(),
-            )
-        except OSError as error:
-            return _error_result("editor", "mose_start_failed", str(error))
-        return {"ok": True, "usedMose": True, "path": str(executable)}
 
     def start_server(self, payload: Mapping[str, object]) -> dict[str, object]:
         json_text = str(payload.get("jsonPath") or "").strip()

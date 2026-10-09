@@ -1,0 +1,352 @@
+{
+  "format": 1,
+  "modules": [
+    {
+      "file": "shared/host/storage.js",
+      "name": "host-storage",
+      "exportName": "createStorage"
+    },
+    {
+      "file": "shared/host/files.js",
+      "name": "host-files",
+      "exportName": "createFiles"
+    },
+    {
+      "file": "shared/host/server-api.js",
+      "name": "host-server-api",
+      "exportName": "createServerApi"
+    },
+    {
+      "file": "shared/utils/data.js",
+      "name": "utils-data",
+      "exportName": "createUtilsModule"
+    },
+    {
+      "file": "shared/utils/fonts.js",
+      "name": "utils-fonts",
+      "exportName": "createUtilsModule"
+    },
+    {
+      "file": "shared/utils/speakers.js",
+      "name": "utils-speakers",
+      "exportName": "createUtilsModule"
+    },
+    {
+      "file": "shared/utils/media-metadata.js",
+      "name": "utils-media-metadata",
+      "exportName": "createUtilsModule"
+    },
+    {
+      "file": "shared/utils/navigation.js",
+      "name": "utils-navigation",
+      "exportName": "createUtilsModule"
+    },
+    {
+      "file": "shared/utils/text-processing.js",
+      "name": "utils-text-processing",
+      "exportName": "createUtilsModule"
+    },
+    {
+      "file": "shared/utils/timed-text-core.js",
+      "name": "utils-timed-text-core",
+      "exportName": "createUtilsModule"
+    },
+    {
+      "file": "shared/utils/timed-text-plans.js",
+      "name": "utils-timed-text-plans",
+      "exportName": "createUtilsModule"
+    },
+    {
+      "file": "shared/utils/timed-text-edit.js",
+      "name": "utils-timed-text-edit",
+      "exportName": "createUtilsModule"
+    },
+    {
+      "file": "shared/utils/text-metrics.js",
+      "name": "utils-text-metrics",
+      "exportName": "createUtilsModule"
+    },
+    {
+      "file": "shared/utils/segment-timing.js",
+      "name": "utils-segment-timing",
+      "exportName": "createUtilsModule"
+    },
+    {
+      "file": "shared/utils/split-alignment.js",
+      "name": "utils-split-alignment",
+      "exportName": "createUtilsModule"
+    },
+    {
+      "file": "shared/utils/split-trim.js",
+      "name": "utils-split-trim",
+      "exportName": "createUtilsModule"
+    },
+    {
+      "file": "shared/utils/timeline.js",
+      "name": "utils-timeline",
+      "exportName": "createUtilsModule"
+    },
+    {
+      "file": "shared/utils/settings.js",
+      "name": "utils-settings",
+      "exportName": "createUtilsModule"
+    },
+    {
+      "file": "shared/utils/gap-remove.js",
+      "name": "utils-gap-remove",
+      "exportName": "createUtilsModule"
+    },
+    {
+      "file": "shared/utils/history.js",
+      "name": "utils-history",
+      "exportName": "createUtilsModule"
+    },
+    {
+      "file": "shared/utils/markers.js",
+      "name": "utils-markers",
+      "exportName": "createUtilsModule"
+    },
+    {
+      "file": "shared/utils/multi-subtitle.js",
+      "name": "utils-multi-subtitle",
+      "exportName": "createUtilsModule"
+    },
+    {
+      "file": "shared/utils/word-timing.js",
+      "name": "utils-word-timing",
+      "exportName": "createWordTiming"
+    },
+    {
+      "file": "shared/utils/word-split.js",
+      "name": "utils-word-split",
+      "exportName": "createUtilsModule"
+    },
+    {
+      "file": "shared/utils/srt.js",
+      "name": "utils-srt",
+      "exportName": "createUtilsModule"
+    },
+    {
+      "file": "shared/utils/lrc.js",
+      "name": "utils-lrc",
+      "exportName": "createUtilsModule"
+    },
+    {
+      "file": "shared/utils/ass-style.js",
+      "name": "utils-ass-style",
+      "exportName": "createUtilsModule"
+    },
+    {
+      "file": "shared/utils/ass-animation.js",
+      "name": "utils-ass-animation",
+      "exportName": "createUtilsModule"
+    },
+    {
+      "file": "shared/utils/ass-export.js",
+      "name": "utils-ass-export",
+      "exportName": "createUtilsModule"
+    },
+    {
+      "file": "shared/utils/export-plan.js",
+      "name": "utils-export-plan",
+      "exportName": "createUtilsModule"
+    },
+    {
+      "file": "shared/utils/fcp7.js",
+      "name": "utils-fcp7",
+      "exportName": "createUtilsModule"
+    },
+    {
+      "file": "shared/utils/export-workflow.js",
+      "name": "utils-export-workflow",
+      "exportName": "createUtilsModule"
+    },
+    {
+      "file": "shared/utils/platform.js",
+      "name": "utils-platform",
+      "exportName": "createUtilsModule"
+    },
+    {
+      "file": "shared/utils/preview-geometry.js",
+      "name": "utils-preview-geometry",
+      "exportName": "createUtilsModule"
+    },
+    {
+      "file": "shared/utils/lottie.js",
+      "name": "utils-lottie",
+      "exportName": "createUtilsModule"
+    },
+    {
+      "file": "shared/utils/ograf.js",
+      "name": "utils-ograf",
+      "exportName": "createUtilsModule"
+    },
+    {
+      "file": "editor/media/waveform/constants.js",
+      "name": "waveform-constants",
+      "exportName": "createWaveformModule"
+    },
+    {
+      "file": "editor/media/waveform/labels.js",
+      "name": "waveform-labels",
+      "exportName": "createWaveformModule"
+    },
+    {
+      "file": "editor/media/waveform/scale.js",
+      "name": "waveform-scale",
+      "exportName": "createWaveformModule"
+    },
+    {
+      "file": "editor/media/waveform/layout.js",
+      "name": "waveform-layout",
+      "exportName": "createWaveformModule"
+    },
+    {
+      "file": "editor/media/waveform/settings.js",
+      "name": "waveform-settings",
+      "exportName": "createWaveformModule"
+    },
+    {
+      "file": "editor/media/waveform/payload.js",
+      "name": "waveform-payload",
+      "exportName": "createWaveformModule"
+    },
+    {
+      "file": "editor/media/waveform/colors.js",
+      "name": "waveform-colors",
+      "exportName": "createWaveformModule"
+    },
+    {
+      "file": "editor/media/waveform/timing.js",
+      "name": "waveform-timing",
+      "exportName": "createWaveformModule"
+    },
+    {
+      "file": "editor/media/waveform/visibility.js",
+      "name": "waveform-visibility",
+      "exportName": "createWaveformModule"
+    },
+    {
+      "file": "editor/media/waveform/controls.js",
+      "name": "waveform-controls",
+      "exportName": "createWaveformModule"
+    },
+    {
+      "file": "editor/media/waveform/pointer.js",
+      "name": "waveform-pointer",
+      "exportName": "createWaveformModule"
+    },
+    {
+      "file": "editor/media/waveform/workspace.js",
+      "name": "waveform-workspace",
+      "exportName": "createWaveformModule"
+    },
+    {
+      "file": "editor/media/waveform/scale-controls.js",
+      "name": "waveform-scale-controls",
+      "exportName": "createWaveformModule"
+    },
+    {
+      "file": "editor/media/waveform/media.js",
+      "name": "waveform-media",
+      "exportName": "createWaveformModule"
+    },
+    {
+      "file": "editor/media/waveform/render.js",
+      "name": "waveform-render",
+      "exportName": "createWaveformModule"
+    },
+    {
+      "file": "editor/media/waveform/cue-blocks.js",
+      "name": "waveform-cue-blocks",
+      "exportName": "createWaveformModule"
+    },
+    {
+      "file": "editor/media/waveform/word-blocks.js",
+      "name": "waveform-word-blocks",
+      "exportName": "createWordBlocks"
+    },
+    {
+      "file": "editor/media/waveform/canvas.js",
+      "name": "waveform-canvas",
+      "exportName": "createWaveformModule"
+    },
+    {
+      "file": "editor/media/waveform/input.js",
+      "name": "waveform-input",
+      "exportName": "createWaveformModule"
+    },
+    {
+      "file": "editor/media/waveform/cue-drag.js",
+      "name": "waveform-cue-drag",
+      "exportName": "createWaveformModule"
+    },
+    {
+      "file": "editor/media/waveform/cue-commands.js",
+      "name": "waveform-cue-commands",
+      "exportName": "createWaveformModule"
+    },
+    {
+      "file": "editor/media/waveform/gap-drag.js",
+      "name": "waveform-gap-drag",
+      "exportName": "createWaveformModule"
+    },
+    {
+      "file": "editor/media/waveform/markers.js",
+      "name": "waveform-markers",
+      "exportName": "createWaveformModule"
+    },
+    {
+      "file": "editor/media/waveform/cue-drag-update.js",
+      "name": "waveform-cue-drag-update",
+      "exportName": "createWaveformModule"
+    },
+    {
+      "file": "editor/media/waveform/playback.js",
+      "name": "waveform-playback",
+      "exportName": "createWaveformModule"
+    }
+  ],
+  "externalBridges": [
+    {
+      "file": "editor/styles/editor-wiring-ass-storage.js",
+      "name": "loadAssStyleLibrary",
+      "mutable": true
+    },
+    {
+      "file": "editor/styles/editor-wiring-ass-storage.js",
+      "name": "ASS_STYLE_LIBRARY",
+      "mutable": true
+    },
+    {
+      "file": "editor/ui/editor-wiring-dom-panels.js",
+      "name": "assModeToggle",
+      "mutable": false
+    },
+    {
+      "file": "editor/styles/editor-wiring-ass-manager.js",
+      "name": "assStyleManagerSetSelection",
+      "mutable": true
+    },
+    {
+      "file": "editor/styles/editor-wiring-ass-manager.js",
+      "name": "updateAssStyleManagerLibrary",
+      "mutable": true
+    },
+    {
+      "file": "editor/styles/editor-wiring-ass-manager.js",
+      "name": "syncAssStyleForm",
+      "mutable": true
+    },
+    {
+      "file": "editor/cues/editor-wiring-overlay-transfer.js",
+      "name": "convertOverlayCueToMain",
+      "mutable": true
+    },
+    {
+      "file": "editor/cues/editor-wiring-overlay-split-merge.js",
+      "name": "openOverlaySplitModal",
+      "mutable": true
+    }
+  ]
+}

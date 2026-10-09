@@ -32,8 +32,8 @@ function sources(read) {
 const before = sources(previous);
 const after = sources(current);
 assert.equal(after.join(''), before.join(''), 'Ordered source bytes changed');
-// Python trims trailing whitespace per file; Tauri keeps it. Both assemble
-// one classic script, so declaration hoisting must span every source file.
+// Whitespace variants assemble one classic script, so declaration hoisting
+// must span every source file.
 for (const trim of [false, true]) {
   const assemble = (files) => files.map((text) => trim ? text.trimEnd() : text).join('\n\n');
   const ast = (text) => parse(text, { ecmaVersion: 'latest' });
@@ -42,7 +42,7 @@ for (const trim of [false, true]) {
   const oldAst = ast(assemble(before));
   const newAst = ast(assemble(after));
   assert.equal(normalize(newAst), normalize(oldAst), 'Assembled AST changed');
-  console.log(`${trim ? 'Python' : 'Tauri'} assembly: ${newAst.body.length} statements, AST identical`);
+  console.log(`${trim ? 'Trimmed' : 'Untrimmed'} assembly: ${newAst.body.length} statements, AST identical`);
 }
 const bytes = after.join('');
 console.log(`Ordered source: ${Buffer.byteLength(bytes)} bytes identical; sha256=${createHash('sha256').update(bytes).digest('hex')}`);

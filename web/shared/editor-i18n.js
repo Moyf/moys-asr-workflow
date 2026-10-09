@@ -432,6 +432,9 @@
     '打开字幕颜色设置': 'Open subtitle color settings',
     '在导出的字幕开头加上说话人。只影响导出后的字幕，不会改动工程里的字幕文本。': 'Add the speaker name at the beginning of exported subtitles. This only affects exported subtitles and does not change the subtitle text in the project.',
     '🤓👆 你可以在': '🤓👆 You can configure color-to-speaker names in',
+    '🤓👆 如果需要在导出字幕中也显示说话人，可前往': '🤓👆 To include speaker names in exported subtitles, go to',
+    '设置。': ' settings.',
+    '打开导出设置': 'Open export settings',
     '中配置颜色对应的说话人名。': ' settings.',
     '使用说话人名称替代颜色后缀': 'Use speaker name instead of the color suffix',
     '勾选后按说话人名称生成彩色字幕文件名后缀；没有对应名称时回退为颜色': 'When enabled, use the speaker name as the colored subtitle filename suffix; fall back to the color when no name is mapped',
@@ -1420,7 +1423,11 @@
     const leading = original.match(/^\s*/)?.[0] || '';
     const trailing = original.match(/\s*$/)?.[0] || '';
     const core = original.trim();
-    if (core) node.nodeValue = leading + translateText(core) + trailing;
+    if (core) {
+      const next = leading + translateText(core) + trailing;
+      // Even assigning the same value can reset a live text selection.
+      if (node.nodeValue !== next) node.nodeValue = next;
+    }
   }
 
   function translateAttributes(element) {

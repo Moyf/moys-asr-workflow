@@ -105,6 +105,13 @@
     MaweDom.ctxmenu.classList.remove('show');
     return true;
   }
+  function auditionWords(segment, indices) {
+    const timing = clock();
+    const entries = global.AsrEditorUtils.getWordTimingEntries(segment, timing)
+      .filter(entry => indices.includes(entry.index));
+    if (!entries.length) return;
+    MaweMediaPlayback.auditionRange(timing.toMs(entries[0].start), timing.toMs(entries[entries.length - 1].end));
+  }
   function showMenu(x, y, index, itemIndex) {
     const segment = MaweBoot.DATA.segments[index];
     if (!getSelection(segment).has(itemIndex)) select(index, itemIndex);
@@ -122,10 +129,7 @@
     audition.appendChild(auditionKbd);
     audition.addEventListener('click', () => {
       menu.classList.remove('show');
-      const entries = global.AsrEditorUtils.getWordTimingEntries(segment, clock())
-        .filter(e => indices.includes(e.index));
-      if (!entries.length) return;
-      MaweMediaPlayback.auditionRange(entries[0].start, entries[entries.length - 1].end);
+      auditionWords(segment, indices);
     });
     menu.append(audition);
     const entry = document.createElement('div');
@@ -252,6 +256,10 @@
       event.preventDefault(); event.stopImmediatePropagation();
       selection.indices = new Set(global.AsrEditorUtils.getWordTimingEntries(selection.segment, clock()).map(e => e.index));
       refresh();
+    } else if (key === 'f' && !event.ctrlKey && !event.metaKey && !event.altKey && !event.shiftKey
+        && !event.repeat && !MaweDom.ctxmenu.classList.contains('show')) {
+      event.preventDefault(); event.stopImmediatePropagation();
+      auditionWords(selection.segment, [...selection.indices]);
     } else if (key === 'c' && !event.ctrlKey && !event.metaKey && !event.altKey) {
       event.preventDefault(); event.stopImmediatePropagation(); merge();
     } else if (event.key === 'Escape') {
