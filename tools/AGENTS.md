@@ -1,6 +1,6 @@
 # tools/ 目录指导（HTML 工具页性能与测量约定）
 
-本目录存放独立小工具（如 `templates/verification-checklist.html`）。这类页面会被
+本目录存放独立小工具（如 `verification-checklist/`）。这类页面会被
 维护者在真实浏览器里长时间交互，性能问题（窗口缩放卡死、滚动卡顿）一旦带入模板，
 每次生成都复现。本文记录已踩过的坑与对应约定，改 HTML 工具页前后都过一遍。
 
@@ -44,5 +44,7 @@
 ## 模板维护的既有约定（延续根 AGENTS.md）
 
 - 占位符原文只出现在真实替换点，注释与脚本里不得复现（全局替换会误伤）；
-- 改模板只改本文件，生成物放仓库外；改动后用一份含长命令、宽表格、数百
+- 模板位于 `verification-checklist/templates/verification-checklist.html`，用途、生成与
+  更新命令见 `verification-checklist/README.md`；默认生成物放仓库外，维护者明确要求
+  更新既有核对页时同步应用模板。改动后用一份含长命令、宽表格、数百
   打勾项的压力实例实测 resize 与滚动，再交付。

@@ -17,7 +17,8 @@
   3. 分区约定：A 实现 / 审查结论（只读）· B 修复与提交记录 · C 自动化验证结果（写明命令与已知环境性失败）
      · D 人工核验打勾项（入口 → 操作 → 预期）· E 后续操作步骤；
   4. 左侧目录、分区进度徽标、总进度由脚本自动生成，无需手写；
-     勾选状态按页面标题存 localStorage；生成物不提交进仓库；确需改进模板时改本文件。
+     勾选与备注按页面标题存 localStorage；JSON 可导出全部或未确认项。
+     详细使用与导出格式见工具目录 README.md；生成物不提交进仓库。
 -->
 <html lang="zh-CN">
 <head>
@@ -30,6 +31,7 @@
     --line: #e4e7ec; --accent: #2563eb; --ok: #16a34a; --warn: #b45309;
     --chip: #eef1f6; --mono: ui-monospace, "Cascadia Mono", Consolas, monospace;
     --radius: 14px;
+    color-scheme: light;
     --shadow: 0 1px 2px rgba(16,24,40,.05), 0 6px 20px rgba(16,24,40,.06);
     --accent-soft: color-mix(in srgb, var(--accent) 12%, transparent);
     --ok-soft: color-mix(in srgb, var(--ok) 14%, transparent);
@@ -37,6 +39,7 @@
   }
   @media (prefers-color-scheme: dark) {
     :root {
+      color-scheme: dark;
       --bg: #0e1116; --paper: #161b22; --ink: #e8ebf0; --ink2: #a4adba; --ink3: #6e7787;
       --line: #2a313b; --accent: #6ea8ff; --ok: #4ade80; --warn: #f0b14a; --chip: #1f2630;
       --shadow: 0 1px 2px rgba(0,0,0,.35), 0 6px 20px rgba(0,0,0,.4);
@@ -65,7 +68,15 @@
   .page-head { grid-area: head; }
   .sidebar { grid-area: side; position: sticky; top: 20px;
     display: flex; flex-direction: column; gap: 16px;
-    max-height: calc(100vh - 40px); overflow-y: auto; }
+    max-height: calc(100vh - 40px); overflow-y: auto; padding-right: 8px;
+    scrollbar-width: thin; scrollbar-color: var(--line) transparent; }
+  .sidebar:hover { scrollbar-color: var(--ink3) transparent; }
+  .sidebar::-webkit-scrollbar { width: 5px; }
+  .sidebar::-webkit-scrollbar-track { background: transparent; }
+  .sidebar::-webkit-scrollbar-thumb { background: var(--line); border-radius: 999px; }
+  .sidebar:hover::-webkit-scrollbar-thumb { background: var(--ink3); }
+  .sidebar::-webkit-scrollbar-button { display: none; }
+  .sidebar > .side-card { flex-shrink: 0; }
   .content { grid-area: main; min-width: 0; }
 
   header.page-head h1 { font-size: 27px; line-height: 1.3; margin: 0 0 6px; letter-spacing: -.01em; }
@@ -86,6 +97,22 @@
   button.ghost { border: 1px solid var(--line); background: none; color: var(--ink2);
     border-radius: 8px; padding: 5px 12px; font-size: 13px; cursor: pointer; }
   button.ghost:hover { color: var(--ink); border-color: var(--ink3); }
+  button.ghost[aria-pressed="true"] { color: var(--accent); border-color: var(--accent);
+    background: var(--accent-soft); }
+  button:focus-visible, select:focus-visible, textarea:focus-visible {
+    outline: 2px solid var(--accent); outline-offset: 3px; }
+  button.primary { border: 1px solid var(--accent); background: var(--accent); color: var(--paper);
+    border-radius: 8px; padding: 8px 12px; font: inherit; font-size: 13px; font-weight: 600; cursor: pointer; }
+  button.primary:hover { filter: brightness(.92); }
+  button:disabled { opacity: .5; cursor: default; }
+  .export-panel { margin-top: 16px; padding-top: 16px; border-top: 1px solid var(--line);
+    display: grid; gap: 10px; }
+  .export-panel label { font-size: 13px; color: var(--ink2); }
+  .export-panel select { width: 100%; min-width: 0; border: 1px solid var(--line);
+    border-radius: 8px; padding: 8px 10px; color: var(--ink); background: var(--paper); font: inherit;
+    font-size: 13px; }
+  .save-status { margin: 12px 0 0; font-size: 12px; color: var(--ink3); overflow-wrap: anywhere; }
+  .save-status.warning { color: var(--warn); }
 
   .toc-title { font: 600 12px var(--mono); letter-spacing: .12em; color: var(--ink3);
     text-transform: uppercase; margin-bottom: 6px; }
@@ -112,11 +139,14 @@
     line-height: 1.5; display: flex; align-items: center; flex-wrap: wrap; gap: 10px;
     user-select: none; list-style: none; }
   .section > summary:hover { background: var(--chip); }
+  .section.complete > summary { background: color-mix(in srgb, var(--ok) 7%, var(--paper)); }
+  .section.complete > summary:hover { background: color-mix(in srgb, var(--ok) 10%, var(--paper)); }
   .section > summary:focus-visible { outline: 2px solid var(--accent); outline-offset: -3px; }
   .section > summary::-webkit-details-marker { display: none; }
-  .section > summary::after { content: "⌄"; font-size: 15px; color: var(--ink3);
-    transition: transform .18s; }
-  .section[open] > summary::after { transform: rotate(180deg); }
+  .section-chevron { width: 20px; height: 20px; flex: none; margin-left: auto;
+    color: var(--ink3); transition: transform .18s; }
+  .section[open] > summary .section-chevron { transform: rotate(180deg); }
+  .sec-progress:not([hidden]) + .section-chevron { margin-left: 0; }
   .sec-progress { margin-left: auto; font: 600 12.5px var(--mono); color: var(--ink3);
     background: var(--chip); padding: 3px 10px; border-radius: 999px; }
   .sec-progress.done { background: var(--ok-soft); color: var(--ok); }
@@ -131,9 +161,10 @@
   .note { color: var(--ink2); font-size: 14.5px; margin: 10px 0; }
   .plain { padding: 8px 10px; color: var(--ink2); font-size: 15px; }
   .plain b { color: var(--ink); font-weight: 600; }
-  .item { display: flex; gap: 12px; align-items: flex-start; padding: 9px 10px;
+  .item { display: grid; grid-template-columns: 20px minmax(0, 1fr) auto; gap: 12px; align-items: start; padding: 9px 10px;
     border-radius: 8px; }
   .item:hover { background: var(--chip); }
+  .item[hidden] { display: none; }
   .item input { appearance: none; -webkit-appearance: none; flex: none; margin: 3px 0 0;
     width: 20px; height: 20px; border: 1.5px solid var(--ink3); border-radius: 6px;
     background: var(--paper); cursor: pointer; position: relative;
@@ -147,6 +178,20 @@
   .item label { cursor: pointer; flex: 1; font-size: 15px; transition: color .2s; }
   .item.done label { color: var(--ink3); text-decoration: line-through;
     text-decoration-color: color-mix(in srgb, var(--ink3) 60%, transparent); }
+  .item label { overflow-wrap: anywhere; }
+  .note-toggle { display: inline-flex; align-items: center; gap: 5px; border: 0; border-radius: 6px;
+    background: transparent; color: var(--ink3); padding: 3px 6px; font: inherit;
+    font-size: 12px; cursor: pointer; white-space: nowrap; }
+  .note-toggle svg { width: 16px; height: 16px; }
+  .note-toggle:hover, .note-toggle[aria-expanded="true"], .note-toggle.has-note {
+    color: var(--accent); background: var(--accent-soft); }
+  .item-note { grid-column: 2 / -1; min-width: 0; }
+  .item-note[hidden] { display: none; }
+  .item-note textarea { display: block; width: 100%; min-height: 80px; resize: vertical;
+    border: 1px solid var(--line); border-radius: 8px; padding: 10px 12px;
+    background: var(--paper); color: var(--ink); font: inherit; font-size: 14px; line-height: 1.6; }
+  .item-note textarea::placeholder { color: var(--ink3); }
+  .print-note { display: none; }
   .item code, .note code, .plain code, td code { font: 13px var(--mono);
     background: var(--chip); padding: 2px 6px; border-radius: 5px; }
   table { width: 100%; border-collapse: collapse; font-size: 14.5px; margin: 8px 0; }
@@ -161,12 +206,21 @@
   @media (max-width: 980px) {
     .layout { grid-template-columns: 1fr; grid-template-areas: "head" "side" "main";
       padding: 28px 18px 72px; row-gap: 20px; }
-    .sidebar { position: static; max-height: none; overflow: visible; }
+    .sidebar { position: static; max-height: none; overflow: visible; padding-right: 0; }
+  }
+  @media (max-width: 540px) {
+    .section > summary { padding: 16px; font-size: 16px; }
+    .body { padding-left: 10px; padding-right: 10px; }
+    .item { column-gap: 8px; }
+    .note-toggle span { display: none; }
   }
   @media print {
     .topbar, .sidebar, .side-actions { display: none !important; }
     .layout { display: block; padding: 0; }
     .section { box-shadow: none; break-inside: avoid; content-visibility: visible; }
+    .note-toggle, .item-note { display: none !important; }
+    .print-note:not(:empty) { display: block; grid-column: 2 / -1; margin: 0;
+      color: var(--ink2); white-space: pre-wrap; overflow-wrap: anywhere; font-size: 13px; }
   }
 </style>
 </head>
@@ -188,7 +242,18 @@
         <button class="ghost" id="reset" type="button">重置勾选</button>
         <button class="ghost" id="expand" type="button">全部展开</button>
         <button class="ghost" id="collapse" type="button">全部收起</button>
+        <button class="ghost" id="hide-confirmed" type="button" aria-pressed="false">隐藏已勾选</button>
+        <button class="ghost" id="auto-collapse-completed" type="button" aria-pressed="false">全勾选后自动收起</button>
       </div>
+      <div class="export-panel">
+        <label for="export-scope">导出范围</label>
+        <select id="export-scope">
+          <option value="all">全部核对项</option>
+          <option value="unconfirmed">仅未确认项</option>
+        </select>
+        <button class="primary" id="export-json" type="button">导出 JSON</button>
+      </div>
+      <p class="save-status" id="save-status" role="status" aria-live="polite">勾选与备注自动保存在本机</p>
     </div>
     <nav class="side-card toc-card" id="toc-card" aria-label="目录">
       <div class="toc-title">目录</div>
@@ -203,17 +268,41 @@
 
 <script>
 (function () {
-  // 勾选状态按页面标题隔离存储，刷新不丢；「重置勾选」一键清空。
+  // 沿用旧页面的勾选存储键与布尔值格式，备注另存，升级不丢已有进度。
   var KEY = 'maw-checklist:' + document.title;
+  var NOTES_KEY = KEY + ':notes';
+  var VIEW_KEY = KEY + ':view';
   var sections = [].slice.call(document.querySelectorAll('details.section'));
   var boxes = [].slice.call(document.querySelectorAll('.item input[type="checkbox"]'));
-  function load() {
-    try { return JSON.parse(localStorage.getItem(KEY) || '{}'); } catch (e) { return {}; }
+  var sectionBoxes = sections.map(function (sec) {
+    return [].slice.call(sec.querySelectorAll('.item input[type="checkbox"]'));
+  });
+  var status = document.getElementById('save-status');
+  var storageFailed = false;
+  function storageWarning() {
+    storageFailed = true;
+    status.classList.add('warning');
+    status.textContent = '本机存储不可用或数据损坏，请导出 JSON 留存本次结果';
   }
-  function save(state) {
-    try { localStorage.setItem(KEY, JSON.stringify(state)); } catch (e) {}
+  function load(key, fallback) {
+    try {
+      var value = JSON.parse(localStorage.getItem(key) || '{}');
+      if (!value || typeof value !== 'object' || Array.isArray(value)) throw new Error('Invalid state');
+      return value;
+    } catch (e) { storageWarning(); return fallback || {}; }
   }
-  var state = load();
+  function save(key, value) {
+    try {
+      localStorage.setItem(key, JSON.stringify(value));
+      if (!storageFailed) status.textContent = '勾选与备注已保存在本机';
+    } catch (e) { storageWarning(); }
+  }
+  var state = load(KEY);
+  var notes = load(NOTES_KEY);
+  var view = load(VIEW_KEY);
+  var hideConfirmed = view.hideConfirmed === true;
+  var autoCollapseCompleted = view.autoCollapseCompleted === true;
+  var records = [];
 
   // 从 summary 提取纯文本标题（跳过徽标 / 进度等元素），优先取 .sec-title。
   function summaryTitle(summary) {
@@ -226,7 +315,7 @@
     text = text.replace(/\s+/g, ' ').trim();
     if (text) return text;
     var clone = summary.cloneNode(true);
-    [].forEach.call(clone.querySelectorAll('.badge,.sec-progress'), function (el) {
+    [].forEach.call(clone.querySelectorAll('.badge,.sec-progress,.section-chevron'), function (el) {
       el.parentNode.removeChild(el);
     });
     return clone.textContent.replace(/\s+/g, ' ').trim() || '未命名分区';
@@ -256,6 +345,13 @@
     var prog = document.createElement('span');
     prog.className = 'sec-progress';
     summary.appendChild(prog);
+    var chevron = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+    chevron.setAttribute('viewBox', '0 0 24 24');
+    chevron.setAttribute('class', 'section-chevron');
+    chevron.setAttribute('aria-hidden', 'true');
+    chevron.setAttribute('focusable', 'false');
+    chevron.innerHTML = '<path d="m6 9 6 6 6-6" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/>';
+    summary.appendChild(chevron);
   });
   if (!sections.length) document.getElementById('toc-card').style.display = 'none';
 
@@ -266,25 +362,33 @@
   function refresh() {
     var doneAll = 0;
     sections.forEach(function (sec, i) {
-      var sBoxes = [].slice.call(sec.querySelectorAll('.item input[type="checkbox"]'));
+      var sBoxes = sectionBoxes[i];
       var done = sBoxes.filter(function (b) { return b.checked; }).length;
+      sec.classList.toggle('complete', sBoxes.length > 0 && done === sBoxes.length);
       var prog = sec.querySelector('.sec-progress');
       var link = links[i];
       if (sBoxes.length) {
-        prog.style.display = '';
+        prog.hidden = false;
         prog.textContent = done + ' / ' + sBoxes.length;
         prog.classList.toggle('done', done === sBoxes.length);
         link.querySelector('.c').textContent = done + '/' + sBoxes.length;
         link.classList.toggle('done', done === sBoxes.length);
       } else {
-        prog.style.display = 'none';
+        prog.hidden = true;
         link.querySelector('.c').textContent = '';
       }
       doneAll += done;
     });
     boxes.forEach(function (box) {
-      box.closest('.item').classList.toggle('done', box.checked);
+      var item = box.closest('.item');
+      item.classList.toggle('done', box.checked);
+      item.hidden = hideConfirmed && box.checked;
     });
+    var hideButton = document.getElementById('hide-confirmed');
+    hideButton.textContent = hideConfirmed ? '显示已勾选' : '隐藏已勾选';
+    hideButton.setAttribute('aria-pressed', String(hideConfirmed));
+    var autoCollapseButton = document.getElementById('auto-collapse-completed');
+    autoCollapseButton.setAttribute('aria-pressed', String(autoCollapseCompleted));
     var pct = boxes.length ? Math.round(doneAll * 100 / boxes.length) : 0;
     document.getElementById('num').textContent = doneAll + ' / ' + boxes.length;
     var pctEl = document.getElementById('pct');
@@ -292,20 +396,84 @@
     pctEl.classList.toggle('full', pct === 100 && boxes.length > 0);
     document.getElementById('bar').style.width = pct + '%';
     document.getElementById('topbar-i').style.width = pct + '%';
+    var pendingOnly = document.getElementById('export-scope').value === 'unconfirmed';
+    document.getElementById('export-json').disabled = pendingOnly ? doneAll === boxes.length : !boxes.length;
   }
 
-  boxes.forEach(function (box) {
-    if (state[box.id]) box.checked = true;
+  boxes.forEach(function (box, index) {
+    var item = box.closest('.item');
+    var label = item.querySelector('label');
+    var text = label.textContent.replace(/\s+/g, ' ').trim();
+    var toggle = document.createElement('button');
+    toggle.type = 'button';
+    toggle.className = 'note-toggle';
+    toggle.setAttribute('aria-label', '备注：' + text);
+    toggle.innerHTML = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M14 3H5a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-9M17 3l4 4-9 9-4 1 1-4Z"/></svg><span>备注</span>';
+    var record = { box: box, section: item.closest('details.section'), text: text,
+      textarea: null, note: typeof notes[box.id] === 'string' ? notes[box.id] : '' };
+    var panel, textarea, printNote;
+    toggle.setAttribute('aria-expanded', 'false');
+    toggle.classList.toggle('has-note', !!record.note);
+    item.appendChild(toggle);
+    records.push(record);
+    // 长清单只为正在编辑或已有备注的项目创建输入框，避免几千个隐藏控件参与样式计算。
+    function ensureNoteEditor() {
+      if (textarea) return;
+      panel = document.createElement('div');
+      panel.className = 'item-note';
+      panel.id = 'checklist-note-' + index;
+      panel.hidden = true;
+      textarea = document.createElement('textarea');
+      textarea.rows = 3;
+      textarea.placeholder = '记录问题、复现步骤或核验说明…';
+      textarea.setAttribute('aria-label', '备注：' + text);
+      textarea.value = record.note;
+      record.textarea = textarea;
+      panel.appendChild(textarea);
+      toggle.setAttribute('aria-controls', panel.id);
+      printNote = document.createElement('p');
+      printNote.className = 'print-note';
+      printNote.textContent = record.note ? '备注：' + record.note : '';
+      item.appendChild(panel);
+      item.appendChild(printNote);
+      textarea.addEventListener('input', function () {
+        record.note = textarea.value;
+        notes = load(NOTES_KEY, notes);
+        notes[box.id] = textarea.value;
+        save(NOTES_KEY, notes);
+        toggle.classList.toggle('has-note', !!textarea.value);
+        printNote.textContent = textarea.value ? '备注：' + textarea.value : '';
+      });
+    }
+    toggle.addEventListener('click', function () {
+      ensureNoteEditor();
+      panel.hidden = !panel.hidden;
+      toggle.setAttribute('aria-expanded', String(!panel.hidden));
+      if (!panel.hidden) textarea.focus();
+    });
+    if (record.note) {
+      ensureNoteEditor();
+      panel.hidden = false;
+      toggle.setAttribute('aria-expanded', 'true');
+    }
+    if (Object.prototype.hasOwnProperty.call(state, box.id)) box.checked = state[box.id] === true;
     box.addEventListener('change', function () {
-      state = load();
+      state = load(KEY, state);
       state[box.id] = box.checked;
-      save(state);
+      save(KEY, state);
+      var section = box.closest('details.section');
+      var groupBoxes = sectionBoxes[sections.indexOf(section)];
+      if (autoCollapseCompleted && groupBoxes.length && groupBoxes.every(function (itemBox) { return itemBox.checked; })) {
+        section.open = false;
+      }
       refresh();
     });
   });
   document.getElementById('reset').addEventListener('click', function () {
-    boxes.forEach(function (box) { box.checked = false; });
-    save({});
+    state = load(KEY, state);
+    boxes.forEach(function (box) { box.checked = false; state[box.id] = false; });
+    save(KEY, state);
+    if (!storageFailed) status.textContent = '已重置勾选，备注已保留';
     refresh();
   });
   document.getElementById('expand').addEventListener('click', function () {
@@ -313,6 +481,61 @@
   });
   document.getElementById('collapse').addEventListener('click', function () {
     sections.forEach(function (sec) { sec.open = false; });
+  });
+  document.getElementById('hide-confirmed').addEventListener('click', function () {
+    hideConfirmed = !hideConfirmed;
+    view = load(VIEW_KEY, view);
+    view.hideConfirmed = hideConfirmed;
+    save(VIEW_KEY, view);
+    refresh();
+  });
+  document.getElementById('auto-collapse-completed').addEventListener('click', function () {
+    autoCollapseCompleted = !autoCollapseCompleted;
+    view = load(VIEW_KEY, view);
+    view.autoCollapseCompleted = autoCollapseCompleted;
+    save(VIEW_KEY, view);
+    refresh();
+  });
+  document.getElementById('export-scope').addEventListener('change', refresh);
+  document.getElementById('export-json').addEventListener('click', function () {
+    var scope = document.getElementById('export-scope').value;
+    var confirmed = boxes.filter(function (b) { return b.checked; }).length;
+    var exportedSections = sections.map(function (sec) {
+      var items = records.filter(function (r) {
+        return r.section === sec && (scope === 'all' || !r.box.checked);
+      }).map(function (r) {
+        return { id: r.box.id, text: r.text, confirmed: r.box.checked, note: r.textarea ? r.textarea.value : r.note };
+      });
+      return { id: sec.id, title: summaryTitle(sec.querySelector('summary')), items: items };
+    }).filter(function (sec) { return sec.items.length; });
+    var exportedCount = exportedSections.reduce(function (sum, sec) { return sum + sec.items.length; }, 0);
+    var timestamp = new Date().toISOString();
+    var result = {
+      schema: 'maw.verification-checklist.v1', title: document.title,
+      subtitle: document.querySelector('.page-head .sub').textContent.trim(),
+      exportedAt: timestamp, scope: scope,
+      summary: { total: boxes.length, confirmed: confirmed, unconfirmed: boxes.length - confirmed, exported: exportedCount },
+      sections: exportedSections
+    };
+    var url;
+    var anchor;
+    try {
+      var blob = new Blob([JSON.stringify(result, null, 2) + '\n'], { type: 'application/json;charset=utf-8' });
+      url = URL.createObjectURL(blob);
+      anchor = document.createElement('a');
+      anchor.href = url;
+      var filename = document.title.replace(/[<>:"/\\|?*\u0000-\u001f]/g, '-').replace(/[. ]+$/g, '').slice(0, 100) || 'verification';
+      anchor.download = filename + (scope === 'all' ? '-全部' : '-未确认') + '-' + timestamp.slice(0, 10) + '.json';
+      document.body.appendChild(anchor);
+      anchor.click();
+      if (!storageFailed) status.textContent = '已发起导出 ' + exportedCount + ' 项（含备注）';
+    } catch (e) {
+      status.classList.add('warning');
+      status.textContent = '导出失败，请重试；当前勾选与备注仍保留在页面';
+    } finally {
+      if (anchor) anchor.remove();
+      if (url) setTimeout(function () { URL.revokeObjectURL(url); }, 1000);
+    }
   });
 
   // 滚动监听：高亮当前阅读位置对应的目录项。只在纵向位置变化时刷新，
@@ -340,8 +563,14 @@
     var target = document.getElementById(location.hash.slice(1));
     if (target && target.tagName === 'DETAILS') target.open = true;
   }
+  var printOpenStates;
   window.addEventListener('beforeprint', function () {
+    if (!printOpenStates) printOpenStates = sections.map(function (sec) { return sec.open; });
     sections.forEach(function (sec) { sec.open = true; });
+  });
+  window.addEventListener('afterprint', function () {
+    if (printOpenStates) sections.forEach(function (sec, i) { sec.open = printOpenStates[i]; });
+    printOpenStates = null;
   });
 
   refresh();
