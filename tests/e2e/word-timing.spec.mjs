@@ -77,7 +77,6 @@ test('word timing lives on the toolbar toggle and waveform settings keep appeara
   await expect(word(page, 0)).toBeVisible();
 });
 
-
 test('temporary display handles partial and absent timings in both waveform modes', async ({ page }, testInfo) => {
   const errors = [];
   page.on('pageerror', error => errors.push(error.message));
