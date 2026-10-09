@@ -1,0 +1,43 @@
+    <details class="section" open>
+      <summary><span class="sec-title">merge e4085f6d · 本地侧直接提交（4 项）</span> <span class="badge">功能+修复</span></summary>
+      <div class="body">
+        <table>
+          <tr><th>提交</th><th>日期</th><th>说明</th></tr>
+          <tr><td><code>84cfd581</code></td><td>10-07</td><td>fix(launcher): 恢复路径输入框文字靠左对齐（1 文件，-18 行）。</td></tr>
+          <tr><td><code>64e65c85</code></td><td>10-08</td><td>feat(editor): 「导出时附加说话人名称」扩展到 TXT、FCP 7 XML、OTIO 字幕标记、动态字幕与多轨扩展段，统一走 formatSpeakerLabelledText；说话人设置新增跳转「导出」提示。</td></tr>
+          <tr><td><code>5313a889</code></td><td>10-08</td><td>docs: README「为什么用 MAW」、按能力重写「可以做什么」、备份恢复说明；官网首页改版与工具箱补充（AI 口播整理复查工序、AI 注释批量管理）。</td></tr>
+          <tr><td><code>5c205ba6</code></td><td>10-08</td><td>fix(editor): 界面翻译赋相同值时跳过 nodeValue 赋值，避免浏览器重置正在进行的文本选区。</td></tr>
+        </table>
+        <div class="note">这 4 个提交在 merge <code>e4085f6d</code> 的第一父侧（本地开发线），与来自 origin/main 的 #181 汇合。</div>
+        <div class="item"><input type="checkbox" id="pm-1"><label for="pm-1">Launcher 路径输入框文字靠左对齐（与相邻输入框风格一致）。</label></div>
+        <div class="item"><input type="checkbox" id="pm-2"><label for="pm-2">开启「导出时附加说话人名称」→ 分别导出 TXT / FCP 7 XML / OTIO / 动态字幕 → 均带说话人标签，工程内原文与时间不变。</label></div>
+        <div class="item"><input type="checkbox" id="pm-3"><label for="pm-3">README 新增「为什么用 MAW」小节；官网工具箱含 AI 口播整理复查与 AI 注释批量管理说明。</label></div>
+        <div class="item"><input type="checkbox" id="pm-4"><label for="pm-4">切换语言的瞬间在字幕文本上拖出选区 → 选区不被重置（翻译前后文本未变化的节点跳过赋值）。</label></div>
+      </div>
+    </details>
+
+    <details class="section" open>
+      <summary><span class="sec-title">#181 · esbuild 统一构建与压缩（经 merge 自 origin/main）</span> <span class="badge">工程</span></summary>
+      <div class="body">
+        <table>
+          <tr><th>提交</th><th>日期</th><th>说明</th></tr>
+          <tr><td><code>f06c7192</code></td><td>10-08</td><td>编辑器产物由 esbuild 统一生成并压缩（约 -43%），59 个工厂迁移 ESM，保留 classic 接线与依赖注入；补齐类型、产物新鲜度与页面运行态检查。本分区即唯一经 merge <code>e4085f6d</code> 带入的 PR。</td></tr>
+        </table>
+        <div class="note">本次生成时实测：<code>pnpm run check:editor</code> 通过（Editor bundle is fresh）。</div>
+        <div class="item"><input type="checkbox" id="p181-1"><label for="p181-1">localhost 编辑器（serve.py）与便携 HTML → 编辑功能完整（同一 bundle 产物），控制台无加载错误。</label></div>
+        <div class="item"><input type="checkbox" id="p181-2"><label for="p181-2">修改 web/ 源码后 <code>pnpm run check:editor</code> 能正确报「产物过期」→ 重建后恢复通过（新鲜度检查有效）。</label></div>
+      </div>
+    </details>
+
+    <details class="section" open>
+      <summary><span class="sec-title">Tauri 移除与 Electron 路线（直接提交）</span> <span class="badge">变更</span></summary>
+      <div class="body">
+        <table>
+          <tr><th>提交</th><th>日期</th><th>说明</th></tr>
+          <tr><td><code>b7573ca3</code></td><td>10-08</td><td>chore: remove retired Tauri desktop experiment。</td></tr>
+          <tr><td><code>834b6c0e</code></td><td>10-08</td><td>chore(desktop): 删除 desktop/src-tauri 与配套脚手架，清理 .gitignore；desktop/README.md 与 docs/MOSE.md 改为 Electron 路线决策记录（复用 web/ 前端与 serve.py 后端）；移除 2 个读取 src-tauri 的契约测试，保留防回归反向断言；重新生成官网文档页。</td></tr>
+        </table>
+        <div class="item"><input type="checkbox" id="pt-1"><label for="pt-1">仓库中无 desktop/src-tauri 目录及 Tauri 脚手架；<code>git grep -i tauri</code> 仅剩决策记录与反向断言引用。</label></div>
+        <div class="item"><input type="checkbox" id="pt-2"><label for="pt-2">desktop/README.md 与 docs/MOSE.md → Electron 路线说明清晰（复用 web/ + serve.py，不为桌面版维护第二套实现）。</label></div>
+      </div>
+    </details>
