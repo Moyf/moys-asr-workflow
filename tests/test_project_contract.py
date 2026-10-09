@@ -13,6 +13,16 @@ from maw.project import (
 
 
 class ProjectContractTests(unittest.TestCase):
+    def test_punctuation_policy_is_optional_boolean_and_round_trips(self) -> None:
+        project = {"preserve_punctuation": True, "segments": [{"start": 0, "end": 1000, "text": "你好，世界。"}]}
+        self.assertTrue(normalize_project(project)["preserve_punctuation"])
+        self.assertEqual(project["segments"][0]["text"], "你好，世界。")
+        for bad in ("true", 1, None):
+            with self.subTest(bad=bad):
+                result = validate_project({**project, "preserve_punctuation": bad})
+                self.assertFalse(result.ok)
+                self.assertIn("$.preserve_punctuation", {error.path for error in result.errors})
+
     def test_project_ass_mode_and_speaker_export_flags_round_trip_and_validate(self) -> None:
         project = {
             "segments": [],
