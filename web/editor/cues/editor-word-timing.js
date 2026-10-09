@@ -28,12 +28,15 @@
     MaweCoreState.waveformEditor?.pane.classList.toggle('word-timing-mode', enabled);
     refresh();
   }
-  // 波形工具栏的快捷按钮（🪶）由模板可选提供；不存在时零开销。
+  // 波形工具栏的快捷按钮（🪶）与项目设置镜像开关由模板可选提供；不存在时零开销。
   function syncQuickToggle() {
     const quick = document.getElementById('word-timing-quick-toggle');
-    if (!quick) return;
-    quick.classList.toggle('active', enabled);
-    quick.setAttribute('aria-pressed', String(enabled));
+    if (quick) {
+      quick.classList.toggle('active', enabled);
+      quick.setAttribute('aria-pressed', String(enabled));
+    }
+    const mirror = document.getElementById('project-word-timing-toggle');
+    if (mirror && mirror.checked !== enabled) mirror.checked = enabled;
   }
   function reset() {
     setEnabled(false);

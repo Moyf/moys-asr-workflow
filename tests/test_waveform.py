@@ -540,7 +540,7 @@ class EditorAssetTests(unittest.TestCase):
         self.assertEqual(page.count('class="editor-settings-group subtitle-color-settings-group"'), 1)
         self.assertEqual(page.count('class="editor-settings-group subtitle-speaker-settings-group"'), 1)
         self.assertLess(page.index('id="cue-move-step"'), page.index('id="gap-remove-operation-mode"'))
-        # 波形 ⚙️ 保留外观项，并集中提供字词显示与空隙播放开关。
+        # 波形 ⚙️ 保留外观与显示项；字词时间码已移到工具栏 🪶 快捷开关（含项目设置镜像）。
         # 拖动、联动和空隙检测等操作设置仍在独立工具窗中。
         waveform_panel_slice = page[page.index('id="waveform-settings-panel"'):page.index('<span class="waveform-mode-switch"')]
         self.assertNotIn('id="cue-move-step"', waveform_panel_slice)
@@ -548,7 +548,7 @@ class EditorAssetTests(unittest.TestCase):
         self.assertNotIn('id="waveform-drag-playhead"', waveform_panel_slice)
         self.assertNotIn('id="adjacent-boundary-mode"', waveform_panel_slice)
         self.assertNotIn('id="gap-remove-manage"', waveform_panel_slice)
-        self.assertIn('id="word-timing-toggle"', waveform_panel_slice)
+        self.assertNotIn('id="word-timing-toggle"', waveform_panel_slice)
         self.assertNotIn('id="gap-skip-playback"', waveform_panel_slice)
         self.assertIn('id="waveform-show-group-badges"', waveform_panel_slice)
         self.assertIn('禁用波形显示', waveform_panel_slice)
@@ -897,7 +897,8 @@ class EditorAssetTests(unittest.TestCase):
         self.assertIn('在「', page)
         self.assertIn('」中点击「全部清理」 清除所有空隙', page)
         self.assertEqual(page.count('<section class="help-subgroup">'), 21)
-        self.assertIn('id="word-timing-toggle"', page)
+        self.assertIn('id="word-timing-quick-toggle"', page)
+        self.assertIn('id="markers-quick-toggle"', page)
         self.assertIn('id="word-conversion-dialog"', page)
         self.assertNotIn('确定删除第 ${idx + 1} 条字幕', page)
         self.assertNotIn('确定删除选中的 ${targetIdxs.length} 条字幕', page)

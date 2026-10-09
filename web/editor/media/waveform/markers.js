@@ -85,10 +85,14 @@ window.MAWE.register('waveform-markers', function createWaveformModule(dependenc
       element.className = `waveform-marker-item ${isRegion ? 'region' : 'point'}`;
       element.dataset.markerId = marker.id;
       element.style.setProperty('--marker-color', marker.color || '#3e63dd');
+      // 单点 Marker 用更宽的最小可见宽度，便于点中查看。
+      const minVisiblePercent = isRegion
+        ? window.AsrEditorUtils.MARKER_MIN_VISIBLE_PERCENT
+        : window.AsrEditorUtils.MARKER_POINT_MIN_VISIBLE_PERCENT;
       const duration = Math.max(1, endMs - startMs);
       const left = ((visible.start - startMs) / duration) * 100;
       const widthPercent = Math.max(
-        window.AsrEditorUtils.MARKER_MIN_VISIBLE_PERCENT,
+        minVisiblePercent,
         ((visible.end - visible.start) / duration) * 100,
       );
       element.style.left = `${left}%`;
@@ -149,6 +153,14 @@ window.MAWE.register('waveform-markers', function createWaveformModule(dependenc
 
     refreshMarkerOverlay() {
       if (!this.payload) return;
+      // 标记编辑未启用时不渲染标记轨道（工具栏 🔖 / 项目设置镜像控制）。
+      if (MaweSettings.EDITOR_SETTINGS.markerEditingEnabled !== true) {
+        this.content.querySelectorAll('.waveform-marker-track').forEach((element) => element.remove());
+        this.content.querySelectorAll('.waveform-row.waveform-row-has-markers').forEach((row) => {
+          row.classList.remove('waveform-row-has-markers');
+        });
+        return;
+      }
       this.content.querySelectorAll('.waveform-marker-track').forEach((element) => element.remove());
       this.content.querySelectorAll('.waveform-row').forEach((row) => {
         this.appendMarkerTrack(row, Number(row.dataset.startMs), Number(row.dataset.endMs));

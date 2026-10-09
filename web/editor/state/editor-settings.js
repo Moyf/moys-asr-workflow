@@ -171,6 +171,8 @@
   projectBackupLimit: 20,
   // 表情包预览：在视频画面内渲染当前时间的表情包（默认关闭）。
   stickerOverlayEnabled: false,
+  // 标记编辑总开关：默认关闭，启用后显示「标记与区段」入口与标记轨道。
+  markerEditingEnabled: false,
   // 表情包功能总开关：关闭时隐藏预览与右键分配入口；工程数据保留。
   stickersEnabled: true,
   // 表情包 OTIO：保留用户偏好的原始素材引用 / 便携文件夹模式。

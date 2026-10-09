@@ -29,26 +29,24 @@ test.beforeEach(async ({ page }) => {
 const word = (page, index) => page.locator(`.waveform-word-block[data-segment-idx="0"][data-item-idx="${index}"]`).first();
 const source = page => page.evaluate(() => JSON.parse(JSON.stringify(MaweBoot.DATA.segments[0])));
 async function setWordTiming(page, enabled = true) {
-  if (!await page.locator('#waveform-settings-panel').isVisible()) {
-    await page.locator('#waveform-settings-toggle').click();
-  }
-  await page.locator('#word-timing-toggle').setChecked(enabled);
-  await page.locator('#waveform-settings-toggle').click();
+  // 字词时间码开关已收敛到工具栏 🪶 快捷按钮（与项目设置镜像联动）。
+  const quick = page.locator('#word-timing-quick-toggle');
+  if (await quick.getAttribute('aria-pressed') === String(enabled)) return;
+  await quick.click();
+  await expect(quick).toHaveAttribute('aria-pressed', String(enabled));
 }
 
-test('waveform settings contain word timing with spaced rows and working behavior', async ({ page }, testInfo) => {
+test('word timing lives on the toolbar toggle and waveform settings keep appearance groups', async ({ page }, testInfo) => {
   await expect(page.locator('.waveform-toolbar > .word-timing-toggle, .waveform-toolbar > .gap-skip-toggle')).toHaveCount(0);
   await page.locator('#waveform-settings-toggle').click();
   const panel = page.locator('#waveform-settings-panel');
-  await expect(panel.locator('#word-timing-toggle')).toBeVisible();
+  await expect(panel.locator('#word-timing-toggle')).toHaveCount(0);
   await expect(panel.locator('#gap-skip-playback')).toHaveCount(0);
   await expect(panel.locator('.waveform-settings-title')).toHaveText(['波形外观', '显示']);
   await expect(panel.locator('#waveform-settings-appearance #waveform-scale-fit')).toBeVisible();
-  await expect(panel.locator('#waveform-settings-display #word-timing-toggle')).toBeVisible();
   const spacing = await panel.evaluate(el => {
     const groups = [...el.querySelectorAll('.waveform-settings-section')];
     const rects = groups.map(group => group.getBoundingClientRect());
-    const word = el.querySelector('.word-timing-toggle');
     return {
       groups: rects.slice(1).map((rect, index) => rect.top - rects[index].bottom),
       titles: groups.map(group => {
@@ -56,35 +54,35 @@ test('waveform settings contain word timing with spaced rows and working behavio
         const next = [...group.children].slice(1).map(child => child.getBoundingClientRect()).find(rect => rect.height > 0);
         return next.top - title.bottom;
       }),
-      word: word.getBoundingClientRect().top - word.previousElementSibling.getBoundingClientRect().bottom,
     };
   });
-  for (const distance of [...spacing.groups, ...spacing.titles, spacing.word]) {
+  for (const distance of [...spacing.groups, ...spacing.titles]) {
     expect(distance, JSON.stringify(spacing)).toBeGreaterThanOrEqual(8);
   }
   await testInfo.attach('settings spacing', { body: JSON.stringify(spacing), contentType: 'application/json' });
-  await panel.locator('#word-timing-toggle').check();
-  await expect(word(page, 0)).toBeVisible();
   await panel.screenshot({ path: testInfo.outputPath('waveform-settings-groups.png') });
   await page.screenshot({ path: testInfo.outputPath('waveform-options.png') });
   await page.locator('#waveform-settings-toggle').click();
+  // 🪶 在工具栏；🔖 标记编辑默认关闭且「标记与区段」入口隐藏。
+  const quick = page.locator('#word-timing-quick-toggle');
+  await expect(quick).toHaveAttribute('aria-pressed', 'false');
+  await quick.click();
+  await expect(quick).toHaveAttribute('aria-pressed', 'true');
+  await expect(word(page, 0)).toBeVisible();
+  const markerQuick = page.locator('#markers-quick-toggle');
+  await expect(markerQuick).toHaveAttribute('aria-pressed', 'false');
+  await expect(page.locator('#markers-manage')).toBeHidden();
   await page.locator('[data-waveform-mode="basic"]').click();
-  await page.locator('#waveform-settings-toggle').click();
-  await expect(panel.locator('#waveform-window-setting')).toBeVisible();
-  await expect(panel.locator('#waveform-seconds-per-row-setting')).toBeHidden();
-  const basicWordSpacing = await panel.locator('.word-timing-toggle').evaluate(el =>
-    el.getBoundingClientRect().top - el.previousElementSibling.getBoundingClientRect().bottom);
-  expect(basicWordSpacing).toBeGreaterThanOrEqual(8);
-  await panel.screenshot({ path: testInfo.outputPath('waveform-settings-basic.png') });
-  await page.locator('#waveform-settings-toggle').click();
-  await expect(panel).toBeHidden();
+  await expect(quick).toHaveAttribute('aria-pressed', 'true');
   await expect(word(page, 0)).toBeVisible();
 });
+
 
 test('temporary display handles partial and absent timings in both waveform modes', async ({ page }, testInfo) => {
   const errors = [];
   page.on('pageerror', error => errors.push(error.message));
-  await expect(page.locator('#word-timing-toggle')).not.toBeChecked();
+  await expect(page.locator('#word-timing-quick-toggle')).toHaveAttribute('aria-pressed', 'false');
+  await expect(page.locator('#markers-manage')).toBeHidden();
   await setWordTiming(page);
   await expect(word(page, 1)).toContainText('很喜欢！');
   await expect(word(page, 1)).toHaveAttribute('title', /00:03\.000.*00:06\.000/s);
@@ -237,7 +235,8 @@ test('conversion reviews skips and bindings, is atomic and preserves items on sa
   expect(JSON.stringify(saved)).not.toContain('wordTiming');
   await setWordTiming(page);
   await page.evaluate(data => MaweProjectLoad.applyCanonicalProject(data, 'reloaded.mosp'), saved);
-  await expect(page.locator('#word-timing-toggle')).not.toBeChecked();
+  await expect(page.locator('#word-timing-quick-toggle')).toHaveAttribute('aria-pressed', 'false');
+  await expect(page.locator('#markers-manage')).toBeHidden();
   expect(await page.evaluate(() => MaweBoot.DATA.segments[1].items[0].text)).toBe('很喜欢！');
 });
 
@@ -429,7 +428,7 @@ test('English UI does not translate project words or their hover text', async ({
     MAWE_I18N.applyLanguage('en');
   });
   await setWordTiming(page);
-  await expect(page.locator('.word-timing-toggle')).toContainText('Word timings');
+  await expect(page.locator('#word-timing-quick-toggle')).toBeVisible();
   await expect(page.locator('#waveform-settings-panel .waveform-settings-title')).toHaveText(['Waveform appearance', 'Display']);
   await expect(word(page, 0).locator('.waveform-word-label')).toHaveText('字词时间码');
   await expect(word(page, 0)).toHaveAttribute('title', /^字词时间码/);

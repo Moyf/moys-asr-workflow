@@ -211,11 +211,14 @@ window.MAWE.register('utils-markers', function createUtilsModule() {
     return { start: visibleStart, end: visibleEnd };
   }
 
-  // 单点 Marker 在像素层保证的最小可见宽度百分比（避免高缩放下完全消失）。
+  // 单点 / 区段在像素层保证的最小可见宽度百分比（避免高缩放下完全消失）；
+  // 单点 Marker 更宽一些，便于点中查看。
   const MARKER_MIN_VISIBLE_PERCENT = 0.25;
+  const MARKER_POINT_MIN_VISIBLE_PERCENT = 0.75;
 
   return Object.freeze({
     MARKERS_SCHEMA,
+    MARKER_POINT_MIN_VISIBLE_PERCENT,
     MARKER_DEFAULT_COLOR,
     MARKER_PRESET_COLORS,
     MARKER_PRESET_COLOR_LABELS,

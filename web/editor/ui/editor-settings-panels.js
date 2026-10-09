@@ -26,6 +26,11 @@
       let saved = '';
       try { saved = localStorage.getItem(projectTabKey) || ''; } catch (_) {}
       setEditorSettingsActiveTab(projectTabs.find(tab => tab.dataset.settingsTab === saved) || projectTabs[0]);
+      // 打开时同步两个镜像开关的当前状态。
+      const wordMirror = document.getElementById('project-word-timing-toggle');
+      if (wordMirror) wordMirror.checked = window.MaweWordTiming?.enabled === true;
+      const markerMirror = document.getElementById('project-marker-track-toggle');
+      if (markerMirror) markerMirror.checked = MaweSettings.EDITOR_SETTINGS.markerEditingEnabled === true;
     },
   });
   document.getElementById('project-settings-close')?.addEventListener('click', () => projectFloatingPanel.close());

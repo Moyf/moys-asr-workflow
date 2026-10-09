@@ -839,7 +839,7 @@ __WAVEFORM_CSS__
         </div>
 <small class="settings-panel-hint">单词型按空格拆分，字符型按字符拆分；语言类型随双语工程保存。</small>
 </div></div><div class="editor-settings-page" id="editor-settings-page-project-tracks" role="tabpanel" aria-labelledby="editor-settings-tab-project-tracks" hidden><span class="editor-settings-group-heading" id="project-track-settings-title">字幕轨道</span>
-<div class="editor-settings-group" role="group" aria-labelledby="project-track-settings-title"><div class="editor-settings-sub-group"><label class="toggle editor-settings-item overlay-track-toggle" id="overlay-track-controls"
+<div class="editor-settings-group" role="group" aria-labelledby="project-track-settings-title"><div class="editor-settings-sub-group"><label class="toggle editor-settings-item" title="临时查看和调整主字幕已有的字词时间范围；快捷键 Q，与波形工具栏 🪶 联动；打开另一工程后关闭"><input type="checkbox" id="project-word-timing-toggle"> 显示字词时间码</label><label class="toggle editor-settings-item" title="启用标记编辑（快捷键 M）：显示「标记与区段」入口并允许编辑标记与区段"><input type="checkbox" id="project-marker-track-toggle"> 显示标记轨道</label><label class="toggle editor-settings-item overlay-track-toggle" id="overlay-track-controls"
          title="开启后可在叠加轨创建与主字幕时间重叠的叠加字幕；叠加轨不会与双语字幕建立绑定关系">
     <input type="checkbox" id="overlay-track-toggle">
     允许字幕重叠
@@ -1950,27 +1950,24 @@ __WAVEFORM_CSS__
                 <option value="hidden">完全隐藏</option>
               </select>
             </label>
-            <label class="toggle editor-settings-item waveform-settings-toggle-row word-timing-toggle" title="临时查看和调整主字幕已有的字词时间范围；一个块可能包含多个共享时间的字词">
-              <input type="checkbox" id="word-timing-toggle"> 字词时间码
-            </label>
-            <small class="settings-panel-hint">临时显示：打开另一工程后关闭。</small>
+
           </div>
 
         </div>
       </div>
       <span class="waveform-mode-switch" role="group" aria-label="波形显示模式">
         <button type="button" data-waveform-mode="multi">多行</button>
-        <button type="button" data-waveform-mode="basic">基础</button>
+        <button type="button" data-waveform-mode="basic">单行</button>
       </span>
-      <button type="button" id="word-timing-quick-toggle" class="waveform-quick-toggle" title="字词时间码：临时查看和调整主字幕已有的字词时间范围；详细设置在波形 ⚙️ 的「显示」组" aria-pressed="false">🪶</button>
-      <span class="sep"></span>
+      <button type="button" id="word-timing-quick-toggle" class="waveform-quick-toggle" title="字词时间码：临时查看和调整主字幕已有的字词时间范围；快捷键 Q，也可在项目设置 → 字幕轨道中切换" aria-pressed="false">🪶</button>
+      <button type="button" id="markers-quick-toggle" class="waveform-quick-toggle" title="标记编辑：快捷键 M；启用后显示「标记与区段」入口并允许编辑标记与区段" aria-pressed="false">🔖</button>
+      <button type="button" id="markers-manage" title="打开「标记与区段」管理窗：查看、筛选、编辑通用标记与区段（含 AI 复核项）" aria-expanded="false" aria-controls="markers-panel" hidden>标记与区段</button>
       <button type="button" id="gap-remove-manage" title="打开可拖动的移除静音空隙工具窗" aria-expanded="false" aria-controls="gap-remove-panel">静音空隙</button>
       <span class="sep"></span>
       <button type="button" id="auto-merge-manage" title="将间隔过短的前后字幕直接吸附在一起，去除中间的短暂空白（可直接吸收短字幕）" aria-expanded="false" aria-controls="auto-merge-panel">拼接/合并字幕</button>
       <button type="button" id="subtitle-extend-manage" title="打开可拖动的延长字幕工具窗" aria-expanded="false" aria-controls="subtitle-extend-panel">延长字幕</button>
       <span class="sep"></span>
-      <button type="button" id="markers-manage" title="打开「标记与区段」管理窗：查看、筛选、编辑通用标记与区段（含 AI 复核项）" aria-expanded="false" aria-controls="markers-panel">标记与区段</button>
-      <span class="sep"></span>
+
       <span class="multi-subtitle-controls multi-subtitle-waveform-controls" id="multi-subtitle-waveform-controls" hidden>
         <button type="button" id="multi-subtitle-align" title="将当前选中的副字幕批量对齐到各自绑定的主字幕时间范围">批量对齐</button>
       </span>
