@@ -14,10 +14,10 @@
 | `edit.py`、`web/` | 唯一编辑器前端源码及便携 HTML 渲染。 |
 | `maw/waveform.py`、`maw/quapeaks.py`、`maw/mopeaks.py`、`maw/media_cache.py` | 波形提取、容器与缓存编排。 |
 | `server-editor/serve.py` | 仅 loopback 的媒体 Range、受限保存、最近工程与本机设置。 |
-| `desktop/` | MOSE Electron 桌面壳（与 MAW 统一套件一起发布），见 [desktop/README](../desktop/README.md)。 |
+| `desktop/` | Electron 原生窗口与受限 IPC；复用同一 Server，提供三端构建配置。 |
 | `website/` | Astro 官网与源文档的静态副本。 |
 
-当前日常编辑以 Server 为主。底层生成器与公开 CLI 的参数、默认输出不同，不应据某个生成器的帮助推断所有入口；区别见 [CLI](CLI.md)。
+MOSE 与浏览器入口都复用 Server；Launcher 优先查找 MOSE，不可用时回退浏览器。底层生成器与公开 CLI 的参数、默认输出不同，不应据某个生成器的帮助推断所有入口；区别见 [CLI](CLI.md)。
 
 ## 数据与持久化
 
@@ -27,27 +27,9 @@
 | 波形、频谱 | `.quapeaks` / `.mopeaks` 等缓存 | 可重建，当前工程落盘剥离内联缓存；仍兼容旧内嵌工程。 |
 | `workspace` | 可选工程字段 | 随工程携带的布局。 |
 | 最近工程与命名工作区 | 用户级 `server-editor-settings.json` | Server 本机状态，活动工作区可覆盖页面布局。 |
-| 编辑器偏好 | 浏览器存储 | origin/端口隔离，file:// 不承诺共享。 |
+| 编辑器偏好 | 浏览器存储 / MOSE userData 的 `editor-preferences.json` | 普通浏览器按 origin 隔离；MOSE 使用受限存储跨重启恢复。 |
 | ASS 样式库 | 用户级 `ass-styles.json`，便携版浏览器副本 | Launcher 与 localhost Editor 共用，不写入工程。 |
 | Key 与路径配置 | 本机 `.env` / 环境变量 | 不进入工程、日志或测试夹具。 |
-
-当前产品流程以 `server-editor/serve.py` 提供的 Server 版编辑器为主；Windows 官方
-MAW + MOSE 套件中的 Electron MOSE 优先复用这套 Server。Launcher 主按钮优先打开
-`MAW\MOSE\MOSE.exe`，不可用时回退 Server；`.mosp` 关联先指向
-`MAW.exe --open-project`，让直接双击工程也经过更新检查。单文件 HTML 和
-`blank-editor.html` 仍保留用于兼容既有使用方式。
-
-### MOSE Electron 开发与边界
-
-`desktop/src/main.cjs` 负责窗口、单实例、工程参数、会话级文件引用、受限原生文件/目录对话框、下载落盘结果、关闭握手、外链和它自己启动的 `MAW.exe` 生命周期；编辑器 UI 继续唯一来自 `web/`，工程校验/保存/媒体准备继续来自 `server-editor/serve.py`。桌面模式使用 `--desktop-mode`、系统随机端口、页面令牌 `MAW_DESKTOP_TOKEN` 和主进程到 Server 的命令密钥 `MAW_DESKTOP_COMMAND_KEY`。路径敏感的桌面命令需要两个令牌；命令密钥不进入 renderer、页面请求头、命令行或日志。不要让 Electron 导航到本次启动 origin 之外的页面，也不要通过 IPC 接受 renderer 任意指定的读写路径。
-
-本地验证：在 `desktop/` 执行 `npm ci`、`npm test`、`npm run build` 与 `npm run smoke`；
-然后在仓库根目录运行 `scripts/stage-mose-bundle.ps1`，把完整 `dist/MAW` 与
-`desktop/dist/win-unpacked` 统一成 `MAW\MAW.exe` 与 `MAW\MOSE\MOSE.exe`，再由
-`scripts/build-installer.ps1` 调用 Inno Setup 生成官方 Installer。Installer、更新器和
-签名脚本均已接入；未配置证书时发布物会明确保持 unsigned。MOSE 目录不能脱离同套件
-的 MAW.exe 运行。Electron 固定在当前受支持的 `44.1.0`，升级时同步更新
-`desktop/package-lock.json` 与打包契约测试。
 
 目录与配置优先级由 `maw/app_paths.py` 统一决定，用户侧说明集中在 [PROVIDERS](PROVIDERS.md)。工程序列化边界由 `maw/project_io.py` 定义；波形运行态仍可内嵌，不能将“落盘剥离”误读为整个运行态没有 waveform。
 
@@ -63,9 +45,9 @@ Server 的内置预设覆盖、命名工作区和活动名称保存在本机设�
 
 ## 编辑器源码地图
 
-`web/editor-scripts.txt` 是 esbuild 的源码执行顺序；`web/editor-modules.json` 标出 59 个真正的 ESM 工厂与外部桥。其余 121 个文件暂时在同一 classic 作用域中执行，目录不决定顺序。构建器拒绝路径穿越、重复输入及符号链接越界。便携 HTML 与 localhost 都内联同一份已提交的 `web/editor/boot/editor-bundle.js`，用户运行编辑器不需要 Node。
+`web/editor-scripts.txt` 是 esbuild 的源码执行顺序，也是 Server、便携 HTML 与 Electron 桌面壳共用的编辑器装配清单；`web/editor-modules.json` 标出 59 个真正的 ESM 工厂与外部桥。其余 121 个文件暂时在同一 classic 作用域中执行，目录不决定顺序。构建器拒绝路径穿越、重复输入及符号链接越界。便携 HTML 与 localhost 都内联同一份已提交的 `web/editor/boot/editor-bundle.js`，用户运行编辑器不需要 Node。
 
-编辑器 JS、清单或构建配置变化后执行 `npm run build:editor`，提交 bundle 和 `.meta.json`；`npm run check:editor` 只读检查新鲜度，不会自动修复。Server 调试时另开 `npm run watch:editor`，CSS 和模板仍按请求读取。构建和 Node 测试要求 Node 22.13+；源码目录显式声明 `type: module`，不依赖语法自动检测。类型检查包括迁移的全部工厂与既有六文件范围。实施、实验及上游合并经验见 [ESM 迁移台账](dev/ESM_MIGRATION.md)。
+编辑器 JS、清单或构建配置变化后执行 `pnpm run build:editor`，提交 bundle 和 `.meta.json`；`pnpm run check:editor` 只读检查新鲜度，不会自动修复。Server 调试时另开 `pnpm run watch:editor`，CSS 和模板仍按请求读取。构建和 Node 测试要求 Node 22.13+；源码目录显式声明 `type: module`，不依赖语法自动检测。类型检查包括迁移的全部工厂与既有六文件范围。实施、实验及上游合并经验见 [ESM 迁移台账](dev/ESM_MIGRATION.md)。
 
 | 位置 | 职责 |
 | --- | --- |
@@ -88,7 +70,7 @@ Server 的内置预设覆盖、命名工作区和活动名称保存在本机设�
 
 波形类的构造器留在门面，方法按职责放在 `waveform/`。通过 `Object.getOwnPropertyDescriptors` / `Object.defineProperty` 复制方法与 getter，保持原来非枚举、可写和可配置属性；不能使用 `Object.assign` 复制类方法。新方法加入相应工厂并同步装配顺序；有 `super`、私有字段或继承需求时应重新评估这个组合边界。
 
-`boot/editor-host.js` 在业务模块加载前装配 `MaweHost`。宿主工厂接收环境对象或独立的 storage / files / server / runtime 服务；当前用浏览器实现，未来 Electron 入口可传入替代服务。写入服务接收 Blob 构造回调，在取得 writable 后才构造正文，保留原有新建 / 另存为取值时机。文件取消、写入失败、保存指纹与脏状态判断仍由业务模块处理；响应校验也由调用者处理，传输层只负责 URL 解析和 fetch。Canvas 与播放帧仍走原 DOM / rAF 路径，不经通用状态广播。
+`boot/editor-host.js` 在业务模块加载前装配 `MaweHost`。宿主工厂接收环境对象或独立的 storage / files / server / runtime 服务；浏览器实现继续用于普通入口，Electron 的原生文件操作通过窄 `MOSEDesktop` 桥接。写入服务接收 Blob 构造回调，在取得 writable 后才构造正文，保留原有新建 / 另存为取值时机。文件取消、写入失败、保存指纹与脏状态判断仍由业务模块处理；响应校验也由调用者处理，传输层只负责 URL 解析和 fetch。Canvas 与播放帧仍走原 DOM / rAF 路径，不经通用状态广播。
 
 `MaweState` 持有模板注入的原工程对象；偏好、播放器、面板、行内编辑和选择状态均不写入工程。选择集对外提供实时只读视图，增删 / 重排 / 锚点写入只经过 owner。旧 `MaweCoreState` / `MaweSelection` / `MaweCuePanelState` 的状态访问器转发同一个 owner，待现有消费者迁移后再退役。新手引导仍使用现有窄桥接。
 
@@ -100,15 +82,15 @@ Server 的内置预设覆盖、命名工作区和活动名称保存在本机设�
 
 ## 开发检查
 
-开发者手动维护环境：`uv sync --group dev`；前端验证工具使用根目录 `npm ci`。Agent 执行已安装环境中的命令时一律加 `--no-sync`。
+开发者手动维护环境：`uv sync --group dev`；前端验证工具使用根目录 `pnpm install --frozen-lockfile`。Agent 执行已安装环境中的命令时一律加 `--no-sync`。
 
 ```sh
 uv run --no-sync ruff check
-npm run check:editor
+pnpm run check:editor
 node --test tests/test_editor_script_syntax.mjs tests/test_editor_script_order.mjs
 node --test tests/test_editor_utils.mjs tests/test_waveform_js.mjs
 node --test tests/test_editor_state.mjs tests/test_editor_commands.mjs
-npm run typecheck
+pnpm run typecheck
 uv run --no-sync python -m unittest discover -s tests -p "test_*.py"
 git diff --check
 ```
@@ -126,6 +108,12 @@ Windows 使用 `scripts/run-e2e.ps1`，脚本检查 quapeaks，并在需要时�
 ```
 
 语法/单元、Server 契约、浏览器、打包与 CI 是不同验证层，报告时分别说明。
+
+### Electron 与系统集成
+
+Windows 在同套件中共享 `MAW.exe` 与 FFmpeg；macOS/Linux 把原生后端放入 MOSE resources。各平台必须在对应系统和架构构建，步骤见 [desktop README](../desktop/README.md)。工程打开、原生另存为、真实路径、系统关联和手动更新范围见 [MOSE](MOSE.md)。
+
+`npm test --prefix desktop` 检查后端定位、文件写入、进程清理和打包契约；`node --test desktop/e2e/*.mjs` 检查真实 Electron/Server 流程，原生对话框选值使用替身。可通过 `MAW_MOSE_PYTHON` 指定源码后端解释器，通过 `MOSE_TEST_EXECUTABLE` 指定已打包编辑器。安装/卸载、文件管理器双击、macOS/Linux 原生运行仍须对应系统验收，不能以配置检查代替。
 
 ## 文档与发布
 

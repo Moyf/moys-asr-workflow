@@ -123,7 +123,7 @@ export async function buildEditor(root = ROOT, options = {}) {
 }
 
 export function assertFresh(actual, expected) {
-  if (actual !== expected) throw new Error('Editor bundle is stale; run npm run build:editor');
+  if (actual !== expected) throw new Error('Editor bundle is stale; run pnpm run build:editor');
 }
 
 export async function checkEditor(root = ROOT) {
@@ -162,7 +162,7 @@ if (process.argv[1] && import.meta.url === pathToFileURL(path.resolve(process.ar
       if (file && ![BUNDLE,BUILD_INFO].includes(file.replaceAll('\\','/'))) void rebuild();
     });
     fs.watch(fileURLToPath(import.meta.url), () => {
-      console.error('Build script changed; restart npm run watch:editor');
+      console.error('Build script changed; restart pnpm run watch:editor');
     });
   } else throw new Error('Usage: build-editor.mjs --write|--check|--watch [ROOT]');
 }

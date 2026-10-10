@@ -17,6 +17,8 @@
 | [Launcher 指南](LAUNCHER_GUIDE.md) | 识别设置、音轨、预设、批量队列、输出目录和通知。 |
 | [服务商配置](PROVIDERS.md) | 各服务的配置字段、能力边界、费用与数据政策入口。 |
 | [本地 ASR](LOCAL_ASR.md) | 实验性模型、独立运行环境、缓存、设备和时间码。 |
+| [文稿驱动对齐](SCRIPT_DRIVEN_ALIGNMENT.md) | 准确文稿与录音直接生成字词时间码字幕，跳过 ASR；静音与人工锚点。 |
+| [相近能力对比](ALIGNMENT_FEATURES.md) | 文稿生成、时间码修复、文稿匹配、口播对齐与 AI 整理的差异、选择和演进建议。 |
 | [CLI](CLI.md) | 公开命令行参数、底层脚本区别、Server 管理和自动化。 |
 | [FAQ](FAQ.md) | 启动、FFmpeg、API、媒体加载、保存与反馈。 |
 
@@ -41,7 +43,11 @@
 | [LLM 后处理协议](LLM_POSTPROCESS_PROTOCOL.md) | 模型输入输出、ID 校验、本地时间映射和 HTTP 契约。 |
 | [空隙来源与恢复](GAP_PROVENANCE.md) | 空隙来源层、恢复语义与数据规则。 |
 | [开发概览](DEVELOPMENT.md) | 代码地图、持久化边界、测试与发布检查。 |
-| [MAW / MAWE / MOSE](MOSE.md) | 产品名称、当前入口和实验桌面目录的关系。 |
+| [e2e 挂起排查](E2E_SERVER_HANG.md) | Playwright 残留 serve.py 的诊断、清理与运行纪律。 |
+| [MAW / MAWE / MOSE](MOSE.md) | 产品名称与桌面路线决策（Electron 发布路线，Tauri 实验已移除）。 |
+| [桌面开发](../desktop/README.md) | Electron 桌面壳的架构定位与 Tauri 移除决策记录。 |
+| [MAW / MAWE / MOSE](MOSE.md) | Electron 桌面操作、平台包、工程关联和更新范围。 |
+| [桌面开发](../desktop/README.md) | Electron 开发、三端后端布局、构建和验证边界。 |
 | [官网文档同步](../website/docs/CONTENT_SYNC.md) | 从源文档生成官网页面的步骤。 |
 
 ## 历史记录与未完成方案

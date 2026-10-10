@@ -7,8 +7,18 @@ const projectStatusListeners = new Set();
 const closeRequestListeners = new Set();
 const exportResultListeners = new Set();
 
+function preferenceOperation(operation, key, value) {
+  const result = ipcRenderer.sendSync('mose:storage', { operation, key, value });
+  if (!result?.ok) throw new Error(result?.error || '桌面偏好不可用。');
+  return result.value;
+}
+
 contextBridge.exposeInMainWorld('MOSEDesktop', Object.freeze({
   available: true,
+  storage: Object.freeze({
+    getItem: (key) => preferenceOperation('get', key),
+    setItem: (key, value) => preferenceOperation('set', key, String(value)),
+  }),
   chooseFile: (kind, language) => ipcRenderer.invoke('mose:choose-file', kind, language),
   chooseDirectory: (language) => ipcRenderer.invoke('mose:choose-directory', language),
   registerFile(file, kind = 'any') {
@@ -79,4 +89,8 @@ ipcRenderer.on('mose-close-request', (_event, request) => {
 
 ipcRenderer.on('mose-export-result', (_event, result) => {
   for (const listener of exportResultListeners) listener(result);
+});
+
+ipcRenderer.on('mose-command', (_event, id) => {
+  window.postMessage({ source: 'mose-desktop', type: 'command', id }, window.location.origin);
 });

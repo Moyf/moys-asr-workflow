@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from tests.compact_assertions import CompactContainerAssertions
+
 import json
 import os
 import sys
@@ -578,7 +580,7 @@ class GuiWebBridgeTests(unittest.TestCase):
         self.assertIn('save_env(self.paths.env_path, {"MAW_LOCAL_RUNTIME_ROOT": str(candidate) if candidate else ""})', backend)
         self.assertIn("_sync_local_runtime_root(self.paths.env_path)", backend)
         self.assertIn("MAW_LOCAL_RUNTIME_ROOT=", env_example)
-        # 模型缓存链接行跟随主页面「模型保存目录」说明，而非设置运行时区块。
+        # 模型缓存链接行跟随主页面「模型文件夹」说明，而非设置运行时区块。
         self.assertIn('id="localModelCachePathLine"', page)
         self.assertGreater(page.index('id="localModelCachePathLine"'), page.index('data-i18n="local_model_cache_path_hint"'))
         self.assertIn("function renderLocalModelCachePathLine(runtime)", script)
@@ -1388,7 +1390,7 @@ class GuiWebBridgeTests(unittest.TestCase):
         self.assertLess(html.index('id="toolboxFfconcatTab"'), html.index('id="toolboxAlignmentTab"'))
         self.assertLess(html.index('id="toolboxAlignmentTab"'), html.index('id="toolboxExtractAudioTab"'))
         self.assertLess(html.index('id="toolboxExtractAudioTab"'), html.index('id="toolboxWaveformTab"'))
-        # 实用工具记住上次选择的工具；从未选择时回退到第一项（烧录字幕）。
+        # 媒体工具记住上次选择的工具；从未选择时回退到第一项（烧录字幕）。
         self.assertIn(
             'const activeTab = activeToolboxView().querySelector(".toolbox-tab.active") || activeToolboxView().querySelector(".toolbox-tab");',
             script,
@@ -1401,8 +1403,8 @@ class GuiWebBridgeTests(unittest.TestCase):
         self.assertNotIn('id="toolboxFfconcatTab"', postprocess_html)
         self.assertIn('toolbox_title: "工具箱"', strings)
         self.assertIn('toolbox_title: "Toolbox"', strings)
-        self.assertIn('toolbox_group_postprocess: "后处理"', strings)
-        self.assertIn('toolbox_group_utilities: "实用工具"', strings)
+        self.assertIn('toolbox_group_postprocess: "字幕处理"', strings)
+        self.assertIn('toolbox_group_utilities: "媒体工具"', strings)
         self.assertIn('toolbox_utility_media: "媒体文件"', strings)
         self.assertIn('toolbox_utility_media: "Media file"', strings)
         self.assertIn('toolbox_burn_subtitle: "烧录字幕"', strings)
@@ -1472,7 +1474,7 @@ class GuiWebBridgeTests(unittest.TestCase):
         self.assertEqual(page.count('id="toolboxUtilityMediaDropZone"'), 1)
         self.assertGreater(page.index('id="toolboxAlignmentInputs"'), page.index('class="toolbox-content"'))
         self.assertGreater(page.index('id="toolboxAlignmentGapSettings"'), page.index('id="toolboxAlignmentInputs"'))
-        self.assertIn('data-i18n="toolbox_alignment_gap_heading">自动生成空隙</h3>', page)
+        self.assertIn('data-i18n="toolbox_alignment_gap_heading">自动标记静音</h3>', page)
         self.assertIn('id="toolboxAlignmentGapMinimum" type="number" min="100" max="60000" step="50" value="400"', page)
         self.assertIn('id="toolboxAlignmentGapThreshold" type="number" min="-96" max="0" step="1" value="-28"', page)
         self.assertIn('id="toolboxAlignmentGapLeadIn" type="number" min="0" max="2000" step="10" value="120"', page)
@@ -2733,7 +2735,7 @@ class GuiWebBridgeTests(unittest.TestCase):
                 try:
                     return self.read_values[(key.path, name)], self.REG_SZ
                 except KeyError as error:
-                    raise OSError from error
+                    raise FileNotFoundError from error
 
             def CreateKey(self, _root: object, path: str) -> FakeKey:
                 return FakeKey(path)
@@ -2756,7 +2758,7 @@ class GuiWebBridgeTests(unittest.TestCase):
         named_values = {(path, name): value for path, name, value in fake_winreg.values if name is not None}
         self.assertEqual(named_values[(r"Software\Moy\MOSE", "InstallPath")], str(self.root))
         self.assertEqual(named_values[(r"Software\Moy\MOSE", "ExecutablePath")], str(executable))
-        self.assertEqual(named_values[(r"Software\Moy\MOSE", "Version")], "1.6.1")
+        self.assertEqual(named_values[(r"Software\Moy\MOSE", "Version")], json.loads((ROOT / "desktop" / "package.json").read_text(encoding="utf-8"))["version"])
 
     def test_register_mosp_association_preserves_existing_user_choice(self) -> None:
         launcher = self.root / "MAW.exe"
@@ -2806,6 +2808,26 @@ class GuiWebBridgeTests(unittest.TestCase):
         self.assertNotIn(r"Software\Classes\.mosp", paths)
         self.assertIn(r"Software\Classes\Moy.MAW.Project\DefaultIcon", paths)
         self.assertIn(r"Software\Classes\Moy.MAW.Project\shell\open\command", paths)
+
+    def test_mosp_default_preserves_another_registered_handler(self) -> None:
+        from maw.gui_web import _mosp_default_is_available
+
+        registry = mock.Mock(HKEY_CLASSES_ROOT=object(), HKEY_CURRENT_USER=object())
+        registry.OpenKey.return_value = mock.MagicMock()
+        for handler, available in (("Other.Editor.Project", False), ("Moy.MAW.Project", True), ("", True)):
+            registry.QueryValueEx.return_value = (handler, 1)
+            self.assertEqual(_mosp_default_is_available(registry), available)
+        registry.OpenKey.side_effect = PermissionError()
+        self.assertFalse(_mosp_default_is_available(registry))
+
+    def test_find_mose_in_a_frozen_linux_suite(self) -> None:
+        executable = self.root / "MOSE" / "mose"
+        executable.parent.mkdir()
+        executable.write_bytes(b"ELF")
+        with mock.patch.object(sys, "platform", "linux"), mock.patch.object(sys, "frozen", True, create=True):
+            with mock.patch.object(sys, "executable", str(self.root / "MAW")):
+                with mock.patch("maw.gui_web.shutil.which", return_value=None):
+                    self.assertEqual(_find_mose_executable(), executable.resolve())
 
     def test_register_mosp_association_ignores_external_mose_without_suite(self) -> None:
         executable = self.root / "legacy" / "MOSE.exe"
@@ -4422,7 +4444,7 @@ class GuiWebBridgeTests(unittest.TestCase):
             html_path=None,
         )
         failure = PostprocessPipelineError(
-            "后处理步骤 translate 失败：LLM provider returned HTTP 400: invalid request. This is a provider response, not a network outage.",
+            "处理步骤 translate 失败：LLM provider returned HTTP 400: invalid request. This is a provider response, not a network outage.",
             run_directory=self.root / "MAW-Postprocess" / "run",
             failed_index=0,
             current_project=result.json_path,
@@ -4751,7 +4773,7 @@ class OpenRuntimeFolderTests(unittest.TestCase):
 
 
 @final
-class LauncherAssetContractTests(unittest.TestCase):
+class LauncherAssetContractTests(CompactContainerAssertions, unittest.TestCase):
     def test_launcher_exposes_chainable_postprocess_toolbox(self) -> None:
         page = (ROOT / "web" / "launcher" / "index.html").read_text(encoding="utf-8")
         script = (ROOT / "web" / "launcher" / "postprocess.js").read_text(encoding="utf-8")
@@ -4861,8 +4883,8 @@ class LauncherAssetContractTests(unittest.TestCase):
         self.assertIn("selectChainPath", script)
         self.assertIn('bridge("open_file", { path })', script)
         self.assertIn('addEventListener("dblclick"', script)
-        self.assertIn('toolbox_chain_llm_translate: "[LLM 处理/翻译]"', launcher_script)
-        self.assertNotIn("toolbox_chain_llm_translate: \"（LLM 处理/翻译）翻译产物\"", launcher_script)
+        self.assertIn('toolbox_chain_llm_translate: "[AI 处理/翻译]"', launcher_script)
+        self.assertNotIn("toolbox_chain_llm_translate: \"（AI 处理/翻译）翻译产物\"", launcher_script)
         self.assertIn('data-tool-action="match"', page)
         self.assertIn('data-tool-action="ocr"', page)
         self.assertIn('data-tool-action="llm"', page)
@@ -4953,7 +4975,7 @@ class LauncherAssetContractTests(unittest.TestCase):
         script = (ROOT / "web" / "launcher" / "postprocess.js").read_text(encoding="utf-8")
         launcher_script = (ROOT / "web" / "launcher" / "launcher.js").read_text(encoding="utf-8")
 
-        self.assertIn('auto_summary_empty: "请在下方「后处理步骤」中勾选需要的工序。"', launcher_script)
+        self.assertIn('auto_summary_empty: "请在下方「处理步骤」中勾选需要的工序。"', launcher_script)
         self.assertIn('summary.textContent = t("auto_summary_empty")', script)
         self.assertIn('if ($("autoPostprocessEnabled").checked) setAutoStepsExpanded(true);', script)
         self.assertIn('if (plan.enabled && !AUTO_STEP_ORDER.some((stepId) => $(AUTO_STEP_CHECKBOXES[stepId]).checked)) setAutoStepsExpanded(true);', script)
@@ -5157,8 +5179,8 @@ class LauncherAssetContractTests(unittest.TestCase):
             launcher_script,
         )
         self.assertIn('class="hint settings-punctuation-hint" data-i18n="settings_punctuation_hint">决定哪些标点符号需要断句，以及断句后句尾标点的去留（文稿匹配与转写共用）</p>', page)
-        self.assertIn('data-i18n="toolbox_extra_split_punctuation">需要断句的符号</label>', page)
-        self.assertIn('data-i18n="toolbox_preserve_punctuation">断句末尾保留符号</label>', page)
+        self.assertIn('data-i18n="toolbox_extra_split_punctuation">断句符号</label>', page)
+        self.assertIn('data-i18n="toolbox_preserve_punctuation">句尾保留符号</label>', page)
         self.assertIn('toolbox_extra_split_punctuation_hint: "每行一个符号；这里是断句与句尾剥除的完整清单，删掉某行即对该符号失效。换行始终生效。"', launcher_script)
         self.assertIn('toolbox_preserve_punctuation_hint: "断句后保留在上一句末尾的符号；未列出的断句符号会从句尾删除。"', launcher_script)
         self.assertIn('.settings-punctuation-hint {\n  margin-bottom: 10px;\n}', stylesheet)
@@ -5227,9 +5249,9 @@ class LauncherAssetContractTests(unittest.TestCase):
         self.assertIn('class="segmentation-row segmentation-character-row"', page)
         self.assertIn('class="segmentation-row segmentation-word-row"', page)
         self.assertIn('data-i18n="english_segmentation_hint"', page)
-        self.assertIn('data-i18n="min_len">短句合并阈值（字）</label>', page)
-        self.assertIn('data-i18n="max_len">单句最大字数（字）</label>', page)
-        self.assertIn('data-i18n="max_words">英文单句最大字数（单词）</label>', page)
+        self.assertIn('data-i18n="min_len">短句合并（字数）</label>', page)
+        self.assertIn('data-i18n="max_len">单句上限（字数）</label>', page)
+        self.assertIn('data-i18n="max_words">英文单句上限（单词数）</label>', page)
         self.assertLess(page.index('class="segmentation-row segmentation-character-row"'), page.index('class="segmentation-row segmentation-word-row"'))
         self.assertLess(page.index('id="gapSplit"'), page.index('id="minLen"'))
         self.assertLess(page.index('id="minLen"'), page.index('id="maxLen"'))
@@ -5243,9 +5265,9 @@ class LauncherAssetContractTests(unittest.TestCase):
         self.assertIn('minWords: $("minWords").value.trim()', script)
         self.assertIn('gapSplit: $("gapSplit").value.trim()', script)
         self.assertIn('generateSpectral: $("generateSpectral").checked', script)
-        self.assertIn('generate_spectral: "生成 reapeaks 频谱数据"', script)
-        self.assertIn('generate_spectral: "Generate reapeaks spectral data"', script)
-        self.assertIn('segmentation: "字幕切句"', script)
+        self.assertIn('generate_spectral: "生成频谱数据"', script)
+        self.assertIn('generate_spectral: "Generate spectral data"', script)
+        self.assertIn('segmentation: "断句"', script)
         self.assertIn('english_segmentation_hint: "在生成英文字幕时，会启用该配置。"', script)
         self.assertIn('english_segmentation_hint: "This configuration is used when generating English subtitles."', script)
         self.assertIn('if (settingsSection?.id) openSettings(settingsSection.id, field);', script)
@@ -5288,7 +5310,7 @@ class LauncherAssetContractTests(unittest.TestCase):
         self.assertIn('id="debugRaw" type="checkbox"', page)
         self.assertIn('data-i18n-title="debug_raw_title"', page)
         self.assertIn('data-i18n="test_run">快速测试', page)
-        self.assertIn('data-i18n="test_run_override">快速测试已限定前 2 分钟', page)
+        self.assertIn('data-i18n="test_run_override">快速测试模式：只转写前 2 分钟内容', page)
         self.assertGreater(page.index('id="debugRaw"'), page.index('id="speakerColorsField"'))
         self.assertGreater(page.index('id="debugRawField"'), page.index('id="advancedCard"'))
         self.assertIn('data-i18n-title="generate_html_title"', page)
@@ -5307,7 +5329,7 @@ class LauncherAssetContractTests(unittest.TestCase):
         batch_script = (ROOT / "web" / "launcher" / "batch.js").read_text(encoding="utf-8")
 
         self.assertIn('id="stop" class="ghost server-stop hidden"', page)
-        self.assertIn('data-i18n="batch_start">✨ 开始批量生成', page)
+        self.assertIn('data-i18n="batch_start">开始批量生成', page)
         self.assertIn('id="batchSrtOnly" type="checkbox"', page)
         self.assertIn('bridge("cancel_transcription")', script)
         self.assertIn('batchSrtOnly', batch_script)
@@ -5400,8 +5422,8 @@ class LauncherAssetContractTests(unittest.TestCase):
         page = (ROOT / "web" / "launcher" / "index.html").read_text(encoding="utf-8")
         script = (ROOT / "web" / "launcher" / "launcher.js").read_text(encoding="utf-8")
 
-        self.assertIn("打开该工程的 HTML 编辑器", page)
-        self.assertIn("打开空的 HTML 编辑器", page)
+        self.assertIn("用便携编辑器打开", page)
+        self.assertIn("打开空白编辑器", page)
         self.assertIn('event.target.closest(".split-wrap")', script)
 
     def test_launcher_prefers_mose_and_keeps_server_in_split_menu(self) -> None:
@@ -5555,7 +5577,7 @@ class LauncherAssetContractTests(unittest.TestCase):
         self.assertIn('placeholder="500"', page)
         self.assertIn('advanced_params: "识别参数"', script)
         self.assertIn('advanced_misc: "其他"', script)
-        self.assertIn('qwen_audio_options_title: "Qwen 上下文与热词"', script)
+        self.assertIn('qwen_audio_options_title: "热词与提示"', script)
         self.assertIn('max_len_placeholder: "默认 18"', script)
         self.assertIn('max_len_placeholder: "Default: 18"', script)
         self.assertIn('max_words_placeholder: "默认 13"', script)
@@ -5591,13 +5613,13 @@ class LauncherAssetContractTests(unittest.TestCase):
         self.assertIn('id="regionField" class="field"', page)
         self.assertIn('id="workspaceField" class="field"', page)
         self.assertIn('id="saveDashscopeRegionSettings"', page)
-        self.assertIn('data-i18n="settings_dashscope_region">阿里云百炼地域与业务空间</h3>', page)
+        self.assertIn('data-i18n="settings_dashscope_region">阿里云百炼 地域设置</h3>', page)
         self.assertIn("北京地域选填（推荐），新加坡地域必填。", page)
         self.assertIn('id="dashscopeRegionHint"', page)
         self.assertIn('id="openDashscopeRegionSettings"', page)
         self.assertIn('data-i18n="dashscope_region_hint_prefix">如果你不是中国大陆地区的用户，请前往 </span>', page)
         self.assertIn('data-i18n="dashscope_region_hint_link">⚙️ 设置 → 运行环境</button>', page)
-        self.assertIn('data-i18n="dashscope_region_hint_suffix"> 配置阿里云百炼地域与业务空间。</span>', page)
+        self.assertIn('data-i18n="dashscope_region_hint_suffix"> 配置阿里云百炼地域。</span>', page)
         self.assertNotIn('data-i18n="dashscope_region_hint_advanced"', page)
         self.assertIn('$("dashscopeRegionPanel").classList.toggle("hidden", current.id !== "qwen");', script)
         self.assertIn('$("dashscopeRegionHint").classList.toggle("hidden", current.id !== "qwen");', script)
@@ -5639,7 +5661,7 @@ class LauncherAssetContractTests(unittest.TestCase):
         page = (ROOT / "web" / "launcher" / "index.html").read_text(encoding="utf-8")
         stylesheet = (ROOT / "web" / "launcher" / "launcher.css").read_text(encoding="utf-8")
 
-        for expected in ("1️⃣ 媒体与输出", "2️⃣ 识别设置", "3️⃣ 转写后自动处理", "4️⃣ 日志", "5️⃣ 字幕编辑器设置"):
+        for expected in ("1️⃣ 选择媒体", "2️⃣ 识别设置", "3️⃣ 转写后自动处理", "4️⃣ 日志", "5️⃣ 编辑器"):
             self.assertIn(expected, page)
         self.assertIn(".card h2 {\n  margin: 0 0 12px;\n  color: var(--text-secondary);\n  font-size: 16px;", stylesheet)
 
@@ -5749,7 +5771,7 @@ class LauncherAssetContractTests(unittest.TestCase):
         alignment_section = page.index('id="alignmentModelSettingsSection"')
         alignment_section_end = page.index('id="dashscopeRegionPanel"', alignment_section)
         alignment_section_html = page[alignment_section:alignment_section_end]
-        # 本地模型运行时仍在 Runtime；AI 模型配置先放 LLM，再放本地 ASR 与对齐模型。
+        # 本地运行环境仍在 Runtime 页；AI 模型页先放云端 AI，再放本地识别模型与对齐模型。
         self.assertLess(runtime_tab_panel, runtime_panel)
         self.assertLess(runtime_panel, ocr_section)
         # 未选择本地模型时，Runtime 顶部显示「本地模型」跳转提示。
@@ -5772,14 +5794,14 @@ class LauncherAssetContractTests(unittest.TestCase):
         self.assertLess(page.index('id="localRuntimeCheckField"'), page.index('id="modelField"'))
         self.assertIn('data-i18n="settings_local_asr_models"', page)
         self.assertIn('data-i18n="settings_alignment_models"', page)
-        self.assertIn('settings_alignment_models: "本地对齐模型"', script)
-        self.assertIn('settings_alignment_models: "Local alignment models"', script)
+        self.assertIn('settings_alignment_models: "对齐模型"', script)
+        self.assertIn('settings_alignment_models: "Alignment models"', script)
         self.assertIn('id="localModelSettingsEntry"', page)
         self.assertIn('id="openLocalModelSettings"', page)
         self.assertIn('data-i18n="local_model_settings_hint_prefix"', page)
         self.assertIn('data-i18n="local_model_settings_hint_suffix"', page)
         self.assertIn('local_model_settings_hint_prefix: "本地模型的下载和缓存可以在 "', script)
-        self.assertIn('local_model_settings_open: "本地 AI 模型配置"', script)
+        self.assertIn('local_model_settings_open: "AI 模型"', script)
         self.assertIn('local_model_settings_hint_suffix: " 中管理。"', script)
         self.assertIn('id="localModelList"', page)
         self.assertLess(page.index('id="localModelPanel"'), page.index('id="localModelList"'))
@@ -5790,13 +5812,13 @@ class LauncherAssetContractTests(unittest.TestCase):
         self.assertIn('data-i18n="local_model_path">已有模型目录（可选）</label>', page)
         self.assertNotIn('id="localModelHint"', page)
         self.assertIn('id="openLocalRuntimeSettings"', page)
-        self.assertIn('settings_local_runtime: "本地模型运行时"', script)
-        self.assertIn('settings_local_runtime: "Local model runtime"', script)
+        self.assertIn('settings_local_runtime: "本地运行环境"', script)
+        self.assertIn('settings_local_runtime: "Local runtime"', script)
         self.assertIn('local_runtime_configure_prefix: "打开 "', script)
-        self.assertIn('local_runtime_configure: "本地模型运行时"', script)
+        self.assertIn('local_runtime_configure: "本地运行环境"', script)
         self.assertIn('local_runtime_configure_suffix: " 进行配置"', script)
         self.assertIn('local_runtime_configure_prefix: "open "', script)
-        self.assertIn('local_runtime_configure: "Local model runtime"', script)
+        self.assertIn('local_runtime_configure: "Local runtime"', script)
         self.assertIn('local_runtime_configure_suffix: " to configure"', script)
         self.assertIn('id="toggleLocalRuntimeInventory"', page)
         self.assertIn('id="localRuntimeInventory"', page)
@@ -5814,7 +5836,7 @@ class LauncherAssetContractTests(unittest.TestCase):
         self.assertIn('$("openLocalRuntimeSettings").addEventListener("click", () => { openSettings("localRuntimePanel"); void refreshLocalRuntime(); });', script)
         self.assertIn('$("openLocalModelSettings").addEventListener("click", () => { openSettings("localAsrModelSettingsSection"); void refreshLocalModels(); void refreshAlignmentModels(); });', script)
         self.assertIn('local_runtime_ready_prefix: "本地运行环境已就绪，可前往 "', script)
-        self.assertIn('local_runtime_ready_link: "本地模型配置"', script)
+        self.assertIn('local_runtime_ready_link: "本地识别模型"', script)
         self.assertIn('local_runtime_ready_suffix: " 查看和安装本地模型。"', script)
         self.assertIn('function renderLocalRuntimeHint(runtime)', script)
         self.assertIn('renderLocalRuntimeHint(runtime);', script)
@@ -5990,10 +6012,10 @@ class LauncherAssetContractTests(unittest.TestCase):
         launcher_script = (ROOT / "web" / "launcher" / "launcher.js").read_text(encoding="utf-8")
         postprocess_script = (ROOT / "web" / "launcher" / "postprocess.js").read_text(encoding="utf-8")
 
-        self.assertIn('data-i18n="settings_tab_llm">AI 模型配置</button>', page)
-        self.assertIn('settings_tab_llm: "AI 模型配置"', launcher_script)
-        self.assertIn('data-i18n="auto_backfill_subtitles_hint">当你仅有少量外文语句需要翻译，可以勾选此项将它们翻译成原文的语言。</p>', page)
-        self.assertIn('auto_backfill_subtitles_hint: "当你仅有少量外文语句需要翻译，可以勾选此项将它们翻译成原文的语言。"', launcher_script)
+        self.assertIn('data-i18n="settings_tab_llm">AI 模型</button>', page)
+        self.assertIn('settings_tab_llm: "AI 模型"', launcher_script)
+        self.assertIn('data-i18n="auto_backfill_subtitles_hint">只把少量外文语句翻译成目标语言。</p>', page)
+        self.assertIn('auto_backfill_subtitles_hint: "只把少量外文语句翻译成目标语言。"', launcher_script)
         self.assertIn('data-i18n="backfill_subtitles_hint">适用于仅有少量语音需要翻译的情况', page)
         self.assertIn('$("autoTranslateMergeHint")?.classList.toggle("hidden", !(translateEnabled && !mergeBilingual));', postprocess_script)
         self.assertIn('$("autoTranslateBilingualOrder")?.classList.toggle("hidden", !(translateEnabled && mergeBilingual));', postprocess_script)
@@ -6045,7 +6067,7 @@ class LauncherAssetContractTests(unittest.TestCase):
         self.assertIn('.settings-tab.active:focus-visible {', stylesheet)
         self.assertIn('.settings-modal-card {', stylesheet)
         self.assertIn('scrollbar-gutter: stable;', stylesheet)
-        self.assertIn('settings_tab_llm: "AI 模型配置"', script)
+        self.assertIn('settings_tab_llm: "AI 模型"', script)
 
 
 @final

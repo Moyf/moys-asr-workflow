@@ -1,0 +1,360 @@
+  </main>
+</div>
+
+<script>
+(function () {
+  // 沿用旧页面的勾选存储键与布尔值格式，备注另存，升级不丢已有进度。
+  var KEY = 'maw-checklist:' + document.title;
+  var NOTES_KEY = KEY + ':notes';
+  var IGNORE_KEY = KEY + ':ignored';
+  var VIEW_KEY = KEY + ':view';
+  var sections = [].slice.call(document.querySelectorAll('details.section'));
+  var boxes = [].slice.call(document.querySelectorAll('.item input[type="checkbox"]'));
+  var sectionBoxes = sections.map(function (sec) {
+    return [].slice.call(sec.querySelectorAll('.item input[type="checkbox"]'));
+  });
+  var status = document.getElementById('save-status');
+  var storageFailed = false;
+  function storageWarning() {
+    storageFailed = true;
+    status.classList.add('warning');
+    status.textContent = '本机存储不可用或数据损坏，请导出 JSON 留存本次结果';
+  }
+  function load(key, fallback) {
+    try {
+      var value = JSON.parse(localStorage.getItem(key) || '{}');
+      if (!value || typeof value !== 'object' || Array.isArray(value)) throw new Error('Invalid state');
+      return value;
+    } catch (e) { storageWarning(); return fallback || {}; }
+  }
+  function save(key, value) {
+    try {
+      localStorage.setItem(key, JSON.stringify(value));
+      if (!storageFailed) status.textContent = '勾选与备注已保存在本机';
+    } catch (e) { storageWarning(); }
+  }
+  var state = load(KEY);
+  var notes = load(NOTES_KEY);
+  var ignored = load(IGNORE_KEY);
+  var view = load(VIEW_KEY);
+  var hideConfirmed = view.hideConfirmed === true;
+  var autoCollapseCompleted = view.autoCollapseCompleted === true;
+  var records = [];
+
+  // 从 summary 提取纯文本标题（跳过徽标 / 进度等元素），优先取 .sec-title。
+  function summaryTitle(summary) {
+    var titled = summary.querySelector('.sec-title');
+    if (titled) return titled.textContent.replace(/\s+/g, ' ').trim();
+    var text = '';
+    [].forEach.call(summary.childNodes, function (n) {
+      if (n.nodeType === 3) text += n.textContent;
+    });
+    text = text.replace(/\s+/g, ' ').trim();
+    if (text) return text;
+    var clone = summary.cloneNode(true);
+    [].forEach.call(clone.querySelectorAll('.badge,.sec-progress,.sec-ignore,.section-chevron'), function (el) {
+      el.parentNode.removeChild(el);
+    });
+    return clone.textContent.replace(/\s+/g, ' ').trim() || '未命名分区';
+  }
+
+  // 左侧目录与分区进度徽标均由分区卡片自动生成，填写分区内容时无需手写。
+  var toc = document.getElementById('toc');
+  var links = [];
+  var ignoreButtons = [];
+  sections.forEach(function (sec, i) {
+    if (!sec.id) sec.id = 'sec-' + (i + 1);
+    var summary = sec.querySelector('summary');
+    var a = document.createElement('a');
+    a.href = '#' + sec.id;
+    a.innerHTML = '<span class="m"></span><span class="t"></span><span class="c"></span>';
+    a.querySelector('.t').textContent = summaryTitle(summary);
+    a.addEventListener('click', function (e) {
+      sec.open = true;
+      setActive(i);
+      // 平滑滚动只由目录点击显式触发（根滚动条保持原生瞬时行为）。
+      e.preventDefault();
+      var reduce = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+      sec.scrollIntoView({ behavior: reduce ? 'auto' : 'smooth', block: 'start' });
+      if (history.replaceState) history.replaceState(null, '', '#' + sec.id);
+    });
+    toc.appendChild(a);
+    links.push(a);
+    var prog = document.createElement('span');
+    prog.className = 'sec-progress';
+    summary.appendChild(prog);
+    // 「忽略」整组：只出现在含核对项的分区；标题变灰并折叠，计数按已处理计算。
+    if (sectionBoxes[i].length) {
+      var ignoreBtn = document.createElement('button');
+      ignoreBtn.type = 'button';
+      ignoreBtn.className = 'sec-ignore';
+      ignoreBtn.textContent = '忽略';
+      ignoreBtn.setAttribute('aria-label', '忽略此分组：整组按已处理计数，不再列入未确认项');
+      summary.insertBefore(ignoreBtn, prog);
+      ignoreBtn.addEventListener('click', function (event) {
+        // 阻止冒泡，避免触发 summary 自身的展开 / 收起切换。
+        event.preventDefault();
+        event.stopPropagation();
+        ignored = load(IGNORE_KEY, ignored);
+        if (ignored[sec.id] === true) {
+          delete ignored[sec.id];
+          sec.open = true;
+        } else {
+          ignored[sec.id] = true;
+          sec.open = false;
+        }
+        save(IGNORE_KEY, ignored);
+        refresh();
+      });
+      ignoreButtons[i] = ignoreBtn;
+    }
+    var chevron = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+    chevron.setAttribute('viewBox', '0 0 24 24');
+    chevron.setAttribute('class', 'section-chevron');
+    chevron.setAttribute('aria-hidden', 'true');
+    chevron.setAttribute('focusable', 'false');
+    chevron.innerHTML = '<path d="m6 9 6 6 6-6" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/>';
+    summary.appendChild(chevron);
+  });
+  if (!sections.length) document.getElementById('toc-card').style.display = 'none';
+
+  function setActive(idx) {
+    links.forEach(function (a, i) { a.classList.toggle('active', i === idx); });
+  }
+
+  function refresh() {
+    var doneAll = 0;
+    sections.forEach(function (sec, i) {
+      var sBoxes = sectionBoxes[i];
+      // 被忽略的分组整组按已处理计算：分组与总计数、目录均视作完成，
+      // 但标题走灰色（.ignored），不再叠加完成绿色。
+      var isIgnored = ignored[sec.id] === true;
+      var checked = sBoxes.filter(function (b) { return b.checked; }).length;
+      var done = isIgnored ? sBoxes.length : checked;
+      sec.classList.toggle('complete', !isIgnored && sBoxes.length > 0 && checked === sBoxes.length);
+      sec.classList.toggle('ignored', isIgnored);
+      var prog = sec.querySelector('.sec-progress');
+      var link = links[i];
+      if (sBoxes.length) {
+        prog.hidden = false;
+        prog.textContent = done + ' / ' + sBoxes.length;
+        prog.classList.toggle('done', !isIgnored && checked === sBoxes.length);
+        link.querySelector('.c').textContent = done + '/' + sBoxes.length;
+        link.classList.toggle('done', !isIgnored && checked === sBoxes.length);
+        var ignoreBtn = ignoreButtons[i];
+        if (ignoreBtn) ignoreBtn.textContent = isIgnored ? '取消忽略' : '忽略';
+        doneAll += done;
+      } else {
+        prog.hidden = true;
+        link.querySelector('.c').textContent = '';
+      }
+    });
+    boxes.forEach(function (box, index) {
+      var item = box.closest('.item');
+      item.classList.toggle('done', box.checked);
+      // 「隐藏已勾选」视图同时隐藏被忽略分组的核对项（它们已视作处理完毕）。
+      item.hidden = hideConfirmed && (box.checked || ignored[records[index].section.id] === true);
+    });
+    var hideButton = document.getElementById('hide-confirmed');
+    hideButton.textContent = hideConfirmed ? '显示已勾选' : '隐藏已勾选';
+    hideButton.setAttribute('aria-pressed', String(hideConfirmed));
+    var autoCollapseButton = document.getElementById('auto-collapse-completed');
+    autoCollapseButton.setAttribute('aria-pressed', String(autoCollapseCompleted));
+    var pct = boxes.length ? Math.round(doneAll * 100 / boxes.length) : 0;
+    document.getElementById('num').textContent = doneAll + ' / ' + boxes.length;
+    var pctEl = document.getElementById('pct');
+    pctEl.textContent = pct + '%';
+    pctEl.classList.toggle('full', pct === 100 && boxes.length > 0);
+    document.getElementById('bar').style.width = pct + '%';
+    document.getElementById('topbar-i').style.width = pct + '%';
+    var pendingOnly = document.getElementById('export-scope').value === 'unconfirmed';
+    document.getElementById('export-json').disabled = pendingOnly ? doneAll === boxes.length : !boxes.length;
+  }
+
+  boxes.forEach(function (box, index) {
+    var item = box.closest('.item');
+    var label = item.querySelector('label');
+    var text = label.textContent.replace(/\s+/g, ' ').trim();
+    var toggle = document.createElement('button');
+    toggle.type = 'button';
+    toggle.className = 'note-toggle';
+    toggle.setAttribute('aria-label', '备注：' + text);
+    toggle.innerHTML = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M14 3H5a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-9M17 3l4 4-9 9-4 1 1-4Z"/></svg><span>备注</span>';
+    var record = { box: box, section: item.closest('details.section'), text: text,
+      textarea: null, note: typeof notes[box.id] === 'string' ? notes[box.id] : '' };
+    var panel, textarea, printNote;
+    toggle.setAttribute('aria-expanded', 'false');
+    toggle.classList.toggle('has-note', !!record.note);
+    item.appendChild(toggle);
+    records.push(record);
+    // 长清单只为正在编辑或已有备注的项目创建输入框，避免几千个隐藏控件参与样式计算。
+    function ensureNoteEditor() {
+      if (textarea) return;
+      panel = document.createElement('div');
+      panel.className = 'item-note';
+      panel.id = 'checklist-note-' + index;
+      panel.hidden = true;
+      textarea = document.createElement('textarea');
+      textarea.rows = 3;
+      textarea.placeholder = '记录问题、复现步骤或核验说明…';
+      textarea.setAttribute('aria-label', '备注：' + text);
+      textarea.value = record.note;
+      record.textarea = textarea;
+      panel.appendChild(textarea);
+      toggle.setAttribute('aria-controls', panel.id);
+      printNote = document.createElement('p');
+      printNote.className = 'print-note';
+      printNote.textContent = record.note ? '备注：' + record.note : '';
+      item.appendChild(panel);
+      item.appendChild(printNote);
+      textarea.addEventListener('input', function () {
+        record.note = textarea.value;
+        notes = load(NOTES_KEY, notes);
+        notes[box.id] = textarea.value;
+        save(NOTES_KEY, notes);
+        toggle.classList.toggle('has-note', !!textarea.value);
+        printNote.textContent = textarea.value ? '备注：' + textarea.value : '';
+      });
+    }
+    toggle.addEventListener('click', function () {
+      ensureNoteEditor();
+      panel.hidden = !panel.hidden;
+      toggle.setAttribute('aria-expanded', String(!panel.hidden));
+      if (!panel.hidden) textarea.focus();
+    });
+    if (record.note) {
+      ensureNoteEditor();
+      panel.hidden = false;
+      toggle.setAttribute('aria-expanded', 'true');
+    }
+    if (Object.prototype.hasOwnProperty.call(state, box.id)) box.checked = state[box.id] === true;
+    box.addEventListener('change', function () {
+      state = load(KEY, state);
+      state[box.id] = box.checked;
+      save(KEY, state);
+      var section = box.closest('details.section');
+      var groupBoxes = sectionBoxes[sections.indexOf(section)];
+      if (autoCollapseCompleted && groupBoxes.length && groupBoxes.every(function (itemBox) { return itemBox.checked; })) {
+        section.open = false;
+      }
+      refresh();
+    });
+  });
+  document.getElementById('reset').addEventListener('click', function () {
+    state = load(KEY, state);
+    boxes.forEach(function (box) { box.checked = false; state[box.id] = false; });
+    save(KEY, state);
+    ignored = {};
+    save(IGNORE_KEY, ignored);
+    if (!storageFailed) status.textContent = '已重置勾选与忽略，备注已保留';
+    refresh();
+  });
+  document.getElementById('expand').addEventListener('click', function () {
+    sections.forEach(function (sec) { sec.open = true; });
+  });
+  document.getElementById('collapse').addEventListener('click', function () {
+    sections.forEach(function (sec) { sec.open = false; });
+  });
+  document.getElementById('hide-confirmed').addEventListener('click', function () {
+    hideConfirmed = !hideConfirmed;
+    view = load(VIEW_KEY, view);
+    view.hideConfirmed = hideConfirmed;
+    save(VIEW_KEY, view);
+    refresh();
+  });
+  document.getElementById('auto-collapse-completed').addEventListener('click', function () {
+    autoCollapseCompleted = !autoCollapseCompleted;
+    view = load(VIEW_KEY, view);
+    view.autoCollapseCompleted = autoCollapseCompleted;
+    save(VIEW_KEY, view);
+    refresh();
+  });
+  document.getElementById('export-scope').addEventListener('change', refresh);
+  document.getElementById('export-json').addEventListener('click', function () {
+    var scope = document.getElementById('export-scope').value;
+    var confirmed = boxes.filter(function (b) { return b.checked; }).length;
+    var ignoredCount = records.filter(function (r) { return ignored[r.section.id] === true; }).length;
+    var exportedSections = sections.map(function (sec) {
+      // 「仅未确认项」同时排除已勾选与被忽略分组的核对项；全部导出时忽略项
+      // 原样带出并标记 ignored，核对结果快照不丢信息。
+      var items = records.filter(function (r) {
+        return r.section === sec && (scope === 'all' || (!r.box.checked && ignored[sec.id] !== true));
+      }).map(function (r) {
+        return { id: r.box.id, text: r.text, confirmed: r.box.checked,
+          ignored: ignored[sec.id] === true,
+          note: r.textarea ? r.textarea.value : r.note };
+      });
+      return { id: sec.id, title: summaryTitle(sec.querySelector('summary')), items: items };
+    }).filter(function (sec) { return sec.items.length; });
+    var exportedCount = exportedSections.reduce(function (sum, sec) { return sum + sec.items.length; }, 0);
+    var timestamp = new Date().toISOString();
+    var result = {
+      schema: 'maw.verification-checklist.v1', title: document.title,
+      subtitle: document.querySelector('.page-head .sub').textContent.trim(),
+      exportedAt: timestamp, scope: scope,
+      summary: { total: boxes.length, confirmed: confirmed, ignored: ignoredCount,
+        unconfirmed: boxes.length - confirmed - ignoredCount, exported: exportedCount },
+      sections: exportedSections
+    };
+    var url;
+    var anchor;
+    try {
+      var blob = new Blob([JSON.stringify(result, null, 2) + '\n'], { type: 'application/json;charset=utf-8' });
+      url = URL.createObjectURL(blob);
+      anchor = document.createElement('a');
+      anchor.href = url;
+      var filename = document.title.replace(/[<>:"/\\|?*\u0000-\u001f]/g, '-').replace(/[. ]+$/g, '').slice(0, 100) || 'verification';
+      anchor.download = filename + (scope === 'all' ? '-全部' : '-未确认') + '-' + timestamp.slice(0, 10) + '.json';
+      document.body.appendChild(anchor);
+      anchor.click();
+      if (!storageFailed) status.textContent = '已发起导出 ' + exportedCount + ' 项（含备注）';
+    } catch (e) {
+      status.classList.add('warning');
+      status.textContent = '导出失败，请重试；当前勾选与备注仍保留在页面';
+    } finally {
+      if (anchor) anchor.remove();
+      if (url) setTimeout(function () { URL.revokeObjectURL(url); }, 1000);
+    }
+  });
+
+  // 滚动监听：高亮当前阅读位置对应的目录项。只在纵向位置变化时刷新，
+  // 横向滚动（或内容区内部横向滚动）不触发重算。
+  var ticking = false;
+  var lastScrollY = window.scrollY;
+  function spy() {
+    var idx = -1;
+    sections.forEach(function (sec, i) {
+      if (sec.getBoundingClientRect().top <= 120) idx = i;
+    });
+    setActive(idx);
+  }
+  window.addEventListener('scroll', function () {
+    if (window.scrollY === lastScrollY) return;
+    lastScrollY = window.scrollY;
+    if (!ticking) {
+      ticking = true;
+      requestAnimationFrame(function () { spy(); ticking = false; });
+    }
+  }, { passive: true });
+
+  // 地址栏 hash 直达分区；打印前自动展开全部分区。
+  if (location.hash) {
+    var target = document.getElementById(location.hash.slice(1));
+    if (target && target.tagName === 'DETAILS') target.open = true;
+  }
+  var printOpenStates;
+  window.addEventListener('beforeprint', function () {
+    if (!printOpenStates) printOpenStates = sections.map(function (sec) { return sec.open; });
+    sections.forEach(function (sec) { sec.open = true; });
+  });
+  window.addEventListener('afterprint', function () {
+    if (printOpenStates) sections.forEach(function (sec, i) { sec.open = printOpenStates[i]; });
+    printOpenStates = null;
+  });
+
+  refresh();
+  spy();
+})();
+</script>
+</body>
+</html>

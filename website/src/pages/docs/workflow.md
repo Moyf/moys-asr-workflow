@@ -5,7 +5,7 @@ description: "从安装依赖、配置 API Key 到转写、编辑和导出的完
 source: "docs/WORKFLOW.md"
 ---
 
-<!-- Generated from docs/WORKFLOW.md. Run npm run sync:docs to refresh. -->
+<!-- Generated from docs/WORKFLOW.md. Run pnpm run sync:docs to refresh. -->
 
 这份指南只讲一次完整操作：安装 → 配置 → 转写 → 编辑 → 交付。高级设置见 [Launcher 指南](../launcher/)，完整参数见 [CLI](../cli/)。
 
@@ -32,7 +32,9 @@ MOSE；只在当前用户范围注册，不会关联旧的 `.json` 或覆盖 Win
 - `MAW-lite` 不含 FFmpeg / FFprobe，需要系统提供这两个工具。
 - 不要只复制可执行文件；保留随包文件和运行时目录。
 
-Launcher 是转写与工具箱入口；MAWE 是编辑器。当前日常编辑使用本机 Server，MOSE 桌面目录的定位见 [MOSE](../mose/)。
+Launcher 是转写与工具箱入口；MAWE 是编辑器。本分支 Launcher 优先打开 MOSE，缺失时回退到浏览器 Server。Windows MAW + MOSE 套件共用后端；macOS/Linux 配置独立 MOSE 包。安装方式、平台验收与更新范围见 [MOSE](../mose/)。
+
+Windows Installer 按当前用户安装到 `%LOCALAPPDATA%/Programs/MAW`，通过 Launcher 检查、下载并校验新 Installer。便携版及 macOS/Linux 独立 MOSE 当前手动下载更新；具体可用包仍以 Release 附件为准。
 
 ### 从源码运行
 
@@ -87,6 +89,8 @@ uv run --no-sync python maw_gui.py -i "example.mp4" -o "example.srt" -ll 2m
 
 ## 4. 打开工程并编辑
 
+MOSE 可原生选择或拖入 `.mosp` / `.json`，自动绑定磁盘文件并记录最近工程；媒体已移动时仍可打开字幕，通过“加载媒体”重新定位。Windows `.mosp` 关联经过 Launcher 更新检查；macOS/Linux 打开方式配置见 [MOSE](../mose/)。
+
 在 Launcher 点击打开编辑器。源码可以直接启动：
 
 ```sh
@@ -107,6 +111,10 @@ uv run --no-sync python server-editor/serve.py --blank
 
 检查文字、起止时间和较长字幕。双击文本修改，拖动波形块或边缘调整时间；拆分、合并、多重字幕与空隙操作见 [编辑器指南](../editor-guide/)。保存时用 `Ctrl+S`，macOS 用 `Cmd+S`。
 
+「工程设置」集中时间单位 / FPS、语言、双语与重叠、ASS 模式与字幕样式、说话人和工程表情包目录；这些属性随工程保存。「全局设置」管理本机操作偏好，功能区页可打开局部面板并保留全局窗口。跳过静音空隙位于「播放预览 → 播放与定位」，默认表情包目录可在全局表情包页直接配置，工程覆盖目录优先。
+
+需要核对细粒度时间时，在波形区 ⚙️ 设置中开启「字词时间码」：查看并在句内调整已有字词块。一个块可包含多个共享范围的字词，新增文字不代表重新对齐音频；没有时间码的位置不会自动补建。
+
 需要便携 HTML 时可从已有工程生成（媒体仍需单独携带）：
 
 ```sh
@@ -118,6 +126,8 @@ uv run --no-sync python edit.py "example.mosp" -m "example.mp4"
 先保存工程，再导出交付文件：普通字幕用 SRT，需要样式用 ASS。ASS 的样式和预览见 [ASS 样式](../ass-styles/)；去空隙素材、OTIO 与 FFconcat 的配套导出见 [编辑器指南](../editor-guide/)。
 
 保留原媒体和工程，波形缓存可按需重建。浏览器新建、Server 接管和下载式保存的区别，以及版本备份恢复步骤，也在编辑器指南中说明。
+
+MOSE 新建与另存为使用原生对话框，可保存到其他目录；保存后继续绑定新目标。取消对话框不会丢失编辑，跨目录另存为也会保留媒体原来的位置。
 
 ## 下一步
 

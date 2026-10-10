@@ -88,14 +88,24 @@ export function createWaveformModule(dependencies) {
       element.className = `waveform-marker-item ${isRegion ? 'region' : 'point'}`;
       element.dataset.markerId = marker.id;
       element.style.setProperty('--marker-color', marker.color || '#3e63dd');
+      // 单点 Marker 用更宽的最小可见宽度，便于点中查看。
+      const minVisiblePercent = isRegion
+        ? window.AsrEditorUtils.MARKER_MIN_VISIBLE_PERCENT
+        : window.AsrEditorUtils.MARKER_POINT_MIN_VISIBLE_PERCENT;
       const duration = Math.max(1, endMs - startMs);
       const left = ((visible.start - startMs) / duration) * 100;
       const widthPercent = Math.max(
-        window.AsrEditorUtils.MARKER_MIN_VISIBLE_PERCENT,
+        minVisiblePercent,
         ((visible.end - visible.start) / duration) * 100,
       );
       element.style.left = `${left}%`;
       element.style.width = `${widthPercent}%`;
+      if (!isRegion) {
+        const shape = document.createElement('span');
+        shape.className = 'waveform-marker-point-shape';
+        shape.setAttribute('aria-hidden', 'true');
+        element.appendChild(shape);
+      }
       const timeLabel = isRegion
         ? `${marker.start} → ${marker.end}`
         : String(marker.start);
@@ -105,8 +115,7 @@ export function createWaveformModule(dependencies) {
       element.dataset.markerProjectReason = 'true';
       if (marker.review?.status === 'pending') element.classList.add('review-pending');
       if (marker.review?.status === 'confirmed') element.classList.add('review-confirmed');
-      // 已确认的标记在轨道上只保留色条 / 旗标本身，不再显示名称。
-      if (marker.name && marker.review?.status !== 'confirmed') {
+      if (marker.name) {
         const label = document.createElement('span');
         label.className = 'waveform-marker-label';
         label.textContent = marker.name;
@@ -143,6 +152,8 @@ export function createWaveformModule(dependencies) {
       element.addEventListener('contextmenu', (event) => {
         event.preventDefault();
         event.stopPropagation();
+        // 右键等同双击：直接打开标记编辑小弹窗。
+        this.openMarkerQuickEdit(marker.id, element);
       });
       track.appendChild(element);
     }
@@ -151,6 +162,14 @@ export function createWaveformModule(dependencies) {
     /** @this {import('./waveform-types.js').WaveformInstance} */
     refreshMarkerOverlay() {
       if (!this.payload) return;
+      // 标记编辑未启用时不渲染标记轨道（工具栏 🔖 / 项目设置镜像控制）。
+      if (MaweSettings.EDITOR_SETTINGS.markerEditingEnabled !== true) {
+        this.content.querySelectorAll('.waveform-marker-track').forEach((element) => element.remove());
+        this.content.querySelectorAll('.waveform-row.waveform-row-has-markers').forEach((row) => {
+          row.classList.remove('waveform-row-has-markers');
+        });
+        return;
+      }
       (/** @type {NodeListOf<HTMLElement>} */ (this.content.querySelectorAll('.waveform-marker-track'))).forEach((element) => element.remove());
       (/** @type {NodeListOf<import('./waveform-types.js').WaveformRow>} */ (this.content.querySelectorAll('.waveform-row'))).forEach((row) => {
         this.appendMarkerTrack(row, Number(row.dataset.startMs), Number(row.dataset.endMs));
@@ -246,6 +265,7 @@ export function createWaveformModule(dependencies) {
       };
       document.addEventListener('pointerdown', this._markerQuickEditOutside, true);
       document.addEventListener('keydown', this._markerQuickEditKey, true);
+      nameInput.focus({ preventScroll: true });
     }
 
 
@@ -574,9 +594,15 @@ export function createWaveformModule(dependencies) {
         preview.style.setProperty('--marker-color', drag.original?.color || drag.pending?.color || '#3e63dd');
         preview.style.left = `${((visibleStart - rowStart) / duration) * 100}%`;
         preview.style.width = `${Math.max(
-          window.AsrEditorUtils.MARKER_MIN_VISIBLE_PERCENT,
+          range.region ? window.AsrEditorUtils.MARKER_MIN_VISIBLE_PERCENT : window.AsrEditorUtils.MARKER_POINT_MIN_VISIBLE_PERCENT,
           ((visibleEnd - visibleStart) / duration) * 100,
         )}%`;
+        if (!range.region) {
+          const shape = document.createElement('span');
+          shape.className = 'waveform-marker-point-shape';
+          shape.setAttribute('aria-hidden', 'true');
+          preview.appendChild(shape);
+        }
         if (range.region) {
           const label = document.createElement('span');
           label.className = 'waveform-marker-label';

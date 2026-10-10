@@ -171,7 +171,7 @@
     const leadOutMs = MaweSettings.clampGapRemoveLeadMs(MaweDom.gapRemoveLeadOut?.value, MaweGapRemoveData.DEFAULT_GAP_REMOVE_LEAD_OUT_MS);
     const waveform = MaweCoreState.waveformEditor?.getGapRemoveDetectionData?.();
     if (!waveform) {
-      MaweHint.flashHint('波形数据尚不可用，无法按音量判断空隙；请先加载媒体。', 'invalid');
+      MaweHint.flashHint('波形数据尚不可用，无法按音量判断空隙；请先导入媒体。', 'invalid');
       return;
     }
     const previousState = MaweGapRemoveData.getGapRemoveData(false);
@@ -188,7 +188,7 @@
       gaps,
       previousState?.gaps,
     );
-    MaweHistory.pushGapRemoveUndo('扫描并移除静音空隙');
+    MaweHistory.pushGapRemoveUndo('扫描静音空隙');
     setGapRemoveData({
       detector: 'audio_gate',
       minimum_ms: minimumMs,
@@ -380,7 +380,7 @@
   function addGapAtWaveformTime(timeMs) {
     const duration = gapRemoveMediaDurationMs();
     if (!duration) {
-      MaweHint.flashHint('媒体时长尚不可用；请先加载媒体后再添加空隙', 'invalid');
+      MaweHint.flashHint('媒体时长尚不可用；请先导入媒体再添加空隙', 'invalid');
       return false;
     }
     const point = Number(timeMs);
@@ -516,7 +516,7 @@
     MaweDom.gapRemoveAdvancedToggle.setAttribute('aria-expanded', open ? 'true' : 'false');
     if (persist) {
       try {
-        localStorage.setItem(MaweGapRemoveData.GAP_REMOVE_ADVANCED_OPEN_KEY, open ? '1' : '0');
+        MaweHost.storage.setItem(MaweGapRemoveData.GAP_REMOVE_ADVANCED_OPEN_KEY, open ? '1' : '0');
       } catch (_) {
         // file:// 隐私模式下 localStorage 可能被拒；折叠状态仅本次会话生效。
       }
@@ -528,7 +528,7 @@
   function restoreGapRemoveAdvancedOpen() {
     let saved = null;
     try {
-      saved = localStorage.getItem(MaweGapRemoveData.GAP_REMOVE_ADVANCED_OPEN_KEY);
+      saved = MaweHost.storage.getItem(MaweGapRemoveData.GAP_REMOVE_ADVANCED_OPEN_KEY);
     } catch (_) {
       saved = null;
     }
@@ -549,7 +549,7 @@
     MaweDom.gapRemoveDisableToggle.setAttribute('aria-expanded', open ? 'true' : 'false');
     if (persist) {
       try {
-        localStorage.setItem(MaweGapRemoveData.GAP_REMOVE_DISABLE_OPEN_KEY, open ? '1' : '0');
+        MaweHost.storage.setItem(MaweGapRemoveData.GAP_REMOVE_DISABLE_OPEN_KEY, open ? '1' : '0');
       } catch (_) {
         // file:// 隐私模式下 localStorage 可能被拒；折叠状态仅本次会话生效。
       }
@@ -561,7 +561,7 @@
   function restoreGapRemoveDisableOpen() {
     let saved = null;
     try {
-      saved = localStorage.getItem(MaweGapRemoveData.GAP_REMOVE_DISABLE_OPEN_KEY);
+      saved = MaweHost.storage.getItem(MaweGapRemoveData.GAP_REMOVE_DISABLE_OPEN_KEY);
     } catch (_) {
       saved = null;
     }
@@ -591,7 +591,7 @@
     MaweDom.gapRemovePanel.style.right = 'auto';
     if (persist) {
       try {
-        localStorage.setItem(MaweDom.GAP_REMOVE_PANEL_POSITION_KEY, JSON.stringify({ left: nextLeft, top: nextTop }));
+        MaweHost.storage.setItem(MaweDom.GAP_REMOVE_PANEL_POSITION_KEY, JSON.stringify({ left: nextLeft, top: nextTop }));
       } catch (_) {
         // file:// 隐私模式可能拒绝 localStorage；拖动本身仍保持可用。
       }
@@ -604,7 +604,7 @@
     if (!MaweDom.gapRemovePanel) return;
     let saved = null;
     try {
-      saved = JSON.parse(localStorage.getItem(MaweDom.GAP_REMOVE_PANEL_POSITION_KEY) || 'null');
+      saved = JSON.parse(MaweHost.storage.getItem(MaweDom.GAP_REMOVE_PANEL_POSITION_KEY) || 'null');
     } catch (_) {
       saved = null;
     }
@@ -690,7 +690,7 @@
     }
     const range = window.AsrEditorUtils.resolveGapFillRange(gaps, timeMs, MaweGapRemoveUi.gapRemoveMediaDurationMs());
     if (!range) {
-      MaweHint.flashHint('媒体时长尚不可用；请先加载媒体后再填充区间空隙', 'invalid');
+      MaweHint.flashHint('媒体时长尚不可用；请先导入媒体再填充区间空隙', 'invalid');
       return false;
     }
     const state = MaweGapRemoveData.getGapRemoveData(true);

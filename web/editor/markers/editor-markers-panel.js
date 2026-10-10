@@ -11,6 +11,7 @@
   let editingMarkerId = null;
   let colorFilterSynced = false;
   let batchMode = false;
+  const showNotesToggle = document.getElementById('markers-show-notes');
   const checkedMarkerIds = new Set();
 
   function renderBatchActions(visible = filteredMarkers()) {
@@ -191,7 +192,26 @@
       }
       MaweMarkerEditing.updateMarkerFields(marker.id, { color: normalized });
     });
-    colorRow.append(swatches, hexInput);
+    const customColor = document.createElement('div');
+    customColor.className = 'markers-custom-color';
+    const customCaption = document.createElement('label');
+    customCaption.className = 'markers-color-caption';
+    customCaption.textContent = '自定义';
+    hexInput.id = `markers-color-hex-${marker.id}`;
+    customCaption.htmlFor = hexInput.id;
+    const colorPicker = document.createElement('input');
+    colorPicker.type = 'color';
+    colorPicker.className = 'markers-color-picker';
+    colorPicker.value = currentColor;
+    colorPicker.setAttribute('aria-label', '自定义颜色');
+    colorPicker.addEventListener('input', () => {
+      hexInput.value = colorPicker.value;
+    });
+    colorPicker.addEventListener('change', () => {
+      MaweMarkerEditing.updateMarkerFields(marker.id, { color: colorPicker.value });
+    });
+    customColor.append(customCaption, hexInput, colorPicker);
+    colorRow.append(swatches, customColor);
 
     const noteLabel = document.createElement('label');
     noteLabel.className = 'markers-edit-field';
@@ -201,7 +221,7 @@
     noteInput.rows = 2;
     noteInput.maxLength = utils.MARKER_NOTE_MAX_LENGTH;
     noteInput.value = marker.note || '';
-    noteInput.placeholder = '可选备注（AI 复核项会写入原因）';
+    noteInput.placeholder = '可选备注';
     noteInput.addEventListener('change', () => {
       MaweMarkerEditing.updateMarkerFields(marker.id, { note: noteInput.value });
     });
@@ -394,10 +414,11 @@
 
     const editButton = document.createElement('button');
     editButton.type = 'button';
-    editButton.className = `markers-item-edit${marker.id === editingMarkerId ? ' active' : ''}`;
-    editButton.textContent = '编辑';
-    editButton.title = '展开编辑此标记（名称 / 颜色 / 备注 / 时间 / 复核）';
-    editButton.setAttribute('aria-label', `编辑 ${marker.name || (isRegion ? '区段' : '标记')}`);
+    const isEditing = marker.id === editingMarkerId;
+    editButton.className = `markers-item-edit${isEditing ? ' active' : ''}`;
+    editButton.textContent = isEditing ? '完成' : '编辑';
+    editButton.title = isEditing ? '完成' : '展开编辑此标记（名称 / 颜色 / 备注 / 时间 / 复核）';
+    editButton.setAttribute('aria-label', isEditing ? '完成' : `编辑 ${marker.name || (isRegion ? '区段' : '标记')}`);
     editButton.addEventListener('click', () => {
       selectedMarkerId = marker.id;
       editingMarkerId = editingMarkerId === marker.id ? null : marker.id;
@@ -405,6 +426,13 @@
     });
     if (!batchMode) item.appendChild(editButton);
 
+    if (showNotesToggle?.checked) {
+      const note = document.createElement('div');
+      note.className = 'markers-item-note';
+      note.dataset.markerProjectContent = 'true';
+      note.textContent = marker.note?.trim() ? marker.note : '-';
+      item.appendChild(note);
+    }
     if (!batchMode && marker.id === editingMarkerId) item.appendChild(buildMarkerEditor(marker));
     return item;
   }
@@ -506,6 +534,7 @@
     filter.review = MaweDom.markersFilterReview.value || 'all';
     render();
   });
+  showNotesToggle?.addEventListener('change', render);
   MaweDom.markersAddCurrentButton?.addEventListener('click', () => {
     MaweMarkerEditing.addMarkerAtCurrentTime();
   });

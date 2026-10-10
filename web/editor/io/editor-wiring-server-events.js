@@ -52,4 +52,16 @@ function scheduleDeferredReapeaksRetry(delayMs, epoch) {
 document.addEventListener('visibilitychange', () => {
   if (!document.hidden) MaweServerConnection.scheduleServerConnectionCheck(0);
 });
+window.addEventListener('message', (event) => {
+  if (event.source !== window || event.origin !== window.location.origin || event.data?.source !== 'mose-desktop') return;
+  if (event.data.type === 'command' && ['new-project', 'open-project', 'save-project', 'save-project-as'].includes(event.data.id)) {
+    document.getElementById(event.data.id)?.click();
+  }
+});
+if (window.MOSEDesktop?.available) {
+  document.getElementById('json-name')?.addEventListener('contextmenu', (event) => {
+    event.preventDefault();
+    void MaweHost.desktop.command('getLocation', { target: 'project' });
+  });
+}
 window.addEventListener('online', () => MaweServerConnection.scheduleServerConnectionCheck(0));

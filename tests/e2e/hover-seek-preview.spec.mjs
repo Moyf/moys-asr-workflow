@@ -8,8 +8,7 @@ import {
   generateProjectJson,
   generateWav,
   makeTempDir,
-  startServer,
-} from './helpers.mjs';
+  startServer, closeSettingsPanels, openSettingsPage, toggleGlobalSettings } from './helpers.mjs';
 
 const EDITOR_SETTINGS_KEY = 'moy.asr.editor.settings.v1';
 // 默认 secondsPerRow=10：第一行波形覆盖 0–10s，行内水平比例即时间比例。
@@ -62,12 +61,12 @@ async function hoverFirstWaveformRow(page, ratio) {
 test('hover seek preview defaults off and hovering the waveform does not seek', async ({ page }) => {
   // Given: no persisted preference; the 全局设置「视频预览」tab exposes the toggle unchecked.
   await openEditorWithMedia(page);
-  await page.locator('#editor-settings-toggle').click();
-  await page.locator('#editor-settings-tab-subtitle-preview').click();
-  const toggle = page.getByRole('checkbox', { name: '自动预览鼠标位置画面' });
+  await toggleGlobalSettings(page);
+  await openSettingsPage(page, 'subtitle-preview');
+  const toggle = page.getByRole('checkbox', { name: '悬停预览画面' });
   await expect(toggle).toBeVisible();
   await expect(toggle).not.toBeChecked();
-  await page.locator('#editor-settings-close').click();
+  await closeSettingsPanels(page);
 
   // When: the pointer moves across the first waveform row.
   await hoverFirstWaveformRow(page, 0.5);

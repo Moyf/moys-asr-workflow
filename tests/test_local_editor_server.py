@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from tests.compact_assertions import CompactContainerAssertions
+
 import base64
 import importlib.util
 import io
@@ -48,7 +50,7 @@ def _write_reapeaks_for(media_path: Path) -> Path:
     return path
 
 
-class LocalEditorServerTests(unittest.TestCase):
+class LocalEditorServerTests(CompactContainerAssertions, unittest.TestCase):
     def test_open_backup_folder_is_bound_and_requires_token(self) -> None:
         handler = object.__new__(server_editor.EditorRequestHandler)
         handler.server = mock.Mock()
@@ -65,6 +67,23 @@ class LocalEditorServerTests(unittest.TestCase):
                 handler.open_backup_directory()
             opener.assert_called_once_with(str(self.root / '_maw' / '备份'))
             self.assertEqual(handler.send_json.call_args.args[0], 200)
+
+    def test_open_backup_directory_passes_restored_env_to_posix_opener(self) -> None:
+        handler = object.__new__(server_editor.EditorRequestHandler)
+        handler.server = mock.Mock()
+        handler.server.project.json_path = self.project_path
+        handler.server.request_token = 'test-token'
+        handler.send_json = mock.Mock()
+        handler.read_json_request = mock.Mock(return_value={'requestToken': 'test-token'})
+        with mock.patch.object(server_editor.sys, 'platform', 'linux'), mock.patch.object(
+            server_editor.subprocess, 'Popen'
+        ) as popen:
+            handler.open_backup_directory()
+
+        self.assertEqual(handler.send_json.call_args.args[0], 200)
+        self.assertEqual(popen.call_args.args[0][0], 'xdg-open')
+        # open/xdg-open 是宿主桌面程序：必须用还原后的宿主环境（非 frozen 即原环境）。
+        self.assertEqual(popen.call_args.kwargs['env'], dict(os.environ))
 
     def _ass_frame_handler(self) -> object:
         handler = object.__new__(server_editor.EditorRequestHandler)
@@ -702,7 +721,7 @@ class LocalEditorServerTests(unittest.TestCase):
         self.assertNotIn('__FILENAME_BASE_JSON__', page)
         self.assertIn('id="json-name" title="点击复制工程文件名">subtitles-only.mosp</span>', page)
         self.assertNotIn('class="json-name empty"', page)
-        self.assertIn('id="media-name" title="">未加载媒体</span>', page)
+        self.assertIn('id="media-name" title="">未导入媒体</span>', page)
         self.assertIn('"canSave": true', page)
 
     def test_startup_page_shows_project_loading_overlay_before_javascript_runs(self) -> None:
@@ -1268,8 +1287,29 @@ class LocalEditorServerTests(unittest.TestCase):
 
             cached = server.desktop_project_status()["revision"]
             refreshed = server.desktop_project_status(force_revision=True)["revision"]
-            self.assertEqual(cached, baseline)
+            self.assertNotEqual(cached, baseline)
             self.assertNotEqual(refreshed, baseline)
+
+    def test_desktop_save_as_binds_successful_write_when_version_backup_fails(self) -> None:
+        project = server_editor.load_project(
+            self.project_path, None, str(self.stickers), no_waveform=True, peaks_per_second=100,
+        )
+        old_bytes = self.project_path.read_bytes()
+        target = self.root / "new-project.mosp"
+        with server_editor.EditorServer(
+            ("127.0.0.1", 0), project, no_waveform=True,
+            desktop_mode=True, desktop_token="desktop-secret", desktop_command_key="command-secret",
+        ) as server, mock.patch.object(server_editor, "write_backup", side_effect=OSError("backup unavailable")):
+            path, _backup, generation, warning = server.save_desktop_project(
+                "saveAs", project.data, target_path=str(target), expected_generation=0,
+                expected_revision=None, backup_limit=20,
+            )
+            self.assertEqual(path, target.resolve())
+            self.assertEqual(server.project.json_path, path)
+            self.assertEqual(generation, 1)
+            self.assertIn("工程已保存，版本备份失败", warning)
+            self.assertEqual(json.loads(target.read_text(encoding="utf-8"))["media"], str(self.media.resolve()))
+            self.assertEqual(self.project_path.read_bytes(), old_bytes)
 
     def test_desktop_save_as_switches_binding_only_after_write_and_keeps_old_file(self) -> None:
         project = server_editor.load_project(
@@ -1465,7 +1505,7 @@ class LocalEditorServerTests(unittest.TestCase):
         self.assertIn('id="auto-save-interval"', page)
         self.assertIn('id="project-backup-enabled"', page)
         self.assertIn('id="project-backup-enabled" checked', page)
-        self.assertIn('> 备份工程</label>', page)
+        self.assertIn('> 自动备份</label>', page)
         self.assertLess(page.index('id="editor-settings-page-export"'), page.index('id="server-auto-save-settings"'))
         self.assertLess(page.index('id="server-auto-save-settings"'), page.index('id="project-backup-settings"'))
         self.assertIn('function scheduleAutoSave()', source)
@@ -1523,6 +1563,13 @@ class LocalEditorServerTests(unittest.TestCase):
                 self.assertEqual(status, 403)
                 self.assertFalse(result["ok"])
                 self.assertEqual(server.project.sticker_root, original_root)
+                status, result = post({"requestToken": server.request_token, "path": str(alternate), "activate": False})
+                self.assertEqual(status, 200)
+                self.assertEqual(result["count"], 1)
+                self.assertEqual(server.project.sticker_root, original_root)
+                status, result = post({"requestToken": server.request_token, "path": str(alternate), "activate": "false"})
+                self.assertEqual(status, 400)
+                self.assertEqual(server.project.sticker_root, original_root)
                 status, result = post({"requestToken": server.request_token, "path": str(self.root / "missing")})
                 self.assertEqual(status, 400)
                 self.assertFalse(result["ok"])
@@ -1532,6 +1579,11 @@ class LocalEditorServerTests(unittest.TestCase):
                 self.assertEqual(result["root"], alternate.as_posix())
                 self.assertEqual(result["count"], 1)
                 self.assertEqual(result["stickers"][0]["rel"], "new.png")
+                status, result = post({"requestToken": server.request_token, "path": ""})
+                self.assertEqual(status, 200)
+                self.assertEqual(result["root"], "")
+                self.assertEqual(result["stickers"], [])
+                self.assertIsNone(server.project.sticker_root)
             finally:
                 server.shutdown()
                 thread.join(timeout=2)

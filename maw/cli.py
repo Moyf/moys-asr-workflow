@@ -85,6 +85,15 @@ def build_parser(prog: str | None = None) -> argparse.ArgumentParser:
     )
 
     parser.add_argument("-i", "--input", help="要转写的音频或视频路径")
+    parser.add_argument("--align-script", metavar="SCRIPT", help="文稿 + 媒体直接生成 .mosp 与 SRT，跳过 ASR（Qwen ForcedAligner）")
+    parser.add_argument("--alignment-check", action="store_true", help="只检查文稿、音轨与分块，输出 JSON；不加载模型、不写字幕")
+    parser.add_argument("--alignment-model-path", help="已有 Qwen ForcedAligner 模型目录")
+    parser.add_argument("--alignment-output-directory", help="文稿对齐输出目录（默认文稿所在目录；不会覆盖已有文件）")
+    parser.add_argument("--alignment-device", choices=("auto", "cpu", "cuda", "mps"), default="auto")
+    parser.add_argument("--alignment-audio-track", type=int, help="文稿对齐使用的零基声音轨道（默认容器默认轨）")
+    parser.add_argument("--alignment-silence-db", type=float, default=-35.0)
+    parser.add_argument("--alignment-silence-ms", type=int, default=500)
+    parser.add_argument("--alignment-anchors", help="长录音人工锚点 JSON（按非空文稿行指定毫秒范围）")
     parser.add_argument(
         "-o",
         "--output",
@@ -115,7 +124,7 @@ def build_parser(prog: str | None = None) -> argparse.ArgumentParser:
     parser.add_argument("--speaker-colors", action="store_true", help="开启说话人分离并写入字幕颜色快照")
     parser.add_argument("-ll", "--length-limit", help="只处理媒体前 N 时长，例如 2m、20s、1h")
     parser.add_argument("--json", dest="json_output", action="store_true", help="兼容旧 CLI；MAW CLI 默认总是生成 .mosp")
-    parser.add_argument("--with-waveform", action="store_true", help="把波形峰值写入 .mosp 工程")
+    parser.add_argument("--with-waveform", action="store_true", help="在媒体旁生成外置 .quapeaks 波形缓存（不再写进工程文件；GUI 转写默认开启）")
     parser.add_argument(
         "--with-spectral",
         action="store_true",
@@ -150,11 +159,71 @@ def main(argv: Sequence[str] | None = None) -> int:
     prepare_cli_stdio()
     parser = build_parser()
     args = parser.parse_args(argv)
+    if args.alignment_check and not args.align_script:
+        parser.error("--alignment-check 需要 --align-script")
+    if args.align_script:
+        return _run_script_alignment(parser, args)
     if args.server is not None:
         return _run_server(parser, args)
     if args.stop_server is not None:
         return _run_stop_server(parser, args)
     return _run_transcription(parser, args)
+
+
+def _run_script_alignment(parser: argparse.ArgumentParser, args: argparse.Namespace) -> int:
+    if not args.input:
+        parser.error("文稿对齐必须提供 -i/--input 媒体")
+    allowed = {
+        "align_script", "input", "language", "alignment_model_path",
+        "alignment_output_directory", "alignment_device", "alignment_audio_track",
+        "alignment_silence_db", "alignment_silence_ms", "alignment_anchors",
+        "alignment_check",
+    }
+    unsupported = [
+        name for name, value in vars(args).items()
+        if name not in allowed and value != parser.get_default(name)
+    ]
+    if unsupported:
+        parser.error("--align-script 不支持其他转写 / Server 参数；请使用 --alignment-* 参数配置文稿对齐")
+    from maw.alignment_models import QWEN_FORCED_ALIGNER_MODEL_ID
+    from maw.local_runtime import managed_runtime_status, run_timestamp_alignment_in_runtime
+    from maw.script_timestamp_alignment import ScriptAlignmentRequest, check_script_alignment, run_script_alignment
+
+    options = {
+        "script_path": Path(args.align_script), "media_path": Path(args.input),
+        "model_path": Path(args.alignment_model_path) if args.alignment_model_path else None,
+        "output_directory": Path(args.alignment_output_directory) if args.alignment_output_directory else None,
+        "language": args.language or "zh", "device": args.alignment_device,
+        "audio_track": args.alignment_audio_track,
+        "silence_db": args.alignment_silence_db, "silence_ms": args.alignment_silence_ms,
+        "anchors_path": Path(args.alignment_anchors) if args.alignment_anchors else None,
+    }
+    try:
+        if args.alignment_check:
+            report = check_script_alignment(ScriptAlignmentRequest(**options))
+            print(json.dumps(report.to_payload(), ensure_ascii=False, indent=2))
+            return 0
+        if managed_runtime_status().ready:
+            result = run_timestamp_alignment_in_runtime(
+                model_id=QWEN_FORCED_ALIGNER_MODEL_ID, on_event=print, **options,
+            )
+            artifact = result["artifact"]
+            warnings = artifact.get("warnings", [])
+            project_path, srt_path = artifact["projectPath"], artifact["srtPath"]
+            report_payload = result["report"]
+        else:
+            artifact, report = run_script_alignment(ScriptAlignmentRequest(**options))
+            warnings = report.warnings
+            project_path, srt_path = artifact.project_path, artifact.srt_path
+            report_payload = report.to_payload()
+        print(f"MOSP: {project_path}\nSRT: {srt_path}")
+        print("REPORT: " + json.dumps(report_payload, ensure_ascii=False))
+        for warning in warnings:
+            print(f"WARNING: {warning}", file=sys.stderr)
+        return 0
+    except (OSError, ValueError, RuntimeError) as error:
+        print(f"文稿对齐失败：{error}", file=sys.stderr)
+        return 1
 
 
 def prepare_cli_stdio() -> None:

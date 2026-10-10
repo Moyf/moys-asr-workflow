@@ -6,6 +6,7 @@ import json
 import os
 import queue
 import re
+import shutil
 import socket
 import subprocess
 import sys
@@ -62,7 +63,7 @@ from maw.gui_config import (
     provider_for_model,
     save_env,
 )
-from maw.gui_platform import apply_dark_title_bar, asset_path, creationflags, popen_process_tree, process_group_kwargs, release_process_tree, startupinfo, terminate_process_tree
+from maw.gui_platform import apply_dark_title_bar, asset_path, creationflags, popen_process_tree, process_group_kwargs, release_process_tree, restore_host_library_path, startupinfo, terminate_process_tree
 from maw.gui_workflow import TranscriptionCancelledError, TranscriptionProcessError, TranscriptionRequest, TranscriptionResult, _bundled_ffmpeg_directory, _child_environment, _ffmpeg_search_path, build_alignment_serve_command, build_output_paths, build_serve_command, default_srt_path, raw_response_path, run_transcription, unique_output_path, with_test_suffix
 from maw.launcher_batch import BatchItem, run_batch
 from maw.output_naming import format_elapsed, maw_root
@@ -162,7 +163,7 @@ EDITOR_HEALTH_PROBE_PATH: Final = "/api/startup-status"
 # 短暂超过默认 0.25s，但仍远小于 SERVER_START_TIMEOUT 的总预算。
 EDITOR_HEALTH_PROBE_TIMEOUT: Final = 2.0
 # Keep this aligned with pyproject.toml; release workflows synchronize and verify it.
-BUNDLED_APP_VERSION = "1.6.1"
+BUNDLED_APP_VERSION = "1.8.0-beta.1"
 # MOSE ships inside the same suite as MAW, so its registry marker must follow
 # the public project version rather than retaining the prototype 0.1.x value.
 MOSE_VERSION = BUNDLED_APP_VERSION
@@ -359,20 +360,17 @@ def _macos_mose_executable(app_path: Path) -> Path | None:
 
 def _bundled_mose_candidates() -> tuple[Path, ...]:
     repo_root = Path(__file__).resolve().parents[1]
+    names = ("MOSE.exe", "mose.exe") if sys.platform == "win32" else ("mose", "MOSE")
     if getattr(sys, "frozen", False):
         executable_dir = Path(sys.executable).resolve().parent
-        return (
-            executable_dir / "MOSE" / "MOSE.exe",
-            executable_dir / "MOSE" / "mose.exe",
+        roots = (executable_dir / "MOSE",)
+    else:
+        roots = (
+            repo_root / "dist" / "MAW" / "MOSE",
+            repo_root / "dist" / "MAW-MOSE" / "MOSE",
+            repo_root / "build" / "release" / "mose" / "MAW" / "MOSE",
         )
-    return (
-        repo_root / "dist" / "MAW" / "MOSE" / "MOSE.exe",
-        repo_root / "dist" / "MAW" / "MOSE" / "mose.exe",
-        repo_root / "dist" / "MAW-MOSE" / "MOSE" / "MOSE.exe",
-        repo_root / "dist" / "MAW-MOSE" / "MOSE" / "mose.exe",
-        repo_root / "build" / "release" / "mose" / "MAW" / "MOSE" / "MOSE.exe",
-        repo_root / "build" / "release" / "mose" / "MAW" / "MOSE" / "mose.exe",
-    )
+    return tuple(root / name for root in roots for name in names)
 
 
 def _bundled_mose_executable() -> Path | None:
@@ -448,6 +446,16 @@ def _mose_search_paths() -> list[Path]:
                     )
             app_candidates[0:0] = frozen_app_candidates
         candidates.extend(app_candidates)
+    elif sys.platform == "linux":
+        candidates.extend(_bundled_mose_candidates())
+        candidates.extend((
+            repo_root / "desktop" / "dist" / "linux-unpacked" / "mose",
+            Path("/opt/MOSE/mose"),
+            Path.home() / ".local" / "bin" / "mose",
+        ))
+        executable = shutil.which("mose")
+        if executable:
+            candidates.append(Path(executable))
     else:
         candidates.extend(_bundled_mose_candidates())
         candidates.extend(
@@ -518,6 +526,20 @@ def _mosp_user_choice_exists(winreg_module: object) -> bool:
         return True
 
 
+def _mosp_default_is_available(winreg_module: object) -> bool:
+    """Preserve handlers registered by another application, including HKLM."""
+    root = getattr(winreg_module, "HKEY_CLASSES_ROOT", winreg_module.HKEY_CURRENT_USER)
+    key_path = ".mosp" if hasattr(winreg_module, "HKEY_CLASSES_ROOT") else r"Software\Classes\.mosp"
+    try:
+        with winreg_module.OpenKey(root, key_path) as key:
+            value = winreg_module.QueryValueEx(key, None)[0]
+        return not value or value == MAW_FILE_TYPE
+    except FileNotFoundError:
+        return True
+    except OSError:
+        return False
+
+
 def _register_mosp_association() -> bool:
     """Register .mosp with MAW so direct opens still pass through the updater."""
     if sys.platform != "win32":
@@ -530,7 +552,8 @@ def _register_mosp_association() -> bool:
     if launcher is None or bundled is None:
         return False
     executable = launcher
-    icon = bundled
+    project_icon = bundled.parent / "resources" / "assets" / "mosp.ico"
+    icon = project_icon if project_icon.is_file() else bundled
     try:
         import winreg
 
@@ -540,10 +563,12 @@ def _register_mosp_association() -> bool:
             winreg.SetValueEx(mose_key, "InstallPath", 0, winreg.REG_SZ, str(bundled.parent))
             winreg.SetValueEx(mose_key, "ExecutablePath", 0, winreg.REG_SZ, str(bundled))
             winreg.SetValueEx(mose_key, "Version", 0, winreg.REG_SZ, version)
-        if not user_choice_exists:
+        if not user_choice_exists and _mosp_default_is_available(winreg):
             with winreg.CreateKey(winreg.HKEY_CURRENT_USER, r"Software\Classes\.mosp") as extension_key:
                 winreg.SetValueEx(extension_key, None, 0, winreg.REG_SZ, MAW_FILE_TYPE)
                 winreg.SetValueEx(extension_key, "Content Type", 0, winreg.REG_SZ, "application/json")
+        with winreg.CreateKey(winreg.HKEY_CURRENT_USER, r"Software\Classes\.mosp\OpenWithProgids") as open_with_key:
+            winreg.SetValueEx(open_with_key, MAW_FILE_TYPE, 0, winreg.REG_SZ, "")
         with winreg.CreateKey(winreg.HKEY_CURRENT_USER, rf"Software\Classes\{MAW_FILE_TYPE}") as file_type_key:
             winreg.SetValueEx(file_type_key, None, 0, winreg.REG_SZ, "MAW Project")
         with winreg.CreateKey(winreg.HKEY_CURRENT_USER, rf"Software\Classes\{MAW_FILE_TYPE}\DefaultIcon") as icon_key:
@@ -1482,7 +1507,34 @@ class LauncherApi:
             return {"ok": False, "field": "postprocessInput", "code": file_error_code(error) or "postprocess_failed", "detail": str(error), "error": str(error)}
         return _subtitle_artifact_result(result)
 
+    def check_script_alignment(self, payload: Mapping[str, object]) -> dict[str, object]:
+        """Input/chunk check runs in the main runtime; no model is needed."""
+        from maw.script_timestamp_alignment import ScriptAlignmentRequest, check_script_alignment
+
+        media_path = _optional_path(payload.get("mediaPath"))
+        if not media_path or not _optional_path(payload.get("scriptPath")):
+            return _error_result("toolboxTimestampScriptPath", "alignment_failed", "文稿驱动对齐需要文稿与媒体文件。")
+        self._emit_postprocess_status("toolbox_status_reading")
+        try:
+            report = check_script_alignment(ScriptAlignmentRequest(media_path=media_path, **self._script_alignment_options(payload)))
+            return {"ok": True, "report": report.to_payload()}
+        except (OSError, UnicodeError, ValueError, RuntimeError) as error:
+            return _error_result("toolboxTimestampScriptPath", "alignment_failed", str(error))
+
+    @staticmethod
+    def _script_alignment_options(payload: Mapping[str, object]) -> dict[str, object]:
+        track = str(payload.get("audioTrack") if payload.get("audioTrack") is not None else "").strip()
+        return {
+            "script_path": _optional_path(payload.get("scriptPath")),
+            "language": str(payload.get("language") or "zh"),
+            "silence_db": float(str(payload.get("silenceDb", -35))),
+            "silence_ms": int(str(payload.get("silenceMs", 500))),
+            "anchors_path": _optional_path(payload.get("anchorsPath")),
+            "audio_track": int(track) if track else None,
+        }
+
     def run_timestamp_alignment(self, payload: Mapping[str, object]) -> dict[str, object]:
+        script_mode = str(payload.get("alignmentMode") or "fill") == "script"
         model_id = normalize_alignment_model_id(str(payload.get("modelId") or ""))
         try:
             model = alignment_model_by_id(model_id)
@@ -1491,6 +1543,11 @@ class LauncherApi:
         project_path = _optional_path(payload.get("projectPath"))
         srt_path = _optional_path(payload.get("srtPath"))
         media_path = _optional_path(payload.get("mediaPath"))
+        if script_mode:
+            if model.engine != "qwen":
+                return _error_result("toolboxTimestampModel", "alignment_failed", "文稿驱动对齐仅支持 Qwen ForcedAligner（不调用 ASR）。")
+            if not media_path or not _optional_path(payload.get("scriptPath")):
+                return _error_result("toolboxTimestampScriptPath", "alignment_failed", "文稿驱动对齐需要文稿与媒体文件。")
         model_cache_root = effective_config(self.paths.env_path).model_cache_root
         runtime = self._local_runtime_status(model_cache_root)
         status = inspect_alignment_model(
@@ -1514,6 +1571,9 @@ class LauncherApi:
             # 输入完全相同。时间码工具固定只更新工程，忽略共享输出选择。
             output_mode = OutputMode.JSON.value
             requested_model_path = _optional_path(payload.get("modelPath"))
+            script_options = {}
+            if script_mode:
+                script_options = self._script_alignment_options(payload)
             if runtime.ready:
                 worker_result = run_timestamp_alignment_in_runtime(
                     project_path=project_path,
@@ -1527,6 +1587,7 @@ class LauncherApi:
                     device=str(payload.get("device") or "auto"),
                     model_cache_root=model_cache_root,
                     on_event=lambda line: self._emit({"type": "log", "message": line}),
+                    **script_options,
                 )
                 artifact_result = worker_result.get("artifact")
                 report_result = worker_result.get("report")
@@ -1534,6 +1595,19 @@ class LauncherApi:
                     raise LocalRuntimeError("本地字词时间码命令返回了无效结果。")
                 self._emit_postprocess_status("toolbox_status_writing")
                 return {"ok": True, **dict(artifact_result), "report": dict(report_result)}
+            if script_mode:
+                from maw.script_timestamp_alignment import ScriptAlignmentRequest, run_script_alignment
+
+                artifact, report = run_script_alignment(ScriptAlignmentRequest(
+                    media_path=media_path,
+                    model_path=requested_model_path,
+                    model_cache_root=Path(model_cache_root) if model_cache_root else None,
+                    device=str(payload.get("device") or "auto"),
+                    output_directory=_optional_path(payload.get("outputDirectory")),
+                    **script_options,
+                ))
+                self._emit_postprocess_status("toolbox_status_writing")
+                return {**_subtitle_artifact_result(artifact), "report": report.to_payload()}
             artifact, report = process_timestamp_alignment(
                 TimestampAlignmentRequest(
                     project_path=project_path,
@@ -1600,6 +1674,7 @@ class LauncherApi:
             return {"ok": False, "field": "postprocessScriptPath", "code": file_error_code(error) or "postprocess_failed", "detail": str(error), "error": str(error)}
         return _subtitle_artifact_result(result)
 
+    @_toolbox_operation
     def run_ai_cleanup(self, payload: Mapping[str, object]) -> dict[str, object]:
         """Recording-first AI spoken-word cleanup behind the toolbox toggle."""
 
@@ -2366,7 +2441,7 @@ class LauncherApi:
 
         executable = _find_mose_executable()
         if executable is None:
-            expected = "MOSE.app" if sys.platform == "darwin" else "MOSE.exe"
+            expected = "MOSE.app" if sys.platform == "darwin" else "mose" if sys.platform == "linux" else "MOSE.exe"
             result = _error_result("editor", "mose_not_found", expected)
             result["searchPaths"] = [str(path) for path in _mose_search_paths()]
             return result
@@ -4977,12 +5052,7 @@ def _stop_external_maw_server(port: int) -> bool:
 
 def _open_external(target: str) -> None:
     if sys.platform == "linux" and getattr(sys, "frozen", False):
-        env = os.environ.copy()
-        original = env.get("LD_LIBRARY_PATH_ORIG")
-        if original is not None:
-            env["LD_LIBRARY_PATH"] = original
-        else:
-            env.pop("LD_LIBRARY_PATH", None)
+        env = restore_host_library_path(os.environ.copy())
         subprocess.Popen(["xdg-open", target], env=env)
     else:
         webbrowser.open(target)

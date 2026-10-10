@@ -129,7 +129,9 @@
 
 
   function renderStickerOverlay(tMs) {
-  const enabled = Boolean(MaweDom.stickerOverlayToggle?.checked);
+  // 表情包功能总开关关闭时视为预览关闭。
+  const enabled = Boolean(MaweDom.stickerOverlayToggle?.checked)
+    && MaweSettings.EDITOR_SETTINGS.stickersEnabled !== false;
   if (!enabled) {
     if (renderedStickerOverlayEnabled || stickerOverlayContent.childElementCount
       || stickerOverlayContent.classList.contains('has-overlay-sticker')) {

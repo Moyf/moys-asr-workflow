@@ -73,7 +73,6 @@ document.addEventListener('keydown', (e) => {
   if (MaweDom.stickerModal.classList.contains('show')) return;
   if (MaweDom.stickerPreviewModal.classList.contains('show')) return;
   if (MaweDom.projectMediaModal.classList.contains('show')) return;
-  if (document.getElementById('sticker-root-modal').classList.contains('show')) return;
   if (MaweDom.ctxmenu.classList.contains('show')) return;
   if (MaweCoreState.waveformEditor?.hasCueDrag?.()) {
     // 拖动中的 Esc 不取消拖动，也不清空选区；拖动仍由 pointerup 正常完成。

@@ -88,7 +88,7 @@
 
 
 
-  // 可拖动非模态工具窗（移除静音空隙 / 拼合字幕共用模式）：
+  // 可拖动非模态工具窗（静音空隙 / 拼合字幕共用模式）：
   // 负责显示/隐藏、工具栏按钮 active 态、标题栏拖动与位置持久化、窗口缩放回钳、Esc 关闭。
   function createFloatingPanel({ panel, dragHandle, manageButton, anchorButton, positionKey, onOpen }) {
     if (!panel) return { open() {}, close() {}, toggle() {}, isOpen: () => false };
@@ -109,7 +109,7 @@
       panel.style.right = 'auto';
       if (persist) {
         try {
-          localStorage.setItem(positionKey, JSON.stringify({ left: nextLeft, top: nextTop }));
+          MaweHost.storage.setItem(positionKey, JSON.stringify({ left: nextLeft, top: nextTop }));
         } catch (_) {
           // file:// 隐私模式可能拒绝 localStorage；拖动本身仍保持可用。
         }
@@ -119,7 +119,7 @@
     function restorePosition() {
       let saved = null;
       try {
-        saved = JSON.parse(localStorage.getItem(positionKey) || 'null');
+        saved = JSON.parse(MaweHost.storage.getItem(positionKey) || 'null');
       } catch (_) {
         saved = null;
       }
@@ -210,9 +210,11 @@
       setPosition(rect.left, rect.top, { persist: true });
     });
     document.addEventListener('keydown', (event) => {
-      if (event.key !== 'Escape' || !isOpen() || MaweInlineEdit.editingState) return;
+      if (event.defaultPrevented || event.key !== 'Escape' || !isOpen() || MaweInlineEdit.editingState
+          || floatingSurfaceStack.filter(floatingSurfaceIsOpen).at(-1) !== panel) return;
       event.preventDefault();
       close();
+      manageButton?.focus();
     });
     return { open, close, toggle, isOpen };
   }

@@ -5,11 +5,19 @@ const path = require('node:path');
 
 const PROJECT_EXTENSIONS = new Set(['.mosp', '.json']);
 
-function resolvePackagedMawPath(executablePath) {
+function resolvePackagedMawPath(executablePath, {
+  platform = process.platform,
+  resourcesPath = '',
+} = {}) {
   if (typeof executablePath !== 'string' || !executablePath) {
     throw new TypeError('executablePath must be a non-empty string');
   }
-  return path.resolve(path.dirname(executablePath), '..', 'MAW.exe');
+  const paths = platform === 'win32' ? path.win32 : path.posix;
+  if (platform === 'win32') return paths.resolve(paths.dirname(executablePath), '..', 'MAW.exe');
+  if (!resourcesPath) throw new Error('Packaged native backend requires resourcesPath');
+  return platform === 'darwin'
+    ? paths.join(resourcesPath, 'backend', 'MAW.app', 'Contents', 'MacOS', 'MAW')
+    : paths.join(resourcesPath, 'backend', 'MAW', 'MAW');
 }
 
 function showAndFocusWindow(window) {
@@ -54,7 +62,7 @@ function parseProjectArgs(argv, cwd = process.cwd()) {
 }
 
 function buildServeArgs(projectPath, { packaged = false, serverPath = '' } = {}) {
-  // A packaged MAW.exe dispatches the public CLI's --server subcommand;
+  // A packaged MAW dispatches the public CLI's --server subcommand;
   // source mode invokes server-editor/serve.py directly.
   const args = packaged ? ['--server'] : [serverPath];
   if (projectPath) args.push(projectPath);

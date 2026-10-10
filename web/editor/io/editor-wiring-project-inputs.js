@@ -10,15 +10,20 @@
 
 
 
-MaweDom.projectMediaSelectButton.addEventListener('click', () => {
+MaweDom.projectMediaSelectButton.addEventListener('click', async () => {
   MaweProjectMediaInputs.closeProjectMediaModal(false);
+  if (MaweHost.desktop.available()) {
+    const result = await MaweHost.desktop.chooseFile('media', window.MAWE_I18N?.language);
+    if (result.status === 'ok' && result.file) void MaweMediaLoad.loadMediaReference(result.file);
+    return;
+  }
   MaweProjectMediaInputs.loadMediaFileInput.value = '';
   MaweProjectMediaInputs.loadMediaFileInput.click();
 });
 
 MaweDom.projectMediaLaterButton.addEventListener('click', () => {
   MaweProjectMediaInputs.closeProjectMediaModal(true);
-  MaweHint.flashHint('可稍后点击“加载媒体”选择关联媒体', 'invalid');
+  MaweHint.flashHint('可稍后点击“导入媒体”选择关联媒体', 'invalid');
 });
 
 MaweDom.projectMediaModal.addEventListener('click', (event) => {
@@ -128,5 +133,5 @@ MaweProjectMediaInputs.openProjectFileInput.addEventListener('change', async (e)
     MaweHint.flashHint('请选择一个 .mosp 或 .json 工程文件。', 'invalid');
     return;
   }
-  await MaweMultiImport.openProjectFile(file);
+  await MaweMultiImport.openProjectFile(file, { confirmed: true });
 });

@@ -181,7 +181,7 @@ export function createWaveformModule(dependencies) {
     // 避免调度之后状态已变化（开始播放、关闭开关、行被虚拟化重建）仍执行。
     /** @this {import('./waveform-types.js').WaveformInstance} */
     scheduleHoverSeekPreview(event, row) {
-      if (this.playheadDragActive || this.isCueBoundaryDrag()
+      if (this.playheadDragActive || this.wordDrag || this.isCueBoundaryDrag()
           || this.options.getHoverSeekPreview?.() !== true) return;
       this.hoverSeekPreviewLastEvent = event;
       this.hoverSeekPreviewRow = row;

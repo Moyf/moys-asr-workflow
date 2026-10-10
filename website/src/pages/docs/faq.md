@@ -5,15 +5,15 @@ description: "启动、FFmpeg、API、媒体加载与保存排错。"
 source: "docs/FAQ.md"
 ---
 
-<!-- Generated from docs/FAQ.md. Run npm run sync:docs to refresh. -->
+<!-- Generated from docs/FAQ.md. Run pnpm run sync:docs to refresh. -->
 
 安装与第一次转写见 [工作流](../workflow/)，配置字段见 [服务商配置](../providers/)。
 
 ## Windows 安装版如何更新？
 
-Windows x64 推荐使用 `MAW-Setup-Windows-x64-v*.exe`。安装版在 Launcher 的「配置 → 软件更新」中每天自动检查一次，也可以手动检查；下载完成后会校验官方 Release 的更新清单和 SHA-256，并在确认后关闭、覆盖安装并重启。更新不会删除 `%LOCALAPPDATA%\MAW` 下的 `.env`、日志、模型缓存或更新状态。
+Windows Installer 在 Launcher 的“配置 → 软件更新”中每天最多检查一次，也可手动检查。下载后校验 Release 更新清单与 SHA-256，再确认安装；更新保留用户数据中的配置、日志、模型缓存和更新状态。旧版未包含更新器时需先手动安装带更新器的版本。
 
-首个带更新器的版本只能负责后续版本；更旧、尚未包含更新器的 MAW 不会自动升级，仍需先手动安装这个 Installer。
+网络离线、限流或缺少匹配资产时保留当前版本，并提供发布页入口。转写、批处理与运行环境安装等任务需先完成再安装更新。便携版及 macOS/Linux MOSE 独立包当前手动更新，具体见 [MOSE](../mose/)。
 
 便携 ZIP、macOS 和 Linux 只能打开精确版本的 GitHub Release 页面手动下载。若希望以后使用一键更新，可通过维护者提供的独立官方 Installer 下载链接安装对应版本；便携版已有的用户数据仍保留在 `%LOCALAPPDATA%\MAW`。
 
@@ -67,6 +67,8 @@ MAW 需要 `segments` / `words` 时间戳，纯 `{ "text": "..." }` 不足以生
 
 工程的媒体引用可能失效。通过 Launcher 重新选择，或源码启动时用 `-m` 覆盖。直接拖入工程不一定能让 Server 接管；没有写入绑定时需导出工程保存。条件见 [Server README](https://github.com/Moyf/moys-asr-workflow/blob/main/server-editor/README.md)。
 
+MOSE 原生打开或拖入工程可以取得真实路径，媒体失效仍保留工程绑定与最近记录；点击“加载媒体”重新定位。损坏媒体加载失败会保留原工程。
+
 便携 HTML 的 file:// 媒体权限与 Seek 兼容性有限，日常优先使用 Server。不要用普通 `python -m http.server` 替代专用媒体 Range 服务。
 
 ## 字幕不在媒体旁，或缓存重新生成
@@ -76,6 +78,8 @@ Launcher 默认输出到 `_maw`；每视频子文件夹和模型名开关另行�
 ## 如何保存或恢复修改
 
 先确认当前工程是 Server 绑定、浏览器文件句柄还是下载式导入。Server 另存为只允许当前目录内文件名；服务退出时仍可从页面导出工程。备份副本需复制到原目录并恢复工程扩展名，见 [编辑器指南](../editor-guide/#5-保存另存为与备份)。
+
+MOSE 原生另存为可跨目录，后续保存绑定新文件。未命名工程首次保存会选择文件位置；取消时保留当前编辑。关闭/退出时也可取消返回继续保存。
 
 ## 如何反馈问题
 

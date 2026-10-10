@@ -65,7 +65,7 @@ let assStyleLibraryInFlightRevision = 0;
 function readLocalAssStyleLibrary() {
   try {
     return window.AsrEditorUtils.normalizeAssStyleLibrary(
-      JSON.parse(localStorage.getItem(ASS_STYLE_LIBRARY_STORAGE_KEY) || 'null'),
+      JSON.parse(MaweHost.storage.getItem(ASS_STYLE_LIBRARY_STORAGE_KEY) || 'null'),
     );
   } catch (_) {
     return window.AsrEditorUtils.defaultAssStyleLibrary();
@@ -74,7 +74,7 @@ function readLocalAssStyleLibrary() {
 
 function writeLocalAssStyleLibrary(library) {
   try {
-    localStorage.setItem(
+    MaweHost.storage.setItem(
       ASS_STYLE_LIBRARY_STORAGE_KEY,
       JSON.stringify(window.AsrEditorUtils.normalizeAssStyleLibrary(library)),
     );

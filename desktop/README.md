@@ -1,110 +1,112 @@
-# MOSE — Electron 桌面编辑器
+# MOSE — Electron 桌面壳（发布路线决策）
 
-MOSE（Moy's Open Subtitle Editor）是 MAW 的 Windows x64 Electron 壳。它不复制
-编辑器前端，也不另实现一套工程存储：Electron 启动同一套件中的 `MAW.exe`，由
-`server-editor/serve.py` 提供受令牌保护的 localhost 页面和全部保存、波形、媒体、
-最近工程与导出能力。
+MOSE（Moy's Open Subtitle Editor）复用 `web/` 前端、`server-editor/serve.py` 和 `.mosp` 工程契约。Electron 提供原生文件选择、真实路径与窗口生命周期；后端负责媒体 Range、波形、绑定保存、最近工程和导出。
 
-## 目录关系
+## 决策记录（2026-10-08）
 
-```text
-moys-asr-workflow/
-├── web/                     # 编辑器唯一前端真源
-├── server-editor/serve.py   # MAW 与 MOSE 共用的 Server
-├── desktop/src/main.cjs     # Electron 主进程
-├── desktop/src/preload.cjs  # 最小化 contextBridge
-└── desktop/src/runtime_helpers.cjs
-```
+- 本目录曾保留 Tauri 2.x 实验工程（2026-07-30 引入，`desktop/src-tauri/`）。
+  经评估后移除：Tauri 方案在 Rust 侧重复实现了 Server 契约（工程保存、媒体、
+  波形等），需要同时维护 Python 与 Rust 两套后端并引入 Rust 工具链；而 Electron
+  套件（MAW + MOSE 统一套件、Inno Setup Installer、软件内更新器、`.mosp` 关联）
+  已完整实现并实测可用。
+- Tauri 实验的历史代码见 git 历史（`a8c2669b` 至移除前）；实验结论以本页为准。
+- 完整的 Electron MOSE 套件代码当前位于 `merge/starlit-main` 集成分支
+  （`desktop/src/main.cjs`、`preload.cjs` 等），后续合回 main 后本目录即为其
+  唯一开发目录。
 
-统一套件固定为：
+## 源码与运行布局
 
 ```text
-MAW + MOSE Windows x64 Installer
-└── MAW/
-    ├── MAW.exe
-    ├── MOSE/
-    │   ├── MOSE.exe
-    │   └── resources/…
-    └── ffmpeg/…
+web/                         编辑器唯一前端真源
+server-editor/serve.py        MAW 与 MOSE 共用的本机服务
+ desktop/src/main.cjs         原生窗口、对话框与受限 IPC
+ desktop/src/preload.cjs      contextBridge 与 File 真实路径
+ desktop/src/runtime_helpers.cjs  各平台后端定位
 ```
 
-GitHub Release 会公开上传包含 MOSE 的 Windows x64 Installer；源码、构建脚本和测试也
-公开，Installer 不包含 License Key 或联网授权校验。
-`MOSE` 目录不能脱离同一套件的 `MAW.exe` 单独运行。
+| 平台 | MOSE 后端位置 | 构建产物 |
+| --- | --- | --- |
+| Windows x64 | `MAW/MAW.exe`，编辑器在 `MAW/MOSE/MOSE.exe` | 共享套件目录、MAW Installer |
+| macOS arm64 | `MOSE.app/Contents/Resources/backend/MAW.app/Contents/MacOS/MAW` | DMG、ZIP |
+| Linux x64 | `MOSE/resources/backend/MAW/MAW` | AppImage、DEB |
+
+Windows 共用套件内唯一的 Python 与 FFmpeg，不能把 `MOSE/` 单独移走。macOS/Linux 的 MOSE 包携带对应系统与架构的 MAW 后端和 FFmpeg，可独立于 Launcher 运行；不携带本地 ASR 模型。实际已发布的平台以 Release 附件为准。
 
 ## 本地开发
 
-```powershell
-cd desktop
+先在仓库根目录准备 Python 环境与 FFmpeg / FFprobe，再执行：
+
+```sh
+uv sync
 npm ci
-npm run dev
+npm ci --prefix desktop
+npm run dev --prefix desktop
 ```
 
-开发模式会调用仓库根目录的 `server-editor/serve.py`。如需指定 Python，可设置
-`MAW_MOSE_PYTHON`。打开工程时把 `.mosp` 或旧 `.json` 路径作为参数传给 Electron：
+开发模式直接调用源码 Server。`MAW_MOSE_PYTHON` 可指定现有 Python 解释器，默认使用仓库 `.venv`。打开工程可传绝对路径，也接受相对当前目录的路径：
 
-```powershell
-npm start -- "D:\Projects\clip.mosp"
+```sh
+npm start --prefix desktop -- "/path/to/project.mosp"
 ```
+
+改 `web/` 后刷新窗口即可看到 Server 渲染的新页面。日常不要生成 `blank-editor.html`；内联副本待发布前统一重生成。
 
 ## 与工程文件格式的关系
 
 MOSE 与 MAW/MAWE 共享同一份工程文件契约：内容是 UTF-8 JSON，推荐扩展名为 `.mosp`，同时兼容旧的 `.json`。`.workspace.json` 是独立的工作区迁移文件，不是字幕工程。
 
-## 桌面文件操作
+## 构建
 
-- 工程可从「打开工程」、最近工程、命令行/文件关联或 Explorer 拖入。可与媒体一起拖入；选定媒体优先于工程文件中原有的媒体引用。把工程拖入后选择副字幕导入时，当前工程保存目标不会改变。
-- 新建、另存为、Ctrl+S、自动保存和版本备份都由 Server 按当前绑定的真实 `.mosp` / `.json` 路径处理。首次保存取消或失败时，工程仍只存在于当前窗口；另存为成功后旧文件不再被后续保存修改。
-- 「加载媒体」和拖入媒体会通过 Server 读取源路径并复用媒体探测、播放转换与缓存。媒体被移动或删除时，字幕工程仍可打开和保存；重新关联成功后，只替换媒体字段与对应缓存，不覆盖字幕、标记或工作区。
-- 表情包根目录可直接输入，或在 MOSE 中使用系统文件夹选择器；扫描失败/取消不会替换上一个有效目录。工程和媒体标题旁的操作菜单可打开所在位置或复制完整路径；设置中的备份路径也可打开或复制。
-- 工程文件被外部改写或删除后，MOSE 暂停自动覆盖保存，并提供重新加载、另存为或保留当前编辑。关闭窗口/退出应用时会等待正在进行的保存，并提供保存并继续、不保存或取消；保存取消或失败会保留窗口。
-- 文件导出使用一次原生保存对话框；取消不会提示失败，只有 Electron 确认下载完成且文件已落盘后才报告成功。成功导出可以从标题栏定位或复制路径。
+每个平台必须在对应系统、对应架构上构建原生 MAW 后端，再执行 `npm run build --prefix desktop`；`build:dir` 只输出未封装目录。构建脚本禁止自动发布，macOS/Linux 缺少后端或 FFmpeg / FFprobe 时会直接失败。
 
-普通 Server 与便携 HTML 继续使用现有浏览器文件流程，不要求存在 `MOSEDesktop` 桥接。
-
-## 构建统一套件与 Installer
-
-在仓库根目录先构建 MAW 和 MOSE，再进行统一 staging：
+Windows 在仓库根目录执行：
 
 ```powershell
 .\scripts\build-windows.ps1 -SkipTests
-cd desktop
-npm run build
-cd ..
+npm run build --prefix desktop
 .\scripts\stage-mose-bundle.ps1
-.\scripts\build-installer.ps1 -Version "1.6.0-beta.1"
+.\scripts\build-installer.ps1 -Version "1.8.0-beta.1"
 ```
 
-`build-installer.ps1` 默认只接受 `build\release\mose\MAW`，会检查 `MAW.exe`、
-`MOSE\MOSE.exe`、FFmpeg 和 Electron `resources\app.asar`。需要 Inno Setup 6 的
-`ISCC.exe`；安装测试请显式加 `-AllowDestructive`，或只在隔离 CI（`CI=true`）运行。
+Installer 需要 Inno Setup 6；staging 检查只有一套 MAW/Python/FFmpeg，并包含 `resources/app.asar` 与 MOSP 文档图标。安装测试只在隔离 CI 或明确允许的测试环境执行。
 
-## 验证
+macOS 先以 `MAW.spec` 生成 `dist/MAW.app`，将对应架构 FFmpeg、FFprobe 与许可文件放入 `Contents/MacOS/ffmpeg/`。Linux 可使用 `scripts/build-appimage.sh` 准备 `dist/MAW` 及内置 FFmpeg。完整原生构建步骤与下载校验见 `.github/workflows/release.yml`，随后执行：
 
-```powershell
-npm test
-npm run build       # Windows x64 win-unpacked
-npm run smoke       # 启动后端、加载页面、正常退出
+```sh
+npm run build --prefix desktop
 ```
 
-修改 `web/` 后先在仓库根目录重建共享编辑器 bundle 和元数据：
+产物在 `desktop/dist/`。macOS 当前 CI 目标为 arm64，Linux 为 x64；架构变更需要同时重建后端与 Electron。配置尚未接入 macOS Developer ID / 公证，Windows 签名按发行环境配置执行。
 
-```powershell
-npm run build:editor
-npm run check:editor
+## 原生工程操作
+
+- 原生选择、文件拖入、命令行与系统打开事件都通过真实路径绑定工程，并加入最近工程。
+- 新建与另存为使用原生保存对话框，可以跨目录；覆盖前保留 `.bak`，取消时保留当前编辑状态。保存完成后持续写回新文件，相对媒体引用会保留原来的媒体位置。
+- 媒体移动后仍可打开和保存字幕，点击“加载媒体”重新定位。工程和媒体一起拖入时可直接覆盖旧媒体引用。
+- 点击工程名复制路径，右键在文件管理器显示。媒体使用后端 Range 与相邻波形缓存；表情包根目录可通过原生文件夹对话框选择。
+- 未保存关闭或退出时可取消返回编辑器。macOS/Linux 提供原生菜单与平台快捷键；退出只清理本次拥有的后端进程树。
+- 主题、语言、编辑选项、波形和浮窗偏好保存在 Electron userData 的 `editor-preferences.json`，跨重启和随机端口恢复；可读取的旧浏览器偏好自动迁入。
+
+## 系统打开方式与更新
+
+Windows 安装版及完整便携套件向当前用户注册 `.mosp` 打开方式与文档图标；命令为 `MAW.exe --open-project "%1"`，经过 Launcher 更新检查再打开 MOSE。保留已有默认应用选择，不关联通用 `.json` 扩展名。安装版通过 Launcher 下载并校验新 Installer；便携版手动更新。
+
+macOS 使用 MOSP UTI、文档图标和 `open-file` 事件。Linux DEB 安装 MIME 和桌面入口；AppImage 移到固定位置后，可使用 Tools → “添加工程打开方式…” 写入当前用户 XDG 目录，再从文件管理器选择 MOSE。菜单注册不会更换默认应用；移动 AppImage 后应重新注册。桌面缓存工具缺失时会提示，重新登录后再检查。
+
+macOS/Linux MOSE 独立包当前手动下载更新，未实现应用内自动更新。系统关联与默认图标显示受安装方式和文件管理器缓存影响，需分别验收。
+
+## 验证与安全
+
+```sh
+npm test --prefix desktop
+npm run smoke --prefix desktop
+node --test desktop/e2e/*.mjs
 ```
 
-日常开发不重生成根目录 `blank-editor.html`；发布前再统一重建并核对该便携产物。
+E2E 可设置 `MOSE_TEST_EXECUTABLE` 指向实际打包的编辑器，否则运行源码壳；原生对话框返回路径由测试替身提供，后续 IPC、Server、Chromium 和写盘使用产品实现。Windows 打包复核前要重新 staging。
 
-## 工程打开、更新与安全
+窗口启用 `contextIsolation`、sandbox 并关闭 `nodeIntegration`；IPC 只接受当前编辑器主 frame 的精确 localhost origin。后端仅监听 `127.0.0.1`，令牌通过子进程环境与请求头传递，不放入命令行或日志。工程写入目标只取主进程保存对话框；偏好仅写固定的 userData 文件，限制键名与体积并保留上一个磁盘版本。HTTP 不提供任意路径写入。
 
-Installer 和完整便携套件为当前用户建立 `.mosp` 关联，命令指向
-`MAW.exe --open-project "%1"`。双击工程会先进入 Launcher 完成更新检查，再自动
-打开 MOSE；因此不会绕过更新提示。更新器会从公开 GitHub Release 下载并校验新版
-Installer；如果当前构建没有匹配资产，则打开发布页供用户手动更新。
-
-Electron 窗口启用 `contextIsolation`、sandbox 且关闭 `nodeIntegration`；只允许导航
-到本次启动的精确 `127.0.0.1` 地址，外部链接交给系统浏览器。后端使用系统随机端口，
-通过 `MAW_DESKTOP_TOKEN` 传递一次性令牌，令牌不会出现在命令行或日志中。
+当前 Windows 已进行源码与打包交互检查；macOS/Linux 原生 CI 已接线，尚未运行。Installer 安装/卸载及三端文件管理器双击仍需原生验收，详细证据见 [检查记录](../docs/TEST_FEEDBACK_ELECTRON_INTEGRATION.md)。
 
 License: AGPL-3.0-only（与 MAW 主仓库一致）。

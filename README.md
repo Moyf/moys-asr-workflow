@@ -60,6 +60,7 @@ Windows 官方安装版会在 Launcher 启动时每天最多检查一次新版�
 | 校对、匹配文稿、翻译或处理媒体 | [工具箱](docs/TOOLBOX.md) · [自动处理](docs/POSTPROCESS_PIPELINE.md) |
 | 编辑时间轴、保存和导出 | [编辑器指南](docs/EDITOR_GUIDE.md) · [ASS 样式](docs/ASS_STYLES.md) |
 | 写批处理或接入自动化 | [CLI](docs/CLI.md) |
+| 已有准确文稿与录音，跳过 ASR 生成字幕 | [文稿驱动对齐（实验性）](docs/SCRIPT_DRIVEN_ALIGNMENT.md) |
 | 开发与数据集成 | [开发概览](docs/DEVELOPMENT.md) · [工程格式](JSON_SCHEMA.md) · [ESM 迁移与上游交接](docs/dev/ESM_MIGRATION.md) |
 
 全部专题、技术契约与历史记录见 [文档索引](docs/README.md)。

@@ -20,6 +20,7 @@ export const docsNavigation: DocNavigationGroup[] = [
     docs: [
       ['editor-guide', '编辑器指南', '播放、文字与时间调整、保存、备份和导出。'],
       ['keyboard-adjustment', '按键调整', '精确调整字幕位置与边界。'],
+      ['mose', 'MOSE 独立编辑器', '原生工程、平台包、打开方式与更新。'],
     ],
   },
   {
@@ -39,7 +40,6 @@ export const docsNavigation: DocNavigationGroup[] = [
       ['cli', '命令行 CLI', '公开参数、底层脚本与自动化。'],
       ['json-schema', '工程格式', 'MOSP / JSON 字段与时间码契约。'],
       ['llm-postprocess', 'LLM 协议', 'ID 校验与本地时间映射。'],
-      ['mose', 'MAW / MAWE / MOSE', '当前产品与实验桌面目录的关系。'],
       ['development', '开发概览', '代码地图、数据边界与验证。'],
       ['documentation-index', '全部文档与历史记录', '专题索引、开发计划和测试账本。'],
     ],

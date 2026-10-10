@@ -1,0 +1,389 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>MAW 波形对比实验台</title>
+  <style>
+    :root { color-scheme: light; font-family: Inter, "Segoe UI", "Microsoft YaHei", sans-serif; background: #f3f5f8; color: #202b3b; }
+    * { box-sizing: border-box; }
+    body { margin: 0; }
+    main { width: min(1160px, calc(100% - 32px)); margin: 36px auto 70px; }
+    h1, h2, p { margin-top: 0; }
+    h1 { font-size: clamp(26px, 3vw, 38px); letter-spacing: -.035em; margin-bottom: 10px; }
+    h2 { font-size: 16px; margin-bottom: 8px; }
+    p { line-height: 1.6; }
+    .eyebrow { color: #69768a; text-transform: uppercase; font-size: 11px; font-weight: 800; letter-spacing: .15em; margin-bottom: 10px; }
+    .intro { max-width: 800px; color: #536176; font-size: 15px; }
+    .card { background: #fff; border: 1px solid #dfe5ed; border-radius: 18px; box-shadow: 0 10px 35px #263c5d0b; }
+    .toolbar { padding: 18px 20px; margin: 24px 0 16px; }
+    .toolbar-top { display: flex; align-items: center; justify-content: space-between; gap: 16px; flex-wrap: wrap; }
+    .controls { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+    button { font: inherit; background: #f5f7fa; color: #253247; border: 1px solid #dce3ec; border-radius: 9px; padding: 8px 12px; cursor: pointer; }
+    button:hover { background: #e9eef5; }
+    button:focus-visible, canvas:focus-visible { outline: 3px solid #6188e8; outline-offset: 2px; }
+    button.active { background: #243d6b; color: white; border-color: #243d6b; }
+    button.primary { background: #243d6b; color: white; border-color: #243d6b; min-width: 76px; }
+    .status { font-variant-numeric: tabular-nums; color: #52647c; font-size: 13px; }
+    .scene-list, .case-list { display: flex; gap: 7px; flex-wrap: wrap; margin-top: 16px; }
+    .scene-list[hidden] { display: none; }
+    .scene-list button, .case-list button { font-size: 12px; padding: 7px 10px; }
+    .case-label { margin: 16px 0 0; font-size: 12px; font-weight: 700; color: #52647c; }
+    .scene-detail { font-size: 13px; color: #657287; margin: 10px 0 0; min-height: 20px; }
+    .audio-row { margin-top: 14px; }
+    audio { width: 100%; height: 38px; }
+    .warning { background: #fff3e5; color: #714313; border: 1px solid #edc992; border-radius: 10px; padding: 11px 14px; margin: 14px 0; font-size: 13px; line-height: 1.5; }
+    .panels { display: grid; gap: 14px; }
+    .panel { overflow: hidden; }
+    .panel-heading { padding: 16px 20px 10px; display: flex; justify-content: space-between; align-items: start; gap: 12px; flex-wrap: wrap; }
+    .panel-title { display: flex; align-items: center; gap: 10px; font-size: 17px; font-weight: 750; }
+    .swatch { width: 10px; height: 10px; border-radius: 50%; display: inline-block; flex: none; }
+    .panel-source { color: #68778a; font-size: 12px; margin: 6px 0 0 20px; }
+    .panel-stats { text-align: right; color: #52647c; font-size: 12px; font-variant-numeric: tabular-nums; line-height: 1.5; }
+    .canvas-wrap { padding: 0 12px 13px; }
+    canvas { display: block; width: 100%; height: 144px; cursor: crosshair; border-radius: 8px; touch-action: manipulation; }
+    .axis { display: flex; justify-content: space-between; margin: 5px 8px 0; color: #768396; font-size: 11px; font-variant-numeric: tabular-nums; }
+    .notes { margin-top: 19px; padding: 20px 23px; font-size: 13px; color: #536176; }
+    .summary { padding: 18px 20px; margin: 0 0 16px; }
+    .summary h2 { margin-bottom: 5px; }
+    .summary p { font-size: 12px; color: #68778a; margin-bottom: 12px; }
+    .table-wrap { overflow-x: auto; }
+    table { width: 100%; border-collapse: collapse; font-size: 13px; font-variant-numeric: tabular-nums; white-space: nowrap; }
+    th, td { text-align: left; padding: 8px 12px 8px 0; border-bottom: 1px solid #e9edf3; }
+    th { color: #58677c; font-weight: 650; }
+    tbody tr:last-child td { border-bottom: 0; }
+    .notes p:last-child { margin-bottom: 0; }
+    .notes strong { color: #28384d; }
+    code { background: #eef2f6; border-radius: 4px; padding: 2px 5px; }
+    .empty { padding: 20px; margin-top: 24px; }
+    @media (max-width: 640px) { main { width: min(100% - 20px, 1160px); margin-top: 22px; } .panel-heading { padding: 14px 14px 8px; } .panel-stats { text-align: left; } .toolbar { padding: 15px; } }
+  </style>
+</head>
+<body>
+<main>
+  <p class="eyebrow">MAW / waveform laboratory</p>
+  <h1>不同音频，旧版与新版 mopeaks</h1>
+  <p class="intro">切换采样率、声道和编码，比较旧版单声道、新版保留原声道的轻量波形；有 Rust 内核时也显示实际 quapeaks。图像共用时间窗与固定振幅刻度，点波形可定位播放。</p>
+  <div id="app"></div>
+</main>
+<script>
+/* COMPARISON_DATA */
+(function () {
+  "use strict";
+  const data = window.__WAVEFORM_COMPARISON__;
+  const app = document.getElementById("app");
+  if (!data) {
+    const empty = document.createElement("div");
+    empty.className = "card empty";
+    empty.innerHTML = "此页是生成模板。请从仓库根目录运行 <code>uv run --no-sync python tools/waveform-compare/build.py</code>，再打开命令输出的 <code>comparison.html</code>。";
+    app.append(empty);
+    return;
+  }
+
+  let activeCase = data.cases[0];
+  function decodeVariants(items) { return items.map((item) => {
+    const binary = atob(item.payload.data);
+    const bytes = Uint8Array.from(binary, (character) => character.charCodeAt(0));
+    return { ...item, values: new Int8Array(bytes.buffer), rate: item.payload.sample_rate / item.payload.division };
+  }); }
+  let variants = decodeVariants(activeCase.variants);
+  let viewStart = 0;
+  let viewEnd = data.duration;
+  let hoverTime = null;
+  let activeScene = -1;
+  const canvases = [];
+  const statNodes = [];
+
+  const toolbar = document.createElement("section");
+  toolbar.className = "card toolbar";
+  const top = document.createElement("div");
+  top.className = "toolbar-top";
+  const controls = document.createElement("div");
+  controls.className = "controls";
+  const play = button("播放", "primary", () => {
+    if (audio.paused) audio.play().catch(() => {});
+    else audio.pause();
+  });
+  const all = button("全段", "active", () => setView(0, data.duration, -1));
+  const zoomIn = button("放大 +", "", () => zoom(0.5));
+  const zoomOut = button("缩小 −", "", () => zoom(2));
+  const position = document.createElement("span");
+  position.className = "status";
+  controls.append(play, all, zoomIn, zoomOut, position);
+  top.append(controls);
+  const info = document.createElement("span");
+  info.className = "status";
+  top.append(info);
+  toolbar.append(top);
+  const caseLabel = document.createElement("p");
+  caseLabel.className = "case-label";
+  caseLabel.textContent = "测试素材";
+  toolbar.append(caseLabel);
+  const caseList = document.createElement("div");
+  caseList.className = "case-list";
+  const caseButtons = data.cases.map((entry, index) => {
+    const node = button(entry.label, index === 0 ? "active" : "", () => selectCase(index));
+    caseList.append(node);
+    return node;
+  });
+  toolbar.append(caseList);
+  const scenes = document.createElement("div");
+  scenes.className = "scene-list";
+  const sceneButtons = data.scenes.map((scene, index) => {
+    const node = button(`${index + 1}. ${scene.name}`, "", () => setView(scene.start, scene.end, index));
+    scenes.append(node);
+    return node;
+  });
+  toolbar.append(scenes);
+  const sceneDetail = document.createElement("p");
+  sceneDetail.className = "scene-detail";
+  sceneDetail.textContent = "选择片段查看局部；移动鼠标跨各图对齐时间。";
+  toolbar.append(sceneDetail);
+  const audioRow = document.createElement("div");
+  audioRow.className = "audio-row";
+  const audio = document.createElement("audio");
+  audio.controls = true;
+  audio.preload = "metadata";
+  audio.src = activeCase.audio;
+  audioRow.append(audio);
+  toolbar.append(audioRow);
+  app.append(toolbar);
+
+  const summary = document.createElement("section");
+  summary.className = "card summary";
+  const summaryTitle = document.createElement("h2");
+  summaryTitle.textContent = `${data.cases.length} 类素材的生成时间`;
+  const summaryHint = document.createElement("p");
+  summaryHint.textContent = "320 秒素材；预热后各测 5 次中位数，含 FFmpeg 解码，不含写缓存。数值越小越快，不能直接外推真实长媒体。";
+  const tableWrap = document.createElement("div");
+  tableWrap.className = "table-wrap";
+  const table = document.createElement("table");
+  const head = document.createElement("thead");
+  const headRow = document.createElement("tr");
+  for (const label of ["素材", "旧版 mopeaks", "新版 mopeaks", "quapeaks", "旧 / 新 MPK1"]) {
+    const cell = document.createElement("th");
+    cell.textContent = label;
+    headRow.append(cell);
+  }
+  head.append(headRow);
+  const body = document.createElement("tbody");
+  for (const entry of data.cases) {
+    const row = document.createElement("tr");
+    const values = [entry.label, `${entry.benchmark.oldMs} ms`, `${entry.benchmark.newMs} ms`,
+      entry.benchmark.quapeaksMs === null ? "未生成" : `${entry.benchmark.quapeaksMs} ms`,
+      `${entry.sizes.old} / ${entry.sizes.new} B`];
+    for (const value of values) {
+      const cell = document.createElement("td");
+      cell.textContent = value;
+      row.append(cell);
+    }
+    body.append(row);
+  }
+  table.append(head, body);
+  tableWrap.append(table);
+  summary.append(summaryTitle, summaryHint, tableWrap);
+  app.append(summary);
+
+  const warning = document.createElement("div");
+  warning.className = "warning";
+  warning.textContent = "本机未生成实际 .quapeaks；页面只比较 mopeaks 的旧版与新版。mopeaks 生成和读取均不依赖 Rust 内核。";
+  app.append(warning);
+
+  const panels = document.createElement("div");
+  panels.className = "panels";
+  function renderPanels() {
+  panels.replaceChildren();
+  canvases.length = 0;
+  statNodes.length = 0;
+  for (const variant of variants) {
+    const panel = document.createElement("section");
+    panel.className = "card panel";
+    const head = document.createElement("div");
+    head.className = "panel-heading";
+    const titleBlock = document.createElement("div");
+    const title = document.createElement("div");
+    title.className = "panel-title";
+    const dot = document.createElement("span");
+    dot.className = "swatch";
+    dot.style.background = variant.color;
+    const label = document.createElement("span");
+    label.textContent = variant.label;
+    title.append(dot, label);
+    const source = document.createElement("p");
+    source.className = "panel-source";
+    source.textContent = variant.source;
+    titleBlock.append(title, source);
+    const stats = document.createElement("div");
+    stats.className = "panel-stats";
+    head.append(titleBlock, stats);
+    panel.append(head);
+    const wrap = document.createElement("div");
+    wrap.className = "canvas-wrap";
+    const canvas = document.createElement("canvas");
+    canvas.tabIndex = 0;
+    canvas.setAttribute("aria-label", `${variant.label} 波形；单击可定位播放`);
+    canvas.addEventListener("pointermove", (event) => {
+      hoverTime = timeFromPointer(canvas, event);
+      drawAll();
+    });
+    canvas.addEventListener("pointerleave", () => { hoverTime = null; drawAll(); });
+    canvas.addEventListener("click", (event) => { audio.currentTime = timeFromPointer(canvas, event); drawAll(); });
+    canvas.addEventListener("keydown", (event) => {
+      if (event.key === "Enter" || event.key === " ") {
+        event.preventDefault();
+        audio.currentTime = (viewStart + viewEnd) / 2;
+        drawAll();
+      }
+    });
+    wrap.append(canvas);
+    const axis = document.createElement("div");
+    axis.className = "axis";
+    const left = document.createElement("span");
+    const right = document.createElement("span");
+    axis.append(left, right);
+    wrap.append(axis);
+    panel.append(wrap);
+    panels.append(panel);
+    canvases.push({ canvas, variant, left, right });
+    statNodes.push(stats);
+  }
+  }
+  app.append(panels);
+  const notes = document.createElement("section");
+  notes.className = "card notes";
+  notes.innerHTML = "<h2>怎么读</h2><p><strong>旧版 mopeaks</strong> 先由 FFmpeg 混为单声道、降到 1 kHz，再每 10 ms 取极值。<strong>新版 mopeaks</strong> 仍降到 1 kHz，但保留原声道，各声道的极值合并成同样大小的 MPK1。<strong>quapeaks</strong> 显示实际 QPK1 的最细 wave 层，不启用可选频谱。所有面板共用 ±127 振幅刻度。</p><p>反相和单侧声道展示混单声道的损失；高频和脉冲展示低采样率方案的共同局限。素材均为可复现的合成音频，结果只说明这些测试信号。</p>";
+  const cost = document.createElement("p");
+  notes.append(cost);
+  app.append(notes);
+
+  function selectCase(index) {
+    activeCase = data.cases[index];
+    variants = decodeVariants(activeCase.variants);
+    caseButtons.forEach((node, position) => node.classList.toggle("active", position === index));
+    audio.pause();
+    audio.src = activeCase.audio;
+    info.textContent = `${(activeCase.rate / 1000).toFixed(1)} kHz · ${activeCase.channels} 声道 · 8 秒 · 固定 ±127 刻度`;
+    warning.hidden = variants.some((variant) => variant.id === "quapeaks");
+    scenes.hidden = activeCase.key === "mono-wav";
+    const bench = activeCase.benchmark;
+    const size = activeCase.sizes;
+    const nativeTime = bench.quapeaksMs === null ? "未生成" : `${bench.quapeaksMs} ms`;
+    cost.textContent = `${activeCase.detail} 8 秒 MPK1：旧版 ${size.old} B，新版 ${size.new} B。320 秒素材生成中位数：旧版 ${bench.oldMs} ms，新版 ${bench.newMs} ms，quapeaks ${nativeTime}；均含 FFmpeg 解码、不含写缓存，预热后各测 5 次。`;
+    hoverTime = null;
+    renderPanels();
+    setView(0, data.duration, -1);
+  }
+
+  function button(label, className, action) {
+    const node = document.createElement("button");
+    node.type = "button";
+    node.className = className;
+    node.textContent = label;
+    node.addEventListener("click", action);
+    return node;
+  }
+
+  function setView(start, end, sceneIndex) {
+    viewStart = start;
+    viewEnd = end;
+    activeScene = sceneIndex;
+    all.classList.toggle("active", sceneIndex === -1 && end - start === data.duration);
+    sceneButtons.forEach((node, index) => node.classList.toggle("active", index === sceneIndex));
+    sceneDetail.textContent = activeCase.key === "mono-wav" ? "单声道语音式周期音；可用放大按钮检查局部。" : sceneIndex >= 0 ? data.scenes[sceneIndex].detail : "选择片段查看局部；移动鼠标跨各图对齐时间。";
+    drawAll();
+  }
+
+  function zoom(factor) {
+    const length = Math.min(data.duration, Math.max(0.25, (viewEnd - viewStart) * factor));
+    const midpoint = hoverTime === null ? (viewStart + viewEnd) / 2 : hoverTime;
+    let start = Math.max(0, midpoint - length / 2);
+    start = Math.min(start, data.duration - length);
+    setView(start, start + length, -1);
+  }
+
+  function timeFromPointer(canvas, event) {
+    const box = canvas.getBoundingClientRect();
+    const ratio = Math.min(1, Math.max(0, (event.clientX - box.left) / box.width));
+    return viewStart + ratio * (viewEnd - viewStart);
+  }
+
+  function drawAll() {
+    position.textContent = `${viewStart.toFixed(2)}–${viewEnd.toFixed(2)} s · 播放 ${audio.currentTime.toFixed(2)} s`;
+    canvases.forEach((entry, index) => draw(entry, statNodes[index]));
+  }
+
+  function draw(entry, stats) {
+    const { canvas, variant, left, right } = entry;
+    const width = Math.max(1, Math.floor(canvas.clientWidth));
+    const height = Math.max(1, Math.floor(canvas.clientHeight));
+    const dpr = window.devicePixelRatio || 1;
+    if (canvas.width !== Math.round(width * dpr) || canvas.height !== Math.round(height * dpr)) {
+      canvas.width = Math.round(width * dpr);
+      canvas.height = Math.round(height * dpr);
+    }
+    const context = canvas.getContext("2d");
+    context.setTransform(dpr, 0, 0, dpr, 0, 0);
+    context.clearRect(0, 0, width, height);
+    context.fillStyle = "#f8fafc";
+    context.fillRect(0, 0, width, height);
+    for (const scene of activeCase.key === "mono-wav" ? [] : data.scenes) {
+      const x0 = Math.max(0, (scene.start - viewStart) / (viewEnd - viewStart) * width);
+      const x1 = Math.min(width, (scene.end - viewStart) / (viewEnd - viewStart) * width);
+      if (x1 <= x0) continue;
+      if (data.scenes.indexOf(scene) % 2) {
+        context.fillStyle = "#f1f5fa";
+        context.fillRect(x0, 0, x1 - x0, height);
+      }
+      context.strokeStyle = "#d7e0ec";
+      context.beginPath(); context.moveTo(x0 + .5, 0); context.lineTo(x0 + .5, height); context.stroke();
+    }
+    const center = height / 2;
+    context.strokeStyle = "#c1ccd9";
+    context.beginPath(); context.moveTo(0, center + .5); context.lineTo(width, center + .5); context.stroke();
+    const scale = (height * .43) / 127;
+    const peakCount = variant.payload.peak_count;
+    let maxAbs = 0;
+    const from = Math.max(0, Math.floor(viewStart * variant.rate));
+    const to = Math.min(peakCount, Math.ceil(viewEnd * variant.rate));
+    for (let i = from; i < to; i++) maxAbs = Math.max(maxAbs, Math.abs(variant.values[i * 2]), Math.abs(variant.values[i * 2 + 1]));
+    context.strokeStyle = variant.color;
+    context.globalAlpha = .9;
+    context.lineWidth = 1;
+    for (let x = 0; x < width; x++) {
+      const t0 = viewStart + x / width * (viewEnd - viewStart);
+      const t1 = viewStart + (x + 1) / width * (viewEnd - viewStart);
+      const first = Math.max(0, Math.floor(t0 * variant.rate));
+      const last = Math.min(peakCount, Math.max(first + 1, Math.ceil(t1 * variant.rate)));
+      let low = 127, high = -127;
+      for (let i = first; i < last; i++) {
+        low = Math.min(low, variant.values[i * 2]);
+        high = Math.max(high, variant.values[i * 2 + 1]);
+      }
+      if (low > high) continue;
+      context.beginPath();
+      context.moveTo(x + .5, center - high * scale);
+      context.lineTo(x + .5, center - low * scale);
+      context.stroke();
+    }
+    context.globalAlpha = 1;
+    for (const [time, color, lineWidth] of [[audio.currentTime, "#243d6b", 2], [hoverTime, "#64748b", 1]]) {
+      if (time === null || time < viewStart || time > viewEnd) continue;
+      const x = (time - viewStart) / (viewEnd - viewStart) * width;
+      context.strokeStyle = color;
+      context.lineWidth = lineWidth;
+      context.beginPath(); context.moveTo(x, 0); context.lineTo(x, height); context.stroke();
+    }
+    stats.textContent = `${variant.rate.toFixed(2)} 峰/秒 · ${to - from} 峰 · 当前窗最大 ${Math.round(maxAbs / 127 * 100)}%`;
+    left.textContent = `${viewStart.toFixed(2)} s`;
+    right.textContent = `${viewEnd.toFixed(2)} s`;
+  }
+
+  audio.addEventListener("play", () => { play.textContent = "暂停"; });
+  audio.addEventListener("pause", () => { play.textContent = "播放"; });
+  audio.addEventListener("timeupdate", drawAll);
+  window.addEventListener("resize", drawAll);
+  selectCase(0);
+})();
+</script>
+</body>
+</html>

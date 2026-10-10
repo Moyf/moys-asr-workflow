@@ -5,19 +5,19 @@ description: "画面字幕识别、去重规则、报告和性能说明。"
 source: "docs/OCR_SUBTITLE_DEDUP.md"
 ---
 
-<!-- Generated from docs/OCR_SUBTITLE_DEDUP.md. Run npm run sync:docs to refresh. -->
+<!-- Generated from docs/OCR_SUBTITLE_DEDUP.md. Run pnpm run sync:docs to refresh. -->
 
-「OCR 字幕去重」是 Launcher「工具箱」中「后处理」类别的本地字幕清理功能，用于处理以下情况：视频画面已经烧录了一条字幕，而 ASR 工程或 SRT 中又存在同一条字幕。功能会识别视频画面文字，将高度相似的字幕标记为禁用，从而避免导出或播放时出现重复字幕。
+「OCR 去重」是 Launcher「工具箱」中「字幕处理」类别的本地字幕清理功能，用于处理以下情况：视频画面已经烧录了一条字幕，而 ASR 工程或 SRT 中又存在同一条字幕。功能会识别视频画面文字，将高度相似的字幕标记为禁用，从而避免导出或播放时出现重复字幕。
 
 当前版本是只处理画面的 MVP，不分析音频，也不修改原始视频。
 
 ## 快速使用
 
-1. 打开 Launcher 右下角的「工具箱」，在「后处理」中选择「OCR 字幕去重」。
+1. 打开 Launcher 右下角的「工具箱」，在「字幕处理」中选择「OCR 去重」。
 2. 如果工具箱提示尚未安装 OCR 支持，点击提示中的「设置」链接，在「OCR 模型」设置中选择运行环境目录并点击「安装 OCR 支持」。
 3. 回到工具箱，在「处理文件」中选择工程或 SRT。默认会跟随 Launcher 当前工程或 SRT，也可以手动选择其他 `.mosp`、`.json` 或 `.srt` 文件。
 4. 确认「视频画面」输入。未明确指定时会跟随 Launcher 当前视频，拖入新视频后也会自动更新；独立 SRT 同样回退到当前视频。只有选择、拖入或输入独立视频后才会固定画面来源；如果当前媒体是音频或没有可用视频，必须额外选择一个视频。
-5. 选择 OCR 模型（tiny 更快，small 对复杂画面更稳）、画面字幕区和相似度阈值，点击「执行 OCR 字幕去重」。
+5. 选择 OCR 模型（tiny 更快，small 对复杂画面更稳）、画面字幕区和相似度阈值，点击「执行 OCR 去重」。
 6. 在「输出」中选择「工程 + SRT」「仅工程」或「仅 SRT」。原文件不会被覆盖，结果会使用 `ocr-dedup` 操作后缀（中文界面为 `OCR去重`）。
 
 例如，输入 `clip.mosp` 和 `clip.srt` 后，英文界面默认会生成：
@@ -53,7 +53,7 @@ clip.ocr-dedup.srt
 
 工程输出只增加或保留 `disabled` 标记，不改变文字、时间码或逐词 `items`。SRT 输出会跳过所有 `disabled: true` 的字幕，并重新连续编号。
 
-## 画面字幕区
+## 识别区域
 
 提供三种范围：
 

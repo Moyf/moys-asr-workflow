@@ -14,6 +14,8 @@ const fs = require('node:fs');
 const path = require('node:path');
 const { spawn } = require('node:child_process');
 const { createFileRegistry } = require('./file_registry.cjs');
+const { installLinuxIntegration } = require('./linux_integration.cjs');
+const { createPreferenceStore } = require('./preferences.cjs');
 const {
   appendBoundedOutput,
   childExited,
@@ -31,13 +33,13 @@ const {
 } = require('./runtime_helpers.cjs');
 
 const BACKEND_START_TIMEOUT_MS = 30_000;
-const BACKEND_SHUTDOWN_REQUEST_TIMEOUT_MS = 1_500;
 const BACKEND_STOP_TIMEOUT_MS = 5_000;
 const CLOSE_HANDSHAKE_TIMEOUT_MS = 15_000;
 const DESKTOP_STATUS_INTERVAL_MS = 2_000;
 const WINDOW_WIDTH = 1280;
 const WINDOW_HEIGHT = 800;
 const smokeMode = process.argv.includes('--mose-smoke');
+if (process.platform === 'win32') app.setAppUserModelId('com.moy.mose');
 
 // CI and headless smoke hosts may not expose a usable GPU process.  Keep the
 // production editor on Electron's normal accelerated path, but make the
@@ -56,6 +58,7 @@ let startingBackendChild = null;
 let queuedProjectPath = null;
 let rendererMessageQueue = null;
 let quitRequested = false;
+let shutdownComplete = false;
 let allowWindowCloseOnce = false;
 let pendingCloseRequest = null;
 let closeRequestSequence = 0;
@@ -77,21 +80,22 @@ function repositoryRoot() {
 }
 
 function windowIconPath() {
+  const name = process.platform === 'win32' ? 'maw.ico' : 'maw.png';
   const candidate = app.isPackaged
-    ? path.join(process.resourcesPath, 'assets', 'maw.ico')
-    : path.join(repositoryRoot(), 'assets', 'maw.ico');
+    ? path.join(process.resourcesPath, 'assets', name)
+    : path.join(repositoryRoot(), 'assets', process.platform === 'win32' ? 'maw.ico' : 'maw-icon-rounded.png');
   return fs.existsSync(candidate) ? candidate : undefined;
 }
 
 function packagedMawPath() {
-  return resolvePackagedMawPath(process.execPath);
+  return resolvePackagedMawPath(process.execPath, { resourcesPath: process.resourcesPath });
 }
 
 function resolveBackend() {
   if (app.isPackaged) {
     const executable = packagedMawPath();
     if (!fs.existsSync(executable)) {
-      throw new Error(`未找到同套件的 MAW.exe：${executable}`);
+      throw new Error(`未找到桌面后端，请重新安装完整套件：${executable}`);
     }
     return { executable, argsPrefix: [] };
   }
@@ -143,6 +147,7 @@ function startBackend(projectPath) {
       env: childEnv,
       stdio: ['ignore', 'pipe', 'pipe'],
       windowsHide: true,
+      detached: process.platform !== 'win32',
     });
   } catch (error) {
     return Promise.reject(error);
@@ -317,6 +322,14 @@ function isExactBackendUrl(url, origin) {
       && candidate.hostname === '127.0.0.1';
   } catch {
     return false;
+  }
+}
+
+function assertTrustedIpc(event) {
+  if (!backend || !mainWindow || event.sender !== mainWindow.webContents
+      || event.senderFrame !== event.sender.mainFrame
+      || !isExactBackendUrl(event.senderFrame.url, backend.origin)) {
+    throw new Error('桌面操作只能由当前编辑器主页面发起。');
   }
 }
 
@@ -546,7 +559,7 @@ async function desktopCommand(event, command, payload = {}) {
   }
   if (command === 'setStickerRoot') {
     if (typeof payload.path !== 'string') throw new TypeError('表情包目录路径无效');
-    return callDesktopServer(command, { path: payload.path });
+    return callDesktopServer(command, { path: payload.path, activate: payload.activate !== false });
   }
   throw new TypeError('桌面命令不受支持');
 }
@@ -804,22 +817,9 @@ async function stopBackend() {
     return;
   }
   if (!owned || !owned.child || childExited(owned.child)) return;
-  const shutdownController = new AbortController();
-  const shutdownTimer = setTimeout(
-    () => shutdownController.abort(),
-    BACKEND_SHUTDOWN_REQUEST_TIMEOUT_MS,
-  );
-  try {
-    await fetch(`${owned.origin}/api/shutdown`, {
-      method: 'POST',
-      headers: { ...backendHeaders(owned.token), 'Content-Length': '0' },
-      signal: shutdownController.signal,
-    });
-  } catch {
-    // The child may already be gone; the exact PID is still checked below.
-  } finally {
-    clearTimeout(shutdownTimer);
-  }
+  // Stop the whole owned tree while its root still exists. Asking only the
+  // HTTP server to exit can orphan FFmpeg running in a daemon cache thread.
+  await terminateBackendTree(owned.child);
   await new Promise((resolve) => {
     if (childExited(owned.child)) {
       resolve();
@@ -832,13 +832,13 @@ async function stopBackend() {
     });
   });
   if (!childExited(owned.child)) {
-    await terminateBackendTree(owned.child);
+    await terminateBackendTree(owned.child, 'SIGKILL');
   }
 }
 
-function terminateBackendTree(child) {
+function terminateBackendTree(child, signal = 'SIGTERM') {
   // backend_runtime uses taskkill /T only with this exact spawned child PID.
-  return terminateBackendProcessTree(child);
+  return terminateBackendProcessTree(child, { processGroup: process.platform !== 'win32', signal });
 }
 
 function monitorBackendExit(child) {
@@ -887,6 +887,18 @@ async function smokeBackendPage(state) {
 }
 
 function registerIpc() {
+  const preferences = createPreferenceStore(path.join(app.getPath('userData'), 'editor-preferences.json'));
+  ipcMain.on('mose:storage', (event, request) => {
+    try {
+      assertTrustedIpc(event);
+      if (!request || !['get', 'set'].includes(request.operation)) throw new Error('无效的偏好操作。');
+      const value = request.operation === 'get'
+        ? preferences.getItem(request.key) : preferences.setItem(request.key, request.value);
+      event.returnValue = { ok: true, value };
+    } catch (error) {
+      event.returnValue = { ok: false, error: String(error.message || error) };
+    }
+  });
   ipcMain.handle('mose:choose-file', trustedIpcHandler((_event, kind, language) => chooseFile(_event, kind, language)));
   ipcMain.handle('mose:choose-directory', trustedIpcHandler(chooseDirectory));
   ipcMain.handle('mose:register-file', trustedIpcHandler((_event, filePath, kind) => {
@@ -906,6 +918,40 @@ function registerIpc() {
     origin: backend?.origin || '',
     desktop: true,
   })));
+}
+
+function configureApplicationMenu() {
+  if (process.platform === 'win32') {
+    Menu.setApplicationMenu(null);
+    return;
+  }
+  const command = (id) => () => mainWindow?.webContents.send('mose-command', id);
+  Menu.setApplicationMenu(Menu.buildFromTemplate([
+    ...(process.platform === 'darwin' ? [{ role: 'appMenu' }] : []),
+    { label: 'File', submenu: [
+      { label: 'New project', accelerator: 'CommandOrControl+N', click: command('new-project') },
+      { label: 'Open project…', accelerator: 'CommandOrControl+O', click: command('open-project') },
+      { label: 'Save', accelerator: 'CommandOrControl+S', click: command('save-project') },
+      { label: 'Save as…', accelerator: 'CommandOrControl+Shift+S', click: command('save-project-as') },
+      ...(process.platform === 'darwin' ? [{ type: 'separator' }, { role: 'recentDocuments', submenu: [{ role: 'clearRecentDocuments' }] }] : []),
+      { type: 'separator' }, { role: 'close' },
+      ...(process.platform === 'linux' ? [{ role: 'quit' }] : []),
+    ] },
+    { role: 'editMenu' }, { role: 'windowMenu' },
+    ...(process.platform === 'linux' && app.isPackaged ? [{ label: 'Tools', submenu: [{
+      label: '添加工程打开方式…', click: async () => {
+        try {
+          const result = await installLinuxIntegration({
+            applicationPath: process.env.APPIMAGE || process.execPath,
+            assetsPath: path.join(process.resourcesPath, 'assets'),
+            dataHome: process.env.XDG_DATA_HOME || path.join(app.getPath('home'), '.local/share'),
+          });
+          await dialog.showMessageBox(mainWindow, { type: 'info', message: '已添加 MOSE 工程打开方式。',
+            detail: `可在文件管理器的“打开方式”中选择 MOSE。${result.warnings.length ? '\n部分图标或类型缓存工具不可用，重新登录后再检查。' : ''}` });
+        } catch (error) { dialog.showErrorBox('无法添加打开方式', String(error.message || error)); }
+      },
+    }] }] : []),
+  ]));
 }
 
 async function bootstrap(projectPath) {
@@ -945,35 +991,55 @@ async function bootstrap(projectPath) {
 }
 
 const initialProjectPath = parseProjectArgs(process.argv.slice(1), process.cwd());
+
+function focusEditor(projectPath) {
+  if (projectPath) sendProjectToRenderer(projectPath);
+  if (!mainWindow && backend && !quitRequested) createWindow(backend);
+  if (mainWindow && !mainWindow.isDestroyed()) {
+    showAndFocusWindow(mainWindow);
+  }
+}
+
 const gotLock = app.requestSingleInstanceLock();
 if (!gotLock) {
   app.quit();
 } else {
+  app.on('open-file', (event, projectPath) => {
+    event.preventDefault();
+    const candidate = parseProjectArgs([projectPath]);
+    focusEditor(candidate);
+  });
   app.on('second-instance', (_event, argv, cwd) => {
     const projectPath = parseProjectArgs(argv, cwd);
     if (projectPath) sendProjectToRenderer(projectPath);
     showAndFocusWindow(mainWindow);
   });
   app.whenReady().then(async () => {
-    // MAWE renders its own theme-aware toolbar inside the editor document.
-    // Electron's default File/Edit/View/Window menu is redundant and follows
-    // the OS chrome instead of the editor theme, so keep only the title bar.
-    Menu.setApplicationMenu(null);
+    // Windows uses the editor toolbar; macOS/Linux also expose native file,
+    // text editing and window actions with their platform accelerators.
+    configureApplicationMenu();
     registerIpc();
     await bootstrap(initialProjectPath);
   });
   app.on('before-quit', (event) => {
-    if (quitRequested) return;
-    quitRequested = true;
+    if (shutdownComplete || quitRequested) return;
     event.preventDefault();
     if (mainWindow && !mainWindow.isDestroyed()) {
       if (requestRendererClose(mainWindow, 'app')) return;
       quitRequested = false;
     }
     quitRequested = true;
-    void stopBackend().finally(() => app.quit());
+    void stopBackend().finally(() => { shutdownComplete = true; app.quit(); });
   });
   app.on('window-all-closed', () => {
-    if (process.platform !== 'darwin') app.quit();
+    if (quitRequested || process.platform !== 'darwin') {
+      void stopBackend().finally(() => {
+        shutdownComplete = true;
+        app.quit();
+      });
+    }
+  });
+  app.on('activate', () => {
+    if (!mainWindow && backend && !quitRequested) createWindow(backend);
   });
 }

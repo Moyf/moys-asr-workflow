@@ -35,10 +35,10 @@ test('parseProjectArgs keeps a missing associated project for the editor to repo
 });
 
 test('resolvePackagedMawPath locates the sibling MAW executable', () => {
-  const executable = path.join('suite', 'MAW', 'MOSE', 'MOSE.exe');
+  const executable = path.win32.resolve('suite', 'MAW', 'MOSE', 'MOSE.exe');
   assert.equal(
-    resolvePackagedMawPath(executable),
-    path.resolve('suite', 'MAW', 'MAW.exe'),
+    resolvePackagedMawPath(executable, { platform: 'win32' }),
+    path.win32.resolve('suite', 'MAW', 'MAW.exe'),
   );
 });
 
@@ -70,6 +70,16 @@ test('showAndFocusWindow ignores a destroyed window', () => {
 
   assert.equal(showAndFocusWindow(window), false);
   assert.equal(called, false);
+});
+
+test('native packages use their own resources backend, including paths with spaces', () => {
+  assert.equal(resolvePackagedMawPath('/Applications/MOSE.app/Contents/MacOS/MOSE', {
+    platform: 'darwin', resourcesPath: '/Applications/MOSE.app/Contents/Resources',
+  }), '/Applications/MOSE.app/Contents/Resources/backend/MAW.app/Contents/MacOS/MAW');
+  assert.equal(resolvePackagedMawPath('/tmp/MOSE mount/mose', {
+    platform: 'linux', resourcesPath: '/tmp/MOSE mount/resources',
+  }), '/tmp/MOSE mount/resources/backend/MAW/MAW');
+  assert.throws(() => resolvePackagedMawPath('/opt/MOSE/mose', { platform: 'linux' }), /resourcesPath/);
 });
 
 test('resolveSourcePython prefers an explicit override, then the repository venv', () => {

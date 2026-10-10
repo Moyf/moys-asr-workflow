@@ -357,7 +357,7 @@ test('dual boundary mode keeps shared-boundary handles independent; classic fall
   assert.equal(helpers.shouldAdjustSharedBoundaryHandleIndependently(true, true, 'dual'), true);
   assert.equal(helpers.shouldAdjustSharedBoundaryHandleIndependently(false, false, 'dual'), true);
   assert.equal(helpers.shouldAdjustSharedBoundaryHandleIndependently(true, false, 'dual'), true);
-  // classic（传统）：完全沿用“自动吸附调整相邻字幕”开关 + Alt 临时反转。
+  // classic（传统）：完全沿用“联动调整相邻字幕”开关 + Alt 临时反转。
   assert.equal(helpers.shouldAdjustSharedBoundaryHandleIndependently(false, true, 'classic'), false);
   assert.equal(helpers.shouldAdjustSharedBoundaryHandleIndependently(true, true, 'classic'), true);
   assert.equal(helpers.shouldAdjustSharedBoundaryHandleIndependently(false, false, 'classic'), true);
@@ -683,7 +683,7 @@ test('normalizes waveform display settings carried by a layout', () => {
   assert.deepEqual(JSON.parse(JSON.stringify(normalized.waveformSettings)), {
     visibleSeconds: 30, secondsPerRow: 20, rowHeight: 144, waveformScale: 6,
     waveformScaleAuto: true,
-    side: 'right', disabledDisplay: 'hidden', showGroupBadges: false, dragPlayhead: false,
+    side: 'right', disabledDisplay: 'hidden', showGroupBadges: false, dragPlayhead: true,
   });
   // waveformScaleAuto 必须恒被显式产出：applyLayoutData 用 Object.assign 增量
   // 合并，缺字段会让上一个工程的 false 残留到新媒体上（反过来就是静默不缩放）。

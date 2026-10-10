@@ -243,7 +243,7 @@
     if (imported && MaweServerSave.projectSaveTargetEnabled()) await MaweProjectSave.saveCurrentProject({ silent: true });
     return imported;
   } catch (error) {
-    MaweHint.flashHint(`加载字幕失败：${error.message || error}`, 'warning');
+    MaweHint.flashHint(`导入字幕失败：${error.message || error}`, 'warning');
     return false;
   } finally {
     finishLoading();

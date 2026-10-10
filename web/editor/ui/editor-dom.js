@@ -285,8 +285,6 @@
   const exportSpeakerNamesAsSuffixToggle = document.getElementById('export-speaker-names-as-suffix');
 
 
-  const exportOpenSubtitleColorSettingsButton = document.getElementById('export-open-subtitle-color-settings');
-
 
   const helpToggle = document.getElementById('help-toggle');
 
@@ -640,25 +638,10 @@
   const downloadGapRemovedColorSrtItem = document.getElementById('download-gap-removed-color-srt');
 
 
-  const multiSubtitleControls = document.getElementById('multi-subtitle-controls');
-
-
   const multiSubtitleToggleLabel = document.getElementById('multi-subtitle-toggle-label');
 
 
-  const multiSubtitleSettingsDropdown = document.getElementById('multi-subtitle-settings-dropdown');
-
-
-  const multiSubtitleSettingsToggle = document.getElementById('multi-subtitle-settings-toggle');
-
-
-  const splitMultiSubtitleSettingsEnabledHint = document.getElementById('split-multi-subtitle-settings-enabled');
-
-
-  const splitMultiSubtitleSettingsDisabledHint = document.getElementById('split-multi-subtitle-settings-disabled');
-
-
-  const splitMultiSubtitleSettingsLink = document.getElementById('split-multi-subtitle-settings-link');
+  const projectMultiSubtitleSettings = document.getElementById('project-multi-subtitle-settings');
 
 
   // 已开启多重字幕但尚未加载第二条字幕时的开关右侧提示。
@@ -774,24 +757,6 @@
 
 
   const editorSettingsPanel = document.getElementById('editor-settings-panel');
-
-
-  const mergeJoinSettings = document.getElementById('merge-join-settings');
-
-
-  const mergeJoinSettingsToggle = document.getElementById('merge-join-settings-toggle');
-
-
-  const mergeJoinSettingsPanel = document.getElementById('merge-join-settings-panel');
-
-
-  const splitTrimSettings = document.getElementById('split-trim-settings');
-
-
-  const splitTrimSettingsToggle = document.getElementById('split-trim-settings-toggle');
-
-
-  const splitTrimSettingsPanel = document.getElementById('split-trim-settings-panel');
 
 
   const cueEditorSettings = document.getElementById('cue-editor-settings');
@@ -1139,7 +1104,6 @@
     exportColorUnifiedToggle,
     exportSpeakerLabelsToggle,
     exportSpeakerNamesAsSuffixToggle,
-    exportOpenSubtitleColorSettingsButton,
     helpToggle,
     editorThemeOptions,
     editorAccentOptions,
@@ -1263,13 +1227,8 @@
     subtitleExportSeparator,
     gapRemovedSubtitleExportSeparator,
     downloadGapRemovedColorSrtItem,
-    multiSubtitleControls,
     multiSubtitleToggleLabel,
-    multiSubtitleSettingsDropdown,
-    multiSubtitleSettingsToggle,
-    splitMultiSubtitleSettingsEnabledHint,
-    splitMultiSubtitleSettingsDisabledHint,
-    splitMultiSubtitleSettingsLink,
+    projectMultiSubtitleSettings,
     multiSubtitleEmptyHint,
     multiSubtitleSwapButton,
     multiSubtitleCrossTrackSnapToggle,
@@ -1308,12 +1267,6 @@
     multiSubtitleSplitAutoSubmit,
     editorSettingsToggle,
     editorSettingsPanel,
-    mergeJoinSettings,
-    mergeJoinSettingsToggle,
-    mergeJoinSettingsPanel,
-    splitTrimSettings,
-    splitTrimSettingsToggle,
-    splitTrimSettingsPanel,
     cueEditorSettings,
     cueEditorSettingsToggle,
     cueEditorSettingsPanel,

@@ -41,8 +41,10 @@ def _local_import_modules(path: Path, module_name: str) -> set[str]:
         else:
             candidate = node.module or ""
         if candidate and _local_module_path(candidate):
+            # 不在此处跳过：即使候选本身是本地模块，也要继续收集
+            # `from maw import x` 形式的子模块别名（如 maw.moss_runtime），
+            # 否则导入图低估依赖、spec 漏带源文件。
             imported.add(candidate)
-            continue
         for alias in node.names:
             child = f"{candidate}.{alias.name}" if candidate else alias.name
             if _local_module_path(child):
@@ -92,7 +94,7 @@ class PackagingContractTests(unittest.TestCase):
         launcher_js = read_text("web/launcher/launcher.js")
         editor = read_text("edit.py")
 
-        self.assertIn(f'id="appVersion"', launcher_html)
+        self.assertIn('id="appVersion"', launcher_html)
         self.assertIn(f'>v{version}</button>', launcher_html)
         self.assertIn(f'appVersion: "{version}"', launcher_js)
         self.assertIn(f'BUNDLED_APP_VERSION = "{version}"', read_text("maw/diagnostics.py"))
@@ -493,15 +495,21 @@ class PackagingContractTests(unittest.TestCase):
         self.assertIn(b"ic07", icon)
         self.assertIn(b"ic08", icon)
 
-    def test_macos_release_workflow_publishes_maw_archives_without_mose_or_checksums(self) -> None:
-        """Given a macOS arm64 release, When packaging runs, Then only MAW app variants are uploaded."""
+    def test_native_release_workflow_builds_mose_with_backend_and_project_icons(self) -> None:
+        """Native Electron artifacts include a backend and run packaged smoke on their own OS."""
         workflow = read_text(".github/workflows/release.yml")
 
         self.assertIn("os: macos-14", workflow)
         self.assertIn("arch: arm64", workflow)
         self.assertIn("https://www.osxexperts.net/ffmpeg81arm.zip", workflow)
         self.assertIn("https://www.osxexperts.net/ffprobe81arm.zip", workflow)
-        self.assertNotIn("MOSE.app", workflow)
+        self.assertIn("MOSE.app", workflow)
+        self.assertIn("MOSE-macOS-arm64-*.dmg", workflow)
+        self.assertIn("MOSE-Linux-x64-*.AppImage", workflow)
+        self.assertIn("MOSE-Linux-x64-*.deb", workflow)
+        self.assertIn("linux-unpacked/mose --mose-smoke", workflow)
+        self.assertIn("Contents/Resources/backend/MAW.app", workflow)
+        self.assertIn("scripts.build_project_icon --check", workflow)
         self.assertNotIn("MAW-MOSE-Windows-x64-${{ steps.version.outputs.version }}.zip", workflow)
         self.assertIn("actions/setup-node@v4", workflow)
         self.assertNotIn("dtolnay/rust-toolchain@stable", workflow)
@@ -537,7 +545,7 @@ class PackagingContractTests(unittest.TestCase):
         self.assertIn('zip -qry "$GITHUB_WORKSPACE/$StandardArchive" MAW.app', macos_workflow)
         self.assertIn('zip -qry "$GITHUB_WORKSPACE/$LiteArchive" MAW-lite.app', macos_workflow)
         self.assertIn('FAQ-常见问题.txt', macos_workflow)
-        self.assertNotIn("MOSE.app", macos_workflow)
+        self.assertIn("MOSE.app", macos_workflow)
         self.assertIn("MAW-lite-macOS-arm64-*.zip", macos_workflow)
         self.assertNotIn(".zip.sha256", macos_workflow)
 

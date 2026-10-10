@@ -18,7 +18,7 @@ from pathlib import Path
 from threading import Event
 
 from maw.console import configure_utf8_environment
-from maw.gui_platform import asset_path
+from maw.gui_platform import asset_path, restore_host_library_path
 from maw.postprocess_ocr import OcrDedupRequest
 from maw.runtimes import OCR
 from maw.runtimes.base import (
@@ -255,7 +255,8 @@ def _runtime_env(runtime_root: Path | None = None) -> dict[str, str]:
     if runtime_root is not None:
         # 托管依赖目录按平台安装模式解析（unix 打包版为 venv 布局，见 base）。
         env["PYTHONPATH"] = str(OCR.site_packages(runtime_root))
-    return env
+    # worker 跑在托管 venv 的宿主解释器上（见 restore_host_library_path）。
+    return restore_host_library_path(env)
 
 
 def _runtime_bundle_root() -> Path:

@@ -120,7 +120,7 @@ const documents = [
     source: 'docs/MOSE.md',
     slug: 'mose',
     title: 'MOSE 独立编辑器',
-    description: 'MAW、MAWE 与 Windows Electron MOSE 之间的定位、套件布局与工程格式边界。',
+    description: 'Electron 原生工程操作、三端打包、系统打开方式与更新范围。',
   },
   {
     source: 'docs/ASR_PROVIDER_RESEARCH.md',
@@ -257,7 +257,7 @@ async function main() {
       `source: ${quote(document.source)}`,
       '---',
       '',
-      `<!-- Generated from ${document.source}. Run npm run sync:docs to refresh. -->`,
+      `<!-- Generated from ${document.source}. Run pnpm run sync:docs to refresh. -->`,
       '',
       // DocLayout already renders the page title; keep one H1 per page.
       rewriteLinks(source.replace(/^# [^\n]*(?:\n|$)/, ''), document.source).trim(),

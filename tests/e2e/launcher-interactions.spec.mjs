@@ -262,7 +262,7 @@ test('translation merge option follows manual and automatic translation controls
   await expect(page.locator('#autoTranslateMergeBilingual')).not.toBeChecked();
   await expect(page.locator('#autoTranslateMergeHint')).toBeVisible();
   await expect(page.locator('#autoTranslateBilingualOrder')).toBeHidden();
-  await expect(page.locator('#autoTranslateBackfillHint')).toHaveText('当你仅有少量外文语句需要翻译，可以勾选此项将它们翻译成原文的语言。');
+  await expect(page.locator('#autoTranslateBackfillHint')).toHaveText('只把少量外文语句翻译成目标语言。');
 
   await page.locator('#autoTranslateMergeBilingual').check();
   await expect(page.locator('#autoTranslateMergeHint')).toBeHidden();
@@ -531,7 +531,7 @@ test('Launcher settings switch between accessible tabs and deep links', async ({
   await expect(page.locator('#settingsTabList')).toHaveAttribute('aria-label', '设置分类');
   await expect(page.locator('#settingsGeneralPanel')).toBeVisible();
   await expect(page.locator('#settingsLlmPanel')).toBeHidden();
-  await expect(page.locator('#settingsLlmTab')).toHaveText('AI 模型配置');
+  await expect(page.locator('#settingsLlmTab')).toHaveText('AI 模型');
 
   const settingsCard = page.locator('#settingsModal .settings-modal-card');
   const initialCard = await settingsCard.boundingBox();
@@ -717,13 +717,13 @@ test('Qwen regional settings use a narrow advanced link and live at the bottom o
   })).toEqual({ gridColumnStart: '1', gridColumnEnd: '-1' });
   await expect(regionalHint.locator('button')).toHaveCount(1);
   await expect(regionalHint.locator('button')).toHaveText('⚙️ 设置 → 运行环境');
-  await expect(regionalHint).toContainText('配置阿里云百炼地域与业务空间。');
+  await expect(regionalHint).toContainText('配置阿里云百炼地域。');
   await page.locator('#openDashscopeRegionSettings').click();
   await expect(page.locator('#settingsModal')).toBeVisible();
   await expect(page.locator('#settingsLlmTab')).toHaveAttribute('aria-selected', 'true');
   await expect(page.locator('#settingsRuntimeTab')).toHaveAttribute('aria-selected', 'false');
   await expect(page.locator('#dashscopeRegionPanel')).toBeVisible();
-  await expect(page.locator('#dashscopeRegionPanel h3')).toHaveText('阿里云百炼地域与业务空间');
+  await expect(page.locator('#dashscopeRegionPanel h3')).toHaveText('阿里云百炼 地域设置');
   expect(await page.locator('#dashscopeRegionPanel').evaluate((element) => element.parentElement?.id)).toBe('settingsLlmPanel');
 });
 
@@ -756,7 +756,7 @@ test('segmentation settings live under Processing and validation opens that tab'
   await expect(page.locator('#settingsModal')).toBeVisible();
   await expect(page.locator('#settingsProcessingTab')).toHaveAttribute('aria-selected', 'true');
   await expect(page.locator('#segmentationSettingsSection')).toBeVisible();
-  await expect(page.locator('#maxLenError')).toHaveText('切句参数无效：请输入整数，并确保最大字数不小于短句合并阈值。');
+  await expect(page.locator('#maxLenError')).toHaveText('断句参数无效：请输入整数，并确保单句上限不小于短句合并值。');
 });
 
 test('does not start local transcription while model status is still checking', async ({ page }) => {
@@ -1075,7 +1075,7 @@ test('provider HTTP failures keep retry guidance and original transcription disc
   await page.evaluate(() => window.MAWLauncher.onBackendEvent({
     type: 'error',
     code: 'postprocess_provider_response',
-    detail: '后处理步骤 translate 失败：LLM provider returned HTTP 400: invalid request. This is a provider response, not a network outage.',
+    detail: '处理步骤 translate 失败：LLM provider returned HTTP 400: invalid request. This is a provider response, not a network outage.',
     canRetry: true,
     failedStep: 'translate',
     originalSrtPath: 'D:\\Demo\\clip.srt',
@@ -1289,7 +1289,7 @@ test('launcher reports a server disconnect without manual refresh', async ({ pag
 
   await page.locator('#openMawe').click();
   await expect(page.locator('#status')).toContainText('字幕编辑服务器已断开', { timeout: 10_000 });
-  await expect(page.locator('#openMawe')).toContainText('启动字幕编辑器');
+  await expect(page.locator('#openMawe')).toContainText('打开编辑器');
   await expect(page.locator('#stopServer')).toBeHidden();
   expect(await page.evaluate(() => window.__serverStatusCalls)).toBeGreaterThanOrEqual(2);
 });
@@ -1316,19 +1316,19 @@ test('restarting after a server disconnect does not reopen the editor page', asy
 
   // 先让服务器上线，使监控启动并处于 connected 状态。
   await page.locator('#openMawe').click();
-  await expect(page.locator('#openMawe')).toContainText('打开字幕编辑器', { timeout: 10_000 });
+  await expect(page.locator('#openMawe')).toContainText('打开编辑器', { timeout: 10_000 });
   await page.waitForFunction(() => window.__openUrlCalls.length === 1);
 
   // 模拟断开。
   await page.evaluate(() => { window.__serverHealthy = false; });
   await expect(page.locator('#status')).toContainText('字幕编辑服务器已断开', { timeout: 10_000 });
-  await expect(page.locator('#openMawe')).toContainText('启动字幕编辑器');
+  await expect(page.locator('#openMawe')).toContainText('打开编辑器');
 
   // 模拟重启成功：只更新提示，不再调用 open_url 打开新页面。
   await page.evaluate(() => { window.__serverHealthy = true; });
   await page.locator('#openMawe').click();
   await expect(page.locator('#status')).toContainText('回到原编辑器页面', { timeout: 10_000 });
-  await expect(page.locator('#openMawe')).toContainText('打开字幕编辑器');
+  await expect(page.locator('#openMawe')).toContainText('打开编辑器');
   await expect(page.locator('#stopServer')).toBeVisible();
   await page.waitForFunction(() => window.__openUrlCalls.length === 1, undefined, { timeout: 5_000 });
   expect(await page.evaluate(() => window.__openUrlCalls[0])).toBe('http://127.0.0.1:8250/');

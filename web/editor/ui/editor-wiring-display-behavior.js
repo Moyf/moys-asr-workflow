@@ -35,6 +35,7 @@ MaweDom.exportColorUnifiedToggle?.addEventListener('change', () => {
   MaweSettings.updateEditorSettings({ exportColorUnified: MaweDom.exportColorUnifiedToggle.checked });
 });
 MaweDom.exportSpeakerLabelsToggle?.addEventListener('change', () => {
+  MaweHistory.pushPreviewUndo('切换导出说话人名称', MaweHistory.snapshotPreviewState());
   MaweSettings.updateEditorSettings({ exportSpeakerLabels: MaweDom.exportSpeakerLabelsToggle.checked });
 });
 MaweDom.exportSpeakerNamesAsSuffixToggle?.addEventListener('change', () => {

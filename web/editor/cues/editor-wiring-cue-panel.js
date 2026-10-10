@@ -48,7 +48,7 @@ function updateSelectionCountText() {
 // 返回与 idx 同属一个表情包/颜色分组的全部字幕下标（含 idx 自身）。
 // head 持有 sticker/color，成员持 sticker_ref/color_ref 指向 head。
 
-// 普通单击字幕时的选择逻辑：开启「同时选中分组内项目」且属于分组时选整组，否则只选本行。
+// 普通单击字幕时的选择逻辑：开启「选中整组」且属于分组时选整组，否则只选本行。
 
 
 
@@ -136,8 +136,11 @@ MaweDom.cuePanelText?.addEventListener('input', () => {
   const cueListAnchor = MaweCueListAnchor.captureCueListRenderAnchor();
   MaweCuePanel.ensureCuePanelUndo(target.kind === 'extension' ? '编辑副字幕' : '编辑当前字幕');
   const seg = target.segment;
+  const previousText = seg.text;
   seg.text = MaweDom.cuePanelText.value.replace(/\r\n?/g, '\n');
   seg._dirty = true;
+  // 面板输入是逐键实时提交：等长替换（改错别字）在这里静默同步字词文字。
+  if (target.kind === 'main') MaweWordTiming.syncTextChange(seg, previousText, { quietMismatch: true });
   if (target.kind === 'extension') MaweMultiSubtitleCore.markMultiSubtitleDirty();
   MaweViewUpdates.invalidate({ save: true });
   const splitMode = target.kind === 'extension'

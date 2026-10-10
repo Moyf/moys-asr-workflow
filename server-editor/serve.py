@@ -33,7 +33,7 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from typing import NamedTuple
 from hmac import compare_digest
-from urllib.parse import quote, unquote, urlsplit
+from urllib.parse import parse_qs, quote, unquote, urlsplit
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -55,6 +55,7 @@ from maw.app_paths import default_server_settings_path, legacy_server_settings_p
 from maw.ass_styles import load_ass_style_library, save_ass_style_library  # noqa: E402
 from maw.ffmpeg import resolve_ffmpeg_tools  # noqa: E402
 from maw.gui_config import DEFAULT_ENV_PATH, load_env  # noqa: E402
+from maw.gui_platform import restore_host_library_path  # noqa: E402
 from maw.postprocess_ffmpeg import libass_missing_glyphs  # noqa: E402
 from maw.project import (  # noqa: E402
     ProjectValidationFailed,
@@ -738,7 +739,7 @@ def build_server_page(
             media_display = f"媒体缺失：{Path(media_reference).name or media_reference}"
             media_title = f"工程关联媒体：{media_reference}；请使用“加载媒体”重新定位"
         else:
-            media_display = "未加载媒体"
+            media_display = "未导入媒体"
             media_title = ""
         json_class = "" if project.json_path else "empty"
         media_class = "empty"
@@ -1069,10 +1070,10 @@ class EditorServer(ThreadingHTTPServer):
             print(f"[project] 后台加载失败: {detail}", file=sys.stderr)
             self.mark_project_error(generation, detail)
 
-    def set_sticker_root(self, raw_path: str) -> tuple[Path, list[dict]]:
+    def set_sticker_root(self, raw_path: str) -> tuple[Path | None, list[dict]]:
         """Scan a root before atomically making it the active sticker scope."""
         with self.sticker_lock:
-            root, stickers = validate_sticker_root(raw_path)
+            root, stickers = validate_sticker_root(raw_path) if raw_path else (None, [])
             self.project = replace(self.project, sticker_root=root, stickers=stickers)
             return root, stickers
 
@@ -1416,7 +1417,9 @@ class EditorServer(ThreadingHTTPServer):
             return self.project
 
     def desktop_project_status(self, *, force_revision: bool = False) -> dict[str, object]:
-        project = self.project
+        with self.project_lock:
+            project = self.project
+            generation = self.project_generation
         project_path = project.json_path
         media_path = desktop_source_media_path(project)
         media_available = bool(media_path and media_path.is_file())
@@ -1425,10 +1428,10 @@ class EditorServer(ThreadingHTTPServer):
             media_error = media_error or f"媒体文件不存在：{media_path}"
         return {
             "ok": True,
-            "generation": self.project_generation,
+            "generation": generation,
             "projectPath": str(project_path) if project_path else None,
             "projectName": project_path.name if project_path else "",
-            "revision": self.desktop_file_revision(project_path, force=force_revision) if project_path else None,
+            "revision": self.desktop_file_revision(project_path, force=True) if project_path else None,
             "mediaPath": str(media_path) if media_path else None,
             "mediaAvailable": media_available,
             "mediaError": media_error,
@@ -1548,21 +1551,24 @@ class EditorServer(ThreadingHTTPServer):
                     else:
                         normalized_project["media"] = source_media.name if source_media.parent == target.parent else str(source_media)
                 backup = write_project_json(target, normalized_project)
+                warnings = []
                 if backup_limit is not None:
-                    backup = write_backup(target, normalized_project, backup_limit)
+                    try:
+                        backup = write_backup(target, normalized_project, backup_limit)
+                    except (OSError, ValueError) as error:
+                        warnings.append(f"工程已保存，版本备份失败：{error}")
                 _restore_runtime_inline_caches(self.project.data, normalized_project)
                 self.project = replace(self.project, data=normalized_project, json_path=target)
                 if mode != "current":
                     self.project_generation += 1
                 generation = self.project_generation
-                recent_warning = None
                 try:
                     self.remember_project(target)
                 except OSError as error:
-                    recent_warning = f"工程已保存，最近记录更新失败：{error}"
+                    warnings.append(f"工程已保存，最近记录更新失败：{error}")
         finally:
             self.save_lock.release()
-        return target, backup, generation, recent_warning
+        return target, backup, generation, "；".join(warnings) or None
 
     def attach_project(self, file_name: str, browser_project: dict) -> ServerProject:
         """Bind a project opened through the browser to its on-disk file.
@@ -2405,7 +2411,6 @@ class EditorRequestHandler(BaseHTTPRequestHandler):
                     "filename": target.name,
                     "backup": backup.name if backup else None,
                     "generation": generation,
-                    "recentProjectsUpdated": recent_warning is None,
                     "warning": recent_warning,
                 })
                 return
@@ -2413,10 +2418,16 @@ class EditorRequestHandler(BaseHTTPRequestHandler):
                 sticker_path = request.get("path")
                 if not isinstance(sticker_path, str):
                     raise ValueError("表情包根目录格式不正确")
-                root, stickers = self.editor_server.set_sticker_root(sticker_path)
+                activate = request.get("activate", True)
+                if not isinstance(activate, bool):
+                    raise ValueError("表情包目录应用方式格式不正确")
+                if activate:
+                    root, stickers = self.editor_server.set_sticker_root(sticker_path)
+                else:
+                    root, stickers = validate_sticker_root(sticker_path) if sticker_path else (None, [])
                 self.send_json(HTTPStatus.OK, {
                     "ok": True,
-                    "root": root.as_posix(),
+                    "root": root.as_posix() if root else "",
                     "count": len(stickers),
                     "stickers": stickers,
                 })
@@ -2498,7 +2509,12 @@ class EditorRequestHandler(BaseHTTPRequestHandler):
             if sys.platform == "win32":
                 os.startfile(str(directory))
             else:
-                subprocess.Popen(["open" if sys.platform == "darwin" else "xdg-open", str(directory)])
+                # open/xdg-open 是宿主桌面程序：继承包内 LD_LIBRARY_PATH 可能
+                # 被旧动态库破坏，先用宿主路径再启动（见 restore_host_library_path）。
+                subprocess.Popen(
+                    ["open" if sys.platform == "darwin" else "xdg-open", str(directory)],
+                    env=restore_host_library_path(os.environ.copy()),
+                )
         except PermissionError as error:
             self.send_json(HTTPStatus.FORBIDDEN, {"ok": False, "error": str(error)})
             return
@@ -2514,9 +2530,15 @@ class EditorRequestHandler(BaseHTTPRequestHandler):
             request = self.read_json_request()
             self._check_request_token(request)
             path = request.get("path")
-            if not isinstance(path, str) or not path:
+            if not isinstance(path, str):
                 raise ValueError("表情包根目录格式不正确")
-            root, stickers = self.editor_server.set_sticker_root(path)
+            activate = request.get("activate", True)
+            if not isinstance(activate, bool):
+                raise ValueError("表情包目录应用方式格式不正确")
+            if activate:
+                root, stickers = self.editor_server.set_sticker_root(path)
+            else:
+                root, stickers = validate_sticker_root(path) if path else (None, [])
         except PermissionError as error:
             self.send_json(HTTPStatus.FORBIDDEN, {"ok": False, "error": str(error)})
             return
@@ -2525,7 +2547,7 @@ class EditorRequestHandler(BaseHTTPRequestHandler):
             return
         self.send_json(HTTPStatus.OK, {
             "ok": True,
-            "root": root.as_posix(),
+            "root": root.as_posix() if root else "",
             "count": len(stickers),
             "stickers": stickers,
         })
@@ -2794,7 +2816,10 @@ class EditorRequestHandler(BaseHTTPRequestHandler):
             project_path = request.get("path")
             if not isinstance(project_path, str) or not project_path.strip():
                 raise ValueError("工程路径格式不正确")
-            project = self.editor_server.open_project_path(project_path)
+            media_path = request.get("mediaPath")
+            if media_path is not None and (not isinstance(media_path, str) or not media_path.strip()):
+                raise ValueError("媒体路径格式不正确")
+            project = self.editor_server.open_project_path(project_path, media_path)
         except FileNotFoundError as error:
             self.send_json(HTTPStatus.BAD_REQUEST, {"ok": False, "error": str(error), "missing": True})
             return
@@ -2812,6 +2837,34 @@ class EditorRequestHandler(BaseHTTPRequestHandler):
             "name": project.json_path.name if project.json_path else "",
             "mediaName": (project.source_media_path or project.media_path).name if project.media_path else "",
         })
+
+    def prepare_desktop_project(self) -> None:
+        try:
+            request = self.read_json_request()
+            project = self.editor_server.prepare_desktop_project(
+                request.get("project"), new_project=request.get("newProject") is True,
+            )
+        except (UnicodeDecodeError, json.JSONDecodeError, ValueError, ProjectValidationFailed) as error:
+            self.send_json(HTTPStatus.BAD_REQUEST, {"ok": False, "error": str(error)})
+            return
+        self.send_json(HTTPStatus.OK, {"ok": True, "project": project})
+
+    def desktop_media_operation(self, *, commit: bool) -> None:
+        try:
+            request = self.read_json_request()
+            value = request.get("ticket" if commit else "path")
+            if not isinstance(value, str) or not value.strip():
+                raise ValueError("媒体路径或预览标记格式不正确")
+            result = self.editor_server.commit_desktop_media(value) if commit else self.editor_server.stage_desktop_media(
+                value, request.get("project"), bind_current=request.get("detached") is not True,
+            )
+        except ProjectMutationInProgressError as error:
+            self.send_json(HTTPStatus.CONFLICT, {"ok": False, "error": str(error)})
+            return
+        except (UnicodeDecodeError, json.JSONDecodeError, ValueError, OSError, ProjectValidationFailed, MediaResolutionError, MediaConversionError) as error:
+            self.send_json(HTTPStatus.BAD_REQUEST, {"ok": False, "error": str(error)})
+            return
+        self.send_json(HTTPStatus.OK, result)
 
     def update_settings(self) -> None:
         try:

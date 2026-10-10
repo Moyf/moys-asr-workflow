@@ -117,6 +117,11 @@
       "exportName": "createUtilsModule"
     },
     {
+      "file": "shared/utils/word-timing.js",
+      "name": "utils-word-timing",
+      "exportName": "createWordTiming"
+    },
+    {
       "file": "shared/utils/word-split.js",
       "name": "utils-word-split",
       "exportName": "createUtilsModule"
@@ -260,6 +265,11 @@
       "file": "editor/media/waveform/cue-blocks.js",
       "name": "waveform-cue-blocks",
       "exportName": "createWaveformModule"
+    },
+    {
+      "file": "editor/media/waveform/word-blocks.js",
+      "name": "waveform-word-blocks",
+      "exportName": "createWordBlocks"
     },
     {
       "file": "editor/media/waveform/canvas.js",
