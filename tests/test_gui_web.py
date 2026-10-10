@@ -54,7 +54,7 @@ class FakeWindow:
 
 
 @final
-class GuiWebBridgeTests(unittest.TestCase):
+class GuiWebBridgeTests(CompactContainerAssertions, unittest.TestCase):
     def setUp(self) -> None:
         self.temp_dir = tempfile.TemporaryDirectory()
         self.root = Path(self.temp_dir.name)

@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from tests.compact_assertions import CompactContainerAssertions
+
 import json
 import unittest
 from pathlib import Path
@@ -10,7 +12,7 @@ from maw.colors import COLOR_PALETTE
 REPO_ROOT = Path(__file__).resolve().parents[1]
 
 
-class EditorPaletteInjectionTests(unittest.TestCase):
+class EditorPaletteInjectionTests(CompactContainerAssertions, unittest.TestCase):
     """调色板单一来源：maw/colors.py → 注入编辑器页面。"""
 
     def test_build_palette_json_matches_color_palette(self) -> None:
