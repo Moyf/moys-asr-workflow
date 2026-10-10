@@ -48,8 +48,8 @@ jobs:
           MAW_TEST_PYTHON: ${{ github.workspace }}/.venv/bin/python
       - name: Python assembly contracts
         run: |
-          uv run --no-sync python -m unittest discover -s tests -p test_editor_assets.py
-          uv run --no-sync python -m unittest discover -s tests -p test_editor_manifest.py
+          uv run --no-sync python scripts/run_tests.py tests/test_editor_assets.py
+          uv run --no-sync python scripts/run_tests.py tests/test_editor_manifest.py
       - name: Real file and HTTP editor
         env:
           MAW_E2E_PYTHON: ${{ github.workspace }}/.venv/bin/python

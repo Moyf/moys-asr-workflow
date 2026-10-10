@@ -17,7 +17,7 @@ function refillSelectLabels() {
   fillSelect("language", visible, "");
   if (el.multiple) Array.from(el.options).forEach((option) => { option.selected = selected.includes(option.value); });
   else el.value = selected[0] || "";
-  $("providerNote").textContent = providerNoteText(current);
+  renderProviderNote(current);
   renderModelNote();
 }
 function setError(field, message) { const input = $(field); const hint = $(`${field}Error`); if (input) input.classList.toggle("invalid", Boolean(message)); if (hint) { renderMessage(hint, message); hint.classList.toggle("visible", Boolean(message)); } }

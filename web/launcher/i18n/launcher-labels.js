@@ -30,11 +30,12 @@ function runtimeHintText(runtime, readyKey, otherKey) {
 }
 // 供应商 / 模型配置的 label 与 note 由后端（maw/gui_config.py）以中文下发；
 // 英文界面按稳定 id 映射为英文，id 未收录时回退后端原文。
-const PROVIDER_LABELS_EN = { qwen: "Alibaba Cloud Bailian (Qwen)", soniox: "Soniox STT (overseas / minority languages)", tencent: "Tencent Cloud recorded-file ASR", openai: "OpenAI-format compatible API", local: "Local models (Beta)", doubao: "Volcano Engine (Doubao)", bcut: "Bcut (unofficial / free / experimental)" };
+const PROVIDER_LABELS_EN = { qwen: "Alibaba Cloud Bailian (Qwen)", soniox: "Soniox STT (overseas / minority languages)", tencent: "Tencent Cloud recorded-file ASR", openai: "OpenAI-format compatible API", local: "Local models (Beta)", doubao: "Volcano Engine (Doubao)", bcut: "Bcut (unofficial / free / experimental)", deepseek: "DeepSeek (?)" };
 const PROVIDER_NOTES_EN = {
   openai: "OpenAI is used by default; OpenRouter automatically gets the openai/ prefix for built-in models. For other relays, choose Custom and enter the exact model name they provide. The API must return segments or words timestamps.",
   tencent: "Requires TENCENT_SECRET_ID and TENCENT_SECRET_KEY; use a COS URL for media larger than 5 MB.",
   bcut: "Unofficial free endpoint: no API key, Chinese only, 2-hour per-file limit. The endpoint may change, break, or rate-limit at any time; avoid high-frequency calls. For important or batch tasks, prefer the official providers above.",
+  deepseek: "🐳 The big blue fish cannot transcribe audio — it's a text model! But you can use it for translation in the Subtitle Processing (AI post-process) settings.",
 };
 const MODEL_LABELS_EN = {
   "qwen-audio-3.1-asr-flash-filetrans": "qwen-audio-3.1-asr (dialect / hotwords / context)",
@@ -59,6 +60,7 @@ const MODEL_LABELS_EN = {
   "moss-transcribe-diarize-local": "MOSS Transcribe-Diarize 0.9B",
   "whisper-large-v3-local": "Faster-Whisper large-v3 (experimental)",
   "bcut-asr": "Bcut (no key / Chinese only)",
+  "deepseek-not-an-asr": "DeepSeek is not a transcription model",
 };
 const MODEL_NOTES_EN = {
   "qwen-audio-3.1-asr-flash-filetrans": "Supports instant hotwords, context, and speaker diarization; optional dialect preservation.",
@@ -112,6 +114,32 @@ function localizedSelectLabel(selectId, item) {
   return map?.[item.id] || item.label;
 }
 function providerNoteText(providerItem) { return state.lang === "en" ? (PROVIDER_NOTES_EN[providerItem.id] || providerItem.note) : providerItem.note; }
+function appendNoteText(parent, text) { if (text) parent.append(document.createTextNode(text)); }
+function renderProviderNote(providerItem) {
+  // DeepSeek 彩蛋：第二行的「AI处理」是可点击入口，直接打开工具箱的 AI 处理标签页。
+  const noteElement = $("providerNote");
+  if (!noteElement) return;
+  noteElement.textContent = "";
+  if (providerItem?.id === "deepseek") {
+    const en = state.lang === "en";
+    appendNoteText(noteElement, en ? "🐳 The big blue fish cannot transcribe audio — it's a text model!" : "🐳 蓝色大肥鱼不支持语音转写，它是个文本模型！");
+    noteElement.append(document.createElement("br"));
+    appendNoteText(noteElement, en ? " But you can use it for translation in " : " 不过你可以在 ");
+    const link = document.createElement("button");
+    link.type = "button";
+    link.id = "providerNoteLlmLink";
+    link.className = "inline-link";
+    link.dataset.i18n = "toolbox_llm";
+    link.textContent = t("toolbox_llm");
+    link.addEventListener("click", () => { window.MAWLauncher?.openToolboxAiProcessing?.(); });
+    noteElement.append(link);
+    appendNoteText(noteElement, en ? " of the toolbox." : " 中使用它来翻译啥的。");
+    noteElement.classList.remove("hidden");
+    return;
+  }
+  noteElement.textContent = providerNoteText(providerItem);
+  noteElement.classList.toggle("hidden", !providerItem?.note);
+}
 function isOpenRouterBaseUrl(value) {
   const raw = String(value || "").trim();
   if (!raw) return false;
@@ -167,13 +195,20 @@ function renderModelNote() {
     el.append(priceElement);
   }
 }
+// custom / custom2 / custom3 是三个并列的「自定义接口」槽位，共用同一套显示与存储行为。
+function isCustomSlotId(providerId) { return ["custom", "custom2", "custom3"].includes(String(providerId || "")); }
+function customSlotLabelKey(providerId) {
+  const suffix = String(providerId || "").replace("custom", "");
+  return suffix ? `llm_custom_provider_${suffix}` : "llm_custom_provider";
+}
 function llmProviderLabel(providerId) {
   const id = String(providerId || "").trim();
   const item = state.config?.postprocessProviders?.find((candidate) => candidate.id === id);
-  if (id === "custom" && item?.displayName) return item.displayName;
+  if (isCustomSlotId(id) && item?.displayName) return item.displayName;
+  if (isCustomSlotId(id)) return t(customSlotLabelKey(id)) || item?.label || t("llm_custom_provider");
   const labels = state.lang === "en"
-    ? { deepseek: "DeepSeek", zhipu: "Zhipu Coding Plan", qwen: "Alibaba Qwen", custom: "OpenAI-compatible API" }
-    : { deepseek: "DeepSeek", zhipu: "智谱 Coding Plan", qwen: "阿里云 Qwen", custom: "OpenAI 通用接口" };
+    ? { deepseek: "DeepSeek", zhipu: "Zhipu Coding Plan", qwen: "Alibaba Qwen" }
+    : { deepseek: "DeepSeek", zhipu: "智谱 Coding Plan", qwen: "阿里云 Qwen" };
   return labels[id] || item?.label || t("llm_provider_unknown");
 }
 function llmBuiltInProviderKeyGuidance(context = {}) {
@@ -188,7 +223,7 @@ function llmHttpErrorText(status, context = {}) {
   const keys = { 401: "llm_http_unauthorized", 403: "llm_http_forbidden", 404: "llm_http_not_found", 429: "llm_http_rate_limited" };
   const key = numericStatus === 401 && ["deepseek", "zhipu", "qwen"].includes(providerId)
     ? "llm_http_unauthorized_builtin"
-    : (numericStatus === 401 && providerId === "custom" ? "llm_http_unauthorized_custom" : keys[numericStatus]);
+    : (numericStatus === 401 && isCustomSlotId(providerId) ? "llm_http_unauthorized_custom" : keys[numericStatus]);
   if (!key) return "";
   const isModelList = String(context?.operation || "").toLowerCase().includes("model");
   const operation = t(isModelList ? "llm_http_model_list_operation" : "llm_http_connection_operation");

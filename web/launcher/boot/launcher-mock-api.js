@@ -12,7 +12,8 @@ function mockApi() {
     { id: "firered-asr2-ctc", modelId: "firered-asr2-ctc", engine: "firered", modelRef: "sherpa-onnx-fire-red-asr2-ctc-zh_en-int8-2026-02-25", label: "FireRedASR2-CTC", note: "已知稿对齐；中英及多方言；CPU 可运行；字词时间码", estimatedSize: "0.9G", deviceSupport: "cpu", resourceLevel: "low", supportsWordTimestamps: true, installed: false, status: "missing", runtimeAvailable: false, detail: "" },
   ];
   return {
-    get_config: async () => ({
+    get_config: async () => {
+      const config = {
       platform: /^Mac/u.test(navigator.platform) ? "darwin" : "win32",
       apiKey: saved.apiKey,
       maskedApiKey: saved.apiKey ? "sk-…demo" : "",
@@ -35,12 +36,17 @@ function mockApi() {
       attachModelName: saved.attachModelName,
       notifyOnComplete: saved.notifyOnComplete === true,
       appVersion: "1.8.0-beta.1",
+      asrPresetRoot: saved.asrPresetRoot || "D:\\Models\\MAW\\asr-presets",
+      asrPresetRootConfigured: Boolean(saved.asrPresetRoot),
+      serverPort: null,
       stickerDir: saved.stickerDir || "",
       postprocessProviders: [
         { id: "deepseek", label: "DeepSeek", baseUrl: "https://api.deepseek.com", model: "deepseek-flash", reasoningMode: "off", maskedApiKey: "", verified: false, hasApiKey: false, hasBaseUrl: true, hasModel: true, selected: true },
         { id: "zhipu", label: "智谱 Coding Plan", baseUrl: "https://open.bigmodel.cn/api/coding/paas/v4", model: "glm-5.2", reasoningMode: "off", maskedApiKey: "", verified: false, hasApiKey: false, hasBaseUrl: true, hasModel: true, selected: false },
         { id: "qwen", label: "阿里云 Qwen", baseUrl: "https://dashscope.aliyuncs.com/compatible-mode/v1", model: "qwen-plus", reasoningMode: "off", maskedApiKey: "", verified: false, hasApiKey: false, hasBaseUrl: true, hasModel: true, selected: false },
-        { id: "custom", label: saved.customDisplayName || "OpenAI-compatible API", defaultLabel: "OpenAI-compatible API", displayName: saved.customDisplayName || "", baseUrl: "", model: "", reasoningMode: "off", maskedApiKey: "", verified: false, hasApiKey: false, hasBaseUrl: false, hasModel: false, selected: false }
+        { id: "custom", label: saved.customDisplayName || "Custom API (or local model)", defaultLabel: "Custom API (or local model)", displayName: saved.customDisplayName || "", baseUrl: "", model: "", reasoningMode: "off", maskedApiKey: "", verified: false, hasApiKey: false, hasBaseUrl: false, hasModel: false, selected: false },
+        { id: "custom2", label: "Custom API #2", defaultLabel: "Custom API #2", displayName: "", baseUrl: "", model: "", reasoningMode: "off", maskedApiKey: "", verified: false, hasApiKey: false, hasBaseUrl: false, hasModel: false, selected: false },
+        { id: "custom3", label: "Custom API #3", defaultLabel: "Custom API #3", displayName: "", baseUrl: "", model: "", reasoningMode: "off", maskedApiKey: "", verified: false, hasApiKey: false, hasBaseUrl: false, hasModel: false, selected: false },
       ],
       postprocessAutoPlan: saved.postprocessAutoPlan || { version: 1, enabled: false, retainIntermediate: true, steps: [] },
       modelCacheRoot: saved.modelCacheRoot || "D:\\Models\\MAW",
@@ -163,9 +169,18 @@ function mockApi() {
           models: [{ id: "bcut-asr", label: "必剪（免 Key / 仅中文）", envKey: "", note: "逐字毫秒时间戳；无需 API Key。", supportsSpeaker: false, languages: [{ id: "", label: "中文（自动识别）" }] }],
           regions: [],
           languages: [{ id: "", label: "中文（自动识别）" }]
+        },
+        {
+          id: "deepseek", label: "DeepSeek（？）", keyUrl: "", apiKey: "", maskedApiKey: "",
+          supportsSpeaker: false, multiLanguage: false, requiresApiKey: false, supportsLanguage: false,
+          note: "DeepSeek 是文本模型，请在工具箱的 AI 处理里使用。", commonLanguages: [], regions: [], languages: [],
+          models: [{ id: "deepseek-not-an-asr", label: "DeepSeek 不是转写模型", envKey: "", languages: [] }],
         }
       ]
-    }),
+      };
+      const provider = config.providers.find(item => item.id === config.providerId);
+      return { ...config, models: provider.models, regions: provider.regions, languages: provider.languages };
+    },
     default_output: async ({ mediaPath, providerId, modelId, testRun }) => {
       let path = "";
       if (mediaPath) {
@@ -222,7 +237,7 @@ save_local_settings: async ({ runtimePath }) => { state.config.localRuntime = { 
     save_sticker_dir: async ({ path }) => { saved.stickerDir = path || ""; return { ok: Boolean(path), stickerDir: saved.stickerDir, field: path ? "" : "stickerDir", error: path ? "" : "missing" }; },
     open_sticker_folder: async () => { if (!saved.stickerDir) return { ok: false, code: "sticker_dir_invalid" }; window.__openedStickerFolder = saved.stickerDir; return { ok: true }; },
     get_postprocess_settings: async ({ providerId }) => { const apiKey = saved.postprocessApiKeys[providerId] || ""; return { ok: true, providerId, apiKey, maskedApiKey: apiKey ? "sk-…mock" : "" }; },
-    save_postprocess_settings: async ({ providerId, apiKey, displayName, reasoningMode }) => { if (providerId === "custom") saved.customDisplayName = displayName || ""; if (apiKey) saved.postprocessApiKeys[providerId] = apiKey; return { ok: true, providerId, label: providerId === "custom" ? (displayName || "OpenAI-compatible API") : (providerId === "deepseek" ? "DeepSeek" : (providerId === "zhipu" ? "智谱 Coding Plan" : "阿里云 Qwen")), displayName: providerId === "custom" ? (displayName || "") : "", maskedApiKey: saved.postprocessApiKeys[providerId] ? "sk-…mock" : "", reasoningMode: reasoningMode || "off", verified: false }; },
+    save_postprocess_settings: async ({ providerId, apiKey, displayName, reasoningMode }) => { if (isCustomSlotId(providerId)) saved.customDisplayName = displayName || ""; if (apiKey) saved.postprocessApiKeys[providerId] = apiKey; return { ok: true, providerId, label: isCustomSlotId(providerId) ? (displayName || "Custom API (or local model)") : (providerId === "deepseek" ? "DeepSeek" : (providerId === "zhipu" ? "智谱 Coding Plan" : "阿里云 Qwen")), displayName: isCustomSlotId(providerId) ? (displayName || "") : "", maskedApiKey: saved.postprocessApiKeys[providerId] ? "sk-…mock" : "", reasoningMode: reasoningMode || "off", verified: false }; },
     test_postprocess_connection: async ({ providerId, apiKey, save }) => { if (save && apiKey) saved.postprocessApiKeys[providerId] = apiKey; return { ok: true, providerId, verified: true, saved: Boolean(save), maskedApiKey: saved.postprocessApiKeys[providerId] ? "sk-…mock" : "" }; },
     save_postprocess_plan: async ({ plan }) => { saved.postprocessAutoPlan = plan; return { ok: true, plan }; },
     validate_postprocess_plan: async ({ plan }) => ({ ok: true, plan, errors: [] }),

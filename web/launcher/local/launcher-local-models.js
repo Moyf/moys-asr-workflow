@@ -1,6 +1,7 @@
 // 本地模型/运行时/OCR/对齐模型的渲染与刷新。
 
 function isLocalProvider() { return provider()?.kind === "local" || provider()?.id === "local"; }
+function isDeepSeekProvider() { return provider()?.id === "deepseek"; }
 function isFireRedModel(model = selectedModel()) { return isLocalProvider() && String(model?.engine || "").toLowerCase() === "firered"; }
 function syncLocalDeviceOptions(model = selectedModel()) {
   const select = $("localDevice");

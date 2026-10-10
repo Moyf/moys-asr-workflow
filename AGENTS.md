@@ -49,7 +49,7 @@ pnpm run check:editor
 pnpm run typecheck
 node --test tests\test_editor_script_syntax.mjs tests\test_editor_script_order.mjs
 node --test tests\test_editor_utils.mjs tests\test_waveform_js.mjs
-uv run python -m unittest discover -s tests -p "test_*.py"
+uv run python scripts/run_tests.py
 git diff --check
 ```
 
@@ -66,8 +66,9 @@ git diff --check
 
 ### Agent 测试输出与后台进程：不搬运完整日志，不悬挂服务
 
-- 跑测试只保留退出码、失败用例名与首个错误行。unittest 的 `assertIn` / `assertEqual` 失败会把整个容器（内联脚本、整页 HTML，数十万字符）dump 进输出；用 `Select-String 'AssertionError'`、`grep -E '^(FAIL|ERROR|Ran|OK)'` 之类的过滤只取摘要，禁止把完整测试输出读进上下文。
-- 对页面 / 内联脚本做成员断言的测试类，继承 `tests/compact_assertions.py` 的 `CompactContainerAssertions` 混入：大容器失败信息压缩为「needle + 容器规模」，单次失败不再产生数十万字符日志（行为见 `tests/test_compact_assertions.py`）。
+- 跑测试一律用 `uv run --no-sync python scripts/run_tests.py`（可接测试文件路径 / 点号名称 / `--full-log`）：它在**打印阶段**截断失败文本（默认单条 4000 字符、单行 400），未截断内容写入日志文件并打印其路径，所以无论断言怎么写都不会再刷屏。裸 `python -m unittest` 只用于确实需要完整输出的场合。
+- unittest 的 `assertIn` / `assertEqual` 失败会把整个容器（内联脚本、整页 HTML，数十万字符）**打印成一整行**，`Select-String` / `grep` / `head` / `tail` 这类下游过滤救不了它——必须在生成端截断；需要摘要时再加 `| cut -c1-300`。
+- 对页面 / 内联脚本做成员断言的测试类，继承 `tests/compact_assertions.py` 的 `CompactContainerAssertions` 混入：失败信息压缩为「needle + 容器规模」，比截断更好读。`tests/test_compact_assertions_usage.py` 会扫出漏掉混入的类（漏了直接红灯），压缩行为本身由 `tests/test_run_tests_runner.py` 守门。
 - 后台长驻进程（serve.py、http.server 等）不要用会等待进程树的方式启动：优先用独立终端，或把输出重定向到文件后再以端口探活（如 `Invoke-WebRequest` 轮询），用完必须终止进程。曾发生后台 server 挂住会话 2 小时以上的事故。
 - 禁止用 bash 后台 `&`（含 `nohup ... &`）启动任何长驻进程：stdin 仍挂在会话管道上永不 EOF，即使重定向 stdout/stderr，命令工具也会等待进程树而永久阻塞（2026-10-09 `python -m http.server ... &` 事故，探活成功后仍卡死）。需要本地服务一律 paseo 独立终端启动、用完 kill；一次性验证（如本地打开生成的 HTML）优先静态校验，不起服务。
 - 已知时长：全量 Python 套件约 110s、单条 e2e spec 约 2 分钟，命令默认超时 120s 处于临界；这些命令显式设置更大的超时，或按文件拆分执行。

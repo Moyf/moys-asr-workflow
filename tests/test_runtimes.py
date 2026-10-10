@@ -6,6 +6,8 @@
 
 from __future__ import annotations
 
+from tests.compact_assertions import CompactContainerAssertions
+
 import json
 import os
 import shutil
@@ -588,7 +590,7 @@ class VenvRuntimeInstallTests(unittest.TestCase):
             self.assertNotIn("extra-index-url", install_command)
 
 
-class AutoFreezeRequirementsTests(unittest.TestCase):
+class AutoFreezeRequirementsTests(CompactContainerAssertions, unittest.TestCase):
     """源码模式缺 frozen 清单时按构建管线同款命令自动补齐（全新 clone 零手工步骤）。"""
 
     def _temp_build_dir(self) -> Path:

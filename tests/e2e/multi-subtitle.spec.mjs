@@ -2627,7 +2627,7 @@ test('shows independent extension preview controls with yellow defaults', async 
   await expect(page.locator('#extension-subtitle-preview-title')).toBeVisible();
   await expect(page.locator('#extension-subtitle-preview-settings')).toBeVisible();
   await expect(page.locator('#subtitle-color')).toHaveValue('#ffffff');
-  await expect(page.locator('#extension-subtitle-color')).toHaveValue('#ffd34d');
+  await expect(page.locator('#extension-subtitle-color')).toHaveValue('#eac953');
   await expect(page.locator('#extension-subtitle-background-color')).toHaveValue('#000000');
   await page.locator('#extension-subtitle-font-size').selectOption('14');
   await expect(page.locator('#overlay-extension-text')).toHaveCSS('font-size', '14px');
@@ -4317,7 +4317,7 @@ test('ASS mode previews and exports extension cues with the shared extension sty
   expect(result.trackDebug).toEqual(['ok', 'ok', 'ok']);
   expect(result.mainNative).toBe(86);
   expect(result.extensionNative).toBe(64);
-  expect(result.extensionFill.toLowerCase()).toBe('#ffd34d');
+  expect(result.extensionFill.toLowerCase()).toBe('#eac953');
   expect(result.extensionAlignment).toBe(2);
   expect(result.extensionAnchor.y).toBeCloseTo(1080 - 36, 3);
   expect(result.extensionAnchor.x).toBeCloseTo(960, 3);

@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from tests.compact_assertions import CompactContainerAssertions
+
 import ast
 import re
 import tomllib
@@ -87,7 +89,7 @@ def _local_runtime_spec_entry(relative_path: str) -> str:
     return f"(str({expression}), \"{target}\")"
 
 
-class PackagingContractTests(unittest.TestCase):
+class PackagingContractTests(CompactContainerAssertions, unittest.TestCase):
     def test_launcher_version_matches_project_metadata(self) -> None:
         """Given project metadata, When the Launcher is packaged, Then every displayed fallback version matches it."""
         project = tomllib.loads(read_text("pyproject.toml"))
