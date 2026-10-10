@@ -569,6 +569,11 @@ label {
   margin: 10px 0 2px;
 }
 
+/* 设置页：本地模型地址提示（紧跟在 API URL 的 HTTPS 规则之后，需自带垂直间距）。 */
+.llm-local-model-hint {
+  margin-top: 8px;
+}
+
 .provider-row {
   display: grid;
   grid-template-columns: minmax(0, 1fr) auto;
