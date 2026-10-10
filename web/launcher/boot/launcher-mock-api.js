@@ -28,6 +28,10 @@ function mockApi() {
       workspaceId: saved.workspaceId,
        guiLang: saved.guiLang,
        theme: saved.theme,
+      moseAvailable: true,
+      moseBundled: true,
+      initialProjectPath: "",
+      update: { ok: true, currentVersion: "1.5.0", latestVersion: "1.5.0", latestTag: "v1.5.0", available: false, assetAvailable: false, capability: "none", channel: "stable", autoCheck: true, installation: { kind: "source", platform: "windows", arch: "x64", canApply: false } },
       openaiBaseUrl: saved.openaiBaseUrl,
       openaiModel: saved.openaiModel,
       showRareLangs: saved.showRareLangs || false,
@@ -232,6 +236,11 @@ save_local_settings: async ({ runtimePath }) => { state.config.localRuntime = { 
     open_runtime_folder: async (payload) => { window.__openedRuntimeFolder = payload; return { ok: true }; },
     open_blank_html: async () => ({ ok: true }),
     check_ffmpeg: async () => ({ ok: true, found: true, directory: "D:\\FFmpeg\\bin", ffmpeg: "D:\\FFmpeg\\bin\\ffmpeg.exe", ffprobe: "D:\\FFmpeg\\bin\\ffprobe.exe" }),
+    check_update: async () => ({ ...(state.config?.update || {}), ok: true, checking: false }),
+    start_update: async () => ({ ok: true, started: true }),
+    cancel_update: async () => ({ ok: true, cancelled: true }),
+    apply_update: async () => ({ ok: false, code: "update_manual_only", error: "portable" }),
+    set_update_preferences: async ({ autoCheck }) => { if (state.config?.update) state.config.update.autoCheck = Boolean(autoCheck); return { ok: true, autoCheck: Boolean(autoCheck) }; },
     save_ffmpeg_path: async ({ path }) => ({ ok: Boolean(path), found: Boolean(path), directory: path || "", ffmpeg: path || "", ffprobe: path || "" }),
     choose_folder: async ({ kind } = {}) => ({ ok: true, path: kind === "model-cache" ? "D:\\Models\\MAW" : (kind === "ocr-runtime" ? "D:\\Models\\MAW\\ocr-runtime" : (kind === "runtime" ? "D:\\Users\\Demo\\AppData\\Local\\MAW\\local-runtime" : "D:\\Stickers")) }),
     save_sticker_dir: async ({ path }) => { saved.stickerDir = path || ""; return { ok: Boolean(path), stickerDir: saved.stickerDir, field: path ? "" : "stickerDir", error: path ? "" : "missing" }; },
@@ -264,6 +273,7 @@ save_local_settings: async ({ runtimePath }) => { state.config.localRuntime = { 
      stop_alignment_server: async () => ({ ok: true, stopped: true }),
      check_server_media: async ({ jsonPath }) => ({ ok: Boolean(jsonPath), hasMedia: Boolean(jsonPath), mediaPath: "D:\\Demo\\clip.mp4", mediaExists: Boolean(jsonPath) }),
     start_server: async () => { setTimeout(() => window.MAWLauncher.onBackendEvent({ type: "log", message: "[mock] would open http://127.0.0.1:8250/ after server responds" }), 120); return { ok: true, url: "http://127.0.0.1:8250/" }; },
+    open_preferred_editor: async () => ({ ok: true, usedMose: true, path: "D:\\Demo\\MOSE\\MOSE.exe" }),
     get_server_status: async ({ port = "8250" }) => ({ ok: true, running: false, url: `http://127.0.0.1:${port}/` }),
     stop_server: async () => ({ ok: true }),
      start_transcription: async () => { setTimeout(() => window.MAWLauncher.onBackendEvent({ type: "log", message: "[mock] 上传完成" }), 250); setTimeout(() => window.MAWLauncher.onBackendEvent({ type: "done", result: { srtPath: "D:\\Demo\\clip.srt", jsonPath: "D:\\Demo\\clip.json", htmlPath: "D:\\Demo\\clip.edit.html" } }), 900); return { ok: true }; },
@@ -286,3 +296,5 @@ save_local_settings: async ({ runtimePath }) => { state.config.localRuntime = { 
     get_emoji_font_path: async () => ({ ok: true, path: "" })
   };
 }
+
+// 文案与标签：翻译入口、诊断/供应商/模型/语言的英文映射与错误文案工具。

@@ -5576,7 +5576,7 @@ class LauncherAssetContractTests(CompactContainerAssertions, unittest.TestCase):
         self.assertIn('bridge("start_server"', script)
 
     def test_launcher_opens_association_project_after_startup_update_check(self) -> None:
-        script = (ROOT / "web" / "launcher" / "launcher.js").read_text(encoding="utf-8")
+        script = launcher_sources_text(ROOT)
 
         check = script.index("await checkForUpdates(false, true);")
         ready = script.index('window.dispatchEvent(new CustomEvent("mawlauncherready"));')

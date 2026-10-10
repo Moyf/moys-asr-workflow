@@ -1250,7 +1250,9 @@ class LocalEditorServerTests(CompactContainerAssertions, unittest.TestCase):
             ("127.0.0.1", 0), current, no_waveform=True, desktop_mode=True,
             desktop_token="desktop-secret", desktop_command_key="command-secret",
         ) as server:
-            with self.assertRaisesRegex(ValueError, "原媒体关联已保留"):
+            with mock.patch.object(server_editor, "resolve_ffmpeg_tools", return_value=mock.Mock(ffprobe=Path("ffprobe"))), mock.patch.object(
+                server_editor.subprocess, "run", side_effect=subprocess.CalledProcessError(1, "ffprobe"),
+            ), self.assertRaisesRegex(ValueError, "原媒体关联已保留"):
                 server.attach_desktop_media(str(invalid), expected_generation=0)
             self.assertIs(server.project, current)
             self.assertEqual(server.project_generation, 0)

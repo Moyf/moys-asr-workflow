@@ -32,6 +32,181 @@ function renderMessage(container, message) {
   }
   if (cursor < value.length) appendMessageText(container, value.slice(cursor));
 }
+function releaseLink(url) {
+  try {
+    const parsed = new URL(String(url || ""), window.location.href);
+    return ["http:", "https:"].includes(parsed.protocol) ? parsed.href : "";
+  } catch (_error) {
+    return "";
+  }
+}
+// Release bodies are untrusted GitHub input. Build only allowlisted DOM
+// nodes so Markdown is useful without ever interpreting raw HTML.
+function appendReleaseLink(container, label, url) {
+  const safeUrl = releaseLink(url);
+  if (!safeUrl) {
+    container.append(document.createTextNode(String(label || "")));
+    return;
+  }
+  const link = document.createElement("a");
+  link.className = "update-release-link";
+  link.href = safeUrl;
+  link.target = "_blank";
+  link.rel = "noopener noreferrer";
+  link.textContent = String(label || safeUrl);
+  link.addEventListener("click", (event) => {
+    event.preventDefault();
+    void bridge("open_url", { url: safeUrl });
+  });
+  container.append(link);
+}
+function appendReleaseInline(container, value) {
+  const source = String(value || "");
+  let rest = source;
+  while (rest) {
+    const matches = [];
+    const addMatch = (regex, type, priority = 0) => {
+      const match = regex.exec(rest);
+      if (match) matches.push({ match, type, priority });
+    };
+    addMatch(/`([^`\n]+)`/u, "code");
+    addMatch(/\[([^\]\n]+)\]\((https?:\/\/[^\s)]+)(?:\s+"[^"]*")?\)/iu, "link");
+    addMatch(/(\*\*|__)([^\n]+?)\1/u, "strong");
+    addMatch(/(~~)([^\n]+?)\1/u, "strike");
+    addMatch(/(\*|_)([^\n]+?)\1/u, "emphasis", 1);
+    addMatch(/https?:\/\/[^\s<>"'`]+/iu, "url", 2);
+    if (!matches.length) {
+      container.append(document.createTextNode(rest));
+      break;
+    }
+    matches.sort((left, right) => (left.match.index ?? 0) - (right.match.index ?? 0) || left.priority - right.priority);
+    const chosen = matches[0];
+    const match = chosen.match;
+    const index = match.index ?? 0;
+    if (index > 0) container.append(document.createTextNode(rest.slice(0, index)));
+    if (chosen.type === "code") {
+      const code = document.createElement("code");
+      code.textContent = match[1];
+      container.append(code);
+    } else if (chosen.type === "link") {
+      appendReleaseLink(container, match[1], match[2]);
+    } else if (chosen.type === "url") {
+      const raw = match[0];
+      const url = raw.replace(/[),.;:!?，。；：！？）】》」』]+$/u, "");
+      appendReleaseLink(container, url, url);
+      if (raw.length > url.length) container.append(document.createTextNode(raw.slice(url.length)));
+    } else {
+      const element = document.createElement(chosen.type === "strong" ? "strong" : chosen.type === "strike" ? "del" : "em");
+      appendReleaseInline(element, match[2]);
+      container.append(element);
+    }
+    rest = rest.slice(index + match[0].length);
+  }
+}
+function appendReleaseBlock(container, type, lines, marker = "") {
+  const value = lines.join(" ").trim();
+  if (!value) return;
+  if (type === "heading") {
+    const heading = document.createElement(`h${Math.max(1, Math.min(6, marker.length))}`);
+    appendReleaseInline(heading, value);
+    container.append(heading);
+    return;
+  }
+  if (type === "quote") {
+    const quote = document.createElement("blockquote");
+    appendReleaseInline(quote, value);
+    container.append(quote);
+    return;
+  }
+  const paragraph = document.createElement("p");
+  appendReleaseInline(paragraph, value);
+  container.append(paragraph);
+}
+function renderReleaseNotes(container, markdown) {
+  container.replaceChildren();
+  const lines = String(markdown || "").replace(/\r\n?/gu, "\n").split("\n");
+  let paragraph = [];
+  let quote = [];
+  let list = null;
+  let code = null;
+  const flushParagraph = () => {
+    if (paragraph.length) appendReleaseBlock(container, "paragraph", paragraph);
+    paragraph = [];
+  };
+  const flushQuote = () => {
+    if (quote.length) appendReleaseBlock(container, "quote", quote);
+    quote = [];
+  };
+  const flushList = () => {
+    if (!list) return;
+    const element = document.createElement(list.ordered ? "ol" : "ul");
+    list.items.forEach((item) => {
+      const row = document.createElement("li");
+      appendReleaseInline(row, item);
+      element.append(row);
+    });
+    container.append(element);
+    list = null;
+  };
+  const flushCode = () => {
+    if (!code) return;
+    const pre = document.createElement("pre");
+    const codeElement = document.createElement("code");
+    if (code.language) codeElement.className = `language-${code.language}`;
+    codeElement.textContent = code.lines.join("\n");
+    pre.append(codeElement);
+    container.append(pre);
+    code = null;
+  };
+  for (const line of lines) {
+    if (code) {
+      const closing = /^\s*```\s*$/u.test(line);
+      if (closing) flushCode();
+      else code.lines.push(line);
+      continue;
+    }
+    const fence = /^\s*```\s*([A-Za-z0-9_-]*)\s*$/u.exec(line);
+    if (fence) {
+      flushParagraph(); flushQuote(); flushList();
+      code = { language: fence[1], lines: [] };
+      continue;
+    }
+    const heading = /^(#{1,6})\s+(.+?)(?:\s+#+)?\s*$/u.exec(line);
+    if (heading) {
+      flushParagraph(); flushQuote(); flushList();
+      appendReleaseBlock(container, "heading", [heading[2]], heading[1]);
+      continue;
+    }
+    const unordered = /^\s*[-+*]\s+(.+)$/u.exec(line);
+    const ordered = /^\s*\d+[.)]\s+(.+)$/u.exec(line);
+    if (unordered || ordered) {
+      flushParagraph(); flushQuote();
+      const orderedList = Boolean(ordered);
+      if (!list || list.ordered !== orderedList) { flushList(); list = { ordered: orderedList, items: [] }; }
+      list.items.push((ordered || unordered)[1]);
+      continue;
+    }
+    const quoteLine = /^\s*>\s?(.*)$/u.exec(line);
+    if (quoteLine) {
+      flushParagraph(); flushList();
+      quote.push(quoteLine[1]);
+      continue;
+    }
+    if (/^\s*(?:---+|\*\*\*+)\s*$/u.test(line)) {
+      flushParagraph(); flushQuote(); flushList();
+      container.append(document.createElement("hr"));
+      continue;
+    }
+    if (!line.trim()) {
+      flushParagraph(); flushQuote(); flushList();
+      continue;
+    }
+    flushQuote(); flushList();
+    paragraph.push(line.trim());
+  }
+  if (code) flushCode();
+  flushParagraph(); flushQuote(); flushList();
+}
 const setStatus = (message) => { if (state.detectedServerUrl) setServerStatus(state.detectedServerUrl, true, message); else renderMessage($("status"), message); };
 function syncFixedFooterClearance() {
   const footer = document.querySelector(".actions");
@@ -211,3 +386,5 @@ async function openErrorIssue() {
     appendLog(`[error] open_issue: ${detail}`);
   }
 }
+
+// 编辑器服务器状态监控与轮询，含 appendLog/confirm 桥。

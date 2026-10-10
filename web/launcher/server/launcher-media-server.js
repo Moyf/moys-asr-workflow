@@ -52,11 +52,6 @@ function handleRoutedDrop(path) {
     else setError("toolboxTimestampMediaPath", t("toolbox_timestamp_media_reject"));
     return;
   }
-  if (target === "toolboxTimestampScript") {
-    if (SCRIPT_EXTS.has(suffix)) setDroppedPath("toolboxTimestampScriptPath", value);
-    else setError("toolboxTimestampScriptPath", t("toolbox_alignment_script_missing"));
-    return;
-  }
   if (target === "toolboxBurnSubtitle") {
     if (SUBTITLE_BURN_EXTS.has(suffix)) setDroppedPath("toolboxBurnSubtitlePath", value);
     else setError("toolboxBurnSubtitlePath", t("toolbox_burn_subtitle_invalid"));
@@ -118,3 +113,5 @@ function handleRoutedDrop(path) {
 async function refreshServerMedia() { const jsonPath = $("jsonPath").value.trim(); const result = await bridge("check_server_media", { jsonPath }); state.serverMediaOk = Boolean(result.hasMedia && result.mediaExists); $("serverMediaField").classList.toggle("hidden", state.serverMediaOk || !jsonPath); return result; }
 async function refreshFfmpeg() { const requestId = ++ffmpegRequest; const result = await bridge("check_ffmpeg"); if (requestId !== ffmpegRequest) return result; $("modalFfmpegFound").classList.toggle("hidden", !result.found); $("modalFfmpegMissing").classList.toggle("hidden", Boolean(result.found)); $("ffmpegPathBox").classList.toggle("hidden", Boolean(result.found)); $("settingsDot").classList.toggle("hidden", Boolean(result.found)); $("modalFfmpegFound").title = result.directory || ""; $("ffmpegDir").textContent = result.directory || ""; return result; }
 function ffmpegSaveError(result) { if (result.code) return errText(result.code, result.detail || result.error); if (result.found === false) return t("ffmpeg_missing"); return compactDetail(result.error) || t("failed"); }
+
+// 设置面板导航与启动状态刷新、init 入口。

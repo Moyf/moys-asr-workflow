@@ -257,3 +257,5 @@ function errText(code, detail, context = {}) {
   const message = typeof entry === "function" ? entry(compact, context) : (entry || compact || t("failed"));
   return [message, modelGuidance, builtInGuidance].filter(Boolean).join(" ");
 }
+
+// 表单基础：provider/model 选择器访问器与 OpenAI 自定义模型字段。

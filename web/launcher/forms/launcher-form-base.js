@@ -23,3 +23,5 @@ function syncOpenAiFields() {
     state.config.openaiCustomModel = draft;
   }
 }
+
+// 消息与错误报告：日志追加、错误面板渲染、复制与反馈链接。

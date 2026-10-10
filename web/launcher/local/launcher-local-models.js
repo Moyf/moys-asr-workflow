@@ -756,3 +756,5 @@ async function saveLocalModelCache(path) {
   setStatus(t("saved"));
   return result;
 }
+
+// 语言与 provider 应用层：界面语言、provider/model 联动、测试后缀。

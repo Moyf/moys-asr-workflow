@@ -144,3 +144,5 @@ function setupScrollbarFlash() {
   document.querySelectorAll(".batch-queue, .batch-details pre, .llm-model-options, .script-preview pre, .replace-rule-preview pre, .log, .modal-card, .settings-scroll, .toolbox-content, .toolbox-chain-list, .toolbox-result, .toolbox-stream-text, select[multiple], textarea").forEach((el) => bind(el, el));
 }
 function expandServer() { $("serverCard").classList.remove("collapsed"); renderChevron("serverCard"); }
+
+// 拖放绑定与服务器媒体/FFmpeg 刷新。

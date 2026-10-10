@@ -85,6 +85,39 @@ function notifySingleFailure(event) {
 }
 
 function handleBackendEvent(event) {
+  if (event.type === "updateCheckCompleted") {
+    state.updateManualCheck = Boolean(event.manual);
+    setUpdateResult(event.result || {}, Boolean(event.manual));
+    if (event.manual && event.result?.ok && !event.result?.available && !event.result?.errorCode) setStatus(t("update_up_to_date"));
+    resolveUpdateCheckWaiter();
+    return;
+  }
+  if (event.type === "updateDownloadProgress") {
+    state.updateDownloading = true;
+    state.updateProgress = Math.max(0, Math.min(100, Number(event.percent || 0)));
+    if (event.tag) state.updateReadyTag = String(event.tag);
+    renderUpdate();
+    return;
+  }
+  if (event.type === "updateReady") {
+    state.updateDownloading = false;
+    state.updateReady = true;
+    state.updateReadyTag = String(event.tag || state.update?.latestTag || "");
+    state.updateProgress = 100;
+    state.updateError = "";
+    state.updateErrorCode = "";
+    state.updateErrorDetail = "";
+    state.update = { ...(state.update || {}), downloaded: true, downloadPath: event.path || "", latestTag: state.updateReadyTag, latestVersion: event.version || state.update?.latestVersion || "" };
+    renderUpdate();
+    setStatus(t("update_download_ready"));
+    return;
+  }
+  if (event.type === "updateFailed") {
+    const manual = event.stage !== "check" || event.manual === true;
+    handleUpdateFailure(event, manual);
+    if (event.stage === "check") resolveUpdateCheckWaiter();
+    return;
+  }
   if (event.type === "batch_started" || event.type === "batchStarted") {
     resetBatchNotification(event.total);
   }
@@ -288,7 +321,7 @@ function handleBackendEvent(event) {
   if (event.type === "dropReject" && !state.dropTarget && window.MAWLauncher?.onBatchDropReject?.(event.path || "")) return;
   if (event.type === "dropMedia" || event.type === "dropJson" || event.type === "dropSubtitle" || event.type === "dropHotwordFile" || event.type === "dropFfconcat" || event.type === "dropReject") handleRoutedDrop(event.path || "");
 }
-window.MAWLauncher = { backend: "pending", config: null, callBackend: bridge, translate: t, errorText: errText, viewportPixelsToPage, openSettings, closeSettings, setJsonPath, openServerEditor, getAudioTrackForMedia, getTranscriptionPayload: formPayload, appendLog, confirm: confirmAction, confirmResolve: null, onBackendEvent: handleBackendEvent, onBackendEvents(events) { events.forEach(handleBackendEvent); }, onBatchStart() { hideErrorNotice(); resetBatchNotification(); }, onBatchError: (result) => { state.batchNotification = null; applyErrorResult(result, false); }, onLanguageChanged() {}, onProjectPathChanged() {}, onAlignmentModelsChanged() {}, onMediaPathChanged() {} };
+window.MAWLauncher = { backend: "pending", config: null, callBackend: bridge, translate: t, errorText: errText, viewportPixelsToPage, openSettings, closeSettings, setJsonPath, openServerEditor, openPreferredEditor, getAudioTrackForMedia, getTranscriptionPayload: formPayload, appendLog, confirm: confirmAction, confirmResolve: null, onBackendEvent: handleBackendEvent, onBackendEvents(events) { events.forEach(handleBackendEvent); }, onBatchStart() { hideErrorNotice(); resetBatchNotification(); }, onBatchError: (result) => { state.batchNotification = null; applyErrorResult(result, false); }, onLanguageChanged() {}, onProjectPathChanged() {}, onAlignmentModelsChanged() {}, onMediaPathChanged() {} };
 
 $("langZh").addEventListener("click", () => setLanguage("zh"));
 $("langEn").addEventListener("click", () => setLanguage("en"));
@@ -301,6 +334,23 @@ document.querySelectorAll("[data-settings-tab]").forEach((tab) => {
 });
 window.matchMedia("(prefers-color-scheme: dark)").addEventListener("change", () => { if (state.theme === "system") applyTheme(); });
 $("homeLink").addEventListener("click", () => bridge("open_url", { url: HOME_URL }));
+$("appVersion").addEventListener("click", () => { openSettings("updateSettingsSection"); void checkForUpdates(true); });
+$("updateNoticeAction").addEventListener("click", () => openSettings("updateSettingsSection"));
+$("checkUpdate").addEventListener("click", () => { void checkForUpdates(true); });
+$("updateNow").addEventListener("click", () => { void startOrApplyUpdate(); });
+$("updateCancel").addEventListener("click", () => { void cancelUpdateDownload(); });
+$("updateOpenRelease").addEventListener("click", () => { void openUpdateRelease(); });
+$("autoUpdateCheck").addEventListener("change", async () => {
+  const enabled = $("autoUpdateCheck").checked;
+  const result = await bridge("set_update_preferences", { autoCheck: enabled });
+  if (!result.ok) {
+    $("autoUpdateCheck").checked = !enabled;
+    handleUpdateFailure(result, true);
+    return;
+  }
+  state.update = { ...(state.update || {}), ...(result.update || {}), autoCheck: Boolean(result.autoCheck) };
+  renderUpdate();
+});
 $("tutorialVideoLink").addEventListener("click", () => bridge("open_url", { url: TUTORIAL_VIDEO_URL }));
 $("supportLink").addEventListener("click", () => { $("supportModal").classList.remove("hidden"); $("supportClose").focus(); });
 $("supportClose").addEventListener("click", () => $("supportModal").classList.add("hidden"));
@@ -393,3 +443,5 @@ $("pickStickerDir").addEventListener("click", async () => { const result = await
 $("stickerDir").addEventListener("change", async () => { const path = $("stickerDir").value.trim(); if (path) await saveStickerDirectory(path); });
 $("stickerCurrent").addEventListener("click", async () => { const result = await bridge("open_sticker_folder"); if (!result.ok) setStatus(errText(result.code, result.detail || result.error)); });
 $("showRareLangs").addEventListener("change", async () => { state.config.showRareLangs = $("showRareLangs").checked; applyProviderLanguages(provider(), selectedModel()); const result = await bridge("save_prefs", { showRareLangs: state.config.showRareLangs }); if (result.ok) setStatus(t("saved")); else applyErrorResult(result); });
+
+// 启动接线：事件绑定、监听注册与 init() 调用（模块求值期执行）。

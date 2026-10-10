@@ -12,6 +12,7 @@ const SCRIPT_EXTS = new Set([".txt", ".md", ".markdown"]);
 const ERROR_TEXT = {
   zh: {
     json_not_found: "工程文件不存在，请检查路径。",
+    json_invalid: "工程文件必须是 .mosp 或 .json。",
     media_not_found: "媒体文件不存在，请重新选择。",
     server_media_missing: "工程无可用媒体，请手动选择媒体文件。",
     server_stop_not_maw: "当前端口上的进程不是 MAW 字幕编辑服务器，未执行停止。",
@@ -62,7 +63,7 @@ const ERROR_TEXT = {
     audio_tracks_unavailable: (detail) => `无法读取音轨：${detail || "请检查 FFprobe 和媒体文件。"}`,
     hotwords_file_missing: "请选择存在且为 UTF-8 编码的 .txt 热词文件。",
     output_missing: "请填写 SRT 输出路径。",
-    segmentation_invalid: "断句参数无效：请输入整数，并确保单句上限不小于短句合并值。",
+    segmentation_invalid: "切句参数无效：请输入整数，并确保最大字数不小于短句合并阈值。",
     ffmpeg_missing: "未找到 FFmpeg / FFprobe，无法读取媒体。请下载不带 lite 的完整 MAW；或在“配置 → FFmpeg”选择同时包含 ffmpeg.exe 和 ffprobe.exe 的 bin 目录。",
     ffmpeg_start_failed: "FFmpeg 被 Windows 阻止启动。请退出 MAW，对下载的 ZIP 解除锁定后重新完整解压，并检查 Windows 安全中心的拦截记录。",
     intermediate_path_too_long: "中间文件创建失败：文件名或路径过长。请缩短原文件名，或将文件移到更浅的目录，重新选择文件后重试。已有转写产物仍保留。",
@@ -78,6 +79,26 @@ const ERROR_TEXT = {
     alignment_server_no_response: (detail) => `口播对齐 Server 没有响应：${detail || "请重试。"}`,
     alignment_server_start_failed: (detail) => `口播对齐 Server 启动失败：${detail || "请查看日志后重试。"}`,
     sticker_dir_invalid: "表情包根目录不存在。",
+    offline: "无法连接 GitHub，稍后再试。",
+    rate_limited: "GitHub 请求次数已达到限制，请稍后再试。",
+    manifest_missing: "此 Release 没有更新清单，请打开发布页手动下载。",
+    manifest_invalid: "更新清单无效，请打开发布页手动下载。",
+    asset_url_invalid: "更新下载地址无效。",
+    asset_size_invalid: "更新包大小与清单不符。",
+    checksum_mismatch: "更新包校验失败，请重新下载。",
+    download_failed: "更新包下载失败。",
+    update_cancelled: "更新下载已取消。",
+    update_target_invalid: "更新目标已失效，请重新检查版本。",
+    update_not_downloaded: "更新包尚未下载完成。",
+    update_manual_only: "当前 MAW 副本需要手动下载更新。",
+    disk_space_low: "磁盘空间不足，无法准备更新。",
+    install_not_writable: "MAW 安装目录不可写，请检查权限。",
+    installer_start_failed: "无法启动 MAW 更新安装程序。",
+    update_busy: "请先完成当前任务，再更新 MAW。",
+    state_write_failed: "无法保存更新状态，请检查应用数据目录权限。",
+    update_http_error: (detail) => `GitHub 请求失败：${detail || "请稍后再试。"}`,
+    update_response_invalid: "GitHub 返回的版本信息无效。",
+    response_too_large: "GitHub 返回的数据过大，无法检查更新。",
     postprocess_connection_failed: (detail) => `大模型连接测试失败：${detail || "请检查 API Key、API 地址和网络连接。"}`,
     postprocess_models_failed: (detail) => `获取模型列表失败：${detail || "请检查 API Key 和 API 地址是否正确。"}`,
     batch_items_invalid: "批量任务中存在无效项目，请检查媒体文件路径。",
@@ -92,6 +113,7 @@ const ERROR_TEXT = {
   },
   en: {
     json_not_found: "Project file does not exist. Check the path.",
+    json_invalid: "Project file must use the .mosp or .json extension.",
     media_not_found: "Media file does not exist. Choose it again.",
     server_media_missing: "The project has no usable media. Choose the media file manually.",
     server_stop_not_maw: "The current port is not used by a MAW subtitle editor server, so it was not stopped.",
@@ -158,6 +180,26 @@ const ERROR_TEXT = {
     alignment_server_no_response: (detail) => `The speech-alignment server did not respond: ${detail || "retry the operation."}`,
     alignment_server_start_failed: (detail) => `The speech-alignment server failed to start: ${detail || "check the log and retry."}`,
     sticker_dir_invalid: "Sticker root directory does not exist.",
+    offline: "GitHub could not be reached. Try again later.",
+    rate_limited: "GitHub rate-limited the update check. Try again later.",
+    manifest_missing: "This Release has no update manifest. Open the release page to download it manually.",
+    manifest_invalid: "The update manifest is invalid. Open the release page to download it manually.",
+    asset_url_invalid: "The update download URL is invalid.",
+    asset_size_invalid: "The update package size does not match its manifest.",
+    checksum_mismatch: "The update package checksum failed. Download it again.",
+    download_failed: "The update package could not be downloaded.",
+    update_cancelled: "The update download was cancelled.",
+    update_target_invalid: "The update target is no longer valid. Check for updates again.",
+    update_not_downloaded: "The update package has not finished downloading.",
+    update_manual_only: "This MAW copy needs a manual download from the release page.",
+    disk_space_low: "There is not enough free disk space to prepare the update.",
+    install_not_writable: "The MAW installation directory is not writable.",
+    installer_start_failed: "The MAW update installer could not be started.",
+    update_busy: "Finish the current task before updating MAW.",
+    state_write_failed: "The update state could not be saved. Check the MAW app-data folder permissions.",
+    update_http_error: (detail) => `GitHub request failed: ${detail || "try again later."}`,
+    update_response_invalid: "GitHub returned invalid release information.",
+    response_too_large: "GitHub returned too much data to check for updates.",
     postprocess_connection_failed: (detail) => `LLM connection test failed: ${detail || "check the API key, URL, and network."}`,
     postprocess_models_failed: (detail) => `Failed to get model list: ${detail || "check the API key and URL."}`,
     batch_items_invalid: "Some batch items are invalid. Check the media file paths.",
@@ -188,7 +230,12 @@ Object.assign(ERROR_TEXT.en, {
   alignment_failed: (detail) => `Word/character timestamp generation failed: ${detail || "check the media, subtitle text, and aligner."}`,
 });
 Object.assign(STRINGS.zh, {
-  start_server_editor: "打开编辑器",
+  start_server_editor: "🌐 启动 Server 版字幕编辑器",
+  open_preferred_editor: "🎬 在 MOSE 中打开",
+  open_mose: "🎬 在 MOSE 中打开",
+  mose_starting: "正在启动 MOSE……",
+  mose_started: "MOSE 编辑器已启动",
+  mose_fallback: "MOSE 不可用，已回退到 Server 版编辑器。",
   toolbox_chain_hint: "每次生成新文件，并自动作为下一步输入；选择工具后运行。",
   error_notice_title: "任务未完成",
   error_notice_close: "关闭提示",
@@ -202,7 +249,12 @@ Object.assign(STRINGS.zh, {
   error_copy_report_failed: "复制失败，请手动复制日志。",
 });
 Object.assign(STRINGS.en, {
-  start_server_editor: "Open editor",
+  start_server_editor: "🌐 Start Server editor",
+  open_preferred_editor: "🎬 Open in MOSE",
+  open_mose: "🎬 Open in MOSE",
+  mose_starting: "Starting MOSE…",
+  mose_started: "MOSE editor started",
+  mose_fallback: "MOSE is unavailable; opened the Server editor instead.",
   toolbox_chain_hint: "Choose a tool to run; each run creates a new file and uses it as the next input.",
   error_notice_title: "Task not completed",
   error_notice_close: "Dismiss message",
@@ -222,15 +274,15 @@ Object.assign(STRINGS.zh, {
   toolbox_alignment_input_script: "校对文稿",
   toolbox_alignment_script_placeholder: "选择或拖入 UTF-8 .txt / .md 校对文稿",
   toolbox_alignment_script_hint: "每个非空行视为一行校对文稿。",
-  toolbox_alignment_gap_heading: "自动标记静音",
+  toolbox_alignment_gap_heading: "自动生成空隙",
   toolbox_alignment_gap_hint: "仅作用于口播对齐导出的自动空隙；与 MAWE 设置分开保存。",
-  toolbox_alignment_gap_minimum: "最短静音（ms）",
+  toolbox_alignment_gap_minimum: "最小空隙（ms）",
   toolbox_alignment_gap_minimum_hint: "短于此值的静音不处理。",
   toolbox_alignment_gap_threshold: "音量阈值（dB）",
   toolbox_alignment_gap_threshold_hint: "达到此音量才算有声。",
-  toolbox_alignment_gap_lead_in: "句首保留（ms）",
+  toolbox_alignment_gap_lead_in: "前端预留（ms）",
   toolbox_alignment_gap_lead_in_hint: "每段空隙开头保留的静音，避免上一句收尾被切掉。",
-  toolbox_alignment_gap_lead_out: "句尾保留（ms）",
+  toolbox_alignment_gap_lead_out: "后端预留（ms）",
   toolbox_alignment_gap_lead_out_hint: "每段空隙结尾保留的静音，避免下一句贴得太紧。",
   toolbox_alignment_gap_hysteresis: "滞回（dB）",
   toolbox_alignment_gap_hysteresis_hint: "恢复静音需低于阈值；建议 1–3dB。",
@@ -242,15 +294,15 @@ Object.assign(STRINGS.en, {
   toolbox_alignment_input_script: "Proofreading script",
   toolbox_alignment_script_placeholder: "Choose or drop a UTF-8 .txt / .md proofreading script",
   toolbox_alignment_script_hint: "Each non-empty line is treated as one proofreading-script line.",
-  toolbox_alignment_gap_heading: "Auto-mark silence",
+  toolbox_alignment_gap_heading: "Automatic gap generation",
   toolbox_alignment_gap_hint: "Applies only to gaps generated during speech-alignment export; saved separately from MAWE settings.",
-  toolbox_alignment_gap_minimum: "Minimum silence (ms)",
+  toolbox_alignment_gap_minimum: "Minimum gap (ms)",
   toolbox_alignment_gap_minimum_hint: "Silence shorter than this is ignored.",
   toolbox_alignment_gap_threshold: "Volume threshold (dB)",
   toolbox_alignment_gap_threshold_hint: "A level at or above this counts as speech.",
-  toolbox_alignment_gap_lead_in: "Keep at line start (ms)",
+  toolbox_alignment_gap_lead_in: "Lead-in padding (ms)",
   toolbox_alignment_gap_lead_in_hint: "Silence kept at each gap start so the previous line is not cut too tightly.",
-  toolbox_alignment_gap_lead_out: "Keep at line end (ms)",
+  toolbox_alignment_gap_lead_out: "Lead-out padding (ms)",
   toolbox_alignment_gap_lead_out_hint: "Silence kept at each gap end so the next line is not cut too tightly.",
   toolbox_alignment_gap_hysteresis: "Hysteresis (dB)",
   toolbox_alignment_gap_hysteresis_hint: "The level must fall below the threshold to close the gate; 1–3 dB is a good starting range.",
@@ -274,7 +326,7 @@ const OPENAI_ASR_CUSTOM_MODEL_ID = "custom-asr";
 const OPENAI_ASR_OFFICIAL_MODEL_IDS = new Set(["whisper-1", "gpt-transcribe", "gpt-4o-transcribe", "gpt-4o-mini-transcribe", "gpt-4o-transcribe-diarize", "whisper-large-v3-turbo", "whisper-large-v3"]);
 const SERVER_STATUS_MONITOR_INTERVAL_MS = 2000;
 const SERVER_STATUS_MONITOR_FAILURE_THRESHOLD = 2;
-const state = { lang: "zh", serverRunning: false, serverStarting: false, serverStopping: false, serverProjectPath: "", running: false, localPreparing: false, localProgressMessage: "", localProgress: null, localModelId: "", localModelPaths: {}, alignmentPreparing: "", alignmentProgressMessage: "", alignmentModelSelection: "", alignmentModelManagementId: "", localRuntimeInstalling: false, localRuntimeProgress: 0, localRuntimeProgressMessage: "", localRuntimeInventoryOpen: false, localRuntimeInventory: null, localRuntimeInventoryError: "", ocrRuntimeInstalling: false, ocrRuntimeProgress: 0, ocrRuntimeProgressMessage: "", lastLogMessage: "", result: null, errorReport: null, errorCopyTimer: 0, config: null, srtAuto: true, testSuffixAdded: false, serverMediaOk: false, detectedServerUrl: "", dropTarget: "", theme: "system", toolboxBusy: false, toolboxOpen: false, audioTracks: [], audioTrack: null, audioTrackPath: "", audioTrackProbeToken: 0, audioTrackProbeTimer: 0, batchNotification: null };
+const state = { lang: "zh", serverRunning: false, serverStarting: false, serverStopping: false, serverProjectPath: "", moseStarting: false, running: false, localPreparing: false, localProgressMessage: "", localProgress: null, localModelId: "", localModelPaths: {}, alignmentPreparing: "", alignmentProgressMessage: "", alignmentModelSelection: "", alignmentModelManagementId: "", localRuntimeInstalling: false, localRuntimeProgress: 0, localRuntimeProgressMessage: "", localRuntimeInventoryOpen: false, localRuntimeInventory: null, localRuntimeInventoryError: "", ocrRuntimeInstalling: false, ocrRuntimeProgress: 0, ocrRuntimeProgressMessage: "", lastLogMessage: "", result: null, errorReport: null, errorCopyTimer: 0, config: null, srtAuto: true, testSuffixAdded: false, serverMediaOk: false, detectedServerUrl: "", dropTarget: "", theme: "system", toolboxBusy: false, toolboxOpen: false, audioTracks: [], audioTrack: null, audioTrackPath: "", audioTrackProbeToken: 0, audioTrackProbeTimer: 0, update: null, updateChecking: false, updateCheckGeneration: 0, updateDownloading: false, updateManualCheck: false, updateReady: false, updateApplying: false, updateError: "", updateErrorCode: "", updateErrorDetail: "", updateProgress: 0, batchNotification: null };
 const dragState = { depth: 0 };
 let api = null;
 let prefsTimer = 0;
@@ -300,3 +352,6 @@ let alignmentModelsRequest = 0;
 // after a newer check has already completed.
 let localStatusRequest = 0;
 let activeSettingsTab = "general";
+let updateCheckWaiter = null;
+
+// 无 pywebview 后端时的 mock API（浏览器直接打开页面用）。

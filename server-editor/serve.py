@@ -1317,7 +1317,7 @@ class EditorServer(ThreadingHTTPServer):
                 no_waveform=self.no_waveform,
                 load_reapeaks=not self.defer_reapeaks,
                 peaks_per_second=self.peaks_per_second,
-                allow_missing_media=tolerate_missing_media,
+                allow_missing_media=self.desktop_mode or tolerate_missing_media,
             )
         except Exception as error:  # noqa: BLE001 - preserve the HTTP error while settling startup state
             if startup_loading:
