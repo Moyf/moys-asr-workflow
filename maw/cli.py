@@ -119,7 +119,7 @@ def build_parser(prog: str | None = None) -> argparse.ArgumentParser:
     parser.add_argument("--speaker-colors", action="store_true", help="开启说话人分离并写入字幕颜色快照")
     parser.add_argument("-ll", "--length-limit", help="只处理媒体前 N 时长，例如 2m、20s、1h")
     parser.add_argument("--json", dest="json_output", action="store_true", help="兼容旧 CLI；MAW CLI 默认总是生成 .mosp")
-    parser.add_argument("--with-waveform", action="store_true", help="把波形峰值写入 .mosp 工程")
+    parser.add_argument("--with-waveform", action="store_true", help="在媒体旁生成外置 .quapeaks 波形缓存（不再写进工程文件；GUI 转写默认开启）")
     parser.add_argument(
         "--with-spectral",
         action="store_true",
