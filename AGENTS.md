@@ -58,39 +58,9 @@ git diff --check
 `web/editor-modules.json` 明确列出 ESM 工厂与仍需保留的外部桥。工厂只导出函数，不在模块求值时注册；依赖袋继续由门面注入。
 新增业务逻辑写入所属领域模块，避免再扩大入口。目录位置不决定执行顺序。
 
-### Agent 命令执行：避免 uv 超时卡住
+### Agent 执行与进程管理
 
-- `uv run` 每次执行都会重新解析并可能同步环境，冷启动时远超命令工具的默认超时（约 2 分钟），表现为命令"卡住"且长时间无输出。
-- Agent 自动化执行的命令一律使用 `uv run --no-sync`（环境由开发者手动 `uv sync` 维护）。
-- 长命令拆分成多次执行并显式设置超时；不要把 `uv run` 与慢命令（如 `Test-NetConnection`、`Start-Sleep`）串联在同一条链里。
-
-### Agent 测试输出与后台进程：不搬运完整日志，不悬挂服务
-
-- 跑测试只保留退出码、失败用例名与首个错误行。unittest 的 `assertIn` / `assertEqual` 失败会把整个容器（内联脚本、整页 HTML，数十万字符）dump 进输出；用 `Select-String 'AssertionError'`、`grep -E '^(FAIL|ERROR|Ran|OK)'` 之类的过滤只取摘要，禁止把完整测试输出读进上下文。
-- 对页面 / 内联脚本做成员断言的测试类，继承 `tests/compact_assertions.py` 的 `CompactContainerAssertions` 混入：大容器失败信息压缩为「needle + 容器规模」，单次失败不再产生数十万字符日志（行为见 `tests/test_compact_assertions.py`）。
-- 后台长驻进程（serve.py、http.server 等）不要用会等待进程树的方式启动：优先用独立终端，或把输出重定向到文件后再以端口探活（如 `Invoke-WebRequest` 轮询），用完必须终止进程。曾发生后台 server 挂住会话 2 小时以上的事故。
-- 禁止用 bash 后台 `&`（含 `nohup ... &`）启动任何长驻进程：stdin 仍挂在会话管道上永不 EOF，即使重定向 stdout/stderr，命令工具也会等待进程树而永久阻塞（2026-10-09 `python -m http.server ... &` 事故，探活成功后仍卡死）。需要本地服务一律 paseo 独立终端启动、用完 kill；一次性验证（如本地打开生成的 HTML）优先静态校验，不起服务。
-- 已知时长：全量 Python 套件约 110s、单条 e2e spec 约 2 分钟，命令默认超时 120s 处于临界；这些命令显式设置更大的超时，或按文件拆分执行。
-- 新 worktree 没有现成环境：Python 复用主仓库 venv（`UV_PROJECT_ENVIRONMENT` 指向主仓库 `.venv`）或给 e2e 设 `MAW_E2E_PYTHON`；Node 侧 `pnpm install` 后装配顺序测试才可运行（需要 acorn），e2e 需要 playwright。
-- PowerShell 内联脚本（`node -e "..."`、多层嵌套引号）极易解析失败；复杂逻辑写成临时脚本文件再执行。命令输出为空时，先怀疑参数与引号，而不是重跑同一命令。
-
-自动化测试覆盖数据处理和服务器契约，不能替代真实浏览器中的拖动、播放、Seek 和布局体验。涉及编辑器交互的改动，应至少手动启动：
-
-```powershell
-uv run python server-editor\serve.py --blank
-```
-
-### Playwright e2e 运行纪律（防长命令挂起）
-
-详见 [docs/E2E_SERVER_HANG.md](docs/E2E_SERVER_HANG.md)。要点：
-
-- e2e 的 serve.py 在运行被中断（以及部分正常结束场景）后会残留并占住管道，
-  使后续命令「永不结束」。**中断/失败后重跑前，先按该文档清理残留进程。**
-- 长命令显式限时：全量 chromium e2e ≤ 15 分钟，单 spec ≤ 10 分钟；优先只跑
-  受影响的 spec，全量留给 CI。连续两轮不过先停下分析，不要循环重跑。
-- 后台任务用 `Start-Process -WindowStyle Hidden`（勿用 `-NoNewWindow`，会占
-  住当前控制台），输出重定向到文件。
-- 浏览器验证是可选项：逻辑验证优先单测；反复卡住就降级为人工验收，不要阻塞。
+完整规则统一见 [长命令与进程管理](docs/E2E_SERVER_HANG.md)：使用已准备环境与 `uv run --no-sync`；长任务有期限、日志和退出码；常驻服务用独立终端；中断后只清理已核实属于本次任务的进程，禁止按进程名批量终止。不要批量读日志。交互修改需要相关浏览器验收，受阻时明确记录未验证范围。
 
 ## 大型反馈任务的持久化流程
 
@@ -174,7 +144,7 @@ git diff
 
 有明显用户感知的改动必须添加到 CHANGELOG。CHANGELOG 条目按 PR 或 branch 的整体结果汇总，不要把内部 commit 拆成多条。一个新特性开发期间为完成该特性而产生的内部修复、调整和细枝末节，通常整合进该新特性条目，不要再单列到【🐛 修复】；只有对当前版本明确、独立且用户可感知的修复才单独记录。大部分时候只写用户能感知的行为、体验和能力，不需要展开程序逻辑或内部实现变化。合并 branch 或整理 PR 时，删除或整合过于零碎的 commit 说明，只保留用户可感知的整体变更。小节归属：体验优化进【✨ 提升】，问题修复进【🐛 修复】，行为与默认值变化进【🔄 变更】，特别重磅的全新能力（通常是 PR 引入的完整能力）才考虑进【🚀 全新特性】；但具体按实际影响判断，不以 commit 数量或内部工作量代替分类，不确定是否"重磅"时宁可放提升小节，由维护者上调。
 
-发布前确认：版本号、`CHANGELOG.md`、README 命令和 `blank-editor.html` 相互一致；如果本版本包含 `web/` 或模板变更，此时才运行 `uv run python edit.py --blank` 更新并检查空白 HTML；运行上述测试；扫描 `.env`、媒体与个人路径；确认 `LICENSE`、`THIRD_PARTY_NOTICES.md` 仍正确。不要创建远端、推送、打 tag 或 GitHub Release，除非维护者明确要求。
+发布前确认：版本号、`CHANGELOG.md`、README 命令和 `blank-editor.html` 相互一致；如果本版本包含 `web/` 或模板变更，此时才运行 `uv run python edit.py --blank` 更新并检查空白 HTML；运行上述测试；扫描 `.env`、媒体与个人路径；确认 `LICENSE`、`THIRD_PARTY_NOTICES.md` 仍正确。在维护者已授权的个人仓库独立分支上，按可审查的小批次提交并推送，保留开发历史；不将此授权扩展到上游或 main。创建其他远端、合并、tag 与 GitHub Release 仍需明确要求。
 
 创建 GitHub Release 前必须核对 `CHANGELOG.md`：对应版本条目必须已经归档当前发布内容，并用 `scripts/prepare_release_notes.py` 生成、检查实际 Release notes；不能仅因 tag 已创建就视为发布完成。
 

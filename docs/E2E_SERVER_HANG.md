@@ -1,75 +1,45 @@
-# E2E 残留服务进程与长命令挂起：排查与预防
+# 长命令与进程管理
 
-适用范围：MAW 仓库的 Playwright e2e（`tests/e2e/`，`npm test`）。事件记录见文末。
+适用于 Agent 执行 Python、Playwright、构建任务和本地服务。此页是现行操作规则；事故经过仅在 `docs/_archied/incidents/` 按需追溯。
 
-## 症状
+## 执行前
 
-- 一条 shell 命令长时间显示「运行中」（分钟级到小时级），无新输出、无报错。
-- 常见触发：`npx playwright test` 全量跑、`Start-Process` 后台启动长任务。
-- e2e 反复中断后重跑，可能出现端口被占、测试变慢或假失败。
+- 环境由开发者准备；Agent 使用 `uv run --no-sync`，或明确指定已安装的解释器。缺依赖要记录，不把同步环境混入验证命令。
+- 新 worktree 可明确复用主仓库 Python 环境；E2E 用 `MAW_E2E_PYTHON` 指定解释器。Node 测试所需 acorn / Playwright 必须实际可用，跳过不算通过。
+- 优先验证受影响范围。长任务设置明确期限：单 E2E spec 最多 10 分钟、全量 Chromium 最多 15 分钟；Python / 构建按范围设置足够期限。命令工具单次等待上限不等于整个任务期限。
+- 有会话式任务工具时启动后分次读取进度；否则使用独立终端或可追踪的后台任务，不要求所有长命令一律后台化。记录 worktree、启动时间、PID、日志和最终退出码。
 
-## 根因（本仓库实测两类）
+## 输出与后台服务
 
-### 1. e2e 残留的 serve.py 进程（主因）
+- 测试日志写文件，读取退出码、失败名称、首个错误与必要尾部；不要向上下文倾倒整页 HTML 或全部断言内容。页面断言使用 `tests/compact_assertions.py` 的压缩断言。
+- 日志增长和 PID 存活只能说明任务可能在运行，不能证明成功。停止输出也不等于死锁；结合期限、日志和进程状态判断。
+- 常驻服务优先在可独立关闭的终端启动（环境提供 paseo 时使用其独立终端），仅监听 `127.0.0.1`，用完关闭。不要用 shell 后台 `&` / `nohup` 留下继承会话管道的服务。
+- Windows 确需 `Start-Process` 时用 `-WindowStyle Hidden`，不用 `-NoNewWindow`；避免子进程继承工具管道。隐藏窗口本身不能保证管道已断开，需核对启动是否返回、日志是否落盘。
+- 已有 `scripts/refactor-tools/run-e2e-bg.ps1` / `poll-e2e.ps1` 可用于 E2E；记录启动时返回的运行目录，查询时显式传 `-RunDir`，不要依赖多 worktree 共享的 latest 指针。脚本不替代总超时与残留清理。
+- Windows PowerShell 5.1 的重定向 / 编码与新版本不同；不要假定管道实时输出。复杂引号或超过几行的逻辑写脚本文件；仓库文本用显式 UTF-8（无 BOM）与 LF，JSON 不经命令行传入大段正文。
 
-`tests/e2e/helpers.mjs` 的 `startServer`（以及 `cue-scroll-fixture.mjs` 的共享
-fixture）会为每个 spec 文件启动真实的 `server-editor/serve.py`。正常结束由
-`afterAll` 收尾；但**运行被中断（Ctrl+C / agent 会话被 abort / 崩溃）时
-afterAll 不会执行**，serve.py 以父子两个 python 进程的形式残留。已知注意点：
+## 中断、失败与清理
 
-- cue-scroll 的共享 fixture server 在**正常跑完的全量 run 后也可能残留**
-  （2026-10-08 实测：486 项全过后仍残留 12 个 python 进程）。
-- 残留进程持有 stdout 管道与端口：shell 工具等待管道关闭 → 命令「永不结束」；
-  端口被占则后续 e2e 行为异常。
+E2E 的 Server 在中断时可能无法执行 teardown；进程持有管道或端口，会使后续命令等待。正常测试完成后也需确认本次服务已退出。
 
-### 2. `Start-Process -NoNewWindow` 占住控制台（显示层假象）
-
-用 `Start-Process -NoNewWindow` 把长任务挂后台时，子进程继承当前控制台，
-shell 工具的终端在子进程退出前持续显示「运行中」。任务本身秒回、结果正常，
-纯属显示层占位。**后台化一律用 `-WindowStyle Hidden`**（新进程组，不占当前
-控制台），不要用 `-NoNewWindow`。
-
-## 诊断
+1. 先读本次日志，确认测试是否仍在有效运行；连续两次失败先分析，不循环全量重跑。
+2. 优先通过本次终端 / 任务句柄停止任务，并检查其已记录的子进程。
+3. 必须手动诊断时，在本次 worktree 根目录运行以下**只读**查询：
 
 ```powershell
-# 列出残留的 e2e serve.py（注意只认本仓库路径；其他 worktree / 不认识的 python 不要动）
-Get-CimInstance Win32_Process -Filter "Name='python.exe'"
-  | Where-Object { $_.CommandLine -match '<本仓库路径>.*playwright' }
-  | Select-Object ProcessId, CommandLine
+$taskRoot = (Get-Location).ProviderPath.TrimEnd('\') + '\'
+Get-CimInstance Win32_Process | Where-Object {
+    $_.CommandLine -and
+    $_.CommandLine.IndexOf($taskRoot, [StringComparison]::OrdinalIgnoreCase) -ge 0
+} | Select-Object ProcessId, ParentProcessId, CreationDate, CommandLine
 ```
 
-特征：CommandLine 指向 `output\playwright\<fixture>\synthetic.mosp` 且带
-`--no-open --no-waveform --port <随机端口>`；每个 fixture 一对父子进程。
+4. 路径匹配只是候选列表。结合启动时间、完整命令行、fixture 路径和父子关系，确认具体 PID 属于本次任务；先正常退出，必要时才对逐个确认的 PID 执行 `Stop-Process -Id <已核实的PID>`。执行前重新核对，防止 PID 已被复用。
+5. 命令行没有绝对 worktree 路径时，查启动记录与父子关系，不扩大为进程名匹配。禁止按 node / chrome / python 名称批量终止，也不能仅靠排除 Program Files 或 IDE 路径判断归属。
+6. 确认目标端口与本次残留已释放后才重跑。不要关闭其他 worktree、Agent 守护进程或用户浏览器。
 
-## 清理
+## 验证边界与后续
 
-```powershell
-Get-CimInstance Win32_Process -Filter "Name='python.exe'"
-  | Where-Object { $_.CommandLine -match 'curly-camel.*playwright' }
-  | ForEach-Object { Stop-Process -Id $_.ProcessId -Force }
-```
+语法 / 单测不能代替拖动、播放、Seek 和布局验收。涉及交互时应做相关浏览器检查；工具反复失败则如实记为未验证并交付人工验收，不宣称通过，也不无限重试。
 
-只按「本仓库路径 + playwright fixture」过滤。禁止按进程名批量杀
-node.exe / chrome.exe / python.exe——会误杀 agent 守护进程、其他 worktree
-任务和用户自己的浏览器。
-
-## 预防（agent / 开发者运行纪律）
-
-1. **长命令必须显式限时**：全量 chromium e2e 正常耗时 6–7 分钟，timeout
-   设 15 分钟封顶；单 spec ≤ 10 分钟。超时先按上面流程清残留，不要原地重试。
-2. **优先跑受影响的 spec**，全量留给 CI 或发布前一次性跑；连续两轮全量不过
-   时先停下分析，不要循环重跑。
-3. **e2e 中断或失败后，重跑前先查残留进程**（诊断命令），清干净再跑。
-4. 后台任务一律 `Start-Process -WindowStyle Hidden`，不用 `-NoNewWindow`；
-   输出重定向到文件，事后查文件而不是等管道。
-5. UI/浏览器验证是可选项：逻辑验证优先单测与语法检查；浏览器验证反复卡住时
-   降级为「交付人工验收」，不要阻塞整个流程。
-6. 治本方向（待办）：修复 cue-scroll 共享 fixture 的 server 生命周期，使
-   afterAll / 进程退出时可靠回收 serve.py。
-
-## 事件记录
-
-- 2026-10-08，PR #180 修复轮：全量 e2e 被中断后残留 12 个 serve.py（6 组），
-  一条后台命令在 UI 上显示运行 10 小时+；按上述流程清理后重跑正常。同日第二
-  次全量（正常跑完 486/486，6.5 分钟）后再次残留 12 个进程，确认「正常结束
-  也会泄漏」，清理命令有效。
+cue-scroll fixture 生命周期的历史缺口见 [未完成事项](OPEN_ITEMS.md#测试与运行环境)。这次整理只统一文档规则，未执行进程清理，也未证明生命周期问题已修复。
