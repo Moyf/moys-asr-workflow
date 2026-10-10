@@ -6,6 +6,7 @@ import json
 import os
 import queue
 import re
+import shutil
 import socket
 import subprocess
 import sys
@@ -162,7 +163,7 @@ EDITOR_HEALTH_PROBE_PATH: Final = "/api/startup-status"
 # 短暂超过默认 0.25s，但仍远小于 SERVER_START_TIMEOUT 的总预算。
 EDITOR_HEALTH_PROBE_TIMEOUT: Final = 2.0
 # Keep this aligned with pyproject.toml; release workflows synchronize and verify it.
-BUNDLED_APP_VERSION = "1.6.1"
+BUNDLED_APP_VERSION = "1.8.0-beta.1"
 # MOSE ships inside the same suite as MAW, so its registry marker must follow
 # the public project version rather than retaining the prototype 0.1.x value.
 MOSE_VERSION = BUNDLED_APP_VERSION
@@ -359,20 +360,17 @@ def _macos_mose_executable(app_path: Path) -> Path | None:
 
 def _bundled_mose_candidates() -> tuple[Path, ...]:
     repo_root = Path(__file__).resolve().parents[1]
+    names = ("MOSE.exe", "mose.exe") if sys.platform == "win32" else ("mose", "MOSE")
     if getattr(sys, "frozen", False):
         executable_dir = Path(sys.executable).resolve().parent
-        return (
-            executable_dir / "MOSE" / "MOSE.exe",
-            executable_dir / "MOSE" / "mose.exe",
+        roots = (executable_dir / "MOSE",)
+    else:
+        roots = (
+            repo_root / "dist" / "MAW" / "MOSE",
+            repo_root / "dist" / "MAW-MOSE" / "MOSE",
+            repo_root / "build" / "release" / "mose" / "MAW" / "MOSE",
         )
-    return (
-        repo_root / "dist" / "MAW" / "MOSE" / "MOSE.exe",
-        repo_root / "dist" / "MAW" / "MOSE" / "mose.exe",
-        repo_root / "dist" / "MAW-MOSE" / "MOSE" / "MOSE.exe",
-        repo_root / "dist" / "MAW-MOSE" / "MOSE" / "mose.exe",
-        repo_root / "build" / "release" / "mose" / "MAW" / "MOSE" / "MOSE.exe",
-        repo_root / "build" / "release" / "mose" / "MAW" / "MOSE" / "mose.exe",
-    )
+    return tuple(root / name for root in roots for name in names)
 
 
 def _bundled_mose_executable() -> Path | None:
@@ -448,6 +446,16 @@ def _mose_search_paths() -> list[Path]:
                     )
             app_candidates[0:0] = frozen_app_candidates
         candidates.extend(app_candidates)
+    elif sys.platform == "linux":
+        candidates.extend(_bundled_mose_candidates())
+        candidates.extend((
+            repo_root / "desktop" / "dist" / "linux-unpacked" / "mose",
+            Path("/opt/MOSE/mose"),
+            Path.home() / ".local" / "bin" / "mose",
+        ))
+        executable = shutil.which("mose")
+        if executable:
+            candidates.append(Path(executable))
     else:
         candidates.extend(_bundled_mose_candidates())
         candidates.extend(
@@ -518,6 +526,20 @@ def _mosp_user_choice_exists(winreg_module: object) -> bool:
         return True
 
 
+def _mosp_default_is_available(winreg_module: object) -> bool:
+    """Preserve handlers registered by another application, including HKLM."""
+    root = getattr(winreg_module, "HKEY_CLASSES_ROOT", winreg_module.HKEY_CURRENT_USER)
+    key_path = ".mosp" if hasattr(winreg_module, "HKEY_CLASSES_ROOT") else r"Software\Classes\.mosp"
+    try:
+        with winreg_module.OpenKey(root, key_path) as key:
+            value = winreg_module.QueryValueEx(key, None)[0]
+        return not value or value == MAW_FILE_TYPE
+    except FileNotFoundError:
+        return True
+    except OSError:
+        return False
+
+
 def _register_mosp_association() -> bool:
     """Register .mosp with MAW so direct opens still pass through the updater."""
     if sys.platform != "win32":
@@ -530,7 +552,8 @@ def _register_mosp_association() -> bool:
     if launcher is None or bundled is None:
         return False
     executable = launcher
-    icon = bundled
+    project_icon = bundled.parent / "resources" / "assets" / "mosp.ico"
+    icon = project_icon if project_icon.is_file() else bundled
     try:
         import winreg
 
@@ -540,10 +563,12 @@ def _register_mosp_association() -> bool:
             winreg.SetValueEx(mose_key, "InstallPath", 0, winreg.REG_SZ, str(bundled.parent))
             winreg.SetValueEx(mose_key, "ExecutablePath", 0, winreg.REG_SZ, str(bundled))
             winreg.SetValueEx(mose_key, "Version", 0, winreg.REG_SZ, version)
-        if not user_choice_exists:
+        if not user_choice_exists and _mosp_default_is_available(winreg):
             with winreg.CreateKey(winreg.HKEY_CURRENT_USER, r"Software\Classes\.mosp") as extension_key:
                 winreg.SetValueEx(extension_key, None, 0, winreg.REG_SZ, MAW_FILE_TYPE)
                 winreg.SetValueEx(extension_key, "Content Type", 0, winreg.REG_SZ, "application/json")
+        with winreg.CreateKey(winreg.HKEY_CURRENT_USER, r"Software\Classes\.mosp\OpenWithProgids") as open_with_key:
+            winreg.SetValueEx(open_with_key, MAW_FILE_TYPE, 0, winreg.REG_SZ, "")
         with winreg.CreateKey(winreg.HKEY_CURRENT_USER, rf"Software\Classes\{MAW_FILE_TYPE}") as file_type_key:
             winreg.SetValueEx(file_type_key, None, 0, winreg.REG_SZ, "MAW Project")
         with winreg.CreateKey(winreg.HKEY_CURRENT_USER, rf"Software\Classes\{MAW_FILE_TYPE}\DefaultIcon") as icon_key:
@@ -1649,6 +1674,7 @@ class LauncherApi:
             return {"ok": False, "field": "postprocessScriptPath", "code": file_error_code(error) or "postprocess_failed", "detail": str(error), "error": str(error)}
         return _subtitle_artifact_result(result)
 
+    @_toolbox_operation
     def run_ai_cleanup(self, payload: Mapping[str, object]) -> dict[str, object]:
         """Recording-first AI spoken-word cleanup behind the toolbox toggle."""
 
@@ -2415,7 +2441,7 @@ class LauncherApi:
 
         executable = _find_mose_executable()
         if executable is None:
-            expected = "MOSE.app" if sys.platform == "darwin" else "MOSE.exe"
+            expected = "MOSE.app" if sys.platform == "darwin" else "mose" if sys.platform == "linux" else "MOSE.exe"
             result = _error_result("editor", "mose_not_found", expected)
             result["searchPaths"] = [str(path) for path in _mose_search_paths()]
             return result

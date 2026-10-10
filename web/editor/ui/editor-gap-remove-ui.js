@@ -516,7 +516,7 @@
     MaweDom.gapRemoveAdvancedToggle.setAttribute('aria-expanded', open ? 'true' : 'false');
     if (persist) {
       try {
-        localStorage.setItem(MaweGapRemoveData.GAP_REMOVE_ADVANCED_OPEN_KEY, open ? '1' : '0');
+        MaweHost.storage.setItem(MaweGapRemoveData.GAP_REMOVE_ADVANCED_OPEN_KEY, open ? '1' : '0');
       } catch (_) {
         // file:// 隐私模式下 localStorage 可能被拒；折叠状态仅本次会话生效。
       }
@@ -528,7 +528,7 @@
   function restoreGapRemoveAdvancedOpen() {
     let saved = null;
     try {
-      saved = localStorage.getItem(MaweGapRemoveData.GAP_REMOVE_ADVANCED_OPEN_KEY);
+      saved = MaweHost.storage.getItem(MaweGapRemoveData.GAP_REMOVE_ADVANCED_OPEN_KEY);
     } catch (_) {
       saved = null;
     }
@@ -549,7 +549,7 @@
     MaweDom.gapRemoveDisableToggle.setAttribute('aria-expanded', open ? 'true' : 'false');
     if (persist) {
       try {
-        localStorage.setItem(MaweGapRemoveData.GAP_REMOVE_DISABLE_OPEN_KEY, open ? '1' : '0');
+        MaweHost.storage.setItem(MaweGapRemoveData.GAP_REMOVE_DISABLE_OPEN_KEY, open ? '1' : '0');
       } catch (_) {
         // file:// 隐私模式下 localStorage 可能被拒；折叠状态仅本次会话生效。
       }
@@ -561,7 +561,7 @@
   function restoreGapRemoveDisableOpen() {
     let saved = null;
     try {
-      saved = localStorage.getItem(MaweGapRemoveData.GAP_REMOVE_DISABLE_OPEN_KEY);
+      saved = MaweHost.storage.getItem(MaweGapRemoveData.GAP_REMOVE_DISABLE_OPEN_KEY);
     } catch (_) {
       saved = null;
     }
@@ -591,7 +591,7 @@
     MaweDom.gapRemovePanel.style.right = 'auto';
     if (persist) {
       try {
-        localStorage.setItem(MaweDom.GAP_REMOVE_PANEL_POSITION_KEY, JSON.stringify({ left: nextLeft, top: nextTop }));
+        MaweHost.storage.setItem(MaweDom.GAP_REMOVE_PANEL_POSITION_KEY, JSON.stringify({ left: nextLeft, top: nextTop }));
       } catch (_) {
         // file:// 隐私模式可能拒绝 localStorage；拖动本身仍保持可用。
       }
@@ -604,7 +604,7 @@
     if (!MaweDom.gapRemovePanel) return;
     let saved = null;
     try {
-      saved = JSON.parse(localStorage.getItem(MaweDom.GAP_REMOVE_PANEL_POSITION_KEY) || 'null');
+      saved = JSON.parse(MaweHost.storage.getItem(MaweDom.GAP_REMOVE_PANEL_POSITION_KEY) || 'null');
     } catch (_) {
       saved = null;
     }

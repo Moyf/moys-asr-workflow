@@ -5,17 +5,47 @@
 (function initMaweMediaLoad(global) {
   'use strict';
 
+  let mediaLoadInFlight = false;
+
+  async function chooseNativeMedia() {
+    if (!window.MOSEDesktop?.available) return false;
+    try {
+      const nativePath = await window.MOSEDesktop.chooseMedia();
+      if (!nativePath) return false;
+      const file = { name: window.AsrEditorUtils.fileBasename(nativePath), type: '', nativePath };
+      if (!MaweProjectMediaInputs.pendingProjectMediaSelection
+          && !await MaweProjectLoad.ensureProjectCheckpointForImport(file, { usePicker: false })) return false;
+      MaweProjectMediaInputs.pendingProjectMediaSelection = null;
+      const imported = await loadMediaFile(file);
+      if (imported) {
+        MaweServerSave.projectImportDirty = true;
+        if (MaweServerSave.projectSaveTargetEnabled()) await MaweProjectSave.saveCurrentProject({ silent: true });
+      }
+      return imported;
+    } catch (error) {
+      MaweHint.flashHint(`媒体加载失败：${error.message || error}`, 'warning');
+      return false;
+    }
+  }
+
 
 
   async function loadMediaFile(file) {
     if (!file) return;
-    const finishLoading = MaweLoadingProgress.beginEditorLoading(`正在导入媒体 ${file.name}…`, 5);
+    if (mediaLoadInFlight) return false;
+    mediaLoadInFlight = true;
+    const finishLoading = MaweLoadingProgress.beginEditorLoading(`正在加载媒体 ${file.name}…`, 5);
     try {
+    const nativePath = file.nativePath || window.MOSEDesktop?.pathForFile?.(file);
+    const native = nativePath ? await window.MOSEDesktop.loadMedia({
+      path: nativePath, project: JSON.parse(MaweJsonRepair.buildJson()),
+      detached: !MaweServerSave.serverProjectSavingEnabled(),
+    }) : null;
     MaweJklPlayback.stopJklReversePlayback({ render: false });
-    const preserveProjectWaveform = MaweCoreState.waveformLoadedFromProject
+    const preserveProjectWaveform = !native && MaweCoreState.waveformLoadedFromProject
       && Boolean(MaweCoreState.waveformEditor?.getPayload?.());
-    const url = URL.createObjectURL(file);
-    const isVideo = file.type.startsWith('video/') ||
+    const url = native ? new URL(native.mediaUrl, window.location.href).href : URL.createObjectURL(file);
+    const isVideo = String(file.type || '').startsWith('video/') ||
       /\.(mp4|mkv|avi|mov|wmv|flv|webm|ts|m4v)$/i.test(file.name);
     const oldPlayer = document.getElementById('player');
     const wantTag = isVideo ? 'VIDEO' : 'AUDIO';
@@ -54,6 +84,7 @@
     try {
       MaweLoadingProgress.updateEditorLoading(45, `正在读取媒体信息 ${file.name}…`);
       await waitForMediaMetadata(candidatePlayer, file);
+      if (native) await window.MOSEDesktop.commitMedia(native.ticket);
     } catch (error) {
       if (candidatePlayer !== oldPlayer && oldParent) {
         oldParent.replaceChild(oldPlayer, candidatePlayer);
@@ -67,7 +98,7 @@
         oldPlayer.removeAttribute('src');
         oldPlayer.querySelector('source')?.removeAttribute('src');
       }
-      URL.revokeObjectURL(url);
+      if (!native) URL.revokeObjectURL(url);
       MaweMediaPlayback.syncPlayerPlaceholder();
       MaweHint.flashHint(error.message || `媒体加载失败：${file.name}`, 'warning');
       return false;
@@ -78,7 +109,8 @@
 
     let mediaTimeReference = null;
     try {
-      mediaTimeReference = await window.AsrEditorUtils.readBwfTimeReferenceFromFile(file);
+      mediaTimeReference = native ? native.project.media_time_reference || null
+        : await window.AsrEditorUtils.readBwfTimeReferenceFromFile(file);
     } catch (_) {
       // BWF metadata is optional; an unreadable header must not block playback.
     }
@@ -90,24 +122,39 @@
 
     // 释放旧 blob URL（不会影响 file:// 加载的原始媒体——那不是 blob URL）
     if (MaweProjectMediaInputs.currentMediaBlobUrl) URL.revokeObjectURL(MaweProjectMediaInputs.currentMediaBlobUrl);
-    MaweProjectMediaInputs.currentMediaBlobUrl = url;
+    MaweProjectMediaInputs.currentMediaBlobUrl = native ? null : url;
 
     // 更新标题区媒体名 + FILENAME_BASE（用文件名去扩展名作为导出基名）
     const stem = file.name.replace(/\.[^.]+$/, '');
     MaweBoot.FILENAME_BASE = stem;
-    MaweBoot.DATA.media = file.name;
+    MaweBoot.DATA.media = native ? native.project.media : file.name;
+    if (native) {
+      MaweBoot.DATA.media_metadata = native.project.media_metadata || null;
+      MaweBoot.SERVER_CONFIG.mediaPath = nativePath;
+      MaweBoot.SERVER_CONFIG.missingMedia = false;
+      MaweWaveformInit.deferredReapeaksEpoch += 1;
+      MaweBoot.DATA.waveform = native.project.waveform || null;
+      MaweBoot.DATA.spectral = native.project.spectral || null;
+      MaweBoot.DATA.waveform_reapeaks = native.project.waveform_reapeaks || null;
+      MaweBoot.DATA.loudness = native.project.loudness || null;
+      MaweCoreState.waveformLoadedFromProject = Boolean(MaweCoreState.waveformEditor?.setPayload(MaweBoot.DATA.waveform));
+      MaweCoreState.waveformEditor?.setSpectralPayload(MaweBoot.DATA.spectral);
+      MaweCoreState.waveformEditor?.setReapeaksWaveform(MaweBoot.DATA.waveform_reapeaks);
+      MaweCoreState.waveformEditor?.setLoudnessStats(MaweBoot.DATA.loudness);
+      void MaweWaveformInit.loadDeferredReapeaks();
+    }
     MaweBoot.DATA.media_time_reference = mediaTimeReference;
     const mnEl = document.getElementById('media-name');
     if (mnEl) {
       mnEl.textContent = file.name;
-      mnEl.title = `点击复制媒体名：${file.name}`;
+      mnEl.title = nativePath || `点击复制媒体名：${file.name}`;
       mnEl.classList.remove('empty');
-      mnEl.onclick = () => MaweExportTimeline.copyText(file.name, `已复制媒体名：${file.name}`);
+      mnEl.onclick = () => MaweExportTimeline.copyText(nativePath || file.name, `已复制媒体名：${nativePath || file.name}`);
     }
 
     MawePlaybackLoop.lastActive = -1;
-    MaweHint.flashHint(MaweProjectSave.translatedEditorText(`已导入媒体：${file.name}`), 'success');
-    if (MaweCoreState.waveformEditor && !preserveProjectWaveform) {
+    MaweHint.flashHint(MaweProjectSave.translatedEditorText(`已加载媒体：${file.name}`), 'success');
+    if (MaweCoreState.waveformEditor && !preserveProjectWaveform && !native) {
       try {
         MaweBoot.DATA.spectral = null;
         MaweBoot.DATA.waveform_reapeaks = null;
@@ -122,7 +169,11 @@
     MaweLoadingProgress.updateEditorLoading(100, `媒体加载完成：${file.name}`);
     MaweGapRemoveUi.updateGapRemoveUi();
     return true;
+    } catch (error) {
+      MaweHint.flashHint(`媒体加载失败：${error.message || error}`, 'warning');
+      return false;
     } finally {
+      mediaLoadInFlight = false;
       finishLoading();
     }
   }
@@ -186,6 +237,7 @@
   }
 
   global.MaweMediaLoad = Object.freeze({
+    chooseNativeMedia,
     loadMediaFile,
     loadReapeaksFile,
     waitForMediaMetadata,

@@ -2733,7 +2733,7 @@ class GuiWebBridgeTests(unittest.TestCase):
                 try:
                     return self.read_values[(key.path, name)], self.REG_SZ
                 except KeyError as error:
-                    raise OSError from error
+                    raise FileNotFoundError from error
 
             def CreateKey(self, _root: object, path: str) -> FakeKey:
                 return FakeKey(path)
@@ -2756,7 +2756,7 @@ class GuiWebBridgeTests(unittest.TestCase):
         named_values = {(path, name): value for path, name, value in fake_winreg.values if name is not None}
         self.assertEqual(named_values[(r"Software\Moy\MOSE", "InstallPath")], str(self.root))
         self.assertEqual(named_values[(r"Software\Moy\MOSE", "ExecutablePath")], str(executable))
-        self.assertEqual(named_values[(r"Software\Moy\MOSE", "Version")], "1.6.1")
+        self.assertEqual(named_values[(r"Software\Moy\MOSE", "Version")], json.loads((ROOT / "desktop" / "package.json").read_text(encoding="utf-8"))["version"])
 
     def test_register_mosp_association_preserves_existing_user_choice(self) -> None:
         launcher = self.root / "MAW.exe"
@@ -2806,6 +2806,26 @@ class GuiWebBridgeTests(unittest.TestCase):
         self.assertNotIn(r"Software\Classes\.mosp", paths)
         self.assertIn(r"Software\Classes\Moy.MAW.Project\DefaultIcon", paths)
         self.assertIn(r"Software\Classes\Moy.MAW.Project\shell\open\command", paths)
+
+    def test_mosp_default_preserves_another_registered_handler(self) -> None:
+        from maw.gui_web import _mosp_default_is_available
+
+        registry = mock.Mock(HKEY_CLASSES_ROOT=object(), HKEY_CURRENT_USER=object())
+        registry.OpenKey.return_value = mock.MagicMock()
+        for handler, available in (("Other.Editor.Project", False), ("Moy.MAW.Project", True), ("", True)):
+            registry.QueryValueEx.return_value = (handler, 1)
+            self.assertEqual(_mosp_default_is_available(registry), available)
+        registry.OpenKey.side_effect = PermissionError()
+        self.assertFalse(_mosp_default_is_available(registry))
+
+    def test_find_mose_in_a_frozen_linux_suite(self) -> None:
+        executable = self.root / "MOSE" / "mose"
+        executable.parent.mkdir()
+        executable.write_bytes(b"ELF")
+        with mock.patch.object(sys, "platform", "linux"), mock.patch.object(sys, "frozen", True, create=True):
+            with mock.patch.object(sys, "executable", str(self.root / "MAW")):
+                with mock.patch("maw.gui_web.shutil.which", return_value=None):
+                    self.assertEqual(_find_mose_executable(), executable.resolve())
 
     def test_register_mosp_association_ignores_external_mose_without_suite(self) -> None:
         executable = self.root / "legacy" / "MOSE.exe"

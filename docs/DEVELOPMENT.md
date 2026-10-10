@@ -14,10 +14,10 @@
 | `edit.py`、`web/` | 唯一编辑器前端源码及便携 HTML 渲染。 |
 | `maw/waveform.py`、`maw/quapeaks.py`、`maw/mopeaks.py`、`maw/media_cache.py` | 波形提取、容器与缓存编排。 |
 | `server-editor/serve.py` | 仅 loopback 的媒体 Range、受限保存、最近工程与本机设置。 |
-| `desktop/` | Electron MOSE 桌面壳；Tauri 实验已移除，决策见 [desktop README](../desktop/README.md)。 |
+| `desktop/` | Electron 原生窗口与受限 IPC；复用同一 Server，提供三端构建配置。 |
 | `website/` | Astro 官网与源文档的静态副本。 |
 
-当前日常编辑以 Server 为主。底层生成器与公开 CLI 的参数、默认输出不同，不应据某个生成器的帮助推断所有入口；区别见 [CLI](CLI.md)。
+MOSE 与浏览器入口都复用 Server；Launcher 优先查找 MOSE，不可用时回退浏览器。底层生成器与公开 CLI 的参数、默认输出不同，不应据某个生成器的帮助推断所有入口；区别见 [CLI](CLI.md)。
 
 ## 数据与持久化
 
@@ -27,7 +27,7 @@
 | 波形、频谱 | `.quapeaks` / `.mopeaks` 等缓存 | 可重建，当前工程落盘剥离内联缓存；仍兼容旧内嵌工程。 |
 | `workspace` | 可选工程字段 | 随工程携带的布局。 |
 | 最近工程与命名工作区 | 用户级 `server-editor-settings.json` | Server 本机状态，活动工作区可覆盖页面布局。 |
-| 编辑器偏好 | 浏览器存储 | origin/端口隔离，file:// 不承诺共享。 |
+| 编辑器偏好 | 浏览器存储 / MOSE userData 的 `editor-preferences.json` | 普通浏览器按 origin 隔离；MOSE 使用受限存储跨重启恢复。 |
 | ASS 样式库 | 用户级 `ass-styles.json`，便携版浏览器副本 | Launcher 与 localhost Editor 共用，不写入工程。 |
 | Key 与路径配置 | 本机 `.env` / 环境变量 | 不进入工程、日志或测试夹具。 |
 
@@ -70,7 +70,7 @@ Server 的内置预设覆盖、命名工作区和活动名称保存在本机设�
 
 波形类的构造器留在门面，方法按职责放在 `waveform/`。通过 `Object.getOwnPropertyDescriptors` / `Object.defineProperty` 复制方法与 getter，保持原来非枚举、可写和可配置属性；不能使用 `Object.assign` 复制类方法。新方法加入相应工厂并同步装配顺序；有 `super`、私有字段或继承需求时应重新评估这个组合边界。
 
-`boot/editor-host.js` 在业务模块加载前装配 `MaweHost`。宿主工厂接收环境对象或独立的 storage / files / server / runtime 服务；当前用浏览器实现，未来 Electron 入口可传入替代服务。写入服务接收 Blob 构造回调，在取得 writable 后才构造正文，保留原有新建 / 另存为取值时机。文件取消、写入失败、保存指纹与脏状态判断仍由业务模块处理；响应校验也由调用者处理，传输层只负责 URL 解析和 fetch。Canvas 与播放帧仍走原 DOM / rAF 路径，不经通用状态广播。
+`boot/editor-host.js` 在业务模块加载前装配 `MaweHost`。宿主工厂接收环境对象或独立的 storage / files / server / runtime 服务；浏览器实现继续用于普通入口，Electron 的原生文件操作通过窄 `MOSEDesktop` 桥接。写入服务接收 Blob 构造回调，在取得 writable 后才构造正文，保留原有新建 / 另存为取值时机。文件取消、写入失败、保存指纹与脏状态判断仍由业务模块处理；响应校验也由调用者处理，传输层只负责 URL 解析和 fetch。Canvas 与播放帧仍走原 DOM / rAF 路径，不经通用状态广播。
 
 `MaweState` 持有模板注入的原工程对象；偏好、播放器、面板、行内编辑和选择状态均不写入工程。选择集对外提供实时只读视图，增删 / 重排 / 锚点写入只经过 owner。旧 `MaweCoreState` / `MaweSelection` / `MaweCuePanelState` 的状态访问器转发同一个 owner，待现有消费者迁移后再退役。新手引导仍使用现有窄桥接。
 
@@ -108,6 +108,12 @@ Windows 使用 `scripts/run-e2e.ps1`，脚本检查 quapeaks，并在需要时�
 ```
 
 语法/单元、Server 契约、浏览器、打包与 CI 是不同验证层，报告时分别说明。
+
+### Electron 与系统集成
+
+Windows 在同套件中共享 `MAW.exe` 与 FFmpeg；macOS/Linux 把原生后端放入 MOSE resources。各平台必须在对应系统和架构构建，步骤见 [desktop README](../desktop/README.md)。工程打开、原生另存为、真实路径、系统关联和手动更新范围见 [MOSE](MOSE.md)。
+
+`npm test --prefix desktop` 检查后端定位、文件写入、进程清理和打包契约；`node --test desktop/e2e/*.mjs` 检查真实 Electron/Server 流程，原生对话框选值使用替身。可通过 `MAW_MOSE_PYTHON` 指定源码后端解释器，通过 `MOSE_TEST_EXECUTABLE` 指定已打包编辑器。安装/卸载、文件管理器双击、macOS/Linux 原生运行仍须对应系统验收，不能以配置检查代替。
 
 ## 文档与发布
 

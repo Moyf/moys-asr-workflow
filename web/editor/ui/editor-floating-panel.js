@@ -109,7 +109,7 @@
       panel.style.right = 'auto';
       if (persist) {
         try {
-          localStorage.setItem(positionKey, JSON.stringify({ left: nextLeft, top: nextTop }));
+          MaweHost.storage.setItem(positionKey, JSON.stringify({ left: nextLeft, top: nextTop }));
         } catch (_) {
           // file:// 隐私模式可能拒绝 localStorage；拖动本身仍保持可用。
         }
@@ -119,7 +119,7 @@
     function restorePosition() {
       let saved = null;
       try {
-        saved = JSON.parse(localStorage.getItem(positionKey) || 'null');
+        saved = JSON.parse(MaweHost.storage.getItem(positionKey) || 'null');
       } catch (_) {
         saved = null;
       }

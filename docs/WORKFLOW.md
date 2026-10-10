@@ -25,7 +25,9 @@ MOSE；只在当前用户范围注册，不会关联旧的 `.json` 或覆盖 Win
 - `MAW-lite` 不含 FFmpeg / FFprobe，需要系统提供这两个工具。
 - 不要只复制可执行文件；保留随包文件和运行时目录。
 
-Launcher 是转写与工具箱入口；MAWE 是编辑器。当前日常编辑使用本机 Server，MOSE 桌面目录的定位见 [MOSE](MOSE.md)。
+Launcher 是转写与工具箱入口；MAWE 是编辑器。本分支 Launcher 优先打开 MOSE，缺失时回退到浏览器 Server。Windows MAW + MOSE 套件共用后端；macOS/Linux 配置独立 MOSE 包。安装方式、平台验收与更新范围见 [MOSE](MOSE.md)。
+
+Windows Installer 按当前用户安装到 `%LOCALAPPDATA%/Programs/MAW`，通过 Launcher 检查、下载并校验新 Installer。便携版及 macOS/Linux 独立 MOSE 当前手动下载更新；具体可用包仍以 Release 附件为准。
 
 ### 从源码运行
 
@@ -80,6 +82,8 @@ uv run --no-sync python maw_gui.py -i "example.mp4" -o "example.srt" -ll 2m
 
 ## 4. 打开工程并编辑
 
+MOSE 可原生选择或拖入 `.mosp` / `.json`，自动绑定磁盘文件并记录最近工程；媒体已移动时仍可打开字幕，通过“加载媒体”重新定位。Windows `.mosp` 关联经过 Launcher 更新检查；macOS/Linux 打开方式配置见 [MOSE](MOSE.md)。
+
 在 Launcher 点击打开编辑器。源码可以直接启动：
 
 ```sh
@@ -115,6 +119,8 @@ uv run --no-sync python edit.py "example.mosp" -m "example.mp4"
 先保存工程，再导出交付文件：普通字幕用 SRT，需要样式用 ASS。ASS 的样式和预览见 [ASS 样式](ASS_STYLES.md)；去空隙素材、OTIO 与 FFconcat 的配套导出见 [编辑器指南](EDITOR_GUIDE.md)。
 
 保留原媒体和工程，波形缓存可按需重建。浏览器新建、Server 接管和下载式保存的区别，以及版本备份恢复步骤，也在编辑器指南中说明。
+
+MOSE 新建与另存为使用原生对话框，可保存到其他目录；保存后继续绑定新目标。取消对话框不会丢失编辑，跨目录另存为也会保留媒体原来的位置。
 
 ## 下一步
 

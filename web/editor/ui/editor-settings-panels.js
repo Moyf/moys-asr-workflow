@@ -66,7 +66,7 @@
     }
     if (focus) tab.focus();
     try {
-      localStorage.setItem(project ? projectTabKey : MaweDom.EDITOR_SETTINGS_WINDOW_TAB_KEY, tab.dataset.settingsTab || '');
+      MaweHost.storage.setItem(MaweDom.EDITOR_SETTINGS_WINDOW_TAB_KEY, tab.dataset.settingsTab || '');
     } catch (_) {
       // file:// 隐私模式可能拒绝 localStorage；切换标签页本身不受影响。
     }
@@ -77,7 +77,7 @@
   function restoreEditorSettingsActiveTab() {
     let saved = '';
     try {
-      saved = localStorage.getItem(MaweDom.EDITOR_SETTINGS_WINDOW_TAB_KEY) || '';
+      saved = MaweHost.storage.getItem(MaweDom.EDITOR_SETTINGS_WINDOW_TAB_KEY) || '';
     } catch (_) {
       saved = '';
     }
@@ -96,7 +96,7 @@
     if (!MaweDom.editorSettingsPanel) return;
     let saved = null;
     try {
-      saved = JSON.parse(localStorage.getItem(MaweDom.EDITOR_SETTINGS_WINDOW_SIZE_KEY) || 'null');
+      saved = JSON.parse(MaweHost.storage.getItem(MaweDom.EDITOR_SETTINGS_WINDOW_SIZE_KEY) || 'null');
     } catch (_) {
       saved = null;
     }

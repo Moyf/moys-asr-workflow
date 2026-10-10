@@ -12,6 +12,10 @@
 
 MaweDom.projectMediaSelectButton.addEventListener('click', () => {
   MaweProjectMediaInputs.closeProjectMediaModal(false);
+  if (window.MOSEDesktop?.available) {
+    void MaweMediaLoad.chooseNativeMedia();
+    return;
+  }
   MaweProjectMediaInputs.loadMediaFileInput.value = '';
   MaweProjectMediaInputs.loadMediaFileInput.click();
 });
@@ -102,9 +106,18 @@ document.getElementById('new-project')?.addEventListener('click', async () => {
   await MaweProjectLoad.createProjectCheckpoint(MaweProjectLoad.buildBlankProject(), MaweProjectLoad.suggestedProjectName());
 });
 
-document.getElementById('open-project')?.addEventListener('click', () => {
+document.getElementById('open-project')?.addEventListener('click', async () => {
   if (MaweServerSave.hasUnsavedProjectChanges()) {
     if (!confirm('当前有未保存的改动，是否确定打开新工程？将丢失未保存内容。')) return;
+  }
+  if (window.MOSEDesktop?.available) {
+    try {
+      const path = await window.MOSEDesktop.chooseProject();
+      if (path) await MaweServerSave.openDesktopProjectPath(path, { confirmed: true });
+    } catch (error) {
+      MaweHint.flashHint(`打开工程失败：${error.message || error}`, 'warning');
+    }
+    return;
   }
   MaweProjectMediaInputs.openProjectFileInput.value = '';
   MaweProjectMediaInputs.openProjectFileInput.click();
@@ -116,5 +129,5 @@ MaweProjectMediaInputs.openProjectFileInput.addEventListener('change', async (e)
     MaweHint.flashHint('请选择一个 .mosp 或 .json 工程文件。', 'invalid');
     return;
   }
-  await MaweMultiImport.openProjectFile(file);
+  await MaweMultiImport.openProjectFile(file, { confirmed: true });
 });

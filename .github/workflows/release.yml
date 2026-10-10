@@ -92,10 +92,15 @@ jobs:
         run: .\scripts\build-windows.ps1 -SkipTests
 
       - name: Install Electron dependencies
-        run: npm ci --prefix desktop
+        run: |
+          npm ci --prefix desktop
+          npm ci --ignore-scripts
 
       - name: Run Electron unit tests
         run: npm test --prefix desktop
+
+      - name: Verify project icon formats
+        run: uv run --no-sync python -m scripts.build_project_icon --check
 
       - name: Build Electron MOSE
         run: npm run build --prefix desktop
@@ -312,6 +317,12 @@ jobs:
           Write-Host ("Electron win-unpacked size: {0:N0} bytes" -f $ElectronUnpackedBytes)
           Write-Host ("MOSE suite increment: {0:N0} bytes" -f $MoseIncrementBytes)
 
+      - name: Run packaged MOSE interaction tests
+        shell: pwsh
+        run: |
+          $env:MOSE_TEST_EXECUTABLE = (Resolve-Path 'build\release\mose\MAW\MOSE\MOSE.exe').Path
+          node --test desktop/e2e/*.mjs
+
       - name: Install Inno Setup
         if: startsWith(github.ref, 'refs/tags/v')
         shell: pwsh
@@ -367,12 +378,18 @@ jobs:
             paths: |
               MAW-macOS-arm64-*.zip
               MAW-lite-macOS-arm64-*.zip
+            mosePaths: |
+              desktop/dist/MOSE-macOS-arm64-*.dmg
+              desktop/dist/MOSE-macOS-arm64-*.zip
           - name: Linux x86_64
             platform: linux
             os: ubuntu-22.04
             arch: x64
             asset: MAW-Linux-x86_64
             paths: build-appimage/MAW-Linux-x86_64*.AppImage
+            mosePaths: |
+              desktop/dist/MOSE-Linux-x64-*.AppImage
+              desktop/dist/MOSE-Linux-x64-*.deb
     runs-on: ${{ matrix.os }}
     env:
       PYTHONUTF8: '1'
@@ -386,6 +403,11 @@ jobs:
         with:
           python-version: '3.11'
           architecture: ${{ matrix.arch }}
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
 
       - name: Set up uv
         uses: astral-sh/setup-uv@v7
@@ -438,6 +460,13 @@ jobs:
         run: uv run python -m unittest discover -s tests -p "test_*.py"
 
       # ---------- macOS 专属 ----------
+
+      - name: Install and check Electron dependencies
+        run: |
+          npm ci --prefix desktop
+          npm ci --ignore-scripts
+          npm test --prefix desktop
+          uv run --no-sync python -m scripts.build_project_icon --check
 
       - name: Verify macOS app icon asset
         if: matrix.platform == 'macos'
@@ -617,6 +646,19 @@ jobs:
 
       # ---------- Linux 专属 ----------
 
+      - name: Build and smoke native MOSE on macOS
+        if: matrix.platform == 'macos'
+        shell: bash
+        run: |
+          set -euo pipefail
+          npm run build --prefix desktop
+          MoseApp="$(find desktop/dist -maxdepth 2 -name MOSE.app -print -quit)"
+          test -n "$MoseApp"
+          test -x "$MoseApp/Contents/Resources/backend/MAW.app/Contents/MacOS/MAW"
+          test -f "$MoseApp/Contents/Resources/mosp.icns"
+          "$MoseApp/Contents/MacOS/MOSE" --mose-smoke
+          MOSE_TEST_EXECUTABLE="$PWD/$MoseApp/Contents/MacOS/MOSE" node --test desktop/e2e/*.mjs
+
       - name: Install system dependencies
         if: matrix.platform == 'linux'
         run: |
@@ -727,6 +769,24 @@ jobs:
           path: ${{ matrix.paths }}
           if-no-files-found: error
 
+      - name: Build and smoke native MOSE on Linux
+        if: matrix.platform == 'linux'
+        shell: bash
+        run: |
+          set -euo pipefail
+          npm run build --prefix desktop
+          test -x desktop/dist/linux-unpacked/resources/backend/MAW/MAW
+          test -f desktop/dist/linux-unpacked/resources/assets/mosp.png
+          timeout 60 xvfb-run -a desktop/dist/linux-unpacked/mose --mose-smoke
+          MOSE_TEST_EXECUTABLE="$PWD/desktop/dist/linux-unpacked/mose" xvfb-run -a node --test desktop/e2e/*.mjs
+
+      - name: Upload MOSE artifacts
+        uses: actions/upload-artifact@v6
+        with:
+          name: MOSE-${{ matrix.platform }}-${{ matrix.arch }}-${{ steps.version.outputs.version }}
+          path: ${{ matrix.mosePaths }}
+          if-no-files-found: error
+
   publish:
     name: Publish GitHub Release
     # build-aux is intentionally best-effort; always evaluate the condition so
@@ -757,6 +817,13 @@ jobs:
           path: release-artifacts
           merge-multiple: true
 
+      - name: Download MOSE build artifacts
+        uses: actions/download-artifact@v7
+        with:
+          pattern: MOSE-*
+          path: release-artifacts
+          merge-multiple: true
+
       - name: Prepare release notes from CHANGELOG
         shell: bash
         run: |
@@ -774,8 +841,8 @@ jobs:
               fi
             done
           }
-          check_platform macos "MAW-macOS-arm64-$Tag.zip" "MAW-lite-macOS-arm64-$Tag.zip"
-          check_platform linux "MAW-Linux-x86_64-$Tag.AppImage"
+          check_platform macos "MAW-macOS-arm64-$Tag.zip" "MAW-lite-macOS-arm64-$Tag.zip" "MOSE-macOS-arm64-$Tag.dmg" "MOSE-macOS-arm64-$Tag.zip"
+          check_platform linux "MAW-Linux-x86_64-$Tag.AppImage" "MOSE-Linux-x64-$Tag.AppImage" "MOSE-Linux-x64-$Tag.deb"
           Args=(--tag "$Tag" --output release-notes.md)
           if [ "${#Failed[@]}" -gt 0 ]; then
             Args+=(--failed "$(IFS=,; echo "${Failed[*]}")")
@@ -793,15 +860,6 @@ jobs:
           Windows 构建成功，但 macOS / Linux 构建未全部成功，本次 Release 仅包含成功平台的安装包。
           开发者请查看本次 Actions 运行日志排查失败平台。
           EOF
-
-      - name: Download all build artifacts
-        uses: actions/download-artifact@v7
-        with:
-          pattern: MAW-*
-          # 不要使用仓库已有的 assets/ 目录：上传时用 glob 会把源素材
-          # （launcher.jpg、maw.icns、screenshot*.jpg 等）一起传进 Release。
-          path: release-artifacts
-          merge-multiple: true
 
       - name: Generate update manifest
         run: python3 scripts/generate_update_manifest.py --root release-artifacts --tag "${{ github.ref_name }}"
@@ -856,7 +914,7 @@ jobs:
           if missing:
               raise SystemExit(f"release is missing required Windows assets: {', '.join(missing)}")
           print(f"Verified update manifest v1 for {tag} with {len(manifest['assets'])} assets")
-           PY
+          PY
 
       - name: Create or update GitHub Release
         env:

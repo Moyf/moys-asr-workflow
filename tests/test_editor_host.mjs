@@ -99,3 +99,17 @@ test('a desktop host can replace every capability without initializing browser s
   const host = context.window.MAWE.resolve('editor-host', capabilities);
   for (const name of Object.keys(capabilities)) assert.equal(host[name], capabilities[name]);
 });
+
+test('native storage preserves preferences across origins and imports a legacy value once', () => {
+  const disk = new Map();
+  const native = { getItem: key => disk.get(key) ?? null, setItem: (key, value) => disk.set(key, value) };
+  const first = loadHost({ MOSEDesktop: { storage: native }, localStorage: {
+    getItem: () => 'legacy', setItem() { throw new Error('unexpected browser write'); },
+  } }).window.MaweHost.storage;
+  assert.equal(first.getItem('moy.asr.editor.settings.v1'), 'legacy');
+  first.setItem('moy.asr.editor.settings.v1', 'saved');
+  const second = loadHost({ MOSEDesktop: { storage: native }, localStorage: {
+    getItem: () => null, setItem() { throw new Error('unexpected browser write'); },
+  } }).window.MaweHost.storage;
+  assert.equal(second.getItem('moy.asr.editor.settings.v1'), 'saved');
+});

@@ -98,9 +98,8 @@ MaweDom.hideDisabledToggle?.addEventListener('change', () => {
 });
 
 // 离开提示
-let suppressBeforeUnload = false;
 window.addEventListener('beforeunload', (e) => {
-  if (!suppressBeforeUnload && MaweServerSave.hasUnsavedProjectChanges()) { e.preventDefault(); e.returnValue = ''; }
+  if (!MaweServerSave.suppressBeforeUnload && MaweServerSave.hasUnsavedProjectChanges()) { e.preventDefault(); e.returnValue = ''; }
 });
 
 // === MOSE 桌面壳：打开工程 ===
@@ -121,7 +120,7 @@ async function openDesktopProjectPath(projectPath) {
     if (!response.ok || !result.ok) throw new Error(result.error || `服务器返回 ${response.status}`);
     // The confirmation above covers this intentional project switch.  Avoid
     // asking a second time when the reload fires the global beforeunload hook.
-    suppressBeforeUnload = true;
+    MaweServerSave.suppressBeforeUnload = true;
     window.location.reload();
   } catch (error) {
     MaweHint.flashHint(`打开工程失败：${error.message || error}`, 'warning');

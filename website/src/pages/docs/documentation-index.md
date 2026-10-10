@@ -53,6 +53,8 @@ source: "docs/README.md"
 | [e2e 挂起排查](https://github.com/Moyf/moys-asr-workflow/blob/main/docs/E2E_SERVER_HANG.md) | Playwright 残留 serve.py 的诊断、清理与运行纪律。 |
 | [MAW / MAWE / MOSE](../mose/) | 产品名称与桌面路线决策（Electron 发布路线，Tauri 实验已移除）。 |
 | [桌面开发](https://github.com/Moyf/moys-asr-workflow/blob/main/desktop/README.md) | Electron 桌面壳的架构定位与 Tauri 移除决策记录。 |
+| [MAW / MAWE / MOSE](../mose/) | Electron 桌面操作、平台包、工程关联和更新范围。 |
+| [桌面开发](https://github.com/Moyf/moys-asr-workflow/blob/main/desktop/README.md) | Electron 开发、三端后端布局、构建和验证边界。 |
 | [官网文档同步](https://github.com/Moyf/moys-asr-workflow/blob/main/website/docs/CONTENT_SYNC.md) | 从源文档生成官网页面的步骤。 |
 
 ## 历史记录与未完成方案

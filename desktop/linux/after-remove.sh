@@ -1,0 +1,8 @@
+#!/bin/sh
+set -e
+if [ ! -e /opt/MOSE/mose ] && [ -f /usr/share/icons/hicolor/256x256/mimetypes/application-x-mose-project.png ]; then
+  unlink /usr/share/icons/hicolor/256x256/mimetypes/application-x-mose-project.png
+fi
+if command -v update-mime-database >/dev/null 2>&1; then update-mime-database /usr/share/mime; fi
+if command -v gtk-update-icon-cache >/dev/null 2>&1; then gtk-update-icon-cache -q -t -f /usr/share/icons/hicolor; fi
+if command -v update-desktop-database >/dev/null 2>&1; then update-desktop-database /usr/share/applications; fi

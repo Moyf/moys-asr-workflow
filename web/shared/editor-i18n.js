@@ -128,7 +128,11 @@
     '高级操作': 'Advanced actions',
     '字词拆成字幕…': 'Split words into subtitles…',
     '字词拆成字幕': 'Split words into subtitles',
-    '确认转换': 'Confirm conversion',
+        '选择文件夹…': 'Choose folder…',
+    '选择文件位置并保存工程': 'Choose a file location and save the project',
+    '正在打开工程…': 'Opening project…',
+    '工程媒体未找到。请点击“加载媒体”重新定位文件。': 'Project media was not found. Click “Load media” to locate it.',
+'确认转换': 'Confirm conversion',
     '调整字词起点': 'Adjust timed text start',
     '调整字词终点': 'Adjust timed text end',
     '拖动调整贴合字词边界（两侧一起移动）': 'Drag the shared timed text boundary',
@@ -1202,7 +1206,7 @@
   }
 
   function persistLanguage(nextLanguage) {
-    try { global.localStorage?.setItem(STORAGE_KEY, nextLanguage); } catch (_) {}
+    try { (global.MaweHost?.storage || global.localStorage)?.setItem(STORAGE_KEY, nextLanguage); } catch (_) {}
   }
 
   function languageFromLaunchUrl() {
@@ -1228,12 +1232,18 @@
       persistLanguage(launched);
       return launched;
     }
+    if (global.MOSEDesktop?.available) {
+      try {
+        const saved = global.MaweHost?.storage.getItem(STORAGE_KEY);
+        if (saved === ZH || saved === EN) return saved;
+      } catch (_) {}
+    }
     if (GENERATED_LANGUAGE === ZH || GENERATED_LANGUAGE === EN) {
       persistLanguage(GENERATED_LANGUAGE);
       return GENERATED_LANGUAGE;
     }
     try {
-      return normalizeLanguage(global.localStorage?.getItem(STORAGE_KEY) || ZH);
+      return normalizeLanguage((global.MaweHost?.storage || global.localStorage)?.getItem(STORAGE_KEY) || ZH);
     } catch (_) {
       return ZH;
     }

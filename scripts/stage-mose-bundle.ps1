@@ -28,6 +28,7 @@ foreach ($Required in @(
     (Join-Path $ResolvedMawSource 'ffmpeg\bin\ffprobe.exe'),
     (Join-Path $ResolvedMoseSource 'MOSE.exe'),
     (Join-Path $ResolvedMoseSource 'resources\app.asar')
+    (Join-Path $ResolvedMoseSource 'resources\assets\mosp.ico')
 )) {
     if (-not (Test-Path -LiteralPath $Required -PathType Leaf)) {
         throw "Missing suite input: $Required"

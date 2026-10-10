@@ -35,7 +35,7 @@ UninstallDisplayIcon={app}\_internal\assets\maw.ico
 UninstallDisplayName=Moy's ASR Workflow
 CloseApplications=yes
 RestartApplications=yes
-ChangesAssociations=no
+ChangesAssociations=yes
 PrivilegesRequiredOverridesAllowed=commandline
 
 [Files]
@@ -50,16 +50,33 @@ Root: HKCU; Subkey: "Software\Moy\MAW"; ValueType: string; ValueName: "InstallPa
 Root: HKCU; Subkey: "Software\Moy\MAW"; ValueType: string; ValueName: "ExecutablePath"; ValueData: "{app}\MAW.exe"; Flags: uninsdeletekeyifempty
 Root: HKCU; Subkey: "Software\Moy\MAW"; ValueType: string; ValueName: "InstallKind"; ValueData: "installer"; Flags: uninsdeletekeyifempty
 Root: HKCU; Subkey: "Software\Moy\MAW"; ValueType: string; ValueName: "Version"; ValueData: "{#AppVersion}"; Flags: uninsdeletekeyifempty
-Root: HKCU; Subkey: "Software\Classes\.mosp"; ValueType: string; ValueName: ""; ValueData: "Moy.MAW.Project"; Flags: uninsdeletevalue
+Root: HKCU; Subkey: "Software\Classes\.mosp"; ValueType: string; ValueName: ""; ValueData: "Moy.MAW.Project"; Check: CanSetProjectDefault
+Root: HKCU; Subkey: "Software\Classes\.mosp\OpenWithProgids"; ValueType: string; ValueName: "Moy.MAW.Project"; ValueData: ""; Flags: uninsdeletevalue
 Root: HKCU; Subkey: "Software\Classes\Moy.MAW.Project"; ValueType: string; ValueName: ""; ValueData: "MAW Project"; Flags: uninsdeletekeyifempty
-Root: HKCU; Subkey: "Software\Classes\Moy.MAW.Project\DefaultIcon"; ValueType: string; ValueName: ""; ValueData: "{app}\MOSE\MOSE.exe,0"; Flags: uninsdeletekeyifempty
+Root: HKCU; Subkey: "Software\Classes\Moy.MAW.Project\DefaultIcon"; ValueType: string; ValueName: ""; ValueData: """{app}\MOSE\resources\assets\mosp.ico"",0"; Flags: uninsdeletekey
 Root: HKCU; Subkey: "Software\Classes\Moy.MAW.Project\shell\open\command"; ValueType: string; ValueName: ""; ValueData: """{app}\MAW.exe"" --open-project ""%1"""; Flags: uninsdeletekeyifempty
 
 [Code]
+function CanSetProjectDefault(): Boolean;
+var Handler: String;
+begin
+  Result := not RegKeyExists(HKCU, 'Software\Microsoft\Windows\CurrentVersion\Explorer\FileExts\.mosp\UserChoice') and
+    (not RegQueryStringValue(HKCR, '.mosp', '', Handler) or (Handler = '') or (Handler = 'Moy.MAW.Project'));
+end;
+
+procedure CurUninstallStepChanged(CurUninstallStep: TUninstallStep);
+var Handler: String;
+begin
+  if (CurUninstallStep = usUninstall) and RegQueryStringValue(HKCU, 'Software\Classes\.mosp', '', Handler) and
+    (Handler = 'Moy.MAW.Project') then
+    RegDeleteValue(HKCU, 'Software\Classes\.mosp', '');
+end;
+
 function InitializeSetup(): Boolean;
 begin
   Result := FileExists(ExpandConstant('{#MawSourceDir}\MAW.exe')) and
     FileExists(ExpandConstant('{#MawSourceDir}\MOSE\MOSE.exe')) and
+    FileExists(ExpandConstant('{#MawSourceDir}\MOSE\resources\assets\mosp.ico')) and
     FileExists(ExpandConstant('{#MawSourceDir}\ffmpeg\bin\ffmpeg.exe')) and
     FileExists(ExpandConstant('{#MawSourceDir}\ffmpeg\bin\ffprobe.exe'));
   if not Result then

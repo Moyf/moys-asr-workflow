@@ -253,6 +253,13 @@
 
 
   async function openProjectFile(file, options = {}) {
+    const nativePath = window.MOSEDesktop?.pathForFile?.(file);
+    if (nativePath) {
+      return MaweServerSave.openDesktopProjectPath(nativePath, {
+        confirmed: options.confirmed === true,
+        mediaPath: window.MOSEDesktop?.pathForFile?.(options.mediaFile) || null,
+      });
+    }
     const suppressMediaPrompt = options.suppressMediaPrompt === true;
     const finishLoading = MaweLoadingProgress.beginEditorLoading(`正在读取工程 ${file.name}…`, 5);
     try {

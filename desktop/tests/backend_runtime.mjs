@@ -1,5 +1,7 @@
 import assert from 'node:assert/strict';
 import { EventEmitter } from 'node:events';
+import { once } from 'node:events';
+import { spawn } from 'node:child_process';
 import test from 'node:test';
 
 import {
@@ -161,4 +163,33 @@ test('appendBoundedOutput retains only the newest diagnostics', () => {
   assert.equal(state.output, 'cdef');
   appendBoundedOutput(state, 'XY', 4);
   assert.equal(state.output, 'efXY');
+});
+
+test('POSIX shutdown targets only the live detached backend group and escalates by signal', async () => {
+  const child = new FakeChild(1234);
+  const calls = [];
+  const options = { platform: 'darwin', processGroup: true, killImpl: (...args) => calls.push(args) };
+  assert.equal(await terminateBackendTree(child, options), true);
+  assert.equal(await terminateBackendTree(child, { ...options, signal: 'SIGKILL' }), true);
+  assert.deepEqual(calls, [[-1234, 'SIGTERM'], [-1234, 'SIGKILL']]);
+  child.exitCode = 0;
+  assert.equal(await terminateBackendTree(child, options), false);
+  assert.equal(calls.length, 2);
+});
+
+test('Windows termination stops a real owned child and its running descendant', { skip: process.platform !== 'win32', timeout: 10_000 }, async () => {
+  const script = 'const {spawn}=require("node:child_process"); const p=spawn(process.execPath,["-e","setInterval(()=>{},1000)"],{windowsHide:true,stdio:"ignore"}); console.log(p.pid); setInterval(()=>{},1000);';
+  const root = spawn(process.execPath, ['-e', script], { windowsHide: true, stdio: ['ignore', 'pipe', 'ignore'] });
+  try {
+    const [chunk] = await once(root.stdout, 'data');
+    const descendantPid = Number(String(chunk).trim());
+    assert.ok(descendantPid > 0);
+    process.kill(descendantPid, 0);
+    const exited = once(root, 'exit');
+    assert.equal(await terminateBackendTree(root), true);
+    await exited;
+    assert.throws(() => process.kill(descendantPid, 0));
+  } finally {
+    if (!childExited(root)) await terminateBackendTree(root);
+  }
 });

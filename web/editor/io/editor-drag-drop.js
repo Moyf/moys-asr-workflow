@@ -56,8 +56,8 @@
       return;
     }
     // 工程与媒体一起拖入时，媒体随工程自动加载，不再弹窗要求重选。
-    const opened = await MaweMultiImport.openProjectFile(jsonFile, { suppressMediaPrompt: Boolean(mediaFile) });
-    if (opened && mediaFile) await MaweMediaLoad.loadMediaFile(mediaFile);
+    const opened = await MaweMultiImport.openProjectFile(jsonFile, { suppressMediaPrompt: Boolean(mediaFile), mediaFile });
+    if (opened && mediaFile && !window.MOSEDesktop?.pathForFile?.(jsonFile)) await MaweMediaLoad.loadMediaFile(mediaFile);
     return;
   }
   if (reapeaksFile && !mediaFile && !subtitleFile) {

@@ -516,8 +516,8 @@ class EditorAssetContractTests(CompactContainerAssertions, unittest.TestCase):
         self.assertIn("X-MAW-Desktop-Token", main_process)
         self.assertIn("window.postMessage({ source: 'mose-desktop'", preload)
         self.assertIn("desktopOpenProjectUrl", editor_startup)
-        self.assertIn("let suppressBeforeUnload = false;", editor_startup)
-        self.assertIn("suppressBeforeUnload = true;", editor_startup)
+        self.assertIn("!MaweServerSave.suppressBeforeUnload && MaweServerSave.hasUnsavedProjectChanges()", editor_startup)
+        self.assertIn("MaweServerSave.suppressBeforeUnload = true;", editor_startup)
         # A developer checkout may retain ignored artifacts from an older
         # desktop experiment; the source contract is what must stay Tauri-free.
         self.assertNotIn("src-tauri", package_json + main_process + preload + editor_startup)
