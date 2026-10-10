@@ -981,7 +981,9 @@
     llm_model: "模型",
     llm_api_key: "API Key",
     llm_api_key_placeholder: "填写你的 API KEY",
-    llm_custom_provider: "自定义接口（含本地）",
+    llm_custom_provider: "自定义接口（或本地模型）",
+    llm_custom_provider_2: "自定义接口 #2",
+    llm_custom_provider_3: "自定义接口 #3",
     llm_custom_display_name: "自定义显示名称（可选）",
     llm_custom_display_name_placeholder: "自定义显示名称",
     llm_test_connection: "测试连接",
@@ -993,10 +995,10 @@
     llm_models_empty: "供应商没有返回可用模型。",
     llm_model_choices_title: "展开已获取模型列表",
     llm_provider_unknown: "当前选择的供应商",
-    llm_builtin_provider_key_guidance: "{provider} 是内置供应商，请使用其官方控制台获取的 API Key。若 API Key 来自第三方平台，请选择“自定义接口（含本地）”，并按该平台官方文档配置 API URL。",
+    llm_builtin_provider_key_guidance: "{provider} 是内置供应商，请使用其官方控制台获取的 API Key。若 API Key 来自第三方平台，请选择“自定义接口（或本地模型）”，并按该平台官方文档配置 API URL。",
     llm_http_unauthorized: "认证失败（HTTP 401，{operation}）。当前供应商：{provider}。请核对供应商 API URL、API Key 是否来自同一服务商，并正确配置模型名；请勿在错误报告中粘贴你的个人 API Key。",
-    llm_http_unauthorized_builtin: "认证失败（HTTP 401，{operation}）。当前供应商：{provider} 官网；请使用官方控制台获取的 API Key。若 API Key 来自第三方平台，请选择“自定义接口（含本地）”，并按该平台官方文档配置 API URL。",
-    llm_http_unauthorized_custom: "认证失败（HTTP 401，{operation}）。当前供应商：自定义接口（含本地）。请核对供应商 API URL、API Key 是否来自同一服务商，并正确配置模型名；请勿在错误报告中粘贴你的个人 API Key。",
+    llm_http_unauthorized_builtin: "认证失败（HTTP 401，{operation}）。当前供应商：{provider} 官网；请使用官方控制台获取的 API Key。若 API Key 来自第三方平台，请选择“自定义接口（或本地模型）”，并按该平台官方文档配置 API URL。",
+    llm_http_unauthorized_custom: "认证失败（HTTP 401，{operation}）。当前供应商：自定义接口（或本地模型）。请核对供应商 API URL、API Key 是否来自同一服务商，并正确配置模型名；请勿在错误报告中粘贴你的个人 API Key。",
     llm_http_forbidden: "供应商拒绝了请求（HTTP 403，{operation}）。当前供应商：{provider}。请核对供应商、API URL 与 API Key 签发方是否一致，并确认账号或模型有权限；不要在错误报告中粘贴 Key。",
     llm_http_not_found: "接口或模型不存在（HTTP 404，{operation}）。请检查 API URL 的兼容路径和模型 ID；获取模型时还要确认该供应商提供 /models 接口。这个状态通常不是 API Key 问题。",
     llm_http_rate_limited: "请求被限流或额度暂时耗尽（HTTP 429，{operation}）。请稍后重试，降低请求频率或批次大小，并检查当前供应商的额度与限流策略。",
@@ -1035,7 +1037,9 @@
     llm_model: "Model",
     llm_api_key: "API Key",
     llm_api_key_placeholder: "Enter your API key",
-    llm_custom_provider: "Custom API (incl. local)",
+    llm_custom_provider: "Custom API (or local model)",
+    llm_custom_provider_2: "Custom API #2",
+    llm_custom_provider_3: "Custom API #3",
     llm_custom_display_name: "Custom display name (optional)",
     llm_custom_display_name_placeholder: "Custom display name",
     llm_test_connection: "Test connection",
@@ -1047,10 +1051,10 @@
     llm_models_empty: "The provider returned no usable models.",
     llm_model_choices_title: "Show fetched model list",
     llm_provider_unknown: "the selected provider",
-    llm_builtin_provider_key_guidance: "{provider} is a built-in provider. Use an API key obtained from its official console. If the API key came from a third-party platform, choose the Custom API (incl. local) and configure the API URL according to that platform's official documentation.",
+    llm_builtin_provider_key_guidance: "{provider} is a built-in provider. Use an API key obtained from its official console. If the API key came from a third-party platform, choose the Custom API (or local model) and configure the API URL according to that platform's official documentation.",
     llm_http_unauthorized: "Authentication failed (HTTP 401, {operation}). Current provider: {provider}. Check that the API URL and API key come from the same provider, and that the model name is configured correctly; never paste your personal API key into an error report.",
-    llm_http_unauthorized_builtin: "Authentication failed (HTTP 401, {operation}). Current provider: {provider} official service. Use an API key obtained from its official console. If the API key came from a third-party platform, choose the Custom API (incl. local) and configure the API URL according to that platform's official documentation.",
-    llm_http_unauthorized_custom: "Authentication failed (HTTP 401, {operation}). Current provider: Custom API (incl. local). Check that the API URL and API key come from the same provider, and that the model name is configured correctly; never paste your personal API key into an error report.",
+    llm_http_unauthorized_builtin: "Authentication failed (HTTP 401, {operation}). Current provider: {provider} official service. Use an API key obtained from its official console. If the API key came from a third-party platform, choose the Custom API (or local model) and configure the API URL according to that platform's official documentation.",
+    llm_http_unauthorized_custom: "Authentication failed (HTTP 401, {operation}). Current provider: Custom API (or local model). Check that the API URL and API key come from the same provider, and that the model name is configured correctly; never paste your personal API key into an error report.",
     llm_http_forbidden: "The provider rejected the request (HTTP 403, {operation}). Current provider: {provider}. Compare the provider, API URL, and the issuer of the API key, then confirm that the account or model is allowed; never paste the key into an error report.",
     llm_http_not_found: "The endpoint or model was not found (HTTP 404, {operation}). Check the compatible API URL path and model ID; when fetching models, confirm that the provider exposes /models. This is usually not an API-key problem.",
     llm_http_rate_limited: "The request was rate-limited or the quota is temporarily exhausted (HTTP 429, {operation}). Wait and retry, reduce request frequency or batch size, and check the current provider's quota and rate-limit policy.",
@@ -1619,7 +1623,9 @@
           { id: "deepseek", label: "DeepSeek", baseUrl: "https://api.deepseek.com", model: "deepseek-flash", reasoningMode: "off", maskedApiKey: "", verified: false, hasApiKey: false, hasBaseUrl: true, hasModel: true, selected: true },
           { id: "zhipu", label: "智谱 Coding Plan", baseUrl: "https://open.bigmodel.cn/api/coding/paas/v4", model: "glm-5.2", reasoningMode: "off", maskedApiKey: "", verified: false, hasApiKey: false, hasBaseUrl: true, hasModel: true, selected: false },
           { id: "qwen", label: "阿里云 Qwen", baseUrl: "https://dashscope.aliyuncs.com/compatible-mode/v1", model: "qwen-plus", reasoningMode: "off", maskedApiKey: "", verified: false, hasApiKey: false, hasBaseUrl: true, hasModel: true, selected: false },
-          { id: "custom", label: saved.customDisplayName || "Custom API (incl. local)", defaultLabel: "Custom API (incl. local)", displayName: saved.customDisplayName || "", baseUrl: "", model: "", reasoningMode: "off", maskedApiKey: "", verified: false, hasApiKey: false, hasBaseUrl: false, hasModel: false, selected: false }
+          { id: "custom", label: saved.customDisplayName || "Custom API (or local model)", defaultLabel: "Custom API (or local model)", displayName: saved.customDisplayName || "", baseUrl: "", model: "", reasoningMode: "off", maskedApiKey: "", verified: false, hasApiKey: false, hasBaseUrl: false, hasModel: false, selected: false },
+          { id: "custom2", label: "Custom API #2", defaultLabel: "Custom API #2", displayName: "", baseUrl: "", model: "", reasoningMode: "off", maskedApiKey: "", verified: false, hasApiKey: false, hasBaseUrl: false, hasModel: false, selected: false },
+          { id: "custom3", label: "Custom API #3", defaultLabel: "Custom API #3", displayName: "", baseUrl: "", model: "", reasoningMode: "off", maskedApiKey: "", verified: false, hasApiKey: false, hasBaseUrl: false, hasModel: false, selected: false },
         ],
         postprocessAutoPlan: saved.postprocessAutoPlan || { version: 1, enabled: false, retainIntermediate: true, steps: [] },
         modelCacheRoot: saved.modelCacheRoot || "D:\\Models\\MAW",
@@ -1801,7 +1807,7 @@
       save_sticker_dir: async ({ path }) => { saved.stickerDir = path || ""; return { ok: Boolean(path), stickerDir: saved.stickerDir, field: path ? "" : "stickerDir", error: path ? "" : "missing" }; },
       open_sticker_folder: async () => { if (!saved.stickerDir) return { ok: false, code: "sticker_dir_invalid" }; window.__openedStickerFolder = saved.stickerDir; return { ok: true }; },
       get_postprocess_settings: async ({ providerId }) => { const apiKey = saved.postprocessApiKeys[providerId] || ""; return { ok: true, providerId, apiKey, maskedApiKey: apiKey ? "sk-…mock" : "" }; },
-      save_postprocess_settings: async ({ providerId, apiKey, displayName, reasoningMode }) => { if (providerId === "custom") saved.customDisplayName = displayName || ""; if (apiKey) saved.postprocessApiKeys[providerId] = apiKey; return { ok: true, providerId, label: providerId === "custom" ? (displayName || "Custom API (incl. local)") : (providerId === "deepseek" ? "DeepSeek" : (providerId === "zhipu" ? "智谱 Coding Plan" : "阿里云 Qwen")), displayName: providerId === "custom" ? (displayName || "") : "", maskedApiKey: saved.postprocessApiKeys[providerId] ? "sk-…mock" : "", reasoningMode: reasoningMode || "off", verified: false }; },
+      save_postprocess_settings: async ({ providerId, apiKey, displayName, reasoningMode }) => { if (isCustomSlotId(providerId)) saved.customDisplayName = displayName || ""; if (apiKey) saved.postprocessApiKeys[providerId] = apiKey; return { ok: true, providerId, label: isCustomSlotId(providerId) ? (displayName || "Custom API (or local model)") : (providerId === "deepseek" ? "DeepSeek" : (providerId === "zhipu" ? "智谱 Coding Plan" : "阿里云 Qwen")), displayName: isCustomSlotId(providerId) ? (displayName || "") : "", maskedApiKey: saved.postprocessApiKeys[providerId] ? "sk-…mock" : "", reasoningMode: reasoningMode || "off", verified: false }; },
       test_postprocess_connection: async ({ providerId, apiKey, save }) => { if (save && apiKey) saved.postprocessApiKeys[providerId] = apiKey; return { ok: true, providerId, verified: true, saved: Boolean(save), maskedApiKey: saved.postprocessApiKeys[providerId] ? "sk-…mock" : "" }; },
       save_postprocess_plan: async ({ plan }) => { saved.postprocessAutoPlan = plan; return { ok: true, plan }; },
       validate_postprocess_plan: async ({ plan }) => ({ ok: true, plan, errors: [] }),
@@ -2045,13 +2051,20 @@
       el.append(priceElement);
     }
   }
+  // custom / custom2 / custom3 是三个并列的「自定义接口」槽位，共用同一套显示与存储行为。
+  function isCustomSlotId(providerId) { return String(providerId || "").startsWith("custom"); }
+  function customSlotLabelKey(providerId) {
+    const suffix = String(providerId || "").replace("custom", "");
+    return suffix ? `llm_custom_provider_${suffix}` : "llm_custom_provider";
+  }
   function llmProviderLabel(providerId) {
     const id = String(providerId || "").trim();
     const item = state.config?.postprocessProviders?.find((candidate) => candidate.id === id);
-    if (id === "custom" && item?.displayName) return item.displayName;
+    if (isCustomSlotId(id) && item?.displayName) return item.displayName;
+    if (isCustomSlotId(id)) return item?.label || t(customSlotLabelKey(id)) || t("llm_custom_provider");
     const labels = state.lang === "en"
-      ? { deepseek: "DeepSeek", zhipu: "Zhipu Coding Plan", qwen: "Alibaba Qwen", custom: "Custom API (incl. local)" }
-      : { deepseek: "DeepSeek", zhipu: "智谱 Coding Plan", qwen: "阿里云 Qwen", custom: "自定义接口（含本地）" };
+      ? { deepseek: "DeepSeek", zhipu: "Zhipu Coding Plan", qwen: "Alibaba Qwen" }
+      : { deepseek: "DeepSeek", zhipu: "智谱 Coding Plan", qwen: "阿里云 Qwen" };
     return labels[id] || item?.label || t("llm_provider_unknown");
   }
   function llmBuiltInProviderKeyGuidance(context = {}) {

@@ -185,6 +185,7 @@
     const saved = providerIdForTask(operation);
     const select = $("postprocessProvider");
     if (!saved || !select || select.value === saved) return false;
+    if (!Array.from(select.options).some((option) => option.value === saved)) return false;
     select.value = saved;
     renderProvider(saved);
     if ($("llmProvider")) $("llmProvider").value = saved;
@@ -437,8 +438,36 @@
     return providers.find((item) => item.id === providerId) || providers[0];
   }
 
+  // custom / custom2 / custom3 是三个并列的「自定义接口」槽位，共用同一套显示与存储行为。
+  function isCustomSlot(item) { return String(item?.id || "").startsWith("custom"); }
+  function customSlotLabelKey(item) {
+    const suffix = String(item?.id || "").replace("custom", "");
+    return suffix ? `llm_custom_provider_${suffix}` : "llm_custom_provider";
+  }
+  /** 槽位是否已填写 Base URL 与模型名；未配置的自定义槽位不出现在工具箱下拉里。 */
+  function customSlotConfigured(item) { return Boolean(item.hasBaseUrl && item.hasModel); }
+  function customSlotVisibleInToolbox(item) { return !isCustomSlot(item) || item.id === "custom" || customSlotConfigured(item); }
+
+  /** 重建两个供应商下拉：设置页显示全部槽位，工具箱只显示已配置的自定义槽位。 */
+  function fillProviderSelects(preferredProviderId = "") {
+    const providers = window.MAWLauncher.config?.postprocessProviders || [];
+    [$("postprocessProvider"), $("llmProvider")].forEach((select) => {
+      if (!select) return;
+      const previous = select.value || preferredProviderId;
+      select.innerHTML = "";
+      providers.forEach((item) => {
+        if (select.id === "postprocessProvider" && !customSlotVisibleInToolbox(item)) return;
+        select.add(new Option(providerLabel(item), item.id));
+      });
+      const target = previous || preferredProviderId;
+      if (target && Array.from(select.options).some((option) => option.value === target)) select.value = target;
+      else if (preferredProviderId) select.value = preferredProviderId;
+    });
+    syncProviderOptionLabels();
+  }
+
   function providerLabel(item) {
-    if (item.id === "custom") return item.displayName || t("llm_custom_provider") || item.defaultLabel || item.label || CUSTOM_DEFAULT_LABEL;
+    if (isCustomSlot(item)) return item.displayName || t(customSlotLabelKey(item)) || item.defaultLabel || item.label || CUSTOM_DEFAULT_LABEL;
     return item.label || item.defaultLabel || item.id;
   }
 
@@ -563,12 +592,13 @@
   }
 
   function updateCustomDisplayName(value) {
-    const item = provider("custom");
+    const item = isCustomSlot(provider()) ? provider() : provider("custom");
     if (!item) return;
     item.displayName = String(value || "").trim();
     item.label = providerLabel(item);
     syncProviderOptionLabels();
-    if (provider().id === "custom") renderProviderKeyStatus(item);
+    fillProviderSelects();
+    if (provider().id === item.id) renderProviderKeyStatus(item);
   }
 
   function autoSourcePath() {
@@ -753,8 +783,8 @@
     $("llmReasoningMode").value = item.reasoningMode || "off";
     $("llmApiKey").value = "";
     $("llmApiKey").placeholder = "";
-    $("llmCustomDisplayNameField").classList.toggle("hidden", item.id !== "custom");
-    $("llmCustomDisplayName").value = item.id === "custom" ? item.displayName || "" : "";
+    $("llmCustomDisplayNameField").classList.toggle("hidden", !isCustomSlot(item));
+    $("llmCustomDisplayName").value = isCustomSlot(item) ? item.displayName || "" : "";
     clearSettingsErrors();
     setSettingsSaveStatus("");
     renderProviderKeyStatus(item);
@@ -2064,7 +2094,7 @@
       baseUrl: $("llmBaseUrl").value.trim(),
       model: $("llmModel").value.trim(),
       reasoningMode: $("llmReasoningMode").value,
-      displayName: item.id === "custom" ? $("llmCustomDisplayName").value.trim() : "",
+      displayName: isCustomSlot(item) ? $("llmCustomDisplayName").value.trim() : "",
     });
     if (!result.ok) {
       const message = renderSettingsError(result);
@@ -2078,11 +2108,11 @@
     item.hasBaseUrl = Boolean(item.baseUrl);
     item.hasModel = Boolean(item.model);
     item.reasoningMode = result.reasoningMode || $("llmReasoningMode").value || "off";
-    item.displayName = item.id === "custom" ? $("llmCustomDisplayName").value.trim() : "";
+    item.displayName = isCustomSlot(item) ? $("llmCustomDisplayName").value.trim() : "";
     item.label = result.label || providerLabel(item);
     item.maskedApiKey = result.maskedApiKey || item.maskedApiKey;
     item.verified = Boolean(result.verified);
-    syncProviderOptionLabels();
+    fillProviderSelects(item.id);
     renderProviderKeyStatus(item);
     renderAutoPostprocessState();
     setSettingsSaveStatus(t("toolbox_saved"), "success");
@@ -2102,7 +2132,7 @@
         baseUrl: $("llmBaseUrl").value.trim(),
         model: $("llmModel").value.trim(),
         reasoningMode: $("llmReasoningMode").value,
-        displayName: item.id === "custom" ? $("llmCustomDisplayName").value.trim() : "",
+        displayName: isCustomSlot(item) ? $("llmCustomDisplayName").value.trim() : "",
         save: true,
       });
       if (result.ok) {
@@ -2110,7 +2140,7 @@
         item.verified = Boolean(result.verified);
         item.maskedApiKey = result.maskedApiKey || item.maskedApiKey;
         item.hasApiKey = Boolean(result.maskedApiKey || $("llmApiKey").value.trim() || item.hasApiKey);
-        syncProviderOptionLabels();
+        fillProviderSelects(item.id);
         renderProviderKeyStatus(item);
         setSettingsSaveStatus(result.saved ? t("llm_connection_saved") : t("llm_connection_success"), "success");
         renderAutoPostprocessState();
@@ -2429,11 +2459,7 @@
     const config = window.MAWLauncher.config;
     if (!config?.postprocessProviders?.length) return;
     const selectedProvider = config.postprocessProviders.find((item) => item.selected)?.id || config.postprocessProviders[0].id;
-    [$("postprocessProvider"), $("llmProvider")].forEach((select) => {
-      config.postprocessProviders.forEach((item) => select.add(new Option(providerLabel(item), item.id)));
-      select.value = selectedProvider;
-    });
-    syncProviderOptionLabels();
+    fillProviderSelects(selectedProvider);
     renderProvider();
     initializeLlmPrompts();
     initializeAlignmentGapRemove();

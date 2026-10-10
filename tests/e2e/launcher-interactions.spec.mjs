@@ -786,8 +786,8 @@ test('Custom provider labels and missing-key errors follow the selected language
   await expect(settingsCustomOption).toHaveText('OpenAI 通用接口');
 
   await page.evaluate(() => document.getElementById('langEn').click());
-  await expect(customOption).toHaveText('Custom API (incl. local)');
-  await expect(settingsCustomOption).toHaveText('Custom API (incl. local)');
+  await expect(customOption).toHaveText('Custom API (or local model)');
+  await expect(settingsCustomOption).toHaveText('Custom API (or local model)');
   await page.locator('#toolboxLlmTab').click();
   await page.locator('#openLlmSettings').click();
   await page.evaluate(() => {

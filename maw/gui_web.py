@@ -115,7 +115,7 @@ from maw.postprocess_ffmpeg import (
 )
 from maw.postprocess_match import DEFAULT_SPLIT_PUNCTUATION, SCRIPT_EXTENSIONS, MatchCoverageError, ScriptMatchRequest, SubtitleMatchError, _has_complete_item_timings, _match_project, _match_project_with_character_timings, _read_script, prepare_script_text, processed_script_text, run_script_match as process_script_match
 from maw.postprocess_ocr import OcrDedupRequest, OcrRegion
-from maw.postprocess_llm import DEFAULT_REASONING_MODE, LlmClientError, LlmSettings, PRESETS as POSTPROCESS_PRESETS, complete_subtitle_groups, list_llm_models, normalize_reasoning_mode, preset_by_id, test_llm_connection
+from maw.postprocess_llm import DEFAULT_REASONING_MODE, LlmClientError, LlmSettings, PRESETS as POSTPROCESS_PRESETS, complete_subtitle_groups, is_custom_slot, list_llm_models, normalize_reasoning_mode, preset_by_id, test_llm_connection
 from maw.postprocess_pipeline import (
     PostprocessCancelled,
     default_postprocess_plan,
@@ -730,7 +730,7 @@ class LauncherApi:
             "baseUrl": values["baseUrl"] or preset.base_url,
             "model": values["model"] or preset.model,
             "reasoningMode": values["reasoningMode"] or DEFAULT_REASONING_MODE,
-            "displayName": values["displayName"] if preset.id == "custom" else "",
+            "displayName": values["displayName"] if is_custom_slot(preset.id) else "",
         }
 
     def default_output(self, payload: Mapping[str, object]) -> dict[str, object]:
@@ -869,7 +869,7 @@ class LauncherApi:
             f"{preset.env_prefix}_REASONING_MODE": reasoning_mode,
             "MAW_POSTPROCESS_LAST_PROVIDER": preset.id,
         }
-        if preset.id == "custom":
+        if is_custom_slot(preset.id):
             updates[f"{preset.env_prefix}_DISPLAY_NAME"] = display_name
         try:
             save_env(self.paths.env_path, updates)
@@ -898,8 +898,8 @@ class LauncherApi:
         return {
             "ok": True,
             "providerId": preset.id,
-            "label": display_name if preset.id == "custom" and display_name else preset.label,
-            "displayName": display_name if preset.id == "custom" else "",
+            "label": display_name if is_custom_slot(preset.id) and display_name else preset.label,
+            "displayName": display_name if is_custom_slot(preset.id) else "",
             "maskedApiKey": masked_secret(api_key),
             "reasoningMode": reasoning_mode,
             "verified": is_llm_verified(self.paths.env_path, preset.id),
@@ -4319,7 +4319,7 @@ def _postprocess_provider_payloads(env_path: Path) -> list[dict[str, object]]:
     providers: list[dict[str, object]] = []
     for preset in POSTPROCESS_PRESETS:
         values = _postprocess_values(env_path, preset.env_prefix)
-        display_name = values["displayName"] if preset.id == "custom" else ""
+        display_name = values["displayName"] if is_custom_slot(preset.id) else ""
         providers.append({
             "id": preset.id,
             "label": display_name or preset.label,

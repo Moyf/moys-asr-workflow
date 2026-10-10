@@ -336,6 +336,21 @@ class GuiConfigTests(unittest.TestCase):
         self.assertEqual([item.id for item in visible[:divider_index]], ["qwen", "openai", "local"])
         self.assertEqual([item.id for item in visible[divider_index:]], ["doubao", "soniox", "bcut", "deepseek"])
 
+    def test_custom_llm_slots_are_three_parallel_presets(self) -> None:
+        """Given the post-process presets, When custom slots are read, Then three parallel slots exist."""
+        from maw import postprocess_llm
+
+        custom_slots = [preset for preset in postprocess_llm.PRESETS if postprocess_llm.is_custom_slot(preset.id)]
+
+        self.assertEqual([preset.id for preset in custom_slots], ["custom", "custom2", "custom3"])
+        self.assertEqual(
+            [preset.env_prefix for preset in custom_slots],
+            ["MAW_POSTPROCESS_CUSTOM", "MAW_POSTPROCESS_CUSTOM2", "MAW_POSTPROCESS_CUSTOM3"],
+        )
+        self.assertTrue(all(preset.base_url == "" and preset.model == "" for preset in custom_slots))
+        self.assertFalse(postprocess_llm.is_custom_slot("deepseek"))
+        self.assertEqual(postprocess_llm.preset_by_id("custom3").id, "custom3")
+
     def test_provider_registry_contains_deepseek_easter_egg_placeholder(self) -> None:
         """Given the provider registry, When DeepSeek is inspected, Then it is a non-transcribable placeholder."""
         provider = gui_config.provider_by_id("deepseek")
