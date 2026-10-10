@@ -6,12 +6,56 @@ import { fileURLToPath } from 'node:url';
 const siteRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const sourceRoot = path.resolve(process.env.MAW_SOURCE_DIR || path.join(siteRoot, '..'));
 const outputRoot = path.join(siteRoot, 'src', 'pages', 'docs');
+const assetRoot = path.join(siteRoot, 'public', 'docs-assets');
+const imageSources = new Set();
 const githubRoot = 'https://github.com/Moyf/moys-asr-workflow/blob/main';
 const rawRoot = 'https://raw.githubusercontent.com/Moyf/moys-asr-workflow/main';
 
 // Keep this list deliberately curated. Internal notes can stay in the source
 // repository without becoming part of the public site navigation by accident.
 const documents = [
+  {
+    source: 'docs/README.md',
+    slug: 'documentation-index',
+    title: '文档索引',
+    description: '按任务查找使用指南、工程契约与历史记录。',
+  },
+  {
+    source: 'docs/LAUNCHER_GUIDE.md',
+    slug: 'launcher',
+    title: 'Launcher 指南',
+    description: '识别设置、音轨、预设、批量队列和输出目录。',
+  },
+  {
+    source: 'docs/FAQ.md',
+    slug: 'faq',
+    title: '常见问题',
+    description: '启动、FFmpeg、API、媒体加载与保存排错。',
+  },
+  {
+    source: 'docs/TOOLBOX.md',
+    slug: 'toolbox',
+    title: 'Launcher 工具箱',
+    description: '文稿匹配、AI 整理、翻译、时间码与媒体处理。',
+  },
+  {
+    source: 'docs/POSTPROCESS_PIPELINE.md',
+    slug: 'postprocess-pipeline',
+    title: '转写后自动处理',
+    description: '处理步骤、连接预检、中间产物与失败重试。',
+  },
+  {
+    source: 'docs/ASS_STYLES.md',
+    slug: 'ass-styles',
+    title: 'ASS 样式与导出',
+    description: '共享样式库、ASS 预览、特殊文本与多轨呈现。',
+  },
+  {
+    source: 'docs/MULTI_SUBTITLE.md',
+    slug: 'multi-subtitle',
+    title: '多重字幕',
+    description: '主副字幕导入、绑定、联动与导出的完整规则。',
+  },
   {
     source: 'README.md',
     slug: 'getting-started',
@@ -76,7 +120,7 @@ const documents = [
     source: 'docs/MOSE.md',
     slug: 'mose',
     title: '与 MOSE 的关系',
-    description: 'MAW、MAWE 和未来 MOSE 之间的定位与工程格式边界。',
+    description: 'MAW、MAWE 与当前实验桌面目录的定位和工程格式边界。',
   },
   {
     source: 'docs/ASR_PROVIDER_RESEARCH.md',
@@ -117,17 +161,35 @@ function rewriteTarget(target, currentSource) {
   const currentDirectory = path.posix.dirname(currentSource);
   const sourcePath = normalizeSourcePath(path.posix.join(currentDirectory, destination));
   const route = routeBySource.get(sourcePath);
-  return route ? `${siteRoute(route, currentSource)}${suffix}` : externalUrl(sourcePath, suffix);
+  if (route) return `${siteRoute(route, currentSource)}${suffix}`;
+  if (/\.(?:avif|gif|jpe?g|png|svg|webp)$/i.test(sourcePath)) {
+    if (sourcePath === '..' || sourcePath.startsWith('../')) {
+      throw new Error(`图片路径超出源仓库：${target}`);
+    }
+    imageSources.add(sourcePath);
+    // Relative URLs also work when Astro is deployed under BASE_PATH.
+    const assetRoute = `/docs-assets/${sourcePath.split('/').map(encodeURIComponent).join('/')}`;
+    return `${siteRoute(assetRoute, currentSource)}${suffix}`;
+  }
+  return externalUrl(sourcePath, suffix);
 }
 
 function rewriteLinks(markdown, currentSource) {
-  let result = markdown.replace(/(\]\()([^\s][^)]*?)(\))/g, (_, open, target, close) => {
+  // README may also use HTML images; include their local sources in the bundle.
+  let result = markdown.replace(/((?:src|href)=")(?!https?:\/\/|\/|#)([^"\s]+)(")/gi, (_, open, target, close) => {
     return `${open}${rewriteTarget(target, currentSource)}${close}`;
   });
 
-  // README.md contains a couple of raw HTML image tags, which Markdown link
-  // rewriting does not see. Point those assets at the source repository too.
-  result = result.replace(/((?:src|href)=")(?!https?:\/\/|\/|#)([^"\s]+)(")/gi, (_, open, target, close) => {
+  // Astro treats relative Markdown images as source imports. Public assets need
+  // HTML image tags so these URLs resolve from the deployed page instead.
+  result = result.replace(/!\[([^\]]*)\]\(([^\s)]+)\)/g, (original, alt, target) => {
+    if (/^(?:[a-z]+:|\/|#)/i.test(target)) return original;
+    const url = rewriteTarget(target, currentSource);
+    const escape = (value) => value.replaceAll('&', '&amp;').replaceAll('"', '&quot;').replaceAll('<', '&lt;').replaceAll('>', '&gt;');
+    return `<img src="${escape(url)}" alt="${escape(alt)}" loading="lazy" decoding="async" />`;
+  });
+
+  result = result.replace(/(\]\()([^\s][^)]*?)(\))/g, (_, open, target, close) => {
     return `${open}${rewriteTarget(target, currentSource)}${close}`;
   });
 
@@ -143,8 +205,8 @@ function siteRoute(route, currentSource) {
 function sanitizeDocument(markdown, source) {
   if (source !== 'README.md') return markdown;
 
-  // The source README contains a shared demo credential. Keep the public
-  // product explanation, but never publish that credential on the website.
+  // Compatibility guard for older README revisions containing demo credentials.
+  // The current README has no shared credential section.
   return markdown.replace(/\n?<details>[\s\S]*?<\/details>\s*/i, '\n\n> 官网不展示共享演示凭据，请使用你自己的 ASR API Key。\n\n');
 }
 async function readDocument(source) {
@@ -158,6 +220,23 @@ async function readDocument(source) {
     throw new Error(`无法从 GitHub 读取 ${source}（HTTP ${response.status}）`);
   }
   return response.text();
+}
+
+async function syncImages() {
+  for (const source of imageSources) {
+    const localPath = path.join(sourceRoot, ...source.split('/'));
+    let contents;
+    if (existsSync(localPath)) {
+      contents = await readFile(localPath);
+    } else {
+      const response = await fetch(`${rawRoot}/${source}`);
+      if (!response.ok) throw new Error(`无法读取图片 ${source}（HTTP ${response.status}）`);
+      contents = Buffer.from(await response.arrayBuffer());
+    }
+    const outputPath = path.join(assetRoot, ...source.split('/'));
+    await mkdir(path.dirname(outputPath), { recursive: true });
+    await writeFile(outputPath, contents);
+  }
 }
 
 function quote(value) {
@@ -178,9 +257,10 @@ async function main() {
       `source: ${quote(document.source)}`,
       '---',
       '',
-      `<!-- Generated from ${document.source}. Run npm run sync:docs to refresh. -->`,
+      `<!-- Generated from ${document.source}. Run pnpm run sync:docs to refresh. -->`,
       '',
-      rewriteLinks(source, document.source).trim(),
+      // DocLayout already renders the page title; keep one H1 per page.
+      rewriteLinks(source.replace(/^# [^\n]*(?:\n|$)/, ''), document.source).trim(),
       '',
     ].join('\n');
 
@@ -188,7 +268,8 @@ async function main() {
     synced += 1;
   }
 
-  console.log(`已同步 ${synced} 篇 MAW 文档 → ${path.relative(siteRoot, outputRoot)}`);
+  await syncImages();
+  console.log(`已同步 ${synced} 篇 MAW 文档、${imageSources.size} 张配图 → ${path.relative(siteRoot, outputRoot)}`);
   if (sourceRoot === path.resolve(siteRoot, '..')) {
     console.log(`来源：${sourceRoot}`);
   } else {

@@ -110,8 +110,74 @@
   // === 右键菜单 ===
   let ctxLastClickX = 0, ctxLastClickY = 0;
 
+  function createContextSubmenu(label, className = '') {
+    const wrapper = document.createElement('div');
+    wrapper.className = `ctxmenu-submenu ${className}`.trim();
+    const head = document.createElement('button');
+    head.type = 'button';
+    head.className = 'item ctxmenu-submenu-toggle';
+    head.setAttribute('aria-haspopup', 'true');
+    head.setAttribute('aria-expanded', 'false');
+    const text = document.createElement('span');
+    text.textContent = label;
+    const arrow = document.createElement('span');
+    arrow.className = 'ctxmenu-submenu-arrow';
+    arrow.textContent = '›';
+    arrow.setAttribute('aria-hidden', 'true');
+    head.append(text, arrow);
+    const list = document.createElement('div');
+    list.className = 'ctxmenu-submenu-list';
+    list.hidden = true;
+    wrapper.append(head, list);
+    let closeTimer;
+    function setOpen(open) {
+      clearTimeout(closeTimer);
+      if (open) {
+        for (const sibling of wrapper.parentElement.children) {
+          if (sibling !== wrapper && sibling.classList.contains('ctxmenu-submenu')) {
+            sibling.dispatchEvent(new Event('close-submenu'));
+          }
+        }
+      }
+      list.hidden = !open;
+      head.setAttribute('aria-expanded', String(open));
+      if (!open) {
+        list.querySelectorAll('.ctxmenu-submenu').forEach(child => child.dispatchEvent(new Event('close-submenu')));
+        return;
+      }
+      const anchor = head.getBoundingClientRect();
+      const rect = list.getBoundingClientRect();
+      const left = anchor.right + rect.width <= window.innerWidth - 4
+        ? anchor.right : anchor.left - rect.width;
+      list.style.left = `${Math.max(4, Math.min(left, window.innerWidth - rect.width - 4))}px`;
+      list.style.top = `${Math.max(4, Math.min(anchor.top - 4, window.innerHeight - rect.height - 4))}px`;
+      arrow.textContent = left < anchor.left ? '‹' : '›';
+    }
+    wrapper.addEventListener('close-submenu', () => setOpen(false));
+    wrapper.addEventListener('pointerenter', () => setOpen(true));
+    wrapper.addEventListener('pointerleave', () => {
+      closeTimer = setTimeout(() => setOpen(false), 180);
+    });
+    head.addEventListener('click', event => {
+      event.stopPropagation();
+      setOpen(true);
+    });
+    wrapper.addEventListener('keydown', event => {
+      if (event.key === 'ArrowRight' && event.target === head) {
+        event.preventDefault(); event.stopPropagation();
+        setOpen(true);
+        list.querySelector('button, [tabindex="0"]')?.focus();
+      } else if (event.key === 'ArrowLeft' || event.key === 'Escape') {
+        event.preventDefault(); event.stopPropagation();
+        setOpen(false);
+        head.focus();
+      }
+    });
+    return { wrapper, list };
+  }
 
-  function showContextMenu(x, y, idx, waveformTimeMs = null) {
+
+  function showContextMenu(x, y, idx, waveformTimeMs = null, { splitTextMode = null } = {}) {
   ctxLastClickX = x; ctxLastClickY = y;
   MaweDom.ctxmenu.innerHTML = '';
   // 当前条不在选中里 → 立刻选中（但不改变多选）
@@ -121,6 +187,27 @@
     MaweSelection.lastClickedIdx = idx;
   }
   const targetIdxs = isMulti ? [...MaweSelection.selectedIdxs] : [idx];
+  const { wrapper: advanced, list: advancedList } = createContextSubmenu('高级操作', 'word-timing-advanced');
+  advancedList.classList.add('word-timing-advanced-list');
+  const convertWords = document.createElement('button');
+  convertWords.type = 'button';
+  convertWords.className = 'item danger';
+  convertWords.textContent = '字词拆成字幕…';
+  convertWords.addEventListener('click', () => {
+    MaweDom.ctxmenu.classList.remove('show');
+    MaweWordTiming.openConversion(targetIdxs);
+  });
+  const addAdvancedOverlayConvert = (ids) => {
+    const convertOverlay = document.createElement('button');
+    convertOverlay.type = 'button';
+    convertOverlay.className = 'item';
+    convertOverlay.textContent = ids.length > 1 ? `转为叠加字幕 ${ids.length} 条` : '转为叠加字幕';
+    convertOverlay.addEventListener('click', () => {
+      MaweDom.ctxmenu.classList.remove('show');
+      convertMainCuesToOverlay(ids);
+    });
+    advancedList.appendChild(convertOverlay);
+  };
 
   function addItem(label, kbd, fn, opts = {}) {
     const it = document.createElement('div');
@@ -177,25 +264,84 @@
     }
   }
 
+  // 「左右添加字符」子菜单：数据驱动预设 + 自定义输入。插入一律双符号形式；
+  // 「单双符号」设置只影响识别/解析，不影响这里插入的内容。
+  // ASS 特殊文本格式预设仅在当前工程启用 ASS 字幕模式时展示。
+  function visibleWrapCharPresets() {
+    const assMode = MaweSettings.EDITOR_SETTINGS.assMode === true;
+    return (window.AsrEditorUtils.WRAP_CHAR_PRESETS || []).filter(preset => !preset.ass || assMode);
+  }
+  function addWrapCharsSubmenu(targets, container = MaweDom.ctxmenu) {
+    const wrapPresets = visibleWrapCharPresets();
+    const { wrapper: row, list } = createContextSubmenu('左右添加字符');
+    wrapPresets.forEach((preset) => {
+      const entry = document.createElement('div');
+      entry.className = 'item';
+      entry.style.cssText = 'padding:5px 10px;border-radius:var(--radius-sm);';
+      const name = document.createElement('span');
+      name.textContent = preset.label;
+      entry.appendChild(name);
+      const sample = document.createElement('kbd');
+      sample.textContent = `${preset.left}文${preset.right}`;
+      entry.appendChild(sample);
+      entry.addEventListener('click', (e) => {
+        e.stopPropagation();
+        MaweDom.ctxmenu.classList.remove('show');
+        MaweTextProcess.applyWrapChars(targets, preset.left, preset.right, preset.label);
+      });
+      list.appendChild(entry);
+    });
+    const custom = document.createElement('div');
+    custom.className = 'item';
+    custom.style.cssText = 'padding:5px 10px;border-radius:var(--radius-sm);';
+    const customName = document.createElement('span');
+    customName.textContent = '自定义…';
+    custom.appendChild(customName);
+    custom.addEventListener('click', (e) => {
+      e.stopPropagation();
+      MaweDom.ctxmenu.classList.remove('show');
+      MaweTextProcess.openWrapCharsModal(targets);
+    });
+    list.appendChild(custom);
+    container.appendChild(row);
+  }
+
   if (!isMulti) {
-    // 组 1：拆分与跳转。拆分是字幕行右键菜单的首要动作。
-    const splitLabel = Number.isFinite(waveformTimeMs)
-      ? '按音频位置拆分'
-      : '按文字位置拆分';
-    // 「按音频位置拆分」对应波形上的 B；「按文字位置拆分」对应列表内悬停已选行时的 B。
-    const splitKbd = 'B';
-    addItem(splitLabel, splitKbd, () => MaweSplitContext.splitFromContextMenu(idx, x, y, waveformTimeMs));
+    // 组 1：拆分与跳转。拆分是字幕行右键菜单的首要动作；按住 Shift 时
+    // 换成「渐进拆分」（后半句保留整句原文），再按住 Ctrl/Cmd 换成「复制拆分」。
+    const splitLabel = splitTextMode === 'progressive'
+      ? '渐进拆分'
+      : splitTextMode === 'duplicate'
+        ? '复制拆分'
+        : Number.isFinite(waveformTimeMs)
+          ? '按音频位置拆分'
+          : '按文字位置拆分';
+    // 「按音频位置拆分」对应波形上的 B；「渐进拆分」对应 Shift+B；「复制拆分」对应 Ctrl/Cmd+Shift+B。
+    const splitKbd = splitTextMode === 'progressive'
+      ? 'Shift+B'
+      : splitTextMode === 'duplicate'
+        ? 'Ctrl/Cmd+Shift+B'
+        : 'B';
+    addItem(splitLabel, splitKbd, () => MaweSplitContext.splitFromContextMenu(
+      idx, x, y, waveformTimeMs, { splitTextMode },
+    ));
     // 仅「仅选中」模式提供「跳转并播放」——其它两种单击行为本身就会跳转。
     if (MaweSettings.EDITOR_SETTINGS.clickBehavior === 'select-only') {
-      addItem('跳转并播放', 'F', () => {
+      addItem('跳转并播放', '', () => {
         MaweTextCleanup.seekFromWaveform(MaweBoot.DATA.segments[idx].start / 1000);
         if (MaweCoreState.player.paused) MaweMediaPlayback.togglePlayback();
       });
     }
+    // 试听：只播放该字幕自身的时间范围，到终点自动暂停；F 为全局快捷键。
+    addItem('试听', 'F', () => {
+      const segment = MaweBoot.DATA.segments[idx];
+      MaweMediaPlayback.auditionRange(segment.start, segment.end);
+    });
     addSep();
-    // 组 2：外观（表情包与颜色）
-    addItem('分配表情包…', 'T', () => MaweStickerPicker.openStickerPicker([idx], false));
-    if (MaweBoot.DATA.segments[idx].sticker || MaweBoot.DATA.segments[idx].sticker_ref) {
+    // 组 2：外观（表情包与颜色）；表情包功能关闭时隐藏分配入口
+    const stickersEnabled = MaweSettings.EDITOR_SETTINGS.stickersEnabled !== false;
+    if (stickersEnabled) addItem('分配表情包…', 'T', () => MaweStickerPicker.openStickerPicker([idx], false));
+    if (stickersEnabled && (MaweBoot.DATA.segments[idx].sticker || MaweBoot.DATA.segments[idx].sticker_ref)) {
       addItem('删除表情包', '', () => {
         MaweStickerPicker.removeStickerCascade(idx);
         MaweCuePanel.renderAll();
@@ -204,7 +350,7 @@
     }
     addColorSubmenu(targetIdxs);
     if (colorGroupHeadIndex(idx) >= 0) {
-      addItem('从颜色组中脱离', '', () => detachColorFromGroup(idx));
+      addItem('移出颜色组', '', () => detachColorFromGroup(idx));
     }
     addSep();
     // 组 3：状态与删除
@@ -222,21 +368,22 @@
         MaweBindingAlign.unbindSelectedSubtitlePair();
       });
     }
-    addSep();
-    // 组 4：叠加字幕轨迁移。叠加轨与多重字幕互相独立，转换随时可用。
-    addItem('转为叠加字幕', '', () => convertMainCuesToOverlay([idx]));
+    // 低频动作收进高级操作：左右添加字符（淡出淡入、音符等单条场景）与叠加轨迁移。
+    addWrapCharsSubmenu(targetIdxs, advancedList);
+    addAdvancedOverlayConvert([idx]);
   } else {
     // 组 1：合并与批量文本操作
     addItem(`合并 ${targetIdxs.length} 条字幕`, 'C', () => MaweSegmentOps.mergeSegments(targetIdxs));
     addItem('批量替换选中字幕…', '', () => MaweFindReplace.openReplaceModal(targetIdxs));
     addSep();
-    // 组 2：外观（表情包与颜色）；「拓展表情包时长」仅在范围内已有表情包时显示
-    const hasStickerInRange = targetIdxs.some(i =>
+    // 组 2：外观（表情包与颜色）；「延长表情包」仅在范围内已有表情包时显示
+    const stickersEnabled = MaweSettings.EDITOR_SETTINGS.stickersEnabled !== false;
+    const hasStickerInRange = stickersEnabled && targetIdxs.some(i =>
       MaweBoot.DATA.segments[i].sticker || MaweBoot.DATA.segments[i].sticker_ref);
     if (hasStickerInRange) {
-      addItem('拓展表情包时长', '', () => MaweStickerPicker.expandStickerTime(targetIdxs));
+      addItem('延长表情包', '', () => MaweStickerPicker.expandStickerTime(targetIdxs));
     }
-    addItem('统一分配表情包…', 'T', () => MaweStickerPicker.openStickerPicker(targetIdxs, true));
+    if (stickersEnabled) addItem('分配表情包…', 'T', () => MaweStickerPicker.openStickerPicker(targetIdxs, true));
     addColorSubmenu(targetIdxs);
     addSep();
     // 组 3：状态与删除
@@ -246,13 +393,17 @@
       '',
       () => MaweStickerPicker.toggleDisabled(targetIdxs)
     );
-    addItem(`转为叠加字幕 ${targetIdxs.length} 条`, '', () => convertMainCuesToOverlay(targetIdxs));
     addItem(`删除 ${targetIdxs.length} 条字幕`, 'Delete', () => {
       MaweSegmentOps.deleteSegments(targetIdxs);
     }, { danger: true });
     addItem('取消选择', `${MaweDisplaySettings.modKeyLabel()}+D`, () => MaweSelection.clearSelection());
+    addWrapCharsSubmenu(targetIdxs, advancedList);
+    addAdvancedOverlayConvert(targetIdxs);
   }
 
+  if (MaweWordTiming.enabled) advancedList.appendChild(convertWords);
+  addSep();
+  MaweDom.ctxmenu.appendChild(advanced);
   // 调整 ctxmenu 位置（避免溢出）
   MaweDom.ctxmenu.classList.add('show');
   const rect = MaweDom.ctxmenu.getBoundingClientRect();

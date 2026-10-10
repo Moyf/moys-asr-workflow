@@ -24,11 +24,13 @@
   Object.assign(helpers, window.MAWE.resolve('utils-gap-remove', helpers));
   Object.assign(helpers, window.MAWE.resolve('utils-history', helpers));
   Object.assign(helpers, window.MAWE.resolve('utils-multi-subtitle', helpers));
+  const wordTimingHelpers = window.MAWE.resolve('utils-word-timing', helpers);
   Object.assign(helpers, window.MAWE.resolve('utils-word-split', helpers));
   Object.assign(helpers, window.MAWE.resolve('utils-srt', helpers));
   Object.assign(helpers, window.MAWE.resolve('utils-lrc', helpers));
   Object.assign(helpers, window.MAWE.resolve('utils-ass-style', helpers));
   Object.assign(helpers, window.MAWE.resolve('utils-ass-animation', helpers));
+  Object.assign(helpers, window.MAWE.resolve('utils-ass-canvas-layout', helpers));
   Object.assign(helpers, window.MAWE.resolve('utils-ass-export', helpers));
   Object.assign(helpers, window.MAWE.resolve('utils-export-plan', helpers));
   Object.assign(helpers, window.MAWE.resolve('utils-fcp7', helpers));
@@ -67,6 +69,7 @@
     MARKERS_SCHEMA,
     MARKER_DEFAULT_COLOR,
     MARKER_MIN_VISIBLE_PERCENT,
+    MARKER_POINT_MIN_VISIBLE_PERCENT,
     MARKER_NAME_MAX_LENGTH,
     MARKER_NOTE_MAX_LENGTH,
     MARKER_PRESET_COLORS,
@@ -96,9 +99,16 @@
     applySplitEdgeTrim,
     applySubtitleExtension,
     applyTextProcessing,
+    parseSentenceFadeMarkers,
+    stripSentenceFadeMarkers,
     applyTimedTextEdit,
     assAnimationOverrideTags,
     assAlphaFromOpacity,
+    assCanvasAlignmentGrid,
+    assCanvasAnchorPoint,
+    assCanvasBlockTopY,
+    assCanvasLineOffsetX,
+    assCanvasLayoutLines,
     assColorFromHex,
     assCssColorWithOpacity,
     assEmphasisRuns,
@@ -106,6 +116,7 @@
     assPreviewAnimationState,
     assPreviewStyleAt,
     assProfileForId,
+    assSentenceFadeTags,
     assStyleForId,
     assStyleLine,
     assStyleVariant,
@@ -298,9 +309,13 @@
     timedTextItemCoverage,
     timedTextItemReuse,
     uniqueStableSegmentId,
+    WRAP_CHAR_PRESETS,
+    isTextWrappedBy,
+    wrapCharsAroundText,
   } = helpers;
 
 window.AsrEditorUtils = {
+  ...wordTimingHelpers,
     PROJECT_SCHEMA,
     supportsProjectSchema,
     subtitleFontFamilyDisplayName,
@@ -328,7 +343,12 @@ window.AsrEditorUtils = {
     resolveKeyboardOperationReference,
     buildReplacementPreview,
     applyTextProcessing,
+    parseSentenceFadeMarkers,
+    stripSentenceFadeMarkers,
     buildTextProcessingPreview,
+    WRAP_CHAR_PRESETS,
+    isTextWrappedBy,
+    wrapCharsAroundText,
     buildTimedTextDiff,
     timedTextItemCoverage,
     timedTextItemReuse,
@@ -345,6 +365,7 @@ window.AsrEditorUtils = {
     isShortSubtitleText,
     MARKER_DEFAULT_COLOR,
     MARKER_MIN_VISIBLE_PERCENT,
+    MARKER_POINT_MIN_VISIBLE_PERCENT,
     MARKER_NAME_MAX_LENGTH,
     MARKER_NOTE_MAX_LENGTH,
     MARKER_PRESET_COLORS,
@@ -514,6 +535,12 @@ window.AsrEditorUtils = {
     assTransformStyleTargets,
     assPreviewStyleAt,
     assPreviewAnimationState,
+    assSentenceFadeTags,
+    assCanvasAlignmentGrid,
+    assCanvasAnchorPoint,
+    assCanvasBlockTopY,
+    assCanvasLineOffsetX,
+    assCanvasLayoutLines,
     buildAssPayload,
     buildPlainTextPayload,
     fileBasename,

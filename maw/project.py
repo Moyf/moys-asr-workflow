@@ -225,6 +225,8 @@ def _normalize_copy(project: JsonValue, errors: list[ProjectValidationError]) ->
     if "schema" in normalized and schema != PROJECT_SCHEMA:
         errors.append(ProjectValidationError("$.schema", f"must be {PROJECT_SCHEMA}"))
     normalized["schema"] = PROJECT_SCHEMA
+    if "preserve_punctuation" in normalized and type(normalized["preserve_punctuation"]) is not bool:
+        errors.append(ProjectValidationError("$.preserve_punctuation", "must be a boolean"))
     _validate_timebase(normalized, errors)
     _validate_media_metadata(normalized, errors)
     segments = normalized.get("segments")

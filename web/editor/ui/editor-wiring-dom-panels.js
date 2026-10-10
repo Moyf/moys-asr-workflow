@@ -438,13 +438,10 @@ const assStyleLibraryPathHint = document.getElementById('ass-style-library-path-
   MaweDom.gapRemovePanel,
   MaweDom.autoMergePanel,
   MaweDom.subtitleExtendPanel,
-  MaweDom.mergeJoinSettingsPanel,
-  MaweDom.splitTrimSettingsPanel,
   MaweDom.cueListSettingsPanel,
   MaweDom.cueEditorSettingsPanel,
   MaweDom.waveformSettingsPanel,
-  MaweDom.multiSubtitleSettingsDropdown,
-  document.getElementById('sticker-root-modal'),
+  document.getElementById('project-settings-panel'),
   ...document.querySelectorAll('.toolbar .dropdown'),
 ].forEach(MaweFloatingPanel.bindFloatingSurfaceActivation);
 

@@ -71,11 +71,16 @@
   // buildCueEl/buildMultiCueColumn 已经按当前搜索词生成了文本；这里仅
   // 计算隐藏状态和数量，避免长工程 renderAll() 再逐行重建一遍文本节点。
   MaweSearch.applySearch(MaweDom.searchEl.value, { refreshText: false, preserveCueListScroll: false });
-  // 重新应用选中样式（idx 不变时还有效；如果有 splice 改了顺序就先 clearSelection）
-  MaweSelection.selectedIdxs.forEach(i => {
-    const el = MaweCoreState.container.querySelector(`.cue[data-idx="${i}"]`);
-    if (el) el.classList.add('selected');
-  });
+  // 重新应用选中样式（idx 不变时还有效；如果有 splice 改了顺序就先 clearSelection）。
+  // 长工程下逐选中项 querySelector 是 O(选中数 × 行数)，全选几千条会冻结
+  // 数秒；这里单次扫描列表行，用选中集合判断。
+  if (MaweSelection.selectedIdxs.size) {
+    const selected = MaweSelection.selectedIdxs;
+    MaweCoreState.container.querySelectorAll(':scope > .cue').forEach((el) => {
+      const idx = el.dataset.idx != null ? Number(el.dataset.idx) : NaN;
+      if (selected.has(idx)) el.classList.add('selected');
+    });
+  }
   // 字幕结构变化只需更新波形上的字幕块覆盖层；媒体峰值和行 Canvas
   // 没有变化，避免 B/C/删除等操作重新绘制整组波形。
   MaweSelection.updateMultiSelectionClasses();
@@ -279,6 +284,7 @@
     return false;
   }
   ensureCuePanelUndo();
+  const previousText = seg.text;
   seg.text = nextText;
   seg.start = newStart;
   seg.end = Math.max(newStart + minimumDurationMs, newEnd);
@@ -288,6 +294,7 @@
   }
   if (target.kind === 'main') {
     seg.items = remapPanelItems(seg.items, oldStart, oldEnd, seg.start, seg.end);
+    MaweWordTiming.syncTextChange(seg, previousText);
   }
   seg._dirty = true;
   const timingChanged = seg.start !== oldStart || seg.end !== oldEnd;
@@ -442,6 +449,10 @@
       index: target.index,
       trackId: target.trackId,
       text: target.segment.text || '',
+      // Esc 还原时字词时间码要与文字一起回到会话开始的状态（输入过程可能
+      // 已按等长替换同步过 items）。
+      items: target.kind === 'main' && Array.isArray(target.segment.items)
+        ? JSON.parse(JSON.stringify(target.segment.items)) : null,
       dirty: dirtyFlagSnapshot(target.segment),
       multiDirty: target.kind === 'extension' ? {
         state: dirtyFlagSnapshot(multi),
@@ -463,6 +474,7 @@
         || snapshot.index !== target.index
         || snapshot.trackId !== target.trackId) return false;
     target.segment.text = snapshot.text;
+    if (Array.isArray(snapshot.items)) target.segment.items = JSON.parse(JSON.stringify(snapshot.items));
     restoreDirtyFlag(target.segment, snapshot.dirty);
     if (snapshot.multiDirty) {
       const multi = MaweMultiSubtitleCore.getMultiSubtitleState();
@@ -590,8 +602,92 @@
   MaweSplitCore.splitAtCursor(null, { listFeedback: false });
 }
 
+
+
+  // === 拖动提交补丁 ===
+  // 长工程下 renderAll() 全量重建整张字幕列表（几千条时每次松手冻结数百毫秒，
+  // 全选状态下秒级；研究见 docs/PERF_CUE_DRAG_RESEARCH.md）。时间类拖动提交
+  // 只需更新受影响行的时间/字数/dirty 显示并修复列表顺序，不必重建 DOM。
+
+  function patchCueRowTime(el, segment) {
+  if (!el || !segment) return;
+  const timeStart = el.querySelector('.time-start');
+  const timeEnd = el.querySelector('.time-end');
+  if (timeStart) timeStart.textContent = MaweCueElements.fmtShort(segment.start);
+  if (timeEnd) timeEnd.textContent = MaweCueElements.fmtShort(segment.end);
+  const cntEl = el.querySelector('.charcount');
+  if (cntEl) {
+    MaweCueElements.applyCharCount(
+      cntEl,
+      segment.text,
+      MaweMultiSubtitleCore.getMainSubtitleSplitMode(segment),
+    );
+  }
+  el.classList.toggle('dirty', Boolean(segment._dirty));
+}
+
+
+
+  // 列表行的排序键与 renderAll 的 rows.sort 一致：按 start 升序，
+  // 同 start 时主轨行在前、叠加行在后。
+  function cueListRowSortKey(el) {
+  const overlayIdx = el.dataset.overlayIdx != null ? Number(el.dataset.overlayIdx) : NaN;
+  if (Number.isInteger(overlayIdx)) {
+    const segment = getOverlayTrack()?.segments?.[overlayIdx];
+    return segment ? segment.start * 2 + 1 : Number.MAX_SAFE_INTEGER;
+  }
+  const mainIdx = el.dataset.idx != null ? Number(el.dataset.idx) : NaN;
+  const segment = Number.isInteger(mainIdx) ? MaweBoot.DATA.segments[mainIdx] : null;
+  return segment ? segment.start * 2 : Number.MAX_SAFE_INTEGER;
+}
+
+
+
+  // 就地修复被拖动行破坏的列表顺序：只搬移违序行，不重建列表。
+  function repairCueListRowOrder(rows) {
+  for (let i = 1; i < rows.length; i += 1) {
+    const key = cueListRowSortKey(rows[i]);
+    if (key >= cueListRowSortKey(rows[i - 1])) continue;
+    let j = i - 1;
+    while (j > 0 && cueListRowSortKey(rows[j - 1]) > key) j -= 1;
+    MaweCoreState.container.insertBefore(rows[i], rows[j]);
+    rows.splice(j, 0, rows.splice(i, 1)[0]);
+  }
+}
+
+
+
+  function patchCueRows({ mainIndices = [], overlayIndices = [] } = {}) {
+  if (MaweMultiSubtitleCore.multiSubtitleVisible() || (!mainIndices.length && !overlayIndices.length)) {
+    renderAll({ waveform: 'none' });
+    return;
+  }
+  // 与 renderAll 相同：重绘前把其它入口以毫秒写入的时间投影回当前时间基准。
+  MaweTimeline.syncProjectTimebaseAndBindingOffsets(MaweBoot.DATA, { preferFrames: false });
+  MaweStickerOverlay.stickerOverlayDataVersion += 1;
+  const mainSet = new Set(mainIndices);
+  const overlaySet = new Set(overlayIndices);
+  const overlaySegments = getOverlayTrack()?.segments || [];
+  const rows = [];
+  MaweCoreState.container.querySelectorAll(':scope > .cue').forEach((el) => {
+    rows.push(el);
+    const overlayIdx = el.dataset.overlayIdx != null ? Number(el.dataset.overlayIdx) : NaN;
+    if (Number.isInteger(overlayIdx)) {
+      if (overlaySet.has(overlayIdx)) patchCueRowTime(el, overlaySegments[overlayIdx]);
+      return;
+    }
+    const mainIdx = el.dataset.idx != null ? Number(el.dataset.idx) : NaN;
+    if (Number.isInteger(mainIdx) && mainSet.has(mainIdx)) {
+      patchCueRowTime(el, MaweBoot.DATA.segments[mainIdx]);
+    }
+  });
+  repairCueListRowOrder(rows);
+  renderCurrentCuePanel();
+}
+
   global.MaweCuePanel = Object.freeze({
     renderAll,
+    patchCueRows,
     parsePanelTime,
     remapPanelItems,
     getCurrentCuePanelTarget,

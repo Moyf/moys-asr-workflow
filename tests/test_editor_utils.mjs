@@ -19,11 +19,27 @@ const i18nContext = { window: {} };
 vm.runInNewContext(i18nSource, i18nContext);
 const i18n = i18nContext.window.MAWE_I18N;
 
+test('translates word-timing audition, editing history and synced text feedback', () => {
+  assert.equal(i18n.translateText('试听', 'en'), 'Audition');
+  assert.equal(i18n.translateText('请先导入媒体，然后才能试听', 'en'), 'Import media before auditioning');
+  assert.equal(i18n.translateText('调整字词时间码', 'en'), 'Adjust word timings');
+  assert.equal(i18n.translateText('已修改 3 行，其中 2 行的字词时间码文字已同步', 'en'), 'Modified 3 row(s); word-timing text synced in 2 row(s)');
+  assert.equal(i18n.translateText('已修改 3 行', 'en'), 'Modified 3 row(s)');
+  assert.equal(i18n.translateText('已撤销：调整字词时间码（剩 2 步）', 'en'), 'Undone: Adjust word timings (2 step(s) remaining)');
+  assert.equal(i18n.translateText('已重做：调整字词时间码（剩 1 步）', 'en'), 'Redone: Adjust word timings (1 step(s) remaining)');
+  assert.equal(i18n.translateText('试听', 'zh'), '试听');
+});
+
 test('translates macOS help gestures after platform labels are applied', () => {
   assert.equal(i18n.translateText('Cmd+点击', 'en'), 'Cmd+click');
   assert.equal(i18n.translateText('Cmd+拖拽空白处', 'en'), 'Cmd+drag blank area');
   assert.equal(i18n.translateText('Cmd+Shift+滚轮', 'en'), 'Cmd+Shift+wheel');
   assert.equal(i18n.translateText('Cmd+点击', 'zh'), 'Cmd+点击');
+});
+
+test('translates the progressive and duplicate split menu labels', () => {
+  assert.equal(i18n.translateText('渐进拆分', 'en'), 'Progressive split');
+  assert.equal(i18n.translateText('复制拆分', 'en'), 'Duplicate split');
 });
 
 test('accepts legacy and current project schemas but rejects unknown versions', () => {
@@ -155,8 +171,8 @@ test('translates the ASS style manager labels and dynamic summaries', () => {
   assert.equal(i18n.translateText('作为字幕颜色', 'en'), 'As text color');
   assert.equal(i18n.translateText('作为说话人名称颜色', 'en'), 'As speaker name color');
   assert.equal(i18n.translateText('作为描边颜色', 'en'), 'As outline color');
-  assert.equal(i18n.translateText('无影响', 'en'), 'No effect');
-  assert.equal(i18n.translateText('自定义颜色色值', 'en'), 'Custom color values');
+  assert.equal(i18n.translateText('不生效', 'en'), 'No effect');
+  assert.equal(i18n.translateText('自定义色值', 'en'), 'Custom color values');
   assert.equal(i18n.translateText('恢复默认', 'en'), 'Restore defaults');
   assert.equal(i18n.translateText('读取本机字体', 'en'), 'Read local fonts');
   assert.equal(i18n.translateText('已读取 3 种本机字体', 'en'), 'Read 3 local font families');
@@ -203,8 +219,8 @@ test('translates ASS special text format samples and rule hints for every symbol
   // 不会把普通字幕文本误判成示例。
   assert.equal(i18n.translateText('*重要*', 'en'), '*重要*');
   assert.equal(i18n.translateText('**强调** 前后', 'en'), '**强调** 前后');
-  assert.equal(i18n.translateText('特殊符号规则已关闭，字幕中的符号将保留原文。', 'en'),
-    'Special symbol rules are off; symbols in subtitles keep their literal text.');
+  assert.equal(i18n.translateText('符号规则已关闭，字幕中的符号将保留原文。', 'en'),
+    'Symbol rules are off; symbols in subtitles keep their literal text.');
   assert.equal(
     i18n.translateText('你可以使用 *强调*、~删除~、-缩小-、+放大+ 等符号来对特定字词添加特殊样式。', 'en'),
     'Use *emphasis*, ~strike~, -smaller-, and +larger+ to apply special styles to individual words.',
@@ -394,6 +410,10 @@ test('normalizes editor settings without preserving invalid persisted values', (
   assert.equal(helpers.normalizeEditorSettings({ assEmphasisSyntax: 'single' }).assEmphasisSyntax, 'both');
   assert.equal(helpers.normalizeEditorSettings({ assEmphasisSyntax: 'invalid' }).assEmphasisSyntax, 'both');
   assert.equal(settings.pauseOnMouseClick, false);
+  assert.equal(helpers.normalizeEditorSettings({ markerEditingEnabled: true }).markerEditingEnabled, true);
+  assert.equal(helpers.normalizeEditorSettings({ markerEditingEnabled: 1 }).markerEditingEnabled, false);
+  assert.equal(helpers.normalizeEditorSettings({ stickersEnabled: false }).stickersEnabled, false);
+  assert.equal(helpers.normalizeEditorSettings({}).stickersEnabled, true);
   assert.equal(helpers.normalizeEditorSettings({ pauseOnMouseClick: true }).pauseOnMouseClick, true);
   assert.equal(helpers.normalizeEditorSettings({ pauseOnMouseClick: 1 }).pauseOnMouseClick, false);
   assert.equal(settings.subtitleColorPaletteEnabled, false);
@@ -1494,24 +1514,31 @@ test('builds immutable-shaped history records for each editor history kind', () 
   });
 });
 
+test('buildHistoryRecord can attach a pre-cloned snapshot without re-cloning', () => {
+  const preCloned = { segments: [{ text: 'a' }] };
+  const record = helpers.buildHistoryRecord('segments', '', preCloned, null, { clone: false });
+  assert.equal(record.segs, preCloned);
+  assert.equal(record.label, '编辑');
+});
+
 
 test('translates editor project controls and dynamic save messages to English', () => {
   assert.equal(i18n.translateText('保存工程', 'en'), 'Save project');
   assert.equal(i18n.translateText('自动打开上次工程', 'en'), 'Automatically open last project');
   assert.equal(i18n.translateText('上次打开：demo.json', 'en'), 'Last opened: demo.json');
-  assert.equal(i18n.translateText('已加载媒体：synthetic.wav', 'en'), 'Media loaded: synthetic.wav');
+  assert.equal(i18n.translateText('已导入媒体：synthetic.wav', 'en'), 'Media loaded: synthetic.wav');
   assert.equal(i18n.translateText('保存成功！', 'en'), 'Saved!');
   assert.equal(i18n.translateText('字幕忍者', 'en'), 'Subtitle Ninja');
-  assert.equal(i18n.translateText('显示刀光特效', 'en'), 'Show slash effect');
-  assert.equal(i18n.translateText('文字大小', 'en'), 'Font size');
+  assert.equal(i18n.translateText('刀光特效', 'en'), 'Slash effect');
+  assert.equal(i18n.translateText('字号', 'en'), 'Font size');
   assert.equal(i18n.translateText('界面', 'en'), 'Interface');
   assert.equal(i18n.translateText('媒体', 'en'), 'Media');
   assert.equal(i18n.translateText('外观', 'en'), 'Appearance');
   assert.equal(i18n.translateText('语言', 'en'), 'Language');
   assert.equal(i18n.translateText('主题', 'en'), 'Theme');
-  assert.equal(i18n.translateText('明亮模式', 'en'), 'Light mode');
-  assert.equal(i18n.translateText('暗色模式', 'en'), 'Dark mode');
-  assert.equal(i18n.translateText('跟随系统', 'en'), 'Follow System');
+  assert.equal(i18n.translateText('浅色', 'en'), 'Light');
+  assert.equal(i18n.translateText('深色', 'en'), 'Dark');
+  assert.equal(i18n.translateText('自动', 'en'), 'Auto');
   assert.equal(i18n.translateText('强调色', 'en'), 'Accent Color');
   assert.equal(i18n.translateText('蓝色', 'en'), 'Blue');
   assert.equal(i18n.translateText('红色', 'en'), 'Red');
@@ -1543,7 +1570,7 @@ test('translates editor project controls and dynamic save messages to English', 
   assert.equal(i18n.translateText('将选中的副字幕的时长对齐到绑定主字幕', 'en'), 'Align the selected secondary subtitle durations to their bound main subtitles');
   assert.equal(i18n.translateText('无选中时前后跳转（时长：', 'en'), 'Seek back/forward with no selection (duration:');
   assert.equal(i18n.translateText('⚙️设置按钮', 'en'), '⚙️ Settings button');
-  assert.equal(i18n.translateText('⚙️全局设置', 'en'), '⚙️ Global settings');
+  assert.equal(i18n.translateText('全局设置', 'en'), 'Global settings');
   assert.equal(i18n.translateText('仅在拖动边界模式生效', 'en'), 'Only active in Boundary drag mode');
   assert.equal(i18n.translateText('仅在中键拖动模式生效', 'en'), 'Only active in Middle-button drag mode');
   assert.equal(
@@ -1551,8 +1578,8 @@ test('translates editor project controls and dynamic save messages to English', 
     'The exact behavior depends on',
   );
   assert.equal(
-    i18n.translateText('「通用操作」中的「空隙区段操作方式」，其中「边界与中键」可同时使用两套操作。', 'en'),
-    '“Gap region operation” under “General” in Global settings; “Boundary and middle” enables both operation sets.',
+    i18n.translateText('「高级编辑」中的「空隙编辑」，其中「边界与中键」可同时使用两套操作。', 'en'),
+    '“Gap editing” under “Advanced editing” in Global settings; “Boundary and middle” enables both operation sets.',
   );
   assert.equal(i18n.translateText('操作支持撤销/重做。', 'en'), 'Operations support undo/redo.');
   assert.equal(i18n.translateText('处理范围', 'en'), 'Scope');
@@ -1566,13 +1593,13 @@ test('translates editor project controls and dynamic save messages to English', 
     'Batch replace and text processing can be limited by checking “Only process selected subtitles”',
   );
   assert.equal(i18n.translateText('注：微调幅度可在', 'en'), 'Note: Adjust the fine-tuning amount in');
-  assert.equal(i18n.translateText('「通用操作」中调节，默认 50ms', 'en'), 'under “General” in Global settings; the default is 50 ms');
+  assert.equal(i18n.translateText('「高级编辑」中调节，默认 50ms', 'en'), 'under “Advanced editing” in Global settings; the default is 50 ms');
   assert.equal(i18n.translateText('波形区操作', 'en'), 'Waveform actions');
   assert.equal(i18n.translateText('切换空隙的启用/禁用状态', 'en'), 'Toggle whether the gap is enabled');
   assert.equal(i18n.translateText('添加新的移除空隙', 'en'), 'Add a new removed gap');
   assert.equal(
-    i18n.translateText('点击「生成静音空隙」按当前参数扫描并替换检测结果', 'en'),
-    'Click “Generate silence gaps” to scan with the current parameters and replace the detection results',
+    i18n.translateText('点击「扫描静音」按当前参数扫描并替换检测结果', 'en'),
+    'Click “Scan for silence” to scan with the current parameters and replace the results',
   );
   assert.equal(
     i18n.translateText('点击「进一步收缩空隙」在现有结果上继续收缩', 'en'),
@@ -1611,7 +1638,7 @@ test('translates editor project controls and dynamic save messages to English', 
 
 test('translates adjacent adjustment and current-cue operation settings to English', () => {
   assert.equal(i18n.translateText('字幕时间调整', 'en'), 'Subtitle timing adjustment');
-  assert.equal(i18n.translateText('自动吸附调整相邻字幕', 'en'), 'Automatically snap-adjust adjacent subtitles');
+  assert.equal(i18n.translateText('联动调整相邻字幕', 'en'), 'Link adjacent subtitles');
   assert.equal(
     i18n.translateText('开启后，拖动或微调同轨相邻字幕时默认保持联动；按住 Alt 临时解除。关闭后默认独立调整；按住 Alt 临时联动', 'en'),
     'When enabled, dragging or fine-tuning adjacent cues on the same track links them by default; hold Alt to temporarily separate them. When disabled, they adjust independently by default; hold Alt to temporarily link them.',
@@ -1665,18 +1692,17 @@ test('translates speaker label separator settings to English', () => {
   assert.equal(i18n.translateText('字幕颜色', 'en'), 'Subtitle colors');
   assert.equal(i18n.translateText('说话人', 'en'), 'Speaker');
   assert.equal(i18n.translateText('颜色与说话人', 'en'), 'Colors and speakers');
-  assert.equal(i18n.translateText('将颜色映射为说话人', 'en'), 'Map colors to speakers');
-  assert.equal(i18n.translateText('在预览字幕中显示说话人', 'en'), 'Show speaker names in preview subtitles');
+  assert.equal(i18n.translateText('颜色对应说话人', 'en'), 'Map colors to speakers');
+  assert.equal(i18n.translateText('预览显示说话人', 'en'), 'Show speakers in preview');
   assert.equal(
-    i18n.translateText('使用说话人名称替代颜色后缀', 'en'),
-    'Use speaker name instead of the color suffix',
+    i18n.translateText('用说话人作为后缀', 'en'),
+    'Use speaker names as filename suffixes',
   );
   assert.equal(
     i18n.translateText('在导出的字幕开头加上说话人。只影响导出后的字幕，不会改动工程里的字幕文本。', 'en'),
     'Add the speaker name at the beginning of exported subtitles. This only affects exported subtitles and does not change the subtitle text in the project.',
   );
-  assert.equal(i18n.translateText('🤓👆 你可以在', 'en'), '🤓👆 You can configure color-to-speaker names in');
-  assert.equal(i18n.translateText('中配置颜色对应的说话人名。', 'en'), ' settings.');
+  assert.equal(i18n.translateText('颜色与说话人', 'en'), 'Colors and speakers');
   assert.equal(
     i18n.translateText('设置说话人名称与字幕内容之间的分隔符；默认「：」，也可以使用空格或英文引号', 'en'),
     'Set the separator between the speaker name and subtitle text; the default is “：”, and spaces or English quotation marks are also supported',
@@ -1685,19 +1711,19 @@ test('translates speaker label separator settings to English', () => {
     i18n.translateText('配置颜色对应的说话人名称；留空可隐藏该颜色的名称。分隔符默认「：」，支持空格和英文引号。仅影响预览，不改变字幕文本。', 'en'),
     'Configure the speaker name for each color; leave a name empty to hide it. The separator defaults to “：” and supports spaces or English quotation marks. Preview only, subtitle text is unchanged.',
   );
-  assert.equal(i18n.translateText('从颜色组中脱离', 'en'), 'Detach from color group');
-  assert.equal(i18n.translateText('已从颜色组中脱离', 'en'), 'Detached from color group');
+  assert.equal(i18n.translateText('移出颜色组', 'en'), 'Remove from color group');
+  assert.equal(i18n.translateText('已移出颜色组', 'en'), 'Removed from color group');
 });
 
 test('translates OTIOZ export labels, mode hints and dynamic messages to English', () => {
   assert.equal(i18n.translateText('完整 SRT 字幕', 'en'), 'Full SRT subtitles');
-  assert.equal(i18n.translateText('按颜色拆分导出 SRT 字幕', 'en'), 'Export SRT subtitles split by color');
-  assert.equal(i18n.translateText('带样式的 ASS 字幕', 'en'), 'Styled ASS subtitles');
-  assert.equal(i18n.translateText('SRT 字幕', 'en'), 'SRT subtitles');
-  assert.equal(i18n.translateText('表情包 OTIO 工程', 'en'), 'Sticker OTIO project');
-  assert.equal(i18n.translateText('表情包 OTIOZ 打包工程', 'en'), 'Sticker OTIOZ bundle');
-  assert.equal(i18n.translateText('时间线 OTIO 工程', 'en'), 'Timeline OTIO project');
-  assert.equal(i18n.translateText('时间线 OTIOZ 打包工程', 'en'), 'Timeline OTIOZ bundle');
+  assert.equal(i18n.translateText('SRT（按颜色拆分）', 'en'), 'SRT (split by color)');
+  assert.equal(i18n.translateText('ASS（带样式）', 'en'), 'ASS (styled)');
+  assert.equal(i18n.translateText('副字幕 SRT', 'en'), 'Secondary subtitles SRT');
+  assert.equal(i18n.translateText('表情包 OTIO', 'en'), 'Sticker OTIO');
+  assert.equal(i18n.translateText('表情包 OTIOZ', 'en'), 'Sticker OTIOZ bundle');
+  assert.equal(i18n.translateText('时间线 OTIO', 'en'), 'Timeline OTIO');
+  assert.equal(i18n.translateText('时间线 OTIOZ', 'en'), 'Timeline OTIOZ bundle');
   assert.equal(i18n.translateText('OpenTimelineIO', 'en'), 'OpenTimelineIO');
   assert.equal(i18n.translateText('OpenTimeline', 'en'), 'OpenTimeline');
   assert.equal(i18n.translateText('OTIO', 'en'), 'OTIO');
@@ -1706,10 +1732,10 @@ test('translates OTIOZ export labels, mode hints and dynamic messages to English
   assert.equal(i18n.translateText('表情包', 'en'), 'Stickers');
   assert.equal(i18n.translateText('彩蛋', 'en'), 'Easter eggs');
   assert.equal(i18n.translateText('动态图形', 'en'), 'Dynamic graphics');
-  assert.equal(i18n.translateText('纯文本 TXT', 'en'), 'Plain text TXT');
+  assert.equal(i18n.translateText('TXT 文本', 'en'), 'Plain text TXT');
   assert.equal(i18n.translateText('Resolve JSON', 'en'), 'Resolve JSON');
   assert.equal(i18n.translateText('下载表情包 OTIOZ 打包工程', 'en'), 'Download sticker OTIOZ bundle');
-  assert.equal(i18n.translateText('表情包 OTIOZ', 'en'), 'Sticker OTIOZ');
+  assert.equal(i18n.translateText('表情包 OTIOZ', 'en'), 'Sticker OTIOZ bundle');
   assert.equal(i18n.translateText('下载表情包 OTIOZ 工程', 'en'), 'Download sticker OTIOZ project');
   const hint = '服务器打包模式不可用：请以 server-editor 打开并绑定工程文件后再导出 OTIOZ';
   assert.equal(
@@ -1734,7 +1760,6 @@ test('translates OTIOZ export labels, mode hints and dynamic messages to English
 test('translates Lottie dynamic-caption export labels and messages to English', () => {
   assert.equal(i18n.translateText('更多导出 ▾', 'en'), 'More exports ▾');
   assert.equal(i18n.translateText('更多导出', 'en'), 'More exports');
-  assert.equal(i18n.translateText('动态字幕（Lottie）', 'en'), 'Dynamic captions (Lottie)');
   assert.equal(i18n.translateText('Lottie 动态字幕', 'en'), 'Lottie dynamic captions');
   assert.equal(i18n.translateText('导出 .lottie', 'en'), 'Export .lottie');
   assert.equal(i18n.translateText('文字渲染', 'en'), 'Text rendering');
@@ -1747,7 +1772,6 @@ test('translates Lottie dynamic-caption export labels and messages to English', 
   assert.equal(i18n.translateText('矢量模式（内置字形，文件更大）', 'en'), 'Vector mode (bundled glyphs, larger file)');
   assert.equal(i18n.translateText('正在生成动态字幕 .lottie…', 'en'), 'Generating dynamic-caption .lottie…');
   assert.equal(i18n.translateText('动态字幕 .lottie 已生成', 'en'), 'Dynamic-caption .lottie generated');
-  assert.equal(i18n.translateText('动态字幕（OGraf）', 'en'), 'Dynamic captions (OGraf)');
   assert.equal(i18n.translateText('OGraf 动态字幕', 'en'), 'OGraf dynamic captions');
   assert.equal(i18n.translateText('导出 .ograf.zip', 'en'), 'Export .ograf.zip');
   assert.equal(
@@ -2799,21 +2823,16 @@ test('never shortens a subtitle when applying snaps', () => {
 });
 
 test('translates snap-subtitles flash hints to English', () => {
-  assert.equal(i18n.translateText('拼合字幕', 'en'), 'Snap subtitles');
-  assert.equal(i18n.translateText('拼接/合并字幕', 'en'), 'Join / merge subtitles');
+  assert.equal(i18n.translateText('拼合字幕', 'en'), 'Join / merge subtitles');
   assert.equal(i18n.translateText('吸附方向', 'en'), 'Snap direction');
-  assert.equal(i18n.translateText('没有需要拼合的间隔或过短字幕', 'en'), 'No intervals or short subtitles to snap');
-  assert.equal(
-    i18n.translateText('没有需要拼接/合并的间隔或过短字幕', 'en'),
-    'No intervals or short subtitles to join / merge',
-  );
+  assert.equal(i18n.translateText('没有需要拼合的间隔或过短字幕', 'en'), 'No intervals or short subtitles to join');
   assert.equal(
     i18n.translateText('已拼合字幕：拼合 2 处间隔，吸收 1 条短字幕', 'en'),
-    'Snap subtitles: snapped 2 intervals, absorbed 1 short subtitles',
+    'Join / merge subtitles: snapped 2 intervals, absorbed 1 short subtitles',
   );
   assert.equal(
     i18n.translateText('已拼合字幕：吸收 3 条短字幕', 'en'),
-    'Snap subtitles: absorbed 3 short subtitles',
+    'Join / merge subtitles: absorbed 3 short subtitles',
   );
   assert.equal(
     i18n.translateText('已拼接/合并字幕：吸附 2 处间隔，吸收 1 条短字幕', 'en'),
@@ -3850,6 +3869,7 @@ test('normalizes speaker label settings with defaults and safe names', () => {
   }))), {
     mapping_enabled: true,
     enabled: true,
+    export_enabled: false,
     separator: ' ',
     names: {
       yellow: 'Host One',
@@ -3861,6 +3881,8 @@ test('normalizes speaker label settings with defaults and safe names', () => {
   });
   assert.equal(helpers.normalizeSpeakerLabelSettings({}).mapping_enabled, false);
   assert.equal(helpers.normalizeSpeakerLabelSettings({}).enabled, true);
+  assert.equal(helpers.normalizeSpeakerLabelSettings({ export_enabled: true }).export_enabled, true);
+  assert.equal(helpers.normalizeSpeakerLabelSettings({ export_enabled: 'true' }).export_enabled, false);
   assert.equal(helpers.normalizeSpeakerLabelSettings({ enabled: false }).enabled, false);
   assert.equal(helpers.normalizeSpeakerLabelSettings({ enabled: true }).mapping_enabled, true);
   assert.equal(
@@ -5101,6 +5123,96 @@ test('buildAssPayload applies fad and transform tags to overlay cues but never m
   assert.ok(!dialogue[1].includes('\\move('));
 });
 
+test('buildAssPayload turns single-cue fade markers into fad tags from the style-library durations', () => {
+  const ass = helpers.buildAssPayload(
+    [{ start: 0, end: 1000, text: '>>淡入<<' }],
+    {
+      assProfile: {
+        id: 'ass', styleId: 'ass',
+        animations: { fad: { enabled: false, inMs: 120, outMs: 240 } },
+      },
+      assStyle: { id: 'ass', primaryColor: '#123456', outlineColor: '#000000', outline: 2 },
+      assExtensionStyle: { id: 'ass-extension' },
+      appearance: {},
+      extensionSegments: [{ start: 0, end: 1000, text: '淡出<<' }],
+      overlaySegments: [{ start: 0, end: 1000, text: '>>叠加' }],
+    },
+  );
+  const dialogue = ass.split('\n').filter((line) => line.startsWith('Dialogue:'));
+  // 主轨：两端标记 → fad(in,out)，字面标记剥离。
+  assert.ok(dialogue[0].includes('{\\fad(120,240)}淡入'), dialogue[0]);
+  assert.ok(!dialogue[0].includes('>>') && !dialogue[0].includes('<<'), dialogue[0]);
+  // 副字幕轨（Layer 1）：只有行尾 << → fad(0,out)。
+  const extension = dialogue.find((line) => line.startsWith('Dialogue: 1,'));
+  assert.ok(extension.includes('{\\fad(0,240)}淡出'), extension);
+  // 叠加轨（Layer 2）：只有行首 >> → fad(in,0)。
+  const overlay = dialogue.find((line) => line.startsWith('Dialogue: 2,'));
+  assert.ok(overlay.includes('{\\fad(120,0)}叠加'), overlay);
+});
+
+test('single-cue fade markers override the global ASS animation switch', () => {
+  const ass = helpers.buildAssPayload(
+    [{ start: 0, end: 1000, text: '>>句子' }],
+    {
+      assProfile: {
+        id: 'ass', styleId: 'ass',
+        animations: {
+          fade: { enabled: true, alpha1: 0, alpha2: 255, alpha3: 0, t1: 0, t2: 250, t3: 750, t4: 1000 },
+          fad: { enabled: true, inMs: 500, outMs: 600 },
+        },
+      },
+      assStyle: { id: 'ass', primaryColor: '#123456', outlineColor: '#000000', outline: 2 },
+      appearance: {},
+    },
+  );
+  const dialogue = ass.split('\n').filter((line) => line.startsWith('Dialogue:'));
+  // 单句标记优先：用句内 fad 覆盖全局 fade/fad 开关。
+  assert.ok(dialogue[0].includes('{\\fad(500,0)}句子'), dialogue[0]);
+  assert.ok(!dialogue[0].includes('\\fade('), dialogue[0]);
+});
+
+test('parses single-cue fade markers with the special-symbol rule', () => {
+  const bothEnds = helpers.parseSentenceFadeMarkers('>>你好<<', 'double');
+  assert.equal(bothEnds.text, '你好');
+  assert.equal(bothEnds.fadeIn, true);
+  assert.equal(bothEnds.fadeOut, true);
+  const inOnly = helpers.parseSentenceFadeMarkers('>>你好', 'double');
+  assert.equal(inOnly.text, '你好');
+  assert.equal(inOnly.fadeIn, true);
+  assert.equal(inOnly.fadeOut, false);
+  const outOnly = helpers.parseSentenceFadeMarkers('你好<<', 'double');
+  assert.equal(outOnly.text, '你好');
+  assert.equal(outOnly.fadeIn, false);
+  assert.equal(outOnly.fadeOut, true);
+  // 双符号默认只认双符号：单符号保持原样。
+  const doubleIgnoresSingle = helpers.parseSentenceFadeMarkers('>你好<', 'double');
+  assert.equal(doubleIgnoresSingle.text, '>你好<');
+  assert.equal(doubleIgnoresSingle.fadeIn, false);
+  assert.equal(doubleIgnoresSingle.fadeOut, false);
+  // both：单符号也识别为 fad。
+  const bothRuleSingle = helpers.parseSentenceFadeMarkers('>你好<', 'both');
+  assert.equal(bothRuleSingle.text, '你好');
+  assert.equal(bothRuleSingle.fadeIn, true);
+  assert.equal(bothRuleSingle.fadeOut, true);
+  // 旧值 single 与设置归一化一致，迁移为 both。
+  const legacySingle = helpers.parseSentenceFadeMarkers('>你好<', 'single');
+  assert.equal(legacySingle.text, '你好');
+  assert.equal(legacySingle.fadeIn, true);
+  assert.equal(legacySingle.fadeOut, true);
+  assert.equal(helpers.stripSentenceFadeMarkers('>>你好<<'), '你好');
+  assert.equal(helpers.stripSentenceFadeMarkers('你好'), '你好');
+});
+
+test('SRT export strips single-cue fade markers without touching the text', () => {
+  const srt = helpers.buildSrtPayload(
+    [{ start: 0, end: 1000, text: '>>你好<<' }, { start: 1000, end: 2000, text: '普通' }],
+    { formatTime: (ms) => `T${ms}` },
+  );
+  assert.ok(srt.includes('\n你好\n'), srt);
+  assert.ok(!srt.includes('>>') && !srt.includes('<<'), srt);
+  assert.ok(srt.includes('\n普通\n'), srt);
+});
+
 test('buildAssPayload writes extension cues on layer 1 with a single Extension style', () => {
   const ass = helpers.buildAssPayload(
     [{ start: 100, end: 900, text: 'main' }],
@@ -5309,7 +5421,6 @@ test('translates every project-export option, outcome, and warning key in both l
     '自定义…', '宽度', '高度', '自定义合成尺寸需要 16–7680 之间的整数宽高',
     '导出副字幕轨', '主轨字幕', '主轨与副轨字幕', '导出文件名', '导出媒体路径缺失',
     '导出媒体时长缺失', '导出文件名无效', '导出警告',
-    'Premiere FCP 7 XML（实验性）',
     '实验性 Premiere 交接：导出 FCP 7 XML',
     '导出 FCP 7 XML 供 Premiere 交接。此交接尚未完成目标应用验证。',
     '原生文本仅作为可选交接数据，不承诺样式或位置还原；SRT 可通过独立按钮导出。未写入原生文本时「导出字幕轨」不生效。',
@@ -6322,19 +6433,73 @@ test('bilingual SRT preserves speaker color contexts and only extends the first 
   assert.equal(helpers.buildBilingualSrtPayload([], []), '');
 });
 
+test('wrap chars presets insert at both ends and skip already wrapped text', () => {
+  assert.deepEqual(
+    Array.from(helpers.WRAP_CHAR_PRESETS, (preset) => ({ ...preset })),
+    [
+      { id: 'emphasis', label: '强调文本', left: '**', right: '**', ass: true },
+      { id: 'large', label: '放大文本', left: '++', right: '++', ass: true },
+      { id: 'small', label: '缩小文本', left: '--', right: '--', ass: true },
+      { id: 'underline', label: '下划线', left: '__', right: '__', ass: true },
+      { id: 'strike', label: '删除线', left: '~~', right: '~~', ass: true },
+      { id: 'fade', label: '淡出淡入', left: '>>', right: '<<', ass: true },
+      { id: 'note', label: '音符', left: '♪', right: '♪' },
+      { id: 'music', label: '双音符', left: '♬', right: '♬' },
+      { id: 'bracket', label: '中括号', left: '[', right: ']' },
+    ],
+  );
+  assert.deepEqual({ ...helpers.wrapCharsAroundText('你好', '**', '**') },
+    { changed: true, skipped: false, text: '**你好**' });
+  // 同一对双符号不重复包裹。
+  assert.deepEqual({ ...helpers.wrapCharsAroundText('**你好**', '**', '**') },
+    { changed: false, skipped: true, text: '**你好**' });
+  assert.deepEqual({ ...helpers.wrapCharsAroundText('你好', '>>', '<<') },
+    { changed: true, skipped: false, text: '>>你好<<' });
+  // 音符是纯装饰字符，也不重复堆叠。
+  assert.deepEqual({ ...helpers.wrapCharsAroundText('♪你好♪', '♪', '♪') },
+    { changed: false, skipped: true, text: '♪你好♪' });
+  assert.deepEqual({ ...helpers.wrapCharsAroundText('', '**', '**') },
+    { changed: false, skipped: false, text: '' });
+  assert.deepEqual({ ...helpers.wrapCharsAroundText('文', '', '') },
+    { changed: false, skipped: false, text: '文' });
+  assert.equal(helpers.isTextWrappedBy('**文**', '**', '**'), true);
+  assert.equal(helpers.isTextWrappedBy('**文**', '>>', '<<'), false);
+});
+
+test('wrap chars menu copy has English translations', () => {
+  for (const preset of helpers.WRAP_CHAR_PRESETS) {
+    assert.notEqual(i18n.translateText(preset.label, 'en'), preset.label, preset.label);
+  }
+  const keys = [
+    '左右添加字符', '左右添加字符预设', '自定义左右字符', '左侧字符', '右侧字符', '插入',
+    '左右添加字符（插入到字幕两端）',
+    '在选中字幕文本两端原样插入字符；不做样式转换，也不受「单双符号」规则影响。',
+    '选中字幕已包裹相同符号，未重复添加', '没有可添加字符的字幕',
+    '请至少输入一侧字符', '请先选择要处理的字幕',
+  ];
+  for (const key of keys) assert.notEqual(i18n.translateText(key, 'en'), key, key);
+  assert.equal(i18n.translateText('已为 3 条字幕添加字符', 'en'), 'Added characters to 3 subtitles');
+  assert.equal(
+    i18n.translateText('已为 3 条字幕添加字符；1 条已包裹相同符号，已跳过', 'en'),
+    'Added characters to 3 subtitles; skipped 1 already wrapped with the same characters',
+  );
+});
+
 test('ASS special symbol rules apply to all five formats across preview runs and exports', () => {
   assert.equal(helpers.normalizeEditorSettings().assSpecialSymbolRule, 'both');
   assert.equal(helpers.normalizeEditorSettings({ assSpecialSymbolRule: 'invalid' }).assSpecialSymbolRule, 'both');
+  // 旧工程里的 'single' 迁移为 'both'（单双符号规则已收敛为三值）。
+  assert.equal(helpers.normalizeEditorSettings({ assSpecialSymbolRule: 'single' }).assSpecialSymbolRule, 'both');
   const single = '*强调* _下划线_ ~删除~ -缩小- +放大+';
   const double = '**强调** __下划线__ ~~删除~~ --缩小-- ++放大++';
   const text = `${single} / ${double}`;
-  for (const rule of ['none', 'single', 'double', 'both']) {
+  for (const rule of ['none', 'double', 'both']) {
     const settings = helpers.normalizeEditorSettings({ assSpecialSymbolRule: rule });
     assert.equal(helpers.normalizeEditorSettings(settings).assSpecialSymbolRule, rule);
     const runs = Array.from(helpers.assInlineStyleRuns(text, settings.assEmphasisSyntax, settings));
     const result = runs.map(run => run.text).join('');
     const clean = '强调 下划线 删除 缩小 放大';
-    assert.equal(result, `${['single', 'both'].includes(rule) ? clean : single} / ${['double', 'both'].includes(rule) ? clean : double}`);
+    assert.equal(result, `${rule === 'both' ? clean : single} / ${['double', 'both'].includes(rule) ? clean : double}`);
     const cues = [{ start: 0, end: 1000, text }];
     const ass = helpers.buildAssPayload(cues, { ...settings,
       assProfile: { id: 'ass', styleId: 'ass', animations: {} }, assStyle: { id: 'ass' },
@@ -6346,7 +6511,6 @@ test('ASS special symbol rules apply to all five formats across preview runs and
       else {
         assert.match(line, /\\s1/);
         assert.match(line, /\\u1/);
-        if (rule === 'single') assert.ok(line.includes(double));
         if (rule === 'double') assert.ok(line.includes(single));
       }
     });
@@ -6429,4 +6593,41 @@ test('parseLrcSegments applies the offset tag globally regardless of its positio
     { start: 9000, end: 19000, text: 'Early line' },
     { start: 19000, end: 24000, text: 'Late line' },
   ]);
+});
+
+test('sentence fade markers respect disabled and migrated symbol rules', () => {
+  assert.deepEqual({ ...helpers.parseSentenceFadeMarkers('>>原文<<', 'none') },
+    { text: '>>原文<<', fadeIn: false, fadeOut: false });
+  assert.equal(helpers.parseSentenceFadeMarkers('>原文<', 'single').text, '原文');
+});
+
+test('explicit zero-duration sentence fade suppresses global fades', () => {
+  const profile = { animations: { fad: { enabled: true, inMs: 0, outMs: 500 } } };
+  const sentence = helpers.assSentenceFadeTags('>>原文', profile, 'both');
+  assert.equal(helpers.assAnimationOverrideTags(profile, { fad: sentence.fad }), '\\fad(0,0)');
+  assert.equal(helpers.assPreviewAnimationState(profile, 950, 1000, { fad: sentence.fad }).opacity, 1);
+});
+
+test('SRT and bilingual SRT strip the active single-symbol fade syntax', () => {
+  for (const build of [
+    () => helpers.buildSrtPayload([{ start: 0, end: 1000, text: '>原文<' }], { assSpecialSymbolRule: 'both' }),
+    () => helpers.buildBilingualSrtPayload([{ start: 0, end: 1000, text: '>原文<' }], [], { assSpecialSymbolRule: 'both' }),
+  ]) assert.ok(build().includes('\n原文\n'));
+  assert.ok(helpers.buildSrtPayload([{ start: 0, end: 1000, text: '>>原文<<' }],
+    { assSpecialSymbolRule: 'none' }).includes('>>原文<<'));
+});
+
+
+test('bilingual SRT parses fade syntax once and preserves disabled literal markers', () => {
+  const cues = [{ start: 0, end: 1000, text: '>>原文<<' }];
+  assert.ok(helpers.buildBilingualSrtPayload(cues, [], { assSpecialSymbolRule: 'none' }).includes('>>原文<<'));
+  assert.ok(helpers.buildBilingualSrtPayload([{ ...cues[0], text: '>>>>原文<<<<' }], [],
+    { assSpecialSymbolRule: 'double' }).includes('>>原文<<'));
+});
+
+test('wrap preset tooltips translate their literal characters', () => {
+  for (const preset of helpers.WRAP_CHAR_PRESETS) {
+    assert.equal(i18n.translateText(`在字幕两端插入 ${preset.left} 和 ${preset.right}`, 'en'),
+      `Insert ${preset.left} and ${preset.right} at the subtitle ends`);
+  }
 });

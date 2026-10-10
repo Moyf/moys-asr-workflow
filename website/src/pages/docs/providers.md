@@ -5,68 +5,74 @@ description: "服务商选择、API Key、费用和隐私边界。"
 source: "docs/PROVIDERS.md"
 ---
 
-<!-- Generated from docs/PROVIDERS.md. Run npm run sync:docs to refresh. -->
+<!-- Generated from docs/PROVIDERS.md. Run pnpm run sync:docs to refresh. -->
 
-# ASR 服务与配置
+MAW 不托管转写服务。云端方式把音频直接交给所选服务商，本地方式在本机推理。以下描述 MAW 当前适配范围；服务可用性、额度和限制以账户控制台为准。
 
-MAW 本身不托管转写服务。你选择的服务商会直接接收待转写媒体；MAW 只负责本地流程、工程生成和编辑。
+## 配置速查
 
-## 选择转写方式
-
-| 方式 | 适合场景 | 备注 |
+| 方式 | 本机配置字段 | MAW 中的入口与边界 |
 | --- | --- | --- |
-| Qwen-Audio / Qwen3-ASR / Fun-ASR | 默认云端路径、中文和说话人分离 | 使用阿里云百炼 API Key；Launcher 默认优先 Qwen-Audio。 |
-| Soniox | 多语言、小语种和说话人分离 | 使用 Soniox Console API Key。 |
-| 火山引擎（豆包） | 中文为主的单 Key 云端路径，支持热词和说话人分离 | 使用火山引擎新版控制台的 `VOLC_API_KEY`；base64 直传单文件 ≤25MB 且 ≤120 分钟，MAW 会先提取为低码率单声道音频再提交。 |
-| 腾讯云录音文件识别 | 中文/英文长音频的异步文件识别 | 使用 `TENCENT_SECRET_ID`、`TENCENT_SECRET_KEY`；大于 5MB 的媒体需使用 COS/公网 URL。 |
-| OpenAI 格式通用接口 | 使用 OpenAI 官方服务、OpenRouter 或自己的兼容服务 | Launcher 可选择 OpenAI 官方的 `whisper-1`、`gpt-transcribe`、`gpt-4o-transcribe`、`gpt-4o-mini-transcribe`、`gpt-4o-transcribe-diarize`，OpenRouter 的 `whisper-large-v3-turbo`、`whisper-large-v3`，或“自定义（Custom）”；接口必须返回 `segments` 或 `words` 时间戳。 |
-| 必剪 ASR | 不想申请 Key 的中文快速体验 | 实验性、非官方接口，可能限流或失效。 |
-| 本地 Qwen3-ASR / FunASR | 希望离线转写且有合适硬件 | 实验性，需要单独安装运行环境和模型。 |
+| 阿里云 Qwen / Fun-ASR | `DASHSCOPE_API_KEY` | 默认 Qwen-Audio 3.0；可选 3.1、Qwen3-ASR、Fun-ASR。模型间的热词、上下文与说话人能力不同。 |
+| Soniox | `SONIOX_API_KEY` | 多语言、说话人和结构化 context。 |
+| 豆包（火山引擎） | `VOLC_API_KEY` | 单 Key；支持热词、说话人，使用压缩音频 Base64 提交。 |
+| 腾讯云录音文件识别 | `TENCENT_SECRET_ID`、`TENCENT_SECRET_KEY` | 默认 `16k_zh_en_2.0`；大文件使用公网 / COS URL。 |
+| OpenAI 兼容 ASR | `MAW_OPENAI_ASR_API_KEY`、`MAW_OPENAI_ASR_BASE_URL`、`MAW_OPENAI_ASR_MODEL` | multipart 转写接口，必须返回字幕时间戳；默认地址 `https://api.openai.com/v1`，默认模型 `whisper-1`。 |
+| 必剪 | 无需 Key | 实验性非公开接口，仅用于中文体验，可能限流或失效。 |
+| 本地模型 | 无需云端 Key | 实验入口，需独立运行环境与权重，见 [LOCAL_ASR](../local-asr/)。 |
 
-## API Key 配置
+## 保存与读取配置
 
-- 图形版：在 Launcher 中填写并保存到本机环境。
-- Release 包：优先读取应用程序同目录的 `.env`；不存在时使用 MAW 用户数据目录中的 `.env`，Windows 路径为 `%LOCALAPPDATA%\MAW\.env`。
-- 源码或 CLI：继续使用仓库根目录的 `.env`；可从 `.env.example` 复制后填写 `DASHSCOPE_API_KEY`、`SONIOX_API_KEY`、豆包的 `VOLC_API_KEY`、腾讯云的 `TENCENT_SECRET_ID` 与 `TENCENT_SECRET_KEY`，或 OpenAI 格式通用接口的 `MAW_OPENAI_ASR_API_KEY`。
-- OpenAI 格式通用接口：在 Launcher 选择“OpenAI 格式通用接口”，从“模型”下拉列表选择模型；选择“自定义（Custom）”后再填写自定义模型名。Base URL 为 OpenRouter 时，内置模型会自动发送完整的 `openai/...` 模型 ID；其他中转站不会自动猜测模型名，请选择“自定义（Custom）”并填写服务商提供的完整模型名。兼容服务需要填写 `MAW_OPENAI_ASR_BASE_URL`，模型与 API Key 分别保存到 `MAW_OPENAI_ASR_MODEL` 和 `MAW_OPENAI_ASR_API_KEY`；程序调用 `POST {Base URL}/audio/transcriptions`。
-- API Key 只应保存在环境变量或本机 `.env` 中，不要放进命令行、工程、日志、截图或 AI 对话。
-- Qwen Key 获取或查看见[阿里云百炼](https://platform.qianwenai.com/home/)；Soniox Key 见 [Soniox Console](https://console.soniox.com)；豆包 Key 在[火山引擎 API Key 管理](https://console.volcengine.com/speech/new/setting/apikeys)获取。
-- OpenAI 官方或 OpenRouter API Key 见 [OpenAI Platform](https://platform.openai.com/api-keys) 或 [OpenRouter](https://openrouter.ai/keys)。
-- OpenAI 官方当前用于文件转写的模型包括 `gpt-transcribe`、`gpt-4o-transcribe`、`gpt-4o-mini-transcribe`、`gpt-4o-transcribe-diarize` 和 `whisper-1`；`GPT-Live-Transcribe`、`GPT-Realtime-Whisper` 属于实时转写产品线，当前 Launcher 尚未预置。`whisper-large-v3` 与 `whisper-large-v3-turbo` 不是 OpenAI 官方 `/v1/audio/transcriptions` 模型 ID，而是作为 OpenRouter 模型提供；详见 [OpenAI 模型目录](https://developers.openai.com/api/docs/models/all)。
-- OpenAI 官方支持的高级参数按模型区分：Launcher 会为支持的模型显示 `Prompt`；`gpt-transcribe` 还显示逐行 `Keywords`；选择 `gpt-4o-transcribe-diarize` 后自动使用 `diarized_json` 和 `chunking_strategy=auto`，并可把返回的 `speaker` 标签写入工程。OpenRouter 不支持 diarize；其他兼容服务也不一定转发这些参数。
-- 腾讯云密钥见[API 密钥管理](https://console.cloud.tencent.com/tokenhub/apikey)；录音文件识别使用 `CreateRecTask` / `DescribeTaskStatus`，默认引擎为 `16k_zh_en_2.0`。
-- 腾讯云的 `Words` 结果包含字词级毫秒时间码；传入 `--speaker` 会启用说话人分离并保留匿名 speaker 标签。完整示例见[完整工作流](../workflow/)。
-- 豆包走异步 submit/query 接口，`utterances[].words[]` 提供字/词级毫秒时间码；`--speaker` 启用说话人分离，`--hotword` 即时热词直传 `corpus.context`。模型通过 `VOLC_ASR_RESOURCE_ID` 配置，默认 `volc.seedasr.auc`（2.0）。
-- 默认 Base URL 为 `https://api.openai.com/v1`，模型为支持词级时间戳的 `whisper-1`；使用 OpenRouter 时可直接选择内置模型，使用其他兼容服务时请用“自定义（Custom）”填写服务商文档中的模型 ID。若服务只返回 `{ "text": "..." }` 而没有时间戳，MAW 会拒绝生成字幕，因为无法可靠对轨。
+在 Launcher 选择服务并保存配置，或从 `.env.example` 创建自己的 `.env`。Key 只存本机，不写工程，不应出现在命令行、日志、截图或对话中。
 
-区域、模型、热词、上下文和完整参数见[完整工作流](../workflow/)与[CLI 文档](../cli/)。
+- 源码运行：读取仓库根目录 `.env`。
+- 打包应用：优先使用应用程序同目录 `.env`，不存在时回退到 MAW 用户数据目录。
+- 用户数据目录：Windows `%LOCALAPPDATA%/MAW`；macOS `~/Library/Application Support/MAW`；Linux `$XDG_DATA_HOME/MAW`（未设置时 `~/.local/share/MAW`）。
+- 环境变量优先于 `.env`。修改文件却不生效时，检查是否有同名环境变量覆盖。
 
-## 费用
+获取密钥：[阿里云百炼](https://platform.qianwenai.com/home/)、[Soniox Console](https://console.soniox.com)、[火山引擎 API Key](https://console.volcengine.com/speech/new/setting/apikeys)、[腾讯云密钥管理](https://console.cloud.tencent.com/tokenhub/apikey)、[OpenAI Platform](https://platform.openai.com/api-keys)、[OpenRouter](https://openrouter.ai/keys)。
 
-- Launcher 会在模型说明中显示云端 API 的参考价格；价格、免费额度、区域和套餐会变化，请以服务商页面为准。
-- 阿里云百炼的 `qwen-audio-3.0-asr-flash-filetrans`、`qwen3-asr-flash-filetrans` 和 `fun-asr`：北京为 ¥0.00022 / 秒（约 ¥0.792 / 小时），新加坡为 ¥0.00026 / 秒（约 ¥0.936 / 小时），音频输出免费；详见[阿里云模型定价](https://help.aliyun.com/zh/model-studio/model-pricing)。
-- 阿里云百炼的 `qwen-audio-3.1-asr-flash-filetrans` 按 Token 计费：北京输入 ¥0.8 / 百万 Token、输出 ¥2.7 / 百万 Token（与 3.0 的按秒计费不同，实际费用与音频转 Token 的速率有关）；详见[阿里云模型定价](https://help.aliyun.com/zh/model-studio/model-pricing)。
-- Soniox `stt-async-v5`：异步文件转写约 $0.10 / 小时，实际按 token 计费；详见 [Soniox Pricing](https://soniox.com/pricing)。
-- 豆包按音频 token 计量（约 6.25 token/秒），价格以[火山引擎语音控制台](https://console.volcengine.com/speech/new/experience/asr)为准。
-- 腾讯云 `16k_zh_en_2.0`：录音文件识别大模型 2.0 后付费 ¥0.8 / 小时，60 小时预付包 ¥48；详见[腾讯云语音识别计费概述](https://cloud.tencent.com/document/product/1093/35686)。
-- OpenAI 官方 `whisper-1` 为 $0.006 / 分钟，`gpt-transcribe` 为 $0.0045 / 分钟，`gpt-4o-transcribe` 为输入 $2.50 / 1M audio tokens、输出 $10 / 1M audio tokens，`gpt-4o-mini-transcribe` 为输入 $1.25 / 1M audio tokens、输出 $5 / 1M audio tokens；`gpt-4o-transcribe-diarize` 使用 GPT-4o Transcribe 的 token 价格；详见 [OpenAI 模型目录](https://developers.openai.com/api/docs/models/all)。
-- OpenRouter 模型页当前显示的参考价格如下；价格、路由和模型能力会变化，实际请求以 [OpenRouter 模型目录](https://openrouter.ai/models?fmt=cards&input=audio) 为准。
+## 阿里云：地域、模型与提示
 
-  | 模型 | OpenRouter 参考价 |
-  | --- | --- |
-  | [`openai/whisper-1`](https://openrouter.ai/openai/whisper-1) | $0.006 / 分钟 |
-  | [`openai/gpt-transcribe`](https://openrouter.ai/openai/gpt-transcribe) | $0.0045 / 分钟 |
-  | [`openai/gpt-4o-transcribe`](https://openrouter.ai/openai/gpt-4o-transcribe) | 输入 $2.50 / 1M tokens，输出 $10 / 1M tokens |
-  | [`openai/gpt-4o-mini-transcribe`](https://openrouter.ai/openai/gpt-4o-mini-transcribe) | 输入 $1.25 / 1M tokens，输出 $5 / 1M tokens |
-  | [`openai/whisper-large-v3-turbo`](https://openrouter.ai/openai/whisper-large-v3-turbo) | $0.04 / 小时 |
-  | [`openai/whisper-large-v3`](https://openrouter.ai/openai/whisper-large-v3) | $0.0015 / 分钟 |
+Qwen 与 Fun-ASR 共用 Key。北京默认 `DASHSCOPE_REGION=beijing`，Workspace ID 可选；新加坡设为 `singapore` 并填写 `DASHSCOPE_WORKSPACE_ID`。Key、地域和业务空间必须匹配。Launcher 的 AI 模型配置提供对应设置。
 
-- 必剪 ASR 没有稳定的配额或服务承诺，请只把它当作应急体验入口。
-- 本地模型不产生云端转写费用，但会消耗本机的存储、显存/内存和计算资源。
+| 模型 | 当前 MAW 适配 |
+| --- | --- |
+| `qwen-audio-3.0-asr-flash-filetrans` | 默认；即时热词、上下文和说话人分离。 |
+| `qwen-audio-3.1-asr-flash-filetrans` | 同类增强设置，另支持保留方言表达。 |
+| `qwen3-asr-flash-filetrans` | 字词时间码；不支持通用说话人开关。 |
+| `fun-asr` | 字词时间码和说话人分离；词表配置独立于 Qwen-Audio。 |
 
-## 数据与隐私边界
+上下文提供背景或前文，即时热词提供短术语，二者可以同时使用。Qwen-Audio context 最多发送 400 字符；热词文件支持每行一个词或 `词: 权重`。CLI 权重支持 1–5 或 50，单词条可以覆盖全局权重；不符合限制的词条会提示并忽略。预编译词表必须为目标模型创建，Launcher 不提供词表 ID 输入，底层 CLI / `.env` 仍支持。
 
-- MAW 没有自己的云端服务器；云端转写时，媒体直接发送给你选择的服务商。
-- 编辑器、工程保存和导出默认在本机完成。`.mosp` 是字幕工程真源，SRT 只保留交付所需的基本字幕信息。
-- Launcher 的 LLM 后处理只发送带临时 ID 的字幕文字，不发送媒体路径、时间码或工程元数据；详见 [LLM 字幕后处理协议](../llm-postprocess/)。
-- 使用任何第三方服务前，请自行确认其数据保留、训练使用和账户政策。
+参数和示例集中在 [CLI](../cli/)，权限或地域报错看 [FAQ](../faq/)。
+
+## 其他云端服务
+
+### Soniox
+
+语言提示可用 `zh,en` 等逗号分隔值。context 分为 `general`、`text`、`terms`、`translation_terms`，Launcher 提供文本输入，公开 CLI 用 `--soniox-context-json`。转写结束后程序尝试删除云端文件与转写记录；删除动作不能代替服务商的数据政策。
+
+### 豆包
+
+模型通过 `VOLC_ASR_RESOURCE_ID` 或 CLI `--model` 指定，默认 `volc.seedasr.auc`。MAW 提取 Ogg / Opus 单声道压缩音频后提交；当前通道按 25 MB / 120 分钟限制处理，未接入 Files API 大文件通道。使用 `--hotword` 添加术语；该入口不接受 Qwen 的地域、词表 ID 或 file-url 参数。
+
+### 腾讯云
+
+本地直传通道按 5 MB 限制处理，较大输入需先提供公网 / COS URL，并使用 `--file-url`。字词时间码映射为工程 `items`；支持的引擎可以通过 `--speaker` 请求匿名说话人标签。
+
+### OpenAI 兼容接口
+
+Base URL 可填写根地址、`/v1` 地址或完整 `/audio/transcriptions` 地址。服务必须接受 multipart 请求，普通模式返回 `segments` 或 `words` 的 `start/end`；仅返回 `text` 的接口会被拒绝。
+
+Launcher 为 OpenRouter 的内置模型自动补完整 `openai/...` ID，公开 CLI 不猜测前缀。其他兼容服务请选自定义模型并填写其实际 ID。Launcher 的模型列表表示程序已有适配，不保证每个账户或中转站都提供对应服务。
+
+Prompt、Keywords 和 diarized JSON 按模型能力使用。Launcher 与底层 `generate_subtitle_openai_api.py` 提供这些增强入口，公开 `MAW.exe` CLI 当前仅提供基础兼容转写参数；不要把底层脚本参数直接传给它。说话人模式不能与 Prompt / Keywords 混用。
+
+## 费用与数据政策
+
+价格、免费额度、计费单位和数据保留会变化。Launcher 的参考价与日志估算用于初步判断，不代表实际账单；本文不重复保存固定价格表。
+
+请查当前官方说明：[阿里云定价](https://help.aliyun.com/zh/model-studio/model-pricing)、[Soniox 定价](https://soniox.com/pricing)、[火山引擎控制台](https://console.volcengine.com/speech/new/experience/asr)、[腾讯云计费](https://cloud.tencent.com/document/product/1093/35686)、[OpenAI 定价](https://openai.com/api/pricing/)、[OpenRouter 模型目录](https://openrouter.ai/models)。本地推理不产生云端转写费，但需要下载、存储与计算资源。
+
+编辑和保存默认在本机。LLM 后处理发送临时 cue ID 与字幕文字，AI 整理另发送文稿文字，不发送媒体、时间码或路径；协议见 [LLM_POSTPROCESS_PROTOCOL](../llm-postprocess/)。使用云端服务前应确认该服务的数据保留和训练使用政策。

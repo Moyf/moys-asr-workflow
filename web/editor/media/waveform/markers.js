@@ -4,7 +4,7 @@
 // 跨行拖动按指针当前所在行换算时间，并支持视口边缘自动滚动；预览裁剪到可见行。
 // 数据变更不在这里发生：拖动只更新 DOM 预览，提交经 options 回调进入
 // MaweMarkerEditing（撤销/重做与保存状态统一在那一层处理）。
-window.MAWE.register('waveform-markers', function createWaveformModule(dependencies) {
+export function createWaveformModule(dependencies) {
   'use strict';
   const { clamp, roundMs } = dependencies;
 
@@ -42,11 +42,13 @@ window.MAWE.register('waveform-markers', function createWaveformModule(dependenc
 
   class WaveformMethods {
 
+    /** @this {import('./waveform-types.js').WaveformInstance} */
     getMarkers() {
       return this.options.getMarkers?.() || [];
     }
 
 
+    /** @this {import('./waveform-types.js').WaveformInstance} */
     appendMarkerTrack(row, startMs, endMs) {
       const markers = this.getMarkers();
       // 行时间标签是否需要给标记轨道让位：仅当该行可见范围内确有标记时下移。
@@ -77,6 +79,7 @@ window.MAWE.register('waveform-markers', function createWaveformModule(dependenc
     }
 
 
+    /** @this {import('./waveform-types.js').WaveformInstance} */
     appendMarkerElement(track, row, marker, startMs, endMs) {
       const visible = window.AsrEditorUtils.markerVisibleRange(marker, startMs, endMs);
       if (!visible) return;
@@ -85,14 +88,24 @@ window.MAWE.register('waveform-markers', function createWaveformModule(dependenc
       element.className = `waveform-marker-item ${isRegion ? 'region' : 'point'}`;
       element.dataset.markerId = marker.id;
       element.style.setProperty('--marker-color', marker.color || '#3e63dd');
+      // 单点 Marker 用更宽的最小可见宽度，便于点中查看。
+      const minVisiblePercent = isRegion
+        ? window.AsrEditorUtils.MARKER_MIN_VISIBLE_PERCENT
+        : window.AsrEditorUtils.MARKER_POINT_MIN_VISIBLE_PERCENT;
       const duration = Math.max(1, endMs - startMs);
       const left = ((visible.start - startMs) / duration) * 100;
       const widthPercent = Math.max(
-        window.AsrEditorUtils.MARKER_MIN_VISIBLE_PERCENT,
+        minVisiblePercent,
         ((visible.end - visible.start) / duration) * 100,
       );
       element.style.left = `${left}%`;
       element.style.width = `${widthPercent}%`;
+      if (!isRegion) {
+        const shape = document.createElement('span');
+        shape.className = 'waveform-marker-point-shape';
+        shape.setAttribute('aria-hidden', 'true');
+        element.appendChild(shape);
+      }
       const timeLabel = isRegion
         ? `${marker.start} → ${marker.end}`
         : String(marker.start);
@@ -102,8 +115,7 @@ window.MAWE.register('waveform-markers', function createWaveformModule(dependenc
       element.dataset.markerProjectReason = 'true';
       if (marker.review?.status === 'pending') element.classList.add('review-pending');
       if (marker.review?.status === 'confirmed') element.classList.add('review-confirmed');
-      // 已确认的标记在轨道上只保留色条 / 旗标本身，不再显示名称。
-      if (marker.name && marker.review?.status !== 'confirmed') {
+      if (marker.name) {
         const label = document.createElement('span');
         label.className = 'waveform-marker-label';
         label.textContent = marker.name;
@@ -126,7 +138,7 @@ window.MAWE.register('waveform-markers', function createWaveformModule(dependenc
       }
       element.addEventListener('pointerdown', (event) => {
         if (event.button !== 0) return;
-        const handle = event.target.closest('.waveform-marker-handle');
+        const handle = (/** @type {Element | null} */ ((/** @type {HTMLElement} */ (event.target)).closest('.waveform-marker-handle')));
         const mode = handle
           ? (handle.classList.contains('left') ? 'resize-start' : 'resize-end')
           : 'move';
@@ -140,15 +152,26 @@ window.MAWE.register('waveform-markers', function createWaveformModule(dependenc
       element.addEventListener('contextmenu', (event) => {
         event.preventDefault();
         event.stopPropagation();
+        // 右键等同双击：直接打开标记编辑小弹窗。
+        this.openMarkerQuickEdit(marker.id, element);
       });
       track.appendChild(element);
     }
 
 
+    /** @this {import('./waveform-types.js').WaveformInstance} */
     refreshMarkerOverlay() {
       if (!this.payload) return;
-      this.content.querySelectorAll('.waveform-marker-track').forEach((element) => element.remove());
-      this.content.querySelectorAll('.waveform-row').forEach((row) => {
+      // 标记编辑未启用时不渲染标记轨道（工具栏 🔖 / 项目设置镜像控制）。
+      if (MaweSettings.EDITOR_SETTINGS.markerEditingEnabled !== true) {
+        this.content.querySelectorAll('.waveform-marker-track').forEach((element) => element.remove());
+        this.content.querySelectorAll('.waveform-row.waveform-row-has-markers').forEach((row) => {
+          row.classList.remove('waveform-row-has-markers');
+        });
+        return;
+      }
+      (/** @type {NodeListOf<HTMLElement>} */ (this.content.querySelectorAll('.waveform-marker-track'))).forEach((element) => element.remove());
+      (/** @type {NodeListOf<import('./waveform-types.js').WaveformRow>} */ (this.content.querySelectorAll('.waveform-row'))).forEach((row) => {
         this.appendMarkerTrack(row, Number(row.dataset.startMs), Number(row.dataset.endMs));
       });
     }
@@ -157,6 +180,7 @@ window.MAWE.register('waveform-markers', function createWaveformModule(dependenc
     // 双击 marker 弹出的小型编辑浮层：名称 / 颜色 / 复核三态。
     // 浮层挂载在滚动内容层（随内容滚动），点击浮层以外或 Esc 关闭；
     // 数据变更经 options.onMarkerQuickEditFields 进入 MaweMarkerEditing。
+    /** @this {import('./waveform-types.js').WaveformInstance} */
     openMarkerQuickEdit(markerId, anchorElement) {
       const utils = window.AsrEditorUtils;
       const marker = this.getMarkers().find((candidate) => candidate?.id === markerId);
@@ -241,10 +265,12 @@ window.MAWE.register('waveform-markers', function createWaveformModule(dependenc
       };
       document.addEventListener('pointerdown', this._markerQuickEditOutside, true);
       document.addEventListener('keydown', this._markerQuickEditKey, true);
+      nameInput.focus({ preventScroll: true });
     }
 
 
     // 打开时 / 每次数据变更后同步浮层的动态状态（激活色、复核按钮文案）。
+    /** @this {import('./waveform-types.js').WaveformInstance} */
     syncMarkerQuickEdit() {
       const popup = this.markerQuickEdit?.element;
       if (!popup || !popup.isConnected) return;
@@ -255,10 +281,10 @@ window.MAWE.register('waveform-markers', function createWaveformModule(dependenc
         return;
       }
       const currentColor = utils.normalizeMarkerColor(marker.color);
-      popup.querySelectorAll('.markers-color-swatch').forEach((swatch) => {
+      (/** @type {NodeListOf<HTMLElement>} */ (popup.querySelectorAll('.markers-color-swatch'))).forEach((swatch) => {
         swatch.classList.toggle('active', swatch.dataset.color === currentColor);
       });
-      const reviewToggle = popup.querySelector('.markers-review-toggle');
+      const reviewToggle = (/** @type {HTMLElement} */ (popup.querySelector('.markers-review-toggle')));
       if (reviewToggle) {
         // 无前缀，仅状态名；配色与编辑卡一致（待复核琥珀 / 已确认绿）。
         reviewToggle.textContent = utils.markerReviewStatusLabel(marker);
@@ -276,6 +302,7 @@ window.MAWE.register('waveform-markers', function createWaveformModule(dependenc
     }
 
 
+    /** @this {import('./waveform-types.js').WaveformInstance} */
     positionMarkerQuickEdit(anchorElement) {
       const popup = this.markerQuickEdit?.element;
       if (!popup) return;
@@ -294,6 +321,7 @@ window.MAWE.register('waveform-markers', function createWaveformModule(dependenc
     }
 
 
+    /** @this {import('./waveform-types.js').WaveformInstance} */
     closeMarkerQuickEdit() {
       if (this._markerQuickEditOutside) {
         document.removeEventListener('pointerdown', this._markerQuickEditOutside, true);
@@ -310,10 +338,11 @@ window.MAWE.register('waveform-markers', function createWaveformModule(dependenc
 
     // 拖动期间的时间换算：以指针当前所在行为准（跨行拖动按新行换算），
     // 行间隙取最近行。基础模式只有一行，行为与旧行几何一致。
+    /** @this {import('./waveform-types.js').WaveformInstance} */
     findMarkerRowAtClientY(clientY, fallbackRow = null) {
       const rows = (this.renderedRows?.length
         ? this.renderedRows
-        : [...this.content.querySelectorAll('.waveform-row')])
+        : [...(/** @type {NodeListOf<import('./waveform-types.js').WaveformRow>} */ (this.content.querySelectorAll('.waveform-row')))])
         .map((row) => {
           const rect = row.getBoundingClientRect();
           return {
@@ -335,6 +364,7 @@ window.MAWE.register('waveform-markers', function createWaveformModule(dependenc
     }
 
 
+    /** @this {import('./waveform-types.js').WaveformInstance} */
     markerPointerGeometry(event) {
       const drag = this.markerDrag || this.markerCreateDrag || null;
       const hit = this.findMarkerRowAtClientY(event.clientY, drag?.row || null);
@@ -343,6 +373,7 @@ window.MAWE.register('waveform-markers', function createWaveformModule(dependenc
     }
 
 
+    /** @this {import('./waveform-types.js').WaveformInstance} */
     markerPointerTimeMs(event) {
       const geometry = this.markerPointerGeometry(event);
       if (!geometry) return NaN;
@@ -354,6 +385,7 @@ window.MAWE.register('waveform-markers', function createWaveformModule(dependenc
     }
 
 
+    /** @this {import('./waveform-types.js').WaveformInstance} */
     _beginMarkerPointerTracking(drag) {
       try { drag.captureTarget?.setPointerCapture?.(drag.pointerId); } catch (_) {}
       this._markerDragMove = (moveEvent) => this.moveMarkerDrag(moveEvent);
@@ -364,6 +396,7 @@ window.MAWE.register('waveform-markers', function createWaveformModule(dependenc
     }
 
 
+    /** @this {import('./waveform-types.js').WaveformInstance} */
     _teardownMarkerPointerTracking(drag) {
       window.removeEventListener('pointermove', this._markerDragMove);
       window.removeEventListener('pointerup', this._markerDragEnd);
@@ -372,6 +405,7 @@ window.MAWE.register('waveform-markers', function createWaveformModule(dependenc
       this.stopMarkerEdgeAutoScroll();
     }
 
+    /** @this {import('./waveform-types.js').WaveformInstance} */
     beginMarkerDrag(event, markerId, row, mode) {
       const marker = this.getMarkers().find((candidate) => candidate?.id === markerId);
       if (!marker) return;
@@ -397,6 +431,7 @@ window.MAWE.register('waveform-markers', function createWaveformModule(dependenc
     }
 
 
+    /** @this {import('./waveform-types.js').WaveformInstance} */
     beginMarkerCreateDrag(event, row) {
       event.preventDefault();
       event.stopPropagation();
@@ -419,6 +454,7 @@ window.MAWE.register('waveform-markers', function createWaveformModule(dependenc
     }
 
 
+    /** @this {import('./waveform-types.js').WaveformInstance} */
     moveMarkerDrag(event) {
       const drag = this.markerDrag || this.markerCreateDrag;
       if (!drag || event.pointerId !== drag.pointerId) return;
@@ -446,6 +482,7 @@ window.MAWE.register('waveform-markers', function createWaveformModule(dependenc
 
     // moveMarkerDrag 的时间换算主体（move / resize / create 三种模式共用）。
     // 视口边缘自动滚动循环也复用：滚动改变指针下的行，需按最后一次指针事件重算。
+    /** @this {import('./waveform-types.js').WaveformInstance} */
     applyMarkerDragTime(drag, event) {
       if (drag.mode === 'create') {
         drag.endMs = this.markerPointerTimeMs(event);
@@ -474,6 +511,7 @@ window.MAWE.register('waveform-markers', function createWaveformModule(dependenc
 
     // 视口边缘自动滚动：指针贴近滚动容器上下边缘时持续滚动；
     // 滚动会改变指针下的行，因此每帧用最后一次指针事件重算预览。
+    /** @this {import('./waveform-types.js').WaveformInstance} */
     markerEdgeAutoScroll(event) {
       const rect = this.scroll.getBoundingClientRect();
       const direction = event.clientY < rect.top + MARKER_EDGE_SCROLL_PX
@@ -505,6 +543,7 @@ window.MAWE.register('waveform-markers', function createWaveformModule(dependenc
     }
 
 
+    /** @this {import('./waveform-types.js').WaveformInstance} */
     stopMarkerEdgeAutoScroll() {
       if (this.markerEdgeScrollFrame) {
         cancelAnimationFrame(this.markerEdgeScrollFrame);
@@ -514,11 +553,13 @@ window.MAWE.register('waveform-markers', function createWaveformModule(dependenc
     }
 
 
+    /** @this {import('./waveform-types.js').WaveformInstance} */
     clearMarkerDragPreviews() {
-      this.content.querySelectorAll('.waveform-marker-item.drag-preview').forEach((element) => element.remove());
+      (/** @type {NodeListOf<HTMLElement>} */ (this.content.querySelectorAll('.waveform-marker-item.drag-preview'))).forEach((element) => element.remove());
     }
 
 
+    /** @this {import('./waveform-types.js').WaveformInstance} */
     updateMarkerDragPreview(drag) {
       this.clearMarkerDragPreviews();
       let range = null;
@@ -537,11 +578,11 @@ window.MAWE.register('waveform-markers', function createWaveformModule(dependenc
       if (!range) return;
       if (drag.mode !== 'create') {
         // 拖既有标记时隐藏原元素，避免同一标记出现两份。
-        this.content.querySelectorAll(
+        (/** @type {NodeListOf<HTMLElement>} */ (this.content.querySelectorAll(
           `.waveform-marker-item[data-marker-id="${CSS.escape(String(drag.markerId))}"]`,
-        ).forEach((element) => { element.hidden = true; });
+        ))).forEach((element) => { element.hidden = true; });
       }
-      this.content.querySelectorAll('.waveform-row').forEach((row) => {
+      (/** @type {NodeListOf<import('./waveform-types.js').WaveformRow>} */ (this.content.querySelectorAll('.waveform-row'))).forEach((row) => {
         const rowStart = Number(row.dataset.startMs);
         const rowEnd = Number(row.dataset.endMs);
         const visibleStart = Math.max(range.start, rowStart);
@@ -553,9 +594,15 @@ window.MAWE.register('waveform-markers', function createWaveformModule(dependenc
         preview.style.setProperty('--marker-color', drag.original?.color || drag.pending?.color || '#3e63dd');
         preview.style.left = `${((visibleStart - rowStart) / duration) * 100}%`;
         preview.style.width = `${Math.max(
-          window.AsrEditorUtils.MARKER_MIN_VISIBLE_PERCENT,
+          range.region ? window.AsrEditorUtils.MARKER_MIN_VISIBLE_PERCENT : window.AsrEditorUtils.MARKER_POINT_MIN_VISIBLE_PERCENT,
           ((visibleEnd - visibleStart) / duration) * 100,
         )}%`;
+        if (!range.region) {
+          const shape = document.createElement('span');
+          shape.className = 'waveform-marker-point-shape';
+          shape.setAttribute('aria-hidden', 'true');
+          preview.appendChild(shape);
+        }
         if (range.region) {
           const label = document.createElement('span');
           label.className = 'waveform-marker-label';
@@ -568,13 +615,14 @@ window.MAWE.register('waveform-markers', function createWaveformModule(dependenc
     }
 
 
+    /** @this {import('./waveform-types.js').WaveformInstance} */
     endMarkerDrag(event) {
       const drag = this.markerDrag || this.markerCreateDrag;
       if (!drag || event.pointerId !== drag.pointerId) return;
       this._teardownMarkerPointerTracking(drag);
       drag.captureTarget?.classList?.remove('dragging');
       this.clearMarkerDragPreviews();
-      this.content.querySelectorAll('.waveform-marker-item[hidden]').forEach((element) => {
+      (/** @type {NodeListOf<HTMLElement>} */ (this.content.querySelectorAll('.waveform-marker-item[hidden]'))).forEach((element) => {
         element.hidden = false;
       });
       if (this.markerDrag === drag) this.markerDrag = null;
@@ -614,4 +662,4 @@ window.MAWE.register('waveform-markers', function createWaveformModule(dependenc
     pickMarkerRow: { value: pickMarkerRow },
     markerRowTimeMs: { value: markerRowTimeMs },
   });
-});
+}

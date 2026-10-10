@@ -12,7 +12,7 @@
     const mediaNameEl = document.getElementById('media-name');
     if (!mediaNameEl) return;
     if (!mediaName) {
-      mediaNameEl.textContent = '未加载媒体';
+      mediaNameEl.textContent = '未导入媒体';
       mediaNameEl.title = '';
       mediaNameEl.classList.add('empty');
       mediaNameEl.onclick = null;
@@ -66,6 +66,7 @@
 
 
 function applyCanonicalProject(data, filename) {
+  MaweWordTiming.reset();
   // 原地换工程：在途/已排期的延迟波形载荷（含响度标尺）全部作废，见
   // deferredReapeaksEpoch 的说明。
   MaweWaveformInit.deferredReapeaksEpoch += 1;
@@ -81,6 +82,7 @@ function applyCanonicalProject(data, filename) {
   MaweBoot.DATA.media = typeof data.media === 'string' ? data.media : '';
   MaweBoot.DATA.language = data.language || '';
   MaweBoot.DATA.language_source = typeof data.language_source === 'string' ? data.language_source : undefined;
+  MaweBoot.DATA.preserve_punctuation = typeof data.preserve_punctuation === 'boolean' ? data.preserve_punctuation : undefined;
   MaweBoot.DATA.split_mode = typeof data.split_mode === 'string' ? data.split_mode : undefined;
   MaweBoot.DATA.timestamp_granularity = typeof data.timestamp_granularity === 'string'
     ? data.timestamp_granularity : undefined;
@@ -98,6 +100,7 @@ function applyCanonicalProject(data, filename) {
   MaweBoot.DATA.workspace = data.workspace || null;
   MaweBoot.DATA.gap_remove = data.gap_remove || null;
   MaweBoot.DATA.markers = window.AsrEditorUtils.normalizeMarkers(data.markers);
+  window.MaweMarkersPanel?.resetSelection?.();
   MaweBoot.DATA.script_alignment = data.script_alignment || null;
   MaweBoot.DATA.preview = (data.preview && typeof data.preview === 'object') ? data.preview : null;
   MaweHistory.gapRemoveDirty = false;
@@ -110,7 +113,7 @@ function applyCanonicalProject(data, filename) {
   MaweAppearance.applyExtensionSubtitleAppearance(MaweBoot.DATA.preview?.extension_subtitle);
   MawePreviewGeometry.setStickerGeometry(MawePreviewGeometry.getStickerGeometry(), { markDirty: false });
   MawePreviewGeometry.refreshPreviewGeometryEditable();
-  if (data.sticker_root) MaweBoot.STICKER_ROOT = data.sticker_root;
+  MaweBoot.DATA.sticker_root = typeof data.sticker_root === 'string' ? data.sticker_root : '';
   MaweBoot.DATA.segments.length = 0;
   data.segments.forEach((segment) => MaweBoot.DATA.segments.push(segment));
   MaweBoot.DATA.multi_subtitle = MULTI_SUBTITLE_UTILS.normalizeMultiSubtitle(data.multi_subtitle, MaweBoot.DATA.segments);
@@ -132,6 +135,8 @@ function applyCanonicalProject(data, filename) {
   }
   MaweGapRemoveUi.updateGapRemoveUi();
   MaweCuePanel.renderAll({ waveform: 'full', preserveCueListScroll: false });
+  MaweProjectSettings.syncControls();
+  MaweStickerRoot.activateProjectRoot();
   MaweState.noteSavedSegments();
   MawePlaybackLoop.refreshSubtitlePreview(0, -1);
   updateUnloadedMediaLabel(MaweBoot.DATA.media);
@@ -240,6 +245,7 @@ function applyCanonicalProject(data, filename) {
 
   function isMawProject(data) {
     if (!data || typeof data !== 'object' || !Array.isArray(data.segments)) return false;
+    if (data.preserve_punctuation !== undefined && typeof data.preserve_punctuation !== 'boolean') return false;
     if (data.media_metadata !== undefined && data.media_metadata !== null
         && !MaweTimeline.normalizeMediaMetadata(data.media_metadata)) return false;
     if (data.timebase !== undefined) {
@@ -373,7 +379,7 @@ function applyCanonicalProject(data, filename) {
     }
     MaweServerSave.configureServerSaveControls();
     MaweServerSave.scheduleAutoSave();
-    MaweHint.flashHint(`已加载字幕：${displayName}（${MaweBoot.DATA.segments.length} 条）`, 'success');
+    MaweHint.flashHint(`已导入字幕：${displayName}（${MaweBoot.DATA.segments.length} 条）`, 'success');
     return true;
   });
 }

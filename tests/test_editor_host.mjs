@@ -2,12 +2,22 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import vm from 'node:vm';
 import test from 'node:test';
+import { createStorage } from '../web/shared/host/storage.js';
+import { createFiles } from '../web/shared/host/files.js';
+import { createServerApi } from '../web/shared/host/server-api.js';
+
+const factories = new Map([
+  ['shared/host/storage.js', ['host-storage',createStorage]],
+  ['shared/host/files.js', ['host-files',createFiles]],
+  ['shared/host/server-api.js', ['host-server-api',createServerApi]],
+]);
 
 function loadHost(environment = {}) {
   const context = { window: {}, ...environment };
   for (const file of ['editor/boot/editor-runtime.js', 'shared/host/storage.js',
     'shared/host/files.js', 'shared/host/server-api.js', 'editor/boot/editor-host.js']) {
-    vm.runInNewContext(readFileSync(new URL('../web/' + file, import.meta.url), 'utf8'), context);
+    if (factories.has(file)) context.window.MAWE.register(...factories.get(file));
+    else vm.runInNewContext(readFileSync(new URL('../web/' + file, import.meta.url), 'utf8'), context);
   }
   return context;
 }

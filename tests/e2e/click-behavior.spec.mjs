@@ -12,8 +12,7 @@ import {
   makeFirstCueWordSplittable,
   makeTempDir,
   disableOnboarding,
-  startServer,
-} from './helpers.mjs';
+  startServer, closeSettingsPanels, openSettingsPage, toggleGlobalSettings } from './helpers.mjs';
 
 let tempDir;
 let server;
@@ -47,8 +46,8 @@ test.beforeEach(async ({ page }) => {
 
 test('jump target is shown for both jump behaviors and hidden for select-only', async ({ page }) => {
   await page.goto(server.url);
-  await page.locator('#editor-settings-toggle').click();
-  await page.locator('#editor-settings-tab-general').click();
+  await toggleGlobalSettings(page);
+  await openSettingsPage(page, 'general');
   const behavior = page.locator('#click-behavior');
   const targetField = page.locator('#click-target-field');
   await expect(targetField).toBeVisible();
@@ -71,8 +70,8 @@ test('media seek buttons and arrow keys use the configured seek duration', async
 
   const step = page.locator('#media-seek-step');
   await expect(step).toHaveValue('1000');
-  await page.locator('#editor-settings-toggle').click();
-  await page.locator('#editor-settings-tab-subtitle-preview').click();
+  await toggleGlobalSettings(page);
+  await openSettingsPage(page, 'subtitle-preview');
   await step.fill('100');
   await step.press('Tab');
   await expect(step).toHaveValue('100');
@@ -113,7 +112,7 @@ test('media seek buttons and arrow keys use the configured seek duration', async
   await step.press('Tab');
   await expect(step).toHaveValue('7000');
   await expect(step).toHaveAttribute('step', '100');
-  await page.locator('#editor-settings-close').click();
+  await closeSettingsPanels(page);
   await expect.poll(() => page.evaluate(() => JSON.parse(
     localStorage.getItem('moy.asr.editor.settings.v1') || '{}',
   ).mediaSeekStepMs)).toBe(7000);
@@ -261,15 +260,15 @@ test('default list click selects and seeks to cue start while keeping playback',
 
 test('mouse-click pause setting seeks and pauses active playback', async ({ page }) => {
   await page.goto(server.url);
-  await page.locator('#editor-settings-toggle').click();
-  await page.locator('#editor-settings-tab-general').click();
+  await toggleGlobalSettings(page);
+  await openSettingsPage(page, 'subtitle-preview');
   const pauseOnMouseClick = page.locator('#pause-on-mouse-click');
   await expect(pauseOnMouseClick).not.toBeChecked();
   await pauseOnMouseClick.check();
   await expect.poll(() => page.evaluate(() => JSON.parse(
     localStorage.getItem('moy.asr.editor.settings.v1') || '{}',
   ).pauseOnMouseClick)).toBe(true);
-  await page.locator('#editor-settings-close').click();
+  await closeSettingsPanels(page);
 
   await page.waitForFunction(() => {
     const player = document.getElementById('player');
@@ -358,8 +357,8 @@ test('waveform cue double-click activates its subtitle editor while blank double
 
 test('the unconfigured Enter shortcut commits and exits cue-panel editing', async ({ page }) => {
   await page.goto(server.url);
-  await page.locator('#editor-settings-toggle').click();
-  await page.locator('#editor-settings-tab-split-merge').click();
+  await toggleGlobalSettings(page);
+  await openSettingsPage(page, 'split-merge');
   const splitKey = page.locator('#split-key');
   const panel = page.locator('#cue-panel-text');
   await splitKey.selectOption('enter');
@@ -399,7 +398,7 @@ test('Escape keeps cue-panel text edits by default and cancels when the setting 
   await expect(panel).toHaveValue('This edit is kept');
   await expect.poll(() => page.evaluate(() => MaweBoot.DATA.segments[0].text)).toBe('This edit is kept');
 
-  // 开启「操作 → Esc 取消编辑」后：Esc 恢复进入本次编辑前的文本。
+  // 开启「操作 → Esc 放弃修改」后：Esc 恢复进入本次编辑前的文本。
   await page.evaluate(() => {
     const saved = { ...JSON.parse(localStorage.getItem('moy.asr.editor.settings.v1') || '{}'), cueEditorCancelOnEscape: true };
     localStorage.setItem('moy.asr.editor.settings.v1', JSON.stringify(saved));
@@ -483,6 +482,45 @@ test('double-click places the inline caret at the pointer text position', async 
   })).toEqual({ collapsed: true, text: 'Alpha', offset: expectedOffset });
 });
 
+for (const language of ['zh', 'en']) {
+  for (const clear of ['select-all', 'backspace']) {
+    test(`inline typing after ${clear} keeps the first character caret in ${language}`, async ({ page }) => {
+      await page.goto(`${server.url}?lang=${language}`);
+      const text = page.locator('.cue[data-idx="0"] .text');
+      const caret = () => text.evaluate((element) => {
+        const selection = window.getSelection();
+        const range = document.createRange();
+        range.selectNodeContents(element);
+        range.setEnd(selection.anchorNode, selection.anchorOffset);
+        return { offset: range.toString().length, collapsed: selection.isCollapsed };
+      });
+      for (const characters of ['ab', '甲乙']) {
+        await text.dblclick();
+        await expect(text).toHaveAttribute('contenteditable', 'plaintext-only');
+        if (clear === 'select-all') {
+          await page.keyboard.press(process.platform === 'darwin' ? 'Meta+a' : 'Control+a');
+          await page.keyboard.press('Backspace');
+        } else {
+          await page.keyboard.press(process.platform === 'darwin' ? 'Meta+ArrowRight' : 'End');
+          const length = (await text.textContent()).length;
+          for (let i = 0; i < length; i += 1) await page.keyboard.press('Backspace');
+        }
+        await expect(text).toHaveText('');
+        if (characters === 'ab') await page.keyboard.type(characters[0]);
+        else await page.keyboard.insertText(characters[0]);
+        await expect(text).toHaveText(characters[0]);
+        expect(await caret()).toEqual({ offset: 1, collapsed: true });
+        if (characters === 'ab') await page.keyboard.type(characters[1]);
+        else await page.keyboard.insertText(characters[1]);
+        await expect(text).toHaveText(characters);
+        expect(await caret()).toEqual({ offset: 2, collapsed: true });
+        await page.screenshot({ path: test.info().outputPath(`${characters}-caret.png`) });
+        await page.keyboard.press('Escape');
+      }
+    });
+  }
+}
+
 test('current cue panel keeps the same height before and after selection', async ({ page }) => {
   // 高视口让 --layout-row-middle 的百分比下限超过面板内容高度，
   // 才能覆盖「选中后面板被拖到布局高度、空态又缩回内容高度」的跳变回归。
@@ -526,8 +564,8 @@ test('dragging the panel divider resizes the panel and stays consistent across s
 
 test('list context menu leads with text-position split', async ({ page }) => {
   await page.goto(server.url);
-  await page.locator('#editor-settings-toggle').click();
-  await page.locator('#editor-settings-tab-general').click();
+  await toggleGlobalSettings(page);
+  await openSettingsPage(page, 'general');
   await page.locator('#click-behavior').selectOption('select-only');
   await page.locator('.cue[data-idx="0"]').click({ button: 'right' });
 
@@ -585,16 +623,21 @@ test('B splits at the pointer inside the cue list and at the playhead outside it
 
   // 列表内悬停：按鼠标所指文字位置拆分
   const text = cue.locator('.text');
-  const splitPoint = await text.evaluate((element) => {
-    const node = element.firstChild;
-    const range = document.createRange();
-    range.setStart(node, 6);
-    range.setEnd(node, 6);
-    const rect = range.getBoundingClientRect();
-    return { x: rect.x, y: rect.y + rect.height / 2 };
-  });
-  await page.mouse.move(splitPoint.x, splitPoint.y);
-  await expect(page.locator('.cue-split-preview')).toHaveCount(1);
+  // Undo redraws lazy rows. Re-read the live caret geometry until hovering
+  // produces the preview instead of retaining coordinates from that redraw.
+  let splitPoint;
+  await expect.poll(async () => {
+    await text.scrollIntoViewIfNeeded();
+    splitPoint = await text.evaluate((element) => {
+      const range = document.createRange();
+      range.setStart(element.firstChild, 6);
+      range.setEnd(element.firstChild, 6);
+      const rect = range.getBoundingClientRect();
+      return { x: rect.x, y: rect.y + rect.height / 2 };
+    });
+    await page.mouse.move(splitPoint.x, splitPoint.y);
+    return page.locator('.cue-split-preview').count();
+  }).toBe(1);
   const previewBox = await page.locator('.cue-split-preview').boundingBox();
   expect(previewBox).not.toBeNull();
   expect(Math.abs(previewBox.x + previewBox.width / 2 - splitPoint.x)).toBeLessThan(1.5);

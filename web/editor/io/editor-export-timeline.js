@@ -41,7 +41,7 @@
         idx,
         start_ms: seg.start,
         end_ms: seg.end,
-        text: seg.text || '',
+        text: MaweSpeakerLabels.subtitleExportText(seg, MaweBoot.DATA.segments),
         color: seg.color || null,
         color_ref: seg.color_ref || null,
         resolve_color: colorName,
@@ -122,15 +122,18 @@
   const OTIO_DEFAULT_MARKER_COLOR = 'WHITE';
 
   // 工程「标记与区段」色板（见 web/shared/utils/markers.js）→ OTIO 命名色。
-  // 天蓝/可可没有同名 OTIO 色，按最近色相归并（BLUE / ORANGE）。
+  // Lavender 在 OTIO 中归并为 PURPLE；保留历史工程色值的映射。
   const MARKER_HEX_TO_OTIO_COLORS = Object.freeze({
     '#3e63dd': 'BLUE',
     '#00a2c7': 'CYAN',
     '#46a758': 'GREEN',
     '#f5d90a': 'YELLOW',
+    '#f5b81b': 'YELLOW',
     '#e5484d': 'RED',
     '#ef5da8': 'PINK',
     '#8e4ec6': 'PURPLE',
+    '#b18be8': 'PURPLE',
+    '#ffffff': 'WHITE',
     '#d6409f': 'MAGENTA',
     '#45a3f5': 'BLUE',
     '#a06e3b': 'ORANGE',
@@ -173,7 +176,7 @@
     return [{
       OTIO_SCHEMA: 'Marker.2',
       metadata: {},
-      name: String(segment.text || ''),
+      name: MaweSpeakerLabels.subtitleExportText(segment, colorContext),
       // 字幕来源的标记在备注里自明来源；名称本身即字幕内容。
       comment: 'MAW 字幕',
       color: OTIO_MARKER_COLORS[colorName] || OTIO_DEFAULT_MARKER_COLOR,
@@ -321,12 +324,12 @@
 } = {}) {
   const removed = gapRemoved ? MaweGapRemoveData.getRemovedGapRanges() : [];
   if (gapRemoved && !removed.length) {
-    MaweHint.flashHint('没有已移除的静音空隙；请先使用「移除静音空隙」扫描并移除', 'invalid');
+    MaweHint.flashHint('没有已移除的静音空隙；请先在「静音空隙」中扫描', 'invalid');
     return null;
   }
   const durationMs = MaweCoreState.waveformEditor?.durationMs || Math.round(Number(MaweCoreState.player?.duration) * 1000) || 0;
   if (!durationMs) {
-    MaweHint.flashHint('媒体时长尚不可用；请先加载媒体后再导出 OTIO', 'invalid');
+    MaweHint.flashHint('媒体时长尚不可用；请先导入媒体再导出 OTIO', 'invalid');
     return null;
   }
   const targetUrl = mediaTargetUrl();
@@ -603,7 +606,7 @@
   function buildGapRemovedStickerOtio() {
     const removed = MaweGapRemoveData.getRemovedGapRanges();
     if (!removed.length) {
-      MaweHint.flashHint('没有已移除的静音空隙；请先使用「移除静音空隙」扫描并移除', 'invalid');
+      MaweHint.flashHint('没有已移除的静音空隙；请先在「静音空隙」中扫描', 'invalid');
       return null;
     }
     const collected = collectStickerOtioEntries(removed);

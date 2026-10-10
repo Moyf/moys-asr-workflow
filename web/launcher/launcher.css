@@ -1835,6 +1835,15 @@ textarea::placeholder {
   overflow-wrap: anywhere;
 }
 
+.error-notice-context {
+  margin: 0;
+  white-space: pre-line;
+  color: var(--text-muted);
+  font-size: 12px;
+  line-height: 1.5;
+  overflow-wrap: anywhere;
+}
+
 .error-notice-detail {
   max-height: 160px;
   margin-top: 8px !important;
@@ -2145,24 +2154,6 @@ textarea::placeholder {
   pointer-events: none;
 }
 
-#toolboxInputPath {
-  direction: ltr;
-  text-align: right;
-}
-
-#toolboxInputPath:placeholder-shown {
-  text-align: left;
-}
-
-#toolboxUtilityMediaPath {
-  direction: ltr;
-  text-align: right;
-}
-
-#toolboxUtilityMediaPath:placeholder-shown {
-  text-align: left;
-}
-
 .toolbox-input-heading {
   display: flex;
   align-items: baseline;
@@ -2470,6 +2461,10 @@ textarea::placeholder {
 
 .adv-group .toolbox-settings-hint {
   margin-top: 0;
+}
+
+#toolboxTimestampScriptInputs .toolbox-settings-hint {
+  margin-top: 10px;
 }
 
 /* adv-group 的组标题已表达语义：组内输入区不再套第二层框（与 FFconcat
@@ -3478,3 +3473,12 @@ select[multiple] option {
 .asr-preset-modal-actions { flex-wrap: wrap; }
   #asrPresetRootSection .path-row { grid-template-columns: minmax(0, 1fr); }
 }
+
+#postprocessAiCleanupNotesField:not(.hidden) {
+  display: grid;
+  gap: 8px;
+}
+
+.script-alignment-check-actions, #toolboxTimestampCheckResult { margin-top: 10px; }
+#toolboxTimestampScriptInputs .toolbox-grid + .toolbox-grid { margin-top: 10px; }
+#toolboxTimestampCheckResult { white-space: pre-line; overflow-wrap: anywhere; }

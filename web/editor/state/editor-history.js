@@ -65,8 +65,11 @@
 
 
   function captureSegmentsRecord(label, { captureView = false } = {}) {
+    // snapshotSegments() 已是深克隆；让 buildHistoryRecord 跳过二次克隆，
+    // 长工程下省掉一遍 O(工程体积) 的 JSON 序列化。
     const record = window.AsrEditorUtils.buildHistoryRecord(
       'segments', label, snapshotSegments(), captureView ? snapshotEditorSelection() : null,
+      { clone: false },
     );
     record.projectChanges = { projectImportDirty: MaweState.changes.projectImportDirty };
     return record;
@@ -111,6 +114,7 @@
 
   function snapshotPreviewState() {
     return {
+      assMode: MaweSettings.EDITOR_SETTINGS.assMode,
       overlay: !!MaweDom.overlayToggle.checked,
       subtitle: { ...MaweAppearance.getPreviewGeometry(), ...MaweAppearance.getSubtitleAppearance() },
       speakerLabels: MaweSpeakerLabels.getSpeakerLabelSettings(),
@@ -133,6 +137,8 @@
     if (state.speakerLabels) MaweSpeakerLabels.setSpeakerLabelSettings(state.speakerLabels, { markDirty: true });
     if (state.extensionSubtitle) MaweAppearance.restoreExtensionSubtitleAppearance(state.extensionSubtitle, { markDirty: true });
     if (state.sticker) MawePreviewGeometry.setStickerGeometry(state.sticker, { markDirty: true });
+    if (typeof state.assMode === 'boolean') MaweSettings.updateEditorSettings({ assMode: state.assMode });
+    window.MaweProjectSettings?.syncControls();
     MawePreviewGeometry.refreshPreviewGeometryEditable();
     MawePlaybackLoop.update();
   }
@@ -231,6 +237,7 @@
 
 
   function applyHistoryRecord(record) {
+  MaweWordTiming.clearSelection();
   if (record.kind === 'layout') {
     if (!MaweCoreState.waveformEditor?.restoreLayoutHistorySnapshot?.(record.layout)) {
       MaweHint.flashHint('工作区恢复失败：波形模块尚未加载', 'warning');
@@ -334,12 +341,12 @@
   }
   return MaweDom.replaceModal.classList.contains('show')
       || MaweDom.textProcessModal.classList.contains('show')
+      || document.getElementById('wrap-chars-modal')?.classList.contains('show')
       || MaweDom.timedTextEditModal.classList.contains('show')
       || MaweDom.stickerModal.classList.contains('show')
       || MaweDom.stickerPreviewModal.classList.contains('show')
       || MaweDom.projectMediaModal.classList.contains('show')
-      || assStyleWindow?.classList.contains('show')
-      || document.getElementById('sticker-root-modal').classList.contains('show');
+      || assStyleWindow?.classList.contains('show');
 }
 
 

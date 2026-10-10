@@ -25,11 +25,11 @@ web/launcher/                # Launcher 前端
 docs/LOCAL_ASR.md             # 实验性本地 Qwen3-ASR / FunASR CLI
 ```
 
-`web/` 是唯一前端源码。`edit.py` 将它内联为便携 `.edit.html`，`server-editor` 则在每次请求时从它渲染页面。因此，修改 `web/` 或模板后需要重新生成内联副本：
+`web/` 是唯一前端源码。59 个工厂使用 ESM，其余接线保留 classic 共享作用域；`pnpm run build:editor` 由 esbuild 装配完整 `web/editor/boot/editor-bundle.js`。便携 HTML 与 localhost 都读取这个产物，运行时不需要 Node。修改编辑器 JS 或清单后必须重建并提交 bundle 与 `.meta.json`，运行 `pnpm run check:editor`；localhost 调试可另开 `pnpm run watch:editor`。CSS 与 HTML 模板仍在渲染时读取。
 
 **但现行约定是：除非维护者主动要求，不要生成 `blank-editor.html`。**
 它是生成产物、体积大，且每次重生成都会带来上百行噪声 diff，review 时淹没真实改动。
-改了 `web/` 就只提交 `web/` 源码，并在 PR 描述里注明「内联副本待发布前统一重生成」；
+改了 `web/` 就提交源码及对应 esbuild 产物，并在 PR 描述里注明「内联副本待发布前统一重生成」；
 发布检查时再一次性重生成，并核对 `git diff --stat blank-editor.html` 符合预期。
 
 ```powershell
@@ -42,6 +42,9 @@ uv run python edit.py --blank
 
 ```powershell
 uv sync
+pnpm install --frozen-lockfile
+pnpm run check:editor
+pnpm run typecheck
 node --test tests\test_editor_script_syntax.mjs tests\test_editor_script_order.mjs
 node --test tests\test_editor_utils.mjs tests\test_waveform_js.mjs
 uv run python -m unittest discover -s tests -p "test_*.py"
@@ -49,7 +52,8 @@ git diff --check
 ```
 
 `web/editor/boot/editor.js` 是加载守卫入口；连续接线位于各领域的
-`editor-wiring-*.js` 中，按 `web/editor-scripts.txt` 原序装配为一个 classic script。
+`editor-wiring-*.js` 中，构建器按 `web/editor-scripts.txt` 原序执行接线与工厂注册。
+`web/editor-modules.json` 明确列出 ESM 工厂与仍需保留的外部桥。工厂只导出函数，不在模块求值时注册；依赖袋继续由门面注入。
 新增业务逻辑写入所属领域模块，避免再扩大入口。目录位置不决定执行顺序。
 
 ### Agent 命令执行：避免 uv 超时卡住
@@ -58,11 +62,33 @@ git diff --check
 - Agent 自动化执行的命令一律使用 `uv run --no-sync`（环境由开发者手动 `uv sync` 维护）。
 - 长命令拆分成多次执行并显式设置超时；不要把 `uv run` 与慢命令（如 `Test-NetConnection`、`Start-Sleep`）串联在同一条链里。
 
+### Agent 测试输出与后台进程：不搬运完整日志，不悬挂服务
+
+- 跑测试只保留退出码、失败用例名与首个错误行。unittest 的 `assertIn` / `assertEqual` 失败会把整个容器（内联脚本、整页 HTML，数十万字符）dump 进输出；用 `Select-String 'AssertionError'`、`grep -E '^(FAIL|ERROR|Ran|OK)'` 之类的过滤只取摘要，禁止把完整测试输出读进上下文。
+- 对页面 / 内联脚本做成员断言的测试类，继承 `tests/compact_assertions.py` 的 `CompactContainerAssertions` 混入：大容器失败信息压缩为「needle + 容器规模」，单次失败不再产生数十万字符日志（行为见 `tests/test_compact_assertions.py`）。
+- 后台长驻进程（serve.py、http.server 等）不要用会等待进程树的方式启动：优先用独立终端，或把输出重定向到文件后再以端口探活（如 `Invoke-WebRequest` 轮询），用完必须终止进程。曾发生后台 server 挂住会话 2 小时以上的事故。
+- 禁止用 bash 后台 `&`（含 `nohup ... &`）启动任何长驻进程：stdin 仍挂在会话管道上永不 EOF，即使重定向 stdout/stderr，命令工具也会等待进程树而永久阻塞（2026-10-09 `python -m http.server ... &` 事故，探活成功后仍卡死）。需要本地服务一律 paseo 独立终端启动、用完 kill；一次性验证（如本地打开生成的 HTML）优先静态校验，不起服务。
+- 已知时长：全量 Python 套件约 110s、单条 e2e spec 约 2 分钟，命令默认超时 120s 处于临界；这些命令显式设置更大的超时，或按文件拆分执行。
+- 新 worktree 没有现成环境：Python 复用主仓库 venv（`UV_PROJECT_ENVIRONMENT` 指向主仓库 `.venv`）或给 e2e 设 `MAW_E2E_PYTHON`；Node 侧 `pnpm install` 后装配顺序测试才可运行（需要 acorn），e2e 需要 playwright。
+- PowerShell 内联脚本（`node -e "..."`、多层嵌套引号）极易解析失败；复杂逻辑写成临时脚本文件再执行。命令输出为空时，先怀疑参数与引号，而不是重跑同一命令。
+
 自动化测试覆盖数据处理和服务器契约，不能替代真实浏览器中的拖动、播放、Seek 和布局体验。涉及编辑器交互的改动，应至少手动启动：
 
 ```powershell
 uv run python server-editor\serve.py --blank
 ```
+
+### Playwright e2e 运行纪律（防长命令挂起）
+
+详见 [docs/E2E_SERVER_HANG.md](docs/E2E_SERVER_HANG.md)。要点：
+
+- e2e 的 serve.py 在运行被中断（以及部分正常结束场景）后会残留并占住管道，
+  使后续命令「永不结束」。**中断/失败后重跑前，先按该文档清理残留进程。**
+- 长命令显式限时：全量 chromium e2e ≤ 15 分钟，单 spec ≤ 10 分钟；优先只跑
+  受影响的 spec，全量留给 CI。连续两轮不过先停下分析，不要循环重跑。
+- 后台任务用 `Start-Process -WindowStyle Hidden`（勿用 `-NoNewWindow`，会占
+  住当前控制台），输出重定向到文件。
+- 浏览器验证是可选项：逻辑验证优先单测；反复卡住就降级为人工验收，不要阻塞。
 
 ## 大型反馈任务的持久化流程
 
@@ -101,10 +127,29 @@ git diff
 - 检查任务表是否仍有 `进行中`、`待处理` 或 `阻塞`，并对每一项给出下一步或原因；不能只说“基本完成”。
 - 在共享工作区中保留用户和其他任务的 WIP：操作前后都检查状态，只修改本任务文件/代码，不使用 `git reset`、`git clean` 或覆盖无关 diff。
 
+## 批量改动的人工核查清单
+
+完成一批功能开发 / 反馈修复（多条目、需要维护者实测确认）后，基于模板生成一份 HTML
+核对清单交给维护者，而不是在对话里罗列长清单：
+
+1. 复制 `tools/verification-checklist/templates/verification-checklist.html`，替换 `{{TITLE}}`、`{{SUBTITLE}}`
+   和 `{{SECTIONS}}`；生成物放在仓库外（如 `%TEMP%`）用浏览器打开，**不提交进仓库**。
+2. 分区卡片用 `<details class="section">` + `summary` 徽标 + `.body` 的标准写法；
+   分区约定：实现 / 审查结论（只读）→ 修复与提交记录 → 自动化验证结果（写明命令与
+   已知环境性失败，不用自动化冒充人工层）→ 人工核验打勾项 → 后续操作步骤。
+3. 打勾项写成可操作步骤（入口 → 操作 → 预期行为），间距类验收仍按「UI 间距约定」
+   要求实测数据。左侧目录、分区与总进度由模板脚本自动生成，无需手写；勾选状态按
+   页面标题存 localStorage，「重置勾选」一键清空勾选并保留备注。
+   工具使用说明与生成/更新命令见 `tools/verification-checklist/README.md`；每项可填写备注，
+   核对结果可导出全部或仅未确认项 JSON；含核对项的分区可悬停标题「忽略」整组
+   （标题变灰折叠、计数按已处理、不进入未确认导出），重置勾选会一并清除忽略。
+4. 不要为单次清单改动模板结构；确需改进时直接修改模板本身，让后续复用受益。
+
 ## Codegraph 使用注意
 
 - 在本仓库调用 `codegraph_explore` **必须显式传 `projectPath="D:\Codes\moys-asr-workflow"`**。省略时使用会话默认项目，可能落到 `D:\Codes\.codegraph` 这个父级混合索引（把 D:\Codes 下所有同级项目建在一个库），返回其他仓库（如 `graph-animation-controller`）的代码并造成误改。
 - 背景：`.codegraph/` 目录若存在但为空，工具会沿目录树向上回退到父级索引；2026-08 已在本仓库运行 `codegraph init` 重建了本仓库自己的索引。若再次出现外仓库结果，先检查 `.codegraph/codegraph.db` 是否还在。
+- **worktree 没有自带索引**，可复用主仓库的：传 `projectPath="D:\Codes\moys-asr-workflow"` 做符号与结构导航（"X 在哪定义 / 被谁调用"），但返回的文件内容是**主分支**的，不能当作 worktree 的编辑依据；编辑定位与内容核验仍用 `Select-String` / `grep`。分支大量增删改文件时（重构类 PR）索引误导性大，此时完全依赖 grep。需要完整支持时可在 worktree 里 `codegraph init` 自建索引（约 64 MB + 常驻 daemon），按需取舍。禁止落到 `D:\Codes\.codegraph` 父级混合索引（见上）。
 
 ## 代码与安全约束
 

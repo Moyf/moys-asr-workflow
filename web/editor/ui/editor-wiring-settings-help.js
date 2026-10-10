@@ -1,8 +1,42 @@
-MaweSettingsPanels.editorSettingsTabs.forEach((tab) => {
+document.querySelectorAll('[data-settings-region]').forEach((button) => {
+  button.addEventListener('click', (event) => {
+    event.preventDefault();
+    event.stopPropagation();
+    MaweSettingsPanels.openRegionalSettings(button.dataset.settingsRegion, button.dataset.settingsTarget);
+  });
+});
+document.querySelectorAll('[data-settings-page]').forEach((button) => {
+  button.addEventListener('click', (event) => {
+    event.preventDefault();
+    event.stopPropagation();
+    MaweSettingsPanels.openEditorSettingsAtTab(`editor-settings-tab-${button.dataset.settingsPage}`);
+    const target = document.getElementById(button.dataset.settingsTarget || '');
+    target?.scrollIntoView({ block: 'nearest' });
+    const control = target?.matches('input, select, button') ? target
+      : target?.nextElementSibling?.querySelector('input, select, button');
+    control?.focus({ preventScroll: true });
+  });
+});
+document.querySelectorAll('[data-settings-export]').forEach((button) => {
+  button.addEventListener('click', () => {
+    const command = document.getElementById(button.dataset.settingsExport);
+    if (!command || command.getAttribute('aria-disabled') === 'true') return;
+    MaweSettingsPanels.setEditorSettingsPanelOpen(false);
+    command.click();
+  });
+});
+document.querySelectorAll('[data-settings-tool="gap"]').forEach((button) => {
+  button.addEventListener('click', () => {
+    MaweSettingsPanels.setEditorSettingsPanelOpen(false);
+    MaweGapRemoveUi.openGapRemovePanel();
+    MaweDom.gapRemoveManageButton?.focus();
+  });
+});
+[...MaweSettingsPanels.editorSettingsTabs, ...MaweSettingsPanels.projectTabs].forEach((tab) => {
   tab.addEventListener('click', () => MaweSettingsPanels.setEditorSettingsActiveTab(tab));
   tab.addEventListener('keydown', (event) => {
     // 方向键只在可见分区之间循环；隐藏分区（如不可用的「保存」）不参与导航。
-    const visibleTabs = MaweSettingsPanels.editorSettingsTabs.filter((item) => !item.hidden);
+    const visibleTabs = [...tab.closest('.editor-settings-nav').querySelectorAll('.editor-settings-nav-tab')].filter((item) => !item.hidden);
     const index = visibleTabs.indexOf(tab);
     let next = -1;
     if (event.key === 'ArrowDown' || event.key === 'ArrowRight') {
@@ -20,14 +54,6 @@ MaweSettingsPanels.editorSettingsTabs.forEach((tab) => {
   });
 });
 MaweDom.editorSettingsClose?.addEventListener('click', () => MaweSettingsPanels.setEditorSettingsPanelOpen(false));
-MaweDom.mergeJoinSettingsToggle?.addEventListener('click', (event) => {
-  event.stopPropagation();
-  MaweSettingsPanels.setMergeJoinSettingsPanelOpen(MaweDom.mergeJoinSettingsPanel?.hidden);
-});
-MaweDom.splitTrimSettingsToggle?.addEventListener('click', (event) => {
-  event.stopPropagation();
-  MaweSettingsPanels.setSplitTrimSettingsPanelOpen(MaweDom.splitTrimSettingsPanel?.hidden);
-});
 MaweDom.cueListSettingsToggle?.addEventListener('click', (event) => {
   event.stopPropagation();
   MaweSettingsPanels.setCueListSettingsPanelOpen(MaweDom.cueListSettingsPanel?.hidden);
@@ -57,12 +83,6 @@ document.addEventListener('pointerdown', (event) => {
   if (!MaweDom.cueEditorSettingsPanel?.hidden && !MaweDom.cueEditorSettings?.contains(event.target)) {
     MaweSettingsPanels.setCueEditorSettingsPanelOpen(false);
   }
-  if (!MaweDom.mergeJoinSettingsPanel?.hidden && !MaweDom.mergeJoinSettings?.contains(event.target)) {
-    MaweSettingsPanels.setMergeJoinSettingsPanelOpen(false);
-  }
-  if (!MaweDom.splitTrimSettingsPanel?.hidden && !MaweDom.splitTrimSettings?.contains(event.target)) {
-    MaweSettingsPanels.setSplitTrimSettingsPanelOpen(false);
-  }
 });
 document.addEventListener('keydown', (event) => {
   if (event.key !== 'Escape') return;
@@ -78,19 +98,7 @@ document.addEventListener('keydown', (event) => {
     MaweSettingsPanels.setCueEditorSettingsPanelOpen(false);
     MaweDom.cueEditorSettingsToggle?.focus();
   }
-  if (!MaweDom.mergeJoinSettingsPanel?.hidden) {
-    MaweSettingsPanels.setMergeJoinSettingsPanelOpen(false);
-    MaweDom.mergeJoinSettingsToggle?.focus();
-  }
-  if (!MaweDom.splitTrimSettingsPanel?.hidden) {
-    MaweSettingsPanels.setSplitTrimSettingsPanelOpen(false);
-    MaweDom.splitTrimSettingsToggle?.focus();
-  }
 });
-window.addEventListener('resize', MaweSettingsPanels.positionMergeJoinSettingsPanel);
-window.addEventListener('scroll', MaweSettingsPanels.positionMergeJoinSettingsPanel, true);
-window.addEventListener('resize', MaweSettingsPanels.positionSplitTrimSettingsPanel);
-window.addEventListener('scroll', MaweSettingsPanels.positionSplitTrimSettingsPanel, true);
 window.addEventListener('resize', MaweSettingsPanels.positionCueListSettingsPanel);
 window.addEventListener('scroll', MaweSettingsPanels.positionCueListSettingsPanel, true);
 window.addEventListener('resize', MaweSettingsPanels.positionWaveformSettingsPanel);
@@ -118,29 +126,18 @@ MaweDom.helpOpenWaveformSettingsButtons.forEach((button) => {
   });
 });
 // 帮助中的「全局设置」入口：打开设置窗口并定位到「视频预览」分区。
-
-MaweDom.exportOpenSubtitleColorSettingsButton?.addEventListener('click', (event) => {
-  event.preventDefault();
-  MaweSettingsPanels.openEditorSettingsAtTab('editor-settings-tab-subtitle-color');
-});
-MaweDom.splitMultiSubtitleSettingsLink?.addEventListener('click', (event) => {
-  event.preventDefault();
-  event.stopPropagation();
-  if (!MaweMultiSubtitleCore.multiSubtitleVisible()) return;
-  MaweDom.multiSubtitleSettingsToggle?.click();
-  MaweDom.multiSubtitleSettingsToggle?.focus();
-});
 MaweDom.helpOpenMediaSettingsButtons.forEach((button) => {
   button.addEventListener('click', (event) => {
     event.preventDefault();
     MaweSettingsPanels.openEditorSettingsAtTab('editor-settings-tab-subtitle-preview');
   });
 });
-// 帮助中的「⚙️全局设置」入口：定位到「通用操作」分区（波形操作/按键/空隙设置所在）。
+// 帮助中的「全局设置」入口：定位到对应分区（波形操作/按键/空隙设置所在）。
 helpOpenEditorSettingsButtons.forEach((button) => {
   button.addEventListener('click', (event) => {
     event.preventDefault();
-    MaweSettingsPanels.openEditorSettingsAtTab('editor-settings-tab-general');
+    MaweSettingsPanels.openEditorSettingsAtTab(button.id === 'help-open-gap-settings' || button.id === 'help-open-keyboard-settings'
+      ? 'editor-settings-tab-special-edit' : 'editor-settings-tab-general');
   });
 });
 MaweDom.helpOpenGapRemovePanelButton?.addEventListener('click', (event) => {

@@ -1,0 +1,501 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>MAW 文案评审工具</title>
+<style>
+  :root {
+    --bg: #f5f6f8; --card: #ffffff; --border: #e2e5ea; --text: #1f2530; --muted: #6b7280;
+    --accent: #2563eb; --accent-soft: #eff4ff;
+    --pending: #b45309; --pending-bg: #fff7ed;
+    --approved: #15803d; --approved-bg: #f0fdf4;
+    --keep: #64748b; --keep-bg: #f1f5f9;
+    --edited: #7c3aed; --edited-bg: #f5f3ff;
+    --danger: #b91c1c;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; background: var(--bg); color: var(--text);
+    font: 14px/1.6 -apple-system, BlinkMacSystemFont, "PingFang SC", "Microsoft YaHei", "Segoe UI", sans-serif;
+  }
+  .topbar {
+    position: sticky; top: 0; z-index: 20;
+    background: rgba(255,255,255,.92); backdrop-filter: blur(8px);
+    border-bottom: 1px solid var(--border); padding: 10px 20px;
+  }
+  .topbar h1 { font-size: 16px; margin: 0; }
+  .topbar .meta { color: var(--muted); font-size: 12px; margin-top: 2px; }
+  .topbar .rule { color: var(--accent); font-size: 12px; margin-top: 2px; }
+  .progress-track { height: 4px; background: var(--border); border-radius: 2px; margin: 8px 0 6px; overflow: hidden; }
+  .progress-bar { height: 100%; background: var(--accent); width: 0; transition: width .2s; }
+  .toolbar-row { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+  .stats { display: flex; gap: 10px; font-size: 12px; color: var(--muted); flex-wrap: wrap; }
+  .stats b { color: var(--text); }
+  .chip {
+    border: 1px solid var(--border); background: var(--card); color: var(--text);
+    border-radius: 999px; padding: 3px 12px; font-size: 12px; cursor: pointer;
+  }
+  .chip:hover { border-color: var(--accent); }
+  .chip.active { background: var(--accent); border-color: var(--accent); color: #fff; }
+  .search { border: 1px solid var(--border); border-radius: 6px; padding: 4px 10px; font-size: 13px; min-width: 180px; }
+  .btn {
+    border: 1px solid var(--border); background: var(--card); border-radius: 6px;
+    padding: 4px 12px; font-size: 12px; cursor: pointer; color: var(--text);
+  }
+  .btn:hover { border-color: var(--accent); color: var(--accent); }
+  .btn.primary { background: var(--accent); border-color: var(--accent); color: #fff; }
+  .btn.primary:hover { filter: brightness(1.08); }
+  .btn.danger:hover { border-color: var(--danger); color: var(--danger); }
+  main { max-width: 1240px; margin: 0 auto; padding: 16px 20px 60px; }
+  .card { background: var(--card); border: 1px solid var(--border); border-radius: 10px; margin: 14px 0; overflow: hidden; }
+  .card-head { padding: 12px 16px; border-bottom: 1px solid var(--border); display: flex; flex-wrap: wrap; gap: 10px; align-items: baseline; }
+  .card-head h2 { font-size: 14px; margin: 0; }
+  .app-badge { font-size: 11px; padding: 1px 8px; border-radius: 999px; background: var(--accent-soft); color: var(--accent); }
+  .card-head .mini-stats { font-size: 12px; color: var(--muted); }
+  .card-head .spacer { flex: 1; }
+  .decision { padding: 12px 16px; border-bottom: 1px solid var(--border); }
+  .decision:last-child { border-bottom: 0; }
+  .decision .q { font-weight: 600; }
+  .decision .desc { color: var(--muted); font-size: 12px; margin: 2px 0 6px; }
+  .decision .opts { display: flex; gap: 8px; flex-wrap: wrap; }
+  .opt {
+    border: 1px solid var(--border); border-radius: 6px; padding: 4px 12px; cursor: pointer; font-size: 13px;
+    background: var(--card);
+  }
+  .opt.selected { border-color: var(--accent); background: var(--accent-soft); color: var(--accent); font-weight: 600; }
+  table { width: 100%; border-collapse: collapse; }
+  th, td { text-align: left; padding: 8px 12px; border-bottom: 1px solid var(--border); vertical-align: top; font-size: 13px; }
+  th { font-size: 12px; color: var(--muted); font-weight: 600; background: #fafbfc; }
+  tr:last-child td { border-bottom: 0; }
+  td.loc { white-space: nowrap; color: var(--muted); font-size: 12px; width: 130px; }
+  td.orig { width: 34%; }
+  td.orig .o { color: var(--text); }
+  td.newcell { width: 30%; }
+  td.note { color: var(--muted); font-size: 12px; width: 200px; }
+  .newtext { width: 100%; border: 1px solid var(--border); border-radius: 6px; padding: 4px 8px; font-size: 13px; font-family: inherit; }
+  .newtext:focus { outline: 2px solid var(--accent-soft); border-color: var(--accent); }
+  .charcount { font-size: 11px; color: var(--muted); margin-top: 2px; }
+  .status-row { display: flex; gap: 6px; align-items: center; white-space: nowrap; }
+  .st-btn { border: 1px solid var(--border); background: var(--card); border-radius: 5px; font-size: 11px; padding: 2px 8px; cursor: pointer; color: var(--muted); }
+  .st-btn:hover { border-color: var(--accent); color: var(--accent); }
+  .st-badge { font-size: 11px; padding: 2px 8px; border-radius: 999px; white-space: nowrap; }
+  .st-pending { background: var(--pending-bg); color: var(--pending); }
+  .st-approved { background: var(--approved-bg); color: var(--approved); }
+  .st-keep { background: var(--keep-bg); color: var(--keep); }
+  .st-edited { background: var(--edited-bg); color: var(--edited); }
+  .error-box { margin: 30px auto; max-width: 720px; background: #fef2f2; border: 1px solid #fecaca; color: var(--danger); padding: 16px 20px; border-radius: 10px; }
+  footer.howto { max-width: 1240px; margin: 0 auto 40px; padding: 0 20px; color: var(--muted); font-size: 12px; }
+  footer.howto code { background: var(--keep-bg); padding: 1px 5px; border-radius: 4px; }
+  @media (max-width: 900px) {
+    td.loc { white-space: normal; }
+    td.note { display: none; }
+    th:nth-child(6) { display: none; }
+  }
+</style>
+</head>
+<body>
+
+<header class="topbar">
+  <h1 id="pageTitle">文案评审</h1>
+  <div class="meta" id="pageMeta">正在加载数据…</div>
+  <div class="rule" id="pageRule"></div>
+  <div class="progress-track"><div class="progress-bar" id="progressBar"></div></div>
+  <div class="toolbar-row">
+    <div class="stats" id="statsRow"></div>
+  </div>
+  <div class="toolbar-row" style="margin-top:8px">
+    <button class="chip active" data-filter="all">全部</button>
+    <button class="chip" data-filter="pending">待确认</button>
+    <button class="chip" data-filter="approved">已采纳</button>
+    <button class="chip" data-filter="edited">已修改</button>
+    <button class="chip" data-filter="keep">保留原文</button>
+    <input class="search" id="searchInput" placeholder="搜索位置 / 原文案 / 新文案…">
+    <span style="flex:1"></span>
+    <button class="btn primary" id="exportBtn">导出结果 JSON</button>
+    <button class="btn" id="importBtn">导入上次进度</button>
+    <input type="file" id="importFile" accept=".json,application/json" hidden>
+    <button class="btn danger" id="resetBtn">重置</button>
+  </div>
+</header>
+
+<div class="error-box" id="loadError" hidden>
+  找不到数据文件 <b id="loadErrorFile"></b>。<br>
+  请确认数据文件与本页面在同一目录；复用方法见页面底部说明。
+</div>
+
+<main id="mainRoot">
+  <section class="card" id="decisionsCard" hidden>
+    <div class="card-head"><h2>全局决策</h2><span class="mini-stats" id="decisionStats"></span></div>
+    <div id="decisionsBody"></div>
+  </section>
+  <div id="sectionsRoot"></div>
+</main>
+
+<footer class="howto">
+  <p><b>用法：</b>逐行确认。点 <code>✓ 采纳</code> 接受新文案；点 <code>保留原文</code> 维持现状；直接在「新文案」输入框里改写则标记为「已修改」。进度自动保存在本浏览器（localStorage），换电脑可用「导出结果 JSON / 导入上次进度」接力。全部确认后点「导出结果 JSON」，把文件交给开发侧落地。</p>
+  <p><b>复用这套管线：</b>复制一份 <code>maw-copy-review-data.js</code> 改名（例如 <code>foo-data.js</code>），按同一结构填写 <code>meta / decisions / sections</code>，然后用 <code>copy-review.html?data=foo-data.js</code> 打开即可。数据是唯一事实源；本页面不修改源数据文件。</p>
+</footer>
+
+<script>
+(function () {
+  'use strict';
+
+  // ---------- 状态 ----------
+  var DATA = null;
+  var dataFile = null;   // boot() 时从 window.__COPY_REVIEW_DATA_FILE__ 读取
+  var state = { decisions: {}, rows: {} };   // rows: id -> { status, final }
+  var filter = 'all';
+  var searchText = '';
+
+  var STATUS_LABEL = { pending: '待确认', approved: '已采纳', keep: '保留原文', edited: '已修改' };
+  var STATUS_CLASS = { pending: 'st-pending', approved: 'st-approved', keep: 'st-keep', edited: 'st-edited' };
+
+  function storageKey() { return 'copyReview:' + dataFile; }
+
+  function charLen(s) { return Array.from(String(s || '')).length; }
+
+  function rowHasProposal(row) { return typeof row.prop === 'string' && row.prop.length > 0; }
+
+  function defaultRowState(row) {
+    return rowHasProposal(row)
+      ? { status: 'pending', final: row.prop }
+      : { status: 'keep', final: row.orig };
+  }
+
+  function classify(row, value) {
+    if (rowHasProposal(row) && value === row.prop) return 'approved';
+    if (value === row.orig) return 'keep';
+    return 'edited';
+  }
+
+  function initState() {
+    state = { decisions: {}, rows: {} };
+    (DATA.decisions || []).forEach(function (d) { state.decisions[d.id] = d.selected || null; });
+    (DATA.sections || []).forEach(function (sec) {
+      sec.rows.forEach(function (row) { state.rows[row.id] = defaultRowState(row); });
+    });
+  }
+
+  function persist() {
+    try { localStorage.setItem(storageKey(), JSON.stringify(state)); } catch (e) { /* 隐私模式忽略 */ }
+  }
+
+  function restore() {
+    var saved = null;
+    try { saved = JSON.parse(localStorage.getItem(storageKey()) || 'null'); } catch (e) { saved = null; }
+    if (!saved) return;
+    applyStateObject(saved);
+  }
+
+  function applyStateObject(saved) {
+    if (saved.decisions) {
+      Object.keys(saved.decisions).forEach(function (id) {
+        if (id in state.decisions) state.decisions[id] = saved.decisions[id];
+      });
+    }
+    if (saved.rows) {
+      Object.keys(saved.rows).forEach(function (id) {
+        if (id in state.rows && saved.rows[id] && typeof saved.rows[id].final === 'string') {
+          state.rows[id] = { status: saved.rows[id].status || 'pending', final: saved.rows[id].final };
+        }
+      });
+    }
+  }
+
+  // ---------- 统计 ----------
+  function computeStats() {
+    var stats = { total: 0, pending: 0, approved: 0, keep: 0, edited: 0 };
+    (DATA.sections || []).forEach(function (sec) {
+      sec.rows.forEach(function (row) {
+        if (!rowHasProposal(row)) return;   // 无改动行不计入审阅进度
+        stats.total += 1;
+        stats[state.rows[row.id].status] += 1;
+      });
+    });
+    return stats;
+  }
+
+  function refreshHeader() {
+    var stats = computeStats();
+    var reviewed = stats.total - stats.pending;
+    document.getElementById('progressBar').style.width = stats.total ? (reviewed / stats.total * 100) + '%' : '0%';
+    var answered = Object.keys(state.decisions).filter(function (k) { return state.decisions[k]; }).length;
+    document.getElementById('statsRow').innerHTML =
+      '<span>改动 <b>' + stats.total + '</b> 行</span>' +
+      '<span>待确认 <b style="color:var(--pending)">' + stats.pending + '</b></span>' +
+      '<span>已采纳 <b style="color:var(--approved)">' + stats.approved + '</b></span>' +
+      '<span>已修改 <b style="color:var(--edited)">' + stats.edited + '</b></span>' +
+      '<span>保留原文 <b style="color:var(--keep)">' + stats.keep + '</b></span>' +
+      '<span>全局决策 <b>' + answered + '/' + Object.keys(state.decisions).length + '</b></span>';
+  }
+
+  // ---------- 渲染：决策 ----------
+  function renderDecisions() {
+    var list = DATA.decisions || [];
+    document.getElementById('decisionsCard').hidden = list.length === 0;
+    var body = document.getElementById('decisionsBody');
+    body.innerHTML = '';
+    list.forEach(function (d) {
+      var wrap = document.createElement('div');
+      wrap.className = 'decision';
+      var q = document.createElement('div'); q.className = 'q'; q.textContent = d.id + ' · ' + d.q;
+      wrap.appendChild(q);
+      if (d.desc) {
+        var desc = document.createElement('div'); desc.className = 'desc'; desc.textContent = d.desc;
+        wrap.appendChild(desc);
+      }
+      var opts = document.createElement('div'); opts.className = 'opts';
+      d.options.forEach(function (o) {
+        var btn = document.createElement('button');
+        btn.type = 'button'; btn.className = 'opt'; btn.textContent = o.label;
+        if (state.decisions[d.id] === o.v) btn.classList.add('selected');
+        btn.addEventListener('click', function () {
+          state.decisions[d.id] = o.v;
+          persist();
+          renderDecisions();
+          refreshHeader();
+        });
+        opts.appendChild(btn);
+      });
+      wrap.appendChild(opts);
+      body.appendChild(wrap);
+    });
+  }
+
+  // ---------- 渲染：行 ----------
+  function rowMatches(row) {
+    if (filter !== 'all') {
+      var st = state.rows[row.id].status;
+      if (filter === 'keep') { if (st !== 'keep') return false; }
+      else if (st !== filter) return false;
+    }
+    if (searchText) {
+      var hay = (row.loc + ' ' + row.orig + ' ' + (row.prop || '') + ' ' + (row.note || '')).toLowerCase();
+      if (hay.indexOf(searchText) === -1) return false;
+    }
+    return true;
+  }
+
+  function makeRow(sec, row) {
+    var st = state.rows[row.id];
+    var tr = document.createElement('tr');
+    tr.dataset.rowId = row.id;
+
+    var tdLoc = document.createElement('td'); tdLoc.className = 'loc'; tdLoc.textContent = row.loc;
+    var tdOrig = document.createElement('td'); tdOrig.className = 'orig';
+    var oSpan = document.createElement('span'); oSpan.className = 'o'; oSpan.textContent = row.orig;
+    tdOrig.appendChild(oSpan);
+
+    var tdNew = document.createElement('td'); tdNew.className = 'newcell';
+    var input = document.createElement('input');
+    input.className = 'newtext'; input.value = st.final; input.spellcheck = false;
+    var count = document.createElement('div'); count.className = 'charcount';
+    count.textContent = charLen(st.final) + ' 字';
+    input.addEventListener('input', function () {
+      st.final = input.value;
+      st.status = classify(row, input.value);
+      count.textContent = charLen(input.value) + ' 字';
+      persist();
+      paintStatus();
+      refreshHeader();
+    });
+    tdNew.appendChild(input); tdNew.appendChild(count);
+
+    var tdStatus = document.createElement('td');
+    var statusRow = document.createElement('div'); statusRow.className = 'status-row';
+    var badge = document.createElement('span');
+    var btnApprove = document.createElement('button');
+    btnApprove.type = 'button'; btnApprove.className = 'st-btn'; btnApprove.textContent = '✓ 采纳';
+    btnApprove.disabled = !rowHasProposal(row);
+    btnApprove.title = rowHasProposal(row) ? '采纳新文案' : '此行无改动提案';
+    btnApprove.addEventListener('click', function () {
+      if (!rowHasProposal(row)) return;
+      st.final = row.prop; st.status = 'approved';
+      input.value = row.prop; count.textContent = charLen(row.prop) + ' 字';
+      persist(); paintStatus(); refreshHeader();
+    });
+    var btnKeep = document.createElement('button');
+    btnKeep.type = 'button'; btnKeep.className = 'st-btn'; btnKeep.textContent = '保留原文';
+    btnKeep.addEventListener('click', function () {
+      st.final = row.orig; st.status = 'keep';
+      input.value = row.orig; count.textContent = charLen(row.orig) + ' 字';
+      persist(); paintStatus(); refreshHeader();
+    });
+    statusRow.appendChild(badge); statusRow.appendChild(btnApprove); statusRow.appendChild(btnKeep);
+    tdStatus.appendChild(statusRow);
+
+    var tdNote = document.createElement('td'); tdNote.className = 'note'; tdNote.textContent = row.note || '';
+
+    function paintStatus() {
+      badge.className = 'st-badge ' + STATUS_CLASS[st.status];
+      badge.textContent = STATUS_LABEL[st.status];
+    }
+    paintStatus();
+
+    tr.appendChild(tdLoc); tr.appendChild(tdOrig); tr.appendChild(tdNew); tr.appendChild(tdStatus); tr.appendChild(tdNote);
+    return tr;
+  }
+
+  // ---------- 渲染：分区 ----------
+  function renderSections() {
+    var root = document.getElementById('sectionsRoot');
+    root.innerHTML = '';
+    (DATA.sections || []).forEach(function (sec) {
+      var visibleRows = sec.rows.filter(rowMatches);
+      if (visibleRows.length === 0) return;
+
+      var card = document.createElement('section'); card.className = 'card';
+      var head = document.createElement('div'); head.className = 'card-head';
+      var badge = document.createElement('span'); badge.className = 'app-badge'; badge.textContent = sec.app;
+      var h2 = document.createElement('h2'); h2.textContent = sec.title;
+      var mini = document.createElement('span'); mini.className = 'mini-stats';
+      var changed = sec.rows.filter(rowHasProposal);
+      var pendingCount = changed.filter(function (r) { return state.rows[r.id].status === 'pending'; }).length;
+      mini.textContent = changed.length + ' 处改动 · ' + pendingCount + ' 待确认';
+      var spacer = document.createElement('span'); spacer.className = 'spacer';
+      var bulkApprove = document.createElement('button'); bulkApprove.type = 'button'; bulkApprove.className = 'btn'; bulkApprove.textContent = '本节全部采纳';
+      var bulkKeep = document.createElement('button'); bulkKeep.type = 'button'; bulkKeep.className = 'btn'; bulkKeep.textContent = '本节全部保留原文';
+      bulkApprove.addEventListener('click', function () {
+        changed.forEach(function (r) { state.rows[r.id] = { status: 'approved', final: r.prop }; });
+        persist(); renderSections(); refreshHeader();
+      });
+      bulkKeep.addEventListener('click', function () {
+        changed.forEach(function (r) { state.rows[r.id] = { status: 'keep', final: r.orig }; });
+        persist(); renderSections(); refreshHeader();
+      });
+      head.appendChild(badge); head.appendChild(h2); head.appendChild(mini); head.appendChild(spacer);
+      head.appendChild(bulkApprove); head.appendChild(bulkKeep);
+      card.appendChild(head);
+
+      var table = document.createElement('table');
+      var thead = document.createElement('thead');
+      var hr = document.createElement('tr');
+      ['位置', '原文案', '新文案（可编辑）', '状态', '备注'].forEach(function (t) {
+        var th = document.createElement('th'); th.textContent = t; hr.appendChild(th);
+      });
+      thead.appendChild(hr); table.appendChild(thead);
+      var tbody = document.createElement('tbody');
+      visibleRows.forEach(function (row) { tbody.appendChild(makeRow(sec, row)); });
+      table.appendChild(tbody);
+      card.appendChild(table);
+      root.appendChild(card);
+    });
+  }
+
+  // ---------- 导入 / 导出 / 重置 ----------
+  function exportJson() {
+    var out = {
+      meta: Object.assign({}, DATA.meta, { exportedAt: new Date().toISOString(), sourceDataFile: dataFile }),
+      decisions: (DATA.decisions || []).map(function (d) {
+        return { id: d.id, q: d.q, selected: state.decisions[d.id] || null };
+      }),
+      sections: (DATA.sections || []).map(function (sec) {
+        return {
+          id: sec.id, app: sec.app, title: sec.title,
+          rows: sec.rows.map(function (row) {
+            var st = state.rows[row.id];
+            return { id: row.id, loc: row.loc, orig: row.orig, prop: row.prop || null, final: st.final, status: st.status, note: row.note || '' };
+          })
+        };
+      })
+    };
+    var blob = new Blob([JSON.stringify(out, null, 2)], { type: 'application/json' });
+    var a = document.createElement('a');
+    a.href = URL.createObjectURL(blob);
+    a.download = dataFile.replace(/\.js$/i, '') + '.reviewed.json';
+    document.body.appendChild(a); a.click(); a.remove();
+    setTimeout(function () { URL.revokeObjectURL(a.href); }, 1000);
+  }
+
+  function importJson(file) {
+    var reader = new FileReader();
+    reader.onload = function () {
+      try {
+        var parsed = JSON.parse(String(reader.result));
+        var saved = { decisions: {}, rows: {} };
+        (parsed.decisions || []).forEach(function (d) { if (d && d.id) saved.decisions[d.id] = d.selected; });
+        (parsed.sections || []).forEach(function (sec) {
+          (sec.rows || []).forEach(function (r) {
+            if (r && r.id) saved.rows[r.id] = { status: r.status, final: typeof r.final === 'string' ? r.final : (r.prop || r.orig || '') };
+          });
+        });
+        applyStateObject(saved);
+        persist(); renderDecisions(); renderSections(); refreshHeader();
+        alert('已导入进度。');
+      } catch (e) {
+        alert('导入失败：文件格式不正确。');
+      }
+    };
+    reader.readAsText(file);
+  }
+
+  // ---------- 启动 ----------
+  function boot() {
+    dataFile = window.__COPY_REVIEW_DATA_FILE__ || 'maw-copy-review-data.js';
+    DATA = window.COPY_REVIEW_DATA;
+    if (!DATA || !DATA.sections) {
+      document.getElementById('loadError').hidden = false;
+      document.getElementById('loadErrorFile').textContent = dataFile;
+      return;
+    }
+    document.title = DATA.meta.title + ' · 文案评审';
+    document.getElementById('pageTitle').textContent = DATA.meta.title;
+    document.getElementById('pageMeta').textContent = (DATA.meta.subtitle || '') + ' · ' + (DATA.meta.version || '') + ' · 分支 ' + (DATA.meta.branch || '');
+    document.getElementById('pageRule').textContent = DATA.meta.rule || '';
+    document.getElementById('decisionStats').textContent = '';
+
+    initState();
+    restore();
+    renderDecisions();
+    renderSections();
+    refreshHeader();
+
+    document.querySelectorAll('.chip[data-filter]').forEach(function (chip) {
+      chip.addEventListener('click', function () {
+        document.querySelectorAll('.chip[data-filter]').forEach(function (c) { c.classList.remove('active'); });
+        chip.classList.add('active');
+        filter = chip.dataset.filter;
+        renderSections();
+      });
+    });
+    document.getElementById('searchInput').addEventListener('input', function (e) {
+      searchText = e.target.value.trim().toLowerCase();
+      renderSections();
+    });
+    document.getElementById('exportBtn').addEventListener('click', exportJson);
+    document.getElementById('importBtn').addEventListener('click', function () { document.getElementById('importFile').click(); });
+    document.getElementById('importFile').addEventListener('change', function (e) {
+      if (e.target.files && e.target.files[0]) importJson(e.target.files[0]);
+      e.target.value = '';
+    });
+    document.getElementById('resetBtn').addEventListener('click', function () {
+      if (!confirm('清空本浏览器里的评审进度，恢复为初始提案？')) return;
+      try { localStorage.removeItem(storageKey()); } catch (e) { /* 忽略 */ }
+      initState();
+      renderDecisions(); renderSections(); refreshHeader();
+    });
+  }
+
+  window.__bootReview = boot;
+})();
+</script>
+<script>
+(function () {
+  var params = new URLSearchParams(location.search);
+  var file = params.get('data') || 'maw-copy-review-data.js';
+  // 防止路径穿越：只接受同目录下的 .js 文件名
+  if (!/^[\w.-]+\.js$/i.test(file)) file = 'maw-copy-review-data.js';
+  window.__COPY_REVIEW_DATA_FILE__ = file;
+  var s = document.createElement('script');
+  s.src = file;
+  s.addEventListener('load', function () { window.__bootReview(); });
+  s.addEventListener('error', function () {
+    document.getElementById('loadError').hidden = false;
+    document.getElementById('loadErrorFile').textContent = file;
+  });
+  document.body.appendChild(s);
+})();
+</script>
+</body>
+</html>

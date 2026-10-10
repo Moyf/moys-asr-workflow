@@ -55,15 +55,22 @@ document.getElementById('replace-confirm')?.addEventListener('click', () => {
     return;
   }
   return MaweCommands.run('批量替换', (command) => {
-    let changedRows = 0;
+    let changedRows = 0, syncedRows = 0;
     MaweFindReplace.getReplaceTargets().forEach(s => {
       re.lastIndex = 0;
       const newText = s.text.replace(re, repl);
-      if (newText !== s.text) { s.text = newText; s._dirty = true; changedRows++; }
+      if (newText !== s.text) {
+        const previousText = s.text;
+        s.text = newText; s._dirty = true; changedRows++;
+        const result = window.AsrEditorUtils.planWordTimingTextSync(s, previousText);
+        if (result?.items) { s.items = result.items; syncedRows++; }
+      }
     });
     MaweDom.replaceModal.classList.remove('show');
     command.commit({ cueList: true });
-    MaweHint.flashHint(`已修改 ${changedRows} 行`, 'success');
+    MaweHint.flashHint(syncedRows
+      ? `已修改 ${changedRows} 行，其中 ${syncedRows} 行的字词时间码文字已同步`
+      : `已修改 ${changedRows} 行`, 'success');
   });
 });
 
@@ -195,6 +202,64 @@ MaweTextProcess.textProcessConfirm?.addEventListener('click', () => {
     MaweHint.flashHint(`已应用文本处理：${result.changedCount} 条字幕`, 'success');
   });
 });
+
+// 「左右添加字符」批量预设：填充前缀/后缀输入并勾选，复用上方预览与应用流程。
+// ASS 特殊文本格式预设仅在当前工程启用 ASS 字幕模式时展示。
+(() => {
+  const presetHost = document.getElementById('text-process-wrap-presets');
+  if (!presetHost) return;
+  (window.AsrEditorUtils.WRAP_CHAR_PRESETS || []).forEach((preset) => {
+    const btn = document.createElement('button');
+    btn.type = 'button';
+    btn.textContent = preset.label;
+    btn.title = `在字幕两端插入 ${preset.left} 和 ${preset.right}`;
+    if (preset.ass) btn.dataset.assOnly = 'true';
+    btn.addEventListener('click', () => {
+      MaweTextProcess.textProcessWrapPreset = preset;
+      MaweTextProcess.textProcessPrefix.checked = true;
+      MaweTextProcess.textProcessSuffix.checked = true;
+      MaweTextProcess.textProcessPrefixInput.value = preset.left;
+      MaweTextProcess.textProcessSuffixInput.value = preset.right;
+      MaweTextProcess.refreshTextProcessInputState();
+      MaweTextProcess.renderTextProcessPreview();
+    });
+    presetHost.appendChild(btn);
+  });
+  function refreshWrapPresetVisibility() {
+    const assMode = MaweSettings.EDITOR_SETTINGS.assMode === true;
+    presetHost.querySelectorAll('[data-ass-only]').forEach((btn) => { btn.hidden = !assMode; });
+  }
+  refreshWrapPresetVisibility();
+  document.getElementById('ass-mode-toggle')?.addEventListener('change', refreshWrapPresetVisibility);
+  document.addEventListener('mawe:languagechange', refreshWrapPresetVisibility);
+})();
+
+// 「左右添加字符」自定义弹窗：左右两个输入框原样插入到选中字幕两端。
+document.getElementById('wrap-chars-cancel')?.addEventListener('click', MaweTextProcess.closeWrapCharsModal);
+MaweTextProcess.wrapCharsModal?.addEventListener('click', (event) => {
+  if (event.target === MaweTextProcess.wrapCharsModal) MaweTextProcess.closeWrapCharsModal();
+});
+document.getElementById('wrap-chars-confirm')?.addEventListener('click', () => {
+  const left = MaweTextProcess.wrapCharsLeftInput?.value || '';
+  const right = MaweTextProcess.wrapCharsRightInput?.value || '';
+  if (!left && !right) {
+    MaweHint.flashHint('请至少输入一侧字符', 'invalid');
+    return;
+  }
+  MaweTextProcess.applyWrapChars([...MaweTextProcess.wrapCharsScope], left, right, '左右添加字符');
+  MaweTextProcess.closeWrapCharsModal();
+});
+// 输入框回车插入，输入法确认时不提交；Esc 关闭且不清空字幕选择。
+document.addEventListener('keydown', (event) => {
+  if (!MaweTextProcess.wrapCharsModal?.classList.contains('show')) return;
+  if (event.isComposing || event.keyCode === 229) return;
+  const input = event.target === MaweTextProcess.wrapCharsLeftInput || event.target === MaweTextProcess.wrapCharsRightInput;
+  if (event.key !== 'Escape' && !(event.key === 'Enter' && input)) return;
+  event.preventDefault();
+  event.stopImmediatePropagation();
+  if (event.key === 'Escape') MaweTextProcess.closeWrapCharsModal();
+  else if (!event.repeat) document.getElementById('wrap-chars-confirm')?.click();
+}, true);
 
 // === 纯文本编辑（支持调整字幕行结构的 MVP） ===
 

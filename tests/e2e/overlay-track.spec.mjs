@@ -7,6 +7,8 @@ import {
   generateWaveformPayload,
   makeTempDir,
   startStaticServer,
+  closeSettingsPanels,
+  openSettingsPage,
 } from './helpers.mjs';
 
 let tempDir;
@@ -71,7 +73,9 @@ test('edits an independent overlay track, restores it through history, and expor
   await dropProject(page, project);
 
   const toggle = page.locator('#overlay-track-toggle');
+  await openSettingsPage(page, 'project-tracks');
   await expect(toggle).toBeVisible();
+  await closeSettingsPanels(page);
   const overlayCue = page.locator('.overlay-track-cue[data-overlay-idx="0"]');
   await expect(overlayCue).toHaveCount(1);
   await overlayCue.click();
@@ -119,6 +123,8 @@ test('converts a selected main cue to overlay from the context menu with undo', 
 
   await page.locator('.cue[data-idx="0"]').click({ button: 'right', force: true });
   await expect(page.locator('#ctxmenu.show')).toBeVisible();
+  // 「转为叠加字幕」收纳在「高级操作」二级菜单内，先展开再点击。
+  await page.locator('.word-timing-advanced > .item').first().click();
   await page.getByText('转为叠加字幕', { exact: true }).click();
 
   // 主轨剩一条；叠加行出现且波形上出现叠加块（外观与主字幕一致，仅位于上层）。
@@ -284,6 +290,8 @@ test('carries the color marking through main ↔ overlay conversions', async ({ 
   // 主轨剩余组员按组拆分语义提升为新 head，不产生跨轨引用。
   await page.locator('.cue[data-idx="0"]').click({ button: 'right', force: true });
   await expect(page.locator('#ctxmenu.show')).toBeVisible();
+  // 「转为叠加字幕」收纳在「高级操作」二级菜单内，先展开再点击。
+  await page.locator('.word-timing-advanced > .item').first().click();
   await page.getByText('转为叠加字幕', { exact: true }).click();
   await expect(page.locator('.overlay-track-cue[data-overlay-idx="0"]')).toHaveCount(1);
   await expect(page.locator('.overlay-track-cue[data-overlay-idx="0"]')).toHaveClass(/has-color/);
@@ -461,29 +469,32 @@ test('ASS mode previews overlay cues in the main style with fad and exports tags
     MaweSettings.EDITOR_SETTINGS.assMode = true;
     MaweDom.overlayToggle.checked = true;
     MawePlaybackLoop.refreshSubtitlePreview(600, 0);
-    const overlayTrackText = document.getElementById('overlay-track-text');
-    const mainText = document.getElementById('overlay-main-text');
-    const stageHeight = MaweDom.playerStage.getBoundingClientRect().height;
+    const tracks = window.MaweAssCanvas.lastRender.tracks;
+    const overlay = tracks[2] || {};
     return {
-      stageHeight,
-      mainFontSize: getComputedStyle(mainText).fontSize,
-      overlayFontSize: getComputedStyle(overlayTrackText).fontSize,
-      overlayBottom: overlayTrackText.style.bottom,
-      overlayOpacity: Number(getComputedStyle(overlayTrackText).opacity),
-      overlayFontFamily: overlayTrackText.style.fontFamily,
+      trackDebug: tracks.map((track) => track ? 'ok' : 'undefined'),
+      mainNative: tracks[0].nativeFontSize,
+      overlayNative: overlay.nativeFontSize || 0,
+      mainOpacity: tracks[0].opacity,
+      overlayOpacity: overlay.opacity || 0,
+      mainAnchor: tracks[0].anchor,
+      overlayOffset: (overlay.margins || {}).vertical || 0,
+      overlayAnchor: overlay.anchor || { x: 0, y: 0 },
       ass: MaweExportSrt.buildAss(),
     };
   });
-  // 叠加轨与主字幕使用完全相同的 ASS 样式（字号/字体一致），锚定在主
-  // 字幕上方：MarginV = 样式垂直边距 88 + 1.2 × 字号 86（按 PlayRes 1080
-  // 等比换算）。
-  expect(result.overlayFontSize).toBe(result.mainFontSize);
-  expect(result.overlayFontFamily.length).toBeGreaterThan(0);
-  const scale = result.stageHeight / 1080;
-  const expectedOffset = Math.ceil(88 * scale + 1.2 * ((86 * result.stageHeight) / 1080));
-  expect(result.overlayBottom).toBe(`${expectedOffset}px`);
-  // t=600ms、fad(in=1000ms)：淡入进行到 60%。
+  // 叠加轨与主字幕使用完全相同的 ASS 样式（字号/字体一致），不跟随
+  // \move，锚定在主字幕上方：MarginV = 样式垂直边距 88 + 1.2 × 字号 86。
+  expect(result.mainNative).toBe(86);
+  expect(result.overlayNative).toBe(result.mainNative);
+  // t=600ms、fad(in=1000ms)：淡入进行到 60%（主/叠加轨同 fad）。
   expect(result.overlayOpacity).toBeCloseTo(0.6, 5);
+  expect(result.mainOpacity).toBeCloseTo(0.6, 5);
+  // 主轨跟随 \move：t=600ms → y = 960 + (500 - 960) × 0.6 = 684。
+  expect(result.mainAnchor.x).toBeCloseTo(0, 3);
+  expect(result.mainAnchor.y).toBeCloseTo(684, 3);
+  expect(result.overlayOffset).toBeCloseTo(88 + 1.2 * 86, 3);
+  expect(result.overlayAnchor.y).toBeCloseTo(1080 - (88 + 1.2 * 86), 3);
   // 导出侧：主轨携带 fad + move；叠加轨只带与位置无关的 fad，不带 move，
   // 引用固化了锚定边距（88 + round(103.2) = 191）的 Overlay 样式。
   const dialogueLines = result.ass.split('\n').filter((line) => line.startsWith('Dialogue:'));
@@ -681,6 +692,8 @@ test('keeps color group references valid through an overlay round trip', async (
   // 转出组内成员（index 2），组引用必须保持「指向带 color 的 head」。
   await page.locator('.cue[data-idx="2"]').click({ button: 'right' });
   await expect(page.locator('#ctxmenu.show')).toBeVisible();
+  // 「转为叠加字幕」收纳在「高级操作」二级菜单内，先展开再点击。
+  await page.locator('.word-timing-advanced > .item').first().click();
   await page.getByText('转为叠加字幕', { exact: true }).click();
   await expect(page.locator('.overlay-track-cue')).toHaveCount(1);
   expect(await page.evaluate(() => JSON.parse(MaweJsonRepair.buildJson()).segments.map((s) => s.id)))
@@ -753,6 +766,47 @@ test('places the overlay lane above the main lane in multi-subtitle rows', async
   });
   expect(lanes.overlay.bottom).toBeLessThanOrEqual(lanes.main.top + 1);
   expect(lanes.main.bottom).toBeLessThanOrEqual(lanes.extension.top + 1);
+});
+
+test('overlay disabling stays independent of the main-secondary binding at the same index', async ({ page }) => {
+  await page.goto(server.url);
+  await dropProject(page, {
+    segments: [{ id: 'main-1', start: 0, end: 2000, text: 'main cue' }],
+    multi_subtitle: {
+      schema: 'moy.asr.multi_subtitle.v1', enabled: true, display_mode: 'both',
+      tracks: [{ id: 'translation', role: 'extension', name: '译文', split_mode: 'word',
+        segments: [{ id: 'extension-1', start: 0, end: 2000, text: 'translation cue' }] }],
+      bindings: [{ id: 'binding-1', track_id: 'translation',
+        main_segment_ids: ['main-1'], extension_segment_ids: ['extension-1'] }],
+    },
+    overlay_track: { enabled: true,
+      segments: [{ id: 'overlay-1', start: 200, end: 1800, text: 'overlay cue' }] },
+    waveform: generateWaveformPayload(3000),
+  });
+  await expect(page.locator('.overlay-track-cue')).toHaveCount(1);
+  const disabledState = () => page.evaluate(() => [
+    MaweBoot.DATA.segments[0].disabled === true,
+    MaweBoot.DATA.multi_subtitle.tracks[0].segments[0].disabled === true,
+    MaweBoot.DATA.overlay_track.segments[0].disabled === true,
+  ]);
+  await page.locator('.overlay-track-cue').click({ button: 'right', force: true });
+  await page.getByText('禁用此条', { exact: true }).click();
+  expect(await disabledState()).toEqual([false, false, true]);
+  expect(await page.evaluate(() => MaweExportSrt.buildBilingualSrt())).toContain('translation cue');
+  await page.locator('#undo-btn').click();
+  expect(await disabledState()).toEqual([false, false, false]);
+  await page.locator('#redo-btn').click();
+  expect(await disabledState()).toEqual([false, false, true]);
+  await page.locator('.overlay-track-cue').click({ button: 'right', force: true });
+  await page.getByText('启用此条', { exact: true }).click();
+  expect(await disabledState()).toEqual([false, false, false]);
+  // Main remains the controlling side; a separately disabled translation must
+  // stay disabled when the independent overlay changes state.
+  await page.evaluate(() => MaweStickerPicker.toggleDisabled([0], 'main'));
+  expect(await disabledState()).toEqual([true, true, false]);
+  await page.evaluate(() => MaweStickerPicker.toggleDisabled([0], 'overlay'));
+  await page.evaluate(() => MaweStickerPicker.toggleDisabled([0], 'overlay'));
+  expect(await disabledState()).toEqual([true, true, false]);
 });
 
 test('assigns colors and disabled state to overlay cues with main-track parity', async ({ page }) => {

@@ -1,0 +1,56 @@
+    <details class="section">
+      <summary><span class="sec-title">杂项直接提交（无 PR）</span> <span class="badge">仅说明</span></summary>
+      <div class="body">
+        <table>
+          <tr><th>提交</th><th>日期</th><th>说明</th></tr>
+          <tr><td><code>95923b4d</code></td><td>10-08</td><td>test: marker export 夹具补充说话人标签（1 行，配合 64e65c85 的说话人导出测试）。</td></tr>
+          <tr><td><code>d3b06672</code></td><td>10-09</td><td>chore(dev): 新增 <code>scripts/dev-editor.ps1</code> 一键编辑器开发会话（+CONTRIBUTING 说明与 test_dev_editor.ps1 守护测试）。</td></tr>
+          <tr><td><code>60d823bb</code></td><td>10-09</td><td>docs(changelog): 补记 #185 打包版 Linux 运行时修复（纯文档）。</td></tr>
+        </table>
+        <div class="note">三项均不影响运行时行为：测试夹具、开发脚本、CHANGELOG 文档。无需人工核验功能。</div>
+        <div class="item"><input type="checkbox" id="px-1"><label for="px-1">已知悉三项内容；如需体验 <code>scripts/dev-editor.ps1</code>（一键起编辑器开发会话）可顺手试一次。</label></div>
+      </div>
+    </details>
+
+    <details class="section" open>
+      <summary><span class="sec-title">多声道基础波形（直接提交 be91e264）</span> <span class="badge">功能</span></summary>
+      <div class="body">
+        <table>
+          <tr><th>提交</th><th>日期</th><th>说明</th></tr>
+          <tr><td><code>be91e264</code></td><td>10-09</td><td><code>.mopeaks</code> 保留原音频各声道并在时间窗内合并波形极值，改善反相、单侧声道及多声道素材的基础波形；单声道显示与缓存体积不变，已有缓存继续复用。随附 <code>tools/waveform-compare/</code>（build.py / page.html / bench.py）波形对比工具。</td></tr>
+        </table>
+        <div class="item"><input type="checkbox" id="pw-1"><label for="pw-1">用反相或单侧声道素材打开编辑器 → 基础波形不再出现削顶/单侧缺失，形态更完整。</label></div>
+        <div class="item"><input type="checkbox" id="pw-2"><label for="pw-2">已有 <code>.mopeaks</code> 缓存的旧工程 → 不重建缓存、显示一致；单声道素材缓存体积与之前一致。</label></div>
+        <div class="item"><input type="checkbox" id="pw-3"><label for="pw-3">（可选）用 tools/waveform-compare 对比新旧波形效果与生成耗时；了解低采样率对高频短音和极短脉冲的限制。</label></div>
+      </div>
+    </details>
+
+    <details class="section" open>
+      <summary><span class="sec-title">#177 · 字词时间码查看、编辑、试听与独立字幕转换</span> <span class="badge">功能</span></summary>
+      <div class="body">
+        <table>
+          <tr><th>提交</th><th>日期</th><th>说明</th></tr>
+          <tr><td><code>27275e56</code></td><td>10-09</td><td>波形中查看、试听、移动、调整和合并字词时间码；修改错别字时同步字词文字；完整字词时间码可转换为独立字幕（保留原文、支持撤销）；缺少时间码的句子明确提示。</td></tr>
+        </table>
+        <div class="item"><input type="checkbox" id="p177-1"><label for="p177-1">打开带字词时间码的工程 → 波形工具栏开启「显示字词时间码」→ 字词块按句渲染。</label></div>
+        <div class="item"><input type="checkbox" id="p177-2"><label for="p177-2">试听单个字词 → 播放范围准确；拖动字词、调整边界、合并相邻字词 → 撤销/重做正常。</label></div>
+        <div class="item"><input type="checkbox" id="p177-3"><label for="p177-3">修改字词文字（改错别字）→ 文字同步保存，重开后一致。</label></div>
+        <div class="item"><input type="checkbox" id="p177-4"><label for="p177-4">工具箱「字词时间码转独立字幕」→ 生成独立字幕、原文保留、可撤销；含缺时间码句子的工程 → 明确提示哪些句子无法转换。</label></div>
+        <div class="item"><input type="checkbox" id="p177-5"><label for="p177-5">字幕轨道设置页「显示字词时间码」镜像开关与波形 ⚙️/🪶 入口行为一致。</label></div>
+      </div>
+    </details>
+
+    <details class="section" open>
+      <summary><span class="sec-title">#179 · 编辑器设置整理（项目设置 + 全局设置重分类）</span> <span class="badge">功能</span></summary>
+      <div class="body">
+        <table>
+          <tr><th>提交</th><th>日期</th><th>说明</th></tr>
+          <tr><td><code>4422be1c</code></td><td>10-09</td><td>新增「项目设置」（随工程保存：时间与语言、字幕轨道、ASS 模式与样式、颜色与说话人、表情包目录覆盖）；双语管理并入「字幕轨道」页并移除工具栏齿轮；全局设置按通用/特殊编辑、播放与预览、字幕/更多导出分类；「启用表情包功能」总开关；功能区局部面板；播放跳过空隙移入播放与定位；语言项更名「显示语言」；标记右键等同双击；波形工具栏「🔖 标记编辑」开关（M，默认关）；「波形：基础」→「波形：单行」；单点标记最小可见宽度 0.75%。</td></tr>
+        </table>
+        <div class="item"><input type="checkbox" id="p179-1"><label for="p179-1">「项目设置」各项（时间语言/轨道/ASS/颜色说话人/表情包目录）随工程保存 → 重开工程后保留。</label></div>
+        <div class="item"><input type="checkbox" id="p179-2"><label for="p179-2">全局设置分类浏览 → 各页无「生效范围」说明；「启用表情包功能」关闭 → 预览与分配入口隐藏，重开恢复。</label></div>
+        <div class="item"><input type="checkbox" id="p179-3"><label for="p179-3">「🔖 标记编辑」开关（快捷键 M）默认关 → 开启后显示「标记与区段」入口并渲染标记轨道；字幕轨道页镜像开关同步。</label></div>
+        <div class="item"><input type="checkbox" id="p179-4"><label for="p179-4">标记右键可直接编辑；单点标记最小可见宽度 0.75%（短标记不再不可见）。</label></div>
+        <div class="item"><input type="checkbox" id="p179-5"><label for="p179-5">设置弹窗各页相邻元素间距实测 ≥8px（getComputedStyle 验证，不目测）。</label></div>
+      </div>
+    </details>

@@ -29,7 +29,7 @@ def _targets() -> tuple[tuple[str, Path, str, str], ...]:
         ),
         (
             "bundled GUI fallback",
-            ROOT / "maw" / "gui_web.py",
+            ROOT / "maw" / "diagnostics.py",
             r'(BUNDLED_APP_VERSION\s*=\s*")[^"]+(")',
             r'BUNDLED_APP_VERSION\s*=\s*"([^"]+)"',
         ),

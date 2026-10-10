@@ -1,5 +1,5 @@
 // history: private helpers; dependencies are injected by editor-utils.js.
-window.MAWE.register('utils-history', function createUtilsModule(dependencies) {
+export function createUtilsModule(dependencies) {
   'use strict';
   const { cloneJsonValue } = dependencies;
 
@@ -16,12 +16,15 @@ window.MAWE.register('utils-history', function createUtilsModule(dependencies) {
     };
   }
 
-  function buildHistoryRecord(kind, label, payload, view = null) {
+  // options.clone = false 时直接附加调用方传入的 payload：
+  // 供编辑器 captureSegmentsRecord 使用（其快照已是深克隆），避免长工程
+  // 在一次记录里做两遍 O(工程体积) 的 JSON 序列化。
+  function buildHistoryRecord(kind, label, payload, view = null, { clone = true } = {}) {
     const recordKind = Object.prototype.hasOwnProperty.call(HISTORY_RECORD_DEFAULT_LABELS, kind)
       ? kind : 'segments';
     const record = { kind: recordKind, label: label || HISTORY_RECORD_DEFAULT_LABELS[recordKind] };
     if (recordKind === 'segments') {
-      record.segs = cloneJsonValue(payload);
+      record.segs = clone ? cloneJsonValue(payload) : payload;
       if (view) record.view = cloneJsonValue(view);
     } else if (recordKind === 'layout') record.layout = payload || null;
     else if (recordKind === 'gap_remove') {
@@ -76,4 +79,4 @@ window.MAWE.register('utils-history', function createUtilsModule(dependencies) {
   }
 
   return Object.freeze({ buildHistoryRecord, buildSegmentsHistorySnapshot, createHistoryStack });
-});
+}

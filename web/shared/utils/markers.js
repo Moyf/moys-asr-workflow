@@ -2,7 +2,7 @@
 // MOSP `markers` 契约见 JSON_SCHEMA.md：稳定 ID、原媒体整数毫秒 start、
 // 可选 end（end > start 时为 Region，否则单点 Marker）、name、color、note，
 // 以及可选的 review（AI 复核项：待复核／已确认 + 原因）。
-window.MAWE.register('utils-markers', function createUtilsModule() {
+export function createUtilsModule() {
   'use strict';
 
   const MARKERS_SCHEMA = 'moy.asr.markers.v1';
@@ -11,28 +11,21 @@ window.MAWE.register('utils-markers', function createUtilsModule() {
   const MARKER_REVIEW_REASON_MAX_LENGTH = 300;
   const MARKER_DEFAULT_COLOR = '#3e63dd';
   // 预设色板（管理窗改色与 AI 复核默认色共用）：对齐达芬奇 Resolve 的 marker
-  // 官方色序（Blue/Cyan/Green/Yellow/Red/Pink/Purple/Fuchsia），取前 8 个常用、
-  // 区分度高的颜色。默认色与 Resolve 的 Blue 对齐。
-  // OTIO 官方 Marker 色集为 PINK/RED/ORANGE/YELLOW/GREEN/CYAN/BLUE/PURPLE/
-  // MAGENTA/BLACK/WHITE：与达芬奇的名称级交集（品红按 Fuchsia≈Magenta 计）
-  // 就是前 8 个；末尾两个（天蓝/可可）取自达芬奇扩展色板中区分度最高的颜色，
-  // 导出 OTIO 时会按最近色相归并。
+  // 八种常用预设：蓝/青/绿/橘黄/红/粉/淡紫/白；其他 HEX 色值仍可自定义。
+  // 默认色与 Resolve 的 Blue 对齐，OTIO 导出按最近色相归并。
   const MARKER_PRESET_COLORS = Object.freeze([
-    '#3e63dd', '#00a2c7', '#46a758', '#f5d90a', '#e5484d', '#ef5da8', '#8e4ec6', '#d6409f',
-    '#45a3f5', '#a06e3b',
+    '#3e63dd', '#00a2c7', '#46a758', '#f5b81b', '#e5484d', '#ef5da8', '#b18be8', '#ffffff',
   ]);
   // 预设色的中文显示名（过滤下拉 / 色板提示用）；非预设色返回空串，调用方回退显示色值。
   const MARKER_PRESET_COLOR_LABELS = Object.freeze({
     '#3e63dd': '蓝',
     '#00a2c7': '青',
     '#46a758': '绿',
-    '#f5d90a': '黄',
+    '#f5b81b': '黄',
     '#e5484d': '红',
     '#ef5da8': '粉',
-    '#8e4ec6': '紫',
-    '#d6409f': '品红',
-    '#45a3f5': '天蓝',
-    '#a06e3b': '可可',
+    '#b18be8': '淡紫',
+    '#ffffff': '白',
   });
   const MARKER_REVIEW_COLOR = '#f5a623';
   const MARKER_REVIEW_STATUSES = Object.freeze(['pending', 'confirmed']);
@@ -211,11 +204,14 @@ window.MAWE.register('utils-markers', function createUtilsModule() {
     return { start: visibleStart, end: visibleEnd };
   }
 
-  // 单点 Marker 在像素层保证的最小可见宽度百分比（避免高缩放下完全消失）。
+  // 单点 / 区段在像素层保证的最小可见宽度百分比（避免高缩放下完全消失）；
+  // 单点 Marker 更宽一些，便于点中查看。
   const MARKER_MIN_VISIBLE_PERCENT = 0.25;
+  const MARKER_POINT_MIN_VISIBLE_PERCENT = 0.5;
 
   return Object.freeze({
     MARKERS_SCHEMA,
+    MARKER_POINT_MIN_VISIBLE_PERCENT,
     MARKER_DEFAULT_COLOR,
     MARKER_PRESET_COLORS,
     MARKER_PRESET_COLOR_LABELS,
@@ -243,4 +239,4 @@ window.MAWE.register('utils-markers', function createUtilsModule() {
     markerSummary,
     markerVisibleRange,
   });
-});
+}

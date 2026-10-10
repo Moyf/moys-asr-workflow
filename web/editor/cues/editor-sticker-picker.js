@@ -182,7 +182,7 @@
       MaweHint.flashHint('选中范围内没有表情包', 'invalid');
       return;
     }
-    return MaweCommands.run('拓展表情包时长', (command) => {
+    return MaweCommands.run('延长表情包', (command) => {
       const sticker = { ...sourceSticker };
       sticker.start = MaweBoot.DATA.segments[sorted[0]].start;
       sticker.end = MaweBoot.DATA.segments[sorted[sorted.length - 1]].end;
@@ -297,7 +297,7 @@
       segments[index].disabled = nextDisabled;
       segments[index]._dirty = true;
     });
-    if (!isExtension) {
+    if (!isExtension && !isOverlay) {
       // 主字幕是绑定关系的控制端：禁用/启用时同步同一绑定的副字幕；
       // 副字幕自身的操作不反向修改主字幕，保持它可以单独禁用。
       validIdxs.forEach((index) => {

@@ -1,7 +1,7 @@
 // srt: private helpers; dependencies are injected by editor-utils.js.
-window.MAWE.register('utils-srt', function createUtilsModule(dependencies) {
+export function createUtilsModule(dependencies) {
   'use strict';
-  const { DEFAULT_SPEAKER_LABEL_SEPARATOR, effectiveColorName, formatSpeakerLabelledText, normalizeSpeakerLabelSeparator, normalizeSpeakerLabels } = dependencies;
+  const { DEFAULT_SPEAKER_LABEL_SEPARATOR, effectiveColorName, formatSpeakerLabelledText, normalizeSpeakerLabelSeparator, normalizeSpeakerLabels, stripSentenceFadeMarkers } = dependencies;
 
 
   function getSrtExportFirstIndex(segments, alignFirstEnabled = false) {
@@ -137,11 +137,12 @@ window.MAWE.register('utils-srt', function createUtilsModule(dependencies) {
       outputIndex += 1;
       parts.push(String(outputIndex));
       parts.push(`${formatTime(start)} --> ${formatTime(end)}`);
+      const cueText = String(segment.text ?? '');
       parts.push(disabled ? '' : speakerLabels
         ? formatSpeakerLabelledText(
-          segment.text, segment, colorContext, speakerLabels, speakerLabelSeparator,
+          stripSentenceFadeMarkers(cueText, options.assSpecialSymbolRule), segment, colorContext, speakerLabels, speakerLabelSeparator,
         )
-        : String(segment.text || ''));
+        : stripSentenceFadeMarkers(cueText, options.assSpecialSymbolRule));
       parts.push('');
     });
     return parts.join('\n');
@@ -170,8 +171,9 @@ window.MAWE.register('utils-srt', function createUtilsModule(dependencies) {
       if (end <= start) return;
       const context = track === 0 && typeof options.colorContextResolver === 'function'
         ? options.colorContextResolver(segment) || source : source;
-      const text = String(labels ? formatSpeakerLabelledText(segment.text, segment, context, labels, separator)
-        : segment.text || '').replace(/\r\n?/g, '\n');
+      const strippedText = stripSentenceFadeMarkers(String(segment.text ?? ''), options.assSpecialSymbolRule);
+      const text = String(labels ? formatSpeakerLabelledText(strippedText, segment, context, labels, separator)
+        : strippedText).replace(/\r\n?/g, '\n');
       if (!text.trim()) return;
       const record = { track, index, text };
       addEvent(start, record, true);
@@ -194,13 +196,20 @@ window.MAWE.register('utils-srt', function createUtilsModule(dependencies) {
       if (previous && previous.end === start && previous.text === text) previous.end = end;
       else merged.push({ start, end, text });
     });
-    return buildSrtPayload(merged, { formatTime: options.formatTime });
+    // 每条原字幕已按规则清理；合并后再次解析会剥掉被禁用或剩余的字面符号。
+    return buildSrtPayload(merged, { formatTime: options.formatTime, assSpecialSymbolRule: 'none' });
   }
 
-  function buildPlainTextPayload(segments) {
-    return (Array.isArray(segments) ? segments : [])
+  function buildPlainTextPayload(segments, options = {}) {
+    const source = Array.isArray(segments) ? segments : [];
+    return source
       .filter((segment) => segment && !segment.disabled)
-      .map((segment) => String(segment.text || '').replace(/\r\n?/g, '\n'))
+      .map((segment) => {
+        const text = String(segment.text || '').replace(/\r\n?/g, '\n');
+        return options.speakerLabelsEnabled === true
+          ? formatSpeakerLabelledText(text, segment, source, options.speakerLabels, options.speakerLabelSeparator)
+          : text;
+      })
       .join('\n');
   }
 
@@ -210,4 +219,4 @@ window.MAWE.register('utils-srt', function createUtilsModule(dependencies) {
   }
 
   return Object.freeze({ buildBilingualSrtPayload, buildPlainTextPayload, buildSrtPayload, fileBasename, getSrtExportFirstIndex, getSrtExportOffset, repairGroupReferenceIndices, shiftGroupReferenceIndices, shiftSelectionAfterRemoval });
-});
+}

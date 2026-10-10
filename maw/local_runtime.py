@@ -18,6 +18,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from threading import Event
 
+from maw.gui_platform import restore_host_library_path
 from maw.runtimes import LOCAL
 from maw.runtimes.base import (
     RuntimeEvent,
@@ -477,6 +478,12 @@ def run_timestamp_alignment_in_runtime(
     model_cache_root: str | Path | None = None,
     on_event: Callable[[str], None] | None = None,
     cancel_event: Event | None = None,
+    script_path: str | Path | None = None,
+    language: str = "zh",
+    audio_track: int | None = None,
+    silence_db: float = -35.0,
+    silence_ms: int = 500,
+    anchors_path: str | Path | None = None,
 ) -> dict[str, object]:
     """Run the post-processing aligner in the managed local runtime."""
     status = managed_runtime_status(model_cache_root)
@@ -488,7 +495,7 @@ def run_timestamp_alignment_in_runtime(
     command = [
         str(status.python_path),
         str(helper),
-        "timestamp-align",
+        "script-align" if script_path else "timestamp-align",
         "--model-id",
         model_id,
         "--output-mode",
@@ -498,6 +505,15 @@ def run_timestamp_alignment_in_runtime(
         "--device",
         device,
     ]
+    if script_path:
+        command.extend([
+            "--script-path", str(script_path), "--language", language,
+            "--silence-db", str(silence_db), "--silence-ms", str(silence_ms),
+        ])
+        if audio_track is not None:
+            command.extend(["--audio-track", str(audio_track)])
+        if anchors_path:
+            command.extend(["--anchors-path", str(anchors_path)])
     for flag, value in (
         ("--project-path", project_path),
         ("--srt-path", srt_path),
@@ -553,7 +569,8 @@ def _runtime_env(
         # 托管依赖目录按平台安装模式解析（unix 打包版为 venv 的
         # lib/python3.x/site-packages；其余为扁平 site-packages）。
         env["PYTHONPATH"] = str(LOCAL.site_packages(runtime_root))
-    return env
+    # worker 跑在托管 venv 的宿主解释器上（见 restore_host_library_path）。
+    return restore_host_library_path(env)
 
 
 def _from_runtime_status(status: RuntimeStatus) -> LocalRuntimeStatus:

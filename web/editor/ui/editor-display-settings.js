@@ -71,21 +71,11 @@
   const leavingEnabled = !enabled && previousMultiSubtitlePreviewEnabled;
   syncMultiSubtitleWaveformRowHeight(enabled, enteringEnabled, leavingEnabled);
   MaweSplitMode.refreshMergeJoinModeHint();
-  if (MaweDom.multiSubtitleControls) MaweDom.multiSubtitleControls.hidden = !hasMainSubtitle;
-  if (MaweDom.multiSubtitleSettingsDropdown) {
-    // 空副轨也可编辑和导入，设置入口随双语模式显示。
-    MaweDom.multiSubtitleSettingsDropdown.hidden = !enabled;
-    if (MaweDom.multiSubtitleSettingsDropdown.hidden) {
-      MaweDom.multiSubtitleSettingsDropdown.classList.remove('open');
-      MaweDom.multiSubtitleSettingsDropdown.querySelector('button[aria-expanded]')
-        ?.setAttribute('aria-expanded', 'false');
-    }
-  }
+  if (MaweDom.projectMultiSubtitleSettings) MaweDom.projectMultiSubtitleSettings.hidden = !enabled;
   if (MaweDom.multiSubtitleEmptyHint) {
+    MaweSettingsPanels.updateRegionalSettingsAvailability();
     MaweDom.multiSubtitleEmptyHint.hidden = !(enabled && !track.segments.length);
   }
-  if (MaweDom.splitMultiSubtitleSettingsEnabledHint) MaweDom.splitMultiSubtitleSettingsEnabledHint.hidden = !enabled;
-  if (MaweDom.splitMultiSubtitleSettingsDisabledHint) MaweDom.splitMultiSubtitleSettingsDisabledHint.hidden = enabled;
   if (MaweDom.multiSubtitleToggle) {
     // 勾选状态跟随「多重字幕编辑模式」开关本身：未导入副轨时同样保持勾选。
     MaweDom.multiSubtitleToggle.checked = MaweMultiSubtitleCore.getMultiSubtitleState().enabled === true;
@@ -103,11 +93,11 @@
   }
   if (MaweDom.multiSubtitleMainLanguageMode) {
     MaweDom.multiSubtitleMainLanguageMode.value = MaweMultiSubtitleCore.getMainSubtitleSplitMode(MaweBoot.DATA.segments[0]);
-    MaweDom.multiSubtitleMainLanguageMode.hidden = !enabled;
+    MaweDom.multiSubtitleMainLanguageMode.hidden = false;
   }
   if (MaweDom.multiSubtitleExtensionLanguageMode) {
     MaweDom.multiSubtitleExtensionLanguageMode.value = MaweMultiSubtitleCore.getExtensionSubtitleSplitMode(track, track?.segments?.[0]);
-    MaweDom.multiSubtitleExtensionLanguageMode.hidden = !enabled;
+    MaweDom.multiSubtitleExtensionLanguageMode.closest('.multi-subtitle-setting-row').hidden = !enabled;
   }
   if (MaweDom.multiSubtitleExtensionRowHeight) {
     MaweDom.multiSubtitleExtensionRowHeight.value = String(MaweSettings.EDITOR_SETTINGS.multiSubtitleRowHeight);
@@ -135,8 +125,10 @@
   if (MaweDom.multiSubtitleSwapButton) {
     const canSwap = enabled && (MaweMultiSubtitleCore.getMultiSubtitleState().tracks || []).length === 1
       && MaweBoot.DATA.segments.length > 0 && (track?.segments || []).length > 0;
-    MaweDom.multiSubtitleSwapButton.classList.toggle('disabled', !canSwap);
-    MaweDom.multiSubtitleSwapButton.setAttribute('aria-disabled', canSwap ? 'false' : 'true');
+    MaweDom.multiSubtitleSwapButton.disabled = !canSwap;
+    MaweDom.multiSubtitleSwapButton.title = canSwap
+      ? '交换主字幕和副字幕的文本、时间与绑定关系'
+      : '需要已开启双语字幕且主副轨都有字幕';
   }
   if (MaweDom.multiSubtitleWaveformControls) MaweDom.multiSubtitleWaveformControls.hidden = !enabled;
   if (MaweDom.multiSubtitleAlignButton) MaweDom.multiSubtitleAlignButton.hidden = !enabled;

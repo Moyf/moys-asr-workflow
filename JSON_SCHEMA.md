@@ -19,6 +19,7 @@
   "split_mode": "word",
   "timestamp_granularity": "word",
   "model": "...",
+  "preserve_punctuation": true,
   "media_metadata": {
     "video_fps": 29.97002997002997,
     "video_fps_ratio": "30000/1001",
@@ -58,12 +59,13 @@
 | `media` | `string` | 否 | 媒体文件路径（绝对/相对均可）。便携 HTML 会在“打开工程”时用它的文件名匹配同一次选择的媒体；只选工程文件时会提示用户继续选择媒体。浏览器安全限制下不能自行读取该路径或跳转其目录。服务器编辑器可按该路径自动加载 |
 | `language` | `string` | 否 | 统一后的语言代码，如 `zh`、`en`、`ja`；无法确定时为空字符串。仅用于显示与选择切句计量方式 |
 | `language_source` | `string` | 否 | 语言来源：`detected`（模型返回）、`hint`（用户提示）、`inferred`（从文字脚本推断）或 `unknown`（未知） |
+| `preserve_punctuation` | `boolean` | 否 | 为 `true` 时，MAWE 启动不执行历史中文逗号 / 句号清理，保留字幕与 items 的原文；保存和重新加载保留此策略。文稿驱动对齐写入 `true`。省略或为 `false` 时保持历史行为；不限制用户后续主动编辑 / 文本处理。此字段是 v1 的可选扩展，不改变整数毫秒契约 |
 | `split_mode` | `string` | 否 | 切句计量方式：`continuous`（字符型，如中文）或 `word`（单词型，如英文） |
 | `timestamp_granularity` | `string` | 否 | 时间码粒度：`char`、`word`、`segment` 或 `unknown`。只有整段 start/end 的模型使用 `segment`；这类工程的字幕段可以没有 `items`，超长段可能已按标点（连续语言）或单词数（单词型）二次拆分，段内时间是插值近似值（不携带 `items` 冒充词级精度） |
 | `model` | `string` | 否 | ASR 模型名，如 `qwen3-asr`。仅用于显示 |
 | `media_metadata` | `object` | 否 | 源媒体元数据。可包含视频 `video_fps`（1–240 的数字）、`video_fps_ratio`（FFprobe 原始帧率比例字符串）、成对的正整数 `video_width` / `video_height`、非负整数 `selected_audio_track` 和 `audio_tracks` 音轨清单；缺失时按旧工程处理 |
 | `timebase` | `object` | 否 | 字幕编辑时间基准：`unit` 为 `milliseconds` 或 `frames`，`fps` 范围为 1–240。缺失时按毫秒模式兼容读取 |
-| `sticker_root` | `string` | 否 | 表情包根目录绝对路径。打开工程时会覆盖编辑器内的 `STICKER_ROOT` |
+| `sticker_root` | `string` | 否 | 工程覆盖的表情包目录绝对路径；缺失或空字符串表示使用本机全局默认目录。有效覆盖目录优先，默认目录不写入工程 |
 | `waveform` | `object` | 否 | 可丢弃的紧凑波形缓存。由 `edit.py` 或浏览器自动生成；不影响字幕语义 |
 | `gap_remove` | `object` | 否 | 可逆的空隙移除决定。保留原始媒体/字幕时间，仅描述导出与跳过播放时使用的派生时间轴 |
 | `script_alignment` | `object` | 否 | 录制对齐工具写入的选择记录；不改变 MAWE 的字幕与时间码语义 |
@@ -72,7 +74,7 @@
 | `preview` | `object` | 否 | 预览呈现设置。含 `preview.subtitle`（主字幕预览框与样式）、可选的 `preview.extension_subtitle`（副字幕样式）和 `preview.sticker`（表情包预览层）。不影响字幕时间与文本 |
 | `overlay_track` | `object` | 否 | 独立的叠加字幕轨。它的段可以与主轨重叠，但轨内保持时间顺序；用于保存导入 SRT 时出现的双层字幕 |
 
-`media_metadata.video_fps` 是生成工程时从源视频读取的媒体 FPS，仅作为编辑器切入帧模式时的默认值；它不替代编辑器自己的 `timebase.fps`，用户仍可在全局设置中修改。旧工程没有 `media_metadata` 时继续使用编辑器原有默认值。`video_fps_ratio` 用于保留 `30000/1001` 这类非整数帧率的原始比例。
+`media_metadata.video_fps` 是生成工程时从源视频读取的媒体 FPS，仅作为编辑器切入帧模式时的默认值；它不替代编辑器自己的 `timebase.fps`，用户仍可在项目设置中修改。旧工程没有 `media_metadata` 时继续使用编辑器原有默认值。`video_fps_ratio` 用于保留 `30000/1001` 这类非整数帧率的原始比例。
 
 `media_metadata.video_width` / `video_height` 是源视频的实际像素尺寸，由生成工程时的 FFprobe 或浏览器加载视频后的 `HTMLVideoElement.videoWidth` / `videoHeight` 补齐；两个字段必须同时存在。ASS 导出会优先使用这组尺寸作为 `PlayResX` / `PlayResY`，缺失时使用当前浏览器视频尺寸，仍不可用则回退到 1920×1080。旧工程缺少这些字段时不影响读取。
 
@@ -386,6 +388,10 @@
 
 ### 1.4 preview 预览呈现
 
+`preview.ass_mode` 为可选布尔值，记录当前工程是否启用 ASS 字幕模式；缺失时为 `false`，不会从另一工程或浏览器旧偏好继承。字幕样式与颜色呈现继续保存于工程，ASS 样式库与特殊文本规则仍是可复用的本机配置。
+
+`preview.subtitle.speaker_labels.export_enabled` 为可选布尔值，记录是否在字幕导出时附加映射的说话人名称；缺失时为 `false`。它与标签预览的 `enabled` 独立，随工程保存。
+
 `preview` 记录预览呈现层的设置，与字幕时间/文本完全解耦。目前定义两个子几何：`preview.subtitle`（字幕预览框，编辑器里 `#overlay`）与 `preview.sticker`（表情包预览层，编辑器里 `#sticker-overlay-layer`），都是在播放器区域内的几何，以 player-wrap 矩形的**归一化分数**存储，因此在播放器缩放和跨机传输后仍然一致。
 
 ```json
@@ -502,7 +508,7 @@
 | `multi_subtitle.schema` | string | 否 | 固定为 `moy.asr.multi_subtitle.v1` |
 | `multi_subtitle.enabled` | boolean | 否 | 默认 `false`；关闭只隐藏扩展数据，不删除数据 |
 | `multi_subtitle.display_mode` | string | 否 | `main` / `extension` / `both`，默认 `both` |
-| `multi_subtitle.main_split_mode` | string | 否 | 主字幕语言类型：`continuous`（字符型）或 `word`（单词型）；旧工程缺失时按主字幕文本自动判断 |
+| `multi_subtitle.main_split_mode` | string | 否 | 主字幕语言类型：`continuous`（字符型）或 `word`（单词型）；在单轨与双语模式下都生效；旧工程缺失时按主字幕文本自动判断 |
 | `multi_subtitle.tracks` | array | 否 | 扩展轨数组；当前 UI 只管理第一条轨道 |
 | `tracks[i].id` | string | 是 | 轨道稳定 ID |
 | `tracks[i].role` | string | 否 | 当前固定为 `extension` |
@@ -567,6 +573,7 @@
 - `id` 是稳定字符串。缺失、重复或非法 ID 由规范化按时间序补齐，显式 ID 合法时原样保留。已有稳定 ID 不随移动或新增标记而重排，因此 ID 数字不代表时间顺序。
 - `name` 最长 120 字符，`note` 最长 500 字符，写入前去除控制字符；`color` 为 `#RRGGBB` 六位十六进制，非法值回退默认 `#3e63dd`。
 - `review` 是可选的复核状态：`status` 为 `pending`（待复核）或 `confirmed`（已确认），`reason` 最长 300 字符。带 `review.status: "pending"` 的标记在轨道上以脉冲样式显示，并在「标记与区段」管理窗中计数；确认后置为 `confirmed`。AI 口播整理把待复核段写成 `pending` 复核标记（默认色 `#f5a623`），确认与否完全由用户决定。
+- AI 整理的新注释优先写覆盖源字幕的区段（合法 `end > start`），`note` 统一为 `[AI] 操作：原因`。自动删除使用「删除」且不带 `review`；替代版本存疑使用「替代项」，其他待复核使用「复核」，并带 `pending`。这是已有字段的使用约定，不增加 schema 字段；注释与字幕禁用、`gap_remove` 决定独立，删除注释不撤销剪辑。
 - 读写双方都应容忍未知字段与非法项：规范化丢弃无法解析的项，不抛错。
 
 ---
@@ -654,6 +661,13 @@
 - 如果 `items` 字段整个缺失，编辑器视同 `[]`
 
 ---
+
+### 3.1 编辑器字词模式与转换
+编辑器的「字词时间码」是临时查看模式，仅用于主轨，不写入工程或工作区。一个 item 是一块文字共享的时间范围，可能包含多个字词；编辑时新增文字可能并入已有 item，并不代表重新对齐了音频。缺失的字词时间码不补建或插值。
+
+移动、边界调整和相邻合并直接更新已有 `items`，不改变所属 segment 的文字与范围。标点和空白可在显示及转换时挂靠相邻字词，不独立占用时间。`start/end` 保持整数毫秒；帧模式同时维护对应帧字段。
+
+「字词转为独立字幕」仅转换选中的、文字完整覆盖且时间合法的主字幕；每个有效 item 生成一条 segment，并保留为该 segment 唯一的 item。原文中的标点和空白保留，未覆盖的有声文字使整句跳过。转换解除相关副字幕绑定，但保留副字幕文字与时间；转换可撤销，不提供反向转换工具。
 
 ## 四、表情包 / 颜色（head + ref 系统）
 
@@ -864,13 +878,14 @@ uv run python edit.py your_generated.mosp
 | `media` | string | ❌ | 媒体文件路径 |
 | `language` | string | ❌ | 语言代码 |
 | `model` | string | ❌ | 模型名 |
-| `sticker_root` | string | ❌ | 表情包根目录 |
+| `sticker_root` | string | ❌ | 工程表情包覆盖目录；缺失或为空时使用本机默认目录 |
 | `waveform` | object | ❌ | 可丢弃的 `moy.asr.waveform.v1` 峰值缓存 |
 | `gap_remove` | object | ❌ | 可逆的 `moy.asr.gap_remove.v1` 空隙移除决定 |
 | `markers` | object | ❌ | 可选的 `moy.asr.markers.v1` 标记与区段；AI 复核项带 `review` 字段 |
 | `overlay_track` | object | ❌ | 独立叠加字幕轨 `{enabled, segments}` |
 | `multi_subtitle` | object | ❌ | 可选的 `moy.asr.multi_subtitle.v1` 主轨/扩展轨与绑定 |
 | `preview` | object | ❌ | 预览呈现设置容器 |
+| `preview.ass_mode` | boolean | ❌ | 当前工程的 ASS 字幕模式；缺失时关闭 |
 | `preview.subtitle.x` | number | ❌ | 归一化 `[0,1]`，`x + width <= 1` |
 | `preview.subtitle.y` | number | ❌ | 归一化 `[0,1]`，`y + height <= 1` |
 | `preview.subtitle.width` | number | ❌ | 归一化 `[0,1]`，编辑器最小 0.20 |
@@ -883,6 +898,7 @@ uv run python edit.py your_generated.mosp
 | `preview.subtitle.speaker_labels` | object | ❌ | 颜色到说话人的映射与标签预览设置；默认关闭，名称默认为黄/绿/红/紫/蓝对应 `SP1`～`SP5` |
 | `preview.subtitle.speaker_labels.mapping_enabled` | boolean | ❌ | 是否启用颜色到说话人的映射；关闭时不显示映射配置，也不在预览和导出中使用说话人名称 |
 | `preview.subtitle.speaker_labels.enabled` | boolean | ❌ | 开启后在播放器预览字幕前显示对应颜色的说话人名称；未显式配置时默认开启；不修改字幕文本 |
+| `preview.subtitle.speaker_labels.export_enabled` | boolean | ❌ | 是否在导出时附加说话人名称；缺失时关闭，随工程保存 |
 | `preview.subtitle.speaker_labels.separator` | string | ❌ | 说话人名称与字幕内容之间的分隔符，默认 `：`；最长 16 个字符，允许为空、空格或英文引号，不含控制字符 |
 | `preview.subtitle.speaker_labels.names.<color>` | string | ❌ | 颜色对应名称，最长 64 个字符；允许为空；`<color>` 为 `yellow` / `green` / `red` / `purple` / `blue` |
 | `preview.extension_subtitle` | object | ❌ | 副字幕样式；沿用主字幕预览框 |

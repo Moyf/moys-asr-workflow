@@ -1,0 +1,229 @@
+{
+  "scope": "actual partial production fork; build + Node validation",
+  "base": "dfd5971f0a6676f8943802cc17de7770839649a0",
+  "migration": "ce398992f448e9fd3d01ca6dbb3e9c2879d1317c",
+  "fork": "096ca1ad279b5d75f03d6d7efb52b022382033b2",
+  "esmFactories": 59,
+  "snapshotSha256": "fb9ddadd22ff3232083f9382bd2fefe9f2fde67b8c949bd20df13d8c5f6b6918",
+  "toolHashes": {
+    "scripts/build-editor.mjs": "824fc4be18dc943aed7886b55d58338c13a0775903be5b2c59163561b23ac8cb",
+    "scripts/migrate-editor-factories.mjs": "e014607853dc7a8d3644ef44c157ba30d41d7514c8cd5f141e2ac8c18403500b"
+  },
+  "projectedBase": "d53b94304a8e052ffcefffdf0cb854aac3c8f706",
+  "prs": [
+    {
+      "number": 180,
+      "head": "40d8cca5288d0fd8890f71e54d248eb9ae856088",
+      "url": "https://github.com/Moyf/moys-asr-workflow/pull/180",
+      "classic": {
+        "clean": true,
+        "tree": "968c528a34475fd6a1d76730f0ea5084d266c847",
+        "conflicts": []
+      },
+      "direct": {
+        "clean": true,
+        "tree": "49fa6d7b91ff97defe6141758e1bf5203236220b",
+        "conflicts": []
+      },
+      "unresolvedProjection": {
+        "clean": true,
+        "tree": "58ba343f2c1789c9201a6c12e2e0ca3369b4b945",
+        "conflicts": []
+      },
+      "projected": {
+        "clean": true,
+        "tree": "58ba343f2c1789c9201a6c12e2e0ca3369b4b945",
+        "conflicts": []
+      },
+      "typeAdapterSha256": "5853aadbc808c1babb7fe0835c9ab987ef8063da7186dad9028e9d947a039425",
+      "sources": 182,
+      "nodeExit": 0,
+      "typecheckExit": 0,
+      "typeDiagnostics": 0,
+      "status": "validated-build-and-node",
+      "candidateRef": "refs/esm-rehearsal/production-27826dc8ab2f/candidate-180"
+    },
+    {
+      "number": 179,
+      "head": "6e23fd75ba34a5c403f78674d3074ef2163dbe88",
+      "url": "https://github.com/Moyf/moys-asr-workflow/pull/179",
+      "classic": {
+        "clean": true,
+        "tree": "b3eaceec9c43bb37a858c40a937f316b2c0b944f",
+        "conflicts": []
+      },
+      "direct": {
+        "clean": false,
+        "tree": "1ddb84bc15af70cf1468b068f8619b179b914a9b",
+        "conflicts": [
+          "tests/test_waveform.py",
+          "web/editor/media/waveform/cue-blocks.js"
+        ]
+      },
+      "unresolvedProjection": {
+        "clean": false,
+        "tree": "c7ff4e9a5bccac67e68024ce96e13c7d359894be",
+        "conflicts": [
+          "tests/test_waveform.py",
+          "web/editor/media/waveform/cue-blocks.js"
+        ]
+      },
+      "projected": {
+        "clean": true,
+        "tree": "e66a5b4be8f6ce5d3b44d502188eb684c7cb1961",
+        "conflicts": [],
+        "originalConflicts": [
+          "tests/test_waveform.py",
+          "web/editor/media/waveform/cue-blocks.js"
+        ],
+        "reviewedResolutions": [
+          {
+            "file": "tests/test_waveform.py",
+            "reviewedHunks": 1,
+            "blob": "e435dd715b5af6838383a66c412c8b71ce848e09"
+          },
+          {
+            "file": "web/editor/media/waveform/cue-blocks.js",
+            "reviewedHunks": 1,
+            "blob": "3798e38dd136d163f310f6ef521c40c6d9554956"
+          }
+        ]
+      },
+      "typeAdapterSha256": "5853aadbc808c1babb7fe0835c9ab987ef8063da7186dad9028e9d947a039425",
+      "sources": 185,
+      "nodeExit": 0,
+      "typecheckExit": 0,
+      "typeDiagnostics": 0,
+      "status": "validated-build-and-node",
+      "candidateRef": "refs/esm-rehearsal/production-27826dc8ab2f/candidate-179"
+    },
+    {
+      "number": 178,
+      "head": "487bb24f334801d4ef351dd55b6d03c30bfebdf8",
+      "url": "https://github.com/Moyf/moys-asr-workflow/pull/178",
+      "classic": {
+        "clean": true,
+        "tree": "934032698725a0ec8542aa60ada0c9289bd97a9d",
+        "conflicts": []
+      },
+      "direct": {
+        "clean": true,
+        "tree": "f51f85eef82501267e68a90dd0e6c989067d4d8c",
+        "conflicts": []
+      },
+      "unresolvedProjection": {
+        "clean": true,
+        "tree": "08c41f15e54e8200aec11bf7eb8f7c17f1c3a29b",
+        "conflicts": []
+      },
+      "projected": {
+        "clean": true,
+        "tree": "08c41f15e54e8200aec11bf7eb8f7c17f1c3a29b",
+        "conflicts": []
+      },
+      "sources": 180,
+      "nodeExit": 0,
+      "typecheckExit": 0,
+      "typeDiagnostics": 0,
+      "status": "validated-build-and-node",
+      "candidateRef": "refs/esm-rehearsal/production-27826dc8ab2f/candidate-178"
+    },
+    {
+      "number": 177,
+      "head": "1ad2f641daa6f6260c16ac88176aa2c0aad9566a",
+      "url": "https://github.com/Moyf/moys-asr-workflow/pull/177",
+      "classic": {
+        "clean": true,
+        "tree": "5372646070a5f0c223df6f6e65867cbf61d29434",
+        "conflicts": []
+      },
+      "direct": {
+        "clean": false,
+        "tree": "6d14a457f31b4cb47ab6962b0f37da8fd8dc0ec2",
+        "conflicts": [
+          "web/editor/media/waveform/cue-blocks.js"
+        ]
+      },
+      "unresolvedProjection": {
+        "clean": false,
+        "tree": "9af8c8f03172424cdee3bc2c3f9c3bce863db994",
+        "conflicts": [
+          "web/editor/media/waveform/cue-blocks.js"
+        ]
+      },
+      "projected": {
+        "clean": true,
+        "tree": "c0874af2d4010ed3e11736c703aac642dee5338b",
+        "conflicts": [],
+        "originalConflicts": [
+          "web/editor/media/waveform/cue-blocks.js"
+        ],
+        "reviewedResolutions": [
+          {
+            "file": "web/editor/media/waveform/cue-blocks.js",
+            "reviewedHunks": 2,
+            "blob": "43d5ea17f1b194fea9873a2a73273497780d0670"
+          }
+        ]
+      },
+      "typeAdapterSha256": "5853aadbc808c1babb7fe0835c9ab987ef8063da7186dad9028e9d947a039425",
+      "sources": 184,
+      "nodeExit": 0,
+      "typecheckExit": 0,
+      "typeDiagnostics": 0,
+      "status": "validated-build-and-node",
+      "candidateRef": "refs/esm-rehearsal/production-27826dc8ab2f/candidate-177"
+    },
+    {
+      "number": 157,
+      "head": "0aaf51bdcf84a188951aad15aa16cbe4943de28c",
+      "url": "https://github.com/Moyf/moys-asr-workflow/pull/157",
+      "classic": {
+        "clean": false,
+        "tree": "0c610bd0182614bdeab62106b6be6f08ddbbf50c",
+        "conflicts": [
+          "tests/test_editor_assets.py",
+          "web/editor-scripts.txt"
+        ]
+      },
+      "direct": {
+        "clean": false,
+        "tree": "7ef7f08c2306cb328cb46db9af86ba451a9ed84c",
+        "conflicts": [
+          "package-lock.json",
+          "tests/helpers/editor-module-loader.mjs",
+          "tests/test_editor_assets.py",
+          "tests/test_editor_host.mjs",
+          "web/editor-scripts.txt",
+          "web/shared/host/files.js",
+          "web/shared/host/server-api.js",
+          "web/shared/host/storage.js"
+        ]
+      },
+      "status": "blocked-original-conflict"
+    }
+  ],
+  "resolutionSha256": "4fa74f268e187dc6e4012169ec9cbdedada6bdb5efb1b65973be25863e7d8ea8",
+  "supplementaryValidation": {
+    "177": {
+      "browser": {
+        "tests": 20,
+        "esmPassed": 16,
+        "esmFailed": 4,
+        "classicPassed": 16,
+        "classicFailed": 4,
+        "sameFailedCases": [
+          "equal-length typo replacement syncs item texts through the cue panel",
+          "selected sentence gains edge handles in word timing mode and drags only its own range",
+          "audition plays the picked range once from both word and sentence menus",
+          "context menu keeps clip actions up front and moves low-frequency entries into advanced"
+        ],
+        "status": "upstream failures reproduced on unmodified classic baseline"
+      }
+    },
+    "179": {
+      "browserPassed": 12,
+      "waveformPythonPassed": 22
+    }
+  }
+}

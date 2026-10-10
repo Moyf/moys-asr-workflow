@@ -1,11 +1,12 @@
 // pointer: waveform class methods with explicit dependencies.
-window.MAWE.register('waveform-pointer', function createWaveformModule(dependencies) {
+export function createWaveformModule(dependencies) {
   'use strict';
   const { clamp, resolveTiming, snapPointerTimeToTimingGrid } = dependencies;
 
   class WaveformMethods {
 
 
+    /** @this {import('./waveform-types.js').WaveformInstance} */
     pointerTimeMs(event, row, geometry = null, allowCrossRow = false) {
       const requestedMs = allowCrossRow
         ? this.timeFromPointerUnbounded(event, row, geometry)
@@ -18,6 +19,7 @@ window.MAWE.register('waveform-pointer', function createWaveformModule(dependenc
     }
 
 
+    /** @this {import('./waveform-types.js').WaveformInstance} */
     refreshPointerLine() {
       if (this.pointerLineOverrideActive) {
         this.refreshBoundaryDragPointerLine();
@@ -29,6 +31,7 @@ window.MAWE.register('waveform-pointer', function createWaveformModule(dependenc
     }
 
 
+    /** @this {import('./waveform-types.js').WaveformInstance} */
     showPointerLine(event, row, marker) {
       if (!row || !marker) return;
       const rect = row.getBoundingClientRect();
@@ -47,11 +50,13 @@ window.MAWE.register('waveform-pointer', function createWaveformModule(dependenc
     }
 
 
+    /** @this {import('./waveform-types.js').WaveformInstance} */
     hidePointerLine(marker) {
       if (marker) marker.hidden = true;
     }
 
 
+    /** @this {import('./waveform-types.js').WaveformInstance} */
     isCueBoundaryDrag(drag = this.drag) {
       return Boolean(drag && [
         'resize-left', 'resize-right', 'resize-boundary', 'resize-boundary-independent',
@@ -59,6 +64,7 @@ window.MAWE.register('waveform-pointer', function createWaveformModule(dependenc
     }
 
 
+    /** @this {import('./waveform-types.js').WaveformInstance} */
     findVisibleWaveformRowAtPoint(clientX, clientY) {
       const viewport = this.scroll.getBoundingClientRect();
       const viewportLeft = viewport.left + this.scroll.clientLeft;
@@ -71,20 +77,22 @@ window.MAWE.register('waveform-pointer', function createWaveformModule(dependenc
     }
 
 
+    /** @this {import('./waveform-types.js').WaveformInstance} */
     findVisibleWaveformRowAtY(clientY) {
       const viewport = this.scroll.getBoundingClientRect();
       const viewportTop = viewport.top + this.scroll.clientTop;
       const viewportBottom = viewportTop + this.scroll.clientHeight;
       if (clientY < viewportTop || clientY > viewportBottom) return null;
-      return [...this.content.querySelectorAll('.waveform-row')].find((row) => {
+      return [...(/** @type {NodeListOf<import('./waveform-types.js').WaveformRow>} */ (this.content.querySelectorAll('.waveform-row')))].find((row) => {
         const rect = row.getBoundingClientRect();
         return clientY >= rect.top && clientY <= rect.bottom;
       }) || null;
     }
 
 
+    /** @this {import('./waveform-types.js').WaveformInstance} */
     findVisibleWaveformRowForTime(timeMs) {
-      const rows = [...this.content.querySelectorAll('.waveform-row')];
+      const rows = [...(/** @type {NodeListOf<import('./waveform-types.js').WaveformRow>} */ (this.content.querySelectorAll('.waveform-row')))];
       // 行末时间由前一行持有，和中缝覆盖层的归属规则一致。
       const endingRow = rows.find((row) => Math.abs(Number(row.dataset.endMs) - timeMs) < 1);
       if (endingRow) return endingRow;
@@ -96,6 +104,7 @@ window.MAWE.register('waveform-pointer', function createWaveformModule(dependenc
     }
 
 
+    /** @this {import('./waveform-types.js').WaveformInstance} */
     cueBoundaryDragTimeMs(drag = this.drag) {
       if (!this.isCueBoundaryDrag(drag)) return NaN;
       const segment = this.options.getSegments(drag.track || 'main')[drag.index];
@@ -110,18 +119,19 @@ window.MAWE.register('waveform-pointer', function createWaveformModule(dependenc
     }
 
 
+    /** @this {import('./waveform-types.js').WaveformInstance} */
     refreshBoundaryDragPointerLine(force = false) {
       const drag = this.drag;
       if (!this.isCueBoundaryDrag(drag) || (!drag.started && !force)) return;
       this.pointerLineOverrideActive = true;
       const timeMs = this.cueBoundaryDragTimeMs(drag);
       const row = Number.isFinite(timeMs) ? this.findVisibleWaveformRowForTime(timeMs) : null;
-      this.content.querySelectorAll('.waveform-pointer-line').forEach((marker) => {
+      (/** @type {NodeListOf<import('./waveform-types.js').WaveformPointerMarker>} */ (this.content.querySelectorAll('.waveform-pointer-line'))).forEach((marker) => {
         marker.classList.remove('boundary-snapped');
         marker.hidden = true;
       });
       if (!row) return;
-      const marker = row.querySelector('.waveform-pointer-line');
+      const marker = (/** @type {import('./waveform-types.js').WaveformPointerMarker} */ (row.querySelector('.waveform-pointer-line')));
       if (!marker) return;
       const contentWidth = Math.max(1, row.clientWidth);
       const startMs = Number(row.dataset.startMs);
@@ -137,9 +147,10 @@ window.MAWE.register('waveform-pointer', function createWaveformModule(dependenc
     }
 
 
+    /** @this {import('./waveform-types.js').WaveformInstance} */
     restorePointerLineAfterBoundaryDrag(position = null) {
       this.pointerLineOverrideActive = false;
-      this.content.querySelectorAll('.waveform-pointer-line').forEach((marker) => {
+      (/** @type {NodeListOf<import('./waveform-types.js').WaveformPointerMarker>} */ (this.content.querySelectorAll('.waveform-pointer-line'))).forEach((marker) => {
         marker.classList.remove('boundary-snapped');
         marker.hidden = true;
       });
@@ -150,7 +161,7 @@ window.MAWE.register('waveform-pointer', function createWaveformModule(dependenc
         return;
       }
       const row = this.findVisibleWaveformRowAtPoint(position.clientX, position.clientY);
-      const marker = row?.querySelector('.waveform-pointer-line');
+      const marker = (/** @type {import('./waveform-types.js').WaveformPointerMarker} */ (row?.querySelector('.waveform-pointer-line')));
       if (!row || !marker) {
         this.pointerLineEvent = null;
         this.pointerLineRow = null;
@@ -168,8 +179,9 @@ window.MAWE.register('waveform-pointer', function createWaveformModule(dependenc
     // 暂停时指针在波形上移动即把画面预览到指针时间。与拖动播放头一样按
     // 最新事件合并到每帧最多一次；真正 seek 前重新检查开关与播放状态，
     // 避免调度之后状态已变化（开始播放、关闭开关、行被虚拟化重建）仍执行。
+    /** @this {import('./waveform-types.js').WaveformInstance} */
     scheduleHoverSeekPreview(event, row) {
-      if (this.playheadDragActive || this.isCueBoundaryDrag()
+      if (this.playheadDragActive || this.wordDrag || this.isCueBoundaryDrag()
           || this.options.getHoverSeekPreview?.() !== true) return;
       this.hoverSeekPreviewLastEvent = event;
       this.hoverSeekPreviewRow = row;
@@ -178,6 +190,7 @@ window.MAWE.register('waveform-pointer', function createWaveformModule(dependenc
     }
 
 
+    /** @this {import('./waveform-types.js').WaveformInstance} */
     cancelHoverSeekPreview() {
       if (this.hoverSeekPreviewFrame) {
         cancelAnimationFrame(this.hoverSeekPreviewFrame);
@@ -188,6 +201,7 @@ window.MAWE.register('waveform-pointer', function createWaveformModule(dependenc
     }
 
 
+    /** @this {import('./waveform-types.js').WaveformInstance} */
     flushHoverSeekPreview() {
       this.hoverSeekPreviewFrame = 0;
       const event = this.hoverSeekPreviewLastEvent;
@@ -206,4 +220,4 @@ window.MAWE.register('waveform-pointer', function createWaveformModule(dependenc
   const descriptors = Object.getOwnPropertyDescriptors(WaveformMethods.prototype);
   delete descriptors.constructor;
   return descriptors;
-});
+}

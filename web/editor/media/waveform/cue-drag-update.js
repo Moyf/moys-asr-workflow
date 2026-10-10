@@ -1,11 +1,12 @@
 // cue-drag-update: waveform class methods with explicit dependencies.
-window.MAWE.register('waveform-cue-drag-update', function createWaveformModule(dependencies) {
+export function createWaveformModule(dependencies) {
   'use strict';
   const { clamp, remapItems, resolveTiming, restoreTiming, snapshotTiming } = dependencies;
 
   class WaveformMethods {
 
 
+    /** @this {import('./waveform-types.js').WaveformInstance} */
     moveCueDrag(event) {
       const drag = this.drag;
       if (!drag || event.pointerId !== drag.pointerId) return;
@@ -55,6 +56,7 @@ window.MAWE.register('waveform-cue-drag-update', function createWaveformModule(d
     }
 
 
+    /** @this {import('./waveform-types.js').WaveformInstance} */
     applyMoveDrag(drag, rawDelta, disableSnap, allowSqueeze = false) {
       const clock = resolveTiming(drag.timing || this.cueTiming());
       // Shift+拖动的动态换轨（只作用于单条拖动）：
@@ -257,6 +259,7 @@ window.MAWE.register('waveform-cue-drag-update', function createWaveformModule(d
     }
 
 
+    /** @this {import('./waveform-types.js').WaveformInstance} */
     applyResizeDrag(drag, rawDelta, disableSnap) {
       const clock = resolveTiming(drag.timing || this.cueTiming());
       const segments = this.options.getSegments(drag.track);
@@ -301,6 +304,7 @@ window.MAWE.register('waveform-cue-drag-update', function createWaveformModule(d
     }
 
 
+    /** @this {import('./waveform-types.js').WaveformInstance} */
     applyBoundaryDrag(drag, rawDelta, disableSnap) {
       const clock = resolveTiming(drag.timing || this.cueTiming());
       const segments = this.options.getSegments(drag.track);
@@ -334,6 +338,7 @@ window.MAWE.register('waveform-cue-drag-update', function createWaveformModule(d
     }
 
 
+    /** @this {import('./waveform-types.js').WaveformInstance} */
     endCueDrag(event) {
       const drag = this.drag;
       if (!drag || event.pointerId !== drag.pointerId) return;
@@ -346,7 +351,7 @@ window.MAWE.register('waveform-cue-drag-update', function createWaveformModule(d
       window.removeEventListener('pointerup', this._dragEnd);
       window.removeEventListener('pointercancel', this._dragEnd);
       try { drag.captureTarget?.releasePointerCapture?.(drag.pointerId); } catch (_) {}
-      this.content.querySelectorAll('.waveform-cue-block.dragging, .waveform-cue-boundary.dragging')
+      (/** @type {NodeListOf<HTMLElement>} */ (this.content.querySelectorAll('.waveform-cue-block.dragging, .waveform-cue-boundary.dragging')))
         .forEach((block) => block.classList.remove('dragging'));
       this.pane.classList.remove('cue-drag-active');
       this.pane.classList.remove('shared-boundary-drag-active');
@@ -388,7 +393,8 @@ window.MAWE.register('waveform-cue-drag-update', function createWaveformModule(d
       const commitIndices = [...(drag.commitIndices || drag.indices)];
       const segments = this.options.getSegments(drag.track || 'main');
       commitIndices.forEach((idx) => { if (segments[idx]) segments[idx]._dirty = true; });
-      this.options.onCommitEdit(commitIndices, drag.kind, drag.track || 'main', drag.independent === true);
+      this.options.onCommitEdit(commitIndices, drag.kind, drag.track || 'main', drag.independent === true,
+        { trackChanged: drag.trackChanged === true });
       this.refreshCueOverlay();
       restorePointerLine();
     }
@@ -396,4 +402,4 @@ window.MAWE.register('waveform-cue-drag-update', function createWaveformModule(d
   const descriptors = Object.getOwnPropertyDescriptors(WaveformMethods.prototype);
   delete descriptors.constructor;
   return descriptors;
-});
+}

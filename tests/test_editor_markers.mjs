@@ -218,12 +218,16 @@ test('OTIO export writes marker fields as Marker.2 with name, comment and mapped
     MaweCoreState: {},
     MaweTimeline: {},
     MaweGapRemoveData: {},
+    MaweSpeakerLabels: { subtitleExportText: (segment) => segment.text },
     MaweHint: { flashHint: () => {} },
     navigator: { userAgent: 'node' },
   };
   vm.runInNewContext(readFileSync(exportPath, 'utf8'), context, { filename: 'editor-export-timeline.js' });
   const otio = context.window.MaweExportTimeline;
   assert.ok(otio, 'MaweExportTimeline facade missing');
+  const presetMarkers = utils.MARKER_PRESET_COLORS.map((color, index) => ({ id: `preset-${index}`, start: 1000 + index, color }));
+  assert.deepEqual(plain(otio.buildMarkerFieldMarkers({ start: 0, end: 30000 }, 0, presetMarkers).map(marker => marker.color)),
+    ['BLUE', 'CYAN', 'GREEN', 'YELLOW', 'RED', 'PINK', 'PURPLE', 'WHITE']);
 
   // 颜色映射：色板 1:1 对应 OTIO 命名色；天蓝/可可按最近色相归并；未知回退默认。
   assert.equal(otio.otioMarkerColorForHex('#3E63DD'), 'BLUE');
@@ -294,18 +298,20 @@ test('markerReviewStatusLabel and preset color labels resolve Chinese names', ()
   assert.equal(utils.markerReviewStatusLabel({ id: 'm1', start: 0, review: { status: 'pending', reason: '' } }), '待复核');
   assert.equal(utils.markerReviewStatusLabel({ id: 'm1', start: 0, review: { status: 'confirmed', reason: '' } }), '已确认');
 
-  // 色板对齐达芬奇 Resolve marker 官方色序：蓝/青/绿/黄/红/粉/紫/品红
-  // （与 OTIO 的名称级交集）+ 达芬奇扩展色板的天蓝/可可。
+  // 八种常用预设；品红和天蓝继续作为可用的自定义色值。
   assert.deepEqual(plain(utils.MARKER_PRESET_COLORS), [
-    '#3e63dd', '#00a2c7', '#46a758', '#f5d90a', '#e5484d', '#ef5da8', '#8e4ec6', '#d6409f',
-    '#45a3f5', '#a06e3b',
+    '#3e63dd', '#00a2c7', '#46a758', '#f5b81b', '#e5484d', '#ef5da8', '#b18be8', '#ffffff',
   ]);
-  assert.equal(utils.MARKER_PRESET_COLORS.length, 10);
+  assert.equal(utils.MARKER_PRESET_COLORS.length, 8);
+  assert.equal(utils.MARKER_POINT_MIN_VISIBLE_PERCENT, 0.5);
   assert.equal(utils.markerPresetColorLabel('#3E63DD'), '蓝'); // 大小写不敏感
   assert.equal(utils.markerPresetColorLabel('#e5484d'), '红');
-  assert.equal(utils.markerPresetColorLabel('#d6409f'), '品红');
-  assert.equal(utils.markerPresetColorLabel('#45a3f5'), '天蓝');
-  assert.equal(utils.markerPresetColorLabel('#a06e3b'), '可可');
+  assert.equal(utils.markerPresetColorLabel('#d6409f'), '');
+  assert.equal(utils.markerPresetColorLabel('#45a3f5'), '');
+  assert.equal(utils.normalizeMarkerColor('#d6409f'), '#d6409f');
+  assert.equal(utils.normalizeMarkerColor('#45a3f5'), '#45a3f5');
+  assert.equal(utils.markerPresetColorLabel('#b18be8'), '淡紫');
+  assert.equal(utils.markerPresetColorLabel('#ffffff'), '白');
   // 非预设颜色返回空串，调用方回退显示色值。
   assert.equal(utils.markerPresetColorLabel('#123456'), '');
   assert.equal(utils.markerPresetColorLabel('nope'), '');

@@ -9,8 +9,7 @@ import {
   buildPortableBlankEditor,
   generateWaveformPayload,
   makeTempDir,
-  startStaticServer,
-} from './helpers.mjs';
+  startStaticServer, closeSettingsPanels, openSettingsPage, setProjectTrackEnabled, toggleGlobalSettings } from './helpers.mjs';
 
 let tempDir;
 let server;
@@ -78,9 +77,47 @@ async function importPair(page) {
   return page;
 }
 
+for (const language of ['zh', 'en']) {
+  test(`bilingual inline typing preserves caret and project text in ${language}`, async ({ page }) => {
+    await disableOnboarding(page);
+    await importPair(page);
+    await page.locator('#multi-subtitle-import-extension').click();
+    await page.locator('#multi-subtitle-import-result-confirm').click();
+    await page.evaluate((lang) => window.MAWE_I18N.applyLanguage(lang), language);
+    for (const kind of ['main', 'extension']) {
+      const text = page.locator(`.multi-dual-cue .multi-cue-column.${kind} .text`).first();
+      await text.dblclick();
+      await expect(text).toHaveAttribute('contenteditable', 'plaintext-only');
+      await page.keyboard.press(process.platform === 'darwin' ? 'Meta+a' : 'Control+a');
+      await page.keyboard.press('Backspace');
+      await page.keyboard.insertText('甲');
+      expect(await text.evaluate((element) => {
+        const selection = window.getSelection();
+        return { text: element.textContent, offset: selection.anchorOffset, inside: element.contains(selection.anchorNode) };
+      })).toEqual({ text: '甲', offset: 1, inside: true });
+      await page.keyboard.insertText('乙');
+      await expect(text).toHaveText('甲乙');
+      // A subtitle can exactly match a UI translation key; it must stay raw.
+      await page.keyboard.press(process.platform === 'darwin' ? 'Meta+a' : 'Control+a');
+      await page.keyboard.insertText('删除');
+      await expect(text).toHaveText('删除');
+      await page.keyboard.press(process.platform === 'darwin' ? 'Meta+Enter' : 'Control+Enter');
+      await expect(text).not.toHaveAttribute('contenteditable');
+      await page.evaluate(() => window.MAWE_I18N.applyLanguage('en'));
+      await expect(text).toHaveText('删除');
+      await page.evaluate(() => window.MAWE_I18N.applyLanguage('zh'));
+      await expect(text).toHaveText('删除');
+      await page.evaluate((lang) => window.MAWE_I18N.applyLanguage(lang), language);
+    }
+    if (language === 'en') await expect(page.locator('.multi-cue-column-header .index').first()).toHaveText('Main subtitle 1');
+    await page.screenshot({ path: test.info().outputPath('bilingual-project-text.png') });
+  });
+}
+
 async function openMultiSubtitleSettings(page) {
-  await page.locator('#multi-subtitle-settings-toggle').click();
-  await expect(page.locator('#multi-subtitle-settings-menu')).toBeVisible();
+  // 双语字幕设置已并入工程设置 → 字幕轨道页。
+  await openSettingsPage(page, 'project-tracks');
+  await expect(page.locator('#project-multi-subtitle-settings')).toBeVisible();
 }
 
 async function waitForLayoutBox(locator, message) {
@@ -121,12 +158,12 @@ test('defaults the waveform shape source to reapeaks', async ({ page }) => {
 
 test('explains where to configure automatic timecode splitting', async ({ page }) => {
   await page.goto(server.url);
-  await page.locator('#editor-settings-toggle').click();
-  await page.locator('#editor-settings-tab-split-merge').click();
+  await toggleGlobalSettings(page);
+  await openSettingsPage(page, 'split-merge');
   const hint = page.locator('#split-use-word-timestamps-hint');
   await expect(hint).toContainText('开启时，自动按可用时间码拆分');
   await expect(hint).toContainText('关闭后将打开拆分弹窗');
-  await expect(hint).not.toContainText('右上角「🔧 设置 → 拆分与合并」');
+  await expect(hint).not.toContainText('右上角「全局设置 → 拆分合并」');
 });
 
 test('creates an empty secondary track on enable and imports subtitles optionally', async ({ page }) => {
@@ -135,12 +172,14 @@ test('creates an empty secondary track on enable and imports subtitles optionall
   await dropFiles(page, [srtSpec('main.srt', mainSrt)]);
   const dialogs = [];
   page.on('dialog', async (dialog) => { dialogs.push(dialog.message()); await dialog.dismiss(); });
-  await expect(page.locator('#multi-subtitle-settings-toggle')).toBeHidden();
+  await expect(page.locator('#project-multi-subtitle-settings')).toBeHidden();
   await expect(page.locator('#multi-subtitle-toggle-label'))
     .toHaveAttribute('title', '开启后显示副字幕轨，可手动添加或导入第二条字幕。');
-  await page.locator('#multi-subtitle-toggle').check();
-  await expect(page.locator('#multi-subtitle-settings-toggle')).toBeVisible();
+  await setProjectTrackEnabled(page, 'multi-subtitle-toggle', true);
+  await expect(page.locator('#project-multi-subtitle-settings')).not.toHaveAttribute('hidden');
+  await openSettingsPage(page, 'project-tracks');
   await expect(page.locator('#multi-subtitle-empty-hint')).toBeVisible();
+  await closeSettingsPanels(page);
   const trackId = await page.evaluate(() => MaweMultiSubtitleCore.getActiveExtensionTrack().id);
   expect(await page.evaluate(() => MaweMultiSubtitleCore.getActiveExtensionTrack().segments.length)).toBe(0);
   await page.locator('#undo-btn').click();
@@ -148,13 +187,13 @@ test('creates an empty secondary track on enable and imports subtitles optionall
   expect(await page.evaluate(() => MaweMultiSubtitleCore.getMultiSubtitleState().tracks.length)).toBe(0);
   await page.locator('#redo-btn').click();
   await expect(page.locator('#multi-subtitle-toggle')).toBeChecked();
-  await page.locator('#multi-subtitle-toggle').uncheck();
-  await page.locator('#multi-subtitle-toggle').check();
+  await setProjectTrackEnabled(page, 'multi-subtitle-toggle', false);
+  await setProjectTrackEnabled(page, 'multi-subtitle-toggle', true);
   expect(await page.evaluate(() => MaweMultiSubtitleCore.getMultiSubtitleState().tracks.length)).toBe(1);
   expect(dialogs).toEqual(Array(2).fill('是否导入第二条字幕？（后续也可以将字幕或工程拖入编辑器加载）'));
   await openMultiSubtitleSettings(page);
   const importGap = await page.locator('#multi-subtitle-import').evaluate((item) => {
-    const previous = item.previousElementSibling.previousElementSibling;
+    const previous = item.previousElementSibling;
     const next = item.nextElementSibling;
     const range = document.createRange();
     range.selectNodeContents(item);
@@ -165,7 +204,7 @@ test('creates an empty secondary track on enable and imports subtitles optionall
   });
   expect(importGap.above).toBeGreaterThanOrEqual(8);
   expect(importGap.below).toBeGreaterThanOrEqual(8);
-  await page.locator('#multi-subtitle-settings-menu').screenshot({ path: test.info().outputPath('empty-track-settings.png') });
+  await page.locator('#project-multi-subtitle-settings').screenshot({ path: test.info().outputPath('empty-track-settings.png') });
   const chooserPromise = page.waitForEvent('filechooser');
   await page.locator('#multi-subtitle-import').click();
   const chooser = await chooserPromise;
@@ -176,7 +215,9 @@ test('creates an empty secondary track on enable and imports subtitles optionall
   expect(await page.evaluate(() => MaweMultiSubtitleCore.getActiveExtensionTrack().id)).toBe(trackId);
   expect(await page.evaluate(() => MaweMultiSubtitleCore.getActiveExtensionTrack().segments.length)).toBe(3);
   await page.locator('#undo-btn').click();
+  await openSettingsPage(page, 'project-tracks');
   await expect(page.locator('#multi-subtitle-empty-hint')).toBeVisible();
+  await closeSettingsPanels(page);
   expect(await page.evaluate(() => MaweMultiSubtitleCore.getActiveExtensionTrack().segments.length)).toBe(0);
 });
 
@@ -187,11 +228,13 @@ test('keeps the quick-import prompt when enabling an empty secondary track', asy
   let prompt = '';
   page.once('dialog', async (dialog) => { prompt = dialog.message(); await dialog.accept(); });
   const chooserPromise = page.waitForEvent('filechooser');
-  await page.locator('#multi-subtitle-toggle').check();
+  await setProjectTrackEnabled(page, 'multi-subtitle-toggle', true);
   const chooser = await chooserPromise;
   expect(prompt).toBe('是否导入第二条字幕？（后续也可以将字幕或工程拖入编辑器加载）');
   await expect(page.locator('#multi-subtitle-toggle')).toBeChecked();
+  await openSettingsPage(page, 'project-tracks');
   await expect(page.locator('#multi-subtitle-empty-hint')).toBeVisible();
+  await closeSettingsPanels(page);
   const trackId = await page.evaluate(() => MaweMultiSubtitleCore.getActiveExtensionTrack().id);
   await chooser.setFiles({ name: 'translation.srt', mimeType: 'text/plain', buffer: Buffer.from(extensionSrt, 'utf8') });
   await expect(page.locator('#multi-subtitle-import-modal')).toHaveClass(/show/);
@@ -199,10 +242,10 @@ test('keeps the quick-import prompt when enabling an empty secondary track', asy
   await expect(page.locator('#multi-subtitle-empty-hint')).toBeHidden();
   expect(await page.evaluate(() => MaweMultiSubtitleCore.getActiveExtensionTrack().id)).toBe(trackId);
   expect(await page.evaluate(() => MaweMultiSubtitleCore.getActiveExtensionTrack().segments.length)).toBe(3);
-  await page.locator('#multi-subtitle-toggle').uncheck();
+  await setProjectTrackEnabled(page, 'multi-subtitle-toggle', false);
   const dialogs = [];
   page.on('dialog', async (dialog) => { dialogs.push(dialog.message()); await dialog.dismiss(); });
-  await page.locator('#multi-subtitle-toggle').check();
+  await setProjectTrackEnabled(page, 'multi-subtitle-toggle', true);
   expect(dialogs).toEqual([]);
 });
 
@@ -220,7 +263,7 @@ test('saves an empty secondary track and supports manual creation, edits, undo a
     base64: Buffer.from(JSON.stringify(value), 'utf8').toString('base64') }]);
   await page.goto(server.url);
   await dropProject(project);
-  await page.locator('#multi-subtitle-toggle').check();
+  await setProjectTrackEnabled(page, 'multi-subtitle-toggle', true);
   await expect(page.locator('.waveform-row.multi-subtitle-row').first()).toBeVisible();
   await page.locator('#download-json').click();
   await expect.poll(() => page.evaluate(() => Boolean(window.__savedEmptyTrackProject))).toBe(true);
@@ -229,7 +272,9 @@ test('saves an empty secondary track and supports manual creation, edits, undo a
   expect(empty.multi_subtitle.tracks).toHaveLength(1);
   expect(empty.multi_subtitle.tracks[0].segments).toEqual([]);
   await dropProject(empty);
+  await openSettingsPage(page, 'project-tracks');
   await expect(page.locator('#multi-subtitle-empty-hint')).toBeVisible();
+  await closeSettingsPanels(page);
   await page.screenshot({ path: test.info().outputPath('empty-secondary-lane.png') });
   // 旧工程已开启双语但没有轨道，同样补齐可编辑空轨。
   await dropProject({ ...empty, multi_subtitle: { ...empty.multi_subtitle, tracks: [] } });
@@ -251,9 +296,9 @@ test('saves an empty secondary track and supports manual creation, edits, undo a
   await page.locator('#redo-btn').click();
   await page.locator('#redo-btn').click();
   expect(await page.evaluate(() => MaweMultiSubtitleCore.getActiveExtensionTrack().segments[0].text)).toBe('手动副字幕');
-  await page.locator('#multi-subtitle-toggle').uncheck();
+  await setProjectTrackEnabled(page, 'multi-subtitle-toggle', false);
   await expect(page.locator('.waveform-row.multi-subtitle-row')).toHaveCount(0);
-  await page.locator('#multi-subtitle-toggle').check();
+  await setProjectTrackEnabled(page, 'multi-subtitle-toggle', true);
   expect(await page.evaluate(() => MaweMultiSubtitleCore.getMultiSubtitleState().tracks.length)).toBe(1);
   const previousSave = await page.evaluate(() => window.__savedEmptyTrackProject);
   await page.locator('#download-json').click();
@@ -322,50 +367,42 @@ test('keeps selected waveform outlines visible through hover and dragging in bot
   }
 });
 
-test('opens multiple-subtitle settings from the split language hint', async ({ page }) => {
+test('opens project language settings from the split language hint', async ({ page }) => {
   await importPair(page);
   await page.locator('#multi-subtitle-import-result-confirm').click();
 
-  await page.locator('#editor-settings-toggle').click();
-  await page.locator('#editor-settings-tab-split-merge').click();
-  const settingsLink = page.locator('#split-multi-subtitle-settings-link');
-  await expect(settingsLink).toBeVisible();
-  await expect(page.locator('#split-multi-subtitle-settings-disabled')).toBeHidden();
-
-  await settingsLink.click();
-  await expect(page.locator('#multi-subtitle-settings-menu')).toBeVisible();
-  await expect(page.locator('#multi-subtitle-settings-toggle')).toHaveAttribute('aria-expanded', 'true');
+  await toggleGlobalSettings(page);
+  await openSettingsPage(page, 'timebase');
+  await expect(page.locator('#editor-settings-page-timebase')).toBeVisible();
+  await expect(page.locator('#multi-subtitle-extension-language-mode')).toBeVisible();
 });
 
-test('raises the last activated window or gear popup above older floating surfaces', async ({ page }) => {
+test('raises the last activated window above older floating surfaces', async ({ page }) => {
   await importPair(page);
   await page.locator('#multi-subtitle-import-result-confirm').click();
 
-  await page.locator('#editor-settings-toggle').click();
+  await toggleGlobalSettings(page);
   const settingsPanel = page.locator('#editor-settings-panel');
-  const multiSettingsToggle = page.locator('#multi-subtitle-settings-toggle');
-  const multiSettingsMenu = page.locator('#multi-subtitle-settings-menu');
 
-  // 这个齿轮位于全局设置窗口之外；用 pointerdown + click 模拟用户先激活再打开它。
-  await multiSettingsToggle.dispatchEvent('pointerdown', { bubbles: true, button: 0 });
-  await multiSettingsToggle.evaluate((element) => element.click());
-  await expect(multiSettingsMenu).toBeVisible();
+  // 再打开工程设置窗口：后激活的窗口应盖在全局设置之上。
+  await page.locator('#project-settings-toggle').click();
+  await expect(page.locator('#project-settings-panel')).toBeVisible();
   let layers = await page.evaluate(() => ({
     settings: Number(getComputedStyle(document.getElementById('editor-settings-panel')).zIndex),
-    multi: Number(getComputedStyle(document.getElementById('multi-subtitle-settings-dropdown')).zIndex),
+    project: Number(getComputedStyle(document.getElementById('project-settings-panel')).zIndex),
   }));
-  expect(layers.multi).toBeGreaterThan(layers.settings);
+  expect(layers.project).toBeGreaterThan(layers.settings);
 
-  // 再点击全局设置窗口内容，窗口应回到最上层，而不是继续被齿轮菜单遮挡。
+  // 点击全局设置窗口内容，窗口应回到最上层，而不是继续被工程设置遮挡。
   await settingsPanel.locator('.editor-settings-window-body').dispatchEvent('pointerdown', {
     bubbles: true,
     button: 0,
   });
   layers = await page.evaluate(() => ({
     settings: Number(getComputedStyle(document.getElementById('editor-settings-panel')).zIndex),
-    multi: Number(getComputedStyle(document.getElementById('multi-subtitle-settings-dropdown')).zIndex),
+    project: Number(getComputedStyle(document.getElementById('project-settings-panel')).zIndex),
   }));
-  expect(layers.settings).toBeGreaterThan(layers.multi);
+  expect(layers.settings).toBeGreaterThan(layers.project);
 });
 
 test('raises a gear popup without raising its containing editor panel', async ({ page }) => {
@@ -447,7 +484,7 @@ test('light theme keeps the main waveform subtitle white and secondary subtitle 
   const extensionCue = page.locator('.waveform-cue-block[data-track="extension"]').first();
   await expect(mainCue).toBeVisible();
   await expect(extensionCue).toBeVisible();
-  await page.locator('#editor-settings-toggle').click();
+  await toggleGlobalSettings(page);
   await page.locator('[data-editor-theme="light"]').click();
 
   const colors = await page.evaluate(() => {
@@ -495,7 +532,7 @@ test('light theme keeps mapped subtitle colors visible on main waveform blocks',
   const mainCue = page.locator('.waveform-cue-block[data-track="main"]').first();
   await expect(mainCue).toBeVisible();
   await expect(mainCue).toHaveClass(/has-subtitle-color/);
-  await page.locator('#editor-settings-toggle').click();
+  await toggleGlobalSettings(page);
   await page.locator('[data-editor-theme="light"]').click();
 
   const colors = await mainCue.evaluate((element) => {
@@ -546,10 +583,10 @@ test('extension list clicks auto-scroll and double-click places the caret at the
   }]);
 
   const autoScroll = page.locator('#cue-list-auto-scroll-on-click');
-  await page.locator('#editor-settings-toggle').click();
+  await toggleGlobalSettings(page);
   await autoScroll.check();
   // 关闭设置面板，避免面板高度压缩列表视口影响后续滚动几何断言。
-  await page.locator('#editor-settings-toggle').click();
+  await toggleGlobalSettings(page);
   const list = page.locator('#cues-container');
   const target = page.locator('.multi-dual-cue[data-ext-idx="20"] .multi-cue-column.extension');
   const targetRow = page.locator('.multi-dual-cue[data-ext-idx="20"]');
@@ -862,19 +899,27 @@ test('keeps adjacent corners square on both subtitle lanes across waveform rows'
 test('keeps main and secondary language types independent and reuses them for counts', async ({ page }) => {
   await importPair(page);
   await page.locator('#multi-subtitle-import-result-confirm').click();
-  await openMultiSubtitleSettings(page);
+  await openSettingsPage(page, 'timebase');
 
   await expect(page.locator('#multi-subtitle-main-language-mode')).toHaveValue('word');
   await expect(page.locator('#multi-subtitle-extension-language-mode')).toHaveValue('continuous');
-  await expect(page.locator('.multi-subtitle-setting-hint')).toContainText('单词型');
-  await expect(page.locator('.multi-subtitle-setting-hint')).toContainText('字符型');
+  await expect(page.locator('#editor-settings-page-timebase .settings-panel-hint')).toContainText('单词型');
+  await expect(page.locator('#editor-settings-page-timebase .settings-panel-hint')).toContainText('字符型');
 
+  await closeSettingsPanels(page);
+  await openMultiSubtitleSettings(page);
   await page.locator('#multi-subtitle-display-mode').selectOption('main');
+  await closeSettingsPanels(page);
+  await openSettingsPage(page, 'timebase');
   await expect(page.locator('#cues-container > .cue').first().locator('.charcount')).toHaveText('2');
   await page.locator('#multi-subtitle-main-language-mode').selectOption('continuous');
   await expect(page.locator('#cues-container > .cue').first().locator('.charcount')).toHaveText('10');
 
+  await closeSettingsPanels(page);
+  await openMultiSubtitleSettings(page);
   await page.locator('#multi-subtitle-display-mode').selectOption('extension');
+  await closeSettingsPanels(page);
+  await openSettingsPage(page, 'timebase');
   await expect(page.locator('#cues-container > .cue').first().locator('.charcount')).toHaveText('4');
   await page.locator('#multi-subtitle-extension-language-mode').selectOption('word');
   await expect(page.locator('#cues-container > .cue').first().locator('.charcount')).toHaveText('1');
@@ -929,7 +974,7 @@ test('keeps track badges optional and uses striped disabled styling for secondar
   await expect(firstWaveformRow).toHaveClass(/show-track-badges/);
   await page.locator('#multi-subtitle-show-track-badges').uncheck();
   await expect(firstWaveformRow).not.toHaveClass(/show-track-badges/);
-  await page.locator('#multi-subtitle-settings-toggle').click();
+  await closeSettingsPanels(page);
 
   const main = page.locator('.multi-cue-column.main:not(.multi-cue-empty)').first();
   await main.click({ modifiers: ['Alt'] });
@@ -1077,8 +1122,10 @@ test('uses the secondary language split mode and caret position for list B split
   await page.locator('#multi-subtitle-import-extension').click();
   await page.locator('#multi-subtitle-import-result-confirm').click();
   await openMultiSubtitleSettings(page);
+  await closeSettingsPanels(page);
+  await openSettingsPage(page, 'timebase');
   await page.locator('#multi-subtitle-extension-language-mode').selectOption('continuous');
-  await page.locator('#multi-subtitle-settings-toggle').click();
+  await closeSettingsPanels(page);
 
   const extensionText = page.locator('.multi-dual-cue').first().locator('.multi-cue-column.extension .text');
   await extensionText.click();
@@ -1213,7 +1260,7 @@ test('selects bound subtitle pairs without changing the current editor target', 
 
   const pairToggle = page.locator('#multi-subtitle-select-bound-pair');
   await expect(pairToggle).toBeChecked();
-  await page.locator('#multi-subtitle-settings-toggle').click();
+  await closeSettingsPanels(page);
   const panelTarget = page.locator('#cue-panel-target');
   const panelText = page.locator('#cue-panel-text');
   const firstRow = page.locator('.multi-dual-cue').first();
@@ -1245,7 +1292,7 @@ test('selects bound subtitle pairs without changing the current editor target', 
 
   await openMultiSubtitleSettings(page);
   await pairToggle.uncheck();
-  await page.locator('#multi-subtitle-settings-toggle').click();
+  await closeSettingsPanels(page);
   await page.keyboard.press('Escape');
   await extensionText.click();
   await expect(page.locator('#sel-count')).toHaveText('1');
@@ -1253,7 +1300,7 @@ test('selects bound subtitle pairs without changing the current editor target', 
 
   await openMultiSubtitleSettings(page);
   await pairToggle.check();
-  await page.locator('#multi-subtitle-settings-toggle').click();
+  await closeSettingsPanels(page);
   await page.keyboard.press('Escape');
   await extensionText.click();
   await expect(page.locator('#sel-count')).toHaveText('2');
@@ -1487,7 +1534,7 @@ test('moves the split point with WASD, switches lanes with Tab and confirms with
   const mainActiveGap = mainLane.locator('.multi-subtitle-split-gap.active');
   await expect(mainActiveGap).toHaveAttribute('data-offset', '4');
 
-  // D/→ 按字词边界步进，A/← 回退；期间不得触发全局的字幕选择跳转。
+  // D/→ 按字词边界步进，A/← 回退；期间不得触发全局的选择跳转。
   const selectedBefore = await page.evaluate(selectedSnapshot);
   await page.keyboard.press('d');
   await expect(mainActiveGap).toHaveAttribute('data-offset', '8');
@@ -1825,9 +1872,9 @@ test('uses the maximum waveform row height while multiple subtitles are enabled 
   await page.locator('#multi-subtitle-extension-row-height').selectOption('144');
   await expect(page.locator('#waveform-row-height')).toHaveValue('144');
 
-  await page.locator('#multi-subtitle-toggle').uncheck();
+  await setProjectTrackEnabled(page, 'multi-subtitle-toggle', false);
   await expect(page.locator('#waveform-row-height')).toHaveValue('64');
-  await page.locator('#multi-subtitle-toggle').check();
+  await setProjectTrackEnabled(page, 'multi-subtitle-toggle', true);
   await expect(page.locator('#waveform-row-height')).toHaveValue('144');
 });
 
@@ -1868,7 +1915,7 @@ test('auto-binds the earliest unbound main cue when an extension overlaps severa
   }]);
   await openMultiSubtitleSettings(page);
   await page.locator('#multi-subtitle-auto-sync-duration').uncheck();
-  await page.locator('#multi-subtitle-settings-toggle').click();
+  await closeSettingsPanels(page);
   await page.keyboard.press('ControlOrMeta+d');
 
   const autoExtension = page.locator('.multi-cue-column.extension').filter({ hasText: 'Auto bind me' });
@@ -1950,6 +1997,7 @@ test('uses B on a waveform-selected extension cue instead of its overlapping mai
   }]);
 
   const extensionBlock = page.locator('.waveform-cue-block[data-track="extension"][data-ext-idx="0"]');
+  await expect(extensionBlock).toBeVisible();
   const mainBefore = await page.evaluate(() => MaweBoot.DATA.segments.map((segment) => [segment.start, segment.end]));
   await extensionBlock.click();
   await expect(extensionBlock).toHaveClass(/selected/);
@@ -2007,10 +2055,10 @@ test('uses the linked split dialog when the main cue is active with its bound ex
   await importPair(page);
   await page.locator('#multi-subtitle-import-result-confirm').click();
 
-  await page.locator('#editor-settings-toggle').click();
-  await page.locator('#editor-settings-tab-split-merge').click();
+  await toggleGlobalSettings(page);
+  await openSettingsPage(page, 'split-merge');
   await page.locator('#split-use-word-timestamps').uncheck();
-  await page.locator('#editor-settings-toggle').click();
+  await toggleGlobalSettings(page);
 
   const mainColumn = page.locator('.multi-dual-cue').first().locator('.multi-cue-column.main');
   await mainColumn.click();
@@ -2113,10 +2161,10 @@ test('applies Subtitle Ninja feedback after a linked split-modal split', async (
 test('keeps the subtitle-list caret position as the linked main split point', async ({ page }) => {
   await importPair(page);
   await page.locator('#multi-subtitle-import-result-confirm').click();
-  await page.locator('#editor-settings-toggle').click();
-  await page.locator('#editor-settings-tab-split-merge').click();
+  await toggleGlobalSettings(page);
+  await openSettingsPage(page, 'split-merge');
   await page.locator('#split-use-word-timestamps').uncheck();
-  await page.locator('#editor-settings-toggle').click();
+  await toggleGlobalSettings(page);
 
   await page.evaluate(() => {
     const main = MaweBoot.DATA.segments[0];
@@ -2202,7 +2250,7 @@ test('uses G to bind a single extension cue and labels extension context shortcu
 
   await openMultiSubtitleSettings(page);
   await page.locator('#multi-subtitle-select-bound-pair').uncheck();
-  await page.locator('#multi-subtitle-settings-toggle').click();
+  await closeSettingsPanels(page);
   await mainCue.click();
   await unboundExtension.click({ modifiers: ['ControlOrMeta'] });
   await page.keyboard.press('g');
@@ -2424,7 +2472,7 @@ test('选中的主字幕与绑定副字幕一起合并并支持撤销', async ({
   await page.locator('#multi-subtitle-import-result-confirm').click();
   await openMultiSubtitleSettings(page);
   await expect(page.locator('#multi-subtitle-auto-sync-duration')).toBeChecked();
-  await page.locator('#multi-subtitle-settings-toggle').click();
+  await closeSettingsPanels(page);
 
   const first = page.locator('.multi-cue-column.main').filter({ hasText: 'Hello world.' });
   const second = page.locator('.multi-cue-column.main').filter({ hasText: 'Second line.' });
@@ -2484,7 +2532,7 @@ test('ignores a tiny unbound extension overlap at the main merge boundary', asyn
   // 避免把新的“绑定后按 H 整理冲突”语义混入本用例。
   await openMultiSubtitleSettings(page);
   await page.locator('#multi-subtitle-auto-sync-duration').uncheck();
-  await page.locator('#multi-subtitle-settings-toggle').click();
+  await closeSettingsPanels(page);
 
   await page.locator('.multi-cue-column.main').filter({ hasText: '主字幕一' }).click();
   await page.locator('.multi-cue-column.main').filter({ hasText: '主字幕二' }).click({ modifiers: ['ControlOrMeta'] });
@@ -2569,12 +2617,12 @@ test('shows independent extension preview controls with yellow defaults', async 
 
   await expect(page.locator('#overlay')).toHaveCSS('flex-direction', 'column');
   await expect(page.locator('#overlay')).toHaveCSS('gap', '0px');
-  await page.locator('#editor-settings-toggle').click();
-  await page.locator('#editor-settings-tab-subtitle-preview').click();
+  await toggleGlobalSettings(page);
+  await openSettingsPage(page, 'subtitle-preview');
   await expect(page.locator('#editor-settings-page-subtitle-preview')).toBeVisible();
   await expect(page.locator('#extension-overlay-toggle-wrap')).toBeVisible();
   await expect(page.locator('#extension-overlay-toggle')).toBeChecked();
-  await page.locator('#editor-settings-tab-subtitle-style').click();
+  await openSettingsPage(page, 'subtitle-style');
   await expect(page.locator('#editor-settings-page-subtitle-style')).toBeVisible();
   await expect(page.locator('#extension-subtitle-preview-title')).toBeVisible();
   await expect(page.locator('#extension-subtitle-preview-settings')).toBeVisible();
@@ -2588,13 +2636,13 @@ test('shows independent extension preview controls with yellow defaults', async 
     element.dispatchEvent(new Event('change', { bubbles: true }));
   });
   await expect(page.locator('#overlay-extension-text')).toHaveCSS('background-color', 'rgba(18, 52, 86, 0.65)');
-  await page.locator('#editor-settings-tab-subtitle-preview').click();
+  await openSettingsPage(page, 'subtitle-preview');
   await expect(page.locator('#extension-overlay-toggle-wrap')).toBeVisible();
   // The custom toggle hides the native input; click its visible label so the
   // browser exercises the same interaction a user can perform.
   await page.locator('#extension-overlay-toggle-wrap').click();
   await expect(page.locator('#extension-overlay-toggle')).not.toBeChecked();
-  await page.locator('#editor-settings-close').click();
+  await closeSettingsPanels(page);
 });
 
 test('refreshes local font options for both main and extension subtitles', async ({ page }) => {
@@ -2607,8 +2655,8 @@ test('refreshes local font options for both main and extension subtitles', async
   await importPair(page);
   await page.locator('#multi-subtitle-import-extension').click();
   await page.locator('#multi-subtitle-import-result-confirm').click();
-  await page.locator('#editor-settings-toggle').click();
-  await page.locator('#editor-settings-tab-subtitle-style').click();
+  await toggleGlobalSettings(page);
+  await openSettingsPage(page, 'subtitle-style');
 
   const scanButton = page.locator('#subtitle-font-family-scan');
   await expect(scanButton).toBeEnabled();
@@ -2640,8 +2688,8 @@ test('localizes approved scanned font labels in both selectors', async ({ page }
   await importPair(page);
   await page.locator('#multi-subtitle-import-extension').click();
   await page.locator('#multi-subtitle-import-result-confirm').click();
-  await page.locator('#editor-settings-toggle').click();
-  await page.locator('#editor-settings-tab-subtitle-style').click();
+  await toggleGlobalSettings(page);
+  await openSettingsPage(page, 'subtitle-style');
   await page.locator('#subtitle-font-family-scan').click();
   // 主字体 combobox 展示本地化显示名，副字体 select 用真实族名做 value。
   await page.locator('#subtitle-font-family').click();
@@ -2661,9 +2709,9 @@ test('localizes approved scanned font labels in both selectors', async ({ page }
   ]));
   await page.locator('#subtitle-font-family-options .font-combobox-option', { hasText: '思源黑体' }).click();
   await page.locator('#extension-subtitle-font-family').selectOption('SimSun');
-  await page.locator('#editor-settings-tab-interface').click();
+  await openSettingsPage(page, 'interface');
   await page.locator('#language-toggle').click();
-  await page.locator('#editor-settings-tab-subtitle-style').click();
+  await openSettingsPage(page, 'subtitle-style');
   await expect(page.locator('#subtitle-font-family')).toHaveValue('Source Han Sans SC');
   await expect(page.locator('#extension-subtitle-font-family option:checked')).toHaveText('SimSun');
   expect(await page.evaluate(() => ({
@@ -3393,7 +3441,7 @@ test('keeps one shared waveform background with two lanes, switch visibility, an
 
   await openMultiSubtitleSettings(page);
   await page.locator('#multi-subtitle-show-track-badges').check();
-  await page.locator('#multi-subtitle-toggle').uncheck();
+  await setProjectTrackEnabled(page, 'multi-subtitle-toggle', false);
   await expect(page.locator('#multi-subtitle-toggle')).not.toBeChecked();
   await expect(page.locator('.waveform-row.multi-subtitle-row')).toHaveCount(0);
   await expect(page.locator('#download-multi-srt')).toBeHidden();
@@ -3402,9 +3450,9 @@ test('keeps one shared waveform background with two lanes, switch visibility, an
   await page.evaluate(() => MaweContextMenus.showWaveformBlankMenu(1500, 100, 100, 'main'));
   await expect(page.locator('#ctxmenu .item').filter({ hasText: '按音频位置拆分副字幕' })).toHaveCount(0);
   await page.keyboard.press('Escape');
-  await page.locator('#multi-subtitle-toggle').check();
+  await setProjectTrackEnabled(page, 'multi-subtitle-toggle', true);
   await expect(page.locator('.waveform-row.multi-subtitle-row')).not.toHaveCount(0);
-  await expect(page.locator('#multi-subtitle-settings-menu')).toBeHidden();
+  await expect(page.locator('#project-multi-subtitle-settings')).toBeHidden();
   await expect(page.locator('#filter-over')).toBeHidden();
   await expect(page.locator('#filter-over-sep')).toBeHidden();
 
@@ -3511,7 +3559,7 @@ test('keeps one shared waveform background with two lanes, switch visibility, an
   expect(afterNormal[0]).toBeGreaterThan(before[0]);
   expect(afterNormal[1]).toBeGreaterThan(before[1]);
 
-  // Alt 拖动临时允许挤压相邻字幕；主字幕拖动仍带着绑定的副字幕一起移动，
+  // Alt 拖动临时允许挤压相邻字幕；主字幕拖动仍带着绑定的副字幕一起移动
   // 没有位移的 Alt 点击则切换禁用。
   const beforeAlt = await Promise.all([
     mainBlock.evaluate((element) => parseFloat(element.style.left)),
@@ -3758,8 +3806,8 @@ test('snaps an extension cue to main-track boundaries when cross-track snapping 
 
   await openMultiSubtitleSettings(page);
   await page.locator('#multi-subtitle-cross-track-snap').uncheck();
-  await page.locator('#multi-subtitle-settings-toggle').click();
-  await expect(page.locator('#multi-subtitle-settings-menu')).toBeHidden();
+  await closeSettingsPanels(page);
+  await expect(page.locator('#project-multi-subtitle-settings')).toBeHidden();
 
   await page.goto(server.url);
   await dropFiles(page, [{
@@ -3807,7 +3855,9 @@ test('confirms main replacement and makes both replacement paths undoable', asyn
   await page.locator('#multi-subtitle-import-result-confirm').click();
   await expect(page.locator('#multi-subtitle-toggle')).toBeChecked();
   await page.keyboard.press('ControlOrMeta+z');
-  await expect(page.locator('#multi-subtitle-controls')).toBeVisible();
+  await openSettingsPage(page, 'project-tracks');
+  await expect(page.locator('#multi-subtitle-toggle-label')).toBeVisible();
+  await closeSettingsPanels(page);
   await expect(page.locator('#multi-subtitle-toggle')).not.toBeDisabled();
   await expect(page.locator('#multi-subtitle-toggle-label'))
     .toHaveAttribute('title', '开启后显示副字幕轨，可手动添加或导入第二条字幕。');
@@ -3836,11 +3886,11 @@ test('uses the split dialog for waveform main splitting when word timestamps are
     type: 'application/json',
     base64: Buffer.from(JSON.stringify(project), 'utf8').toString('base64'),
   }]);
-  await page.locator('#editor-settings-toggle').click();
-  await page.locator('#editor-settings-tab-split-merge').click();
+  await toggleGlobalSettings(page);
+  await openSettingsPage(page, 'split-merge');
   await expect(page.locator('#split-use-word-timestamps')).toBeChecked();
   await page.locator('#split-use-word-timestamps').uncheck();
-  await page.locator('#editor-settings-toggle').click();
+  await toggleGlobalSettings(page);
 
   await page.locator('[data-waveform-tool="razor"]').click();
   const block = page.locator('.waveform-cue-block[data-track="main"][data-idx="0"]');
@@ -3923,10 +3973,10 @@ test('uses the split dialog for SRT-style main subtitles without word timestamps
     type: 'application/json',
     base64: Buffer.from(JSON.stringify(project), 'utf8').toString('base64'),
   }]);
-  await page.locator('#editor-settings-toggle').click();
-  await page.locator('#editor-settings-tab-split-merge').click();
+  await toggleGlobalSettings(page);
+  await openSettingsPage(page, 'split-merge');
   await expect(page.locator('#split-use-word-timestamps')).toBeChecked();
-  await page.locator('#editor-settings-toggle').click();
+  await toggleGlobalSettings(page);
 
   await page.locator('[data-waveform-tool="razor"]').click();
   const block = page.locator('.waveform-cue-block[data-track="main"][data-idx="0"]');
@@ -3962,6 +4012,7 @@ test('can split a hand-created subtitle while keeping the original text on both 
     type: 'application/json',
     base64: Buffer.from(JSON.stringify(project), 'utf8').toString('base64'),
   }]);
+  await expect(page.locator('.cue[data-idx="0"] .text')).toHaveText('AABBCC');
   expect(await page.evaluate(() => MaweSplitCore.openMainWaveformSplitModal(0, 3000))).toBe(true);
   await expect(page.locator('#multi-subtitle-split-modal')).toHaveClass(/show/);
   await expect(page.locator('#multi-subtitle-split-duplicate'))
@@ -4010,11 +4061,11 @@ test('keeps the waveform pointer as the absolute cut in a linked split dialog', 
     type: 'application/json',
     base64: Buffer.from(JSON.stringify(project), 'utf8').toString('base64'),
   }]);
-  await page.locator('#editor-settings-toggle').click();
-  await page.locator('#editor-settings-tab-split-merge').click();
+  await toggleGlobalSettings(page);
+  await openSettingsPage(page, 'split-merge');
   await expect(page.locator('#split-use-word-timestamps')).toBeChecked();
   await page.locator('#split-use-word-timestamps').uncheck();
-  await page.locator('#editor-settings-toggle').click();
+  await toggleGlobalSettings(page);
 
   await page.locator('[data-waveform-tool="razor"]').click();
   const block = page.locator('.waveform-cue-block[data-track="main"][data-idx="0"]');
@@ -4110,13 +4161,13 @@ test('labels a linked split time inferred from main word timestamps', async ({ p
   await expect(page.locator('#multi-subtitle-split-timestamp-hint'))
     .toBeVisible();
   await expect(page.locator('#multi-subtitle-split-timestamp-hint'))
-    .toContainText('右上角「🔧 设置 → 拆分与合并」');
+    .toContainText('右上角「全局设置 → 拆分合并」');
   await page.keyboard.press('Escape');
 
-  await page.locator('#editor-settings-toggle').click();
-  await page.locator('#editor-settings-tab-split-merge').click();
+  await toggleGlobalSettings(page);
+  await openSettingsPage(page, 'split-merge');
   await page.locator('#split-use-word-timestamps').uncheck();
-  await page.locator('#editor-settings-toggle').click();
+  await toggleGlobalSettings(page);
   await mainText.click();
   await page.keyboard.press('b');
   await expect(page.locator('#multi-subtitle-split-modal')).toHaveClass(/show/);
@@ -4246,33 +4297,33 @@ test('ASS mode previews and exports extension cues with the shared extension sty
     MaweSettings.EDITOR_SETTINGS.assMode = true;
     MaweDom.overlayToggle.checked = true;
     MawePlaybackLoop.refreshSubtitlePreview(1000, 0);
-    const mainText = document.getElementById('overlay-main-text');
-    const extensionText = document.getElementById('overlay-extension-text');
-    const overlayText = document.getElementById('overlay-track-text');
-    const stageHeight = MaweDom.playerStage.getBoundingClientRect().height;
+    const tracks = window.MaweAssCanvas.lastRender.tracks;
+    const extension = tracks[1] || {};
+    const overlay = tracks[2] || {};
     return {
-      stageHeight,
-      mainFontSize: Number.parseFloat(getComputedStyle(mainText).fontSize),
-      extensionFontSize: Number.parseFloat(getComputedStyle(extensionText).fontSize),
-      extensionColor: getComputedStyle(extensionText).color,
-      extensionBottom: extensionText.style.bottom,
-      extensionPosition: getComputedStyle(extensionText).position,
-      overlayBottom: overlayText.style.bottom,
+      trackDebug: tracks.map((track) => track ? 'ok' : 'undefined'),
+      mainNative: tracks[0].nativeFontSize,
+      extensionNative: extension.nativeFontSize || 0,
+      extensionFill: (extension.lines || []).flatMap((line) => line.items)[0]?.fill || '',
+      extensionAlignment: extension.alignment || 0,
+      extensionAnchor: extension.anchor || { x: 0, y: 0 },
+      overlayOffset: (overlay.margins || {}).vertical || 0,
+      overlayAnchor: overlay.anchor || { x: 0, y: 0 },
       ass: MaweExportSrt.buildAss(),
     };
   });
-  const scale = result.stageHeight / 1080;
   // 副字幕共用样式库的「ASS 副字幕样式」：字号 64（主样式 86 的 64/86）、
-  // 默认黄色，按自身边距 36 绝对锚定在主字幕下方。CSS 字号已按
-  // 字体行框校准，具体比例因系统字体而异；仍应保持可见、合理的字号和主副比例。
-  expect(result.mainFontSize).toBeGreaterThan(86 * scale * 0.5);
-  expect(result.mainFontSize).toBeLessThanOrEqual(86 * scale);
-  expect(result.extensionFontSize / result.mainFontSize).toBeCloseTo(64 / 86, 3);
-  expect(result.extensionColor).toBe('rgb(255, 211, 77)');
-  expect(result.extensionPosition).toBe('absolute');
-  expect(result.extensionBottom).toBe(`${Math.ceil(36 * scale)}px`);
+  // 默认黄色，按自身边距 36 绝对锚定在主字幕下方（底行锚点 y = 1080-36）。
+  expect(result.trackDebug).toEqual(['ok', 'ok', 'ok']);
+  expect(result.mainNative).toBe(86);
+  expect(result.extensionNative).toBe(64);
+  expect(result.extensionFill.toLowerCase()).toBe('#ffd34d');
+  expect(result.extensionAlignment).toBe(2);
+  expect(result.extensionAnchor.y).toBeCloseTo(1080 - 36, 3);
+  expect(result.extensionAnchor.x).toBeCloseTo(960, 3);
   // 叠加轨链式上叠：副字幕边距 36 + 1.2 × 副字幕字号 64。
-  expect(result.overlayBottom).toBe(`${Math.ceil(36 * scale + 1.2 * (64 * result.stageHeight) / 1080)}px`);
+  expect(result.overlayOffset).toBeCloseTo(36 + 1.2 * 64, 3);
+  expect(result.overlayAnchor.y).toBeCloseTo(1080 - (36 + 1.2 * 64), 3);
   // 导出：副字幕 Layer 1 + 独立 Extension 样式；叠加轨 Layer 2 + 固化
   // 链式边距（36 + round(76.8) = 113）的 Overlay 样式。
   const dialogueLines = result.ass.split('\n').filter((line) => line.startsWith('Dialogue:'));
@@ -4316,18 +4367,18 @@ test('ASS mode swaps subtitle style controls for library selectors and syncs ass
   await expect(page.locator('.cue[data-idx="0"]')).toBeVisible();
 
   // 打开设置 → 字幕样式；ASS 模式关闭时保持 CSS 控件。
-  await page.locator('#editor-settings-toggle').click();
-  await page.locator('#editor-settings-tab-subtitle-style').click();
+  await toggleGlobalSettings(page);
+  await openSettingsPage(page, 'subtitle-style');
   await expect(page.locator('#main-subtitle-css-fields')).toBeVisible();
   await expect(page.locator('#main-ass-style-fields')).toBeHidden();
   await expect(page.locator('#subtitle-style-ass-mode-hint')).toBeHidden();
 
   // 「颜色字幕样式」常驻「字幕颜色」页：ASS 关闭时隐藏，显示 CSS「预览颜色样式」。
-  await page.locator('#editor-settings-tab-subtitle-color').click();
+  await openSettingsPage(page, 'project-color');
   await expect(page.locator('#ass-color-style-row')).toBeHidden();
   await expect(page.locator('#ass-color-speaker-hint')).toBeHidden();
   await expect(page.locator('#subtitle-color-style-control')).toBeVisible();
-  await page.locator('#editor-settings-tab-subtitle-style').click();
+  await openSettingsPage(page, 'subtitle-style');
 
   // 开启 ASS 模式：hint 出现，CSS 控件换成样式库选择器（主/副都换）。
   await page.locator('#ass-mode-toggle').check();
@@ -4356,19 +4407,19 @@ test('ASS mode swaps subtitle style controls for library selectors and syncs ass
   await page.locator('#ass-style-window-close').click();
 
   // ASS 模式下「颜色字幕样式」在「字幕颜色」页替代「预览颜色样式」显示。
-  await page.locator('#editor-settings-tab-subtitle-color').click();
+  await openSettingsPage(page, 'project-color');
   await expect(page.locator('#ass-color-style-row')).toBeVisible();
   await expect(page.locator('#subtitle-color-style-control')).toBeHidden();
   await page.locator('#ass-color-style').selectOption('speaker');
   await expect(page.locator('#ass-color-speaker-hint')).toBeVisible();
-  await expect(page.locator('#ass-color-speaker-hint')).toContainText('需要启用「将颜色映射为说话人」');
-  await expect(page.locator('#ass-color-speaker-export-link')).toHaveText('导出时附加说话人名称');
+  await expect(page.locator('#ass-color-speaker-hint')).toContainText('需要启用「颜色对应说话人」');
+  await expect(page.locator('#ass-color-speaker-export-link')).toHaveText('导出带上说话人');
   await page.locator('#ass-color-speaker-export-link').click();
-  await expect(page.locator('#editor-settings-page-export')).toBeVisible();
-  await page.locator('#editor-settings-tab-subtitle-color').click();
+  await expect(page.locator('#editor-settings-page-project-color')).toBeVisible();
+  await openSettingsPage(page, 'project-color');
   await page.locator('#ass-color-style').selectOption('stroke');
   await expect(page.locator('#ass-color-style')).toHaveValue('stroke');
-  await page.locator('#editor-settings-tab-subtitle-style').click();
+  await openSettingsPage(page, 'subtitle-style');
 
   // 主字幕选择同步到当前 ASS 输出方案关联的样式。
   await page.locator('#main-ass-style-select').selectOption('default');

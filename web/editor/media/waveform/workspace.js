@@ -1,11 +1,12 @@
 // workspace: waveform class methods with explicit dependencies.
-window.MAWE.register('waveform-workspace', function createWaveformModule(dependencies) {
+export function createWaveformModule(dependencies) {
   'use strict';
   const { BUILTIN_WORKSPACES, DEFAULT_RIGHT_LAYOUT_TREE, DEFAULT_SETTINGS, MODULE_LABELS, ROW_HEIGHT_PRESETS, WORKSPACE_SCHEMA, clamp, cloneLayoutTree, directionLabel, insertLayoutModuleAtEdge, insertLayoutModuleAtRootEdge, isCompleteLayoutTree, layoutDropIntent, layoutDropPreviewRect, layoutRootDropIntent, normalizeLayoutData, normalizeLayoutRows, saveSettings, swapLayoutTreeModules } = dependencies;
 
   class WaveformMethods {
 
 
+    /** @this {import('./waveform-types.js').WaveformInstance} */
     bindDivider() {
       const bind = (divider, axis) => {
         if (!divider) return;
@@ -56,6 +57,7 @@ window.MAWE.register('waveform-workspace', function createWaveformModule(depende
     }
 
 
+    /** @this {import('./waveform-types.js').WaveformInstance} */
     bindLayoutResizers() {
       Object.entries(this.layoutResizers).forEach(([kind, resizer]) => {
         if (!resizer) return;
@@ -117,6 +119,7 @@ window.MAWE.register('waveform-workspace', function createWaveformModule(depende
     }
 
 
+    /** @this {import('./waveform-types.js').WaveformInstance} */
     applyLayoutVariables() {
       const [top, middle, bottom] = normalizeLayoutRows(this.settings.layoutRows);
       this.settings.layoutRows = [top, middle, bottom];
@@ -128,6 +131,7 @@ window.MAWE.register('waveform-workspace', function createWaveformModule(depende
     }
 
 
+    /** @this {import('./waveform-types.js').WaveformInstance} */
     applyLayout() {
       this.workspace.classList.remove(
         'waveform-basic', 'waveform-multi',
@@ -142,7 +146,7 @@ window.MAWE.register('waveform-workspace', function createWaveformModule(depende
       if (this.settings.layoutEditing) this.workspace.classList.add('layout-editing');
       this.applyLayoutVariables();
       this.applyCustomLayoutTree();
-      document.querySelectorAll('[data-waveform-mode]').forEach((button) => {
+      (/** @type {NodeListOf<HTMLElement>} */ (document.querySelectorAll('[data-waveform-mode]'))).forEach((button) => {
         button.classList.toggle('active', button.dataset.waveformMode === this.settings.mode);
       });
       this.windowLabel.textContent = `${this.settings.visibleSeconds} 秒`;
@@ -162,16 +166,19 @@ window.MAWE.register('waveform-workspace', function createWaveformModule(depende
     }
 
 
+    /** @this {import('./waveform-types.js').WaveformInstance} */
     updateAdvancedSettingsAvailability() {
       const basicMode = this.settings.mode === 'basic';
       const multiMode = this.settings.mode === 'multi';
-      document.getElementById('waveform-zoom-in').disabled = !basicMode;
-      document.getElementById('waveform-zoom-out').disabled = !basicMode;
+      (/** @type {HTMLButtonElement} */ (document.getElementById('waveform-zoom-in'))).disabled = !basicMode;
+      (/** @type {HTMLButtonElement} */ (document.getElementById('waveform-zoom-out'))).disabled = !basicMode;
       this.secondsPerRowSelect.disabled = !multiMode;
       if (this.rowHeightSelect) this.rowHeightSelect.disabled = !multiMode;
       // 「显示窗口」仅基础模式有意义；「每行长度」「每行高度」仅多行模式有意义。
       const windowSetting = document.getElementById('waveform-window-setting');
       const secondsPerRowSetting = document.getElementById('waveform-seconds-per-row-setting');
+      const rowHeightScope = document.getElementById('waveform-row-height-scope');
+      if (rowHeightScope) rowHeightScope.hidden = this.settings.mode === 'basic';
       const rowHeightSetting = document.getElementById('waveform-row-height-setting');
       if (windowSetting) windowSetting.hidden = !basicMode;
       if (secondsPerRowSetting) secondsPerRowSetting.hidden = !multiMode;
@@ -179,6 +186,7 @@ window.MAWE.register('waveform-workspace', function createWaveformModule(depende
     }
 
 
+    /** @this {import('./waveform-types.js').WaveformInstance} */
     setMode(mode) {
       if (!['basic', 'multi'].includes(mode) || mode === this.settings.mode) return;
       this.settings.mode = mode;
@@ -195,25 +203,28 @@ window.MAWE.register('waveform-workspace', function createWaveformModule(depende
     // 工具切换：'select' 为默认选择工具，保留全部 Ctrl/Shift/分组多选与
     // 拖动行为；'razor' 让左键点击字幕块在指针位置安全拆分。切回 select
     // 不会清除已有选中，便于拆分后立即继续操作。
+    /** @this {import('./waveform-types.js').WaveformInstance} */
     setTool(tool) {
       if (tool !== 'select' && tool !== 'razor') return;
       if (this.tool === tool) return;
       this.tool = tool;
       this.pane?.classList.toggle('tool-razor', tool === 'razor');
       this.pane?.classList.toggle('tool-select', tool === 'select');
-      document.querySelectorAll('[data-waveform-tool]').forEach((button) => {
+      (/** @type {NodeListOf<HTMLElement>} */ (document.querySelectorAll('[data-waveform-tool]'))).forEach((button) => {
         button.classList.toggle('active', button.dataset.waveformTool === tool);
       });
       this.setStatus(tool === 'razor' ? '分割工具：点击字幕块在指针位置拆分' : '选择工具');
     }
 
 
+    /** @this {import('./waveform-types.js').WaveformInstance} */
     getTool() {
       return this.tool;
     }
 
 
     // 切换到内置工作区：应用其渲染器、波形模式与完整布局树。
+    /** @this {import('./waveform-types.js').WaveformInstance} */
     setLayout(workspaceId) {
       const builtin = BUILTIN_WORKSPACES[workspaceId];
       if (!builtin) return;
@@ -232,6 +243,7 @@ window.MAWE.register('waveform-workspace', function createWaveformModule(depende
     }
 
 
+    /** @this {import('./waveform-types.js').WaveformInstance} */
     toggleLayoutEditMode() {
       if (this.settings.layout !== 'custom') {
         this.settings.layout = 'custom';
@@ -245,21 +257,25 @@ window.MAWE.register('waveform-workspace', function createWaveformModule(depende
     }
 
 
+    /** @this {import('./waveform-types.js').WaveformInstance} */
     isMultiMode() {
       return this.settings.mode === 'multi';
     }
 
 
+    /** @this {import('./waveform-types.js').WaveformInstance} */
     getRowHeight() {
       return this.settings.rowHeight;
     }
 
 
+    /** @this {import('./waveform-types.js').WaveformInstance} */
     getMaxRowHeight() {
       return ROW_HEIGHT_PRESETS[ROW_HEIGHT_PRESETS.length - 1];
     }
 
 
+    /** @this {import('./waveform-types.js').WaveformInstance} */
     setRowHeight(value) {
       const next = Number(value);
       if (this.rowHeightDebounceTimer) {
@@ -285,17 +301,21 @@ window.MAWE.register('waveform-workspace', function createWaveformModule(depende
     }
 
 
+    /** @this {import('./waveform-types.js').WaveformInstance} */
     isCustomLayout() {
       return this.settings.layout === 'custom' && this.settings.layoutEditing;
     }
 
 
+    /** @this {import('./waveform-types.js').WaveformInstance} */
     isPresetResizableLayout() {
       return this.settings.layout === 'wave-right';
     }
 
 
+    /** @this {import('./waveform-types.js').WaveformInstance} */
     bindDockHandles() {
+      /** @type {Array<[string, HTMLElement]>} */
       const modules = [
         ['player', this.playerWrap],
         ['panel', this.panel],
@@ -305,7 +325,7 @@ window.MAWE.register('waveform-workspace', function createWaveformModule(depende
       modules.forEach(([id, element]) => {
         if (!element) return;
         element.dataset.dockModule = id;
-        let handle = element.querySelector(':scope > .dock-handle');
+        let handle = (/** @type {HTMLElement} */ (element.querySelector(':scope > .dock-handle')));
         if (!handle) {
           handle = document.createElement('div');
           handle.className = 'dock-handle';
@@ -358,6 +378,7 @@ window.MAWE.register('waveform-workspace', function createWaveformModule(depende
     }
 
 
+    /** @this {import('./waveform-types.js').WaveformInstance} */
     bindWorkspaceDockTarget() {
       this.workspace.addEventListener('dragover', (event) => {
         if (!this.isCustomLayout() || !this.layoutDragSource || event.defaultPrevented) return;
@@ -388,6 +409,7 @@ window.MAWE.register('waveform-workspace', function createWaveformModule(depende
     }
 
 
+    /** @this {import('./waveform-types.js').WaveformInstance} */
     applyLayoutDrop(sourceId, targetId, intent) {
       const tree = isCompleteLayoutTree(this.settings.layoutTree)
         ? this.settings.layoutTree
@@ -417,6 +439,7 @@ window.MAWE.register('waveform-workspace', function createWaveformModule(depende
     }
 
 
+    /** @this {import('./waveform-types.js').WaveformInstance} */
     showLayoutDropPreview(element, id, sourceId, intent) {
       if (!this.layoutPreview || !element) return;
       const workspaceRect = this.workspace.getBoundingClientRect();
@@ -437,24 +460,26 @@ window.MAWE.register('waveform-workspace', function createWaveformModule(depende
           ? `新位置：${MODULE_LABELS[sourceId]} ${directionLabel(intent.direction)}`
           : `新位置：与${MODULE_LABELS[id]}对换`;
       this.layoutPreview.classList.add('show');
-      this.workspace.querySelectorAll('.layout-drop-target').forEach((target) => {
+      (/** @type {NodeListOf<HTMLElement>} */ (this.workspace.querySelectorAll('.layout-drop-target'))).forEach((target) => {
         target.classList.remove('layout-drop-target');
       });
       if (intent.mode !== 'root-insert') element.classList.add('layout-drop-target');
     }
 
 
+    /** @this {import('./waveform-types.js').WaveformInstance} */
     clearLayoutDropPreview() {
       this.layoutPreview?.classList.remove('show');
       this.layoutPreview?.classList.remove('layout-insert-preview');
       this.layoutPreview?.classList.remove('layout-root-insert-preview');
       this.layoutDropIntent = null;
-      this.workspace?.querySelectorAll('.layout-drop-target').forEach((target) => {
+      (/** @type {NodeListOf<HTMLElement>} */ (this.workspace?.querySelectorAll('.layout-drop-target'))).forEach((target) => {
         target.classList.remove('layout-drop-target');
       });
     }
 
 
+    /** @this {import('./waveform-types.js').WaveformInstance} */
     ensureCustomLayoutRoot() {
       if (this.customLayoutRoot?.isConnected) return this.customLayoutRoot;
       this.customLayoutRoot = document.createElement('div');
@@ -464,6 +489,7 @@ window.MAWE.register('waveform-workspace', function createWaveformModule(depende
     }
 
 
+    /** @this {import('./waveform-types.js').WaveformInstance} */
     restoreDirectLayoutModules() {
       const elements = {
         player: this.playerWrap,
@@ -484,6 +510,7 @@ window.MAWE.register('waveform-workspace', function createWaveformModule(depende
     }
 
 
+    /** @this {import('./waveform-types.js').WaveformInstance} */
     createCustomLayoutNode(node) {
       const elements = {
         player: this.playerWrap,
@@ -517,11 +544,13 @@ window.MAWE.register('waveform-workspace', function createWaveformModule(depende
     }
 
 
+    /** @this {import('./waveform-types.js').WaveformInstance} */
     applyCustomSplitRatio(first, ratio) {
       first.style.flex = `0 0 calc(${clamp(Number(ratio) || 50, 20, 80)}% - 3.5px)`;
     }
 
 
+    /** @this {import('./waveform-types.js').WaveformInstance} */
     bindCustomLayoutDivider(divider, split, first, node) {
       let drag = null;
       divider.addEventListener('pointerdown', (event) => {
@@ -558,6 +587,7 @@ window.MAWE.register('waveform-workspace', function createWaveformModule(depende
     }
 
 
+    /** @this {import('./waveform-types.js').WaveformInstance} */
     applyCustomLayoutTree() {
       if (this.settings.layout !== 'custom') {
         this.restoreDirectLayoutModules();
@@ -575,6 +605,7 @@ window.MAWE.register('waveform-workspace', function createWaveformModule(depende
     }
 
 
+    /** @this {import('./waveform-types.js').WaveformInstance} */
     getLayoutData() {
       return {
         schema: WORKSPACE_SCHEMA,
@@ -599,6 +630,7 @@ window.MAWE.register('waveform-workspace', function createWaveformModule(depende
     }
 
 
+    /** @this {import('./waveform-types.js').WaveformInstance} */
     getLayoutHistorySnapshot() {
       return {
         layout: this.getLayoutData(),
@@ -607,11 +639,13 @@ window.MAWE.register('waveform-workspace', function createWaveformModule(depende
     }
 
 
+    /** @this {import('./waveform-types.js').WaveformInstance} */
     recordLayoutUndo(label, snapshot = this.getLayoutHistorySnapshot()) {
       this.options.onLayoutUndo?.(label, snapshot);
     }
 
 
+    /** @this {import('./waveform-types.js').WaveformInstance} */
     restoreLayoutHistorySnapshot(snapshot) {
       if (!snapshot || !snapshot.layout) return false;
       const layout = normalizeLayoutData(snapshot.layout);
@@ -632,6 +666,7 @@ window.MAWE.register('waveform-workspace', function createWaveformModule(depende
     }
 
 
+    /** @this {import('./waveform-types.js').WaveformInstance} */
     resetLayout() {
       this.recordLayoutUndo('重置工作区');
       this.setLayout(DEFAULT_SETTINGS.layout);
@@ -639,6 +674,7 @@ window.MAWE.register('waveform-workspace', function createWaveformModule(depende
     }
 
 
+    /** @this {import('./waveform-types.js').WaveformInstance} */
     setLayoutData(value, { render = true } = {}) {
       const layout = normalizeLayoutData(value);
       this.settings.layout = layout.preset;
@@ -659,4 +695,4 @@ window.MAWE.register('waveform-workspace', function createWaveformModule(depende
   const descriptors = Object.getOwnPropertyDescriptors(WaveformMethods.prototype);
   delete descriptors.constructor;
   return descriptors;
-});
+}

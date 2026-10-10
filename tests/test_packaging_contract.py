@@ -41,8 +41,10 @@ def _local_import_modules(path: Path, module_name: str) -> set[str]:
         else:
             candidate = node.module or ""
         if candidate and _local_module_path(candidate):
+            # 不在此处跳过：即使候选本身是本地模块，也要继续收集
+            # `from maw import x` 形式的子模块别名（如 maw.moss_runtime），
+            # 否则导入图低估依赖、spec 漏带源文件。
             imported.add(candidate)
-            continue
         for alias in node.names:
             child = f"{candidate}.{alias.name}" if candidate else alias.name
             if _local_module_path(child):
@@ -90,12 +92,11 @@ class PackagingContractTests(unittest.TestCase):
         version = project["project"]["version"]
         launcher_html = read_text("web/launcher/index.html")
         launcher_js = read_text("web/launcher/launcher.js")
-        gui = read_text("maw/gui_web.py")
         editor = read_text("edit.py")
 
         self.assertIn(f'id="appVersion">v{version}</span>', launcher_html)
         self.assertIn(f'appVersion: "{version}"', launcher_js)
-        self.assertIn(f'BUNDLED_APP_VERSION = "{version}"', gui)
+        self.assertIn(f'BUNDLED_APP_VERSION = "{version}"', read_text("maw/diagnostics.py"))
         self.assertIn(f'BUNDLED_EDITOR_VERSION = "{version}"', editor)
 
     def test_pyinstaller_build_dependency_is_locked_outside_runtime_dependencies(self) -> None:
@@ -614,78 +615,6 @@ class PackagingContractTests(unittest.TestCase):
         self.assertIn("--target '${{ github.sha }}'", workflow)
         self.assertIn("GITHUB_TOKEN: ${{ github.token }}", workflow)
         self.assertNotIn(".zip.sha256", workflow)
-
-    def test_mose_uses_its_dedicated_icons_and_declares_mosp_association(self) -> None:
-        config = read_text("desktop/src-tauri/tauri.conf.json")
-        cargo = read_text("desktop/src-tauri/Cargo.toml")
-        macos_config = read_text("desktop/src-tauri/tauri.macos.conf.json")
-        package_json = read_text("desktop/package.json")
-        capabilities = read_text("desktop/src-tauri/capabilities/default.json")
-        bridge = read_text("desktop/src-tauri/src/tauri_bridge.js")
-        rust = read_text("desktop/src-tauri/src/lib.rs")
-        server = read_text("desktop/src-tauri/src/server.rs")
-        gui = read_text("maw/gui_web.py")
-        icon_png = (ROOT / "assets" / "MOSE-icon.png").read_bytes()
-        icon_ico = (ROOT / "desktop" / "src-tauri" / "icons" / "icon.ico").read_bytes()
-        icon_icns = (ROOT / "desktop" / "src-tauri" / "icons" / "icon.icns").read_bytes()
-
-        self.assertIn('"icons/icon.ico"', config)
-        self.assertIn('"icons/icon.icns"', config)
-        self.assertIn('"icons/32x32.png"', config)
-        self.assertIn('"icons/128x128.png"', config)
-        self.assertIn('"icons/128x128@2x.png"', config)
-        self.assertIn('"icons": "tauri icon ../assets/MOSE-icon.png -o src-tauri/icons"', package_json)
-        self.assertTrue(icon_png.startswith(b"\x89PNG\r\n\x1a\n"))
-        self.assertEqual(icon_png[16:24], (500).to_bytes(4, "big") * 2)
-        self.assertEqual(icon_ico[:4], b"\x00\x00\x01\x00")
-        self.assertTrue(icon_icns.startswith(b"icns"))
-        self.assertIn('"ext": ["mosp"]', config)
-        self.assertIn('"dragDropEnabled": true', config)
-        self.assertIn('"assetProtocol"', config)
-        self.assertIn('"enable": true', config)
-        self.assertIn("default-src 'self'", config)
-        self.assertIn("connect-src 'self' ipc: http://ipc.localhost", config)
-        self.assertIn("img-src 'self' data: asset: blob:", config)
-        self.assertIn("media-src 'self' asset: blob:", config)
-        self.assertNotIn('"csp": null', config)
-        self.assertIn('features = ["protocol-asset"]', cargo)
-        self.assertIn('tauri-plugin-single-instance = "2"', cargo)
-        self.assertNotIn('"shell:allow-execute"', capabilities)
-        self.assertIn('"dialog:default"', capabilities)
-        self.assertIn("icon = executable", gui)
-        self.assertIn("SHChangeNotify", gui)
-        self.assertNotIn("    _register_mosp_association()\n", gui)
-        self.assertIn("project_paths_from_args", rust)
-        self.assertIn("tauri_plugin_single_instance::init", rust)
-        self.assertIn("queue_project_path", rust)
-        self.assertIn("take_initial_project_path", rust)
-        self.assertIn("RunEvent::Opened", rust)
-        self.assertIn('cfg(any(target_os = "macos"', rust)
-        self.assertIn("to_file_path", rust)
-        self.assertIn('app_handle.emit("open-file"', rust)
-        self.assertIn('"Library"', server)
-        self.assertIn('"Application Support"', server)
-        self.assertIn("atomic_write", server)
-        self.assertIn("MoveFileExW", server)
-        self.assertIn("sync_all", server)
-        self.assertIn("allow_directory", server)
-        self.assertIn('app.state::<tauri::scope::Scopes>()', server)
-        self.assertIn('.allow_file(&playback)', server)
-        self.assertNotIn("media_file_url", server)
-        self.assertNotIn('"url": media_file_url', server)
-        self.assertIn('convertFileSrc', bridge)
-        self.assertIn('confirmProjectReplacement', bridge)
-        self.assertIn('window.confirm', bridge)
-        self.assertIn('requestExternalProject', bridge)
-        self.assertIn('playbackPath', bridge)
-        self.assertIn("take_initial_project_path", bridge)
-        self.assertIn("tauri://drag-drop", bridge)
-        self.assertIn("document.getElementById('drag-overlay')", bridge)
-        self.assertNotIn("if (dragOverlay) dragOverlay", bridge)
-        self.assertIn("openProjectAtPath(projectPath)", bridge)
-        self.assertNotIn('"externalBin"', config)
-        self.assertIn('"active": true', macos_config)
-        self.assertIn('"targets": ["app"]', macos_config)
 
     def test_pr_release_workflow_builds_only_the_no_ffmpeg_windows_preview(self) -> None:
         """Given a pull request, When packaging runs, Then only a read-only standard ZIP is uploaded."""

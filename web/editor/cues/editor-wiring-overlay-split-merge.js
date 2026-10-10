@@ -271,7 +271,7 @@ function commitOverlaySplit(
     segment.id || `overlay-${overlayIndex}`,
     true,
     state.extensionMode,
-    { ...splitAlignmentOptions, duplicateText },
+    { ...splitAlignmentOptions, duplicateText, headIndex: overlayIndex },
   );
   if (!pair) {
     if (!force && !duplicateText) {
@@ -285,16 +285,7 @@ function commitOverlaySplit(
   if (!force && !duplicateText) flashSplitAlignmentHint(pair.alignment, { committed: true });
   return MaweCommands.run(duplicateText ? '拆分叠加字幕并保留原文' : '拆分叠加字幕', (command) => {
     MaweSelection.clearSelection({ commitCuePanel: false });
-    track.segments.splice(overlayIndex, 1, pair.left, pair.right);
-    // 组引用维护与主轨拆分一致：替换下标之后的引用右移一格，
-    // 左半继承 head 时右半以 ref 指回它；其余指向旧 head 的引用仍有效。
-    for (let index = overlayIndex + 2; index < track.segments.length; index++) {
-      const item = track.segments[index];
-      if (item.sticker_ref?.headIdx > overlayIndex) item.sticker_ref.headIdx += 1;
-      if (item.color_ref?.headIdx > overlayIndex) item.color_ref.headIdx += 1;
-    }
-    if (pair.left.sticker) pair.right.sticker_ref = { name: pair.left.sticker.name, headIdx: overlayIndex };
-    if (pair.left.color) pair.right.color_ref = { name: pair.left.color.name, headIdx: overlayIndex };
+    MaweSplitCore.replaceSegmentWithSplit(track.segments, overlayIndex, pair);
     track._dirty = true;
     MaweSplitCore.closeLinkedSplitModal();
     MaweSelection.clearSelection({ commitCuePanel: false });
@@ -410,7 +401,7 @@ function mergeOverlaySegments(idxs) {
 
 
 // === 拼合字幕 ===
-// 把工具窗参数同步到控件；「吸收过短字幕」关闭时禁用短句相关参数。
+// 把工具窗参数同步到控件；「合并短句」关闭时禁用短句相关参数。
 
 
 

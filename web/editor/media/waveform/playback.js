@@ -1,11 +1,12 @@
 // playback: waveform class methods with explicit dependencies.
-window.MAWE.register('waveform-playback', function createWaveformModule(dependencies) {
+export function createWaveformModule(dependencies) {
   'use strict';
   const { ROW_GAP, clamp, findActiveCueIndex, isActiveCueVisualHit, isMultiRowInComfortZone, restoreWaveformTopEdgeMs, waveformTopEdgeMs } = dependencies;
 
   class WaveformMethods {
 
 
+    /** @this {import('./waveform-types.js').WaveformInstance} */
     updatePlayback(allowFollow = true) {
       if (!this.payload) return;
       const now = this.currentTimeMs();
@@ -15,7 +16,7 @@ window.MAWE.register('waveform-playback', function createWaveformModule(dependen
       if (activeIndex !== this.activeIndex || activeVisualHit !== this.activeVisualHit) {
         this.activeIndex = activeIndex;
         this.activeVisualHit = activeVisualHit;
-        this.content.querySelectorAll('.waveform-cue-block[data-track="main"]').forEach((block) => {
+        (/** @type {NodeListOf<HTMLElement>} */ (this.content.querySelectorAll('.waveform-cue-block[data-track="main"]'))).forEach((block) => {
           block.classList.toggle('active', Number(block.dataset.idx) === activeIndex && activeVisualHit);
         });
       }
@@ -27,7 +28,7 @@ window.MAWE.register('waveform-playback', function createWaveformModule(dependen
           || activeExtensionVisualHit !== this.activeExtensionVisualHit) {
         this.activeExtensionIndex = activeExtensionIndex;
         this.activeExtensionVisualHit = activeExtensionVisualHit;
-        this.content.querySelectorAll('.waveform-cue-block[data-track="extension"]')
+        (/** @type {NodeListOf<HTMLElement>} */ (this.content.querySelectorAll('.waveform-cue-block[data-track="extension"]')))
           .forEach((block) => {
             block.classList.toggle('active', Number(block.dataset.extIdx) === activeExtensionIndex && activeExtensionVisualHit);
           });
@@ -40,7 +41,7 @@ window.MAWE.register('waveform-playback', function createWaveformModule(dependen
           || activeOverlayVisualHit !== this.activeOverlayVisualHit) {
         this.activeOverlayIndex = activeOverlayIndex;
         this.activeOverlayVisualHit = activeOverlayVisualHit;
-        this.content.querySelectorAll('.waveform-cue-block[data-track="overlay"]')
+        (/** @type {NodeListOf<HTMLElement>} */ (this.content.querySelectorAll('.waveform-cue-block[data-track="overlay"]')))
           .forEach((block) => {
             block.classList.toggle('active', Number(block.dataset.overlayIdx) === activeOverlayIndex && activeOverlayVisualHit);
           });
@@ -99,6 +100,7 @@ window.MAWE.register('waveform-playback', function createWaveformModule(dependen
     }
 
 
+    /** @this {import('./waveform-types.js').WaveformInstance} */
     getNavigationSnapshot() {
       return {
         cueListScrollTop: Math.max(0, Math.round(Number(this.cues?.scrollTop) || 0)),
@@ -114,6 +116,7 @@ window.MAWE.register('waveform-playback', function createWaveformModule(dependen
     }
 
 
+    /** @this {import('./waveform-types.js').WaveformInstance} */
     restoreNavigation(snapshot) {
       if (!snapshot || typeof snapshot !== 'object') return false;
       if (!this.payload) {
@@ -156,12 +159,13 @@ window.MAWE.register('waveform-playback', function createWaveformModule(dependen
     }
 
 
+    /** @this {import('./waveform-types.js').WaveformInstance} */
     positionPlayheads() {
       const now = this.currentTimeMs();
       this.renderedRows.forEach((row) => {
         const startMs = Number(row.dataset.startMs);
         const endMs = Number(row.dataset.endMs);
-        const playhead = row._waveformPlayhead || row.querySelector('.waveform-playhead');
+        const playhead = row._waveformPlayhead || (/** @type {HTMLElement} */ (row.querySelector('.waveform-playhead')));
         if (!playhead) return;
         const visible = now >= startMs && now <= endMs;
         playhead.hidden = !visible;
@@ -172,4 +176,4 @@ window.MAWE.register('waveform-playback', function createWaveformModule(dependen
   const descriptors = Object.getOwnPropertyDescriptors(WaveformMethods.prototype);
   delete descriptors.constructor;
   return descriptors;
-});
+}

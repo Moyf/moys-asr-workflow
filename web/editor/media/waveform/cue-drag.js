@@ -1,11 +1,12 @@
 // cue-drag: waveform class methods with explicit dependencies.
-window.MAWE.register('waveform-cue-drag', function createWaveformModule(dependencies) {
+export function createWaveformModule(dependencies) {
   'use strict';
   const { isAttached, resolveTiming, snapshotTiming } = dependencies;
 
   class WaveformMethods {
 
 
+    /** @this {import('./waveform-types.js').WaveformInstance} */
     beginCueDrag(event, index, row, track = 'main') {
       if (event.button !== 0) return;
       event.preventDefault();
@@ -22,7 +23,7 @@ window.MAWE.register('waveform-cue-drag', function createWaveformModule(dependen
       // 剃刀工具：无修饰键左键点击字幕块（非手柄）时，在指针位置安全拆分。
       // 主轨与叠加轨均可拆分；叠加轨走编辑器的叠加拆分弹窗。
       // 修饰键（Alt/Ctrl(Cmd)/Shift）仍走原行为，便于拆分后立即多选/禁用。
-      const targetHandle = event.target.closest('.waveform-cue-handle');
+      const targetHandle = (/** @type {Element | null} */ ((/** @type {HTMLElement} */ (event.target)).closest('.waveform-cue-handle')));
       const adjacentCueAdjustmentIndependent = this.isAdjacentCueAdjustmentIndependent(event.altKey);
       if ((track === 'main' || track === 'overlay') && this.tool === 'razor' && !targetHandle
           && !event.altKey && !event.ctrlKey && !event.metaKey && !event.shiftKey) {
@@ -175,6 +176,7 @@ window.MAWE.register('waveform-cue-drag', function createWaveformModule(dependen
     }
 
 
+    /** @this {import('./waveform-types.js').WaveformInstance} */
     isSharedBoundary(event, leftIndex, rightIndex, row, track = 'main') {
       const segments = this.options.getSegments(track);
       const left = segments[leftIndex];
@@ -192,6 +194,7 @@ window.MAWE.register('waveform-cue-drag', function createWaveformModule(dependen
 
     // Alt-drag 命中共享边界手柄：只拖动被命中一侧，邻居的相反边保持不动。
     // 默认（非 Alt）拖动共享边界会把两侧一起联动；本方法是该联动的独立拆开版本。
+    /** @this {import('./waveform-types.js').WaveformInstance} */
     beginIndependentEdgeDrag(event, index, row, targetHandle, track = 'main') {
       const segments = this.options.getSegments(track);
       const isLeftHandle = targetHandle.classList.contains('left');
@@ -241,6 +244,7 @@ window.MAWE.register('waveform-cue-drag', function createWaveformModule(dependen
 
     // 中缝拖动区（dual 模式）：按下即开始共享边界联动拖动，两侧边界
     // 一起移动；plain 点击（未拖动）按点击行为跳转，等价于点击右侧字幕块。
+    /** @this {import('./waveform-types.js').WaveformInstance} */
     beginSharedBoundaryZoneDrag(event, leftIndex, row, track = 'main') {
       if (event.button !== 0) return;
       if (this.tool === 'razor') return;
@@ -319,16 +323,19 @@ window.MAWE.register('waveform-cue-drag', function createWaveformModule(dependen
     }
 
 
+    /** @this {import('./waveform-types.js').WaveformInstance} */
     cueDragDurationMs() {
       return Number(this.durationMs) > 0 ? Number(this.durationMs) : Infinity;
     }
 
 
+    /** @this {import('./waveform-types.js').WaveformInstance} */
     cueTiming() {
       return resolveTiming(this.options.getCueTiming?.());
     }
 
 
+    /** @this {import('./waveform-types.js').WaveformInstance} */
     cueTimingDuration() {
       const clock = this.cueTiming();
       const durationMs = this.cueDragDurationMs();
@@ -336,24 +343,28 @@ window.MAWE.register('waveform-cue-drag', function createWaveformModule(dependen
     }
 
 
+    /** @this {import('./waveform-types.js').WaveformInstance} */
     cueTimingValueFromMs(valueMs, timing = null) {
       const clock = resolveTiming(timing || this.options.getCueTiming?.());
       return clock.fromMs(valueMs);
     }
 
 
+    /** @this {import('./waveform-types.js').WaveformInstance} */
     cueTimingValueToMs(value, timing = null) {
       const clock = resolveTiming(timing || this.options.getCueTiming?.());
       return clock.toMs(value);
     }
 
 
+    /** @this {import('./waveform-types.js').WaveformInstance} */
     formatCueTiming(value, timing = null) {
       const clock = resolveTiming(timing || this.options.getCueTiming?.());
       return clock.format(value);
     }
 
 
+    /** @this {import('./waveform-types.js').WaveformInstance} */
     captureCueDragOriginals(drag) {
       const segments = this.options.getSegments(drag.track || 'main');
       drag.originals = new Map(drag.indices.map((idx) => [
@@ -367,6 +378,7 @@ window.MAWE.register('waveform-cue-drag', function createWaveformModule(dependen
     // 并把指针基准平移 rawDelta，使后续帧 position = 基准 +（指针 - 新基准）
     // 连续无跳变；整层重建字幕块并让新块继承拖动视觉（旧元素被移除，
     // 指针监听挂在 window 上，不受元素替换影响）。
+    /** @this {import('./waveform-types.js').WaveformInstance} */
     rebaseCueDragToTrack(drag, track, index, clock, deltaShift = 0) {
       drag.track = track;
       drag.index = index;
@@ -375,16 +387,19 @@ window.MAWE.register('waveform-cue-drag', function createWaveformModule(dependen
       drag.squeezeOriginals = null;
       drag.allowSqueeze = false;
       drag.convertedToOverlay = track === 'overlay';
+      // Shift+拖动换轨（主↔叠加）改变了行结构：提交时列表必须全量重建，
+      // 不能走受影响行补丁（见 onCommitEdit 的 cueListPatch 门控）。
+      drag.trackChanged = true;
       const original = snapshotTiming(this.options.getSegments(track)[index], clock);
       drag.originals = new Map([[index, original]]);
       drag.cancelOriginals = new Map([[index, original]]);
       if (Number.isFinite(deltaShift) && deltaShift) drag.startPointerTime += deltaShift;
       this.refreshCueOverlay();
-      this.content.querySelectorAll(`.waveform-cue-block[data-track="${track}"][${track === 'overlay' ? 'data-overlay-idx' : 'data-idx'}="${index}"]`)
+      (/** @type {NodeListOf<HTMLElement>} */ (this.content.querySelectorAll(`.waveform-cue-block[data-track="${track}"][${track === 'overlay' ? 'data-overlay-idx' : 'data-idx'}="${index}"]`)))
         .forEach((block) => block.classList.add('dragging'));
     }
   }
   const descriptors = Object.getOwnPropertyDescriptors(WaveformMethods.prototype);
   delete descriptors.constructor;
   return descriptors;
-});
+}

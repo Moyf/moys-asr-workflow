@@ -1,6 +1,11 @@
 from __future__ import annotations
 
+from tests.compact_assertions import CompactContainerAssertions
+
 import sys
+import json
+import re
+from unittest.mock import patch
 import tempfile
 import unittest
 from contextlib import redirect_stderr
@@ -14,7 +19,11 @@ sys.path.insert(0, str(ROOT))
 import edit  # noqa: E402
 
 
-class EditorAssetContractTests(unittest.TestCase):
+class EditorAssetContractTests(CompactContainerAssertions, unittest.TestCase):
+    def source_contract_text(self) -> str:
+        """Historical source-shape checks inspect sources, not esbuild printing."""
+        return "\n\n".join(edit.read_web_asset(name) for name in edit.read_editor_script_manifest())
+
     def test_editor_script_manifest_is_ordered_and_complete(self) -> None:
         self.assertEqual(
             edit.read_editor_script_manifest(),
@@ -48,11 +57,13 @@ class EditorAssetContractTests(unittest.TestCase):
                 "shared/utils/history.js",
                 "shared/utils/markers.js",
                 "shared/utils/multi-subtitle.js",
+                "shared/utils/word-timing.js",
                 "shared/utils/word-split.js",
                 "shared/utils/srt.js",
                 "shared/utils/lrc.js",
                 "shared/utils/ass-style.js",
                 "shared/utils/ass-animation.js",
+                "shared/utils/ass-canvas-layout.js",
                 "shared/utils/ass-export.js",
                 "shared/utils/export-plan.js",
                 "shared/utils/fcp7.js",
@@ -79,6 +90,7 @@ class EditorAssetContractTests(unittest.TestCase):
                 "editor/media/waveform/media.js",
                 "editor/media/waveform/render.js",
                 "editor/media/waveform/cue-blocks.js",
+                "editor/media/waveform/word-blocks.js",
                 "editor/media/waveform/canvas.js",
                 "editor/media/waveform/input.js",
                 "editor/media/waveform/cue-drag.js",
@@ -91,6 +103,7 @@ class EditorAssetContractTests(unittest.TestCase):
                 "editor/ui/editor-hint.js",
                 "editor/media/editor-jkl.js",
                 "editor/state/editor-settings.js",
+                "editor/state/editor-project-settings.js",
                 "editor/state/editor-multi-subtitle-core.js",
                 "editor/ui/editor-gap-remove-data.js",
                 "editor/styles/editor-colors.js",
@@ -134,6 +147,7 @@ class EditorAssetContractTests(unittest.TestCase):
                 "editor/ui/editor-context-menus.js",
                 "editor/cues/editor-text-cleanup.js",
                 "editor/media/editor-waveform-init.js",
+                "editor/cues/editor-word-timing.js",
                 "editor/media/editor-media-step.js",
                 "editor/styles/editor-appearance-inputs.js",
                 "editor/ui/editor-behavior-hints.js",
@@ -179,10 +193,12 @@ class EditorAssetContractTests(unittest.TestCase):
                 "editor/cues/editor-wiring-overlay-split-merge.js",
                 "editor/cues/editor-wiring-list-navigation.js",
                 "editor/media/editor-wiring-keyboard-guards.js",
+                "editor/cues/editor-wiring-word-timing.js",
                 "editor/media/editor-wiring-media-controls.js",
                 "editor/cues/editor-wiring-edit-shortcuts.js",
                 "editor/styles/editor-wiring-font-geometry.js",
                 "editor/styles/editor-wiring-ass-preview.js",
+                "editor/styles/editor-wiring-ass-canvas.js",
                 "editor/styles/editor-wiring-ass-frame.js",
                 "editor/media/editor-wiring-sticker-preview.js",
                 "editor/io/editor-wiring-export-context.js",
@@ -202,16 +218,18 @@ class EditorAssetContractTests(unittest.TestCase):
         ),
         )
 
-    def test_editor_script_payload_follows_manifest_order(self) -> None:
-        payload = edit.build_editor_scripts()
-        # 检查整份源码的装配顺序，而不是随物理切段频繁失效的片段 marker。
-        previous_end = 0
-        for asset_name in edit.read_editor_script_manifest():
-            source = edit.read_web_asset(asset_name).rstrip()
-            self.assertTrue(source, asset_name)
-            current_index = payload.index(source, previous_end)
-            self.assertGreaterEqual(current_index, previous_end, asset_name)
-            previous_end = current_index + len(source)
+    def test_editor_script_payload_is_one_complete_artifact(self) -> None:
+        with patch.object(edit, "read_editor_script_manifest", side_effect=AssertionError("runtime source assembly")):
+            payload = edit.build_editor_scripts()
+            page = edit.build_blank_html()
+        self.assertEqual(payload, edit.read_web_asset("editor/boot/editor-bundle.js").rstrip())
+        self.assertIn(payload.splitlines()[0], page)
+        metadata = json.loads(edit.read_web_asset("editor/boot/editor-bundle.meta.json"))
+        self.assertEqual(metadata["sourceFiles"], list(edit.read_editor_script_manifest()))
+        self.assertEqual(set(metadata["inputs"]), set(metadata["sourceFiles"]))
+        modules = json.loads(edit.read_web_asset("editor-modules.json"))["modules"]
+        positions = [payload.index(f'MAWE.register({json.dumps(item["name"])},') for item in modules]
+        self.assertEqual(positions, sorted(positions))
 
     def test_ass_frame_preview_wires_template_module_and_styles(self) -> None:
         # 单帧实际画面预览：设置页入口按钮、浮层窗口、接线模块与样式必须同时存在。
@@ -243,7 +261,7 @@ class EditorAssetContractTests(unittest.TestCase):
         self.assertIn(".ass-frame-window-body::-webkit-scrollbar-thumb", styles)
 
     def test_waveform_gap_display_type_uses_shared_core_and_subtle_protected_style(self) -> None:
-        waveform = edit.build_editor_scripts()
+        waveform = self.source_contract_text()
         styles = edit.read_web_asset("waveform.css")
         self.assertIn("getGapRemoveDisplayType", waveform)
         self.assertIn("isGapRemoveDisplayProtected", waveform)
@@ -253,7 +271,7 @@ class EditorAssetContractTests(unittest.TestCase):
         self.assertIn("this.options.getGapRemoveGaps?.() || []", waveform)
 
     def test_gap_state_labels_match_in_mawe_and_align(self) -> None:
-        waveform = edit.build_editor_scripts()
+        waveform = self.source_contract_text()
         align_page = (ROOT / "server-align" / "index.html").read_text(encoding="utf-8")
         label = "gap.removed === false ? '空隙（未激活）' : '空隙'"
         self.assertIn(label, waveform)
@@ -354,7 +372,7 @@ class EditorAssetContractTests(unittest.TestCase):
         self.assertLess(template.index('id="new-project"'), template.index('id="open-project"'))
 
     def test_editor_sources_expose_checkpointed_import_contract(self) -> None:
-        script = edit.build_editor_scripts()
+        script = self.source_contract_text()
         project_load = edit.read_web_asset("editor/io/editor-project-load.js")
         project_save = edit.read_web_asset("editor/io/editor-project-save.js")
         server_save = edit.read_web_asset("editor/io/editor-server-save.js")
@@ -374,7 +392,7 @@ class EditorAssetContractTests(unittest.TestCase):
         self.assertNotIn("!projectLoadedFromSrt", script + project_load + project_save + server_save)
 
     def test_ass_style_library_saves_require_token_and_flush_before_unload(self) -> None:
-        script = edit.build_editor_scripts()
+        script = self.source_contract_text()
         # 共享样式库写入必须携带页面请求令牌（服务器 403 契约见 test_local_editor_server）。
         self.assertIn("requestToken: MaweBoot.SERVER_CONFIG?.requestToken || ''", script)
         # debounce 定时器在刷新/关闭/切后台时不保证触发；dirty 状态必须用
@@ -386,7 +404,7 @@ class EditorAssetContractTests(unittest.TestCase):
 
     def test_sticker_root_uses_server_validation_without_browser_picker(self) -> None:
         template = edit.read_web_asset("editor-template.html")
-        script = edit.build_editor_scripts()
+        script = self.source_contract_text()
         sticker_root = edit.read_web_asset("editor/io/editor-sticker-root.js")
         styles = edit.read_web_asset("editor.css")
         self.assertIn('id="sticker-root-input"', template)
@@ -394,13 +412,13 @@ class EditorAssetContractTests(unittest.TestCase):
         self.assertIn('id="sticker-root-status"', template)
         self.assertIn("SERVER_CONFIG.stickerRootUrl", script)
         self.assertIn("MaweBoot.STICKERS.splice(0, MaweBoot.STICKERS.length, ...result.stickers)", script)
-        self.assertIn("let stickerRootHintCard = null", sticker_root)
-        self.assertIn("stickerRootHintCard?.remove()", script)
-        self.assertIn("function setStickerRootModalOpen(open)", sticker_root)
-        self.assertIn("event.key === 'Escape'", script)
-        self.assertIn("event.key !== 'Tab'", script)
-        self.assertIn("#sticker-root-modal { z-index: 465; }", styles)
-        self.assertIn("width: min(540px, calc(100vw - 32px))", styles)
+        self.assertIn('id="project-sticker-root-override"', template)
+        self.assertIn('id="project-sticker-root-input"', template)
+        self.assertIn("function activateProjectRoot()", sticker_root)
+        self.assertIn("generation !== epoch", sticker_root)
+        self.assertIn("path: root, activate", sticker_root)
+        self.assertIn(".sticker-root-controls", styles)
+        self.assertNotIn('id="sticker-root-modal"', template)
         for removed in (
             "showDirectoryPicker",
             "webkitdirectory",
@@ -413,7 +431,7 @@ class EditorAssetContractTests(unittest.TestCase):
 
     def test_sticker_otio_exposes_portable_mode_and_relative_metadata(self) -> None:
         template = edit.read_web_asset("editor-template.html")
-        script = edit.build_editor_scripts()
+        script = self.source_contract_text()
         self.assertIn('id="sticker-otio-export-mode"', template)
         self.assertIn('option value="portable"', template)
         otio_script = edit.read_web_asset("editor/io/editor-export-timeline.js")
@@ -427,7 +445,7 @@ class EditorAssetContractTests(unittest.TestCase):
         self.assertIn("timeline: JSON.parse(payload)", edit.read_web_asset("editor/io/editor-sticker-otio-export.js"))
 
     def test_portable_sticker_export_capability_syncs_after_project_binding(self) -> None:
-        script = edit.build_editor_scripts()
+        script = self.source_contract_text()
         sticker_otio = edit.read_web_asset("editor/io/editor-sticker-otio-export.js")
         self.assertIn("function syncStickerOtioExportMode()", sticker_otio)
         self.assertIn("portableStickerExportOption.disabled = !available", sticker_otio)
@@ -450,9 +468,12 @@ class EditorAssetContractTests(unittest.TestCase):
         self.assertEqual(edit.read_web_asset("editor/io/editor-server-save.js").count("MaweStickerOtioExport.syncStickerOtioExportMode();"), 1)
         self.assertNotIn("const portableStickerExportEnabled", script)
 
-    def test_generated_page_contains_registered_modules_in_order(self) -> None:
+    def test_generated_page_contains_compatibility_facades_in_order(self) -> None:
         page = edit.build_blank_html()
-        self.assertNotRegex(page, r"__[A-Z][A-Z0-9_]+__")
+        tokens = set(re.findall(r"__[A-Z][A-Z0-9_]+__",
+                                edit.read_web_asset("editor-template.html") + self.source_contract_text()))
+        for token in tokens:
+            self.assertNotIn(token, page, token)
         self.assertIn(
             f'<span class="app-version" id="app-version" data-label="版本号">版本号 v{edit.get_app_version()}</span>',
             page,
@@ -460,30 +481,19 @@ class EditorAssetContractTests(unittest.TestCase):
         # 便携页禁止携带「生成时间：…」式硬编码时间戳；「正在生成时间线 OTIOZ…」
         # 这类把「生成时间」作为前缀子串的普通文案不受限制。
         self.assertNotRegex(page, r"生成时间\s*[:：]")
+        # Bundle minification can rename local parameters and remove whitespace;
+        # assert the public facade assignments and their order, not source spelling.
         markers = (
-            "// Shared frontend runtime registry.",
-            "global.AsrGapRemoveCore = Object.freeze({",
-            "window.AsrEditorUtils = {",
-            "global.MAWE_I18N = {",
-            "window.AsrWaveform = {",
-            "window.MAWE_EDITOR_BRIDGE = Object.freeze({",
-            "window.MAWE_ONBOARDING = Object.freeze({",
+            r'Object\.defineProperty\([^,]+,\s*["\']MAWE["\']',
+            r'\b[A-Za-z_$][\w$]*\.AsrGapRemoveCore\s*=',
+            r'\bwindow\.AsrEditorUtils\s*=',
+            r'\b[A-Za-z_$][\w$]*\.MAWE_I18N\s*=',
+            r'\bwindow\.AsrWaveform\s*=',
+            r'\bwindow\.MAWE_EDITOR_BRIDGE\s*=',
+            r'\bwindow\.MAWE_ONBOARDING\s*=',
         )
-        indices = [page.index(marker) for marker in markers]
+        indices = [re.search(marker, page).start() for marker in markers]
         self.assertEqual(indices, sorted(indices))
-
-    def test_tauri_builder_consumes_the_shared_script_manifest(self) -> None:
-        build_script = (ROOT / "desktop" / "src-tauri" / "build.rs").read_text(encoding="utf-8")
-        self.assertIn('web_dir.join("editor-scripts.txt")', build_script)
-        self.assertIn('("__EDITOR_SCRIPTS_JS__", editor_scripts.as_str())', build_script)
-        for legacy_token in (
-            "__EDITOR_UTILS_JS__",
-            "__EDITOR_I18N_JS__",
-            "__WAVEFORM_JS__",
-            "__EDITOR_JS__",
-        ):
-            self.assertNotIn(legacy_token, build_script)
-
 
 class StickerScanTests(unittest.TestCase):
     def test_scan_stickers_keeps_images_when_dimensions_are_unreadable(self) -> None:

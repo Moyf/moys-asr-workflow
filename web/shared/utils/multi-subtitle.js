@@ -1,5 +1,5 @@
 // multi-subtitle: private helpers; dependencies are injected by editor-utils.js.
-window.MAWE.register('utils-multi-subtitle', function createUtilsModule(dependencies) {
+export function createUtilsModule(dependencies) {
   'use strict';
   const { cloneJsonValue, detectSubtitleSplitMode, ensureStableSegmentIds, stableId } = dependencies;
 
@@ -336,6 +336,8 @@ window.MAWE.register('utils-multi-subtitle', function createUtilsModule(dependen
         copy.items = segment.items.map((item) => ({ ...item }));
       }
       copySubtitleColorFields(segment, copy);
+      if (segment.speaker != null) copy.speaker = segment.speaker;
+      if (typeof segment.disabled === 'boolean') copy.disabled = segment.disabled;
       if (segment._dirty) copy._dirty = true;
       return copy;
     });
@@ -497,4 +499,4 @@ window.MAWE.register('utils-multi-subtitle', function createUtilsModule(dependen
   }
 
   return Object.freeze({ MULTI_SUBTITLE_DISPLAY_MODES, MULTI_SUBTITLE_SCHEMA, MULTI_SUBTITLE_SPLIT_MODES, MULTI_SUBTITLE_TOLERANCE_MS, bindingForSegment, buildMultiDisplayRows, buildSubtitleBinding, matchSubtitleSegments, mergeMainAndOverlaySegments, moveSegmentBetweenTracks, normalizeMultiSubtitle, normalizeMultiSubtitleProject, normalizeOverlayTrack, rebuildBindingOffsets, removeSubtitleBindings, resolveMergedGroupInheritance, swapMainAndExtensionSubtitle });
-});
+}

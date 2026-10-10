@@ -21,6 +21,7 @@ const editorUrl = sitePath('editor/');
       <nav class="main-nav" aria-label="主导航">
         <a href="#workflow">工作流</a>
         <a href="#editor">编辑器</a>
+        <a href="#tools">整理与交付</a>
         <a href="#privacy">本地优先</a>
         <a href={docsUrl}>文档</a>
         <a href={editorUrl}>在线编辑器</a>
@@ -36,13 +37,13 @@ const editorUrl = sitePath('editor/');
         <p class="eyebrow">开源 · 本地优先 · API-FIRST</p>
         <h1>把声音变成<br />可继续编辑的<br /><em>字幕工程</em></h1>
         <p class="hero-lede">
-          MAW 把本地音视频交给云端 ASR，拿回带字级时间戳的字幕工程，再在浏览器里的 MAWE 编辑器继续精修。
+          从音视频转写，到波形校对、文稿整理与字幕交付。MAW 把这些步骤接成一条可继续修改的工作流，适合口播、访谈和课程等字幕密集的内容。
         </p>
         <div class="hero-actions">
           <a class="button button-primary" href={editorUrl}>在线编辑器 ↗</a>
-          <a class="button button-ghost" href={releasesUrl}>下载 Windows 版 ↗</a>
+          <a class="button button-ghost" href={releasesUrl}>下载桌面版 ↗</a>
         </div>
-        <p class="hero-meta mono">本地媒体 → ASR API → .mosp 工程 → MAWE 编辑 → SRT</p>
+        <p class="hero-meta mono">本地媒体 → ASR → .mosp 工程 → MAWE 编辑 → 字幕 / 剪辑交付</p>
       </div>
       <figure class="hero-figure">
         <img src={sitePath('launcher.jpg')} alt="MAW Launcher：拖入媒体文件，选择供应商并填入 API Key，一键生成字幕和工程" width="884" height="771" fetchpriority="high" />
@@ -59,20 +60,20 @@ const editorUrl = sitePath('editor/');
         <article class="flow-step">
           <span class="step-num mono">01</span>
           <h3>选择媒体</h3>
-          <p>在 Launcher 里拖入音视频，选阿里云百炼（Qwen / Fun-ASR）或 Soniox，填入自己的 Key。</p>
+          <p>在 Launcher 里选音视频与人声音轨，配置自己的转写服务；常用模型和提示词可保存成识别预设，多文件可顺序批量处理。</p>
           <code>example.mp4</code>
         </article>
         <article class="flow-step">
           <span class="step-num mono">02</span>
           <h3>云端转写</h3>
-          <p>媒体直接上传到你选择的 ASR 服务，返回字幕文本和字/词级时间戳。</p>
-          <code>Qwen · Fun-ASR · Soniox</code>
+          <p>云端服务返回字幕与可用时间码。支持百炼、Soniox、豆包、腾讯云及 OpenAI 兼容接口；字词精度依服务能力而定，本地模型入口仍属实验性。</p>
+          <code>字幕文本 + 可用时间码</code>
         </article>
         <article class="flow-step">
           <span class="step-num mono">03</span>
           <h3>本地编辑</h3>
-          <p>在 MAWE 里修文字、调时间、去空隙，导出 SRT，或保留整个工程。</p>
-          <code>.srt · .mosp · .edit.html</code>
+          <p>在 MAWE 里修文字、调时间、整理双语与停顿。先保存工程，再导出 SRT、ASS，或将保留区间交给剪辑工具。</p>
+          <code>.mosp · .srt · .ass · OTIO</code>
         </article>
       </div>
     </section>
@@ -83,7 +84,7 @@ const editorUrl = sitePath('editor/');
           <p class="eyebrow">02 —— MAWE 编辑器</p>
           <h2>SRT 只是出口，<br />工程才是源头。</h2>
         </div>
-        <p>.mosp 工程保留字级时间戳、波形缓存、布局和可逆的编辑决策。识别完成后，从工程继续工作，而不是重新开始。</p>
+        <p>.mosp 工程保留可用字词时间码、编辑状态、主副轨、标记与可逆编辑决定。波形是可重建缓存。识别完成后，从工程继续校对、整理与交付。</p>
       </div>
       <figure class="editor-figure">
         <img src={sitePath('editor-screenshot.jpg')} alt="MAWE 字幕编辑器：左侧是视频与字幕列表，右侧是多行波形和带说话人颜色的字幕块" loading="lazy" />
@@ -92,90 +93,128 @@ const editorUrl = sitePath('editor/');
       <div class="feature-grid">
         <div>
           <h3>拆分 / 合并</h3>
-          <p>按字级时间码分配两侧时间，拆分后依然准确。</p>
+          <p>有完整字词时间码时沿边界拆分；结合波形试听和中缝联动，精修相邻字幕。粗粒度时间码仍需人工检查。</p>
         </div>
         <div>
           <h3>静音空隙移除</h3>
           <p>可逆的压缩时间线，不改写原始媒体。</p>
         </div>
         <div>
-          <h3>画面内预览</h3>
-          <p>直接拖拽、缩放字幕位置，存进工程。</p>
+          <h3>ASS 样式与预览</h3>
+          <p>调整字体、描边、阴影和强调格式；本机编辑器可查看实际 ASS 渲染帧，交付前核对呈现。</p>
         </div>
         <div>
-          <h3>说话人颜色</h3>
-          <p>说话人分离映射为字幕颜色，可附表情包。</p>
+          <h3>主轨、副轨与叠加字幕</h3>
+          <p>可直接新建空副轨、导入译文，按需绑定联动；叠加字幕和说话人颜色让同一画面容纳更多信息。</p>
         </div>
+        <div>
+          <h3>标记与区段</h3>
+          <p>给单点或范围添加备注，集中试听和确认 AI 待复核项；标记随工程保存，也可随 OTIO 导出。</p>
+        </div>
+        <div>
+          <h3>保存与版本备份</h3>
+          <p>本机 Server 可写回工程并保留多版本备份。保留原媒体和工程，后续修订继续从当前结果开始。</p>
+        </div>
+      </div>
+    </section>
+
+    <section class="section shell" id="tools">
+      <div class="section-heading split-heading">
+        <div>
+          <p class="eyebrow">03 —— 整理与交付</p>
+          <h2>少做重复操作，<br />留住修改的余地。</h2>
+        </div>
+        <p>从已有文稿、重录废片，到翻译和烧录，把字幕密集的创作接起来。ASR 和 AI 输出仍需人工检查，完整剪辑继续交给剪辑软件。</p>
+      </div>
+      <div class="flow-grid">
+        <article class="flow-step">
+          <span class="step-num mono">01</span>
+          <h3>文稿辅助校对</h3>
+          <p>普通文稿匹配在本地用文稿修正字幕，无需 LLM。可选的 AI 口播整理以录音转写为准，把文稿当证据，废片可逆移除，疑点生成待复核标记。</p>
+          <a class="text-link" href={sitePath('docs/toolbox/')}>文稿匹配与 AI 整理 ↗</a>
+        </article>
+        <article class="flow-step">
+          <span class="step-num mono">02</span>
+          <h3>自动处理与恢复</h3>
+          <p>转写后按需执行匹配、替换、校对、断句、OCR 去重、翻译和烧录。保留原始快照与阶段产物，失败后可从对应步骤重试。</p>
+          <a class="text-link" href={sitePath('docs/postprocess-pipeline/')}>配置自动处理链 ↗</a>
+        </article>
+        <article class="flow-step">
+          <span class="step-num mono">03</span>
+          <h3>按用途交付</h3>
+          <p>导出主字幕、副字幕、双语整合 SRT 或 ASS；去空隙字幕配套 OTIO / FFconcat。工具箱还可烧录字幕、提取音轨和生成绿幕字幕视频。</p>
+          <a class="text-link" href={sitePath('docs/editor-guide/')}>保存与导出指南 ↗</a>
+        </article>
       </div>
     </section>
 
     <section class="section shell" id="privacy">
       <div class="privacy-copy">
-        <p class="eyebrow">03 —— 边界</p>
+        <p class="eyebrow">04 —— 边界</p>
         <h2>本地优先，边界清楚。</h2>
-        <p>MAW 没有自己的服务器，不代管 Key 和媒体。转写时媒体直接发给你选择的 ASR；之后的编辑、保存、导出都在本机完成。</p>
-        <a class="text-link" href={`${repoUrl}#关于-api`}>API 与费用说明 ↗</a>
+        <p>编辑与保存默认在本机；云端转写向你选择的 ASR 发送音频，可选 LLM 后处理发送字幕文字，AI 整理还会发送文稿。普通文稿匹配在本地执行。MAW 不提供托管转写服务，Key 由你在本机配置。</p>
+        <a class="text-link" href={sitePath('docs/providers/')}>服务、费用与数据去向 ↗</a>
       </div>
       <div class="privacy-diagram" aria-label="数据边界示意图">
         <div class="diagram-node local">
           <span class="mono">本地电脑</span>
           <strong>媒体 · Key · 工程</strong>
         </div>
-        <div class="diagram-line"><span class="mono">只在转写时上传</span></div>
+        <div class="diagram-line"><span class="mono">按所选步骤发送音频或文字</span></div>
         <div class="diagram-node api">
-          <span class="mono">你选择的 ASR</span>
-          <strong>阿里云百炼 / Soniox</strong>
+          <span class="mono">你选择的服务</span>
+          <strong>云端 ASR / 可选 LLM</strong>
         </div>
-        <div class="diagram-return mono">识别结果回到本地</div>
+        <div class="diagram-return mono">结果回到本机继续编辑</div>
       </div>
     </section>
 
     <section class="section shell" id="start">
       <div class="section-heading">
-        <p class="eyebrow">04 —— 上手</p>
+        <p class="eyebrow">05 —— 上手</p>
         <h2>先试两分钟。</h2>
       </div>
       <div class="start-grid">
         <div class="start-col">
-          <h3 class="start-title">图形版<span class="mono start-tag">Windows 10/11</span></h3>
+          <h3 class="start-title">图形版<span class="mono start-tag">按系统与架构选择</span></h3>
           <dl class="spec-list">
-            <div><dt class="mono">MAW</dt><dd>内置 FFmpeg，解压即用，推荐</dd></div>
-            <div><dt class="mono">MAW-lite</dt><dd>体积更小，需系统已有 FFmpeg</dd></div>
+            <div><dt class="mono">MAW</dt><dd>包含 FFmpeg / FFprobe，保留完整解压目录</dd></div>
+            <div><dt class="mono">MAW-lite</dt><dd>需系统提供 FFmpeg / FFprobe</dd></div>
           </dl>
           <a class="button button-primary" href={releasesUrl}>前往 Releases ↗</a>
         </div>
         <div class="start-col">
           <h3 class="start-title">命令行<span class="mono start-tag">Python 3.11+ · uv</span></h3>
           <div class="code-block mono">
-            <span class="code-prompt">PS&gt;</span> uv run python generate_subtitle_qwen_api.py<br />
-            <span class="code-indent">"D:\Videos\example.mp4" -ll 2m --json</span>
+            <span class="code-prompt">PS&gt;</span> uv run --no-sync python maw_gui.py<br />
+            <span class="code-indent">-i "example.mp4" -o "example.srt" -ll 2m</span>
           </div>
-          <p class="start-note"><code>-ll 2m</code> 只处理前两分钟，确认无误再跑全量。</p>
+          <p class="start-note">完成 <code>uv sync</code> 后运行；<code>-ll 2m</code> 只处理前两分钟，默认生成 SRT 和 MOSP。<a class="text-link" href={sitePath('docs/workflow/')}>安装与完整流程 ↗</a></p>
         </div>
       </div>
     </section>
 
     <section class="section shell" id="faq">
       <div class="section-heading">
-        <p class="eyebrow">05 —— 常见问题</p>
+        <p class="eyebrow">06 —— 常见问题</p>
         <h2>开始之前。</h2>
       </div>
       <div class="faq-grid">
         <details open>
           <summary>需要 GPU 吗？</summary>
-          <p>不需要。识别在云端 API 完成，你的电脑只负责上传媒体和运行编辑器。</p>
+          <p>云端转写和日常编辑不需要 GPU。实验性的本地模型有各自的依赖、性能与硬件要求，按<a class="text-link" href={sitePath('docs/local-asr/')}>本地 ASR 文档</a>准备环境。</p>
         </details>
         <details>
           <summary>转写要花多少钱？</summary>
-          <p>MAW 免费（AGPL-3.0），费用取决于你的 API 账户：百炼 Qwen ASR 注册赠 10 小时，超出约 ¥0.792/小时；Soniox 约 $0.10/小时。</p>
+          <p>MAW 按 AGPL-3.0 开源。云端费用由所选服务、模型、地域和账户决定，计费可能按时长或 Token；可选 LLM 另计。先用短片验证，并以服务商当前价格为准，见<a class="text-link" href={sitePath('docs/providers/')}>服务商配置</a>。</p>
         </details>
         <details>
           <summary>MAW 是在线字幕网站吗？</summary>
-          <p>不是。它没有后端，不代管媒体和 Key，所有编辑都在本机浏览器完成。</p>
+          <p>日常使用下载包和本机 localhost 编辑器，在线编辑器是另一种浏览器入口。MAW 不提供托管转写服务；云端 ASR 和 LLM 由你按需配置，在线页面的保存能力与本机 Server 有区别。</p>
         </details>
         <details>
           <summary>为什么要保留 .mosp 工程？</summary>
-          <p>SRT 只有文本和段落时间；.mosp 还保留字级时间戳、布局和编辑决策，是继续编辑的源头。</p>
+          <p>SRT 只保存交付字幕和段落时间；.mosp 还保留可用字词时间码、主副轨、标记和编辑决定，是继续编辑的起点。波形缓存可以重建，原媒体也应保留。</p>
         </details>
       </div>
     </section>
