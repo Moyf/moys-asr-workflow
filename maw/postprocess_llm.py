@@ -60,8 +60,15 @@ class LlmClientError(RuntimeError):
 
 
 LlmDelta = Callable[[str, str], None]
-REASONING_MODES: Final[frozenset[str]] = frozenset({"auto", "off", "low", "medium", "high"})
+REASONING_MODES: Final[frozenset[str]] = frozenset(
+    {"auto", "off", "low", "medium", "high"}
+)
 MAX_RESPONSE_ATTEMPTS: Final[int] = 2
+THINK_CLOSED_PATTERN: Final[re.Pattern[str]] = re.compile(
+    r"<think>.*?</think>", re.DOTALL
+)
+THINK_OPEN_TAG: Final[str] = "<think>"
+JSON_OBJECT_PATTERN: Final[re.Pattern[str]] = re.compile(r"\{.*\}", re.DOTALL)
 MAX_PROVIDER_DIAGNOSTIC_CHARS: Final[int] = 240
 _REASONING_ALIASES: Final[dict[str, str]] = {
     "default": DEFAULT_REASONING_MODE,
@@ -69,6 +76,48 @@ _REASONING_ALIASES: Final[dict[str, str]] = {
     "none": "off",
     "minimal": "low",
 }
+
+
+# Endpoints that choke on `response_format: {"type": "json_object"}` - either
+# rejecting the parameter outright (older LM Studio builds: HTTP 400) or
+# applying the constraint to the reasoning stream of thinking models and
+# returning empty content (lmstudio-bug-tracker #1773). Values: True =
+# constraint accepted, False = endpoint must be called without
+# response_format. Session-scoped on purpose: a restarted local server may
+# have a different model loaded, so the next launch re-probes instead of
+# trusting a stale verdict.
+_json_constraint_support: Final[dict[str, bool]] = {}
+
+
+def _constraint_cache_key(settings: LlmSettings) -> str:
+    parsed = urlparse(settings.base_url.strip())
+    return f"{parsed.scheme}://{parsed.netloc}"
+
+
+def json_constraint_supported(settings: LlmSettings) -> bool | None:
+    """True/False once probed for this endpoint this session; None = unknown."""
+    return _json_constraint_support.get(_constraint_cache_key(settings))
+
+
+def _record_json_constraint_support(settings: LlmSettings, supported: bool) -> None:
+    _json_constraint_support[_constraint_cache_key(settings)] = supported
+
+
+def _rejection_means_drop_json_format(error: LlmClientError) -> bool:
+    """True when a provider rejection means "drop response_format and retry"."""
+    if error.status_code is not None and error.status_code not in (400, 404, 422):
+        return False
+    text = f"{error.message} {error.diagnostic}".lower()
+    markers = (
+        "response_format",
+        "json_object",
+        "json_schema",
+        "invalid type",
+        "unsupported",
+        "not supported",
+        "does not support",
+    )
+    return any(marker in text for marker in markers)
 
 
 PRESETS: Final[tuple[LlmProviderPreset, ...]] = (
@@ -120,9 +169,16 @@ def complete_subtitle_groups(
     The callback receives ``("reasoning", text)`` or ``("content", text)``
     events, while the returned value is still parsed only after the complete
     JSON content has arrived.
+
+    ``response_format`` is only sent while the endpoint has not proven that it
+    mishandles it (HTTP 400, or the #1773 empty-content failure); after a
+    proven failure the JSON contract rides on the prompt alone.
     """
     _chat_endpoint(settings.base_url)
     last_error = "LLM response did not pass the local JSON protocol."
+    # Unknown or known-bad endpoints skip response_format from the start; a
+    # first-ever HTTP 400 about it downgrades mid-call and retries.
+    use_json_format = json_constraint_supported(settings) is not False
     for attempt in range(MAX_RESPONSE_ATTEMPTS):
         if attempt:
             if on_delta is not None:
@@ -132,15 +188,54 @@ def complete_subtitle_groups(
             prompt = _retry_prompt(system_prompt, last_error)
         else:
             prompt = system_prompt
-        body = _request_completion(settings, prompt, cues, on_delta=on_delta)
+        try:
+            body = _request_completion(
+                settings,
+                prompt,
+                cues,
+                on_delta=on_delta,
+                use_json_format=use_json_format,
+            )
+        except LlmClientError as error:
+            if use_json_format and _rejection_means_drop_json_format(error):
+                # LM Studio / llama.cpp variants that reject the parameter
+                # outright. Retry immediately without it, prompt-only.
+                _record_json_constraint_support(settings, False)
+                use_json_format = False
+                continue
+            raise
         content = _response_content(body)
+        if not content.strip() and use_json_format:
+            # lmstudio-bug-tracker #1773: the JSON constraint gets applied to
+            # the reasoning stream of thinking models, generation stops at the
+            # first matching token and content comes back empty. Drop the
+            # constraint and retry once; if even the prompt-only attempt
+            # yields nothing, fail with an actionable message instead of a
+            # bare JSONDecodeError at char 0.
+            _record_json_constraint_support(settings, False)
+            use_json_format = False
+            last_error = "模型在 JSON 输出约束下返回了空内容（LM Studio #1773 类问题）"
+            if attempt + 1 < MAX_RESPONSE_ATTEMPTS:
+                if on_delta is not None:
+                    on_delta("reset", "")
+                prompt = _retry_prompt(system_prompt, last_error)
+                continue
         try:
             parsed = json.loads(_strip_json_fence(content))
         except json.JSONDecodeError as error:
             last_error = f"JSON syntax error: {error.msg} at character {error.pos}"
             if attempt + 1 < MAX_RESPONSE_ATTEMPTS:
                 continue
-            raise LlmClientError(f"LLM returned invalid JSON after retry: {error}") from error
+            if not content.strip():
+                raise LlmClientError(
+                    "模型返回了空内容，无法解析 JSON。"
+                    "这通常是推理模型（Qwen3、DeepSeek-R1 蒸馏等）与 JSON 输出约束冲突的已知问题"
+                    "（LM Studio #1773）：请更换非推理模型，或在本地服务端关闭该模型的思考模式。"
+                    "已尝试过无约束重试。"
+                ) from error
+            raise LlmClientError(
+                f"LLM returned invalid JSON after retry: {error}"
+            ) from error
         protocol_error = _response_protocol_error(parsed)
         if protocol_error is not None:
             last_error = protocol_error
@@ -150,7 +245,11 @@ def complete_subtitle_groups(
             # discard only malformed groups and still write compliant cues.
             if isinstance(parsed, dict):
                 return parsed
-            raise LlmClientError(f"LLM response violates the JSON protocol after retry: {protocol_error}")
+            raise LlmClientError(
+                f"LLM response violates the JSON protocol after retry: {protocol_error}"
+            )
+        if use_json_format:
+            _record_json_constraint_support(settings, True)
         return parsed
     raise AssertionError("LLM response retry loop did not return or raise")
 
@@ -161,17 +260,22 @@ def _request_completion(
     cues: list[dict[str, JsonValue]],
     *,
     on_delta: LlmDelta | None,
+    use_json_format: bool = True,
 ) -> dict[str, JsonValue]:
     endpoint = _chat_endpoint(settings.base_url)
-    payload = {
+    payload: dict[str, JsonValue] = {
         "model": settings.model,
         "messages": [
             {"role": "system", "content": system_prompt},
             {"role": "user", "content": json.dumps(cues, ensure_ascii=False)},
         ],
-        "response_format": {"type": "json_object"},
         "temperature": 0.1,
     }
+    if use_json_format:
+        # Endpoints with proven #1773-style failures (or outright HTTP 400)
+        # must not receive this parameter; the prompt already carries the
+        # full JSON contract.
+        payload["response_format"] = {"type": "json_object"}
     payload.update(_reasoning_parameters(settings))
     streaming = on_delta is not None
     if streaming:
@@ -193,7 +297,9 @@ def _request_completion(
             try:
                 response.raise_for_status()
             except HTTPError as error:
-                raise _provider_response_error(response, settings=settings, operation="completion") from error
+                raise _provider_response_error(
+                    response, settings=settings, operation="completion"
+                ) from error
             if streaming:
                 try:
                     body = _read_stream_response(response, on_delta, settings=settings)
@@ -254,7 +360,11 @@ def _response_protocol_error(parsed: object) -> str | None:
         raw_ids = group.get("source_ids")
         if raw_ids is None and isinstance(group.get("id"), str):
             raw_ids = [group["id"]]
-        if not isinstance(raw_ids, list) or not raw_ids or not all(isinstance(value, str) and value for value in raw_ids):
+        if (
+            not isinstance(raw_ids, list)
+            or not raw_ids
+            or not all(isinstance(value, str) and value for value in raw_ids)
+        ):
             return f"LLM group {index} must contain source_ids"
         text = group.get("text")
         if not isinstance(text, str) or not text.strip():
@@ -282,7 +392,9 @@ def test_llm_connection(settings: LlmSettings) -> None:
             try:
                 response.raise_for_status()
             except HTTPError as error:
-                raise _provider_response_error(response, settings=settings, operation="connection test") from error
+                raise _provider_response_error(
+                    response, settings=settings, operation="connection test"
+                ) from error
     except LlmClientError:
         raise
     except RequestException as error:
@@ -307,7 +419,9 @@ def list_llm_models(settings: LlmSettings) -> list[str]:
             try:
                 response.raise_for_status()
             except HTTPError as error:
-                raise _provider_response_error(response, settings=settings, operation="model list") from error
+                raise _provider_response_error(
+                    response, settings=settings, operation="model list"
+                ) from error
             body = response.json()
     except LlmClientError:
         raise
@@ -360,7 +474,9 @@ def _chat_endpoint(base_url: str) -> str:
     if parsed.scheme not in {"http", "https"} or not parsed.netloc:
         raise LlmClientError("LLM API URL must be an absolute HTTP(S) URL")
     if parsed.scheme == "http" and not _is_loopback_host(parsed.hostname):
-        raise LlmClientError("plain HTTP LLM API URLs are allowed only for loopback hosts")
+        raise LlmClientError(
+            "plain HTTP LLM API URLs are allowed only for loopback hosts"
+        )
     if value.endswith("/chat/completions"):
         return value
     return f"{value}/chat/completions"
@@ -461,12 +577,16 @@ def _read_stream_response(
         try:
             chunk = json.loads(data)
         except json.JSONDecodeError as error:
-            raise LlmClientError(f"LLM stream returned invalid JSON: {error}", category="protocol") from error
+            raise LlmClientError(
+                f"LLM stream returned invalid JSON: {error}", category="protocol"
+            ) from error
         if not isinstance(chunk, dict):
             continue
         error = chunk.get("error")
         if isinstance(error, dict):
-            diagnostic = _bound_diagnostic(_extract_diagnostic_fields(error), settings=settings)
+            diagnostic = _bound_diagnostic(
+                _extract_diagnostic_fields(error), settings=settings
+            )
             message = diagnostic or "LLM stream failed"
             raise LlmClientError(
                 f"LLM provider stream returned an error: {message}",
@@ -479,7 +599,9 @@ def _read_stream_response(
         delta = choice.get("delta") or choice.get("message")
         if not isinstance(delta, dict):
             continue
-        reasoning = _stream_text(delta.get("reasoning_content")) or _stream_text(delta.get("reasoning"))
+        reasoning = _stream_text(delta.get("reasoning_content")) or _stream_text(
+            delta.get("reasoning")
+        )
         content = _stream_text(delta.get("content"))
         if reasoning:
             reasoning_parts.append(reasoning)
@@ -501,7 +623,11 @@ def _read_stream_response(
 
 def _iter_sse_data(lines: Iterable[str | bytes]) -> Iterable[str]:
     for raw_line in lines:
-        line = raw_line.decode("utf-8", errors="replace") if isinstance(raw_line, bytes) else str(raw_line)
+        line = (
+            raw_line.decode("utf-8", errors="replace")
+            if isinstance(raw_line, bytes)
+            else str(raw_line)
+        )
         line = line.strip()
         if not line or line.startswith(":"):
             continue
@@ -545,9 +671,7 @@ def _provider_response_error(
     diagnostic = _extract_server_diagnostic(response, settings=settings)
     status_text = f"HTTP {status_code}" if status_code is not None else "an HTTP error"
     detail = f"{status_text}: {diagnostic}" if diagnostic else status_text
-    message = (
-        f"LLM provider returned {detail}. This is a provider response, not a network outage."
-    )
+    message = f"LLM provider returned {detail}. This is a provider response, not a network outage."
     return LlmClientError(
         message,
         category="provider_response",
@@ -566,7 +690,9 @@ def _response_status_code(response: object) -> int | None:
     return status_code if 100 <= status_code <= 599 else None
 
 
-def _extract_server_diagnostic(response: object, *, settings: LlmSettings | None = None) -> str:
+def _extract_server_diagnostic(
+    response: object, *, settings: LlmSettings | None = None
+) -> str:
     """Extract a short, redacted provider message without retaining request data."""
 
     try:
@@ -580,7 +706,9 @@ def _extract_server_diagnostic(response: object, *, settings: LlmSettings | None
     return ""
 
 
-def _extract_diagnostic_fields(value: Mapping[object, object], *, depth: int = 0) -> str:
+def _extract_diagnostic_fields(
+    value: Mapping[object, object], *, depth: int = 0
+) -> str:
     """Pick provider error fields only; never serialize arbitrary response JSON."""
 
     if depth > 2:
@@ -614,7 +742,7 @@ def _bound_diagnostic(value: str, *, settings: LlmSettings | None = None) -> str
     compact = _sanitize_error_text(value, settings=settings)
     if len(compact) <= MAX_PROVIDER_DIAGNOSTIC_CHARS:
         return compact
-    return f"{compact[:MAX_PROVIDER_DIAGNOSTIC_CHARS - 1]}…"
+    return f"{compact[: MAX_PROVIDER_DIAGNOSTIC_CHARS - 1]}…"
 
 
 def _redact_diagnostic(value: str, *, settings: LlmSettings | None = None) -> str:
@@ -633,7 +761,9 @@ def _redact_diagnostic(value: str, *, settings: LlmSettings | None = None) -> st
         for secret in settings_values:
             normalized = str(secret).strip()
             if normalized:
-                redacted = re.sub(re.escape(normalized), "[REDACTED]", redacted, flags=re.IGNORECASE)
+                redacted = re.sub(
+                    re.escape(normalized), "[REDACTED]", redacted, flags=re.IGNORECASE
+                )
 
     # Never expose an endpoint, including its path or query string.  Provider
     # diagnostics remain useful because their non-URL message/code fields are
@@ -686,5 +816,24 @@ def _response_content(body: JsonValue) -> str:
 
 def _strip_json_fence(content: str) -> str:
     value = content.strip()
-    match = re.fullmatch(r"```(?:json)?\s*(.*?)\s*```", value, re.DOTALL | re.IGNORECASE)
-    return match.group(1) if match else value
+    # Thinking models through proxies that do not split the reasoning stream
+    # (and LM Studio's #1773 constraint failure) leak the raw think block into
+    # content. Drop closed <think>...</think> spans first.
+    value = THINK_CLOSED_PATTERN.sub("", value).strip()
+    if THINK_OPEN_TAG in value:
+        # Unclosed think block: output was truncated inside the reasoning
+        # span, so the payload lives after the tag. Strip the tag itself and
+        # keep the remainder - a later json.loads failure then points at the
+        # actual payload instead of the tag.
+        value = value.replace(THINK_OPEN_TAG, "", 1).strip()
+    match = re.fullmatch(
+        r"```(?:json)?\s*(.*?)\s*```", value, re.DOTALL | re.IGNORECASE
+    )
+    if match:
+        value = match.group(1).strip()
+    if value.lstrip().startswith("{"):
+        return value
+    # Prose-wrapped replies: pull the largest {...} span. (Truncated payloads
+    # without a closing brace stay as-is so the JSON error shows the cause.)
+    match = JSON_OBJECT_PATTERN.search(value)
+    return match.group(0).strip() if match else value
