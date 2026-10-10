@@ -1,12 +1,10 @@
 // Synthetic-only fixture shared by source and frozen-app acceptance. Never uses
 // the installed app, existing project files, user settings, or a real .env.
-import { spawn } from 'node:child_process';
+import { spawnServerProcess, stopServerProcess, serverHasExited, serverRequest } from './server-process.mjs';
 import { mkdirSync, mkdtempSync, writeFileSync, createWriteStream } from 'node:fs';
 import { resolve, join } from 'node:path';
 import { generateWav, generateWaveformPayload, findFreePort } from './helpers.mjs';
 
-const activeChildren = new Set();
-process.on('exit', () => { for (const child of activeChildren) child.kill('SIGTERM'); });
 
 export function syntheticScrollProject(count = 107, mode = 'main', paired = false) {
   const samples = ['短字幕', '这是一条会在字幕列表里自动换行的真实长度字幕',
@@ -51,7 +49,7 @@ export async function startScrollFixture({ count = 107, mode = 'main', paired = 
     ...(blank ? ['--blank'] : [projectPath, '--media', mediaPath]),
     '--no-open', '--no-waveform', '--port', String(port)];
   const log = createWriteStream(join(directory, 'server.log'));
-  const child = spawn(command, args, { env: {
+  const child = spawnServerProcess(command, args, { env: {
     PATH: process.env.PATH, LANG: 'zh_CN.UTF-8', PYTHONUNBUFFERED: '1', PYTHONDONTWRITEBYTECODE: '1',
     ...(process.platform === 'win32' ? {
       SystemRoot: process.env.SystemRoot, WINDIR: process.env.WINDIR,
@@ -62,28 +60,28 @@ export async function startScrollFixture({ count = 107, mode = 'main', paired = 
     PYINSTALLER_RESET_ENVIRONMENT: '1',
   }, stdio: ['ignore', 'pipe', 'pipe'] });
   let launchError = null;
-  child.once('error', error => { launchError = error; activeChildren.delete(child); });
-  activeChildren.add(child);
-  child.once('exit', () => activeChildren.delete(child));
+  child.once('error', error => { launchError = error; });
   writeFileSync(join(directory, 'runtime.json'), JSON.stringify({ command, args, port, pid: child.pid }));
   child.stdout.pipe(log, { end: false }); child.stderr.pipe(log, { end: false });
-  const stop = async () => {
-    if (Number.isInteger(child.pid) && child.exitCode === null && child.signalCode === null) {
-      child.kill('SIGTERM');
-      await new Promise(resolveStop => {
-        const timer = setTimeout(() => { child.kill('SIGKILL'); resolveStop(); }, 5000);
-        child.once('exit', () => { clearTimeout(timer); resolveStop(); });
+  let stopping;
+  const stop = () => stopping ??= (async () => {
+    try { await stopServerProcess(child); }
+    finally {
+      child.stdout.unpipe(log); child.stderr.unpipe(log);
+      await new Promise((resolveLog, rejectLog) => {
+        log.once('error', rejectLog);
+        log.end(resolveLog);
       });
     }
-    log.end();
-  };
+  })();
   const url = `http://127.0.0.1:${port}/`;
   try {
     const deadline = Date.now() + 45000;
     while (Date.now() < deadline) {
       if (launchError) throw launchError;
-      if (child.exitCode !== null) throw new Error(`Synthetic server exited: ${child.exitCode}`);
-      const status = await fetch(`${url}api/startup-status`).then(r => r.json()).catch(() => null);
+      if (serverHasExited(child)) throw new Error(`Synthetic server exited: ${child.exitCode ?? child.signalCode}`);
+      const status = await serverRequest(`${url}api/startup-status`, { json: true })
+        .then(r => r.ok ? r.body : null).catch(() => null);
       if (status?.status === 'error') throw new Error(JSON.stringify(status));
       if (status?.status === 'ready') return { url, directory, stop, project, projectPath, pid: child.pid };
       await new Promise(r => setTimeout(r, 100));
