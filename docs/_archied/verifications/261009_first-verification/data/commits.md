@@ -68,5 +68,5 @@
 ## 基线（生成清单时实测，见 baseline.md）
 
 - `pnpm run check:editor` → Editor bundle is fresh（通过）
-- `git diff --check` → 仅工作区 AA 文件 docs/TEST_FEEDBACK_PR180.md 报 conflict marker（另一任务 WIP，非本批内容）
+- `git diff --check` → 仅工作区 AA 文件 docs/_archied/feedback/TEST_FEEDBACK_PR180.md 报 conflict marker（另一任务 WIP，非本批内容）
 - package-lock.json 已删除，package.json / website/package.json 均固定 packageManager pnpm@11.28.4（#186 完整）

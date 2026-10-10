@@ -50,10 +50,8 @@
 | [桌面开发](../desktop/README.md) | Electron 桌面壳的架构定位与 Tauri 移除决策记录。 |
 | [官网文档同步](../website/docs/CONTENT_SYNC.md) | 从源文档生成官网页面的步骤。 |
 
-## 历史记录与未完成方案
+## 待办、方案与历史
 
-当前仍保留的 `TEST_FEEDBACK_*.md`、`dev/`、`temp/` 和 `verifications/` 包含阶段证据及待核验事项，按任务读取，不作为当前产品说明。未完成方案如 [时间码比较](PLAN_TIMESTAMP_COMPARE.md) 继续原位保留；版本变化看 [CHANGELOG](../CHANGELOG.md)。
+尚需行动或验证的事项统一见 [OPEN_ITEMS](OPEN_ITEMS.md)；未实施方案放 `plans/`，不属于当前功能说明。
 
-已完成或被替代的历史记录移入 `docs/_archied/`。归档范围、保留判断与检索方法见 [AgentsMD](AgentsMD.md)，具体文件按需查 [归档清单](_archied/README.md)。
-
-维护时将操作步骤写在使用文档、字段写在契约文档、验证证据写在任务账本。官网页面由源文档生成，不手工维护第二份正文。
+反馈、审查、实施台账、预演和发布核查过程统一放在 [历史分类目录](_archied/README.md)。归档不代表全部验收完成，日常无需批量阅读；当前版本变化看 [CHANGELOG](../CHANGELOG.md)。维护规则见 [AgentsMD](AgentsMD.md)。

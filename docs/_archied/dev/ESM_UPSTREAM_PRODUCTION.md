@@ -24,7 +24,7 @@
 
 ## 可复现命令
 
-先按[历史手册](../temp/ESM_UPSTREAM_MERGE_PLAYBOOK.md)准备独立 objects 仓库与真实 Git 对象，再从主仓库执行：
+先按[历史手册](../research/temp/ESM_UPSTREAM_MERGE_PLAYBOOK.md)准备独立 objects 仓库与真实 Git 对象，再从主仓库执行：
 
 ```powershell
 $repo = (Get-Location).Path
@@ -34,13 +34,13 @@ $python = Join-Path $repo '.venv/Scripts/python.exe'
 $deps = Join-Path $repo 'node_modules'
 $env:PYTHONUTF8 = '1'
 $env:PYTHONIOENCODING = 'utf-8'
-& $python scripts/esm-mechanical/fetch-github-objects.py --object-repo $objects --snapshot docs/temp/ESM_PRODUCTION_PR_SNAPSHOT.json
-& $python scripts/esm-mechanical/rehearse-production.py --destination $destination --object-repo $objects --base dfd5971f --migration-ref ce398992 --fork-ref 096ca1ad --snapshot docs/temp/ESM_PRODUCTION_PR_SNAPSHOT.json --dependencies $deps --resolutions docs/temp/ESM_PRODUCTION_MERGE_RESOLUTIONS.json --adapt-types
+& $python scripts/esm-mechanical/fetch-github-objects.py --object-repo $objects --snapshot docs/_archied/research/temp/ESM_PRODUCTION_PR_SNAPSHOT.json
+& $python scripts/esm-mechanical/rehearse-production.py --destination $destination --object-repo $objects --base dfd5971f --migration-ref ce398992 --fork-ref 096ca1ad --snapshot docs/_archied/research/temp/ESM_PRODUCTION_PR_SNAPSHOT.json --dependencies $deps --resolutions docs/_archied/research/temp/ESM_PRODUCTION_MERGE_RESOLUTIONS.json --adapt-types
 ```
 
 包含 #157 时命令返回 1，原因写入 results.json；其余 PR 仍分别检查构建、Node 与 typecheck。使用 `--prs 177,178,179,180` 可只研究普通业务 PR。省略 resolutions 或 adapt-types 可以重现冲突与类型红灯。
 
-快照：[当前 PR 输入](../temp/ESM_PRODUCTION_PR_SNAPSHOT.json)。审查后的具体组合：[逐片段解决规则](../temp/ESM_PRODUCTION_MERGE_RESOLUTIONS.json)。最终结果：[部分迁移预演结果](../temp/ESM_PRODUCTION_MERGE_RESULTS.json)。构建、Node、类型诊断和候选 refs 分别记录。
+快照：[当前 PR 输入](../research/temp/ESM_PRODUCTION_PR_SNAPSHOT.json)。审查后的具体组合：[逐片段解决规则](../research/temp/ESM_PRODUCTION_MERGE_RESOLUTIONS.json)。最终结果：[部分迁移预演结果](../research/temp/ESM_PRODUCTION_MERGE_RESULTS.json)。构建、Node、类型诊断和候选 refs 分别记录。
 
 ## 合并时执行顺序
 
@@ -56,4 +56,4 @@ $env:PYTHONIOENCODING = 'utf-8'
 
 ## 验证边界
 
-早期完整迁移已验证四个 PR 的组合顺序；本页部分迁移逐个验证四个当前业务 PR，不能把两种方案的组合证据混用。浏览器结果、最终测试数量和未验证项回写到[实施台账](ESM_MIGRATION.md)。发布包和远端 CI 属于独立验证层；桌面实验已退役，不再纳入验证。
+早期完整迁移已验证四个 PR 的组合顺序；本页部分迁移逐个验证四个当前业务 PR，不能把两种方案的组合证据混用。浏览器结果、最终测试数量和未验证项回写到[实施台账](../../dev/ESM_MIGRATION.md)。发布包和远端 CI 属于独立验证层；桌面实验已退役，不再纳入验证。

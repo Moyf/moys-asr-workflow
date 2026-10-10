@@ -31,4 +31,4 @@
 
 ASS 模式通过 preview.ass_mode 保存，导出附加名称通过 preview.subtitle.speaker_labels.export_enabled 保存；缺省均为 false。主字幕类型通过 multi_subtitle.main_split_mode 保存，单轨同样有效。ASR 的 split_mode 元数据保留。默认目录不写入工程；sticker_root 仅表示工程覆盖。
 
-已补充检查：ASS 特殊文本规则归入全局特殊编辑；色板继续全局复用；工作区与 ASS 样式库不因入口调整改变共享机制。截图、间距与测试结果见 [实施记录](_archied/EDITOR_SETTINGS_IMPLEMENTATION.md)。
+已补充检查：ASS 特殊文本规则归入全局特殊编辑；色板继续全局复用；工作区与 ASS 样式库不因入口调整改变共享机制。截图、间距与测试结果见 [实施记录](EDITOR_SETTINGS_IMPLEMENTATION.md)。

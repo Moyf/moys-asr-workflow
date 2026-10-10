@@ -151,10 +151,10 @@ import 绑定不能直接赋值，因此导出捕获原绑定的活 getter / set
 
 ## 复现与证据
 
-复现步骤及工具说明：[scripts/esm-mechanical/README.md](../../scripts/esm-mechanical/README.md)。工具版本：Node 25.8.0、esbuild 0.28.2、acorn 8.18.0、eslint-scope 9.1.2、TypeScript 7.0.2、Playwright 1.62.0。
+复现步骤及工具说明：[scripts/esm-mechanical/README.md](../../../../scripts/esm-mechanical/README.md)。工具版本：Node 25.8.0、esbuild 0.28.2、acorn 8.18.0、eslint-scope 9.1.2、TypeScript 7.0.2、Playwright 1.62.0。
 
-- AST 明细：docs/temp/ESM_MECHANICAL_INVENTORY.json。
-- 汇总证据：docs/temp/ESM_MECHANICAL_VALIDATION.json。
+- AST 明细：docs/_archied/research/temp/ESM_MECHANICAL_INVENTORY.json。
+- 汇总证据：docs/_archied/research/temp/ESM_MECHANICAL_VALIDATION.json。
 - 隔离目录：.worktrees/esm-mechanical-research-20261008/{baseline,converted,naive,full}；converted 为历史 5 文件实验。
 - 最终日志：full 的 target-tests-final.log、node-final.log、python-final.log、typecheck-final.log、e2e-expanded.log、full-browser-verdict.json；红灯：naive 的 intermediate-tests-final.log；基线：baseline 的 node-tests.log、python-all.log、typecheck.log。
 

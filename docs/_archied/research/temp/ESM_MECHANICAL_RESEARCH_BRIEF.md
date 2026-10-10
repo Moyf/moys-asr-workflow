@@ -78,7 +78,7 @@
 - 引用改写先例：`scripts/refactor-tools/ns-rewrite-editor.mjs`（含 `--report` 决策报告模式）
 - 三方合并重放（历史工具，含同类教训）：`tools/merge-flow.mjs`
 - 类型门：`web/editor/boot/editor-globals.d.ts` + `tsconfig.typecheck.json`（`npm run typecheck`）
-- 上游计划：《企划案》`docs/dev/MAWE 前端渐进式重构企划案.md`（Phase 0–6；Phase 4 已由 #156 完成）；执行台账 `docs/_archied/dev/MAWE 编辑器模块化拆分台账.md`
+- 上游计划：《企划案》`docs/plans/MAWE 前端渐进式重构企划案.md`（Phase 0–6；Phase 4 已由 #156 完成）；执行台账 `docs/_archied/dev/MAWE 编辑器模块化拆分台账.md`
 - 评审史（方法论教训）：PR #157 评论区（三轮：正式装配断裂 / 基线 HEAD 巧合 / 门禁哑弹）
 
 ## 六、硬约束（不可协商）

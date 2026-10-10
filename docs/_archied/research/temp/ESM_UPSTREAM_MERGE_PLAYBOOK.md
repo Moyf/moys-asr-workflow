@@ -4,7 +4,7 @@
 
 ## 1. 固定输入，先做独立预演
 
-本轮输入已保存在 `docs/temp/ESM_UPSTREAM_PR_SNAPSHOT.json`。它包括 #177–#180 与 #157 的固定原始 HEAD。新一轮查询可另存快照：
+本轮输入已保存在 `docs/_archied/research/temp/ESM_UPSTREAM_PR_SNAPSHOT.json`。它包括 #177–#180 与 #157 的固定原始 HEAD。新一轮查询可另存快照：
 
 ```powershell
 $repo = (Get-Location).Path
@@ -20,7 +20,7 @@ $snapshot = Join-Path $lab 'prs.json'
 复现本轮，使用已保存的快照及 classic 基线：
 
 ```powershell
-$snapshot = Join-Path $repo 'docs/temp/ESM_UPSTREAM_PR_SNAPSHOT.json'
+$snapshot = Join-Path $repo 'docs/_archied/research/temp/ESM_UPSTREAM_PR_SNAPSHOT.json'
 $individual = Join-Path $lab 'individual'
 & $python scripts/esm-mechanical/rehearse-upstream.py --destination $individual --snapshot $snapshot --dependencies $deps --python $python --base dfd5971f
 ```

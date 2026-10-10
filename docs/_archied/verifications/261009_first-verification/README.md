@@ -19,7 +19,7 @@
 3. `data/baseline.md` — 当前 HEAD 自动化基线（check:editor 已过；git diff --check 仅工作区 AA 文件报冲突）
 4. `parts/` — HTML 分段：`00-head.html`（head+css+侧栏）、`01..N-*.html`（各分区）、`99-tail.html`
 5. 拼装：按文件名顺序组合 `parts/*.html`。后续模板升级可用
-   `python tools/verification-checklist/build.py --refresh docs/verifications/261009_first-verification/maw-verification-v1.8.0b1-to-main.html`，
+   `python tools/verification-checklist/build.py --refresh docs/_archied/verifications/261009_first-verification/maw-verification-v1.8.0b1-to-main.html`，
    保持标题、分区原文与核对项 ID；同步 parts 的头尾后再拼装，避免旧样式覆盖新功能。
 
 ## 中断恢复方法
@@ -34,5 +34,5 @@
   （只读摘要 table + 自述验证 note + 打勾项）。
 - 打勾项写「入口 → 操作 → 预期」；间距类验收要求实测数据。
 - 本批改了 `web/`，但按现行约定**不重生成 blank-editor.html**，在「后续操作」区写明发布前统一重生成。
-- 工作区有一个无关 WIP：`docs/TEST_FEEDBACK_PR180.md` 处于 AA（未合并冲突）状态，
+- 工作区有一个无关 WIP：`docs/_archied/feedback/TEST_FEEDBACK_PR180.md` 处于 AA（未合并冲突）状态，
   属另一任务，不动、不提交，仅在清单工作区注记中提示。

@@ -3,7 +3,7 @@
 | 命令 | 结果 |
 |---|---|
 | `pnpm run check:editor` | 通过（Editor bundle is fresh） |
-| `git diff --check` | 仅 docs/TEST_FEEDBACK_PR180.md 报 leftover conflict marker（工作区 AA 未合并文件，另一任务 WIP；已提交内容干净） |
+| `git diff --check` | 仅 docs/_archied/feedback/TEST_FEEDBACK_PR180.md 报 leftover conflict marker（工作区 AA 未合并文件，另一任务 WIP；已提交内容干净） |
 | `ls package-lock.json` | 不存在（#186 迁移完整） |
 | packageManager 固定 | package.json / website/package.json 各 1 处（pnpm@11.28.4） |
 

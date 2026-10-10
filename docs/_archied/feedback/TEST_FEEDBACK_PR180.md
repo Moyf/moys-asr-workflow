@@ -7,7 +7,7 @@
 ## 事实基线（恢复时先读）
 
 ```powershell
-Get-Content -Raw docs\TEST_FEEDBACK_PR180.md
+Get-Content -Raw docs\_archied\feedback\TEST_FEEDBACK_PR180.md
 git status --short
 git log --oneline origin/main..HEAD
 ```
@@ -30,7 +30,7 @@ git log --oneline origin/main..HEAD
 | 6 | P2 | CHANGELOG 承诺过强（"整行一次成型""对齐 libass"），代码注释措辞同样过强（实为逐 run strokeText + 层级合成） | 已修复 | CHANGELOG 改用审阅建议的保守措辞；模块注释改为「逐 run strokeText 后作为整层单次 alpha 合成」 |
 | 7 | 仅说明 | Windows PR 构建产物 bot 评论、greptile 试用到期提示、`ViewInvalidation.cueListPatch` typecheck 错误（base 同样存在） | 仅说明 | 无需改动 |
 | 8 | 仅说明 | 未验证边界：跨浏览器/系统字体、4K/8K 性能、用户原素材；不声称 Canvas 与 libass 完全等价 | 仅说明 | PR 描述与文档不做等价承诺 |
-| 9 | 附带 | 全量 e2e 后残留 12 个 serve.py 进程导致命令挂起 10 小时+（cue-scroll 共享 fixture 的 server 泄漏，正常结束也会残留） | 已修复（流程） | 新增 [docs/E2E_SERVER_HANG.md](E2E_SERVER_HANG.md)：诊断/清理命令与运行纪律，AGENTS.md 增设 e2e 运行纪律小节；fixture 生命周期的治本修复留待后续 |
+| 9 | 附带 | 全量 e2e 后残留 12 个 serve.py 进程导致命令挂起 10 小时+（cue-scroll 共享 fixture 的 server 泄漏，正常结束也会残留） | 已修复（流程） | 新增 [docs/E2E_SERVER_HANG.md](../../E2E_SERVER_HANG.md)：诊断/清理命令与运行纪律，AGENTS.md 增设 e2e 运行纪律小节；fixture 生命周期的治本修复留待后续 |
 
 ## 验证账本
 

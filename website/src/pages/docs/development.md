@@ -44,6 +44,20 @@ source: "docs/DEVELOPMENT.md"
 
 正式字段与迁移契约集中在 [JSON_SCHEMA](../json-schema/)，不在本页维护另一份 JSON 示例。修改字段必须同步契约、测试和 changelog。
 
+## 设置与工程持久化
+
+用户入口和页面名称统一见 [编辑器指南](../editor-guide/#设置入口与生效范围)，不要根据窗口位置推断保存范围。
+
+| 数据 | 归属与规则 |
+| --- | --- |
+| ASS 模式、导出说话人名称 | `preview.ass_mode`、`preview.subtitle.speaker_labels.export_enabled` 随工程保存；旧工程缺省为 false，不继承另一工程的旧偏好。 |
+| 主字幕语言类型 | `multi_subtitle.main_split_mode` 随工程保存，单轨同样有效；不覆盖 ASR 的 split_mode 元数据。 |
+| 表情包目录 | 本机默认目录与工程 `sticker_root` 覆盖分离；工程覆盖优先，默认路径不写工程。 |
+| 播放跳过空隙 | 虽位于全局播放入口，状态仍随工程 gap_remove 保存。 |
+| ASS 样式库、色板、工作区库 | 保持本机共享或原有工作区契约，不随页面调整变为工程字段。 |
+
+字段正式契约以 [JSON_SCHEMA](../json-schema/) 为准；旧设置整理计划与报告仅在归档中追溯。
+
 ## 工作区维护
 
 工作区 schema 为 `moy.asr.editor.workspace.v1`，控制 player、panel、cues、wave 四个模块。`web/editor/media/waveform/layout.js` 的 `normalizeLayoutData()` 负责容错和迁移；新增模块或修改树规则需同步拖放逻辑、schema 与相关测试。
