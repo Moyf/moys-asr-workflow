@@ -45,11 +45,11 @@ python scripts/run_check.py --timeout 600 -- node node_modules/@playwright/test/
 | `exit=127` / `status=launch-error` | 可执行文件未启动，不是测试断言失败 |
 | `exit=130` / `status=interrupted` | Ctrl+C 中断并尝试清理；其他非零值保留原命令失败状态 |
 
-摘要按常见 unittest、Node、Playwright 输出启发式提取，不承诺列出全部失败。超大日志只扫描前 16 MiB 和末尾 8 KiB，明确标记 `scan_limited`；超长单行截断，缺失细节需围绕具体失败点定向读取。完整日志不限制磁盘大小，长时限任务仍需关注磁盘空间；本工具不会自动删除证据。
+摘要按常见 unittest、Node、Playwright 输出启发式提取，不承诺列出全部失败。超大日志只扫描前 16 MiB 和末尾 8 KiB，明确标记 `scan_limited`；前部诊断保留行首，尾部保留有界行末片段，使超长单行末尾的最终 ERROR 仍可见。缺失细节需围绕具体失败点定向读取。完整日志不限制磁盘大小，长时限任务仍需关注磁盘空间；本工具不会自动删除证据。
 
 Windows 超时使用本次 PID 的 `taskkill /T`，POSIX 使用新进程组；不会按 python/node/chrome 名称全局杀进程。被强杀的运行器、已逃离进程组的服务、Windows 根进程先退出后的孤儿进程不在可靠清理承诺内。正常服务结束仍必须由 fixture 的 `stop()` 负责，详情见 [e2e 排查](../E2E_SERVER_HANG.md)。
 
-e2e helper 仅保留最近 4096 字符的服务输出，stdout/stderr 分别解码 UTF-8；退出与启动超时错误含短尾部。浏览器 trace、截图与 HTML 报告依然按需读取，不应整份加入对话。
+e2e helper 仅保留最近 4096 字符的服务输出，stdout/stderr 分别解码 UTF-8；退出与启动超时错误含短尾部。进程管理继续使用 `server-process.mjs`：Windows Job supervisor 的 stdin 必须保持管道，以便 owner 消失时回收后代；不得以本通用运行器的 stdin=ignore 配置覆盖它。浏览器 trace、截图与 HTML 报告依然按需读取，不应整份加入对话。
 
 ## 按变化选择测试层
 
