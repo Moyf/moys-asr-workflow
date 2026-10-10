@@ -553,10 +553,16 @@ async function desktopCommand(event, command, payload = {}) {
     return { status: 'ok', data: { path: targetPath } };
   }
   if (command === 'reloadProject') return callDesktopServer('reloadProject');
-  if (command === 'attachMedia') {
+  if (command === 'prepareMedia') {
     const media = fileRegistry.get(payload.mediaRefId, 'media');
     if (!media) throw new TypeError('媒体文件引用已失效，请重新选择');
     return callDesktopServer(command, { mediaPath: media.path, expectedGeneration: payload.expectedGeneration });
+  }
+  if (command === 'commitMedia' || command === 'discardMedia') {
+    if (typeof payload.ticket !== 'string' || !/^[A-Za-z0-9_-]{32}$/.test(payload.ticket)) {
+      throw new TypeError('媒体预览引用无效');
+    }
+    return callDesktopServer(command, { ticket: payload.ticket });
   }
   if (command === 'setStickerRoot') {
     if (typeof payload.path !== 'string') throw new TypeError('表情包目录路径无效');

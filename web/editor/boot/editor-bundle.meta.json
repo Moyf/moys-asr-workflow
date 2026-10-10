@@ -304,7 +304,7 @@
     "editor/io/editor-project-load.js": "dcc152662d728b2509c23e8f5d08b3699edc842f4bc21551edec35024f094b6d",
     "editor/io/editor-loading-progress.js": "45a3650422174f11b3d978ec152b5043ba331e714f40e7cb482106d9588bd538",
     "editor/io/editor-multi-import.js": "aafc3c71406278e0a0f4cada44e301a6408ee8d72b6c34b2ac62fa20b852b6d8",
-    "editor/media/editor-media-load.js": "c38298c9c74cb751c3aeafd45bfd69831eb9e1e0614319dfbeef99ea1dcd5015",
+    "editor/media/editor-media-load.js": "8ece3f439a56a523dcb90357551370c5ed6917062a8cabd17c20a2ef91dd8246",
     "editor/io/editor-sticker-root.js": "3ad29cfe01cf61040650e0090b8599e3f1b92b0149f03e9ec29f8d43d5ff397d",
     "editor/cues/editor-find-replace.js": "877c71fb4d893526f984fc9487094f3c3c6928c0265b61e7113f1a6d52e20ac4",
     "editor/cues/editor-text-process.js": "7f6230612b971203f28c58fb1a9268eb99b76c75f0be77949aff88d717c6f86e",
@@ -699,7 +699,7 @@
         "format": "esm"
       },
       "web/editor-entry.mjs": {
-        "bytes": 1785700,
+        "bytes": 1786451,
         "imports": [
           {
             "path": "web/shared/host/storage.js",
@@ -1208,10 +1208,10 @@
             "bytesInOutput": 4423
           },
           "web/editor-entry.mjs": {
-            "bytesInOutput": 1040794
+            "bytesInOutput": 1041237
           }
         },
-        "bytes": 1382339
+        "bytes": 1382782
       }
     }
   }

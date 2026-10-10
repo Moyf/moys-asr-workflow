@@ -1226,7 +1226,9 @@ class LocalEditorServerTests(CompactContainerAssertions, unittest.TestCase):
                 server_editor, "validate_desktop_media",
             ):
                 with mock.patch.object(server_editor, "read_bwf_time_reference", return_value={"time_reference": 12}):
-                    associated = server.attach_desktop_media(str(self.other_media), expected_generation=0)
+                    ticket, _ = server.prepare_desktop_media(str(self.other_media), expected_generation=0)
+                    self.assertIs(server.project, current)
+                    associated = server.commit_desktop_media(ticket)
 
             self.assertEqual(associated.data["segments"], original_data["segments"])
             self.assertEqual(associated.data["markers"], original_data["markers"])
@@ -1240,7 +1242,7 @@ class LocalEditorServerTests(CompactContainerAssertions, unittest.TestCase):
             self.assertTrue(load.call_args.kwargs["no_waveform"])
 
             with self.assertRaises(server_editor.ProjectMutationInProgressError):
-                server.attach_desktop_media(str(self.media), expected_generation=0)
+                server.prepare_desktop_media(str(self.media), expected_generation=0)
 
     def test_desktop_invalid_media_preserves_project_and_generation(self) -> None:
         invalid = self.root / "invalid.wav"
@@ -1253,7 +1255,7 @@ class LocalEditorServerTests(CompactContainerAssertions, unittest.TestCase):
             with mock.patch.object(server_editor, "resolve_ffmpeg_tools", return_value=mock.Mock(ffprobe=Path("ffprobe"))), mock.patch.object(
                 server_editor.subprocess, "run", side_effect=subprocess.CalledProcessError(1, "ffprobe"),
             ), self.assertRaisesRegex(ValueError, "原媒体关联已保留"):
-                server.attach_desktop_media(str(invalid), expected_generation=0)
+                server.prepare_desktop_media(str(invalid), expected_generation=0)
             self.assertIs(server.project, current)
             self.assertEqual(server.project_generation, 0)
 

@@ -10,6 +10,7 @@ import {
   generateProjectJson,
   generateWav,
   makeTempDir,
+  openSettingsPage,
   startStaticServer,
 } from './helpers.mjs';
 
@@ -212,7 +213,7 @@ test('can use a dropped project subtitle as an extension and preserve optional i
   ]);
 
   // 双语字幕设置已并入工程设置 → 字幕轨道页；交换按钮就在该页内。
-  await page.locator('#project-settings-toggle').click();
+  await openSettingsPage(page, 'project-tracks');
   await page.locator('#project-multi-subtitle-settings').waitFor({ state: 'visible' });
   await page.locator('#multi-subtitle-swap').click();
   await page.locator('#multi-subtitle-swap').click();

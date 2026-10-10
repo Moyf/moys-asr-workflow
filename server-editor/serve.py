@@ -33,7 +33,7 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from typing import NamedTuple
 from hmac import compare_digest
-from urllib.parse import quote, unquote, urlsplit
+from urllib.parse import parse_qs, quote, unquote, urlsplit
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -919,6 +919,8 @@ class EditorServer(ThreadingHTTPServer):
         # overwrite a newer desktop/recent-project switch.
         self.project_lock = threading.RLock()
         self.project_generation = 0
+        self.desktop_media_previews: dict[str, tuple[int, ServerProject]] = {}
+        self.active_desktop_media_preview: str | None = None
         self.desktop_revision_lock = threading.Lock()
         self.desktop_revision_signature: tuple[str, int, int] | None = None
         self.desktop_revision_value: str | None = None
@@ -1363,7 +1365,8 @@ class EditorServer(ThreadingHTTPServer):
         self.start_deferred_reapeaks_load()
         return project
 
-    def attach_desktop_media(self, media_path: str, expected_generation: int) -> ServerProject:
+    def prepare_desktop_media(self, media_path: str, expected_generation: int) -> tuple[str, ServerProject]:
+        """Validate a selected candidate without publishing its media binding."""
         if type(expected_generation) is not int:
             raise ValueError("工程代次缺失或格式不正确")
         if not isinstance(media_path, str) or not media_path.strip():
@@ -1376,9 +1379,6 @@ class EditorServer(ThreadingHTTPServer):
             current = self.project
             if generation != expected_generation:
                 raise ProjectMutationInProgressError("工程已切换，请重新选择媒体")
-            previous_source = current.source_media_path
-            if previous_source is not None and previous_source.resolve() == source:
-                return current
             data = copy.deepcopy(current.data)
         for key in ("media_metadata", "media_time_reference", "waveform", "spectral", "waveform_reapeaks", "loudness"):
             data.pop(key, None)
@@ -1394,16 +1394,55 @@ class EditorServer(ThreadingHTTPServer):
             peaks_per_second=self.peaks_per_second,
             project_data=data,
         )
-        merged_data = copy.deepcopy(current.data)
-        for key in ("media", "media_metadata", "waveform", "spectral", "waveform_reapeaks", "loudness"):
-            if key in prepared.data:
-                merged_data[key] = prepared.data[key]
-            else:
-                merged_data.pop(key, None)
-        merged_data["media_time_reference"] = read_bwf_time_reference(source)
+        prepared.data["media_time_reference"] = read_bwf_time_reference(source)
         with self.project_lock:
-            if generation != self.project_generation or self.project is not current:
+            if generation != self.project_generation:
                 raise ProjectMutationInProgressError("工程已切换，已丢弃过期媒体加载结果")
+            ticket = secrets.token_urlsafe(24)
+            # At most the accepted stream and the newest candidate are kept.
+            self.desktop_media_previews = {
+                key: value for key, value in self.desktop_media_previews.items()
+                if key == self.active_desktop_media_preview
+            }
+            self.desktop_media_previews[ticket] = (generation, prepared)
+            return ticket, prepared
+
+    def desktop_preview_media_path(self, ticket: str) -> Path | None:
+        with self.project_lock:
+            preview = self.desktop_media_previews.get(ticket)
+            if preview is None:
+                return None
+            generation, project = preview
+            if generation == self.project_generation or (
+                ticket == self.active_desktop_media_preview
+                and project.media_path == self.project.media_path
+            ):
+                return project.media_path
+            return None
+
+    def discard_desktop_media(self, ticket: str) -> None:
+        with self.project_lock:
+            if ticket != self.active_desktop_media_preview:
+                self.desktop_media_previews.pop(ticket, None)
+
+    def commit_desktop_media(self, ticket: str) -> ServerProject:
+        """Publish only after the renderer decoded the prepared stream."""
+        if not isinstance(ticket, str):
+            raise ValueError("媒体预览引用格式不正确")
+        with self.project_lock:
+            preview = self.desktop_media_previews.get(ticket)
+            if preview is None or preview[0] != self.project_generation:
+                raise ProjectMutationInProgressError("媒体预览已失效，请重新选择媒体")
+            prepared = preview[1]
+            current = self.project
+            # A normal save can update subtitles while metadata is loading.
+            # Merge only media fields into that latest snapshot.
+            merged_data = copy.deepcopy(current.data)
+            for key in ("media", "media_metadata", "media_time_reference", "waveform", "spectral", "waveform_reapeaks", "loudness"):
+                if key in prepared.data:
+                    merged_data[key] = prepared.data[key]
+                else:
+                    merged_data.pop(key, None)
             self.project_generation += 1
             self.project = replace(
                 current,
@@ -1415,6 +1454,9 @@ class EditorServer(ThreadingHTTPServer):
                 default_audio_track=prepared.default_audio_track,
                 media_error=None,
             )
+            self.active_desktop_media_preview = ticket
+            # The accepted stream survives Save As but cannot commit twice.
+            self.desktop_media_previews = {ticket: (-1, prepared)}
             return self.project
 
     def desktop_project_status(self, *, force_revision: bool = False) -> dict[str, object]:
@@ -2451,19 +2493,30 @@ class EditorRequestHandler(BaseHTTPRequestHandler):
                     "stickers": stickers,
                 })
                 return
-            if command == "attachMedia":
+            if command in {"prepareMedia", "commitMedia", "discardMedia"}:
+                ticket = request.get("ticket")
+                if command != "prepareMedia" and not isinstance(ticket, str):
+                    raise ValueError("媒体预览引用格式不正确")
+                if command == "discardMedia":
+                    self.editor_server.discard_desktop_media(ticket)
+                    self.send_json(HTTPStatus.OK, {"ok": True})
+                    return
                 media_path = request.get("mediaPath")
-                project = self.editor_server.attach_desktop_media(
-                    media_path,
-                    request.get("expectedGeneration"),
-                )
-                self.editor_server.start_deferred_reapeaks_load()
+                if command == "prepareMedia":
+                    ticket, project = self.editor_server.prepare_desktop_media(
+                        media_path, request.get("expectedGeneration"),
+                    )
+                else:
+                    project = self.editor_server.commit_desktop_media(ticket)
+                    self.editor_server.start_deferred_reapeaks_load()
                 source_media = project.source_media_path or project.media_path
                 self.send_json(HTTPStatus.OK, {
                     **self.editor_server.desktop_project_status(),
                     "ok": True,
+                    "ticket": ticket,
+                    "mediaPath": str(source_media) if source_media else None,
                     "mediaName": source_media.name if source_media else "",
-                    "mediaUrl": f"/media?generation={self.editor_server.project_generation}" if project.media_path else None,
+                    "mediaUrl": f"/media?desktopPreview={ticket}" if project.media_path else None,
                     "mediaMetadata": project.data.get("media_metadata"),
                     "mediaTimeReference": project.data.get("media_time_reference"),
                     "mediaReference": project.data.get("media"),
@@ -3066,7 +3119,10 @@ class EditorRequestHandler(BaseHTTPRequestHandler):
                 self.wfile.write(page)
             return
         if path == "/media":
+            preview = parse_qs(urlsplit(self.path).query).get("desktopPreview")
             media_path = self.editor_server.project.media_path
+            if preview is not None:
+                media_path = self.editor_server.desktop_preview_media_path(preview[0]) if self.editor_server.desktop_mode else None
             if media_path:
                 self.send_file(media_path, include_body)
             else:
