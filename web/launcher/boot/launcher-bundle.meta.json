@@ -1,0 +1,69 @@
+{
+  "format": 1,
+  "esbuild": "0.28.2",
+  "sourceFiles": [
+    "launcher/i18n/launcher-strings.js",
+    "launcher/boot/launcher-state.js",
+    "launcher/boot/launcher-mock-api.js",
+    "launcher/i18n/launcher-labels.js",
+    "launcher/forms/launcher-form-base.js",
+    "launcher/errors/launcher-errors.js",
+    "launcher/server/launcher-server-monitor.js",
+    "launcher/boot/launcher-theme-bridge.js",
+    "launcher/forms/launcher-form-sync.js",
+    "launcher/local/launcher-local-models.js",
+    "launcher/forms/launcher-provider-language.js",
+    "launcher/presets/launcher-presets.js",
+    "launcher/forms/launcher-prefs-zoom.js",
+    "launcher/forms/launcher-media-form.js",
+    "launcher/server/launcher-media-server.js",
+    "launcher/boot/launcher-settings-startup.js",
+    "launcher/boot/launcher-notify-backend.js",
+    "launcher/boot/launcher-wiring.js"
+  ],
+  "esmFactories": 0,
+  "inputs": {
+    "launcher/i18n/launcher-strings.js": "b2c3a4f66b077ef411b7e482a3280325f379c6122f47e60def5f3bedde0ee5e0",
+    "launcher/boot/launcher-state.js": "42f784e687518a211bb51bfcb65b286d4a473f978937ef52c1ef59433b8c3e65",
+    "launcher/boot/launcher-mock-api.js": "eb9c6c1463aebc277cb16bcb91dbe4fc3d016c2f299bbda57c4956b7a75d6d15",
+    "launcher/i18n/launcher-labels.js": "966c0310dc5f70088c733402be218325af7166d81c92ba7be9184cffb80062e6",
+    "launcher/forms/launcher-form-base.js": "8702d5d2981755634ed307da79755f5b59c69c19add7895438f5622991b9054c",
+    "launcher/errors/launcher-errors.js": "1a5072a75d36239d2e4e551d0ec7f5a382b9526af5d936206c4438911d130f1f",
+    "launcher/server/launcher-server-monitor.js": "f00cdb0f4a20dff2c3e03cb9981d3128e93bf97fa3590db6aa3b2595e7fc956d",
+    "launcher/boot/launcher-theme-bridge.js": "97bb678e70eefd4fd5e1c97664f4e4c563ffdfc69dd2c66cfce39b5db36ab7fe",
+    "launcher/forms/launcher-form-sync.js": "89158670d291cab1f7c5cfa9563aa63342f113ca059e92ee7fff5cbceb6b8020",
+    "launcher/local/launcher-local-models.js": "8cdcafcb09efbb3ed6b6ccb585cb427910e09eadf0e0239a874ec5c6c0759127",
+    "launcher/forms/launcher-provider-language.js": "bd674f5f189c75c2fafcf095010d4d477a4cc29492e3426c10755f267c2914ce",
+    "launcher/presets/launcher-presets.js": "0f6380cbffac0d7b926873b08bf0e0ca1f44da4fddb7d2c897c967d4bd76417d",
+    "launcher/forms/launcher-prefs-zoom.js": "64710430fb74d618a2443f91159349b2f1841a412b5ec44b5fc3c39f4c18b913",
+    "launcher/forms/launcher-media-form.js": "1c9598e5a32cd3761006dc5f9a1747748f63ca7e1141a3cf500011ba72dc9fb4",
+    "launcher/server/launcher-media-server.js": "5c7b7b624a223739a94ec5d438797639434c3b9081cbe7519c65134614a4b0d7",
+    "launcher/boot/launcher-settings-startup.js": "0a8449ad482fd36acc762a8831a38b48132a5d5199672baf76ee51e39f6ee655",
+    "launcher/boot/launcher-notify-backend.js": "3374410173d2e174447d75fe40f7df1483efd7ca224f5498425cca1ebecc21f4",
+    "launcher/boot/launcher-wiring.js": "e895a05562d3963aeb2a9c233cdc5395e26cf3776edfebb7cf21c77036990286"
+  },
+  "configHash": "339fa254a0d736a4f65405abed2273c25412e3139a6fa3645ba529c93be67b93",
+  "builderHash": "c777a3b85ee673e2d0b1e496f0a3a1d1cf0a87aa23dbd9246bb0795dc0977998",
+  "metafile": {
+    "inputs": {
+      "web/editor-entry.mjs": {
+        "bytes": 378007,
+        "imports": [],
+        "format": "esm"
+      }
+    },
+    "outputs": {
+      "stdin.js": {
+        "imports": [],
+        "exports": [],
+        "entryPoint": "web/editor-entry.mjs",
+        "inputs": {
+          "web/editor-entry.mjs": {
+            "bytesInOutput": 282664
+          }
+        },
+        "bytes": 282690
+      }
+    }
+  }
+}

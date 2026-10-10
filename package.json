@@ -12,6 +12,9 @@
     "build:editor": "node scripts/build-editor.mjs --write",
     "check:editor": "node scripts/build-editor.mjs --check",
     "watch:editor": "node scripts/build-editor.mjs --watch",
+    "build:launcher": "node scripts/build-launcher.mjs --write",
+    "check:launcher": "node scripts/build-launcher.mjs --check",
+    "watch:launcher": "node scripts/build-launcher.mjs --watch",
     "test:unit": "node --test tests/*.mjs"
   },
   "devDependencies": {

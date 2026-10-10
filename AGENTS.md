@@ -27,6 +27,8 @@ docs/LOCAL_ASR.md             # 实验性本地 Qwen3-ASR / FunASR CLI
 
 `web/` 是唯一前端源码。59 个工厂使用 ESM，其余接线保留 classic 共享作用域；`pnpm run build:editor` 由 esbuild 装配完整 `web/editor/boot/editor-bundle.js`。便携 HTML 与 localhost 都读取这个产物，运行时不需要 Node。修改编辑器 JS 或清单后必须重建并提交 bundle 与 `.meta.json`，运行 `pnpm run check:editor`；localhost 调试可另开 `pnpm run watch:editor`。CSS 与 HTML 模板仍在渲染时读取。
 
+Launcher 前端走同一套装配模式：源码按 `web/launcher-scripts.txt` 清单原序列为 classic 模块（由 `scripts/refactor-tools/split-launcher.mjs` 自旧单文件 launcher.js 机械切割而来，等价审计内建于该工具），`pnpm run build:launcher` 装配 `web/launcher/boot/launcher-bundle.js`；修改 Launcher JS 或清单后必须重建并提交 bundle 与 `.meta.json`，运行 `pnpm run check:launcher`。`batch.js` / `postprocess.js` 仍是 bundle 外的独立脚本，经 `window.MAWLauncher` 桥访问主脚本。
+
 **但现行约定是：除非维护者主动要求，不要生成 `blank-editor.html`。**
 它是生成产物、体积大，且每次重生成都会带来上百行噪声 diff，review 时淹没真实改动。
 改了 `web/` 就提交源码及对应 esbuild 产物，并在 PR 描述里注明「内联副本待发布前统一重生成」；

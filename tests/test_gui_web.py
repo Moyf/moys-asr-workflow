@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from tests.compact_assertions import CompactContainerAssertions
+from tests.launcher_sources import launcher_sources_dedented, launcher_sources_text
 
 import json
 import os
@@ -508,7 +509,7 @@ class GuiWebBridgeTests(CompactContainerAssertions, unittest.TestCase):
     def test_local_runtime_supports_a_custom_root_directory(self) -> None:
         """Given OCR-like custom folder support, When configuring local runtime, Then the same settings flow exists."""
         page = (ROOT / "web" / "launcher" / "index.html").read_text(encoding="utf-8")
-        script = (ROOT / "web" / "launcher" / "launcher.js").read_text(encoding="utf-8")
+        script = launcher_sources_text(ROOT)
         backend = (ROOT / "maw" / "gui_web.py").read_text(encoding="utf-8")
         env_example = (ROOT / ".env.example").read_text(encoding="utf-8")
 
@@ -1352,7 +1353,7 @@ class GuiWebBridgeTests(CompactContainerAssertions, unittest.TestCase):
         self.assertNotIn('generateSpectral: $("generateSpectral").checked', script)
         self.assertIn('id="generateWaveform"', html)
         self.assertIn('id="runWaveform"', html)
-        self.assertIn('toolbox_run_waveform: "生成波形并打开编辑器"', (ROOT / "web" / "launcher" / "launcher.js").read_text(encoding="utf-8"))
+        self.assertIn('toolbox_run_waveform: "生成波形并打开编辑器"', launcher_sources_text(ROOT))
         self.assertIn("async function generateWaveformProject(openEditor)", script)
         self.assertIn('setResult(postprocessErrorText(result), "error")', script)
         self.assertNotIn("t(result.code)", script)
@@ -1362,7 +1363,7 @@ class GuiWebBridgeTests(CompactContainerAssertions, unittest.TestCase):
     def test_launcher_toolbox_uses_primary_tabs_for_postprocessing_and_utilities(self) -> None:
         """Given Launcher assets, When rendering Toolbox, Then primary tabs split subtitle and media workflows."""
         html = (ROOT / "web" / "launcher" / "index.html").read_text(encoding="utf-8")
-        strings = (ROOT / "web" / "launcher" / "launcher.js").read_text(encoding="utf-8")
+        strings = launcher_sources_text(ROOT)
         script = (ROOT / "web" / "launcher" / "postprocess.js").read_text(encoding="utf-8")
 
         header = html.index('class="toolbox-header"')
@@ -1450,7 +1451,7 @@ class GuiWebBridgeTests(CompactContainerAssertions, unittest.TestCase):
 
     def test_launcher_exposes_separate_speech_alignment_toolbox_contract(self) -> None:
         page = (ROOT / "web" / "launcher" / "index.html").read_text(encoding="utf-8")
-        launcher_script = (ROOT / "web" / "launcher" / "launcher.js").read_text(encoding="utf-8")
+        launcher_script = launcher_sources_text(ROOT)
         postprocess_script = (ROOT / "web" / "launcher" / "postprocess.js").read_text(encoding="utf-8")
         styles = (ROOT / "web" / "launcher" / "launcher.css").read_text(encoding="utf-8")
 
@@ -1522,7 +1523,7 @@ class GuiWebBridgeTests(CompactContainerAssertions, unittest.TestCase):
 
     def test_deepseek_note_links_to_toolbox_ai_processing(self) -> None:
         """Given the DeepSeek easter-egg note, When rendered, Then the AI-processing link opens the toolbox tab."""
-        launcher_script = (ROOT / "web" / "launcher" / "launcher.js").read_text(encoding="utf-8")
+        launcher_script = launcher_sources_text(ROOT)
         postprocess_script = (ROOT / "web" / "launcher" / "postprocess.js").read_text(encoding="utf-8")
 
         needles = {
@@ -1562,7 +1563,7 @@ class GuiWebBridgeTests(CompactContainerAssertions, unittest.TestCase):
     def test_toolbox_lists_only_configured_custom_slots(self) -> None:
         """Given the toolbox provider select, When custom slots are unconfigured, Then only slot 1 is listed."""
         script = (ROOT / "web" / "launcher" / "postprocess.js").read_text(encoding="utf-8")
-        launcher_script = (ROOT / "web" / "launcher" / "launcher.js").read_text(encoding="utf-8")
+        launcher_script = launcher_sources_text(ROOT)
 
         needles = [
             'function isCustomSlot(item) { return ["custom", "custom2", "custom3"].includes(String(item?.id || "")); }',
@@ -1581,7 +1582,7 @@ class GuiWebBridgeTests(CompactContainerAssertions, unittest.TestCase):
 
     def test_custom_provider_label_mentions_local_models(self) -> None:
         """Given the custom LLM provider, When labeled, Then its name and the local-model hint are present."""
-        launcher_script = (ROOT / "web" / "launcher" / "launcher.js").read_text(encoding="utf-8")
+        launcher_script = launcher_sources_text(ROOT)
         html = (ROOT / "web" / "launcher" / "index.html").read_text(encoding="utf-8")
 
         missing = [needle for needle in [
@@ -1612,7 +1613,7 @@ class GuiWebBridgeTests(CompactContainerAssertions, unittest.TestCase):
     def test_toolbox_presentation_and_ffconcat_drop_contracts(self) -> None:
         """Given Launcher assets, When rendering Toolbox utilities, Then feedback, drop targets, and labels stay scoped."""
         html = (ROOT / "web" / "launcher" / "index.html").read_text(encoding="utf-8")
-        script = (ROOT / "web" / "launcher" / "launcher.js").read_text(encoding="utf-8")
+        script = launcher_sources_text(ROOT)
         styles = (ROOT / "web" / "launcher" / "launcher.css").read_text(encoding="utf-8")
 
         self.assertNotIn('class="toolbox-beta"', html)
@@ -4534,7 +4535,7 @@ class LauncherAssetContractTests(CompactContainerAssertions, unittest.TestCase):
     def test_launcher_exposes_chainable_postprocess_toolbox(self) -> None:
         page = (ROOT / "web" / "launcher" / "index.html").read_text(encoding="utf-8")
         script = (ROOT / "web" / "launcher" / "postprocess.js").read_text(encoding="utf-8")
-        launcher_script = (ROOT / "web" / "launcher" / "launcher.js").read_text(encoding="utf-8")
+        launcher_script = launcher_sources_text(ROOT)
         stylesheet = (ROOT / "web" / "launcher" / "launcher.css").read_text(encoding="utf-8")
 
         for control in (
@@ -4667,7 +4668,7 @@ class LauncherAssetContractTests(CompactContainerAssertions, unittest.TestCase):
 
     def test_launcher_reveals_form_after_initialization_without_a_boot_page(self) -> None:
         page = (ROOT / "web" / "launcher" / "index.html").read_text(encoding="utf-8")
-        script = (ROOT / "web" / "launcher" / "launcher.js").read_text(encoding="utf-8")
+        script = launcher_sources_text(ROOT)
         stylesheet = (ROOT / "web" / "launcher" / "launcher.css").read_text(encoding="utf-8")
 
         self.assertNotIn('id="launcherBoot"', page)
@@ -4691,7 +4692,7 @@ class LauncherAssetContractTests(CompactContainerAssertions, unittest.TestCase):
         self.assertIn('let localModelsRequest = 0;', script)
         self.assertIn('statusRequestId !== localStatusRequest', script)
         self.assertIn('Promise.allSettled', script)
-        self.assertIn('revealLauncher();\n    window.dispatchEvent(new CustomEvent("mawlauncherready"));\n    refreshStartupState();', script)
+        self.assertIn('revealLauncher();\nwindow.dispatchEvent(new CustomEvent("mawlauncherready"));\nrefreshStartupState();', launcher_sources_dedented(ROOT))
         self.assertIn('void init().catch((error) => {', script)
 
     def test_custom_llm_task_requires_a_prompt(self) -> None:
@@ -4730,7 +4731,7 @@ class LauncherAssetContractTests(CompactContainerAssertions, unittest.TestCase):
 
     def test_empty_auto_postprocess_plan_guides_step_selection(self) -> None:
         script = (ROOT / "web" / "launcher" / "postprocess.js").read_text(encoding="utf-8")
-        launcher_script = (ROOT / "web" / "launcher" / "launcher.js").read_text(encoding="utf-8")
+        launcher_script = launcher_sources_text(ROOT)
 
         self.assertIn('auto_summary_empty: "请在下方「处理步骤」中勾选需要的工序。"', launcher_script)
         self.assertIn('summary.textContent = t("auto_summary_empty")', script)
@@ -4814,7 +4815,7 @@ class LauncherAssetContractTests(CompactContainerAssertions, unittest.TestCase):
 
     def test_toolbox_panels_are_grouped_into_titled_cards(self) -> None:
         page = (ROOT / "web" / "launcher" / "index.html").read_text(encoding="utf-8")
-        launcher_script = (ROOT / "web" / "launcher" / "launcher.js").read_text(encoding="utf-8")
+        launcher_script = launcher_sources_text(ROOT)
         stylesheet = (ROOT / "web" / "launcher" / "launcher.css").read_text(encoding="utf-8")
 
         for key in (
@@ -4845,7 +4846,7 @@ class LauncherAssetContractTests(CompactContainerAssertions, unittest.TestCase):
     def test_llm_save_feedback_is_local_and_transient(self) -> None:
         page = (ROOT / "web" / "launcher" / "index.html").read_text(encoding="utf-8")
         script = (ROOT / "web" / "launcher" / "postprocess.js").read_text(encoding="utf-8")
-        launcher_script = (ROOT / "web" / "launcher" / "launcher.js").read_text(encoding="utf-8")
+        launcher_script = launcher_sources_text(ROOT)
         stylesheet = (ROOT / "web" / "launcher" / "launcher.css").read_text(encoding="utf-8")
 
         self.assertIn('id="llmSettingsSaveStatus"', page)
@@ -4909,7 +4910,7 @@ class LauncherAssetContractTests(CompactContainerAssertions, unittest.TestCase):
         )
 
     def test_launcher_message_url_stops_before_closing_punctuation(self) -> None:
-        script = (ROOT / "web" / "launcher" / "launcher.js").read_text(encoding="utf-8")
+        script = launcher_sources_text(ROOT)
 
         expected = r'''const urlPattern = /https?:\/\/[^\s<>"'|)\]}，。；：！？）】》」』]+/gi;'''
         self.assertIn(expected, script)
@@ -4917,7 +4918,7 @@ class LauncherAssetContractTests(CompactContainerAssertions, unittest.TestCase):
     def test_launcher_punctuation_defaults_match_the_shared_settings_copy(self) -> None:
         page = (ROOT / "web" / "launcher" / "index.html").read_text(encoding="utf-8")
         script = (ROOT / "web" / "launcher" / "postprocess.js").read_text(encoding="utf-8")
-        launcher_script = (ROOT / "web" / "launcher" / "launcher.js").read_text(encoding="utf-8")
+        launcher_script = launcher_sources_text(ROOT)
         stylesheet = (ROOT / "web" / "launcher" / "launcher.css").read_text(encoding="utf-8")
 
         self.assertIn(
@@ -4962,7 +4963,7 @@ class LauncherAssetContractTests(CompactContainerAssertions, unittest.TestCase):
 
     def test_launcher_reports_media_drop_rejection_and_output_collision(self) -> None:
         page = (ROOT / "web" / "launcher" / "index.html").read_text(encoding="utf-8")
-        script = (ROOT / "web" / "launcher" / "launcher.js").read_text(encoding="utf-8")
+        script = launcher_sources_text(ROOT)
 
         self.assertIn('id="srtPathNotice" class="hint warn hidden"', page)
         self.assertIn("drop_reject_media", script)
@@ -4975,7 +4976,7 @@ class LauncherAssetContractTests(CompactContainerAssertions, unittest.TestCase):
     def test_launcher_file_path_inputs_have_drop_routes(self) -> None:
         """Given Launcher path inputs, When checking drag/drop wiring, Then every file/path target is bound."""
         page = (ROOT / "web" / "launcher" / "index.html").read_text(encoding="utf-8")
-        script = (ROOT / "web" / "launcher" / "launcher.js").read_text(encoding="utf-8")
+        script = launcher_sources_text(ROOT)
         stylesheet = (ROOT / "web" / "launcher" / "launcher.css").read_text(encoding="utf-8")
 
         for field, target in (
@@ -4997,7 +4998,7 @@ class LauncherAssetContractTests(CompactContainerAssertions, unittest.TestCase):
 
     def test_launcher_exposes_segmentation_controls_and_payload_fields(self) -> None:
         page = (ROOT / "web" / "launcher" / "index.html").read_text(encoding="utf-8")
-        script = (ROOT / "web" / "launcher" / "launcher.js").read_text(encoding="utf-8")
+        script = launcher_sources_text(ROOT)
         stylesheet = (ROOT / "web" / "launcher" / "launcher.css").read_text(encoding="utf-8")
 
         for control in ("segmentationField", "maxLen", "minLen", "maxWords", "minWords", "gapSplit"):
@@ -5035,7 +5036,7 @@ class LauncherAssetContractTests(CompactContainerAssertions, unittest.TestCase):
 
     def test_sticker_picker_saves_immediately_without_a_separate_button(self) -> None:
         page = (ROOT / "web" / "launcher" / "index.html").read_text(encoding="utf-8")
-        script = (ROOT / "web" / "launcher" / "launcher.js").read_text(encoding="utf-8")
+        script = launcher_sources_text(ROOT)
         backend = (ROOT / "maw" / "gui_web.py").read_text(encoding="utf-8")
 
         self.assertNotIn('id="saveStickerDir"', page)
@@ -5046,7 +5047,7 @@ class LauncherAssetContractTests(CompactContainerAssertions, unittest.TestCase):
         self.assertIn('def open_sticker_folder(', backend)
 
     def test_ffmpeg_save_distinguishes_write_failure_from_missing_tools(self) -> None:
-        script = (ROOT / "web" / "launcher" / "launcher.js").read_text(encoding="utf-8")
+        script = launcher_sources_text(ROOT)
 
         self.assertIn("config_save_failed", script)
         self.assertIn("result.found === false", script)
@@ -5062,7 +5063,7 @@ class LauncherAssetContractTests(CompactContainerAssertions, unittest.TestCase):
 
     def test_single_file_editor_controls_are_opt_in_and_contextual(self) -> None:
         page = (ROOT / "web" / "launcher" / "index.html").read_text(encoding="utf-8")
-        script = (ROOT / "web" / "launcher" / "launcher.js").read_text(encoding="utf-8")
+        script = launcher_sources_text(ROOT)
 
         self.assertIn('id="generateHtml" type="checkbox"', page)
         self.assertIn('id="debugRaw" type="checkbox"', page)
@@ -5083,7 +5084,7 @@ class LauncherAssetContractTests(CompactContainerAssertions, unittest.TestCase):
 
     def test_launcher_batch_and_single_stop_controls_are_wired(self) -> None:
         page = (ROOT / "web" / "launcher" / "index.html").read_text(encoding="utf-8")
-        script = (ROOT / "web" / "launcher" / "launcher.js").read_text(encoding="utf-8")
+        script = launcher_sources_text(ROOT)
         batch_script = (ROOT / "web" / "launcher" / "batch.js").read_text(encoding="utf-8")
 
         self.assertIn('id="stop" class="ghost server-stop hidden"', page)
@@ -5101,7 +5102,7 @@ class LauncherAssetContractTests(CompactContainerAssertions, unittest.TestCase):
 
     def test_server_status_uses_clickable_link_and_independent_stop_control(self) -> None:
         page = (ROOT / "web" / "launcher" / "index.html").read_text(encoding="utf-8")
-        script = (ROOT / "web" / "launcher" / "launcher.js").read_text(encoding="utf-8")
+        script = launcher_sources_text(ROOT)
 
         self.assertIn('function setServerStatus(url, alreadyRunning = false, prefix = "")', script)
         self.assertIn('bridge("open_url", { url })', script)
@@ -5120,7 +5121,7 @@ class LauncherAssetContractTests(CompactContainerAssertions, unittest.TestCase):
 
     def test_launcher_hero_links_include_github_tutorial_and_support(self) -> None:
         page = (ROOT / "web" / "launcher" / "index.html").read_text(encoding="utf-8")
-        script = (ROOT / "web" / "launcher" / "launcher.js").read_text(encoding="utf-8")
+        script = launcher_sources_text(ROOT)
 
         self.assertIn('<div class="hero-home-links">', page)
         self.assertIn('id="homeLink" class="text-link" type="button" data-i18n="github_link">Github', page)
@@ -5178,7 +5179,7 @@ class LauncherAssetContractTests(CompactContainerAssertions, unittest.TestCase):
 
     def test_html_editor_menu_uses_current_labels_and_closes_outside_the_menu(self) -> None:
         page = (ROOT / "web" / "launcher" / "index.html").read_text(encoding="utf-8")
-        script = (ROOT / "web" / "launcher" / "launcher.js").read_text(encoding="utf-8")
+        script = launcher_sources_text(ROOT)
 
         self.assertIn("用便携编辑器打开", page)
         self.assertIn("打开空白编辑器", page)
@@ -5186,7 +5187,7 @@ class LauncherAssetContractTests(CompactContainerAssertions, unittest.TestCase):
 
     def test_launcher_uses_server_as_default_and_hides_mose_in_menu(self) -> None:
         page = (ROOT / "web" / "launcher" / "index.html").read_text(encoding="utf-8")
-        script = (ROOT / "web" / "launcher" / "launcher.js").read_text(encoding="utf-8")
+        script = launcher_sources_text(ROOT)
 
         self.assertIn('id="openMawe" class="ghost split-main" type="button" data-i18n="start_server_editor"', page)
         self.assertNotIn('id="openMose"', page)
@@ -5200,7 +5201,7 @@ class LauncherAssetContractTests(CompactContainerAssertions, unittest.TestCase):
         self.assertIn('bridge("start_server"', script)
 
     def test_project_change_marks_server_editor_action_for_rebinding(self) -> None:
-        script = (ROOT / "web" / "launcher" / "launcher.js").read_text(encoding="utf-8")
+        script = launcher_sources_text(ROOT)
 
         self.assertIn('function setJsonPath(path)', script)
         self.assertIn('$("openMawe").classList.add("attention")', script)
@@ -5208,7 +5209,7 @@ class LauncherAssetContractTests(CompactContainerAssertions, unittest.TestCase):
 
     def test_language_filter_hint_is_available_to_single_language_providers(self) -> None:
         page = (ROOT / "web" / "launcher" / "index.html").read_text(encoding="utf-8")
-        script = (ROOT / "web" / "launcher" / "launcher.js").read_text(encoding="utf-8")
+        script = launcher_sources_text(ROOT)
         stylesheet = (ROOT / "web" / "launcher" / "launcher.css").read_text(encoding="utf-8")
 
         self.assertIn('id="languageFilterHint"', page)
@@ -5229,7 +5230,7 @@ class LauncherAssetContractTests(CompactContainerAssertions, unittest.TestCase):
 
     def test_qwen_audio_launcher_exposes_one_shot_context_and_hotwords_only(self) -> None:
         page = (ROOT / "web" / "launcher" / "index.html").read_text(encoding="utf-8")
-        script = (ROOT / "web" / "launcher" / "launcher.js").read_text(encoding="utf-8")
+        script = launcher_sources_text(ROOT)
 
         for field in ("qwenAudioContext", "qwenAudioHotwordsMode", "qwenAudioHotwords", "qwenAudioHotwordsFile", "qwenAudioHotwordWeight"):
             self.assertIn(f'id="{field}"', page)
@@ -5251,7 +5252,7 @@ class LauncherAssetContractTests(CompactContainerAssertions, unittest.TestCase):
 
     def test_soniox_launcher_exposes_documented_context_sections(self) -> None:
         page = (ROOT / "web" / "launcher" / "index.html").read_text(encoding="utf-8")
-        script = (ROOT / "web" / "launcher" / "launcher.js").read_text(encoding="utf-8")
+        script = launcher_sources_text(ROOT)
         stylesheet = (ROOT / "web" / "launcher" / "launcher.css").read_text(encoding="utf-8")
 
         for field in (
@@ -5303,7 +5304,7 @@ class LauncherAssetContractTests(CompactContainerAssertions, unittest.TestCase):
 
     def test_advanced_options_are_grouped_into_titled_cards(self) -> None:
         page = (ROOT / "web" / "launcher" / "index.html").read_text(encoding="utf-8")
-        script = (ROOT / "web" / "launcher" / "launcher.js").read_text(encoding="utf-8")
+        script = launcher_sources_text(ROOT)
         stylesheet = (ROOT / "web" / "launcher" / "launcher.css").read_text(encoding="utf-8")
 
         self.assertIn('id="segmentationField" class="segmentation-settings-fields"', page)
@@ -5345,7 +5346,7 @@ class LauncherAssetContractTests(CompactContainerAssertions, unittest.TestCase):
 
     def test_qwen_regional_settings_live_at_bottom_of_llm_with_advanced_link(self) -> None:
         page = (ROOT / "web" / "launcher" / "index.html").read_text(encoding="utf-8")
-        script = (ROOT / "web" / "launcher" / "launcher.js").read_text(encoding="utf-8")
+        script = launcher_sources_text(ROOT)
 
         llm_panel = page.index('data-settings-panel="llm"')
         dashscope_panel = page.index('id="dashscopeRegionPanel"')
@@ -5379,7 +5380,7 @@ class LauncherAssetContractTests(CompactContainerAssertions, unittest.TestCase):
 
     def test_length_limit_is_not_exposed_in_launcher_ui(self) -> None:
         page = (ROOT / "web" / "launcher" / "index.html").read_text(encoding="utf-8")
-        script = (ROOT / "web" / "launcher" / "launcher.js").read_text(encoding="utf-8")
+        script = launcher_sources_text(ROOT)
 
         self.assertNotIn('id="lengthLimitField"', page)
         self.assertNotIn('id="lengthLimit"', page)
@@ -5389,7 +5390,7 @@ class LauncherAssetContractTests(CompactContainerAssertions, unittest.TestCase):
 
     def test_launcher_language_setting_uses_saved_or_system_preference(self) -> None:
         page = (ROOT / "web" / "launcher" / "index.html").read_text(encoding="utf-8")
-        script = (ROOT / "web" / "launcher" / "launcher.js").read_text(encoding="utf-8")
+        script = launcher_sources_text(ROOT)
 
         self.assertNotIn('id="langToggle"', page)
         self.assertIn('id="settingsButton"', page)
@@ -5415,7 +5416,7 @@ class LauncherAssetContractTests(CompactContainerAssertions, unittest.TestCase):
 
     def test_launcher_theme_round_trips_through_local_config(self) -> None:
         page = (ROOT / "web" / "launcher" / "index.html").read_text(encoding="utf-8")
-        script = (ROOT / "web" / "launcher" / "launcher.js").read_text(encoding="utf-8")
+        script = launcher_sources_text(ROOT)
         backend = (ROOT / "maw" / "gui_web.py").read_text(encoding="utf-8")
 
         self.assertIn('id="themeDark"', page)
@@ -5426,7 +5427,7 @@ class LauncherAssetContractTests(CompactContainerAssertions, unittest.TestCase):
         self.assertIn('updates["MAW_GUI_THEME"]', backend)
 
     def test_server_start_button_exposes_disabled_starting_state(self) -> None:
-        script = (ROOT / "web" / "launcher" / "launcher.js").read_text(encoding="utf-8")
+        script = launcher_sources_text(ROOT)
 
         self.assertIn('const SERVER_STARTING_TEXT = { zh: "启动中……", en: "Starting…" };', script)
         self.assertIn("button.disabled = state.serverStarting;", script)
@@ -5442,7 +5443,7 @@ class LauncherAssetContractTests(CompactContainerAssertions, unittest.TestCase):
     def test_launcher_log_and_server_notice_layout(self) -> None:
         page = (ROOT / "web" / "launcher" / "index.html").read_text(encoding="utf-8")
         stylesheet = (ROOT / "web" / "launcher" / "launcher.css").read_text(encoding="utf-8")
-        script = (ROOT / "web" / "launcher" / "launcher.js").read_text(encoding="utf-8")
+        script = launcher_sources_text(ROOT)
 
         self.assertIn('id="openLogFolder" class="inline-link" type="button" data-i18n="open_log_folder">打开日志文件夹', page)
         self.assertNotIn("📁 打开日志文件夹", page)
@@ -5462,7 +5463,7 @@ class LauncherAssetContractTests(CompactContainerAssertions, unittest.TestCase):
         self.assertIn("  margin-bottom: 12px;", stylesheet)
 
     def test_local_model_preparation_exposes_progress_events_and_cache_heartbeat(self) -> None:
-        script = (ROOT / "web" / "launcher" / "launcher.js").read_text(encoding="utf-8")
+        script = launcher_sources_text(ROOT)
         local_models = (ROOT / "maw" / "local_models.py").read_text(encoding="utf-8")
         backend = (ROOT / "maw" / "gui_web.py").read_text(encoding="utf-8")
 
@@ -5477,7 +5478,7 @@ class LauncherAssetContractTests(CompactContainerAssertions, unittest.TestCase):
         self.assertIn('"type": "localPrepareCancelled"', backend)
 
     def test_local_model_paths_are_scoped_to_the_selected_model(self) -> None:
-        script = (ROOT / "web" / "launcher" / "launcher.js").read_text(encoding="utf-8")
+        script = launcher_sources_text(ROOT)
 
         self.assertIn("localModelPaths", script)
         self.assertIn("syncLocalModelPath(model)", script)
@@ -5485,7 +5486,7 @@ class LauncherAssetContractTests(CompactContainerAssertions, unittest.TestCase):
 
     def test_local_runtime_installation_has_separate_progress_and_repair_controls(self) -> None:
         page = (ROOT / "web" / "launcher" / "index.html").read_text(encoding="utf-8")
-        script = (ROOT / "web" / "launcher" / "launcher.js").read_text(encoding="utf-8")
+        script = launcher_sources_text(ROOT)
         backend = (ROOT / "maw" / "gui_web.py").read_text(encoding="utf-8")
 
         self.assertIn('id="installLocalRuntime"', page)
@@ -5507,7 +5508,7 @@ class LauncherAssetContractTests(CompactContainerAssertions, unittest.TestCase):
 
     def test_local_runtime_lives_in_settings_runtime_tab_with_advanced_check_link(self) -> None:
         page = (ROOT / "web" / "launcher" / "index.html").read_text(encoding="utf-8")
-        script = (ROOT / "web" / "launcher" / "launcher.js").read_text(encoding="utf-8")
+        script = launcher_sources_text(ROOT)
         stylesheet = (ROOT / "web" / "launcher" / "launcher.css").read_text(encoding="utf-8")
 
         runtime_tab_panel = page.index('data-settings-panel="runtime"')
@@ -5636,7 +5637,7 @@ class LauncherAssetContractTests(CompactContainerAssertions, unittest.TestCase):
 
     def test_launcher_deep_link_scrolls_only_the_settings_container(self) -> None:
         """Given a settings deep link, When opening a section, Then only .settings-scroll moves."""
-        script = (ROOT / "web" / "launcher" / "launcher.js").read_text(encoding="utf-8")
+        script = launcher_sources_text(ROOT)
         stylesheet = (ROOT / "web" / "launcher" / "launcher.css").read_text(encoding="utf-8")
         page = (ROOT / "web" / "launcher" / "index.html").read_text(encoding="utf-8")
 
@@ -5683,7 +5684,7 @@ class LauncherAssetContractTests(CompactContainerAssertions, unittest.TestCase):
 
     def test_launcher_localizes_backend_config_labels_in_english_mode(self) -> None:
         """Given backend config labels arrive in Chinese, When the GUI is English, Then ids map to English labels."""
-        script = (ROOT / "web" / "launcher" / "launcher.js").read_text(encoding="utf-8")
+        script = launcher_sources_text(ROOT)
         backend = (ROOT / "maw" / "gui_config.py").read_text(encoding="utf-8")
 
         self.assertIn('note="轻量多语种识别；原生字词级时间码；可复用 Qwen3-ForcedAligner"', backend)
@@ -5707,7 +5708,7 @@ class LauncherAssetContractTests(CompactContainerAssertions, unittest.TestCase):
         self.assertIn('renderServerButton(); refillSelectLabels();', script)
 
     def test_launcher_ignores_runtime_event_payloads_until_fresh_status_is_loaded(self) -> None:
-        script = (ROOT / "web" / "launcher" / "launcher.js").read_text(encoding="utf-8")
+        script = launcher_sources_text(ROOT)
 
         self.assertIn('const requestId = ++ocrRuntimeRequest;', script)
         self.assertIn('if (requestId !== ocrRuntimeRequest) return result;', script)
@@ -5719,7 +5720,7 @@ class LauncherAssetContractTests(CompactContainerAssertions, unittest.TestCase):
 
     def test_ocr_runtime_ready_hint_uses_a_clickable_directory_link(self) -> None:
         page = (ROOT / "web" / "launcher" / "index.html").read_text(encoding="utf-8")
-        script = (ROOT / "web" / "launcher" / "launcher.js").read_text(encoding="utf-8")
+        script = launcher_sources_text(ROOT)
         backend = (ROOT / "maw" / "gui_web.py").read_text(encoding="utf-8")
 
         self.assertIn('id="ocrRuntimeHint"', page)
@@ -5729,7 +5730,7 @@ class LauncherAssetContractTests(CompactContainerAssertions, unittest.TestCase):
 
     def test_model_cache_path_saves_without_a_separate_button(self) -> None:
         page = (ROOT / "web" / "launcher" / "index.html").read_text(encoding="utf-8")
-        script = (ROOT / "web" / "launcher" / "launcher.js").read_text(encoding="utf-8")
+        script = launcher_sources_text(ROOT)
 
         self.assertNotIn('id="saveLocalModelCache"', page)
         self.assertIn('$("localModelCachePath").addEventListener("change"', script)
@@ -5757,7 +5758,7 @@ class LauncherAssetContractTests(CompactContainerAssertions, unittest.TestCase):
 
     def test_launcher_separates_auto_translation_hints_from_toolbox_hints(self) -> None:
         page = (ROOT / "web" / "launcher" / "index.html").read_text(encoding="utf-8")
-        launcher_script = (ROOT / "web" / "launcher" / "launcher.js").read_text(encoding="utf-8")
+        launcher_script = launcher_sources_text(ROOT)
         postprocess_script = (ROOT / "web" / "launcher" / "postprocess.js").read_text(encoding="utf-8")
 
         self.assertIn('data-i18n="settings_tab_llm">AI 模型</button>', page)
@@ -5778,7 +5779,7 @@ class LauncherAssetContractTests(CompactContainerAssertions, unittest.TestCase):
     def test_launcher_keeps_settings_actions_visible_and_isolates_toolbox_wheel(self) -> None:
         page = (ROOT / "web" / "launcher" / "index.html").read_text(encoding="utf-8")
         script = (ROOT / "web" / "launcher" / "postprocess.js").read_text(encoding="utf-8")
-        launcher_script = (ROOT / "web" / "launcher" / "launcher.js").read_text(encoding="utf-8")
+        launcher_script = launcher_sources_text(ROOT)
         stylesheet = (ROOT / "web" / "launcher" / "launcher.css").read_text(encoding="utf-8")
 
         self.assertIn('<div class="settings-scroll">', page)
@@ -5795,7 +5796,7 @@ class LauncherAssetContractTests(CompactContainerAssertions, unittest.TestCase):
 
     def test_launcher_settings_use_tabs_and_preserve_deep_links(self) -> None:
         page = (ROOT / "web" / "launcher" / "index.html").read_text(encoding="utf-8")
-        script = (ROOT / "web" / "launcher" / "launcher.js").read_text(encoding="utf-8")
+        script = launcher_sources_text(ROOT)
         stylesheet = (ROOT / "web" / "launcher" / "launcher.css").read_text(encoding="utf-8")
 
         self.assertIn('id="settingsTabList" class="settings-tabs" role="tablist"', page)
