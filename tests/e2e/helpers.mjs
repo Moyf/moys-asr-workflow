@@ -39,7 +39,9 @@ function buildE2EProcessEnv(extra = {}) {
 const activeServerPids = new Set();
 let cleanupInProgress = false;
 
-function terminateProcessTreeSync(pid) {
+// Windows 上 venv python 只是转发器：杀父进程会留下重新父化的真实
+// python.exe。必须 taskkill /T 连子树一起终止， SIGTERM/SIGKILL 做不到。
+export function terminateProcessTreeSync(pid) {
   if (!Number.isInteger(pid) || pid <= 0) return;
 
   try {

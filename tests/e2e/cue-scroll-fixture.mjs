@@ -3,10 +3,12 @@
 import { spawn } from 'node:child_process';
 import { mkdirSync, mkdtempSync, writeFileSync, createWriteStream } from 'node:fs';
 import { resolve, join } from 'node:path';
-import { generateWav, generateWaveformPayload, findFreePort } from './helpers.mjs';
+import { generateWav, generateWaveformPayload, findFreePort, terminateProcessTreeSync } from './helpers.mjs';
 
 const activeChildren = new Set();
-process.on('exit', () => { for (const child of activeChildren) child.kill('SIGTERM'); });
+// Windows 上 SIGTERM 只能杀 venv launcher，真实 serve.py 孙进程会重新父化
+// 存活并泄漏（占住端口与管道）。退出与回收一律走进程树终止。
+process.on('exit', () => { for (const child of activeChildren) terminateProcessTreeSync(child.pid); });
 
 export function syntheticScrollProject(count = 107, mode = 'main', paired = false) {
   const samples = ['短字幕', '这是一条会在字幕列表里自动换行的真实长度字幕',
@@ -69,9 +71,9 @@ export async function startScrollFixture({ count = 107, mode = 'main', paired = 
   child.stdout.pipe(log, { end: false }); child.stderr.pipe(log, { end: false });
   const stop = async () => {
     if (Number.isInteger(child.pid) && child.exitCode === null && child.signalCode === null) {
-      child.kill('SIGTERM');
+      terminateProcessTreeSync(child.pid);
       await new Promise(resolveStop => {
-        const timer = setTimeout(() => { child.kill('SIGKILL'); resolveStop(); }, 5000);
+        const timer = setTimeout(() => terminateProcessTreeSync(child.pid), 5000);
         child.once('exit', () => { clearTimeout(timer); resolveStop(); });
       });
     }

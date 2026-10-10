@@ -8,7 +8,7 @@
 - 常见触发：`npx playwright test` 全量跑、`Start-Process` 后台启动长任务。
 - e2e 反复中断后重跑，可能出现端口被占、测试变慢或假失败。
 
-## 根因（本仓库实测两类）
+## 根因（本仓库实测三类）
 
 ### 1. e2e 残留的 serve.py 进程（主因）
 
@@ -22,12 +22,28 @@ afterAll 不会执行**，serve.py 以父子两个 python 进程的形式残留�
 - 残留进程持有 stdout 管道与端口：shell 工具等待管道关闭 → 命令「永不结束」；
   端口被占则后续 e2e 行为异常。
 
-### 2. `Start-Process -NoNewWindow` 占住控制台（显示层假象）
+### 2. Windows 上 SIGTERM 杀不掉 serve.py 的真实进程（已修复）
+
+本地 e2e 经 `uv run python` 启动 serve.py，进程链是
+`uv.exe → .venv\Scripts\python.exe（转发器）→ uv cpython\python.exe（真身）`。
+Node 的 `child.kill('SIGTERM')` 在 Windows 上只终止直接子进程（转发器），
+真身被**重新父化**后继续存活——cue-scroll fixture 旧实现每个用例泄漏一组，
+正常结束也无法幸免。2026-10-08 已修复：fixture 的 `stop()` 与 exit 钩子改用
+`taskkill /F /T /PID` 进程树终止（`helpers.mjs` 的
+`terminateProcessTreeSync`，已导出复用）。验证：单个 fixture 启停后残留 0。
+遗留边界：若整个测试进程被 `taskkill`（不带 /T）或断电级强杀，任何钩子都
+不会执行，残留仍会发生——只能事后清理。
+
+### 3. `Start-Process -NoNewWindow` 占住控制台（显示层假象）
 
 用 `Start-Process -NoNewWindow` 把长任务挂后台时，子进程继承当前控制台，
 shell 工具的终端在子进程退出前持续显示「运行中」。任务本身秒回、结果正常，
 纯属显示层占位。**后台化一律用 `-WindowStyle Hidden`**（新进程组，不占当前
 控制台），不要用 `-NoNewWindow`。
+
+补充：即使命令的 timeout 到点触发，被终止的也只是 shell 与主进程——上面
+两类残留后代仍占着终端/管道，表现为「限时不管用」。所以关键是**不让残留
+发生**（根因 1/2）与**后台化规范**（根因 3），而不是依赖超时兜底。
 
 ## 诊断
 
@@ -64,8 +80,8 @@ node.exe / chrome.exe / python.exe——会误杀 agent 守护进程、其他 wo
    输出重定向到文件，事后查文件而不是等管道。
 5. UI/浏览器验证是可选项：逻辑验证优先单测与语法检查；浏览器验证反复卡住时
    降级为「交付人工验收」，不要阻塞整个流程。
-6. 治本方向（待办）：修复 cue-scroll 共享 fixture 的 server 生命周期，使
-   afterAll / 进程退出时可靠回收 serve.py。
+6. 治本修复（2026-10-08 已落地）：cue-scroll fixture 与 helpers 的进程回收
+   统一改用 `taskkill /F /T` 进程树终止，正常跑完不再泄漏 serve.py。
 
 ## 事件记录
 
@@ -73,3 +89,8 @@ node.exe / chrome.exe / python.exe——会误杀 agent 守护进程、其他 wo
   一条后台命令在 UI 上显示运行 10 小时+；按上述流程清理后重跑正常。同日第二
   次全量（正常跑完 486/486，6.5 分钟）后再次残留 12 个进程，确认「正常结束
   也会泄漏」，清理命令有效。
+- 2026-10-08，根因 #2 定位与修复：cue-scroll fixture 的 `SIGTERM` 只杀
+  uv→venv 转发器、serve.py 真身重新父化存活；改为 `taskkill /F /T` 树杀后
+  单 fixture 启停残留归零。同日另发现「改了 web/ 源码但页面无变化」——根因
+  是编辑器页面加载 esbuild 产物 `editor-bundle.js`，需先
+  `node scripts/build-editor.mjs --write`（已写入 AGENTS.md）。
