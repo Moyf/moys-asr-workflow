@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from tests.compact_assertions import CompactContainerAssertions
+
 import json
 import tempfile
 import unittest
@@ -19,7 +21,7 @@ from maw.project_io import (
 )
 
 
-class ProjectIoTests(unittest.TestCase):
+class ProjectIoTests(CompactContainerAssertions, unittest.TestCase):
     def test_write_mosp_enriches_project_once_and_writes_utf8_lf(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
             root = Path(temp_dir)
@@ -187,7 +189,7 @@ class ProjectIoTests(unittest.TestCase):
         probe.assert_not_called()
 
 
-class InlineCacheStripTests(unittest.TestCase):
+class InlineCacheStripTests(CompactContainerAssertions, unittest.TestCase):
     """工程去内联：各层波形缓存（含响度统计）只活在运行态，落盘边界统一剥离。"""
 
     def test_serialize_mosp_strips_inline_caches_and_keeps_input_intact(self) -> None:

@@ -7,6 +7,8 @@
 
 from __future__ import annotations
 
+from tests.compact_assertions import CompactContainerAssertions
+
 import base64
 import contextlib
 import os
@@ -243,7 +245,7 @@ class MopeaksLow32ProvenanceTests(unittest.TestCase):
             self.assertEqual(mopeaks.load_mopeaks(self.media_path)["source"]["size"], self.HUGE)
 
 
-class MopeaksFingerprintPolicyTests(unittest.TestCase):
+class MopeaksFingerprintPolicyTests(CompactContainerAssertions, unittest.TestCase):
     """回退档与内核缓存必须对"媒体变没变"给出同一个答案。"""
 
     def setUp(self) -> None:
