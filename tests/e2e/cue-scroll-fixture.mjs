@@ -1,6 +1,7 @@
 // Synthetic-only fixture shared by source and frozen-app acceptance. Never uses
 // the installed app, existing project files, user settings, or a real .env.
 import { spawnServerProcess, stopServerProcess, serverHasExited, serverRequest } from './server-process.mjs';
+import { createOutputTail } from './output-tail.mjs';
 import { mkdirSync, mkdtempSync, writeFileSync, createWriteStream } from 'node:fs';
 import { resolve, join } from 'node:path';
 import { generateWav, generateWaveformPayload, findFreePort } from './helpers.mjs';
@@ -59,6 +60,9 @@ export async function startScrollFixture({ count = 107, mode = 'main', paired = 
     LOCALAPPDATA: settings, XDG_CONFIG_HOME: settings, XDG_DATA_HOME: settings,
     PYINSTALLER_RESET_ENVIRONMENT: '1',
   }, stdio: ['ignore', 'pipe', 'pipe'] });
+  const output = createOutputTail();
+  child.stdout.on('data', chunk => output.append(chunk));
+  child.stderr.on('data', chunk => output.append(chunk, 'stderr'));
   let launchError = null;
   child.once('error', error => { launchError = error; });
   writeFileSync(join(directory, 'runtime.json'), JSON.stringify({ command, args, port, pid: child.pid }));
@@ -79,13 +83,13 @@ export async function startScrollFixture({ count = 107, mode = 'main', paired = 
     const deadline = Date.now() + 45000;
     while (Date.now() < deadline) {
       if (launchError) throw launchError;
-      if (serverHasExited(child)) throw new Error(`Synthetic server exited: ${child.exitCode ?? child.signalCode}`);
+      if (serverHasExited(child)) throw new Error(`Synthetic server exited: ${child.exitCode ?? child.signalCode}. Output tail: ${output.text()}`);
       const status = await serverRequest(`${url}api/startup-status`, { json: true })
         .then(r => r.ok ? r.body : null).catch(() => null);
       if (status?.status === 'error') throw new Error(JSON.stringify(status));
       if (status?.status === 'ready') return { url, directory, stop, project, projectPath, pid: child.pid };
       await new Promise(r => setTimeout(r, 100));
     }
-    throw new Error('Synthetic server did not become ready');
+    throw new Error(`Synthetic server did not become ready. Output tail: ${output.text()}`);
   } catch (error) { await stop(); throw error; }
 }
