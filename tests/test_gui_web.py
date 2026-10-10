@@ -660,6 +660,36 @@ class GuiWebBridgeTests(unittest.TestCase):
             )
         self.assertEqual(context.exception.code, "openai_diarize_openrouter_unsupported")
 
+    def test_deepseek_provider_is_rejected_before_transcription(self) -> None:
+        """Given the DeepSeek placeholder provider, When starting transcription, Then preflight rejects it."""
+        media = self.root / "clip.wav"
+        media.write_bytes(b"audio")
+
+        with self.assertRaises(PreflightError) as context:
+            _request_from_payload({
+                "providerId": "deepseek",
+                "modelId": "deepseek-not-an-asr",
+                "mediaPath": str(media),
+                "srtPath": str(self.root / "clip.srt"),
+            }, self.env_path)
+        self.assertEqual(context.exception.code, "deepseek_transcribe_unsupported")
+
+    def test_custom_openai_base_url_pointing_at_deepseek_is_rejected(self) -> None:
+        """Given a custom OpenAI base URL on DeepSeek, When starting transcription, Then preflight rejects it."""
+        media = self.root / "clip.wav"
+        media.write_bytes(b"audio")
+
+        with self.assertRaises(PreflightError) as context:
+            _request_from_payload({
+                "providerId": "openai",
+                "modelId": "whisper-1",
+                "mediaPath": str(media),
+                "srtPath": str(self.root / "clip.srt"),
+                "apiKey": "sk-deepseek",
+                "openaiBaseUrl": "https://api.deepseek.com/v1",
+            }, self.env_path)
+        self.assertEqual(context.exception.code, "deepseek_transcribe_unsupported")
+
     def test_openrouter_prefixes_builtin_openai_model_but_preserves_custom_model(self) -> None:
         media = self.root / "clip.wav"
         media.write_bytes(b"audio")

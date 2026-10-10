@@ -334,7 +334,27 @@ class GuiConfigTests(unittest.TestCase):
         divider_index = next(index for index, item in enumerate(visible) if item.divider_before)
 
         self.assertEqual([item.id for item in visible[:divider_index]], ["qwen", "openai", "local"])
-        self.assertEqual([item.id for item in visible[divider_index:]], ["doubao", "soniox", "bcut"])
+        self.assertEqual([item.id for item in visible[divider_index:]], ["doubao", "soniox", "bcut", "deepseek"])
+
+    def test_provider_registry_contains_deepseek_easter_egg_placeholder(self) -> None:
+        """Given the provider registry, When DeepSeek is inspected, Then it is a non-transcribable placeholder."""
+        provider = gui_config.provider_by_id("deepseek")
+
+        self.assertEqual(provider.label, "DeepSeek（？）")
+        self.assertTrue(provider.divider_before)
+        self.assertFalse(provider.requires_api_key)
+        self.assertFalse(provider.supports_language)
+        self.assertIn("文本模型", provider.note)
+        self.assertIn("字幕处理", provider.note)
+
+    def test_is_deepseek_base_url_matches_official_hosts(self) -> None:
+        """Given custom OpenAI-compatible base URLs, When checked, Then only DeepSeek hosts are flagged."""
+        self.assertTrue(gui_config.is_deepseek_base_url("https://api.deepseek.com"))
+        self.assertTrue(gui_config.is_deepseek_base_url("https://api.deepseek.com/v1"))
+        self.assertTrue(gui_config.is_deepseek_base_url("api.deepseek.com"))
+        self.assertFalse(gui_config.is_deepseek_base_url("https://api.openai.com/v1"))
+        self.assertFalse(gui_config.is_deepseek_base_url(""))
+        self.assertFalse(gui_config.is_deepseek_base_url("https://deepseek.com.example.com/v1"))
 
     def test_provider_registry_contains_custom_openai_compatible_asr(self) -> None:
         provider = gui_config.provider_by_id("openai")

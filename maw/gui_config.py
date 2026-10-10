@@ -116,6 +116,18 @@ def is_openrouter_base_url(base_url: str) -> bool:
     return hostname in {"openrouter.ai", "www.openrouter.ai"}
 
 
+def is_deepseek_base_url(base_url: str) -> bool:
+    value = str(base_url or "").strip()
+    if not value:
+        return False
+    try:
+        parsed = urlparse(value if "://" in value else f"https://{value}")
+        hostname = (parsed.hostname or "").casefold().rstrip(".")
+    except ValueError:
+        return False
+    return hostname in {"api.deepseek.com", "www.deepseek.com", "deepseek.com"}
+
+
 def openai_model_for_base_url(base_url: str, model_id: str) -> str:
     model = str(model_id or "").strip()
     if is_openrouter_base_url(base_url) and model in OPENAI_ASR_PRESET_MODEL_IDS:
@@ -644,6 +656,16 @@ BCUT_MODELS: Final[tuple[ModelConfig, ...]] = (
     ),
 )
 
+# DeepSeek 彩蛋占位模型：仅供 UI 展示；后端会直接拦截，不发起任何转写请求。
+DEEPSEEK_PLACEHOLDER_MODELS: Final[tuple[ModelConfig, ...]] = (
+    ModelConfig(
+        id="deepseek-not-an-asr",
+        label="DeepSeek 不是转写模型",
+        env_key="",
+        languages=(),
+    ),
+)
+
 PROVIDERS: Final[tuple[ProviderConfig, ...]] = (
     ProviderConfig(
         id="qwen",
@@ -730,6 +752,22 @@ PROVIDERS: Final[tuple[ProviderConfig, ...]] = (
             "非官方免费接口：无需 API Key，仅支持中文，单文件上限 2 小时；"
             "接口可能随时变更、失效或触发限流，请勿高频调用。"
             "重要或批量任务建议使用上方正式供应商。"
+        ),
+    ),
+    # 彩蛋占位：DeepSeek 是文本模型，没有语音转写 API；仅提示用户去后处理翻译使用。
+    ProviderConfig(
+        id="deepseek",
+        label="DeepSeek（？）",
+        key_url="https://platform.deepseek.com/api_keys",
+        models=DEEPSEEK_PLACEHOLDER_MODELS,
+        regions=(),
+        languages=(),
+        requires_api_key=False,
+        supports_language=False,
+        divider_before=True,
+        note=(
+            "🐳 蓝色大肥鱼不支持语音转写，它是个文本模型！\n"
+            "不过你可以在「字幕处理」中使用它来翻译啥的。"
         ),
     ),
 )

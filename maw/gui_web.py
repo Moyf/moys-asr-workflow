@@ -53,6 +53,7 @@ from maw.gui_config import (
     _gui_theme,
     api_key_for_provider,
     effective_config,
+    is_deepseek_base_url,
     is_openrouter_base_url,
     load_env,
     masked_secret,
@@ -3880,6 +3881,12 @@ def _request_from_payload(payload: Mapping[str, object], env_path: Path) -> Tran
     if test_run:
         srt = with_test_suffix(srt)
     provider = provider_by_id(str(payload.get("providerId") or "qwen"))
+    if provider.id == "deepseek":
+        raise PreflightError(
+            "provider",
+            "deepseek_transcribe_unsupported",
+            "🐳 DeepSeek 不支持语音转写，它是个文本模型！请在「字幕处理」中使用它来翻译。",
+        )
     requested_model = str(payload.get("modelId") or "")
     model = next(
         (item for item in provider.models if requested_model in (item.id, item.label)),
@@ -3906,6 +3913,12 @@ def _request_from_payload(payload: Mapping[str, object], env_path: Path) -> Tran
             raise PreflightError("openaiModel", "custom_asr_model_missing", "请填写自定义 ASR 模型名。")
         if not custom_base_url:
             raise PreflightError("openaiBaseUrl", "custom_asr_base_url_missing", "请填写自定义 ASR Base URL。")
+        if is_deepseek_base_url(custom_base_url):
+            raise PreflightError(
+                "openaiBaseUrl",
+                "deepseek_transcribe_unsupported",
+                "🐳 DeepSeek 不支持语音转写，它是个文本模型！请在「字幕处理」中使用它来翻译。",
+            )
     openai_prompt = ""
     openai_keywords: tuple[str, ...] = ()
     openai_diarize = False
