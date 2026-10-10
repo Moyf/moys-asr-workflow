@@ -24,6 +24,7 @@
   let bubble = null;
   let arrow = null;
   let target = null;
+  let pendingTarget = null;
   let showTimer = 0;
   let hideTimer = 0;
   let detached = null; // { element, title } 悬停期间摘下的 title
@@ -42,16 +43,22 @@
     root.appendChild(bubble);
     root.appendChild(arrow);
     document.body.appendChild(root);
-    titleWatcher = new MutationObserver((records) => {
-      if (!detached) return;
-      records.forEach((record) => {
-        if (record.target !== detached.element) return;
-        if (!record.target.hasAttribute('title')) return; // 自己的摘除动作
-        // 摘下期间被外部改写：吸收新值，继续保持抑制。
-        detached.title = record.target.getAttribute('title') || '';
-        record.target.removeAttribute('title');
-      });
-    });
+    titleWatcher = new MutationObserver(absorbTitleChanges);
+  }
+
+  function absorbTitleChanges(records, refresh = true) {
+    if (!detached || !records.some(record => record.target === detached.element)) return;
+    const element = detached.element;
+    detached.title = element.getAttribute('title') || '';
+    // Do not observe our own removal; an external set/remove sequence may
+    // intentionally clear the title, and must not restore the previous text.
+    titleWatcher.disconnect();
+    element.removeAttribute('title');
+    titleWatcher.observe(element, { attributes: true, attributeFilter: ['title'] });
+    if (!refresh) return;
+    if (!detached.title) { hideNow(); return; }
+    bubble.textContent = detached.title;
+    placement();
   }
 
   const px = (value) => `${Math.round(value)}px`;
@@ -156,14 +163,20 @@
     global.clearTimeout(hideTimer);
     hideTimer = 0;
     if (detached) {
-      if (titleWatcher) titleWatcher.disconnect();
+      if (titleWatcher) {
+        absorbTitleChanges(titleWatcher.takeRecords(), false);
+        titleWatcher.disconnect();
+      }
       restoreTitle();
     }
     target = null;
-    if (root) root.classList.remove('show');
+    pendingTarget = null;
+    if (root) { root.classList.remove('show'); root.setAttribute('aria-hidden', 'true'); }
   }
 
   function show(element) {
+    pendingTarget = null;
+    if (!element.isConnected) return;
     const text = currentTitleText(element);
     target = null;
     if (!text) return;
@@ -175,11 +188,13 @@
     bubble.textContent = text;
     placement();
     root.classList.add('show');
+    root.setAttribute('aria-hidden', 'false');
   }
 
   function hoverElement(event) {
     if (event.pointerType === 'touch') return null;
-    const element = event.target.closest ? event.target.closest(ATTACH_SELECTOR) : null;
+    const element = (event.target.closest ? event.target.closest(ATTACH_SELECTOR) : null)
+      || (target?.contains(event.target) ? target : null);
     if (!element || element.matches(FORCE_NATIVE_SELECTOR)) return null;
     // SVG 内部的 title 走浏览器原生提示，不抢。
     if (element.namespaceURI && element.namespaceURI.includes('svg')) return null;
@@ -193,9 +208,9 @@
       global.clearTimeout(hideTimer);
       hideTimer = 0;
     }
-    if (element === target) return; // 在同一目标的子元素间移动
+    if (element === target || element === pendingTarget) return;
     hideNow();
-    if (showTimer) return;
+    pendingTarget = element;
     showTimer = global.setTimeout(() => {
       showTimer = 0;
       show(element);
@@ -204,6 +219,9 @@
 
   function onPointerOut(event) {
     if (event.pointerType === 'touch') return;
+    const current = target || pendingTarget;
+    if (!current || (event.relatedTarget && current.contains(event.relatedTarget))) return;
+    if (pendingTarget) { hideNow(); return; }
     if (!target || hideTimer) return;
     hideTimer = global.setTimeout(() => {
       hideTimer = 0;
@@ -216,6 +234,7 @@
     document.documentElement.dataset.maweTooltipReady = 'true';
     document.addEventListener('pointerover', onPointerOver, true);
     document.addEventListener('pointerout', onPointerOut, true);
+    document.addEventListener('keydown', event => { if (event.key === 'Escape') hideNow(); }, true);
     // scroll 不冒泡：capture 才能覆盖内部滚动容器；位置失效立即收起。
     document.addEventListener('scroll', hideNow, true);
     global.addEventListener('resize', hideNow);
