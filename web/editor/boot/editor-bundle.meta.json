@@ -225,7 +225,7 @@
     "shared/utils/word-split.js": "28a8d6092bcaf156fe989cb7bb9eea9c4d550d9ca7e50d6787af48307a697ad3",
     "shared/utils/srt.js": "e46cac86f1685bbbb06bfea449f186104e23c805f5c1a47ee4ced5ba141b24c1",
     "shared/utils/lrc.js": "febdcceebbb5884cbb75a60cba261af53c92779bb6eb21cedb486563e3f39644",
-    "shared/utils/ass-style.js": "26bccaa899bf8303440e5e77b2cb3e9bd3a09ab90e69c2b8f080136a1ffba125",
+    "shared/utils/ass-style.js": "f45751ed245c74898829f94897371efa1814ec4da968117f7d4904f699c11b73",
     "shared/utils/ass-animation.js": "5d56e96d2eba1a022951df6925bbe66ca7de650155c9572af0ad69fb182f6791",
     "shared/utils/ass-canvas-layout.js": "22233e78b3126b5dff7a459042a7942e934e1bec18800597d5516d70e2fe301a",
     "shared/utils/ass-export.js": "c6b78a7643f4fb46147bda55fed08d332ba4b85828c2102c96da69a1315169c4",
@@ -266,7 +266,7 @@
     "editor/media/waveform.js": "6a093ad4f8a918b4faeb1f25183af9441a374e337dee2d3215f221009a9161bb",
     "editor/ui/editor-hint.js": "4096fa95f67eefbab13e7f697612cccf1190e784f805ee0110e6118982b86c96",
     "editor/media/editor-jkl.js": "a42a36671df1d63c33d71b7dbae88d7b720681bf1e8b31d7df15efa9c5a9dcae",
-    "editor/state/editor-settings.js": "8682e37329307c2864f278f820ccb22334a6dd4b0c2cebfc58736970b7f4bbc4",
+    "editor/state/editor-settings.js": "66d2e56ecea55cd64ca62b0d298ac805e97e88f399bfeb8057cea556cdba3d7f",
     "editor/state/editor-project-settings.js": "438a6675b01f06bad1ef82d2134a2db9a532643740de984adee40741eab70aaa",
     "editor/state/editor-multi-subtitle-core.js": "1629c0de893cca1be2b7bf445fc4cdfac18ffdc80375261d6de52872e4e79b23",
     "editor/ui/editor-gap-remove-data.js": "de5f3aa77e4fd246cc839e55548c9354b86a470a9f05b2b399089b497d27dd29",
@@ -515,7 +515,7 @@
         "format": "esm"
       },
       "web/shared/utils/ass-style.js": {
-        "bytes": 32295,
+        "bytes": 32602,
         "imports": [],
         "format": "esm"
       },
@@ -1086,7 +1086,7 @@
             "bytesInOutput": 1650
           },
           "web/shared/utils/ass-style.js": {
-            "bytesInOutput": 15605
+            "bytesInOutput": 15710
           },
           "web/shared/utils/ass-animation.js": {
             "bytesInOutput": 2352
@@ -1194,7 +1194,7 @@
             "bytesInOutput": 1008577
           }
         },
-        "bytes": 1347751
+        "bytes": 1347856
       }
     }
   }
