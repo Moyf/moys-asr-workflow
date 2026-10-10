@@ -28,12 +28,9 @@ from maw.postprocess_llm import (
     MAX_RESPONSE_ATTEMPTS,
     LlmClientError,
     LlmSettings,
-    _record_json_constraint_support,
-    _rejection_means_drop_json_format,
     _request_completion,
     _response_content,
     _strip_json_fence,
-    json_constraint_supported,
 )
 from maw.postprocess_match import (
     _load_input,
@@ -131,35 +128,12 @@ def llm_complete(
 
     def complete(prompt: str, clips: list[dict[str, str]]) -> Mapping[str, object]:
         last_error = "响应不是有效的 JSON。"
-        # Endpoints with proven #1773-style failures must be called without
-        # response_format; the prompt carries the JSON contract either way.
-        use_json_format = json_constraint_supported(settings) is not False
         for attempt in range(MAX_RESPONSE_ATTEMPTS):
             current_prompt = (
                 prompt if not attempt else _retry_prompt(prompt, last_error)
             )
-            try:
-                body = _request_completion(
-                    settings,
-                    current_prompt,
-                    clips,
-                    on_delta=None,
-                    use_json_format=use_json_format,
-                )
-                content = _response_content(body)
-            except LlmClientError as error:
-                if use_json_format and _rejection_means_drop_json_format(error):
-                    _record_json_constraint_support(settings, False)
-                    use_json_format = False
-                    continue
-                raise
-            if not content.strip() and use_json_format:
-                _record_json_constraint_support(settings, False)
-                use_json_format = False
-                last_error = (
-                    "模型在 JSON 输出约束下返回了空内容（LM Studio #1773 类问题）"
-                )
-                continue
+            body = _request_completion(settings, current_prompt, clips, on_delta=None)
+            content = _response_content(body)
             try:
                 return json.loads(_strip_json_fence(content))
             except json.JSONDecodeError as error:

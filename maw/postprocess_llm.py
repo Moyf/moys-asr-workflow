@@ -65,10 +65,9 @@ REASONING_MODES: Final[frozenset[str]] = frozenset(
 )
 MAX_RESPONSE_ATTEMPTS: Final[int] = 2
 THINK_CLOSED_PATTERN: Final[re.Pattern[str]] = re.compile(
-    r"<think>.*?</think>", re.DOTALL
+    r"<think>.*?</think>", re.DOTALL | re.IGNORECASE
 )
 THINK_OPEN_TAG: Final[str] = "<think>"
-JSON_OBJECT_PATTERN: Final[re.Pattern[str]] = re.compile(r"\{.*\}", re.DOTALL)
 MAX_PROVIDER_DIAGNOSTIC_CHARS: Final[int] = 240
 _REASONING_ALIASES: Final[dict[str, str]] = {
     "default": DEFAULT_REASONING_MODE,
@@ -86,12 +85,11 @@ _REASONING_ALIASES: Final[dict[str, str]] = {
 # response_format. Session-scoped on purpose: a restarted local server may
 # have a different model loaded, so the next launch re-probes instead of
 # trusting a stale verdict.
-_json_constraint_support: Final[dict[str, bool]] = {}
+_json_constraint_support: Final[dict[tuple[str, str], bool]] = {}
 
 
-def _constraint_cache_key(settings: LlmSettings) -> str:
-    parsed = urlparse(settings.base_url.strip())
-    return f"{parsed.scheme}://{parsed.netloc}"
+def _constraint_cache_key(settings: LlmSettings) -> tuple[str, str]:
+    return (_chat_endpoint(settings.base_url), settings.model)
 
 
 def json_constraint_supported(settings: LlmSettings) -> bool | None:
@@ -105,17 +103,13 @@ def _record_json_constraint_support(settings: LlmSettings, supported: bool) -> N
 
 def _rejection_means_drop_json_format(error: LlmClientError) -> bool:
     """True when a provider rejection means "drop response_format and retry"."""
-    if error.status_code is not None and error.status_code not in (400, 404, 422):
+    if error.status_code not in (400, 422):
         return False
     text = f"{error.message} {error.diagnostic}".lower()
     markers = (
         "response_format",
         "json_object",
         "json_schema",
-        "invalid type",
-        "unsupported",
-        "not supported",
-        "does not support",
     )
     return any(marker in text for marker in markers)
 
@@ -176,9 +170,6 @@ def complete_subtitle_groups(
     """
     _chat_endpoint(settings.base_url)
     last_error = "LLM response did not pass the local JSON protocol."
-    # Unknown or known-bad endpoints skip response_format from the start; a
-    # first-ever HTTP 400 about it downgrades mid-call and retries.
-    use_json_format = json_constraint_supported(settings) is not False
     for attempt in range(MAX_RESPONSE_ATTEMPTS):
         if attempt:
             if on_delta is not None:
@@ -188,38 +179,8 @@ def complete_subtitle_groups(
             prompt = _retry_prompt(system_prompt, last_error)
         else:
             prompt = system_prompt
-        try:
-            body = _request_completion(
-                settings,
-                prompt,
-                cues,
-                on_delta=on_delta,
-                use_json_format=use_json_format,
-            )
-        except LlmClientError as error:
-            if use_json_format and _rejection_means_drop_json_format(error):
-                # LM Studio / llama.cpp variants that reject the parameter
-                # outright. Retry immediately without it, prompt-only.
-                _record_json_constraint_support(settings, False)
-                use_json_format = False
-                continue
-            raise
+        body = _request_completion(settings, prompt, cues, on_delta=on_delta)
         content = _response_content(body)
-        if not content.strip() and use_json_format:
-            # lmstudio-bug-tracker #1773: the JSON constraint gets applied to
-            # the reasoning stream of thinking models, generation stops at the
-            # first matching token and content comes back empty. Drop the
-            # constraint and retry once; if even the prompt-only attempt
-            # yields nothing, fail with an actionable message instead of a
-            # bare JSONDecodeError at char 0.
-            _record_json_constraint_support(settings, False)
-            use_json_format = False
-            last_error = "模型在 JSON 输出约束下返回了空内容（LM Studio #1773 类问题）"
-            if attempt + 1 < MAX_RESPONSE_ATTEMPTS:
-                if on_delta is not None:
-                    on_delta("reset", "")
-                prompt = _retry_prompt(system_prompt, last_error)
-                continue
         try:
             parsed = json.loads(_strip_json_fence(content))
         except json.JSONDecodeError as error:
@@ -248,13 +209,56 @@ def complete_subtitle_groups(
             raise LlmClientError(
                 f"LLM response violates the JSON protocol after retry: {protocol_error}"
             )
-        if use_json_format:
-            _record_json_constraint_support(settings, True)
         return parsed
     raise AssertionError("LLM response retry loop did not return or raise")
 
 
 def _request_completion(
+    settings: LlmSettings,
+    system_prompt: str,
+    cues: list[dict[str, JsonValue]],
+    *,
+    on_delta: LlmDelta | None,
+    use_json_format: bool | None = None,
+) -> dict[str, JsonValue]:
+    """One bounded transport downgrade, independent of JSON protocol retries."""
+    constrained = (
+        json_constraint_supported(settings) is not False
+        if use_json_format is None
+        else use_json_format
+    )
+    try:
+        body = _request_completion_once(
+            settings,
+            system_prompt,
+            cues,
+            on_delta=on_delta,
+            use_json_format=constrained,
+        )
+    except LlmClientError as error:
+        if not constrained or not _rejection_means_drop_json_format(error):
+            raise
+    else:
+        if _response_content(body).strip() or not constrained:
+            if constrained:
+                _record_json_constraint_support(settings, True)
+            return body
+    _record_json_constraint_support(settings, False)
+    if on_delta is not None:
+        on_delta("reset", "")
+    body = _request_completion_once(
+        settings, system_prompt, cues, on_delta=on_delta, use_json_format=False
+    )
+    if not _response_content(body).strip():
+        raise LlmClientError(
+            "模型在无约束重试后仍返回空内容，无法解析 JSON。可能与推理模型和 JSON 约束冲突有关"
+            "（LM Studio #1773）；请检查服务端日志，或尝试关闭思考、更换模型。",
+            category="protocol",
+        )
+    return body
+
+
+def _request_completion_once(
     settings: LlmSettings,
     system_prompt: str,
     cues: list[dict[str, JsonValue]],
@@ -820,20 +824,22 @@ def _strip_json_fence(content: str) -> str:
     # (and LM Studio's #1773 constraint failure) leak the raw think block into
     # content. Drop closed <think>...</think> spans first.
     value = THINK_CLOSED_PATTERN.sub("", value).strip()
-    if THINK_OPEN_TAG in value:
-        # Unclosed think block: output was truncated inside the reasoning
-        # span, so the payload lives after the tag. Strip the tag itself and
-        # keep the remainder - a later json.loads failure then points at the
-        # actual payload instead of the tag.
-        value = value.replace(THINK_OPEN_TAG, "", 1).strip()
+    if THINK_OPEN_TAG in value.lower():
+        # Truncated reasoning is not a final answer, even if it contains JSON.
+        value = value[: value.lower().index(THINK_OPEN_TAG)].strip()
     match = re.fullmatch(
         r"```(?:json)?\s*(.*?)\s*```", value, re.DOTALL | re.IGNORECASE
     )
     if match:
         value = match.group(1).strip()
-    if value.lstrip().startswith("{"):
-        return value
-    # Prose-wrapped replies: pull the largest {...} span. (Truncated payloads
-    # without a closing brace stay as-is so the JSON error shows the cause.)
-    match = JSON_OBJECT_PATTERN.search(value)
-    return match.group(0).strip() if match else value
+    # Decode one complete object, respecting braces inside JSON strings.
+    start = value.find("{")
+    if start >= 0:
+        try:
+            _, end = json.JSONDecoder().raw_decode(value[start:])
+        except json.JSONDecodeError:
+            return value
+        tail = value[start + end :].strip()
+        if not tail.startswith(("{", "[")):
+            return value[start : start + end]
+    return value

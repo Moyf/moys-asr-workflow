@@ -15,6 +15,7 @@ from maw.postprocess_llm import (
     LlmClientError,
     LlmSettings,
     _json_constraint_support,
+    _record_json_constraint_support,
     _strip_json_fence,
     complete_subtitle_groups,
     json_constraint_supported,
@@ -60,9 +61,19 @@ class StripJsonFenceTests(unittest.TestCase):
         content = '<think>先想一下 {"bad": true}</think>\n{"groups":[{"id":"c1"}]}'
         self.assertEqual(_strip_json_fence(content), '{"groups":[{"id":"c1"}]}')
 
-    def test_unclosed_think_block_keeps_payload_after_tag(self) -> None:
-        content = '<think>开始输出 {"groups": [{"id": "c1"'
-        self.assertEqual(_strip_json_fence(content), '开始输出 {"groups": [{"id": "c1"')
+    def test_unclosed_think_block_is_not_a_final_answer(self) -> None:
+        self.assertEqual(_strip_json_fence('<think>示例 {"groups": []}'), "")
+        self.assertEqual(_strip_json_fence('<THINK>{"groups": []}'), "")
+
+    def test_trailing_prose_and_braces_in_strings(self) -> None:
+        content = '{"text":"brace } stays in string"} 完成。'
+        self.assertEqual(
+            _strip_json_fence(content), '{"text":"brace } stays in string"}'
+        )
+
+    def test_multiple_objects_are_not_silently_accepted(self) -> None:
+        content = '{"groups": []} {"groups": [{"id":"unexpected"}]}'
+        self.assertEqual(_strip_json_fence(content), content)
 
     def test_think_block_with_fence(self) -> None:
         content = '<think>x</think>\n```json\n{"groups":[]}\n```'
@@ -152,7 +163,7 @@ class JsonConstraintDowngradeTests(unittest.TestCase):
 
     def test_known_bad_endpoint_skips_response_format_upfront(self) -> None:
         settings = _make_settings()
-        _json_constraint_support["http://127.0.0.1:1234"] = False
+        _record_json_constraint_support(settings, False)
         payloads: list[dict] = []
 
         def post_effect(url, json: dict | None = None, **_kwargs):
@@ -169,6 +180,60 @@ class JsonConstraintDowngradeTests(unittest.TestCase):
             )
         self.assertEqual(len(payloads), 1, f"期望单次请求，实际 {len(payloads)}")
         self.assertNotIn("response_format", payloads[0])
+
+    def test_downgrade_after_invalid_json_preserves_protocol_retry(self) -> None:
+        settings = _make_settings()
+        responses = [
+            _response_mock(_completion_body("invalid")),
+            _rejection_response_mock(),
+            _response_mock(_completion_body(_NEEDLE_PROTOCOL)),
+        ]
+        session = _mock_session(responses)
+        with mock.patch("maw.postprocess_llm.requests.Session", return_value=session):
+            result = complete_subtitle_groups(settings, "Return JSON.", [])
+        self.assertEqual(result["protocol"], "maw-subtitle-translations-v1")
+        self.assertEqual(session.post.call_count, 3)
+        self.assertNotIn("response_format", session.post.call_args.kwargs["json"])
+
+    def test_cleanup_shares_bounded_downgrade(self) -> None:
+        from maw.postprocess_ai_cleanup import llm_complete
+
+        session = _mock_session(
+            [
+                _response_mock(_completion_body("invalid")),
+                _rejection_response_mock(),
+                _response_mock(_completion_body('{"decisions":[]}')),
+            ]
+        )
+        with mock.patch("maw.postprocess_llm.requests.Session", return_value=session):
+            result = llm_complete(_make_settings())("Return JSON.", [])
+        self.assertEqual(result, {"decisions": []})
+        self.assertEqual(session.post.call_count, 3)
+
+    def test_unrelated_400_does_not_retry_or_poison_cache(self) -> None:
+        response = _rejection_response_mock()
+        response.json.return_value = {"error": {"message": "unsupported model"}}
+        session = _mock_session([response])
+        settings = _make_settings()
+        with mock.patch("maw.postprocess_llm.requests.Session", return_value=session):
+            with self.assertRaises(LlmClientError):
+                complete_subtitle_groups(settings, "Return JSON.", [])
+        self.assertEqual(session.post.call_count, 1)
+        self.assertIsNone(json_constraint_supported(settings))
+
+    def test_cache_isolated_by_model_and_endpoint_path(self) -> None:
+        from dataclasses import replace
+
+        settings = _make_settings()
+        _record_json_constraint_support(settings, False)
+        self.assertIsNone(
+            json_constraint_supported(replace(settings, model="another-model"))
+        )
+        self.assertIsNone(
+            json_constraint_supported(
+                replace(settings, base_url="http://127.0.0.1:1234/other/v1")
+            )
+        )
 
     def test_think_polluted_content_is_parsed(self) -> None:
         settings = _make_settings()
