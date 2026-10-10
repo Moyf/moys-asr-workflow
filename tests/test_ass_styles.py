@@ -53,7 +53,7 @@ class AssStyleLibraryTests(unittest.TestCase):
         self.assertEqual((main["emphasisColor"], main["emphasisScale"], main["backColor"], main["backOpacity"]),
                          ("#ffaa00", 1.3, "#ff8647", 60))
         self.assertEqual((extension["fontSize"], extension["outline"], extension["marginV"], extension["primaryColor"]),
-                         (64, 2, 36, "#ffd34d"))
+                         (64, 2, 36, "#eac953"))
         self.assertEqual(library["assProfiles"][0]["animations"]["fad"],
                          {"enabled": True, "inMs": 250, "outMs": 250})
         main.update(fontName="Arial", fontSize=72, emphasisScale=1.1, backColor="#000000",
@@ -105,7 +105,7 @@ class AssStyleLibraryTests(unittest.TestCase):
             "ass-extension",
         )
         default_extension = find_ass_style(fallback, "ass-extension")
-        self.assertEqual(default_extension["primaryColor"], "#ffd34d")
+        self.assertEqual(default_extension["primaryColor"], "#eac953")
         self.assertEqual(default_extension["fontSize"], 64)
         self.assertEqual(default_extension["marginV"], 36)
 
