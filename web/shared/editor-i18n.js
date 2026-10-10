@@ -196,6 +196,15 @@
     '定位当前播放头并恢复字幕跟随；手动翻看后可再次点击': 'Locate the playhead and resume subtitle following; click again after browsing manually',
     '自动备份': 'Automatic backups',
     '打开备份文件夹': 'Open backup folder',
+    '复制备份目录路径': 'Copy backup folder path',
+    '工程文件操作': 'Project file actions', '媒体文件操作': 'Media file actions',
+    '打开所在文件夹': 'Open containing folder', '复制完整路径': 'Copy full path',
+    '定位上次导出': 'Locate last export',
+    '打开最近一次成功导出的文件夹': 'Open the folder of the most recent successful export',
+    '完整路径已复制': 'Full path copied', '已打开所在文件夹': 'Opened containing folder',
+    '已打开备份文件夹': 'Opened backup folder', '已打开导出文件所在文件夹': 'Opened export folder',
+    '自动备份间隔（分钟）': 'Backup interval (minutes)',
+    '最大保存版本数': 'Maximum versions',
     '备份间隔': 'Backup interval (minutes)',
     '保留版本数': 'Versions to keep',
     '开启后定时备份，手动保存也创建带时间戳的版本；超出上限清理最早版本。备份位于工程对应的 _maw/备份（英文界面为 backups）。': 'Create scheduled and manual-save snapshots; remove the oldest versions above the limit. Backups are stored in the project’s _maw/backups folder.',
@@ -204,6 +213,12 @@
     '新建工程': 'New project', '创建并保存一个空白工程': 'Create and save a blank project',
     '当前有未保存的改动，是否确定新建工程？将丢失未保存内容。': 'There are unsaved changes. Create a new project and discard them?',
     '打开工程': 'Open project',
+    '媒体文件已不可用：请重新定位媒体。': 'The media file is unavailable. Locate it again.',
+    '关联媒体路径现已可用；请使用“加载媒体”重新载入。': 'The linked media path is available again. Use “Load media” to reload it.',
+    '已保留当前编辑；自动保存已暂停。可通过“另存为”保留当前版本。': 'Current edits were kept; auto-save is paused. Use “Save as” to preserve this version.',
+    '未另存为；当前编辑仍保留，自动保存继续暂停。': 'Save As was not completed. Current edits are kept and auto-save remains paused.',
+    '已取消重新加载；当前编辑保留，自动保存继续暂停。': 'Reload was cancelled. Current edits are kept and auto-save remains paused.',
+    '工程文件已在外部改变，且保存仍在进行。自动保存已暂停，请稍后另存为或重新加载。': 'The project file changed outside the app while a save was in progress. Auto-save is paused; save as or reload when ready.',
     '最近工程': 'Recent projects', '自动打开上次工程': 'Automatically open last project',
     '服务器连接已断开': 'Server connection lost',
     '请在 Launcher 中确认服务器状态；当前无法自动保存工程，请使用右上角「导出工程」下载当前工程，避免进度丢失。': 'Check the server status in Launcher. Auto-saving is currently unavailable; use “Export project” in the upper-right corner to download the current project and avoid losing your progress.',
@@ -914,6 +929,7 @@
     '取消': 'Cancel', '替换全部': 'Replace all', '分配表情包': 'Assign sticker',
     '清除当前': 'Clear current', '替换': 'Replace', '删除': 'Delete', '关闭': 'Close',
     '设置表情包根目录': 'Set sticker root folder',
+    '选择文件夹…': 'Choose folder…',
     '将改动自动保存回当前工程文件': 'Automatically save changes back to the current project file',
     '所有表情包路径都基于此根目录。修改后页面所有缩略图会立刻按新路径加载。': 'All sticker paths are relative to this root. Thumbnails update immediately after it changes.',
     '当前根目录（绝对路径）': 'Current root folder (absolute path)',
@@ -1359,6 +1375,10 @@
     if (match) return `Inherits the sticker of subtitle ${match[1]}`;
     match = /^工程路径失效：(.+)$/.exec(text);
     if (match) return `Project path is no longer valid: ${match[1]}`;
+    match = /^媒体文件已不可用：(.+)。字幕仍可编辑；请重新定位媒体。$/.exec(text);
+    if (match) return `Media file is unavailable: ${match[1]}. Subtitles remain editable; locate the media again.`;
+    match = /^打开最近一次成功导出的文件夹：(.+)$/.exec(text);
+    if (match) return `Open the folder of the most recent successful export: ${match[1]}`;
     match = /^点击复制工程文件名：(.+)$/.exec(text);
     if (match) return `Click to copy the project file name: ${match[1]}`;
     match = /^点击复制媒体名：(.+)$/.exec(text);
@@ -1418,6 +1438,18 @@
     if (match) return `Go to subtitle ${match[1]}`;
     match = /^保存失败：(.+)$/.exec(text);
     if (match) return `Save failed: ${match[1]}`;
+    match = /^导出成功：(.+)$/.exec(text);
+    if (match) return `Export completed: ${match[1]}`;
+    match = /^导出失败：(.+)$/.exec(text);
+    if (match) return `Export failed: ${match[1]}`;
+    match = /^路径操作失败：(.+)$/.exec(text);
+    if (match) return `Path action failed: ${match[1]}`;
+    match = /^定位导出文件失败：(.+)$/.exec(text);
+    if (match) return `Could not locate the exported file: ${match[1]}`;
+    match = /^重新加载失败：(.+)$/.exec(text);
+    if (match) return `Could not reload the project: ${match[1]}`;
+    match = /^读取工程状态失败：(.+)$/.exec(text);
+    if (match) return `Could not read project status: ${match[1]}`;
     match = /^本地已保存，服务器同步失败：(.+)$/.exec(text);
     if (match) return `Saved locally; server sync failed: ${translateText(match[1], EN)}`;
     match = /^打开工程失败：(.+)$/.exec(text);

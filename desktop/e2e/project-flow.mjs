@@ -34,7 +34,7 @@ test('native project selection and dropped project keep paths, binding and recen
   const env = { ...process.env, MAW_APP_DATA_ROOT: settings, MAW_DESKTOP_SMOKE: '1' };
   delete env.ELECTRON_RUN_AS_NODE;
   const app = await electron.launch({
-    executablePath: process.env.MOSE_TEST_EXECUTABLE || createRequire(path.join(desktop, 'package.json'))('electron'),
+    executablePath: process.env.MOSE_TEST_EXECUTABLE || process.env.MOSE_TEST_ELECTRON_EXECUTABLE || createRequire(path.join(desktop, 'package.json'))('electron'),
     args: [...(process.env.MOSE_TEST_EXECUTABLE ? [] : [desktop]), `--user-data-dir=${path.join(root, 'profile')}`], env,
   });
   try {
@@ -47,11 +47,11 @@ test('native project selection and dropped project keep paths, binding and recen
       dialog.showOpenDialog = async () => ({ canceled: false, filePaths: [selected] });
     }, first);
     await page.locator('#open-project').click();
-    await page.waitForFunction((selected) => MaweBoot.SERVER_CONFIG.projectPath === selected, first.replaceAll('\\', '/'));
+    await page.waitForFunction((selected) => MaweBoot.SERVER_CONFIG.desktopProjectPath?.replaceAll('\\', '/') === selected, first.replaceAll('\\', '/'));
     assert.equal(await page.evaluate(() => MaweBoot.SERVER_CONFIG.canSave), true);
-    assert.equal(await page.evaluate(() => MaweBoot.SERVER_CONFIG.missingMedia), true);
+    assert.equal(await page.evaluate(() => !MaweBoot.SERVER_CONFIG.desktopMediaAvailable), true);
     await page.setInputFiles('#open-project-file', second);
-    await page.waitForFunction((selected) => MaweBoot.SERVER_CONFIG.projectPath === selected, second.replaceAll('\\', '/'));
+    await page.waitForFunction((selected) => MaweBoot.SERVER_CONFIG.desktopProjectPath?.replaceAll('\\', '/') === selected, second.replaceAll('\\', '/'));
     const recents = await page.evaluate(() => MaweBoot.SERVER_CONFIG.recentProjects.map((entry) => entry.path));
     assert.equal(recents.length, 2);
     assert.equal(recents[0].replaceAll('\\', '/'), second.replaceAll('\\', '/'));
@@ -66,14 +66,14 @@ test('native project selection and dropped project keep paths, binding and recen
     });
     assert.equal(await page.evaluate(() => MaweProjectSave.saveProjectAsToFile()), false);
     assert.equal(await page.evaluate(() => MaweServerSave.hasUnsavedProjectChanges()), true);
-    assert.equal(await page.evaluate(() => MaweBoot.SERVER_CONFIG.projectPath), second.replaceAll('\\', '/'));
+    assert.equal(await page.evaluate(() => MaweBoot.SERVER_CONFIG.desktopProjectPath.replaceAll('\\', '/')), second.replaceAll('\\', '/'));
     const saved = path.join(root, 'new folder', '另存为.mosp');
     mkdirSync(path.dirname(saved));
     await app.evaluate(({ dialog }, selected) => {
       dialog.showSaveDialog = async () => ({ canceled: false, filePath: selected });
     }, saved);
     assert.equal(await page.evaluate(() => MaweProjectSave.saveProjectAsToFile()), true);
-    assert.equal(await page.evaluate(() => MaweBoot.SERVER_CONFIG.projectPath), saved.replaceAll('\\', '/'));
+    assert.equal(await page.evaluate(() => MaweBoot.SERVER_CONFIG.desktopProjectPath.replaceAll('\\', '/')), saved.replaceAll('\\', '/'));
     assert.equal(JSON.parse(readFileSync(saved, 'utf8')).media.replaceAll('\\', '/'), path.join(root, 'missing.wav').replaceAll('\\', '/'));
     assert.equal(JSON.parse(readFileSync(second, 'utf8')).segments[0].text, '拖拽打开');
     await page.evaluate(() => { MaweBoot.DATA.segments[0].text = '持续写回新工程'; MaweBoot.DATA.segments[0]._dirty = true; });
@@ -84,7 +84,7 @@ test('native project selection and dropped project keep paths, binding and recen
       dialog.showSaveDialog = async () => ({ canceled: false, filePath: selected });
     }, blank);
     await page.locator('#new-project').click();
-    await page.waitForFunction((selected) => MaweBoot.SERVER_CONFIG.projectPath === selected, blank.replaceAll('\\', '/'));
+    await page.waitForFunction((selected) => MaweBoot.SERVER_CONFIG.desktopProjectPath?.replaceAll('\\', '/') === selected, blank.replaceAll('\\', '/'));
     assert.equal(JSON.parse(readFileSync(blank, 'utf8')).segments.length, 0);
     assert.equal(await page.evaluate(() => MaweBoot.SERVER_CONFIG.canSave), true);
     const media = path.join(root, 'real media.wav');
@@ -94,47 +94,55 @@ test('native project selection and dropped project keep paths, binding and recen
     }, media);
     await page.locator('#open-project-menu-btn').click();
     await page.locator('#load-media').click();
-    await page.waitForFunction((selected) => MaweBoot.DATA.media === selected && document.getElementById('player').readyState >= 1, media.replaceAll('\\', '/'));
+    await page.waitForFunction((selected) => MaweBoot.SERVER_CONFIG.desktopMediaPath?.replaceAll('\\', '/') === selected && document.getElementById('player').readyState >= 1, media.replaceAll('\\', '/'));
     assert.match(await page.locator('#player').getAttribute('src').catch(() => '') || await page.locator('#player source').getAttribute('src'), /^http:\/\/127\.0\.0\.1:/);
-    assert.equal(await page.evaluate(() => MaweBoot.DATA.waveform?.peak_count > 0), true);
+    await expect.poll(() => page.evaluate(() => MaweBoot.DATA.waveform?.peak_count || 0)).toBeGreaterThan(0);
     const subtitle = path.join(root, '字幕.srt');
     writeFileSync(subtitle, '1\n00:00:00,000 --> 00:00:00,800\n保留字幕与媒体路径\n');
     await page.setInputFiles('#load-srt-file', subtitle);
     await page.waitForFunction(() => MaweBoot.DATA.segments[0]?.text === '保留字幕与媒体路径');
     await page.evaluate(() => MaweProjectSave.saveCurrentProject());
-    assert.equal(JSON.parse(readFileSync(blank, 'utf8')).media.replaceAll('\\', '/'), media.replaceAll('\\', '/'));
+    assert.equal(path.resolve(path.dirname(blank), JSON.parse(readFileSync(blank, 'utf8')).media), media);
+    const previousMedia = await page.evaluate(() => MaweBoot.DATA.media);
     const broken = path.join(root, 'broken.wav');
     writeFileSync(broken, 'invalid audio');
     await app.evaluate(({ dialog }, selected) => {
       dialog.showOpenDialog = async () => ({ canceled: false, filePaths: [selected] });
     }, broken);
-    assert.equal(await page.evaluate(() => MaweMediaLoad.chooseNativeMedia()), false);
-    assert.equal(await page.evaluate(() => MaweBoot.DATA.media), media.replaceAll('\\', '/'));
+    assert.equal(await page.evaluate(async () => {
+      const selected = await MaweHost.desktop.chooseFile('media', MAWE_I18N.language);
+      return MaweMediaLoad.loadMediaReference(selected.file);
+    }), false);
+    assert.equal(await page.evaluate(() => MaweBoot.DATA.media), previousMedia);
     const stickers = path.join(root, 'stickers');
     mkdirSync(stickers);
     writeFileSync(path.join(stickers, 'test.png'), Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVQIHWP4z8DwHwAFgAI/ScLbtAAAAABJRU5ErkJggg==', 'base64'));
     await app.evaluate(({ dialog }, selected) => {
       dialog.showOpenDialog = async () => ({ canceled: false, filePaths: [selected] });
     }, stickers);
-    await page.locator('#editor-settings-toggle').click();
-    await page.locator('#editor-settings-tab-sticker').click();
-    await page.locator('#sticker-root-btn').click();
-    await page.locator('#sticker-root-browse').click();
-    await page.waitForFunction((selected) => MaweBoot.STICKER_ROOT === selected, stickers.replaceAll('\\', '/'));
-    const spacing = await page.locator('#sticker-root-modal .modal-field-row').evaluate((row) => ({
+    await page.locator('#project-settings-toggle').click();
+    await page.locator('#editor-settings-tab-project-sticker').click();
+    await page.locator('#project-sticker-root-override').check();
+    await expect(page.locator('#project-sticker-root-choose')).toBeEnabled();
+    await page.locator('#project-sticker-root-choose').click();
+    await page.waitForFunction((selected) => MaweBoot.STICKER_ROOT.replaceAll('\\', '/') === selected, stickers.replaceAll('\\', '/'));
+    await expect(page.locator('#sticker-root-open')).toBeVisible();
+    await expect(page.locator('#sticker-root-copy-path')).toBeVisible();
+    const spacing = await page.locator('#editor-settings-page-project-sticker .sticker-root-path-actions').evaluate((row) => ({
       gap: Number.parseFloat(getComputedStyle(row).gap),
       top: row.getBoundingClientRect().top - row.previousElementSibling.getBoundingClientRect().bottom,
     }));
     assert.equal(spacing.gap >= 8 && spacing.top >= 8, true, JSON.stringify(spacing));
+    console.log(`Directory controls spacing: ${JSON.stringify(spacing)}`);
     await page.screenshot({ path: path.join(root, 'directory-picker.png') });
     assert.equal(existsSync(path.join(root, 'directory-picker.png')), true);
-    await page.locator('#sticker-root-cancel').click();
+    await page.locator('#project-settings-close').click();
     assert.equal(await page.evaluate(() => MaweProjectSave.saveCurrentProject({ silent: true })), true);
     assert.equal(await page.evaluate(() => MaweServerSave.hasUnsavedProjectChanges()), false);
     assert.deepEqual(errors, []);
     console.log(`Electron interaction evidence: ${root}`);
   } finally {
-    await app.evaluate(({ dialog }) => { dialog.showMessageBoxSync = () => 0; });
+    await app.evaluate(({ dialog }) => { dialog.showMessageBox = async () => ({ response: 1 }); });
     await app.close();
   }
 });

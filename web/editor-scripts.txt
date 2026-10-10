@@ -9,6 +9,7 @@ editor/state/editor-view-updates.js
 editor/state/editor-commands.js
 shared/host/storage.js
 shared/host/files.js
+shared/host/desktop.js
 shared/host/server-api.js
 editor/boot/editor-host.js
 shared/gap-remove-core.js
@@ -48,6 +49,7 @@ shared/utils/lottie.js
 shared/utils/ograf.js
 shared/editor-utils.js
 shared/editor-i18n.js
+shared/tooltip.js
 editor/media/waveform/constants.js
 editor/media/waveform/labels.js
 editor/media/waveform/scale.js

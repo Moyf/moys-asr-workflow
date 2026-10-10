@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from tests.compact_assertions import CompactContainerAssertions
+
 import json
 from threading import Event
 from unittest import mock
@@ -12,7 +14,7 @@ from maw.postprocess_pipeline import PostprocessCancelled, _run_ai_cleanup_step
 from tests.test_postprocess_ai_cleanup import AiCleanupTestCase, _project, _segment
 
 
-class ReadthroughTest(AiCleanupTestCase):
+class ReadthroughTest(CompactContainerAssertions, AiCleanupTestCase):
     def execute(self, response, *, enabled=True, discard=True, untimed=False, on_status=None):
         segments = [_segment(0, 1000, "试麦听得到吗"), _segment(1000, 2000, "这是关键方法")]
         if untimed:

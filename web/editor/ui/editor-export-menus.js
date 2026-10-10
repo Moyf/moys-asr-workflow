@@ -7,7 +7,7 @@
 
 
 
-  // === 工具栏导出下拉菜单 ===
+  // === 共用下拉菜单交互：工具栏菜单与标题栏路径菜单 ===
   const SUBMENU_CLOSE_DELAY_MS = 160;
 
 
@@ -156,7 +156,7 @@
     };
     btn.addEventListener('click', (e) => {
       e.stopPropagation();
-      document.querySelectorAll('.toolbar .dropdown.open').forEach((other) => {
+      document.querySelectorAll('.toolbar .dropdown.open, h1 .desktop-path-dropdown.open').forEach((other) => {
         if (other !== dd) {
           other.classList.remove('open');
           other.querySelector('button[aria-expanded]')?.setAttribute('aria-expanded', 'false');

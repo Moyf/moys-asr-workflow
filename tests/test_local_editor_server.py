@@ -351,7 +351,7 @@ class LocalEditorServerTests(CompactContainerAssertions, unittest.TestCase):
                 raise KeyboardInterrupt
 
         with mock.patch.object(server_editor.sys, "argv", [str(SERVER_PATH), "--desktop-mode", "--port", "0", "--no-open", "--no-waveform"]):
-            with mock.patch.dict(os.environ, {"MAW_DESKTOP_TOKEN": "desktop-secret"}, clear=False):
+            with mock.patch.dict(os.environ, {"MAW_DESKTOP_TOKEN": "desktop-secret", "MAW_DESKTOP_COMMAND_KEY": "command-secret"}, clear=False):
                 with mock.patch.object(server_editor, "default_settings_path", return_value=self.root / "settings.json"):
                     with mock.patch.object(server_editor, "load_default_server_settings", return_value=server_editor.ServerSettings()):
                         with mock.patch.object(server_editor, "open_editor_server", return_value=(FakeServer(), False)) as open_server:
@@ -364,6 +364,7 @@ class LocalEditorServerTests(CompactContainerAssertions, unittest.TestCase):
         self.assertLess(output.index("MAW_DESKTOP_READY"), output.index("MAWE 已启动"))
         self.assertTrue(open_server.call_args.kwargs["desktop_mode"])
         self.assertEqual(open_server.call_args.kwargs["desktop_token"], "desktop-secret")
+        self.assertEqual(open_server.call_args.kwargs["desktop_command_key"], "command-secret")
 
     def test_desktop_mode_never_opens_an_external_browser(self) -> None:
         class FakeServer:
@@ -383,7 +384,7 @@ class LocalEditorServerTests(CompactContainerAssertions, unittest.TestCase):
             "argv",
             [str(SERVER_PATH), "--desktop-mode", "--port", "0"],
         ):
-            with mock.patch.dict(os.environ, {"MAW_DESKTOP_TOKEN": "desktop-secret"}, clear=False):
+            with mock.patch.dict(os.environ, {"MAW_DESKTOP_TOKEN": "desktop-secret", "MAW_DESKTOP_COMMAND_KEY": "command-secret"}, clear=False):
                 with mock.patch.object(server_editor, "default_settings_path", return_value=self.root / "settings.json"):
                     with mock.patch.object(server_editor, "load_default_server_settings", return_value=server_editor.ServerSettings()):
                         with mock.patch.object(server_editor, "open_editor_server", return_value=(FakeServer(), False)):
@@ -423,7 +424,7 @@ class LocalEditorServerTests(CompactContainerAssertions, unittest.TestCase):
         ):
             with mock.patch.dict(
                 os.environ,
-                {"MAW_DESKTOP_TOKEN": "desktop-secret", "MAW_DESKTOP_SMOKE": "1"},
+                {"MAW_DESKTOP_TOKEN": "desktop-secret", "MAW_DESKTOP_COMMAND_KEY": "command-secret", "MAW_DESKTOP_SMOKE": "1"},
                 clear=False,
             ):
                 with mock.patch.object(server_editor, "default_settings_path", return_value=self.root / "settings.json"):
@@ -928,6 +929,7 @@ class LocalEditorServerTests(CompactContainerAssertions, unittest.TestCase):
             no_waveform=True,
             desktop_mode=True,
             desktop_token="desktop-secret",
+            desktop_command_key="command-secret",
         ) as server:
             thread = threading.Thread(target=server.serve_forever, daemon=True)
             thread.start()
@@ -960,6 +962,7 @@ class LocalEditorServerTests(CompactContainerAssertions, unittest.TestCase):
             no_waveform=True,
             desktop_mode=True,
             desktop_token="desktop-secret",
+            desktop_command_key="command-secret",
         ) as server:
             thread = threading.Thread(target=server.serve_forever, daemon=True)
             thread.start()
@@ -993,15 +996,18 @@ class LocalEditorServerTests(CompactContainerAssertions, unittest.TestCase):
             no_waveform=True,
             desktop_mode=True,
             desktop_token="desktop-secret",
+            desktop_command_key="command-secret",
         ) as server:
             thread = threading.Thread(target=server.serve_forever, daemon=True)
             thread.start()
             base_url = f"http://127.0.0.1:{server.server_address[1]}"
 
-            def post(path: str, payload: dict, token: str | None = "desktop-secret") -> tuple[int, dict]:
+            def post(path: str, payload: dict, token: str | None = "desktop-secret", command_key: str | None = "command-secret") -> tuple[int, dict]:
                 headers = {"Content-Type": "application/json"}
                 if token is not None:
                     headers["X-MAW-Desktop-Token"] = token
+                if command_key is not None:
+                    headers["X-MAW-Desktop-Command-Key"] = command_key
                 request = urllib.request.Request(
                     f"{base_url}{path}",
                     data=json.dumps(payload).encode("utf-8"),
@@ -1069,6 +1075,325 @@ class LocalEditorServerTests(CompactContainerAssertions, unittest.TestCase):
                 server.shutdown()
                 thread.join(timeout=2)
 
+    def test_desktop_commands_require_main_process_key_and_bind_saved_projects(self) -> None:
+        project = server_editor.load_project(
+            self.project_path, None, str(self.stickers), no_waveform=True, peaks_per_second=100,
+        )
+        with server_editor.EditorServer(
+            ("127.0.0.1", 0),
+            project,
+            no_waveform=True,
+            desktop_mode=True,
+            desktop_token="desktop-secret",
+            desktop_command_key="command-secret",
+        ) as server:
+            thread = threading.Thread(target=server.serve_forever, daemon=True)
+            thread.start()
+            base_url = f"http://127.0.0.1:{server.server_address[1]}"
+
+            def request(path: str, *, payload: dict | None = None, method: str = "GET", command_key: str | None = "command-secret"):
+                headers = {"X-MAW-Desktop-Token": "desktop-secret"}
+                body = None
+                if payload is not None:
+                    headers["Content-Type"] = "application/json"
+                    body = json.dumps(payload, ensure_ascii=False).encode("utf-8")
+                if command_key is not None:
+                    headers["X-MAW-Desktop-Command-Key"] = command_key
+                message = urllib.request.Request(f"{base_url}{path}", data=body, headers=headers, method=method)
+                try:
+                    with urllib.request.urlopen(message, timeout=3) as response:
+                        return response.status, json.loads(response.read())
+                except urllib.error.HTTPError as error:
+                    return error.code, json.loads(error.read())
+
+            try:
+                status, denied = request("/api/desktop/project/status", command_key=None)
+                self.assertEqual(status, 403)
+                self.assertEqual(denied["code"], "DESKTOP_COMMAND_UNAUTHORIZED")
+                status, current = request("/api/desktop/project/status")
+                self.assertEqual(status, 200)
+                self.assertEqual(current["projectPath"], str(self.project_path.resolve()))
+
+                status, opened = request(
+                    "/api/desktop/command",
+                    method="POST",
+                    command_key="wrong-command-key",
+                    payload={"command": "openProject", "projectPath": str(self.other_project_path)},
+                )
+                self.assertEqual(status, 403)
+                self.assertEqual(server.project.json_path, self.project_path.resolve())
+
+                status, opened = request(
+                    "/api/desktop/command",
+                    method="POST",
+                    payload={"command": "openProject", "projectPath": str(self.other_project_path)},
+                )
+                self.assertEqual(status, 200)
+                self.assertEqual(opened["projectPath"], str(self.other_project_path.resolve()))
+
+                target = self.root / "桌面 新建.mosp"
+                status, saved = request(
+                    "/api/desktop/command",
+                    method="POST",
+                    payload={
+                        "command": "saveProject",
+                        "mode": "new",
+                        "targetPath": str(target),
+                        "project": json.loads(json.dumps(server.project.data)),
+                        "expectedGeneration": opened["generation"],
+                    },
+                )
+                self.assertEqual(status, 200)
+                self.assertTrue(target.is_file())
+                self.assertEqual(saved["projectPath"], str(target.resolve()))
+                self.assertEqual(server.project.json_path, target.resolve())
+                self.assertEqual(server.project_generation, saved["generation"])
+                self.assertEqual(server.settings.recent_projects[0].path, target.resolve())
+            finally:
+                server.shutdown()
+                thread.join(timeout=2)
+
+    def test_desktop_location_uses_bound_paths_and_creates_only_project_backup_folder(self) -> None:
+        project = server_editor.load_project(
+            self.project_path, None, str(self.stickers), no_waveform=True, peaks_per_second=100,
+        )
+        with server_editor.EditorServer(
+            ("127.0.0.1", 0), project, no_waveform=True,
+            desktop_mode=True, desktop_token="desktop-secret",
+            desktop_command_key="command-secret",
+        ) as server:
+            self.assertEqual(server.desktop_location("project"), self.project_path.resolve())
+            self.assertEqual(server.desktop_location("media"), self.media.resolve())
+            backup_directory = server.desktop_location("backups")
+            self.assertTrue(backup_directory.is_dir())
+            self.assertIn(backup_directory, server_editor.backup_directory_candidates(self.project_path))
+            with self.assertRaises(ValueError):
+                server.desktop_location(str(self.root / "arbitrary"))
+
+    def test_desktop_project_load_keeps_subtitles_available_when_media_is_missing(self) -> None:
+        missing_media = self.root / "moved" / "gone.wav"
+        project_path = self.root / "missing-media.mosp"
+        project_path.write_text(json.dumps({
+            "media": str(missing_media),
+            "segments": [{"start": 0, "end": 1000, "text": "字幕仍可编辑"}],
+        }), encoding="utf-8")
+
+        with self.assertRaises(server_editor.MediaResolutionError):
+            server_editor.load_project(
+                project_path, None, str(self.stickers), no_waveform=True, peaks_per_second=100,
+            )
+
+        project = server_editor.load_project(
+            project_path, None, str(self.stickers), no_waveform=True,
+            peaks_per_second=100, allow_missing_media=True,
+        )
+        self.assertEqual(project.json_path, project_path.resolve())
+        self.assertIsNone(project.media_path)
+        self.assertIsNone(project.source_media_path)
+        self.assertIn("媒体", project.media_error or "")
+        self.assertEqual(project.data["segments"][0]["text"], "字幕仍可编辑")
+
+        page = server_editor.build_server_page(project, desktop_mode=True).decode("utf-8")
+        self.assertIn("媒体缺失：gone.wav", page)
+        self.assertIn('"desktopMediaError":', page)
+
+    def test_desktop_media_reassociation_preserves_project_content_and_invalidates_cache(self) -> None:
+        original_data = {
+            "media": str(self.media),
+            "segments": [{"start": 0, "end": 1000, "text": "当前字幕"}],
+            "markers": [{"id": "marker-1", "start": 0, "end": 500}],
+            "workspace": {"selectedPreset": "cinema"},
+            "waveform": {"peak_count": 1, "peaks": [1]},
+            "spectral": {"peak_count": 1, "peaks": [1]},
+            "waveform_reapeaks": {"peak_count": 1, "peaks": [1]},
+            "loudness": {"p95": 1},
+        }
+        current = server_editor.ServerProject(
+            original_data, self.project_path, self.media, None, [],
+            source_media_path=self.media, reapeaks_path=self.media,
+        )
+        prepared = server_editor.ServerProject(
+            {"media": str(self.other_media), "media_metadata": {"selected_audio_track": 0}, "segments": []},
+            self.project_path, self.other_media, None, [],
+            source_media_path=self.other_media, reapeaks_path=self.other_media,
+        )
+        with server_editor.EditorServer(
+            ("127.0.0.1", 0), current, no_waveform=True,
+            desktop_mode=True, desktop_token="desktop-secret",
+            desktop_command_key="command-secret",
+        ) as server:
+            with mock.patch.object(server_editor, "load_project", return_value=prepared) as load, mock.patch.object(
+                server_editor, "validate_desktop_media",
+            ):
+                with mock.patch.object(server_editor, "read_bwf_time_reference", return_value={"time_reference": 12}):
+                    ticket, _ = server.prepare_desktop_media(str(self.other_media), expected_generation=0)
+                    self.assertIs(server.project, current)
+                    associated = server.commit_desktop_media(ticket)
+
+            self.assertEqual(associated.data["segments"], original_data["segments"])
+            self.assertEqual(associated.data["markers"], original_data["markers"])
+            self.assertEqual(associated.data["workspace"], original_data["workspace"])
+            self.assertEqual(associated.data["media"], str(self.other_media.resolve()))
+            self.assertEqual(associated.data["media_time_reference"], {"time_reference": 12})
+            for cache_key in ("waveform", "spectral", "waveform_reapeaks", "loudness"):
+                self.assertNotIn(cache_key, associated.data)
+            self.assertEqual(server.project_generation, 1)
+            self.assertEqual(load.call_args.args[1], str(self.other_media.resolve()))
+            self.assertTrue(load.call_args.kwargs["no_waveform"])
+
+            with self.assertRaises(server_editor.ProjectMutationInProgressError):
+                server.prepare_desktop_media(str(self.media), expected_generation=0)
+
+    def test_desktop_invalid_media_preserves_project_and_generation(self) -> None:
+        invalid = self.root / "invalid.wav"
+        invalid.write_text("invalid audio", encoding="utf-8")
+        current = server_editor.ServerProject({"media": str(self.media), "segments": []}, self.project_path, self.media, None, [], source_media_path=self.media)
+        with server_editor.EditorServer(
+            ("127.0.0.1", 0), current, no_waveform=True, desktop_mode=True,
+            desktop_token="desktop-secret", desktop_command_key="command-secret",
+        ) as server:
+            with mock.patch.object(server_editor, "resolve_ffmpeg_tools", return_value=mock.Mock(ffprobe=Path("ffprobe"))), mock.patch.object(
+                server_editor.subprocess, "run", side_effect=subprocess.CalledProcessError(1, "ffprobe"),
+            ), self.assertRaisesRegex(ValueError, "原媒体关联已保留"):
+                server.prepare_desktop_media(str(invalid), expected_generation=0)
+            self.assertIs(server.project, current)
+            self.assertEqual(server.project_generation, 0)
+
+    def test_desktop_save_rejects_same_size_same_timestamp_external_edit(self) -> None:
+        project = server_editor.load_project(
+            self.project_path, None, str(self.stickers), no_waveform=True, peaks_per_second=100,
+        )
+        original_revision = server_editor.file_revision(self.project_path)
+        stat = self.project_path.stat()
+        original_bytes = self.project_path.read_bytes()
+        changed_bytes = original_bytes.replace(b"clip.mp3", b"flip.mp3")
+        self.assertEqual(len(changed_bytes), len(original_bytes))
+        self.project_path.write_bytes(changed_bytes)
+        os.utime(self.project_path, ns=(stat.st_atime_ns, stat.st_mtime_ns))
+        self.assertEqual(self.project_path.stat().st_size, stat.st_size)
+        self.assertEqual(self.project_path.stat().st_mtime_ns, stat.st_mtime_ns)
+        self.assertNotEqual(server_editor.file_revision(self.project_path), original_revision)
+
+        with server_editor.EditorServer(
+            ("127.0.0.1", 0), project, no_waveform=True,
+            desktop_mode=True, desktop_token="desktop-secret",
+            desktop_command_key="command-secret",
+        ) as server:
+            with self.assertRaisesRegex(server_editor.ProjectMutationInProgressError, "外部修改"):
+                server.save_desktop_project(
+                    "current", project.data, target_path=None,
+                    expected_generation=0, expected_revision=original_revision,
+                    backup_limit=None,
+                )
+        self.assertEqual(self.project_path.read_bytes(), changed_bytes)
+
+    def test_desktop_status_force_refresh_detects_same_size_same_timestamp_edit(self) -> None:
+        project = server_editor.load_project(
+            self.project_path, None, str(self.stickers), no_waveform=True, peaks_per_second=100,
+        )
+        with server_editor.EditorServer(
+            ("127.0.0.1", 0), project, no_waveform=True,
+            desktop_mode=True, desktop_token="desktop-secret",
+            desktop_command_key="command-secret",
+        ) as server:
+            baseline = server.desktop_project_status()["revision"]
+            stat = self.project_path.stat()
+            original_bytes = self.project_path.read_bytes()
+            changed_bytes = original_bytes.replace(b"clip.mp3", b"flip.mp3")
+            self.assertEqual(len(changed_bytes), len(original_bytes))
+            self.project_path.write_bytes(changed_bytes)
+            os.utime(self.project_path, ns=(stat.st_atime_ns, stat.st_mtime_ns))
+
+            cached = server.desktop_project_status()["revision"]
+            refreshed = server.desktop_project_status(force_revision=True)["revision"]
+            self.assertNotEqual(cached, baseline)
+            self.assertNotEqual(refreshed, baseline)
+
+    def test_desktop_save_as_binds_successful_write_when_version_backup_fails(self) -> None:
+        project = server_editor.load_project(
+            self.project_path, None, str(self.stickers), no_waveform=True, peaks_per_second=100,
+        )
+        old_bytes = self.project_path.read_bytes()
+        target = self.root / "new-project.mosp"
+        with server_editor.EditorServer(
+            ("127.0.0.1", 0), project, no_waveform=True,
+            desktop_mode=True, desktop_token="desktop-secret", desktop_command_key="command-secret",
+        ) as server, mock.patch.object(server_editor, "write_backup", side_effect=OSError("backup unavailable")):
+            path, _backup, generation, warning = server.save_desktop_project(
+                "saveAs", project.data, target_path=str(target), expected_generation=0,
+                expected_revision=None, backup_limit=20,
+            )
+            self.assertEqual(path, target.resolve())
+            self.assertEqual(server.project.json_path, path)
+            self.assertEqual(generation, 1)
+            self.assertIn("工程已保存，版本备份失败", warning)
+            self.assertEqual(json.loads(target.read_text(encoding="utf-8"))["media"], str(self.media.resolve()))
+            self.assertEqual(self.project_path.read_bytes(), old_bytes)
+
+    def test_desktop_save_as_preserves_missing_relative_media_location(self) -> None:
+        missing = self.root / "缺失媒体.wav"
+        source = self.root / "relative-media.mosp"
+        source.write_text(json.dumps({
+            "schema": "moy.asr.project.v1", "media": missing.name,
+            "segments": [{"id": "s1", "start": 0, "end": 1000, "text": "字幕保留"}],
+        }), encoding="utf-8")
+        project = server_editor.load_project(
+            source, None, str(self.stickers), no_waveform=True, peaks_per_second=100,
+            allow_missing_media=True,
+        )
+        target = self.root / "new-folder" / "saved.mosp"
+        target.parent.mkdir()
+        with server_editor.EditorServer(
+            ("127.0.0.1", 0), project, no_waveform=True, desktop_mode=True,
+            desktop_token="desktop-secret", desktop_command_key="command-secret",
+        ) as server:
+            server.save_desktop_project(
+                "saveAs", project.data, target_path=str(target), expected_generation=0,
+                expected_revision=None, backup_limit=None,
+            )
+            saved = json.loads(target.read_text(encoding="utf-8"))
+            self.assertEqual(Path(saved["media"]).resolve(), missing.resolve())
+            self.assertEqual(server_editor.desktop_source_media_path(server.project), missing.resolve())
+            self.assertEqual(saved["segments"][0]["text"], "字幕保留")
+            self.assertEqual(json.loads(source.read_text(encoding="utf-8"))["media"], missing.name)
+
+    def test_desktop_save_as_switches_binding_only_after_write_and_keeps_old_file(self) -> None:
+        project = server_editor.load_project(
+            self.project_path, None, str(self.stickers), no_waveform=True, peaks_per_second=100,
+        )
+        original_bytes = self.project_path.read_bytes()
+        target_dir = self.root / "另存为 目标"
+        target_dir.mkdir()
+        target = target_dir / "工程 😀.mosp"
+        with server_editor.EditorServer(
+            ("127.0.0.1", 0), project, no_waveform=True,
+            desktop_mode=True, desktop_token="desktop-secret",
+            desktop_command_key="command-secret",
+        ) as server:
+            saved_path, _backup, generation, warning = server.save_desktop_project(
+                "saveAs", project.data, target_path=str(target),
+                expected_generation=0, expected_revision=server_editor.file_revision(self.project_path),
+                backup_limit=None,
+            )
+            self.assertIsNone(warning)
+            self.assertEqual(saved_path, target.resolve())
+            self.assertEqual(generation, 1)
+            self.assertEqual(server.project.json_path, target.resolve())
+            saved = json.loads(target.read_text(encoding="utf-8"))
+            self.assertEqual(saved["media"], str(self.media.resolve()))
+            self.assertEqual(self.project_path.read_bytes(), original_bytes)
+
+            edited = json.loads(json.dumps(server.project.data))
+            edited["language"] = "zh-CN"
+            server.save_desktop_project(
+                "current", edited, target_path=None,
+                expected_generation=generation,
+                expected_revision=server_editor.file_revision(target),
+                backup_limit=None,
+            )
+            self.assertEqual(json.loads(target.read_text(encoding="utf-8"))["language"], "zh-CN")
+            self.assertEqual(self.project_path.read_bytes(), original_bytes)
+
     def test_desktop_project_switch_wins_over_a_late_initial_load(self) -> None:
         """A startup loader finishing late must not restore the old project."""
         initial_started = threading.Event()
@@ -1093,6 +1418,7 @@ class LocalEditorServerTests(CompactContainerAssertions, unittest.TestCase):
             project_loader=load_initial,
             desktop_mode=True,
             desktop_token="desktop-secret",
+            desktop_command_key="command-secret",
         ) as server:
             thread = threading.Thread(target=server.serve_forever, daemon=True)
             thread.start()
@@ -1105,6 +1431,7 @@ class LocalEditorServerTests(CompactContainerAssertions, unittest.TestCase):
                     headers={
                         "Content-Type": "application/json",
                         "X-MAW-Desktop-Token": "desktop-secret",
+                        "X-MAW-Desktop-Command-Key": "command-secret",
                     },
                     method="POST",
                 )

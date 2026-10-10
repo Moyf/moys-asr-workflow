@@ -5,27 +5,31 @@ import test from 'node:test';
 import { createStorage } from '../web/shared/host/storage.js';
 import { createFiles } from '../web/shared/host/files.js';
 import { createServerApi } from '../web/shared/host/server-api.js';
+import { createDesktop } from '../web/shared/host/desktop.js';
 
 const factories = new Map([
   ['shared/host/storage.js', ['host-storage',createStorage]],
   ['shared/host/files.js', ['host-files',createFiles]],
+  ['shared/host/desktop.js', ['host-desktop',createDesktop]],
   ['shared/host/server-api.js', ['host-server-api',createServerApi]],
 ]);
 
 function loadHost(environment = {}) {
   const context = { window: {}, ...environment };
   for (const file of ['editor/boot/editor-runtime.js', 'shared/host/storage.js',
-    'shared/host/files.js', 'shared/host/server-api.js', 'editor/boot/editor-host.js']) {
+    'shared/host/files.js', 'shared/host/desktop.js', 'shared/host/server-api.js', 'editor/boot/editor-host.js']) {
     if (factories.has(file)) context.window.MAWE.register(...factories.get(file));
     else vm.runInNewContext(readFileSync(new URL('../web/' + file, import.meta.url), 'utf8'), context);
   }
   return context;
 }
 
-test('host startup needs no DOM, storage, picker or network capability', () => {
+test('host startup needs no DOM, storage, picker or network capability', async () => {
   const context = loadHost();
   const host = context.window.MaweHost;
   assert.equal(host.files.hasSavePicker(), false);
+  assert.equal(host.desktop.available(), false);
+  assert.equal((await host.desktop.chooseFile('project')).status, 'error');
   assert.throws(() => host.storage.getItem('settings'), { name: 'TypeError' });
   // Private-mode failure is left to each existing settings fallback.
   context.localStorage = { getItem() { throw new Error('denied'); } };
@@ -73,9 +77,55 @@ test('download fallback dispatches once and keeps the object URL until deferred 
   context.window.MaweHost.files.downloadBlob({}, 'demo.mosp');
   assert.equal(anchor.download, 'demo.mosp');
   assert.equal(anchor.href, 'blob:project');
-  assert.deepEqual(calls, ['append', 'click', 'remove']);
+  assert.equal(calls.join(','), 'append,click,remove');
   cleanup();
   assert.equal(calls.at(-1), 'blob:project');
+});
+
+test('desktop downloads wait for the matching completed task before releasing the blob URL', async () => {
+  const calls = [];
+  let resolveExport;
+  const anchor = { click() { calls.push('click'); } };
+  const environment = {
+    URL: {
+      createObjectURL: () => 'blob:http://127.0.0.1:8765/task',
+      revokeObjectURL: value => calls.push(`revoke:${value}`),
+    },
+    document: {
+      createElement: () => anchor,
+      body: {
+        appendChild: () => calls.push('append'),
+        removeChild: () => calls.push('remove'),
+      },
+    },
+  };
+  const desktop = {
+    available: () => true,
+    async command(name, payload) {
+      assert.equal(name, 'prepareExportDownload');
+      assert.equal(payload.url, anchor.href);
+      assert.equal(payload.filename, '字幕.srt');
+      return { status: 'ok', data: { taskId: 'task-1' } };
+    },
+    onExportResult(listener) {
+      resolveExport = listener;
+      return () => { resolveExport = null; };
+    },
+  };
+  const files = createFiles({ browser: {}, environment, desktop });
+  const pending = files.downloadBlob({}, '字幕.srt');
+  await new Promise((resolve) => setImmediate(resolve));
+  assert.equal(anchor.href, 'blob:http://127.0.0.1:8765/task');
+  assert.equal(calls.join(','), 'append,click,remove');
+  assert.equal(typeof resolveExport, 'function');
+  resolveExport({ taskId: 'another-task', status: 'ok' });
+  assert.equal(calls.includes('revoke:blob:http://127.0.0.1:8765/task'), false);
+  resolveExport({ taskId: 'task-1', status: 'ok', exportRefId: 'export-1' });
+  const result = await pending;
+  assert.equal(result.taskId, 'task-1');
+  assert.equal(result.status, 'ok');
+  assert.equal(result.exportRefId, 'export-1');
+  assert.equal(calls.at(-1), 'revoke:blob:http://127.0.0.1:8765/task');
 });
 
 test('server transport resolves URLs and preserves request identity and rejection', async () => {
@@ -95,7 +145,7 @@ test('server transport resolves URLs and preserves request identity and rejectio
 
 test('a desktop host can replace every capability without initializing browser services', () => {
   const context = loadHost();
-  const capabilities = Object.fromEntries(['storage', 'files', 'server', 'runtime'].map(name => [name, { name }]));
+  const capabilities = Object.fromEntries(['storage', 'files', 'server', 'runtime', 'desktop'].map(name => [name, { name }]));
   const host = context.window.MAWE.resolve('editor-host', capabilities);
   for (const name of Object.keys(capabilities)) assert.equal(host[name], capabilities[name]);
 });

@@ -1,10 +1,14 @@
 from __future__ import annotations
 
+from tests.compact_assertions import CompactContainerAssertions
+
 import ast
 import re
 import tomllib
 import unittest
 from pathlib import Path
+
+from tests.launcher_sources import launcher_sources_text
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -85,13 +89,13 @@ def _local_runtime_spec_entry(relative_path: str) -> str:
     return f"(str({expression}), \"{target}\")"
 
 
-class PackagingContractTests(unittest.TestCase):
+class PackagingContractTests(CompactContainerAssertions, unittest.TestCase):
     def test_launcher_version_matches_project_metadata(self) -> None:
         """Given project metadata, When the Launcher is packaged, Then every displayed fallback version matches it."""
         project = tomllib.loads(read_text("pyproject.toml"))
         version = project["project"]["version"]
         launcher_html = read_text("web/launcher/index.html")
-        launcher_js = read_text("web/launcher/launcher.js")
+        launcher_js = launcher_sources_text(ROOT)
         editor = read_text("edit.py")
 
         self.assertIn('id="appVersion"', launcher_html)
@@ -713,8 +717,9 @@ class PackagingContractTests(unittest.TestCase):
         self.assertIn("MAW_DESKTOP_TOKEN", main_process)
         self.assertIn("taskkill", main_process)
         self.assertIn("X-MAW-Desktop-Token", main_process)
-        self.assertIn("showSaveDialogSync", main_process)
-        self.assertIn("item.setSavePath(filePath)", main_process)
+        self.assertIn("await dialog.showSaveDialog", main_process)
+        self.assertNotIn("showSaveDialogSync", main_process)
+        self.assertIn("item.setSavePath(result.filePath)", main_process)
         download_handler = re.search(
             r"\.on\('will-download'.*?\n  \}\);",
             main_process,
@@ -723,7 +728,7 @@ class PackagingContractTests(unittest.TestCase):
         self.assertIsNotNone(download_handler)
         self.assertNotRegex(download_handler.group(0), r"(?m)^\s*event\.preventDefault\(\);\s*$")
         self.assertIn("will-redirect", main_process)
-        self.assertIn("window.postMessage({ source: 'mose-desktop'", preload)
+        self.assertIn("ipcRenderer.on('mose-open-project'", preload)
         self.assertIn("['.mosp', '.json']", helpers)
         self.assertIn("name: MAW-Installer-Windows-x64-", workflow)
         self.assertNotIn("paid-MAW-Setup-Windows-x64-", workflow)

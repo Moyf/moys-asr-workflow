@@ -54,25 +54,14 @@ document.addEventListener('visibilitychange', () => {
 });
 window.addEventListener('message', (event) => {
   if (event.source !== window || event.origin !== window.location.origin || event.data?.source !== 'mose-desktop') return;
-  if (event.data.type === 'open-project') void MaweServerSave.openDesktopProjectPath(event.data.path);
   if (event.data.type === 'command' && ['new-project', 'open-project', 'save-project', 'save-project-as'].includes(event.data.id)) {
     document.getElementById(event.data.id)?.click();
   }
 });
-if (window.MOSEDesktop?.available && MaweBoot.SERVER_CONFIG?.missingMedia) {
-  MaweProjectLoad.updateUnloadedMediaLabel(MaweBoot.DATA.media);
-  MaweHint.flashHint('工程媒体未找到。请点击“加载媒体”重新定位文件。', 'warning');
-}
-if (window.MOSEDesktop?.available && MaweBoot.SERVER_CONFIG?.projectPath) {
-  const projectLabel = document.getElementById('json-name');
-  const projectPath = MaweBoot.SERVER_CONFIG.projectPath;
-  projectLabel.title = projectPath;
-  projectLabel.onclick = () => MaweExportTimeline.copyText(projectPath, `已复制：${projectPath}`);
-}
 if (window.MOSEDesktop?.available) {
   document.getElementById('json-name')?.addEventListener('contextmenu', (event) => {
     event.preventDefault();
-    void window.MOSEDesktop.revealProject();
+    void MaweHost.desktop.command('getLocation', { target: 'project' });
   });
 }
 window.addEventListener('online', () => MaweServerConnection.scheduleServerConnectionCheck(0));

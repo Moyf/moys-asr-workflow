@@ -20,6 +20,14 @@ function resolvePackagedMawPath(executablePath, {
     : paths.join(resourcesPath, 'backend', 'MAW', 'MAW');
 }
 
+function showAndFocusWindow(window) {
+  if (!window || window.isDestroyed()) return false;
+  if (window.isMinimized()) window.restore();
+  if (!window.isVisible()) window.show();
+  window.focus();
+  return true;
+}
+
 function resolveSourcePython(root, {
   platform = process.platform,
   environment = process.env,
@@ -117,4 +125,5 @@ module.exports = {
   parseProjectArgs,
   resolvePackagedMawPath,
   resolveSourcePython,
+  showAndFocusWindow,
 };

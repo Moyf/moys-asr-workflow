@@ -655,10 +655,12 @@
         throw new Error(err.error || `服务器返回 ${response.status}`);
       }
       const blob = await response.blob();
-      MaweHint.flashHint(tr('OTIOZ 已生成，图片已打包进 zip'), 'success');
-      await downloadFile(blob, filename, 'application/zip', {
+      const saved = await downloadFile(blob, filename, 'application/zip', {
         desc: description, types: { 'application/zip': ['.otioz'] }
-      });
+      }, { detailed: true });
+      if (!MaweHost.desktop.available() && saved?.status === 'saved') {
+        MaweHint.flashHint(tr('OTIOZ 已生成，图片已打包进 zip'), 'success');
+      }
     } catch (error) {
       MaweHint.flashHint(`表情包 OTIOZ 导出失败：${error.message || error}`, 'warning');
     }
@@ -691,10 +693,13 @@
         throw new Error(error.error || `服务器返回 ${response.status}`);
       }
       const blob = await response.blob();
-      MaweHint.flashHint(tr('时间线 OTIOZ 已生成，媒体已打包进 zip'), 'success');
-      return Boolean(await downloadFile(blob, filename, 'application/zip', {
+      const saved = await downloadFile(blob, filename, 'application/zip', {
         desc: description, types: { 'application/zip': ['.otioz'] },
-      }));
+      }, { detailed: true });
+      if (!MaweHost.desktop.available() && saved?.status === 'saved') {
+        MaweHint.flashHint(tr('时间线 OTIOZ 已生成，媒体已打包进 zip'), 'success');
+      }
+      return saved?.status === 'saved' || saved?.status === 'dispatched';
     } catch (error) {
       MaweHint.flashHint(`${tr('时间线 OTIOZ 导出失败')}：${error.message || error}`, 'warning');
       return false;
@@ -765,12 +770,39 @@
   }
 
 
+  function rememberDesktopExport(result, filename) {
+    if (!MaweHost.desktop.available() || result?.status !== 'ok'
+        || typeof result.exportRefId !== 'string') return false;
+    const menu = document.getElementById('last-export-menu');
+    const summary = document.getElementById('last-export-summary');
+    if (!menu || !summary) return false;
+    menu.dataset.exportRefId = result.exportRefId;
+    summary.title = `打开最近一次成功导出的文件夹：${result.filename || filename}`;
+    menu.hidden = false;
+    return true;
+  }
+
+
 
   async function downloadFile(content, filename, mime, accept, { usePicker = true, detailed = false } = {}) {
     const isSrt = filename.toLowerCase().endsWith('.srt');
     const fileContent = isSrt
       ? new Uint8Array([0xEF, 0xBB, 0xBF, ...new TextEncoder().encode(String(content))])
       : content;
+    // MOSE 使用主进程的异步原生保存对话框；等待 DownloadItem 确认文件落盘。
+    if (MaweHost.desktop.available()) {
+      const blob = new Blob([fileContent], { type: mime + ';charset=utf-8' });
+      const result = await MaweHost.files.downloadBlob(blob, filename);
+      if (result?.status === 'ok') {
+        rememberDesktopExport(result, filename);
+        MaweHint.flashHint(`导出成功：${result.filename || filename}`, 'success');
+        return detailed ? { status: 'saved', exportRefId: result.exportRefId, filename: result.filename } : true;
+      }
+      if (result?.status === 'cancelled') return detailed ? { status: 'cancelled' } : false;
+      const message = result?.error?.message || '文件未能保存到所选位置';
+      MaweHint.flashHint(`导出失败：${message}`, 'warning');
+      return detailed ? { status: 'failed', error: message } : false;
+    }
     // 优先尝试 File System Access API（弹出保存路径选择对话框）
     if (usePicker && MaweHost.files.hasSavePicker()) {
       try {
@@ -789,7 +821,11 @@
     }
     // 兜底：传统 anchor 下载（不弹路径选择）
     const blob = new Blob([fileContent], { type: mime + ';charset=utf-8' });
-    MaweHost.files.downloadBlob(blob, filename);
+    const result = await MaweHost.files.downloadBlob(blob, filename);
+    if (result?.status === 'error') {
+      MaweHint.flashHint(`导出失败：${result.error?.message || '无法下载文件'}`, 'warning');
+      return detailed ? { status: 'failed' } : false;
+    }
     return detailed ? { status: 'dispatched' } : true;
   }
 
@@ -1042,6 +1078,7 @@
     updateStickerExportButtons,
     stickerExportBlocked,
     downloadFile,
+      rememberDesktopExport,
     copyText
   });
 })(typeof window !== 'undefined' ? window : globalThis);

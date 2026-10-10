@@ -11,8 +11,7 @@ MOSE（Moy's Open Subtitle Editor）复用 `web/` 前端、`server-editor/serve.
   已完整实现并实测可用。
 - Tauri 实验的历史代码见 git 历史（`a8c2669b` 至移除前）；实验结论以本页为准。
 - 完整的 Electron MOSE 套件代码当前位于 `merge/starlit-main` 集成分支
-  （`desktop/src/main.cjs`、`preload.cjs` 等），后续合回 main 后本目录即为其
-  唯一开发目录。
+  （`desktop/src/main.cjs`、`preload.cjs` 等），进入 main 的时间保持悬置；桌面改动在该分支单独核验。
 
 ## 源码与运行布局
 
@@ -110,3 +109,13 @@ E2E 可设置 `MOSE_TEST_EXECUTABLE` 指向实际打包的编辑器，否则运�
 当前 Windows 已进行源码与打包交互检查；macOS/Linux 原生 CI 已接线，尚未运行。Installer 安装/卸载及三端文件管理器双击仍需原生验收，详细证据见 [检查记录](../docs/TEST_FEEDBACK_ELECTRON_INTEGRATION.md)。
 
 License: AGPL-3.0-only（与 MAW 主仓库一致）。
+
+
+## 原生文件 IO 契约
+
+文件由 Preload 登记真实路径并返回会话内引用，主进程校验顶层页面来源和引用类型。
+Server 通过独立的主进程操作密钥处理保存、工程绑定、媒体关联与文件定位；页面令牌
+不能调用这些特权命令。工程写入成功后的备份或最近记录失败只返回 warning，保留成功
+保存与新绑定。缺失媒体在跨目录另存为时仍指向原位置；无效替换媒体不改变当前工程。
+状态轮询检查内容哈希，发现外部改写后暂停自动保存。Windows 原生交互测试使用
+Electron 44.1.0；macOS/Linux 原生运行和三平台发布包需分别验收。
