@@ -4117,3 +4117,62 @@
 }
 .markers-item-actions button.danger { color: #e35a62; }
 .markers-item-actions button.danger:hover:not(:disabled) { color: #fff; background: #ad3b42; border-color: #e35a62; }
+
+/* ============================================================
+   共享悬停 tooltip（web/shared/tooltip.js）
+   颜色全部来自设计令牌，明暗主题随 data-theme 级联自动切换；
+   亮色主题仅阴影浓度需要单独减弱。
+   箭头实现：外层盒按方向 clip-path 保留半个菱形，::before 画
+   旋转 45° 的方块补出两条带边框的斜边。
+   ============================================================ */
+.mawe-tooltip {
+  position: fixed;
+  left: 0; top: 0;
+  z-index: 1200;
+  pointer-events: none;
+  opacity: 0;
+  transition: opacity 120ms ease, transform 120ms ease;
+}
+.mawe-tooltip.show { opacity: 1; transform: translate(0, 0); }
+.mawe-tooltip .mawe-tooltip-text {
+  position: fixed;
+  left: 0; top: 0;
+  box-sizing: border-box;
+  width: max-content;
+  max-width: 320px;
+  padding: 6px 10px;
+  border: 1px solid var(--border-strong);
+  border-radius: 8px;
+  background: var(--bg-overlay);
+  color: var(--text-primary);
+  font-size: 12px;
+  line-height: 1.55;
+  white-space: pre-line;
+  overflow-wrap: anywhere;
+  box-shadow: 0 6px 20px rgba(0, 0, 0, 0.45);
+}
+:root[data-theme="light"] .mawe-tooltip .mawe-tooltip-text {
+  box-shadow: 0 6px 20px rgba(15, 23, 42, 0.18);
+}
+.mawe-tooltip .mawe-tooltip-arrow {
+  position: fixed;
+  left: 0; top: 0;
+  width: 14px; height: 14px;
+  pointer-events: none;
+}
+.mawe-tooltip .mawe-tooltip-arrow::before {
+  content: "";
+  position: absolute;
+  left: 2px; top: 2px;
+  width: 10px; height: 10px;
+  box-sizing: border-box;
+  border: 1px solid var(--border-strong);
+  background: var(--bg-overlay);
+  transform: rotate(45deg);
+}
+/* 保留指向目标的那半菱形：below=气泡在下、箭头朝上；above 反之；
+   right=气泡在右、箭头朝左；left 反之。多留 1px 由 JS 侧偏移覆盖气泡边框线。 */
+.mawe-tooltip .mawe-tooltip-arrow.below { clip-path: polygon(0px 7px, 14px 7px, 7px 0px); }
+.mawe-tooltip .mawe-tooltip-arrow.above { clip-path: polygon(0px 7px, 14px 7px, 7px 14px); }
+.mawe-tooltip .mawe-tooltip-arrow.right { clip-path: polygon(7px 0px, 7px 14px, 0px 7px); }
+.mawe-tooltip .mawe-tooltip-arrow.left  { clip-path: polygon(7px 0px, 7px 14px, 14px 7px); }
