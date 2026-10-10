@@ -74,6 +74,7 @@ class EditorAssetContractTests(CompactContainerAssertions, unittest.TestCase):
                 "shared/utils/ograf.js",
                 "shared/editor-utils.js",
                 "shared/editor-i18n.js",
+                "shared/tooltip.js",
                 "editor/media/waveform/constants.js",
                 "editor/media/waveform/labels.js",
                 "editor/media/waveform/scale.js",
