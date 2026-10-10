@@ -12,6 +12,15 @@
   const SCRIPT_EXTS = new Set([".txt", ".md", ".markdown"]);
   const TOOLBOX_SIZE_KEY = "maw.launcher.toolbox.size";
   const LLM_PROMPTS_KEY = "maw.launcher.llm.prompts";
+  const LLM_PROVIDER_BY_TASK_KEY = "maw.launcher.llm.provider_by_task";
+  // 各任务独立记忆供应商：两种翻译共用一个槽位，其余任务各自一个。
+  const LLM_PROVIDER_TASK_GROUPS = Object.freeze({
+    translate_zh: "translate",
+    translate_en: "translate",
+    proofread: "proofread",
+    resegment: "resegment",
+    custom: "custom",
+  });
   const ALIGNMENT_GAP_REMOVE_KEY = "maw.launcher.alignment.gap_remove";
   const ALIGNMENT_GAP_REMOVE_DEFAULTS = Object.freeze({
     minimum_ms: 400,
@@ -23,7 +32,7 @@
   const TOOLBOX_MIN_WIDTH = 360;
   const TOOLBOX_MIN_HEIGHT = 320;
   const TOOLBOX_MAX_HEIGHT = 680;
-  const CUSTOM_DEFAULT_LABEL = "OpenAI-compatible API";
+  const CUSTOM_DEFAULT_LABEL = "Custom API (incl. local)";
   const AUTO_STEP_ORDER = ["match", "replace", "proofread", "resegment", "ocr", "translate", "burn"];
   const AUTO_STEP_CHECKBOXES = {
     match: "autoStepMatch",
@@ -53,6 +62,7 @@
   let modelChoicesOpen = false;
   let llmPrompts = {};
   let activeLlmOperation = "";
+  let llmProviderByTask = {};
   let artifactMenuTarget = null;
   let batchMode = false;
   let postprocessApiKeyRequest = 0;
@@ -117,6 +127,68 @@
     } catch (error) {
       // 某些嵌入式浏览器会禁用 localStorage；内存中的提示词仍可在本次运行中使用。
     }
+  }
+
+  function llmTaskGroup(operation) {
+    const key = String(operation || "");
+    return LLM_PROVIDER_TASK_GROUPS[key] || key;
+  }
+
+  function loadLlmProviderByTask() {
+    try {
+      const raw = window.localStorage?.getItem(LLM_PROVIDER_BY_TASK_KEY);
+      const parsed = raw ? JSON.parse(raw) : {};
+      llmProviderByTask = parsed && typeof parsed === "object" && !Array.isArray(parsed) ? parsed : {};
+    } catch (error) {
+      llmProviderByTask = {};
+    }
+  }
+
+  function saveLlmProviderByTask() {
+    try {
+      window.localStorage?.setItem(LLM_PROVIDER_BY_TASK_KEY, JSON.stringify(llmProviderByTask));
+    } catch (error) {
+      // localStorage 不可用时只影响记忆，不影响本次运行。
+    }
+  }
+
+  function knownProviderId(providerId) {
+    const id = String(providerId || "");
+    if (!id) return "";
+    const providers = window.MAWLauncher.config?.postprocessProviders || [];
+    return providers.some((item) => item.id === id) ? id : "";
+  }
+
+  /** 取某任务记住的供应商；没有记录时回落到当前选中项。 */
+  function providerIdForTask(operation) {
+    return knownProviderId(llmProviderByTask[llmTaskGroup(operation)]);
+  }
+
+  function rememberProviderForTask(operation, providerId) {
+    const group = llmTaskGroup(operation);
+    const id = knownProviderId(providerId);
+    if (!group || !id) return;
+    llmProviderByTask[group] = id;
+    saveLlmProviderByTask();
+  }
+
+  /** 某个 LLM 步骤实际使用的供应商：优先该任务记住的，否则用当前选中项。 */
+  function stepProviderId(stepId) {
+    const fallback = $("postprocessProvider").value || "deepseek";
+    if (stepId === "translate") return providerIdForTask("translate_zh") || fallback;
+    if (stepId === "proofread" || stepId === "resegment") return providerIdForTask(stepId) || fallback;
+    return fallback;
+  }
+
+  /** 切到某任务时恢复它记住的供应商；没有记录或与当前一致就不动。 */
+  function restoreProviderForTask(operation) {
+    const saved = providerIdForTask(operation);
+    const select = $("postprocessProvider");
+    if (!saved || !select || select.value === saved) return false;
+    select.value = saved;
+    renderProvider(saved);
+    if ($("llmProvider")) $("llmProvider").value = saved;
+    return true;
   }
 
   function normalizeAlignmentGapNumber(value, fallback, lower, upper, integer = false) {
@@ -205,12 +277,14 @@
   function switchLlmOperation(operation = $("postprocessOperation").value) {
     const next = String(operation || "");
     if (!next) return;
+    rememberProviderForTask(activeLlmOperation || $("postprocessOperation").value, $("postprocessProvider").value);
     persistLlmPrompt(activeLlmOperation || $("postprocessOperation").value);
     $("postprocessOperation").value = next;
     activeLlmOperation = next;
     loadLlmPrompt(next);
     renderTaskPrompt(next);
     setFieldError("postprocessPrompt", "");
+    restoreProviderForTask(next);
     renderAutoPostprocessState();
     persistAutoPlanSoon();
   }
@@ -1485,6 +1559,7 @@
 
   function autoPlanFromControls() {
     const providerId = $("postprocessProvider").value || "deepseek";
+    // 各 LLM 步骤用自己任务记住的供应商（见 stepProviderId）；没有记录时沿用当前选中项。
     const ocr = ocrRegionPayload();
     return {
       version: 1,
@@ -1494,10 +1569,10 @@
         // 始终上报用户的单文件勾选；批量运行由后端统一跳过文稿匹配，前端不改写、不持久化批量态。
         { id: "match", enabled: Boolean($("autoStepMatch")?.checked), scriptPath: $("postprocessScriptPath").value.trim(), matchMode: $("postprocessMatchMode").value, aiCleanup: Boolean($("postprocessAiCleanup")?.checked), aiCleanupNotes: $("postprocessAiCleanupNotes")?.value.trim() || "", providerId, extraSplitPunctuation: punctuationLines("postprocessExtraSplitPunctuation"), preservePunctuation: punctuationLines("postprocessPreservePunctuation"), cleanMarkdownSymbols: Boolean($("postprocessCleanMarkdownSymbols")?.checked) },
         { id: "replace", enabled: Boolean($("autoStepReplace")?.checked), replacements: parseReplacements(), replacementSeparator: $("postprocessReplacementSeparator").value, replacementTrim: $("postprocessReplacementTrim").checked, replacementCustomSeparator: $("postprocessReplacementCustomSeparator").value, conversion: $("postprocessConversion").value },
-        { id: "proofread", enabled: Boolean($("autoStepProofread")?.checked), providerId, customPrompt: getLlmPrompt("proofread") },
-        { id: "resegment", enabled: Boolean($("autoStepResegment")?.checked), providerId, customPrompt: getLlmPrompt("resegment") },
+        { id: "proofread", enabled: Boolean($("autoStepProofread")?.checked), providerId: stepProviderId("proofread"), customPrompt: getLlmPrompt("proofread") },
+        { id: "resegment", enabled: Boolean($("autoStepResegment")?.checked), providerId: stepProviderId("resegment"), customPrompt: getLlmPrompt("resegment") },
         { id: "ocr", enabled: Boolean($("autoStepOcr")?.checked), videoPath: ocrVideoManual ? $("ocrVideoPath").value.trim() : "", videoPathMode: ocrVideoManual ? "manual" : "auto", ...ocr, threshold: Number($("ocrThreshold").value), report: Boolean($("ocrReport").checked) },
-        { id: "translate", enabled: Boolean($("autoStepTranslate")?.checked), providerId, target: $("autoTranslateTarget").value || "zh", mergeBilingual: Boolean($("autoTranslateMergeBilingual")?.checked), embedTranslations: Boolean($("autoTranslateBackfill")?.checked), bilingualLineOrder: $("autoTranslateBilingualOrder")?.value || "", customPrompt: getLlmPrompt(autoLlmOperation("translate")) },
+        { id: "translate", enabled: Boolean($("autoStepTranslate")?.checked), providerId: stepProviderId("translate"), target: $("autoTranslateTarget").value || "zh", mergeBilingual: Boolean($("autoTranslateMergeBilingual")?.checked), embedTranslations: Boolean($("autoTranslateBackfill")?.checked), bilingualLineOrder: $("autoTranslateBilingualOrder")?.value || "", customPrompt: getLlmPrompt(autoLlmOperation("translate")) },
         { id: "burn", enabled: Boolean($("autoStepBurn")?.checked), videoEncoder: "auto" },
       ],
     };
@@ -1515,7 +1590,7 @@
       return !$("postprocessAiCleanup")?.checked || autoLlmReady($("postprocessProvider").value);
     }
     if (stepId === "replace") return parseReplacements().length > 0 || $("postprocessConversion").value !== "off";
-    if (["proofread", "resegment", "translate"].includes(stepId)) return autoLlmReady($("postprocessProvider").value);
+    if (["proofread", "resegment", "translate"].includes(stepId)) return autoLlmReady(stepProviderId(stepId));
     if (stepId === "ocr") {
       const config = window.MAWLauncher.config || {};
       const ocrModel = (Array.isArray(config.ocrModels) ? config.ocrModels : [])
@@ -1649,8 +1724,8 @@
   function openAutoStep(stepId, invalidField = "", { highlightConnection = false } = {}) {
     pendingAutoStep = stepId;
     const llmStep = ["proofread", "resegment", "translate"].includes(stepId);
-    if (llmStep && !autoLlmReady($("postprocessProvider").value)) {
-      const item = provider();
+    if (llmStep && !autoLlmReady(stepProviderId(stepId))) {
+      const item = provider(stepProviderId(stepId));
       const focusId = ["llmApiKey", "llmBaseUrl", "llmModel"].includes(invalidField)
         ? invalidField
         : (item?.hasApiKey === false ? "llmApiKey" : (item?.hasBaseUrl === false ? "llmBaseUrl" : "llmModel"));
@@ -2366,6 +2441,8 @@
     renderOcrRegion();
     renderOcrModel();
     renderTimestampModel();
+    loadLlmProviderByTask();
+    restoreProviderForTask(activeLlmOperation || $("postprocessOperation").value);
     selectToolboxSection("postprocess");
     syncPaths();
     renderAudioTracks();
@@ -2405,9 +2482,9 @@
       if (["ArrowRight", "ArrowDown", "ArrowLeft", "ArrowUp", "Home", "End"].includes(event.key)) moveToolFocus(event);
     });
   });
-  $("postprocessProvider").addEventListener("change", () => { renderProvider(); renderAutoPostprocessState(); persistAutoPlanSoon(); });
+  $("postprocessProvider").addEventListener("change", () => { renderProvider(); rememberProviderForTask($("postprocessOperation").value, $("postprocessProvider").value); renderAutoPostprocessState(); persistAutoPlanSoon(); });
   $("postprocessOperation").addEventListener("change", () => switchLlmOperation($("postprocessOperation").value));
-  $("llmProvider").addEventListener("change", () => { $("postprocessProvider").value = $("llmProvider").value; renderProvider(); renderAutoPostprocessState(); persistAutoPlanSoon(); });
+  $("llmProvider").addEventListener("change", () => { $("postprocessProvider").value = $("llmProvider").value; renderProvider(); rememberProviderForTask($("postprocessOperation").value, $("llmProvider").value); renderAutoPostprocessState(); persistAutoPlanSoon(); });
   $("saveLlmSettings").addEventListener("click", () => { void saveSettings(); });
   $("testLlmConnection").addEventListener("click", testConnection);
   $("getLlmModels").addEventListener("click", getModels);
@@ -2710,6 +2787,12 @@
     if (event.stage === "step_done") setResult(`${autoStepLabel(event.step)}：${t("toolbox_done")}`, "success");
   };
   window.MAWLauncher.getAutoPostprocessPayload = autoPlanFromControls;
+  window.MAWLauncher.openToolboxAiProcessing = () => {
+    // DeepSeek 彩蛋提示里的「AI处理」入口：打开工具箱并切到 AI 处理标签页。
+    toolboxOpenMode = "manual";
+    if ($("toolboxDrawer").classList.contains("hidden")) setOpen(true);
+    selectTool("llm");
+  };
   window.MAWLauncher.onLanguageChanged = () => {
     clearScriptAlignmentCheck();
     syncProviderOptionLabels();

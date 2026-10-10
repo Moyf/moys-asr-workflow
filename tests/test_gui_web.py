@@ -1495,6 +1495,42 @@ class GuiWebBridgeTests(unittest.TestCase):
         self.assertIn('$("toolboxDrawer").classList.toggle("toolbox-utilities-active", section === "utilities")', postprocess_script)
         self.assertNotIn('"alignment"', postprocess_script[postprocess_script.index("const AUTO_STEP_ORDER"):postprocess_script.index("let autoPlanSaveTimer")])
 
+    def test_deepseek_note_links_to_toolbox_ai_processing(self) -> None:
+        """Given the DeepSeek easter-egg note, When rendered, Then the AI-processing link opens the toolbox tab."""
+        launcher_script = (ROOT / "web" / "launcher" / "launcher.js").read_text(encoding="utf-8")
+        postprocess_script = (ROOT / "web" / "launcher" / "postprocess.js").read_text(encoding="utf-8")
+
+        self.assertIn('function renderProviderNote(providerItem)', launcher_script)
+        self.assertIn('link.dataset.i18n = "toolbox_llm";', launcher_script)
+        self.assertIn("window.MAWLauncher?.openToolboxAiProcessing?.()", launcher_script)
+        self.assertIn("window.MAWLauncher.openToolboxAiProcessing = () => {", postprocess_script)
+        self.assertIn('selectTool("llm");', postprocess_script)
+
+    def test_llm_provider_is_remembered_per_task(self) -> None:
+        """Given the AI-processing panel, When tasks and providers change, Then each task keeps its own provider."""
+        script = (ROOT / "web" / "launcher" / "postprocess.js").read_text(encoding="utf-8")
+
+        self.assertIn('const LLM_PROVIDER_BY_TASK_KEY = "maw.launcher.llm.provider_by_task";', script)
+        self.assertIn("translate_zh: \"translate\"", script)
+        self.assertIn("translate_en: \"translate\"", script)
+        self.assertIn("function providerIdForTask(operation)", script)
+        self.assertIn("function rememberProviderForTask(operation, providerId)", script)
+        self.assertIn("restoreProviderForTask(next);", script)
+        self.assertIn('rememberProviderForTask($("postprocessOperation").value, $("postprocessProvider").value)', script)
+        self.assertIn('providerId: stepProviderId("proofread")', script)
+        self.assertIn('providerId: stepProviderId("resegment")', script)
+        self.assertIn('providerId: stepProviderId("translate")', script)
+
+    def test_custom_provider_label_mentions_local_models(self) -> None:
+        """Given the custom LLM provider, When labeled, Then its name and the local-model hint are present."""
+        launcher_script = (ROOT / "web" / "launcher" / "launcher.js").read_text(encoding="utf-8")
+        html = (ROOT / "web" / "launcher" / "index.html").read_text(encoding="utf-8")
+
+        self.assertIn('llm_custom_provider: "自定义接口（含本地）"', launcher_script)
+        self.assertIn('llm_local_model_hint:', launcher_script)
+        self.assertIn('data-i18n="llm_local_model_hint"', html)
+        self.assertNotIn("OpenAI 通用接口", launcher_script)
+
     def test_toolbox_close_restores_trigger_focus_and_ffconcat_marks_its_input(self) -> None:
         """Given Toolbox source, When closing or validating FFconcat, Then focus and invalid state stay accessible."""
         html = (ROOT / "web" / "launcher" / "index.html").read_text(encoding="utf-8")
@@ -4765,10 +4801,11 @@ class LauncherAssetContractTests(CompactContainerAssertions, unittest.TestCase):
         self.assertIn('function llmBuiltInProviderKeyGuidance(context = {})', launcher_script)
         self.assertIn('["deepseek", "zhipu", "qwen"].includes(providerId)', launcher_script)
         self.assertIn('官方控制台获取的 API Key', launcher_script)
-        self.assertIn('第三方平台，请选择“OpenAI 通用接口”', launcher_script)
-        self.assertIn('当前供应商：OpenAI 通用接口。请核对供应商 API URL、API Key 是否来自同一服务商', launcher_script)
-        self.assertIn('llm_custom_provider: "OpenAI 通用接口"', launcher_script)
-        self.assertIn('llm_custom_provider: "OpenAI-compatible API"', launcher_script)
+        self.assertIn('第三方平台，请选择“自定义接口（含本地）”', launcher_script)
+        self.assertIn('当前供应商：自定义接口（含本地）。请核对供应商 API URL、API Key 是否来自同一服务商', launcher_script)
+        self.assertIn('llm_custom_provider: "自定义接口（含本地）"', launcher_script)
+        self.assertIn('llm_custom_provider: "Custom API (incl. local)"', launcher_script)
+        self.assertIn('llm_local_model_hint:', launcher_script)
         self.assertIn('toolbox_key_loaded: "已从本地环境读取密钥 {key}"', launcher_script)
         self.assertIn('toolbox_key_loaded: "Loaded key from local environment: {key}"', launcher_script)
         self.assertIn('errorText: errText', launcher_script)
@@ -5600,7 +5637,7 @@ class LauncherAssetContractTests(CompactContainerAssertions, unittest.TestCase):
         self.assertIn('function renderModelNote()', script)
         self.assertIn('syncLocalModelPath(model); syncLocalDeviceOptions(model); renderModelNote();', script)
         self.assertIn('"price-note"', script)
-        self.assertIn('$("providerNote").textContent = providerNoteText(current);', script)
+        self.assertIn('renderProviderNote(current);', script)
         self.assertIn('renderServerButton(); refillSelectLabels();', script)
 
     def test_launcher_ignores_runtime_event_payloads_until_fresh_status_is_loaded(self) -> None:

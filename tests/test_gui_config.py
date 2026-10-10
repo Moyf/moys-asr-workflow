@@ -345,7 +345,8 @@ class GuiConfigTests(unittest.TestCase):
         self.assertFalse(provider.requires_api_key)
         self.assertFalse(provider.supports_language)
         self.assertIn("文本模型", provider.note)
-        self.assertIn("字幕处理", provider.note)
+        self.assertIn("AI处理", provider.note)
+        self.assertIn("\n", provider.note)  # 两行提示：第一行说明，第二行指向 AI 处理
 
     def test_is_deepseek_base_url_matches_official_hosts(self) -> None:
         """Given custom OpenAI-compatible base URLs, When checked, Then only DeepSeek hosts are flagged."""

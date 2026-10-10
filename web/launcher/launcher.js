@@ -981,7 +981,7 @@
     llm_model: "模型",
     llm_api_key: "API Key",
     llm_api_key_placeholder: "填写你的 API KEY",
-    llm_custom_provider: "OpenAI 通用接口",
+    llm_custom_provider: "自定义接口（含本地）",
     llm_custom_display_name: "自定义显示名称（可选）",
     llm_custom_display_name_placeholder: "自定义显示名称",
     llm_test_connection: "测试连接",
@@ -993,10 +993,10 @@
     llm_models_empty: "供应商没有返回可用模型。",
     llm_model_choices_title: "展开已获取模型列表",
     llm_provider_unknown: "当前选择的供应商",
-    llm_builtin_provider_key_guidance: "{provider} 是内置供应商，请使用其官方控制台获取的 API Key。若 API Key 来自第三方平台，请选择“OpenAI 通用接口”，并按该平台官方文档配置 API URL。",
+    llm_builtin_provider_key_guidance: "{provider} 是内置供应商，请使用其官方控制台获取的 API Key。若 API Key 来自第三方平台，请选择“自定义接口（含本地）”，并按该平台官方文档配置 API URL。",
     llm_http_unauthorized: "认证失败（HTTP 401，{operation}）。当前供应商：{provider}。请核对供应商 API URL、API Key 是否来自同一服务商，并正确配置模型名；请勿在错误报告中粘贴你的个人 API Key。",
-    llm_http_unauthorized_builtin: "认证失败（HTTP 401，{operation}）。当前供应商：{provider} 官网；请使用官方控制台获取的 API Key。若 API Key 来自第三方平台，请选择“OpenAI 通用接口”，并按该平台官方文档配置 API URL。",
-    llm_http_unauthorized_custom: "认证失败（HTTP 401，{operation}）。当前供应商：OpenAI 通用接口。请核对供应商 API URL、API Key 是否来自同一服务商，并正确配置模型名；请勿在错误报告中粘贴你的个人 API Key。",
+    llm_http_unauthorized_builtin: "认证失败（HTTP 401，{operation}）。当前供应商：{provider} 官网；请使用官方控制台获取的 API Key。若 API Key 来自第三方平台，请选择“自定义接口（含本地）”，并按该平台官方文档配置 API URL。",
+    llm_http_unauthorized_custom: "认证失败（HTTP 401，{operation}）。当前供应商：自定义接口（含本地）。请核对供应商 API URL、API Key 是否来自同一服务商，并正确配置模型名；请勿在错误报告中粘贴你的个人 API Key。",
     llm_http_forbidden: "供应商拒绝了请求（HTTP 403，{operation}）。当前供应商：{provider}。请核对供应商、API URL 与 API Key 签发方是否一致，并确认账号或模型有权限；不要在错误报告中粘贴 Key。",
     llm_http_not_found: "接口或模型不存在（HTTP 404，{operation}）。请检查 API URL 的兼容路径和模型 ID；获取模型时还要确认该供应商提供 /models 接口。这个状态通常不是 API Key 问题。",
     llm_http_rate_limited: "请求被限流或额度暂时耗尽（HTTP 429，{operation}）。请稍后重试，降低请求频率或批次大小，并检查当前供应商的额度与限流策略。",
@@ -1009,6 +1009,7 @@
     llm_base_url: "API URL",
     llm_base_url_placeholder: "填写你的 Base URL，如 https://api.openai.com/v1",
     llm_base_url_hint: "远程服务使用 HTTPS；明文 HTTP 只允许本机环回地址。",
+    llm_local_model_hint: "使用本地模型时，可以直接填写 http://127.0.0.1:11434/v1 这样的本机地址（API Key 允许留空）。",
     llm_reasoning_mode: "思考强度",
     llm_reasoning_auto: "自动",
     llm_reasoning_off: "关闭",
@@ -1034,7 +1035,7 @@
     llm_model: "Model",
     llm_api_key: "API Key",
     llm_api_key_placeholder: "Enter your API key",
-    llm_custom_provider: "OpenAI-compatible API",
+    llm_custom_provider: "Custom API (incl. local)",
     llm_custom_display_name: "Custom display name (optional)",
     llm_custom_display_name_placeholder: "Custom display name",
     llm_test_connection: "Test connection",
@@ -1046,10 +1047,10 @@
     llm_models_empty: "The provider returned no usable models.",
     llm_model_choices_title: "Show fetched model list",
     llm_provider_unknown: "the selected provider",
-    llm_builtin_provider_key_guidance: "{provider} is a built-in provider. Use an API key obtained from its official console. If the API key came from a third-party platform, choose the OpenAI-compatible API and configure the API URL according to that platform's official documentation.",
+    llm_builtin_provider_key_guidance: "{provider} is a built-in provider. Use an API key obtained from its official console. If the API key came from a third-party platform, choose the Custom API (incl. local) and configure the API URL according to that platform's official documentation.",
     llm_http_unauthorized: "Authentication failed (HTTP 401, {operation}). Current provider: {provider}. Check that the API URL and API key come from the same provider, and that the model name is configured correctly; never paste your personal API key into an error report.",
-    llm_http_unauthorized_builtin: "Authentication failed (HTTP 401, {operation}). Current provider: {provider} official service. Use an API key obtained from its official console. If the API key came from a third-party platform, choose the OpenAI-compatible API and configure the API URL according to that platform's official documentation.",
-    llm_http_unauthorized_custom: "Authentication failed (HTTP 401, {operation}). Current provider: OpenAI-compatible API. Check that the API URL and API key come from the same provider, and that the model name is configured correctly; never paste your personal API key into an error report.",
+    llm_http_unauthorized_builtin: "Authentication failed (HTTP 401, {operation}). Current provider: {provider} official service. Use an API key obtained from its official console. If the API key came from a third-party platform, choose the Custom API (incl. local) and configure the API URL according to that platform's official documentation.",
+    llm_http_unauthorized_custom: "Authentication failed (HTTP 401, {operation}). Current provider: Custom API (incl. local). Check that the API URL and API key come from the same provider, and that the model name is configured correctly; never paste your personal API key into an error report.",
     llm_http_forbidden: "The provider rejected the request (HTTP 403, {operation}). Current provider: {provider}. Compare the provider, API URL, and the issuer of the API key, then confirm that the account or model is allowed; never paste the key into an error report.",
     llm_http_not_found: "The endpoint or model was not found (HTTP 404, {operation}). Check the compatible API URL path and model ID; when fetching models, confirm that the provider exposes /models. This is usually not an API-key problem.",
     llm_http_rate_limited: "The request was rate-limited or the quota is temporarily exhausted (HTTP 429, {operation}). Wait and retry, reduce request frequency or batch size, and check the current provider's quota and rate-limit policy.",
@@ -1062,6 +1063,7 @@
     llm_base_url: "API URL",
     llm_base_url_placeholder: "Enter your Base URL, e.g. https://api.openai.com/v1",
     llm_base_url_hint: "Use HTTPS for remote services; plain HTTP is limited to loopback addresses.",
+    llm_local_model_hint: "For local models, you can enter a loopback address such as http://127.0.0.1:11434/v1 (API Key may be left empty).",
     llm_reasoning_mode: "Reasoning effort",
     llm_reasoning_auto: "Auto",
     llm_reasoning_off: "Off",
@@ -1297,7 +1299,7 @@
       custom_asr_model_missing: "请填写自定义 ASR 模型名。",
       openai_keywords_invalid: "OpenAI Keywords 不能包含 < 或 >。",
       openai_diarize_openrouter_unsupported: "OpenRouter 不支持 gpt-4o-transcribe-diarize，请改用 OpenAI 官方 Base URL。",
-      deepseek_transcribe_unsupported: "🐳 蓝色大肥鱼不支持语音转写，它是个文本模型！不过你可以在「字幕处理」中使用它来翻译啥的。",
+      deepseek_transcribe_unsupported: "🐳 蓝色大肥鱼不支持语音转写，它是个文本模型！\n不过你可以在「AI处理」中使用它来翻译啥的。",
       local_runtime_missing: "本地模型运行时未安装。请先安装本地 ASR 依赖。",
       local_runtime_install_failed: (detail) => `本地运行环境安装失败：${detail || "请查看日志后重试。"}`,
       local_runtime_cancelled: "本地运行环境安装已取消。",
@@ -1377,7 +1379,7 @@
       custom_asr_model_missing: "Enter a custom ASR model name.",
       openai_keywords_invalid: "OpenAI Keywords cannot contain < or >.",
       openai_diarize_openrouter_unsupported: "OpenRouter does not support gpt-4o-transcribe-diarize. Switch to the official OpenAI Base URL.",
-      deepseek_transcribe_unsupported: "🐳 The big blue fish cannot transcribe audio — it's a text model! But you can use it for translation in the Subtitle Processing (AI post-process) settings.",
+      deepseek_transcribe_unsupported: "🐳 The big blue fish cannot transcribe audio — it's a text model!\nBut you can use it for translation in the AI Processing (toolbox) panel.",
       local_runtime_missing: "The local ASR runtime is not installed. Install the local dependencies first.",
       local_runtime_install_failed: (detail) => `Local runtime installation failed: ${detail || "check the log and retry."}`,
       local_runtime_cancelled: "Local runtime installation was cancelled.",
@@ -1617,7 +1619,7 @@
           { id: "deepseek", label: "DeepSeek", baseUrl: "https://api.deepseek.com", model: "deepseek-flash", reasoningMode: "off", maskedApiKey: "", verified: false, hasApiKey: false, hasBaseUrl: true, hasModel: true, selected: true },
           { id: "zhipu", label: "智谱 Coding Plan", baseUrl: "https://open.bigmodel.cn/api/coding/paas/v4", model: "glm-5.2", reasoningMode: "off", maskedApiKey: "", verified: false, hasApiKey: false, hasBaseUrl: true, hasModel: true, selected: false },
           { id: "qwen", label: "阿里云 Qwen", baseUrl: "https://dashscope.aliyuncs.com/compatible-mode/v1", model: "qwen-plus", reasoningMode: "off", maskedApiKey: "", verified: false, hasApiKey: false, hasBaseUrl: true, hasModel: true, selected: false },
-          { id: "custom", label: saved.customDisplayName || "OpenAI-compatible API", defaultLabel: "OpenAI-compatible API", displayName: saved.customDisplayName || "", baseUrl: "", model: "", reasoningMode: "off", maskedApiKey: "", verified: false, hasApiKey: false, hasBaseUrl: false, hasModel: false, selected: false }
+          { id: "custom", label: saved.customDisplayName || "Custom API (incl. local)", defaultLabel: "Custom API (incl. local)", displayName: saved.customDisplayName || "", baseUrl: "", model: "", reasoningMode: "off", maskedApiKey: "", verified: false, hasApiKey: false, hasBaseUrl: false, hasModel: false, selected: false }
         ],
         postprocessAutoPlan: saved.postprocessAutoPlan || { version: 1, enabled: false, retainIntermediate: true, steps: [] },
         modelCacheRoot: saved.modelCacheRoot || "D:\\Models\\MAW",
@@ -1799,7 +1801,7 @@
       save_sticker_dir: async ({ path }) => { saved.stickerDir = path || ""; return { ok: Boolean(path), stickerDir: saved.stickerDir, field: path ? "" : "stickerDir", error: path ? "" : "missing" }; },
       open_sticker_folder: async () => { if (!saved.stickerDir) return { ok: false, code: "sticker_dir_invalid" }; window.__openedStickerFolder = saved.stickerDir; return { ok: true }; },
       get_postprocess_settings: async ({ providerId }) => { const apiKey = saved.postprocessApiKeys[providerId] || ""; return { ok: true, providerId, apiKey, maskedApiKey: apiKey ? "sk-…mock" : "" }; },
-      save_postprocess_settings: async ({ providerId, apiKey, displayName, reasoningMode }) => { if (providerId === "custom") saved.customDisplayName = displayName || ""; if (apiKey) saved.postprocessApiKeys[providerId] = apiKey; return { ok: true, providerId, label: providerId === "custom" ? (displayName || "OpenAI-compatible API") : (providerId === "deepseek" ? "DeepSeek" : (providerId === "zhipu" ? "智谱 Coding Plan" : "阿里云 Qwen")), displayName: providerId === "custom" ? (displayName || "") : "", maskedApiKey: saved.postprocessApiKeys[providerId] ? "sk-…mock" : "", reasoningMode: reasoningMode || "off", verified: false }; },
+      save_postprocess_settings: async ({ providerId, apiKey, displayName, reasoningMode }) => { if (providerId === "custom") saved.customDisplayName = displayName || ""; if (apiKey) saved.postprocessApiKeys[providerId] = apiKey; return { ok: true, providerId, label: providerId === "custom" ? (displayName || "Custom API (incl. local)") : (providerId === "deepseek" ? "DeepSeek" : (providerId === "zhipu" ? "智谱 Coding Plan" : "阿里云 Qwen")), displayName: providerId === "custom" ? (displayName || "") : "", maskedApiKey: saved.postprocessApiKeys[providerId] ? "sk-…mock" : "", reasoningMode: reasoningMode || "off", verified: false }; },
       test_postprocess_connection: async ({ providerId, apiKey, save }) => { if (save && apiKey) saved.postprocessApiKeys[providerId] = apiKey; return { ok: true, providerId, verified: true, saved: Boolean(save), maskedApiKey: saved.postprocessApiKeys[providerId] ? "sk-…mock" : "" }; },
       save_postprocess_plan: async ({ plan }) => { saved.postprocessAutoPlan = plan; return { ok: true, plan }; },
       validate_postprocess_plan: async ({ plan }) => ({ ok: true, plan, errors: [] }),
@@ -1962,6 +1964,32 @@
     return map?.[item.id] || item.label;
   }
   function providerNoteText(providerItem) { return state.lang === "en" ? (PROVIDER_NOTES_EN[providerItem.id] || providerItem.note) : providerItem.note; }
+  function appendNoteText(parent, text) { if (text) parent.append(document.createTextNode(text)); }
+  function renderProviderNote(providerItem) {
+    // DeepSeek 彩蛋：第二行的「AI处理」是可点击入口，直接打开工具箱的 AI 处理标签页。
+    const noteElement = $("providerNote");
+    if (!noteElement) return;
+    noteElement.textContent = "";
+    if (providerItem?.id === "deepseek") {
+      const en = state.lang === "en";
+      appendNoteText(noteElement, en ? "🐳 The big blue fish cannot transcribe audio — it's a text model!" : "🐳 蓝色大肥鱼不支持语音转写，它是个文本模型！");
+      noteElement.append(document.createElement("br"));
+      appendNoteText(noteElement, en ? " But you can use it for translation in " : " 不过你可以在 ");
+      const link = document.createElement("button");
+      link.type = "button";
+      link.id = "providerNoteLlmLink";
+      link.className = "inline-link";
+      link.dataset.i18n = "toolbox_llm";
+      link.textContent = t("toolbox_llm");
+      link.addEventListener("click", () => { window.MAWLauncher?.openToolboxAiProcessing?.(); });
+      noteElement.append(link);
+      appendNoteText(noteElement, en ? " of the toolbox." : " 中使用它来翻译啥的。");
+      noteElement.classList.remove("hidden");
+      return;
+    }
+    noteElement.textContent = providerNoteText(providerItem);
+    noteElement.classList.toggle("hidden", !providerItem?.note);
+  }
   function isOpenRouterBaseUrl(value) {
     const raw = String(value || "").trim();
     if (!raw) return false;
@@ -2022,8 +2050,8 @@
     const item = state.config?.postprocessProviders?.find((candidate) => candidate.id === id);
     if (id === "custom" && item?.displayName) return item.displayName;
     const labels = state.lang === "en"
-      ? { deepseek: "DeepSeek", zhipu: "Zhipu Coding Plan", qwen: "Alibaba Qwen", custom: "OpenAI-compatible API" }
-      : { deepseek: "DeepSeek", zhipu: "智谱 Coding Plan", qwen: "阿里云 Qwen", custom: "OpenAI 通用接口" };
+      ? { deepseek: "DeepSeek", zhipu: "Zhipu Coding Plan", qwen: "Alibaba Qwen", custom: "Custom API (incl. local)" }
+      : { deepseek: "DeepSeek", zhipu: "智谱 Coding Plan", qwen: "阿里云 Qwen", custom: "自定义接口（含本地）" };
     return labels[id] || item?.label || t("llm_provider_unknown");
   }
   function llmBuiltInProviderKeyGuidance(context = {}) {
@@ -2463,7 +2491,7 @@
     fillSelect("language", visible, "");
     if (el.multiple) Array.from(el.options).forEach((option) => { option.selected = selected.includes(option.value); });
     else el.value = selected[0] || "";
-    $("providerNote").textContent = providerNoteText(current);
+    renderProviderNote(current);
     $("providerNote").classList.toggle("hidden", !current.note);
     renderModelNote();
   }
@@ -3294,7 +3322,7 @@
   function systemLanguage() { return String(navigator.language || "").toLowerCase().startsWith("zh") ? "zh" : "en"; }
   function renderLanguage() { document.documentElement.lang = state.lang === "zh" ? "zh-CN" : "en"; document.querySelectorAll("[data-i18n]").forEach((node) => { node.textContent = t(node.dataset.i18n); }); document.querySelectorAll("[data-i18n-placeholder]").forEach((node) => { node.placeholder = t(node.dataset.i18nPlaceholder); }); document.querySelectorAll("[data-i18n-title]").forEach((node) => { node.title = t(node.dataset.i18nTitle); }); document.querySelectorAll("[data-i18n-aria-label]").forEach((node) => { node.setAttribute("aria-label", t(node.dataset.i18nAriaLabel)); }); $("langZh").classList.toggle("active", state.lang === "zh"); $("langEn").classList.toggle("active", state.lang === "en"); $("demoBadge").textContent = t("demo_mode"); renderAudioTracks(); if (state.audioTracks.length > 1) $("audioTrackHint").textContent = t("audio_track_hint"); renderKeyHint(); renderKeyStatus(); renderStickerCurrent(); renderAsrPresetRootCurrent(); renderCurrentAsrPreset(); updatePresetActionAvailability(); renderPresetOptionsPreview(presetManager.previewOptions); renderPromptCharacterCount(); renderSonioxContextCharacterCount(); renderHotwordWarnings(); renderErrorContext(); renderServerButton(); refillSelectLabels(); renderLocalRuntime(); renderOcrRuntime(); renderLocalModelStatus(); window.MAWLauncher?.onLanguageChanged?.(); }
   async function setLanguage(language) { if (language !== "zh" && language !== "en") return; state.lang = language; renderLanguage(); const result = await bridge("save_settings", formPayload()); if (result.ok) state.config.guiLang = language; else applyErrorResult(result); }
-  function applyProvider(persistReset = false) { const current = provider(); const preferred = state.config.lastModel; const fallback = state.config.modelId || current.models[0]?.id; const openai = current.id === "openai"; const modelValue = current.models.some((item) => item.id === preferred) ? preferred : (current.models.some((item) => item.id === fallback) ? fallback : current.models[0]?.id); fillSelect("model", current.models, modelValue); fillSelect("region", current.regions, state.config.region || "beijing"); const local = isLocalProvider(); $("modelField").classList.remove("hidden"); $("customAsrFields").classList.toggle("hidden", !openai); if (openai) $("openaiBaseUrl").value = state.config.openaiBaseUrl || "https://api.openai.com/v1"; $("apiKeyField").classList.toggle("hidden", local || current.requiresApiKey === false); $("localRuntimePanel").classList.toggle("hidden", !local); $("localModelRuntimeHintSection").classList.toggle("hidden", local); $("dashscopeRegionPanel").classList.toggle("hidden", current.id !== "qwen"); $("dashscopeRegionHint").classList.toggle("hidden", current.id !== "qwen"); $("localModelPanel").classList.toggle("hidden", !local); $("localRuntimeCheckField").classList.toggle("hidden", !local); $("localDeviceField").classList.toggle("hidden", !local); $("openKeyUrl").classList.toggle("hidden", local || current.requiresApiKey === false); $("apiKey").value = current.apiKey || ""; renderKeyHint(); $("providerNote").textContent = providerNoteText(current); $("providerNote").classList.toggle("hidden", !current.note); const startButton = $("start"); if (startButton && !state.running) startButton.disabled = current.id === "deepseek"; applySelectedModel(persistReset); renderKeyStatus(); syncAdvancedParamsGroup(); if (local) { renderLocalRuntime(); void refreshLocalRuntime(); if (!state.initializing) { void refreshLocalModels(); void refreshAlignmentModels(); } } }
+  function applyProvider(persistReset = false) { const current = provider(); const preferred = state.config.lastModel; const fallback = state.config.modelId || current.models[0]?.id; const openai = current.id === "openai"; const modelValue = current.models.some((item) => item.id === preferred) ? preferred : (current.models.some((item) => item.id === fallback) ? fallback : current.models[0]?.id); fillSelect("model", current.models, modelValue); fillSelect("region", current.regions, state.config.region || "beijing"); const local = isLocalProvider(); $("modelField").classList.remove("hidden"); $("customAsrFields").classList.toggle("hidden", !openai); if (openai) $("openaiBaseUrl").value = state.config.openaiBaseUrl || "https://api.openai.com/v1"; $("apiKeyField").classList.toggle("hidden", local || current.requiresApiKey === false); $("localRuntimePanel").classList.toggle("hidden", !local); $("localModelRuntimeHintSection").classList.toggle("hidden", local); $("dashscopeRegionPanel").classList.toggle("hidden", current.id !== "qwen"); $("dashscopeRegionHint").classList.toggle("hidden", current.id !== "qwen"); $("localModelPanel").classList.toggle("hidden", !local); $("localRuntimeCheckField").classList.toggle("hidden", !local); $("localDeviceField").classList.toggle("hidden", !local); $("openKeyUrl").classList.toggle("hidden", local || current.requiresApiKey === false); $("apiKey").value = current.apiKey || ""; renderKeyHint(); renderProviderNote(current); const startButton = $("start"); if (startButton && !state.running) startButton.disabled = current.id === "deepseek"; applySelectedModel(persistReset); renderKeyStatus(); syncAdvancedParamsGroup(); if (local) { renderLocalRuntime(); void refreshLocalRuntime(); if (!state.initializing) { void refreshLocalModels(); void refreshAlignmentModels(); } } }
   function applySelectedModel(persistReset = false) { const current = provider(); const model = selectedModel(); syncOpenAiFields(); syncLocalModelPath(model); syncLocalDeviceOptions(model); renderModelNote(); applyProviderLanguages(current, model, persistReset); $("speakerColorsField").classList.toggle("hidden", !model.supportsSpeaker); syncQwenAudioOptions(model); syncSonioxContextOptions(model); syncOpenAiAdvancedOptions(model); syncFireRedPunc(model); renderLocalModelStatus(); if (!state.initializing) void syncDefaultOutput(); if (persistReset) savePrefsDebounced({ modelId: model.id, language: languageValue() }); }
   function applyProviderLanguages(current, model, persistReset = false) { const el = $("language"); $("languageGroup").classList.toggle("hidden", current.supportsLanguage === false); const previous = el.multiple ? Array.from(el.selectedOptions).map((o) => o.value) : (el.value ? [el.value] : []); const remembered = state.config.lastLanguage; const wanted = presetLanguage !== null ? presetLanguage.split(",") : previous.length && persistReset ? previous : (remembered !== null && remembered !== undefined ? (remembered ? remembered.split(",") : []) : [state.config.language].filter(Boolean)); el.multiple = Boolean(current.multiLanguage); $("advancedOptionsGrid").classList.toggle("single-language", !current.multiLanguage); if (current.multiLanguage) el.size = 6; else el.removeAttribute("size"); const showRare = Boolean(state.config.showRareLangs); const commons = current.commonLanguages || []; const available = model.languages?.length ? model.languages : current.languages; const visible = !showRare && commons.length ? available.filter((item) => commons.includes(item.id)) : available; fillSelect("language", visible, ""); const codes = new Set(visible.map((item) => item.id)); const restored = wanted.filter((code) => code && codes.has(code)); if (current.multiLanguage) { Array.from(el.options).forEach((o) => { o.selected = restored.includes(o.value); }); } else { el.value = restored[0] || ""; } $("languageHint").classList.toggle("hidden", !current.multiLanguage); $("languageFilterHint").classList.toggle("hidden", showRare || commons.length === 0); $("languageReset").classList.toggle("hidden", !current.multiLanguage); }
   function languageValue() { const el = $("language"); if (el.multiple) return Array.from(el.selectedOptions).map((o) => o.value).filter(Boolean).join(","); return el.value; }

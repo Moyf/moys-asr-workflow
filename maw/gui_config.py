@@ -767,7 +767,7 @@ PROVIDERS: Final[tuple[ProviderConfig, ...]] = (
         divider_before=True,
         note=(
             "🐳 蓝色大肥鱼不支持语音转写，它是个文本模型！\n"
-            "不过你可以在「字幕处理」中使用它来翻译啥的。"
+            "不过你可以在「AI处理」中使用它来翻译啥的。"
         ),
     ),
 )

@@ -3729,7 +3729,7 @@ def _request_from_payload(payload: Mapping[str, object], env_path: Path) -> Tran
         raise PreflightError(
             "provider",
             "deepseek_transcribe_unsupported",
-            "🐳 DeepSeek 不支持语音转写，它是个文本模型！请在「字幕处理」中使用它来翻译。",
+            "🐳 蓝色大肥鱼不支持语音转写，它是个文本模型！请在「AI处理」中使用它来翻译。",
         )
     requested_model = str(payload.get("modelId") or "")
     model = next(
@@ -3761,7 +3761,7 @@ def _request_from_payload(payload: Mapping[str, object], env_path: Path) -> Tran
             raise PreflightError(
                 "openaiBaseUrl",
                 "deepseek_transcribe_unsupported",
-                "🐳 DeepSeek 不支持语音转写，它是个文本模型！请在「字幕处理」中使用它来翻译。",
+                "🐳 蓝色大肥鱼不支持语音转写，它是个文本模型！请在「AI处理」中使用它来翻译。",
             )
     openai_prompt = ""
     openai_keywords: tuple[str, ...] = ()

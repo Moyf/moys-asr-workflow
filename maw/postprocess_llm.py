@@ -95,7 +95,7 @@ PRESETS: Final[tuple[LlmProviderPreset, ...]] = (
     ),
     LlmProviderPreset(
         id="custom",
-        label="OpenAI-compatible API",
+        label="Custom API (incl. local)",
         base_url="",
         model="",
         env_prefix="MAW_POSTPROCESS_CUSTOM",
