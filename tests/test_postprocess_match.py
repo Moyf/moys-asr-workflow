@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from tests.compact_assertions import CompactContainerAssertions
+
 import json
 import tempfile
 import unittest
@@ -11,7 +13,7 @@ from maw.postprocess_match import DEFAULT_EXTRA_SPLIT_PUNCTUATION, DEFAULT_PRESE
 from scripts.mosp_match_text import clean_markdown_inline_symbols
 
 
-class ScriptMatchTests(unittest.TestCase):
+class ScriptMatchTests(CompactContainerAssertions, unittest.TestCase):
     def setUp(self) -> None:
         self.temp_dir = tempfile.TemporaryDirectory()
         self.root = Path(self.temp_dir.name)

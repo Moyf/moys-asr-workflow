@@ -54,7 +54,7 @@ class FakeWindow:
 
 
 @final
-class GuiWebBridgeTests(unittest.TestCase):
+class GuiWebBridgeTests(CompactContainerAssertions, unittest.TestCase):
     def setUp(self) -> None:
         self.temp_dir = tempfile.TemporaryDirectory()
         self.root = Path(self.temp_dir.name)
@@ -670,6 +670,36 @@ class GuiWebBridgeTests(unittest.TestCase):
             )
         self.assertEqual(context.exception.code, "openai_diarize_openrouter_unsupported")
 
+    def test_deepseek_provider_is_rejected_before_transcription(self) -> None:
+        """Given the DeepSeek placeholder provider, When starting transcription, Then preflight rejects it."""
+        media = self.root / "clip.wav"
+        media.write_bytes(b"audio")
+
+        with self.assertRaises(PreflightError) as context:
+            _request_from_payload({
+                "providerId": "deepseek",
+                "modelId": "deepseek-not-an-asr",
+                "mediaPath": str(media),
+                "srtPath": str(self.root / "clip.srt"),
+            }, self.env_path)
+        self.assertEqual(context.exception.code, "deepseek_transcribe_unsupported")
+
+    def test_custom_openai_base_url_pointing_at_deepseek_is_rejected(self) -> None:
+        """Given a custom OpenAI base URL on DeepSeek, When starting transcription, Then preflight rejects it."""
+        media = self.root / "clip.wav"
+        media.write_bytes(b"audio")
+
+        with self.assertRaises(PreflightError) as context:
+            _request_from_payload({
+                "providerId": "openai",
+                "modelId": "whisper-1",
+                "mediaPath": str(media),
+                "srtPath": str(self.root / "clip.srt"),
+                "apiKey": "sk-deepseek",
+                "openaiBaseUrl": "https://api.deepseek.com/v1",
+            }, self.env_path)
+        self.assertEqual(context.exception.code, "deepseek_transcribe_unsupported")
+
     def test_openrouter_prefixes_builtin_openai_model_but_preserves_custom_model(self) -> None:
         media = self.root / "clip.wav"
         media.write_bytes(b"audio")
@@ -990,6 +1020,31 @@ class GuiWebBridgeTests(unittest.TestCase):
         self.assertEqual(result["field"], "postprocessReasoningMode")
         self.assertEqual(result["code"], "invalid_reasoning_mode")
         self.assertFalse(self.env_path.exists())
+
+    def test_three_custom_slots_expose_independent_settings(self) -> None:
+        """Given three custom slots, When the second one is saved, Then only it carries the display name."""
+        result = self.api.save_postprocess_settings({
+            "providerId": "custom2",
+            "apiKey": "sk-local",
+            "baseUrl": "http://127.0.0.1:11434/v1",
+            "model": "qwen3:8b",
+            "displayName": "本地 Ollama",
+        })
+
+        self.assertTrue(result["ok"])
+        env_text = self.env_path.read_text(encoding="utf-8")
+        self.assertIn("MAW_POSTPROCESS_CUSTOM2_BASE_URL=http://127.0.0.1:11434/v1", env_text)
+        self.assertIn("MAW_POSTPROCESS_CUSTOM2_DISPLAY_NAME=本地 Ollama", env_text)
+        providers = {item["id"]: item for item in self.api.get_config()["postprocessProviders"]}
+        self.assertEqual(
+            [item for item in providers if item.startswith("custom")],
+            ["custom", "custom2", "custom3"],
+        )
+        self.assertEqual(providers["custom2"]["label"], "本地 Ollama")
+        self.assertEqual(providers["custom2"]["displayName"], "本地 Ollama")
+        self.assertEqual(providers["custom"]["displayName"], "")
+        self.assertTrue(providers["custom2"]["hasBaseUrl"] and providers["custom2"]["hasModel"])
+        self.assertFalse(providers["custom3"]["hasBaseUrl"] or providers["custom3"]["hasModel"])
 
     def test_custom_postprocess_display_name_is_saved_and_returned(self) -> None:
         result = self.api.save_postprocess_settings({
@@ -1464,6 +1519,83 @@ class GuiWebBridgeTests(unittest.TestCase):
         self.assertIn('.toolbox-tab-list-5 {\n  grid-template-columns: repeat(5, minmax(0, 1fr));\n}', styles)
         self.assertIn('$("toolboxDrawer").classList.toggle("toolbox-utilities-active", section === "utilities")', postprocess_script)
         self.assertNotIn('"alignment"', postprocess_script[postprocess_script.index("const AUTO_STEP_ORDER"):postprocess_script.index("let autoPlanSaveTimer")])
+
+    def test_deepseek_note_links_to_toolbox_ai_processing(self) -> None:
+        """Given the DeepSeek easter-egg note, When rendered, Then the AI-processing link opens the toolbox tab."""
+        launcher_script = (ROOT / "web" / "launcher" / "launcher.js").read_text(encoding="utf-8")
+        postprocess_script = (ROOT / "web" / "launcher" / "postprocess.js").read_text(encoding="utf-8")
+
+        needles = {
+            "launcher.js": [
+                "function renderProviderNote(providerItem)",
+                'link.dataset.i18n = "toolbox_llm";',
+                "window.MAWLauncher?.openToolboxAiProcessing?.()",
+            ],
+            "postprocess.js": [
+                "window.MAWLauncher.openToolboxAiProcessing = () => {",
+                'selectTool("llm");',
+            ],
+        }
+        missing = [needle for needle in needles["launcher.js"] if needle not in launcher_script]
+        missing += [needle for needle in needles["postprocess.js"] if needle not in postprocess_script]
+        self.assertEqual(missing, [], f"缺少彩蛋链接契约：{missing}")
+
+    def test_llm_provider_is_remembered_per_task(self) -> None:
+        """Given the AI-processing panel, When tasks and providers change, Then each task keeps its own provider."""
+        script = (ROOT / "web" / "launcher" / "postprocess.js").read_text(encoding="utf-8")
+
+        needles = [
+            'const LLM_PROVIDER_BY_TASK_KEY = "maw.launcher.llm.provider_by_task";',
+            'translate_zh: "translate"',
+            'translate_en: "translate"',
+            "function providerIdForTask(operation)",
+            "function rememberProviderForTask(operation, providerId)",
+            "restoreProviderForTask(next);",
+            'rememberProviderForTask($("postprocessOperation").value, $("postprocessProvider").value)',
+            'providerId: stepProviderId("proofread")',
+            'providerId: stepProviderId("resegment")',
+            'providerId: stepProviderId("translate")',
+        ]
+        missing = [needle for needle in needles if needle not in script]
+        self.assertEqual(missing, [], f"缺少按任务记忆契约：{missing}")
+
+    def test_toolbox_lists_only_configured_custom_slots(self) -> None:
+        """Given the toolbox provider select, When custom slots are unconfigured, Then only slot 1 is listed."""
+        script = (ROOT / "web" / "launcher" / "postprocess.js").read_text(encoding="utf-8")
+        launcher_script = (ROOT / "web" / "launcher" / "launcher.js").read_text(encoding="utf-8")
+
+        needles = [
+            'function isCustomSlot(item) { return ["custom", "custom2", "custom3"].includes(String(item?.id || "")); }',
+            "function customSlotVisibleInToolbox(item)",
+            'return !isCustomSlot(item) || item.id === "custom" || customSlotConfigured(item);',
+            'if (select.id === "postprocessProvider" && !customSlotVisibleInToolbox(item)) return;',
+            "fillProviderSelects(selectedProvider);",
+            "fillProviderSelects(item.id);",
+        ]
+        missing = [needle for needle in needles if needle not in script]
+        self.assertEqual(missing, [], f"postprocess.js 缺少：{missing}")
+
+        label_keys = ["llm_custom_provider_2", "llm_custom_provider_3"]
+        missing_keys = [key for key in label_keys if key not in launcher_script]
+        self.assertEqual(missing_keys, [], f"launcher.js 缺少槽位文案：{missing_keys}")
+
+    def test_custom_provider_label_mentions_local_models(self) -> None:
+        """Given the custom LLM provider, When labeled, Then its name and the local-model hint are present."""
+        launcher_script = (ROOT / "web" / "launcher" / "launcher.js").read_text(encoding="utf-8")
+        html = (ROOT / "web" / "launcher" / "index.html").read_text(encoding="utf-8")
+
+        missing = [needle for needle in [
+            'llm_custom_provider: "自定义接口（或本地模型）"',
+            "llm_local_model_hint:",
+        ] if needle not in launcher_script]
+        if 'data-i18n="llm_local_model_hint"' not in html:
+            missing.append('index.html 缺少本地模型提示')
+        if "OpenAI 通用接口" in launcher_script:
+            missing.append("launcher.js 仍残留旧称谓")
+        for spec in (ROOT / "tests" / "e2e").glob("launcher*.spec.mjs"):
+            if "OpenAI 通用接口" in spec.read_text(encoding="utf-8"):
+                missing.append(f"{spec.name} 仍断言旧称谓")
+        self.assertEqual(missing, [], f"更名契约缺失：{missing}")
 
     def test_toolbox_close_restores_trigger_focus_and_ffconcat_marks_its_input(self) -> None:
         """Given Toolbox source, When closing or validating FFconcat, Then focus and invalid state stay accessible."""
@@ -4489,7 +4621,7 @@ class LauncherAssetContractTests(CompactContainerAssertions, unittest.TestCase):
         self.assertLess(settings_grid, settings_actions)
         self.assertLess(settings_actions, model_status)
         self.assertLess(settings_actions, api_key)
-        self.assertIn('displayName: item.id === "custom" ? $("llmCustomDisplayName").value.trim() : ""', script)
+        self.assertIn('displayName: isCustomSlot(item) ? $("llmCustomDisplayName").value.trim() : ""', script)
         self.assertIn('bridge("choose_file", { kind: "script" })', script)
         self.assertIn('bridge("choose_file", { kind: "subtitle" })', script)
         self.assertIn('bridge("choose_file", { kind: "video" })', script)
@@ -4735,10 +4867,11 @@ class LauncherAssetContractTests(CompactContainerAssertions, unittest.TestCase):
         self.assertIn('function llmBuiltInProviderKeyGuidance(context = {})', launcher_script)
         self.assertIn('["deepseek", "zhipu", "qwen"].includes(providerId)', launcher_script)
         self.assertIn('官方控制台获取的 API Key', launcher_script)
-        self.assertIn('第三方平台，请选择“OpenAI 通用接口”', launcher_script)
-        self.assertIn('当前供应商：OpenAI 通用接口。请核对供应商 API URL、API Key 是否来自同一服务商', launcher_script)
-        self.assertIn('llm_custom_provider: "OpenAI 通用接口"', launcher_script)
-        self.assertIn('llm_custom_provider: "OpenAI-compatible API"', launcher_script)
+        self.assertIn('第三方平台，请选择“自定义接口（或本地模型）”', launcher_script)
+        self.assertIn('当前供应商：{provider}。请核对供应商 API URL、API Key 是否来自同一服务商', launcher_script)
+        self.assertIn('llm_custom_provider: "自定义接口（或本地模型）"', launcher_script)
+        self.assertIn('llm_custom_provider: "Custom API (or local model)"', launcher_script)
+        self.assertIn('llm_local_model_hint:', launcher_script)
         self.assertIn('toolbox_key_loaded: "已从本地环境读取密钥 {key}"', launcher_script)
         self.assertIn('toolbox_key_loaded: "Loaded key from local environment: {key}"', launcher_script)
         self.assertIn('errorText: errText', launcher_script)
@@ -5570,7 +5703,7 @@ class LauncherAssetContractTests(CompactContainerAssertions, unittest.TestCase):
         self.assertIn('function renderModelNote()', script)
         self.assertIn('syncLocalModelPath(model); syncLocalDeviceOptions(model); renderModelNote();', script)
         self.assertIn('"price-note"', script)
-        self.assertIn('$("providerNote").textContent = providerNoteText(current);', script)
+        self.assertIn('renderProviderNote(current);', script)
         self.assertIn('renderServerButton(); refillSelectLabels();', script)
 
     def test_launcher_ignores_runtime_event_payloads_until_fresh_status_is_loaded(self) -> None:

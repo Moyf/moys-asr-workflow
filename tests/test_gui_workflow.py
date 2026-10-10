@@ -1,3 +1,5 @@
+from tests.compact_assertions import CompactContainerAssertions
+
 # pyright: reportImplicitOverride=false, reportPrivateUsage=false, reportUnannotatedClassAttribute=false, reportUninitializedInstanceVariable=false, reportUnusedCallResult=false, reportUnusedParameter=false
 
 import json
@@ -66,7 +68,7 @@ def _write_bwf_wav(path: Path, sample_rate: int, time_reference_samples: int) ->
     path.write_bytes(b'RIFF' + struct.pack('<I', 4 + len(chunks)) + b'WAVE' + chunks)
 
 
-class GuiWorkflowTests(unittest.TestCase):
+class GuiWorkflowTests(CompactContainerAssertions, unittest.TestCase):
     def setUp(self) -> None:
         self.temp_dir = tempfile.TemporaryDirectory()
         # Windows CI may expose %TEMP% as an 8.3 short path while production code resolves it.
