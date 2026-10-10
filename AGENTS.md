@@ -79,6 +79,16 @@ git diff --check
 uv run python server-editor\serve.py --blank
 ```
 
+### 编辑器脚本是构建产物：改 web/ 后必须重建 bundle
+
+编辑器页面（serve.py 与便携页）加载的是 esbuild 产物 `web/editor/boot/editor-bundle.js`，**不是** `web/` 下的散装源文件。改完源码直接刷新页面看到的还是旧代码，e2e 也会按旧代码跑。源码改动后执行：
+
+```powershell
+node scripts\build-editor.mjs --write   # 重建（--check 只校验新鲜度；watch:editor 可挂监视）
+```
+
+重建出的 bundle 变更属于本次改动，随提交一起入库。本地 dev 可用 `npm run dev`（内置 watch）。esbuild 是 devDependencies（pnpm 安装；`scripts/esm-mechanical/` 是迁移实验工具，与日常构建无关）。
+
 ### Playwright e2e 运行纪律（防长命令挂起）
 
 详见 [docs/E2E_SERVER_HANG.md](docs/E2E_SERVER_HANG.md)。要点：

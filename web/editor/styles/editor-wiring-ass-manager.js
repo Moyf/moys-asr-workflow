@@ -216,24 +216,9 @@ function syncAssStyleForm(style) {
   if (smallTextField) smallTextField.hidden = MaweSettings.EDITOR_SETTINGS.assSmallTextEnabled === false;
   if (largeTextField) largeTextField.hidden = MaweSettings.EDITOR_SETTINGS.assLargeTextEnabled === false;
   if (assStylePreviewSample) {
-    const preview = safeStyle;
-    const borderBox = Number(preview.borderStyle) === 3;
-    assStylePreviewSample.textContent = 'Aa 字幕预览 / 字幕样例';
-    assStylePreviewSample.style.fontFamily = MaweAppearance.subtitleFontFamilyCss(preview.fontName);
-    assStylePreviewSample.style.fontSize = `${Math.max(1, Number(preview.fontSize) || 24) * (window.MaweAssPreview?.fontScale(preview) || 1)}px`;
-    assStylePreviewSample.style.fontWeight = preview.bold ? '700' : '400';
-    assStylePreviewSample.style.fontStyle = preview.italic ? 'italic' : 'normal';
-    assStylePreviewSample.style.textDecorationLine = [preview.underline ? 'underline' : '', preview.strikeOut ? 'line-through' : ''].filter(Boolean).join(' ') || 'none';
-    assStylePreviewSample.style.color = preview.primaryColor;
-    assStylePreviewSample.style.webkitTextStroke = !borderBox && preview.outline > 0
-      ? `${2 * preview.outline}px ${window.AsrEditorUtils.assCssColorWithOpacity(preview.outlineColor, preview.outlineOpacity)}` : '';
-    assStylePreviewSample.style.paintOrder = !borderBox && preview.outline > 0 ? 'stroke fill' : '';
-    assStylePreviewSample.style.filter = preview.shadow > 0 ? `drop-shadow(${preview.shadow}px ${preview.shadow}px 0 ${window.AsrEditorUtils.assCssColorWithOpacity(preview.backColor, preview.backOpacity)})` : '';
-    assStylePreviewSample.style.letterSpacing = `${preview.spacing}px`;
-    assStylePreviewSample.style.transform = `scale(${Number(preview.scaleX) / 100}, ${Number(preview.scaleY) / 100}) rotate(${Number(preview.angle) || 0}deg)`;
-    assStylePreviewSample.style.background = borderBox
-      ? window.AsrEditorUtils.assCssColorWithOpacity(preview.outlineColor, preview.outlineOpacity) : 'transparent';
-    assStylePreviewSample.style.padding = borderBox ? `${preview.outline}px` : '0';
+    // 样例与视频预览共用 Canvas 光栅管线：描边/底框/阴影观感一致。
+    // style.fontSize 即样例画布上的字形高度（ascent+descent 语义）。
+    window.MaweAssCanvas?.renderSample(assStylePreviewSample, safeStyle, 'Aa 字幕预览 / 字幕样例');
   }
   updateAssStylePreviewModeHints();
 }
