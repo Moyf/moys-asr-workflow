@@ -606,7 +606,7 @@
 
   // === 拖动提交补丁 ===
   // 长工程下 renderAll() 全量重建整张字幕列表（几千条时每次松手冻结数百毫秒，
-  // 全选状态下秒级；研究见 docs/PERF_CUE_DRAG_RESEARCH.md）。时间类拖动提交
+  // 全选状态下秒级；研究见 docs/_archied/research/PERF_CUE_DRAG_RESEARCH.md）。时间类拖动提交
   // 只需更新受影响行的时间/字数/dirty 显示并修复列表顺序，不必重建 DOM。
 
   function patchCueRowTime(el, segment) {

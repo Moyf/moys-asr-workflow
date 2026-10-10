@@ -1,5 +1,13 @@
 # MAW 发布核查清单生成任务（2026-10-09）
 
+## 当前保留用途
+
+本目录的 `maw-verification-v1.8.0b1-to-main.html` 同时是有效回归样本：
+`tests/test_verification_checklist.py` 的 `test_existing_release_page_retains_item_content_and_ids`
+读取它，验证清单刷新前后标题、分区内容及核对项 ID 保持一致，并校验核对项结构。
+历史发布范围不再代表当前版本，但这项测试依赖仍有效；不得作为无用临时产物删除。
+下文“生成物不提交”的原始任务说明保留为历史记录，不代表该文件当前未被 Git 跟踪。
+
 ## 任务
 
 按 `tools/verification-checklist/templates/verification-checklist.html` 模板，生成「v1.8.0-beta.1 → 当前 main」

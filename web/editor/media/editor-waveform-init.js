@@ -233,7 +233,7 @@
       timingCommand = null;
       // 长工程优化：多重字幕不可见时，主轨/叠加轨的时间类提交只补丁受影响行，
       // 不全量重建字幕列表（几千条时 renderAll 每次松手冻结数百毫秒，
-      // 全选状态下秒级，见 docs/PERF_CUE_DRAG_RESEARCH.md）。
+      // 全选状态下秒级，见 docs/_archied/research/PERF_CUE_DRAG_RESEARCH.md）。
       // 换轨拖动（Shift+拖动主↔叠加）改变行结构，必须回退全量重建。
       const cueListPatch = (track === 'main' || track === 'overlay')
         && !(details && details.trackChanged)

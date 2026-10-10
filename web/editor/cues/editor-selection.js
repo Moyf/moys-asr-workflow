@@ -85,7 +85,7 @@
 
 
   // 逐行 querySelector 是 O(选中数 × 列表行数)：全选几千条时主线程会冻结
-  // 数秒（研究见 docs/PERF_CUE_DRAG_RESEARCH.md）。选中数超过阈值后改为
+  // 数秒（研究见 docs/_archied/research/PERF_CUE_DRAG_RESEARCH.md）。选中数超过阈值后改为
   // 单次扫描列表行并按选中集合判断；小选区仍走逐行查找（常数更小）。
   const BULK_SELECTION_CLASS_SCAN_THRESHOLD = 64;
 
