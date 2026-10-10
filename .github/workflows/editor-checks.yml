@@ -13,6 +13,35 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  debug-tools:
+    name: Debug tooling (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 5
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
+        with:
+          node-version: '22'
+      - uses: actions/setup-python@v6
+        with:
+          python-version: '3.11'
+      # These checks need only the standard libraries: no uv/pnpm install.
+      - name: Runner output, exit codes and timeout cleanup
+        run: python scripts/run_check.py --timeout 60 -- python -m unittest tests.test_run_check tests.test_compact_assertions
+      - name: Server diagnostics and process lifecycle
+        run: python scripts/run_check.py --timeout 60 -- node --test tests/test_e2e_output_tail.mjs tests/test_e2e_server_lifecycle.mjs
+      - name: Preserve failed check evidence
+        if: failure()
+        uses: actions/upload-artifact@v6
+        with:
+          name: debug-tools-${{ matrix.os }}
+          path: .debug-runs/
+          include-hidden-files: true
+          retention-days: 7
   editor:
     runs-on: ubuntu-latest
     env:
