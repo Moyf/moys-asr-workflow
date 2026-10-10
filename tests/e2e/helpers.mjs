@@ -8,6 +8,7 @@ import { tmpdir } from 'node:os';
 import { createServer } from 'node:net';
 import { randomBytes } from 'node:crypto';
 import { spawnServerProcess, stopServerProcess, serverHasExited, serverRequest } from './server-process.mjs';
+import { createOutputTail } from './output-tail.mjs';
 
 // E2E tests exercise Python-backed editor servers and edit.py. Use the
 // repository's locked uv environment by default so the runner cannot silently
@@ -295,7 +296,7 @@ async function launchServerProcess(pythonArgs, port, env, { waitForStartup = fal
     await new Promise((resolve, reject) => {
       let pollTimer;
       let settled = false;
-      const allOutput = [];
+      const output = createOutputTail();
       const finish = (callback) => {
         if (settled) return;
         settled = true;
@@ -304,13 +305,15 @@ async function launchServerProcess(pythonArgs, port, env, { waitForStartup = fal
         callback();
       };
       const timeout = setTimeout(() => {
-        finish(() => reject(new Error('Server did not respond within 30s')));
+        finish(() => reject(new Error(`Server did not respond within 30s. Output tail: ${output.text()}`)));
       }, 30000);
-      proc.stdout.on('data', (chunk) => allOutput.push(chunk.toString()));
-      proc.stderr.on('data', (chunk) => allOutput.push(chunk.toString()));
+      proc.stdout.on('data', (chunk) => output.append(chunk));
+      proc.stderr.on('data', (chunk) => output.append(chunk, 'stderr'));
       proc.on('error', (err) => finish(() => reject(err)));
       proc.on('exit', (code) => finish(() => {
-        reject(new Error(`Server exited with code ${code}. Output: ${allOutput.join('')}`));
+        void stopServerProcess(proc).then(
+          () => reject(new Error(`Server exited with code ${code}. Output tail: ${output.text()}`)), reject,
+        );
       }));
 
       const poll = async () => {

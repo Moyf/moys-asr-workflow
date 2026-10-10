@@ -82,6 +82,8 @@ Server 的内置预设覆盖、命名工作区和活动名称保存在本机设�
 
 ## 开发检查
 
+Agent 调试与测试使用[有界输出与分层调试](dev/DEBUG_WORKFLOW.md)中的 `scripts/run_check.py`：完整日志落盘，只回显有限摘要并保留退出码。该文档也说明 worktree 环境复用、生成物搜索边界、超时清理限制与按变化选择验证范围。
+
 开发者手动维护环境：`uv sync --group dev`；前端验证工具使用根目录 `pnpm install --frozen-lockfile`。Agent 执行已安装环境中的命令时一律加 `--no-sync`。
 
 ```sh

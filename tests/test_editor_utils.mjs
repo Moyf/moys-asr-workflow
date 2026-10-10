@@ -240,7 +240,7 @@ test('translates ASS special text format samples and rule hints for every symbol
 // of silently selecting whichever python.exe happens to be on PATH.
 const configuredPython = String(process.env.MAW_TEST_PYTHON || '').trim();
 const PYTHON_COMMAND = configuredPython || 'uv';
-const PYTHON_PREFIX_ARGS = configuredPython ? [] : ['run', '--frozen', 'python'];
+const PYTHON_PREFIX_ARGS = configuredPython ? [] : ['run', '--no-sync', 'python'];
 
 function pythonCommandArgs(args) {
   return [...PYTHON_PREFIX_ARGS, ...args];
