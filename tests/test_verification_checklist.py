@@ -45,7 +45,7 @@ class VerificationChecklistTests(CompactContainerAssertions, unittest.TestCase):
             builder.extract_page("<title>Other page</title>")
 
     def test_existing_release_page_retains_item_content_and_ids(self):
-        path = ROOT / "docs/verifications/261009_first-verification/maw-verification-v1.8.0b1-to-main.html"
+        path = ROOT / "docs/_archied/verifications/261009_first-verification/maw-verification-v1.8.0b1-to-main.html"
         fields = builder.extract_page(path.read_text(encoding="utf-8"))
         result = builder.extract_page(builder.render(**fields))
         self.assertTrue(fields == result, "Refresh must preserve the release checklist content")
