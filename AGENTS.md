@@ -66,13 +66,16 @@ git diff --check
 
 ### Agent 测试输出与后台进程：不搬运完整日志，不悬挂服务
 
-- 跑测试一律用 `uv run --no-sync python scripts/run_tests.py`（可接测试文件路径 / 点号名称 / `--full-log`）：它在**打印阶段**截断失败文本（默认单条 4000 字符、单行 400），未截断内容写入日志文件并打印其路径，所以无论断言怎么写都不会再刷屏。裸 `python -m unittest` 只用于确实需要完整输出的场合。
+- 测试统一从当前 worktree 用 `python scripts/run_check.py --timeout 180 -- <命令及参数>` 执行；Python 选已安装解释器或 `uv run --no-sync python`。原始输出落在被忽略的 `.debug-runs/<run-id>/output.log`，终端只回显有行数和行宽上限的摘要；`result.json` 保留命令、工作目录、退出码、耗时与 PID。不要用管道过滤代替此入口：它可能丢失退出码，单条 AssertionError 本身也可能长达数 MB。完整日志仅按失败点定向读取，不能重新整份搬入上下文。
+- 根目录 `rg` 默认按 `.rgignore` 跳过 bundle、便携 HTML、历史扫描 JSON、锁文件与日志。优先 `rg -l` 找文件，再在明确源码路径用 `rg -n --max-columns 240 --max-columns-preview` 查符号。生成物仍由构建/契约检查验证；确需查看时显式传该文件路径。`.rgignore` 不会阻止 Git、测试或工具显式读取文件。
+- diff 先看 `git diff --stat` / `--name-status`，再看选定源码路径；含生成物的整体内容 diff 禁止默认打印。不要仅限制输出行数，大文件可能只有一行。完整操作说明与分层验证见 [docs/dev/DEBUG_WORKFLOW.md](docs/dev/DEBUG_WORKFLOW.md)。
+- Python unittest 在通用外层运行器内使用 `uv run --no-sync python scripts/run_tests.py`（可接测试文件路径 / 点号名称 / `--full-log`）：它在**打印阶段**截断失败文本（默认单条 4000 字符、单行 400），未截断内容写入日志文件并打印其路径，所以无论断言怎么写都不会再刷屏。裸 `python -m unittest` 只用于确实需要完整输出的场合。
 - unittest 的 `assertIn` / `assertEqual` 失败会把整个容器（内联脚本、整页 HTML，数十万字符）**打印成一整行**，`Select-String` / `grep` / `head` / `tail` 这类下游过滤救不了它——必须在生成端截断；需要摘要时再加 `| cut -c1-300`。
 - 对页面 / 内联脚本做成员断言的测试类，继承 `tests/compact_assertions.py` 的 `CompactContainerAssertions` 混入：失败信息压缩为「needle + 容器规模」，比截断更好读。`tests/test_compact_assertions_usage.py` 会扫出漏掉混入的类（漏了直接红灯），压缩行为本身由 `tests/test_run_tests_runner.py` 守门。
 - 后台长驻进程（serve.py、http.server 等）不要用会等待进程树的方式启动：优先用独立终端，或把输出重定向到文件后再以端口探活（如 `Invoke-WebRequest` 轮询），用完必须终止进程。曾发生后台 server 挂住会话 2 小时以上的事故。
 - 禁止用 bash 后台 `&`（含 `nohup ... &`）启动任何长驻进程：stdin 仍挂在会话管道上永不 EOF，即使重定向 stdout/stderr，命令工具也会等待进程树而永久阻塞（2026-10-09 `python -m http.server ... &` 事故，探活成功后仍卡死）。需要本地服务一律 paseo 独立终端启动、用完 kill；一次性验证（如本地打开生成的 HTML）优先静态校验，不起服务。
 - 已知时长：全量 Python 套件约 110s、单条 e2e spec 约 2 分钟，命令默认超时 120s 处于临界；这些命令显式设置更大的超时，或按文件拆分执行。
-- 新 worktree 没有现成环境：Python 复用主仓库 venv（`UV_PROJECT_ENVIRONMENT` 指向主仓库 `.venv`）或给 e2e 设 `MAW_E2E_PYTHON`；Node 侧 `pnpm install` 后装配顺序测试才可运行（需要 acorn），e2e 需要 playwright。
+- 新 worktree 先检查现有环境：锁文件一致时可只读复用主仓库 Python venv，显式设置 `MAW_TEST_PYTHON`（Node 跨语言测试）和 `MAW_E2E_PYTHON`（e2e）；不在共享 venv 上同步不同依赖。Node 在当前 worktree 按锁文件安装一次，e2e 还需浏览器。依赖缺失只记录一次并修复对应层，禁止为同一失败循环重建环境；e2e / Node 的 uv 默认路径使用 `--no-sync`。
 - PowerShell 内联脚本（`node -e "..."`、多层嵌套引号）极易解析失败；复杂逻辑写成临时脚本文件再执行。命令输出为空时，先怀疑参数与引号，而不是重跑同一命令。
 
 自动化测试覆盖数据处理和服务器契约，不能替代真实浏览器中的拖动、播放、Seek 和布局体验。涉及编辑器交互的改动，应至少手动启动：
@@ -129,10 +132,11 @@ node scripts\build-editor.mjs --write   # 重建（--check 只校验新鲜度；
 ```powershell
 Get-Content -Raw docs\TEST_FEEDBACK_BETA7.md
 git status --short
-git diff
+git diff --stat
+git diff --name-status
 ```
 
-然后逐项把任务记录状态与实际代码、diff、测试重新对齐；如果记录写着“已修复”但当前证据不足，先改回 `进行中` 或 `阻塞`，再继续开发。恢复时不得根据旧摘要跳过核对，也不得重新开始已由当前文件和验证证实完成的工作。
+然后只读取选定源码文件的 diff，并逐项把任务记录状态与实际代码、diff、测试重新对齐；如果记录写着“已修复”但当前证据不足，先改回 `进行中` 或 `阻塞`，再继续开发。恢复时不得根据旧摘要跳过核对，也不得重新开始已由当前文件和验证证实完成的工作。记录验证对应的 HEAD、待提交文件、命令和 result.json 路径；源码未变且已通过的层不重复跑。
 
 ### 收尾要求
 
