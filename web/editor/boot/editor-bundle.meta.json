@@ -344,7 +344,7 @@
     "editor/styles/editor-wiring-ass-storage.js": "60c7f09d7d9904c266f61d3de1a9625cc49c7043247167f185625c0d533392a3",
     "editor/boot/editor-wiring-initial-config.js": "9647852379c2db5a43a2ab795a1d49aead93a28a38d2bd634cdb38dd329b98e8",
     "editor/ui/editor-wiring-dom-panels.js": "342925546bd2911f2962f18392ec6b8593e7b8e6d55eb44143864906dbd413fd",
-    "editor/styles/editor-wiring-ass-manager.js": "61dbaa9eea211eb5a40af5e89c928da02605bd88c0690d24256c05f9551ac33c",
+    "editor/styles/editor-wiring-ass-manager.js": "33db6d7da9909f8c4dc92d64bea49e274f75ca49e231db685105924ff721172d",
     "editor/ui/editor-wiring-settings-init.js": "282921f5cb5d7f13d59b843633a77e3633b188965f386d21829b153310e688b6",
     "editor/ui/editor-wiring-settings-help.js": "6b9b80cfde7b805f3c12475d7895a91785d9f36395828c1ee6a9b4f7dad4063b",
     "editor/ui/editor-wiring-theme-split-settings.js": "febb0c7643250c51aadbe6b237b445b50e3375306a2abe6654956b66b70aae34",
@@ -362,7 +362,7 @@
     "editor/cues/editor-wiring-edit-shortcuts.js": "353fc928fb8fa370f5f4406fc07f061ed8717fed9639e4a17201a3f481ed0366",
     "editor/styles/editor-wiring-font-geometry.js": "a6bd47579d3c780c6cbf3d6211584728759fad78e5d26af826f03dcbf3da9c04",
     "editor/styles/editor-wiring-ass-preview.js": "8976d175b3002698f2b60b271dc3a7ffc84f77347ffc1d9252183f9a4002fe7a",
-    "editor/styles/editor-wiring-ass-canvas.js": "5571bb0cb17ee2312fd50496d5ce730a31c66af244dd1456e8314cf95f8c0134",
+    "editor/styles/editor-wiring-ass-canvas.js": "ae0bb65820c5be67ec5f8421435e853e37cb4e3339b8bcbe2e6bd334972942eb",
     "editor/styles/editor-wiring-ass-frame.js": "1a3c186069460cde01b86e0c1614b8b71d3f9fa7c4ef377988824b14adff69e5",
     "editor/media/editor-wiring-sticker-preview.js": "fa46c5d9075247e627f4fea99cd13d36d1492e4bd5ee1c7a51f046168abbbdb8",
     "editor/io/editor-wiring-export-context.js": "89ac0732b2bcb77878991af980335662d739e4d1cfff65152e4878b042545f0e",
@@ -690,7 +690,7 @@
         "format": "esm"
       },
       "web/editor-entry.mjs": {
-        "bytes": 1733512,
+        "bytes": 1734468,
         "imports": [
           {
             "path": "web/shared/host/storage.js",
@@ -1191,10 +1191,10 @@
             "bytesInOutput": 4423
           },
           "web/editor-entry.mjs": {
-            "bytesInOutput": 1008577
+            "bytesInOutput": 1008725
           }
         },
-        "bytes": 1347856
+        "bytes": 1348004
       }
     }
   }

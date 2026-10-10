@@ -1773,8 +1773,7 @@
   .ass-style-preview-actions { margin: 0; line-height: 1.7; }
   .ass-style-preview-actions:has(button[hidden]) { display: none; }
   #ass-style-preview-sample {
-    position: relative; z-index: 1; display: inline-block; align-self: center; max-width: 100%; padding: 4px 9px; color: #fff;
-    font-size: 24px; line-height: 1.2; text-align: center; white-space: pre-wrap; word-break: break-word;
+    position: relative; z-index: 1; display: block; margin: 0 auto; max-width: 100%;
   }
   #ass-profile-preview-summary { position: relative; z-index: 1; color: var(--text-primary); font-size: 12px; line-height: 1.5; }
   /* 「当前方案」是纯文字摘要：底色跟随明暗模式，去掉胶片网格，

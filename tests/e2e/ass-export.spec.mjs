@@ -13,6 +13,30 @@ import {
 
 const DURATION_MS = 4_000;
 
+test('sample Canvas contains scaled and rotated glyphs without edge clipping', async ({ page }) => {
+  await disableOnboarding(page);
+  await page.goto(server.url);
+  await page.waitForFunction(() => window.MaweAssCanvas?.renderSample);
+  const results = await page.evaluate(() => [0, 45, 90].map(angle => {
+    const canvas = document.createElement('canvas');
+    window.MaweAssCanvas.renderSample(canvas, { fontName: 'Arial', fontSize: 32, scaleX: 200, scaleY: 150,
+      angle, primaryColor: '#ffffff', outline: 4, outlineColor: '#ff0000', outlineOpacity: 100,
+      shadow: 4, backColor: '#000000', backOpacity: 100 }, 'Sample 字幕');
+    const pixels = canvas.getContext('2d').getImageData(0, 0, canvas.width, canvas.height).data;
+    let painted = 0, edge = 0;
+    for (let y = 0; y < canvas.height; y++) for (let x = 0; x < canvas.width; x++) {
+      if (!pixels[(y * canvas.width + x) * 4 + 3]) continue;
+      painted++;
+      if (x === 0 || y === 0 || x === canvas.width - 1 || y === canvas.height - 1) edge++;
+    }
+    return { angle, painted, edge };
+  }));
+  for (const result of results) {
+    expect(result.painted, `angle ${result.angle}`).toBeGreaterThan(100);
+    expect(result.edge, `angle ${result.angle}`).toBe(0);
+  }
+});
+
 function generateAssProjectJson(filePath) {
   const project = {
     media: 'synthetic.wav',
@@ -707,9 +731,21 @@ test('uses outline colour for sample boxes and preserves zero scaling', async ({
     }, { persist: false });
   });
   const sample = page.locator('#ass-style-preview-sample');
-  await expect(sample).toHaveCSS('background-color', 'rgba(255, 0, 0, 0.5)');
-  await expect(sample).toHaveCSS('-webkit-text-stroke-width', '0px');
-  await expect(sample).toHaveCSS('padding-top', '4px');
+  // 样例画布像素断言：BorderStyle 3 底框吃描边色与 50% 不透明度。
+  const sampleStats = () => page.evaluate(() => {
+    const canvas = document.querySelector('#ass-style-preview-sample');
+    if (!canvas || !canvas.width) return { painted: 0, red50: 0 };
+    const { data } = canvas.getContext('2d').getImageData(0, 0, canvas.width, canvas.height);
+    const near = (value, target) => Math.abs(value - target) <= 3;
+    const stats = { painted: 0, red50: 0 };
+    for (let i = 0; i < data.length; i += 4) {
+      const r = data[i]; const g = data[i + 1]; const b = data[i + 2]; const a = data[i + 3];
+      if (a > 0) stats.painted++;
+      if (a > 90 && a < 170 && near(r, 255) && near(g, 0) && near(b, 0)) stats.red50++;
+    }
+    return stats;
+  });
+  expect((await sampleStats()).red50).toBeGreaterThan(100);
   const spacing = await sample.evaluate((element) => {
     const label = document.querySelector('.ass-style-preview-label');
     return element.getBoundingClientRect().top - label.getBoundingClientRect().bottom;
@@ -772,9 +808,9 @@ test('uses outline colour for sample boxes and preserves zero scaling', async ({
     syncAssStyleForm(style);
     MawePlaybackLoop.refreshSubtitlePreview(1500, 0);
   });
-  // 零缩放：主字幕不再占据任何画布像素；样式窗 DOM 样例同步塌缩。
+  // 零缩放：主字幕与样式窗样例画布都不再占据任何像素。
   expect((await canvasStats()).painted).toBe(0);
-  await expect(sample).toHaveCSS('transform', 'matrix(0, 0, 0, 1, 0, 0)');
+  expect((await sampleStats()).painted).toBe(0);
 });
 
 test('offsets the opaque shadow and keeps the border box shadow unclipped', async ({ page }) => {

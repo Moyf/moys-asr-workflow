@@ -1,12 +1,13 @@
 // Dev-only Playwright helpers for MAW waveform deletion regression.
 // Deterministic synthetic WAV + project JSON generated at runtime; no committed media.
 // Event/process/port-based lifecycle — no arbitrary sleeps for correctness.
-import { execFileSync, spawn } from 'node:child_process';
+import { execFileSync } from 'node:child_process';
 import { writeFileSync, readFileSync, existsSync, rmSync, mkdirSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { tmpdir } from 'node:os';
 import { createServer } from 'node:net';
 import { randomBytes } from 'node:crypto';
+import { spawnServerProcess, stopServerProcess, serverHasExited, serverRequest } from './server-process.mjs';
 
 // E2E tests exercise Python-backed editor servers and edit.py. Use the
 // repository's locked uv environment by default so the runner cannot silently
@@ -28,92 +29,6 @@ function buildE2EProcessEnv(extra = {}) {
   // behavior, while the default uv path stays isolated and reproducible.
   if (!configuredPython) delete environment.PYTHONPATH;
   return environment;
-}
-
-// ---------------------------------------------------------------------------
-// Process cleanup for interrupted E2E runs.
-// ---------------------------------------------------------------------------
-// Keep this list limited to server processes started by this helper.  In
-// particular, do not try to discover or terminate every Python process on the
-// machine when a test runner is interrupted.
-const activeServerPids = new Set();
-let cleanupInProgress = false;
-
-function terminateProcessTreeSync(pid) {
-  if (!Number.isInteger(pid) || pid <= 0) return;
-
-  try {
-    if (process.platform === 'win32') {
-      execFileSync('taskkill', ['/F', '/T', '/PID', String(pid)], {
-        windowsHide: true,
-        stdio: 'ignore',
-      });
-    } else {
-      process.kill(pid, 'SIGKILL');
-    }
-  } catch (_) {
-    // The process may already have exited between registration and cleanup.
-  }
-}
-
-function cleanupActiveServersSync() {
-  if (cleanupInProgress) return;
-  cleanupInProgress = true;
-  try {
-    for (const pid of activeServerPids) {
-      terminateProcessTreeSync(pid);
-    }
-  } finally {
-    activeServerPids.clear();
-    cleanupInProgress = false;
-  }
-}
-
-function registerServerProcess(proc) {
-  if (!Number.isInteger(proc.pid) || proc.pid <= 0) return;
-
-  activeServerPids.add(proc.pid);
-  proc.once('exit', () => activeServerPids.delete(proc.pid));
-  proc.once('error', () => activeServerPids.delete(proc.pid));
-}
-
-function stopServerProcess(proc) {
-  return new Promise((resolve) => {
-    if (proc.exitCode !== null || !Number.isInteger(proc.pid)) {
-      activeServerPids.delete(proc.pid);
-      resolve();
-      return;
-    }
-
-    let settled = false;
-    const finish = () => {
-      if (settled) return;
-      settled = true;
-      clearTimeout(timeout);
-      proc.removeListener('exit', finish);
-      resolve();
-    };
-    const timeout = setTimeout(finish, 5000);
-
-    proc.once('exit', finish);
-    terminateProcessTreeSync(proc.pid);
-  });
-}
-
-process.on('exit', cleanupActiveServersSync);
-process.on('uncaughtExceptionMonitor', cleanupActiveServersSync);
-
-function handleTerminationSignal(signal) {
-  cleanupActiveServersSync();
-  process.exit(signal === 'SIGINT' ? 130 : 143);
-}
-
-process.on('SIGINT', () => handleTerminationSignal('SIGINT'));
-process.on('SIGTERM', () => handleTerminationSignal('SIGTERM'));
-if (process.platform === 'win32') {
-  process.on('SIGBREAK', () => handleTerminationSignal('SIGBREAK'));
-} else {
-  process.on('SIGHUP', () => handleTerminationSignal('SIGHUP'));
 }
 
 // ---------------------------------------------------------------------------
@@ -367,13 +282,12 @@ export function generateProjectJson(filePath) {
 // when the process has fully exited.
 // ---------------------------------------------------------------------------
 async function launchServerProcess(pythonArgs, port, env, { waitForStartup = false } = {}) {
-  const proc = spawn(PYTHON_RUNNER.command, pythonCommandArgs(pythonArgs), {
+  const proc = spawnServerProcess(PYTHON_RUNNER.command, pythonCommandArgs(pythonArgs), {
     cwd: process.cwd(),
     stdio: ['pipe', 'pipe', 'pipe'],
     windowsHide: true,
     env,
   });
-  registerServerProcess(proc);
 
   const url = `http://127.0.0.1:${port}/`;
 
@@ -401,7 +315,7 @@ async function launchServerProcess(pythonArgs, port, env, { waitForStartup = fal
 
       const poll = async () => {
         try {
-          const res = await fetch(url);
+          const res = await serverRequest(url);
           if (res.ok) {
             finish(resolve);
             return;
@@ -419,9 +333,13 @@ async function launchServerProcess(pythonArgs, port, env, { waitForStartup = fal
   if (waitForStartup) {
     const deadline = Date.now() + 30000;
     while (true) {
+      if (serverHasExited(proc)) {
+        await stopServerProcess(proc);
+        throw new Error(`Server exited during project startup: ${proc.exitCode ?? proc.signalCode}`);
+      }
       try {
-        const response = await fetch(`${url}api/startup-status`, { cache: 'no-store' });
-        const result = await response.json().catch(() => ({}));
+        const response = await serverRequest(`${url}api/startup-status`, { json: true });
+        const result = response.body;
         if (response.ok && result.status === 'ready') break;
         if (response.ok && result.status === 'error') {
           throw new Error(`Server project startup failed: ${result.error || 'unknown error'}`);
