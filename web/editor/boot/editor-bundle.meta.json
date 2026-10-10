@@ -48,6 +48,7 @@
     "shared/utils/ograf.js",
     "shared/editor-utils.js",
     "shared/editor-i18n.js",
+    "shared/tooltip.js",
     "editor/media/waveform/constants.js",
     "editor/media/waveform/labels.js",
     "editor/media/waveform/scale.js",
@@ -238,6 +239,7 @@
     "shared/utils/ograf.js": "94b88b7db9ea4fd862dc49985f1a5e46bcef6bc70837cb656b0cd1b085a40d89",
     "shared/editor-utils.js": "360489d1efb54cddfd9c732c7daab966a0f6d1bf0cb05a2b09c96d4485048a13",
     "shared/editor-i18n.js": "25ca2bbd264adea5c9e5ee081c3b32ffc70437c42d1cb67859b8606aaec337ab",
+    "shared/tooltip.js": "8bde9c19b7c90089a614eef40fcbd3038c1cbd1b276e38c8eda87603a26ce81e",
     "editor/media/waveform/constants.js": "d5bd567ad4dcbee81995e275e8bf0be571b47e28952fa944478a66aa78e079e4",
     "editor/media/waveform/labels.js": "983afc39d173fc6636d0c78b4fdf4f426a4ba49c8ba4d40305e2775ddb28b80b",
     "editor/media/waveform/scale.js": "fddbd380d9dd9f663bd312d24db44efe5edc9639a7cdb7e208cd3647e2fa8083",
@@ -690,7 +692,7 @@
         "format": "esm"
       },
       "web/editor-entry.mjs": {
-        "bytes": 1733512,
+        "bytes": 1742581,
         "imports": [
           {
             "path": "web/shared/host/storage.js",
@@ -1191,10 +1193,10 @@
             "bytesInOutput": 4423
           },
           "web/editor-entry.mjs": {
-            "bytesInOutput": 1008577
+            "bytesInOutput": 1012023
           }
         },
-        "bytes": 1347751
+        "bytes": 1351197
       }
     }
   }
