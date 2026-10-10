@@ -248,4 +248,4 @@ PR #154 审查中，相关 Chromium 26 项为 22 通过 / 4 失败；同环境 m
 
 已统一推送 PR #155（草稿），无用户行为变化，不新增 CHANGELOG 条目，不更新根目录 `blank-editor.html`。本轮源码与契约工作已完成；全部文本检查 UTF-8 / LF，diff 检查通过，未提交媒体、截图、识别结果或 `.DS_Store`。
 
-2026-09-26 维护者明确后续桌面方向为 Electron，本轮不迁移桌面壳。旧桌面实验及专用验证工具现已删除，当前维护与验收范围见 [DEVELOPMENT](../DEVELOPMENT.md)。
+2026-09-26 维护者明确后续桌面方向为 Electron，本轮不迁移桌面壳。旧桌面实验及专用验证工具现已删除，当前维护与验收范围见 [DEVELOPMENT](../../DEVELOPMENT.md)。

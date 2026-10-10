@@ -12,6 +12,8 @@
 
 ## 先读这些文件
 
+文档按任务选读，先看 [docs/AgentsMD.md](docs/AgentsMD.md)；默认不遍历或批量读取 `docs/_archied/`。
+
 ```text
 README.md                     # 新用户的安装和最短路径
 docs/WORKFLOW.md              # 全流程、参数、排错

@@ -2,6 +2,8 @@
 
 第一次使用从 [WORKFLOW](WORKFLOW.md) 开始。本文按任务组织文档；日常使用说明与开发记录分开维护。
 
+维护与 AI 按需阅读规则见 [AgentsMD](AgentsMD.md)；默认不批量读取历史归档。
+
 ## 推荐阅读顺序
 
 1. [工作流](WORKFLOW.md)：先完成一次安装、转写、保存与导出，无需先读全部参数。
@@ -50,8 +52,8 @@
 
 ## 历史记录与未完成方案
 
-`TEST_FEEDBACK_*.md` 是某次反馈的处理与验证账本；其中的“已修复”只对应当时记录的验证范围。`dev/` 包含阶段计划、重构审计和进度记录，阅读时应区分计划与已实现状态。
+当前仍保留的 `TEST_FEEDBACK_*.md`、`dev/`、`temp/` 和 `verifications/` 包含阶段证据及待核验事项，按任务读取，不作为当前产品说明。未完成方案如 [时间码比较](PLAN_TIMESTAMP_COMPARE.md) 继续原位保留；版本变化看 [CHANGELOG](../CHANGELOG.md)。
 
-[供应商调研](ASR_PROVIDER_RESEARCH.md)、[时间码比较计划](PLAN_TIMESTAMP_COMPARE.md)、[旧版本回顾](RELEASE_REVIEW_1.3.2_TO_1.4.0.md)、[PR #56 审查](PR56_REVIEW.md) 与 [旧 README](archived/README-2026-08-11.md) 保留为背景资料。当前能力以使用文档和实际代码为准；版本变化看 [CHANGELOG](../CHANGELOG.md)。
+已完成或被替代的历史记录移入 `docs/_archied/`。归档范围、保留判断与检索方法见 [AgentsMD](AgentsMD.md)，具体文件按需查 [归档清单](_archied/README.md)。
 
-维护时将操作步骤写在使用文档、字段写在契约文档、验证证据写在任务账本。官网页面由源文档生成，不手工维护第二份正文。本次整理范围与验证见 [文档重构记录](dev/文档重构记录.md)。
+维护时将操作步骤写在使用文档、字段写在契约文档、验证证据写在任务账本。官网页面由源文档生成，不手工维护第二份正文。

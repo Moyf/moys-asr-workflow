@@ -9,6 +9,8 @@ source: "docs/README.md"
 
 第一次使用从 [WORKFLOW](../workflow/) 开始。本文按任务组织文档；日常使用说明与开发记录分开维护。
 
+维护与 AI 按需阅读规则见 [AgentsMD](https://github.com/Moyf/moys-asr-workflow/blob/main/docs/AgentsMD.md)；默认不批量读取历史归档。
+
 ## 推荐阅读顺序
 
 1. [工作流](../workflow/)：先完成一次安装、转写、保存与导出，无需先读全部参数。
@@ -24,6 +26,8 @@ source: "docs/README.md"
 | [Launcher 指南](../launcher/) | 识别设置、音轨、预设、批量队列、输出目录和通知。 |
 | [服务商配置](../providers/) | 各服务的配置字段、能力边界、费用与数据政策入口。 |
 | [本地 ASR](../local-asr/) | 实验性模型、独立运行环境、缓存、设备和时间码。 |
+| [文稿驱动对齐](https://github.com/Moyf/moys-asr-workflow/blob/main/docs/SCRIPT_DRIVEN_ALIGNMENT.md) | 准确文稿与录音直接生成字词时间码字幕，跳过 ASR；静音与人工锚点。 |
+| [相近能力对比](https://github.com/Moyf/moys-asr-workflow/blob/main/docs/ALIGNMENT_FEATURES.md) | 文稿生成、时间码修复、文稿匹配、口播对齐与 AI 整理的差异、选择和演进建议。 |
 | [CLI](../cli/) | 公开命令行参数、底层脚本区别、Server 管理和自动化。 |
 | [FAQ](../faq/) | 启动、FFmpeg、API、媒体加载、保存与反馈。 |
 
@@ -48,14 +52,15 @@ source: "docs/README.md"
 | [LLM 后处理协议](../llm-postprocess/) | 模型输入输出、ID 校验、本地时间映射和 HTTP 契约。 |
 | [空隙来源与恢复](https://github.com/Moyf/moys-asr-workflow/blob/main/docs/GAP_PROVENANCE.md) | 空隙来源层、恢复语义与数据规则。 |
 | [开发概览](../development/) | 代码地图、持久化边界、测试与发布检查。 |
+| [e2e 挂起排查](https://github.com/Moyf/moys-asr-workflow/blob/main/docs/E2E_SERVER_HANG.md) | Playwright 残留 serve.py 的诊断、清理与运行纪律。 |
 | [MAW / MAWE / MOSE](../mose/) | 产品名称与桌面路线决策（Electron 发布路线，Tauri 实验已移除）。 |
 | [桌面开发](https://github.com/Moyf/moys-asr-workflow/blob/main/desktop/README.md) | Electron 桌面壳的架构定位与 Tauri 移除决策记录。 |
 | [官网文档同步](https://github.com/Moyf/moys-asr-workflow/blob/main/website/docs/CONTENT_SYNC.md) | 从源文档生成官网页面的步骤。 |
 
 ## 历史记录与未完成方案
 
-`TEST_FEEDBACK_*.md` 是某次反馈的处理与验证账本；其中的“已修复”只对应当时记录的验证范围。`dev/` 包含阶段计划、重构审计和进度记录，阅读时应区分计划与已实现状态。
+当前仍保留的 `TEST_FEEDBACK_*.md`、`dev/`、`temp/` 和 `verifications/` 包含阶段证据及待核验事项，按任务读取，不作为当前产品说明。未完成方案如 [时间码比较](https://github.com/Moyf/moys-asr-workflow/blob/main/docs/PLAN_TIMESTAMP_COMPARE.md) 继续原位保留；版本变化看 [CHANGELOG](https://github.com/Moyf/moys-asr-workflow/blob/main/CHANGELOG.md)。
 
-[供应商调研](../provider-research/)、[时间码比较计划](https://github.com/Moyf/moys-asr-workflow/blob/main/docs/PLAN_TIMESTAMP_COMPARE.md)、[旧版本回顾](https://github.com/Moyf/moys-asr-workflow/blob/main/docs/RELEASE_REVIEW_1.3.2_TO_1.4.0.md)、[PR #56 审查](https://github.com/Moyf/moys-asr-workflow/blob/main/docs/PR56_REVIEW.md) 与 [旧 README](https://github.com/Moyf/moys-asr-workflow/blob/main/docs/archived/README-2026-08-11.md) 保留为背景资料。当前能力以使用文档和实际代码为准；版本变化看 [CHANGELOG](https://github.com/Moyf/moys-asr-workflow/blob/main/CHANGELOG.md)。
+已完成或被替代的历史记录移入 `docs/_archied/`。归档范围、保留判断与检索方法见 [AgentsMD](https://github.com/Moyf/moys-asr-workflow/blob/main/docs/AgentsMD.md)，具体文件按需查 [归档清单](https://github.com/Moyf/moys-asr-workflow/blob/main/docs/_archied/README.md)。
 
-维护时将操作步骤写在使用文档、字段写在契约文档、验证证据写在任务账本。官网页面由源文档生成，不手工维护第二份正文。本次整理范围与验证见 [文档重构记录](https://github.com/Moyf/moys-asr-workflow/blob/main/docs/dev/文档重构记录.md)。
+维护时将操作步骤写在使用文档、字段写在契约文档、验证证据写在任务账本。官网页面由源文档生成，不手工维护第二份正文。
