@@ -197,7 +197,7 @@ export function createUtilsModule(dependencies) {
   const ASS_DEFAULT_EXTENSION_STYLE = Object.freeze({
     ...ASS_DEFAULT_STYLE,
     id: 'ass-extension', name: 'ASS 副字幕样式',
-    primaryColor: '#ffd34d', emphasisColor: '#ffaa00',
+    primaryColor: '#eac953', emphasisColor: '#ffaa00',
     fontSize: 64, outline: 2, marginV: 36,
   });
 
@@ -454,6 +454,12 @@ export function createUtilsModule(dependencies) {
     profiles.forEach((profile) => {
       if (profile.id === 'ass' && profile.name === 'ASS') {
         profile.name = ASS_DEFAULT_PROFILE.name;
+      }
+    });
+    // 内置副字幕样式旧默认色迁移：仅精确匹配旧默认值，用户改过颜色的不动。
+    styles.forEach((style) => {
+      if (style.id === 'ass-extension' && style.primaryColor === '#ffd34d') {
+        style.primaryColor = ASS_DEFAULT_EXTENSION_STYLE.primaryColor;
       }
     });
     const assignments = source.assignments && typeof source.assignments === 'object'
