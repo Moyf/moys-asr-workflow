@@ -210,6 +210,7 @@ markProjectSaved(MaweServerSave.projectFileHandle.name, null, { silent, fingerpr
   }
 
 global.MaweProjectSave = Object.freeze({
+flushInlineEditsForSave,
 markProjectSaved,
 saveProjectToServer,
 saveProjectToHandle,

@@ -57,6 +57,8 @@ __WAVEFORM_CSS__
       <div class="dropdown-item" id="load-media" role="menuitem" tabindex="0">导入媒体</div>
       <div class="dropdown-item" id="load-srt" role="menuitem" tabindex="0" title="选择 .srt 字幕导入">导入字幕</div>
       <div class="dropdown-item" id="load-lrc" role="menuitem" tabindex="0" title="选择 .lrc 歌词导入">导入歌词</div>
+      <div class="dropdown-item" id="agent-export" role="menuitem" tabindex="0" style="margin-top:8px">导出 Agent 快照</div>
+      <div class="dropdown-item" id="agent-import" role="menuitem" tabindex="0" style="margin-top:8px">审阅 Agent 提案</div>
     </div>
   </span>
   <div class="dropdown" id="recent-projects" hidden>
@@ -1782,6 +1784,16 @@ __WAVEFORM_CSS__
 </aside>
 
 <input type="file" id="open-project-file" accept=".json,.mosp,application/json" style="display:none">
+<input type="file" id="agent-proposal-file" accept=".json,application/json" hidden>
+<dialog id="agent-review" class="agent-review-dialog">
+  <h2>审阅 Agent 提案</h2>
+  <p style="margin-top:12px">核对文字、范围和字词时间码数量。应用为一次可撤销编辑；不可靠的字词映射会沿用编辑器规则清除。</p>
+  <div id="agent-review-report" class="agent-review-report"></div>
+  <div class="agent-review-actions">
+    <button type="button" id="agent-review-cancel">取消</button>
+    <button type="button" id="agent-review-apply">应用提案</button>
+  </div>
+</dialog>
 <input type="file" id="load-media-file" accept="video/*,audio/*" style="display:none">
 <input type="file" id="load-srt-file" accept=".srt,text/plain" style="display:none">
 <input type="file" id="load-lrc-file" accept=".lrc,text/plain" style="display:none">

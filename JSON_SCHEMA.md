@@ -4,6 +4,8 @@
 
 用途：让任意来源（ASR、第三方模型生成、人工手写）的 JSON 都能直接被编辑器加载、编辑、再导出。
 
+外部 Agent 的快照与可审阅提案采用单独的包装格式，不改变本工程 schema；接入流程见 [Agent 接口与 Skill](docs/AGENT_INTERFACE.md)。不要将提案文件当作工程直接打开。
+
 适用版本：对应 `edit.py` / `generate_subtitle_qwen_api.py` 当前实现。
 
 ---

@@ -9,6 +9,17 @@
   // The editor keeps one source template. Exact UI strings are translated at
   // the DOM boundary; project content is excluded from traversal below.
   const EN_TEXT = {
+    '导出 Agent 快照': 'Export Agent snapshot',
+    '审阅 Agent 提案': 'Review Agent proposal',
+    '应用提案': 'Apply proposal',
+    '修改前': 'Before',
+    '修改后': 'After',
+    '核对文字、范围和字词时间码数量。应用为一次可撤销编辑；不可靠的字词映射会沿用编辑器规则清除。': 'Check the text, range and word timings. Apply creates one undoable edit; unreliable word alignment is cleared using the editor rules.',
+    '工程已变化。请重新导出 Agent 快照并重新生成提案': 'The project changed. Export a new Agent snapshot and regenerate the proposal.',
+    '已应用 Agent 提案，可撤销；按当前工程保存设置持久化': 'Agent proposal applied. You can undo it; the current project save settings control persistence.',
+    '请完成正在编辑的文字后重新审阅提案': 'Finish the current text edit before reviewing the proposal again.',
+    '不是有效的 MAW Agent 提案': 'Not a valid MAW Agent proposal.',
+    '提案超过 64 MiB': 'The proposal exceeds 64 MiB.',
     '淡紫': 'Lavender',
     '白': 'White',
     '显示备注': 'Show notes',
@@ -1189,7 +1200,7 @@
     // Reference text includes the project name, but its title is a UI hint.
     '.cue .sticker-slot .sref', '#cue-panel-sticker .ref',
     PROJECT_TEXT_SELECTOR, '#cue-panel-text', '#overlay', '#sticker-overlay-layer',
-    '#media-name', '#json-name', '#sticker-grid', '.hint-project-preview-value', '[data-marker-project-content]', 'script', 'style'
+    '#media-name', '#json-name', '#sticker-grid', '.hint-project-preview-value', '[data-marker-project-content]', '[data-agent-project-content]', 'script', 'style'
   ].join(',');
   const ATTRIBUTE_SKIP_SELECTOR = [
     // .waveform-cue-block 的 title 是用户字幕原文，不能参与翻译

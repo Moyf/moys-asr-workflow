@@ -57,6 +57,7 @@ MAW 帮你把字幕生成后的校对、整理和交付接起来。它以云端 
 | 校对、匹配文稿、翻译或处理媒体 | [工具箱](docs/TOOLBOX.md) · [自动处理](docs/POSTPROCESS_PIPELINE.md) |
 | 编辑时间轴、保存和导出 | [编辑器指南](docs/EDITOR_GUIDE.md) · [ASS 样式](docs/ASS_STYLES.md) |
 | 写批处理或接入自动化 | [CLI](docs/CLI.md) |
+| 让自己的 Agent 查询字幕、提交修改或范围重听写 | [Agent 接口与 Skill](docs/AGENT_INTERFACE.md) |
 | 已有准确文稿与录音，跳过 ASR 生成字幕 | [文稿驱动对齐（实验性）](docs/SCRIPT_DRIVEN_ALIGNMENT.md) |
 | 开发与数据集成 | [开发概览](docs/DEVELOPMENT.md) · [工程格式](JSON_SCHEMA.md) · [ESM 迁移与上游交接](docs/dev/ESM_MIGRATION.md) |
 

@@ -215,6 +215,8 @@ class EditorAssetContractTests(CompactContainerAssertions, unittest.TestCase):
                 "editor/io/editor-wiring-server-events.js",
                 "editor/io/editor-wiring-file-drop.js",
                 "editor/boot/editor-startup.js",
+                "editor/io/editor-agent-core.js",
+                "editor/io/editor-agent.js",
                 "editor/boot/editor-onboarding.js",
         ),
         )

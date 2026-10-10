@@ -7,13 +7,15 @@
 
 
 
-  function buildJson() {
+  function buildJson({ repair = true } = {}) {
+  if (repair) {
   MaweTimeline.syncProjectTimebaseAndBindingOffsets(MaweBoot.DATA, { preferFrames: false });
   const repairedTimingCount = repairCurrentProjectTimings();
   if (repairedTimingCount > 0) {
     MaweHint.flashHint(`已自动修复 ${repairedTimingCount} 处异常时间码（保底 100ms）`, 'warning');
   }
   MaweTimeline.syncProjectTimebaseAndBindingOffsets(MaweBoot.DATA, { preferFrames: false });
+  }
   const out = {
     schema: window.AsrEditorUtils.PROJECT_SCHEMA,
     ...projectExtensionFields,

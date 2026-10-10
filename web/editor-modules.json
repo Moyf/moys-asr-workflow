@@ -305,6 +305,11 @@
       "file": "editor/media/waveform/playback.js",
       "name": "waveform-playback",
       "exportName": "createWaveformModule"
+    },
+    {
+      "file": "editor/io/editor-agent-core.js",
+      "name": "agent-core",
+      "exportName": "createAgentCore"
     }
   ],
   "externalBridges": [

@@ -189,9 +189,11 @@
     "editor/io/editor-wiring-server-events.js",
     "editor/io/editor-wiring-file-drop.js",
     "editor/boot/editor-startup.js",
+    "editor/io/editor-agent-core.js",
+    "editor/io/editor-agent.js",
     "editor/boot/editor-onboarding.js"
   ],
-  "esmFactories": 61,
+  "esmFactories": 62,
   "inputs": {
     "editor/boot/editor-boot.js": "298d5b808393547fe905cde4232e36af4079f07567786cd898fb3005a292a1db",
     "editor/boot/editor-runtime.js": "5d71c0d776a913d6e1ad3d7ea8cad3ba216d1d587641268ee66c529ce24ae863",
@@ -238,7 +240,7 @@
     "shared/utils/lottie.js": "a74b0332e76eef35299d9567c052584a61383134cf03e9ea5279b11e6d4e69ea",
     "shared/utils/ograf.js": "94b88b7db9ea4fd862dc49985f1a5e46bcef6bc70837cb656b0cd1b085a40d89",
     "shared/editor-utils.js": "360489d1efb54cddfd9c732c7daab966a0f6d1bf0cb05a2b09c96d4485048a13",
-    "shared/editor-i18n.js": "25ca2bbd264adea5c9e5ee081c3b32ffc70437c42d1cb67859b8606aaec337ab",
+    "shared/editor-i18n.js": "2c393e9f5b8730ea17ca2a324ca65a9798370b64301be104f8f67e10477d1ea8",
     "shared/tooltip.js": "8711dc8a2a5e92b9584c41df991eaa5ea73904b56dbc9aa2b18b412e190ecc91",
     "editor/media/waveform/constants.js": "d5bd567ad4dcbee81995e275e8bf0be571b47e28952fa944478a66aa78e079e4",
     "editor/media/waveform/labels.js": "983afc39d173fc6636d0c78b4fdf4f426a4ba49c8ba4d40305e2775ddb28b80b",
@@ -295,7 +297,7 @@
     "editor/io/editor-export-timeline.js": "37b65ef34272ee0d92e36c4a09c240f0f78982b512745821baad7411e800689e",
     "editor/io/editor-server-save.js": "d49528b92ccfdc8320a1319fa1558ad2e8a12e518d7b18e48cfabbe5b9c09ba8",
     "editor/ui/editor-workspaces.js": "6a0dcfab40bffcce3b10dae025d4ca20413f059a0905df93a11af9132cc7d58c",
-    "editor/io/editor-project-save.js": "4dc5ce43ba2d97ab0d16f80153da111738c2f43014b223df0ea04c11886bf9ce",
+    "editor/io/editor-project-save.js": "2edd8e1a746f06f0e6b0b1281531102a29afe24f758c7fdb131a59e2bfeb910a",
     "editor/io/editor-dynamic-exports.js": "3fceb191759ed43375d21ebc1cdbd8b6a0d2bc034377977e579d3dce925c7495",
     "editor/ui/editor-export-menus.js": "cfa4973df5672ea759702ef096c7b71e237d060ed4d8043d04e4ae72904fc213",
     "editor/io/editor-project-media-inputs.js": "107eaf3c7f006a9c67f9427f82cb85186343c5ddd684edbc8e4fbbab17a8a879",
@@ -320,7 +322,7 @@
     "editor/io/editor-server-connection.js": "253bfd5c6783fd0f8035130207dff3ba06996015c80eb29883156671cfcded06",
     "editor/io/editor-drag-drop.js": "ab5228ff0d7b81512ebf3edf4e9b0d7ca0ceb83937313f752201a04cd0bdc80b",
     "editor/io/editor-sticker-otio-export.js": "0a96a6b629aefa7a982502d2ba54f62c492d42ff4e820e157af1dc89d9e9b0a8",
-    "editor/io/editor-json-repair.js": "101238bc0e3c415682ccb942c216f395d4c25417f81e59343ec3778ab634cad0",
+    "editor/io/editor-json-repair.js": "e666943c7972b19387c47b3ff285454984f268915c33017459970434cf889cfd",
     "editor/ui/editor-help-panel.js": "09d0778f0720704c94315df5f2b80b9d24e336ea09d1d336b74fcde832441ab4",
     "editor/ui/editor-theme.js": "6a8a3a01eb7a4a976fa0dd9f56ea8f374027249270c876f62cde5f7fb6dc1aec",
     "editor/ui/editor-gap-remove-ui.js": "6dc41c8b56b16e12399ab898111b0df0bfc0917e2d7af78a70784a3f1888ce0d",
@@ -380,9 +382,11 @@
     "editor/io/editor-wiring-server-events.js": "1174a484a1122bb02378ccf3ee5bdfe1b9d1669e3950b7fe50ba65ef56842b23",
     "editor/io/editor-wiring-file-drop.js": "6fcb7821cdd3215433c91913630ac16fdbacf9b3c675f6bb2e709a1bd58d0eb5",
     "editor/boot/editor-startup.js": "23317684cd154a502a5b8376ae4434886b0a3ec1fc9c8f8afc714a9a983d377e",
+    "editor/io/editor-agent-core.js": "1e27e01edb1dc4800788b45f1c9c3640710ab71c837391a3e5f6d80306fee9e1",
+    "editor/io/editor-agent.js": "00c68820e8411c972350f60b1941dc17925210a12bf46fe92dc383d9d2f6e126",
     "editor/boot/editor-onboarding.js": "488416a0a41bb30ad4343e6649f247c1f85970b818514a35a60f3af767177393"
   },
-  "configHash": "d42937878d91d54ec68f744276454ab2be39c7c87af00aa5bbeda4f7390304f0",
+  "configHash": "c36247d10d8cadcb9b0cfa0a161e414e3550087108a1a8fa620e07d122286ffa",
   "builderHash": "1a0a68295e7f276f7dfd728236489c261424ce86664cad4827cad5cd8c64124d",
   "metafile": {
     "inputs": {
@@ -691,8 +695,13 @@
         "imports": [],
         "format": "esm"
       },
+      "web/editor/io/editor-agent-core.js": {
+        "bytes": 6002,
+        "imports": [],
+        "format": "esm"
+      },
       "web/editor-entry.mjs": {
-        "bytes": 1744441,
+        "bytes": 1751227,
         "imports": [
           {
             "path": "web/shared/host/storage.js",
@@ -998,6 +1007,11 @@
             "path": "web/editor/media/waveform/playback.js",
             "kind": "import-statement",
             "original": "maw-factory:editor/media/waveform/playback.js"
+          },
+          {
+            "path": "web/editor/io/editor-agent-core.js",
+            "kind": "import-statement",
+            "original": "maw-factory:editor/io/editor-agent-core.js"
           }
         ],
         "format": "esm"
@@ -1109,7 +1123,7 @@
             "bytesInOutput": 458
           },
           "web/shared/utils/preview-geometry.js": {
-            "bytesInOutput": 1574
+            "bytesInOutput": 1572
           },
           "web/shared/utils/lottie.js": {
             "bytesInOutput": 4209
@@ -1192,11 +1206,14 @@
           "web/editor/media/waveform/playback.js": {
             "bytesInOutput": 4423
           },
+          "web/editor/io/editor-agent-core.js": {
+            "bytesInOutput": 3823
+          },
           "web/editor-entry.mjs": {
-            "bytesInOutput": 1012702
+            "bytesInOutput": 1017336
           }
         },
-        "bytes": 1351981
+        "bytes": 1360436
       }
     }
   }
