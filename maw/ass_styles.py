@@ -391,6 +391,9 @@ def normalize_ass_style_library(payload: object) -> dict[str, object]:
             if default_entry:
                 entry["name"] = default_entry["name"]
     styles = [style_map["default"], style_map["ass"], style_map["ass-extension"]]
+    # Match the editor migration; custom colors and custom style IDs stay intact.
+    if style_map["ass-extension"]["primaryColor"] == "#ffd34d":
+        style_map["ass-extension"]["primaryColor"] = DEFAULT_ASS_EXTENSION_STYLE["primaryColor"]
     styles.extend(style for style_id, style in style_map.items() if style_id not in builtin_styles)
     # v1 used 1.0 as the built-in emphasis default. Migrate only that old
     # built-in value so custom styles and explicit v2 values remain intact.

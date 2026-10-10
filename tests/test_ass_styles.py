@@ -25,6 +25,15 @@ from maw.postprocess_ffmpeg import _subtitle_filter
 
 
 class AssStyleLibraryTests(unittest.TestCase):
+    def test_legacy_extension_color_migration_matches_editor_and_preserves_custom_colors(self) -> None:
+        for color, expected in [("#ffd34d", "#eac953"), ("#ff0000", "#ff0000")]:
+            library = normalize_ass_style_library({"styles": [
+                {"id": "ass-extension", "primaryColor": color},
+                {"id": "custom-style", "primaryColor": "#ffd34d"},
+            ]})
+            self.assertEqual(find_ass_style(library, "ass-extension")["primaryColor"], expected)
+            self.assertEqual(find_ass_style(library, "custom-style")["primaryColor"], "#ffd34d")
+
     def test_default_library_has_protected_style_and_profile_slots(self) -> None:
         library = default_ass_style_library()
 
