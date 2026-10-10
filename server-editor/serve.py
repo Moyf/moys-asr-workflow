@@ -33,7 +33,7 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from typing import NamedTuple
 from hmac import compare_digest
-from urllib.parse import parse_qs, quote, unquote, urlsplit
+from urllib.parse import quote, unquote, urlsplit
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -1384,6 +1384,7 @@ class EditorServer(ThreadingHTTPServer):
             data.pop(key, None)
         data["media"] = str(source)
         project_path = current.json_path or (source.parent / "untitled.mosp")
+        validate_desktop_media(source)
         prepared = load_project(
             project_path,
             str(source),
@@ -1532,15 +1533,15 @@ class EditorServer(ThreadingHTTPServer):
                 if backup_only:
                     backup = write_backup(target, normalized_project, backup_limit or 1)
                     return target, backup, self.project_generation, None
-                source_media = self.project.source_media_path
-                if source_media and source_media.is_file():
+                source_media = desktop_source_media_path(self.project)
+                if source_media:
                     previous_path = self.project.json_path
                     reference = normalized_project.get("media")
                     if previous_path and previous_path.parent == target.parent and isinstance(reference, str) and reference.strip():
                         requested = Path(reference).expanduser()
                         candidate = requested if requested.is_absolute() else previous_path.parent / requested
                         try:
-                            if candidate.resolve(strict=True) == source_media.resolve(strict=True):
+                            if candidate.resolve(strict=False) == source_media.resolve(strict=False):
                                 pass
                             elif source_media.parent == target.parent:
                                 normalized_project["media"] = source_media.name
@@ -2157,6 +2158,24 @@ def file_revision(path: Path) -> str | None:
     return f"{stat.st_size}:{stat.st_mtime_ns}:{digest}"
 
 
+def validate_desktop_media(source: Path) -> None:
+    """Reject unreadable replacements before changing the bound project."""
+    ffprobe = resolve_ffmpeg_tools(configured_path=editor_ffmpeg_binary()).ffprobe
+    if ffprobe is None:
+        raise ValueError("重新关联媒体需要 FFprobe，请先配置 FFmpeg / FFprobe")
+    try:
+        result = subprocess.run(
+            [str(ffprobe), "-v", "error", "-show_entries", "stream=codec_type", "-of", "json", str(source)],
+            capture_output=True, text=True, encoding="utf-8", errors="replace", check=True, timeout=10,
+            **({"creationflags": subprocess.CREATE_NO_WINDOW} if os.name == "nt" else {}),
+        )
+        streams = json.loads(result.stdout).get("streams", [])
+        if not any(stream.get("codec_type") in {"audio", "video"} for stream in streams):
+            raise ValueError("没有可播放的音频或视频流")
+    except (OSError, subprocess.SubprocessError, ValueError, AttributeError) as error:
+        raise ValueError(f"无法读取媒体内容：{source.name}；原媒体关联已保留") from error
+
+
 def desktop_source_media_path(project: ServerProject) -> Path | None:
     if project.source_media_path is not None:
         return project.source_media_path
@@ -2444,7 +2463,7 @@ class EditorRequestHandler(BaseHTTPRequestHandler):
                     **self.editor_server.desktop_project_status(),
                     "ok": True,
                     "mediaName": source_media.name if source_media else "",
-                    "mediaUrl": "/media" if project.media_path else None,
+                    "mediaUrl": f"/media?generation={self.editor_server.project_generation}" if project.media_path else None,
                     "mediaMetadata": project.data.get("media_metadata"),
                     "mediaTimeReference": project.data.get("media_time_reference"),
                     "mediaReference": project.data.get("media"),
@@ -2837,34 +2856,6 @@ class EditorRequestHandler(BaseHTTPRequestHandler):
             "name": project.json_path.name if project.json_path else "",
             "mediaName": (project.source_media_path or project.media_path).name if project.media_path else "",
         })
-
-    def prepare_desktop_project(self) -> None:
-        try:
-            request = self.read_json_request()
-            project = self.editor_server.prepare_desktop_project(
-                request.get("project"), new_project=request.get("newProject") is True,
-            )
-        except (UnicodeDecodeError, json.JSONDecodeError, ValueError, ProjectValidationFailed) as error:
-            self.send_json(HTTPStatus.BAD_REQUEST, {"ok": False, "error": str(error)})
-            return
-        self.send_json(HTTPStatus.OK, {"ok": True, "project": project})
-
-    def desktop_media_operation(self, *, commit: bool) -> None:
-        try:
-            request = self.read_json_request()
-            value = request.get("ticket" if commit else "path")
-            if not isinstance(value, str) or not value.strip():
-                raise ValueError("媒体路径或预览标记格式不正确")
-            result = self.editor_server.commit_desktop_media(value) if commit else self.editor_server.stage_desktop_media(
-                value, request.get("project"), bind_current=request.get("detached") is not True,
-            )
-        except ProjectMutationInProgressError as error:
-            self.send_json(HTTPStatus.CONFLICT, {"ok": False, "error": str(error)})
-            return
-        except (UnicodeDecodeError, json.JSONDecodeError, ValueError, OSError, ProjectValidationFailed, MediaResolutionError, MediaConversionError) as error:
-            self.send_json(HTTPStatus.BAD_REQUEST, {"ok": False, "error": str(error)})
-            return
-        self.send_json(HTTPStatus.OK, result)
 
     def update_settings(self) -> None:
         try:

@@ -7,6 +7,8 @@ MaweStickerRoot.overrideToggle.addEventListener('change', () => {
   if (!MaweStickerRoot.overrideToggle.checked) { MaweStickerRoot.applyRoot('project', ''); return; }
   MaweStickerRoot.projectInput.disabled = false;
   MaweStickerRoot.projectButton.disabled = false;
+  const chooseButton = document.getElementById('project-sticker-root-choose');
+  if (chooseButton) chooseButton.disabled = false;
   MaweStickerRoot.projectInput.value = MaweBoot.STICKER_ROOT || MaweStickerRoot.getDefaultRoot();
   MaweStickerRoot.projectInput.focus();
 });

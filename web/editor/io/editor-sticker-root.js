@@ -59,6 +59,7 @@
     }
     MaweStickerOverlay.stickerAssetRevision += 1;
     MaweExportTimeline.updateStickerExportButtons(); MaweCuePanel.renderAll();
+    window.MOSEUpdateDesktopPathActions?.();
   }
   function enqueue(action) { pending = pending.catch(() => {}).then(action); return pending; }
   async function applyRoot(scope, value) {

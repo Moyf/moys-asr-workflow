@@ -1222,7 +1222,9 @@ class LocalEditorServerTests(CompactContainerAssertions, unittest.TestCase):
             desktop_mode=True, desktop_token="desktop-secret",
             desktop_command_key="command-secret",
         ) as server:
-            with mock.patch.object(server_editor, "load_project", return_value=prepared) as load:
+            with mock.patch.object(server_editor, "load_project", return_value=prepared) as load, mock.patch.object(
+                server_editor, "validate_desktop_media",
+            ):
                 with mock.patch.object(server_editor, "read_bwf_time_reference", return_value={"time_reference": 12}):
                     associated = server.attach_desktop_media(str(self.other_media), expected_generation=0)
 
@@ -1239,6 +1241,19 @@ class LocalEditorServerTests(CompactContainerAssertions, unittest.TestCase):
 
             with self.assertRaises(server_editor.ProjectMutationInProgressError):
                 server.attach_desktop_media(str(self.media), expected_generation=0)
+
+    def test_desktop_invalid_media_preserves_project_and_generation(self) -> None:
+        invalid = self.root / "invalid.wav"
+        invalid.write_text("invalid audio", encoding="utf-8")
+        current = server_editor.ServerProject({"media": str(self.media), "segments": []}, self.project_path, self.media, None, [], source_media_path=self.media)
+        with server_editor.EditorServer(
+            ("127.0.0.1", 0), current, no_waveform=True, desktop_mode=True,
+            desktop_token="desktop-secret", desktop_command_key="command-secret",
+        ) as server:
+            with self.assertRaisesRegex(ValueError, "原媒体关联已保留"):
+                server.attach_desktop_media(str(invalid), expected_generation=0)
+            self.assertIs(server.project, current)
+            self.assertEqual(server.project_generation, 0)
 
     def test_desktop_save_rejects_same_size_same_timestamp_external_edit(self) -> None:
         project = server_editor.load_project(
@@ -1310,6 +1325,33 @@ class LocalEditorServerTests(CompactContainerAssertions, unittest.TestCase):
             self.assertIn("工程已保存，版本备份失败", warning)
             self.assertEqual(json.loads(target.read_text(encoding="utf-8"))["media"], str(self.media.resolve()))
             self.assertEqual(self.project_path.read_bytes(), old_bytes)
+
+    def test_desktop_save_as_preserves_missing_relative_media_location(self) -> None:
+        missing = self.root / "缺失媒体.wav"
+        source = self.root / "relative-media.mosp"
+        source.write_text(json.dumps({
+            "schema": "moy.asr.project.v1", "media": missing.name,
+            "segments": [{"id": "s1", "start": 0, "end": 1000, "text": "字幕保留"}],
+        }), encoding="utf-8")
+        project = server_editor.load_project(
+            source, None, str(self.stickers), no_waveform=True, peaks_per_second=100,
+            allow_missing_media=True,
+        )
+        target = self.root / "new-folder" / "saved.mosp"
+        target.parent.mkdir()
+        with server_editor.EditorServer(
+            ("127.0.0.1", 0), project, no_waveform=True, desktop_mode=True,
+            desktop_token="desktop-secret", desktop_command_key="command-secret",
+        ) as server:
+            server.save_desktop_project(
+                "saveAs", project.data, target_path=str(target), expected_generation=0,
+                expected_revision=None, backup_limit=None,
+            )
+            saved = json.loads(target.read_text(encoding="utf-8"))
+            self.assertEqual(Path(saved["media"]).resolve(), missing.resolve())
+            self.assertEqual(server_editor.desktop_source_media_path(server.project), missing.resolve())
+            self.assertEqual(saved["segments"][0]["text"], "字幕保留")
+            self.assertEqual(json.loads(source.read_text(encoding="utf-8"))["media"], missing.name)
 
     def test_desktop_save_as_switches_binding_only_after_write_and_keeps_old_file(self) -> None:
         project = server_editor.load_project(

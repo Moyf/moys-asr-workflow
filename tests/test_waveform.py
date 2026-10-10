@@ -42,7 +42,7 @@ def _patch_output_config(*, gui_lang: str = "zh", per_video: bool = False) -> mo
     )
 
 
-class WaveformExtractionTests(unittest.TestCase):
+class WaveformExtractionTests(CompactContainerAssertions, unittest.TestCase):
     def setUp(self) -> None:
         self.temp_dir = tempfile.TemporaryDirectory()
         self.root = Path(self.temp_dir.name).resolve()

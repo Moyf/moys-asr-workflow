@@ -449,6 +449,7 @@ async function callDesktopStatus() {
     return standardError(new Error('MOSE 本地服务未连接'), 'BACKEND_UNAVAILABLE');
   }
   const response = await fetch(`${backend.origin}/api/desktop/project/status`, {
+    signal: AbortSignal.timeout(10_000),
     headers: {
       ...backendHeaders(backend.token),
       'X-MAW-Desktop-Command-Key': backend.commandKey,
@@ -642,12 +643,26 @@ function createWindow(state, { show = true } = {}) {
 
 function startDesktopStatusMonitor(window) {
   if (desktopStatusTimer) clearInterval(desktopStatusTimer);
-  desktopStatusTimer = setInterval(async () => {
-    if (!mainWindow || mainWindow !== window || window.isDestroyed()) return;
-    const result = await callDesktopStatus();
-    if (result.status !== 'ok' || window.webContents.isDestroyed()) return;
-    window.webContents.send('mose-project-status', result.data);
-  }, DESKTOP_STATUS_INTERVAL_MS);
+  let pending = false;
+  const update = async () => {
+    if (pending || !mainWindow || mainWindow !== window || window.isDestroyed()) return;
+    pending = true;
+    try {
+      const result = await callDesktopStatus();
+      if (result.status !== 'ok' || window.isDestroyed() || window.webContents.isDestroyed()) return;
+      const projectPath = result.data.projectPath;
+      window.setTitle(projectPath ? `${path.basename(projectPath)} — MOSE` : 'MOSE');
+      if (process.platform === 'darwin') window.setRepresentedFilename(projectPath || '');
+      window.webContents.send('mose-project-status', result.data);
+    } catch {
+      // A stopped or temporarily unavailable backend must not leave the
+      // polling promise rejected; the next bounded poll can recover.
+    } finally {
+      pending = false;
+    }
+  };
+  void update();
+  desktopStatusTimer = setInterval(update, DESKTOP_STATUS_INTERVAL_MS);
 }
 
 function clearCloseRequest(pending = pendingCloseRequest) {

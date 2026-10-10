@@ -76,10 +76,10 @@ jobs:
         run: uv sync --group build --frozen
 
       - name: Run packaging contract tests
-        run: uv run python -m unittest tests/test_packaging_contract.py
+        run: uv run python scripts/run_tests.py tests/test_packaging_contract.py
 
       - name: Run Python tests
-        run: uv run python -m unittest discover -s tests -p "test_*.py"
+        run: uv run python scripts/run_tests.py
 
       - name: Download embedded Python bootstrap assets
         run: |

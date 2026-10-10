@@ -30,8 +30,9 @@ jobs:
           cache: pnpm
           cache-dependency-path: pnpm-lock.yaml
       - run: pnpm install --frozen-lockfile
-      # Check the committed artifact before anything can regenerate it.
+      # Check the committed artifacts before anything can regenerate them.
       - run: pnpm run check:editor
+      - run: pnpm run check:launcher
       - run: pnpm run typecheck
       - uses: actions/setup-python@v6
         with:
@@ -47,8 +48,8 @@ jobs:
           MAW_TEST_PYTHON: ${{ github.workspace }}/.venv/bin/python
       - name: Python assembly contracts
         run: |
-          uv run --no-sync python -m unittest discover -s tests -p test_editor_assets.py
-          uv run --no-sync python -m unittest discover -s tests -p test_editor_manifest.py
+          uv run --no-sync python scripts/run_tests.py tests/test_editor_assets.py
+          uv run --no-sync python scripts/run_tests.py tests/test_editor_manifest.py
       - name: Real file and HTTP editor
         env:
           MAW_E2E_PYTHON: ${{ github.workspace }}/.venv/bin/python

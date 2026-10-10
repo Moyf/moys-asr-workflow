@@ -10,7 +10,7 @@ import test from 'node:test';
 import { _electron as electron, expect } from '@playwright/test';
 
 const desktop = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
-const executablePath = process.env.MOSE_TEST_EXECUTABLE || createRequire(path.join(desktop, 'package.json'))('electron');
+const executablePath = process.env.MOSE_TEST_EXECUTABLE || process.env.MOSE_TEST_ELECTRON_EXECUTABLE || createRequire(path.join(desktop, 'package.json'))('electron');
 const appArgs = process.env.MOSE_TEST_EXECUTABLE ? [] : [desktop];
 
 test('cancelled close keeps backend, second-instance opens once, confirmed quit stops backend', { timeout: 90_000 }, async () => {
@@ -44,7 +44,7 @@ test('cancelled close keeps backend, second-instance opens once, confirmed quit 
       MaweBoot.DATA.segments[0].text = '未保存编辑'; MaweBoot.DATA.segments[0]._dirty = true;
     });
     await instance.evaluate(({ dialog, BrowserWindow }) => {
-      dialog.showMessageBoxSync = () => 1;
+      dialog.showMessageBox = async () => ({ response: 2 });
       BrowserWindow.getAllWindows()[0].close();
     });
     await page.waitForFunction(async () => (await window.MOSEDesktop.state()).ok);
@@ -56,13 +56,13 @@ test('cancelled close keeps backend, second-instance opens once, confirmed quit 
     const next = spawn(executablePath, [...appArgs, profile, second], { env, windowsHide: true, stdio: 'ignore' });
     const [exitCode] = await once(next, 'exit');
     assert.equal(exitCode, 0);
-    await page.waitForFunction((selected) => MaweBoot.SERVER_CONFIG.projectPath === selected, second.replaceAll('\\', '/'));
+    await page.waitForFunction((selected) => MaweBoot.SERVER_CONFIG.desktopProjectPath?.replaceAll('\\', '/') === selected, second.replaceAll('\\', '/'));
     assert.equal(await instance.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows().length), 1);
     assert.equal(await page.evaluate(() => MaweBoot.DATA.segments[0].text), '第二个工程');
     await page.waitForFunction(async () => (await window.MOSEDesktop.state()).ok);
     assert.equal(await page.evaluate(() => MaweBoot.SERVER_CONFIG.recentProjects.length), 2);
     await page.evaluate(() => { MaweBoot.DATA.segments[0].text = '放弃退出'; MaweBoot.DATA.segments[0]._dirty = true; });
-    await instance.evaluate(({ dialog }) => { dialog.showMessageBoxSync = () => 0; });
+    await instance.evaluate(({ dialog }) => { dialog.showMessageBox = async () => ({ response: 1 }); });
     const exited = once(instance.process(), 'exit');
     await instance.evaluate(({ app }) => app.quit()).catch(() => {});
     const [code] = await exited;

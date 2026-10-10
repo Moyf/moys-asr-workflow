@@ -17,8 +17,7 @@
 | 路由 | 行为 |
 | --- | --- |
 | `POST /api/desktop/project/open` | 按选定工程路径加载，可覆盖媒体并容忍媒体缺失/歧义 |
-| `POST /api/desktop/project/save` | 新建、当前保存、另存为；校验完整工程、原子写入、绑定与最近工程更新 |
-| `POST /api/desktop/media/attach` | 使用用户选定路径准备媒体并绑定，不因媒体更新而替换字幕工程 |
+| `POST /api/desktop/command` | 主进程以独立操作密钥执行 openProject、saveProject、attachMedia、setStickerRoot、getLocation、reloadProject、getStatus；普通页面令牌不能执行这些命令 |
 | `GET /api/desktop/project/status` | 返回当前绑定、工程代次、磁盘修订和媒体状态 |
 
 新增操作密钥仅存在于 Electron 主进程与 Server 子进程之间，不添加到页面请求头、renderer、命令行或日志。既有页面令牌继续认证普通桌面页面 API。普通 Server 隐藏桌面接口；不增加任意路径读写或 shell IPC。
