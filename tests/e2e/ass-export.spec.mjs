@@ -13,6 +13,30 @@ import {
 
 const DURATION_MS = 4_000;
 
+test('sample Canvas contains scaled and rotated glyphs without edge clipping', async ({ page }) => {
+  await disableOnboarding(page);
+  await page.goto(server.url);
+  await page.waitForFunction(() => window.MaweAssCanvas?.renderSample);
+  const results = await page.evaluate(() => [0, 45, 90].map(angle => {
+    const canvas = document.createElement('canvas');
+    window.MaweAssCanvas.renderSample(canvas, { fontName: 'Arial', fontSize: 32, scaleX: 200, scaleY: 150,
+      angle, primaryColor: '#ffffff', outline: 4, outlineColor: '#ff0000', outlineOpacity: 100,
+      shadow: 4, backColor: '#000000', backOpacity: 100 }, 'Sample 字幕');
+    const pixels = canvas.getContext('2d').getImageData(0, 0, canvas.width, canvas.height).data;
+    let painted = 0, edge = 0;
+    for (let y = 0; y < canvas.height; y++) for (let x = 0; x < canvas.width; x++) {
+      if (!pixels[(y * canvas.width + x) * 4 + 3]) continue;
+      painted++;
+      if (x === 0 || y === 0 || x === canvas.width - 1 || y === canvas.height - 1) edge++;
+    }
+    return { angle, painted, edge };
+  }));
+  for (const result of results) {
+    expect(result.painted, `angle ${result.angle}`).toBeGreaterThan(100);
+    expect(result.edge, `angle ${result.angle}`).toBe(0);
+  }
+});
+
 function generateAssProjectJson(filePath) {
   const project = {
     media: 'synthetic.wav',

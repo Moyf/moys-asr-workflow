@@ -80,8 +80,9 @@ node.exe / chrome.exe / python.exe——会误杀 agent 守护进程、其他 wo
    输出重定向到文件，事后查文件而不是等管道。
 5. UI/浏览器验证是可选项：逻辑验证优先单测与语法检查；浏览器验证反复卡住时
    降级为「交付人工验收」，不要阻塞整个流程。
-6. 治本修复（2026-10-08 已落地）：cue-scroll fixture 与 helpers 的进程回收
-   统一改用 `taskkill /F /T` 进程树终止，正常跑完不再泄漏 serve.py。
+6. cue-scroll fixture 与 helpers 共用进程所有权管理：Windows 使用独立 Job，
+   POSIX 使用独立进程组；停止等待管道关闭并显式报告超时。它也覆盖包装进程
+   先退出的情况，详见 [E2E 服务进程生命周期](E2E_PROCESS_LIFECYCLE.md)。
 
 ## 事件记录
 

@@ -503,8 +503,14 @@
       return;
     }
     const entry = rasterizeLine(lineCacheKey(track, layout.lines[0], ratio), layout.lines[0], track, ratio);
-    const cssWidth = Math.ceil(layout.blockWidth) + entry.pad * 2 + margin * 2;
-    const cssHeight = Math.ceil(layout.blockHeight) + entry.pad * 2 + margin * 2;
+    const scaleX = Math.max(0, Number(safeStyle.scaleX ?? 100)) / 100;
+    const scaleY = Math.max(0, Number(safeStyle.scaleY ?? 100)) / 100;
+    const angle = (Number(safeStyle.angle) || 0) * Math.PI / 180;
+    const cos = Math.abs(Math.cos(angle));
+    const sin = Math.abs(Math.sin(angle));
+    // Size the canvas for the transformed bitmap, including outline/shadow.
+    const cssWidth = Math.ceil(scaleX * (entry.bitmap.width * cos + entry.bitmap.height * sin)) + margin * 2;
+    const cssHeight = Math.ceil(scaleY * (entry.bitmap.width * sin + entry.bitmap.height * cos)) + margin * 2;
     canvasEl.width = Math.max(1, Math.round(cssWidth * dpr));
     canvasEl.height = Math.max(1, Math.round(cssHeight * dpr));
     canvasEl.style.width = `${cssWidth}px`;
@@ -513,10 +519,8 @@
     g.clearRect(0, 0, cssWidth, cssHeight);
     g.save();
     g.translate(cssWidth / 2, cssHeight / 2);
-    g.scale(Math.max(0, Number(safeStyle.scaleX ?? 100)) / 100,
-      Math.max(0, Number(safeStyle.scaleY ?? 100)) / 100);
-    const angle = Number(safeStyle.angle) || 0;
-    if (angle) g.rotate(angle * Math.PI / 180);
+    g.scale(scaleX, scaleY);
+    if (angle) g.rotate(angle);
     g.drawImage(entry.bitmap, -layout.blockWidth / 2 - entry.pad, -layout.blockHeight / 2 - entry.pad);
     g.restore();
   }
