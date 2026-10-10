@@ -37,6 +37,8 @@ def validate_preview(project: JsonDict) -> tuple[ValidationIssue, ...]:
         return (("$.preview", "must be an object or null"),)
 
     issues: list[ValidationIssue] = []
+    if "ass_mode" in preview and not isinstance(preview.get("ass_mode"), bool):
+        issues.append(("$.preview.ass_mode", "must be a boolean"))
     subtitle = preview.get("subtitle")
     if subtitle is not None:
         if not isinstance(subtitle, dict):
@@ -81,6 +83,8 @@ def _validate_speaker_label_settings(value: JsonValue, path: str) -> tuple[Valid
         issues.append((f"{path}.mapping_enabled", "must be a boolean"))
     if "enabled" in value and not isinstance(value.get("enabled"), bool):
         issues.append((f"{path}.enabled", "must be a boolean"))
+    if "export_enabled" in value and not isinstance(value.get("export_enabled"), bool):
+        issues.append((f"{path}.export_enabled", "must be a boolean"))
     if "separator" in value:
         separator = value.get("separator")
         if (not isinstance(separator, str) or len(separator) > SPEAKER_LABEL_SEPARATOR_MAX_LENGTH

@@ -1,0 +1,51 @@
+    <details class="section" open>
+      <summary><span class="sec-title">#170 · AI 整理、多轨编辑与标记管理</span> <span class="badge">功能</span></summary>
+      <div class="body">
+        <table>
+          <tr><th>提交</th><th>日期</th><th>说明</th></tr>
+          <tr><td><code>4816396c</code></td><td>10-04</td><td>AI 口播整理：信息覆盖保护、跨批只读上下文、默认剪后通读、恢复不安全删除并标记疑点、取消复查不写出产物；AI 注释统一 <code>[AI] 操作：原因</code>；按筛选批量管理标记与区段；修复多轨禁用联动、拆分引用、轨道交换与保存的元数据保留。</td></tr>
+        </table>
+        <div class="note">自述验证：全量单元测试、受影响浏览器验证及最新 main 集成检查；便携内联副本待发布前统一重生成。</div>
+        <div class="item"><input type="checkbox" id="p170-1"><label for="p170-1">跑一个含重录片段的 AI 口播整理 → 废片可逆移除、拿不准的生成待复核标记 → 剪后默认通读剩余内容，不安全删除被恢复并标记疑点。</label></div>
+        <div class="item"><input type="checkbox" id="p170-2"><label for="p170-2">整理复查过程中取消 → 不写出整理结果（原始输入与新工程均不受影响）。</label></div>
+        <div class="item"><input type="checkbox" id="p170-3"><label for="p170-3">标记管理窗按筛选全选 → 批量删除 → 一次撤销全部恢复；AI 注释格式统一为「[AI] 操作：原因」。</label></div>
+        <div class="item"><input type="checkbox" id="p170-4"><label for="p170-4">多轨：移除主字幕 → 绑定译文同步禁用；主副轨交换 → 说话人与禁用状态保留，保存重开正确。</label></div>
+      </div>
+    </details>
+
+    <details class="section" open>
+      <summary><span class="sec-title">#173 · 后处理失败提示与长路径指引</span> <span class="badge fixed">修复</span></summary>
+      <div class="body">
+        <table>
+          <tr><th>提交</th><th>日期</th><th>说明</th></tr>
+          <tr><td><code>d07fa549</code></td><td>10-05</td><td>后处理产物创建/写入失败时说明阻塞原因；文件名或路径过长时给出缩短指引；禁用沿用旧路径的直接重试；保留原始错误详情。</td></tr>
+        </table>
+        <div class="item"><input type="checkbox" id="p173-1"><label for="p173-1">后处理输出目录设为只读（或占用文件）→ 失败提示说明具体阻塞原因，不再笼统归为后处理或 LLM 服务失败。</label></div>
+        <div class="item"><input type="checkbox" id="p173-2"><label for="p173-2">用超长文件名触发路径超限 → 提示缩短原文件名或目录、重选文件后重试；「沿用旧路径重试」按钮被禁用。</label></div>
+      </div>
+    </details>
+
+    <details class="section" open>
+      <summary><span class="sec-title">#175 · 长工程选区与拖动性能</span> <span class="badge">性能</span></summary>
+      <div class="body">
+        <table>
+          <tr><th>提交</th><th>日期</th><th>说明</th></tr>
+          <tr><td><code>b9b078c7</code></td><td>10-07</td><td>选区路径单次扫描化；拖动提交 <code>patchCueRows</code> 增量更新；history 快照跳过二次深克隆。5000 条实测：全选 1302ms→7ms、取消全选 1395ms→12ms、框选 2000 条 340ms→10ms、单条拖动松手 228ms→27ms、全选拖动松手 1956ms→71ms。研究数据见 docs/PERF_CUE_DRAG_RESEARCH.md。</td></tr>
+        </table>
+        <div class="item"><input type="checkbox" id="p175-1"><label for="p175-1">打开 ≥3000 条字幕的工程 → Ctrl+A 全选与取消全选即时，无秒级冻结。</label></div>
+        <div class="item"><input type="checkbox" id="p175-2"><label for="p175-2">波形框选约 2000 条 → 即时响应；单条拖动与全选拖动松手 → 时间即时回填，仅受影响行更新。</label></div>
+        <div class="item"><input type="checkbox" id="p175-3"><label for="p175-3">多重字幕可见时拖动换轨（Shift+拖动）→ 自动回退全量渲染，行结构正确。</label></div>
+      </div>
+    </details>
+
+    <details class="section" open>
+      <summary><span class="sec-title">#176 · 清空字幕后的输入光标与翻译边界</span> <span class="badge fixed">修复</span></summary>
+      <div class="body">
+        <table>
+          <tr><th>提交</th><th>日期</th><th>说明</th></tr>
+          <tr><td><code>d4e5dff2</code></td><td>10-08</td><td>修复双击编辑清空后输入首字符光标停在字符前、顺序错乱（#161）；界面翻译明确排除项目原文：字幕文本、波形字幕、编辑差异、拆分逐字与预览、表情包名称。</td></tr>
+        </table>
+        <div class="item"><input type="checkbox" id="p176-1"><label for="p176-1">双击字幕 → 全选删除 → 输入首字符 → 光标在字符后、顺序正常；主/副/叠加字幕与底部文本框逐一验证，中英文界面各一遍。</label></div>
+        <div class="item"><input type="checkbox" id="p176-2"><label for="p176-2">切换英文界面 → 字幕文本、波形字幕、编辑差异、拆分预览、表情包名称保持原文；按钮/列标题/提示照常翻译。</label></div>
+      </div>
+    </details>

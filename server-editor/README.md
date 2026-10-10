@@ -57,6 +57,6 @@ MOSE 每次启动都会让 Server 使用新的随机 localhost 端口，而浏�
 
 ## 前端维护
 
-修改编辑器 JavaScript、清单或构建配置后，先运行 `npm run build:editor` 再刷新页面；持续调试可另开 `npm run watch:editor`。提交前运行 `npm run check:editor`，并提交对应 bundle 与 `.meta.json`。CSS 和模板修改仍只需刷新。`web/editor-scripts.txt` 是装配顺序真源；Server 与便携页面读取同一份构建产物，最终用户不需要 Node。
+修改编辑器 JavaScript、清单或构建配置后，先运行 `pnpm run build:editor` 再刷新页面；持续调试可另开 `pnpm run watch:editor`。提交前运行 `pnpm run check:editor`，并提交对应 bundle 与 `.meta.json`。CSS 和模板修改仍只需刷新。`web/editor-scripts.txt` 是装配顺序真源；Server 与便携页面读取同一份构建产物，最终用户不需要 Node。
 
 日常不要重生成 `blank-editor.html`；只有发布检查或维护者明确要求更新便携产物时，才运行 `uv run --no-sync python edit.py --blank`。服务不提供任意本地文件浏览或任意路径写入接口。

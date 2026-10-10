@@ -257,7 +257,7 @@ async function main() {
       `source: ${quote(document.source)}`,
       '---',
       '',
-      `<!-- Generated from ${document.source}. Run npm run sync:docs to refresh. -->`,
+      `<!-- Generated from ${document.source}. Run pnpm run sync:docs to refresh. -->`,
       '',
       // DocLayout already renders the page title; keep one H1 per page.
       rewriteLinks(source.replace(/^# [^\n]*(?:\n|$)/, ''), document.source).trim(),

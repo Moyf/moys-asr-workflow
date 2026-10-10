@@ -7,8 +7,7 @@ import {
   generateProjectJson,
   generateWav,
   makeTempDir,
-  startServer,
-} from './helpers.mjs';
+  startServer, closeSettingsPanels, openSettingsPage, toggleGlobalSettings } from './helpers.mjs';
 
 let tempDir;
 let server;
@@ -188,8 +187,8 @@ test('I/O seeks the current cue boundaries and stays paused', async ({ page }) =
 
 test('selected arrow keys move cues, adjust boundaries, and honor the configured step', async ({ page }) => {
   await loadAttachedCues(page, true);
-  await page.locator('#editor-settings-toggle').click();
-  await page.locator('#editor-settings-tab-general').click();
+  await toggleGlobalSettings(page);
+  await openSettingsPage(page, 'special-edit');
   const step = page.locator('#cue-move-step');
   await expect(step).toHaveValue('50');
   await step.fill('250');
@@ -253,7 +252,7 @@ test('automatic adjacent snapping is on by default and Alt temporarily disables 
 });
 
 test('automatic adjacent snapping links shared-boundary dragging by default and Alt reverses it', async ({ page }) => {
-  // 传统模式：共享边界手柄的联动/独立由「自动吸附调整相邻字幕」开关决定。
+  // 传统模式：共享边界手柄的联动/独立由「联动调整相邻字幕」开关决定。
   await loadAttachedCues(page, true, 'classic');
   const dragSharedBoundary = async (altKey = false) => {
     const handle = page.locator('.waveform-cue-block[data-idx="0"] .waveform-cue-handle.right').first();
@@ -604,8 +603,8 @@ test('moving a cue keeps tracking horizontal pointer deltas past its waveform ro
 
 test('A/D on an independent right handle follows the effective end edge', async ({ page }) => {
   await loadAttachedCues(page, false, 'classic');
-  await page.locator('#editor-settings-toggle').click();
-  await page.locator('#editor-settings-tab-general').click();
+  await toggleGlobalSettings(page);
+  await openSettingsPage(page, 'special-edit');
   const step = page.locator('#cue-move-step');
   await step.fill('100');
   await step.press('Tab');
@@ -860,8 +859,8 @@ test('Shift+arrow keys snap selected subtitle boundaries to neighbors', async ({
 
 test('A/D adjusts a held subtitle block and a held shared boundary', async ({ page }) => {
   await loadAttachedCues(page, true);
-  await page.locator('#editor-settings-toggle').click();
-  await page.locator('#editor-settings-tab-general').click();
+  await toggleGlobalSettings(page);
+  await openSettingsPage(page, 'special-edit');
   const step = page.locator('#cue-move-step');
   await step.fill('100');
   await step.press('Tab');
@@ -900,8 +899,8 @@ test('A/D adjusts a held subtitle block and a held shared boundary', async ({ pa
 
 test('A also compresses an attached preceding cue', async ({ page }) => {
   await loadAttachedCues(page, true);
-  await page.locator('#editor-settings-toggle').click();
-  await page.locator('#editor-settings-tab-general').click();
+  await toggleGlobalSettings(page);
+  await openSettingsPage(page, 'special-edit');
   const step = page.locator('#cue-move-step');
   await step.fill('100');
   await step.press('Tab');
@@ -931,9 +930,9 @@ test('Shift+A/D on a held subtitle snaps its outer boundaries to neighbors', asy
     MaweBoot.DATA.segments[2].start = 20000;
     MaweCuePanel.renderAll();
   });
-  await page.locator('#editor-settings-toggle').click();
+  await toggleGlobalSettings(page);
   // 关闭设置窗口：浮动窗口悬浮在波形区上方，避免按住拖动被窗口拦截。
-  await page.locator('#editor-settings-toggle').click();
+  await toggleGlobalSettings(page);
   const block = page.locator('.waveform-cue-block[data-idx="1"]').first();
   await expect(block).toBeVisible();
   const blockBox = await stableVisibleBoundingBox(page, block);

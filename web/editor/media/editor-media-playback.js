@@ -23,7 +23,7 @@
 
   function togglePlayback() {
     if (!hasLoadedMedia()) {
-      MaweHint.flashHint('请先加载媒体，然后才能预览', 'invalid');
+      MaweHint.flashHint('请先导入媒体，然后才能预览', 'invalid');
       return;
     }
     if (MaweJklPlayback.jklReversePlaying) {
@@ -200,6 +200,20 @@
   function bindPlayerEvents(mediaElement) {
     if (!mediaElement) return;
     mediaElement.addEventListener('timeupdate', MawePlaybackLoop.update);
+    mediaElement.addEventListener('timeupdate', () => watchAuditionBoundary(mediaElement));
+    mediaElement.addEventListener('seeking', () => {
+      // 试听自己的起点 seek 不取消；之后的任何 seek（含手动定位）都取消边界。
+      if (auditionSeekPending) { auditionSeekPending = false; return; }
+      auditionStopSeconds = null;
+      clearAuditionStopTimer();
+    });
+    ['pause', 'ended', 'emptied'].forEach((name) => mediaElement.addEventListener(name, () => {
+      auditionSeekPending = false;
+      auditionStopSeconds = null;
+      clearAuditionStopTimer();
+    }));
+    mediaElement.addEventListener('seeked', () => { auditionSeekPending = false; });
+    mediaElement.addEventListener('ratechange', () => scheduleAuditionStop(mediaElement));
     mediaElement.addEventListener('seeked', MawePlaybackLoop.update);
     mediaElement.addEventListener('loadedmetadata', () => {
       MaweTimeline.captureProjectVideoDimensions(mediaElement);
@@ -274,6 +288,59 @@ MaweCoreState.waveformEditor?.revealTime(targetSeconds * 1000, true);
     return true;
   }
 
+  // 试听：从 startMs 播放到 endMs 自动暂停一次；任何手动 seek/暂停都会取消。
+  // timeupdate 最长 ~250ms 才触发一次，只做兜底；边界主要靠精确定时暂停。
+  let auditionStopSeconds = null;
+  let auditionSeekPending = false;
+  let auditionStopTimer = 0;
+  function clearAuditionStopTimer() {
+    if (auditionStopTimer) { clearTimeout(auditionStopTimer); auditionStopTimer = 0; }
+  }
+  function stopAtAuditionBoundary(mediaElement) {
+    auditionStopSeconds = null;
+    clearAuditionStopTimer();
+    if (!mediaElement.paused) mediaElement.pause();
+  }
+  function auditionRange(startMs, endMs) {
+    if (!hasLoadedMedia()) {
+      MaweHint.flashHint('请先导入媒体，然后才能试听', 'invalid');
+      return false;
+    }
+    const start = Math.max(0, (Number(startMs) || 0) / 1000);
+    const stop = (Number(endMs) || 0) / 1000;
+    if (!(stop > start)) return false;
+    // seekMediaTo 会同步刷新播放状态；必须先进入试听，避免落入空隙后立即被跳过。
+    auditionStopSeconds = stop;
+    auditionSeekPending = true;
+    if (!seekMediaTo(start)) {
+      auditionSeekPending = false;
+      auditionStopSeconds = null;
+      clearAuditionStopTimer();
+      return false;
+    }
+    scheduleAuditionStop(MaweCoreState.player);
+    if (MaweCoreState.player.paused) togglePlayback();
+    return true;
+  }
+  function scheduleAuditionStop(mediaElement) {
+    if (auditionStopSeconds === null || MaweCoreState.player !== mediaElement) return;
+    const rate = Number(mediaElement.playbackRate) || 1;
+    const delayMs = Math.max(0, (auditionStopSeconds - mediaElement.currentTime) * 1000 / rate);
+    clearAuditionStopTimer();
+    auditionStopTimer = setTimeout(() => {
+      auditionStopTimer = 0;
+      if (auditionStopSeconds === null || MaweCoreState.player !== mediaElement) return;
+      if (mediaElement.paused) { auditionStopSeconds = null; return; }
+      if (mediaElement.currentTime >= auditionStopSeconds) stopAtAuditionBoundary(mediaElement);
+      else scheduleAuditionStop(mediaElement);
+    }, delayMs + 1);
+  }
+  function watchAuditionBoundary(mediaElement) {
+    if (auditionStopSeconds === null) return;
+    if (MaweCoreState.player !== mediaElement || mediaElement.paused) { auditionStopSeconds = null; clearAuditionStopTimer(); return; }
+    if (mediaElement.currentTime >= auditionStopSeconds) stopAtAuditionBoundary(mediaElement);
+  }
+
   global.MaweMediaPlayback = Object.freeze({
     syncPlayerPlaceholder,
     togglePlayback,
@@ -288,6 +355,8 @@ MaweCoreState.waveformEditor?.revealTime(targetSeconds * 1000, true);
     startPlaybackRefresh,
     bindPlayerEvents,
     seekMediaBy,
-    seekMediaTo
+    seekMediaTo,
+    get isAuditioning() { return auditionStopSeconds !== null; },
+    auditionRange
   });
 })(typeof window !== 'undefined' ? window : globalThis);

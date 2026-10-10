@@ -1,0 +1,274 @@
+<!doctype html>
+<!--
+  人工核查清单模板（批量功能开发 / 反馈修复收尾用）
+  用法见 AGENTS.md「批量改动的人工核查清单」：
+  1. 复制本文件到仓库外（如 %TEMP%），全文替换标题、副标题、分区内容三处
+     双花括号占位符。注意：本注释与下方脚本注释中刻意不出现占位符原文，
+     避免被全局替换误伤——维护模板时请保持这一约定；
+  2. 分区内容由若干分区卡片组成，每个分区的标准写法：
+       <details class="section" open>
+         <summary>标题文字 <span class="badge pass">通过</span></summary>
+         <div class="body"> …内容… </div>
+       </details>
+     - open 控制默认展开；summary 中的纯文本（或 .sec-title 元素内容）自动进入左侧目录；
+     - 只读说明用 .plain / .note / <table> / .cmd；打勾项用
+       <div class="item"><input type="checkbox" id="唯一ID"><label for="唯一ID">…</label></div>；
+     - 徽标：.badge.pass（通过 / 已完成）.badge.fixed（已修复）.badge.todo（待办 / 阻塞）。
+  3. 分区约定：A 实现 / 审查结论（只读）· B 修复与提交记录 · C 自动化验证结果（写明命令与已知环境性失败）
+     · D 人工核验打勾项（入口 → 操作 → 预期）· E 后续操作步骤；
+   4. 左侧目录、分区进度徽标、总进度由脚本自动生成，无需手写；
+      勾选与备注按页面标题存 localStorage；含核对项的分区可悬停标题一键忽略
+      （灰色折叠、计数按已处理、不进入未确认导出）；JSON 可导出全部或未确认项。
+      详细使用与导出格式见工具目录 README.md；生成物不提交进仓库。
+-->
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>MAW 发布核查：v1.8.0-beta.1 → 当前 main（2026-10-09）</title>
+<style>
+  :root {
+    --bg: #f3f5f8; --paper: #ffffff; --ink: #1a1f27; --ink2: #57606e; --ink3: #8b94a3;
+    --line: #e4e7ec; --accent: #2563eb; --ok: #16a34a; --warn: #b45309;
+    --chip: #eef1f6; --mono: ui-monospace, "Cascadia Mono", Consolas, monospace;
+    --radius: 14px;
+    color-scheme: light;
+    --shadow: 0 1px 2px rgba(16,24,40,.05), 0 6px 20px rgba(16,24,40,.06);
+    --accent-soft: color-mix(in srgb, var(--accent) 12%, transparent);
+    --ok-soft: color-mix(in srgb, var(--ok) 14%, transparent);
+    --warn-soft: color-mix(in srgb, var(--warn) 16%, transparent);
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      color-scheme: dark;
+      --bg: #0e1116; --paper: #161b22; --ink: #e8ebf0; --ink2: #a4adba; --ink3: #6e7787;
+      --line: #2a313b; --accent: #6ea8ff; --ok: #4ade80; --warn: #f0b14a; --chip: #1f2630;
+      --shadow: 0 1px 2px rgba(0,0,0,.35), 0 6px 20px rgba(0,0,0,.4);
+    }
+  }
+  * { box-sizing: border-box; }
+  /* 不在根滚动条上开 scroll-behavior: smooth——它会把所有程序化滚动
+     （含未来脚本/扩展的 scrollTo）变成逐帧动画，实测极端情况下单帧数秒；
+     平滑滚动只由目录点击通过 JS 显式触发（见文件末尾脚本）。 */
+  @media (prefers-reduced-motion: reduce) {
+    *, *::before, *::after { transition: none !important; }
+  }
+  body { margin: 0; background: var(--bg); color: var(--ink);
+    font: 16px/1.7 -apple-system, "Segoe UI", "PingFang SC", "Microsoft YaHei", sans-serif; }
+  ::selection { background: var(--accent-soft); }
+
+  /* 顶部整体进度条 */
+  .topbar { position: fixed; top: 0; left: 0; right: 0; height: 3px; z-index: 50; }
+  .topbar > i { display: block; height: 100%; width: 0;
+    background: linear-gradient(90deg, var(--accent), var(--ok)); transition: width .3s; }
+
+  .layout { max-width: 1240px; margin: 0 auto; padding: 44px 32px 100px;
+    display: grid; grid-template-columns: 300px minmax(0, 1fr);
+    grid-template-areas: "head head" "side main"; column-gap: 36px; row-gap: 24px;
+    align-items: start; }
+  .page-head { grid-area: head; }
+  .sidebar { grid-area: side; position: sticky; top: 20px;
+    display: flex; flex-direction: column; gap: 16px;
+    max-height: calc(100vh - 40px); overflow-y: auto; padding-right: 8px;
+    scrollbar-width: thin; scrollbar-color: var(--line) transparent; }
+  .sidebar:hover { scrollbar-color: var(--ink3) transparent; }
+  .sidebar::-webkit-scrollbar { width: 5px; }
+  .sidebar::-webkit-scrollbar-track { background: transparent; }
+  .sidebar::-webkit-scrollbar-thumb { background: var(--line); border-radius: 999px; }
+  .sidebar:hover::-webkit-scrollbar-thumb { background: var(--ink3); }
+  .sidebar::-webkit-scrollbar-button { display: none; }
+  .sidebar > .side-card { flex-shrink: 0; }
+  .content { grid-area: main; min-width: 0; }
+
+  header.page-head h1 { font-size: 27px; line-height: 1.3; margin: 0 0 6px; letter-spacing: -.01em; }
+  header.page-head .sub { color: var(--ink2); font-size: 15px; }
+
+  /* 侧栏卡片：总进度 + 目录 */
+  .side-card { background: var(--paper); border: 1px solid var(--line);
+    border-radius: var(--radius); box-shadow: var(--shadow); padding: 18px 20px; }
+  .row { display: flex; align-items: baseline; justify-content: space-between; gap: 10px; }
+  .lbl { font-size: 13px; font-weight: 600; color: var(--ink3); letter-spacing: .06em; }
+  .pct { font: 700 14px var(--mono); color: var(--accent); }
+  .pct.full { color: var(--ok); }
+  .num { font: 700 26px/1.2 var(--mono); margin: 2px 0 10px; }
+  .bar { height: 10px; background: var(--chip); border-radius: 999px; overflow: hidden; }
+  .bar > i { display: block; height: 100%; width: 0; border-radius: 999px;
+    background: linear-gradient(90deg, var(--accent), var(--ok)); transition: width .3s; }
+  .side-actions { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 14px; }
+  button.ghost { border: 1px solid var(--line); background: none; color: var(--ink2);
+    border-radius: 8px; padding: 5px 12px; font-size: 13px; cursor: pointer; }
+  button.ghost:hover { color: var(--ink); border-color: var(--ink3); }
+  button.ghost[aria-pressed="true"] { color: var(--accent); border-color: var(--accent);
+    background: var(--accent-soft); }
+  button:focus-visible, select:focus-visible, textarea:focus-visible {
+    outline: 2px solid var(--accent); outline-offset: 3px; }
+  button.primary { border: 1px solid var(--accent); background: var(--accent); color: var(--paper);
+    border-radius: 8px; padding: 8px 12px; font: inherit; font-size: 13px; font-weight: 600; cursor: pointer; }
+  button.primary:hover { filter: brightness(.92); }
+  button:disabled { opacity: .5; cursor: default; }
+  .export-panel { margin-top: 16px; padding-top: 16px; border-top: 1px solid var(--line);
+    display: grid; gap: 10px; }
+  .export-panel label { font-size: 13px; color: var(--ink2); }
+  .export-panel select { width: 100%; min-width: 0; border: 1px solid var(--line);
+    border-radius: 8px; padding: 8px 10px; color: var(--ink); background: var(--paper); font: inherit;
+    font-size: 13px; }
+  .save-status { margin: 12px 0 0; font-size: 12px; color: var(--ink3); overflow-wrap: anywhere; }
+  .save-status.warning { color: var(--warn); }
+
+  .toc-title { font: 600 12px var(--mono); letter-spacing: .12em; color: var(--ink3);
+    text-transform: uppercase; margin-bottom: 6px; }
+  .toc a { display: flex; align-items: baseline; gap: 10px; padding: 8px 10px;
+    margin: 0 -10px; border-radius: 8px; color: var(--ink2); font-size: 14.5px;
+    line-height: 1.5; text-decoration: none; }
+  .toc a:hover { background: var(--chip); color: var(--ink); }
+  .toc a.active { background: var(--accent-soft); color: var(--accent); font-weight: 600; }
+  .toc a .m { flex: none; width: 7px; height: 7px; border-radius: 50%;
+    background: var(--ink3); transform: translateY(-1px); }
+  .toc a.active .m { background: var(--accent); }
+  .toc a.done .m { background: var(--ok); }
+  .toc a .t { flex: 1; }
+  .toc a .c { font: 600 12px var(--mono); color: var(--ink3); white-space: nowrap; }
+  .toc a.done .c { color: var(--ok); }
+
+  /* 分区卡片 */
+  /* content-visibility：屏外分区跳过排版与绘制，窗口连续缩放时重排成本
+     从 O(整页) 降到 O(视口)——长清单拉伸窗口卡死的根因即在此。 */
+  .section { background: var(--paper); border: 1px solid var(--line); border-radius: var(--radius);
+    box-shadow: var(--shadow); margin: 0 0 18px; overflow: hidden; scroll-margin-top: 20px;
+    content-visibility: auto; contain-intrinsic-size: auto 600px; }
+  .section > summary { cursor: pointer; padding: 16px 22px; font-size: 17px; font-weight: 650;
+    line-height: 1.5; display: flex; align-items: center; flex-wrap: wrap; gap: 10px;
+    user-select: none; list-style: none; }
+  .section > summary:hover { background: var(--chip); }
+  .section.complete > summary { background: color-mix(in srgb, var(--ok) 7%, var(--paper)); }
+  .section.complete > summary:hover { background: color-mix(in srgb, var(--ok) 10%, var(--paper)); }
+  .section.ignored > summary { background: color-mix(in srgb, var(--ink3) 8%, var(--paper)); }
+  .section.ignored > summary:hover { background: color-mix(in srgb, var(--ink3) 12%, var(--paper)); }
+  .section > summary:focus-visible { outline: 2px solid var(--accent); outline-offset: -3px; }
+  .section > summary::-webkit-details-marker { display: none; }
+  .section-chevron { width: 20px; height: 20px; flex: none; margin-left: auto;
+    color: var(--ink3); transition: transform .18s; }
+  .section[open] > summary .section-chevron { transform: rotate(180deg); }
+  .sec-progress:not([hidden]) + .section-chevron { margin-left: 0; }
+  .sec-progress { margin-left: auto; font: 600 12.5px var(--mono); color: var(--ink3);
+    background: var(--chip); padding: 3px 10px; border-radius: 999px; }
+  .sec-progress.done { background: var(--ok-soft); color: var(--ok); }
+  /* 「忽略」按钮：悬停/聚焦分区标题时出现在计数左侧，点击整组按已处理折叠。 */
+  button.sec-ignore { display: none; flex: none; border: 1px solid var(--line); background: var(--paper);
+    color: var(--ink2); border-radius: 999px; padding: 3px 10px; font: inherit; font-size: 12px;
+    line-height: 1.4; cursor: pointer; }
+  button.sec-ignore:hover { color: var(--ink); border-color: var(--ink3); background: var(--chip); }
+  .section > summary:hover button.sec-ignore,
+  .section > summary:focus-within button.sec-ignore { display: inline-block; }
+  .badge { font: 600 12px/1 var(--mono); padding: 5px 9px; border-radius: 999px;
+    background: var(--chip); color: var(--ink2); }
+  .badge.pass { background: var(--ok-soft); color: var(--ok); }
+  .badge.fixed { background: var(--accent-soft); color: var(--accent); }
+  .badge.todo { background: var(--warn-soft); color: var(--warn); }
+  .body { padding: 8px 22px 18px; border-top: 1px solid var(--line); overflow-x: auto; }
+
+  /* 分区内容元素 */
+  .note { color: var(--ink2); font-size: 14.5px; margin: 10px 0; }
+  .plain { padding: 8px 10px; color: var(--ink2); font-size: 15px; }
+  .plain b { color: var(--ink); font-weight: 600; }
+  .item { display: grid; grid-template-columns: 20px minmax(0, 1fr) auto; gap: 12px; align-items: start; padding: 9px 10px;
+    border-radius: 8px; }
+  .item:hover { background: var(--chip); }
+  .item[hidden] { display: none; }
+  .item input { appearance: none; -webkit-appearance: none; flex: none; margin: 3px 0 0;
+    width: 20px; height: 20px; border: 1.5px solid var(--ink3); border-radius: 6px;
+    background: var(--paper); cursor: pointer; position: relative;
+    transition: background .15s, border-color .15s; }
+  .item input::after { content: ""; position: absolute; left: 6px; top: 2px;
+    width: 5px; height: 10px; border: solid #fff; border-width: 0 2.5px 2.5px 0;
+    transform: rotate(45deg) scale(0); transition: transform .15s; }
+  .item input:checked { background: var(--ok); border-color: var(--ok); }
+  .item input:checked::after { transform: rotate(45deg) scale(1); }
+  .item input:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+  .item label { cursor: pointer; flex: 1; font-size: 15px; transition: color .2s; }
+  .item.done label { color: var(--ink3); text-decoration: line-through;
+    text-decoration-color: color-mix(in srgb, var(--ink3) 60%, transparent); }
+  .item label { overflow-wrap: anywhere; }
+  .note-toggle { display: inline-flex; align-items: center; gap: 5px; border: 0; border-radius: 6px;
+    background: transparent; color: var(--ink3); padding: 3px 6px; font: inherit;
+    font-size: 12px; cursor: pointer; white-space: nowrap; }
+  .note-toggle svg { width: 16px; height: 16px; }
+  .note-toggle:hover, .note-toggle[aria-expanded="true"], .note-toggle.has-note {
+    color: var(--accent); background: var(--accent-soft); }
+  .item-note { grid-column: 2 / -1; min-width: 0; }
+  .item-note[hidden] { display: none; }
+  .item-note textarea { display: block; width: 100%; min-height: 80px; resize: vertical;
+    border: 1px solid var(--line); border-radius: 8px; padding: 10px 12px;
+    background: var(--paper); color: var(--ink); font: inherit; font-size: 14px; line-height: 1.6; }
+  .item-note textarea::placeholder { color: var(--ink3); }
+  .print-note { display: none; }
+  .item code, .note code, .plain code, td code { font: 13px var(--mono);
+    background: var(--chip); padding: 2px 6px; border-radius: 5px; }
+  table { width: 100%; border-collapse: collapse; font-size: 14.5px; margin: 8px 0; }
+  th { text-align: left; font: 12px/1.5 var(--mono); letter-spacing: .06em;
+    color: var(--ink3); font-weight: 400; padding: 7px 10px; border-bottom: 1px solid var(--line); }
+  td { padding: 8px 10px; border-bottom: 1px solid var(--line); vertical-align: top; }
+  .cmd { display: block; font: 13px/1.6 var(--mono); background: var(--chip); color: var(--ink2);
+    border-radius: 8px; padding: 8px 14px; margin: 6px 0; overflow-x: auto; white-space: pre; }
+  a { color: var(--accent); text-decoration: none; }
+  a:hover { text-decoration: underline; }
+
+  @media (max-width: 980px) {
+    .layout { grid-template-columns: 1fr; grid-template-areas: "head" "side" "main";
+      padding: 28px 18px 72px; row-gap: 20px; }
+    .sidebar { position: static; max-height: none; overflow: visible; padding-right: 0; }
+  }
+  @media (max-width: 540px) {
+    .section > summary { padding: 16px; font-size: 16px; }
+    .body { padding-left: 10px; padding-right: 10px; }
+    .item { column-gap: 8px; }
+    .note-toggle span { display: none; }
+  }
+  @media print {
+    .topbar, .sidebar, .side-actions { display: none !important; }
+    .layout { display: block; padding: 0; }
+    .section { box-shadow: none; break-inside: avoid; content-visibility: visible; }
+    .note-toggle, .item-note { display: none !important; }
+    .print-note:not(:empty) { display: block; grid-column: 2 / -1; margin: 0;
+      color: var(--ink2); white-space: pre-wrap; overflow-wrap: anywhere; font-size: 13px; }
+  }
+</style>
+</head>
+<body>
+<div class="topbar"><i id="topbar-i"></i></div>
+
+<div class="layout">
+  <header class="page-head">
+    <h1>MAW 发布核查：v1.8.0-beta.1 → 当前 main</h1>
+    <div class="sub">范围 2026-10-02 → 2026-10-09 · 28 个提交 + 1 个 merge · 24 个分区 / 74 个打勾项 · 生成于 2026-10-09 · 生成物不提交进仓库</div>
+  </header>
+
+  <aside class="sidebar">
+    <div class="side-card">
+      <div class="row"><span class="lbl">核查进度</span><span class="pct" id="pct">0%</span></div>
+      <div class="num" id="num">0 / 0</div>
+      <div class="bar"><i id="bar"></i></div>
+      <div class="side-actions">
+        <button class="ghost" id="reset" type="button">重置勾选</button>
+        <button class="ghost" id="expand" type="button">全部展开</button>
+        <button class="ghost" id="collapse" type="button">全部收起</button>
+        <button class="ghost" id="hide-confirmed" type="button" aria-pressed="false">隐藏已勾选</button>
+        <button class="ghost" id="auto-collapse-completed" type="button" aria-pressed="false">全勾选后自动收起</button>
+      </div>
+      <div class="export-panel">
+        <label for="export-scope">导出范围</label>
+        <select id="export-scope">
+          <option value="all">全部核对项</option>
+          <option value="unconfirmed">仅未确认项</option>
+        </select>
+        <button class="primary" id="export-json" type="button">导出 JSON</button>
+      </div>
+      <p class="save-status" id="save-status" role="status" aria-live="polite">勾选与备注自动保存在本机</p>
+    </div>
+    <nav class="side-card toc-card" id="toc-card" aria-label="目录">
+      <div class="toc-title">目录</div>
+      <div class="toc" id="toc"></div>
+    </nav>
+  </aside>
+
+  <main class="content">

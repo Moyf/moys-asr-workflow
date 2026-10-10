@@ -242,13 +242,15 @@
       return;
     }
     return MaweCommands.run(label, (command) => {
-      let changed = 0;
+      let changed = 0, staleWordTimings = 0;
       previews.forEach((row) => {
         if (!row.changed) return;
         const segment = MaweBoot.DATA.segments[row.index];
+        const previousText = segment.text;
         segment.text = row.text;
         segment._dirty = true;
         changed += 1;
+        if (window.AsrEditorUtils.planWordTimingTextSync(segment, previousText)?.warn) staleWordTimings += 1;
       });
       command.commit({ cueList: true, waveform: 'overlay', preview: 'update' });
       MaweHistory.updateUndoRedoButtons();
@@ -256,6 +258,9 @@
         skipped ? `已为 ${changed} 条字幕添加字符；${skipped} 条已包裹相同符号，已跳过` : `已为 ${changed} 条字幕添加字符`,
         'success',
       );
+      if (staleWordTimings) {
+        MaweHint.flashHint(`${staleWordTimings} 条字幕的字词时间码文字未随字符添加更新，请按需检查`, 'warning');
+      }
     });
   }
 

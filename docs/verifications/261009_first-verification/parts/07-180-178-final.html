@@ -1,0 +1,46 @@
+    <details class="section" open>
+      <summary><span class="sec-title">#180 · ASS 字幕预览改用 Canvas 合成描边</span> <span class="badge">功能</span></summary>
+      <div class="body">
+        <table>
+          <tr><th>提交</th><th>日期</th><th>说明</th></tr>
+          <tr><td><code>cf72ec7c</code></td><td>10-09</td><td>ASS 即时预览改为在 PlayRes 原生分辨率画布上按 libass 顺序（阴影 → 描边 → 填充）合成绘制：整行一次描边消除半透明描边在 run 交界的接缝，缩小后文字边缘更平滑；覆盖 \move、\t 插值、BorderStyle 1/3、说话人标签与叠加轨；\frx/\fry 以轴向透视缩短近似并如实声明。SRT/CSS 预览路径不变。</td></tr>
+        </table>
+        <div class="note">关联：open issue <a href="https://github.com/Moyf/moys-asr-workflow/issues/182">#182 烧录字幕与预览不一致</a>，可顺带确认本改动是否缓解。工作区另有 docs/TEST_FEEDBACK_PR180.md（另一任务 WIP）。</div>
+        <div class="item"><input type="checkbox" id="p180-1"><label for="p180-1">ASS 模式 + 半透明描边 → 预览中 run 交界无接缝（整行一次描边）。</label></div>
+        <div class="item"><input type="checkbox" id="p180-2"><label for="p180-2">缩小字号文字边缘平滑；与 libass 实际帧（帧预览窗口）对照差异可接受。</label></div>
+        <div class="item"><input type="checkbox" id="p180-3"><label for="p180-3">\move 位移、\t 插值、BorderStyle 3、说话人标签、叠加轨在即时预览中表现正确。</label></div>
+        <div class="item"><input type="checkbox" id="p180-4"><label for="p180-4">SRT / CSS 预览路径不受影响（与改版前一致）。</label></div>
+      </div>
+    </details>
+
+    <details class="section" open>
+      <summary><span class="sec-title">#178 · 文稿驱动对齐（issue #174，实验性）</span> <span class="badge todo">实验性</span></summary>
+      <div class="body">
+        <table>
+          <tr><th>提交</th><th>日期</th><th>说明</th></tr>
+          <tr><td><code>9b7e62b8</code></td><td>10-09</td><td>Launcher「生成时间码」与 CLI 新增「仅使用文稿对齐」：从准确文稿与录音直接生成字词时间码工程及 SRT，跳过 ASR；保留文稿换行、组合字符与标点；模型覆盖不完整时报错而不插值补齐。短录音整段对齐，长录音按静音区间或人工锚点分块，可先在无需模型的情况下检查输入与分块；结果列出处理统计并提醒听审。</td></tr>
+        </table>
+        <div class="item"><input type="checkbox" id="p178-1"><label for="p178-1">Launcher「生成时间码」+ 短素材（文稿+录音）→ 整段对齐生成工程与 SRT → 字词时间码与录音对齐，听审无漂移。</label></div>
+        <div class="item"><input type="checkbox" id="p178-2"><label for="p178-2">长素材 → 静音分块（可加人工锚点）→ 先「检查输入与分块」（无需模型）→ 确认分块合理后指定音轨与输出目录生成。</label></div>
+        <div class="item"><input type="checkbox" id="p178-3"><label for="p178-3">文稿换行、组合字符（声调/emoji 等）与标点保留；故意缺漏一段文稿 → 报错提示而非插值补齐。</label></div>
+        <div class="item"><input type="checkbox" id="p178-4"><label for="p178-4">生成结果列出处理统计并提醒听审；CLI「仅使用文稿对齐」入口与 docs/LOCAL_ASR.md 等文档参数一致。</label></div>
+      </div>
+    </details>
+
+    <details class="section" open>
+      <summary><span class="sec-title">自动化基线与后续操作步骤</span> <span class="badge">收尾</span></summary>
+      <div class="body">
+        <div class="plain"><b>生成清单时已实测</b>：<code>pnpm run check:editor</code> 通过（bundle fresh）；<code>git diff --check</code> 仅工作区 WIP 文件（docs/TEST_FEEDBACK_PR180.md，AA 冲突状态，另一任务）报冲突标记；package-lock.json 已移除、packageManager 已固定 pnpm@11.28.4。</div>
+        <div class="note">全量 Python / Node / e2e 未在本次生成时重跑，各 PR 自述结果见对应分区；发布前统一验证如下：</div>
+        <div class="cmd">pnpm run typecheck
+node --test tests\test_editor_script_syntax.mjs tests\test_editor_script_order.mjs
+node --test tests\test_editor_utils.mjs tests\test_waveform_js.mjs
+uv run --no-sync python -m unittest discover -s tests -p "test_*.py"</div>
+        <div class="item"><input type="checkbox" id="pf-1"><label for="pf-1">跑完上方全套命令并记录结果（全量 Python 约 110s，显式设置超时）。</label></div>
+        <div class="item"><input type="checkbox" id="pf-2"><label for="pf-2">启动真实浏览器验证：uv run --no-sync python server-editor\serve.py --blank → 编辑器核心交互（播放、Seek、拖动、设置）无回归。</label></div>
+        <div class="item"><input type="checkbox" id="pf-3"><label for="pf-3">本批多次修改 web/（#177/#179/#188/#180/#168/#175/#176 等）→ 发布前统一运行 uv run --no-sync python edit.py --blank 重生成便携 HTML，并核对 git diff --stat blank-editor.html 符合预期。</label></div>
+        <div class="item"><input type="checkbox" id="pf-4"><label for="pf-4">CHANGELOG「未发布」定稿：版本号、条目措辞（「 ： 」空格规范）、与 README/blank-editor 一致。</label></div>
+        <div class="item"><input type="checkbox" id="pf-5"><label for="pf-5">处理 #185 后续：应用/挂起 V-Conet 补丁，决定 serve.py 与 notify.py 两处遗漏的去向，并回复贡献者。</label></div>
+        <div class="item"><input type="checkbox" id="pf-6"><label for="pf-6">发布前扫描：.env、媒体文件、个人绝对路径不入库；LICENSE 与 THIRD_PARTY_NOTICES.md 仍正确；关闭/跟进关联 issue（#174、#182）。</label></div>
+      </div>
+    </details>

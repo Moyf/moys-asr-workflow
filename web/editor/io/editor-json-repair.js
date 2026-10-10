@@ -20,7 +20,7 @@
     media: MaweBoot.DATA.media || '',
     language: MaweBoot.DATA.language || '',
     model: MaweBoot.DATA.model || '',
-    sticker_root: MaweBoot.STICKER_ROOT || '',
+    sticker_root: MaweBoot.DATA.sticker_root || '',
     timebase: { ...MaweTimeline.projectTimebase() },
     segments: MaweBoot.DATA.segments.map(s => {
       const o = {
@@ -42,6 +42,7 @@
     }),
   };
   if (typeof MaweBoot.DATA.language_source === 'string') out.language_source = MaweBoot.DATA.language_source;
+  if (typeof MaweBoot.DATA.preserve_punctuation === 'boolean') out.preserve_punctuation = MaweBoot.DATA.preserve_punctuation;
   if (typeof MaweBoot.DATA.split_mode === 'string') out.split_mode = MaweBoot.DATA.split_mode;
   if (typeof MaweBoot.DATA.timestamp_granularity === 'string') {
     out.timestamp_granularity = MaweBoot.DATA.timestamp_granularity;
@@ -126,6 +127,7 @@
   if (workspace) out.workspace = workspace;
   // 预览几何：始终写入归一化后的当前几何，便于跨机/重开保持位置。
   const preview = {
+    ass_mode: MaweSettings.EDITOR_SETTINGS.assMode === true,
     subtitle: {
       ...MaweAppearance.getPreviewGeometry(),
       ...MaweAppearance.getSubtitleAppearance(),

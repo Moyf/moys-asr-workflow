@@ -5,7 +5,7 @@ description: "MAW、MAWE 与 Windows Electron MOSE 之间的定位、套件布�
 source: "docs/MOSE.md"
 ---
 
-<!-- Generated from docs/MOSE.md. Run npm run sync:docs to refresh. -->
+<!-- Generated from docs/MOSE.md. Run pnpm run sync:docs to refresh. -->
 
 MOSE（Moy's Open Subtitle Editor）是 MAW 的 Windows x64 Electron 壳。它复用
 `server-editor/serve.py`、`web/` 前端和 `.mosp` 工程契约，因此保存、备份、媒体
@@ -17,14 +17,16 @@ Range seek、波形、最近工程和导出能力与 MAWE Server 保持一致，
 | --- | --- |
 | MAW — Moy's ASR Workflow | 当前可用的转写与处理工作流，包含 Launcher、公开 CLI 与本机服务。 |
 | MAWE — Moy's ASR Workflow Editor | MAW 的浏览器字幕编辑器；Server 为日常入口，HTML 为兼容入口。 |
-| MOSE — Moy's Open Subtitle Editor | Windows x64 Installer 中随统一套件发布的独立编辑器；本仓库不包含已移除的 Tauri 桌面实验工程。 |
+| MOSE — Moy's Open Subtitle Editor | MAW 的 Windows x64 Electron 独立编辑器，以 MAW + MOSE 统一套件发布。 |
 
-MOSE 作为统一套件中的独立编辑器交付，尚未单独作为稳定产品或单独 Release 分发；移除 Tauri 桌面实验工程不改变现有 Electron 套件、MOSE 产品方向或工程格式。
+桌面壳路线已于 2026-10-08 确定为 **Electron**：Electron 复用 `web/` 前端与
+`server-editor/serve.py` 后端，不维护第二套实现；配套的 Installer、软件内更新器与
+`.mosp` 关联随统一套件发布。早期保留的 Tauri 实验目录已移除，决策记录见
+[desktop README](https://github.com/Moyf/moys-asr-workflow/blob/main/desktop/README.md)；完整的桌面套件代码当前位于
+`merge/starlit-main` 集成分支，合回 main 后以 main 为准。
 
-源码和打包脚本公开；GitHub Release 同时发布 MAW / MAW-lite 便携包，以及包含 MOSE
-的 Windows x64 Installer。Installer 本身不做 License Key 或联网授权校验，用户拿到
-安装包后可按 AGPL-3.0-only 条款使用、备份和再分发。官方 Release 是内置更新检查的
-来源；自行打包版本的更新由打包者自行管理。
+三者共享 `.mosp` / 兼容 `.json` 工程契约。
+
 
 Installer 安装的是同一个统一套件：
 

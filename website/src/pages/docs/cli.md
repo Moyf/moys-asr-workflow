@@ -5,7 +5,7 @@ description: "Release 包的转写参数、Server 管理、退出码和自动化
 source: "docs/CLI.md"
 ---
 
-<!-- Generated from docs/CLI.md. Run npm run sync:docs to refresh. -->
+<!-- Generated from docs/CLI.md. Run pnpm run sync:docs to refresh. -->
 
 公开 CLI 通过 Release 包的 `MAW.exe` 调用；源码中把它替换为 `uv run --no-sync python maw_gui.py`。下面的 Windows 示例使用 PowerShell，其他系统请使用实际的可执行文件路径。
 
@@ -19,6 +19,8 @@ source: "docs/CLI.md"
 | `-dbg` / `--debug`，且无转写参数 | 启动 Launcher 调试。 |
 | `-dt` / `--devtools` | 启动 Launcher 并打开 DevTools。 |
 | `-i INPUT` | 转写，默认生成 SRT 与 `.mosp`。 |
+| `--align-script SCRIPT -i MEDIA` | 文稿与录音直接生成 SRT 与字词时间码工程，跳过 ASR；详见[使用指南](https://github.com/Moyf/moys-asr-workflow/blob/main/docs/SCRIPT_DRIVEN_ALIGNMENT.md)。 |
+| `--align-script SCRIPT -i MEDIA --alignment-check` | 无需模型，先检查输入 / 音轨与分块；输出 JSON，不生成字幕。 |
 | `--server` / `--stop-server` | 启动或停止本机编辑器。 |
 
 公开 CLI 只选择云端供应商和实验性必剪；本地 ASR 使用独立脚本，见 [LOCAL_ASR](../local-asr/)。`--transcribe*`、`--serve` 是内部兼容入口，不用于新脚本。

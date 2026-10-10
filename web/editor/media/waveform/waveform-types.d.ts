@@ -6,9 +6,10 @@ type DescriptorValues<D, K extends keyof D> = {
   [P in K]: D[P] extends TypedPropertyDescriptor<infer V> ? V : never;
 };
 type WaveformMethods =
+  DescriptorValues<ReturnType<typeof import('./word-blocks.js').createWordBlocks>, 'appendWordBlocks' | 'refreshWordBlocks' | 'previewWordBlocks' | 'rebuildWordBlocksForSegment' | 'beginWordDrag' | 'updateWordDrag' | 'detachWordDrag' | 'endWordDrag' | 'cancelWordDrag'> &
   DescriptorValues<ReturnType<typeof import('./canvas.js').createWaveformModule>, 'getWaveformEnvelope' | 'drawRow'> &
   DescriptorValues<ReturnType<typeof import('./controls.js').createWaveformModule>, 'isAdjacentCueAdjustmentIndependent' | 'isSharedBoundaryHandleIndependent' | 'adjacentSnapModeStatusHint' | 'hasCueDrag' | 'bindControls'> &
-  DescriptorValues<ReturnType<typeof import('./cue-blocks.js').createWaveformModule>, 'createRow' | 'appendGapBlocks' | 'appendCueBlocks' | 'isSegmentHiddenForDisplay' | 'appendSharedBoundaryZones' | 'setBindingMarker' | 'layoutBlock' | 'layoutGapBlock' | 'refreshGapOverlay' | 'refreshCueOverlay' | 'refreshCueBlocks' | 'refreshBoundaryZones' | 'refreshCueLabel' | 'refreshExtensionCueLabel' | 'updateSelection'> &
+  DescriptorValues<ReturnType<typeof import('./cue-blocks.js').createWaveformModule>, 'createRow' | 'appendGapBlocks' | 'appendCueBlocks' | 'isSegmentHiddenForDisplay' | 'appendSharedBoundaryZones' | 'setBindingMarker' | 'layoutBlock' | 'layoutGapBlock' | 'refreshGapOverlay' | 'bindWordModeSentenceHandle' | 'refreshCueOverlay' | 'refreshCueBlocks' | 'refreshBoundaryZones' | 'refreshCueLabel' | 'refreshExtensionCueLabel' | 'updateSelection'> &
   DescriptorValues<ReturnType<typeof import('./cue-commands.js').createWaveformModule>, 'adjustSelectedByKeyboard' | 'adjustSelectedBoundaryByKeyboard' | 'setCueBoundaryToTime' | 'snapSelectedCueBoundaryByKeyboard' | 'adjustActiveCueDragBy' | 'handleHeldCueKey' | 'snapActiveCueBoundaryByKeyboard' | 'cancelCueDrag' | 'applyIndependentBoundaryDrag'> &
   DescriptorValues<ReturnType<typeof import('./cue-drag-update.js').createWaveformModule>, 'moveCueDrag' | 'applyMoveDrag' | 'applyResizeDrag' | 'applyBoundaryDrag' | 'endCueDrag'> &
   DescriptorValues<ReturnType<typeof import('./cue-drag.js').createWaveformModule>, 'beginCueDrag' | 'isSharedBoundary' | 'beginIndependentEdgeDrag' | 'beginSharedBoundaryZoneDrag' | 'cueDragDurationMs' | 'cueTiming' | 'cueTimingDuration' | 'cueTimingValueFromMs' | 'cueTimingValueToMs' | 'formatCueTiming' | 'captureCueDragOriginals' | 'rebaseCueDragToTrack'> &
@@ -104,6 +105,16 @@ export interface NavigationSnapshot {
   cueListScrollTop?: number; waveformTopEdgeMs?: number;
 }
 export interface WaveformOptions {
+  wordTiming?: {
+    readonly enabled: boolean;
+    getSelection(segment: Cue): ReadonlySet<number>;
+    select(index: number, itemIndex: number, event?: Partial<PointerEvent>): void;
+    showMenu(x: number, y: number, index: number, itemIndex: number): void;
+    previewItems(segment: Cue, items: TimedItem[]): void;
+    clearSelection(): void;
+  };
+  beginWordEdit?(): EditorTransaction;
+  commitWordEdit?(command: EditorTransaction, segment: Cue): boolean;
   getSegments(track?: string): Cue[];
   getSelection(track?: string): ReadonlySet<number>;
   selectCue(index: number): void;
@@ -181,6 +192,8 @@ export interface WaveformOptions {
 }
 
 export interface WaveformState {
+  wordDrag: WordDragState | null;
+  wordRefreshFrame: number;
   options: WaveformOptions;
   settings: WaveformSettings;
   payload: Payload | null;
@@ -235,3 +248,11 @@ export interface WaveformState {
   customLayoutRoot: HTMLElement | null; renderedCustomLayoutTree: LayoutTree | null;
 }
 export type WaveformInstance = WaveformState & WaveformMethods;
+
+export interface WordDragState {
+  pointerId: number; segment: Cue; timing: Clock; row: HTMLElement;
+  geometry: RowGeometry; pointer: number; clientX: number; clientY: number;
+  moved: boolean; command: EditorTransaction | null; original: Cue;
+  indices: number[]; resize: boolean; edge: string; seam: boolean; itemIndex: number;
+  move?: (event: PointerEvent) => void; up?: (event: PointerEvent) => void; cancel?: () => void;
+}

@@ -5,7 +5,7 @@ description: "按任务查找使用指南、工程契约与历史记录。"
 source: "docs/README.md"
 ---
 
-<!-- Generated from docs/README.md. Run npm run sync:docs to refresh. -->
+<!-- Generated from docs/README.md. Run pnpm run sync:docs to refresh. -->
 
 第一次使用从 [WORKFLOW](../workflow/) 开始。本文按任务组织文档；日常使用说明与开发记录分开维护。
 
@@ -24,6 +24,8 @@ source: "docs/README.md"
 | [Launcher 指南](../launcher/) | 识别设置、音轨、预设、批量队列、输出目录和通知。 |
 | [服务商配置](../providers/) | 各服务的配置字段、能力边界、费用与数据政策入口。 |
 | [本地 ASR](../local-asr/) | 实验性模型、独立运行环境、缓存、设备和时间码。 |
+| [文稿驱动对齐](https://github.com/Moyf/moys-asr-workflow/blob/main/docs/SCRIPT_DRIVEN_ALIGNMENT.md) | 准确文稿与录音直接生成字词时间码字幕，跳过 ASR；静音与人工锚点。 |
+| [相近能力对比](https://github.com/Moyf/moys-asr-workflow/blob/main/docs/ALIGNMENT_FEATURES.md) | 文稿生成、时间码修复、文稿匹配、口播对齐与 AI 整理的差异、选择和演进建议。 |
 | [CLI](../cli/) | 公开命令行参数、底层脚本区别、Server 管理和自动化。 |
 | [FAQ](../faq/) | 启动、FFmpeg、API、媒体加载、保存与反馈。 |
 
@@ -48,7 +50,9 @@ source: "docs/README.md"
 | [LLM 后处理协议](../llm-postprocess/) | 模型输入输出、ID 校验、本地时间映射和 HTTP 契约。 |
 | [空隙来源与恢复](https://github.com/Moyf/moys-asr-workflow/blob/main/docs/GAP_PROVENANCE.md) | 空隙来源层、恢复语义与数据规则。 |
 | [开发概览](../development/) | 代码地图、持久化边界、测试与发布检查。 |
-| [MAW / MAWE / MOSE](../mose/) | 产品名称、当前入口和实验桌面目录的关系。 |
+| [e2e 挂起排查](https://github.com/Moyf/moys-asr-workflow/blob/main/docs/E2E_SERVER_HANG.md) | Playwright 残留 serve.py 的诊断、清理与运行纪律。 |
+| [MAW / MAWE / MOSE](../mose/) | 产品名称与桌面路线决策（Electron 发布路线，Tauri 实验已移除）。 |
+| [桌面开发](https://github.com/Moyf/moys-asr-workflow/blob/main/desktop/README.md) | Electron 桌面壳的架构定位与 Tauri 移除决策记录。 |
 | [官网文档同步](https://github.com/Moyf/moys-asr-workflow/blob/main/website/docs/CONTENT_SYNC.md) | 从源文档生成官网页面的步骤。 |
 
 ## 历史记录与未完成方案

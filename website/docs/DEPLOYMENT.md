@@ -2,13 +2,13 @@
 
 ## Vercel（当前优先候选）
 
-在 Vercel 导入本仓库，将 Root Directory 设为 `website`，Framework Preset 选择 Astro，Build Command 使用 `npm run build`，Output Directory 使用 `dist`。
+在 Vercel 导入本仓库，将 Root Directory 设为 `website`，Framework Preset 选择 Astro，Build Command 使用 `pnpm run build`，Output Directory 使用 `dist`。
 
 正式使用时绑定自定义域名，不要只宣传 `*.vercel.app`。Vercel 官方说明中国大陆没有本地基础设施，默认域名可能被阻断或限速；即使绑定自定义域名也不能保证大陆可用性。
 
 ## GitHub Pages
 
-GitHub Actions 在 `website/` 中运行 `npm ci`、同步当前仓库 docs、`npm run build`，然后把 `website/dist/` 发布到 Pages；部署产物阶段会另外将 `blank-editor.html` 生成为 `website/dist/editor/index.html`。这属于部署时的显式产物构建，不改变本地日常开发默认不生成根目录空白 HTML 的规则。项目站点使用 `BASE_PATH=/moys-asr-workflow` 和对应的 `SITE_URL`，Astro 内部链接必须经过 `sitePath()`。
+GitHub Actions 在 `website/` 中运行 `pnpm install --frozen-lockfile`、同步当前仓库 docs、`pnpm run build`，然后把 `website/dist/` 发布到 Pages；部署产物阶段会另外将 `blank-editor.html` 生成为 `website/dist/editor/index.html`。这属于部署时的显式产物构建，不改变本地日常开发默认不生成根目录空白 HTML 的规则。项目站点使用 `BASE_PATH=/moys-asr-workflow` 和对应的 `SITE_URL`，Astro 内部链接必须经过 `sitePath()`。
 
 ## 镜像策略
 
@@ -16,7 +16,7 @@ GitHub Actions 在 `website/` 中运行 `npm ci`、同步当前仓库 docs、`np
 
 ## 发布检查
 
-- 本地 `npm run build` 成功。
+- 本地 `pnpm run build` 成功。
 - `website/dist/` 不进入 Git。
 - 网站没有 `.env`、API Key、媒体或个人绝对路径。
 - 所有图片和字体都来自本地或仓库确认过的来源。

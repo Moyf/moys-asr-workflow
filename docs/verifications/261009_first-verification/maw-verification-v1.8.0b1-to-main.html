@@ -1,0 +1,967 @@
+<!doctype html>
+<!--
+  人工核查清单模板（批量功能开发 / 反馈修复收尾用）
+  用法见 AGENTS.md「批量改动的人工核查清单」：
+  1. 复制本文件到仓库外（如 %TEMP%），全文替换标题、副标题、分区内容三处
+     双花括号占位符。注意：本注释与下方脚本注释中刻意不出现占位符原文，
+     避免被全局替换误伤——维护模板时请保持这一约定；
+  2. 分区内容由若干分区卡片组成，每个分区的标准写法：
+       <details class="section" open>
+         <summary>标题文字 <span class="badge pass">通过</span></summary>
+         <div class="body"> …内容… </div>
+       </details>
+     - open 控制默认展开；summary 中的纯文本（或 .sec-title 元素内容）自动进入左侧目录；
+     - 只读说明用 .plain / .note / <table> / .cmd；打勾项用
+       <div class="item"><input type="checkbox" id="唯一ID"><label for="唯一ID">…</label></div>；
+     - 徽标：.badge.pass（通过 / 已完成）.badge.fixed（已修复）.badge.todo（待办 / 阻塞）。
+  3. 分区约定：A 实现 / 审查结论（只读）· B 修复与提交记录 · C 自动化验证结果（写明命令与已知环境性失败）
+     · D 人工核验打勾项（入口 → 操作 → 预期）· E 后续操作步骤；
+   4. 左侧目录、分区进度徽标、总进度由脚本自动生成，无需手写；
+      勾选与备注按页面标题存 localStorage；含核对项的分区可悬停标题一键忽略
+      （灰色折叠、计数按已处理、不进入未确认导出）；JSON 可导出全部或未确认项。
+      详细使用与导出格式见工具目录 README.md；生成物不提交进仓库。
+-->
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>MAW 发布核查：v1.8.0-beta.1 → 当前 main（2026-10-09）</title>
+<style>
+  :root {
+    --bg: #f3f5f8; --paper: #ffffff; --ink: #1a1f27; --ink2: #57606e; --ink3: #8b94a3;
+    --line: #e4e7ec; --accent: #2563eb; --ok: #16a34a; --warn: #b45309;
+    --chip: #eef1f6; --mono: ui-monospace, "Cascadia Mono", Consolas, monospace;
+    --radius: 14px;
+    color-scheme: light;
+    --shadow: 0 1px 2px rgba(16,24,40,.05), 0 6px 20px rgba(16,24,40,.06);
+    --accent-soft: color-mix(in srgb, var(--accent) 12%, transparent);
+    --ok-soft: color-mix(in srgb, var(--ok) 14%, transparent);
+    --warn-soft: color-mix(in srgb, var(--warn) 16%, transparent);
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      color-scheme: dark;
+      --bg: #0e1116; --paper: #161b22; --ink: #e8ebf0; --ink2: #a4adba; --ink3: #6e7787;
+      --line: #2a313b; --accent: #6ea8ff; --ok: #4ade80; --warn: #f0b14a; --chip: #1f2630;
+      --shadow: 0 1px 2px rgba(0,0,0,.35), 0 6px 20px rgba(0,0,0,.4);
+    }
+  }
+  * { box-sizing: border-box; }
+  /* 不在根滚动条上开 scroll-behavior: smooth——它会把所有程序化滚动
+     （含未来脚本/扩展的 scrollTo）变成逐帧动画，实测极端情况下单帧数秒；
+     平滑滚动只由目录点击通过 JS 显式触发（见文件末尾脚本）。 */
+  @media (prefers-reduced-motion: reduce) {
+    *, *::before, *::after { transition: none !important; }
+  }
+  body { margin: 0; background: var(--bg); color: var(--ink);
+    font: 16px/1.7 -apple-system, "Segoe UI", "PingFang SC", "Microsoft YaHei", sans-serif; }
+  ::selection { background: var(--accent-soft); }
+
+  /* 顶部整体进度条 */
+  .topbar { position: fixed; top: 0; left: 0; right: 0; height: 3px; z-index: 50; }
+  .topbar > i { display: block; height: 100%; width: 0;
+    background: linear-gradient(90deg, var(--accent), var(--ok)); transition: width .3s; }
+
+  .layout { max-width: 1240px; margin: 0 auto; padding: 44px 32px 100px;
+    display: grid; grid-template-columns: 300px minmax(0, 1fr);
+    grid-template-areas: "head head" "side main"; column-gap: 36px; row-gap: 24px;
+    align-items: start; }
+  .page-head { grid-area: head; }
+  .sidebar { grid-area: side; position: sticky; top: 20px;
+    display: flex; flex-direction: column; gap: 16px;
+    max-height: calc(100vh - 40px); overflow-y: auto; padding-right: 8px;
+    scrollbar-width: thin; scrollbar-color: var(--line) transparent; }
+  .sidebar:hover { scrollbar-color: var(--ink3) transparent; }
+  .sidebar::-webkit-scrollbar { width: 5px; }
+  .sidebar::-webkit-scrollbar-track { background: transparent; }
+  .sidebar::-webkit-scrollbar-thumb { background: var(--line); border-radius: 999px; }
+  .sidebar:hover::-webkit-scrollbar-thumb { background: var(--ink3); }
+  .sidebar::-webkit-scrollbar-button { display: none; }
+  .sidebar > .side-card { flex-shrink: 0; }
+  .content { grid-area: main; min-width: 0; }
+
+  header.page-head h1 { font-size: 27px; line-height: 1.3; margin: 0 0 6px; letter-spacing: -.01em; }
+  header.page-head .sub { color: var(--ink2); font-size: 15px; }
+
+  /* 侧栏卡片：总进度 + 目录 */
+  .side-card { background: var(--paper); border: 1px solid var(--line);
+    border-radius: var(--radius); box-shadow: var(--shadow); padding: 18px 20px; }
+  .row { display: flex; align-items: baseline; justify-content: space-between; gap: 10px; }
+  .lbl { font-size: 13px; font-weight: 600; color: var(--ink3); letter-spacing: .06em; }
+  .pct { font: 700 14px var(--mono); color: var(--accent); }
+  .pct.full { color: var(--ok); }
+  .num { font: 700 26px/1.2 var(--mono); margin: 2px 0 10px; }
+  .bar { height: 10px; background: var(--chip); border-radius: 999px; overflow: hidden; }
+  .bar > i { display: block; height: 100%; width: 0; border-radius: 999px;
+    background: linear-gradient(90deg, var(--accent), var(--ok)); transition: width .3s; }
+  .side-actions { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 14px; }
+  button.ghost { border: 1px solid var(--line); background: none; color: var(--ink2);
+    border-radius: 8px; padding: 5px 12px; font-size: 13px; cursor: pointer; }
+  button.ghost:hover { color: var(--ink); border-color: var(--ink3); }
+  button.ghost[aria-pressed="true"] { color: var(--accent); border-color: var(--accent);
+    background: var(--accent-soft); }
+  button:focus-visible, select:focus-visible, textarea:focus-visible {
+    outline: 2px solid var(--accent); outline-offset: 3px; }
+  button.primary { border: 1px solid var(--accent); background: var(--accent); color: var(--paper);
+    border-radius: 8px; padding: 8px 12px; font: inherit; font-size: 13px; font-weight: 600; cursor: pointer; }
+  button.primary:hover { filter: brightness(.92); }
+  button:disabled { opacity: .5; cursor: default; }
+  .export-panel { margin-top: 16px; padding-top: 16px; border-top: 1px solid var(--line);
+    display: grid; gap: 10px; }
+  .export-panel label { font-size: 13px; color: var(--ink2); }
+  .export-panel select { width: 100%; min-width: 0; border: 1px solid var(--line);
+    border-radius: 8px; padding: 8px 10px; color: var(--ink); background: var(--paper); font: inherit;
+    font-size: 13px; }
+  .save-status { margin: 12px 0 0; font-size: 12px; color: var(--ink3); overflow-wrap: anywhere; }
+  .save-status.warning { color: var(--warn); }
+
+  .toc-title { font: 600 12px var(--mono); letter-spacing: .12em; color: var(--ink3);
+    text-transform: uppercase; margin-bottom: 6px; }
+  .toc a { display: flex; align-items: baseline; gap: 10px; padding: 8px 10px;
+    margin: 0 -10px; border-radius: 8px; color: var(--ink2); font-size: 14.5px;
+    line-height: 1.5; text-decoration: none; }
+  .toc a:hover { background: var(--chip); color: var(--ink); }
+  .toc a.active { background: var(--accent-soft); color: var(--accent); font-weight: 600; }
+  .toc a .m { flex: none; width: 7px; height: 7px; border-radius: 50%;
+    background: var(--ink3); transform: translateY(-1px); }
+  .toc a.active .m { background: var(--accent); }
+  .toc a.done .m { background: var(--ok); }
+  .toc a .t { flex: 1; }
+  .toc a .c { font: 600 12px var(--mono); color: var(--ink3); white-space: nowrap; }
+  .toc a.done .c { color: var(--ok); }
+
+  /* 分区卡片 */
+  /* content-visibility：屏外分区跳过排版与绘制，窗口连续缩放时重排成本
+     从 O(整页) 降到 O(视口)——长清单拉伸窗口卡死的根因即在此。 */
+  .section { background: var(--paper); border: 1px solid var(--line); border-radius: var(--radius);
+    box-shadow: var(--shadow); margin: 0 0 18px; overflow: hidden; scroll-margin-top: 20px;
+    content-visibility: auto; contain-intrinsic-size: auto 600px; }
+  .section > summary { cursor: pointer; padding: 16px 22px; font-size: 17px; font-weight: 650;
+    line-height: 1.5; display: flex; align-items: center; flex-wrap: wrap; gap: 10px;
+    user-select: none; list-style: none; }
+  .section > summary:hover { background: var(--chip); }
+  .section.complete > summary { background: color-mix(in srgb, var(--ok) 7%, var(--paper)); }
+  .section.complete > summary:hover { background: color-mix(in srgb, var(--ok) 10%, var(--paper)); }
+  .section.ignored > summary { background: color-mix(in srgb, var(--ink3) 8%, var(--paper)); }
+  .section.ignored > summary:hover { background: color-mix(in srgb, var(--ink3) 12%, var(--paper)); }
+  .section > summary:focus-visible { outline: 2px solid var(--accent); outline-offset: -3px; }
+  .section > summary::-webkit-details-marker { display: none; }
+  .section-chevron { width: 20px; height: 20px; flex: none; margin-left: auto;
+    color: var(--ink3); transition: transform .18s; }
+  .section[open] > summary .section-chevron { transform: rotate(180deg); }
+  .sec-progress:not([hidden]) + .section-chevron { margin-left: 0; }
+  .sec-progress { margin-left: auto; font: 600 12.5px var(--mono); color: var(--ink3);
+    background: var(--chip); padding: 3px 10px; border-radius: 999px; }
+  .sec-progress.done { background: var(--ok-soft); color: var(--ok); }
+  /* 「忽略」按钮：悬停/聚焦分区标题时出现在计数左侧，点击整组按已处理折叠。 */
+  button.sec-ignore { display: none; flex: none; border: 1px solid var(--line); background: var(--paper);
+    color: var(--ink2); border-radius: 999px; padding: 3px 10px; font: inherit; font-size: 12px;
+    line-height: 1.4; cursor: pointer; }
+  button.sec-ignore:hover { color: var(--ink); border-color: var(--ink3); background: var(--chip); }
+  .section > summary:hover button.sec-ignore,
+  .section > summary:focus-within button.sec-ignore { display: inline-block; }
+  .badge { font: 600 12px/1 var(--mono); padding: 5px 9px; border-radius: 999px;
+    background: var(--chip); color: var(--ink2); }
+  .badge.pass { background: var(--ok-soft); color: var(--ok); }
+  .badge.fixed { background: var(--accent-soft); color: var(--accent); }
+  .badge.todo { background: var(--warn-soft); color: var(--warn); }
+  .body { padding: 8px 22px 18px; border-top: 1px solid var(--line); overflow-x: auto; }
+
+  /* 分区内容元素 */
+  .note { color: var(--ink2); font-size: 14.5px; margin: 10px 0; }
+  .plain { padding: 8px 10px; color: var(--ink2); font-size: 15px; }
+  .plain b { color: var(--ink); font-weight: 600; }
+  .item { display: grid; grid-template-columns: 20px minmax(0, 1fr) auto; gap: 12px; align-items: start; padding: 9px 10px;
+    border-radius: 8px; }
+  .item:hover { background: var(--chip); }
+  .item[hidden] { display: none; }
+  .item input { appearance: none; -webkit-appearance: none; flex: none; margin: 3px 0 0;
+    width: 20px; height: 20px; border: 1.5px solid var(--ink3); border-radius: 6px;
+    background: var(--paper); cursor: pointer; position: relative;
+    transition: background .15s, border-color .15s; }
+  .item input::after { content: ""; position: absolute; left: 6px; top: 2px;
+    width: 5px; height: 10px; border: solid #fff; border-width: 0 2.5px 2.5px 0;
+    transform: rotate(45deg) scale(0); transition: transform .15s; }
+  .item input:checked { background: var(--ok); border-color: var(--ok); }
+  .item input:checked::after { transform: rotate(45deg) scale(1); }
+  .item input:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+  .item label { cursor: pointer; flex: 1; font-size: 15px; transition: color .2s; }
+  .item.done label { color: var(--ink3); text-decoration: line-through;
+    text-decoration-color: color-mix(in srgb, var(--ink3) 60%, transparent); }
+  .item label { overflow-wrap: anywhere; }
+  .note-toggle { display: inline-flex; align-items: center; gap: 5px; border: 0; border-radius: 6px;
+    background: transparent; color: var(--ink3); padding: 3px 6px; font: inherit;
+    font-size: 12px; cursor: pointer; white-space: nowrap; }
+  .note-toggle svg { width: 16px; height: 16px; }
+  .note-toggle:hover, .note-toggle[aria-expanded="true"], .note-toggle.has-note {
+    color: var(--accent); background: var(--accent-soft); }
+  .item-note { grid-column: 2 / -1; min-width: 0; }
+  .item-note[hidden] { display: none; }
+  .item-note textarea { display: block; width: 100%; min-height: 80px; resize: vertical;
+    border: 1px solid var(--line); border-radius: 8px; padding: 10px 12px;
+    background: var(--paper); color: var(--ink); font: inherit; font-size: 14px; line-height: 1.6; }
+  .item-note textarea::placeholder { color: var(--ink3); }
+  .print-note { display: none; }
+  .item code, .note code, .plain code, td code { font: 13px var(--mono);
+    background: var(--chip); padding: 2px 6px; border-radius: 5px; }
+  table { width: 100%; border-collapse: collapse; font-size: 14.5px; margin: 8px 0; }
+  th { text-align: left; font: 12px/1.5 var(--mono); letter-spacing: .06em;
+    color: var(--ink3); font-weight: 400; padding: 7px 10px; border-bottom: 1px solid var(--line); }
+  td { padding: 8px 10px; border-bottom: 1px solid var(--line); vertical-align: top; }
+  .cmd { display: block; font: 13px/1.6 var(--mono); background: var(--chip); color: var(--ink2);
+    border-radius: 8px; padding: 8px 14px; margin: 6px 0; overflow-x: auto; white-space: pre; }
+  a { color: var(--accent); text-decoration: none; }
+  a:hover { text-decoration: underline; }
+
+  @media (max-width: 980px) {
+    .layout { grid-template-columns: 1fr; grid-template-areas: "head" "side" "main";
+      padding: 28px 18px 72px; row-gap: 20px; }
+    .sidebar { position: static; max-height: none; overflow: visible; padding-right: 0; }
+  }
+  @media (max-width: 540px) {
+    .section > summary { padding: 16px; font-size: 16px; }
+    .body { padding-left: 10px; padding-right: 10px; }
+    .item { column-gap: 8px; }
+    .note-toggle span { display: none; }
+  }
+  @media print {
+    .topbar, .sidebar, .side-actions { display: none !important; }
+    .layout { display: block; padding: 0; }
+    .section { box-shadow: none; break-inside: avoid; content-visibility: visible; }
+    .note-toggle, .item-note { display: none !important; }
+    .print-note:not(:empty) { display: block; grid-column: 2 / -1; margin: 0;
+      color: var(--ink2); white-space: pre-wrap; overflow-wrap: anywhere; font-size: 13px; }
+  }
+</style>
+</head>
+<body>
+<div class="topbar"><i id="topbar-i"></i></div>
+
+<div class="layout">
+  <header class="page-head">
+    <h1>MAW 发布核查：v1.8.0-beta.1 → 当前 main</h1>
+    <div class="sub">范围 2026-10-02 → 2026-10-09 · 28 个提交 + 1 个 merge · 24 个分区 / 74 个打勾项 · 生成于 2026-10-09 · 生成物不提交进仓库</div>
+  </header>
+
+  <aside class="sidebar">
+    <div class="side-card">
+      <div class="row"><span class="lbl">核查进度</span><span class="pct" id="pct">0%</span></div>
+      <div class="num" id="num">0 / 0</div>
+      <div class="bar"><i id="bar"></i></div>
+      <div class="side-actions">
+        <button class="ghost" id="reset" type="button">重置勾选</button>
+        <button class="ghost" id="expand" type="button">全部展开</button>
+        <button class="ghost" id="collapse" type="button">全部收起</button>
+        <button class="ghost" id="hide-confirmed" type="button" aria-pressed="false">隐藏已勾选</button>
+        <button class="ghost" id="auto-collapse-completed" type="button" aria-pressed="false">全勾选后自动收起</button>
+      </div>
+      <div class="export-panel">
+        <label for="export-scope">导出范围</label>
+        <select id="export-scope">
+          <option value="all">全部核对项</option>
+          <option value="unconfirmed">仅未确认项</option>
+        </select>
+        <button class="primary" id="export-json" type="button">导出 JSON</button>
+      </div>
+      <p class="save-status" id="save-status" role="status" aria-live="polite">勾选与备注自动保存在本机</p>
+    </div>
+    <nav class="side-card toc-card" id="toc-card" aria-label="目录">
+      <div class="toc-title">目录</div>
+      <div class="toc" id="toc"></div>
+    </nav>
+  </aside>
+
+  <main class="content">
+    <details class="section" open>
+      <summary><span class="sec-title">范围与审查结论</span> <span class="badge">只读</span></summary>
+      <div class="body">
+        <div class="plain">
+          <b>核查范围</b>：tag <code>v1.8.0-beta.1</code>（2026-10-02）→ HEAD <code>9b7e62b8</code>（main，与 origin/main 同步，2026-10-09）。共 28 个变更提交 + 1 个 merge。
+        </div>
+        <table>
+          <tr><th>项</th><th>结论</th></tr>
+          <tr><td>merge 拓扑</td><td>唯一 merge <code>e4085f6d</code>（10-08）：把 origin/main 上的 <code>f06c7192</code>（#181）并入本地分支；本地侧为 4 个直接提交（84cfd581 / 64e65c85 / 5313a889 / 5c205ba6）。其余提交均为 squash PR（带 # 号）或 main 直接提交。</td></tr>
+          <tr><td>分组方式</td><td>按 merge（及原 PR）分组，时间序排列；无 PR 号的直接提交按主题归组。</td></tr>
+          <tr><td>CHANGELOG</td><td><code>[未发布]</code> 已聚合 15 条提升 / 2 条变更 / 4 条修复，与提交对照基本一一覆盖（见下一区）。</td></tr>
+          <tr><td>工作区注记</td><td><code>docs/TEST_FEEDBACK_PR180.md</code> 处于 AA（未合并冲突）状态，属另一任务 WIP，不在本清单范围内，未触碰。</td></tr>
+          <tr><td>生成基线</td><td><code>pnpm run check:editor</code> 通过（bundle fresh）；<code>git diff --check</code> 仅上述 WIP 文件报冲突标记，已提交内容干净。</td></tr>
+        </table>
+        <div class="item"><input type="checkbox" id="p0-1"><label for="p0-1">已通读本页范围与拓扑说明，确认核查范围无误（v1.8.0-beta.1 之后的全部变更）。</label></div>
+      </div>
+    </details>
+
+    <details class="section" open>
+      <summary><span class="sec-title">CHANGELOG「未发布」对照</span> <span class="badge">核对</span></summary>
+      <div class="body">
+        <div class="plain">对照 <code>CHANGELOG.md</code> 的 <code>[未发布]</code> 区与实际行为。条目 → 来源：文稿驱动对齐（#178）、ASS 即时预览（#180）、界面文案整理（#188）、编辑器设置整理（#179）、字词时间码编辑（#177）、基础波形（be91e264）、说话人导出（64e65c85）、长工程性能（#175）、编辑器体积（#181）、JS 工具链（#186）、错误反馈信息（#171+#172）、文档与官网（#169 + 5313a889）、字幕文字与呈现（#168）、AI 整理补充说明（#168）、AI 整理复查与批量管理（#170）；变更：桌面实验工程（Tauri 移除）、特殊符号规则收敛（#168 引入后续演进）；修复：#173、#170 多轨部分、#176（#161）、#185。</div>
+        <div class="item"><input type="checkbox" id="p1-1"><label for="p1-1">「✨ 提升」15 条逐条与实际行为对照（重点抽查：文稿驱动对齐、ASS 预览、界面文案、设置整理、字词时间码）。</label></div>
+        <div class="item"><input type="checkbox" id="p1-2"><label for="p1-2">「🔄 变更」2 条：Tauri 移除说明、特殊符号规则收敛为「无 / 双个符号 / 单双皆可」（不再提供「单个符号」）。</label></div>
+        <div class="item"><input type="checkbox" id="p1-3"><label for="p1-3">「🐛 修复」4 条与实际修复行为一致；条目间无重复、无遗漏的用户可感知变化。</label></div>
+      </div>
+    </details>
+    <details class="section" open>
+      <summary><span class="sec-title">#168 · 编辑器：左右添加字符、渐入渐出与渐进/复制拆分</span> <span class="badge">功能</span></summary>
+      <div class="body">
+        <table>
+          <tr><th>提交</th><th>日期</th><th>说明</th></tr>
+          <tr><td><code>d9f2e9be</code></td><td>10-03</td><td>左右添加字符、单句渐入渐出（ASS <code>&gt;&gt;文字&lt;&lt;</code>）、渐进拆分（Shift+B）与复制拆分（Ctrl/Cmd+Shift+B）、AI 口播整理补充说明；统一拆分入口与字幕标记规则。</td></tr>
+        </table>
+        <div class="note">自述验证：Node 443/443，Python 1793 OK（22 skipped），Chromium 全量 436 passed，libass 帧预览 17/17，交互专项 14/14，Ruff / typecheck / diff check / PR CI 通过。</div>
+        <div class="item"><input type="checkbox" id="p168-1"><label for="p168-1">编辑器选中单条/多条字幕 → 菜单「左右添加字符」→ 预设与自定义字符均可加入，撤销正常；字符预设支持双音符与中括号，批量预设不重复。</label></div>
+        <div class="item"><input type="checkbox" id="p168-2"><label for="p168-2">ASS 模式对单句应用渐入渐出 → 预览与导出 ASS 均生效；未启用 ASS 模式时不显示 ASS 专用格式入口。</label></div>
+        <div class="item"><input type="checkbox" id="p168-3"><label for="p168-3">Shift+B 渐进拆分（后半句保留完整原文）与 Ctrl/Cmd+Shift+B 复制拆分（两侧保留原文）→ 时间边界、撤销、预览与导出一致。</label></div>
+        <div class="item"><input type="checkbox" id="p168-4"><label for="p168-4">Launcher 勾选「使用 AI 整理」→ 出现补充说明输入框 → 内容参与本次整理判断。</label></div>
+        <div class="item"><input type="checkbox" id="p168-5"><label for="p168-5">新增按钮/入口与上下元素间距实测 ≥8px（getComputedStyle 或实际像素），不紧贴。</label></div>
+      </div>
+    </details>
+
+    <details class="section" open>
+      <summary><span class="sec-title">#169 · 文档重构与官网阅读导航</span> <span class="badge">文档</span></summary>
+      <div class="body">
+        <table>
+          <tr><th>提交</th><th>日期</th><th>说明</th></tr>
+          <tr><td><code>10db8968</code></td><td>10-04</td><td>README 收窄为安装与最短入口；docs 按工作流 / 日常操作 / 进阶专题 / 技术参考重组；官网首页与侧栏共用分组导航，窄屏折叠、操作配图、子路径部署。</td></tr>
+        </table>
+        <div class="note">自述验证：Python 1793 OK（27 skipped）、Node 369/369、Astro check + 两种路径 22 页构建、569 个内部目标、图片一致性与浏览器间距检查。</div>
+        <div class="item"><input type="checkbox" id="p169-1"><label for="p169-1">打开 README.md → 仅含安装与最短路径，全流程细节已移入 docs/。</label></div>
+        <div class="item"><input type="checkbox" id="p169-2"><label for="p169-2">官网首页与文档站 → 分组导航可用，窄屏目录可折叠；抽查 3 个内部链接可达。</label></div>
+        <div class="item"><input type="checkbox" id="p169-3"><label for="p169-3">抽查 docs/WORKFLOW.md 与 JSON_SCHEMA.md → 与当前行为一致（含字幕编辑、ASS、自动处理说明）。</label></div>
+      </div>
+    </details>
+
+    <details class="section" open>
+      <summary><span class="sec-title">#171 + #172 · 错误反馈版本时间与诊断分行</span> <span class="badge fixed">修复</span></summary>
+      <div class="body">
+        <table>
+          <tr><th>提交</th><th>日期</th><th>说明</th></tr>
+          <tr><td><code>9f2a8905</code></td><td>10-04</td><td>#171：错误卡片、复制报告与错误日志补充运行版本与发生时间；跨边界传递与延迟复制保留同一份错误信息。</td></tr>
+          <tr><td><code>ce7f240a</code></td><td>10-04</td><td>#172：错误卡片与启动失败弹窗分行展示版本/时间；日常日志恢复简洁格式并在启动时记录版本；中英文切换刷新诊断标签。</td></tr>
+        </table>
+        <div class="note">自述验证：完整 Python、Node 与 Launcher 浏览器回归通过；CHANGELOG 汇总为一条用户可感知条目。</div>
+        <div class="item"><input type="checkbox" id="p171-1"><label for="p171-1">Launcher 制造一次错误（如填错 Key 转写）→ 错误卡片分行显示版本与发生时间 → 复制报告含同样信息且保留脱敏。</label></div>
+        <div class="item"><input type="checkbox" id="p171-2"><label for="p171-2">查看日志文件 → 启动行有运行版本，日常行简洁不刷屏。</label></div>
+        <div class="item"><input type="checkbox" id="p171-3"><label for="p171-3">错误弹窗停留时切换中英文 → 诊断标签跟随刷新，原始错误时间不变。</label></div>
+      </div>
+    </details>
+    <details class="section" open>
+      <summary><span class="sec-title">#170 · AI 整理、多轨编辑与标记管理</span> <span class="badge">功能</span></summary>
+      <div class="body">
+        <table>
+          <tr><th>提交</th><th>日期</th><th>说明</th></tr>
+          <tr><td><code>4816396c</code></td><td>10-04</td><td>AI 口播整理：信息覆盖保护、跨批只读上下文、默认剪后通读、恢复不安全删除并标记疑点、取消复查不写出产物；AI 注释统一 <code>[AI] 操作：原因</code>；按筛选批量管理标记与区段；修复多轨禁用联动、拆分引用、轨道交换与保存的元数据保留。</td></tr>
+        </table>
+        <div class="note">自述验证：全量单元测试、受影响浏览器验证及最新 main 集成检查；便携内联副本待发布前统一重生成。</div>
+        <div class="item"><input type="checkbox" id="p170-1"><label for="p170-1">跑一个含重录片段的 AI 口播整理 → 废片可逆移除、拿不准的生成待复核标记 → 剪后默认通读剩余内容，不安全删除被恢复并标记疑点。</label></div>
+        <div class="item"><input type="checkbox" id="p170-2"><label for="p170-2">整理复查过程中取消 → 不写出整理结果（原始输入与新工程均不受影响）。</label></div>
+        <div class="item"><input type="checkbox" id="p170-3"><label for="p170-3">标记管理窗按筛选全选 → 批量删除 → 一次撤销全部恢复；AI 注释格式统一为「[AI] 操作：原因」。</label></div>
+        <div class="item"><input type="checkbox" id="p170-4"><label for="p170-4">多轨：移除主字幕 → 绑定译文同步禁用；主副轨交换 → 说话人与禁用状态保留，保存重开正确。</label></div>
+      </div>
+    </details>
+
+    <details class="section" open>
+      <summary><span class="sec-title">#173 · 后处理失败提示与长路径指引</span> <span class="badge fixed">修复</span></summary>
+      <div class="body">
+        <table>
+          <tr><th>提交</th><th>日期</th><th>说明</th></tr>
+          <tr><td><code>d07fa549</code></td><td>10-05</td><td>后处理产物创建/写入失败时说明阻塞原因；文件名或路径过长时给出缩短指引；禁用沿用旧路径的直接重试；保留原始错误详情。</td></tr>
+        </table>
+        <div class="item"><input type="checkbox" id="p173-1"><label for="p173-1">后处理输出目录设为只读（或占用文件）→ 失败提示说明具体阻塞原因，不再笼统归为后处理或 LLM 服务失败。</label></div>
+        <div class="item"><input type="checkbox" id="p173-2"><label for="p173-2">用超长文件名触发路径超限 → 提示缩短原文件名或目录、重选文件后重试；「沿用旧路径重试」按钮被禁用。</label></div>
+      </div>
+    </details>
+
+    <details class="section" open>
+      <summary><span class="sec-title">#175 · 长工程选区与拖动性能</span> <span class="badge">性能</span></summary>
+      <div class="body">
+        <table>
+          <tr><th>提交</th><th>日期</th><th>说明</th></tr>
+          <tr><td><code>b9b078c7</code></td><td>10-07</td><td>选区路径单次扫描化；拖动提交 <code>patchCueRows</code> 增量更新；history 快照跳过二次深克隆。5000 条实测：全选 1302ms→7ms、取消全选 1395ms→12ms、框选 2000 条 340ms→10ms、单条拖动松手 228ms→27ms、全选拖动松手 1956ms→71ms。研究数据见 docs/PERF_CUE_DRAG_RESEARCH.md。</td></tr>
+        </table>
+        <div class="item"><input type="checkbox" id="p175-1"><label for="p175-1">打开 ≥3000 条字幕的工程 → Ctrl+A 全选与取消全选即时，无秒级冻结。</label></div>
+        <div class="item"><input type="checkbox" id="p175-2"><label for="p175-2">波形框选约 2000 条 → 即时响应；单条拖动与全选拖动松手 → 时间即时回填，仅受影响行更新。</label></div>
+        <div class="item"><input type="checkbox" id="p175-3"><label for="p175-3">多重字幕可见时拖动换轨（Shift+拖动）→ 自动回退全量渲染，行结构正确。</label></div>
+      </div>
+    </details>
+
+    <details class="section" open>
+      <summary><span class="sec-title">#176 · 清空字幕后的输入光标与翻译边界</span> <span class="badge fixed">修复</span></summary>
+      <div class="body">
+        <table>
+          <tr><th>提交</th><th>日期</th><th>说明</th></tr>
+          <tr><td><code>d4e5dff2</code></td><td>10-08</td><td>修复双击编辑清空后输入首字符光标停在字符前、顺序错乱（#161）；界面翻译明确排除项目原文：字幕文本、波形字幕、编辑差异、拆分逐字与预览、表情包名称。</td></tr>
+        </table>
+        <div class="item"><input type="checkbox" id="p176-1"><label for="p176-1">双击字幕 → 全选删除 → 输入首字符 → 光标在字符后、顺序正常；主/副/叠加字幕与底部文本框逐一验证，中英文界面各一遍。</label></div>
+        <div class="item"><input type="checkbox" id="p176-2"><label for="p176-2">切换英文界面 → 字幕文本、波形字幕、编辑差异、拆分预览、表情包名称保持原文；按钮/列标题/提示照常翻译。</label></div>
+      </div>
+    </details>
+    <details class="section" open>
+      <summary><span class="sec-title">merge e4085f6d · 本地侧直接提交（4 项）</span> <span class="badge">功能+修复</span></summary>
+      <div class="body">
+        <table>
+          <tr><th>提交</th><th>日期</th><th>说明</th></tr>
+          <tr><td><code>84cfd581</code></td><td>10-07</td><td>fix(launcher): 恢复路径输入框文字靠左对齐（1 文件，-18 行）。</td></tr>
+          <tr><td><code>64e65c85</code></td><td>10-08</td><td>feat(editor): 「导出时附加说话人名称」扩展到 TXT、FCP 7 XML、OTIO 字幕标记、动态字幕与多轨扩展段，统一走 formatSpeakerLabelledText；说话人设置新增跳转「导出」提示。</td></tr>
+          <tr><td><code>5313a889</code></td><td>10-08</td><td>docs: README「为什么用 MAW」、按能力重写「可以做什么」、备份恢复说明；官网首页改版与工具箱补充（AI 口播整理复查工序、AI 注释批量管理）。</td></tr>
+          <tr><td><code>5c205ba6</code></td><td>10-08</td><td>fix(editor): 界面翻译赋相同值时跳过 nodeValue 赋值，避免浏览器重置正在进行的文本选区。</td></tr>
+        </table>
+        <div class="note">这 4 个提交在 merge <code>e4085f6d</code> 的第一父侧（本地开发线），与来自 origin/main 的 #181 汇合。</div>
+        <div class="item"><input type="checkbox" id="pm-1"><label for="pm-1">Launcher 路径输入框文字靠左对齐（与相邻输入框风格一致）。</label></div>
+        <div class="item"><input type="checkbox" id="pm-2"><label for="pm-2">开启「导出时附加说话人名称」→ 分别导出 TXT / FCP 7 XML / OTIO / 动态字幕 → 均带说话人标签，工程内原文与时间不变。</label></div>
+        <div class="item"><input type="checkbox" id="pm-3"><label for="pm-3">README 新增「为什么用 MAW」小节；官网工具箱含 AI 口播整理复查与 AI 注释批量管理说明。</label></div>
+        <div class="item"><input type="checkbox" id="pm-4"><label for="pm-4">切换语言的瞬间在字幕文本上拖出选区 → 选区不被重置（翻译前后文本未变化的节点跳过赋值）。</label></div>
+      </div>
+    </details>
+
+    <details class="section" open>
+      <summary><span class="sec-title">#181 · esbuild 统一构建与压缩（经 merge 自 origin/main）</span> <span class="badge">工程</span></summary>
+      <div class="body">
+        <table>
+          <tr><th>提交</th><th>日期</th><th>说明</th></tr>
+          <tr><td><code>f06c7192</code></td><td>10-08</td><td>编辑器产物由 esbuild 统一生成并压缩（约 -43%），59 个工厂迁移 ESM，保留 classic 接线与依赖注入；补齐类型、产物新鲜度与页面运行态检查。本分区即唯一经 merge <code>e4085f6d</code> 带入的 PR。</td></tr>
+        </table>
+        <div class="note">本次生成时实测：<code>pnpm run check:editor</code> 通过（Editor bundle is fresh）。</div>
+        <div class="item"><input type="checkbox" id="p181-1"><label for="p181-1">localhost 编辑器（serve.py）与便携 HTML → 编辑功能完整（同一 bundle 产物），控制台无加载错误。</label></div>
+        <div class="item"><input type="checkbox" id="p181-2"><label for="p181-2">修改 web/ 源码后 <code>pnpm run check:editor</code> 能正确报「产物过期」→ 重建后恢复通过（新鲜度检查有效）。</label></div>
+      </div>
+    </details>
+
+    <details class="section" open>
+      <summary><span class="sec-title">Tauri 移除与 Electron 路线（直接提交）</span> <span class="badge">变更</span></summary>
+      <div class="body">
+        <table>
+          <tr><th>提交</th><th>日期</th><th>说明</th></tr>
+          <tr><td><code>b7573ca3</code></td><td>10-08</td><td>chore: remove retired Tauri desktop experiment。</td></tr>
+          <tr><td><code>834b6c0e</code></td><td>10-08</td><td>chore(desktop): 删除 desktop/src-tauri 与配套脚手架，清理 .gitignore；desktop/README.md 与 docs/MOSE.md 改为 Electron 路线决策记录（复用 web/ 前端与 serve.py 后端）；移除 2 个读取 src-tauri 的契约测试，保留防回归反向断言；重新生成官网文档页。</td></tr>
+        </table>
+        <div class="item"><input type="checkbox" id="pt-1"><label for="pt-1">仓库中无 desktop/src-tauri 目录及 Tauri 脚手架；<code>git grep -i tauri</code> 仅剩决策记录与反向断言引用。</label></div>
+        <div class="item"><input type="checkbox" id="pt-2"><label for="pt-2">desktop/README.md 与 docs/MOSE.md → Electron 路线说明清晰（复用 web/ + serve.py，不为桌面版维护第二套实现）。</label></div>
+      </div>
+    </details>
+    <details class="section">
+      <summary><span class="sec-title">杂项直接提交（无 PR）</span> <span class="badge">仅说明</span></summary>
+      <div class="body">
+        <table>
+          <tr><th>提交</th><th>日期</th><th>说明</th></tr>
+          <tr><td><code>95923b4d</code></td><td>10-08</td><td>test: marker export 夹具补充说话人标签（1 行，配合 64e65c85 的说话人导出测试）。</td></tr>
+          <tr><td><code>d3b06672</code></td><td>10-09</td><td>chore(dev): 新增 <code>scripts/dev-editor.ps1</code> 一键编辑器开发会话（+CONTRIBUTING 说明与 test_dev_editor.ps1 守护测试）。</td></tr>
+          <tr><td><code>60d823bb</code></td><td>10-09</td><td>docs(changelog): 补记 #185 打包版 Linux 运行时修复（纯文档）。</td></tr>
+        </table>
+        <div class="note">三项均不影响运行时行为：测试夹具、开发脚本、CHANGELOG 文档。无需人工核验功能。</div>
+        <div class="item"><input type="checkbox" id="px-1"><label for="px-1">已知悉三项内容；如需体验 <code>scripts/dev-editor.ps1</code>（一键起编辑器开发会话）可顺手试一次。</label></div>
+      </div>
+    </details>
+
+    <details class="section" open>
+      <summary><span class="sec-title">多声道基础波形（直接提交 be91e264）</span> <span class="badge">功能</span></summary>
+      <div class="body">
+        <table>
+          <tr><th>提交</th><th>日期</th><th>说明</th></tr>
+          <tr><td><code>be91e264</code></td><td>10-09</td><td><code>.mopeaks</code> 保留原音频各声道并在时间窗内合并波形极值，改善反相、单侧声道及多声道素材的基础波形；单声道显示与缓存体积不变，已有缓存继续复用。随附 <code>tools/waveform-compare/</code>（build.py / page.html / bench.py）波形对比工具。</td></tr>
+        </table>
+        <div class="item"><input type="checkbox" id="pw-1"><label for="pw-1">用反相或单侧声道素材打开编辑器 → 基础波形不再出现削顶/单侧缺失，形态更完整。</label></div>
+        <div class="item"><input type="checkbox" id="pw-2"><label for="pw-2">已有 <code>.mopeaks</code> 缓存的旧工程 → 不重建缓存、显示一致；单声道素材缓存体积与之前一致。</label></div>
+        <div class="item"><input type="checkbox" id="pw-3"><label for="pw-3">（可选）用 tools/waveform-compare 对比新旧波形效果与生成耗时；了解低采样率对高频短音和极短脉冲的限制。</label></div>
+      </div>
+    </details>
+
+    <details class="section" open>
+      <summary><span class="sec-title">#177 · 字词时间码查看、编辑、试听与独立字幕转换</span> <span class="badge">功能</span></summary>
+      <div class="body">
+        <table>
+          <tr><th>提交</th><th>日期</th><th>说明</th></tr>
+          <tr><td><code>27275e56</code></td><td>10-09</td><td>波形中查看、试听、移动、调整和合并字词时间码；修改错别字时同步字词文字；完整字词时间码可转换为独立字幕（保留原文、支持撤销）；缺少时间码的句子明确提示。</td></tr>
+        </table>
+        <div class="item"><input type="checkbox" id="p177-1"><label for="p177-1">打开带字词时间码的工程 → 波形工具栏开启「显示字词时间码」→ 字词块按句渲染。</label></div>
+        <div class="item"><input type="checkbox" id="p177-2"><label for="p177-2">试听单个字词 → 播放范围准确；拖动字词、调整边界、合并相邻字词 → 撤销/重做正常。</label></div>
+        <div class="item"><input type="checkbox" id="p177-3"><label for="p177-3">修改字词文字（改错别字）→ 文字同步保存，重开后一致。</label></div>
+        <div class="item"><input type="checkbox" id="p177-4"><label for="p177-4">工具箱「字词时间码转独立字幕」→ 生成独立字幕、原文保留、可撤销；含缺时间码句子的工程 → 明确提示哪些句子无法转换。</label></div>
+        <div class="item"><input type="checkbox" id="p177-5"><label for="p177-5">字幕轨道设置页「显示字词时间码」镜像开关与波形 ⚙️/🪶 入口行为一致。</label></div>
+      </div>
+    </details>
+
+    <details class="section" open>
+      <summary><span class="sec-title">#179 · 编辑器设置整理（项目设置 + 全局设置重分类）</span> <span class="badge">功能</span></summary>
+      <div class="body">
+        <table>
+          <tr><th>提交</th><th>日期</th><th>说明</th></tr>
+          <tr><td><code>4422be1c</code></td><td>10-09</td><td>新增「项目设置」（随工程保存：时间与语言、字幕轨道、ASS 模式与样式、颜色与说话人、表情包目录覆盖）；双语管理并入「字幕轨道」页并移除工具栏齿轮；全局设置按通用/特殊编辑、播放与预览、字幕/更多导出分类；「启用表情包功能」总开关；功能区局部面板；播放跳过空隙移入播放与定位；语言项更名「显示语言」；标记右键等同双击；波形工具栏「🔖 标记编辑」开关（M，默认关）；「波形：基础」→「波形：单行」；单点标记最小可见宽度 0.75%。</td></tr>
+        </table>
+        <div class="item"><input type="checkbox" id="p179-1"><label for="p179-1">「项目设置」各项（时间语言/轨道/ASS/颜色说话人/表情包目录）随工程保存 → 重开工程后保留。</label></div>
+        <div class="item"><input type="checkbox" id="p179-2"><label for="p179-2">全局设置分类浏览 → 各页无「生效范围」说明；「启用表情包功能」关闭 → 预览与分配入口隐藏，重开恢复。</label></div>
+        <div class="item"><input type="checkbox" id="p179-3"><label for="p179-3">「🔖 标记编辑」开关（快捷键 M）默认关 → 开启后显示「标记与区段」入口并渲染标记轨道；字幕轨道页镜像开关同步。</label></div>
+        <div class="item"><input type="checkbox" id="p179-4"><label for="p179-4">标记右键可直接编辑；单点标记最小可见宽度 0.75%（短标记不再不可见）。</label></div>
+        <div class="item"><input type="checkbox" id="p179-5"><label for="p179-5">设置弹窗各页相邻元素间距实测 ≥8px（getComputedStyle 验证，不目测）。</label></div>
+      </div>
+    </details>
+    <details class="section" open>
+      <summary><span class="sec-title">#188 · 界面文案整理（#179 后续）</span> <span class="badge">功能</span></summary>
+      <div class="body">
+        <table>
+          <tr><th>提交</th><th>日期</th><th>说明</th></tr>
+          <tr><td><code>98d46f2b</code></td><td>10-09</td><td>按日常说法重写 Launcher 与编辑器文案：项目设置→「工程设置」；主题→「浅色/深色/自动」；特殊编辑/自定义色板/帧吸附→「高级编辑/调色板/对齐到帧」；导出菜单精简为 SRT / SRT（双语合并）/ SRT（按颜色拆分）/ ASS（带样式）等短名；工具窗→「拼合字幕」「静音空隙」；去除装饰性 emoji；统一「导入」动词；中英文翻译、帮助与新手引导引用及测试断言同步。已按当前 main 重新落植，不含 #177/#178/#179 内容。</td></tr>
+        </table>
+        <div class="item"><input type="checkbox" id="p188-1"><label for="p188-1">抽查更名处：工程设置、浅色/深色/自动、高级编辑、调色板、对齐到帧、拼合字幕、静音空隙、导出菜单短名 → 与 CHANGELOG 描述一致。</label></div>
+        <div class="item"><input type="checkbox" id="p188-2"><label for="p188-2">中英文界面各过一遍更名处 → 翻译同步；帮助与新手引导里的设置名称引用已更新。</label></div>
+        <div class="item"><input type="checkbox" id="p188-3"><label for="p188-3">按钮上无装饰性 emoji（图标按钮保留）；Launcher 工具箱大标签为「字幕处理 / 媒体工具」，热词分组为「热词与提示」。</label></div>
+      </div>
+    </details>
+
+    <details class="section" open>
+      <summary><span class="sec-title">#189 · 测试日志纪律（CompactContainerAssertions）</span> <span class="badge">工程</span></summary>
+      <div class="body">
+        <table>
+          <tr><th>提交</th><th>日期</th><th>说明</th></tr>
+          <tr><td><code>5cbfac97</code></td><td>10-09</td><td>新增 <code>tests/compact_assertions.py</code> 混入：大容器断言失败只输出 needle 摘要与容器规模，不再 dump 数十万字符；挂载到 4 个资产契约测试套件，行为由守护测试覆盖。AGENTS.md 补充 agent 测试输出与后台进程纪律。</td></tr>
+        </table>
+        <div class="cmd">uv run --no-sync python -m unittest tests.test_compact_assertions -v</div>
+        <div class="item"><input type="checkbox" id="p189-1"><label for="p189-1">运行守护测试 → 通过（行为：失败信息为「needle + 容器规模」摘要）。</label></div>
+        <div class="item"><input type="checkbox" id="p189-2"><label for="p189-2">AGENTS.md 含「Agent 测试输出与后台进程」纪律小节。</label></div>
+      </div>
+    </details>
+
+    <details class="section" open>
+      <summary><span class="sec-title">#185 · 打包版 Linux 运行时修复（含后续补充专项）</span> <span class="badge fixed">修复</span> <span class="badge todo">后续未落实</span></summary>
+      <div class="body">
+        <table>
+          <tr><th>提交</th><th>日期</th><th>说明</th></tr>
+          <tr><td><code>9ca3f75b</code></td><td>10-09</td><td>新增 <code>restore_host_library_path</code>（maw/gui_platform.py:35）：打包版 Linux 上为运行时子进程还原 LD_LIBRARY_PATH_ORIG（无记录则移除）；local_runtime / ocr_runtime / runtimes.base / gui_web / gui_workflow 已接入；<code>_open_external</code> 复用同一实现。修复 AppImage 上安装 OCR / 本地 ASR 运行时必失败的问题。</td></tr>
+          <tr><td><code>60d823bb</code></td><td>10-09</td><td>CHANGELOG 补记上述修复。</td></tr>
+        </table>
+        <div class="item"><input type="checkbox" id="p185-1"><label for="p185-1">Linux AppImage（打包版）→ 安装 OCR / 本地 ASR 运行时 → venv 创建、pip 安装与运行成功（此前必失败）。</label></div>
+        <div class="item"><input type="checkbox" id="p185-2"><label for="p185-2">GUI「打开外部链接/目录」在打包版 Linux 上正常。</label></div>
+        <div class="plain"><b>后续补充 1（贡献者 V-Conet，合并后评论，未应用）</b>：自述「可能下载模型时报错」，补丁两点 —— ① MAW.spec datas 补 <code>maw/moss_runtime.py</code> 与 <code>maw/runtimes/freezer.py</code>（已核对 L72-86：datas 确缺；hiddenimports L201/L205 已有但不能替代 datas 的文件路径导入）；② tests/test_packaging_contract.py <code>_local_import_modules</code> 删除 L45 的 <code>continue</code>，让 <code>from maw.x import y</code> 同时收集子模块别名。当前 main 两点均未应用，也无新 PR 跟进。</div>
+        <div class="plain"><b>后续补充 2（维护者合并评论承认的同族遗漏，未修）</b>：<code>server-editor/serve.py:1920</code> <code>open_backup_directory</code> 的 xdg-open 未还原 LD_LIBRARY_PATH；<code>maw/notify.py:117</code> <code>_notify_linux</code> 同样继承包内路径。均非解释器子进程，实际影响未复现，不阻塞合并。</div>
+        <div class="item"><input type="checkbox" id="p185-3"><label for="p185-3">决策：是否应用 V-Conet 补丁（建议另开 PR，Linux 打包环境实测下载模型路径）。</label></div>
+        <div class="item"><input type="checkbox" id="p185-4"><label for="p185-4">决策：是否顺手修 serve.py / notify.py 两处遗漏（低风险小改），或回复贡献者说明挂起。</label></div>
+      </div>
+    </details>
+
+    <details class="section" open>
+      <summary><span class="sec-title">#186 · JavaScript 工具链迁移 pnpm</span> <span class="badge">工程</span></summary>
+      <div class="body">
+        <table>
+          <tr><th>提交</th><th>日期</th><th>说明</th></tr>
+          <tr><td><code>56ddb9cd</code></td><td>10-09</td><td>根目录与 website 各自固定 pnpm@11.28.4（packageManager），pnpm 锁文件取代 npm 锁文件；编辑器检查、Pages 部署与 Windows E2E 脚本改为 pnpm install --frozen-lockfile / pnpm exec playwright；开发文档与官网文档同步。</td></tr>
+        </table>
+        <div class="note">生成时实测：<code>package-lock.json</code> 已不存在；两处 packageManager 已固定；<code>pnpm run check:editor</code> 通过。</div>
+        <div class="item"><input type="checkbox" id="p186-1"><label for="p186-1">全新目录 <code>pnpm install --frozen-lockfile</code> → 成功；CONTRIBUTING/开发文档命令均为 pnpm 写法。</label></div>
+        <div class="item"><input type="checkbox" id="p186-2"><label for="p186-2">CI（编辑器检查、Pages 部署、Windows E2E）全绿。</label></div>
+      </div>
+    </details>
+
+    <details class="section">
+      <summary><span class="sec-title">#190 · codegraph worktree 使用约定</span> <span class="badge">文档 · 仅说明</span></summary>
+      <div class="body">
+        <table>
+          <tr><th>提交</th><th>日期</th><th>说明</th></tr>
+          <tr><td><code>36040fc4</code></td><td>10-09</td><td>AGENTS.md 新增：worktree 无自带索引时可显式传 projectPath 复用主仓库索引，但内容以主分支为准；重构类分支完全依赖 grep；禁止落到父级混合索引。面向 agent 协作，无用户可感知变化。</td></tr>
+        </table>
+        <div class="item"><input type="checkbox" id="p190-1"><label for="p190-1">已知悉约定（AGENTS.md「Codegraph 使用注意」节），无需功能核验。</label></div>
+      </div>
+    </details>
+    <details class="section" open>
+      <summary><span class="sec-title">#180 · ASS 字幕预览改用 Canvas 合成描边</span> <span class="badge">功能</span></summary>
+      <div class="body">
+        <table>
+          <tr><th>提交</th><th>日期</th><th>说明</th></tr>
+          <tr><td><code>cf72ec7c</code></td><td>10-09</td><td>ASS 即时预览改为在 PlayRes 原生分辨率画布上按 libass 顺序（阴影 → 描边 → 填充）合成绘制：整行一次描边消除半透明描边在 run 交界的接缝，缩小后文字边缘更平滑；覆盖 \move、\t 插值、BorderStyle 1/3、说话人标签与叠加轨；\frx/\fry 以轴向透视缩短近似并如实声明。SRT/CSS 预览路径不变。</td></tr>
+        </table>
+        <div class="note">关联：open issue <a href="https://github.com/Moyf/moys-asr-workflow/issues/182">#182 烧录字幕与预览不一致</a>，可顺带确认本改动是否缓解。工作区另有 docs/TEST_FEEDBACK_PR180.md（另一任务 WIP）。</div>
+        <div class="item"><input type="checkbox" id="p180-1"><label for="p180-1">ASS 模式 + 半透明描边 → 预览中 run 交界无接缝（整行一次描边）。</label></div>
+        <div class="item"><input type="checkbox" id="p180-2"><label for="p180-2">缩小字号文字边缘平滑；与 libass 实际帧（帧预览窗口）对照差异可接受。</label></div>
+        <div class="item"><input type="checkbox" id="p180-3"><label for="p180-3">\move 位移、\t 插值、BorderStyle 3、说话人标签、叠加轨在即时预览中表现正确。</label></div>
+        <div class="item"><input type="checkbox" id="p180-4"><label for="p180-4">SRT / CSS 预览路径不受影响（与改版前一致）。</label></div>
+      </div>
+    </details>
+
+    <details class="section" open>
+      <summary><span class="sec-title">#178 · 文稿驱动对齐（issue #174，实验性）</span> <span class="badge todo">实验性</span></summary>
+      <div class="body">
+        <table>
+          <tr><th>提交</th><th>日期</th><th>说明</th></tr>
+          <tr><td><code>9b7e62b8</code></td><td>10-09</td><td>Launcher「生成时间码」与 CLI 新增「仅使用文稿对齐」：从准确文稿与录音直接生成字词时间码工程及 SRT，跳过 ASR；保留文稿换行、组合字符与标点；模型覆盖不完整时报错而不插值补齐。短录音整段对齐，长录音按静音区间或人工锚点分块，可先在无需模型的情况下检查输入与分块；结果列出处理统计并提醒听审。</td></tr>
+        </table>
+        <div class="item"><input type="checkbox" id="p178-1"><label for="p178-1">Launcher「生成时间码」+ 短素材（文稿+录音）→ 整段对齐生成工程与 SRT → 字词时间码与录音对齐，听审无漂移。</label></div>
+        <div class="item"><input type="checkbox" id="p178-2"><label for="p178-2">长素材 → 静音分块（可加人工锚点）→ 先「检查输入与分块」（无需模型）→ 确认分块合理后指定音轨与输出目录生成。</label></div>
+        <div class="item"><input type="checkbox" id="p178-3"><label for="p178-3">文稿换行、组合字符（声调/emoji 等）与标点保留；故意缺漏一段文稿 → 报错提示而非插值补齐。</label></div>
+        <div class="item"><input type="checkbox" id="p178-4"><label for="p178-4">生成结果列出处理统计并提醒听审；CLI「仅使用文稿对齐」入口与 docs/LOCAL_ASR.md 等文档参数一致。</label></div>
+      </div>
+    </details>
+
+    <details class="section" open>
+      <summary><span class="sec-title">自动化基线与后续操作步骤</span> <span class="badge">收尾</span></summary>
+      <div class="body">
+        <div class="plain"><b>生成清单时已实测</b>：<code>pnpm run check:editor</code> 通过（bundle fresh）；<code>git diff --check</code> 仅工作区 WIP 文件（docs/TEST_FEEDBACK_PR180.md，AA 冲突状态，另一任务）报冲突标记；package-lock.json 已移除、packageManager 已固定 pnpm@11.28.4。</div>
+        <div class="note">全量 Python / Node / e2e 未在本次生成时重跑，各 PR 自述结果见对应分区；发布前统一验证如下：</div>
+        <div class="cmd">pnpm run typecheck
+node --test tests\test_editor_script_syntax.mjs tests\test_editor_script_order.mjs
+node --test tests\test_editor_utils.mjs tests\test_waveform_js.mjs
+uv run --no-sync python -m unittest discover -s tests -p "test_*.py"</div>
+        <div class="item"><input type="checkbox" id="pf-1"><label for="pf-1">跑完上方全套命令并记录结果（全量 Python 约 110s，显式设置超时）。</label></div>
+        <div class="item"><input type="checkbox" id="pf-2"><label for="pf-2">启动真实浏览器验证：uv run --no-sync python server-editor\serve.py --blank → 编辑器核心交互（播放、Seek、拖动、设置）无回归。</label></div>
+        <div class="item"><input type="checkbox" id="pf-3"><label for="pf-3">本批多次修改 web/（#177/#179/#188/#180/#168/#175/#176 等）→ 发布前统一运行 uv run --no-sync python edit.py --blank 重生成便携 HTML，并核对 git diff --stat blank-editor.html 符合预期。</label></div>
+        <div class="item"><input type="checkbox" id="pf-4"><label for="pf-4">CHANGELOG「未发布」定稿：版本号、条目措辞（「 ： 」空格规范）、与 README/blank-editor 一致。</label></div>
+        <div class="item"><input type="checkbox" id="pf-5"><label for="pf-5">处理 #185 后续：应用/挂起 V-Conet 补丁，决定 serve.py 与 notify.py 两处遗漏的去向，并回复贡献者。</label></div>
+        <div class="item"><input type="checkbox" id="pf-6"><label for="pf-6">发布前扫描：.env、媒体文件、个人绝对路径不入库；LICENSE 与 THIRD_PARTY_NOTICES.md 仍正确；关闭/跟进关联 issue（#174、#182）。</label></div>
+      </div>
+    </details>
+  </main>
+</div>
+
+<script>
+(function () {
+  // 沿用旧页面的勾选存储键与布尔值格式，备注另存，升级不丢已有进度。
+  var KEY = 'maw-checklist:' + document.title;
+  var NOTES_KEY = KEY + ':notes';
+  var IGNORE_KEY = KEY + ':ignored';
+  var VIEW_KEY = KEY + ':view';
+  var sections = [].slice.call(document.querySelectorAll('details.section'));
+  var boxes = [].slice.call(document.querySelectorAll('.item input[type="checkbox"]'));
+  var sectionBoxes = sections.map(function (sec) {
+    return [].slice.call(sec.querySelectorAll('.item input[type="checkbox"]'));
+  });
+  var status = document.getElementById('save-status');
+  var storageFailed = false;
+  function storageWarning() {
+    storageFailed = true;
+    status.classList.add('warning');
+    status.textContent = '本机存储不可用或数据损坏，请导出 JSON 留存本次结果';
+  }
+  function load(key, fallback) {
+    try {
+      var value = JSON.parse(localStorage.getItem(key) || '{}');
+      if (!value || typeof value !== 'object' || Array.isArray(value)) throw new Error('Invalid state');
+      return value;
+    } catch (e) { storageWarning(); return fallback || {}; }
+  }
+  function save(key, value) {
+    try {
+      localStorage.setItem(key, JSON.stringify(value));
+      if (!storageFailed) status.textContent = '勾选与备注已保存在本机';
+    } catch (e) { storageWarning(); }
+  }
+  var state = load(KEY);
+  var notes = load(NOTES_KEY);
+  var ignored = load(IGNORE_KEY);
+  var view = load(VIEW_KEY);
+  var hideConfirmed = view.hideConfirmed === true;
+  var autoCollapseCompleted = view.autoCollapseCompleted === true;
+  var records = [];
+
+  // 从 summary 提取纯文本标题（跳过徽标 / 进度等元素），优先取 .sec-title。
+  function summaryTitle(summary) {
+    var titled = summary.querySelector('.sec-title');
+    if (titled) return titled.textContent.replace(/\s+/g, ' ').trim();
+    var text = '';
+    [].forEach.call(summary.childNodes, function (n) {
+      if (n.nodeType === 3) text += n.textContent;
+    });
+    text = text.replace(/\s+/g, ' ').trim();
+    if (text) return text;
+    var clone = summary.cloneNode(true);
+    [].forEach.call(clone.querySelectorAll('.badge,.sec-progress,.sec-ignore,.section-chevron'), function (el) {
+      el.parentNode.removeChild(el);
+    });
+    return clone.textContent.replace(/\s+/g, ' ').trim() || '未命名分区';
+  }
+
+  // 左侧目录与分区进度徽标均由分区卡片自动生成，填写分区内容时无需手写。
+  var toc = document.getElementById('toc');
+  var links = [];
+  var ignoreButtons = [];
+  sections.forEach(function (sec, i) {
+    if (!sec.id) sec.id = 'sec-' + (i + 1);
+    var summary = sec.querySelector('summary');
+    var a = document.createElement('a');
+    a.href = '#' + sec.id;
+    a.innerHTML = '<span class="m"></span><span class="t"></span><span class="c"></span>';
+    a.querySelector('.t').textContent = summaryTitle(summary);
+    a.addEventListener('click', function (e) {
+      sec.open = true;
+      setActive(i);
+      // 平滑滚动只由目录点击显式触发（根滚动条保持原生瞬时行为）。
+      e.preventDefault();
+      var reduce = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+      sec.scrollIntoView({ behavior: reduce ? 'auto' : 'smooth', block: 'start' });
+      if (history.replaceState) history.replaceState(null, '', '#' + sec.id);
+    });
+    toc.appendChild(a);
+    links.push(a);
+    var prog = document.createElement('span');
+    prog.className = 'sec-progress';
+    summary.appendChild(prog);
+    // 「忽略」整组：只出现在含核对项的分区；标题变灰并折叠，计数按已处理计算。
+    if (sectionBoxes[i].length) {
+      var ignoreBtn = document.createElement('button');
+      ignoreBtn.type = 'button';
+      ignoreBtn.className = 'sec-ignore';
+      ignoreBtn.textContent = '忽略';
+      ignoreBtn.setAttribute('aria-label', '忽略此分组：整组按已处理计数，不再列入未确认项');
+      summary.insertBefore(ignoreBtn, prog);
+      ignoreBtn.addEventListener('click', function (event) {
+        // 阻止冒泡，避免触发 summary 自身的展开 / 收起切换。
+        event.preventDefault();
+        event.stopPropagation();
+        ignored = load(IGNORE_KEY, ignored);
+        if (ignored[sec.id] === true) {
+          delete ignored[sec.id];
+          sec.open = true;
+        } else {
+          ignored[sec.id] = true;
+          sec.open = false;
+        }
+        save(IGNORE_KEY, ignored);
+        refresh();
+      });
+      ignoreButtons[i] = ignoreBtn;
+    }
+    var chevron = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+    chevron.setAttribute('viewBox', '0 0 24 24');
+    chevron.setAttribute('class', 'section-chevron');
+    chevron.setAttribute('aria-hidden', 'true');
+    chevron.setAttribute('focusable', 'false');
+    chevron.innerHTML = '<path d="m6 9 6 6 6-6" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/>';
+    summary.appendChild(chevron);
+  });
+  if (!sections.length) document.getElementById('toc-card').style.display = 'none';
+
+  function setActive(idx) {
+    links.forEach(function (a, i) { a.classList.toggle('active', i === idx); });
+  }
+
+  function refresh() {
+    var doneAll = 0;
+    sections.forEach(function (sec, i) {
+      var sBoxes = sectionBoxes[i];
+      // 被忽略的分组整组按已处理计算：分组与总计数、目录均视作完成，
+      // 但标题走灰色（.ignored），不再叠加完成绿色。
+      var isIgnored = ignored[sec.id] === true;
+      var checked = sBoxes.filter(function (b) { return b.checked; }).length;
+      var done = isIgnored ? sBoxes.length : checked;
+      sec.classList.toggle('complete', !isIgnored && sBoxes.length > 0 && checked === sBoxes.length);
+      sec.classList.toggle('ignored', isIgnored);
+      var prog = sec.querySelector('.sec-progress');
+      var link = links[i];
+      if (sBoxes.length) {
+        prog.hidden = false;
+        prog.textContent = done + ' / ' + sBoxes.length;
+        prog.classList.toggle('done', !isIgnored && checked === sBoxes.length);
+        link.querySelector('.c').textContent = done + '/' + sBoxes.length;
+        link.classList.toggle('done', !isIgnored && checked === sBoxes.length);
+        var ignoreBtn = ignoreButtons[i];
+        if (ignoreBtn) ignoreBtn.textContent = isIgnored ? '取消忽略' : '忽略';
+        doneAll += done;
+      } else {
+        prog.hidden = true;
+        link.querySelector('.c').textContent = '';
+      }
+    });
+    boxes.forEach(function (box, index) {
+      var item = box.closest('.item');
+      item.classList.toggle('done', box.checked);
+      // 「隐藏已勾选」视图同时隐藏被忽略分组的核对项（它们已视作处理完毕）。
+      item.hidden = hideConfirmed && (box.checked || ignored[records[index].section.id] === true);
+    });
+    var hideButton = document.getElementById('hide-confirmed');
+    hideButton.textContent = hideConfirmed ? '显示已勾选' : '隐藏已勾选';
+    hideButton.setAttribute('aria-pressed', String(hideConfirmed));
+    var autoCollapseButton = document.getElementById('auto-collapse-completed');
+    autoCollapseButton.setAttribute('aria-pressed', String(autoCollapseCompleted));
+    var pct = boxes.length ? Math.round(doneAll * 100 / boxes.length) : 0;
+    document.getElementById('num').textContent = doneAll + ' / ' + boxes.length;
+    var pctEl = document.getElementById('pct');
+    pctEl.textContent = pct + '%';
+    pctEl.classList.toggle('full', pct === 100 && boxes.length > 0);
+    document.getElementById('bar').style.width = pct + '%';
+    document.getElementById('topbar-i').style.width = pct + '%';
+    var pendingOnly = document.getElementById('export-scope').value === 'unconfirmed';
+    document.getElementById('export-json').disabled = pendingOnly ? doneAll === boxes.length : !boxes.length;
+  }
+
+  boxes.forEach(function (box, index) {
+    var item = box.closest('.item');
+    var label = item.querySelector('label');
+    var text = label.textContent.replace(/\s+/g, ' ').trim();
+    var toggle = document.createElement('button');
+    toggle.type = 'button';
+    toggle.className = 'note-toggle';
+    toggle.setAttribute('aria-label', '备注：' + text);
+    toggle.innerHTML = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M14 3H5a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-9M17 3l4 4-9 9-4 1 1-4Z"/></svg><span>备注</span>';
+    var record = { box: box, section: item.closest('details.section'), text: text,
+      textarea: null, note: typeof notes[box.id] === 'string' ? notes[box.id] : '' };
+    var panel, textarea, printNote;
+    toggle.setAttribute('aria-expanded', 'false');
+    toggle.classList.toggle('has-note', !!record.note);
+    item.appendChild(toggle);
+    records.push(record);
+    // 长清单只为正在编辑或已有备注的项目创建输入框，避免几千个隐藏控件参与样式计算。
+    function ensureNoteEditor() {
+      if (textarea) return;
+      panel = document.createElement('div');
+      panel.className = 'item-note';
+      panel.id = 'checklist-note-' + index;
+      panel.hidden = true;
+      textarea = document.createElement('textarea');
+      textarea.rows = 3;
+      textarea.placeholder = '记录问题、复现步骤或核验说明…';
+      textarea.setAttribute('aria-label', '备注：' + text);
+      textarea.value = record.note;
+      record.textarea = textarea;
+      panel.appendChild(textarea);
+      toggle.setAttribute('aria-controls', panel.id);
+      printNote = document.createElement('p');
+      printNote.className = 'print-note';
+      printNote.textContent = record.note ? '备注：' + record.note : '';
+      item.appendChild(panel);
+      item.appendChild(printNote);
+      textarea.addEventListener('input', function () {
+        record.note = textarea.value;
+        notes = load(NOTES_KEY, notes);
+        notes[box.id] = textarea.value;
+        save(NOTES_KEY, notes);
+        toggle.classList.toggle('has-note', !!textarea.value);
+        printNote.textContent = textarea.value ? '备注：' + textarea.value : '';
+      });
+    }
+    toggle.addEventListener('click', function () {
+      ensureNoteEditor();
+      panel.hidden = !panel.hidden;
+      toggle.setAttribute('aria-expanded', String(!panel.hidden));
+      if (!panel.hidden) textarea.focus();
+    });
+    if (record.note) {
+      ensureNoteEditor();
+      panel.hidden = false;
+      toggle.setAttribute('aria-expanded', 'true');
+    }
+    if (Object.prototype.hasOwnProperty.call(state, box.id)) box.checked = state[box.id] === true;
+    box.addEventListener('change', function () {
+      state = load(KEY, state);
+      state[box.id] = box.checked;
+      save(KEY, state);
+      var section = box.closest('details.section');
+      var groupBoxes = sectionBoxes[sections.indexOf(section)];
+      if (autoCollapseCompleted && groupBoxes.length && groupBoxes.every(function (itemBox) { return itemBox.checked; })) {
+        section.open = false;
+      }
+      refresh();
+    });
+  });
+  document.getElementById('reset').addEventListener('click', function () {
+    state = load(KEY, state);
+    boxes.forEach(function (box) { box.checked = false; state[box.id] = false; });
+    save(KEY, state);
+    ignored = {};
+    save(IGNORE_KEY, ignored);
+    if (!storageFailed) status.textContent = '已重置勾选与忽略，备注已保留';
+    refresh();
+  });
+  document.getElementById('expand').addEventListener('click', function () {
+    sections.forEach(function (sec) { sec.open = true; });
+  });
+  document.getElementById('collapse').addEventListener('click', function () {
+    sections.forEach(function (sec) { sec.open = false; });
+  });
+  document.getElementById('hide-confirmed').addEventListener('click', function () {
+    hideConfirmed = !hideConfirmed;
+    view = load(VIEW_KEY, view);
+    view.hideConfirmed = hideConfirmed;
+    save(VIEW_KEY, view);
+    refresh();
+  });
+  document.getElementById('auto-collapse-completed').addEventListener('click', function () {
+    autoCollapseCompleted = !autoCollapseCompleted;
+    view = load(VIEW_KEY, view);
+    view.autoCollapseCompleted = autoCollapseCompleted;
+    save(VIEW_KEY, view);
+    refresh();
+  });
+  document.getElementById('export-scope').addEventListener('change', refresh);
+  document.getElementById('export-json').addEventListener('click', function () {
+    var scope = document.getElementById('export-scope').value;
+    var confirmed = boxes.filter(function (b) { return b.checked; }).length;
+    var ignoredCount = records.filter(function (r) { return ignored[r.section.id] === true; }).length;
+    var exportedSections = sections.map(function (sec) {
+      // 「仅未确认项」同时排除已勾选与被忽略分组的核对项；全部导出时忽略项
+      // 原样带出并标记 ignored，核对结果快照不丢信息。
+      var items = records.filter(function (r) {
+        return r.section === sec && (scope === 'all' || (!r.box.checked && ignored[sec.id] !== true));
+      }).map(function (r) {
+        return { id: r.box.id, text: r.text, confirmed: r.box.checked,
+          ignored: ignored[sec.id] === true,
+          note: r.textarea ? r.textarea.value : r.note };
+      });
+      return { id: sec.id, title: summaryTitle(sec.querySelector('summary')), items: items };
+    }).filter(function (sec) { return sec.items.length; });
+    var exportedCount = exportedSections.reduce(function (sum, sec) { return sum + sec.items.length; }, 0);
+    var timestamp = new Date().toISOString();
+    var result = {
+      schema: 'maw.verification-checklist.v1', title: document.title,
+      subtitle: document.querySelector('.page-head .sub').textContent.trim(),
+      exportedAt: timestamp, scope: scope,
+      summary: { total: boxes.length, confirmed: confirmed, ignored: ignoredCount,
+        unconfirmed: boxes.length - confirmed - ignoredCount, exported: exportedCount },
+      sections: exportedSections
+    };
+    var url;
+    var anchor;
+    try {
+      var blob = new Blob([JSON.stringify(result, null, 2) + '\n'], { type: 'application/json;charset=utf-8' });
+      url = URL.createObjectURL(blob);
+      anchor = document.createElement('a');
+      anchor.href = url;
+      var filename = document.title.replace(/[<>:"/\\|?*\u0000-\u001f]/g, '-').replace(/[. ]+$/g, '').slice(0, 100) || 'verification';
+      anchor.download = filename + (scope === 'all' ? '-全部' : '-未确认') + '-' + timestamp.slice(0, 10) + '.json';
+      document.body.appendChild(anchor);
+      anchor.click();
+      if (!storageFailed) status.textContent = '已发起导出 ' + exportedCount + ' 项（含备注）';
+    } catch (e) {
+      status.classList.add('warning');
+      status.textContent = '导出失败，请重试；当前勾选与备注仍保留在页面';
+    } finally {
+      if (anchor) anchor.remove();
+      if (url) setTimeout(function () { URL.revokeObjectURL(url); }, 1000);
+    }
+  });
+
+  // 滚动监听：高亮当前阅读位置对应的目录项。只在纵向位置变化时刷新，
+  // 横向滚动（或内容区内部横向滚动）不触发重算。
+  var ticking = false;
+  var lastScrollY = window.scrollY;
+  function spy() {
+    var idx = -1;
+    sections.forEach(function (sec, i) {
+      if (sec.getBoundingClientRect().top <= 120) idx = i;
+    });
+    setActive(idx);
+  }
+  window.addEventListener('scroll', function () {
+    if (window.scrollY === lastScrollY) return;
+    lastScrollY = window.scrollY;
+    if (!ticking) {
+      ticking = true;
+      requestAnimationFrame(function () { spy(); ticking = false; });
+    }
+  }, { passive: true });
+
+  // 地址栏 hash 直达分区；打印前自动展开全部分区。
+  if (location.hash) {
+    var target = document.getElementById(location.hash.slice(1));
+    if (target && target.tagName === 'DETAILS') target.open = true;
+  }
+  var printOpenStates;
+  window.addEventListener('beforeprint', function () {
+    if (!printOpenStates) printOpenStates = sections.map(function (sec) { return sec.open; });
+    sections.forEach(function (sec) { sec.open = true; });
+  });
+  window.addEventListener('afterprint', function () {
+    if (printOpenStates) sections.forEach(function (sec, i) { sec.open = printOpenStates[i]; });
+    printOpenStates = null;
+  });
+
+  refresh();
+  spy();
+})();
+</script>
+</body>
+</html>

@@ -13,6 +13,28 @@
     ? Array.from(MaweDom.editorSettingsPanel.querySelectorAll('.editor-settings-nav-tab'))
     : [];
 
+  const projectPanel = document.getElementById('project-settings-panel');
+  const projectTabs = Array.from(projectPanel?.querySelectorAll('.editor-settings-nav-tab') || []);
+  const projectTabKey = 'moy.asr.project.settings.tab.v1';
+  const projectFloatingPanel = MaweFloatingPanel.createFloatingPanel({
+    panel: projectPanel,
+    dragHandle: document.getElementById('project-settings-drag-handle'),
+    manageButton: document.getElementById('project-settings-toggle'),
+    anchorButton: document.getElementById('project-settings-toggle'),
+    positionKey: 'moy.asr.project.settings.position.v1',
+    onOpen: () => {
+      let saved = '';
+      try { saved = localStorage.getItem(projectTabKey) || ''; } catch (_) {}
+      setEditorSettingsActiveTab(projectTabs.find(tab => tab.dataset.settingsTab === saved) || projectTabs[0]);
+      // 打开时同步两个镜像开关的当前状态。
+      const wordMirror = document.getElementById('project-word-timing-toggle');
+      if (wordMirror) wordMirror.checked = window.MaweWordTiming?.enabled === true;
+      const markerMirror = document.getElementById('project-marker-track-toggle');
+      if (markerMirror) markerMirror.checked = MaweSettings.EDITOR_SETTINGS.markerEditingEnabled === true;
+    },
+  });
+  document.getElementById('project-settings-close')?.addEventListener('click', () => projectFloatingPanel.close());
+
 
   const editorSettingsFloatingPanel = MaweFloatingPanel.createFloatingPanel({
     panel: MaweDom.editorSettingsPanel,
@@ -32,7 +54,9 @@
 
   function setEditorSettingsActiveTab(tab, { focus = false } = {}) {
     if (!tab) return;
-    for (const item of editorSettingsTabs) {
+    updateRegionalSettingsAvailability();
+    const project = tab.closest('#project-settings-panel');
+    for (const item of project ? projectTabs : editorSettingsTabs) {
       const active = item === tab;
       item.classList.toggle('active', active);
       item.setAttribute('aria-selected', String(active));
@@ -42,7 +66,7 @@
     }
     if (focus) tab.focus();
     try {
-      localStorage.setItem(MaweDom.EDITOR_SETTINGS_WINDOW_TAB_KEY, tab.dataset.settingsTab || '');
+      localStorage.setItem(project ? projectTabKey : MaweDom.EDITOR_SETTINGS_WINDOW_TAB_KEY, tab.dataset.settingsTab || '');
     } catch (_) {
       // file:// 隐私模式可能拒绝 localStorage；切换标签页本身不受影响。
     }
@@ -89,11 +113,10 @@
   function setEditorSettingsPanelOpen(open) {
     if (!MaweDom.editorSettingsPanel || !MaweDom.editorSettingsToggle) return;
     if (!open) {
-      setMergeJoinSettingsPanelOpen(false);
-      setSplitTrimSettingsPanelOpen(false);
       editorSettingsFloatingPanel.close();
       return;
     }
+    updateRegionalSettingsAvailability();
     editorSettingsFloatingPanel.open();
   }
 
@@ -119,46 +142,6 @@
     }
     panel.style.left = String(left) + 'px';
     panel.style.top = String(top) + 'px';
-  }
-
-
-
-  function positionMergeJoinSettingsPanel() {
-    positionAnchoredSettingsPanel(MaweDom.mergeJoinSettingsPanel, MaweDom.mergeJoinSettingsToggle);
-  }
-
-
-
-  function setMergeJoinSettingsPanelOpen(open) {
-    if (!MaweDom.mergeJoinSettingsPanel || !MaweDom.mergeJoinSettingsToggle) return;
-    MaweDom.mergeJoinSettingsPanel.hidden = !open;
-    MaweDom.mergeJoinSettingsToggle.classList.toggle('active', open);
-    MaweDom.mergeJoinSettingsToggle.setAttribute('aria-expanded', String(open));
-    if (open) {
-      MaweFloatingPanel.bringFloatingSurfaceToFront(MaweDom.mergeJoinSettingsPanel);
-      positionMergeJoinSettingsPanel();
-    }
-    MaweFloatingPanel.syncFloatingSurfaceLayers();
-  }
-
-
-
-  function positionSplitTrimSettingsPanel() {
-    positionAnchoredSettingsPanel(MaweDom.splitTrimSettingsPanel, MaweDom.splitTrimSettingsToggle);
-  }
-
-
-
-  function setSplitTrimSettingsPanelOpen(open) {
-    if (!MaweDom.splitTrimSettingsPanel || !MaweDom.splitTrimSettingsToggle) return;
-    MaweDom.splitTrimSettingsPanel.hidden = !open;
-    MaweDom.splitTrimSettingsToggle.classList.toggle('active', open);
-    MaweDom.splitTrimSettingsToggle.setAttribute('aria-expanded', String(open));
-    if (open) {
-      MaweFloatingPanel.bringFloatingSurfaceToFront(MaweDom.splitTrimSettingsPanel);
-      positionSplitTrimSettingsPanel();
-    }
-    MaweFloatingPanel.syncFloatingSurfaceLayers();
   }
 
 
@@ -234,13 +217,71 @@
 
   // 帮助中的「全局设置」入口：打开设置窗口并定位到「视频预览」分区。
   function openEditorSettingsAtTab(tabId) {
-    MaweSettingsPanels.setEditorSettingsPanelOpen(true);
-    MaweSettingsPanels.setEditorSettingsActiveTab(document.getElementById(tabId), { focus: true });
+    const tab = document.getElementById(tabId);
+    closeRegionalSettings();
+    if (tab?.closest('#project-settings-panel')) projectFloatingPanel.open();
+    else setEditorSettingsPanelOpen(true);
+    setEditorSettingsActiveTab(tab, { focus: true });
+  }
+
+  function closeRegionalSettings() {
+    setCueListSettingsPanelOpen(false);
+    setCueEditorSettingsPanelOpen(false);
+    setWaveformSettingsPanelOpen(false);
+    for (const id of ['workspace-transfer-dropdown']) {
+      const dropdown = document.getElementById(id);
+      dropdown?.classList.remove('open');
+      dropdown?.querySelector('button[aria-expanded]')?.setAttribute('aria-expanded', 'false');
+    }
+    document.querySelectorAll('.toolbar .dropdown.open').forEach((dropdown) => {
+      dropdown.classList.remove('open');
+      dropdown.querySelector('button[aria-expanded]')?.setAttribute('aria-expanded', 'false');
+      dropdown.querySelectorAll('.dropdown-submenu').forEach((submenu) => {
+        submenu.classList.remove('open');
+        submenu.querySelector('[aria-expanded]')?.setAttribute('aria-expanded', 'false');
+      });
+    });
+    MaweFloatingPanel.syncFloatingSurfaceLayers();
+  }
+
+  function updateRegionalSettingsAvailability() {
+    const workspaceButton = document.querySelector('[data-settings-region="workspace"]');
+    if (workspaceButton) workspaceButton.disabled = Boolean(document.getElementById('workspace-transfer-dropdown')?.hidden);
+    document.querySelectorAll('[data-settings-export]').forEach((button) => {
+      const command = document.getElementById(button.dataset.settingsExport);
+      button.disabled = !command || command.getAttribute('aria-disabled') === 'true';
+      if (command) button.title = command.title;
+    });
+  }
+
+  function openRegionalSettings(region, targetId) {
+    const regions = {
+      waveform: [MaweDom.waveformSettingsPanel, MaweDom.waveformSettingsToggle, setWaveformSettingsPanelOpen],
+      'cue-editor': [MaweDom.cueEditorSettingsPanel, MaweDom.cueEditorSettingsToggle, setCueEditorSettingsPanelOpen],
+      'cue-list': [MaweDom.cueListSettingsPanel, MaweDom.cueListSettingsToggle, setCueListSettingsPanelOpen],
+      workspace: [document.getElementById('workspace-transfer-menu'), document.getElementById('workspace-transfer-btn')],
+    };
+    const entry = regions[region];
+    if (!entry || !entry[0] || !entry[1] || entry[1].closest('[hidden]')) return;
+    closeRegionalSettings();
+    const [panel, toggle, open] = entry;
+    toggle.scrollIntoView({ block: 'nearest', inline: 'nearest' });
+    if (open) open(true);
+    else toggle.click();
+    const target = targetId ? document.getElementById(targetId) : null;
+    const control = target || [...panel.querySelectorAll('input, select, button, [tabindex="0"]')]
+      .find(element => !element.disabled && element.getClientRects().length);
+    (control || toggle).focus({ preventScroll: true });
   }
 
   global.MaweSettingsPanels = Object.freeze({
+    openRegionalSettings,
+    closeRegionalSettings,
+    updateRegionalSettingsAvailability,
     openEditorSettingsAtTab,
     editorSettingsTabs,
+    projectTabs,
+    projectFloatingPanel,
     editorSettingsFloatingPanel,
     setEditorSettingsActiveTab,
     restoreEditorSettingsActiveTab,
@@ -249,10 +290,6 @@
     set editorSettingsPanelSizeSaveTimer(v) { editorSettingsPanelSizeSaveTimer = v; },
     setEditorSettingsPanelOpen,
     positionAnchoredSettingsPanel,
-    positionMergeJoinSettingsPanel,
-    setMergeJoinSettingsPanelOpen,
-    positionSplitTrimSettingsPanel,
-    setSplitTrimSettingsPanelOpen,
     setSettingsPanelOwnerOpen,
     positionCueListSettingsPanel,
     setCueListSettingsPanelOpen,

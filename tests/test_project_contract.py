@@ -13,6 +13,35 @@ from maw.project import (
 
 
 class ProjectContractTests(unittest.TestCase):
+    def test_punctuation_policy_is_optional_boolean_and_round_trips(self) -> None:
+        project = {"preserve_punctuation": True, "segments": [{"start": 0, "end": 1000, "text": "你好，世界。"}]}
+        self.assertTrue(normalize_project(project)["preserve_punctuation"])
+        self.assertEqual(project["segments"][0]["text"], "你好，世界。")
+        for bad in ("true", 1, None):
+            with self.subTest(bad=bad):
+                result = validate_project({**project, "preserve_punctuation": bad})
+                self.assertFalse(result.ok)
+                self.assertIn("$.preserve_punctuation", {error.path for error in result.errors})
+
+    def test_project_ass_mode_and_speaker_export_flags_round_trip_and_validate(self) -> None:
+        project = {
+            "segments": [],
+            "preview": {"ass_mode": True, "subtitle": {
+                "x": 0.1, "y": 0.7, "width": 0.8, "height": 0.2,
+                "speaker_labels": {"export_enabled": True},
+            }},
+        }
+        result = validate_project(project)
+        self.assertTrue(result.ok, result.errors)
+        self.assertTrue(result.project["preview"]["ass_mode"])
+        self.assertTrue(result.project["preview"]["subtitle"]["speaker_labels"]["export_enabled"])
+        project["preview"]["ass_mode"] = "true"
+        project["preview"]["subtitle"]["speaker_labels"]["export_enabled"] = 1
+        result = validate_project(project)
+        self.assertEqual({error.path for error in result.errors}, {
+            "$.preview.ass_mode", "$.preview.subtitle.speaker_labels.export_enabled",
+        })
+
     def test_normalize_project_upgrades_unversioned_legacy_project_to_current_schema(self) -> None:
         project = {"segments": [{"start": 0, "end": 1000, "text": "legacy"}]}
 

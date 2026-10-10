@@ -829,7 +829,7 @@ def run_postprocess_pipeline(
                 raise
             except Exception as error:
                 raise PostprocessPipelineError(
-                    f"后处理步骤 {step_id} 失败：{error}",
+                    f"处理步骤 {step_id} 失败：{error}",
                     run_directory=run_directory,
                     failed_index=index - 1,
                     current_project=current_project,
@@ -864,7 +864,7 @@ def run_postprocess_pipeline(
                 manifest_steps[index - 1]["translationIntermediateSrtPath"] = str(translation_intermediate_srt)
             manifest["nextArtifactIndex"] = artifact_index
             _write_manifest(run_directory, manifest)
-            print(f"后处理步骤 {step_id} 耗时 {format_elapsed(step_elapsed)}")
+            print(f"处理步骤 {step_id} 耗时 {format_elapsed(step_elapsed)}")
             _emit(on_event, {
                 "stage": "step_done",
                 "index": index,
