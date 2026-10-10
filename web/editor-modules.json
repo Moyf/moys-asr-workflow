@@ -12,6 +12,11 @@
       "exportName": "createFiles"
     },
     {
+      "file": "shared/host/desktop.js",
+      "name": "host-desktop",
+      "exportName": "createDesktop"
+    },
+    {
       "file": "shared/host/server-api.js",
       "name": "host-server-api",
       "exportName": "createServerApi"

@@ -33,6 +33,7 @@ class EditorAssetContractTests(unittest.TestCase):
                 "editor/state/editor-commands.js",
                 "shared/host/storage.js",
                 "shared/host/files.js",
+                "shared/host/desktop.js",
                 "shared/host/server-api.js",
                 "editor/boot/editor-host.js",
                 "shared/gap-remove-core.js",
@@ -505,13 +506,43 @@ class EditorAssetContractTests(unittest.TestCase):
         self.assertIn("nodeIntegration: false", main_process)
         self.assertIn("sandbox: true", main_process)
         self.assertIn("X-MAW-Desktop-Token", main_process)
-        self.assertIn("window.postMessage({ source: 'mose-desktop'", preload)
-        self.assertIn("desktopOpenProjectUrl", editor_startup)
+        self.assertIn("ipcRenderer.on('mose-open-project'", preload)
+        self.assertIn("onProjectOpen(listener)", preload)
+        self.assertIn("window.MOSEOpenDesktopProject", editor_startup)
         self.assertIn("let suppressBeforeUnload = false;", editor_startup)
         self.assertIn("suppressBeforeUnload = true;", editor_startup)
         # A developer checkout may retain ignored artifacts from an older
         # desktop experiment; the source contract is what must stay Tauri-free.
         self.assertNotIn("src-tauri", package_json + main_process + preload + editor_startup)
+
+    def test_desktop_prompts_use_the_exported_i18n_global(self) -> None:
+        scripts = self.source_contract_text()
+        i18n = edit.read_web_asset("shared/editor-i18n.js")
+
+        self.assertIn("global.MAWE_I18N =", i18n)
+        self.assertNotIn("MaweI18n.language", scripts)
+        self.assertIn("window.MAWE_I18N?.language", scripts)
+
+    def test_desktop_path_menus_reuse_the_shared_dropdown_component(self) -> None:
+        template = edit.read_web_asset("editor-template.html")
+        styles = edit.read_web_asset("editor.css")
+        wiring = edit.read_web_asset("editor/ui/editor-wiring-toolbar-menus.js")
+        menu_logic = edit.read_web_asset("editor/ui/editor-export-menus.js")
+
+        self.assertEqual(template.count('class="dropdown desktop-path-dropdown'), 3)
+        self.assertIn('class="dropdown-menu" id="media-path-menu-items"', template)
+        self.assertIn('class="dropdown-menu" id="project-path-menu-items"', template)
+        self.assertIn('class="dropdown-menu" id="last-export-menu-items"', template)
+        self.assertNotIn("desktop-path-menu-items", template + styles)
+        self.assertIn("'media-path-menu', 'media-path-menu-btn', 'media-path-menu-items'", wiring)
+        self.assertIn("'project-path-menu', 'project-path-menu-btn', 'project-path-menu-items'", wiring)
+        self.assertIn("'last-export-menu', 'last-export-summary', 'last-export-menu-items'", wiring)
+        self.assertIn("function positionDesktopPathMenu(buttonId, menuId)", wiring)
+        self.assertIn("window.innerWidth - menuRect.width - margin", wiring)
+        self.assertIn("position: fixed; left: 0; right: auto; top: 0", styles)
+        self.assertIn("h1 .desktop-path-dropdown .dropdown-item:hover", styles)
+        self.assertIn("h1 .desktop-path-dropdown.open > .dropdown-menu", styles)
+        self.assertIn("h1 .desktop-path-dropdown.open", menu_logic)
 
 
 class StickerScanTests(unittest.TestCase):

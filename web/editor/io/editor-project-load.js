@@ -18,8 +18,13 @@
       mediaNameEl.onclick = null;
       return;
     }
-    mediaNameEl.textContent = `未加载：${mediaName}`;
-    mediaNameEl.title = `工程关联媒体：${mediaPath}`;
+    const desktopMissing = MaweHost.desktop.available()
+      && typeof MaweBoot.SERVER_CONFIG?.desktopMediaError === 'string'
+      && MaweBoot.SERVER_CONFIG.desktopMediaError.length > 0;
+    mediaNameEl.textContent = `${desktopMissing ? '媒体缺失' : '未加载'}：${mediaName}`;
+    mediaNameEl.title = desktopMissing
+      ? `工程关联媒体不可用：${mediaPath}；请使用“加载媒体”重新定位`
+      : `工程关联媒体：${mediaPath}`;
     mediaNameEl.classList.add('empty');
     mediaNameEl.onclick = () => MaweExportTimeline.copyText(mediaPath, `已复制媒体路径：${mediaPath}`);
   }
@@ -161,6 +166,26 @@ function applyCanonicalProject(data, filename) {
     }
     MaweServerSave.projectCheckpointInFlight = true;
     try {
+      if (MaweHost.desktop.available()) {
+        const result = await MaweHost.desktop.command('saveProject', {
+          mode: 'new',
+          project,
+          suggestedName,
+          language: window.MAWE_I18N?.language,
+          expectedGeneration: MaweBoot.SERVER_CONFIG?.desktopGeneration,
+          backupLimit: MaweSettings.EDITOR_SETTINGS.projectBackupLimit,
+        });
+        if (result.status === 'cancelled') return false;
+        if (result.status !== 'ok') throw new Error(result.error?.message || '新建工程保存失败');
+        const saved = result.data;
+        applyCanonicalProject(project, saved.filename);
+        MaweServerSave.projectFileHandle = null;
+        MaweServerSave.updateDesktopBinding(saved, { saved: true });
+        MaweDynamicExports.updateLottieExportButton();
+        MaweDynamicExports.updateOgrafExportButton();
+        MaweHint.flashHint(saved.warning || '新建工程已保存', saved.warning ? 'warning' : 'success');
+        return true;
+      }
       if (!MaweHost.files.hasSavePicker() || !MaweHost.runtime.hasUserActivation()) {
         // 检查点只用于确认后续导入可以继续；无用户手势时不能弹出保存对话框，
         // 直接建立内存工程检查点，后续仍通过显式导出保存。
@@ -233,7 +258,7 @@ function applyCanonicalProject(data, filename) {
     // Drag/drop imports are asynchronous by the time they reach here; do not
     // open a save picker as part of importing a subtitle.
     applyCanonicalProject(buildBlankProject(), suggestedProjectName(file));
-    detachServerProjectSaving();
+    if (!MaweHost.desktop.available()) detachServerProjectSaving();
     return true;
   }
 

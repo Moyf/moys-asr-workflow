@@ -9,6 +9,7 @@
     "editor/state/editor-commands.js",
     "shared/host/storage.js",
     "shared/host/files.js",
+    "shared/host/desktop.js",
     "shared/host/server-api.js",
     "editor/boot/editor-host.js",
     "shared/gap-remove-core.js",
@@ -183,7 +184,7 @@
     "editor/boot/editor-startup.js",
     "editor/boot/editor-onboarding.js"
   ],
-  "esmFactories": 59,
+  "esmFactories": 60,
   "inputs": {
     "editor/boot/editor-boot.js": "298d5b808393547fe905cde4232e36af4079f07567786cd898fb3005a292a1db",
     "editor/boot/editor-runtime.js": "5d71c0d776a913d6e1ad3d7ea8cad3ba216d1d587641268ee66c529ce24ae863",
@@ -191,9 +192,10 @@
     "editor/state/editor-view-updates.js": "83badf3af565aa9b9b6faf3f2efa00ba51abd31660e9374280dad30b8762013a",
     "editor/state/editor-commands.js": "75eb40e1b564085bfd65bc46575b69563a960cd74eb0e1b54cfbc739cf3873bb",
     "shared/host/storage.js": "2a969d1b32bb9ed9e26e7aff2a1c457acff1b20a3e86d965ba12066c6ae26628",
-    "shared/host/files.js": "1beb4a24c0bee93eb2e7fce58aa403796ffee4a4c99ab1e247d972254a5dce5d",
+    "shared/host/files.js": "7620bfca6e48d0d9d1f1d619087fd4b1e1b7fddee4220f35edb844e129aad69d",
+    "shared/host/desktop.js": "8fca45de863cd9f5aaba8b352676f6b1d162a2541e9e475dea5686e7cbc92b3b",
     "shared/host/server-api.js": "b319e6fd4825c8422c41d79ef5e801f4ffac322b510e91b6ece77ab5306789c4",
-    "editor/boot/editor-host.js": "6063c26cfbf3faec6890a5f46c9b925e1dc0049179643c42626b7bef1bc4d052",
+    "editor/boot/editor-host.js": "7760f2985170f7866163c823f30850757def7e620efebe374d75c99d84ade061",
     "shared/gap-remove-core.js": "4e935bdbbaaf283b6b68228757999989dae942e677ed223ebbfb0af0f980498a",
     "shared/utils/data.js": "6bab03f16179de53d0a66c2bb4bcd96b69249687432010164b802df2f72da4e5",
     "shared/utils/fonts.js": "e79c90bc1e0538c1316890643f995c4092c918fc6ea6ad046f1c260b430f1648",
@@ -228,7 +230,7 @@
     "shared/utils/lottie.js": "a74b0332e76eef35299d9567c052584a61383134cf03e9ea5279b11e6d4e69ea",
     "shared/utils/ograf.js": "94b88b7db9ea4fd862dc49985f1a5e46bcef6bc70837cb656b0cd1b085a40d89",
     "shared/editor-utils.js": "4021b8d84577731639948015b00fc77fe569c396c8a540f0a9d8828b9949e212",
-    "shared/editor-i18n.js": "9311b4e0fad7be713a78298a885523b86a13b8b0ae9b8b2d5d71a93095a7d206",
+    "shared/editor-i18n.js": "9d6a8d22fad4f6f7c81b22c36426fc5eda641c57fe2ec2721fb4e3c6891bbf48",
     "editor/media/waveform/constants.js": "d5bd567ad4dcbee81995e275e8bf0be571b47e28952fa944478a66aa78e079e4",
     "editor/media/waveform/labels.js": "983afc39d173fc6636d0c78b4fdf4f426a4ba49c8ba4d40305e2775ddb28b80b",
     "editor/media/waveform/scale.js": "fddbd380d9dd9f663bd312d24db44efe5edc9639a7cdb7e208cd3647e2fa8083",
@@ -278,19 +280,19 @@
     "editor/media/editor-preview-geometry.js": "a25ce72a3dcdf49a2a5f6a9e62cfc2241e91aac47e6cbb0fbb47d804b147beca",
     "editor/media/editor-playback-loop.js": "35f58872d2ea34faf000fcbf25a89bebbe916bc99f7e208ca700137bd484861b",
     "editor/media/editor-sticker-overlay.js": "255f93c8ee015c26f11ddbebfdeb99f236db55d14a5dfbe3d4e93d3256ba7b7d",
-    "editor/io/editor-export-srt.js": "a15608b557a66fdbae9600b2315776bd122cc540116780e898abdd7de8b8b4b3",
-    "editor/io/editor-export-timeline.js": "54edb065cc8884f709473388b307ea60a770e145f58807d6c57b04081e4a9f90",
-    "editor/io/editor-server-save.js": "d49528b92ccfdc8320a1319fa1558ad2e8a12e518d7b18e48cfabbe5b9c09ba8",
+    "editor/io/editor-export-srt.js": "a9fc542299a87363d5df38775815082bad986bc0297ffcdd8ba12ca89994713d",
+    "editor/io/editor-export-timeline.js": "b087cbb99b4428f1f496aeb77c6f40950c25c10485743416dff28d705ce2e3c1",
+    "editor/io/editor-server-save.js": "e93df37c5dc1155d840f1a8994144d5534aefbe18db7277a7f93cdcd9261bcd9",
     "editor/ui/editor-workspaces.js": "6a0dcfab40bffcce3b10dae025d4ca20413f059a0905df93a11af9132cc7d58c",
-    "editor/io/editor-project-save.js": "4dc5ce43ba2d97ab0d16f80153da111738c2f43014b223df0ea04c11886bf9ce",
+    "editor/io/editor-project-save.js": "44038a7ef40caf566ad8888a75f2e6c8d7327c41fa9399b38035f3d860cea628",
     "editor/io/editor-dynamic-exports.js": "3fceb191759ed43375d21ebc1cdbd8b6a0d2bc034377977e579d3dce925c7495",
-    "editor/ui/editor-export-menus.js": "da77171947c0e10958f8de77919a864a60151d8a968ebaca6118e8292693290b",
+    "editor/ui/editor-export-menus.js": "f4ab41679e4979359611d703e163630cc91c2d1679ff389c7d2d1a2dcf93a95c",
     "editor/io/editor-project-media-inputs.js": "107eaf3c7f006a9c67f9427f82cb85186343c5ddd684edbc8e4fbbab17a8a879",
-    "editor/io/editor-project-load.js": "7bd1a3dd542d698e1ae500496957ddfb27d940c2ed008562b9e4f758d55eb486",
+    "editor/io/editor-project-load.js": "5359312ed28cd21f39e8780df0aa6c7d125b4e1287476df4f58c48a237999d1c",
     "editor/io/editor-loading-progress.js": "45a3650422174f11b3d978ec152b5043ba331e714f40e7cb482106d9588bd538",
-    "editor/io/editor-multi-import.js": "a08bfde8a34d3f5ed10b56185c5323035a37bb15a810c9b059d4392876757fe4",
-    "editor/media/editor-media-load.js": "f904d37ebda8cdcc8e8aedb05e8d7dce75915763cb819797ec39505501bbf0ce",
-    "editor/io/editor-sticker-root.js": "4cd4bb728cdd2f5d05c9d4aff65a59de645b9c5be6efc55dcdd09042366d492f",
+    "editor/io/editor-multi-import.js": "5e826dfb89daf1c72fb200edf173f2a355f96f4f5b75313107c43790190f38d5",
+    "editor/media/editor-media-load.js": "c38298c9c74cb751c3aeafd45bfd69831eb9e1e0614319dfbeef99ea1dcd5015",
+    "editor/io/editor-sticker-root.js": "a2d5b670d8e17a0d4d7b793b1f48c5abb5f9222cbb6b3a1df5f1ad5680d470db",
     "editor/cues/editor-find-replace.js": "877c71fb4d893526f984fc9487094f3c3c6928c0265b61e7113f1a6d52e20ac4",
     "editor/cues/editor-text-process.js": "1732b1254693d288205497df72e91c5ff73b57d2bfb48ef8cb07546911faa821",
     "editor/cues/editor-timed-text-edit.js": "a714d2cb371d7f7f873ecf99f8158e94a2bb7b59ffbae2174e343a49535f9f41",
@@ -299,12 +301,12 @@
     "editor/cues/editor-bound-drag.js": "9478e2017ffb4e665f452ba18b9e90a991c6936d8222e386dbc72d76ae97f86a",
     "editor/ui/editor-context-menus.js": "7fec41a39de6cd0b10535f7c97c4c5eaffdfdb41331354a4dba321c389b49641",
     "editor/cues/editor-text-cleanup.js": "526c8a0acbbdbab0fa2f04ee2cd580c26693a9997768b85bfd8bccc1bf423971",
-    "editor/media/editor-waveform-init.js": "0ad9aebfc3d5505316da5399c288818aef780e8b2ecd34e236ece99cabe0a71a",
+    "editor/media/editor-waveform-init.js": "387e6880e9dddea272d17f72b0102d0e572b0036effdd6018310462dd85739b8",
     "editor/media/editor-media-step.js": "778e52252d7ebd14fdc196687c6bdf333f7527970bf65ffd21c8406c8707323c",
     "editor/styles/editor-appearance-inputs.js": "233d2aef602beaa26cad764a555837f056c3de44f076232fed093c641bdb5342",
     "editor/ui/editor-behavior-hints.js": "d581e6819ad54d1a878625a7b96a5d7734bc18a0778693c89132e4bbd8bfb9f9",
     "editor/io/editor-server-connection.js": "253bfd5c6783fd0f8035130207dff3ba06996015c80eb29883156671cfcded06",
-    "editor/io/editor-drag-drop.js": "ab5228ff0d7b81512ebf3edf4e9b0d7ca0ceb83937313f752201a04cd0bdc80b",
+    "editor/io/editor-drag-drop.js": "c115594ac071e93b692786f1f34e9b720dc9d8072fbb04e28303ca6c37ae59eb",
     "editor/io/editor-sticker-otio-export.js": "0a96a6b629aefa7a982502d2ba54f62c492d42ff4e820e157af1dc89d9e9b0a8",
     "editor/io/editor-json-repair.js": "4d09894b467f399169dbba5b4bc5109976bbf9833bb4c03e741ce7691b97b16a",
     "editor/ui/editor-help-panel.js": "09d0778f0720704c94315df5f2b80b9d24e336ea09d1d336b74fcde832441ab4",
@@ -351,22 +353,22 @@
     "editor/styles/editor-wiring-ass-preview.js": "dd1081a80ed9d863904854133fc9f110887759afc46e70405eed96af9d7ea54b",
     "editor/styles/editor-wiring-ass-frame.js": "1a3c186069460cde01b86e0c1614b8b71d3f9fa7c4ef377988824b14adff69e5",
     "editor/media/editor-wiring-sticker-preview.js": "8580274551ce4a2f1c3cd66ade2e99284c376a908bc060a54dc4ce12016f219e",
-    "editor/io/editor-wiring-export-context.js": "d01cdb5a0acc5ceca8f6172bc9e0b11e70586452fe7c8514fd1e28d29d53a3f7",
+    "editor/io/editor-wiring-export-context.js": "bec8a753ba6e155cbbcf1a810815a3d460d73b41268743ff8d20b95e67b50eb7",
     "editor/io/editor-wiring-export-actions.js": "cd154e1a1553f02f46b046e40343b6f281b38e0aa354151cec6d2236f4bfee88",
-    "editor/ui/editor-wiring-toolbar-menus.js": "9ab53a45d64eb8af9742cd256cf3cac961450c5e08daa4bb533756ccdff17806",
-    "editor/io/editor-wiring-project-inputs.js": "7ec7fc25619d3ae994f947743550b1c1d3a0fbfb7d5cd8406a257a16ddd7db1b",
-    "editor/media/editor-wiring-media-inputs.js": "9eade738d68f5873398865ee2ac3ce1380d41f0a796a73e387ea63d17a87d5aa",
-    "editor/io/editor-wiring-sticker-root.js": "596ccd764996ce08da06edc35e642ab21e5cf43a9e984c7879b260a3c5bd2baa",
+    "editor/ui/editor-wiring-toolbar-menus.js": "c3f8ffc7504bf6c41bdd59c7789de14f96d9063909454cee35f015f943706f27",
+    "editor/io/editor-wiring-project-inputs.js": "f2406aff574b728e400274082c878f2bc6060a7906d74fdfa12ed0621bb04ed2",
+    "editor/media/editor-wiring-media-inputs.js": "af6212a90838ea593351cdacaefc122d13ca22b665e94c84ebcba02829468f99",
+    "editor/io/editor-wiring-sticker-root.js": "49cc67694500b97f5493e24d0d541136201d126c9c9c7317f359d18b74a5ea52",
     "editor/cues/editor-wiring-text-tools.js": "455776cfe23b1abcbc007580fea68ee7f798aea2fa4aaa7138e265f4074b5ffa",
     "editor/cues/editor-wiring-overlay-actions.js": "688865373d44d6859ef744777cd5a8a83bafe300c5e6c039fe777d494a17b0e7",
     "editor/ui/editor-wiring-context-menus.js": "c9f40e13c1c7ef03c60829bc0f31af437faf55fdc60acf0b9a0a432e133717b7",
     "editor/media/editor-wiring-waveform-hints.js": "78821bb6248fb06325b5950dd8f54c06b5cb50c009fb73f50f0ee2dbd87a31e6",
     "editor/io/editor-wiring-server-events.js": "1174a484a1122bb02378ccf3ee5bdfe1b9d1669e3950b7fe50ba65ef56842b23",
     "editor/io/editor-wiring-file-drop.js": "6fcb7821cdd3215433c91913630ac16fdbacf9b3c675f6bb2e709a1bd58d0eb5",
-    "editor/boot/editor-startup.js": "c7782ab27fee8a42c03a60a746dbd4f2f75f153d6ccd91341097ca97808d3fc2",
+    "editor/boot/editor-startup.js": "5e16a6310c312dccedbc7136625b1f867fc296ace9f12e834c3b54ed0c3285c9",
     "editor/boot/editor-onboarding.js": "1a15d233ac65cc07c7fb6d007037289d695add5db8f6cf84ec3d69a7f594b2c4"
   },
-  "configHash": "492b585c931e626209a0ea9d6a916ca30da259512d43eef00dc860793dad6798",
+  "configHash": "9e24c8f9977d021a4d996bdd0fc5d57bd0e0cbd2ebd3a664447336def1651ab0",
   "builderHash": "f228f1e6128bcef03f88a0f45c0d4252f9147716ccbe146abe19201d7f13d578",
   "metafile": {
     "inputs": {
@@ -376,7 +378,12 @@
         "format": "esm"
       },
       "web/shared/host/files.js": {
-        "bytes": 970,
+        "bytes": 2487,
+        "imports": [],
+        "format": "esm"
+      },
+      "web/shared/host/desktop.js": {
+        "bytes": 2345,
         "imports": [],
         "format": "esm"
       },
@@ -666,7 +673,7 @@
         "format": "esm"
       },
       "web/editor-entry.mjs": {
-        "bytes": 1675768,
+        "bytes": 1713107,
         "imports": [
           {
             "path": "web/shared/host/storage.js",
@@ -677,6 +684,11 @@
             "path": "web/shared/host/files.js",
             "kind": "import-statement",
             "original": "maw-factory:shared/host/files.js"
+          },
+          {
+            "path": "web/shared/host/desktop.js",
+            "kind": "import-statement",
+            "original": "maw-factory:shared/host/desktop.js"
           },
           {
             "path": "web/shared/host/server-api.js",
@@ -977,7 +989,10 @@
             "bytesInOutput": 141
           },
           "web/shared/host/files.js": {
-            "bytesInOutput": 526
+            "bytesInOutput": 1230
+          },
+          "web/shared/host/desktop.js": {
+            "bytesInOutput": 1346
           },
           "web/shared/host/server-api.js": {
             "bytesInOutput": 153
@@ -1070,7 +1085,7 @@
             "bytesInOutput": 458
           },
           "web/shared/utils/preview-geometry.js": {
-            "bytesInOutput": 1572
+            "bytesInOutput": 1574
           },
           "web/shared/utils/lottie.js": {
             "bytesInOutput": 4199
@@ -1151,10 +1166,10 @@
             "bytesInOutput": 4423
           },
           "web/editor-entry.mjs": {
-            "bytesInOutput": 978759
+            "bytesInOutput": 1004641
           }
         },
-        "bytes": 1301572
+        "bytes": 1329506
       }
     }
   }

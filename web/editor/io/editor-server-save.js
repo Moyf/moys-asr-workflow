@@ -33,6 +33,135 @@
     return serverProjectSavingEnabled() || projectFileHandle !== null;
   }
 
+  function updateDesktopBinding(result, { saved = false } = {}) {
+    const config = MaweBoot.SERVER_CONFIG;
+    if (!config || !result || typeof result !== 'object') return false;
+    config.desktopGeneration = Number.isInteger(result.generation) ? result.generation : config.desktopGeneration;
+    config.desktopRevision = typeof result.revision === 'string' ? result.revision : null;
+    config.desktopProjectPath = typeof result.projectPath === 'string' ? result.projectPath : null;
+    if (Object.prototype.hasOwnProperty.call(result, 'mediaPath')) {
+      config.desktopMediaPath = typeof result.mediaPath === 'string' ? result.mediaPath : null;
+    }
+    if (Object.prototype.hasOwnProperty.call(result, 'mediaError')) {
+      config.desktopMediaError = typeof result.mediaError === 'string' ? result.mediaError : null;
+    }
+    if (Object.prototype.hasOwnProperty.call(result, 'mediaAvailable')) {
+      config.desktopMediaAvailable = result.mediaAvailable === true;
+    }
+    if (Object.prototype.hasOwnProperty.call(result, 'stickerRoot')) {
+      MaweBoot.STICKER_ROOT = typeof result.stickerRoot === 'string' ? result.stickerRoot : '';
+    }
+    config.canSave = Boolean(config.desktopProjectPath);
+    config.canPortableStickerExport = config.canSave;
+    config.canOtozStickerExport = config.canSave;
+    config.canOtozTimelineExport = config.canSave;
+    config.canLottieExport = config.canSave;
+    config.canOgrafExport = config.canSave;
+    if (saved) {
+      config.desktopConflict = false;
+      config.desktopConflictPrompted = false;
+      config.desktopExternalRevision = null;
+      config.desktopClosePending = false;
+    }
+    projectCheckpointed = true;
+    configureServerSaveControls();
+    MaweDynamicExports.updateLottieExportButton();
+    MaweDynamicExports.updateOgrafExportButton();
+    MaweExportTimeline.updateStickerExportButtons?.();
+    MaweExportTimeline.updateTimelineOtiozExportButtons?.();
+    window.MOSEUpdateDesktopPathActions?.();
+    scheduleAutoSave();
+    return true;
+  }
+
+  function sameDesktopPath(left, right) {
+    if (typeof left !== 'string' || typeof right !== 'string') return left === right;
+    const normalize = (value) => value.replace(/\\/g, '/');
+    const a = normalize(left);
+    const b = normalize(right);
+    return navigator.platform?.startsWith('Win') ? a.toLocaleLowerCase() === b.toLocaleLowerCase() : a === b;
+  }
+
+  async function handleDesktopProjectStatus(status) {
+    const config = MaweBoot.SERVER_CONFIG;
+    if (!MaweHost.desktop.available() || !config || !status || typeof status !== 'object') return;
+    if (typeof status.generation === 'number') config.desktopGeneration = status.generation;
+    const mediaWasAvailable = config.desktopMediaAvailable === true;
+    config.desktopMediaPath = typeof status.mediaPath === 'string' ? status.mediaPath : null;
+    config.desktopMediaAvailable = status.mediaAvailable === true;
+    config.desktopMediaError = typeof status.mediaError === 'string' ? status.mediaError : null;
+    if (typeof status.stickerRoot === 'string') MaweBoot.STICKER_ROOT = status.stickerRoot;
+    window.MOSEUpdateDesktopPathActions?.();
+    if (mediaWasAvailable && status.mediaAvailable === false && MaweBoot.DATA.media) {
+      MaweProjectLoad.updateUnloadedMediaLabel(MaweBoot.DATA.media);
+      MaweHint.flashHint(`媒体文件已不可用：${status.mediaError || status.mediaPath || MaweBoot.DATA.media}。字幕仍可编辑；请重新定位媒体。`, 'warning');
+    } else if (!mediaWasAvailable && status.mediaAvailable === true && MaweBoot.DATA.media) {
+      MaweHint.flashHint('关联媒体路径现已可用；请使用“加载媒体”重新载入。', 'warning');
+    }
+
+    const expectedPath = config.desktopProjectPath;
+    if (!expectedPath || !sameDesktopPath(expectedPath, status.projectPath)) {
+      if (expectedPath && !sameDesktopPath(expectedPath, status.projectPath)) {
+        config.desktopConflict = true;
+        config.desktopExternalRevision = status.revision || null;
+      }
+    } else if (status.revision !== config.desktopRevision) {
+      config.desktopConflict = true;
+      config.desktopExternalRevision = status.revision || null;
+    }
+    if (config.desktopConflict && !config.desktopConflictPrompted) {
+      await promptForDesktopConflict(status);
+    }
+  }
+
+  async function promptForDesktopConflict(status) {
+    const config = MaweBoot.SERVER_CONFIG;
+    if (!config || config.desktopConflictPrompted || !MaweHost.desktop.available()) return;
+    config.desktopConflictPrompted = true;
+    config.desktopConflict = true;
+    if (!await MaweProjectSave.waitForProjectSaveIdle(60000)) {
+      MaweHint.flashHint('工程文件已在外部改变，且保存仍在进行。自动保存已暂停，请稍后另存为或重新加载。', 'warning');
+      return;
+    }
+    MaweProjectSave.flushInlineEditsForSave();
+    const dirty = hasUnsavedProjectChanges();
+    const choice = await MaweHost.desktop.chooseExternalChangeAction(dirty, window.MAWE_I18N?.language);
+    if (choice.status !== 'ok' || choice.action === 'keep') {
+      MaweHint.flashHint('已保留当前编辑；自动保存已暂停。可通过“另存为”保留当前版本。', 'warning');
+      return;
+    }
+    if (choice.action === 'saveAs') {
+      const saved = await MaweProjectSave.saveProjectAsToFile();
+      if (!saved) MaweHint.flashHint('未另存为；当前编辑仍保留，自动保存继续暂停。', 'warning');
+      return;
+    }
+    if (choice.action === 'reload') {
+      const confirmation = await MaweHost.desktop.confirmExternalReload(dirty, window.MAWE_I18N?.language);
+      if (confirmation.status !== 'ok' || confirmation.confirmed !== true) {
+        MaweHint.flashHint('已取消重新加载；当前编辑保留，自动保存继续暂停。', 'warning');
+        return;
+      }
+      const result = await MaweHost.desktop.command('reloadProject');
+      if (result.status !== 'ok') {
+        MaweHint.flashHint(`重新加载失败：${result.error?.message || '无法读取工程'}`, 'warning');
+        return;
+      }
+      window.MOSESuppressBeforeUnload?.();
+      window.location.reload();
+      return;
+    }
+    config.desktopConflictPrompted = false;
+    void status;
+  }
+
+  async function refreshDesktopStatus() {
+    if (!MaweHost.desktop.available()) return null;
+    const result = await MaweHost.desktop.command('status', { force: true });
+    if (result.status !== 'ok') return null;
+    await handleDesktopProjectStatus(result.data);
+    return result.data;
+  }
+
 
 
   function parseProjectValidationTarget(detail) {
@@ -327,9 +456,13 @@
       window.clearInterval(autoSaveTimer);
       autoSaveTimer = null;
     }
-    if (!projectSaveTargetEnabled() || !MaweSettings.EDITOR_SETTINGS.autoSaveProject) return;
+    if (!projectSaveTargetEnabled() || !MaweSettings.EDITOR_SETTINGS.autoSaveProject
+        || MaweBoot.SERVER_CONFIG?.desktopClosePending
+        || MaweBoot.SERVER_CONFIG?.desktopConflict) return;
     autoSaveTimer = window.setInterval(() => {
-      if (hasUnsavedProjectChanges() && !projectSaveInFlight && !projectCheckpointInFlight) {
+      if (hasUnsavedProjectChanges() && !projectSaveInFlight && !projectCheckpointInFlight
+          && !MaweBoot.SERVER_CONFIG?.desktopClosePending
+          && !MaweBoot.SERVER_CONFIG?.desktopConflict) {
         void MaweProjectSave.saveCurrentProject({ silent: true });
       }
     }, MaweSettings.EDITOR_SETTINGS.autoSaveIntervalSeconds * 1000);
@@ -382,10 +515,14 @@
       window.clearTimeout(autoSaveFlushTimer);
       autoSaveFlushTimer = null;
     }
-    if (!projectSaveTargetEnabled() || !MaweSettings.EDITOR_SETTINGS.autoSaveProject) return;
+    if (!projectSaveTargetEnabled() || !MaweSettings.EDITOR_SETTINGS.autoSaveProject
+        || MaweBoot.SERVER_CONFIG?.desktopClosePending
+        || MaweBoot.SERVER_CONFIG?.desktopConflict) return;
     autoSaveFlushTimer = window.setTimeout(() => {
       autoSaveFlushTimer = null;
-      if (hasUnsavedProjectChanges() && !projectSaveInFlight) {
+      if (hasUnsavedProjectChanges() && !projectSaveInFlight
+          && !MaweBoot.SERVER_CONFIG?.desktopClosePending
+          && !MaweBoot.SERVER_CONFIG?.desktopConflict) {
         void MaweProjectSave.saveCurrentProject({ silent: true });
       }
     }, EDIT_SAVE_DEBOUNCE_MS);
@@ -395,11 +532,21 @@
 
   async function openRecentProject(project) {
     if (!MaweBoot.SERVER_CONFIG?.recentProjectsUrl) return;
-    if (hasUnsavedProjectChanges()
-        && !confirm('当前有未保存的改动，是否确定打开最近工程？将丢失未保存内容。')) {
-      return;
-    }
+    if (MaweHost.desktop.available()) {
+      if (!await window.MOSEConfirmProjectSwitch?.()) return;
+    } else if (hasUnsavedProjectChanges()
+        && !confirm('当前有未保存的改动，是否确定打开最近工程？将丢失未保存内容。')) return;
     try {
+      if (MaweHost.desktop.available()) {
+        const result = await MaweHost.desktop.command('openRecentProject', { path: project.path });
+        if (result.status !== 'ok') {
+          const error = new Error(result.error?.message || '最近工程未能打开');
+          error.missing = result.error?.code === 'FILE_NOT_FOUND';
+          throw error;
+        }
+        window.location.reload();
+        return;
+      }
       const response = await MaweHost.server.fetch(MaweBoot.SERVER_CONFIG.recentProjectsUrl, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -568,6 +715,9 @@
     set projectFileHandle(v) { projectFileHandle = v; },
     serverProjectSavingEnabled,
     projectSaveTargetEnabled,
+    updateDesktopBinding,
+    handleDesktopProjectStatus,
+    refreshDesktopStatus,
     parseProjectValidationTarget,
     validationPreviewText,
     projectSegmentOverlap,

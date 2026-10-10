@@ -2378,8 +2378,6 @@ class LauncherApi:
             subprocess.Popen(
                 command,
                 cwd=str(executable.parent),
-                startupinfo=startupinfo(),
-                creationflags=creationflags(),
                 env=_mose_environment(),
             )
         except OSError as error:

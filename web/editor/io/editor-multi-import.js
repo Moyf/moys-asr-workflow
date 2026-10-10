@@ -253,6 +253,10 @@
 
 
   async function openProjectFile(file, options = {}) {
+    if (MaweHost.desktop.available()) {
+      const opened = await window.MOSEOpenDesktopProject(file, options.mediaFile || null);
+      if (opened !== null) return opened;
+    }
     const suppressMediaPrompt = options.suppressMediaPrompt === true;
     const finishLoading = MaweLoadingProgress.beginEditorLoading(`正在读取工程 ${file.name}…`, 5);
     try {

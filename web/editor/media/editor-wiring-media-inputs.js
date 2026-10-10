@@ -2,8 +2,21 @@
 // === 加载媒体 ===
 // 通过浏览器文件选择器选本地媒体（视频/音频），用 blob URL 替换播放器源。
 // 如果媒体类型与当前播放器标签不一致（video<->audio），会原地替换整个 <video>/<audio> 元素。
-document.getElementById('load-media')?.addEventListener('click', () => {
+document.getElementById('load-media')?.addEventListener('click', async () => {
   MaweProjectMediaInputs.pendingProjectMediaSelection = null;
+  if (MaweHost.desktop.available()) {
+    const result = await MaweHost.desktop.chooseFile('media', window.MAWE_I18N?.language);
+    if (result.status === 'cancelled') return;
+    if (result.status !== 'ok' || !result.file?.id) {
+      MaweHint.flashHint(`加载媒体失败：${result.error?.message || '无法选择媒体文件'}`, 'warning');
+      return;
+    }
+    const imported = await MaweMediaLoad.loadMediaReference(result.file);
+    if (imported && MaweServerSave.projectSaveTargetEnabled()) {
+      await MaweProjectSave.saveCurrentProject({ silent: true });
+    }
+    return;
+  }
   MaweProjectMediaInputs.loadMediaFileInput.value = '';
   MaweProjectMediaInputs.loadMediaFileInput.click();
 });
@@ -76,8 +89,10 @@ MaweDom.multiSubtitleImportResultConfirm?.addEventListener('click', async () => 
   if (pending.choice === 'open-project') {
     const { projectFile, projectMediaFile } = pending;
     MaweMultiImport.closeMultiSubtitleImportModal();
-    const opened = await MaweMultiImport.openProjectFile(projectFile, { suppressMediaPrompt: Boolean(projectMediaFile) });
-    if (opened && projectMediaFile) await MaweMediaLoad.loadMediaFile(projectMediaFile);
+    await MaweMultiImport.openProjectFile(projectFile, {
+      suppressMediaPrompt: Boolean(projectMediaFile),
+      mediaFile: projectMediaFile,
+    });
     return;
   }
   if (pending.choice === 'replace-main') {

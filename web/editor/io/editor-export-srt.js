@@ -71,7 +71,7 @@
   let filenameBase = `${MaweBoot.FILENAME_BASE}${gapSuffix}`;
   // 浏览器不允许从一个文件句柄取得其父目录，因此不再请求文件夹权限。
   // 先让用户选择一个 SRT 文件名，并把该名称（不含 .srt）作为所有颜色文件的前缀。
-  if (MaweSettings.EDITOR_SETTINGS.exportColorUnified && MaweHost.files.hasSavePicker()) {
+  if (MaweSettings.EDITOR_SETTINGS.exportColorUnified && !MaweHost.desktop.available() && MaweHost.files.hasSavePicker()) {
     try {
       const handle = await MaweHost.files.pickSaveFile({
         id: 'maw-color-srt-export-prefix',
@@ -89,7 +89,16 @@
     const filename = `${filenameBase}_${colorExportFilenameSuffix(color, speakerSettings)}.srt`;
     if (MaweSettings.EDITOR_SETTINGS.exportColorUnified) {
       const blob = new Blob([buildPayload(color)], { type: 'text/plain;charset=utf-8' });
-      MaweHost.files.downloadBlob(blob, filename);
+      const result = await MaweHost.files.downloadBlob(blob, filename);
+      if (MaweHost.desktop.available() && result?.status !== 'ok') {
+        if (result?.status === 'cancelled') {
+          MaweHint.flashHint('已取消导出；之前已完成的文件不受影响。', 'warning');
+        } else {
+          MaweHint.flashHint(`导出失败：${result?.error?.message || '文件未能保存'}`, 'warning');
+        }
+        return;
+      }
+      MaweExportTimeline.rememberDesktopExport(result, filename);
     } else {
       const saved = await MaweExportTimeline.downloadFile(
         buildPayload(color), filename, 'text/plain',

@@ -97,12 +97,24 @@ document.addEventListener('keydown', (event) => {
 
 
 document.getElementById('new-project')?.addEventListener('click', async () => {
-  if (MaweServerSave.hasUnsavedProjectChanges()
+  if (MaweHost.desktop.available()) {
+    if (!await window.MOSEConfirmProjectSwitch?.()) return;
+  } else if (MaweServerSave.hasUnsavedProjectChanges()
       && !confirm('当前有未保存的改动，是否确定新建工程？将丢失未保存内容。')) return;
   await MaweProjectLoad.createProjectCheckpoint(MaweProjectLoad.buildBlankProject(), MaweProjectLoad.suggestedProjectName());
 });
 
-document.getElementById('open-project')?.addEventListener('click', () => {
+document.getElementById('open-project')?.addEventListener('click', async () => {
+  if (MaweHost.desktop.available()) {
+    const result = await MaweHost.desktop.chooseFile('project', window.MAWE_I18N?.language);
+    if (result.status === 'cancelled') return;
+    if (result.status !== 'ok' || !result.file?.id) {
+      MaweHint.flashHint(`打开工程失败：${result.error?.message || '无法选择工程文件'}`, 'warning');
+      return;
+    }
+    await window.MOSEOpenDesktopProject(null, null, { registeredFile: result.file });
+    return;
+  }
   if (MaweServerSave.hasUnsavedProjectChanges()) {
     if (!confirm('当前有未保存的改动，是否确定打开新工程？将丢失未保存内容。')) return;
   }

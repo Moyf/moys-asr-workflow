@@ -705,8 +705,9 @@ class PackagingContractTests(unittest.TestCase):
         self.assertIn("MAW_DESKTOP_TOKEN", main_process)
         self.assertIn("taskkill", main_process)
         self.assertIn("X-MAW-Desktop-Token", main_process)
-        self.assertIn("showSaveDialogSync", main_process)
-        self.assertIn("item.setSavePath(filePath)", main_process)
+        self.assertIn("await dialog.showSaveDialog", main_process)
+        self.assertNotIn("showSaveDialogSync", main_process)
+        self.assertIn("item.setSavePath(result.filePath)", main_process)
         download_handler = re.search(
             r"\.on\('will-download'.*?\n  \}\);",
             main_process,
@@ -715,7 +716,7 @@ class PackagingContractTests(unittest.TestCase):
         self.assertIsNotNone(download_handler)
         self.assertNotRegex(download_handler.group(0), r"(?m)^\s*event\.preventDefault\(\);\s*$")
         self.assertIn("will-redirect", main_process)
-        self.assertIn("window.postMessage({ source: 'mose-desktop'", preload)
+        self.assertIn("ipcRenderer.on('mose-open-project'", preload)
         self.assertIn("['.mosp', '.json']", helpers)
         self.assertIn("name: MAW-Installer-Windows-x64-", workflow)
         self.assertNotIn("paid-MAW-Setup-Windows-x64-", workflow)

@@ -29,7 +29,23 @@ document.getElementById('sticker-root-confirm')?.addEventListener('click', () =>
 if (!MaweStickerRoot.stickerRootServerEnabled) {
   MaweStickerRoot.stickerRootInput.disabled = true;
   MaweStickerRoot.stickerRootRead.disabled = true;
+  MaweStickerRoot.stickerRootChoose.disabled = true;
 }
+
+MaweStickerRoot.stickerRootChoose?.addEventListener('click', async () => {
+  if (!MaweHost.desktop.available()) {
+    MaweStickerRoot.setStickerRootStatus('请在上方输入绝对路径后点击“读取”；只有 MOSE 桌面版支持原生文件夹选择。');
+    return;
+  }
+  const result = await MaweHost.desktop.chooseDirectory(window.MAWE_I18N?.language);
+  if (result.status === 'cancelled') return;
+  if (result.status !== 'ok' || typeof result.path !== 'string') {
+    MaweStickerRoot.setStickerRootStatus(`选择文件夹失败：${result.error?.message || '未能读取文件夹路径'}`);
+    return;
+  }
+  MaweStickerRoot.stickerRootInput.value = result.path;
+  MaweStickerRoot.stickerRootRead.click();
+});
 
 document.getElementById('sticker-root-btn')?.addEventListener('click', () => {
   MaweStickerRoot.stickerRootInput.value = MaweBoot.STICKER_ROOT || '';
@@ -74,15 +90,23 @@ MaweStickerRoot.stickerRootRead.addEventListener('click', async () => {
   MaweStickerRoot.stickerRootInput.disabled = true;
   MaweStickerRoot.setStickerRootStatus('正在读取并验证表情包目录…');
   try {
-    const response = await MaweHost.server.fetch(MaweBoot.SERVER_CONFIG.stickerRootUrl, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ requestToken: MaweBoot.SERVER_CONFIG.requestToken, path }),
-    });
-    const result = await response.json().catch(() => ({}));
-    if (!response.ok || !result.ok) throw new Error(result.error || `服务器返回 ${response.status}`);
+    let result;
+    if (MaweHost.desktop.available()) {
+      const command = await MaweHost.desktop.command('setStickerRoot', { path });
+      if (command.status !== 'ok') throw new Error(command.error?.message || '服务器拒绝了该目录');
+      result = command.data;
+    } else {
+      const response = await MaweHost.server.fetch(MaweBoot.SERVER_CONFIG.stickerRootUrl, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ requestToken: MaweBoot.SERVER_CONFIG.requestToken, path }),
+      });
+      result = await response.json().catch(() => ({}));
+      if (!response.ok || !result.ok) throw new Error(result.error || `服务器返回 ${response.status}`);
+    }
     MaweBoot.STICKERS.splice(0, MaweBoot.STICKERS.length, ...result.stickers);
     MaweBoot.STICKER_ROOT = result.root;
+    window.MOSEUpdateDesktopPathActions?.();
     MaweBoot.SERVER_CONFIG.initialStickerCount = result.count;
     MaweStickerRoot.stickerRootInput.value = result.root;
     MaweStickerOverlay.stickerAssetRevision += 1;

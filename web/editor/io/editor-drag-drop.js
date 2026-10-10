@@ -42,7 +42,8 @@
   }
   if (jsonFile) {
     if (MaweBoot.DATA.segments.length > 0) {
-      if (MaweServerSave.hasUnsavedProjectChanges()
+      if (!MaweHost.desktop.available()
+          && MaweServerSave.hasUnsavedProjectChanges()
           && !confirm('当前有未保存的改动，是否继续处理此工程文件？选择“打开工程”仍会替换当前工程。')) return;
       try {
         const segments = await MaweLoadingProgress.parseSubtitleImportFile(jsonFile);
@@ -56,8 +57,15 @@
       return;
     }
     // 工程与媒体一起拖入时，媒体随工程自动加载，不再弹窗要求重选。
-    const opened = await MaweMultiImport.openProjectFile(jsonFile, { suppressMediaPrompt: Boolean(mediaFile) });
-    if (opened && mediaFile) await MaweMediaLoad.loadMediaFile(mediaFile);
+    const opened = await MaweMultiImport.openProjectFile(jsonFile, {
+      suppressMediaPrompt: Boolean(mediaFile),
+      mediaFile,
+    });
+    // Browser and portable pages still use their existing File flow. Electron
+    // opens the server-bound project with both registered paths in one request.
+    if (opened && mediaFile && !MaweHost.desktop.available()) {
+      await MaweMediaLoad.loadMediaFile(mediaFile);
+    }
     return;
   }
   if (reapeaksFile && !mediaFile && !subtitleFile) {

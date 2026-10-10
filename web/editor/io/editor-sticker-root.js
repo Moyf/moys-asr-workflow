@@ -15,6 +15,7 @@
 
 
   const stickerRootRead = document.getElementById('sticker-root-read');
+  const stickerRootChoose = document.getElementById('sticker-root-choose');
 
 
   const stickerRootStatus = document.getElementById('sticker-root-status');
@@ -64,6 +65,7 @@
     stickerRootModal,
     stickerRootInput,
     stickerRootRead,
+    stickerRootChoose,
     stickerRootStatus,
     stickerRootServerEnabled,
     get stickerRootReturnFocus() { return stickerRootReturnFocus; },

@@ -1,0 +1,208 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>MOSE 桌面新增 UI 核对清单</title>
+  <style>
+    :root {
+      color-scheme: light;
+      --page: #f3f6fb;
+      --surface: #fff;
+      --line: #dbe3ee;
+      --text: #243247;
+      --muted: #65758b;
+      --accent: #3977c7;
+      --accent-soft: #eaf2ff;
+      --new: #256b59;
+      --new-soft: #e8f6f1;
+      --change: #875b15;
+      --change-soft: #fff4dc;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      background: var(--page);
+      color: var(--text);
+      font: 15px/1.6 "Segoe UI", "Microsoft YaHei UI", sans-serif;
+    }
+    main { width: min(980px, calc(100% - 32px)); margin: 32px auto 64px; }
+    .hero, section, .reference {
+      border: 1px solid var(--line);
+      border-radius: 14px;
+      background: var(--surface);
+      box-shadow: 0 8px 24px #2432470b;
+    }
+    .hero { padding: 26px 30px; margin-bottom: 22px; }
+    .eyebrow { margin: 0 0 6px; color: var(--accent); font-size: 12px; font-weight: 700; letter-spacing: .08em; }
+    h1 { margin: 0; font-size: clamp(24px, 4vw, 32px); line-height: 1.25; }
+    .intro { max-width: 780px; margin: 12px 0 0; color: var(--muted); }
+    .callout {
+      margin-top: 18px;
+      padding: 12px 14px;
+      border-left: 3px solid var(--accent);
+      border-radius: 6px;
+      background: var(--accent-soft);
+    }
+    section { margin-top: 18px; padding: 20px 22px 8px; }
+    h2 { margin: 0 0 14px; font-size: 19px; }
+    .item {
+      display: grid;
+      grid-template-columns: 24px minmax(0, 1fr);
+      gap: 10px;
+      padding: 14px 0;
+      border-top: 1px solid var(--line);
+    }
+    .item:first-of-type { border-top: 0; }
+    input[type="checkbox"] { width: 18px; height: 18px; margin: 3px 0 0; accent-color: var(--accent); }
+    .item-title { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; font-weight: 700; }
+    .badge { padding: 1px 8px; border-radius: 999px; font-size: 11px; font-weight: 700; }
+    .badge.new { color: var(--new); background: var(--new-soft); }
+    .badge.changed { color: var(--change); background: var(--change-soft); }
+    .description { margin: 4px 0; }
+    .review { margin: 5px 0 0; color: var(--muted); font-size: 13px; }
+    code { color: #3f5f85; font: 12px/1.5 Consolas, "Cascadia Code", monospace; }
+    a { color: var(--accent); text-decoration-thickness: 1px; text-underline-offset: 3px; }
+    .reference { margin-top: 18px; padding: 16px 20px; }
+    .reference h2 { margin-bottom: 6px; }
+    footer { margin: 18px 4px 0; color: var(--muted); font-size: 12px; }
+    @media (max-width: 600px) {
+      main { width: min(100% - 20px, 980px); margin-top: 12px; }
+      .hero { padding: 20px; }
+      section { padding: 16px 16px 6px; }
+    }
+    @media print {
+      body { background: #fff; }
+      main { width: 100%; margin: 0; }
+      .hero, section, .reference { box-shadow: none; break-inside: avoid; }
+    }
+  </style>
+</head>
+<body>
+  <main>
+    <header class="hero">
+      <p class="eyebrow">MERGE / STARLIT-MAIN · 桌面文件体验</p>
+      <h1>MOSE 新增 UI 核对清单</h1>
+      <p class="intro">逐项查看本轮 Electron 文件与桌面体验中新增或改造的可见界面。勾选框仅供本机核对，不会提交或同步状态。</p>
+      <div class="callout">
+        这次截图里的媒体、工程路径菜单是在桌面文件体验的“路径定位”阶段加入的；原实现使用了单独的 <code>&lt;details&gt;</code> 和按钮样式，没有复用编辑器已有的 <code>.dropdown-menu / .dropdown-item</code>。现在三处路径菜单已改用统一菜单组件。截图中的「另存为…」则是原有工具栏菜单，可作为样式参照，不是这次新增的菜单外观。
+      </div>
+    </header>
+
+    <section aria-labelledby="header-menus">
+      <h2 id="header-menus">顶部与路径菜单</h2>
+      <article class="item">
+        <input type="checkbox" aria-label="核对媒体路径菜单">
+        <div>
+          <div class="item-title">媒体文件路径菜单 <span class="badge new">新增控件</span></div>
+          <p class="description">媒体文件名旁的「⋯」菜单：打开媒体所在文件夹、复制完整路径。只有 MOSE 桌面版已关联真实媒体路径时显示。</p>
+          <p class="review">重点看：菜单外观与「保存工程」下拉一致，位置不遮住文件名，两个操作清楚可点。</p>
+          <code>web/editor-template.html · #media-path-menu</code>
+        </div>
+      </article>
+      <article class="item">
+        <input type="checkbox" aria-label="核对工程路径菜单">
+        <div>
+          <div class="item-title">工程文件路径菜单 <span class="badge new">新增控件</span></div>
+          <p class="description">工程名旁的「⋯」菜单：打开工程所在文件夹、复制完整路径。未保存到磁盘的工程不显示。</p>
+          <p class="review">重点看：与媒体菜单保持相同触发器尺寸、菜单行高、圆角、边框和悬停反馈。</p>
+          <code>web/editor-template.html · #project-path-menu</code>
+        </div>
+      </article>
+      <article class="item">
+        <input type="checkbox" aria-label="核对最近导出定位菜单">
+        <div>
+          <div class="item-title">最近一次导出定位菜单 <span class="badge new">新增控件</span></div>
+          <p class="description">桌面导出成功后出现「定位上次导出」，可打开导出所在文件夹或复制文件完整路径；下次导出成功后更新目标。</p>
+          <p class="review">重点看：尚无成功导出时保持隐藏；连续导出时不串到旧文件。</p>
+          <code>web/editor/io/editor-export-timeline.js · #last-export-menu</code>
+        </div>
+      </article>
+      <article class="item">
+        <input type="checkbox" aria-label="核对表情包目录操作">
+        <div>
+          <div class="item-title">表情包目录原生选择与路径操作 <span class="badge new">新增控件</span></div>
+          <p class="description">表情包目录弹窗增加「选择文件夹…」，并提供打开目录与复制目录路径；手动输入和原有「读取」验证仍保留。</p>
+          <p class="review">重点看：取消选择不改旧路径；验证失败不清空当前有效目录。</p>
+          <code>web/editor-template.html · #sticker-root-choose</code>
+        </div>
+      </article>
+      <article class="item">
+        <input type="checkbox" aria-label="核对备份目录操作">
+        <div>
+          <div class="item-title">备份目录操作 <span class="badge new">新增操作</span></div>
+          <p class="description">工程备份设置增加「打开备份文件夹」和「复制备份目录路径」。不改变现有备份开关、间隔和数量设置。</p>
+          <p class="review">重点看：没有已绑定工程时相关动作应禁用或隐藏，不误开别的目录。</p>
+          <code>web/editor-template.html · #project-backup-open / #project-backup-copy-path</code>
+        </div>
+      </article>
+    </section>
+
+    <section aria-labelledby="desktop-dialogs">
+      <h2 id="desktop-dialogs">原生文件对话框与桌面确认</h2>
+      <article class="item">
+        <input type="checkbox" aria-label="核对打开工程和加载媒体原生对话框">
+        <div>
+          <div class="item-title">打开工程、加载媒体与选择目录 <span class="badge changed">现有入口增强</span></div>
+          <p class="description">沿用编辑器中的「打开工程」「加载媒体」「选择文件夹」入口，在 MOSE 中改由 Windows 原生选择器返回真实路径；取消时保持当前内容不变。</p>
+          <p class="review">重点看：文件类型、中文/空格路径、取消、损坏工程和路径失效提示。</p>
+          <code>desktop/src/main.cjs · web/editor/io/editor-wiring-project-inputs.js</code>
+        </div>
+      </article>
+      <article class="item">
+        <input type="checkbox" aria-label="核对新建和另存为保存流程">
+        <div>
+          <div class="item-title">新建、首次保存与另存为 <span class="badge changed">现有入口增强</span></div>
+          <p class="description">首次保存、新建工程和另存为使用系统保存对话框；保存成功后标题、工程绑定、自动保存和最近工程记录切换到新文件。</p>
+          <p class="review">重点看：取消或写入失败时仍保留当前内容与旧保存目标。</p>
+          <code>web/editor/io/editor-project-save.js · desktop/src/main.cjs</code>
+        </div>
+      </article>
+      <article class="item">
+        <input type="checkbox" aria-label="核对未保存关闭与切换确认">
+        <div>
+          <div class="item-title">关闭窗口、退出和切换工程确认 <span class="badge new">新增流程 UI</span></div>
+          <p class="description">有未保存改动时提供「保存并继续 / 不保存 / 取消」；保存取消或失败时窗口应继续保持打开。</p>
+          <p class="review">重点看：关闭请求只提示一次；保存完成前不会退出。</p>
+          <code>desktop/src/main.cjs · web/editor/boot/editor-startup.js</code>
+        </div>
+      </article>
+      <article class="item">
+        <input type="checkbox" aria-label="核对工程外部修改提示">
+        <div>
+          <div class="item-title">工程被外部修改或删除 <span class="badge new">新增状态 UI</span></div>
+          <p class="description">检测到当前工程文件变化后暂停自动覆盖保存，让用户选择重新加载、另存为或保留当前编辑。</p>
+          <p class="review">重点看：重载前二次确认；选择保留时编辑仍可继续，自动保存保持暂停。</p>
+          <code>web/editor/io/editor-server-save.js · desktop/src/main.cjs</code>
+        </div>
+      </article>
+      <article class="item">
+        <input type="checkbox" aria-label="核对媒体丢失和重新定位">
+        <div>
+          <div class="item-title">媒体丢失与重新定位提示 <span class="badge new">新增状态 UI</span></div>
+          <p class="description">媒体文件不可用时提示原因，字幕工程仍可编辑；用户可通过原有「加载媒体」重新关联。</p>
+          <p class="review">重点看：媒体缺失不阻止保存字幕；重新关联不覆盖未保存的字幕编辑。</p>
+          <code>web/editor/io/editor-server-save.js · web/editor/media/editor-wiring-media-inputs.js</code>
+        </div>
+      </article>
+      <article class="item">
+        <input type="checkbox" aria-label="核对导出成功取消与失败反馈">
+        <div>
+          <div class="item-title">桌面导出完成反馈 <span class="badge changed">现有导出增强</span></div>
+          <p class="description">等待系统保存窗口实际落盘后报告成功；取消不显示失败，写入失败显示原因；成功后可定位或复制路径。</p>
+          <p class="review">重点看：连续两次导出各自对应正确结果，旧完整文件不被失败任务覆盖。</p>
+          <code>web/editor/io/editor-export-timeline.js · desktop/src/main.cjs</code>
+        </div>
+      </article>
+    </section>
+
+    <aside class="reference">
+      <h2>样式参照：不是本轮新增</h2>
+      <p>工具栏的「保存工程 ▾ → 另存为…」已经使用编辑器通用的 <code>.dropdown-menu / .dropdown-item</code>。这次会复用同一套菜单交互和样式令牌；只为标题栏菜单保留必要的锚点位置与窄菜单宽度规则。</p>
+      <p><code>web/editor-template.html · #save-project-dropdown</code></p>
+    </aside>
+
+    <footer>生成于 2026-10-09 · 清单范围：当前 merge/starlit-main 中 MOSE / Electron 桌面文件与路径体验的可见 UI。后端接口、缓存和内部状态字段不作为独立 UI 条目。</footer>
+  </main>
+</body>
+</html>

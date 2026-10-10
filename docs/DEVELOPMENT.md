@@ -39,7 +39,7 @@ MAW + MOSE 套件中的 Electron MOSE 优先复用这套 Server。Launcher 主�
 
 ### MOSE Electron 开发与边界
 
-`desktop/src/main.cjs` 只负责窗口、单实例、工程参数、下载对话框、外链和它自己启动的 `MAW.exe` 生命周期；编辑器 UI 继续唯一来自 `web/`，后端继续来自 `server-editor/serve.py`。桌面模式使用 `--desktop-mode`、系统随机端口和 `MAW_DESKTOP_TOKEN`，所有内部请求必须经过桌面令牌保护。不要把 token 放入命令行或日志，也不要让 Electron 导航到本次启动 origin 之外的页面。
+`desktop/src/main.cjs` 负责窗口、单实例、工程参数、会话级文件引用、受限原生文件/目录对话框、下载落盘结果、关闭握手、外链和它自己启动的 `MAW.exe` 生命周期；编辑器 UI 继续唯一来自 `web/`，工程校验/保存/媒体准备继续来自 `server-editor/serve.py`。桌面模式使用 `--desktop-mode`、系统随机端口、页面令牌 `MAW_DESKTOP_TOKEN` 和主进程到 Server 的命令密钥 `MAW_DESKTOP_COMMAND_KEY`。路径敏感的桌面命令需要两个令牌；命令密钥不进入 renderer、页面请求头、命令行或日志。不要让 Electron 导航到本次启动 origin 之外的页面，也不要通过 IPC 接受 renderer 任意指定的读写路径。
 
 本地验证：在 `desktop/` 执行 `npm ci`、`npm test`、`npm run build` 与 `npm run smoke`；
 然后在仓库根目录运行 `scripts/stage-mose-bundle.ps1`，把完整 `dist/MAW` 与

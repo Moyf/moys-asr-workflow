@@ -32,6 +32,15 @@ else {
 MaweCuePanelState.resetCuePanelEditState();
 MaweCuePanel.captureCuePanelTextEditSnapshot();
 }
+
+async function waitForProjectSaveIdle(timeoutMs = 20000) {
+const deadline = Date.now() + timeoutMs;
+while (MaweServerSave.projectSaveInFlight || MaweServerSave.projectCheckpointInFlight) {
+if (Date.now() >= deadline) return false;
+await new Promise((resolve) => window.setTimeout(resolve, 50));
+}
+return true;
+}
 return;
 }
 const extension = Boolean(MaweInlineEdit.extensionEditingState);
@@ -88,6 +97,31 @@ const fingerprint = projectSaveFingerprint();
 const contentFingerprint = MaweState.segmentsFingerprint();
 MaweServerSave.projectSaveInFlight = true;
 try {
+if (MaweHost.desktop.available()) {
+const result = await MaweHost.desktop.command('saveProject', {
+  mode: 'current',
+  project: JSON.parse(projectJson),
+  expectedGeneration: MaweBoot.SERVER_CONFIG?.desktopGeneration,
+  expectedRevision: MaweBoot.SERVER_CONFIG?.desktopRevision,
+  backupLimit: MaweSettings.EDITOR_SETTINGS.projectBackupEnabled && (backupOnly || !silent)
+    ? MaweSettings.EDITOR_SETTINGS.projectBackupLimit : null,
+  backupOnly,
+});
+if (result.status !== 'ok') {
+  if (result.error?.code === 'PROJECT_CONFLICT' && MaweBoot.SERVER_CONFIG) {
+    MaweBoot.SERVER_CONFIG.desktopConflict = true;
+    void MaweServerSave.refreshDesktopStatus();
+  }
+  if (result.status !== 'cancelled') throw new Error(result.error?.message || '保存失败');
+  return false;
+}
+if (!backupOnly) {
+  MaweServerSave.updateDesktopBinding(result.data, { saved: true });
+  markProjectSaved(result.data.filename, result.data.backup, { silent, fingerprint, contentFingerprint });
+  if (result.data.warning) MaweHint.flashHint(result.data.warning, 'warning');
+}
+return true;
+}
 const saveUrl = MaweBoot.SERVER_CONFIG.saveUrl;
       const response = await MaweHost.server.fetch(saveUrl, {
         method: 'POST',
@@ -111,7 +145,7 @@ const saveUrl = MaweBoot.SERVER_CONFIG.saveUrl;
       // A stale browser tab can outlive the localhost process (the browser reports
       // ERR_CONNECTION_REFUSED). Offer a real file save so Ctrl+S never strands
       // completed edits, while making clear that the bound JSON was not overwritten.
-      if (!silent && error instanceof TypeError
+      if (!MaweHost.desktop.available() && !silent && error instanceof TypeError
           && confirm('无法连接本地编辑器服务器。是否改为导出工程文件，以免丢失改动？')) {
         const saved = await MaweExportTimeline.downloadFile(projectJson, `${MaweBoot.FILENAME_BASE}.mosp`, 'application/json', {
           desc: 'MOSE 工程文件', types: { 'application/json': ['.mosp', '.json'] }
@@ -152,6 +186,9 @@ markProjectSaved(MaweServerSave.projectFileHandle.name, null, { silent, fingerpr
   // 统一保存入口：句柄目标优先（最近一次新建/另存为选定的文件），否则写回服务器绑定工程。
   async function saveCurrentProject({ silent = false } = {}) {
     if (MaweServerSave.projectFileHandle) return saveProjectToHandle({ silent });
+    if (MaweHost.desktop.available() && !MaweServerSave.serverProjectSavingEnabled()) {
+      return saveProjectAsToFile();
+    }
     return saveProjectToServer({ silent });
   }
 
@@ -165,6 +202,44 @@ markProjectSaved(MaweServerSave.projectFileHandle.name, null, { silent, fingerpr
     if (MaweInlineEdit.extensionEditingState) MaweInlineEdit.finishExtensionEdit(true);
     MaweCuePanel.commitCuePanelEdit();
     const suggested = `${MaweBoot.FILENAME_BASE}.mosp`;
+    if (MaweHost.desktop.available()) {
+      if (MaweServerSave.projectSaveInFlight || MaweServerSave.projectCheckpointInFlight) return false;
+      flushInlineEditsForSave();
+      const projectJson = MaweJsonRepair.buildJson();
+      const fingerprint = projectSaveFingerprint();
+      const contentFingerprint = MaweState.segmentsFingerprint();
+      MaweServerSave.projectSaveInFlight = true;
+      try {
+        const hasBinding = MaweServerSave.serverProjectSavingEnabled();
+        const result = await MaweHost.desktop.command('saveProject', {
+          mode: hasBinding ? 'saveAs' : 'new',
+          project: JSON.parse(projectJson),
+          suggestedName: suggested,
+          language: window.MAWE_I18N?.language,
+          expectedGeneration: MaweBoot.SERVER_CONFIG?.desktopGeneration,
+          expectedRevision: MaweBoot.SERVER_CONFIG?.desktopRevision,
+          backupLimit: MaweSettings.EDITOR_SETTINGS.projectBackupEnabled
+            ? MaweSettings.EDITOR_SETTINGS.projectBackupLimit : null,
+        });
+        if (result.status === 'cancelled') return false;
+        if (result.status !== 'ok') {
+          if (result.error?.code === 'PROJECT_CONFLICT' && MaweBoot.SERVER_CONFIG) {
+            MaweBoot.SERVER_CONFIG.desktopConflict = true;
+            void MaweServerSave.refreshDesktopStatus();
+          }
+          throw new Error(result.error?.message || '另存为失败');
+        }
+        MaweServerSave.updateDesktopBinding(result.data, { saved: true });
+        markProjectSaved(result.data.filename, result.data.backup, { fingerprint, contentFingerprint });
+        MaweHint.flashHint(result.data.warning || '工程已保存到新位置', result.data.warning ? 'warning' : 'success');
+        return true;
+      } catch (error) {
+        MaweHint.flashHint(`保存失败：${error?.message || error}`, 'warning');
+        return false;
+      } finally {
+        MaweServerSave.projectSaveInFlight = false;
+      }
+    }
     // 无原生保存对话框的浏览器：退化为普通下载（文件名不可考，标题保持不变）。
     if (!MaweHost.files.hasSavePicker()) {
       await MaweExportTimeline.downloadFile(MaweJsonRepair.buildJson(), suggested, 'application/json', {
@@ -197,6 +272,20 @@ markProjectSaved(MaweServerSave.projectFileHandle.name, null, { silent, fingerpr
 
 
 
+  // Electron close/switch handshakes wait for an in-flight save transaction.
+  // Do not allow the caller to proceed if the save UI or disk write is still
+  // active when the bounded wait expires.
+  async function waitForProjectSaveIdle(timeoutMs = 60_000) {
+    const deadline = Date.now() + Math.max(0, Number(timeoutMs) || 0);
+    while (MaweServerSave.projectSaveInFlight || MaweServerSave.projectCheckpointInFlight) {
+      if (Date.now() >= deadline) return false;
+      await new Promise((resolve) => setTimeout(resolve, 25));
+    }
+    return true;
+  }
+
+
+
   const mediaNameEl = document.getElementById('media-name');
 
 
@@ -216,6 +305,8 @@ saveProjectToHandle,
 saveCurrentProject,
 saveProjectAsToFile,
 inlineEditHasUncommittedText,
+flushInlineEditsForSave,
+waitForProjectSaveIdle,
 mediaNameEl,
 jsonNameEl,
 translatedEditorText

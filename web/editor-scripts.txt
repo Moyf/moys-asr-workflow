@@ -11,6 +11,7 @@ editor/state/editor-view-updates.js
 editor/state/editor-commands.js
 shared/host/storage.js
 shared/host/files.js
+shared/host/desktop.js
 shared/host/server-api.js
 editor/boot/editor-host.js
 shared/gap-remove-core.js
