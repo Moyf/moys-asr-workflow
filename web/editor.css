@@ -689,7 +689,7 @@
   .subtitle-overlay .subtitle-extension-text {
     --subtitle-preview-font-size: 16px;
     font-size: var(--subtitle-preview-font-size);
-    color: #ffd34d;
+    color: #eac953;
   }
   .player-wrap.empty-state .subtitle-overlay .subtitle-extension-text {
     background: transparent;
@@ -3007,8 +3007,8 @@
     35%, 75% { box-shadow: none; }
   }
   .multi-subtitle-split-text .multi-subtitle-split-char { display: inline-block; padding: 0 1px; }
-  .multi-subtitle-split-text .multi-subtitle-split-char.split-left { color: #ffd34d; }
-  .multi-subtitle-split-text .multi-subtitle-split-char.split-right { color: #78e08f; }
+  .multi-subtitle-split-text .multi-subtitle-split-char.split-left { color: #eac953; }
+  .multi-subtitle-split-text .multi-subtitle-split-char.split-right { color: #91e895; }
   .multi-subtitle-split-gap {
     display: inline-block; position: relative; width: auto; height: 1.8em;
     vertical-align: -0.35em; cursor: crosshair; white-space: pre;
@@ -3050,8 +3050,8 @@
   }
   .multi-subtitle-split-preview { min-height: 38px; padding-top: 9px; color: var(--text-secondary); white-space: pre-wrap; }
   .multi-subtitle-split-preview-line { margin-top: 4px; }
-  .multi-subtitle-split-preview-left { color: #ffd34d; }
-  .multi-subtitle-split-preview-right { color: #78e08f; }
+  .multi-subtitle-split-preview-left { color: #eac953; }
+  .multi-subtitle-split-preview-right { color: #91e895; }
   .multi-subtitle-split-preview-separator { color: var(--text-muted); padding: 0 2px; }
   .multi-subtitle-split-preview-label { color: var(--text-muted); }
   .multi-subtitle-split-preview.locked {
