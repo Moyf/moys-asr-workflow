@@ -18,7 +18,7 @@ from tests.test_local_editor_server import server_editor as server
 class DesktopEditorTests(unittest.TestCase):
     def setUp(self) -> None:
         self.temp = tempfile.TemporaryDirectory()
-        self.root = Path(self.temp.name)
+        self.root = Path(self.temp.name).resolve()
         self.editor = server.EditorServer(
             ("127.0.0.1", 0), server.ServerProject({"segments": []}, None, None, None, []),
             settings_path=self.root / "settings.json", no_waveform=True,
