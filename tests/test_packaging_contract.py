@@ -8,6 +8,8 @@ import tomllib
 import unittest
 from pathlib import Path
 
+from tests.launcher_sources import launcher_sources_text
+
 
 ROOT = Path(__file__).resolve().parents[1]
 
@@ -93,7 +95,7 @@ class PackagingContractTests(CompactContainerAssertions, unittest.TestCase):
         project = tomllib.loads(read_text("pyproject.toml"))
         version = project["project"]["version"]
         launcher_html = read_text("web/launcher/index.html")
-        launcher_js = read_text("web/launcher/launcher.js")
+        launcher_js = launcher_sources_text(ROOT)
         editor = read_text("edit.py")
 
         self.assertIn(f'id="appVersion">v{version}</span>', launcher_html)
