@@ -782,8 +782,8 @@ test('Custom provider labels and missing-key errors follow the selected language
 
   const customOption = page.locator('#postprocessProvider option[value="custom"]');
   const settingsCustomOption = page.locator('#llmProvider option[value="custom"]');
-  await expect(customOption).toHaveText('OpenAI 通用接口');
-  await expect(settingsCustomOption).toHaveText('OpenAI 通用接口');
+  await expect(customOption).toHaveText('自定义接口（或本地模型）');
+  await expect(settingsCustomOption).toHaveText('自定义接口（或本地模型）');
 
   await page.evaluate(() => document.getElementById('langEn').click());
   await expect(customOption).toHaveText('Custom API (or local model)');
@@ -861,7 +861,7 @@ test('LLM HTTP failures give provider-aware actions without showing the key', as
   await expect(page.locator('#llmSettingsSaveStatus')).toContainText('当前供应商：DeepSeek 官网');
   await expect(page.locator('#llmSettingsSaveStatus')).toContainText('API URL');
   await expect(page.locator('#llmSettingsSaveStatus')).toContainText('官方控制台');
-  await expect(page.locator('#llmSettingsSaveStatus')).toContainText('OpenAI 通用接口');
+  await expect(page.locator('#llmSettingsSaveStatus')).toContainText('自定义接口（或本地模型）');
   await expect(page.locator('#llmSettingsSaveStatus')).not.toContainText('正确配置模型名');
   await expect(page.locator('#llmSettingsSaveStatus')).not.toContainText('test-only-key');
 
@@ -887,7 +887,7 @@ test('LLM HTTP failures give provider-aware actions without showing the key', as
   await page.evaluate(() => { window.__llmFailureStatus = 401; window.__llmFailureProvider = 'custom'; });
   await page.locator('#testLlmConnection').click();
   await expect(page.locator('#llmSettingsSaveStatus')).toContainText('认证失败（HTTP 401');
-  await expect(page.locator('#llmSettingsSaveStatus')).toContainText('当前供应商：OpenAI 通用接口');
+  await expect(page.locator('#llmSettingsSaveStatus')).toContainText('当前供应商：自定义接口（或本地模型）');
   await expect(page.locator('#llmSettingsSaveStatus')).toContainText('API URL、API Key 是否来自同一服务商');
   await expect(page.locator('#llmSettingsSaveStatus')).toContainText('正确配置模型名');
   await expect(page.locator('#llmSettingsSaveStatus')).toContainText('请勿在错误报告中粘贴你的个人 API Key');

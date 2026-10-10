@@ -119,7 +119,7 @@ PRESETS: Final[tuple[LlmProviderPreset, ...]] = (
 
 def is_custom_slot(provider_id: str) -> bool:
     """custom / custom2 / custom3 共用「自定义接口（含本地）」的显示与存储行为。"""
-    return provider_id.startswith("custom")
+    return provider_id in {"custom", "custom2", "custom3"}
 
 
 def preset_by_id(provider_id: str) -> LlmProviderPreset:
@@ -401,7 +401,7 @@ def normalize_reasoning_mode(value: object) -> str:
 
 def _provider_family(settings: LlmSettings) -> str:
     provider = settings.provider_id.strip().lower()
-    if not provider.startswith("custom"):
+    if not is_custom_slot(provider):
         return provider
     url = settings.base_url.lower()
     if "dashscope.aliyuncs.com" in url or "maas.aliyuncs.com" in url:

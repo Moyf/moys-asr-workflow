@@ -32,7 +32,6 @@
   const TOOLBOX_MIN_WIDTH = 360;
   const TOOLBOX_MIN_HEIGHT = 320;
   const TOOLBOX_MAX_HEIGHT = 680;
-  const CUSTOM_DEFAULT_LABEL = "Custom API (incl. local)";
   const AUTO_STEP_ORDER = ["match", "replace", "proofread", "resegment", "ocr", "translate", "burn"];
   const AUTO_STEP_CHECKBOXES = {
     match: "autoStepMatch",
@@ -439,7 +438,7 @@
   }
 
   // custom / custom2 / custom3 是三个并列的「自定义接口」槽位，共用同一套显示与存储行为。
-  function isCustomSlot(item) { return String(item?.id || "").startsWith("custom"); }
+  function isCustomSlot(item) { return ["custom", "custom2", "custom3"].includes(String(item?.id || "")); }
   function customSlotLabelKey(item) {
     const suffix = String(item?.id || "").replace("custom", "");
     return suffix ? `llm_custom_provider_${suffix}` : "llm_custom_provider";
@@ -467,7 +466,7 @@
   }
 
   function providerLabel(item) {
-    if (isCustomSlot(item)) return item.displayName || t(customSlotLabelKey(item)) || item.defaultLabel || item.label || CUSTOM_DEFAULT_LABEL;
+    if (isCustomSlot(item)) return item.displayName || t(customSlotLabelKey(item)) || item.defaultLabel || item.label || t("llm_custom_provider");
     return item.label || item.defaultLabel || item.id;
   }
 

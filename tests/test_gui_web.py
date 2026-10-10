@@ -1565,7 +1565,7 @@ class GuiWebBridgeTests(CompactContainerAssertions, unittest.TestCase):
         launcher_script = (ROOT / "web" / "launcher" / "launcher.js").read_text(encoding="utf-8")
 
         needles = [
-            'function isCustomSlot(item) { return String(item?.id || "").startsWith("custom"); }',
+            'function isCustomSlot(item) { return ["custom", "custom2", "custom3"].includes(String(item?.id || "")); }',
             "function customSlotVisibleInToolbox(item)",
             'return !isCustomSlot(item) || item.id === "custom" || customSlotConfigured(item);',
             'if (select.id === "postprocessProvider" && !customSlotVisibleInToolbox(item)) return;',
@@ -1592,6 +1592,9 @@ class GuiWebBridgeTests(CompactContainerAssertions, unittest.TestCase):
             missing.append('index.html 缺少本地模型提示')
         if "OpenAI 通用接口" in launcher_script:
             missing.append("launcher.js 仍残留旧称谓")
+        for spec in (ROOT / "tests" / "e2e").glob("launcher*.spec.mjs"):
+            if "OpenAI 通用接口" in spec.read_text(encoding="utf-8"):
+                missing.append(f"{spec.name} 仍断言旧称谓")
         self.assertEqual(missing, [], f"更名契约缺失：{missing}")
 
     def test_toolbox_close_restores_trigger_focus_and_ffconcat_marks_its_input(self) -> None:
@@ -4865,7 +4868,7 @@ class LauncherAssetContractTests(CompactContainerAssertions, unittest.TestCase):
         self.assertIn('["deepseek", "zhipu", "qwen"].includes(providerId)', launcher_script)
         self.assertIn('官方控制台获取的 API Key', launcher_script)
         self.assertIn('第三方平台，请选择“自定义接口（或本地模型）”', launcher_script)
-        self.assertIn('当前供应商：自定义接口（或本地模型）。请核对供应商 API URL、API Key 是否来自同一服务商', launcher_script)
+        self.assertIn('当前供应商：{provider}。请核对供应商 API URL、API Key 是否来自同一服务商', launcher_script)
         self.assertIn('llm_custom_provider: "自定义接口（或本地模型）"', launcher_script)
         self.assertIn('llm_custom_provider: "Custom API (or local model)"', launcher_script)
         self.assertIn('llm_local_model_hint:', launcher_script)
