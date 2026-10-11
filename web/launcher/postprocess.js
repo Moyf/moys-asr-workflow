@@ -450,7 +450,13 @@
     return suffix ? `llm_custom_provider_${suffix}` : "llm_custom_provider";
   }
 
-  /** 重建两个供应商下拉：两处都显示全部槽位（未配置的自定义槽位也能选中补填）。 */
+  // 工具箱下拉只显示已填 URL 的 #2/#3 槽位；首个自定义槽位与设置页（补填入口）始终全量。
+  function customSlotVisibleInToolbox(item) {
+    if (!isCustomSlot(item) || item.id === "custom") return true;
+    return Boolean(item.hasBaseUrl);
+  }
+
+  /** 重建两个供应商下拉：设置页显示全部槽位（未配置的也能选中补填），工具箱隐藏未填 URL 的 #2/#3。 */
   function fillProviderSelects(preferredProviderId = "") {
     const providers = window.MAWLauncher.config?.postprocessProviders || [];
     [$("postprocessProvider"), $("llmProvider")].forEach((select) => {
@@ -458,6 +464,7 @@
       const previous = select.value || preferredProviderId;
       select.innerHTML = "";
       providers.forEach((item) => {
+        if (select.id === "postprocessProvider" && !customSlotVisibleInToolbox(item)) return;
         select.add(new Option(providerLabel(item), item.id));
       });
       const target = previous || preferredProviderId;
@@ -1932,7 +1939,8 @@
     const plan = window.MAWLauncher.config?.postprocessAutoPlan || defaultAutoPlan();
     applyAutoPostprocessPlan(plan);
     const providerId = (plan.steps || []).find((step) => step.enabled && step.providerId)?.providerId;
-    if (providerId && provider(providerId)) {
+    // 记住的供应商若已不在工具箱下拉（如未填 URL 的 #2/#3），保持默认选中，避免工具箱与表单不一致。
+    if (providerId && Array.from($("postprocessProvider").options).some((option) => option.value === providerId)) {
       $("postprocessProvider").value = providerId;
       renderProvider(providerId);
     }
@@ -2168,7 +2176,8 @@
   }
 
   async function saveSettings() {
-    const item = provider();
+    // 设置页操作以设置页下拉为准：工具箱与设置页解耦后两者可以不同（如补填未配置的 #2/#3）。
+    const item = provider($("llmProvider").value);
     const result = await bridge("save_postprocess_settings", {
       providerId: item.id,
       apiKey: $("llmApiKey").value.trim(),
@@ -2209,7 +2218,7 @@
     $("testLlmConnection").disabled = true;
     $("getLlmModels").disabled = true;
     try {
-      const item = provider();
+      const item = provider($("llmProvider").value);
       const result = await bridge("test_postprocess_connection", {
         providerId: item.id,
         apiKey: $("llmApiKey").value.trim(),
@@ -2254,7 +2263,7 @@
     $("testLlmConnection").disabled = true;
     $("getLlmModels").disabled = true;
     try {
-      const item = provider();
+      const item = provider($("llmProvider").value);
       const result = await bridge("get_postprocess_models", {
         providerId: item.id,
         apiKey: $("llmApiKey").value.trim(),
@@ -2607,7 +2616,7 @@
   });
   $("postprocessProvider").addEventListener("change", () => { renderProvider(); rememberProviderForTask($("postprocessOperation").value, $("postprocessProvider").value); renderAutoPostprocessState(); persistAutoPlanSoon(); });
   $("postprocessOperation").addEventListener("change", () => switchLlmOperation($("postprocessOperation").value));
-  $("llmProvider").addEventListener("change", () => { $("postprocessProvider").value = $("llmProvider").value; renderProvider(); rememberProviderForTask($("postprocessOperation").value, $("llmProvider").value); renderAutoPostprocessState(); persistAutoPlanSoon(); });
+  $("llmProvider").addEventListener("change", () => { renderProvider($("llmProvider").value); rememberProviderForTask($("postprocessOperation").value, $("llmProvider").value); renderAutoPostprocessState(); persistAutoPlanSoon(); });
   $("saveLlmSettings").addEventListener("click", () => { void saveSettings(); });
   $("testLlmConnection").addEventListener("click", testConnection);
   $("getLlmModels").addEventListener("click", getModels);

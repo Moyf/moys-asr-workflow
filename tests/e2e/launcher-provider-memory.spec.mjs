@@ -33,3 +33,29 @@ test('DeepSeek links to AI Processing and translation restores its own provider'
   expect(plan.steps.find(step => step.id === 'translate').providerId).toBe('qwen');
   expect(plan.steps.find(step => step.id === 'proofread').providerId).toBe('deepseek');
 });
+
+test('toolbox hides custom slots #2/#3 until a URL is saved', async ({ page }) => {
+  await page.goto(launcherUrl);
+  await page.waitForFunction(() => window.MAWLauncher?.config?.postprocessProviders?.length);
+  const optionValues = (selector) => page.evaluate(
+    sel => Array.from(document.querySelectorAll(`${sel} option`)).map(option => option.value),
+    selector,
+  );
+
+  // 默认未配置：工具箱只保留首个自定义槽位，设置页仍列出全部槽位作为补填入口。
+  expect(await optionValues('#postprocessProvider')).toContain('custom');
+  expect(await optionValues('#postprocessProvider')).not.toContain('custom2');
+  expect(await optionValues('#postprocessProvider')).not.toContain('custom3');
+  expect(await optionValues('#llmProvider')).toEqual(expect.arrayContaining(['custom', 'custom2', 'custom3']));
+
+  // 在设置页给 custom2 填 URL 保存后，工具箱下拉出现该槽位；custom3 仍未配置，继续隐藏。
+  await page.locator('#settingsButton').click();
+  await page.locator('#settingsLlmTab').click();
+  await page.locator('#llmProvider').selectOption('custom2');
+  await page.locator('#llmBaseUrl').fill('http://127.0.0.1:1234/v1');
+  await page.locator('#llmModel').fill('local-model');
+  await page.locator('#saveLlmSettings').click();
+  await expect(page.locator('#postprocessProvider option[value="custom2"]')).toHaveCount(1);
+  await expect(page.locator('#postprocessProvider option[value="custom3"]')).toHaveCount(0);
+  expect(await optionValues('#llmProvider')).toEqual(expect.arrayContaining(['custom', 'custom2', 'custom3']));
+});
