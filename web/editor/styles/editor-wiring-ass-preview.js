@@ -208,7 +208,10 @@ function applyAssSubtitlePreview({ tMs, segment, extension, overlay, overlaySegm
   const extensionMargins = {
     left: Math.max(0, Number(extensionStyleBase.marginL) || 0),
     right: Math.max(0, Number(extensionStyleBase.marginR) || 0),
-    vertical: Math.max(0, Number(extensionStyleBase.marginV) || 0),
+    // 副字幕锚定在主字幕上方：边距 = 主字幕垂直边距 + 1.2 × 主字号，
+    // 与导出侧的固化公式一致；副字幕样式自身的 marginV 不再决定位置。
+    vertical: Math.max(0, Number(margins.vertical) || 0)
+      + Math.round(1.2 * assPreviewExportFontSize(baseStyle, metrics)),
   };
   // 叠加轨导出引用颜色样式名（无颜色时回落）；预览按同一映射
   // 应用 ass_color_style 的调色板变体，保持与导出一致。

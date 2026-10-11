@@ -687,6 +687,8 @@
   }
   .subtitle-overlay span.hidden { display: none; }
   .subtitle-overlay .subtitle-extension-text {
+    /* 副字幕显示在主字幕上方（与 ASS 预览/导出的锚定方向一致）。 */
+    order: -1;
     --subtitle-preview-font-size: 16px;
     font-size: var(--subtitle-preview-font-size);
     color: #eac953;
@@ -997,8 +999,8 @@
     display: grid; gap: 8px; width: 100%; min-width: 0;
   }
   .subtitle-preview-settings-fields[hidden] { display: none; }
-  .ass-style-fields.ass-style-fields-text-size { grid-template-columns: repeat(2, minmax(0, 1fr)); }
-  .ass-style-fields.ass-style-fields-special { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+  .ass-style-fields.ass-style-fields-text-size { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+  .ass-style-fields.ass-style-fields-special { grid-template-columns: repeat(4, minmax(0, 1fr)); }
   #ass-inline-text-title[hidden] { display: none; }
   .ass-inline-text-content { display: flex; flex-direction: column; gap: 8px; }
   .ass-inline-text-options[hidden] { display: none; }
@@ -1259,7 +1261,7 @@
   .editor-settings-window-close:focus-visible { outline: 2px solid var(--accent-line); outline-offset: 1px; }
   .editor-settings-window-body { display: flex; flex: 1 1 auto; min-height: 0; }
   .editor-settings-nav {
-    display: flex; flex: 0 0 auto; flex-direction: column; align-items: stretch; gap: 8px;
+    display: flex; flex: 0 0 auto; flex-direction: column; align-items: stretch; gap: 2px;
     width: 132px; min-height: 0; padding: 10px 8px;
     overflow-x: hidden; overflow-y: auto; overscroll-behavior: contain;
     background: var(--bg-raised); border-right: 1px solid var(--border-subtle);
@@ -1282,6 +1284,17 @@
     border-color: var(--accent);
   }
   .editor-settings-pages { flex: 1 1 auto; min-width: 0; padding: 10px 12px; overflow-y: auto; }
+  /* 设置搜索框：位于分区导航顶部，跨两个设置窗口匹配。 */
+  .editor-settings-search {
+    margin: 2px 2px 8px; padding: 5px 8px; box-sizing: border-box; width: calc(100% - 4px);
+    color: var(--text-primary); background: var(--bg-input);
+    border: 1px solid var(--border); border-radius: var(--radius-sm);
+    font-size: 12px;
+    transition: border-color var(--t-fast), box-shadow var(--t-fast);
+  }
+  .editor-settings-search:focus { outline: none; border-color: var(--accent); box-shadow: var(--focus-ring); }
+  /* 搜索命中高亮：与 flashSettingsTarget 同族，但不自动消失，清空搜索才移除。 */
+  .settings-search-hit { box-shadow: 0 0 0 2px var(--accent-line); border-radius: var(--radius-sm); }
   .editor-settings-page { display: flex; flex-direction: column; gap: 8px; }
   .editor-settings-region-card { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 12px; border: 1px solid var(--border-subtle); border-radius: var(--radius-md); }
   .editor-settings-region-card > div { min-width: 0; }
@@ -1308,12 +1321,9 @@
   .editor-settings-item[hidden] { display: none; }
   .editor-settings-sub-group > label.toggle.editor-settings-item { flex: 0 0 100%; }
   .editor-settings-field {
-    display: flex; flex: 0 0 100%; flex-direction: column; align-items: flex-start; gap: 8px;
+    display: flex; flex: 0 0 100%; flex-direction: column; align-items: flex-start;
     min-width: 0;
   }
-  #editor-settings-page-general .editor-settings-field,
-  #editor-settings-page-subtitle-preview .editor-settings-field,
-  #editor-settings-page-export .editor-settings-field { gap: 8px; }
   .editor-settings-field[hidden] { display: none; }
   .sticker-root-controls { display: flex; flex: 0 0 100%; gap: 8px; min-width: 0; }
   .editor-settings-panel .sticker-root-controls input[type="text"] { flex: 1 1 auto; width: auto; min-width: 0; }
@@ -1406,6 +1416,9 @@
     display: flex; flex-wrap: wrap; align-items: center; gap: 8px;
     max-width: 100%;
   }
+  .split-trim-symbol-caption {
+    color: var(--text-secondary); font-size: 12px; white-space: nowrap;
+  }
   .split-trim-symbol-row > .split-trim-symbol-grid { flex: 0 1 auto; }
   .split-trim-symbol-row > #split-trim-symbols-reset {
     margin-left: auto; padding: 3px 10px; font-size: 12px;
@@ -1432,7 +1445,12 @@
     gap: 4px; min-width: 0; max-width: 100%;
   }
   .split-join-mode-hint-group[hidden] { display: none; }
-  .split-join-mode-hint-group > #merge-join-mode-text { white-space: nowrap; }
+  /* 类型说明可能很长（英文本地化尤甚），允许在容器宽度内换行。 */
+  .split-join-mode-hint-group > #merge-join-mode-text {
+    white-space: normal;
+    overflow-wrap: anywhere;
+    min-width: 0;
+  }
   .split-join-mode-switch {
     background: none; border: none; padding: 0;
     color: var(--accent); cursor: pointer;
@@ -1527,6 +1545,13 @@
   .editor-settings-panel button:disabled,
   .editor-settings-panel select:disabled,
   .editor-settings-panel input:disabled { opacity: .42; cursor: not-allowed; }
+  /* inline action 跳转后的目标提示：所在分组边框闪烁三次（flashSettingsTarget）。 */
+  @keyframes settings-flash-ring {
+    0%, 100% { box-shadow: 0 0 0 0 transparent; }
+    12%, 45%, 78% { box-shadow: 0 0 0 2px var(--accent-line); }
+    28%, 62% { box-shadow: 0 0 0 2px transparent; }
+  }
+  .settings-flash { animation: settings-flash-ring 1.5s ease; border-radius: var(--radius-md); }
   .editor-settings-stepper {
     display: inline-flex; align-items: center; overflow: hidden;
     border: 1px solid var(--border); border-radius: var(--radius-sm);
@@ -1772,8 +1797,10 @@
   .ass-style-preview-label { position: relative; z-index: 1; color: var(--text-secondary); font: 12px var(--font-mono); letter-spacing: .12em; text-transform: uppercase; }
   .ass-style-preview-actions { margin: 0; line-height: 1.7; }
   .ass-style-preview-actions:has(button[hidden]) { display: none; }
+  /* 样例画布按字号/描边实际尺寸渲染；宽于卡片时允许裁切（卡片可横向滚动），
+     不再 max-width 压缩——横向挤压会让预览与实际 ASS 效果对不上。 */
   #ass-style-preview-sample {
-    position: relative; z-index: 1; display: block; margin: 0 auto; max-width: 100%;
+    position: relative; z-index: 1; display: block; margin: 0 auto;
   }
   #ass-profile-preview-summary { position: relative; z-index: 1; color: var(--text-primary); font-size: 12px; line-height: 1.5; }
   /* 「当前方案」是纯文字摘要：底色跟随明暗模式，去掉胶片网格，
@@ -3455,7 +3482,7 @@
   }
   .gap-remove-close:hover { color: var(--gap-close-hover-fg); background: var(--gap-close-hover-bg); border-color: var(--gap-close-hover-border); }
   .gap-remove-close:focus-visible { outline: 2px solid var(--amber-line); outline-offset: 1px; }
-  .gap-remove-panel-body { min-height: 0; overflow-y: auto; padding: 14px; }
+  .gap-remove-panel-body { min-height: 0; overflow-y: auto; padding: 2px 14px 14px; }
   .gap-remove-parameters-heading {
     display: flex; align-items: baseline; justify-content: space-between; gap: 10px; margin: 0 1px 7px;
   }
@@ -3957,7 +3984,8 @@
    间距约定：区块之间保持 ≥8px 垂直间隔；.gap-remove-field 自带 0 外边距，
    由本区块的容器 gap / margin-top 负责分隔。 */
 .markers-panel { width: min(470px, calc(100vw - 24px)); }
-.markers-actions { margin-top: 8px; display: flex; flex-wrap: wrap; gap: 8px; justify-content: flex-start; }
+.markers-actions { margin-top: 8px; display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 8px; }
+.markers-actions-primary { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
 .markers-batch-actions { margin-top: 8px; display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
 .markers-batch-actions[hidden] { display: none; }
 #markers-selection-summary { color: var(--text-secondary); font-size: 11px; }
@@ -4007,7 +4035,7 @@
 .markers-filter-item select:focus { outline: none; border-color: var(--accent); box-shadow: var(--focus-ring); }
 .markers-show-notes input { margin: 0; accent-color: var(--accent); cursor: pointer; }
 .markers-item-note {
-  grid-column: 1 / -1; min-width: 0; margin-top: 8px; padding: 0 9px 9px;
+  grid-column: 1 / -1; min-width: 0; padding: 0 9px 9px;
   color: var(--text-muted); font-size: 11px; line-height: 1.5;
   white-space: pre-wrap; overflow-wrap: anywhere;
 }
@@ -4031,6 +4059,8 @@
   color: inherit; background: transparent; border: 0; cursor: pointer; text-align: left;
 }
 .markers-item-main:hover { background: var(--btn-bg-hover); }
+/* 行内任意位置 hover 时，高亮同步覆盖到右侧「编辑 / 完成」按钮，整行一体。 */
+.markers-item:hover .markers-item-edit { background: var(--btn-bg-hover); }
 .markers-item-main:focus-visible { outline: 2px solid var(--accent-line); outline-offset: -2px; }
 .markers-item-edit {
   padding: 0 10px; margin: 4px; align-self: stretch;

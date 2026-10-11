@@ -23,8 +23,8 @@
     '中调整；色板是本机偏好，随编辑器复用。': '; the palette is a personal preference reused across sessions.',
     '打开全局设置的调色板页': 'Open the palette page in Global settings',
     '工程颜色的呈现与说话人映射在': 'Project color presentation and speaker mappings are configured in ',
-    '可以在 [': 'Configure the speaker mapping toggle and related options in [',
-    '] 中配置说话人映射开关等。': '].',
+    '可以在': 'Configure the speaker mapping toggle and related options in ',
+    '中配置说话人映射开关等。': '.',
     '颜色与说话人': 'Colors and speakers',
     '中配置，随当前工程保存。': ' and are saved with the current project.',
     '打开工程设置的颜色与说话人页': 'Open the colors-and-speakers page in Project settings',
@@ -54,8 +54,14 @@
     '工程目录': 'Project directory',
     '表情包目录': 'Sticker directory',
     '对齐到帧': 'Snap to frames',
-    '在 [工程设置] 中配置当前工程的 FPS 和时间单位。': 'Configure the current project’s FPS and time unit in [Project settings].',
+    '当前工程的 FPS 和时间单位在': 'The current project’s FPS and time unit are configured in ',
+    '你可以在': 'You can configure the subtitle language type in ',
+    '中配置。': '.',
     '英文按词拆，中文按字拆。': 'English splits by word; Chinese splits by character.',
+    '显示字词时间码': 'Show word timings', '显示标记轨道': 'Show marker track',
+    '预设符号': 'Preset symbols',
+    '搜索设置…': 'Search settings…',
+    '搜索设置（跨全局设置与工程设置）': 'Search settings (across global and project settings)',
     '应用': 'Apply',
     '覆盖默认文件夹': 'Override the default folder',
     '外观与显示内容': 'Appearance and content',
@@ -413,7 +419,7 @@
     '用 FFmpeg (libass) 渲染当前播放位置的实际 ASS 画面': 'Render the actual ASS frame at the playhead with FFmpeg (libass)',
     '📷 ASS 实际画面': '📷 ASS actual frame', '关闭 ASS 实际画面预览': 'Close ASS actual-frame preview',
     'ASS 实际画面预览': 'ASS actual-frame preview',
-    '如果想要查看当前画面的实际 ASS 字幕效果，可以': 'To see the actual ASS subtitle rendering for the current frame,',
+    '如果想要查看当前画面实际的 ASS 字幕效果，可以': 'To see the actual ASS subtitle rendering for the current frame,',
     '打开 ASS 实际画面预览窗口': 'open the ASS actual-frame preview window',
     '编辑 ASS 字幕样式': 'Edit ASS subtitle styles',
     '点击下方按钮，用 libass 渲染当前播放位置的实际画面。': 'Click the button below to render the actual frame at the playhead with libass.',
@@ -504,6 +510,8 @@
     '_下划线_ 和 ~删除线~（也支持 ~~）可局部添加文字装饰。': '_Underline_ and ~strikethrough~ (also ~~) apply local text decoration.',
     '启用（* 或 **）': 'Enabled (* or **)',
     '需要调整强调色或者字体比例，可以前往': 'To adjust the emphasis color or font scale, go to', '编辑特殊文本样式': 'Edit special text styles',
+    // inline action 之后的中文句号是独立文本节点；英文界面同样要变英文句号。
+    '。': '.',
     '符号规则': 'Symbol rule', '无': 'None', '双符号': 'Double symbols', '单双皆可': 'Single or double symbols', '单双符号': 'Single or double symbols',
     '符号规则已关闭，字幕中的符号将保留原文。': 'Symbol rules are off; symbols in subtitles keep their literal text.',
     '特殊文本样式': 'Special text styles', '特殊文本': 'Special text',
@@ -515,6 +523,10 @@
     '你可以使用 *强调*、~删除~、-缩小-、+放大+ 等符号来对特定字词添加特殊样式。': 'Use *emphasis*, ~strike~, -smaller-, and +larger+ to apply special styles to individual words.',
     '你可以使用 **强调**、~~删除~~、--缩小--、++放大++ 等符号来对特定字词添加特殊样式。': 'Use **emphasis**, ~~strike~~, --smaller--, and ++larger++ to apply special styles to individual words.',
     '你可以使用 *强调*/**强调**、~删除~/~~删除~~、-缩小-/--缩小--、+放大+/++放大++ 等符号来对特定字词添加特殊样式。': 'Use *emphasis*/**emphasis**, ~strike~/~~strike~~, -smaller-/--smaller--, and +larger+/++larger++ to apply special styles to individual words.',
+    '你可以使用 **强调**、~~删除~~、--缩小--、++放大++、//注释// 等符号来对特定字词添加特殊样式。': 'Use **emphasis**, ~~strike~~, --smaller--, ++larger++, and //comment// to apply special styles to individual words.',
+    '你可以使用 *强调*/**强调**、~删除~/~~删除~~、-缩小-/--缩小--、+放大+/++放大++、//注释// 等符号来对特定字词添加特殊样式。': 'Use *emphasis*/**emphasis**, ~strike~/~~strike~~, -smaller-/--smaller--, +larger+/++larger++, and //comment// to apply special styles to individual words.',
+    '注释': 'Comment', '注释色': 'Comment color', '注释样式': 'Comment style', '注释文字比例': 'Comment text scale',
+    '//注释//': '//comment//',
     '强调文本': 'Emphasis text', '强调文本语法': 'Emphasis syntax', '文字放大比例': 'Text scale', '强调样式': 'Emphasis style',
     '左右添加字符预设': 'Character wrapping presets',
     '左右添加字符': 'Wrap with characters', '自定义左右字符': 'Custom wrap characters',
@@ -1551,7 +1563,8 @@
     if (element.closest?.(ATTRIBUTE_SKIP_SELECTOR)) return;
     if (!attributeOriginals.has(element)) attributeOriginals.set(element, {});
     const originals = attributeOriginals.get(element);
-    ['title', 'placeholder', 'aria-label'].forEach((name) => {
+    // data-title 是共享 tooltip 的转存属性：语言切换时气泡文本需同步跟随。
+    ['title', 'placeholder', 'aria-label', 'data-title'].forEach((name) => {
       if (!element.hasAttribute?.(name)) return;
       const current = element.getAttribute(name);
       if (!(name in originals)) {
@@ -1587,8 +1600,9 @@
     const button = document.getElementById('language-toggle');
     if (!button) return;
     button.textContent = language === ZH ? '🌐English' : '🌐中文';
-    button.title = language === ZH ? 'Switch to English' : '切换为中文';
-    button.setAttribute('aria-label', button.title);
+    const hint = language === ZH ? 'Switch to English' : '切换为中文';
+    button.title = hint;
+    button.setAttribute('aria-label', hint);
   }
 
   function applyLanguage(nextLanguage, persist = true) {

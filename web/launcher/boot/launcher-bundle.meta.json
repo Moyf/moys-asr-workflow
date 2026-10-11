@@ -23,15 +23,15 @@
   ],
   "esmFactories": 0,
   "inputs": {
-    "launcher/i18n/launcher-strings.js": "b2c3a4f66b077ef411b7e482a3280325f379c6122f47e60def5f3bedde0ee5e0",
-    "launcher/boot/launcher-state.js": "42f784e687518a211bb51bfcb65b286d4a473f978937ef52c1ef59433b8c3e65",
+    "launcher/i18n/launcher-strings.js": "dee4315246efdf5d78b6696ce7e2460a5b6d4773dbd0fde6ad4a815c91ab779d",
+    "launcher/boot/launcher-state.js": "db527e00c898bdc868833571a3fd6422a0d385230d2a40cafc73b77e76dc217c",
     "launcher/boot/launcher-mock-api.js": "eb9c6c1463aebc277cb16bcb91dbe4fc3d016c2f299bbda57c4956b7a75d6d15",
-    "launcher/i18n/launcher-labels.js": "966c0310dc5f70088c733402be218325af7166d81c92ba7be9184cffb80062e6",
+    "launcher/i18n/launcher-labels.js": "24956cc043102404828123a49285a50fd70d2ffe07b054d610d5c04d48e3559c",
     "launcher/forms/launcher-form-base.js": "8702d5d2981755634ed307da79755f5b59c69c19add7895438f5622991b9054c",
     "launcher/errors/launcher-errors.js": "1a5072a75d36239d2e4e551d0ec7f5a382b9526af5d936206c4438911d130f1f",
     "launcher/server/launcher-server-monitor.js": "f00cdb0f4a20dff2c3e03cb9981d3128e93bf97fa3590db6aa3b2595e7fc956d",
     "launcher/boot/launcher-theme-bridge.js": "97bb678e70eefd4fd5e1c97664f4e4c563ffdfc69dd2c66cfce39b5db36ab7fe",
-    "launcher/forms/launcher-form-sync.js": "89158670d291cab1f7c5cfa9563aa63342f113ca059e92ee7fff5cbceb6b8020",
+    "launcher/forms/launcher-form-sync.js": "5ee6fbb60c7b7b2a9cceedb6175595b4e00d93353fc71e6d0291c88e06b1491c",
     "launcher/local/launcher-local-models.js": "8cdcafcb09efbb3ed6b6ccb585cb427910e09eadf0e0239a874ec5c6c0759127",
     "launcher/forms/launcher-provider-language.js": "bd674f5f189c75c2fafcf095010d4d477a4cc29492e3426c10755f267c2914ce",
     "launcher/presets/launcher-presets.js": "0f6380cbffac0d7b926873b08bf0e0ca1f44da4fddb7d2c897c967d4bd76417d",
@@ -47,7 +47,7 @@
   "metafile": {
     "inputs": {
       "web/editor-entry.mjs": {
-        "bytes": 378007,
+        "bytes": 378279,
         "imports": [],
         "format": "esm"
       }
@@ -59,10 +59,10 @@
         "entryPoint": "web/editor-entry.mjs",
         "inputs": {
           "web/editor-entry.mjs": {
-            "bytesInOutput": 282664
+            "bytesInOutput": 282928
           }
         },
-        "bytes": 282690
+        "bytes": 282954
       }
     }
   }

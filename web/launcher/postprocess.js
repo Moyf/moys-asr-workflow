@@ -443,11 +443,8 @@
     const suffix = String(item?.id || "").replace("custom", "");
     return suffix ? `llm_custom_provider_${suffix}` : "llm_custom_provider";
   }
-  /** 槽位是否已填写 Base URL 与模型名；未配置的自定义槽位不出现在工具箱下拉里。 */
-  function customSlotConfigured(item) { return Boolean(item.hasBaseUrl && item.hasModel); }
-  function customSlotVisibleInToolbox(item) { return !isCustomSlot(item) || item.id === "custom" || customSlotConfigured(item); }
 
-  /** 重建两个供应商下拉：设置页显示全部槽位，工具箱只显示已配置的自定义槽位。 */
+  /** 重建两个供应商下拉：两处都显示全部槽位（未配置的自定义槽位也能选中补填）。 */
   function fillProviderSelects(preferredProviderId = "") {
     const providers = window.MAWLauncher.config?.postprocessProviders || [];
     [$("postprocessProvider"), $("llmProvider")].forEach((select) => {
@@ -455,7 +452,6 @@
       const previous = select.value || preferredProviderId;
       select.innerHTML = "";
       providers.forEach((item) => {
-        if (select.id === "postprocessProvider" && !customSlotVisibleInToolbox(item)) return;
         select.add(new Option(providerLabel(item), item.id));
       });
       const target = previous || preferredProviderId;
@@ -1580,7 +1576,8 @@
     }
     if (stepId === "burn") {
       const video = $("mediaPath").value.trim();
-      if (!video || !VIDEO_EXTS.has(extension(video))) return t("auto_step_hint_no_video");
+      if (!video) return t("auto_step_hint_burn_original");
+      if (!VIDEO_EXTS.has(extension(video))) return t("toolbox_green_screen");
       return fileName(video);
     }
     return "";
@@ -1636,8 +1633,9 @@
       return true;
     }
     if (stepId === "burn") {
-      const mediaPath = $("mediaPath").value.trim();
-      return Boolean(mediaPath && VIDEO_EXTS.has(extension(mediaPath)));
+      // 媒体文件不必预先填写：自动流程执行时直接使用转写的原始媒体；
+      // 原媒体是音频时后端按「绿幕视频」处理（见 postprocess_pipeline.py）。
+      return true;
     }
     return false;
   }

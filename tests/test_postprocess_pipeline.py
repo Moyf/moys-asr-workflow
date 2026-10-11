@@ -761,14 +761,22 @@ class PostprocessPipelineTests(CompactContainerAssertions, unittest.TestCase):
         self.assertIn("ocrVideoPath", fields)
 
     def test_validation_checks_burn_video_and_ffmpeg_dependencies(self) -> None:
+        # 自动流程的烧录直接使用转写原媒体：媒体不必是视频（音频按绿幕处理），
+        # 但文件必须存在；FFmpeg 缺失仍然独立报错。
         video = self.root / "clip.mp4"
         video.write_bytes(b"video")
         ffmpeg = self.root / "ffmpeg.exe"
         ffmpeg.write_bytes(b"ffmpeg")
         burn = {"id": "burn", "enabled": True}
 
-        _, errors = validate_plan(self.plan(burn), env_path=self.env_path, media_path=self.media, ffmpeg_path=None)
+        _, errors = validate_plan(self.plan(burn), env_path=self.env_path, media_path=self.root / "missing.mp4", ffmpeg_path=None)
         self.assertEqual([error["field"] for error in errors], ["mediaPath", "mediaPath"])
+
+        _, errors = validate_plan(self.plan(burn), env_path=self.env_path, media_path=self.media, ffmpeg_path=None)
+        self.assertEqual([error["field"] for error in errors], ["mediaPath"])
+
+        _, errors = validate_plan(self.plan(burn), env_path=self.env_path, media_path=self.media, ffmpeg_path=ffmpeg)
+        self.assertEqual(errors, ())
 
         _, errors = validate_plan(self.plan(burn), env_path=self.env_path, media_path=video, ffmpeg_path=ffmpeg)
         self.assertEqual(errors, ())

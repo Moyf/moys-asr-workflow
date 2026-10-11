@@ -14,6 +14,7 @@ import tempfile
 import time
 import webbrowser
 from urllib.error import HTTPError, URLError
+from urllib.parse import urlsplit
 from urllib.request import urlopen
 from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass, replace
@@ -933,7 +934,7 @@ class LauncherApi:
             model=str(payload.get("model") or "").strip() or file_values["model"] or preset.model,
             reasoning_mode=reasoning_mode,
         )
-        if not settings.api_key:
+        if not settings.api_key and _postprocess_api_key_required(preset.id, settings.base_url):
             return _error_result("postprocessApiKey", "api_key_missing", "Post-processing API key is required.")
         if not settings.base_url or not settings.model:
             detail = "LLM API URL and model are required."
@@ -992,7 +993,7 @@ class LauncherApi:
             base_url=str(payload.get("baseUrl") or "").strip() or file_values["baseUrl"] or preset.base_url,
             model=str(payload.get("model") or "").strip() or file_values["model"] or preset.model,
         )
-        if not settings.api_key:
+        if not settings.api_key and _postprocess_api_key_required(preset.id, settings.base_url):
             return _error_result("postprocessApiKey", "api_key_missing", "Post-processing API key is required.")
         try:
             models = list_llm_models(settings)
@@ -1217,7 +1218,7 @@ class LauncherApi:
             model=str(payload.get("model") or "").strip() or file_values["model"] or preset.model,
             reasoning_mode=reasoning_mode,
         )
-        if not settings.api_key:
+        if not settings.api_key and _postprocess_api_key_required(preset.id, settings.base_url):
             return _error_result("postprocessApiKey", "api_key_missing", "Post-processing API key is required.")
         if not settings.base_url or not settings.model:
             return {"ok": False, "field": "postprocessProvider", "code": "postprocess_failed", "detail": "LLM API URL and model are required.", "error": "LLM API URL and model are required."}
@@ -1313,7 +1314,7 @@ class LauncherApi:
             model=str(payload.get("model") or "").strip() or file_values["model"] or preset.model,
             reasoning_mode=reasoning_mode,
         )
-        if not settings.api_key:
+        if not settings.api_key and _postprocess_api_key_required(preset.id, settings.base_url):
             return _error_result("postprocessApiKey", "api_key_missing", "Post-processing API key is required.")
         if not settings.base_url or not settings.model:
             return {"ok": False, "field": "postprocessProvider", "code": "postprocess_failed", "detail": "LLM API URL and model are required.", "error": "LLM API URL and model are required."}
@@ -4130,6 +4131,32 @@ def _free_local_port() -> int:
 
 def _error_result(field: str, code: str, detail: str = "", *, context: object = None) -> dict[str, object]:
     return {"ok": False, "field": field, "code": code, "detail": detail, "error": ERROR_MESSAGES.get(code, detail or code), "errorContext": error_context(context)}
+
+
+_LOOPBACK_HOSTS: Final[frozenset[str]] = frozenset({"127.0.0.1", "localhost", "::1"})
+
+
+def _loopback_base_url(base_url: str) -> bool:
+    """True for loopback LLM endpoints (LM Studio / Ollama / vLLM defaults)."""
+    text = str(base_url or "").strip()
+    if not text:
+        return False
+    # 用户常省略 scheme（如 127.0.0.1:1234/v1）：urlsplit 会把它整体当 path，
+    # 这里按 HTTP 默认 scheme 补全后再解析 host。
+    if "://" not in text:
+        text = f"http://{text}"
+    try:
+        host = urlsplit(text).hostname or ""
+    except ValueError:
+        return False
+    return host.lower() in _LOOPBACK_HOSTS
+
+
+def _postprocess_api_key_required(preset_id: str, base_url: str) -> bool:
+    """自定义槽位指向本机推理服务（LM Studio 等）时允许 API Key 留空。"""
+    if not is_custom_slot(preset_id):
+        return True
+    return not _loopback_base_url(base_url)
 
 
 def _burn_crf_override(raw: object) -> int | None:

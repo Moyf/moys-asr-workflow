@@ -386,7 +386,7 @@ test('split trim chips and extra input drive shared trim behavior and persist', 
   await expect(extra).toHaveValue(', .');
 
   // 关闭全角逗号 chip 后，拆分修剪不再移除右缘全角逗号（半角逗号仍由文本框生效）。
-  const fullwidthCommaChip = grid.locator('label[title="全角逗号"]');
+  const fullwidthCommaChip = grid.locator('label[data-title="全角逗号"]');
   const fullwidthComma = grid.locator('input[value="，"]');
   await expect(fullwidthComma).toBeChecked();
   await fullwidthCommaChip.click();

@@ -109,14 +109,22 @@ export function createUtilsModule(dependencies) {
       if (options.assStrikeEnabled !== false) addMarkers('~', 'struck');
       if (options.assSmallTextEnabled !== false) addMarkers('-', 'small');
       if (options.assLargeTextEnabled !== false) addMarkers('+', 'large');
+      // 注释固定双符号 //：不随单双规则变化，也不接受单 /。
+      if (options.assCommentEnabled !== false) {
+        assMarkedRanges(source, '//').forEach(({ start, end }) => {
+          markers.set(start, { field: 'comment', active: true, width: 2 });
+          markers.set(end, { field: 'comment', active: false, width: 2 });
+        });
+      }
     }
     const runs = [];
     let content = '';
-    const active = { emphasized: 0, underlined: 0, struck: 0, small: 0, large: 0 };
+    const active = { emphasized: 0, underlined: 0, struck: 0, small: 0, large: 0, comment: 0 };
     const flush = () => {
       if (content) runs.push({ text: content, emphasized: active.emphasized > 0,
         underlined: active.underlined > 0, struck: active.struck > 0,
-        size: active.large > 0 ? 'large' : active.small > 0 ? 'small' : null });
+        size: active.large > 0 ? 'large' : active.small > 0 ? 'small' : null,
+        comment: active.comment > 0 });
       content = '';
     };
     for (let cursor = 0; cursor < source.length;) {
@@ -131,7 +139,7 @@ export function createUtilsModule(dependencies) {
       }
     }
     flush();
-    if (!runs.length) runs.push({ text: '', emphasized: false, underlined: false, struck: false, size: null });
+    if (!runs.length) runs.push({ text: '', emphasized: false, underlined: false, struck: false, size: null, comment: false });
     return runs;
   }
 
@@ -159,6 +167,9 @@ export function createUtilsModule(dependencies) {
     primaryColor: '#ffffff',
     emphasisColor: '#ffd34d',
     emphasisScale: 1.1,
+    commentColor: '#9aa4ad',
+    commentStyle: 'text',
+    commentScale: 1,
     smallTextScale: 0.8,
     largeTextScale: 1.5,
     emphasisStyle: 'text',
@@ -283,6 +294,10 @@ export function createUtilsModule(dependencies) {
       primaryColor: normalizeAssLibraryColor(source.primaryColor, fallback.primaryColor || '#ffffff'),
       emphasisColor: normalizeAssLibraryColor(source.emphasisColor, fallback.emphasisColor || '#ffd34d'),
       emphasisScale: Math.round(normalizeAssLibraryNumber(source.emphasisScale, fallback.emphasisScale ?? 1.1, 1, 1.5, false) * 20) / 20,
+      commentColor: normalizeAssLibraryColor(source.commentColor, fallback.commentColor || '#9aa4ad'),
+      commentStyle: ['text', 'stroke'].includes(source.commentStyle)
+        ? source.commentStyle : (fallback.commentStyle || 'text'),
+      commentScale: Math.round(normalizeAssLibraryNumber(source.commentScale, fallback.commentScale ?? 1, 0.5, 1.5, false) * 20) / 20,
       smallTextScale: Math.round(normalizeAssLibraryNumber(source.smallTextScale, fallback.smallTextScale ?? 0.8, 0.1, 1, false) * 20) / 20,
       largeTextScale: Math.round(normalizeAssLibraryNumber(source.largeTextScale, fallback.largeTextScale ?? 1.5, 1, 3, false) * 20) / 20,
       emphasisStyle: ['text', 'stroke'].includes(source.emphasisStyle)

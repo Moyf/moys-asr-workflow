@@ -1,8 +1,69 @@
+// 设置搜索：任一设置窗口的搜索框都在两个窗口的全部页面里匹配设置项文本；
+// 命中项高亮、自动跳到第一个命中的 tab（必要时打开对应窗口），清空即恢复。
+(function initSettingsSearch() {
+  'use strict';
+  const ITEM_SELECTOR = [
+    '.editor-settings-item',
+    '.editor-settings-field',
+    '.editor-settings-group-heading',
+    '.settings-panel-section',
+    '.editor-settings-hint',
+    '.settings-panel-title',
+  ].join(', ');
+  const inputs = [
+    document.getElementById('editor-settings-search'),
+    document.getElementById('project-settings-search'),
+  ].filter(Boolean);
+  if (!inputs.length) return;
+  const roots = ['#editor-settings-panel', '#project-settings-panel']
+    .map((selector) => document.querySelector(selector))
+    .filter(Boolean);
+  let searchTimer = 0;
+
+  function clearHits() {
+    document.querySelectorAll('.settings-search-hit').forEach((element) => element.classList.remove('settings-search-hit'));
+  }
+
+  function applySettingsSearch(query) {
+    clearHits();
+    const needle = query.trim().toLowerCase();
+    if (!needle) return;
+    let firstHit = null;
+    roots.forEach((root) => {
+      root.querySelectorAll(ITEM_SELECTOR).forEach((item) => {
+        if (item.closest('.editor-settings-nav')) return;
+        if (!(item.textContent || '').toLowerCase().includes(needle)) return;
+        item.classList.add('settings-search-hit');
+        if (!firstHit) firstHit = item;
+      });
+    });
+    if (!firstHit) return;
+    const tabId = firstHit.closest('.editor-settings-page')?.getAttribute('aria-labelledby');
+    if (tabId) MaweSettingsPanels.openEditorSettingsAtTab(tabId);
+    firstHit.scrollIntoView({ block: 'nearest' });
+  }
+
+  inputs.forEach((input) => {
+    input.addEventListener('input', () => {
+      clearTimeout(searchTimer);
+      searchTimer = setTimeout(() => applySettingsSearch(input.value), 140);
+    });
+    input.addEventListener('keydown', (event) => {
+      if (event.key !== 'Escape') return;
+      event.stopPropagation();
+      input.value = '';
+      applySettingsSearch('');
+      input.blur();
+    });
+  });
+})();
+
 document.querySelectorAll('[data-settings-region]').forEach((button) => {
   button.addEventListener('click', (event) => {
     event.preventDefault();
     event.stopPropagation();
     MaweSettingsPanels.openRegionalSettings(button.dataset.settingsRegion, button.dataset.settingsTarget);
+    MaweSettingsPanels.flashSettingsTarget(document.getElementById(button.dataset.settingsTarget || ''));
   });
 });
 document.querySelectorAll('[data-settings-page]').forEach((button) => {
@@ -12,6 +73,11 @@ document.querySelectorAll('[data-settings-page]').forEach((button) => {
     MaweSettingsPanels.openEditorSettingsAtTab(`editor-settings-tab-${button.dataset.settingsPage}`);
     const target = document.getElementById(button.dataset.settingsTarget || '');
     target?.scrollIntoView({ block: 'nearest' });
+    // 闪烁目标所在分组；未指定具体控件时闪目标页容器，给「跳转已发生」一个视觉反馈
+    //（两个设置弹窗同时打开时尤其重要）。
+    MaweSettingsPanels.flashSettingsTarget(
+      target || document.getElementById(`editor-settings-page-${button.dataset.settingsPage}`),
+    );
     const control = target?.matches('input, select, button') ? target
       : target?.nextElementSibling?.querySelector('input, select, button');
     control?.focus({ preventScroll: true });
@@ -178,9 +244,7 @@ if (MaweDom.helpTabButtons.length && MaweDom.helpTabPanels.length) {
 
 MaweDom.contextualHelpButtons.forEach((button) => {
   button.addEventListener('click', () => {
-    if (button.closest('#gap-remove-panel')) MaweGapRemoveUi.closeGapRemovePanel();
-    if (button.closest('#waveform-settings-panel')) MaweSettingsPanels.setWaveformSettingsPanelOpen(false);
-    if (button.closest('#editor-settings-panel')) MaweSettingsPanels.setEditorSettingsPanelOpen(false);
+    // 帮助是非模态浮窗：从设置弹窗打开帮助时保持弹窗，两者并存。
     MaweHelpPanel.openHelpAtTab(button.dataset.helpTabTarget);
   });
 });

@@ -225,7 +225,9 @@
 
   // 「左右添加字符」：在主字幕文本两端插入字符（支持多选批量）。插入一律双符号形式；
   // 已用同一对符号包裹的条目跳过，不重复包裹。
-  function applyWrapChars(scope, left, right, label = '左右添加字符') {
+  // warnWordTimings=false 时不再提示字词时间码失配：右键快捷包裹属于刻意
+  // 加装饰符号，字词时间码必然对不上，警告只会造成困扰。
+  function applyWrapChars(scope, left, right, label = '左右添加字符', { warnWordTimings = true } = {}) {
     if (MaweInlineEdit.editingState) MaweInlineEdit.finishEdit(true);
     const indexes = [...new Set((Array.isArray(scope) ? scope : [])
       .filter((index) => Number.isInteger(index) && index >= 0 && index < MaweBoot.DATA.segments.length))]
@@ -258,7 +260,7 @@
         skipped ? `已为 ${changed} 条字幕添加字符；${skipped} 条已包裹相同符号，已跳过` : `已为 ${changed} 条字幕添加字符`,
         'success',
       );
-      if (staleWordTimings) {
+      if (warnWordTimings && staleWordTimings) {
         MaweHint.flashHint(`${staleWordTimings} 条字幕的字词时间码文字未随字符添加更新，请按需检查`, 'warning');
       }
     });

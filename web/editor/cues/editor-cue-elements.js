@@ -34,20 +34,20 @@
   colorBar.classList.remove('has-color', 'is-ref');
   colorBar.style.removeProperty('--color-bar');
   colorBar.style.removeProperty('cursor');
-  colorBar.removeAttribute('title');
+  colorBar.title = '';
   delete colorBar.dataset.colorRefHeadIdx;
   el.classList.remove('has-color');
   el.style.removeProperty('--color-bar');
 
   if (seg.color) {
-    const value = MaweColors.colorValue(seg.color.name);
+    const value = MaweColors.colorCssValue(seg.color.name);
     colorBar.classList.add('has-color');
     colorBar.style.setProperty('--color-bar', value);
     el.classList.add('has-color');
     el.style.setProperty('--color-bar', value);
     colorBar.title = `颜色：${seg.color.name}`;
   } else if (seg.color_ref) {
-    const value = MaweColors.colorValue(seg.color_ref.name);
+    const value = MaweColors.colorCssValue(seg.color_ref.name);
     const headIndex = Number(seg.color_ref.headIdx);
     colorBar.classList.add('is-ref');
     colorBar.style.setProperty('--color-bar', value);

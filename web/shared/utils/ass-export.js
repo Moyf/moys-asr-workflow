@@ -71,9 +71,17 @@ export function createUtilsModule(dependencies) {
         startTags += `\\${tag}${assOverrideColorFromHex(style.emphasisColor)}`;
         endTags += `\\${tag}${assOverrideColorFromHex(baseColor)}`;
       }
+      // 注释 run 的颜色/比例覆盖在强调之后写入：同一 run 同时命中时注释优先。
+      if (run.comment) {
+        const tag = style.commentStyle === 'stroke' ? '3c' : '1c';
+        const baseColor = style.commentStyle === 'stroke' ? style.outlineColor : style.primaryColor;
+        startTags += `\\${tag}${assOverrideColorFromHex(style.commentColor)}`;
+        endTags += `\\${tag}${assOverrideColorFromHex(baseColor)}`;
+      }
       const sizeScale = run.size === 'small' ? style.smallTextScale : run.size === 'large' ? style.largeTextScale : 1;
       const emphasisScale = run.emphasized ? style.emphasisScale : 1;
-      const scaledFontSize = Math.max(1, Math.round(fontSize * sizeScale * emphasisScale));
+      const commentScale = run.comment ? (style.commentScale || 1) : 1;
+      const scaledFontSize = Math.max(1, Math.round(fontSize * sizeScale * emphasisScale * commentScale));
       if (scaledFontSize !== fontSize) {
         startTags += `\\fs${scaledFontSize}`;
         endTags += `\\fs${fontSize}`;
@@ -240,6 +248,12 @@ export function createUtilsModule(dependencies) {
     const extensionScaledFontSize = extensionStyle
       ? normalizeAssFontSize(extensionStyle.fontSize * resolution.height / ASS_REFERENCE_PLAY_RES_Y)
       : 0;
+    // 副字幕锚定在主字幕上方：垂直边距固化为「主字幕 marginV + 1.2 × 主字号」，
+    // 与预览的链式锚定一致；副字幕样式自身的 marginV 不再决定位置。
+    // 事件行的第三个边距位覆盖 MarginV，其余仍取 Extension 样式值。
+    const extensionAnchorMarginV = assMode && extensionStyle
+      ? Math.max(0, Number(baseStyle.marginV) || 0) + Math.round(1.2 * fontSize)
+      : Math.max(0, Number(extensionStyle?.marginV) || 0);
     if (assMode && extensionStyle) {
       extensionSource.forEach((segment) => {
         if (!segment || segment.disabled === true) return;
@@ -250,11 +264,29 @@ export function createUtilsModule(dependencies) {
         const endCentiseconds = Math.max(startCentiseconds + 1, Math.round(rawEnd / 10));
         const extensionFade = assSentenceFadeTags(segment.text, profile, inlineOptions.assSpecialSymbolRule);
         const extensionAnimationTags = assAnimationOverrideTags(profile, { includeMove: false, fad: extensionFade.fad });
-        const extensionContent = assEmphasizedText(extensionFade.text, extensionStyle, extensionScaledFontSize, emphasisSyntax, inlineOptions);
+        // 说话人前缀与主字幕同规则：开启「字幕显示说话人前缀」时副字幕
+        // 也按自身轨的颜色映射追加前缀（上下文用副字幕轨自身数组）。
+        const extensionSpeakerName = speakerLabels
+          ? speakerLabelForSegment(segment, extensionSource, speakerLabels) : '';
+        const extensionContent = assEventText({
+          segment,
+          text: extensionFade.text,
+          speakerName: extensionSpeakerName,
+          speakerLabelSeparator,
+          colorName: null,
+          colorStyles,
+          style: extensionStyle,
+          fontSize: extensionScaledFontSize,
+          colorStyle,
+          speakerLabels,
+          assMode,
+          emphasisSyntax,
+          inlineOptions,
+        });
         const extensionText = extensionAnimationTags
           ? `{${extensionAnimationTags}}${extensionContent}` : extensionContent;
         events.push(
-          `Dialogue: 1,${formatAssTime(startCentiseconds * 10)},${formatAssTime(endCentiseconds * 10)},Extension,,0,0,0,,${extensionText}`,
+          `Dialogue: 1,${formatAssTime(startCentiseconds * 10)},${formatAssTime(endCentiseconds * 10)},Extension,,0,0,${extensionAnchorMarginV},,${extensionText}`,
         );
       });
     }
@@ -270,7 +302,7 @@ export function createUtilsModule(dependencies) {
     const hasOverlayCues = overlaySource.some((segment) => segment && segment.disabled !== true);
     const overlayMarginV = assMode
       ? (extensionStyle && hasExtensionCues
-        ? Math.max(0, Number(extensionStyle.marginV) || 0) + Math.round(1.2 * extensionScaledFontSize)
+        ? extensionAnchorMarginV + Math.round(1.2 * extensionScaledFontSize)
         : Math.max(0, Number(baseStyle.marginV) || 0) + Math.round(1.2 * fontSize))
       : 80 + Math.round(1.2 * fontSize);
     // 链式锚定发生在哪一层的坐标系里，叠加样式就继承哪一层的对齐与水平
@@ -320,8 +352,25 @@ export function createUtilsModule(dependencies) {
         ? assSentenceFadeTags(segment.text, profile, inlineOptions.assSpecialSymbolRule) : null;
       const overlayAnimationTags = assMode
         ? assAnimationOverrideTags(profile, { includeMove: false, fad: overlayFade.fad }) : '';
+      // 叠加字幕同样跟随「字幕显示说话人前缀」：映射按叠加轨自身数组解析。
+      const overlaySpeakerName = speakerLabels
+        ? speakerLabelForSegment(segment, overlaySource, speakerLabels) : '';
       const overlayContent = assMode
-        ? assEmphasizedText(overlayFade.text, overlayStyleFor(overlayColorName), fontSize, emphasisSyntax, inlineOptions)
+        ? assEventText({
+          segment,
+          text: overlayFade.text,
+          speakerName: overlaySpeakerName,
+          speakerLabelSeparator,
+          colorName: overlayColorName,
+          colorStyles,
+          style: overlayStyleFor(overlayColorName),
+          fontSize,
+          colorStyle,
+          speakerLabels,
+          assMode,
+          emphasisSyntax,
+          inlineOptions,
+        })
         : escapeAssText(segment.text);
       const overlayText = overlayAnimationTags
         ? `{${overlayAnimationTags}}${overlayContent}` : overlayContent;

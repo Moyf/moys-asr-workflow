@@ -274,11 +274,26 @@
     (control || toggle).focus({ preventScroll: true });
   }
 
+  // 通用「跳转已发生」提示：目标设置项所在分组（或目标元素本身）边框闪烁。
+  // 各种 inline action 跳转都可复用；连续点击时先清掉上一次的闪烁再重启。
+  let settingsFlashTimer = 0;
+  function flashSettingsTarget(target) {
+    if (!target || !target.isConnected) return;
+    const scope = target.closest('.editor-settings-group, .settings-panel-section') || target;
+    clearTimeout(settingsFlashTimer);
+    document.querySelectorAll('.settings-flash').forEach((element) => element.classList.remove('settings-flash'));
+    // 强制 reflow，让同一元素上的连续闪烁重新播放动画。
+    void scope.offsetWidth;
+    scope.classList.add('settings-flash');
+    settingsFlashTimer = setTimeout(() => scope.classList.remove('settings-flash'), 1600);
+  }
+
   global.MaweSettingsPanels = Object.freeze({
     openRegionalSettings,
     closeRegionalSettings,
     updateRegionalSettingsAvailability,
     openEditorSettingsAtTab,
+    flashSettingsTarget,
     editorSettingsTabs,
     projectTabs,
     projectFloatingPanel,

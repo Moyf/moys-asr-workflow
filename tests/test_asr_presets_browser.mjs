@@ -107,7 +107,7 @@ test('ASR preset library manages metadata and options independently with keyboar
     assert.match(await page.locator('#asrPresetModifiedDate').textContent(), /修改时间/u);
     assert.ok(await page.locator('#loadAsrPreset').evaluate(el => Boolean(el.closest('.asr-preset-modal-actions'))), 'action buttons live under the modal grid');
     assert.equal(await page.locator('#asrPresetOptionsPreview').evaluate(el => getComputedStyle(el).maxHeight), 'none', 'the preview grows with the freed space');
-    assert.equal(await page.locator('#deleteAsrPreset').getAttribute('title'), '将选中预设移入系统回收站', 'action buttons explain themselves on hover');
+    assert.equal(await page.locator('#deleteAsrPreset').getAttribute('data-title'), '将选中预设移入系统回收站', 'action buttons explain themselves on hover (title is stored as data-title by the shared tooltip)');
     assert.equal(await page.locator('.asr-preset-list-header .hint').textContent(), '双击可直接加载预设');
     const hintGap = await page.locator('.asr-preset-list-header').evaluate(header => {
       const title = header.querySelector('h3').getBoundingClientRect();

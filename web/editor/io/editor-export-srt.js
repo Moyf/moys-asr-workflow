@@ -226,6 +226,7 @@
     assStrikeEnabled: MaweSettings.EDITOR_SETTINGS.assStrikeEnabled,
     assSmallTextEnabled: MaweSettings.EDITOR_SETTINGS.assSmallTextEnabled,
     assLargeTextEnabled: MaweSettings.EDITOR_SETTINGS.assLargeTextEnabled,
+    assCommentEnabled: MaweSettings.EDITOR_SETTINGS.assCommentEnabled,
   };
 }
 

@@ -118,7 +118,7 @@ class GuiWebBridgeTests(CompactContainerAssertions, unittest.TestCase):
         self.assertEqual(config["ocrRuntime"]["status"], "checking")
         self.assertEqual([model["id"] for model in config["ocrModels"]], ["pp-ocrv6-tiny", "pp-ocrv6-small"])
         self.assertEqual(config["providers"][0]["keyUrl"], "https://platform.qianwenai.com/home/")
-        self.assertEqual(config["providers"][0]["label"], "阿里云百炼（千问）")
+        self.assertEqual(config["providers"][0]["label"], "阿里云百炼（推荐 / 千问）")
         self.assertEqual(config["providers"][0]["keyButtonLabel"], "千问AI平台")
         self.assertNotIn("tencent", [provider["id"] for provider in config["providers"]])
         self.assertEqual(len(config["providers"][0]["commonLanguages"]), 10)
@@ -1560,21 +1560,41 @@ class GuiWebBridgeTests(CompactContainerAssertions, unittest.TestCase):
         missing = [needle for needle in needles if needle not in script]
         self.assertEqual(missing, [], f"缺少按任务记忆契约：{missing}")
 
-    def test_toolbox_lists_only_configured_custom_slots(self) -> None:
-        """Given the toolbox provider select, When custom slots are unconfigured, Then only slot 1 is listed."""
+    def test_loopback_base_url_accepts_common_local_endpoints(self) -> None:
+        """Given local LLM endpoints, When checking loopback detection, Then scheme-less forms still match."""
+        from maw import gui_web
+
+        for base_url in (
+            "http://127.0.0.1:1234/v1",
+            "127.0.0.1:1234/v1",
+            "http://localhost:11434",
+            "localhost:8080/api",
+            "http://[::1]:1234/v1",
+        ):
+            self.assertTrue(gui_web._loopback_base_url(base_url), base_url)
+        for base_url in ("https://api.deepseek.com", "example.com/v1", "", "http://0.0.0.0:1234"):
+            self.assertFalse(gui_web._loopback_base_url(base_url), base_url or "<empty>")
+
+    def test_toolbox_lists_all_custom_slots(self) -> None:
+        """Given the toolbox provider select, When custom slots are unconfigured, Then all slots stay selectable.
+
+        过滤未配置槽位会让 llmProvider 选中 custom2/3 时 postprocessProvider
+        找不到对应 option 而跳回第一项（261011 反馈 #33/#36），因此两处下拉
+        必须显示同一份完整槽位列表。
+        """
         script = (ROOT / "web" / "launcher" / "postprocess.js").read_text(encoding="utf-8")
         launcher_script = launcher_sources_text(ROOT)
 
         needles = [
             'function isCustomSlot(item) { return ["custom", "custom2", "custom3"].includes(String(item?.id || "")); }',
-            "function customSlotVisibleInToolbox(item)",
-            'return !isCustomSlot(item) || item.id === "custom" || customSlotConfigured(item);',
-            'if (select.id === "postprocessProvider" && !customSlotVisibleInToolbox(item)) return;',
+            "providers.forEach((item) => {\n        select.add(new Option(providerLabel(item), item.id));\n      });",
             "fillProviderSelects(selectedProvider);",
             "fillProviderSelects(item.id);",
         ]
         missing = [needle for needle in needles if needle not in script]
         self.assertEqual(missing, [], f"postprocess.js 缺少：{missing}")
+        # 过滤逻辑必须保持移除：任何按配置过滤槽位的选择器都会复现跳回问题。
+        self.assertNotIn("customSlotVisibleInToolbox", script)
 
         label_keys = ["llm_custom_provider_2", "llm_custom_provider_3"]
         missing_keys = [key for key in label_keys if key not in launcher_script]

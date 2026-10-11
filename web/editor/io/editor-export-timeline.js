@@ -757,7 +757,7 @@
   function stickerExportBlocked(id) {
     const el = document.getElementById(id);
     if (el && el.classList.contains('sticker-disabled')) {
-      const msg = `当前模式不可用：${el.title || '请使用另一种导出格式'}`;
+      const msg = `当前模式不可用：${el.dataset.title || el.title || '请使用另一种导出格式'}`;
       MaweHint.flashHint(window.MAWE_I18N?.translateText?.(msg) || msg);
       return true;
     }

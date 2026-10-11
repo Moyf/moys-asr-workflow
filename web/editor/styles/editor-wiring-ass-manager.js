@@ -647,11 +647,19 @@ function syncAssSymbolRule() {
       const sample = (width) => `${marker.repeat(width)}${label}${marker.repeat(width)}`;
       return rule === 'both' ? `${sample(1)}/${sample(2)}` : sample(2);
     });
-      formatHint.textContent = rule === 'none' ? '符号规则已关闭，字幕中的符号将保留原文。'
+    // 注释是固定双符号 //，不随单双规则变化。
+    examples.push('//注释//');
+    const sentence = rule === 'none' ? '符号规则已关闭，字幕中的符号将保留原文。'
       : `你可以使用 ${examples.join('、')} 等符号来对特定字词添加特殊样式。`;
+    // 拼接结果按整句查翻译表：英文界面下动态重建也能得到英文提示。
+    formatHint.textContent = window.MAWE_I18N?.translateText?.(sentence) || sentence;
   }
   document.querySelectorAll('[data-ass-symbol]').forEach((hint) => {
     const { assSymbol: marker, assSymbolLabel: label } = hint.dataset;
+    if (hint.dataset.assSymbolFixed === 'true') {
+      hint.textContent = `${marker}${label}${marker}`;
+      return;
+    }
     const sample = (width) => `${marker.repeat(width)}${label}${marker.repeat(width)}`;
     hint.textContent = rule === 'both' ? `${sample(1)}/${sample(2)}` : sample(2);
   });

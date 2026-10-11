@@ -287,7 +287,7 @@
       entry.addEventListener('click', (e) => {
         e.stopPropagation();
         MaweDom.ctxmenu.classList.remove('show');
-        MaweTextProcess.applyWrapChars(targets, preset.left, preset.right, preset.label);
+        MaweTextProcess.applyWrapChars(targets, preset.left, preset.right, preset.label, { warnWordTimings: false });
       });
       list.appendChild(entry);
     });

@@ -3363,11 +3363,11 @@ test('ASS underscore markers render as local underline alongside emphasis', () =
   const text = '前 _下划线_ 与 _**共同**_ 后';
   const runs = Array.from(helpers.assInlineStyleRuns(text, 'double'), (run) => ({ ...run }));
   assert.deepEqual(runs, [
-    { text: '前 ', emphasized: false, underlined: false, struck: false, size: null },
-    { text: '下划线', emphasized: false, underlined: true, struck: false, size: null },
-    { text: ' 与 ', emphasized: false, underlined: false, struck: false, size: null },
-    { text: '共同', emphasized: true, underlined: true, struck: false, size: null },
-    { text: ' 后', emphasized: false, underlined: false, struck: false, size: null },
+    { text: '前 ', emphasized: false, underlined: false, struck: false, size: null, comment: false },
+    { text: '下划线', emphasized: false, underlined: true, struck: false, size: null, comment: false },
+    { text: ' 与 ', emphasized: false, underlined: false, struck: false, size: null, comment: false },
+    { text: '共同', emphasized: true, underlined: true, struck: false, size: null, comment: false },
+    { text: ' 后', emphasized: false, underlined: false, struck: false, size: null, comment: false },
   ]);
   const options = {
     assProfile: { id: 'ass', styleId: 'ass', animations: {} },
@@ -3478,7 +3478,7 @@ test('ASS inline strike and size markers restore the base style and use each tra
   assert.deepEqual(Array.from(helpers.assInlineStyleRuns('foo-bar-baz C++ 1+2+3 -未闭合', 'none'), (run) => run.text),
     ['foo-bar-baz C++ 1+2+3 -未闭合']);
   const combined = Array.from(helpers.assInlineStyleRuns('~~-**组合**-~~', 'double'), (run) => ({ ...run }));
-  assert.deepEqual(combined, [{ text: '组合', emphasized: true, underlined: false, struck: true, size: 'small' }]);
+  assert.deepEqual(combined, [{ text: '组合', emphasized: true, underlined: false, struck: true, size: 'small', comment: false }]);
   const style = helpers.normalizeAssStyle({ smallTextScale: 0.63, largeTextScale: 5 });
   assert.equal(style.smallTextScale, 0.65);
   assert.equal(style.largeTextScale, 3);
@@ -5251,7 +5251,8 @@ test('buildAssPayload writes extension cues on layer 1 with a single Extension s
   const dialogue = ass.split('\n').filter((line) => line.startsWith('Dialogue:'));
   assert.equal(dialogue.length, 3);
   assert.match(dialogue[1], /^Dialogue: 1,/);
-  assert.ok(dialogue[1].includes(',Extension,,0,0,0,'));
+  // 副字幕事件行 MarginV 固化为「主 marginV 88 + round(1.2 × 86) = 191」（锚定主字幕上方）。
+  assert.ok(dialogue[1].includes(',Extension,,0,0,191,'));
   // 副字幕与叠加轨同样只应用与位置无关的动画标签。
   assert.ok(dialogue[1].includes('{\\fad(150,250)}extension line'));
   assert.ok(!dialogue[1].includes('\\move('));
@@ -5300,9 +5301,9 @@ test('buildAssPayload overlay style inherits the anchor layer alignment and side
     overlaySegments: [{ start: 150, end: 850, text: 'overlay' }],
     appearance: {},
   };
-  // 副字幕样式为顶部居中（Alignment 8，MarginV 100、左右边距 40/50）：
-  // 叠加轨链在其上方时继承该对齐与水平边距，固化边距按同一基准边解释
-  // （100 + round(1.2 × 54) = 165），而不是落回主样式的底部居中。
+  // 副字幕样式为顶部居中（Alignment 8，左右边距 40/50）；副字幕自身锚定
+  // 主字幕上方（主 marginV 80 + round(1.2 × 72) = 166），叠加轨再链其上：
+  // 166 + round(1.2 × 54) = 231。对齐与水平边距仍继承副字幕样式。
   const topExtension = helpers.buildAssPayload(
     [{ start: 100, end: 900, text: 'main' }],
     {
@@ -5316,7 +5317,7 @@ test('buildAssPayload overlay style inherits the anchor layer alignment and side
   const overlayStyleChained = topExtension.split('\n')
     .find((line) => line.startsWith('Style: Overlay,'));
   assert.ok(overlayStyleChained);
-  assert.match(overlayStyleChained, /,8,40,50,165,1$/);
+  assert.match(overlayStyleChained, /,8,40,50,231,1$/);
   // 副字幕全部禁用：不链式，叠加样式回到主样式的底部居中（80 + 86.4 → 166）。
   const disabledExtension = helpers.buildAssPayload(
     [{ start: 100, end: 900, text: 'main' }],
