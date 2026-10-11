@@ -940,6 +940,17 @@
   .toolbar .settings-anchor > button.active {
     position: relative; z-index: 421;
   }
+  /* 左侧操作单独滚动，右侧设置始终留在工具栏内；焦点导航也会滚动到对应按钮。 */
+  .toolbar.waveform-toolbar > .layout-toolbar-label { flex: 0 0 auto; white-space: nowrap; }
+  .toolbar.waveform-toolbar > .waveform-toolbar-controls {
+    display: flex; align-items: center; gap: 6px;
+    flex: 1 1 auto; min-width: 0;
+    overflow-x: auto; overflow-y: hidden;
+    scrollbar-width: none;
+  }
+  .waveform-toolbar-controls::-webkit-scrollbar { display: none; }
+  .waveform-toolbar-controls > * { flex: 0 0 auto; }
+  .waveform-toolbar-controls button { white-space: nowrap; }
   .waveform-settings { gap: 8px; }
   .toolbar.waveform-toolbar > .waveform-edit-tools { flex: 0 0 auto; }
   .waveform-edit-tools > button { white-space: nowrap; }
