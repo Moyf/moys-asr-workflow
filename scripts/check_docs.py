@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import argparse
 from collections import Counter
+import html
 import io
 import json
 from pathlib import Path
@@ -73,7 +74,7 @@ def visible_text(text: str) -> str:
 
 def anchors(text: str) -> set[str]:
     text = visible_text(text)
-    result = set(EXPLICIT_ID.findall(text))
+    result = {html.unescape(value) for value in EXPLICIT_ID.findall(text)}
     seen: Counter[str] = Counter()
     lines = text.splitlines()
     for number, line in enumerate(lines):
@@ -105,7 +106,7 @@ def links(text: str):
     text = "".join(characters)
     for number, line in enumerate(text.splitlines(), 1):
         for match in HTML_TARGET.finditer(line):
-            yield number, match[1]
+            yield number, html.unescape(match[1])
         for match in re.finditer(r"!?\[\[([^]|]+)(?:\|[^]]+)?\]\]", line):
             yield number, match[1]
         definition = re.match(r"^\s{0,3}\[[^]]+\]:\s*(<[^>]+>|\S+)", line)

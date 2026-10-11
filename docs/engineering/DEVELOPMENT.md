@@ -93,7 +93,7 @@ node --test tests/test_editor_script_syntax.mjs tests/test_editor_script_order.m
 node --test tests/test_editor_utils.mjs tests/test_waveform_js.mjs
 node --test tests/test_editor_state.mjs tests/test_editor_commands.mjs
 pnpm run typecheck
-uv run --no-sync python -m unittest discover -s tests -p "test_*.py"
+uv run --no-sync python scripts/run_tests.py
 git diff --check
 ```
 

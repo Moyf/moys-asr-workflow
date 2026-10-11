@@ -92,6 +92,19 @@ class DocumentationCheckTests(CompactContainerAssertions, unittest.TestCase):
         text = '```md\n[example](missing.md)\n```\n<!-- [example](missing.md) -->\n`[example](missing.md)`\n[web](https://example.test/a)\n[route](/docs/)'
         self.assertEqual(checker.scan({"README.md": text}, {"README.md"}), [])
 
+    def test_html_character_references_follow_browser_meaning_but_markdown_stays_literal(self):
+        texts = {
+            "docs/source.md": (
+                '<a href="guide.html#part&#45;one">Guide</a>\n'
+                '<a href="guide&#46;html#named-anchor">Named</a>\n'
+                '<img src="../assets/photo&#46;webp">\n'
+                '[Markdown](guide&amp;literal.html)'
+            ),
+            "docs/guide.html": '<h1 id="part-one">Guide</h1><a name="named&#45;anchor"></a>',
+        }
+        paths = set(texts) | {"assets/photo.webp", "docs/guide&amp;literal.html"}
+        self.assertEqual(checker.scan(texts, paths), [])
+
     def test_fence_closer_with_non_whitespace_suffix_does_not_close(self):
         text = "```md\n[example](missing.md)\n```suffix\n[still code](missing-too.md)\n```\n[visible](exists.md)"
         self.assertEqual(list(checker.links(text)), [(6, "exists.md")])
