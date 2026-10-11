@@ -24,19 +24,19 @@
   "esmFactories": 0,
   "inputs": {
     "launcher/i18n/launcher-strings.js": "998e2697eab8c87afbfdb4ac59593e73e5c645fcf925719310ec6e0ae5674a74",
-    "launcher/boot/launcher-state.js": "69ab7f97c4d8632ade39c1744f606bf43c506f74a39519c4b59871fd30494d77",
+    "launcher/boot/launcher-state.js": "0310aab57b5371a3a78f3b23bfb26731c15d461a7324ab9519683b12d96031f5",
     "launcher/boot/launcher-mock-api.js": "eb9c6c1463aebc277cb16bcb91dbe4fc3d016c2f299bbda57c4956b7a75d6d15",
     "launcher/i18n/launcher-labels.js": "24956cc043102404828123a49285a50fd70d2ffe07b054d610d5c04d48e3559c",
     "launcher/forms/launcher-form-base.js": "fc49529d1d6aa3cb6fe20378156ecffecbe14af450d8bf23ccced12fb095c939",
-    "launcher/errors/launcher-errors.js": "c8e92f450f999f27bd1dd2ea1088b81454cdbc6cadfc109295dc2f754c9b19eb",
+    "launcher/errors/launcher-errors.js": "4cee1b923bd89a5a97e29ee561903d35e3da42d5016efd989745358e175da975",
     "launcher/server/launcher-server-monitor.js": "e8909404908d6e77a929085780a3872c5cd7e2dd5129d87a9694bfc4c88a8c0d",
     "launcher/boot/launcher-theme-bridge.js": "97bb678e70eefd4fd5e1c97664f4e4c563ffdfc69dd2c66cfce39b5db36ab7fe",
-    "launcher/forms/launcher-form-sync.js": "5ee6fbb60c7b7b2a9cceedb6175595b4e00d93353fc71e6d0291c88e06b1491c",
+    "launcher/forms/launcher-form-sync.js": "bdbce0c24356b9770d76fe829982ba34899a90b4a67a7ca7de892a51a6e089c3",
     "launcher/local/launcher-local-models.js": "8cdcafcb09efbb3ed6b6ccb585cb427910e09eadf0e0239a874ec5c6c0759127",
     "launcher/forms/launcher-provider-language.js": "bd674f5f189c75c2fafcf095010d4d477a4cc29492e3426c10755f267c2914ce",
     "launcher/presets/launcher-presets.js": "0f6380cbffac0d7b926873b08bf0e0ca1f44da4fddb7d2c897c967d4bd76417d",
     "launcher/forms/launcher-prefs-zoom.js": "64710430fb74d618a2443f91159349b2f1841a412b5ec44b5fc3c39f4c18b913",
-    "launcher/forms/launcher-media-form.js": "353c2fed7c279e1889852236eaec26c890cc6f7b1006acc59e114de372d899cf",
+    "launcher/forms/launcher-media-form.js": "526395549ef2eb9741952efdf4d6d2551e595c267e126c4e7fa32cf836b661e1",
     "launcher/server/launcher-media-server.js": "5c7b7b624a223739a94ec5d438797639434c3b9081cbe7519c65134614a4b0d7",
     "launcher/boot/launcher-settings-startup.js": "0a8449ad482fd36acc762a8831a38b48132a5d5199672baf76ee51e39f6ee655",
     "launcher/boot/launcher-notify-backend.js": "8299642f10bfa779b0865b77ffa21d77c13e01c1c41a4024c5079a535fb5a47f",
@@ -47,7 +47,7 @@
   "metafile": {
     "inputs": {
       "web/editor-entry.mjs": {
-        "bytes": 387624,
+        "bytes": 385233,
         "imports": [],
         "format": "esm"
       }
@@ -59,10 +59,10 @@
         "entryPoint": "web/editor-entry.mjs",
         "inputs": {
           "web/editor-entry.mjs": {
-            "bytesInOutput": 291543
+            "bytesInOutput": 289046
           }
         },
-        "bytes": 291569
+        "bytes": 289072
       }
     }
   }

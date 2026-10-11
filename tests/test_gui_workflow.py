@@ -77,14 +77,14 @@ class EmptyTranscriptionTests(unittest.TestCase):
         self.addCleanup(self.temp.cleanup)
         self.root = Path(self.temp.name)
         self.request = TranscriptionRequest(self.root / 'clip.mkv', self.root / 'clip.srt', generate_html=False)
-        self.error = AudioInputError('asr_audio_track_mismatch', 'selected audio_index=0; alternative audio_index=1')
+        self.error = AudioInputError('asr_empty_result_multitrack', 'selected audio_index=0; alternative audio_index=1')
         self.process = mock.Mock(returncode=0)
         self.popen = mock.patch('maw.gui_workflow.popen_process_tree', return_value=self.process).start()
         self.addCleanup(mock.patch.stopall)
         mock.patch('maw.gui_workflow.release_process_tree').start()
         mock.patch('maw.gui_workflow._child_environment', return_value={'PATH': ''}).start()
         self.stream = mock.patch('maw.gui_workflow._stream_process').start()
-        self.diagnose = mock.patch('maw.gui_workflow.diagnose_empty_audio', return_value=self.error).start()
+        self.empty_error = mock.patch('maw.gui_workflow.empty_transcription_error', return_value=self.error).start()
         mock.patch('maw.gui_workflow.build_output_paths', return_value=OutputPaths(
             self.request.srt_path, self.request.srt_path.with_suffix('.mosp'), self.root / 'clip.html')).start()
 
@@ -98,13 +98,13 @@ class EmptyTranscriptionTests(unittest.TestCase):
                 self.write_outputs(segments)
                 with self.assertRaises(type(self.error)) as caught:
                     run_transcription(self.request)
-                self.assertEqual(caught.exception.code, 'asr_audio_track_mismatch')
+                self.assertEqual(caught.exception.code, 'asr_empty_result_multitrack')
                 self.assertTrue(self.request.srt_path.with_suffix('.mosp').exists())
 
     def test_nonempty_result_does_not_scan_audio(self):
         self.write_outputs([{'start': 0, 'end': 1000, 'text': 'hello'}])
         self.assertEqual(run_transcription(self.request).srt_path, self.request.srt_path)
-        self.diagnose.assert_not_called()
+        self.empty_error.assert_not_called()
 
     def test_explicit_empty_failure_ignores_stale_nonempty_output(self):
         self.write_outputs([{'text': 'old result'}])
@@ -112,7 +112,7 @@ class EmptyTranscriptionTests(unittest.TestCase):
         self.stream.side_effect = lambda process, forward, cancel: forward('RuntimeError: ASR 返回内容为空，未生成字幕段。')
         with self.assertRaises(type(self.error)):
             run_transcription(self.request)
-        self.diagnose.assert_called_once()
+        self.empty_error.assert_called_once()
 
     def test_cloud_and_local_empty_messages_enter_the_same_diagnostic_path(self):
         self.process.returncode = 1
@@ -127,7 +127,7 @@ class EmptyTranscriptionTests(unittest.TestCase):
         self.stream.side_effect = lambda process, forward, cancel: forward('RuntimeError: HTTP 401')
         with self.assertRaises(TranscriptionProcessError):
             run_transcription(self.request)
-        self.diagnose.assert_not_called()
+        self.empty_error.assert_not_called()
 
     def test_earlier_mapping_failure_does_not_override_the_final_api_failure(self):
         self.process.returncode = 1
@@ -137,19 +137,24 @@ class EmptyTranscriptionTests(unittest.TestCase):
         self.stream.side_effect = stream
         with self.assertRaises(TranscriptionProcessError):
             run_transcription(self.request)
-        self.diagnose.assert_not_called()
+        self.empty_error.assert_not_called()
 
-    def test_known_missing_track_from_ffmpeg_is_classified_but_probe_failure_is_not(self):
-        from maw.audio_diagnostics import AudioInputError
+    def test_ffmpeg_mapping_failure_stays_a_process_failure_without_new_probes(self):
         self.process.returncode = 1
         self.stream.side_effect = lambda process, forward, cancel: forward("Stream map '0:a:0' matches no streams.")
-        self.diagnose.return_value = AudioInputError('audio_tracks_missing', 'tracks=0')
-        with self.assertRaises(AudioInputError) as caught:
-            run_transcription(self.request)
-        self.assertEqual(caught.exception.code, 'audio_tracks_missing')
-        self.diagnose.return_value = AudioInputError('asr_empty_result', 'unavailable')
         with self.assertRaises(TranscriptionProcessError):
             run_transcription(self.request)
+        self.empty_error.assert_not_called()
+
+    def test_track_metadata_snapshot_controls_the_hint_for_blank_outputs(self):
+        from dataclasses import replace
+        from maw.audio_diagnostics import empty_transcription_error
+        self.empty_error.side_effect = empty_transcription_error
+        self.write_outputs([])
+        for count, code in ((None, 'asr_empty_result'), (1, 'asr_empty_result'), (3, 'asr_empty_result_multitrack')):
+            with self.assertRaises(type(self.error)) as caught:
+                run_transcription(replace(self.request, audio_track_count=count))
+            self.assertEqual(caught.exception.code, code)
 
     def test_cancel_during_diagnosis_does_not_report_a_failed_empty_result(self):
         self.write_outputs([])
@@ -157,7 +162,7 @@ class EmptyTranscriptionTests(unittest.TestCase):
         def diagnose(*args, **kwargs):
             cancel.set()
             return self.error
-        self.diagnose.side_effect = diagnose
+        self.empty_error.side_effect = diagnose
         with self.assertRaises(TranscriptionCancelledError):
             run_transcription(self.request, cancel_event=cancel)
 

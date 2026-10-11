@@ -92,7 +92,7 @@ from maw.local_models import (
     local_model_payload,
     prepare_local_model as prepare_model,
 )
-from maw.media import resolve_default_audio_track, resolve_project_media
+from maw.media import probe_audio_tracks, resolve_project_media
 from maw.notify import send_system_notification
 from maw.postprocess import FixedProcessRequest, LlmPostprocessRequest, OutputMode, PostprocessStepError, Replacement, run_fixed_process as process_fixed_process, run_llm_postprocess as process_llm_postprocess
 from maw.postprocess_io import PostprocessFileError, read_project, read_srt
@@ -2621,6 +2621,8 @@ class LauncherApi:
                     "srtPath": raw_item.get("srtPath") or raw_item.get("outputPath"),
                 }
                 merged = dict(item_payload)
+                # Track metadata belongs to each item, never the single-file form.
+                merged["audioTrackCount"] = raw_item.get("audioTrackCount")
                 media_text = str(merged.get("mediaPath") or "").strip()
                 raw_audio_track = merged.get("audioTrack")
                 if media_text and (raw_audio_track is None or not str(raw_audio_track).strip()):
@@ -2636,11 +2638,15 @@ class LauncherApi:
                             "audio_track_invalid",
                             "默认音频轨道必须是非负整数。",
                         )
-                    default_audio_track = resolve_default_audio_track(
-                        Path(media_text).expanduser().resolve(),
-                        explicit_default,
-                        ffprobe_path=_postprocess_ffmpeg_tools(self.paths.env_path).ffprobe,
-                    )
+                    default_audio_track = explicit_default
+                    if default_audio_track is None:
+                        # Reuse the original default-track preflight probe for the hint.
+                        tracks = probe_audio_tracks(
+                            Path(media_text).expanduser().resolve(),
+                            ffprobe_path=_postprocess_ffmpeg_tools(self.paths.env_path).ffprobe,
+                        )
+                        default_audio_track = next((track["audio_index"] for track in tracks or [] if track.get("default")), 0)
+                        merged["audioTrackCount"] = len(tracks) if tracks is not None else None
                     merged["audioTrack"] = default_audio_track
                     merged["defaultAudioTrack"] = default_audio_track
                 if media_text and not str(merged.get("srtPath") or "").strip():
@@ -4223,11 +4229,18 @@ def _request_from_payload(payload: Mapping[str, object], env_path: Path) -> Tran
             if active_auto_steps:
                 auto_plan = candidate_plan
                 auto_llm_settings = snapshot_postprocess_llm_settings(env_path, candidate_plan)
+    raw_audio_track_count = payload.get("audioTrackCount")
     return TranscriptionRequest(
         media_path=media,
         srt_path=srt,
         audio_track=audio_track,
         default_audio_track=default_audio_track,
+        audio_track_count=(
+            raw_audio_track_count
+            if isinstance(raw_audio_track_count, int)
+            and not isinstance(raw_audio_track_count, bool)
+            and raw_audio_track_count >= 0 else None
+        ),
         model=custom_model if provider.id == "openai" else (model.model_ref or model.id),
         language=str(payload.get("language") or ""),
         api_key=api_key,

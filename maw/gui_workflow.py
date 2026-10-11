@@ -17,7 +17,7 @@ from threading import Event
 from typing import BinaryIO, Final, TextIO, final
 
 from maw.console import configure_utf8_environment
-from maw.audio_diagnostics import diagnose_empty_audio, is_audio_mapping_error, is_empty_transcription_error
+from maw.audio_diagnostics import empty_transcription_error, is_empty_transcription_error
 from maw.ffmpeg import MACOS_FFMPEG_CANDIDATE_DIRECTORIES, bundled_ffmpeg_directory, ffmpeg_search_path, resolve_ffmpeg_tools
 from maw.gui_config import QWEN_AUDIO_31_MODEL_ID, QWEN_AUDIO_MODEL_ID, DEFAULT_MODEL_ID, DEFAULT_ENV_PATH, effective_config, load_env
 from maw.gui_platform import asset_path, popen_process_tree, process_group_kwargs, release_process_tree, restore_host_library_path, terminate_process_tree
@@ -84,6 +84,7 @@ class TranscriptionRequest:
     default_audio_track: int | None = None
     max_words: str = ""
     min_words: str = ""
+    audio_track_count: int | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -528,17 +529,13 @@ def run_transcription(
     finally:
         release_process_tree(process)
     if process.returncode != 0:
-        if is_empty_transcription_error(collected) or is_audio_mapping_error(collected):
-            error = diagnose_empty_audio(
-                request.media_path, request.audio_track, length_limit=request.length_limit,
-                environment=env, cancel_event=cancel_event,
-                detail=str(TranscriptionProcessError(process.returncode, output=collected)),
-            )
+        if is_empty_transcription_error(collected):
             if cancel_event and cancel_event.is_set():
                 raise TranscriptionCancelledError
-            # A mapping failure with inconclusive probing stays a process failure.
-            if is_empty_transcription_error(collected) or error.code in {"audio_tracks_missing", "audio_track_invalid"}:
-                raise error
+            raise empty_transcription_error(
+                request.audio_track_count, audio_track=request.audio_track,
+                detail=str(TranscriptionProcessError(process.returncode, output=collected)),
+            )
         raise TranscriptionProcessError(process.returncode, output=collected)
     _require_output(paths.srt, "SRT")
     _require_output(paths.json, "JSON")
@@ -552,10 +549,7 @@ def run_transcription(
     if isinstance(segments, list) and not any(
         isinstance(segment, dict) and str(segment.get("text") or "").strip() for segment in segments
     ):
-        error = diagnose_empty_audio(
-            request.media_path, request.audio_track, length_limit=request.length_limit,
-            environment=env, cancel_event=cancel_event,
-        )
+        error = empty_transcription_error(request.audio_track_count, audio_track=request.audio_track)
         if cancel_event and cancel_event.is_set():
             raise TranscriptionCancelledError
         raise error

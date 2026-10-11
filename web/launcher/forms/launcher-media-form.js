@@ -84,6 +84,10 @@ function getAudioTrackForMedia(path) {
   if (audioTrackPathKey(value) !== state.audioTrackPath || state.audioTracks.length <= 1 || !Number.isInteger(state.audioTrack)) return null;
   return state.audioTrack;
 }
+function getAudioTrackCountForMedia(path) {
+  if (audioTrackPathKey(path) !== state.audioTrackPath || state.audioTracks.length === 0) return null;
+  return state.audioTracks.filter((track) => audioTrackIndex(track) !== null).length;
+}
 function getDefaultAudioTrackForMedia(path) {
   const value = String(path || "").trim();
   if (audioTrackPathKey(value) !== state.audioTrackPath || state.audioTracks.length <= 1) return 0;
