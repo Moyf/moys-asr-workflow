@@ -37,6 +37,7 @@ from maw.asr_presets import (
     validate_options,
     write_preset,
 )
+from maw.asr_errors import api_key_error_code, asr_error_code, redact_asr_text
 from maw.ass_styles import find_ass_style, load_ass_style_library
 from maw.ffmpeg import MACOS_FFMPEG_CANDIDATE_DIRECTORIES, FfmpegTools, ffmpeg_search_path, media_duration_seconds, resolve_ffmpeg_tools
 from maw.media_cache import embed_media_caches
@@ -165,6 +166,7 @@ ERROR_MESSAGES: Final[dict[str, str]] = {
     "media_not_found": "Media file does not exist.",
     "server_media_missing": "Project media is missing, unsupported, or ambiguous. Choose media manually.",
     "api_key_missing": "API key is required.",
+    "api_key_invalid_format": "Paste only the API key, without whitespace, quotes, a URL or an Authorization prefix.",
     "custom_asr_model_missing": "请填写自定义 ASR 模型名。",
     "custom_asr_base_url_missing": "请填写自定义 ASR Base URL。",
     "local_runtime_missing": "本地模型运行时未安装。",
@@ -765,6 +767,8 @@ class LauncherApi:
             else:
                 updates["MAW_MODEL_CACHE_ROOT"] = ""
         if provider.requires_api_key and model.env_key:
+            if api_key and api_key_error_code(api_key):
+                return _error_result("apiKey", "api_key_invalid_format")
             updates[model.env_key] = api_key
         if provider.id == "qwen":
             updates["DASHSCOPE_REGION"] = str(payload.get("region") or "beijing")
@@ -2450,6 +2454,11 @@ class LauncherApi:
                 for item in items
                 if item.preflight_error
             )
+            shared_code = items[0].preflight_code
+            if shared_code in {"api_key_missing", "api_key_invalid_format"} and all(
+                item.preflight_code == shared_code for item in items
+            ):
+                return _error_result("apiKey", shared_code, details)
             return {
                 "ok": False,
                 "field": "items",
@@ -2996,7 +3005,7 @@ class LauncherApi:
 
         def on_child_event(line: str) -> None:
             child_output.append(line)
-            self._emit({"type": "log", "message": line})
+            self._emit({"type": "log", "message": redact_asr_text(line, request.api_key)})
 
         try:
             result = run_transcription(
@@ -3006,7 +3015,7 @@ class LauncherApi:
                 on_process_start=lambda pid: self._emit({"type": "log", "message": f"[info] 转写进程已启动 (pid {pid})"}),
             )
         except TranscriptionCancelledError as error:
-            self._emit({"type": "error", "code": "transcription_cancelled", "detail": str(error)})
+            self._emit({"type": "error", "code": "transcription_cancelled", "detail": redact_asr_text(error, request.api_key)})
             if self.worker is threading.current_thread():
                 self.worker = None
             self.pump.flush()
@@ -3016,29 +3025,29 @@ class LauncherApi:
                 self._emit({
                     "type": "error",
                     "code": "ffmpeg_missing",
-                    "detail": str(error),
+                    "detail": redact_asr_text(error, request.api_key),
                 })
             elif _is_ffprobe_start_failure(child_output):
                 self._emit({
                     "type": "error",
                     "code": "ffprobe_start_failed",
-                    "detail": str(error),
+                    "detail": redact_asr_text(error, request.api_key),
                 })
             elif _is_ffmpeg_start_failure(child_output):
                 self._emit({
                     "type": "error",
                     "code": "ffmpeg_start_failed",
-                    "detail": str(error),
+                    "detail": redact_asr_text(error, request.api_key),
                 })
             else:
-                self._emit({"type": "error", "code": file_error_code(error) or "transcription_failed", "detail": str(error)})
+                self._emit({"type": "error", "code": file_error_code(error) or asr_error_code(error, provider=request.provider) or "transcription_failed", "detail": redact_asr_text(error, request.api_key)})
             if self.worker is threading.current_thread():
                 self.worker = None
             self.pump.flush()
             return
         # The pywebview worker boundary must report every backend failure to JS.
         except Exception as error:  # noqa: BLE001
-            self._emit({"type": "error", "code": file_error_code(error) or "transcription_failed", "detail": str(error)})
+            self._emit({"type": "error", "code": file_error_code(error) or asr_error_code(error, provider=request.provider) or "transcription_failed", "detail": redact_asr_text(error, request.api_key)})
             if self.worker is threading.current_thread():
                 self.worker = None
             self.pump.flush()
@@ -3915,8 +3924,10 @@ def _request_from_payload(payload: Mapping[str, object], env_path: Path) -> Tran
                 raise PreflightError("alignmentModel", "local_runtime_missing", alignment_status.detail)
             if not alignment_status.installed:
                 raise PreflightError("alignmentModel", "alignment_model_missing", alignment_status.detail)
-    if provider.requires_api_key and not api_key:
-        raise PreflightError("apiKey", "api_key_missing", "API key is required.")
+    if provider.requires_api_key:
+        key_error = api_key_error_code(api_key)
+        if key_error:
+            raise PreflightError("apiKey", key_error, ERROR_MESSAGES[key_error])
     if provider.id == "qwen" and region == "singapore" and not workspace_id:
         raise PreflightError("workspaceId", "workspace_missing", "Workspace ID is required for Singapore region.")
     qwen_audio_context = (

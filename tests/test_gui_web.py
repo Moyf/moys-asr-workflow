@@ -1190,10 +1190,10 @@ class GuiWebBridgeTests(CompactContainerAssertions, unittest.TestCase):
         prefs = self.api.save_prefs({"language": "safe\x85FFMPEG_PATH=payload"})
         ffmpeg = self.api.save_ffmpeg_path({"path": "safe\u2029FFMPEG_PATH=payload"})
 
-        for result in (settings, prefs, ffmpeg):
+        for result, code in ((settings, "api_key_invalid_format"), (prefs, "config_save_failed"), (ffmpeg, "config_save_failed")):
             with self.subTest(result=result):
                 self.assertFalse(result["ok"])
-                self.assertEqual(result["code"], "config_save_failed")
+                self.assertEqual(result["code"], code)
         self.assertFalse(self.env_path.exists())
 
     def test_fixed_replacement_bridge_returns_chainable_project_and_srt_paths(self) -> None:
@@ -3537,6 +3537,87 @@ class GuiWebBridgeTests(CompactContainerAssertions, unittest.TestCase):
         self.assertFalse(result["ok"])
         self.assertEqual(result["field"], "apiKey")
         self.assertEqual(result["code"], "api_key_missing")
+
+    def test_credentials_block_single_and_batch_before_network_or_worker_start(self) -> None:
+        media = self.root / "clip.mp3"
+        media.write_bytes(b"media")
+        for key, expected in (("", "api_key_missing"), ("   ", "api_key_missing"),
+                              ("Bearer test-only-private-123", "api_key_invalid_format"),
+                              ("中文密钥说明", "api_key_invalid_format")):
+            with self.subTest(key=key), mock.patch.dict(os.environ, {"DASHSCOPE_API_KEY": ""}), \
+                 mock.patch("maw.gui_web.threading.Thread") as thread, \
+                 mock.patch("requests.sessions.Session.request", side_effect=AssertionError("Credential checks must stay offline")) as network:
+                payload = {"mediaPath": str(media), "srtPath": str(self.root / "out.srt"), "apiKey": key}
+                result = self.api.start_transcription(payload)
+                self.assertFalse(result["ok"])
+                self.assertEqual(result["code"], expected)
+                self.assertEqual(result["field"], "apiKey")
+                if key.strip():
+                    self.assertNotIn(key, json.dumps(result, ensure_ascii=False))
+                batch = self.api.start_batch_transcription({
+                    "items": [{"id": "a", "mediaPath": str(media), "srtPath": str(self.root / "out.srt")}],
+                    "settings": {"apiKey": key, "audioTrack": 0, "defaultAudioTrack": 0},
+                })
+                self.assertFalse(batch["ok"])
+                self.assertEqual(batch["code"], expected)
+                self.assertEqual(batch["field"], "apiKey")
+                thread.assert_not_called()
+                network.assert_not_called()
+                self.assertIsNone(self.api.worker)
+                self.assertIsNone(self.api.batch_worker)
+
+    def test_whitespace_system_key_no_longer_bypasses_start_checks(self) -> None:
+        media = self.root / "clip.mp3"
+        media.write_bytes(b"media")
+        with mock.patch.dict(os.environ, {"DASHSCOPE_API_KEY": "   "}), \
+             mock.patch("maw.gui_web.threading.Thread") as thread:
+            result = self.api.start_transcription({"mediaPath": str(media), "srtPath": str(self.root / "out.srt")})
+        self.assertEqual(result["code"], "api_key_missing")
+        thread.assert_not_called()
+
+    def test_saved_or_system_key_format_is_checked_without_disclosing_it(self) -> None:
+        media = self.root / "clip.mp3"
+        media.write_bytes(b"media")
+        key = "Bearer test-only-private-456"
+        for source in ("file", "system"):
+            with self.subTest(source=source):
+                self.env_path.write_text(f"DASHSCOPE_API_KEY={key if source == 'file' else ''}\n", encoding="utf-8")
+                with mock.patch.dict(os.environ, {"DASHSCOPE_API_KEY": key if source == "system" else ""}):
+                    result = self.api.start_transcription({"mediaPath": str(media), "srtPath": str(self.root / "out.srt")})
+                self.assertEqual(result["code"], "api_key_invalid_format")
+                self.assertNotIn(key, json.dumps(result))
+
+    def test_saving_invalid_key_stays_offline_and_preserves_existing_config(self) -> None:
+        original = "DASHSCOPE_API_KEY=test-only-saved-token\n"
+        self.env_path.write_text(original, encoding="utf-8")
+        with mock.patch("requests.sessions.Session.request", side_effect=AssertionError("No key probe")) as network:
+            result = self.api.save_settings({"providerId": "qwen", "apiKey": "Bearer test-only-private-789"})
+        self.assertEqual(result["code"], "api_key_invalid_format")
+        self.assertEqual(self.env_path.read_text(encoding="utf-8"), original)
+        self.assertNotIn("test-only-private-789", json.dumps(result))
+        network.assert_not_called()
+
+    def test_worker_classifies_api_failure_and_preserves_original_detail(self) -> None:
+        key = "test-only-opaque-credential"
+        request = TranscriptionRequest(media_path=self.root / "clip.wav", srt_path=self.root / "clip.srt",
+                                       provider="qwen", api_key=key)
+        detail = f"RuntimeError: 获取上传凭证失败 (HTTP 401): code=InvalidApiKey | request_id=test-request | provided: {key}"
+        self.api._log_sink = LocalLogSink(directory=self.root / "logs")
+
+        def transcribe(*args, on_event, **kwargs):
+            on_event(detail)
+            raise TranscriptionProcessError(1, [detail])
+
+        with mock.patch("maw.gui_web.run_transcription", side_effect=transcribe):
+            self.api._worker_main(request, threading.Event())
+        event_script = self.window.scripts[-1]
+        self.assertIn('"code": "asr_auth_failed"', event_script)
+        self.assertIn("InvalidApiKey", event_script)
+        self.assertIn("test-request", event_script)
+        self.assertNotIn(key, "".join(self.window.scripts))
+        disk_log = next((self.root / "logs").glob("*.log")).read_text(encoding="utf-8")
+        self.assertIn("test-request", disk_log)
+        self.assertNotIn(key, disk_log)
 
     def test_start_transcription_accepts_api_key_from_env_file(self) -> None:
         """Given saved API key, When field is empty, Then resolved key is used."""

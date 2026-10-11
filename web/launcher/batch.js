@@ -244,6 +244,7 @@
 
   async function startBatch() {
     if (!state.items.length || state.running) return;
+    if (window.MAWLauncher.validateApiKey?.() === false) return;
     const completed = state.items.filter((item) => item.status === "done");
     let itemsToRun = state.items;
     if (completed.length && await window.MAWLauncher.confirm(t("batch_skip_completed_confirm"))) {

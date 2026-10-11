@@ -66,6 +66,7 @@ datas = [
     (str(ROOT / "maw" / "media_cache.py"), "local-runtime/maw"),
     (str(ROOT / "maw" / "output_naming.py"), "local-runtime/maw"),
     (str(ROOT / "maw" / "gui_config.py"), "local-runtime/maw"),
+    (str(ROOT / "maw" / "asr_errors.py"), "local-runtime/maw"),
     (str(ROOT / "maw" / "__init__.py"), "local-runtime/maw"),
     (str(ROOT / "maw" / "app_paths.py"), "local-runtime/maw"),
     (str(ROOT / "maw" / "console.py"), "local-runtime/maw"),
@@ -118,6 +119,7 @@ datas = [
     (str(ROOT / "maw" / "project_preview.py"), "ocr-runtime/maw"),
     (str(ROOT / "maw" / "output_naming.py"), "ocr-runtime/maw"),
     (str(ROOT / "maw" / "gui_config.py"), "ocr-runtime/maw"),
+    (str(ROOT / "maw" / "asr_errors.py"), "ocr-runtime/maw"),
     (str(ROOT / "maw" / "app_paths.py"), "ocr-runtime/maw"),
     (str(ROOT / "maw" / "ocr_runtime_worker.py"), "ocr-runtime/maw"),
 ]
@@ -189,6 +191,7 @@ a = Analysis(
         "maw.script_alignment",
         "maw.gui_web",
         "maw.gui_config",
+        "maw.asr_errors",
         "maw.gui_workflow",
         "maw.local_models",
         "maw.local_runtime",
