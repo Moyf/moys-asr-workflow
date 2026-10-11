@@ -24,6 +24,16 @@ const cases = [
     rows: [['啊，', 0, 210], ['我这个功能', 300, 2000]],
     overlay: { enabled: true, segments: [{ id: 'overlay-001', start: 100, end: 1500, text: '独立叠加' }] },
     decision: { removeItemIds: ['c001:i001'], evidence: '啊，' }, removed: '啊' },
+  { name: 'a stale scope index becoming coincidentally valid after neutral merge', expected: '我这个  功能嗯很好', artifactText: '我这个，功能很好', manuscript: '我这个功能很好', preserveRemoved: true,
+    rows: [['我这个', 0, 400], ['，', 410, 430], ['功能', 500, 800], ['嗯', 810, 930], ['很好', 1000, 2000]],
+    invalidScope: { item_start: 2, item_end: 3 }, decision: { removeItemIds: ['c001:i004'], evidence: '嗯' }, removed: '嗯' },
+  { name: 'a stale scope text becoming coincidentally valid after punctuation cleanup', expected: '正文嗯  很好', artifactText: '正文很好', manuscript: '正文很好', preserveRemoved: true,
+    rows: [['正文', 0, 900], ['嗯，', 1000, 1200], ['很好', 1300, 2000]],
+    invalidScope: { text: '嗯  ' }, decision: { removeItemIds: ['c001:i002'], evidence: '嗯，' }, removed: '嗯' },
+  { name: 'an unselected emoji adjacent to a valid removed filler', expected: '正文😀很好', artifactText: '正文😀很好', manuscript: '正文很好', preserveRemoved: true,
+    allowedTexts: ['正文😀很好', '正文嗯😀很好'],
+    rows: [['正文', 0, 900], ['嗯', 1000, 1200], ['😀', 1210, 1250], ['很好', 1300, 2000]],
+    decision: { removeItemIds: ['c001:i002'], evidence: '嗯' }, removed: '嗯' },
 ];
 
 for (const fixture of cases) {
@@ -65,6 +75,10 @@ print(json.dumps({'path': str(artifact.project_path), 'srt': render_srt(read_pro
       expect(produced.segments[0].text).toBe(fixture.rows.map(([text]) => text).join(''));
       expect(produced.segments[0].disabled).not.toBe(true);
       expect(produced.gap_remove.provenance.sources.ai_cleanup).toHaveLength(fixture.decision.removeItemRanges?.length || 1);
+      if (fixture.invalidScope) {
+        Object.assign(produced.gap_remove.provenance.sources.ai_cleanup[0].cleanup_scope, fixture.invalidScope);
+        writeFileSync(artifact.path, JSON.stringify(produced), 'utf-8');
+      }
       server = await startServer(artifact.path, mediaPath, await findFreePort());
       await disableOnboarding(page);
       await page.addInitScript(() => localStorage.setItem('moy.asr.editor.settings.v1', JSON.stringify({ autoSaveProject: false })));
@@ -86,12 +100,12 @@ print(json.dumps({'path': str(artifact.project_path), 'srt': render_srt(read_pro
       writeFileSync(test.info().outputPath('consumer-snapshot.json'), JSON.stringify(snapshot, null, 2));
       await page.locator('.player-stage').screenshot({ path: test.info().outputPath('local-punctuation-projection.png') });
       expect(snapshot.removedGaps.length).toBeGreaterThan(0);
-      expect(snapshot.css).toBe(fixture.expected);
-      expect(snapshot.canvas).toContain(fixture.expected);
-      expect(snapshot.dynamic.segments[0].text).toBe(fixture.expected);
+      expect(fixture.allowedTexts || [fixture.expected]).toContain(snapshot.css);
+      expect(snapshot.canvas).toContain(snapshot.css);
+      expect(snapshot.dynamic.segments[0].text).toBe(snapshot.css);
       for (const output of [snapshot.ordinary, snapshot.compressed, snapshot.ass]) {
-        expect(output).toContain(fixture.expected);
-        expect(output).not.toContain(fixture.removed);
+        expect(output).toContain(snapshot.css);
+        if (!fixture.preserveRemoved) expect(output).not.toContain(fixture.removed);
       }
       if (fixture.overlay) {
         const aligned = await page.evaluate(() => {
@@ -108,7 +122,7 @@ print(json.dumps({'path': str(artifact.project_path), 'srt': render_srt(read_pro
       expect(await page.evaluate(() => MaweProjectSave.saveProjectToServer({ silent: true }))).toBe(true);
       await page.reload();
       await expect(page.locator('.cue[data-idx="0"] .text')).toBeVisible();
-      expect(await page.evaluate(() => MaweExportSrt.cleanupMainSegments()[0].text)).toBe(fixture.expected);
+      expect(await page.evaluate(() => MaweExportSrt.cleanupMainSegments()[0].text)).toBe(snapshot.css);
       if (fixture.afterFirstRestore) {
         const partial = await page.evaluate(() => {
           const state = MaweGapRemoveData.getGapRemoveData(false);
