@@ -1012,7 +1012,7 @@ Object.assign(STRINGS.zh, {
   llm_base_url: "API URL",
   llm_base_url_placeholder: "填写你的 Base URL，如 https://api.openai.com/v1",
   llm_base_url_hint: "远程服务使用 HTTPS；明文 HTTP 只允许本机环回地址。",
-  llm_local_model_hint: "使用本地模型时，可以直接填写 http://127.0.0.1:1234/v1 这样的本机地址（API Key 允许留空）。",
+  llm_local_model_hint: "使用本地模型时，可以直接填写 http://127.0.0.1:1234/v1 这样的本机地址（API Key 允许留空）",
   llm_reasoning_mode: "思考强度",
   llm_reasoning_auto: "自动",
   llm_reasoning_off: "关闭",

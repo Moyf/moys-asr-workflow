@@ -32,10 +32,11 @@ function runtimeHintText(runtime, readyKey, otherKey) {
 // 英文界面按稳定 id 映射为英文，id 未收录时回退后端原文。
 const PROVIDER_LABELS_EN = { qwen: "Alibaba Cloud Bailian (recommended / Qwen)", soniox: "Soniox STT (overseas / minority languages)", tencent: "Tencent Cloud recorded-file ASR", openai: "OpenAI-format compatible API", local: "Local models (Beta)", doubao: "Volcano Engine (Doubao)", bcut: "Bcut (unofficial / free / experimental)", deepseek: "DeepSeek (?)" };
 const PROVIDER_NOTES_EN = {
-  openai: "OpenAI is used by default; OpenRouter automatically gets the openai/ prefix for built-in models. For other relays, choose Custom and enter the exact model name they provide. The API must return segments or words timestamps.",
+  openai: "OpenAI is used by default; OpenRouter automatically gets the openai/ prefix for built-in models. For other relays, choose the Custom model and enter the name provided by your provider.",
+  doubao: "Media is uploaded directly to Volcano Engine; a single file must be ≤25MB and ≤120 minutes.",
   tencent: "Requires TENCENT_SECRET_ID and TENCENT_SECRET_KEY; use a COS URL for media larger than 5 MB.",
   bcut: "Unofficial free endpoint: no API key, Chinese only, 2-hour per-file limit. The endpoint may change, break, or rate-limit at any time; avoid high-frequency calls. For important or batch tasks, prefer the official providers above.",
-  deepseek: "🐳 The big blue fish cannot transcribe audio — it's a text model! (this note exists because so many people ask) But you can use it for translation in the Subtitle Processing (AI post-process) settings.",
+  deepseek: "🐳 The big blue fish cannot transcribe audio — it's a text model! But you can use it for translation in the AI processing of the toolbox.",
 };
 const MODEL_LABELS_EN = {
   "qwen-audio-3.1-asr-flash-filetrans": "qwen-audio-3.1-asr (dialect / hotwords / context)",
@@ -83,6 +84,7 @@ const MODEL_NOTES_EN = {
   "moss-transcribe-diarize-local": "Speaker diarization with segment timestamps only; an aligner can add word/character timestamps; GPU recommended.",
   "whisper-large-v3-local": "Multilingual recognition with native word timestamps; runs on CPU or GPU, with better speed on GPU; no speaker diarization.",
   "bcut-asr": "Millisecond per-character timestamps; no API key required.",
+  "deepseek-not-an-asr": "Added this note because we get asked way too often _(:з」∠)_",
 };
 const MODEL_PRICING_NOTES_EN = {
   "qwen-audio-3.1-asr-flash-filetrans": "Alibaba Cloud Bailian reference price: token-based, CNY 0.8 / 1M input tokens and CNY 2.7 / 1M output tokens",
