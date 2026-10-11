@@ -3662,7 +3662,7 @@ test('ASS inline strike and size markers restore the base style and use each tra
   assert.match(custom, /\{\\fs24\}小字\{\\fs40\} \{\\fs80\}大字\{\\fs40\}/);
   assert.match(custom.split('\n').find((line) => line.startsWith('Dialogue: 1,')), /\{\\fs32\}小字\{\\fs40\} \{\\fs60\}大字\{\\fs40\}/);
   const strikeBase = helpers.buildAssPayload(cues, { ...options, assStyle: { ...options.assStyle, strikeOut: true } });
-  assert.match(strikeBase, /Dialogue: 0,[^\n]*,,前 删除 /);
+  assert.match(strikeBase, /Dialogue: 0,[^\n]*前 删除 /);
   assert.doesNotMatch(strikeBase.split('\n').find((line) => line.startsWith('Dialogue: 0,')), /\\s0/);
   assert.match(helpers.buildAssPayload(cues), /~~删除~~ -小字- \+大字\+/);
   assert.deepEqual(Array.from(helpers.assInlineStyleRuns('foo-bar-baz C++ 1+2+3 -未闭合', 'none'), (run) => run.text),
@@ -5285,9 +5285,9 @@ test('buildAssPayload styles overlay cues exactly like main cues in every ass_co
     { ...options, appearance: { ass_color_style: 'text' } },
   );
   const textOverlay = textMode.split('\n').filter((line) => line.startsWith('Dialogue: 2,'));
-  assert.equal(textOverlay.length, 2);
+  assert.equal(textOverlay.length, 3); // Blue cue splits at the main cue's end.
   assert.ok(textOverlay[0].includes(',Overlay BLUE,'));
-  assert.ok(textOverlay[1].includes(',Overlay,'));
+  assert.ok(textOverlay[2].includes(',Overlay,'));
   assert.ok(textMode.includes('Style: Overlay,'));
   assert.ok(textMode.includes('Style: Overlay BLUE,'));
   // none：调色板样式不导出，主轨与叠加轨一起回落，不再悬挂未定义引用。
@@ -5296,12 +5296,12 @@ test('buildAssPayload styles overlay cues exactly like main cues in every ass_co
     { ...options, appearance: { ass_color_style: 'none' } },
   );
   const noneOverlay = noneMode.split('\n').filter((line) => line.startsWith('Dialogue: 2,'));
-  assert.equal(noneOverlay.length, 2);
+  assert.equal(noneOverlay.length, 3);
   assert.ok(noneOverlay.every((line) => line.includes(',Overlay,')));
   assert.ok(!noneMode.split('\n').some((line) => line.startsWith('Style: Overlay BLUE,')));
 });
 
-test('buildAssPayload applies fad and transform tags to overlay cues but never move', () => {
+test('buildAssPayload preserves fade and transform clocks while overlay follows main movement', () => {
   const ass = helpers.buildAssPayload(
     [{ start: 100, end: 900, text: 'main' }],
     {
@@ -5319,12 +5319,13 @@ test('buildAssPayload applies fad and transform tags to overlay cues but never m
     },
   );
   const dialogue = ass.split('\n').filter((line) => line.startsWith('Dialogue:'));
-  assert.equal(dialogue.length, 2);
-  // 主轨：fad + move + t 全量应用。
-  assert.ok(dialogue[0].includes('{\\fad(200,300)\\move(0,960,100,500,0,1000)\\t(0,500,1,\\fs40)}main'));
-  // 叠加轨：与位置无关的 fad/t 逐句应用；\move 的绝对坐标只属于主字幕。
-  assert.ok(dialogue[1].includes('{\\fad(200,300)\\t(0,500,1,\\fs40)}overlay'));
-  assert.ok(!dialogue[1].includes('\\move('));
+  assert.ok(dialogue.length > 2, 'active boundaries and clamp crossings split movement pieces');
+  const overlay = dialogue.filter(line => line.startsWith('Dialogue: 2,'));
+  assert.ok(overlay.length > 0);
+  assert.ok(overlay.some(line => line.includes('\\move(')), 'overlay follows the active main movement');
+  assert.ok(overlay.every(line => /\\t\(-?\d+,/.test(line)), 'each piece carries the original transform clock');
+  assert.ok(overlay.every(line => /\\(?:fad|fade)\(/.test(line)));
+  assert.ok(dialogue[0].includes('\\move(0,960,100,500,0,1000)'));
 });
 
 test('buildAssPayload turns single-cue fade markers into fad tags from the style-library durations', () => {
@@ -5439,14 +5440,11 @@ test('buildAssPayload writes extension cues on layer 1 with a single Extension s
     },
   );
   const dialogue = ass.split('\n').filter((line) => line.startsWith('Dialogue:'));
-  assert.equal(dialogue.length, 3);
-  assert.match(dialogue[1], /^Dialogue: 1,/);
-  // 副字幕事件行 MarginV 固化为「主 marginV 88 + round(1.2 × 86) = 191」（锚定主字幕上方）。
-  assert.ok(dialogue[1].includes(',Extension,,0,0,191,'));
-  // 副字幕与叠加轨同样只应用与位置无关的动画标签。
-  assert.ok(dialogue[1].includes('{\\fad(150,250)}extension line'));
-  assert.ok(!dialogue[1].includes('\\move('));
-  assert.match(dialogue[2], /^Dialogue: 2,/);
+  assert.ok(dialogue.length > 3);
+  const extensions = dialogue.filter(line => line.startsWith('Dialogue: 1,'));
+  assert.ok(extensions.length > 0 && extensions.every(line => line.includes(',Extension,,0,0,0,')));
+  assert.ok(extensions.some(line => line.includes('\\move(')), 'secondary cues follow main movement');
+  assert.ok(extensions.every(line => /\\(?:fad|fade)\(/.test(line)));
   // 副字幕样式：独立样式行，字号按 1080p 参考换算，边距完全来自样式。
   const extensionStyle = ass.split('\n').find((line) => line.startsWith('Style: Extension,'));
   assert.ok(extensionStyle);
@@ -5533,28 +5531,30 @@ test('buildAssPayload uses shared absolute stacked positions for top, middle and
         const mainStyle = { id: 'ass', fontSize: 72, marginV: 160, alignment: mainAlignment };
         const extensionStyle = { id: 'ass-extension', fontSize: 54, marginV: 7,
           alignment: extensionAlignment, marginL: 40, marginR: 50 };
-        const mainAnchor = helpers.assCanvasAnchorPoint({ alignment: mainAlignment,
-          margins: { vertical: 160 }, playResX, playResY });
-        const expectedExtension = helpers.assCanvasStackedAnchor({
-          belowAnchor: mainAnchor, belowAlignment: mainAlignment, belowFontSize: 72 * playResY / 1080,
-          alignment: extensionAlignment, margins: { left: 40, right: 50 }, playResX, playResY,
-        });
-        const expectedOverlay = helpers.assCanvasStackedAnchor({
-          belowAnchor: expectedExtension.anchor, belowAlignment: expectedExtension.alignment,
-          belowFontSize: 54 * playResY / 1080, alignment: extensionAlignment,
-          margins: { left: 40, right: 50 }, playResX, playResY,
-        });
+        let plan;
         const ass = helpers.buildAssPayload([{ start: 0, end: 1000, text: 'main' }], {
+          onAssPlan: value => { plan = value; },
           playResX, playResY, assStyle: mainStyle, assExtensionStyle: extensionStyle,
           assProfile: { id: 'ass', styleId: 'ass', animations: {} },
           extensionSegments: [{ start: 0, end: 1000, text: 'extension' }],
           overlaySegments: [{ start: 0, end: 1000, text: 'overlay' }],
         });
         const events = ass.split('\n').filter((line) => line.startsWith('Dialogue:'));
-        for (const [event, expected] of [[events[1], expectedExtension], [events[2], expectedOverlay]]) {
-          assert.ok(event.includes(`{\\an${expected.alignment}\\pos(${expected.anchor.x},${expected.anchor.y})}`));
+        const frame = helpers.assStackFrame(plan, 500);
+        assert.equal(frame.items.length, 3);
+        for (const [index, item] of Array.from(frame.items).entries()) {
+          const position = events[index].match(/\\pos\(([-\d.]+),([-\d.]+)\)/);
+          assert.ok(position);
+          assert.ok(Math.abs(Number(position[1]) - item.anchor.x) < 0.001);
+          assert.ok(Math.abs(Number(position[2]) - item.anchor.y) < 0.001);
+          assert.ok(events[index].includes(`\\an${item.alignment}\\q2`));
+          assert.ok(item.anchor.y + item.rect.top * item.scale >= 0);
+          assert.ok(item.anchor.y + item.rect.bottom * item.scale <= playResY);
         }
-        assert.ok(!events[0].includes('\\pos('), 'main position remains style-controlled');
+        for (let index = 1; index < frame.items.length; index += 1) {
+          const below = frame.items[index - 1], above = frame.items[index];
+          assert.ok(above.anchor.y + above.rect.bottom * above.scale < below.anchor.y + below.rect.top * below.scale);
+        }
       }
     }
   }
@@ -6747,11 +6747,11 @@ test('ASS special symbol rules apply to all five formats across preview runs and
     const events = ass.split('\n').filter(line => line.startsWith('Dialogue:'));
     assert.equal(events.length, 3);
     events.forEach(line => {
-      if (rule === 'none') assert.ok(line.includes(text));
+      if (rule === 'none') assert.ok(line.replace(/\\N/g, '').includes(text));
       else {
         assert.match(line, /\\s1/);
         assert.match(line, /\\u1/);
-        if (rule === 'double') assert.ok(line.includes(single));
+        if (rule === 'double') assert.ok(line.replace(/\\N/g, '').includes(single));
       }
     });
   }

@@ -60,11 +60,15 @@ export function createUtilsModule(dependencies) {
   }
 
   function assEmphasizedText(text, style, fontSize, emphasisSyntax, inlineOptions) {
-    const runs = assInlineStyleRuns(text, emphasisSyntax, inlineOptions);
+    const runs = inlineOptions?.preparedRuns || assInlineStyleRuns(text, emphasisSyntax, inlineOptions);
     return runs.map((run) => {
       const content = escapeAssText(run.text);
       let startTags = '';
       let endTags = '';
+      if (run.speakerColor) {
+        startTags += `\\1c${assOverrideColorFromHex(run.speakerColor)}`;
+        endTags += `\\1c${assOverrideColorFromHex(style.primaryColor)}`;
+      }
       if (run.emphasized) {
         const tag = style.emphasisStyle === 'stroke' ? '3c' : '1c';
         const baseColor = style.emphasisStyle === 'stroke' ? style.outlineColor : style.primaryColor;
@@ -180,6 +184,16 @@ export function createUtilsModule(dependencies) {
       ? normalizeSpeakerLabelSeparator(options.speakerLabelSeparator)
       : DEFAULT_SPEAKER_LABEL_SEPARATOR;
     const events = [];
+    const stackItems = [];
+    const addStackItem = (role, segment, index, context, start, end, style, size, styleName, speakerName, fade, originalText) => {
+      const colorName = effectiveColorName(segment, context);
+      const speakerColor = colorStyle === 'text' || colorStyle === 'speaker'
+        ? colorStyles.find(entry => entry.name === colorName)?.value || style.primaryColor : style.primaryColor;
+      const runs = assInlineStyleRuns(fade.text, emphasisSyntax, inlineOptions);
+      if (speakerName) runs.unshift({ text: `${speakerName}${speakerLabelSeparator}`, speakerColor });
+      stackItems.push({ role, segment, index, start: start * 10, end: end * 10,
+        style, fontSize: size, styleName, speakerName, runs, fad: fade.fad, originalText });
+    };
     // 颜色样式只有在 ASS 能表达为整句样式（text / stroke）时才生成
     // 调色板样式；speaker 只给说话人前缀加局部颜色，none 回落 Default。
     const assColorGroupsSupported = colorStyle === 'text' || colorStyle === 'stroke';
@@ -230,6 +244,7 @@ export function createUtilsModule(dependencies) {
       });
       const animationTags = assMode
         ? assAnimationOverrideTags(profile, { fad: sentenceFade?.fad || null }) : '';
+      if (assMode) addStackItem('main', segment, sourceIndex, source, startCentiseconds, endCentiseconds, styleForEvent, fontSize, styleName, speakerName, sentenceFade, eventText);
       const decoratedText = animationTags ? `{${animationTags}}${eventText}` : eventText;
       events.push(
         `Dialogue: 0,${formatAssTime(startCentiseconds * 10)},${formatAssTime(endCentiseconds * 10)},${styleName},${normalizeAssEventField(speakerName)},0,0,0,,${decoratedText}`,
@@ -269,7 +284,7 @@ export function createUtilsModule(dependencies) {
       ? resolution.height - extensionAnchor.anchor.y
       : Math.max(0, Number(extensionStyle?.marginV) || 0);
     if (assMode && extensionStyle) {
-      extensionSource.forEach((segment) => {
+      extensionSource.forEach((segment, index) => {
         if (!segment || segment.disabled === true) return;
         const rawStart = normalizeAssTimeMs(mapTime(segment.start));
         const rawEnd = normalizeAssTimeMs(mapTime(segment.end));
@@ -297,6 +312,7 @@ export function createUtilsModule(dependencies) {
           emphasisSyntax,
           inlineOptions,
         });
+        addStackItem('extension', segment, index, extensionSource, startCentiseconds, endCentiseconds, extensionStyle, extensionScaledFontSize, 'Extension', extensionSpeakerName, extensionFade);
         const extensionText = `{${anchorTags(extensionAnchor)}}`
           + (extensionAnimationTags ? `{${extensionAnimationTags}}` : '') + extensionContent;
         events.push(
@@ -356,7 +372,7 @@ export function createUtilsModule(dependencies) {
       assColorGroupsSupported && ASS_COLOR_STYLE_NAMES.includes(colorName)
         ? `Overlay ${colorName.toUpperCase()}` : 'Overlay'
     );
-    overlaySource.forEach((segment) => {
+    overlaySource.forEach((segment, index) => {
       if (!segment || segment.disabled === true) return;
       const rawStart = normalizeAssTimeMs(mapTime(segment.start));
       const rawEnd = normalizeAssTimeMs(mapTime(segment.end));
@@ -388,12 +404,48 @@ export function createUtilsModule(dependencies) {
           inlineOptions,
         })
         : escapeAssText(segment.text);
+      if (assMode) addStackItem('overlay', segment, index, overlaySource, startCentiseconds, endCentiseconds, overlayStyleFor(overlayColorName), fontSize, overlayStyleNameFor(overlayColorName), overlaySpeakerName, overlayFade);
       const overlayText = (overlayAnchor ? `{${anchorTags(overlayAnchor)}}` : '')
         + (overlayAnimationTags ? `{${overlayAnimationTags}}` : '') + overlayContent;
       events.push(
         `Dialogue: 2,${formatAssTime(startCentiseconds * 10)},${formatAssTime(endCentiseconds * 10)},${overlayStyleNameFor(overlayColorName)},,0,0,0,,${overlayText}`,
       );
     });
+
+    if (assMode) {
+      const plan = dependencies.assCreateStackPlan({ items: stackItems, profile,
+        width: resolution.width, height: resolution.height, measure: options.measureAssRun });
+      if (typeof options.onAssPlan === 'function') options.onAssPlan({ ...plan, profile });
+      if (options.allowAssPlanDiagnostics) return '';
+      if (!options.allowAssPlanDiagnostics && plan.diagnostics.length) throw new Error(plan.diagnostics[0].message);
+      events.length = 0;
+      const number = value => Number(value.toFixed(4));
+      for (const slice of plan.slices) {
+        if (slice.diagnostic) continue;
+        for (const piece of slice.pieces) for (const item of slice.items) {
+          const scale = slice.scale;
+          const scaledStyle = { ...item.style, spacing: item.style.spacing * scale,
+            outline: item.style.outline * scale, shadow: item.style.shadow * scale };
+          const size = Math.max(1, number(item.fontSize * scale));
+          const animation = piece.start === item.start && piece.end === item.end && scale === 1
+            ? assAnimationOverrideTags(profile, { includeMove: slice.legacy, fad: item.fad })
+            : dependencies.assAnimationSliceTags(profile, { offsetMs: piece.start - item.start,
+              durationMs: item.end - item.start, includeMove: slice.legacy, fad: item.fad, scale });
+          let position = '';
+          if (!slice.legacy) {
+            const from = { x: number(piece.from.x + item.offset.x * scale), y: number(piece.from.y + item.offset.y * scale) };
+            const to = { x: number(piece.to.x + item.offset.x * scale), y: number(piece.to.y + item.offset.y * scale) };
+            position = from.x === to.x && from.y === to.y ? `\\pos(${from.x},${from.y})`
+              : `\\move(${from.x},${from.y},${to.x},${to.y},0,${piece.end - piece.start})`;
+            position = `\\an${item.alignment}\\q2${position}\\fs${size}\\fsp${number(scaledStyle.spacing)}\\bord${number(scaledStyle.outline)}\\shad${number(scaledStyle.shadow)}`;
+          }
+          const content = slice.legacy ? item.originalText : assEmphasizedText('', scaledStyle, size, emphasisSyntax,
+            { ...inlineOptions, preparedRuns: item.runs });
+          const decorated = (position ? `{${position}}` : '') + (animation ? `{${animation}}` : '') + content;
+          events.push(`Dialogue: ${{ main: 0, extension: 1, overlay: 2 }[item.role]},${formatAssTime(piece.start)},${formatAssTime(piece.end)},${item.styleName},${normalizeAssEventField(item.speakerName)},0,0,0,,${decorated}`);
+        }
+      }
+    }
 
     return [
       '[Script Info]',

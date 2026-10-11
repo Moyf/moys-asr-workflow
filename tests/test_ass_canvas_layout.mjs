@@ -19,6 +19,51 @@ const fakeMeasurer = (run, text) => ({
   descent: 2,
 });
 
+test('stack sweep renders all overlapping cues and fits the complete group at the top edge', () => {
+  const style = h.normalizeAssStyle({ fontSize: 72, alignment: 8, marginV: 0 });
+  const profile = h.normalizeAssProfile({ animations: {} });
+  const item = (role, index, start, end, text) => ({ role, index, start, end, style,
+    fontSize: 72, runs: [{ text }] });
+  const plan = h.assCreateStackPlan({ profile, items: [item('main', 0, 0, 2000, 'MAIN\nLINE'),
+    item('extension', 0, 0, 2000, 'MMMMMMMM'), item('extension', 1, 500, 1500, 'WWWWWWWW')] });
+  assert.deepEqual(Array.from(plan.slices, slice => [slice.start, slice.end]), [[0, 500], [500, 1500], [1500, 2000]]);
+  const frame = h.assStackFrame(plan, 1000);
+  assert.equal(frame.items.length, 3);
+  for (const entry of frame.items) {
+    assert.ok(entry.anchor.y + entry.rect.top * entry.scale >= 0);
+    assert.ok(entry.anchor.y + entry.rect.bottom * entry.scale <= 1080);
+  }
+  for (let i = 1; i < frame.items.length; i += 1) {
+    const below = frame.items[i - 1], above = frame.items[i];
+    assert.ok(above.anchor.y + above.rect.bottom * above.scale < below.anchor.y + below.rect.top * below.scale);
+  }
+});
+
+test('stack plan refuses unknown geometry, while single main retains original motion', () => {
+  const style = h.normalizeAssStyle({ fontSize: 72 });
+  const profile = h.normalizeAssProfile({ animations: { t: { enabled: true, tags: String.raw`\frx89` } } });
+  const main = { role: 'main', index: 0, start: 0, end: 1000, style, fontSize: 72, runs: [{ text: 'MAIN' }] };
+  assert.equal(h.assCreateStackPlan({ profile, items: [main] }).slices[0].legacy, true);
+  const plan = h.assCreateStackPlan({ profile, items: [main, { ...main, role: 'extension' }] });
+  assert.equal(plan.diagnostics.length, 1);
+  assert.equal(h.assStackFrame(plan, 500).items.length, 0);
+  assert.throws(() => h.buildAssPayload([{ start: 0, end: 1000, text: 'MAIN' }],
+    { assProfile: profile, assStyle: style, assExtensionStyle: style,
+      extensionSegments: [{ start: 0, end: 1000, text: 'EXT' }] }), /不支持/);
+});
+
+test('stack planning uses Dialogue centiseconds and retains original cue clocks across boundaries', () => {
+  let plan;
+  const output = h.buildAssPayload([{ start: 14, end: 1013, text: 'MAIN' }], {
+    assProfile: { animations: { t: { enabled: true, startMs: 0, endMs: 1000, tags: String.raw`\fs36.5` } } },
+    assStyle: { fontSize: 48 }, assExtensionStyle: { fontSize: 36 },
+    extensionSegments: [{ start: 505, end: 1014, text: 'EXT' }], onAssPlan: value => { plan = value; },
+  });
+  assert.deepEqual(Array.from(plan.slices, slice => [slice.start, slice.end]), [[10, 510], [510, 1010]]);
+  assert.ok(output.includes(String.raw`\t(-500,500,1,\fs36.5)`));
+  assert.equal(h.assTransformStyleTargets(String.raw`\fs36.5\frz45.5`).fontSize, 36.5);
+});
+
 test('alignment 网格映射到列/行（屏幕语义：1-3 底行，7-9 顶行）', () => {
   same(h.assCanvasAlignmentGrid(2), { column: 1, row: 2 });
   same(h.assCanvasAlignmentGrid(1), { column: 0, row: 2 });

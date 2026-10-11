@@ -120,5 +120,30 @@ export function createUtilsModule(dependencies) {
     };
   }
 
-  return Object.freeze({ assAnimationOverrideTags, assPreviewAnimationState, assSentenceFadeTags });
+  // A split Dialogue starts a new libass clock. Negative relative times retain
+  // the source cue's fade/transform clock (verified against real libass frames).
+  function assAnimationSliceTags(profile, { offsetMs = 0, durationMs = 1, includeMove = true, fad = null, scale = 1 } = {}) {
+    const animations = normalizeAssAnimations(profile?.animations);
+    const tags = [];
+    const simple = fad || (!animations.fade.enabled && animations.fad.enabled ? animations.fad : null);
+    if (simple) {
+      tags.push(`\\fade(255,0,255,${-offsetMs},${simple.inMs - offsetMs},${durationMs - simple.outMs - offsetMs},${durationMs - offsetMs})`);
+    } else if (animations.fade.enabled) {
+      const f = animations.fade;
+      tags.push(`\\fade(${f.alpha1},${f.alpha2},${f.alpha3},${f.t1 - offsetMs},${f.t2 - offsetMs},${f.t3 - offsetMs},${f.t4 - offsetMs})`);
+    }
+    if (includeMove && animations.move.enabled) {
+      const m = animations.move;
+      tags.push(`\\move(${m.x1},${m.y1},${m.x2},${m.y2},${m.t1 - offsetMs},${m.t2 - offsetMs})`);
+    }
+    if (animations.t.enabled && animations.t.tags) {
+      const t = animations.t;
+      const transformed = t.tags.replace(/\\(fs|fsp|bord|shad|xbord|ybord)(-?\d+(?:\.\d+)?)/giu,
+        (_, name, value) => `\\${name}${Number((Number(value) * scale).toFixed(4))}`);
+      tags.push(`\\t(${t.startMs - offsetMs},${t.endMs - offsetMs},${t.accel},${transformed})`);
+    }
+    return tags.join('');
+  }
+
+  return Object.freeze({ assAnimationOverrideTags, assAnimationSliceTags, assPreviewAnimationState, assSentenceFadeTags });
 }

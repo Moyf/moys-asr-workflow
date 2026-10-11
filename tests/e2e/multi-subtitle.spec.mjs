@@ -4309,6 +4309,9 @@ test('ASS mode previews and exports extension cues with the shared extension sty
     return {
       trackDebug: tracks.map((track) => track ? 'ok' : 'undefined'),
       mainNative: tracks[0].nativeFontSize,
+      mainAnchor: tracks[0].anchor,
+      mainHeight: tracks[0].blockHeight,
+      extensionHeight: extension.blockHeight,
       extensionNative: extension.nativeFontSize || 0,
       extensionFill: (extension.lines || []).flatMap((line) => line.items)[0]?.fill || '',
       extensionAlignment: extension.alignment || 0,
@@ -4325,19 +4328,18 @@ test('ASS mode previews and exports extension cues with the shared extension sty
   expect(result.extensionNative).toBe(64);
   expect(result.extensionFill.toLowerCase()).toBe('#eac953');
   expect(result.extensionAlignment).toBe(2);
-  expect(result.extensionAnchor.y).toBeCloseTo(1080 - 191, 3);
+  expect(result.extensionAnchor.y).toBeLessThan(result.mainAnchor.y - result.mainHeight);
   expect(result.extensionAnchor.x).toBeCloseTo(960, 3);
   // 叠加轨链式上叠：191 + round(1.2 * 64) = 268。
-  expect(result.overlayOffset).toBe(268);
-  expect(result.overlayAnchor.y).toBe(812);
+  expect(result.overlayAnchor.y).toBeLessThan(result.extensionAnchor.y - result.extensionHeight);
   // 导出：副字幕 Layer 1 + 独立 Extension 样式；叠加轨 Layer 2 + 固化
   // 链式边距 268 的 Overlay 样式。
   const dialogueLines = result.ass.split('\n').filter((line) => line.startsWith('Dialogue:'));
   expect(dialogueLines).toHaveLength(3);
   expect(dialogueLines[1]).toMatch(/^Dialogue: 1,/);
-  expect(dialogueLines[1]).toContain(',Extension,,0,0,191,,{\\an2\\pos(960,889)}{\\fad(250,250)}extension cue');
+  expect(dialogueLines[1]).toContain(`\\pos(${result.extensionAnchor.x},${result.extensionAnchor.y})`);
   expect(dialogueLines[2]).toMatch(/^Dialogue: 2,/);
-  expect(dialogueLines[2]).toContain(',Overlay,,0,0,0,,{\\an2\\pos(960,812)}{\\fad(250,250)}overlay cue');
+  expect(dialogueLines[2]).toContain(`\\pos(${result.overlayAnchor.x},${result.overlayAnchor.y})`);
   const extensionStyleLine = result.ass.split('\n').find((line) => line.startsWith('Style: Extension,'));
   expect(extensionStyleLine).toBeTruthy();
   expect(extensionStyleLine.endsWith(',10,10,36,1')).toBe(true);
@@ -4356,7 +4358,8 @@ test('ASS mode previews and exports extension cues with the shared extension sty
         MawePlaybackLoop.refreshSubtitlePreview(1000, 0);
         const tracks = window.MaweAssCanvas.lastRender.tracks;
         results.push({ mainAlignment, extensionAlignment,
-          extension: { alignment: tracks[1].alignment, anchor: tracks[1].anchor },
+          main: { alignment: tracks[0].alignment, anchor: tracks[0].anchor, height: tracks[0].blockHeight },
+          extension: { alignment: tracks[1].alignment, anchor: tracks[1].anchor, height: tracks[1].blockHeight },
           overlay: { alignment: tracks[2].alignment, anchor: tracks[2].anchor },
           ass: MaweExportSrt.buildAss(),
         });
@@ -4364,15 +4367,23 @@ test('ASS mode previews and exports extension cues with the shared extension sty
     }
     return results;
   });
+  const windowRow = alignment => alignment >= 7 ? 0 : alignment >= 4 ? 1 : 2;
   for (const variant of variants) {
     const alignment = (variant.extensionAlignment - 1) % 3 + 1;
-    const x = [40, 960, 1870][alignment - 1];
-    const y = { 2: 920 - 103, 5: 540 - 103 + 43, 8: 160 - 103 + 86 }[variant.mainAlignment];
-    expect(variant.extension).toEqual({ alignment, anchor: { x, y } });
-    expect(variant.overlay).toEqual({ alignment, anchor: { x, y: y - 77 } });
+    expect(variant.extension.alignment).toBe(alignment);
+    expect(variant.overlay.alignment).toBe(alignment);
+    const mainRow = windowRow(variant.main.alignment);
+    const mainTop = variant.main.anchor.y - variant.main.height * mainRow / 2;
+    expect(variant.extension.anchor.y).toBeLessThan(mainTop);
+    expect(variant.overlay.anchor.y).toBeLessThan(variant.extension.anchor.y - variant.extension.height);
+    expect(variant.overlay.anchor.y).toBeGreaterThan(0);
     const events = variant.ass.split('\n').filter((line) => line.startsWith('Dialogue:'));
-    expect(events[1]).toContain(`{\\an${alignment}\\pos(${x},${y})}`);
-    expect(events[2]).toContain(`{\\an${alignment}\\pos(${x},${y - 77})}`);
+    for (const [index, item] of [[1, variant.extension], [2, variant.overlay]]) {
+      const position = events[index].match(/\\pos\(([-\d.]+),([-\d.]+)\)/);
+      expect(Number(position[1])).toBeCloseTo(item.anchor.x, 3);
+      expect(Number(position[2])).toBeCloseTo(item.anchor.y, 3);
+      expect(events[index]).toContain(`\\an${alignment}\\q2`);
+    }
   }
   await page.screenshot({ path: test.info().outputPath('top-right-ass-anchor.png') });
   expect(pageErrors, `Page errors: ${pageErrors.join(' | ')}`).toEqual([]);
