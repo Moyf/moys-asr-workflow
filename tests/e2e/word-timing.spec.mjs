@@ -498,17 +498,17 @@ test('equal-length typo replacement syncs item texts through the cue panel', asy
   await panel.blur();
   await expect(page.locator('#hint-stack')).toContainText('已同步字词时间码文字');
   expect((await source(page)).items.map(item => item.text)).toEqual(['我', '最喜欢！']);
-  // 长度变化跨入字词范围时，输入过程中不改 items；提交时提示实际差异。
+  // 长度变化落在单个字词块 span 内时同样同步；提交时提示实际差异。
   await panel.fill('我非常喜欢！');
   expect((await source(page)).items.map(item => item.text)).toEqual(['我', '最喜欢！']);
   await panel.blur();
-  await expect(page.locator('#hint-stack')).toContainText('字词时间码未同步：[最 -> 非常] 不是等长替换');
-  expect((await source(page)).items.map(item => item.text)).toEqual(['我', '最喜欢！']);
-  // Esc 取消整次编辑：文字与字词一起回到会话开始的状态
+  await expect(page.locator('#hint-stack')).toContainText('已同步字词时间码文字（共1处：[最喜欢！ -> 非常喜欢！]）');
+  expect((await source(page)).items.map(item => item.text)).toEqual(['我', '非常喜欢！']);
+  // Esc 取消整次编辑：文字与字词一起回到会话开始的状态（上一次 blur 提交后）
   await panel.fill('我非常有喜欢！');
   await page.keyboard.press('Escape');
   const restored = await source(page);
-  expect([restored.text, restored.items.map(item => item.text)]).toEqual(['我非常喜欢！', ['我', '最喜欢！']]);
+  expect([restored.text, restored.items.map(item => item.text)]).toEqual(['我非常喜欢！', ['我', '非常喜欢！']]);
 });
 
 for (const { timebase, startFrame } of [
