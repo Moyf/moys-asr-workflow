@@ -24,6 +24,7 @@
 """
 
 import argparse
+import base64
 import html
 import json
 import os
@@ -269,6 +270,9 @@ def render_editor_page(**context: str) -> str:
         "__NINJA_SFX_BASE_URL_JSON__": context.get("ninja_sfx_base_url_json", '"web/sfx/"'),
         "__UI_LANGUAGE_JSON__": context.get("ui_language_json", "null"),
         "__APP_VERSION__": context["app_version"],
+        "__ABOUT_GIF_URL__": "assets/moi_dancing.gif"
+        if context.get("server_config_json", "null") != "null"
+        else "data:image/gif;base64," + base64.b64encode((WEB_DIR / "assets/moi_dancing.gif").read_bytes()).decode("ascii"),
         "__RELEASE_URL__": context.get(
             "release_url",
             html.escape(get_app_release_url(), quote=True),

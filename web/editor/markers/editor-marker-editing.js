@@ -5,6 +5,18 @@
 (function initMaweMarkerEditing(global) {
   'use strict';
 
+  let markerEditingSessionOverride = null;
+
+  function isEditingEnabled() {
+    return markerEditingSessionOverride ?? (MaweSettings.EDITOR_SETTINGS.markerEditingEnabled === true);
+  }
+
+  function setEditingEnabled(enabled) {
+    markerEditingSessionOverride = null;
+    MaweSettings.updateEditorSettings({ markerEditingEnabled: enabled === true });
+    applyMarkerEditingEnabled();
+  }
+
 
 
   function markerUtils() {
@@ -221,6 +233,32 @@
   }
 
 
+  // 标记编辑总开关（默认关闭）：启用后显示「标记与区段」入口、渲染标记轨道
+  // 并允许编辑；关闭时隐藏入口与轨道，工程数据保留。快捷键 M。
+  function applyMarkerEditingEnabled() {
+    const enabled = isEditingEnabled();
+    const quick = document.getElementById('markers-quick-toggle');
+    if (quick) {
+      quick.classList.toggle('active', enabled);
+      quick.setAttribute('aria-pressed', String(enabled));
+    }
+    if (MaweDom.markersManageButton) MaweDom.markersManageButton.hidden = !enabled;
+    const mirror = document.getElementById('project-marker-track-toggle');
+    if (mirror) mirror.checked = enabled;
+    MaweCoreState.waveformEditor?.refreshMarkerOverlay();
+  }
+
+  // 打开带标记的工程（如 AI 整理产物）时默认启用标记轨道：只改本次会话的
+  // 内存状态，不写个人偏好；切到无标记工程时恢复个人值。
+  // 用户手动关闭后重新打开带标记工程会再次默认开启。
+  function enableForProjectMarkers(markers) {
+    const wasEnabled = isEditingEnabled();
+    markerEditingSessionOverride = Array.isArray(markers) && markers.length > 0 ? true : null;
+    applyMarkerEditingEnabled();
+    return !wasEnabled && isEditingEnabled();
+  }
+
+
   function pendingReviewCount() {
     return markerUtils().countPendingReviewMarkers(getMarkers());
   }
@@ -240,6 +278,10 @@
     deleteMarkers,
     locateMarker,
     afterExternalMarkersChange,
+    isEditingEnabled,
+    setEditingEnabled,
+    applyMarkerEditingEnabled,
+    enableForProjectMarkers,
     pendingReviewCount,
   });
 })(typeof window !== 'undefined' ? window : globalThis);

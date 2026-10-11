@@ -78,8 +78,8 @@ USAGE_SECTION = """## 如何使用
 3. 在启动器中，可以执行字幕转写、生成工程等操作
 4. 完成后，启动字幕编辑器，进行字幕精修
 
-详细文档参阅：[完整使用文档](https://github.com/Moyf/moys-asr-workflow/blob/main/docs/WORKFLOW.md)
-遇到问题可以参见：[常见问题](https://github.com/Moyf/moys-asr-workflow/blob/main/docs/FAQ.md)"""
+详细文档参阅：[完整使用文档](https://github.com/Moyf/moys-asr-workflow/blob/main/docs/user/WORKFLOW.md)
+遇到问题可以参见：[常见问题](https://github.com/Moyf/moys-asr-workflow/blob/main/docs/user/FAQ.md)"""
 
 
 def build_release_notes(

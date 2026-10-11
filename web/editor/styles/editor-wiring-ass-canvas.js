@@ -508,8 +508,8 @@
     ctx.clearRect(0, 0, width, height);
     canvas.hidden = false;
     const tracks = Array.isArray(payload?.tracks) ? payload.tracks : [];
-    // 快照槽位与 payload 顺序一致（不可见轨占位 skipped），e2e 断言可按
-    // 主/副/叠加轨固定下标取值。
+    // 快照顺序与 payload 一致；播放预览只传当前活跃字幕，同轨可以有多句。
+    // 检查指定字幕时用 role + cueId 定位，不假定主/副/叠加轨固定下标。
     const records = [];
     tracks.forEach((track) => {
       if (track?.visible === false) {

@@ -22,7 +22,8 @@ export function createWaveformModule(dependencies) {
     /** @this {import('./waveform-types.js').WaveformInstance} */
     refreshPointerLine() {
       if (this.pointerLineOverrideActive) {
-        this.refreshBoundaryDragPointerLine();
+        if (this.markerDrag || this.markerCreateDrag) this.refreshMarkerDragPointerLine();
+        else this.refreshBoundaryDragPointerLine();
         return;
       }
       if (!this.pointerLineEvent || !this.pointerLineRow || !this.pointerLineMarker) return;
@@ -125,7 +126,16 @@ export function createWaveformModule(dependencies) {
       if (!this.isCueBoundaryDrag(drag) || (!drag.started && !force)) return;
       this.pointerLineOverrideActive = true;
       const timeMs = this.cueBoundaryDragTimeMs(drag);
-      const row = Number.isFinite(timeMs) ? this.findVisibleWaveformRowForTime(timeMs) : null;
+      this.showDragPointerLineAtTime(timeMs);
+    }
+
+
+    /** @this {import('./waveform-types.js').WaveformInstance} */
+    showDragPointerLineAtTime(timeMs, preferRowStart = false) {
+      const startingRow = preferRowStart
+        ? [...(/** @type {NodeListOf<import('./waveform-types.js').WaveformRow>} */ (this.content.querySelectorAll('.waveform-row')))]
+          .find((row) => Math.abs(Number(row.dataset.startMs) - timeMs) < 1) : null;
+      const row = Number.isFinite(timeMs) ? startingRow || this.findVisibleWaveformRowForTime(timeMs) : null;
       (/** @type {NodeListOf<import('./waveform-types.js').WaveformPointerMarker>} */ (this.content.querySelectorAll('.waveform-pointer-line'))).forEach((marker) => {
         marker.classList.remove('boundary-snapped');
         marker.hidden = true;
