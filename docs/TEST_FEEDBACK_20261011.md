@@ -54,3 +54,10 @@
 - `node --test tests/test_launcher_feedback_ui.mjs` → 21/21 通过，包含运行中编辑器图标和供应商槽位行为。
 - `pnpm run check:editor`、`pnpm run check:launcher`、`pnpm run typecheck` 未能进入脚本：pnpm 尝试在沙箱临时目录更新自身时遇到 `EPERM`；已用本地 Node 直接运行对应 bundle 新鲜度检查和 TypeScript 编译。
 - 单个 Python 定向测试在测试初始化写入系统临时目录时遇到 `PermissionError`，未进入断言；没有重试，也没有扩大测试范围。浏览器交互仍按前述环境限制待人工核验。
+
+## 最终交付
+
+- 主线合并提交：`6d9b58c695485050ea1cfce3e03ec63c8a738685`（父提交为功能提交 `8013d7f0` 与 `origin/main` 的 `d2d12b42`）；PR 创建时显示可自动合并。
+- 已推送 `fix/editor-feedback-20261011` 并创建 [PR #223](https://github.com/Moyf/moys-asr-workflow/pull/223)，目标分支为 `main`。
+- Python 定向用例的完整运行结果记录在 `.artifacts/checks/20261011T172129Z-bafab296/result.json`；该文件位于本地忽略目录，不提交。
+- 未打 tag 或发布；`blank-editor.html` 保持未生成，按仓库约定待发布前统一更新。
