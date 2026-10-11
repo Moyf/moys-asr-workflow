@@ -242,6 +242,131 @@ test("provider key status prefers a loaded key, then local no-key, then missing"
   assert.match(strings, /toolbox_key_not_required:\s*"Local service; no API key needed"/);
 });
 
+function providerOwnershipHarness({ remembered = {} } = {}) {
+  const elements = new Map();
+  const selects = new Set(["postprocessProvider", "llmProvider", "postprocessAiCleanupProvider"]);
+  function element(id) {
+    if (!elements.has(id)) {
+      let value = "";
+      const options = [];
+      const classes = new Set();
+      elements.set(id, {
+        id, options, textContent: "", placeholder: "", checked: false,
+        get value() { return value; },
+        set value(next) { value = !selects.has(id) || options.some(option => option.value === next) ? next : ""; },
+        set innerHTML(_next) { options.length = 0; value = ""; },
+        add(option) { options.push(option); if (!value) value = option.value; },
+        classList: { toggle(name, force) { if (force) classes.add(name); else classes.delete(name); } },
+      });
+    }
+    return elements.get(id);
+  }
+  const providers = [
+    { id: "deepseek", label: "DeepSeek", maskedApiKey: "deepseek-mask" },
+    { id: "qwen", label: "Qwen", maskedApiKey: "qwen-mask" },
+    { id: "custom", displayName: "First slot", hasBaseUrl: true },
+    { id: "custom2", displayName: "Second slot", hasBaseUrl: false },
+    { id: "custom3", displayName: "Third slot", hasBaseUrl: false },
+  ];
+  const requests = [];
+  const noop = () => {};
+  const context = vm.createContext({
+    $: element, window: { MAWLauncher: { config: { postprocessProviders: providers } } },
+    Option: function Option(text, value) { this.textContent = text; this.value = value; },
+    t: key => key, postprocessApiKeyRequest: 0, llmProviderByTask: remembered,
+    LLM_PROVIDER_TASK_GROUPS: { proofread: "proofread" },
+    bridge(method, payload) { return new Promise(resolve => requests.push({ method, payload, resolve })); },
+    renderModelChoices: noop, clearSettingsErrors: noop, setSettingsSaveStatus: noop,
+    AUTO_STEP_ORDER: ["match"], AUTO_STEP_CHECKBOXES: { match: "autoStepMatch" },
+    llmPrompts: {}, activeLlmOperation: "", ocrVideoManual: false,
+    defaultAutoPlan: () => ({ enabled: false, steps: [] }),
+    renderAiCleanupMode: noop, validateMatchPunctuation: noop, refreshScriptPreview: noop,
+    syncReplacementSeparator: noop, renderReplacementPreview: noop,
+    autoLlmOperation: value => value, saveLlmPrompts: noop, loadLlmPrompt: noop,
+    renderOcrRegion: noop, setAutoStepsExpanded: noop, renderAutoPostprocessState: noop,
+    updateBackfillLabels: noop, autoOcrVideoPath: () => "", ocrRegionPayload: () => ({}),
+    punctuationLines: () => [], parseReplacements: () => [], replacementRuleText: () => "", getLlmPrompt: () => "",
+    stepProviderId: () => element("postprocessProvider").value,
+  });
+  const functions = [
+    "provider", "isCustomSlot", "customSlotLabelKey", "customSlotVisibleInToolbox",
+    "fillProviderSelects", "syncProviderOptionLabels", "providerLabel", "providerKeyStatusText",
+    "renderProviderKeyStatus", "renderAiCleanupProviderStatus", "loadPostprocessApiKey",
+    "updateCustomDisplayName", "renderProvider", "knownProviderId", "llmTaskGroup",
+    "providerIdForTask", "aiCleanupProviderId", "applyAutoPostprocessPlan", "autoPlanFromControls",
+  ];
+  vm.runInContext(functions.map(launcherFunction).join("\n"), context);
+  context.fillProviderSelects("deepseek");
+  return { context, element, providers, requests };
+}
+
+test("editing an unconfigured settings slot preserves the toolbox provider and loads its own key", async () => {
+  const ui = providerOwnershipHarness();
+  ui.element("llmProvider").value = "custom2";
+  ui.context.renderProvider("custom2", { syncToolbox: false });
+  assert.equal(ui.element("postprocessProvider").value, "deepseek");
+  assert.equal(ui.element("llmProvider").value, "custom2");
+  const request = ui.requests[0];
+  assert.equal(request.payload.providerId, "custom2");
+  request.resolve({ ok: true, apiKey: "test-second-slot-key", maskedApiKey: "second-mask" });
+  await new Promise(setImmediate);
+  assert.equal(ui.element("llmApiKey").value, "test-second-slot-key");
+  assert.match(ui.element("postprocessProviderStatus").textContent, /DeepSeek/);
+  assert.match(ui.element("llmKeyStatus").textContent, /toolbox_key_loaded/);
+});
+
+test("late settings key responses cannot replace another settings slot", async () => {
+  const ui = providerOwnershipHarness();
+  ui.context.renderProvider("custom2", { syncToolbox: false });
+  ui.context.renderProvider("custom3", { syncToolbox: false });
+  ui.requests[1].resolve({ ok: true, apiKey: "test-third-slot-key" });
+  await new Promise(setImmediate);
+  ui.requests[0].resolve({ ok: true, apiKey: "test-second-slot-key" });
+  await new Promise(setImmediate);
+  assert.equal(ui.element("llmApiKey").value, "test-third-slot-key");
+  assert.equal(ui.element("postprocessProvider").value, "deepseek");
+});
+
+test("a filtered preferred provider keeps valid toolbox defaults and remains editable in settings", () => {
+  const ui = providerOwnershipHarness();
+  for (const id of ["postprocessProvider", "llmProvider", "postprocessAiCleanupProvider"]) ui.element(id).innerHTML = "";
+  ui.context.fillProviderSelects("custom2");
+  assert.equal(ui.element("postprocessProvider").value, "deepseek");
+  assert.equal(ui.element("postprocessAiCleanupProvider").value, "deepseek");
+  assert.equal(ui.element("llmProvider").value, "custom2");
+  ui.context.renderProvider("qwen", { syncToolbox: false });
+  assert.equal(ui.element("postprocessProvider").value, "deepseek");
+  assert.equal(ui.element("llmProvider").value, "qwen");
+});
+
+test("renaming a hidden settings slot changes only that slot", () => {
+  const ui = providerOwnershipHarness();
+  ui.context.renderProvider("custom2", { syncToolbox: false });
+  ui.context.updateCustomDisplayName("Named second slot");
+  assert.equal(ui.providers.find(item => item.id === "custom").displayName, "First slot");
+  assert.equal(ui.providers.find(item => item.id === "custom2").displayName, "Named second slot");
+  assert.equal(ui.element("postprocessProvider").value, "deepseek");
+  assert.equal(ui.element("llmProvider").value, "custom2");
+});
+
+test("old automatic cleanup plans restore their provider without new task memory", () => {
+  const ui = providerOwnershipHarness();
+  ui.context.applyAutoPostprocessPlan({ enabled: true, steps: [{ id: "match", enabled: true, aiCleanup: true, providerId: "qwen" }] });
+  assert.equal(ui.element("postprocessAiCleanupProvider").value, "qwen");
+  assert.equal(ui.context.aiCleanupProviderId(), "qwen");
+  assert.equal(ui.context.autoPlanFromControls().steps.find(step => step.id === "match").providerId, "qwen");
+  assert.equal(ui.element("postprocessProvider").value, "deepseek");
+});
+
+test("cleanup restoration keeps current task memory and falls back to a visible provider", () => {
+  for (const remembered of [{ ai_cleanup: "deepseek" }, { ai_cleanup: "custom2" }]) {
+    const ui = providerOwnershipHarness({ remembered });
+    ui.context.applyAutoPostprocessPlan({ steps: [{ id: "match", aiCleanup: true, providerId: "qwen" }] });
+    assert.equal(ui.element("postprocessAiCleanupProvider").value, "deepseek");
+    assert.equal(ui.context.aiCleanupProviderId(), "deepseek");
+  }
+});
+
 test("green-screen generation does not require or disable for missing media", () => {
   const mediaAction = source.match(/function renderMediaToolAction\(\) \{([\s\S]*?)\n  \}/)?.[1] || "";
   const burnAction = source.match(/async function runBurnSubtitle\(\) \{([\s\S]*?)\n  \}/)?.[1] || "";

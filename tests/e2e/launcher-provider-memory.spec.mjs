@@ -89,11 +89,17 @@ test('toolbox hides custom slots #2/#3 until a URL is saved', async ({ page }) =
   expect(await optionValues('#postprocessProvider')).not.toContain('custom2');
   expect(await optionValues('#postprocessProvider')).not.toContain('custom3');
   expect(await optionValues('#llmProvider')).toEqual(expect.arrayContaining(['custom', 'custom2', 'custom3']));
+  const toolboxProvider = await page.locator('#postprocessProvider').inputValue();
+  const firstSlotName = await page.evaluate(() => window.MAWLauncher.config.postprocessProviders.find(item => item.id === 'custom').displayName);
 
   // 在设置页给 custom2 填 URL 保存后，工具箱下拉出现该槽位；custom3 仍未配置，继续隐藏。
   await page.locator('#settingsButton').click();
   await page.locator('#settingsLlmTab').click();
   await page.locator('#llmProvider').selectOption('custom2');
+  await expect(page.locator('#postprocessProvider')).toHaveValue(toolboxProvider);
+  await page.locator('#llmCustomDisplayName').fill('Second local service');
+  expect(await page.evaluate(() => window.MAWLauncher.config.postprocessProviders.find(item => item.id === 'custom').displayName)).toBe(firstSlotName);
+  await expect(page.locator('#llmProvider option[value="custom2"]')).toHaveText('Second local service');
   await page.locator('#llmBaseUrl').fill('http://127.0.0.1:1234/v1');
   await page.locator('#llmModel').fill('local-model');
   await page.locator('#saveLlmSettings').click();

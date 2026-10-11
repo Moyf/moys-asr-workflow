@@ -479,9 +479,9 @@
         if (select.id !== "llmProvider" && !customSlotVisibleInToolbox(item)) return;
         select.add(new Option(providerLabel(item), item.id));
       });
-      const target = previous || preferredProviderId;
-      if (target && Array.from(select.options).some((option) => option.value === target)) select.value = target;
-      else if (preferredProviderId) select.value = preferredProviderId;
+      const target = [previous, preferredProviderId].find((id) =>
+        id && Array.from(select.options).some((option) => option.value === id));
+      if (target) select.value = target;
     });
     syncProviderOptionLabels();
   }
@@ -543,7 +543,8 @@
   function renderProviderKeyStatus(item) {
     const keyStatus = providerKeyStatusText(item);
     $("llmKeyStatus").textContent = keyStatus;
-    $("postprocessProviderStatus").textContent = `${providerLabel(item)} · ${keyStatus}`;
+    const toolboxProvider = provider();
+    $("postprocessProviderStatus").textContent = `${providerLabel(toolboxProvider)} · ${providerKeyStatusText(toolboxProvider)}`;
     renderAiCleanupProviderStatus();
   }
 
@@ -560,7 +561,7 @@
     const requestId = ++postprocessApiKeyRequest;
     try {
       const result = await bridge("get_postprocess_settings", { providerId });
-      if (requestId !== postprocessApiKeyRequest || $("postprocessProvider").value !== providerId) return;
+      if (requestId !== postprocessApiKeyRequest || $("llmProvider").value !== providerId) return;
       const field = $("llmApiKey");
       if (!result?.ok) {
         if (!field.value.trim()) field.placeholder = fallbackMask;
@@ -574,7 +575,7 @@
       field.value = result.apiKey || "";
       field.placeholder = "";
     } catch (error) {
-      if (requestId === postprocessApiKeyRequest && $("postprocessProvider").value === providerId && !$("llmApiKey").value.trim()) {
+      if (requestId === postprocessApiKeyRequest && $("llmProvider").value === providerId && !$("llmApiKey").value.trim()) {
         $("llmApiKey").placeholder = fallbackMask;
       }
     }
@@ -629,13 +630,13 @@
   }
 
   function updateCustomDisplayName(value) {
-    const item = isCustomSlot(provider()) ? provider() : provider("custom");
-    if (!item) return;
+    const item = provider($("llmProvider").value);
+    if (!isCustomSlot(item)) return;
     item.displayName = String(value || "").trim();
     item.label = providerLabel(item);
     syncProviderOptionLabels();
     fillProviderSelects();
-    if (provider().id === item.id) renderProviderKeyStatus(item);
+    renderProviderKeyStatus(item);
   }
 
   function autoSourcePath() {
@@ -809,10 +810,12 @@
     hint.textContent = t(hint.dataset.i18n);
   }
 
-  function renderProvider(providerId = $("postprocessProvider").value) {
+  function renderProvider(providerId = $("postprocessProvider").value, { syncToolbox = true } = {}) {
     const item = provider(providerId);
     syncProviderOptionLabels();
-    $("postprocessProvider").value = item.id;
+    if (syncToolbox && Array.from($("postprocessProvider").options).some((option) => option.value === item.id)) {
+      $("postprocessProvider").value = item.id;
+    }
     $("llmProvider").value = item.id;
     $("llmBaseUrl").value = item.baseUrl || "";
     $("llmModel").value = item.model || "";
@@ -1943,6 +1946,13 @@
     $("postprocessPreservePunctuation").value = Array.isArray(match.preservePunctuation) ? match.preservePunctuation.join("\n") : "";
     $("postprocessCleanMarkdownSymbols").checked = match.cleanMarkdownSymbols !== false;
     $("postprocessAiCleanup").checked = match.aiCleanup === true;
+    // Existing plans predate the independent task memory. Preserve their
+    // provider when no newer choice is remembered, and keep filtered slots out.
+    const aiCleanupProvider = providerIdForTask("ai_cleanup") || knownProviderId(match.providerId);
+    const aiCleanupSelect = $("postprocessAiCleanupProvider");
+    if (aiCleanupProvider && Array.from(aiCleanupSelect.options).some((option) => option.value === aiCleanupProvider)) {
+      aiCleanupSelect.value = aiCleanupProvider;
+    }
     renderAiCleanupMode();
     const aiCleanupNotesField = $("postprocessAiCleanupNotesField");
     aiCleanupNotesField?.classList.toggle("hidden", match.aiCleanup !== true);
@@ -2646,8 +2656,6 @@
     renderOcrModel();
     renderTimestampModel();
     loadLlmProviderByTask();
-    const aiCleanupSavedProvider = providerIdForTask("ai_cleanup");
-    if (aiCleanupSavedProvider) $("postprocessAiCleanupProvider").value = aiCleanupSavedProvider;
     restoreProviderForTask(activeLlmOperation || $("postprocessOperation").value);
     selectToolboxSection("postprocess");
     syncPaths();
@@ -2690,7 +2698,7 @@
   });
   $("postprocessProvider").addEventListener("change", () => { renderProvider(); rememberProviderForTask($("postprocessOperation").value, $("postprocessProvider").value); renderAutoPostprocessState(); persistAutoPlanSoon(); });
   $("postprocessOperation").addEventListener("change", () => switchLlmOperation($("postprocessOperation").value));
-  $("llmProvider").addEventListener("change", () => { renderProvider($("llmProvider").value); rememberProviderForTask($("postprocessOperation").value, $("llmProvider").value); renderAutoPostprocessState(); persistAutoPlanSoon(); });
+  $("llmProvider").addEventListener("change", () => { renderProvider($("llmProvider").value, { syncToolbox: false }); });
   $("saveLlmSettings").addEventListener("click", () => { void saveSettings(); });
   $("testLlmConnection").addEventListener("click", testConnection);
   $("getLlmModels").addEventListener("click", getModels);
@@ -2709,7 +2717,7 @@
   $("postprocessMatchMode").addEventListener("change", () => { validateMatchPunctuation(); void refreshScriptPreview(); persistAutoPlanSoon(); });
   $("postprocessAiCleanup").addEventListener("change", () => { renderAiCleanupMode(); renderAutoPostprocessState(); persistAutoPlanSoon(); });
   $("postprocessAiCleanupProvider").addEventListener("change", () => { rememberProviderForTask("ai_cleanup", $("postprocessAiCleanupProvider").value); renderAiCleanupProviderStatus(); renderAutoPostprocessState(); persistAutoPlanSoon(); });
-  $("openLlmSettingsFromAiCleanup").addEventListener("click", () => { window.MAWLauncher.openSettings("llmSettingsSection"); requestAnimationFrame(() => $("llmApiKey")?.focus()); });
+  $("openLlmSettingsFromAiCleanup").addEventListener("click", () => { renderProvider(aiCleanupProviderId(), { syncToolbox: false }); window.MAWLauncher.openSettings("llmSettingsSection"); requestAnimationFrame(() => $("llmApiKey")?.focus()); });
   $("postprocessAiCleanupNotes").addEventListener("input", () => { persistAutoPlanSoon(); });
   $("runOcrDedup").addEventListener("click", runOcrDedup);
   $("ocrModel").addEventListener("change", renderOcrModel);
@@ -2718,6 +2726,8 @@
   $("runLlmPostprocess").addEventListener("click", runLlm);
   $("stopToolboxPostprocess").addEventListener("click", () => { void cancelAiPostprocess(); });
   $("toolboxPostprocessSettings").addEventListener("click", () => {
+    const providerId = activeToolId === "match" ? aiCleanupProviderId() : $("postprocessProvider").value;
+    renderProvider(providerId, { syncToolbox: false });
     window.MAWLauncher.openSettings("llmSettingsSection");
     requestAnimationFrame(() => $("llmApiKey")?.focus());
   });
@@ -2851,7 +2861,7 @@
   });
   $("ocrRegionMode").addEventListener("change", renderOcrRegion);
   $("ocrThreshold").addEventListener("input", () => setFieldError("ocrThreshold", ""));
-  $("openLlmSettings").addEventListener("click", () => { window.MAWLauncher.openSettings("llmSettingsSection"); requestAnimationFrame(() => $("llmApiKey")?.focus()); });
+  $("openLlmSettings").addEventListener("click", () => { renderProvider(); window.MAWLauncher.openSettings("llmSettingsSection"); requestAnimationFrame(() => $("llmApiKey")?.focus()); });
   $("postprocessScriptPath").addEventListener("input", () => { setFieldError("postprocessScriptPath", ""); renderAutoPostprocessState(); maybeEnablePendingAutoStep(); persistAutoPlanSoon(); });
   $("postprocessPrompt").addEventListener("input", () => {
     persistLlmPrompt();

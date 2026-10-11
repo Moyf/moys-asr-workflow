@@ -2030,7 +2030,7 @@ class GuiWebBridgeTests(CompactContainerAssertions, unittest.TestCase):
             "fillProviderSelects(selectedProvider);",
             "fillProviderSelects(item.id);",
             # 设置页 change 直接渲染 llmProvider 的值；工具箱保持自身选中项。
-            'renderProvider($("llmProvider").value)',
+            'renderProvider($("llmProvider").value, { syncToolbox: false })',
         ]
         missing = [needle for needle in needles if needle not in script]
         self.assertEqual(missing, [], f"postprocess.js 缺少：{missing}")
