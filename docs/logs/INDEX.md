@@ -27,12 +27,21 @@
 | unversioned | undated | [时间码对比页面计划（tools/timestamp-compare.html）](unversioned/undated/PLAN_TIMESTAMP_COMPARE.md) | 保留原始结论与验证范围 |
 | unversioned | undated | [编辑器 ESM 迁移：实施台账与上游交接](unversioned/undated/ESM_MIGRATION.md) | 保留原始结论与验证范围 |
 | unversioned | undated | [编辑器设置整理实施记录](unversioned/undated/EDITOR_SETTINGS_IMPLEMENTATION.md) | 保留原始结论与验证范围 |
+| unversioned | undated | [PR #208 波形与响度预研](unversioned/undated/PR208_WAVEFORM_PREFLIGHT_RESEARCH_20261011.md) | 正文未明确任务日期；保留研究结论与原文件名 |
 | 1.8.0-beta.1 | undated | [v1.8.0-beta.1 发布审查](1.8.0-beta.1/undated/RELEASE_REVIEW_1.8.0-beta.1.md) | 保留原始结论与验证范围 |
 | 1.4.0-beta.7 | undated | [v1.4.0-beta.7 测试反馈与处理记录](1.4.0-beta.7/undated/TEST_FEEDBACK_BETA7.md) | 保留原始结论与验证范围 |
 | 1.3.2 → 1.4.0（跨版本） | undated | [MAW 1.3.2 → 1.4.0-beta.4 变更回顾](1.3.2/undated/RELEASE_REVIEW_1.3.2_TO_1.4.0.md) | 保留原始结论与验证范围 |
 | unversioned | 2026-10-11 | [261011 再次反馈处理记录](unversioned/2026-10-11/feedback/%E5%A4%84%E7%90%86%E8%AE%B0%E5%BD%95.md) | 保留原始结论与验证范围 |
 | unversioned | 2026-10-11 | [MAW 2.0 新版本核对](unversioned/2026-10-11/feedback/MAW%202.0%20%E6%96%B0%E7%89%88%E6%9C%AC%E6%A0%B8%E5%AF%B9.md) | 保留原始结论与验证范围 |
 | unversioned | 2026-10-11 | [PR #207: visibility-first ASS subtitle stacking](unversioned/2026-10-11/PR205_ANCHOR_REVIEW_20261011.md) | 保留原始结论与验证范围 |
+| unversioned | 2026-10-11 | [PR #218 编辑器与 Launcher 反馈收尾](unversioned/2026-10-11/TEST_FEEDBACK_WORD_TIMING_LAYOUT.md) | 保留原始结论、统计和验证范围 |
+| unversioned | 2026-10-11 | [PR #211 媒体重组修复与音频导出](unversioned/2026-10-11/PR211_MEDIA_EXPORT_FIXES.md) | 保留原始结论、统计和验证范围 |
+| unversioned | 2026-10-11 | [PR #208 Launcher 空结果与音轨诊断](unversioned/2026-10-11/PR208_AUDIO_DIAGNOSTICS_20261011.md) | 保留当前方案、历史方案和各轮验证范围 |
+| unversioned | 2026-10-11 | [MAW20 PR-D 可靠字词局部 AI 移除](unversioned/2026-10-11/maw20-gap/MAW20_GAP_D.md) | 保留协议范围、合成验证与真实模型验收边界 |
+| unversioned | 2026-10-11 | [MAW20 PR-C 去空隙视频后台任务](unversioned/2026-10-11/maw20-gap/MAW20_GAP_C.md) | 保留原始结论、统计和验证范围 |
+| unversioned | 2026-10-11 | [MAW20 PR-B 普通文稿匹配取消](unversioned/2026-10-11/maw20-gap/MAW20_GAP_B.md) | 保留原始结论、统计和验证范围 |
+| unversioned | 2026-10-11 | [MAW20 PR-A 视频导出绑定时序](unversioned/2026-10-11/maw20-gap/MAW20_GAP_A.md) | 保留原始结论、统计和验证范围 |
+| unversioned | 2026-10-11 | [MAW20 缺口机动独立审查](unversioned/2026-10-11/maw20-gap/MAW20_GAP_Q.md) | 保留原始审查范围与独立验证边界 |
 | unversioned | 2026-10-10 | [Launcher.js 拆分重构（第一阶段）](unversioned/2026-10-10/REFACTOR_LAUNCHER_SPLIT.md) | 保留原始结论与验证范围 |
 | unversioned | 2026-10-09 | [Verification 核对工具调整（2026-10-09）](unversioned/2026-10-09/TEST_FEEDBACK_VERIFICATION_TOOL.md) | 保留原始结论与验证范围 |
 | unversioned | 2026-10-09 | [设置页改进记录（2026-10-09）](unversioned/2026-10-09/TEST_FEEDBACK_SETTINGS_20261009.md) | 保留原始结论与验证范围 |

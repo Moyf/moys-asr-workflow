@@ -70,11 +70,11 @@
 ### 命令、环境和验证边界
 
 - 检查均经 `scripts/run_check.py --timeout N -- ...`；Python 全量使用 `scripts/run_tests.py`，Node 全量使用 `node --test tests/*.mjs`；编辑器构建及 fresh check 使用 `node scripts/build-editor.mjs --write / --check`。
-- 只读复用锁文件一致的 `J:/workspace/worktree/maw-premerge-device-check-20261011/maw-fork/.venv/Scripts/python.exe` 及 node_modules，未安装/同步共享依赖。浏览器使用已安装 Edge，媒体使用 PATH 上 FFmpeg/FFprobe。
+- 只读复用锁文件一致的既有 Python 环境及 Node 依赖，未安装或同步共享依赖。浏览器使用已安装 Edge，媒体使用 PATH 上 FFmpeg/FFprobe。
 - 初轮沙箱浏览器启动失败，Python 全量仅 `test_run_check` 自建进程树清理被沙箱阻止；最后获自动审批在沙箱外完成上述最终回归。初轮较广后端 132 项有一次 sticker 目录 rename `WinError 5`，随后定向及全量通过。初轮 Node 未传正确 Python/Edge 环境且 bundle 正在修改，最后设置正确环境与最终 bundle 后 571 项通过。这些初轮结果不计为通过。
 - 最终 Python 全量日志开始仍有一条子进程 reader 的 UTF-8 解码异常诊断，但 unittest 结果为 `OK (skipped=26)`；记录该诊断，不把退出码通过描述成日志无异常。
 - 最终真实用户媒体验证复跑第一次触发已有 WAV 产物的防覆盖检查；使用独立新验证目录后通过，旧证据/产物未被覆盖。
 - 视频保持原有 GOP 预卷/包边界行为，没有声称帧级精准。极短保留区间可能无音轨，继续保守拒绝，不移除流一致性保护。
 - 浏览器保存选择器及写入句柄由 E2E 替身驱动；实际操作系统保存窗口、人工听看及打包应用启动未执行。提供仓库外 HTML 核对清单逐项人工验收。ASS 绿幕不在本次范围。
 
-人工清单：`C:/Users/JingKe/.codex/visualizations/2026/10/11/01a12ae4-0cbf-7ed2-af37-3685edb15ecc/pr211-media-export-checklist.html`。
+人工核对清单为仓库外 HTML，未纳入仓库；按其步骤逐项执行人工验收。
