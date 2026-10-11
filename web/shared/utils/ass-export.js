@@ -237,7 +237,7 @@ export function createUtilsModule(dependencies) {
     });
 
     // 副字幕轨（多重字幕）：所有副字幕共用一个样式（不支持颜色分组），
-    // 事件引用独立 Extension 样式，边距/对齐完全由该样式决定。
+    // 事件引用独立 Extension 样式，水平边距/对齐由样式决定，垂直锚定主轨。
     // \fad/\fade/\t 逐句应用；\move 的绝对坐标只属于主字幕。
     const extensionSource = Array.isArray(options.extensionSegments)
       ? options.extensionSegments : [];
@@ -248,11 +248,25 @@ export function createUtilsModule(dependencies) {
     const extensionScaledFontSize = extensionStyle
       ? normalizeAssFontSize(extensionStyle.fontSize * resolution.height / ASS_REFERENCE_PLAY_RES_Y)
       : 0;
-    // 副字幕锚定在主字幕上方：垂直边距固化为「主字幕 marginV + 1.2 × 主字号」，
-    // 与预览的链式锚定一致；副字幕样式自身的 marginV 不再决定位置。
-    // 事件行的第三个边距位覆盖 MarginV，其余仍取 Extension 样式值。
+    // Secondary tracks share the Canvas nominal single-line anchor model.
+    // Explicit positions are required for top/middle and mixed alignments;
+    // retain the secondary style's horizontal alignment and side margins.
+    const mainAnchor = dependencies.assCanvasAnchorPoint({
+      alignment: baseStyle.alignment,
+      margins: { left: baseStyle.marginL, right: baseStyle.marginR, vertical: baseStyle.marginV },
+      playResX: resolution.width, playResY: resolution.height,
+    });
+    const extensionAnchor = assMode && extensionStyle
+      ? dependencies.assCanvasStackedAnchor({
+        belowAnchor: mainAnchor, belowAlignment: baseStyle.alignment, belowFontSize: fontSize,
+        alignment: extensionStyle.alignment,
+        margins: { left: extensionStyle.marginL, right: extensionStyle.marginR },
+        playResX: resolution.width, playResY: resolution.height,
+      }) : null;
+    const anchorTags = (position) => position
+      ? `\\an${position.alignment}\\pos(${position.anchor.x},${position.anchor.y})` : '';
     const extensionAnchorMarginV = assMode && extensionStyle
-      ? Math.max(0, Number(baseStyle.marginV) || 0) + Math.round(1.2 * fontSize)
+      ? resolution.height - extensionAnchor.anchor.y
       : Math.max(0, Number(extensionStyle?.marginV) || 0);
     if (assMode && extensionStyle) {
       extensionSource.forEach((segment) => {
@@ -283,40 +297,42 @@ export function createUtilsModule(dependencies) {
           emphasisSyntax,
           inlineOptions,
         });
-        const extensionText = extensionAnimationTags
-          ? `{${extensionAnimationTags}}${extensionContent}` : extensionContent;
+        const extensionText = `{${anchorTags(extensionAnchor)}}`
+          + (extensionAnimationTags ? `{${extensionAnimationTags}}` : '') + extensionContent;
         events.push(
           `Dialogue: 1,${formatAssTime(startCentiseconds * 10)},${formatAssTime(endCentiseconds * 10)},Extension,,0,0,${extensionAnchorMarginV},,${extensionText}`,
         );
       });
     }
 
-    // 叠加轨事件：引用独立的 Overlay 样式（字段与主字幕样式完全一致，
-    // 仅把 MarginV 固化为算好的锚定结果），事件行不再携带边距覆盖。颜色
-    // 映射与主字幕一致（none 模式一起回落）；\fad/\fade/\t 逐句应用，
-    // \move 的绝对坐标只属于主字幕。锚定公式固定为「下方最近一层字幕的
-    // 垂直边距 + 1.2 × 该层字号」：有副字幕时叠在副字幕上方，否则叠在主
-    // 字幕上方（1.2 倍在两层文字之间留出空档）。ASS 模式下各层边距来自
-    // 样式库（用户可改），legacy 模式主字幕固定 80。
+    // Overlay uses the main style's font/color and chains above the enabled
+    // extension track, or above main when no extension is enabled. Both
+    // secondary tracks use fixed anchors; only main receives move animation.
     const overlaySource = Array.isArray(options.overlaySegments) ? options.overlaySegments : [];
     const hasOverlayCues = overlaySource.some((segment) => segment && segment.disabled !== true);
+    const overlayAnchorStyle = extensionAnchor && hasExtensionCues ? extensionStyle : baseStyle;
+    const overlayAnchor = assMode ? dependencies.assCanvasStackedAnchor({
+      belowAnchor: extensionAnchor && hasExtensionCues ? extensionAnchor.anchor : mainAnchor,
+      belowAlignment: extensionAnchor && hasExtensionCues ? extensionAnchor.alignment : baseStyle.alignment,
+      belowFontSize: extensionAnchor && hasExtensionCues ? extensionScaledFontSize : fontSize,
+      alignment: overlayAnchorStyle.alignment,
+      margins: { left: overlayAnchorStyle.marginL, right: overlayAnchorStyle.marginR },
+      playResX: resolution.width, playResY: resolution.height,
+    }) : null;
     const overlayMarginV = assMode
-      ? (extensionStyle && hasExtensionCues
-        ? extensionAnchorMarginV + Math.round(1.2 * extensionScaledFontSize)
-        : Math.max(0, Number(baseStyle.marginV) || 0) + Math.round(1.2 * fontSize))
+      ? resolution.height - overlayAnchor.anchor.y
       : 80 + Math.round(1.2 * fontSize);
-    // 链式锚定发生在哪一层的坐标系里，叠加样式就继承哪一层的对齐与水平
-    // 边距：否则副字幕样式改成顶部/侧边对齐时，固化边距会按主样式的基准
-    // 边解释，叠加轨落到画面另一侧。字体与颜色仍跟随主字幕样式。
+    // Inherit the anchor layer's horizontal alignment/margins, with a bottom
+    // vertical attachment matching the explicit position in every event.
     const overlayBaseStyle = assMode
       ? (extensionStyle && hasExtensionCues
         ? {
           ...baseStyle,
-          alignment: extensionStyle.alignment,
+          alignment: overlayAnchor.alignment,
           marginL: extensionStyle.marginL,
           marginR: extensionStyle.marginR,
         }
-        : baseStyle)
+        : { ...baseStyle, alignment: overlayAnchor.alignment })
       : {
         ...ASS_DEFAULT_ASS_STYLE,
         fontName: fontFamily,
@@ -372,8 +388,8 @@ export function createUtilsModule(dependencies) {
           inlineOptions,
         })
         : escapeAssText(segment.text);
-      const overlayText = overlayAnimationTags
-        ? `{${overlayAnimationTags}}${overlayContent}` : overlayContent;
+      const overlayText = (overlayAnchor ? `{${anchorTags(overlayAnchor)}}` : '')
+        + (overlayAnimationTags ? `{${overlayAnimationTags}}` : '') + overlayContent;
       events.push(
         `Dialogue: 2,${formatAssTime(startCentiseconds * 10)},${formatAssTime(endCentiseconds * 10)},${overlayStyleNameFor(overlayColorName)},,0,0,0,,${overlayText}`,
       );

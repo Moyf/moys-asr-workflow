@@ -391,8 +391,8 @@
       : runs;
     const layout = u.assCanvasLayoutLines(speaker, measurerFor(track, ratio));
     if (!layout.blockHeight) return { skipped: true, opacity: alpha };
-    // 锚定轨（副字幕/叠加轨）可以覆盖样式自带的 Alignment：叠加轨链在
-    // 副字幕上方时沿用副字幕的对齐（与导出侧锚定继承一致）。
+    // Secondary tracks override the vertical attachment while preserving
+    // their horizontal alignment, matching the exported an/pos tags.
     const alignmentValue = track.alignment ?? style.alignment;
     const grid = u.assCanvasAlignmentGrid(alignmentValue);
     const anchor = u.assCanvasAnchorPoint({
@@ -400,7 +400,7 @@
       margins: track.margins,
       playResX,
       playResY,
-      move: style.__assMove || null,
+      move: track.anchor || style.__assMove || null,
     });
     // 渲染参数快照（e2e 断言用）：行/字段尺寸与最终落色直接取自绘制路径，
     // 保证测试看到的就是画布实际消费的值。

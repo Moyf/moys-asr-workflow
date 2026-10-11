@@ -201,17 +201,13 @@ function applyAssSubtitlePreview({ tMs, segment, extension, overlay, overlaySegm
   const extensionSegments = activeExtensionSegments();
   const mainStyle = assPreviewStyleVariant(baseStyle, segment, MaweBoot.DATA.segments, appearance);
   // 副字幕使用样式库「副字幕样式」槽位的独立样式（副字幕不支持颜色分组，
-  // 不做调色板变体），对齐与边距完全由该样式决定。
+  // 不做调色板变体），水平对齐与边距来自该样式。
   const extensionStyleBase = window.AsrEditorUtils.assStyleForId(
     library, library.assignments?.assExtensionStyleId || 'ass-extension',
   );
   const extensionMargins = {
     left: Math.max(0, Number(extensionStyleBase.marginL) || 0),
     right: Math.max(0, Number(extensionStyleBase.marginR) || 0),
-    // 副字幕锚定在主字幕上方：边距 = 主字幕垂直边距 + 1.2 × 主字号，
-    // 与导出侧的固化公式一致；副字幕样式自身的 marginV 不再决定位置。
-    vertical: Math.max(0, Number(margins.vertical) || 0)
-      + Math.round(1.2 * assPreviewExportFontSize(baseStyle, metrics)),
   };
   // 叠加轨导出引用颜色样式名（无颜色时回落）；预览按同一映射
   // 应用 ass_color_style 的调色板变体，保持与导出一致。
@@ -278,17 +274,31 @@ function applyAssSubtitlePreview({ tMs, segment, extension, overlay, overlaySegm
   // fad/fade/t 与位置无关，预览与导出保持一致。
   const animatedExtensionStyle = assPreviewAnimatedStyle(extensionStyleBase, profile, extensionAnimation, metrics);
   const animatedOverlayTrackStyle = assPreviewAnimatedStyle(overlayTrackStyle, profile, overlayAnimation, metrics);
-  // 叠加轨锚定 = 下方最近一层的边距 + 1.2 × 该层字号（与导出的固化
-  // 公式一致）：有副字幕时叠在副字幕上方，否则叠在主字幕上方。偏移按
-  // 动画前的基础字号计算——导出侧 MarginV 固化在样式里，\t(\fs) 只改
-  // 变字形大小，不改变锚定边距。
+  // Share the export's absolute anchors, using the nominal single-line box
+  // and pre-animation font sizes. Secondary tracks do not follow main move.
   const extensionTrackActive = extensionSegments
     .some((cue) => cue && cue.disabled !== true);
   const mainNativeFontSize = assPreviewExportFontSize(baseStyle, metrics);
   const extensionNativeFontSize = assPreviewExportFontSize(extensionStyleBase, metrics);
-  const overlayOffsetNative = extensionTrackActive
-    ? extensionMargins.vertical + 1.2 * extensionNativeFontSize
-    : margins.vertical + 1.2 * mainNativeFontSize;
+  const mainAnchor = window.AsrEditorUtils.assCanvasAnchorPoint({
+    alignment: baseStyle.alignment, margins,
+    playResX: metrics.resolution.width, playResY: metrics.resolution.height,
+  });
+  const extensionPosition = window.AsrEditorUtils.assCanvasStackedAnchor({
+    belowAnchor: mainAnchor, belowAlignment: baseStyle.alignment, belowFontSize: mainNativeFontSize,
+    alignment: extensionStyleBase.alignment, margins: extensionMargins,
+    playResX: metrics.resolution.width, playResY: metrics.resolution.height,
+  });
+  extensionMargins.vertical = metrics.resolution.height - extensionPosition.anchor.y;
+  const overlayMargins = extensionTrackActive ? extensionMargins : margins;
+  const overlayPosition = window.AsrEditorUtils.assCanvasStackedAnchor({
+    belowAnchor: extensionTrackActive ? extensionPosition.anchor : mainAnchor,
+    belowAlignment: extensionTrackActive ? extensionPosition.alignment : baseStyle.alignment,
+    belowFontSize: extensionTrackActive ? extensionNativeFontSize : mainNativeFontSize,
+    alignment: extensionTrackActive ? extensionStyleBase.alignment : baseStyle.alignment,
+    margins: overlayMargins,
+    playResX: metrics.resolution.width, playResY: metrics.resolution.height,
+  });
 
   MaweDom.overlayEl.dataset.assMode = 'true';
   MaweDom.overlayEl.classList.add('ass-preview-active');
@@ -367,22 +377,23 @@ function applyAssSubtitlePreview({ tMs, segment, extension, overlay, overlaySegm
         animation: extensionAnimation,
         nativeFontSize: assPreviewExportFontSize(animatedExtensionStyle, metrics),
         margins: extensionMargins,
+        alignment: extensionPosition.alignment,
+        anchor: extensionPosition.anchor,
       },
       {
-        // 链在副字幕上方时，叠加元素沿用副字幕样式的对齐与边距（与导出
-        // 侧 Overlay 样式继承锚定层坐标系保持一致）；垂直偏移用链式锚定，
-        // 覆盖样式的 marginV。
+        // Match the export's chained absolute anchor and horizontal alignment.
         visible: Boolean(overlay),
         runs: assPreviewTrackRuns(overlay?.text || ''),
         style: animatedOverlayTrackStyle,
         animation: overlayAnimation,
         nativeFontSize: assPreviewExportFontSize(animatedOverlayTrackStyle, metrics),
-        alignment: extensionTrackActive ? extensionStyleBase.alignment : baseStyle.alignment,
+        alignment: overlayPosition.alignment,
+        anchor: overlayPosition.anchor,
         speaker: overlaySpeaker,
         margins: {
-          left: extensionTrackActive ? extensionMargins.left : margins.left,
-          right: extensionTrackActive ? extensionMargins.right : margins.right,
-          vertical: overlayOffsetNative,
+          left: overlayMargins.left,
+          right: overlayMargins.right,
+          vertical: metrics.resolution.height - overlayPosition.anchor.y,
         },
       },
     ],

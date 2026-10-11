@@ -5292,7 +5292,7 @@ test('buildAssPayload chains the overlay anchor above the extension track', () =
   assert.ok(overlayStyleChained.endsWith(',10,10,231,1'));
 });
 
-test('buildAssPayload overlay style inherits the anchor layer alignment and side margins', () => {
+test('buildAssPayload overlay style inherits the anchor layer horizontal alignment and side margins', () => {
   const options = {
     videoWidth: 1920,
     videoHeight: 1080,
@@ -5303,7 +5303,7 @@ test('buildAssPayload overlay style inherits the anchor layer alignment and side
   };
   // 副字幕样式为顶部居中（Alignment 8，左右边距 40/50）；副字幕自身锚定
   // 主字幕上方（主 marginV 80 + round(1.2 × 72) = 166），叠加轨再链其上：
-  // 166 + round(1.2 × 54) = 231。对齐与水平边距仍继承副字幕样式。
+  // 166 + round(1.2 × 54) = 231。水平对齐与边距继承副字幕样式，垂直贴底。
   const topExtension = helpers.buildAssPayload(
     [{ start: 100, end: 900, text: 'main' }],
     {
@@ -5317,7 +5317,7 @@ test('buildAssPayload overlay style inherits the anchor layer alignment and side
   const overlayStyleChained = topExtension.split('\n')
     .find((line) => line.startsWith('Style: Overlay,'));
   assert.ok(overlayStyleChained);
-  assert.match(overlayStyleChained, /,8,40,50,231,1$/);
+  assert.match(overlayStyleChained, /,2,40,50,231,1$/);
   // 副字幕全部禁用：不链式，叠加样式回到主样式的底部居中（80 + 86.4 → 166）。
   const disabledExtension = helpers.buildAssPayload(
     [{ start: 100, end: 900, text: 'main' }],
@@ -5333,6 +5333,41 @@ test('buildAssPayload overlay style inherits the anchor layer alignment and side
     .find((line) => line.startsWith('Style: Overlay,'));
   assert.ok(overlayStyleFallback);
   assert.match(overlayStyleFallback, /,2,10,10,166,1$/);
+});
+
+test('buildAssPayload uses shared absolute stacked positions for top, middle and mixed alignments', () => {
+  for (const playResY of [1080, 2160]) {
+    const playResX = playResY * 16 / 9;
+    for (const mainAlignment of [1, 5, 9]) {
+      for (const extensionAlignment of [3, 4, 8]) {
+        const mainStyle = { id: 'ass', fontSize: 72, marginV: 160, alignment: mainAlignment };
+        const extensionStyle = { id: 'ass-extension', fontSize: 54, marginV: 7,
+          alignment: extensionAlignment, marginL: 40, marginR: 50 };
+        const mainAnchor = helpers.assCanvasAnchorPoint({ alignment: mainAlignment,
+          margins: { vertical: 160 }, playResX, playResY });
+        const expectedExtension = helpers.assCanvasStackedAnchor({
+          belowAnchor: mainAnchor, belowAlignment: mainAlignment, belowFontSize: 72 * playResY / 1080,
+          alignment: extensionAlignment, margins: { left: 40, right: 50 }, playResX, playResY,
+        });
+        const expectedOverlay = helpers.assCanvasStackedAnchor({
+          belowAnchor: expectedExtension.anchor, belowAlignment: expectedExtension.alignment,
+          belowFontSize: 54 * playResY / 1080, alignment: extensionAlignment,
+          margins: { left: 40, right: 50 }, playResX, playResY,
+        });
+        const ass = helpers.buildAssPayload([{ start: 0, end: 1000, text: 'main' }], {
+          playResX, playResY, assStyle: mainStyle, assExtensionStyle: extensionStyle,
+          assProfile: { id: 'ass', styleId: 'ass', animations: {} },
+          extensionSegments: [{ start: 0, end: 1000, text: 'extension' }],
+          overlaySegments: [{ start: 0, end: 1000, text: 'overlay' }],
+        });
+        const events = ass.split('\n').filter((line) => line.startsWith('Dialogue:'));
+        for (const [event, expected] of [[events[1], expectedExtension], [events[2], expectedOverlay]]) {
+          assert.ok(event.includes(`{\\an${expected.alignment}\\pos(${expected.anchor.x},${expected.anchor.y})}`));
+        }
+        assert.ok(!events[0].includes('\\pos('), 'main position remains style-controlled');
+      }
+    }
+  }
 });
 
 test('reports malformed intervals, missing sticker paths, and stale serializer warnings', () => {

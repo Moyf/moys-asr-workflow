@@ -228,8 +228,8 @@
     "shared/utils/lrc.js": "febdcceebbb5884cbb75a60cba261af53c92779bb6eb21cedb486563e3f39644",
     "shared/utils/ass-style.js": "e080126d13d8b1bf7141640b69bd17b6bfc14ac4c45449bfa301876a0bd86b77",
     "shared/utils/ass-animation.js": "5d56e96d2eba1a022951df6925bbe66ca7de650155c9572af0ad69fb182f6791",
-    "shared/utils/ass-canvas-layout.js": "22233e78b3126b5dff7a459042a7942e934e1bec18800597d5516d70e2fe301a",
-    "shared/utils/ass-export.js": "679b6b2189fe9ae8fbc9cd0e71ec2de80a0919f5804a45a9aa90af119d6543c4",
+    "shared/utils/ass-canvas-layout.js": "9bd30aaacda9148a631f3126cec277d64243e8527112809f6527122702e35cae",
+    "shared/utils/ass-export.js": "1ed5084261a40bb7424f849f4c17de9f15e1660d233f2d30eb845d4bed16d339",
     "shared/utils/export-plan.js": "ed8e3a513f5ed8bb30d7cdeba8ed5ef6563e2df5a9bae040e60d5c97d68d16a2",
     "shared/utils/fcp7.js": "1ed3e9af7d41dcefaa4fd3ab53348b5bebc7b3430f2f84d7676401d12086b9cc",
     "shared/utils/export-workflow.js": "606cdab0c13fe1ba8384a9fbcfcb52afdeb8f63930ab939892601d81799f0b10",
@@ -237,7 +237,7 @@
     "shared/utils/preview-geometry.js": "7b9a6232d51808e4fb9e342f4bc385079a866557194fa83f41381c13a4ca3b42",
     "shared/utils/lottie.js": "a74b0332e76eef35299d9567c052584a61383134cf03e9ea5279b11e6d4e69ea",
     "shared/utils/ograf.js": "94b88b7db9ea4fd862dc49985f1a5e46bcef6bc70837cb656b0cd1b085a40d89",
-    "shared/editor-utils.js": "360489d1efb54cddfd9c732c7daab966a0f6d1bf0cb05a2b09c96d4485048a13",
+    "shared/editor-utils.js": "95f839b9e40db2be9249a0e793dcab959606de9112ec98a435564ebfa032cd64",
     "shared/editor-i18n.js": "df5233ed5a3946fc3d97491b67953522d3fea999ea31880939ba83a78b22d759",
     "shared/tooltip.js": "e800623864ea73a6ecbbb225c1d283573b81c055f6191a27ad7c0ed9778b4c88",
     "editor/media/waveform/constants.js": "d5bd567ad4dcbee81995e275e8bf0be571b47e28952fa944478a66aa78e079e4",
@@ -363,8 +363,8 @@
     "editor/media/editor-wiring-media-controls.js": "978298e2f616be772132c07321187f66ebc5f46d31d4d14ac0a04a0f0815194f",
     "editor/cues/editor-wiring-edit-shortcuts.js": "353fc928fb8fa370f5f4406fc07f061ed8717fed9639e4a17201a3f481ed0366",
     "editor/styles/editor-wiring-font-geometry.js": "a6bd47579d3c780c6cbf3d6211584728759fad78e5d26af826f03dcbf3da9c04",
-    "editor/styles/editor-wiring-ass-preview.js": "db90ecf1593115dce57df55a883db0054f592d47acba0bee5c6fb6410c2f33ca",
-    "editor/styles/editor-wiring-ass-canvas.js": "ebb719a5e328cadf46cfa95b80ae6dc01447d158ebe53e0a83f3be283d24fc45",
+    "editor/styles/editor-wiring-ass-preview.js": "d709e83376656875fd3b672cb8f95ea8ff07e67ac6f3a0ba206789b75731d84a",
+    "editor/styles/editor-wiring-ass-canvas.js": "75ac4d97ba4af4b370b91ec34a8ba1821d114acda112dc0816c35af3413dfd99",
     "editor/styles/editor-wiring-ass-frame.js": "1a3c186069460cde01b86e0c1614b8b71d3f9fa7c4ef377988824b14adff69e5",
     "editor/media/editor-wiring-sticker-preview.js": "fa46c5d9075247e627f4fea99cd13d36d1492e4bd5ee1c7a51f046168abbbdb8",
     "editor/io/editor-wiring-export-context.js": "89ac0732b2bcb77878991af980335662d739e4d1cfff65152e4878b042545f0e",
@@ -527,7 +527,7 @@
         "format": "esm"
       },
       "web/shared/utils/ass-export.js": {
-        "bytes": 23526,
+        "bytes": 24306,
         "imports": [],
         "format": "esm"
       },
@@ -692,7 +692,7 @@
         "format": "esm"
       },
       "web/editor-entry.mjs": {
-        "bytes": 1755457,
+        "bytes": 1757233,
         "imports": [
           {
             "path": "web/shared/host/storage.js",
@@ -1094,7 +1094,7 @@
             "bytesInOutput": 2352
           },
           "web/shared/utils/ass-export.js": {
-            "bytesInOutput": 8473
+            "bytesInOutput": 9143
           },
           "web/shared/utils/export-plan.js": {
             "bytesInOutput": 13402
@@ -1193,10 +1193,10 @@
             "bytesInOutput": 4423
           },
           "web/editor-entry.mjs": {
-            "bytesInOutput": 1017153
+            "bytesInOutput": 1018138
           }
         },
-        "bytes": 1357636
+        "bytes": 1359291
       }
     }
   }

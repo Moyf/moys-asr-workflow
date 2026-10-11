@@ -101,3 +101,34 @@ test('行偏移与块顶偏移：中列逐行居中、底行块底贴锚点', ()
   assert.equal(h.assCanvasBlockTopY(1, 30), -15);
   assert.equal(h.assCanvasBlockTopY(0, 30), 0);
 });
+
+test('stacked anchors move upward for all vertical rows and preserve horizontal alignment', () => {
+  const expectedY = new Map([[2, 920 - 86], [5, 540 - 86 + 36], [8, 160 - 86 + 72]]);
+  for (const belowAlignment of [2, 5, 8]) {
+    const belowAnchor = h.assCanvasAnchorPoint({
+      alignment: belowAlignment, margins: { vertical: 160 }, playResX: 1920, playResY: 1080,
+    });
+    for (let alignment = 1; alignment <= 9; alignment += 1) {
+      const position = h.assCanvasStackedAnchor({
+        belowAnchor, belowAlignment, belowFontSize: 72,
+        alignment, margins: { left: 40, right: 50 }, playResX: 1920, playResY: 1080,
+      });
+      assert.equal(position.alignment, (alignment - 1) % 3 + 1);
+      assert.equal(position.anchor.x, [40, 960, 1870][(alignment - 1) % 3]);
+      assert.equal(position.anchor.y, expectedY.get(belowAlignment));
+      assert.ok(position.anchor.y < belowAnchor.y);
+      const overlay = h.assCanvasStackedAnchor({
+        belowAnchor: position.anchor, belowAlignment: position.alignment, belowFontSize: 54,
+        alignment, margins: { left: 40, right: 50 }, playResX: 1920, playResY: 1080,
+      });
+      assert.equal(overlay.anchor.y, position.anchor.y - 65);
+    }
+  }
+});
+
+test('stacked anchors preserve negative positions above top-aligned cues near the edge', () => {
+  const position = h.assCanvasStackedAnchor({
+    belowAnchor: { x: 960, y: 0 }, belowAlignment: 8, belowFontSize: 72, alignment: 2,
+  });
+  assert.equal(position.anchor.y, -14);
+});

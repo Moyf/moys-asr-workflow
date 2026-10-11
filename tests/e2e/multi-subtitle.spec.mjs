@@ -4313,31 +4313,62 @@ test('ASS mode previews and exports extension cues with the shared extension sty
     };
   });
   // 副字幕共用样式库的「ASS 副字幕样式」：字号 64（主样式 86 的 64/86）、
-  // 默认黄色，按自身边距 36 绝对锚定在主字幕下方（底行锚点 y = 1080-36）。
+  // 默认黄色，固定在主字幕名义单行框上方（88 + round(1.2 * 86) = 191）。
   expect(result.trackDebug).toEqual(['ok', 'ok', 'ok']);
   expect(result.mainNative).toBe(86);
   expect(result.extensionNative).toBe(64);
   expect(result.extensionFill.toLowerCase()).toBe('#eac953');
   expect(result.extensionAlignment).toBe(2);
-  expect(result.extensionAnchor.y).toBeCloseTo(1080 - 36, 3);
+  expect(result.extensionAnchor.y).toBeCloseTo(1080 - 191, 3);
   expect(result.extensionAnchor.x).toBeCloseTo(960, 3);
-  // 叠加轨链式上叠：副字幕边距 36 + 1.2 × 副字幕字号 64。
-  expect(result.overlayOffset).toBeCloseTo(36 + 1.2 * 64, 3);
-  expect(result.overlayAnchor.y).toBeCloseTo(1080 - (36 + 1.2 * 64), 3);
+  // 叠加轨链式上叠：191 + round(1.2 * 64) = 268。
+  expect(result.overlayOffset).toBe(268);
+  expect(result.overlayAnchor.y).toBe(812);
   // 导出：副字幕 Layer 1 + 独立 Extension 样式；叠加轨 Layer 2 + 固化
-  // 链式边距（36 + round(76.8) = 113）的 Overlay 样式。
+  // 链式边距 268 的 Overlay 样式。
   const dialogueLines = result.ass.split('\n').filter((line) => line.startsWith('Dialogue:'));
   expect(dialogueLines).toHaveLength(3);
   expect(dialogueLines[1]).toMatch(/^Dialogue: 1,/);
-  expect(dialogueLines[1]).toContain(',Extension,,0,0,0,,{\\fad(250,250)}extension cue');
+  expect(dialogueLines[1]).toContain(',Extension,,0,0,191,,{\\an2\\pos(960,889)}{\\fad(250,250)}extension cue');
   expect(dialogueLines[2]).toMatch(/^Dialogue: 2,/);
-  expect(dialogueLines[2]).toContain(',Overlay,,0,0,0,,{\\fad(250,250)}overlay cue');
+  expect(dialogueLines[2]).toContain(',Overlay,,0,0,0,,{\\an2\\pos(960,812)}{\\fad(250,250)}overlay cue');
   const extensionStyleLine = result.ass.split('\n').find((line) => line.startsWith('Style: Extension,'));
   expect(extensionStyleLine).toBeTruthy();
   expect(extensionStyleLine.endsWith(',10,10,36,1')).toBe(true);
   const overlayStyleLine = result.ass.split('\n').find((line) => line.startsWith('Style: Overlay,'));
   expect(overlayStyleLine).toBeTruthy();
-  expect(overlayStyleLine.endsWith(',10,10,113,1')).toBe(true);
+  expect(overlayStyleLine.endsWith(',10,10,268,1')).toBe(true);
+
+  const variants = await page.evaluate(() => {
+    const main = ASS_STYLE_LIBRARY.styles.find((style) => style.id === 'ass');
+    const extension = ASS_STYLE_LIBRARY.styles.find((style) => style.id === 'ass-extension');
+    const results = [];
+    for (const mainAlignment of [2, 5, 8]) {
+      for (const extensionAlignment of [1, 6, 9]) {
+        Object.assign(main, { alignment: mainAlignment, marginV: 160 });
+        Object.assign(extension, { alignment: extensionAlignment, marginL: 40, marginR: 50 });
+        MawePlaybackLoop.refreshSubtitlePreview(1000, 0);
+        const tracks = window.MaweAssCanvas.lastRender.tracks;
+        results.push({ mainAlignment, extensionAlignment,
+          extension: { alignment: tracks[1].alignment, anchor: tracks[1].anchor },
+          overlay: { alignment: tracks[2].alignment, anchor: tracks[2].anchor },
+          ass: MaweExportSrt.buildAss(),
+        });
+      }
+    }
+    return results;
+  });
+  for (const variant of variants) {
+    const alignment = (variant.extensionAlignment - 1) % 3 + 1;
+    const x = [40, 960, 1870][alignment - 1];
+    const y = { 2: 920 - 103, 5: 540 - 103 + 43, 8: 160 - 103 + 86 }[variant.mainAlignment];
+    expect(variant.extension).toEqual({ alignment, anchor: { x, y } });
+    expect(variant.overlay).toEqual({ alignment, anchor: { x, y: y - 77 } });
+    const events = variant.ass.split('\n').filter((line) => line.startsWith('Dialogue:'));
+    expect(events[1]).toContain(`{\\an${alignment}\\pos(${x},${y})}`);
+    expect(events[2]).toContain(`{\\an${alignment}\\pos(${x},${y - 77})}`);
+  }
+  await page.screenshot({ path: test.info().outputPath('top-right-ass-anchor.png') });
   expect(pageErrors, `Page errors: ${pageErrors.join(' | ')}`).toEqual([]);
 });
 

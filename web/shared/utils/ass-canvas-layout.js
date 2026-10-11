@@ -60,6 +60,29 @@ window.MAWE.register('utils-ass-canvas-layout', function createUtilsModule() {
   }
 
 
+  // Chain a secondary track above the nominal single-line box of the track
+  // below it. Keep its horizontal alignment/margins, but attach its bottom
+  // edge to an absolute anchor: MarginV cannot express this for middle rows
+  // and moves in the wrong direction for top rows. As in the existing 1.2 ×
+  // font-size model, this does not measure multiline/animated glyph bounds.
+  // Do not clamp off-screen anchors: that would overlap the user's main cue.
+  /**
+   * @param {{ belowAnchor?: { x?: number, y?: number }, belowAlignment?: number,
+   *   belowFontSize?: number, alignment?: number,
+   *   margins?: { left?: number, right?: number, vertical?: number },
+   *   playResX?: number, playResY?: number }} [options]
+   */
+  function assCanvasStackedAnchor({ belowAnchor, belowAlignment, belowFontSize,
+    alignment, margins, playResX, playResY } = {}) {
+    const belowRow = assCanvasAlignmentGrid(belowAlignment).row;
+    const fontSize = Math.max(1, Number(belowFontSize) || 1);
+    const anchor = assCanvasAnchorPoint({ alignment, margins, playResX, playResY });
+    anchor.y = Math.round(Number(belowAnchor?.y) || 0)
+      - Math.round(1.2 * fontSize) + Math.round((2 - belowRow) * fontSize / 2);
+    return { alignment: assCanvasAlignmentGrid(alignment).column + 1, anchor };
+  }
+
+
   // 把带样式的 run 序列按换行切成行并计算行内 x 偏移。
   // 工程文本中的真实换行就是 ASS 的 \N；run 顺序即阅读顺序。
   // measurer(run, fragment) 由绘制层注入（run 内不同字号/间距宽度不同），
@@ -115,6 +138,7 @@ window.MAWE.register('utils-ass-canvas-layout', function createUtilsModule() {
     assCanvasAlignmentGrid,
     assCanvasAnchorPoint,
     assCanvasBlockTopY,
+    assCanvasStackedAnchor,
     assCanvasLineOffsetX,
     assCanvasLayoutLines,
   });
