@@ -54,7 +54,7 @@ GUI最初的三个回环连接失败属于沙箱限制，正常权限下复跑�
 | --- | --- | --- |
 | 保存功能提交 | 已修复 | `4fef3df4` 保存重新断句；此前口播整理为 `ff70eb2e`。用户授权提交及 PR，建立 `feat/ai-cleanup-resegment` |
 | 整合主分支 | 已修复 | 远端 `d2d12b42` 带文档重组、局部删减和供应商记忆。保留新编辑稿与旧局部范围协议，补 scoped 范围映射，重建两个 bundle；文档进入新目录 |
-| GitHub PR | 进行中 | gh 凭据失效，准备使用已连接的 GitHub 工具创建；推送和最终远端验证待完成 |
+| GitHub PR | 已修复 | [PR #224](https://github.com/Moyf/moys-asr-workflow/pull/224) 已创建并附加到任务，base=main，head=feat/ai-cleanup-resegment，OPEN、MERGEABLE；连接器403，正常权限下gh登录可用并成功创建。未合并 main |
 | 其他 AI 处理建议 | 仅说明 | 形成 [核对与备注方案](../../../plans/AI_PROCESSING_REVIEW.md)；翻译已有只读对比，编辑译文写回和通用备注未实施 |
 
 整合初轮测试漏设临时目录出现沙箱写入错误，修正 TMP/TEMP 后复跑；Node 跨语言检查需显式复用现有 Python。初轮兼容测试定位旧 readthrough 字段与新漏清工序的差异，已保留旧局部范围的成品复查并适配测试。
@@ -67,7 +67,7 @@ GUI最初的三个回环连接失败属于沙箱限制，正常权限下复跑�
 
 | 层 | 命令与结果 | result.json |
 | --- | --- | --- |
-| 全量 Python | `scripts/run_tests.py`，2155 项通过（27 skipped），113.83s | `.artifacts/checks/20261011T174555Z-3d31c82d/result.json` |
+| 全量 Python | `scripts/run_tests.py`，2155 项，27 skipped，其余通过，113.83s | `.artifacts/checks/20261011T174555Z-3d31c82d/result.json` |
 | 追加范围回归 | `scripts/run_tests.py tests/test_ai_cleanup_timeline.py tests/test_postprocess_ai_cleanup_local.py tests/test_postprocess_resegment.py`，44 项通过；新增编辑稿 scoped 范围、重叠字幕与陈旧文字保护 | `.artifacts/checks/20261011T174947Z-b6d76426/result.json` |
 | Node 领域与 Launcher | `node --test` local-export/editor-utils/launcher-feedback/script-syntax/bundle，358 项通过 | `.artifacts/checks/20261011T175048Z-a02f19f8/result.json` |
 | 编辑器语法、顺序及波形 | `node --test` editor-script-syntax/editor-script-order/waveform-js，64 项通过 | `.artifacts/checks/20261011T174408Z-3fd326ec/result.json` |
@@ -83,3 +83,5 @@ GUI最初的三个回环连接失败属于沙箱限制，正常权限下复跑�
 ## 当前未验证边界
 
 真实供应商质量与素材回听仍需维护者实测。交互式译文编辑及通用备注仅有方案，未作为本次实现交付。
+
+整合提交 `c9bab60d` 已推送并核对远端 SHA；功能提交 `4fef3df4` 与 `ff70eb2e` 均包含在 PR #224。最终 Ruff 与文档检查通过：`.artifacts/checks/20261011T175216Z-77031eea/result.json`、`.artifacts/checks/20261011T175217Z-db35ff8d/result.json`。后续设计只记录为建议，等待维护者决定实施顺序。
