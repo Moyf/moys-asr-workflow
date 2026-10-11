@@ -51,7 +51,7 @@ test(`cancel endpoint pending ${mode} obeys the declared cleanup deadline`, asyn
     await page.click('#gap-video-job-stop');
     await expect.poll(() => cancelRequested).toBe(true);
     await page.clock.fastForward(31_000);
-    await expect.poll(() => page.evaluate(() => window.hints.some(text => text.includes('无法确认视频任务已停止'))),
+    await expect.poll(() => page.evaluate(() => window.hints.some(text => text.includes('无法确认导出已停止'))),
       { timeout: 3000 }).toBe(true);
     await expect(page.locator('#download-gap-removed-video')).toBeEnabled();
   } finally {

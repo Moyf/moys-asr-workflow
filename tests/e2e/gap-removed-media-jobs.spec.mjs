@@ -153,7 +153,7 @@ for (const mode of ['cancel-headers', 'cancel-body']) {
       await page.click('#gap-video-job-stop');
       await expect.poll(() => [...state.jobs.values()][0]?.cancelRequested).toBe(true);
       await page.clock.fastForward(31000);
-      await expect.poll(() => page.evaluate(() => window.hints.some(text => text.includes('无法确认视频任务已停止')))).toBe(true);
+      await expect.poll(() => page.evaluate(() => window.hints.some(text => text.includes('无法确认导出已停止')))).toBe(true);
       await expect(page.locator('#download-gap-removed-video')).toBeEnabled();
       expect(await page.evaluate(() => window.__maweGapRemovedVideoTask)).toBeNull();
       expect(await page.evaluate(() => window.hints.some(text => text === '视频导出已停止'))).toBe(false);

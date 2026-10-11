@@ -433,21 +433,34 @@ document.getElementById('download-gap-removed-video')?.addEventListener('click',
   if (MaweInlineEdit.editingState) MaweInlineEdit.finishEdit(true);
   const tr = (text) => window.MAWE_I18N?.translateText?.(text) || text;
   const config = MaweBoot.SERVER_CONFIG;
-  const sourceName = config?.gapRemovedVideoSourceName;
+  const isAudio = config?.gapRemovedMediaKind === 'audio';
+  const mediaText = (text) => tr(isAudio ? text.replaceAll('视频', '音频') : text);
+  const sourceName = config?.gapRemovedMediaSourceName ?? config?.gapRemovedVideoSourceName;
   const sourceExtension = typeof sourceName === 'string' ? sourceName.match(/\.[^.]+$/)?.[0]?.toLowerCase() : '';
   const mimeByExtension = {
     '.mp4': 'video/mp4', '.mkv': 'video/x-matroska', '.avi': 'video/x-msvideo',
     '.mov': 'video/quicktime', '.wmv': 'video/x-ms-wmv', '.flv': 'video/x-flv',
     '.webm': 'video/webm', '.ts': 'video/mp2t', '.m4v': 'video/x-m4v',
   };
-  if (!config?.canGapRemovedVideoExport || !config.gapRemovedVideoExportUrl
+  const outputExtension = config?.gapRemovedMediaOutputExtension ?? sourceExtension;
+  const outputMime = config?.gapRemovedMediaOutputMime ?? mimeByExtension[outputExtension];
+  const canExport = () => config?.canGapRemovedMediaExport ?? config?.canGapRemovedVideoExport;
+  const safeError = (error, fallback) => {
+    const message = error?.message || error;
+    if (typeof message !== 'string' || !message || message.length > 240
+        || /extract_extradata|No start code|Invalid data found|[A-Z]:[\\/]|maw-media-job-/i.test(message)) return tr(fallback);
+    return tr(message);
+  };
+  if (!canExport() || !config.gapRemovedVideoExportUrl
       || !Number.isSafeInteger(config.bindingGeneration) || config.bindingGeneration < 1
-      || typeof config.sourceMediaId !== 'string' || !config.sourceMediaId) {
-    MaweHint.flashHint(tr('重组后视频需要在 server-editor 中打开已绑定的视频工程'), 'warning');
+      || typeof config.sourceMediaId !== 'string' || !config.sourceMediaId
+      || typeof sourceName !== 'string' || !sourceName) {
+    MaweHint.flashHint(mediaText('请从启动器打开关联源媒体的工程，再导出重组结果'), 'warning');
     return;
   }
-  if (!MaweHost.files.hasSavePicker() || !mimeByExtension[sourceExtension]) {
-    MaweHint.flashHint(tr('当前浏览器或媒体格式不支持重组后视频保存'), 'warning');
+  if (!MaweHost.files.hasSavePicker() || !outputMime || !outputExtension
+      || (!isAudio && mimeByExtension[outputExtension] !== outputMime) || (isAudio && (outputExtension !== '.wav' || outputMime !== 'audio/wav'))) {
+    MaweHint.flashHint(mediaText('当前浏览器或媒体格式不支持重组后视频保存'), 'warning');
     return;
   }
   const context = MaweExportSrt.gapRemovedExportContext();
@@ -458,37 +471,56 @@ document.getElementById('download-gap-removed-video')?.addEventListener('click',
   const exportUrl = config.gapRemovedVideoExportUrl;
   const jobsUrl = config.gapRemovedVideoJobsUrl;
   const requestToken = config.requestToken;
+  const initialConfiguredAudioTrack = config.gapRemovedMediaAudioTrack;
+  const currentAudioTrack = () => {
+    const metadata = MaweBoot.DATA?.media_metadata;
+    if (metadata && typeof metadata === 'object') {
+      if (Number.isInteger(metadata.selected_audio_track) && metadata.selected_audio_track >= 0) return metadata.selected_audio_track;
+      const track = metadata.audio_tracks?.find?.(entry => entry?.default === true
+        && Number.isInteger(entry.audio_index) && entry.audio_index >= 0);
+      return track?.audio_index ?? 0;
+    }
+    return Number.isInteger(config.gapRemovedMediaAudioTrack) && config.gapRemovedMediaAudioTrack >= 0
+      ? config.gapRemovedMediaAudioTrack : undefined;
+  };
+  const selectedAudioTrack = isAudio ? currentAudioTrack() : undefined;
+  const audioSelection = selectedAudioTrack === undefined ? {} : { selectedAudioTrack };
   const intervals = context.intervals.map(({ start, end }) => ({ startMs: start, endMs: end }));
-  const isBindingCurrent = () => MaweBoot.SERVER_CONFIG === config && config.canGapRemovedVideoExport
+  const isBindingCurrent = () => MaweBoot.SERVER_CONFIG === config && canExport()
     && config.bindingGeneration === bindingGeneration && config.sourceMediaId === sourceMediaId
-    && config.gapRemovedVideoSourceName === sourceName && config.gapRemovedVideoExportUrl === exportUrl
+    && (config.gapRemovedMediaSourceName ?? config.gapRemovedVideoSourceName) === sourceName
+    && (config.gapRemovedMediaOutputExtension ?? sourceExtension) === outputExtension
+    && (config.gapRemovedMediaOutputMime ?? mimeByExtension[outputExtension]) === outputMime
+    && (!isAudio || (config.gapRemovedMediaAudioTrack === initialConfiguredAudioTrack
+      && currentAudioTrack() === selectedAudioTrack))
+    && (config.gapRemovedMediaKind === 'audio') === isAudio && config.gapRemovedVideoExportUrl === exportUrl
     && config.requestToken === requestToken && window.MaweProjectLoad?.projectBindingEpoch === projectBindingEpoch;
-  MaweHint.flashHint(tr('流复制保留兼容媒体流；切点可能出现重复帧或时间戳边界。'), 'warning');
+  MaweHint.flashHint(tr(isAudio ? '按保留区域精确裁切音频，导出为 WAV。' : '按保留区域重组视频；切点可能受关键帧影响。'), 'warning');
 
   let handle;
   try {
-    const suggestedName = `${MaweBoot.FILENAME_BASE}_${window.MAWE_I18N?.exportTag?.('gap-removed') || 'gap-removed'}${sourceExtension}`;
+    const suggestedName = `${MaweBoot.FILENAME_BASE}_${window.MAWE_I18N?.exportTag?.('gap-removed') || 'gap-removed'}${outputExtension}`;
     handle = await MaweHost.files.pickSaveFile({
       suggestedName,
-      types: [{ description: tr('重组后视频'), accept: { [mimeByExtension[sourceExtension]]: [sourceExtension] } }],
+      types: [{ description: mediaText('重组后视频'), accept: { [outputMime]: [outputExtension] } }],
     });
   } catch (error) {
     if (error?.name === 'AbortError') return;
-    MaweHint.flashHint(`${tr('无法打开视频保存位置选择器')}：${error?.message || error}`, 'warning');
+    MaweHint.flashHint(`${mediaText('无法打开视频保存位置选择器')}：${safeError(error, '请检查保存位置权限后重试')}`, 'warning');
     return;
   }
   // The picker can yield while this page (or another server tab) changes project.
   // Never combine the old interval snapshot with a new source binding.
   if (!isBindingCurrent()) {
-    MaweHint.flashHint(tr('工程或媒体绑定已变更，请重新发起视频导出'), 'warning');
+    MaweHint.flashHint(mediaText('工程或媒体绑定已变更，请重新发起视频导出'), 'warning');
     return;
   }
   if (handle.name.toLowerCase() === sourceName.toLowerCase()) {
-    MaweHint.flashHint(tr('保存目标不能与源视频同名'), 'warning');
+    MaweHint.flashHint(mediaText('保存目标不能与源视频同名'), 'warning');
     return;
   }
-  if (!handle.name.toLowerCase().endsWith(sourceExtension)) {
-    MaweHint.flashHint(tr('保存文件扩展名需要与源视频一致'), 'warning');
+  if (!handle.name.toLowerCase().endsWith(outputExtension)) {
+    MaweHint.flashHint(tr(isAudio ? '音频导出请使用 .wav 扩展名' : '保存文件扩展名需要与源视频一致'), 'warning');
     return;
   }
 
@@ -503,6 +535,12 @@ document.getElementById('download-gap-removed-video')?.addEventListener('click',
   let progressBar = null;
   let rejectStop;
   let committing = false;
+  let cleanupWarningShown = false;
+  const warnCleanup = (error) => {
+    if (cleanupWarningShown) return;
+    cleanupWarningShown = true;
+    MaweHint.flashHint(safeError(error, '无法确认导出已停止，请重试'), 'warning');
+  };
   const stopped = new Promise((_, reject) => { rejectStop = reject; });
   void stopped.catch(() => {});
   const raceStop = (promise) => task ? Promise.race([promise, stopped]) : promise;
@@ -522,7 +560,7 @@ document.getElementById('download-gap-removed-video')?.addEventListener('click',
       let deadlineTimer;
       const timeout = new Promise((_, reject) => {
         deadlineTimer = setTimeout(() => {
-          reject(new Error(tr('无法确认视频任务已停止')));
+          reject(new Error(tr('无法确认导出已停止，请重试')));
           controller.abort();
         }, 30000);
       });
@@ -534,9 +572,15 @@ document.getElementById('download-gap-removed-video')?.addEventListener('click',
           body: JSON.stringify({ requestToken }),
         });
         const state = await reply.json();
-        if (!reply.ok) throw new Error(state.error || tr('无法确认视频任务已停止'));
-        if (state.state === 'failed') throw new Error(state.error || tr('无法确认视频任务已停止'));
-        if (['cancelled', 'completed'].includes(state.state)) return;
+        if (!reply.ok) throw new Error(state.error || tr('无法确认导出已停止，请重试'));
+        if (state.cleanupComplete === true) return;
+        if (state.cleanupError) throw new Error(tr('导出已结束，但临时文件清理失败，请重试'));
+        if (state.state === 'failed') {
+          throw new Error(state.cleanupError
+            ? tr('导出已结束，但临时文件清理失败，请重试')
+            : tr('无法确认导出已停止，请重试'));
+        }
+        if (['cancelled', 'completed'].includes(state.state) && state.cleanupComplete !== false) return;
         await pause();
         } })(), timeout]);
       } finally {
@@ -546,24 +590,55 @@ document.getElementById('download-gap-removed-video')?.addEventListener('click',
     })();
     return task.cancelRequest;
   };
+  const confirmBackendCleanup = async () => {
+    if (!task?.id) return;
+    const controller = new AbortController();
+    let deadlineTimer;
+    const timeout = new Promise((_, reject) => {
+      deadlineTimer = setTimeout(() => {
+        reject(new Error(tr('文件已保存，但无法确认临时文件已清理，请重试')));
+        controller.abort();
+      }, 30000);
+    });
+    try {
+      await Promise.race([(async () => {
+        while (true) {
+          const reply = await MaweHost.server.fetch(`${jobsUrl}/${encodeURIComponent(task.id)}`, {
+            headers: { 'X-MAW-Request-Token': requestToken }, signal: controller.signal,
+          });
+          const state = await reply.json();
+          if (!reply.ok) throw new Error(tr('文件已保存，但无法确认临时文件已清理，请重试'));
+          if (state.cleanupError) throw new Error(tr('导出已结束，但临时文件清理失败，请重试'));
+          if (state.cleanupComplete === true) return;
+          // Old servers do not report disposal; retain their terminal contract.
+          if (state.cleanupComplete === undefined && ['completed', 'cancelled'].includes(state.state)) return;
+          if (state.state === 'failed') throw new Error(tr('文件已保存，但无法确认临时文件已清理，请重试'));
+          await pause();
+        }
+      })(), timeout]);
+    } finally {
+      clearTimeout(deadlineTimer);
+      controller.abort();
+    }
+  };
   const requestStop = () => {
     if (!task || task.stopRequested || committing) return;
     task.stopRequested = true;
     task.controller.abort();
-    const error = new Error(tr('视频导出已停止'));
+    const error = new Error(mediaText('视频导出已停止'));
     error.name = 'AbortError';
     rejectStop(error);
-    setProgress(tr('正在停止视频任务…'));
+    setProgress(mediaText('正在停止导出…'));
     stopButton.disabled = true;
     if (task.id) void stopBackend().catch(() => {});
   };
   const ensureCurrent = () => {
     if (!isBindingCurrent() || config.gapRemovedVideoJobsUrl !== jobsUrl) {
       requestStop();
-      throw new Error(tr('工程或媒体绑定已变更，请重新发起视频导出'));
+      throw new Error(mediaText('工程或媒体绑定已变更，请重新发起视频导出'));
     }
     if (task?.stopRequested) {
-      const error = new Error(tr('视频导出已停止'));
+      const error = new Error(mediaText('视频导出已停止'));
       error.name = 'AbortError';
       throw error;
     }
@@ -583,38 +658,39 @@ document.getElementById('download-gap-removed-video')?.addEventListener('click',
       statusLabel.id = 'gap-video-job-status';
       progressBar = document.createElement('progress');
       progressBar.max = 1;
-      progressBar.setAttribute('aria-label', tr('重组后视频'));
+      progressBar.setAttribute('aria-label', mediaText('重组后视频'));
       stopButton = document.createElement('button');
       stopButton.id = 'gap-video-job-stop';
-      stopButton.textContent = tr('停止视频导出');
+      stopButton.textContent = mediaText('停止视频导出');
       stopButton.addEventListener('click', requestStop);
       panel.append(statusLabel, progressBar, stopButton);
       document.body.append(panel);
       window.addEventListener('pagehide', requestStop);
-      setProgress(tr('正在准备视频任务…'));
+      setProgress(mediaText('正在准备导出…'));
       // Do not abort admission before obtaining its ID: that would orphan an
       // admitted task. A stop during this request is applied as soon as it returns.
       const admission = await MaweHost.server.fetch(jobsUrl, {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ requestToken, bindingGeneration, sourceMediaId, intervals }),
+        body: JSON.stringify({ requestToken, bindingGeneration, sourceMediaId, intervals, ...audioSelection }),
       });
       let state = await admission.json();
       if (!admission.ok) throw new Error(state.error || `服务器返回 ${admission.status}`);
-      if (typeof state.jobId !== 'string' || !state.jobId) throw new Error(tr('视频任务状态无效'));
+      if (typeof state.jobId !== 'string' || !state.jobId) throw new Error(mediaText('导出状态异常，请重试'));
       task.id = state.jobId;
       while (true) {
         ensureCurrent();
         if (state.jobId !== task.id || state.bindingGeneration !== bindingGeneration || state.sourceMediaId !== sourceMediaId) {
-          throw new Error(tr('视频任务状态无效'));
+          throw new Error(mediaText('导出状态异常，请重试'));
         }
         if (state.state === 'ready') break;
-        if (['failed', 'cancelled', 'completed'].includes(state.state)) throw new Error(state.error || tr('视频任务状态无效'));
+        if (['failed', 'cancelled', 'completed'].includes(state.state)) throw new Error(state.error || mediaText('导出状态异常，请重试'));
         const stages = {
           preparing: '正在读取源视频信息…', rebuilding: '正在重组去空隙视频…',
-          verifying: '正在验证重组结果…',
+          exporting: '正在裁切并拼接音频…',
+          verifying: '正在验证重组结果…', validating: '正在验证重组结果…',
         };
-        const percent = state.stage === 'rebuilding' && typeof state.progress === 'number' ? state.progress : null;
-        setProgress(tr(stages[state.stage] || '正在准备视频任务…') + (percent === null ? '' : ` ${Math.round(percent * 100)}%`), percent);
+        const percent = ['rebuilding', 'exporting'].includes(state.stage) && typeof state.progress === 'number' ? state.progress : null;
+        setProgress(mediaText(stages[state.stage] || '正在准备导出…') + (percent === null ? '' : ` ${Math.round(percent * 100)}%`), percent);
         await raceStop(pause());
         const poll = await raceStop(MaweHost.server.fetch(`${jobsUrl}/${encodeURIComponent(task.id)}`, {
           headers: { 'X-MAW-Request-Token': requestToken }, signal: task.controller.signal,
@@ -623,12 +699,12 @@ document.getElementById('download-gap-removed-video')?.addEventListener('click',
         if (!poll.ok) throw new Error(state.error || `服务器返回 ${poll.status}`);
       }
       ensureCurrent();
-      setProgress(tr('正在下载并写入视频…'), 0);
+      setProgress(mediaText('正在下载并写入视频…'), 0);
       response = await raceStop(MaweHost.server.fetch(`${jobsUrl}/${encodeURIComponent(task.id)}/download`, {
         headers: { 'X-MAW-Request-Token': requestToken }, signal: task.controller.signal,
       }));
     } else {
-    MaweHint.flashHint(tr('正在重组去空隙视频…'));
+    MaweHint.flashHint(mediaText('正在重组去空隙视频…'));
     response = await MaweHost.server.fetch(exportUrl, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -637,6 +713,7 @@ document.getElementById('download-gap-removed-video')?.addEventListener('click',
         bindingGeneration,
         sourceMediaId,
         intervals,
+        ...audioSelection,
       }),
     });
     }
@@ -645,13 +722,13 @@ document.getElementById('download-gap-removed-video')?.addEventListener('click',
       throw new Error(error.error || `服务器返回 ${response.status}`);
     }
     const contentType = (response.headers.get('Content-Type') || '').split(';', 1)[0].trim().toLowerCase();
-    if (contentType !== mimeByExtension[sourceExtension]) {
-      throw new Error(tr('服务器返回的视频格式与源视频不一致'));
+    if (contentType !== outputMime) {
+      throw new Error(tr(isAudio ? '导出文件格式不符合预期，请重试' : '服务器返回的视频格式与源视频不一致'));
     }
-    if (!response.body?.getReader) throw new Error(tr('当前浏览器不支持流式保存视频'));
+    if (!response.body?.getReader) throw new Error(mediaText('当前浏览器不支持流式保存视频'));
     const expectedLength = Number(response.headers.get('Content-Length'));
     if (!Number.isSafeInteger(expectedLength) || expectedLength <= 0) {
-      throw new Error(tr('服务器返回的视频大小无效'));
+      throw new Error(mediaText('服务器返回的视频大小无效'));
     }
     ensureCurrent();
     const writablePromise = handle.createWritable();
@@ -670,29 +747,31 @@ document.getElementById('download-gap-removed-video')?.addEventListener('click',
       if (done) break;
       if (!(value instanceof Uint8Array) || value.byteLength === 0) continue;
       receivedLength += value.byteLength;
-      if (receivedLength > expectedLength) throw new Error(tr('服务器返回的视频长度超出预期'));
+      if (receivedLength > expectedLength) throw new Error(mediaText('服务器返回的视频长度超出预期'));
       await raceStop(writable.write(value));
       ensureCurrent();
-      setProgress(`${tr('正在下载并写入视频…')} ${Math.round(receivedLength / expectedLength * 100)}%`, receivedLength / expectedLength);
+      setProgress(`${mediaText('正在下载并写入视频…')} ${Math.round(receivedLength / expectedLength * 100)}%`, receivedLength / expectedLength);
     }
-    if (receivedLength !== expectedLength) throw new Error(tr('视频传输不完整，未保存部分文件'));
+    if (receivedLength !== expectedLength) throw new Error(mediaText('视频传输不完整，未保存部分文件'));
     ensureCurrent();
     committing = true;
     if (stopButton) stopButton.disabled = true;
-    setProgress(tr('正在完成保存…'), 1);
+    setProgress(mediaText('正在完成保存…'), 1);
     await writable.close();
     writable = null;
     transferComplete = true;
-    MaweHint.flashHint(tr('去空隙视频已重组并保存'), 'success');
+    MaweHint.flashHint(mediaText('去空隙视频已重组并保存'), 'success');
+    try { await confirmBackendCleanup(); }
+    catch (error) { warnCleanup(error); }
   } catch (error) {
     if (task?.stopRequested && error?.name === 'AbortError') {
       try {
         await stopBackend();
-        MaweHint.flashHint(tr('视频导出已停止'));
+        MaweHint.flashHint(mediaText('视频导出已停止'));
       } catch (cleanupError) {
-        MaweHint.flashHint(`${tr('无法确认视频任务已停止')}：${cleanupError?.message || cleanupError}`, 'warning');
+        warnCleanup(cleanupError);
       }
-    } else MaweHint.flashHint(`${tr('重组后视频导出失败')}：${error?.message || error}`, 'warning');
+    } else MaweHint.flashHint(`${mediaText('重组后视频导出失败')}：${safeError(error, '媒体处理失败，请确认源文件可以正常播放后重试')}`, 'warning');
   } finally {
     if (!transferComplete && response?.body) {
       // Releasing a reader only relinquishes its JS lock. Cancel the network
@@ -708,7 +787,7 @@ document.getElementById('download-gap-removed-video')?.addEventListener('click',
     if (writable) await writable.abort().catch(() => {});
     if (task && !transferComplete) {
       try { await stopBackend(); }
-      catch (error) { MaweHint.flashHint(`${tr('无法确认视频任务已停止')}：${error?.message || error}`, 'warning'); }
+      catch (error) { warnCleanup(error); }
     }
     if (task) {
       window.removeEventListener('pagehide', requestStop);
@@ -718,6 +797,26 @@ document.getElementById('download-gap-removed-video')?.addEventListener('click',
     }
   }
 });
+// Refresh both initial server media and browser-local project/media changes.
+window.MaweGapRemovedMediaExport = Object.freeze({
+  updateButton() {
+    const button = document.getElementById('download-gap-removed-video');
+    if (!button) return;
+    const config = MaweBoot.SERVER_CONFIG;
+    const mediaName = MaweBoot.DATA?.media || '';
+    const player = document.getElementById('player');
+    const hasPlayerSource = player?.getAttribute('src') || player?.querySelector('source')?.getAttribute('src');
+    const knownVideo = /\.(mp4|mkv|avi|mov|wmv|flv|webm|ts|m4v)$/i.test(mediaName);
+    const knownAudio = /\.(wav|mp3|m4a|aac|flac|ogg|opus|wma|aiff?|ape)$/i.test(mediaName);
+    const audio = config?.gapRemovedMediaKind === 'audio'
+      || (!config?.gapRemovedMediaKind && (knownAudio || (!knownVideo && hasPlayerSource && player?.tagName === 'AUDIO')));
+    button.textContent = audio ? '重组后音频' : '重组后视频';
+    button.title = audio ? '按保留区域精确裁切音频，导出为 WAV。' : '按保留区域重组视频；切点可能受关键帧影响。';
+  },
+});
+window.MaweGapRemovedMediaExport.updateButton();
+document.addEventListener('mawe:languagechange', () => window.MaweGapRemovedMediaExport.updateButton());
+
 document.getElementById('download-gap-removed-regions-json')?.addEventListener('click', async () => {
   if (MaweInlineEdit.editingState) MaweInlineEdit.finishEdit(true);
   const payload = MaweExportSrt.buildGapRemovedRegionsJson();

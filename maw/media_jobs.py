@@ -37,30 +37,32 @@ class MediaJobUnavailable(RuntimeError):
 
 
 class MediaJob:
-    def __init__(self, manager, source: Path, binding: tuple[int, str], intervals):
+    def __init__(self, manager, source: Path, binding: tuple[int, str], intervals, *, output_extension=None):
         self.manager = manager
         self.id = secrets.token_urlsafe(24)
         self.source = source
         self.binding = binding
         self.intervals = tuple(intervals)
         self.directory = Path(tempfile.mkdtemp(prefix="maw-media-job-", dir=manager.temp_root))
-        self.output = self.directory / ("restructured" + source.suffix.lower())
+        self.output = self.directory / ("restructured" + (output_extension or source.suffix.lower()))
         self.state = "running"
         self.stage = "preparing"
         self.progress = None
         self.error = None
+        self.error_details = None
         self.cancelled = threading.Event()
         self.process = None
         self.thread = None
         self.disposed = False
         self.cleanup_error = None
+        self.cleanup_error_details = None
         self.timer = None
         self.abort_download = None
         self.disposed_event = threading.Event()
 
     def check_cancelled(self):
         if self.cancelled.is_set():
-            raise MediaJobCancelled("视频重组已停止")
+            raise MediaJobCancelled("媒体重组已停止")
 
     def update(self, stage: str, progress: float | None = None):
         with self.manager.lock:
@@ -73,7 +75,9 @@ class MediaJob:
             return {"ok": True, "jobId": self.id, "state": self.state,
                     "stage": self.stage, "progress": self.progress,
                     "bindingGeneration": self.binding[0], "sourceMediaId": self.binding[1],
-                    "error": self.error, "cleanupError": self.cleanup_error}
+                    "error": self.error, "errorDetails": self.error_details,
+                    "cleanupError": self.cleanup_error, "cleanupErrorDetails": self.cleanup_error_details,
+                    "cleanupComplete": self.disposed}
 
     def run_command(self, command, *, timeout=120, duration_ms=None):
         """Drain both pipes while observing cancellation and FFmpeg progress."""
@@ -165,16 +169,19 @@ class MediaJobManager:
         self.closed = False
 
     def start(self, source: Path, binding: tuple[int, str], intervals,
-              runner: Callable[[MediaJob], object]) -> MediaJob:
+              runner: Callable[[MediaJob], object], *, output_extension: str | None = None) -> MediaJob:
         with self.lock:
+            if output_extension is not None and (not isinstance(output_extension, str)
+                    or not output_extension.startswith(".") or not output_extension[1:].isalnum()):
+                raise ValueError("输出文件扩展名无效")
             if self.closed:
-                raise MediaJobUnavailable("视频任务服务已关闭")
+                raise MediaJobUnavailable("媒体任务服务已关闭")
             if self.active and self.active.cleanup_error:
                 self._dispose(self.active)
             if not self.slot.acquire(blocking=False):
-                raise MediaJobBusy("另一个去空隙视频重组操作正在进行")
+                raise MediaJobBusy("另一个媒体重组任务正在进行，请完成或停止后再试")
             try:
-                job = MediaJob(self, source, binding, intervals)
+                job = MediaJob(self, source, binding, intervals, output_extension=output_extension)
             except BaseException:
                 self.slot.release()
                 raise
@@ -204,6 +211,9 @@ class MediaJobManager:
                     with self.lock:
                         job.state = "cancelled" if job.cancelled.is_set() else "failed"
                         job.error = None if job.cancelled.is_set() else str(error)[-4000:]
+                        job.error_details = None if job.cancelled.is_set() else getattr(error, "details", None)
+                        if job.error_details:
+                            job.error_details = str(job.error_details)[-4000:]
                 finally:
                     with self.lock:
                         if job.state in {"failed", "cancelled"}:
@@ -216,7 +226,7 @@ class MediaJobManager:
     def get(self, job_id: str) -> MediaJob:
         with self.lock:
             if job_id not in self.jobs:
-                raise MediaJobUnavailable("视频任务不存在或已过期")
+                raise MediaJobUnavailable("媒体任务不存在或已过期")
             return self.jobs[job_id]
 
     def _expire_ready(self, job_id: str):
@@ -250,7 +260,7 @@ class MediaJobManager:
         with self.lock:
             job = self.get(job_id)
             if job.state != "ready":
-                raise MediaJobUnavailable("视频任务尚未完成或已停止")
+                raise MediaJobUnavailable("媒体任务尚未完成或已停止")
             job.check_cancelled()
             # Registration and download admission are atomic with cancellation.
             job.abort_download = abort_download
@@ -274,12 +284,13 @@ class MediaJobManager:
             shutil.rmtree(job.directory)
         except OSError as error:
             job.state = "failed"
-            job.cleanup_error = "无法清理视频任务临时文件：" + str(error)
-            job.error = job.cleanup_error
+            job.cleanup_error = "临时导出文件尚未清理，请重试停止任务"
+            job.cleanup_error_details = str(error)[-4000:]
             # Do not admit another task while private output still exists.
             # A subsequent cancel/start/close retries disposal.
             return
         job.cleanup_error = None
+        job.cleanup_error_details = None
         job.disposed = True
         job.abort_download = None
         if self.active is job:
@@ -296,4 +307,4 @@ class MediaJobManager:
         if job and job.thread:
             job.thread.join(timeout=5)
         if job and not job.disposed_event.wait(timeout=5):
-            raise MediaJobUnavailable(job.cleanup_error or "视频任务关闭后尚未完成输出清理")
+            raise MediaJobUnavailable(job.cleanup_error or "媒体任务关闭后尚未完成输出清理")

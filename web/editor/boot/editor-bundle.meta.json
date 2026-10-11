@@ -238,7 +238,7 @@
     "shared/utils/lottie.js": "a74b0332e76eef35299d9567c052584a61383134cf03e9ea5279b11e6d4e69ea",
     "shared/utils/ograf.js": "94b88b7db9ea4fd862dc49985f1a5e46bcef6bc70837cb656b0cd1b085a40d89",
     "shared/editor-utils.js": "40263d6c074efd5efca133869dbe421439c898bbcdc73b2e8d09fd90dc4d5497",
-    "shared/editor-i18n.js": "6b42a221a9d8da0674d63a822bfcfc5622ad0c41df26a2c6c31e0e5d2572d90a",
+    "shared/editor-i18n.js": "53b72e1b2ea3cd63583dfbe5b753f9632e4307ebff32938c815375ebfe58059e",
     "shared/tooltip.js": "e800623864ea73a6ecbbb225c1d283573b81c055f6191a27ad7c0ed9778b4c88",
     "editor/media/waveform/constants.js": "d5bd567ad4dcbee81995e275e8bf0be571b47e28952fa944478a66aa78e079e4",
     "editor/media/waveform/labels.js": "59ed1c7b666560777b7cc30acf6fd6dc5613ce768d108a5b9fbcfff18759f685",
@@ -299,10 +299,10 @@
     "editor/io/editor-dynamic-exports.js": "db92a5d6dff0e945db97b081050c8a1780b312037bb483cb09645b1dae3548d2",
     "editor/ui/editor-export-menus.js": "cfa4973df5672ea759702ef096c7b71e237d060ed4d8043d04e4ae72904fc213",
     "editor/io/editor-project-media-inputs.js": "107eaf3c7f006a9c67f9427f82cb85186343c5ddd684edbc8e4fbbab17a8a879",
-    "editor/io/editor-project-load.js": "ac6a385eef866817309bf69414ad0b7feb7f27312a1c7dcf11c2ea4a21999168",
+    "editor/io/editor-project-load.js": "f4756d203ed0d6c2396863965a843122a3f14f90f1019e2cacba6acd4a67254d",
     "editor/io/editor-loading-progress.js": "45a3650422174f11b3d978ec152b5043ba331e714f40e7cb482106d9588bd538",
     "editor/io/editor-multi-import.js": "8e8e5e313f55befc1bffcefdf50463c096846e0697f8779d40b4dfa9cdcdfc55",
-    "editor/media/editor-media-load.js": "071c86e8a7f7e91136732532334c040d0c8e651b24cadf43c8af435c4dd04c43",
+    "editor/media/editor-media-load.js": "736d8260a00c20c228ef9cca114c489097914d94fc453f2c7821db3ba42c4fc1",
     "editor/io/editor-sticker-root.js": "c28769af4530a413206ee56f022194538d10cdbf2479a4429468a012917c412e",
     "editor/cues/editor-find-replace.js": "877c71fb4d893526f984fc9487094f3c3c6928c0265b61e7113f1a6d52e20ac4",
     "editor/cues/editor-text-process.js": "ed33de02ea0355e24aa2fc7ba1136abce982581c584fb4075cadc9b2e6ef253f",
@@ -368,7 +368,7 @@
     "editor/styles/editor-wiring-ass-frame.js": "1a3c186069460cde01b86e0c1614b8b71d3f9fa7c4ef377988824b14adff69e5",
     "editor/media/editor-wiring-sticker-preview.js": "fa46c5d9075247e627f4fea99cd13d36d1492e4bd5ee1c7a51f046168abbbdb8",
     "editor/io/editor-wiring-export-context.js": "89ac0732b2bcb77878991af980335662d739e4d1cfff65152e4878b042545f0e",
-    "editor/io/editor-wiring-export-actions.js": "2001428e130b0737863dc50788c2cb644fb3cf07252fba23e083ff40d63f7759",
+    "editor/io/editor-wiring-export-actions.js": "11ceedd7610b2a87a7d809587c3d3d27b9b812f71273bee6656bac27cddc5ea7",
     "editor/ui/editor-wiring-toolbar-menus.js": "7b6594d2a19ced6990cdacbf1e258861467de9f40cf087e51142d1ffcc737b45",
     "editor/io/editor-wiring-project-inputs.js": "83f60f05a35b1aa96f88f9cbb50e7f361cc77072c255f148b66c1edd396b3020",
     "editor/media/editor-wiring-media-inputs.js": "9eade738d68f5873398865ee2ac3ce1380d41f0a796a73e387ea63d17a87d5aa",
@@ -692,7 +692,7 @@
         "format": "esm"
       },
       "web/editor-entry.mjs": {
-        "bytes": 1826511,
+        "bytes": 1841585,
         "imports": [
           {
             "path": "web/shared/host/storage.js",
@@ -1034,73 +1034,73 @@
             "bytesInOutput": 1807
           },
           "web/shared/utils/text-processing.js": {
-            "bytesInOutput": 3317
+            "bytesInOutput": 3305
           },
           "web/shared/utils/timed-text-core.js": {
-            "bytesInOutput": 7222
+            "bytesInOutput": 7172
           },
           "web/shared/utils/timed-text-plans.js": {
-            "bytesInOutput": 11641
+            "bytesInOutput": 11630
           },
           "web/shared/utils/timed-text-edit.js": {
-            "bytesInOutput": 11105
+            "bytesInOutput": 11073
           },
           "web/shared/utils/text-metrics.js": {
             "bytesInOutput": 849
           },
           "web/shared/utils/segment-timing.js": {
-            "bytesInOutput": 8515
+            "bytesInOutput": 8462
           },
           "web/shared/utils/split-alignment.js": {
-            "bytesInOutput": 3692
+            "bytesInOutput": 3679
           },
           "web/shared/utils/split-trim.js": {
-            "bytesInOutput": 1448
+            "bytesInOutput": 1446
           },
           "web/shared/utils/timeline.js": {
-            "bytesInOutput": 3733
+            "bytesInOutput": 3710
           },
           "web/shared/utils/settings.js": {
-            "bytesInOutput": 9732
+            "bytesInOutput": 9730
           },
           "web/shared/utils/gap-remove.js": {
-            "bytesInOutput": 2844
+            "bytesInOutput": 2842
           },
           "web/shared/utils/history.js": {
             "bytesInOutput": 1315
           },
           "web/shared/utils/markers.js": {
-            "bytesInOutput": 4011
+            "bytesInOutput": 4008
           },
           "web/shared/utils/multi-subtitle.js": {
-            "bytesInOutput": 10188
+            "bytesInOutput": 10186
           },
           "web/shared/utils/word-timing.js": {
-            "bytesInOutput": 6121
+            "bytesInOutput": 6085
           },
           "web/shared/utils/word-split.js": {
-            "bytesInOutput": 1922
+            "bytesInOutput": 1919
           },
           "web/shared/utils/srt.js": {
-            "bytesInOutput": 4465
+            "bytesInOutput": 4452
           },
           "web/shared/utils/lrc.js": {
             "bytesInOutput": 1650
           },
           "web/shared/utils/ass-style.js": {
-            "bytesInOutput": 16308
+            "bytesInOutput": 16305
           },
           "web/shared/utils/ass-animation.js": {
-            "bytesInOutput": 3808
+            "bytesInOutput": 3802
           },
           "web/shared/utils/ass-export.js": {
-            "bytesInOutput": 12134
+            "bytesInOutput": 12131
           },
           "web/shared/utils/export-plan.js": {
-            "bytesInOutput": 13402
+            "bytesInOutput": 13399
           },
           "web/shared/utils/fcp7.js": {
-            "bytesInOutput": 11750
+            "bytesInOutput": 11746
           },
           "web/shared/utils/export-workflow.js": {
             "bytesInOutput": 1174
@@ -1112,37 +1112,37 @@
             "bytesInOutput": 1572
           },
           "web/shared/utils/lottie.js": {
-            "bytesInOutput": 4209
+            "bytesInOutput": 4176
           },
           "web/shared/utils/ograf.js": {
-            "bytesInOutput": 10943
+            "bytesInOutput": 10931
           },
           "web/editor/media/waveform/constants.js": {
-            "bytesInOutput": 939
+            "bytesInOutput": 937
           },
           "web/editor/media/waveform/labels.js": {
             "bytesInOutput": 1726
           },
           "web/editor/media/waveform/scale.js": {
-            "bytesInOutput": 1547
+            "bytesInOutput": 1541
           },
           "web/editor/media/waveform/layout.js": {
-            "bytesInOutput": 8667
+            "bytesInOutput": 8665
           },
           "web/editor/media/waveform/settings.js": {
             "bytesInOutput": 1294
           },
           "web/editor/media/waveform/payload.js": {
-            "bytesInOutput": 4897
+            "bytesInOutput": 4886
           },
           "web/editor/media/waveform/colors.js": {
             "bytesInOutput": 686
           },
           "web/editor/media/waveform/timing.js": {
-            "bytesInOutput": 8795
+            "bytesInOutput": 8793
           },
           "web/editor/media/waveform/visibility.js": {
-            "bytesInOutput": 2690
+            "bytesInOutput": 2678
           },
           "web/editor/media/waveform/controls.js": {
             "bytesInOutput": 4105
@@ -1154,49 +1154,49 @@
             "bytesInOutput": 17369
           },
           "web/editor/media/waveform/scale-controls.js": {
-            "bytesInOutput": 5319
+            "bytesInOutput": 5314
           },
           "web/editor/media/waveform/media.js": {
-            "bytesInOutput": 5949
+            "bytesInOutput": 5941
           },
           "web/editor/media/waveform/render.js": {
             "bytesInOutput": 4198
           },
           "web/editor/media/waveform/cue-blocks.js": {
-            "bytesInOutput": 21047
+            "bytesInOutput": 21011
           },
           "web/editor/media/waveform/word-blocks.js": {
-            "bytesInOutput": 7868
+            "bytesInOutput": 7854
           },
           "web/editor/media/waveform/canvas.js": {
-            "bytesInOutput": 2964
+            "bytesInOutput": 2956
           },
           "web/editor/media/waveform/input.js": {
-            "bytesInOutput": 12046
+            "bytesInOutput": 12033
           },
           "web/editor/media/waveform/cue-drag.js": {
-            "bytesInOutput": 8463
+            "bytesInOutput": 8455
           },
           "web/editor/media/waveform/cue-commands.js": {
-            "bytesInOutput": 7239
+            "bytesInOutput": 7213
           },
           "web/editor/media/waveform/gap-drag.js": {
-            "bytesInOutput": 10013
+            "bytesInOutput": 10010
           },
           "web/editor/media/waveform/markers.js": {
-            "bytesInOutput": 14160
+            "bytesInOutput": 14150
           },
           "web/editor/media/waveform/cue-drag-update.js": {
-            "bytesInOutput": 8467
+            "bytesInOutput": 8451
           },
           "web/editor/media/waveform/playback.js": {
-            "bytesInOutput": 4423
+            "bytesInOutput": 4406
           },
           "web/editor-entry.mjs": {
-            "bytesInOutput": 1060864
+            "bytesInOutput": 1073334
           }
         },
-        "bytes": 1409517
+        "bytes": 1421467
       }
     }
   }
