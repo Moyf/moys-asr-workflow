@@ -429,6 +429,7 @@ document.getElementById('download-gap-removed-ffconcat')?.addEventListener('clic
   }
 });
 document.getElementById('download-gap-removed-video')?.addEventListener('click', async () => {
+  if (window.__maweGapRemovedVideoTask) return;
   if (MaweInlineEdit.editingState) MaweInlineEdit.finishEdit(true);
   const tr = (text) => window.MAWE_I18N?.translateText?.(text) || text;
   const config = MaweBoot.SERVER_CONFIG;
@@ -455,6 +456,7 @@ document.getElementById('download-gap-removed-video')?.addEventListener('click',
   const sourceMediaId = config.sourceMediaId;
   const projectBindingEpoch = window.MaweProjectLoad?.projectBindingEpoch;
   const exportUrl = config.gapRemovedVideoExportUrl;
+  const jobsUrl = config.gapRemovedVideoJobsUrl;
   const requestToken = config.requestToken;
   const intervals = context.intervals.map(({ start, end }) => ({ startMs: start, endMs: end }));
   const isBindingCurrent = () => MaweBoot.SERVER_CONFIG === config && config.canGapRemovedVideoExport
@@ -494,7 +496,126 @@ document.getElementById('download-gap-removed-video')?.addEventListener('click',
   let reader = null;
   let response = null;
   let transferComplete = false;
+  let task = null;
+  let panel = null;
+  let stopButton = null;
+  let statusLabel = null;
+  let progressBar = null;
+  let rejectStop;
+  let committing = false;
+  const stopped = new Promise((_, reject) => { rejectStop = reject; });
+  void stopped.catch(() => {});
+  const raceStop = (promise) => task ? Promise.race([promise, stopped]) : promise;
+  const pause = () => new Promise(resolve => setTimeout(resolve, 250));
+  const button = document.getElementById('download-gap-removed-video');
+  const setProgress = (text, value = null) => {
+    if (!panel) return;
+    statusLabel.textContent = text;
+    if (value === null) progressBar.removeAttribute('value');
+    else progressBar.value = Math.max(0, Math.min(1, value));
+  };
+  const stopBackend = () => {
+    if (!task?.id) return Promise.resolve();
+    if (task.cancelRequest) return task.cancelRequest;
+    task.cancelRequest = (async () => {
+      const deadline = Date.now() + 30000;
+      while (true) {
+        const reply = await MaweHost.server.fetch(`${jobsUrl}/${encodeURIComponent(task.id)}/cancel`, {
+          method: 'POST', keepalive: true, headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ requestToken }),
+        });
+        const state = await reply.json();
+        if (!reply.ok) throw new Error(state.error || tr('无法确认视频任务已停止'));
+        if (state.state === 'failed') throw new Error(state.error || tr('无法确认视频任务已停止'));
+        if (['cancelled', 'completed'].includes(state.state)) return;
+        if (Date.now() >= deadline) throw new Error(tr('无法确认视频任务已停止'));
+        await pause();
+      }
+    })();
+    return task.cancelRequest;
+  };
+  const requestStop = () => {
+    if (!task || task.stopRequested || committing) return;
+    task.stopRequested = true;
+    task.controller.abort();
+    const error = new Error(tr('视频导出已停止'));
+    error.name = 'AbortError';
+    rejectStop(error);
+    setProgress(tr('正在停止视频任务…'));
+    stopButton.disabled = true;
+    if (task.id) void stopBackend().catch(() => {});
+  };
+  const ensureCurrent = () => {
+    if (!isBindingCurrent() || config.gapRemovedVideoJobsUrl !== jobsUrl) {
+      requestStop();
+      throw new Error(tr('工程或媒体绑定已变更，请重新发起视频导出'));
+    }
+    if (task?.stopRequested) {
+      const error = new Error(tr('视频导出已停止'));
+      error.name = 'AbortError';
+      throw error;
+    }
+  };
   try {
+    // A second picker can resume while another export is already running.
+    if (window.__maweGapRemovedVideoTask) return;
+    if (typeof jobsUrl === 'string' && jobsUrl) {
+      task = { id: null, controller: new AbortController(), stopRequested: false, cancelRequest: null };
+      window.__maweGapRemovedVideoTask = task;
+      button.disabled = true;
+      panel = document.createElement('div');
+      panel.className = 'gap-video-job';
+      panel.setAttribute('role', 'status');
+      panel.setAttribute('aria-live', 'polite');
+      statusLabel = document.createElement('div');
+      statusLabel.id = 'gap-video-job-status';
+      progressBar = document.createElement('progress');
+      progressBar.max = 1;
+      progressBar.setAttribute('aria-label', tr('重组后视频'));
+      stopButton = document.createElement('button');
+      stopButton.id = 'gap-video-job-stop';
+      stopButton.textContent = tr('停止视频导出');
+      stopButton.addEventListener('click', requestStop);
+      panel.append(statusLabel, progressBar, stopButton);
+      document.body.append(panel);
+      window.addEventListener('pagehide', requestStop);
+      setProgress(tr('正在准备视频任务…'));
+      // Do not abort admission before obtaining its ID: that would orphan an
+      // admitted task. A stop during this request is applied as soon as it returns.
+      const admission = await MaweHost.server.fetch(jobsUrl, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ requestToken, bindingGeneration, sourceMediaId, intervals }),
+      });
+      let state = await admission.json();
+      if (!admission.ok) throw new Error(state.error || `服务器返回 ${admission.status}`);
+      if (typeof state.jobId !== 'string' || !state.jobId) throw new Error(tr('视频任务状态无效'));
+      task.id = state.jobId;
+      while (true) {
+        ensureCurrent();
+        if (state.jobId !== task.id || state.bindingGeneration !== bindingGeneration || state.sourceMediaId !== sourceMediaId) {
+          throw new Error(tr('视频任务状态无效'));
+        }
+        if (state.state === 'ready') break;
+        if (['failed', 'cancelled', 'completed'].includes(state.state)) throw new Error(state.error || tr('视频任务状态无效'));
+        const stages = {
+          preparing: '正在读取源视频信息…', rebuilding: '正在重组去空隙视频…',
+          verifying: '正在验证重组结果…',
+        };
+        const percent = state.stage === 'rebuilding' && typeof state.progress === 'number' ? state.progress : null;
+        setProgress(tr(stages[state.stage] || '正在准备视频任务…') + (percent === null ? '' : ` ${Math.round(percent * 100)}%`), percent);
+        await raceStop(pause());
+        const poll = await raceStop(MaweHost.server.fetch(`${jobsUrl}/${encodeURIComponent(task.id)}`, {
+          headers: { 'X-MAW-Request-Token': requestToken }, signal: task.controller.signal,
+        }));
+        state = await raceStop(poll.json());
+        if (!poll.ok) throw new Error(state.error || `服务器返回 ${poll.status}`);
+      }
+      ensureCurrent();
+      setProgress(tr('正在下载并写入视频…'), 0);
+      response = await raceStop(MaweHost.server.fetch(`${jobsUrl}/${encodeURIComponent(task.id)}/download`, {
+        headers: { 'X-MAW-Request-Token': requestToken }, signal: task.controller.signal,
+      }));
+    } else {
     MaweHint.flashHint(tr('正在重组去空隙视频…'));
     response = await MaweHost.server.fetch(exportUrl, {
       method: 'POST',
@@ -506,6 +627,7 @@ document.getElementById('download-gap-removed-video')?.addEventListener('click',
         intervals,
       }),
     });
+    }
     if (!response.ok) {
       const error = await response.json().catch(() => ({}));
       throw new Error(error.error || `服务器返回 ${response.status}`);
@@ -519,24 +641,46 @@ document.getElementById('download-gap-removed-video')?.addEventListener('click',
     if (!Number.isSafeInteger(expectedLength) || expectedLength <= 0) {
       throw new Error(tr('服务器返回的视频大小无效'));
     }
-    writable = await handle.createWritable();
+    ensureCurrent();
+    const writablePromise = handle.createWritable();
+    // A pending browser permission/storage operation can finish after stop.
+    // Dispose a late writable too; it must never become a saved old result.
+    if (task) void writablePromise.then(value => {
+      if (task.stopRequested) void value.abort().catch(() => {});
+    }).catch(() => {});
+    writable = await raceStop(writablePromise);
+    ensureCurrent();
     reader = response.body.getReader();
     let receivedLength = 0;
     while (true) {
-      const { done, value } = await reader.read();
+      const { done, value } = await raceStop(reader.read());
+      ensureCurrent();
       if (done) break;
       if (!(value instanceof Uint8Array) || value.byteLength === 0) continue;
       receivedLength += value.byteLength;
       if (receivedLength > expectedLength) throw new Error(tr('服务器返回的视频长度超出预期'));
-      await writable.write(value);
+      await raceStop(writable.write(value));
+      ensureCurrent();
+      setProgress(`${tr('正在下载并写入视频…')} ${Math.round(receivedLength / expectedLength * 100)}%`, receivedLength / expectedLength);
     }
     if (receivedLength !== expectedLength) throw new Error(tr('视频传输不完整，未保存部分文件'));
+    ensureCurrent();
+    committing = true;
+    if (stopButton) stopButton.disabled = true;
+    setProgress(tr('正在完成保存…'), 1);
     await writable.close();
     writable = null;
     transferComplete = true;
     MaweHint.flashHint(tr('去空隙视频已重组并保存'), 'success');
   } catch (error) {
-    MaweHint.flashHint(`${tr('重组后视频导出失败')}：${error?.message || error}`, 'warning');
+    if (task?.stopRequested && error?.name === 'AbortError') {
+      try {
+        await stopBackend();
+        MaweHint.flashHint(tr('视频导出已停止'));
+      } catch (cleanupError) {
+        MaweHint.flashHint(`${tr('无法确认视频任务已停止')}：${cleanupError?.message || cleanupError}`, 'warning');
+      }
+    } else MaweHint.flashHint(`${tr('重组后视频导出失败')}：${error?.message || error}`, 'warning');
   } finally {
     if (!transferComplete && response?.body) {
       // Releasing a reader only relinquishes its JS lock. Cancel the network
@@ -550,6 +694,16 @@ document.getElementById('download-gap-removed-video')?.addEventListener('click',
     }
     if (reader) reader.releaseLock();
     if (writable) await writable.abort().catch(() => {});
+    if (task && !transferComplete) {
+      try { await stopBackend(); }
+      catch (error) { MaweHint.flashHint(`${tr('无法确认视频任务已停止')}：${error?.message || error}`, 'warning'); }
+    }
+    if (task) {
+      window.removeEventListener('pagehide', requestStop);
+      panel.remove();
+      if (window.__maweGapRemovedVideoTask === task) window.__maweGapRemovedVideoTask = null;
+      button.disabled = false;
+    }
   }
 });
 document.getElementById('download-gap-removed-regions-json')?.addEventListener('click', async () => {

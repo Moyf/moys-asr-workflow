@@ -115,7 +115,8 @@ test(`rendered editor rejects waiting video picker after ${change}`, async ({ pa
     await page.waitForFunction(() => window.MaweProjectLoad && window.MaweExportSrt);
     let posts = 0;
     page.on('request', request => {
-      if (request.url().endsWith('/api/exports/gap-removed-video')) posts += 1;
+      if (request.url().endsWith('/api/exports/gap-removed-video')
+          || request.url().endsWith('/api/exports/gap-removed-video/jobs')) posts += 1;
     });
     await page.evaluate(() => {
       window.bindingHints = [];

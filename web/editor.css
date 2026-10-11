@@ -4266,3 +4266,20 @@
 .mawe-tooltip .mawe-tooltip-arrow.above { clip-path: polygon(0px 7px, 14px 7px, 7px 14px); }
 .mawe-tooltip .mawe-tooltip-arrow.right { clip-path: polygon(7px 0px, 7px 14px, 0px 7px); }
 .mawe-tooltip .mawe-tooltip-arrow.left  { clip-path: polygon(7px 0px, 7px 14px, 14px 7px); }
+
+.gap-video-job {
+  position: fixed;
+  right: 20px;
+  bottom: 24px;
+  z-index: 10020;
+  width: min(360px, calc(100vw - 40px));
+  padding: 16px;
+  border: 1px solid var(--border-strong);
+  border-radius: 10px;
+  background: var(--bg-overlay);
+  color: var(--text-primary);
+  box-shadow: 0 8px 28px #0005;
+}
+.gap-video-job progress { display: block; width: 100%; margin: 12px 0; }
+.gap-video-job button { padding: 6px 16px; cursor: pointer; }
+.gap-video-job button:disabled { cursor: default; opacity: .6; }

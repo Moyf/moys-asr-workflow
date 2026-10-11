@@ -54,6 +54,9 @@ from maw.project_backups import backup_directory_candidates, write_backup  # noq
 from maw.app_paths import default_server_settings_path, legacy_server_settings_path  # noqa: E402
 from maw.ass_styles import load_ass_style_library, save_ass_style_library  # noqa: E402
 from maw.ffmpeg import resolve_ffmpeg_tools  # noqa: E402
+from maw.media_jobs import (  # noqa: E402
+    MediaJob, MediaJobBusy, MediaJobCancelled, MediaJobManager, MediaJobUnavailable,
+)
 from maw.gui_config import DEFAULT_ENV_PATH, load_env  # noqa: E402
 from maw.gui_platform import creationflags, restore_host_library_path, startupinfo  # noqa: E402
 from maw.postprocess_ffmpeg import libass_missing_glyphs  # noqa: E402
@@ -432,7 +435,7 @@ def _gap_removed_ffconcat_text(
     return "\n".join(lines) + "\n"
 
 
-def _probe_gap_removed_video(path: Path, ffprobe_path: Path) -> GapRemovedVideoProbe:
+def _probe_gap_removed_video(path: Path, ffprobe_path: Path, *, job: MediaJob | None = None) -> GapRemovedVideoProbe:
     command = [
         str(ffprobe_path), "-v", "error", "-show_entries",
         "stream=codec_type,codec_name,profile,codec_tag_string,width,height,channels,sample_rate,channel_layout"
@@ -440,7 +443,7 @@ def _probe_gap_removed_video(path: Path, ffprobe_path: Path) -> GapRemovedVideoP
         "-of", "json", str(path),
     ]
     try:
-        completed = subprocess.run(
+        completed = job.run_command(command) if job else subprocess.run(
             command, capture_output=True, text=True, encoding="utf-8", errors="replace",
             timeout=120, check=False, startupinfo=startupinfo(), creationflags=creationflags(),
         )
@@ -526,6 +529,7 @@ def rebuild_gap_removed_video(
     *,
     ffmpeg_path: Path,
     ffprobe_path: Path,
+    job: MediaJob | None = None,
 ) -> Path:
     """Stream-copy all source streams for the kept intervals into a private output file."""
     try:
@@ -539,7 +543,9 @@ def rebuild_gap_removed_video(
     if not intervals:
         raise GapRemovedVideoExportError("去空隙保留区间为空")
 
-    input_probe = _probe_gap_removed_video(source, ffprobe_path)
+    if job:
+        job.update("preparing")
+    input_probe = _probe_gap_removed_video(source, ffprobe_path, job=job)
     input_signature = input_probe.streams
     output_path.parent.mkdir(parents=True, exist_ok=True)
     concat_path = output_path.with_suffix(".ffconcat")
@@ -560,9 +566,13 @@ def rebuild_gap_removed_video(
             value = getattr(stream, metadata_key)
             if value is not None:
                 command.extend((f"-metadata:s:{index}", f"{metadata_key}={value}"))
+    if job:
+        command.extend(("-progress", "pipe:1", "-nostats"))
+        job.update("rebuilding")
     command.append(str(output_path))
     try:
-        completed = subprocess.run(
+        completed = job.run_command(command, timeout=86_400,
+            duration_ms=sum(end - start for start, end in intervals)) if job else subprocess.run(
             command, capture_output=True, text=True, encoding="utf-8", errors="replace",
             timeout=86_400, check=False, startupinfo=startupinfo(), creationflags=creationflags(),
         )
@@ -579,7 +589,9 @@ def rebuild_gap_removed_video(
         output_path.unlink(missing_ok=True)
         raise GapRemovedVideoExportError("FFmpeg 没有生成有效的视频文件")
     try:
-        output_signature = _probe_gap_removed_video(output_path, ffprobe_path).streams
+        if job:
+            job.update("verifying")
+        output_signature = _probe_gap_removed_video(output_path, ffprobe_path, job=job).streams
     except GapRemovedVideoExportError:
         output_path.unlink(missing_ok=True)
         raise
@@ -993,6 +1005,7 @@ def build_server_page(
             and gap_video_source is not None
             and gap_video_source.suffix.lower() in VIDEO_EXTENSIONS
         ),
+        "gapRemovedVideoJobsUrl": "/api/exports/gap-removed-video/jobs",
             **(project_binding or {}),
             "lottieExportUrl": "/api/exports/lottie",
             "ografExportUrl": "/api/exports/ograf",
@@ -1105,6 +1118,7 @@ class EditorServer(ThreadingHTTPServer):
         self.reapeaks_lock = threading.Lock()
         self.ass_frame_lock = threading.Lock()
         self.gap_removed_video_lock = threading.Lock()
+        self.media_jobs = MediaJobManager(self.gap_removed_video_lock)
         self.libass_supported: bool | None = None
         self.libass_binary_signature: tuple[object, ...] | None = None
         self.reapeaks_generation = 0
@@ -1121,12 +1135,23 @@ class EditorServer(ThreadingHTTPServer):
         self.startup_error = ""
         super().__init__(address, EditorRequestHandler)
 
+    def shutdown(self) -> None:
+        self.media_jobs.close()
+        super().shutdown()
+
+    def server_close(self) -> None:
+        self.media_jobs.close()
+        super().server_close()
+
     def persist_settings(self) -> None:
         if self.settings_path:
             write_server_settings(self.settings_path, self.settings)
 
     def _bind_project_locked(self, project: ServerProject) -> None:
         """Publish a new binding while settings_lock is held, even on reopen."""
+        with self.media_jobs.lock:
+            if self.media_jobs.active:
+                self.media_jobs.cancel(self.media_jobs.active.id)
         self.project = project
         self.binding_generation += 1
         self.source_media_id = secrets.token_urlsafe(24)
@@ -2150,6 +2175,10 @@ class EditorRequestHandler(BaseHTTPRequestHandler):
             self.export_timeline_otioz()
         elif path == "/api/exports/gap-removed-video":
             self.export_gap_removed_video()
+        elif path == "/api/exports/gap-removed-video/jobs":
+            self.start_gap_removed_video_job()
+        elif path.startswith("/api/exports/gap-removed-video/jobs/"):
+            self.gap_removed_video_job_request(path, cancel=True)
         elif path == "/api/exports/lottie":
             self.export_lottie()
         elif path == "/api/exports/ograf":
@@ -2376,6 +2405,95 @@ class EditorRequestHandler(BaseHTTPRequestHandler):
         self.send_header("Content-Length", str(len(zip_bytes)))
         self.end_headers()
         self.wfile.write(zip_bytes)
+
+    def start_gap_removed_video_job(self) -> None:
+        job = None
+        try:
+            request = self.read_json_request(max_bytes=8 * 1024 * 1024)
+            self._check_request_token(request)
+            intervals = normalize_gap_removed_intervals(request.get("intervals"))
+            source = self.editor_server.gap_removed_video_source_snapshot(request)
+            tools = editor_ffmpeg_tools()
+            if tools.ffmpeg is None or tools.ffprobe is None:
+                self.send_json(HTTPStatus.SERVICE_UNAVAILABLE, {
+                    "ok": False, "error": "重组视频需要可用的 FFmpeg 和 FFprobe",
+                })
+                return
+            binding = (request["bindingGeneration"], request["sourceMediaId"])
+
+            def rebuild(job: MediaJob) -> None:
+                rebuild_gap_removed_video(job.source, list(job.intervals), job.output,
+                    ffmpeg_path=tools.ffmpeg, ffprobe_path=tools.ffprobe, job=job)
+
+            # Admission and the snapshot use the same binding generation. A
+            # rebind between snapshot and admission must not launch stale work.
+            with self.editor_server.settings_lock:
+                if binding != (self.editor_server.binding_generation, self.editor_server.source_media_id):
+                    raise ProjectBindingChangedError("工程或媒体绑定已变更，请重新打开工程后导出")
+                job = self.editor_server.media_jobs.start(source, binding, intervals, rebuild)
+            self.send_json(HTTPStatus.ACCEPTED, job.snapshot())
+        except PermissionError as error:
+            self.send_json(HTTPStatus.FORBIDDEN, {"ok": False, "error": str(error)})
+        except (ProjectBindingChangedError, MediaJobBusy) as error:
+            self.send_json(HTTPStatus.CONFLICT, {"ok": False, "error": str(error)})
+        except (UnicodeDecodeError, json.JSONDecodeError, ValueError) as error:
+            self.send_json(HTTPStatus.BAD_REQUEST, {"ok": False, "error": str(error)})
+        except (OSError, MediaJobUnavailable) as error:
+            if job is not None:
+                self.editor_server.media_jobs.cancel(job.id)
+            self.send_json(HTTPStatus.SERVICE_UNAVAILABLE, {"ok": False, "error": str(error)})
+
+    def gap_removed_video_job_request(self, path: str, *, cancel: bool = False, include_body: bool = True) -> None:
+        parts = path.removeprefix("/api/exports/gap-removed-video/jobs/").split("/")
+        expected_suffix = "cancel" if cancel else "download"
+        if len(parts) not in {1, 2} or (len(parts) == 2 and parts[1] != expected_suffix) or (cancel and len(parts) != 2):
+            self.send_json(HTTPStatus.NOT_FOUND, {"ok": False, "error": "未知视频任务 API"})
+            return
+        try:
+            request = self.read_json_request() if cancel else {"requestToken": self.headers.get("X-MAW-Request-Token")}
+            self._check_request_token(request)
+            manager = self.editor_server.media_jobs
+            job = manager.get(parts[0])
+            if cancel:
+                self.send_json(HTTPStatus.OK, manager.cancel(job.id))
+                return
+            try:
+                self.editor_server.gap_removed_video_source_snapshot({
+                    "bindingGeneration": job.binding[0], "sourceMediaId": job.binding[1],
+                })
+            except ProjectBindingChangedError:
+                manager.cancel(job.id)
+                raise
+            if len(parts) == 1:
+                self.send_json(HTTPStatus.OK, job.snapshot())
+                return
+            if not include_body:
+                self.send_json(HTTPStatus.METHOD_NOT_ALLOWED, {"ok": False, "error": "视频下载需要 GET 请求"})
+                return
+            with self.editor_server.settings_lock:
+                if job.binding != (self.editor_server.binding_generation, self.editor_server.source_media_id):
+                    manager.cancel(job.id)
+                    raise ProjectBindingChangedError("工程或媒体绑定已变更，请重新打开工程后导出")
+                manager.begin_download(job.id)
+        except PermissionError as error:
+            self.send_json(HTTPStatus.FORBIDDEN, {"ok": False, "error": str(error)})
+            return
+        except ProjectBindingChangedError as error:
+            self.send_json(HTTPStatus.CONFLICT, {"ok": False, "error": str(error)})
+            return
+        except MediaJobUnavailable as error:
+            self.send_json(HTTPStatus.NOT_FOUND if len(parts) == 1 else HTTPStatus.CONFLICT,
+                           {"ok": False, "error": str(error)})
+            return
+        except (UnicodeDecodeError, json.JSONDecodeError, ValueError) as error:
+            self.send_json(HTTPStatus.BAD_REQUEST, {"ok": False, "error": str(error)})
+            return
+        success = False
+        try:
+            success = self.send_video_attachment(job.output,
+                f"{job.source.stem}_gap-removed{job.source.suffix.lower()}", job=job)
+        finally:
+            manager.finish_download(job, success=success)
 
     def export_gap_removed_video(self) -> None:
         """Rebuild the bound source video and stream it without accepting client paths."""
@@ -2725,6 +2843,9 @@ class EditorRequestHandler(BaseHTTPRequestHandler):
 
     def handle_request(self, *, include_body: bool) -> None:
         path = urlsplit(self.path).path
+        if path.startswith("/api/exports/gap-removed-video/jobs/"):
+            self.gap_removed_video_job_request(path, include_body=include_body)
+            return
         if path == "/api/prproj-capability":
             self.send_json(HTTPStatus.OK, PRPROJ_CAPABILITY)
             return
@@ -2794,7 +2915,7 @@ class EditorRequestHandler(BaseHTTPRequestHandler):
         self.end_headers()
         self.wfile.write(body)
 
-    def send_video_attachment(self, path: Path, filename: str) -> None:
+    def send_video_attachment(self, path: Path, filename: str, *, job: MediaJob | None = None) -> bool:
         """Stream a verified temporary video and keep it alive until the response ends."""
         mime = {
             ".mp4": "video/mp4",
@@ -2812,6 +2933,9 @@ class EditorRequestHandler(BaseHTTPRequestHandler):
             for char in filename
         ) or "gap-removed-video"
         disposition = f'attachment; filename="{ascii_name}"; filename*=UTF-8\'\'{quote(filename, safe="")} '
+        previous_timeout = self.connection.gettimeout()
+        if job:
+            self.connection.settimeout(2)
         try:
             size = path.stat().st_size
             if size <= 0:
@@ -2824,9 +2948,16 @@ class EditorRequestHandler(BaseHTTPRequestHandler):
             self.end_headers()
             with path.open("rb") as source:
                 while chunk := source.read(128 * 1024):
+                    if job:
+                        job.check_cancelled()
                     self.wfile.write(chunk)
-        except (BrokenPipeError, ConnectionAbortedError, ConnectionResetError):
-            return
+            return True
+        except (OSError, MediaJobCancelled):
+            self.close_connection = True
+            return False
+        finally:
+            if job:
+                self.connection.settimeout(previous_timeout)
 
     def sticker_path(self, relative_url: str) -> Path | None:
         root = self.editor_server.project.sticker_root
