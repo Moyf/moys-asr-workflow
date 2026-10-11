@@ -243,10 +243,12 @@ def probe_audio_tracks(
     tracks: list[dict[str, Any]] = []
     for stream in streams:
         if not isinstance(stream, Mapping):
-            continue
+            return None
         stream_index = _parse_probe_integer(stream.get("index"))
         if stream_index is None:
-            continue
+            # Malformed metadata is not proof that audio is absent. Skipping a
+            # stream would also shift later audio_index values and map wrongly.
+            return None
         tags = stream.get("tags") if isinstance(stream.get("tags"), Mapping) else {}
         disposition = stream.get("disposition") if isinstance(stream.get("disposition"), Mapping) else {}
         channels = _parse_probe_integer(stream.get("channels"), minimum=1)

@@ -10,6 +10,18 @@ function customOpenAiModelDraft() {
   const saved = String(state.config?.openaiModel || "").trim();
   return OPENAI_ASR_OFFICIAL_MODEL_IDS.has(saved) ? "" : saved;
 }
+function apiKeyFormatInvalid(value) {
+  const key = String(value || "").trim();
+  return Boolean(key && (!/^[\x21-\x7e]+$/u.test(key) || /["']/u.test(key)
+    || /^https?:\/\//iu.test(key) || /^(?:[\w-]*api[-_]?key|key|authorization)\s*[:=]/iu.test(key)));
+}
+function validateApiKey() {
+  const current = provider();
+  if (current.requiresApiKey === false || isLocalProvider()) return true;
+  const key = String($("apiKey").value || "").trim() || String(current.apiKey || "").trim();
+  const code = !key ? "api_key_missing" : (apiKeyFormatInvalid(key) ? "api_key_invalid_format" : "");
+  return code ? fail("apiKey", errText(code, "")) : true;
+}
 function syncOpenAiFields() {
   const openai = isOpenAiProvider();
   const custom = isCustomOpenAiModel();
