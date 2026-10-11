@@ -123,6 +123,11 @@ datas = [
     (str(ROOT / "maw" / "gui_config.py"), "ocr-runtime/maw"),
     (str(ROOT / "maw" / "app_paths.py"), "ocr-runtime/maw"),
     (str(ROOT / "maw" / "ocr_runtime_worker.py"), "ocr-runtime/maw"),
+    (str(ROOT / "maw" / "script_alignment.py"), "local-runtime/maw"),
+    (str(ROOT / "maw" / "mopeaks.py"), "ocr-runtime/maw"),
+    (str(ROOT / "maw" / "quapeaks.py"), "ocr-runtime/maw"),
+    (str(ROOT / "maw" / "script_alignment.py"), "ocr-runtime/maw"),
+    (str(ROOT / "maw" / "waveform.py"), "ocr-runtime/maw"),
 ]
 opencc_datas = collect_data_files("opencc")
 datas.extend(opencc_datas)

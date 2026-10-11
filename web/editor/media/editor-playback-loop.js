@@ -139,7 +139,10 @@ MaweCueListAnchor.scrollCueIntoViewIfNeeded(MaweCueListAnchor.playbackCueListEle
 
   function refreshSubtitlePreview(tMs = MaweCoreState.player.currentTime * 1000, idx = findActive(tMs)) {
   // 编辑字幕文本时只刷新播放器预览，避免每输入一个字都触发字幕列表的自动滚动。
-  const seg = idx >= 0 ? MaweBoot.DATA.segments[idx] : null;
+  const sourceSegment = idx >= 0 ? MaweBoot.DATA.segments[idx] : null;
+  const seg = sourceSegment
+    ? window.AsrGapRemoveCore.projectCleanupRetainedSegments([sourceSegment], MaweBoot.DATA.gap_remove)[0]
+    : null;
   const mainVisible = !!MaweDom.overlayToggle.checked && isSubtitlePreviewActive(seg, tMs);
   const extension = extensionSegmentAtTime(tMs, idx);
   const extensionVisible = !!MaweDom.extensionOverlayToggle?.checked && !!extension;

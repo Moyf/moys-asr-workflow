@@ -202,7 +202,7 @@
     "shared/host/files.js": "1beb4a24c0bee93eb2e7fce58aa403796ffee4a4c99ab1e247d972254a5dce5d",
     "shared/host/server-api.js": "b319e6fd4825c8422c41d79ef5e801f4ffac322b510e91b6ece77ab5306789c4",
     "editor/boot/editor-host.js": "6063c26cfbf3faec6890a5f46c9b925e1dc0049179643c42626b7bef1bc4d052",
-    "shared/gap-remove-core.js": "45a11b38e0d1bd577a8d3f5b8d5ef2b0d5e17b513f582c7468632e2d3b9587a8",
+    "shared/gap-remove-core.js": "bca0822a75e42a96906bcd9b2c3add6b7d39391f2da6e62fef883dcfeb1c7931",
     "shared/utils/data.js": "6bab03f16179de53d0a66c2bb4bcd96b69249687432010164b802df2f72da4e5",
     "shared/utils/fonts.js": "e79c90bc1e0538c1316890643f995c4092c918fc6ea6ad046f1c260b430f1648",
     "shared/utils/speakers.js": "6549e243fa65b53144f2b19ad6f609df7a6747e2173a34aa1612e2b498c37d46",
@@ -230,7 +230,7 @@
     "shared/utils/ass-animation.js": "2c3f97db642cbdb3602eb53a99d31e8a6c7720adb3783473613f88ba3b340d34",
     "shared/utils/ass-canvas-layout.js": "14ded3c7ef6607bd9e77ae0212ecb2547aee603e6e11d0762cafee267287c3a7",
     "shared/utils/ass-export.js": "1473de8ec66cb6d58f300ce951d0a659c9635b8b3c0d8f201026c2408bf94577",
-    "shared/utils/export-plan.js": "ed8e3a513f5ed8bb30d7cdeba8ed5ef6563e2df5a9bae040e60d5c97d68d16a2",
+    "shared/utils/export-plan.js": "74328922e80ce96ad7002c3fdaa2687a8f11c17d9bf7550b8e36dd5f5ef2542d",
     "shared/utils/fcp7.js": "1ed3e9af7d41dcefaa4fd3ab53348b5bebc7b3430f2f84d7676401d12086b9cc",
     "shared/utils/export-workflow.js": "606cdab0c13fe1ba8384a9fbcfcb52afdeb8f63930ab939892601d81799f0b10",
     "shared/utils/platform.js": "8fd9bf79275b88586f7c7a1b4da620fb9144d29bf3290f9124e43b4d1f849c14",
@@ -289,10 +289,10 @@
     "editor/cues/editor-merge-adjacent.js": "da2c0c93e1b3af9e28b6945723bf274fcb137ef03e8090a9a9c615b2d9765dae",
     "editor/styles/editor-appearance.js": "4a7758bb250447b2965d96fd6cf0c2e711a2e9186dc6eee564003031903ba38b",
     "editor/media/editor-preview-geometry.js": "a25ce72a3dcdf49a2a5f6a9e62cfc2241e91aac47e6cbb0fbb47d804b147beca",
-    "editor/media/editor-playback-loop.js": "fe71bdf0c4f1b76fe0b3f0a9262a0ae7172201d5fbaade52d7e4803ba8e67530",
+    "editor/media/editor-playback-loop.js": "f5dab8a21842012b9f8dd86074e9204d21b90eebf101b5440af0077bc6fcc756",
     "editor/media/editor-sticker-overlay.js": "5f5799615e6ef890cf7360ee4ae0a85123acdee9d27a79cec801a68a9648c863",
-    "editor/io/editor-export-srt.js": "77095c1d2227dd75fde41620e2b58772f389f343bf6af9fee018a5904ff0d4ff",
-    "editor/io/editor-export-timeline.js": "b3fe38336828a6b7d81fdab1f56dcf5b0eb669984d4a958ff7eecd3363461bca",
+    "editor/io/editor-export-srt.js": "ce4fe1b969edbf718ee44b0d73d2a507c1b49b80211cfd028ab2c69deb494346",
+    "editor/io/editor-export-timeline.js": "bb0d5dd2c632c3ca9137dec2a6258b86278ccadf00eb1ac6088dbc3988069173",
     "editor/io/editor-server-save.js": "d49528b92ccfdc8320a1319fa1558ad2e8a12e518d7b18e48cfabbe5b9c09ba8",
     "editor/ui/editor-workspaces.js": "6a0dcfab40bffcce3b10dae025d4ca20413f059a0905df93a11af9132cc7d58c",
     "editor/io/editor-project-save.js": "2b16f83483f2859750bffa2e610b121190cf2a92095fc728cb9635560413f74d",
@@ -311,7 +311,7 @@
     "editor/cues/editor-add-cue.js": "34ade55ebe9d74ea6dc89f8c3f49f000e5efaee42b46d346d2dbf2a3d55a347a",
     "editor/cues/editor-bound-drag.js": "9478e2017ffb4e665f452ba18b9e90a991c6936d8222e386dbc72d76ae97f86a",
     "editor/ui/editor-context-menus.js": "166d7a79714ded5556e62c2879363e0ecd6844b43cc6cc96ae96b996d16bd8f8",
-    "editor/cues/editor-text-cleanup.js": "9bc96ae38c0745e45565e17eaad4ee4cfd2f486770e806ebb84e4f06f8a8c8c7",
+    "editor/cues/editor-text-cleanup.js": "25345a356f84cc25e58839a48c38dc5353962eaa174b8810e3e5726d09999a68",
     "editor/media/editor-waveform-init.js": "9be89de9dddf1b6208a581dee9fef7ec23924f6f0c1f36d15af0b071c280ce78",
     "editor/cues/editor-word-timing.js": "b526d9448fc2adc9dcb76bf2847ad9e4fe39177c927359671b2eb023d5a34c6b",
     "editor/media/editor-media-step.js": "778e52252d7ebd14fdc196687c6bdf333f7527970bf65ffd21c8406c8707323c",
@@ -363,12 +363,12 @@
     "editor/media/editor-wiring-media-controls.js": "978298e2f616be772132c07321187f66ebc5f46d31d4d14ac0a04a0f0815194f",
     "editor/cues/editor-wiring-edit-shortcuts.js": "353fc928fb8fa370f5f4406fc07f061ed8717fed9639e4a17201a3f481ed0366",
     "editor/styles/editor-wiring-font-geometry.js": "a6bd47579d3c780c6cbf3d6211584728759fad78e5d26af826f03dcbf3da9c04",
-    "editor/styles/editor-wiring-ass-preview.js": "1e108501297bd85eb76ae337df380a6355a46820848144bc40f40aa4fb9650b1",
+    "editor/styles/editor-wiring-ass-preview.js": "f417309e2041e56895b7e0439277ef406f280d6635841f8c39d1c51c77a493f1",
     "editor/styles/editor-wiring-ass-canvas.js": "760124beb2fc0b54d19f82ccfb325cd9d0ba7f032897c5107f35a8ebed7699ee",
     "editor/styles/editor-wiring-ass-frame.js": "1a3c186069460cde01b86e0c1614b8b71d3f9fa7c4ef377988824b14adff69e5",
     "editor/media/editor-wiring-sticker-preview.js": "fa46c5d9075247e627f4fea99cd13d36d1492e4bd5ee1c7a51f046168abbbdb8",
     "editor/io/editor-wiring-export-context.js": "89ac0732b2bcb77878991af980335662d739e4d1cfff65152e4878b042545f0e",
-    "editor/io/editor-wiring-export-actions.js": "2001428e130b0737863dc50788c2cb644fb3cf07252fba23e083ff40d63f7759",
+    "editor/io/editor-wiring-export-actions.js": "08d3db0b92eeec0cd9b82be2f75e1f9f78a0d505d547c60b644faff5fa9e49fe",
     "editor/ui/editor-wiring-toolbar-menus.js": "7b6594d2a19ced6990cdacbf1e258861467de9f40cf087e51142d1ffcc737b45",
     "editor/io/editor-wiring-project-inputs.js": "83f60f05a35b1aa96f88f9cbb50e7f361cc77072c255f148b66c1edd396b3020",
     "editor/media/editor-wiring-media-inputs.js": "9eade738d68f5873398865ee2ac3ce1380d41f0a796a73e387ea63d17a87d5aa",
@@ -532,7 +532,7 @@
         "format": "esm"
       },
       "web/shared/utils/export-plan.js": {
-        "bytes": 24135,
+        "bytes": 24229,
         "imports": [],
         "format": "esm"
       },
@@ -692,7 +692,7 @@
         "format": "esm"
       },
       "web/editor-entry.mjs": {
-        "bytes": 1817556,
+        "bytes": 1823597,
         "imports": [
           {
             "path": "web/shared/host/storage.js",
@@ -1097,7 +1097,7 @@
             "bytesInOutput": 12131
           },
           "web/shared/utils/export-plan.js": {
-            "bytesInOutput": 13399
+            "bytesInOutput": 13517
           },
           "web/shared/utils/fcp7.js": {
             "bytesInOutput": 11746
@@ -1109,10 +1109,10 @@
             "bytesInOutput": 458
           },
           "web/shared/utils/preview-geometry.js": {
-            "bytesInOutput": 1572
+            "bytesInOutput": 1574
           },
           "web/shared/utils/lottie.js": {
-            "bytesInOutput": 4174
+            "bytesInOutput": 4176
           },
           "web/shared/utils/ograf.js": {
             "bytesInOutput": 10931
@@ -1193,10 +1193,10 @@
             "bytesInOutput": 4406
           },
           "web/editor-entry.mjs": {
-            "bytesInOutput": 1055634
+            "bytesInOutput": 1058639
           }
         },
-        "bytes": 1403634
+        "bytes": 1406761
       }
     }
   }
