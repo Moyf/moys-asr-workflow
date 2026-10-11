@@ -299,7 +299,21 @@
 }
 
 
+  // 活动预览尚未入历史栈。先取消整个手势并消费这次撤销/重做，
+  // 避免恢复历史后旧拖动仍持有字幕对象，或把预览状态写入 redo。
+  // 放在统一入口，同时覆盖快捷键、按钮和直接调用。
+  function cancelActiveTimelineGesture() {
+    const waveform = MaweCoreState.waveformEditor;
+    if (waveform?.wordDrag) {
+      waveform.cancelWordDrag();
+      return true;
+    }
+    return waveform?.cancelCueDrag?.() === true;
+  }
+
+
   function performUndo() {
+    if (cancelActiveTimelineGesture()) { updateUndoRedoButtons(); return; }
     const top = editorHistory.peekUndo();
     if (!top) { MaweHint.flashHint('没有可撤销的操作', 'invalid'); return; }
     if (top.kind === 'layout' && typeof MaweCoreState.waveformEditor?.restoreLayoutHistorySnapshot !== 'function') {
@@ -317,6 +331,7 @@
 
 
   function performRedo() {
+    if (cancelActiveTimelineGesture()) { updateUndoRedoButtons(); return; }
     const top = editorHistory.peekRedo();
     if (!top) { MaweHint.flashHint('没有可重做的操作', 'invalid'); return; }
     if (top.kind === 'layout' && typeof MaweCoreState.waveformEditor?.restoreLayoutHistorySnapshot !== 'function') {

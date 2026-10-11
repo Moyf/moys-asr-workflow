@@ -681,13 +681,15 @@ export function createWaveformModule(dependencies) {
       });
       const drag = this.drag;
       if (drag?.started) {
-        const indexAttribute = drag.track === 'overlay' ? 'data-overlay-idx'
-          : drag.track === 'extension' ? 'data-ext-idx' : 'data-idx';
-        drag.indices.forEach((index) => {
-          rows.forEach((row) => row.querySelectorAll(
-            `.waveform-cue-block[data-track="${drag.track}"][${indexAttribute}="${index}"]`,
-          ).forEach((block) => block.classList.add('dragging')));
-        });
+        for (const move of drag.moveTracks || [drag]) {
+          const indices = new Set(move.indices);
+          rows.forEach((row) => row.querySelectorAll(`.waveform-cue-block[data-track="${move.track}"]`)
+            .forEach((element) => {
+              const block = /** @type {HTMLElement} */ (element);
+              const index = Number(block.dataset.overlayIdx ?? block.dataset.extIdx ?? block.dataset.idx);
+              if (indices.has(index)) block.classList.add('dragging');
+            }));
+        }
       }
       this.updatePlayback(false);
     }
@@ -708,7 +710,7 @@ export function createWaveformModule(dependencies) {
       }
       const activeCueDrag = this.drag && this.drag.started && !this.drag.sharedBoundaryZone
         ? this.drag : null;
-      if (activeCueDrag && this.cueDragOverlayOccupancyChanged(activeCueDrag)) {
+      if (activeCueDrag && (activeCueDrag.moveTracks || [activeCueDrag]).some((move) => this.cueDragOverlayOccupancyChanged(move))) {
         // 轻量块重排只能更新已有 DOM；当字幕跨行后，必须在目标行创建新片段、
         // 并移除源行旧片段。指针捕获在稳定 pane 上，覆盖层重建不会中断拖动。
         this.refreshCueOverlay();
@@ -782,22 +784,23 @@ export function createWaveformModule(dependencies) {
       const segments = drag.track === 'extension'
         ? (this.options.getExtensionSegments?.() || [])
         : (this.options.getSegments(drag.track) || []);
-      const indexAttribute = drag.track === 'overlay' ? 'data-overlay-idx'
-        : drag.track === 'extension' ? 'data-ext-idx' : 'data-idx';
-      const selectorFor = (index) => (
-        `.waveform-cue-block[data-track="${drag.track}"][${indexAttribute}="${index}"]`
-      );
+      const occupancy = rows.map((row) => ({
+        startMs: Number(row.dataset.startMs), endMs: Number(row.dataset.endMs),
+        indices: new Set([...row.querySelectorAll(`.waveform-cue-block[data-track="${drag.track}"]`)]
+          .map((element) => {
+            const block = /** @type {HTMLElement} */ (element);
+            return Number(block.dataset.overlayIdx ?? block.dataset.extIdx ?? block.dataset.idx);
+          })),
+      }));
       return drag.indices.some((index) => {
         const segment = segments[index];
         if (!segment) return false;
         const hiddenDisabled = segment.disabled
           && (this.options.getHideDisabled?.() || this.settings.disabledDisplay === 'hidden');
-        return rows.some((row) => {
-          const startMs = Number(row.dataset.startMs);
-          const endMs = Number(row.dataset.endMs);
+        return occupancy.some(({ startMs, endMs, indices }) => {
           const shouldExist = !hiddenDisabled
             && Number(segment.start) < endMs && Number(segment.end) > startMs;
-          const exists = Boolean(row.querySelector(selectorFor(index)));
+          const exists = indices.has(index);
           return shouldExist !== exists;
         });
       });

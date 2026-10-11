@@ -49,6 +49,7 @@
           ? segment.items.map((item) => ({ ...item })) : segment.items,
       })),
       dirty: track?._dirty,
+      selection: MaweMultiSubtitleCore.extensionTrackSelectionSnapshot(track),
     };
   }
 
@@ -70,7 +71,7 @@
   function restoreBoundDragTimelineOriginals(drag) {
     const snapshot = drag?.boundDragTimelineOriginals;
     if (!snapshot) return;
-    snapshot.tracks.forEach(({ track, segments, dirty }) => {
+    snapshot.tracks.forEach(({ track, segments, dirty, selection }) => {
       if (!track) return;
       track.segments = segments.map((entry) => {
         entry.segment.start = entry.start;
@@ -84,6 +85,7 @@
         return entry.segment;
       });
       track._dirty = track._dirty || dirty;
+      if (drag.selectedMoveSegments) MaweMultiSubtitleCore.restoreExtensionTrackSelection(track, selection);
     });
     const multi = MaweMultiSubtitleCore.getMultiSubtitleState();
     multi.bindings = JSON.parse(JSON.stringify(snapshot.bindings));
@@ -113,8 +115,7 @@
     // 主字幕即使因为“自动吸附调整相邻字幕”关闭而走
     // resize-boundary-independent，也仍需带着绑定副字幕一起调整。
     if (!drag || drag.track !== 'main' || !MaweMultiSubtitleCore.multiSubtitleVisible()) return;
-    ensureBoundDragTimelineOriginals(drag);
-    if (drag.allowSqueeze) restoreBoundDragTimelineOriginals(drag);
+    if (!drag.selectedMoveSegments) prepareBoundCueDrag(drag);
     const sourceSegments = MaweBoot.DATA.segments;
     if (!drag.boundOriginals) drag.boundOriginals = new Map();
 
@@ -122,8 +123,12 @@
       index,
       bound: getBoundDragTarget(index, sourceSegments),
       sourceOriginal: drag.originals.get(index),
-    })).filter((entry) => entry.bound && entry.sourceOriginal);
-    const movedFollowerSegments = new Set(boundEntries.map((entry) => entry.bound.target));
+    })).filter((entry) => entry.bound && entry.sourceOriginal
+      && !drag.selectedMoveSegments?.has(entry.bound.target));
+    const movedFollowerSegments = new Set([
+      ...boundEntries.map((entry) => entry.bound.target),
+      ...(drag.selectedMoveSegments || []),
+    ]);
     boundEntries.forEach(({ index, bound, sourceOriginal }) => {
       const { target, binding } = bound;
       const targetOriginal = ensureBoundDragOriginal(drag, index, target);
@@ -183,6 +188,27 @@
     MaweMultiSubtitleCore.syncBindingOffsets();
   }
 
+  function prepareBoundCueDrag(drag) {
+    if (drag?.track !== 'main' || !MaweMultiSubtitleCore.multiSubtitleVisible()) return;
+    // 显式选中的副字幕由组合拖动自身更新；没有隐式跟随字幕时，
+    // 无需每帧恢复整个副轨。已有预览快照仍须恢复，保证反向拖回可逆。
+    if (drag.selectedMoveSegments && !drag.boundDragTimelineOriginals
+        && !drag.indices.some((index) => {
+          const bound = getBoundDragTarget(index, MaweBoot.DATA.segments);
+          return bound && !drag.selectedMoveSegments.has(bound.target);
+        })) return;
+    ensureBoundDragTimelineOriginals(drag);
+    if (drag.allowSqueeze || drag.selectedMoveSegments) restoreBoundDragTimelineOriginals(drag);
+    // 多轨预览会先写入选中副字幕及被挤压邻居；提前保存未选中的绑定
+    // 跟随字幕，避免在同步绑定时把已经调整过的时间当成拖动起点。
+    if (drag.selectedMoveSegments) {
+      drag.indices.forEach((index) => {
+        const bound = getBoundDragTarget(index, MaweBoot.DATA.segments);
+        if (bound && !drag.selectedMoveSegments.has(bound.target)) ensureBoundDragOriginal(drag, index, bound.target);
+      });
+    }
+  }
+
   global.MaweBoundDrag = Object.freeze({
     getBoundDragTarget,
     ensureBoundDragOriginal,
@@ -190,6 +216,7 @@
     ensureBoundDragTimelineOriginals,
     restoreBoundDragTimelineOriginals,
     getBoundDragEdge,
-    syncBoundCueDrag
+    syncBoundCueDrag,
+    prepareBoundCueDrag
   });
 })(typeof window !== 'undefined' ? window : globalThis);
