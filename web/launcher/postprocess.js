@@ -443,10 +443,6 @@
     const suffix = String(item?.id || "").replace("custom", "");
     return suffix ? `llm_custom_provider_${suffix}` : "llm_custom_provider";
   }
-  /** 槽位是否已填写 Base URL 与模型名；用于运行前就绪提示，不再用于过滤下拉：
-   *  工具箱与设置页显示同一份槽位列表——过滤会让 llmProvider 选中 custom2/3 时
-   *  postprocessProvider 无法同步该值（option 不存在），表现为「自动跳回第一项」。 */
-  function customSlotConfigured(item) { return Boolean(item.hasBaseUrl && item.hasModel); }
 
   /** 重建两个供应商下拉：两处都显示全部槽位（未配置的自定义槽位也能选中补填）。 */
   function fillProviderSelects(preferredProviderId = "") {

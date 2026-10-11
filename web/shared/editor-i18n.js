@@ -1563,7 +1563,8 @@
     if (element.closest?.(ATTRIBUTE_SKIP_SELECTOR)) return;
     if (!attributeOriginals.has(element)) attributeOriginals.set(element, {});
     const originals = attributeOriginals.get(element);
-    ['title', 'placeholder', 'aria-label'].forEach((name) => {
+    // data-title 是共享 tooltip 的转存属性：语言切换时气泡文本需同步跟随。
+    ['title', 'placeholder', 'aria-label', 'data-title'].forEach((name) => {
       if (!element.hasAttribute?.(name)) return;
       const current = element.getAttribute(name);
       if (!(name in originals)) {

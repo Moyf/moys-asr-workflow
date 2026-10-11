@@ -4138,8 +4138,15 @@ _LOOPBACK_HOSTS: Final[frozenset[str]] = frozenset({"127.0.0.1", "localhost", ":
 
 def _loopback_base_url(base_url: str) -> bool:
     """True for loopback LLM endpoints (LM Studio / Ollama / vLLM defaults)."""
+    text = str(base_url or "").strip()
+    if not text:
+        return False
+    # 用户常省略 scheme（如 127.0.0.1:1234/v1）：urlsplit 会把它整体当 path，
+    # 这里按 HTTP 默认 scheme 补全后再解析 host。
+    if "://" not in text:
+        text = f"http://{text}"
     try:
-        host = urlsplit(str(base_url or "")).hostname or ""
+        host = urlsplit(text).hostname or ""
     except ValueError:
         return False
     return host.lower() in _LOOPBACK_HOSTS

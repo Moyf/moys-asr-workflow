@@ -1560,6 +1560,21 @@ class GuiWebBridgeTests(CompactContainerAssertions, unittest.TestCase):
         missing = [needle for needle in needles if needle not in script]
         self.assertEqual(missing, [], f"缺少按任务记忆契约：{missing}")
 
+    def test_loopback_base_url_accepts_common_local_endpoints(self) -> None:
+        """Given local LLM endpoints, When checking loopback detection, Then scheme-less forms still match."""
+        from maw import gui_web
+
+        for base_url in (
+            "http://127.0.0.1:1234/v1",
+            "127.0.0.1:1234/v1",
+            "http://localhost:11434",
+            "localhost:8080/api",
+            "http://[::1]:1234/v1",
+        ):
+            self.assertTrue(gui_web._loopback_base_url(base_url), base_url)
+        for base_url in ("https://api.deepseek.com", "example.com/v1", "", "http://0.0.0.0:1234"):
+            self.assertFalse(gui_web._loopback_base_url(base_url), base_url or "<empty>")
+
     def test_toolbox_lists_all_custom_slots(self) -> None:
         """Given the toolbox provider select, When custom slots are unconfigured, Then all slots stay selectable.
 
@@ -1572,7 +1587,6 @@ class GuiWebBridgeTests(CompactContainerAssertions, unittest.TestCase):
 
         needles = [
             'function isCustomSlot(item) { return ["custom", "custom2", "custom3"].includes(String(item?.id || "")); }',
-            "function customSlotConfigured(item)",
             "providers.forEach((item) => {\n        select.add(new Option(providerLabel(item), item.id));\n      });",
             "fillProviderSelects(selectedProvider);",
             "fillProviderSelects(item.id);",

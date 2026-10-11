@@ -238,7 +238,7 @@
     "shared/utils/lottie.js": "a74b0332e76eef35299d9567c052584a61383134cf03e9ea5279b11e6d4e69ea",
     "shared/utils/ograf.js": "94b88b7db9ea4fd862dc49985f1a5e46bcef6bc70837cb656b0cd1b085a40d89",
     "shared/editor-utils.js": "360489d1efb54cddfd9c732c7daab966a0f6d1bf0cb05a2b09c96d4485048a13",
-    "shared/editor-i18n.js": "b9a7f83aeeae24e4932d42fdcec602306a5c63b99597b0010b5d0ea5d5e6266e",
+    "shared/editor-i18n.js": "df5233ed5a3946fc3d97491b67953522d3fea999ea31880939ba83a78b22d759",
     "shared/tooltip.js": "e800623864ea73a6ecbbb225c1d283573b81c055f6191a27ad7c0ed9778b4c88",
     "editor/media/waveform/constants.js": "d5bd567ad4dcbee81995e275e8bf0be571b47e28952fa944478a66aa78e079e4",
     "editor/media/waveform/labels.js": "983afc39d173fc6636d0c78b4fdf4f426a4ba49c8ba4d40305e2775ddb28b80b",
@@ -692,7 +692,7 @@
         "format": "esm"
       },
       "web/editor-entry.mjs": {
-        "bytes": 1755343,
+        "bytes": 1755457,
         "imports": [
           {
             "path": "web/shared/host/storage.js",
@@ -1193,10 +1193,10 @@
             "bytesInOutput": 4423
           },
           "web/editor-entry.mjs": {
-            "bytesInOutput": 1017140
+            "bytesInOutput": 1017153
           }
         },
-        "bytes": 1357623
+        "bytes": 1357636
       }
     }
   }
