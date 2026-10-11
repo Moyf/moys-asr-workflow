@@ -15,15 +15,15 @@ test("AI processing exposes current-operation cancel and streamed output", () =>
   assert.match(source, /result\.code === "postprocess_cancelled"/);
   assert.match(source, /result\?\.cancelled === false[\s\S]*?toolbox_ai_cancel_too_late/);
   assert.match(source, /if \(!busy \|\| postprocessCancelling\) return;/);
-  assert.match(strings, /toolbox_ai_cancel_too_late:\s*"AI 处理已进入收尾或保存阶段，无法取消。"/);
-  assert.match(strings, /toolbox_ai_cancel_too_late:\s*"AI processing has reached finalization or saving/);
+  assert.match(strings, /toolbox_ai_cancel_too_late:\s*"字幕处理已进入收尾或保存阶段，无法取消。"/);
+  assert.match(strings, /toolbox_ai_cancel_too_late:\s*"Subtitle processing has reached finalization or saving/);
   assert.match(source, /if \(!displayedPostprocessOperationId \|\| event\.operationId !== displayedPostprocessOperationId\) return;/);
   assert.match(source, /event\.operationId !== activePostprocessOperationId\) return;/);
   assert.match(source, /beginStreamOutput\(\);[\s\S]*?setBusy\(true, "toolbox_status_ai_cleanup"\)/);
   assert.match(html, /id="stopToolboxPostprocess"[^>]*class="ghost hidden"/);
   assert.match(html, /id="toolboxStreamOutput"/);
-  assert.match(strings, /toolbox_stop_ai:\s*"停止 AI 处理"/);
-  assert.match(strings, /toolbox_stop_ai:\s*"Stop AI processing"/);
+  assert.match(strings, /toolbox_stop_ai:\s*"停止字幕处理"/);
+  assert.match(strings, /toolbox_stop_ai:\s*"Stop subtitle processing"/);
 });
 
 // Execute the current source functions so these lifecycle checks do not depend

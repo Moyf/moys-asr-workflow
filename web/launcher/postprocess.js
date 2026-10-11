@@ -1957,19 +1957,26 @@
       return;
     }
     setFieldError("postprocessScriptPath", "");
+    const operationId = beginAiPostprocessOperation();
+    resetStreamOutput();
     setBusy(true, "toolbox_status_starting");
+    let cancelled = false;
     try {
       const result = await bridge("run_script_match", {
         ...paths,
+        operationId,
         scriptPath,
         matchMode: $("postprocessMatchMode").value,
         extraSplitPunctuation: punctuationLines("postprocessExtraSplitPunctuation"),
         preservePunctuation: punctuationLines("postprocessPreservePunctuation"),
         cleanMarkdownSymbols: $("postprocessCleanMarkdownSymbols").checked,
       });
+      cancelled = result.code === "postprocess_cancelled";
       if (result.ok) applySubtitleResult(result, { kind: "match" });
+      else if (cancelled) setResult(t("toolbox_ai_cancelled"));
       else setResult(postprocessErrorText(result), "error");
     } finally {
+      finishAiPostprocessOperation(operationId, cancelled);
       setBusy(false);
     }
   }

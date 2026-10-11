@@ -10,7 +10,7 @@ import json
 import unicodedata
 from dataclasses import dataclass
 from pathlib import Path
-from collections.abc import Mapping, Sequence
+from collections.abc import Callable, Mapping, Sequence
 from typing import Final
 
 from maw.postprocess import OutputMode, _reconcile_items
@@ -19,6 +19,9 @@ from maw.project import normalize_project
 from maw.project_preview import JsonDict, JsonValue
 from scripts.mosp_match_text import (
     AlignmentError,
+    MatchCancelledError,
+    cancellable_sequence_matcher,
+    check_match_cancelled,
     CLOSING_PUNCTUATION,
     MARKDOWN_EXTENSIONS,
     clean_markdown_text,
@@ -99,9 +102,20 @@ class _NormalizedText:
         return self.original_starts[normalized_index]
 
 
-def run_script_match(request: ScriptMatchRequest) -> SubtitleArtifact:
+def run_script_match(
+    request: ScriptMatchRequest,
+    *,
+    is_cancelled: Callable[[], bool] | None = None,
+    begin_commit: Callable[[], bool] | None = None,
+    on_status: Callable[[str], None] | None = None,
+) -> SubtitleArtifact:
+    check_match_cancelled(is_cancelled)
+    if on_status is not None:
+        on_status("toolbox_status_reading")
     project, source_project, source_srt = _load_input(request.project_path, request.srt_path)
+    check_match_cancelled(is_cancelled)
     script_path, script_text = _read_script(request.script_path)
+    check_match_cancelled(is_cancelled)
     if request.match_mode not in {"script", "text"}:
         raise ValueError("不支持的文稿匹配模式")
     extra_split_punctuation = request.extra_split_punctuation if request.match_mode == "script" else ()
@@ -112,16 +126,20 @@ def run_script_match(request: ScriptMatchRequest) -> SubtitleArtifact:
         preserve_punctuation,
         clean_markdown_symbols=request.clean_markdown_symbols,
     )
+    check_match_cancelled(is_cancelled)
+    if on_status is not None:
+        on_status("toolbox_status_matching")
     if (
         request.match_mode == "script"
         and source_project is not None
-        and _has_complete_item_timings(project)
+        and _has_complete_item_timings(project, is_cancelled=is_cancelled)
     ):
         matched, warnings = _match_project_with_character_timings(
             project,
             prepared_script,
             request.extra_split_punctuation,
             request.preserve_punctuation,
+            is_cancelled=is_cancelled,
         )
     else:
         matched, warnings = _match_project(
@@ -130,7 +148,15 @@ def run_script_match(request: ScriptMatchRequest) -> SubtitleArtifact:
             DEFAULT_SPLIT_PUNCTUATION | frozenset(request.extra_split_punctuation),
             frozenset(request.preserve_punctuation),
             request.match_mode,
+            is_cancelled=is_cancelled,
         )
+    check_match_cancelled(is_cancelled)
+    if begin_commit is not None and not begin_commit():
+        raise MatchCancelledError("文稿匹配已取消。")
+    # Cancellation is now rejected by the operation lock. Do not check it
+    # after this boundary and claim cancellation once outputs may exist.
+    if on_status is not None:
+        on_status("toolbox_status_writing")
     return write_artifacts(
         matched,
         source_project_path=source_project,
@@ -202,12 +228,14 @@ def processed_script_text(
     return "\n".join(_split_script_segments(normalized_text, split_punctuation, preserved))
 
 
-def _has_complete_item_timings(project: JsonDict) -> bool:
+def _has_complete_item_timings(project: JsonDict, *, is_cancelled: Callable[[], bool] | None = None) -> bool:
+    check_match_cancelled(is_cancelled)
     segments = project.get("segments")
     if not isinstance(segments, list) or not segments:
         return False
     enabled_count = 0
     for segment in segments:
+        check_match_cancelled(is_cancelled)
         if not isinstance(segment, dict):
             return False
         if segment.get("disabled") is True:
@@ -216,16 +244,17 @@ def _has_complete_item_timings(project: JsonDict) -> bool:
         items = segment.get("items")
         if not isinstance(items, list) or not items:
             return False
-        if any(
-            not isinstance(item, dict)
-            or not isinstance(item.get("text"), str)
-            or not isinstance(item.get("start"), (int, float))
-            or isinstance(item.get("start"), bool)
-            or not isinstance(item.get("end"), (int, float))
-            or isinstance(item.get("end"), bool)
-            for item in items
-        ):
-            return False
+        for item in items:
+            check_match_cancelled(is_cancelled)
+            if (
+                not isinstance(item, dict)
+                or not isinstance(item.get("text"), str)
+                or not isinstance(item.get("start"), (int, float))
+                or isinstance(item.get("start"), bool)
+                or not isinstance(item.get("end"), (int, float))
+                or isinstance(item.get("end"), bool)
+            ):
+                return False
     return enabled_count > 0
 
 
@@ -234,11 +263,14 @@ def _match_project_with_character_timings(
     script_text: str,
     extra_split_punctuation: tuple[str, ...],
     preserve_punctuation: tuple[str, ...],
+    *,
+    is_cancelled: Callable[[], bool] | None = None,
 ) -> tuple[JsonDict, tuple[str, ...]]:
+    check_match_cancelled(is_cancelled)
     split_punctuation = DEFAULT_SPLIT_PUNCTUATION | frozenset(extra_split_punctuation)
     preserved = frozenset(preserve_punctuation)
     if any(len(symbol) != 1 for symbol in split_punctuation | preserved):
-        return _match_project(project, script_text, split_punctuation, preserved, "script")
+        return _match_project(project, script_text, split_punctuation, preserved, "script", is_cancelled=is_cancelled)
 
     source_segments = project.get("segments")
     if not isinstance(source_segments, list):
@@ -256,6 +288,7 @@ def _match_project_with_character_timings(
             script_text,
             split_punctuation=split_punctuation,
             preserve_punctuation=preserved,
+            is_cancelled=is_cancelled,
         )
     except AlignmentError as error:
         raise SubtitleMatchError(str(error)) from error
@@ -270,11 +303,12 @@ def _match_project_with_character_timings(
     raw_matched: JsonValue = json.loads(matched_text)
     if not isinstance(raw_matched, dict):
         raise ValueError("character matcher returned an invalid project")
-    _preserve_equal_count_segment_metadata(matcher_project, raw_matched)
+    _preserve_equal_count_segment_metadata(matcher_project, raw_matched, is_cancelled=is_cancelled)
     preserved_extras = _merge_unmatched_source_segments(
         matcher_project.get("segments"),
         raw_matched,
         report,
+        is_cancelled=is_cancelled,
     )
     raw_matched["segments"] = _merge_disabled_segments(source_segments, raw_matched)
     matched = normalize_project(raw_matched)
@@ -328,6 +362,8 @@ def _merge_unmatched_source_segments(
     matcher_segments: object,
     matched: JsonDict,
     report: Mapping[str, object],
+    *,
+    is_cancelled: Callable[[], bool] | None = None,
 ) -> int:
     """Keep complete source cues covered only by ASR-side deletions.
 
@@ -339,6 +375,7 @@ def _merge_unmatched_source_segments(
     manuscript character timings.
     """
 
+    check_match_cancelled(is_cancelled)
     matched_segments = matched.get("segments")
     if not isinstance(matched_segments, list) or not isinstance(matcher_segments, list):
         raise ValueError("character matcher returned invalid segments")
@@ -347,6 +384,7 @@ def _merge_unmatched_source_segments(
         return 0
     extras: list[JsonValue] = []
     for raw_index in raw_indexes:
+        check_match_cancelled(is_cancelled)
         if type(raw_index) is not int or raw_index < 0 or raw_index >= len(matcher_segments):
             continue
         source_segment = matcher_segments[raw_index]
@@ -367,7 +405,10 @@ def _merge_unmatched_source_segments(
 def _preserve_equal_count_segment_metadata(
     source: JsonDict,
     matched: JsonDict,
+    *,
+    is_cancelled: Callable[[], bool] | None = None,
 ) -> None:
+    check_match_cancelled(is_cancelled)
     source_segments = source.get("segments")
     matched_segments = matched.get("segments")
     if not isinstance(source_segments, list) or not isinstance(matched_segments, list):
@@ -375,9 +416,11 @@ def _preserve_equal_count_segment_metadata(
     if len(source_segments) != len(matched_segments):
         return
     for source_segment, matched_segment in zip(source_segments, matched_segments, strict=True):
+        check_match_cancelled(is_cancelled)
         if not isinstance(source_segment, dict) or not isinstance(matched_segment, dict):
             continue
         for key in ("id", "speaker", "disabled", "sticker", "sticker_ref", "color", "color_ref"):
+            check_match_cancelled(is_cancelled)
             if key in source_segment:
                 matched_segment[key] = copy.deepcopy(source_segment[key])
 
@@ -388,26 +431,30 @@ def _match_project(
     split_punctuation: frozenset[str] = DEFAULT_SPLIT_PUNCTUATION,
     preserve_punctuation: frozenset[str] = frozenset(),
     match_mode: str = "script",
+    *,
+    is_cancelled: Callable[[], bool] | None = None,
 ) -> tuple[JsonDict, tuple[str, ...]]:
+    check_match_cancelled(is_cancelled)
     if match_mode not in {"script", "text"}:
         raise ValueError("不支持的文稿匹配模式")
     segments = project.get("segments")
     if not isinstance(segments, list):
         raise ValueError("project segments must be an array")
 
-    punctuation_segments = _split_script_segments(script_text, split_punctuation, preserve_punctuation) if match_mode == "script" else ()
+    punctuation_segments = _split_script_segments(script_text, split_punctuation, preserve_punctuation, is_cancelled=is_cancelled) if match_mode == "script" else ()
     alignment_text = "".join(punctuation_segments) if punctuation_segments else script_text.replace("\r", "").replace("\n", "")
-    script = _normalize_text(alignment_text)
+    script = _normalize_text(alignment_text, is_cancelled=is_cancelled)
     source_parts: list[str] = []
     spans: list[_CueSpan] = []
     offset = 0
     for index, raw_segment in enumerate(segments):
+        check_match_cancelled(is_cancelled)
         if not isinstance(raw_segment, dict) or raw_segment.get("disabled") is True:
             continue
         text = raw_segment.get("text")
         if not isinstance(text, str):
             continue
-        normalized = _normalize_text(text)
+        normalized = _normalize_text(text, is_cancelled=is_cancelled)
         if not normalized.value:
             continue
         start = offset
@@ -420,7 +467,7 @@ def _match_project(
     if not script.value:
         raise ValueError("script text is empty")
 
-    matcher = difflib.SequenceMatcher(None, source_text, script.value, autojunk=False)
+    matcher = cancellable_sequence_matcher(source_text, script.value, is_cancelled=is_cancelled)
     opcodes = tuple(matcher.get_opcodes())
     blocks = tuple(block for block in matcher.get_matching_blocks() if block.size)
     matched_chars = sum(block.size for block in blocks)
@@ -432,7 +479,8 @@ def _match_project(
     script_boundary_positions = {0}
     script_offset = 0
     for manuscript_segment in punctuation_segments:
-        script_offset += len(_normalize_text(manuscript_segment).value)
+        check_match_cancelled(is_cancelled)
+        script_offset += len(_normalize_text(manuscript_segment, is_cancelled=is_cancelled).value)
         script_boundary_positions.add(script_offset)
     has_boundary_source_only_text = any(
         tag == "delete"
@@ -456,6 +504,7 @@ def _match_project(
             _alignment_boundaries(len(source_text), len(script.value), blocks),
             opcodes,
             blocks[-1].a + blocks[-1].size if blocks else 0,
+            is_cancelled=is_cancelled,
         )
         if result is not None:
             return result, (f"文稿匹配度：{coverage:.0%}；已按文稿换行更新，未匹配的文稿/字幕部分保留原样。",)
@@ -467,6 +516,7 @@ def _match_project(
             raise ValueError("project segments must be an array")
         changed = 0
         for span, replacement in zip(spans, punctuation_segments):
+            check_match_cancelled(is_cancelled)
             source_segment = segments[span.segment_index]
             target_segment = result_segments[span.segment_index]
             if not isinstance(source_segment, dict) or not isinstance(target_segment, dict):
@@ -497,6 +547,7 @@ def _match_project(
     unmatched = 0
     changed = 0
     for span in spans:
+        check_match_cancelled(is_cancelled)
         script_start = _map_boundary(span.normalized_start, boundaries)
         script_end = _map_boundary(span.normalized_end, boundaries)
         script_start, script_end = sorted((script_start, script_end))
@@ -549,7 +600,10 @@ def _resegment_project(
     boundaries: tuple[tuple[int, int], ...],
     opcodes: Sequence[tuple[str, int, int, int, int]],
     matched_source_end: int,
+    *,
+    is_cancelled: Callable[[], bool] | None = None,
 ) -> JsonDict | None:
+    check_match_cancelled(is_cancelled)
     if any(isinstance(segment, dict) and segment.get("disabled") is True for segment in segments):
         return None
     result = copy.deepcopy(project)
@@ -562,7 +616,8 @@ def _resegment_project(
     script_offsets: list[int] = []
     offset = 0
     for value in manuscript_segments:
-        offset += len(_normalize_text(value).value)
+        check_match_cancelled(is_cancelled)
+        offset += len(_normalize_text(value, is_cancelled=is_cancelled).value)
         script_offsets.append(offset)
     script_boundaries = (0, *script_offsets)
     source_offsets = [
@@ -578,9 +633,11 @@ def _resegment_project(
     # the left side for both and consequently swallowed the deletion into the
     # next cue.
     for tag, source_start, source_end, script_start, script_end in opcodes:
+        check_match_cancelled(is_cancelled)
         if tag != "delete" or script_start != script_end or source_start >= source_end:
             continue
         for boundary_index, boundary in enumerate(script_boundaries):
+            check_match_cancelled(is_cancelled)
             if boundary != script_start:
                 continue
             source_starts[boundary_index] = max(
@@ -594,6 +651,7 @@ def _resegment_project(
 
     def source_time(position: int) -> int:
         for span in spans:
+            check_match_cancelled(is_cancelled)
             if position <= span.normalized_end:
                 segment = original_segments[span.segment_index]
                 ratio = (position - span.normalized_start) / max(1, span.normalized_end - span.normalized_start)
@@ -605,6 +663,7 @@ def _resegment_project(
 
     rebuilt: list[tuple[int, int, JsonDict]] = []
     for index, text in enumerate(manuscript_segments):
+        check_match_cancelled(is_cancelled)
         start = source_time(source_starts[index])
         end = source_time(source_ends[index + 1])
         if end <= start:
@@ -641,25 +700,27 @@ def _resegment_project(
         # additional non-overlapping cue without splitting that manuscript
         # cue as well.  Boundary deletions (the common "extra sentence between
         # two script lines" case) are unambiguous and are retained below.
+        check_match_cancelled(is_cancelled)
         if any(
             delete_start < matched_end and delete_end > matched_start
             for matched_start, matched_end in matched_ranges
         ):
             continue
         for span in spans:
+            check_match_cancelled(is_cancelled)
             overlap_start = max(delete_start, span.normalized_start)
             overlap_end = min(delete_end, span.normalized_end)
             if overlap_start >= overlap_end:
                 continue
             source_segment = original_segments[span.segment_index]
             source_text = str(source_segment.get("text") or "")
-            normalized_source = _normalize_text(source_text)
+            normalized_source = _normalize_text(source_text, is_cancelled=is_cancelled)
             local_start = overlap_start - span.normalized_start
             local_end = overlap_end - span.normalized_start
             original_start = normalized_source.original_boundary(local_start, len(source_text))
             original_end = normalized_source.original_boundary(local_end, len(source_text))
             text = source_text[original_start:original_end].strip()
-            if not text or not _normalize_text(text).value:
+            if not text or not _normalize_text(text, is_cancelled=is_cancelled).value:
                 continue
             extra_piece_index += 1
             piece = copy.deepcopy(source_segment)
@@ -710,9 +771,12 @@ def _split_script_segments(
     text: str,
     punctuation: frozenset[str],
     preserve_punctuation: frozenset[str],
+    *,
+    is_cancelled: Callable[[], bool] | None = None,
 ) -> tuple[str, ...]:
     """Split a manuscript at configured symbols while keeping selected marks."""
 
+    check_match_cancelled(is_cancelled)
     if not punctuation:
         return ()
     segments: list[str] = []
@@ -720,12 +784,14 @@ def _split_script_segments(
     symbols = tuple(sorted(punctuation, key=len, reverse=True))
     index = 0
     while index < len(text):
+        check_match_cancelled(is_cancelled)
         symbol = next((candidate for candidate in symbols if text.startswith(candidate, index)), "")
         if symbol:
             if symbol in preserve_punctuation:
                 current.append(symbol)
             index += len(symbol)
             while index < len(text):
+                check_match_cancelled(is_cancelled)
                 following = next((candidate for candidate in symbols if text.startswith(candidate, index)), "")
                 if following:
                     if following in preserve_punctuation or following in CLOSING_PUNCTUATION:
@@ -738,14 +804,14 @@ def _split_script_segments(
                     continue
                 break
             value = "".join(current).strip()
-            if _normalize_text(value).value:
+            if _normalize_text(value, is_cancelled=is_cancelled).value:
                 segments.append(value)
             current = []
             continue
         current.append(text[index])
         index += 1
     value = "".join(current).strip()
-    if _normalize_text(value).value:
+    if _normalize_text(value, is_cancelled=is_cancelled).value:
         segments.append(value)
     return tuple(segments)
 
@@ -792,12 +858,15 @@ def _slice_normalized(
     return original[original_start:original_end].strip()
 
 
-def _normalize_text(value: str) -> _NormalizedText:
+def _normalize_text(value: str, *, is_cancelled: Callable[[], bool] | None = None) -> _NormalizedText:
+    check_match_cancelled(is_cancelled)
     chars: list[str] = []
     original_starts: list[int] = []
     for index, original_char in enumerate(value):
+        check_match_cancelled(is_cancelled)
         normalized_char = unicodedata.normalize("NFKC", original_char).casefold()
         for char in normalized_char:
+            check_match_cancelled(is_cancelled)
             category = unicodedata.category(char)
             if category[0] not in {"L", "M", "N"}:
                 continue
