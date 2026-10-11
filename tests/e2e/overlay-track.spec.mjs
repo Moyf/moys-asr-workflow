@@ -59,6 +59,61 @@ async function stubSavePicker(page) {
   });
 }
 
+function assDialogueEvents(ass) {
+  const timeMs = value => {
+    const [hours, minutes, seconds] = value.split(':').map(Number);
+    return Math.round((hours * 3600 + minutes * 60 + seconds) * 1000);
+  };
+  return ass.split('\n').filter(line => line.startsWith('Dialogue:')).map(line => {
+    const fields = line.slice('Dialogue:'.length).trim().split(',');
+    return { layer: Number(fields[0]), start: timeMs(fields[1]), end: timeMs(fields[2]),
+      style: fields[3], margins: fields.slice(5, 8).map(Number), text: fields.slice(9).join(',') };
+  });
+}
+
+function expectAssCoverage(events, start, end) {
+  expect(events.length).toBeGreaterThan(0);
+  const ordered = [...events].sort((a, b) => a.start - b.start);
+  expect(ordered[0].start).toBe(start);
+  expect(ordered.at(-1).end).toBe(end);
+  for (const [index, event] of ordered.entries()) {
+    expect(event.end).toBeGreaterThan(event.start);
+    if (index) expect(event.start).toBe(ordered[index - 1].end);
+  }
+}
+
+// Read the exported ASS tags independently of the production positioning helpers.
+function assEventAnchorAt(event, timeMs) {
+  const move = /\\move\(([^)]+)\)/.exec(event.text);
+  if (move) {
+    const [x1, y1, x2, y2, t1 = 0, t2 = event.end - event.start] = move[1].split(',').map(Number);
+    const elapsed = timeMs - event.start;
+    const amount = t2 <= t1 ? Number(elapsed > t2) : Math.min(1, Math.max(0, (elapsed - t1) / (t2 - t1)));
+    return { x: x1 + (x2 - x1) * amount, y: y1 + (y2 - y1) * amount };
+  }
+  const position = /\\pos\(([^)]+)\)/.exec(event.text);
+  expect(position, 'stacked ASS event has an explicit position').not.toBeNull();
+  const [x, y] = position[1].split(',').map(Number);
+  return { x, y };
+}
+
+function assEventOpacityAt(event, timeMs) {
+  const elapsed = timeMs - event.start;
+  const fade = /\\fade\(([^)]+)\)/.exec(event.text);
+  if (fade) {
+    const [a1, a2, a3, t1, t2, t3, t4] = fade[1].split(',').map(Number);
+    const interpolate = (from, to, start, end) => from + (to - from) * (elapsed - start) / (end - start);
+    const alpha = elapsed < t1 ? a1 : elapsed < t2 ? interpolate(a1, a2, t1, t2)
+      : elapsed < t3 ? a2 : elapsed < t4 ? interpolate(a2, a3, t3, t4) : a3;
+    return 1 - alpha / 255;
+  }
+  const fad = /\\fad\(([^)]+)\)/.exec(event.text);
+  expect(fad, 'ASS event retains its fade animation').not.toBeNull();
+  const [fadeIn, fadeOut] = fad[1].split(',').map(Number);
+  return elapsed < fadeIn ? elapsed / fadeIn
+    : elapsed > event.end - event.start - fadeOut ? (event.end - timeMs) / fadeOut : 1;
+}
+
 test('edits an independent overlay track, restores it through history, and exports both tracks', async ({ page }) => {
   const project = {
     segments: [{ id: 'main-001', start: 0, end: 2000, text: 'main cue' }],
@@ -217,6 +272,67 @@ test('Shift+drag converts to overlay on overlap and returns to the main track wh
   const afterStay = await page.evaluate(() => JSON.parse(MaweJsonRepair.buildJson()));
   expect(afterStay.segments.map((segment) => segment.id)).toEqual(['main-001']);
   expect(afterStay.overlay_track.segments[0]).toMatchObject({ id: 'main-002' });
+});
+
+test('Shift+drag toward a spot already blocked by an overlay cue stays on the main track', async ({ page }) => {
+  // 目标位置上方已被另一条叠加字幕占住（转过去也与主轨无重叠）时，
+  // 主→叠换轨会立刻满足回轨条件、两条轨来回翻转闪烁；修复后应保持
+  // 原轨什么都不做，由邻居钳制把字幕停在边界。
+  const project = {
+    segments: [
+      { id: 'main-001', start: 3000, end: 5000, text: 'anchor cue' },
+      { id: 'main-002', start: 5200, end: 7200, text: 'dragged cue' },
+    ],
+    overlay_track: {
+      enabled: true,
+      segments: [{ id: 'overlay-001', start: 0, end: 2000, text: 'blocking overlay' }],
+    },
+    waveform: generateWaveformPayload(8000),
+  };
+  await page.goto(server.url);
+  await dropProject(page, project);
+  await expect(page.locator('.waveform-cue-block[data-track="main"][data-idx="1"]')).toBeVisible();
+  await expect(page.locator('.waveform-cue-block[data-track="overlay"][data-overlay-idx="0"]')).toBeVisible();
+
+  const rowGeometry = await page.evaluate(() => {
+    const row = document.querySelector('.waveform-cue-block[data-track="main"]').closest('.waveform-row');
+    const rect = row.getBoundingClientRect();
+    const startMs = Number(row.dataset.startMs);
+    const endMs = Number(row.dataset.endMs);
+    const timeToX = (timeMs) => rect.left + ((timeMs - startMs) / (endMs - startMs)) * rect.width;
+    // 落点 [0,2000] 与主轨两条字幕都无重叠，且该处上方正是 blocking overlay。
+    return { blockedX: timeToX(1000), overlapX: timeToX(4000) };
+  });
+  const block = page.locator('.waveform-cue-block[data-track="main"][data-idx="1"]');
+  const box = await block.boundingBox();
+  const centerY = box.y + box.height / 2;
+
+  // 单步越过 anchor（无中间帧落在重叠区）：落点与主轨无重叠 → 不换轨。
+  await page.keyboard.down('Shift');
+  await page.mouse.move(box.x + box.width / 2, centerY);
+  await page.mouse.down();
+  await page.mouse.move(rowGeometry.blockedX, centerY);
+  await expect(page.locator('.waveform-cue-block[data-track="overlay"][data-overlay-idx="1"]')).toHaveCount(0);
+  await page.keyboard.up('Shift');
+  await page.mouse.up();
+  const afterBlocked = await page.evaluate(() => JSON.parse(MaweJsonRepair.buildJson()));
+  expect(afterBlocked.segments.map((segment) => segment.id)).toEqual(['main-001', 'main-002']);
+  // 被邻居钳制贴在 anchor 右侧边界，不产生任何换轨。
+  expect(afterBlocked.segments[1]).toMatchObject({ start: 5000, end: 7000 });
+  expect(afterBlocked.overlay_track.segments).toHaveLength(1);
+
+  // 指针移回与主轨重叠的位置：换轨通道保持可用（原行为不回归）。
+  const boxAfter = await page.locator('.waveform-cue-block[data-track="main"][data-idx="1"]').boundingBox();
+  await page.keyboard.down('Shift');
+  await page.mouse.move(boxAfter.x + boxAfter.width / 2, boxAfter.y + boxAfter.height / 2);
+  await page.mouse.down();
+  await page.mouse.move(rowGeometry.overlapX, boxAfter.y + boxAfter.height / 2, { steps: 12 });
+  await expect(page.locator('.waveform-cue-block[data-track="overlay"][data-overlay-idx="1"]')).toHaveCount(1);
+  await page.keyboard.up('Shift');
+  await page.mouse.up();
+  const afterConverted = await page.evaluate(() => JSON.parse(MaweJsonRepair.buildJson()));
+  expect(afterConverted.segments.map((segment) => segment.id)).toEqual(['main-001']);
+  expect(afterConverted.overlay_track.segments.map((segment) => segment.id)).toEqual(['overlay-001', 'main-002']);
 });
 
 test('keeps the selection on the converted cue after a Shift+drag track change', async ({ page }) => {
@@ -422,17 +538,30 @@ test('exports overlay cues through the ASS and per-color SRT paths', async ({ pa
   await dropProject(page, project);
   await expect(page.locator('.overlay-track-cue[data-overlay-idx="0"]')).toHaveCount(1);
 
-// ASS：叠加轨以 Layer 2 写入，引用独立的 Overlay 样式（MarginV 固化在
-// 样式行里，事件行不带边距覆盖）。
-const ass = await page.evaluate(() => MaweExportSrt.buildAss());
-  const dialogueLines = ass.split('\n').filter((line) => line.startsWith('Dialogue:'));
-  expect(dialogueLines).toHaveLength(2);
-  expect(dialogueLines[0]).toMatch(/^Dialogue: 0,/);
-  expect(dialogueLines[0]).toContain('main red');
-  expect(dialogueLines[1]).toMatch(/^Dialogue: 2,/);
-  expect(dialogueLines[1]).toContain('overlay blue');
-  expect(dialogueLines[1]).not.toContain('\\an8');
-  expect(dialogueLines[1]).toContain(',Overlay BLUE,,0,0,0,');
+  // 活跃字幕变化会切分主轨事件；检查完整时间覆盖与分层，避免把布局分片
+  // 误当作重复字幕，也不能漏掉颜色样式或真实的重叠时间。
+  const ass = await page.evaluate(() => MaweExportSrt.buildAss());
+  const events = assDialogueEvents(ass);
+  expect([...new Set(events.map(event => event.layer))].sort()).toEqual([0, 2]);
+  const mainEvents = events.filter(event => event.layer === 0);
+  const overlayEvents = events.filter(event => event.layer === 2);
+  expectAssCoverage(mainEvents, 0, 2000);
+  expectAssCoverage(overlayEvents, 500, 1500);
+  for (const event of mainEvents) {
+    expect(event.style).toBe('RED');
+    expect(event.text).toMatch(/main red$/);
+  }
+  for (const event of overlayEvents) {
+    expect(event.style).toBe('Overlay BLUE');
+    expect(event.text).toMatch(/overlay blue$/);
+    expect(event.margins).toEqual([0, 0, 0]);
+    expect(event.text).toMatch(/\\(?:pos|move)\(/);
+    expect(event.text).not.toContain('\\an8');
+  }
+  for (const time of [250, 750, 1250, 1750]) {
+    const active = events.filter(event => event.start <= time && time < event.end);
+    expect(active.map(event => event.layer).sort()).toEqual(time >= 500 && time < 1500 ? [0, 2] : [0]);
+  }
   expect(ass).toContain('Style: Overlay,');
 
   // 按颜色拆分导出：颜色池包含叠加轨颜色；合并 SRT 含两条轨的文本。
@@ -444,7 +573,7 @@ const ass = await page.evaluate(() => MaweExportSrt.buildAss());
   expect(pageErrors, `Page errors: ${pageErrors.join(' | ')}`).toEqual([]);
 });
 
-test('ASS mode previews overlay cues in the main style with fad and exports tags per track', async ({ page }) => {
+test('ASS mode previews and exports overlay cues with shared movement and original fade clocks', async ({ page }) => {
   const pageErrors = [];
   page.on('pageerror', (error) => pageErrors.push(String(error?.stack || error)));
   const project = {
@@ -468,43 +597,53 @@ test('ASS mode previews overlay cues in the main style with fad and exports tags
     ASS_STYLE_LIBRARY = library;
     MaweSettings.EDITOR_SETTINGS.assMode = true;
     MaweDom.overlayToggle.checked = true;
-    MawePlaybackLoop.refreshSubtitlePreview(600, 0);
-    const tracks = window.MaweAssCanvas.lastRender.tracks;
-    const overlay = tracks[2] || {};
+    const frames = [300, 600, 900, 1100].map(time => {
+      MawePlaybackLoop.refreshSubtitlePreview(time, 0);
+      const tracks = window.MaweAssCanvas.lastRender.tracks;
+      return { time, roles: tracks.map(track => track.role),
+        main: tracks.find(track => track.role === 'main' && track.cueId === 'main-001'),
+        overlay: tracks.find(track => track.role === 'overlay' && track.cueId === 'overlay-001') };
+    });
     return {
-      trackDebug: tracks.map((track) => track ? 'ok' : 'undefined'),
-      mainNative: tracks[0].nativeFontSize,
-      overlayNative: overlay.nativeFontSize || 0,
-      mainOpacity: tracks[0].opacity,
-      overlayOpacity: overlay.opacity || 0,
-      mainAnchor: tracks[0].anchor,
-      overlayOffset: (overlay.margins || {}).vertical || 0,
-      overlayAnchor: overlay.anchor || { x: 0, y: 0 },
+      frames,
       ass: MaweExportSrt.buildAss(),
     };
   });
-  // 叠加轨与主字幕使用完全相同的 ASS 样式（字号/字体一致），不跟随
-  // \move，锚定在主字幕上方：MarginV = 样式垂直边距 88 + 1.2 × 字号 86。
-  expect(result.mainNative).toBe(86);
-  expect(result.overlayNative).toBe(result.mainNative);
-  // t=600ms、fad(in=1000ms)：淡入进行到 60%（主/叠加轨同 fad）。
-  expect(result.overlayOpacity).toBeCloseTo(0.6, 5);
-  expect(result.mainOpacity).toBeCloseTo(0.6, 5);
-  // 主轨跟随 \move：t=600ms → y = 960 + (500 - 960) × 0.6 = 684。
-  expect(result.mainAnchor.x).toBeCloseTo(0, 3);
-  expect(result.mainAnchor.y).toBeCloseTo(684, 3);
-  expect(result.overlayOffset).toBeCloseTo(88 + 1.2 * 86, 3);
-  expect(result.overlayAnchor.y).toBeCloseTo(1080 - (88 + 1.2 * 86), 3);
-  // 导出侧：主轨携带 fad + move；叠加轨只带与位置无关的 fad，不带 move，
-  // 引用固化了锚定边距（88 + round(103.2) = 191）的 Overlay 样式。
-  const dialogueLines = result.ass.split('\n').filter((line) => line.startsWith('Dialogue:'));
-  expect(dialogueLines).toHaveLength(2);
-  expect(dialogueLines[0]).toContain('{\\fad(1000,1000)\\move(0,960,0,500,0,1000)}main cue');
-  expect(dialogueLines[1]).toContain('{\\fad(1000,1000)}overlay cue');
-  expect(dialogueLines[1]).not.toContain('\\move(');
-  const overlayStyleLine = result.ass.split('\n').find((line) => line.startsWith('Style: Overlay,'));
-  expect(overlayStyleLine).toBeTruthy();
-  expect(overlayStyleLine.endsWith(',10,10,191,1')).toBe(true);
+  const events = assDialogueEvents(result.ass);
+  expectAssCoverage(events.filter(event => event.layer === 0), 0, 2000);
+  expectAssCoverage(events.filter(event => event.layer === 2), 0, 2000);
+  for (const frame of result.frames) {
+    expect(frame.roles).toEqual(['main', 'overlay']);
+    for (const [layer, role, cueText] of [[0, 'main', 'main cue'], [2, 'overlay', 'overlay cue']]) {
+      const track = frame[role];
+      expect(track, `${role} cue is present at ${frame.time}ms`).toBeTruthy();
+      expect(track.skipped).toBe(false);
+      expect(track.nativeFontSize).toBe(86);
+      expect(track.lines.flatMap(line => line.items.map(item => item.text)).join('')).toBe(cueText);
+      expect(track.opacity).toBeCloseTo(frame.time < 1000 ? frame.time / 1000 : (2000 - frame.time) / 1000, 5);
+      const active = events.filter(event => event.layer === layer && event.start <= frame.time && frame.time < event.end);
+      expect(active).toHaveLength(1);
+      expect(active[0].style).toBe(layer === 0 ? 'Default' : 'Overlay');
+      expect(active[0].text).toMatch(new RegExp(cueText + '$'));
+      expect(active[0].margins).toEqual([0, 0, 0]);
+      const exportedAnchor = assEventAnchorAt(active[0], frame.time);
+      expect(exportedAnchor.x).toBeCloseTo(track.anchor.x, 3);
+      expect(exportedAnchor.y).toBeCloseTo(track.anchor.y, 3);
+      expect(assEventOpacityAt(active[0], frame.time)).toBeCloseTo(track.opacity, 5);
+    }
+    // 使用实际文字尺寸避碰，叠加字幕完整排在主字幕上方；x=0 的移动
+    // 会把整组推出左边界，因此必须把整组移回画布内。
+    expect(frame.overlay.anchor.y).toBeLessThanOrEqual(frame.main.anchor.y - frame.main.blockHeight);
+    expect(frame.overlay.anchor.x).toBeCloseTo(frame.main.anchor.x, 3);
+    expect(frame.main.anchor.x).toBeGreaterThan(0);
+  }
+  const first = result.frames[0];
+  const moving = result.frames[2];
+  const mainDelta = moving.main.anchor.y - first.main.anchor.y;
+  expect(mainDelta).toBeCloseTo(-460 * (900 - 300) / 1000, 3);
+  expect(moving.overlay.anchor.y - first.overlay.anchor.y).toBeCloseTo(mainDelta, 3);
+  expect(result.frames[1].main.anchor.y).toBeCloseTo(684, 3);
+  expect(result.ass).toContain('Style: Overlay,');
   expect(pageErrors, `Page errors: ${pageErrors.join(' | ')}`).toEqual([]);
 });
 
@@ -850,7 +989,9 @@ test('assigns colors and disabled state to overlay cues with main-track parity',
   await expect(page.locator('#ctxmenu .item', { hasText: '分配表情包…' })).toBeVisible();
   await expect(page.locator('#ctxmenu .item', { hasText: '转为主字幕' })).toBeVisible();
   await expect(page.locator('#ctxmenu .item', { hasText: '转为主字幕' })).toHaveClass(/disabled/);
-  await page.locator('#ctxmenu .item', { hasText: '标记颜色' }).locator('span[title]').first().click();
+  // 色块在颜色行第二个子容器中；选择器不依赖 tooltip 转存/翻译的属性。
+  await page.locator('#ctxmenu .item', { hasText: '标记颜色' })
+    .locator(':scope > div').nth(1).locator(':scope > span').first().click();
   const firstPalette = await page.evaluate(() => MaweColors.COLOR_PALETTE[0].name);
   await expect.poll(() => page.evaluate(() => MaweBoot.DATA.overlay_track.segments[0].color?.name)).toBe(firstPalette);
   await page.locator('.overlay-track-cue').click();
