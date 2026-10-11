@@ -1,4 +1,4 @@
-// 设置搜索：在侧栏列出跨窗口的「标签页 / 设置项」，仅在用户选择后跳转。
+// 设置搜索：侧栏列出设置项，路径放在提示行，仅在用户选择后跳转。
 (function initSettingsSearch() {
   'use strict';
   const ITEM_SELECTOR = [
@@ -63,6 +63,11 @@
     return item;
   }
 
+  function hasSettingControl(target) {
+    return target.matches('input, select, textarea, button') || target.control
+      || target.querySelector('input, select, textarea, button');
+  }
+
   function findResults(needle) {
     const matches = [];
     roots.forEach((root) => {
@@ -72,7 +77,7 @@
         if (!page) return;
         const tabName = normalize(tab.textContent);
         const scope = normalize(root.querySelector('.editor-settings-window-title')?.textContent);
-        if (tabName.toLowerCase().includes(needle)) matches.push({ tab, page, target: page, label: tabName, scope });
+        if (tabName.toLowerCase().includes(needle)) matches.push({ root, tab, tabName, page, target: page, label: tabName, scope });
         const items = new Map();
         page.querySelectorAll(ITEM_SELECTOR).forEach((item) => {
           if (!available(item, page) || item.querySelector(ITEM_SELECTOR)) return;
@@ -88,11 +93,22 @@
           const entry = items.get(target);
           if (entry) entry.text += ' ' + normalize(hint.textContent);
         });
+        // 同页同名的分组标题与控件只列一次；合并检索词并优先定位可操作控件。
+        const distinctItems = new Map();
         items.forEach((entry, target) => {
+          const key = entry.label.toLowerCase();
+          const existing = distinctItems.get(key);
+          if (!existing) distinctItems.set(key, { ...entry, target });
+          else {
+            existing.text += ' ' + entry.text;
+            if (!hasSettingControl(existing.target) && hasSettingControl(target)) existing.target = target;
+          }
+        });
+        distinctItems.forEach(({ target, ...entry }) => {
           if (!entry.text.toLowerCase().includes(needle)) return;
           // 标签页同名标题无需重复列出。
           if (entry.label === tabName && !target.querySelector('input, select, textarea, button')) return;
-          matches.push({ tab, page, target, label: tabName + ' / ' + entry.label, scope });
+          matches.push({ root, tab, tabName, page, target, label: entry.label, scope });
         });
       });
     });
@@ -148,9 +164,14 @@
       button.dataset.settingsSearchTab = match.tab.dataset.settingsTab;
       const label = document.createElement('span');
       label.textContent = match.label;
-      const scope = document.createElement('small');
-      scope.textContent = match.scope;
-      button.append(label, scope);
+      button.append(label);
+      const hint = [match.root === input.closest('.editor-settings-panel') ? '' : match.scope,
+        match.target === match.page ? '' : match.tabName].filter(Boolean).join(' / ');
+      if (hint) {
+        const path = document.createElement('small');
+        path.textContent = hint;
+        button.append(path);
+      }
       button.addEventListener('click', () => selectResult(match, button, state));
       results.append(button);
     });

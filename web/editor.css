@@ -1314,11 +1314,11 @@
   .editor-settings-search:focus { outline: none; border-color: var(--accent); box-shadow: var(--focus-ring); }
   .editor-settings-nav.settings-searching { width: clamp(160px, 24vw, 220px); }
   .settings-searching > :is(.editor-settings-nav-tab, .editor-settings-nav-group-label) { display: none; }
-  .settings-search-results { display: flex; flex-direction: column; gap: 8px; }
+  .settings-search-results { display: flex; flex-direction: column; gap: 2px; }
   .settings-search-results[hidden] { display: none; }
   .settings-search-status { margin: 0 4px; color: var(--text-faint); font-size: 12px; }
   .editor-settings-panel .editor-settings-nav .settings-search-results button.settings-search-result {
-    display: flex; flex-direction: column; gap: 8px; width: 100%; padding: 8px;
+    display: flex; flex-direction: column; width: 100%; padding: 8px;
     text-align: left; white-space: normal; overflow-wrap: anywhere; line-height: 1.5;
     color: var(--text-primary); background: none; border: 1px solid transparent;
     border-radius: var(--radius-sm); font-size: 13px;

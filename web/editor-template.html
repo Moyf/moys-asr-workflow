@@ -588,9 +588,9 @@ __WAVEFORM_CSS__
       <section class="help-subgroup">
         <h5 class="help-subtitle">字词时间码</h5>
         <div class="help-category">
-          <span>开启「字词时间码」查看和调整主轨已有 items；整句块淡化为背景，缺少时间码的位置不补建。Q 快速开关字词时间码。</span>
-          <span>点击选中，Ctrl(Cmd) 多选，Shift 范围选择；拖动移动或调整边界，C 合并同句内连续块，Esc 取消拖动。F 试听选中的字幕。</span>
-          <span>一个块可能包含多个共享时间的字词；新增文字不代表重新对齐音频。高级操作可将选中的完整句子转为独立字幕，确认前会列出跳过原因与解绑数量。</span>
+          <span>开启「字词时间码」后，可以查看和调整主字幕的字词时间。Q 快速切换开关。</span>
+          <span>点击选中，Ctrl(Cmd) 多选，Shift 范围选择；拖动移动或调整边界，C 合并同句内连续块，Esc 取消拖动。F 试听选中的字幕或字词。</span>
+          <span>显示字词时间码时，可在右键菜单的「高级操作」中，将选中字幕的字词逐个转为独立字幕。</span>
         </div>
       </section>
       <section class="help-subgroup">
@@ -1184,7 +1184,7 @@ __WAVEFORM_CSS__
   <span class="editor-settings-group-heading" id="interface-notifications-title">消息提示</span>
   <div class="editor-settings-group" role="group" aria-labelledby="interface-notifications-title">
     <label class="editor-settings-item">
-      消息提示位置（Toast）
+      消息提示显示位置
       <select id="editor-toast-position">
         <option value="top-center">上方</option>
         <option value="top-right">右上方</option>
@@ -1202,7 +1202,10 @@ __WAVEFORM_CSS__
     </div>
   </div>
   </div>
-  <div class="editor-settings-page" id="editor-settings-page-regions" role="tabpanel" aria-labelledby="editor-settings-tab-regions" hidden><div class="editor-settings-region-card"><div><strong>波形区</strong><p class="editor-settings-hint">外观与显示内容</p></div><button type="button" data-settings-region="waveform" aria-label="打开波形区设置">打开</button></div>
+  <div class="editor-settings-page" id="editor-settings-page-regions" role="tabpanel" aria-labelledby="editor-settings-tab-regions" hidden>
+<p class="editor-settings-hint" id="settings-regions-introduction">波形区用于查看音频和调整时间，编辑区用于修改字幕，字幕列表用于浏览、筛选与选择字幕。</p>
+<p class="editor-settings-hint" id="settings-regions-gear-hint">也可点击各功能区右上角的 ⚙️ 按钮配置。</p>
+<div class="editor-settings-region-card"><div><strong>波形区</strong><p class="editor-settings-hint">外观与显示内容</p></div><button type="button" data-settings-region="waveform" aria-label="打开波形区设置">打开</button></div>
 <div class="editor-settings-region-card"><div><strong>编辑区</strong><p class="editor-settings-hint">显示内容与按键行为</p></div><button type="button" data-settings-region="cue-editor" aria-label="打开编辑区设置">打开</button></div>
 <div class="editor-settings-region-card"><div><strong>字幕列表</strong><p class="editor-settings-hint">筛选、显示列与自动滚动</p></div><button type="button" data-settings-region="cue-list" aria-label="打开字幕列表设置">打开</button></div>
 </div><div class="editor-settings-page" id="editor-settings-page-subtitle-color" role="tabpanel" aria-labelledby="editor-settings-tab-subtitle-color" hidden><span class="editor-settings-group-heading" id="subtitle-color-palette-title">自定义颜色</span>
@@ -1475,7 +1478,7 @@ __WAVEFORM_CSS__
   </div>
   <div class="editor-settings-page" id="editor-settings-page-export" role="tabpanel" aria-labelledby="editor-settings-tab-export" hidden>
 
-  <span class="editor-settings-group-heading" id="export-srt-title">SRT</span>
+  <span class="editor-settings-group-heading" id="export-srt-title">SRT 导出</span>
   <div class="editor-settings-group" role="group" aria-labelledby="export-srt-title"><div class="editor-settings-sub-group">
 <label class="toggle editor-settings-item" title="只把第一条导出字幕的起点拉到 00:00，保留其结束时间和后续字幕时间码；不改动工程或 OTIO 的时间轴">
       <input type="checkbox" id="export-start-at-zero"> 首条字幕时间从 0 开始
@@ -1492,7 +1495,7 @@ __WAVEFORM_CSS__
 
 
   </div></div>
-  <span class="editor-settings-group-heading" id="export-ass-title">ASS</span>
+  <span class="editor-settings-group-heading" id="export-ass-title">ASS 导出</span>
   <div class="editor-settings-group" role="group" aria-labelledby="export-ass-title"><div class="editor-settings-sub-group">
 <small class="editor-settings-hint">ASS 导出沿用字幕样式与颜色配置。</small>
 <button type="button" data-settings-page="subtitle-style">配置字幕样式</button>
@@ -1500,7 +1503,7 @@ __WAVEFORM_CSS__
   </div></div>
 
 
-  </div><div class="editor-settings-page" id="editor-settings-page-export-more" role="tabpanel" aria-labelledby="editor-settings-tab-export-more" hidden><span class="editor-settings-group-heading" id="export-otio-options">OTIO</span>
+  </div><div class="editor-settings-page" id="editor-settings-page-export-more" role="tabpanel" aria-labelledby="editor-settings-tab-export-more" hidden><span class="editor-settings-group-heading" id="export-otio-options">OTIO 导出</span>
 <div class="editor-settings-group" role="group" aria-labelledby="export-otio-options"><div class="editor-settings-sub-group">
 <label class="toggle editor-settings-item" title="导出时间线 OTIO 的同时保存对应的 SRT 字幕文件"><input type="checkbox" data-otio-export-option="srt" checked> 同时导出 SRT</label>
 <label class="toggle editor-settings-item" title="把表情包作为一条叠加的视频轨道合并进同一个 OTIO 工程，无需再单独导出表情包 OTIO"><input type="checkbox" data-otio-export-option="stickers" checked> 时间线带上表情包</label>
