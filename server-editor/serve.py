@@ -371,6 +371,10 @@ class GapRemovedVideoExportInProgressError(RuntimeError):
     """Another gap-removed video export is currently using FFmpeg."""
 
 
+class ProjectBindingChangedError(RuntimeError):
+    """The client export snapshot belongs to an obsolete project binding."""
+
+
 class GapRemovedVideoStream(NamedTuple):
     codec_signature: tuple[object, ...]
     disposition: tuple[str, ...]
@@ -903,6 +907,7 @@ def build_server_page(
     startup_status: dict[str, object] | None = None,
     *,
     defer_reapeaks: bool = True,
+    project_binding: dict[str, object] | None = None,
 ) -> bytes:
     """Render with current web/ assets on every page request to prevent UI drift.
 
@@ -988,6 +993,7 @@ def build_server_page(
             and gap_video_source is not None
             and gap_video_source.suffix.lower() in VIDEO_EXTENSIONS
         ),
+            **(project_binding or {}),
             "lottieExportUrl": "/api/exports/lottie",
             "ografExportUrl": "/api/exports/ograf",
             "waveformUrl": "/api/waveform",
@@ -1094,6 +1100,8 @@ class EditorServer(ThreadingHTTPServer):
         self.lottie_lock = threading.Lock()
         self.ograf_lock = threading.Lock()
         self.settings_lock = threading.Lock()
+        self.binding_generation = 1
+        self.source_media_id = secrets.token_urlsafe(24)
         self.reapeaks_lock = threading.Lock()
         self.ass_frame_lock = threading.Lock()
         self.gap_removed_video_lock = threading.Lock()
@@ -1116,6 +1124,38 @@ class EditorServer(ThreadingHTTPServer):
     def persist_settings(self) -> None:
         if self.settings_path:
             write_server_settings(self.settings_path, self.settings)
+
+    def _bind_project_locked(self, project: ServerProject) -> None:
+        """Publish a new binding while settings_lock is held, even on reopen."""
+        self.project = project
+        self.binding_generation += 1
+        self.source_media_id = secrets.token_urlsafe(24)
+
+    def _project_binding_payload_locked(self) -> dict[str, object]:
+        return {
+            "bindingGeneration": self.binding_generation,
+            "sourceMediaId": self.source_media_id,
+        }
+
+    def project_binding_payload(self) -> dict[str, object]:
+        with self.settings_lock:
+            return self._project_binding_payload_locked()
+
+    def gap_removed_video_source_snapshot(self, request: dict) -> Path:
+        """Validate and pin the source atomically; never hold the lock for FFmpeg."""
+        with self.settings_lock:
+            generation = request.get("bindingGeneration")
+            source_id = request.get("sourceMediaId")
+            if (type(generation) is not int or generation != self.binding_generation
+                    or not isinstance(source_id, str) or source_id != self.source_media_id):
+                raise ProjectBindingChangedError("工程或媒体绑定已变更，请重新打开工程后导出")
+            project = self.project
+            source = project.source_media_path or project.media_path
+            if project.json_path is None:
+                raise GapRemovedVideoExportError("当前服务器没有绑定工程文件")
+            if source is None or source.suffix.lower() not in VIDEO_EXTENSIONS:
+                raise GapRemovedVideoExportError("当前工程没有可重组的视频媒体")
+            return source
 
     def ensure_libass_supported(self, ffmpeg: Path) -> bool:
         """Probe and cache whether this FFmpeg build can render libass frames."""
@@ -1185,7 +1225,8 @@ class EditorServer(ThreadingHTTPServer):
             project = loader(self.update_startup_progress)
             if self.defer_reapeaks:
                 project = without_deferred_reapeaks(project)
-            self.project = project
+            with self.settings_lock:
+                self._bind_project_locked(project)
             if project.json_path is not None:
                 try:
                     self.remember_project(project.json_path)
@@ -1214,7 +1255,8 @@ class EditorServer(ThreadingHTTPServer):
         """Scan a root before atomically making it the active sticker scope."""
         with self.sticker_lock:
             root, stickers = validate_sticker_root(raw_path) if raw_path else (None, [])
-            self.project = replace(self.project, sticker_root=root, stickers=stickers)
+            with self.settings_lock:
+                self.project = replace(self.project, sticker_root=root, stickers=stickers)
             return root, stickers
 
     def start_deferred_reapeaks_load(self) -> None:
@@ -1279,21 +1321,24 @@ class EditorServer(ThreadingHTTPServer):
         with self.reapeaks_lock:
             if generation != self.reapeaks_generation:
                 return
-            current_project = self.project
-            data = dict(current_project.data)
-            if spectral is None:
-                data.pop("spectral", None)
-            else:
-                data["spectral"] = spectral
-            if reapeaks_wave is None:
-                data.pop("waveform_reapeaks", None)
-            else:
-                data["waveform_reapeaks"] = reapeaks_wave
-            if loudness is None:
-                data.pop("loudness", None)
-            else:
-                data["loudness"] = loudness
-            self.project = replace(current_project, data=data)
+            # Serialize replacement with binding publication: cache updates must
+            # not restore an old project's source after another tab rebinds.
+            with self.settings_lock:
+                current_project = self.project
+                data = dict(current_project.data)
+                if spectral is None:
+                    data.pop("spectral", None)
+                else:
+                    data["spectral"] = spectral
+                if reapeaks_wave is None:
+                    data.pop("waveform_reapeaks", None)
+                else:
+                    data["waveform_reapeaks"] = reapeaks_wave
+                if loudness is None:
+                    data.pop("loudness", None)
+                else:
+                    data["loudness"] = loudness
+                self.project = replace(current_project, data=data)
             self.reapeaks_payload = {
                 key: value for key, value in {
                     "spectral": spectral,
@@ -1439,7 +1484,7 @@ class EditorServer(ThreadingHTTPServer):
         if self.defer_reapeaks:
             project = without_deferred_reapeaks(project)
         with self.settings_lock:
-            self.project = project
+            self._bind_project_locked(project)
             self.settings = remember_project(self.settings, project.json_path)
             self.persist_settings()
         self.start_deferred_reapeaks_load()
@@ -1497,7 +1542,7 @@ class EditorServer(ThreadingHTTPServer):
         if not _attach_segments_match(project.data, normalized_browser):
             raise AttachProjectError("媒体同目录的同名工程与打开的副本内容不一致，未接管")
         with self.settings_lock:
-            self.project = project
+            self._bind_project_locked(project)
             self.settings = remember_project(self.settings, project.json_path)
             self.persist_settings()
         self.start_deferred_reapeaks_load()
@@ -1534,7 +1579,12 @@ class EditorServer(ThreadingHTTPServer):
             # 波形被清空、被 /api/waveform 的 REAPER 峰静默顶替。同一媒体、
             # 同一音轨时把运行态缓存合并回新工程，媒体/音轨变化则失效。
             _restore_runtime_inline_caches(self.project.data, normalized_project)
-            self.project = replace(self.project, data=normalized_project, json_path=target)
+            with self.settings_lock:
+                saved_project = replace(self.project, data=normalized_project, json_path=target)
+                if target != self.project.json_path:
+                    self._bind_project_locked(saved_project)
+                else:
+                    self.project = saved_project
             self.remember_project(target)
         finally:
             self.save_lock.release()
@@ -2333,12 +2383,7 @@ class EditorRequestHandler(BaseHTTPRequestHandler):
             request = self.read_json_request(max_bytes=8 * 1024 * 1024)
             self._check_request_token(request)
             intervals = normalize_gap_removed_intervals(request.get("intervals"))
-            project = self.editor_server.project
-            source = project.source_media_path or project.media_path
-            if project.json_path is None:
-                raise GapRemovedVideoExportError("当前服务器没有绑定工程文件")
-            if source is None or source.suffix.lower() not in VIDEO_EXTENSIONS:
-                raise GapRemovedVideoExportError("当前工程没有可重组的视频媒体")
+            source = self.editor_server.gap_removed_video_source_snapshot(request)
             if not self.editor_server.gap_removed_video_lock.acquire(blocking=False):
                 raise GapRemovedVideoExportInProgressError("另一个去空隙视频重组操作正在进行")
         except PermissionError as error:
@@ -2347,7 +2392,7 @@ class EditorRequestHandler(BaseHTTPRequestHandler):
         except (UnicodeDecodeError, json.JSONDecodeError, GapRemovedVideoExportError, ValueError) as error:
             self.send_json(HTTPStatus.BAD_REQUEST, {"ok": False, "error": str(error)})
             return
-        except GapRemovedVideoExportInProgressError as error:
+        except (GapRemovedVideoExportInProgressError, ProjectBindingChangedError) as error:
             self.send_json(HTTPStatus.CONFLICT, {"ok": False, "error": str(error)})
             return
 
@@ -2693,12 +2738,17 @@ class EditorRequestHandler(BaseHTTPRequestHandler):
             self.send_json(HTTPStatus.OK, load_ass_style_library())
             return
         if path == "/":
+            with self.editor_server.settings_lock:
+                project = self.editor_server.project
+                settings = self.editor_server.settings
+                project_binding = self.editor_server._project_binding_payload_locked()
             page = build_server_page(
-                self.editor_server.project,
-                self.editor_server.settings,
+                project,
+                settings,
                 self.editor_server.request_token,
                 self.editor_server.startup_status_payload(),
                 defer_reapeaks=self.editor_server.defer_reapeaks,
+                project_binding=project_binding,
             )
             self.send_response(HTTPStatus.OK)
             self.send_header("Content-Type", "text/html; charset=utf-8")

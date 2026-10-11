@@ -323,6 +323,7 @@ class LocalEditorServerTests(CompactContainerAssertions, unittest.TestCase):
                 base_url = f"http://127.0.0.1:{server.server_address[1]}"
                 payload = {
                     "requestToken": server.request_token,
+                    **server.project_binding_payload(),
                     "intervals": [{"startMs": 0, "endMs": 1200}],
                     "sourceMediaPath": str(outside),
                     "outputPath": str(outside),

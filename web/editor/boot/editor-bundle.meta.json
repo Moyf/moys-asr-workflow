@@ -299,7 +299,7 @@
     "editor/io/editor-dynamic-exports.js": "db92a5d6dff0e945db97b081050c8a1780b312037bb483cb09645b1dae3548d2",
     "editor/ui/editor-export-menus.js": "cfa4973df5672ea759702ef096c7b71e237d060ed4d8043d04e4ae72904fc213",
     "editor/io/editor-project-media-inputs.js": "107eaf3c7f006a9c67f9427f82cb85186343c5ddd684edbc8e4fbbab17a8a879",
-    "editor/io/editor-project-load.js": "15437bc464bafc343bf359a10cb0a8b96538938c0edb50a41304c89dceed97c5",
+    "editor/io/editor-project-load.js": "ac6a385eef866817309bf69414ad0b7feb7f27312a1c7dcf11c2ea4a21999168",
     "editor/io/editor-loading-progress.js": "45a3650422174f11b3d978ec152b5043ba331e714f40e7cb482106d9588bd538",
     "editor/io/editor-multi-import.js": "8e8e5e313f55befc1bffcefdf50463c096846e0697f8779d40b4dfa9cdcdfc55",
     "editor/media/editor-media-load.js": "071c86e8a7f7e91136732532334c040d0c8e651b24cadf43c8af435c4dd04c43",
@@ -368,7 +368,7 @@
     "editor/styles/editor-wiring-ass-frame.js": "1a3c186069460cde01b86e0c1614b8b71d3f9fa7c4ef377988824b14adff69e5",
     "editor/media/editor-wiring-sticker-preview.js": "fa46c5d9075247e627f4fea99cd13d36d1492e4bd5ee1c7a51f046168abbbdb8",
     "editor/io/editor-wiring-export-context.js": "89ac0732b2bcb77878991af980335662d739e4d1cfff65152e4878b042545f0e",
-    "editor/io/editor-wiring-export-actions.js": "6882f8894642f27b54756a8494d2328ec414dbf39e446ea8bc86903480f74028",
+    "editor/io/editor-wiring-export-actions.js": "48829647b771c2036b35f363d17a78c7962f2e9d56576102d181822689a4b64a",
     "editor/ui/editor-wiring-toolbar-menus.js": "7b6594d2a19ced6990cdacbf1e258861467de9f40cf087e51142d1ffcc737b45",
     "editor/io/editor-wiring-project-inputs.js": "83f60f05a35b1aa96f88f9cbb50e7f361cc77072c255f148b66c1edd396b3020",
     "editor/media/editor-wiring-media-inputs.js": "9eade738d68f5873398865ee2ac3ce1380d41f0a796a73e387ea63d17a87d5aa",
@@ -692,7 +692,7 @@
         "format": "esm"
       },
       "web/editor-entry.mjs": {
-        "bytes": 1818157,
+        "bytes": 1819627,
         "imports": [
           {
             "path": "web/shared/host/storage.js",
@@ -1112,7 +1112,7 @@
             "bytesInOutput": 1572
           },
           "web/shared/utils/lottie.js": {
-            "bytesInOutput": 4174
+            "bytesInOutput": 4176
           },
           "web/shared/utils/ograf.js": {
             "bytesInOutput": 10931
@@ -1193,10 +1193,10 @@
             "bytesInOutput": 4406
           },
           "web/editor-entry.mjs": {
-            "bytesInOutput": 1056439
+            "bytesInOutput": 1057145
           }
         },
-        "bytes": 1405277
+        "bytes": 1405985
       }
     }
   }

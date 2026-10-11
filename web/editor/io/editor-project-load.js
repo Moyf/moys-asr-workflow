@@ -5,6 +5,9 @@
 (function initMaweProjectLoad(global) {
   'use strict';
 
+  // Page-local project changes invalidate export operations waiting on a picker.
+  let projectBindingEpoch = 0;
+
 
 
   function updateUnloadedMediaLabel(mediaPath) {
@@ -66,6 +69,7 @@
 
 
 function applyCanonicalProject(data, filename) {
+  projectBindingEpoch += 1;
   MaweWordTiming.reset();
   // 原地换工程：在途/已排期的延迟波形载荷（含响度标尺）全部作废，见
   // deferredReapeaksEpoch 的说明。
@@ -215,6 +219,7 @@ function applyCanonicalProject(data, filename) {
   // 浏览器自行管理的工程（句柄或下载创建）不能再写回服务器绑定的旧工程文件，
   // 便携表情包 OTIO 也随之退回引用原始素材（服务器已不跟踪当前工程）。
   function detachServerProjectSaving() {
+    projectBindingEpoch += 1;
     if (MaweBoot.SERVER_CONFIG) {
       MaweBoot.SERVER_CONFIG.canSave = false;
       MaweBoot.SERVER_CONFIG.canPortableStickerExport = false;
@@ -222,6 +227,7 @@ function applyCanonicalProject(data, filename) {
       MaweBoot.SERVER_CONFIG.canOgrafExport = false;
       MaweBoot.SERVER_CONFIG.canGapRemovedVideoExport = false;
       MaweBoot.SERVER_CONFIG.gapRemovedVideoSourceName = null;
+      MaweBoot.SERVER_CONFIG.sourceMediaId = null;
     }
     MaweServerSave.configureServerSaveControls();
     MaweDynamicExports.updateLottieExportButton();
@@ -391,6 +397,7 @@ function applyCanonicalProject(data, filename) {
   // 必须留在 editor.js 原位执行，不随本模块迁移。
 
   global.MaweProjectLoad = Object.freeze({
+    get projectBindingEpoch() { return projectBindingEpoch; },
     updateUnloadedMediaLabel,
     resetLoadedMedia,
     buildBlankProject,
