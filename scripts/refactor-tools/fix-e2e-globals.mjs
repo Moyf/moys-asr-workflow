@@ -2,7 +2,7 @@
 // 顶层符号（DATA / renderAll / waveformEditor / …）已迁入各 IIFE 模块的
 // 冻结命名空间。本脚本按模块导出表把 spec 代码里的裸标识符改写为
 // NS.name。只处理代码上下文（跳过字符串、属性名、spec 自身声明/导入）。
-// 用法: node docs/temp/fix-e2e-globals.mjs  （幂等，可重复运行）
+// 用法: node scripts/refactor-tools/fix-e2e-globals.mjs  （幂等，可重复运行）
 
 import fs from "node:fs";
 import path from "node:path";

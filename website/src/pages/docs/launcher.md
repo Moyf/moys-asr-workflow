@@ -2,10 +2,10 @@
 layout: "../../layouts/DocLayout.astro"
 title: "Launcher 指南"
 description: "识别设置、音轨、预设、批量队列和输出目录。"
-source: "docs/LAUNCHER_GUIDE.md"
+source: "docs/user/LAUNCHER_GUIDE.md"
 ---
 
-<!-- Generated from docs/LAUNCHER_GUIDE.md. Run pnpm run sync:docs to refresh. -->
+<!-- Generated from docs/user/LAUNCHER_GUIDE.md. Run pnpm run sync:docs to refresh. -->
 
 Launcher 负责选择媒体、转写、批量任务和工具箱。第一次安装见 [工作流](../workflow/)，服务商字段见 [PROVIDERS](../providers/)。
 

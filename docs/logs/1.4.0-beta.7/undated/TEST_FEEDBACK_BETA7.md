@@ -1,0 +1,452 @@
+# v1.4.0-beta.7 测试反馈与处理记录
+
+本文记录 beta7 专项测试中的反馈、处理决定和验证结果。截图中的说明性文字仅作为测试反馈来源；是否修改以本表的分类为准。
+
+## 处理清单
+
+| 编号 | 范围 | 反馈摘要 | 类型 | 状态 |
+| --- | --- | --- | --- | --- |
+| 1 | 生成 / 缓存 | 测试模式下波形和频谱缓存只处理前 2 分钟；频谱生成需要明确进度提示 | 修改 | 已修复 |
+| 2 | 生成 / 频谱 | 频谱颜色只影响显示；询问是否可以完全不生成频谱 | 说明 | 仅说明 |
+| 3 | Launcher / OCR | 未安装 OCR 时不能显示“已就绪”；安装后刷新状态；刷新按钮不能被挤压；源码版与打包版提示区分；识别进度增加间距；当前产物自动高亮 | 修改 | 已修复 |
+| 4 | 编辑器 / 工程 | 去重工程加载提示；OCR 后保留媒体路径；允许拖入 `.ReaPeaks`；无绑定工程的服务器提示改为导出后重新打开 | 修改 | 已修复 |
+| 5 | 编辑器 / 设置 | 设置图标统一；全局按钮改为“⚙️ 全局设置”；增加全局“自动吸附调整相邻字幕”开关（默认关闭，Alt 临时反转）；current-cue-panel 的“操作”中增加可选“Esc 取消编辑”（默认关闭）；延长字幕默认值改为向前 120ms、向后 60ms | 修改 | 已修复 |
+| 6 | 编辑器 / 多字幕 | 绑定同步支持撤销；“绑定/解绑”改为“批量对齐”；副字幕支持 B/Enter 拆分；主字幕合并同步副字幕；绑定时自动同步时长；多选副字幕按 H 批量对齐 | 修改 | 已修复 |
+| 7 | 编辑器 / 切分 | 强制切分两侧至少保留 100ms；首次时长不足时保留编辑/弹窗，第二次按 B/Enter 强制钳制切点；撤销恢复切分前选中状态 | 修改 | 已修复 |
+| 8 | 编辑器 / 播放 | 去掉播放器高度限制；Home/End 跳转首尾；字幕悬停显示 B 提示；最后一行波形按真实剩余时长缩短 | 修改 | 已修复 |
+| 9 | Launcher / LLM | 保存 API Key 自动测试并在设置区反馈结果；整体字号放大；Qwen LLM 复用已填写的 `DASHSCOPE_API_KEY` | 修改 | 已修复 |
+| 10 | 切分 | 没有字词时间码时已有按字符位置估算切点路径，本次只修复边界和最短时长 | 说明 | 仅说明 |
+| 11 | 播放 / 波形 | 最后一行缩短只改变显示宽度，不会明显增加性能成本 | 说明 | 仅说明 |
+| 12 | 播放器 | 当前源码、模板、`edit.py` 和便携版均未发现 `40vh` 播放器限制 | 说明 | 仅说明 |
+| 13 | Launcher / 字幕编辑器启动 | 恢复大型最近工程时 5 秒内未响应，连续更换端口仍无法启动；启动不能等待波形，默认继续使用自研波形，`.ReaPeaks` 改为后台增强 | 修改 | 已修复 |
+| 14 | Launcher / 错误提示 | URL 后的中文右括号及说明文字被一起放入链接，导致链接异常 | 修改 | 已修复 |
+| 15 | 生成 / ReaPeaks 频谱 | 生成 ReaPeaks 时希望保留波形层、按开关决定是否计算频谱；没有频谱数据时编辑器禁用频谱颜色 | 修改 | 已修复 |
+| 16 | 编辑器 / 长音轨提示 | 浏览器无法整段解码时仍提示用户运行 `edit.py`，应改为 GUI 入口 | 修改 | 已修复 |
+| 17 | 波形缓存 / 重构询问 | 希望把 ReaPeaks 与自研波形封装为同一个独立缓存文件，拖入长视频时按媒体尝试复用 | 说明 | 仅说明 |
+| 18 | Launcher / 自动后处理 | OCR 作为最后一步时自动后处理失败；从 SRT 或缺少媒体字段的工程进入翻译等步骤后，输出工程丢失 `media` | 修改 | 已修复 |
+| 19 | 编辑器 / 多字幕快捷键 | 选中字幕时 `Shift+←/→` 应贴合前后字幕边界，但在多重字幕模式下不生效 | 修改 | 已修复 |
+| 20 | 编辑器 / 边界拖动 | 独立拉开原本贴合的相邻字幕边界后，反向拖动会被当前边界错误限制，无法拖回 | 修改 | 已修复 |
+| 21 | Launcher / 自动后处理 LLM | 勾选 LLM 相关自动处理步骤后弹出的配置中，高亮「测试连接」按钮；测试完成后取消引导 | 修改 | 已修复 |
+| 22 | Launcher / 后处理工具箱 | 增强右上角关闭按钮；鼠标在工具箱内滚轮时不应滚动后面的 Launcher | 修改 | 已修复 |
+| 23 | Launcher / 配置弹窗 | 配置顶部的标题和关闭按钮在内容滚动时应常驻，关闭按钮视觉增强 | 修改 | 已修复 |
+| 24 | 编辑器 / 多字幕快捷键 | 波形区选中一个副字幕后按 `B`，应拆分选中的副字幕，不应因上方重叠主字幕而改拆主字幕 | 修改 | 已修复 |
+| 26 | 编辑器 / 多字幕合并 | 开启「绑定时自动同步时长」后，多选主字幕按 `C` 合并所新建的绑定副字幕也应匹配合并后主字幕的时长 | 修改 | 已修复 |
+| 27 | Launcher / 自动后处理 OCR | 首次安装 OCR 后状态和自动后处理没有同步，重新勾选 OCR 仍提示未安装依赖 | 修改 | 已修复 |
+| 30 | 编辑器 / 波形性能 | 连续调节波形振幅、行高时反复重绘导致编辑器卡顿 | 修改 | 已修复 |
+| 29 | 编辑器 / 波形快捷键 | 增加 `Z/X`，将单个字幕的起点/终点定位到鼠标位置；主字幕联动绑定副字幕，副字幕只调整自身，多选不生效；无选中时作用于鼠标命中的字幕 | 修改 | 已修复 |
+| 32 | 编辑器 / 波形性能 | 频谱颜色切换重绘反馈延迟，用户可能误以为没有响应而重复点击 | 修改 | 已修复 |
+| 33 | Premiere 交接 | 原生文字已成功写入；视频可自动识别并播放；图片不会弹出查找媒体但仍需手动重新链接；希望导出预览字幕字体，参考 `序列03-带字体.xml` 中的 FangSong | 修改 | 已修复 |
+
+## 增量记录（任务 33：Premiere XML 文字、视频、图片与字体反馈）
+
+- 已验证：原生 GraphicAndType 文字已经成功写入 Premiere；视频媒体可以自动识别并播放。
+- 当前问题：图片文件不会弹出“查找媒体”，但导入后仍需要手动重新链接，说明 XML 已建立图片剪辑但图片文件引用或文件媒体描述仍不满足 Premiere 的自动解析条件。
+- 参考资料：`examples/序列03-带字体.xml` 的 GraphicAndType payload 中，预览字幕字体位于 Base64 + UTF-16LE JSON 的 `mTextParam.mStyleSheet.mFontName.mParamValues[0][1]`，示例值为 `FangSong`。
+- 本轮处理：修正图片文件 URL 的 Windows drive-letter 编码，并让导出 payload 从工程 `preview.subtitle.font_family` 读取字体；内置 `song` 映射为 Premiere 字体名 `FangSong`。
+- 当前能力：编辑器已有“读取本机字体”功能，会通过 `queryLocalFonts()` 将本机字体 family 加入主/副字幕字体下拉框；用户选择后直接保存 family 名称。导出层继续将该 family 原样写入 Premiere payload；浏览器预览和 Premiere 显示都要求目标电脑已安装同名字体。
+- 新反馈（实机）：导入生成的 XML 后 Premiere 识别不了字幕字体（未渲染为 FangSong）。
+- 调查（对照真实 Premiere 导出样本 `premiere_generators.xml`，OpenTimelineIO 测试样例，Menlo 字体）：真机 payload 顶层含 `mShadowFontMapHash`（GUID 或 null）与 `mUseLegacyTextBox`，`mTextParam` 含 `mVerticalAlignment`，三者 MAW 均缺失；真机 `mStyleSheet.mFontName` 为逐字符 run `[[0,字体名],…,[len-1,字体名],[len,字体GUID]]`，字体名用 PostScript 名（如 `Menlo-Regular`）。已知可用的第三方生成器（AutoCaptions）证明单条 run `[[0,"ArialMT"]]` + 补齐上述三个字段即可被 Premiere 接受，故头号嫌疑为字体名字符串（`FangSong` vs 本地化名 `仿宋`）。
+- 本轮处理（第二轮实机后修订）：矩阵第一轮三变体（`FangSong` / `仿宋` / 逐字符 run）全部回落 Myriad Pro，说明 PR 不是名字匹配失败，而是丢弃了整个 payload 样式表（面板字号显示默认 100 而非 payload 写入的 60）。对照第二份真实导出样本（OpenTimelineIO `empty_name_tags.xml`，单条 `mFontName` run 的 MinionPro/LucidaGrande 文本）：真实导出顶层只有 `mTextParam` 与 `mVersion`，样式表无 `mUnderline` 键，`mShadowFontMapHash` 可整个缺失——已把 payload 回改为该最小真机结构（撤销第一轮补的三个字段并移除 `mUnderline`），单测锁定结构。剩余嫌疑（`authoringApp="MAW"` vs `PremierePro`、缺失的参数 `<hash>`、`mWidth/mHeight=0`、字体名写法）已做成第二轮 5 变体矩阵（每条只改一个变量）待实机确认。
+- 实机结论（表情包）：A/B 两变体的 GIF/JPG 表情包均免手动重链，图片自动重链问题闭环；`C%3A` 与 `C:` 两种编码都能被接受。
+- 实机结论（视频 offline）：矩阵与 A/B 的测试视频全部 Media offline——根因是测试素材 `demo-video.mp4` 由 ffmpeg 生成时没有音轨，而 XML 按代码约定声明 2 声道音频 + 独立音频 clip（PR 对声明声道与实际不符会拒绝，与任务 4/5 记录一致），不是导出代码退化；已用带 440Hz 音轨的素材重新生成。
+- 实机结论（字体，第二轮矩阵全部通过）：`MAW-font-matrix-2.xml` 的 5 个变体（对照组 / `authoringApp="PremierePro"` / 补 `<hash>` / 真实 `mWidth/mHeight` / 本地化名 `仿宋`）全部正确显示字体，包括对照组——根因确认为 payload 结构多余字段（`mUnderline` 键与第一轮补的 `mShadowFontMapHash`/`mUseLegacyTextBox`/`mVerticalAlignment`）会让 PR 丢弃整个样式表；最小真机结构下 PostScript 名 `FangSong` 即可命中仿宋。当前代码即最终形态，无需再改字体映射。
+- 实机结论（视频 offline，用户指示搁置）：更换带音轨素材后测试视频在 PR 中仍显示问号（offline），表情包却能在同目录正常自动链接；早前任务 33 已用真实媒体验证过视频自动识别并播放，故判断为合成测试素材或 file media 结构（缺 `samplecharacteristics`/`timecode`）的边界现象，留待 1.6.1 排查，不阻塞发布。
+- 未验证边界：真实工程导出（非临时合成素材）在 PR 中的字体显示建议发布后由日常使用继续观察；视频 offline 现象如需排查见上条。
+
+已验证：`node --check web\editor-utils.js`、`node --check web\editor.js`；`node --test tests\test_editor_utils.mjs tests\test_waveform_js.mjs`（333/333）；`git diff --check`。本轮未重新生成 `blank-editor.html`（按约定留到发布前统一重生成）。任务 33 实机结论：文字（含字体）✅、表情包自动重链 ✅；视频自动链接以真实媒体早前验证为准，合成素材 offline 现象搁置（见增量记录）。
+| 33 | Launcher / 批量拖入 | 不支持格式的提示显示在单文件区域；重复拖入文件没有提示；批量阶段日志只显示在单条记录；跳过确认按钮应显示“是 / 否” | 修改 | 已修复 |
+| 34 | Launcher / 批量进度 | 批量运行时总日志和状态区缺少当前文件、完成/失败和汇总反馈 | 修改 | 已修复 |
+| 35 | 编辑器 / 批量操作 | 字幕列表顶部整合批量操作入口；批量替换和文本处理支持限定选中字幕；增加常用文本处理 | 修改 | 已修复 |
+| 36 | 编辑器 / 纯文本编辑 | 新增全角标点后保存出现越界 item；删除该标点后错误仍残留；应用后不应把全部字幕标为 dirty | 修改 | 已修复 |
+| 37 | 编辑器 / 多字幕列表 | 双列多重字幕模式下，主字幕左侧的黄条覆盖文字 | 修改 | 已修复 |
+| 38 | 编辑器 / 多字幕命名 | 将「拓展字幕」及「扩展字幕」统一命名为「副字幕」 | 修改 | 已修复 |
+| 39 | 编辑器 / 导出菜单 | 去空隙版本与更多导出需要按字幕、OTIO、XML、动态字幕/Resolve JSON 等类别加分隔线；OTIO/OTIOZ 文案统一；去空隙菜单增加 FCPXML；二级菜单鼠标移动容易丢失焦点 | 修改 | 已修复 |
+| 40 | 编辑器 / 导出文件名 | 工程名 MAW-1.4更新说明 导出 FCPXML 时被截断为 MAW-1.xml | 修改 | 已修复 |
+| 41 | 编辑器 / 去空隙 OTIO | 导入 Resolve 后片段长度正确但源内容范围错位：前段大量从媒体 0 开始，后段虽有非零起点仍不正确 | 修改 | 已修复 |
+| 42 | 编辑器 / 切分 | 词级时间码存在静音空隙时（如本地 ASR「型、」end 6480 与下一词「AI」start 6720），在词后拆分左半句被拉长贴住下一词起点；应左段停在自家最后一词的 end、右段从自家首词的 start 开始并保留空隙。缺词或缺时间码时维持原共享切点 / 光标比例估算兜底 | 修改 | 已修复 |
+
+## 增量记录（任务 39、40：导出菜单分组、FCPXML 默认模式与点号工程名）
+
+- 任务 39 已按类别整理两个导出菜单：去空隙版本分为字幕、OTIO、FFconcat/JSON 三组，并将去空隙 FCPXML 放在 OTIO 组末尾；更多导出分为 XML、OTIO、动态字幕/Resolve JSON 三组。OTIO 文案统一为“OTIO 工程”，OTIOZ 文案统一为“OTIOZ 打包工程”，中英文翻译同步更新。
+- FCPXML 弹窗默认的“导出时间线模式”改为“去空隙时间线”；从“导出去空隙版本”打开 FCPXML 时也会强制选择去空隙模式，避免沿用上一次手动选择的原始时间线。
+- 任务 40 的根因是文件名清理把任意最后一个点号当作扩展名；现在仅移除已知扩展名，因此 `MAW-1.4更新说明` 会生成 `MAW-1.4更新说明.xml`，不会截断为 `MAW-1.xml`。
+
+- 已验证：`.venv\Scripts\python.exe edit.py --blank`；`node --check web\editor.js`、`web\editor-utils.js`、`web\editor-i18n.js`；`node --test tests\test_editor_utils.mjs tests\test_waveform_js.mjs`（215/215）；`.venv\Scripts\python.exe -m unittest tests.test_waveform tests.test_editor_assets`（26/26）；使用 `.venv\Scripts\python.exe` 启动服务器的 `fcp7-export.spec.mjs` 浏览器回归（8/8）；`git diff --check`。
+- 首次直接运行 FCPXML 浏览器回归时使用了缺少 reapeaks 模块的系统 Python，服务器在启动阶段退出；切换到项目 .venv 解释器后全部通过。该次失败属于验证环境问题，不是代码断言失败。
+
+## 增量记录（任务 39 补充：二级菜单鼠标通道）
+
+- 采用常见的 menu-aim 做法：记录鼠标进入候选菜单项前的轨迹点，以当前已展开子菜单靠近一级菜单的一侧上下角构成三角通道；鼠标沿通道前往子菜单时暂缓切换同级菜单，停留在候选项后再切换，离开候选项则恢复关闭计时。
+- 二级菜单关闭/切换延迟从 300ms 调整为 160ms；移除 `:hover` 直显，避免候选菜单绕过通道判断；全局方向键监听跳过菜单区域，保留 `ArrowLeft/Right` 的菜单焦点导航。
+- 已验证：`node --check web\editor.js`、`node --check tests\e2e\waveform-history.spec.mjs`；`npx playwright test tests/e2e/waveform-history.spec.mjs --grep "nested export menus" --project=chromium`（2/2）；`git diff --check`。真实用户鼠标设备上的轨迹速度和不同缩放比例仍未单独实测。
+
+## 增量记录（字幕列表批量操作与文本处理）
+
+- 已修复顶部“批量操作”下拉入口，菜单包含“批量替换”“纯文本编辑”“文本处理”；原有纯文本编辑入口保留为菜单项，并同步更新其 E2E 入口。
+- 已修复批量替换和文本处理的选中范围：打开弹窗时保存选中字幕快照；无选中时“仅处理选中的字幕”禁用并按全部字幕处理，弹窗打开后改变选择也不会改变当前范围。
+- 已增加文本处理弹窗：Trim、首字母大写、添加前缀、附加内容、去除 Markdown 格式符号；处理保持字幕行，时间码通过纯文本编辑的映射规则尽量保留，应用为空时保留空字幕行。
+- 已验证：`node --check web\\editor.js`、`node --check web\\editor-utils.js`、`node --check web\\editor-i18n.js`；`node --test tests\\test_editor_utils.mjs`（129/129）；`uv run python edit.py --blank`；`git diff --check`。
+- 浏览器 E2E 未完成：本机 `npx playwright` 访问 npm 缓存时因 `EPERM` 无法创建 `C:\\Users\\lei.hu\\AppData\\Local\\npm-cache\\_cacache\\tmp`，未产生页面断言结果。
+
+## 增量记录（任务 42：词间静音的非对称拆分）
+
+- 根因：`splitItemsAtChar` 在文字切点落在相邻 item 边界上时取时优先级为 `next.start` > `prev.end`，且拆分两侧强制共用同一毫秒值。两词之间存在真实静音（本次测试工程 6480→6720 共 240ms 空档）时，左段被拉长跨过静音贴住下一词起点。
+- 方案 B（用户确认）：切点两词存在正间隙时输出非对称边界——左段 `end = prevRange.end`（自家最后词尾），右段 `start = nextRange.start`（自家首词起点）；仅有当两侧候选都有限且严格正序（防病态钳制倒挂）才启用。连续 item / 缺 items / 缺时间码场景全部回落到旧共享切点行为（默认吸附从 `next.start` 翻转为 `prev.end`，两者在连续 item 上等价，零回归面）。
+- 校验同步收紧：`buildSplitPair` 与内联 `splitAtCursor` 改用最终左右边界分别校验两侧 >= 100ms；强制重试路径若自然边界使某一侧过短（末词紧贴字幕末尾等），该侧降级回用户确认的强制切点，另一侧保留自然边界。
+- 说明项：`web/waveform.js` 的 `splitSegmentAtTime`（波形工具函数，当前仅被单元测试引用、不在任何 UI 拆分链路上）保留原"最近 item 中点"契约；UI 上的剃刀拆分经 editor.js 文本管线执行，已随本次改动获得新语义。
+- 验证证据见下方修复记录第 42 行。
+- 未验证边界：联动拆分弹窗在词间空隙上的完整点击流未实机走查（其确认逻辑同样经 `buildSplitPair` 生效）。
+
+## 增量记录（任务 42 补充：入库 e2e 回归）
+
+- 新增 `tests/e2e/split-word-gap.spec.mjs`（3/3 通过），把词间静音拆分行为固化为持久化回归：静音空隙场景断言左段 `end=6480`、右段 `start=6720` 且各自 item 贴合；连续词场景断言左右段仍共享 `20800` 单一切点；词内切点场景断言按比例插值共享 `6320` 且左右 item 不越过段边界。
+- 断言发现并记录既有行为：`cleanSplitItems` 会把左段末 item 的尾部标点裁掉（`型、`→`型`），时间不变；该行为早于本次改动，用例按现状固化。
+- 相邻既有拆分回归（`waveform-history.spec.mjs` 内联拆分 / 强制重试 / B 拆分 3 条）复跑 3/3 通过，确认无相互影响。
+- 运行方式：`$env:MAW_E2E_PYTHON='.venv\Scripts\python.exe'; npx playwright test tests/e2e/split-word-gap.spec.mjs --project=chromium`（系统 python 缺 `reapeaks`，按 beta7 既有结论使用仓库 .venv）。
+
+## 修复与验证记录
+
+| 编号 | 处理结果 | 验证证据 |
+| --- | --- | --- |
+| 1 | 已修复 | `.venv\\Scripts\\python.exe -m unittest tests.test_media_cache`（3/3 通过，含“测试模式使用限长缓存但保留原始媒体签名”）；`maw/media_cache.py` 输出频谱生成进度，并在缓存旁路缺失时保留工程已有缓存。 |
+| 3 | 已修复 | `.venv\\Scripts\\python.exe -m unittest tests.test_gui_web tests.test_ocr_runtime tests.test_postprocess_ocr`（相关测试包含在 210/210 通过批次）；`node --check web\\launcher\\launcher.js`; `node --check web\\launcher\\postprocess.js`; `git diff --check` 均通过。 |
+| 4 | 已修复 | `node --check web\\editor.js`; `.venv\\Scripts\\python.exe -m unittest tests.test_waveform`（13/13 通过）；`.venv\\Scripts\\python.exe edit.py --blank`; `blank-editor.html` 已扫描确认 ReaPeaks 解析/拖入入口，以及无绑定服务器提示“导出 .mosp，再重新打开该文件”；`git diff --check` 通过。 |
+| 5 | 已修复 | `node --check web\\editor.js`; `node --check web\\waveform.js`; `node --check web\\editor-i18n.js`; `node --test tests\\test_waveform_js.mjs tests\\test_editor_utils.mjs`（当前批次 119/119 通过）；current-cue-panel Esc 回归 1/1；自动吸附/键盘回归 5/5；`.venv\\Scripts\\python.exe edit.py --blank`; `.venv\\Scripts\\python.exe -m unittest tests.test_waveform`（15/15 通过）；`git diff --check` 通过。 |
+| 6 | 已修复 | `npx playwright test tests/e2e/multi-subtitle.spec.mjs --grep "aligns multiple selected extension cues" --project=chromium`（1/1 通过）；`npx playwright test tests/e2e/multi-subtitle.spec.mjs --grep "auto-synced binding|merges selected extension|选中的主字幕与绑定副字幕|拼合主字幕" --project=chromium`（4/4 通过）；`node --check web\\editor.js`; `node --check web\\editor-i18n.js`; 源码与便携版已同步。 |
+| 7 | 已修复 | `node --check web\\editor.js`; `node --check web\\editor-i18n.js`; `npx playwright test tests/e2e/waveform-history.spec.mjs --grep \"retries an inline split with B or Enter|requires a second B\" --project=chromium`（2/2 通过，内联路径明确验证第二次 Enter）；`npx playwright test tests/e2e/multi-subtitle.spec.mjs --grep \"uses B on a single selected extension|uses the linked split dialog|retries a short linked split|imports an extension SRT\" --project=chromium`（4/4 通过）；`.venv\\Scripts\\python.exe edit.py --blank`; `git diff --check`。 |
+| 8 | 已修复 | `node --check web\\editor.js`; `node --check web\\waveform.js`; `npx playwright test tests/e2e/waveform-history.spec.mjs --grep \"B splits the selected subtitle under|retries an inline split with B or Enter|Home and End|hovering a selected subtitle|last multi-row waveform|requires a second B\" --project=chromium`（6/6 通过）；`node --test tests\\test_editor_utils.mjs tests\\test_waveform_js.mjs`（113/113 通过）；`.venv\\Scripts\\python.exe edit.py --blank`; `python -m py_compile edit.py`; `git diff --check`。 |
+| 9 | 已修复 | Qwen 复用 `DASHSCOPE_API_KEY`、保存后的测试连接提示、保存新 Key 自动测试和 Launcher 字号调整均已完成；`.venv\\Scripts\\python.exe -m unittest tests.test_gui_web tests.test_postprocess_pipeline`（160/160 通过），Launcher JS 语法、Python 编译和 `git diff --check` 通过。 |
+| 13 | 已修复 | 服务器启动路径同步读取自研波形，跳过启动阶段的 `.ReaPeaks` 解析；服务器开始提供请求后由后台线程加载频谱和 ReaPeaks 波形，并通过 `/api/waveform` 返回 `loading` / `ready` 状态，编辑器轮询后动态增强显示。`.venv\\Scripts\\python.exe -m unittest tests.test_local_editor_server`（17/17 通过，其中新增阻塞后台解析时首页仍返回 200、状态最终变为 `ready` 的回归）；`.venv\\Scripts\\python.exe -m unittest tests.test_waveform`（14/14）；`.venv\\Scripts\\python.exe edit.py --blank`；`node --check web\\editor.js`、`node --check web\\waveform.js`、`node --check web\\editor-i18n.js` 通过。 |
+| 14 | 已修复 | Launcher 消息中的 URL 正则在中文右括号、书名号、引号及常见句末标点前停止，不再把后续说明文字并入链接；`.venv\\Scripts\\python.exe -m unittest tests.test_gui_web.LauncherAssetContractTests.test_launcher_message_url_stops_before_closing_punctuation`（1/1）；`node --check web\\launcher\\launcher.js` 通过。 |
+| 15 | 已修复 | `--with-waveform` / Launcher 默认生成并嵌入 ReaPeaks wave 层，`--with-spectral` 或勾选“生成 ReaPeaks 频谱数据”才执行 FFT 并嵌入 spectral；只有波形层时编辑器自动取消并禁用频谱颜色，后台补齐频谱后恢复可用。`.venv\\Scripts\\python.exe -m unittest tests.test_reapeaks tests.test_media_cache tests.test_cli tests.test_gui_workflow tests.test_gui_web tests.test_local_asr`（250/250）；`node --test tests\\test_waveform_js.mjs tests\\test_editor_utils.mjs`（114/114）；相关 Python/JS 语法检查、`.venv\\Scripts\\python.exe edit.py --blank`、`git diff --check` 均通过。 |
+| 19 | 已修复 | `npx playwright test tests/e2e/multi-subtitle.spec.mjs --grep "Shift\\+arrow snaps selected main and secondary cues" --project=chromium`（1/1）；同时覆盖主字幕 `Shift+←`、副字幕 `Shift+→` 的贴合，并确认 current-cue-panel 的轨道目标正确。 |
+| 20 | 已修复 | `npx playwright test tests/e2e/keyboard-timing.spec.mjs --grep "independent shared-boundary drag can reverse before release" --project=chromium`（1/1）；`node --test tests\\test_waveform_js.mjs`（40/40）；覆盖共享边界独立拉开后反向拖回，以及起点/终点两种方向。 |
+| 21 | 已修复 | `openAutoStep()` 仅在自动步骤勾选触发配置弹窗时为「测试连接」增加 attention 引导；测试成功、失败、保存前置失败和异常均在一次测试尝试结束后清除；Launcher 静态契约测试 38/38 通过。 |
+| 22 | 已修复 | 工具箱关闭按钮使用更高对比度的固定图标按钮；工具箱 wheel 事件隔离背景滚动，内容区保留自身滚动；Launcher 静态契约测试 38/38 通过。 |
+| 23 | 已修复 | 配置弹窗改为固定顶部操作区和独立设置滚动区，标题/关闭按钮不会随设置内容离开顶部；Launcher 静态契约测试 38/38 通过。 |
+| 24 | 已修复 | 新增绑定和未绑定、且与主字幕时间重叠的波形区回归；`B` 均打开「选择副字幕拆分点」，主字幕时间不变。相关 Playwright 回归 4/4 通过；`node --check`、Node 119/119、便携版生成和 `git diff --check` 通过。 |
+| 26 | 已修复 | `C` 合并后新建的绑定副字幕在开关开启时同步到合并后的主字幕范围，并重算绑定 offset；关闭开关时保留原副字幕范围。相关 Playwright 回归 3/3 通过；`node --check web\\editor.js`、便携版生成和 `git diff --check` 通过。 |
+| 27 | 已修复 | 自动后处理 OCR 改为复用已安装的 managed runtime，并把运行结果转换回流水线产物契约；安装完成事件同时刷新 OCR 控件和自动步骤状态，自动步骤可在运行时状态就绪后恢复。OCR runtime / OCR 后处理 / 自动后处理 / Launcher GUI 回归分别纳入 64/64 和 154/154 通过批次；相关 MAW Python 模块、Launcher JS 和编辑器 JS 语法检查，以及 `git diff --check` 通过。 |
+| 33 | 已修复 | 批量区域新增独立拖入提示；不支持格式和重复文件不再写入单文件错误区，重复文件提示“文件已在当前列表内”；`batch_item_log` 阶段名同步写入总日志并以内联形式显示；跳过已完成文件改为自定义“是 / 否”确认按钮。已通过完整 Python 643/643、Launcher 190/190、Node 126/126、Launcher JS 语法、便携版生成、`git diff --check` 和浏览器冒烟验证。 |
+| 34 | 已修复 | 批量开始时状态区显示当前文件序号（如 `正在处理第 1/3 个文件`）；切换文件时更新当前处理文件；每个文件完成、失败或取消时写入总日志；批量结束时汇总成功/失败数量。已通过 Launcher 190/190、Launcher JS 语法检查和浏览器批量冒烟验证。 |
+| 42 | 已修复 | `node --check web\editor.js`；`node --test tests\test_editor_utils.mjs tests\test_waveform_js.mjs`（218/218 通过）；`.venv\Scripts\python.exe edit.py --blank` 重生成便携版；真实浏览器 Playwright 冒烟（serve.py 挂载测试工程 → 双击第 0 行进入编辑 → 光标定位偏移 5「、」后 → Enter）：拆分前 row0 `00:05.760→00:08.880 本地模型、AI校准和翻译…`，拆分后 row0 `00:05.760→00:06.480 本地模型`、row1 `00:06.720→00:08.880 AI校准和翻译…`，左段停在 6480、右段起于 6720，240ms 词间静音保留；`git diff --check` 通过。 |
+| 42 补 | 已修复 | 入库 e2e：`npx playwright test tests/e2e/split-word-gap.spec.mjs --project=chromium`（3/3 通过，MAW_E2E_PYTHON 指向仓库 .venv）；相邻既有拆分回归 `waveform-history.spec.mjs --grep "retries an inline split|manual text split keeps malformed|B splits the selected subtitle under"`（3/3 通过）；`git diff --check` 通过。 |
+| 43 | Launcher / 本地运行时 | Local model runtime 移到「设置 → 运行环境」并放在 OCR 支持上方；本地模型面板上方保留运行环境检测行，附「在 ⚙️ 设置中查看」跳转；「本地运行环境已就绪。」等后端固定文案补英文本地化 | 修改 | 已修复 |
+| 43 补 | 已修复 | `localRuntimePanel` 移入 `settingsRuntimePanel` 首位（OCR 支持之前），带「本地模型运行时 / Local model runtime」标题；安装、修复、重新扫描与进度逻辑不变，仍仅在选择本地供应商时显示。运行环境检测行按用户两次更正，最终放在 `localModelPanel` 上方（初版在高级选项，二版在面板内「模型保存目录」上方）。深度链接原用 `scrollIntoView`，会连带滚动 `overflow:hidden` 的 `.modal-card` 导致页面下坠一小段；改为只平滑滚动 `.settings-scroll` 容器（`section.offsetTop - scroll.offsetTop`），区块位于容器顶部时归零，该修复对 OCR 等其他设置深链同样生效。`renderLocalRuntime` / `renderOcrRuntimeHint` / `renderLocalModelStatus` 对标准状态不再透传后端中文 detail，改用界面语言文案，动态信息（如安装失败原因）仍原样显示。已验证：`node --check web\launcher\launcher.js`；`node --test tests\test_editor_utils.mjs tests\test_waveform_js.mjs`（270/270）；`uv run python -m unittest discover -s tests -p "test_*.py"`；`npx playwright test tests/e2e/launcher-interactions.spec.mjs --grep "local runtime|English mode localizes"`（3/3，含检测行位置、深度链接落点 scrollTop 断言）；Chromium 截图核对中英文界面；`git diff --check` 通过。 |
+| 45 | Launcher / 设置样式 | 「Currently in beta…」beta 说明希望使用 callout 样式，项目内已有类似样式可复用 | 修改 | 已修复 |
+| 45 补 | 已修复 | 复用供应商风险提示 `#providerNote` 的琥珀底框：抽取为通用 `.hint-callout`（8px/12px 内边距 + 6px 圆角 + `color-mix` 琥珀 10% 背景），`#providerNote` 与设置 → 运行环境的 beta 说明（`local_beta_note`）共用该类，文字沿用 `.warn` 琥珀色。已验证：`uv run python -m unittest tests.test_gui_web`（250/250）；Chromium 截图核对设置 → 运行环境 callout 效果；`git diff --check` 通过。 |
+| 46 | Launcher / 视觉 | 去掉 `.local-model-panel` 与 `.hero` 的 background；`.modal-card` 加宽为 `min(720px, calc(100vw - 32px))`；`.settings-modal-card` 块高最小 680px；设置滚动区参考 `toolboxUtilitiesContent` 实现顶部滚动渐隐 | 修改 | 已修复 |
+| 46 补 | 已修复 | `.hero` 与 `.local-model-panel` 移除渐变底色（保留边框与阴影）；`.modal-card` 宽度 620→720px；`.settings-modal-card` 增加 `min-block-size: min(680px, calc(100dvh - 36px))`（小屏随视口收缩不溢出）。设置滚动区渐隐按 `.toolbox-content` 同款做法镜像实现：`@property` 注册 `--settings-top-fade` / `--settings-bottom-fade`（`<length>` 可插值）+ `mask-image: linear-gradient(to bottom, transparent, black var(--settings-top-fade), black calc(100% - var(--settings-bottom-fade)), transparent)`，配合 `animation-timeline: scroll(self)` 的 scroll-driven 动画在滚动前 2rem 内把顶部渐隐 0→18px、最后 2rem 内把底部渐隐 18→0。已验证：Chromium 实测 `hero`/`local-model-panel` 背景为 none、卡片宽 720；截图核对滚动前后顶部渐隐；`uv run python -m unittest tests.test_gui_web`；`git diff --check` 通过。 |
+| 47 | Launcher / 本地运行时 | OCR 支持自定义文件夹，local runtime 也应支持，添加进设置 | 修改 | 已修复 |
+| 47 补 | 已修复 | 「设置 → 运行环境」本地模型运行时区块新增「本地运行环境目录」输入 + 选择文件夹 + 拖入文件夹（与 OCR 同布局）。后端新增 `save_local_settings`：校验路径（指向文件时报 `local_runtime_path_invalid`）→ 写 `.env` 的 `MAW_LOCAL_RUNTIME_ROOT` → 同步进程环境变量即时生效；启动时 `_sync_local_runtime_root` 把 `.env` 值回填进程环境（外部显式设置优先），`resolve_root` 的「显式配置 → 进程环境变量 → 默认 app-data」优先级不变，安装 / 状态 / 打开目录 / 模型准备等所有消费方无需改动即跟随新目录；清空输入则回退默认目录。MOSS 走独立根目录不受此设置影响。按用户后续要求，「模型缓存：…」链接行从设置运行时区块移到主页面本地模型面板「模型保存目录」说明文字下方（`renderLocalModelCachePathLine`，随刷新联动）。已验证：`uv run python -m unittest tests.test_gui_web`（256/256，含保存持久化、拒绝文件路径、清空回退、启动回填 4 个新用例）；`npx playwright test tests/e2e/launcher-interactions.spec.mjs --grep "local runtime|English mode"`（4/4，含自定义目录改动后路径块联动与缓存链接行断言）；全量 Python 1269 通过；Chromium 截图核对；`git diff --check` 通过。 |
+| 44 | Launcher / 英文本地化 | 排查其余英文界面缺失：模型下拉说明「本地运行；首次准备会加载 Qwen3-ASR 与 Forced Aligner」等后端配置中文文案未本地化 | 修改 | 已修复 |
+| 44 补 | 已修复 | 后端 `maw/gui_config.py` 以中文下发供应商 / 模型 label 与 note、语言与地域 label；英文界面在 `launcher.js` 按稳定 ID 映射为英文（`PROVIDER_LABELS_EN` / `MODEL_LABELS_EN` / `MODEL_NOTES_EN` / `PROVIDER_NOTES_EN` / `LANGUAGE_LABELS_EN` / `REGION_LABELS_EN`），未收录 ID 回退后端原文；语言切换时经 `refillSelectLabels()` 重建相关下拉并保留当前选择；`postprocess.js` / `batch.js` 中的中文经排查均为注释，无用户可见缺失。已验证：`uv run python -m unittest tests.test_gui_web`（249/249）；`npx playwright test tests/e2e/launcher-interactions.spec.mjs --grep "English mode localizes"`（1/1，覆盖供应商 / 模型选项、模型说明与语言选项英文文案）；Chromium 截图核对英文本地模型面板；`git diff --check` 通过。 |
+| 48 | Premiere 交接 | FCP 7 XML 导入 Premiere 时序列默认落 DV NTSC 720×480 29.97（Sequence Settings 截图），希望序列宽高、帧率与视频一致 | 修改 | 已修复 |
+| 49 | Premiere 交接 | GraphicAndType 文字导入后位置不对（出现在 1920 位置附近），需在 Premiere 手动挪；希望默认水平居中并偏下一点儿 | 修改 | 已修复 |
+| 50 | Premiere 交接 | 原生文字 payload 字体固定为 Arial；希望复用「预览字幕」选择的字体，未选择时用对应系统字体而不是 Arial | 修改 | 已修复 |
+| 51 | Premiere 交接 | 对比 MAW 导出 XML 与 Premiere 导出 XML 的 `xmeml version`（5 与 4）差异原因 | 仅说明 | 已修复 |
+
+## 询问项结论
+
+- 任务 2：频谱颜色只影响显示；关于是否可以完全不生成频谱的询问已转为任务 15 的独立开关实现，结论见下方“频谱是否可以完全不生成”。
+- 任务 15：将任务 2 的询问转为实际修改项，保留 ReaPeaks 波形层，频谱计算由独立开关控制；无频谱数据时编辑器不允许启用频谱颜色。
+- 任务 10：没有字词时间码时仍允许按字符位置估算切点，本轮只补边界和最短时长。
+- 任务 11：末行波形缩短只改变显示宽度，不增加音频解码或采样计算。
+- 任务 12：当前源码、模板、`edit.py` 和便携版均未发现播放器 `40vh` 限制。
+
+## 阶段汇总（设置、缓存、Launcher/OCR）
+
+- 已完成第 1、3、5、8、9、19 项。第 1 项用限长缓存媒体生成波形/频谱，但写回原始媒体签名，并增加频谱生成提示；第 3 项收紧 OCR 就绪判断、安装后刷新、按钮布局、识别结果间距和产物高亮；第 5 项补齐全局自动吸附设置、current-cue-panel 的 Esc 操作设置和延长默认值；第 19 项补齐多重字幕主轨/副轨的 `Shift+←/→` 显式边界贴合；第 8、9 项的播放/波形与 Launcher/LLM 反馈也已完成。
+- 已验证：编辑器/波形/i18n/Launcher/后处理脚本语法通过；当前编辑器 Node 回归 119/119 通过，`tests.test_waveform` 15/15 通过；便携版已重新生成。`uv run` 因本机 uv 缓存权限失败，使用仓库 `.venv` 完成 Python 验证。
+- 当前剩余修改项：无。第 13、14、16、26、27 项已完成；第 2、10、11、12、17 项为说明项，无需修改。
+
+## 增量记录（任务 13、14：启动解耦与链接范围）
+
+- 默认波形形状来源已改回“自研波形”。`.ReaPeaks` 仍可在波形设置中主动切换，但不再作为首屏默认来源；已有用户明确保存的 `ReaPeaks` 选择继续保留。
+- 工程加载阶段只同步准备自研波形；服务器进入请求循环后才启动 `.ReaPeaks` 后台读取。后台读取期间首页和 `/api/waveform` 不等待它，读取完成后编辑器再动态注入频谱和 ReaPeaks 波形层。
+- 服务器构造与最近工程 / attach 工程路径都使用同一套延后策略；无波形模式不会启动后台任务。
+- URL 解析在 `）】》」』` 及常见句末标点处截断，后面的说明文字保持普通文本。
+
+已验证：服务器后台加载阻塞回归 1/1；本地服务器测试 17/17；波形资源测试 14/14；Launcher URL 契约 1/1；便携版重新生成；相关 JS 语法检查通过。
+
+## 增量记录（工程加载）
+
+- 第 4 项已完成：工程加载提示保持单一语义，OCR 后工程仍保留媒体路径；服务器与便携版均支持读取/拖入 `.ReaPeaks`，无绑定服务器保存时明确提示“先导出 `.mosp`，再重新打开该文件”。
+- 已验证：源码语法、`tests.test_waveform`（13/13）、便携版生成和产物扫描均通过。
+
+### 频谱是否可以完全不生成
+
+可以。`--with-waveform` 默认只生成并嵌入 `.ReaPeaks` wave 层；只有额外使用 `--with-spectral`（Launcher 中勾选“生成 ReaPeaks 频谱数据”）才计算并写入 spectral mipmap。编辑器仍可选择 ReaPeaks 波形，但没有频谱数据时会自动关闭并禁用“频谱颜色”。
+
+## 增量记录（任务 15：可选 ReaPeaks 频谱）
+
+- 生成器新增 `include_spectral` 开关：wave-only 文件保留 wave + loudness 层并跳过 FFT；完整文件继续支持 wave + spectral + loudness。已有完整缓存不会被删除，勾选频谱时如果发现匹配的缓存只有 wave 层会自动重建。
+- `media_cache`、四个 provider CLI、MAW CLI、Launcher 请求和本地 ASR 输出链路已贯通；默认 `generate_spectral=false`，显式 `--with-spectral` 必须同时使用 `--with-waveform`。
+- 编辑器的“频谱颜色”在没有合法 spectral payload 时显示为未勾选且禁用；服务器后台补齐频谱后重新启用，并保留用户此前的显示偏好。默认波形形状仍是自研波形。
+- 已重新生成 `blank-editor.html`，并同步更新 `JSON_SCHEMA.md`、`docs/user/WORKFLOW.md` 和 `CHANGELOG.md`。
+
+已验证：Python 相关回归 250/250；排除只读 REAPER fixture 后全量 Python 回归 572/572；Node 波形与编辑器工具回归 114/114；`node --check web\\waveform.js`、`node --check web\\launcher\\launcher.js`、相关 Python `py_compile`、便携版生成和 `git diff --check` 均通过。5 秒 16kHz 单声道合成音频的本机短样本对照为 wave-only 0.124s、wave+spectral 0.198s，频谱额外约 0.074s（约 1.6 倍；仅作量级参考）。未执行真实 API、长媒体全量性能基准或桌面打包验证。
+
+## 增量记录（任务 7：二次按键强制拆分）
+
+- 第一次按 B/Enter 如果当前切点会让任一侧短于 100ms，不再直接取消：主字幕内联编辑保持打开，拆分弹窗保持显示，并提示再次按 B/Enter。
+- 第二次按 B/Enter 才执行强制拆分；切点钳制到原字幕（联动时为主/副字幕共同时间范围）内两侧各至少 100ms。原字幕总时长不足 200ms，或文字断点非法时，仍明确阻止并说明原因。
+- 强制路径允许切点越过过短的单个字词 item 边界，同时保留 item 在对应字幕段内，不改变普通拆分的原有时间码策略。
+- 已补充内联、波形弹窗、单独副字幕和联动主副字幕回归；撤销验证确认拆分前的选中项和字幕面板目标可恢复。
+
+已验证：内联与波形弹窗回归 2/2 通过；多重字幕相关回归 4/4 通过；便携版已重新生成并包含二次按键逻辑。
+
+## 增量记录（任务 6：多字幕批量操作）
+
+- H 现在支持同时选中多条副字幕，按各自绑定关系批量对齐到主字幕时间范围，并只生成一条批量撤销记录；未绑定项会跳过并在提示中说明。
+- 绑定自动同步时长、主字幕合并同步副字幕、副字幕合并/拆分及其撤销路径均已通过浏览器回归；批量对齐后的副字幕冲突会按现有规则挤压或删除无法保留 100ms 的冲突项，不反向改变主字幕时间范围。
+- 已重新生成 `blank-editor.html`，模板中的“批量对齐”按钮、H 帮助文案和中英文映射与源码一致。
+
+已验证：批量 H 与撤销 1/1 通过；绑定/合并/联动相关回归 4/4 通过。
+
+## 增量记录（任务 9：LLM 配置与 Qwen 密钥复用）
+
+- Qwen 后处理配置没有专用 Key 时，复用已有的 `DASHSCOPE_API_KEY`；Launcher 显示脱敏状态，测试连接和后处理管线读取同一有效 Key。
+- 输入新 API Key 点击保存时自动执行测试连接，成功或失败结果显示在设置区的状态位；普通保存只显示短暂的保存成功反馈，不再重复提示点击测试连接，也不写入通用结果区。
+- 已验证：`.venv\\Scripts\\python.exe -m unittest tests.test_gui_web tests.test_postprocess_pipeline`（163/163 通过）；`node --check web\\launcher\\postprocess.js`、`node --check web\\launcher\\launcher.js` 通过，保存成功不再提示点击测试连接，测试成功不改变当前窗口。
+- 已完成字号核对：Launcher 原先 11px 的文本已提升到至少 12px，常规 12px 文本已提升到 13px；工具箱、设置弹窗、状态提示和日志均覆盖。
+- 最终验证：`.venv\\Scripts\\python.exe -m unittest tests.test_gui_web tests.test_postprocess_pipeline`（163/163）；`node --check web\\launcher\\launcher.js`、`node --check web\\launcher\\postprocess.js`、`.venv\\Scripts\\python.exe -m py_compile maw\\gui_web.py tests\\test_gui_web.py`、`git diff --check` 均通过。
+
+### 没有字词时间码时是否允许切分
+
+现有代码已经有按字符位置估算切点的路径。本轮不改变该策略，只增加两侧最短时长和失败状态清理，避免切出过短字幕或留下编辑态。
+
+### 末行波形缩短是否影响性能
+
+只改变最后一行的显示宽度，不增加音频解码或采样计算，性能成本可忽略。
+
+### 40vh 播放器限制
+
+当前源码、模板、`edit.py` 和生成后的 `blank-editor.html` 中均未发现 `40vh` 播放器限制；无需修改播放器高度。
+
+## 增量记录（任务 8：播放与波形）
+
+- 已完成 Home/End 媒体首尾跳转；文本编辑、输入控件和模态窗口内不抢占原生行为。
+- 字幕列表悬停到可拆分文字位置时，现显示带 `B` 的切分提示；最后一行多行波形只按媒体真实剩余时长显示宽度。
+- 已重新生成 `blank-editor.html`，并确认源码、便携版与测试一致。
+
+已验证：相关浏览器回归 6/6 通过；Node 113/113 通过；`edit.py` 编译通过；`git diff --check` 通过。
+
+## 增量记录（任务 16、17：长音轨提示与波形缓存重构询问）
+
+- 任务 16 已将浏览器无法整段解码、浏览器不支持 Web Audio、音轨解析失败等路径统一改为提示使用 MAW GUI 预生成波形；英文界面同步提供对应提示。`blank-editor.html` 由 `web/` 源码重新生成。
+- 任务 17 当前只记录设计结论：统一媒体旁缓存是可行的，建议使用带媒体 `name / size / modified_ms` 签名的独立容器，内部放自研波形、ReaPeaks wave 层和可选 spectral 层；Server/桌面 GUI 可按媒体路径自动查找，单文件浏览器只能在用户同时提供缓存文件或工程内已有缓存时复用，不能绕过浏览器对相邻文件的访问限制。旧 `.ReaPeaks` 与 `.waveform.json` 应保留只读兼容后再迁移，避免一次性改写已有缓存协议。
+
+已验证：`node --check web\\waveform.js`；`node --test tests\\test_waveform_js.mjs`（36/36）；`.venv\\Scripts\\python.exe -m unittest tests.test_waveform`（15/15）；`.venv\\Scripts\\python.exe edit.py --blank`；`git diff --check`。未实施任务 17 的缓存协议重构，因此没有宣称拖入长视频已支持自动读取统一缓存。
+
+## 增量记录（任务 18：自动后处理产物契约与媒体路径）
+
+- 原因：`run_postprocess_pipeline()` 每完成一步都会读取 `artifact.translated_srt_path`，但 OCR 返回的 `OcrDedupArtifact` 没有这个可选字段，因此 OCR 作为最后一步或中间一步都会在 OCR 写出后失败；这不是 OCR 识别失败。
+- 修复：OCR 产物补齐 `translated_srt_path=None`；后处理写出统一接收当前 `media_path`，仅在输入工程缺少 `media` 时补写绝对路径，并贯通翻译、固定替换、文稿匹配、OCR 和独立 OCR runtime。工具箱从 SRT 输入时也把当前媒体传给后端。
+- 已修复项没有覆盖已有工程的 `media`：如果工程已有媒体字段，即使 Launcher 表单中残留另一条媒体路径，也不会覆盖它。
+
+已验证：`.venv\\Scripts\\python.exe -m unittest tests.test_postprocess tests.test_postprocess_match tests.test_postprocess_ocr tests.test_postprocess_pipeline tests.test_gui_web tests.test_ocr_runtime`（214/214）；`node --check web\\launcher\\postprocess.js`；`git diff --check`。全量 Python 共 580 个测试，其中 4 个既有 ReaPeaks fixture 用例因 `tests\\test_data` 写入权限失败，其余通过。
+
+## 增量记录（任务 5、19：时间调整快捷键与编辑 Esc）
+
+- 全局设置现在只提供「自动吸附调整相邻字幕」，默认关闭；关闭时普通移动、边界微调和共享边界拖动默认独立，按住 `Alt` 临时联动；开启时默认联动，按住 `Alt` 临时独立。`Alt` 始终是临时反转操作，不再单独配置 Alt 功能。
+- `Esc` 设置已从全局设置和波形拖动移除，放入 `current-cue-panel` 齿轮的「操作」类别；「Esc 取消编辑」默认关闭。关闭时 `Esc` 提交文本改动并退出，开启时恢复进入编辑前的文本。
+- `Shift+←/→` 是显式的直接边界贴合操作，不受自动吸附开关影响；多重字幕模式下根据当前字幕面板目标分别操作主轨或副轨，左/右方向分别贴合前一条结尾或后一条开头，不移动邻居。
+
+已验证：`node --test tests\\test_waveform_js.mjs tests\\test_editor_utils.mjs`（119/119）；`.venv\\Scripts\\python.exe -m unittest tests.test_waveform`（15/15）；自动吸附与键盘回归 5/5；current-cue-panel Esc 回归 1/1；多重字幕 `Shift+←/→` 主轨/副轨回归 1/1；`npm run sync:docs` 已同步网站文档；`git diff --check` 通过。网站 `npm run check` 因本机 `website/node_modules` 缺少 `astro` 未能执行，文档类型检查未验证。
+
+## 增量记录（任务 20：独立共享边界反向拖动）
+
+- 修复独立拖动共享边界时的钳制逻辑：左字幕终点以右字幕起点为固定上限，右字幕起点以左字幕终点为固定下限，不再把已移动的当前边界当成单向限制。
+- 现在相邻字幕从贴合状态拉开后，可以在同一次拖动中反向拖回，也支持之后继续双向调整；邻字幕仍保持不动，最小时长和不重叠限制不变。
+- 已重新生成 `blank-editor.html`，源码与便携版共用同一修复。
+
+已验证：边界反向拖动浏览器回归 1/1；波形 Node 回归 40/40；`node --check web\\waveform.js` 通过。
+
+## 增量记录（任务 21-23：Launcher LLM 引导与固定操作区）
+
+- 自动勾选 `proofread`、`resegment` 或 `translate` 且 LLM 配置未就绪时，打开 `llmSettingsSection` 并高亮「测试连接」；手动点击「配置」或普通打开设置不会额外触发高亮。测试连接的成功、失败、保存前置失败和异常路径统一清除高亮。
+- 后处理工具箱关闭按钮改为更高对比度的方形图标按钮；工具箱 `wheel` 事件不再冒泡到 Launcher，标题/底部区域拦截背景滚动，内容滚动区保留滚动并用 `overscroll-behavior: contain` 防止滚动链穿透。
+- 配置弹窗使用固定标题操作区和独立 `.settings-scroll` 内容区，配置标题与关闭按钮在内容滚动时保持顶部可见；设置滚动区纳入滚动条提示逻辑。
+- 本次只涉及 `web/launcher` 资源，不会被 `edit.py --blank` 内联到 `blank-editor.html`；共享工作区已有的编辑器与便携版 WIP 保持原样，未覆盖生成。
+
+已验证：`node --check web\\launcher\\launcher.js`、`node --check web\\launcher\\postprocess.js`、`python -m py_compile tests\\test_gui_web.py`；`.venv\\Scripts\\python.exe -m unittest tests.test_gui_web.LauncherAssetContractTests`（38/38）；相关后处理桥接与预检测试（5/5）；`git diff --check` 通过。完整 `tests.test_gui_web tests.test_postprocess_pipeline` 共 166 个测试，其中 4 个错误来自共享工作区并行修改的 `maw/postprocess.py`（缺少 `_reconcile_fixed_replacements`、`_protocol_prompt()` 参数不匹配），本次未修改该文件。未完成浏览器级截图/滚轮实测：本机 `agent-browser` 报告未找到 Chrome/Chromium，未下载安装浏览器运行时。
+
+## 增量记录（任务 24：波形副字幕 B 拆分目标）
+
+- 波形区单击副字幕块后，若当前面板仍指向这条单选副字幕，即使绑定关系同时选中了主字幕，也按副字幕目标处理 `B`；同时覆盖未绑定但与主字幕重叠的副字幕。
+- 只有主字幕面板明确处于当前目标时，绑定副字幕仍保留原有联动拆分弹窗；列表区单选副字幕的文字位置拆分路径不变。
+
+已验证：`npx playwright test --grep "waveform-selected.*extension cue|uses B on a single selected extension|uses the linked split dialog" --project=chromium`（4/4）；`node --check web\\editor.js`、`node --check web\\waveform.js`、`node --check web\\editor-i18n.js`；`node --test tests\\test_waveform_js.mjs tests\\test_editor_utils.mjs`（119/119）；`.venv\\Scripts\\python.exe edit.py --blank`；`git diff --check`。
+
+同批次单独重跑既有「从波形右键菜单打开副字幕拆分并撤销」用例时，点击首个拆分间隙后弹窗未自动关闭（重复失败 1/1）；该路径不经过本次 `B` 快捷键分发，未将其归因于任务 24。
+
+## 增量记录（任务 26：C 合并后的绑定副字幕自动同步时长）
+
+- `mergeContiguousIndices()` 创建新的合并副字幕并建立绑定后，复用「绑定时自动同步时长」开关；开启时将副字幕范围调整为合并后主字幕的 `start/end`，并同步重算 `start_offset_ms/end_offset_ms`。
+- 自动同步沿用副轨冲突整理逻辑；关闭开关时保留合并前副字幕范围。已有微小边界重叠用例显式关闭该开关，继续验证原有“忽略微小重叠”语义。
+
+已验证：`npx playwright test --grep "选中的主字幕与绑定副字幕一起合并并支持撤销|ignores a tiny unbound extension overlap at the main merge boundary|拼合主字幕时同步延展绑定副字幕并支持撤销" --project=chromium`（3/3）；`node --check web\\editor.js`；`.venv\\Scripts\\python.exe edit.py --blank`；`git diff --check`。
+
+## 增量记录（任务 27：自动后处理 OCR 运行环境与状态同步）
+
+- 根因是手动 OCR 工具调用 `run_ocr_in_runtime`，而转写完成后的自动后处理仍直接调用主进程中的 `run_ocr_dedup`；打包版主环境没有 `rapidocr`，因此首次安装 managed OCR 后自动链路仍会提示“OCR 依赖未安装”。
+- 自动后处理现在从 Launcher 传入当前 OCR runtime 路径，OCR 步骤通过 managed worker 执行，并把 worker 结果恢复为原有 `OcrDedupArtifact`；同时转发中间产物输出目录，避免第一步 OCR 将产物写回原始媒体目录。
+- `ocrRuntimeReady` 事件触发后，Launcher 除了刷新 OCR 模型控件，也刷新自动后处理步骤状态并恢复等待配置的步骤；因此安装完成后无需重新加载 Launcher。
+
+已验证：`.venv\\Scripts\\python.exe -m unittest tests.test_ocr_runtime tests.test_postprocess_ocr tests.test_postprocess_pipeline tests.test_gui_web.LauncherAssetContractTests`（64/64）；`.venv\\Scripts\\python.exe -m unittest tests.test_gui_web`（154/154）；`.venv\\Scripts\\python.exe -m py_compile maw\\gui_web.py maw\\ocr_runtime.py maw\\ocr_runtime_worker.py maw\\postprocess_pipeline.py`；`node --check web\\launcher\\launcher.js`、`node --check web\\launcher\\postprocess.js`、`node --check web\\editor.js`；`git diff --check`。一次合并式 `py_compile` 还尝试写入共享工作区的 `tests\\__pycache__`，因权限被拒绝，随后改为仅编译相关 MAW 模块并通过。
+
+## 增量记录（任务 25：绑定自动同步时长的撤销显示）
+
+- 原因：绑定时自动同步会改变副字幕的时间范围，但绑定、解绑及其撤销/重做使用 `renderAll({ waveform: 'none' })`，只重绘字幕列表，波形覆盖层仍保留旧的时间范围。
+- 修复：绑定关系变化统一刷新波形覆盖层；撤销/重做恢复绑定快照后也刷新覆盖层。数据快照本身继续同时保存主字幕、副字幕和绑定关系。
+
+已验证：绑定撤销浏览器回归同时检查 `DATA` 与波形块 `data-start/data-end`（1/1）；绑定相关多字幕回归 6/6；`node --test tests\\test_editor_utils.mjs tests\\test_waveform_js.mjs`（120/120）；`node --check web\\editor.js`；`.venv\\Scripts\\python.exe edit.py --blank`；`git diff --check` 通过。完整多字幕回归 71 个用例中 68 个通过，3 个既有拆分/跨轨吸附用例仍失败，未归因于本次修改。
+
+## 增量记录（任务 29：Z/X 波形指针边界定位）
+
+- 新增 `Z` / `X`：将单条字幕的起点 / 终点定位到当前波形鼠标位置；保留 100ms 最短时长和同轨不重叠边界约束。
+- 当前面板为主字幕时，主字幕边界变化按原有绑定偏移联动副字幕；当前面板为副字幕时，只调整副字幕自身。主副绑定造成的成对选中按一个逻辑字幕处理，不同字幕的多选不执行。
+- 没有选中字幕时，按波形指针所在轨道命中字幕并执行；指针在空白波形或无法确定唯一逻辑目标时不处理。帮助面板已补充快捷键说明，中英文资源与 `blank-editor.html` 已同步。
+
+已验证：`npx playwright test tests\\e2e\\keyboard-timing.spec.mjs --grep "Z/X place selected or pointer-hit subtitle boundaries" --project=chromium`（1/1）；`npx playwright test tests\\e2e\\multi-subtitle.spec.mjs --grep "Z/X adjust one main or extension cue" --project=chromium`（1/1）；`node --test tests\\test_editor_utils.mjs tests\\test_waveform_js.mjs`（121/121）；`node --check web\\editor.js`、`node --check web\\waveform.js`、`node --check web\\editor-i18n.js`、两个 E2E 测试文件；`python edit.py --blank`；`git diff --check` 均通过。
+
+## 增量记录（任务 30：波形调节交互性能）
+
+- 移除振幅/行高调节期间的 Canvas 位图变形预览，改为 160ms debounce：滚动期间只累计净步数，停止后一次性调整并只重绘一次。
+- 每行缓存按当前像素宽度计算的 min/max peak 包络，后续振幅/行高重绘直接复用；Canvas 只有在物理尺寸确实变化时才更新 `width/height`，避免触发位图重新分配。
+- 已增加包络单元测试和振幅/行高预览浏览器回归；`blank-editor.html` 已从 `web/` 源码重新生成。未执行用户长媒体的基准录制，真实测试工程仅完成页面、波形接口和媒体 Range smoke。
+
+已验证：`node --check web\\waveform.js`；`node --test tests\\test_editor_utils.mjs tests\\test_waveform_js.mjs`（121/121）；`npx playwright test waveform-history.spec.mjs --grep "appearance wheel adjustments" --project=chromium`（1/1）；`.venv\\Scripts\\python.exe -m unittest tests.test_waveform`（14/15，剩余 1 个既有便携版资源字符串契约失败）；`.venv\\Scripts\\python.exe edit.py --blank`；`git diff --check`。
+
+## 增量记录（任务 31：主副字幕波形边界联动方向）
+
+- 根因是关闭「自动吸附调整相邻字幕」时，主字幕共享边界会走 `resize-boundary-independent`；该标记被错误地当成了“解除主副绑定”，所以绑定副字幕没有跟随主字幕边界。
+- 主字幕拖动现在始终联动绑定副字幕；同轨相邻字幕仍按自动吸附设置独立或联动。副字幕拖动改为只调整副字幕自身，不再被主字幕轨道边界限制，也不再弹出“主字幕轨道已无可用空间，已限制副字幕拖动”的警告；绑定偏移会按新范围重算。
+- 同轨相邻吸附与跨轨道吸附拆开处理：关闭前者时，副字幕移动仍可按「跨轨道吸附」设置贴合主字幕边界。已补充主字幕共享边界左右手柄、副字幕越过主轨边界和跨轨吸附回归。
+
+已验证：主副字幕相关浏览器回归 3/3；自动吸附、独立共享边界和 Shift 贴合回归 4/4；`node --test tests\\test_editor_utils.mjs tests\\test_waveform_js.mjs`（121/121）；`node --check web\\editor.js`、`node --check web\\waveform.js`；`python edit.py --blank`；`git diff --check` 均通过。
+
+## 增量记录（FCP7 Premiere 交接：任务 4、5）
+
+- Premiere 实机反馈：通用 `generatoritem` 的 `Text` effect 在 `00:00:00:03` 与 `00:02:16`（video track 2）显示“未转换”，并以透明视频占位；Windows 媒体路径未自动识别；源媒体为 2 声道而 XML 声明 1 声道时链接媒体被拒绝。
+- 处理：Windows drive path 改为 Premiere 常见的 `file://localhost/C:/path`，保留 UNC、POSIX 与 UTF-8 百分号编码；视频与音频 file media 均声明 `channelcount=2`，音频 clip 声明双声道 sourcetrack 并链接到视频 clip；原生文本改为 `clipitem` + `GraphicAndType` effect + parameter 1，移除通用 `generatoritem`。
+- 结构证据仅来自 `examples/序列 01.xml` 的 GraphicAndType 层级；未复制其 opaque payload 或路径。
+- 已验证：`node --test tests\test_editor_utils.mjs` 为 `151/151`，组合 `node --test tests\test_editor_utils.mjs tests\test_waveform_js.mjs` 为 `193/193`；FCP7 浏览器回归 `9/9`；XML 使用 Python `xml.etree.ElementTree` 解析；`node --check web/editor-utils.js` 与 `git diff --check` 通过。当前环境未重新运行 Premiere，因此目标应用最终转换仍为未验证，不宣称已完全兼容。
+- 当前 SHA-256：`web/editor-utils.js` `5ff8a79c9c8366d2a750223f596697aadffa7e904c6a5521c2b026a9f542c239`；`tests/test_editor_utils.mjs` `4ccaef69c35e3781109c2cd86f81e629a4320608520fe9ec4cd9583dadf9efc0`；`tests/e2e/fcp7-export.spec.mjs` `56347702556ef1db0cf3886f2732f0b5f1f80f42e336e64065021fd4dbf62870`。`.debug-journal.md` 为临时文件，不纳入证据或发布产物。
+- 后续复现发现：仓库参考 XML 同时存在 `file:///D:/...` 与 `file://localhost/D|/...` 两种历史写法；针对当前 Premiere“找不到媒体”反馈，序列化器改为 `file://localhost/D:/...`，并补充回归断言。Premiere 实机重新导入仍需用户在相同媒体路径上确认，当前不能宣称已完全兼容。
+# PR #56 审核整改（2026-08-20）
+
+状态：已修复
+
+- FCP7 非整帧区间取整不一致：`f27ade0a` 统一源区间和时间线区间的帧边界，贴图 source duration 按当前字幕实例计算。
+- 多段贴图导出遗漏：`65294c2e` 让 OTIO 与 Resolve JSON 逐段解析 `sticker_ref`，使用当前字幕段时间范围；禁用段不导出，悬空引用按既有跳过规则处理。
+- 契约文档：`CHANGELOG.md` 增加 PR #56 汇总及 Premiere 图片自动重链、字体显示的实机限制；`JSON_SCHEMA.md` 补充可选 `sticker.width` / `sticker.height` 和旧工程兼容规则。
+- 尺寸解析失败：`scan_stickers()` 保留无法读取尺寸的图片，输出 warning，由导出器使用兼容默认值；新增损坏图片回归测试。
+
+验证：Node `155/155`、Python `607/607`、贴图导出 Playwright `1/1`、语法检查、`uv run python edit.py --blank`、`git diff --check` 均通过。Premiere 实机导入仍未验证。
+
+## 增量记录（任务 36：纯文本标点时间码与 dirty 标记）
+
+- 根因：纯文本编辑将新增 `！` 等无独立语音时间的符号生成了 0ms item，而保存前的时间码修复器会把 0ms item 扩成 100ms；末尾 item 因此越过所属字幕段的 `end`，服务端拒绝保存。一次失败保存后，该 item 也会继续留在内存中，所以删除文字仍会报错。
+- 修复：新增标点、符号、emoji 和符号型颜文字并入相邻的已有 item，复用其时间范围，不再生成独立零宽 item；兼容清理旧版本残留的标点 item，已删除的字符会被移除。保存前的时间码修复改为只标记实际被修复的字幕，不再因一处修复把整轨字幕标为 dirty。
+
+已验证：`node --check web\\editor.js`、`node --check web\\editor-utils.js`、`node --check web\\editor-i18n.js`；`node --test tests\\test_editor_utils.mjs tests\\test_waveform_js.mjs`（通过）；`uv run python edit.py --blank`；`git diff --check`。未执行真实浏览器与用户工程的手动复现。
+## 增量记录（任务 37、38：多字幕列表黄条与命名统一）
+
+- 任务 37 已修复：多重字幕双列列表的主列 dirty 标记继续使用 3px 琥珀色内描边，同时为 `.multi-cue-column.main.dirty` 预留 `3px` 左内边距并使用 `border-box`，首个文字不再被黄条覆盖；新增浏览器回归断言。
+- 任务 38 已修复：用户可见的「拓展字幕」「扩展字幕」「扩展轨」已统一为「副字幕」「副轨」，英文界面同步使用 `secondary`；内部 `role: extension`、CSS 类、数据字段和导出协议保持不变。
+- 已验证：`.venv\\Scripts\\python.exe edit.py --blank`；`node --check web\\editor.js`、`node --check web\\editor-utils.js`、`node --check web\\editor-i18n.js`、`node --check tests\\e2e\\multi-subtitle.spec.mjs`；`node --test tests\\test_editor_utils.mjs tests\\test_waveform_js.mjs`（215/215）；`git diff --check`；本地 Chromium 目标回归（使用 `MAW_E2E_PYTHON=.venv\\Scripts\\python.exe`）1/1。
+- localhost `server-editor --blank` 返回 200，页面包含副字幕文案和主列 dirty 规则，未发现旧中文称呼。完整 `multi-subtitle.spec.mjs` 为 80/81：唯一失败是既有的未绑定副字幕文本处理用例，其夹具的首个双列行本来是空主列，失败断言与本次修改无关。
+
+## 增量记录（任务 41：去空隙 OTIO 源范围错位，复核）
+
+- 复核结论：上一版把 `available_range` 从 `null` 改成 `0..全长`，但这只补了字段，仍然丢失了 BWF 媒体时间基准；用户再次用示例 OTIO 对比后确认问题仍在。
+- 证据：用户提供的参考 OTIO 对应 WAV 的 `bext.time_reference` 是 `8895762` samples，采样率是 `48000`；换算到 OTIO 固定 60 fps 为 `8895762 / 48000 * 60 = 11119.7025` 帧。参考文件的 `available_range.start_time` 正是 `11119.7025`；三个 clip 起点分别为 `11461.7025`、`11600.7025`、`11664.7025`，减去媒体起点后是 `342`、`481`、`545` 帧。
+- 根因：旧导出把媒体当成从文件第 0 帧开始，虽然 clip 时长和相对剪辑区间正确，Resolve 解释 source range 时却没有原始媒体的时间坐标。因此前部 clip 会被钳到 0，后部 clip 也会产生固定偏移。
+- 修复：新增 BWF `bext` 解析，`edit.py`、GUI 生成器和 server-editor 在页面数据中注入 `media_time_reference`；便携版手动加载 WAV 时从文件头重新读取。去空隙 OTIO 现在将 `available_range.start_time` 设为媒体起点，并将每个 `source_range.start_time` 设为媒体起点加片段相对起点；无 BWF 的 WAV 和其他媒体仍回退到 0。该字段是页面运行时元数据，不扩展 mosp 工程契约。
+- 回归：Python BWF 解析、GUI 页面注入、editor-utils 解析和带非零 BWF 起点的 Chromium OTIO 导出均已加入测试；`blank-editor.html` 已从 `web/` 源码重新生成。标准 OTIO 数值检查覆盖 available range、clip 源起点、源时长和去空隙后的连续序列。
+- 当前状态：代码、语法、单元测试和浏览器回归均已验证；Resolve 实机导入仍未完成，本机未发现预期的 `Resolve.exe`，因此 Resolve 最终显示效果保留为未验证。
+
+## 增量记录（任务 41 补充：去空隙 OTIO marker 源坐标）
+
+- 复核发现：上一版字幕 marker 的 `marked_range` 仍以每个 clip 的 0 帧为起点；这与 Resolve 示例使用的媒体源坐标不一致，所以即使 clip 时长和 `source_range` 长度正确，marker 仍可能指向错误的源内容。
+- 修复：marker 起止帧现在使用媒体源起点加字幕在原始时间线中的毫秒位置，与同一 clip 的 `source_range` 及外部引用 `available_range` 共用坐标系；无 BWF 起点的媒体仍从 0 帧回退。
+- 回归：带 `1234` samples、`8000Hz` BWF 起点的 WAV 断言 marker 起点包含 `9.255` OTIO 帧媒体偏移，并保留颜色、颜色引用、默认白色、禁用字幕和跨空隙拆分覆盖。
+- 当前状态：已完成源码/便携版生成、语法检查、Node 回归和 Chromium 回归；本次目标 E2E 为 2/2，Node 编辑器/波形回归为 245/245。Resolve 实机导入仍需用户在目标环境确认。
+
+## 增量记录（任务 43：OCR 工具箱文案与视频拖放反馈）
+
+状态：已修复
+
+- OCR 模型和运行环境均就绪时，工具箱设置入口改为“在 ⚙️ 设置中查看”；未安装时仍显示“在 ⚙️ 设置中下载安装 OCR 支持”，并同步维护中英文文案。
+- “视频画面”输入复用“处理文件”的 `toolbox-input` 样式，因此拖入支持的视频文件时会显示相同的边框、底色和高亮反馈；文件类型校验与原有路径路由保持不变。
+- 新增定向浏览器回归，覆盖 OCR 就绪文案和视频拖放高亮；未能执行浏览器断言：Playwright 启动 Chromium 报 `spawn EPERM`，`agent-browser` 也无法建立 CDP 通道。该环境限制不作为页面通过证据。
+
+已验证：`node --check web\\launcher\\launcher.js`、`node --check web\\launcher\\postprocess.js`、`node --check tests\\e2e\\layout-feedback.spec.mjs`、`git diff --check` 通过。
+
+## 增量记录（任务 44：OCR 运行环境取消与目录提示）
+
+状态：已修复
+
+- OCR 安装被取消、失败或程序中途退出后，不再遗留 `runtime.json` 的 `installing` 状态；Launcher 刷新时也会自动回收没有活动安装线程的旧标记，避免状态显示“仍在安装”但进度条消失并重复启动安装。
+- 安装完成提示改为两行显示，运行环境目录渲染为安全的可点击链接；后端仅接受 `ocr-runtime` 白名单类型，并按当前配置解析目录后打开文件夹。
+- 新增 OCR runtime、Launcher bridge、目录打开和页面回归覆盖。
+
+已验证：`uv run python -m unittest tests.test_runtimes tests.test_ocr_runtime tests.test_gui_web`（240 个测试通过，1 个既有跳过项）；`node --check web\\launcher\\launcher.js`、`node --check tests\\e2e\\layout-feedback.spec.mjs`；`npx playwright test tests/e2e/layout-feedback.spec.mjs --grep "installed OCR" --reporter=line`（1/1）；`git diff --check` 通过。
+
+## 增量记录（任务 48–51：Premiere 交接 FCP 7 XML 序列设置、文字位置与字体）
+
+状态：48/49/50 已修复，51 仅说明。
+
+- 证据基线：解析用户提供的 Premiere 导出 XML（`PR-exported.xml`，序列 3840×2160 30fps，GraphicAndType 共 422 条）。未修改句子的 payload 仍是 MAW 写入的 Arial/120；用户改过的例句「我可以跟他玩走位吗？」payload 已被 Premiere 重写为带 `<hash>` 的私有二进制格式（不再是 JSON），但位置保留在明文 `Position` 参数 `0.5108:0.8876`（归一化坐标，y≈0.888 为用户实机确认的「偏下」位置），所有文字被用户统一设为 Scale 450。
+- 任务 48 根因有两个：其一，`fcpRate` 把 `<timebase>` 写成 `30/1` 分数形式，而 FCP 7 XML 约定 timebase 必须是整数（29.97 → `30` + `ntsc TRUE`），Premiere 解析失败；其二，序列 `<media>` 下完全没有 `<format><samplecharacteristics>`（宽高/PAR），Premiere 找不到序列格式信息就回退默认 DV NTSC 720×480。修复：timebase 改为整数（1001 系帧率按 numerator/1000），序列按工程 `media_metadata.video_width/height`（schema §1.1，成对正整数）声明 `<format>`，旧工程缺失时回退 1920×1080；`<audio>` 补 `<format>`（16bit/48000Hz）。
+- 任务 49：GraphicAndType effect 在 Source Text（参数 1）后按 Premiere 导出格式补参数 2 `Transform` 与参数 3 `Position`，值为静态关键帧哨兵时间戳 + 归一化坐标 `0.5:0.8876`（水平居中、偏下）。Scale 沿用 Premiere 导入默认（100），不模仿用户手调的 450。
+- 任务 50：`premiereFontFamily` 的 `default` 不再映射 Arial，改用与 ASS 导出一致的平台 CJK 默认字体（Windows 微软雅黑 / macOS 苹方 / 其他 Noto Sans CJK SC）；`sans` 预设保留 Arial（其预览字体栈本身以 Arial 开头）；用户通过「读取本机字体」选择的 family 仍原样传递（如例句中的 `AlimamaFangYuanTiVF-SemiBoldRound`）。
+- 任务 51（仅说明）：MAW 写 `xmeml version="5"`，Premiere 原生导出写 `version="4"`。两者 Premiere 都能读（本次实机导入已验证），差异不构成问题，暂不改动；若后续实机发现 version 相关解析差异，再考虑对齐为 4。
+- 回归：`node --test tests\test_editor_utils.mjs`（272/272，新增默认字体映射、序列 format/整数 timebase、Position 参数 3 个用例）；`node --test tests\test_waveform_js.mjs`（62/62）；`node --check web\editor.js`、`web\editor-utils.js`；`uv run --no-sync python -m unittest discover -s tests -p "test_*.py"`（1627 通过、6 既有跳过）；Playwright `fcp7-export.spec.mjs`（8/8）；`git diff --check` 通过。另用 Node 直接生成样例 XML 并以 Python 解析核对：序列 format 为 `timebase 30 + 3840×2160 square`、audio format 48000、payload 字体 Microsoft YaHei、Position `0.5:0.8876`。
+- 未验证边界：Premiere 实机重新导入（序列按 3840×2160/所选帧率创建、文字直接落在居中偏下位置、默认字体显示）需用户在目标环境确认；本版本按约定未重新生成 `blank-editor.html`（发布前统一重生成）。
+
+## 增量记录（任务 49 补充：GraphicAndType 变换参数必须整套书写）
+
+状态：已修复（待实机复验）。
+
+- 用户实机反馈：按上一轮改动导出的 XML，Premiere 导入后 "MAW native text - main" 轨的文字对象在节目监视器和轨道缩略图里都看不到文字（可进入编辑），而此前只写参数 1 的版本文字可见。
+- 根因：上一轮只补了参数 2 `Transform` 与参数 3 `Position` 的“半套”变换参数。对照 PR 导出 XML：只有参数 1 时 PR 自动补全默认变换（可见）；PR 原生导出为参数 1–22 完整列表（可见）；半套参数会让 PR 按“变换组已定义”路径初始化，但缺少配套 Scale/Opacity/Anchor Point 等，文字被初始化为不可见。
+- 修复：`fcp7TextMotionParameters()` 逐字段复刻 PR 导出的参数 2–22（Transform、Position、Scale、Horizontal Scale、Rotation、Opacity、Anchor Point、Parent Width/Height/Rotation 及内部占位参数），Scale/Opacity 默认 100，Position 仍为 `0.5:0.8876`（居中偏下），全部 `authoringApp="PremierePro"`；参数 1 Source Text 保持 `authoringApp="MAW"`（旧版已实机验证）。
+- 回归：`node --test tests\test_editor_utils.mjs tests\test_waveform_js.mjs`（330/330，变换参数断言扩展为 2–22 完整集并校验 Scale/Opacity 默认值）；`node --check web\editor-utils.js`；Playwright `fcp7-export.spec.mjs`（8/8）；样例 XML 经 Python 解析核对参数 2–22 与 PR 导出结构逐字段一致；`git diff --check` 通过。
+- 未验证边界：Premiere 实机重新导入（文字可见 + 位置居中偏下）需用户确认。
+
+## 增量记录（任务 49 补充二：Graphic 画布尺寸与 Vector Motion 组，依据用户三对照样例）
+
+状态：已修复（待实机复验）。
+
+- 用户提供 PR 导出的三对象对照：① 原时间线中「显示不出来」的文字；② 复制粘贴到新时间线后能显示但位置/居中不对的文字；③ 用户手动调整后的基准。
+- 对照结论：① 的 `<file>` samplecharacteristics 为 720×480（我们导出的文字 file 没写画布尺寸，Premiere 按 DV NTSC 默认分配 Graphic 画布，与 3840×2160 序列不匹配导致不可见），且其 Vector Motion（GraphicGroup）锚点为异常值 `1:1.0417`；② 粘贴后画布被重置为 3840×2160 才能显示，但粘贴丢失 Vector Motion，锚点行为异常（文字从 Position 点向右下排、不居中）；③ 结构完整：画布正确 + Vector Motion 默认组 + GraphicAndType Position `0.5:0.8876`（与我们写的一致，Position 本身生效）。
+- 修复：文字 clip 的 `<file><media><video>` 补 `<samplecharacteristics>`（按序列尺寸/帧率，与 sticker file 同格式）；在 GraphicAndType filter 前按 PR 导出结构补 `Vector Motion`（GraphicGroup）默认组（Position 0:0、Scale 100、Scale Width 100、Rotation 0、Anchor 0:0），并给 GraphicAndType effect 头补 `<pproBypass>false</pproBypass>`。payload `mAlignment` 保持 0（PR 粘贴重写时也是 0，不动）。
+- 回归：`node --test tests\test_editor_utils.mjs tests\test_waveform_js.mjs`（331/331，新增画布尺寸 + Vector Motion 断言；payload 提取正则改为先截取 GraphicAndType effect 段）；Playwright `fcp7-export.spec.mjs`（8/8）；样例 XML 复核通过；`git diff --check` 通过。
+- 未验证边界：Premiere 实机重新导入（直接导入即可见、位置居中偏下、无需复制粘贴）需用户确认。
+
+## 增量记录（任务 49 补充三：时间线 clip 名与段落居中）
+
+状态：已修复（待实机复验）。
+
+- 用户实机确认：直接导入后文字正常显示、位置居中偏下生效。
+- 本轮处理：时间线 clip 标签与 effect 名从 `MAW native text - main` 改为字幕内容（与 PR 原生 Graphic 命名一致，Properties 面板/时间线直接可读）；payload `mAlignment` 由 0（左对齐）改为 1（居中），与 PR 文本对齐枚举 0=左/1=中/2=右对应。
+- 回归：`node --test tests\test_editor_utils.mjs tests\test_waveform_js.mjs`（331/331，新增 mAlignment=1 与 clip 名断言更新）；`node --check web\editor-utils.js`；Playwright `fcp7-export.spec.mjs`（8/8）；`git diff --check` 通过。
+- 未验证边界：mAlignment=1 在 Premiere 中的实际段落对齐效果需用户确认；若枚举与预期不符（显示为右对齐）则反馈后调整为 2/1 之外的正确值。
+
+## 增量记录（任务 49 补充四：mAlignment 枚举实机校准）
+
+状态：已修复（待实机复验）。
+
+- 用户实机反馈 mAlignment=1 渲染为右对齐，结合此前 0=左对齐，枚举校准为 0=左、1=右、2=居中；payload 改为 `mAlignment: 2`。
+- 回归：`node --test tests\test_editor_utils.mjs`（269/269）；`git diff --check` 通过。段落居中实际效果待用户再次确认。
+
+## 增量记录（任务 49 补充五：Position 0.85 与字号等比缩放）
+
+状态：已修复（待实机复验）。
+
+- 用户确认段落居中（mAlignment=2）与整体效果后提出两点收尾：Position y 由 0.8876 改为更规整的 0.85；字号按序列分辨率等比缩放。
+- 字号基准锚定用户实机确认的 4K + 120：`fontSize = round(120 × 序列高度 / 2160)`，4K 工程导出与当前观感一致（120），1080p 自动为 60，跨分辨率视觉比例不变。
+- 回归：`node --test tests\test_editor_utils.mjs tests\test_waveform_js.mjs`（331/331，Position 0.85 与 4K/1080p 字号断言）；`node --check web\editor-utils.js`；Playwright `fcp7-export.spec.mjs`（8/8）；`git diff --check` 通过。
