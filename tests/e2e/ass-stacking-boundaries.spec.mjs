@@ -60,6 +60,9 @@ const cases = [
   { name: 'equal nonzero move times switch at their actual clock boundary',
     animations: { move: { enabled: true, x1: 300, y1: 560, x2: 750, y2: 420, t1: 500, t2: 500 } },
     times: [490, 500, 510], verifyOriginalMove: true },
+  { name: 'zero transform times retain the original nonlinear whole-cue font-size clock',
+    animations: { t: { enabled: true, startMs: 0, endMs: 0, accel: 2, tags: '\\fs120' } },
+    times: [500, 2000, 3000], verifyOriginalTransform: true, verifyGrowth: true },
   { name: 'main move is shared despite different cue clocks',
     mainSegments: [cue('main-clock', 'Main', 0)],
     extensionSegments: [cue('extension-clock', 'Secondary', 500)],
@@ -253,7 +256,7 @@ function visibleStack(tracks, width, height, label) {
 
 for (const fixture of cases) test(fixture.name, async ({ page }, testInfo) => {
   await configure(page, fixture);
-  const originalMove = fixture.verifyOriginalMove ? await page.evaluate(() => {
+  const originalClock = fixture.verifyOriginalMove || fixture.verifyOriginalTransform ? await page.evaluate(() => {
     MaweBoot.DATA.multi_subtitle.enabled = false;
     MaweBoot.DATA.overlay_track.enabled = false;
     const source = MaweExportSrt.buildAss();
@@ -266,16 +269,16 @@ for (const fixture of cases) test(fixture.name, async ({ page }, testInfo) => {
     const frame = await capture(page, time);
     const metrics = await evidence(frame, testInfo, `t${time}`);
     const pixels = libass(frame.ass, time, testInfo, `t${time}`);
-    if (originalMove) {
-      // The legacy single-cue libass \move is the independent timing oracle.
+    if (originalClock) {
+      // The legacy single-cue raw libass animation is the independent timing oracle.
       // Matching two consumers of the group planner would be circular.
-      const original = libass(originalMove, time, testInfo, `original-move-${time}`);
-      writeFileSync(testInfo.outputPath(`original-move-${time}.json`), JSON.stringify(original, null, 2));
+      const original = libass(originalClock, time, testInfo, `original-clock-${time}`);
+      writeFileSync(testInfo.outputPath(`original-clock-${time}.json`), JSON.stringify(original, null, 2));
       for (const engine of ['canvas', 'libass']) {
         const box = engine === 'canvas' ? frame.tracks[0].box : pixels.tracks.main.box;
         for (const coordinate of [0, 1, 2, 3]) expect.soft(Math.abs(
           box[coordinate] - original.tracks.main.box[coordinate]),
-        `${engine} main preserves the original libass move clock edge ${coordinate} at ${time}ms`).toBeLessThanOrEqual(3);
+        `${engine} main preserves the original libass animation clock edge ${coordinate} at ${time}ms`).toBeLessThanOrEqual(3);
       }
     }
     writeFileSync(testInfo.outputPath(`t${time}-libass.json`), JSON.stringify(pixels, null, 2));
@@ -304,6 +307,15 @@ for (const fixture of cases) test(fixture.name, async ({ page }, testInfo) => {
       `${key} Canvas/libass edge ${coordinate} agrees within 3 native pixels`).toBeLessThanOrEqual(3);
     }
     frames.push({ canvas: metrics, libass: pixels });
+  }
+  if (fixture.verifyGrowth) for (const engine of ['canvas', 'libass']) {
+    const box = frame => engine === 'canvas' ? frame.canvas.tracks[0].box : frame.libass.tracks.main.box;
+    const initial = box(frames[0]);
+    for (const frame of frames.slice(1)) {
+      const grown = box(frame);
+      expect.soft(grown[3] - grown[1] - (initial[3] - initial[1]),
+        `${engine} actual whole-cue font-size animation visibly grows instead of stepping`).toBeGreaterThan(5);
+    }
   }
   if (fixture.verifyFit) {
     const tall = frames[0];
