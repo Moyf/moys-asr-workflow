@@ -845,7 +845,7 @@ __WAVEFORM_CSS__
         </div>
 <small class="settings-panel-hint">英文按词拆，中文按字拆。</small>
 </div></div><div class="editor-settings-page" id="editor-settings-page-project-tracks" role="tabpanel" aria-labelledby="editor-settings-tab-project-tracks" hidden><span class="editor-settings-group-heading" id="project-track-settings-title">字幕轨道</span>
-<div class="editor-settings-group" role="group" aria-labelledby="project-track-settings-title"><div class="editor-settings-sub-group"><label class="toggle editor-settings-item project-track-toggle" title="临时查看和调整主字幕已有的字词时间范围；快捷键 Q，与波形工具栏 🔤 联动；打开另一工程后关闭"><input type="checkbox" id="project-word-timing-toggle"> 显示字词时间码</label><label class="toggle editor-settings-item project-track-toggle" title="启用标记编辑（快捷键 M）：显示「标记与区段」入口并允许编辑标记与区段"><input type="checkbox" id="project-marker-track-toggle"> 显示标记轨道</label><label class="toggle editor-settings-item overlay-track-toggle project-track-toggle" id="overlay-track-controls"
+<div class="editor-settings-group" role="group" aria-labelledby="project-track-settings-title"><div class="editor-settings-sub-group"><label class="toggle editor-settings-item project-track-toggle" title="临时查看和调整主字幕已有的字词时间范围；快捷键 Q，与波形工具栏 🔤 联动；打开另一工程后关闭"><input type="checkbox" id="project-word-timing-toggle"> 显示字词时间码</label><label class="toggle editor-settings-item project-track-toggle" title="启用标记编辑（快捷键 M）：显示「标记与区段」入口并允许编辑标记与区段"><input type="checkbox" id="project-marker-track-toggle"> 显示标记轨道</label><label class="toggle editor-settings-item project-track-toggle" id="overlay-track-controls"
          title="开启后可在叠加轨创建与主字幕时间重叠的叠加字幕；叠加轨不会与双语字幕建立绑定关系">
     <input type="checkbox" id="overlay-track-toggle">
     允许字幕重叠
@@ -1181,6 +1181,17 @@ __WAVEFORM_CSS__
     </div>
     </div>
   </div>
+  <span class="editor-settings-group-heading" id="interface-notifications-title">消息提示</span>
+  <div class="editor-settings-group" role="group" aria-labelledby="interface-notifications-title">
+    <label class="editor-settings-item">
+      消息提示位置（Toast）
+      <select id="editor-toast-position">
+        <option value="top-center">上方</option>
+        <option value="top-right">右上方</option>
+        <option value="bottom-right">右下方</option>
+      </select>
+    </label>
+  </div>
   <span class="editor-settings-group-heading" id="interface-language-title">语言</span>
   <div class="editor-settings-group" role="group" aria-labelledby="interface-language-title">
     <div class="editor-settings-sub-group">
@@ -1445,7 +1456,7 @@ __WAVEFORM_CSS__
                 <input type="text" id="merge-join-text-word" placeholder="默认一个空格">
               </label>
             </div>
-            <small class="editor-settings-hint merge-join-language-hint">你可以在 <button type="button" class="editor-settings-inline-action" data-settings-page="timebase" data-settings-target="multi-subtitle-main-language-mode" title="打开工程设置的时间与语言页">工程设置</button> 中配置字幕的语言类型。</small>
+            <small class="editor-settings-hint merge-join-language-hint">你可以在 <button type="button" class="editor-settings-inline-action" data-settings-page="timebase" data-settings-target="multi-subtitle-main-language-mode" title="打开工程设置的时间与语言页">工程设置</button>中配置字幕的语言类型。</small>
   </div>
   <span class="editor-settings-group-heading" id="split-trim-settings-title">拆分时移除的标点符号</span>
   <div class="editor-settings-group split-trim-settings-section" id="split-trim-settings-panel" role="group" aria-labelledby="split-trim-settings-title">
