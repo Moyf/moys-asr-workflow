@@ -773,8 +773,9 @@ class BcutCliExitContractTests(unittest.TestCase):
 
 
 class GuiRegistrationTests(unittest.TestCase):
-    def test_bcut_is_registered_last_with_risk_flags(self) -> None:
-        provider = gui_config.PROVIDERS[-1]
+    def test_bcut_is_registered_before_deepseek_placeholder_with_risk_flags(self) -> None:
+        """bcut 是最后一个真实供应商；其后的 DeepSeek 是非转写彩蛋占位。"""
+        provider = gui_config.provider_by_id("bcut")
 
         self.assertEqual(provider.id, "bcut")
         self.assertFalse(provider.requires_api_key)
@@ -783,6 +784,12 @@ class GuiRegistrationTests(unittest.TestCase):
         self.assertTrue(provider.note)  # 风险标注必须存在
         self.assertEqual(provider.regions, ())
         self.assertEqual(provider.models[0].env_key, "")
+        self.assertIsNot(gui_config.PROVIDERS[-1], provider)  # deepseek 占位在最后
+
+        placeholder = gui_config.PROVIDERS[-1]
+        self.assertEqual(placeholder.id, "deepseek")
+        self.assertFalse(placeholder.requires_api_key)
+        self.assertFalse(placeholder.supports_language)
 
     def test_provider_for_model_maps_bcut_model(self) -> None:
         self.assertEqual(gui_config.provider_for_model("bcut-asr").id, "bcut")

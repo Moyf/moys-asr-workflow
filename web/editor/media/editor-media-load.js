@@ -5,47 +5,29 @@
 (function initMaweMediaLoad(global) {
   'use strict';
 
-  let mediaLoadInFlight = false;
-
-  async function chooseNativeMedia() {
-    if (!window.MOSEDesktop?.available) return false;
-    try {
-      const nativePath = await window.MOSEDesktop.chooseMedia();
-      if (!nativePath) return false;
-      const file = { name: window.AsrEditorUtils.fileBasename(nativePath), type: '', nativePath };
-      if (!MaweProjectMediaInputs.pendingProjectMediaSelection
-          && !await MaweProjectLoad.ensureProjectCheckpointForImport(file, { usePicker: false })) return false;
-      MaweProjectMediaInputs.pendingProjectMediaSelection = null;
-      const imported = await loadMediaFile(file);
-      if (imported) {
-        MaweServerSave.projectImportDirty = true;
-        if (MaweServerSave.projectSaveTargetEnabled()) await MaweProjectSave.saveCurrentProject({ silent: true });
-      }
-      return imported;
-    } catch (error) {
-      MaweHint.flashHint(`媒体加载失败：${error.message || error}`, 'warning');
-      return false;
-    }
-  }
+  let nativeMediaLoadInFlight = false;
 
 
 
   async function loadMediaFile(file) {
     if (!file) return;
-    if (mediaLoadInFlight) return false;
-    mediaLoadInFlight = true;
+    if (MaweHost.desktop.available()) {
+      const registration = await MaweHost.desktop.registerFile(file, 'media');
+      if (registration.status === 'ok' && registration.file?.id) {
+        return loadMediaReference(registration.file);
+      }
+      if (registration.error?.code !== 'NO_NATIVE_PATH') {
+        MaweHint.flashHint(`加载媒体失败：${registration.error?.message || '无法读取文件路径'}`, 'warning');
+        return false;
+      }
+    }
     const finishLoading = MaweLoadingProgress.beginEditorLoading(`正在加载媒体 ${file.name}…`, 5);
     try {
-    const nativePath = file.nativePath || window.MOSEDesktop?.pathForFile?.(file);
-    const native = nativePath ? await window.MOSEDesktop.loadMedia({
-      path: nativePath, project: JSON.parse(MaweJsonRepair.buildJson()),
-      detached: !MaweServerSave.serverProjectSavingEnabled(),
-    }) : null;
     MaweJklPlayback.stopJklReversePlayback({ render: false });
-    const preserveProjectWaveform = !native && MaweCoreState.waveformLoadedFromProject
+    const preserveProjectWaveform = MaweCoreState.waveformLoadedFromProject
       && Boolean(MaweCoreState.waveformEditor?.getPayload?.());
-    const url = native ? new URL(native.mediaUrl, window.location.href).href : URL.createObjectURL(file);
-    const isVideo = String(file.type || '').startsWith('video/') ||
+    const url = URL.createObjectURL(file);
+    const isVideo = file.type.startsWith('video/') ||
       /\.(mp4|mkv|avi|mov|wmv|flv|webm|ts|m4v)$/i.test(file.name);
     const oldPlayer = document.getElementById('player');
     const wantTag = isVideo ? 'VIDEO' : 'AUDIO';
@@ -84,7 +66,6 @@
     try {
       MaweLoadingProgress.updateEditorLoading(45, `正在读取媒体信息 ${file.name}…`);
       await waitForMediaMetadata(candidatePlayer, file);
-      if (native) await window.MOSEDesktop.commitMedia(native.ticket);
     } catch (error) {
       if (candidatePlayer !== oldPlayer && oldParent) {
         oldParent.replaceChild(oldPlayer, candidatePlayer);
@@ -98,7 +79,7 @@
         oldPlayer.removeAttribute('src');
         oldPlayer.querySelector('source')?.removeAttribute('src');
       }
-      if (!native) URL.revokeObjectURL(url);
+      URL.revokeObjectURL(url);
       MaweMediaPlayback.syncPlayerPlaceholder();
       MaweHint.flashHint(error.message || `媒体加载失败：${file.name}`, 'warning');
       return false;
@@ -109,8 +90,7 @@
 
     let mediaTimeReference = null;
     try {
-      mediaTimeReference = native ? native.project.media_time_reference || null
-        : await window.AsrEditorUtils.readBwfTimeReferenceFromFile(file);
+      mediaTimeReference = await window.AsrEditorUtils.readBwfTimeReferenceFromFile(file);
     } catch (_) {
       // BWF metadata is optional; an unreadable header must not block playback.
     }
@@ -122,39 +102,24 @@
 
     // 释放旧 blob URL（不会影响 file:// 加载的原始媒体——那不是 blob URL）
     if (MaweProjectMediaInputs.currentMediaBlobUrl) URL.revokeObjectURL(MaweProjectMediaInputs.currentMediaBlobUrl);
-    MaweProjectMediaInputs.currentMediaBlobUrl = native ? null : url;
+    MaweProjectMediaInputs.currentMediaBlobUrl = url;
 
     // 更新标题区媒体名 + FILENAME_BASE（用文件名去扩展名作为导出基名）
     const stem = file.name.replace(/\.[^.]+$/, '');
     MaweBoot.FILENAME_BASE = stem;
-    MaweBoot.DATA.media = native ? native.project.media : file.name;
-    if (native) {
-      MaweBoot.DATA.media_metadata = native.project.media_metadata || null;
-      MaweBoot.SERVER_CONFIG.mediaPath = nativePath;
-      MaweBoot.SERVER_CONFIG.missingMedia = false;
-      MaweWaveformInit.deferredReapeaksEpoch += 1;
-      MaweBoot.DATA.waveform = native.project.waveform || null;
-      MaweBoot.DATA.spectral = native.project.spectral || null;
-      MaweBoot.DATA.waveform_reapeaks = native.project.waveform_reapeaks || null;
-      MaweBoot.DATA.loudness = native.project.loudness || null;
-      MaweCoreState.waveformLoadedFromProject = Boolean(MaweCoreState.waveformEditor?.setPayload(MaweBoot.DATA.waveform));
-      MaweCoreState.waveformEditor?.setSpectralPayload(MaweBoot.DATA.spectral);
-      MaweCoreState.waveformEditor?.setReapeaksWaveform(MaweBoot.DATA.waveform_reapeaks);
-      MaweCoreState.waveformEditor?.setLoudnessStats(MaweBoot.DATA.loudness);
-      void MaweWaveformInit.loadDeferredReapeaks();
-    }
+    MaweBoot.DATA.media = file.name;
     MaweBoot.DATA.media_time_reference = mediaTimeReference;
     const mnEl = document.getElementById('media-name');
     if (mnEl) {
       mnEl.textContent = file.name;
-      mnEl.title = nativePath || `点击复制媒体名：${file.name}`;
+      mnEl.title = `点击复制媒体名：${file.name}`;
       mnEl.classList.remove('empty');
-      mnEl.onclick = () => MaweExportTimeline.copyText(nativePath || file.name, `已复制媒体名：${nativePath || file.name}`);
+      mnEl.onclick = () => MaweExportTimeline.copyText(file.name, `已复制媒体名：${file.name}`);
     }
 
     MawePlaybackLoop.lastActive = -1;
     MaweHint.flashHint(MaweProjectSave.translatedEditorText(`已加载媒体：${file.name}`), 'success');
-    if (MaweCoreState.waveformEditor && !preserveProjectWaveform && !native) {
+    if (MaweCoreState.waveformEditor && !preserveProjectWaveform) {
       try {
         MaweBoot.DATA.spectral = null;
         MaweBoot.DATA.waveform_reapeaks = null;
@@ -169,11 +134,134 @@
     MaweLoadingProgress.updateEditorLoading(100, `媒体加载完成：${file.name}`);
     MaweGapRemoveUi.updateGapRemoveUi();
     return true;
+    } finally {
+      finishLoading();
+    }
+  }
+
+
+
+  async function loadMediaReference(fileReference) {
+    if (!MaweHost.desktop.available() || !fileReference?.id || nativeMediaLoadInFlight) return false;
+    nativeMediaLoadInFlight = true;
+    const expectedGeneration = MaweBoot.SERVER_CONFIG?.desktopGeneration;
+    const expectedProjectPath = MaweBoot.SERVER_CONFIG?.desktopProjectPath;
+    let ticket = '';
+    let candidatePlayer = null;
+    let accepted = false;
+    const fileName = String(fileReference.name || '媒体文件');
+    const finishLoading = MaweLoadingProgress.beginEditorLoading(`正在加载媒体 ${fileName}…`, 5);
+    try {
+      const result = await MaweHost.desktop.command('prepareMedia', {
+        mediaRefId: fileReference.id,
+        expectedGeneration,
+      });
+      if (result.status !== 'ok') {
+        if (result.status !== 'cancelled') {
+          MaweHint.flashHint(`加载媒体失败：${result.error?.message || fileName}`, 'warning');
+        }
+        return false;
+      }
+      let data = result.data;
+      ticket = data?.ticket || '';
+      if (!ticket || !data?.mediaUrl || !data?.mediaPath) throw new Error('服务器没有返回有效媒体路径');
+      const oldPlayer = document.getElementById('player');
+      const oldParent = oldPlayer?.parentNode;
+      if (!oldPlayer || !oldParent) throw new Error('找不到媒体播放器');
+      const file = { name: data.mediaName || fileName, type: '' };
+      const isVideo = /\.(mp4|mkv|avi|mov|wmv|flv|webm|ts|m4v|mpeg|mpg)$/i.test(file.name);
+      const previousSource = oldPlayer.querySelector('source')?.src || oldPlayer.currentSrc || oldPlayer.src || '';
+      const sourceUrl = new URL(data.mediaUrl, window.location.href).href;
+      // Decode off-DOM: failure never disturbs the accepted player or caches.
+      candidatePlayer = document.createElement(isVideo ? 'video' : 'audio');
+      candidatePlayer.id = 'player';
+      candidatePlayer.preload = 'metadata';
+      candidatePlayer.style.cssText = isVideo
+        ? 'width:100%;background:#000;display:block;'
+        : 'width:100%;display:block;';
+      const source = document.createElement('source');
+      source.src = sourceUrl;
+      candidatePlayer.appendChild(source);
+      const stillOwnsEditor = (generation = expectedGeneration) => (
+        MaweBoot.SERVER_CONFIG?.desktopGeneration === generation
+        && MaweBoot.SERVER_CONFIG?.desktopProjectPath === expectedProjectPath
+        && document.getElementById('player') === oldPlayer
+        && (oldPlayer.querySelector('source')?.src || oldPlayer.currentSrc || oldPlayer.src || '') === previousSource
+      );
+      candidatePlayer.load();
+      MaweLoadingProgress.updateEditorLoading(45, `正在读取媒体信息 ${file.name}…`);
+      await waitForMediaMetadata(candidatePlayer, file);
+      if (!stillOwnsEditor()) throw new Error('工程或媒体已切换，已丢弃过期加载结果');
+      const committed = await MaweHost.desktop.command('commitMedia', { ticket });
+      if (committed.status !== 'ok') throw new Error(committed.error?.message || '媒体关联未能提交');
+      data = committed.data;
+      if (!stillOwnsEditor() && !stillOwnsEditor(data.generation)) {
+        throw new Error('工程或媒体已切换，已丢弃过期加载结果');
+      }
+      MaweJklPlayback.stopJklReversePlayback({ render: false });
+      candidatePlayer.volume = oldPlayer.volume;
+      candidatePlayer.muted = oldPlayer.muted;
+      candidatePlayer.playbackRate = oldPlayer.playbackRate;
+      oldPlayer.pause();
+      oldParent.replaceChild(candidatePlayer, oldPlayer);
+      MaweCoreState.player = candidatePlayer;
+      MaweMediaPlayback.bindPlayerEvents(candidatePlayer);
+      accepted = true;
+      MaweNavPreview.seekWarned = false;
+      MaweNavPreview.pendingMediaSeekTimeSec = null;
+      MaweNavPreview.autoLoadedMediaReadyNotified = false;
+      MaweWaveformInit.deferredReapeaksEpoch += 1;
+
+      if (MaweProjectMediaInputs.currentMediaBlobUrl) {
+        URL.revokeObjectURL(MaweProjectMediaInputs.currentMediaBlobUrl);
+        MaweProjectMediaInputs.currentMediaBlobUrl = null;
+      }
+      if (isVideo) MaweTimeline.captureProjectVideoDimensions(candidatePlayer);
+      else MaweTimeline.clearProjectVideoDimensions();
+      MaweCoreState.waveformEditor?.attachPlayer(candidatePlayer);
+      MaweCoreState.waveformEditor?.setMediaAvailable(true);
+      MaweBoot.DATA.media = data.mediaReference || data.mediaPath;
+      MaweBoot.DATA.media_metadata = MaweTimeline.normalizeMediaMetadata(data.mediaMetadata);
+      MaweBoot.DATA.media_time_reference = data.mediaTimeReference || null;
+      for (const key of ['waveform', 'spectral', 'waveform_reapeaks', 'loudness']) {
+        MaweBoot.DATA[key] = null;
+      }
+      MaweCoreState.waveformLoadedFromProject = false;
+      MaweCoreState.waveformEditor?.setPayload(null, { render: false });
+      MaweCoreState.waveformEditor?.setSpectralPayload(null, { render: false });
+      MaweCoreState.waveformEditor?.setReapeaksWaveform(null, { render: false });
+      MaweCoreState.waveformEditor?.setLoudnessStats(null, { render: false });
+      MaweMediaPlayback.syncPlayerPlaceholder();
+      const stem = file.name.replace(/\.[^.]+$/, '');
+      MaweBoot.FILENAME_BASE = stem;
+      const mediaName = document.getElementById('media-name');
+      if (mediaName) {
+        mediaName.textContent = file.name;
+        mediaName.title = `点击复制媒体路径：${data.mediaPath}`;
+        mediaName.classList.remove('empty');
+        mediaName.onclick = () => MaweExportTimeline.copyText(data.mediaPath, `已复制媒体路径：${data.mediaPath}`);
+      }
+      const loadMediaButton = document.getElementById('load-media');
+      if (loadMediaButton) loadMediaButton.textContent = '加载媒体';
+      MaweServerSave.updateDesktopBinding(data);
+      MaweServerSave.projectImportDirty = true;
+      MawePlaybackLoop.lastActive = -1;
+      MaweGapRemoveUi.updateGapRemoveUi();
+      MaweHint.flashHint(`已加载媒体：${file.name}`, 'success');
+      MaweLoadingProgress.updateEditorLoading(100, `媒体加载完成：${file.name}`);
+      void MaweWaveformInit.loadDeferredReapeaks();
+      return true;
     } catch (error) {
-      MaweHint.flashHint(`媒体加载失败：${error.message || error}`, 'warning');
+      MaweHint.flashHint(`加载媒体失败：${error?.message || error}`, 'warning');
       return false;
     } finally {
-      mediaLoadInFlight = false;
+      if (!accepted) {
+        candidatePlayer?.querySelector('source')?.removeAttribute('src');
+        candidatePlayer?.removeAttribute('src');
+        candidatePlayer?.load();
+        if (ticket) void MaweHost.desktop.command('discardMedia', { ticket }).catch(() => {});
+      }
+      nativeMediaLoadInFlight = false;
       finishLoading();
     }
   }
@@ -237,8 +325,8 @@
   }
 
   global.MaweMediaLoad = Object.freeze({
-    chooseNativeMedia,
     loadMediaFile,
+    loadMediaReference,
     loadReapeaksFile,
     waitForMediaMetadata,
     mediaLoadErrorMessage

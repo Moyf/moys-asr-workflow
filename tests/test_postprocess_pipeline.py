@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from tests.compact_assertions import CompactContainerAssertions
+
 import json
 import errno
 import tempfile
@@ -33,7 +35,7 @@ from maw.postprocess_pipeline import (
 )
 
 
-class PostprocessPipelineTests(unittest.TestCase):
+class PostprocessPipelineTests(CompactContainerAssertions, unittest.TestCase):
     def setUp(self) -> None:
         self.temp_dir = tempfile.TemporaryDirectory()
         self.root = Path(self.temp_dir.name)
@@ -1219,7 +1221,7 @@ class PostprocessPipelineTests(unittest.TestCase):
         self.assertFalse((self.root / "_maw").exists())
 
 
-class PostprocessPreflightTests(unittest.TestCase):
+class PostprocessPreflightTests(CompactContainerAssertions, unittest.TestCase):
     def setUp(self) -> None:
         self.temp_dir = tempfile.TemporaryDirectory()
         self.root = Path(self.temp_dir.name)

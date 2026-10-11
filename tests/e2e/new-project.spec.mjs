@@ -27,10 +27,16 @@ test.beforeAll(async () => {
   server = await startStaticServer(portablePath, await findFreePort());
   const makeLocalhost = async (name, config) => {
     const path = join(tempDir, name);
-    writeFileSync(path, readFileSync(portablePath, 'utf8').replace(
-      'const SERVER_CONFIG = null;',
-      `const SERVER_CONFIG = ${config};`,
-    ));
+    const html = readFileSync(portablePath, 'utf8');
+    // edit.py embeds and minifies the editor bundle, so the local variable
+    // name for SERVER_CONFIG is intentionally not stable. Inject the fixture
+    // through the public MaweBoot property instead of matching that local.
+    const configuredHtml = html.replace(
+      /SERVER_CONFIG:[^,]+(?=,NINJA_SFX_BASE_URL)/,
+      `SERVER_CONFIG:${config}`,
+    );
+    if (configuredHtml === html) throw new Error('Unable to inject test Server config');
+    writeFileSync(path, configuredHtml);
     return startStaticServer(path, await findFreePort());
   };
   blankServer = await makeLocalhost(

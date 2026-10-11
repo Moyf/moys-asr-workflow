@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from tests.compact_assertions import CompactContainerAssertions
+
 import csv
 import json
 import tempfile
@@ -34,7 +36,7 @@ class FakeImage:
         return FakeImage(*size)
 
 
-class OcrPostprocessTests(unittest.TestCase):
+class OcrPostprocessTests(CompactContainerAssertions, unittest.TestCase):
     def test_match_uses_the_highest_reference_similarity(self) -> None:
         result = match("你好，世界", "你好世界 NPC")
 

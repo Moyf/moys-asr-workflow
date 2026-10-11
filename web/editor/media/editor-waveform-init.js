@@ -303,8 +303,13 @@
       }
       if (epoch !== deferredReapeaksEpoch) return;
       if (result.status !== 'ready') return;
-      const hasPayload = Boolean(result.spectral || result.waveform_reapeaks || result.loudness);
+      const hasPayload = Boolean(result.waveform || result.spectral || result.waveform_reapeaks || result.loudness);
       if (!hasPayload) return;
+      if (result.waveform) {
+        MaweBoot.DATA.waveform = result.waveform;
+        MaweCoreState.waveformLoadedFromProject = false;
+        MaweCoreState.waveformEditor.setPayload(result.waveform);
+      }
       MaweBoot.DATA.spectral = result.spectral || null;
       MaweBoot.DATA.waveform_reapeaks = result.waveform_reapeaks || null;
       MaweBoot.DATA.loudness = result.loudness || null;

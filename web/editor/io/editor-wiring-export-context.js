@@ -257,9 +257,96 @@ for (const [id, key, fallback, max] of [
   });
 }
 
+function updateDesktopPathActions() {
+  const desktop = MaweHost.desktop.available();
+  const config = MaweBoot.SERVER_CONFIG;
+  const mediaMenu = document.getElementById('media-path-menu');
+  const projectMenu = document.getElementById('project-path-menu');
+  const exportMenu = document.getElementById('last-export-menu');
+  if (mediaMenu) mediaMenu.hidden = !desktop || !config?.desktopMediaPath;
+  if (projectMenu) projectMenu.hidden = !desktop || !config?.desktopProjectPath;
+  if (exportMenu) exportMenu.hidden = !desktop || !exportMenu.dataset.exportRefId;
+  document.querySelectorAll('[data-desktop-path-open], [data-desktop-path-copy]').forEach((button) => {
+    const target = button.dataset.desktopPathOpen || button.dataset.desktopPathCopy;
+    button.hidden = !desktop || (target === 'backups' && !config?.desktopProjectPath)
+      || (target === 'stickers' && !MaweBoot.STICKER_ROOT)
+      || (target === 'media' && !config?.desktopMediaPath)
+      || (target === 'project' && !config?.desktopProjectPath);
+  });
+  const stickerButtons = [document.getElementById('sticker-root-open'), document.getElementById('sticker-root-copy-path')];
+  stickerButtons.forEach((button) => {
+    if (button) button.hidden = !desktop || !MaweBoot.STICKER_ROOT;
+  });
+}
+window.MOSEUpdateDesktopPathActions = updateDesktopPathActions;
+updateDesktopPathActions();
+
+async function copyDesktopPath(pathValue) {
+  try {
+    await navigator.clipboard.writeText(pathValue);
+  } catch {
+    const input = document.createElement('textarea');
+    input.value = pathValue;
+    input.style.position = 'fixed';
+    input.style.opacity = '0';
+    document.body.appendChild(input);
+    input.select();
+    const copied = document.execCommand('copy');
+    input.remove();
+    if (!copied) throw new Error('系统未允许复制到剪贴板');
+  }
+  MaweHint.flashHint('完整路径已复制', 'success');
+}
+
+document.addEventListener('click', async (event) => {
+  const openButton = event.target.closest?.('[data-desktop-path-open]');
+  const copyButton = event.target.closest?.('[data-desktop-path-copy]');
+  const button = openButton || copyButton;
+  if (!button || !MaweHost.desktop.available()) return;
+  event.preventDefault();
+  const target = button.dataset.desktopPathOpen || button.dataset.desktopPathCopy;
+  try {
+    const result = await MaweHost.desktop.command('getLocation', { target, open: Boolean(openButton) });
+    if (result.status !== 'ok' || typeof result.data?.path !== 'string') {
+      throw new Error(result.error?.message || '没有可用的路径');
+    }
+    if (copyButton) await copyDesktopPath(result.data.path);
+    else MaweHint.flashHint('已打开所在文件夹', 'success');
+  } catch (error) {
+    MaweHint.flashHint(`路径操作失败：${error?.message || error}`, 'warning');
+  }
+});
+
+async function handleDesktopExportLocation(event) {
+  const openButton = event.target.closest?.('[data-desktop-export-open]');
+  const copyButton = event.target.closest?.('[data-desktop-export-copy]');
+  const button = openButton || copyButton;
+  if (!button || !MaweHost.desktop.available()) return;
+  event.preventDefault();
+  const exportRefId = document.getElementById('last-export-menu')?.dataset.exportRefId;
+  if (!exportRefId) return;
+  try {
+    const result = await MaweHost.desktop.command('openExportLocation', {
+      exportRefId, open: Boolean(openButton),
+    });
+    if (result.status !== 'ok') throw new Error(result.error?.message || '文件引用已失效');
+    if (copyButton) await copyDesktopPath(result.data.path);
+    else MaweHint.flashHint('已打开导出文件所在文件夹', 'success');
+  } catch (error) {
+    MaweHint.flashHint(`定位导出文件失败：${error?.message || '文件引用已失效'}`, 'warning');
+  }
+}
+document.addEventListener('click', handleDesktopExportLocation);
+
 document.getElementById('project-backup-open')?.addEventListener('click', async () => {
   if (!MaweServerSave.serverProjectSavingEnabled() || MaweServerSave.projectFileHandle) return;
   try {
+    if (MaweHost.desktop.available()) {
+      const result = await MaweHost.desktop.command('getLocation', { target: 'backups', open: true });
+      if (result.status !== 'ok') throw new Error(result.error?.message || '没有可用的备份目录');
+      MaweHint.flashHint('已打开备份文件夹', 'success');
+      return;
+    }
     const response = await MaweHost.server.fetch('/api/project/backups/open', {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ requestToken: MaweBoot.SERVER_CONFIG.requestToken }),
@@ -270,6 +357,7 @@ document.getElementById('project-backup-open')?.addEventListener('click', async 
     MaweHint.flashHint(`打开备份文件夹失败：${error.message || error}`, 'warning');
   }
 });
+
 
 
 

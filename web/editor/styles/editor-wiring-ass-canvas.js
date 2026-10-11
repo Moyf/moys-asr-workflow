@@ -478,6 +478,54 @@
   }
 
 
+  // 样式管理窗的样例预览：复用主预览的光栅管线（描边/底框/阴影观感与
+  // 视频预览一致），在给定画布上居中绘制单行样例。无动画/边距/锚定；
+  // style.fontSize 即样例画布上的字形高度（ascent+descent 语义）。
+  function renderSample(canvasEl, style, text) {
+    if (!canvasEl || canvasEl.tagName !== 'CANVAS') return;
+    const g = canvasEl.getContext('2d');
+    if (!g) return;
+    const safeStyle = style || {};
+    const ratio = fontBoxRatio(safeStyle);
+    const track = { style: safeStyle, nativeFontSize: Math.max(1, Number(safeStyle.fontSize) || 24) };
+    const runs = [{ text: String(text ?? ''), emphasized: false, underlined: false,
+      struck: false, size: null }];
+    const u = global.AsrEditorUtils;
+    const layout = u.assCanvasLayoutLines(runs, measurerFor(track, ratio));
+    const dpr = Math.max(1, Math.min(3, Number(global.devicePixelRatio) || 1));
+    const margin = 6;
+    if (!layout.blockHeight) {
+      canvasEl.width = dpr * 2;
+      canvasEl.height = dpr * 2;
+      canvasEl.style.width = '2px';
+      canvasEl.style.height = '2px';
+      g.clearRect(0, 0, canvasEl.width, canvasEl.height);
+      return;
+    }
+    const entry = rasterizeLine(lineCacheKey(track, layout.lines[0], ratio), layout.lines[0], track, ratio);
+    const scaleX = Math.max(0, Number(safeStyle.scaleX ?? 100)) / 100;
+    const scaleY = Math.max(0, Number(safeStyle.scaleY ?? 100)) / 100;
+    const angle = (Number(safeStyle.angle) || 0) * Math.PI / 180;
+    const cos = Math.abs(Math.cos(angle));
+    const sin = Math.abs(Math.sin(angle));
+    // Size the canvas for the transformed bitmap, including outline/shadow.
+    const cssWidth = Math.ceil(scaleX * (entry.bitmap.width * cos + entry.bitmap.height * sin)) + margin * 2;
+    const cssHeight = Math.ceil(scaleY * (entry.bitmap.width * sin + entry.bitmap.height * cos)) + margin * 2;
+    canvasEl.width = Math.max(1, Math.round(cssWidth * dpr));
+    canvasEl.height = Math.max(1, Math.round(cssHeight * dpr));
+    canvasEl.style.width = `${cssWidth}px`;
+    canvasEl.style.height = `${cssHeight}px`;
+    g.setTransform(dpr, 0, 0, dpr, 0, 0);
+    g.clearRect(0, 0, cssWidth, cssHeight);
+    g.save();
+    g.translate(cssWidth / 2, cssHeight / 2);
+    g.scale(scaleX, scaleY);
+    if (angle) g.rotate(angle);
+    g.drawImage(entry.bitmap, -layout.blockWidth / 2 - entry.pad, -layout.blockHeight / 2 - entry.pad);
+    g.restore();
+  }
+
+
   function hide() {
     if (canvasEl) canvasEl.hidden = true;
   }
@@ -492,6 +540,7 @@
 
   global.MaweAssCanvas = Object.freeze({
     render,
+    renderSample,
     hide,
     clearCaches,
     // 渲染参数快照：e2e 迁移断言用（测试看到的就是画布实际消费的值）。

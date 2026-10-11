@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from tests.compact_assertions import CompactContainerAssertions
+
 import os
 import shutil
 import tempfile
@@ -170,7 +172,7 @@ class FreezeCommandTests(unittest.TestCase):
         self.assertIsNone(freezer_mod.cpu_freeze_command(UV, OCR_SPEC, BUILD))
 
 
-class EnsureFrozenTests(unittest.TestCase):
+class EnsureFrozenTests(CompactContainerAssertions, unittest.TestCase):
     def _temp_build_dir(self) -> Path:
         build = Path(tempfile.mkdtemp()) / "build"
         build.mkdir(parents=True)

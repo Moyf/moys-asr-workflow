@@ -1,0 +1,10 @@
+# Search source by default. Explicit paths / rg --no-ignore still inspect artifacts.
+/blank-editor.html
+/web/editor/boot/editor-bundle.js
+/web/editor/boot/editor-bundle.meta.json
+/web/launcher/boot/launcher-bundle.js
+/web/launcher/boot/launcher-bundle.meta.json
+/docs/temp/*.json
+*.log
+/pnpm-lock.yaml
+/uv.lock

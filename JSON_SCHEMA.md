@@ -400,7 +400,7 @@
     "x": 0.1, "y": 0.76, "width": 0.8, "height": 0.16, "font_size": 32, "font_family": "yahei", "color": "#ffffff",
     "speaker_labels": { "mapping_enabled": true, "enabled": true, "separator": "：", "names": { "yellow": "SP1", "green": "SP2", "red": "SP3", "purple": "SP4", "blue": "SP5" } }
   },
-  "extension_subtitle": { "font_size": 30, "font_family": "yahei", "color": "#ffd34d" },
+  "extension_subtitle": { "font_size": 30, "font_family": "yahei", "color": "#eac953" },
   "sticker": { "x": 0.73, "y": 0.04, "width": 0.24, "height": 0.3 }
 }
 ```
@@ -415,7 +415,7 @@
 | `font_family` | `string` | 否 | 字幕预览字体族：内置键 `default`、`yahei`、`hei`、`song`、`sans`，或本机字体族名称（最长 128 个字符） |
 | `background_color` | `string` | 否 | 字幕预览背景色，6 位十六进制颜色 `#RRGGBB`；缺失时使用黑色 |
 | `background_alpha` | `number` | 否 | 字幕预览背景不透明度，范围 `[0, 1]`；缺失时使用 `0.65`，设为 `0` 时隐藏背景 |
-| `color` | `string` | 否 | 六位十六进制颜色，如 `#ffffff`；主字幕默认白色，副字幕默认黄色 `#ffd34d` |
+| `color` | `string` | 否 | 六位十六进制颜色，如 `#ffffff`；主字幕默认白色，副字幕默认黄色 `#eac953` |
 | `color_underline` | `boolean` | 否 | 播放预览是否按字幕颜色快照应用颜色样式；缺失时视为 `true`（默认开启），设为 `false` 时关闭颜色预览。保留该字段以兼容旧工程 |
 | `color_style` | `string` | 否 | CSS 预览的颜色样式：`underline`（下划线，默认）、`text`（文字颜色）或 `stroke`（描边）；历史值 `shadow` 保留读取兼容 |
 | `ass_color_style` | `string` | 否 | ASS 导出与 ASS 预览中颜色字幕的应用方式：`text`（作为字幕颜色，默认）、`speaker`（仅作为说话人名称颜色）、`stroke`（作为描边颜色）或 `none`（无影响，颜色字幕使用统一样式） |
@@ -904,7 +904,7 @@ uv run python edit.py your_generated.mosp
 | `preview.extension_subtitle` | object | ❌ | 副字幕样式；沿用主字幕预览框 |
 | `preview.extension_subtitle.font_size` | number | ❌ | px，范围 `[12,96]`；缺失时默认比主字幕小 2px |
 | `preview.extension_subtitle.font_family` | string | ❌ | `default` / `yahei` / `hei` / `song` / `sans` |
-| `preview.extension_subtitle.color` | string | ❌ | `#RRGGBB` 六位十六进制颜色，默认 `#ffd34d` |
+| `preview.extension_subtitle.color` | string | ❌ | `#RRGGBB` 六位十六进制颜色，默认 `#eac953` |
 | `preview.sticker.x` | number | ❌ | 归一化 `[0,1]`，`x + width <= 1` |
 | `preview.sticker.y` | number | ❌ | 归一化 `[0,1]`，`y + height <= 1` |
 | `preview.sticker.width` | number | ❌ | 归一化 `[0,1]`，编辑器最小 0.20 |

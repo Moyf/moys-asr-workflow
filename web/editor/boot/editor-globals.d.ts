@@ -150,6 +150,9 @@ interface Window {
   MAWE_I18N: any;
   ASR_EDITOR_PALETTE?: Array<{ name: string; value: string }>;
   showSaveFilePicker?: any;
+  MOSEConfirmProjectSwitch?: () => Promise<boolean>;
+  MOSESuppressBeforeUnload?: () => void;
+  MOSEUpdateDesktopPathActions?: () => void;
 }
 
 // Replaceable browser/desktop capabilities used by editor I/O.
@@ -159,10 +162,26 @@ interface MaweHostApi {
     hasSavePicker(): boolean;
     pickSaveFile(options: object): Promise<FileSystemFileHandle>;
     writeBlob(handle: FileSystemFileHandle, buildBlob: () => Blob): Promise<void>;
-    downloadBlob(blob: Blob, filename: string): void;
+    downloadBlob(blob: Blob, filename: string): Promise<any>;
   };
   server: { fetch(url: string | URL, options?: RequestInit): Promise<Response> };
   runtime: { getNavigator(): Navigator | undefined; hasUserActivation(): boolean };
+  desktop: {
+    available(): boolean;
+    chooseFile(kind: 'project' | 'media', language?: string): Promise<any>;
+    chooseDirectory(language?: string): Promise<any>;
+    registerFile(file: File, kind?: 'project' | 'media' | 'any'): Promise<any>;
+    command(name: string, payload?: Record<string, unknown>): Promise<any>;
+    chooseCloseAction(requestId: number, hasUnsavedChanges: boolean, language?: string): Promise<any>;
+    chooseProjectSwitchAction(hasUnsavedChanges: boolean, language?: string): Promise<any>;
+    chooseExternalChangeAction(hasUnsavedChanges: boolean, language?: string): Promise<any>;
+    confirmExternalReload(hasUnsavedChanges: boolean, language?: string): Promise<any>;
+    confirmClose(requestId: number, accepted: boolean): Promise<any>;
+    onProjectOpen(listener: (result: any) => void): () => void;
+    onProjectStatus(listener: (status: any) => void): () => void;
+    onCloseRequest(listener: (request: { requestId: number }) => void): () => void;
+    onExportResult(listener: (result: any) => void): () => void;
+  };
 }
 declare var MaweHost: MaweHostApi;
 interface Window { MaweHost: MaweHostApi; }

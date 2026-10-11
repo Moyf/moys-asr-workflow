@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from tests.compact_assertions import CompactContainerAssertions
+
 import io
 import tempfile
 import unittest
@@ -12,7 +14,7 @@ from maw.local_log import LocalLogSink
 import maw_gui
 
 
-class ErrorContextTests(unittest.TestCase):
+class ErrorContextTests(CompactContainerAssertions, unittest.TestCase):
     def test_version_uses_release_metadata_and_tolerates_missing_or_invalid_file(self):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)

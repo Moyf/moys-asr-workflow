@@ -240,7 +240,7 @@ test('translates ASS special text format samples and rule hints for every symbol
 // of silently selecting whichever python.exe happens to be on PATH.
 const configuredPython = String(process.env.MAW_TEST_PYTHON || '').trim();
 const PYTHON_COMMAND = configuredPython || 'uv';
-const PYTHON_PREFIX_ARGS = configuredPython ? [] : ['run', '--frozen', 'python'];
+const PYTHON_PREFIX_ARGS = configuredPython ? [] : ['run', '--no-sync', 'python'];
 
 function pythonCommandArgs(args) {
   return [...PYTHON_PREFIX_ARGS, ...args];
@@ -3352,7 +3352,7 @@ test('ASS emphasis syntax colors only marked runs and preserves other export mod
     extensionSegments: [{ start: 0, end: 1000, text: '副 **重点**' }],
     overlaySegments: [{ start: 0, end: 1000, text: '叠 **重点**' }],
   });
-  assert.match(tracks, /Dialogue: 1,[^\n]*副 \{\\1c&H0000FF00&\\fs81\}重点\{\\1c&H004DD3FF&\\fs54\}/);
+  assert.match(tracks, /Dialogue: 1,[^\n]*副 \{\\1c&H0000FF00&\\fs81\}重点\{\\1c&H0053C9EA&\\fs54\}/);
   assert.match(tracks, /Dialogue: 2,[^\n]*叠 \{\\1c&H000000FF&\\fs\d+\}重点/);
   assert.equal(helpers.normalizeAssStyle({ emphasisScale: 1.27 }).emphasisScale, 1.25);
   assert.equal(helpers.normalizeAssStyle({ emphasisScale: 5 }).emphasisScale, 1.5);
@@ -3578,6 +3578,20 @@ test('migrates legacy builtin names while preserving custom names', () => {
   });
   assert.equal(helpers.assStyleForId(renamed, 'ass').name, '我的字幕样式');
   assert.equal(helpers.assProfileForId(renamed, 'ass').name, '我的方案');
+});
+
+test('migrates the legacy builtin extension style color while preserving custom colors', () => {
+  const library = helpers.normalizeAssStyleLibrary({
+    styles: [{ id: 'ass-extension', primaryColor: '#ffd34d' }],
+    assProfiles: [{ id: 'ass' }],
+  });
+  assert.equal(helpers.assStyleForId(library, 'ass-extension').primaryColor, '#eac953');
+
+  const customized = helpers.normalizeAssStyleLibrary({
+    styles: [{ id: 'ass-extension', primaryColor: '#ff0000' }],
+    assProfiles: [{ id: 'ass' }],
+  });
+  assert.equal(helpers.assStyleForId(customized, 'ass-extension').primaryColor, '#ff0000');
 });
 
 test('migrates v1 emphasis defaults for builtins without changing custom or current values', () => {

@@ -23,7 +23,7 @@ def _targets() -> tuple[tuple[str, Path, str, str], ...]:
         ),
         (
             "Launcher mock API",
-            ROOT / "web" / "launcher" / "launcher.js",
+            ROOT / "web" / "launcher" / "boot" / "launcher-mock-api.js",
             r'(appVersion:\s*")[^"]+(")',
             r'appVersion:\s*"([^"]+)"',
         ),

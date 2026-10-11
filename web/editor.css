@@ -533,6 +533,17 @@
   }
   h1 .json-name:hover { background: var(--bg-raised); color: var(--accent-hover); border-color: var(--border-strong); }
   h1 .json-name.empty { color: var(--text-faint); border-color: var(--border-subtle); background: transparent; cursor: default; pointer-events: none; }
+  h1 .desktop-path-dropdown { position: relative; flex: 0 0 auto; align-self: center; }
+  h1 .desktop-path-dropdown[hidden] { display: none; }
+  h1 .desktop-path-dropdown > button {
+    display: inline-flex; align-items: center; justify-content: center;
+    width: 26px; height: 26px; padding: 0; font-size: 18px; line-height: 1;
+  }
+  h1 .desktop-path-dropdown .dropdown-item { white-space: nowrap; }
+  h1 .desktop-path-dropdown .dropdown-item[hidden] { display: none; }
+  h1 .last-export-menu > #last-export-summary { width: auto; padding: 0 8px; font-size: 12px; }
+  .project-backup-actions { display: flex; flex-wrap: wrap; gap: 8px; }
+  .sticker-root-path-actions { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 8px; }
 
   /* === Server connection warning ===
      This is a persistent state banner rather than a transient flashHint: once
@@ -689,7 +700,7 @@
   .subtitle-overlay .subtitle-extension-text {
     --subtitle-preview-font-size: 16px;
     font-size: var(--subtitle-preview-font-size);
-    color: #ffd34d;
+    color: #eac953;
   }
   .player-wrap.empty-state .subtitle-overlay .subtitle-extension-text {
     background: transparent;
@@ -1773,8 +1784,7 @@
   .ass-style-preview-actions { margin: 0; line-height: 1.7; }
   .ass-style-preview-actions:has(button[hidden]) { display: none; }
   #ass-style-preview-sample {
-    position: relative; z-index: 1; display: inline-block; align-self: center; max-width: 100%; padding: 4px 9px; color: #fff;
-    font-size: 24px; line-height: 1.2; text-align: center; white-space: pre-wrap; word-break: break-word;
+    position: relative; z-index: 1; display: block; margin: 0 auto; max-width: 100%;
   }
   #ass-profile-preview-summary { position: relative; z-index: 1; color: var(--text-primary); font-size: 12px; line-height: 1.5; }
   /* 「当前方案」是纯文字摘要：底色跟随明暗模式，去掉胶片网格，
@@ -1965,12 +1975,18 @@
   /* === 下拉菜单（导出额外数据）=== */
   .toolbar .dropdown { position: relative; display: inline-block; }
   .toolbar .dropdown[hidden] { display: none; }
-  .toolbar .dropdown-menu {
+  .toolbar .dropdown-menu,
+  h1 .desktop-path-dropdown > .dropdown-menu {
     display: none;
     position: absolute; right: 0; top: calc(100% + 4px);
     background: var(--bg-overlay); border: 1px solid var(--menu-border);
     border-radius: var(--radius-md); padding: 4px 0; min-width: 240px;
     box-shadow: var(--shadow-3); z-index: 200;
+  }
+  h1 .desktop-path-dropdown > .dropdown-menu {
+    position: fixed; left: 0; right: auto; top: 0;
+    width: max-content; min-width: 180px;
+    max-width: min(320px, calc(100vw - 16px)); z-index: 1200;
   }
   /* 第一行左侧的工程下拉：菜单与按钮左对齐、宽度随内容收缩，
      避免 right:0 把菜单推出视口左缘或显得过宽。 */
@@ -2030,7 +2046,8 @@
     margin-top: 2px; text-align: center; color: var(--text-secondary);
   }
   .toolbar .color-filter-menu .color-filter-clear[hidden] { display: none; }
-  .toolbar .dropdown.open .dropdown-menu { display: block; }
+  .toolbar .dropdown.open .dropdown-menu,
+  h1 .desktop-path-dropdown.open > .dropdown-menu { display: block; }
   .toolbar .dropdown-submenu { position: relative; }
   .toolbar .dropdown-submenu > .dropdown-submenu-menu {
     display: none;
@@ -2056,11 +2073,13 @@
     transform: translateY(-50%);
     color: var(--text-muted); font-size: 16px; line-height: 1;
   }
-  .toolbar .dropdown-item:focus-visible {
+  .toolbar .dropdown-item:focus-visible,
+  h1 .desktop-path-dropdown .dropdown-item:focus-visible {
     outline: 2px solid var(--accent-line);
     outline-offset: -2px;
   }
-  .toolbar .dropdown-item[hidden] { display: none; }
+  .toolbar .dropdown-item[hidden],
+  h1 .desktop-path-dropdown .dropdown-item[hidden] { display: none; }
   #batch-operations-dropdown.open > #batch-operations-menu {
     display: flex; flex-direction: column; gap: 4px; padding: 6px;
     z-index: 1000;
@@ -2113,12 +2132,14 @@
   .toolbar .multi-subtitle-settings-menu .dropdown-item.disabled {
     background: var(--btn-bg); border-color: var(--border-subtle); color: var(--text-faint);
   }
-  .toolbar .dropdown-item {
+  .toolbar .dropdown-item,
+  h1 .desktop-path-dropdown .dropdown-item {
     padding: 7px 14px; cursor: pointer; user-select: none;
     color: var(--text-secondary); font-size: 13px;
     transition: background var(--t-fast), color var(--t-fast);
   }
-  .toolbar .dropdown-item:hover { background: var(--accent-tint); color: var(--text-primary); }
+  .toolbar .dropdown-item:hover,
+  h1 .desktop-path-dropdown .dropdown-item:hover { background: var(--accent-tint); color: var(--text-primary); }
   .toolbar .dropdown-item.disabled { opacity: .42; cursor: not-allowed; pointer-events: none; }
   /* 表情包导出按模式互斥灰显：保留 hover 与 click（title 提示原因、点击给 flashHint 指引） */
   .toolbar .dropdown-item.sticker-disabled { opacity: .42; cursor: not-allowed; }
@@ -3009,8 +3030,8 @@
     35%, 75% { box-shadow: none; }
   }
   .multi-subtitle-split-text .multi-subtitle-split-char { display: inline-block; padding: 0 1px; }
-  .multi-subtitle-split-text .multi-subtitle-split-char.split-left { color: #ffd34d; }
-  .multi-subtitle-split-text .multi-subtitle-split-char.split-right { color: #78e08f; }
+  .multi-subtitle-split-text .multi-subtitle-split-char.split-left { color: #eac953; }
+  .multi-subtitle-split-text .multi-subtitle-split-char.split-right { color: #91e895; }
   .multi-subtitle-split-gap {
     display: inline-block; position: relative; width: auto; height: 1.8em;
     vertical-align: -0.35em; cursor: crosshair; white-space: pre;
@@ -3052,8 +3073,8 @@
   }
   .multi-subtitle-split-preview { min-height: 38px; padding-top: 9px; color: var(--text-secondary); white-space: pre-wrap; }
   .multi-subtitle-split-preview-line { margin-top: 4px; }
-  .multi-subtitle-split-preview-left { color: #ffd34d; }
-  .multi-subtitle-split-preview-right { color: #78e08f; }
+  .multi-subtitle-split-preview-left { color: #eac953; }
+  .multi-subtitle-split-preview-right { color: #91e895; }
   .multi-subtitle-split-preview-separator { color: var(--text-muted); padding: 0 2px; }
   .multi-subtitle-split-preview-label { color: var(--text-muted); }
   .multi-subtitle-split-preview.locked {
@@ -4119,3 +4140,62 @@
 }
 .markers-item-actions button.danger { color: #e35a62; }
 .markers-item-actions button.danger:hover:not(:disabled) { color: #fff; background: #ad3b42; border-color: #e35a62; }
+
+/* ============================================================
+   共享悬停 tooltip（web/shared/tooltip.js）
+   颜色全部来自设计令牌，明暗主题随 data-theme 级联自动切换；
+   亮色主题仅阴影浓度需要单独减弱。
+   箭头实现：外层盒按方向 clip-path 保留半个菱形，::before 画
+   旋转 45° 的方块补出两条带边框的斜边。
+   ============================================================ */
+.mawe-tooltip {
+  position: fixed;
+  left: 0; top: 0;
+  z-index: 1200;
+  pointer-events: none;
+  opacity: 0;
+  transition: opacity 120ms ease, transform 120ms ease;
+}
+.mawe-tooltip.show { opacity: 1; transform: translate(0, 0); }
+.mawe-tooltip .mawe-tooltip-text {
+  position: fixed;
+  left: 0; top: 0;
+  box-sizing: border-box;
+  width: max-content;
+  max-width: 320px;
+  padding: 6px 10px;
+  border: 1px solid var(--border-strong);
+  border-radius: 8px;
+  background: var(--bg-overlay);
+  color: var(--text-primary);
+  font-size: 12px;
+  line-height: 1.55;
+  white-space: pre-line;
+  overflow-wrap: anywhere;
+  box-shadow: 0 6px 20px rgba(0, 0, 0, 0.45);
+}
+:root[data-theme="light"] .mawe-tooltip .mawe-tooltip-text {
+  box-shadow: 0 6px 20px rgba(15, 23, 42, 0.18);
+}
+.mawe-tooltip .mawe-tooltip-arrow {
+  position: fixed;
+  left: 0; top: 0;
+  width: 14px; height: 14px;
+  pointer-events: none;
+}
+.mawe-tooltip .mawe-tooltip-arrow::before {
+  content: "";
+  position: absolute;
+  left: 2px; top: 2px;
+  width: 10px; height: 10px;
+  box-sizing: border-box;
+  border: 1px solid var(--border-strong);
+  background: var(--bg-overlay);
+  transform: rotate(45deg);
+}
+/* 保留指向目标的那半菱形：below=气泡在下、箭头朝上；above 反之；
+   right=气泡在右、箭头朝左；left 反之。多留 1px 由 JS 侧偏移覆盖气泡边框线。 */
+.mawe-tooltip .mawe-tooltip-arrow.below { clip-path: polygon(0px 7px, 14px 7px, 7px 0px); }
+.mawe-tooltip .mawe-tooltip-arrow.above { clip-path: polygon(0px 7px, 14px 7px, 7px 14px); }
+.mawe-tooltip .mawe-tooltip-arrow.right { clip-path: polygon(7px 0px, 7px 14px, 0px 7px); }
+.mawe-tooltip .mawe-tooltip-arrow.left  { clip-path: polygon(7px 0px, 7px 14px, 14px 7px); }

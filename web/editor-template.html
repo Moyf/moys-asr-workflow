@@ -38,8 +38,32 @@ __WAVEFORM_CSS__
 
 <h1>
   <span class="media-name __MEDIA_NAME_CLASS__" id="media-name" title="__MEDIA_NAME_TITLE__">__MEDIA_NAME_DISPLAY__</span>
+  <span class="dropdown desktop-path-dropdown" id="media-path-menu" hidden>
+    <button type="button" id="media-path-menu-btn" aria-label="媒体文件操作" title="媒体文件操作"
+            aria-haspopup="menu" aria-expanded="false">⋯</button>
+    <div class="dropdown-menu" id="media-path-menu-items" role="menu" aria-label="媒体文件操作">
+      <div class="dropdown-item" data-desktop-path-open="media" role="menuitem" tabindex="0">打开所在文件夹</div>
+      <div class="dropdown-item" data-desktop-path-copy="media" role="menuitem" tabindex="0">复制完整路径</div>
+    </div>
+  </span>
   <span class="app-version" id="app-version" data-label="版本号">版本号 __APP_VERSION__</span>
   <span class="json-name __JSON_NAME_CLASS__" id="json-name" title="点击复制工程文件名">__JSON_DISPLAY__</span>
+  <span class="dropdown desktop-path-dropdown" id="project-path-menu" hidden>
+    <button type="button" id="project-path-menu-btn" aria-label="工程文件操作" title="工程文件操作"
+            aria-haspopup="menu" aria-expanded="false">⋯</button>
+    <div class="dropdown-menu" id="project-path-menu-items" role="menu" aria-label="工程文件操作">
+      <div class="dropdown-item" data-desktop-path-open="project" role="menuitem" tabindex="0">打开所在文件夹</div>
+      <div class="dropdown-item" data-desktop-path-copy="project" role="menuitem" tabindex="0">复制完整路径</div>
+    </div>
+  </span>
+  <span class="dropdown desktop-path-dropdown last-export-menu" id="last-export-menu" hidden>
+    <button type="button" id="last-export-summary" title="打开最近一次成功导出的文件夹"
+            aria-haspopup="menu" aria-expanded="false">定位上次导出</button>
+    <div class="dropdown-menu" id="last-export-menu-items" role="menu" aria-label="最近一次导出文件操作">
+      <div class="dropdown-item" data-desktop-export-open role="menuitem" tabindex="0">打开所在文件夹</div>
+      <div class="dropdown-item" data-desktop-export-copy role="menuitem" tabindex="0">复制完整路径</div>
+    </div>
+  </span>
 </h1>
 <div class="server-connection-banner" id="server-connection-banner" hidden role="alert" aria-live="assertive">
   <span class="server-connection-banner-icon" aria-hidden="true">!</span>
@@ -1009,7 +1033,7 @@ __WAVEFORM_CSS__
         <div class="subtitle-preview-setting-pair">
           <div class="subtitle-preview-setting-cell" title="选择播放器画面内副字幕预览的文字颜色">
             <span>文字颜色</span>
-            <input type="color" class="editor-settings-color-input" id="extension-subtitle-color" value="#ffd34d" aria-label="文字颜色">
+            <input type="color" class="editor-settings-color-input" id="extension-subtitle-color" value="#eac953" aria-label="文字颜色">
           </div>
           <div class="subtitle-preview-setting-cell" title="调整播放器画面内副字幕预览的背景色">
             <span>背景颜色</span>
@@ -1117,7 +1141,7 @@ __WAVEFORM_CSS__
       在导出的字幕开头加上说话人。只影响导出后的字幕，不会改动工程里的字幕文本。
     </small>
     </div></div><div class="editor-settings-page" id="editor-settings-page-project-sticker" role="tabpanel" aria-labelledby="editor-settings-tab-project-sticker" hidden><span class="editor-settings-group-heading" id="project-sticker-root-title">表情包目录</span>
-<div class="editor-settings-group" role="group" aria-labelledby="project-sticker-root-title"><div class="editor-settings-sub-group"><label class="toggle editor-settings-item"><input type="checkbox" id="project-sticker-root-override"> 覆盖默认文件夹</label><label class="editor-settings-item" for="project-sticker-root-input">工程目录</label><div class="sticker-root-controls"><input type="text" id="project-sticker-root-input" placeholder="输入绝对路径" autocomplete="off" aria-describedby="project-sticker-root-status"><button type="button" id="project-sticker-root-read">应用</button></div><p class="editor-settings-hint" id="project-sticker-root-status" role="status" aria-live="polite"></p><small class="editor-settings-hint">关闭覆盖时使用<button type="button" class="editor-settings-inline-action" data-settings-page="sticker" title="打开全局设置的表情包页">全局默认目录</button>，不把默认路径写入工程。</small></div></div>
+<div class="editor-settings-group" role="group" aria-labelledby="project-sticker-root-title"><div class="editor-settings-sub-group"><label class="toggle editor-settings-item"><input type="checkbox" id="project-sticker-root-override"> 覆盖默认文件夹</label><label class="editor-settings-item" for="project-sticker-root-input">工程目录</label><div class="sticker-root-controls"><input type="text" id="project-sticker-root-input" placeholder="输入绝对路径" autocomplete="off" aria-describedby="project-sticker-root-status"><button type="button" id="project-sticker-root-read">应用</button><button type="button" id="project-sticker-root-choose" hidden>选择文件夹…</button></div><div class="sticker-root-path-actions"><button type="button" id="sticker-root-open" data-desktop-path-open="stickers" hidden>打开所在文件夹</button><button type="button" id="sticker-root-copy-path" data-desktop-path-copy="stickers" hidden>复制完整路径</button></div><p class="editor-settings-hint" id="project-sticker-root-status" role="status" aria-live="polite"></p><small class="editor-settings-hint">关闭覆盖时使用<button type="button" class="editor-settings-inline-action" data-settings-page="sticker" title="打开全局设置的表情包页">全局默认目录</button>，不把默认路径写入工程。</small></div></div>
 </div>
 </div></div></section>
 <section class="editor-settings-panel editor-settings-window" id="editor-settings-panel" role="dialog" aria-modal="false" aria-label="全局设置" aria-hidden="true">
@@ -1518,7 +1542,10 @@ __WAVEFORM_CSS__
       <label class="toggle editor-settings-item"><input type="checkbox" id="project-backup-enabled" checked> 自动备份</label>
       <label class="editor-settings-item">备份间隔<span class="gap-remove-number-control"><input id="project-backup-minutes" type="number" min="1" max="1440" step="1" value="5"></span></label>
       <label class="editor-settings-item">保留版本数<span class="gap-remove-number-control"><input id="project-backup-limit" type="number" min="1" max="1000" step="1" value="20"></span></label>
-      <div class="editor-settings-field"><button type="button" id="project-backup-open">打开备份文件夹</button></div>
+      <div class="editor-settings-field project-backup-actions">
+        <button type="button" id="project-backup-open">打开备份文件夹</button>
+        <button type="button" id="project-backup-copy-path" data-desktop-path-copy="backups">复制备份目录路径</button>
+      </div>
       <small class="editor-settings-hint">开启后定时备份，手动保存也创建带时间戳的版本；超出上限清理最早版本。备份位于工程对应的 _maw/备份（英文界面为 backups）。</small>
       <small class="editor-settings-hint" id="project-backup-unavailable">工程备份需要本地 Server 绑定工程；浏览器另存为的文件不支持目录备份。</small>
     </div>
@@ -1528,7 +1555,7 @@ __WAVEFORM_CSS__
 <div class="editor-settings-group" role="group" aria-labelledby="sticker-feature-title"><div class="editor-settings-sub-group"><label class="toggle editor-settings-item" title="关闭后隐藏「预览表情包」开关，右键菜单不再提供分配表情包；工程内已有表情包数据保留"><input type="checkbox" id="sticker-feature-toggle" checked> 启用表情包</label>
 <small class="editor-settings-hint">关闭后不影响工程里已设置的表情包数据，重新开启即可恢复预览与分配。</small></div></div>
 <span class="editor-settings-group-heading" id="default-sticker-root-title">默认文件夹</span>
-<div class="editor-settings-group" role="group" aria-labelledby="default-sticker-root-title"><div class="editor-settings-sub-group"><label class="editor-settings-item" for="sticker-root-input">默认目录</label><div class="sticker-root-controls"><input type="text" id="sticker-root-input" placeholder="输入绝对路径" autocomplete="off" aria-describedby="sticker-root-status"><button type="button" id="sticker-root-read">应用</button></div><p class="editor-settings-hint" id="sticker-root-status" role="status" aria-live="polite"></p><small class="editor-settings-hint">工程设置中的覆盖目录优先；清空覆盖后恢复使用默认目录。</small></div></div>
+<div class="editor-settings-group" role="group" aria-labelledby="default-sticker-root-title"><div class="editor-settings-sub-group"><label class="editor-settings-item" for="sticker-root-input">默认目录</label><div class="sticker-root-controls"><input type="text" id="sticker-root-input" placeholder="输入绝对路径" autocomplete="off" aria-describedby="sticker-root-status"><button type="button" id="sticker-root-read">应用</button><button type="button" id="sticker-root-choose" hidden>选择文件夹…</button></div><p class="editor-settings-hint" id="sticker-root-status" role="status" aria-live="polite"></p><small class="editor-settings-hint">工程设置中的覆盖目录优先；清空覆盖后恢复使用默认目录。</small></div></div>
 </div>
   <div class="editor-settings-page" id="editor-settings-page-easter-eggs" role="tabpanel" aria-labelledby="editor-settings-tab-easter-eggs" hidden>
 
@@ -1701,7 +1728,7 @@ __WAVEFORM_CSS__
             <label class="ass-style-field" id="ass-style-large-text-field">放大文字比例<input type="number" id="ass-style-large-text-scale" data-ass-style-field="largeTextScale" min="1" max="3" step="0.05" value="1.5"></label>
           </div>
         </section>
-        <div class="ass-style-preview-card"><span class="ass-style-preview-label">ASS 预览</span><span id="ass-style-preview-sample">Aa 字幕预览 / 字幕样例</span></div>
+        <div class="ass-style-preview-card"><span class="ass-style-preview-label">ASS 预览</span><canvas id="ass-style-preview-sample"></canvas></div>
         <p class="ass-style-preview-actions editor-settings-hint"><span>如果想要查看当前画面的实际 ASS 字幕效果，可以</span> <button type="button" class="ass-preview-link" id="ass-style-frame-preview-open" hidden>打开 ASS 实际画面预览窗口</button></p>
       </section>
       <section class="ass-style-form" id="ass-profile-form" aria-labelledby="ass-profile-form-title" hidden>

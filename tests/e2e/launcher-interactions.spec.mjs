@@ -633,8 +633,8 @@ test('software update status, download progress, cancellation, and restart flow 
   await page.locator('#batchConfirmYes').click();
   await expect.poll(() => page.evaluate(() => window.__updateCalls.map(({ method }) => method))).toContain('apply_update');
   await page.locator('#settingsClose').click();
-  await page.locator('#langToggle').click();
   await page.locator('#settingsButton').click();
+  await page.locator('#langEn').click();
   await expect(page.locator('[data-i18n="settings_updates"]')).toHaveText('Software updates');
   await expect(page.locator('#updateNow')).toHaveText('Restart and install');
 });
@@ -717,13 +717,13 @@ test('Qwen regional settings use a narrow advanced link and live at the bottom o
   })).toEqual({ gridColumnStart: '1', gridColumnEnd: '-1' });
   await expect(regionalHint.locator('button')).toHaveCount(1);
   await expect(regionalHint.locator('button')).toHaveText('⚙️ 设置 → 运行环境');
-  await expect(regionalHint).toContainText('配置阿里云百炼地域。');
+  await expect(regionalHint).toContainText('配置阿里云百炼地域与业务空间。');
   await page.locator('#openDashscopeRegionSettings').click();
   await expect(page.locator('#settingsModal')).toBeVisible();
   await expect(page.locator('#settingsLlmTab')).toHaveAttribute('aria-selected', 'true');
   await expect(page.locator('#settingsRuntimeTab')).toHaveAttribute('aria-selected', 'false');
   await expect(page.locator('#dashscopeRegionPanel')).toBeVisible();
-  await expect(page.locator('#dashscopeRegionPanel h3')).toHaveText('阿里云百炼 地域设置');
+  await expect(page.locator('#dashscopeRegionPanel h3')).toHaveText('阿里云百炼地域与业务空间');
   expect(await page.locator('#dashscopeRegionPanel').evaluate((element) => element.parentElement?.id)).toBe('settingsLlmPanel');
 });
 
@@ -756,7 +756,7 @@ test('segmentation settings live under Processing and validation opens that tab'
   await expect(page.locator('#settingsModal')).toBeVisible();
   await expect(page.locator('#settingsProcessingTab')).toHaveAttribute('aria-selected', 'true');
   await expect(page.locator('#segmentationSettingsSection')).toBeVisible();
-  await expect(page.locator('#maxLenError')).toHaveText('断句参数无效：请输入整数，并确保单句上限不小于短句合并值。');
+  await expect(page.locator('#maxLenError')).toHaveText('切句参数无效：请输入整数，并确保最大字数不小于短句合并阈值。');
 });
 
 test('does not start local transcription while model status is still checking', async ({ page }) => {
@@ -905,12 +905,12 @@ test('Custom provider labels and missing-key errors follow the selected language
 
   const customOption = page.locator('#postprocessProvider option[value="custom"]');
   const settingsCustomOption = page.locator('#llmProvider option[value="custom"]');
-  await expect(customOption).toHaveText('OpenAI 通用接口');
-  await expect(settingsCustomOption).toHaveText('OpenAI 通用接口');
+  await expect(customOption).toHaveText('自定义接口（或本地模型）');
+  await expect(settingsCustomOption).toHaveText('自定义接口（或本地模型）');
 
   await page.evaluate(() => document.getElementById('langEn').click());
-  await expect(customOption).toHaveText('OpenAI-compatible API');
-  await expect(settingsCustomOption).toHaveText('OpenAI-compatible API');
+  await expect(customOption).toHaveText('Custom API (or local model)');
+  await expect(settingsCustomOption).toHaveText('Custom API (or local model)');
   await page.locator('#toolboxLlmTab').click();
   await page.locator('#openLlmSettings').click();
   await page.evaluate(() => {
@@ -984,7 +984,7 @@ test('LLM HTTP failures give provider-aware actions without showing the key', as
   await expect(page.locator('#llmSettingsSaveStatus')).toContainText('当前供应商：DeepSeek 官网');
   await expect(page.locator('#llmSettingsSaveStatus')).toContainText('API URL');
   await expect(page.locator('#llmSettingsSaveStatus')).toContainText('官方控制台');
-  await expect(page.locator('#llmSettingsSaveStatus')).toContainText('OpenAI 通用接口');
+  await expect(page.locator('#llmSettingsSaveStatus')).toContainText('自定义接口（或本地模型）');
   await expect(page.locator('#llmSettingsSaveStatus')).not.toContainText('正确配置模型名');
   await expect(page.locator('#llmSettingsSaveStatus')).not.toContainText('test-only-key');
 
@@ -1010,7 +1010,7 @@ test('LLM HTTP failures give provider-aware actions without showing the key', as
   await page.evaluate(() => { window.__llmFailureStatus = 401; window.__llmFailureProvider = 'custom'; });
   await page.locator('#testLlmConnection').click();
   await expect(page.locator('#llmSettingsSaveStatus')).toContainText('认证失败（HTTP 401');
-  await expect(page.locator('#llmSettingsSaveStatus')).toContainText('当前供应商：OpenAI 通用接口');
+  await expect(page.locator('#llmSettingsSaveStatus')).toContainText('当前供应商：自定义接口（或本地模型）');
   await expect(page.locator('#llmSettingsSaveStatus')).toContainText('API URL、API Key 是否来自同一服务商');
   await expect(page.locator('#llmSettingsSaveStatus')).toContainText('正确配置模型名');
   await expect(page.locator('#llmSettingsSaveStatus')).toContainText('请勿在错误报告中粘贴你的个人 API Key');
@@ -1289,7 +1289,7 @@ test('launcher reports a server disconnect without manual refresh', async ({ pag
 
   await page.locator('#openMawe').click();
   await expect(page.locator('#status')).toContainText('字幕编辑服务器已断开', { timeout: 10_000 });
-  await expect(page.locator('#openMawe')).toContainText('打开编辑器');
+  await expect(page.locator('#openMawe')).toContainText('启动 Server 版字幕编辑器');
   await expect(page.locator('#stopServer')).toBeHidden();
   expect(await page.evaluate(() => window.__serverStatusCalls)).toBeGreaterThanOrEqual(2);
 });
@@ -1316,19 +1316,19 @@ test('restarting after a server disconnect does not reopen the editor page', asy
 
   // 先让服务器上线，使监控启动并处于 connected 状态。
   await page.locator('#openMawe').click();
-  await expect(page.locator('#openMawe')).toContainText('打开编辑器', { timeout: 10_000 });
+  await expect(page.locator('#openMawe')).toContainText('打开字幕编辑器', { timeout: 10_000 });
   await page.waitForFunction(() => window.__openUrlCalls.length === 1);
 
   // 模拟断开。
   await page.evaluate(() => { window.__serverHealthy = false; });
   await expect(page.locator('#status')).toContainText('字幕编辑服务器已断开', { timeout: 10_000 });
-  await expect(page.locator('#openMawe')).toContainText('打开编辑器');
+  await expect(page.locator('#openMawe')).toContainText('启动 Server 版字幕编辑器');
 
   // 模拟重启成功：只更新提示，不再调用 open_url 打开新页面。
   await page.evaluate(() => { window.__serverHealthy = true; });
   await page.locator('#openMawe').click();
   await expect(page.locator('#status')).toContainText('回到原编辑器页面', { timeout: 10_000 });
-  await expect(page.locator('#openMawe')).toContainText('打开编辑器');
+  await expect(page.locator('#openMawe')).toContainText('打开字幕编辑器');
   await expect(page.locator('#stopServer')).toBeVisible();
   await page.waitForFunction(() => window.__openUrlCalls.length === 1, undefined, { timeout: 5_000 });
   expect(await page.evaluate(() => window.__openUrlCalls[0])).toBe('http://127.0.0.1:8250/');
