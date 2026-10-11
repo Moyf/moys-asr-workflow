@@ -366,6 +366,12 @@ export function createWaveformModule(dependencies) {
           event.preventDefault();
           event.stopPropagation();
           if (event.ctrlKey || event.metaKey) return;
+          // 字词时间码显示时，主字幕文本与字词绑定：波形字幕块双击不再直接
+          // 进入编辑，提示先退出字词码模式（字幕列表的行内编辑不受影响）。
+          if (this.options.wordTiming?.enabled) {
+            this.options.onMainCueDoubleClickBlocked?.();
+            return;
+          }
           if (this.options.enterCueEditor) this.options.enterCueEditor(index);
           else this.options.activateCue?.(index);
         });

@@ -706,8 +706,6 @@
   }
   .subtitle-overlay span.hidden { display: none; }
   .subtitle-overlay .subtitle-extension-text {
-    /* 副字幕显示在主字幕上方（与 ASS 预览/导出的锚定方向一致）。 */
-    order: -1;
     --subtitle-preview-font-size: 16px;
     font-size: var(--subtitle-preview-font-size);
     color: #eac953;

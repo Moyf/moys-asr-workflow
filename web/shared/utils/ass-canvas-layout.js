@@ -325,19 +325,51 @@ window.MAWE.register('utils-ass-canvas-layout', function createUtilsModule(depen
         diagnostics.push({ start, end, message: slice.diagnostic }); slices.push(slice); continue;
       }
       let previous = null;
+      // 副字幕轨内的碰撞堆叠基准：同一排布切片内多条副字幕互相错开
+      //（模拟 libass 同层碰撞避免），第一条仍严格落在其样式预设位置。
+      let extensionPrevious = null;
       for (const item of ordered) {
         let cue = prepared.get(item);
         if (!cue) {
           cue = { ...item, runs: assStackWrappedRuns(item, Math.max(1, width - item.style.marginL - item.style.marginR), measure) };
           prepared.set(item, cue);
         }
-        const alignment = item === root ? item.style.alignment : assCanvasAlignmentGrid(item.style.alignment).column + 1;
+        // 副字幕是固定层：位置完全跟随其样式预设（对齐 + MarginV，即主字幕
+        // 下方的常规位置），不参与向上堆叠、不改变主/叠加字幕的堆叠链，
+        // 也不计入整组包围盒（「空间不足整组移入」不搬动固定层）。
+        const fixed = item.role === 'extension';
+        const alignment = item === root || fixed ? item.style.alignment
+          : assCanvasAlignmentGrid(item.style.alignment).column + 1;
         const rect = assStackCueBounds(cue, start, end, alignment, measure, profile);
-        const ownAnchor = assCanvasAnchorPoint({ alignment, margins: { left: item.style.marginL, right: item.style.marginR }, playResX: width, playResY: height });
-        const offset = { x: item === root ? 0 : ownAnchor.x - baseAnchor.x,
-          y: previous ? previous.top - Math.max(2, Math.round(previous.fontSize * 0.2)) - rect.bottom : 0 };
-        const placement = { ...cue, alignment, offset, rect };
+        const ownAnchor = assCanvasAnchorPoint({ alignment,
+          margins: { left: item.style.marginL, right: item.style.marginR,
+            vertical: fixed ? item.style.marginV : undefined },
+          playResX: width, playResY: height });
+        // 副字幕是固定层：位置完全跟随其样式预设（对齐 + MarginV，即主字幕
+        // 下方的常规位置），不参与向上堆叠、不跟随主/叠加字幕的排布平移与
+        // 移动动画（与 libass 对无 \move 的不同层字幕的原生行为一致）。
+        // 同轨多条副字幕之间保留 libass 式碰撞错开；固定层不计入整组包围盒，
+        // 主字幕与叠加字幕的防出画移入也不被副字幕的位置限制。
+        const fixedAnchor = fixed ? (() => {
+          const anchor = extensionPrevious
+            ? { x: ownAnchor.x, y: extensionPrevious.top
+              - Math.max(2, Math.round(extensionPrevious.fontSize * 0.2)) - rect.bottom }
+            : ownAnchor;
+          return {
+            x: Math.min(Math.max(anchor.x, slice.padding - rect.left), width - slice.padding - rect.right),
+            y: Math.min(Math.max(anchor.y, slice.padding - rect.top), height - slice.padding - rect.bottom),
+          };
+        })() : null;
+        const offset = item === root ? { x: 0, y: 0 }
+          : fixed ? { x: fixedAnchor.x, y: fixedAnchor.y }
+          : { x: ownAnchor.x - baseAnchor.x,
+            y: previous ? previous.top - Math.max(2, Math.round(previous.fontSize * 0.2)) - rect.bottom : 0 };
+        const placement = { ...cue, alignment, offset, rect, absolute: fixed };
         slice.items.push(placement);
+        if (fixed) {
+          extensionPrevious = { top: rect.top, fontSize: cue.fontSize };
+          continue;
+        }
         const world = { left: offset.x + rect.left, right: offset.x + rect.right,
           top: offset.y + rect.top, bottom: offset.y + rect.bottom };
         for (const key of ['left', 'top']) slice.box[key] = Math.min(slice.box[key], world[key]);
@@ -384,8 +416,12 @@ window.MAWE.register('utils-ass-canvas-layout', function createUtilsModule(depen
       : Math.min(1, Math.max(0, (timeMs - piece.start) / Math.max(1, piece.end - piece.start)));
     const root = { x: piece.from.x + (piece.to.x - piece.from.x) * amount,
       y: piece.from.y + (piece.to.y - piece.from.y) * amount };
-    return { items: slice.items.map(item => ({ ...item, scale: slice.scale,
-      anchor: { x: root.x + item.offset.x * slice.scale, y: root.y + item.offset.y * slice.scale } })), diagnostic: '' };
+    return { items: slice.items.map(item => {
+      // 固定层（副字幕）的锚点是绝对坐标：不随主字幕的排布平移或移动动画。
+      if (item.absolute) return { ...item, scale: 1, anchor: { x: item.offset.x, y: item.offset.y } };
+      return { ...item, scale: slice.scale,
+        anchor: { x: root.x + item.offset.x * slice.scale, y: root.y + item.offset.y * slice.scale } };
+    }), diagnostic: '' };
   }
 
 

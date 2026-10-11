@@ -4324,16 +4324,17 @@ test('ASS mode previews and exports extension cues with the shared extension sty
     };
   });
   // 副字幕共用样式库的「ASS 副字幕样式」：字号 64（主样式 86 的 64/86）、
-  // 默认黄色，固定在主字幕名义单行框上方（88 + round(1.2 * 86) = 191）。
+  // 默认黄色，跟随其样式预设固定在主字幕下方（MarginV 36）。
   expect(result.trackDebug).toEqual(['ok', 'ok', 'ok']);
   expect(result.mainNative).toBe(86);
   expect(result.extensionNative).toBe(64);
   expect(result.extensionFill.toLowerCase()).toBe('#eac953');
   expect(result.extensionAlignment).toBe(2);
-  expect(result.extensionAnchor.y).toBeLessThan(result.mainAnchor.y - result.mainHeight);
+  // 底部对齐时主文本块在锚点上方：副字幕锚点低于主字幕锚点即为主下方。
+  expect(result.extensionAnchor.y).toBeGreaterThan(result.mainAnchor.y);
   expect(result.extensionAnchor.x).toBeCloseTo(960, 3);
-  // 叠加轨链式上叠：191 + round(1.2 * 64) = 268。
-  expect(result.overlayAnchor.y).toBeLessThan(result.extensionAnchor.y - result.extensionHeight);
+  // 叠加字幕固定锚定在主字幕上方（88 + round(1.2 * 86) = 191）。
+  expect(result.overlayAnchor.y).toBeLessThan(result.mainAnchor.y - result.mainHeight);
   // 导出：副字幕 Layer 1 + 独立 Extension 样式；叠加轨 Layer 2 + 固化
   // 链式边距 268 的 Overlay 样式。
   const dialogueLines = result.ass.split('\n').filter((line) => line.startsWith('Dialogue:'));
@@ -4373,18 +4374,26 @@ test('ASS mode previews and exports extension cues with the shared extension sty
   for (const variant of variants) {
     const alignment = (variant.extensionAlignment - 1) % 3 + 1;
     expect(variant.extension.alignment).toBe(alignment);
-    expect(variant.overlay.alignment).toBe(alignment);
+    // 叠加字幕的对齐列跟随主字幕。
+    const overlayAlignment = (variant.mainAlignment - 1) % 3 + 1;
+    expect(variant.overlay.alignment).toBe(overlayAlignment);
     const mainRow = windowRow(variant.main.alignment);
     const mainTop = variant.main.anchor.y - variant.main.height * mainRow / 2;
-    expect(variant.extension.anchor.y).toBeLessThan(mainTop);
-    expect(variant.overlay.anchor.y).toBeLessThan(variant.extension.anchor.y - variant.extension.height);
+    // 副字幕固定在其样式行位的预设位置（MarginV 36）；底部行位于主字幕下方。
+    const extRow = windowRow(variant.extensionAlignment);
+    const extExpectedY = [1080 - 36, 540, 36][extRow];
+    expect(variant.extension.anchor.y).toBeCloseTo(extExpectedY, 0);
+    // 叠加字幕固定锚定在主字幕上方。
+    expect(variant.overlay.anchor.y).toBeLessThan(mainTop);
     expect(variant.overlay.anchor.y).toBeGreaterThan(0);
     const events = variant.ass.split('\n').filter((line) => line.startsWith('Dialogue:'));
-    for (const [index, item] of [[1, variant.extension], [2, variant.overlay]]) {
-      const position = events[index].match(/\\pos\(([-\d.]+),([-\d.]+)\)/);
-      expect(Number(position[1])).toBeCloseTo(item.anchor.x, 3);
-      expect(Number(position[2])).toBeCloseTo(item.anchor.y, 3);
-      expect(events[index]).toContain(`\\an${alignment}\\q2`);
+    for (const [index, item, rowAlignment] of [[1, variant.extension, alignment], [2, variant.overlay, overlayAlignment]]) {
+      const position = /\\pos\(([^)]+)\)/.exec(events[index]);
+      expect(position, 'layer event carries an explicit position').not.toBeNull();
+      const [posX, posY] = position[1].split(',').map(Number);
+      expect(posX).toBeCloseTo(item.anchor.x, 3);
+      expect(posY).toBeCloseTo(item.anchor.y, 3);
+      expect(events[index]).toContain(`\\an${rowAlignment}\\q2`);
     }
   }
   await page.screenshot({ path: test.info().outputPath('top-right-ass-anchor.png') });

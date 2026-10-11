@@ -269,25 +269,8 @@ export function createUtilsModule(dependencies) {
     const extensionScaledFontSize = extensionStyle
       ? normalizeAssFontSize(extensionStyle.fontSize * resolution.height / ASS_REFERENCE_PLAY_RES_Y)
       : 0;
-    // Nominal style-field defaults are retained for compatibility. Active ASS
-    // events explicitly override them with the shared measured stack plan.
-    const mainAnchor = dependencies.assCanvasAnchorPoint({
-      alignment: baseStyle.alignment,
-      margins: { left: baseStyle.marginL, right: baseStyle.marginR, vertical: baseStyle.marginV },
-      playResX: resolution.width, playResY: resolution.height,
-    });
-    const extensionAnchor = assMode && extensionStyle
-      ? dependencies.assCanvasStackedAnchor({
-        belowAnchor: mainAnchor, belowAlignment: baseStyle.alignment, belowFontSize: fontSize,
-        alignment: extensionStyle.alignment,
-        margins: { left: extensionStyle.marginL, right: extensionStyle.marginR },
-        playResX: resolution.width, playResY: resolution.height,
-      }) : null;
-    const anchorTags = (position) => position
-      ? `\\an${position.alignment}\\pos(${position.anchor.x},${position.anchor.y})` : '';
-    const extensionAnchorMarginV = assMode && extensionStyle
-      ? resolution.height - extensionAnchor.anchor.y
-      : Math.max(0, Number(extensionStyle?.marginV) || 0);
+    // 副字幕位置由其样式预设（对齐 + MarginV）决定：排布计划把副字幕当作
+    // 固定层（见 assCreateStackPlan），不再强制排在主字幕上方。
     if (assMode && extensionStyle) {
       extensionSource.forEach((segment, index) => {
         if (!segment || segment.disabled === true) return;
@@ -318,10 +301,10 @@ export function createUtilsModule(dependencies) {
           inlineOptions,
         });
         addStackItem('extension', segment, index, extensionSource, startCentiseconds, endCentiseconds, extensionStyle, extensionScaledFontSize, 'Extension', extensionSpeakerName, extensionFade);
-        const extensionText = `{${anchorTags(extensionAnchor)}}`
-          + (extensionAnimationTags ? `{${extensionAnimationTags}}` : '') + extensionContent;
+        const extensionText = extensionAnimationTags
+          ? `{${extensionAnimationTags}}${extensionContent}` : extensionContent;
         events.push(
-          `Dialogue: 1,${formatAssTime(startCentiseconds * 10)},${formatAssTime(endCentiseconds * 10)},Extension,,0,0,${extensionAnchorMarginV},,${extensionText}`,
+          `Dialogue: 1,${formatAssTime(startCentiseconds * 10)},${formatAssTime(endCentiseconds * 10)},Extension,,0,0,0,,${extensionText}`,
         );
       });
     }
@@ -330,29 +313,13 @@ export function createUtilsModule(dependencies) {
     // when enabled. Active-event positions and motion come from the stack plan.
     const overlaySource = Array.isArray(options.overlaySegments) ? options.overlaySegments : [];
     const hasOverlayCues = overlaySource.some((segment) => segment && segment.disabled !== true);
-    const overlayAnchorStyle = extensionAnchor && hasExtensionCues ? extensionStyle : baseStyle;
-    const overlayAnchor = assMode ? dependencies.assCanvasStackedAnchor({
-      belowAnchor: extensionAnchor && hasExtensionCues ? extensionAnchor.anchor : mainAnchor,
-      belowAlignment: extensionAnchor && hasExtensionCues ? extensionAnchor.alignment : baseStyle.alignment,
-      belowFontSize: extensionAnchor && hasExtensionCues ? extensionScaledFontSize : fontSize,
-      alignment: overlayAnchorStyle.alignment,
-      margins: { left: overlayAnchorStyle.marginL, right: overlayAnchorStyle.marginR },
-      playResX: resolution.width, playResY: resolution.height,
-    }) : null;
     const overlayMarginV = assMode
-      ? resolution.height - overlayAnchor.anchor.y
+      ? Math.max(0, Number(baseStyle.marginV) || 0) + Math.round(1.2 * fontSize)
       : 80 + Math.round(1.2 * fontSize);
-    // Inherit the anchor layer's horizontal alignment/margins, with a bottom
-    // vertical attachment matching the explicit position in every event.
+    // 叠加字幕固定锚定在主字幕上方：对齐与水平边距完全来自主字幕样式；
+    // 副字幕在主字幕下方（跟随其样式预设），与叠加字幕互不影响。
     const overlayBaseStyle = assMode
-      ? (extensionStyle && hasExtensionCues
-        ? {
-          ...baseStyle,
-          alignment: overlayAnchor.alignment,
-          marginL: extensionStyle.marginL,
-          marginR: extensionStyle.marginR,
-        }
-        : { ...baseStyle, alignment: overlayAnchor.alignment })
+      ? baseStyle
       : {
         ...ASS_DEFAULT_ASS_STYLE,
         fontName: fontFamily,
@@ -409,8 +376,8 @@ export function createUtilsModule(dependencies) {
         })
         : escapeAssText(segment.text);
       if (assMode) addStackItem('overlay', segment, index, overlaySource, startCentiseconds, endCentiseconds, overlayStyleFor(overlayColorName), fontSize, overlayStyleNameFor(overlayColorName), overlaySpeakerName, overlayFade);
-      const overlayText = (overlayAnchor ? `{${anchorTags(overlayAnchor)}}` : '')
-        + (overlayAnimationTags ? `{${overlayAnimationTags}}` : '') + overlayContent;
+      const overlayText = overlayAnimationTags
+        ? `{${overlayAnimationTags}}${overlayContent}` : overlayContent;
       events.push(
         `Dialogue: 2,${formatAssTime(startCentiseconds * 10)},${formatAssTime(endCentiseconds * 10)},${overlayStyleNameFor(overlayColorName)},,0,0,0,,${overlayText}`,
       );
@@ -447,7 +414,14 @@ export function createUtilsModule(dependencies) {
             : dependencies.assAnimationSliceTags(profile, { offsetMs: piece.start - item.start,
               durationMs: item.end - item.start, includeMove: slice.legacy, fad: item.fad, scale });
           let position = '';
-          if (!slice.legacy) {
+          if (!slice.legacy && item.absolute) {
+            // 固定层（副字幕）：绝对 \\pos 定位在样式预设位置，无移动动画，
+            // 也不参与整组缩放：字号与描边阴影保持样式原值。
+            const fixedSize = Math.max(1, number(item.fontSize));
+            const fixedStyle = { ...scaledStyle, spacing: item.style.spacing, outline: item.style.outline, shadow: item.style.shadow };
+            position = `\\an${item.alignment}\\q2\\pos(${number(item.offset.x)},${number(item.offset.y)})`
+              + `\\fs${fixedSize}\\fsp${number(fixedStyle.spacing)}\\bord${number(fixedStyle.outline)}\\shad${number(fixedStyle.shadow)}`;
+          } else if (!slice.legacy) {
             const from = { x: number(piece.from.x + item.offset.x * scale), y: number(piece.from.y + item.offset.y * scale) };
             const to = { x: number(piece.to.x + item.offset.x * scale), y: number(piece.to.y + item.offset.y * scale) };
             const instant = piece.instant === null || piece.instant === undefined ? null : piece.instant - piece.start;
@@ -458,11 +432,13 @@ export function createUtilsModule(dependencies) {
             position = `\\an${item.alignment}\\q2${position}\\fs${size}\\fsp${number(scaledStyle.spacing)}\\bord${number(scaledStyle.outline)}\\shad${number(scaledStyle.shadow)}`;
           }
           const transformTarget = transformTargets.fontSize;
+          // 固定层不参与组缩放：其 	 字号动画目标保持样式原值。
+          const targetScale = item.absolute ? 1 : scale;
           const fontTransform = transformTarget === undefined ? null : {
             startMs: profile.animations.t.startMs - (piece.start - item.start),
             endMs: (profile.animations.t.startMs === 0 && profile.animations.t.endMs === 0
               ? item.end - item.start : profile.animations.t.endMs) - (piece.start - item.start),
-            accel: profile.animations.t.accel, target: Number((transformTarget * scale).toFixed(4)),
+            accel: profile.animations.t.accel, target: Number((transformTarget * targetScale).toFixed(4)),
           };
           const content = slice.legacy && !(item.sharedStackCue && (fontTransform || sharedDecorations)) ? item.originalText : assEmphasizedText('', scaledStyle, size, emphasisSyntax,
             { ...inlineOptions, preparedRuns: item.runs, fontTransform });
