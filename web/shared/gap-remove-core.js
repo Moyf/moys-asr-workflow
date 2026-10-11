@@ -224,6 +224,11 @@
       start,
       end,
     };
+    if (source === 'ai_cleanup') {
+      const scope = normalizeCleanupScope(item.cleanup_scope);
+      if (scope && Number.isInteger(item.start) && Number.isInteger(item.end)
+          && item.start === start && item.end === end) result.cleanup_scope = scope;
+    }
     if (source === 'ai_cleanup_review') {
       const reviewMarkerId = typeof item.review_marker_id === 'string'
         ? item.review_marker_id.trim()
@@ -1400,7 +1405,70 @@
     return intervals;
   }
 
+  function normalizeCleanupScope(value) {
+    if (!value || typeof value !== 'object'
+        || typeof value.segment_id !== 'string' || !value.segment_id || value.segment_id.length > 160
+        || !Number.isInteger(value.item_start) || value.item_start < 0
+        || !Number.isInteger(value.item_end) || value.item_end <= value.item_start
+        || typeof value.text !== 'string' || !value.text) return null;
+    return { segment_id: value.segment_id, item_start: value.item_start, item_end: value.item_end, text: value.text };
+  }
+
+  function reliableCleanupItems(segment) {
+    const items = segment?.items;
+    if (!Number.isInteger(segment?.start) || !Number.isInteger(segment?.end)
+        || !Array.isArray(items) || !items.length) return [];
+    let previousEnd = segment.start;
+    for (const item of items) {
+      if (typeof item?.text !== 'string' || !item.text
+          || !Number.isInteger(item.start) || !Number.isInteger(item.end)
+          || item.start < previousEnd || item.end <= item.start || item.end > segment.end) return [];
+      previousEnd = item.end;
+    }
+    return items.map((item) => item.text).join('') === String(segment.text || '').trim() ? items : [];
+  }
+
+  function getCleanupScopeItems(segment, gap) {
+    const items = reliableCleanupItems(segment);
+    const scope = normalizeCleanupScope(gap?.cleanup_scope);
+    if (!items.length || !scope || scope.segment_id !== segment.id || scope.item_end > items.length) return [];
+    const selected = items.slice(scope.item_start, scope.item_end);
+    return selected[0].start === gap.start && selected.at(-1).end === gap.end
+      && selected.map((item) => item.text).join('') === scope.text ? selected : [];
+  }
+
+  // Projection keeps one cue per source cue, preserving ID/color-ref indexes.
+  // Only verified local AI scopes authorize hiding words; ordinary silence
+  // ranges, old whole-cue AI decisions and independent tracks never do.
+  function projectCleanupRetainedSegments(segments, gapRemove) {
+    const source = Array.isArray(segments) ? segments : [];
+    if (!gapRemove || typeof gapRemove !== 'object') return source;
+    const scopes = gapRemove.provenance?.sources?.ai_cleanup;
+    if (!Array.isArray(scopes) || !scopes.some((range) => range?.cleanup_scope
+        && source.some((segment) => segment?.id === range.cleanup_scope.segment_id))) return source;
+    const provenance = normalizeGapRemoveProvenance(gapRemove.provenance, gapRemove.gaps);
+    const effective = getRemovedGapRanges(gapRangesFromProvenance(provenance));
+    return source.map((segment) => {
+      const items = reliableCleanupItems(segment);
+      if (!items.length || segment.disabled === true) return segment;
+      const hidden = new Set();
+      for (const gap of provenance.sources.ai_cleanup) {
+        const scope = gap.cleanup_scope;
+        if (!getCleanupScopeItems(segment, gap).length) continue;
+        for (let index = scope.item_start; index < scope.item_end; index += 1) {
+          if (effective.some((range) => range.start <= items[index].start && items[index].end <= range.end)) hidden.add(index);
+        }
+      }
+      if (!hidden.size) return segment;
+      const kept = items.filter((_item, index) => !hidden.has(index));
+      return { ...segment, text: kept.map((item) => item.text).join(''), items: kept.map((item) => ({ ...item })),
+        ...(kept.length ? { start: kept[0].start, end: kept.at(-1).end } : { disabled: true }) };
+    });
+  }
+
   global.AsrGapRemoveCore = Object.freeze({
+    getCleanupScopeItems,
+    projectCleanupRetainedSegments,
     GAP_REMOVE_SCHEMA,
     GAP_PROVENANCE_SCHEMA,
     GAP_PROVENANCE_SOURCES,

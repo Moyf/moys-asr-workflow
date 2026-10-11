@@ -260,7 +260,7 @@ function handleBackendEvent(event) {
     if (event.originalSrtPath) $("srtPath").value = String(event.originalSrtPath);
     if (event.originalProjectPath) $("jsonPath").value = String(event.originalProjectPath);
     if (event.originalSrtPath || event.originalProjectPath) $("openFolder")?.classList.remove("hidden");
-    const detail = event.detail || event.message || "";
+    const detail = redactSensitive(event.detail || event.message || "");
     const diagnostics = diagnosticText(event.diagnostics);
     const message = event.code ? errText(event.code, detail, event) : detail || t("failed");
     // 友好提示归错误卡片与 status；复制报告同时保留 detail 和诊断信息。
@@ -288,7 +288,7 @@ function handleBackendEvent(event) {
   if (event.type === "dropReject" && !state.dropTarget && window.MAWLauncher?.onBatchDropReject?.(event.path || "")) return;
   if (event.type === "dropMedia" || event.type === "dropJson" || event.type === "dropSubtitle" || event.type === "dropHotwordFile" || event.type === "dropFfconcat" || event.type === "dropReject") handleRoutedDrop(event.path || "");
 }
-window.MAWLauncher = { backend: "pending", config: null, callBackend: bridge, translate: t, errorText: errText, viewportPixelsToPage, openSettings, closeSettings, setJsonPath, openServerEditor, getAudioTrackForMedia, getTranscriptionPayload: formPayload, appendLog, confirm: confirmAction, confirmResolve: null, onBackendEvent: handleBackendEvent, onBackendEvents(events) { events.forEach(handleBackendEvent); }, onBatchStart() { hideErrorNotice(); resetBatchNotification(); }, onBatchError: (result) => { state.batchNotification = null; applyErrorResult(result, false); }, onLanguageChanged() {}, onProjectPathChanged() {}, onAlignmentModelsChanged() {}, onMediaPathChanged() {} };
+window.MAWLauncher = { backend: "pending", config: null, callBackend: bridge, translate: t, errorText: errText, viewportPixelsToPage, openSettings, closeSettings, setJsonPath, openServerEditor, getAudioTrackForMedia, getTranscriptionPayload: formPayload, validateApiKey, appendLog, confirm: confirmAction, confirmResolve: null, onBackendEvent: handleBackendEvent, onBackendEvents(events) { events.forEach(handleBackendEvent); }, onBatchStart() { hideErrorNotice(); resetBatchNotification(); }, onBatchError: (result) => { state.batchNotification = null; applyErrorResult(result, false); }, onLanguageChanged() {}, onProjectPathChanged() {}, onAlignmentModelsChanged() {}, onMediaPathChanged() {} };
 
 $("langZh").addEventListener("click", () => setLanguage("zh"));
 $("langEn").addEventListener("click", () => setLanguage("en"));
@@ -313,6 +313,17 @@ $("errorNoticeIssue").addEventListener("click", () => { void openErrorIssue(); }
 $("errorNoticeAction").addEventListener("click", () => {
   const action = $("errorNotice").dataset.action;
   if (action === "ffmpeg-settings") openSettings("ffmpegSettingsSection", "ffmpegPath");
+  if (action === "api-key") {
+    closeSettings();
+    $("apiKey").scrollIntoView({ behavior: "smooth", block: "center" });
+    $("apiKey").focus({ preventScroll: true });
+  }
+  if (action === "audio-track") {
+    closeSettings();
+    const field = $("audioTrackField").classList.contains("hidden") ? $("mediaPath") : $("audioTrack");
+    field.scrollIntoView({ behavior: "smooth", block: "center" });
+    field.focus({ preventScroll: true });
+  }
 });
 $("provider").addEventListener("change", () => applyProvider(true)); $("model").addEventListener("change", () => { applySelectedModel(true); if (isLocalProvider()) { void refreshLocalRuntime(); void refreshLocalModels(); } }); $("fireRedPunc").addEventListener("change", () => setError("fireRedPunc", "")); $("language").addEventListener("change", () => savePrefsDebounced({ language: languageValue() })); $("audioTrack").addEventListener("change", () => { const value = Number($("audioTrack").value); if (Number.isInteger(value) && value >= 0) state.audioTrack = value; }); $("advancedToggle").addEventListener("click", () => toggle("advancedCard"));
 $("testRun").addEventListener("change", syncTestRun);

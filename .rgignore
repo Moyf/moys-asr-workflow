@@ -4,7 +4,7 @@
 /web/editor/boot/editor-bundle.meta.json
 /web/launcher/boot/launcher-bundle.js
 /web/launcher/boot/launcher-bundle.meta.json
-/docs/temp/*.json
+/docs/logs/**/*.json
 *.log
 /pnpm-lock.yaml
 /uv.lock

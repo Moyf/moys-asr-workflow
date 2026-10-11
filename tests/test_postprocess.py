@@ -3052,6 +3052,25 @@ class MediaToolTests(unittest.TestCase):
 
         self.assertEqual([track.title for track in tracks], ["Mix", "OriginSound"])
 
+    def test_probe_empty_tracks_require_valid_metadata_not_failure_or_corruption(self) -> None:
+        completed = mock.Mock(returncode=0, stderr="", stdout=json.dumps({"streams": []}))
+        with mock.patch("maw.postprocess_ffmpeg.subprocess.run", return_value=completed) as run:
+            self.assertEqual(probe_audio_tracks(self.media, ffprobe_path=Path("ffprobe")), ())
+        run.assert_called_once()
+        for payload in ({}, [], {"streams": None}, {"streams": [None]},
+                        {"streams": [{"codec_name": "aac"}]}, {"streams": [{"index": -1}]},
+                        {"streams": [{"index": True}]}, {"streams": [{"index": 1}, None]}):
+            with self.subTest(payload=payload):
+                completed.stdout = json.dumps(payload)
+                with mock.patch("maw.postprocess_ffmpeg.subprocess.run", return_value=completed):
+                    with self.assertRaises(MediaToolError):
+                        probe_audio_tracks(self.media, ffprobe_path=Path("ffprobe"))
+        completed.returncode = 1
+        completed.stdout = json.dumps({"streams": []})
+        with mock.patch("maw.postprocess_ffmpeg.subprocess.run", return_value=completed):
+            with self.assertRaises(MediaToolError):
+                probe_audio_tracks(self.media, ffprobe_path=Path("ffprobe"))
+
     def test_burn_subtitles_reencodes_to_new_mp4_and_uses_subtitles_filter(self) -> None:
         with mock.patch("maw.postprocess_ffmpeg.subprocess.Popen", side_effect=self._fake_process) as popen:
             result = run_burn_subtitles(

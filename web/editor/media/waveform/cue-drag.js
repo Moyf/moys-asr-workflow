@@ -1,7 +1,7 @@
 // cue-drag: waveform class methods with explicit dependencies.
 export function createWaveformModule(dependencies) {
   'use strict';
-  const { isAttached, resolveTiming, snapshotTiming } = dependencies;
+  const { isAttached, resolveTiming, restoreTiming, snapshotTiming } = dependencies;
 
   class WaveformMethods {
 
@@ -157,6 +157,7 @@ export function createWaveformModule(dependencies) {
         // 这样重建覆盖层后指针事件仍能到达当前拖动。
         captureTarget: this.pane,
       };
+      if (kind === 'move' && !shiftOverlayMove) this.captureSelectedMoveTracks(this.drag);
       if (this.isCueBoundaryDrag()) {
         this.cancelHoverSeekPreview();
         this.refreshBoundaryDragPointerLine(true);
@@ -364,12 +365,90 @@ export function createWaveformModule(dependencies) {
 
 
     /** @this {import('./waveform-types.js').WaveformInstance} */
+    captureSelectedMoveTracks(drag) {
+      const tracks = ['main', 'overlay', 'extension'].filter((track) =>
+        track !== 'extension' || this.options.multiSubtitleVisible?.());
+      const moves = [{ ...drag }];
+      for (const track of tracks) {
+        if (track === drag.track) continue;
+        const segments = this.options.getSegments(track);
+        const indices = [...this.options.getSelection(track)].filter((idx) => segments[idx]).sort((a, b) => a - b);
+        if (!indices.length) continue;
+        const allOriginals = new Map(segments.map((segment, idx) => [idx, snapshotTiming(segment, drag.timing)]));
+        moves.push({
+          ...drag, track, index: indices[0], indices,
+          originals: new Map(indices.map((idx) => [idx, allOriginals.get(idx)])),
+          cancelOriginals: allOriginals, squeezeOriginals: allOriginals,
+          commitIndices: new Set(indices),
+        });
+      }
+      if (moves.length < 2) return;
+      drag.moveTracks = moves;
+      const selectedMoveSegments = new Set(moves.flatMap((move) =>
+        move.indices.map((idx) => this.options.getSegments(move.track)[idx])));
+      moves.forEach((move) => { move.selectedMoveSegments = selectedMoveSegments; });
+      moves.forEach((move) => {
+        const segments = this.options.getSegments(move.track);
+        move.moveAnchorSegment = segments[move.index];
+        move.moveOriginals = new Map(move.indices.map((idx) => [segments[idx], move.originals.get(idx)]));
+        move.moveCommitSegments = new Set(move.indices.map((idx) => segments[idx]));
+      });
+    }
+
+
+    // 绑定冲突处理可能删除未选中的副字幕；用对象身份重新定位，避免
+    // 下一帧仍使用旧数组下标。时间快照也随对象迁移，保持统一位移基准。
+    /** @this {import('./waveform-types.js').WaveformInstance} */
+    reindexSelectedMoveTracks(drag) {
+      for (const move of drag.moveTracks) {
+        const segments = this.options.getSegments(move.track);
+        move.indices = segments.flatMap((segment, idx) => move.moveOriginals.has(segment) ? [idx] : []);
+        move.index = segments.indexOf(move.moveAnchorSegment);
+        move.originals = new Map(move.indices.map((idx) => [idx, move.moveOriginals.get(segments[idx])]));
+        move.commitIndices = new Set(segments.flatMap((segment, idx) => move.moveCommitSegments.has(segment) ? [idx] : []));
+      }
+      const anchor = drag.moveTracks.find((move) => move.track === drag.track);
+      drag.index = anchor.index;
+      drag.indices = anchor.indices;
+      drag.originals = anchor.originals;
+    }
+
+
+    /** @this {import('./waveform-types.js').WaveformInstance} */
     captureCueDragOriginals(drag) {
+      if (drag.moveTracks) {
+        // Shift+A/D 改变单个外边界后，以所有轨道的当前状态继续拖动。
+        // 取消快照保持按下时的状态，预览快照则一起更新，避免返回旧时间。
+        drag.moveTracks.forEach((move) => {
+          this.captureCueDragOriginals(move);
+          move.moveOriginals = new Map(move.indices.map((idx) =>
+            [this.options.getSegments(move.track)[idx], move.originals.get(idx)]));
+          move.squeezeOriginals = new Map(this.options.getSegments(move.track).map((segment, idx) =>
+            [idx, snapshotTiming(segment, move.timing || this.cueTiming())]));
+          delete move.boundOriginals;
+          delete move.boundDragTimelineOriginals;
+        });
+        const anchor = drag.moveTracks.find((move) => move.track === drag.track);
+        drag.originals = anchor.originals;
+        drag.squeezeOriginals = anchor.squeezeOriginals;
+        return;
+      }
       const segments = this.options.getSegments(drag.track || 'main');
       drag.originals = new Map(drag.indices.map((idx) => [
         idx,
         snapshotTiming(segments[idx], drag.timing || this.cueTiming()),
       ]));
+    }
+
+
+    /** @this {import('./waveform-types.js').WaveformInstance} */
+    restoreSelectedMoveDrag(drag) {
+      for (const move of drag.moveTracks || [drag]) {
+        const segments = this.options.getSegments(move.track);
+        move.cancelOriginals.forEach((original, idx) => {
+          if (segments[idx]) restoreTiming(segments[idx], original, drag.timing || this.cueTiming());
+        });
+      }
     }
 
 

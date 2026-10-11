@@ -48,13 +48,15 @@ document.addEventListener('keydown', (event) => {
 
 // Esc：非字幕文本编辑状态下清除当前字幕选择；输入框和内联编辑继续保留原生/编辑行为。
 document.addEventListener('keydown', (e) => {
-  if (e.key !== 'Escape') return;
+  if (e.defaultPrevented || e.key !== 'Escape') return;
   if (MaweDom.timedTextEditModal.classList.contains('show')) {
     e.preventDefault();
     e.stopPropagation();
     MaweTimedTextEdit.requestCloseTimedTextEdit();
     return;
   }
+  // 浮窗自己的 Esc 处理器稍后执行；不要先清空其背后的字幕选区。
+  if (MaweFloatingPanel.floatingSurfaceStack.some(MaweFloatingPanel.floatingSurfaceIsOpen)) return;
   if (MaweSelection.pendingExtensionBinding) {
     e.preventDefault();
     e.stopPropagation();
@@ -74,15 +76,16 @@ document.addEventListener('keydown', (e) => {
   if (MaweDom.stickerPreviewModal.classList.contains('show')) return;
   if (MaweDom.projectMediaModal.classList.contains('show')) return;
   if (MaweDom.ctxmenu.classList.contains('show')) return;
-  if (MaweCoreState.waveformEditor?.hasCueDrag?.()) {
-    // 拖动中的 Esc 不取消拖动，也不清空选区；拖动仍由 pointerup 正常完成。
-    e.preventDefault();
-    e.stopPropagation();
+  const waveform = MaweCoreState.waveformEditor;
+  if (waveform?.hasCueDrag?.() || waveform?.markerDrag || waveform?.markerCreateDrag) {
+    // 选区保持不变；交给后面的波形快捷键处理器取消字幕/标记拖动并消费 Esc。
     return;
   }
+  MaweSelection.clearSelection();
+  // 无浮窗时保留旧行为：同一次 Esc 清选区并由后面的处理器退出剃刀。
+  if (MaweCoreState.waveformEditor?.getTool?.() === 'razor') return;
   e.preventDefault();
   e.stopPropagation();
-  MaweSelection.clearSelection();
 });
 
 

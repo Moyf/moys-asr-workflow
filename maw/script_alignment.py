@@ -569,6 +569,10 @@ def _normalize_provenance_ranges(
             "removed": raw_range.get("removed") is not False
             if source in {"manual", "legacy"} else True,
         }
+        if source == "ai_cleanup":
+            scope = normalize_cleanup_scope(raw_range.get("cleanup_scope"))
+            if scope is not None and type(raw_range.get("start")) is int and type(raw_range.get("end")) is int and raw_range["start"] == start and raw_range["end"] == end:
+                normalized["cleanup_scope"] = scope
         if source == "ai_cleanup_review":
             review_marker_id = raw_range.get("review_marker_id")
             if isinstance(review_marker_id, str) and review_marker_id.strip():
@@ -1075,6 +1079,79 @@ def apply_alignment_to_project(
         "readyForMediaTrim": selection.get("readyForMediaTrim") is True,
     }
     return output
+
+
+def normalize_cleanup_scope(value: object) -> dict[str, object] | None:
+    if not isinstance(value, Mapping):
+        return None
+    segment_id, first, last, text = (value.get(key) for key in ("segment_id", "item_start", "item_end", "text"))
+    if not isinstance(segment_id, str) or not segment_id or len(segment_id) > 160 or type(first) is not int or type(last) is not int or first < 0 or last <= first or not isinstance(text, str) or not text:
+        return None
+    return {"segment_id": segment_id, "item_start": first, "item_end": last, "text": text}
+
+
+def reliable_cleanup_items(segment: Mapping[str, object]) -> list[Mapping[str, object]]:
+    """Exact item/text mapping required for automatic partial cue removal."""
+    items = segment.get("items")
+    start, end = segment.get("start"), segment.get("end")
+    if type(start) is not int or type(end) is not int or not isinstance(items, list) or not items:
+        return []
+    previous_end = start
+    for item in items:
+        if not isinstance(item, Mapping) or not isinstance(item.get("text"), str) or not item["text"]:
+            return []
+        left, right = item.get("start"), item.get("end")
+        if type(left) is not int or type(right) is not int or left < previous_end or right <= left or right > end:
+            return []
+        previous_end = right
+    if "".join(str(item["text"]) for item in items) != str(segment.get("text") or "").strip():
+        return []
+    return items
+
+
+def project_cleanup_retained_segments(
+    segments: Sequence[object], gap_remove: object,
+) -> list[object]:
+    """Export projection only; source cue identity, order and text stay intact.
+
+    An item is hidden only when both an AI source and the current effective
+    removal cover it fully. Manual restoration therefore restores its text.
+    Audio-only gaps and independent overlay/extension captions are untouched.
+    """
+    if not isinstance(gap_remove, Mapping):
+        return list(segments)
+    provenance = _normalize_gap_provenance(gap_remove.get("provenance"), gap_remove.get("gaps"))
+    ai = provenance["sources"]["ai_cleanup"]
+    effective = [gap for gap in _gap_ranges_from_provenance(provenance) if gap["removed"] is not False]
+    def covered(item: Mapping[str, object], ranges: Sequence[Mapping[str, object]]) -> bool:
+        return any(int(gap["start"]) <= int(item["start"]) and int(item["end"]) <= int(gap["end"]) for gap in ranges)
+    result: list[object] = []
+    for segment in segments:
+        items = reliable_cleanup_items(segment) if isinstance(segment, Mapping) else []
+        hidden: set[int] = set()
+        for gap in ai:
+            scope = gap.get("cleanup_scope")
+            if not items or not isinstance(scope, Mapping) or scope["segment_id"] != segment.get("id"):
+                continue
+            first, last = int(scope["item_start"]), int(scope["item_end"])
+            selected = items[first:last]
+            if last > len(items) or not selected or selected[0]["start"] != gap["start"] or selected[-1]["end"] != gap["end"] or "".join(str(item["text"]) for item in selected) != scope["text"]:
+                continue
+            hidden.update(index for index in range(first, last) if covered(items[index], effective))
+        kept = [item for index, item in enumerate(items) if index not in hidden]
+        if not items or len(kept) == len(items) or segment.get("disabled") is True:
+            result.append(segment)
+            continue
+        projection = dict(segment)
+        projection["items"] = [dict(item) for item in kept]
+        projection["text"] = "".join(str(item["text"]) for item in kept)
+        if kept:
+            projection["start"] = int(kept[0]["start"])
+            projection["end"] = int(kept[-1]["end"])
+        else:
+            projection["disabled"] = True
+        result.append(projection)
+    return result
 
 
 def _normalize_gap_remove_override(

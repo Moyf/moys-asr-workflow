@@ -900,8 +900,8 @@ def api_key_for_provider(provider_id: str, path: Path = DEFAULT_ENV_PATH, enviro
     if not provider.models:
         return ""
     env_key = provider.models[0].env_key
-    env = environ or os.environ
-    return env.get(env_key) or load_env(path).get(env_key, "")
+    env = environ if environ is not None else os.environ
+    return str(env.get(env_key) or "").strip() or load_env(path).get(env_key, "").strip()
 
 
 def region_label(region_id: str) -> str:

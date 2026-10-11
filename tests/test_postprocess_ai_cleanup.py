@@ -749,6 +749,7 @@ class ClipPayloadPrivacyTest(AiCleanupTestCase):
                 "itemTexts",
                 "sourceLine",
                 "contextText",
+                "items",
             },
         )
         joined = json.dumps(clips, ensure_ascii=False)

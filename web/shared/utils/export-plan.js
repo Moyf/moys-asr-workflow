@@ -1,7 +1,7 @@
 // export-plan: private helpers; dependencies are injected by editor-utils.js.
 export function createUtilsModule(dependencies) {
   'use strict';
-  const { assDefaultFontFamily, buildGapRemovedIntervals, formatSpeakerLabelledText, mapGapRemovedTime } = dependencies;
+  const { assDefaultFontFamily, buildGapRemovedIntervals, formatSpeakerLabelledText, mapGapRemovedTime, gapRemoveCore } = dependencies;
 
 
   const EXPORT_FRAME_PROFILES = Object.freeze({
@@ -254,7 +254,9 @@ export function createUtilsModule(dependencies) {
       : mapGapRemovedTime(sourceMs, gaps);
     const warnings = [];
     if (mode === 'gap_removed' && !gaps.some((gap) => gap.removed)) warnings.push({ code: 'no_removed_gaps' });
-    const projectSegments = Array.isArray(project.segments) ? project.segments : [];
+    const projectSegments = gapRemoveCore.projectCleanupRetainedSegments(
+      Array.isArray(project.segments) ? project.segments : [], project.gap_remove,
+    );
     // schema §1.5：叠加轨 enabled=false 时保留数据但不显示也不导出。
     const projectOverlaySegments = project.overlay_track?.enabled === true
       && Array.isArray(project.overlay_track.segments)

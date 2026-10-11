@@ -11,17 +11,17 @@ type WaveformMethods =
   DescriptorValues<ReturnType<typeof import('./controls.js').createWaveformModule>, 'isAdjacentCueAdjustmentIndependent' | 'isSharedBoundaryHandleIndependent' | 'adjacentSnapModeStatusHint' | 'hasCueDrag' | 'bindControls'> &
   DescriptorValues<ReturnType<typeof import('./cue-blocks.js').createWaveformModule>, 'createRow' | 'appendGapBlocks' | 'appendCueBlocks' | 'isSegmentHiddenForDisplay' | 'appendSharedBoundaryZones' | 'setBindingMarker' | 'layoutBlock' | 'layoutGapBlock' | 'refreshGapOverlay' | 'bindWordModeSentenceHandle' | 'refreshCueOverlay' | 'cueDragOverlayOccupancyChanged' | 'refreshCueBlocks' | 'refreshBoundaryZones' | 'refreshCueLabel' | 'refreshExtensionCueLabel' | 'updateSelection'> &
   DescriptorValues<ReturnType<typeof import('./cue-commands.js').createWaveformModule>, 'adjustSelectedByKeyboard' | 'adjustSelectedBoundaryByKeyboard' | 'setCueBoundaryToTime' | 'snapSelectedCueBoundaryByKeyboard' | 'adjustActiveCueDragBy' | 'handleHeldCueKey' | 'snapActiveCueBoundaryByKeyboard' | 'cancelCueDrag' | 'applyIndependentBoundaryDrag'> &
-  DescriptorValues<ReturnType<typeof import('./cue-drag-update.js').createWaveformModule>, 'moveCueDrag' | 'applyMoveDrag' | 'applyResizeDrag' | 'applyBoundaryDrag' | 'endCueDrag'> &
-  DescriptorValues<ReturnType<typeof import('./cue-drag.js').createWaveformModule>, 'beginCueDrag' | 'isSharedBoundary' | 'beginIndependentEdgeDrag' | 'beginSharedBoundaryZoneDrag' | 'cueDragDurationMs' | 'cueTiming' | 'cueTimingDuration' | 'cueTimingValueFromMs' | 'cueTimingValueToMs' | 'formatCueTiming' | 'captureCueDragOriginals' | 'rebaseCueDragToTrack'> &
+  DescriptorValues<ReturnType<typeof import('./cue-drag-update.js').createWaveformModule>, 'moveCueDrag' | 'moveDragDelta' | 'applySelectedMoveDrag' | 'applyMoveDrag' | 'applyResizeDrag' | 'applyBoundaryDrag' | 'endCueDrag'> &
+  DescriptorValues<ReturnType<typeof import('./cue-drag.js').createWaveformModule>, 'beginCueDrag' | 'isSharedBoundary' | 'beginIndependentEdgeDrag' | 'beginSharedBoundaryZoneDrag' | 'cueDragDurationMs' | 'cueTiming' | 'cueTimingDuration' | 'cueTimingValueFromMs' | 'cueTimingValueToMs' | 'formatCueTiming' | 'captureSelectedMoveTracks' | 'reindexSelectedMoveTracks' | 'restoreSelectedMoveDrag' | 'captureCueDragOriginals' | 'rebaseCueDragToTrack'> &
   DescriptorValues<ReturnType<typeof import('./gap-drag.js').createWaveformModule>, 'beginGapBoundaryDrag' | 'beginGapMoveDrag' | 'gapMoveTarget' | 'moveGapMoveDrag' | 'scheduleGapMovePreview' | 'clearGapMovePreview' | 'previewGapMoveDrag' | 'endGapMoveDrag' | 'refreshGapBlocks' | 'clearGapBoundaryPreview' | 'appendGapBoundaryPreview' | 'previewGapBoundaryDrag' | 'moveGapBoundaryDrag' | 'scheduleGapPreview' | 'endGapBoundaryDrag' | 'beginGapRangeDrag' | 'gapRangePointerTime' | 'clearGapRangePreviews' | 'layoutGapRangePreview' | 'moveGapRangeDrag' | 'endGapRangeDrag'> &
   DescriptorValues<ReturnType<typeof import('./input.js').createWaveformModule>, 'seekFromPointer' | 'seekFromCue' | 'beginCreateCueDrag' | 'captureRowGeometry' | 'trackAtPoint' | 'isCueTimeOccupied' | 'clampCreateCueTime' | 'beginBlockedCueCreateDrag' | 'timeFromPointer' | 'timeFromPointerUnbounded' | 'flashSplitAtTime' | 'getSplitPointAtTime' | 'timeMsAtPoint' | 'beginPlayheadDrag' | 'beginMarqueeDrag' | 'handleWheel'> &
-  DescriptorValues<ReturnType<typeof import('./markers.js').createWaveformModule>, 'getMarkers' | 'appendMarkerTrack' | 'appendMarkerElement' | 'refreshMarkerOverlay' | 'openMarkerQuickEdit' | 'syncMarkerQuickEdit' | 'positionMarkerQuickEdit' | 'closeMarkerQuickEdit' | 'findMarkerRowAtClientY' | 'markerPointerGeometry' | 'markerPointerTimeMs' | '_beginMarkerPointerTracking' | '_teardownMarkerPointerTracking' | 'beginMarkerDrag' | 'beginMarkerCreateDrag' | 'moveMarkerDrag' | 'applyMarkerDragTime' | 'markerEdgeAutoScroll' | 'stopMarkerEdgeAutoScroll' | 'clearMarkerDragPreviews' | 'updateMarkerDragPreview' | 'endMarkerDrag'> &
+  DescriptorValues<ReturnType<typeof import('./markers.js').createWaveformModule>, 'getMarkers' | 'appendMarkerTrack' | 'appendMarkerElement' | 'refreshMarkerOverlay' | 'openMarkerQuickEdit' | 'syncMarkerQuickEdit' | 'positionMarkerQuickEdit' | 'closeMarkerQuickEdit' | 'findMarkerRowAtClientY' | 'markerPointerGeometry' | 'markerPointerTimeMs' | '_beginMarkerPointerTracking' | '_teardownMarkerPointerTracking' | 'beginMarkerDrag' | 'beginMarkerCreateDrag' | 'moveMarkerDrag' | 'applyMarkerDragTime' | 'markerEdgeAutoScroll' | 'stopMarkerEdgeAutoScroll' | 'clearMarkerDragPreviews' | 'refreshMarkerDragPointerLine' | 'updateMarkerDragPreview' | 'endMarkerDrag'> &
   DescriptorValues<ReturnType<typeof import('./media.js').createWaveformModule>, 'attachPlayer' | 'setMediaAvailable' | 'setPayload' | 'getPayload' | 'setSpectralPayload' | 'setReapeaksWaveform' | 'activeWaveShape' | 'getGapRemoveDetectionData' | 'processFile' | 'waitForPlayerDuration' | 'durationMs' | 'currentTimeMs' | 'centerBasicOnCurrentTime'> &
   DescriptorValues<ReturnType<typeof import('./playback.js').createWaveformModule>, 'updatePlayback' | 'getNavigationSnapshot' | 'restoreNavigation' | 'positionPlayheads'> &
-  DescriptorValues<ReturnType<typeof import('./pointer.js').createWaveformModule>, 'pointerTimeMs' | 'refreshPointerLine' | 'showPointerLine' | 'hidePointerLine' | 'isCueBoundaryDrag' | 'findVisibleWaveformRowAtPoint' | 'findVisibleWaveformRowAtY' | 'findVisibleWaveformRowForTime' | 'cueBoundaryDragTimeMs' | 'refreshBoundaryDragPointerLine' | 'restorePointerLineAfterBoundaryDrag' | 'scheduleHoverSeekPreview' | 'cancelHoverSeekPreview' | 'flushHoverSeekPreview'> &
+  DescriptorValues<ReturnType<typeof import('./pointer.js').createWaveformModule>, 'pointerTimeMs' | 'refreshPointerLine' | 'showPointerLine' | 'hidePointerLine' | 'isCueBoundaryDrag' | 'findVisibleWaveformRowAtPoint' | 'findVisibleWaveformRowAtY' | 'findVisibleWaveformRowForTime' | 'cueBoundaryDragTimeMs' | 'showDragPointerLineAtTime' | 'refreshBoundaryDragPointerLine' | 'restorePointerLineAfterBoundaryDrag' | 'scheduleHoverSeekPreview' | 'cancelHoverSeekPreview' | 'flushHoverSeekPreview'> &
   DescriptorValues<ReturnType<typeof import('./render.js').createWaveformModule>, 'scheduleRender' | 'scheduleMultiVisible' | 'scheduleBasicRender' | 'scheduleRefreshCueBlocks' | '_readWaveColors' | '_getWaveColors' | 'render' | 'stretchWaveformCanvases' | 'redrawWaveformCanvases' | 'renderSegments' | 'renderBasic' | 'renderMulti' | 'renderMultiVisible' | 'createMultiRow'> &
   DescriptorValues<ReturnType<typeof import('./scale-controls.js').createWaveformModule>, 'focusWaveform' | 'changeWaveformScale' | 'applyWaveformScaleSteps' | 'renderWaveformScaleLabel' | 'setLoudnessStats' | 'fitWaveformScaleToLoudness' | 'scheduleWheelScaleChange' | 'scheduleRowHeightChange' | 'updateDisabledVisibility' | 'revealTime' | 'changeZoom' | 'setStatus' | 'setSpectralColorStatus' | 'scheduleSpectralColorRender'> &
-  DescriptorValues<ReturnType<typeof import('./workspace.js').createWaveformModule>, 'bindDivider' | 'bindLayoutResizers' | 'applyLayoutVariables' | 'applyLayout' | 'updateAdvancedSettingsAvailability' | 'setMode' | 'setTool' | 'getTool' | 'setLayout' | 'toggleLayoutEditMode' | 'isMultiMode' | 'getRowHeight' | 'getMaxRowHeight' | 'setRowHeight' | 'isCustomLayout' | 'isPresetResizableLayout' | 'bindDockHandles' | 'bindWorkspaceDockTarget' | 'applyLayoutDrop' | 'showLayoutDropPreview' | 'clearLayoutDropPreview' | 'ensureCustomLayoutRoot' | 'restoreDirectLayoutModules' | 'createCustomLayoutNode' | 'applyCustomSplitRatio' | 'bindCustomLayoutDivider' | 'applyCustomLayoutTree' | 'getLayoutData' | 'getLayoutHistorySnapshot' | 'recordLayoutUndo' | 'restoreLayoutHistorySnapshot' | 'resetLayout' | 'setLayoutData'>;
+  DescriptorValues<ReturnType<typeof import('./workspace.js').createWaveformModule>, 'bindDivider' | 'bindLayoutResizers' | 'applyLayoutVariables' | 'applyLayout' | 'updateAdvancedSettingsAvailability' | 'setMode' | 'setTool' | 'getTool' | 'setLayout' | 'toggleLayoutEditMode' | 'isMultiMode' | 'getRowHeight' | 'setSecondsPerRow' | 'getMaxRowHeight' | 'setRowHeight' | 'isCustomLayout' | 'isPresetResizableLayout' | 'bindDockHandles' | 'bindWorkspaceDockTarget' | 'applyLayoutDrop' | 'showLayoutDropPreview' | 'clearLayoutDropPreview' | 'ensureCustomLayoutRoot' | 'restoreDirectLayoutModules' | 'createCustomLayoutNode' | 'applyCustomSplitRatio' | 'bindCustomLayoutDivider' | 'applyCustomLayoutTree' | 'getLayoutData' | 'getLayoutHistorySnapshot' | 'recordLayoutUndo' | 'restoreLayoutHistorySnapshot' | 'resetLayout' | 'setLayoutData'>;
 
 export type Track = 'main' | 'extension' | 'overlay';
 export interface TimedItem { start: number; end: number; text?: string; start_frame?: number; end_frame?: number; }
@@ -67,12 +67,14 @@ export interface WaveformPointerMarker extends HTMLDivElement { _hideTimer?: num
 // The existing renderer assigns disabled to these div-based resizers.
 export interface LayoutDivider extends HTMLDivElement { disabled?: boolean; }
 export interface CueDragState {
+  moveTracks?: CueDragState[]; selectedMoveSegments?: Set<Cue>;
+  moveAnchorSegment?: Cue; moveOriginals?: Map<Cue, Cue>; moveCommitSegments?: Set<Cue>;
   rangeMs?: number; rowWidth?: number; commitIndices?: Set<number>;
   started?: boolean; changed?: boolean; independent?: boolean;
   shiftOverlay?: boolean; shiftRangeSelect?: boolean; altToggleDisabledOnClick?: boolean;
   seekedOnPointerDown?: boolean; captureTarget?: HTMLElement;
   sharedBoundaryZone?: boolean; previewRowIndex?: number; edge?: string; dragIndex?: number;
-  pointerId: number; startClientX: number; currentClientX?: number; startClientY?: number;
+  pointerId: number; startClientX: number; currentClientX?: number; keyboardAdjustedClientX?: number; startClientY?: number;
   lastPointerPosition?: PointerPosition; lastEvent?: PointerEvent; row: HTMLElement;
   geometry?: RowGeometry; kind?: string; track: string; index?: number; boundaryIndex?: number;
   indices?: number[]; originals?: Map<number, Cue>; cancelOriginals?: Map<number, Cue>;
@@ -91,7 +93,7 @@ export interface MarkerDragState {
   pointerId: number; mode: string; row: HTMLElement; captureTarget: HTMLElement;
   startClientX: number; startClientY: number; moved: boolean; frame: number;
   lastEvent: PointerEvent | null; markerId?: string; original?: Marker; pending?: Marker;
-  pointerStartMs?: number; startMs?: number; endMs?: number;
+  geometry?: RowGeometry; pointerStartMs?: number; startMs?: number; endMs?: number;
 }
 export interface GapDragState {
   pointerId: number; row: HTMLElement; startClientX: number; startClientY?: number;
@@ -125,7 +127,7 @@ export interface WaveformOptions {
   getMarkers?(): Marker[];
   getCueTiming?(): Partial<Clock>;
   getBindingMarkerTargets?(): {main?: ReadonlySet<number>; extension?: ReadonlySet<number>};
-  getCrossTrackSnapTargets?(track?: string): number[];
+  getCrossTrackSnapTargets?(track?: string, excludedSegments?: Set<Cue>): number[];
   getWaveShapeSource?(): string;
   getAutoSnapAdjacentCues?(): boolean;
   getAdjacentBoundaryMode?(): string;
@@ -160,6 +162,7 @@ export interface WaveformOptions {
   activateExtensionCue?(...args: unknown[]): void;
   onBeginEdit?(...args: unknown[]): void;
   onCommitEdit?(...args: unknown[]): void;
+  prepareBoundCueDrag?(...args: unknown[]): void;
   syncBoundCueDrag?(...args: unknown[]): void;
   onCancelEdit?(...args: unknown[]): void;
   selectOverlayRange?(...args: unknown[]): void;
@@ -240,6 +243,7 @@ export interface WaveformState {
   _markerQuickEditKey: ((event: KeyboardEvent) => void) | null;
   markerDrag: MarkerDragState | null; markerCreateDrag: MarkerDragState | null;
   _markerDragMove: (event: PointerEvent) => void; _markerDragEnd: (event: PointerEvent) => void;
+  _markerDragCancel: () => void;
   markerEdgeScrollDirection: number; markerEdgeScrollFrame: number;
   pendingNavigation: NavigationSnapshot | null;
   _waveColors: {rowBg: string; rowBorder: string; rowGrid: string; rowTick: string; peak: string; peakDim: string};

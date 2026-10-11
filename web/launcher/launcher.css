@@ -2515,11 +2515,6 @@ textarea::placeholder {
   min-width: 132px;
 }
 
-.toolbox-full-line-hint {
-  margin: 0;
-  text-align: left;
-}
-
 .toolbox-output-action {
   display: flex;
   flex: 1 1 auto;
@@ -3482,6 +3477,24 @@ select[multiple] option {
 #postprocessAiCleanupNotesField:not(.hidden) {
   display: grid;
   gap: 8px;
+}
+
+/* AI 整理的供应商选择区：勾选后显示；标签-select 与下方状态行之间保持间距。 */
+#postprocessAiCleanupProviderField:not(.hidden) {
+  margin-top: 8px;
+}
+
+#postprocessAiCleanupProviderField:not(.hidden) label {
+  display: block;
+  margin-bottom: 8px;
+}
+
+#postprocessAiCleanupProviderField select {
+  width: 100%;
+}
+
+#postprocessAiCleanupProviderField .toolbox-settings-hint {
+  margin-top: 8px;
 }
 
 .script-alignment-check-actions, #toolboxTimestampCheckResult { margin-top: 10px; }

@@ -397,7 +397,9 @@ class GuiConfigTests(unittest.TestCase):
         self.assertEqual(provider.models[-1].label, "自定义（Custom）")
         self.assertEqual(provider.models[0].env_key, "MAW_OPENAI_ASR_API_KEY")
         self.assertEqual(provider.regions, ())
-        self.assertIn("时间戳", provider.note)
+        self.assertIn("OpenAI 官方服务", provider.note)
+        self.assertIn("OpenRouter", provider.note)
+        self.assertIn("自定义（Custom）", provider.note)
         self.assertIn("OpenRouter", provider.models[0].openrouter_note)
         self.assertIn("0.006", provider.models[0].price_note)
         self.assertTrue(provider.models[0].supports_prompt)
@@ -479,7 +481,7 @@ class GuiConfigTests(unittest.TestCase):
         self.assertEqual(moss.engine, "moss")
         self.assertTrue(moss.supports_speaker)
         self.assertIn("transformers", moss.requires_runtime)
-        # MOSS 输出契约只有段级时间戳（docs/LOCAL_ASR.md），说明里必须提前提醒。
+        # MOSS 输出契约只有段级时间戳（docs/user/LOCAL_ASR.md），说明里必须提前提醒。
         self.assertIn("仅段级时间码", moss.note)
         firered = provider.models[-2]
         self.assertEqual(firered.engine, "firered")
@@ -659,6 +661,24 @@ class GuiConfigTests(unittest.TestCase):
 
             with mock.patch.dict(os.environ, {}, clear=True):
                 self.assertEqual(gui_config.api_key_for_provider("soniox", env_path), "file-soniox")
+
+
+class ApiKeyNormalizationTests(unittest.TestCase):
+    def test_whitespace_system_key_uses_saved_key_or_remains_missing(self):
+        from maw.gui_config import api_key_for_provider
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / ".env"
+            self.assertEqual(api_key_for_provider("qwen", path, {"DASHSCOPE_API_KEY": "  "}), "")
+            path.write_text("DASHSCOPE_API_KEY=test-only-saved-token\n", encoding="utf-8")
+            self.assertEqual(api_key_for_provider("qwen", path, {"DASHSCOPE_API_KEY": "  "}),
+                             "test-only-saved-token")
+            self.assertEqual(api_key_for_provider("qwen", path, {"DASHSCOPE_API_KEY": "  test-only-system-token  "}),
+                             "test-only-system-token")
+
+    def test_explicit_empty_environment_does_not_read_host_credentials(self):
+        from maw.gui_config import api_key_for_provider
+        with tempfile.TemporaryDirectory() as directory, mock.patch.dict(os.environ, {"DASHSCOPE_API_KEY": "host-only-token"}):
+            self.assertEqual(api_key_for_provider("qwen", Path(directory) / ".env", {}), "")
 
 
 if __name__ == "__main__":

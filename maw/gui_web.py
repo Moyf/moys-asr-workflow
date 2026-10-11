@@ -37,6 +37,7 @@ from maw.asr_presets import (
     validate_options,
     write_preset,
 )
+from maw.asr_errors import api_key_error_code, asr_error_code, redact_asr_text
 from maw.ass_styles import find_ass_style, load_ass_style_library
 from maw.ffmpeg import MACOS_FFMPEG_CANDIDATE_DIRECTORIES, FfmpegTools, ffmpeg_search_path, media_duration_seconds, resolve_ffmpeg_tools
 from maw.media_cache import embed_media_caches
@@ -91,7 +92,7 @@ from maw.local_models import (
     local_model_payload,
     prepare_local_model as prepare_model,
 )
-from maw.media import resolve_default_audio_track, resolve_project_media
+from maw.media import probe_audio_tracks, resolve_project_media
 from maw.notify import send_system_notification
 from maw.postprocess import FixedProcessRequest, LlmPostprocessRequest, OutputMode, PostprocessStepError, Replacement, run_fixed_process as process_fixed_process, run_llm_postprocess as process_llm_postprocess
 from maw.postprocess_io import PostprocessFileError, read_project, read_srt
@@ -113,7 +114,7 @@ from maw.postprocess_ffmpeg import (
     run_extract_audio as process_extract_audio,
     run_ffconcat_rebuild as process_ffconcat_rebuild,
 )
-from maw.postprocess_match import DEFAULT_SPLIT_PUNCTUATION, SCRIPT_EXTENSIONS, MatchCoverageError, ScriptMatchRequest, SubtitleMatchError, _has_complete_item_timings, _match_project, _match_project_with_character_timings, _read_script, prepare_script_text, processed_script_text, run_script_match as process_script_match
+from maw.postprocess_match import DEFAULT_SPLIT_PUNCTUATION, SCRIPT_EXTENSIONS, MatchCancelledError, MatchCoverageError, ScriptMatchRequest, SubtitleMatchError, _has_complete_item_timings, _match_project, _match_project_with_character_timings, _read_script, prepare_script_text, processed_script_text, run_script_match as process_script_match
 from maw.postprocess_ocr import OcrDedupRequest, OcrRegion
 from maw.postprocess_llm import DEFAULT_REASONING_MODE, LlmClientError, LlmSettings, PRESETS as POSTPROCESS_PRESETS, complete_subtitle_groups, is_custom_slot, list_llm_models, loopback_base_url, normalize_reasoning_mode, postprocess_api_key_required as _postprocess_api_key_required, preset_by_id, test_llm_connection
 from maw.postprocess_pipeline import (
@@ -166,6 +167,7 @@ ERROR_MESSAGES: Final[dict[str, str]] = {
     "media_not_found": "Media file does not exist.",
     "server_media_missing": "Project media is missing, unsupported, or ambiguous. Choose media manually.",
     "api_key_missing": "API key is required.",
+    "api_key_invalid_format": "Paste only the API key, without whitespace, quotes, a URL or an Authorization prefix.",
     "custom_asr_model_missing": "请填写自定义 ASR 模型名。",
     "custom_asr_base_url_missing": "请填写自定义 ASR Base URL。",
     "local_runtime_missing": "本地模型运行时未安装。",
@@ -238,7 +240,7 @@ ERROR_MESSAGES: Final[dict[str, str]] = {
 
 
 class _PostprocessOperation:
-    """Cancellation state for one Launcher AI request."""
+    """Cancellation state for one Launcher matching or AI request."""
 
     def __init__(self, operation_id: str) -> None:
         self.operation_id = operation_id
@@ -625,7 +627,7 @@ class LauncherApi:
         # only after this admission, including while preparation is blocked.
         operation = self._begin_postprocess_operation(payload)
         if operation is None:
-            return _error_result("postprocessInput", "postprocess_operation_conflict", "This AI operation is already active or has an invalid operation id.")
+            return _error_result("postprocessInput", "postprocess_operation_conflict", "This post-processing operation is already active or has an invalid operation id.")
         try:
             if operation.operation_id:
                 self.pump.start()
@@ -646,7 +648,7 @@ class LauncherApi:
         return {"ok": False, "code": "postprocess_cancelled", "detail": cancelled_detail}
 
     def cancel_postprocess(self, payload: Mapping[str, object]) -> dict[str, object]:
-        """Cancel one active AI cleanup / LLM operation by its opaque UI id."""
+        """Cancel one active match / AI operation by its opaque UI id."""
 
         operation_id = str(payload.get("operationId") or "").strip()
         if not operation_id or len(operation_id) > MAX_POSTPROCESS_OPERATION_ID_LENGTH:
@@ -903,6 +905,8 @@ class LauncherApi:
             else:
                 updates["MAW_MODEL_CACHE_ROOT"] = ""
         if provider.requires_api_key and model.env_key:
+            if api_key and api_key_error_code(api_key):
+                return _error_result("apiKey", "api_key_invalid_format")
             updates[model.env_key] = api_key
         if provider.id == "qwen":
             updates["DASHSCOPE_REGION"] = str(payload.get("region") or "beijing")
@@ -1168,7 +1172,7 @@ class LauncherApi:
             )
             self._emit_postprocess_status("toolbox_status_writing")
         except (OSError, UnicodeError, ValueError, TextConversionUnavailable) as error:
-            return {"ok": False, "field": "postprocessInput", "code": file_error_code(error) or "postprocess_failed", "detail": str(error), "error": str(error)}
+            return {"ok": False, "field": "postprocessInput", "code": file_error_code(error) or "toolbox_failed", "detail": str(error), "error": str(error)}
         return _subtitle_artifact_result(result)
 
     def check_script_alignment(self, payload: Mapping[str, object]) -> dict[str, object]:
@@ -1297,14 +1301,24 @@ class LauncherApi:
         return self.run_fixed_process(payload)
 
     def run_script_match(self, payload: Mapping[str, object]) -> dict[str, object]:
+        return self._run_postprocess_operation(
+            payload,
+            run=lambda operation: self._run_script_match(payload, operation),
+            cancelled_detail="Script matching was cancelled.",
+        )
+
+    def _run_script_match(
+        self, payload: Mapping[str, object], operation: _PostprocessOperation
+    ) -> dict[str, object]:
         script_path = _optional_path(payload.get("scriptPath"))
         if script_path is None:
             return _error_result("postprocessScriptPath", "script_invalid", "A script file is required.")
         project_path = _optional_path(payload.get("projectPath"))
         srt_path = _optional_path(payload.get("srtPath"))
-        self._emit_postprocess_status("toolbox_status_reading")
+        def emit_status(key: str) -> None:
+            self._emit_postprocess_status(key, operation_id=operation.operation_id)
+
         try:
-            self._emit_postprocess_status("toolbox_status_matching")
             result = process_script_match(
                 ScriptMatchRequest(
                     project_path=project_path,
@@ -1316,9 +1330,13 @@ class LauncherApi:
                     preserve_punctuation=tuple(str(value) for value in payload.get("preservePunctuation", ()) if str(value)),
                     match_mode=str(payload.get("matchMode") or "script"),
                     clean_markdown_symbols=payload.get("cleanMarkdownSymbols", True) is not False,
-                )
+                ),
+                is_cancelled=operation.cancel_event.is_set,
+                begin_commit=operation.begin_commit,
+                on_status=emit_status,
             )
-            self._emit_postprocess_status("toolbox_status_writing")
+        except MatchCancelledError:
+            return {"ok": False, "code": "postprocess_cancelled", "detail": "Script matching was cancelled."}
         except MatchCoverageError as error:
             return _match_coverage_error_result("postprocessScriptPath", error)
         except PostprocessFileError as error:
@@ -1334,7 +1352,7 @@ class LauncherApi:
         except SubtitleMatchError as error:
             return _error_result("postprocessScriptPath", "subtitle_invalid", str(error))
         except (OSError, UnicodeError, ValueError) as error:
-            return {"ok": False, "field": "postprocessScriptPath", "code": file_error_code(error) or "postprocess_failed", "detail": str(error), "error": str(error)}
+            return {"ok": False, "field": "postprocessScriptPath", "code": file_error_code(error) or "toolbox_failed", "detail": str(error), "error": str(error)}
         return _subtitle_artifact_result(result)
 
     def run_ai_cleanup(self, payload: Mapping[str, object]) -> dict[str, object]:
@@ -1370,7 +1388,7 @@ class LauncherApi:
         if not settings.api_key and _postprocess_api_key_required(preset.id, settings.base_url):
             return _error_result("postprocessApiKey", "api_key_missing", "Post-processing API key is required.")
         if not settings.base_url or not settings.model:
-            return {"ok": False, "field": "postprocessProvider", "code": "postprocess_failed", "detail": "LLM API URL and model are required.", "error": "LLM API URL and model are required."}
+            return {"ok": False, "field": "postprocessProvider", "code": "toolbox_failed", "detail": "LLM API URL and model are required.", "error": "LLM API URL and model are required."}
         def emit_status(key: str, details: Mapping[str, int] | None = None) -> None:
             self._emit_postprocess_status(key, details, operation_id=operation.operation_id)
 
@@ -1452,7 +1470,7 @@ class LauncherApi:
             return _error_result("ocrModel", "ocr_model_missing", str(error))
         ffmpeg = _postprocess_ffmpeg(self.paths.env_path)
         if ffmpeg is None:
-            return {"ok": False, "field": "ocrVideoPath", "code": "postprocess_failed", "detail": "找不到 FFmpeg，无法抽取视频画面。", "error": "找不到 FFmpeg，无法抽取视频画面。"}
+            return {"ok": False, "field": "ocrVideoPath", "code": "toolbox_failed", "detail": "找不到 FFmpeg，无法抽取视频画面。", "error": "找不到 FFmpeg，无法抽取视频画面。"}
         self._emit_postprocess_status("toolbox_status_reading")
         try:
             raw_threshold = payload.get("threshold")
@@ -1477,7 +1495,7 @@ class LauncherApi:
         except OcrRuntimeCancelled as error:
             return _error_result("ocrModel", "ocr_runtime_cancelled", str(error))
         except (OSError, UnicodeError, ValueError, OcrRuntimeError) as error:
-            return {"ok": False, "field": "ocrVideoPath", "code": file_error_code(error) or "postprocess_failed", "detail": str(error), "error": str(error)}
+            return {"ok": False, "field": "ocrVideoPath", "code": file_error_code(error) or "toolbox_failed", "detail": str(error), "error": str(error)}
         return {"ok": True, **result}
 
     def run_llm_postprocess(self, payload: Mapping[str, object]) -> dict[str, object]:
@@ -1517,7 +1535,7 @@ class LauncherApi:
         if not settings.api_key and _postprocess_api_key_required(preset.id, settings.base_url):
             return _error_result("postprocessApiKey", "api_key_missing", "Post-processing API key is required.")
         if not settings.base_url or not settings.model:
-            return {"ok": False, "field": "postprocessProvider", "code": "postprocess_failed", "detail": "LLM API URL and model are required.", "error": "LLM API URL and model are required."}
+            return {"ok": False, "field": "postprocessProvider", "code": "toolbox_failed", "detail": "LLM API URL and model are required.", "error": "LLM API URL and model are required."}
         batch_number = 0
 
         def emit_status(key: str, details: Mapping[str, int] | None = None) -> None:
@@ -1571,15 +1589,15 @@ class LauncherApi:
         except (LlmClientError, PostprocessStepError) as error:
             if error.category == "cancelled" or operation_state.cancel_event.is_set():
                 return {"ok": False, "code": "postprocess_cancelled", "detail": "AI post-processing was cancelled."}
-            return _llm_error_result("postprocessInput", "postprocess_failed", error)
+            return _llm_error_result("postprocessInput", "toolbox_failed", error)
         except (OSError, UnicodeError, ValueError, RuntimeError) as error:
-            return {"ok": False, "field": "postprocessInput", "code": file_error_code(error) or "postprocess_failed", "detail": str(error), "error": str(error)}
+            return {"ok": False, "field": "postprocessInput", "code": file_error_code(error) or "toolbox_failed", "detail": str(error), "error": str(error)}
         return _subtitle_artifact_result(result)
 
     def run_ffconcat_rebuild(self, payload: Mapping[str, object]) -> dict[str, object]:
         ffmpeg = _postprocess_ffmpeg(self.paths.env_path)
         if ffmpeg is None:
-            return {"ok": False, "field": "postprocessFfconcat", "code": "postprocess_failed", "detail": "FFmpeg was not found.", "error": "FFmpeg was not found."}
+            return {"ok": False, "field": "postprocessFfconcat", "code": "toolbox_failed", "detail": "FFmpeg was not found.", "error": "FFmpeg was not found."}
         self._emit_postprocess_status("toolbox_status_validating_media")
         try:
             self._emit_postprocess_status("toolbox_status_rebuilding_media")
@@ -1591,7 +1609,7 @@ class LauncherApi:
                 ffmpeg_path=ffmpeg,
             )
         except (OSError, ValueError, RuntimeError) as error:
-            return {"ok": False, "field": "postprocessFfconcat", "code": file_error_code(error) or "postprocess_failed", "detail": str(error), "error": str(error)}
+            return {"ok": False, "field": "postprocessFfconcat", "code": file_error_code(error) or "toolbox_failed", "detail": str(error), "error": str(error)}
         return {
             "ok": True,
             "sourceMediaPath": str(result.source_media_path),
@@ -2624,6 +2642,8 @@ class LauncherApi:
                     "srtPath": raw_item.get("srtPath") or raw_item.get("outputPath"),
                 }
                 merged = dict(item_payload)
+                # Track metadata belongs to each item, never the single-file form.
+                merged["audioTrackCount"] = raw_item.get("audioTrackCount")
                 media_text = str(merged.get("mediaPath") or "").strip()
                 raw_audio_track = merged.get("audioTrack")
                 if media_text and (raw_audio_track is None or not str(raw_audio_track).strip()):
@@ -2639,11 +2659,15 @@ class LauncherApi:
                             "audio_track_invalid",
                             "默认音频轨道必须是非负整数。",
                         )
-                    default_audio_track = resolve_default_audio_track(
-                        Path(media_text).expanduser().resolve(),
-                        explicit_default,
-                        ffprobe_path=_postprocess_ffmpeg_tools(self.paths.env_path).ffprobe,
-                    )
+                    default_audio_track = explicit_default
+                    if default_audio_track is None:
+                        # Reuse the original default-track preflight probe for the hint.
+                        tracks = probe_audio_tracks(
+                            Path(media_text).expanduser().resolve(),
+                            ffprobe_path=_postprocess_ffmpeg_tools(self.paths.env_path).ffprobe,
+                        )
+                        default_audio_track = next((track["audio_index"] for track in tracks or [] if track.get("default")), 0)
+                        merged["audioTrackCount"] = len(tracks) if tracks is not None else None
                     merged["audioTrack"] = default_audio_track
                     merged["defaultAudioTrack"] = default_audio_track
                 if media_text and not str(merged.get("srtPath") or "").strip():
@@ -2673,6 +2697,15 @@ class LauncherApi:
                 for item in items
                 if item.preflight_error
             )
+            shared_code = items[0].preflight_code
+            if shared_code == "audio_tracks_missing" and all(
+                item.preflight_code == shared_code for item in items
+            ):
+                return _error_result("items", shared_code, details)
+            if shared_code in {"api_key_missing", "api_key_invalid_format"} and all(
+                item.preflight_code == shared_code for item in items
+            ):
+                return _error_result("apiKey", shared_code, details)
             return {
                 "ok": False,
                 "field": "items",
@@ -3219,7 +3252,7 @@ class LauncherApi:
 
         def on_child_event(line: str) -> None:
             child_output.append(line)
-            self._emit({"type": "log", "message": line})
+            self._emit({"type": "log", "message": redact_asr_text(line, request.api_key)})
 
         try:
             result = run_transcription(
@@ -3229,7 +3262,7 @@ class LauncherApi:
                 on_process_start=lambda pid: self._emit({"type": "log", "message": f"[info] 转写进程已启动 (pid {pid})"}),
             )
         except TranscriptionCancelledError as error:
-            self._emit({"type": "error", "code": "transcription_cancelled", "detail": str(error)})
+            self._emit({"type": "error", "code": "transcription_cancelled", "detail": redact_asr_text(error, request.api_key)})
             if self.worker is threading.current_thread():
                 self.worker = None
             self.pump.flush()
@@ -3239,29 +3272,29 @@ class LauncherApi:
                 self._emit({
                     "type": "error",
                     "code": "ffmpeg_missing",
-                    "detail": str(error),
+                    "detail": redact_asr_text(error, request.api_key),
                 })
             elif _is_ffprobe_start_failure(child_output):
                 self._emit({
                     "type": "error",
                     "code": "ffprobe_start_failed",
-                    "detail": str(error),
+                    "detail": redact_asr_text(error, request.api_key),
                 })
             elif _is_ffmpeg_start_failure(child_output):
                 self._emit({
                     "type": "error",
                     "code": "ffmpeg_start_failed",
-                    "detail": str(error),
+                    "detail": redact_asr_text(error, request.api_key),
                 })
             else:
-                self._emit({"type": "error", "code": file_error_code(error) or "transcription_failed", "detail": str(error)})
+                self._emit({"type": "error", "code": file_error_code(error) or asr_error_code(error, provider=request.provider) or "transcription_failed", "detail": redact_asr_text(error, request.api_key)})
             if self.worker is threading.current_thread():
                 self.worker = None
             self.pump.flush()
             return
         # The pywebview worker boundary must report every backend failure to JS.
         except Exception as error:  # noqa: BLE001
-            self._emit({"type": "error", "code": file_error_code(error) or "transcription_failed", "detail": str(error)})
+            self._emit({"type": "error", "code": file_error_code(error) or asr_error_code(error, provider=request.provider) or "transcription_failed", "detail": redact_asr_text(error, request.api_key)})
             if self.worker is threading.current_thread():
                 self.worker = None
             self.pump.flush()
@@ -4039,6 +4072,15 @@ def _request_from_payload(payload: Mapping[str, object], env_path: Path) -> Tran
         raise PreflightError("mediaPath", "media_not_found", "Media file does not exist.")
     if not srt_text or not srt.name:
         raise PreflightError("srtPath", "output_missing", "SRT output path is required.")
+    raw_audio_track_count = payload.get("audioTrackCount")
+    audio_track_count = (
+        raw_audio_track_count
+        if isinstance(raw_audio_track_count, int)
+        and not isinstance(raw_audio_track_count, bool)
+        and raw_audio_track_count >= 0 else None
+    )
+    if audio_track_count == 0:
+        raise PreflightError("mediaPath", "audio_tracks_missing", "No audio tracks were found in this media.")
     audio_track = _payload_audio_track(payload, field="audioTrack")
     if audio_track is None:
         raise PreflightError(
@@ -4156,8 +4198,10 @@ def _request_from_payload(payload: Mapping[str, object], env_path: Path) -> Tran
                 raise PreflightError("alignmentModel", "local_runtime_missing", alignment_status.detail)
             if not alignment_status.installed:
                 raise PreflightError("alignmentModel", "alignment_model_missing", alignment_status.detail)
-    if provider.requires_api_key and not api_key:
-        raise PreflightError("apiKey", "api_key_missing", "API key is required.")
+    if provider.requires_api_key:
+        key_error = api_key_error_code(api_key)
+        if key_error:
+            raise PreflightError("apiKey", key_error, ERROR_MESSAGES[key_error])
     if provider.id == "qwen" and region == "singapore" and not workspace_id:
         raise PreflightError("workspaceId", "workspace_missing", "Workspace ID is required for Singapore region.")
     qwen_audio_context = (
@@ -4224,6 +4268,7 @@ def _request_from_payload(payload: Mapping[str, object], env_path: Path) -> Tran
         srt_path=srt,
         audio_track=audio_track,
         default_audio_track=default_audio_track,
+        audio_track_count=audio_track_count,
         model=custom_model if provider.id == "openai" else (model.model_ref or model.id),
         language=str(payload.get("language") or ""),
         api_key=api_key,
@@ -4401,7 +4446,7 @@ def _script_match_input_error_code(
     input_paths = tuple(path.expanduser().resolve(strict=False) for path in (project_path, srt_path) if path is not None)
     if error_path in input_paths:
         return "subtitle_invalid"
-    return "postprocess_failed"
+    return "toolbox_failed"
 
 
 def _match_coverage_error_result(field: str, error: MatchCoverageError) -> dict[str, object]:

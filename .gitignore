@@ -4,6 +4,9 @@ __pycache__/
 *.py[cod]
 .pytest_cache/
 
+# Local task output and previews; source fixtures and shared evidence stay tracked.
+/.artifacts/
+
 # Derived editor and waveform data. Keep the JSON project and the original media outside the repository when possible.
 *.waveform.json
 *.mopeaks

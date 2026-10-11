@@ -39,6 +39,10 @@ class TimelineCleanupTest(CompactContainerAssertions, AiCleanupTestCase):
         self.assertEqual(artifact.stats["removedItems"], 3)
         ai_range = project["gap_remove"]["provenance"]["sources"]["ai_cleanup"][0]
         self.assertEqual((ai_range["start"], ai_range["end"]), (0, 600))
+        self.assertEqual(ai_range["cleanup_scope"], {
+            "segment_id": project["segments"][0]["id"],
+            "item_start": 0, "item_end": 3, "text": "我可以",
+        })
         self.assertIn("我可以显示画面", artifact.srt_path.read_text(encoding="utf-8-sig"))
         self.assertNotIn("我可以我可以", artifact.srt_path.read_text(encoding="utf-8-sig"))
         self.assertEqual(project["markers"]["items"][-1]["review"]["status"], "pending")
@@ -46,6 +50,14 @@ class TimelineCleanupTest(CompactContainerAssertions, AiCleanupTestCase):
         data = json.loads(re.search(r'<script id="comparison-data" type="application/json">(.*?)</script>', html, re.S)[1])
         self.assertEqual(data["rows"][0]["after"], "我可以显示画面")
         self.assertTrue(data["rows"][1]["review"])
+
+    def test_markdown_cut_scope_cannot_remove_words_from_an_overlapping_cue(self):
+        _, project, _ = self.execute(["这个这个方法"], "[c001] ~~这个~~这个方法")
+        source = project["segments"][0]
+        other = {**source, "id": "overlapping-other"}
+        self.assertEqual(cleaned_srt_segments(project, [source, other])[1]["text"], source["text"])
+        project["gap_remove"]["provenance"]["sources"]["ai_cleanup"][0]["cleanup_scope"]["text"] = "旧文本"
+        self.assertEqual(cleaned_srt_segments(project, [source])[0]["text"], source["text"])
 
     def test_missed_scan_can_cut_even_if_first_pass_has_no_deletion(self):
         artifact, project, _ = self.execute(["演示这个功能", "演示这个功能"], "[c001] 演示这个功能\n[c002] 演示这个功能", scan="[c001] ~~演示这个功能~~ %删除：重复旧版%\n[c002] 演示这个功能")
