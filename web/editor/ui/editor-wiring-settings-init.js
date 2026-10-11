@@ -214,7 +214,11 @@ MaweDom.multiSubtitleDisplayMode?.addEventListener('change', () => {
   return MaweCommands.run('切换双语字幕列表', (command) => {
     multi.display_mode = MULTI_SUBTITLE_UTILS.MULTI_SUBTITLE_DISPLAY_MODES.has(next) ? next : 'both';
     multi._dirty = true;
-    command.commit({ cueList: true, waveform: 'none' });
+    // 三种显示模式的行 DOM 结构互不相同，列表只能全量重建（长工程会明显卡顿）。
+    // 这里不同步重建：先提交变更并让下拉框状态上屏，下一帧再重建列表，
+    // 避免同一次 change 里既做视觉反馈又扛整表重建。
+    command.commit({ cueList: false, waveform: 'none' });
+    requestAnimationFrame(() => MaweCuePanel.renderAll({ waveform: 'none' }));
   });
 });
 MaweDom.multiSubtitleMainLanguageMode?.addEventListener('change', () => {

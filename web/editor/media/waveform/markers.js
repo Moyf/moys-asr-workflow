@@ -54,7 +54,8 @@ export function createWaveformModule(dependencies) {
       // 行时间标签是否需要给标记轨道让位：仅当该行可见范围内确有标记时下移。
       const hasVisibleMarkers = markers.some((marker) => window.AsrEditorUtils.markerVisibleRange(marker, startMs, endMs));
       row.classList.toggle('waveform-row-has-markers', hasVisibleMarkers);
-      if (!markers.length) return;
+      // 启用标记编辑就始终渲染轨道（即使还没有任何标记）：
+      // 空轨道也要能点击添加 / 拖出 Region，而不是等第一个标记出现才显示。
       const track = document.createElement('div');
       track.className = 'waveform-marker-track';
       track.addEventListener('pointerdown', (event) => {
@@ -295,7 +296,7 @@ export function createWaveformModule(dependencies) {
           reviewToggle.title = marker.review.reason;
           reviewToggle.dataset.markerProjectReason = 'true';
         } else {
-          reviewToggle.removeAttribute('title');
+          reviewToggle.title = '';
           delete reviewToggle.dataset.markerProjectReason;
         }
       }

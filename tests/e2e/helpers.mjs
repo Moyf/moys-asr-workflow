@@ -249,6 +249,47 @@ export async function openSettingsPage(page, key) {
   await page.locator(`#editor-settings-tab-${key}`).click();
 }
 
+export async function dragFloatingPanelAwayFrom(page, panelSelector, dragHandleSelector, targetSelector) {
+  const panel = page.locator(panelSelector);
+  const panelBefore = await panel.boundingBox();
+  const handle = await page.locator(dragHandleSelector).boundingBox();
+  const target = await page.locator(targetSelector).boundingBox();
+  const viewport = await page.evaluate(() => ({ width: innerWidth, height: innerHeight }));
+  if (!panelBefore || !handle || !target) throw new Error('Floating panel drag fixture is not visible');
+
+  const targetOnLeft = target.x + target.width / 2 < viewport.width / 2;
+  const left = targetOnLeft ? viewport.width - panelBefore.width - 8 : 8;
+  const top = Math.max(8, Math.min(24, viewport.height - panelBefore.height - 8));
+  const offsetX = Math.min(40, Math.max(12, handle.width / 2));
+  const offsetY = Math.max(8, Math.min(15, handle.height / 2));
+  const start = { x: handle.x + offsetX, y: handle.y + offsetY };
+  // Import/other actions may leave a transient hint card above the settings
+  // header. Wait until the real drag handle owns this screen point so the
+  // mouse gesture exercises normal pointer capture instead of hitting a toast.
+  await page.waitForFunction(({ x, y, selector }) => {
+    const dragHandle = document.querySelector(selector);
+    const hit = document.elementFromPoint(x, y);
+    return Boolean(dragHandle && hit && (hit === dragHandle || dragHandle.contains(hit)));
+  }, { x: start.x, y: start.y, selector: dragHandleSelector }, { timeout: 10_000 });
+  const hit = await page.evaluate(({ x, y }) => {
+    const element = document.elementFromPoint(x, y);
+    return { tag: element?.tagName, id: element?.id, className: element?.className };
+  }, start);
+  await page.mouse.move(start.x, start.y);
+  await page.mouse.down();
+  const started = await panel.evaluate(element => element.classList.contains('dragging'));
+  await page.mouse.move(left + offsetX, top + offsetY, { steps: 6 });
+  await page.mouse.up();
+
+  const panelAfter = await panel.boundingBox();
+  if (!panelAfter) throw new Error('Floating panel disappeared during drag');
+  const overlaps = panelAfter.x < target.x + target.width
+    && panelAfter.x + panelAfter.width > target.x
+    && panelAfter.y < target.y + target.height
+    && panelAfter.y + panelAfter.height > target.y;
+  return { panelBefore, panelAfter, target, overlaps, handle, start, hit, started, destination: { left, top } };
+}
+
 export async function closeSettingsPanels(page) {
   for (const prefix of ['project-settings', 'editor-settings']) {
     if (await page.locator(`#${prefix}-panel`).isVisible()) await page.locator(`#${prefix}-close`).click();

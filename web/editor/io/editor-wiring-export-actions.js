@@ -277,9 +277,14 @@ document.getElementById('download-full-srt')?.addEventListener('click', async ()
 });
 document.getElementById('download-full-ass')?.addEventListener('click', async () => {
   if (MaweInlineEdit.editingState) MaweInlineEdit.finishEdit(true);
-  await MaweExportTimeline.downloadFile(MaweExportSrt.buildAss(), `${MaweBoot.FILENAME_BASE}.ass`, 'text/plain', {
-    desc: '完整 ASS 字幕文件', types: { 'text/plain': ['.ass'] }
-  });
+  try {
+    const payload = MaweExportSrt.buildAss();
+    await MaweExportTimeline.downloadFile(payload, `${MaweBoot.FILENAME_BASE}.ass`, 'text/plain', {
+      desc: '完整 ASS 字幕文件', types: { 'text/plain': ['.ass'] }
+    });
+  } catch (error) {
+    MaweHint.flashHint(`ASS 导出失败：${error.message || error}`, 'warning');
+  }
 });
 document.getElementById('download-color-srt')?.addEventListener('click', () => MaweExportSrt.downloadColorSrts(false));
 document.getElementById('download-plain-text')?.addEventListener('click', async () => {
@@ -345,11 +350,15 @@ document.getElementById('download-gap-removed-srt')?.addEventListener('click', a
 document.getElementById('download-gap-removed-color-srt')?.addEventListener('click', () => MaweExportSrt.downloadColorSrts(true));
 document.getElementById('download-gap-removed-ass')?.addEventListener('click', async () => {
   if (MaweInlineEdit.editingState) MaweInlineEdit.finishEdit(true);
-  const payload = MaweExportSrt.buildGapRemovedAss();
-  if (payload) {
-    await MaweExportTimeline.downloadFile(payload, `${MaweBoot.FILENAME_BASE}_${window.MAWE_I18N?.exportTag?.('gap-removed') || 'gap-removed'}.ass`, 'text/plain', {
-      desc: '去空隙带样式 ASS 字幕', types: { 'text/plain': ['.ass'] }
-    });
+  try {
+    const payload = MaweExportSrt.buildGapRemovedAss();
+    if (payload) {
+      await MaweExportTimeline.downloadFile(payload, `${MaweBoot.FILENAME_BASE}_${window.MAWE_I18N?.exportTag?.('gap-removed') || 'gap-removed'}.ass`, 'text/plain', {
+        desc: '去空隙带样式 ASS 字幕', types: { 'text/plain': ['.ass'] }
+      });
+    }
+  } catch (error) {
+    MaweHint.flashHint(`ASS 导出失败：${error.message || error}`, 'warning');
   }
 });
 document.getElementById('download-otio')?.addEventListener('click', async () => {
@@ -417,6 +426,110 @@ document.getElementById('download-gap-removed-ffconcat')?.addEventListener('clic
     await MaweExportTimeline.downloadFile(payload, `${MaweBoot.FILENAME_BASE}_${window.MAWE_I18N?.exportTag?.('gap-removed') || 'gap-removed'}.ffconcat`, 'text/plain', {
       desc: 'FFconcat 剪辑计划', types: { 'text/plain': ['.ffconcat'] }
     });
+  }
+});
+document.getElementById('download-gap-removed-video')?.addEventListener('click', async () => {
+  if (MaweInlineEdit.editingState) MaweInlineEdit.finishEdit(true);
+  const tr = (text) => window.MAWE_I18N?.translateText?.(text) || text;
+  const config = MaweBoot.SERVER_CONFIG;
+  const sourceName = config?.gapRemovedVideoSourceName;
+  const sourceExtension = typeof sourceName === 'string' ? sourceName.match(/\.[^.]+$/)?.[0]?.toLowerCase() : '';
+  const mimeByExtension = {
+    '.mp4': 'video/mp4', '.mkv': 'video/x-matroska', '.avi': 'video/x-msvideo',
+    '.mov': 'video/quicktime', '.wmv': 'video/x-ms-wmv', '.flv': 'video/x-flv',
+    '.webm': 'video/webm', '.ts': 'video/mp2t', '.m4v': 'video/x-m4v',
+  };
+  if (!config?.canGapRemovedVideoExport || !config.gapRemovedVideoExportUrl) {
+    MaweHint.flashHint(tr('重组后视频需要在 server-editor 中打开已绑定的视频工程'), 'warning');
+    return;
+  }
+  if (!MaweHost.files.hasSavePicker() || !mimeByExtension[sourceExtension]) {
+    MaweHint.flashHint(tr('当前浏览器或媒体格式不支持重组后视频保存'), 'warning');
+    return;
+  }
+  const context = MaweExportSrt.gapRemovedExportContext();
+  if (!context) return;
+  MaweHint.flashHint(tr('流复制保留兼容媒体流；切点可能出现重复帧或时间戳边界。'), 'warning');
+
+  let handle;
+  try {
+    const suggestedName = `${MaweBoot.FILENAME_BASE}_${window.MAWE_I18N?.exportTag?.('gap-removed') || 'gap-removed'}${sourceExtension}`;
+    handle = await MaweHost.files.pickSaveFile({
+      suggestedName,
+      types: [{ description: tr('重组后视频'), accept: { [mimeByExtension[sourceExtension]]: [sourceExtension] } }],
+    });
+  } catch (error) {
+    if (error?.name === 'AbortError') return;
+    MaweHint.flashHint(`${tr('无法打开视频保存位置选择器')}：${error?.message || error}`, 'warning');
+    return;
+  }
+  if (handle.name.toLowerCase() === sourceName.toLowerCase()) {
+    MaweHint.flashHint(tr('保存目标不能与源视频同名'), 'warning');
+    return;
+  }
+  if (!handle.name.toLowerCase().endsWith(sourceExtension)) {
+    MaweHint.flashHint(tr('保存文件扩展名需要与源视频一致'), 'warning');
+    return;
+  }
+
+  let writable = null;
+  let reader = null;
+  let response = null;
+  let transferComplete = false;
+  try {
+    MaweHint.flashHint(tr('正在重组去空隙视频…'));
+    response = await MaweHost.server.fetch(config.gapRemovedVideoExportUrl, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        requestToken: config.requestToken,
+        intervals: context.intervals.map(({ start, end }) => ({ startMs: start, endMs: end })),
+      }),
+    });
+    if (!response.ok) {
+      const error = await response.json().catch(() => ({}));
+      throw new Error(error.error || `服务器返回 ${response.status}`);
+    }
+    const contentType = (response.headers.get('Content-Type') || '').split(';', 1)[0].trim().toLowerCase();
+    if (contentType !== mimeByExtension[sourceExtension]) {
+      throw new Error(tr('服务器返回的视频格式与源视频不一致'));
+    }
+    if (!response.body?.getReader) throw new Error(tr('当前浏览器不支持流式保存视频'));
+    const expectedLength = Number(response.headers.get('Content-Length'));
+    if (!Number.isSafeInteger(expectedLength) || expectedLength <= 0) {
+      throw new Error(tr('服务器返回的视频大小无效'));
+    }
+    writable = await handle.createWritable();
+    reader = response.body.getReader();
+    let receivedLength = 0;
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      if (!(value instanceof Uint8Array) || value.byteLength === 0) continue;
+      receivedLength += value.byteLength;
+      if (receivedLength > expectedLength) throw new Error(tr('服务器返回的视频长度超出预期'));
+      await writable.write(value);
+    }
+    if (receivedLength !== expectedLength) throw new Error(tr('视频传输不完整，未保存部分文件'));
+    await writable.close();
+    writable = null;
+    transferComplete = true;
+    MaweHint.flashHint(tr('去空隙视频已重组并保存'), 'success');
+  } catch (error) {
+    MaweHint.flashHint(`${tr('重组后视频导出失败')}：${error?.message || error}`, 'warning');
+  } finally {
+    if (!transferComplete && response?.body) {
+      // Releasing a reader only relinquishes its JS lock. Cancel the network
+      // body as well so the server can finish streaming and release its export
+      // lock after a validation/storage failure, including before reader setup.
+      // Do not wait for transport cleanup or replace the original failure.
+      try {
+        const cancellation = reader ? reader.cancel() : response.body.cancel();
+        void cancellation.catch(() => {});
+      } catch (_) {}
+    }
+    if (reader) reader.releaseLock();
+    if (writable) await writable.abort().catch(() => {});
   }
 });
 document.getElementById('download-gap-removed-regions-json')?.addEventListener('click', async () => {

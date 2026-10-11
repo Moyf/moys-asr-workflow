@@ -10,6 +10,7 @@ import os
 import sys
 import tempfile
 import threading
+import time
 import unittest
 from collections.abc import Mapping
 from http import HTTPStatus
@@ -85,6 +86,420 @@ class GuiWebBridgeTests(CompactContainerAssertions, unittest.TestCase):
         self.assertTrue(result["ok"])
         self.assertEqual(cleanup.call_args.args[0].notes, "保留所有数字")
 
+    def test_ai_cleanup_stream_cancel_closes_response_and_writes_no_artifact(self) -> None:
+        project = self.root / "cancel-cleanup.mosp"
+        script = self.root / "cancel-cleanup.txt"
+        project.write_text(
+            json.dumps({
+                "schema": "moy.asr.project.v1",
+                "segments": [{
+                    "id": "seg-1",
+                    "start": 0,
+                    "end": 1000,
+                    "text": "你好",
+                    "items": [
+                        {"text": "你", "start": 0, "end": 500},
+                        {"text": "好", "start": 500, "end": 1000},
+                    ],
+                }],
+            }, ensure_ascii=False),
+            encoding="utf-8",
+        )
+        script.write_text("你好", encoding="utf-8")
+        response = mock.Mock()
+        response_closed = threading.Event()
+        response.close.side_effect = response_closed.set
+
+        def request_completion(_settings, _prompt, cues, *, on_delta, is_cancelled, on_response, **_kwargs):
+            on_response(response)
+            decisions = [
+                {
+                    "id": cue["id"],
+                    "decision": "keep",
+                    "reason": "与文稿对应",
+                    "scriptLine": cue["scriptLine"],
+                }
+                for cue in cues
+                if cue.get("contextOnly") != "true"
+            ]
+            content = json.dumps({"decisions": decisions}, ensure_ascii=False)
+            try:
+                on_delta("content", content)
+                return {"choices": [{"message": {"content": content}}]}
+            finally:
+                on_response(None)
+
+        emit_stream = self.api._emit_postprocess_stream
+
+        def emit_then_cancel(kind, text, batch, *, operation_id=""):
+            emit_stream(kind, text, batch, operation_id=operation_id)
+            if kind == "content":
+                cancelled = self.api.cancel_postprocess({"operationId": operation_id})
+                self.assertEqual(cancelled, {"ok": True, "active": True, "cancelled": True})
+
+        with (
+            mock.patch("maw.postprocess_ai_cleanup._request_completion", side_effect=request_completion),
+            mock.patch.object(self.api, "_emit_postprocess_stream", side_effect=emit_then_cancel),
+        ):
+            result = self.api.run_ai_cleanup({
+                "projectPath": str(project),
+                "scriptPath": str(script),
+                "outputMode": "json",
+                "providerId": "deepseek",
+                "apiKey": "sk-test",
+                "baseUrl": "https://api.deepseek.com",
+                "model": "deepseek-chat",
+                "operationId": "ai-cleanup-cancel-test",
+            })
+
+        self.api.pump.shutdown()
+        scripts = "\n".join(self.window.scripts)
+        self.assertFalse(result["ok"])
+        self.assertEqual(result["code"], "postprocess_cancelled")
+        self.assertTrue(response_closed.wait(1), "response close runs asynchronously")
+        response.close.assert_called_once_with()
+        self.assertIn('"type": "postprocess_stream"', scripts)
+        self.assertIn('"operationId": "ai-cleanup-cancel-test"', scripts)
+        self.assertEqual(
+            sorted(path.name for path in self.root.iterdir()),
+            [".env.example", "cancel-cleanup.mosp", "cancel-cleanup.txt"],
+        )
+
+    def test_ai_cleanup_streams_each_batch_and_review_with_retry_reset(self) -> None:
+        project = self.root / "stream-cleanup.mosp"
+        script = self.root / "stream-cleanup.txt"
+        project.write_text(
+            json.dumps({
+                "schema": "moy.asr.project.v1",
+                "segments": [
+                    {
+                        "id": "trial",
+                        "start": 0,
+                        "end": 2000,
+                        "text": "试麦试麦听得到吗",
+                        "items": [
+                            {"text": "试麦", "start": 0, "end": 500},
+                            {"text": "试麦", "start": 500, "end": 1000},
+                            {"text": "听得到吗", "start": 1000, "end": 2000},
+                        ],
+                    },
+                    {
+                        "id": "kept",
+                        "start": 2000,
+                        "end": 3000,
+                        "text": "你好",
+                        "items": [
+                            {"text": "你", "start": 2000, "end": 2500},
+                            {"text": "好", "start": 2500, "end": 3000},
+                        ],
+                    },
+                ],
+            }, ensure_ascii=False),
+            encoding="utf-8",
+        )
+        script.write_text("你好", encoding="utf-8")
+        events: list[tuple[str, str, int, str]] = []
+        request_count = 0
+
+        def request_completion(_settings, prompt, cues, *, on_delta, on_response, **_kwargs):
+            nonlocal request_count
+            request_count += 1
+            on_response(None)
+            if request_count == 1:
+                # Missing strings cannot be repaired by closing containers;
+                # keep this a syntax retry within the same transport batch.
+                content = '{"decisions":"unfinished'
+            elif "第二道工序" in prompt:
+                content = json.dumps({"reviews": []}, ensure_ascii=False)
+            else:
+                decisions = []
+                for cue in cues:
+                    if cue.get("contextOnly") == "true":
+                        continue
+                    if cue["id"] == "c001":
+                        decisions.append({
+                            "id": cue["id"],
+                            "decision": "discard",
+                            "scriptLine": "",
+                            "reason": "试麦",
+                            "evidence": "听得到吗",
+                        })
+                    else:
+                        decisions.append({
+                            "id": cue["id"],
+                            "decision": "keep",
+                            "scriptLine": cue["scriptLine"],
+                            "reason": "对应文稿",
+                        })
+                content = json.dumps({"decisions": decisions}, ensure_ascii=False)
+            on_delta("content", content)
+            return {"choices": [{"message": {"content": content}}]}
+
+        emit_stream = self.api._emit_postprocess_stream
+
+        def record_stream(kind, text, batch, *, operation_id=""):
+            events.append((kind, text, batch, operation_id))
+            emit_stream(kind, text, batch, operation_id=operation_id)
+
+        with (
+            mock.patch("maw.postprocess_ai_cleanup.CLIPS_PER_REQUEST", 1),
+            mock.patch("maw.postprocess_ai_cleanup._request_completion", side_effect=request_completion),
+            mock.patch.object(self.api, "_emit_postprocess_stream", side_effect=record_stream),
+        ):
+            result = self.api.run_ai_cleanup({
+                "projectPath": str(project),
+                "scriptPath": str(script),
+                "outputMode": "json",
+                "providerId": "deepseek",
+                "apiKey": "sk-test",
+                "baseUrl": "https://api.deepseek.com",
+                "model": "deepseek-chat",
+                "operationId": "ai-cleanup-batches-test",
+            })
+
+        self.api.pump.shutdown()
+        self.assertTrue(result["ok"])
+        self.assertEqual(request_count, 4)  # Two initial batches, retry, and readthrough.
+        self.assertEqual({event[2] for event in events}, {1, 2, 3})
+        self.assertEqual(
+            [(kind, batch) for kind, _text, batch, _operation in events if kind == "reset"],
+            [("reset", 1), ("reset", 1), ("reset", 2), ("reset", 3)],
+        )
+        self.assertEqual(
+            {batch for kind, _text, batch, _operation in events if kind == "content"},
+            {1, 2, 3},
+        )
+        self.assertTrue(all(event[3] == "ai-cleanup-batches-test" for event in events))
+
+    def test_ai_cleanup_loopback_stream_cancel_returns_promptly_and_discards_late_delta(self) -> None:
+        import requests
+
+        project = self.root / "cancel-loopback.mosp"
+        script = self.root / "cancel-loopback.txt"
+        project.write_text(
+            json.dumps({
+                "schema": "moy.asr.project.v1",
+                "segments": [{
+                    "id": "seg-1",
+                    "start": 0,
+                    "end": 1000,
+                    "text": "你好",
+                    "items": [
+                        {"text": "你", "start": 0, "end": 500},
+                        {"text": "好", "start": 500, "end": 1000},
+                    ],
+                }],
+            }, ensure_ascii=False),
+            encoding="utf-8",
+        )
+        script.write_text("你好", encoding="utf-8")
+
+        request_received = threading.Event()
+        release_stream = threading.Event()
+        late_chunk_sent = threading.Event()
+        handler_finished = threading.Event()
+        response_closed = threading.Event()
+        first_delta = threading.Event()
+        late_delta = threading.Event()
+        stream_events: list[tuple[str, str, int, str]] = []
+        stream_events_lock = threading.Lock()
+        results: list[object] = []
+        run_finished = threading.Event()
+
+        class Handler(BaseHTTPRequestHandler):
+            protocol_version = "HTTP/1.1"
+
+            def log_message(self, _format: str, *_args: object) -> None:
+                return
+
+            def do_POST(self) -> None:
+                content_length = int(self.headers.get("Content-Length", "0"))
+                _ = self.rfile.read(content_length)
+                try:
+                    self.send_response(200)
+                    self.send_header("Content-Type", "text/event-stream")
+                    self.send_header("Transfer-Encoding", "chunked")
+                    self.end_headers()
+
+                    def write_chunk(payload: bytes) -> None:
+                        self.wfile.write(f"{len(payload):X}\r\n".encode("ascii"))
+                        self.wfile.write(payload + b"\r\n")
+                        self.wfile.flush()
+
+                    def event(content: str) -> bytes:
+                        data = json.dumps(
+                            {"choices": [{"delta": {"content": content}}]},
+                            ensure_ascii=False,
+                        ).encode("utf-8")
+                        # requests.iter_lines uses 512-byte chunks by default;
+                        # padding makes each event readable while the next is stalled.
+                        return b"data: " + data + b"\n\n:" + b"x" * 600 + b"\n\n"
+
+                    write_chunk(event("取消前已到达"))
+                    request_received.set()
+                    if not release_stream.wait(5):
+                        return
+                    write_chunk(event("取消后迟到内容"))
+                    late_chunk_sent.set()
+                    write_chunk(b"data: [DONE]\n\n:" + b"x" * 600 + b"\n\n")
+                    self.wfile.write(b"0\r\n\r\n")
+                    self.wfile.flush()
+                except OSError:
+                    # A successful cancellation may close the peer before all
+                    # buffered chunks can be sent; cleanup remains bounded.
+                    pass
+                finally:
+                    handler_finished.set()
+
+        class QuietServer(ThreadingHTTPServer):
+            def handle_error(self, _request, _client_address) -> None:
+                # The client may close an intentionally stalled stream while
+                # the handler is returning to read its next HTTP/1.1 request.
+                return
+
+        server = QuietServer(("127.0.0.1", 0), Handler)
+        server.daemon_threads = True
+        server_thread = threading.Thread(target=server.serve_forever, daemon=True)
+        server_thread.start()
+
+        original_post = requests.Session.post
+
+        def tracking_post(session, *args, **kwargs):
+            response = original_post(session, *args, **kwargs)
+            original_close = response.close
+
+            def close_response() -> None:
+                try:
+                    original_close()
+                finally:
+                    response_closed.set()
+
+            response.close = close_response
+            return response
+
+        emit_stream = self.api._emit_postprocess_stream
+
+        def record_stream(kind, text, batch, *, operation_id=""):
+            with stream_events_lock:
+                stream_events.append((kind, text, batch, operation_id))
+            emit_stream(kind, text, batch, operation_id=operation_id)
+            if kind == "content" and "取消前已到达" in text:
+                first_delta.set()
+            if kind == "content" and "取消后迟到内容" in text:
+                late_delta.set()
+
+        operation_id = "loopback-stalled-sse-cancel"
+
+        def run_cleanup() -> None:
+            try:
+                results.append(self.api.run_ai_cleanup({
+                    "projectPath": str(project),
+                    "scriptPath": str(script),
+                    "outputMode": "json",
+                    "providerId": "deepseek",
+                    "apiKey": "sk-test",
+                    "baseUrl": f"http://127.0.0.1:{server.server_port}/v1",
+                    "model": "deepseek-chat",
+                    "operationId": operation_id,
+                }))
+            except BaseException as error:
+                results.append(error)
+            finally:
+                run_finished.set()
+
+        runner = threading.Thread(target=run_cleanup, daemon=True)
+        try:
+            with (
+                mock.patch.object(requests.Session, "post", new=tracking_post),
+                mock.patch.object(self.api, "_emit_postprocess_stream", side_effect=record_stream),
+            ):
+                runner.start()
+                self.assertTrue(request_received.wait(2), "loopback provider should send its first SSE chunk")
+                self.assertTrue(first_delta.wait(2), "the first streamed delta should reach the bridge")
+
+                cancel_started = time.monotonic()
+                cancelled = self.api.cancel_postprocess({"operationId": operation_id})
+                cancel_elapsed = time.monotonic() - cancel_started
+                self.assertEqual(cancelled, {"ok": True, "active": True, "cancelled": True})
+                self.assertLess(cancel_elapsed, 0.5, "cancel bridge must not wait on the blocked response close")
+                self.assertTrue(run_finished.wait(1), "cancelled cleanup should return without waiting for SSE read")
+                self.assertEqual(len(results), 1)
+                self.assertIsInstance(results[0], dict)
+                self.assertEqual(results[0]["code"], "postprocess_cancelled")  # type: ignore[index]
+
+                # Resume only after cancellation. Late SSE content must be
+                # discarded before delta delivery or artifact writing.
+                release_stream.set()
+                self.assertTrue(late_chunk_sent.wait(2), "server should send the delayed SSE event")
+                self.assertTrue(handler_finished.wait(2), "loopback handler should finish within the bound")
+                self.assertTrue(response_closed.wait(2), "async response close should eventually finish")
+                self.assertFalse(late_delta.is_set(), "late SSE content must not be emitted after cancel")
+                with stream_events_lock:
+                    self.assertEqual(
+                        [text for kind, text, _batch, _operation in stream_events if kind == "content"],
+                        ["取消前已到达"],
+                    )
+                self.assertEqual(
+                    sorted(path.name for path in self.root.iterdir()),
+                    [".env.example", "cancel-loopback.mosp", "cancel-loopback.txt"],
+                    "cancelled streaming cleanup must not write artifacts",
+                )
+        finally:
+            release_stream.set()
+            server.shutdown()
+            server.server_close()
+            server_thread.join(timeout=1)
+            runner.join(timeout=1)
+            self.api.pump.shutdown()
+            self.assertFalse(server_thread.is_alive())
+            self.assertFalse(runner.is_alive())
+            _ = handler_finished.wait(1)
+
+    def test_ai_cleanup_cancel_after_first_artifact_write_begins_is_rejected(self) -> None:
+        import maw.postprocess_ai_cleanup as cleanup_core
+
+        project = self.root / "commit-cleanup.mosp"
+        script = self.root / "commit-cleanup.txt"
+        project.write_text(
+            json.dumps({"segments": [{"id": "seg-1", "start": 0, "end": 1000, "text": "你好"}]}, ensure_ascii=False),
+            encoding="utf-8",
+        )
+        script.write_text("你好", encoding="utf-8")
+
+        def request_completion(_settings, _prompt, cues, **_kwargs):
+            return {"decisions": [
+                {"id": cue["id"], "decision": "keep", "reason": "与文稿对应", "scriptLine": cue["scriptLine"]}
+                for cue in cues
+                if cue.get("contextOnly") != "true"
+            ]}
+
+        original_write = cleanup_core.write_artifacts
+
+        def cancel_after_commit_starts(*args, **kwargs):
+            cancelled = self.api.cancel_postprocess({"operationId": "ai-cleanup-commit-test"})
+            self.assertEqual(cancelled, {"ok": True, "active": True, "cancelled": False})
+            return original_write(*args, **kwargs)
+
+        with (
+            mock.patch("maw.postprocess_ai_cleanup._request_completion", side_effect=request_completion),
+            mock.patch("maw.postprocess_ai_cleanup.write_artifacts", side_effect=cancel_after_commit_starts),
+        ):
+            result = self.api.run_ai_cleanup({
+                "projectPath": str(project),
+                "scriptPath": str(script),
+                "outputMode": "json",
+                "providerId": "deepseek",
+                "apiKey": "sk-test",
+                "baseUrl": "https://api.deepseek.com",
+                "model": "deepseek-chat",
+                "operationId": "ai-cleanup-commit-test",
+            })
+
+        self.assertTrue(result["ok"])
+        output_project = Path(str(result["projectPath"]))
+        self.assertTrue(output_project.is_file())
+        self.assertNotEqual(output_project, project)
+
     def tearDown(self) -> None:
         self.temp_dir.cleanup()
 
@@ -118,7 +533,7 @@ class GuiWebBridgeTests(CompactContainerAssertions, unittest.TestCase):
         self.assertEqual(config["ocrRuntime"]["status"], "checking")
         self.assertEqual([model["id"] for model in config["ocrModels"]], ["pp-ocrv6-tiny", "pp-ocrv6-small"])
         self.assertEqual(config["providers"][0]["keyUrl"], "https://platform.qianwenai.com/home/")
-        self.assertEqual(config["providers"][0]["label"], "阿里云百炼（千问）")
+        self.assertEqual(config["providers"][0]["label"], "阿里云百炼（推荐 / 千问）")
         self.assertEqual(config["providers"][0]["keyButtonLabel"], "千问AI平台")
         self.assertNotIn("tencent", [provider["id"] for provider in config["providers"]])
         self.assertEqual(len(config["providers"][0]["commonLanguages"]), 10)
@@ -1101,6 +1516,29 @@ class GuiWebBridgeTests(CompactContainerAssertions, unittest.TestCase):
         self.assertEqual(events, [("tested", False)])
         self.assertIn("MAW_POSTPROCESS_CUSTOM_API_KEY=sk-tested", self.env_path.read_text(encoding="utf-8"))
 
+    def test_postprocess_connection_returns_effective_saved_or_default_fields(self) -> None:
+        for provider_id, stored_url, stored_model, expected_url, expected_model in (
+            ("custom2", "http://127.0.0.1:1234/v1", "local-model", "http://127.0.0.1:1234/v1", "local-model"),
+            ("deepseek", "", "", "https://api.deepseek.com", "deepseek-flash"),
+        ):
+            with self.subTest(provider=provider_id):
+                self.api.save_postprocess_settings({
+                    "providerId": provider_id, "apiKey": "sk-fallback-secret",
+                    "baseUrl": stored_url, "model": stored_model,
+                })
+                with mock.patch("maw.gui_web.test_llm_connection") as check_connection:
+                    result = self.api.test_postprocess_connection({
+                        "providerId": provider_id, "apiKey": "", "baseUrl": "", "model": "", "save": True,
+                    })
+                self.assertTrue(result["ok"])
+                self.assertTrue(result["verified"])
+                self.assertEqual(result["baseUrl"], expected_url)
+                self.assertEqual(result["model"], expected_model)
+                settings = check_connection.call_args.args[0]
+                self.assertEqual((settings.base_url, settings.model), (result["baseUrl"], result["model"]))
+                self.assertNotIn("apiKey", result)
+                self.assertNotIn("sk-fallback-secret", str(result))
+
     def test_postprocess_connection_does_not_save_when_check_fails(self) -> None:
         with mock.patch(
             "maw.gui_web.test_llm_connection",
@@ -1400,7 +1838,7 @@ class GuiWebBridgeTests(CompactContainerAssertions, unittest.TestCase):
         self.assertLess(html.index('id="toolboxExtractAudioTab"'), html.index('id="toolboxWaveformTab"'))
         # 媒体工具记住上次选择的工具；从未选择时回退到第一项（烧录字幕）。
         self.assertIn(
-            'const activeTab = activeToolboxView().querySelector(".toolbox-tab.active") || activeToolboxView().querySelector(".toolbox-tab");',
+            'const activeTab = activeToolboxView().querySelector(".toolbox-tab.active:not(.hidden)") || activeToolboxView().querySelector(".toolbox-tab:not(.hidden)");',
             script,
         )
         self.assertIn(
@@ -1560,21 +1998,41 @@ class GuiWebBridgeTests(CompactContainerAssertions, unittest.TestCase):
         missing = [needle for needle in needles if needle not in script]
         self.assertEqual(missing, [], f"缺少按任务记忆契约：{missing}")
 
-    def test_toolbox_lists_only_configured_custom_slots(self) -> None:
-        """Given the toolbox provider select, When custom slots are unconfigured, Then only slot 1 is listed."""
+    def test_loopback_base_url_accepts_common_local_endpoints(self) -> None:
+        """Given local LLM endpoints, When checking loopback detection, Then scheme-less forms still match."""
+        from maw import gui_web
+
+        for base_url in (
+            "http://127.0.0.1:1234/v1",
+            "127.0.0.1:1234/v1",
+            "http://localhost:11434",
+            "localhost:8080/api",
+            "http://[::1]:1234/v1",
+        ):
+            self.assertTrue(gui_web._loopback_base_url(base_url), base_url)
+        for base_url in ("https://api.deepseek.com", "example.com/v1", "", "http://0.0.0.0:1234"):
+            self.assertFalse(gui_web._loopback_base_url(base_url), base_url or "<empty>")
+
+    def test_toolbox_lists_all_custom_slots(self) -> None:
+        """Given the toolbox provider select, When custom slots are unconfigured, Then all slots stay selectable.
+
+        过滤未配置槽位会让 llmProvider 选中 custom2/3 时 postprocessProvider
+        找不到对应 option 而跳回第一项（261011 反馈 #33/#36），因此两处下拉
+        必须显示同一份完整槽位列表。
+        """
         script = (ROOT / "web" / "launcher" / "postprocess.js").read_text(encoding="utf-8")
         launcher_script = launcher_sources_text(ROOT)
 
         needles = [
             'function isCustomSlot(item) { return ["custom", "custom2", "custom3"].includes(String(item?.id || "")); }',
-            "function customSlotVisibleInToolbox(item)",
-            'return !isCustomSlot(item) || item.id === "custom" || customSlotConfigured(item);',
-            'if (select.id === "postprocessProvider" && !customSlotVisibleInToolbox(item)) return;',
+            "providers.forEach((item) => {\n        select.add(new Option(providerLabel(item), item.id));\n      });",
             "fillProviderSelects(selectedProvider);",
             "fillProviderSelects(item.id);",
         ]
         missing = [needle for needle in needles if needle not in script]
         self.assertEqual(missing, [], f"postprocess.js 缺少：{missing}")
+        # 过滤逻辑必须保持移除：任何按配置过滤槽位的选择器都会复现跳回问题。
+        self.assertNotIn("customSlotVisibleInToolbox", script)
 
         label_keys = ["llm_custom_provider_2", "llm_custom_provider_3"]
         missing_keys = [key for key in label_keys if key not in launcher_script]
@@ -1881,7 +2339,7 @@ class GuiWebBridgeTests(CompactContainerAssertions, unittest.TestCase):
             encoding="utf-8",
         )
 
-        def complete(_settings, _prompt, _cues, *, on_delta):
+        def complete(_settings, _prompt, _cues, *, on_delta, is_cancelled=None, on_response=None):
             on_delta("reset", "")
             on_delta("reasoning", "先检查")
             on_delta("content", '{"groups":[')
@@ -1900,6 +2358,7 @@ class GuiWebBridgeTests(CompactContainerAssertions, unittest.TestCase):
                 "model": "deepseek-chat",
                 "reasoningMode": "medium",
                 "customPrompt": "",
+                "operationId": "llm-stream-test",
             })
 
         self.api.pump.shutdown()
@@ -1911,6 +2370,253 @@ class GuiWebBridgeTests(CompactContainerAssertions, unittest.TestCase):
         self.assertIn('"kind": "reset"', scripts)
         self.assertIn('"kind": "reasoning"', scripts)
         self.assertIn('"kind": "content"', scripts)
+        self.assertIn('"operationId": "llm-stream-test"', scripts)
+
+    def test_llm_bridge_cancel_closes_active_response_and_writes_no_artifact(self) -> None:
+        project = self.root / "cancel-me.mosp"
+        project.write_text(
+            json.dumps({"segments": [{"start": 0, "end": 1000, "text": "待处理"}]}, ensure_ascii=False),
+            encoding="utf-8",
+        )
+        response = mock.Mock()
+        response_closed = threading.Event()
+        response.close.side_effect = response_closed.set
+
+        def complete(_settings, _prompt, _cues, *, on_delta, is_cancelled, on_response):
+            on_response(response)
+            cancelled = self.api.cancel_postprocess({"operationId": "llm-cancel-test"})
+            self.assertEqual(cancelled, {"ok": True, "active": True, "cancelled": True})
+            self.assertTrue(is_cancelled())
+            self.assertTrue(response_closed.wait(1), "response close runs asynchronously")
+            response.close.assert_called_once_with()
+            on_response(None)
+            return {"groups": [{"id": "c0001", "text": "不应写出"}]}
+
+        with mock.patch("maw.gui_web.complete_subtitle_groups", side_effect=complete):
+            result = self.api.run_llm_postprocess({
+                "projectPath": str(project),
+                "outputMode": "json",
+                "operation": "proofread",
+                "providerId": "deepseek",
+                "apiKey": "sk-test",
+                "baseUrl": "https://api.deepseek.com",
+                "model": "deepseek-chat",
+                "customPrompt": "",
+                "operationId": "llm-cancel-test",
+            })
+
+        self.assertFalse(result["ok"])
+        self.assertEqual(result["code"], "postprocess_cancelled")
+        self.assertEqual(sorted(path.name for path in self.root.iterdir()), [".env.example", "cancel-me.mosp"])
+
+    def test_llm_cancel_after_first_artifact_write_begins_is_rejected(self) -> None:
+        import maw.postprocess as postprocess_core
+
+        project = self.root / "commit-llm.mosp"
+        project.write_text(
+            json.dumps({"segments": [{"id": "seg-1", "start": 0, "end": 1000, "text": "原文"}]}, ensure_ascii=False),
+            encoding="utf-8",
+        )
+        original_write = postprocess_core._write
+
+        def cancel_after_commit_starts(*args, **kwargs):
+            cancelled = self.api.cancel_postprocess({"operationId": "llm-commit-test"})
+            self.assertEqual(cancelled, {"ok": True, "active": True, "cancelled": False})
+            return original_write(*args, **kwargs)
+
+        with (
+            mock.patch(
+                "maw.gui_web.complete_subtitle_groups",
+                return_value={"groups": [{"id": "c0001", "text": "改正"}]},
+            ),
+            mock.patch("maw.postprocess._write", side_effect=cancel_after_commit_starts),
+        ):
+            result = self.api.run_llm_postprocess({
+                "projectPath": str(project),
+                "outputMode": "json",
+                "operation": "proofread",
+                "providerId": "deepseek",
+                "apiKey": "sk-test",
+                "baseUrl": "https://api.deepseek.com",
+                "model": "deepseek-chat",
+                "customPrompt": "",
+                "operationId": "llm-commit-test",
+            })
+
+        self.assertTrue(result["ok"])
+        output_project = Path(str(result["projectPath"]))
+        self.assertTrue(output_project.is_file())
+        self.assertNotEqual(output_project, project)
+
+    def test_ai_postprocess_admission_precedes_settings_and_can_cancel_preparation(self) -> None:
+        emit = self.api._emit
+        for method_name, process_name in (
+            ("run_ai_cleanup", "process_ai_cleanup"),
+            ("run_llm_postprocess", "process_llm_postprocess"),
+        ):
+            with self.subTest(method=method_name):
+                operation_id = f"admit-{method_name}"
+                events: list[dict[str, object]] = []
+
+                def record_event(event):
+                    events.append(dict(event))
+                    emit(event)
+
+                def read_settings(*_args):
+                    self.assertIn(operation_id, self.api._postprocess_operations)
+                    self.assertEqual(events, [{
+                        "type": "postprocess_status",
+                        "key": "toolbox_status_starting",
+                        "stage": "admitted",
+                        "operationId": operation_id,
+                    }])
+                    self.assertEqual(
+                        self.api.cancel_postprocess({"operationId": operation_id}),
+                        {"ok": True, "active": True, "cancelled": True},
+                    )
+                    return {"apiKey": "sk-test", "baseUrl": "", "model": "", "reasoningMode": "off"}
+
+                with (
+                    mock.patch.object(self.api, "_emit", side_effect=record_event),
+                    mock.patch("maw.gui_web._postprocess_values", side_effect=read_settings),
+                    mock.patch(f"maw.gui_web.{process_name}") as process,
+                ):
+                    result = getattr(self.api, method_name)({
+                        "operationId": operation_id,
+                        "scriptPath": str(self.root / "unused.txt"),
+                    })
+                self.assertEqual(result["code"], "postprocess_cancelled")
+                process.assert_not_called()
+                self.assertEqual(self.api._postprocess_operations, {})
+
+    def test_ai_postprocess_conflicting_operation_is_not_admitted(self) -> None:
+        operation = self.api._begin_postprocess_operation({"operationId": "already-active"})
+        self.assertIsNotNone(operation)
+        try:
+            with mock.patch.object(self.api, "_emit") as emit:
+                for method_name in ("run_ai_cleanup", "run_llm_postprocess"):
+                    result = getattr(self.api, method_name)({"operationId": "already-active"})
+                    self.assertEqual(result["code"], "postprocess_operation_conflict")
+                emit.assert_not_called()
+        finally:
+            self.api._finish_postprocess_operation(operation)
+
+    def test_ai_postprocess_cancel_while_loading_settings_does_not_run(self) -> None:
+        import maw.gui_web as gui_web
+
+        load_values = gui_web._postprocess_values
+        for method_name, process_name in (
+            ("run_ai_cleanup", "process_ai_cleanup"),
+            ("run_llm_postprocess", "process_llm_postprocess"),
+        ):
+            for read_error in (False, True):
+                with self.subTest(method=method_name, read_error=read_error):
+                    reading = threading.Event()
+                    release = threading.Event()
+                    results: list[object] = []
+                    operation_id = f"prepare-{method_name}-{read_error}"
+
+                    def delayed_values(*args):
+                        reading.set()
+                        if not release.wait(5):
+                            raise AssertionError("test did not release settings read")
+                        if read_error:
+                            raise OSError("settings read failed after cancellation")
+                        return load_values(*args)
+
+                    def run() -> None:
+                        try:
+                            results.append(getattr(self.api, method_name)({
+                                "operationId": operation_id,
+                                "projectPath": str(self.root / "unused.mosp"),
+                                "scriptPath": str(self.root / "unused.txt"),
+                                "apiKey": "sk-test",
+                            }))
+                        except BaseException as error:
+                            results.append(error)
+
+                    with (
+                        mock.patch("maw.gui_web._postprocess_values", side_effect=delayed_values),
+                        mock.patch(f"maw.gui_web.{process_name}") as process,
+                    ):
+                        runner = threading.Thread(target=run, daemon=True)
+                        runner.start()
+                        try:
+                            self.assertTrue(reading.wait(1), "operation should read settings")
+                            self.assertEqual(
+                                self.api.cancel_postprocess({"operationId": operation_id}),
+                                {"ok": True, "active": True, "cancelled": True},
+                            )
+                            release.set()
+                            runner.join(timeout=1)
+                            self.assertFalse(runner.is_alive())
+                            self.assertEqual(len(results), 1)
+                            self.assertIsInstance(results[0], dict)
+                            self.assertEqual(results[0]["code"], "postprocess_cancelled")  # type: ignore[index]
+                            process.assert_not_called()
+                            self.assertEqual(self.api._postprocess_operations, {})
+                        finally:
+                            release.set()
+                            runner.join(timeout=2)
+
+    def test_ai_postprocess_preparation_errors_release_operation(self) -> None:
+        for method_name, payload, expected_code in (
+            ("run_ai_cleanup", {}, "script_invalid"),
+            ("run_llm_postprocess", {"operation": "custom"}, "custom_prompt_required"),
+        ):
+            with self.subTest(method=method_name, stage="validation"):
+                result = getattr(self.api, method_name)({"operationId": "prepare-error", **payload})
+                self.assertEqual(result["code"], expected_code)
+                self.assertEqual(self.api._postprocess_operations, {})
+            with self.subTest(method=method_name, stage="settings"):
+                with mock.patch("maw.gui_web._postprocess_values", side_effect=OSError("settings unavailable")):
+                    with self.assertRaisesRegex(OSError, "settings unavailable"):
+                        getattr(self.api, method_name)({
+                            "operationId": "prepare-error",
+                            "scriptPath": str(self.root / "unused.txt"),
+                        })
+                self.assertEqual(self.api._postprocess_operations, {})
+
+    def test_llm_translation_and_repair_cancel_are_reported_as_cancelled(self) -> None:
+        for operation, text in (("translate_zh", "hello"), ("translate_en", "你好")):
+            project = self.root / f"cancel-{operation}.mosp"
+            project.write_text(json.dumps({
+                "segments": [{"id": "seg-1", "start": 0, "end": 1000, "text": text}],
+            }, ensure_ascii=False), encoding="utf-8")
+            for repair in (False, True):
+                for cancel_via_api in (False, True):
+                    with self.subTest(operation=operation, repair=repair, cancel_via_api=cancel_via_api):
+                        requests = 0
+                        operation_id = f"cancel-{operation}-{repair}-{cancel_via_api}"
+
+                        def complete(*_args, **_kwargs):
+                            nonlocal requests
+                            requests += 1
+                            if repair and requests == 1:
+                                return {"groups": []}
+                            if cancel_via_api:
+                                self.assertEqual(
+                                    self.api.cancel_postprocess({"operationId": operation_id}),
+                                    {"ok": True, "active": True, "cancelled": True},
+                                )
+                            raise LlmClientError("操作已取消。", category="cancelled", operation="completion")
+
+                        with (
+                            mock.patch("maw.gui_web.complete_subtitle_groups", side_effect=complete),
+                            mock.patch("maw.postprocess._write") as write,
+                        ):
+                            result = self.api.run_llm_postprocess({
+                                "projectPath": str(project),
+                                "outputMode": "json",
+                                "operation": operation,
+                                "apiKey": "sk-test",
+                                "operationId": operation_id,
+                            })
+                        self.assertFalse(result["ok"])
+                        self.assertEqual(result["code"], "postprocess_cancelled")
+                        self.assertEqual(requests, 2 if repair else 1)
+                        write.assert_not_called()
+                        self.assertEqual(self.api._postprocess_operations, {})
 
     def test_llm_bridge_forwards_bilingual_merge_option(self) -> None:
         artifact = SimpleNamespace(
@@ -4877,7 +5583,7 @@ class LauncherAssetContractTests(CompactContainerAssertions, unittest.TestCase):
         self.assertIn('id="toolboxResizeY" class="toolbox-resize-y" role="separator" aria-orientation="horizontal"', page)
         self.assertIn('id="toolboxResizeX" class="toolbox-resize-x" role="separator" aria-orientation="vertical"', page)
         self.assertIn('id="toolboxMatchTab" class="toolbox-tab active"', page)
-        self.assertIn('id="toolboxFfconcatTab" class="toolbox-tab"', page)
+        self.assertIn('id="toolboxFfconcatTab" class="toolbox-tab hidden"', page)
         self.assertIn("overflow-y: auto", stylesheet)
         self.assertNotIn("resize: both", stylesheet)
         self.assertIn("block-size: min(640px, calc(100dvh - 156px))", stylesheet)

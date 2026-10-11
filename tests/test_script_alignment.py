@@ -150,6 +150,12 @@ class ScriptAlignmentTests(unittest.TestCase):
                     "schema": "moy.asr.gap_provenance.v1",
                     "sources": {
                         "script_alignment": [{"id": "old-align", "start": 0, "end": 50}],
+                        "ai_cleanup_review": [{
+                            "id": "review-marker",
+                            "review_marker_id": "review-marker",
+                            "start": 50,
+                            "end": 90,
+                        }],
                         "audio_gate": [{"id": "silence", "start": 200, "end": 300}],
                     },
                     "manual_overrides": [{"id": "hand", "start": 400, "end": 500, "removed": True}],
@@ -164,6 +170,17 @@ class ScriptAlignmentTests(unittest.TestCase):
 
         self.assertEqual(provenance["sources"]["script_alignment"], [])
         self.assertEqual(
+            provenance["sources"]["ai_cleanup_review"],
+            [{
+                "id": "review-marker",
+                "source": "ai_cleanup_review",
+                "start": 50,
+                "end": 90,
+                "removed": True,
+                "review_marker_id": "review-marker",
+            }],
+        )
+        self.assertEqual(
             [(item["start"], item["end"]) for item in provenance["sources"]["audio_gate"]],
             [(200, 300)],
         )
@@ -173,8 +190,29 @@ class ScriptAlignmentTests(unittest.TestCase):
         )
         self.assertEqual(
             [(gap["start"], gap["end"], gap["source"]) for gap in output["gap_remove"]["gaps"]],
-            [(200, 300, "audio_gate"), (400, 500, "manual")],
+            [(50, 90, "ai_cleanup_review"), (200, 300, "audio_gate"), (400, 500, "manual")],
         )
+
+    def test_alignment_preserves_full_ai_review_marker_owner(self) -> None:
+        marker_id = "review-" + "x" * 180 + "😀"
+        project = {
+            "segments": [segment("s1", 0, 1000, "hello")],
+            "markers": {"schema": "moy.asr.markers.v1", "items": [{
+                "id": marker_id, "start": 50, "end": 90,
+                "note": "[AI] 复核", "review": {"status": "pending"},
+            }]},
+            "gap_remove": {"provenance": {"sources": {"ai_cleanup_review": [{
+                "id": marker_id, "review_marker_id": f" {marker_id} ",
+                "start": 50, "end": 90,
+            }]}}},
+        }
+        alignment = align_project_to_script(project, "hello")
+        selection = make_selection_manifest(alignment, alignment["defaultSelection"])
+        output = apply_alignment_to_project(project, alignment, selection, detect_audio_gaps=False)
+        review_range = output["gap_remove"]["provenance"]["sources"]["ai_cleanup_review"][0]
+        self.assertEqual(review_range["id"], marker_id[:160])
+        self.assertEqual(review_range["review_marker_id"], marker_id)
+        self.assertEqual(output["markers"]["items"][0]["id"], marker_id)
 
     def test_alignment_preserves_moved_gap_provenance_semantics(self) -> None:
         project = {"segments": [segment("s1", 0, 7000, "hello")]}

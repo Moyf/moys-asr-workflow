@@ -224,6 +224,83 @@ test('ASS preview preserves explicit line breaks without container wrapping', as
   await expect(page.locator('#overlay-main-text')).toHaveCSS('word-break', 'break-word');
 });
 
+test('speaker prefixes use each track colour in actual Canvas paint, ASS and CSS previews', async ({ page }, testInfo) => {
+  await disableOnboarding(page);
+  await page.goto(server.url);
+  const result = await page.evaluate(async () => {
+    await loadAssStyleLibrary({ force: true });
+    ASS_STYLE_LIBRARY = window.AsrEditorUtils.defaultAssStyleLibrary();
+    ASS_STYLE_LIBRARY.styles.find(entry => entry.id === 'ass-extension').primaryColor = '#123456';
+    MaweBoot.DATA.segments = [{ start: 1000, end: 2500, text: 'main text', color: { name: 'red' } }];
+    MaweBoot.DATA.multi_subtitle = { enabled: true, tracks: [{ id: 'ext-speakers', segments: [
+      { start: 1000, end: 2500, text: 'disabled colour head', color: { name: 'green' }, disabled: true },
+      { start: 1000, end: 2500, text: 'extension text', color_ref: { name: 'green', headIdx: 0 } },
+    ] }] };
+    MaweBoot.DATA.overlay_track = { enabled: true, segments: [
+      { start: 1000, end: 2500, text: 'overlay text', color: { name: 'purple' } },
+    ] };
+    MaweBoot.DATA.preview = { subtitle: { ass_color_style: 'speaker', color_style: 'text',
+      speaker_labels: { mapping_enabled: true, enabled: true, separator: '：', names: {
+        red: 'MainSpeaker', green: 'SecondarySpeaker', purple: 'OverlaySpeaker',
+      } } } };
+    Object.assign(MaweSettings.EDITOR_SETTINGS, { assMode: true, exportSpeakerLabels: true });
+    MaweDom.overlayToggle.checked = true;
+    MaweDom.extensionOverlayToggle.checked = true;
+    MaweCoreState.player.currentTime = 1.5;
+    const painted = [];
+    const original = CanvasRenderingContext2D.prototype.fillText;
+    CanvasRenderingContext2D.prototype.fillText = function (text, ...args) {
+      painted.push({ text, color: this.fillStyle });
+      return original.call(this, text, ...args);
+    };
+    try {
+      window.MaweAssCanvas.clearCaches();
+      MawePlaybackLoop.refreshSubtitlePreview(1500, 0);
+    } finally {
+      CanvasRenderingContext2D.prototype.fillText = original;
+    }
+    return {
+      painted,
+      ass: MaweExportSrt.buildAss({ preview: true }),
+      palette: Object.fromEntries(MaweColors.COLOR_PALETTE.map(item => [item.name, item.value])),
+    };
+  });
+  for (const [name, color] of [['MainSpeaker', 'red'], ['SecondarySpeaker', 'green'], ['OverlaySpeaker', 'purple']]) {
+    expect(result.painted).toContainEqual({ text: `${name}：`, color: result.palette[color] });
+    const assColor = await page.evaluate(hex => `${window.AsrEditorUtils.assColorFromHex(hex)}&`, result.palette[color]);
+    expect(result.ass).toContain(`{\\1c${assColor}}${name}：`);
+  }
+  expect(result.painted).toContainEqual({ text: 'extension text', color: '#123456' });
+  await page.locator('.player-stage').screenshot({ path: testInfo.outputPath('ass-track-speaker-prefixes.png') });
+  await page.evaluate(() => {
+    MaweSettings.EDITOR_SETTINGS.assMode = false;
+    MawePlaybackLoop.refreshSubtitlePreview(1500, 0);
+  });
+  await expect(page.locator('#overlay-main-text')).toHaveText('MainSpeaker：main text');
+  await expect(page.locator('#overlay-extension-text')).toHaveText('SecondarySpeaker：extension text');
+  await expect(page.locator('#overlay-extension-speaker-label')).toHaveCSS('color', 'rgb(102, 187, 106)');
+  await expect(page.locator('#overlay-track-text')).toHaveText('OverlaySpeaker：overlay text');
+  await page.locator('.player-stage').screenshot({ path: testInfo.outputPath('css-track-speaker-prefixes.png') });
+  await page.evaluate(() => {
+    MaweBoot.DATA.preview.subtitle.speaker_labels.enabled = false;
+    MawePlaybackLoop.refreshSubtitlePreview(1500, 0);
+  });
+  await expect(page.locator('#overlay-extension-text')).toHaveText('extension text');
+  await expect(page.locator('#overlay-extension-speaker-label')).toBeHidden();
+  const disabledPreview = await page.evaluate(() => ({
+    preview: MaweExportSrt.buildAss({ preview: true }),
+    exported: MaweExportSrt.buildAss(),
+  }));
+  expect(disabledPreview.preview).not.toContain('SecondarySpeaker');
+  expect(disabledPreview.exported).toContain('SecondarySpeaker');
+  const disabledMapping = await page.evaluate(() => {
+    MaweBoot.DATA.preview.subtitle.speaker_labels.mapping_enabled = false;
+    MawePlaybackLoop.refreshSubtitlePreview(1500, 0);
+    return MaweExportSrt.buildAss();
+  });
+  expect(disabledMapping).not.toContain('SecondarySpeaker');
+});
+
 test('inherits ASS track colours through inline formatting and keeps explicit emphasis colours', async ({ page }) => {
   await disableOnboarding(page);
   await page.goto(server.url);
@@ -233,7 +310,8 @@ test('inherits ASS track colours through inline formatting and keeps explicit em
     const main = ASS_STYLE_LIBRARY.styles.find((entry) => entry.id === 'ass');
     const extension = ASS_STYLE_LIBRARY.styles.find((entry) => entry.id === 'ass-extension');
     Object.assign(main, { primaryColor: '#22cc55', emphasisStyle: 'stroke', emphasisColor: '#ff0000' });
-    Object.assign(extension, { primaryColor: '#ffd34d', emphasisStyle: 'stroke', emphasisColor: '#ff0000' });
+    // Avoid the legacy built-in default colour that the style migration upgrades.
+    Object.assign(extension, { primaryColor: '#f1d24c', emphasisStyle: 'stroke', emphasisColor: '#ff0000' });
     const text = '普通 **强调** __下划线__ ~~删除线~~ --缩小-- ++放大++';
     MaweBoot.DATA.segments = [{ id: 'main-colour', start: 1000, end: 3000, text }];
     MaweBoot.DATA.multi_subtitle = { enabled: true, tracks: [{ id: 'extension-colour', segments: [{ id: 'ext-colour', start: 1000, end: 3000, text }] }] };
@@ -259,9 +337,9 @@ test('inherits ASS track colours through inline formatting and keeps explicit em
   });
   // 强调走 stroke 模式：所有 run 的填充保持轨道主色，强调描边用强调色。
   // 计数与旧 DOM 断言对齐：纯字号 run（缩小/放大）也计入。
-  for (const [part, colour] of [['main', '#22cc55'], ['extension', '#ffd34d']]) {
+  for (const [part, colour] of [['main', '#22cc55'], ['extension', '#f1d24c']]) {
     expect(payload[part].flaggedRuns).toBe(5);
-    expect(payload[part].fills.every((fill) => fill === colour)).toBe(true);
+    expect(payload[part].fills.every((fill) => fill === colour), JSON.stringify({ part, ...payload[part] })).toBe(true);
     expect(payload[part].emphasisStrokes).toEqual(['#ff0000']);
   }
   await page.evaluate(() => {
@@ -299,7 +377,8 @@ test('ASS emphasis controls drive preview and inline export color', async ({ pag
   await page.locator('#ass-mode-toggle').check();
   await openSettingsPage(page, 'special-edit');
   await expect(page.locator('#ass-inline-text-settings')).toBeVisible();
-  await expect(page.locator('#ass-inline-text-settings input[type=checkbox]')).toHaveCount(5);
+  await expect(page.locator('#ass-inline-text-settings input[type=checkbox]')).toHaveCount(6);
+  await expect(page.locator('[data-ass-symbol="//"]')).toHaveText('//注释//');
   await expect(page.locator('#ass-inline-text-title')).toHaveText('特殊文本');
   await expect(page.locator('#ass-special-symbol-rule')).toHaveValue('both');
   await expect(page.locator('#ass-special-symbol-rule option:checked')).toHaveText('单双皆可');
@@ -609,7 +688,7 @@ test('exports a gap-removed styled ASS subtitle with shifted timing', async ({ p
   await page.locator('#gap-removed-export-btn').click();
   await expect(page.locator('#gap-removed-subtitle-export-separator')).toBeVisible();
   await expect(page.locator('#gap-removed-export-menu > .dropdown-item:visible').allTextContents())
-    .resolves.toEqual(['SRT', 'SRT（按颜色拆分）', 'ASS（带样式）']);
+    .resolves.toEqual(['SRT', 'SRT（按颜色拆分）', 'ASS（带样式）', '重组后视频']);
   await expect(page.locator('#gap-removed-otio-menu').locator('xpath=preceding-sibling::*[1]'))
     .toHaveText('OTIO');
 

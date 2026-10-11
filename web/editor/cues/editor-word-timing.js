@@ -73,7 +73,7 @@
     if (selection?.segment === segment) selection.items = items;
   }
   // 等长替换（改错别字）时同步 items 文字；在文本提交点调用，与文字同一命令快照。
-  // quietMismatch：逐键实时路径（字幕面板输入框）不弹失败提示，避免打字被刷屏。
+  // quietMismatch 供仍然逐键处理的旧调用路径抑制重复提示。
   function syncTextChange(segment, previousText, { quietMismatch = false } = {}) {
     if (!segment || typeof segment.text !== 'string') return;
     const result = global.AsrEditorUtils.planWordTimingTextSync(segment, previousText);
@@ -87,8 +87,8 @@
       ), 'success');
     } else if (result.warn && !quietMismatch) {
       MaweHint.flashHint(ui(
-        '字词时间码未同步：文字不是等长替换，字词文字保持原样',
-        'Timed text not synced: only equal-length replacements update word labels',
+        `字词时间码未同步：[${result.before} -> ${result.after}] 不是等长替换`,
+        `Timed text not synced: [${result.before} -> ${result.after}] is not an equal-length replacement`,
       ), 'warning');
     }
   }

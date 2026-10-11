@@ -21,6 +21,7 @@
 
 
 
+let lastStableAssPreviewGeometry = null;
 function assPreviewMetrics() {
   const resolution = MaweExportSrt.currentAssVideoResolution()
     || { width: 1920, height: 1080 };
@@ -33,6 +34,36 @@ function assPreviewMetrics() {
   const video = player?.tagName === 'VIDEO';
   const stageWidth = video ? Math.min(boxWidth, boxHeight * aspect) : boxWidth;
   const stageHeight = video ? Math.min(boxHeight, boxWidth / aspect) : boxHeight;
+  if (stageWidth >= 48 && stageHeight >= 48) {
+    lastStableAssPreviewGeometry = {
+      stageWidth,
+      stageHeight,
+      offsetX: (boxWidth - stageWidth) / 2,
+      offsetY: (boxHeight - stageHeight) / 2,
+    };
+  } else if (lastStableAssPreviewGeometry) {
+    // Playback refreshes the ASS canvas every frame, including while a fullscreen
+    // layout transition briefly collapses the stage. Keep the last usable geometry
+    // until ResizeObserver's settled refresh supplies the new dimensions.
+    return {
+      resolution,
+      ...lastStableAssPreviewGeometry,
+      scaleX: lastStableAssPreviewGeometry.stageWidth / resolution.width,
+      scaleY: lastStableAssPreviewGeometry.stageHeight / resolution.height,
+    };
+  } else {
+    // A first render can race the initial layout. Use the native canvas size until
+    // the stage has a meaningful rectangle rather than squeezing ASS into a few px.
+    return {
+      resolution,
+      stageWidth: resolution.width,
+      stageHeight: resolution.height,
+      offsetX: 0,
+      offsetY: 0,
+      scaleX: 1,
+      scaleY: 1,
+    };
+  }
   return {
     resolution,
     stageWidth,
@@ -182,111 +213,56 @@ function assPreviewTrackRuns(text) {
   );
 }
 
-function applyAssSubtitlePreview({ tMs, segment, extension, overlay, overlaySegments, mainColorName, speakerLabelVisible }) {
-  const library = window.AsrEditorUtils.normalizeAssStyleLibrary(ASS_STYLE_LIBRARY);
-  const profile = window.AsrEditorUtils.assProfileForId(
-    library,
-    library.assignments?.assExportProfileId || 'ass',
-  );
-  const baseStyle = window.AsrEditorUtils.assStyleForId(library, profile.styleId);
-  const metrics = assPreviewMetrics();
-  // 边距保持 PlayRes 原生坐标：Canvas 合成层直接在原生坐标系绘制，
-  // 锚点、描边、字号不再各自乘缩放系数。
-  const margins = {
-    left: Math.max(0, Number(baseStyle.marginL) || 0),
-    right: Math.max(0, Number(baseStyle.marginR) || 0),
-    vertical: Math.max(0, Number(baseStyle.marginV) || 0),
-  };
-  const appearance = MaweAppearance.getSubtitleAppearance();
-  const extensionSegments = activeExtensionSegments();
-  const mainStyle = assPreviewStyleVariant(baseStyle, segment, MaweBoot.DATA.segments, appearance);
-  // 副字幕使用样式库「副字幕样式」槽位的独立样式（副字幕不支持颜色分组，
-  // 不做调色板变体），对齐与边距完全由该样式决定。
-  const extensionStyleBase = window.AsrEditorUtils.assStyleForId(
-    library, library.assignments?.assExtensionStyleId || 'ass-extension',
-  );
-  const extensionMargins = {
-    left: Math.max(0, Number(extensionStyleBase.marginL) || 0),
-    right: Math.max(0, Number(extensionStyleBase.marginR) || 0),
-    vertical: Math.max(0, Number(extensionStyleBase.marginV) || 0),
-  };
-  // 叠加轨导出引用颜色样式名（无颜色时回落）；预览按同一映射
-  // 应用 ass_color_style 的调色板变体，保持与导出一致。
-  const overlayTrackStyle = assPreviewStyleVariant(
-    baseStyle,
-    overlay,
-    overlaySegments || [],
-    appearance,
-  );
-  const mainDuration = Math.max(1, Number(segment?.end) - Number(segment?.start) || 1);
-  const extensionDuration = Math.max(1, Number(extension?.end) - Number(extension?.start) || 1);
-  const mainAnimation = window.AsrEditorUtils.assPreviewAnimationState(
-    profile,
-    Math.max(0, Number(tMs) - Number(segment?.start || 0)),
-    mainDuration,
-    {
-      playResX: metrics.resolution.width,
-      playResY: metrics.resolution.height,
-      stageWidth: metrics.stageWidth,
-      stageHeight: metrics.stageHeight,
-      fad: window.AsrEditorUtils.assSentenceFadeTags(
-        segment?.text || '', profile, MaweSettings.EDITOR_SETTINGS.assSpecialSymbolRule,
-      ).fad,
-    },
-  );
-  const extensionAnimation = window.AsrEditorUtils.assPreviewAnimationState(
-    profile,
-    Math.max(0, Number(tMs) - Number(extension?.start || 0)),
-    extensionDuration,
-    {
-      playResX: metrics.resolution.width,
-      playResY: metrics.resolution.height,
-      stageWidth: metrics.stageWidth,
-      stageHeight: metrics.stageHeight,
-      fad: window.AsrEditorUtils.assSentenceFadeTags(
-        extension?.text || '', profile, MaweSettings.EDITOR_SETTINGS.assSpecialSymbolRule,
-      ).fad,
-    },
-  );
-  // 叠加轨不跟随 \move（绝对 PlayRes 坐标只属于主字幕）；fad/fade/t 与
-  // 位置无关，预览与导出保持一致。
-  const overlayDuration = Math.max(1, Number(overlay?.end) - Number(overlay?.start) || 1);
-  const overlayAnimation = window.AsrEditorUtils.assPreviewAnimationState(
-    profile,
-    Math.max(0, Number(tMs) - Number(overlay?.start || 0)),
-    overlayDuration,
-    {
-      playResX: metrics.resolution.width,
-      playResY: metrics.resolution.height,
-      stageWidth: metrics.stageWidth,
-      stageHeight: metrics.stageHeight,
-      fad: window.AsrEditorUtils.assSentenceFadeTags(
-        overlay?.text || '', profile, MaweSettings.EDITOR_SETTINGS.assSpecialSymbolRule,
-      ).fad,
-    },
-  );
-  const animationGroup = profile.animations || {};
-  const withMove = (style, state) => ({
-    ...assPreviewAnimatedStyle(style, profile, state, metrics),
-    __assMove: animationGroup.move?.enabled ? { x: state.moveX, y: state.moveY } : null,
-  });
-  const animatedMainStyle = withMove(mainStyle, mainAnimation);
-  // 副字幕与叠加轨不跟随 \move（绝对 PlayRes 坐标只属于主字幕）；
-  // fad/fade/t 与位置无关，预览与导出保持一致。
-  const animatedExtensionStyle = assPreviewAnimatedStyle(extensionStyleBase, profile, extensionAnimation, metrics);
-  const animatedOverlayTrackStyle = assPreviewAnimatedStyle(overlayTrackStyle, profile, overlayAnimation, metrics);
-  // 叠加轨锚定 = 下方最近一层的边距 + 1.2 × 该层字号（与导出的固化
-  // 公式一致）：有副字幕时叠在副字幕上方，否则叠在主字幕上方。偏移按
-  // 动画前的基础字号计算——导出侧 MarginV 固化在样式里，\t(\fs) 只改
-  // 变字形大小，不改变锚定边距。
-  const extensionTrackActive = extensionSegments
-    .some((cue) => cue && cue.disabled !== true);
-  const mainNativeFontSize = assPreviewExportFontSize(baseStyle, metrics);
-  const extensionNativeFontSize = assPreviewExportFontSize(extensionStyleBase, metrics);
-  const overlayOffsetNative = extensionTrackActive
-    ? extensionMargins.vertical + 1.2 * extensionNativeFontSize
-    : margins.vertical + 1.2 * mainNativeFontSize;
+let cachedAssStackKey = '';
+let cachedAssStackPlan = null;
+let lastAssStackDiagnostic = '';
+let assStackFontRevision = 0;
+const assStackCueSnapshots = [[], [], []];
+let assStackCueRevision = 0;
+function assStackInputRevision(tracks) {
+  let changed = false;
+  for (let track = 0; track < tracks.length; track += 1) {
+    const source = tracks[track] || [], snapshot = assStackCueSnapshots[track];
+    if (snapshot.length !== source.length) { snapshot.length = source.length; changed = true; }
+    for (let index = 0; index < source.length; index += 1) {
+      const cue = source[index] || {}, previous = snapshot[index];
+      const color = typeof cue.color === 'object' ? JSON.stringify(cue.color) : cue.color;
+      if (!previous || previous[0] !== cue || previous[1] !== cue.start || previous[2] !== cue.end
+        || previous[3] !== cue.text || previous[4] !== cue.disabled || previous[5] !== color
+        || previous[6] !== cue.speaker || previous[7] !== cue.id
+        || previous[8] !== cue.color_ref?.headIdx || previous[9] !== cue.color_ref?.name) {
+        snapshot[index] = [cue, cue.start, cue.end, cue.text, cue.disabled, color, cue.speaker, cue.id,
+          cue.color_ref?.headIdx, cue.color_ref?.name]; changed = true;
+      }
+    }
+  }
+  if (changed) assStackCueRevision += 1;
+  return assStackCueRevision;
+}
+document.fonts?.addEventListener('loadingdone', () => { assStackFontRevision += 1; cachedAssStackKey = ''; });
 
+function applyAssSubtitlePreview({ tMs, overlaySegments }) {
+  const metrics = assPreviewMetrics();
+  // Snapshot only project inputs: measurements and animation envelopes are
+  // computed once per revision, never once per playback frame. Direct edits
+  // to mutable imported cue/style records also invalidate this snapshot.
+  const revision = assStackInputRevision([MaweBoot.DATA.segments, activeExtensionSegments(), overlaySegments]);
+  const key = JSON.stringify([revision, ASS_STYLE_LIBRARY, MaweSettings.EDITOR_SETTINGS,
+    MaweAppearance.getSubtitleAppearance(), metrics.resolution, MaweColors.COLOR_PALETTE,
+    MaweSpeakerLabels.getSpeakerLabelSettings(), MaweDom.overlayToggle.checked,
+    MaweDom.extensionOverlayToggle?.checked, assStackFontRevision]);
+  if (key !== cachedAssStackKey || !cachedAssStackPlan) {
+    MaweExportSrt.buildAss({ preview: true, allowAssPlanDiagnostics: true,
+      onAssPlan: plan => { cachedAssStackPlan = plan; } });
+    cachedAssStackKey = key;
+  }
+  const frame = window.AsrEditorUtils.assStackFrame(cachedAssStackPlan, Number(tMs));
+  MaweDom.overlayEl.dataset.assStackStatus = frame.diagnostic ? 'unavailable' : 'ready';
+  MaweDom.overlayEl.title = frame.diagnostic;
+  if (frame.diagnostic !== lastAssStackDiagnostic) {
+    if (frame.diagnostic) MaweHint.flashHint(frame.diagnostic, 'warning');
+    lastAssStackDiagnostic = frame.diagnostic;
+  }
   MaweDom.overlayEl.dataset.assMode = 'true';
   MaweDom.overlayEl.classList.add('ass-preview-active');
   // ASS 的坐标系覆盖整个 PlayRes 画布；旧版 CSS 预览保存的自定义字幕盒
@@ -305,85 +281,32 @@ function applyAssSubtitlePreview({ tMs, segment, extension, overlay, overlaySegm
       if (element && !element.classList.contains('hidden')) element.classList.add('hidden');
     });
 
-  // 说话人标签跟随主字幕合成（画在首行行首）：与导出 assEventText 一致，
-  // text / speaker 模式标签跟随调色板颜色，其余保持基础色。
-  let speaker = null;
-  if (speakerLabelVisible) {
-    const paletteColor = MaweColors.COLOR_BY_NAME[mainColorName]?.value;
-    const assColorStyle = appearance.ass_color_style || DEFAULT_ASS_COLOR_STYLE;
-    const labelColor = assColorStyle === 'text' || assColorStyle === 'speaker'
-      ? paletteColor || animatedMainStyle.primaryColor
-      : animatedMainStyle.primaryColor;
-    speaker = {
-      text: String(MaweDom.overlayMainSpeakerLabelEl.textContent || ''),
-      color: labelColor,
-    };
-  }
-  // 叠加轨说话人标签同理：映射按叠加轨自身数组解析（与播放循环同源），
-  // 叠加轨 DOM 元素在 ASS 模式已整体隐藏，标签必须进 Canvas 才可见。
-  let overlaySpeaker = null;
-  if (overlay) {
-    const speakerLabels = MaweSpeakerLabels.getSpeakerLabelSettings();
-    const overlayColorContext = overlaySegments || [];
-    const overlayLabel = speakerLabels.mapping_enabled && speakerLabels.enabled
-      ? window.AsrEditorUtils.speakerLabelForSegment(
-        overlay, overlayColorContext, speakerLabels.names,
-      )
-      : '';
-    const overlayColorName = MULTI_SUBTITLE_UTILS.effectiveColorName(overlay, overlayColorContext);
-    if (overlayLabel && overlayColorName && MaweColors.COLOR_BY_NAME[overlayColorName]) {
-      const assColorStyle = appearance.ass_color_style || DEFAULT_ASS_COLOR_STYLE;
-      const paletteColor = MaweColors.COLOR_BY_NAME[overlayColorName].value;
-      const labelColor = assColorStyle === 'text' || assColorStyle === 'speaker'
-        ? paletteColor
-        : animatedOverlayTrackStyle.primaryColor;
-      overlaySpeaker = {
-        text: `${overlayLabel}${speakerLabels.separator}`,
-        color: labelColor,
-      };
+  const profile = cachedAssStackPlan.profile;
+  const tracks = frame.items.map(item => {
+    const animation = (item.legacy && !item.sharedStackCue ? window.AsrEditorUtils.assPreviewAnimationState : window.AsrEditorUtils.assStackAnimationState)(profile,
+      Number(tMs) - item.start, item.end - item.start, { fad: item.fad });
+    const native = { ...item.style, fontSize: item.fontSize };
+    const animated = animation.transformProgress === null ? native
+      : window.AsrEditorUtils.assPreviewStyleAt(native, profile.animations.t.tags, animation.transformProgress, { nativeFontSize: true });
+    if ((!item.legacy || item.sharedStackCue) && profile.animations.t.enabled) {
+      // libass applies discrete style tags inside t immediately, even before
+      // the numeric transform window starts (real b/i frame-hash verification).
+      const targets = window.AsrEditorUtils.assTransformStyleTargets(profile.animations.t.tags);
+      for (const key of ['bold', 'italic', 'underline', 'strikeOut']) {
+        if (targets[key] !== undefined) animated[key] = Boolean(targets[key]);
+      }
     }
-  }
-
-  window.MaweAssCanvas?.render({
-    playResX: metrics.resolution.width,
-    playResY: metrics.resolution.height,
-    tracks: [
-      {
-        visible: Boolean(segment),
-        runs: assPreviewTrackRuns(segment?.text || ''),
-        style: animatedMainStyle,
-        animation: mainAnimation,
-        nativeFontSize: assPreviewExportFontSize(animatedMainStyle, metrics),
-        margins,
-        speaker,
-      },
-      {
-        visible: Boolean(extension),
-        runs: assPreviewTrackRuns(extension?.text || ''),
-        style: animatedExtensionStyle,
-        animation: extensionAnimation,
-        nativeFontSize: assPreviewExportFontSize(animatedExtensionStyle, metrics),
-        margins: extensionMargins,
-      },
-      {
-        // 链在副字幕上方时，叠加元素沿用副字幕样式的对齐与边距（与导出
-        // 侧 Overlay 样式继承锚定层坐标系保持一致）；垂直偏移用链式锚定，
-        // 覆盖样式的 marginV。
-        visible: Boolean(overlay),
-        runs: assPreviewTrackRuns(overlay?.text || ''),
-        style: animatedOverlayTrackStyle,
-        animation: overlayAnimation,
-        nativeFontSize: assPreviewExportFontSize(animatedOverlayTrackStyle, metrics),
-        alignment: extensionTrackActive ? extensionStyleBase.alignment : baseStyle.alignment,
-        speaker: overlaySpeaker,
-        margins: {
-          left: extensionTrackActive ? extensionMargins.left : margins.left,
-          right: extensionTrackActive ? extensionMargins.right : margins.right,
-          vertical: overlayOffsetNative,
-        },
-      },
-    ],
+    const scale = item.scale;
+    const style = { ...animated, spacing: animated.spacing * scale,
+      outline: animated.outline * scale, shadow: animated.shadow * scale,
+      __assMove: item.legacy && profile.animations.move.enabled ? { x: animation.moveX, y: animation.moveY } : null };
+    return { visible: true, role: item.role, cueId: item.segment.id ?? item.index,
+      runs: item.runs, style, animation,
+      fractionalFontSize: !item.legacy || item.sharedStackCue,
+      nativeFontSize: Math.max(1, animated.fontSize * scale), alignment: item.alignment,
+      anchor: item.anchor || null, margins: { left: item.style.marginL, right: item.style.marginR, vertical: item.style.marginV } };
   });
+  window.MaweAssCanvas?.render({ playResX: metrics.resolution.width, playResY: metrics.resolution.height, tracks });
 }
 
 function restoreAssOverlayTrackPreview() {

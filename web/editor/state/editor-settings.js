@@ -124,6 +124,7 @@
   assStrikeEnabled: true,
   assSmallTextEnabled: true,
   assLargeTextEnabled: true,
+  assCommentEnabled: true,
   // 多重字幕开启时使用的波形行高度；关闭多重字幕后恢复「配置」中的高度。
   multiSubtitleRowHeight: 168,
   exportStartAtZero: false,

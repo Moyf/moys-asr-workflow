@@ -1320,7 +1320,7 @@
     MaweDom.multiSubtitleSplitModal?.classList.remove('show');
     [MaweDom.multiSubtitleSplitMainText, MaweDom.multiSubtitleSplitText].forEach((textEl) => {
       textEl?.classList.remove('locked');
-      textEl?.removeAttribute('title');
+      if (textEl) textEl.title = '';
     });
     MaweDom.multiSubtitleSplitPreview?.classList.remove('locked');
     pendingLinkedSplit = null;

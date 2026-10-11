@@ -105,6 +105,7 @@ __WAVEFORM_CSS__
         <div class="dropdown-item" id="download-gap-removed-color-srt" role="menuitem" tabindex="0" hidden title="按移除静音空隙后的时间轴，为每种已使用颜色分别导出一份字幕">SRT（按颜色拆分）</div>
         <div class="dropdown-separator" id="gap-removed-subtitle-export-separator" role="separator" hidden></div>
         <div class="dropdown-item" id="download-gap-removed-ass" role="menuitem" tabindex="0" title="按移除静音空隙后的时间轴导出带样式的 ASS 字幕；原工程时间不变">ASS（带样式）</div>
+        <div class="dropdown-item" id="download-gap-removed-video" role="menuitem" tabindex="0" title="按保留区域重组源视频并保留可复制的媒体流；切点可能出现重复帧或时间戳边界">重组后视频</div>
         <div class="dropdown-submenu" role="none">
           <div class="dropdown-item dropdown-submenu-toggle" role="menuitem" tabindex="0" aria-haspopup="menu" aria-expanded="false" aria-controls="gap-removed-otio-menu">OTIO</div>
           <div class="dropdown-menu dropdown-submenu-menu" id="gap-removed-otio-menu" role="menu">
@@ -119,7 +120,7 @@ __WAVEFORM_CSS__
         <div class="dropdown-submenu" role="none">
           <div class="dropdown-item dropdown-submenu-toggle" role="menuitem" tabindex="0" aria-haspopup="menu" aria-expanded="false" aria-controls="gap-removed-data-menu">数据文件</div>
           <div class="dropdown-menu dropdown-submenu-menu" id="gap-removed-data-menu" role="menu">
-            <div class="dropdown-item" id="download-gap-removed-ffconcat" role="menuitem" tabindex="0" title="导出 FFmpeg concat demuxer 可读取的保留区间；流复制的切点精度受关键帧和编码包限制">FFconcat 文件</div>
+          <div class="dropdown-item" id="download-gap-removed-ffconcat" role="menuitem" tabindex="0" title="导出 FFmpeg concat demuxer 可读取的保留区间；流复制切点可能出现重复帧或时间戳边界">FFconcat 文件</div>
             <div class="dropdown-item" id="download-gap-removed-regions-json" role="menuitem" tabindex="0" title="以毫秒为单位导出原媒体中的全部保留区域，供自定义脚本或工具读取">保留区域 JSON</div>
           </div>
         </div>
@@ -330,8 +331,13 @@ __WAVEFORM_CSS__
   </header>
   <div class="gap-remove-panel-body">
     <div class="markers-actions">
-      <button type="button" id="markers-add-current" class="markers-inline-button">在播放头添加标记</button>
-      <button type="button" id="markers-batch-select" class="markers-inline-button" aria-pressed="false">批量选择</button>
+      <div class="markers-actions-primary">
+        <button type="button" id="markers-add-current" class="markers-inline-button">在播放头添加标记</button>
+        <button type="button" id="markers-batch-select" class="markers-inline-button" aria-pressed="false">批量选择</button>
+      </div>
+      <label class="markers-filter-item markers-show-notes">
+        <input type="checkbox" id="markers-show-notes"> 显示备注
+      </label>
     </div>
     <div class="markers-summary-row">
       <div class="markers-summary" id="markers-summary" aria-live="polite">尚无标记；在波形顶部标记轨道空白处点击或拖动即可添加。</div>
@@ -358,9 +364,6 @@ __WAVEFORM_CSS__
             <option value="confirmed">已确认</option>
             <option value="plain">普通标记</option>
           </select>
-        </label>
-        <label class="markers-filter-item markers-show-notes">
-          <input type="checkbox" id="markers-show-notes"> 显示备注
         </label>
       </div>
     </div>
@@ -787,7 +790,7 @@ __WAVEFORM_CSS__
   </section>
 </div>
 
-<section class="editor-settings-panel editor-settings-window" id="project-settings-panel" role="dialog" aria-modal="false" aria-label="工程设置" aria-hidden="true"><header class="editor-settings-window-header" id="project-settings-drag-handle"><span class="editor-settings-window-title">工程设置</span><button type="button" class="editor-settings-window-close" id="project-settings-close" title="关闭（Esc）" aria-label="关闭工程设置窗口">×</button></header><div class="editor-settings-window-body"><nav class="editor-settings-nav" role="tablist" aria-orientation="vertical" aria-label="工程设置分区"><button type="button" class="editor-settings-nav-tab" id="editor-settings-tab-timebase" role="tab" data-settings-tab="timebase" aria-selected="false" aria-controls="editor-settings-page-timebase" tabindex="-1">时间与语言</button><button type="button" class="editor-settings-nav-tab" id="editor-settings-tab-project-tracks" role="tab" data-settings-tab="project-tracks" aria-selected="false" aria-controls="editor-settings-page-project-tracks" tabindex="-1">字幕轨道</button><button type="button" class="editor-settings-nav-tab" id="editor-settings-tab-subtitle-style" role="tab" data-settings-tab="subtitle-style" aria-selected="false" aria-controls="editor-settings-page-subtitle-style" tabindex="-1">字幕样式</button><button type="button" class="editor-settings-nav-tab" id="editor-settings-tab-project-color" role="tab" data-settings-tab="project-color" aria-selected="false" aria-controls="editor-settings-page-project-color" tabindex="-1">颜色与说话人</button><button type="button" class="editor-settings-nav-tab" id="editor-settings-tab-project-sticker" role="tab" data-settings-tab="project-sticker" aria-selected="false" aria-controls="editor-settings-page-project-sticker" tabindex="-1">表情包</button></nav><div class="editor-settings-pages"><div class="editor-settings-page" id="editor-settings-page-timebase" role="tabpanel" aria-labelledby="editor-settings-tab-timebase" hidden>
+<section class="editor-settings-panel editor-settings-window" id="project-settings-panel" role="dialog" aria-modal="false" aria-label="工程设置" aria-hidden="true"><header class="editor-settings-window-header" id="project-settings-drag-handle"><span class="editor-settings-window-title">工程设置</span><button type="button" class="editor-settings-window-close" id="project-settings-close" title="关闭（Esc）" aria-label="关闭工程设置窗口">×</button></header><div class="editor-settings-window-body"><nav class="editor-settings-nav" role="tablist" aria-orientation="vertical" aria-label="工程设置分区"><input type="search" id="project-settings-search" class="editor-settings-search" placeholder="搜索设置…" aria-label="搜索设置（跨全局设置与工程设置）"><button type="button" class="editor-settings-nav-tab" id="editor-settings-tab-timebase" role="tab" data-settings-tab="timebase" aria-selected="false" aria-controls="editor-settings-page-timebase" tabindex="-1">时间与语言</button><button type="button" class="editor-settings-nav-tab" id="editor-settings-tab-project-tracks" role="tab" data-settings-tab="project-tracks" aria-selected="false" aria-controls="editor-settings-page-project-tracks" tabindex="-1">字幕轨道</button><button type="button" class="editor-settings-nav-tab" id="editor-settings-tab-subtitle-style" role="tab" data-settings-tab="subtitle-style" aria-selected="false" aria-controls="editor-settings-page-subtitle-style" tabindex="-1">字幕样式</button><button type="button" class="editor-settings-nav-tab" id="editor-settings-tab-project-color" role="tab" data-settings-tab="project-color" aria-selected="false" aria-controls="editor-settings-page-project-color" tabindex="-1">颜色与说话人</button><button type="button" class="editor-settings-nav-tab" id="editor-settings-tab-project-sticker" role="tab" data-settings-tab="project-sticker" aria-selected="false" aria-controls="editor-settings-page-project-sticker" tabindex="-1">表情包</button></nav><div class="editor-settings-pages"><div class="editor-settings-page" id="editor-settings-page-timebase" role="tabpanel" aria-labelledby="editor-settings-tab-timebase" hidden>
 
   <div class="editor-settings-group">
     <div class="editor-settings-sub-group">
@@ -842,11 +845,11 @@ __WAVEFORM_CSS__
         </div>
 <small class="settings-panel-hint">英文按词拆，中文按字拆。</small>
 </div></div><div class="editor-settings-page" id="editor-settings-page-project-tracks" role="tabpanel" aria-labelledby="editor-settings-tab-project-tracks" hidden><span class="editor-settings-group-heading" id="project-track-settings-title">字幕轨道</span>
-<div class="editor-settings-group" role="group" aria-labelledby="project-track-settings-title"><div class="editor-settings-sub-group"><label class="toggle editor-settings-item" title="临时查看和调整主字幕已有的字词时间范围；快捷键 Q，与波形工具栏 🔤 联动；打开另一工程后关闭"><input type="checkbox" id="project-word-timing-toggle"> 显示字词时间码</label><label class="toggle editor-settings-item" title="启用标记编辑（快捷键 M）：显示「标记与区段」入口并允许编辑标记与区段"><input type="checkbox" id="project-marker-track-toggle"> 显示标记轨道</label><label class="toggle editor-settings-item overlay-track-toggle" id="overlay-track-controls"
+<div class="editor-settings-group" role="group" aria-labelledby="project-track-settings-title"><div class="editor-settings-sub-group"><label class="toggle editor-settings-item project-track-toggle" title="临时查看和调整主字幕已有的字词时间范围；快捷键 Q，与波形工具栏 🔤 联动；打开另一工程后关闭"><input type="checkbox" id="project-word-timing-toggle"> 显示字词时间码</label><label class="toggle editor-settings-item project-track-toggle" title="启用标记编辑（快捷键 M）：显示「标记与区段」入口并允许编辑标记与区段"><input type="checkbox" id="project-marker-track-toggle"> 显示标记轨道</label><label class="toggle editor-settings-item overlay-track-toggle project-track-toggle" id="overlay-track-controls"
          title="开启后可在叠加轨创建与主字幕时间重叠的叠加字幕；叠加轨不会与双语字幕建立绑定关系">
     <input type="checkbox" id="overlay-track-toggle">
     允许字幕重叠
-  </label><label class="toggle editor-settings-item multi-subtitle-main-toggle" id="multi-subtitle-toggle-label"
+  </label><label class="toggle editor-settings-item multi-subtitle-main-toggle project-track-toggle" id="multi-subtitle-toggle-label"
            title="开启后显示副字幕轨，可手动添加或导入第二条字幕。">
       <input type="checkbox" id="multi-subtitle-toggle" title="开启后显示副字幕轨，可手动添加或导入第二条字幕。">
       双语字幕
@@ -1127,6 +1130,7 @@ __WAVEFORM_CSS__
   </header>
   <div class="editor-settings-window-body">
     <nav class="editor-settings-nav" role="tablist" aria-orientation="vertical" aria-label="设置分区">
+      <input type="search" id="editor-settings-search" class="editor-settings-search" placeholder="搜索设置…" aria-label="搜索设置（跨全局设置与工程设置）">
       <div class="editor-settings-nav-group-label" aria-hidden="true">基础</div>
       <button type="button" class="editor-settings-nav-tab" id="editor-settings-tab-interface" role="tab" data-settings-tab="interface" aria-selected="true" aria-controls="editor-settings-page-interface">界面</button>
       <button type="button" class="editor-settings-nav-tab" id="editor-settings-tab-regions" role="tab" data-settings-tab="regions" aria-selected="false" aria-controls="editor-settings-page-regions" tabindex="-1">功能区</button>
@@ -1144,6 +1148,8 @@ __WAVEFORM_CSS__
       <div class="editor-settings-nav-group-label" aria-hidden="true">扩展功能</div>
       <button type="button" class="editor-settings-nav-tab" id="editor-settings-tab-sticker" role="tab" data-settings-tab="sticker" aria-selected="false" aria-controls="editor-settings-page-sticker" tabindex="-1">表情包</button>
       <button type="button" class="editor-settings-nav-tab" id="editor-settings-tab-easter-eggs" role="tab" data-settings-tab="easter-eggs" aria-selected="false" aria-controls="editor-settings-page-easter-eggs" tabindex="-1">彩蛋</button>
+      <div class="editor-settings-nav-group-label" aria-hidden="true">关于</div>
+      <button type="button" class="editor-settings-nav-tab" id="editor-settings-tab-about" role="tab" data-settings-tab="about" aria-selected="false" aria-controls="editor-settings-page-about" tabindex="-1">关于</button>
     </nav>
     <div class="editor-settings-pages">
   <div class="editor-settings-page" id="editor-settings-page-interface" role="tabpanel" aria-labelledby="editor-settings-tab-interface">
@@ -1196,7 +1202,7 @@ __WAVEFORM_CSS__
           自定义色值
         </label>
         <small class="editor-settings-hint">自定义颜色会同步用于字幕列表、波形、预览和 ASS 导出；恢复默认即可使用内置色值。</small>
-        <small class="editor-settings-hint">可以在 [<button type="button" class="editor-settings-inline-action" data-settings-page="project-color" title="打开工程设置的颜色与说话人页">工程设置</button>] 中配置说话人映射开关等。</small>
+        <small class="editor-settings-hint">可以在 <button type="button" class="editor-settings-inline-action" data-settings-page="project-color" data-settings-target="subtitle-speaker-mapping-enabled" title="打开工程设置的颜色与说话人页">工程设置</button> 中配置说话人映射开关等。</small>
         <div class="subtitle-color-palette-grid" id="subtitle-color-palette-grid" hidden>
           <label class="subtitle-color-palette-field" data-subtitle-palette-name="yellow">
             <span class="subtitle-color-palette-label"><span class="subtitle-color-palette-swatch" data-subtitle-palette-swatch="yellow"></span>黄</span>
@@ -1317,7 +1323,7 @@ __WAVEFORM_CSS__
           对齐到帧
         </label>
         <small class="editor-settings-hint" id="timeline-snap-to-frame-hint">仅帧模式生效；切换到帧模式后可启用。</small>
-        <small class="editor-settings-hint">在 [工程设置] 中配置当前工程的 FPS 和时间单位。</small>
+        <small class="editor-settings-hint">当前工程的 FPS 和时间单位在 <button type="button" class="editor-settings-inline-action" data-settings-page="timebase" data-settings-target="timeline-timebase" title="打开工程设置的时间与语言页">工程设置</button> 中配置。</small>
       </div><div class="editor-settings-field timeline-separator-field">
         <label class="editor-settings-item" title="帧时间码中秒与帧之间的分隔符；只使用一个非字母数字符号">
           帧分隔符
@@ -1355,6 +1361,10 @@ __WAVEFORM_CSS__
           <div class="ass-inline-text-option">
             <label class="toggle editor-settings-item"><input type="checkbox" id="ass-large-text-enabled" data-ass-inline-setting="assLargeTextEnabled"> 放大</label>
             <small class="editor-settings-hint" data-ass-symbol="+" data-ass-symbol-label="放大">++放大++</small>
+          </div>
+          <div class="ass-inline-text-option">
+            <label class="toggle editor-settings-item"><input type="checkbox" id="ass-comment-enabled" data-ass-inline-setting="assCommentEnabled"> 注释</label>
+            <small class="editor-settings-hint" data-ass-symbol="//" data-ass-symbol-label="注释" data-ass-symbol-fixed="true">//注释//</small>
           </div>
         </div>
       </div>
@@ -1435,10 +1445,12 @@ __WAVEFORM_CSS__
                 <input type="text" id="merge-join-text-word" placeholder="默认一个空格">
               </label>
             </div>
+            <small class="editor-settings-hint merge-join-language-hint">你可以在 <button type="button" class="editor-settings-inline-action" data-settings-page="timebase" data-settings-target="multi-subtitle-main-language-mode" title="打开工程设置的时间与语言页">工程设置</button> 中配置字幕的语言类型。</small>
   </div>
   <span class="editor-settings-group-heading" id="split-trim-settings-title">拆分时移除的标点符号</span>
   <div class="editor-settings-group split-trim-settings-section" id="split-trim-settings-panel" role="group" aria-labelledby="split-trim-settings-title">
             <div class="split-trim-symbol-row">
+              <span class="split-trim-symbol-caption">预设符号</span>
               <div class="split-trim-symbol-grid" id="split-trim-symbol-grid" role="group" aria-labelledby="split-trim-settings-title"></div>
               <button type="button" id="split-trim-symbols-reset">恢复默认符号</button>
             </div>
@@ -1565,6 +1577,34 @@ __WAVEFORM_CSS__
     </div>
   </div>
   </div>
+  <div class="editor-settings-page" id="editor-settings-page-about" role="tabpanel" aria-labelledby="editor-settings-tab-about" hidden>
+    <div class="editor-settings-group">
+      <div class="editor-settings-about-version"><span>应用版本</span><strong id="editor-about-version">__APP_VERSION__</strong></div>
+      <div class="editor-settings-about-grid" role="group" aria-label="发布与文档">
+        <a class="editor-settings-about-entry" href="__RELEASE_URL__" target="_blank" rel="noopener noreferrer"><span>新功能</span><span class="editor-settings-about-action">打开发布页 ↗</span></a>
+        <a class="editor-settings-about-entry" href="https://moyf.github.io/moys-asr-workflow/docs/" target="_blank" rel="noopener noreferrer"><span>文档</span><span class="editor-settings-about-action">打开文档 ↗</span></a>
+      </div>
+    </div>
+    <div class="editor-settings-group">
+      <span class="editor-settings-group-heading">视频教程</span>
+      <div class="editor-settings-about-grid" role="group" aria-label="视频教程">
+        <a class="editor-settings-about-entry editor-settings-about-locale-zh" href="https://www.bilibili.com/video/BV1S9bZ6pEHg" target="_blank" rel="noopener noreferrer"><span>中文教程（Bilibili）</span><span class="editor-settings-about-action">观看视频 ↗</span></a>
+        <div class="editor-settings-about-entry editor-settings-about-locale-en"><span>English tutorial (YouTube)</span><span class="editor-settings-about-placeholder">待补充</span></div>
+      </div>
+    </div>
+    <div class="editor-settings-group">
+      <span class="editor-settings-group-heading">项目与社区</span>
+      <div class="editor-settings-about-grid" role="group" aria-label="项目与社区">
+        <a class="editor-settings-about-entry" href="https://github.com/Moyf/moys-asr-workflow" target="_blank" rel="noopener noreferrer"><span>Star 项目主页</span><span class="editor-settings-about-action">打开项目 ↗</span></a>
+        <a class="editor-settings-about-entry editor-settings-about-locale-zh" href="https://qm.qq.com/q/4YtxZIpzxC" target="_blank" rel="noopener noreferrer"><span>QQ 交流群</span><span class="editor-settings-about-action">加入群聊 ↗</span></a>
+        <div class="editor-settings-about-entry editor-settings-about-locale-en"><span>Discord community</span><span class="editor-settings-about-placeholder">待补充</span></div>
+        <div class="editor-settings-about-entry editor-settings-about-locale-zh"><span>B 站小店赞助</span><span class="editor-settings-about-placeholder">待补充</span></div>
+        <div class="editor-settings-about-entry editor-settings-about-locale-en"><span>Ko-fi</span><span class="editor-settings-about-placeholder">待补充</span></div>
+        <div class="editor-settings-about-entry editor-settings-about-locale-zh"><span>作者 Bilibili 主页</span><span class="editor-settings-about-placeholder">待补充</span></div>
+        <div class="editor-settings-about-entry editor-settings-about-locale-en"><span>Author on Twitter / X</span><span class="editor-settings-about-placeholder">待补充</span></div>
+      </div>
+    </div>
+  </div>
     </div>
   </div>
 </section>
@@ -1690,19 +1730,22 @@ __WAVEFORM_CSS__
         </section>
         <section class="ass-style-form-section" id="ass-style-emphasis-section" aria-labelledby="ass-style-emphasis-heading" hidden>
           <div class="ass-style-subheading" id="ass-style-emphasis-heading">特殊文本样式</div>
-          <small class="editor-settings-hint" id="ass-special-format-hint">你可以使用 **强调**、~~删除~~、--缩小--、++放大++ 等符号来对特定字词添加特殊样式。</small>
+          <small class="editor-settings-hint" id="ass-special-format-hint">你可以使用 **强调**、~~删除~~、--缩小--、++放大++、//注释// 等符号来对特定字词添加特殊样式。</small>
           <div id="ass-style-emphasis-options" class="ass-style-fields ass-style-fields-special ass-style-emphasis-options">
             <label class="ass-style-color-field">强调色<input type="color" id="ass-style-emphasis-color" data-ass-style-field="emphasisColor"></label>
             <label class="ass-style-field">强调样式<select id="ass-style-emphasis-style" data-ass-style-field="emphasisStyle"><option value="stroke">描边颜色</option><option value="text">文本颜色</option></select></label>
-            <label class="ass-style-field">强调文字比例<input type="number" id="ass-style-emphasis-scale" data-ass-style-field="emphasisScale" min="1" max="1.5" step="0.05" value="1.1"></label>
+            <label class="ass-style-color-field">注释色<input type="color" id="ass-style-comment-color" data-ass-style-field="commentColor"></label>
+            <label class="ass-style-field">注释样式<select id="ass-style-comment-style" data-ass-style-field="commentStyle"><option value="stroke">描边颜色</option><option value="text">文本颜色</option></select></label>
           </div>
           <div class="ass-style-fields ass-style-fields-text-size ass-style-emphasis-options">
+            <label class="ass-style-field">强调文字比例<input type="number" id="ass-style-emphasis-scale" data-ass-style-field="emphasisScale" min="1" max="1.5" step="0.05" value="1.1"></label>
+            <label class="ass-style-field">注释文字比例<input type="number" id="ass-style-comment-scale" data-ass-style-field="commentScale" min="0.5" max="1.5" step="0.05" value="1"></label>
             <label class="ass-style-field" id="ass-style-small-text-field">缩小文字比例<input type="number" id="ass-style-small-text-scale" data-ass-style-field="smallTextScale" min="0.1" max="1" step="0.05" value="0.8"></label>
             <label class="ass-style-field" id="ass-style-large-text-field">放大文字比例<input type="number" id="ass-style-large-text-scale" data-ass-style-field="largeTextScale" min="1" max="3" step="0.05" value="1.5"></label>
           </div>
         </section>
         <div class="ass-style-preview-card"><span class="ass-style-preview-label">ASS 预览</span><canvas id="ass-style-preview-sample"></canvas></div>
-        <p class="ass-style-preview-actions editor-settings-hint"><span>如果想要查看当前画面的实际 ASS 字幕效果，可以</span> <button type="button" class="ass-preview-link" id="ass-style-frame-preview-open" hidden>打开 ASS 实际画面预览窗口</button></p>
+        <p class="ass-style-preview-actions editor-settings-hint"><span>如果想要查看当前画面实际的 ASS 字幕效果，可以</span> <button type="button" class="ass-preview-link" id="ass-style-frame-preview-open" hidden>打开 ASS 实际画面预览窗口</button>。</p>
       </section>
       <section class="ass-style-form" id="ass-profile-form" aria-labelledby="ass-profile-form-title" hidden>
         <div class="ass-style-form-header">
@@ -2297,6 +2340,19 @@ __WAVEFORM_CSS__
 </div>
 
 <!-- 支持调整字幕行结构并预览字词时间码映射的纯文本编辑 MVP。 -->
+<dialog id="subtitle-time-offset-dialog" class="subtitle-time-offset-dialog" aria-labelledby="subtitle-time-offset-title">
+  <form id="subtitle-time-offset-form" class="subtitle-time-offset-form">
+    <h3 id="subtitle-time-offset-title">调整字幕时间</h3>
+    <p>对选中的字幕整体平移时间范围；正数后移，负数前移。越出媒体范围或挤占其它字幕时会整批拒绝。</p>
+    <label for="subtitle-time-offset-ms">偏移量（ms）</label>
+    <input type="number" id="subtitle-time-offset-ms" step="1" value="0" inputmode="numeric">
+    <div class="actions">
+      <button type="button" id="subtitle-time-offset-cancel">取消</button>
+      <button type="submit" id="subtitle-time-offset-apply" class="primary">应用</button>
+    </div>
+  </form>
+</dialog>
+
 <dialog id="word-conversion-dialog" class="word-conversion-dialog" aria-labelledby="word-conversion-title" aria-describedby="word-conversion-warning">
   <h3 id="word-conversion-title">字词拆成字幕</h3>
   <p id="word-conversion-warning">此操作会替换选中的整句结构，并解除相关副字幕绑定；副字幕内容与时间保留。字词范围可能更短，产生更多空隙。新增文字可能共用旧时间范围，没有重新对齐音频。每个块转为一条字幕，不按字数细分时间。可通过撤销恢复，不提供反向转换工具。</p>

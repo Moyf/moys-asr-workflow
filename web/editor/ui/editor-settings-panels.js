@@ -64,6 +64,9 @@
       const page = document.getElementById(item.getAttribute('aria-controls') || '');
       if (page) page.hidden = !active;
     }
+    // A taller settings page can push lower controls outside the viewport while
+    // its floating window remains at the position saved for a shorter page.
+    requestAnimationFrame(() => (project ? projectFloatingPanel : editorSettingsFloatingPanel).reclamp());
     if (focus) tab.focus();
     try {
       localStorage.setItem(project ? projectTabKey : MaweDom.EDITOR_SETTINGS_WINDOW_TAB_KEY, tab.dataset.settingsTab || '');
@@ -216,12 +219,12 @@
 
 
   // 帮助中的「全局设置」入口：打开设置窗口并定位到「视频预览」分区。
-  function openEditorSettingsAtTab(tabId) {
+  function openEditorSettingsAtTab(tabId, { focus = true } = {}) {
     const tab = document.getElementById(tabId);
     closeRegionalSettings();
     if (tab?.closest('#project-settings-panel')) projectFloatingPanel.open();
     else setEditorSettingsPanelOpen(true);
-    setEditorSettingsActiveTab(tab, { focus: true });
+    setEditorSettingsActiveTab(tab, { focus });
   }
 
   function closeRegionalSettings() {
@@ -274,11 +277,26 @@
     (control || toggle).focus({ preventScroll: true });
   }
 
+  // 通用「跳转已发生」提示：目标设置项所在分组（或目标元素本身）边框闪烁。
+  // 各种 inline action 跳转都可复用；连续点击时先清掉上一次的闪烁再重启。
+  let settingsFlashTimer = 0;
+  function flashSettingsTarget(target) {
+    if (!target || !target.isConnected) return;
+    const scope = target.closest('.editor-settings-group, .settings-panel-section') || target;
+    clearTimeout(settingsFlashTimer);
+    document.querySelectorAll('.settings-flash').forEach((element) => element.classList.remove('settings-flash'));
+    // 强制 reflow，让同一元素上的连续闪烁重新播放动画。
+    void scope.offsetWidth;
+    scope.classList.add('settings-flash');
+    settingsFlashTimer = setTimeout(() => scope.classList.remove('settings-flash'), 1600);
+  }
+
   global.MaweSettingsPanels = Object.freeze({
     openRegionalSettings,
     closeRegionalSettings,
     updateRegionalSettingsAvailability,
     openEditorSettingsAtTab,
+    flashSettingsTarget,
     editorSettingsTabs,
     projectTabs,
     projectFloatingPanel,

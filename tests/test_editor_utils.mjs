@@ -42,6 +42,122 @@ test('translates the progressive and duplicate split menu labels', () => {
   assert.equal(i18n.translateText('复制拆分', 'en'), 'Duplicate split');
 });
 
+test('plans an all-or-nothing subtitle time offset within media bounds', () => {
+  const segments = [
+    { start: 1000, end: 2000 },
+    { start: 3000, end: 4000 },
+    { start: 5000, end: 6000 },
+  ];
+  const plan = helpers.planSubtitleTimeOffset(segments, [0, 1], -500, 7000);
+  assert.equal(plan.ok, true);
+  assert.deepEqual(JSON.parse(JSON.stringify(plan.changes)), [
+    { index: 0, start: 500, end: 1500 },
+    { index: 1, start: 2500, end: 3500 },
+  ]);
+  assert.equal(segments[0].start, 1000, 'planning must not mutate cue ranges');
+  assert.equal(helpers.planSubtitleTimeOffset(segments, [0, 1], -1500, 7000).reason, 'media_bounds');
+  assert.equal(helpers.planSubtitleTimeOffset(segments, [0], 1500, 7000).reason, 'overlap');
+  assert.equal(helpers.planSubtitleTimeOffset(segments, [2], 2000, 7000).reason, 'media_bounds');
+});
+
+test('rejects time offsets that jump past unselected cues into clear space', () => {
+  const segments = [
+    { start: 1000, end: 2000 },
+    { start: 3000, end: 4000 },
+  ];
+  for (const [index, offset] of [[0, 4000], [1, -3000]]) {
+    const plan = helpers.planSubtitleTimeOffset(segments, [index], offset, 10000);
+    assert.equal(plan.ok, false);
+    assert.equal(plan.reason, 'overlap');
+    assert.deepEqual(JSON.parse(JSON.stringify(plan.changes)), []);
+  }
+  assert.deepEqual(segments, [{ start: 1000, end: 2000 }, { start: 3000, end: 4000 }]);
+});
+
+test('time offsets preserve ordering around disabled unselected cues', () => {
+  const segments = [
+    { start: 1000, end: 2000 },
+    { start: 3000, end: 4000, disabled: true },
+    { start: 6000, end: 7000 },
+  ];
+  assert.equal(helpers.planSubtitleTimeOffset(segments, [0], 3500, 10000).reason, 'overlap');
+  assert.equal(helpers.planSubtitleTimeOffset(segments, [2], -3500, 10000).reason, 'overlap');
+  // Disabled cues still participate in the saved project's timing contract.
+  assert.equal(helpers.planSubtitleTimeOffset(segments, [0], 1500, 10000).reason, 'overlap');
+  assert.equal(helpers.planSubtitleTimeOffset(segments, [2], -2500, 10000).reason, 'overlap');
+});
+
+test('time offsets allow touching boundaries for noncontiguous selections', () => {
+  const segments = [
+    { start: 1000, end: 2000 },
+    { start: 2500, end: 3000 },
+    { start: 3500, end: 4500 },
+    { start: 5000, end: 6000 },
+  ];
+  for (const offset of [-500, 500]) {
+    const plan = helpers.planSubtitleTimeOffset(segments, [0, 2], offset, 10000);
+    assert.equal(plan.ok, true);
+    assert.deepEqual(JSON.parse(JSON.stringify(plan.changes)), [
+      { index: 0, start: 1000 + offset, end: 2000 + offset },
+      { index: 2, start: 3500 + offset, end: 4500 + offset },
+    ]);
+  }
+});
+
+test('time offsets keep allowing existing overlaps without changing cue order', () => {
+  for (const disabled of [false, true]) {
+    const segments = [
+      { start: 1000, end: 2500 },
+      { start: 2000, end: 4000, disabled },
+    ];
+    assert.equal(helpers.planSubtitleTimeOffset(segments, [0], 500, 10000).ok, true);
+    assert.equal(helpers.planSubtitleTimeOffset(segments, [1], -500, 10000).ok, true);
+  }
+});
+
+for (const fps of [30, 29.97]) {
+  const frameClock = {
+    unit: 'frames',
+    getStart: segment => segment.start_frame,
+    getEnd: segment => segment.end_frame,
+    fromMs: value => helpers.frameNumberFromMilliseconds(value, fps),
+    toMs: value => helpers.millisecondsFromFrameNumber(value, fps),
+  };
+  const frameRange = (start, end, extra = {}) => ({
+    start_frame: start, end_frame: end,
+    start: frameClock.toMs(start), end: frameClock.toMs(end), ...extra,
+  });
+  for (const direction of [1, -1]) {
+    test(`frame-coordinate time offsets accept touching ${direction > 0 ? 'positive' : 'negative'} boundaries at ${fps} FPS`, () => {
+      const end = fps === 30 ? 5 : 7;
+      const source = direction > 0
+        ? [frameRange(end - 3, end), frameRange(end + 2, end + 5, { disabled: true })]
+        : [frameRange(0, 2, { disabled: true }), frameRange(4, 7)];
+      const index = direction > 0 ? 0 : 1;
+      const before = structuredClone(source);
+      const offset = direction * frameClock.toMs(2);
+      const plan = helpers.planSubtitleTimeOffset(source, [index], offset, 12000, frameClock);
+      assert.equal(plan.ok, true);
+      assert.deepEqual(JSON.parse(JSON.stringify(plan.changes)), [{
+        index,
+        start: frameClock.toMs(source[index].start_frame + direction * 2),
+        end: frameClock.toMs(source[index].end_frame + direction * 2),
+        start_frame: source[index].start_frame + direction * 2,
+        end_frame: source[index].end_frame + direction * 2,
+      }]);
+      assert.deepEqual(source, before, 'frame planning must not mutate any cue');
+    });
+  }
+  test(`frame-coordinate time offsets still reject real overlap and exact media bounds at ${fps} FPS`, () => {
+    const source = [frameRange(4, 7), frameRange(8, 11, { disabled: true })];
+    assert.equal(helpers.planSubtitleTimeOffset(source, [0], frameClock.toMs(2), 12000, frameClock).reason, 'overlap');
+    const touchingEnd = frameClock.toMs(9);
+    assert.equal(helpers.planSubtitleTimeOffset([source[0]], [0], frameClock.toMs(2), touchingEnd, frameClock).ok, true);
+    assert.equal(helpers.planSubtitleTimeOffset([source[0]], [0], frameClock.toMs(2), touchingEnd - 1, frameClock).reason, 'media_bounds');
+    assert.equal(helpers.planSubtitleTimeOffset([frameRange(1, 4)], [0], -frameClock.toMs(2), 12000, frameClock).reason, 'media_bounds');
+  });
+}
+
 test('accepts legacy and current project schemas but rejects unknown versions', () => {
   assert.equal(helpers.supportsProjectSchema({ segments: [] }), true);
   assert.equal(helpers.supportsProjectSchema({ schema: helpers.PROJECT_SCHEMA, segments: [] }), true);
@@ -815,6 +931,8 @@ test('classifies common and legacy-migrated gap display types', () => {
     [{ source: 'audio_gate', origins: ['audio_gate', 'manual'] }, 'audio_gate_manual', true],
     [{ source: 'manual', origins: ['manual'] }, 'manual', true],
     [{ source: 'script_alignment', origins: ['script_alignment'] }, 'script_alignment', true],
+    [{ source: 'ai_cleanup_review', origins: ['ai_cleanup_review'] }, 'ai_cleanup_review', true],
+    [{ source: 'ai_cleanup_review', origins: ['ai_cleanup_review', 'manual'] }, 'ai_cleanup_review_manual', true],
     [{ source: 'legacy', origins: ['legacy'] }, 'audio_gate', false],
     [{ source: null, origins: ['script_alignment', 'audio_gate'] }, 'multi_source', true],
     [{ source: null, origins: ['audio_gate', 'legacy'] }, 'audio_gate', false],
@@ -909,6 +1027,78 @@ test('replaces one provenance source without losing the other layers', () => {
     JSON.parse(JSON.stringify(replaced.sources.script_alignment)),
     [{ id: 'align', source: 'script_alignment', start: 0, end: 100, removed: true }],
   );
+});
+
+test('preserves full AI review marker ownership through browser and Python normalization', () => {
+  const markerId = `review-${'x'.repeat(180)}😀`;
+  const initial = gapCore.normalizeGapRemoveProvenance({ sources: {
+    ai_cleanup_review: [{ id: markerId, review_marker_id: ` ${markerId} `, start: 100, end: 300 }],
+  } });
+  assert.equal(initial.sources.ai_cleanup_review[0].review_marker_id, markerId);
+  assert.equal(initial.sources.ai_cleanup_review[0].id, markerId.slice(0, 160));
+  const result = spawnSync(PYTHON_COMMAND, pythonCommandArgs(['-c', [
+    'import json, sys',
+    'from maw.script_alignment import _normalize_gap_provenance',
+    'print(json.dumps(_normalize_gap_provenance(json.load(sys.stdin)), ensure_ascii=False))',
+  ].join('\n')]), {
+    input: JSON.stringify(initial), encoding: 'utf8', timeout: 20_000,
+    env: { ...process.env, PYTHONUTF8: '1' },
+  });
+  assert.equal(result.status, 0, result.stderr);
+  const roundTrip = gapCore.normalizeGapRemoveProvenance(JSON.parse(result.stdout));
+  assert.deepEqual(JSON.parse(JSON.stringify(roundTrip)), JSON.parse(JSON.stringify(initial)));
+  const split = gapCore.removeGapRemoveProvenanceRange(roundTrip, 150, 180);
+  assert.equal(split.sources.ai_cleanup_review.length, 2);
+  assert.ok(split.sources.ai_cleanup_review.every(range => range.review_marker_id === markerId));
+  const cancelled = gapCore.replaceGapRemoveProvenanceSource(
+    split, 'ai_cleanup_review',
+    split.sources.ai_cleanup_review.filter(range => range.review_marker_id !== markerId),
+  );
+  assert.equal(cancelled.sources.ai_cleanup_review.length, 0);
+  assert.deepEqual(JSON.parse(JSON.stringify(gapCore.gapRangesFromProvenance(cancelled))), []);
+});
+
+test('unmuting an AI review range removes only its linked review source after range edits', () => {
+  const initial = gapCore.normalizeGapRemoveProvenance({
+    sources: {
+      ai_cleanup_review: [
+        { id: 'review-a', review_marker_id: 'review-a', start: 100, end: 300 },
+        { id: 'review-b', review_marker_id: 'review-b', start: 250, end: 400 },
+      ],
+      ai_cleanup: [{ id: 'cleanup', start: 200, end: 350 }],
+      audio_gate: [{ id: 'audio', start: 50, end: 150 }],
+    },
+  });
+  assert.deepEqual(JSON.parse(JSON.stringify(initial.sources.ai_cleanup_review)), [
+    { id: 'review-a', source: 'ai_cleanup_review', start: 100, end: 300, review_marker_id: 'review-a', removed: true },
+    { id: 'review-b', source: 'ai_cleanup_review', start: 250, end: 400, review_marker_id: 'review-b', removed: true },
+  ]);
+
+  const rangeEdited = gapCore.removeGapRemoveProvenanceRange(initial, 150, 180);
+  assert.deepEqual(JSON.parse(JSON.stringify(rangeEdited.sources.ai_cleanup_review)), [
+    { id: 'review-a', source: 'ai_cleanup_review', start: 100, end: 150, review_marker_id: 'review-a', removed: true },
+    { id: 'review-a-2', source: 'ai_cleanup_review', start: 180, end: 300, review_marker_id: 'review-a', removed: true },
+    { id: 'review-b', source: 'ai_cleanup_review', start: 250, end: 400, review_marker_id: 'review-b', removed: true },
+  ]);
+
+  const unmuted = gapCore.replaceGapRemoveProvenanceSource(
+    rangeEdited,
+    'ai_cleanup_review',
+    rangeEdited.sources.ai_cleanup_review.filter((item) => item.review_marker_id !== 'review-a'),
+  );
+  assert.deepEqual(JSON.parse(JSON.stringify(unmuted.sources.ai_cleanup_review)), [
+    { id: 'review-b', source: 'ai_cleanup_review', start: 250, end: 400, review_marker_id: 'review-b', removed: true },
+  ]);
+  assert.deepEqual(JSON.parse(JSON.stringify(unmuted.sources.ai_cleanup)), [
+    { id: 'cleanup', source: 'ai_cleanup', start: 200, end: 350, removed: true },
+  ]);
+  assert.deepEqual(JSON.parse(JSON.stringify(unmuted.sources.audio_gate)), [
+    { id: 'audio', source: 'audio_gate', start: 50, end: 150, removed: true },
+  ]);
+  assert.deepEqual(JSON.parse(JSON.stringify(gapCore.gapRangesFromProvenance(unmuted))), [
+    { start: 50, end: 150, removed: true },
+    { start: 200, end: 400, removed: true },
+  ]);
 });
 
 test('regenerates an audio source while retaining a manual restoration', () => {
@@ -3363,11 +3553,11 @@ test('ASS underscore markers render as local underline alongside emphasis', () =
   const text = '前 _下划线_ 与 _**共同**_ 后';
   const runs = Array.from(helpers.assInlineStyleRuns(text, 'double'), (run) => ({ ...run }));
   assert.deepEqual(runs, [
-    { text: '前 ', emphasized: false, underlined: false, struck: false, size: null },
-    { text: '下划线', emphasized: false, underlined: true, struck: false, size: null },
-    { text: ' 与 ', emphasized: false, underlined: false, struck: false, size: null },
-    { text: '共同', emphasized: true, underlined: true, struck: false, size: null },
-    { text: ' 后', emphasized: false, underlined: false, struck: false, size: null },
+    { text: '前 ', emphasized: false, underlined: false, struck: false, size: null, comment: false },
+    { text: '下划线', emphasized: false, underlined: true, struck: false, size: null, comment: false },
+    { text: ' 与 ', emphasized: false, underlined: false, struck: false, size: null, comment: false },
+    { text: '共同', emphasized: true, underlined: true, struck: false, size: null, comment: false },
+    { text: ' 后', emphasized: false, underlined: false, struck: false, size: null, comment: false },
   ]);
   const options = {
     assProfile: { id: 'ass', styleId: 'ass', animations: {} },
@@ -3472,13 +3662,13 @@ test('ASS inline strike and size markers restore the base style and use each tra
   assert.match(custom, /\{\\fs24\}小字\{\\fs40\} \{\\fs80\}大字\{\\fs40\}/);
   assert.match(custom.split('\n').find((line) => line.startsWith('Dialogue: 1,')), /\{\\fs32\}小字\{\\fs40\} \{\\fs60\}大字\{\\fs40\}/);
   const strikeBase = helpers.buildAssPayload(cues, { ...options, assStyle: { ...options.assStyle, strikeOut: true } });
-  assert.match(strikeBase, /Dialogue: 0,[^\n]*,,前 删除 /);
+  assert.match(strikeBase, /Dialogue: 0,[^\n]*前 删除 /);
   assert.doesNotMatch(strikeBase.split('\n').find((line) => line.startsWith('Dialogue: 0,')), /\\s0/);
   assert.match(helpers.buildAssPayload(cues), /~~删除~~ -小字- \+大字\+/);
   assert.deepEqual(Array.from(helpers.assInlineStyleRuns('foo-bar-baz C++ 1+2+3 -未闭合', 'none'), (run) => run.text),
     ['foo-bar-baz C++ 1+2+3 -未闭合']);
   const combined = Array.from(helpers.assInlineStyleRuns('~~-**组合**-~~', 'double'), (run) => ({ ...run }));
-  assert.deepEqual(combined, [{ text: '组合', emphasized: true, underlined: false, struck: true, size: 'small' }]);
+  assert.deepEqual(combined, [{ text: '组合', emphasized: true, underlined: false, struck: true, size: 'small', comment: false }]);
   const style = helpers.normalizeAssStyle({ smallTextScale: 0.63, largeTextScale: 5 });
   assert.equal(style.smallTextScale, 0.65);
   assert.equal(style.largeTextScale, 3);
@@ -5095,9 +5285,9 @@ test('buildAssPayload styles overlay cues exactly like main cues in every ass_co
     { ...options, appearance: { ass_color_style: 'text' } },
   );
   const textOverlay = textMode.split('\n').filter((line) => line.startsWith('Dialogue: 2,'));
-  assert.equal(textOverlay.length, 2);
+  assert.equal(textOverlay.length, 3); // Blue cue splits at the main cue's end.
   assert.ok(textOverlay[0].includes(',Overlay BLUE,'));
-  assert.ok(textOverlay[1].includes(',Overlay,'));
+  assert.ok(textOverlay[2].includes(',Overlay,'));
   assert.ok(textMode.includes('Style: Overlay,'));
   assert.ok(textMode.includes('Style: Overlay BLUE,'));
   // none：调色板样式不导出，主轨与叠加轨一起回落，不再悬挂未定义引用。
@@ -5106,12 +5296,12 @@ test('buildAssPayload styles overlay cues exactly like main cues in every ass_co
     { ...options, appearance: { ass_color_style: 'none' } },
   );
   const noneOverlay = noneMode.split('\n').filter((line) => line.startsWith('Dialogue: 2,'));
-  assert.equal(noneOverlay.length, 2);
+  assert.equal(noneOverlay.length, 3);
   assert.ok(noneOverlay.every((line) => line.includes(',Overlay,')));
   assert.ok(!noneMode.split('\n').some((line) => line.startsWith('Style: Overlay BLUE,')));
 });
 
-test('buildAssPayload applies fad and transform tags to overlay cues but never move', () => {
+test('buildAssPayload preserves fade and transform clocks while overlay follows main movement', () => {
   const ass = helpers.buildAssPayload(
     [{ start: 100, end: 900, text: 'main' }],
     {
@@ -5129,12 +5319,13 @@ test('buildAssPayload applies fad and transform tags to overlay cues but never m
     },
   );
   const dialogue = ass.split('\n').filter((line) => line.startsWith('Dialogue:'));
-  assert.equal(dialogue.length, 2);
-  // 主轨：fad + move + t 全量应用。
-  assert.ok(dialogue[0].includes('{\\fad(200,300)\\move(0,960,100,500,0,1000)\\t(0,500,1,\\fs40)}main'));
-  // 叠加轨：与位置无关的 fad/t 逐句应用；\move 的绝对坐标只属于主字幕。
-  assert.ok(dialogue[1].includes('{\\fad(200,300)\\t(0,500,1,\\fs40)}overlay'));
-  assert.ok(!dialogue[1].includes('\\move('));
+  assert.ok(dialogue.length > 2, 'active boundaries and clamp crossings split movement pieces');
+  const overlay = dialogue.filter(line => line.startsWith('Dialogue: 2,'));
+  assert.ok(overlay.length > 0);
+  assert.ok(overlay.some(line => line.includes('\\move(')), 'overlay follows the active main movement');
+  assert.ok(overlay.every(line => /\\t\(-?\d+,/.test(line)), 'each piece carries the original transform clock');
+  assert.ok(overlay.every(line => /\\(?:fad|fade)\(/.test(line)));
+  assert.ok(dialogue[0].includes('\\move(0,960,100,500,0,1000)'));
 });
 
 test('buildAssPayload turns single-cue fade markers into fad tags from the style-library durations', () => {
@@ -5249,13 +5440,11 @@ test('buildAssPayload writes extension cues on layer 1 with a single Extension s
     },
   );
   const dialogue = ass.split('\n').filter((line) => line.startsWith('Dialogue:'));
-  assert.equal(dialogue.length, 3);
-  assert.match(dialogue[1], /^Dialogue: 1,/);
-  assert.ok(dialogue[1].includes(',Extension,,0,0,0,'));
-  // 副字幕与叠加轨同样只应用与位置无关的动画标签。
-  assert.ok(dialogue[1].includes('{\\fad(150,250)}extension line'));
-  assert.ok(!dialogue[1].includes('\\move('));
-  assert.match(dialogue[2], /^Dialogue: 2,/);
+  assert.ok(dialogue.length > 3);
+  const extensions = dialogue.filter(line => line.startsWith('Dialogue: 1,'));
+  assert.ok(extensions.length > 0 && extensions.every(line => line.includes(',Extension,,0,0,0,')));
+  assert.ok(extensions.some(line => line.includes('\\move(')), 'secondary cues follow main movement');
+  assert.ok(extensions.every(line => /\\(?:fad|fade)\(/.test(line)));
   // 副字幕样式：独立样式行，字号按 1080p 参考换算，边距完全来自样式。
   const extensionStyle = ass.split('\n').find((line) => line.startsWith('Style: Extension,'));
   assert.ok(extensionStyle);
@@ -5291,7 +5480,7 @@ test('buildAssPayload chains the overlay anchor above the extension track', () =
   assert.ok(overlayStyleChained.endsWith(',10,10,231,1'));
 });
 
-test('buildAssPayload overlay style inherits the anchor layer alignment and side margins', () => {
+test('buildAssPayload overlay style inherits the anchor layer horizontal alignment and side margins', () => {
   const options = {
     videoWidth: 1920,
     videoHeight: 1080,
@@ -5300,9 +5489,9 @@ test('buildAssPayload overlay style inherits the anchor layer alignment and side
     overlaySegments: [{ start: 150, end: 850, text: 'overlay' }],
     appearance: {},
   };
-  // 副字幕样式为顶部居中（Alignment 8，MarginV 100、左右边距 40/50）：
-  // 叠加轨链在其上方时继承该对齐与水平边距，固化边距按同一基准边解释
-  // （100 + round(1.2 × 54) = 165），而不是落回主样式的底部居中。
+  // 副字幕样式为顶部居中（Alignment 8，左右边距 40/50）；副字幕自身锚定
+  // 主字幕上方（主 marginV 80 + round(1.2 × 72) = 166），叠加轨再链其上：
+  // 166 + round(1.2 × 54) = 231。水平对齐与边距继承副字幕样式，垂直贴底。
   const topExtension = helpers.buildAssPayload(
     [{ start: 100, end: 900, text: 'main' }],
     {
@@ -5316,7 +5505,7 @@ test('buildAssPayload overlay style inherits the anchor layer alignment and side
   const overlayStyleChained = topExtension.split('\n')
     .find((line) => line.startsWith('Style: Overlay,'));
   assert.ok(overlayStyleChained);
-  assert.match(overlayStyleChained, /,8,40,50,165,1$/);
+  assert.match(overlayStyleChained, /,2,40,50,231,1$/);
   // 副字幕全部禁用：不链式，叠加样式回到主样式的底部居中（80 + 86.4 → 166）。
   const disabledExtension = helpers.buildAssPayload(
     [{ start: 100, end: 900, text: 'main' }],
@@ -5332,6 +5521,43 @@ test('buildAssPayload overlay style inherits the anchor layer alignment and side
     .find((line) => line.startsWith('Style: Overlay,'));
   assert.ok(overlayStyleFallback);
   assert.match(overlayStyleFallback, /,2,10,10,166,1$/);
+});
+
+test('buildAssPayload uses shared absolute stacked positions for top, middle and mixed alignments', () => {
+  for (const playResY of [1080, 2160]) {
+    const playResX = playResY * 16 / 9;
+    for (const mainAlignment of [1, 5, 9]) {
+      for (const extensionAlignment of [3, 4, 8]) {
+        const mainStyle = { id: 'ass', fontSize: 72, marginV: 160, alignment: mainAlignment };
+        const extensionStyle = { id: 'ass-extension', fontSize: 54, marginV: 7,
+          alignment: extensionAlignment, marginL: 40, marginR: 50 };
+        let plan;
+        const ass = helpers.buildAssPayload([{ start: 0, end: 1000, text: 'main' }], {
+          onAssPlan: value => { plan = value; },
+          playResX, playResY, assStyle: mainStyle, assExtensionStyle: extensionStyle,
+          assProfile: { id: 'ass', styleId: 'ass', animations: {} },
+          extensionSegments: [{ start: 0, end: 1000, text: 'extension' }],
+          overlaySegments: [{ start: 0, end: 1000, text: 'overlay' }],
+        });
+        const events = ass.split('\n').filter((line) => line.startsWith('Dialogue:'));
+        const frame = helpers.assStackFrame(plan, 500);
+        assert.equal(frame.items.length, 3);
+        for (const [index, item] of Array.from(frame.items).entries()) {
+          const position = events[index].match(/\\pos\(([-\d.]+),([-\d.]+)\)/);
+          assert.ok(position);
+          assert.ok(Math.abs(Number(position[1]) - item.anchor.x) < 0.001);
+          assert.ok(Math.abs(Number(position[2]) - item.anchor.y) < 0.001);
+          assert.ok(events[index].includes(`\\an${item.alignment}\\q2`));
+          assert.ok(item.anchor.y + item.rect.top * item.scale >= 0);
+          assert.ok(item.anchor.y + item.rect.bottom * item.scale <= playResY);
+        }
+        for (let index = 1; index < frame.items.length; index += 1) {
+          const below = frame.items[index - 1], above = frame.items[index];
+          assert.ok(above.anchor.y + above.rect.bottom * above.scale < below.anchor.y + below.rect.top * below.scale);
+        }
+      }
+    }
+  }
 });
 
 test('reports malformed intervals, missing sticker paths, and stale serializer warnings', () => {
@@ -6521,11 +6747,11 @@ test('ASS special symbol rules apply to all five formats across preview runs and
     const events = ass.split('\n').filter(line => line.startsWith('Dialogue:'));
     assert.equal(events.length, 3);
     events.forEach(line => {
-      if (rule === 'none') assert.ok(line.includes(text));
+      if (rule === 'none') assert.ok(line.replace(/\\N/g, '').includes(text));
       else {
         assert.match(line, /\\s1/);
         assert.match(line, /\\u1/);
-        if (rule === 'double') assert.ok(line.includes(single));
+        if (rule === 'double') assert.ok(line.replace(/\\N/g, '').includes(single));
       }
     });
   }

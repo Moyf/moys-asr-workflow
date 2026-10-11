@@ -22,6 +22,7 @@ from pathlib import Path
 from unittest import mock
 
 from maw.project import PROJECT_SCHEMA
+import edit
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -51,6 +52,344 @@ def _write_reapeaks_for(media_path: Path) -> Path:
 
 
 class LocalEditorServerTests(CompactContainerAssertions, unittest.TestCase):
+    def test_about_release_url_targets_the_build_tag_and_dev_release_list(self) -> None:
+        version = edit.get_app_version()
+        self.assertEqual(
+            edit.get_app_release_url(),
+            f"https://github.com/Moyf/moys-asr-workflow/releases/tag/v{version}",
+        )
+        with mock.patch("edit.get_app_version", return_value="1.9.0-dev.2"):
+            self.assertEqual(
+                edit.get_app_release_url(),
+                "https://github.com/Moyf/moys-asr-workflow/releases",
+            )
+
+    def test_gap_removed_intervals_are_ordered_integer_milliseconds(self) -> None:
+        self.assertEqual(
+            server_editor.normalize_gap_removed_intervals([
+                {"startMs": 0, "endMs": 750}, {"startMs": 1000, "endMs": 2250},
+            ]),
+            [(0, 750), (1000, 2250)],
+        )
+        for bad_intervals in (
+            [],
+            [{"startMs": True, "endMs": 500}],
+            [{"startMs": 500, "endMs": 500}],
+            [{"startMs": 0, "endMs": 1000}, {"startMs": 999, "endMs": 1500}],
+            [{"startMs": 1000, "endMs": 1500}, {"startMs": 0, "endMs": 500}],
+        ):
+            with self.subTest(intervals=bad_intervals), self.assertRaises(server_editor.GapRemovedVideoExportError):
+                server_editor.normalize_gap_removed_intervals(bad_intervals)
+
+    def test_rebuild_gap_removed_video_stream_copies_and_checks_every_stream(self) -> None:
+        source = self.root / "clip's source.mp4"
+        source.write_bytes(b"source")
+        output = self.root / "private" / "restructured.mp4"
+        streams = [
+            {"codec_type": "video", "codec_name": "h264", "profile": "High", "width": 1920, "height": 1080},
+            {"codec_type": "audio", "codec_name": "aac", "channels": 2, "sample_rate": "48000"},
+        ]
+        calls: list[list[str]] = []
+
+        def run(command, **kwargs):
+            calls.append(command)
+            if command[0] == "ffprobe":
+                return subprocess.CompletedProcess(command, 0, stdout=json.dumps({"streams": streams, "format": {"duration": "4.5"}}), stderr="")
+            Path(command[-1]).write_bytes(b"rebuilt-media")
+            return subprocess.CompletedProcess(command, 0, stdout="", stderr="")
+
+        with mock.patch.object(server_editor.subprocess, "run", side_effect=run):
+            result = server_editor.rebuild_gap_removed_video(
+                source, [(0, 1250), (2000, 3500)], output,
+                ffmpeg_path=Path("ffmpeg"), ffprobe_path=Path("ffprobe"),
+            )
+
+        self.assertEqual(result, output)
+        self.assertEqual(output.read_bytes(), b"rebuilt-media")
+        ffmpeg_command = next(command for command in calls if command[0] == "ffmpeg")
+        self.assertEqual(ffmpeg_command[ffmpeg_command.index("-map") + 1], "0")
+        self.assertEqual(ffmpeg_command[ffmpeg_command.index("-c") + 1], "copy")
+        self.assertEqual(len([command for command in calls if command[0] == "ffprobe"]), 2)
+        concat_text = output.with_suffix(".ffconcat").read_text(encoding="utf-8")
+        self.assertIn("inpoint 0.000\noutpoint 1.250", concat_text)
+        self.assertIn("inpoint 2.000\noutpoint 3.500", concat_text)
+        self.assertIn("'\\''", concat_text)
+
+    def test_rebuild_gap_removed_video_rejects_a_dropped_audio_stream(self) -> None:
+        source = self.root / "clip.mp4"
+        source.write_bytes(b"source")
+        output = self.root / "restructured.mp4"
+        input_streams = [{"codec_type": "video", "codec_name": "h264"}, {"codec_type": "audio", "codec_name": "aac"}]
+        output_streams = [{"codec_type": "video", "codec_name": "h264"}]
+        outputs = [input_streams, output_streams]
+
+        def run(command, **kwargs):
+            if command[0] == "ffprobe":
+                return subprocess.CompletedProcess(command, 0, stdout=json.dumps({"streams": outputs.pop(0)}), stderr="")
+            Path(command[-1]).write_bytes(b"video-without-audio")
+            return subprocess.CompletedProcess(command, 0, stdout="", stderr="")
+
+        with mock.patch.object(server_editor.subprocess, "run", side_effect=run):
+            with self.assertRaisesRegex(server_editor.GapRemovedVideoExportError, "媒体流与源视频不一致"):
+                server_editor.rebuild_gap_removed_video(
+                    source, [(0, 1000)], output,
+                    ffmpeg_path=Path("ffmpeg"), ffprobe_path=Path("ffprobe"),
+                )
+        self.assertFalse(output.exists())
+
+    def test_rebuild_gap_removed_video_maps_project_intervals_to_file_timestamps(self) -> None:
+        source = self.root / "clip.mp4"
+        source.write_bytes(b"source")
+        streams = [
+            {"codec_type": "video", "codec_name": "h264", "start_time": "1.421333"},
+            {"codec_type": "audio", "codec_name": "aac", "start_time": "1.400000"},
+        ]
+        cases = [
+            ({}, ["0.000", "0.001", "2.000", "3.500"]),
+            ({"format": {}}, ["0.000", "0.001", "2.000", "3.500"]),
+            ({"format": {"start_time": None}}, ["0.000", "0.001", "2.000", "3.500"]),
+            ({"format": {"start_time": "0.000000"}}, ["0.000000", "0.001000", "2.000000", "3.500000"]),
+            ({"format": {"start_time": "1.400000"}}, ["1.400000", "1.401000", "3.400000", "4.900000"]),
+            ({"format": {"start_time": "-0.250123"}}, ["-0.250123", "-0.249123", "1.749877", "3.249877"]),
+            ({"format": {"start_time": "0.000001"}}, ["0.000001", "0.001001", "2.000001", "3.500001"]),
+            ({"format": {"start_time": "10000000000.000001"}}, [
+                "10000000000.000001", "10000000000.001001", "10000000002.000001", "10000000003.500001",
+            ]),
+        ]
+        for index, (metadata, expected) in enumerate(cases):
+            with self.subTest(metadata=metadata):
+                output = self.root / f"rebuilt-{index}.mp4"
+                calls: list[list[str]] = []
+
+                def run(command, **kwargs):
+                    calls.append(command)
+                    if command[0] == "ffprobe":
+                        # The output muxer may choose a different origin; only
+                        # the source file's origin can locate the kept content.
+                        probe_metadata = metadata if command[-1] == str(source.resolve()) else {"format": {"start_time": "0.000000"}}
+                        return subprocess.CompletedProcess(command, 0, stdout=json.dumps({"streams": streams, **probe_metadata}), stderr="")
+                    Path(command[-1]).write_bytes(b"rebuilt-media")
+                    return subprocess.CompletedProcess(command, 0, stdout="", stderr="")
+
+                with mock.patch.object(server_editor.subprocess, "run", side_effect=run):
+                    server_editor.rebuild_gap_removed_video(
+                        source, [(0, 1), (2000, 3500)], output,
+                        ffmpeg_path=Path("ffmpeg"), ffprobe_path=Path("ffprobe"),
+                    )
+                actual = [
+                    line.split(" ", 1)[1] for line in output.with_suffix(".ffconcat").read_text(encoding="utf-8").splitlines()
+                    if line.startswith(("inpoint ", "outpoint "))
+                ]
+                self.assertEqual(actual, expected)
+                probe_calls = [command for command in calls if command[0] == "ffprobe"]
+                self.assertEqual(len(probe_calls), 2)
+                self.assertIn(":format=start_time", probe_calls[0][probe_calls[0].index("-show_entries") + 1])
+                self.assertEqual(len([command for command in calls if command[0] == "ffmpeg"]), 1)
+
+    def test_rebuild_gap_removed_video_rejects_invalid_file_start_times_before_ffmpeg(self) -> None:
+        source = self.root / "clip.mp4"
+        source.write_bytes(b"source")
+        invalid_metadata = [
+            {"format": None}, {"format": []}, {"format": "1.4"},
+            *({"format": {"start_time": value}} for value in (
+                True, {}, [], "", "N/A", "not-a-time", "NaN", "sNaN", "Infinity", "-Infinity", float("nan"), float("inf"),
+                "1e999999", "-9223372036854.775808",
+            )),
+        ]
+        for index, metadata in enumerate(invalid_metadata):
+            with self.subTest(metadata=metadata):
+                output = self.root / f"invalid-{index}.mp4"
+                payload = {"streams": [{"codec_type": "video", "codec_name": "h264"}], **metadata}
+                with mock.patch.object(server_editor.subprocess, "run", return_value=subprocess.CompletedProcess(
+                    [], 0, stdout=json.dumps(payload), stderr="",
+                )) as run:
+                    with self.assertRaisesRegex(server_editor.GapRemovedVideoExportError, "无效的媒体起始时间"):
+                        server_editor.rebuild_gap_removed_video(
+                            source, [(0, 1000)], output,
+                            ffmpeg_path=Path("ffmpeg"), ffprobe_path=Path("ffprobe"),
+                        )
+                self.assertEqual(run.call_count, 1)
+                self.assertFalse(output.exists())
+                self.assertFalse(output.with_suffix(".ffconcat").exists())
+
+    def test_rebuild_gap_removed_video_preserves_track_dispositions_and_metadata(self) -> None:
+        source = self.root / "clip.mp4"
+        source.write_bytes(b"source")
+        output = self.root / "restructured.mp4"
+        input_streams = [
+            {"codec_type": "video", "codec_name": "h264", "disposition": {"default": 1}},
+            {
+                "codec_type": "audio", "codec_name": "aac", "disposition": {"default": 0},
+                "tags": {"language": "eng", "NAME": "English", "HANDLER_NAME": "SoundHandler"},
+            },
+            {
+                "codec_type": "audio", "codec_name": "aac", "disposition": {"default": 1, "dub": 1},
+                "tags": {"language": "zho", "title": "Chinese", "handler_name": "Chinese audio"},
+            },
+        ]
+        output_streams = [
+            {**input_streams[0], "tags": {"handler_name": "VideoHandler"}},
+            {**input_streams[1], "tags": {"language": "eng", "TITLE": "English", "handler_name": "SoundHandler"}},
+            {**input_streams[2], "tags": {"language": "zho", "name": "Chinese", "handler_name": "Chinese audio"}},
+        ]
+        outputs = [input_streams, output_streams]
+        calls: list[list[str]] = []
+
+        def run(command, **kwargs):
+            calls.append(command)
+            if command[0] == "ffprobe":
+                return subprocess.CompletedProcess(command, 0, stdout=json.dumps({"streams": outputs.pop(0)}), stderr="")
+            Path(command[-1]).write_bytes(b"rebuilt-media")
+            return subprocess.CompletedProcess(command, 0, stdout="", stderr="")
+
+        with mock.patch.object(server_editor.subprocess, "run", side_effect=run):
+            server_editor.rebuild_gap_removed_video(
+                source, [(0, 1000)], output,
+                ffmpeg_path=Path("ffmpeg"), ffprobe_path=Path("ffprobe"),
+            )
+
+        command = next(command for command in calls if command[0] == "ffmpeg")
+        self.assertEqual(command[command.index("-disposition:0") + 1], "default")
+        self.assertEqual(command[command.index("-disposition:1") + 1], "0")
+        self.assertEqual(command[command.index("-disposition:2") + 1], "default+dub")
+        self.assertEqual(
+            {value for flag, value in zip(command, command[1:]) if flag == "-metadata:s:1"},
+            {"language=eng", "title=English", "handler_name=SoundHandler"},
+        )
+        self.assertEqual(
+            {value for flag, value in zip(command, command[1:]) if flag == "-metadata:s:2"},
+            {"language=zho", "title=Chinese", "handler_name=Chinese audio"},
+        )
+        probe_command = next(command for command in calls if command[0] == "ffprobe")
+        self.assertIn(":stream_disposition:stream_tags", probe_command[probe_command.index("-show_entries") + 1])
+        self.assertTrue(output.is_file())
+
+    def test_rebuild_gap_removed_video_rejects_changed_track_flags_and_metadata(self) -> None:
+        source = self.root / "clip.mp4"
+        source.write_bytes(b"source")
+        output = self.root / "restructured.mp4"
+        audio = {
+            "codec_type": "audio", "codec_name": "aac", "disposition": {"default": 1},
+            "tags": {"language": "zho", "name": "Chinese", "handler_name": "Chinese audio"},
+        }
+        altered_streams = [
+            {**audio, "disposition": {"default": 0}},
+            {**audio, "tags": {**audio["tags"], "language": "eng"}},
+            {**audio, "tags": {"language": "zho", "handler_name": "Chinese audio"}},
+            {**audio, "tags": {**audio["tags"], "handler_name": "SoundHandler"}},
+        ]
+        for altered in altered_streams:
+            with self.subTest(audio=altered):
+                video = {"codec_type": "video", "codec_name": "h264"}
+                outputs = [[video, audio], [video, altered]]
+
+                def run(command, **kwargs):
+                    if command[0] == "ffprobe":
+                        return subprocess.CompletedProcess(command, 0, stdout=json.dumps({"streams": outputs.pop(0)}), stderr="")
+                    Path(command[-1]).write_bytes(b"changed-track-metadata")
+                    return subprocess.CompletedProcess(command, 0, stdout="", stderr="")
+
+                with mock.patch.object(server_editor.subprocess, "run", side_effect=run):
+                    with self.assertRaisesRegex(server_editor.GapRemovedVideoExportError, "媒体流与源视频不一致"):
+                        server_editor.rebuild_gap_removed_video(
+                            source, [(0, 1000)], output,
+                            ffmpeg_path=Path("ffmpeg"), ffprobe_path=Path("ffprobe"),
+                        )
+                self.assertFalse(output.exists())
+
+    def test_gap_removed_video_endpoint_streams_bound_source_without_accepting_paths(self) -> None:
+        source = self.root / "bound.mp4"
+        source.write_bytes(b"source")
+        outside = self.root / "outside.mp4"
+        outside.write_bytes(b"untrusted")
+        project = server_editor.ServerProject(
+            data={"media": str(source), "segments": []}, json_path=self.project_path,
+            media_path=source, sticker_root=None, stickers=[], source_media_path=source,
+        )
+        captured: dict[str, object] = {}
+
+        def rebuild(source_path, intervals, output_path, **kwargs):
+            captured["source"] = source_path
+            captured["intervals"] = intervals
+            captured["output_path"] = output_path
+            captured["tools"] = kwargs
+            output_path.write_bytes(b"verified-video-bytes")
+            return output_path
+
+        with server_editor.EditorServer(("127.0.0.1", 0), project) as server:
+            thread = threading.Thread(target=server.serve_forever, daemon=True)
+            thread.start()
+            try:
+                base_url = f"http://127.0.0.1:{server.server_address[1]}"
+                payload = {
+                    "requestToken": server.request_token,
+                    "intervals": [{"startMs": 0, "endMs": 1200}],
+                    "sourceMediaPath": str(outside),
+                    "outputPath": str(outside),
+                }
+                request = urllib.request.Request(
+                    f"{base_url}/api/exports/gap-removed-video",
+                    data=json.dumps(payload).encode("utf-8"),
+                    headers={"Content-Type": "application/json"}, method="POST",
+                )
+                with mock.patch.object(server_editor, "editor_ffmpeg_tools", return_value=mock.Mock(
+                    ffmpeg=Path("ffmpeg"), ffprobe=Path("ffprobe"),
+                )), mock.patch.object(server_editor, "rebuild_gap_removed_video", side_effect=rebuild):
+                    with urllib.request.urlopen(request, timeout=2) as response:
+                        body = response.read()
+                        self.assertEqual(response.status, 200)
+                        self.assertEqual(response.headers["Content-Type"], "video/mp4")
+                        self.assertEqual(int(response.headers["Content-Length"]), len(body))
+                        self.assertIn("filename*=UTF-8''bound_gap-removed.mp4", response.headers["Content-Disposition"])
+                self.assertEqual(body, b"verified-video-bytes")
+                self.assertEqual(captured["source"], source)
+                self.assertEqual(captured["intervals"], [(0, 1200)])
+                self.assertEqual(outside.read_bytes(), b"untrusted")
+            finally:
+                server.shutdown()
+                thread.join(timeout=2)
+
+    def test_gap_removed_video_endpoint_requires_token_and_ordered_intervals(self) -> None:
+        source = self.root / "bound.mp4"
+        source.write_bytes(b"source")
+        project = server_editor.ServerProject(
+            data={"media": str(source), "segments": []}, json_path=self.project_path,
+            media_path=source, sticker_root=None, stickers=[], source_media_path=source,
+        )
+        with server_editor.EditorServer(("127.0.0.1", 0), project) as server:
+            thread = threading.Thread(target=server.serve_forever, daemon=True)
+            thread.start()
+            try:
+                base_url = f"http://127.0.0.1:{server.server_address[1]}"
+
+                def post(payload):
+                    request = urllib.request.Request(
+                        f"{base_url}/api/exports/gap-removed-video",
+                        data=json.dumps(payload).encode("utf-8"),
+                        headers={"Content-Type": "application/json"}, method="POST",
+                    )
+                    try:
+                        with urllib.request.urlopen(request, timeout=2) as response:
+                            return response.status, json.loads(response.read())
+                    except urllib.error.HTTPError as error:
+                        return error.code, json.loads(error.read())
+
+                with mock.patch.object(server_editor, "editor_ffmpeg_tools", side_effect=AssertionError("must not resolve tools")):
+                    status, response = post({
+                        "requestToken": "wrong", "intervals": [{"startMs": 0, "endMs": 1000}],
+                    })
+                    self.assertEqual(status, 403)
+                    self.assertFalse(response["ok"])
+                    status, response = post({
+                        "requestToken": server.request_token,
+                        "intervals": [{"startMs": 1000, "endMs": 2000}, {"startMs": 0, "endMs": 500}],
+                    })
+                    self.assertEqual(status, 400)
+                    self.assertIn("排序", response["error"])
+            finally:
+                server.shutdown()
+                thread.join(timeout=2)
+
     def test_open_backup_folder_is_bound_and_requires_token(self) -> None:
         handler = object.__new__(server_editor.EditorRequestHandler)
         handler.server = mock.Mock()
@@ -871,6 +1210,7 @@ class LocalEditorServerTests(CompactContainerAssertions, unittest.TestCase):
         self.assertIn('"requestToken": "", "stickerRootUrl": "/api/stickers/root", ', page)
         self.assertIn('"portableStickerExportUrl": "/api/exports/sticker-otio", ', page)
         self.assertIn('"otiozStickerExportUrl": "/api/exports/sticker-otioz", ', page)
+        self.assertIn('"gapRemovedVideoExportUrl": "/api/exports/gap-removed-video", "gapRemovedVideoSourceName": "clip.mp3", "canGapRemovedVideoExport": false, ', page)
         self.assertIn('"canPortableStickerExport": true, "canOtozStickerExport": true, ', page)
         self.assertIn('"canOtozTimelineExport": true, "initialStickerCount": 1, ', page)
         self.assertIn('"autoLoadedMediaName": "clip.mp3", "recentProjectsUrl": "/api/recent-projects/open", ', page)
@@ -890,10 +1230,18 @@ class LocalEditorServerTests(CompactContainerAssertions, unittest.TestCase):
         self.assertIn('id="open-project-dropdown"', page)
         self.assertIn('id="load-srt"', page)
         self.assertIn('id="load-srt-file"', page)
+        self.assertIn('id="download-gap-removed-video"', page)
         source = "\n\n".join(server_editor.edit.read_web_asset(name) for name in server_editor.edit.read_editor_script_manifest())
         self.assertIn('function parseSrtSegments(text)', source)
         self.assertIn('function isMawProject(data)', source)
         self.assertIn('请使用 MAW 生成的工程文件', page)
+
+        video = self.root / "source.mkv"
+        video.write_bytes(b"video")
+        video_page = server_editor.build_server_page(
+            server_editor.replace(project, media_path=video, source_media_path=video), settings,
+        ).decode("utf-8")
+        self.assertIn('"gapRemovedVideoSourceName": "source.mkv", "canGapRemovedVideoExport": true, ', video_page)
 
         self.assertIn('id="server-auto-save-settings"', page)
         self.assertIn('id="auto-save-project"', page)

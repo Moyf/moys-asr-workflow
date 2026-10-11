@@ -63,6 +63,7 @@ GAP_PROVENANCE_SCHEMA: Final[str] = "moy.asr.gap_provenance.v1"
 GAP_PROVENANCE_SOURCES: Final[tuple[str, ...]] = (
     "script_alignment",
     "ai_cleanup",
+    "ai_cleanup_review",
     "audio_gate",
     "manual",
     "legacy",
@@ -568,6 +569,10 @@ def _normalize_provenance_ranges(
             "removed": raw_range.get("removed") is not False
             if source in {"manual", "legacy"} else True,
         }
+        if source == "ai_cleanup_review":
+            review_marker_id = raw_range.get("review_marker_id")
+            if isinstance(review_marker_id, str) and review_marker_id.strip():
+                normalized["review_marker_id"] = review_marker_id.strip()
         if source == "manual" and raw_range.get("operation") == "move":
             base_start = _provenance_time(raw_range.get("base_start"))
             base_end = _provenance_time(raw_range.get("base_end"))
@@ -754,6 +759,9 @@ def _normalize_gap_provenance(
             "ai_cleanup": _normalize_provenance_ranges(
                 raw_sources.get("ai_cleanup"), "ai_cleanup", sort=True,
             ),
+            "ai_cleanup_review": _normalize_provenance_ranges(
+                raw_sources.get("ai_cleanup_review"), "ai_cleanup_review", sort=True,
+            ),
             "audio_gate": _normalize_provenance_ranges(
                 [
                     *(raw_audio_gaps if isinstance(raw_audio_gaps, list) else []),
@@ -777,7 +785,7 @@ def _normalize_gap_provenance(
 def _gap_ranges_from_provenance(value: Mapping[str, object]) -> list[dict[str, object]]:
     sources = value.get("sources") if isinstance(value.get("sources"), Mapping) else {}
     result: list[dict[str, object]] = []
-    for source_name in ("script_alignment", "ai_cleanup", "audio_gate"):
+    for source_name in ("script_alignment", "ai_cleanup", "ai_cleanup_review", "audio_gate"):
         ranges = sources.get(source_name, [])
         if isinstance(ranges, list):
             for item in ranges:
@@ -850,7 +858,7 @@ def _decorate_gap_ranges(
     final_gaps = _coalesce_gap_states(gaps)
     sources = provenance.get("sources") if isinstance(provenance.get("sources"), Mapping) else {}
     records: list[Mapping[str, object]] = []
-    for source_name in ("script_alignment", "ai_cleanup", "audio_gate"):
+    for source_name in ("script_alignment", "ai_cleanup", "ai_cleanup_review", "audio_gate"):
         ranges = sources.get(source_name, [])
         if isinstance(ranges, list):
             records.extend(item for item in ranges if isinstance(item, Mapping))
@@ -906,7 +914,7 @@ def _replace_provenance_source(
     fallback_gaps: object = None,
 ) -> dict[str, object]:
     result = _normalize_gap_provenance(value, fallback_gaps)
-    if source in {"script_alignment", "ai_cleanup", "audio_gate"}:
+    if source in {"script_alignment", "ai_cleanup", "ai_cleanup_review", "audio_gate"}:
         result["sources"][source] = _normalize_provenance_ranges(ranges, source, sort=True)
     return result
 

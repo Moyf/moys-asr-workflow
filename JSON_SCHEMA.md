@@ -293,12 +293,28 @@
       "removed": false,
       "source": "audio_gate",
       "origins": ["audio_gate", "manual"]
+    },
+    {
+      "start": 8420,
+      "end": 9160,
+      "removed": true,
+      "source": "ai_cleanup_review",
+      "origins": ["ai_cleanup_review"]
     }
   ],
   "provenance": {
     "schema": "moy.asr.gap_provenance.v1",
     "sources": {
       "script_alignment": [],
+      "ai_cleanup": [],
+      "ai_cleanup_review": [
+        {
+          "id": "review-range-001",
+          "start": 8420,
+          "end": 9160,
+          "review_marker_id": "ai-review-001"
+        }
+      ],
       "audio_gate": [
         { "id": "silence-001", "start": 1280, "end": 2440 }
       ]
@@ -313,7 +329,8 @@
 
 - `detector` 固定为 `audio_gate`：扫描波形峰值包络，声音高于 `threshold_db` 时打开 gate，低于 `threshold_db - hysteresis_db` 后才关闭；不会用字幕之间的时间差推断空隙。
 - `gaps[*].source` 和 `gaps[*].origins` 是根据 `provenance` 派生的可读字段：`source` 表示唯一的初始自动来源；`origins` 列出当前区间的全部贡献来源。多个自动来源重叠时 `source` 为 `null`；只有人工覆盖时才为 `manual`。它们不是来源真源，旧客户端可以忽略。
-- `provenance` 是可选的来源真源，当前来源层为 `script_alignment`、`ai_cleanup`、`audio_gate` 与 `manual_overrides`；`legacy` 是兼容读取字段，启用的旧范围会迁入 `audio_gate`，旧的 `removed: false` 范围会迁入 `manual_overrides`，规范化输出中的 `legacy` 为空数组。支持它的新客户端据此分层重扫和重建最终 `gaps`。`ai_cleanup` 层由 AI 口播整理（Launcher 工具箱 / match 步骤的「使用 AI 整理」模式）写入，与 `script_alignment` 一样始终为移除区间；在编辑器中按层恢复或重扫时，其余来源层保持不变。
+- `provenance` 是可选的来源真源，当前来源层为 `script_alignment`、`ai_cleanup`、`ai_cleanup_review`、`audio_gate` 与 `manual_overrides`；`legacy` 是兼容读取字段，启用的旧范围会迁入 `audio_gate`，旧的 `removed: false` 范围会迁入 `manual_overrides`，规范化输出中的 `legacy` 为空数组。支持它的新客户端据此分层重扫和重建最终 `gaps`。`ai_cleanup` 层由 AI 口播整理（Launcher 工具箱 / match 步骤的「使用 AI 整理」模式）写入，与 `script_alignment` 一样始终为移除区间；在编辑器中按层恢复或重扫时，其余来源层保持不变。`ai_cleanup_review` 是独立来源层，由用户在编辑器中对待复核 AI 标记选择「静音区段」时写入；它不属于 AI 自动整理结果，始终作为移除区间，并且不会被 `ai_cleanup` 自动整理层的重建或恢复覆盖。
+- `ai_cleanup_review` 范围可带可选的 `review_marker_id`，指向对应的 `markers[*].id`，使区间与触发该静音操作的待复核标记保持关联。`id` 标识来源范围；范围被裁剪或拆分时，拆出的范围可以有各自的 `id`，但保留同一个 `review_marker_id`。取消该标记的静音会按此关联移除对应来源范围。
 - `minimum_ms` 的允许范围是 100–60000，单位为毫秒；默认 500。判定基于应用前/后端预留后的最终移除区间，预留吃完整段时不纳入移除。
 - `threshold_db` 的范围是 -96–0，默认 -24；`hysteresis_db` 的范围是 0–30，默认 2。比如阈值 -24、滞回 2 时，声音达到 -24 才算有声，低于 -26 才重新算静音。建议使用 1–3dB；过高会延迟回到静音。滞回位于「空隙检测与调整」折叠区内。
 - `lead_in_ms` / `lead_out_ms` 是每段空隙两侧保留的静音毫秒数，范围 0–2000，默认前端 40、后端 80。扫描得到的原始静音区间会在起点加 `lead_in_ms`、终点减 `lead_out_ms` 后再写入 `gaps`，避免剪掉空隙后两句贴得太急；预留后的区间短于 `minimum_ms` 时整段保留。这两个值在扫描生成空隙时继续生效；对已有结果点击「收缩空隙」时，会再次按当前值向内调整现有区间，是额外的可撤销微调。

@@ -48,6 +48,12 @@
   let pendingAutoStep = "";
   let toolboxOpenMode = "manual";
   let busy = false;
+  let activePostprocessOperationId = "";
+  let displayedPostprocessOperationId = "";
+  let postprocessOperationReady = false;
+  let postprocessOperationSequence = 0;
+  let postprocessCancelling = false;
+  let postprocessSettingsActionVisible = false;
   let inputManual = false;
   let utilityMediaManual = false;
   let timestampMediaManual = false;
@@ -443,11 +449,8 @@
     const suffix = String(item?.id || "").replace("custom", "");
     return suffix ? `llm_custom_provider_${suffix}` : "llm_custom_provider";
   }
-  /** 槽位是否已填写 Base URL 与模型名；未配置的自定义槽位不出现在工具箱下拉里。 */
-  function customSlotConfigured(item) { return Boolean(item.hasBaseUrl && item.hasModel); }
-  function customSlotVisibleInToolbox(item) { return !isCustomSlot(item) || item.id === "custom" || customSlotConfigured(item); }
 
-  /** 重建两个供应商下拉：设置页显示全部槽位，工具箱只显示已配置的自定义槽位。 */
+  /** 重建两个供应商下拉：两处都显示全部槽位（未配置的自定义槽位也能选中补填）。 */
   function fillProviderSelects(preferredProviderId = "") {
     const providers = window.MAWLauncher.config?.postprocessProviders || [];
     [$("postprocessProvider"), $("llmProvider")].forEach((select) => {
@@ -455,7 +458,6 @@
       const previous = select.value || preferredProviderId;
       select.innerHTML = "";
       providers.forEach((item) => {
-        if (select.id === "postprocessProvider" && !customSlotVisibleInToolbox(item)) return;
         select.add(new Option(providerLabel(item), item.id));
       });
       const target = previous || preferredProviderId;
@@ -797,8 +799,8 @@
     if (!open) toolboxOpenMode = "manual";
     syncPaths();
     if (open) {
-      const activeTab = activeToolboxView().querySelector(".toolbox-tab.active")
-        || activeToolboxView().querySelector(".toolbox-tab");
+      const activeTab = activeToolboxView().querySelector(".toolbox-tab.active:not(.hidden)")
+        || activeToolboxView().querySelector(".toolbox-tab:not(.hidden)");
       if (activeTab) selectTool(activeTab.dataset.tool);
     }
     if (open) $("toolboxClose").focus();
@@ -841,11 +843,13 @@
     $("toolboxUtilitiesContent").classList.toggle("hidden", section !== "utilities");
     $("toolboxUtilitiesView").classList.toggle("hidden", section !== "utilities");
     $("toolboxDrawer").classList.toggle("toolbox-utilities-active", section === "utilities");
-    const activeTab = activeToolboxView().querySelector(".toolbox-tab.active") || activeToolboxView().querySelector(".toolbox-tab");
+    const activeTab = activeToolboxView().querySelector(".toolbox-tab.active:not(.hidden)") || activeToolboxView().querySelector(".toolbox-tab:not(.hidden)");
     if (activeTab) selectTool(activeTab.dataset.tool);
   }
 
   function selectTool(tool) {
+    const targetTab = [...document.querySelectorAll(".toolbox-tab")].find((tab) => tab.dataset.tool === tool);
+    if (targetTab?.classList.contains("hidden")) return;
     const section = toolboxSectionForTool(tool);
     if (section !== activeToolboxSection) selectToolboxSection(section);
     document.querySelectorAll(".toolbox-tab").forEach((tab) => {
@@ -978,12 +982,76 @@
     window.addEventListener("resize", restoreToolboxSize);
   }
 
-  function setResult(message, kind = "") {
+  function renderPostprocessResultActions() {
+    const stop = $("stopToolboxPostprocess");
+    const settings = $("toolboxPostprocessSettings");
+    if (stop) {
+      const canStop = busy && activePostprocessOperationId && postprocessOperationReady;
+      stop.textContent = t(postprocessCancelling ? "toolbox_status_cancelling_ai" : "toolbox_stop_ai");
+      stop.classList.toggle("hidden", !canStop);
+      stop.disabled = !canStop || postprocessCancelling;
+    }
+    if (settings) settings.classList.toggle("hidden", !postprocessSettingsActionVisible);
+  }
+
+  function setResult(message, kind = "", options = {}) {
     const result = $("toolboxResult");
     result.classList.remove("hidden");
-    result.textContent = message;
+    $("toolboxResultText").textContent = message;
+    postprocessSettingsActionVisible = Boolean(options.showAiSettings);
     result.classList.toggle("success", kind === "success");
     result.classList.toggle("error", kind === "error");
+    renderPostprocessResultActions();
+  }
+
+  function newPostprocessOperationId() {
+    if (window.crypto?.randomUUID) return window.crypto.randomUUID();
+    postprocessOperationSequence += 1;
+    return `maw-postprocess-${Date.now()}-${postprocessOperationSequence}`;
+  }
+
+  function beginAiPostprocessOperation() {
+    activePostprocessOperationId = newPostprocessOperationId();
+    displayedPostprocessOperationId = activePostprocessOperationId;
+    postprocessOperationReady = false;
+    postprocessCancelling = false;
+    postprocessSettingsActionVisible = false;
+    renderPostprocessResultActions();
+    return activePostprocessOperationId;
+  }
+
+  function finishAiPostprocessOperation(operationId, cancelled = false) {
+    if (!operationId || activePostprocessOperationId !== operationId) return false;
+    // The event pump can deliver the last stream batch after the bridge result.
+    // Keep that display identity until the next run, unless cancellation won.
+    if (cancelled) displayedPostprocessOperationId = "";
+    activePostprocessOperationId = "";
+    postprocessOperationReady = false;
+    postprocessCancelling = false;
+    renderPostprocessResultActions();
+    return true;
+  }
+
+  async function cancelAiPostprocess() {
+    const operationId = activePostprocessOperationId;
+    if (!operationId || !busy || !postprocessOperationReady || postprocessCancelling) return;
+    postprocessCancelling = true;
+    setResult(t("toolbox_status_cancelling_ai"));
+    try {
+      const result = await bridge("cancel_postprocess", { operationId });
+      if (activePostprocessOperationId !== operationId) return;
+      if (!result?.ok) throw new Error(postprocessErrorText(result));
+      if (result?.cancelled === true) displayedPostprocessOperationId = "";
+      if (result?.cancelled === false) {
+        postprocessCancelling = false;
+        renderPostprocessResultActions();
+        setResult(t("toolbox_ai_cancel_too_late"));
+      }
+    } catch (error) {
+      if (activePostprocessOperationId !== operationId) return;
+      postprocessCancelling = false;
+      setResult(`${t("toolbox_ai_cancel_failed")}: ${String(error?.message || error || t("failed"))}`, "error");
+    }
   }
 
   function resetMediaToolLog() {
@@ -1014,7 +1082,10 @@
   }
 
   function renderPostprocessStatus(event) {
-    if (!busy) return;
+    if (!busy || postprocessCancelling) return;
+    if (activePostprocessOperationId && event.operationId !== activePostprocessOperationId) return;
+    if (!activePostprocessOperationId && event.operationId) return;
+    if (activePostprocessOperationId && event.stage === "admitted") postprocessOperationReady = true;
     let message = t(event.key || "toolbox_running");
     Object.entries(event).forEach(([key, value]) => {
       message = message.replaceAll(`{${key}}`, String(value));
@@ -1044,6 +1115,7 @@
   }
 
   function renderPostprocessStream(event) {
+    if (!displayedPostprocessOperationId || event.operationId !== displayedPostprocessOperationId) return;
     if (event.kind === "reset") {
       beginStreamOutput();
       return;
@@ -1093,6 +1165,7 @@
     renderMediaToolAction();
     if (busy) setModelChoicesOpen(false);
     if (busy) setResult(t(statusKey));
+    renderPostprocessResultActions();
   }
 
   function renderAlignmentAction() {
@@ -1580,7 +1653,8 @@
     }
     if (stepId === "burn") {
       const video = $("mediaPath").value.trim();
-      if (!video || !VIDEO_EXTS.has(extension(video))) return t("auto_step_hint_no_video");
+      if (!video) return t("auto_step_hint_burn_original");
+      if (!VIDEO_EXTS.has(extension(video))) return t("toolbox_green_screen");
       return fileName(video);
     }
     return "";
@@ -1609,7 +1683,7 @@
 
   function autoLlmReady(providerId) {
     const item = provider(providerId);
-    return Boolean(item?.verified && item?.hasApiKey !== false && item?.hasBaseUrl !== false && item?.hasModel !== false);
+    return Boolean(item?.verified && (item?.apiKeyRequired === false || item?.hasApiKey !== false) && item?.hasBaseUrl !== false && item?.hasModel !== false);
   }
 
   function autoStepReady(stepId) {
@@ -1636,8 +1710,9 @@
       return true;
     }
     if (stepId === "burn") {
-      const mediaPath = $("mediaPath").value.trim();
-      return Boolean(mediaPath && VIDEO_EXTS.has(extension(mediaPath)));
+      // 媒体文件不必预先填写：自动流程执行时直接使用转写的原始媒体；
+      // 原媒体是音频时后端按「绿幕视频」处理（见 postprocess_pipeline.py）。
+      return true;
     }
     return false;
   }
@@ -1757,9 +1832,9 @@
       const item = provider(stepProviderId(stepId));
       const focusId = ["llmApiKey", "llmBaseUrl", "llmModel"].includes(invalidField)
         ? invalidField
-        : (item?.hasApiKey === false ? "llmApiKey" : (item?.hasBaseUrl === false ? "llmBaseUrl" : "llmModel"));
+        : (item?.hasApiKey === false && item?.apiKeyRequired !== false ? "llmApiKey" : (item?.hasBaseUrl === false ? "llmBaseUrl" : "llmModel"));
       if (highlightConnection) {
-        const hasApiKey = item?.hasApiKey || item?.maskedApiKey || $("llmApiKey")?.value.trim();
+        const hasApiKey = item?.apiKeyRequired === false || item?.hasApiKey || item?.maskedApiKey || $("llmApiKey")?.value.trim();
         const hasBaseUrl = item?.hasBaseUrl || item?.baseUrl || $("llmBaseUrl")?.value.trim();
         const hasModel = item?.hasModel || item?.model || $("llmModel")?.value.trim();
         setTestConnectionAttention(Boolean(hasApiKey && hasBaseUrl && hasModel && !item?.verified));
@@ -1902,22 +1977,29 @@
   async function runAiCleanup(paths, scriptPath) {
     const providerId = $("postprocessProvider").value || "deepseek";
     if (!autoLlmReady(providerId)) {
-      setResult(t("toolbox_ai_cleanup_need_provider"), "error");
+      setResult(t("toolbox_ai_cleanup_need_provider"), "error", { showAiSettings: true });
       return;
     }
     setFieldError("postprocessScriptPath", "");
+    const operationId = beginAiPostprocessOperation();
+    beginStreamOutput();
     setBusy(true, "toolbox_status_ai_cleanup");
+    let cancelled = false;
     try {
       const result = await bridge("run_ai_cleanup", {
         ...paths,
+        operationId,
         scriptPath,
         providerId,
         cleanMarkdownSymbols: $("postprocessCleanMarkdownSymbols").checked,
         notes: $("postprocessAiCleanupNotes")?.value.trim() || "",
       });
+      cancelled = result.code === "postprocess_cancelled";
       if (result.ok) applySubtitleResult(result, { kind: "ai_cleanup" });
+      else if (result.code === "postprocess_cancelled") setResult(t("toolbox_ai_cancelled"));
       else setResult(postprocessErrorText(result), "error");
     } finally {
+      finishAiPostprocessOperation(operationId, cancelled);
       setBusy(false);
     }
   }
@@ -2101,9 +2183,12 @@
       return result;
     }
     clearSettingsErrors();
-    item.baseUrl = $("llmBaseUrl").value.trim();
-    item.model = $("llmModel").value.trim();
+    item.baseUrl = String(result.baseUrl ?? $("llmBaseUrl").value).trim();
+    item.model = String(result.model ?? $("llmModel").value).trim();
+    $("llmBaseUrl").value = item.baseUrl;
+    $("llmModel").value = item.model;
     item.hasApiKey = Boolean(result.maskedApiKey || item.maskedApiKey || $("llmApiKey").value.trim());
+    item.apiKeyRequired = result.apiKeyRequired !== false;
     item.hasBaseUrl = Boolean(item.baseUrl);
     item.hasModel = Boolean(item.model);
     item.reasoningMode = result.reasoningMode || $("llmReasoningMode").value || "off";
@@ -2137,6 +2222,13 @@
       if (result.ok) {
         clearSettingsErrors();
         item.verified = Boolean(result.verified);
+        item.apiKeyRequired = result.apiKeyRequired !== false;
+        item.baseUrl = String(result.baseUrl ?? $("llmBaseUrl").value).trim();
+        item.model = String(result.model ?? $("llmModel").value).trim();
+        $("llmBaseUrl").value = item.baseUrl;
+        $("llmModel").value = item.model;
+        item.hasBaseUrl = Boolean(item.baseUrl);
+        item.hasModel = Boolean(item.model);
         item.maskedApiKey = result.maskedApiKey || item.maskedApiKey;
         item.hasApiKey = Boolean(result.maskedApiKey || $("llmApiKey").value.trim() || item.hasApiKey);
         fillProviderSelects(item.id);
@@ -2207,11 +2299,14 @@
       setResult(message, "error");
       return;
     }
+    const operationId = beginAiPostprocessOperation();
     beginStreamOutput();
     setBusy(true, "toolbox_status_starting");
+    let cancelled = false;
     try {
       const result = await bridge("run_llm_postprocess", {
         ...paths,
+        operationId,
         operation,
         taskPrompt: taskPromptText(operation),
         customPrompt,
@@ -2221,7 +2316,9 @@
         embedTranslations: Boolean($("postprocessBackfill")?.checked),
         bilingualLineOrder: $("postprocessBilingualOrder")?.value || "",
       });
+      cancelled = result.code === "postprocess_cancelled";
       if (result.ok) applySubtitleResult(result, { kind: "llm", operation });
+      else if (result.code === "postprocess_cancelled") setResult(t("toolbox_ai_cancelled"));
       else {
         const message = result.code === "custom_prompt_required"
           ? t("toolbox_custom_prompt_required")
@@ -2231,6 +2328,7 @@
         setResult(message, "error");
       }
     } finally {
+      finishAiPostprocessOperation(operationId, cancelled);
       setBusy(false);
     }
   }
@@ -2533,6 +2631,11 @@
   $("openOcrSettings").addEventListener("click", () => window.MAWLauncher.openSettings("ocrSettingsSection"));
   $("openPunctSettings").addEventListener("click", () => window.MAWLauncher.openSettings("punctuationSettingsSection"));
   $("runLlmPostprocess").addEventListener("click", runLlm);
+  $("stopToolboxPostprocess").addEventListener("click", () => { void cancelAiPostprocess(); });
+  $("toolboxPostprocessSettings").addEventListener("click", () => {
+    window.MAWLauncher.openSettings("llmSettingsSection");
+    requestAnimationFrame(() => $("llmApiKey")?.focus());
+  });
   $("runFixedProcess").addEventListener("click", runFixedProcess);
   $("runFfconcatRebuild").addEventListener("click", runFfconcat);
   $("runBurnSubtitle").addEventListener("click", runBurnSubtitle);
@@ -2808,6 +2911,7 @@
   window.MAWLauncher.onMediaToolLog = renderMediaToolLog;
   window.MAWLauncher.onPostprocessStream = renderPostprocessStream;
   window.MAWLauncher.onPostprocessPipeline = (event) => {
+    if (postprocessCancelling) return;
     if (event.stage === "step_start") setResult(`${autoStepLabel(event.step)}：${t("toolbox_running")}`);
     if (event.stage === "step_done") setResult(`${autoStepLabel(event.step)}：${t("toolbox_done")}`, "success");
   };

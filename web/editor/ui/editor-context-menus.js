@@ -209,6 +209,16 @@
     advancedList.appendChild(convertOverlay);
   };
 
+  const adjustTime = document.createElement('button');
+  adjustTime.type = 'button';
+  adjustTime.className = 'item';
+  adjustTime.textContent = '调整时间…';
+  adjustTime.addEventListener('click', () => {
+    MaweDom.ctxmenu.classList.remove('show');
+    MaweSegmentOps.openSubtitleTimeOffsetModal(targetIdxs);
+  });
+  advancedList.appendChild(adjustTime);
+
   function addItem(label, kbd, fn, opts = {}) {
     const it = document.createElement('div');
     it.className = 'item' + (opts.danger ? ' danger' : '') + (opts.disabled ? ' disabled' : '');
@@ -287,7 +297,7 @@
       entry.addEventListener('click', (e) => {
         e.stopPropagation();
         MaweDom.ctxmenu.classList.remove('show');
-        MaweTextProcess.applyWrapChars(targets, preset.left, preset.right, preset.label);
+        MaweTextProcess.applyWrapChars(targets, preset.left, preset.right, preset.label, { warnWordTimings: false });
       });
       list.appendChild(entry);
     });

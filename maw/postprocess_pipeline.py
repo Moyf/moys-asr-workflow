@@ -41,6 +41,7 @@ from maw.postprocess_llm import (
     complete_subtitle_groups,
     normalize_reasoning_mode,
     preset_by_id,
+    postprocess_api_key_required,
 )
 from maw.postprocess_match import (
     DEFAULT_EXTRA_SPLIT_PUNCTUATION,
@@ -301,6 +302,7 @@ def postprocess_provider_status(env_path: Path, provider_id: str) -> dict[str, o
     return {
         "verified": is_llm_verified(env_path, provider_id),
         "hasApiKey": bool(values["apiKey"]),
+        "apiKeyRequired": postprocess_api_key_required(provider_id, values["baseUrl"]),
         "hasBaseUrl": bool(values["baseUrl"]),
         "hasModel": bool(values["model"]),
     }
@@ -348,8 +350,8 @@ def _llm_provider_error(
     """Return the blocking provider configuration error for one LLM step."""
 
     provider_id = str(step.get("providerId") or "deepseek")
-    status = _snapshot_provider_status(llm_settings.get(provider_id)) if llm_settings and provider_id in llm_settings else postprocess_provider_status(env_path, provider_id)
-    if not status["hasApiKey"]:
+    status = _snapshot_provider_status(llm_settings.get(provider_id), provider_id) if llm_settings and provider_id in llm_settings else postprocess_provider_status(env_path, provider_id)
+    if not status["hasApiKey"] and status["apiKeyRequired"]:
         return {"step": str(step.get("id") or ""), "field": "llmApiKey", "message": "LLM 供应商缺少 API Key，请在工具箱设置中填写并保存。"}
     if not status["hasBaseUrl"]:
         return {"step": str(step.get("id") or ""), "field": "llmBaseUrl", "message": "LLM 供应商缺少 API URL，请在工具箱设置中填写并保存。"}
@@ -420,8 +422,10 @@ def validate_plan(
             if ffmpeg_path is None or not ffmpeg_path.is_file():
                 errors.append({"step": step_id, "field": "ocrVideoPath", "message": "找不到 FFmpeg，无法执行 OCR 字幕去重。"})
         elif step_id == "burn":
-            if media_path.suffix.lower() not in VIDEO_EXTENSIONS or not media_path.is_file():
-                errors.append({"step": step_id, "field": "mediaPath", "message": "烧录字幕需要一个存在的视频文件。"})
+            # 自动流程的烧录由转写原媒体直接驱动，不要求预先填写；
+            # 原媒体是音频时按「绿幕视频」处理（用字幕时间轴生成绿幕底）。
+            if not media_path.is_file():
+                errors.append({"step": step_id, "field": "mediaPath", "message": "找不到原始媒体文件，无法烧录字幕。"})
             if ffmpeg_path is None or not ffmpeg_path.is_file():
                 errors.append({"step": step_id, "field": "mediaPath", "message": "找不到 FFmpeg，无法烧录字幕。"})
     return plan, tuple(errors)
@@ -1050,10 +1054,14 @@ def _run_step(
             _emit(on_event, {"stage": "detail", "step": step_id, "key": "toolbox_status_burning", **dict(details)})
 
         try:
+            # 原媒体是音频时无法烧录画面：视作勾选「绿幕视频」，
+            # 用字幕时间轴生成绿幕底视频而不是烧进原画面。
+            green_screen = media_path.suffix.lower() not in VIDEO_EXTENSIONS
             result = run_burn_subtitles(
                 BurnSubtitleRequest(
                     media_path=media_path,
                     subtitle_path=srt_path,
+                    green_screen=green_screen,
                     video_encoder=normalize_video_encoder(step.get("videoEncoder")),
                 ),
                 ffmpeg_path=ffmpeg_path,
@@ -1574,11 +1582,12 @@ def _number_or_default(value: object, default: object) -> float:
         return float(default)
 
 
-def _snapshot_provider_status(values: Mapping[str, str] | None) -> dict[str, object]:
+def _snapshot_provider_status(values: Mapping[str, str] | None, provider_id: str) -> dict[str, object]:
     values = values or {}
     return {
         "verified": bool(values.get("verified", "")),
         "hasApiKey": bool(values.get("apiKey", "")),
+        "apiKeyRequired": postprocess_api_key_required(provider_id, values.get("baseUrl", "")),
         "hasBaseUrl": bool(values.get("baseUrl", "")),
         "hasModel": bool(values.get("model", "")),
     }

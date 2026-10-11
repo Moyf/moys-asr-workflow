@@ -660,7 +660,7 @@ BCUT_MODELS: Final[tuple[ModelConfig, ...]] = (
 DEEPSEEK_PLACEHOLDER_MODELS: Final[tuple[ModelConfig, ...]] = (
     ModelConfig(
         id="deepseek-not-an-asr",
-        label="DeepSeek 不是转写模型",
+        label="Deepseek 目前不提供转写模型",
         env_key="",
         languages=(),
     ),
@@ -669,7 +669,7 @@ DEEPSEEK_PLACEHOLDER_MODELS: Final[tuple[ModelConfig, ...]] = (
 PROVIDERS: Final[tuple[ProviderConfig, ...]] = (
     ProviderConfig(
         id="qwen",
-        label="阿里云百炼（千问）",
+        label="阿里云百炼（推荐 / 千问）",
         key_url="https://platform.qianwenai.com/home/",
         key_label="千问AI平台",
         models=QWEN_MODELS,
@@ -755,6 +755,7 @@ PROVIDERS: Final[tuple[ProviderConfig, ...]] = (
         ),
     ),
     # 彩蛋占位：DeepSeek 是文本模型，没有语音转写 API；仅提示用户去后处理翻译使用。
+    # 与必剪之间不再加分隔线：两项紧挨着更符合「非转写/实验性入口」的分组直觉。
     ProviderConfig(
         id="deepseek",
         label="DeepSeek（？）",
@@ -764,9 +765,8 @@ PROVIDERS: Final[tuple[ProviderConfig, ...]] = (
         languages=(),
         requires_api_key=False,
         supports_language=False,
-        divider_before=True,
         note=(
-            "🐳 蓝色大肥鱼不支持语音转写，它是个文本模型！\n"
+            "🐳 蓝色大肥鱼不支持语音转写，它是个文本模型！（太多人问了所以专门加个说明）\n"
             "不过你可以在「AI处理」中使用它来翻译啥的。"
         ),
     ),

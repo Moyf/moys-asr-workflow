@@ -218,6 +218,7 @@
     colorStyles: MaweColors.COLOR_PALETTE,
     appearance,
     assProfile,
+    measureAssRun: window.MaweAssCanvas?.measureRun,
     assStyle,
     assExtensionStyle,
     assEmphasisSyntax: MaweSettings.EDITOR_SETTINGS.assEmphasisSyntax,
@@ -226,12 +227,13 @@
     assStrikeEnabled: MaweSettings.EDITOR_SETTINGS.assStrikeEnabled,
     assSmallTextEnabled: MaweSettings.EDITOR_SETTINGS.assSmallTextEnabled,
     assLargeTextEnabled: MaweSettings.EDITOR_SETTINGS.assLargeTextEnabled,
+    assCommentEnabled: MaweSettings.EDITOR_SETTINGS.assCommentEnabled,
   };
 }
 
 
 
-  function buildAss({ preview = false } = {}) {
+  function buildAss({ preview = false, onAssPlan = null, allowAssPlanDiagnostics = false } = {}) {
   const speakerOptions = MaweSpeakerLabels.speakerLabelExportOptions();
   if (preview) {
     const settings = MaweSpeakerLabels.getSpeakerLabelSettings();
@@ -248,6 +250,8 @@
   return window.AsrEditorUtils.buildAssPayload(preview && !MaweDom.overlayToggle.checked
     ? [] : MaweBoot.DATA.segments, {
     ...assExportOptions(),
+    onAssPlan,
+    allowAssPlanDiagnostics,
     // Export-only lead-in extension must not make a cue appear before its
     // actual start when checking the playback timeline.
     alignFirstStart: !preview && MaweSettings.EDITOR_SETTINGS.exportStartAtZero,

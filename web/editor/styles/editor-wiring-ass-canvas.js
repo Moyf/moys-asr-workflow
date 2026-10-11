@@ -106,24 +106,29 @@
   function runSizeScale(style, run) {
     const size = run?.size === 'small' ? style.smallTextScale
       : run?.size === 'large' ? style.largeTextScale : 1;
-    return size * (run?.emphasized ? style.emphasisScale : 1);
+    return size * (run?.emphasized ? style.emphasisScale : 1) * (run?.comment ? (style.commentScale || 1) : 1);
   }
 
 
   function runNativeSize(track, run) {
     const scale = runSizeScale(track.style, run);
-    return Math.max(1, Math.round((Number(track.nativeFontSize) || 1) * scale));
+    const size = (Number(track.nativeFontSize) || 1) * scale;
+    // Stacked plain text inherits the fractional event fs. Proportional runs
+    // have an explicit rounded local fs in ASS; solo preview keeps its old rule.
+    return Math.max(1, track.fractionalFontSize && scale === 1 ? size : Math.round(size));
   }
 
 
-  // \fsp 在样式字号（原生 PlayRes 像素）上定义，换算到绘制字号同比例；
+  // \fsp is measured in native PlayRes pixels. Stacked drawing preserves that
+  // advance independently of the font-box/em conversion; solo keeps its prior
+  // approximation for compatibility.
   // ctx.letterSpacing 不可用时退回逐字符排版（放弃连字，与旧 CSS
   // letter-spacing 预览的行为一致）。
   function spacingInfo(track, run, ratio) {
     const nativeSize = runNativeSize(track, run);
     const cssSize = nativeSize * ratio;
-    const spacingCss = nativeSize > 0
-      ? (Number(track.style.spacing) || 0) * cssSize / nativeSize : 0;
+    const spacingCss = track.fractionalFontSize ? Number(track.style.spacing) || 0
+      : nativeSize > 0 ? (Number(track.style.spacing) || 0) * cssSize / nativeSize : 0;
     return {
       cssSize,
       nativeSize,
@@ -176,10 +181,24 @@
       const width = info.perChar
         ? [...text].reduce((sum, ch) => sum + g.measureText(ch).width + info.spacingCss, 0)
         : metrics.width;
+      let ascent = Number(metrics.fontBoundingBoxAscent) || info.cssSize * 0.8;
+      let descent = Number(metrics.fontBoundingBoxDescent) || info.cssSize * 0.2;
+      // Chromium rounds fontBoundingBox metrics even for fractional CSS fonts.
+      // ASS line advance remains the native fs, so retain its continuous height
+      // rather than accumulating that rounding error over explicit newlines.
+      if (track.fractionalFontSize && runSizeScale(track.style, run) === 1) {
+        const boxScale = info.nativeSize / (ascent + descent);
+        ascent *= boxScale;
+        descent *= boxScale;
+      }
       return {
         width,
-        ascent: Number(metrics.fontBoundingBoxAscent) || info.cssSize * 0.8,
-        descent: Number(metrics.fontBoundingBoxDescent) || info.cssSize * 0.2,
+        ascent,
+        descent,
+        inkPadding: Math.max(0, Number(metrics.actualBoundingBoxLeft) || 0,
+          (Number(metrics.actualBoundingBoxRight) || 0) - width,
+          (Number(metrics.actualBoundingBoxAscent) || 0) - ascent,
+          (Number(metrics.actualBoundingBoxDescent) || 0) - descent),
       };
     };
   }
@@ -187,6 +206,7 @@
 
   function runFillColor(style, run) {
     if (run?.speakerColor) return run.speakerColor;
+    if (run?.comment && style.commentStyle !== 'stroke') return style.commentColor;
     if (run?.emphasized && style.emphasisStyle === 'text') return style.emphasisColor;
     return style.primaryColor;
   }
@@ -194,6 +214,7 @@
 
   function runDecorColor(style, run) {
     if (run?.speakerColor) return run.speakerColor;
+    if (run?.comment && style.commentStyle !== 'stroke') return style.commentColor;
     if ((run?.underlined || run?.struck) && run?.emphasized && style.emphasisStyle === 'text') {
       return style.emphasisColor;
     }
@@ -215,13 +236,16 @@
     const style = track.style;
     return JSON.stringify([
       line.items.map((item) => [item.text, Boolean(item.run.emphasized), Boolean(item.run.underlined),
-        Boolean(item.run.struck), item.run.size || '', item.run.speakerColor || '', quantize(item.width)]),
+        Boolean(item.run.struck), item.run.size || '', Boolean(item.run.comment),
+        item.run.speakerColor || '', quantize(item.width)]),
       quantize(ratio), fontFamilyCss(style.fontName), Boolean(style.bold), Boolean(style.italic),
-      Math.round(Number(track.nativeFontSize) || 1),
+      Boolean(track.fractionalFontSize), track.fractionalFontSize
+        ? Number((Number(track.nativeFontSize) || 1).toFixed(4)) : Math.round(Number(track.nativeFontSize) || 1),
       quantize(style.spacing), quantize(style.outline), style.outlineColor,
       quantize(style.outlineOpacity ?? 100), style.backColor, quantize(style.backOpacity ?? 100),
       quantize(style.shadow), Math.round(Number(style.borderStyle) || 1),
       style.primaryColor, style.emphasisColor, style.emphasisStyle || 'text',
+      style.commentColor, style.commentStyle || 'text', style.commentScale,
       Boolean(style.underline), Boolean(style.strikeOut),
       style.smallTextScale, style.largeTextScale, style.emphasisScale,
     ]);
@@ -330,6 +354,14 @@
           paintItemText(lg, item, pad + item.x, baseline, info, 'stroke');
         });
       }
+      if (style.commentStyle === 'stroke') {
+        lg.strokeStyle = style.commentColor;
+        line.items.forEach((item) => {
+          if (!item.run.comment) return;
+          const info = applyItemFont(lg, track, item.run, ratio);
+          paintItemText(lg, item, pad + item.x, baseline, info, 'stroke');
+        });
+      }
       g.globalAlpha = clampOpacityPercent(style.outlineOpacity);
       g.drawImage(layer, 0, 0);
       g.globalAlpha = 1;
@@ -343,6 +375,12 @@
       if (borderBox && item.run.emphasized && style.emphasisStyle === 'stroke') {
         g.globalAlpha = clampOpacityPercent(style.outlineOpacity);
         g.fillStyle = style.emphasisColor;
+        g.fillRect(x, baseline - item.ascent, item.width, item.ascent + item.descent);
+        g.globalAlpha = 1;
+      }
+      if (borderBox && item.run.comment && style.commentStyle === 'stroke') {
+        g.globalAlpha = clampOpacityPercent(style.outlineOpacity);
+        g.fillStyle = style.commentColor;
         g.fillRect(x, baseline - item.ascent, item.width, item.ascent + item.descent);
         g.globalAlpha = 1;
       }
@@ -374,8 +412,8 @@
       : runs;
     const layout = u.assCanvasLayoutLines(speaker, measurerFor(track, ratio));
     if (!layout.blockHeight) return { skipped: true, opacity: alpha };
-    // 锚定轨（副字幕/叠加轨）可以覆盖样式自带的 Alignment：叠加轨链在
-    // 副字幕上方时沿用副字幕的对齐（与导出侧锚定继承一致）。
+    // Secondary tracks override the vertical attachment while preserving
+    // their horizontal alignment, matching the exported an/pos tags.
     const alignmentValue = track.alignment ?? style.alignment;
     const grid = u.assCanvasAlignmentGrid(alignmentValue);
     const anchor = u.assCanvasAnchorPoint({
@@ -383,13 +421,15 @@
       margins: track.margins,
       playResX,
       playResY,
-      move: style.__assMove || null,
+      move: track.anchor || style.__assMove || null,
     });
     // 渲染参数快照（e2e 断言用）：行/字段尺寸与最终落色直接取自绘制路径，
     // 保证测试看到的就是画布实际消费的值。
     const borderBox = Math.round(Number(style.borderStyle) || 1) === 3;
     const record = {
       skipped: false,
+      role: track.role || '',
+      cueId: track.cueId ?? null,
       opacity: alpha,
       nativeFontSize: Number(track.nativeFontSize) || 0,
       alignment: alignmentValue,
@@ -397,7 +437,8 @@
       margins: { ...(track.margins || {}) },
       blockWidth: layout.blockWidth,
       blockHeight: layout.blockHeight,
-      speaker: track.speaker ? { ...track.speaker } : null,
+      speaker: track.speaker ? { ...track.speaker } : (runs.some(run => run.speakerColor)
+        ? { text: runs.filter(run => run.speakerColor).map(run => run.text).join(''), color: runs.find(run => run.speakerColor).speakerColor } : null),
       lines: layout.lines.map((line) => ({
         width: line.width,
         ascent: line.ascent,
@@ -413,6 +454,7 @@
         struck: Boolean(style.strikeOut) || Boolean(item.run.struck),
         emphasized: Boolean(item.run.emphasized),
         size: item.run.size || '',
+        comment: Boolean(item.run.comment),
           emphasisStroke: item.run.emphasized && style.emphasisStyle === 'stroke' && !borderBox
             ? style.emphasisColor : '',
           emphasisBox: item.run.emphasized && style.emphasisStyle === 'stroke' && borderBox
@@ -422,8 +464,8 @@
     };
     ctx.save();
     ctx.globalAlpha = alpha;
-    // 变换顺序 translate → scale → rotate 与 DOM 预览 transform 列表
-    //（translate/anchor、scale、rotateZ）一致，旋转/缩放围绕锚点。
+    // translate → ASS-sign rotation → scale: glyphs are scaled before the
+    // final rotation, matching libass for anisotropic scale and 2D angles.
     ctx.translate(anchor.x, anchor.y);
     // \frx/\fry 是 3D 透视旋转，Canvas 2D 无法真正表达；旧 CSS 预览用
     // perspective 近似，这里以旋转后的正交投影等价式（rotateX 压缩纵向、
@@ -432,12 +474,14 @@
     const rotationY = Number(style.rotationY) || 0;
     const foreshortenX = rotationY ? Math.cos(rotationY * Math.PI / 180) : 1;
     const foreshortenY = rotationX ? Math.cos(rotationX * Math.PI / 180) : 1;
+    const angle = Number(style.angle) || 0;
+    // libass rotates the already-scaled glyph coordinates, with counterclockwise
+    // positive ASS angles. Matrix order matters for nonuniform scale factors.
+    if (angle) ctx.rotate(-angle * Math.PI / 180);
     ctx.scale(
       Math.max(0, Number(style.scaleX ?? 100)) / 100 * foreshortenX,
       Math.max(0, Number(style.scaleY ?? 100)) / 100 * foreshortenY,
     );
-    const angle = Number(style.angle) || 0;
-    if (angle) ctx.rotate(angle * Math.PI / 180);
     let lineTop = u.assCanvasBlockTopY(grid.row, layout.blockHeight);
     layout.lines.forEach((line) => {
       if (line.width > 0 && line.ascent + line.descent > 0) {
@@ -531,7 +575,19 @@
   }
 
 
+  const stackMetricsCache = new Map();
+  function measureRun(style, nativeFontSize, run, text) {
+    const key = JSON.stringify([style.fontName, style.bold, style.italic, nativeFontSize,
+      style.spacing, style.smallTextScale, style.largeTextScale, style.emphasisScale, style.commentScale, run, text]);
+    if (stackMetricsCache.has(key)) return stackMetricsCache.get(key);
+    const measured = measurerFor({ style, nativeFontSize, fractionalFontSize: true }, fontBoxRatio(style))(run, text);
+    if (stackMetricsCache.size >= 4096) stackMetricsCache.delete(stackMetricsCache.keys().next().value);
+    stackMetricsCache.set(key, measured);
+    return measured;
+  }
+
   function clearCaches() {
+    stackMetricsCache.clear();
     lineCache.clear();
     fontRatioCache.clear();
   }
@@ -541,6 +597,7 @@
   global.MaweAssCanvas = Object.freeze({
     render,
     renderSample,
+    measureRun,
     hide,
     clearCaches,
     // 渲染参数快照：e2e 迁移断言用（测试看到的就是画布实际消费的值）。

@@ -557,9 +557,9 @@
           <p id="toolboxUtilityMediaPathError" class="field-error"></p>
         </div>
         <nav id="toolboxUtilitiesTabList" class="toolbox-tabs" role="tablist" aria-labelledby="toolboxUtilitiesPrimaryTab">
-          <div class="toolbox-tab-list toolbox-tab-list-5">
+          <div class="toolbox-tab-list">
             <button id="toolboxBurnSubtitleTab" class="toolbox-tab" type="button" role="tab" aria-selected="false" aria-controls="toolboxBurnSubtitlePanel" data-tool="burnSubtitle" tabindex="-1" data-i18n="toolbox_burn_subtitle">烧录字幕</button>
-            <button id="toolboxFfconcatTab" class="toolbox-tab" type="button" role="tab" aria-selected="false" aria-controls="toolboxFfconcatPanel" data-tool="ffconcat" tabindex="-1" data-i18n="toolbox_ffconcat">媒体重组</button>
+            <button id="toolboxFfconcatTab" class="toolbox-tab hidden" type="button" role="tab" tabindex="-1" aria-hidden="true" aria-selected="false" aria-controls="toolboxFfconcatPanel" data-tool="ffconcat" data-i18n="toolbox_ffconcat">媒体重组</button>
             <button id="toolboxAlignmentTab" class="toolbox-tab" type="button" role="tab" aria-selected="false" aria-controls="toolboxAlignmentPanel" data-tool="alignment" tabindex="-1" data-i18n="toolbox_alignment">口播对齐</button>
             <button id="toolboxExtractAudioTab" class="toolbox-tab" type="button" role="tab" aria-selected="false" aria-controls="toolboxExtractAudioPanel" data-tool="extractAudio" tabindex="-1" data-i18n="toolbox_extract_audio">提取音频</button>
             <button id="toolboxWaveformTab" class="toolbox-tab" type="button" role="tab" tabindex="-1" aria-selected="false" aria-controls="toolboxWaveformPanel" data-tool="waveform" data-i18n="toolbox_waveform">生成波形</button>
@@ -569,7 +569,13 @@
     </div>
     <div class="toolbox-content">
       <div id="toolboxProgress" class="progress hidden" aria-hidden="true"><span></span></div>
-      <div id="toolboxResult" class="toolbox-result hidden" aria-live="polite"></div>
+      <div id="toolboxResult" class="toolbox-result hidden" aria-live="polite" style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
+        <span id="toolboxResultText" style="flex:1 1 160px;min-width:0"></span>
+        <div style="display:flex;align-items:center;gap:8px;flex:0 0 auto">
+          <button id="toolboxPostprocessSettings" class="ghost hidden" type="button" data-i18n="toolbox_open_ai_settings">打开 AI 设置</button>
+          <button id="stopToolboxPostprocess" class="ghost hidden" type="button" data-i18n="toolbox_stop_ai">停止 AI 处理</button>
+        </div>
+      </div>
       <div id="toolboxStreamOutput" class="toolbox-stream-output hidden" aria-live="polite">
         <div class="toolbox-stream-heading">
           <span id="toolboxStreamTitle" data-i18n="toolbox_stream_title">模型实时输出</span>
@@ -1274,7 +1280,7 @@
           <input id="llmBaseUrl" type="url" autocomplete="off" data-i18n-placeholder="llm_base_url_placeholder" placeholder="填写你的 Base URL，如 https://api.openai.com/v1">
           <p id="llmBaseUrlError" class="field-error"></p>
           <p class="hint" data-i18n="llm_base_url_hint">远程服务使用 HTTPS；明文 HTTP 只允许本机环回地址。</p>
-          <p class="hint hint-callout llm-local-model-hint" data-i18n="llm_local_model_hint">使用本地模型时，可以直接填写 http://127.0.0.1:11434/v1 这样的本机地址（API Key 允许留空）。</p>
+          <p class="hint hint-callout llm-local-model-hint" data-i18n="llm_local_model_hint">使用本地模型时，可以直接填写 http://127.0.0.1:1234/v1 这样的本机地址（API Key 允许留空）。</p>
         </div>
         <div id="llmCustomDisplayNameField" class="field hidden">
           <label for="llmCustomDisplayName" data-i18n="llm_custom_display_name">自定义显示名称（可选）</label>
