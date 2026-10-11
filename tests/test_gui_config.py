@@ -481,7 +481,7 @@ class GuiConfigTests(unittest.TestCase):
         self.assertEqual(moss.engine, "moss")
         self.assertTrue(moss.supports_speaker)
         self.assertIn("transformers", moss.requires_runtime)
-        # MOSS 输出契约只有段级时间戳（docs/LOCAL_ASR.md），说明里必须提前提醒。
+        # MOSS 输出契约只有段级时间戳（docs/user/LOCAL_ASR.md），说明里必须提前提醒。
         self.assertIn("仅段级时间码", moss.note)
         firered = provider.models[-2]
         self.assertEqual(firered.engine, "firered")

@@ -35,7 +35,7 @@ MAW does not replace a full video editor. ASR output and AI decisions still requ
 3. Choose an ASR provider, configure your own key, and transcribe a short sample before processing the full recording.
 4. Open MAWE, review the subtitles, save the `.mosp` project, and export SRT or ASS.
 
-For source installation and a complete first run, see the [workflow guide](docs/WORKFLOW.md). Detailed documentation is currently in Chinese.
+For source installation and a complete first run, see the [workflow guide](docs/INDEX.md#user-workflow). Detailed documentation is currently in Chinese.
 
 ## Core capabilities
 
@@ -44,21 +44,21 @@ For source installation and a complete first run, see the [workflow guide](docs/
 - Review ASS styles, including actual rendered frames in the localhost editor; export main, secondary, or combined bilingual SRT, ASS, TXT, OTIO, and FFconcat as appropriate.
 - Match scripts locally or choose AI cleanup, LLM proofreading, translation, and sentence splitting. Automatic processing keeps original snapshots and stage results and can retry from a failed stage.
 - Burn subtitles into video, extract a selected audio track, generate green-screen subtitle video, or rebuild media from retained intervals.
-- Use the public CLI for batch jobs and AI automation: [CLI documentation](docs/CLI.md) (Chinese).
-- [Local ASR models](docs/LOCAL_ASR.md) and the key-free Bcut ASR path are experimental.
+- Use the public CLI for batch jobs and AI automation: [CLI documentation](docs/INDEX.md#user-cli) (Chinese).
+- [Local ASR models](docs/INDEX.md#user-local-asr) and the key-free Bcut ASR path are experimental.
 
 ## Documentation
 
-- [Documentation index](docs/README.md): user guides, technical contracts, and historical records.
-- [Workflow](docs/WORKFLOW.md), [Launcher](docs/LAUNCHER_GUIDE.md), and [providers](docs/PROVIDERS.md): install, configure, and transcribe.
-- [Toolbox](docs/TOOLBOX.md) and [automatic processing](docs/POSTPROCESS_PIPELINE.md): script matching, cleanup, translation, OCR, and media tools.
-- [Editor](docs/EDITOR_GUIDE.md), [keyboard timing](docs/KEYBOARD_ADJUSTMENT.md), [multiple subtitles](docs/MULTI_SUBTITLE.md), and [ASS styles](docs/ASS_STYLES.md): edit, save, and export.
-- [CLI](docs/CLI.md) and [local ASR](docs/LOCAL_ASR.md): automate tasks and use experimental local models.
-- [FAQ](docs/FAQ.md), [project schema](JSON_SCHEMA.md), [LLM protocol](docs/LLM_POSTPROCESS_PROTOCOL.md), and [development](docs/DEVELOPMENT.md).
+- [Documentation index](docs/INDEX.md): user guides, technical contracts, and historical records.
+- [Workflow](docs/INDEX.md#user-workflow), [Launcher](docs/INDEX.md#user-launcher), and [providers](docs/INDEX.md#user-providers): install, configure, and transcribe.
+- [Toolbox](docs/INDEX.md#user-toolbox) and [automatic processing](docs/INDEX.md#user-postprocess): script matching, cleanup, translation, OCR, and media tools.
+- [Editor](docs/INDEX.md#user-editor), [keyboard timing](docs/INDEX.md#user-keyboard), [multiple subtitles](docs/INDEX.md#user-multi-subtitle), and [ASS styles](docs/INDEX.md#user-ass): edit, save, and export.
+- [CLI](docs/INDEX.md#user-cli) and [local ASR](docs/INDEX.md#user-local-asr): automate tasks and use experimental local models.
+- [FAQ](docs/INDEX.md#user-faq), [project schema](JSON_SCHEMA.md), [LLM protocol](docs/INDEX.md#engineering-llm), and [development](docs/INDEX.md#engineering-development).
 
 ## Data and limitations
 
-Keep the original media and `.mosp` project. Projects contain UTF-8 JSON; older `.json` projects remain supported. SRT and ASS are delivery formats and cannot restore all available word timing, tracks, markers, or editing state. Waveform data is a rebuildable cache, not project source data. The localhost Server supports versioned backups; see the [editor guide](docs/EDITOR_GUIDE.md) for recovery and media relocation.
+Keep the original media and `.mosp` project. Projects contain UTF-8 JSON; older `.json` projects remain supported. SRT and ASS are delivery formats and cannot restore all available word timing, tracks, markers, or editing state. Waveform data is a rebuildable cache, not project source data. The localhost Server supports versioned backups; see the [editor guide](docs/INDEX.md#user-editor) for recovery and media relocation.
 
 Cloud transcription sends audio directly to the selected provider. Optional LLM processing sends subtitle text, and AI cleanup also sends script text. MAW has no hosted transcription server; editing and saving normally happen locally. Keys are configured on your machine. Pricing and data policies depend on the provider.
 

@@ -2,12 +2,12 @@
 layout: "../../layouts/DocLayout.astro"
 title: "ASR 供应商调研"
 description: "Fun-ASR、Qwen 和豆包录音文件识别能力的接口对照与接入记录。"
-source: "docs/ASR_PROVIDER_RESEARCH.md"
+source: "docs/logs/unversioned/2026-07-28/ASR_PROVIDER_RESEARCH.md"
 ---
 
-<!-- Generated from docs/ASR_PROVIDER_RESEARCH.md. Run pnpm run sync:docs to refresh. -->
+<!-- Generated from docs/logs/unversioned/2026-07-28/ASR_PROVIDER_RESEARCH.md. Run pnpm run sync:docs to refresh. -->
 
-> 历史调研 / 阶段记录：以下内容保留当时的方案与验证范围，不作为当前操作指南。当前文档见 [文档索引](../documentation-index/)。
+> 历史调研 / 阶段记录：以下内容保留当时的方案与验证范围，不作为当前操作指南。当前文档见 [文档索引](https://github.com/Moyf/moys-asr-workflow/blob/main/docs/README.md)。
 
 > 调研日期：2026-07-28
 > 接入状态：百炼云端 `qwen-audio-3.0-asr-flash-filetrans` 与 `fun-asr` 已在当前 Unreleased 版本接入；豆包仍是候选方案。本文不代替真实素材上的准确率、时间戳和说话人分离测试。
