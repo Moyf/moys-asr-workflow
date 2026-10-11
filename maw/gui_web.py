@@ -2677,6 +2677,10 @@ class LauncherApi:
                 if item.preflight_error
             )
             shared_code = items[0].preflight_code
+            if shared_code == "audio_tracks_missing" and all(
+                item.preflight_code == shared_code for item in items
+            ):
+                return _error_result("items", shared_code, details)
             if shared_code in {"api_key_missing", "api_key_invalid_format"} and all(
                 item.preflight_code == shared_code for item in items
             ):
@@ -4047,6 +4051,15 @@ def _request_from_payload(payload: Mapping[str, object], env_path: Path) -> Tran
         raise PreflightError("mediaPath", "media_not_found", "Media file does not exist.")
     if not srt_text or not srt.name:
         raise PreflightError("srtPath", "output_missing", "SRT output path is required.")
+    raw_audio_track_count = payload.get("audioTrackCount")
+    audio_track_count = (
+        raw_audio_track_count
+        if isinstance(raw_audio_track_count, int)
+        and not isinstance(raw_audio_track_count, bool)
+        and raw_audio_track_count >= 0 else None
+    )
+    if audio_track_count == 0:
+        raise PreflightError("mediaPath", "audio_tracks_missing", "No audio tracks were found in this media.")
     audio_track = _payload_audio_track(payload, field="audioTrack")
     if audio_track is None:
         raise PreflightError(
@@ -4229,18 +4242,12 @@ def _request_from_payload(payload: Mapping[str, object], env_path: Path) -> Tran
             if active_auto_steps:
                 auto_plan = candidate_plan
                 auto_llm_settings = snapshot_postprocess_llm_settings(env_path, candidate_plan)
-    raw_audio_track_count = payload.get("audioTrackCount")
     return TranscriptionRequest(
         media_path=media,
         srt_path=srt,
         audio_track=audio_track,
         default_audio_track=default_audio_track,
-        audio_track_count=(
-            raw_audio_track_count
-            if isinstance(raw_audio_track_count, int)
-            and not isinstance(raw_audio_track_count, bool)
-            and raw_audio_track_count >= 0 else None
-        ),
+        audio_track_count=audio_track_count,
         model=custom_model if provider.id == "openai" else (model.model_ref or model.id),
         language=str(payload.get("language") or ""),
         api_key=api_key,

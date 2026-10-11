@@ -15,6 +15,68 @@ async function openLauncher(page, language) {
 }
 
 for (const language of ['zh', 'en']) {
+  test('known missing tracks block start, failed and pending probes stay unknown (' + language + ')', async ({ page }, testInfo) => {
+    await openLauncher(page, language);
+    const config = await page.evaluate(() => window.MAWLauncher.config);
+    await page.addInitScript(({ config, language }) => {
+      window.__probeMode = 'empty';
+      window.__probes = [];
+      window.__probeDone = 0;
+      window.__starts = [];
+      window.pywebview = { api: new Proxy({}, { get(_, method) {
+        if (method === 'then') return undefined;
+        if (method === 'get_config') return async () => ({ ...config, guiLang: language });
+        if (method === 'get_audio_tracks') return async (payload) => {
+          window.__probes.push(payload.mediaPath);
+          if (window.__probeMode === 'pending') return new Promise(resolve => { window.__releaseProbe = resolve; });
+          window.__probeDone += 1;
+          if (window.__probeMode === 'failed') return { ok: false, tracks: [], code: 'audio_tracks_unavailable' };
+          if (window.__probeMode === 'invalid') return { ok: true, tracks: null };
+          return { ok: true, tracks: [] };
+        };
+        if (method === 'start_transcription') return async (payload) => {
+          window.__starts.push(payload);
+          return { ok: false, code: 'transcription_cancelled' };
+        };
+        return async () => ({ ok: true });
+      } }) };
+    }, { config, language });
+    await page.reload();
+    await page.waitForFunction(() => window.MAWLauncher?.config?.providers?.length > 0);
+    await page.locator('#apiKey').fill('sk-test');
+    await page.locator('#mediaPath').fill('C:/media/no-audio.mp4');
+    await expect.poll(() => page.evaluate(() => window.MAWLauncher.getTranscriptionPayload().audioTrackCount)).toBe(0);
+    await page.locator('#start').click();
+    await expect(page.locator('#errorNoticeMessage')).toContainText(language === 'zh' ? '没有检测到音轨' : 'No audio tracks');
+    await expect(page.locator('#stop')).toBeHidden();
+    expect(await page.evaluate(() => window.__starts.length)).toBe(0);
+    expect(await page.evaluate(() => window.__probes.length)).toBe(1);
+    expect(await page.evaluate(() => document.querySelector('#errorNoticeAction').parentElement.getBoundingClientRect().top
+      - document.querySelector('#errorNoticeMessage').getBoundingClientRect().bottom)).toBeGreaterThanOrEqual(8);
+    await page.locator('#errorNotice').screenshot({ path: testInfo.outputPath('no-audio-' + language + '.png') });
+    for (const [index, mode] of ['failed', 'invalid'].entries()) {
+      await page.evaluate(mode => { window.__probeMode = mode; }, mode);
+      await page.locator('#mediaPath').fill('C:/media/' + mode + '.mp4');
+      await page.waitForFunction(count => window.__probeDone === count, index + 2);
+      expect(await page.evaluate(() => window.MAWLauncher.getTranscriptionPayload().audioTrackCount)).toBeNull();
+      await page.locator('#start').click();
+      expect(await page.evaluate(() => window.__starts.length)).toBe(index + 1);
+      await expect(page.locator('#errorNoticeMessage')).not.toContainText(language === 'zh' ? '没有检测到音轨' : 'No audio tracks');
+      expect(await page.evaluate(() => window.__probes.length)).toBe(index + 2);
+    }
+    await page.evaluate(() => { window.__probeMode = 'pending'; });
+    await page.locator('#mediaPath').fill('C:/media/pending.mp4');
+    await page.waitForFunction(() => typeof window.__releaseProbe === 'function');
+    expect(await page.evaluate(() => window.MAWLauncher.getTranscriptionPayload().audioTrackCount)).toBeNull();
+    await page.locator('#start').click();
+    expect(await page.evaluate(() => window.__starts.length)).toBe(3);
+    // An old probe finishing after a file change cannot block the new file.
+    await page.locator('#mediaPath').fill('C:/media/voice.mp3');
+    await page.evaluate(() => window.__releaseProbe({ ok: true, tracks: [] }));
+    expect(await page.evaluate(() => window.MAWLauncher.getTranscriptionPayload().audioTrackCount)).toBeNull();
+    expect(await page.evaluate(() => window.__probes.length)).toBe(4);
+  });
+
   test('empty recognition uses existing track metadata (' + language + ')', async ({ page }, testInfo) => {
     await page.setViewportSize({ width: language === 'zh' ? 900 : 760, height: 880 });
     await openLauncher(page, language);

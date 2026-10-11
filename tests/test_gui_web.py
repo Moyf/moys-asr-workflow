@@ -2975,6 +2975,16 @@ class GuiWebBridgeTests(CompactContainerAssertions, unittest.TestCase):
         self.assertEqual(result["field"], "mediaPath")
         self.assertEqual(result["code"], "audio_tracks_unavailable")
 
+    def test_get_audio_tracks_successful_empty_probe_remains_distinct(self) -> None:
+        media = self.root / "clip.mp4"
+        media.write_bytes(b"media")
+        with mock.patch("maw.gui_web._postprocess_ffmpeg_tools", return_value=FfmpegTools(ffprobe=Path("ffprobe"))), \
+                mock.patch("maw.gui_web.inspect_audio_tracks", return_value=()) as probe:
+            result = self.api.get_audio_tracks({"mediaPath": str(media)})
+        self.assertTrue(result["ok"])
+        self.assertEqual(result["tracks"], [])
+        probe.assert_called_once()
+
     def test_extract_audio_bridge_uses_selected_track_and_returns_m4a(self) -> None:
         media = self.root / "clip.mp4"
         ffmpeg = self.root / ("ffmpeg.exe" if os.name == "nt" else "ffmpeg")
@@ -4041,6 +4051,55 @@ class GuiWebBridgeTests(CompactContainerAssertions, unittest.TestCase):
         self.assertIsNone(request.audio_track_count)
         resolve_default.assert_not_called()
 
+    def test_batch_reuses_existing_probe_to_skip_missing_tracks_but_not_failed_probe(self) -> None:
+        for index, tracks in enumerate(([], None)):
+            media = self.root / f"clip{index}.mp4"
+            media.write_bytes(b"media")
+        worker = mock.Mock()
+        worker.is_alive.return_value = False
+        with mock.patch("maw.gui_web.probe_audio_tracks", side_effect=[[], None]) as probe, \
+                mock.patch("maw.gui_web.threading.Thread", return_value=worker) as thread:
+            result = self.api.start_batch_transcription({
+                "items": [{"id": str(i), "mediaPath": str(self.root / f"clip{i}.mp4")} for i in range(2)],
+                "settings": {"apiKey": "sk-test", "audioTrackCount": 0},
+            })
+        self.assertTrue(result["ok"])
+        items = thread.call_args.kwargs["args"][0]
+        self.assertIsNone(items[0].request)
+        self.assertEqual(items[0].preflight_code, "audio_tracks_missing")
+        self.assertIsNotNone(items[1].request)
+        self.assertIsNone(items[1].request.audio_track_count)
+        self.assertEqual(probe.call_count, 2)
+
+    def test_batch_all_missing_tracks_returns_specific_error_without_worker(self) -> None:
+        media = self.root / "clip.mp4"
+        media.write_bytes(b"media")
+        with mock.patch("maw.gui_web.probe_audio_tracks", return_value=[]) as probe, \
+                mock.patch("maw.gui_web.threading.Thread") as thread:
+            result = self.api.start_batch_transcription({
+                "items": [{"id": "clip", "mediaPath": str(media)}], "settings": {"apiKey": "sk-test"},
+            })
+        self.assertFalse(result["ok"])
+        self.assertEqual(result["code"], "audio_tracks_missing")
+        probe.assert_called_once()
+        thread.assert_not_called()
+
+    def test_start_blocks_known_zero_tracks_without_new_probe_or_worker(self) -> None:
+        media = self.root / "clip.mp4"
+        media.write_bytes(b"media")
+        with mock.patch("maw.gui_web.probe_audio_tracks") as probe, \
+                mock.patch("maw.gui_web.inspect_audio_tracks") as inspect, \
+                mock.patch("maw.gui_web.threading.Thread") as thread:
+            result = self.api.start_transcription({
+                "mediaPath": str(media), "srtPath": str(self.root / "out.srt"),
+                "apiKey": "sk-test", "audioTrackCount": 0,
+            })
+        self.assertFalse(result["ok"])
+        self.assertEqual(result["code"], "audio_tracks_missing")
+        probe.assert_not_called()
+        inspect.assert_not_called()
+        thread.assert_not_called()
+
     def test_local_request_skips_api_key_and_carries_engine_options(self) -> None:
         media = self.root / "clip.mp3"
         media.write_bytes(b"media")
@@ -4556,7 +4615,7 @@ class GuiWebBridgeTests(CompactContainerAssertions, unittest.TestCase):
     def test_request_from_payload_carries_only_valid_track_counts_for_guidance(self) -> None:
         media = self.root / 'clip.mp4'
         media.write_bytes(b'media')
-        for value, expected in ((None, None), (3, 3), (1, 1), (True, None), ('3', None), (-1, None)):
+        for value, expected in ((None, None), (3, 3), (1, 1), (True, None), (False, None), ('3', None), ('0', None), (-1, None)):
             request = _request_from_payload({
                 'mediaPath': str(media), 'srtPath': str(self.root / 'out.srt'),
                 'apiKey': 'sk-test', 'audioTrackCount': value,
