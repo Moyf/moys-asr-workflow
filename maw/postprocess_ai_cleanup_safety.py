@@ -40,3 +40,26 @@ def information_loss_reason(source: str, replacement: str) -> str | None:
         if missing and not _FILLER_ONLY.fullmatch(missing):
             return f"备用片段未能字面覆盖原段信息「{missing[:40]}」，需要复核"
     return None
+
+
+def local_information_loss_reason(
+    removed: str, retained: str, before: str, after: str, script_line: str,
+) -> str | None:
+    """Prove only filler and adjacent literal restart fragments locally."""
+    def normalize(value: str) -> str:
+        return "".join(char for char in unicodedata.normalize("NFKC", value).lower() if char.isalnum())
+
+    normalized_removed = unicodedata.normalize("NFKC", removed).lower()
+    if _NUMBERS.search(normalized_removed):
+        return "局部内容包含数字或比例，需要人工确认"
+    if _CONDITIONS.search(normalized_removed):
+        return "局部内容包含否定或限定条件，需要人工确认"
+    lost = normalize(removed)
+    # Filler can surround an aborted restart, but never hide substantive words.
+    restart = lost.strip("啊呀呢吧呃嗯哦唉")
+    if restart and not (normalize(after).startswith(restart) or normalize(before).endswith(restart)):
+        return "缺少可本地验证的相邻口吃或重复证据"
+    manuscript = normalize(script_line)
+    if manuscript and manuscript not in normalize(retained):
+        return "局部移除后不能字面覆盖对应文稿内容，需要复核"
+    return None

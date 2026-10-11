@@ -26,7 +26,7 @@
 
 
   function buildResolveJson() {
-    const segments = MaweBoot.DATA.segments.map((seg, idx) => {
+    const segments = MaweExportSrt.cleanupMainSegments().map((seg, idx) => {
       const headIdx = seg.sticker_ref?.headIdx;
       const head = Number.isInteger(headIdx) ? MaweBoot.DATA.segments[headIdx] : null;
       const validStickerRef = !seg.sticker_ref || (head && !head.disabled && headIdx < idx);
@@ -164,8 +164,12 @@
         || segmentEndMs <= segmentStartMs) {
       return [];
     }
-    const startMs = Math.max(intervalStartMs, segmentStartMs);
-    const endMs = Math.min(intervalEndMs, segmentEndMs);
+    const projected = segments === MaweBoot.DATA.segments
+      ? window.AsrGapRemoveCore.projectCleanupRetainedSegments([segment], MaweBoot.DATA.gap_remove)[0]
+      : segment;
+    if (projected.disabled) return [];
+    const startMs = Math.max(intervalStartMs, Number(projected.start));
+    const endMs = Math.min(intervalEndMs, Number(projected.end));
     if (endMs <= startMs) return [];
 
     const markerStartFrame = sourceStartFrame + msToOtioFrames(startMs);
@@ -176,7 +180,7 @@
     return [{
       OTIO_SCHEMA: 'Marker.2',
       metadata: {},
-      name: MaweSpeakerLabels.subtitleExportText(segment, colorContext),
+      name: MaweSpeakerLabels.subtitleExportText(projected, colorContext),
       // 字幕来源的标记在备注里自明来源；名称本身即字幕内容。
       comment: 'MAW 字幕',
       color: OTIO_MARKER_COLORS[colorName] || OTIO_DEFAULT_MARKER_COLOR,
