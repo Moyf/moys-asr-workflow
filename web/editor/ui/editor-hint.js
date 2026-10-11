@@ -8,7 +8,7 @@
 
 
   // === Hint ===
-  // 顶部居中提示卡片堆栈：样式在 editor.css（#hint-stack / .hint-card）。
+  // 提示卡片堆栈：样式在 editor.css（#hint-stack / .hint-card），位置为本机偏好。
   // 最多同时显示 3 条，新提示追加在下方。
   const HINT_MAX_VISIBLE = 3;
 
@@ -19,6 +19,12 @@
   const HINT_FADE_OUT_MS = 200;
 
     // 与 editor.css 的 hint-fade-out 时长一致
+
+  function applyHintPosition(position) {
+    const value = ['top-center', 'top-right', 'bottom-right'].includes(position) ? position : 'top-center';
+    document.documentElement.dataset.toastPosition = value;
+    return value;
+  }
 
   function dismissHintCard(card) {
     if (!card || card.dataset.dismissed) return;
@@ -70,6 +76,7 @@
     HINT_DURATION_MS,
     HINT_FADE_OUT_MS,
     dismissHintCard,
+    applyHintPosition,
     flashHint,
     get lastScaleLimitMsg() { return lastScaleLimitMsg; },
     set lastScaleLimitMsg(v) { lastScaleLimitMsg = v; },
