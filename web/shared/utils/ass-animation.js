@@ -134,7 +134,8 @@ export function createUtilsModule(dependencies) {
     }
     if (includeMove && animations.move.enabled) {
       const m = animations.move;
-      tags.push(`\\move(${m.x1},${m.y1},${m.x2},${m.y2},${m.t1 - offsetMs},${m.t2 - offsetMs})`);
+      const end = m.t1 === 0 && m.t2 === 0 ? durationMs : m.t2;
+      tags.push(`\\move(${m.x1},${m.y1},${m.x2},${m.y2},${m.t1 - offsetMs},${end - offsetMs})`);
     }
     if (animations.t.enabled && animations.t.tags) {
       const t = animations.t;
@@ -145,5 +146,27 @@ export function createUtilsModule(dependencies) {
     return tags.join('');
   }
 
-  return Object.freeze({ assAnimationOverrideTags, assAnimationSliceTags, assPreviewAnimationState, assSentenceFadeTags });
+  function assStackAnimationState(profile, elapsedMs, durationMs, { fad = null } = {}) {
+    const state = assPreviewAnimationState(profile, elapsedMs, durationMs, { fad });
+    const animations = normalizeAssAnimations(profile?.animations);
+    const simple = fad || (!animations.fade.enabled && animations.fad.enabled ? animations.fad : null);
+    const elapsed = Math.max(0, Number(elapsedMs) || 0);
+    if (simple) {
+      // libass prioritises the fade-in phase when a short cue's fades overlap.
+      state.opacity = elapsed < simple.inMs ? elapsed / simple.inMs
+        : elapsed <= durationMs - simple.outMs ? 1
+          : simple.outMs > 0 ? Math.max(0, (durationMs - elapsed) / simple.outMs) : 1;
+    }
+    if (animations.move.enabled) {
+      const move = animations.move;
+      const end = move.t1 === 0 && move.t2 === 0 ? durationMs : move.t2;
+      const amount = end <= move.t1 ? (elapsed > end ? 1 : 0)
+        : Math.min(1, Math.max(0, (elapsed - move.t1) / (end - move.t1)));
+      state.moveX = move.x1 + (move.x2 - move.x1) * amount;
+      state.moveY = move.y1 + (move.y2 - move.y1) * amount;
+    }
+    return state;
+  }
+
+  return Object.freeze({ assAnimationOverrideTags, assAnimationSliceTags, assStackAnimationState, assPreviewAnimationState, assSentenceFadeTags });
 }

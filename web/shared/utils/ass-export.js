@@ -85,10 +85,17 @@ export function createUtilsModule(dependencies) {
       const sizeScale = run.size === 'small' ? style.smallTextScale : run.size === 'large' ? style.largeTextScale : 1;
       const emphasisScale = run.emphasized ? style.emphasisScale : 1;
       const commentScale = run.comment ? (style.commentScale || 1) : 1;
-      const scaledFontSize = Math.max(1, Math.round(fontSize * sizeScale * emphasisScale * commentScale));
-      if (scaledFontSize !== fontSize) {
+      const runScale = sizeScale * emphasisScale * commentScale;
+      const scaledFontSize = Math.max(1, Math.round(fontSize * runScale));
+      if (runScale !== 1) {
         startTags += `\\fs${scaledFontSize}`;
         endTags += `\\fs${fontSize}`;
+        const transform = inlineOptions?.fontTransform;
+        if (transform) {
+          const timing = `${transform.startMs},${transform.endMs},${transform.accel}`;
+          startTags += `\\t(${timing},\\fs${Math.max(1, Number((transform.target * runScale).toFixed(4)))})`;
+          endTags += `\\t(${timing},\\fs${transform.target})`;
+        }
       }
       if (run.struck && !style.strikeOut) {
         startTags += '\\s1';
@@ -435,12 +442,22 @@ export function createUtilsModule(dependencies) {
           if (!slice.legacy) {
             const from = { x: number(piece.from.x + item.offset.x * scale), y: number(piece.from.y + item.offset.y * scale) };
             const to = { x: number(piece.to.x + item.offset.x * scale), y: number(piece.to.y + item.offset.y * scale) };
+            const instant = piece.instant === null || piece.instant === undefined ? null : piece.instant - piece.start;
+            const moveStart = instant === null ? 0 : instant;
+            const moveEnd = instant === null ? piece.end - piece.start : instant === 0 ? 1 : instant;
             position = from.x === to.x && from.y === to.y ? `\\pos(${from.x},${from.y})`
-              : `\\move(${from.x},${from.y},${to.x},${to.y},0,${piece.end - piece.start})`;
+              : `\\move(${from.x},${from.y},${to.x},${to.y},${moveStart},${moveEnd})`;
             position = `\\an${item.alignment}\\q2${position}\\fs${size}\\fsp${number(scaledStyle.spacing)}\\bord${number(scaledStyle.outline)}\\shad${number(scaledStyle.shadow)}`;
           }
-          const content = slice.legacy ? item.originalText : assEmphasizedText('', scaledStyle, size, emphasisSyntax,
-            { ...inlineOptions, preparedRuns: item.runs });
+          const transformTarget = profile.animations.t.enabled
+            ? dependencies.assTransformStyleTargets(profile.animations.t.tags).fontSize : undefined;
+          const fontTransform = transformTarget === undefined ? null : {
+            startMs: profile.animations.t.startMs - (piece.start - item.start),
+            endMs: profile.animations.t.endMs - (piece.start - item.start),
+            accel: profile.animations.t.accel, target: Number((transformTarget * scale).toFixed(4)),
+          };
+          const content = slice.legacy && !(item.sharedStackCue && fontTransform) ? item.originalText : assEmphasizedText('', scaledStyle, size, emphasisSyntax,
+            { ...inlineOptions, preparedRuns: item.runs, fontTransform });
           const decorated = (position ? `{${position}}` : '') + (animation ? `{${animation}}` : '') + content;
           events.push(`Dialogue: ${{ main: 0, extension: 1, overlay: 2 }[item.role]},${formatAssTime(piece.start)},${formatAssTime(piece.end)},${item.styleName},${normalizeAssEventField(item.speakerName)},0,0,0,,${decorated}`);
         }

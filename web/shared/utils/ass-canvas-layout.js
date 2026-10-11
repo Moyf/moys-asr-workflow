@@ -224,7 +224,7 @@ window.MAWE.register('utils-ass-canvas-layout', function createUtilsModule(depen
   function assStackRawRoot(slice, time) {
     const root = slice.root;
     if (root?.role === 'main' && slice.profile?.animations?.move?.enabled) {
-      const state = dependencies.assPreviewAnimationState(slice.profile, time - root.start, root.end - root.start);
+      const state = dependencies.assStackAnimationState(slice.profile, time - root.start, root.end - root.start);
       return { x: state.moveX, y: state.moveY };
     }
     return slice.baseAnchor;
@@ -244,7 +244,12 @@ window.MAWE.register('utils-ass-canvas-layout', function createUtilsModule(depen
     const move = slice.profile?.animations?.move;
     if (slice.root?.role === 'main' && move?.enabled) {
       const a = slice.root.start + move.t1;
-      const b = slice.root.start + move.t2;
+      const b = move.t1 === 0 && move.t2 === 0 ? slice.root.end : slice.root.start + move.t2;
+      if (a === b) {
+        const instant = b;
+        return [{ start: slice.start, end: slice.end, instant,
+          from: assStackRootPosition(slice, slice.start), to: assStackRootPosition(slice, Math.max(slice.start, slice.end - 0.001)) }];
+      }
       for (const time of [a, b]) if (time > slice.start && time < slice.end) breaks.add(Math.round(time / 10) * 10);
       if (b > a) {
         for (const [axis, lower, upper] of [
@@ -263,7 +268,7 @@ window.MAWE.register('utils-ass-canvas-layout', function createUtilsModule(depen
     }
     const points = [...breaks].filter(time => time >= slice.start && time <= slice.end).sort((a, b) => a - b);
     return points.slice(0, -1).map((start, index) => ({ start, end: points[index + 1],
-      from: assStackRootPosition(slice, start), to: assStackRootPosition(slice, points[index + 1]) }));
+      from: assStackRootPosition(slice, start), to: assStackRootPosition(slice, points[index + 1]), instant: null }));
   }
 
   /** @param {any} options */
@@ -310,6 +315,11 @@ window.MAWE.register('utils-ass-canvas-layout', function createUtilsModule(depen
         slice.legacy = true; slice.items = [{ ...root, alignment: root.style.alignment, offset: { x: 0, y: 0 } }];
         slice.pieces = [{ start, end }]; slices.push(slice); continue;
       }
+      if (ordered.some(item => item.style.spacing < 0)
+        || (profile?.animations?.t?.enabled && dependencies.assTransformStyleTargets(transformText).spacing < 0)) {
+        slice.diagnostic = 'ASS 自动堆叠无法可靠排布负字距；请将样式及变换的字距改为非负值后导出。';
+        diagnostics.push({ start, end, message: slice.diagnostic }); slices.push(slice); continue;
+      }
       if (unsupported) {
         slice.diagnostic = 'ASS 自动堆叠不支持此方案的 3D 透视或自定义几何标签；请关闭这些变换后导出。';
         diagnostics.push({ start, end, message: slice.diagnostic }); slices.push(slice); continue;
@@ -336,7 +346,17 @@ window.MAWE.register('utils-ass-canvas-layout', function createUtilsModule(depen
       }
       slice.scale = Math.min(1, (width - slice.padding * 2) / Math.max(1, slice.box.right - slice.box.left),
         (height - slice.padding * 2) / Math.max(1, slice.box.bottom - slice.box.top));
-      const smallest = Math.min(...ordered.map(item => item.fontSize));
+      const smallest = Math.min(...ordered.flatMap(item => {
+        const values = [start, end].map(time => {
+          const state = dependencies.assStackAnimationState(profile, time - item.start, item.end - item.start);
+          return state.transformProgress === null ? item.fontSize
+            : dependencies.assPreviewStyleAt({ ...item.style, fontSize: item.fontSize }, profile.animations.t.tags,
+              state.transformProgress, { nativeFontSize: true }).fontSize;
+        });
+        return item.runs.filter(run => run.text).map(run => Math.max(1, Math.round(Math.min(...values)
+          * (run.size === 'small' ? item.style.smallTextScale : run.size === 'large' ? item.style.largeTextScale : 1)
+          * (run.emphasized ? item.style.emphasisScale : 1) * (run.comment ? item.style.commentScale : 1))));
+      }));
       if (!Number.isFinite(slice.scale) || slice.scale <= 0 || (slice.scale < 1 && smallest * slice.scale < Math.min(smallest, 8 * height / 1080))) {
         slice.diagnostic = 'ASS 字幕组过大，缩放后字号低于可读范围；请减少同时显示的文字或调小样式后重试。';
         diagnostics.push({ start, end, message: slice.diagnostic });
@@ -344,6 +364,9 @@ window.MAWE.register('utils-ass-canvas-layout', function createUtilsModule(depen
       slice.pieces = assStackMotionPieces(slice);
       slices.push(slice);
     }
+    const cueKey = item => item.segment || `${item.role}:${item.index}:${item.start}:${item.end}`;
+    const groupedCues = new Set(slices.filter(slice => !slice.legacy).flatMap(slice => slice.items.map(cueKey)));
+    for (const slice of slices) for (const item of slice.items) item.sharedStackCue = groupedCues.has(cueKey(item));
     return { slices, diagnostics, width, height };
   }
 
@@ -356,7 +379,9 @@ window.MAWE.register('utils-ass-canvas-layout', function createUtilsModule(depen
     if (slice.diagnostic) return { items: [], diagnostic: slice.diagnostic };
     if (slice.legacy) return { items: slice.items.map(item => ({ ...item, scale: 1, legacy: true })), diagnostic: '' };
     const piece = slice.pieces.find(piece => timeMs < piece.end) || slice.pieces[slice.pieces.length - 1];
-    const amount = Math.min(1, Math.max(0, (timeMs - piece.start) / Math.max(1, piece.end - piece.start)));
+    const amount = piece.instant !== null && piece.instant !== undefined
+      ? (piece.instant === piece.start ? Math.min(1, Math.max(0, timeMs - piece.instant)) : (timeMs > piece.instant ? 1 : 0))
+      : Math.min(1, Math.max(0, (timeMs - piece.start) / Math.max(1, piece.end - piece.start)));
     const root = { x: piece.from.x + (piece.to.x - piece.from.x) * amount,
       y: piece.from.y + (piece.to.y - piece.from.y) * amount };
     return { items: slice.items.map(item => ({ ...item, scale: slice.scale,

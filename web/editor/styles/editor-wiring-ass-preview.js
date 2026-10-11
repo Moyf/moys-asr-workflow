@@ -283,12 +283,12 @@ function applyAssSubtitlePreview({ tMs, overlaySegments }) {
 
   const profile = cachedAssStackPlan.profile;
   const tracks = frame.items.map(item => {
-    const animation = window.AsrEditorUtils.assPreviewAnimationState(profile,
+    const animation = (item.legacy && !item.sharedStackCue ? window.AsrEditorUtils.assPreviewAnimationState : window.AsrEditorUtils.assStackAnimationState)(profile,
       Number(tMs) - item.start, item.end - item.start, { fad: item.fad });
     const native = { ...item.style, fontSize: item.fontSize };
     const animated = animation.transformProgress === null ? native
       : window.AsrEditorUtils.assPreviewStyleAt(native, profile.animations.t.tags, animation.transformProgress, { nativeFontSize: true });
-    if (!item.legacy && profile.animations.t.enabled) {
+    if ((!item.legacy || item.sharedStackCue) && profile.animations.t.enabled) {
       // libass applies discrete style tags inside t immediately, even before
       // the numeric transform window starts (real b/i frame-hash verification).
       const targets = window.AsrEditorUtils.assTransformStyleTargets(profile.animations.t.tags);

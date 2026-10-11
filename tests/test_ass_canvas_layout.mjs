@@ -64,6 +64,78 @@ test('stack planning uses Dialogue centiseconds and retains original cue clocks 
   assert.equal(h.assTransformStyleTargets(String.raw`\fs36.5\frz45.5`).fontSize, 36.5);
 });
 
+test('stack movement follows libass instant and default whole-cue timing', () => {
+  const style = h.normalizeAssStyle({ fontSize: 36, outline: 0 });
+  const item = role => ({ role, index: 0, start: 0, end: 2000, style, fontSize: 36, runs: [{ text: 'TEXT' }] });
+  const profile = h.normalizeAssProfile({ animations: { move: { enabled: true,
+    x1: 400, y1: 700, x2: 1000, y2: 700, t1: 500, t2: 500 } } });
+  const plan = h.assCreateStackPlan({ profile, items: [item('main'), item('extension')] });
+  for (const time of [0, 250, 499, 500, 501, 505, 510]) {
+    assert.equal(h.assStackFrame(plan, time).items[0].anchor.x, time <= 500 ? 400 : 1000);
+  }
+  profile.animations.move.t1 = 0; profile.animations.move.t2 = 0;
+  const linear = h.assCreateStackPlan({ profile, items: [item('main'), item('extension')] });
+  for (const time of [0, 250, 500, 1000, 1500]) {
+    assert.equal(h.assStackFrame(linear, time).items[0].anchor.x, 400 + 600 * time / 2000);
+  }
+  const boundary = h.assCreateStackPlan({ profile: h.normalizeAssProfile({ animations: { move: {
+    ...profile.animations.move, t1: 500, t2: 500,
+  } } }), items: [item('main'), { ...item('extension'), start: 500 }] });
+  assert.equal(h.assStackFrame(boundary, 500).items[0].anchor.x, 400);
+  assert.equal(h.assStackFrame(boundary, 501).items[0].anchor.x, 1000);
+});
+
+test('stack opacity respects libass fade-in precedence for overlapping short-cue fades', () => {
+  const profile = h.normalizeAssProfile({ animations: { fad: { enabled: true, inMs: 800, outMs: 800 } } });
+  assert.equal(h.assStackAnimationState(profile, 600, 1000).opacity, 0.75);
+  assert.equal(h.assStackAnimationState(profile, 900, 1000).opacity, 0.125);
+  assert.equal(h.assPreviewAnimationState(profile, 600, 1000).opacity, 0.5, 'legacy behaviour remains unchanged');
+});
+
+test('stack rejects negative spacing and does not silently fit tiny formatted runs', () => {
+  const style = h.normalizeAssStyle({ fontSize: 72, smallTextScale: 0.1, spacing: -20 });
+  const item = role => ({ role, index: 0, start: 0, end: 1000, style, fontSize: 72,
+    runs: [{ text: 'TEXT', size: 'small' }] });
+  const profile = h.normalizeAssProfile({ animations: {} });
+  assert.equal(h.assCreateStackPlan({ profile, items: [item('main')] }).slices[0].legacy, true);
+  assert.match(h.assCreateStackPlan({ profile, items: [item('main'), item('extension')] }).diagnostics[0].message, /负字距/);
+  style.spacing = 0;
+  const enormous = { ...item('extension'), runs: [{ text: ('BIG\n').repeat(200) }] };
+  assert.match(h.assCreateStackPlan({ profile, items: [item('main'), enormous] }).diagnostics[0].message, /可读/);
+});
+
+test('formatted font transforms retain the source clock and plain fractional fit never resets font animation', () => {
+  let plan;
+  const output = h.buildAssPayload([{ start: 0, end: 2000, text: 'Plain **E** //C// -S-' }], {
+    assProfile: { animations: { t: { enabled: true, startMs: 0, endMs: 1500, accel: 2, tags: String.raw`\fs120\frz25` } } },
+    assStyle: { fontSize: 64, emphasisScale: 1.5, commentScale: 0.5 },
+    assExtensionStyle: { fontSize: 48 },
+    extensionSegments: [{ start: 500, end: 2000, text: 'E' }],
+    overlaySegments: [{ start: 500, end: 2000, text: 'O' }], onAssPlan: value => { plan = value; },
+  });
+  const line = output.split('\n').find(event => event.startsWith('Dialogue: 0,0:00:00.50,'));
+  assert.ok(line.includes('}Plain '), 'plain text follows the global animation without a local fs reset');
+  const target = Number((120 * plan.slices[1].scale).toFixed(4));
+  const targets = Array.from(line.matchAll(/\\t\(-500,1000,2,\\fs([\d.]+)\)/g), match => Number(match[1]));
+  assert.ok(targets.some(value => Math.abs(value - target * 1.5) < 0.001), 'emphasis uses its proportional target');
+  assert.ok(targets.some(value => Math.abs(value - target * 0.5) < 0.001), 'comment uses its proportional target');
+  assert.ok(targets.some(value => value === target), 'restore base retains its source clock');
+});
+
+test('a formatted main cue keeps font clocks through solo, stacked and solo intervals', () => {
+  const output = h.buildAssPayload([{ start: 0, end: 2000, text: '**BIG** tail' }], {
+    assProfile: { animations: { t: { enabled: true, startMs: 0, endMs: 1000, accel: 2, tags: String.raw`\fs144` } } },
+    assStyle: { fontSize: 72, emphasisScale: 1.5 }, assExtensionStyle: { fontSize: 54 },
+    extensionSegments: [{ start: 500, end: 1500, text: 'E' }],
+  });
+  const main = output.split('\n').filter(line => line.startsWith('Dialogue: 0,'));
+  assert.equal(main.length, 3);
+  assert.ok(!main[0].includes('\\pos(') && !main[2].includes('\\pos('), 'solo positioning retains its original semantics');
+  assert.match(main[0], /\\t\(0,1000,2,\\fs216\)/);
+  assert.match(main[1], /\\t\(-500,500,2,\\fs216\)/);
+  assert.match(main[2], /\\t\(-1500,-500,2,\\fs216\)/);
+});
+
 test('alignment 网格映射到列/行（屏幕语义：1-3 底行，7-9 顶行）', () => {
   same(h.assCanvasAlignmentGrid(2), { column: 1, row: 2 });
   same(h.assCanvasAlignmentGrid(1), { column: 0, row: 2 });

@@ -277,9 +277,14 @@ document.getElementById('download-full-srt')?.addEventListener('click', async ()
 });
 document.getElementById('download-full-ass')?.addEventListener('click', async () => {
   if (MaweInlineEdit.editingState) MaweInlineEdit.finishEdit(true);
-  await MaweExportTimeline.downloadFile(MaweExportSrt.buildAss(), `${MaweBoot.FILENAME_BASE}.ass`, 'text/plain', {
-    desc: '完整 ASS 字幕文件', types: { 'text/plain': ['.ass'] }
-  });
+  try {
+    const payload = MaweExportSrt.buildAss();
+    await MaweExportTimeline.downloadFile(payload, `${MaweBoot.FILENAME_BASE}.ass`, 'text/plain', {
+      desc: '完整 ASS 字幕文件', types: { 'text/plain': ['.ass'] }
+    });
+  } catch (error) {
+    MaweHint.flashHint(`ASS 导出失败：${error.message || error}`, 'warning');
+  }
 });
 document.getElementById('download-color-srt')?.addEventListener('click', () => MaweExportSrt.downloadColorSrts(false));
 document.getElementById('download-plain-text')?.addEventListener('click', async () => {
@@ -345,11 +350,15 @@ document.getElementById('download-gap-removed-srt')?.addEventListener('click', a
 document.getElementById('download-gap-removed-color-srt')?.addEventListener('click', () => MaweExportSrt.downloadColorSrts(true));
 document.getElementById('download-gap-removed-ass')?.addEventListener('click', async () => {
   if (MaweInlineEdit.editingState) MaweInlineEdit.finishEdit(true);
-  const payload = MaweExportSrt.buildGapRemovedAss();
-  if (payload) {
-    await MaweExportTimeline.downloadFile(payload, `${MaweBoot.FILENAME_BASE}_${window.MAWE_I18N?.exportTag?.('gap-removed') || 'gap-removed'}.ass`, 'text/plain', {
-      desc: '去空隙带样式 ASS 字幕', types: { 'text/plain': ['.ass'] }
-    });
+  try {
+    const payload = MaweExportSrt.buildGapRemovedAss();
+    if (payload) {
+      await MaweExportTimeline.downloadFile(payload, `${MaweBoot.FILENAME_BASE}_${window.MAWE_I18N?.exportTag?.('gap-removed') || 'gap-removed'}.ass`, 'text/plain', {
+        desc: '去空隙带样式 ASS 字幕', types: { 'text/plain': ['.ass'] }
+      });
+    }
+  } catch (error) {
+    MaweHint.flashHint(`ASS 导出失败：${error.message || error}`, 'warning');
   }
 });
 document.getElementById('download-otio')?.addEventListener('click', async () => {
