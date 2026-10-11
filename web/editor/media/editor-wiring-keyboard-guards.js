@@ -76,8 +76,9 @@ document.addEventListener('keydown', (e) => {
   if (MaweDom.stickerPreviewModal.classList.contains('show')) return;
   if (MaweDom.projectMediaModal.classList.contains('show')) return;
   if (MaweDom.ctxmenu.classList.contains('show')) return;
-  if (MaweCoreState.waveformEditor?.hasCueDrag?.()) {
-    // 选区保持不变；交给后面的波形快捷键处理器取消活动拖动并消费 Esc。
+  const waveform = MaweCoreState.waveformEditor;
+  if (waveform?.hasCueDrag?.() || waveform?.markerDrag || waveform?.markerCreateDrag) {
+    // 选区保持不变；交给后面的波形快捷键处理器取消字幕/标记拖动并消费 Esc。
     return;
   }
   MaweSelection.clearSelection();

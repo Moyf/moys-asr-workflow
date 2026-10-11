@@ -358,7 +358,7 @@
     "editor/cues/editor-wiring-search-filter.js": "947be9af11eb8ac637d43bae40169cd8f04d5362ecc03e93140b9607921becdb",
     "editor/cues/editor-wiring-overlay-split-merge.js": "6842c05dec08f50f4640cbc17cedd6f4fa8f03d1c4f7bbde361e28839a60c2eb",
     "editor/cues/editor-wiring-list-navigation.js": "724204b9dc26435f9edaab5c7f7426e6d0c7ae9504181f2b984b39407a4f5d28",
-    "editor/media/editor-wiring-keyboard-guards.js": "34177326518230a6f901e1b552748610c973db675cca6e8337afbaf320ec90f5",
+    "editor/media/editor-wiring-keyboard-guards.js": "979726a3a8110ead3da1e655ea658fd14360bf399feffb2759b8372abd95cf62",
     "editor/cues/editor-wiring-word-timing.js": "b85e4b62e9bba28d77d573b1d2d97f7173a4d4b25b6b583c4fe780746e4594fc",
     "editor/media/editor-wiring-media-controls.js": "978298e2f616be772132c07321187f66ebc5f46d31d4d14ac0a04a0f0815194f",
     "editor/cues/editor-wiring-edit-shortcuts.js": "e9b2ba8907f8e321769f87a50ee5366364a2612655036e51573d225455474d93",
@@ -692,7 +692,7 @@
         "format": "esm"
       },
       "web/editor-entry.mjs": {
-        "bytes": 1867726,
+        "bytes": 1867816,
         "imports": [
           {
             "path": "web/shared/host/storage.js",
@@ -1193,10 +1193,10 @@
             "bytesInOutput": 4427
           },
           "web/editor-entry.mjs": {
-            "bytesInOutput": 1086337
+            "bytesInOutput": 1086390
           }
         },
-        "bytes": 1441853
+        "bytes": 1441906
       }
     }
   }
