@@ -25,6 +25,7 @@ from send2trash import send2trash
 
 from maw.app_paths import default_emoji_font_path
 from maw.app_paths import application_directory, default_app_data_root
+from maw.web_build import BundlePreflightError, ensure_bundle
 from maw.asr_presets import (
     MAX_NAME_LENGTH,
     create_preset,
@@ -3873,6 +3874,14 @@ def run_app(*, debug: bool = False, devtools: bool = False, server_port: int | N
     # 事件流与进程内 print/traceback 共用同一个 sink：单锁单文件。
     log_sink = LocalLogSink()
     log_sink.write_text("MAW v" + _app_version(paths), label="session")
+    # bundle 是构建产物（不入库）：加载 launcher 页面前确保与源码一致，必要时
+    # 自动重建。合成路径（测试用的临时 LauncherPaths）没有 web/ 源码树，跳过。
+    if (paths.root / "web").is_dir():
+        try:
+            ensure_bundle(paths.root, "launcher", allow_build=not getattr(sys, "frozen", False))
+        except BundlePreflightError as error:
+            log_sink.write_text(str(error), label="session")
+            raise SystemExit(f"MAW Launcher 无法启动：{error}") from error
     api = LauncherApi(paths=paths, default_server_port=server_port, log_sink=log_sink)
     install_stdio_tee(log_sink)
     launcher_url = paths.launcher_html.resolve().as_uri()

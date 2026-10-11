@@ -12,6 +12,15 @@ APPIMAGE_TOOL="$BUILD_DIR/appimagetool-x86_64.AppImage"
 APPIMAGE_URL="https://github.com/AppImage/AppImageKit/releases/download/continuous/appimagetool-x86_64.AppImage"
 mkdir -p "$BUILD_DIR"
 
+# bundle 是构建产物（不入库）：打包前显式构建；MAW.spec 会在缺失时 fail fast。
+echo "==> 0/6 构建 web bundle（esbuild 产物，不入库）"
+command -v pnpm >/dev/null 2>&1 || {
+    echo "错误：构建 web bundle 需要 pnpm（先安装 Node.js >=18 与 pnpm）。" >&2
+    exit 1
+}
+pnpm install --frozen-lockfile
+pnpm run build
+
 echo "==> 1/6 PyInstaller 构建 dist/MAW"
 # 生成托管 Runtime 的 frozen requirements txt（MAW.spec datas 条件追加打包）；
 # 主清单与 CPU 变体统一由 freezer 模块执行（与 build-windows.ps1 /

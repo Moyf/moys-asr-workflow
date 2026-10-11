@@ -43,6 +43,7 @@ from maw.project_io import (
     selected_audio_track_from_metadata,
 )
 from maw.stickers import get_default_sticker_dir
+from maw.web_build import BundlePreflightError, ensure_bundle
 from maw.media import AUDIO_EXTENSIONS, VIDEO_EXTENSIONS, read_bwf_time_reference
 from maw.waveform import (
     DEFAULT_PEAKS_PER_SECOND,
@@ -360,6 +361,13 @@ def main():
         help=f"波形峰值密度（默认: {DEFAULT_PEAKS_PER_SECOND}/秒）",
     )
     args = parser.parse_args()
+
+    # bundle 是构建产物（不入库）：渲染编辑器页面前确保与源码一致，必要时自动重建。
+    try:
+        ensure_bundle(Path(__file__).parent, "editor")
+    except BundlePreflightError as error:
+        print(str(error), file=sys.stderr)
+        return 1
 
     # === 空壳模式：生成最新模板的空编辑器 ===
     if args.blank:

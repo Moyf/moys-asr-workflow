@@ -11,6 +11,23 @@ except ImportError:  # pragma: no cover - only reached outside a PyInstaller bui
 
 ROOT = Path(SPECPATH).resolve()
 
+# bundle 是构建产物（不入库）：打包前必须先构建（build-windows.ps1 /
+# build-appimage.sh / release 工作流都会显式构建）。在这里 fail fast，
+# 避免 PyInstaller 把缺失产物的 web/ 静默打成无法加载编辑器的坏包。
+_BUNDLE_ARTIFACTS = [
+    ROOT / "web" / "editor" / "boot" / "editor-bundle.js",
+    ROOT / "web" / "editor" / "boot" / "editor-bundle.meta.json",
+    ROOT / "web" / "launcher" / "boot" / "launcher-bundle.js",
+    ROOT / "web" / "launcher" / "boot" / "launcher-bundle.meta.json",
+]
+_MISSING_BUNDLES = [p for p in _BUNDLE_ARTIFACTS if not p.is_file()]
+if _MISSING_BUNDLES:
+    raise SystemExit(
+        "MAW.spec: 缺少 web 构建产物: "
+        + ", ".join(p.relative_to(ROOT).as_posix() for p in _MISSING_BUNDLES)
+        + "。请先执行 pnpm install --frozen-lockfile && pnpm run build 再打包。"
+    )
+
 binaries = []
 if sys.platform == "linux":
     # Qt 6.5+ 的 xcb 平台插件需要 libxcb-cursor；部分环境（如 ubuntu-22.04

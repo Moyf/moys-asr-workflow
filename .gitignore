@@ -41,6 +41,14 @@ website/dist/
 playwright-report/
 test-results/
 
+# esbuild 产物是构建生成物，不进 Git：运行时入口（serve.py / maw_gui.py /
+# edit.py --blank）会在缺失或过期时自动重建，发布打包前也显式构建。
+# 新鲜度哈希记录在同目录 .meta.json（同为生成物）。
+web/editor/boot/editor-bundle.js
+web/editor/boot/editor-bundle.meta.json
+web/launcher/boot/launcher-bundle.js
+web/launcher/boot/launcher-bundle.meta.json
+
 # Local Windows GUI packaging outputs. Keep generated executables local.
 /build/
 /dist/
