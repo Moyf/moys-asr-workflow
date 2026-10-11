@@ -19,6 +19,10 @@ from typing import Callable
 from maw.gui_platform import (popen_process_tree, process_group_kwargs,
                               release_process_tree, terminate_process_tree)
 
+MAX_MEDIA_JOB_STDOUT_BYTES = 2 * 1024 * 1024
+MAX_MEDIA_JOB_STDERR_BYTES = 64 * 1024
+MEDIA_JOB_PIPE_READ_CHARS = 4096
+
 
 class MediaJobCancelled(RuntimeError):
     pass
@@ -78,21 +82,35 @@ class MediaJob:
         with self.manager.lock:
             self.process = process
         stdout, stderr = [], []
+        output_overflow = threading.Event()
 
         def drain(pipe, target, progress=False):
-            for line in pipe:
-                target.append(line)
+            retained_bytes = 0
+            while line := pipe.readline(MEDIA_JOB_PIPE_READ_CHARS):
+                # readline(size) bounds even a single line without a newline.
+                # FFmpeg progress is consumed live rather than retained for hours.
                 if progress and duration_ms and line.startswith("out_time_us="):
                     try:
                         value = int(line.partition("=")[2]) / (duration_ms * 1000)
                         with self.manager.lock:
                             if not self.cancelled.is_set():
                                 self.progress = max(0, min(0.99, value))
-                    except ValueError:
+                    except (ValueError, OverflowError):
                         pass
-                # Diagnostic pipes must never grow without bound.
-                if len(target) > 4096:
-                    del target[:2048]
+                if progress and duration_ms:
+                    continue
+                size = len(line.encode("utf-8"))
+                if progress:
+                    if output_overflow.is_set():
+                        continue
+                    if retained_bytes + size > MAX_MEDIA_JOB_STDOUT_BYTES:
+                        output_overflow.set()
+                        continue
+                target.append(line)
+                retained_bytes += size
+                if not progress:
+                    while retained_bytes > MAX_MEDIA_JOB_STDERR_BYTES:
+                        retained_bytes -= len(target.pop(0).encode("utf-8"))
 
         readers = [threading.Thread(target=drain, args=(process.stdout, stdout, True), daemon=True),
                    threading.Thread(target=drain, args=(process.stderr, stderr), daemon=True)]
@@ -102,6 +120,8 @@ class MediaJob:
         try:
             while process.poll() is None:
                 self.check_cancelled()
+                if output_overflow.is_set():
+                    raise RuntimeError("媒体进程标准输出超过安全大小上限")
                 if time.monotonic() >= deadline:
                     raise subprocess.TimeoutExpired(command, timeout)
                 self.cancelled.wait(0.05)
@@ -126,6 +146,9 @@ class MediaJob:
                 self.process = None
             if any(reader.is_alive() for reader in readers):
                 raise RuntimeError("无法关闭媒体进程输出")
+        if output_overflow.is_set():
+            # FFprobe JSON is never silently truncated and then parsed.
+            raise RuntimeError("媒体进程标准输出超过安全大小上限")
         return subprocess.CompletedProcess(command, process.returncode, "".join(stdout), "".join(stderr))
 
 
@@ -169,7 +192,7 @@ class MediaJobManager:
                         job.state = "ready"
                         job.stage = "ready"
                         job.progress = 1
-                        job.timer = threading.Timer(self.ready_timeout, self.cancel, args=(job.id,))
+                        job.timer = threading.Timer(self.ready_timeout, self._expire_ready, args=(job.id,))
                         job.timer.daemon = True
                         job.timer.start()
                 except MediaJobCancelled:
@@ -193,6 +216,13 @@ class MediaJobManager:
             if job_id not in self.jobs:
                 raise MediaJobUnavailable("视频任务不存在或已过期")
             return self.jobs[job_id]
+
+    def _expire_ready(self, job_id: str):
+        with self.lock:
+            job = self.jobs.get(job_id)
+            # Timer.cancel cannot stop a callback already waiting for this lock.
+            if job is not None and job.state == "ready":
+                self.cancel(job_id)
 
     def cancel(self, job_id: str):
         with self.lock:

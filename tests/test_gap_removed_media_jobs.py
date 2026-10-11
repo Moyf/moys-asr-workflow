@@ -14,7 +14,8 @@ import urllib.error
 from unittest import mock
 from pathlib import Path
 
-from maw.media_jobs import MediaJobBusy, MediaJobManager, MediaJobUnavailable
+from maw.media_jobs import (MAX_MEDIA_JOB_STDERR_BYTES, MediaJobBusy,
+                            MediaJobManager, MediaJobUnavailable)
 
 
 class MediaJobsTests(unittest.TestCase):
@@ -119,6 +120,43 @@ class MediaJobsTests(unittest.TestCase):
         job = self.start(lambda job: job.output.write_bytes(b"media"))
         self.wait(job, "cancelled")
         self.assertFalse(job.directory.exists())
+
+    def test_queued_expiry_cannot_cancel_an_accepted_download(self):
+        job = self.start(lambda job: job.output.write_bytes(b"media"))
+        self.wait(job, "ready")
+        entered = threading.Event()
+        def expire():
+            entered.set()
+            self.manager._expire_ready(job.id)
+        with self.manager.lock:
+            expiry = threading.Thread(target=expire)
+            expiry.start()
+            self.assertTrue(entered.wait(2))
+            self.manager.begin_download(job.id)
+        expiry.join(2)
+        self.assertFalse(expiry.is_alive())
+        self.assertEqual(job.state, "downloading")
+        self.assertFalse(job.cancelled.is_set())
+        self.manager.finish_download(job, success=True)
+        self.assertEqual(job.state, "completed")
+
+    def test_giant_stdout_line_fails_with_explicit_size_error(self):
+        job = self.start(lambda job: job.run_command([sys.executable, "-c",
+            "import sys; sys.stdout.write('x' * (8*1024*1024)); sys.stdout.flush()"] ))
+        self.wait(job, "failed")
+        self.assertIn("标准输出超过安全大小上限", job.error)
+        self.assertFalse(job.directory.exists())
+
+    def test_giant_unicode_stderr_line_retains_only_bounded_diagnostics(self):
+        captured = []
+        def runner(job):
+            captured.append(job.run_command([sys.executable, "-c",
+                "import sys; sys.stderr.write('界' * (1024*1024)); sys.stderr.flush()"] ))
+        job = self.start(runner)
+        self.wait(job, "ready")
+        self.assertEqual(captured[0].returncode, 0)
+        self.assertGreater(len(captured[0].stderr), 0)
+        self.assertLessEqual(len(captured[0].stderr.encode("utf-8")), MAX_MEDIA_JOB_STDERR_BYTES)
 
     def test_descendant_inheriting_pipes_is_reaped_after_parent_exits(self):
         def runner(job):

@@ -31,6 +31,11 @@ async function fixture(mode, run) {
     const job = match && jobs.get(match[1]);
     if (!job) { res.writeHead(404); res.end('{}'); return; }
     if (match[2] === '/cancel') {
+      if (mode.startsWith('cancel-')) {
+        job.cancelRequested = true;
+        if (mode === 'cancel-body') res.write('{"state":');
+        return;
+      }
       job.state = 'cancelled'; res.end(JSON.stringify(job)); return;
     }
     if (match[2] === '/download') {
@@ -45,7 +50,7 @@ async function fixture(mode, run) {
       } else { res.end('test'); job.state = 'completed'; }
       return;
     }
-    if (!['prepare', 'rebuild'].includes(mode) && job.state === 'running') { job.state = 'ready'; job.stage = 'ready'; job.progress = 1; }
+    if (!['prepare', 'rebuild', 'cancel-headers', 'cancel-body'].includes(mode) && job.state === 'running') { job.state = 'ready'; job.stage = 'ready'; job.progress = 1; }
     res.end(JSON.stringify(job));
   });
   server.on('connection', socket => { sockets.add(socket); socket.on('close', () => sockets.delete(socket)); });
@@ -138,6 +143,24 @@ test('binding changed during processing stops old job before download', async ({
   });
 });
 
+for (const mode of ['cancel-headers', 'cancel-body']) {
+  test(`${mode} uses a bounded cleanup deadline without claiming stopped`, async ({ page }) => {
+    await fixture(mode, async (origin, state) => {
+      await install(page, origin, mode);
+      await page.clock.install();
+      await page.click('#download-gap-removed-video');
+      await expect.poll(() => page.evaluate(() => window.__maweGapRemovedVideoTask?.id)).toBe('1');
+      await page.click('#gap-video-job-stop');
+      await expect.poll(() => [...state.jobs.values()][0]?.cancelRequested).toBe(true);
+      await page.clock.fastForward(31000);
+      await expect.poll(() => page.evaluate(() => window.hints.some(text => text.includes('无法确认视频任务已停止')))).toBe(true);
+      await expect(page.locator('#download-gap-removed-video')).toBeEnabled();
+      expect(await page.evaluate(() => window.__maweGapRemovedVideoTask)).toBeNull();
+      expect(await page.evaluate(() => window.hints.some(text => text === '视频导出已停止'))).toBe(false);
+    });
+  });
+}
+
 test('rendered editor reconstructs real video and shows native commit boundary', async ({ page }, testInfo) => {
   const dir = makeTempDir('media-jobs-real');
   let server;
@@ -166,6 +189,20 @@ test('rendered editor reconstructs real video and shows native commit boundary',
     await expect(page.locator('#gap-video-job-stop')).toBeDisabled();
     await expect(page.locator('#gap-video-job-status')).toContainText('正在完成保存');
     expect(await page.evaluate(() => window.realVideoBytes)).toBeGreaterThan(0);
+    const spacing = await page.evaluate(() => {
+      const panel = document.querySelector('.gap-video-job');
+      const status = panel.querySelector('#gap-video-job-status').getBoundingClientRect();
+      const progress = panel.querySelector('progress');
+      const bar = progress.getBoundingClientRect();
+      const stop = panel.querySelector('#gap-video-job-stop').getBoundingClientRect();
+      const style = getComputedStyle(progress);
+      return { statusToProgressPx: bar.top - status.bottom, progressToStopPx: stop.top - bar.bottom,
+        progressMarginTop: style.marginTop, progressMarginBottom: style.marginBottom,
+        panelPadding: getComputedStyle(panel).padding };
+    });
+    expect(spacing.statusToProgressPx).toBeGreaterThanOrEqual(8);
+    expect(spacing.progressToStopPx).toBeGreaterThanOrEqual(8);
+    await testInfo.attach('media-job-panel-spacing', { body: JSON.stringify(spacing), contentType: 'application/json' });
     await page.screenshot({ path: testInfo.outputPath('real-editor-media-job-commit.png') });
     await page.evaluate(() => window.realVideoFinishCommit());
     await expect.poll(() => page.evaluate(() => window.realVideoHints.some(text => text.includes('已重组并保存')))).toBe(true);

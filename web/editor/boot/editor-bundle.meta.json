@@ -368,7 +368,7 @@
     "editor/styles/editor-wiring-ass-frame.js": "1a3c186069460cde01b86e0c1614b8b71d3f9fa7c4ef377988824b14adff69e5",
     "editor/media/editor-wiring-sticker-preview.js": "fa46c5d9075247e627f4fea99cd13d36d1492e4bd5ee1c7a51f046168abbbdb8",
     "editor/io/editor-wiring-export-context.js": "89ac0732b2bcb77878991af980335662d739e4d1cfff65152e4878b042545f0e",
-    "editor/io/editor-wiring-export-actions.js": "0081675d2bc1411dc7fc17ac90b551881c4cf43e2732aa0929cb27ebee5fb523",
+    "editor/io/editor-wiring-export-actions.js": "2001428e130b0737863dc50788c2cb644fb3cf07252fba23e083ff40d63f7759",
     "editor/ui/editor-wiring-toolbar-menus.js": "7b6594d2a19ced6990cdacbf1e258861467de9f40cf087e51142d1ffcc737b45",
     "editor/io/editor-wiring-project-inputs.js": "83f60f05a35b1aa96f88f9cbb50e7f361cc77072c255f148b66c1edd396b3020",
     "editor/media/editor-wiring-media-inputs.js": "9eade738d68f5873398865ee2ac3ce1380d41f0a796a73e387ea63d17a87d5aa",
@@ -692,7 +692,7 @@
         "format": "esm"
       },
       "web/editor-entry.mjs": {
-        "bytes": 1817201,
+        "bytes": 1817556,
         "imports": [
           {
             "path": "web/shared/host/storage.js",
@@ -1193,10 +1193,10 @@
             "bytesInOutput": 4406
           },
           "web/editor-entry.mjs": {
-            "bytesInOutput": 1055487
+            "bytesInOutput": 1055634
           }
         },
-        "bytes": 1403487
+        "bytes": 1403634
       }
     }
   }

@@ -518,18 +518,30 @@ document.getElementById('download-gap-removed-video')?.addEventListener('click',
     if (!task?.id) return Promise.resolve();
     if (task.cancelRequest) return task.cancelRequest;
     task.cancelRequest = (async () => {
-      const deadline = Date.now() + 30000;
-      while (true) {
+      const controller = new AbortController();
+      let deadlineTimer;
+      const timeout = new Promise((_, reject) => {
+        deadlineTimer = setTimeout(() => {
+          reject(new Error(tr('无法确认视频任务已停止')));
+          controller.abort();
+        }, 30000);
+      });
+      try {
+        await Promise.race([(async () => { while (true) {
         const reply = await MaweHost.server.fetch(`${jobsUrl}/${encodeURIComponent(task.id)}/cancel`, {
-          method: 'POST', keepalive: true, headers: { 'Content-Type': 'application/json' },
+          method: 'POST', keepalive: true, signal: controller.signal,
+          headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ requestToken }),
         });
         const state = await reply.json();
         if (!reply.ok) throw new Error(state.error || tr('无法确认视频任务已停止'));
         if (state.state === 'failed') throw new Error(state.error || tr('无法确认视频任务已停止'));
         if (['cancelled', 'completed'].includes(state.state)) return;
-        if (Date.now() >= deadline) throw new Error(tr('无法确认视频任务已停止'));
         await pause();
+        } })(), timeout]);
+      } finally {
+        clearTimeout(deadlineTimer);
+        controller.abort();
       }
     })();
     return task.cancelRequest;
