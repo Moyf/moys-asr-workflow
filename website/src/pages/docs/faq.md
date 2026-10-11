@@ -2,10 +2,10 @@
 layout: "../../layouts/DocLayout.astro"
 title: "常见问题"
 description: "启动、FFmpeg、API、媒体加载与保存排错。"
-source: "docs/FAQ.md"
+source: "docs/user/FAQ.md"
 ---
 
-<!-- Generated from docs/FAQ.md. Run pnpm run sync:docs to refresh. -->
+<!-- Generated from docs/user/FAQ.md. Run pnpm run sync:docs to refresh. -->
 
 安装与第一次转写见 [工作流](../workflow/)，配置字段见 [服务商配置](../providers/)。
 

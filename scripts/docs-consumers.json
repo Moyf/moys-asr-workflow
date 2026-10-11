@@ -1,0 +1,16 @@
+{
+  "paths": [
+    "scripts/doc-examples/type-annotations/current-chain-check.mjs",
+    "scripts/doc-examples/type-annotations/caller-module.js",
+    "scripts/doc-examples/type-annotations/render-module.js",
+    "scripts/doc-examples/type-annotations/tsconfig.json",
+    "docs/logs/1.8.0-beta.1/2026-10-09/first-verification/maw-verification-v1.8.0b1-to-main.html",
+    "docs/logs/unversioned/2026-10-08/esm-research/ESM_MECHANICAL_INVENTORY.json",
+    "docs/logs/unversioned/2026-10-08/esm-research/ESM_MECHANICAL_VALIDATION.json",
+    "docs/logs/unversioned/2026-10-08/esm-research/ESM_PRODUCTION_MERGE_RESOLUTIONS.json",
+    "docs/logs/unversioned/2026-10-08/esm-research/ESM_PRODUCTION_MERGE_RESULTS.json",
+    "docs/logs/unversioned/2026-10-08/esm-research/ESM_PRODUCTION_PR_SNAPSHOT.json",
+    "docs/logs/unversioned/2026-10-08/esm-research/ESM_UPSTREAM_MERGE_RESULTS.json",
+    "docs/logs/unversioned/2026-10-08/esm-research/ESM_UPSTREAM_PR_SNAPSHOT.json"
+  ]
+}

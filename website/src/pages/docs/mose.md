@@ -2,10 +2,10 @@
 layout: "../../layouts/DocLayout.astro"
 title: "与 MOSE 的关系"
 description: "MAW、MAWE 与当前实验桌面目录的定位和工程格式边界。"
-source: "docs/MOSE.md"
+source: "docs/engineering/MOSE.md"
 ---
 
-<!-- Generated from docs/MOSE.md. Run pnpm run sync:docs to refresh. -->
+<!-- Generated from docs/engineering/MOSE.md. Run pnpm run sync:docs to refresh. -->
 
 | 名称 | 当前定位 |
 | --- | --- |

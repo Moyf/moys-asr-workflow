@@ -1,6 +1,6 @@
 # 官网文档同步
 
-源文档位于本仓库根 README、JSON_SCHEMA 和 docs；`website/src/pages/docs/*.md` 是生成副本，不手工编辑正文。
+源文档位于本仓库根 README、JSON_SCHEMA 和 docs/user、docs/engineering；文档导航来自 docs/INDEX.md。`website/src/pages/docs/*.md` 是生成副本，不手工编辑正文。
 
 ## 刷新与检查
 
@@ -8,9 +8,9 @@
 
 ```sh
 pnpm install --frozen-lockfile
-pnpm run sync:docs
-pnpm run check
-pnpm run build
+pnpm --dir website run sync:docs
+pnpm --dir website run check
+pnpm --dir website run build
 ```
 
 脚本 `website/scripts/sync-maw-docs.mjs` 默认读取当前仓库根目录。只有从其他仓库取源文档时，才设置 `MAW_SOURCE_DIR`。某个源文件不存在时，脚本尝试从 GitHub main 获取；离线同步须确保源文件完整。
