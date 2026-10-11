@@ -4,13 +4,11 @@
 MaweDom.markersCloseButton?.addEventListener('click', () => MaweMarkersPanel.closePanel());
 
 function toggleMarkerEditing() {
-  MaweSettings.updateEditorSettings({ markerEditingEnabled: !(MaweSettings.EDITOR_SETTINGS.markerEditingEnabled === true) });
-  MaweMarkerEditing.applyMarkerEditingEnabled();
+  MaweMarkerEditing.setEditingEnabled(!MaweMarkerEditing.isEditingEnabled());
 }
 document.getElementById('markers-quick-toggle')?.addEventListener('click', toggleMarkerEditing);
 document.getElementById('project-marker-track-toggle')?.addEventListener('change', (event) => {
-  MaweSettings.updateEditorSettings({ markerEditingEnabled: event.target.checked });
-  MaweMarkerEditing.applyMarkerEditingEnabled();
+  MaweMarkerEditing.setEditingEnabled(event.target.checked);
 });
 document.addEventListener('keydown', (event) => {
   if (event.key !== 'm' && event.key !== 'M') return;
