@@ -316,6 +316,69 @@ test('automatic LLM setup highlights test connection until clicked', async ({ pa
   await expect(page.locator('#testLlmConnection')).not.toHaveClass(/attention/);
 });
 
+test('verified custom loopback without a key can enable an automatic LLM step', async ({ page }) => {
+  await page.goto(`file://${launcherPath}`);
+  await page.waitForFunction(() => window.MAWLauncher?.config?.postprocessProviders?.length > 0);
+  await page.evaluate(() => {
+    const item = window.MAWLauncher.config.postprocessProviders.find(item => item.id === 'custom2');
+    Object.assign(item, { verified: false, hasApiKey: false, apiKeyRequired: true, hasBaseUrl: false, hasModel: false });
+    document.getElementById('postprocessProvider').value = 'custom2';
+    document.getElementById('postprocessProvider').dispatchEvent(new Event('change'));
+    window.MAWLauncher.callBackend = async method => method === 'test_postprocess_connection'
+      ? { ok: true, saved: true, verified: true, apiKeyRequired: false, maskedApiKey: '' }
+      : { ok: true };
+  });
+  await page.locator('#autoPostprocessEnabled').check();
+  await page.locator('#autoStepProofread').click();
+  await expect(page.locator('#autoStepProofread')).not.toBeChecked();
+  await expect(page.locator('#settingsModal')).toBeVisible();
+  await page.locator('#llmApiKey').fill('');
+  await page.locator('#llmBaseUrl').fill('http://127.0.0.1:1234/v1');
+  await page.locator('#llmModel').fill('local-model');
+  await page.locator('#testLlmConnection').click();
+  await expect(page.locator('#autoStepProofread')).toBeChecked();
+  expect(await page.evaluate(() => window.MAWLauncher.config.postprocessProviders.find(item => item.id === 'custom2').hasApiKey)).toBe(false);
+});
+
+test('blank LLM form fields use the effective connection and save response', async ({ page }) => {
+  await page.goto(`file://${launcherPath}`);
+  await page.waitForFunction(() => window.MAWLauncher?.config?.postprocessProviders?.length > 0);
+  await page.evaluate(() => {
+    const item = window.MAWLauncher.config.postprocessProviders.find(item => item.id === 'deepseek');
+    Object.assign(item, { verified: false, hasApiKey: true, hasBaseUrl: true, hasModel: true });
+    window.llmFallbackCalls = [];
+    window.MAWLauncher.callBackend = async (method, payload) => {
+      if (['test_postprocess_connection', 'save_postprocess_settings'].includes(method)) {
+        window.llmFallbackCalls.push({ method, payload });
+        return { ok: true, saved: true, verified: true, apiKeyRequired: true, maskedApiKey: 'sk-…mock', baseUrl: 'https://api.deepseek.com', model: 'deepseek-flash' };
+      }
+      return { ok: true };
+    };
+  });
+  await page.locator('#autoPostprocessEnabled').check();
+  await page.locator('#autoStepProofread').click();
+  await expect(page.locator('#settingsModal')).toBeVisible();
+  await page.locator('#llmBaseUrl').fill('');
+  await page.locator('#llmModel').fill('');
+  await page.locator('#testLlmConnection').click();
+  await expect(page.locator('#autoStepProofread')).toBeChecked();
+  await expect(page.locator('#llmBaseUrl')).toHaveValue('https://api.deepseek.com');
+  await expect(page.locator('#llmModel')).toHaveValue('deepseek-flash');
+  await page.locator('#llmBaseUrl').fill('');
+  await page.locator('#llmModel').fill('');
+  await page.locator('#saveLlmSettings').click();
+  await expect(page.locator('#llmBaseUrl')).toHaveValue('https://api.deepseek.com');
+  await expect(page.locator('#llmModel')).toHaveValue('deepseek-flash');
+  expect(await page.evaluate(() => {
+    const item = window.MAWLauncher.config.postprocessProviders.find(item => item.id === 'deepseek');
+    return [item.hasBaseUrl, item.hasModel, item.verified];
+  })).toEqual([true, true, true]);
+  for (const { payload } of await page.evaluate(() => window.llmFallbackCalls)) {
+    expect(payload.baseUrl).toBe('');
+    expect(payload.model).toBe('');
+  }
+});
+
 test('system notifications are disabled by default and announce enabling', async ({ page }) => {
   await page.goto(`file://${launcherPath}`);
   await page.waitForFunction(() => window.MAWLauncher?.config?.postprocessProviders?.length > 0);

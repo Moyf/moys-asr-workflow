@@ -216,6 +216,25 @@ def is_custom_slot(provider_id: str) -> bool:
     return provider_id in {"custom", "custom2", "custom3"}
 
 
+def loopback_base_url(base_url: str) -> bool:
+    """Recognize local custom endpoints consistently at every launcher entry."""
+    text = str(base_url or "").strip()
+    if not text:
+        return False
+    if "://" not in text:
+        text = f"http://{text}"
+    try:
+        host = urlparse(text).hostname or ""
+    except ValueError:
+        return False
+    return host.lower() in {"127.0.0.1", "localhost", "::1"}
+
+
+def postprocess_api_key_required(provider_id: str, base_url: str) -> bool:
+    """Only custom slots using loopback services may omit an API key."""
+    return not (is_custom_slot(provider_id) and loopback_base_url(base_url))
+
+
 def preset_by_id(provider_id: str) -> LlmProviderPreset:
     return next((preset for preset in PRESETS if preset.id == provider_id), PRESETS[0])
 

@@ -39,7 +39,9 @@
     });
     if (!firstHit) return;
     const tabId = firstHit.closest('.editor-settings-page')?.getAttribute('aria-labelledby');
-    if (tabId) MaweSettingsPanels.openEditorSettingsAtTab(tabId);
+    // 搜索会在用户继续输入前多次跳页；保留搜索框焦点，避免一次停顿后
+    // 键盘输入落到 tab 上，无法继续补充或删改查询。
+    if (tabId) MaweSettingsPanels.openEditorSettingsAtTab(tabId, { focus: false });
     firstHit.scrollIntoView({ block: 'nearest' });
   }
 

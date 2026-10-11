@@ -1516,6 +1516,29 @@ class GuiWebBridgeTests(CompactContainerAssertions, unittest.TestCase):
         self.assertEqual(events, [("tested", False)])
         self.assertIn("MAW_POSTPROCESS_CUSTOM_API_KEY=sk-tested", self.env_path.read_text(encoding="utf-8"))
 
+    def test_postprocess_connection_returns_effective_saved_or_default_fields(self) -> None:
+        for provider_id, stored_url, stored_model, expected_url, expected_model in (
+            ("custom2", "http://127.0.0.1:1234/v1", "local-model", "http://127.0.0.1:1234/v1", "local-model"),
+            ("deepseek", "", "", "https://api.deepseek.com", "deepseek-flash"),
+        ):
+            with self.subTest(provider=provider_id):
+                self.api.save_postprocess_settings({
+                    "providerId": provider_id, "apiKey": "sk-fallback-secret",
+                    "baseUrl": stored_url, "model": stored_model,
+                })
+                with mock.patch("maw.gui_web.test_llm_connection") as check_connection:
+                    result = self.api.test_postprocess_connection({
+                        "providerId": provider_id, "apiKey": "", "baseUrl": "", "model": "", "save": True,
+                    })
+                self.assertTrue(result["ok"])
+                self.assertTrue(result["verified"])
+                self.assertEqual(result["baseUrl"], expected_url)
+                self.assertEqual(result["model"], expected_model)
+                settings = check_connection.call_args.args[0]
+                self.assertEqual((settings.base_url, settings.model), (result["baseUrl"], result["model"]))
+                self.assertNotIn("apiKey", result)
+                self.assertNotIn("sk-fallback-secret", str(result))
+
     def test_postprocess_connection_does_not_save_when_check_fails(self) -> None:
         with mock.patch(
             "maw.gui_web.test_llm_connection",

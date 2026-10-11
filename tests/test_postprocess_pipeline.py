@@ -89,6 +89,27 @@ class PostprocessPipelineTests(CompactContainerAssertions, unittest.TestCase):
                                          "apiKey": "fake", "baseUrl": "https://example.test", "model": "fake", "verified": "1"}})
         self.assertEqual(cleanup.call_args.args[0].notes, "保留所有数字")
 
+    def test_verified_loopback_slots_allow_empty_api_key_in_auto_steps(self) -> None:
+        for slot in ("custom", "custom2", "custom3"):
+            for endpoint in ("http://127.0.0.1:1234/v1", "http://localhost:11434/v1", "http://[::1]:1234/v1"):
+                settings = {slot: {"apiKey": "", "baseUrl": endpoint, "model": "local", "verified": "1"}}
+                for step_id in ("proofread", "resegment", "translate", "match"):
+                    with self.subTest(slot=slot, endpoint=endpoint, step=step_id):
+                        step = self.match_step() if step_id == "match" else {"id": step_id, "enabled": True}
+                        step.update(providerId=slot, aiCleanup=True)
+                        _, errors = validate_plan(self.plan(step), env_path=self.env_path, media_path=self.media, llm_settings=settings)
+                        self.assertEqual(errors, ())
+                settings[slot]["verified"] = ""
+                _, errors = validate_plan(self.plan({"id": "proofread", "enabled": True, "providerId": slot}), env_path=self.env_path, media_path=self.media, llm_settings=settings)
+                self.assertEqual(errors[0]["field"], "llmModel")
+
+    def test_auto_steps_still_require_keys_for_remote_or_builtin_providers(self) -> None:
+        for slot, endpoint in (("custom", "https://example.test/v1"), ("deepseek", "http://localhost:1234/v1")):
+            with self.subTest(slot=slot):
+                settings = {slot: {"apiKey": "", "baseUrl": endpoint, "model": "local", "verified": "1"}}
+                _, errors = validate_plan(self.plan({"id": "proofread", "enabled": True, "providerId": slot}), env_path=self.env_path, media_path=self.media, llm_settings=settings)
+                self.assertEqual(errors[0]["field"], "llmApiKey")
+
     def test_default_plan_is_disabled_and_ordered(self) -> None:
         plan = default_postprocess_plan()
 

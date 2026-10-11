@@ -35,6 +35,11 @@
 
   const overlayExtensionTextEl = document.getElementById('overlay-extension-text');
 
+  const overlayExtensionSpeakerLabelEl = document.createElement('span');
+  overlayExtensionSpeakerLabelEl.id = 'overlay-extension-speaker-label';
+  overlayExtensionSpeakerLabelEl.className = 'subtitle-speaker-label hidden';
+  const overlayExtensionTextNode = document.createTextNode('');
+
 
   const overlayToggle = document.getElementById('overlay-toggle');
 
@@ -1021,6 +1026,8 @@
     overlayMainSpeakerLabelEl,
     overlayMainTextNode,
     overlayExtensionTextEl,
+    overlayExtensionSpeakerLabelEl,
+    overlayExtensionTextNode,
     overlayToggle,
     extensionOverlayToggleWrap,
     extensionOverlayToggle,

@@ -36,6 +36,43 @@ async function setWordTiming(page, enabled = true) {
   await expect(quick).toHaveAttribute('aria-pressed', String(enabled));
 }
 
+test('word timing separation stays within multi-row single-track waveforms', async ({ page }, testInfo) => {
+  await setWordTiming(page);
+  await page.locator('[data-waveform-mode="multi"]').click();
+  const multi = await word(page, 0).evaluate(el => ({
+    height: parseFloat(getComputedStyle(el).height), bottom: parseFloat(getComputedStyle(el).bottom),
+  }));
+  await page.locator('[data-waveform-mode="basic"]').click();
+  const basic = await word(page, 0).evaluate(el => ({
+    height: parseFloat(getComputedStyle(el).height), bottom: parseFloat(getComputedStyle(el).bottom),
+  }));
+  await page.evaluate(() => {
+    MaweBoot.DATA.multi_subtitle = { enabled: true, tracks: [{ id: 'timing-extension', segments: [
+      { start: 500, end: 7000, text: 'extension text' },
+    ] }] };
+    MaweCuePanel.renderAll();
+  });
+  await page.locator('[data-waveform-mode="multi"]').click();
+  const row = page.locator('.waveform-row.multi-subtitle-row').first();
+  await expect(row.locator('.waveform-cue-block[data-track="extension"]').first()).toBeVisible();
+  const lanes = await row.evaluate(el => {
+    const main = el.querySelector('.waveform-cue-block[data-track="main"]');
+    const extension = el.querySelector('.waveform-cue-block[data-track="extension"]');
+    return {
+      mainBottom: parseFloat(getComputedStyle(main).bottom),
+      extensionBottom: parseFloat(getComputedStyle(extension).bottom),
+      mainRectBottom: main.getBoundingClientRect().bottom,
+      extensionRectTop: extension.getBoundingClientRect().top,
+    };
+  });
+  console.log('word timing geometry', JSON.stringify({ multi, basic, lanes }));
+  await page.locator('#waveform-pane').screenshot({ path: testInfo.outputPath('word-bilingual-lanes.png') });
+  expect(multi).toEqual({ height: 20, bottom: 7 });
+  expect(basic).toEqual({ height: 31, bottom: 9 });
+  expect(lanes.mainBottom).toBeGreaterThan(lanes.extensionBottom);
+  expect(lanes.mainRectBottom).toBeLessThanOrEqual(lanes.extensionRectTop + 1);
+});
+
 test('word timing lives on the toolbar toggle and waveform settings keep appearance groups', async ({ page }, testInfo) => {
   await expect(page.locator('.waveform-toolbar > .word-timing-toggle, .waveform-toolbar > .gap-skip-toggle')).toHaveCount(0);
   await page.locator('#waveform-settings-toggle').click();
