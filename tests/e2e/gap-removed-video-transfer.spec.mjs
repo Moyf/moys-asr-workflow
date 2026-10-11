@@ -73,6 +73,8 @@ for (const mode of ['write', 'create-writable', 'content-type', 'content-length'
             gapRemovedVideoSourceName: 'source.mp4',
             gapRemovedVideoExportUrl: '/export',
             requestToken: 'fixture',
+            bindingGeneration: 1,
+            sourceMediaId: 'fixture-source',
           },
         };
         window.MaweExportSrt = { gapRemovedExportContext: () => ({ intervals: [{ start: 0, end: 1000 }] }) };

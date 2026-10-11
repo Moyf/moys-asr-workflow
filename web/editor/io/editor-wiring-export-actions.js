@@ -439,7 +439,9 @@ document.getElementById('download-gap-removed-video')?.addEventListener('click',
     '.mov': 'video/quicktime', '.wmv': 'video/x-ms-wmv', '.flv': 'video/x-flv',
     '.webm': 'video/webm', '.ts': 'video/mp2t', '.m4v': 'video/x-m4v',
   };
-  if (!config?.canGapRemovedVideoExport || !config.gapRemovedVideoExportUrl) {
+  if (!config?.canGapRemovedVideoExport || !config.gapRemovedVideoExportUrl
+      || !Number.isSafeInteger(config.bindingGeneration) || config.bindingGeneration < 1
+      || typeof config.sourceMediaId !== 'string' || !config.sourceMediaId) {
     MaweHint.flashHint(tr('重组后视频需要在 server-editor 中打开已绑定的视频工程'), 'warning');
     return;
   }
@@ -449,6 +451,16 @@ document.getElementById('download-gap-removed-video')?.addEventListener('click',
   }
   const context = MaweExportSrt.gapRemovedExportContext();
   if (!context) return;
+  const bindingGeneration = config.bindingGeneration;
+  const sourceMediaId = config.sourceMediaId;
+  const projectBindingEpoch = window.MaweProjectLoad?.projectBindingEpoch;
+  const exportUrl = config.gapRemovedVideoExportUrl;
+  const requestToken = config.requestToken;
+  const intervals = context.intervals.map(({ start, end }) => ({ startMs: start, endMs: end }));
+  const isBindingCurrent = () => MaweBoot.SERVER_CONFIG === config && config.canGapRemovedVideoExport
+    && config.bindingGeneration === bindingGeneration && config.sourceMediaId === sourceMediaId
+    && config.gapRemovedVideoSourceName === sourceName && config.gapRemovedVideoExportUrl === exportUrl
+    && config.requestToken === requestToken && window.MaweProjectLoad?.projectBindingEpoch === projectBindingEpoch;
   MaweHint.flashHint(tr('流复制保留兼容媒体流；切点可能出现重复帧或时间戳边界。'), 'warning');
 
   let handle;
@@ -461,6 +473,12 @@ document.getElementById('download-gap-removed-video')?.addEventListener('click',
   } catch (error) {
     if (error?.name === 'AbortError') return;
     MaweHint.flashHint(`${tr('无法打开视频保存位置选择器')}：${error?.message || error}`, 'warning');
+    return;
+  }
+  // The picker can yield while this page (or another server tab) changes project.
+  // Never combine the old interval snapshot with a new source binding.
+  if (!isBindingCurrent()) {
+    MaweHint.flashHint(tr('工程或媒体绑定已变更，请重新发起视频导出'), 'warning');
     return;
   }
   if (handle.name.toLowerCase() === sourceName.toLowerCase()) {
@@ -478,12 +496,14 @@ document.getElementById('download-gap-removed-video')?.addEventListener('click',
   let transferComplete = false;
   try {
     MaweHint.flashHint(tr('正在重组去空隙视频…'));
-    response = await MaweHost.server.fetch(config.gapRemovedVideoExportUrl, {
+    response = await MaweHost.server.fetch(exportUrl, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
-        requestToken: config.requestToken,
-        intervals: context.intervals.map(({ start, end }) => ({ startMs: start, endMs: end })),
+        requestToken,
+        bindingGeneration,
+        sourceMediaId,
+        intervals,
       }),
     });
     if (!response.ok) {
