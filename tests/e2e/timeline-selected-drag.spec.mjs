@@ -194,6 +194,7 @@ for (const [id, handle, edge] of [['point', '', 'start'], ['region', '', 'start'
 
 test('marker cancellation clears previews and leaves persisted times unchanged', async ({ page }) => {
   await seed(page);
+  const selection = await page.evaluate(() => [...MaweSelection.selectedIdxs]);
   const drag = await grab(page, '.waveform-marker-item[data-marker-id="region"] .waveform-marker-handle.right');
   await page.mouse.move(drag.x + 1000 / drag.msPerPixel, drag.y, { steps: 4 });
   await expect(page.locator('.waveform-marker-item.drag-preview')).toBeVisible();
@@ -201,7 +202,9 @@ test('marker cancellation clears previews and leaves persisted times unchanged',
   await expect(page.locator('.waveform-marker-item.drag-preview')).toHaveCount(0);
   await expect(page.locator('.waveform-pointer-line.boundary-snapped')).toHaveCount(0);
   expect(await page.evaluate(() => MaweMarkerEditing.findMarker('region').end)).toBe(9000);
+  expect(await page.evaluate(() => [...MaweSelection.selectedIdxs])).toEqual(selection);
   await page.mouse.up();
+  expect(await page.evaluate(() => MaweMarkerEditing.findMarker('region').end)).toBe(9000);
 });
 
 test('selected blocks render together on their destination row while held', async ({ page }) => {
@@ -212,6 +215,25 @@ test('selected blocks render together on their destination row while held', asyn
     await expect(page.locator(`.waveform-row[data-row-index="1"] .waveform-cue-block[data-track="${track}"]`)).toBeVisible();
   }
   await page.mouse.up();
+});
+test('Escape cancels marker creation without changing selected cues or saved markers', async ({ page }) => {
+  await seed(page);
+  const before = await page.evaluate(() => ({
+    selection: [...MaweSelection.selectedIdxs], markers: JSON.stringify(MaweBoot.DATA.markers),
+    history: [MaweHistory.editorHistory.undoLength(), MaweHistory.editorHistory.redoLength()],
+  }));
+  const drag = await grab(page, '.waveform-marker-track');
+  await page.mouse.move(drag.x + 1000 / drag.msPerPixel, drag.y, { steps: 4 });
+  expect(await page.evaluate(() => Boolean(MaweCoreState.waveformEditor.markerCreateDrag))).toBe(true);
+  await page.keyboard.press('Escape');
+  expect(await page.evaluate(() => Boolean(MaweCoreState.waveformEditor.markerCreateDrag))).toBe(false);
+  await expect(page.locator('.waveform-marker-item.drag-preview')).toHaveCount(0);
+  await page.mouse.move(drag.x + 1200 / drag.msPerPixel, drag.y);
+  await page.mouse.up();
+  expect(await page.evaluate(() => ({
+    selection: [...MaweSelection.selectedIdxs], markers: JSON.stringify(MaweBoot.DATA.markers),
+    history: [MaweHistory.editorHistory.undoLength(), MaweHistory.editorHistory.redoLength()],
+  }))).toEqual(before);
 });
 
 test('held A/D and frame snapping keep the selected tracks in sync', async ({ page }) => {

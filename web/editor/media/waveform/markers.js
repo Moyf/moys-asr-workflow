@@ -15,6 +15,11 @@ export function createWaveformModule(dependencies) {
   // 拖出距离低于该毫秒数时视为点击添加单点 Marker，而不是 Region。
   const MARKER_REGION_MIN_SPAN_MS = 150;
 
+  function markerEditingEnabled() {
+    return window.MaweMarkerEditing?.isEditingEnabled?.()
+      ?? (MaweSettings.EDITOR_SETTINGS.markerEditingEnabled === true);
+  }
+
   // 纯函数：按 clientY 挑选指针所在行（含行间隙时取最近行）。
   // rows 是 [{top, bottom, startMs, endMs}] 的普通对象，便于单测。
   function pickMarkerRow(rows, clientY) {
@@ -52,7 +57,7 @@ export function createWaveformModule(dependencies) {
     /** @this {import('./waveform-types.js').WaveformInstance} */
     appendMarkerTrack(row, startMs, endMs) {
       // 新建或重绘行也遵守开关，避免透明轨道截获关闭状态下的字幕手势。
-      if (MaweSettings.EDITOR_SETTINGS.markerEditingEnabled !== true) return;
+      if (!markerEditingEnabled()) return;
       const markers = this.getMarkers();
       // 行时间标签是否需要给标记轨道让位：仅当该行可见范围内确有标记时下移。
       const hasVisibleMarkers = markers.some((marker) => window.AsrEditorUtils.markerVisibleRange(marker, startMs, endMs));
@@ -167,7 +172,7 @@ export function createWaveformModule(dependencies) {
     refreshMarkerOverlay() {
       if (!this.payload) return;
       // 标记编辑未启用时不渲染标记轨道（工具栏 🔖 / 项目设置镜像控制）。
-      if (MaweSettings.EDITOR_SETTINGS.markerEditingEnabled !== true) {
+      if (!markerEditingEnabled()) {
         const drag = this.markerDrag || this.markerCreateDrag;
         if (drag) this.endMarkerDrag({ pointerId: drag.pointerId, type: 'pointercancel' });
         this.content.querySelectorAll('.waveform-marker-track').forEach((element) => element.remove());
@@ -417,7 +422,7 @@ export function createWaveformModule(dependencies) {
 
     /** @this {import('./waveform-types.js').WaveformInstance} */
     beginMarkerDrag(event, markerId, row, mode) {
-      if (MaweSettings.EDITOR_SETTINGS.markerEditingEnabled !== true) return;
+      if (!markerEditingEnabled()) return;
       const marker = this.getMarkers().find((candidate) => candidate?.id === markerId);
       if (!marker) return;
       event.preventDefault();
@@ -448,7 +453,7 @@ export function createWaveformModule(dependencies) {
 
     /** @this {import('./waveform-types.js').WaveformInstance} */
     beginMarkerCreateDrag(event, row) {
-      if (MaweSettings.EDITOR_SETTINGS.markerEditingEnabled !== true) return;
+      if (!markerEditingEnabled()) return;
       event.preventDefault();
       event.stopPropagation();
       this.focusWaveform?.();

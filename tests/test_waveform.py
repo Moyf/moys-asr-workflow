@@ -522,10 +522,10 @@ class EditorAssetTests(CompactContainerAssertions, unittest.TestCase):
         for settings_section in ('interface', 'general', 'subtitle-preview', 'subtitle-style', 'subtitle-color', 'timebase', 'split-merge', 'export', 'save', 'sticker', 'easter-eggs', 'about'):
             self.assertIn(f'id="editor-settings-tab-{settings_section}"', page)
             self.assertIn(f'id="editor-settings-page-{settings_section}"', page)
-        # 全局设置 13 个导航标签；帮助面板垂直标签页复用同款导航类，另有 7 个
-        self.assertEqual(page.count('class="editor-settings-nav-tab"'), 25)
-        self.assertEqual(page.count('class="editor-settings-page"'), 18)
-        self.assertEqual(page.count('class="editor-settings-nav-group-label"'), 6)
+        # 全局设置 13 页、工程设置 6 页；帮助导航复用该类，另有 7 页。
+        self.assertEqual(page.count('class="editor-settings-nav-tab"'), 26)
+        self.assertEqual(page.count('class="editor-settings-page"'), 19)
+        self.assertEqual(page.count('class="editor-settings-nav-group-label"'), 9)
         for group_label in ('基础', '播放预览', '编辑', '保存导出', '扩展功能', '关于'):
             self.assertIn(f'class="editor-settings-nav-group-label" aria-hidden="true">{group_label}</div>', page)
         self.assertIn('id="editor-settings-tab-about" role="tab" data-settings-tab="about"', page)
@@ -536,11 +536,9 @@ class EditorAssetTests(CompactContainerAssertions, unittest.TestCase):
         self.assertIn('href="https://github.com/Moyf/moys-asr-workflow"', page)
         self.assertIn('href="https://qm.qq.com/q/4YtxZIpzxC"', page)
         self.assertIn('<span>English tutorial (YouTube)</span><span class="editor-settings-about-placeholder">待补充</span>', page)
-        self.assertIn('<span>Discord community</span><span class="editor-settings-about-placeholder">待补充</span>', page)
-        self.assertIn('<span>Ko-fi</span><span class="editor-settings-about-placeholder">待补充</span>', page)
-        self.assertIn('<span>Author on Twitter / X</span><span class="editor-settings-about-placeholder">待补充</span>', page)
-        self.assertNotIn('href="https://ko-fi.com', page)
-        self.assertNotIn('href="https://discord.com', page)
+        self.assertIn('href="https://discord.gg/6gupuGA6qR"', page)
+        self.assertIn('href="https://ko-fi.com/moy"', page)
+        self.assertIn('href="https://x.com/Moy_Fw"', page)
         for track_toggle_id in ('project-word-timing-toggle', 'project-marker-track-toggle', 'overlay-track-toggle', 'multi-subtitle-toggle'):
             toggle_start = page.index(f'id="{track_toggle_id}"')
             label_start = page.rfind('<label', 0, toggle_start)
@@ -616,8 +614,8 @@ class EditorAssetTests(CompactContainerAssertions, unittest.TestCase):
         self.assertLess(page.index('id="editor-settings-page-timebase"'), page.index('id="split-language-type-title"'))
         self.assertNotIn('split-language-type-field', page)
         self.assertNotIn('editor-settings-item split-language-type-title', page)
-        # 双语字幕的显示/联动/管理设置已并入项目设置的字幕轨道页。
-        self.assertIn('id="project-multi-subtitle-settings"', page)
+        # 双语字幕的显示/联动/管理已移到独立工程设置页。
+        self.assertIn('id="editor-settings-page-multi-subtitle"', page)
         self.assertIn('<span class="editor-settings-group-heading" id="project-multi-settings-title">双语字幕</span>', page)
         self.assertIn('id="multi-subtitle-import"', page)
         self.assertIn('id="multi-subtitle-swap"', page)

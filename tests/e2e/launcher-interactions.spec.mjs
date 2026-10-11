@@ -322,20 +322,29 @@ test('verified custom loopback without a key can enable an automatic LLM step', 
   await page.evaluate(() => {
     const item = window.MAWLauncher.config.postprocessProviders.find(item => item.id === 'custom2');
     Object.assign(item, { verified: false, hasApiKey: false, apiKeyRequired: true, hasBaseUrl: false, hasModel: false });
-    document.getElementById('postprocessProvider').value = 'custom2';
-    document.getElementById('postprocessProvider').dispatchEvent(new Event('change'));
     window.MAWLauncher.callBackend = async method => method === 'test_postprocess_connection'
       ? { ok: true, saved: true, verified: true, apiKeyRequired: false, maskedApiKey: '' }
       : { ok: true };
   });
-  await page.locator('#autoPostprocessEnabled').check();
-  await page.locator('#autoStepProofread').click();
-  await expect(page.locator('#autoStepProofread')).not.toBeChecked();
-  await expect(page.locator('#settingsModal')).toBeVisible();
+  // 未填 URL 的 custom2 不在工具箱下拉，需要先在设置页补填。
+  await expect(page.locator('#postprocessProvider option[value="custom2"]')).toHaveCount(0);
+  await page.locator('#settingsButton').click();
+  await page.locator('#settingsLlmTab').click();
+  await page.locator('#llmProvider').selectOption('custom2');
   await page.locator('#llmApiKey').fill('');
   await page.locator('#llmBaseUrl').fill('http://127.0.0.1:1234/v1');
   await page.locator('#llmModel').fill('local-model');
   await page.locator('#testLlmConnection').click();
+  // 连接成功（已保存 URL）后，工具箱下拉出现该槽位。
+  await expect(page.locator('#postprocessProvider option[value="custom2"]')).toHaveCount(1);
+  await page.evaluate(() => window.MAWLauncher.closeSettings());
+  await page.locator('#autoPostprocessEnabled').check();
+  await page.evaluate(() => {
+    const select = document.getElementById('postprocessProvider');
+    select.value = 'custom2';
+    select.dispatchEvent(new Event('change', { bubbles: true }));
+  });
+  await page.locator('#autoStepProofread').click();
   await expect(page.locator('#autoStepProofread')).toBeChecked();
   expect(await page.evaluate(() => window.MAWLauncher.config.postprocessProviders.find(item => item.id === 'custom2').hasApiKey)).toBe(false);
 });

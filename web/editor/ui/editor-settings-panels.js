@@ -30,7 +30,8 @@
       const wordMirror = document.getElementById('project-word-timing-toggle');
       if (wordMirror) wordMirror.checked = window.MaweWordTiming?.enabled === true;
       const markerMirror = document.getElementById('project-marker-track-toggle');
-      if (markerMirror) markerMirror.checked = MaweSettings.EDITOR_SETTINGS.markerEditingEnabled === true;
+      if (markerMirror) markerMirror.checked = window.MaweMarkerEditing?.isEditingEnabled?.()
+        ?? (MaweSettings.EDITOR_SETTINGS.markerEditingEnabled === true);
     },
   });
   document.getElementById('project-settings-close')?.addEventListener('click', () => projectFloatingPanel.close());

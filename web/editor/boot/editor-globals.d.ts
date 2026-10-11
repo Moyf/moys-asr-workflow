@@ -246,6 +246,7 @@ declare const MaweServerSave: any;
 interface Window {
   MaweCommands: MaweCommandsApi;
   MaweViewUpdates: typeof MaweViewUpdates;
+  MaweMarkerEditing?: { isEditingEnabled(): boolean };
   webkitAudioContext?: typeof AudioContext;
   AsrGapRemoveCore: {
     projectCleanupRetainedSegments(segments: ProjectSegment[], gapRemove: unknown): ProjectSegment[];
