@@ -4120,7 +4120,7 @@
   display: flex; align-items: center; gap: 8px; width: 100%; padding: 7px 9px;
   color: inherit; background: transparent; border: 0; cursor: pointer; text-align: left;
 }
-.markers-item-main:hover { background: var(--btn-bg-hover); }
+.markers-item:has(.markers-item-main:hover) { background: var(--btn-bg-hover); }
 /* 行内任意位置 hover 时，高亮同步覆盖到右侧「编辑 / 完成」按钮，整行一体。 */
 .markers-item:hover .markers-item-edit { background: var(--btn-bg-hover); }
 .markers-item-main:focus-visible { outline: 2px solid var(--accent-line); outline-offset: -2px; }

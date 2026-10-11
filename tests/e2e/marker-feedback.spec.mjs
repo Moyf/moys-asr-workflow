@@ -48,6 +48,18 @@ test('marker search highlights literal matches while preserving notes and editor
   const row = page.locator('[data-marker-id="review"]');
   const search = page.locator('#markers-search');
   await page.locator('#markers-show-notes').check();
+  const otherRow = page.locator('[data-marker-id="human"]');
+  await page.mouse.move(0, 0);
+  const normalBackground = await row.evaluate(element => getComputedStyle(element).backgroundColor);
+  const otherBackground = await otherRow.evaluate(element => getComputedStyle(element).backgroundColor);
+  await row.locator('.markers-item-main').hover();
+  await expect.poll(() => row.evaluate(element => getComputedStyle(element).backgroundColor)).not.toBe(normalBackground);
+  await expect(row.locator('.markers-item-main')).toHaveCSS('background-color', 'rgba(0, 0, 0, 0)');
+  await expect(row.locator('.markers-item-note')).toHaveCSS('background-color', 'rgba(0, 0, 0, 0)');
+  await expect(otherRow).toHaveCSS('background-color', otherBackground);
+  await page.locator('#markers-panel').screenshot({ path: test.info().outputPath('markers-card-hover.png') });
+  await page.mouse.move(0, 0);
+  await expect(row).toHaveCSS('background-color', normalBackground);
   await search.fill('  [ai]  ');
   await expect(page.locator('.markers-item')).toHaveCount(1);
   await expect(row.locator('.markers-item-title mark')).toHaveText(['[AI]', '[ai]']);
