@@ -306,7 +306,36 @@ test('all simultaneously active main, secondary and overlay cues are actually pa
   await configure(page, fixture);
   const frame = await capture(page, 1000);
   await evidence(frame, testInfo, 'overlap');
-  libass(frame.ass, 1000, testInfo, 'overlap');
+  const pixels = libass(frame.ass, 1000, testInfo, 'overlap');
+  writeFileSync(testInfo.outputPath('overlap-libass.json'), JSON.stringify(pixels, null, 2));
+  expect.soft(frame.captured, 'all active root paint is represented by the guard replay').toBe(frame.assigned);
+  for (const [index, track] of frame.tracks.entries()) {
+    expect.soft(track.outside, `all-active Canvas draw ${index} loses no painted pixels`).toBe(0);
+    expect.soft(track.guardEdge, `all-active Canvas draw ${index} fits oracle guard`).toBe(0);
+  }
+  expect.soft(pixels.outside, 'all-active libass loses no painted pixels').toBe(0);
+  expect.soft(pixels.sha256, 'all-active libass guard replay preserves native pixels').toBe(pixels.guardCropSha256);
+  expect.soft(pixels.fontSelections.length, 'all-active libass selects a real font').toBeGreaterThan(0);
+  if (pixels.guardBox) {
+    expect.soft(pixels.guardBox[0], 'all-active libass paint fits guard left').toBeGreaterThan(0);
+    expect.soft(pixels.guardBox[1], 'all-active libass paint fits guard top').toBeGreaterThan(0);
+    expect.soft(pixels.guardBox[2], 'all-active libass paint fits guard right').toBeLessThan(pixels.guardSize[0]);
+    expect.soft(pixels.guardBox[3], 'all-active libass paint fits guard bottom').toBeLessThan(pixels.guardSize[1]);
+  }
+  for (const [engine, roleTracks] of [['Canvas', frame.nativeTracks], ['libass', pixels.tracks]]) {
+    for (const role of ['main', 'extension', 'overlay']) {
+      expect.soft(roleTracks[role].painted, `${engine} all-active ${role} is visible`).toBeGreaterThan(30);
+      const bands = roleTracks[role].bands;
+      expect.soft(bands, `${engine} both active ${role} cues have separate pixel bands`).toHaveLength(2);
+      for (const [index, band] of bands.entries()) {
+        expect.soft(band[0], `${engine} ${role} band ${index} top`).toBeGreaterThanOrEqual(0);
+        expect.soft(band[1], `${engine} ${role} band ${index} bottom`).toBeLessThanOrEqual(frame.height);
+        if (index) expect.soft(band[0], `${engine} ${role} active cue bands do not overlap`).toBeGreaterThan(bands[index - 1][1]);
+      }
+    }
+    visibleStack(['main', 'extension', 'overlay'].map(role => roleTracks[role]),
+      frame.width, frame.height, `${engine} all-active group`);
+  }
   for (const segments of [fixture.mainSegments, fixture.extensionSegments, fixture.overlaySegments]) {
     for (const segment of segments) expect.soft(frame.texts.join(' '),
       `active ${segment.id} must reach actual fillText`).toContain(segment.text);
