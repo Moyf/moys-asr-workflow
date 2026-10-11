@@ -212,6 +212,7 @@
     '撤销': 'Undo', '重做': 'Redo', '↶ 撤销': '↶ Undo', '↷ 重做': '↷ Redo',
     '新建工程': 'New project', '创建并保存一个空白工程': 'Create and save a blank project',
     '当前有未保存的改动，是否确定新建工程？将丢失未保存内容。': 'There are unsaved changes. Create a new project and discard them?',
+    '保存期间又有新改动，请再次保存后继续。': 'There are new edits made during the save. Save again before continuing.',
     '打开工程': 'Open project',
     '媒体文件已不可用：请重新定位媒体。': 'The media file is unavailable. Locate it again.',
     '关联媒体路径现已可用；请使用“加载媒体”重新载入。': 'The linked media path is available again. Use “Load media” to reload it.',

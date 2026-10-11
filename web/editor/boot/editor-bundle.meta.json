@@ -240,7 +240,7 @@
     "shared/utils/lottie.js": "a74b0332e76eef35299d9567c052584a61383134cf03e9ea5279b11e6d4e69ea",
     "shared/utils/ograf.js": "94b88b7db9ea4fd862dc49985f1a5e46bcef6bc70837cb656b0cd1b085a40d89",
     "shared/editor-utils.js": "360489d1efb54cddfd9c732c7daab966a0f6d1bf0cb05a2b09c96d4485048a13",
-    "shared/editor-i18n.js": "d10aa97b90d603574dade727f8d4d8bd3c99180ba00d590b2f20215d057e4143",
+    "shared/editor-i18n.js": "f5ad275edab4f5fcf5fb0db933bbd7565af441b30defdae09f1ba36a17357374",
     "shared/tooltip.js": "8711dc8a2a5e92b9584c41df991eaa5ea73904b56dbc9aa2b18b412e190ecc91",
     "editor/media/waveform/constants.js": "d5bd567ad4dcbee81995e275e8bf0be571b47e28952fa944478a66aa78e079e4",
     "editor/media/waveform/labels.js": "983afc39d173fc6636d0c78b4fdf4f426a4ba49c8ba4d40305e2775ddb28b80b",
@@ -381,7 +381,7 @@
     "editor/media/editor-wiring-waveform-hints.js": "78821bb6248fb06325b5950dd8f54c06b5cb50c009fb73f50f0ee2dbd87a31e6",
     "editor/io/editor-wiring-server-events.js": "bdbb701f9e7fbb28b07d8e82e63094c6ef1f0b780c6f2b15c844364a4c132dc4",
     "editor/io/editor-wiring-file-drop.js": "6fcb7821cdd3215433c91913630ac16fdbacf9b3c675f6bb2e709a1bd58d0eb5",
-    "editor/boot/editor-startup.js": "5e16a6310c312dccedbc7136625b1f867fc296ace9f12e834c3b54ed0c3285c9",
+    "editor/boot/editor-startup.js": "a0b15ccf1e25e42adaef5b9ac8c2305d40952257ab23de39dea2949e4828205b",
     "editor/boot/editor-onboarding.js": "0fe87f94de9cc4af36fff6370b3bffbec14f87a331b06ef08ec1223391e51db5"
   },
   "configHash": "a68d90a9eb28732ac433ec1460bbdef7a6733f1454e99b9742772f1dbb21128d",
@@ -699,7 +699,7 @@
         "format": "esm"
       },
       "web/editor-entry.mjs": {
-        "bytes": 1786451,
+        "bytes": 1786969,
         "imports": [
           {
             "path": "web/shared/host/storage.js",
@@ -1208,10 +1208,10 @@
             "bytesInOutput": 4423
           },
           "web/editor-entry.mjs": {
-            "bytesInOutput": 1041237
+            "bytesInOutput": 1041692
           }
         },
-        "bytes": 1382782
+        "bytes": 1383237
       }
     }
   }

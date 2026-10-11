@@ -119,7 +119,12 @@ async function confirmDesktopProjectSwitch() {
     MaweServerSave.hasUnsavedProjectChanges(), window.MAWE_I18N?.language,
   );
   if (choice.status !== 'ok' || choice.action === 'cancel') return false;
-  if (choice.action === 'save') return Boolean(await MaweProjectSave.saveCurrentProject({ silent: false }));
+  if (choice.action === 'save') {
+    const saved = await MaweProjectSave.saveCurrentProject({ silent: false });
+    const dirty = MaweServerSave.hasUnsavedProjectChanges();
+    if (saved && dirty) MaweHint.flashHint('保存期间又有新改动，请再次保存后继续。', 'warning');
+    return Boolean(saved && !dirty);
+  }
   return true;
 }
 
@@ -192,7 +197,8 @@ MaweHost.desktop.onCloseRequest(({ requestId } = {}) => {
     }
     if (choice.action === 'save') {
       const saved = await MaweProjectSave.saveCurrentProject({ silent: false });
-      if (!saved) {
+      if (!saved || MaweServerSave.hasUnsavedProjectChanges()) {
+        if (saved) MaweHint.flashHint('保存期间又有新改动，请再次保存后继续。', 'warning');
         if (MaweBoot.SERVER_CONFIG) MaweBoot.SERVER_CONFIG.desktopClosePending = false;
         await MaweHost.desktop.confirmClose(requestId, false);
         return;

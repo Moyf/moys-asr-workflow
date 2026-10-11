@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { spawn } from 'node:child_process';
 import { once } from 'node:events';
-import { mkdtempSync, mkdirSync, writeFileSync } from 'node:fs';
+import { mkdtempSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -69,6 +69,83 @@ test('cancelled close keeps backend, second-instance opens once, confirmed quit 
     assert.equal(code, 0);
     await assert.rejects(fetch(`${backendOrigin}/api/startup-status`, { signal: AbortSignal.timeout(2000) }));
   } finally {
+    await instance.close().catch(() => {});
+  }
+});
+
+test('save and continue preserves edits made during close and project switch saves', { timeout: 90_000 }, async () => {
+  const root = mkdtempSync(path.join(tmpdir(), 'mose-save-continue-'));
+  const settings = path.join(root, 'settings'); mkdirSync(settings);
+  writeFileSync(path.join(settings, 'server-editor-settings.json'), JSON.stringify({ onboarding_status: 'completed', auto_open_last_project: false }));
+  const projectPath = path.join(root, 'save-continue.mosp');
+  writeFileSync(projectPath, JSON.stringify({
+    schema: 'moy.asr.project.v1', media: '',
+    segments: [{ id: 's1', start: 0, end: 1000, text: 'original' }],
+  }));
+  const env = { ...process.env, MAW_APP_DATA_ROOT: settings, MAW_DESKTOP_SMOKE: '1' };
+  delete env.ELECTRON_RUN_AS_NODE;
+  const instance = await electron.launch({
+    executablePath, args: [...appArgs, projectPath, `--user-data-dir=${path.join(root, 'profile')}`], env,
+  });
+  try {
+    const page = await instance.firstWindow();
+    await page.waitForFunction(() => MaweBoot.DATA.segments[0]?.text === 'original');
+    await page.evaluate(() => MaweSettings.updateEditorSettings({ autoSaveProject: false }));
+    const edit = (text) => page.evaluate((value) => {
+      MaweBoot.DATA.segments[0].text = value;
+      MaweBoot.DATA.segments[0]._dirty = true;
+    }, text);
+    const holdSave = () => instance.evaluate(({ dialog }) => {
+      dialog.showMessageBox = async () => ({ response: 0 });
+      globalThis.__continueTestFetch = globalThis.fetch;
+      globalThis.fetch = async (...args) => {
+        const response = await globalThis.__continueTestFetch(...args);
+        if (String(args[1]?.body || '').includes('"command":"saveProject"')) {
+          await new Promise((resolve) => { globalThis.__continueTestRelease = resolve; });
+        }
+        return response;
+      };
+    });
+    const waitForHeldSave = () => expect.poll(() => instance.evaluate(() => Boolean(globalThis.__continueTestRelease))).toBe(true);
+    const releaseSave = () => instance.evaluate(() => {
+      globalThis.fetch = globalThis.__continueTestFetch;
+      globalThis.__continueTestRelease();
+      delete globalThis.__continueTestRelease;
+      delete globalThis.__continueTestFetch;
+    });
+
+    await edit('switch snapshot');
+    await holdSave();
+    const switching = page.evaluate(() => window.MOSEConfirmProjectSwitch());
+    await waitForHeldSave();
+    await edit('new edit during switch save');
+    await releaseSave();
+    assert.equal(await switching, false);
+    assert.equal(await page.evaluate(() => MaweServerSave.hasUnsavedProjectChanges()), true);
+    assert.equal(await page.evaluate(() => MaweBoot.DATA.segments[0].text), 'new edit during switch save');
+    assert.equal(JSON.parse(readFileSync(projectPath, 'utf8')).segments[0].text, 'switch snapshot');
+
+    await edit('close snapshot');
+    await holdSave();
+    await instance.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows()[0].close());
+    await waitForHeldSave();
+    await edit('new edit during close save');
+    await releaseSave();
+    await page.waitForFunction(() => MaweBoot.SERVER_CONFIG.desktopClosePending === false);
+    assert.equal(page.isClosed(), false);
+    assert.equal(await instance.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows().length), 1);
+    assert.equal(await page.evaluate(() => MaweServerSave.hasUnsavedProjectChanges()), true);
+    assert.equal(await page.evaluate(() => MaweBoot.DATA.segments[0].text), 'new edit during close save');
+    assert.equal(JSON.parse(readFileSync(projectPath, 'utf8')).segments[0].text, 'close snapshot');
+    assert.equal(await page.evaluate(async () => (await window.MOSEDesktop.state()).ok), true);
+    assert.equal(await page.evaluate(() => MaweProjectSave.saveCurrentProject()), true);
+    assert.equal(JSON.parse(readFileSync(projectPath, 'utf8')).segments[0].text, 'new edit during close save');
+  } finally {
+    await instance.evaluate(({ dialog }) => {
+      if (globalThis.__continueTestFetch) globalThis.fetch = globalThis.__continueTestFetch;
+      globalThis.__continueTestRelease?.();
+      dialog.showMessageBox = async () => ({ response: 1 });
+    }).catch(() => {});
     await instance.close().catch(() => {});
   }
 });
