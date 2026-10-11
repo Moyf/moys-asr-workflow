@@ -275,7 +275,7 @@
     "editor/styles/editor-colors.js": "709c8678ec759d2cac268077bcdc3f2864791861d3a730ceab1a5a5e3749aed3",
     "editor/ui/editor-dom.js": "95cf72fc9ed6cd6ea2d1aca05a2ad0e0d330cde9caa01bc3514d34742520a158",
     "editor/state/editor-cue-panel-state.js": "199f2b86cc07e797840355c5278364f5f2ab0b0bbd882b2d94cb7edf2c242689",
-    "editor/state/editor-history.js": "2d15a62473a35f38d4f50d7ab219d50db13880a3606e7ead7a23c6270d0e7d31",
+    "editor/state/editor-history.js": "58164350f9833f710040c368646ee80ee1d46edc2db7ab981b06c1fdb47a34c7",
     "editor/state/editor-core-state.js": "b86e2a02ed809c43729df726d7ad2ed3e235bce3ae60fcfb21dadafcf9cf1730",
     "editor/cues/editor-split-trim.js": "d1282bb59a2b63190e1d9f3ac7176a7c203fbebaaf89007c38b20c8dc68b4e21",
     "editor/cues/editor-split-mode.js": "2d9ea2bb8667d2884d17062c3eb8a495783d49986f35bc6d5149b683f76131d9",
@@ -692,7 +692,7 @@
         "format": "esm"
       },
       "web/editor-entry.mjs": {
-        "bytes": 1859411,
+        "bytes": 1860058,
         "imports": [
           {
             "path": "web/shared/host/storage.js",
@@ -1193,10 +1193,10 @@
             "bytesInOutput": 4406
           },
           "web/editor-entry.mjs": {
-            "bytesInOutput": 1081968
+            "bytesInOutput": 1082139
           }
         },
-        "bytes": 1436462
+        "bytes": 1436633
       }
     }
   }
