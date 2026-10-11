@@ -113,7 +113,7 @@ from maw.postprocess_ffmpeg import (
     run_extract_audio as process_extract_audio,
     run_ffconcat_rebuild as process_ffconcat_rebuild,
 )
-from maw.postprocess_match import DEFAULT_SPLIT_PUNCTUATION, SCRIPT_EXTENSIONS, MatchCoverageError, ScriptMatchRequest, SubtitleMatchError, _has_complete_item_timings, _match_project, _match_project_with_character_timings, _read_script, prepare_script_text, processed_script_text, run_script_match as process_script_match
+from maw.postprocess_match import DEFAULT_SPLIT_PUNCTUATION, SCRIPT_EXTENSIONS, MatchCancelledError, MatchCoverageError, ScriptMatchRequest, SubtitleMatchError, _has_complete_item_timings, _match_project, _match_project_with_character_timings, _read_script, prepare_script_text, processed_script_text, run_script_match as process_script_match
 from maw.postprocess_ocr import OcrDedupRequest, OcrRegion
 from maw.postprocess_llm import DEFAULT_REASONING_MODE, LlmClientError, LlmSettings, PRESETS as POSTPROCESS_PRESETS, complete_subtitle_groups, is_custom_slot, list_llm_models, loopback_base_url, normalize_reasoning_mode, postprocess_api_key_required as _postprocess_api_key_required, preset_by_id, test_llm_connection
 from maw.postprocess_pipeline import (
@@ -238,7 +238,7 @@ ERROR_MESSAGES: Final[dict[str, str]] = {
 
 
 class _PostprocessOperation:
-    """Cancellation state for one Launcher AI request."""
+    """Cancellation state for one Launcher matching or AI request."""
 
     def __init__(self, operation_id: str) -> None:
         self.operation_id = operation_id
@@ -625,7 +625,7 @@ class LauncherApi:
         # only after this admission, including while preparation is blocked.
         operation = self._begin_postprocess_operation(payload)
         if operation is None:
-            return _error_result("postprocessInput", "postprocess_operation_conflict", "This AI operation is already active or has an invalid operation id.")
+            return _error_result("postprocessInput", "postprocess_operation_conflict", "This post-processing operation is already active or has an invalid operation id.")
         try:
             if operation.operation_id:
                 self.pump.start()
@@ -646,7 +646,7 @@ class LauncherApi:
         return {"ok": False, "code": "postprocess_cancelled", "detail": cancelled_detail}
 
     def cancel_postprocess(self, payload: Mapping[str, object]) -> dict[str, object]:
-        """Cancel one active AI cleanup / LLM operation by its opaque UI id."""
+        """Cancel one active match / AI operation by its opaque UI id."""
 
         operation_id = str(payload.get("operationId") or "").strip()
         if not operation_id or len(operation_id) > MAX_POSTPROCESS_OPERATION_ID_LENGTH:
@@ -1297,14 +1297,24 @@ class LauncherApi:
         return self.run_fixed_process(payload)
 
     def run_script_match(self, payload: Mapping[str, object]) -> dict[str, object]:
+        return self._run_postprocess_operation(
+            payload,
+            run=lambda operation: self._run_script_match(payload, operation),
+            cancelled_detail="Script matching was cancelled.",
+        )
+
+    def _run_script_match(
+        self, payload: Mapping[str, object], operation: _PostprocessOperation
+    ) -> dict[str, object]:
         script_path = _optional_path(payload.get("scriptPath"))
         if script_path is None:
             return _error_result("postprocessScriptPath", "script_invalid", "A script file is required.")
         project_path = _optional_path(payload.get("projectPath"))
         srt_path = _optional_path(payload.get("srtPath"))
-        self._emit_postprocess_status("toolbox_status_reading")
+        def emit_status(key: str) -> None:
+            self._emit_postprocess_status(key, operation_id=operation.operation_id)
+
         try:
-            self._emit_postprocess_status("toolbox_status_matching")
             result = process_script_match(
                 ScriptMatchRequest(
                     project_path=project_path,
@@ -1316,9 +1326,13 @@ class LauncherApi:
                     preserve_punctuation=tuple(str(value) for value in payload.get("preservePunctuation", ()) if str(value)),
                     match_mode=str(payload.get("matchMode") or "script"),
                     clean_markdown_symbols=payload.get("cleanMarkdownSymbols", True) is not False,
-                )
+                ),
+                is_cancelled=operation.cancel_event.is_set,
+                begin_commit=operation.begin_commit,
+                on_status=emit_status,
             )
-            self._emit_postprocess_status("toolbox_status_writing")
+        except MatchCancelledError:
+            return {"ok": False, "code": "postprocess_cancelled", "detail": "Script matching was cancelled."}
         except MatchCoverageError as error:
             return _match_coverage_error_result("postprocessScriptPath", error)
         except PostprocessFileError as error:
