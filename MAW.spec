@@ -106,6 +106,7 @@ datas = [
     (str(ROOT / "maw" / "stickers.py"), "local-runtime/maw"),
     (str(ROOT / "maw" / "__init__.py"), "ocr-runtime/maw"),
     (str(ROOT / "maw" / "console.py"), "ocr-runtime/maw"),
+    (str(ROOT / "maw" / "gui_platform.py"), "ocr-runtime/maw"),
     (str(ROOT / "maw" / "media.py"), "ocr-runtime/maw"),
     (str(ROOT / "maw" / "ffmpeg.py"), "ocr-runtime/maw"),
     (str(ROOT / "maw" / "media_jobs.py"), "ocr-runtime/maw"),

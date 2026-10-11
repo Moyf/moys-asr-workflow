@@ -430,6 +430,19 @@ class PackagingContractTests(CompactContainerAssertions, unittest.TestCase):
             expression = " / ".join(["ROOT", *(f'"{part}"' for part in parts)])
             self.assertIn(f'(str({expression}), "ocr-runtime/maw")', spec)
 
+    def test_media_job_runtime_copies_include_local_import_dependencies(self) -> None:
+        """Given copied media jobs, When either runtime imports them, Then local dependencies are present."""
+        spec = read_text("MAW.spec")
+        for module in sorted(_local_import_graph({"maw.media_jobs"})):
+            path = _local_module_path(module)
+            if path is None:
+                continue
+            parts = path.relative_to(ROOT).parts
+            expression = " / ".join(["ROOT", *(f'"{part}"' for part in parts)])
+            for runtime in ("local-runtime", "ocr-runtime"):
+                target = runtime + "/" + "/".join(parts[:-1])
+                self.assertIn(f'(str({expression}), "{target}")', spec)
+
     def test_macos_bundle_uses_the_icns_app_icon(self) -> None:
         """Given a macOS app bundle, When PyInstaller builds it, Then the bundle has the branded ICNS icon."""
         spec = read_text("MAW.spec")
