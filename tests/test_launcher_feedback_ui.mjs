@@ -68,19 +68,27 @@ function aiLifecycleHarness() {
   let sequence = 0;
   let cancelResult = { ok: true, active: true, cancelled: true };
   const context = vm.createContext({
-    $: element, busy: false, activePostprocessOperationId: "",
+    $: element, busy: false, activeToolId: "llm", runningToolId: "", toolboxResultTool: "", toolboxStreamTool: "",
+    activePostprocessOperationId: "",
     displayedPostprocessOperationId: "", postprocessOperationReady: false,
     postprocessOperationSequence: 0, postprocessCancelling: false,
     postprocessSettingsActionVisible: false,
     window: { crypto: { randomUUID: () => `operation-${++sequence}` } },
+    document: { querySelector: () => null },
     t: (key) => key, autoLlmReady: () => true, setFieldError() {},
+    aiCleanupProviderId: () => "deepseek",
     resolveInputPaths: () => ({ projectPath: "source.mosp" }),
     provider: () => ({ id: "deepseek" }), taskPromptText: () => "task",
     postprocessFieldId: () => "", postprocessErrorText: (result) => result.code || "failed",
     setBusy(value, key) {
       context.busy = value;
-      if (value) context.setResult(key);
-      else context.renderPostprocessResultActions();
+      if (value) {
+        if (!context.runningToolId) context.runningToolId = context.activeToolId;
+        context.setResult(key);
+      } else {
+        context.runningToolId = "";
+        context.renderPostprocessResultActions();
+      }
     },
     applySubtitleResult() { context.setResult("success", "success"); },
     bridge(method, payload) {
@@ -95,11 +103,13 @@ function aiLifecycleHarness() {
     "renderPostprocessResultActions", "setResult", "newPostprocessOperationId",
     "beginAiPostprocessOperation", "finishAiPostprocessOperation", "cancelAiPostprocess",
     "renderPostprocessStatus", "resetStreamOutput", "beginStreamOutput", "appendStreamText",
-    "renderPostprocessStream", "runAiCleanup", "runLlm",
+    "renderPostprocessStream", "syncSharedOutputVisibility", "resultOwningTool",
+    "scrollToolboxContentToTop", "runAiCleanup", "runLlm",
   ];
   vm.runInContext(functions.map(launcherFunction).join("\n"), context);
   return {
     runs, cancels, element,
+    switchTool(tool) { context.activeToolId = tool; context.syncSharedOutputVisibility(); },
     run: (entry) => entry === "cleanup" ? context.runAiCleanup({ projectPath: "source.mosp" }, "script.txt") : context.runLlm(),
     admit: (operationId) => context.renderPostprocessStatus({ stage: "admitted", key: "toolbox_status_starting", operationId }),
     stream: (operationId, kind, text = "") => context.renderPostprocessStream({ operationId, kind, text, batch: 1 }),
@@ -113,6 +123,22 @@ function aiLifecycleHarness() {
 }
 
 for (const entry of ["cleanup", "llm"]) {
+  test(`${entry} accumulates stream output while another tool is visible`, async () => {
+    const ui = aiLifecycleHarness();
+    const running = ui.run(entry);
+    const { payload, resolve } = ui.runs[0];
+    ui.stream(payload.operationId, 'content', 'before');
+    ui.switchTool('extractAudio');
+    assert.equal(ui.element('toolboxStreamOutput').classList.contains('hidden'), true);
+    ui.stream(payload.operationId, 'reasoning', 'hidden reasoning');
+    ui.stream(payload.operationId, 'content', ' hidden tail');
+    ui.switchTool('llm');
+    assert.equal(ui.element('toolboxStreamOutput').classList.contains('hidden'), false);
+    assert.equal(ui.element('toolboxModelOutput').textContent, 'before hidden tail');
+    assert.equal(ui.element('toolboxThinkingOutput').textContent, 'hidden reasoning');
+    resolve({ ok: true });
+    await running;
+  });
   test(`${entry} keeps queued reasoning/content after the completion Promise settles`, async () => {
     const ui = aiLifecycleHarness();
     const running = ui.run(entry);
@@ -203,6 +229,17 @@ test("missing AI provider offers settings and media rebuild tab alone stays hidd
   assert.match(html, /id="toolboxFfconcatTab" class="toolbox-tab hidden"/);
   assert.match(html, /id="toolboxFfconcatPanel"/);
   assert.match(html, /id="toolboxUtilitiesTabList"[^]*?<div class="toolbox-tab-list">/);
+});
+
+test("provider key status prefers a loaded key, then local no-key, then missing", () => {
+  const context = vm.createContext({ t: (key) => key });
+  vm.runInContext(launcherFunction("providerKeyStatusText"), context);
+  const status = context.providerKeyStatusText;
+  assert.equal(status({ maskedApiKey: "sk-…1", apiKeyRequired: true }), "toolbox_key_loaded");
+  assert.equal(status({ maskedApiKey: "", apiKeyRequired: false }), "toolbox_key_not_required");
+  assert.equal(status({ maskedApiKey: "", apiKeyRequired: true }), "toolbox_key_empty");
+  assert.match(strings, /toolbox_key_not_required:\s*"本地服务，无需密钥"/);
+  assert.match(strings, /toolbox_key_not_required:\s*"Local service; no API key needed"/);
 });
 
 test("green-screen generation does not require or disable for missing media", () => {

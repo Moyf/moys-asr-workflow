@@ -646,9 +646,6 @@
   const multiSubtitleToggleLabel = document.getElementById('multi-subtitle-toggle-label');
 
 
-  const projectMultiSubtitleSettings = document.getElementById('project-multi-subtitle-settings');
-
-
   // 已开启多重字幕但尚未加载第二条字幕时的开关右侧提示。
   const multiSubtitleEmptyHint = document.getElementById('multi-subtitle-empty-hint');
 
@@ -687,6 +684,12 @@
 
 
   const multiSubtitleExtensionRowHeight = document.getElementById('multi-subtitle-extension-row-height');
+
+
+  const wordTimingRowHeight = document.getElementById('word-timing-row-height');
+
+
+  const wordTimingSecondsPerRow = document.getElementById('word-timing-seconds-per-row');
 
 
   const multiSubtitleAlignButton = document.getElementById('multi-subtitle-align');
@@ -1235,7 +1238,6 @@
     gapRemovedSubtitleExportSeparator,
     downloadGapRemovedColorSrtItem,
     multiSubtitleToggleLabel,
-    projectMultiSubtitleSettings,
     multiSubtitleEmptyHint,
     multiSubtitleSwapButton,
     multiSubtitleCrossTrackSnapToggle,
@@ -1249,6 +1251,8 @@
     multiSubtitleExtensionLanguageMode,
     multiSubtitleExtensionRowHeightSetting,
     multiSubtitleExtensionRowHeight,
+    wordTimingRowHeight,
+    wordTimingSecondsPerRow,
     multiSubtitleAlignButton,
     multiSubtitleImportModal,
     multiSubtitleImportDescription,

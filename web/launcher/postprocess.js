@@ -68,6 +68,10 @@
   let llmPrompts = {};
   let activeLlmOperation = "";
   let llmProviderByTask = {};
+  let activeToolId = "";
+  let runningToolId = "";
+  let toolboxResultTool = "";
+  let toolboxStreamTool = "";
   let artifactMenuTarget = null;
   let batchMode = false;
   let postprocessApiKeyRequest = 0;
@@ -183,6 +187,14 @@
     if (stepId === "translate") return providerIdForTask("translate_zh") || fallback;
     if (stepId === "proofread" || stepId === "resegment") return providerIdForTask(stepId) || fallback;
     return fallback;
+  }
+
+  /** AI 整理的供应商：独立下拉当前值优先，其次它记住的，再回落当前选中项。 */
+  function aiCleanupProviderId() {
+    return knownProviderId($("postprocessAiCleanupProvider")?.value)
+      || providerIdForTask("ai_cleanup")
+      || $("postprocessProvider").value
+      || "deepseek";
   }
 
   /** 切到某任务时恢复它记住的供应商；没有记录或与当前一致就不动。 */
@@ -450,14 +462,21 @@
     return suffix ? `llm_custom_provider_${suffix}` : "llm_custom_provider";
   }
 
-  /** 重建两个供应商下拉：两处都显示全部槽位（未配置的自定义槽位也能选中补填）。 */
+  // 工具箱下拉只显示已填 URL 的 #2/#3 槽位；首个自定义槽位与设置页（补填入口）始终全量。
+  function customSlotVisibleInToolbox(item) {
+    if (!isCustomSlot(item) || item.id === "custom") return true;
+    return Boolean(item.hasBaseUrl);
+  }
+
+  /** 重建供应商下拉：设置页显示全部槽位（未配置的也能选中补填），工具箱与 AI 整理隐藏未填 URL 的 #2/#3。 */
   function fillProviderSelects(preferredProviderId = "") {
     const providers = window.MAWLauncher.config?.postprocessProviders || [];
-    [$("postprocessProvider"), $("llmProvider")].forEach((select) => {
+    [$("postprocessProvider"), $("llmProvider"), $("postprocessAiCleanupProvider")].forEach((select) => {
       if (!select) return;
       const previous = select.value || preferredProviderId;
       select.innerHTML = "";
       providers.forEach((item) => {
+        if (select.id !== "llmProvider" && !customSlotVisibleInToolbox(item)) return;
         select.add(new Option(providerLabel(item), item.id));
       });
       const target = previous || preferredProviderId;
@@ -504,7 +523,7 @@
 
   function syncProviderOptionLabels() {
     const providers = window.MAWLauncher.config?.postprocessProviders || [];
-    [$("postprocessProvider"), $("llmProvider")].forEach((select) => {
+    [$("postprocessProvider"), $("llmProvider"), $("postprocessAiCleanupProvider")].forEach((select) => {
       providers.forEach((item) => {
         const option = Array.from(select.options).find((candidate) => candidate.value === item.id);
         if (option) option.textContent = providerLabel(item);
@@ -512,12 +531,29 @@
     });
   }
 
-  function renderProviderKeyStatus(item) {
-    const keyStatus = item.maskedApiKey
+  /** 供应商的密钥状态文案：本地回环服务不需要密钥，用专门文案而不是「未保存」。 */
+  function providerKeyStatusText(item) {
+    return item.maskedApiKey
       ? t("toolbox_key_loaded").replace("{key}", item.maskedApiKey)
-      : t("toolbox_key_empty");
+      : item.apiKeyRequired === false
+        ? t("toolbox_key_not_required")
+        : t("toolbox_key_empty");
+  }
+
+  function renderProviderKeyStatus(item) {
+    const keyStatus = providerKeyStatusText(item);
     $("llmKeyStatus").textContent = keyStatus;
     $("postprocessProviderStatus").textContent = `${providerLabel(item)} · ${keyStatus}`;
+    renderAiCleanupProviderStatus();
+  }
+
+  // AI 整理状态行展示它自己下拉所选的供应商，格式与 AI 处理面板一致。
+  function renderAiCleanupProviderStatus() {
+    const status = $("postprocessAiCleanupProviderStatus");
+    if (!status) return;
+    const id = knownProviderId($("postprocessAiCleanupProvider")?.value) || $("postprocessProvider").value;
+    const item = provider(id);
+    status.textContent = `${providerLabel(item)} · ${providerKeyStatusText(item)}`;
   }
 
   async function loadPostprocessApiKey(providerId, fallbackMask = "") {
@@ -820,6 +856,23 @@
     return activeToolboxSection === "postprocess" ? $("toolboxPostprocessView") : $("toolboxUtilitiesView");
   }
 
+  // 「处理结果」与「模型实时输出」是各工具标签共享的区域：只随产出它的工具
+  // 标签显示，切到其他标签时隐藏、切回时恢复，避免旧结果被误读成当前工具的。
+  function syncSharedOutputVisibility() {
+    const visible = Boolean(toolboxResultTool) && toolboxResultTool === activeToolId;
+    $("toolboxResult").classList.toggle("hidden", !visible);
+    $("toolboxStreamOutput").classList.toggle("hidden", !toolboxStreamTool || toolboxStreamTool !== activeToolId);
+  }
+
+  function resultOwningTool() {
+    return busy && runningToolId ? runningToolId : activeToolId;
+  }
+
+  // 实时输出区在工具箱顶部；运行按钮在面板下方，滚动回顶让用户看到 AI 输出。
+  function scrollToolboxContentToTop() {
+    document.querySelector("#toolboxDrawer .toolbox-content")?.scrollTo({ top: 0, behavior: "smooth" });
+  }
+
   function syncUtilityMediaFieldState() {
     const disabled = busy || (!$("toolboxBurnSubtitlePanel").classList.contains("hidden")
       && $("toolboxGreenScreen").checked);
@@ -850,6 +903,7 @@
   function selectTool(tool) {
     const targetTab = [...document.querySelectorAll(".toolbox-tab")].find((tab) => tab.dataset.tool === tool);
     if (targetTab?.classList.contains("hidden")) return;
+    activeToolId = tool;
     const section = toolboxSectionForTool(tool);
     if (section !== activeToolboxSection) selectToolboxSection(section);
     document.querySelectorAll(".toolbox-tab").forEach((tab) => {
@@ -859,6 +913,7 @@
       tab.tabIndex = active ? 0 : -1;
     });
     Object.entries(panels).forEach(([name, id]) => $(id).classList.toggle("hidden", name !== tool));
+    syncSharedOutputVisibility();
     syncUtilityMediaFieldState();
     document.querySelectorAll("[data-tool-action]").forEach((action) => {
       action.classList.toggle("hidden", action.dataset.toolAction !== tool || toolboxOpenMode === "auto-config");
@@ -996,7 +1051,8 @@
 
   function setResult(message, kind = "", options = {}) {
     const result = $("toolboxResult");
-    result.classList.remove("hidden");
+    toolboxResultTool = resultOwningTool();
+    syncSharedOutputVisibility();
     $("toolboxResultText").textContent = message;
     postprocessSettingsActionVisible = Boolean(options.showAiSettings);
     result.classList.toggle("success", kind === "success");
@@ -1011,6 +1067,7 @@
   }
 
   function beginAiPostprocessOperation() {
+    toolboxStreamTool = "";
     activePostprocessOperationId = newPostprocessOperationId();
     displayedPostprocessOperationId = activePostprocessOperationId;
     postprocessOperationReady = false;
@@ -1094,6 +1151,7 @@
   }
 
   function resetStreamOutput() {
+    toolboxStreamTool = "";
     $("toolboxStreamOutput").classList.add("hidden");
     $("toolboxThinkingPanel").classList.add("hidden");
     $("toolboxThinkingOutput").textContent = "";
@@ -1104,9 +1162,11 @@
   }
 
   function beginStreamOutput() {
+    toolboxResultTool = toolboxStreamTool || resultOwningTool();
     resetStreamOutput();
-    $("toolboxStreamOutput").classList.remove("hidden");
+    toolboxStreamTool = toolboxResultTool;
     $("toolboxModelPanel").open = true;
+    syncSharedOutputVisibility();
   }
 
   function appendStreamText(element, text) {
@@ -1120,7 +1180,6 @@
       beginStreamOutput();
       return;
     }
-    if ($("toolboxStreamOutput").classList.contains("hidden")) return;
     const text = String(event.text || "");
     if (!text) return;
     const batch = Number(event.batch || 0);
@@ -1152,9 +1211,18 @@
 
   function setBusy(nextBusy, statusKey = "toolbox_running") {
     busy = nextBusy;
+    if (nextBusy) {
+      if (!runningToolId) runningToolId = activeToolId;
+      if (!activePostprocessOperationId) {
+        displayedPostprocessOperationId = "";
+        resetStreamOutput();
+      }
+    } else {
+      runningToolId = "";
+    }
     $("toolboxProgress").classList.toggle("hidden", !busy);
     ["toolboxTimestampScriptPath", "pickToolboxTimestampScript", "toolboxTimestampLanguage", "toolboxTimestampSilenceMs", "toolboxTimestampSilenceDb", "toolboxTimestampAnchorsPath", "pickToolboxTimestampAnchors", "toolboxTimestampAudioTrack", "toolboxTimestampOutputDirectory", "pickToolboxTimestampOutput", "checkScriptAlignment"].forEach((id) => { $(id).disabled = busy; });
-    ["generateWaveform", "runWaveform", "toolboxGenerateSpectral", "runScriptMatch", "runTimestampAlignment", "runOcrDedup", "runLlmPostprocess", "runFixedProcess", "runFfconcatRebuild", "runBurnSubtitle", "runExtractAudio", "runToolboxAlignment", "stopToolboxAlignment", "saveLlmSettings", "testLlmConnection", "getLlmModels", "toolboxInputPath", "pickToolboxInput", "toolboxUtilityMediaPath", "pickToolboxUtilityMedia", "toolboxTimestampModel", "toolboxTimestampMode", "toolboxTimestampMediaPath", "pickToolboxTimestampMedia", "toolboxBurnSubtitlePath", "pickToolboxBurnSubtitle", "toolboxGreenScreen", "toolboxAudioTrack", "toolboxAlignmentProjectPath", "pickToolboxAlignmentProject", "toolboxAlignmentScriptPath", "pickToolboxAlignmentScript", "toolboxAlignmentGapMinimum", "toolboxAlignmentGapThreshold", "toolboxAlignmentGapLeadIn", "toolboxAlignmentGapLeadOut", "postprocessProvider", "llmProvider", "llmApiKey", "llmBaseUrl", "llmModel", "llmModelChoicesToggle", "llmReasoningMode", "llmCustomDisplayName", "ocrModel", "openOcrSettings", "ocrVideoPath", "pickOcrVideo", "ocrRegionMode", "ocrRegionX1", "ocrRegionY1", "ocrRegionX2", "ocrRegionY2", "ocrThreshold", "ocrReport", "postprocessConversion"].forEach((id) => {
+    ["generateWaveform", "runWaveform", "toolboxGenerateSpectral", "runScriptMatch", "runTimestampAlignment", "runOcrDedup", "runLlmPostprocess", "runFixedProcess", "runFfconcatRebuild", "runBurnSubtitle", "runExtractAudio", "runToolboxAlignment", "stopToolboxAlignment", "saveLlmSettings", "testLlmConnection", "getLlmModels", "toolboxInputPath", "pickToolboxInput", "toolboxUtilityMediaPath", "pickToolboxUtilityMedia", "toolboxTimestampModel", "toolboxTimestampMode", "toolboxTimestampMediaPath", "pickToolboxTimestampMedia", "toolboxBurnSubtitlePath", "pickToolboxBurnSubtitle", "toolboxGreenScreen", "toolboxAudioTrack", "toolboxAlignmentProjectPath", "pickToolboxAlignmentProject", "toolboxAlignmentScriptPath", "pickToolboxAlignmentScript", "toolboxAlignmentGapMinimum", "toolboxAlignmentGapThreshold", "toolboxAlignmentGapLeadIn", "toolboxAlignmentGapLeadOut", "postprocessProvider", "postprocessAiCleanupProvider", "llmProvider", "llmApiKey", "llmBaseUrl", "llmModel", "llmModelChoicesToggle", "llmReasoningMode", "llmCustomDisplayName", "ocrModel", "openOcrSettings", "ocrVideoPath", "pickOcrVideo", "ocrRegionMode", "ocrRegionX1", "ocrRegionY1", "ocrRegionX2", "ocrRegionY2", "ocrThreshold", "ocrReport", "postprocessConversion"].forEach((id) => {
       $(id).disabled = busy;
     });
     syncUtilityMediaFieldState();
@@ -1661,7 +1729,6 @@
   }
 
   function autoPlanFromControls() {
-    const providerId = $("postprocessProvider").value || "deepseek";
     // 各 LLM 步骤用自己任务记住的供应商（见 stepProviderId）；没有记录时沿用当前选中项。
     const ocr = ocrRegionPayload();
     return {
@@ -1670,7 +1737,7 @@
       retainIntermediate: Boolean($("autoPostprocessRetain")?.checked),
       steps: [
         // 始终上报用户的单文件勾选；批量运行由后端统一跳过文稿匹配，前端不改写、不持久化批量态。
-        { id: "match", enabled: Boolean($("autoStepMatch")?.checked), scriptPath: $("postprocessScriptPath").value.trim(), matchMode: $("postprocessMatchMode").value, aiCleanup: Boolean($("postprocessAiCleanup")?.checked), aiCleanupNotes: $("postprocessAiCleanupNotes")?.value.trim() || "", providerId, extraSplitPunctuation: punctuationLines("postprocessExtraSplitPunctuation"), preservePunctuation: punctuationLines("postprocessPreservePunctuation"), cleanMarkdownSymbols: Boolean($("postprocessCleanMarkdownSymbols")?.checked) },
+        { id: "match", enabled: Boolean($("autoStepMatch")?.checked), scriptPath: $("postprocessScriptPath").value.trim(), matchMode: $("postprocessMatchMode").value, aiCleanup: Boolean($("postprocessAiCleanup")?.checked), aiCleanupNotes: $("postprocessAiCleanupNotes")?.value.trim() || "", providerId: aiCleanupProviderId(), extraSplitPunctuation: punctuationLines("postprocessExtraSplitPunctuation"), preservePunctuation: punctuationLines("postprocessPreservePunctuation"), cleanMarkdownSymbols: Boolean($("postprocessCleanMarkdownSymbols")?.checked) },
         { id: "replace", enabled: Boolean($("autoStepReplace")?.checked), replacements: parseReplacements(), replacementSeparator: $("postprocessReplacementSeparator").value, replacementTrim: $("postprocessReplacementTrim").checked, replacementCustomSeparator: $("postprocessReplacementCustomSeparator").value, conversion: $("postprocessConversion").value },
         { id: "proofread", enabled: Boolean($("autoStepProofread")?.checked), providerId: stepProviderId("proofread"), customPrompt: getLlmPrompt("proofread") },
         { id: "resegment", enabled: Boolean($("autoStepResegment")?.checked), providerId: stepProviderId("resegment"), customPrompt: getLlmPrompt("resegment") },
@@ -1690,7 +1757,7 @@
     if (stepId === "match") {
       const path = $("postprocessScriptPath").value.trim();
       if (!path || !SCRIPT_EXTS.has(extension(path))) return false;
-      return !$("postprocessAiCleanup")?.checked || autoLlmReady($("postprocessProvider").value);
+      return !$("postprocessAiCleanup")?.checked || autoLlmReady(aiCleanupProviderId());
     }
     if (stepId === "replace") return parseReplacements().length > 0 || $("postprocessConversion").value !== "off";
     if (["proofread", "resegment", "translate"].includes(stepId)) return autoLlmReady(stepProviderId(stepId));
@@ -1932,7 +1999,8 @@
     const plan = window.MAWLauncher.config?.postprocessAutoPlan || defaultAutoPlan();
     applyAutoPostprocessPlan(plan);
     const providerId = (plan.steps || []).find((step) => step.enabled && step.providerId)?.providerId;
-    if (providerId && provider(providerId)) {
+    // 记住的供应商若已不在工具箱下拉（如未填 URL 的 #2/#3），保持默认选中，避免工具箱与表单不一致。
+    if (providerId && Array.from($("postprocessProvider").options).some((option) => option.value === providerId)) {
       $("postprocessProvider").value = providerId;
       renderProvider(providerId);
     }
@@ -1982,7 +2050,7 @@
   }
 
   async function runAiCleanup(paths, scriptPath) {
-    const providerId = $("postprocessProvider").value || "deepseek";
+    const providerId = aiCleanupProviderId();
     if (!autoLlmReady(providerId)) {
       setResult(t("toolbox_ai_cleanup_need_provider"), "error", { showAiSettings: true });
       return;
@@ -1991,6 +2059,7 @@
     const operationId = beginAiPostprocessOperation();
     beginStreamOutput();
     setBusy(true, "toolbox_status_ai_cleanup");
+    scrollToolboxContentToTop();
     let cancelled = false;
     try {
       const result = await bridge("run_ai_cleanup", {
@@ -2011,11 +2080,14 @@
     }
   }
 
-  // AI 整理模式下录音优先：换行来源与断句符号不参与，收起对应控件。
+  // AI 整理模式下录音优先：换行来源与断句符号不参与，收起对应控件；
+  // 供应商选择与补充说明只在勾选后显示。
   function renderAiCleanupMode() {
     const aiEnabled = Boolean($("postprocessAiCleanup")?.checked);
     $("postprocessMatchModeField")?.classList.toggle("hidden", aiEnabled);
     $("postprocessPunctHint")?.classList.toggle("hidden", aiEnabled);
+    $("postprocessAiCleanupProviderField")?.classList.toggle("hidden", !aiEnabled);
+    if (aiEnabled && window.MAWLauncher.config?.postprocessProviders?.length) renderAiCleanupProviderStatus();
     $("postprocessAiCleanupNotesField")?.classList.toggle("hidden", !aiEnabled);
   }
 
@@ -2175,7 +2247,8 @@
   }
 
   async function saveSettings() {
-    const item = provider();
+    // 设置页操作以设置页下拉为准：工具箱与设置页解耦后两者可以不同（如补填未配置的 #2/#3）。
+    const item = provider($("llmProvider").value);
     const result = await bridge("save_postprocess_settings", {
       providerId: item.id,
       apiKey: $("llmApiKey").value.trim(),
@@ -2216,7 +2289,7 @@
     $("testLlmConnection").disabled = true;
     $("getLlmModels").disabled = true;
     try {
-      const item = provider();
+      const item = provider($("llmProvider").value);
       const result = await bridge("test_postprocess_connection", {
         providerId: item.id,
         apiKey: $("llmApiKey").value.trim(),
@@ -2261,7 +2334,7 @@
     $("testLlmConnection").disabled = true;
     $("getLlmModels").disabled = true;
     try {
-      const item = provider();
+      const item = provider($("llmProvider").value);
       const result = await bridge("get_postprocess_models", {
         providerId: item.id,
         apiKey: $("llmApiKey").value.trim(),
@@ -2309,6 +2382,7 @@
     const operationId = beginAiPostprocessOperation();
     beginStreamOutput();
     setBusy(true, "toolbox_status_starting");
+    scrollToolboxContentToTop();
     let cancelled = false;
     try {
       const result = await bridge("run_llm_postprocess", {
@@ -2572,6 +2646,8 @@
     renderOcrModel();
     renderTimestampModel();
     loadLlmProviderByTask();
+    const aiCleanupSavedProvider = providerIdForTask("ai_cleanup");
+    if (aiCleanupSavedProvider) $("postprocessAiCleanupProvider").value = aiCleanupSavedProvider;
     restoreProviderForTask(activeLlmOperation || $("postprocessOperation").value);
     selectToolboxSection("postprocess");
     syncPaths();
@@ -2614,7 +2690,7 @@
   });
   $("postprocessProvider").addEventListener("change", () => { renderProvider(); rememberProviderForTask($("postprocessOperation").value, $("postprocessProvider").value); renderAutoPostprocessState(); persistAutoPlanSoon(); });
   $("postprocessOperation").addEventListener("change", () => switchLlmOperation($("postprocessOperation").value));
-  $("llmProvider").addEventListener("change", () => { $("postprocessProvider").value = $("llmProvider").value; renderProvider(); rememberProviderForTask($("postprocessOperation").value, $("llmProvider").value); renderAutoPostprocessState(); persistAutoPlanSoon(); });
+  $("llmProvider").addEventListener("change", () => { renderProvider($("llmProvider").value); rememberProviderForTask($("postprocessOperation").value, $("llmProvider").value); renderAutoPostprocessState(); persistAutoPlanSoon(); });
   $("saveLlmSettings").addEventListener("click", () => { void saveSettings(); });
   $("testLlmConnection").addEventListener("click", testConnection);
   $("getLlmModels").addEventListener("click", getModels);
@@ -2632,6 +2708,8 @@
   $("postprocessPreservePunctuation").addEventListener("input", () => { validateMatchPunctuation(); void refreshScriptPreview(); persistAutoPlanSoon(); });
   $("postprocessMatchMode").addEventListener("change", () => { validateMatchPunctuation(); void refreshScriptPreview(); persistAutoPlanSoon(); });
   $("postprocessAiCleanup").addEventListener("change", () => { renderAiCleanupMode(); renderAutoPostprocessState(); persistAutoPlanSoon(); });
+  $("postprocessAiCleanupProvider").addEventListener("change", () => { rememberProviderForTask("ai_cleanup", $("postprocessAiCleanupProvider").value); renderAiCleanupProviderStatus(); renderAutoPostprocessState(); persistAutoPlanSoon(); });
+  $("openLlmSettingsFromAiCleanup").addEventListener("click", () => { window.MAWLauncher.openSettings("llmSettingsSection"); requestAnimationFrame(() => $("llmApiKey")?.focus()); });
   $("postprocessAiCleanupNotes").addEventListener("input", () => { persistAutoPlanSoon(); });
   $("runOcrDedup").addEventListener("click", runOcrDedup);
   $("ocrModel").addEventListener("change", renderOcrModel);

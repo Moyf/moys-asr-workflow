@@ -46,6 +46,9 @@ NINJA_SFX_NAMES = frozenset(
     f"sfx_katana_slash_{index:02d}.opus"
     for index in range(1, 5)
 )
+# 界面静态资源（如关于页装饰图）：只允许白名单内的文件名，不开放任意读取。
+EDITOR_ASSET_ROOT = ROOT / "web" / "assets"
+EDITOR_ASSET_NAMES = frozenset({"moi_dancing.gif"})
 mimetypes.add_type("audio/ogg", ".opus")
 
 import edit  # noqa: E402
@@ -3001,6 +3004,13 @@ class EditorRequestHandler(BaseHTTPRequestHandler):
             else:
                 self.send_localized_error(HTTPStatus.NOT_FOUND, "刀光音效不存在")
             return
+        if path.startswith("/assets/"):
+            asset_path = self.editor_asset_path(path[len("/assets/"):])
+            if asset_path:
+                self.send_file(asset_path, include_body)
+            else:
+                self.send_localized_error(HTTPStatus.NOT_FOUND, "资源不存在")
+            return
         if path.startswith("/stickers/"):
             sticker_path = self.sticker_path(path[len("/stickers/"):])
             if sticker_path:
@@ -3079,6 +3089,18 @@ class EditorRequestHandler(BaseHTTPRequestHandler):
         except ValueError:
             return None
         if candidate.name not in NINJA_SFX_NAMES:
+            return None
+        return candidate if candidate.is_file() else None
+
+    def editor_asset_path(self, relative_url: str) -> Path | None:
+        """Resolve one whitelisted UI asset without exposing arbitrary files."""
+        root = EDITOR_ASSET_ROOT.resolve()
+        candidate = (root / unquote(relative_url)).resolve()
+        try:
+            candidate.relative_to(root)
+        except ValueError:
+            return None
+        if candidate.name not in EDITOR_ASSET_NAMES:
             return None
         return candidate if candidate.is_file() else None
 

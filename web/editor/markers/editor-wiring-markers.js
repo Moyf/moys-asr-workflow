@@ -1,30 +1,16 @@
 // 「标记与区段」工具窗接线：面板控制器由 editor-markers-panel.js 在装载时
-// 通过 createFloatingPanel 创建（已绑定工具栏按钮与 Esc）；这里只补关闭按钮。
+// 通过 createFloatingPanel 创建（这里只补关闭按钮）；开关的启用/禁用逻辑
+// 在 editor-marker-editing.js（applyMarkerEditingEnabled），本文件只绑事件。
 MaweDom.markersCloseButton?.addEventListener('click', () => MaweMarkersPanel.closePanel());
 
-// 标记编辑总开关（默认关闭）：🔖 按钮点亮后显示「标记与区段」入口、
-// 渲染标记轨道并允许编辑；关闭时隐藏入口与轨道，工程数据保留。
-// 快捷键 M；项目设置 → 字幕轨道提供镜像开关。
-function applyMarkerEditingEnabled() {
-  const enabled = MaweSettings.EDITOR_SETTINGS.markerEditingEnabled === true;
-  const quick = document.getElementById('markers-quick-toggle');
-  if (quick) {
-    quick.classList.toggle('active', enabled);
-    quick.setAttribute('aria-pressed', String(enabled));
-  }
-  if (MaweDom.markersManageButton) MaweDom.markersManageButton.hidden = !enabled;
-  const mirror = document.getElementById('project-marker-track-toggle');
-  if (mirror) mirror.checked = enabled;
-  MaweCoreState.waveformEditor?.refreshMarkerOverlay();
-}
 function toggleMarkerEditing() {
   MaweSettings.updateEditorSettings({ markerEditingEnabled: !(MaweSettings.EDITOR_SETTINGS.markerEditingEnabled === true) });
-  applyMarkerEditingEnabled();
+  MaweMarkerEditing.applyMarkerEditingEnabled();
 }
 document.getElementById('markers-quick-toggle')?.addEventListener('click', toggleMarkerEditing);
 document.getElementById('project-marker-track-toggle')?.addEventListener('change', (event) => {
   MaweSettings.updateEditorSettings({ markerEditingEnabled: event.target.checked });
-  applyMarkerEditingEnabled();
+  MaweMarkerEditing.applyMarkerEditingEnabled();
 });
 document.addEventListener('keydown', (event) => {
   if (event.key !== 'm' && event.key !== 'M') return;
@@ -40,4 +26,4 @@ document.addEventListener('keydown', (event) => {
   event.preventDefault();
   toggleMarkerEditing();
 });
-applyMarkerEditingEnabled();
+MaweMarkerEditing.applyMarkerEditingEnabled();
