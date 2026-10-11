@@ -118,8 +118,11 @@ for (const action of ['undo', 'redo']) {
       await seed(page);
       const errors = [];
       page.on('pageerror', error => errors.push(error.message));
-      await page.evaluate(() => MaweMarkerEditing.moveMarker('point', 100));
+      await page.evaluate(() => MaweCommands.run('edit main text', () => {
+        MaweBoot.DATA.segments[0].text = 'previous edit';
+      }));
       if (action === 'redo') await page.evaluate(() => MaweHistory.performUndo());
+      await page.evaluate(() => MaweSelection.selectAll());
       const before = await ranges(page);
       const lengths = await page.evaluate(() => [MaweHistory.editorHistory.undoLength(), MaweHistory.editorHistory.redoLength()]);
       const request = async () => {
@@ -138,7 +141,7 @@ for (const action of ['undo', 'redo']) {
       await page.mouse.up();
       expect(await ranges(page)).toEqual(before);
       await request();
-      expect(await page.evaluate(() => MaweMarkerEditing.findMarker('point').start)).toBe(action === 'undo' ? 9000 : 9100);
+      expect(await page.evaluate(() => MaweBoot.DATA.segments[0].text)).toBe(action === 'undo' ? 'main' : 'previous edit');
       expect(errors).toEqual([]);
     });
   }
