@@ -2,6 +2,8 @@
 
 Baseline: `bb86f65`, branch `code/pr205-anchor-investigation-261011`.
 
+Status: independent draft investigation. The reviewed small fixes from the final integration branch will be included only after its final base SHA is supplied. This positioning contract change is not approved for merge.
+
 ## Reproduced defect
 
 PR #205 computes extension MarginV as main MarginV + round(1.2 × main font size), then lets each secondary style interpret that margin using its own alignment. This only places the extension above main when both use bottom alignment. For top alignment the increased margin moves down; for middle alignment the vertical margin is ignored. Different main/extension vertical alignments place cues in unrelated screen areas. Overlay inherits the same defect. The existing browser regression still expected the old extension-below-main behavior, so its assertions did not cover the new contract.
@@ -13,6 +15,10 @@ PR #205 computes extension MarginV as main MarginV + round(1.2 × main font size
 - Main style positioning and main move animation remain intact. Secondary tracks still do not follow main move, matching the existing animation contract.
 - ASS export and Server libass frame preview both use `buildAss`; Python `maw/ass_styles.py` only normalizes and serializes styles, with no separate secondary event-position implementation. CSS preview keeps its existing DOM stack.
 - The style library data stays editable and unchanged. Extension MarginV and its vertical alignment component continue to be overridden by fixed stacking. Overlay typography/color still follows main; horizontal placement follows the anchor layer.
+
+The nominal formula is `secondaryY = mainAnchorY - round(1.2 × fontSize) + round((2 - row) × fontSize / 2)`, where screen rows are top = 0, middle = 1, bottom = 2. The secondary bottom edge attaches to that coordinate. Chaining the next layer treats the preceding secondary as bottom-aligned. This is a coordinate contract, not a measurement of actual rendered text boxes.
+
+Independent source review confirms that main event text and main style remain untouched. The preview's main track does not receive a secondary `anchor`; its existing style/move path continues to determine positioning. Legacy export positioning is unchanged. Final-integration changes reviewed at `b38cef3` and the small-fix commit `e6d9669` add stable stage geometry, speaker formatting and cache invalidation in separate source regions; these need to be preserved during eventual integration.
 
 ## Verification
 
@@ -32,4 +38,15 @@ The browser screenshot is `test-results/multi-subtitle-ASS-mode-pr-687a7--the-sh
 
 This repair preserves the existing nominal single-line 1.2 × font-size model. It does not guarantee separation for multiline text, unusual font bounds, emphasized glyph sizes, rotation or font-size animation. Main move can cross the fixed secondary anchors. Top-aligned main cues near the screen edge can put secondary anchors off-screen; no clamp is applied because moving them down would overlap the user-positioned main cue.
 
-The attempt is suitable to integrate if the intended contract is this existing nominal fixed-stack model with editable horizontal placement. If “above” instead requires measuring actual cue bounds, following main movement, or keeping every track on-screen, a broader explicit product contract and renderer-aware layout work remain necessary. No remote push or merge is performed by this branch.
+| Boundary | What is established | What remains unverified or undecided |
+| --- | --- | --- |
+| Ordinary single-line cues | Shared coordinates pass unit/browser assertions; three mixed-alignment libass frames have separated actual pixel bounds | The actual pixel result is limited to the tested font/style fixtures |
+| Multiline / unusual font metrics | Formula intentionally uses the unchanged nominal font size | Real text-box separation and multiline wrapping are not guaranteed |
+| Inline emphasis / large text / comment size | Styling remains editable; no text-size expansion is added to the anchor model | Expanded glyph bounds may cross the nominal gap |
+| Rotation / scale / font-size animation | Existing rendering transforms remain in place | Rotated or animated text-box clearance is not guaranteed |
+| Main movement | Main retains the existing move path; secondary anchors remain static | Whether secondary tracks should follow main is a product-contract decision |
+| Top-edge placement | Negative secondary coordinates are retained; a unit test locks this behavior | Keeping all layers on-screen without changing main positioning requires a separate policy |
+| Simultaneous overlapping secondary cues | Every cue receives the same fixed track anchor | Renderer collision handling with explicit positions has not been validated |
+| Mixed horizontal placement | Column and side margins are retained, and Canvas/export coordinates match | “Above” describes vertical ordering, not a requirement to horizontally overlap main |
+
+Before merge, the intended contract must explicitly accept bottom attachment of secondary tracks, nominal single-line spacing and the off-screen behavior. If “above” instead requires measuring actual cue bounds, following main movement, or keeping every track on-screen, a broader explicit product contract and renderer-aware layout work remain necessary. The draft should remain unmerged until that decision is made. No remote push or merge is performed by this branch.
