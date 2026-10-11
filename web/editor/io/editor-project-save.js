@@ -27,8 +27,17 @@ const state = MaweInlineEdit.editingState || MaweInlineEdit.extensionEditingStat
 if (!state) {
 if (!MaweDom.cuePanel?.contains(document.activeElement)) MaweCuePanel.commitCuePanelEdit();
 else {
-// Live panel text is already in the project. Finalize its transaction without
-// blurring or replacing the textarea; subsequent typing begins a new transaction.
+// Live panel text is already in the project, but timed labels are deferred until
+// commit. Sync them before replacing the snapshot, while keeping the caret intact.
+const target = MaweCuePanel.getCurrentCuePanelTarget();
+const snapshot = MaweCuePanelState.cuePanelTextEditSnapshot;
+if (target?.kind === 'main' && snapshot?.kind === target.kind
+    && snapshot.index === target.index && snapshot.trackId === target.trackId
+    && target.segment.text !== snapshot.text) {
+MaweWordTiming.syncTextChange(target.segment, snapshot.text);
+MaweViewUpdates.invalidate({ waveform: 'overlay', preview: 'update' });
+}
+// Finalize the current transaction; subsequent typing begins a new one.
 MaweCuePanelState.resetCuePanelEditState();
 MaweCuePanel.captureCuePanelTextEditSnapshot();
 }

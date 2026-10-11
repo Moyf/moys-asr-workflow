@@ -1056,7 +1056,11 @@ class LlmCompleteTransportTest(unittest.TestCase):
 
         seen: list[dict[str, object]] = []
 
-        def fake_completion(settings, prompt, cues, *, on_delta, use_json_format=True):
+        def fake_completion(
+            settings, prompt, cues, *, on_delta, use_json_format=True,
+            is_cancelled=None, on_response=None,
+            response_json_schema=None,
+        ):
             attempt = len(seen)
             seen.append(
                 {
@@ -1064,6 +1068,7 @@ class LlmCompleteTransportTest(unittest.TestCase):
                     "cues": cues,
                     "onDelta": on_delta,
                     "useJsonFormat": use_json_format,
+                    "schema": response_json_schema,
                 }
             )
             content = '{"decisions": []}' if attempt else "{not json"
@@ -1087,8 +1092,44 @@ class LlmCompleteTransportTest(unittest.TestCase):
         self.assertEqual(len(seen), 2)
         self.assertIsNone(seen[0]["onDelta"])
         self.assertIsNone(seen[1]["onDelta"])
+        self.assertEqual(
+            seen[0]["schema"], cleanup_module.AI_CLEANUP_DECISIONS_JSON_SCHEMA
+        )
         self.assertNotIn("未通过本地协议校验", str(seen[0]["prompt"]))
         self.assertIn("未通过本地协议校验", str(seen[1]["prompt"]))
+
+    def test_llm_complete_streams_deltas_through_the_shared_transport(self) -> None:
+        from unittest import mock
+
+        from maw.postprocess_ai_cleanup import llm_complete
+        from maw.postprocess_llm import LlmSettings
+
+        response = mock.MagicMock()
+        response.iter_lines.return_value = [
+            b'data: {"choices":[{"delta":{"content":"{\\"decisions\\":[]}"}}]}',
+            b"data: [DONE]",
+        ]
+        session = mock.MagicMock()
+        session.__enter__.return_value = session
+        session.post.return_value = response
+        settings = LlmSettings(
+            provider_id="custom",
+            api_key="key",
+            base_url="https://example.invalid/v1",
+            model="demo",
+        )
+        deltas: list[tuple[str, str]] = []
+
+        with mock.patch("maw.postprocess_llm.requests.Session", return_value=session):
+            result = llm_complete(settings, on_delta=lambda kind, text: deltas.append((kind, text)))(
+                "system prompt", [{"id": "c001", "asrText": "文字"}]
+            )
+
+        self.assertEqual(result, {"decisions": []})
+        self.assertIn(("content", '{"decisions":[]}'), deltas)
+        self.assertTrue(session.post.call_args.kwargs["json"]["stream"])
+        self.assertTrue(session.post.call_args.kwargs["stream"])
+        response.close.assert_called_once_with()
 
 
 class CleanupNotesTest(AiCleanupTestCase):

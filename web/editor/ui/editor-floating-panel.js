@@ -91,11 +91,17 @@
   // 可拖动非模态工具窗（静音空隙 / 拼合字幕共用模式）：
   // 负责显示/隐藏、工具栏按钮 active 态、标题栏拖动与位置持久化、窗口缩放回钳、Esc 关闭。
   function createFloatingPanel({ panel, dragHandle, manageButton, anchorButton, positionKey, onOpen }) {
-    if (!panel) return { open() {}, close() {}, toggle() {}, isOpen: () => false };
+    if (!panel) return { open() {}, close() {}, toggle() {}, isOpen: () => false, reclamp() {} };
     bindFloatingSurfaceActivation(panel);
     let drag = null;
 
     function isOpen() { return panel.classList.contains('show'); }
+
+    function reclamp() {
+      if (!isOpen()) return;
+      const rect = panel.getBoundingClientRect();
+      setPosition(rect.left, rect.top);
+    }
 
     function setPosition(left, top, { persist = false } = {}) {
       const rect = panel.getBoundingClientRect();
@@ -216,7 +222,7 @@
       close();
       manageButton?.focus();
     });
-    return { open, close, toggle, isOpen };
+    return { open, close, toggle, isOpen, reclamp };
   }
 
 

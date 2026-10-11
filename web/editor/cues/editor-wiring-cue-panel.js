@@ -136,11 +136,8 @@ MaweDom.cuePanelText?.addEventListener('input', () => {
   const cueListAnchor = MaweCueListAnchor.captureCueListRenderAnchor();
   MaweCuePanel.ensureCuePanelUndo(target.kind === 'extension' ? '编辑副字幕' : '编辑当前字幕');
   const seg = target.segment;
-  const previousText = seg.text;
   seg.text = MaweDom.cuePanelText.value.replace(/\r\n?/g, '\n');
   seg._dirty = true;
-  // 面板输入是逐键实时提交：等长替换（改错别字）在这里静默同步字词文字。
-  if (target.kind === 'main') MaweWordTiming.syncTextChange(seg, previousText, { quietMismatch: true });
   if (target.kind === 'extension') MaweMultiSubtitleCore.markMultiSubtitleDirty();
   MaweViewUpdates.invalidate({ save: true });
   const splitMode = target.kind === 'extension'

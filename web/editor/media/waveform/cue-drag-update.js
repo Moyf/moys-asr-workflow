@@ -30,6 +30,10 @@ export function createWaveformModule(dependencies) {
       if (!drag.started && !hasMeaningfulMovement) return;
       if (!drag.started) {
         drag.started = true;
+        // A cue click can become a double-click that opens the editor. Keep the
+        // original hit target for a no-movement gesture; only transfer capture
+        // to the stable pane once a real drag starts (before rows are rebuilt).
+        try { drag.captureTarget?.setPointerCapture?.(drag.pointerId); } catch (_) {}
         const label = drag.kind === 'move' ? '移动字幕时间'
           : drag.kind === 'resize-boundary-independent' ? '独立调整字幕边界'
           : '调整字幕边界';

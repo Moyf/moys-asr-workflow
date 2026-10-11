@@ -2,7 +2,7 @@ import { expect, test } from '@playwright/test';
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { cleanupTempDir, disableOnboarding, findFreePort, generateProjectJson,
-  generateWav, makeTempDir, startServer } from './helpers.mjs';
+  generateWav, makeTempDir, openSettingsPage, startServer } from './helpers.mjs';
 
 let tempDir;
 let server;
@@ -51,10 +51,11 @@ test('swapping once and twice preserves speaker and discarded cues through save 
     };
     MaweSelection.clearSelection({ silent: true });
     MaweCuePanel.renderAll();
+    MaweDisplaySettings.updateMultiSubtitleUi();
   });
   for (let round = 0; round < 2; round++) {
     // 双语字幕设置已并入工程设置 → 字幕轨道页。
-    await page.locator('#project-settings-toggle').click();
+    await openSettingsPage(page, 'project-tracks');
     await expect(page.locator('#project-multi-subtitle-settings')).toBeVisible();
     await page.locator('#multi-subtitle-swap').click();
     const expectedMain = round === 0 ? 'ext' : 'main';

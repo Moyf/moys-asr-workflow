@@ -9,7 +9,7 @@ import {
   buildPortableBlankEditor,
   generateWaveformPayload,
   makeTempDir,
-  startStaticServer, closeSettingsPanels, openSettingsPage, setProjectTrackEnabled, toggleGlobalSettings } from './helpers.mjs';
+  startStaticServer, closeSettingsPanels, dragFloatingPanelAwayFrom, openSettingsPage, setProjectTrackEnabled, toggleGlobalSettings } from './helpers.mjs';
 
 let tempDir;
 let server;
@@ -199,11 +199,13 @@ test('creates an empty secondary track on enable and imports subtitles optionall
     range.selectNodeContents(item);
     const nextRange = document.createRange();
     nextRange.selectNodeContents(next);
-    return { above: range.getBoundingClientRect().top - previous.getBoundingClientRect().bottom,
-      below: nextRange.getBoundingClientRect().top - range.getBoundingClientRect().bottom };
+    const itemRect = range.getBoundingClientRect();
+    const nextRect = nextRange.getBoundingClientRect();
+    return { above: itemRect.top - previous.getBoundingClientRect().bottom,
+      horizontalGap: nextRect.left - itemRect.right };
   });
   expect(importGap.above).toBeGreaterThanOrEqual(8);
-  expect(importGap.below).toBeGreaterThanOrEqual(8);
+  expect(importGap.horizontalGap).toBeGreaterThanOrEqual(8);
   await page.locator('#project-multi-subtitle-settings').screenshot({ path: test.info().outputPath('empty-track-settings.png') });
   const chooserPromise = page.waitForEvent('filechooser');
   await page.locator('#multi-subtitle-import').click();
@@ -385,6 +387,9 @@ test('raises the last activated window above older floating surfaces', async ({ 
   const settingsPanel = page.locator('#editor-settings-panel');
 
   // 再打开工程设置窗口：后激活的窗口应盖在全局设置之上。
+  const drag = await dragFloatingPanelAwayFrom(page, '#editor-settings-panel',
+    '#editor-settings-drag-handle', '#project-settings-toggle');
+  expect(drag.overlaps, JSON.stringify(drag)).toBe(false);
   await page.locator('#project-settings-toggle').click();
   await expect(page.locator('#project-settings-panel')).toBeVisible();
   let layers = await page.evaluate(() => ({
@@ -903,8 +908,7 @@ test('keeps main and secondary language types independent and reuses them for co
 
   await expect(page.locator('#multi-subtitle-main-language-mode')).toHaveValue('word');
   await expect(page.locator('#multi-subtitle-extension-language-mode')).toHaveValue('continuous');
-  await expect(page.locator('#editor-settings-page-timebase .settings-panel-hint')).toContainText('单词型');
-  await expect(page.locator('#editor-settings-page-timebase .settings-panel-hint')).toContainText('字符型');
+  await expect(page.locator('#editor-settings-page-timebase .settings-panel-hint')).toHaveText('英文按词拆，中文按字拆。');
 
   await closeSettingsPanels(page);
   await openMultiSubtitleSettings(page);
@@ -2036,6 +2040,8 @@ test('uses B on a waveform-selected unbound extension cue instead of an overlapp
   }]);
 
   const extensionBlock = page.locator('.waveform-cue-block[data-track="extension"][data-ext-idx="0"]');
+  await expect.poll(() => page.evaluate(() => MaweBoot.DATA.segments.map((segment) => [segment.start, segment.end])))
+    .toEqual([[1000, 3000]]);
   const mainBefore = await page.evaluate(() => MaweBoot.DATA.segments.map((segment) => [segment.start, segment.end]));
   // Project import and media loading can rebuild the lanes between a geometry
   // read and a raw mouse click. Let locator actionability target the live block.

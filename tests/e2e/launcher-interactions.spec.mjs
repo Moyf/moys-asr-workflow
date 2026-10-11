@@ -316,6 +316,69 @@ test('automatic LLM setup highlights test connection until clicked', async ({ pa
   await expect(page.locator('#testLlmConnection')).not.toHaveClass(/attention/);
 });
 
+test('verified custom loopback without a key can enable an automatic LLM step', async ({ page }) => {
+  await page.goto(`file://${launcherPath}`);
+  await page.waitForFunction(() => window.MAWLauncher?.config?.postprocessProviders?.length > 0);
+  await page.evaluate(() => {
+    const item = window.MAWLauncher.config.postprocessProviders.find(item => item.id === 'custom2');
+    Object.assign(item, { verified: false, hasApiKey: false, apiKeyRequired: true, hasBaseUrl: false, hasModel: false });
+    document.getElementById('postprocessProvider').value = 'custom2';
+    document.getElementById('postprocessProvider').dispatchEvent(new Event('change'));
+    window.MAWLauncher.callBackend = async method => method === 'test_postprocess_connection'
+      ? { ok: true, saved: true, verified: true, apiKeyRequired: false, maskedApiKey: '' }
+      : { ok: true };
+  });
+  await page.locator('#autoPostprocessEnabled').check();
+  await page.locator('#autoStepProofread').click();
+  await expect(page.locator('#autoStepProofread')).not.toBeChecked();
+  await expect(page.locator('#settingsModal')).toBeVisible();
+  await page.locator('#llmApiKey').fill('');
+  await page.locator('#llmBaseUrl').fill('http://127.0.0.1:1234/v1');
+  await page.locator('#llmModel').fill('local-model');
+  await page.locator('#testLlmConnection').click();
+  await expect(page.locator('#autoStepProofread')).toBeChecked();
+  expect(await page.evaluate(() => window.MAWLauncher.config.postprocessProviders.find(item => item.id === 'custom2').hasApiKey)).toBe(false);
+});
+
+test('blank LLM form fields use the effective connection and save response', async ({ page }) => {
+  await page.goto(`file://${launcherPath}`);
+  await page.waitForFunction(() => window.MAWLauncher?.config?.postprocessProviders?.length > 0);
+  await page.evaluate(() => {
+    const item = window.MAWLauncher.config.postprocessProviders.find(item => item.id === 'deepseek');
+    Object.assign(item, { verified: false, hasApiKey: true, hasBaseUrl: true, hasModel: true });
+    window.llmFallbackCalls = [];
+    window.MAWLauncher.callBackend = async (method, payload) => {
+      if (['test_postprocess_connection', 'save_postprocess_settings'].includes(method)) {
+        window.llmFallbackCalls.push({ method, payload });
+        return { ok: true, saved: true, verified: true, apiKeyRequired: true, maskedApiKey: 'sk-…mock', baseUrl: 'https://api.deepseek.com', model: 'deepseek-flash' };
+      }
+      return { ok: true };
+    };
+  });
+  await page.locator('#autoPostprocessEnabled').check();
+  await page.locator('#autoStepProofread').click();
+  await expect(page.locator('#settingsModal')).toBeVisible();
+  await page.locator('#llmBaseUrl').fill('');
+  await page.locator('#llmModel').fill('');
+  await page.locator('#testLlmConnection').click();
+  await expect(page.locator('#autoStepProofread')).toBeChecked();
+  await expect(page.locator('#llmBaseUrl')).toHaveValue('https://api.deepseek.com');
+  await expect(page.locator('#llmModel')).toHaveValue('deepseek-flash');
+  await page.locator('#llmBaseUrl').fill('');
+  await page.locator('#llmModel').fill('');
+  await page.locator('#saveLlmSettings').click();
+  await expect(page.locator('#llmBaseUrl')).toHaveValue('https://api.deepseek.com');
+  await expect(page.locator('#llmModel')).toHaveValue('deepseek-flash');
+  expect(await page.evaluate(() => {
+    const item = window.MAWLauncher.config.postprocessProviders.find(item => item.id === 'deepseek');
+    return [item.hasBaseUrl, item.hasModel, item.verified];
+  })).toEqual([true, true, true]);
+  for (const { payload } of await page.evaluate(() => window.llmFallbackCalls)) {
+    expect(payload.baseUrl).toBe('');
+    expect(payload.model).toBe('');
+  }
+});
+
 test('system notifications are disabled by default and announce enabling', async ({ page }) => {
   await page.goto(`file://${launcherPath}`);
   await page.waitForFunction(() => window.MAWLauncher?.config?.postprocessProviders?.length > 0);
@@ -440,7 +503,7 @@ test('Utilities use a horizontal tab strip with arrow-key navigation', async ({ 
     };
   });
   expect(layout.columns).toBe(1);
-  expect(layout.tabColumnCount).toBe(5);
+  expect(layout.tabColumnCount).toBe(4);
 
   // beta.4 重构后工具顺序：烧录字幕、媒体重组、口播对齐、提取音频、生成波形。
   await page.locator('#toolboxAlignmentTab').focus();
@@ -508,7 +571,7 @@ test('green-screen burn accepts subtitles without a video source', async ({ page
   const call = await page.evaluate(() => window.__greenBurnCalls[0]);
   expect(call).toMatchObject({ mediaPath: '', subtitlePath: 'D:\\Demo\\captions.ass', greenScreen: true });
   await expect(page.locator('#toolboxUtilityMediaPath')).toHaveValue('D:\\Demo\\captions.green-screen.mp4');
-  await page.locator('#toolboxFfconcatTab').click();
+  await page.locator('#toolboxWaveformTab').click();
   await expect(page.locator('#toolboxUtilityMediaPath')).toBeEnabled();
   await expect(page.locator('#pickToolboxUtilityMedia')).toBeEnabled();
   await page.locator('#toolboxBurnSubtitleTab').click();
@@ -1297,7 +1360,7 @@ test('artifact rows localize type labels while preserving MOSP-first and SRT-onl
   await expect(artifacts.nth(1)).toHaveText('SRT 字幕');
   await expect(artifacts.nth(0)).toHaveClass(/selected/);
   await expect(page.locator('#toolboxInputPath')).toHaveValue('D:\\Demo\\source.fixed.mosp');
-  await expect(artifacts.nth(0)).toHaveAttribute('title', 'source.fixed.mosp\nD:\\Demo\\source.fixed.mosp');
+  await expect(artifacts.nth(0)).toHaveAttribute('data-title', 'source.fixed.mosp\nD:\\Demo\\source.fixed.mosp');
   await expect(artifacts.nth(0)).toHaveAttribute('aria-label', /MOSP 工程.*source\.fixed\.mosp.*D:\\Demo\\source\.fixed\.mosp/);
 
   await page.evaluate(() => document.getElementById('langEn').click());
@@ -1752,3 +1815,186 @@ test('AI cleanup notes persist in the automatic plan and reach the manual reques
   await page.locator('#postprocessAiCleanup').check();
   await expect(page.locator('#postprocessAiCleanupNotes')).toHaveValue('  保留所有数字\n去除试麦  ');
 });
+
+async function prepareDeferredAiLauncher(page, entry) {
+  await openLauncher(page);
+  await page.evaluate(() => {
+    Object.assign(window.MAWLauncher.config.postprocessProviders.find(p => p.id === 'deepseek'),
+      { verified: true, hasApiKey: true, hasBaseUrl: true, hasModel: true });
+    window.__aiLifecycleRuns = [];
+    window.__aiLifecycleCancels = [];
+    window.__aiLifecycleDeferCancel = false;
+    const original = window.MAWLauncher.callBackend;
+    window.MAWLauncher.callBackend = async (method, payload) => {
+      if (['run_ai_cleanup', 'run_llm_postprocess'].includes(method)) {
+        return new Promise(resolve => window.__aiLifecycleRuns.push({ method, payload, resolve }));
+      }
+      if (method === 'cancel_postprocess') {
+        window.__aiLifecycleCancels.push(payload);
+        if (window.__aiLifecycleDeferCancel) {
+          return new Promise(resolve => { window.__aiLifecycleResolveCancel = resolve; });
+        }
+        return { ok: true, active: true, cancelled: true };
+      }
+      return original(method, payload);
+    };
+  });
+  await page.locator(entry === 'cleanup' ? '#toolboxMatchTab' : '#toolboxLlmTab').click();
+  await page.locator('#toolboxInputPath').fill('D:\\Demo\\source.mosp');
+  if (entry === 'cleanup') {
+    await page.locator('#postprocessAiCleanup').check();
+    await page.locator('#postprocessScriptPath').fill('D:\\Demo\\script.txt');
+  }
+  return page.locator(entry === 'cleanup' ? '#runScriptMatch' : '#runLlmPostprocess');
+}
+
+async function sendAiLifecycleEvents(page, index, events) {
+  await page.evaluate(({ index, events }) => {
+    const operationId = window.__aiLifecycleRuns[index].payload.operationId;
+    window.MAWLauncher.onBackendEvents(events.map(event => ({ operationId, ...event })));
+  }, { index, events });
+}
+
+async function resolveAiLifecycleRun(page, index, result) {
+  await page.evaluate(({ index, result }) => window.__aiLifecycleRuns[index].resolve(result), { index, result });
+}
+
+const aiAdmissionEvent = { type: 'postprocess_status', stage: 'admitted', key: 'toolbox_status_starting' };
+const aiSuccessResult = { ok: true, projectPath: 'D:\\Demo\\processed.mosp', warnings: [] };
+
+for (const entry of ['cleanup', 'llm']) {
+  test(`AI ${entry} admits Stop before use and keeps queued output after completion`, async ({ page }) => {
+    const run = await prepareDeferredAiLauncher(page, entry);
+    const stop = page.locator('#stopToolboxPostprocess');
+    await run.click();
+    await expect.poll(() => page.evaluate(() => window.__aiLifecycleRuns.length)).toBe(1);
+    await expect(stop).toBeHidden();
+    await expect(stop).toBeDisabled();
+    // Even a dispatched click cannot cancel a request not yet admitted.
+    await stop.evaluate(element => element.dispatchEvent(new MouseEvent('click', { bubbles: true })));
+    expect(await page.evaluate(() => window.__aiLifecycleCancels.length)).toBe(0);
+    await sendAiLifecycleEvents(page, 0, [{ ...aiAdmissionEvent, operationId: 'unrelated-operation' }]);
+    await expect(stop).toBeHidden();
+    await expect(stop).toBeDisabled();
+    await sendAiLifecycleEvents(page, 0, [aiAdmissionEvent]);
+    await expect(stop).toBeVisible();
+    await expect(stop).toBeEnabled();
+
+    await resolveAiLifecycleRun(page, 0, aiSuccessResult);
+    await expect(run).toBeEnabled();
+    await expect(stop).toBeHidden();
+    await expect(stop).toBeDisabled();
+    // The bridge Promise has settled; the event pump's final batch arrives now.
+    await sendAiLifecycleEvents(page, 0, [
+      aiAdmissionEvent,
+      { type: 'postprocess_stream', kind: 'reset' },
+      { type: 'postprocess_stream', kind: 'reasoning', text: 'queued reasoning', batch: 1 },
+      { type: 'postprocess_stream', kind: 'content', text: 'queued result', batch: 1 },
+    ]);
+    await expect(stop).toBeHidden();
+    await expect(page.locator('#toolboxThinkingOutput')).toHaveText('queued reasoning');
+    await expect(page.locator('#toolboxModelOutput')).toHaveText('queued result');
+    await sendAiLifecycleEvents(page, 0, [
+      { type: 'postprocess_stream', operationId: 'unrelated-operation', kind: 'reset' },
+      { type: 'postprocess_stream', operationId: 'unrelated-operation', kind: 'content', text: 'wrong result' },
+    ]);
+    await expect(page.locator('#toolboxModelOutput')).toHaveText('queued result');
+
+    await run.click();
+    await expect.poll(() => page.evaluate(() => window.__aiLifecycleRuns.length)).toBe(2);
+    await sendAiLifecycleEvents(page, 0, [
+      aiAdmissionEvent,
+      { type: 'postprocess_stream', kind: 'reset' },
+      { type: 'postprocess_stream', kind: 'content', text: 'previous completed result' },
+    ]);
+    await expect(stop).toBeHidden();
+    await expect(page.locator('#toolboxModelOutput')).toBeEmpty();
+    await sendAiLifecycleEvents(page, 1, [
+      aiAdmissionEvent,
+      { type: 'postprocess_stream', kind: 'content', text: 'next result' },
+    ]);
+    await resolveAiLifecycleRun(page, 1, aiSuccessResult);
+    await expect(run).toBeEnabled();
+    await sendAiLifecycleEvents(page, 0, [{ type: 'postprocess_stream', kind: 'reset' }]);
+    await sendAiLifecycleEvents(page, 1, [{ type: 'postprocess_stream', kind: 'content', text: ' tail' }]);
+    await expect(page.locator('#toolboxModelOutput')).toHaveText('next result tail');
+  });
+
+  test(`AI ${entry} rejects cancelled late events and isolates the following run`, async ({ page }) => {
+    const run = await prepareDeferredAiLauncher(page, entry);
+    const stop = page.locator('#stopToolboxPostprocess');
+    await run.click();
+    await expect.poll(() => page.evaluate(() => window.__aiLifecycleRuns.length)).toBe(1);
+    await sendAiLifecycleEvents(page, 0, [
+      aiAdmissionEvent,
+      { type: 'postprocess_stream', kind: 'reasoning', text: 'partial reasoning' },
+      { type: 'postprocess_stream', kind: 'content', text: 'partial result' },
+    ]);
+    await stop.click();
+    await expect.poll(() => page.evaluate(() => window.__aiLifecycleCancels.length)).toBe(1);
+    expect(await page.evaluate(() => window.__aiLifecycleCancels[0].operationId))
+      .toBe(await page.evaluate(() => window.__aiLifecycleRuns[0].payload.operationId));
+    await expect(stop).toBeDisabled();
+    const lateEvents = [
+      { type: 'postprocess_stream', kind: 'reset' },
+      { type: 'postprocess_stream', kind: 'reasoning', text: 'late cancelled reasoning' },
+      { type: 'postprocess_stream', kind: 'content', text: 'late cancelled result' },
+    ];
+    await sendAiLifecycleEvents(page, 0, lateEvents);
+    await expect(page.locator('#toolboxModelOutput')).toHaveText('partial result');
+    await resolveAiLifecycleRun(page, 0, { ok: false, code: 'postprocess_cancelled' });
+    await expect(run).toBeEnabled();
+    await expect(stop).toBeHidden();
+    await expect(page.locator('#toolboxResultText')).toContainText('已取消');
+    await sendAiLifecycleEvents(page, 0, lateEvents);
+    await expect(page.locator('#toolboxThinkingOutput')).toHaveText('partial reasoning');
+    await expect(page.locator('#toolboxModelOutput')).toHaveText('partial result');
+
+    await run.click();
+    await expect.poll(() => page.evaluate(() => window.__aiLifecycleRuns.length)).toBe(2);
+    const ids = await page.evaluate(() => window.__aiLifecycleRuns.map(item => item.payload.operationId));
+    expect(ids[1]).not.toBe(ids[0]);
+    await sendAiLifecycleEvents(page, 0, [aiAdmissionEvent, ...lateEvents]);
+    await expect(stop).toBeHidden();
+    await expect(page.locator('#toolboxThinkingOutput')).toBeEmpty();
+    await expect(page.locator('#toolboxModelOutput')).toBeEmpty();
+    await sendAiLifecycleEvents(page, 1, [
+      aiAdmissionEvent,
+      { type: 'postprocess_stream', kind: 'reasoning', text: 'next reasoning' },
+      { type: 'postprocess_stream', kind: 'content', text: 'next result' },
+    ]);
+    await expect(stop).toBeEnabled();
+    await sendAiLifecycleEvents(page, 0, lateEvents);
+    await expect(page.locator('#toolboxModelOutput')).toHaveText('next result');
+    await resolveAiLifecycleRun(page, 1, aiSuccessResult);
+    await expect(run).toBeEnabled();
+    await sendAiLifecycleEvents(page, 0, lateEvents);
+    await sendAiLifecycleEvents(page, 1, [
+      { type: 'postprocess_stream', kind: 'reasoning', text: ' tail' },
+      { type: 'postprocess_stream', kind: 'content', text: ' tail' },
+    ]);
+    await expect(page.locator('#toolboxThinkingOutput')).toHaveText('next reasoning tail');
+    await expect(page.locator('#toolboxModelOutput')).toHaveText('next result tail');
+  });
+
+  test(`AI ${entry} keeps tail events while a pending Stop is later rejected`, async ({ page }) => {
+    const run = await prepareDeferredAiLauncher(page, entry);
+    await page.evaluate(() => { window.__aiLifecycleDeferCancel = true; });
+    await run.click();
+    await expect.poll(() => page.evaluate(() => window.__aiLifecycleRuns.length)).toBe(1);
+    await sendAiLifecycleEvents(page, 0, [aiAdmissionEvent]);
+    await page.locator('#stopToolboxPostprocess').click();
+    await expect.poll(() => page.evaluate(() => window.__aiLifecycleCancels.length)).toBe(1);
+    await sendAiLifecycleEvents(page, 0, [
+      { type: 'postprocess_stream', kind: 'reasoning', text: 'pending reasoning' },
+      { type: 'postprocess_stream', kind: 'content', text: 'pending result' },
+    ]);
+    await expect(page.locator('#toolboxThinkingOutput')).toHaveText('pending reasoning');
+    await expect(page.locator('#toolboxModelOutput')).toHaveText('pending result');
+    await page.evaluate(() => window.__aiLifecycleResolveCancel({ ok: true, active: true, cancelled: false }));
+    await resolveAiLifecycleRun(page, 0, aiSuccessResult);
+    await expect(run).toBeEnabled();
+    await sendAiLifecycleEvents(page, 0, [{ type: 'postprocess_stream', kind: 'content', text: ' saved' }]);
+    await expect(page.locator('#toolboxModelOutput')).toHaveText('pending result saved');
+  });
+}

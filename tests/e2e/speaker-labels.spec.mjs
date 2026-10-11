@@ -356,24 +356,31 @@ test('keeps ASS speaker labels in the same style across preview resizing and ful
   expect(smallWindow.firstCssSize).toBeGreaterThan(0);
   expect(smallWindow.underlined).toBe(true);
 
-  await page.evaluate(() => {
+  const enteringFullscreen = await page.evaluate(() => {
     Object.defineProperty(document, 'fullscreenElement', {
       configurable: true,
       get: () => MaweDom.playerWrap,
     });
-    MaweDom.playerStage.style.height = '1080px';
-    MaweDom.playerStage.style.minHeight = '1080px';
-    MaweDom.playerStage.style.flexBasis = '1080px';
+    MaweDom.playerStage.style.height = '2px';
+    MaweDom.playerStage.style.minHeight = '2px';
+    MaweDom.playerStage.style.flexBasis = '2px';
     MaweDom.playerWrap.style.height = '1080px';
     MaweDom.playerWrap.style.minHeight = '1080px';
     MaweDom.playerWrap.style.flexBasis = '1080px';
     document.dispatchEvent(new Event('fullscreenchange'));
+    // 模拟播放循环在布局过渡期间继续刷新 ASS；瞬态 2px 舞台不能压缩 Canvas。
+    MawePlaybackLoop.updatePlaybackFrame();
+    const transientOverlayHeight = Number.parseFloat(MaweDom.overlayEl.style.height) || 0;
+    setTimeout(() => {
+      MaweDom.playerStage.style.height = '1080px';
+      MaweDom.playerStage.style.minHeight = '1080px';
+      MaweDom.playerStage.style.flexBasis = '1080px';
+    }, 40);
+    return { transientOverlayHeight };
   });
-  await page.evaluate(() => new Promise((resolve) => {
-    requestAnimationFrame(() => requestAnimationFrame(resolve));
-  }));
+  expect(enteringFullscreen.transientOverlayHeight).toBeCloseTo(540, 0);
+  await page.waitForTimeout(220);
   const fullscreen = await page.evaluate(() => {
-    MawePlaybackLoop.refreshSubtitlePreview(1000, 0);
     const track = window.MaweAssCanvas.lastRender.tracks[0];
     const items = track.lines.flatMap((line) => line.items);
     const canvas = document.querySelector('.ass-preview-canvas');
@@ -382,6 +389,7 @@ test('keeps ASS speaker labels in the same style across preview resizing and ful
     for (let i = 3; i < data.length; i += 40) if (data[i] > 0) painted++;
     return {
       stageHeight: MaweDom.playerStage.getBoundingClientRect().height,
+      overlayHeight: MaweDom.overlayEl.getBoundingClientRect().height,
       fullscreen: MaweDom.playerWrap.classList.contains('fullscreen-preview'),
       cssSize: items[0]?.cssSize || 0,
       speakerText: track.speaker?.text || '',
@@ -390,34 +398,44 @@ test('keeps ASS speaker labels in the same style across preview resizing and ful
   });
   expect(fullscreen.fullscreen).toBe(true);
   expect(fullscreen.stageHeight).toBeCloseTo(1080, 0);
+  expect(fullscreen.overlayHeight).toBeCloseTo(1080, 0);
   // 原生分辨率画布与舞台缩放解耦：窗口尺寸翻倍不改变画布内的字形尺寸，
   // 只改变 CSS 呈现大小；标签与文本仍同 run 绘制。
   expect(fullscreen.cssSize).toBe(smallWindow.firstCssSize);
   expect(fullscreen.speakerText).toBe('Host：');
   expect(fullscreen.painted).toBeGreaterThan(50);
 
-  await page.evaluate(() => {
+  const leavingFullscreen = await page.evaluate(() => {
     Object.defineProperty(document, 'fullscreenElement', {
       configurable: true,
       get: () => null,
     });
-    MaweDom.playerStage.style.height = '540px';
-    MaweDom.playerStage.style.minHeight = '540px';
-    MaweDom.playerStage.style.flexBasis = '540px';
+    MaweDom.playerStage.style.height = '2px';
+    MaweDom.playerStage.style.minHeight = '2px';
+    MaweDom.playerStage.style.flexBasis = '2px';
     MaweDom.playerWrap.style.height = '540px';
     MaweDom.playerWrap.style.minHeight = '540px';
     MaweDom.playerWrap.style.flexBasis = '540px';
     document.dispatchEvent(new Event('fullscreenchange'));
+    MawePlaybackLoop.updatePlaybackFrame();
+    const transientOverlayHeight = Number.parseFloat(MaweDom.overlayEl.style.height) || 0;
+    setTimeout(() => {
+      MaweDom.playerStage.style.height = '540px';
+      MaweDom.playerStage.style.minHeight = '540px';
+      MaweDom.playerStage.style.flexBasis = '540px';
+    }, 40);
+    return { transientOverlayHeight };
   });
-  await page.evaluate(() => new Promise((resolve) => {
-    requestAnimationFrame(() => requestAnimationFrame(resolve));
-  }));
+  expect(leavingFullscreen.transientOverlayHeight).toBeCloseTo(1080, 0);
+  await page.waitForTimeout(220);
   const windowedAgain = await page.evaluate(() => ({
     fullscreen: MaweDom.playerWrap.classList.contains('fullscreen-preview'),
+    overlayHeight: MaweDom.overlayEl.getBoundingClientRect().height,
     cssSize: window.MaweAssCanvas.lastRender.tracks[0].lines
       .flatMap((line) => line.items)[0]?.cssSize || 0,
   }));
   expect(windowedAgain.fullscreen).toBe(false);
+  expect(windowedAgain.overlayHeight).toBeCloseTo(540, 0);
   expect(windowedAgain.cssSize).toBe(smallWindow.firstCssSize);
 });
 

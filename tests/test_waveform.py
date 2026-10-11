@@ -518,16 +518,35 @@ class EditorAssetTests(CompactContainerAssertions, unittest.TestCase):
         self.assertIn('id="editor-settings-panel"', page)
         self.assertIn('id="editor-settings-drag-handle"', page)
         self.assertIn('id="editor-settings-close"', page)
-        # 全局设置窗口：左侧垂直标签页，十一个分区一一对应内容页
-        for settings_section in ('interface', 'general', 'subtitle-preview', 'subtitle-style', 'subtitle-color', 'timebase', 'split-merge', 'export', 'save', 'sticker', 'easter-eggs'):
+        # 全局设置窗口：左侧垂直标签页与内容页配对，About 位于导航末尾
+        for settings_section in ('interface', 'general', 'subtitle-preview', 'subtitle-style', 'subtitle-color', 'timebase', 'split-merge', 'export', 'save', 'sticker', 'easter-eggs', 'about'):
             self.assertIn(f'id="editor-settings-tab-{settings_section}"', page)
             self.assertIn(f'id="editor-settings-page-{settings_section}"', page)
-        # 全局设置 11 个导航标签；帮助面板垂直标签页复用同款导航类，另有 7 个
-        self.assertEqual(page.count('class="editor-settings-nav-tab"'), 24)
-        self.assertEqual(page.count('class="editor-settings-page"'), 17)
-        self.assertEqual(page.count('class="editor-settings-nav-group-label"'), 5)
-        for group_label in ('基础', '播放预览', '编辑', '保存导出', '扩展功能'):
+        # 全局设置 13 个导航标签；帮助面板垂直标签页复用同款导航类，另有 7 个
+        self.assertEqual(page.count('class="editor-settings-nav-tab"'), 25)
+        self.assertEqual(page.count('class="editor-settings-page"'), 18)
+        self.assertEqual(page.count('class="editor-settings-nav-group-label"'), 6)
+        for group_label in ('基础', '播放预览', '编辑', '保存导出', '扩展功能', '关于'):
             self.assertIn(f'class="editor-settings-nav-group-label" aria-hidden="true">{group_label}</div>', page)
+        self.assertIn('id="editor-settings-tab-about" role="tab" data-settings-tab="about"', page)
+        self.assertIn(f'<strong id="editor-about-version">v{edit.get_app_version()}</strong>', page)
+        self.assertIn(f'href="{edit.get_app_release_url()}"', page)
+        self.assertIn('href="https://moyf.github.io/moys-asr-workflow/docs/"', page)
+        self.assertIn('href="https://www.bilibili.com/video/BV1S9bZ6pEHg"', page)
+        self.assertIn('href="https://github.com/Moyf/moys-asr-workflow"', page)
+        self.assertIn('href="https://qm.qq.com/q/4YtxZIpzxC"', page)
+        self.assertIn('<span>English tutorial (YouTube)</span><span class="editor-settings-about-placeholder">待补充</span>', page)
+        self.assertIn('<span>Discord community</span><span class="editor-settings-about-placeholder">待补充</span>', page)
+        self.assertIn('<span>Ko-fi</span><span class="editor-settings-about-placeholder">待补充</span>', page)
+        self.assertIn('<span>Author on Twitter / X</span><span class="editor-settings-about-placeholder">待补充</span>', page)
+        self.assertNotIn('href="https://ko-fi.com', page)
+        self.assertNotIn('href="https://discord.com', page)
+        for track_toggle_id in ('project-word-timing-toggle', 'project-marker-track-toggle', 'overlay-track-toggle', 'multi-subtitle-toggle'):
+            toggle_start = page.index(f'id="{track_toggle_id}"')
+            label_start = page.rfind('<label', 0, toggle_start)
+            self.assertIn('project-track-toggle', page[label_start:toggle_start])
+        self.assertIn('.project-track-toggle {', page)
+        self.assertIn('html[lang="en"] .editor-settings-about-locale-zh', page)
         settings_nav_start = page.index('  .editor-settings-nav {')
         settings_nav_end = page.index('  .editor-settings-nav-group-label {', settings_nav_start)
         settings_nav_css = page[settings_nav_start:settings_nav_end]
@@ -608,7 +627,7 @@ class EditorAssetTests(CompactContainerAssertions, unittest.TestCase):
             + page.count('class="editor-settings-group subtitle-preview-style-group"')
             + page.count('class="editor-settings-group subtitle-color-settings-group"')
             + page.count('class="editor-settings-group subtitle-speaker-settings-group"'),
-            28,
+            31,
         )
         self.assertEqual(page.count('class="editor-settings-group split-language-type-group"'), 1)
         self.assertEqual(page.count('class="editor-settings-group subtitle-color-settings-group"'), 1)

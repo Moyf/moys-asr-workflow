@@ -105,6 +105,7 @@ __WAVEFORM_CSS__
         <div class="dropdown-item" id="download-gap-removed-color-srt" role="menuitem" tabindex="0" hidden title="按移除静音空隙后的时间轴，为每种已使用颜色分别导出一份字幕">SRT（按颜色拆分）</div>
         <div class="dropdown-separator" id="gap-removed-subtitle-export-separator" role="separator" hidden></div>
         <div class="dropdown-item" id="download-gap-removed-ass" role="menuitem" tabindex="0" title="按移除静音空隙后的时间轴导出带样式的 ASS 字幕；原工程时间不变">ASS（带样式）</div>
+        <div class="dropdown-item" id="download-gap-removed-video" role="menuitem" tabindex="0" title="按保留区域重组源视频并保留可复制的媒体流；切点可能出现重复帧或时间戳边界">重组后视频</div>
         <div class="dropdown-submenu" role="none">
           <div class="dropdown-item dropdown-submenu-toggle" role="menuitem" tabindex="0" aria-haspopup="menu" aria-expanded="false" aria-controls="gap-removed-otio-menu">OTIO</div>
           <div class="dropdown-menu dropdown-submenu-menu" id="gap-removed-otio-menu" role="menu">
@@ -119,7 +120,7 @@ __WAVEFORM_CSS__
         <div class="dropdown-submenu" role="none">
           <div class="dropdown-item dropdown-submenu-toggle" role="menuitem" tabindex="0" aria-haspopup="menu" aria-expanded="false" aria-controls="gap-removed-data-menu">数据文件</div>
           <div class="dropdown-menu dropdown-submenu-menu" id="gap-removed-data-menu" role="menu">
-            <div class="dropdown-item" id="download-gap-removed-ffconcat" role="menuitem" tabindex="0" title="导出 FFmpeg concat demuxer 可读取的保留区间；流复制的切点精度受关键帧和编码包限制">FFconcat 文件</div>
+          <div class="dropdown-item" id="download-gap-removed-ffconcat" role="menuitem" tabindex="0" title="导出 FFmpeg concat demuxer 可读取的保留区间；流复制切点可能出现重复帧或时间戳边界">FFconcat 文件</div>
             <div class="dropdown-item" id="download-gap-removed-regions-json" role="menuitem" tabindex="0" title="以毫秒为单位导出原媒体中的全部保留区域，供自定义脚本或工具读取">保留区域 JSON</div>
           </div>
         </div>
@@ -844,11 +845,11 @@ __WAVEFORM_CSS__
         </div>
 <small class="settings-panel-hint">英文按词拆，中文按字拆。</small>
 </div></div><div class="editor-settings-page" id="editor-settings-page-project-tracks" role="tabpanel" aria-labelledby="editor-settings-tab-project-tracks" hidden><span class="editor-settings-group-heading" id="project-track-settings-title">字幕轨道</span>
-<div class="editor-settings-group" role="group" aria-labelledby="project-track-settings-title"><div class="editor-settings-sub-group"><label class="toggle editor-settings-item" title="临时查看和调整主字幕已有的字词时间范围；快捷键 Q，与波形工具栏 🔤 联动；打开另一工程后关闭"><input type="checkbox" id="project-word-timing-toggle"> 显示字词时间码</label><label class="toggle editor-settings-item" title="启用标记编辑（快捷键 M）：显示「标记与区段」入口并允许编辑标记与区段"><input type="checkbox" id="project-marker-track-toggle"> 显示标记轨道</label><label class="toggle editor-settings-item overlay-track-toggle" id="overlay-track-controls"
+<div class="editor-settings-group" role="group" aria-labelledby="project-track-settings-title"><div class="editor-settings-sub-group"><label class="toggle editor-settings-item project-track-toggle" title="临时查看和调整主字幕已有的字词时间范围；快捷键 Q，与波形工具栏 🔤 联动；打开另一工程后关闭"><input type="checkbox" id="project-word-timing-toggle"> 显示字词时间码</label><label class="toggle editor-settings-item project-track-toggle" title="启用标记编辑（快捷键 M）：显示「标记与区段」入口并允许编辑标记与区段"><input type="checkbox" id="project-marker-track-toggle"> 显示标记轨道</label><label class="toggle editor-settings-item overlay-track-toggle project-track-toggle" id="overlay-track-controls"
          title="开启后可在叠加轨创建与主字幕时间重叠的叠加字幕；叠加轨不会与双语字幕建立绑定关系">
     <input type="checkbox" id="overlay-track-toggle">
     允许字幕重叠
-  </label><label class="toggle editor-settings-item multi-subtitle-main-toggle" id="multi-subtitle-toggle-label"
+  </label><label class="toggle editor-settings-item multi-subtitle-main-toggle project-track-toggle" id="multi-subtitle-toggle-label"
            title="开启后显示副字幕轨，可手动添加或导入第二条字幕。">
       <input type="checkbox" id="multi-subtitle-toggle" title="开启后显示副字幕轨，可手动添加或导入第二条字幕。">
       双语字幕
@@ -1147,6 +1148,8 @@ __WAVEFORM_CSS__
       <div class="editor-settings-nav-group-label" aria-hidden="true">扩展功能</div>
       <button type="button" class="editor-settings-nav-tab" id="editor-settings-tab-sticker" role="tab" data-settings-tab="sticker" aria-selected="false" aria-controls="editor-settings-page-sticker" tabindex="-1">表情包</button>
       <button type="button" class="editor-settings-nav-tab" id="editor-settings-tab-easter-eggs" role="tab" data-settings-tab="easter-eggs" aria-selected="false" aria-controls="editor-settings-page-easter-eggs" tabindex="-1">彩蛋</button>
+      <div class="editor-settings-nav-group-label" aria-hidden="true">关于</div>
+      <button type="button" class="editor-settings-nav-tab" id="editor-settings-tab-about" role="tab" data-settings-tab="about" aria-selected="false" aria-controls="editor-settings-page-about" tabindex="-1">关于</button>
     </nav>
     <div class="editor-settings-pages">
   <div class="editor-settings-page" id="editor-settings-page-interface" role="tabpanel" aria-labelledby="editor-settings-tab-interface">
@@ -1573,6 +1576,34 @@ __WAVEFORM_CSS__
       </div>
     </div>
   </div>
+  </div>
+  <div class="editor-settings-page" id="editor-settings-page-about" role="tabpanel" aria-labelledby="editor-settings-tab-about" hidden>
+    <div class="editor-settings-group">
+      <div class="editor-settings-about-version"><span>应用版本</span><strong id="editor-about-version">__APP_VERSION__</strong></div>
+      <div class="editor-settings-about-grid" role="group" aria-label="发布与文档">
+        <a class="editor-settings-about-entry" href="__RELEASE_URL__" target="_blank" rel="noopener noreferrer"><span>新功能</span><span class="editor-settings-about-action">打开发布页 ↗</span></a>
+        <a class="editor-settings-about-entry" href="https://moyf.github.io/moys-asr-workflow/docs/" target="_blank" rel="noopener noreferrer"><span>文档</span><span class="editor-settings-about-action">打开文档 ↗</span></a>
+      </div>
+    </div>
+    <div class="editor-settings-group">
+      <span class="editor-settings-group-heading">视频教程</span>
+      <div class="editor-settings-about-grid" role="group" aria-label="视频教程">
+        <a class="editor-settings-about-entry editor-settings-about-locale-zh" href="https://www.bilibili.com/video/BV1S9bZ6pEHg" target="_blank" rel="noopener noreferrer"><span>中文教程（Bilibili）</span><span class="editor-settings-about-action">观看视频 ↗</span></a>
+        <div class="editor-settings-about-entry editor-settings-about-locale-en"><span>English tutorial (YouTube)</span><span class="editor-settings-about-placeholder">待补充</span></div>
+      </div>
+    </div>
+    <div class="editor-settings-group">
+      <span class="editor-settings-group-heading">项目与社区</span>
+      <div class="editor-settings-about-grid" role="group" aria-label="项目与社区">
+        <a class="editor-settings-about-entry" href="https://github.com/Moyf/moys-asr-workflow" target="_blank" rel="noopener noreferrer"><span>Star 项目主页</span><span class="editor-settings-about-action">打开项目 ↗</span></a>
+        <a class="editor-settings-about-entry editor-settings-about-locale-zh" href="https://qm.qq.com/q/4YtxZIpzxC" target="_blank" rel="noopener noreferrer"><span>QQ 交流群</span><span class="editor-settings-about-action">加入群聊 ↗</span></a>
+        <div class="editor-settings-about-entry editor-settings-about-locale-en"><span>Discord community</span><span class="editor-settings-about-placeholder">待补充</span></div>
+        <div class="editor-settings-about-entry editor-settings-about-locale-zh"><span>B 站小店赞助</span><span class="editor-settings-about-placeholder">待补充</span></div>
+        <div class="editor-settings-about-entry editor-settings-about-locale-en"><span>Ko-fi</span><span class="editor-settings-about-placeholder">待补充</span></div>
+        <div class="editor-settings-about-entry editor-settings-about-locale-zh"><span>作者 Bilibili 主页</span><span class="editor-settings-about-placeholder">待补充</span></div>
+        <div class="editor-settings-about-entry editor-settings-about-locale-en"><span>Author on Twitter / X</span><span class="editor-settings-about-placeholder">待补充</span></div>
+      </div>
+    </div>
   </div>
     </div>
   </div>
@@ -2309,6 +2340,19 @@ __WAVEFORM_CSS__
 </div>
 
 <!-- 支持调整字幕行结构并预览字词时间码映射的纯文本编辑 MVP。 -->
+<dialog id="subtitle-time-offset-dialog" class="subtitle-time-offset-dialog" aria-labelledby="subtitle-time-offset-title">
+  <form id="subtitle-time-offset-form" class="subtitle-time-offset-form">
+    <h3 id="subtitle-time-offset-title">调整字幕时间</h3>
+    <p>对选中的字幕整体平移时间范围；正数后移，负数前移。越出媒体范围或挤占其它字幕时会整批拒绝。</p>
+    <label for="subtitle-time-offset-ms">偏移量（ms）</label>
+    <input type="number" id="subtitle-time-offset-ms" step="1" value="0" inputmode="numeric">
+    <div class="actions">
+      <button type="button" id="subtitle-time-offset-cancel">取消</button>
+      <button type="submit" id="subtitle-time-offset-apply" class="primary">应用</button>
+    </div>
+  </form>
+</dialog>
+
 <dialog id="word-conversion-dialog" class="word-conversion-dialog" aria-labelledby="word-conversion-title" aria-describedby="word-conversion-warning">
   <h3 id="word-conversion-title">字词拆成字幕</h3>
   <p id="word-conversion-warning">此操作会替换选中的整句结构，并解除相关副字幕绑定；副字幕内容与时间保留。字词范围可能更短，产生更多空隙。新增文字可能共用旧时间范围，没有重新对齐音频。每个块转为一条字幕，不按字数细分时间。可通过撤销恢复，不提供反向转换工具。</p>

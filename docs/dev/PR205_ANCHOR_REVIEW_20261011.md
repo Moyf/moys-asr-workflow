@@ -1,8 +1,8 @@
 # PR #205 ASS anchor review and repair attempt
 
-Baseline: `bb86f65`, branch `code/pr205-anchor-investigation-261011`.
+Original baseline: `bb86f65`. Final combined base: `dbd76b4fc8808941d4254dc7eec54cb6174c48c5`. Branch: `code/pr205-anchor-investigation-261011`.
 
-Status: independent draft investigation. The reviewed small fixes from the final integration branch will be included only after its final base SHA is supplied. This positioning contract change is not approved for merge.
+Status: independent draft investigation. The final integration base, including the reviewed small fixes and latest main, has been merged locally. This positioning contract change is not approved for merge.
 
 ## Reproduced defect
 
@@ -20,6 +20,8 @@ The nominal formula is `secondaryY = mainAnchorY - round(1.2 × fontSize) + roun
 
 Independent source review confirms that main event text and main style remain untouched. The preview's main track does not receive a secondary `anchor`; its existing style/move path continues to determine positioning. Legacy export positioning is unchanged. Final-integration changes reviewed at `b38cef3` and the small-fix commit `e6d9669` add stable stage geometry, speaker formatting and cache invalidation in separate source regions; these need to be preserved during eventual integration.
 
+The final integration retains those small fixes. The sole source conflict at the extension-track definition was resolved by keeping both the new `alignment`/`anchor` fields and the small fix's `speaker` field. Bundle conflicts were resolved by rebuilding from the combined source. Relative to `dbd76b4`, the file list is limited to five positioning source files, three layout/export tests, two generated bundle files and this report; no other business-source changes were introduced by the investigation.
+
 ## Verification
 
 All checks use `scripts/run_check.py`. Editor bundle and metadata were rebuilt; the committed portable HTML was not regenerated.
@@ -33,6 +35,19 @@ All checks use `scripts/run_check.py`. Editor bundle and metadata were rebuilt; 
 | FFmpeg/libass actual rendered pixels | Bottom, middle and top all show overlay above extension above main; mixed alignment retained | `20261011T033639Z-61285688/result.json` |
 
 The browser screenshot is `test-results/multi-subtitle-ASS-mode-pr-687a7--the-shared-extension-style-chromium/top-right-ass-anchor.png`. Actual libass frames are `.debug-runs/anchor-{bottom,middle,top}.png`. These ignored local artifacts were visually inspected and are not committed. Initial unit failures came from missing `MAW_TEST_PYTHON`; rerunning with the existing venv passed. Browser attempts inside the sandbox failed before assertions (missing Playwright cache, then Edge launch); the same targeted test passed outside the sandbox. The libass probe initially used malformed color fixtures; correcting the fixture produced three successful pixel-order assertions.
+
+### Combined verification after final-base integration
+
+| Layer | Result | Evidence under `.debug-runs/` |
+| --- | --- | --- |
+| Layout/export plus small-fix raster regression | 331 passed, no skips | `20261011T035208Z-6ae0260f/result.json` |
+| Typecheck | Passed | `20261011T035213Z-4b2bc2ba/result.json` |
+| Rebuilt editor / freshness check | Passed | `20261011T035158Z-c77109b4/result.json`, `20261011T035214Z-8526d621/result.json` |
+| Edge browser | 2 passed: nine alignment combinations with Canvas/export parity; actual Canvas paint plus ASS/CSS speaker-prefix colors | `20261011T035237Z-8dd6ec18/result.json` |
+| Actual FFmpeg/libass pixels | 6 render fixtures passed: three vertical positions with separate track colors, plus the same three positions with separate speaker-prefix colors | `20261011T035302Z-56575a60/result.json` |
+| Diff scope / whitespace | Eleven expected files relative to final base; `git diff dbd76b4 --check` passed | Local Git result |
+
+The combined browser speaker screenshot is `test-results/ass-export-speaker-prefixe-70d94--paint-ASS-and-CSS-previews-chromium/ass-track-speaker-prefixes.png`. The actual libass speaker frames are `.debug-runs/anchor-speakers-{bottom,middle,top}.png`; these were visually inspected. The libass probe scripts remain ignored local evidence at `.debug-runs/render-anchor.mjs` and `.debug-runs/render-anchor.py`. Combined verification is targeted; it does not assert full Python, full Node or full browser regression coverage for this draft.
 
 ## Review and merge limits
 

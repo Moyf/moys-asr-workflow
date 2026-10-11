@@ -679,6 +679,16 @@ export function createWaveformModule(dependencies) {
           groupBadges,
         );
       });
+      const drag = this.drag;
+      if (drag?.started) {
+        const indexAttribute = drag.track === 'overlay' ? 'data-overlay-idx'
+          : drag.track === 'extension' ? 'data-ext-idx' : 'data-idx';
+        drag.indices.forEach((index) => {
+          rows.forEach((row) => row.querySelectorAll(
+            `.waveform-cue-block[data-track="${drag.track}"][${indexAttribute}="${index}"]`,
+          ).forEach((block) => block.classList.add('dragging')));
+        });
+      }
       this.updatePlayback(false);
     }
 
@@ -695,6 +705,13 @@ export function createWaveformModule(dependencies) {
           activeSeamDrag.previewRowIndex = ownerRowIndex;
           this.refreshCueOverlay();
         }
+      }
+      const activeCueDrag = this.drag && this.drag.started && !this.drag.sharedBoundaryZone
+        ? this.drag : null;
+      if (activeCueDrag && this.cueDragOverlayOccupancyChanged(activeCueDrag)) {
+        // 轻量块重排只能更新已有 DOM；当字幕跨行后，必须在目标行创建新片段、
+        // 并移除源行旧片段。指针捕获在稳定 pane 上，覆盖层重建不会中断拖动。
+        this.refreshCueOverlay();
       }
       const segments = this.options.getSegments('main');
       const extensionSegments = this.options.getExtensionSegments?.() || [];
@@ -753,6 +770,37 @@ export function createWaveformModule(dependencies) {
       }
       this.positionPlayheads();
       this.refreshBoundaryDragPointerLine();
+    }
+
+
+    /** @this {import('./waveform-types.js').WaveformInstance} */
+    cueDragOverlayOccupancyChanged(drag) {
+      const rows = [...(/** @type {NodeListOf<import('./waveform-types.js').WaveformRow>} */ (
+        this.content.querySelectorAll('.waveform-row')
+      ))];
+      if (!rows.length) return false;
+      const segments = drag.track === 'extension'
+        ? (this.options.getExtensionSegments?.() || [])
+        : (this.options.getSegments(drag.track) || []);
+      const indexAttribute = drag.track === 'overlay' ? 'data-overlay-idx'
+        : drag.track === 'extension' ? 'data-ext-idx' : 'data-idx';
+      const selectorFor = (index) => (
+        `.waveform-cue-block[data-track="${drag.track}"][${indexAttribute}="${index}"]`
+      );
+      return drag.indices.some((index) => {
+        const segment = segments[index];
+        if (!segment) return false;
+        const hiddenDisabled = segment.disabled
+          && (this.options.getHideDisabled?.() || this.settings.disabledDisplay === 'hidden');
+        return rows.some((row) => {
+          const startMs = Number(row.dataset.startMs);
+          const endMs = Number(row.dataset.endMs);
+          const shouldExist = !hiddenDisabled
+            && Number(segment.start) < endMs && Number(segment.end) > startMs;
+          const exists = Boolean(row.querySelector(selectorFor(index)));
+          return shouldExist !== exists;
+        });
+      });
     }
 
 

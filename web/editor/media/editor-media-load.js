@@ -83,6 +83,14 @@
       // BWF metadata is optional; an unreadable header must not block playback.
     }
 
+    // A server-bound video export can only use the server's original media.
+    // Once the user replaces it with a browser-local file, invalidate that
+    // capability so later exports cannot silently use stale source footage.
+    if (MaweBoot.SERVER_CONFIG?.canGapRemovedVideoExport) {
+      MaweBoot.SERVER_CONFIG.canGapRemovedVideoExport = false;
+      MaweBoot.SERVER_CONFIG.gapRemovedVideoSourceName = null;
+    }
+
     if (MaweCoreState.waveformEditor) MaweCoreState.waveformEditor.attachPlayer(MaweCoreState.player);
     MaweMediaPlayback.syncPlayerPlaceholder();
     // 部分浏览器会在 load() 完成前暂时不给 currentSrc；文件既已由用户选定，立即恢复彩色波形。

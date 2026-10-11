@@ -21,6 +21,7 @@
 
 
 
+let lastStableAssPreviewGeometry = null;
 function assPreviewMetrics() {
   const resolution = MaweExportSrt.currentAssVideoResolution()
     || { width: 1920, height: 1080 };
@@ -33,6 +34,36 @@ function assPreviewMetrics() {
   const video = player?.tagName === 'VIDEO';
   const stageWidth = video ? Math.min(boxWidth, boxHeight * aspect) : boxWidth;
   const stageHeight = video ? Math.min(boxHeight, boxWidth / aspect) : boxHeight;
+  if (stageWidth >= 48 && stageHeight >= 48) {
+    lastStableAssPreviewGeometry = {
+      stageWidth,
+      stageHeight,
+      offsetX: (boxWidth - stageWidth) / 2,
+      offsetY: (boxHeight - stageHeight) / 2,
+    };
+  } else if (lastStableAssPreviewGeometry) {
+    // Playback refreshes the ASS canvas every frame, including while a fullscreen
+    // layout transition briefly collapses the stage. Keep the last usable geometry
+    // until ResizeObserver's settled refresh supplies the new dimensions.
+    return {
+      resolution,
+      ...lastStableAssPreviewGeometry,
+      scaleX: lastStableAssPreviewGeometry.stageWidth / resolution.width,
+      scaleY: lastStableAssPreviewGeometry.stageHeight / resolution.height,
+    };
+  } else {
+    // A first render can race the initial layout. Use the native canvas size until
+    // the stage has a meaningful rectangle rather than squeezing ASS into a few px.
+    return {
+      resolution,
+      stageWidth: resolution.width,
+      stageHeight: resolution.height,
+      offsetX: 0,
+      offsetY: 0,
+      scaleX: 1,
+      scaleY: 1,
+    };
+  }
   return {
     resolution,
     stageWidth,
@@ -332,30 +363,32 @@ function applyAssSubtitlePreview({ tMs, segment, extension, overlay, overlaySegm
       color: labelColor,
     };
   }
-  // 叠加轨说话人标签同理：映射按叠加轨自身数组解析（与播放循环同源），
-  // 叠加轨 DOM 元素在 ASS 模式已整体隐藏，标签必须进 Canvas 才可见。
-  let overlaySpeaker = null;
-  if (overlay) {
+  // 副/叠加轨的 DOM 在 ASS 模式整体隐藏，前缀也要进 Canvas；
+  // 名称与颜色都按各轨自己的颜色引用解析，与导出 assEventText 一致。
+  function secondarySpeaker(cue, colorContext, style) {
+    if (!cue) return null;
     const speakerLabels = MaweSpeakerLabels.getSpeakerLabelSettings();
-    const overlayColorContext = overlaySegments || [];
-    const overlayLabel = speakerLabels.mapping_enabled && speakerLabels.enabled
+    const label = speakerLabels.mapping_enabled && speakerLabels.enabled
       ? window.AsrEditorUtils.speakerLabelForSegment(
-        overlay, overlayColorContext, speakerLabels.names,
+        cue, colorContext, speakerLabels.names,
       )
       : '';
-    const overlayColorName = MULTI_SUBTITLE_UTILS.effectiveColorName(overlay, overlayColorContext);
-    if (overlayLabel && overlayColorName && MaweColors.COLOR_BY_NAME[overlayColorName]) {
+    const colorName = MULTI_SUBTITLE_UTILS.effectiveColorName(cue, colorContext);
+    if (label && colorName && MaweColors.COLOR_BY_NAME[colorName]) {
       const assColorStyle = appearance.ass_color_style || DEFAULT_ASS_COLOR_STYLE;
-      const paletteColor = MaweColors.COLOR_BY_NAME[overlayColorName].value;
+      const paletteColor = MaweColors.COLOR_BY_NAME[colorName].value;
       const labelColor = assColorStyle === 'text' || assColorStyle === 'speaker'
         ? paletteColor
-        : animatedOverlayTrackStyle.primaryColor;
-      overlaySpeaker = {
-        text: `${overlayLabel}${speakerLabels.separator}`,
+        : style.primaryColor;
+      return {
+        text: `${label}${speakerLabels.separator}`,
         color: labelColor,
       };
     }
+    return null;
   }
+  const extensionSpeaker = secondarySpeaker(extension, extensionSegments, animatedExtensionStyle);
+  const overlaySpeaker = secondarySpeaker(overlay, overlaySegments || [], animatedOverlayTrackStyle);
 
   window.MaweAssCanvas?.render({
     playResX: metrics.resolution.width,
@@ -379,6 +412,7 @@ function applyAssSubtitlePreview({ tMs, segment, extension, overlay, overlaySegm
         margins: extensionMargins,
         alignment: extensionPosition.alignment,
         anchor: extensionPosition.anchor,
+        speaker: extensionSpeaker,
       },
       {
         // Match the export's chained absolute anchor and horizontal alignment.

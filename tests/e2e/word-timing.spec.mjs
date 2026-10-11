@@ -36,6 +36,43 @@ async function setWordTiming(page, enabled = true) {
   await expect(quick).toHaveAttribute('aria-pressed', String(enabled));
 }
 
+test('word timing separation stays within multi-row single-track waveforms', async ({ page }, testInfo) => {
+  await setWordTiming(page);
+  await page.locator('[data-waveform-mode="multi"]').click();
+  const multi = await word(page, 0).evaluate(el => ({
+    height: parseFloat(getComputedStyle(el).height), bottom: parseFloat(getComputedStyle(el).bottom),
+  }));
+  await page.locator('[data-waveform-mode="basic"]').click();
+  const basic = await word(page, 0).evaluate(el => ({
+    height: parseFloat(getComputedStyle(el).height), bottom: parseFloat(getComputedStyle(el).bottom),
+  }));
+  await page.evaluate(() => {
+    MaweBoot.DATA.multi_subtitle = { enabled: true, tracks: [{ id: 'timing-extension', segments: [
+      { start: 500, end: 7000, text: 'extension text' },
+    ] }] };
+    MaweCuePanel.renderAll();
+  });
+  await page.locator('[data-waveform-mode="multi"]').click();
+  const row = page.locator('.waveform-row.multi-subtitle-row').first();
+  await expect(row.locator('.waveform-cue-block[data-track="extension"]').first()).toBeVisible();
+  const lanes = await row.evaluate(el => {
+    const main = el.querySelector('.waveform-cue-block[data-track="main"]');
+    const extension = el.querySelector('.waveform-cue-block[data-track="extension"]');
+    return {
+      mainBottom: parseFloat(getComputedStyle(main).bottom),
+      extensionBottom: parseFloat(getComputedStyle(extension).bottom),
+      mainRectBottom: main.getBoundingClientRect().bottom,
+      extensionRectTop: extension.getBoundingClientRect().top,
+    };
+  });
+  console.log('word timing geometry', JSON.stringify({ multi, basic, lanes }));
+  await page.locator('#waveform-pane').screenshot({ path: testInfo.outputPath('word-bilingual-lanes.png') });
+  expect(multi).toEqual({ height: 20, bottom: 7 });
+  expect(basic).toEqual({ height: 31, bottom: 9 });
+  expect(lanes.mainBottom).toBeGreaterThan(lanes.extensionBottom);
+  expect(lanes.mainRectBottom).toBeLessThanOrEqual(lanes.extensionRectTop + 1);
+});
+
 test('word timing lives on the toolbar toggle and waveform settings keep appearance groups', async ({ page }, testInfo) => {
   await expect(page.locator('.waveform-toolbar > .word-timing-toggle, .waveform-toolbar > .gap-skip-toggle')).toHaveCount(0);
   await page.locator('#waveform-settings-toggle').click();
@@ -84,7 +121,7 @@ test('temporary display handles partial and absent timings in both waveform mode
   await expect(page.locator('#markers-manage')).toBeHidden();
   await setWordTiming(page);
   await expect(word(page, 1)).toContainText('很喜欢！');
-  await expect(word(page, 1)).toHaveAttribute('title', /00:03\.000.*00:06\.000/s);
+  await expect(word(page, 1)).toHaveAttribute('data-title', /00:03\.000.*00:06\.000/s);
   await expect(page.locator('.waveform-word-time')).toHaveCount(0);
   await expect(page.locator('.waveform-word-block[data-segment-idx="1"]')).toHaveCount(0);
   await expect(page.locator('.waveform-word-block[data-segment-idx="2"]')).toHaveCount(1);
@@ -303,7 +340,7 @@ test('frame editing and conversion preserve narrow one-frame words through save 
     ];
   });
   await setWordTiming(page);
-  await expect(word(page, 0)).toHaveAttribute('title', /00:00:01:00.*00:00:01:01/s);
+  await expect(word(page, 0)).toHaveAttribute('data-title', /00:00:01:00.*00:00:01:01/s);
   await expect(page.locator('.waveform-word-time')).toHaveCount(0);
   await page.locator('#waveform-pane').screenshot({ path: testInfo.outputPath('word-narrow-frame.png') });
   const handle = await word(page, 1).locator('.right').boundingBox();
@@ -426,9 +463,9 @@ test('English UI does not translate project words or their hover text', async ({
   });
   await setWordTiming(page);
   await expect(page.locator('#word-timing-quick-toggle')).toBeVisible();
-  await expect(page.locator('#waveform-settings-panel .waveform-settings-title')).toHaveText(['Waveform appearance', 'Display']);
+  await expect(page.locator('#waveform-settings-panel .waveform-settings-title')).toHaveText(['Appearance', 'Display']);
   await expect(word(page, 0).locator('.waveform-word-label')).toHaveText('字词时间码');
-  await expect(word(page, 0)).toHaveAttribute('title', /^字词时间码/);
+  await expect(word(page, 0)).toHaveAttribute('data-title', /^字词时间码/);
   await page.evaluate(() => MaweWordTiming.openConversion([0]));
   await expect(page.locator('#word-conversion-warning')).toContainText('has not been realigned to audio');
 });
@@ -457,16 +494,101 @@ test('equal-length typo replacement syncs item texts through the cue panel', asy
   const panel = page.locator('#cue-panel-text');
   await expect(panel).toHaveValue('我很喜欢！');
   await panel.fill('我最喜欢！');
+  expect((await source(page)).items.map(item => item.text)).toEqual(['我', '很喜欢']);
+  await panel.blur();
   await expect(page.locator('#hint-stack')).toContainText('已同步字词时间码文字');
   expect((await source(page)).items.map(item => item.text)).toEqual(['我', '最喜欢！']);
-  // 追加文字长度变化：静默跳过，字词保持原样
-  await panel.fill('我最喜欢！啊');
+  // 长度变化跨入字词范围时，输入过程中不改 items；提交时提示实际差异。
+  await panel.fill('我非常喜欢！');
+  expect((await source(page)).items.map(item => item.text)).toEqual(['我', '最喜欢！']);
+  await panel.blur();
+  await expect(page.locator('#hint-stack')).toContainText('字词时间码未同步：[最 -> 非常] 不是等长替换');
   expect((await source(page)).items.map(item => item.text)).toEqual(['我', '最喜欢！']);
   // Esc 取消整次编辑：文字与字词一起回到会话开始的状态
-  await panel.fill('我很喜欢！');
+  await panel.fill('我非常有喜欢！');
   await page.keyboard.press('Escape');
   const restored = await source(page);
-  expect([restored.text, restored.items.map(item => item.text)]).toEqual(['我很喜欢！', ['我', '很喜欢']]);
+  expect([restored.text, restored.items.map(item => item.text)]).toEqual(['我非常喜欢！', ['我', '最喜欢！']]);
+});
+
+for (const { timebase, startFrame } of [
+  { timebase: { unit: 'milliseconds', fps: 30 }, startFrame: 30 },
+  ...[30, 29.97].flatMap(fps => [1, 30].map(startFrame => ({ timebase: { unit: 'frames', fps }, startFrame }))),
+]) {
+  for (const adjacent of [true, false]) {
+    test(`pure text edits preserve narrow ${timebase.unit} cues at ${timebase.fps} FPS from frame ${startFrame} with ${adjacent ? 'adjacent' : 'spaced'} neighbors`, async ({ page }) => {
+      await page.evaluate(({ timebase, startFrame, adjacent }) => {
+        MaweSettings.updateEditorSettings({ autoSaveProject: false, cueEditorCancelOnEscape: true });
+        MaweCuePanelState.currentCuePanelIdx = -1;
+        MaweCuePanelState.resetCuePanelEditState({ discard: true });
+        MaweSelection.clearSelection({ commitCuePanel: false });
+        MaweHistory.editorHistory.clear();
+        const start = timebase.unit === 'frames' ? MaweTimeline.millisecondsFromFrameNumber(startFrame, timebase.fps) : 1000;
+        const end = timebase.unit === 'frames' ? MaweTimeline.millisecondsFromFrameNumber(startFrame + 1, timebase.fps) : 1060;
+        MaweBoot.DATA.timebase = timebase;
+        MaweBoot.DATA.segments.splice(0, MaweBoot.DATA.segments.length,
+          { id: 'narrow-before', start: 0, end: start, text: 'Before' },
+          { id: 'narrow-text', start, end, text: 'a', items: [{ start, end, text: 'a' }] },
+          { id: 'narrow-after', start: adjacent ? end : 4000, end: 5000, text: 'After' },
+        );
+        MaweCuePanel.renderAll();
+      }, { timebase, startFrame, adjacent });
+      await page.locator('.cue[data-idx="1"]').click();
+      const read = () => page.evaluate(() => JSON.parse(JSON.stringify(MaweBoot.DATA.segments)));
+      const before = await read();
+      const expected = structuredClone(before);
+      expected[1].text = 'b';
+      expected[1].items[0].text = 'b';
+      const withoutDirty = segments => segments.map(({ _dirty, ...segment }) => segment);
+      const panel = page.locator('#cue-panel-text');
+      await panel.fill('b');
+      await panel.blur();
+      expect(withoutDirty(await read())).toEqual(withoutDirty(expected));
+      expect(await page.evaluate(() => MaweHistory.editorHistory.undoLength())).toBe(1);
+      await page.evaluate(() => MaweHistory.performUndo());
+      expect(withoutDirty(await read())).toEqual(withoutDirty(before));
+      await page.evaluate(() => MaweHistory.performRedo());
+      expect(withoutDirty(await read())).toEqual(withoutDirty(expected));
+      await page.locator('.cue[data-idx="1"]').click();
+      await panel.fill('c');
+      await panel.press('Escape');
+      expect(withoutDirty(await read())).toEqual(withoutDirty(expected));
+      const saved = await page.evaluate(() => JSON.parse(MaweJsonRepair.buildJson()).segments[1]);
+      expect(saved).toMatchObject({ start: expected[1].start, end: expected[1].end, text: 'b' });
+      expect(saved.items[0]).toMatchObject({ start: expected[1].items[0].start, end: expected[1].items[0].end, text: 'b' });
+    });
+  }
+}
+
+test('saving focused cue panel text syncs word labels before resetting the edit snapshot', async ({ page }) => {
+  await page.evaluate(() => {
+    MaweSettings.updateEditorSettings({ cueEditorCancelOnEscape: true });
+    MaweServerSave.projectFileHandle = {
+      name: 'word-label-save.mosp',
+      async createWritable() {
+        return {
+          async write(blob) { window.__savedWordLabelProject = JSON.parse(await blob.text()); },
+          async close() {},
+        };
+      },
+    };
+  });
+  await page.locator('.cue[data-idx="0"]').click();
+  const panel = page.locator('#cue-panel-text');
+  await panel.fill('我最喜欢！');
+  await panel.press('Control+s');
+  await expect.poll(() => page.evaluate(() => window.__savedWordLabelProject?.segments[0].text)).toBe('我最喜欢！');
+  expect(await page.evaluate(() => window.__savedWordLabelProject.segments[0].items.map(item => item.text)))
+    .toEqual(['我', '最喜欢！']);
+  await expect(panel).toBeFocused();
+  expect((await source(page)).items.map(item => item.text)).toEqual(['我', '最喜欢！']);
+  await panel.fill('我更喜欢！');
+  await panel.blur();
+  expect((await source(page)).items.map(item => item.text)).toEqual(['我', '更喜欢！']);
+  await panel.fill('我很喜欢！');
+  await page.keyboard.press('Escape');
+  expect([ (await source(page)).text, (await source(page)).items.map(item => item.text) ])
+    .toEqual(['我更喜欢！', ['我', '更喜欢！']]);
 });
 
 test('selected sentence gains edge handles in word timing mode and drags only its own range', async ({ page }) => {
@@ -477,7 +599,7 @@ test('selected sentence gains edge handles in word timing mode and drags only it
   await block.click({ position: { x: 10, y: 3 } });
   await expect(block).toHaveClass(/selected/);
   await expect(block.locator('.waveform-cue-handle')).toHaveCount(2);
-  expect(await block.evaluate(el => parseFloat(getComputedStyle(el).opacity))).toBeCloseTo(0.45);
+  expect(await block.evaluate(el => parseFloat(getComputedStyle(el).opacity))).toBeCloseTo(1);
   const before = await source(page);
   const handle = block.locator('.waveform-cue-handle.right');
   const box = await handle.boundingBox();
