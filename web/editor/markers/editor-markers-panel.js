@@ -72,6 +72,28 @@
   }
 
 
+  // 搜索词按字面匹配；名称与备注仍由文本节点渲染，不将工程内容解析为 HTML。
+  function appendSearchHighlightedText(container, value) {
+    const text = String(value ?? '');
+    const query = filter.query.trim();
+    if (!query) {
+      container.textContent = text;
+      return;
+    }
+    const pattern = new RegExp(query.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'gi');
+    let cursor = 0;
+    for (const match of text.matchAll(pattern)) {
+      container.appendChild(document.createTextNode(text.slice(cursor, match.index)));
+      const highlight = document.createElement('mark');
+      highlight.className = 'markers-search-match';
+      highlight.textContent = match[0];
+      container.appendChild(highlight);
+      cursor = match.index + match[0].length;
+    }
+    container.appendChild(document.createTextNode(text.slice(cursor)));
+  }
+
+
   // 颜色过滤下拉：按当前工程中出现的颜色去重；保留已选值（颜色消失时回退 all）。
   function syncColorFilterOptions(markers) {
     if (!MaweDom.markersFilterColor) return;
@@ -432,6 +454,8 @@
 
     const actions = document.createElement('div');
     actions.className = 'markers-item-actions';
+    const reviewActions = document.createElement('div');
+    reviewActions.className = 'markers-review-actions';
     // 复核三态 toggle（左下角）：无 → 待复核 → 已确认 → 无；每次点击进撤销历史。
     const reviewToggle = document.createElement('button');
     reviewToggle.type = 'button';
@@ -447,7 +471,7 @@
       MaweMarkerEditing.updateMarkerFields(marker.id, { review: utils.nextMarkerReviewStatus(marker) });
     });
     updateAiCleanupReviewStatusButton(reviewToggle, marker);
-    actions.appendChild(reviewToggle);
+    reviewActions.appendChild(reviewToggle);
     const muteButton = document.createElement('button');
     muteButton.type = 'button';
     muteButton.className = 'markers-ai-review-mute-toggle';
@@ -464,7 +488,8 @@
         'success',
       );
     });
-    actions.appendChild(muteButton);
+    reviewActions.appendChild(muteButton);
+    actions.appendChild(reviewActions);
     const locateButton = document.createElement('button');
     locateButton.type = 'button';
     locateButton.textContent = '定位试听';
@@ -542,8 +567,12 @@
 
     const title = document.createElement('span');
     title.className = 'markers-item-title';
-    title.textContent = marker.name || (isRegion ? '区段' : '标记');
-    if (marker.name) title.dataset.markerProjectContent = 'true';
+    if (marker.name) {
+      appendSearchHighlightedText(title, marker.name);
+      title.dataset.markerProjectContent = 'true';
+    } else {
+      title.textContent = isRegion ? '区段' : '标记';
+    }
 
     const time = document.createElement('span');
     time.className = 'markers-item-time';
@@ -601,7 +630,7 @@
       const note = document.createElement('div');
       note.className = 'markers-item-note';
       note.dataset.markerProjectContent = 'true';
-      note.textContent = marker.note;
+      appendSearchHighlightedText(note, marker.note);
       item.appendChild(note);
     }
     if (!batchMode && marker.id === editingMarkerId) item.appendChild(buildMarkerEditor(marker));
