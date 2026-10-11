@@ -87,7 +87,10 @@ async function configure(page, fixture) {
     const common = { fontName: 'Arial', fontSize: f.fontSize ?? 96, bold: false, italic: false,
       alignment: f.alignment ?? 2, marginV: f.marginV ?? 180,
       marginL: f.marginL ?? 30, marginR: f.marginR ?? 30,
-      outline: 0, shadow: 0, angle: f.angle ?? 0, scaleX: f.scaleX ?? 100,
+      outline: f.outline ?? 0, shadow: f.shadow ?? 0, spacing: f.spacing ?? 0,
+      outlineColor: f.outlineColor ?? '#000000', backColor: f.backColor ?? '#000000',
+      outlineOpacity: 100, backOpacity: 100,
+      angle: f.angle ?? 0, scaleX: f.scaleX ?? 100,
       scaleY: f.scaleY ?? 100, emphasisScale: f.emphasisScale ?? 1.1,
       commentScale: f.commentScale ?? 0.8, emphasisStyle: 'text', commentStyle: 'text' };
     Object.assign(main, common, { primaryColor: '#ff0000', emphasisColor: '#ff0000', commentColor: '#ff0000' });
@@ -413,6 +416,126 @@ test('overlapping secondary M and W cues occupy separate actual pixel bands', as
   expect.soft(frame.nativeTracks.extension.bands, 'Canvas separates same-track simultaneous cues').toHaveLength(2);
   expect(pixels.tracks.extension.bands, 'libass separates same-track simultaneous cues').toHaveLength(2);
 });
+
+test('positive spacing and coloured outline shadow keep complete multiline edge paint visible', async ({ page }, testInfo) => {
+  await configure(page, { alignment: 7, extensionAlignment: 1, marginL: 0, marginV: 0,
+    spacing: 8, outline: 6, shadow: 5, outlineColor: '#ff9900', backColor: '#cc00cc',
+    main: 'Main edge\nMain second', extension: 'Secondary edge\nSecondary second',
+    overlaySegments: [cue('coloured-overlay', 'Overlay edge\nOverlay second')] });
+  const frame = await capture(page, 1000);
+  await evidence(frame, testInfo, 'coloured-edge');
+  const combined = libass(frame.ass, 1000, testInfo, 'coloured-edge');
+  const canvasColours = await page.evaluate(() => {
+    const canvas = document.querySelector('.ass-preview-canvas');
+    const data = canvas.getContext('2d').getImageData(0, 0, canvas.width, canvas.height).data;
+    return Object.fromEntries([['outline', [255, 153, 0]], ['shadow', [204, 0, 204]]].map(([key, rgb]) => {
+      let painted = 0;
+      for (let offset = 0; offset < data.length; offset += 4) if (data[offset + 3] > 220
+        && rgb.every((channel, index) => Math.abs(data[offset + index] - channel) <= 12)) painted++;
+      return [key, painted];
+    }));
+  });
+  for (const colour of ['outline', 'shadow']) {
+    expect.soft(canvasColours[colour], `actual Canvas ${colour} colour is painted`).toBeGreaterThan(30);
+    expect.soft(combined.paintColours[colour], `actual libass ${colour} colour is painted`).toBeGreaterThan(30);
+  }
+  expect.soft(combined.sha256, 'coloured full group guard preserves native pixels').toBe(combined.guardCropSha256);
+  expect.soft(combined.outside, 'coloured full group loses no outline or shadow pixels').toBe(0);
+  const isolated = [];
+  for (const [index, role] of ['main', 'extension', 'overlay'].entries()) {
+    // Keep the actual generated positions/styles/animations; isolate only the
+    // role's Dialogue rows to measure its coloured outline/shadow without masks.
+    const source = frame.ass.split('\n').filter(line => !line.startsWith('Dialogue: ')
+      || Number(line.slice(10).split(',')[0]) === index).join('\n');
+    const pixels = libass(source, 1000, testInfo, `coloured-${role}-isolated`);
+    const padding = (pixels.guardSize[0] - pixels.width) / 2;
+    const box = pixels.guardBox.map(coordinate => coordinate - padding);
+    isolated.push({ painted: pixels.fullPainted, box });
+    expect.soft(pixels.sha256, `${role} full-colour guard preserves native pixels`).toBe(pixels.guardCropSha256);
+    expect.soft(pixels.outside, `${role} loses no outline or shadow pixels`).toBe(0);
+    expect.soft(frame.tracks[index].outside, `Canvas ${role} loses no outline or shadow pixels`).toBe(0);
+    expect.soft(frame.tracks[index].guardEdge, `Canvas ${role} full paint fits guard`).toBe(0);
+    for (const coordinate of [0, 1, 2, 3]) expect.soft(Math.abs(frame.tracks[index].box[coordinate] - box[coordinate]),
+      `${role} full-colour Canvas/libass edge ${coordinate} agrees within 3 pixels`).toBeLessThanOrEqual(3);
+  }
+  visibleStack(frame.tracks, frame.width, frame.height, 'Canvas coloured multiline edge');
+  visibleStack(isolated, frame.width, frame.height, 'isolated libass coloured multiline edge');
+  writeFileSync(testInfo.outputPath('coloured-edge-pixels.json'), JSON.stringify({ canvasColours, combined, isolated }, null, 2));
+});
+
+for (const [name, marker, tag] of [['underline', '_', 'u'], ['strikeout', '~', 's']]) {
+  test(`global ${name} survives the end of a locally marked run in actual pixels`, async ({ page }, testInfo) => {
+    await configure(page, { main: `MMMM ${marker}MMMM${marker} MMMM`,
+      animations: { t: { enabled: true, startMs: 0, endMs: 1000, accel: 1, tags: `\\${tag}1` } } });
+    const frame = await capture(page, 750);
+    await evidence(frame, testInfo, `global-${name}`);
+    const restore = value => frame.ass.replace(/(MMMM\{[^}]*?)\\([us])[01]/g,
+      (whole, prefix, found) => found === tag ? `${prefix}\\${tag}${value}` : whole);
+    const control = libass(restore(1), 750, testInfo, `${name}-restore-global-control`);
+    const broken = libass(restore(0), 750, testInfo, `${name}-reset-false-control`);
+    const actual = libass(frame.ass, 750, testInfo, `${name}-actual`);
+    expect(control.tracks.main.glyphSha256, 'restoring the wrong decoration is visibly distinguishable')
+      .not.toBe(broken.tracks.main.glyphSha256);
+    expect.soft(actual.tracks.main.glyphSha256, 'actual exported glyphs preserve the active global decoration')
+      .toBe(control.tracks.main.glyphSha256);
+    const canvasCoverage = await page.evaluate(() => {
+      const canvas = document.querySelector('.ass-preview-canvas');
+      const data = canvas.getContext('2d').getImageData(0, 0, canvas.width, canvas.height).data;
+      let widest = 0;
+      for (let y = 0; y < canvas.height; y++) {
+        let painted = 0;
+        for (let x = 0; x < canvas.width; x++) {
+          const offset = (y * canvas.width + x) * 4;
+          if (data[offset + 3] >= 16 && data[offset] > 60 && data[offset] > Math.max(data[offset + 1], data[offset + 2]) + 30) painted++;
+        }
+        widest = Math.max(widest, painted);
+      }
+      return widest;
+    });
+    expect.soft(canvasCoverage / (frame.nativeTracks.main.box[2] - frame.nativeTracks.main.box[0]),
+      'actual Canvas decoration covers all three runs').toBeGreaterThan(0.9);
+    expect.soft(actual.tracks.main.maxRowPainted / (actual.tracks.main.box[2] - actual.tracks.main.box[0]),
+      'actual libass decoration covers all three runs').toBeGreaterThan(0.9);
+    writeFileSync(testInfo.outputPath(`${name}-comparison.json`), JSON.stringify({ actual, control, broken, canvasCoverage }, null, 2));
+  });
+}
+
+for (const [name, t1, t2] of [['instant', 500, 500], ['linear', 0, 1000]]) {
+  test(`${name} main move retains its original clock through shared and solo layout slices`, async ({ page }, testInfo) => {
+    await configure(page, { mainSegments: [cue('move-main', 'Main', 0, 2000)],
+      extensionSegments: [cue('move-secondary', 'W', 500, 1500)],
+      animations: { move: { enabled: true, x1: 400, y1: 560, x2: 1000, y2: 560, t1, t2 } } });
+    const original = await page.evaluate(() => {
+      MaweBoot.DATA.overlay_track.enabled = false;
+      MaweBoot.DATA.multi_subtitle.enabled = false;
+      const source = MaweExportSrt.buildAss();
+      MaweBoot.DATA.multi_subtitle.enabled = true;
+      return source;
+    });
+    const results = [];
+    for (const time of [490, 500, 501, 1490, 1500, 1501, 1750]) {
+      const frame = await capture(page, time);
+      await evidence(frame, testInfo, `slice-move-${time}`);
+      const pixels = libass(frame.ass, time, testInfo, `slice-move-${time}`);
+      const reference = libass(original, time, testInfo, `unsplit-move-${time}`);
+      results.push({ time, canvas: frame.nativeTracks.main, grouped: pixels.tracks.main, original: reference.tracks.main });
+      expect.soft(frame.captured, 'slice move records all actual paint').toBe(frame.assigned);
+      expect.soft(pixels.sha256, `slice move guard preserves native pixels at ${time}`).toBe(pixels.guardCropSha256);
+      expect.soft(pixels.outside, `slice move clips no libass pixels at ${time}`).toBe(0);
+      for (const track of frame.tracks) expect.soft(track.outside, `slice move clips no Canvas pixels at ${time}`).toBe(0);
+      for (const [engine, box] of [['Canvas', frame.nativeTracks.main.box], ['libass', pixels.tracks.main.box]]) {
+        for (const coordinate of [0, 1, 2, 3]) expect.soft(Math.abs(box[coordinate] - reference.tracks.main.box[coordinate]),
+          `${engine} preserves unsplit move clock edge ${coordinate} at shared/solo boundary ${time}ms`).toBeLessThanOrEqual(3);
+      }
+      if (results.length > 1) {
+        const previous = results[results.length - 2];
+        for (const engine of ['canvas', 'grouped']) expect.soft(results[results.length - 1][engine].box[0],
+          `${engine} cannot jump back when the secondary cue ends`).toBeGreaterThanOrEqual(previous[engine].box[0] - 1);
+      }
+    }
+    writeFileSync(testInfo.outputPath('slice-move-clock-comparison.json'), JSON.stringify(results, null, 2));
+  });
+}
 
 test('overlapping fad intervals retain libass fade-in priority in actual pixels', async ({ page }, testInfo) => {
   await configure(page, {

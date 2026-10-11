@@ -51,7 +51,9 @@ def render(path: Path, target: Path, width: int, height: int, time_ms: int) -> t
     command = [
         'ffmpeg', '-hide_banner', '-loglevel', 'info', '-f', 'lavfi', '-i',
         f'color=black:s={width}x{height}:r=100:d=0.01', '-vf',
-        f'format=rgb24,setpts=PTS+{time_ms / 1000}/TB,ass={path.name}',
+        # Preserve 501ms/1501ms boundaries exactly: the input's 1/100 timebase
+        # would otherwise truncate a fractional setpts value to the prior frame.
+        f'format=rgb24,settb=1/1000,setpts=PTS+{time_ms},ass={path.name}',
         '-frames:v', '1', '-y', target.name,
     ]
     result = subprocess.run(command, cwd=path.parent, capture_output=True, timeout=30, check=False)
@@ -72,6 +74,18 @@ def count(mask: Image.Image) -> int:
     return mask.histogram()[255]
 
 
+def paint_colours(image: Image.Image) -> dict:
+    result = {}
+    for name, rgb in (('outline', (255, 153, 0)), ('shadow', (204, 0, 204))):
+        mask = Image.new('L', image.size, 255)
+        for channel, target in zip(image.split(), rgb):
+            mask = ImageChops.darker(mask, channel.point(
+                lambda value, expected=target: 255 if abs(value - expected) <= 12 else 0
+            ))
+        result[name] = count(mask)
+    return result
+
+
 def boxes(image: Image.Image, padding: int = 0) -> dict:
     channels = image.split()
     output = {}
@@ -82,8 +96,11 @@ def boxes(image: Image.Image, padding: int = 0) -> dict:
         mask = ImageChops.darker(dominance, brightness)
         box = mask.getbbox()
         bands = []
+        max_row_painted = 0
         for row in range(image.height):
-            present = bool(mask.crop((0, row, image.width, row + 1)).getbbox())
+            row_mask = mask.crop((0, row, image.width, row + 1))
+            max_row_painted = max(max_row_painted, count(row_mask))
+            present = bool(row_mask.getbbox())
             if present and (not bands or bands[-1][1] != row - padding):
                 bands.append([row - padding, row + 1 - padding])
             elif present:
@@ -92,6 +109,7 @@ def boxes(image: Image.Image, padding: int = 0) -> dict:
             'box': [value - padding for value in box] if box else None,
             'painted': count(mask),
             'bands': bands,
+            'maxRowPainted': max_row_painted,
             'peak': max(ImageChops.multiply(channels[index], dominance).getextrema()),
             'glyphSha256': hashlib.sha256(
                 Image.composite(image, Image.new('RGB', image.size), mask).crop(box).tobytes()
@@ -115,6 +133,7 @@ def inspect(path: Path, time_ms: int, stem: Path, padding: int = 256) -> dict:
         'width': width, 'height': height, 'tracks': boxes(guard, padding),
         'nativeTracks': boxes(native), 'outside': count(full_mask) - count(inside),
         'guardBox': full_mask.getbbox(),
+        'fullPainted': count(foreground(native)), 'paintColours': paint_colours(native),
         'guardSize': list(guard.size), 'fontSelections': fonts, 'guardFontSelections': guard_fonts,
         'sha256': hashlib.sha256(native.tobytes()).hexdigest(),
         'guardCropSha256': hashlib.sha256(guard.crop(
