@@ -77,28 +77,49 @@ _REASONING_ALIASES: Final[dict[str, str]] = {
 }
 
 
-# Endpoints that choke on `response_format: {"type": "json_object"}` - either
-# rejecting the parameter outright (older LM Studio builds: HTTP 400) or
-# applying the constraint to the reasoning stream of thinking models and
-# returning empty content (lmstudio-bug-tracker #1773). Values: True =
-# constraint accepted, False = endpoint must be called without
-# response_format. Session-scoped on purpose: a restarted local server may
-# have a different model loaded, so the next launch re-probes instead of
-# trusting a stale verdict.
-_json_constraint_support: Final[dict[tuple[str, str], bool]] = {}
+# Endpoints handle JSON output constraints very differently: older LM Studio
+# builds reject `response_format: {"type": "json_object"}` outright (HTTP 400),
+# newer ones accept only `json_schema`/`text`, and reasoning models get the
+# constraint applied to their thinking stream and return empty content
+# (lmstudio-bug-tracker #1773). Cached value per (endpoint, model):
+# "object" = json_object accepted, "schema" = only json_schema accepted,
+# "none" = no constraint works, ride on the prompt alone. Session-scoped on
+# purpose: a restarted local server may have a different model loaded, so the
+# next launch re-probes instead of trusting a stale verdict.
+_json_constraint_support: Final[dict[tuple[str, str], str]] = {}
+
+JSON_CONSTRAINT_OBJECT: Final[str] = "object"
+JSON_CONSTRAINT_SCHEMA: Final[str] = "schema"
+JSON_CONSTRAINT_NONE: Final[str] = "none"
 
 
 def _constraint_cache_key(settings: LlmSettings) -> tuple[str, str]:
     return (_chat_endpoint(settings.base_url), settings.model)
 
 
+def _json_constraint_mode(settings: LlmSettings) -> str:
+    """Cached constraint mode; unknown endpoints start with json_object."""
+    return _json_constraint_support.get(
+        _constraint_cache_key(settings), JSON_CONSTRAINT_OBJECT
+    )
+
+
 def json_constraint_supported(settings: LlmSettings) -> bool | None:
     """True/False once probed for this endpoint this session; None = unknown."""
-    return _json_constraint_support.get(_constraint_cache_key(settings))
+    mode = _json_constraint_support.get(_constraint_cache_key(settings))
+    if mode is None:
+        return None
+    return mode != JSON_CONSTRAINT_NONE
+
+
+def _record_json_constraint_mode(settings: LlmSettings, mode: str) -> None:
+    _json_constraint_support[_constraint_cache_key(settings)] = mode
 
 
 def _record_json_constraint_support(settings: LlmSettings, supported: bool) -> None:
-    _json_constraint_support[_constraint_cache_key(settings)] = supported
+    _record_json_constraint_mode(
+        settings, JSON_CONSTRAINT_OBJECT if supported else JSON_CONSTRAINT_NONE
+    )
 
 
 def _rejection_means_drop_json_format(error: LlmClientError) -> bool:
@@ -113,6 +134,33 @@ def _rejection_means_drop_json_format(error: LlmClientError) -> bool:
     )
     return any(marker in text for marker in markers)
 
+
+# Permissive on purpose: one schema serves the plain grouping, strict
+# translation and atom resegment protocols (source_ids / id / atom_ids vary),
+# while semantic coverage stays under local protocol validation. `protocol`
+# is optional because only the translation protocols send it.
+_SUBTITLE_GROUPS_JSON_SCHEMA: Final[dict[str, JsonValue]] = {
+    "name": "maw_subtitle_groups",
+    "schema": {
+        "type": "object",
+        "properties": {
+            "protocol": {"type": "string"},
+            "groups": {
+                "type": "array",
+                "items": {
+                    "type": "object",
+                    "properties": {
+                        "source_ids": {"type": "array", "items": {"type": "string"}},
+                        "atom_ids": {"type": "array", "items": {"type": "string"}},
+                        "id": {"type": "string"},
+                        "text": {"type": "string"},
+                    },
+                },
+            },
+        },
+        "required": ["groups"],
+    },
+}
 
 PRESETS: Final[tuple[LlmProviderPreset, ...]] = (
     LlmProviderPreset(
@@ -198,10 +246,16 @@ def complete_subtitle_groups(
             prompt = _retry_prompt(system_prompt, last_error)
         else:
             prompt = system_prompt
-        body = _request_completion(settings, prompt, cues, on_delta=on_delta)
+        body = _request_completion(
+            settings,
+            prompt,
+            cues,
+            on_delta=on_delta,
+            response_json_schema=_SUBTITLE_GROUPS_JSON_SCHEMA,
+        )
         content = _response_content(body)
         try:
-            parsed = json.loads(_strip_json_fence(content))
+            parsed = _loads_with_trailing_repair(_strip_json_fence(content))
         except json.JSONDecodeError as error:
             last_error = f"JSON syntax error: {error.msg} at character {error.pos}"
             if attempt + 1 < MAX_RESPONSE_ATTEMPTS:
@@ -239,34 +293,74 @@ def _request_completion(
     *,
     on_delta: LlmDelta | None,
     use_json_format: bool | None = None,
+    response_json_schema: Mapping[str, JsonValue] | None = None,
 ) -> dict[str, JsonValue]:
-    """One bounded transport downgrade, independent of JSON protocol retries."""
-    constrained = (
-        json_constraint_supported(settings) is not False
-        if use_json_format is None
-        else use_json_format
-    )
-    try:
-        body = _request_completion_once(
-            settings,
-            system_prompt,
-            cues,
-            on_delta=on_delta,
-            use_json_format=constrained,
-        )
-    except LlmClientError as error:
-        if not constrained or not _rejection_means_drop_json_format(error):
-            raise
-    else:
-        if _response_content(body).strip() or not constrained:
-            if constrained:
-                _record_json_constraint_support(settings, True)
+    """One bounded transport downgrade, independent of JSON protocol retries.
+
+    Preferred order: cached mode → (json_object rejected) json_schema →
+    unconstrained.  ``response_json_schema`` is the caller's payload schema,
+    required for the json_schema step because each operation (subtitle
+    groups, cleanup decisions) needs its own grammar.
+    """
+    mode = _json_constraint_mode(settings)
+    schema = response_json_schema
+    if use_json_format is True:
+        mode = JSON_CONSTRAINT_OBJECT
+    elif use_json_format is False:
+        mode = JSON_CONSTRAINT_NONE
+
+    while mode != JSON_CONSTRAINT_NONE:
+        json_format = _json_format_payload(mode, schema)
+        if json_format is None:
+            break
+        try:
+            body = _request_completion_once(
+                settings,
+                system_prompt,
+                cues,
+                on_delta=on_delta,
+                json_format=json_format,
+            )
+        except LlmClientError as error:
+            if not _rejection_means_drop_json_format(error):
+                raise
+            if mode == JSON_CONSTRAINT_SCHEMA:
+                break
+            mode = JSON_CONSTRAINT_SCHEMA
+            continue
+        if _response_content(body).strip():
+            _record_json_constraint_mode(settings, mode)
             return body
-    _record_json_constraint_support(settings, False)
+        # The constraint reached the server but the content is empty (#1773):
+        # json_schema is also a constraint, so it cannot rescue this model.
+        break
+    return _unconstrained_completion(settings, system_prompt, cues, on_delta=on_delta)
+
+
+def _json_format_payload(
+    mode: str, schema: Mapping[str, JsonValue] | None
+) -> dict[str, JsonValue] | None:
+    if mode == JSON_CONSTRAINT_OBJECT:
+        return {"type": "json_object"}
+    if mode == JSON_CONSTRAINT_SCHEMA:
+        if schema is None:
+            return None
+        return {"type": "json_schema", "json_schema": dict(schema)}
+    return None
+
+
+def _unconstrained_completion(
+    settings: LlmSettings,
+    system_prompt: str,
+    cues: list[dict[str, JsonValue]],
+    *,
+    on_delta: LlmDelta | None,
+) -> dict[str, JsonValue]:
+    _record_json_constraint_mode(settings, JSON_CONSTRAINT_NONE)
     if on_delta is not None:
         on_delta("reset", "")
     body = _request_completion_once(
-        settings, system_prompt, cues, on_delta=on_delta, use_json_format=False
+        settings, system_prompt, cues, on_delta=on_delta, json_format=None
     )
     if not _response_content(body).strip():
         raise LlmClientError(
@@ -283,7 +377,7 @@ def _request_completion_once(
     cues: list[dict[str, JsonValue]],
     *,
     on_delta: LlmDelta | None,
-    use_json_format: bool = True,
+    json_format: Mapping[str, JsonValue] | None = None,
 ) -> dict[str, JsonValue]:
     endpoint = _chat_endpoint(settings.base_url)
     payload: dict[str, JsonValue] = {
@@ -294,11 +388,11 @@ def _request_completion_once(
         ],
         "temperature": 0.1,
     }
-    if use_json_format:
-        # Endpoints with proven #1773-style failures (or outright HTTP 400)
-        # must not receive this parameter; the prompt already carries the
-        # full JSON contract.
-        payload["response_format"] = {"type": "json_object"}
+    if json_format is not None:
+        # Endpoints that rejected json_object may still accept json_schema;
+        # endpoints proven to fail both run without any response_format and
+        # rely on the prompt alone.
+        payload["response_format"] = dict(json_format)
     payload.update(_reasoning_parameters(settings))
     streaming = on_delta is not None
     if streaming:
@@ -835,6 +929,73 @@ def _response_content(body: JsonValue) -> str:
     if not isinstance(content, str):
         raise LlmClientError("LLM response is missing message content")
     return content
+
+
+def _close_truncated_json(value: str) -> str | None:
+    """Close missing containers or remove one comma at the structural tail.
+
+    Only a clean structural prefix can be repaired: an unterminated string or
+    a mismatched closer means the damage is mid-content, and silently closing
+    it would accept a truncated answer, so ``None`` is returned instead.
+    """
+    stack: list[str] = []
+    closer_for = {"{": "}", "[": "]"}
+    in_string = False
+    escaped = False
+    last_comma: int | None = None
+    for index, char in enumerate(value):
+        if in_string:
+            if escaped:
+                escaped = False
+            elif char == "\\":
+                escaped = True
+            elif char == '"':
+                in_string = False
+        elif char == '"':
+            in_string = True
+        elif char in "{[":
+            stack.append(char)
+        elif char in "}]":
+            if not stack or closer_for[stack.pop()] != char:
+                return None
+        elif char == ",":
+            last_comma = index
+    if in_string:
+        return None
+    repaired = value.rstrip()
+    if last_comma is not None:
+        prefix = value[:last_comma].rstrip()
+        suffix = value[last_comma + 1:]
+        # Repair a comma only at the structural tail, whether the closing
+        # containers were emitted or omitted. Never remove string content or
+        # a comma without a preceding value (e.g. {,} or [,]).
+        if prefix and prefix[-1] not in "{[:," and all(
+            char.isspace() or char in "}]" for char in suffix
+        ):
+            repaired = (value[:last_comma] + suffix).rstrip()
+    if not stack and repaired == value.rstrip():
+        return None
+    return repaired + "".join(closer_for[opener] for opener in reversed(stack))
+
+
+def _loads_with_trailing_repair(content: str) -> JsonValue:
+    """json.loads with one best-effort repair for truncated JSON suffixes.
+
+    Local models occasionally stop one closing bracket short or leave a
+    trailing comma before the closers. Only these structural suffixes are
+    repaired; anything else re-raises the original error so the normal
+    protocol retry still happens.
+    """
+    try:
+        return json.loads(content)
+    except json.JSONDecodeError as error:
+        repaired = _close_truncated_json(content)
+        if repaired is not None:
+            try:
+                return json.loads(repaired)
+            except json.JSONDecodeError:
+                pass
+        raise error from None
 
 
 def _strip_json_fence(content: str) -> str:

@@ -6,6 +6,7 @@ an entire response container.
 
 from __future__ import annotations
 
+import json
 import unittest
 from unittest import mock
 
@@ -14,7 +15,10 @@ import requests
 from maw.postprocess_llm import (
     LlmClientError,
     LlmSettings,
+    _close_truncated_json,
     _json_constraint_support,
+    _loads_with_trailing_repair,
+    _record_json_constraint_mode,
     _record_json_constraint_support,
     _strip_json_fence,
     complete_subtitle_groups,
@@ -94,7 +98,7 @@ class JsonConstraintDowngradeTests(unittest.TestCase):
     def tearDown(self) -> None:
         _json_constraint_support.clear()
 
-    def test_rejected_response_format_downgrades_and_records(self) -> None:
+    def test_rejected_json_object_falls_back_to_schema_then_prompt(self) -> None:
         settings = _make_settings()
         payloads: list[dict] = []
 
@@ -114,10 +118,67 @@ class JsonConstraintDowngradeTests(unittest.TestCase):
             )
 
         self.assertEqual(json_constraint_supported(settings), False)
-        first = payloads[0]
-        self.assertEqual(first.get("response_format", {}).get("type"), "json_object")
+        self.assertEqual(
+            len(payloads),
+            3,
+            f"期望 对象→schema→无约束 共 3 次请求，实际 {len(payloads)}",
+        )
+        self.assertEqual(
+            payloads[0].get("response_format", {}).get("type"), "json_object"
+        )
+        self.assertEqual(
+            payloads[1].get("response_format", {}).get("type"), "json_schema"
+        )
+        self.assertNotIn("response_format", payloads[2])
         missing = [k for k, v in _NEEDLE_PAYLOAD.items() if result.get(k) != v]
         self.assertEqual(missing, [], f"缺少：{missing}")
+
+    def test_schema_constraint_alone_is_accepted(self) -> None:
+        settings = _make_settings()
+        payloads: list[dict] = []
+
+        def post_effect(url, json: dict | None = None, **_kwargs):
+            assert json is not None
+            payloads.append(json)
+            fmt = json.get("response_format")
+            if fmt is not None and fmt.get("type") == "json_object":
+                return _rejection_response_mock()
+            return _response_mock(_completion_body(_NEEDLE_PROTOCOL))
+
+        with mock.patch(
+            "maw.postprocess_llm.requests.Session",
+            return_value=_mock_session(post_effect),
+        ):
+            complete_subtitle_groups(
+                settings, "Return JSON.", [{"id": "c0001", "text": "原文"}]
+            )
+
+        self.assertEqual(json_constraint_supported(settings), True)
+        self.assertEqual(len(payloads), 2)
+        schema_format = payloads[1]["response_format"]
+        self.assertEqual(schema_format["type"], "json_schema")
+        self.assertEqual(schema_format["json_schema"]["schema"]["required"], ["groups"])
+
+    def test_cached_schema_endpoint_sends_json_schema_upfront(self) -> None:
+        settings = _make_settings()
+        _record_json_constraint_mode(settings, "schema")
+        payloads: list[dict] = []
+
+        def post_effect(url, json: dict | None = None, **_kwargs):
+            assert json is not None
+            payloads.append(json)
+            return _response_mock(_completion_body(_NEEDLE_PROTOCOL))
+
+        with mock.patch(
+            "maw.postprocess_llm.requests.Session",
+            return_value=_mock_session(post_effect),
+        ):
+            complete_subtitle_groups(
+                settings, "Return JSON.", [{"id": "c0001", "text": "原文"}]
+            )
+
+        self.assertEqual(len(payloads), 1)
+        self.assertEqual(payloads[0]["response_format"]["type"], "json_schema")
 
     def test_empty_content_under_constraint_downgrades_then_diagnoses(self) -> None:
         settings = _make_settings()
@@ -193,7 +254,25 @@ class JsonConstraintDowngradeTests(unittest.TestCase):
             result = complete_subtitle_groups(settings, "Return JSON.", [])
         self.assertEqual(result["protocol"], "maw-subtitle-translations-v1")
         self.assertEqual(session.post.call_count, 3)
+        self.assertEqual(
+            session.post.call_args.kwargs["json"]["response_format"]["type"],
+            "json_schema",
+        )
+
+    def test_rejected_object_and_schema_drop_to_prompt(self) -> None:
+        settings = _make_settings()
+        responses = [
+            _rejection_response_mock(),
+            _rejection_response_mock(),
+            _response_mock(_completion_body(_NEEDLE_PROTOCOL)),
+        ]
+        session = _mock_session(responses)
+        with mock.patch("maw.postprocess_llm.requests.Session", return_value=session):
+            result = complete_subtitle_groups(settings, "Return JSON.", [])
+        self.assertEqual(result["protocol"], "maw-subtitle-translations-v1")
+        self.assertEqual(session.post.call_count, 3)
         self.assertNotIn("response_format", session.post.call_args.kwargs["json"])
+        self.assertEqual(json_constraint_supported(settings), False)
 
     def test_cleanup_shares_bounded_downgrade(self) -> None:
         from maw.postprocess_ai_cleanup import llm_complete
@@ -209,6 +288,36 @@ class JsonConstraintDowngradeTests(unittest.TestCase):
             result = llm_complete(_make_settings())("Return JSON.", [])
         self.assertEqual(result, {"decisions": []})
         self.assertEqual(session.post.call_count, 3)
+
+    def test_cleanup_schema_follows_decision_and_readthrough_payloads(self) -> None:
+        from maw.postprocess_ai_cleanup import llm_complete
+        from maw.postprocess_ai_cleanup_review import review_decisions
+
+        payloads: list[dict] = []
+
+        def post_effect(url, json: dict | None = None, **_kwargs):
+            assert json is not None
+            payloads.append(json)
+            fmt = json.get("response_format")
+            if fmt is None or fmt["type"] == "json_object":
+                return _rejection_response_mock()
+            # A grammar-enforcing endpoint emits only the required envelope.
+            required = fmt["json_schema"]["schema"]["required"]
+            content = '{"reviews":[]}' if required == ["reviews"] else '{"decisions":[]}'
+            return _response_mock(_completion_body(content))
+
+        transport = llm_complete(_make_settings())
+        with mock.patch(
+            "maw.postprocess_llm.requests.Session",
+            return_value=_mock_session(post_effect),
+        ):
+            self.assertEqual(transport("Return decisions.", [{"id": "c001", "asrText": "test"}]), {"decisions": []})
+            flags = review_decisions(transport, [{"id": "c001", "asrText": "test", "proposed": "discard"}])
+            self.assertEqual(flags, {})
+            self.assertEqual(transport("Return decisions.", [{"id": "c002", "asrText": "next"}]), {"decisions": []})
+        self.assertEqual(len(payloads), 4)
+        envelopes = [payload["response_format"]["json_schema"]["schema"]["required"] for payload in payloads[1:]]
+        self.assertEqual(envelopes, [["decisions"], ["reviews"], ["decisions"]])
 
     def test_unrelated_400_does_not_retry_or_poison_cache(self) -> None:
         response = _rejection_response_mock()
@@ -249,6 +358,74 @@ class JsonConstraintDowngradeTests(unittest.TestCase):
             )
         missing = [k for k, v in _NEEDLE_PAYLOAD.items() if result.get(k) != v]
         self.assertEqual(missing, [], f"缺少：{missing}")
+
+
+class TruncatedJsonRepairTests(unittest.TestCase):
+    def test_missing_final_brace_is_closed(self) -> None:
+        content = '{"groups":[{"id":"c0001","text":"你好"}]'
+        self.assertEqual(_close_truncated_json(content), content + "}")
+
+    def test_trailing_comma_before_closers_is_dropped(self) -> None:
+        repaired = json.loads(_close_truncated_json('{"groups":[{"id":"c1",'))
+        self.assertEqual(repaired, {"groups": [{"id": "c1"}]})
+
+    def test_trailing_comma_with_complete_closers_is_dropped(self) -> None:
+        content = '{"groups":[{"id":"c1","text":"literal ,]} stays"}, ]}'
+        self.assertEqual(
+            _loads_with_trailing_repair(content),
+            {"groups": [{"id": "c1", "text": "literal ,]} stays"}]},
+        )
+
+    def test_comma_without_previous_value_is_not_repaired(self) -> None:
+        for content in ('{,}', '{"groups":[,]}'):
+            with self.subTest(content=content), self.assertRaises(json.JSONDecodeError):
+                _loads_with_trailing_repair(content)
+
+    def test_nested_missing_brackets_are_closed_in_order(self) -> None:
+        repaired = json.loads(_close_truncated_json('{"a":[{"b":1'))
+        self.assertEqual(repaired, {"a": [{"b": 1}]})
+
+    def test_unterminated_string_is_not_repaired(self) -> None:
+        self.assertIsNone(_close_truncated_json('{"groups":[{"text":"写到一半'))
+
+    def test_unescaped_quote_break_is_not_repaired(self) -> None:
+        content = '{"groups":[{"text":"嗯喂!!喂喂喂嗯<<"喂喂好的"}]'
+        self.assertIsNone(_close_truncated_json(content))
+
+    def test_mismatched_closer_is_not_repaired(self) -> None:
+        self.assertIsNone(_close_truncated_json('{"a":1]'))
+
+    def test_balanced_content_has_nothing_to_repair(self) -> None:
+        self.assertIsNone(_close_truncated_json('{"a":1}'))
+
+    def test_repair_rejects_garbage_suffix(self) -> None:
+        with self.assertRaises(json.JSONDecodeError):
+            _loads_with_trailing_repair('{"a":1} 尾随文字')
+
+    def test_complete_subtitle_groups_repairs_truncated_response(self) -> None:
+        settings = _make_settings()
+        truncated = _NEEDLE_PROTOCOL[:-1]
+        session = _mock_session(
+            lambda *_a, **_k: _response_mock(_completion_body(truncated))
+        )
+        with mock.patch("maw.postprocess_llm.requests.Session", return_value=session):
+            result = complete_subtitle_groups(
+                settings, "Return JSON.", [{"id": "c0001", "text": "原文"}]
+            )
+        self.assertEqual(session.post.call_count, 1)
+        missing = [k for k, v in _NEEDLE_PAYLOAD.items() if result.get(k) != v]
+        self.assertEqual(missing, [], f"缺少：{missing}")
+
+    def test_cleanup_llm_complete_repairs_truncated_response(self) -> None:
+        from maw.postprocess_ai_cleanup import llm_complete
+
+        truncated = '{"decisions":[{"id":"c001","decision":"keep"}]'
+        session = _mock_session(
+            lambda *_a, **_k: _response_mock(_completion_body(truncated))
+        )
+        with mock.patch("maw.postprocess_llm.requests.Session", return_value=session):
+            result = llm_complete(_make_settings())("Return JSON.", [])
+        self.assertEqual(result, {"decisions": [{"id": "c001", "decision": "keep"}]})
 
 
 def _rejection_response_mock() -> mock.Mock:

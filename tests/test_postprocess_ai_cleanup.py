@@ -1056,7 +1056,15 @@ class LlmCompleteTransportTest(unittest.TestCase):
 
         seen: list[dict[str, object]] = []
 
-        def fake_completion(settings, prompt, cues, *, on_delta, use_json_format=True):
+        def fake_completion(
+            settings,
+            prompt,
+            cues,
+            *,
+            on_delta,
+            use_json_format=True,
+            response_json_schema=None,
+        ):
             attempt = len(seen)
             seen.append(
                 {
@@ -1064,6 +1072,7 @@ class LlmCompleteTransportTest(unittest.TestCase):
                     "cues": cues,
                     "onDelta": on_delta,
                     "useJsonFormat": use_json_format,
+                    "schema": response_json_schema,
                 }
             )
             content = '{"decisions": []}' if attempt else "{not json"
@@ -1087,6 +1096,9 @@ class LlmCompleteTransportTest(unittest.TestCase):
         self.assertEqual(len(seen), 2)
         self.assertIsNone(seen[0]["onDelta"])
         self.assertIsNone(seen[1]["onDelta"])
+        self.assertEqual(
+            seen[0]["schema"], cleanup_module.AI_CLEANUP_DECISIONS_JSON_SCHEMA
+        )
         self.assertNotIn("未通过本地协议校验", str(seen[0]["prompt"]))
         self.assertIn("未通过本地协议校验", str(seen[1]["prompt"]))
 
