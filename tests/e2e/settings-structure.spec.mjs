@@ -4,26 +4,39 @@ import { join } from 'node:path';
 import { cleanupTempDir, disableOnboarding, dragFloatingPanelAwayFrom, findFreePort, generateWav, generateWaveformPayload, makeTempDir, startServer } from './helpers.mjs';
 
 let tempDir, server;
-test('waveform ASS shortcuts mirror project settings and open the style library', async ({ page }, testInfo) => {
+test('waveform ASS shortcuts mirror project settings and open the style library and actual frame', async ({ page }, testInfo) => {
   const toggle = page.locator('#ass-mode-quick-toggle');
   const palette = page.locator('#ass-style-quick-open');
+  const camera = page.locator('#ass-frame-quick-open');
   await expect(toggle).toHaveText('ASS 字幕模式');
   await expect(palette).toBeHidden();
+  await expect(camera).toBeHidden();
   await toggle.click();
   await expect(toggle).toHaveAttribute('aria-pressed', 'true');
   await expect(page.locator('#ass-mode-toggle')).toBeChecked();
   await expect(palette).toBeVisible();
+  await expect(camera).toBeVisible();
+  await expect(camera).toHaveText('📷');
   const gaps = await page.locator('#waveform-settings').evaluate(el => {
     const buttons = [...el.querySelectorAll(':scope > button')].map(button => button.getBoundingClientRect());
-    return [buttons[1].left - buttons[0].right, buttons[2].left - buttons[1].right];
+    return buttons.slice(1).map((button, index) => button.left - buttons[index].right);
   });
   expect(gaps.every(gap => gap >= 8)).toBe(true);
+  await page.locator('#waveform-settings').screenshot({ path: testInfo.outputPath('ass-toolbar-camera.png') });
+  await camera.click();
+  await expect(page.locator('#ass-frame-window')).toHaveAttribute('aria-hidden', 'false');
+  await expect(camera).toHaveAttribute('aria-expanded', 'true');
+  await page.keyboard.press('Escape');
+  await expect(page.locator('#ass-frame-window')).toHaveAttribute('aria-hidden', 'true');
+  await expect(camera).toBeFocused();
+  await expect(camera).toHaveAttribute('aria-expanded', 'false');
   await palette.click();
   await expect(page.locator('#ass-style-window')).toHaveAttribute('aria-hidden', 'false');
   await page.locator('#waveform-pane').screenshot({ path: testInfo.outputPath('ass-shortcuts.png') });
   await page.keyboard.press('Escape');
   await toggle.click();
   await expect(palette).toBeHidden();
+  await expect(camera).toBeHidden();
   expect(await page.locator('#editor-settings-tab-subtitle-style').evaluate(el =>
     Boolean(el.compareDocumentPosition(document.getElementById('editor-settings-tab-project-tracks')) & Node.DOCUMENT_POSITION_FOLLOWING))).toBe(true);
   await expect(page.locator('#word-timing-quick-toggle')).toHaveText('字词');

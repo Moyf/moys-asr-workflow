@@ -57,9 +57,7 @@ test('only auto-renders while the comparison window or stage overlay needs a fra
   // Cover the render timer: neither consumer is visible by default.
   await page.waitForTimeout(350);
   expect(requests).toBe(0);
-  await openSettingsPage(page, 'subtitle-style');
-  await page.locator('#ass-frame-preview-open').click();
-  await closeSettingsPanels(page);
+  await page.locator('#ass-frame-quick-open').click();
   await expect(page.locator('#ass-frame-image')).toBeVisible();
   await expect(page.locator('#ass-frame-window-status')).toHaveText('渲染完成');
   await page.locator('#ass-frame-window-close').click();
