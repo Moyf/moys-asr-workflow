@@ -112,6 +112,38 @@ test('an unselected neighbor clamps the entire selection; Escape restores every 
   await page.mouse.up();
 });
 
+for (const action of ['undo', 'redo']) {
+  for (const entry of ['keyboard', 'toolbar']) {
+    test(`${entry} ${action} cancels a held multi-track drag and preserves the existing history`, async ({ page }) => {
+      await seed(page);
+      const errors = [];
+      page.on('pageerror', error => errors.push(error.message));
+      await page.evaluate(() => MaweMarkerEditing.moveMarker('point', 100));
+      if (action === 'redo') await page.evaluate(() => MaweHistory.performUndo());
+      const before = await ranges(page);
+      const lengths = await page.evaluate(() => [MaweHistory.editorHistory.undoLength(), MaweHistory.editorHistory.redoLength()]);
+      const request = async () => {
+        if (entry === 'keyboard') await page.keyboard.press(action === 'undo' ? 'Control+z' : 'Control+y');
+        // Dispatch the actual button handler while the pointer is still held.
+        else await page.locator(`#${action}-btn`).dispatchEvent('click');
+      };
+      const drag = await grab(page, '.waveform-cue-block[data-track="overlay"]');
+      await page.mouse.move(drag.x + 500 / drag.msPerPixel, drag.y, { steps: 4 });
+      expect(await ranges(page)).not.toEqual(before);
+      await request();
+      expect(await page.evaluate(() => Boolean(MaweCoreState.waveformEditor.drag))).toBe(false);
+      expect(await ranges(page)).toEqual(before);
+      expect(await page.evaluate(() => [MaweHistory.editorHistory.undoLength(), MaweHistory.editorHistory.redoLength()])).toEqual(lengths);
+      await page.mouse.move(drag.x + 700 / drag.msPerPixel, drag.y);
+      await page.mouse.up();
+      expect(await ranges(page)).toEqual(before);
+      await request();
+      expect(await page.evaluate(() => MaweMarkerEditing.findMarker('point').start)).toBe(action === 'undo' ? 9000 : 9100);
+      expect(errors).toEqual([]);
+    });
+  }
+}
+
 async function expectPointerAtPending(page, edge) {
   const line = page.locator('.waveform-pointer-line.boundary-snapped:not([hidden])');
   await expect(line).toHaveCount(1);
