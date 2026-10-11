@@ -33,8 +33,8 @@ export function createUtilsModule(dependencies) {
     } else if (animations.fad.enabled) {
       tags.push(`\\fad(${animations.fad.inMs},${animations.fad.outMs})`);
     }
-    // \move 的坐标是主字幕画布上的绝对 PlayRes 坐标；叠加轨的锚定由
-    // MarginV 堆叠负责，不跟随 move（includeMove: false 时省略）。
+    // Original move coordinates belong to the main cue. The shared stack plan
+    // generates movement for the whole group and suppresses this original tag.
     if (includeMove && animations.move.enabled) {
       const { x1, y1, x2, y2, t1, t2 } = animations.move;
       tags.push(`\\move(${x1},${y1},${x2},${y2},${t1},${t2})`);
@@ -135,13 +135,22 @@ export function createUtilsModule(dependencies) {
     if (includeMove && animations.move.enabled) {
       const m = animations.move;
       const end = m.t1 === 0 && m.t2 === 0 ? durationMs : m.t2;
-      tags.push(`\\move(${m.x1},${m.y1},${m.x2},${m.y2},${m.t1 - offsetMs},${end - offsetMs})`);
+      const step = end === m.t1;
+      if (step ? offsetMs > end : offsetMs >= end) {
+        // libass clamps two negative move times to 0,0, restarting movement
+        // over the sliced event. An already completed motion is a fixed pos.
+        tags.push(`\\pos(${m.x2},${m.y2})`);
+      } else {
+        const relativeEnd = step && offsetMs === end ? 1 : end - offsetMs;
+        tags.push(`\\move(${m.x1},${m.y1},${m.x2},${m.y2},${m.t1 - offsetMs},${relativeEnd})`);
+      }
     }
     if (animations.t.enabled && animations.t.tags) {
       const t = animations.t;
+      const end = t.startMs === 0 && t.endMs === 0 ? durationMs : t.endMs;
       const transformed = t.tags.replace(/\\(fs|fsp|bord|shad|xbord|ybord)(-?\d+(?:\.\d+)?)/giu,
         (_, name, value) => `\\${name}${Number((Number(value) * scale).toFixed(4))}`);
-      tags.push(`\\t(${t.startMs - offsetMs},${t.endMs - offsetMs},${t.accel},${transformed})`);
+      tags.push(`\\t(${t.startMs - offsetMs},${end - offsetMs},${t.accel},${transformed})`);
     }
     return tags.join('');
   }
@@ -151,6 +160,9 @@ export function createUtilsModule(dependencies) {
     const animations = normalizeAssAnimations(profile?.animations);
     const simple = fad || (!animations.fade.enabled && animations.fad.enabled ? animations.fad : null);
     const elapsed = Math.max(0, Number(elapsedMs) || 0);
+    if (animations.t.enabled && animations.t.tags && animations.t.startMs === 0 && animations.t.endMs === 0) {
+      state.transformProgress = Math.pow(Math.min(1, elapsed / Math.max(1, durationMs)), animations.t.accel);
+    }
     if (simple) {
       // libass prioritises the fade-in phase when a short cue's fades overlap.
       state.opacity = elapsed < simple.inMs ? elapsed / simple.inMs

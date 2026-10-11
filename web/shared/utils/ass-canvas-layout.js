@@ -139,7 +139,7 @@ window.MAWE.register('utils-ass-canvas-layout', function createUtilsModule(depen
   function assMeasureStackRun(style, fontSize, run, text, measure) {
     const scale = (run.size === 'small' ? style.smallTextScale : run.size === 'large' ? style.largeTextScale : 1)
       * (run.emphasized ? style.emphasisScale : 1) * (run.comment ? style.commentScale || 1 : 1);
-    const size = Math.max(1, Math.round(fontSize * scale));
+    const size = Math.max(1, scale === 1 ? fontSize : Math.round(fontSize * scale));
     const measured = measure?.(style, fontSize, run, text);
     return measured || { width: [...text].length * size + Math.max(0, (text.length - 1) * (style.spacing || 0)),
       ascent: size * 0.8, descent: size * 0.2 };
@@ -172,7 +172,7 @@ window.MAWE.register('utils-ass-canvas-layout', function createUtilsModule(depen
   function assStackCueBounds(item, start, end, alignment, measure, profile) {
     const elapsed = (time) => Math.max(0, time - item.start);
     const styles = [start, Math.max(start, end - 0.001)].map(time => {
-      const state = dependencies.assPreviewAnimationState(profile, elapsed(time), item.end - item.start);
+      const state = dependencies.assStackAnimationState(profile, elapsed(time), item.end - item.start);
       return state.transformProgress === null ? { ...item.style, fontSize: item.fontSize }
         : dependencies.assPreviewStyleAt({ ...item.style, fontSize: item.fontSize }, profile.animations.t.tags, state.transformProgress, { nativeFontSize: true });
     });

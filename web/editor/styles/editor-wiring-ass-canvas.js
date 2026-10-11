@@ -112,18 +112,23 @@
 
   function runNativeSize(track, run) {
     const scale = runSizeScale(track.style, run);
-    return Math.max(1, Math.round((Number(track.nativeFontSize) || 1) * scale));
+    const size = (Number(track.nativeFontSize) || 1) * scale;
+    // Stacked plain text inherits the fractional event fs. Proportional runs
+    // have an explicit rounded local fs in ASS; solo preview keeps its old rule.
+    return Math.max(1, track.fractionalFontSize && scale === 1 ? size : Math.round(size));
   }
 
 
-  // \fsp 在样式字号（原生 PlayRes 像素）上定义，换算到绘制字号同比例；
+  // \fsp is measured in native PlayRes pixels. Stacked drawing preserves that
+  // advance independently of the font-box/em conversion; solo keeps its prior
+  // approximation for compatibility.
   // ctx.letterSpacing 不可用时退回逐字符排版（放弃连字，与旧 CSS
   // letter-spacing 预览的行为一致）。
   function spacingInfo(track, run, ratio) {
     const nativeSize = runNativeSize(track, run);
     const cssSize = nativeSize * ratio;
-    const spacingCss = nativeSize > 0
-      ? (Number(track.style.spacing) || 0) * cssSize / nativeSize : 0;
+    const spacingCss = track.fractionalFontSize ? Number(track.style.spacing) || 0
+      : nativeSize > 0 ? (Number(track.style.spacing) || 0) * cssSize / nativeSize : 0;
     return {
       cssSize,
       nativeSize,
@@ -176,14 +181,24 @@
       const width = info.perChar
         ? [...text].reduce((sum, ch) => sum + g.measureText(ch).width + info.spacingCss, 0)
         : metrics.width;
+      let ascent = Number(metrics.fontBoundingBoxAscent) || info.cssSize * 0.8;
+      let descent = Number(metrics.fontBoundingBoxDescent) || info.cssSize * 0.2;
+      // Chromium rounds fontBoundingBox metrics even for fractional CSS fonts.
+      // ASS line advance remains the native fs, so retain its continuous height
+      // rather than accumulating that rounding error over explicit newlines.
+      if (track.fractionalFontSize && runSizeScale(track.style, run) === 1) {
+        const boxScale = info.nativeSize / (ascent + descent);
+        ascent *= boxScale;
+        descent *= boxScale;
+      }
       return {
         width,
-        ascent: Number(metrics.fontBoundingBoxAscent) || info.cssSize * 0.8,
-        descent: Number(metrics.fontBoundingBoxDescent) || info.cssSize * 0.2,
+        ascent,
+        descent,
         inkPadding: Math.max(0, Number(metrics.actualBoundingBoxLeft) || 0,
           (Number(metrics.actualBoundingBoxRight) || 0) - width,
-          (Number(metrics.actualBoundingBoxAscent) || 0) - (Number(metrics.fontBoundingBoxAscent) || info.cssSize * 0.8),
-          (Number(metrics.actualBoundingBoxDescent) || 0) - (Number(metrics.fontBoundingBoxDescent) || info.cssSize * 0.2)),
+          (Number(metrics.actualBoundingBoxAscent) || 0) - ascent,
+          (Number(metrics.actualBoundingBoxDescent) || 0) - descent),
       };
     };
   }
@@ -224,7 +239,8 @@
         Boolean(item.run.struck), item.run.size || '', Boolean(item.run.comment),
         item.run.speakerColor || '', quantize(item.width)]),
       quantize(ratio), fontFamilyCss(style.fontName), Boolean(style.bold), Boolean(style.italic),
-      Math.round(Number(track.nativeFontSize) || 1),
+      Boolean(track.fractionalFontSize), track.fractionalFontSize
+        ? Number((Number(track.nativeFontSize) || 1).toFixed(4)) : Math.round(Number(track.nativeFontSize) || 1),
       quantize(style.spacing), quantize(style.outline), style.outlineColor,
       quantize(style.outlineOpacity ?? 100), style.backColor, quantize(style.backOpacity ?? 100),
       quantize(style.shadow), Math.round(Number(style.borderStyle) || 1),
@@ -564,7 +580,7 @@
     const key = JSON.stringify([style.fontName, style.bold, style.italic, nativeFontSize,
       style.spacing, style.smallTextScale, style.largeTextScale, style.emphasisScale, style.commentScale, run, text]);
     if (stackMetricsCache.has(key)) return stackMetricsCache.get(key);
-    const measured = measurerFor({ style, nativeFontSize }, fontBoxRatio(style))(run, text);
+    const measured = measurerFor({ style, nativeFontSize, fractionalFontSize: true }, fontBoxRatio(style))(run, text);
     if (stackMetricsCache.size >= 4096) stackMetricsCache.delete(stackMetricsCache.keys().next().value);
     stackMetricsCache.set(key, measured);
     return measured;

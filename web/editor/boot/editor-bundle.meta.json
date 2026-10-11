@@ -227,9 +227,9 @@
     "shared/utils/srt.js": "e46cac86f1685bbbb06bfea449f186104e23c805f5c1a47ee4ced5ba141b24c1",
     "shared/utils/lrc.js": "febdcceebbb5884cbb75a60cba261af53c92779bb6eb21cedb486563e3f39644",
     "shared/utils/ass-style.js": "10a409eae7bd440a69883f71292e34442a659a5714e7d753235594ffada4d0fa",
-    "shared/utils/ass-animation.js": "b5249cb4e9abb7f8e453f9d2a44900bf94ccfcd8b033527f1b8315e465ff9aeb",
-    "shared/utils/ass-canvas-layout.js": "854c9f657493e3c5362c8833f4befc5f2d11554b580fcddca1fe16c595fde3a4",
-    "shared/utils/ass-export.js": "ca1edc07738a2edd922e28cafc7db0b426e03d42818738727e725a72b3989a59",
+    "shared/utils/ass-animation.js": "2c3f97db642cbdb3602eb53a99d31e8a6c7720adb3783473613f88ba3b340d34",
+    "shared/utils/ass-canvas-layout.js": "14ded3c7ef6607bd9e77ae0212ecb2547aee603e6e11d0762cafee267287c3a7",
+    "shared/utils/ass-export.js": "1473de8ec66cb6d58f300ce951d0a659c9635b8b3c0d8f201026c2408bf94577",
     "shared/utils/export-plan.js": "ed8e3a513f5ed8bb30d7cdeba8ed5ef6563e2df5a9bae040e60d5c97d68d16a2",
     "shared/utils/fcp7.js": "1ed3e9af7d41dcefaa4fd3ab53348b5bebc7b3430f2f84d7676401d12086b9cc",
     "shared/utils/export-workflow.js": "606cdab0c13fe1ba8384a9fbcfcb52afdeb8f63930ab939892601d81799f0b10",
@@ -363,8 +363,8 @@
     "editor/media/editor-wiring-media-controls.js": "978298e2f616be772132c07321187f66ebc5f46d31d4d14ac0a04a0f0815194f",
     "editor/cues/editor-wiring-edit-shortcuts.js": "353fc928fb8fa370f5f4406fc07f061ed8717fed9639e4a17201a3f481ed0366",
     "editor/styles/editor-wiring-font-geometry.js": "a6bd47579d3c780c6cbf3d6211584728759fad78e5d26af826f03dcbf3da9c04",
-    "editor/styles/editor-wiring-ass-preview.js": "41734da9efc556ae24583ce3533bb543107d9a7b2a56e21265d24a321ea05a52",
-    "editor/styles/editor-wiring-ass-canvas.js": "50ec27e8a333ff3ecc2fa108a3b0174b934395bcad31f44f2ba32f344e32363a",
+    "editor/styles/editor-wiring-ass-preview.js": "1e108501297bd85eb76ae337df380a6355a46820848144bc40f40aa4fb9650b1",
+    "editor/styles/editor-wiring-ass-canvas.js": "760124beb2fc0b54d19f82ccfb325cd9d0ba7f032897c5107f35a8ebed7699ee",
     "editor/styles/editor-wiring-ass-frame.js": "1a3c186069460cde01b86e0c1614b8b71d3f9fa7c4ef377988824b14adff69e5",
     "editor/media/editor-wiring-sticker-preview.js": "fa46c5d9075247e627f4fea99cd13d36d1492e4bd5ee1c7a51f046168abbbdb8",
     "editor/io/editor-wiring-export-context.js": "89ac0732b2bcb77878991af980335662d739e4d1cfff65152e4878b042545f0e",
@@ -522,12 +522,12 @@
         "format": "esm"
       },
       "web/shared/utils/ass-animation.js": {
-        "bytes": 8495,
+        "bytes": 9161,
         "imports": [],
         "format": "esm"
       },
       "web/shared/utils/ass-export.js": {
-        "bytes": 29748,
+        "bytes": 30220,
         "imports": [],
         "format": "esm"
       },
@@ -692,7 +692,7 @@
         "format": "esm"
       },
       "web/editor-entry.mjs": {
-        "bytes": 1806500,
+        "bytes": 1807505,
         "imports": [
           {
             "path": "web/shared/host/storage.js",
@@ -1091,10 +1091,10 @@
             "bytesInOutput": 16308
           },
           "web/shared/utils/ass-animation.js": {
-            "bytesInOutput": 3563
+            "bytesInOutput": 3808
           },
           "web/shared/utils/ass-export.js": {
-            "bytesInOutput": 11886
+            "bytesInOutput": 12134
           },
           "web/shared/utils/export-plan.js": {
             "bytesInOutput": 13402
@@ -1193,10 +1193,10 @@
             "bytesInOutput": 4423
           },
           "web/editor-entry.mjs": {
-            "bytesInOutput": 1049048
+            "bytesInOutput": 1049314
           }
         },
-        "bytes": 1397079
+        "bytes": 1397838
       }
     }
   }

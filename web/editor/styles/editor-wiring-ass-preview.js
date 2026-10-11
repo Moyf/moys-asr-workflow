@@ -302,6 +302,7 @@ function applyAssSubtitlePreview({ tMs, overlaySegments }) {
       __assMove: item.legacy && profile.animations.move.enabled ? { x: animation.moveX, y: animation.moveY } : null };
     return { visible: true, role: item.role, cueId: item.segment.id ?? item.index,
       runs: item.runs, style, animation,
+      fractionalFontSize: !item.legacy || item.sharedStackCue,
       nativeFontSize: Math.max(1, animated.fontSize * scale), alignment: item.alignment,
       anchor: item.anchor || null, margins: { left: item.style.marginL, right: item.style.marginR, vertical: item.style.marginV } };
   });

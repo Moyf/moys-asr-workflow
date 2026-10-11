@@ -83,6 +83,11 @@ test('stack movement follows libass instant and default whole-cue timing', () =>
   } } }), items: [item('main'), { ...item('extension'), start: 500 }] });
   assert.equal(h.assStackFrame(boundary, 500).items[0].anchor.x, 400);
   assert.equal(h.assStackFrame(boundary, 501).items[0].anchor.x, 1000);
+  profile.animations.move.t1 = 500; profile.animations.move.t2 = 500;
+  assert.match(h.assAnimationSliceTags(profile, { offsetMs: 500, durationMs: 2000 }), /\\move\(400,700,1000,700,0,1\)/);
+  assert.match(h.assAnimationSliceTags(profile, { offsetMs: 1500, durationMs: 2000 }), /\\pos\(1000,700\)/);
+  profile.animations.move.t1 = 0;
+  assert.match(h.assAnimationSliceTags(profile, { offsetMs: 1500, durationMs: 2000 }), /\\pos\(1000,700\)/);
 });
 
 test('stack opacity respects libass fade-in precedence for overlapping short-cue fades', () => {
@@ -134,6 +139,42 @@ test('a formatted main cue keeps font clocks through solo, stacked and solo inte
   assert.match(main[0], /\\t\(0,1000,2,\\fs216\)/);
   assert.match(main[1], /\\t\(-500,500,2,\\fs216\)/);
   assert.match(main[2], /\\t\(-1500,-500,2,\\fs216\)/);
+});
+
+test('zero transform timing uses the source duration and equal nonzero timing remains an exact step', () => {
+  const profile = h.normalizeAssProfile({ animations: { t: { enabled: true, startMs: 0, endMs: 0, accel: 1, tags: String.raw`\fs144` } } });
+  assert.equal(h.assStackAnimationState(profile, 500, 2000).transformProgress, 0.25);
+  assert.equal(h.assStackAnimationState(profile, 1500, 2000).transformProgress, 0.75);
+  assert.match(h.assAnimationSliceTags(profile, { offsetMs: 500, durationMs: 2000 }), /\\t\(-500,1500,1,/);
+  const output = h.buildAssPayload([{ start: 0, end: 2000, text: '**BIG** tail' }], {
+    assProfile: profile, assStyle: { fontSize: 72, emphasisScale: 1.5 }, assExtensionStyle: { fontSize: 54 },
+    extensionSegments: [{ start: 500, end: 1500, text: 'E' }],
+  });
+  const main = output.split('\n').filter(line => line.startsWith('Dialogue: 0,'));
+  assert.match(main[0], /\\t\(0,2000,1,\\fs216\)/);
+  assert.match(main[1], /\\t\(-500,1500,1,\\fs216\)/);
+  assert.match(main[2], /\\t\(-1500,500,1,\\fs216\)/);
+  profile.animations.t.startMs = 500; profile.animations.t.endMs = 500;
+  assert.equal(h.assStackAnimationState(profile, 499, 2000).transformProgress, 0);
+  assert.equal(h.assStackAnimationState(profile, 500, 2000).transformProgress, 1);
+});
+
+test('ever-stacked inline decorations restore immediate transform targets in both directions', () => {
+  for (const [tag, key, marker] of [['u', 'underline', '_'], ['s', 'strikeOut', '~']]) {
+    for (const target of [0, 1]) {
+      const output = h.buildAssPayload([{ start: 0, end: 2000, text: `MMMM ${marker}MMMM${marker} MMMM` }], {
+        assProfile: { animations: { t: { enabled: true, startMs: 100, endMs: 1100, tags: `\\${tag}${target}` } } },
+        assStyle: { fontSize: 72, [key]: !target }, assExtensionStyle: { fontSize: 54 },
+        extensionSegments: [{ start: 500, end: 1500, text: 'Ext' }],
+      });
+      const main = output.split('\n').filter(line => line.startsWith('Dialogue: 0,'));
+      assert.equal(main.length, 3);
+      for (const event of main) {
+        if (target) assert.ok(event.endsWith('MMMM MMMM MMMM'), 'all runs inherit the immediate on target');
+        else assert.ok(event.endsWith(`MMMM {\\${tag}1}MMMM{\\${tag}0} MMMM`), 'only the marker enables decoration and restores off');
+      }
+    }
+  }
 });
 
 test('alignment 网格映射到列/行（屏幕语义：1-3 底行，7-9 顶行）', () => {

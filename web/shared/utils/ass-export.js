@@ -258,9 +258,8 @@ export function createUtilsModule(dependencies) {
       );
     });
 
-    // 副字幕轨（多重字幕）：所有副字幕共用一个样式（不支持颜色分组），
-    // 事件引用独立 Extension 样式，水平边距/对齐由样式决定，垂直锚定主轨。
-    // \fad/\fade/\t 逐句应用；\move 的绝对坐标只属于主字幕。
+    // Prepare extension style/content. ASS events below are regenerated from
+    // the shared active-cue plan, which supplies group positions and movement.
     const extensionSource = Array.isArray(options.extensionSegments)
       ? options.extensionSegments : [];
     const hasExtensionCues = extensionSource.some((segment) => segment && segment.disabled !== true);
@@ -270,9 +269,8 @@ export function createUtilsModule(dependencies) {
     const extensionScaledFontSize = extensionStyle
       ? normalizeAssFontSize(extensionStyle.fontSize * resolution.height / ASS_REFERENCE_PLAY_RES_Y)
       : 0;
-    // Secondary tracks share the Canvas nominal single-line anchor model.
-    // Explicit positions are required for top/middle and mixed alignments;
-    // retain the secondary style's horizontal alignment and side margins.
+    // Nominal style-field defaults are retained for compatibility. Active ASS
+    // events explicitly override them with the shared measured stack plan.
     const mainAnchor = dependencies.assCanvasAnchorPoint({
       alignment: baseStyle.alignment,
       margins: { left: baseStyle.marginL, right: baseStyle.marginR, vertical: baseStyle.marginV },
@@ -328,9 +326,8 @@ export function createUtilsModule(dependencies) {
       });
     }
 
-    // Overlay uses the main style's font/color and chains above the enabled
-    // extension track, or above main when no extension is enabled. Both
-    // secondary tracks use fixed anchors; only main receives move animation.
+    // Overlay inherits main typography and the extension's horizontal style
+    // when enabled. Active-event positions and motion come from the stack plan.
     const overlaySource = Array.isArray(options.overlaySegments) ? options.overlaySegments : [];
     const hasOverlayCues = overlaySource.some((segment) => segment && segment.disabled !== true);
     const overlayAnchorStyle = extensionAnchor && hasExtensionCues ? extensionStyle : baseStyle;
@@ -433,6 +430,17 @@ export function createUtilsModule(dependencies) {
           const scale = slice.scale;
           const scaledStyle = { ...item.style, spacing: item.style.spacing * scale,
             outline: item.style.outline * scale, shadow: item.style.shadow * scale };
+          const transformTargets = profile.animations.t.enabled
+            ? dependencies.assTransformStyleTargets(profile.animations.t.tags) : {};
+          const sharedDecorations = (!slice.legacy || item.sharedStackCue)
+            && (transformTargets.underline !== undefined || transformTargets.strikeOut !== undefined);
+          if (sharedDecorations) {
+            // libass applies these discrete t targets at cue start. Inline
+            // marker resets must restore that effective value, including off.
+            for (const key of ['underline', 'strikeOut']) {
+              if (transformTargets[key] !== undefined) scaledStyle[key] = Boolean(transformTargets[key]);
+            }
+          }
           const size = Math.max(1, number(item.fontSize * scale));
           const animation = piece.start === item.start && piece.end === item.end && scale === 1
             ? assAnimationOverrideTags(profile, { includeMove: slice.legacy, fad: item.fad })
@@ -449,14 +457,14 @@ export function createUtilsModule(dependencies) {
               : `\\move(${from.x},${from.y},${to.x},${to.y},${moveStart},${moveEnd})`;
             position = `\\an${item.alignment}\\q2${position}\\fs${size}\\fsp${number(scaledStyle.spacing)}\\bord${number(scaledStyle.outline)}\\shad${number(scaledStyle.shadow)}`;
           }
-          const transformTarget = profile.animations.t.enabled
-            ? dependencies.assTransformStyleTargets(profile.animations.t.tags).fontSize : undefined;
+          const transformTarget = transformTargets.fontSize;
           const fontTransform = transformTarget === undefined ? null : {
             startMs: profile.animations.t.startMs - (piece.start - item.start),
-            endMs: profile.animations.t.endMs - (piece.start - item.start),
+            endMs: (profile.animations.t.startMs === 0 && profile.animations.t.endMs === 0
+              ? item.end - item.start : profile.animations.t.endMs) - (piece.start - item.start),
             accel: profile.animations.t.accel, target: Number((transformTarget * scale).toFixed(4)),
           };
-          const content = slice.legacy && !(item.sharedStackCue && fontTransform) ? item.originalText : assEmphasizedText('', scaledStyle, size, emphasisSyntax,
+          const content = slice.legacy && !(item.sharedStackCue && (fontTransform || sharedDecorations)) ? item.originalText : assEmphasizedText('', scaledStyle, size, emphasisSyntax,
             { ...inlineOptions, preparedRuns: item.runs, fontTransform });
           const decorated = (position ? `{${position}}` : '') + (animation ? `{${animation}}` : '') + content;
           events.push(`Dialogue: ${{ main: 0, extension: 1, overlay: 2 }[item.role]},${formatAssTime(piece.start)},${formatAssTime(piece.end)},${item.styleName},${normalizeAssEventField(item.speakerName)},0,0,0,,${decorated}`);
