@@ -1683,7 +1683,7 @@
 
   function autoLlmReady(providerId) {
     const item = provider(providerId);
-    return Boolean(item?.verified && item?.hasApiKey !== false && item?.hasBaseUrl !== false && item?.hasModel !== false);
+    return Boolean(item?.verified && (item?.apiKeyRequired === false || item?.hasApiKey !== false) && item?.hasBaseUrl !== false && item?.hasModel !== false);
   }
 
   function autoStepReady(stepId) {
@@ -1832,9 +1832,9 @@
       const item = provider(stepProviderId(stepId));
       const focusId = ["llmApiKey", "llmBaseUrl", "llmModel"].includes(invalidField)
         ? invalidField
-        : (item?.hasApiKey === false ? "llmApiKey" : (item?.hasBaseUrl === false ? "llmBaseUrl" : "llmModel"));
+        : (item?.hasApiKey === false && item?.apiKeyRequired !== false ? "llmApiKey" : (item?.hasBaseUrl === false ? "llmBaseUrl" : "llmModel"));
       if (highlightConnection) {
-        const hasApiKey = item?.hasApiKey || item?.maskedApiKey || $("llmApiKey")?.value.trim();
+        const hasApiKey = item?.apiKeyRequired === false || item?.hasApiKey || item?.maskedApiKey || $("llmApiKey")?.value.trim();
         const hasBaseUrl = item?.hasBaseUrl || item?.baseUrl || $("llmBaseUrl")?.value.trim();
         const hasModel = item?.hasModel || item?.model || $("llmModel")?.value.trim();
         setTestConnectionAttention(Boolean(hasApiKey && hasBaseUrl && hasModel && !item?.verified));
@@ -2186,6 +2186,7 @@
     item.baseUrl = $("llmBaseUrl").value.trim();
     item.model = $("llmModel").value.trim();
     item.hasApiKey = Boolean(result.maskedApiKey || item.maskedApiKey || $("llmApiKey").value.trim());
+    item.apiKeyRequired = result.apiKeyRequired !== false;
     item.hasBaseUrl = Boolean(item.baseUrl);
     item.hasModel = Boolean(item.model);
     item.reasoningMode = result.reasoningMode || $("llmReasoningMode").value || "off";
@@ -2219,6 +2220,11 @@
       if (result.ok) {
         clearSettingsErrors();
         item.verified = Boolean(result.verified);
+        item.apiKeyRequired = result.apiKeyRequired !== false;
+        item.baseUrl = $("llmBaseUrl").value.trim();
+        item.model = $("llmModel").value.trim();
+        item.hasBaseUrl = Boolean(item.baseUrl);
+        item.hasModel = Boolean(item.model);
         item.maskedApiKey = result.maskedApiKey || item.maskedApiKey;
         item.hasApiKey = Boolean(result.maskedApiKey || $("llmApiKey").value.trim() || item.hasApiKey);
         fillProviderSelects(item.id);

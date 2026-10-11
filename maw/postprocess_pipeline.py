@@ -41,6 +41,7 @@ from maw.postprocess_llm import (
     complete_subtitle_groups,
     normalize_reasoning_mode,
     preset_by_id,
+    postprocess_api_key_required,
 )
 from maw.postprocess_match import (
     DEFAULT_EXTRA_SPLIT_PUNCTUATION,
@@ -301,6 +302,7 @@ def postprocess_provider_status(env_path: Path, provider_id: str) -> dict[str, o
     return {
         "verified": is_llm_verified(env_path, provider_id),
         "hasApiKey": bool(values["apiKey"]),
+        "apiKeyRequired": postprocess_api_key_required(provider_id, values["baseUrl"]),
         "hasBaseUrl": bool(values["baseUrl"]),
         "hasModel": bool(values["model"]),
     }
@@ -348,8 +350,8 @@ def _llm_provider_error(
     """Return the blocking provider configuration error for one LLM step."""
 
     provider_id = str(step.get("providerId") or "deepseek")
-    status = _snapshot_provider_status(llm_settings.get(provider_id)) if llm_settings and provider_id in llm_settings else postprocess_provider_status(env_path, provider_id)
-    if not status["hasApiKey"]:
+    status = _snapshot_provider_status(llm_settings.get(provider_id), provider_id) if llm_settings and provider_id in llm_settings else postprocess_provider_status(env_path, provider_id)
+    if not status["hasApiKey"] and status["apiKeyRequired"]:
         return {"step": str(step.get("id") or ""), "field": "llmApiKey", "message": "LLM 供应商缺少 API Key，请在工具箱设置中填写并保存。"}
     if not status["hasBaseUrl"]:
         return {"step": str(step.get("id") or ""), "field": "llmBaseUrl", "message": "LLM 供应商缺少 API URL，请在工具箱设置中填写并保存。"}
@@ -1580,11 +1582,12 @@ def _number_or_default(value: object, default: object) -> float:
         return float(default)
 
 
-def _snapshot_provider_status(values: Mapping[str, str] | None) -> dict[str, object]:
+def _snapshot_provider_status(values: Mapping[str, str] | None, provider_id: str) -> dict[str, object]:
     values = values or {}
     return {
         "verified": bool(values.get("verified", "")),
         "hasApiKey": bool(values.get("apiKey", "")),
+        "apiKeyRequired": postprocess_api_key_required(provider_id, values.get("baseUrl", "")),
         "hasBaseUrl": bool(values.get("baseUrl", "")),
         "hasModel": bool(values.get("model", "")),
     }

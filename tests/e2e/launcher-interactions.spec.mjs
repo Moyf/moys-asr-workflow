@@ -316,6 +316,30 @@ test('automatic LLM setup highlights test connection until clicked', async ({ pa
   await expect(page.locator('#testLlmConnection')).not.toHaveClass(/attention/);
 });
 
+test('verified custom loopback without a key can enable an automatic LLM step', async ({ page }) => {
+  await page.goto(`file://${launcherPath}`);
+  await page.waitForFunction(() => window.MAWLauncher?.config?.postprocessProviders?.length > 0);
+  await page.evaluate(() => {
+    const item = window.MAWLauncher.config.postprocessProviders.find(item => item.id === 'custom2');
+    Object.assign(item, { verified: false, hasApiKey: false, apiKeyRequired: true, hasBaseUrl: false, hasModel: false });
+    document.getElementById('postprocessProvider').value = 'custom2';
+    document.getElementById('postprocessProvider').dispatchEvent(new Event('change'));
+    window.MAWLauncher.callBackend = async method => method === 'test_postprocess_connection'
+      ? { ok: true, saved: true, verified: true, apiKeyRequired: false, maskedApiKey: '' }
+      : { ok: true };
+  });
+  await page.locator('#autoPostprocessEnabled').check();
+  await page.locator('#autoStepProofread').click();
+  await expect(page.locator('#autoStepProofread')).not.toBeChecked();
+  await expect(page.locator('#settingsModal')).toBeVisible();
+  await page.locator('#llmApiKey').fill('');
+  await page.locator('#llmBaseUrl').fill('http://127.0.0.1:1234/v1');
+  await page.locator('#llmModel').fill('local-model');
+  await page.locator('#testLlmConnection').click();
+  await expect(page.locator('#autoStepProofread')).toBeChecked();
+  expect(await page.evaluate(() => window.MAWLauncher.config.postprocessProviders.find(item => item.id === 'custom2').hasApiKey)).toBe(false);
+});
+
 test('system notifications are disabled by default and announce enabling', async ({ page }) => {
   await page.goto(`file://${launcherPath}`);
   await page.waitForFunction(() => window.MAWLauncher?.config?.postprocessProviders?.length > 0);

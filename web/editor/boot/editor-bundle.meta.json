@@ -292,11 +292,11 @@
     "editor/media/editor-playback-loop.js": "f0c95171b87d24c531ed107bd1fb5162d755ad56678297191fb1b874d6b118ce",
     "editor/media/editor-sticker-overlay.js": "5f5799615e6ef890cf7360ee4ae0a85123acdee9d27a79cec801a68a9648c863",
     "editor/io/editor-export-srt.js": "f7547e87cf907ab653f15128e7f891839ff16595844ea6ec598a12b548203d32",
-    "editor/io/editor-export-timeline.js": "577ec956d2e55c49b76ff8d4099f30ea343e532a72cb43df075382aa776b9bc8",
+    "editor/io/editor-export-timeline.js": "b3fe38336828a6b7d81fdab1f56dcf5b0eb669984d4a958ff7eecd3363461bca",
     "editor/io/editor-server-save.js": "d49528b92ccfdc8320a1319fa1558ad2e8a12e518d7b18e48cfabbe5b9c09ba8",
     "editor/ui/editor-workspaces.js": "6a0dcfab40bffcce3b10dae025d4ca20413f059a0905df93a11af9132cc7d58c",
     "editor/io/editor-project-save.js": "2b16f83483f2859750bffa2e610b121190cf2a92095fc728cb9635560413f74d",
-    "editor/io/editor-dynamic-exports.js": "3fceb191759ed43375d21ebc1cdbd8b6a0d2bc034377977e579d3dce925c7495",
+    "editor/io/editor-dynamic-exports.js": "db92a5d6dff0e945db97b081050c8a1780b312037bb483cb09645b1dae3548d2",
     "editor/ui/editor-export-menus.js": "cfa4973df5672ea759702ef096c7b71e237d060ed4d8043d04e4ae72904fc213",
     "editor/io/editor-project-media-inputs.js": "107eaf3c7f006a9c67f9427f82cb85186343c5ddd684edbc8e4fbbab17a8a879",
     "editor/io/editor-project-load.js": "15437bc464bafc343bf359a10cb0a8b96538938c0edb50a41304c89dceed97c5",
@@ -692,7 +692,7 @@
         "format": "esm"
       },
       "web/editor-entry.mjs": {
-        "bytes": 1788375,
+        "bytes": 1788467,
         "imports": [
           {
             "path": "web/shared/host/storage.js",
@@ -1193,10 +1193,10 @@
             "bytesInOutput": 4406
           },
           "web/editor-entry.mjs": {
-            "bytesInOutput": 1038727
+            "bytesInOutput": 1038797
           }
         },
-        "bytes": 1381520
+        "bytes": 1381590
       }
     }
   }
