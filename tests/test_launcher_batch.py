@@ -117,6 +117,20 @@ class BatchRunnerTests(unittest.TestCase):
         self.assertIn('known_count=2', manifest.read_text(encoding='utf-8'))
         self.assertTrue(any(event.get('code') == 'asr_empty_result_multitrack' for event in events))
 
+    def test_unknown_audio_probe_extraction_failure_is_friendly_and_batch_continues(self) -> None:
+        import subprocess
+        from maw.gui_workflow import TranscriptionProcessError
+        line = 'subprocess.CalledProcessError: ' + str(subprocess.CalledProcessError(
+            1, ['ffmpeg', '-map', '0:a:0', '-vn', 'audio.wav']))
+        def transcribe(request, *, cancel_event):
+            if request.media_path.stem == 'clip-0':
+                raise TranscriptionProcessError(1, [line])
+            return TranscriptionResult(request.srt_path, request.srt_path.with_suffix('.mosp'), None)
+        result = run_batch(self._items(2), settings={}, manifest_path=self.root / 'manifest.json',
+                           cancel_event=threading.Event(), transcribe=transcribe)
+        self.assertEqual(result['outcomes'][0]['code'], 'audio_extraction_failed')
+        self.assertEqual(result['outcomes'][1]['status'], 'done')
+
     def test_api_failure_does_not_leak_active_key_to_events_or_manifest(self) -> None:
         from dataclasses import replace
         from maw.gui_workflow import TranscriptionProcessError

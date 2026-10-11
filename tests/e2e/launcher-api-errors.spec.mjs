@@ -36,6 +36,9 @@ for (const language of ['zh', 'en']) {
         };
         if (method === 'start_transcription') return async (payload) => {
           window.__starts.push(payload);
+          if (payload.mediaPath.endsWith('pending.mp4')) return {
+            ok: false, code: 'audio_extraction_failed', detail: 'FFmpeg audio extraction failed before the existing probe completed',
+          };
           return { ok: false, code: 'transcription_cancelled' };
         };
         return async () => ({ ok: true });
@@ -70,6 +73,11 @@ for (const language of ['zh', 'en']) {
     expect(await page.evaluate(() => window.MAWLauncher.getTranscriptionPayload().audioTrackCount)).toBeNull();
     await page.locator('#start').click();
     expect(await page.evaluate(() => window.__starts.length)).toBe(3);
+    await expect(page.locator('#errorNoticeMessage')).toContainText(language === 'zh' ? '视频可能没有音轨' : 'video may have no audio tracks');
+    await expect(page.locator('#errorNoticeMessage')).toContainText(language === 'zh' ? '所选音轨可能不存在' : 'selected track may be missing');
+    await expect(page.locator('#errorNoticeMessage')).not.toContainText(language === 'zh' ? '没有检测到音轨' : 'No audio tracks were found');
+    expect(await page.evaluate(() => window.MAWLauncher.getTranscriptionPayload().audioTrackCount)).toBeNull();
+    await page.locator('#errorNotice').screenshot({ path: testInfo.outputPath('audio-extraction-pending-' + language + '.png') });
     // An old probe finishing after a file change cannot block the new file.
     await page.locator('#mediaPath').fill('C:/media/voice.mp3');
     await page.evaluate(() => window.__releaseProbe({ ok: true, tracks: [] }));

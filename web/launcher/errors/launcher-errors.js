@@ -117,7 +117,7 @@ function showErrorNotice(message, code = "", detail = "", diagnostics = "", cont
     notice.dataset.action = "api-key";
     action.textContent = t("error_check_api_key");
     action.classList.remove("hidden");
-  } else if (["asr_empty_result_multitrack", "audio_tracks_missing", "audio_track_invalid"].includes(code)) {
+  } else if (["asr_empty_result_multitrack", "audio_tracks_missing", "audio_track_invalid", "audio_extraction_failed"].includes(code)) {
     notice.dataset.action = "audio-track";
     action.textContent = t("error_check_audio_track");
     action.classList.remove("hidden");

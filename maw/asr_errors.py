@@ -8,7 +8,7 @@ from __future__ import annotations
 
 import re
 
-from maw.audio_diagnostics import AudioInputError
+from maw.audio_diagnostics import AudioInputError, is_audio_extraction_failure
 
 
 _HTTP_STATUS = re.compile(
@@ -52,11 +52,13 @@ def asr_error_code(error: BaseException, *, provider: str) -> str:
     """
     if isinstance(error, AudioInputError):
         return error.code
-    if provider == "local":
-        return ""
     child_output = getattr(error, "output", ())
     if not isinstance(child_output, (list, tuple)):
         child_output = ()
+    if is_audio_extraction_failure(child_output):
+        return "audio_extraction_failed"
+    if provider == "local":
+        return ""
     detail = str(error)
     if child_output:
         trace = "\n".join(child_output)

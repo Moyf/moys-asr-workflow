@@ -4399,6 +4399,23 @@ class GuiWebBridgeTests(CompactContainerAssertions, unittest.TestCase):
         self.assertNotIn('"type": "done"', script)
         postprocess.assert_not_called()
 
+    def test_worker_unknown_probe_reports_audio_extraction_possible_causes_without_reprobe(self) -> None:
+        import subprocess
+        request = TranscriptionRequest(media_path=self.root / 'clip.mkv', srt_path=self.root / 'clip.srt', provider='local')
+        line = 'subprocess.CalledProcessError: ' + str(subprocess.CalledProcessError(
+            1, ['ffmpeg', '-map', '0:a:0', '-vn', 'audio.wav']))
+        error = TranscriptionProcessError(1, [line])
+        with mock.patch('maw.gui_web.run_transcription', side_effect=error), \
+                mock.patch('maw.gui_web.run_postprocess_pipeline') as postprocess, \
+                mock.patch('maw.gui_web.probe_audio_tracks', side_effect=AssertionError('No new probe')), \
+                mock.patch('maw.gui_web.inspect_audio_tracks', side_effect=AssertionError('No reinspection')):
+            self.api._worker_main(request, threading.Event())
+        script = self.window.scripts[-1]
+        self.assertIn('"code": "audio_extraction_failed"', script)
+        self.assertIn('CalledProcessError', script)
+        self.assertNotIn('"type": "done"', script)
+        postprocess.assert_not_called()
+
     def test_start_transcription_accepts_api_key_from_env_file(self) -> None:
         """Given saved API key, When field is empty, Then resolved key is used."""
         media = self.root / "clip.mp3"

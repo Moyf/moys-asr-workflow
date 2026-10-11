@@ -41,6 +41,22 @@ class AsrRedactionTests(unittest.TestCase):
 
 
 class AsrErrorClassificationTests(unittest.TestCase):
+    def test_failed_audio_extraction_is_friendly_even_when_probe_was_unknown(self):
+        import subprocess
+        command = [r'C:\tools\ffmpeg.exe', '-i', 'clip.mp4', '-map', '0:a:0', '-vn', 'audio.wav']
+        line = 'subprocess.CalledProcessError: ' + str(subprocess.CalledProcessError(1, command))
+        for provider in ('qwen', 'openai', 'soniox', 'doubao', 'tencent', 'bcut', 'local'):
+            for output in ([line], ["Stream map '0:a:0' matches no streams."]):
+                self.assertEqual(asr_error_code(TranscriptionProcessError(1, output), provider=provider), 'audio_extraction_failed')
+
+    def test_final_api_or_engine_failure_overrides_earlier_audio_warning(self):
+        import subprocess
+        line = 'subprocess.CalledProcessError: ' + str(subprocess.CalledProcessError(
+            1, ['ffmpeg', '-map', '0:a:0', '-vn', 'audio.wav']))
+        for earlier in (line, "Stream map '0:a:0' matches no streams."):
+            self.assertEqual(asr_error_code(TranscriptionProcessError(1, [earlier, 'RuntimeError: HTTP 401']), provider='qwen'), 'asr_auth_failed')
+            self.assertEqual(asr_error_code(TranscriptionProcessError(1, [earlier, 'ValueError: model failed']), provider='local'), '')
+
     def test_audio_evidence_is_used_for_cloud_and_local_without_parsing_detail(self):
         from maw.audio_diagnostics import AudioInputError
         for provider in ('qwen', 'openai', 'local'):
