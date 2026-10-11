@@ -263,7 +263,7 @@
     "editor/media/waveform/cue-commands.js": "d421f543da181f8b9ffa19f1114f2da39d36f3223b2e5453b94a8652dbc36132",
     "editor/media/waveform/gap-drag.js": "1302e527da9eabe277f4c03d18da1054b5e1c33044992c8acad3fc8614a8248a",
     "editor/media/waveform/markers.js": "abd060b1d804aba12eecf23a7ca93afe3f5ec3bc7c25733dd93121a75a4455aa",
-    "editor/media/waveform/cue-drag-update.js": "2bc987d0da4b4d7818b8febe46c9c1446aad7a31e3b7ac93e5c9213cc14ac790",
+    "editor/media/waveform/cue-drag-update.js": "e4eaefc48ca90dcdd36a526c3efe078fae3237ad103d8dcdf67ea6b34fc89a6c",
     "editor/media/waveform/playback.js": "b9d282797cf6cc5f702bc842f2ceadfdfc5db5975db8209e12f831a24419abc7",
     "editor/media/waveform.js": "6a093ad4f8a918b4faeb1f25183af9441a374e337dee2d3215f221009a9161bb",
     "editor/ui/editor-hint.js": "785ba5f5c2ad396cb20473c4328589d8b8ca37090d7269908d2aae39dcea9300",
@@ -682,7 +682,7 @@
         "format": "esm"
       },
       "web/editor/media/waveform/cue-drag-update.js": {
-        "bytes": 21352,
+        "bytes": 22239,
         "imports": [],
         "format": "esm"
       },
@@ -1187,7 +1187,7 @@
             "bytesInOutput": 14458
           },
           "web/editor/media/waveform/cue-drag-update.js": {
-            "bytesInOutput": 8451
+            "bytesInOutput": 8548
           },
           "web/editor/media/waveform/playback.js": {
             "bytesInOutput": 4406
@@ -1196,7 +1196,7 @@
             "bytesInOutput": 1056230
           }
         },
-        "bytes": 1404669
+        "bytes": 1404766
       }
     }
   }
