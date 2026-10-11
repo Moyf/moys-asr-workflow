@@ -1312,8 +1312,20 @@
     transition: border-color var(--t-fast), box-shadow var(--t-fast);
   }
   .editor-settings-search:focus { outline: none; border-color: var(--accent); box-shadow: var(--focus-ring); }
-  /* 搜索命中高亮：与 flashSettingsTarget 同族，但不自动消失，清空搜索才移除。 */
-  .settings-search-hit { box-shadow: 0 0 0 2px var(--accent-line); border-radius: var(--radius-sm); }
+  .editor-settings-nav.settings-searching { width: clamp(160px, 24vw, 220px); }
+  .settings-searching > :is(.editor-settings-nav-tab, .editor-settings-nav-group-label) { display: none; }
+  .settings-search-results { display: flex; flex-direction: column; gap: 8px; }
+  .settings-search-results[hidden] { display: none; }
+  .settings-search-status { margin: 0 4px; color: var(--text-faint); font-size: 12px; }
+  .editor-settings-panel .editor-settings-nav .settings-search-results button.settings-search-result {
+    display: flex; flex-direction: column; gap: 8px; width: 100%; padding: 8px;
+    text-align: left; white-space: normal; overflow-wrap: anywhere; line-height: 1.5;
+    color: var(--text-primary); background: none; border: 1px solid transparent;
+    border-radius: var(--radius-sm); font-size: 13px;
+  }
+  .settings-search-result small { color: var(--text-secondary); font-size: 12px; }
+  .editor-settings-panel .editor-settings-nav .settings-search-results button.settings-search-result:hover { background: var(--accent-tint); }
+  .editor-settings-panel .editor-settings-nav .settings-search-results button.settings-search-result[aria-current] { background: var(--accent-tint-strong); border-color: var(--accent); }
   .editor-settings-page { display: flex; flex-direction: column; gap: 8px; }
   .editor-settings-region-card { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 12px; border: 1px solid var(--border-subtle); border-radius: var(--radius-md); }
   .editor-settings-region-card > div { min-width: 0; }
@@ -2969,15 +2981,6 @@
 
   .multi-subtitle-controls { display: inline-flex; align-items: center; gap: 6px; }
   .multi-subtitle-controls[hidden] { display: none; }
-  .overlay-track-toggle {
-    display: inline-flex; align-items: center; gap: 6px; min-height: var(--control-h);
-    padding: 3px 8px; border: 1px solid var(--btn-border); border-radius: var(--radius-sm);
-    background: var(--btn-bg); color: var(--btn-text); font-size: 12px;
-  }
-  .overlay-track-toggle[hidden] { display: none; }
-  .overlay-track-toggle:has(input:checked) {
-    border-color: var(--accent); background: var(--accent-tint);
-  }
   /* 叠加字幕行不做配色区分，外观与主字幕保持一致；
      .overlay-track-cue 类仅承载行为挂钩与测试选择器。 */
   .multi-subtitle-controls select { min-height: var(--control-h); }
@@ -3733,13 +3736,20 @@
     font-family: var(--font-mono); font-size: 11px; border: 1px solid var(--border-subtle);
   }
 
-  /* === 顶部居中提示卡片（flashHint）===
+  /* === 可配置位置的提示卡片（flashHint），默认顶部居中 ===
      最多 3 条垂直堆叠，新提示出现在下方；fade in/out 由 JS 驱动。
      置于非模态浮层栈（430+）之上，但保留给拖拽遮罩和加载层（500/510）。 */
   #hint-stack {
     position: fixed; top: 16px; left: 50%; transform: translateX(-50%); z-index: 490;
     display: flex; flex-direction: column; gap: 8px;
     width: max-content; max-width: min(380px, calc(100vw - 32px));
+    max-height: calc(100vh - 32px); overflow-y: auto;
+  }
+  html[data-toast-position="top-right"] #hint-stack {
+    left: auto; right: 16px; transform: none;
+  }
+  html[data-toast-position="bottom-right"] #hint-stack {
+    top: auto; bottom: 16px; left: auto; right: 16px; transform: none;
   }
   .hint-card {
     padding: 13px 18px;
@@ -4110,7 +4120,7 @@
   display: flex; align-items: center; gap: 8px; width: 100%; padding: 7px 9px;
   color: inherit; background: transparent; border: 0; cursor: pointer; text-align: left;
 }
-.markers-item-main:hover { background: var(--btn-bg-hover); }
+.markers-item:has(.markers-item-main:hover) { background: var(--btn-bg-hover); }
 /* 行内任意位置 hover 时，高亮同步覆盖到右侧「编辑 / 完成」按钮，整行一体。 */
 .markers-item:hover .markers-item-edit { background: var(--btn-bg-hover); }
 .markers-item-main:focus-visible { outline: 2px solid var(--accent-line); outline-offset: -2px; }
@@ -4180,6 +4190,8 @@
 .markers-time-field { display: grid; gap: 4px; color: var(--text-secondary); font-size: 11px; font-weight: 600; }
 .markers-time-field input { font: 600 12px/1.4 var(--font-mono); }
 .markers-item-actions { display: flex; align-items: center; justify-content: flex-end; gap: 8px; }
+.markers-review-actions { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; margin-right: auto; }
+.markers-search-match { color: var(--text-primary); background: var(--accent-tint-strong); border-radius: 2px; }
 .markers-item-actions button {
   padding: 4px 10px; color: var(--text-secondary); background: var(--btn-bg);
   border: 1px solid var(--border); border-radius: var(--radius-sm);
@@ -4189,7 +4201,8 @@
 .markers-item-actions button:hover:not(:disabled) { color: var(--text-primary); background: var(--btn-bg-hover); }
 .markers-item-actions button:focus-visible { outline: 2px solid var(--accent-line); outline-offset: 1px; }
 /* 复核三态 toggle（编辑框左下角）：无 → 待复核 → 已确认 → 无。 */
-.markers-item-actions button.markers-review-toggle { margin-right: auto; font-weight: 600; }
+.markers-item-actions button.markers-review-toggle { font-weight: 600; }
+.markers-item-actions > button.markers-review-toggle { margin-right: auto; }
 .markers-item-actions button.markers-review-toggle.has-review { color: var(--text-primary); }
 .markers-item-actions button.markers-review-toggle.pending {
   color: #241503; background: var(--amber, #f5a623); border-color: var(--amber, #f5a623);
