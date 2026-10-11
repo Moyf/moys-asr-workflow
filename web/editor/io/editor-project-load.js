@@ -144,6 +144,7 @@ function applyCanonicalProject(data, filename) {
   MaweState.noteSavedSegments();
   MawePlaybackLoop.refreshSubtitlePreview(0, -1);
   updateUnloadedMediaLabel(MaweBoot.DATA.media);
+  window.MaweGapRemovedMediaExport?.updateButton();
   MaweBoot.PROJECT_NAME = filename.replace(/\.(json|mosp)$/i, '');
   MaweBoot.FILENAME_BASE = MaweBoot.PROJECT_NAME;
   const jsonEl = document.getElementById('json-name');
@@ -225,10 +226,17 @@ function applyCanonicalProject(data, filename) {
       MaweBoot.SERVER_CONFIG.canPortableStickerExport = false;
       MaweBoot.SERVER_CONFIG.canLottieExport = false;
       MaweBoot.SERVER_CONFIG.canOgrafExport = false;
+      MaweBoot.SERVER_CONFIG.canGapRemovedMediaExport = false;
+      MaweBoot.SERVER_CONFIG.gapRemovedMediaKind = null;
+      MaweBoot.SERVER_CONFIG.gapRemovedMediaAudioTrack = null;
+      MaweBoot.SERVER_CONFIG.gapRemovedMediaSourceName = null;
+      MaweBoot.SERVER_CONFIG.gapRemovedMediaOutputExtension = null;
+      MaweBoot.SERVER_CONFIG.gapRemovedMediaOutputMime = null;
       MaweBoot.SERVER_CONFIG.canGapRemovedVideoExport = false;
       MaweBoot.SERVER_CONFIG.gapRemovedVideoSourceName = null;
       MaweBoot.SERVER_CONFIG.sourceMediaId = null;
     }
+    window.MaweGapRemovedMediaExport?.updateButton();
     MaweServerSave.configureServerSaveControls();
     MaweDynamicExports.updateLottieExportButton();
     MaweDynamicExports.updateOgrafExportButton();

@@ -103,7 +103,7 @@ test('cancelled picker submits nothing and keeps binding intact', async ({ page 
 });
 
 for (const change of ['canonical-reload', 'server-rebind']) {
-test(`rendered editor rejects waiting video picker after ${change}`, async ({ page }) => {
+test(`rendered editor rejects waiting media picker after ${change}`, async ({ page }) => {
   const dir = makeTempDir('gap-binding-editor');
   let server;
   try {
@@ -115,17 +115,17 @@ test(`rendered editor rejects waiting video picker after ${change}`, async ({ pa
     await page.waitForFunction(() => window.MaweProjectLoad && window.MaweExportSrt);
     let posts = 0;
     page.on('request', request => {
-      if (request.url().endsWith('/api/exports/gap-removed-video')) posts += 1;
+      if (request.url().endsWith('/api/exports/gap-removed-video')
+          || request.url().endsWith('/api/exports/gap-removed-video/jobs')) posts += 1;
     });
     await page.evaluate(() => {
       window.bindingHints = [];
       const original = window.MaweHint;
       window.MaweHint = { ...original, flashHint: text => window.bindingHints.push(text) };
-      Object.assign(MaweBoot.SERVER_CONFIG, { canGapRemovedVideoExport: true, gapRemovedVideoSourceName: 'source.mp4' });
       window.MaweExportSrt = { ...window.MaweExportSrt, gapRemovedExportContext: () => ({ intervals: [{ start: 0, end: 1000 }] }) };
       window.showSaveFilePicker = () => new Promise(resolve => {
         window.bindingPickerPending = true;
-        window.bindingPickerResolve = () => resolve({ name: 'result.mp4', createWritable: async () => { throw new Error('must not create'); } });
+        window.bindingPickerResolve = () => resolve({ name: 'result.wav', createWritable: async () => { throw new Error('must not create'); } });
       });
       document.getElementById('download-gap-removed-video').click();
     });
