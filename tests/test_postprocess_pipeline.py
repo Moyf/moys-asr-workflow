@@ -97,6 +97,19 @@ class PostprocessPipelineTests(CompactContainerAssertions, unittest.TestCase):
         script.write_text("正字\n保留\n", encoding="utf-8")
         return {"id": "match", "enabled": enabled, "scriptPath": str(script)}
 
+    def test_resegment_limit_survives_plan_and_request_and_invalid_field_validation(self) -> None:
+        settings = {"deepseek": {"apiKey": "test-key", "baseUrl": "https://example.test/v1", "model": "test", "verified": "1"}}
+        plan = self.plan({"id": "resegment", "enabled": True, "providerId": "deepseek", "maxChars": "18"})
+        normalized, errors = validate_plan(plan, env_path=self.env_path, media_path=self.media, llm_settings=settings)
+        self.assertFalse(errors)
+        self.assertEqual(next(s for s in normalized["steps"] if s["id"] == "resegment")["maxChars"], 18)
+        with mock.patch("maw.postprocess_pipeline.run_llm_postprocess", return_value=SubtitleArtifact(self.project, self.srt, self.project, self.srt)) as process:
+            run_postprocess_pipeline(plan, media_path=self.media, project_path=self.project, srt_path=self.srt, env_path=self.env_path, ffmpeg_path=None, cancel_event=Event(), llm_settings=settings)
+        self.assertEqual(process.call_args.args[0].max_chars, 18)
+        plan["steps"][0]["maxChars"] = "-1"
+        _, errors = validate_plan(plan, env_path=self.env_path, media_path=self.media, llm_settings=settings)
+        self.assertEqual(errors[0]["field"], "postprocessResegmentMaxChars")
+
     def test_ai_cleanup_notes_survive_plan_normalization_and_request(self) -> None:
         step = self.match_step()
         step.update(aiCleanup=True, aiCleanupNotes="  保留所有数字  ")

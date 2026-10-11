@@ -2294,6 +2294,19 @@ class GuiWebBridgeTests(CompactContainerAssertions, unittest.TestCase):
         self.assertTrue(request.report)
         self.assertEqual(process.call_args.kwargs["model_id"], "pp-ocrv6-small")
 
+    def test_resegment_bridge_uses_boundary_transport_and_forwards_max_chars(self) -> None:
+        project = self.root / "resegment.mosp"
+        project.write_text(json.dumps({"segments": [{"start": 0, "end": 1000, "text": "介绍方法", "items": [{"start": 0, "end": 400, "text": "介绍"}, {"start": 400, "end": 1000, "text": "方法"}]}]}, ensure_ascii=False), encoding="utf-8")
+        with mock.patch("maw.postprocess_resegment.complete_boundaries", return_value={"draft": "[c0001a0002]"}) as complete:
+            result = self.api.run_llm_postprocess({"projectPath": str(project), "outputMode": "both", "operation": "resegment", "providerId": "deepseek", "apiKey": "test-key", "baseUrl": "https://example.test/v1", "model": "test", "maxChars": "2"})
+        self.assertTrue(result["ok"], result)
+        self.assertEqual([s["text"] for s in json.loads(Path(result["projectPath"]).read_text(encoding="utf-8"))["segments"]], ["介绍", "方法"])
+        self.assertIn("最多 2", complete.call_args.args[1])
+        with mock.patch("maw.gui_web.process_llm_postprocess") as process:
+            invalid = self.api.run_llm_postprocess({"operation": "resegment", "maxChars": "-1"})
+        process.assert_not_called()
+        self.assertEqual(invalid["field"], "postprocessResegmentMaxChars")
+
     def test_llm_bridge_uses_stored_key_without_echoing_it(self) -> None:
         project = self.root / "clip.mosp"
         project.write_text(

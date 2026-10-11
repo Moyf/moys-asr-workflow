@@ -34,6 +34,7 @@ from maw.postprocess import (
     run_llm_postprocess,
 )
 from maw.postprocess_ai_cleanup import AiCleanupRequest, llm_complete, run_ai_cleanup
+from maw.postprocess_resegment import complete_boundaries, normalize_max_chars
 from maw.postprocess_io import _available_output, SubtitleArtifact, read_project, write_artifacts
 from maw.postprocess_llm import (
     DEFAULT_REASONING_MODE,
@@ -98,7 +99,7 @@ def default_postprocess_plan() -> dict[str, object]:
             {"id": "cleanup", "enabled": False, "scriptPath": "", "providerId": "deepseek", "customPrompt": "", "generateComparison": False, "cleanMarkdownSymbols": True},
             {"id": "replace", "enabled": False, "replacements": [], "replacementSeparator": "arrow", "replacementTrim": True, "replacementCustomSeparator": "", "conversion": TextConversion.OFF.value},
             {"id": "proofread", "enabled": False, "providerId": "deepseek", "customPrompt": "", "generateComparison": False},
-            {"id": "resegment", "enabled": False, "providerId": "deepseek", "customPrompt": "", "generateComparison": False},
+            {"id": "resegment", "enabled": False, "providerId": "deepseek", "customPrompt": "", "generateComparison": False, "maxChars": 0},
             {"id": "ocr", "enabled": False, "videoPath": "", "videoPathMode": "", "regionMode": "full", "regionX1": 0, "regionY1": 0, "regionX2": 100, "regionY2": 100, "threshold": 0.5, "report": False},
             {"id": "translate", "enabled": False, "providerId": "deepseek", "target": "zh", "mergeBilingual": False, "embedTranslations": False, "bilingualLineOrder": "", "customPrompt": "", "generateComparison": False},
             {"id": "burn", "enabled": False, "videoEncoder": "auto"},
@@ -152,6 +153,11 @@ def normalize_plan(raw: object) -> dict[str, object]:
                 step[key] = bool(value)
             elif key == "conversion":
                 step[key] = normalize_text_conversion_mode(value).value
+            elif key == "maxChars":
+                try:
+                    step[key] = normalize_max_chars(value)
+                except ValueError:
+                    step[key] = str(value)
             elif key == "target":
                 step[key] = str(value or "zh") if str(value or "zh") in TRANSLATION_TARGETS else "zh"
             elif key == "mergeBilingual":
@@ -398,6 +404,11 @@ def validate_plan(
             provider_error = _llm_provider_error(step, env_path=env_path, llm_settings=llm_settings)
             if provider_error is not None:
                 errors.append(provider_error)
+            if step_id == "resegment":
+                try:
+                    normalize_max_chars(step.get("maxChars"))
+                except ValueError as error:
+                    errors.append({"step": step_id, "field": "postprocessResegmentMaxChars", "message": str(error)})
             if step_id == "cleanup" and str(step.get("scriptPath") or "").strip():
                 path = Path(str(step["scriptPath"])).expanduser()
                 if path.suffix.lower() not in SCRIPT_EXTENSIONS or not path.is_file():
@@ -1109,7 +1120,8 @@ def _run_step(
     )
     def complete(prompt: str, cues: list[dict[str, JsonValue]]) -> Mapping[str, JsonValue]:
         _check_cancel(cancel_event)
-        return complete_subtitle_groups(settings, prompt, cues)
+        completion = complete_boundaries if step_id == "resegment" else complete_subtitle_groups
+        return completion(settings, prompt, cues)
 
     def on_status(key: str, details: Mapping[str, int]) -> None:
         _check_cancel(cancel_event)
@@ -1124,6 +1136,7 @@ def _run_step(
         output_directory=output_directory,
         media_path=media_path,
         bilingual_line_order=str(step.get("bilingualLineOrder") or ""),
+        max_chars=normalize_max_chars(step.get("maxChars")) if step_id == "resegment" else 0,
         generate_comparison=bool(step.get("generateComparison")),
     ), complete=complete, on_status=on_status)
 
