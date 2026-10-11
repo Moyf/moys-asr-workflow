@@ -20,6 +20,10 @@ const cases = [
   { name: 'multiple local ranges with the last scope including terminal punctuation', expected: '我这个', afterFirstRestore: '我我这个', previewTime: 500,
     rows: [['我', 0, 110], ['我这个', 200, 1000], ['呃', 1100, 1800], ['。', 1800, 2000]],
     decision: { removeItemRanges: [['c001:i001'], ['c001:i003', 'c001:i004']], evidence: '我呃。' }, removed: '呃' },
+  { name: 'an independent overlay starting before the retained main cue', expected: '我这个功能',
+    rows: [['啊，', 0, 210], ['我这个功能', 300, 2000]],
+    overlay: { enabled: true, segments: [{ id: 'overlay-001', start: 100, end: 1500, text: '独立叠加' }] },
+    decision: { removeItemIds: ['c001:i001'], evidence: '啊，' }, removed: '啊' },
 ];
 
 for (const fixture of cases) {
@@ -33,6 +37,7 @@ for (const fixture of cases) {
       const decision = join(directory, 'decision.json');
       generateWav(mediaPath, 2);
       writeFileSync(input, JSON.stringify({ media: 'synthetic.wav', waveform: generateWaveformPayload(2000),
+        ...(fixture.overlay ? { overlay_track: fixture.overlay } : {}),
         segments: [{ id: 'main-001', start: 0, end: 2000,
           text: fixture.rows.map(([text]) => text).join(''),
           items: fixture.rows.map(([text, start, end]) => ({ text, start, end })) }] }), 'utf-8');
@@ -87,6 +92,18 @@ print(json.dumps({'path': str(artifact.project_path), 'srt': render_srt(read_pro
       for (const output of [snapshot.ordinary, snapshot.compressed, snapshot.ass]) {
         expect(output).toContain(fixture.expected);
         expect(output).not.toContain(fixture.removed);
+      }
+      if (fixture.overlay) {
+        const aligned = await page.evaluate(() => {
+          MaweSettings.EDITOR_SETTINGS.exportStartAtZero = true;
+          return MaweExportSrt.buildSrt();
+        });
+        writeFileSync(test.info().outputPath('aligned-srt.txt'), aligned);
+        expect(snapshot.ordinary.trim().split(/\n\s*\n/)[0]).toContain('独立叠加');
+        const blocks = aligned.trim().split(/\n\s*\n/);
+        expect(blocks[0]).toContain('00:00:00,000 --> 00:00:01,500');
+        expect(blocks[0]).toContain('独立叠加');
+        expect(blocks[1]).toContain('00:00:00,300 --> 00:00:02,000');
       }
       expect(await page.evaluate(() => MaweProjectSave.saveProjectToServer({ silent: true }))).toBe(true);
       await page.reload();
