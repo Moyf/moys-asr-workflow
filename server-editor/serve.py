@@ -2433,7 +2433,7 @@ class EditorRequestHandler(BaseHTTPRequestHandler):
                 project_path = self.editor_server.project.json_path
                 if project_path is None:
                     raise ValueError("当前没有已保存的工程可重新加载")
-                project = self.editor_server.open_project_path(str(project_path), tolerate_missing_media=True)
+                project = self.editor_server.open_project_path(str(project_path))
                 self.send_json(HTTPStatus.OK, {
                     **self.editor_server.desktop_project_status(),
                     "ok": True,

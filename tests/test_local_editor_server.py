@@ -1153,6 +1153,53 @@ class LocalEditorServerTests(CompactContainerAssertions, unittest.TestCase):
                 server.shutdown()
                 thread.join(timeout=2)
 
+    def test_desktop_reload_command_reads_disk_and_preserves_missing_media(self) -> None:
+        reload_path = self.root / "reload" / "project.mosp"
+        reload_path.parent.mkdir()
+        reload_path.write_text(self.project_path.read_text(encoding="utf-8"), encoding="utf-8")
+        project = server_editor.load_project(
+            reload_path, None, str(self.stickers), no_waveform=True, peaks_per_second=100,
+        )
+        missing_media = self.root / "moved" / "gone.wav"
+        disk_data = {
+            "media": str(missing_media),
+            "segments": [{"start": 0, "end": 1000, "text": "外部更新的字幕"}],
+        }
+        reload_path.write_text(json.dumps(disk_data), encoding="utf-8")
+        disk_bytes = reload_path.read_bytes()
+        with server_editor.EditorServer(
+            ("127.0.0.1", 0), project, no_waveform=True, defer_reapeaks=False,
+            desktop_mode=True, desktop_token="desktop-secret",
+            desktop_command_key="command-secret",
+        ) as server:
+            thread = threading.Thread(target=server.serve_forever, daemon=True)
+            thread.start()
+            message = urllib.request.Request(
+                f"http://127.0.0.1:{server.server_address[1]}/api/desktop/command",
+                data=json.dumps({"command": "reloadProject"}).encode("utf-8"),
+                headers={
+                    "Content-Type": "application/json",
+                    "X-MAW-Desktop-Token": "desktop-secret",
+                    "X-MAW-Desktop-Command-Key": "command-secret",
+                },
+                method="POST",
+            )
+            try:
+                with urllib.request.urlopen(message, timeout=3) as response:
+                    self.assertEqual(response.status, 200)
+                    result = json.loads(response.read())
+                self.assertTrue(result["ok"])
+                self.assertEqual(result["generation"], 1)
+                self.assertEqual(result["revision"], server_editor.file_revision(reload_path))
+                self.assertEqual(server.project.json_path, reload_path.resolve())
+                self.assertEqual(server.project.data["segments"][0]["text"], "外部更新的字幕")
+                self.assertFalse(result["mediaAvailable"])
+                self.assertIn("媒体", result["mediaError"])
+                self.assertEqual(reload_path.read_bytes(), disk_bytes)
+            finally:
+                server.shutdown()
+                thread.join(timeout=2)
+
     def test_desktop_location_uses_bound_paths_and_creates_only_project_backup_folder(self) -> None:
         project = server_editor.load_project(
             self.project_path, None, str(self.stickers), no_waveform=True, peaks_per_second=100,
