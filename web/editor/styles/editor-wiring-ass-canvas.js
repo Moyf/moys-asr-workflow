@@ -225,6 +225,7 @@
       quantize(style.outlineOpacity ?? 100), style.backColor, quantize(style.backOpacity ?? 100),
       quantize(style.shadow), Math.round(Number(style.borderStyle) || 1),
       style.primaryColor, style.emphasisColor, style.emphasisStyle || 'text',
+      style.commentColor, style.commentStyle || 'text', style.commentScale,
       Boolean(style.underline), Boolean(style.strikeOut),
       style.smallTextScale, style.largeTextScale, style.emphasisScale,
     ]);

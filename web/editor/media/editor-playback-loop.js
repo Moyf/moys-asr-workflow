@@ -195,8 +195,8 @@ MaweCueListAnchor.scrollCueIntoViewIfNeeded(MaweCueListAnchor.playbackCueListEle
     MaweDom.overlayMainSpeakerLabelEl.style.color = speakerLabelColor;
   }
   if (!assMode && MaweDom.overlayMainTextNode.nodeValue !== mainText) MaweDom.overlayMainTextNode.nodeValue = mainText;
-  if (!assMode && extensionVisible && MaweDom.overlayExtensionTextEl.textContent !== extensionText) {
-    MaweDom.overlayExtensionTextEl.textContent = extensionText;
+  if (!assMode && MaweDom.overlayExtensionTextNode.nodeValue !== extensionText) {
+    MaweDom.overlayExtensionTextNode.nodeValue = extensionText;
   }
   if (assMode) {
     applyAssSubtitlePreview({
@@ -211,7 +211,29 @@ MaweCueListAnchor.scrollCueIntoViewIfNeeded(MaweCueListAnchor.playbackCueListEle
   } else if (MaweDom.overlayEl.dataset.assMode === 'true') {
     restoreCssSubtitlePreview();
     MaweDom.overlayMainTextNode.nodeValue = mainText;
-    MaweDom.overlayExtensionTextEl.textContent = extensionText;
+    MaweDom.overlayExtensionTextNode.nodeValue = extensionText;
+  }
+  // 副字幕与主/叠加轨共用前缀开关，颜色引用在副字幕自己的数组中解析。
+  const extensionColorContext = MaweMultiSubtitleCore.getActiveExtensionTrack()?.segments || [];
+  const extensionColorName = extensionVisible
+    ? MULTI_SUBTITLE_UTILS.effectiveColorName(extension, extensionColorContext) : null;
+  const extensionSpeakerLabel = extensionVisible && speakerLabels.mapping_enabled && speakerLabels.enabled
+    ? window.AsrEditorUtils.speakerLabelForSegment(extension, extensionColorContext, speakerLabels.names) : '';
+  const extensionSpeakerVisible = Boolean(extensionSpeakerLabel && MaweColors.COLOR_BY_NAME[extensionColorName]);
+  const extensionSpeakerText = extensionSpeakerVisible ? `${extensionSpeakerLabel}${speakerLabels.separator}` : '';
+  const extensionSpeakerColor = extensionSpeakerVisible
+    ? colorPreviewEnabled && colorStyle === 'stroke'
+      ? MaweAppearance.getExtensionSubtitleAppearance().color || MaweSettings.DEFAULT_EXTENSION_SUBTITLE_COLOR
+      : MaweColors.COLOR_BY_NAME[extensionColorName].value
+    : '';
+  const extensionLabelEl = MaweDom.overlayExtensionSpeakerLabelEl;
+  if (extensionLabelEl.classList.contains('hidden') === extensionSpeakerVisible) {
+    extensionLabelEl.classList.toggle('hidden', !extensionSpeakerVisible);
+  }
+  if (extensionLabelEl.textContent !== extensionSpeakerText) extensionLabelEl.textContent = extensionSpeakerText;
+  if (extensionLabelEl.dataset.color !== extensionSpeakerColor) {
+    extensionLabelEl.dataset.color = extensionSpeakerColor;
+    extensionLabelEl.style.color = extensionSpeakerColor;
   }
   const overlayCueText = overlayCueVisible ? String(overlayCue.text || '') : '';
   window.MaweAssFrame?.syncPreview();
