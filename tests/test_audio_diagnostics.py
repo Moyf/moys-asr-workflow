@@ -53,14 +53,59 @@ class AudioDiagnosticsTests(unittest.TestCase):
             self.assertIn('speech/noise not determined', str(error))
 
     def test_all_quiet_and_unchecked_tracks_do_not_claim_whole_recording_silence(self):
-        error, measure = self.diagnose([{'audio_index': i} for i in range(7)], [-float('inf'), -70, None, -80])
+        error, measure = self.diagnose([{'audio_index': i} for i in range(7)], [-float('inf'), -70, None, -80, -90, -90, -90])
         self.assertEqual(error.code, 'asr_audio_quiet')
-        self.assertEqual(measure.call_count, 4)
-        self.assertIn('checked first up to 60s', str(error))
+        self.assertEqual(measure.call_count, 7)
+        self.assertIn('incomplete audio_indices=[2]', str(error))
 
-    def test_analysis_respects_short_test_run_and_caps_long_recordings(self):
-        for value, expected in (('2m', 60), ('0.5m', 30), ('5s', 5), ('1h', 60), ('', 60), ('..s', 60)):
+    def test_all_tracks_quiet_requires_complete_evidence_for_every_track(self):
+        error, measure = self.diagnose([{'audio_index': i} for i in range(3)], [-float('inf'), -70, -80])
+        self.assertEqual(error.code, 'asr_audio_all_quiet')
+        self.assertEqual(measure.call_count, 3)
+        error, _ = self.diagnose([{'audio_index': i} for i in range(2)], [-80, -50])
+        self.assertEqual(error.code, 'asr_audio_quiet')
+
+    def test_stronger_fifth_track_is_not_skipped_by_a_fixed_track_count(self):
+        error, measure = self.diagnose([{'audio_index': i} for i in range(5)], [-90, -90, -90, -90, -20])
+        self.assertEqual(error.code, 'asr_audio_track_mismatch')
+        self.assertEqual(measure.call_args_list[-1].args[1], 4)
+
+    def test_analysis_respects_the_entire_processed_range(self):
+        for value, expected in (('2m', 120), ('0.5m', 30), ('5s', 5), ('1h', 3600), ('', None), ('..s', None)):
             self.assertEqual(_analysis_seconds(value), expected)
+
+    def test_long_recording_uses_only_three_short_seeked_windows(self):
+        tracks = [{'audio_index': 0, 'media_duration_seconds': 7200}, {'audio_index': 1}]
+        error, measure = self.diagnose(tracks, [-90, -90, -90])
+        self.assertEqual(error.code, 'asr_audio_sample_quiet')
+        self.assertEqual([call.kwargs['start_seconds'] for call in measure.call_args_list], [0, 3598.5, 7197])
+        self.assertTrue(all(call.args[3] == 3 and call.args[1] == 0 for call in measure.call_args_list))
+        self.assertIn('other tracks not checked', str(error))
+
+    def test_sampled_signal_or_incomplete_samples_are_not_called_quiet(self):
+        for peaks in ([-90, -20], [-90, None]):
+            error, measure = self.diagnose([{'audio_index': 0, 'media_duration_seconds': 7200}], peaks)
+            self.assertEqual(error.code, 'asr_empty_result')
+            self.assertEqual(measure.call_count, 2)
+
+    def test_test_run_uses_its_range_even_when_source_is_two_hours(self):
+        error, measure = self.diagnose([{'audio_index': 0, 'media_duration_seconds': 7200}], [-20], length_limit='2m')
+        self.assertEqual(error.code, 'asr_empty_result')
+        self.assertEqual(measure.call_args.args[3], 120)
+        self.assertEqual(measure.call_args.kwargs, {})
+
+    def test_exhausted_total_budget_does_not_launch_more_tracks(self):
+        now = [0]
+
+        def finish_after_budget(*args, **kwargs):
+            now[0] = 7
+            return -90
+
+        with mock.patch('maw.audio_diagnostics.time.monotonic', side_effect=lambda: now[0]):
+            error, measure = self.diagnose([{'audio_index': i} for i in range(3)], finish_after_budget)
+        self.assertEqual(measure.call_count, 1)
+        self.assertEqual(error.code, 'asr_audio_quiet')
+        self.assertIn('incomplete audio_indices=[1, 2]', str(error))
 
     def test_cancelled_check_does_not_launch_tools(self):
         cancel = threading.Event()
@@ -79,6 +124,9 @@ class AudioDiagnosticsTests(unittest.TestCase):
         self.assertTrue(is_audio_mapping_error(["Stream map '0:a:0' matches no streams."]))
         self.assertTrue(is_audio_mapping_error(["subprocess.CalledProcessError: Command ['ffmpeg', '-map', '0:a:0'] returned non-zero exit status 1."]))
         self.assertFalse(is_audio_mapping_error(['HTTP 401']))
+        self.assertFalse(is_audio_mapping_error(["Stream map '0:a:0' matches no streams.", 'RuntimeError: HTTP 401']))
+        self.assertFalse(is_audio_mapping_error(["RuntimeError: quoted Stream map '0:a:0' matches no streams."]))
+        self.assertFalse(is_empty_transcription_error(['RuntimeError: unrelated error quoting RuntimeError: ASR 返回内容为空，未生成字幕段。']))
 
     def test_signal_timeout_or_cancel_terminates_owned_process(self):
         process = mock.Mock()
@@ -108,6 +156,21 @@ class AudioDiagnosticsTests(unittest.TestCase):
                     mock.patch('maw.audio_diagnostics.release_process_tree'):
                 import time
                 self.assertIsNone(_measure_peak(Path('clip.mkv'), 0, Path('ffmpeg'), 60, time.monotonic() + 20, None))
+
+    def test_long_scan_has_a_three_second_deadline_and_discards_partial_statistics(self):
+        process = mock.Mock()
+        process.poll.return_value = None
+        process.communicate.side_effect = subprocess.TimeoutExpired('ffmpeg', 0.1, stderr=b'Peak level dB: -inf\nNumber of samples: 20')
+        with mock.patch('maw.audio_diagnostics.time.monotonic', side_effect=[0, 0, 0, 3.1]), \
+                mock.patch('maw.audio_diagnostics.popen_process_tree', return_value=process) as popen, \
+                mock.patch('maw.audio_diagnostics.terminate_process_tree') as terminate, \
+                mock.patch('maw.audio_diagnostics.release_process_tree'):
+            self.assertIsNone(_measure_peak(Path('clip.mkv'), 0, Path('ffmpeg'), None, 6, None))
+        terminate.assert_called_once_with(process, timeout=1)
+        command = popen.call_args.args[0]
+        self.assertNotIn('-t', command)
+        self.assertIn('-xerror', command)
+        self.assertEqual(command[command.index('-threads') + 1], '1')
 
 
 @unittest.skipUnless(os.environ.get('MAW_TEST_AUDIO_FFMPEG') == '1', 'Set MAW_TEST_AUDIO_FFMPEG=1 for real FFmpeg fixtures')
@@ -155,3 +218,24 @@ class AudioDiagnosticsFfmpegTests(unittest.TestCase):
                                '-t', '1', '-c:a', 'pcm_s16le')
         self.assertEqual(diagnose_empty_audio(source, 0, length_limit='0.2s').code, 'asr_audio_quiet')
         self.assertEqual(diagnose_empty_audio(source, 0).code, 'asr_empty_result')
+
+    def test_long_silent_intro_with_later_signal_is_not_a_track_mismatch(self):
+        source = self.generate('long-intro.mkv', '-f', 'lavfi', '-i',
+                               r'aevalsrc=if(lt(t\,70)\,0\,sin(440*2*PI*t)):s=16000',
+                               '-f', 'lavfi', '-i', 'sine=frequency=880:sample_rate=16000',
+                               '-map', '0:a', '-map', '1:a', '-t', '72', '-c:a', 'pcm_s16le')
+        self.assertEqual(diagnose_empty_audio(source, 0).code, 'asr_empty_result')
+        self.assertEqual(diagnose_empty_audio(source, 0, length_limit='2m').code, 'asr_empty_result')
+        self.assertEqual(diagnose_empty_audio(source, 0, length_limit='1m').code, 'asr_audio_track_mismatch')
+
+    def test_all_silent_tracks_and_game_like_signal_have_different_guidance(self):
+        silent = self.generate('all-silent.mkv', '-f', 'lavfi', '-i', 'anullsrc=r=16000:cl=mono',
+                               '-map', '0:a', '-map', '0:a', '-map', '0:a', '-t', '1', '-c:a', 'pcm_s16le')
+        self.assertEqual(diagnose_empty_audio(silent, 0).code, 'asr_audio_all_quiet')
+        # A non-speech tone represents an audible game/system track: never claim speech.
+        game = self.generate('game-only.mkv', '-f', 'lavfi', '-i', 'sine=frequency=880:sample_rate=16000',
+                             '-map', '0:a', '-map', '0:a', '-t', '1', '-c:a', 'pcm_s16le')
+        for index in (0, 1):
+            error = diagnose_empty_audio(game, index)
+            self.assertEqual(error.code, 'asr_empty_result')
+            self.assertIn('speech/noise not determined', str(error))

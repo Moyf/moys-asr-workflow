@@ -129,6 +129,16 @@ class EmptyTranscriptionTests(unittest.TestCase):
             run_transcription(self.request)
         self.diagnose.assert_not_called()
 
+    def test_earlier_mapping_failure_does_not_override_the_final_api_failure(self):
+        self.process.returncode = 1
+        def stream(process, forward, cancel):
+            forward("Stream map '0:a:0' matches no streams.")
+            forward('RuntimeError: HTTP 401')
+        self.stream.side_effect = stream
+        with self.assertRaises(TranscriptionProcessError):
+            run_transcription(self.request)
+        self.diagnose.assert_not_called()
+
     def test_known_missing_track_from_ffmpeg_is_classified_but_probe_failure_is_not(self):
         from maw.audio_diagnostics import AudioInputError
         self.process.returncode = 1

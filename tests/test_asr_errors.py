@@ -45,7 +45,7 @@ class AsrErrorClassificationTests(unittest.TestCase):
         from maw.audio_diagnostics import AudioInputError
         for provider in ('qwen', 'openai', 'local'):
             for code in ('audio_tracks_missing', 'audio_track_invalid', 'asr_audio_quiet',
-                         'asr_audio_track_mismatch', 'asr_empty_result'):
+                         'asr_audio_all_quiet', 'asr_audio_sample_quiet', 'asr_audio_track_mismatch', 'asr_empty_result'):
                 self.assertEqual(asr_error_code(AudioInputError(code, 'HTTP 401 is an old log line'), provider=provider), code)
 
     def test_explicit_http_responses_are_classified(self):

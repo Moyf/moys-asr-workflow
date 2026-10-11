@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 import struct
 import tempfile
 import unittest
@@ -216,6 +217,29 @@ class MediaResolutionTests(unittest.TestCase):
             with mock.patch("maw.media.subprocess.run") as process:
                 self.assertIsNone(probe_audio_tracks(media))
         process.assert_not_called()
+
+    def test_audio_diagnostics_can_request_duration_with_a_short_probe_timeout(self) -> None:
+        media = self.root / 'take.mkv'
+        media.write_bytes(b'video')
+        for value, expected in (('7200', 7200), ('N/A', None), ('nan', None), ('-1', None)):
+            completed = mock.Mock(stdout=json.dumps({'streams': [{'index': 1}], 'format': {'duration': value}}))
+            with mock.patch('maw.media.find_ffprobe', return_value=Path('ffprobe')), \
+                    mock.patch('maw.media.subprocess.run', return_value=completed) as process:
+                tracks = probe_audio_tracks(media, timeout=2, include_duration=True)
+            self.assertEqual(tracks[0].get('media_duration_seconds'), expected)
+            self.assertEqual(process.call_args.kwargs['timeout'], 2)
+            command = process.call_args.args[0]
+            self.assertIn(':format=duration', command[command.index('-show_entries') + 1])
+
+    def test_malformed_audio_streams_are_inconclusive_not_missing_or_renumbered(self) -> None:
+        media = self.root / 'take.mkv'
+        media.write_bytes(b'video')
+        for streams in ([{}], [None], [{'index': 1}, {}], []):
+            completed = mock.Mock(stdout=json.dumps({'streams': streams}))
+            with mock.patch('maw.media.find_ffprobe', return_value=Path('ffprobe')), \
+                    mock.patch('maw.media.subprocess.run', return_value=completed):
+                result = probe_audio_tracks(media)
+            self.assertEqual(result, None if streams else [])
 
     def test_video_fps_probe_is_best_effort_when_tool_or_rate_is_unavailable(self) -> None:
         media = self.root / "take.mp4"

@@ -194,6 +194,8 @@ def probe_audio_tracks(
     path: Path | str,
     *,
     ffprobe_path: str | os.PathLike[str] | None = None,
+    timeout: float = 10,
+    include_duration: bool = False,
 ) -> list[dict[str, Any]] | None:
     """Read the source media's audio streams as optional project metadata.
 
@@ -202,6 +204,9 @@ def probe_audio_tracks(
     successful probe with no audio streams returns an empty list; an absent
     FFprobe executable or any probe failure returns ``None`` so metadata
     enrichment never blocks project generation.
+
+    Diagnostics may shorten ``timeout`` and request the container duration;
+    default callers retain the existing track schema and timeout.
     """
 
     source = Path(path).expanduser()
@@ -220,7 +225,8 @@ def probe_audio_tracks(
         str(executable), "-v", "error",
         "-select_streams", "a",
         "-show_entries",
-        "stream=index,codec_name,channels,sample_rate:stream_tags=language,title,name,handler_name:stream_disposition=default",
+        "stream=index,codec_name,channels,sample_rate:stream_tags=language,title,name,handler_name:stream_disposition=default"
+        + (":format=duration" if include_duration else ""),
         "-of", "json", str(source),
     ]
     try:
@@ -231,7 +237,7 @@ def probe_audio_tracks(
             encoding="utf-8",
             errors="replace",
             check=True,
-            timeout=10,
+            timeout=timeout,
         )
         payload = json.loads(result.stdout or "")
     except (OSError, subprocess.SubprocessError, TypeError, ValueError):
@@ -241,12 +247,22 @@ def probe_audio_tracks(
     if not isinstance(streams, list):
         return None
     tracks: list[dict[str, Any]] = []
+    duration = None
+    if include_duration and isinstance(payload.get("format"), Mapping):
+        try:
+            value = float(payload["format"].get("duration"))
+            if math.isfinite(value) and value > 0:
+                duration = value
+        except (TypeError, ValueError, OverflowError):
+            pass
     for stream in streams:
         if not isinstance(stream, Mapping):
-            continue
+            return None
         stream_index = _parse_probe_integer(stream.get("index"))
         if stream_index is None:
-            continue
+            # Malformed metadata is not proof that audio is absent. Skipping a
+            # stream would also shift later audio_index values and map wrongly.
+            return None
         tags = stream.get("tags") if isinstance(stream.get("tags"), Mapping) else {}
         disposition = stream.get("disposition") if isinstance(stream.get("disposition"), Mapping) else {}
         channels = _parse_probe_integer(stream.get("channels"), minimum=1)
@@ -262,6 +278,8 @@ def probe_audio_tracks(
             "title": _first_nonempty_tag(tags, "title", "name", "handler_name"),
             "default": default_value == 1,
         })
+        if duration is not None:
+            tracks[-1]["media_duration_seconds"] = duration
     return tracks
 
 

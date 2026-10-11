@@ -20,7 +20,9 @@ for (const language of ['zh', 'en']) {
     await openLauncher(page, language);
     const cases = [
       ['audio_tracks_missing', language === 'zh' ? '没有检测到音轨' : 'No audio tracks'],
-      ['asr_audio_quiet', language === 'zh' ? '检查片段' : 'checked interval'],
+      ['asr_audio_quiet', language === 'zh' ? '本次处理范围' : 'processed range'],
+      ['asr_audio_all_quiet', language === 'zh' ? '换轨可能无法解决' : 'switching tracks may not help'],
+      ['asr_audio_sample_quiet', language === 'zh' ? '未覆盖全轨' : 'do not cover the entire track'],
       ['asr_audio_track_mismatch', language === 'zh' ? '另有音轨' : 'another track'],
       ['asr_empty_result', language === 'zh' ? '本地检查无法确认' : 'cannot determine'],
     ];
@@ -32,14 +34,16 @@ for (const language of ['zh', 'en']) {
       await expect(page.locator('#log')).toContainText('audio_index=1 peak_dBFS=-20');
       await expect(page.locator('#errorNoticeAction')).toHaveText(language === 'zh' ? '检查音轨' : 'Check audio track');
       if (code === 'asr_audio_track_mismatch') {
-        await expect(page.locator('#errorNoticeMessage')).toContainText('60');
+        await expect(page.locator('#errorNoticeMessage')).toContainText(language === 'zh' ? '只有游戏声' : 'only game audio');
+      }
+      if (['asr_audio_track_mismatch', 'asr_audio_all_quiet', 'asr_audio_sample_quiet'].includes(code)) {
         const gap = await page.evaluate(() => {
           const message = document.querySelector('#errorNoticeMessage').getBoundingClientRect();
           const actions = document.querySelector('#errorNoticeAction').parentElement.getBoundingClientRect();
           return actions.top - message.bottom;
         });
         expect(gap).toBeGreaterThanOrEqual(8);
-        await page.locator('#errorNotice').screenshot({ path: testInfo.outputPath('audio-track-' + language + '.png') });
+        await page.locator('#errorNotice').screenshot({ path: testInfo.outputPath(code + '-' + language + '.png') });
       }
     }
     // Without a visible selector the action goes to the source file field.
