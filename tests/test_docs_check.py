@@ -178,6 +178,14 @@ class DocumentationCheckTests(CompactContainerAssertions, unittest.TestCase):
             self.assertEqual(checker.scan(texts, paths), [])
             self.assertEqual(subprocess.check_output(["git", "status", "--porcelain"], cwd=root), status)
 
+    def test_topic_ids_detect_duplicates_after_html_entity_decoding(self):
+        texts = {
+            "AGENTS.md": "", "docs/README.md": '<a name="doc-policy"></a>',
+            "docs/INDEX.md": '<a name="topic"></a>\n<a id="to&#112;ic"></a>',
+            "docs/logs/INDEX.md": "", "docs/logs/CURRENT.md": "",
+        }
+        self.assertEqual(checker.structure(texts, set(texts)), ["duplicate topic ID: topic"])
+
     def test_strict_mode_fails_on_registered_historical_links_only(self):
         """用法：`python scripts/check_docs.py --strict`。
 

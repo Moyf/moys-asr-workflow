@@ -213,7 +213,7 @@ def structure(texts: dict[str, str], paths: set[str]) -> list[str]:
             errors.append(f"missing entry: {required}")
     if "doc-policy" not in anchors(texts.get("docs/README.md", "")):
         errors.append("docs/README.md needs the stable doc-policy anchor")
-    ids = EXPLICIT_ID.findall(visible_text(texts.get("docs/INDEX.md", "")))
+    ids = [html.unescape(value) for value in EXPLICIT_ID.findall(visible_text(texts.get("docs/INDEX.md", "")))]
     for topic, count in Counter(ids).items():
         if count > 1:
             errors.append(f"duplicate topic ID: {topic}")
