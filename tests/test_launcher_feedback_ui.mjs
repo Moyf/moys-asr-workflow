@@ -8,6 +8,11 @@ const html = readFileSync(new URL("index.html", launcherDir), "utf8");
 const source = readFileSync(new URL("postprocess.js", launcherDir), "utf8");
 const strings = readFileSync(new URL("i18n/launcher-strings.js", launcherDir), "utf8");
 
+test("the running-server editor action keeps its icon in both languages", () => {
+  assert.match(strings, /open_editor:\s*"🎬 打开编辑器"/);
+  assert.match(strings, /open_editor:\s*"🎬 Open editor"/);
+});
+
 test("AI processing exposes current-operation cancel and streamed output", () => {
   assert.match(source, /bridge\("run_ai_cleanup",\s*\{[\s\S]*?operationId,/);
   assert.match(source, /bridge\("run_llm_postprocess",\s*\{[\s\S]*?operationId,/);

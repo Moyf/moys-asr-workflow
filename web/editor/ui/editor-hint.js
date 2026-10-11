@@ -34,6 +34,70 @@
   }
 
 
+  const inlineWarningMessages = new WeakMap();
+  const inlineWarningSelector = [
+    '[role="alert"]', '.warning', '.ass-frame-warnings',
+    '#multi-subtitle-split-error', '#timed-text-edit-single-hint:not([hidden])',
+  ].join(', ');
+
+  function revealInlineWarning(element, message = element?.textContent) {
+    if (!element) return;
+    const value = String(message || '').trim();
+    if (!value) {
+      inlineWarningMessages.delete(element);
+      return;
+    }
+    if (!element.isConnected || element.hidden || !element.getClientRects().length) return;
+    if (inlineWarningMessages.get(element) === value) return;
+    const rect = element.getBoundingClientRect();
+    let visibleTop = Math.max(0, rect.top);
+    let visibleBottom = Math.min(global.innerHeight || 0, rect.bottom);
+    for (let parent = element.parentElement; parent && parent !== document.body; parent = parent.parentElement) {
+      const style = global.getComputedStyle(parent);
+      if (!/(auto|scroll|hidden|clip)/.test(style.overflowY)) continue;
+      const clip = parent.getBoundingClientRect();
+      visibleTop = Math.max(visibleTop, clip.top);
+      visibleBottom = Math.min(visibleBottom, clip.bottom);
+    }
+    if (visibleTop <= rect.top + 1 && visibleBottom >= rect.bottom - 1) {
+      inlineWarningMessages.set(element, value);
+      return;
+    }
+    inlineWarningMessages.set(element, value);
+    const reducedMotion = global.matchMedia?.('(prefers-reduced-motion: reduce)').matches;
+    element.scrollIntoView({ behavior: reducedMotion ? 'auto' : 'smooth', block: 'center', inline: 'nearest' });
+  }
+
+  function installInlineWarningVisibility() {
+    if (!document.body || typeof global.MutationObserver !== 'function') return;
+    const revealFrom = (node) => {
+      const root = node?.nodeType === 1 ? node : node?.parentElement;
+      if (!root) return;
+      const candidates = new Set();
+      if (root.matches?.(inlineWarningSelector)) candidates.add(root);
+      root.closest?.(inlineWarningSelector) && candidates.add(root.closest(inlineWarningSelector));
+      root.querySelectorAll?.(inlineWarningSelector).forEach((element) => candidates.add(element));
+      candidates.forEach((element) => revealInlineWarning(element));
+    };
+    const observer = new global.MutationObserver((records) => {
+      records.forEach((record) => {
+        revealFrom(record.target);
+        record.addedNodes?.forEach(revealFrom);
+      });
+    });
+    observer.observe(document.body, {
+      subtree: true,
+      childList: true,
+      characterData: true,
+      attributes: true,
+      attributeFilter: ['class', 'hidden', 'role'],
+    });
+    revealFrom(document.body);
+  }
+
+  installInlineWarningVisibility();
+
+
 
   function flashHint(msg, type = 'default', options = {}) {
     let stack = document.getElementById('hint-stack');
@@ -78,6 +142,7 @@
     dismissHintCard,
     applyHintPosition,
     flashHint,
+    revealInlineWarning,
     get lastScaleLimitMsg() { return lastScaleLimitMsg; },
     set lastScaleLimitMsg(v) { lastScaleLimitMsg = v; },
     get lastScaleLimitAt() { return lastScaleLimitAt; },
