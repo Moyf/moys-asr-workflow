@@ -10,8 +10,20 @@
   // 程序内开关（不暴露 GUI）：导出 SRT 时保留禁用项的时间轴序号但内容替换为空白
   let EXPORT_KEEP_DISABLED_PLACEHOLDER = false;
 
+  function cleanupMainSegments() {
+    return window.AsrGapRemoveCore.projectCleanupRetainedSegments(MaweBoot.DATA.segments, MaweBoot.DATA.gap_remove);
+  }
+
+  function cleanupMergedExportSegments() {
+    const merged = mergedExportSegments();
+    const main = cleanupMainSegments();
+    const projection = new Map(MaweBoot.DATA.segments.map((segment, index) => [segment, main[index]]));
+    return { ...merged, segments: merged.segments.map((segment) => projection.get(segment) || segment)
+      .sort((left, right) => left.start - right.start) };
+  }
+
   function buildSrt() {
-  const { segments, overlaySet, overlaySegments } = mergedExportSegments();
+  const { segments, overlaySet, overlaySegments } = cleanupMergedExportSegments();
   const firstEnabledIndex = window.AsrEditorUtils.getSrtExportFirstIndex(
     segments,
     MaweSettings.EDITOR_SETTINGS.exportStartAtZero,
@@ -47,7 +59,7 @@
     MaweHint.flashHint('没有已移除的静音空隙；请先在「静音空隙」中扫描', 'invalid');
     return;
   }
-  const { segments, overlaySet, overlaySegments } = mergedExportSegments();
+  const { segments, overlaySet, overlaySegments } = cleanupMergedExportSegments();
   const firstEnabledIndex = window.AsrEditorUtils.getSrtExportFirstIndex(
     segments,
     MaweSettings.EDITOR_SETTINGS.exportStartAtZero,
@@ -122,7 +134,8 @@
 
   function buildDynamicCaptionExportData(segments, gapRemoved) {
     const colorContext = Array.isArray(segments) ? segments : [];
-    const source = colorContext.map((segment) => ({
+    const projected = segments === MaweBoot.DATA.segments ? cleanupMainSegments() : colorContext;
+    const source = projected.map((segment) => ({
       ...segment,
       text: MaweSpeakerLabels.subtitleExportText(segment, colorContext),
     }));
@@ -239,7 +252,7 @@
     const settings = MaweSpeakerLabels.getSpeakerLabelSettings();
     speakerOptions.speakerLabelsEnabled = settings.mapping_enabled && settings.enabled;
   }
-  const { overlaySegments } = mergedExportSegments();
+  const { overlaySegments } = cleanupMergedExportSegments();
   // 副字幕轨随 ASS 导出（多重字幕开启时才存在）；叠加轨与副字幕分层输出。
   const extensionSegments = preview && !MaweDom.extensionOverlayToggle?.checked
     ? [] : activeExtensionSegments();
@@ -248,7 +261,7 @@
     MaweSettings.EDITOR_SETTINGS.exportStartAtZero,
   );
   return window.AsrEditorUtils.buildAssPayload(preview && !MaweDom.overlayToggle.checked
-    ? [] : MaweBoot.DATA.segments, {
+    ? [] : cleanupMainSegments(), {
     ...assExportOptions(),
     onAssPlan,
     allowAssPlanDiagnostics,
@@ -275,7 +288,7 @@
 
   function buildBilingualSrt() {
     if (MaweMultiSubtitleCore.getMultiSubtitleState().enabled !== true) return '';
-    const { segments, overlaySet, overlaySegments } = mergedExportSegments();
+    const { segments, overlaySet, overlaySegments } = cleanupMergedExportSegments();
     return window.AsrEditorUtils.buildBilingualSrtPayload(segments,
       MaweMultiSubtitleCore.getActiveExtensionTrack()?.segments || [], {
         alignFirstStart: MaweSettings.EDITOR_SETTINGS.exportStartAtZero,
@@ -294,7 +307,7 @@
     MaweHint.flashHint('没有已移除的静音空隙；请先在「静音空隙」中扫描', 'invalid');
     return null;
   }
-  const { segments, overlaySet, overlaySegments } = mergedExportSegments();
+  const { segments, overlaySet, overlaySegments } = cleanupMergedExportSegments();
   const firstEnabledIndex = window.AsrEditorUtils.getSrtExportFirstIndex(
     segments,
     MaweSettings.EDITOR_SETTINGS.exportStartAtZero,
@@ -325,9 +338,9 @@
   );
   // 去空隙 ASS 与常规 ASS 同一三轨契约：叠加轨与副字幕也随导出，
   // 时间统一经 mapGapRemovedTime 压缩。
-  const { overlaySegments } = mergedExportSegments();
+  const { overlaySegments } = cleanupMergedExportSegments();
   const extensionSegments = activeExtensionSegments();
-  return window.AsrEditorUtils.buildAssPayload(MaweBoot.DATA.segments, {
+  return window.AsrEditorUtils.buildAssPayload(cleanupMainSegments(), {
     ...assExportOptions(),
     alignFirstStart: MaweSettings.EDITOR_SETTINGS.exportStartAtZero,
     firstEnabledIndex,
@@ -341,7 +354,7 @@
 
 
   function usedSubtitleColors() {
-  const { segments, overlaySet, overlaySegments } = mergedExportSegments();
+  const { segments, overlaySet, overlaySegments } = cleanupMergedExportSegments();
   const resolveColor = exportColorContextResolver(overlaySet, overlaySegments);
   const names = new Set(segments.filter((segment) => !segment.disabled).map((segment) => (
     window.AsrEditorUtils.effectiveColorName(segment, resolveColor(segment)) || 'default'
@@ -399,6 +412,7 @@
   }
 
   global.MaweExportSrt = Object.freeze({
+    cleanupMainSegments,
     currentAssVideoResolution,
     assExportOptions,
     buildAss,

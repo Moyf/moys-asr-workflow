@@ -157,6 +157,10 @@ def render_srt(project: JsonDict) -> str:
     main_segments = project.get("segments")
     if not isinstance(main_segments, list):
         return ""
+    # Source segments remain reversible. Only trustworthy, still-active local
+    # AI scopes hide words in this export projection.
+    from maw.script_alignment import project_cleanup_retained_segments
+    main_segments = project_cleanup_retained_segments(main_segments, project.get("gap_remove"))
     blocks: list[str] = []
     for output_index, segment in enumerate(_srt_segments(project, main_segments), 1):
         if not isinstance(segment, dict):
