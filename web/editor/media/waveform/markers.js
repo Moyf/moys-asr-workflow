@@ -1,7 +1,8 @@
 // waveform-markers: 每个可见波形行顶部的通用 Marker / Region 轨道。
 // 轨道与字幕块、静音空隙的手势完全分离：空点按 = 添加单点 Marker，
 // 横向拖动 = 拖出 Region，拖旗标/条身 = 移动，拖条身两端 = 调整边界。
-// 跨行拖动按指针当前所在行换算时间，并支持视口边缘自动滚动；预览裁剪到可见行。
+// 移动和调整边界沿用字幕的横向位移换算，可越过起始行边缘；创建区段
+// 按指针所在行换算，支持视口边缘自动滚动。预览裁剪到可见行。
 // 数据变更不在这里发生：拖动只更新 DOM 预览，提交经 options 回调进入
 // MaweMarkerEditing（撤销/重做与保存状态统一在那一层处理）。
 export function createWaveformModule(dependencies) {
@@ -398,6 +399,8 @@ export function createWaveformModule(dependencies) {
       window.addEventListener('pointermove', this._markerDragMove);
       window.addEventListener('pointerup', this._markerDragEnd, { once: true });
       window.addEventListener('pointercancel', this._markerDragEnd, { once: true });
+      this._markerDragCancel = () => this.cancelCueDrag();
+      window.addEventListener('blur', this._markerDragCancel);
     }
 
 
@@ -406,6 +409,8 @@ export function createWaveformModule(dependencies) {
       window.removeEventListener('pointermove', this._markerDragMove);
       window.removeEventListener('pointerup', this._markerDragEnd);
       window.removeEventListener('pointercancel', this._markerDragEnd);
+      window.removeEventListener('blur', this._markerDragCancel);
+      cancelAnimationFrame(drag.frame);
       try { drag.captureTarget?.releasePointerCapture?.(drag.pointerId); } catch (_) {}
       this.stopMarkerEdgeAutoScroll();
     }
@@ -418,21 +423,25 @@ export function createWaveformModule(dependencies) {
       event.preventDefault();
       event.stopPropagation();
       this.focusWaveform?.();
+      const geometry = this.captureRowGeometry(row);
       this.markerDrag = {
         pointerId: event.pointerId,
         markerId,
         mode,
         row,
+        geometry,
         captureTarget: event.currentTarget,
         startClientX: event.clientX,
         startClientY: event.clientY,
         original: { ...marker },
-        pointerStartMs: this.markerPointerTimeMs(event),
+        pointerStartMs: this.timeFromPointerUnbounded(event, row, geometry),
         pending: { ...marker },
         moved: false,
         frame: 0,
         lastEvent: null,
       };
+      this.cancelHoverSeekPreview();
+      this.refreshMarkerDragPointerLine();
       this._beginMarkerPointerTracking(this.markerDrag);
     }
 
@@ -457,6 +466,8 @@ export function createWaveformModule(dependencies) {
         frame: 0,
         lastEvent: null,
       };
+      this.cancelHoverSeekPreview();
+      this.refreshMarkerDragPointerLine();
       this._beginMarkerPointerTracking(this.markerCreateDrag);
     }
 
@@ -474,7 +485,7 @@ export function createWaveformModule(dependencies) {
       }
       event.preventDefault();
       drag.lastEvent = event;
-      this.markerEdgeAutoScroll(event);
+      if (drag.mode === 'create') this.markerEdgeAutoScroll(event);
       this.applyMarkerDragTime(drag, event);
       if (!drag.frame) {
         drag.frame = requestAnimationFrame(() => {
@@ -495,13 +506,14 @@ export function createWaveformModule(dependencies) {
         drag.endMs = this.markerPointerTimeMs(event);
         return;
       }
-      const pointerMs = this.markerPointerTimeMs(event);
+      const pointerMs = this.timeFromPointerUnbounded(event, drag.row, drag.geometry);
       const duration = Math.max(0, this.durationMs);
       if (drag.mode === 'move') {
         const deltaMs = roundMs(pointerMs - drag.pointerStartMs);
         const length = window.AsrEditorUtils.markerKind(drag.original) === 'region'
           ? drag.original.end - drag.original.start : 0;
-        const start = clamp(drag.original.start + deltaMs, 0, Math.max(0, duration - length));
+        const maxStart = length ? duration - length : Math.round(duration) - 1;
+        const start = clamp(drag.original.start + deltaMs, 0, Math.max(0, maxStart));
         drag.pending = length
           ? { ...drag.original, start, end: start + length }
           : { ...drag.original, start };
@@ -568,6 +580,7 @@ export function createWaveformModule(dependencies) {
 
     /** @this {import('./waveform-types.js').WaveformInstance} */
     updateMarkerDragPreview(drag) {
+      this.refreshMarkerDragPointerLine();
       this.clearMarkerDragPreviews();
       let range = null;
       if (drag.mode === 'create') {
@@ -626,6 +639,7 @@ export function createWaveformModule(dependencies) {
     endMarkerDrag(event) {
       const drag = this.markerDrag || this.markerCreateDrag;
       if (!drag || event.pointerId !== drag.pointerId) return;
+      if (drag.moved && event.type !== 'pointercancel') this.applyMarkerDragTime(drag, event);
       this._teardownMarkerPointerTracking(drag);
       drag.captureTarget?.classList?.remove('dragging');
       this.clearMarkerDragPreviews();
@@ -634,6 +648,7 @@ export function createWaveformModule(dependencies) {
       });
       if (this.markerDrag === drag) this.markerDrag = null;
       if (this.markerCreateDrag === drag) this.markerCreateDrag = null;
+      this.restorePointerLineAfterBoundaryDrag({ clientX: event.clientX, clientY: event.clientY });
       if (event.type === 'pointercancel') return;
       if (drag.mode === 'create') {
         const start = roundMs(Math.min(drag.startMs, drag.endMs));
@@ -661,6 +676,19 @@ export function createWaveformModule(dependencies) {
       if (value !== drag.original[edge]) {
         this.options.onMarkerResize?.(drag.markerId, edge, value);
       }
+    }
+
+
+    /** @this {import('./waveform-types.js').WaveformInstance} */
+    refreshMarkerDragPointerLine() {
+      const drag = this.markerDrag || this.markerCreateDrag;
+      if (!drag) return;
+      this.pointerLineOverrideActive = true;
+      const timeMs = drag.mode === 'create' ? roundMs(drag.endMs)
+        : drag.mode === 'resize-end' ? drag.pending.end : drag.pending.start;
+      // 起点落在换行时间时与下一行的标记片段对齐，终点沿用上一行行尾。
+      this.showDragPointerLineAtTime(timeMs,
+        drag.mode === 'create' ? drag.endMs < drag.startMs : drag.mode !== 'resize-end');
     }
   }
   const descriptors = Object.getOwnPropertyDescriptors(WaveformMethods.prototype);
