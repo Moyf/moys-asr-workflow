@@ -2183,8 +2183,10 @@
       return result;
     }
     clearSettingsErrors();
-    item.baseUrl = $("llmBaseUrl").value.trim();
-    item.model = $("llmModel").value.trim();
+    item.baseUrl = String(result.baseUrl ?? $("llmBaseUrl").value).trim();
+    item.model = String(result.model ?? $("llmModel").value).trim();
+    $("llmBaseUrl").value = item.baseUrl;
+    $("llmModel").value = item.model;
     item.hasApiKey = Boolean(result.maskedApiKey || item.maskedApiKey || $("llmApiKey").value.trim());
     item.apiKeyRequired = result.apiKeyRequired !== false;
     item.hasBaseUrl = Boolean(item.baseUrl);
@@ -2221,8 +2223,10 @@
         clearSettingsErrors();
         item.verified = Boolean(result.verified);
         item.apiKeyRequired = result.apiKeyRequired !== false;
-        item.baseUrl = $("llmBaseUrl").value.trim();
-        item.model = $("llmModel").value.trim();
+        item.baseUrl = String(result.baseUrl ?? $("llmBaseUrl").value).trim();
+        item.model = String(result.model ?? $("llmModel").value).trim();
+        $("llmBaseUrl").value = item.baseUrl;
+        $("llmModel").value = item.model;
         item.hasBaseUrl = Boolean(item.baseUrl);
         item.hasModel = Boolean(item.model);
         item.maskedApiKey = result.maskedApiKey || item.maskedApiKey;

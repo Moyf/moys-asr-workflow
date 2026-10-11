@@ -115,7 +115,7 @@ from maw.postprocess_ffmpeg import (
 )
 from maw.postprocess_match import DEFAULT_SPLIT_PUNCTUATION, SCRIPT_EXTENSIONS, MatchCoverageError, ScriptMatchRequest, SubtitleMatchError, _has_complete_item_timings, _match_project, _match_project_with_character_timings, _read_script, prepare_script_text, processed_script_text, run_script_match as process_script_match
 from maw.postprocess_ocr import OcrDedupRequest, OcrRegion
-from maw.postprocess_llm import DEFAULT_REASONING_MODE, LlmClientError, LlmSettings, PRESETS as POSTPROCESS_PRESETS, complete_subtitle_groups, is_custom_slot, list_llm_models, loopback_base_url as _loopback_base_url, normalize_reasoning_mode, postprocess_api_key_required as _postprocess_api_key_required, preset_by_id, test_llm_connection
+from maw.postprocess_llm import DEFAULT_REASONING_MODE, LlmClientError, LlmSettings, PRESETS as POSTPROCESS_PRESETS, complete_subtitle_groups, is_custom_slot, list_llm_models, loopback_base_url, normalize_reasoning_mode, postprocess_api_key_required as _postprocess_api_key_required, preset_by_id, test_llm_connection
 from maw.postprocess_pipeline import (
     PostprocessCancelled,
     default_postprocess_plan,
@@ -1040,6 +1040,8 @@ class LauncherApi:
             "displayName": display_name if is_custom_slot(preset.id) else "",
             "maskedApiKey": masked_secret(api_key),
             "apiKeyRequired": _postprocess_api_key_required(preset.id, updates[f"{preset.env_prefix}_BASE_URL"]),
+            "baseUrl": updates[f"{preset.env_prefix}_BASE_URL"],
+            "model": updates[f"{preset.env_prefix}_MODEL"],
             "reasoningMode": reasoning_mode,
             "verified": is_llm_verified(self.paths.env_path, preset.id),
         }
@@ -4362,6 +4364,9 @@ def _free_local_port() -> int:
 
 def _error_result(field: str, code: str, detail: str = "", *, context: object = None) -> dict[str, object]:
     return {"ok": False, "field": field, "code": code, "detail": detail, "error": ERROR_MESSAGES.get(code, detail or code), "errorContext": error_context(context)}
+
+
+_loopback_base_url = loopback_base_url
 
 
 def _burn_crf_override(raw: object) -> int | None:
