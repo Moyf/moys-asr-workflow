@@ -318,6 +318,12 @@ $("errorNoticeAction").addEventListener("click", () => {
     $("apiKey").scrollIntoView({ behavior: "smooth", block: "center" });
     $("apiKey").focus({ preventScroll: true });
   }
+  if (action === "audio-track") {
+    closeSettings();
+    const field = $("audioTrackField").classList.contains("hidden") ? $("mediaPath") : $("audioTrack");
+    field.scrollIntoView({ behavior: "smooth", block: "center" });
+    field.focus({ preventScroll: true });
+  }
 });
 $("provider").addEventListener("change", () => applyProvider(true)); $("model").addEventListener("change", () => { applySelectedModel(true); if (isLocalProvider()) { void refreshLocalRuntime(); void refreshLocalModels(); } }); $("fireRedPunc").addEventListener("change", () => setError("fireRedPunc", "")); $("language").addEventListener("change", () => savePrefsDebounced({ language: languageValue() })); $("audioTrack").addEventListener("change", () => { const value = Number($("audioTrack").value); if (Number.isInteger(value) && value >= 0) state.audioTrack = value; }); $("advancedToggle").addEventListener("click", () => toggle("advancedCard"));
 $("testRun").addEventListener("change", syncTestRun);

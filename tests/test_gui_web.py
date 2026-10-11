@@ -4325,6 +4325,19 @@ class GuiWebBridgeTests(CompactContainerAssertions, unittest.TestCase):
         self.assertIn("test-request", disk_log)
         self.assertNotIn(key, disk_log)
 
+    def test_worker_empty_audio_diagnosis_is_friendly_and_never_emits_done(self) -> None:
+        from maw.audio_diagnostics import AudioInputError
+        request = TranscriptionRequest(media_path=self.root / 'clip.mkv', srt_path=self.root / 'clip.srt', provider='local')
+        error = AudioInputError('asr_audio_track_mismatch', 'selected audio_index=0; audio_index=1 peak_dBFS=-20')
+        with mock.patch('maw.gui_web.run_transcription', side_effect=error), \
+                mock.patch('maw.gui_web.run_postprocess_pipeline') as postprocess:
+            self.api._worker_main(request, threading.Event())
+        script = self.window.scripts[-1]
+        self.assertIn('"code": "asr_audio_track_mismatch"', script)
+        self.assertIn('audio_index=1 peak_dBFS=-20', script)
+        self.assertNotIn('"type": "done"', script)
+        postprocess.assert_not_called()
+
     def test_start_transcription_accepts_api_key_from_env_file(self) -> None:
         """Given saved API key, When field is empty, Then resolved key is used."""
         media = self.root / "clip.mp3"

@@ -15,6 +15,46 @@ async function openLauncher(page, language) {
 }
 
 for (const language of ['zh', 'en']) {
+  test('empty recognition and audio evidence guide track selection (' + language + ')', async ({ page }, testInfo) => {
+    await page.setViewportSize({ width: language === 'zh' ? 900 : 760, height: 880 });
+    await openLauncher(page, language);
+    const cases = [
+      ['audio_tracks_missing', language === 'zh' ? '没有检测到音轨' : 'No audio tracks'],
+      ['asr_audio_quiet', language === 'zh' ? '检查片段' : 'checked interval'],
+      ['asr_audio_track_mismatch', language === 'zh' ? '另有音轨' : 'another track'],
+      ['asr_empty_result', language === 'zh' ? '本地检查无法确认' : 'cannot determine'],
+    ];
+    for (const [code, expected] of cases) {
+      await page.evaluate(code => window.MAWLauncher.onBackendEvent({
+        type: 'error', code, detail: '[audio check] tracks=2, selected audio_index=0; audio_index=1 peak_dBFS=-20',
+      }), code);
+      await expect(page.locator('#errorNoticeMessage')).toContainText(expected);
+      await expect(page.locator('#log')).toContainText('audio_index=1 peak_dBFS=-20');
+      await expect(page.locator('#errorNoticeAction')).toHaveText(language === 'zh' ? '检查音轨' : 'Check audio track');
+      if (code === 'asr_audio_track_mismatch') {
+        await expect(page.locator('#errorNoticeMessage')).toContainText('60');
+        const gap = await page.evaluate(() => {
+          const message = document.querySelector('#errorNoticeMessage').getBoundingClientRect();
+          const actions = document.querySelector('#errorNoticeAction').parentElement.getBoundingClientRect();
+          return actions.top - message.bottom;
+        });
+        expect(gap).toBeGreaterThanOrEqual(8);
+        await page.locator('#errorNotice').screenshot({ path: testInfo.outputPath('audio-track-' + language + '.png') });
+      }
+    }
+    // Without a visible selector the action goes to the source file field.
+    await page.locator('#errorNoticeAction').click();
+    await expect(page.locator('#mediaPath')).toBeFocused();
+    await page.evaluate(() => {
+      document.querySelector('#audioTrackField').classList.remove('hidden');
+      document.querySelector('#audioTrack').innerHTML = '<option value="0">Track 1</option><option value="1">Track 2</option>';
+      document.querySelector('#audioTrack').disabled = false;
+    });
+    await page.locator('#errorNoticeAction').click();
+    await expect(page.locator('#audioTrack')).toBeFocused();
+    await expect(page.locator('#audioTrack')).toHaveValue('0');
+  });
+
   test('ASR API failures show guidance, keep diagnostics and redact reports (' + language + ')', async ({ page }, testInfo) => {
     await page.setViewportSize({ width: language === 'zh' ? 900 : 760, height: 880 });
     await openLauncher(page, language);

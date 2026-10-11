@@ -102,6 +102,21 @@ class BatchRunnerTests(unittest.TestCase):
         self.assertIn(detail, result["outcomes"][0]["error"])
         self.assertEqual(result["outcomes"][1]["status"], "done")
 
+    def test_empty_audio_item_skips_postprocess_preserves_diagnosis_and_continues(self) -> None:
+        from maw.audio_diagnostics import AudioInputError
+        events = []
+        def transcribe(request, *, cancel_event):
+            if request.media_path.stem == 'clip-0':
+                raise AudioInputError('asr_audio_track_mismatch', 'selected audio_index=0; audio_index=1 peak_dBFS=-20')
+            return TranscriptionResult(request.srt_path, request.srt_path.with_suffix('.mosp'), None)
+        manifest = self.root / 'manifest.json'
+        result = run_batch(self._items(2), settings={}, manifest_path=manifest,
+                           cancel_event=threading.Event(), transcribe=transcribe, on_event=events.append)
+        self.assertEqual(result['outcomes'][0]['code'], 'asr_audio_track_mismatch')
+        self.assertEqual(result['outcomes'][1]['status'], 'done')
+        self.assertIn('audio_index=1 peak_dBFS=-20', manifest.read_text(encoding='utf-8'))
+        self.assertTrue(any(event.get('code') == 'asr_audio_track_mismatch' for event in events))
+
     def test_api_failure_does_not_leak_active_key_to_events_or_manifest(self) -> None:
         from dataclasses import replace
         from maw.gui_workflow import TranscriptionProcessError

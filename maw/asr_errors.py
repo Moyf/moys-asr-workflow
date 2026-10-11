@@ -8,6 +8,8 @@ from __future__ import annotations
 
 import re
 
+from maw.audio_diagnostics import AudioInputError
+
 
 _HTTP_STATUS = re.compile(
     r"\bHTTP(?:/\d(?:\.\d)?)?\s*[:=(]?\s*([45]\d{2})\b"
@@ -48,6 +50,8 @@ def asr_error_code(error: BaseException, *, provider: str) -> str:
     summary only contains the last line of a multi-line provider exception.
     Prefer the final exception block over earlier retry warnings.
     """
+    if isinstance(error, AudioInputError):
+        return error.code
     if provider == "local":
         return ""
     child_output = getattr(error, "output", ())
