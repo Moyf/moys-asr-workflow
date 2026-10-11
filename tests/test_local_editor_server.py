@@ -1200,6 +1200,87 @@ class LocalEditorServerTests(CompactContainerAssertions, unittest.TestCase):
                 server.shutdown()
                 thread.join(timeout=2)
 
+    def test_desktop_new_blank_project_drops_previous_media_and_late_cache(self) -> None:
+        previous = server_editor.ServerProject(
+            {"media": "clip.mp3", "segments": []}, self.project_path, self.media, None, [],
+            source_media_path=self.media, reapeaks_path=self.media,
+            audio_track=2, default_audio_track=1, media_error="old media error",
+        )
+        old_bytes = self.project_path.read_bytes()
+        target = self.root / "new-blank.mosp"
+        with server_editor.EditorServer(
+            ("127.0.0.1", 0), previous, no_waveform=True,
+            desktop_mode=True, desktop_token="desktop-secret", desktop_command_key="command-secret",
+        ) as server:
+            server.reapeaks_generation = 1
+            server.reapeaks_status = "ready"
+            server.reapeaks_payload = {"waveform": {"peak_count": 1}}
+            server.desktop_media_previews["accepted"] = (-1, previous)
+            server.active_desktop_media_preview = "accepted"
+            path, _backup, generation, warning = server.save_desktop_project(
+                "new", {"media": "", "segments": []}, target_path=str(target),
+                expected_generation=0, expected_revision=None, backup_limit=None,
+            )
+            self.assertIsNone(warning)
+            self.assertEqual(path, target.resolve())
+            self.assertEqual(generation, 1)
+            self.assertEqual(json.loads(target.read_text(encoding="utf-8"))["media"], "")
+            self.assertIsNone(server.project.media_path)
+            self.assertIsNone(server.project.source_media_path)
+            self.assertIsNone(server.project.reapeaks_path)
+            self.assertEqual(server.project.audio_track, 0)
+            self.assertEqual(server.project.default_audio_track, 0)
+            self.assertIsNone(server.project.media_error)
+            self.assertEqual(server.desktop_media_previews, {})
+            self.assertIsNone(server.active_desktop_media_preview)
+            self.assertEqual(server.reapeaks_status_payload(), {"ok": True, "status": "disabled"})
+            self.assertIsNone(server.desktop_project_status()["mediaPath"])
+            current = server.project
+            with mock.patch.object(server_editor.edit, "load_or_extract_waveform", return_value=({"peak_count": 1}, False)), \
+                 mock.patch.object(server_editor.quapeaks, "load_spectral_payload", return_value=None), \
+                 mock.patch.object(server_editor.quapeaks, "load_waveform_payload", return_value=None), \
+                 mock.patch.object(server_editor.quapeaks, "load_loudness_stats", return_value=None):
+                server._load_deferred_reapeaks(previous, 1)
+            self.assertIs(server.project, current)
+            self.assertNotIn("waveform", server.project.data)
+            self.assertEqual(self.project_path.read_bytes(), old_bytes)
+
+    def test_desktop_first_save_and_save_as_keep_accepted_media(self) -> None:
+        waveform = {"peak_count": 1, "peaks": [1]}
+        current = server_editor.ServerProject(
+            {"media": str(self.media), "segments": [], "waveform": waveform}, None, self.media, None, [],
+            source_media_path=self.media, reapeaks_path=self.media, audio_track=2, default_audio_track=1,
+        )
+        first = self.root / "first-save.mosp"
+        second = self.root / "elsewhere" / "saved-as.mosp"
+        with server_editor.EditorServer(
+            ("127.0.0.1", 0), current, no_waveform=True,
+            desktop_mode=True, desktop_token="desktop-secret", desktop_command_key="command-secret",
+        ) as server:
+            server.desktop_media_previews["accepted"] = (-1, current)
+            server.active_desktop_media_preview = "accepted"
+            path, _backup, generation, warning = server.save_desktop_project(
+                "new", current.data, target_path=str(first),
+                expected_generation=0, expected_revision=None, backup_limit=None,
+            )
+            self.assertIsNone(warning)
+            self.assertEqual(path, first.resolve())
+            self.assertEqual((first.parent / json.loads(first.read_text(encoding="utf-8"))["media"]).resolve(), self.media)
+            path, _backup, generation, warning = server.save_desktop_project(
+                "saveAs", server.project.data, target_path=str(second),
+                expected_generation=generation, expected_revision=None, backup_limit=None,
+            )
+            self.assertIsNone(warning)
+            self.assertEqual(path, second.resolve())
+            self.assertEqual(json.loads(second.read_text(encoding="utf-8"))["media"], str(self.media))
+            self.assertEqual(server.project.media_path, self.media)
+            self.assertEqual(server.project.source_media_path, self.media)
+            self.assertEqual(server.project.reapeaks_path, self.media)
+            self.assertEqual(server.project.audio_track, 2)
+            self.assertEqual(server.project.default_audio_track, 1)
+            self.assertEqual(server.active_desktop_media_preview, "accepted")
+            self.assertEqual(server.desktop_preview_media_path("accepted"), self.media)
+
     def test_desktop_location_uses_bound_paths_and_creates_only_project_backup_folder(self) -> None:
         project = server_editor.load_project(
             self.project_path, None, str(self.stickers), no_waveform=True, peaks_per_second=100,

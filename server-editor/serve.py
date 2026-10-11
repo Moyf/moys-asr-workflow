@@ -1575,7 +1575,11 @@ class EditorServer(ThreadingHTTPServer):
                 if backup_only:
                     backup = write_backup(target, normalized_project, backup_limit or 1)
                     return target, backup, self.project_generation, None
-                source_media = desktop_source_media_path(self.project)
+                # Native "new" also handles the first save of an unbound
+                # project. Only a genuinely blank project drops the accepted
+                # media; first saves with an existing media reference retain it.
+                reset_media = mode == "new" and not normalized_project.get("media")
+                source_media = None if reset_media else desktop_source_media_path(self.project)
                 if source_media:
                     previous_path = self.project.json_path
                     reference = normalized_project.get("media")
@@ -1600,8 +1604,22 @@ class EditorServer(ThreadingHTTPServer):
                         backup = write_backup(target, normalized_project, backup_limit)
                     except (OSError, ValueError) as error:
                         warnings.append(f"工程已保存，版本备份失败：{error}")
-                _restore_runtime_inline_caches(self.project.data, normalized_project)
-                self.project = replace(self.project, data=normalized_project, json_path=target)
+                if reset_media:
+                    with self.reapeaks_lock:
+                        self.project = replace(
+                            self.project, data=normalized_project, json_path=target,
+                            media_path=None, source_media_path=None, reapeaks_path=None,
+                            audio_track=0, default_audio_track=0, media_error=None,
+                        )
+                        self.reapeaks_generation += 1
+                        self.reapeaks_project = self.project
+                        self.reapeaks_status = "disabled"
+                        self.reapeaks_payload = {}
+                    self.desktop_media_previews.clear()
+                    self.active_desktop_media_preview = None
+                else:
+                    _restore_runtime_inline_caches(self.project.data, normalized_project)
+                    self.project = replace(self.project, data=normalized_project, json_path=target)
                 if mode != "current":
                     self.project_generation += 1
                 generation = self.project_generation

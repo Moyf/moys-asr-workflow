@@ -86,6 +86,9 @@ test('native project selection and dropped project keep paths, binding and recen
     await page.locator('#new-project').click();
     await page.waitForFunction((selected) => MaweBoot.SERVER_CONFIG.desktopProjectPath?.replaceAll('\\', '/') === selected, blank.replaceAll('\\', '/'));
     assert.equal(JSON.parse(readFileSync(blank, 'utf8')).segments.length, 0);
+    assert.equal(JSON.parse(readFileSync(blank, 'utf8')).media, '');
+    assert.equal(await page.evaluate(() => MaweBoot.DATA.media), '');
+    assert.equal(await page.evaluate(() => MaweBoot.SERVER_CONFIG.desktopMediaPath), null);
     assert.equal(await page.evaluate(() => MaweBoot.SERVER_CONFIG.canSave), true);
     const media = path.join(root, 'real media.wav');
     writeWave(media);
