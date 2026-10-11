@@ -2026,7 +2026,7 @@ class GuiWebBridgeTests(CompactContainerAssertions, unittest.TestCase):
         needles = [
             'function isCustomSlot(item) { return ["custom", "custom2", "custom3"].includes(String(item?.id || "")); }',
             "function customSlotVisibleInToolbox(item)",
-            'if (select.id === "postprocessProvider" && !customSlotVisibleInToolbox(item)) return;',
+            'if (select.id !== "llmProvider" && !customSlotVisibleInToolbox(item)) return;',
             "fillProviderSelects(selectedProvider);",
             "fillProviderSelects(item.id);",
             # 设置页 change 直接渲染 llmProvider 的值；工具箱保持自身选中项。
@@ -2735,7 +2735,7 @@ class GuiWebBridgeTests(CompactContainerAssertions, unittest.TestCase):
             })
 
         self.assertFalse(result["ok"])
-        self.assertEqual(result["code"], "postprocess_failed")
+        self.assertEqual(result["code"], "toolbox_failed")
         for secret in (
             "api-key-secret",
             "https://api.example.test/v1/chat/completions?api_key=query-secret",
@@ -5359,7 +5359,6 @@ class LauncherAssetContractTests(CompactContainerAssertions, unittest.TestCase):
         self.assertNotIn("toolbox-output-hint", page)
         self.assertNotIn("toolbox_beta_notice_prefix", page)
         self.assertIn('class="hint toolbox-panel-hint"', page)
-        self.assertIn('class="hint toolbox-full-line-hint"', page)
         self.assertIn('document.querySelectorAll("[data-tool-action]")', script)
         self.assertIn('event.type === "postprocess_status"', launcher_script)
         self.assertIn('event.type === "postprocess_stream"', launcher_script)
@@ -5483,7 +5482,8 @@ class LauncherAssetContractTests(CompactContainerAssertions, unittest.TestCase):
         self.assertLess(content, progress)
         self.assertLess(progress, result)
         self.assertIn('id="toolboxResult" class="toolbox-result hidden"', page)
-        self.assertIn('result.classList.remove("hidden")', script)
+        self.assertIn('function syncSharedOutputVisibility()', script)
+        self.assertIn('toolboxResultTool = resultOwningTool()', script)
         self.assertLess(result, match_panel)
         self.assertLess(utilities_tabs, match_panel)
         self.assertLess(match_panel, llm_panel)

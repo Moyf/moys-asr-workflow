@@ -787,7 +787,12 @@
             <input id="postprocessAiCleanup" type="checkbox">
             <span data-i18n="toolbox_ai_cleanup">调用 AI 进行整理（录音优先）</span>
           </label>
-          <p class="hint" data-i18n="toolbox_ai_cleanup_hint">由 AI 判断并移除重录废片、试麦和流程对话；文稿只作证据，不替换字幕文字。自动移除与待复核会写入工程，待复核项需在编辑器中确认。</p>
+          <p class="hint" data-i18n="toolbox_ai_cleanup_hint">当你的录音有比较多错漏、重复时，可以启用开关，让 AI 尝试帮你校对并清理，保留正确的录音。准确度取决于 AI 和语音情况。</p>
+          <div id="postprocessAiCleanupProviderField" class="hidden">
+            <label for="postprocessAiCleanupProvider" data-i18n="toolbox_provider">供应商</label>
+            <select id="postprocessAiCleanupProvider"></select>
+            <p class="toolbox-settings-hint"><span id="postprocessAiCleanupProviderStatus" class="hint"></span> <button id="openLlmSettingsFromAiCleanup" class="inline-link" type="button" data-i18n="toolbox_open_settings">在 ⚙️ 设置中配置 AI 处理用的模型</button></p>
+          </div>
           <div id="postprocessAiCleanupNotesField" class="hidden" style="margin-top: 8px;">
             <label for="postprocessAiCleanupNotes" data-i18n="toolbox_ai_cleanup_notes">补充说明</label>
             <textarea id="postprocessAiCleanupNotes" rows="2" autocomplete="off" data-i18n-placeholder="toolbox_ai_cleanup_notes_placeholder"></textarea>
@@ -1008,7 +1013,7 @@
           </label>
           <p class="hint" data-i18n="backfill_subtitles_hint">适用于仅有少量语音需要翻译的情况，将翻译后文本直接回填替换。例如7句中文+3句英文，选择「翻译成中文」并启用回填，将得到10句中文字幕。</p>
         </div>
-        <p class="toolbox-settings-hint"><span id="postprocessProviderStatus" class="hint"></span> <button id="openLlmSettings" class="inline-link" type="button" data-i18n="toolbox_open_settings">在 ⚙️ 设置中配置 API Key</button></p>
+        <p class="toolbox-settings-hint"><span id="postprocessProviderStatus" class="hint"></span> <button id="openLlmSettings" class="inline-link" type="button" data-i18n="toolbox_open_settings">在 ⚙️ 设置中配置 AI 处理用的模型</button></p>
       </div>
       <div class="adv-group">
         <h3 data-i18n="toolbox_group_llm_prompt">提示词</h3>
@@ -1022,7 +1027,6 @@
           <textarea id="postprocessPrompt" rows="4" autocomplete="off" data-i18n-placeholder="toolbox_prompt_placeholder"></textarea>
           <p class="hint" data-i18n="toolbox_prompt_hint">可按需追加要求；留空则只使用预设提示词。</p>
           <p id="postprocessPromptError" class="field-error"></p>
-          <p class="hint toolbox-full-line-hint" data-i18n="toolbox_time_hint">模型只处理带 ID 的文字；本地时间槽始终是时间真源。</p>
         </div>
       </div>
     </section>

@@ -25,6 +25,9 @@ async function seed(page) {
     waveform: generateWaveformPayload(6000),
   });
   await expect(page.locator('.overlay-track-cue')).toHaveCount(1);
+  // 带标记的工程导入后自动开启；这些用例从用户手动关闭后的状态验证门控。
+  await expect(page.locator('#markers-quick-toggle')).toHaveAttribute('aria-pressed', 'true');
+  await page.locator('#markers-quick-toggle').click();
   await page.locator('[data-waveform-mode="multi"]').click();
 }
 
@@ -39,7 +42,7 @@ async function markerData(page) {
   return page.evaluate(() => MaweBoot.DATA.markers.map(marker => ({ ...marker })));
 }
 
-test('disabled marker editing leaves imported and rebuilt waveforms free for cue gestures', async ({ page }) => {
+test('disabling auto-enabled markers leaves imported and rebuilt waveforms free for cue gestures', async ({ page }) => {
   await seed(page);
   const original = await markerData(page);
   await expect(page.locator('#markers-quick-toggle')).toHaveAttribute('aria-pressed', 'false');

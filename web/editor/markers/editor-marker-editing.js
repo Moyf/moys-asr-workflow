@@ -221,6 +221,32 @@
   }
 
 
+  // 标记编辑总开关（默认关闭）：启用后显示「标记与区段」入口、渲染标记轨道
+  // 并允许编辑；关闭时隐藏入口与轨道，工程数据保留。快捷键 M。
+  function applyMarkerEditingEnabled() {
+    const enabled = MaweSettings.EDITOR_SETTINGS.markerEditingEnabled === true;
+    const quick = document.getElementById('markers-quick-toggle');
+    if (quick) {
+      quick.classList.toggle('active', enabled);
+      quick.setAttribute('aria-pressed', String(enabled));
+    }
+    if (MaweDom.markersManageButton) MaweDom.markersManageButton.hidden = !enabled;
+    const mirror = document.getElementById('project-marker-track-toggle');
+    if (mirror) mirror.checked = enabled;
+    MaweCoreState.waveformEditor?.refreshMarkerOverlay();
+  }
+
+  // 打开带标记的工程（如 AI 整理产物）时默认启用标记轨道：只改本次会话的
+  // 内存状态，不写持久化设置；用户手动关闭后重新打开工程会再次默认开启。
+  function enableForProjectMarkers(markers) {
+    if (MaweSettings.EDITOR_SETTINGS.markerEditingEnabled === true) return false;
+    if (!Array.isArray(markers) || markers.length === 0) return false;
+    MaweSettings.EDITOR_SETTINGS.markerEditingEnabled = true;
+    applyMarkerEditingEnabled();
+    return true;
+  }
+
+
   function pendingReviewCount() {
     return markerUtils().countPendingReviewMarkers(getMarkers());
   }
@@ -240,6 +266,8 @@
     deleteMarkers,
     locateMarker,
     afterExternalMarkersChange,
+    applyMarkerEditingEnabled,
+    enableForProjectMarkers,
     pendingReviewCount,
   });
 })(typeof window !== 'undefined' ? window : globalThis);
