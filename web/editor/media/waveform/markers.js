@@ -50,6 +50,8 @@ export function createWaveformModule(dependencies) {
 
     /** @this {import('./waveform-types.js').WaveformInstance} */
     appendMarkerTrack(row, startMs, endMs) {
+      // 新建或重绘行也遵守开关，避免透明轨道截获关闭状态下的字幕手势。
+      if (MaweSettings.EDITOR_SETTINGS.markerEditingEnabled !== true) return;
       const markers = this.getMarkers();
       // 行时间标签是否需要给标记轨道让位：仅当该行可见范围内确有标记时下移。
       const hasVisibleMarkers = markers.some((marker) => window.AsrEditorUtils.markerVisibleRange(marker, startMs, endMs));
@@ -165,6 +167,8 @@ export function createWaveformModule(dependencies) {
       if (!this.payload) return;
       // 标记编辑未启用时不渲染标记轨道（工具栏 🔖 / 项目设置镜像控制）。
       if (MaweSettings.EDITOR_SETTINGS.markerEditingEnabled !== true) {
+        const drag = this.markerDrag || this.markerCreateDrag;
+        if (drag) this.endMarkerDrag({ pointerId: drag.pointerId, type: 'pointercancel' });
         this.content.querySelectorAll('.waveform-marker-track').forEach((element) => element.remove());
         this.content.querySelectorAll('.waveform-row.waveform-row-has-markers').forEach((row) => {
           row.classList.remove('waveform-row-has-markers');
@@ -408,6 +412,7 @@ export function createWaveformModule(dependencies) {
 
     /** @this {import('./waveform-types.js').WaveformInstance} */
     beginMarkerDrag(event, markerId, row, mode) {
+      if (MaweSettings.EDITOR_SETTINGS.markerEditingEnabled !== true) return;
       const marker = this.getMarkers().find((candidate) => candidate?.id === markerId);
       if (!marker) return;
       event.preventDefault();
@@ -434,6 +439,7 @@ export function createWaveformModule(dependencies) {
 
     /** @this {import('./waveform-types.js').WaveformInstance} */
     beginMarkerCreateDrag(event, row) {
+      if (MaweSettings.EDITOR_SETTINGS.markerEditingEnabled !== true) return;
       event.preventDefault();
       event.stopPropagation();
       this.focusWaveform?.();
