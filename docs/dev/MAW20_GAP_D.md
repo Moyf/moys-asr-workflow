@@ -22,6 +22,20 @@
 - 最终 typecheck：`.debug-runs/20261011T073319Z-0e4437bd/result.json`；ruff：`.debug-runs/20261011T073319Z-c806c950/result.json`；check:editor：`.debug-runs/20261011T073319Z-c299232c/result.json`，均 exit 0。生成物已按本树源码重建，便携 blank-editor.html 留到发布前统一生成。
 - 真正 Server/Edge 的首次运行发现默认标点规整导致字段失配，已修正并采用默认入口验证；没有以 preserve_punctuation 夹具绕开问题。早期 DOM-free VM 结果未当作真实浏览器保存/播放证据。
 
+## 默认字词归一化与导出顺序返修
+
+默认工程入口先合并纯标点/符号 item，再规整中文标点。局部 scope 原索引会因此漂移；选组末尾的独立标点还会失去原结束边界。`normalizeProjectTimings` 和主轨 `repairTimingGroup` 现在先核验 scope，然后仅对可证明的 neutral 合并建立原索引到唯一真实时间锚的映射，集体核验所有组再提交迁移。选组端点只能恢复入口前精确授权的原整数端点。没有新增 schema 或放宽原始空 item。
+
+未选 emoji/符号与已选字词不能混在同一个删词锚里：保留它的原时间锚，纯空白/中文逗号句号仍可机械归并。例如「正文 / 啊 / 😀 / 。」保留「正文 / 啊 / 😀。」再规整，实际输出「正文😀」，避免纯末尾标点规整成空 item。下一次保存不把这些受保护锚误报成新的时间修复。
+
+入口前已失效的 scope 只剥离剪字权限，保留既有音频 gap，防止错索引/错文字在归一化后偶然正确而重新授信。入口前精确有效、但后续发现未知字词/时间变化而无法机械迁移的建议，撤回该 cue 的本次局部 AI 范围，使用来源替换和 effective-gap 重建 API 保留其它来源/手动覆盖。同范围且 note 可识别为既有 `[AI] 删除：` 的标记转为 pending；普通同范围标记不修改，没有可信 AI 标记则按现有 marker 规范新建复核项。这两种失效处理没有混为同一个裁决。
+
+普通 SRT 的合并导出池在投影后稳定按实际 start 排序；主轨前缀删掉后若独立叠加轨更早，叠加轨先输出，首条归零也作用于正确的第一条。原主轨数组/items/配色索引不重排。
+
+返修定向 Node（安全迁移、错误权限、未知变化撤回、其它来源/手动覆盖/普通 marker 保护、重复保存、跨 cue 一失败一成功）10/10：`.debug-runs/20261011T081742Z-b60e6ddd/result.json`。类型检查 `.debug-runs/20261011T081618Z-fc2d07e0/result.json` 和 bundle freshness `.debug-runs/20261011T081619Z-98e3d55d/result.json` 均通过。失败快照在所有成功 cue 提交后才统一替换来源，避免旧对象引用影响下一 cue；运行态 markers 继续保持数组，serialized 工程仍使用 canonical 字段形态。本轮只改 JS，Python 原完整结果仍有效；父代理合入 C 最终纯测试提交后负责整合完整回归。
+
+实际 Server/Edge 默认入口最终 10/10（`.debug-runs/20261011T081705Z-a642724f/result.json`）：真实 `run_ai_cleanup` 产物到 CSS/Canvas/SRT/去空隙 SRT/ASS/动态、保存重开、只恢复一组及全恢复。跨 cue 附加场景在真实页构造重叠时码触发第一 cue 转 review、第二 cue 成功迁移，核验 runtime 标记数组、普通标记和待复核 UI、保存重开仍一致。Emoji+独立末标点的真实截图已核验仅显示「正文😀」。Q 的纯测试提交 `1d0b9d1`、`4cf631d`、`bcf7230` 已接入；`03f8cbca` 明示 fallback 合同按同文件 WIP 手工接入，并保留新增严格成功案例。
+
 ## 未验证边界
 
 真实模型对 items 字符串和多局部协议的遵循程度、真实 ASR 时间质量、真实媒体接点、目标中文输入法、外部字体、原生保存器尚未验收。局部门槛没有根据缺失 C01 样本统一放宽；副轨没有可证实的字词对应时仅保留独立译文，不承诺精确局部翻译删词。

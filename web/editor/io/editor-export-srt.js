@@ -18,7 +18,8 @@
     const merged = mergedExportSegments();
     const main = cleanupMainSegments();
     const projection = new Map(MaweBoot.DATA.segments.map((segment, index) => [segment, main[index]]));
-    return { ...merged, segments: merged.segments.map((segment) => projection.get(segment) || segment) };
+    return { ...merged, segments: merged.segments.map((segment) => projection.get(segment) || segment)
+      .sort((left, right) => left.start - right.start) };
   }
 
   function buildSrt() {

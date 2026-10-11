@@ -121,6 +121,127 @@ test('default built-in punctuation cleanup migrates only already-exact local sco
   assert.equal(core.projectCleanupRetainedSegments(main, context.MaweBoot.DATA.gap_remove)[0].text, main[0].text);
 });
 
+function neutralNormalizationRuntime() {
+  const setup = runtime();
+  const { main, context } = setup;
+  const rows = [['我', 0, 110], ['我这个', 130, 400], ['，', 410, 430], ['功能', 500, 800],
+    ['嗯', 810, 930], ['很好', 1000, 1200], ['呢', 1300, 2000]];
+  main[0] = { id: 'main-001', start: 0, end: 2000, text: rows.map(([text]) => text).join(''),
+    items: rows.map(([text, start, end]) => ({ text, start, end })) };
+  context.MaweBoot.DATA.gap_remove = { provenance: { sources: { ai_cleanup: [
+    { start: 0, end: 110, cleanup_scope: { segment_id: 'main-001', item_start: 0, item_end: 1, text: '我' } },
+    { start: 810, end: 930, cleanup_scope: { segment_id: 'main-001', item_start: 4, item_end: 5, text: '嗯' } },
+  ] } } };
+  vm.runInNewContext(fs.readFileSync(new URL('../web/editor/io/editor-json-repair.js', import.meta.url), 'utf8'), context);
+  return setup;
+}
+
+test('timing repair migrates exact scopes collectively through neutral roots and retains real selected endpoints', () => {
+  const { context, core, main } = neutralNormalizationRuntime();
+  context.window.MaweJsonRepair.normalizeProjectTimings(context.MaweBoot.DATA);
+  const scopes = context.MaweBoot.DATA.gap_remove.provenance.sources.ai_cleanup;
+  assert.equal(main[0].items.length, 6);
+  assert.equal(scopes[1].cleanup_scope.item_start, 3);
+  assert.equal(core.projectCleanupRetainedSegments(main, context.MaweBoot.DATA.gap_remove)[0].text, '我这个，功能很好呢');
+  assert.deepEqual(scopes.map(({ start, end }) => [start, end]), [[0, 110], [810, 930]]);
+
+  const tail = [{ text: '正文', start: 0, end: 1000 }, { text: '呃', start: 1100, end: 1800 }, { text: '。', start: 1800, end: 2000 }];
+  main[0] = { id: 'main-001', start: 0, end: 2000, text: '正文呃。', items: tail };
+  context.MaweBoot.DATA.gap_remove.provenance.sources.ai_cleanup = [{ start: 1100, end: 2000,
+    cleanup_scope: { segment_id: 'main-001', item_start: 1, item_end: 3, text: '呃。' } }];
+  context.window.MaweJsonRepair.repairTimingGroup(main);
+  assert.equal(main[0].items[1].end, 2000, 'only the exact originally selected endpoint is restored');
+  assert.equal(context.MaweBoot.DATA.gap_remove.provenance.sources.ai_cleanup[0].end, 2000);
+  assert.equal(core.projectCleanupRetainedSegments(main, context.MaweBoot.DATA.gap_remove)[0].text, '正文');
+});
+
+test('neutral migration cannot reauthorize stale/bad boundaries or newly mixed unselected words/symbols', () => {
+  for (const failure of ['stale', 'boundary', 'accidental', 'word', 'timing', 'symbol']) {
+    const { context, core, main, utils } = neutralNormalizationRuntime();
+    const ranges = context.MaweBoot.DATA.gap_remove.provenance.sources.ai_cleanup;
+    if (failure === 'stale') ranges[1].cleanup_scope.text = 'stale';
+    if (failure === 'boundary') ranges[1].start = 810.2;
+    if (failure === 'accidental') {
+      ranges[1].cleanup_scope.item_start = 3;
+      ranges[1].cleanup_scope.item_end = 4;
+    }
+    if (failure === 'symbol') {
+      main[0].items[2].text = '🙂';
+      main[0].text = main[0].items.map((item) => item.text).join('');
+      ranges[0].end = 400;
+      ranges[0].cleanup_scope.item_end = 2;
+      ranges[0].cleanup_scope.text = '我我这个';
+    }
+    if (failure === 'word' || failure === 'timing') {
+      const normalize = utils.normalizeSegmentTimings;
+      context.window.AsrEditorUtils = { ...utils, normalizeSegmentTimings: (segments) => {
+        const count = normalize(segments);
+        if (segments === main) {
+          if (failure === 'word') segments[0].items[3].text += '未选正文';
+          else segments[0].items[3].start += 1;
+          segments[0].text = segments[0].items.map((item) => item.text).join('');
+        }
+        return count;
+      } };
+    }
+    if (failure === 'word' || failure === 'timing') {
+      context.MaweBoot.DATA.gap_remove.provenance.sources.audio_gate = [{ start: 810, end: 930 }];
+      context.MaweBoot.DATA.gap_remove.provenance.manual_overrides = [{ id: 'manual-gap', start: 400, end: 800, removed: true }];
+      context.MaweBoot.DATA.markers = { schema: 'moy.asr.markers.v1', items: [
+        { id: 'user', start: 810, end: 930, name: 'user', color: '#ffffff', note: 'manual' },
+        { id: 'ai', start: 810, end: 930, name: 'AI', color: '#8e4ec6', note: '[AI] 删除：局部口吃' },
+      ] };
+    }
+    context.window.MaweJsonRepair.normalizeProjectTimings(context.MaweBoot.DATA);
+    if (['stale', 'boundary', 'accidental'].includes(failure)) assert.equal(ranges[1].cleanup_scope, undefined, failure);
+    const output = core.projectCleanupRetainedSegments(main, context.MaweBoot.DATA.gap_remove)[0].text;
+    if (failure !== 'symbol') assert.match(output, /嗯/, failure);
+    if (failure === 'word' || failure === 'timing') {
+      if (failure === 'word') assert.match(output, /未选正文/);
+      assert.equal(context.MaweBoot.DATA.gap_remove.provenance.sources.ai_cleanup.length, 0);
+      assert.equal(context.MaweBoot.DATA.gap_remove.provenance.sources.audio_gate.length, 1);
+      assert.ok(context.MaweBoot.DATA.gap_remove.gaps.some((gap) => gap.start === 810));
+      assert.equal(context.MaweBoot.DATA.gap_remove.provenance.manual_overrides[0].id, 'manual-gap');
+      const markers = context.MaweBoot.DATA.markers.items;
+      assert.equal(markers.find((marker) => marker.id === 'user').note, 'manual');
+      assert.equal(markers.find((marker) => marker.id === 'ai').review.status, 'pending');
+      assert.equal(markers.filter((marker) => marker.review?.status === 'pending').length, 2);
+    }
+    if (failure === 'symbol') {
+      assert.match(output, /🙂/);
+      assert.doesNotMatch(output, /嗯/);
+      assert.equal(main[0].items.find((item) => item.text === '🙂').start, 410, 'unselected symbol retains its own original timing');
+      const again = context.window.MaweJsonRepair.repairTimingGroup(main);
+      assert.equal(again.fixed, 0, 'preserved anchors do not report a new timing repair on each save');
+      assert.equal(again.changed.length, 0);
+    }
+  }
+});
+
+test('failed first cue cannot replace the live ranges of a later successful cue', () => {
+  const { context, core, main } = neutralNormalizationRuntime();
+  const second = plain(main[0]); second.id = 'second'; second.start += 4000; second.end += 4000;
+  second.items.forEach((item) => { item.start += 4000; item.end += 4000; });
+  main.push(second);
+  main.unshift({ id: 'lead', start: 0, end: 2000, text: '前文', items: [{ text: '前文', start: 0, end: 2000 }] });
+  const state = context.MaweBoot.DATA;
+  const ranges = state.gap_remove.provenance.sources.ai_cleanup;
+  ranges.push(...plain(ranges).map((range) => ({ ...range, start: range.start + 4000, end: range.end + 4000,
+    cleanup_scope: { ...range.cleanup_scope, segment_id: 'second' } })));
+  state.markers = [{ id: 'user', start: 0, end: 110, name: 'manual', note: 'manual', color: '#ffffff' }];
+  context.window.MaweJsonRepair.normalizeProjectTimings(state);
+  assert.ok(Array.isArray(state.markers));
+  assert.equal(state.markers.filter((marker) => marker.review?.status === 'pending').length, 2);
+  assert.equal(state.markers.find((marker) => marker.id === 'user').note, 'manual');
+  assert.equal(state.gap_remove.provenance.sources.ai_cleanup.length, 2);
+  assert.equal(state.gap_remove.provenance.sources.ai_cleanup[1].cleanup_scope.item_start, 3);
+  assert.equal(core.projectCleanupRetainedSegments(main, state.gap_remove)[2].text, '我这个，功能很好呢');
+  const reopened = plain(state);
+  context.window.MaweJsonRepair.normalizeProjectTimings(reopened);
+  assert.equal(core.projectCleanupRetainedSegments(reopened.segments, reopened.gap_remove)[2].text, '我这个，功能很好呢');
+  assert.equal(reopened.gap_remove.provenance.sources.ai_cleanup.length, 2);
+});
+
 test('production ordinary/gap SRT and ASS builders remove local words while independent tracks survive', () => {
   const { context, srt, main, extension, overlay } = runtime();
   const before = JSON.stringify(main);

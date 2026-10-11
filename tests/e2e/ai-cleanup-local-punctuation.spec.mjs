@@ -5,6 +5,9 @@ import { join } from 'node:path';
 import { cleanupTempDir, disableOnboarding, findFreePort, generateWaveformPayload, generateWav, makeTempDir, startServer } from './helpers.mjs';
 
 const cases = [
+  { name: 'an unselected emoji followed by a separate terminal punctuation item', expected: '正文😀', artifactText: '正文😀。', manuscript: '正文', previewTime: 500,
+    rows: [['正文', 0, 900], ['啊', 1000, 1200], ['😀', 1210, 1250], ['。', 1300, 2000]],
+    decision: { removeItemIds: ['c001:i002'], evidence: '啊' }, removed: '啊' },
   { name: 'a separate terminal punctuation item', expected: '我这个功能',
     rows: [['啊，', 0, 210], ['我这个功能', 300, 1800], ['。', 1800, 2000]],
     decision: { removeItemIds: ['c001:i001'], evidence: '啊，' }, removed: '啊' },
@@ -30,7 +33,7 @@ const cases = [
   { name: 'a stale scope text becoming coincidentally valid after punctuation cleanup', expected: '正文嗯  很好', artifactText: '正文很好', manuscript: '正文很好', preserveRemoved: true,
     rows: [['正文', 0, 900], ['嗯，', 1000, 1200], ['很好', 1300, 2000]],
     invalidScope: { text: '嗯  ' }, decision: { removeItemIds: ['c001:i002'], evidence: '嗯，' }, removed: '嗯' },
-  { name: 'an unselected emoji adjacent to a valid removed filler', expected: '正文😀很好', artifactText: '正文😀很好', manuscript: '正文很好', preserveRemoved: true,
+  { name: 'an unselected emoji adjacent to a valid removed filler', expected: '正文😀很好', artifactText: '正文😀很好', manuscript: '正文很好', preserveRemoved: true, allowReviewFallback: true,
     allowedTexts: ['正文😀很好', '正文嗯😀很好'],
     rows: [['正文', 0, 900], ['嗯', 1000, 1200], ['😀', 1210, 1250], ['很好', 1300, 2000]],
     decision: { removeItemIds: ['c001:i002'], evidence: '嗯' }, removed: '嗯' },
@@ -94,12 +97,16 @@ print(json.dumps({'path': str(artifact.project_path), 'srt': render_srt(read_pro
         return { css, canvas: MaweAssCanvas.lastRender.tracks.flatMap((track) => track.lines.flatMap((line) => line.items.map((item) => item.text))).join(''),
           ordinary: MaweExportSrt.buildSrt(), compressed: MaweExportSrt.buildGapRemovedSrt(), ass: MaweExportSrt.buildAss(),
           dynamic: MaweExportSrt.buildDynamicCaptionExportData(MaweBoot.DATA.segments, true),
-          removedGaps: MaweGapRemoveData.getRemovedGapRanges(), raw: MaweBoot.DATA.segments[0] };
+          removedGaps: MaweGapRemoveData.getRemovedGapRanges(), raw: MaweBoot.DATA.segments[0],
+          aiSources: MaweBoot.DATA.gap_remove?.provenance?.sources?.ai_cleanup || [], markers: MaweBoot.DATA.markers };
       }, fixture.previewTime || 1000);
       await test.info().attach('consumer-snapshot', { body: JSON.stringify(snapshot, null, 2), contentType: 'application/json' });
       writeFileSync(test.info().outputPath('consumer-snapshot.json'), JSON.stringify(snapshot, null, 2));
       await page.locator('.player-stage').screenshot({ path: test.info().outputPath('local-punctuation-projection.png') });
-      expect(snapshot.removedGaps.length).toBeGreaterThan(0);
+      if (fixture.allowReviewFallback && !snapshot.removedGaps.length) {
+        expect(snapshot.aiSources).toHaveLength(0);
+        expect(snapshot.markers.some((marker) => marker.review?.status === 'pending')).toBe(true);
+      } else expect(snapshot.removedGaps.length).toBeGreaterThan(0);
       expect(fixture.allowedTexts || [fixture.expected]).toContain(snapshot.css);
       expect(snapshot.canvas).toContain(snapshot.css);
       expect(snapshot.dynamic.segments[0].text).toBe(snapshot.css);
@@ -141,6 +148,44 @@ print(json.dumps({'path': str(artifact.project_path), 'srt': render_srt(read_pro
         return MaweExportSrt.buildSrt();
       });
       expect(restored).toContain(fixture.removed);
+      if (fixture.afterFirstRestore && fixture.rows.length === 7) {
+        const mixed = await page.evaluate(({ segment, ranges }) => {
+          const failed = structuredClone(segment);
+          const good = structuredClone(segment);
+          good.id = 'second'; good.start += 4000; good.end += 4000;
+          good.items.forEach((item) => { item.start += 4000; item.end += 4000; });
+          MaweBoot.DATA.segments = [{ id: 'lead', start: 0, end: 2000, text: '前文',
+            items: [{ text: '前文', start: 0, end: 2000 }] }, failed, good];
+          const later = ranges.map((range) => ({ ...structuredClone(range), start: range.start + 4000, end: range.end + 4000,
+            cleanup_scope: { ...range.cleanup_scope, segment_id: 'second' } }));
+          MaweBoot.DATA.gap_remove = { provenance: { sources: { ai_cleanup: [...ranges, ...later],
+            audio_gate: [{ start: 810, end: 930 }] } } };
+          MaweBoot.DATA.markers = [{ id: 'ordinary', start: 0, end: 110, name: '普通标记', note: '用户备注', color: '#ffffff' },
+            { id: 'known-ai', start: 0, end: 110, name: 'AI', note: '[AI] 删除：口吃', color: '#8e4ec6' }];
+          MaweJsonRepair.normalizeProjectTimings(MaweBoot.DATA);
+          MaweMarkersPanel.openPanel();
+          return { array: Array.isArray(MaweBoot.DATA.markers), scopes: MaweBoot.DATA.gap_remove.provenance.sources.ai_cleanup,
+            markers: MaweBoot.DATA.markers, texts: MaweExportSrt.cleanupMainSegments().map((cue) => cue.text) };
+        }, { segment: produced.segments[0], ranges: produced.gap_remove.provenance.sources.ai_cleanup });
+        expect(mixed.array).toBe(true);
+        expect(mixed.scopes).toHaveLength(2);
+        expect(mixed.scopes.every((range) => range.cleanup_scope.segment_id === 'second')).toBe(true);
+        expect(mixed.scopes[1].cleanup_scope.item_start).toBe(3);
+        expect(mixed.texts[1]).toContain('嗯');
+        expect(mixed.texts[2]).toBe(fixture.artifactText);
+        await expect(page.locator('[data-marker-id="ordinary"]')).toBeVisible();
+        await expect(page.locator('[data-marker-id="known-ai"]')).toContainText('待复核');
+        expect(mixed.markers.find((marker) => marker.id === 'ordinary').note).toBe('用户备注');
+        expect(await page.evaluate(() => MaweProjectSave.saveProjectToServer({ silent: true }))).toBe(true);
+        await page.reload();
+        await expect(page.locator('.cue[data-idx="0"] .text')).toBeVisible();
+        const reopened = await page.evaluate(() => ({ text: MaweExportSrt.cleanupMainSegments()[2].text,
+          array: Array.isArray(MaweBoot.DATA.markers), sources: MaweBoot.DATA.gap_remove.provenance.sources }));
+        expect(reopened.text).toBe(fixture.expected);
+        expect(reopened.array).toBe(true);
+        expect(reopened.sources.ai_cleanup).toHaveLength(2);
+        expect(reopened.sources.audio_gate).toHaveLength(1);
+      }
     } finally {
       await server?.stop();
       cleanupTempDir(directory);
