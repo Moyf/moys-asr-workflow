@@ -31,13 +31,35 @@ async function settings(page, tab = 'regions') {
   await page.locator(`#editor-settings-tab-${tab}`).click();
 }
 
+test('word timing help stays concise and translates when switching language', async ({ page }, testInfo) => {
+  await page.locator('#help-toggle').click();
+  await page.locator('#help-tab-waveform').click();
+  const paragraphs = page.locator('#help-tab-panel-waveform .help-subgroup').first().locator('.help-category > span');
+  await expect(paragraphs).toHaveCount(3);
+  await expect(paragraphs.first()).toContainText('Q 快速切换开关');
+  await expect(paragraphs.nth(1)).toContainText('F 试听选中的字幕或字词');
+  await expect(paragraphs.last()).toContainText('右键菜单的「高级操作」');
+  await page.locator('#help-panel').screenshot({ path: testInfo.outputPath('word-timing-help-zh.png') });
+  await page.locator('#help-close').click();
+  await settings(page, 'interface');
+  await page.locator('#language-toggle').click();
+  await page.locator('#help-toggle').click();
+  await page.locator('#help-tab-waveform').click();
+  await expect(paragraphs.first()).toContainText('Q toggles this mode');
+  await expect(paragraphs.nth(1)).toContainText('F auditions the selected subtitles or words');
+  await expect(paragraphs.last()).toContainText('Advanced actions in the context menu');
+  expect((await paragraphs.allTextContents()).join('')).not.toMatch(/[\u4e00-\u9fff]/);
+  await page.locator('#help-panel').screenshot({ path: testInfo.outputPath('word-timing-help-en.png') });
+});
+
 test('settings search lists cross-window destinations and navigates only after selection', async ({ page }, testInfo) => {
   await settings(page);
   const search = page.locator('#editor-settings-search');
   await search.fill('主字幕语言');
   const result = page.locator('#editor-settings-search-results button');
   await expect(result).toHaveCount(1);
-  await expect(result).toHaveText('时间与语言 / 主字幕语言工程设置');
+  await expect(result.locator('span')).toHaveText('主字幕语言');
+  await expect(result.locator('small')).toHaveText('工程设置 / 时间与语言');
   await expect(page.locator('#editor-settings-tab-regions')).toHaveAttribute('aria-selected', 'true');
   await expect(page.locator('#project-settings-panel')).toBeHidden();
   await expect(search).toBeFocused();
@@ -77,12 +99,12 @@ test('settings search shows page and item matches with no nested duplicates', as
   const search = page.locator('#editor-settings-search');
   await search.fill('拆分');
   const results = page.locator('#editor-settings-search-results');
-  await expect(results.getByRole('button', { name: '拆分合并 全局设置', exact: true })).toBeVisible();
-  await expect(results.getByRole('button', { name: '拆分合并 / 字幕（编辑状态下）拆分按键 全局设置', exact: true })).toBeVisible();
-  await expect(results.getByRole('button', { name: '拆分合并 / 主字幕自动使用时间码拆分 全局设置', exact: true })).toHaveCount(1);
+  await expect(results.getByRole('button', { name: '拆分合并', exact: true })).toBeVisible();
+  await expect(results.getByRole('button', { name: '字幕（编辑状态下）拆分按键 拆分合并', exact: true })).toBeVisible();
+  await expect(results.getByRole('button', { name: '主字幕自动使用时间码拆分 拆分合并', exact: true })).toHaveCount(1);
   await expect(page.locator('.settings-search-hit')).toHaveCount(0);
   await page.locator('#editor-settings-panel').screenshot({ path: testInfo.outputPath('settings-search-split.png') });
-  await results.getByRole('button', { name: '拆分合并 / 主字幕自动使用时间码拆分 全局设置', exact: true }).click();
+  await results.getByRole('button', { name: '主字幕自动使用时间码拆分 拆分合并', exact: true }).click();
   await expect(page.locator('#split-use-word-timestamps')).toBeFocused();
   await expect(page.locator('#editor-settings-page-split-merge')).toBeVisible();
   await search.fill('拆分合并');
@@ -119,16 +141,17 @@ test('settings search uses translated labels and fits a narrow window', async ({
   const search = page.locator('#editor-settings-search');
   await search.fill('split');
   const results = page.locator('#editor-settings-search-results');
-  await expect(results).toContainText('Global settings');
+  await expect(results).not.toContainText('Global settings');
   await expect(results).toContainText('Split & merge');
   const geometry = await results.evaluate(el => {
     const rows = [...el.querySelectorAll('button')];
     return { overflow: el.scrollWidth - el.clientWidth,
       gaps: rows.slice(1).map((row, i) => row.getBoundingClientRect().top - rows[i].getBoundingClientRect().bottom),
-      lineGaps: rows.map(row => row.querySelector('small').getBoundingClientRect().top - row.querySelector('span').getBoundingClientRect().bottom) };
+      lineGaps: rows.filter(row => row.querySelector('small')).map(row => row.querySelector('small').getBoundingClientRect().top - row.querySelector('span').getBoundingClientRect().bottom) };
   });
   expect(geometry.overflow).toBeLessThanOrEqual(1);
-  for (const gap of [...geometry.gaps, ...geometry.lineGaps]) expect(gap).toBeGreaterThanOrEqual(7.9);
+  for (const gap of geometry.gaps) expect(gap).toBeCloseTo(2, 1);
+  for (const gap of geometry.lineGaps) expect(gap).toBeCloseTo(0, 1);
   await page.locator('#editor-settings-panel').screenshot({ path: testInfo.outputPath('settings-search-en-narrow.png') });
   await search.fill('main subtitle language');
   await page.keyboard.press('Enter');
@@ -138,15 +161,17 @@ test('settings search uses translated labels and fits a narrow window', async ({
 test('settings search finds interface controls outside label wrappers and updates after language changes', async ({ page }) => {
   await settings(page);
   const search = page.locator('#editor-settings-search');
-  for (const [query, control] of [['主题', '[data-editor-theme="light"]'], ['显示语言', '#language-toggle'], ['Toast', '#editor-toast-position']]) {
+  for (const [query, control] of [['主题', '[data-editor-theme="light"]'], ['显示语言', '#language-toggle'], ['消息提示显示位置', '#editor-toast-position']]) {
     await search.fill(query);
-    const result = page.locator('#editor-settings-search-results button').filter({ hasText: '界面 / ' + (query === 'Toast' ? '消息提示位置（Toast）' : query) });
+    const result = page.locator('#editor-settings-search-results button').filter({ hasText: query });
     await expect(result).toHaveCount(1);
     await result.click();
     await expect(page.locator(control)).toBeFocused();
   }
   await page.evaluate(() => MAWE_I18N.applyLanguage('en'));
-  await expect(page.locator('#editor-settings-search-results')).toContainText('Interface / Notification position (Toast)');
+  await search.fill('Notification display position');
+  await expect(page.locator('#editor-settings-search-results button > span')).toHaveText('Notification display position');
+  await expect(page.locator('#editor-settings-search-results button > small')).toHaveText('Interface');
   await expect(page.locator('#editor-settings-search-results')).not.toContainText('全局设置');
 });
 
@@ -186,9 +211,9 @@ test('settings search refreshes a destination hidden by a changed feature switch
   const search = page.locator('#editor-settings-search');
   await search.fill('预览');
   const results = page.locator('#editor-settings-search-results');
-  const background = results.getByRole('button', { name: '字幕样式 / 背景不透明度 工程设置', exact: true });
+  const background = results.getByRole('button', { name: '背景不透明度 工程设置 / 字幕样式', exact: true });
   await expect(background).toBeVisible();
-  await results.getByRole('button', { name: '字幕样式 / ASS 字幕模式 工程设置', exact: true }).click();
+  await results.getByRole('button', { name: 'ASS 字幕模式 工程设置 / 字幕样式', exact: true }).click();
   await page.locator('#ass-mode-toggle').check();
   await expect(page.locator('#subtitle-background-alpha')).toBeHidden();
   await page.evaluate(() => MaweSettingsPanels.projectFloatingPanel.close());
@@ -197,6 +222,51 @@ test('settings search refreshes a destination hidden by a changed feature switch
   await expect(search).toBeFocused();
   await expect(page.locator('#project-settings-panel')).toBeHidden();
 });
+
+for (const language of ['zh', 'en']) for (const origin of ['global', 'project']) {
+  test(`settings search uses compact unique paths from ${origin} settings in ${language}`, async ({ page }, testInfo) => {
+    await page.evaluate(language => MAWE_I18N.applyLanguage(language), language);
+    if (origin === 'global') await settings(page);
+    else await projectSettings(page, 'timebase');
+    const search = page.locator(origin === 'global' ? '#editor-settings-search' : '#project-settings-search');
+    const results = page.locator(origin === 'global' ? '#editor-settings-search-results' : '#project-settings-search-results');
+    const modeLabel = language === 'zh' ? 'ASS 字幕模式' : 'ASS subtitle mode';
+    const exportLabel = language === 'zh' ? 'ASS 导出' : 'ASS export';
+    const styleTab = language === 'zh' ? '字幕样式' : 'Subtitle style';
+    const exportTab = language === 'zh' ? '字幕导出' : 'Subtitle export';
+    const globalScope = language === 'zh' ? '全局设置' : 'Global settings';
+    const projectScope = language === 'zh' ? '工程设置' : 'Project settings';
+    const byLabel = text => results.locator('button').filter({ has: page.getByText(text, { exact: true }) });
+    await search.fill('ASS');
+    const mode = byLabel(modeLabel);
+    const exported = byLabel(exportLabel);
+    await expect(mode).toHaveCount(1);
+    await expect(mode.locator('span')).toHaveText(modeLabel);
+    await expect(mode.locator('small')).toHaveText(origin === 'project' ? styleTab : projectScope + ' / ' + styleTab);
+    await expect(exported).toHaveCount(1);
+    await expect(exported.locator('span')).toHaveText(exportLabel);
+    await expect(exported.locator('small')).toHaveText(origin === 'global' ? exportTab : globalScope + ' / ' + exportTab);
+    const values = await results.locator('button').evaluateAll(buttons => buttons.map(button =>
+      [button.querySelector('span').textContent, button.querySelector('small')?.textContent || ''].join('|')));
+    expect(new Set(values).size).toBe(values.length);
+    await page.locator(origin === 'global' ? '#editor-settings-panel' : '#project-settings-panel')
+      .screenshot({ path: testInfo.outputPath(`settings-search-ass-${origin}-${language}.png`) });
+    await mode.click();
+    await expect(page.locator('#ass-mode-toggle')).toBeFocused();
+
+    // A tab result retains its own title, without repeating it in the hint.
+    await search.fill(styleTab);
+    const tab = byLabel(styleTab);
+    await expect(tab.locator('span')).toHaveText(styleTab);
+    if (origin === 'project') await expect(tab.locator('small')).toHaveCount(0);
+    else await expect(tab.locator('small')).toHaveText(projectScope);
+    await tab.click();
+    await expect(page.locator('#editor-settings-tab-subtitle-style')).toHaveAttribute('aria-selected', 'true');
+    await expect(page.locator('#export-srt-title')).toHaveText(language === 'zh' ? 'SRT 导出' : 'SRT export');
+    await expect(page.locator('#export-ass-title')).toHaveText(exportLabel);
+    await expect(page.locator('#export-otio-options')).toHaveText(language === 'zh' ? 'OTIO 导出' : 'OTIO Export');
+  });
+}
 
 test('Toast position changes immediately, stays in the viewport and persists as a personal preference', async ({ page }, testInfo) => {
   await settings(page, 'interface');
@@ -304,6 +374,8 @@ test('waveform gap labels translate on language changes and newly rendered rows'
 test('region index opens each local panel and Esc returns focus to its visible gear', async ({ page }, testInfo) => {
   const before = await page.evaluate(() => JSON.stringify(MaweBoot.DATA));
   await settings(page);
+  await expect(page.locator('#settings-regions-introduction')).toHaveText('波形区用于查看音频和调整时间，编辑区用于修改字幕，字幕列表用于浏览、筛选与选择字幕。');
+  await expect(page.locator('#settings-regions-gear-hint')).toHaveText('也可点击各功能区右上角的 ⚙️ 按钮配置。');
   await page.locator('#editor-settings-panel').screenshot({ path: testInfo.outputPath('region-index.png') });
   for (const [region, panel, gear] of [
     ['waveform', '#waveform-settings-panel', '#waveform-settings-toggle'],
@@ -419,6 +491,8 @@ test('renamed tabs restore old keys and the English index fits a narrow window',
   await settings(page);
   await expect(page.locator('#editor-settings-page-regions')).toContainText('Waveform area');
   await expect(page.locator('#editor-settings-page-regions')).toContainText('Appearance and content');
+  await expect(page.locator('#settings-regions-introduction')).toContainText('view audio and adjust timing');
+  await expect(page.locator('#settings-regions-gear-hint')).toHaveText('You can also configure each area with the ⚙️ button at its top right.');
   const spacing = await page.locator('#editor-settings-page-regions').evaluate(el => {
     const cards = [...el.querySelectorAll('.editor-settings-region-card')];
     return cards.map(card => card.querySelector('p').getBoundingClientRect().top - card.querySelector('strong').getBoundingClientRect().bottom);
