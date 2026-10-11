@@ -14,7 +14,6 @@ from typing import Final
 
 
 APP_DATA_DIRECTORY_NAME: Final = "MAW"
-EMOJI_FONT_FILE_NAME: Final = "NotoColorEmoji.ttf"
 SERVER_SETTINGS_FILE_NAME: Final = "server-editor-settings.json"
 SOURCE_ROOT: Final = Path(__file__).resolve().parents[1]
 ENV_PATH_OVERRIDE_VARIABLE: Final = "MAW_ENV_FILE"
@@ -74,11 +73,6 @@ def default_env_path() -> Path:
 def default_log_directory() -> Path:
     """Return the shared directory for ordinary and startup diagnostics."""
     return default_app_data_root() / "logs"
-
-
-def default_emoji_font_path() -> Path:
-    """Return the shared cache path for the Linux Noto Color Emoji font."""
-    return default_app_data_root() / EMOJI_FONT_FILE_NAME
 
 
 def default_server_settings_path() -> Path:
