@@ -56,6 +56,7 @@ from maw.console import configure_utf8_stdio  # noqa: E402
 from maw import quapeaks  # noqa: E402
 from maw.project_backups import backup_directory_candidates, write_backup  # noqa: E402
 from maw.app_paths import default_server_settings_path, legacy_server_settings_path  # noqa: E402
+from maw.web_build import BundlePreflightError, ensure_bundle  # noqa: E402
 from maw.ass_styles import load_ass_style_library, save_ass_style_library  # noqa: E402
 from maw.ffmpeg import resolve_ffmpeg_tools  # noqa: E402
 from maw.media_jobs import (  # noqa: E402
@@ -966,6 +967,9 @@ def build_server_page(
     每次渲染都多序列化数 MB，显著拖慢首页响应）。``--no-waveform`` 等关闭
     延迟加载的场景没有该端点兜底，仍需保留内联层。
     """
+    # bundle 是构建产物（不入库）：每次渲染前校验与源码的一致性（改 JS 后刷新
+    # 即生效），缺失或过期时自动调用仓库内 esbuild 重建，无需手动跑构建。
+    ensure_bundle(ROOT, "editor")
     settings = settings or ServerSettings()
     startup_status = startup_status or {
         "status": "ready",
@@ -3275,6 +3279,14 @@ def main() -> int:
             return project
 
         project_loader = load_last_project
+
+    # bundle 是构建产物（不入库）：启动服务前先确保产物存在且与源码一致，
+    # 无法自动重建时给出可操作的修复指引，而不是让页面加载到 404 的脚本。
+    try:
+        ensure_bundle(ROOT, "editor")
+    except BundlePreflightError as error:
+        print(str(error), file=sys.stderr)
+        return 1
 
     try:
         server, port_advanced = open_editor_server(

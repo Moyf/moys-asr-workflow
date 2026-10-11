@@ -49,8 +49,8 @@ pnpm run dev -- "project.mosp" --port 8251
 
 不带参数时默认空白启动；修改 JS 后自动重建，刷新浏览器查看结果，Ctrl+C 结束开发会话并清理 watcher。脚本不生成 `blank-editor.html`、不自动同步依赖；修改 Python 后仍需停止并重新运行脚本。生命周期检查可运行 `powershell -NoProfile -File tests/test_dev_editor.ps1`。
 
-- 修改编辑器 JS 后必须重建，刷新或重启 Server 不会自动打包；持续调试也可另开 `pnpm run watch:editor`。
-- 源码与 `web/editor/boot/editor-bundle.js`、`web/editor/boot/editor-bundle.meta.json` 一起提交；不要手改生成产物。
+- 修改编辑器 JS 后需要重建：持续调试用 `pnpm run watch:editor` 或 `pnpm run dev`；直接刷新 Server 页面也会触发自动重建（serve.py 渲染前校验产物新鲜度）。
+- bundle 与 `.meta.json` 是构建产物，不进 Git（.gitignore 已忽略）；不要手改生成产物。
 - `pnpm run check:editor` 只读检查，不会自动修复；产物过期时 CI 会失败。
 - CSS / HTML 模板修改在 Server 模式下刷新即可生效，不需要重新打包 JS。
 - `blank-editor.html` 是另一份便携 HTML 产物，日常不要重生成。PR 注明「内联副本待发布前统一重生成」；仅在发布检查或维护者明确要求时，先确认 bundle 最新，再运行 `uv run --no-sync python edit.py --blank`。

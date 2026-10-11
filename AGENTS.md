@@ -38,13 +38,13 @@ web/launcher/                # Launcher 前端
 docs/user/LOCAL_ASR.md             # 实验性本地 Qwen3-ASR / FunASR CLI
 ```
 
-`web/` 是唯一前端源码。61 个工厂使用 ESM，其余接线保留 classic 共享作用域；`pnpm run build:editor` 由 esbuild 装配完整 `web/editor/boot/editor-bundle.js`。便携 HTML 与 localhost 都读取这个产物，运行时不需要 Node。修改编辑器 JS 或清单后必须重建并提交 bundle 与 `.meta.json`，运行 `pnpm run check:editor`；localhost 调试可另开 `pnpm run watch:editor`。CSS 与 HTML 模板仍在渲染时读取。
+`web/` 是唯一前端源码。61 个工厂使用 ESM，其余接线保留 classic 共享作用域；`pnpm run build:editor` 由 esbuild 装配完整 `web/editor/boot/editor-bundle.js`。**bundle 是构建产物，不进 Git**：发布包内置构建好的产物，运行时不需要 Node；从源码运行时 serve.py / maw_gui.py / `edit.py --blank` 会在产物缺失或过期时自动重建（需要 Node 与 `pnpm install`），`pnpm install` 的 postinstall 也会构建一次。修改编辑器 JS 或清单后必须重建（watch:editor 或手动），并运行 `pnpm run check:editor` 验证新鲜度。CSS 与 HTML 模板仍在渲染时读取。
 
-Launcher 前端走同一套装配模式：源码按 `web/launcher-scripts.txt` 清单原序列为 classic 模块（由 `scripts/refactor-tools/split-launcher.mjs` 自旧单文件 launcher.js 机械切割而来，等价审计内建于该工具），`pnpm run build:launcher` 装配 `web/launcher/boot/launcher-bundle.js`；修改 Launcher JS 或清单后必须重建并提交 bundle 与 `.meta.json`，运行 `pnpm run check:launcher`。`batch.js` / `postprocess.js` 仍是 bundle 外的独立脚本，经 `window.MAWLauncher` 桥访问主脚本。
+Launcher 前端走同一套装配模式：源码按 `web/launcher-scripts.txt` 清单原序列为 classic 模块（由 `scripts/refactor-tools/split-launcher.mjs` 自旧单文件 launcher.js 机械切割而来，等价审计内建于该工具），`pnpm run build:launcher` 装配 `web/launcher/boot/launcher-bundle.js`；修改 Launcher JS 或清单后必须重建（bundle 与 `.meta.json` 不进 Git，maw_gui.py 启动时会自动重建过期产物），运行 `pnpm run check:launcher`。`batch.js` / `postprocess.js` 仍是 bundle 外的独立脚本，经 `window.MAWLauncher` 桥访问主脚本。
 
 **但现行约定是：除非维护者主动要求，不要生成 `blank-editor.html`。**
 它是生成产物、体积大，且每次重生成都会带来上百行噪声 diff，review 时淹没真实改动。
-改了 `web/` 就提交源码及对应 esbuild 产物，并在 PR 描述里注明「内联副本待发布前统一重生成」；
+改了 `web/` 就提交源码（esbuild 产物不进 Git，无需提交），并在 PR 描述里注明「内联副本待发布前统一重生成」；
 发布检查时再一次性重生成，并核对 `git diff --stat blank-editor.html` 符合预期。
 
 ```powershell
@@ -107,7 +107,7 @@ uv run python server-editor\serve.py --blank
 node scripts\build-editor.mjs --write   # 重建（--check 只校验新鲜度；watch:editor 可挂监视）
 ```
 
-重建出的 bundle 变更属于本次改动，随提交一起入库。本地 dev 可用 `npm run dev`（内置 watch）。esbuild 是 devDependencies（pnpm 安装；`scripts/esm-mechanical/` 是迁移实验工具，与日常构建无关）。
+重建出的 bundle 不进 Git：serve.py 渲染页面前、maw_gui.py 启动前、`edit.py --blank` 前都会校验新鲜度并自动重建；发布打包脚本（build-windows.ps1 / build-appimage.sh）与 release CI 在打包前显式构建，MAW.spec 对缺失产物 fail fast。本地 dev 可用 `pnpm run dev`（内置 watch）。esbuild 是 devDependencies（pnpm 安装；`scripts/esm-mechanical/` 是迁移实验工具，与日常构建无关）。
 
 ### Playwright e2e 运行纪律（防长命令挂起）
 

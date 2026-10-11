@@ -19,6 +19,13 @@ if (-not (Test-Path -LiteralPath $EntryPoint -PathType Leaf)) {
 Push-Location -LiteralPath $RepoRoot
 try {
     uv sync --group build --frozen
+
+    # bundle 是构建产物（不入库）：打包前显式构建；MAW.spec 会在缺失时 fail fast。
+    if (-not (Get-Command pnpm -ErrorAction SilentlyContinue)) {
+        throw "pnpm is required to build web bundles. Install Node.js (>=18) and pnpm, then re-run."
+    }
+    pnpm install --frozen-lockfile
+    pnpm run build
     # 生成托管 Runtime 的 frozen requirements txt（MAW.spec datas 条件追加打包）；
     # 主清单（local/ocr dependency-group 走 uv export，moss 走 uv pip compile）与 CPU 变体
     # （从声明源剥离 GPU 参数后原生冻结）统一由 freezer 模块执行，与

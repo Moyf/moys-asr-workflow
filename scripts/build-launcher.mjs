@@ -64,6 +64,9 @@ export function assertFresh(actual, expected) {
 
 export async function checkLauncher(root = ROOT) {
   const built = await buildLauncher(root);
+  // Bundles are build artifacts (not committed): a missing file is the normal
+  // fresh-clone state, so point at the build command instead of "stale".
+  if (!fs.existsSync(path.join(root, 'web', BUNDLE))) throw new Error('Launcher bundle missing; run pnpm run build:launcher');
   assertFresh(fs.readFileSync(path.join(root, 'web', BUNDLE), 'utf8'), built.code);
   assertFresh(fs.readFileSync(path.join(root, 'web', BUILD_INFO), 'utf8'), json(built.metadata));
   return built;
