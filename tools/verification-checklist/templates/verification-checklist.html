@@ -1,9 +1,10 @@
 <!doctype html>
 <!--
   人工核查清单模板（批量功能开发 / 反馈修复收尾用）
-  用法见 AGENTS.md「批量改动的人工核查清单」：
-  1. 复制本文件到仓库外（如 %TEMP%），全文替换标题、副标题、分区内容三处
-     双花括号占位符。注意：本注释与下方脚本注释中刻意不出现占位符原文，
+  用法见工具目录 README.md：
+  1. 编写 JSON 数据，使用 build.py 的 --data 与 --output 生成仓库外页面；
+     脚本自动替换标题、副标题、分区内容。兼容旧的 HTML 分区输入与 --refresh。
+     注意：本注释与下方脚本注释中刻意不出现占位符原文，
      避免被全局替换误伤——维护模板时请保持这一约定；
   2. 分区内容由若干分区卡片组成，每个分区的标准写法：
        <details class="section" open>
@@ -66,7 +67,7 @@
     display: grid; grid-template-columns: 300px minmax(0, 1fr);
     grid-template-areas: "head head" "side main"; column-gap: 36px; row-gap: 24px;
     align-items: start; }
-  .page-head { grid-area: head; }
+  .page-head { grid-area: head; min-width: 0; overflow-wrap: anywhere; }
   .sidebar { grid-area: side; position: sticky; top: 20px;
     display: flex; flex-direction: column; gap: 16px;
     max-height: calc(100vh - 40px); overflow-y: auto; padding-right: 8px;
@@ -126,7 +127,7 @@
     background: var(--ink3); transform: translateY(-1px); }
   .toc a.active .m { background: var(--accent); }
   .toc a.done .m { background: var(--ok); }
-  .toc a .t { flex: 1; }
+  .toc a .t { flex: 1; min-width: 0; overflow-wrap: anywhere; }
   .toc a .c { font: 600 12px var(--mono); color: var(--ink3); white-space: nowrap; }
   .toc a.done .c { color: var(--ok); }
 
@@ -146,6 +147,7 @@
   .section.ignored > summary:hover { background: color-mix(in srgb, var(--ink3) 12%, var(--paper)); }
   .section > summary:focus-visible { outline: 2px solid var(--accent); outline-offset: -3px; }
   .section > summary::-webkit-details-marker { display: none; }
+  .sec-title { min-width: 0; max-width: 100%; overflow-wrap: anywhere; }
   .section-chevron { width: 20px; height: 20px; flex: none; margin-left: auto;
     color: var(--ink3); transition: transform .18s; }
   .section[open] > summary .section-chevron { transform: rotate(180deg); }
@@ -161,6 +163,7 @@
   .section > summary:hover button.sec-ignore,
   .section > summary:focus-within button.sec-ignore { display: inline-block; }
   .badge { font: 600 12px/1 var(--mono); padding: 5px 9px; border-radius: 999px;
+    max-width: 100%; overflow-wrap: anywhere;
     background: var(--chip); color: var(--ink2); }
   .badge.pass { background: var(--ok-soft); color: var(--ok); }
   .badge.fixed { background: var(--accent-soft); color: var(--accent); }

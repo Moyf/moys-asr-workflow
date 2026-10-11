@@ -149,9 +149,10 @@ git diff --name-status
 完成一批功能开发 / 反馈修复（多条目、需要维护者实测确认）后，基于模板生成一份 HTML
 核对清单交给维护者，而不是在对话里罗列长清单：
 
-1. 复制 `tools/verification-checklist/templates/verification-checklist.html`，替换 `{{TITLE}}`、`{{SUBTITLE}}`
-   和 `{{SECTIONS}}`；生成物放在仓库外（如 `%TEMP%`）用浏览器打开，**不提交进仓库**。
-2. 分区卡片用 `<details class="section">` + `summary` 徽标 + `.body` 的标准写法；
+1. 编写符合工具 README 契约的 JSON 数据，使用
+   `python tools/verification-checklist/build.py --data <JSON> --output <HTML>` 自动套用统一模板；
+   不要每次手写 HTML。生成物放在仓库外（如 `%TEMP%`）用浏览器打开，**不提交进仓库**。
+2. JSON 用 `sections` 与 `blocks` 安排分区，页面结构由生成器自动装配；
    分区约定：实现 / 审查结论（只读）→ 修复与提交记录 → 自动化验证结果（写明命令与
    已知环境性失败，不用自动化冒充人工层）→ 人工核验打勾项 → 后续操作步骤。
 3. 打勾项写成可操作步骤（入口 → 操作 → 预期行为），间距类验收仍按「UI 间距约定」
