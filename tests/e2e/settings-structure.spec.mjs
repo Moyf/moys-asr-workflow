@@ -1,7 +1,7 @@
 import { expect, test } from '@playwright/test';
 import { writeFileSync, mkdirSync } from 'node:fs';
 import { join } from 'node:path';
-import { cleanupTempDir, disableOnboarding, findFreePort, generateWav, generateWaveformPayload, makeTempDir, startServer } from './helpers.mjs';
+import { cleanupTempDir, disableOnboarding, dragFloatingPanelAwayFrom, findFreePort, generateWav, generateWaveformPayload, makeTempDir, startServer } from './helpers.mjs';
 
 let tempDir, server;
 test.beforeAll(async () => {
@@ -143,11 +143,12 @@ test('renamed tabs restore old keys and the English index fits a narrow window',
   }
   await settings(page, 'interface');
   await page.locator('#language-toggle').click();
-  await expect(page.locator('#editor-settings-tab-subtitle-preview')).toHaveText('Playback and preview');
-  await expect(page.locator('#editor-settings-tab-subtitle-color')).toHaveText('Custom palette');
+  await expect(page.locator('#editor-settings-tab-subtitle-preview')).toHaveText('Playback & preview');
+  await expect(page.locator('#editor-settings-tab-subtitle-color')).toHaveText('Palette');
   await page.setViewportSize({ width: 760, height: 700 });
   await settings(page);
-  await expect(page.locator('#editor-settings-page-regions')).toContainText('Adjust waveform appearance and content.');
+  await expect(page.locator('#editor-settings-page-regions')).toContainText('Waveform area');
+  await expect(page.locator('#editor-settings-page-regions')).toContainText('Appearance and content');
   const spacing = await page.locator('#editor-settings-page-regions').evaluate(el => {
     const cards = [...el.querySelectorAll('.editor-settings-region-card')];
     return cards.map(card => card.querySelector('p').getBoundingClientRect().top - card.querySelector('strong').getBoundingClientRect().bottom);
@@ -162,12 +163,10 @@ async function projectSettings(page, tab) {
 }
 test('Escape closes only the top visible settings window in either opening order', async ({ page }) => {
   await settings(page, 'general');
-  // Move the floating window aside before using the adjacent toolbar entry.
-  const handle = await page.locator('#editor-settings-drag-handle').boundingBox();
-  await page.mouse.move(handle.x + 40, handle.y + 15);
-  await page.mouse.down();
-  await page.mouse.move(45, 130, { steps: 5 });
-  await page.mouse.up();
+  const drag = await dragFloatingPanelAwayFrom(page, '#editor-settings-panel',
+    '#editor-settings-drag-handle', '#project-settings-toggle');
+  expect(drag.overlaps, JSON.stringify(drag)).toBe(false);
+  expect(Math.abs(drag.panelAfter.x - drag.panelBefore.x)).toBeGreaterThan(200);
   await projectSettings(page, 'timebase');
   await page.keyboard.press('Escape');
   await expect(page.locator('#project-settings-panel')).not.toBeVisible();
@@ -175,6 +174,9 @@ test('Escape closes only the top visible settings window in either opening order
   await page.keyboard.press('Escape');
   await expect(page.locator('#editor-settings-panel')).not.toBeVisible();
   await projectSettings(page, 'timebase');
+  const projectDrag = await dragFloatingPanelAwayFrom(page, '#project-settings-panel',
+    '#project-settings-drag-handle', '#editor-settings-toggle');
+  expect(projectDrag.overlaps, JSON.stringify(projectDrag)).toBe(false);
   await settings(page, 'general');
   await page.keyboard.press('Escape');
   await expect(page.locator('#editor-settings-panel')).not.toBeVisible();
@@ -252,7 +254,7 @@ test('all new settings pages have measured spacing in Chinese and English', asyn
   for (const language of ['zh', 'en']) {
     await page.evaluate(language => MAWE_I18N.applyLanguage(language), language);
     await page.setViewportSize({ width: 760, height: 740 });
-    for (const [scope, keys] of [['global', ['regions', 'general', 'special-edit', 'subtitle-preview', 'subtitle-color', 'export', 'export-more', 'sticker']],
+    for (const [scope, keys] of [['global', ['regions', 'general', 'special-edit', 'subtitle-preview', 'subtitle-color', 'export', 'export-more', 'sticker', 'about']],
       ['project', ['timebase', 'project-tracks', 'subtitle-style', 'project-color', 'project-sticker']]]) {
       await page.evaluate(() => { MaweSettingsPanels.setEditorSettingsPanelOpen(false); MaweSettingsPanels.projectFloatingPanel.close(); });
       for (const key of keys) {
@@ -260,6 +262,28 @@ test('all new settings pages have measured spacing in Chinese and English', asyn
         await expect(page.locator('#editor-settings-page-' + key)).toBeVisible();
         if (scope === 'project') {
           expect(await page.locator('#editor-settings-page-' + key).evaluate(el => el.parentElement.classList.contains('editor-settings-pages'))).toBe(true);
+        }
+        if (scope === 'project' && key === 'project-tracks') {
+          const geometry = await page.locator('#editor-settings-page-project-tracks .project-track-toggle').evaluateAll(labels => {
+            const rows = labels.map(label => {
+              const bounds = label.getBoundingClientRect();
+              const checkbox = label.querySelector('input[type="checkbox"]').getBoundingClientRect();
+              return { left: checkbox.left, top: bounds.top, bottom: bounds.bottom };
+            });
+            return {
+              checkboxLefts: rows.map(row => row.left),
+              rowGaps: rows.slice(1).map((row, index) => row.top - rows[index].bottom),
+            };
+          });
+          expect(Math.max(...geometry.checkboxLefts) - Math.min(...geometry.checkboxLefts)).toBeLessThanOrEqual(1);
+          for (const gap of geometry.rowGaps) expect(gap).toBeGreaterThanOrEqual(7.9);
+        }
+        if (scope === 'global' && key === 'about') {
+          const version = await page.locator('#editor-about-version').innerText();
+          expect(version.trim()).not.toBe('__APP_VERSION__');
+          expect(await page.locator('#editor-settings-page-about a[href*="github.com/Moyf/moys-asr-workflow/releases/tag/"]').getAttribute('href')).toBe(`https://github.com/Moyf/moys-asr-workflow/releases/tag/${version.trim()}`);
+          expect(await page.locator('#editor-settings-page-about a[href*="moyf.github.io/moys-asr-workflow/docs/"]').count()).toBe(1);
+          expect(await page.locator('#editor-settings-page-about .editor-settings-about-placeholder').count()).toBeGreaterThanOrEqual(4);
         }
         const gaps = await page.locator('#editor-settings-page-' + key).evaluate(page => {
           const parents = [page, ...page.querySelectorAll('.editor-settings-group, .editor-settings-sub-group, .editor-settings-field')];

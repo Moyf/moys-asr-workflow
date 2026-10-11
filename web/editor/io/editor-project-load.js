@@ -220,6 +220,8 @@ function applyCanonicalProject(data, filename) {
       MaweBoot.SERVER_CONFIG.canPortableStickerExport = false;
       MaweBoot.SERVER_CONFIG.canLottieExport = false;
       MaweBoot.SERVER_CONFIG.canOgrafExport = false;
+      MaweBoot.SERVER_CONFIG.canGapRemovedVideoExport = false;
+      MaweBoot.SERVER_CONFIG.gapRemovedVideoSourceName = null;
     }
     MaweServerSave.configureServerSaveControls();
     MaweDynamicExports.updateLottieExportButton();

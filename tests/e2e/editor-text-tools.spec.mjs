@@ -1,7 +1,7 @@
 import { expect, test } from '@playwright/test';
 import { join } from 'node:path';
 import { buildPortableBlankEditor, cleanupTempDir, disableOnboarding, findFreePort, generateProjectJson,
-  generateWav, makeTempDir, startServer } from './helpers.mjs';
+  generateWav, makeTempDir, openSettingsPage, startServer } from './helpers.mjs';
 
 let server;
 let portable;
@@ -119,6 +119,9 @@ test('custom wrapping isolates Delete and B while a button has focus', async ({ 
 
 test('batch wrap presets skip existing wrappers and keep preview and undo consistent', async ({ page }) => {
   await seed(page, { text: '**甲乙**', timed: false });
+  await openSettingsPage(page, 'subtitle-style');
+  await page.locator('#ass-mode-toggle').check();
+  await page.locator('#project-settings-close').click();
   await page.evaluate(() => MaweTextProcess.openTextProcessModal());
   await page.locator('#text-process-wrap-presets button').filter({ hasText: '强调文本' }).click();
   expect(await page.evaluate(() => MaweTextProcess.buildTextProcessPreview(MaweTextProcess.textProcessTargets(),

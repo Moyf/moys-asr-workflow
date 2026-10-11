@@ -9,6 +9,7 @@ import json
 import re
 from collections.abc import Callable, Iterable, Mapping
 from dataclasses import dataclass
+from threading import Event, Lock, Thread
 from typing import Final
 from urllib.parse import urlparse
 
@@ -60,6 +61,8 @@ class LlmClientError(RuntimeError):
 
 
 LlmDelta = Callable[[str, str], None]
+LlmResponseObserver = Callable[[object | None], None]
+_CANCELLABLE_REQUEST_POLL_SECONDS: Final[float] = 0.025
 REASONING_MODES: Final[frozenset[str]] = frozenset(
     {"auto", "off", "low", "medium", "high"}
 )
@@ -223,6 +226,8 @@ def complete_subtitle_groups(
     cues: list[dict[str, JsonValue]],
     *,
     on_delta: LlmDelta | None = None,
+    is_cancelled: Callable[[], bool] | None = None,
+    on_response: LlmResponseObserver | None = None,
 ) -> dict[str, JsonValue]:
     """Call one OpenAI-compatible chat endpoint and return its JSON object.
 
@@ -252,6 +257,8 @@ def complete_subtitle_groups(
             cues,
             on_delta=on_delta,
             response_json_schema=_SUBTITLE_GROUPS_JSON_SCHEMA,
+            is_cancelled=is_cancelled,
+            on_response=on_response,
         )
         content = _response_content(body)
         try:
@@ -294,6 +301,8 @@ def _request_completion(
     on_delta: LlmDelta | None,
     use_json_format: bool | None = None,
     response_json_schema: Mapping[str, JsonValue] | None = None,
+    is_cancelled: Callable[[], bool] | None = None,
+    on_response: LlmResponseObserver | None = None,
 ) -> dict[str, JsonValue]:
     """One bounded transport downgrade, independent of JSON protocol retries.
 
@@ -320,6 +329,8 @@ def _request_completion(
                 cues,
                 on_delta=on_delta,
                 json_format=json_format,
+                is_cancelled=is_cancelled,
+                on_response=on_response,
             )
         except LlmClientError as error:
             if not _rejection_means_drop_json_format(error):
@@ -334,7 +345,10 @@ def _request_completion(
         # The constraint reached the server but the content is empty (#1773):
         # json_schema is also a constraint, so it cannot rescue this model.
         break
-    return _unconstrained_completion(settings, system_prompt, cues, on_delta=on_delta)
+    return _unconstrained_completion(
+        settings, system_prompt, cues, on_delta=on_delta,
+        is_cancelled=is_cancelled, on_response=on_response,
+    )
 
 
 def _json_format_payload(
@@ -355,12 +369,15 @@ def _unconstrained_completion(
     cues: list[dict[str, JsonValue]],
     *,
     on_delta: LlmDelta | None,
+    is_cancelled: Callable[[], bool] | None = None,
+    on_response: LlmResponseObserver | None = None,
 ) -> dict[str, JsonValue]:
     _record_json_constraint_mode(settings, JSON_CONSTRAINT_NONE)
     if on_delta is not None:
         on_delta("reset", "")
     body = _request_completion_once(
-        settings, system_prompt, cues, on_delta=on_delta, json_format=None
+        settings, system_prompt, cues, on_delta=on_delta, json_format=None,
+        is_cancelled=is_cancelled, on_response=on_response,
     )
     if not _response_content(body).strip():
         raise LlmClientError(
@@ -378,6 +395,8 @@ def _request_completion_once(
     *,
     on_delta: LlmDelta | None,
     json_format: Mapping[str, JsonValue] | None = None,
+    is_cancelled: Callable[[], bool] | None = None,
+    on_response: LlmResponseObserver | None = None,
 ) -> dict[str, JsonValue]:
     endpoint = _chat_endpoint(settings.base_url)
     payload: dict[str, JsonValue] = {
@@ -402,28 +421,74 @@ def _request_completion_once(
             # every chunk, which is not useful for a live text area.
             payload["incremental_output"] = True
     headers = _request_headers(settings, streaming=streaming)
+    _raise_if_cancelled(is_cancelled)
     try:
-        with requests.Session() as session:
-            response = session.post(
-                endpoint,
-                headers=headers,
-                json=payload,
-                timeout=(10, 180),
-                **({"stream": True} if streaming else {}),
-            )
-            try:
-                response.raise_for_status()
-            except HTTPError as error:
-                raise _provider_response_error(
-                    response, settings=settings, operation="completion"
-                ) from error
-            if streaming:
-                try:
-                    body = _read_stream_response(response, on_delta, settings=settings)
-                finally:
-                    response.close()
+        request = _post_completion_request(
+            endpoint,
+            headers=headers,
+            payload=payload,
+            streaming=streaming,
+            is_cancelled=is_cancelled,
+        )
+        response = request.response
+        response_owned_by_worker = False
+        try:
+            if on_response is not None:
+                # Pass the close handle rather than only the Response: the
+                # observer must also be able to close the Session that owns it.
+                on_response(request)
+            _raise_if_cancelled(is_cancelled)
+            if is_cancelled is None:
+                body = _consume_completion_response(
+                    response,
+                    settings=settings,
+                    streaming=streaming,
+                    on_delta=on_delta,
+                    is_cancelled=None,
+                )
             else:
-                body = response.json()
+                pending_body = _PendingCompletionBody()
+
+                def consume_response() -> None:
+                    result: object | None = None
+                    failure: BaseException | None = None
+                    try:
+                        result = _consume_completion_response(
+                            response,
+                            settings=settings,
+                            streaming=streaming,
+                            on_delta=on_delta,
+                            is_cancelled=is_cancelled,
+                        )
+                    except BaseException as error:  # Relay transport failures to the caller thread.
+                        failure = error
+                    finally:
+                        request.close()
+                        if on_response is not None:
+                            on_response(None)
+                    pending_body.publish(
+                        body=result,
+                        error=failure,
+                        is_cancelled=is_cancelled,
+                    )
+
+                response_owned_by_worker = True
+                worker = Thread(
+                    target=consume_response,
+                    name="maw-llm-response-body",
+                    daemon=True,
+                )
+                try:
+                    worker.start()
+                except BaseException:
+                    response_owned_by_worker = False
+                    raise
+                body = pending_body.wait(is_cancelled)
+        finally:
+            if not response_owned_by_worker:
+                request.close()
+                if on_response is not None:
+                    on_response(None)
     except LlmClientError:
         raise
     except JSONDecodeError as error:
@@ -434,6 +499,10 @@ def _request_completion_once(
             operation="completion",
         ) from error
     except RequestException as error:
+        if is_cancelled is not None and is_cancelled():
+            raise LlmClientError(
+                "操作已取消。", category="cancelled", operation="completion"
+            ) from error
         detail = _bound_diagnostic(str(error), settings=settings)
         raise LlmClientError(
             f"LLM network request failed: {detail or 'request failed'}",
@@ -442,6 +511,248 @@ def _request_completion_once(
         ) from error
     if not isinstance(body, dict):
         raise LlmClientError("LLM response must be a JSON object")
+    return body
+
+
+class _CompletionResponseLease:
+    """Keep the originating Session open until the response body is consumed."""
+
+    def __init__(self, session: requests.Session, response: requests.Response) -> None:
+        self.session = session
+        self.response = response
+        self._close_lock = Lock()
+        self._close_started = False
+
+    def close(self) -> None:
+        with self._close_lock:
+            if self._close_started:
+                return
+            self._close_started = True
+        _close_response(self.response)
+        try:
+            self.session.close()
+        except Exception:  # noqa: BLE001 - cleanup must not hide the request result.
+            pass
+
+
+class _PendingCompletionBody:
+    """Transfer a parsed response body unless cancellation abandons the read."""
+
+    def __init__(self) -> None:
+        self._lock = Lock()
+        self._ready = Event()
+        self._abandoned = False
+        self._body: object | None = None
+        self._has_body = False
+        self._error: BaseException | None = None
+
+    def publish(
+        self,
+        *,
+        body: object | None,
+        error: BaseException | None,
+        is_cancelled: Callable[[], bool],
+    ) -> None:
+        with self._lock:
+            if self._abandoned or is_cancelled():
+                self._abandoned = True
+            else:
+                self._body = body
+                self._has_body = error is None
+                self._error = error
+            self._ready.set()
+
+    def wait(self, is_cancelled: Callable[[], bool]) -> object:
+        while not self._ready.wait(_CANCELLABLE_REQUEST_POLL_SECONDS):
+            if is_cancelled():
+                self.abandon()
+                _raise_if_cancelled(is_cancelled)
+
+        body: object | None = None
+        error: BaseException | None = None
+        has_body = False
+        cancelled = False
+        with self._lock:
+            if self._abandoned or is_cancelled():
+                self._abandoned = True
+                self._body = None
+                self._has_body = False
+                self._error = None
+                cancelled = True
+            else:
+                body = self._body
+                has_body = self._has_body
+                error = self._error
+        if cancelled:
+            _raise_if_cancelled(is_cancelled)
+        if error is not None:
+            raise error
+        if not has_body:
+            raise RuntimeError("LLM response completed without a body")
+        return body
+
+    def abandon(self) -> None:
+        with self._lock:
+            self._abandoned = True
+            self._body = None
+            self._has_body = False
+            self._error = None
+
+
+class _PendingCompletionResponse:
+    """Transfer a response from the request thread without stranding late replies."""
+
+    def __init__(self) -> None:
+        self._lock = Lock()
+        self._ready = Event()
+        self._abandoned = False
+        self._response: _CompletionResponseLease | None = None
+        self._error: BaseException | None = None
+
+    def publish(
+        self,
+        *,
+        response: _CompletionResponseLease | None = None,
+        error: BaseException | None = None,
+        is_cancelled: Callable[[], bool],
+    ) -> None:
+        close_response: _CompletionResponseLease | None = None
+        with self._lock:
+            if self._abandoned or is_cancelled():
+                self._abandoned = True
+                close_response = response
+            else:
+                self._response = response
+                self._error = error
+            self._ready.set()
+        if close_response is not None:
+            _close_response(close_response)
+
+    def wait(self, is_cancelled: Callable[[], bool]) -> _CompletionResponseLease:
+        while not self._ready.wait(_CANCELLABLE_REQUEST_POLL_SECONDS):
+            if is_cancelled():
+                self.abandon()
+                _raise_if_cancelled(is_cancelled)
+
+        close_response: _CompletionResponseLease | None = None
+        response: _CompletionResponseLease | None = None
+        error: BaseException | None = None
+        cancelled = False
+        with self._lock:
+            if self._abandoned or is_cancelled():
+                self._abandoned = True
+                close_response = self._response
+                self._response = None
+                cancelled = True
+            else:
+                response = self._response
+                self._response = None
+                error = self._error
+        if close_response is not None:
+            _close_response(close_response)
+        if cancelled:
+            _raise_if_cancelled(is_cancelled)
+        if error is not None:
+            raise error
+        if response is None:
+            raise RuntimeError("LLM request completed without a response")
+        return response
+
+    def abandon(self) -> None:
+        close_response: _CompletionResponseLease | None = None
+        with self._lock:
+            self._abandoned = True
+            close_response = self._response
+            self._response = None
+        if close_response is not None:
+            _close_response(close_response)
+
+
+def _post_completion_request(
+    endpoint: str,
+    *,
+    headers: Mapping[str, str],
+    payload: Mapping[str, JsonValue],
+    streaming: bool,
+    is_cancelled: Callable[[], bool] | None,
+) -> _CompletionResponseLease:
+    def post() -> _CompletionResponseLease:
+        _raise_if_cancelled(is_cancelled)
+        session = requests.Session()
+        try:
+            response = session.post(
+                endpoint,
+                headers=dict(headers),
+                json=dict(payload),
+                timeout=(10, 180),
+                **({"stream": True} if streaming else {}),
+            )
+        except BaseException:
+            _close_session(session)
+            raise
+        return _CompletionResponseLease(session, response)
+
+    if is_cancelled is None:
+        return post()
+
+    pending = _PendingCompletionResponse()
+
+    def request_headers() -> None:
+        try:
+            response_lease = post()
+        except BaseException as error:  # Relay transport failures to the caller thread.
+            pending.publish(error=error, is_cancelled=is_cancelled)
+        else:
+            pending.publish(response=response_lease, is_cancelled=is_cancelled)
+
+    # requests.post blocks until response headers arrive. Keep that wait off the
+    # bridge thread so cancellation can return promptly. A request already in
+    # progress may continue until Requests' connect/read timeout; its late
+    # response is closed by the worker and is never handed to the parser.
+    worker = Thread(target=request_headers, name="maw-llm-request", daemon=True)
+    worker.start()
+    return pending.wait(is_cancelled)
+
+
+def _close_response(response: requests.Response) -> None:
+    try:
+        response.close()
+    except Exception:  # noqa: BLE001 - response cleanup must not hide the request result.
+        pass
+
+
+def _close_session(session: requests.Session) -> None:
+    try:
+        session.close()
+    except Exception:  # noqa: BLE001 - cleanup must not hide the request result.
+        pass
+
+
+def _consume_completion_response(
+    response: requests.Response,
+    *,
+    settings: LlmSettings,
+    streaming: bool,
+    on_delta: LlmDelta | None,
+    is_cancelled: Callable[[], bool] | None,
+) -> object:
+    _raise_if_cancelled(is_cancelled)
+    try:
+        response.raise_for_status()
+    except HTTPError as error:
+        _raise_if_cancelled(is_cancelled)
+        raise _provider_response_error(
+            response, settings=settings, operation="completion"
+        ) from error
+    if streaming:
+        return _read_stream_response(
+            response,
+            on_delta,
+            settings=settings,
+            is_cancelled=is_cancelled,
+        )
+    body = response.json()
+    _raise_if_cancelled(is_cancelled)
     return body
 
 
@@ -678,6 +989,7 @@ def _read_stream_response(
     on_delta: LlmDelta | None,
     *,
     settings: LlmSettings | None = None,
+    is_cancelled: Callable[[], bool] | None = None,
 ) -> dict[str, JsonValue]:
     if on_delta is None:
         raise AssertionError("stream callback is required for an SSE response")
@@ -689,6 +1001,7 @@ def _read_stream_response(
     # multi-byte UTF-8 (e.g. 0x85 in a Chinese character becomes U+0085 NEL
     # and splitlines() breaks SSE events mid-JSON).
     for data in _iter_sse_data(response.iter_lines(decode_unicode=False)):
+        _raise_if_cancelled(is_cancelled)
         if data == "[DONE]":
             break
         try:
@@ -721,9 +1034,11 @@ def _read_stream_response(
         )
         content = _stream_text(delta.get("content"))
         if reasoning:
+            _raise_if_cancelled(is_cancelled)
             reasoning_parts.append(reasoning)
             on_delta("reasoning", reasoning)
         if content:
+            _raise_if_cancelled(is_cancelled)
             content_parts.append(content)
             on_delta("content", content)
     return {
@@ -736,6 +1051,13 @@ def _read_stream_response(
             }
         ]
     }
+
+
+def _raise_if_cancelled(is_cancelled: Callable[[], bool] | None) -> None:
+    if is_cancelled is not None and is_cancelled():
+        raise LlmClientError(
+            "操作已取消。", category="cancelled", operation="completion"
+        )
 
 
 def _iter_sse_data(lines: Iterable[str | bytes]) -> Iterable[str]:

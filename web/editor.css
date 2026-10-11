@@ -9,6 +9,25 @@
 .word-conversion-dialog ul:empty { display: none; }
 .word-conversion-actions { display: flex; justify-content: flex-end; gap: 12px; margin-top: 20px; }
 .word-conversion-actions .danger:not(:disabled) { color: var(--red); border-color: var(--red); }
+.subtitle-time-offset-dialog {
+  width: min(420px, calc(100vw - 32px));
+  padding: 22px;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: var(--bg-panel);
+  color: var(--text-primary);
+}
+.subtitle-time-offset-dialog::backdrop { background: rgba(0, 0, 0, 0.55); }
+.subtitle-time-offset-form h3 { margin: 0; }
+.subtitle-time-offset-form p { margin: 14px 0; color: var(--text-secondary); line-height: 1.55; }
+.subtitle-time-offset-form label { display: block; margin-bottom: 5px; }
+.subtitle-time-offset-form input {
+  width: 100%; box-sizing: border-box; padding: 7px 9px;
+  border: 1px solid var(--border); border-radius: var(--radius-sm);
+  background: var(--bg-input); color: var(--text-primary); font-size: 14px;
+}
+.subtitle-time-offset-form input:focus { outline: none; border-color: var(--accent); box-shadow: var(--focus-ring); }
+.subtitle-time-offset-form .actions { display: flex; justify-content: flex-end; gap: 10px; margin-top: 20px; }
 .toolbar.waveform-toolbar > .word-timing-toggle { flex: 0 0 auto; white-space: nowrap; margin-bottom: 2px; }
   /* ============================================================
      MAWE 设计令牌系统
@@ -1319,6 +1338,15 @@
   }
   .editor-settings-item { display: inline-flex; align-items: center; gap: 6px; color: var(--text-secondary); font-size: 12px; }
   .editor-settings-item[hidden] { display: none; }
+  .project-track-toggle {
+    box-sizing: border-box; display: flex; align-items: center; gap: 6px; min-height: var(--control-h);
+    padding: 3px 8px; border: 1px solid var(--btn-border); border-radius: var(--radius-sm);
+    background: var(--btn-bg); color: var(--btn-text); font-size: 12px; cursor: pointer;
+  }
+  .project-track-toggle input { flex: 0 0 auto; margin: 0; }
+  .project-track-toggle:hover:not(.disabled) {
+    background: var(--btn-bg-hover); border-color: var(--btn-border-hover); color: var(--text-primary);
+  }
   .editor-settings-sub-group > label.toggle.editor-settings-item { flex: 0 0 100%; }
   .editor-settings-field {
     display: flex; flex: 0 0 100%; flex-direction: column; align-items: flex-start;
@@ -1350,6 +1378,30 @@
     color: var(--text-secondary); font-size: 0.8em;
     font-weight: 600; letter-spacing: .08em;
   }
+  .editor-settings-about-version {
+    display: flex; flex: 0 0 100%; align-items: center; justify-content: space-between; gap: 12px;
+    padding-bottom: 8px; border-bottom: 1px solid var(--border-subtle);
+    color: var(--text-secondary); font-size: 13px;
+  }
+  .editor-settings-about-version strong { color: var(--text-primary); font-variant-numeric: tabular-nums; }
+  .editor-settings-about-grid {
+    display: grid; grid-template-columns: repeat(auto-fit, minmax(190px, 1fr));
+    gap: 8px; width: 100%;
+  }
+  .editor-settings-about-entry {
+    box-sizing: border-box; display: flex; align-items: center; justify-content: space-between; gap: 12px;
+    min-width: 0; min-height: var(--control-h); padding: 7px 9px;
+    border: 1px solid var(--border-subtle); border-radius: var(--radius-sm);
+    background: var(--bg-input); color: var(--text-secondary); font-size: 12px;
+  }
+  a.editor-settings-about-entry { color: var(--text-primary); text-decoration: none; transition: background var(--t-fast), border-color var(--t-fast); }
+  a.editor-settings-about-entry:hover { background: var(--btn-bg-hover); border-color: var(--btn-border-hover); }
+  a.editor-settings-about-entry:focus-visible { outline: 2px solid var(--accent-line); outline-offset: 1px; }
+  .editor-settings-about-entry > span:first-child { min-width: 0; overflow-wrap: anywhere; }
+  .editor-settings-about-action { flex: 0 0 auto; color: var(--accent); white-space: nowrap; }
+  .editor-settings-about-placeholder { flex: 0 0 auto; color: var(--text-muted); white-space: nowrap; }
+  html[lang="en"] .editor-settings-about-locale-zh,
+  html:not([lang="en"]) .editor-settings-about-locale-en { display: none; }
   .editor-settings-segmented {
     display: grid; grid-template-columns: repeat(3, minmax(0, 1fr));
     gap: 2px; width: 100%; padding: 2px;
@@ -4035,7 +4087,7 @@
 .markers-filter-item select:focus { outline: none; border-color: var(--accent); box-shadow: var(--focus-ring); }
 .markers-show-notes input { margin: 0; accent-color: var(--accent); cursor: pointer; }
 .markers-item-note {
-  grid-column: 1 / -1; min-width: 0; padding: 0 9px 9px;
+  grid-column: 1 / -1; min-width: 0; padding: 1px 9px 9px;
   color: var(--text-muted); font-size: 11px; line-height: 1.5;
   white-space: pre-wrap; overflow-wrap: anywhere;
 }
@@ -4144,6 +4196,14 @@
 }
 .markers-item-actions button.markers-review-toggle.confirmed {
   color: #d9f2e3; background: #2b5b3f; border-color: #2b5b3f;
+}
+.markers-item-actions button.markers-review-toggle.removed,
+.markers-item-actions button.markers-review-toggle.partially-removed {
+  color: var(--text-secondary); background: var(--panel-bg, var(--btn-bg));
+  border-color: var(--border); opacity: 0.72;
+}
+.markers-item-actions button.markers-ai-review-mute-toggle.is-muted {
+  color: var(--text-primary); border-color: var(--accent-line);
 }
 .markers-item-actions button.danger { color: #e35a62; }
 .markers-item-actions button.danger:hover:not(:disabled) { color: #fff; background: #ad3b42; border-color: #e35a62; }

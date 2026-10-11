@@ -272,7 +272,12 @@ export function createWordTiming(dependencies) {
         && previousChars[previousChars.length - 1 - suffix] === nextChars[nextChars.length - 1 - suffix]) suffix += 1;
     const regionStart = prefix, regionEnd = previousChars.length - suffix;
     const crosses = ranges.some(range => range && range.start < regionEnd && range.end > regionStart);
-    return crosses ? { warn: true } : null;
+    if (!crosses) return null;
+    return {
+      warn: true,
+      before: previousChars.slice(regionStart, regionEnd).join(''),
+      after: nextChars.slice(prefix, nextChars.length - suffix).join(''),
+    };
   }
   return Object.freeze({ getWordTimingEntries, editWordTiming, mergeWordTimingItems, planWordTimingConversion, planWordTimingTextSync });
 }

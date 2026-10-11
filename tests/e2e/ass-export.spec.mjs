@@ -233,7 +233,8 @@ test('inherits ASS track colours through inline formatting and keeps explicit em
     const main = ASS_STYLE_LIBRARY.styles.find((entry) => entry.id === 'ass');
     const extension = ASS_STYLE_LIBRARY.styles.find((entry) => entry.id === 'ass-extension');
     Object.assign(main, { primaryColor: '#22cc55', emphasisStyle: 'stroke', emphasisColor: '#ff0000' });
-    Object.assign(extension, { primaryColor: '#ffd34d', emphasisStyle: 'stroke', emphasisColor: '#ff0000' });
+    // Avoid the legacy built-in default colour that the style migration upgrades.
+    Object.assign(extension, { primaryColor: '#f1d24c', emphasisStyle: 'stroke', emphasisColor: '#ff0000' });
     const text = '普通 **强调** __下划线__ ~~删除线~~ --缩小-- ++放大++';
     MaweBoot.DATA.segments = [{ id: 'main-colour', start: 1000, end: 3000, text }];
     MaweBoot.DATA.multi_subtitle = { enabled: true, tracks: [{ id: 'extension-colour', segments: [{ id: 'ext-colour', start: 1000, end: 3000, text }] }] };
@@ -259,7 +260,7 @@ test('inherits ASS track colours through inline formatting and keeps explicit em
   });
   // 强调走 stroke 模式：所有 run 的填充保持轨道主色，强调描边用强调色。
   // 计数与旧 DOM 断言对齐：纯字号 run（缩小/放大）也计入。
-  for (const [part, colour] of [['main', '#22cc55'], ['extension', '#ffd34d']]) {
+  for (const [part, colour] of [['main', '#22cc55'], ['extension', '#f1d24c']]) {
     expect(payload[part].flaggedRuns).toBe(5);
     expect(payload[part].fills.every((fill) => fill === colour)).toBe(true);
     expect(payload[part].emphasisStrokes).toEqual(['#ff0000']);
@@ -609,7 +610,7 @@ test('exports a gap-removed styled ASS subtitle with shifted timing', async ({ p
   await page.locator('#gap-removed-export-btn').click();
   await expect(page.locator('#gap-removed-subtitle-export-separator')).toBeVisible();
   await expect(page.locator('#gap-removed-export-menu > .dropdown-item:visible').allTextContents())
-    .resolves.toEqual(['SRT', 'SRT（按颜色拆分）', 'ASS（带样式）']);
+    .resolves.toEqual(['SRT', 'SRT（按颜色拆分）', 'ASS（带样式）', '重组后视频']);
   await expect(page.locator('#gap-removed-otio-menu').locator('xpath=preceding-sibling::*[1]'))
     .toHaveText('OTIO');
 

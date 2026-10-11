@@ -383,6 +383,82 @@ export function createUtilsModule(dependencies) {
   }
 
 
+  // 统一平移一组主字幕的时间区间。计划阶段不修改输入；任一条越出媒体范围，
+  // 或与未选中的字幕产生新冲突时，整批拒绝，调用方不会得到部分变更。
+  function planSubtitleTimeOffset(segments, indices, offsetMs, durationMs, timing = null) {
+    const source = Array.isArray(segments) ? segments : [];
+    const requested = Array.from(indices || [], Number);
+    const targets = [...new Set(requested)].sort((a, b) => a - b);
+    const requestedOffset = Number(offsetMs);
+    const duration = Number(durationMs);
+    if (!targets.length || targets.some((index) => !Number.isInteger(index) || index < 0 || index >= source.length)) {
+      return { ok: false, reason: 'invalid_selection', indices: targets, changes: [] };
+    }
+    if (!Number.isFinite(requestedOffset) || !Number.isInteger(requestedOffset)) {
+      return { ok: false, reason: 'invalid_offset', indices: targets, changes: [] };
+    }
+    if (!Number.isFinite(duration) || duration <= 0) {
+      return { ok: false, reason: 'duration_unavailable', indices: targets, changes: [] };
+    }
+    // 帧位移的毫秒兼容字段会分别取整，不能把取整后的 delta 加到旧毫秒端点。
+    // 在帧坐标检查碰撞，再投影最终端点检查媒体边界与返回保存用范围。
+    const frameMode = timing?.unit === 'frames';
+    const getStart = segment => Number(frameMode ? timing.getStart(segment) : segment?.start);
+    const getEnd = segment => Number(frameMode ? timing.getEnd(segment) : segment?.end);
+    const toMs = value => frameMode ? Number(timing.toMs(value)) : value;
+    const offset = frameMode
+      ? Math.sign(requestedOffset) * Number(timing.fromMs(Math.abs(requestedOffset))) : requestedOffset;
+    const selected = new Set(targets);
+    const changes = [];
+    for (const index of targets) {
+      const segment = source[index];
+      const start = getStart(segment);
+      const end = getEnd(segment);
+      if (!Number.isFinite(start) || !Number.isFinite(end) || end <= start) {
+        return { ok: false, reason: 'invalid_range', indices: targets, changes: [] };
+      }
+      const nextStart = start + offset;
+      const nextEnd = end + offset;
+      if (nextStart < 0 || toMs(nextEnd) > duration) {
+        return { ok: false, reason: 'media_bounds', indices: targets, changes: [] };
+      }
+      for (let otherIndex = 0; otherIndex < source.length; otherIndex++) {
+        if (selected.has(otherIndex)) continue;
+        const other = source[otherIndex];
+        if (!other) continue;
+        const otherStart = getStart(other);
+        if (!Number.isFinite(otherStart)) continue;
+        // 主轨的播放查找、波形绘制和邻居调整都依赖数组按 start 排序。
+        // 即使落点不重叠，也不能越过未选中的字幕；禁用字幕同样参与排序。
+        const wasOutOfOrder = index < otherIndex ? start > otherStart : start < otherStart;
+        const willBeOutOfOrder = index < otherIndex ? nextStart > otherStart : nextStart < otherStart;
+        if (!wasOutOfOrder && willBeOutOfOrder) {
+          return { ok: false, reason: 'overlap', indices: targets, changes: [] };
+        }
+        const otherEnd = getEnd(other);
+        if (!Number.isFinite(otherEnd) || otherEnd <= otherStart) continue;
+        const wasOverlapping = start < otherEnd && end > otherStart;
+        const willOverlap = nextStart < otherEnd && nextEnd > otherStart;
+        if (!wasOverlapping && willOverlap) {
+          return { ok: false, reason: 'overlap', indices: targets, changes: [] };
+        }
+      }
+      changes.push(frameMode
+        ? { index, start: toMs(nextStart), end: toMs(nextEnd), start_frame: nextStart, end_frame: nextEnd }
+        : { index, start: nextStart, end: nextEnd });
+    }
+    return {
+      ok: true,
+      reason: '',
+      indices: targets,
+      changes: changes.filter((change) => (
+        change.start !== Number(source[change.index]?.start)
+        || change.end !== Number(source[change.index]?.end)
+      )),
+    };
+  }
+
+
   function applySubtitleExtension(segments, indices, options = {}) {
     const source = Array.isArray(segments) ? segments : [];
     const plan = planSubtitleExtension(source, indices, options);
@@ -418,5 +494,5 @@ export function createUtilsModule(dependencies) {
     return `${durationLabel}（占比 ${percentageLabel}%）`;
   }
 
-  return Object.freeze({ applyAutoMergeSnaps, applySubtitleExtension, formatGapRemoveDuration, formatHumanDuration, normalizeFrameItemTimingRanges, normalizeItemTimingRanges, normalizeSegmentTimings, planAutoMerge, planSubtitleExtension, repairSegmentOverlap });
+  return Object.freeze({ applyAutoMergeSnaps, applySubtitleExtension, formatGapRemoveDuration, formatHumanDuration, normalizeFrameItemTimingRanges, normalizeItemTimingRanges, normalizeSegmentTimings, planAutoMerge, planSubtitleExtension, planSubtitleTimeOffset, repairSegmentOverlap });
 }

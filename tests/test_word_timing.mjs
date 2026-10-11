@@ -184,7 +184,11 @@ test('leading punctuation attaches to the first item span like display mapping',
 test('unequal edits only warn when the changed region crosses timed spans', () => {
   const source = sentence();
   // 句中插入文字 → 提示未同步
-  assert.deepEqual(plain(utils.planWordTimingTextSync({ ...source, text: '我很真喜欢！' }, source.text)), { warn: true });
+  assert.deepEqual(plain(utils.planWordTimingTextSync({ ...source, text: '我很真喜欢！' }, source.text)), {
+    warn: true,
+    before: '',
+    after: '真',
+  });
   // 结尾追加不跨入任何 item span → 静默忽略
   assert.equal(utils.planWordTimingTextSync({ ...source, text: `${source.text}啊` }, source.text), null);
   // 开头追加同样不跨入（首 item span 从 0 开始，但 region 为空）
@@ -207,7 +211,11 @@ test('text sync preserves non-BMP characters and uses character counts for repla
   }
   assert.deepEqual(items.map(item => item.text), [...previous]);
   // Same UTF-16 length is not the same number of characters.
-  assert.deepEqual(plain(utils.planWordTimingTextSync({ text: '吉祥野家', items }, previous)), { warn: true });
+  assert.deepEqual(plain(utils.planWordTimingTextSync({ text: '吉祥野家', items }, previous)), {
+    warn: true,
+    before: '𠮷',
+    after: '吉祥',
+  });
 });
 
 test('text sync keeps emoji punctuation attached without shifting later item spans', () => {

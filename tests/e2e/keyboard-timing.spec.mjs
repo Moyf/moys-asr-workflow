@@ -37,6 +37,11 @@ async function loadAttachedCues(page, autoSnapAdjacentCues, adjacentBoundaryMode
   }
   await page.goto(server.url);
   await page.evaluate(() => {
+    // Earlier frame-timebase cases autosave this shared test server's project.
+    // Restore the fixture's millisecond baseline before testing default steps.
+    if (MaweTimeline.timelineIsFrameMode()) {
+      MaweTimeline.setTimelineTimebase({ unit: 'milliseconds' });
+    }
     MaweBoot.DATA.segments.splice(
       0,
       MaweBoot.DATA.segments.length,
@@ -231,6 +236,312 @@ test('selected arrow keys move cues, adjust boundaries, and honor the configured
     { start: 25000, end: 30000 },
   ]);
 });
+
+test('advanced time offset moves selected cues atomically and rejects bounds or collisions', async ({ page }) => {
+  await loadAttachedCues(page);
+  await page.locator('.cue[data-idx="0"]').click();
+  await page.locator('.cue[data-idx="1"]').click({ modifiers: ['Control'] });
+  await page.locator('.cue[data-idx="1"]').click({ button: 'right' });
+  await page.locator('.word-timing-advanced > .ctxmenu-submenu-toggle').click();
+  await page.getByRole('button', { name: '调整时间…' }).click();
+  await expect(page.locator('#subtitle-time-offset-dialog')).toBeVisible();
+  await page.locator('#subtitle-time-offset-ms').fill('-1000');
+  await page.locator('#subtitle-time-offset-apply').click();
+  await expect.poll(() => readTimings(page)).toEqual([
+    { start: 4000, end: 9000 },
+    { start: 9000, end: 17000 },
+    { start: 25000, end: 30000 },
+  ]);
+  await expect.poll(() => page.evaluate(() => MaweBoot.DATA.segments[0].items[0].start)).toBe(4000);
+
+  await page.locator('.cue[data-idx="2"]').click({ button: 'right' });
+  await page.locator('.word-timing-advanced > .ctxmenu-submenu-toggle').click();
+  await page.getByRole('button', { name: '调整时间…' }).click();
+  await page.locator('#subtitle-time-offset-ms').fill('-9000');
+  await page.locator('#subtitle-time-offset-apply').click();
+  await expect.poll(() => readTimings(page)).toEqual([
+    { start: 4000, end: 9000 },
+    { start: 9000, end: 17000 },
+    { start: 25000, end: 30000 },
+  ]);
+  await expect(page.locator('.hint-card.hint-invalid').first()).toContainText('无法调整');
+});
+
+async function seedBoundSubtitleForOffset(page, extensionConflict = false) {
+  await page.evaluate((conflict) => {
+    MaweBoot.DATA.segments.splice(
+      0,
+      MaweBoot.DATA.segments.length,
+      { id: 'main-offset-1', start: 5000, end: 10000, text: 'First', items: [{ start: 5000, end: 10000, text: 'First' }] },
+      { id: 'main-offset-2', start: 12000, end: 20000, text: 'Second', items: [{ start: 12000, end: 20000, text: 'Second' }] },
+      { id: 'main-offset-3', start: 25000, end: 30000, text: 'Third', items: [{ start: 25000, end: 30000, text: 'Third' }] },
+    );
+    MaweBoot.DATA.multi_subtitle = {
+      schema: 'moy.asr.multi_subtitle.v1',
+      enabled: true,
+      display_mode: 'both',
+      tracks: [{
+        id: 'extension-offset', role: 'extension', name: 'English', language: 'English',
+        split_mode: 'word',
+        segments: [
+          { id: 'extension-bound', start: 4500, end: 5500, text: 'Bound' },
+          { id: 'extension-other', start: conflict ? 3500 : 12000, end: conflict ? 4500 : 13000, text: 'Other' },
+        ].sort((left, right) => left.start - right.start),
+      }],
+      bindings: [{
+        id: 'binding-offset', track_id: 'extension-offset',
+        main_segment_ids: ['main-offset-1'], extension_segment_ids: ['extension-bound'],
+      }],
+    };
+    MaweCuePanel.renderAll({ waveform: 'full' });
+  }, extensionConflict);
+}
+
+async function openTimeOffsetForCue(page, index, offsetMs) {
+  await page.locator(`.cue[data-idx="${index}"]`).click({ button: 'right' });
+  await page.locator('.word-timing-advanced > .ctxmenu-submenu-toggle').click();
+  await page.getByRole('button', { name: '调整时间…' }).click();
+  await expect(page.locator('#subtitle-time-offset-dialog')).toBeVisible();
+  await page.locator('#subtitle-time-offset-ms').fill(String(offsetMs));
+  await page.locator('#subtitle-time-offset-apply').click();
+}
+
+async function useFrameTimebase(page, fps = 25) {
+  page.once('dialog', (dialog) => dialog.accept());
+  await page.evaluate((rate) => {
+    MaweTimeline.setTimelineTimebase({ unit: 'frames', fps: rate });
+  }, fps);
+  await expect.poll(() => page.evaluate(() => MaweTimeline.timelineIsFrameMode())).toBe(true);
+}
+
+for (const timebase of ['milliseconds', 'frames']) {
+  test(`advanced ${timebase} offset rejects a disabled neighbor without moving any cue`, async ({ page }) => {
+    await loadAttachedCues(page);
+    await page.evaluate(() => {
+      MaweBoot.DATA.segments.splice(
+        0,
+        MaweBoot.DATA.segments.length,
+        { id: 'offset-main', start: 1000, end: 2000, text: 'Selected', items: [] },
+        { id: 'offset-disabled', start: 2400, end: 3000, text: 'Disabled neighbor', items: [], disabled: true },
+        { id: 'offset-other', start: 4000, end: 5000, text: 'Other', items: [] },
+      );
+      MaweBoot.DATA.multi_subtitle = {
+        schema: 'moy.asr.multi_subtitle.v1', enabled: false, display_mode: 'both', tracks: [], bindings: [],
+      };
+      // The fixture starts without overlaps; only the attempted offset would
+      // create one, through the production command and renderAll path.
+      MaweCuePanel.renderAll();
+    });
+    if (timebase === 'frames') await useFrameTimebase(page);
+    await page.locator('.cue[data-idx="0"]').click();
+    const readRanges = () => page.evaluate(() => MaweBoot.DATA.segments.map((segment) => ({
+      start: segment.start, end: segment.end,
+      start_frame: segment.start_frame, end_frame: segment.end_frame,
+    })));
+    const before = await readRanges();
+
+    await openTimeOffsetForCue(page, 0, 600);
+
+    await expect(page.locator('#subtitle-time-offset-dialog')).toBeVisible();
+    await expect(page.locator('.hint-card.hint-invalid').first()).toContainText('未选中的字幕');
+    expect(await readRanges()).toEqual(before);
+  });
+}
+
+test('advanced time offset shifts a bound secondary cue with its main cue', async ({ page }) => {
+  await loadAttachedCues(page);
+  await seedBoundSubtitleForOffset(page);
+  await page.locator('.cue[data-idx="0"]').click();
+  await openTimeOffsetForCue(page, 0, -1000);
+  await expect.poll(() => page.evaluate(() => ({
+    main: MaweBoot.DATA.segments[0].start,
+    extension: MaweBoot.DATA.multi_subtitle.tracks[0].segments[0].start,
+  }))).toEqual({ main: 4000, extension: 3500 });
+});
+
+test('advanced time offset rolls back all tracks when a bound secondary cue would collide', async ({ page }) => {
+  await loadAttachedCues(page);
+  await seedBoundSubtitleForOffset(page, true);
+  await page.locator('.cue[data-idx="0"]').click();
+  await openTimeOffsetForCue(page, 0, -1000);
+  await expect(page.locator('#subtitle-time-offset-dialog')).toBeHidden();
+  await expect(page.locator('.hint-card.hint-invalid').first()).toContainText('绑定的副字幕空间受阻');
+  await expect.poll(() => page.evaluate(() => ({
+    main: [MaweBoot.DATA.segments[0].start, MaweBoot.DATA.segments[0].end],
+    extension: MaweBoot.DATA.multi_subtitle.tracks[0].segments.map(({ start, end }) => [start, end]),
+  }))).toEqual({ main: [5000, 10000], extension: [[3500, 4500], [4500, 5500]] });
+});
+
+test('advanced time offset preserves positive and negative frame-aligned offsets', async ({ page }) => {
+  await loadAttachedCues(page);
+  await useFrameTimebase(page);
+
+  await page.locator('.cue[data-idx="0"]').click();
+  await openTimeOffsetForCue(page, 0, -120);
+  await expect.poll(() => readTimings(page)).toEqual([
+    { start: 4880, end: 9880 },
+    { start: 10000, end: 18000 },
+    { start: 25000, end: 30000 },
+  ]);
+
+  await openTimeOffsetForCue(page, 0, 80);
+  await expect.poll(() => readTimings(page)).toEqual([
+    { start: 4960, end: 9960 },
+    { start: 10000, end: 18000 },
+    { start: 25000, end: 30000 },
+  ]);
+});
+
+test('advanced negative frame offset rejects a cue that would cross the media start', async ({ page }) => {
+  await loadAttachedCues(page);
+  await useFrameTimebase(page);
+  await page.locator('.cue[data-idx="0"]').click();
+
+  await openTimeOffsetForCue(page, 0, -5040);
+  await expect.poll(() => readTimings(page)).toEqual([
+    { start: 5000, end: 10000 },
+    { start: 10000, end: 18000 },
+    { start: 25000, end: 30000 },
+  ]);
+  await expect(page.locator('.hint-card.hint-invalid').first()).toContainText('时间范围会超出媒体边界');
+});
+
+test('advanced frame offset shifts a bound secondary cue with its main cue', async ({ page }) => {
+  await loadAttachedCues(page);
+  await seedBoundSubtitleForOffset(page);
+  await useFrameTimebase(page);
+  await page.locator('.cue[data-idx="0"]').click();
+  const before = await page.evaluate(() => ({
+    main: [MaweBoot.DATA.segments[0].start, MaweBoot.DATA.segments[0].end],
+    extension: [
+      MaweBoot.DATA.multi_subtitle.tracks[0].segments[0].start,
+      MaweBoot.DATA.multi_subtitle.tracks[0].segments[0].end,
+    ],
+  }));
+
+  await openTimeOffsetForCue(page, 0, 120);
+  await expect.poll(() => page.evaluate(() => ({
+    main: [MaweBoot.DATA.segments[0].start, MaweBoot.DATA.segments[0].end],
+    extension: [
+      MaweBoot.DATA.multi_subtitle.tracks[0].segments[0].start,
+      MaweBoot.DATA.multi_subtitle.tracks[0].segments[0].end,
+    ],
+  }))).toEqual({
+    main: before.main.map((time) => time + 120),
+    extension: before.extension.map((time) => time + 120),
+  });
+});
+
+test('advanced frame offset rolls back all tracks when a bound secondary cue would collide', async ({ page }) => {
+  await loadAttachedCues(page);
+  await seedBoundSubtitleForOffset(page, true);
+  await useFrameTimebase(page);
+  await page.locator('.cue[data-idx="0"]').click();
+  const before = await page.evaluate(() => ({
+    main: [MaweBoot.DATA.segments[0].start, MaweBoot.DATA.segments[0].end],
+    extension: MaweBoot.DATA.multi_subtitle.tracks[0].segments.map(({ start, end }) => [start, end]),
+  }));
+
+  await openTimeOffsetForCue(page, 0, -1000);
+  await expect(page.locator('#subtitle-time-offset-dialog')).toBeHidden();
+  await expect(page.locator('.hint-card.hint-invalid').first()).toContainText('绑定的副字幕空间受阻');
+  await expect.poll(() => page.evaluate(() => ({
+    main: [MaweBoot.DATA.segments[0].start, MaweBoot.DATA.segments[0].end],
+    extension: MaweBoot.DATA.multi_subtitle.tracks[0].segments.map(({ start, end }) => [start, end]),
+  }))).toEqual(before);
+});
+
+async function seedFrameOffsetRanges(page, { fps, mainFrames, target = 0, extensionFrames = [], follower = 0 }) {
+  await page.evaluate(({ fps, mainFrames, target, extensionFrames, follower }) => {
+    MaweSettings.updateEditorSettings({ autoSaveProject: false });
+    MaweCuePanelState.currentCuePanelIdx = -1;
+    MaweCuePanelState.resetCuePanelEditState({ discard: true });
+    MaweSelection.clearSelection({ commitCuePanel: false });
+    MaweHistory.editorHistory.clear();
+    MaweBoot.DATA.timebase = { unit: 'frames', fps };
+    const segment = (frames, id, disabled) => {
+      const start = MaweTimeline.millisecondsFromFrameNumber(frames[0], fps);
+      const end = MaweTimeline.millisecondsFromFrameNumber(frames[1], fps);
+      return { id, start, end, start_frame: frames[0], end_frame: frames[1], text: id, disabled,
+        items: [{ start, end, start_frame: frames[0], end_frame: frames[1], text: id }] };
+    };
+    MaweBoot.DATA.segments.splice(0, MaweBoot.DATA.segments.length,
+      ...mainFrames.map((frames, index) => segment(frames, `frame-main-${index}`, index !== target)));
+    MaweBoot.DATA.multi_subtitle = {
+      schema: 'moy.asr.multi_subtitle.v1', enabled: extensionFrames.length > 0, display_mode: 'both',
+      tracks: extensionFrames.length ? [{ id: 'frame-extension', role: 'extension', name: 'Bound',
+        segments: extensionFrames.map((frames, index) => segment(frames, `frame-extension-${index}`, index !== follower)) }] : [],
+      bindings: extensionFrames.length ? [{ id: 'frame-binding', track_id: 'frame-extension',
+        main_segment_ids: [`frame-main-${target}`], extension_segment_ids: [`frame-extension-${follower}`] }] : [],
+    };
+    MaweCuePanel.renderAll();
+  }, { fps, mainFrames, target, extensionFrames, follower });
+}
+
+function readOffsetProject(page) {
+  return page.evaluate(() => JSON.parse(JSON.stringify({ segments: MaweBoot.DATA.segments,
+    multi: MaweBoot.DATA.multi_subtitle, undo: MaweHistory.editorHistory.undoLength() })));
+}
+
+for (const fps of [30, 29.97]) {
+  for (const direction of [1, -1]) {
+    for (const bound of [false, true]) {
+      test(`advanced frame offset accepts ${direction > 0 ? 'positive' : 'negative'} rounded touching boundaries at ${fps} FPS${bound ? ' with bound secondary cues' : ''}`, async ({ page }) => {
+        await loadAttachedCues(page, false);
+        const end = fps === 30 ? 5 : 7;
+        const mainFrames = bound
+          ? (direction > 0 ? [[2, 5], [30, 40]] : [[0, 3], [30, 40]])
+          : (direction > 0 ? [[end - 3, end], [end + 2, end + 5]] : [[0, 2], [4, 7]]);
+        const extensionFrames = !bound ? [] : direction > 0
+          ? (fps === 30 ? [[3, 6], [8, 11]] : [[4, 7], [9, 12]])
+          : [[0, 2], [4, 7]];
+        const target = direction > 0 ? 0 : 1;
+        const follower = direction > 0 ? 0 : 1;
+        await seedFrameOffsetRanges(page, { fps, mainFrames, target, extensionFrames, follower });
+        await page.locator(`.cue[data-idx="${target}"]`).click();
+        const before = await readOffsetProject(page);
+        const offset = direction * Math.round(2 * 1000 / fps);
+        await openTimeOffsetForCue(page, target, offset);
+        await expect(page.locator('#subtitle-time-offset-dialog')).toBeHidden();
+        const shifted = (frames) => ({
+          start_frame: frames[0] + direction * 2, end_frame: frames[1] + direction * 2,
+          start: Math.round((frames[0] + direction * 2) * 1000 / fps),
+          end: Math.round((frames[1] + direction * 2) * 1000 / fps),
+        });
+        const after = await readOffsetProject(page);
+        expect(after.segments[target]).toMatchObject(shifted(mainFrames[target]));
+        expect(after.segments[target].items[0]).toMatchObject(shifted(mainFrames[target]));
+        expect(after.segments[1 - target]).toEqual(before.segments[1 - target]);
+        if (bound) {
+          expect(after.multi.tracks[0].segments[follower]).toMatchObject(shifted(extensionFrames[follower]));
+          expect(after.multi.tracks[0].segments[follower].items[0]).toMatchObject(shifted(extensionFrames[follower]));
+          expect(after.multi.tracks[0].segments[1 - follower]).toEqual(before.multi.tracks[0].segments[1 - follower]);
+        }
+        expect(after.undo).toBe(1);
+        await page.evaluate(() => MaweHistory.performUndo());
+        const restored = await readOffsetProject(page);
+        expect(restored.segments).toEqual(before.segments);
+        expect(restored.multi).toEqual(before.multi);
+      });
+    }
+  }
+  test(`advanced frame offset rejects real bound collisions and media bounds atomically at ${fps} FPS`, async ({ page }) => {
+    await loadAttachedCues(page, false);
+    const lastFrame = Math.round(DURATION_MS * fps / 1000);
+    for (const { extensionFrames, offset } of [
+      { extensionFrames: [[4, 7], [8, 11]], offset: Math.round(2 * 1000 / fps) },
+      { extensionFrames: [[lastFrame - 3, lastFrame]], offset: Math.round(2 * 1000 / fps) },
+      { extensionFrames: [[1, 4]], offset: -Math.round(2 * 1000 / fps) },
+    ]) {
+      await seedFrameOffsetRanges(page, { fps, mainFrames: [[30, 40], [60, 70]], extensionFrames });
+      await page.locator('.cue[data-idx="0"]').click();
+      const before = await readOffsetProject(page);
+      await openTimeOffsetForCue(page, 0, offset);
+      await expect(page.locator('.hint-card.hint-invalid').first()).toContainText('绑定的副字幕空间受阻');
+      expect(await readOffsetProject(page)).toEqual(before);
+    }
+  });
+}
 
 test('automatic adjacent snapping is on by default and Alt temporarily disables it', async ({ page }) => {
   await loadAttachedCues(page);
@@ -598,7 +909,63 @@ test('moving a cue keeps tracking horizontal pointer deltas past its waveform ro
   await page.mouse.down();
   await page.mouse.move(targetX, y, { steps: 10 });
   await expect.poll(() => page.evaluate(() => MaweBoot.DATA.segments[2].start)).toBeGreaterThan(30000);
+  await expect.poll(() => page.locator(
+    '.waveform-row[data-row-index="3"] .waveform-cue-block[data-track="main"][data-idx="2"]',
+  ).count()).toBe(1);
+  await expect(page.locator(
+    '.waveform-row[data-row-index="2"] .waveform-cue-block[data-track="main"][data-idx="2"]',
+  )).toHaveCount(0);
   await page.mouse.up();
+  await expect.poll(() => page.locator(
+    '.waveform-row[data-row-index="3"] .waveform-cue-block[data-track="main"][data-idx="2"]',
+  ).count()).toBe(1);
+});
+
+test('selected cue group reflows fragments into the next waveform row while dragging', async ({ page }) => {
+  await page.setViewportSize({ width: 1600, height: 900 });
+  await loadAttachedCues(page);
+  await page.evaluate(() => {
+    MaweBoot.DATA.segments.splice(
+      0,
+      MaweBoot.DATA.segments.length,
+      { start: 21000, end: 25000, text: 'A', items: [] },
+      { start: 25000, end: 28000, text: 'B', items: [] },
+      { start: 28000, end: 29000, text: 'C', items: [] },
+      { start: 29000, end: 33000, text: 'D', items: [] },
+      { start: 33000, end: 35000, text: 'E', items: [] },
+    );
+    MaweCuePanel.renderAll();
+    MaweSelection.selectOnly(2);
+    MaweSelection.addManyToSelection([3, 4]);
+    const scroll = document.querySelector('.waveform-scroll');
+    scroll.style.right = 'auto';
+    scroll.style.width = '700px';
+  });
+
+  const sourceRow = page.locator('.waveform-row[data-row-index="2"]');
+  const targetRow = page.locator('.waveform-row[data-row-index="3"]');
+  const cue = sourceRow.locator('.waveform-cue-block[data-track="main"][data-idx="2"]');
+  await expect(cue).toBeVisible();
+  await expect(targetRow.locator('.waveform-cue-block[data-track="main"][data-idx="2"]')).toHaveCount(0);
+  const cueBox = await cue.boundingBox();
+  const rowBox = await sourceRow.boundingBox();
+  const rowContent = await sourceRow.evaluate((row) => ({ clientLeft: row.clientLeft, clientWidth: row.clientWidth }));
+  expect(cueBox).not.toBeNull();
+  expect(rowBox).not.toBeNull();
+  const startX = cueBox.x + cueBox.width / 2;
+  const dragY = cueBox.y + cueBox.height / 2;
+  const targetX = rowBox.x + rowContent.clientLeft + rowContent.clientWidth * 1.2;
+
+  await page.mouse.move(startX, dragY);
+  await page.mouse.down();
+  await page.mouse.move(targetX, dragY, { steps: 8 });
+  await expect.poll(() => page.evaluate(() => MaweBoot.DATA.segments[2].start)).toBeGreaterThan(30000);
+  await expect.poll(() => targetRow.locator('.waveform-cue-block[data-track="main"][data-idx="2"]').count()).toBe(1);
+  await expect(sourceRow.locator('.waveform-cue-block[data-track="main"][data-idx="2"]')).toHaveCount(0);
+  await page.mouse.up();
+  await expect.poll(() => page.locator(
+    '.waveform-row[data-row-index="3"] .waveform-cue-block[data-track="main"][data-idx="2"]',
+  ).count()).toBe(1);
 });
 
 test('A/D on an independent right handle follows the effective end edge', async ({ page }) => {

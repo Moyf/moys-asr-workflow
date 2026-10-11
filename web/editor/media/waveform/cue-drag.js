@@ -153,7 +153,9 @@ export function createWaveformModule(dependencies) {
             && !event.shiftKey && !event.ctrlKey && !event.metaKey,
         ),
         seekedOnPointerDown: false,
-        captureTarget: event.currentTarget,
+        // 拖动中字幕可能跨过波形行边界并重建块节点；捕获放在稳定的 pane 上，
+        // 这样重建覆盖层后指针事件仍能到达当前拖动。
+        captureTarget: this.pane,
       };
       if (this.isCueBoundaryDrag()) {
         this.cancelHoverSeekPreview();
@@ -161,7 +163,6 @@ export function createWaveformModule(dependencies) {
       }
       event.currentTarget.classList.add('dragging');
       this.pane.classList.add('cue-drag-active');
-      try { event.currentTarget.setPointerCapture?.(event.pointerId); } catch (_) {}
       window.addEventListener('pointermove', this._dragMove = (moveEvent) => this.moveCueDrag(moveEvent));
       window.addEventListener('pointerup', this._dragEnd = (upEvent) => this.endCueDrag(upEvent), { once: true });
       window.addEventListener('pointercancel', this._dragEnd, { once: true });
@@ -229,13 +230,12 @@ export function createWaveformModule(dependencies) {
         started: false,
         changed: false,
         independent: true,
-        captureTarget: event.currentTarget,
+        captureTarget: this.pane,
       };
       this.cancelHoverSeekPreview();
       this.refreshBoundaryDragPointerLine(true);
       event.currentTarget.classList.add('dragging');
       this.pane.classList.add('cue-drag-active');
-      try { event.currentTarget.setPointerCapture?.(event.pointerId); } catch (_) {}
       window.addEventListener('pointermove', this._dragMove = (moveEvent) => this.moveCueDrag(moveEvent));
       window.addEventListener('pointerup', this._dragEnd = (upEvent) => this.endCueDrag(upEvent), { once: true });
       window.addEventListener('pointercancel', this._dragEnd, { once: true });
@@ -316,7 +316,6 @@ export function createWaveformModule(dependencies) {
       event.currentTarget.classList.add('dragging');
       this.pane.classList.add('cue-drag-active');
       this.pane.classList.add('shared-boundary-drag-active');
-      try { this.pane.setPointerCapture?.(event.pointerId); } catch (_) {}
       window.addEventListener('pointermove', this._dragMove = (moveEvent) => this.moveCueDrag(moveEvent));
       window.addEventListener('pointerup', this._dragEnd = (upEvent) => this.endCueDrag(upEvent), { once: true });
       window.addEventListener('pointercancel', this._dragEnd, { once: true });
