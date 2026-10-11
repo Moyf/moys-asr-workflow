@@ -206,7 +206,9 @@ class GuiWebBridgeTests(CompactContainerAssertions, unittest.TestCase):
             request_count += 1
             on_response(None)
             if request_count == 1:
-                content = "{"
+                # Missing strings cannot be repaired by closing containers;
+                # keep this a syntax retry within the same transport batch.
+                content = '{"decisions":"unfinished'
             elif "第二道工序" in prompt:
                 content = json.dumps({"reviews": []}, ensure_ascii=False)
             else:

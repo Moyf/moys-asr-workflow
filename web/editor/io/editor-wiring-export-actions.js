@@ -465,9 +465,11 @@ document.getElementById('download-gap-removed-video')?.addEventListener('click',
 
   let writable = null;
   let reader = null;
+  let response = null;
+  let transferComplete = false;
   try {
     MaweHint.flashHint(tr('正在重组去空隙视频…'));
-    const response = await MaweHost.server.fetch(config.gapRemovedVideoExportUrl, {
+    response = await MaweHost.server.fetch(config.gapRemovedVideoExportUrl, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
@@ -502,10 +504,21 @@ document.getElementById('download-gap-removed-video')?.addEventListener('click',
     if (receivedLength !== expectedLength) throw new Error(tr('视频传输不完整，未保存部分文件'));
     await writable.close();
     writable = null;
+    transferComplete = true;
     MaweHint.flashHint(tr('去空隙视频已重组并保存'), 'success');
   } catch (error) {
     MaweHint.flashHint(`${tr('重组后视频导出失败')}：${error?.message || error}`, 'warning');
   } finally {
+    if (!transferComplete && response?.body) {
+      // Releasing a reader only relinquishes its JS lock. Cancel the network
+      // body as well so the server can finish streaming and release its export
+      // lock after a validation/storage failure, including before reader setup.
+      // Do not wait for transport cleanup or replace the original failure.
+      try {
+        const cancellation = reader ? reader.cancel() : response.body.cancel();
+        void cancellation.catch(() => {});
+      } catch (_) {}
+    }
     if (reader) reader.releaseLock();
     if (writable) await writable.abort().catch(() => {});
   }
