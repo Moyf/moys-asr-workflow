@@ -358,10 +358,10 @@
     "editor/cues/editor-wiring-search-filter.js": "947be9af11eb8ac637d43bae40169cd8f04d5362ecc03e93140b9607921becdb",
     "editor/cues/editor-wiring-overlay-split-merge.js": "6842c05dec08f50f4640cbc17cedd6f4fa8f03d1c4f7bbde361e28839a60c2eb",
     "editor/cues/editor-wiring-list-navigation.js": "724204b9dc26435f9edaab5c7f7426e6d0c7ae9504181f2b984b39407a4f5d28",
-    "editor/media/editor-wiring-keyboard-guards.js": "9a4289e2acbc0b22184475f60304a97cc10535070112cc8af01938503d3bd55d",
+    "editor/media/editor-wiring-keyboard-guards.js": "34177326518230a6f901e1b552748610c973db675cca6e8337afbaf320ec90f5",
     "editor/cues/editor-wiring-word-timing.js": "b85e4b62e9bba28d77d573b1d2d97f7173a4d4b25b6b583c4fe780746e4594fc",
     "editor/media/editor-wiring-media-controls.js": "978298e2f616be772132c07321187f66ebc5f46d31d4d14ac0a04a0f0815194f",
-    "editor/cues/editor-wiring-edit-shortcuts.js": "353fc928fb8fa370f5f4406fc07f061ed8717fed9639e4a17201a3f481ed0366",
+    "editor/cues/editor-wiring-edit-shortcuts.js": "e9b2ba8907f8e321769f87a50ee5366364a2612655036e51573d225455474d93",
     "editor/styles/editor-wiring-font-geometry.js": "a6bd47579d3c780c6cbf3d6211584728759fad78e5d26af826f03dcbf3da9c04",
     "editor/styles/editor-wiring-ass-preview.js": "f417309e2041e56895b7e0439277ef406f280d6635841f8c39d1c51c77a493f1",
     "editor/styles/editor-wiring-ass-canvas.js": "0bb87354bcec4fa8620a4ca3539d5240b37d2f88e1c051c206b4b305de7f72fd",
@@ -692,7 +692,7 @@
         "format": "esm"
       },
       "web/editor-entry.mjs": {
-        "bytes": 1867158,
+        "bytes": 1867726,
         "imports": [
           {
             "path": "web/shared/host/storage.js",
@@ -1193,10 +1193,10 @@
             "bytesInOutput": 4427
           },
           "web/editor-entry.mjs": {
-            "bytesInOutput": 1086120
+            "bytesInOutput": 1086337
           }
         },
-        "bytes": 1441636
+        "bytes": 1441853
       }
     }
   }

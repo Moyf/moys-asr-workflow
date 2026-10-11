@@ -59,6 +59,44 @@ test.beforeAll(async () => {
   ] }), 'utf8');
   server = await startServer(project, media, await findFreePort());
 });
+for (const tool of ['select', 'razor']) {
+  test(`camera Escape preserves selected cues and the ${tool} tool`, async ({ page }, testInfo) => {
+    await page.locator('#ass-mode-quick-toggle').click();
+    await page.locator('.cue[data-idx="0"]').click();
+    const selection = await page.evaluate(() => [...MaweSelection.selectedIdxs]);
+    expect(selection).toEqual([0]);
+    await page.evaluate(tool => MaweCoreState.waveformEditor.setTool(tool), tool);
+    const camera = page.locator('#ass-frame-quick-open');
+    await camera.click();
+    await expect(page.locator('#ass-frame-window')).toHaveAttribute('aria-hidden', 'false');
+    const snapshot = () => page.evaluate(() => ({
+      selection: [...MaweSelection.selectedIdxs], tool: MaweCoreState.waveformEditor.tool,
+      frameOpen: document.getElementById('ass-frame-window').classList.contains('show'),
+      activeTag: document.activeElement?.tagName, activeId: document.activeElement?.id,
+    }));
+    const before = await snapshot();
+    await page.keyboard.press('Escape');
+    const after = await snapshot();
+    writeFileSync(testInfo.outputPath('camera-selected-escape.json'), JSON.stringify({ before, after }, null, 2));
+    await page.screenshot({ path: testInfo.outputPath('camera-selected-escape.png') });
+    await expect(page.locator('#ass-frame-window')).toHaveAttribute('aria-hidden', 'true');
+    await expect(camera).toBeFocused();
+    await expect(camera).toHaveAttribute('aria-expanded', 'false');
+    expect(after.selection).toEqual(selection);
+    expect(after.tool).toBe(tool);
+    // This panel's Esc listener is registered before the selection guards.
+    // Its consumed event must not fall through and clear selection or razor.
+    await page.locator('#auto-merge-manage').click();
+    await expect(page.locator('#auto-merge-panel')).toHaveClass(/show/);
+    await page.keyboard.press('Escape');
+    await expect(page.locator('#auto-merge-panel')).not.toHaveClass(/show/);
+    expect(await page.evaluate(() => [...MaweSelection.selectedIdxs])).toEqual(selection);
+    expect(await page.evaluate(() => MaweCoreState.waveformEditor.tool)).toBe(tool);
+    await page.keyboard.press('Escape');
+    expect(await page.evaluate(() => [...MaweSelection.selectedIdxs])).toEqual([]);
+    expect(await page.evaluate(() => MaweCoreState.waveformEditor.tool)).toBe('select');
+  });
+}
 test.afterAll(async () => { await server?.stop(); cleanupTempDir(tempDir); });
 test.beforeEach(async ({ page }) => {
   await disableOnboarding(page);
