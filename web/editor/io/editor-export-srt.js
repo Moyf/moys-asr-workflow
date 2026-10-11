@@ -121,7 +121,7 @@
   }
 
   function buildDynamicCaptionExportData(segments, gapRemoved) {
-    const colorContext = Array.isArray(segments) ? segments : [];
+    const colorContext = aiCleanupExportSegments(Array.isArray(segments) ? segments : []);
     const source = colorContext.map((segment) => ({
       ...segment,
       text: MaweSpeakerLabels.subtitleExportText(segment, colorContext),
@@ -244,11 +244,11 @@
   const extensionSegments = preview && !MaweDom.extensionOverlayToggle?.checked
     ? [] : activeExtensionSegments();
   const firstEnabledIndex = window.AsrEditorUtils.getSrtExportFirstIndex(
-    MaweBoot.DATA.segments,
+    aiCleanupExportSegments(MaweBoot.DATA.segments),
     MaweSettings.EDITOR_SETTINGS.exportStartAtZero,
   );
   return window.AsrEditorUtils.buildAssPayload(preview && !MaweDom.overlayToggle.checked
-    ? [] : MaweBoot.DATA.segments, {
+    ? [] : aiCleanupExportSegments(MaweBoot.DATA.segments), {
     ...assExportOptions(),
     onAssPlan,
     allowAssPlanDiagnostics,
@@ -320,14 +320,14 @@
     return null;
   }
   const firstEnabledIndex = window.AsrEditorUtils.getSrtExportFirstIndex(
-    MaweBoot.DATA.segments,
+    aiCleanupExportSegments(MaweBoot.DATA.segments),
     MaweSettings.EDITOR_SETTINGS.exportStartAtZero,
   );
   // 去空隙 ASS 与常规 ASS 同一三轨契约：叠加轨与副字幕也随导出，
   // 时间统一经 mapGapRemovedTime 压缩。
   const { overlaySegments } = mergedExportSegments();
   const extensionSegments = activeExtensionSegments();
-  return window.AsrEditorUtils.buildAssPayload(MaweBoot.DATA.segments, {
+  return window.AsrEditorUtils.buildAssPayload(aiCleanupExportSegments(MaweBoot.DATA.segments), {
     ...assExportOptions(),
     alignFirstStart: MaweSettings.EDITOR_SETTINGS.exportStartAtZero,
     firstEnabledIndex,

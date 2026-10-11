@@ -212,26 +212,15 @@ class GuiWebBridgeTests(CompactContainerAssertions, unittest.TestCase):
             elif "第二道工序" in prompt:
                 content = json.dumps({"reviews": []}, ensure_ascii=False)
             else:
-                decisions = []
+                lines = []
                 for cue in cues:
                     if cue.get("contextOnly") == "true":
                         continue
                     if cue["id"] == "c001":
-                        decisions.append({
-                            "id": cue["id"],
-                            "decision": "discard",
-                            "scriptLine": "",
-                            "reason": "试麦",
-                            "evidence": "听得到吗",
-                        })
+                        lines.append(f"[{cue['id']}] ~~{cue['asrText']}~~ %删除：试麦%")
                     else:
-                        decisions.append({
-                            "id": cue["id"],
-                            "decision": "keep",
-                            "scriptLine": cue["scriptLine"],
-                            "reason": "对应文稿",
-                        })
-                content = json.dumps({"decisions": decisions}, ensure_ascii=False)
+                        lines.append(cue["sourceLine"])
+                content = "\n".join(lines)
             on_delta("content", content)
             return {"choices": [{"message": {"content": content}}]}
 
@@ -259,15 +248,15 @@ class GuiWebBridgeTests(CompactContainerAssertions, unittest.TestCase):
 
         self.api.pump.shutdown()
         self.assertTrue(result["ok"])
-        self.assertEqual(request_count, 4)  # Two initial batches, retry, and readthrough.
-        self.assertEqual({event[2] for event in events}, {1, 2, 3})
+        self.assertEqual(request_count, 5)  # Two initial batches, retry, and readthrough.
+        self.assertEqual({event[2] for event in events}, {1, 2, 3, 4, 5})
         self.assertEqual(
             [(kind, batch) for kind, _text, batch, _operation in events if kind == "reset"],
-            [("reset", 1), ("reset", 1), ("reset", 2), ("reset", 3)],
+            [("reset", 1), ("reset", 2), ("reset", 3), ("reset", 4), ("reset", 5)],
         )
         self.assertEqual(
             {batch for kind, _text, batch, _operation in events if kind == "content"},
-            {1, 2, 3},
+            {1, 2, 3, 4, 5},
         )
         self.assertTrue(all(event[3] == "ai-cleanup-batches-test" for event in events))
 
@@ -2563,7 +2552,7 @@ class GuiWebBridgeTests(CompactContainerAssertions, unittest.TestCase):
 
     def test_ai_postprocess_preparation_errors_release_operation(self) -> None:
         for method_name, payload, expected_code in (
-            ("run_ai_cleanup", {}, "script_invalid"),
+            ("run_ai_cleanup", {}, "api_key_missing"),
             ("run_llm_postprocess", {"operation": "custom"}, "custom_prompt_required"),
         ):
             with self.subTest(method=method_name, stage="validation"):
@@ -5630,7 +5619,7 @@ class LauncherAssetContractTests(CompactContainerAssertions, unittest.TestCase):
         stylesheet = (ROOT / "web" / "launcher" / "launcher.css").read_text(encoding="utf-8")
 
         self.assertIn(
-            '{ id: "match", enabled: false, scriptPath: "", matchMode: "script", aiCleanup: false, aiCleanupNotes: "", extraSplitPunctuation: ["，", "。", "？", "！", "；", ",", "."], preservePunctuation: ["？", "！"], cleanMarkdownSymbols: true },',
+            '{ id: "match", enabled: false, scriptPath: "", matchMode: "script", extraSplitPunctuation: ["，", "。", "？", "！", "；", ",", "."], preservePunctuation: ["？", "！"], cleanMarkdownSymbols: true },',
             script,
         )
         self.assertIn('subtitle_invalid: (detail) => `字幕或工程解析失败：', launcher_script)

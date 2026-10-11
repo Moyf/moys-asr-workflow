@@ -30,6 +30,7 @@ class SubtitleArtifact:
     # Operation-specific counters (currently the AI cleanup pass); surfaced by
     # the toolbox bridge but never part of the written files themselves.
     stats: Mapping[str, int] | None = None
+    comparison_path: Path | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -124,6 +125,8 @@ def write_artifacts(
     output_directory: Path | None = None,
     media_path: Path | None = None,
     stats: Mapping[str, int] | None = None,
+    comparison_source: Mapping[str, object] | None = None,
+    comparison_rows: list[Mapping[str, object]] | None = None,
 ) -> SubtitleArtifact:
     normalized = normalize_project(project)
     raw_media = normalized.get("media")
@@ -139,10 +142,17 @@ def write_artifacts(
     output_directory = output_directory.expanduser().resolve() if output_directory is not None else None
     project_path = _available_output(base, operation, base.suffix if source_project_path else ".mosp", output_directory=output_directory) if write_project else None
     srt_path = _available_output(base, operation, ".srt", output_directory=output_directory) if write_srt else None
+    comparison_path = _available_output(base, f"{operation}-comparison", ".html", output_directory=output_directory) if comparison_source is not None else None
+    comparison_html = None
+    if comparison_source is not None:
+        from maw.postprocess_comparison import comparison_data, render_comparison
+        comparison_html = render_comparison(comparison_data(comparison_source, normalized, operation, comparison_rows or []))
     if project_path is not None:
         _atomic_write(project_path, json.dumps(normalized, ensure_ascii=False, indent=2) + "\n")
     if srt_path is not None:
         _atomic_write(srt_path, render_srt(normalized))
+    if comparison_path is not None and comparison_html is not None:
+        _atomic_write(comparison_path, comparison_html)
     return SubtitleArtifact(
         source_project_path=source_project_path,
         source_srt_path=source_srt_path,
@@ -150,15 +160,17 @@ def write_artifacts(
         srt_path=srt_path,
         warnings=warnings,
         stats=stats,
+        comparison_path=comparison_path,
     )
 
 
 def render_srt(project: JsonDict) -> str:
+    from maw.postprocess_ai_cleanup_items import cleaned_srt_segments
     main_segments = project.get("segments")
     if not isinstance(main_segments, list):
         return ""
     blocks: list[str] = []
-    for output_index, segment in enumerate(_srt_segments(project, main_segments), 1):
+    for output_index, segment in enumerate(_srt_segments(project, cleaned_srt_segments(project, main_segments)), 1):
         if not isinstance(segment, dict):
             continue
         if segment.get("disabled") is True:
