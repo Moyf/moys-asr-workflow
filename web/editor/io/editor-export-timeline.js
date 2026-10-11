@@ -714,7 +714,7 @@
     TIMELINE_OTIOZ_BUTTONS.forEach((id) => {
       const button = document.getElementById(id);
       if (!button) return;
-      if (!button.dataset.originalTitle) button.dataset.originalTitle = button.title;
+      if (!button.dataset.originalTitle) button.dataset.originalTitle = button.dataset.title || button.title;
       button.classList.toggle('sticker-disabled', !available);
       button.setAttribute('aria-disabled', available ? 'false' : 'true');
       button.title = available
@@ -739,7 +739,7 @@
       ids.forEach((id) => {
         const el = document.getElementById(id);
         if (!el) return;
-        if (!el.dataset.originalTitle) el.dataset.originalTitle = el.title;
+        if (!el.dataset.originalTitle) el.dataset.originalTitle = el.dataset.title || el.title;
         el.classList.toggle('sticker-disabled', disabled);
         el.setAttribute('aria-disabled', disabled ? 'true' : 'false');
         el.title = disabled ? reason : el.dataset.originalTitle;

@@ -14,7 +14,6 @@ import tempfile
 import time
 import webbrowser
 from urllib.error import HTTPError, URLError
-from urllib.parse import urlsplit
 from urllib.request import urlopen
 from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass, replace
@@ -116,7 +115,7 @@ from maw.postprocess_ffmpeg import (
 )
 from maw.postprocess_match import DEFAULT_SPLIT_PUNCTUATION, SCRIPT_EXTENSIONS, MatchCoverageError, ScriptMatchRequest, SubtitleMatchError, _has_complete_item_timings, _match_project, _match_project_with_character_timings, _read_script, prepare_script_text, processed_script_text, run_script_match as process_script_match
 from maw.postprocess_ocr import OcrDedupRequest, OcrRegion
-from maw.postprocess_llm import DEFAULT_REASONING_MODE, LlmClientError, LlmSettings, PRESETS as POSTPROCESS_PRESETS, complete_subtitle_groups, is_custom_slot, list_llm_models, normalize_reasoning_mode, preset_by_id, test_llm_connection
+from maw.postprocess_llm import DEFAULT_REASONING_MODE, LlmClientError, LlmSettings, PRESETS as POSTPROCESS_PRESETS, complete_subtitle_groups, is_custom_slot, list_llm_models, loopback_base_url, normalize_reasoning_mode, postprocess_api_key_required as _postprocess_api_key_required, preset_by_id, test_llm_connection
 from maw.postprocess_pipeline import (
     PostprocessCancelled,
     default_postprocess_plan,
@@ -1040,6 +1039,9 @@ class LauncherApi:
             "label": display_name if is_custom_slot(preset.id) and display_name else preset.label,
             "displayName": display_name if is_custom_slot(preset.id) else "",
             "maskedApiKey": masked_secret(api_key),
+            "apiKeyRequired": _postprocess_api_key_required(preset.id, updates[f"{preset.env_prefix}_BASE_URL"]),
+            "baseUrl": updates[f"{preset.env_prefix}_BASE_URL"],
+            "model": updates[f"{preset.env_prefix}_MODEL"],
             "reasoningMode": reasoning_mode,
             "verified": is_llm_verified(self.paths.env_path, preset.id),
         }
@@ -4364,30 +4366,7 @@ def _error_result(field: str, code: str, detail: str = "", *, context: object = 
     return {"ok": False, "field": field, "code": code, "detail": detail, "error": ERROR_MESSAGES.get(code, detail or code), "errorContext": error_context(context)}
 
 
-_LOOPBACK_HOSTS: Final[frozenset[str]] = frozenset({"127.0.0.1", "localhost", "::1"})
-
-
-def _loopback_base_url(base_url: str) -> bool:
-    """True for loopback LLM endpoints (LM Studio / Ollama / vLLM defaults)."""
-    text = str(base_url or "").strip()
-    if not text:
-        return False
-    # 用户常省略 scheme（如 127.0.0.1:1234/v1）：urlsplit 会把它整体当 path，
-    # 这里按 HTTP 默认 scheme 补全后再解析 host。
-    if "://" not in text:
-        text = f"http://{text}"
-    try:
-        host = urlsplit(text).hostname or ""
-    except ValueError:
-        return False
-    return host.lower() in _LOOPBACK_HOSTS
-
-
-def _postprocess_api_key_required(preset_id: str, base_url: str) -> bool:
-    """自定义槽位指向本机推理服务（LM Studio 等）时允许 API Key 留空。"""
-    if not is_custom_slot(preset_id):
-        return True
-    return not _loopback_base_url(base_url)
+_loopback_base_url = loopback_base_url
 
 
 def _burn_crf_override(raw: object) -> int | None:
@@ -4590,6 +4569,7 @@ def _postprocess_provider_payloads(env_path: Path) -> list[dict[str, object]]:
             "selected": file_values.get("MAW_POSTPROCESS_LAST_PROVIDER", "deepseek") == preset.id,
             "verified": is_llm_verified(env_path, preset.id),
             "hasApiKey": bool(values["apiKey"]),
+            "apiKeyRequired": _postprocess_api_key_required(preset.id, values["baseUrl"] or preset.base_url),
             "hasBaseUrl": bool(values["baseUrl"] or preset.base_url),
             "hasModel": bool(values["model"] or preset.model),
         })

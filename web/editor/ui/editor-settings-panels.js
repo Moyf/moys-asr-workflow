@@ -219,12 +219,12 @@
 
 
   // 帮助中的「全局设置」入口：打开设置窗口并定位到「视频预览」分区。
-  function openEditorSettingsAtTab(tabId) {
+  function openEditorSettingsAtTab(tabId, { focus = true } = {}) {
     const tab = document.getElementById(tabId);
     closeRegionalSettings();
     if (tab?.closest('#project-settings-panel')) projectFloatingPanel.open();
     else setEditorSettingsPanelOpen(true);
-    setEditorSettingsActiveTab(tab, { focus: true });
+    setEditorSettingsActiveTab(tab, { focus });
   }
 
   function closeRegionalSettings() {

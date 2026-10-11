@@ -353,30 +353,32 @@ function applyAssSubtitlePreview({ tMs, segment, extension, overlay, overlaySegm
       color: labelColor,
     };
   }
-  // 叠加轨说话人标签同理：映射按叠加轨自身数组解析（与播放循环同源），
-  // 叠加轨 DOM 元素在 ASS 模式已整体隐藏，标签必须进 Canvas 才可见。
-  let overlaySpeaker = null;
-  if (overlay) {
+  // 副/叠加轨的 DOM 在 ASS 模式整体隐藏，前缀也要进 Canvas；
+  // 名称与颜色都按各轨自己的颜色引用解析，与导出 assEventText 一致。
+  function secondarySpeaker(cue, colorContext, style) {
+    if (!cue) return null;
     const speakerLabels = MaweSpeakerLabels.getSpeakerLabelSettings();
-    const overlayColorContext = overlaySegments || [];
-    const overlayLabel = speakerLabels.mapping_enabled && speakerLabels.enabled
+    const label = speakerLabels.mapping_enabled && speakerLabels.enabled
       ? window.AsrEditorUtils.speakerLabelForSegment(
-        overlay, overlayColorContext, speakerLabels.names,
+        cue, colorContext, speakerLabels.names,
       )
       : '';
-    const overlayColorName = MULTI_SUBTITLE_UTILS.effectiveColorName(overlay, overlayColorContext);
-    if (overlayLabel && overlayColorName && MaweColors.COLOR_BY_NAME[overlayColorName]) {
+    const colorName = MULTI_SUBTITLE_UTILS.effectiveColorName(cue, colorContext);
+    if (label && colorName && MaweColors.COLOR_BY_NAME[colorName]) {
       const assColorStyle = appearance.ass_color_style || DEFAULT_ASS_COLOR_STYLE;
-      const paletteColor = MaweColors.COLOR_BY_NAME[overlayColorName].value;
+      const paletteColor = MaweColors.COLOR_BY_NAME[colorName].value;
       const labelColor = assColorStyle === 'text' || assColorStyle === 'speaker'
         ? paletteColor
-        : animatedOverlayTrackStyle.primaryColor;
-      overlaySpeaker = {
-        text: `${overlayLabel}${speakerLabels.separator}`,
+        : style.primaryColor;
+      return {
+        text: `${label}${speakerLabels.separator}`,
         color: labelColor,
       };
     }
+    return null;
   }
+  const extensionSpeaker = secondarySpeaker(extension, extensionSegments, animatedExtensionStyle);
+  const overlaySpeaker = secondarySpeaker(overlay, overlaySegments || [], animatedOverlayTrackStyle);
 
   window.MaweAssCanvas?.render({
     playResX: metrics.resolution.width,
@@ -398,6 +400,7 @@ function applyAssSubtitlePreview({ tMs, segment, extension, overlay, overlaySegm
         animation: extensionAnimation,
         nativeFontSize: assPreviewExportFontSize(animatedExtensionStyle, metrics),
         margins: extensionMargins,
+        speaker: extensionSpeaker,
       },
       {
         // 链在副字幕上方时，叠加元素沿用副字幕样式的对齐与边距（与导出

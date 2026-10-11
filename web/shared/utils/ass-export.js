@@ -273,7 +273,7 @@ export function createUtilsModule(dependencies) {
           text: extensionFade.text,
           speakerName: extensionSpeakerName,
           speakerLabelSeparator,
-          colorName: null,
+          colorName: effectiveColorName(segment, extensionSource),
           colorStyles,
           style: extensionStyle,
           fontSize: extensionScaledFontSize,

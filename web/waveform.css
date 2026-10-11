@@ -913,33 +913,33 @@
    字幕块抬到字词块上方并稍加高，两层不再互相遮挡。
    仅作用多行波形（basic 单行与双语 lane 各有自己的布局，不参与）。
    徽章 bottom 同步按「块底 30 + 块高 38 + 间距 2」上移。 */
-.waveform-pane.word-timing-mode:not(.waveform-basic) .waveform-word-block,
-.waveform-pane.word-timing-mode:not(.waveform-basic) .waveform-word-boundary {
+.waveform-multi .waveform-pane.word-timing-mode .waveform-row:not(.multi-subtitle-row) .waveform-word-block,
+.waveform-multi .waveform-pane.word-timing-mode .waveform-row:not(.multi-subtitle-row) .waveform-word-boundary {
   bottom: 7px;
   height: 20px;
 }
-.waveform-pane.word-timing-mode:not(.waveform-basic) .waveform-word-block {
+.waveform-multi .waveform-pane.word-timing-mode .waveform-row:not(.multi-subtitle-row) .waveform-word-block {
   display: flex;
   align-items: center;
 }
-.waveform-pane.word-timing-mode:not(.waveform-basic) .waveform-word-block .waveform-word-label {
+.waveform-multi .waveform-pane.word-timing-mode .waveform-row:not(.multi-subtitle-row) .waveform-word-block .waveform-word-label {
   line-height: normal;
 }
-.waveform-pane.word-timing-mode:not(.waveform-basic) .waveform-cue-block {
+.waveform-multi .waveform-pane.word-timing-mode .waveform-row:not(.multi-subtitle-row) .waveform-cue-block {
   bottom: 30px;
   height: 38px;
   line-height: 38px;
 }
 /* 分层后字幕块不再垫在字词块下面，从背景透明度恢复到接近常规可见度；
    选中态恢复完整不透明（描边仍保持去辉光，避免与字词块双层描边叠加）。 */
-.waveform-pane.word-timing-mode:not(.waveform-basic) .waveform-cue-block.word-timing-background {
+.waveform-multi .waveform-pane.word-timing-mode .waveform-row:not(.multi-subtitle-row) .waveform-cue-block.word-timing-background {
   opacity: 0.8;
 }
-.waveform-pane.word-timing-mode:not(.waveform-basic) .waveform-cue-block.word-timing-background.selected,
-.waveform-pane.word-timing-mode:not(.waveform-basic) .waveform-cue-block.word-timing-background.selected:hover {
+.waveform-multi .waveform-pane.word-timing-mode .waveform-row:not(.multi-subtitle-row) .waveform-cue-block.word-timing-background.selected,
+.waveform-multi .waveform-pane.word-timing-mode .waveform-row:not(.multi-subtitle-row) .waveform-cue-block.word-timing-background.selected:hover {
   opacity: 1;
 }
-.waveform-pane.word-timing-mode:not(.waveform-basic) .waveform-cue-badge {
+.waveform-multi .waveform-pane.word-timing-mode .waveform-row:not(.multi-subtitle-row) .waveform-cue-badge {
   bottom: calc(70px + var(--badge-stack-index, 0) * 16px);
 }
 .waveform-word-block {

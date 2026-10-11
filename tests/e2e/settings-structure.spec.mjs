@@ -31,6 +31,21 @@ async function settings(page, tab = 'regions') {
   await page.locator(`#editor-settings-tab-${tab}`).click();
 }
 
+test('settings search keeps keyboard focus after matching across both windows', async ({ page }, testInfo) => {
+  await settings(page);
+  const search = page.locator('#editor-settings-search');
+  await search.fill('主字幕语言');
+  await expect(page.locator('#editor-settings-tab-timebase')).toHaveAttribute('aria-selected', 'true');
+  await expect(search).toBeFocused();
+  await page.screenshot({ path: testInfo.outputPath('settings-search-focus.png') });
+  await page.keyboard.press('End');
+  await page.keyboard.type('不存在的设置');
+  await expect(search).toHaveValue('主字幕语言不存在的设置');
+  await expect(page.locator('.settings-search-hit')).toHaveCount(0);
+  await page.keyboard.press('Escape');
+  await expect(search).toHaveValue('');
+});
+
 test('region index opens each local panel and Esc returns focus to its visible gear', async ({ page }, testInfo) => {
   const before = await page.evaluate(() => JSON.stringify(MaweBoot.DATA));
   await settings(page);
