@@ -174,7 +174,7 @@ test('creates an empty secondary track on enable and imports subtitles optionall
   page.on('dialog', async (dialog) => { dialogs.push(dialog.message()); await dialog.dismiss(); });
   await expect(page.locator('#project-multi-subtitle-settings')).toBeHidden();
   await expect(page.locator('#multi-subtitle-toggle-label'))
-    .toHaveAttribute('title', '开启后显示副字幕轨，可手动添加或导入第二条字幕。');
+    .toHaveAttribute('data-title', '开启后显示副字幕轨，可手动添加或导入第二条字幕。');
   await setProjectTrackEnabled(page, 'multi-subtitle-toggle', true);
   await expect(page.locator('#project-multi-subtitle-settings')).not.toHaveAttribute('hidden');
   await openSettingsPage(page, 'project-tracks');
@@ -285,8 +285,10 @@ test('saves an empty secondary track and supports manual creation, edits, undo a
   const box = await waitForLayoutBox(row, 'empty secondary lane has no layout');
   await page.mouse.click(box.x + box.width * 0.8, box.y + box.height - 2, { button: 'right' });
   await page.locator('#ctxmenu .item').filter({ hasText: '创建副字幕' }).click();
-  const editor = page.locator('.multi-cue-column.extension .text[contenteditable]');
+  expect(await page.evaluate(() => MaweCuePanel.getCurrentCuePanelTarget()?.kind)).toBe('extension');
+  const editor = page.locator('#cue-panel-text');
   await expect(editor).toBeVisible();
+  await expect(editor).toBeFocused();
   await editor.fill('手动副字幕');
   await editor.press('ControlOrMeta+Enter');
   await expect(page.locator('.waveform-cue-block[data-track="extension"]')).toHaveCount(1);
@@ -1415,7 +1417,7 @@ test('imports an extension SRT with 300ms preview, dual columns, split dialog, a
   expect(rightSplitMeta).not.toBe(leftSplitMeta);
   await page.mouse.click(rightX, splitY);
   await expect(splitText).toHaveClass(/locked/);
-  await expect(splitText).toHaveAttribute('title', '拆分点已锁定，点击或按空格解锁');
+  await expect(splitText).toHaveAttribute('data-title', '拆分点已锁定，点击或按空格解锁');
   await expect(page.locator('#multi-subtitle-split-preview')).toHaveClass(/locked/);
   await page.mouse.move(leftX, splitY);
   await expect(page.locator('#multi-subtitle-split-meta')).toHaveText(rightSplitMeta);
@@ -3866,7 +3868,7 @@ test('confirms main replacement and makes both replacement paths undoable', asyn
   await closeSettingsPanels(page);
   await expect(page.locator('#multi-subtitle-toggle')).not.toBeDisabled();
   await expect(page.locator('#multi-subtitle-toggle-label'))
-    .toHaveAttribute('title', '开启后显示副字幕轨，可手动添加或导入第二条字幕。');
+    .toHaveAttribute('data-title', '开启后显示副字幕轨，可手动添加或导入第二条字幕。');
   await expect(page.locator('#cues-container .multi-dual-cue')).toHaveCount(0);
   await expect(page.locator('#cues-container .cue .text').first()).toHaveText('Hello world.');
 });
@@ -4551,12 +4553,14 @@ test('ASS export gates extension cues on the multi-subtitle toggle and keeps gap
   expect(disabledLines).toHaveLength(2);
   expect(disabledLines.every((line) => !line.startsWith('Dialogue: 1,'))).toBe(true);
   expect(disabled.ass).not.toContain('Style: Extension,');
-  expect(disabledLines[1]).toContain(',Overlay,,0,0,0,,{\\fad(250,250)}overlay cue');
+  expect(disabledLines[1]).toContain(',Overlay,,0,0,0,,{\\an2\\q2\\pos(');
+  expect(disabledLines[1]).toMatch(/\{\\fad\(250,250\)\}overlay cue$/u);
   const gapRemovedLines = disabled.gapRemoved.split('\n').filter((line) => line.startsWith('Dialogue:'));
   expect(gapRemovedLines).toHaveLength(2);
   expect(gapRemovedLines.every((line) => !line.includes(',Extension,'))).toBe(true);
   expect(gapRemovedLines[1]).toContain('0:00:02.30,0:00:02.80');
-  expect(gapRemovedLines[1]).toContain(',Overlay,,0,0,0,,{\\fad(250,250)}overlay cue');
+  expect(gapRemovedLines[1]).toContain(',Overlay,,0,0,0,,{\\an2\\q2\\pos(');
+  expect(gapRemovedLines[1]).toMatch(/\{\\fad\(250,250\)\}overlay cue$/u);
 
   // 开启多重字幕（不重载工程，直接翻转状态）：副字幕恢复导出，
   // 去空隙 ASS 与常规 ASS 同一三轨契约（3200-3700 → 2200-2700）。
@@ -4565,12 +4569,28 @@ test('ASS export gates extension cues on the multi-subtitle toggle and keeps gap
     return { ass: MaweExportSrt.buildAss(), gapRemoved: MaweExportSrt.buildGapRemovedAss() };
   });
   const enabledLines = enabled.ass.split('\n').filter((line) => line.startsWith('Dialogue:'));
-  expect(enabledLines).toHaveLength(3);
-  expect(enabledLines[1]).toContain(',Extension,,0,0,0,,{\\fad(250,250)}extension cue');
+  // Active-cue boundaries split the two overlapping secondary cues. They keep
+  // their original coverage and clocks, rather than one Dialogue per track.
+  const assertSecondaryCoverage = (lines, offset) => {
+    expect(lines).toHaveLength(5);
+    const extension = lines.filter(line => line.startsWith('Dialogue: 1,'));
+    const overlay = lines.filter(line => line.startsWith('Dialogue: 2,'));
+    const time = ms => `0:00:${String(Math.floor(ms / 1000)).padStart(2, '0')}.${String((ms % 1000) / 10).padStart(2, '0')}`;
+    const ranges = events => events.map(line => line.split(',').slice(1, 3));
+    expect(ranges(extension)).toEqual([[time(3200 - offset), time(3300 - offset)], [time(3300 - offset), time(3700 - offset)]]);
+    expect(ranges(overlay)).toEqual([[time(3300 - offset), time(3700 - offset)], [time(3700 - offset), time(3800 - offset)]]);
+    for (const [events, style, text] of [[extension, 'Extension', 'extension cue'], [overlay, 'Overlay', 'overlay cue']]) {
+      for (const line of events) {
+        expect(line).toContain(`,${style},,0,0,0,,{\\an2\\q2\\pos(`);
+        expect(line.endsWith(text)).toBe(true);
+        expect(line).toContain('\\fade(255,0,255,');
+      }
+    }
+    expect(extension[1]).toContain('\\fade(255,0,255,-100,150,150,400)');
+    expect(overlay[1]).toContain('\\fade(255,0,255,-400,-150,-150,100)');
+  };
+  assertSecondaryCoverage(enabledLines, 0);
   const enabledGapRemovedLines = enabled.gapRemoved.split('\n').filter((line) => line.startsWith('Dialogue:'));
-  expect(enabledGapRemovedLines).toHaveLength(3);
-  expect(enabledGapRemovedLines[1]).toContain(',Extension,,0,0,0,,{\\fad(250,250)}extension cue');
-  expect(enabledGapRemovedLines[1]).toContain('0:00:02.20,0:00:02.70');
-  expect(enabledGapRemovedLines[2]).toContain(',Overlay,,0,0,0,,{\\fad(250,250)}overlay cue');
+  assertSecondaryCoverage(enabledGapRemovedLines, 1000);
   expect(pageErrors, `Page errors: ${pageErrors.join(' | ')}`).toEqual([]);
 });

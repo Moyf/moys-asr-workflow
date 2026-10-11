@@ -135,7 +135,7 @@ test('style preview opens the actual frame window and displays each missing char
   });
   expect(gap).toBeGreaterThanOrEqual(8);
   await expect(button).toHaveText('打开 ASS 实际画面预览窗口');
-  await expect(button.locator('..')).toContainText('如果想要查看当前画面的实际 ASS 字幕效果，可以');
+  await expect(button.locator('..')).toContainText('如果想要查看当前画面实际的 ASS 字幕效果，可以');
   const linkStyle = await button.evaluate((element) => {
     const style = getComputedStyle(element);
     return { color: style.color, background: style.backgroundColor, border: style.borderTopWidth, underline: style.textDecorationLine };
