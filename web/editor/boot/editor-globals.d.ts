@@ -9,6 +9,16 @@
 // 模板占位符由 edit.py / server-editor 在装配时注入真实 JSON。
 
 declare const __DATA_JSON__: ProjectData;
+
+interface Window {
+  MaweAssCanvas: {
+    measureRun(style: any, nativeFontSize: number, run: any, text: string): { width: number; ascent: number; descent: number };
+    clearCaches(): void;
+    render(payload: any): void;
+    hide(): void;
+    readonly lastRender: any;
+  };
+}
 declare const __FILENAME_BASE_JSON__: string;
 declare const __STICKERS_JSON__: any[];
 declare const __STICKER_ROOT_JSON__: string;
