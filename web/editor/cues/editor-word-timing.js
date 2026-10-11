@@ -81,9 +81,14 @@
     if (result.items) {
       segment.items = result.items;
       if (selection?.segment === segment) selection.items = result.items;
+      const details = Array.isArray(result.details) ? result.details : [];
+      // 提示条空间有限：超过 3 处只展示前 3 处并以「等」收尾。
+      const shown = details.slice(0, 3).map(d => `[${d.before} -> ${d.after}]`).join(' ');
+      const more = details.length > 3 ? ' 等' : '';
+      const suffix = details.length ? `（共${result.changed}处：${shown}${more}）` : `（${result.changed} 处）`;
       MaweHint.flashHint(ui(
-        `已同步字词时间码文字（${result.changed} 处）`,
-        `Synced timed text labels (${result.changed})`,
+        `已同步字词时间码文字${suffix}`,
+        `Synced timed text labels (${result.changed}: ${shown}${more})`,
       ), 'success');
     } else if (result.warn && !quietMismatch) {
       MaweHint.flashHint(ui(
