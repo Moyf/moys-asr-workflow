@@ -45,10 +45,22 @@ test('notes toggle and custom colors preserve marker content', async ({ page }) 
   await expect(page.locator('.markers-item-note')).toHaveCount(0);
   await page.evaluate(() => MaweMarkerEditing.updateMarkerFields('human', { note: '' }));
   await page.locator('#markers-show-notes').check();
-  await expect(page.locator('[data-marker-id="human"] .markers-item-note')).toHaveText('-');
+  await expect(page.locator('[data-marker-id="human"] .markers-item-note')).toHaveCount(0);
   await expect(page.locator('[data-marker-id="ai-delete"] .markers-item-note')).toHaveText('[AI] 删除：试麦');
-  const spacing = await page.locator('.markers-item-note').first().evaluate(el => parseFloat(getComputedStyle(el).marginTop));
+  const spacing = await page.locator('.markers-item-note').first().evaluate(el => {
+    const title = el.closest('.markers-item').querySelector('.markers-item-title');
+    const titleRange = document.createRange();
+    titleRange.selectNodeContents(title);
+    const noteRange = document.createRange();
+    noteRange.selectNodeContents(el);
+    return noteRange.getBoundingClientRect().top - titleRange.getBoundingClientRect().bottom;
+  });
   expect(spacing).toBeGreaterThanOrEqual(8);
+  await test.info().attach('marker-note-spacing', {
+    body: Buffer.from(JSON.stringify({ textGapPx: spacing })),
+    contentType: 'application/json',
+  });
+  await page.locator('#markers-panel').screenshot({ path: test.info().outputPath('markers-note-spacing.png') });
   await page.locator('[data-marker-id="human"] .markers-item-edit').click();
   await expect(page.locator('.markers-color-swatches button')).toHaveCount(8);
   await page.locator('.markers-color-picker').evaluate(el => {
@@ -148,7 +160,7 @@ test('AI review mute is source-scoped and updates through undo, redo, and unmute
   await expect(linkedMuteButton).not.toHaveClass(/is-muted/);
   await page.evaluate(() => MAWE_I18N.applyLanguage('en'));
   await expect(linkedMuteButton).toHaveText('Set mute');
-  await expect(linkedMuteButton).toHaveAttribute('title', 'Mute the media region linked to this AI review item');
+  await expect(linkedMuteButton).toHaveAttribute('data-title', 'Mute the media region linked to this AI review item');
   await linkedMuteButton.click();
   await expect(linkedMuteButton).toHaveText('Muted');
   await expect(aiReviewRow.locator('.markers-review-toggle')).toHaveText('Removed');

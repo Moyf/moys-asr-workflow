@@ -4087,7 +4087,7 @@
 .markers-filter-item select:focus { outline: none; border-color: var(--accent); box-shadow: var(--focus-ring); }
 .markers-show-notes input { margin: 0; accent-color: var(--accent); cursor: pointer; }
 .markers-item-note {
-  grid-column: 1 / -1; min-width: 0; padding: 0 9px 9px;
+  grid-column: 1 / -1; min-width: 0; padding: 1px 9px 9px;
   color: var(--text-muted); font-size: 11px; line-height: 1.5;
   white-space: pre-wrap; overflow-wrap: anywhere;
 }

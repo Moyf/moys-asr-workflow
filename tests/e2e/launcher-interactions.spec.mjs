@@ -1360,7 +1360,7 @@ test('artifact rows localize type labels while preserving MOSP-first and SRT-onl
   await expect(artifacts.nth(1)).toHaveText('SRT 字幕');
   await expect(artifacts.nth(0)).toHaveClass(/selected/);
   await expect(page.locator('#toolboxInputPath')).toHaveValue('D:\\Demo\\source.fixed.mosp');
-  await expect(artifacts.nth(0)).toHaveAttribute('title', 'source.fixed.mosp\nD:\\Demo\\source.fixed.mosp');
+  await expect(artifacts.nth(0)).toHaveAttribute('data-title', 'source.fixed.mosp\nD:\\Demo\\source.fixed.mosp');
   await expect(artifacts.nth(0)).toHaveAttribute('aria-label', /MOSP 工程.*source\.fixed\.mosp.*D:\\Demo\\source\.fixed\.mosp/);
 
   await page.evaluate(() => document.getElementById('langEn').click());

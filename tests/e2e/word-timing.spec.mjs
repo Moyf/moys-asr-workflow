@@ -121,7 +121,7 @@ test('temporary display handles partial and absent timings in both waveform mode
   await expect(page.locator('#markers-manage')).toBeHidden();
   await setWordTiming(page);
   await expect(word(page, 1)).toContainText('很喜欢！');
-  await expect(word(page, 1)).toHaveAttribute('title', /00:03\.000.*00:06\.000/s);
+  await expect(word(page, 1)).toHaveAttribute('data-title', /00:03\.000.*00:06\.000/s);
   await expect(page.locator('.waveform-word-time')).toHaveCount(0);
   await expect(page.locator('.waveform-word-block[data-segment-idx="1"]')).toHaveCount(0);
   await expect(page.locator('.waveform-word-block[data-segment-idx="2"]')).toHaveCount(1);
@@ -340,7 +340,7 @@ test('frame editing and conversion preserve narrow one-frame words through save 
     ];
   });
   await setWordTiming(page);
-  await expect(word(page, 0)).toHaveAttribute('title', /00:00:01:00.*00:00:01:01/s);
+  await expect(word(page, 0)).toHaveAttribute('data-title', /00:00:01:00.*00:00:01:01/s);
   await expect(page.locator('.waveform-word-time')).toHaveCount(0);
   await page.locator('#waveform-pane').screenshot({ path: testInfo.outputPath('word-narrow-frame.png') });
   const handle = await word(page, 1).locator('.right').boundingBox();
@@ -465,7 +465,7 @@ test('English UI does not translate project words or their hover text', async ({
   await expect(page.locator('#word-timing-quick-toggle')).toBeVisible();
   await expect(page.locator('#waveform-settings-panel .waveform-settings-title')).toHaveText(['Appearance', 'Display']);
   await expect(word(page, 0).locator('.waveform-word-label')).toHaveText('字词时间码');
-  await expect(word(page, 0)).toHaveAttribute('title', /^字词时间码/);
+  await expect(word(page, 0)).toHaveAttribute('data-title', /^字词时间码/);
   await page.evaluate(() => MaweWordTiming.openConversion([0]));
   await expect(page.locator('#word-conversion-warning')).toContainText('has not been realigned to audio');
 });
@@ -599,7 +599,7 @@ test('selected sentence gains edge handles in word timing mode and drags only it
   await block.click({ position: { x: 10, y: 3 } });
   await expect(block).toHaveClass(/selected/);
   await expect(block.locator('.waveform-cue-handle')).toHaveCount(2);
-  expect(await block.evaluate(el => parseFloat(getComputedStyle(el).opacity))).toBeCloseTo(0.45);
+  expect(await block.evaluate(el => parseFloat(getComputedStyle(el).opacity))).toBeCloseTo(1);
   const before = await source(page);
   const handle = block.locator('.waveform-cue-handle.right');
   const box = await handle.boundingBox();

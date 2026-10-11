@@ -14,10 +14,19 @@ const handler = source.slice(handlerStart, handlerEnd);
 async function withVideoServer(mode, run) {
   let active = false;
   let closed = 0;
+  const requests = [];
   const sockets = new Set();
   const server = http.createServer((request, response) => {
+    requests.push({ method: request.method, path: request.url });
     if (request.url === '/') {
       response.end('<button id="download-gap-removed-video">Export</button>');
+      return;
+    }
+    // Edge requests a favicon even for this tiny page. Unrelated requests must
+    // not acquire the video lease or turn the intended failure into HTTP 409.
+    if (request.url !== '/export' || request.method !== 'POST') {
+      response.writeHead(404);
+      response.end();
       return;
     }
     if (active) {
@@ -42,7 +51,7 @@ async function withVideoServer(mode, run) {
   });
   await new Promise(resolve => server.listen(0, '127.0.0.1', resolve));
   try {
-    await run(`http://127.0.0.1:${server.address().port}`, () => ({ active, closed }));
+    await run(`http://127.0.0.1:${server.address().port}`, () => ({ active, closed, requests }));
   } finally {
     for (const socket of sockets) socket.destroy();
     await new Promise(resolve => server.close(resolve));
@@ -88,12 +97,16 @@ for (const mode of ['write', 'create-writable', 'content-type', 'content-length'
       await page.addScriptTag({ content: handler });
       await page.click('#download-gap-removed-video');
       await expect.poll(() => page.evaluate(() => window.videoTransferHints.some(text => text.includes('导出失败')))).toBe(true);
-      await expect.poll(() => state().closed).toBe(1);
+      const expectedError = mode === 'write' ? 'Disk full during write'
+        : mode === 'create-writable' ? 'Disk full before create'
+          : mode === 'content-type' ? '服务器返回的视频格式与源视频不一致'
+            : '服务器返回的视频大小无效';
+      expect(await page.evaluate(() => window.videoTransferHints.at(-1))).toContain(expectedError);
+      await expect.poll(() => state().closed, {
+        message: JSON.stringify({ server: state(), hints: await page.evaluate(() => window.videoTransferHints) }),
+      }).toBe(1);
       expect(state().active).toBe(false);
       expect(await page.evaluate(() => window.videoWritableAborted)).toBe(mode === 'write');
-      if (mode === 'write' || mode === 'create-writable') {
-        expect(await page.evaluate(() => window.videoTransferHints.at(-1))).toContain('Disk full');
-      }
       // Keep the browser alive: closing the tab would hide the missing cancel.
       const retryStatus = await page.evaluate(async () => {
         const response = await fetch('/export', { method: 'POST' });
