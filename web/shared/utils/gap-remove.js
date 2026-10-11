@@ -69,7 +69,8 @@ export function createUtilsModule(dependencies) {
     const source = Array.isArray(segments) ? segments : [];
     const aiRanges = gapRemove?.provenance?.sources?.ai_cleanup;
     if (!Array.isArray(aiRanges) || !aiRanges.length) return source;
-    const active = getRemovedGapRanges(gapRemove.gaps || []);
+    const provenance = normalizeGapRemoveProvenance(gapRemove.provenance, gapRemove.gaps);
+    const active = getRemovedGapRanges(Array.isArray(gapRemove.gaps) ? gapRemove.gaps : gapRangesFromProvenance(provenance));
     return source.flatMap((segment) => {
       if (!segment || segment.disabled || !Array.isArray(segment.items)) return [segment];
       const text = String(segment.text || '');
@@ -84,7 +85,18 @@ export function createUtilsModule(dependencies) {
       }
       if (/[\p{L}\p{N}]/u.test(text.slice(cursor))) return [segment];
       const deleted = segment.items.map((item) => Number.isInteger(item.start) && Number.isInteger(item.end) && item.end > item.start
-        && aiRanges.some((range) => range.start <= item.start && item.end <= range.end)
+        && aiRanges.some((range) => {
+          if (!Number.isInteger(range.start) || !Number.isInteger(range.end)) return false;
+          const scope = range.cleanup_scope;
+          if (scope) {
+            if (scope.segment_id !== segment.id || !Number.isInteger(scope.item_start) || !Number.isInteger(scope.item_end)
+                || scope.item_start < 0 || scope.item_end > segment.items.length || scope.item_start >= scope.item_end) return false;
+            const selected = segment.items.slice(scope.item_start, scope.item_end);
+            if (selected[0].start !== range.start || selected.at(-1).end !== range.end
+                || selected.map(i => i.text).join('') !== scope.text) return false;
+          }
+          return range.start <= item.start && item.end <= range.end;
+        })
         && active.some((range) => range.start <= item.start && item.end <= range.end));
       if (!deleted.some(Boolean)) return [segment];
       let cleaned = '';
@@ -95,8 +107,9 @@ export function createUtilsModule(dependencies) {
         previous = span.end;
       });
       cleaned += text.slice(previous);
-      if (!cleaned.trim()) return [];
-      return [{ ...segment, text: cleaned.trim(), items: segment.items.filter((_item, index) => !deleted[index]) }];
+      const items = segment.items.filter((_item, index) => !deleted[index]);
+      return [{ ...segment, text: cleaned.trim(), items,
+        ...(items.length ? { start: items[0].start, end: items.at(-1).end } : {}) }];
     });
   }
 

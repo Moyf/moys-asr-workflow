@@ -268,6 +268,19 @@ export function createWaveformModule(dependencies) {
       return this.settings.rowHeight;
     }
 
+    /** @this {import('./waveform-types.js').WaveformInstance} */
+    setSecondsPerRow(value) {
+      const next = Number(value);
+      if (![2, 5, 10, 20, 30].includes(next)) return false;
+      if (this.settings.secondsPerRow === next) return true;
+      this.settings.secondsPerRow = next;
+      if (this.secondsPerRowSelect) this.secondsPerRowSelect.value = String(next);
+      saveSettings(this.settings);
+      this.multiRange = [-1, -1];
+      this.render();
+      return true;
+    }
+
 
     /** @this {import('./waveform-types.js').WaveformInstance} */
     getMaxRowHeight() {

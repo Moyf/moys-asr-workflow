@@ -98,6 +98,7 @@ interface MaweBootApi {
 }
 
 interface MaweExportSrtApi {
+  cleanupMainSegments: () => ProjectSegment[];
   currentAssVideoResolution: any;
   assExportOptions: any;
   buildAss: any;
@@ -246,8 +247,11 @@ declare const MaweServerSave: any;
 interface Window {
   MaweCommands: MaweCommandsApi;
   MaweViewUpdates: typeof MaweViewUpdates;
+  MaweMarkerEditing?: { isEditingEnabled(): boolean };
   webkitAudioContext?: typeof AudioContext;
   AsrGapRemoveCore: {
+    projectCleanupRetainedSegments(segments: ProjectSegment[], gapRemove: unknown): ProjectSegment[];
+    getCleanupScopeItems(segment: ProjectSegment, gap: unknown): ProjectSegmentItem[];
     isGapRemoveDisplayProtected(gap: import('../media/waveform/waveform-types.js').Gap): boolean;
   };
 }

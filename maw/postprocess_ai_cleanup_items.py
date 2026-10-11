@@ -63,7 +63,18 @@ def item_ranges(items: Sequence[Mapping[str, object]], deleted: Sequence[int]) -
     return ranges
 
 
-def active_deleted_items(project: Mapping[str, object], items: Sequence[Mapping[str, object]]) -> list[int]:
+def scoped_item_ranges(segment: Mapping[str, object], deleted: Sequence[int]) -> list[dict[str, object]]:
+    """Bind cuts to exact original item indices for preview and safe reopening."""
+    items = segment["items"]
+    ranges = item_ranges(items, deleted)
+    for entry in ranges:
+        indexes = [i for i in deleted if entry["start"] <= items[i]["start"] and items[i]["end"] <= entry["end"]]
+        first, last = min(indexes), max(indexes) + 1
+        entry["cleanup_scope"] = {"segment_id": str(segment["id"]), "item_start": first, "item_end": last, "text": "".join(str(item["text"]) for item in items[first:last])}
+    return ranges
+
+
+def active_deleted_items(project: Mapping[str, object], items: Sequence[Mapping[str, object]], *, segment: Mapping[str, object] | None = None) -> list[int]:
     """Return source item indices covered by active AI-owned cuts."""
     gap_remove = project.get("gap_remove")
     if not isinstance(gap_remove, Mapping):
@@ -73,6 +84,22 @@ def active_deleted_items(project: Mapping[str, object], items: Sequence[Mapping[
     ai_ranges = sources.get("ai_cleanup") if isinstance(sources, Mapping) else None
     if not isinstance(ai_ranges, list) or not ai_ranges:
         return []
+    verified = []
+    for entry in ai_ranges:
+        if not isinstance(entry, Mapping) or type(entry.get("start")) is not int or type(entry.get("end")) is not int:
+            continue
+        scope = entry.get("cleanup_scope")
+        if scope is not None:
+            if not isinstance(scope, Mapping) or segment is None or scope.get("segment_id") != segment.get("id"):
+                continue
+            first, last = scope.get("item_start"), scope.get("item_end")
+            if type(first) is not int or type(last) is not int or not 0 <= first < last <= len(items):
+                continue
+            selected = items[first:last]
+            if entry.get("start") != selected[0].get("start") or entry.get("end") != selected[-1].get("end") or scope.get("text") != "".join(str(i.get("text") or "") for i in selected):
+                continue
+        verified.append(entry)
+    ai_ranges = verified
     active = [gap for gap in gap_remove.get("gaps", []) if isinstance(gap, Mapping) and gap.get("removed", True)]
     deleted = []
     for index, item in enumerate(items):
@@ -100,7 +127,7 @@ def cleaned_srt_segments(project: Mapping[str, object], segments: Sequence[objec
         if not all(isinstance(item, Mapping) for item in items):
             result.append(segment)
             continue
-        deleted = active_deleted_items(project, items)
+        deleted = active_deleted_items(project, items, segment=segment)
         text = remaining_text(str(segment.get("text") or ""), items, deleted)
         if text:
             result.append({**segment, "text": text})

@@ -23,7 +23,7 @@ from maw.postprocess import OutputMode
 from maw.postprocess_ai_cleanup_safety import information_loss_reason
 from maw.postprocess_ai_cleanup_timeline import parse_timeline, draft_line
 from maw.postprocess_ai_cleanup_review import review_decisions
-from maw.postprocess_ai_cleanup_items import collapse_echo, item_ranges, remaining_text, item_text_spans, active_deleted_items
+from maw.postprocess_ai_cleanup_items import collapse_echo, scoped_item_ranges, remaining_text, item_text_spans, active_deleted_items
 from maw.postprocess_io import SubtitleArtifact, write_artifacts
 from maw.postprocess_llm import (
     MAX_RESPONSE_ATTEMPTS,
@@ -56,6 +56,33 @@ from maw.script_alignment import (
 GAP_REMOVE_SCHEMA: Final[str] = "moy.asr.gap_remove.v1"
 MARKERS_SCHEMA: Final[str] = "moy.asr.markers.v1"
 
+# json_schema 约束载荷：仅约束结构（端点语法层），语义仍由本地协议校验兜底。
+AI_CLEANUP_DECISIONS_JSON_SCHEMA: Final[dict[str, object]] = {
+    "name": "maw_ai_cleanup_decisions",
+    "schema": {
+        "type": "object",
+        "properties": {
+            "decisions": {
+                "type": "array",
+                "items": {
+                    "type": "object",
+                    "properties": {
+                        "id": {"type": "string"},
+                        "decision": {"type": "string"},
+                        "scriptLine": {"type": "string"},
+                        "reason": {"type": "string"},
+                        "evidence": {"type": "string"},
+                        "altTakeId": {"type": "string"},
+                        "removeItemIds": {"type": "array", "items": {"type": "string"}},
+                        "removeItemRanges": {"type": "array", "items": {"type": "array", "items": {"type": "string"}}},
+                    },
+                    "required": ["id", "decision", "scriptLine"],
+                },
+            }
+        },
+        "required": ["decisions"],
+    },
+}
 AI_CLEANUP_REVIEWS_JSON_SCHEMA: Final[dict[str, object]] = {
     "name": "maw_ai_cleanup_reviews",
     "schema": {
@@ -256,7 +283,7 @@ def run_ai_cleanup(
             resolved[clip_id] = DECISION_REVIEW
             reasons[clip_id] = reason
 
-    removed_ranges: list[dict[str, int]] = []
+    removed_ranges: list[dict[str, object]] = []
     discarded_main_ids: set[str] = set()
     ai_markers: list[dict[str, object]] = []
     stats = {
@@ -274,6 +301,22 @@ def run_ai_cleanup(
         segment = segments[clip.segment_index]
         assert isinstance(segment, dict)
         if outcome == DECISION_DISCARD:
+            local = _local_removal(clip, decisions[clip.id])[0]
+            if local is not None:
+                for first, last in local:
+                    selected = clip.items[first:last]
+                    scope = {
+                        "start": int(selected[0]["start"]),
+                        "end": int(selected[-1]["end"]),
+                        "text": "".join(str(item["text"]) for item in selected),
+                    }
+                    removed_ranges.append({
+                        "start": scope["start"], "end": scope["end"],
+                        "cleanup_scope": {"segment_id": str(segment["id"]), "item_start": first, "item_end": last, "text": scope["text"]},
+                    })
+                    ai_markers.append(_ai_annotation(scope, "删除", reasons[clip.id] or "可核验的局部口吃", pending=False))
+                stats["removed"] += 1
+                continue
             segment["disabled"] = True
             discarded_main_ids.add(str(segment["id"]))
             removed_ranges.append(
@@ -292,7 +335,7 @@ def run_ai_cleanup(
             continue
         if outcome == DECISION_EDIT:
             deleted = decisions[clip.id].get("deleteItems", [])
-            ranges = item_ranges(clip.items, deleted)
+            ranges = scoped_item_ranges(segment, [clip.source_item_indices[i] for i in deleted])
             removed_ranges.extend(ranges)
             for removed_range in ranges:
                 ai_markers.append(_ai_annotation({**segment, **removed_range}, "删除", reasons[clip.id], pending=False))
@@ -404,6 +447,12 @@ def _readthrough_rows(
             continue
         deleted = decisions[clip.id].get("deleteItems", []) if resolved[clip.id] == DECISION_EDIT else []
         row = {"id": clip.id, "asrText": remaining_text(clip.text, clip.items, deleted), "proposed": resolved[clip.id]}
+        local, _ = _local_removal(clip, decisions[clip.id])
+        if local is not None and resolved[clip.id] == DECISION_DISCARD:
+            deleted = [index for first, last in local for index in range(first, last)]
+            row["retainedText"] = remaining_text(clip.text, clip.items, deleted)
+            row["removedText"] = "".join(str(clip.items[index]["text"]) for index in deleted)
+            row["proposed"] = "partial"
         if deleted:
             row["originalText"] = clip.text
             row["discardedText"] = "".join(str(clip.items[index]["text"]) for index in deleted)
@@ -425,7 +474,7 @@ def _build_clips(segments: list[JsonValue], script_lines: list[str], *, project:
         if not text or not _segment_has_item_timings(segment):
             # 没有文字或没有字词时间的段不参与自动移除；后者生成待复核标记。
             continue
-        deleted = active_deleted_items(project or {}, segment["items"])
+        deleted = active_deleted_items(project or {}, segment["items"], segment=segment)
         source_indices = [i for i in range(len(segment["items"])) if i not in deleted]
         text = remaining_text(text, segment["items"], deleted)
         if not text or not source_indices:
@@ -625,6 +674,11 @@ def _clips_payload(
         )
         if target_ids is not None and clip.id not in target_ids:
             payload[-1]["contextOnly"] = "true"
+        if clip.items:
+            payload[-1]["items"] = json.dumps([
+                {"id": f"{clip.id}:i{index + 1:03d}", "text": item["text"]}
+                for index, item in enumerate(clip.items)
+            ], ensure_ascii=False)
     return payload
 
 
@@ -734,6 +788,11 @@ def _resolve_decisions(
         if resolved[clip.id] not in {DECISION_DISCARD, DECISION_EDIT}:
             continue
         decision = decisions[clip.id]
+        if "removeItemIds" in decision or "removeItemRanges" in decision:
+            _local, local_reason = _local_removal(clip, decision)
+            if local_reason:
+                downgrade(clip.id, local_reason)
+            continue
         alt_take_id = str(decision.get("altTakeId") or "")
         evidence = str(decision.get("evidence") or "")
         alt_ids = decision.get("altTakeIds", []) or ([alt_take_id] if alt_take_id else [])
@@ -807,6 +866,52 @@ def _contains_normalized(haystack_norm: str, evidence: str) -> bool:
     return bool(needle) and needle in haystack_norm
 
 
+def _local_removal(
+    clip: _Clip, decision: Mapping[str, object],
+) -> tuple[list[tuple[int, int]] | None, str | None]:
+    """Resolve exact temporary references; never infer character timecodes."""
+    if "removeItemIds" not in decision and "removeItemRanges" not in decision:
+        return None, None
+    if "removeItemIds" in decision and "removeItemRanges" in decision:
+        return None, "局部范围字段不能同时提供，需要复核"
+    groups = decision.get("removeItemRanges", [decision.get("removeItemIds")])
+    if not clip.items:
+        return None, "局部移除缺少可靠字词映射，需要复核"
+    if not isinstance(groups, list) or not groups:
+        return None, "局部字词引用必须是非空连续数组，需要复核"
+    known = [f"{clip.id}:i{index + 1:03d}" for index in range(len(clip.items))]
+    ranges: list[tuple[int, int]] = []
+    for ids in groups:
+        if not isinstance(ids, list) or not ids or any(not isinstance(value, str) for value in ids):
+            return None, "局部字词引用必须是非空连续数组，需要复核"
+        if any(value not in known for value in ids) or len(set(ids)) != len(ids):
+            return None, "局部字词引用不存在或重复，需要复核"
+        first = known.index(ids[0])
+        last = first + len(ids)
+        if ids != known[first:last] or (ranges and first < ranges[-1][1]):
+            return None, "局部字词引用必须按原顺序连续且各组不重叠，需要复核"
+        ranges.append((first, last))
+    deleted = {index for first, last in ranges for index in range(first, last)}
+    removed = "".join(str(item["text"]) for index, item in enumerate(clip.items) if index in deleted)
+    remaining = [item for index, item in enumerate(clip.items) if index not in deleted]
+    retained = "".join(str(item["text"]) for item in remaining)
+    if decision.get("altTakeId") or decision.get("evidence") != removed:
+        return None, "局部证据必须精确覆盖引用字词，需要复核"
+    if not _normalize_text(retained).value or sum(int(item["end"]) - int(item["start"]) for item in remaining) < 100:
+        return None, "局部移除后没有有效剩余字幕，需要复核"
+    from maw.postprocess_ai_cleanup_safety import local_information_loss_reason
+    for first, last in ranges:
+        reason = local_information_loss_reason(
+            "".join(str(item["text"]) for item in clip.items[first:last]), retained,
+            "".join(str(item["text"]) for index, item in enumerate(clip.items) if index < first and index not in deleted),
+            "".join(str(item["text"]) for index, item in enumerate(clip.items) if index >= last and index not in deleted),
+            clip.script_line,
+        )
+        if reason:
+            return None, reason
+    return ranges, None
+
+
 def _is_repeated_text(
     clip: _Clip, clips: Sequence[_Clip], resolved: Mapping[str, str]
 ) -> bool:
@@ -878,7 +983,7 @@ def _disable_bound_extensions(project: JsonDict, main_ids: set[str]) -> None:
 
 
 def _build_gap_remove(
-    project: JsonDict, removed_ranges: Sequence[Mapping[str, int]]
+    project: JsonDict, removed_ranges: Sequence[Mapping[str, object]]
 ) -> dict[str, object]:
     existing = project.get("gap_remove")
     has_existing = isinstance(existing, Mapping)
@@ -887,7 +992,7 @@ def _build_gap_remove(
         existing.get("gaps") if has_existing else None,
     )
     ranges = [
-        {"start": int(raw_range["start"]), "end": int(raw_range["end"])}
+        {**raw_range, "start": int(raw_range["start"]), "end": int(raw_range["end"])}
         for raw_range in sorted(
             removed_ranges, key=lambda item: (int(item["start"]), int(item["end"]))
         )

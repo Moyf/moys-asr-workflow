@@ -2950,6 +2950,7 @@ test('lets an extension drag move only the extension cue beyond the main-track b
 
   const block = page.locator('.waveform-cue-block[data-track="extension"][data-ext-idx="0"]');
   const handle = block.locator('.waveform-cue-handle.right');
+  await expect(handle).toBeVisible();
   const row = block.locator('xpath=ancestor::*[contains(@class, "waveform-row")]');
   const [handleBox, rowBox, rowStart, rowEnd] = await Promise.all([
     handle.boundingBox(),

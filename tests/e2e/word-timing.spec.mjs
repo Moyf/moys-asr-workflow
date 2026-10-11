@@ -27,7 +27,110 @@ test.beforeEach(async ({ page }) => {
   await expect(page.locator('.waveform-row').first()).toBeVisible();
 });
 const word = (page, index) => page.locator(`.waveform-word-block[data-segment-idx="0"][data-item-idx="${index}"]`).first();
+test('word presets apply immediately and restore across bilingual mode changes', async ({ page }) => {
+  await page.locator('[data-waveform-mode="multi"]').click();
+  await page.evaluate(() => {
+    MaweCoreState.waveformEditor.setRowHeight(192);
+    MaweCoreState.waveformEditor.setSecondsPerRow(20);
+  });
+  await setWordTiming(page);
+  expect(await page.evaluate(() => MaweCoreState.waveformEditor.settings.secondsPerRow)).toBe(5);
+  await page.evaluate(() => {
+    const input = document.getElementById('word-timing-seconds-per-row');
+    input.value = '10'; input.dispatchEvent(new Event('change'));
+  });
+  expect(await page.evaluate(() => MaweCoreState.waveformEditor.settings.secondsPerRow)).toBe(10);
+  await page.locator('#multi-subtitle-quick-toggle').click();
+  expect(await page.evaluate(() => MaweCoreState.waveformEditor.getRowHeight())).toBe(168);
+  await setWordTiming(page, false);
+  expect(await page.evaluate(() => MaweCoreState.waveformEditor.getRowHeight())).toBe(168);
+  expect(await page.evaluate(() => MaweCoreState.waveformEditor.settings.secondsPerRow)).toBe(20);
+  await page.locator('#multi-subtitle-quick-toggle').click();
+  expect(await page.evaluate(() => MaweCoreState.waveformEditor.getRowHeight())).toBe(192);
+});
+
+test('bilingual compact words expose the sentence and low-height overlays stay inside its lane', async ({ page }, testInfo) => {
+  await page.locator('[data-waveform-mode="multi"]').click();
+  await page.locator('#multi-subtitle-quick-toggle').click();
+  await setWordTiming(page);
+  const row = page.locator('.waveform-row.multi-subtitle-row').first();
+  const geometry = await row.evaluate(el => {
+    const main = el.querySelector('.waveform-cue-block[data-track="main"]').getBoundingClientRect();
+    const word = el.querySelector('.waveform-word-block').getBoundingClientRect();
+    return { mainHeight: main.height, wordHeight: word.height, exposed: word.top - main.top };
+  });
+  expect(geometry.mainHeight).toBe(44);
+  expect(geometry.wordHeight).toBe(31);
+  expect(geometry.exposed).toBeGreaterThanOrEqual(8);
+  await setWordTiming(page, false);
+  await page.evaluate(() => {
+    MaweBoot.DATA.overlay_track = { enabled: true, segments: [{ id: 'overlay-short', start: 1000, end: 2000, text: 'overlay' }] };
+    MaweCoreState.waveformEditor.setRowHeight(64);
+  });
+  const short = await row.evaluate(el => {
+    const overlay = el.querySelector('.waveform-overlay-block');
+    const a = el.getBoundingClientRect(), b = overlay.getBoundingClientRect();
+    const main = el.querySelector('.waveform-cue-block[data-track="main"]').getBoundingClientRect();
+    return { cover: overlay.classList.contains('overlay-cover-mode'), top: b.top - a.top, bottom: b.bottom - a.top,
+      mainTop: main.top - a.top, mainBottom: main.bottom - a.top, rowHeight: a.height };
+  });
+  expect(short.cover).toBe(true);
+  expect(short.top).toBeGreaterThanOrEqual(0);
+  expect(short.bottom).toBeLessThanOrEqual(short.rowHeight);
+  expect(short.top).toBeCloseTo(short.mainTop, 0);
+  expect(short.bottom).toBeCloseTo(short.mainBottom, 0);
+  await page.locator('#waveform-pane').screenshot({ path: testInfo.outputPath('compact-overlay.png') });
+});
 const source = page => page.evaluate(() => JSON.parse(JSON.stringify(MaweBoot.DATA.segments[0])));
+test('full word layout preserves sentence height, highlight and body dragging', async ({ page }) => {
+  await setWordTiming(page);
+  const main = page.locator('.waveform-cue-block[data-track="main"][data-idx="0"]').first();
+  await expect(main).toHaveClass(/word-timing-full/);
+  expect(await main.evaluate(el => el.getBoundingClientRect().height)).toBe(35);
+  expect(await word(page, 0).evaluate(el => el.getBoundingClientRect().height)).toBe(35);
+  await main.click({ position: { x: 20, y: 18 } });
+  await expect(main).toHaveClass(/selected/);
+  expect(await main.evaluate(el => parseFloat(getComputedStyle(el).opacity))).toBe(1);
+  const before = await source(page);
+  const box = await main.boundingBox();
+  await page.mouse.move(box.x + 30, box.y + 18);
+  await page.mouse.down();
+  await page.mouse.move(box.x + 45, box.y + 18, { steps: 3 });
+  await page.mouse.up();
+  expect((await source(page)).start).toBeGreaterThan(before.start);
+  await page.keyboard.press('ControlOrMeta+z');
+  expect(await source(page)).toEqual(before);
+});
+
+test('bilingual overlays keep their lane after creation, undo and redo at 192px', async ({ page }) => {
+  await page.locator('#multi-subtitle-quick-toggle').click();
+  await page.evaluate(() => {
+    MaweBoot.DATA.overlay_track = { enabled: true, segments: [] };
+    MaweCoreState.waveformEditor.setRowHeight(192);
+    MaweCoreState.waveformEditor.setSecondsPerRow(10);
+  });
+  const row = page.locator('.waveform-row.multi-subtitle-row').first();
+  const points = await row.evaluate(el => {
+    const rect = el.getBoundingClientRect();
+    const position = time => rect.left + (time - Number(el.dataset.startMs)) / (Number(el.dataset.endMs) - Number(el.dataset.startMs)) * rect.width;
+    return { x1: position(1000), x2: position(2000), y: rect.top + 30 };
+  });
+  await page.keyboard.down('ControlOrMeta');
+  await page.mouse.move(points.x1, points.y); await page.mouse.down();
+  await page.mouse.move(points.x2, points.y, { steps: 8 }); await page.mouse.up();
+  await page.keyboard.up('ControlOrMeta');
+  const overlay = row.locator('.waveform-overlay-block');
+  await expect(overlay).toHaveCount(1);
+  const gap = () => row.evaluate(el => el.querySelector('.waveform-cue-block[data-track="main"]').getBoundingClientRect().top
+    - el.querySelector('.waveform-overlay-block').getBoundingClientRect().bottom);
+  expect(await gap()).toBeGreaterThanOrEqual(1);
+  // 新建后焦点进入字幕文本框；使用工具栏历史动作，避免触发输入框原生撤销。
+  await page.locator('#undo-btn').click();
+  await expect(overlay).toHaveCount(0);
+  await page.locator('#redo-btn').click();
+  await expect(overlay).toHaveCount(1);
+  expect(await gap()).toBeGreaterThanOrEqual(1);
+});
 async function setWordTiming(page, enabled = true) {
   // 字词时间码开关已收敛到工具栏 🔤 快捷按钮（与项目设置镜像联动）。
   const quick = page.locator('#word-timing-quick-toggle');
@@ -67,7 +170,7 @@ test('word timing separation stays within multi-row single-track waveforms', asy
   });
   console.log('word timing geometry', JSON.stringify({ multi, basic, lanes }));
   await page.locator('#waveform-pane').screenshot({ path: testInfo.outputPath('word-bilingual-lanes.png') });
-  expect(multi).toEqual({ height: 20, bottom: 7 });
+  expect(multi).toEqual({ height: 35, bottom: 44 });
   expect(basic).toEqual({ height: 31, bottom: 9 });
   expect(lanes.mainBottom).toBeGreaterThan(lanes.extensionBottom);
   expect(lanes.mainRectBottom).toBeLessThanOrEqual(lanes.extensionRectTop + 1);
@@ -214,7 +317,8 @@ test('Tab outside the waveform cannot redirect word shortcuts to their parent se
     await page.keyboard.press('Tab');
   }
   await expect(page.locator('#cue-list-follow')).toBeFocused();
-  await expect(page.locator('.waveform-word-block.selected')).toHaveCount(2);
+  expect(await page.locator('.waveform-word-block.selected').evaluateAll(elements =>
+    [...new Set(elements.map(el => Number(el.dataset.itemIdx)))].sort())).toEqual([0, 1]);
   for (const key of ['Delete', 'b', 'Shift+b', 'Control+Shift+d', 'Alt+ArrowRight']) {
     await page.keyboard.press(key);
   }
@@ -343,7 +447,7 @@ test('frame editing and conversion preserve narrow one-frame words through save 
   await expect(word(page, 0)).toHaveAttribute('data-title', /00:00:01:00.*00:00:01:01/s);
   await expect(page.locator('.waveform-word-time')).toHaveCount(0);
   await page.locator('#waveform-pane').screenshot({ path: testInfo.outputPath('word-narrow-frame.png') });
-  const handle = await word(page, 1).locator('.right').boundingBox();
+  const handle = await page.locator('.waveform-word-block[data-segment-idx="0"][data-item-idx="1"] .right').last().boundingBox();
   await page.mouse.move(handle.x + handle.width / 2, handle.y + handle.height / 2);
   await page.mouse.down();
   await page.mouse.move(handle.x + 18, handle.y + handle.height / 2, { steps: 3 });
@@ -498,17 +602,17 @@ test('equal-length typo replacement syncs item texts through the cue panel', asy
   await panel.blur();
   await expect(page.locator('#hint-stack')).toContainText('已同步字词时间码文字');
   expect((await source(page)).items.map(item => item.text)).toEqual(['我', '最喜欢！']);
-  // 长度变化跨入字词范围时，输入过程中不改 items；提交时提示实际差异。
+  // 长度变化落在单个字词块 span 内时同样同步；提交时提示实际差异。
   await panel.fill('我非常喜欢！');
   expect((await source(page)).items.map(item => item.text)).toEqual(['我', '最喜欢！']);
   await panel.blur();
-  await expect(page.locator('#hint-stack')).toContainText('字词时间码未同步：[最 -> 非常] 不是等长替换');
-  expect((await source(page)).items.map(item => item.text)).toEqual(['我', '最喜欢！']);
-  // Esc 取消整次编辑：文字与字词一起回到会话开始的状态
+  await expect(page.locator('#hint-stack')).toContainText('已同步字词时间码文字（共1处：[最喜欢！ -> 非常喜欢！]）');
+  expect((await source(page)).items.map(item => item.text)).toEqual(['我', '非常喜欢！']);
+  // Esc 取消整次编辑：文字与字词一起回到会话开始的状态（上一次 blur 提交后）
   await panel.fill('我非常有喜欢！');
   await page.keyboard.press('Escape');
   const restored = await source(page);
-  expect([restored.text, restored.items.map(item => item.text)]).toEqual(['我非常喜欢！', ['我', '最喜欢！']]);
+  expect([restored.text, restored.items.map(item => item.text)]).toEqual(['我非常喜欢！', ['我', '非常喜欢！']]);
 });
 
 for (const { timebase, startFrame } of [
@@ -593,13 +697,18 @@ test('saving focused cue panel text syncs word labels before resetting the edit 
 
 test('selected sentence gains edge handles in word timing mode and drags only its own range', async ({ page }) => {
   await setWordTiming(page);
-  const block = page.locator('.waveform-cue-block[data-track="main"][data-idx="0"]');
+  // 此用例验证 compact 降级；足够行高的 full 模式保持常显手柄与整句拖动。
+  await page.evaluate(() => {
+    MaweCoreState.waveformEditor.setRowHeight(80);
+    MaweCoreState.waveformEditor.setSecondsPerRow(10);
+  });
+  const block = page.locator('.waveform-cue-block[data-track="main"][data-idx="0"]').first();
   await expect(block.locator('.waveform-cue-handle')).toHaveCount(0);
   // The upper sentence strip is exposed above the foreground word blocks.
   await block.click({ position: { x: 10, y: 3 } });
   await expect(block).toHaveClass(/selected/);
   await expect(block.locator('.waveform-cue-handle')).toHaveCount(2);
-  expect(await block.evaluate(el => parseFloat(getComputedStyle(el).opacity))).toBeCloseTo(1);
+  expect(await block.evaluate(el => parseFloat(getComputedStyle(el).opacity))).toBeCloseTo(0.45);
   const before = await source(page);
   const handle = block.locator('.waveform-cue-handle.right');
   const box = await handle.boundingBox();
@@ -621,7 +730,7 @@ test('selected sentence gains edge handles in word timing mode and drags only it
 test('audition plays the picked range once from both word and sentence menus', async ({ page }) => {
   await setWordTiming(page);
   // 句块菜单：试听位于跳转区
-  await page.locator('.waveform-cue-block[data-track="main"][data-idx="0"]').click({ button: 'right', position: { x: 10, y: 3 } });
+  await page.locator('.waveform-cue-block[data-track="main"][data-idx="0"]').first().click({ button: 'right', position: { x: 10, y: 3 } });
   await expect(page.locator('#ctxmenu .item').filter({ hasText: '试听' })).toHaveCount(1);
   await page.keyboard.press('Escape');
   // 字词菜单：试听选中字词范围并在终点自动暂停

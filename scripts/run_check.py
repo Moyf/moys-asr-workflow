@@ -138,7 +138,7 @@ def main() -> int:
             stream.reconfigure(encoding="utf-8", errors="replace")
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--timeout", type=float, default=180)
-    parser.add_argument("--log-dir", type=Path, default=Path(".debug-runs"))
+    parser.add_argument("--log-dir", type=Path, default=Path(".artifacts/checks"))
     parser.add_argument("command", nargs=argparse.REMAINDER)
     args = parser.parse_args()
     command = args.command[1:] if args.command[:1] == ["--"] else args.command

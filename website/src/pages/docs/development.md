@@ -2,10 +2,10 @@
 layout: "../../layouts/DocLayout.astro"
 title: "开发概览"
 description: "维护者使用的代码边界、数据持久化和发布前检查清单。"
-source: "docs/DEVELOPMENT.md"
+source: "docs/engineering/DEVELOPMENT.md"
 ---
 
-<!-- Generated from docs/DEVELOPMENT.md. Run pnpm run sync:docs to refresh. -->
+<!-- Generated from docs/engineering/DEVELOPMENT.md. Run pnpm run sync:docs to refresh. -->
 
 本页说明当前代码与数据边界；贡献流程见 [CONTRIBUTING](https://github.com/Moyf/moys-asr-workflow/blob/main/CONTRIBUTING.md)，仓库约束与发布规则以 [AGENTS](https://github.com/Moyf/moys-asr-workflow/blob/main/AGENTS.md) 为准。用户文档入口见 [文档索引](../documentation-index/)。
 
@@ -52,9 +52,9 @@ Server 的内置预设覆盖、命名工作区和活动名称保存在本机设�
 
 ## 编辑器源码地图
 
-`web/editor-scripts.txt` 是 esbuild 的源码执行顺序，也是 Server、便携 HTML 与 Electron 桌面壳共用的编辑器装配清单；`web/editor-modules.json` 标出 59 个真正的 ESM 工厂与外部桥。其余 121 个文件暂时在同一 classic 作用域中执行，目录不决定顺序。构建器拒绝路径穿越、重复输入及符号链接越界。便携 HTML 与 localhost 都内联同一份已提交的 `web/editor/boot/editor-bundle.js`，用户运行编辑器不需要 Node。
+`web/editor-scripts.txt` 是 esbuild 的源码执行顺序，也是 Server、便携 HTML 与 Electron 桌面壳共用的编辑器装配清单；当前构建含 188 个输入，`web/editor-modules.json` 标出 61 个真正的 ESM 工厂与外部桥，其余 127 个输入保留 classic 共享作用域，目录不决定顺序。构建器拒绝路径穿越、重复输入及符号链接越界。便携 HTML 与 localhost 都内联同一份已提交的 `web/editor/boot/editor-bundle.js`，用户运行编辑器不需要 Node。
 
-编辑器 JS、清单或构建配置变化后执行 `pnpm run build:editor`，提交 bundle 和 `.meta.json`；`pnpm run check:editor` 只读检查新鲜度，不会自动修复。Server 调试时另开 `pnpm run watch:editor`，CSS 和模板仍按请求读取。构建和 Node 测试要求 Node 22.13+；源码目录显式声明 `type: module`，不依赖语法自动检测。类型检查包括迁移的全部工厂与既有六文件范围。实施、实验及上游合并经验见 [ESM 迁移台账](https://github.com/Moyf/moys-asr-workflow/blob/main/docs/dev/ESM_MIGRATION.md)。
+编辑器 JS、清单或构建配置变化后执行 `pnpm run build:editor`，提交 bundle 和 `.meta.json`；`pnpm run check:editor` 只读检查新鲜度，不会自动修复。Server 调试时另开 `pnpm run watch:editor`，CSS 和模板仍按请求读取。构建和 Node 测试要求 Node 22.13+；源码目录显式声明 `type: module`，不依赖语法自动检测。类型检查包括迁移的全部工厂与既有六文件范围。实施、实验及上游合并经验见 [ESM 迁移台账](https://github.com/Moyf/moys-asr-workflow/blob/main/docs/logs/unversioned/undated/ESM_MIGRATION.md)。
 
 | 位置 | 职责 |
 | --- | --- |
@@ -85,9 +85,11 @@ Server 的内置预设覆盖、命名工作区和活动名称保存在本机设�
 
 `MaweViewUpdates.invalidate()` 明确列表、波形（`none` / `overlay` / `full`）、滚动锚点、预览与保存范围；命令提交统一调度保存。行内标签和播放帧等高频局部更新仍直接操作原组件，避免每次输入或播放帧重建整个列表。布局、空隙和预览几何保留各自历史快照，未强行并入字幕快照。成功保存记录实际写入的字幕指纹；字幕撤销 / 重做只重新判断本编辑域与最后写入内容的差异，不回滚其它域的脏标记，也不把波形缓存作为字幕真源。
 
-重构阶段的审计方式与已验证范围见 `docs/dev/` 的职责拆分、状态与命令重构账本。不要把早期机械拆分的 AST 一致性结论用于后续行为变更。所有重构工具应通过装配清单枚举源码。
+重构阶段的审计方式与已验证范围见 [日志索引](https://github.com/Moyf/moys-asr-workflow/blob/main/docs/logs/INDEX.md)中的职责拆分、状态与命令重构账本。不要把早期机械拆分的 AST 一致性结论用于后续行为变更。所有重构工具应通过装配清单枚举源码。
 
 ## 开发检查
+
+Agent 调试与测试使用[有界输出与分层调试](https://github.com/Moyf/moys-asr-workflow/blob/main/docs/engineering/DEBUG_WORKFLOW.md)中的 `scripts/run_check.py`：完整日志落盘，只回显有限摘要并保留退出码。该文档也说明 worktree 环境复用、生成物搜索边界、超时清理限制与按变化选择验证范围。
 
 开发者手动维护环境：`uv sync --group dev`；前端验证工具使用根目录 `pnpm install --frozen-lockfile`。Agent 执行已安装环境中的命令时一律加 `--no-sync`。
 
@@ -98,7 +100,7 @@ node --test tests/test_editor_script_syntax.mjs tests/test_editor_script_order.m
 node --test tests/test_editor_utils.mjs tests/test_waveform_js.mjs
 node --test tests/test_editor_state.mjs tests/test_editor_commands.mjs
 pnpm run typecheck
-uv run --no-sync python -m unittest discover -s tests -p "test_*.py"
+uv run --no-sync python scripts/run_tests.py
 git diff --check
 ```
 

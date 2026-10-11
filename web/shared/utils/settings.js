@@ -6,6 +6,9 @@ export function createUtilsModule(dependencies) {
 
   const EDITOR_SETTING_ROW_HEIGHTS = [64, 80, 96, 120, 144, 168, 192];
 
+  // 字词码每行长度与波形「每行长度」共用同一组档位（秒）。
+  const WORD_TIMING_SECONDS_PRESETS = [2, 5, 10, 20, 30];
+
 
   const EDITOR_ACCENT_COLOR_VALUES = Object.freeze(['blue', 'red', 'orange', 'custom']);
 
@@ -75,6 +78,7 @@ export function createUtilsModule(dependencies) {
     autoSaveProject: true, autoSaveIntervalSeconds: 30, projectBackupEnabled: true,
     stickerOverlayEnabled: false,
     markerEditingEnabled: false, stickersEnabled: true,
+    wordTimingRowHeight: 144, wordTimingSecondsPerRow: 5,
     stickerOtioExportMode: 'original', clickBehavior: 'select-and-seek', clickTarget: 'pointer',
     pauseOnMouseClick: false,
     otioExportIncludeSrt: true, otioExportIncludeStickers: true, otioExportIncludeMarkers: true,
@@ -87,6 +91,7 @@ export function createUtilsModule(dependencies) {
     ninjaSlashRotateAmplitude: 6, crossTrackSnap: true, selectBoundSubtitlePair: true,
     multiSubtitleAutoSyncDuration: true, multiSubtitleShowTrackBadges: false, theme: 'dark',
     accentColor: 'blue', accentColorCustom: DEFAULT_EDITOR_ACCENT_CUSTOM_COLOR,
+    toastPosition: 'top-center',
     subtitleColorPalette: { ...DEFAULT_EDITOR_SUBTITLE_COLOR_PALETTE },
     waveShapeSource: 'reapeaks',
   });
@@ -153,6 +158,10 @@ export function createUtilsModule(dependencies) {
       subtitleColorPaletteEnabled: savedSettings.subtitleColorPaletteEnabled === true,
       multiSubtitleRowHeight: EDITOR_SETTING_ROW_HEIGHTS.includes(Number(savedSettings.multiSubtitleRowHeight))
         ? Number(savedSettings.multiSubtitleRowHeight) : 168,
+      wordTimingRowHeight: EDITOR_SETTING_ROW_HEIGHTS.includes(Number(savedSettings.wordTimingRowHeight))
+        ? Number(savedSettings.wordTimingRowHeight) : 144,
+      wordTimingSecondsPerRow: WORD_TIMING_SECONDS_PRESETS.includes(Number(savedSettings.wordTimingSecondsPerRow))
+        ? Number(savedSettings.wordTimingSecondsPerRow) : 5,
       exportStartAtZero: savedSettings.exportStartAtZero === true,
       cueListShowIndex: savedSettings.cueListShowIndex !== false,
       cueListShowTime: savedSettings.cueListShowTime !== false,
@@ -225,6 +234,8 @@ export function createUtilsModule(dependencies) {
       multiSubtitleShowTrackBadges: savedSettings.multiSubtitleShowTrackBadges === true,
       theme: isSettingChoice(['light', 'dark', 'system'], savedSettings.theme)
         ? savedSettings.theme : 'dark',
+      toastPosition: isSettingChoice(['top-center', 'top-right', 'bottom-right'], savedSettings.toastPosition)
+        ? savedSettings.toastPosition : 'top-center',
       accentColor: normalizeEditorAccentColor(savedSettings.accentColor),
       accentColorCustom: normalizeEditorAccentCustomColor(savedSettings.accentColorCustom),
       subtitleColorPalette: normalizeSubtitleColorPalette(savedSettings.subtitleColorPalette),
