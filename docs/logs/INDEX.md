@@ -1,0 +1,76 @@
+# 日志索引
+
+记录保留当时语境。版本和任务日期取正文、明确任务信息；未知使用 `unversioned` / `undated`，不把本地检出时间或最近 Git 提交时间当作任务日期。跨版本记录只保留一份，范围见正文。
+
+现行说明见[主题索引](../INDEX.md)，当前参考价值与未决事项见 [CURRENT](CURRENT.md)。截图、冻结 JSON、HTML 与源分段随所属记录保留；新生成的原始输出和预览进入根 `.artifacts/<task-id>/`。
+
+| 版本 / 范围 | 任务日期 | 主题与原文 | 说明 |
+| --- | --- | --- | --- |
+| unversioned | undated | [符号级合并重放工作流](unversioned/undated/%E7%AC%A6%E5%8F%B7%E7%BA%A7%E5%90%88%E5%B9%B6%E9%87%8D%E6%94%BE%E5%B7%A5%E4%BD%9C%E6%B5%81.md) | 保留原始结论与验证范围 |
+| unversioned | undated | [入口与层次](unversioned/undated/editor-settings-report/editor-settings.md) | 保留原始结论与验证范围 |
+| unversioned | undated | [翻译段本地化（波 1 增补）实施记录](unversioned/undated/TEST_FEEDBACK_TRANSLATE_LOCALIZE.md) | 保留原始结论与验证范围 |
+| unversioned | undated | [RTF 文件名撤销 + 组合标记本地化 波 5 实施记录](unversioned/undated/TEST_FEEDBACK_RTF_UNDO_MARKERS.md) | 保留原始结论与验证范围 |
+| unversioned | undated | [输出文件名开关 + RTF 标签 实施记录](unversioned/undated/TEST_FEEDBACK_RTF_TAG.md) | 保留原始结论与验证范围 |
+| unversioned | undated | [TEST_FEEDBACK — PR #180 Review（Canvas 预览）](unversioned/undated/TEST_FEEDBACK_PR180.md) | 保留原始结论与验证范围 |
+| unversioned | undated | [PR #150 审查修复记录](unversioned/undated/TEST_FEEDBACK_PR150.md) | 保留原始结论与验证范围 |
+| unversioned | undated | [Launcher 文件输出设置 + RTF 重命名 波 2 实施记录](unversioned/undated/TEST_FEEDBACK_OUTPUT_DIR_WAVE2.md) | 保留原始结论与验证范围 |
+| unversioned | undated | [新建工程与空白编辑器导入处理记录](unversioned/undated/TEST_FEEDBACK_NEW_PROJECT.md) | 保留原始结论与验证范围 |
+| unversioned | undated | [TEST_FEEDBACK_MARKERS_UX](unversioned/undated/TEST_FEEDBACK_MARKERS_UX.md) | 保留原始结论与验证范围 |
+| unversioned | undated | [macOS 单元测试环境失败修复记录](unversioned/undated/TEST_FEEDBACK_MACOS_UNIT_TESTS.md) | 保留原始结论与验证范围 |
+| unversioned | undated | [Launcher 与 Editor 布局反馈记录](unversioned/undated/TEST_FEEDBACK_LAYOUT.md) | 保留原始结论与验证范围 |
+| unversioned | undated | [静音空隙 Gap 功能反馈与处理记录](unversioned/undated/TEST_FEEDBACK_GAP.md) | 保留原始结论与验证范围 |
+| unversioned | undated | [干净 HEAD 复现的 e2e 失败清单（triage 与修复）](unversioned/undated/TEST_FEEDBACK_E2E_DRIFT.md) | 保留原始结论与验证范围 |
+| unversioned | undated | [音轨选择反馈](unversioned/undated/TEST_FEEDBACK_AUDIO_TRACKS.md) | 保留原始结论与验证范围 |
+| unversioned | undated | [ASR 识别预设管理：UI 反馈与整理记录](unversioned/undated/TEST_FEEDBACK_ASR_PRESET_MANAGER.md) | 保留原始结论与验证范围 |
+| unversioned | undated | [文稿录制对齐 MVP 反馈记录](unversioned/undated/TEST_FEEDBACK_ALIGN_MVP.md) | 保留原始结论与验证范围 |
+| unversioned | undated | [TEST_FEEDBACK_AI_CLEANUP_MARKERS](unversioned/undated/TEST_FEEDBACK_AI_CLEANUP_MARKERS.md) | 保留原始结论与验证范围 |
+| unversioned | undated | [时间码对比页面计划（tools/timestamp-compare.html）](unversioned/undated/PLAN_TIMESTAMP_COMPARE.md) | 保留原始结论与验证范围 |
+| unversioned | undated | [编辑器 ESM 迁移：实施台账与上游交接](unversioned/undated/ESM_MIGRATION.md) | 保留原始结论与验证范围 |
+| unversioned | undated | [编辑器设置整理实施记录](unversioned/undated/EDITOR_SETTINGS_IMPLEMENTATION.md) | 保留原始结论与验证范围 |
+| 1.8.0-beta.1 | undated | [v1.8.0-beta.1 发布审查](1.8.0-beta.1/undated/RELEASE_REVIEW_1.8.0-beta.1.md) | 保留原始结论与验证范围 |
+| 1.4.0-beta.7 | undated | [v1.4.0-beta.7 测试反馈与处理记录](1.4.0-beta.7/undated/TEST_FEEDBACK_BETA7.md) | 保留原始结论与验证范围 |
+| 1.3.2 → 1.4.0（跨版本） | undated | [MAW 1.3.2 → 1.4.0-beta.4 变更回顾](1.3.2/undated/RELEASE_REVIEW_1.3.2_TO_1.4.0.md) | 保留原始结论与验证范围 |
+| unversioned | 2026-10-11 | [261011 再次反馈处理记录](unversioned/2026-10-11/feedback/%E5%A4%84%E7%90%86%E8%AE%B0%E5%BD%95.md) | 保留原始结论与验证范围 |
+| unversioned | 2026-10-11 | [MAW 2.0 新版本核对](unversioned/2026-10-11/feedback/MAW%202.0%20%E6%96%B0%E7%89%88%E6%9C%AC%E6%A0%B8%E5%AF%B9.md) | 保留原始结论与验证范围 |
+| unversioned | 2026-10-11 | [PR #207: visibility-first ASS subtitle stacking](unversioned/2026-10-11/PR205_ANCHOR_REVIEW_20261011.md) | 保留原始结论与验证范围 |
+| unversioned | 2026-10-10 | [Launcher.js 拆分重构（第一阶段）](unversioned/2026-10-10/REFACTOR_LAUNCHER_SPLIT.md) | 保留原始结论与验证范围 |
+| unversioned | 2026-10-09 | [Verification 核对工具调整（2026-10-09）](unversioned/2026-10-09/TEST_FEEDBACK_VERIFICATION_TOOL.md) | 保留原始结论与验证范围 |
+| unversioned | 2026-10-09 | [设置页改进记录（2026-10-09）](unversioned/2026-10-09/TEST_FEEDBACK_SETTINGS_20261009.md) | 保留原始结论与验证范围 |
+| 1.8.0-beta.1 → 当时 main | 2026-10-09 | [185 后续补充内容核查（2026-10-09）](1.8.0-beta.1/2026-10-09/first-verification/data/issue185-followup.md) | 附件源数据 |
+| 1.8.0-beta.1 → 当时 main | 2026-10-09 | [提交清单与分组方案（v1.8.0-beta.1..HEAD，共 28 提交 + 1 merge）](1.8.0-beta.1/2026-10-09/first-verification/data/commits.md) | 附件源数据 |
+| 1.8.0-beta.1 → 当时 main | 2026-10-09 | [当前 HEAD（9b7e62b8）自动化基线 — 2026-10-09 实测](1.8.0-beta.1/2026-10-09/first-verification/data/baseline.md) | 附件源数据 |
+| 1.8.0-beta.1 → 当时 main | 2026-10-09 | [MAW 发布核查清单生成任务（2026-10-09）](1.8.0-beta.1/2026-10-09/first-verification/README.md) | 保留原始结论与验证范围 |
+| unversioned | 2026-10-08 | [ESM 迁移后的上游 PR 合并预演](unversioned/2026-10-08/esm-research/ESM_UPSTREAM_MERGE_REHEARSAL.md) | 保留原始结论与验证范围 |
+| unversioned | 2026-10-08 | [上游 PR → ESM fork：复现与处理手册](unversioned/2026-10-08/esm-research/ESM_UPSTREAM_MERGE_PLAYBOOK.md) | 保留原始结论与验证范围 |
+| unversioned | 2026-10-08 | [ESM 机械迁移调研结果](unversioned/2026-10-08/esm-research/ESM_MECHANICAL_RESEARCH_REPORT.md) | 保留原始结论与验证范围 |
+| unversioned | 2026-10-08 | [ESM 契约迁移与红绿实验](unversioned/2026-10-08/esm-research/ESM_CONTRACT_MIGRATION.md) | 保留原始结论与验证范围 |
+| unversioned | 2026-10-08 | [174 文稿驱动对齐开发记录](unversioned/2026-10-08/FEATURE_SCRIPT_ALIGNMENT_174.md) | 保留原始结论与验证范围 |
+| unversioned | 2026-10-08 | [部分 ESM 迁移的上游交接与冲突处理](unversioned/2026-10-08/ESM_UPSTREAM_PRODUCTION.md) | 保留原始结论与验证范围 |
+| unversioned | 2026-10-07 | [字幕拖动性能量化研究（5000 条工程）](unversioned/2026-10-07/PERF_CUE_DRAG_RESEARCH.md) | 保留原始结论与验证范围 |
+| unversioned | 2026-10-04 | [PR #170 评论修复（2026-10-04）](unversioned/2026-10-04/TEST_FEEDBACK_PR170_COMMENTS.md) | 保留原始结论与验证范围 |
+| unversioned | 2026-10-04 | [AI 整理复查与标记批量管理（2026-10-04）](unversioned/2026-10-04/TEST_FEEDBACK_AI_CLEANUP_REVIEW.md) | 保留原始结论与验证范围 |
+| unversioned | 2026-10-04 | [近期更新整体审查（2026-10-04）](unversioned/2026-10-04/REVIEW_RECENT_WORKFLOW.md) | 保留原始结论与验证范围 |
+| unversioned | 2026-10-02 | [PR #166 审查报告（2026-10-02）](unversioned/2026-10-02/PR_REVIEW_166.md) | 保留原始结论与验证范围 |
+| unversioned | 2026-10-02 | [PR #165 审查报告（2026-10-02）](unversioned/2026-10-02/PR_REVIEW_165.md) | 保留原始结论与验证范围 |
+| unversioned | 2026-10-01 | [文档重构记录（2026-10-01）](unversioned/2026-10-01/%E6%96%87%E6%A1%A3%E9%87%8D%E6%9E%84%E8%AE%B0%E5%BD%95.md) | 保留原始结论与验证范围 |
+| unversioned | 2026-10-01 | [双语 SRT 导出反馈（2026-10-01）](unversioned/2026-10-01/TEST_FEEDBACK_BILINGUAL_EXPORT.md) | 保留原始结论与验证范围 |
+| unversioned | 2026-10-01 | [ASS 界面反馈（2026-10-01）](unversioned/2026-10-01/TEST_FEEDBACK_ASS_UI.md) | 保留原始结论与验证范围 |
+| unversioned | 2026-10-01 | [ASS 预览一致性反馈（2026-10-01）](unversioned/2026-10-01/TEST_FEEDBACK_ASS_PREVIEW_FIDELITY.md) | 保留原始结论与验证范围 |
+| unversioned | 2026-09-30 | [ASS 样式库与字幕模式反馈记录](unversioned/2026-09-30/TEST_FEEDBACK_ASS_STYLE.md) | 保留原始结论与验证范围 |
+| unversioned | 2026-09-28 | [调研简报：MAWE 编辑器前端 ESM 化能否机械化完成](unversioned/2026-09-28/esm-research/ESM_MECHANICAL_RESEARCH_BRIEF.md) | 保留原始结论与验证范围 |
+| unversioned | 2026-09-26 | [MAWE 职责拆分与宿主边界进度](unversioned/2026-09-26/MAWE%20%E8%81%8C%E8%B4%A3%E6%8B%86%E5%88%86%E4%B8%8E%E5%AE%BF%E4%B8%BB%E8%BE%B9%E7%95%8C%E8%BF%9B%E5%BA%A6.md) | 保留原始结论与验证范围 |
+| unversioned | 2026-09-26 | [MAWE 状态与命令重构进度](unversioned/2026-09-26/MAWE%20%E7%8A%B6%E6%80%81%E4%B8%8E%E5%91%BD%E4%BB%A4%E9%87%8D%E6%9E%84%E8%BF%9B%E5%BA%A6.md) | 保留原始结论与验证范围 |
+| unversioned | 2026-09-16 | [全量 E2E 基线失败排查记录](unversioned/2026-09-16/TEST_FEEDBACK_E2E_MAIN.md) | 保留原始结论与验证范围 |
+| unversioned | 2026-09-10 | [MAWE 编辑器模块化拆分台账](unversioned/2026-09-10/MAWE%20%E7%BC%96%E8%BE%91%E5%99%A8%E6%A8%A1%E5%9D%97%E5%8C%96%E6%8B%86%E5%88%86%E5%8F%B0%E8%B4%A6.md) | 保留原始结论与验证范围 |
+| unversioned | 2026-09-07 | [Parakeet TDT 日文模型接入调研](unversioned/2026-09-07/Parakeet%20TDT%20%E6%97%A5%E6%96%87%E6%A8%A1%E5%9E%8B%E6%8E%A5%E5%85%A5%E8%B0%83%E7%A0%94.md) | 保留原始结论与验证范围 |
+| unversioned | 2026-09-04 | [时间基准、帧吸附与时间码显示](unversioned/2026-09-04/TEST_FEEDBACK_TIMEBASE.md) | 保留原始结论与验证范围 |
+| unversioned | 2026-08-27 | [断句/标点符号配置统一化（工具箱 → ⚙️ 设置共享配置）](unversioned/2026-08-27/TEST_FEEDBACK_PUNCT_SETTINGS.md) | 保留原始结论与验证范围 |
+| unversioned | 2026-08-27 | [本地引擎分段整理失效反馈记录（MOSS / 共享层）](unversioned/2026-08-27/TEST_FEEDBACK_MOSS.md) | 保留原始结论与验证范围 |
+| unversioned | 2026-08-20 | [PR #56 审核报告](unversioned/2026-08-20/PR56_REVIEW.md) | 保留原始结论与验证范围 |
+| unversioned | 2026-08-13 | [MAWE 前端重构基线](unversioned/2026-08-13/MAWE%20%E5%89%8D%E7%AB%AF%E9%87%8D%E6%9E%84%E5%9F%BA%E7%BA%BF.md) | 保留原始结论与验证范围 |
+| unversioned | 2026-08-03 | [Qwen-Audio Filetrans 开发计划](unversioned/2026-08-03/Qwen-Audio-Filetrans%20%E5%BC%80%E5%8F%91%E8%AE%A1%E5%88%92.md) | 保留原始结论与验证范围 |
+| unversioned | 2026-08-03 | [MAW 1.2 本地模型 Launcher 开发记录](unversioned/2026-08-03/MAW%201.2%20%E6%9C%AC%E5%9C%B0%E6%A8%A1%E5%9E%8B%20Launcher%20%E5%BC%80%E5%8F%91%E8%AE%B0%E5%BD%95.md) | 保留原始结论与验证范围 |
+| unversioned | 2026-07-28 | [ASR 供应商调研：Fun-ASR 与豆包大模型录音文件识别](unversioned/2026-07-28/ASR_PROVIDER_RESEARCH.md) | 保留原始结论与验证范围 |
+| 1.1.0 | 2026-07-27 | [MAW 1.1 开发追踪](1.1.0/2026-07-27/MAW%201.1%20%E5%BC%80%E5%8F%91%E8%BF%BD%E8%B8%AA.md) | 正文明确版本目标为 1.1.0；保留原始结论与验证范围 |
+| unversioned | undated | [editor-settings.html](unversioned/undated/editor-settings-report/editor-settings.html) | 共享报告；源材料在同目录 |
+| 1.8.0-beta.1 | 2026-10-09 | [maw-verification-v1.8.0b1-to-main.html](1.8.0-beta.1/2026-10-09/first-verification/maw-verification-v1.8.0b1-to-main.html) | 共享报告；源材料在同目录 |

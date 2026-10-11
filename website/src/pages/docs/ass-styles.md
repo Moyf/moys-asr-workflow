@@ -2,10 +2,10 @@
 layout: "../../layouts/DocLayout.astro"
 title: "ASS 样式与导出"
 description: "共享样式库、ASS 预览、特殊文本与多轨呈现。"
-source: "docs/ASS_STYLES.md"
+source: "docs/user/ASS_STYLES.md"
 ---
 
-<!-- Generated from docs/ASS_STYLES.md. Run pnpm run sync:docs to refresh. -->
+<!-- Generated from docs/user/ASS_STYLES.md. Run pnpm run sync:docs to refresh. -->
 
 ASS 用于带字体、描边、位置和动画的字幕交付。先在编辑器「管理 ASS 样式」选定输出方案与关联样式，再导出 ASS。普通编辑步骤见 [编辑器指南](../editor-guide/)。
 

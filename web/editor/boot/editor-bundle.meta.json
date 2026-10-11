@@ -312,7 +312,7 @@
     "editor/cues/editor-bound-drag.js": "cce1e2639c1752454c8718433e1048d3458b0e1ef5ad301b20e169b37f5a4d2f",
     "editor/ui/editor-context-menus.js": "166d7a79714ded5556e62c2879363e0ecd6844b43cc6cc96ae96b996d16bd8f8",
     "editor/cues/editor-text-cleanup.js": "25345a356f84cc25e58839a48c38dc5353962eaa174b8810e3e5726d09999a68",
-    "editor/media/editor-waveform-init.js": "c29195eb727bef3b1853504733b95e7902b33af0e5d3e753604ea7966d7eb847",
+    "editor/media/editor-waveform-init.js": "117cd2469d3cff5efc42eb04f12dfe46eff0b8af5b16e7bb111c45e4195d2d37",
     "editor/cues/editor-word-timing.js": "cc650fb03df820da1464a69c9b17d24be66b0c608d5af6a03d58a886576ef674",
     "editor/media/editor-media-step.js": "778e52252d7ebd14fdc196687c6bdf333f7527970bf65ffd21c8406c8707323c",
     "editor/styles/editor-appearance-inputs.js": "233d2aef602beaa26cad764a555837f056c3de44f076232fed093c641bdb5342",
@@ -326,9 +326,9 @@
     "editor/ui/editor-gap-remove-ui.js": "99d7c86b85695cbe75615ec1fc63ea1473f18f3ad250b4f6ff8f6fb4b52e0124",
     "editor/markers/editor-marker-editing.js": "a96b095075f26c48b77a3590f0d075b64742b2b1d35e5eca93788da77c9dc61a",
     "editor/markers/editor-markers-panel.js": "c6fb738f95a34d6daec35c48a6890f5c2599b0f50cdc1b3b3a488b84daf3ca8a",
-    "editor/cues/editor-selection.js": "4fef8b3aaba828227d6b2fe67637b5c43357096b9cf1e538c961704a44b249d4",
+    "editor/cues/editor-selection.js": "64daf847813e4573e1528602dc659169c19304eb9769bafa5f8c0aeb84b6d675",
     "editor/cues/editor-binding-align.js": "1ce502fb39e5e453b11740d524b9628372d83117e398e7ffa7a9a3a04110945a",
-    "editor/cues/editor-cue-panel.js": "7fbc0664058e03cd957aff5dde2472999f2158854c3c95eef8dcd63345954d10",
+    "editor/cues/editor-cue-panel.js": "af13797942dfca0d5767cb71bfc3dd276ce8a003a66fdcddd6e4a1528a15ac3a",
     "editor/cues/editor-cue-elements.js": "d568a662acaac58b9c67acebe3800e1ecbfb5b63f41fc4491ce173f8522f6aaf",
     "editor/cues/editor-color-filter.js": "86f141df17252e6fc45a7cd6fdcb04fab7db8b5ea051aef334824723178470b3",
     "editor/cues/editor-search.js": "ddc71b64076b00876b9ed4306ba6f55b9f195f73b1f8223cecae4642ddc106a4",
@@ -692,7 +692,7 @@
         "format": "esm"
       },
       "web/editor-entry.mjs": {
-        "bytes": 1867816,
+        "bytes": 1867900,
         "imports": [
           {
             "path": "web/shared/host/storage.js",
