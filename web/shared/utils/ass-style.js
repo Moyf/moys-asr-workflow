@@ -559,16 +559,16 @@ export function createUtilsModule(dependencies) {
       const numeric = Number(match[1]);
       if (Number.isFinite(numeric)) target[key] = Math.min(max, Math.max(min, numeric));
     };
-    number(/\\fs(-?[0-9]+(?:\\.[0-9]+)?)/iu, 'fontSize', 1, 512);
-    number(/\\fscx(-?[0-9]+(?:\\.[0-9]+)?)/iu, 'scaleX', 0, 1000);
-    number(/\\fscy(-?[0-9]+(?:\\.[0-9]+)?)/iu, 'scaleY', 0, 1000);
-    number(/\\fsp(-?[0-9]+(?:\\.[0-9]+)?)/iu, 'spacing', -100, 100);
-    number(/\\(?:frz|fr)(-?[0-9]+(?:\\.[0-9]+)?)/iu, 'angle', -360, 360);
-    number(/\\frx(-?[0-9]+(?:\\.[0-9]+)?)/iu, 'rotationX', -360, 360);
-    number(/\\fry(-?[0-9]+(?:\\.[0-9]+)?)/iu, 'rotationY', -360, 360);
-    number(/\\bord(-?[0-9]+(?:\\.[0-9]+)?)/iu, 'outline', 0, 100);
-    number(/\\(?:xbord|ybord)(-?[0-9]+(?:\\.[0-9]+)?)/iu, 'outline', 0, 100);
-    number(/\\shad(-?[0-9]+(?:\\.[0-9]+)?)/iu, 'shadow', 0, 100);
+    number(/\\fs(-?[0-9]+(?:\.[0-9]+)?)/iu, 'fontSize', 1, 512);
+    number(/\\fscx(-?[0-9]+(?:\.[0-9]+)?)/iu, 'scaleX', 0, 1000);
+    number(/\\fscy(-?[0-9]+(?:\.[0-9]+)?)/iu, 'scaleY', 0, 1000);
+    number(/\\fsp(-?[0-9]+(?:\.[0-9]+)?)/iu, 'spacing', -100, 100);
+    number(/\\(?:frz|fr)(-?[0-9]+(?:\.[0-9]+)?)/iu, 'angle', -360, 360);
+    number(/\\frx(-?[0-9]+(?:\.[0-9]+)?)/iu, 'rotationX', -360, 360);
+    number(/\\fry(-?[0-9]+(?:\.[0-9]+)?)/iu, 'rotationY', -360, 360);
+    number(/\\bord(-?[0-9]+(?:\.[0-9]+)?)/iu, 'outline', 0, 100);
+    number(/\\(?:xbord|ybord)(-?[0-9]+(?:\.[0-9]+)?)/iu, 'outline', 0, 100);
+    number(/\\shad(-?[0-9]+(?:\.[0-9]+)?)/iu, 'shadow', 0, 100);
     number(/\\(?:b)(-?[0-9]+)/iu, 'bold', 0, 1);
     number(/\\(?:i)(-?[0-9]+)/iu, 'italic', 0, 1);
     number(/\\(?:u)(-?[0-9]+)/iu, 'underline', 0, 1);
@@ -600,8 +600,9 @@ export function createUtilsModule(dependencies) {
   }
 
 
-  function assPreviewStyleAt(style, transformTags, progress = 1) {
+  function assPreviewStyleAt(style, transformTags, progress = 1, { nativeFontSize = false } = {}) {
     const base = normalizeAssStyle(style);
+    if (nativeFontSize && Number.isFinite(Number(style.fontSize))) base.fontSize = Number(style.fontSize);
     const target = assTransformStyleTargets(transformTags);
     const amount = Math.min(1, Math.max(0, Number(progress) || 0));
     const result = { ...base, alpha: 0, rotationX: 0, rotationY: 0 };

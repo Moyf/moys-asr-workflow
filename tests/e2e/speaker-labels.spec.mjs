@@ -517,7 +517,7 @@ test('overlay track speaker labels render through the canvas in ASS mode', async
     MaweDom.overlayToggle.checked = true;
     MawePlaybackLoop.refreshSubtitlePreview(1000, 0);
     const tracks = window.MaweAssCanvas.lastRender.tracks;
-    const overlay = tracks[2];
+    const overlay = tracks.find(track => track.role === 'overlay' && track.cueId === 'ov-1');
     const items = overlay?.lines?.flatMap((line) => line.items) || [];
     return {
       overlayDrawn: overlay ? overlay.skipped === false : false,

@@ -268,7 +268,7 @@ test('speaker prefixes use each track colour in actual Canvas paint, ASS and CSS
   for (const [name, color] of [['MainSpeaker', 'red'], ['SecondarySpeaker', 'green'], ['OverlaySpeaker', 'purple']]) {
     expect(result.painted).toContainEqual({ text: `${name}：`, color: result.palette[color] });
     const assColor = await page.evaluate(hex => `${window.AsrEditorUtils.assColorFromHex(hex)}&`, result.palette[color]);
-    expect(result.ass).toContain(`{\\c${assColor}}${name}：`);
+    expect(result.ass).toContain(`{\\1c${assColor}}${name}：`);
   }
   expect(result.painted).toContainEqual({ text: 'extension text', color: '#123456' });
   await page.locator('.player-stage').screenshot({ path: testInfo.outputPath('ass-track-speaker-prefixes.png') });
