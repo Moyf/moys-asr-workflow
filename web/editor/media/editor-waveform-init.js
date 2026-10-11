@@ -26,9 +26,10 @@
         ? (overlayTrackVisible() ? (getOverlayTrack()?.segments || []) : [])
         : MaweBoot.DATA.segments,
     getExtensionSegments: (trackId = null) => MaweMultiSubtitleCore.getExtensionTrack(trackId)?.segments || [],
-    getCrossTrackSnapTargets: (track = 'main') => {
+    getCrossTrackSnapTargets: (track = 'main', excludedSegments = new Set()) => {
       if (!MaweSettings.EDITOR_SETTINGS.crossTrackSnap) return [];
       const collectEdges = (segments) => (segments || [])
+        .filter((segment) => !excludedSegments.has(segment))
         .flatMap((segment) => [segment?.start, segment?.end])
         .filter((timeMs) => Number.isFinite(Number(timeMs)))
         .map((timeMs) => Number(timeMs));
@@ -80,9 +81,7 @@
       MaweState.selection.overlayAnchor = idx;
     },
     activateOverlayCue: (idx) => {
-      // 与 selectOverlayCue 同一入口：再次点击已选中的叠加字幕也要
-      // 清空主轨/副轨选区并保持本轨单选语义。
-      selectOverlayCueRow(idx);
+      MaweCuePanel.setCuePanelTarget('overlay', idx);
     },
     enterOverlayCueEditor: (idx) => {
       selectOverlayCueRow(idx, { focusEditor: true });
@@ -199,8 +198,10 @@
       command?.cancel();
     },
     syncBoundCueDrag: MaweBoundDrag.syncBoundCueDrag,
+    prepareBoundCueDrag: MaweBoundDrag.prepareBoundCueDrag,
     onLayoutUndo: (label, snapshot) => MaweHistory.pushLayoutUndo(label, snapshot),
     onCommitEdit: (idxs, kind, track = 'main', independent = false, details = null) => {
+      const editedTracks = details?.moveTracks || [{ track, indices: idxs }];
       let linkedChanged = false;
       if (kind === 'resize-boundary-pointer' && track === 'main' && !independent) {
         const targetIndex = Number.isInteger(details?.targetIndex) ? details.targetIndex : idxs[0];
@@ -218,14 +219,16 @@
       MaweTextCleanup.syncTimelineGroupRanges();
       // 拖动预览期间保持下标稳定；提交时再整理副轨数组，避免冲突裁剪后
       // 原本位于目标前面的字幕保留右侧区间而落到目标之后，保存时违反顺序契约。
-      if (MaweMultiSubtitleCore.multiSubtitleVisible() && track !== 'overlay') MaweMultiSubtitleCore.sortExtensionTrackSegments(MaweMultiSubtitleCore.getActiveExtensionTrack());
+      if (MaweMultiSubtitleCore.multiSubtitleVisible() && editedTracks.some((entry) => entry.track !== 'overlay')) MaweMultiSubtitleCore.sortExtensionTrackSegments(MaweMultiSubtitleCore.getActiveExtensionTrack());
       MaweMultiSubtitleCore.syncBindingOffsets();
-      MaweMultiSubtitleCore.markMainSegmentsDirty(track === 'main' ? idxs.map((idx) => MaweBoot.DATA.segments[idx]).filter(Boolean) : []);
-      if (track === 'overlay') {
+      const mainIndices = editedTracks.find((entry) => entry.track === 'main')?.indices || [];
+      MaweMultiSubtitleCore.markMainSegmentsDirty(mainIndices.map((idx) => MaweBoot.DATA.segments[idx]).filter(Boolean));
+      const overlayIndices = editedTracks.find((entry) => entry.track === 'overlay')?.indices;
+      if (overlayIndices) {
         const overlay = getOverlayTrack();
         if (overlay) {
           overlay._dirty = true;
-          idxs.forEach((idx) => { if (overlay.segments[idx]) overlay.segments[idx]._dirty = true; });
+          overlayIndices.forEach((idx) => { if (overlay.segments[idx]) overlay.segments[idx]._dirty = true; });
         }
       }
       if (linkedChanged || MaweMultiSubtitleCore.multiSubtitleVisible() || track === 'extension') MaweMultiSubtitleCore.markMultiSubtitleDirty();
@@ -233,10 +236,11 @@
       timingCommand = null;
       // 长工程优化：多重字幕不可见时，主轨/叠加轨的时间类提交只补丁受影响行，
       // 不全量重建字幕列表（几千条时 renderAll 每次松手冻结数百毫秒，
-      // 全选状态下秒级，见 docs/PERF_CUE_DRAG_RESEARCH.md）。
+      // 全选状态下秒级，见 docs/logs/unversioned/2026-10-07/PERF_CUE_DRAG_RESEARCH.md）。
       // 换轨拖动（Shift+拖动主↔叠加）改变行结构，必须回退全量重建。
       const cueListPatch = (track === 'main' || track === 'overlay')
         && !(details && details.trackChanged)
+        && !details?.moveTracks
         && !MaweMultiSubtitleCore.multiSubtitleVisible()
         ? (track === 'main' ? { mainIndices: idxs } : { overlayIndices: idxs })
         : null;
@@ -245,7 +249,9 @@
       if (!command) MaweViewUpdates.invalidate(listInvalidation);
       MaweViewUpdates.invalidate({ preview: 'update' });
       MaweHint.flashHint(kind === 'move'
-        ? track === 'extension'
+        ? details?.moveTracks
+          ? `已移动 ${editedTracks.reduce((total, entry) => total + entry.indices.length, 0)} 条字幕`
+          : track === 'extension'
           ? `已移动 ${idxs.length} 条副字幕`
           : track === 'overlay'
             ? `已移动 ${idxs.length} 条叠加字幕`

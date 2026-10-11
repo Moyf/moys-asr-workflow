@@ -4,6 +4,7 @@
   'use strict';
 
   const openButton = document.getElementById('ass-frame-preview-open');
+  const quickOpenButton = document.getElementById('ass-frame-quick-open');
   const styleOpenButton = document.getElementById('ass-style-frame-preview-open');
   const windowEl = document.getElementById('ass-frame-window');
   if (!openButton || !windowEl) return;
@@ -278,8 +279,8 @@
   const floatingPanel = global.MaweFloatingPanel.createFloatingPanel({
     panel: windowEl,
     dragHandle: document.getElementById('ass-frame-drag-handle'),
-    manageButton: openButton,
-    anchorButton: openButton,
+    manageButton: quickOpenButton || openButton,
+    anchorButton: quickOpenButton || openButton,
     positionKey: 'moy.asr.ass_frame.window.v1',
     onOpen: () => {
       syncPreview();
@@ -296,6 +297,7 @@
 
   function syncAssFrameControls() {
     openButton.hidden = !enabled();
+    if (quickOpenButton) quickOpenButton.hidden = !enabled();
     if (styleOpenButton) styleOpenButton.hidden = !enabled();
     if (openButton.hidden && floatingPanel.isOpen()) floatingPanel.close();
     // 自动渲染开启时「渲染当前帧」没有意义，隐藏；关闭后作为手动更新入口显示。
@@ -357,6 +359,7 @@
     player.requestVideoFrameCallback(onFrame);
   }
   renderButton?.addEventListener('click', () => void renderAssFrame());
+  if (quickOpenButton) openButton.addEventListener('click', () => floatingPanel.toggle());
   styleOpenButton?.addEventListener('click', () => floatingPanel.open());
   document.getElementById('ass-frame-window-close')?.addEventListener('click', () => floatingPanel.close());
   document.getElementById('ass-mode-toggle')?.addEventListener('change', syncAssFrameControls);

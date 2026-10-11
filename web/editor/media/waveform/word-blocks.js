@@ -10,11 +10,15 @@ export function createWordBlocks(dependencies) {
       const timing = resolveTiming(this.options.getCueTiming?.());
       const entries = window.AsrEditorUtils.getWordTimingEntries(segment, timing);
       const selection = this.options.wordTiming.getSelection(segment);
+      // 与主块（appendCueBlocks）同一套分级：多行 ≥96 非双语 = 等高上层，否则叠加。
+      const fullLane = this.settings.mode === 'multi'
+        && this.options.multiSubtitleVisible?.() !== true
+        && (Number(this.settings.rowHeight) || 0) >= 96;
       entries.forEach(entry => {
         const range = { start: timing.toMs(entry.start), end: timing.toMs(entry.end) };
         if (range.end <= startMs || range.start >= endMs) return;
         const block = document.createElement('div');
-        block.className = 'waveform-word-block';
+        block.className = `waveform-word-block ${fullLane ? 'word-timing-full' : 'word-timing-compact'}`;
         block.dataset.segmentIdx = String(index);
         block.dataset.itemIdx = String(entry.index);
         block.dataset.track = 'main';
@@ -56,7 +60,7 @@ export function createWordBlocks(dependencies) {
         const seam = timing.toMs(left.end);
         if (left.end !== right.start || seam <= startMs || seam > endMs) return;
         const zone = document.createElement('span');
-        zone.className = 'waveform-word-boundary';
+        zone.className = `waveform-word-boundary ${fullLane ? 'word-timing-full' : 'word-timing-compact'}`;
         // 供拖动中的就地刷新定位与校验：区块按句隔离、中缝按左侧条目锚定。
         zone.dataset.segmentIdx = String(index);
         zone.dataset.leftIdx = String(left.index);

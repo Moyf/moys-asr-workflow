@@ -323,6 +323,7 @@ class LocalEditorServerTests(CompactContainerAssertions, unittest.TestCase):
                 base_url = f"http://127.0.0.1:{server.server_address[1]}"
                 payload = {
                     "requestToken": server.request_token,
+                    **server.project_binding_payload(),
                     "intervals": [{"startMs": 0, "endMs": 1200}],
                     "sourceMediaPath": str(outside),
                     "outputPath": str(outside),
@@ -1227,7 +1228,7 @@ class LocalEditorServerTests(CompactContainerAssertions, unittest.TestCase):
         self.assertIn('id="save-project"', page)
         self.assertIn('id="save-project-as"', page)
         self.assertIn('id="save-project-dropdown"', page)
-        self.assertIn('id="open-project-dropdown"', page)
+        self.assertIn('id="import-dropdown"', page)
         self.assertIn('id="load-srt"', page)
         self.assertIn('id="load-srt-file"', page)
         self.assertIn('id="download-gap-removed-video"', page)
@@ -1375,7 +1376,7 @@ class LocalEditorServerTests(CompactContainerAssertions, unittest.TestCase):
 
                 server.set_sticker_root(str(self.stickers))
                 status, result = post({"requestToken": server.request_token, "kind": "stickers", "timeline": timeline})
-                self.assertEqual(status, 200)
+                self.assertEqual(status, 200, str(result.get("error", ""))[:300])
                 package = self.root / result["folderName"]
                 self.assertEqual(package.parent, self.project_path.parent)
                 self.assertEqual(result["folderPath"], str(package.resolve()))

@@ -14,6 +14,11 @@
     const REPLACE_INSIDE = /[，。]/g;
     for (const seg of MaweBoot.DATA.segments) {
       if (!seg.text) continue;
+      // This built-in normalization changes source text/items together. Migrate
+      // only previously exact local scopes; ordinary user edits remain invalid.
+      const aiRanges = MaweBoot.DATA.gap_remove?.provenance?.sources?.ai_cleanup;
+      const validScopes = (Array.isArray(aiRanges) ? aiRanges : [])
+        .filter((range) => window.AsrGapRemoveCore.getCleanupScopeItems(seg, range).length);
       let t = seg.text;
       while (t.length && (t.endsWith('，') || t.endsWith('。'))) t = t.slice(0, -1);
       seg.text = t.replace(REPLACE_INSIDE, PUNCT_REPL).replace(/[ \t]+$/, '');
@@ -27,6 +32,10 @@
           it = it.replace(REPLACE_INSIDE, PUNCT_REPL);
           seg.items[i].text = it;
         }
+      }
+      for (const range of validScopes) {
+        const scope = range.cleanup_scope;
+        scope.text = seg.items.slice(scope.item_start, scope.item_end).map((item) => item.text).join('');
       }
     }
   }

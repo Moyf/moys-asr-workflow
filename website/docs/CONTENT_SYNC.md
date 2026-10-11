@@ -1,21 +1,23 @@
 # 官网文档同步
 
-源文档位于本仓库根 README、JSON_SCHEMA 和 docs；`website/src/pages/docs/*.md` 是生成副本，不手工编辑正文。
+源文档位于本仓库根 README、JSON_SCHEMA 和 docs/user、docs/engineering；文档导航来自 docs/INDEX.md。`website/src/pages/docs/*.md` 是生成副本，不手工编辑正文。
 
 ## 刷新与检查
 
 在仓库根目录运行：
 
 ```sh
-pnpm install --frozen-lockfile
-pnpm run sync:docs
-pnpm run check
-pnpm run build
+pnpm --dir website install --frozen-lockfile
+pnpm --dir website run sync:docs
+pnpm --dir website run check
+pnpm --dir website run build
 ```
 
 脚本 `website/scripts/sync-maw-docs.mjs` 默认读取当前仓库根目录。只有从其他仓库取源文档时，才设置 `MAW_SOURCE_DIR`。某个源文件不存在时，脚本尝试从 GitHub main 获取；离线同步须确保源文件完整。
 
 同步清单显式列出公开页面，不自动发布 TEST_FEEDBACK 或 dev 内部记录。没有独立官网页面的文档通过 GitHub 原文访问；已有页面的相对 Markdown 链接会转换为本站路由。
+
+`provider-research` 保留供应商调研的历史 URL，未列入现行使用指南导航；其来源、日期和适用范围以日志原文为准。
 
 文档引用的本地图片会同步到 `website/public/docs-assets/`，保留源仓库目录结构，并转换为本站相对地址，支持 `BASE_PATH`。与 Markdown 副本一样，这些文件是生成产物；修改原图后重新运行同步，不手改副本。外部图片继续使用原地址。本地图片缺失时尝试从 GitHub main 获取；离线同步须同时保留原图。
 

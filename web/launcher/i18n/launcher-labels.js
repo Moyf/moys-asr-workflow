@@ -235,7 +235,7 @@ function llmHttpErrorText(status, context = {}) {
 }
 function errText(code, detail, context = {}) {
   const compact = compactDetail(detail);
-  if (["postprocess_failed", "transcription_failed"].includes(code)) {
+  if (["postprocess_failed", "toolbox_failed", "transcription_failed"].includes(code)) {
     const intermediate = String(detail || "").includes("中间文件创建或写入失败");
     const tooLong = /\[WinError 206\]|\[Errno 36\]|\bENAMETOOLONG\b|file(?:name| name) too long/iu.test(String(detail || ""));
     if (tooLong) code = intermediate ? "intermediate_path_too_long" : "file_path_too_long";

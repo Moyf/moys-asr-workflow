@@ -22,7 +22,7 @@ const MANIFEST = join(webDir, 'launcher-scripts.txt');
 const HEADER = `# MAW launcher sources are bundled in this order by scripts/build-launcher.mjs.
 # Keep runtime/bootstrap modules before the modules that consume their exports.
 # 由 scripts/refactor-tools/split-launcher.mjs 自 launcher.js 机械切割而来；
-# 簇边界与等价性说明见 docs/REFACTOR_LAUNCHER_SPLIT.md。
+# 簇边界与等价性说明见 docs/logs/unversioned/2026-10-10/REFACTOR_LAUNCHER_SPLIT.md。
 `;
 
 // 每簇：输出文件 + 头注释 + 首语句锚点（该声明的名字）。簇范围延伸到下一簇锚点前。

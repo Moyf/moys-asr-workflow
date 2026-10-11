@@ -3,9 +3,9 @@
 // 不移动、不修改任何源文件。产出用于决定最终模块怎么划分、按什么顺序拆。
 //
 // 用法（在仓库根目录执行）：
-//   node docs/temp/analyze-editor-deps-demo.mjs                     # 总览 + Top 榜
-//   node docs/temp/analyze-editor-deps-demo.mjs splitModeLabel      # 查看某符号的依赖闭包
-//   node docs/temp/analyze-editor-deps-demo.mjs --search split      # 按子串查符号名
+//   node scripts/refactor-tools/analyze-editor-deps-demo.mjs                     # 总览 + Top 榜
+//   node scripts/refactor-tools/analyze-editor-deps-demo.mjs splitModeLabel      # 查看某符号的依赖闭包
+//   node scripts/refactor-tools/analyze-editor-deps-demo.mjs --search split      # 按子串查符号名
 //
 // 已知精度边界（demo 级）：
 // - 用「同名标识符 + 局部遮蔽过滤」匹配引用，不是类型检查器级别的精确解析；

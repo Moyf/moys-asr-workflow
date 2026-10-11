@@ -86,7 +86,13 @@
     // A server-bound video export can only use the server's original media.
     // Once the user replaces it with a browser-local file, invalidate that
     // capability so later exports cannot silently use stale source footage.
-    if (MaweBoot.SERVER_CONFIG?.canGapRemovedVideoExport) {
+    if (MaweBoot.SERVER_CONFIG) {
+      MaweBoot.SERVER_CONFIG.canGapRemovedMediaExport = false;
+      MaweBoot.SERVER_CONFIG.gapRemovedMediaKind = null;
+      MaweBoot.SERVER_CONFIG.gapRemovedMediaAudioTrack = null;
+      MaweBoot.SERVER_CONFIG.gapRemovedMediaSourceName = null;
+      MaweBoot.SERVER_CONFIG.gapRemovedMediaOutputExtension = null;
+      MaweBoot.SERVER_CONFIG.gapRemovedMediaOutputMime = null;
       MaweBoot.SERVER_CONFIG.canGapRemovedVideoExport = false;
       MaweBoot.SERVER_CONFIG.gapRemovedVideoSourceName = null;
     }
@@ -104,6 +110,7 @@
     const stem = file.name.replace(/\.[^.]+$/, '');
     MaweBoot.FILENAME_BASE = stem;
     MaweBoot.DATA.media = file.name;
+    window.MaweGapRemovedMediaExport?.updateButton();
     MaweBoot.DATA.media_time_reference = mediaTimeReference;
     const mnEl = document.getElementById('media-name');
     if (mnEl) {

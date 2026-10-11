@@ -20,6 +20,8 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 
 from maw.gui_workflow import (  # noqa: E402
+    OutputPaths,
+    TranscriptionCancelledError,
     TranscriptionProcessError,
     TranscriptionRequest,
     build_alignment_serve_command,
@@ -66,6 +68,103 @@ def _write_bwf_wav(path: Path, sample_rate: int, time_reference_samples: int) ->
         + b'data' + struct.pack('<I', len(data)) + data
     )
     path.write_bytes(b'RIFF' + struct.pack('<I', 4 + len(chunks)) + b'WAVE' + chunks)
+
+
+class EmptyTranscriptionTests(unittest.TestCase):
+    def setUp(self):
+        from maw.audio_diagnostics import AudioInputError
+        self.temp = tempfile.TemporaryDirectory()
+        self.addCleanup(self.temp.cleanup)
+        self.root = Path(self.temp.name)
+        self.request = TranscriptionRequest(self.root / 'clip.mkv', self.root / 'clip.srt', generate_html=False)
+        self.error = AudioInputError('asr_empty_result_multitrack', 'selected audio_index=0; alternative audio_index=1')
+        self.process = mock.Mock(returncode=0)
+        self.popen = mock.patch('maw.gui_workflow.popen_process_tree', return_value=self.process).start()
+        self.addCleanup(mock.patch.stopall)
+        mock.patch('maw.gui_workflow.release_process_tree').start()
+        mock.patch('maw.gui_workflow._child_environment', return_value={'PATH': ''}).start()
+        self.stream = mock.patch('maw.gui_workflow._stream_process').start()
+        self.empty_error = mock.patch('maw.gui_workflow.empty_transcription_error', return_value=self.error).start()
+        mock.patch('maw.gui_workflow.build_output_paths', return_value=OutputPaths(
+            self.request.srt_path, self.request.srt_path.with_suffix('.mosp'), self.root / 'clip.html')).start()
+
+    def write_outputs(self, segments):
+        self.request.srt_path.write_text('', encoding='utf-8')
+        self.request.srt_path.with_suffix('.mosp').write_text(json.dumps({'segments': segments}), encoding='utf-8')
+
+    def test_successful_child_with_empty_or_blank_segments_is_not_reported_done(self):
+        for segments in ([], [{'text': ' \n\t'}]):
+            with self.subTest(segments=segments):
+                self.write_outputs(segments)
+                with self.assertRaises(type(self.error)) as caught:
+                    run_transcription(self.request)
+                self.assertEqual(caught.exception.code, 'asr_empty_result_multitrack')
+                self.assertTrue(self.request.srt_path.with_suffix('.mosp').exists())
+
+    def test_nonempty_result_does_not_scan_audio(self):
+        self.write_outputs([{'start': 0, 'end': 1000, 'text': 'hello'}])
+        self.assertEqual(run_transcription(self.request).srt_path, self.request.srt_path)
+        self.empty_error.assert_not_called()
+
+    def test_explicit_empty_failure_ignores_stale_nonempty_output(self):
+        self.write_outputs([{'text': 'old result'}])
+        self.process.returncode = 1
+        self.stream.side_effect = lambda process, forward, cancel: forward('RuntimeError: ASR 返回内容为空，未生成字幕段。')
+        with self.assertRaises(type(self.error)):
+            run_transcription(self.request)
+        self.empty_error.assert_called_once()
+
+    def test_cloud_and_local_empty_messages_enter_the_same_diagnostic_path(self):
+        self.process.returncode = 1
+        for message in ('错误: 未识别到任何内容', '错误: 本地模型没有返回可用的转写文本'):
+            self.stream.side_effect = lambda process, forward, cancel, line=message: forward(line)
+            with self.assertRaises(type(self.error)):
+                run_transcription(self.request)
+
+    def test_api_failure_does_not_scan_or_reclassify_stale_empty_output(self):
+        self.write_outputs([])
+        self.process.returncode = 1
+        self.stream.side_effect = lambda process, forward, cancel: forward('RuntimeError: HTTP 401')
+        with self.assertRaises(TranscriptionProcessError):
+            run_transcription(self.request)
+        self.empty_error.assert_not_called()
+
+    def test_earlier_mapping_failure_does_not_override_the_final_api_failure(self):
+        self.process.returncode = 1
+        def stream(process, forward, cancel):
+            forward("Stream map '0:a:0' matches no streams.")
+            forward('RuntimeError: HTTP 401')
+        self.stream.side_effect = stream
+        with self.assertRaises(TranscriptionProcessError):
+            run_transcription(self.request)
+        self.empty_error.assert_not_called()
+
+    def test_ffmpeg_mapping_failure_stays_a_process_failure_without_new_probes(self):
+        self.process.returncode = 1
+        self.stream.side_effect = lambda process, forward, cancel: forward("Stream map '0:a:0' matches no streams.")
+        with self.assertRaises(TranscriptionProcessError):
+            run_transcription(self.request)
+        self.empty_error.assert_not_called()
+
+    def test_track_metadata_snapshot_controls_the_hint_for_blank_outputs(self):
+        from dataclasses import replace
+        from maw.audio_diagnostics import empty_transcription_error
+        self.empty_error.side_effect = empty_transcription_error
+        self.write_outputs([])
+        for count, code in ((None, 'asr_empty_result'), (1, 'asr_empty_result'), (3, 'asr_empty_result_multitrack')):
+            with self.assertRaises(type(self.error)) as caught:
+                run_transcription(replace(self.request, audio_track_count=count))
+            self.assertEqual(caught.exception.code, code)
+
+    def test_cancel_during_diagnosis_does_not_report_a_failed_empty_result(self):
+        self.write_outputs([])
+        cancel = threading.Event()
+        def diagnose(*args, **kwargs):
+            cancel.set()
+            return self.error
+        self.empty_error.side_effect = diagnose
+        with self.assertRaises(TranscriptionCancelledError):
+            run_transcription(self.request, cancel_event=cancel)
 
 
 class GuiWorkflowTests(CompactContainerAssertions, unittest.TestCase):
@@ -299,7 +398,7 @@ class GuiWorkflowTests(CompactContainerAssertions, unittest.TestCase):
             generate_html=False,
         )
         self.srt_path.write_text("1\n", encoding="utf-8")
-        self.srt_path.with_suffix(".mosp").write_text('{"segments": []}\n', encoding="utf-8")
+        self.srt_path.with_suffix(".mosp").write_text('{"segments": [{"start": 0, "end": 1000, "text": "test"}]}\n', encoding="utf-8")
         manifest = local_debug_manifest_path(self.srt_path)
         manifest.write_text('{"schema": "moy.asr.local_debug.v1"}\n', encoding="utf-8")
 
@@ -579,7 +678,7 @@ class GuiWorkflowTests(CompactContainerAssertions, unittest.TestCase):
             ui_language="en",
         )
         self.srt_path.write_text("1\n", encoding="utf-8")
-        self.srt_path.with_suffix(".mosp").write_text('{"segments": []}\n', encoding="utf-8")
+        self.srt_path.with_suffix(".mosp").write_text('{"segments": [{"start": 0, "end": 1000, "text": "test"}]}\n', encoding="utf-8")
         events: list[str] = []
 
         class FakeProcess:
@@ -628,7 +727,7 @@ class GuiWorkflowTests(CompactContainerAssertions, unittest.TestCase):
             ui_language="en",
         )
         self.srt_path.write_text("1\n", encoding="utf-8")
-        self.srt_path.with_suffix(".mosp").write_text('{"segments": []}\n', encoding="utf-8")
+        self.srt_path.with_suffix(".mosp").write_text('{"segments": [{"start": 0, "end": 1000, "text": "test"}]}\n', encoding="utf-8")
 
         class FakeProcess:
             returncode = 0
@@ -846,7 +945,7 @@ class GuiWorkflowTests(CompactContainerAssertions, unittest.TestCase):
     def test_run_transcription_reports_child_pid_after_popen(self) -> None:
         request = TranscriptionRequest(media_path=self.media_path, srt_path=self.srt_path)
         self.srt_path.write_text("1\n", encoding="utf-8")
-        self.srt_path.with_suffix(".mosp").write_text('{"segments": []}\n', encoding="utf-8")
+        self.srt_path.with_suffix(".mosp").write_text('{"segments": [{"start": 0, "end": 1000, "text": "test"}]}\n', encoding="utf-8")
         started: list[int] = []
 
         class FakeProcess:
@@ -873,7 +972,7 @@ class GuiWorkflowTests(CompactContainerAssertions, unittest.TestCase):
         class FakeProcess:
             pid = 4321
             returncode = 1
-            stdout = ["[info] 提交任务...\n".encode(), "错误: 未识别到任何内容\n".encode()]
+            stdout = ["[info] 提交任务...\n".encode(), "错误: 识别请求失败\n".encode()]
 
             def poll(self) -> int | None:
                 return 1
@@ -886,14 +985,14 @@ class GuiWorkflowTests(CompactContainerAssertions, unittest.TestCase):
                 run_transcription(request, on_event=events.append)
 
         self.assertEqual(raised.exception.exit_code, 1)
-        self.assertTrue(any("未识别到任何内容" in line for line in raised.exception.output))
-        self.assertIn("未识别到任何内容", str(raised.exception))
+        self.assertTrue(any("识别请求失败" in line for line in raised.exception.output))
+        self.assertIn("识别请求失败", str(raised.exception))
         self.assertTrue(any("提交任务" in event for event in events))
 
     def test_run_transcription_keeps_json_when_optional_html_render_fails(self) -> None:
         request = TranscriptionRequest(media_path=self.media_path, srt_path=self.srt_path)
         self.srt_path.write_text("1\n", encoding="utf-8")
-        self.srt_path.with_suffix(".mosp").write_text('{"segments": []}\n', encoding="utf-8")
+        self.srt_path.with_suffix(".mosp").write_text('{"segments": [{"start": 0, "end": 1000, "text": "test"}]}\n', encoding="utf-8")
         events: list[str] = []
 
         class FakeProcess:
@@ -1262,7 +1361,7 @@ class GuiWorkflowTests(CompactContainerAssertions, unittest.TestCase):
             generate_html=False,
         )
         self.srt_path.write_text("1\n", encoding="utf-8")
-        self.srt_path.with_suffix(".mosp").write_text('{"segments": []}\n', encoding="utf-8")
+        self.srt_path.with_suffix(".mosp").write_text('{"segments": [{"start": 0, "end": 1000, "text": "test"}]}\n', encoding="utf-8")
         events: list[str] = []
 
         class FakeProcess:
@@ -1294,7 +1393,7 @@ class GuiWorkflowTests(CompactContainerAssertions, unittest.TestCase):
             ui_language="zh",
         )
         self.srt_path.write_text("1\n", encoding="utf-8")
-        self.srt_path.with_suffix(".mosp").write_text('{"segments": []}\n', encoding="utf-8")
+        self.srt_path.with_suffix(".mosp").write_text('{"segments": [{"start": 0, "end": 1000, "text": "test"}]}\n', encoding="utf-8")
 
         class FakeProcess:
             returncode = 0

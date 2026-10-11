@@ -1,0 +1,18 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="560" height="180" viewBox="0 0 560 180" role="img" aria-labelledby="title">
+  <title id="title">导航入口、字幕指南和图片资源</title>
+  <rect width="560" height="180" rx="12" fill="#eff6ff"/>
+  <g fill="white" stroke="#2563eb" stroke-width="2">
+    <rect x="20" y="55" width="140" height="70" rx="8"/>
+    <rect x="210" y="55" width="140" height="70" rx="8"/>
+    <rect x="400" y="55" width="140" height="70" rx="8"/>
+  </g>
+  <g fill="none" stroke="#2563eb" stroke-width="3">
+    <path d="M170 90H198M189 82l9 8-9 8"/>
+    <path d="M360 90H388M379 82l9 8-9 8"/>
+  </g>
+  <g fill="#1e3a8a" font-family="system-ui, sans-serif" font-size="20" text-anchor="middle">
+    <text x="90" y="97">导航入口</text>
+    <text x="280" y="97">字幕指南</text>
+    <text x="470" y="97">图片资源</text>
+  </g>
+</svg>
