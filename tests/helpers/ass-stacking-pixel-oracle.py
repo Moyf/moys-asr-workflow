@@ -92,6 +92,7 @@ def boxes(image: Image.Image, padding: int = 0) -> dict:
             'box': [value - padding for value in box] if box else None,
             'painted': count(mask),
             'bands': bands,
+            'peak': max(ImageChops.multiply(channels[index], dominance).getextrema()),
             'glyphSha256': hashlib.sha256(
                 Image.composite(image, Image.new('RGB', image.size), mask).crop(box).tobytes()
             ).hexdigest() if box else None,

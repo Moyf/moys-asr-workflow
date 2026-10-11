@@ -48,6 +48,18 @@ const cases = [
   { name: 'nonlinear font-size and rotation animation frames', marginV: 220,
     animations: { t: { enabled: true, startMs: 0, endMs: 1500, accel: 2, tags: '\\fs120\\frz25' } },
     times: [250, 750, 1250] },
+  { name: 'emphasis and comment font-size clocks survive fractional group fit', marginV: 220,
+    main: 'Plain **BIG**\n//COMMENT//\nPlain **BIG**\n//COMMENT//',
+    extension: 'Secondary **BIG**\n//COMMENT//',
+    emphasisScale: 2.4, commentScale: 2.2,
+    animations: { t: { enabled: true, startMs: 0, endMs: 1500, accel: 2, tags: '\\fs120\\frz10' } },
+    times: [250, 750, 1250] },
+  { name: 'zero move times interpolate over the complete cue',
+    animations: { move: { enabled: true, x1: 300, y1: 560, x2: 750, y2: 420, t1: 0, t2: 0 } },
+    times: [250, 1000, 1750], verifyMove: true, verifyOriginalMove: true },
+  { name: 'equal nonzero move times switch at their actual clock boundary',
+    animations: { move: { enabled: true, x1: 300, y1: 560, x2: 750, y2: 420, t1: 500, t2: 500 } },
+    times: [490, 500, 510], verifyOriginalMove: true },
   { name: 'main move is shared despite different cue clocks',
     mainSegments: [cue('main-clock', 'Main', 0)],
     extensionSegments: [cue('extension-clock', 'Secondary', 500)],
@@ -152,7 +164,8 @@ async function capture(page, timeMs) {
       canvas.width = combined.width; canvas.height = combined.height;
       const context = canvas.getContext('2d');
       const count = record.skipped ? 0 : record.lines.filter(line => line.width > 0 && line.ascent + line.descent > 0).length;
-      for (const d of draws.slice(cursor, cursor + count)) {
+      const observed = draws.slice(cursor, cursor + count);
+      for (const d of observed) {
         const matrix = [...d.matrix]; matrix[4] += padding; matrix[5] += padding;
         for (const target of [context, combined.getContext('2d')]) {
           target.setTransform(...matrix); target.globalAlpha = d.alpha;
@@ -173,17 +186,21 @@ async function capture(page, timeMs) {
         if (!bands.length || bands[bands.length - 1][1] < y - padding) bands.push([y - padding, y + 1 - padding]);
         else bands[bands.length - 1][1] = Math.max(bands[bands.length - 1][1], y + 1 - padding);
       }
-      return { painted, outside, guardEdge, bands,
+      return { painted, outside, guardEdge, bands, paintTransforms: observed.map(d => d.matrix),
         box: painted ? [left - padding, top - padding, right - padding, bottom - padding] : null };
     });
     const nativeTracks = Object.fromEntries(['main', 'extension', 'overlay'].map(key => [key,
-      { painted: 0, box: null, bands: [] }]));
+      { painted: 0, box: null, bands: [], peak: 0 }]));
     const nativePixels = native.getContext('2d').getImageData(0, 0, width, height).data;
     for (let y = 0; y < height; y++) for (let x = 0; x < width; x++) {
       const offset = (y * width + x) * 4;
       if (nativePixels[offset + 3] < 16) continue;
       for (const [index, key] of ['main', 'extension', 'overlay'].entries()) {
         const value = nativePixels[offset + index];
+        if (value > Math.max(nativePixels[offset + (index + 1) % 3], nativePixels[offset + (index + 2) % 3]) + 30) {
+          // Canvas stores unpremultiplied RGB; composite onto black to match libass's RGB output.
+          nativeTracks[key].peak = Math.max(nativeTracks[key].peak, value * nativePixels[offset + 3] / 255);
+        }
         if (value <= 60 || value <= Math.max(nativePixels[offset + (index + 1) % 3], nativePixels[offset + (index + 2) % 3]) + 30) continue;
         const result = nativeTracks[key]; result.painted++;
         if (!result.box) result.box = [x, y, x + 1, y + 1];
@@ -236,11 +253,31 @@ function visibleStack(tracks, width, height, label) {
 
 for (const fixture of cases) test(fixture.name, async ({ page }, testInfo) => {
   await configure(page, fixture);
+  const originalMove = fixture.verifyOriginalMove ? await page.evaluate(() => {
+    MaweBoot.DATA.multi_subtitle.enabled = false;
+    MaweBoot.DATA.overlay_track.enabled = false;
+    const source = MaweExportSrt.buildAss();
+    MaweBoot.DATA.multi_subtitle.enabled = true;
+    MaweBoot.DATA.overlay_track.enabled = true;
+    return source;
+  }) : null;
   const frames = [];
   for (const time of fixture.times) {
     const frame = await capture(page, time);
     const metrics = await evidence(frame, testInfo, `t${time}`);
     const pixels = libass(frame.ass, time, testInfo, `t${time}`);
+    if (originalMove) {
+      // The legacy single-cue libass \move is the independent timing oracle.
+      // Matching two consumers of the group planner would be circular.
+      const original = libass(originalMove, time, testInfo, `original-move-${time}`);
+      writeFileSync(testInfo.outputPath(`original-move-${time}.json`), JSON.stringify(original, null, 2));
+      for (const engine of ['canvas', 'libass']) {
+        const box = engine === 'canvas' ? frame.tracks[0].box : pixels.tracks.main.box;
+        for (const coordinate of [0, 1, 2, 3]) expect.soft(Math.abs(
+          box[coordinate] - original.tracks.main.box[coordinate]),
+        `${engine} main preserves the original libass move clock edge ${coordinate} at ${time}ms`).toBeLessThanOrEqual(3);
+      }
+    }
     writeFileSync(testInfo.outputPath(`t${time}-libass.json`), JSON.stringify(pixels, null, 2));
     expect.soft(frame.captured, 'all actual root paint assigned to track records').toBe(frame.assigned);
     for (const [index, track] of frame.tracks.entries()) {
@@ -290,8 +327,20 @@ for (const fixture of cases) test(fixture.name, async ({ page }, testInfo) => {
       for (const coordinate of [0, 1]) {
         const mainDelta = last[0].box[coordinate] - first[0].box[coordinate];
         expect.soft(Math.abs(mainDelta), `${engine} move changes actual paint`).toBeGreaterThan(5);
-        for (const index of [1, 2]) expect.soft(last[index].box[coordinate] - first[index].box[coordinate],
-          `${engine} secondary follows main clock`).toBeCloseTo(mainDelta, 0);
+        // Equal continuous displacement can produce integer bbox deltas differing
+        // by one pixel: floor(p + d) - floor(p) is floor(d) or ceil(d), depending
+        // on each glyph's raster phase. This changes no 3px cross-renderer bound.
+        for (const index of [1, 2]) expect.soft(Math.abs(
+          last[index].box[coordinate] - first[index].box[coordinate] - mainDelta),
+        `${engine} secondary follows main clock after pixel quantization`).toBeLessThanOrEqual(1);
+        if (engine === 'canvas') {
+          const translation = coordinate + 4;
+          const rootDelta = last[0].paintTransforms[0][translation] - first[0].paintTransforms[0][translation];
+          for (const index of [1, 2]) expect.soft(
+            last[index].paintTransforms[0][translation] - first[index].paintTransforms[0][translation],
+            'observed root drawImage matrices prove an identical continuous group displacement')
+            .toBeCloseTo(rootDelta, 6);
+        }
       }
     }
   }
@@ -352,6 +401,100 @@ test('overlapping secondary M and W cues occupy separate actual pixel bands', as
   expect.soft(frame.nativeTracks.extension.bands, 'Canvas separates same-track simultaneous cues').toHaveLength(2);
   expect(pixels.tracks.extension.bands, 'libass separates same-track simultaneous cues').toHaveLength(2);
 });
+
+test('overlapping fad intervals retain libass fade-in priority in actual pixels', async ({ page }, testInfo) => {
+  await configure(page, {
+    mainSegments: [cue('fade-main', 'Main', 0, 1000)],
+    extensionSegments: [cue('fade-extension', 'Secondary', 0, 1000)],
+    overlaySegments: [cue('fade-overlay', 'Overlay', 0, 1000)],
+    animations: { fad: { enabled: true, inMs: 800, outMs: 800 } },
+  });
+  const standalone = await page.evaluate(() => {
+    MaweBoot.DATA.multi_subtitle.enabled = false;
+    MaweBoot.DATA.overlay_track.enabled = false;
+    const source = MaweExportSrt.buildAss();
+    MaweBoot.DATA.multi_subtitle.enabled = true;
+    MaweBoot.DATA.overlay_track.enabled = true;
+    return source;
+  });
+  const results = [];
+  for (const time of [250, 500, 750]) {
+    const frame = await capture(page, time);
+    await evidence(frame, testInfo, `overlap-fad-${time}`);
+    const pixels = libass(frame.ass, time, testInfo, `overlap-fad-${time}`);
+    const original = libass(standalone, time, testInfo, `original-fad-${time}`);
+    results.push({ time, canvas: frame.nativeTracks, grouped: pixels, original });
+    expect.soft(pixels.sha256, 'fad guard render preserves native pixels').toBe(pixels.guardCropSha256);
+    expect.soft(pixels.outside, 'fad group loses no actual pixels').toBe(0);
+    for (const role of ['main', 'extension', 'overlay']) {
+      expect.soft(frame.nativeTracks[role].painted, `Canvas ${role} actually paints at ${time}ms`).toBeGreaterThan(30);
+      expect.soft(pixels.tracks[role].painted, `libass ${role} actually paints at ${time}ms`).toBeGreaterThan(30);
+      expect.soft(Math.abs(frame.nativeTracks[role].peak - pixels.nativeTracks[role].peak),
+        `${role} actual composited peak opacity matches libass at ${time}ms`).toBeLessThanOrEqual(2);
+    }
+    expect.soft(Math.abs(pixels.nativeTracks.main.peak - original.nativeTracks.main.peak),
+      `sliced grouped fade matches the original libass fad priority at ${time}ms`).toBeLessThanOrEqual(2);
+  }
+  writeFileSync(testInfo.outputPath('overlap-fad-pixels.json'), JSON.stringify(results, null, 2));
+});
+
+for (const diagnostic of ['raw 3D perspective', 'negative base spacing', 'negative transform spacing', 'unreadable group fit']) {
+  test(`actual ASS export UI reports ${diagnostic} without saving or rejecting`, async ({ page }, testInfo) => {
+    const pageErrors = [];
+    const downloads = [];
+    page.on('pageerror', error => pageErrors.push(error.message));
+    page.on('download', download => downloads.push(download.suggestedFilename()));
+    await page.addInitScript(() => {
+      window.__stackSaveRequests = [];
+      window.__stackUnhandledRejections = [];
+      window.addEventListener('unhandledrejection', event => {
+        window.__stackUnhandledRejections.push(String(event.reason?.message || event.reason));
+      });
+      window.showSaveFilePicker = async options => {
+        window.__stackSaveRequests.push(options.suggestedName);
+        return { name: options.suggestedName, async createWritable() {
+          return { async write() {}, async close() {} };
+        } };
+      };
+    });
+    await configure(page, {});
+    const expectedDiagnostic = await page.evaluate(kind => {
+      const main = ASS_STYLE_LIBRARY.styles.find(style => style.id === 'ass');
+      const animations = ASS_STYLE_LIBRARY.assProfiles[0].animations;
+      if (kind === 'raw 3D perspective') animations.t = { enabled: true, startMs: 0, endMs: 1000, accel: 1, tags: '\\frx30' };
+      if (kind === 'negative base spacing') main.spacing = -100;
+      if (kind === 'negative transform spacing') animations.t = { enabled: true, startMs: 0, endMs: 1000, accel: 1, tags: '\\fsp-100' };
+      if (kind === 'unreadable group fit') MaweBoot.DATA.segments[0].text = Array(200).fill('M').join('\n');
+      MaweBoot.DATA.gap_remove = { schema: 'moy.asr.gap_remove.v1', detector: 'audio_gate',
+        minimum_ms: 500, threshold_db: -24, hysteresis_db: 2, lead_in_ms: 40, lead_out_ms: 80,
+        skip_playback: true, operation_mode: 'boundary_drag', manual_corrections: false,
+        gaps: [{ start: 3900, end: 4000, removed: true }] };
+      MaweGapRemoveUi.updateGapRemoveUi();
+      MaweCuePanel.renderAll();
+      try { MaweExportSrt.buildAss(); return ''; } catch (error) { return String(error.message); }
+    }, diagnostic);
+    expect.soft(expectedDiagnostic, 'real project invokes the production planner diagnostic').not.toBe('');
+    for (const [menu, button] of [['#subtitle-export-btn', '#download-full-ass'],
+      ['#gap-removed-export-btn', '#download-gap-removed-ass']]) {
+      await page.evaluate(() => document.querySelector('#hint-stack')?.replaceChildren());
+      await page.locator(menu).click();
+      await page.locator(button).click();
+      // Observe the real handler, DOM hint, browser picker and rejection event;
+      // none of the production export or diagnostic functions are substituted.
+      const hint = page.locator('#hint-stack .hint-card').last();
+      await expect.soft(hint, `${button} surfaces the failed export`).toBeVisible();
+      if (expectedDiagnostic) await expect.soft(hint, `${button} displays the actual planner reason`).toContainText(expectedDiagnostic);
+      expect.soft(await page.evaluate(() => window.__stackSaveRequests), `${button} never opens a save picker`).toEqual([]);
+      expect.soft(await page.evaluate(() => window.__stackUnhandledRejections), `${button} handles its async rejection`).toEqual([]);
+      expect.soft(downloads, `${button} never creates a browser download`).toEqual([]);
+      expect.soft(pageErrors, `${button} produces no uncaught page error`).toEqual([]);
+    }
+    await page.screenshot({ path: testInfo.outputPath('actual-export-diagnostic.png') });
+    writeFileSync(testInfo.outputPath('actual-export-diagnostic.json'), JSON.stringify({ diagnostic, expectedDiagnostic,
+      pageErrors, downloads, ...await page.evaluate(() => ({ saves: window.__stackSaveRequests,
+        rejections: window.__stackUnhandledRejections })) }, null, 2));
+  });
+}
 
 test('libass keeps nonlinear transform and fade clocks when a cue is sliced', async ({}, testInfo) => {
   const header = `[Script Info]\nScriptType: v4.00+\nPlayResX: 1280\nPlayResY: 720\nWrapStyle: 0\nScaledBorderAndShadow: yes\n\n[V4+ Styles]\nFormat: Name, Fontname, Fontsize, PrimaryColour, SecondaryColour, OutlineColour, BackColour, Bold, Italic, Underline, StrikeOut, ScaleX, ScaleY, Spacing, Angle, BorderStyle, Outline, Shadow, Alignment, MarginL, MarginR, MarginV, Encoding\nStyle: Default,Arial,72,&H000000FF,&H000000FF,&H00000000,&H00000000,0,0,0,0,100,100,0,0,1,0,0,2,30,30,180,1\n\n[Events]\nFormat: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text\n`;
