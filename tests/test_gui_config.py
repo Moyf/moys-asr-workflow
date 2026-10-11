@@ -661,5 +661,23 @@ class GuiConfigTests(unittest.TestCase):
                 self.assertEqual(gui_config.api_key_for_provider("soniox", env_path), "file-soniox")
 
 
+class ApiKeyNormalizationTests(unittest.TestCase):
+    def test_whitespace_system_key_uses_saved_key_or_remains_missing(self):
+        from maw.gui_config import api_key_for_provider
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / ".env"
+            self.assertEqual(api_key_for_provider("qwen", path, {"DASHSCOPE_API_KEY": "  "}), "")
+            path.write_text("DASHSCOPE_API_KEY=test-only-saved-token\n", encoding="utf-8")
+            self.assertEqual(api_key_for_provider("qwen", path, {"DASHSCOPE_API_KEY": "  "}),
+                             "test-only-saved-token")
+            self.assertEqual(api_key_for_provider("qwen", path, {"DASHSCOPE_API_KEY": "  test-only-system-token  "}),
+                             "test-only-system-token")
+
+    def test_explicit_empty_environment_does_not_read_host_credentials(self):
+        from maw.gui_config import api_key_for_provider
+        with tempfile.TemporaryDirectory() as directory, mock.patch.dict(os.environ, {"DASHSCOPE_API_KEY": "host-only-token"}):
+            self.assertEqual(api_key_for_provider("qwen", Path(directory) / ".env", {}), "")
+
+
 if __name__ == "__main__":
     _ = unittest.main()

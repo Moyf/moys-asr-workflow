@@ -282,16 +282,16 @@ def probe_audio_tracks(media_path: Path, *, ffprobe_path: Path) -> tuple[AudioTr
         raise MediaToolError("ffprobe returned invalid JSON") from error
     streams = payload.get("streams") if isinstance(payload, Mapping) else None
     if not isinstance(streams, list):
-        return ()
+        raise MediaToolError("ffprobe returned invalid audio-stream metadata")
     tracks: list[AudioTrack] = []
     for audio_index, stream in enumerate(streams):
         if not isinstance(stream, Mapping):
-            continue
+            raise MediaToolError("ffprobe returned invalid audio-stream metadata")
         tags = stream.get("tags") if isinstance(stream.get("tags"), Mapping) else {}
         disposition = stream.get("disposition") if isinstance(stream.get("disposition"), Mapping) else {}
         stream_index = _integer_or_none(stream.get("index"))
-        if stream_index is None:
-            continue
+        if stream_index is None or stream_index < 0 or isinstance(stream.get("index"), bool):
+            raise MediaToolError("ffprobe returned invalid audio-stream index")
         tracks.append(
             AudioTrack(
                 audio_index=audio_index,

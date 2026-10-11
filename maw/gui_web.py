@@ -37,6 +37,7 @@ from maw.asr_presets import (
     validate_options,
     write_preset,
 )
+from maw.asr_errors import api_key_error_code, asr_error_code, redact_asr_text
 from maw.ass_styles import find_ass_style, load_ass_style_library
 from maw.ffmpeg import MACOS_FFMPEG_CANDIDATE_DIRECTORIES, FfmpegTools, ffmpeg_search_path, media_duration_seconds, resolve_ffmpeg_tools
 from maw.media_cache import embed_media_caches
@@ -91,7 +92,7 @@ from maw.local_models import (
     local_model_payload,
     prepare_local_model as prepare_model,
 )
-from maw.media import resolve_default_audio_track, resolve_project_media
+from maw.media import probe_audio_tracks, resolve_project_media
 from maw.notify import send_system_notification
 from maw.postprocess import FixedProcessRequest, LlmPostprocessRequest, OutputMode, PostprocessStepError, Replacement, run_fixed_process as process_fixed_process, run_llm_postprocess as process_llm_postprocess
 from maw.postprocess_io import PostprocessFileError, read_project, read_srt
@@ -166,6 +167,7 @@ ERROR_MESSAGES: Final[dict[str, str]] = {
     "media_not_found": "Media file does not exist.",
     "server_media_missing": "Project media is missing, unsupported, or ambiguous. Choose media manually.",
     "api_key_missing": "API key is required.",
+    "api_key_invalid_format": "Paste only the API key, without whitespace, quotes, a URL or an Authorization prefix.",
     "custom_asr_model_missing": "请填写自定义 ASR 模型名。",
     "custom_asr_base_url_missing": "请填写自定义 ASR Base URL。",
     "local_runtime_missing": "本地模型运行时未安装。",
@@ -903,6 +905,8 @@ class LauncherApi:
             else:
                 updates["MAW_MODEL_CACHE_ROOT"] = ""
         if provider.requires_api_key and model.env_key:
+            if api_key and api_key_error_code(api_key):
+                return _error_result("apiKey", "api_key_invalid_format")
             updates[model.env_key] = api_key
         if provider.id == "qwen":
             updates["DASHSCOPE_REGION"] = str(payload.get("region") or "beijing")
@@ -2617,6 +2621,8 @@ class LauncherApi:
                     "srtPath": raw_item.get("srtPath") or raw_item.get("outputPath"),
                 }
                 merged = dict(item_payload)
+                # Track metadata belongs to each item, never the single-file form.
+                merged["audioTrackCount"] = raw_item.get("audioTrackCount")
                 media_text = str(merged.get("mediaPath") or "").strip()
                 raw_audio_track = merged.get("audioTrack")
                 if media_text and (raw_audio_track is None or not str(raw_audio_track).strip()):
@@ -2632,11 +2638,15 @@ class LauncherApi:
                             "audio_track_invalid",
                             "默认音频轨道必须是非负整数。",
                         )
-                    default_audio_track = resolve_default_audio_track(
-                        Path(media_text).expanduser().resolve(),
-                        explicit_default,
-                        ffprobe_path=_postprocess_ffmpeg_tools(self.paths.env_path).ffprobe,
-                    )
+                    default_audio_track = explicit_default
+                    if default_audio_track is None:
+                        # Reuse the original default-track preflight probe for the hint.
+                        tracks = probe_audio_tracks(
+                            Path(media_text).expanduser().resolve(),
+                            ffprobe_path=_postprocess_ffmpeg_tools(self.paths.env_path).ffprobe,
+                        )
+                        default_audio_track = next((track["audio_index"] for track in tracks or [] if track.get("default")), 0)
+                        merged["audioTrackCount"] = len(tracks) if tracks is not None else None
                     merged["audioTrack"] = default_audio_track
                     merged["defaultAudioTrack"] = default_audio_track
                 if media_text and not str(merged.get("srtPath") or "").strip():
@@ -2666,6 +2676,15 @@ class LauncherApi:
                 for item in items
                 if item.preflight_error
             )
+            shared_code = items[0].preflight_code
+            if shared_code == "audio_tracks_missing" and all(
+                item.preflight_code == shared_code for item in items
+            ):
+                return _error_result("items", shared_code, details)
+            if shared_code in {"api_key_missing", "api_key_invalid_format"} and all(
+                item.preflight_code == shared_code for item in items
+            ):
+                return _error_result("apiKey", shared_code, details)
             return {
                 "ok": False,
                 "field": "items",
@@ -3212,7 +3231,7 @@ class LauncherApi:
 
         def on_child_event(line: str) -> None:
             child_output.append(line)
-            self._emit({"type": "log", "message": line})
+            self._emit({"type": "log", "message": redact_asr_text(line, request.api_key)})
 
         try:
             result = run_transcription(
@@ -3222,7 +3241,7 @@ class LauncherApi:
                 on_process_start=lambda pid: self._emit({"type": "log", "message": f"[info] 转写进程已启动 (pid {pid})"}),
             )
         except TranscriptionCancelledError as error:
-            self._emit({"type": "error", "code": "transcription_cancelled", "detail": str(error)})
+            self._emit({"type": "error", "code": "transcription_cancelled", "detail": redact_asr_text(error, request.api_key)})
             if self.worker is threading.current_thread():
                 self.worker = None
             self.pump.flush()
@@ -3232,29 +3251,29 @@ class LauncherApi:
                 self._emit({
                     "type": "error",
                     "code": "ffmpeg_missing",
-                    "detail": str(error),
+                    "detail": redact_asr_text(error, request.api_key),
                 })
             elif _is_ffprobe_start_failure(child_output):
                 self._emit({
                     "type": "error",
                     "code": "ffprobe_start_failed",
-                    "detail": str(error),
+                    "detail": redact_asr_text(error, request.api_key),
                 })
             elif _is_ffmpeg_start_failure(child_output):
                 self._emit({
                     "type": "error",
                     "code": "ffmpeg_start_failed",
-                    "detail": str(error),
+                    "detail": redact_asr_text(error, request.api_key),
                 })
             else:
-                self._emit({"type": "error", "code": file_error_code(error) or "transcription_failed", "detail": str(error)})
+                self._emit({"type": "error", "code": file_error_code(error) or asr_error_code(error, provider=request.provider) or "transcription_failed", "detail": redact_asr_text(error, request.api_key)})
             if self.worker is threading.current_thread():
                 self.worker = None
             self.pump.flush()
             return
         # The pywebview worker boundary must report every backend failure to JS.
         except Exception as error:  # noqa: BLE001
-            self._emit({"type": "error", "code": file_error_code(error) or "transcription_failed", "detail": str(error)})
+            self._emit({"type": "error", "code": file_error_code(error) or asr_error_code(error, provider=request.provider) or "transcription_failed", "detail": redact_asr_text(error, request.api_key)})
             if self.worker is threading.current_thread():
                 self.worker = None
             self.pump.flush()
@@ -4032,6 +4051,15 @@ def _request_from_payload(payload: Mapping[str, object], env_path: Path) -> Tran
         raise PreflightError("mediaPath", "media_not_found", "Media file does not exist.")
     if not srt_text or not srt.name:
         raise PreflightError("srtPath", "output_missing", "SRT output path is required.")
+    raw_audio_track_count = payload.get("audioTrackCount")
+    audio_track_count = (
+        raw_audio_track_count
+        if isinstance(raw_audio_track_count, int)
+        and not isinstance(raw_audio_track_count, bool)
+        and raw_audio_track_count >= 0 else None
+    )
+    if audio_track_count == 0:
+        raise PreflightError("mediaPath", "audio_tracks_missing", "No audio tracks were found in this media.")
     audio_track = _payload_audio_track(payload, field="audioTrack")
     if audio_track is None:
         raise PreflightError(
@@ -4149,8 +4177,10 @@ def _request_from_payload(payload: Mapping[str, object], env_path: Path) -> Tran
                 raise PreflightError("alignmentModel", "local_runtime_missing", alignment_status.detail)
             if not alignment_status.installed:
                 raise PreflightError("alignmentModel", "alignment_model_missing", alignment_status.detail)
-    if provider.requires_api_key and not api_key:
-        raise PreflightError("apiKey", "api_key_missing", "API key is required.")
+    if provider.requires_api_key:
+        key_error = api_key_error_code(api_key)
+        if key_error:
+            raise PreflightError("apiKey", key_error, ERROR_MESSAGES[key_error])
     if provider.id == "qwen" and region == "singapore" and not workspace_id:
         raise PreflightError("workspaceId", "workspace_missing", "Workspace ID is required for Singapore region.")
     qwen_audio_context = (
@@ -4217,6 +4247,7 @@ def _request_from_payload(payload: Mapping[str, object], env_path: Path) -> Tran
         srt_path=srt,
         audio_track=audio_track,
         default_audio_track=default_audio_track,
+        audio_track_count=audio_track_count,
         model=custom_model if provider.id == "openai" else (model.model_ref or model.id),
         language=str(payload.get("language") or ""),
         api_key=api_key,
