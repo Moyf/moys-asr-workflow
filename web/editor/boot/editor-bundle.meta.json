@@ -255,14 +255,14 @@
     "editor/media/waveform/scale-controls.js": "53c9fdb569974d6792e00dee04692b8f125ef81bbf6f47521946e20d38b4e348",
     "editor/media/waveform/media.js": "d9d0f565af7154f8b1071bd80a6adf645f1e4be8470290b261853ab2e652d79c",
     "editor/media/waveform/render.js": "0e073d415185c83397587bac5714dd7b2671aec1ebfe7621c46641f20327faed",
-    "editor/media/waveform/cue-blocks.js": "2b0400af5b4f74bcd641cca59ea396aef4d1fcb16427cf850e775d644b1634e1",
+    "editor/media/waveform/cue-blocks.js": "2e10083add8193cdbe28400c7b805d6f07deec634ddc1ac28de052529314da00",
     "editor/media/waveform/word-blocks.js": "7e5ece552387ae226199d48aa89fd72b9f9141a24b018163a4a7d5356c7f760e",
     "editor/media/waveform/canvas.js": "e1293fe124ba78d520a816ea5219b40d2680b9aac7be0355eec34b1e86d88c1c",
     "editor/media/waveform/input.js": "b2c0b2f6912403b9bbaa92ed22b7405f366238246d3d343712f426edfa56c7b2",
     "editor/media/waveform/cue-drag.js": "9ca42b8efd3110162e5aaa0d9d363ef6f7ce0e585f4b2c46755c9baf24d84ec0",
     "editor/media/waveform/cue-commands.js": "d421f543da181f8b9ffa19f1114f2da39d36f3223b2e5453b94a8652dbc36132",
     "editor/media/waveform/gap-drag.js": "1302e527da9eabe277f4c03d18da1054b5e1c33044992c8acad3fc8614a8248a",
-    "editor/media/waveform/markers.js": "cfd4940c01d79bb3ae1dbb1a91f03316b373f4700b8a5057c9861de0952ac078",
+    "editor/media/waveform/markers.js": "abd060b1d804aba12eecf23a7ca93afe3f5ec3bc7c25733dd93121a75a4455aa",
     "editor/media/waveform/cue-drag-update.js": "2bc987d0da4b4d7818b8febe46c9c1446aad7a31e3b7ac93e5c9213cc14ac790",
     "editor/media/waveform/playback.js": "b9d282797cf6cc5f702bc842f2ceadfdfc5db5975db8209e12f831a24419abc7",
     "editor/media/waveform.js": "6a093ad4f8a918b4faeb1f25183af9441a374e337dee2d3215f221009a9161bb",
@@ -364,7 +364,7 @@
     "editor/cues/editor-wiring-edit-shortcuts.js": "353fc928fb8fa370f5f4406fc07f061ed8717fed9639e4a17201a3f481ed0366",
     "editor/styles/editor-wiring-font-geometry.js": "a6bd47579d3c780c6cbf3d6211584728759fad78e5d26af826f03dcbf3da9c04",
     "editor/styles/editor-wiring-ass-preview.js": "1e108501297bd85eb76ae337df380a6355a46820848144bc40f40aa4fb9650b1",
-    "editor/styles/editor-wiring-ass-canvas.js": "760124beb2fc0b54d19f82ccfb325cd9d0ba7f032897c5107f35a8ebed7699ee",
+    "editor/styles/editor-wiring-ass-canvas.js": "0bb87354bcec4fa8620a4ca3539d5240b37d2f88e1c051c206b4b305de7f72fd",
     "editor/styles/editor-wiring-ass-frame.js": "1a3c186069460cde01b86e0c1614b8b71d3f9fa7c4ef377988824b14adff69e5",
     "editor/media/editor-wiring-sticker-preview.js": "fa46c5d9075247e627f4fea99cd13d36d1492e4bd5ee1c7a51f046168abbbdb8",
     "editor/io/editor-wiring-export-context.js": "89ac0732b2bcb77878991af980335662d739e4d1cfff65152e4878b042545f0e",
@@ -642,7 +642,7 @@
         "format": "esm"
       },
       "web/editor/media/waveform/cue-blocks.js": {
-        "bytes": 46504,
+        "bytes": 46519,
         "imports": [],
         "format": "esm"
       },
@@ -677,7 +677,7 @@
         "format": "esm"
       },
       "web/editor/media/waveform/markers.js": {
-        "bytes": 29430,
+        "bytes": 29922,
         "imports": [],
         "format": "esm"
       },
@@ -692,7 +692,7 @@
         "format": "esm"
       },
       "web/editor-entry.mjs": {
-        "bytes": 1816460,
+        "bytes": 1816519,
         "imports": [
           {
             "path": "web/shared/host/storage.js",
@@ -1184,7 +1184,7 @@
             "bytesInOutput": 10010
           },
           "web/editor/media/waveform/markers.js": {
-            "bytesInOutput": 14150
+            "bytesInOutput": 14458
           },
           "web/editor/media/waveform/cue-drag-update.js": {
             "bytesInOutput": 8451
@@ -1196,7 +1196,7 @@
             "bytesInOutput": 1055585
           }
         },
-        "bytes": 1403718
+        "bytes": 1404026
       }
     }
   }
