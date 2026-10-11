@@ -469,8 +469,15 @@ for (const [name, marker, tag] of [['underline', '_', 'u'], ['strikeout', '~', '
       animations: { t: { enabled: true, startMs: 0, endMs: 1000, accel: 1, tags: `\\${tag}1` } } });
     const frame = await capture(page, 750);
     await evidence(frame, testInfo, `global-${name}`);
-    const restore = value => frame.ass.replace(/(MMMM\{[^}]*?)\\([us])[01]/g,
-      (whole, prefix, found) => found === tag ? `${prefix}\\${tag}${value}` : whole);
+    // Build an independent three-run control after the actual geometry/clock
+    // prefix. A correct exporter may omit every redundant local decoration
+    // override, so mutating its existing restore tags would be a vacuous oracle.
+    const restore = value => frame.ass.split('\n').map(line => {
+      if (!line.startsWith('Dialogue: 0,')) return line;
+      const textStart = line.indexOf('MMMM');
+      expect(textStart, 'control locates the known main cue after actual override tags').toBeGreaterThan(0);
+      return line.slice(0, textStart) + `MMMM {\\${tag}1}MMMM{\\${tag}${value}} MMMM`;
+    }).join('\n');
     const control = libass(restore(1), 750, testInfo, `${name}-restore-global-control`);
     const broken = libass(restore(0), 750, testInfo, `${name}-reset-false-control`);
     const actual = libass(frame.ass, 750, testInfo, `${name}-actual`);
