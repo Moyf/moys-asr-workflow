@@ -105,6 +105,27 @@ marginBottom 均 `12px`，面板 padding 为 `16px`。两个相邻边界均断�
 
 ## 拟 CHANGELOG
 
+### Windows Preview CI 测试 setup 修正
+
+PR #211 的 Windows Preview Python job 在干净 checkout 中报 21 个 setup
+错误。已下载日志定位到 `TemporaryDirectory(dir=ROOT / ".debug-runs")`
+父目录不存在（WinError 3）；这不是媒体重组或停止代码断言失败。日志证据：
+父整合树 `.debug-runs/20261011T075910Z-d898c442/output.log` 第 349 行起。
+
+本轮只改独有测试及本报告。控制器与 HTTP 夹具共用 helper，先
+`mkdir(parents=True, exist_ok=True)` 创建测试临时根，再申请私有子目录。
+shutdown 组合夹具自动复用同一修正。新增回归实际传入不存在的嵌套根目录，
+分别执行控制器、HTTP 和 shutdown 的真实 setUp/清理，不依赖当前树已经
+存在的 `.debug-runs`；没有弱化原测试、修改生产代码、CI 配置或 CHANGELOG。
+
+| 本轮验证（run_check 包装） | 结果 / result.json |
+| --- | --- |
+| 两个缺失临时根 setup 回归 | 2 passed，4.20s；`20261011T080103Z-0d676f66/result.json` |
+| `python scripts/run_tests.py tests/test_gap_removed_media_jobs.py tests/test_media_job_shutdown.py` | 25 passed，18.38s；`20261011T080107Z-b2b74474/result.json` |
+
+基线 `448d232`，本地验证通过。未推送远端；Windows Preview 的新一轮 CI
+仍待父代理发布修正后确认，不能将本地 25 项通过等同于远端 CI 已绿。
+
 父代理最终包装核查补齐 OCR 源码清单中 `media_jobs` 的本地依赖
 `gui_platform.py`；当前 OCR 入口不使用媒体任务，不视为实际 OCR 故障。
 新增导入闭包契约，检查 local/OCR 两个复制目录均包含媒体任务及其本地
