@@ -64,6 +64,9 @@
       const page = document.getElementById(item.getAttribute('aria-controls') || '');
       if (page) page.hidden = !active;
     }
+    // A taller settings page can push lower controls outside the viewport while
+    // its floating window remains at the position saved for a shorter page.
+    requestAnimationFrame(() => (project ? projectFloatingPanel : editorSettingsFloatingPanel).reclamp());
     if (focus) tab.focus();
     try {
       localStorage.setItem(project ? projectTabKey : MaweDom.EDITOR_SETTINGS_WINDOW_TAB_KEY, tab.dataset.settingsTab || '');

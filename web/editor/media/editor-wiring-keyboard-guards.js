@@ -121,16 +121,34 @@ function pausePlaybackAfterMouseClick() {
 
 
 let assPreviewRefreshFrame = 0;
+let assPreviewRefreshTimer = 0;
 function scheduleAssSubtitlePreviewRefresh() {
-  if (MaweSettings.EDITOR_SETTINGS.assMode !== true || assPreviewRefreshFrame) return;
-  const refresh = () => {
+  if (MaweSettings.EDITOR_SETTINGS.assMode !== true) return;
+  if (assPreviewRefreshTimer) window.clearTimeout(assPreviewRefreshTimer);
+  if (assPreviewRefreshFrame && typeof cancelAnimationFrame === 'function') {
+    cancelAnimationFrame(assPreviewRefreshFrame);
     assPreviewRefreshFrame = 0;
-    if (MaweSettings.EDITOR_SETTINGS.assMode !== true) return;
-    MawePlaybackLoop.refreshSubtitlePreview();
-  };
-  if (typeof requestAnimationFrame === 'function') {
-    assPreviewRefreshFrame = requestAnimationFrame(refresh);
-  } else {
-    assPreviewRefreshFrame = window.setTimeout(refresh, 0);
   }
+  // fullscreenchange may arrive before the browser finishes resizing the stage.
+  // Wait for its size to settle, then draw on the next frame instead of briefly
+  // measuring an in-between rectangle and compressing the Canvas preview.
+  assPreviewRefreshTimer = window.setTimeout(() => {
+    assPreviewRefreshTimer = 0;
+    const refresh = () => {
+      assPreviewRefreshFrame = 0;
+      if (MaweSettings.EDITOR_SETTINGS.assMode !== true) return;
+      MawePlaybackLoop.refreshSubtitlePreview();
+    };
+    if (typeof requestAnimationFrame === 'function') {
+      assPreviewRefreshFrame = requestAnimationFrame(refresh);
+    } else {
+      refresh();
+    }
+  }, 100);
 }
+
+if (typeof ResizeObserver === 'function' && MaweDom.playerStage) {
+  const assPreviewStageObserver = new ResizeObserver(scheduleAssSubtitlePreviewRefresh);
+  assPreviewStageObserver.observe(MaweDom.playerStage);
+}
+window.addEventListener('resize', scheduleAssSubtitlePreviewRefresh);

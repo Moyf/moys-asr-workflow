@@ -2246,7 +2246,7 @@ test('gap-removed export includes color SRT and names OTIO as a timeline project
   // OTIO 菜单项文案同样按语言断言。用 ?lang= 显式指定界面语言，不依赖服务器默认语言。
   const expectedByLang = {
     zh: { otioLabel: '时间线 OTIO', colorSrtName: 'project_去空隙_红色.srt' },
-    en: { otioLabel: 'Timeline OTIO project', colorSrtName: 'project_gap-removed_red.srt' },
+    en: { otioLabel: 'Timeline OTIO', colorSrtName: 'project_gap-removed_red.srt' },
   };
   for (const lang of ['zh', 'en']) {
     await page.goto(`${server.url}?lang=${lang}`);

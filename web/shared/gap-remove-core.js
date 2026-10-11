@@ -8,6 +8,7 @@
   const GAP_PROVENANCE_SOURCES = Object.freeze([
     'script_alignment',
     'ai_cleanup',
+    'ai_cleanup_review',
     'audio_gate',
     'manual',
     'legacy',
@@ -223,6 +224,12 @@
       start,
       end,
     };
+    if (source === 'ai_cleanup_review') {
+      const reviewMarkerId = typeof item.review_marker_id === 'string'
+        ? item.review_marker_id.trim()
+        : '';
+      if (reviewMarkerId) result.review_marker_id = reviewMarkerId;
+    }
     if (source === 'manual' || source === 'legacy') result.removed = item.removed !== false;
     else result.removed = true;
     if (source === 'manual' && item.operation === GAP_REMOVE_MANUAL_OPERATION_BOUNDARY_RESIZE) {
@@ -296,6 +303,7 @@
       sources: {
         script_alignment: normalizeProvenanceRangeList(rawSources.script_alignment, 'script_alignment', {sort: true}),
         ai_cleanup: normalizeProvenanceRangeList(rawSources.ai_cleanup, 'ai_cleanup', {sort: true}),
+        ai_cleanup_review: normalizeProvenanceRangeList(rawSources.ai_cleanup_review, 'ai_cleanup_review', {sort: true}),
         audio_gate: normalizeProvenanceRangeList(
           [...(Array.isArray(rawSources.audio_gate) ? rawSources.audio_gate : []), ...legacyAudioGaps],
           'audio_gate',
@@ -417,6 +425,9 @@
     provenance.sources.ai_cleanup.forEach((gap) => {
       result = applyGapStateRange(result, gap.start, gap.end, true);
     });
+    provenance.sources.ai_cleanup_review.forEach((gap) => {
+      result = applyGapStateRange(result, gap.start, gap.end, true);
+    });
     provenance.sources.audio_gate.forEach((gap) => {
       result = applyGapStateRange(result, gap.start, gap.end, true);
     });
@@ -439,6 +450,7 @@
     const records = [
       ...provenance.sources.script_alignment,
       ...provenance.sources.ai_cleanup,
+      ...provenance.sources.ai_cleanup_review,
       ...provenance.sources.audio_gate,
       ...provenance.manual_overrides.filter((record) => (
         !isBoundaryResizeRecord(record) && !isGapMoveRecord(record)
@@ -491,7 +503,8 @@
 
   function replaceGapRemoveProvenanceSource(value, source, ranges, fallbackGaps = []) {
     const next = normalizeGapRemoveProvenance(value, fallbackGaps);
-    if (source === 'script_alignment' || source === 'ai_cleanup' || source === 'audio_gate') {
+    if (source === 'script_alignment' || source === 'ai_cleanup'
+        || source === 'ai_cleanup_review' || source === 'audio_gate') {
       next.sources[source] = normalizeProvenanceRangeList(ranges, source, {sort: true});
     }
     return next;
@@ -552,10 +565,12 @@
     const hasAudio = has('audio_gate');
     const hasScript = has('script_alignment');
     const hasAiCleanup = has('ai_cleanup');
+    const hasAiCleanupReview = has('ai_cleanup_review');
     const hasManual = has('manual');
-    const automaticOriginCount = [hasAudio, hasScript, hasAiCleanup].filter(Boolean).length;
+    const automaticOriginCount = [hasAudio, hasScript, hasAiCleanup, hasAiCleanupReview].filter(Boolean).length;
     if (automaticOriginCount > 1) return hasManual ? 'multi_source_manual' : 'multi_source';
     if (hasScript) return hasManual ? 'script_alignment_manual' : 'script_alignment';
+    if (hasAiCleanupReview) return hasManual ? 'ai_cleanup_review_manual' : 'ai_cleanup_review';
     if (hasAiCleanup) return hasManual ? 'ai_cleanup_manual' : 'ai_cleanup';
     if (hasAudio) return hasManual ? 'audio_gate_manual' : 'audio_gate';
     if (hasManual) return 'manual';
@@ -603,6 +618,7 @@
       sources: {
         script_alignment: removeFrom(provenance.sources.script_alignment, 'script_alignment', true),
         ai_cleanup: removeFrom(provenance.sources.ai_cleanup, 'ai_cleanup', true),
+        ai_cleanup_review: removeFrom(provenance.sources.ai_cleanup_review, 'ai_cleanup_review', true),
         audio_gate: removeFrom(provenance.sources.audio_gate, 'audio_gate', true),
       },
       manual_overrides: removeFrom(provenance.manual_overrides, 'manual', false),
@@ -629,6 +645,7 @@
       sources: {
         script_alignment: removeFrom(provenance.sources.script_alignment, 'script_alignment', true),
         ai_cleanup: removeFrom(provenance.sources.ai_cleanup, 'ai_cleanup', true),
+        ai_cleanup_review: removeFrom(provenance.sources.ai_cleanup_review, 'ai_cleanup_review', true),
         audio_gate: removeFrom(provenance.sources.audio_gate, 'audio_gate', true),
       },
       manual_overrides: normalizeProvenanceRangeList(
@@ -724,6 +741,7 @@
       sources: {
         script_alignment: removeFrom(provenance.sources.script_alignment, 'script_alignment', true),
         ai_cleanup: removeFrom(provenance.sources.ai_cleanup, 'ai_cleanup', true),
+        ai_cleanup_review: removeFrom(provenance.sources.ai_cleanup_review, 'ai_cleanup_review', true),
         audio_gate: removeFrom(provenance.sources.audio_gate, 'audio_gate', true),
       },
       manual_overrides: normalizeProvenanceRangeList(manual, 'manual'),

@@ -21,6 +21,7 @@
 
 
 
+let lastStableAssPreviewGeometry = null;
 function assPreviewMetrics() {
   const resolution = MaweExportSrt.currentAssVideoResolution()
     || { width: 1920, height: 1080 };
@@ -33,6 +34,36 @@ function assPreviewMetrics() {
   const video = player?.tagName === 'VIDEO';
   const stageWidth = video ? Math.min(boxWidth, boxHeight * aspect) : boxWidth;
   const stageHeight = video ? Math.min(boxHeight, boxWidth / aspect) : boxHeight;
+  if (stageWidth >= 48 && stageHeight >= 48) {
+    lastStableAssPreviewGeometry = {
+      stageWidth,
+      stageHeight,
+      offsetX: (boxWidth - stageWidth) / 2,
+      offsetY: (boxHeight - stageHeight) / 2,
+    };
+  } else if (lastStableAssPreviewGeometry) {
+    // Playback refreshes the ASS canvas every frame, including while a fullscreen
+    // layout transition briefly collapses the stage. Keep the last usable geometry
+    // until ResizeObserver's settled refresh supplies the new dimensions.
+    return {
+      resolution,
+      ...lastStableAssPreviewGeometry,
+      scaleX: lastStableAssPreviewGeometry.stageWidth / resolution.width,
+      scaleY: lastStableAssPreviewGeometry.stageHeight / resolution.height,
+    };
+  } else {
+    // A first render can race the initial layout. Use the native canvas size until
+    // the stage has a meaningful rectangle rather than squeezing ASS into a few px.
+    return {
+      resolution,
+      stageWidth: resolution.width,
+      stageHeight: resolution.height,
+      offsetX: 0,
+      offsetY: 0,
+      scaleX: 1,
+      scaleY: 1,
+    };
+  }
   return {
     resolution,
     stageWidth,

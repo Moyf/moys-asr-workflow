@@ -159,6 +159,7 @@ EDITOR_HEALTH_PROBE_PATH: Final = "/api/startup-status"
 # 单次探测超时与总超时分离：后台加载工程期间 GIL 繁忙，轻量端点也可能
 # 短暂超过默认 0.25s，但仍远小于 SERVER_START_TIMEOUT 的总预算。
 EDITOR_HEALTH_PROBE_TIMEOUT: Final = 2.0
+MAX_POSTPROCESS_OPERATION_ID_LENGTH: Final = 128
 
 
 ERROR_MESSAGES: Final[dict[str, str]] = {
@@ -235,6 +236,75 @@ ERROR_MESSAGES: Final[dict[str, str]] = {
     "audio_tracks_missing": "No audio tracks were found in this media.",
     "audio_tracks_unavailable": "Audio tracks could not be inspected.",
 }
+
+
+class _PostprocessOperation:
+    """Cancellation state for one Launcher AI request."""
+
+    def __init__(self, operation_id: str) -> None:
+        self.operation_id = operation_id
+        self.cancel_event = Event()
+        self._lifecycle_lock = Lock()
+        self._committing = False
+        self._response_lock = Lock()
+        self._response: object | None = None
+
+    def observe_response(self, response: object | None) -> None:
+        close_response: object | None = None
+        with self._response_lock:
+            if response is None:
+                self._response = None
+            elif self.cancel_event.is_set():
+                close_response = response
+            else:
+                self._response = response
+        if close_response is not None:
+            self._close(close_response)
+
+    def cancel(self) -> bool:
+        with self._lifecycle_lock:
+            if self._committing:
+                return False
+            self.cancel_event.set()
+        with self._response_lock:
+            response = self._response
+        if response is not None:
+            self._close(response)
+        return True
+
+    def begin_commit(self) -> bool:
+        """Atomically choose whether cancellation or artifact writing wins."""
+        with self._lifecycle_lock:
+            if self.cancel_event.is_set():
+                return False
+            self._committing = True
+            return True
+
+    @staticmethod
+    def _close(response: object) -> None:
+        close = getattr(response, "close", None)
+        if callable(close):
+            def close_response() -> None:
+                try:
+                    close()
+                except Exception:  # noqa: BLE001 - cancellation is best effort.
+                    pass
+
+            # A Requests response can be blocked in urllib3's read lock while
+            # iter_lines waits for the next SSE bytes. Closing it here would
+            # make the cancel bridge wait on that same lock. The transport
+            # worker observes cancellation independently; this best-effort
+            # close is deliberately detached from the bridge call.
+            try:
+                threading.Thread(
+                    target=close_response,
+                    name="maw-postprocess-response-close",
+                    daemon=True,
+                ).start()
+            except RuntimeError:
+                # Cancellation must stay prompt even if a closer thread cannot
+                # be started. The bounded Requests timeout remains the fallback.
+                pass
 
 
 def _app_version(paths: object) -> str:
@@ -518,8 +588,76 @@ class LauncherApi:
         self.postprocess_media_path: Path | None = None
         self._last_postprocess_progress_at = 0.0
         self._last_media_tool_log_at = 0.0
+        self._postprocess_operations_lock = Lock()
+        self._postprocess_operations: dict[str, _PostprocessOperation] = {}
         self.pump = EventPump(window_getter=self.window_getter)
         _sync_local_runtime_root(self.paths.env_path)
+
+    def _begin_postprocess_operation(
+        self, payload: Mapping[str, object]
+    ) -> _PostprocessOperation | None:
+        operation_id = str(payload.get("operationId") or "").strip()
+        if len(operation_id) > MAX_POSTPROCESS_OPERATION_ID_LENGTH:
+            return None
+        operation = _PostprocessOperation(operation_id)
+        if not operation_id:
+            return operation
+        with self._postprocess_operations_lock:
+            if operation_id in self._postprocess_operations:
+                return None
+            self._postprocess_operations[operation_id] = operation
+        return operation
+
+    def _finish_postprocess_operation(self, operation: _PostprocessOperation) -> None:
+        if not operation.operation_id:
+            return
+        with self._postprocess_operations_lock:
+            if self._postprocess_operations.get(operation.operation_id) is operation:
+                del self._postprocess_operations[operation.operation_id]
+
+    def _run_postprocess_operation(
+        self,
+        payload: Mapping[str, object],
+        *,
+        run: Callable[[_PostprocessOperation], dict[str, object]],
+        cancelled_detail: str,
+    ) -> dict[str, object]:
+        # Register and announce before reading settings. The UI enables Stop
+        # only after this admission, including while preparation is blocked.
+        operation = self._begin_postprocess_operation(payload)
+        if operation is None:
+            return _error_result("postprocessInput", "postprocess_operation_conflict", "This AI operation is already active or has an invalid operation id.")
+        try:
+            if operation.operation_id:
+                self.pump.start()
+                self._emit({
+                    "type": "postprocess_status",
+                    "key": "toolbox_status_starting",
+                    "stage": "admitted",
+                    "operationId": operation.operation_id,
+                })
+            result = run(operation)
+            if not operation.cancel_event.is_set():
+                return result
+        except Exception:  # noqa: BLE001 - cancellation also wins preparation errors.
+            if not operation.cancel_event.is_set():
+                raise
+        finally:
+            self._finish_postprocess_operation(operation)
+        return {"ok": False, "code": "postprocess_cancelled", "detail": cancelled_detail}
+
+    def cancel_postprocess(self, payload: Mapping[str, object]) -> dict[str, object]:
+        """Cancel one active AI cleanup / LLM operation by its opaque UI id."""
+
+        operation_id = str(payload.get("operationId") or "").strip()
+        if not operation_id or len(operation_id) > MAX_POSTPROCESS_OPERATION_ID_LENGTH:
+            return {"ok": False, "active": False}
+        with self._postprocess_operations_lock:
+            operation = self._postprocess_operations.get(operation_id)
+        if operation is None:
+            return {"ok": True, "active": False, "cancelled": False}
+        accepted = operation.cancel()
+        return {"ok": True, "active": True, "cancelled": accepted}
 
     def get_emoji_font_path(self, _payload: Mapping[str, object] | None = None) -> dict[str, object]:
         """返回本地可用的 Noto Color Emoji 路径（file:// URI；未就绪或非 Linux 为空字符串）。
@@ -1200,6 +1338,15 @@ class LauncherApi:
     def run_ai_cleanup(self, payload: Mapping[str, object]) -> dict[str, object]:
         """Recording-first AI spoken-word cleanup behind the toolbox toggle."""
 
+        return self._run_postprocess_operation(
+            payload,
+            run=lambda operation: self._run_ai_cleanup(payload, operation),
+            cancelled_detail="AI cleanup was cancelled.",
+        )
+
+    def _run_ai_cleanup(
+        self, payload: Mapping[str, object], operation: _PostprocessOperation
+    ) -> dict[str, object]:
         script_path = _optional_path(payload.get("scriptPath"))
         if script_path is None:
             return _error_result("postprocessScriptPath", "script_invalid", "A script file is required.")
@@ -1207,6 +1354,8 @@ class LauncherApi:
         srt_path = _optional_path(payload.get("srtPath"))
         preset = preset_by_id(str(payload.get("providerId") or "deepseek"))
         file_values = _postprocess_values(self.paths.env_path, preset.env_prefix)
+        if operation.cancel_event.is_set():
+            return {"ok": False, "code": "postprocess_cancelled", "detail": "AI cleanup was cancelled."}
         try:
             reasoning_mode = _postprocess_reasoning_mode(payload, file_values)
         except ValueError as error:
@@ -1222,9 +1371,35 @@ class LauncherApi:
             return _error_result("postprocessApiKey", "api_key_missing", "Post-processing API key is required.")
         if not settings.base_url or not settings.model:
             return {"ok": False, "field": "postprocessProvider", "code": "postprocess_failed", "detail": "LLM API URL and model are required.", "error": "LLM API URL and model are required."}
+        def emit_status(key: str, details: Mapping[str, int] | None = None) -> None:
+            self._emit_postprocess_status(key, details, operation_id=operation.operation_id)
+
+        batch_number = 0
+
+        def emit_delta(kind: str, text: str) -> None:
+            if operation.cancel_event.is_set():
+                raise LlmClientError("操作已取消。", category="cancelled", operation="completion")
+            self._emit_postprocess_stream(
+                kind, text, batch_number, operation_id=operation.operation_id
+            )
+
+        transport = llm_complete(
+            settings,
+            on_delta=emit_delta,
+            is_cancelled=operation.cancel_event.is_set,
+            on_response=operation.observe_response,
+        )
+
+        def complete(prompt: str, cues: list[dict[str, str]]) -> Mapping[str, object]:
+            nonlocal batch_number
+            if operation.cancel_event.is_set():
+                raise LlmClientError("操作已取消。", category="cancelled", operation="completion")
+            batch_number += 1
+            return transport(prompt, cues)
+
         self._emit_postprocess_status("toolbox_status_reading")
         try:
-            self._emit_postprocess_status("toolbox_status_ai_cleanup")
+            emit_status("toolbox_status_ai_cleanup")
             result = process_ai_cleanup(
                 AiCleanupRequest(
                     project_path=project_path,
@@ -1235,10 +1410,14 @@ class LauncherApi:
                     clean_markdown_symbols=payload.get("cleanMarkdownSymbols", True) is not False,
                     notes=str(payload.get("notes") or "").strip(),
                 ),
-                complete=llm_complete(settings),
-                on_status=self._emit_postprocess_status,
+                complete=complete,
+                on_status=emit_status,
+                is_cancelled=operation.cancel_event.is_set,
+                begin_commit=operation.begin_commit,
             )
-            self._emit_postprocess_status("toolbox_status_writing")
+            if operation.cancel_event.is_set():
+                return {"ok": False, "code": "postprocess_cancelled", "detail": "AI cleanup was cancelled."}
+            emit_status("toolbox_status_writing")
         except PostprocessFileError as error:
             code = _script_match_input_error_code(
                 error,
@@ -1249,7 +1428,11 @@ class LauncherApi:
             return _error_result("postprocessScriptPath", code, str(error))
         except ProjectValidationFailed as error:
             return _error_result("postprocessScriptPath", "subtitle_invalid", str(error))
-        except (AiCleanupError, LlmClientError) as error:
+        except LlmClientError as error:
+            if error.category == "cancelled" or operation.cancel_event.is_set():
+                return {"ok": False, "code": "postprocess_cancelled", "detail": "AI cleanup was cancelled."}
+            return _llm_error_result("postprocessScriptPath", "postprocess_failed", error)
+        except AiCleanupError as error:
             return _llm_error_result("postprocessScriptPath", "postprocess_failed", error)
         except (OSError, UnicodeError, ValueError) as error:
             return {"ok": False, "field": "postprocessScriptPath", "code": file_error_code(error) or "postprocess_failed", "detail": str(error), "error": str(error)}
@@ -1297,12 +1480,23 @@ class LauncherApi:
         return {"ok": True, **result}
 
     def run_llm_postprocess(self, payload: Mapping[str, object]) -> dict[str, object]:
+        return self._run_postprocess_operation(
+            payload,
+            run=lambda operation: self._run_llm_postprocess(payload, operation),
+            cancelled_detail="AI post-processing was cancelled.",
+        )
+
+    def _run_llm_postprocess(
+        self, payload: Mapping[str, object], operation_state: _PostprocessOperation
+    ) -> dict[str, object]:
         preset = preset_by_id(str(payload.get("providerId") or "deepseek"))
         operation = str(payload.get("operation") or "proofread")
         custom_prompt = str(payload.get("customPrompt") or "").strip()
         if operation == "custom" and not custom_prompt:
             return _error_result("postprocessPrompt", "custom_prompt_required")
         file_values = _postprocess_values(self.paths.env_path, preset.env_prefix)
+        if operation_state.cancel_event.is_set():
+            return {"ok": False, "code": "postprocess_cancelled", "detail": "AI post-processing was cancelled."}
         try:
             reasoning_mode = _postprocess_reasoning_mode(payload, file_values)
         except ValueError as error:
@@ -1320,18 +1514,31 @@ class LauncherApi:
             return {"ok": False, "field": "postprocessProvider", "code": "postprocess_failed", "detail": "LLM API URL and model are required.", "error": "LLM API URL and model are required."}
         batch_number = 0
 
+        def emit_status(key: str, details: Mapping[str, int] | None = None) -> None:
+            self._emit_postprocess_status(key, details, operation_id=operation_state.operation_id)
+
+        def emit_delta(kind: str, text: str, batch: int) -> None:
+            if operation_state.cancel_event.is_set():
+                raise LlmClientError("操作已取消。", category="cancelled", operation="completion")
+            self._emit_postprocess_stream(kind, text, batch, operation_id=operation_state.operation_id)
+
         def complete(prompt: str, cues: list[dict[str, JsonValue]]) -> dict[str, JsonValue]:
             nonlocal batch_number
+            if operation_state.cancel_event.is_set():
+                raise LlmClientError("操作已取消。", category="cancelled", operation="completion")
             batch_number += 1
             current_batch = batch_number
             return complete_subtitle_groups(
                 settings,
                 prompt,
                 cues,
-                on_delta=lambda kind, text: self._emit_postprocess_stream(kind, text, current_batch),
+                on_delta=lambda kind, text: emit_delta(kind, text, current_batch),
+                is_cancelled=operation_state.cancel_event.is_set,
+                on_response=operation_state.observe_response,
             )
 
         try:
+            emit_status("toolbox_status_reading")
             result = process_llm_postprocess(
                 LlmPostprocessRequest(
                     project_path=_optional_path(payload.get("projectPath")),
@@ -1346,11 +1553,17 @@ class LauncherApi:
                     bilingual_line_order=str(payload.get("bilingualLineOrder") or ""),
                 ),
                 complete=complete,
-                on_status=self._emit_postprocess_status,
+                on_status=emit_status,
+                is_cancelled=operation_state.cancel_event.is_set,
+                begin_commit=operation_state.begin_commit,
             )
+            if operation_state.cancel_event.is_set():
+                return {"ok": False, "code": "postprocess_cancelled", "detail": "AI post-processing was cancelled."}
+        except (LlmClientError, PostprocessStepError) as error:
+            if error.category == "cancelled" or operation_state.cancel_event.is_set():
+                return {"ok": False, "code": "postprocess_cancelled", "detail": "AI post-processing was cancelled."}
+            return _llm_error_result("postprocessInput", "postprocess_failed", error)
         except (OSError, UnicodeError, ValueError, RuntimeError) as error:
-            if isinstance(error, (LlmClientError, PostprocessStepError)):
-                return _llm_error_result("postprocessInput", "postprocess_failed", error)
             return {"ok": False, "field": "postprocessInput", "code": file_error_code(error) or "postprocess_failed", "detail": str(error), "error": str(error)}
         return _subtitle_artifact_result(result)
 
@@ -3313,18 +3526,36 @@ class LauncherApi:
             self.worker = None
         self.pump.flush()
 
-    def _emit_postprocess_status(self, key: str, details: Mapping[str, int] | None = None) -> None:
+    def _emit_postprocess_status(
+        self,
+        key: str,
+        details: Mapping[str, int] | None = None,
+        *,
+        operation_id: str = "",
+    ) -> None:
         self.pump.start()
         event: dict[str, object] = {"type": "postprocess_status", "key": key}
+        if operation_id:
+            event["operationId"] = operation_id
         if details:
             event.update(details)
         self._emit(event)
 
-    def _emit_postprocess_stream(self, kind: str, text: str, batch: int) -> None:
+    def _emit_postprocess_stream(
+        self, kind: str, text: str, batch: int, *, operation_id: str = ""
+    ) -> None:
         if kind != "reset" and not text:
             return
         self.pump.start()
-        self._emit({"type": "postprocess_stream", "kind": kind, "text": text, "batch": batch})
+        event: dict[str, object] = {
+            "type": "postprocess_stream",
+            "kind": kind,
+            "text": text,
+            "batch": batch,
+        }
+        if operation_id:
+            event["operationId"] = operation_id
+        self._emit(event)
 
     def _handle_postprocess_pipeline_event(self, event: Mapping[str, object]) -> None:
         run_directory = str(event.get("runDirectory") or "").strip()

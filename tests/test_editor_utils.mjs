@@ -42,6 +42,122 @@ test('translates the progressive and duplicate split menu labels', () => {
   assert.equal(i18n.translateText('复制拆分', 'en'), 'Duplicate split');
 });
 
+test('plans an all-or-nothing subtitle time offset within media bounds', () => {
+  const segments = [
+    { start: 1000, end: 2000 },
+    { start: 3000, end: 4000 },
+    { start: 5000, end: 6000 },
+  ];
+  const plan = helpers.planSubtitleTimeOffset(segments, [0, 1], -500, 7000);
+  assert.equal(plan.ok, true);
+  assert.deepEqual(JSON.parse(JSON.stringify(plan.changes)), [
+    { index: 0, start: 500, end: 1500 },
+    { index: 1, start: 2500, end: 3500 },
+  ]);
+  assert.equal(segments[0].start, 1000, 'planning must not mutate cue ranges');
+  assert.equal(helpers.planSubtitleTimeOffset(segments, [0, 1], -1500, 7000).reason, 'media_bounds');
+  assert.equal(helpers.planSubtitleTimeOffset(segments, [0], 1500, 7000).reason, 'overlap');
+  assert.equal(helpers.planSubtitleTimeOffset(segments, [2], 2000, 7000).reason, 'media_bounds');
+});
+
+test('rejects time offsets that jump past unselected cues into clear space', () => {
+  const segments = [
+    { start: 1000, end: 2000 },
+    { start: 3000, end: 4000 },
+  ];
+  for (const [index, offset] of [[0, 4000], [1, -3000]]) {
+    const plan = helpers.planSubtitleTimeOffset(segments, [index], offset, 10000);
+    assert.equal(plan.ok, false);
+    assert.equal(plan.reason, 'overlap');
+    assert.deepEqual(JSON.parse(JSON.stringify(plan.changes)), []);
+  }
+  assert.deepEqual(segments, [{ start: 1000, end: 2000 }, { start: 3000, end: 4000 }]);
+});
+
+test('time offsets preserve ordering around disabled unselected cues', () => {
+  const segments = [
+    { start: 1000, end: 2000 },
+    { start: 3000, end: 4000, disabled: true },
+    { start: 6000, end: 7000 },
+  ];
+  assert.equal(helpers.planSubtitleTimeOffset(segments, [0], 3500, 10000).reason, 'overlap');
+  assert.equal(helpers.planSubtitleTimeOffset(segments, [2], -3500, 10000).reason, 'overlap');
+  // Disabled cues still participate in the saved project's timing contract.
+  assert.equal(helpers.planSubtitleTimeOffset(segments, [0], 1500, 10000).reason, 'overlap');
+  assert.equal(helpers.planSubtitleTimeOffset(segments, [2], -2500, 10000).reason, 'overlap');
+});
+
+test('time offsets allow touching boundaries for noncontiguous selections', () => {
+  const segments = [
+    { start: 1000, end: 2000 },
+    { start: 2500, end: 3000 },
+    { start: 3500, end: 4500 },
+    { start: 5000, end: 6000 },
+  ];
+  for (const offset of [-500, 500]) {
+    const plan = helpers.planSubtitleTimeOffset(segments, [0, 2], offset, 10000);
+    assert.equal(plan.ok, true);
+    assert.deepEqual(JSON.parse(JSON.stringify(plan.changes)), [
+      { index: 0, start: 1000 + offset, end: 2000 + offset },
+      { index: 2, start: 3500 + offset, end: 4500 + offset },
+    ]);
+  }
+});
+
+test('time offsets keep allowing existing overlaps without changing cue order', () => {
+  for (const disabled of [false, true]) {
+    const segments = [
+      { start: 1000, end: 2500 },
+      { start: 2000, end: 4000, disabled },
+    ];
+    assert.equal(helpers.planSubtitleTimeOffset(segments, [0], 500, 10000).ok, true);
+    assert.equal(helpers.planSubtitleTimeOffset(segments, [1], -500, 10000).ok, true);
+  }
+});
+
+for (const fps of [30, 29.97]) {
+  const frameClock = {
+    unit: 'frames',
+    getStart: segment => segment.start_frame,
+    getEnd: segment => segment.end_frame,
+    fromMs: value => helpers.frameNumberFromMilliseconds(value, fps),
+    toMs: value => helpers.millisecondsFromFrameNumber(value, fps),
+  };
+  const frameRange = (start, end, extra = {}) => ({
+    start_frame: start, end_frame: end,
+    start: frameClock.toMs(start), end: frameClock.toMs(end), ...extra,
+  });
+  for (const direction of [1, -1]) {
+    test(`frame-coordinate time offsets accept touching ${direction > 0 ? 'positive' : 'negative'} boundaries at ${fps} FPS`, () => {
+      const end = fps === 30 ? 5 : 7;
+      const source = direction > 0
+        ? [frameRange(end - 3, end), frameRange(end + 2, end + 5, { disabled: true })]
+        : [frameRange(0, 2, { disabled: true }), frameRange(4, 7)];
+      const index = direction > 0 ? 0 : 1;
+      const before = structuredClone(source);
+      const offset = direction * frameClock.toMs(2);
+      const plan = helpers.planSubtitleTimeOffset(source, [index], offset, 12000, frameClock);
+      assert.equal(plan.ok, true);
+      assert.deepEqual(JSON.parse(JSON.stringify(plan.changes)), [{
+        index,
+        start: frameClock.toMs(source[index].start_frame + direction * 2),
+        end: frameClock.toMs(source[index].end_frame + direction * 2),
+        start_frame: source[index].start_frame + direction * 2,
+        end_frame: source[index].end_frame + direction * 2,
+      }]);
+      assert.deepEqual(source, before, 'frame planning must not mutate any cue');
+    });
+  }
+  test(`frame-coordinate time offsets still reject real overlap and exact media bounds at ${fps} FPS`, () => {
+    const source = [frameRange(4, 7), frameRange(8, 11, { disabled: true })];
+    assert.equal(helpers.planSubtitleTimeOffset(source, [0], frameClock.toMs(2), 12000, frameClock).reason, 'overlap');
+    const touchingEnd = frameClock.toMs(9);
+    assert.equal(helpers.planSubtitleTimeOffset([source[0]], [0], frameClock.toMs(2), touchingEnd, frameClock).ok, true);
+    assert.equal(helpers.planSubtitleTimeOffset([source[0]], [0], frameClock.toMs(2), touchingEnd - 1, frameClock).reason, 'media_bounds');
+    assert.equal(helpers.planSubtitleTimeOffset([frameRange(1, 4)], [0], -frameClock.toMs(2), 12000, frameClock).reason, 'media_bounds');
+  });
+}
+
 test('accepts legacy and current project schemas but rejects unknown versions', () => {
   assert.equal(helpers.supportsProjectSchema({ segments: [] }), true);
   assert.equal(helpers.supportsProjectSchema({ schema: helpers.PROJECT_SCHEMA, segments: [] }), true);
@@ -815,6 +931,8 @@ test('classifies common and legacy-migrated gap display types', () => {
     [{ source: 'audio_gate', origins: ['audio_gate', 'manual'] }, 'audio_gate_manual', true],
     [{ source: 'manual', origins: ['manual'] }, 'manual', true],
     [{ source: 'script_alignment', origins: ['script_alignment'] }, 'script_alignment', true],
+    [{ source: 'ai_cleanup_review', origins: ['ai_cleanup_review'] }, 'ai_cleanup_review', true],
+    [{ source: 'ai_cleanup_review', origins: ['ai_cleanup_review', 'manual'] }, 'ai_cleanup_review_manual', true],
     [{ source: 'legacy', origins: ['legacy'] }, 'audio_gate', false],
     [{ source: null, origins: ['script_alignment', 'audio_gate'] }, 'multi_source', true],
     [{ source: null, origins: ['audio_gate', 'legacy'] }, 'audio_gate', false],
@@ -909,6 +1027,78 @@ test('replaces one provenance source without losing the other layers', () => {
     JSON.parse(JSON.stringify(replaced.sources.script_alignment)),
     [{ id: 'align', source: 'script_alignment', start: 0, end: 100, removed: true }],
   );
+});
+
+test('preserves full AI review marker ownership through browser and Python normalization', () => {
+  const markerId = `review-${'x'.repeat(180)}😀`;
+  const initial = gapCore.normalizeGapRemoveProvenance({ sources: {
+    ai_cleanup_review: [{ id: markerId, review_marker_id: ` ${markerId} `, start: 100, end: 300 }],
+  } });
+  assert.equal(initial.sources.ai_cleanup_review[0].review_marker_id, markerId);
+  assert.equal(initial.sources.ai_cleanup_review[0].id, markerId.slice(0, 160));
+  const result = spawnSync(PYTHON_COMMAND, pythonCommandArgs(['-c', [
+    'import json, sys',
+    'from maw.script_alignment import _normalize_gap_provenance',
+    'print(json.dumps(_normalize_gap_provenance(json.load(sys.stdin)), ensure_ascii=False))',
+  ].join('\n')]), {
+    input: JSON.stringify(initial), encoding: 'utf8', timeout: 20_000,
+    env: { ...process.env, PYTHONUTF8: '1' },
+  });
+  assert.equal(result.status, 0, result.stderr);
+  const roundTrip = gapCore.normalizeGapRemoveProvenance(JSON.parse(result.stdout));
+  assert.deepEqual(JSON.parse(JSON.stringify(roundTrip)), JSON.parse(JSON.stringify(initial)));
+  const split = gapCore.removeGapRemoveProvenanceRange(roundTrip, 150, 180);
+  assert.equal(split.sources.ai_cleanup_review.length, 2);
+  assert.ok(split.sources.ai_cleanup_review.every(range => range.review_marker_id === markerId));
+  const cancelled = gapCore.replaceGapRemoveProvenanceSource(
+    split, 'ai_cleanup_review',
+    split.sources.ai_cleanup_review.filter(range => range.review_marker_id !== markerId),
+  );
+  assert.equal(cancelled.sources.ai_cleanup_review.length, 0);
+  assert.deepEqual(JSON.parse(JSON.stringify(gapCore.gapRangesFromProvenance(cancelled))), []);
+});
+
+test('unmuting an AI review range removes only its linked review source after range edits', () => {
+  const initial = gapCore.normalizeGapRemoveProvenance({
+    sources: {
+      ai_cleanup_review: [
+        { id: 'review-a', review_marker_id: 'review-a', start: 100, end: 300 },
+        { id: 'review-b', review_marker_id: 'review-b', start: 250, end: 400 },
+      ],
+      ai_cleanup: [{ id: 'cleanup', start: 200, end: 350 }],
+      audio_gate: [{ id: 'audio', start: 50, end: 150 }],
+    },
+  });
+  assert.deepEqual(JSON.parse(JSON.stringify(initial.sources.ai_cleanup_review)), [
+    { id: 'review-a', source: 'ai_cleanup_review', start: 100, end: 300, review_marker_id: 'review-a', removed: true },
+    { id: 'review-b', source: 'ai_cleanup_review', start: 250, end: 400, review_marker_id: 'review-b', removed: true },
+  ]);
+
+  const rangeEdited = gapCore.removeGapRemoveProvenanceRange(initial, 150, 180);
+  assert.deepEqual(JSON.parse(JSON.stringify(rangeEdited.sources.ai_cleanup_review)), [
+    { id: 'review-a', source: 'ai_cleanup_review', start: 100, end: 150, review_marker_id: 'review-a', removed: true },
+    { id: 'review-a-2', source: 'ai_cleanup_review', start: 180, end: 300, review_marker_id: 'review-a', removed: true },
+    { id: 'review-b', source: 'ai_cleanup_review', start: 250, end: 400, review_marker_id: 'review-b', removed: true },
+  ]);
+
+  const unmuted = gapCore.replaceGapRemoveProvenanceSource(
+    rangeEdited,
+    'ai_cleanup_review',
+    rangeEdited.sources.ai_cleanup_review.filter((item) => item.review_marker_id !== 'review-a'),
+  );
+  assert.deepEqual(JSON.parse(JSON.stringify(unmuted.sources.ai_cleanup_review)), [
+    { id: 'review-b', source: 'ai_cleanup_review', start: 250, end: 400, review_marker_id: 'review-b', removed: true },
+  ]);
+  assert.deepEqual(JSON.parse(JSON.stringify(unmuted.sources.ai_cleanup)), [
+    { id: 'cleanup', source: 'ai_cleanup', start: 200, end: 350, removed: true },
+  ]);
+  assert.deepEqual(JSON.parse(JSON.stringify(unmuted.sources.audio_gate)), [
+    { id: 'audio', source: 'audio_gate', start: 50, end: 150, removed: true },
+  ]);
+  assert.deepEqual(JSON.parse(JSON.stringify(gapCore.gapRangesFromProvenance(unmuted))), [
+    { start: 50, end: 150, removed: true },
+    { start: 200, end: 400, removed: true },
+  ]);
 });
 
 test('regenerates an audio source while retaining a manual restoration', () => {

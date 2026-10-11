@@ -27,10 +27,17 @@ test.beforeAll(async () => {
   server = await startStaticServer(portablePath, await findFreePort());
   const makeLocalhost = async (name, config) => {
     const path = join(tempDir, name);
-    writeFileSync(path, readFileSync(portablePath, 'utf8').replace(
-      'const SERVER_CONFIG = null;',
-      `const SERVER_CONFIG = ${config};`,
-    ));
+    let html = readFileSync(portablePath, 'utf8');
+    // The editor is bundled and minified, so the source-level const name is
+    // no longer present. Resolve the captured variable through the boot
+    // export and replace its adjacent null initializer in the same IIFE.
+    const serverConfig = html.match(/SERVER_CONFIG:([A-Za-z_$][\w$]*)/);
+    if (!serverConfig) throw new Error('Could not locate the bundled server config export');
+    const initializer = `${serverConfig[1]}=null,`;
+    const initializerIndex = html.lastIndexOf(initializer, serverConfig.index);
+    if (initializerIndex < 0) throw new Error('Could not locate the bundled server config initializer');
+    html = `${html.slice(0, initializerIndex)}${serverConfig[1]}=${config},${html.slice(initializerIndex + initializer.length)}`;
+    writeFileSync(path, html);
     return startStaticServer(path, await findFreePort());
   };
   blankServer = await makeLocalhost(
@@ -39,7 +46,7 @@ test.beforeAll(async () => {
   );
   boundServer = await makeLocalhost(
     'localhost-bound.html',
-    '{ "saveUrl": "/api/project", "requestToken": "request-token", "canSave": true }',
+    '{ "saveUrl": "/api/project", "requestToken": "request-token", "canSave": true, "canGapRemovedVideoExport": true, "gapRemovedVideoExportUrl": "/api/exports/gap-removed-video", "gapRemovedVideoSourceName": "old.mp4" }',
   );
 });
 
@@ -120,6 +127,65 @@ test('server-bound page stops writing the old server project after browser New P
   expect((await page.evaluate(() => window.__handleWrites[1])).segments[0].text).toBe('handle-save');
   // 服务器绑定的旧工程一次都不能被写。
   expect(apiSaves).toEqual([]);
+});
+
+test('opening a browser project detaches the previous server-bound video export', async ({ page }) => {
+  await page.addInitScript(() => {
+    window.__savePickerCalls = 0;
+    window.showSaveFilePicker = async () => {
+      window.__savePickerCalls += 1;
+      return { name: 'unexpected.mp4' };
+    };
+  });
+  const exportRequests = [];
+  page.on('request', (request) => {
+    if (request.url().includes('/api/exports/gap-removed-video')) exportRequests.push(request.url());
+  });
+  await page.goto(boundServer.url);
+  expect(await page.evaluate(() => MaweBoot.SERVER_CONFIG.canGapRemovedVideoExport)).toBe(true);
+
+  await page.locator('#open-project-file').setInputFiles({
+    name: 'browser-project.mosp',
+    mimeType: 'application/json',
+    buffer: Buffer.from(JSON.stringify({ media: '', segments: [{ start: 0, end: 1000, text: 'Browser project' }] })),
+  });
+
+  await expect(page.locator('#json-name')).toHaveText('browser-project.mosp');
+  expect(await page.evaluate(() => ({
+    canSave: MaweBoot.SERVER_CONFIG.canSave,
+    canExportVideo: MaweBoot.SERVER_CONFIG.canGapRemovedVideoExport,
+    sourceName: MaweBoot.SERVER_CONFIG.gapRemovedVideoSourceName,
+  }))).toEqual({ canSave: false, canExportVideo: false, sourceName: null });
+  await page.evaluate(() => document.getElementById('download-gap-removed-video').click());
+  expect(await page.evaluate(() => window.__savePickerCalls)).toBe(0);
+  expect(exportRequests).toEqual([]);
+});
+
+test('replacing media detaches the previous server-bound video export', async ({ page }) => {
+  await page.addInitScript(() => {
+    window.__savePickerCalls = 0;
+    window.showSaveFilePicker = async () => {
+      window.__savePickerCalls += 1;
+      return { name: 'unexpected.mp4' };
+    };
+  });
+  const exportRequests = [];
+  page.on('request', (request) => {
+    if (request.url().includes('/api/exports/gap-removed-video')) exportRequests.push(request.url());
+  });
+  await page.goto(boundServer.url);
+  expect(await page.evaluate(() => MaweBoot.SERVER_CONFIG.canGapRemovedVideoExport)).toBe(true);
+
+  await page.locator('#load-media-file').setInputFiles(mediaPath);
+
+  await expect(page.locator('#media-name')).toHaveText('clip.wav');
+  expect(await page.evaluate(() => ({
+    canExportVideo: MaweBoot.SERVER_CONFIG.canGapRemovedVideoExport,
+    sourceName: MaweBoot.SERVER_CONFIG.gapRemovedVideoSourceName,
+  }))).toEqual({ canExportVideo: false, sourceName: null });
+  await page.evaluate(() => document.getElementById('download-gap-removed-video').click());
+  expect(await page.evaluate(() => window.__savePickerCalls)).toBe(0);
+  expect(exportRequests).toEqual([]);
 });
 
 test('picker cancel preserves the current project and keeps save disabled', async ({ page }) => {

@@ -134,6 +134,132 @@
   }
 
 
+  function isAiCleanupReviewMarker(marker) {
+    if (typeof marker?.id !== 'string') return false;
+    if (isAiCleanupReviewMuted(marker.id)) return true;
+    const start = Number(marker?.start);
+    const end = Number(marker?.end);
+    const hasReviewState = marker.review?.status === 'pending' || marker.review?.status === 'confirmed';
+    return /^\[AI\]\s*/i.test(String(marker.note || '').trim())
+      && Number.isFinite(start)
+      && Number.isFinite(end)
+      && end > start
+      && hasReviewState;
+  }
+
+
+  function isAiCleanupReviewMuted(markerId) {
+    const source = MaweGapRemoveData.getGapRemoveData(false)?.provenance?.sources?.ai_cleanup_review;
+    return Array.isArray(source) && source.some((range) => (
+      (range.review_marker_id || range.id) === markerId
+    ));
+  }
+
+
+  function aiCleanupReviewMuteState(markerId, marker = MaweMarkerEditing.findMarker(markerId)) {
+    const state = MaweGapRemoveData.getGapRemoveData(false);
+    const ranges = state?.provenance?.sources?.ai_cleanup_review;
+    const ownedRanges = Array.isArray(ranges) ? ranges.filter((range) => (
+      (range.review_marker_id || range.id) === markerId
+    )) : [];
+    if (!ownedRanges.length) {
+      return { owned: false, matchesCurrentRange: false, removed: false, partiallyRemoved: false };
+    }
+    const markerStart = Math.round(Number(marker?.start));
+    const markerEnd = Math.round(Number(marker?.end));
+    // 来源裁剪可拆出多条归属片段；当前区段包含全部片段时仍关联同一静音。
+    // 没有另存原始几何，包围这些片段的区段扩大也按此几何关联解释。
+    const matchesCurrentRange = Number.isFinite(markerStart) && Number.isFinite(markerEnd)
+      && markerEnd > markerStart
+      && ownedRanges.every((range) => range.start >= markerStart && range.end <= markerEnd)
+      && ownedRanges.some((range) => range.start < markerEnd && range.end > markerStart);
+
+    const removedGaps = (Array.isArray(state?.gaps) ? state.gaps : [])
+      .filter((gap) => gap?.removed !== false)
+      .map((gap) => ({ start: Number(gap.start), end: Number(gap.end) }))
+      .filter((gap) => Number.isFinite(gap.start) && Number.isFinite(gap.end) && gap.end > gap.start)
+      .sort((left, right) => left.start - right.start || left.end - right.end);
+    const overlapsRemoved = (range) => removedGaps.some((gap) => gap.start < range.end && gap.end > range.start);
+    const isFullyRemoved = (range) => {
+      let cursor = Number(range.start);
+      const end = Number(range.end);
+      for (const gap of removedGaps) {
+        if (gap.end <= cursor) continue;
+        if (gap.start > cursor) return false;
+        cursor = Math.max(cursor, gap.end);
+        if (cursor >= end) return true;
+      }
+      return cursor >= end;
+    };
+    const currentRange = { start: markerStart, end: markerEnd };
+    const removed = matchesCurrentRange && isFullyRemoved(currentRange);
+    return {
+      owned: true,
+      matchesCurrentRange,
+      removed,
+      partiallyRemoved: matchesCurrentRange && !removed && overlapsRemoved(currentRange),
+    };
+  }
+
+
+  function updateAiCleanupReviewMuteButton(button, markerId) {
+    button.hidden = !isAiCleanupReviewMarker(MaweMarkerEditing.findMarker(markerId));
+    const status = aiCleanupReviewMuteState(markerId);
+    const label = !status.owned ? '设静音'
+      : !status.matchesCurrentRange ? '取消原静音'
+        : status.removed ? '已静音'
+          : status.partiallyRemoved ? '部分静音' : '取消静音';
+    const title = status.owned
+      ? status.matchesCurrentRange
+        ? '取消会仅撤销此 AI 复核项的静音来源'
+        : '此复核区段已被编辑；点击仅撤销旧范围的 AI 静音来源'
+      : '静音此 AI 复核项对应的媒体区段';
+    button.textContent = window.MAWE_I18N?.translateText(label) || label;
+    button.title = window.MAWE_I18N?.translateText(title) || title;
+    button.setAttribute('aria-pressed', String(status.owned));
+    button.classList.toggle('is-muted', status.owned);
+  }
+
+
+  function updateAiCleanupReviewStatusButton(button, marker) {
+    if (!button || !marker) return;
+    const status = aiCleanupReviewMuteState(marker.id);
+    const removed = status.matchesCurrentRange && status.removed;
+    const partiallyRemoved = status.matchesCurrentRange && status.partiallyRemoved;
+    const label = removed ? '已移除'
+      : partiallyRemoved ? '部分移除'
+        : markerUtils().markerReviewStatusLabel(marker);
+    button.textContent = window.MAWE_I18N?.translateText(label) || label;
+    button.classList.toggle('pending', !removed && !partiallyRemoved && marker.review?.status === 'pending');
+    button.classList.toggle('confirmed', !removed && !partiallyRemoved && marker.review?.status === 'confirmed');
+    button.classList.toggle('removed', removed);
+    button.classList.toggle('partially-removed', partiallyRemoved);
+    button.disabled = removed || partiallyRemoved;
+    const title = removed || partiallyRemoved
+      ? (removed ? 'AI 复核区段已移除' : 'AI 复核区段已部分移除')
+      : String(marker.review?.reason || '');
+    button.title = window.MAWE_I18N?.translateText(title) || title;
+    if (marker.review?.reason && !removed && !partiallyRemoved) {
+      button.dataset.markerProjectReason = 'true';
+    } else {
+      delete button.dataset.markerProjectReason;
+    }
+  }
+
+
+  function refreshAiCleanupReviewMuteButtons() {
+    const list = MaweDom.markersList;
+    if (!list) return;
+    list.querySelectorAll('[data-ai-cleanup-review-mute]').forEach((button) => {
+      updateAiCleanupReviewMuteButton(button, button.dataset.aiCleanupReviewMute);
+    });
+    list.querySelectorAll('[data-ai-cleanup-review-status]').forEach((button) => {
+      const marker = MaweMarkerEditing.findMarker(button.dataset.aiCleanupReviewStatus);
+      updateAiCleanupReviewStatusButton(button, marker);
+    });
+  }
+
+
   // 编辑卡片：仅选中项展开。所有输入只在 change 时提交，避免高频重渲染打断输入。
   function buildMarkerEditor(marker) {
     const utils = markerUtils();
@@ -310,6 +436,8 @@
     const reviewToggle = document.createElement('button');
     reviewToggle.type = 'button';
     reviewToggle.className = `markers-review-toggle${marker.review ? ' has-review' : ''}${marker.review?.status === 'pending' ? ' pending' : ''}${marker.review?.status === 'confirmed' ? ' confirmed' : ''}`;
+    // 资格可在 gap history 恢复时变化；保持控件身份，刷新时不重建编辑卡片。
+    reviewToggle.dataset.aiCleanupReviewStatus = marker.id;
     reviewToggle.textContent = utils.markerReviewStatusLabel(marker);
     if (marker.review?.reason) {
       reviewToggle.title = marker.review.reason;
@@ -318,7 +446,25 @@
     reviewToggle.addEventListener('click', () => {
       MaweMarkerEditing.updateMarkerFields(marker.id, { review: utils.nextMarkerReviewStatus(marker) });
     });
+    updateAiCleanupReviewStatusButton(reviewToggle, marker);
     actions.appendChild(reviewToggle);
+    const muteButton = document.createElement('button');
+    muteButton.type = 'button';
+    muteButton.className = 'markers-ai-review-mute-toggle';
+    muteButton.dataset.aiCleanupReviewMute = marker.id;
+    updateAiCleanupReviewMuteButton(muteButton, marker.id);
+    muteButton.addEventListener('click', () => {
+      const result = MaweGapRemoveUi.toggleAiCleanupReviewMute(marker);
+      if (!result?.changed) {
+        MaweHint.flashHint('无法静音此复核区段；请检查起止时间', 'warning');
+        return;
+      }
+      MaweHint.flashHint(
+        result.muted ? '已静音 AI 复核区段' : '已取消 AI 复核静音',
+        'success',
+      );
+    });
+    actions.appendChild(muteButton);
     const locateButton = document.createElement('button');
     locateButton.type = 'button';
     locateButton.textContent = '定位试听';
@@ -592,6 +738,8 @@
     isOpen,
     openAndLocate,
     resetSelection,
+    refreshAiCleanupReviewMuteButtons,
     getSelectedMarkerId: () => selectedMarkerId,
   });
+  document.addEventListener('mawe:languagechange', refreshAiCleanupReviewMuteButtons);
 })(typeof window !== 'undefined' ? window : globalThis);

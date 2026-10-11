@@ -32,6 +32,7 @@ test.afterAll(async () => {
 test('English markers panel translates controls and preserves project names', async ({ page }) => {
   await page.addInitScript(() => localStorage.setItem('mawe.language', 'en'));
   await page.goto(server.url);
+  await page.locator('#markers-quick-toggle').click();
   await page.locator('#markers-manage').click();
   await expect(page.locator('#markers-panel-title')).toHaveText('Markers and regions');
   await expect(page.locator('#markers-add-current')).toHaveText('Add marker at playhead');
@@ -155,9 +156,9 @@ test('English locale covers the editor shell and recent-project setting stays fi
 
   await page.locator('#editor-settings-toggle').click();
   await expect(page.locator('#editor-settings-tab-interface')).toHaveText('Interface');
-  await expect(page.locator('[data-editor-theme="light"]')).toHaveText('Light mode');
-  await expect(page.locator('[data-editor-theme="dark"]')).toHaveText('Dark mode');
-  await expect(page.locator('[data-editor-theme="system"]')).toHaveText('Follow System');
+  await expect(page.locator('[data-editor-theme="light"]')).toHaveText('Light');
+  await expect(page.locator('[data-editor-theme="dark"]')).toHaveText('Dark');
+  await expect(page.locator('[data-editor-theme="system"]')).toHaveText('Auto');
   await expect(page.locator('[data-editor-accent="blue"]')).toHaveText('Blue');
   await expect(page.locator('[data-editor-accent="red"]')).toHaveText('Red');
   await expect(page.locator('[data-editor-accent="orange"]')).toHaveText('Orange');

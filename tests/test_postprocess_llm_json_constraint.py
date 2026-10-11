@@ -7,6 +7,7 @@ an entire response container.
 from __future__ import annotations
 
 import json
+from threading import Event
 import unittest
 from unittest import mock
 
@@ -343,6 +344,53 @@ class JsonConstraintDowngradeTests(unittest.TestCase):
                 replace(settings, base_url="http://127.0.0.1:1234/other/v1")
             )
         )
+
+    def test_cancelled_stream_retains_controls_after_every_constraint_downgrade(self) -> None:
+        # Exercise the actual transport rather than mocking its keyword args:
+        # cancellation must reject late SSE text and close the observed handle
+        # on both schema and unconstrained fallback paths, including cache hits.
+        for cached_mode, rejections, expected_requests in (
+            (None, 1, 2), (None, 2, 3), ("schema", 0, 1), ("none", 0, 1),
+        ):
+            with self.subTest(cached_mode=cached_mode, rejections=rejections):
+                _json_constraint_support.clear()
+                settings = _make_settings()
+                if cached_mode is not None:
+                    _record_json_constraint_mode(settings, cached_mode)
+                cancelled = Event()
+                observer_cleared = Event()
+                observer_calls: list[object | None] = []
+                deltas: list[tuple[str, str]] = []
+                response = _response_mock({})
+
+                def lines(**_kwargs):
+                    cancelled.set()
+                    yield b'data: {"choices":[{"delta":{"content":"late"}}]}'
+
+                response.iter_lines.side_effect = lines
+                session = _mock_session([*[_rejection_response_mock() for _ in range(rejections)], response])
+
+                def observe(handle):
+                    observer_calls.append(handle)
+                    if handle is response or (handle is not None and getattr(handle, "response", None) is response):
+                        observer_cleared.clear()
+                    elif handle is None:
+                        observer_cleared.set()
+
+                with mock.patch("maw.postprocess_llm.requests.Session", return_value=session):
+                    with self.assertRaises(LlmClientError) as raised:
+                        complete_subtitle_groups(
+                            settings, "Return JSON.", [],
+                            on_delta=lambda kind, text: deltas.append((kind, text)),
+                            is_cancelled=cancelled.is_set, on_response=observe,
+                        )
+                self.assertEqual(raised.exception.category, "cancelled")
+                self.assertEqual(session.post.call_count, expected_requests)
+                self.assertFalse(any(kind == "content" for kind, _ in deltas))
+                self.assertTrue(observer_cleared.wait(1))
+                self.assertEqual(len([handle for handle in observer_calls if handle is not None]), expected_requests)
+                self.assertIsNone(observer_calls[-1])
+                response.close.assert_called_once()
 
     def test_think_polluted_content_is_parsed(self) -> None:
         settings = _make_settings()

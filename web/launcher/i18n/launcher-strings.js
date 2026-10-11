@@ -1078,6 +1078,22 @@ Object.assign(STRINGS.en, {
   llm_reasoning_mode_hint: "Off is the default; Auto follows the model default."
 });
 Object.assign(STRINGS.zh, {
+  toolbox_open_ai_settings: "打开 AI 设置",
+  toolbox_stop_ai: "停止 AI 处理",
+  toolbox_status_cancelling_ai: "正在停止 AI 处理……",
+  toolbox_ai_cancelled: "AI 处理已取消。",
+  toolbox_ai_cancel_failed: "无法停止 AI 处理",
+  toolbox_ai_cancel_too_late: "AI 处理已进入收尾或保存阶段，无法取消。"
+});
+Object.assign(STRINGS.en, {
+  toolbox_open_ai_settings: "Open AI settings",
+  toolbox_stop_ai: "Stop AI processing",
+  toolbox_status_cancelling_ai: "Stopping AI processing…",
+  toolbox_ai_cancelled: "AI processing was cancelled.",
+  toolbox_ai_cancel_failed: "Could not stop AI processing",
+  toolbox_ai_cancel_too_late: "AI processing has reached finalization or saving and can no longer be cancelled."
+});
+Object.assign(STRINGS.zh, {
   toolbox_open: "打开工具箱", toolbox_title: "工具箱", toolbox_group_postprocess: "字幕处理", toolbox_group_utilities: "媒体工具", toolbox_no_media: "未选择媒体", toolbox_input_empty: "未选择文件", toolbox_chain_heading: "处理结果（点击可切换输入）", toolbox_resize_width: "调整工具箱宽度", toolbox_resize_height: "调整工具箱高度",
   toolbox_input: "处理文件", toolbox_input_placeholder: "跟随工程文件，也可拖入 .mosp / .json / .srt", toolbox_drop_reject: "这里只接受 .mosp / .json / .srt 字幕或工程文件。", toolbox_utility_media: "媒体文件", toolbox_utility_media_placeholder: "默认跟随 Launcher 媒体，也可选择或拖入媒体文件", toolbox_utility_media_reject: "这里仅接受媒体文件。", toolbox_ffconcat_reject: "这里只接受 .ffconcat 文件。",
    toolbox_waveform: "生成波形", toolbox_waveform_hint: "仅使用上方媒体生成带内嵌波形的媒体工程，不需要字幕或转写；打开编辑器后可扫描静音空隙并导出去空隙 OTIO。", toolbox_generate_waveform: "生成波形文件", toolbox_run_waveform: "生成波形并打开编辑器", toolbox_match: "文稿匹配", toolbox_script: "文稿文件", toolbox_script_placeholder: "UTF-8 .txt / .md 文稿", toolbox_script_hint: "文稿文字会替换字幕文字；原字幕时间保持不变。", toolbox_clean_markdown_symbols: "清理 Markdown 符号", toolbox_clean_markdown_symbols_hint: "匹配前移除粗体、斜体、删除线、行内代码和 ==高亮== 标记，只保留可见文字。", toolbox_script_preview: "文稿预览（前 240 字）", toolbox_script_reject: "文稿只支持 .txt / .md / .markdown 文件。", toolbox_split_preview: "拆分预览", toolbox_match_mode: "换行来源", toolbox_match_mode_script: "按文稿换行（默认）", toolbox_match_mode_text: "只更正文本", toolbox_match_mode_hint: "按文稿换行会使用文稿中的换行和断句符号；只更正文本保留现有字幕分段。", toolbox_extra_split_punctuation: "断句符号", toolbox_extra_split_punctuation_placeholder: "，\n。\n？\n！\n；", toolbox_extra_split_punctuation_hint: "每行一个符号；这里是断句与句尾剥除的完整清单，删掉某行即对该符号失效。换行始终生效。", toolbox_preserve_punctuation: "句尾保留符号", toolbox_preserve_punctuation_placeholder: "？\n！\n~", toolbox_preserve_punctuation_hint: "断句后保留在上一句末尾的符号；未列出的断句符号会从句尾删除。", toolbox_preserve_punctuation_invalid: "保留符号必须存在于断句符号中：", toolbox_match_hint: "匹配度过低时会停止，不写出可能错配的结果。", toolbox_run_match: "匹配文稿", toolbox_punct_open_settings: "在 ⚙️ 设置中配置断句与保留符号", toolbox_ai_cleanup: "调用 AI 进行整理（录音优先）", toolbox_ai_cleanup_hint: "由 AI 判断并移除重录废片、试麦和流程对话；文稿只作证据，不替换字幕文字。自动移除与待复核会写入工程，待复核项需在编辑器中确认。", toolbox_ai_cleanup_notes: "AI 整理补充说明", toolbox_ai_cleanup_notes_placeholder: "可选，追加给 AI 整理的额外要求，例如：开头报幕的遍数全部移除。", toolbox_ai_cleanup_need_provider: "AI 整理需要先在 ⚙️ 设置中选择并验证后处理 LLM 供应商。", toolbox_status_ai_cleanup: "正在进行 AI 口播整理……", toolbox_status_ai_cleanup_review: "正在通读整理结果并复查信息覆盖……", toolbox_chain_ai_cleanup: "AI整理", ai_cleanup_stats_summary: "文稿已对应 {matched} · 改说 {rephrased} · 额外保留 {extras} · 自动移除 {removed} · 待复核 {review}", ai_cleanup_stats_review_pending: "存在待复核标记，请在编辑器「标记与区段」中逐项确认。", ai_cleanup_stats_review_clear: "无待复核项。",

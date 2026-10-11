@@ -263,7 +263,10 @@ def run_llm_postprocess(
     *,
     complete: LlmComplete,
     on_status: LlmStatus | None = None,
+    is_cancelled: Callable[[], bool] | None = None,
+    begin_commit: Callable[[], bool] | None = None,
 ) -> SubtitleArtifact:
+    _raise_if_cancelled(is_cancelled)
     _notify_status(on_status, "toolbox_status_reading")
     project, source_project, source_srt = _load_input(request.project_path, request.srt_path)
     operation_prompt = PROMPTS.get(request.operation, PROMPTS["custom"]) if request.task_prompt is None else request.task_prompt.strip()
@@ -316,6 +319,7 @@ def run_llm_postprocess(
     degraded_batches = 0
     degraded_source_ids: set[str] = set()
     for index, batch in enumerate(batches, 1):
+        _raise_if_cancelled(is_cancelled)
         _notify_status(on_status, "toolbox_status_llm_batch", current=index, total=len(batches))
         first_id = batch[0]["id"] if batch else "?"
         last_id = batch[-1]["id"] if batch else "?"
@@ -334,6 +338,8 @@ def run_llm_postprocess(
                     item_aware_resegment=item_aware_resegment,
                 )
         except (LlmClientError, PostprocessStepError) as error:
+            if error.category == "cancelled":
+                raise
             if not _is_transient_llm_failure(error):
                 raise _postprocess_step_error(
                     f"第 {index}/{len(batches)} 批（{first_id}–{last_id}）处理失败：{error}", error,
@@ -441,7 +447,12 @@ def run_llm_postprocess(
         processed = embed_translated_project(project, processed)
         output_operation = f"{request.operation}-{BACKFILL_ARTIFACT_MARKER}"
         warnings = ("已将翻译结果回填进原字幕，输出为单条字幕。", *warnings)
+    _raise_if_cancelled(is_cancelled)
     _notify_status(on_status, "toolbox_status_writing")
+    if begin_commit is not None and not begin_commit():
+        raise LlmClientError(
+            "操作已取消。", category="cancelled", operation="postprocess"
+        )
     return _write(
         processed,
         source_project,
@@ -452,6 +463,13 @@ def run_llm_postprocess(
         output_directory=request.output_directory,
         media_path=request.media_path,
     )
+
+
+def _raise_if_cancelled(is_cancelled: Callable[[], bool] | None) -> None:
+    if is_cancelled is not None and is_cancelled():
+        raise LlmClientError(
+            "操作已取消。", category="cancelled", operation="postprocess"
+        )
 
 
 BILINGUAL_LINE_ORDERS: Final[frozenset[str]] = frozenset({"", "translation_first", "original_first"})

@@ -2,9 +2,12 @@
 
 from __future__ import annotations
 
+from collections.abc import Iterable
 import json
 import subprocess
 import tempfile
+from threading import Event, Lock, Thread
+import time
 import unittest
 from io import StringIO
 from pathlib import Path
@@ -1338,6 +1341,217 @@ class PostprocessTests(unittest.TestCase):
         self.assertEqual(result, {"groups": [{"id": "c0001", "text": "进入"}]})
         self.assertEqual(deltas, [("content", content_json)])
         response.close.assert_called_once_with()
+
+    def test_llm_cancel_while_waiting_for_headers_returns_promptly_and_closes_late_response(self) -> None:
+        settings = LlmSettings(
+            provider_id="custom",
+            api_key="sk-test",
+            base_url="https://example.com/v1",
+            model="custom-model",
+        )
+        request_started = Event()
+        release_headers = Event()
+        late_response_closed = Event()
+        late_response_ready = Event()
+        response = mock.Mock()
+        response.close.side_effect = late_response_closed.set
+        session = mock.MagicMock()
+        session.__enter__.return_value = session
+
+        def delayed_post(*_args: object, **_kwargs: object) -> mock.Mock:
+            request_started.set()
+            if not release_headers.wait(5):
+                raise AssertionError("test did not release the delayed response")
+            late_response_ready.set()
+            return response
+
+        session.post.side_effect = delayed_post
+        cancelled = Event()
+        observer_calls: list[object | None] = []
+        results: list[object] = []
+        result_ready = Event()
+
+        request = LlmPostprocessRequest(
+            project_path=self.project_path,
+            srt_path=None,
+            output_mode=OutputMode.JSON,
+            operation="proofread",
+            custom_prompt="",
+        )
+
+        def observe_response(value: object | None) -> None:
+            observer_calls.append(value)
+
+        def complete(prompt: str, cues: list[dict[str, JsonValue]]) -> dict[str, JsonValue]:
+            return complete_subtitle_groups(
+                settings,
+                prompt,
+                cues,
+                on_delta=lambda _kind, _text: None,
+                is_cancelled=cancelled.is_set,
+                on_response=observe_response,
+            )
+
+        def run_postprocess() -> None:
+            try:
+                results.append(
+                    run_llm_postprocess(
+                        request, complete=complete, is_cancelled=cancelled.is_set
+                    )
+                )
+            except BaseException as error:  # Captured for assertions in the test thread.
+                results.append(error)
+            finally:
+                result_ready.set()
+
+        with mock.patch("maw.postprocess_llm.requests.Session", return_value=session):
+            worker = Thread(target=run_postprocess, daemon=True)
+            worker.start()
+            try:
+                self.assertTrue(request_started.wait(1), "request should reach the provider")
+                started_at = time.monotonic()
+                cancelled.set()
+                self.assertTrue(
+                    result_ready.wait(1),
+                    "cancellation should release the bridge caller while headers are pending",
+                )
+                cancel_elapsed = time.monotonic() - started_at
+                self.assertLess(cancel_elapsed, 0.5)
+                self.assertEqual(len(results), 1)
+                self.assertIsInstance(results[0], LlmClientError)
+                self.assertEqual(results[0].category, "cancelled")  # type: ignore[union-attr]
+                self.assertFalse(late_response_ready.is_set())
+
+                # Requests cannot reliably abort a socket read before a Response
+                # exists; releasing the fake transport models headers arriving late.
+                release_headers.set()
+                self.assertTrue(late_response_closed.wait(1), "late Response must be closed")
+                self.assertTrue(late_response_ready.is_set())
+                response.raise_for_status.assert_not_called()
+                response.json.assert_not_called()
+                response.iter_lines.assert_not_called()
+                self.assertEqual(session.post.call_count, 1, "cancellation must not retry")
+                self.assertEqual(observer_calls, [], "late Response must not reach the parser")
+                self.assertEqual(
+                    sorted(path.name for path in self.root.iterdir()),
+                    ["clip.mosp", "clip.mp4"],
+                    "cancelled work must not write artifacts",
+                )
+            finally:
+                release_headers.set()
+                worker.join(timeout=1)
+                self.assertFalse(worker.is_alive())
+
+    def test_llm_cancel_interrupts_a_stalled_sse_stream_without_retry_or_artifacts(self) -> None:
+        settings = LlmSettings(
+            provider_id="custom",
+            api_key="sk-test",
+            base_url="https://example.com/v1",
+            model="custom-model",
+        )
+        stream_paused = Event()
+        release_stream = Event()
+        cancelled = Event()
+        response = mock.Mock()
+        response.close.side_effect = release_stream.set
+
+        first_chunk = json.dumps(
+            {"choices": [{"delta": {"content": '{"groups":['}}]}
+        ).encode("utf-8")
+        late_chunk = json.dumps(
+            {"choices": [{"delta": {"content": '{"id":"c0001","text":"迟到"}]}'}}]}
+        ).encode("utf-8")
+
+        def paused_lines(*, decode_unicode: bool) -> Iterable[bytes]:
+            self.assertFalse(decode_unicode)
+            yield b"data: " + first_chunk
+            stream_paused.set()
+            if not release_stream.wait(5):
+                raise AssertionError("test did not release the stalled stream")
+            # A chunk that arrives after close/cancel must be discarded before
+            # JSON parsing or delta delivery.
+            yield b"data: " + late_chunk
+            yield b"data: [DONE]"
+
+        response.iter_lines.side_effect = paused_lines
+        session = mock.MagicMock()
+        session.__enter__.return_value = session
+        session.post.return_value = response
+        observer_lock = Lock()
+        active_response: object | None = None
+        deltas: list[tuple[str, str]] = []
+        results: list[object] = []
+        result_ready = Event()
+
+        request = LlmPostprocessRequest(
+            project_path=self.project_path,
+            srt_path=None,
+            output_mode=OutputMode.JSON,
+            operation="proofread",
+            custom_prompt="",
+        )
+
+        def observe_response(value: object | None) -> None:
+            nonlocal active_response
+            with observer_lock:
+                if value is None:
+                    active_response = None
+                elif cancelled.is_set():
+                    value.close()  # type: ignore[attr-defined]
+                else:
+                    active_response = value
+
+        def complete(prompt: str, cues: list[dict[str, JsonValue]]) -> dict[str, JsonValue]:
+            return complete_subtitle_groups(
+                settings,
+                prompt,
+                cues,
+                on_delta=lambda kind, text: deltas.append((kind, text)),
+                is_cancelled=cancelled.is_set,
+                on_response=observe_response,
+            )
+
+        def run_postprocess() -> None:
+            try:
+                results.append(
+                    run_llm_postprocess(
+                        request, complete=complete, is_cancelled=cancelled.is_set
+                    )
+                )
+            except BaseException as error:  # Captured for assertions in the test thread.
+                results.append(error)
+            finally:
+                result_ready.set()
+
+        with mock.patch("maw.postprocess_llm.requests.Session", return_value=session):
+            worker = Thread(target=run_postprocess, daemon=True)
+            worker.start()
+            try:
+                self.assertTrue(stream_paused.wait(1), "stream should pause after its first chunk")
+                started_at = time.monotonic()
+                cancelled.set()
+                with observer_lock:
+                    current_response = active_response
+                self.assertIsNotNone(current_response)
+                current_response.close()  # type: ignore[union-attr]
+                cancel_elapsed = time.monotonic() - started_at
+                self.assertLess(cancel_elapsed, 0.5, "closing a stalled response must return promptly")
+                self.assertTrue(result_ready.wait(1), "stream cancellation should release the caller")
+                self.assertEqual(len(results), 1)
+                self.assertIsInstance(results[0], LlmClientError)
+                self.assertEqual(results[0].category, "cancelled")  # type: ignore[union-attr]
+                self.assertEqual(deltas, [("content", '{"groups":[')])
+                self.assertEqual(session.post.call_count, 1, "cancelled stream must not retry")
+                self.assertGreaterEqual(response.close.call_count, 1)
+                self.assertEqual(
+                    sorted(path.name for path in self.root.iterdir()),
+                    ["clip.mosp", "clip.mp4"],
+                    "cancelled work must not write artifacts",
+                )
+            finally:
+                release_stream.set()
+                worker.join(timeout=1)
+                self.assertFalse(worker.is_alive())
 
     def test_llm_connection_sends_minimal_request(self) -> None:
         settings = LlmSettings(
