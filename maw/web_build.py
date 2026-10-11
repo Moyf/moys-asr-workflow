@@ -154,10 +154,9 @@ def _kind_label(kind: str) -> str:
     return "编辑器" if kind == "editor" else "Launcher"
 
 
-def _packaged_error(spec: _BundleSpec, status: str, reason: str) -> str:
-    state = "缺失" if status == "missing" else "与源码不一致"
+def _packaged_error(spec: _BundleSpec, reason: str) -> str:
     return (
-        f"打包产物中的 web/{spec.bundle.as_posix()} {state}（{reason}）。\n"
+        f"打包产物中的 {spec.bundle.as_posix()} 缺失（{reason}）。\n"
         "这是打包缺陷：发布打包流程会先构建 bundle 再收集 web/，请用最新打包脚本重新打包。"
     )
 
@@ -197,17 +196,21 @@ def _run_build(root: Path, spec: _BundleSpec, status: str, reason: str) -> None:
 def ensure_bundle(root: Path, kind: str, *, allow_build: bool = True) -> str:
     """确保 *kind* bundle 存在且与源码一致，必要时自动重建。
 
-    *allow_build=False* 用于打包后的 frozen 环境：产物应随包分发，缺失或
-    不一致一律视为打包缺陷，绝不尝试在用户机器上构建。成功返回 ``fresh``，
-    失败抛出 :class:`BundlePreflightError`。
+    *allow_build=False* 用于打包后的 frozen 环境：打包管线已经保证
+    「先构建、后收集」（打包脚本显式构建 + MAW.spec fail fast），且包内
+    不含 scripts/ 构建器脚本，逐字节一致性校验没有比较对象，因此只做
+    存在性检查；缺失一律视为打包缺陷，绝不尝试在用户机器上构建。
+    成功返回 ``fresh``，失败抛出 :class:`BundlePreflightError`。
     """
     with _BUILD_LOCK:
         spec = _SPECS[kind]
+        if not allow_build:
+            if not (root / spec.bundle).is_file():
+                raise BundlePreflightError(_packaged_error(spec, "bundle 文件不在包内"))
+            return "fresh"
         status, reason = bundle_status(root, kind)
         if status == "fresh":
             return status
-        if not allow_build:
-            raise BundlePreflightError(_packaged_error(spec, status, reason))
         started = time.monotonic()
         _run_build(root, spec, status, reason)
         final_status, final_reason = bundle_status(root, kind)

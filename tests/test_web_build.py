@@ -229,6 +229,18 @@ class EnsureBundleRebuildTests(unittest.TestCase):
         self.assertIn("editor-bundle.js", message)
         self.assertNotIn("pnpm run build:editor", message)
 
+    def test_frozen_skips_source_consistency_check(self) -> None:
+        """Given frozen 包内只有 bundle 本身（无 meta/构建器脚本）, When ensure,
+        Then 只做存在性检查即通过。
+
+        打包包内不含 scripts/ 构建器脚本，逐字节一致性校验没有比较对象；
+        「先构建、后打包」由打包管线保证（AppImage smoke 曾抓到这里的回归）。
+        """
+        self.repo.bundle.parent.mkdir(parents=True, exist_ok=True)
+        self.repo.bundle.write_text("/* fake artifact */\n", encoding="utf-8")
+
+        self.assertEqual(web_build.ensure_bundle(self.root, "editor", allow_build=False), "fresh")
+
 
 if __name__ == "__main__":
     unittest.main()
