@@ -120,11 +120,14 @@ for (const action of ['undo', 'redo']) {
       page.on('pageerror', error => errors.push(error.message));
       await page.evaluate(() => MaweCommands.run('edit main text', () => {
         MaweBoot.DATA.segments[0].text = 'previous edit';
-      }));
+      }, { invalidate: { cueList: true } }));
       if (action === 'redo') await page.evaluate(() => MaweHistory.performUndo());
       await page.evaluate(() => MaweSelection.selectAll());
       const before = await ranges(page);
       const lengths = await page.evaluate(() => [MaweHistory.editorHistory.undoLength(), MaweHistory.editorHistory.redoLength()]);
+      // The fixture edit must update the cue panel as a normal edit does;
+      // otherwise selecting cues commits the stale panel text as another edit.
+      expect(lengths).toEqual(action === 'undo' ? [1, 0] : [0, 1]);
       const request = async () => {
         if (entry === 'keyboard') await page.keyboard.press(action === 'undo' ? 'Control+z' : 'Control+y');
         // Dispatch the actual button handler while the pointer is still held.
@@ -140,6 +143,7 @@ for (const action of ['undo', 'redo']) {
       await page.mouse.move(drag.x + 700 / drag.msPerPixel, drag.y);
       await page.mouse.up();
       expect(await ranges(page)).toEqual(before);
+      if (entry === 'keyboard') expect(await page.evaluate(() => MaweHistory.historyGuarded())).toBe(false);
       await request();
       expect(await page.evaluate(() => MaweBoot.DATA.segments[0].text)).toBe(action === 'undo' ? 'main' : 'previous edit');
       expect(errors).toEqual([]);
