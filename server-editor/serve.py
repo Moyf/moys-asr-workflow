@@ -1136,12 +1136,16 @@ class EditorServer(ThreadingHTTPServer):
         super().__init__(address, EditorRequestHandler)
 
     def shutdown(self) -> None:
-        self.media_jobs.close()
-        super().shutdown()
+        try:
+            self.media_jobs.close()
+        finally:
+            super().shutdown()
 
     def server_close(self) -> None:
-        self.media_jobs.close()
-        super().server_close()
+        try:
+            self.media_jobs.close()
+        finally:
+            super().server_close()
 
     def persist_settings(self) -> None:
         if self.settings_path:
@@ -2474,7 +2478,8 @@ class EditorRequestHandler(BaseHTTPRequestHandler):
                 if job.binding != (self.editor_server.binding_generation, self.editor_server.source_media_id):
                     manager.cancel(job.id)
                     raise ProjectBindingChangedError("工程或媒体绑定已变更，请重新打开工程后导出")
-                manager.begin_download(job.id)
+                manager.begin_download(job.id,
+                    abort_download=lambda: self.connection.shutdown(socket.SHUT_RDWR))
         except PermissionError as error:
             self.send_json(HTTPStatus.FORBIDDEN, {"ok": False, "error": str(error)})
             return
@@ -2937,6 +2942,8 @@ class EditorRequestHandler(BaseHTTPRequestHandler):
         if job:
             self.connection.settimeout(2)
         try:
+            if job:
+                job.check_cancelled()
             size = path.stat().st_size
             if size <= 0:
                 raise OSError("重组视频文件为空")

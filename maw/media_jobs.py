@@ -55,6 +55,8 @@ class MediaJob:
         self.disposed = False
         self.cleanup_error = None
         self.timer = None
+        self.abort_download = None
+        self.disposed_event = threading.Event()
 
     def check_cancelled(self):
         if self.cancelled.is_set():
@@ -237,14 +239,21 @@ class MediaJobManager:
                 self._dispose(job)
             else:
                 job.state = "cancelling"
+                if job.abort_download:
+                    try:
+                        job.abort_download()
+                    except OSError:
+                        pass
             return job.snapshot()
 
-    def begin_download(self, job_id: str) -> MediaJob:
+    def begin_download(self, job_id: str, *, abort_download: Callable[[], object] | None = None) -> MediaJob:
         with self.lock:
             job = self.get(job_id)
             if job.state != "ready":
                 raise MediaJobUnavailable("视频任务尚未完成或已停止")
             job.check_cancelled()
+            # Registration and download admission are atomic with cancellation.
+            job.abort_download = abort_download
             job.state = "downloading"
             job.stage = "downloading"
             if job.timer:
@@ -272,9 +281,11 @@ class MediaJobManager:
             return
         job.cleanup_error = None
         job.disposed = True
+        job.abort_download = None
         if self.active is job:
             self.active = None
             self.slot.release()
+        job.disposed_event.set()
 
     def close(self):
         with self.lock:
@@ -284,3 +295,5 @@ class MediaJobManager:
                 self.cancel(job.id)
         if job and job.thread:
             job.thread.join(timeout=5)
+        if job and not job.disposed_event.wait(timeout=5):
+            raise MediaJobUnavailable(job.cleanup_error or "视频任务关闭后尚未完成输出清理")

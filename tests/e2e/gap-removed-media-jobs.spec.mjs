@@ -202,7 +202,9 @@ test('rendered editor reconstructs real video and shows native commit boundary',
     });
     expect(spacing.statusToProgressPx).toBeGreaterThanOrEqual(8);
     expect(spacing.progressToStopPx).toBeGreaterThanOrEqual(8);
-    await testInfo.attach('media-job-panel-spacing', { body: JSON.stringify(spacing), contentType: 'application/json' });
+    const spacingPath = testInfo.outputPath('media-job-panel-spacing.json');
+    fs.writeFileSync(spacingPath, JSON.stringify(spacing, null, 2));
+    await testInfo.attach('media-job-panel-spacing', { path: spacingPath, contentType: 'application/json' });
     await page.screenshot({ path: testInfo.outputPath('real-editor-media-job-commit.png') });
     await page.evaluate(() => window.realVideoFinishCommit());
     await expect.poll(() => page.evaluate(() => window.realVideoHints.some(text => text.includes('已重组并保存')))).toBe(true);

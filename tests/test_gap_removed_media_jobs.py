@@ -180,6 +180,39 @@ class MediaJobsTests(unittest.TestCase):
         with self.assertRaises(MediaJobUnavailable):
             self.start(lambda _: None)
 
+    def test_download_close_interrupts_transport_and_waits_for_disposal(self):
+        job = self.start(lambda job: job.output.write_bytes(b"media"))
+        self.wait(job, "ready")
+        interrupted = threading.Event()
+        self.manager.begin_download(job.id, abort_download=interrupted.set)
+        errors = []
+        def close():
+            try:
+                self.manager.close()
+            except Exception as error:
+                errors.append(error)
+        closing = threading.Thread(target=close)
+        closing.start()
+        self.assertTrue(interrupted.wait(2))
+        self.assertTrue(closing.is_alive())
+        self.assertTrue(job.output.exists())
+        self.manager.finish_download(job, success=False)
+        closing.join(2)
+        self.assertFalse(closing.is_alive())
+        self.assertEqual(errors, [])
+        self.assertTrue(job.disposed)
+        self.assertIsNone(self.manager.active)
+
+    def test_close_before_download_admission_does_not_lose_cancellation(self):
+        job = self.start(lambda job: job.output.write_bytes(b"media"))
+        self.wait(job, "ready")
+        self.manager.close()
+        callback = mock.Mock()
+        with self.assertRaises(MediaJobUnavailable):
+            self.manager.begin_download(job.id, abort_download=callback)
+        callback.assert_not_called()
+        self.assertTrue(job.disposed)
+
     def test_cleanup_failure_keeps_slot_and_retry_disposes_result(self):
         job = self.start(lambda job: job.output.write_bytes(b"media"))
         self.wait(job, "ready")

@@ -1,7 +1,8 @@
 # PR-C: 去空隙视频后台任务
 
 基线：`09af19f13bd87fb46d7ea9849ef81ac76ddbe574`。状态：候选完成，等待独立审查。
-依赖 PR-A `08b5fd2c49a957da7771ed10b4662cb3ce8d891a`（本树 cherry-pick 为 `cdbbdfa`）。
+依赖 PR-A `08b5fd2c49a957da7771ed10b4662cb3ce8d891a`，父代理已整理为真实祖先，
+并保留 A/C 的独立 CHANGELOG 提交。初始 C 代码重放为 `324144a`。
 
 ## 冻结契约
 
@@ -39,7 +40,7 @@ POSIX group helper，父进程提前退出也清理继承管道的子进程；dr
 
 ## 验证
 
-2026-10-11，以下测试覆盖最终生产代码及 bundle；原始输出与 `result.json`
+2026-10-11，以下测试覆盖初始候选代码及 bundle；原始输出与 `result.json`
 位于本工作树 `.debug-runs/`，没有执行全量 Python / 全量 e2e。
 
 | 验证 | 命令（均由 `python scripts/run_check.py --timeout … --` 包装） | 结果 / result.json |
@@ -67,6 +68,40 @@ close 失败、错误响应 body 取消均覆盖。完整真实链路额外执�
 初始沙箱 Temp ACL / Edge 启动错误属于环境失败，保留原日志；测试 Temp 指向
 本工作树 `.debug-runs`，浏览器用正常 Windows 权限复验通过。内联便携副本待
 发布前统一重生成，未更新 `blank-editor.html`。
+
+### 独立审查返修
+
+Q/A 对初始候选实证发现四个 P2，均已最窄修复：
+
+1. 取消 HTTP 的响应头或 JSON 正文挂起：整段 fetch/json/poll 共用 30s
+   deadline 和 AbortController，超时明确提示“无法确认视频任务已停止”并
+   释放前端 UI；不宣称后端已取消，服务器槽仍以真实生命周期为准。
+2. 单行进程输出无字节界限：`readline(4096)` 分段，探测 stdout 最大 2MiB；
+   超限明确失败，不静默截断 JSON 后解析。stderr 只保留末尾最多 64KiB，
+   FFmpeg progress 实时消费而不累计保存。
+3. ready 过期回调已排队与下载接纳竞态：专用 expiry 在同一锁下只处理仍
+   为 ready 的任务，不能取消已接纳的下载；实际过期清理与排队竞态均测试。
+4. 关闭时下载文件仍打开：begin_download 与 transport 取消回调注册在同一
+   锁内；cancel/close 使用 socket.shutdown 中断阻塞网络写，handler 关闭
+   文件后再 dispose。close 有界等待 dispose 完成，未完成则明确报错；不
+   强删打开文件，不把关闭返回与随后 daemon 清理混为一谈。
+
+Q 两份纯测试已按父授权接入：`469e53c`（headers/json-body deadline）和
+`c084933`（真实 32MiB 下载关闭），修复 checkpoint 为 `4999fbc`。
+
+| 最新返修验证 | 结果 / result.json |
+| --- | --- |
+| `python scripts/run_tests.py tests/test_gap_removed_media_jobs.py tests/test_media_job_shutdown.py tests/test_packaging_contract.py` | 49 passed，14.33s；`20261011T073159Z-4b1e621c/result.json` |
+| `node node_modules/@playwright/test/cli.js test tests/e2e/gap-removed-media-jobs.spec.mjs tests/e2e/gap-removed-media-cancel-timeout.spec.mjs --project=chromium --workers=1` | 14 passed，15.70s；`20261011T073210Z-c0840e56/result.json` |
+| ruff | exit 0；`20261011T073214Z-a560e602/result.json` |
+| bundle freshness | exit 0；`20261011T073214Z-d93ce3e9/result.json` |
+| typecheck | exit 0；`20261011T073216Z-2e12911a/result.json` |
+
+最新真实页面 getBoundingClientRect 测量：状态文字→progress 为 **12px**，
+progress→停止按钮为 **12px**；getComputedStyle 的 progress marginTop /
+marginBottom 均 `12px`，面板 padding 为 `16px`。两个相邻边界均断言 ≥8px。
+数值证据保存于同一真实页面截图目录的 `media-job-panel-spacing.json`；最新
+截图已再次目视检查。OS 原生 picker / writable 的未验证边界保持上述说明。
 
 ## 拟 CHANGELOG
 
