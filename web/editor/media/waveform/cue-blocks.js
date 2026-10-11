@@ -47,7 +47,7 @@ export function createWaveformModule(dependencies) {
 
       this.appendGapBlocks(row, startMs, endMs);
       this.appendCueBlocks(row, startMs, endMs, groupBadges || computeGroupBadges(this.options.getSegments('main')));
-      // 通用 Marker / Region 轨道：最顶层独立手势，无标记时不渲染。
+      // 通用 Marker / Region 轨道：遵守标记编辑开关，启用时空轨也可添加标记。
       this.appendMarkerTrack(row, startMs, endMs);
 
       row.addEventListener('pointerdown', (event) => {
