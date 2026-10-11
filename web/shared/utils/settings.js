@@ -87,6 +87,7 @@ export function createUtilsModule(dependencies) {
     ninjaSlashRotateAmplitude: 6, crossTrackSnap: true, selectBoundSubtitlePair: true,
     multiSubtitleAutoSyncDuration: true, multiSubtitleShowTrackBadges: false, theme: 'dark',
     accentColor: 'blue', accentColorCustom: DEFAULT_EDITOR_ACCENT_CUSTOM_COLOR,
+    toastPosition: 'top-center',
     subtitleColorPalette: { ...DEFAULT_EDITOR_SUBTITLE_COLOR_PALETTE },
     waveShapeSource: 'reapeaks',
   });
@@ -225,6 +226,8 @@ export function createUtilsModule(dependencies) {
       multiSubtitleShowTrackBadges: savedSettings.multiSubtitleShowTrackBadges === true,
       theme: isSettingChoice(['light', 'dark', 'system'], savedSettings.theme)
         ? savedSettings.theme : 'dark',
+      toastPosition: isSettingChoice(['top-center', 'top-right', 'bottom-right'], savedSettings.toastPosition)
+        ? savedSettings.toastPosition : 'top-center',
       accentColor: normalizeEditorAccentColor(savedSettings.accentColor),
       accentColorCustom: normalizeEditorAccentCustomColor(savedSettings.accentColorCustom),
       subtitleColorPalette: normalizeSubtitleColorPalette(savedSettings.subtitleColorPalette),

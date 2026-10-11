@@ -225,6 +225,7 @@
   multiSubtitleShowTrackBadges: false,
   // 界面主题：dark（默认）/ light / system。写入 <html data-theme>，模板 <head> 内联脚本负责首帧预应用。
   theme: 'dark',
+  toastPosition: 'top-center',
   // 界面强调色：blue（默认）/ red / orange / custom；自定义颜色单独保存为六位十六进制值。
   accentColor: 'blue',
   accentColorCustom: '#6ca5e8',

@@ -12,6 +12,17 @@
 
 MaweTheme.applyEditorAccentColor(MaweSettings.EDITOR_SETTINGS.accentColor, { rerenderWaveform: false });
 MaweTheme.applyTheme(MaweSettings.EDITOR_SETTINGS.theme, { rerenderWaveform: false });
+const toastPositionSelect = document.getElementById('editor-toast-position');
+const toastPosition = MaweHint.applyHintPosition(MaweSettings.EDITOR_SETTINGS.toastPosition);
+if (toastPositionSelect) {
+  toastPositionSelect.value = toastPosition;
+  toastPositionSelect.addEventListener('change', () => {
+    const value = MaweHint.applyHintPosition(toastPositionSelect.value);
+    MaweSettings.updateEditorSettings({ toastPosition: value });
+    toastPositionSelect.value = value;
+    MaweHint.flashHint('消息提示位置已更新', 'success');
+  });
+}
 MaweDom.editorThemeOptions.forEach((option) => {
   option.addEventListener('click', () => {
     const next = MaweTheme.normalizeEditorTheme(option.dataset.editorTheme);
