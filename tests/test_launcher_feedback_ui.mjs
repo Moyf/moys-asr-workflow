@@ -36,6 +36,20 @@ function launcherFunction(name) {
   return source.slice(start, start + 1 + next);
 }
 
+test("resegmentation validates optional character limits before starting", () => {
+  const field = { value: "" };
+  const context = vm.createContext({ $: () => field });
+  vm.runInContext(launcherFunction("resegmentMaxCharsValid"), context);
+  for (const value of ["", "1", "18", "500"]) {
+    field.value = value;
+    assert.equal(context.resegmentMaxCharsValid(), true, value);
+  }
+  for (const value of ["0", "-1", "501", "1.5", "1e2", "invalid"]) {
+    field.value = value;
+    assert.equal(context.resegmentMaxCharsValid(), false, value);
+  }
+});
+
 function aiLifecycleHarness() {
   const elements = new Map();
   const fields = {

@@ -61,6 +61,7 @@ class LlmPostprocessRequest:
     embed_translations: bool = False
     bilingual_line_order: str = ""
     generate_comparison: bool = False
+    max_chars: int = 0
 
 
 class PostprocessStepError(RuntimeError):
@@ -268,6 +269,9 @@ def run_llm_postprocess(
     begin_commit: Callable[[], bool] | None = None,
 ) -> SubtitleArtifact:
     _raise_if_cancelled(is_cancelled)
+    if request.operation == "resegment":
+        from maw.postprocess_resegment import run_resegment
+        return run_resegment(request, complete=complete, on_status=on_status, is_cancelled=is_cancelled, begin_commit=begin_commit)
     _notify_status(on_status, "toolbox_status_reading")
     project, source_project, source_srt = _load_input(request.project_path, request.srt_path)
     operation_prompt = PROMPTS.get(request.operation, PROMPTS["custom"]) if request.task_prompt is None else request.task_prompt.strip()

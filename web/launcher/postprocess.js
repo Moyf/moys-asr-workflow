@@ -86,6 +86,11 @@
     return window.MAWLauncher.translate(key);
   }
 
+  function resegmentMaxCharsValid() {
+    const raw = $("postprocessResegmentMaxChars").value.trim();
+    return !raw || (/^\d+$/.test(raw) && Number(raw) >= 1 && Number(raw) <= 500);
+  }
+
   function taskPromptText(operation = $("postprocessOperation").value) {
     const key = TASK_PROMPT_KEYS[operation];
     return key ? t(key) : "";
@@ -97,6 +102,7 @@
     display.textContent = prompt || t("toolbox_task_none");
     display.classList.toggle("empty", !prompt);
     $("postprocessCleanupOptions")?.classList.toggle("hidden", operation !== "ai_cleanup");
+    $("postprocessResegmentOptions")?.classList.toggle("hidden", operation !== "resegment");
     const translateOperation = ["translate_zh", "translate_en"].includes(operation);
     $("postprocessTranslationOptions")?.classList.toggle("hidden", !translateOperation);
     if (translateOperation) {
@@ -499,6 +505,7 @@
       postprocessReasoningMode: "llmReasoningMode",
       postprocessDisplayName: "llmCustomDisplayName",
       postprocessPrompt: "postprocessPrompt",
+      postprocessResegmentMaxChars: "postprocessResegmentMaxChars",
     })[field] || "";
   }
 
@@ -1690,7 +1697,7 @@
         { id: "cleanup", enabled: Boolean($("autoStepCleanup")?.checked), scriptPath: $("postprocessCleanupScriptPath").value.trim(), providerId: stepProviderId("cleanup"), customPrompt: getLlmPrompt("ai_cleanup"), generateComparison: Boolean($("postprocessGenerateComparison")?.checked) },
         { id: "replace", enabled: Boolean($("autoStepReplace")?.checked), replacements: parseReplacements(), replacementSeparator: $("postprocessReplacementSeparator").value, replacementTrim: $("postprocessReplacementTrim").checked, replacementCustomSeparator: $("postprocessReplacementCustomSeparator").value, conversion: $("postprocessConversion").value },
         { id: "proofread", enabled: Boolean($("autoStepProofread")?.checked), providerId: stepProviderId("proofread"), customPrompt: getLlmPrompt("proofread"), generateComparison: Boolean($("postprocessGenerateComparison")?.checked) },
-        { id: "resegment", enabled: Boolean($("autoStepResegment")?.checked), providerId: stepProviderId("resegment"), customPrompt: getLlmPrompt("resegment"), generateComparison: Boolean($("postprocessGenerateComparison")?.checked) },
+        { id: "resegment", maxChars: $("postprocessResegmentMaxChars").value.trim(), enabled: Boolean($("autoStepResegment")?.checked), providerId: stepProviderId("resegment"), customPrompt: getLlmPrompt("resegment"), generateComparison: Boolean($("postprocessGenerateComparison")?.checked) },
         { id: "ocr", enabled: Boolean($("autoStepOcr")?.checked), videoPath: ocrVideoManual ? $("ocrVideoPath").value.trim() : "", videoPathMode: ocrVideoManual ? "manual" : "auto", ...ocr, threshold: Number($("ocrThreshold").value), report: Boolean($("ocrReport").checked) },
         { id: "translate", enabled: Boolean($("autoStepTranslate")?.checked), providerId: stepProviderId("translate"), target: $("autoTranslateTarget").value || "zh", mergeBilingual: Boolean($("autoTranslateMergeBilingual")?.checked), embedTranslations: Boolean($("autoTranslateBackfill")?.checked), bilingualLineOrder: $("autoTranslateBilingualOrder")?.value || "", customPrompt: getLlmPrompt(autoLlmOperation("translate")), generateComparison: Boolean($("postprocessGenerateComparison")?.checked) },
         { id: "burn", enabled: Boolean($("autoStepBurn")?.checked), videoEncoder: "auto" },
@@ -1704,6 +1711,7 @@
   }
 
   function autoStepReady(stepId) {
+    if (stepId === "resegment" && !resegmentMaxCharsValid()) return false;
     if (stepId === "match") {
       const path = $("postprocessScriptPath").value.trim();
       if (!path || !SCRIPT_EXTS.has(extension(path))) return false;
@@ -1826,6 +1834,7 @@
   }
 
   function autoStepFocusField(stepId) {
+    if (stepId === "resegment" && !resegmentMaxCharsValid()) return "postprocessResegmentMaxChars";
     if (stepId === "cleanup" && $("postprocessCleanupScriptPath").value.trim() && !SCRIPT_EXTS.has(extension($("postprocessCleanupScriptPath").value))) return "postprocessCleanupScriptPath";
     if (stepId === "match") return "postprocessScriptPath";
     if (stepId === "replace") return parseReplacements().length ? "postprocessConversion" : "postprocessReplacements";
@@ -1902,6 +1911,7 @@
     $("postprocessExtraSplitPunctuation").value = Array.isArray(match.extraSplitPunctuation) ? match.extraSplitPunctuation.join("\n") : "";
     $("postprocessPreservePunctuation").value = Array.isArray(match.preservePunctuation) ? match.preservePunctuation.join("\n") : "";
     $("postprocessCleanMarkdownSymbols").checked = match.cleanMarkdownSymbols !== false;
+    $("postprocessResegmentMaxChars").value = String(byId.get("resegment")?.maxChars || "");
     const cleanup = byId.get("cleanup") || {};
     $("postprocessCleanupScriptPath").value = String(cleanup.scriptPath || "");
     $("postprocessGenerateComparison").checked = Boolean(cleanup.generateComparison);
@@ -2313,6 +2323,12 @@
       await runAiCleanup(paths, $("postprocessCleanupScriptPath").value.trim());
       return;
     }
+    if (operation === "resegment" && !resegmentMaxCharsValid()) {
+      setFieldError("postprocessResegmentMaxChars", t("toolbox_resegment_max_invalid"));
+      setResult(t("toolbox_resegment_max_invalid"), "error");
+      return;
+    }
+    setFieldError("postprocessResegmentMaxChars", "");
     const customPrompt = $("postprocessPrompt").value.trim();
     setFieldError("postprocessPrompt", "");
     if (operation === "custom" && !customPrompt) {
@@ -2331,6 +2347,7 @@
         operationId,
         operation,
         taskPrompt: taskPromptText(operation),
+        maxChars: operation === "resegment" ? $("postprocessResegmentMaxChars").value.trim() : 0,
         generateComparison: Boolean($("postprocessGenerateComparison")?.checked),
         customPrompt,
         providerId: item.id,
@@ -2649,6 +2666,7 @@
   $("postprocessMatchMode").addEventListener("change", () => { validateMatchPunctuation(); void refreshScriptPreview(); persistAutoPlanSoon(); });
   $("postprocessCleanupScriptPath").addEventListener("input", () => { renderAutoPostprocessState(); persistAutoPlanSoon(); });
   $("postprocessGenerateComparison").addEventListener("change", persistAutoPlanSoon);
+  $("postprocessResegmentMaxChars").addEventListener("input", () => { setFieldError("postprocessResegmentMaxChars", ""); renderAutoPostprocessState(); persistAutoPlanSoon(); });
   $("pickPostprocessCleanupScript").addEventListener("click", async () => {
     const result = await bridge("choose_file", { kind: "script" });
     if (result.ok) { $("postprocessCleanupScriptPath").value = result.path; $("postprocessCleanupScriptPath").dispatchEvent(new Event("input", { bubbles: true })); }

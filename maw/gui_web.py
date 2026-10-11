@@ -1492,6 +1492,11 @@ class LauncherApi:
     ) -> dict[str, object]:
         preset = preset_by_id(str(payload.get("providerId") or "deepseek"))
         operation = str(payload.get("operation") or "proofread")
+        from maw.postprocess_resegment import complete_boundaries, normalize_max_chars
+        try:
+            max_chars = normalize_max_chars(payload.get("maxChars")) if operation == "resegment" else 0
+        except ValueError as error:
+            return _error_result("postprocessResegmentMaxChars", "invalid_max_chars", str(error))
         custom_prompt = str(payload.get("customPrompt") or "").strip()
         if operation == "custom" and not custom_prompt:
             return _error_result("postprocessPrompt", "custom_prompt_required")
@@ -1529,7 +1534,8 @@ class LauncherApi:
                 raise LlmClientError("操作已取消。", category="cancelled", operation="completion")
             batch_number += 1
             current_batch = batch_number
-            return complete_subtitle_groups(
+            completion = complete_boundaries if operation == "resegment" else complete_subtitle_groups
+            return completion(
                 settings,
                 prompt,
                 cues,
@@ -1553,6 +1559,7 @@ class LauncherApi:
                     embed_translations=bool(payload.get("embedTranslations")),
                     bilingual_line_order=str(payload.get("bilingualLineOrder") or ""),
                     generate_comparison=bool(payload.get("generateComparison")),
+                    max_chars=max_chars,
                 ),
                 complete=complete,
                 on_status=emit_status,

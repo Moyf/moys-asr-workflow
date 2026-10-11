@@ -110,6 +110,7 @@ datas = [
     (str(ROOT / "maw" / "media.py"), "ocr-runtime/maw"),
     (str(ROOT / "maw" / "ffmpeg.py"), "ocr-runtime/maw"),
     (str(ROOT / "maw" / "postprocess.py"), "ocr-runtime/maw"),
+    (str(ROOT / "maw" / "postprocess_resegment.py"), "ocr-runtime/maw"),
     (str(ROOT / "maw" / "postprocess_llm.py"), "ocr-runtime/maw"),
     (str(ROOT / "maw" / "postprocess_io.py"), "ocr-runtime/maw"),
     (str(ROOT / "maw" / "postprocess_comparison.py"), "ocr-runtime/maw"),

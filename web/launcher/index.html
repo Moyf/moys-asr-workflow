@@ -995,6 +995,12 @@
           <p id="postprocessCleanupScriptPathError" class="field-error"></p>
           <p class="hint" style="margin-top: 8px;" data-i18n="toolbox_cleanup_task_hint">整理重录、真重复与句内磕巴，保留原始文字；删除写为空隙，存疑写为待核查区段。</p>
         </div>
+        <div id="postprocessResegmentOptions" class="hidden" style="margin-top: 16px;">
+          <label for="postprocessResegmentMaxChars" data-i18n="toolbox_resegment_max_chars">每条字幕最大字数（可选）</label>
+          <input id="postprocessResegmentMaxChars" type="number" min="1" max="500" step="1" inputmode="numeric" style="display: block; margin-top: 8px; width: 160px;" data-i18n-placeholder="toolbox_resegment_max_placeholder">
+          <p id="postprocessResegmentMaxCharsError" class="field-error"></p>
+          <p class="hint" style="margin-top: 8px;" data-i18n="toolbox_resegment_max_hint">留空按自然语义断句；中文、英文和标点逐字符计数，空白不计。无法安全拆分的超长词项或缺时间码段会保留并提示。</p>
+        </div>
         <label class="check-field" for="postprocessGenerateComparison" style="margin-top: 16px;">
           <input id="postprocessGenerateComparison" type="checkbox">
           <span data-i18n="toolbox_generate_comparison">生成处理前后对比结果</span>

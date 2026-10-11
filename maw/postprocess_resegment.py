@@ -1,0 +1,535 @@
+"""Source-preserving subtitle boundaries and locally enforced length limits."""
+
+from __future__ import annotations
+
+import copy
+import json
+import re
+from collections.abc import Mapping, Sequence
+from dataclasses import dataclass
+from typing import TYPE_CHECKING
+
+from maw.postprocess_ai_cleanup_items import item_text_spans
+from maw.postprocess_io import SubtitleArtifact
+from maw.postprocess_llm import (
+    LlmClientError,
+    LlmDelta,
+    LlmResponseObserver,
+    LlmSettings,
+    _request_completion,
+    _response_content,
+)
+from maw.project_preview import JsonDict, JsonValue
+
+if TYPE_CHECKING:
+    from maw.postprocess import LlmComplete, LlmPostprocessRequest, LlmStatus
+    from collections.abc import Callable
+
+
+def normalize_max_chars(value: object) -> int:
+    if value is None or value == "":
+        return 0
+    if isinstance(value, bool) or not re.fullmatch(r"\d+", str(value)):
+        raise ValueError("最大字数必须为 1–500 的整数，或留空不限制。")
+    count = int(str(value))
+    if not 0 <= count <= 500:
+        raise ValueError("最大字数必须为 1–500 的整数，或留空不限制。")
+    return count
+
+
+def char_count(text: str) -> int:
+    return sum(not char.isspace() for char in text)
+
+
+@dataclass(frozen=True)
+class Unit:
+    id: str
+    text: str
+    source: int
+    start: int
+    end: int
+    item: JsonDict | None
+
+
+def source_units(segment: JsonDict, source: int) -> list[Unit]:
+    text = str(segment.get("text") or "")
+    items = segment.get("items")
+    cue_id = f"c{source + 1:04d}"
+    spans = (
+        item_text_spans(text, items)
+        if isinstance(items, list) and items and all(isinstance(i, dict) for i in items)
+        else None
+    )
+    valid = spans is not None and all(
+        type(i.get("start")) is int
+        and type(i.get("end")) is int
+        and int(segment["start"]) <= i["start"] < i["end"] <= int(segment["end"])
+        and (index == 0 or items[index - 1]["end"] <= i["start"])
+        for index, i in enumerate(items)
+    )
+    if not valid:
+        return [
+            Unit(cue_id, text, source, int(segment["start"]), int(segment["end"]), None)
+        ]
+    return [
+        Unit(
+            f"{cue_id}a{index + 1:04d}",
+            text[
+                0 if index == 0 else spans[index][0] : spans[index + 1][0]
+                if index + 1 < len(spans)
+                else len(text)
+            ],
+            source,
+            i["start"],
+            i["end"],
+            i,
+        )
+        for index, i in enumerate(items)
+    ]
+
+
+def boundary_prompt(max_chars: int, notes: str = "") -> str:
+    return (
+        "你是字幕断句编辑，先通读完整表达及 contextBefore/contextAfter，再只选择自然断点。\n"
+        "按完整意群与阅读节奏合并过碎短字幕，拆开过长表达。不要机械照搬现有 cue 边界。"
+        "优先句末、完整分句，其次完整短语；不要把主谓、动宾、否定与动词、人名、数字与单位拆散。"
+        "短感叹、回答、转折可独立成句，不能为了整齐把不同表达强行合并。\n"
+        "输出前把相邻两条连读：不要让是、把、被、的、设为等连接骨架悬在句尾，"
+        "也不要单独留下‘所以后来’或‘第二，’这类等待后文的引导语。"
+        "需要拆长句时优先在完整分句或列举项之后断开，保持数字与帧、像素、百分比等单位相连。\n"
+        "输入 items 的 id 是不透明 atom ID，表示可用词项边界；没有词级时间的 cue 只提供一个完整段单元。"
+        "只能在完整单元之后断句，不能改写、增删、重排原文，也不能生成时间。上下文只读。\n"
+        "只返回类 Markdown 断点列表：每行 [该条字幕最后一个单元的id]，如 [c0001a0004]。"
+        "不必抄写原文或列出整组 ID，不返回标题、JSON 或解释。断点必须唯一、递增，最后一个输入单元必须作为最后断点；"
+        "脚本根据这些位置完整覆盖全部原文。\n"
+        + (
+            f"每条字幕最多 {max_chars} 个字符，中文、英文与标点逐字符计数，空白不计。尽量在上限内选自然断点，不能拆开完整单元。\n"
+            if max_chars
+            else "未设置最大字数，按自然语义断句，不设目标条数或固定长度。\n"
+        )
+        + (f"补充要求（不得突破原文和边界约束）：{notes}" if notes else "")
+    )
+
+
+def complete_boundaries(
+    settings: LlmSettings,
+    prompt: str,
+    rows: list[dict[str, JsonValue]],
+    *,
+    on_delta: LlmDelta | None = None,
+    is_cancelled: Callable[[], bool] | None = None,
+    on_response: LlmResponseObserver | None = None,
+) -> JsonDict:
+    if on_delta is not None:
+        on_delta("reset", "")
+    body = _request_completion(
+        settings,
+        prompt,
+        rows,
+        use_json_format=False,
+        on_delta=on_delta,
+        is_cancelled=is_cancelled,
+        on_response=on_response,
+    )
+    return {"draft": _response_content(body)}
+
+
+def parse_boundaries(
+    response: Mapping[str, JsonValue], units: Sequence[Unit]
+) -> list[list[Unit]]:
+    """Accept sparse boundaries; legacy callbacks must preserve exact source text."""
+    if not isinstance(response, Mapping):
+        raise ValueError("断点响应必须是有效编辑稿。")
+    ids = [unit.id for unit in units]
+    positions = {unit_id: index for index, unit_id in enumerate(ids)}
+    draft = response.get("draft")
+    if isinstance(draft, str):
+        lines = draft.strip().splitlines()
+        if lines and lines[0].startswith("```") and lines[-1] == "```":
+            lines = lines[1:-1]
+        # Compatibility for providers/integrations returning the old JSON shape.
+        if draft.lstrip().startswith("{"):
+            return parse_boundaries(json.loads(draft), units)
+        ends = []
+        for line in lines:
+            match = re.fullmatch(r"\[([^\[\]\s]+)\]", line.strip())
+            if match is None or match[1] not in positions:
+                raise ValueError("断点必须是输入单元 ID，且每行只有 [id]。")
+            ends.append(positions[match[1]] + 1)
+    else:
+        groups = response.get("groups")
+        if not isinstance(groups, list) or not groups:
+            raise ValueError("模型没有返回有效断点。")
+        if all(isinstance(g, dict) and "atom_ids" in g for g in groups):
+            flattened = [i for g in groups for i in g["atom_ids"]]
+            if flattened != ids or any(not g["atom_ids"] for g in groups):
+                raise ValueError("词项分组必须按原顺序完整覆盖。")
+            ends = [positions[g["atom_ids"][-1]] + 1 for g in groups]
+        else:
+            texts = [g.get("text") for g in groups if isinstance(g, dict)]
+            if (
+                len(texts) != len(groups)
+                or not all(isinstance(t, str) and t for t in texts)
+                or "".join(texts) != "".join(u.text for u in units)
+            ):
+                raise ValueError("重新断句不能改写、删除或重复原文。")
+            char_ends = {}
+            cursor = 0
+            for index, unit in enumerate(units):
+                cursor += len(unit.text)
+                char_ends[cursor] = index + 1
+            ends = []
+            cursor = 0
+            for text in texts:
+                cursor += len(text)
+                if cursor not in char_ends:
+                    raise ValueError("断点切开了完整词项，或缺少词级时间。")
+                ends.append(char_ends[cursor])
+    if not ends or ends[-1] != len(units) or ends != sorted(set(ends)):
+        raise ValueError("断点必须唯一、递增且包含最后一个单元；不能遗漏尾部。")
+    if any(
+        not safe_boundary(
+            "".join(u.text for u in units[max(0, end - 3) : end]),
+            "".join(u.text for u in units[end : end + 3]),
+        )
+        for end in ends[:-1]
+    ):
+        raise ValueError("断点不能拆开数字、比例或数字与单位。")
+    return [list(units[start:end]) for start, end in zip([0, *ends[:-1]], ends)]
+
+
+def safe_boundary(left: str, right: str) -> bool:
+    if (
+        left
+        and right
+        and re.search(r"[A-Za-z0-9]$", left)
+        and re.match(r"[A-Za-z0-9]", right)
+    ):
+        return False
+    # Separators may be individual ASR items. Inspect both sides to distinguish
+    # numeric punctuation (16:9 / 1,000 / 1/2) from sentence punctuation.
+    if (re.search(r"\d\s*$", left) and re.match(r"\s*[.,:：/／]\s*\d", right)) or (
+        re.search(r"\d\s*[.,:：/／]\s*$", left) and re.match(r"\s*\d", right)
+    ):
+        return False
+    # Preserve numbers, decimal fractions and common quantity units.
+    if re.search(r"\d[.,]?$", left.rstrip()) and re.match(
+        r"[\d.%％]|(?:公斤|千克|厘米|毫米|毫秒|分钟|小时|万元|亿元|像素|帧率|帧|元|秒|米|岁|个|年|月|日|天|kg\b|ms\b|cm\b|px\b|fps\b|Hz\b|kHz\b|MHz\b|GB\b|MB\b|kbps\b|Mbps\b)",
+        right.lstrip(),
+        re.I,
+    ):
+        return False
+    return True
+
+
+def boundary_penalty(left: str, right: str) -> int:
+    """Soft grammar hints; never forbid a required length-constrained cut."""
+    left, right = left.rstrip(), right.lstrip()
+    if not left or not right or left[-1] in "。！？.!?；;，,、：:":
+        # Short section labels still depend on their following action.
+        return 40 if re.fullmatch(r"第[一二三四五六七八九十]+[，,:：]?", left) else 0
+    penalty = (
+        40
+        if re.search(
+            r"(?:设为|意味着|需要|包括|例如|因为|所以|如果|为了|是|为|把|被|将|对|和|与|及|或|的|地|得)$",
+            left,
+        )
+        else 0
+    )
+    if re.fullmatch(
+        r"(?:所以(?:后来)?|因此|同时|另外|例如|因为|如果|但是|不过|而且)", left
+    ):
+        penalty += 40
+    if re.match(r"[的地得]", right):
+        penalty += 20
+    return penalty
+
+
+def limit_groups(
+    group: list[Unit], maximum: int, *, preferred_ends: set[str] | None = None
+) -> tuple[list[list[Unit]], bool]:
+    """Find legal cuts with a bounded dynamic program, avoiding tiny tails."""
+    if not maximum or char_count("".join(u.text for u in group)) <= maximum:
+        return [group], False
+    # Adjacent numeric fragments form one indivisible unit for local splitting.
+    blocks: list[list[Unit]] = []
+    for index, unit in enumerate(group):
+        if blocks and not safe_boundary(
+            "".join(u.text for u in blocks[-1]),
+            "".join(u.text for u in group[index : index + 3]),
+        ):
+            blocks[-1].append(unit)
+        else:
+            blocks.append([unit])
+    costs = [0.0] + [float("inf")] * len(blocks)
+    previous = [0] * (len(blocks) + 1)
+    for end in range(1, len(blocks) + 1):
+        length = 0
+        for start in range(end - 1, -1, -1):
+            length += sum(char_count(u.text) for u in blocks[start])
+            if length > maximum and start != end - 1:
+                break
+            punctuation = blocks[end - 1][-1].text.rstrip()[-1:]
+            boundary_cost = (
+                0
+                if end == len(blocks) or punctuation in "。！？.!?；;"
+                else 3
+                if punctuation in "，,、：:"
+                else 8
+            )
+            left = "".join(u.text for block in blocks[start:end] for u in block)
+            right = "".join(u.text for block in blocks[end : end + 3] for u in block)
+            boundary_cost += boundary_penalty(left, right)
+            if (
+                preferred_ends
+                and end != len(blocks)
+                and blocks[end - 1][-1].id not in preferred_ends
+            ):
+                boundary_cost += 10
+            # Complete short answers may stand alone; orphan introductions
+            # and tiny tails should lose to a longer legal reading unit.
+            short_cost = (
+                max(0, min(5, maximum) - length) * 15
+                if punctuation not in "。！？.!?；;"
+                else 0
+            )
+            cost = (
+                costs[start]
+                + 12
+                + ((maximum - min(length, maximum)) / maximum) ** 2 * 8
+                + boundary_cost
+                + short_cost
+            )
+            if cost < costs[end]:
+                costs[end], previous[end] = cost, start
+    result = []
+    end = len(blocks)
+    while end:
+        start = previous[end]
+        result.append([u for block in blocks[start:end] for u in block])
+        end = start
+    result.reverse()
+    return result, any(
+        char_count("".join(u.text for u in part)) > maximum for part in result
+    )
+
+
+def refine_groups(groups: list[list[Unit]], maximum: int) -> list[list[Unit]]:
+    """Rebalance only adjacent groups with a dangling proposed boundary.
+
+    Model boundaries remain preferences within those runs. Other semantic
+    joins, speaker/pause blocks and source items keep their existing meaning.
+    """
+    if not maximum:
+        return groups
+    result = []
+    run: list[Unit] = []
+    preferred: set[str] = set()
+    for index, group in enumerate(groups):
+        run.extend(group)
+        preferred.add(group[-1].id)
+        next_text = (
+            "".join(u.text for u in groups[index + 1])
+            if index + 1 < len(groups)
+            else ""
+        )
+        text = "".join(u.text for u in group)
+        if next_text and boundary_penalty(text, next_text):
+            continue
+        parts, _ = limit_groups(run, maximum, preferred_ends=preferred)
+        result.extend(parts)
+        run, preferred = [], set()
+    return result
+
+
+def run_resegment(
+    request: LlmPostprocessRequest,
+    *,
+    complete: LlmComplete,
+    on_status: LlmStatus | None = None,
+    is_cancelled: Callable[[], bool] | None = None,
+    begin_commit: Callable[[], bool] | None = None,
+) -> SubtitleArtifact:
+    from maw.postprocess import (
+        _copy_common_metadata,
+        _is_transient_llm_failure,
+        _llm_batches,
+        _load_input,
+        _notify_status,
+        _postprocess_step_error,
+        _raise_if_cancelled,
+        _segments,
+        _unique_derived_segment_id,
+        _write,
+        PostprocessStepError,
+        SAFE_SCALARS,
+    )
+
+    maximum = normalize_max_chars(request.max_chars)
+    _raise_if_cancelled(is_cancelled)
+    _notify_status(on_status, "toolbox_status_reading")
+    project, source_project, source_srt = _load_input(
+        request.project_path, request.srt_path
+    )
+    sources = _segments(project)
+    by_source = {index: source_units(s, index) for index, s in enumerate(sources)}
+    rows: list[dict[str, JsonValue]] = []
+    blocks = []
+    previous_index = None
+    for index, segment in enumerate(sources):
+        if segment.get("disabled") or not str(segment.get("text") or "").strip():
+            if rows:
+                blocks.append(rows)
+            rows, previous_index = [], None
+            continue
+        units = by_source[index]
+        if previous_index is not None and (
+            (
+                segment.get("speaker") is not None
+                and sources[previous_index].get("speaker") is not None
+                and segment.get("speaker") != sources[previous_index].get("speaker")
+            )
+            or bool(units[0].item) != bool(by_source[previous_index][0].item)
+            or int(segment["start"]) - int(sources[previous_index]["end"]) > 1500
+        ):
+            blocks.append(rows)
+            rows = []
+        rows.append(
+            {
+                "id": f"c{index + 1:04d}",
+                "text": segment["text"],
+                "items": [{"id": u.id, "text": u.text} for u in units],
+            }
+        )
+        previous_index = index
+    if rows:
+        blocks.append(rows)
+    batches = [batch for block in blocks for batch in _llm_batches(block)]
+    _notify_status(on_status, "toolbox_status_preparing_llm")
+    output_groups: list[list[Unit]] = []
+    warnings = []
+    failed = 0
+    for number, batch in enumerate(batches, 1):
+        _raise_if_cancelled(is_cancelled)
+        indexes = [int(str(row["id"])[1:]) - 1 for row in batch]
+        units = [u for i in indexes for u in by_source[i]]
+        first, last = indexes[0], indexes[-1]
+        payload = copy.deepcopy(batch)
+        payload[0]["contextBefore"] = "".join(
+            str(s["text"])
+            for s in sources[max(0, first - 2) : first]
+            if not s.get("disabled")
+        )
+        payload[-1]["contextAfter"] = "".join(
+            str(s["text"])
+            for s in sources[last + 1 : last + 3]
+            if not s.get("disabled")
+        )
+        prompt = boundary_prompt(maximum, request.custom_prompt)
+        _notify_status(
+            on_status, "toolbox_status_llm_batch", current=number, total=len(batches)
+        )
+        try:
+            for attempt in range(2):
+                response = complete(prompt, payload)
+                _raise_if_cancelled(is_cancelled)
+                try:
+                    groups = parse_boundaries(response, units)
+                    break
+                except (ValueError, TypeError, KeyError) as error:
+                    if attempt:
+                        raise ValueError(
+                            f"第 {number} 批断点校验失败：{error}"
+                        ) from error
+                    prompt += f"\n上次未通过校验：{error}。请重新输出完整且递增的断点列表，包含最后一个单元。"
+        except (LlmClientError, PostprocessStepError) as error:
+            if not _is_transient_llm_failure(error):
+                raise _postprocess_step_error(
+                    f"第 {number} 批重新断句失败：{error}", error
+                ) from error
+            failed += 1
+            warnings.append(f"第 {number} 批网络/服务请求失败，保留原文与时间。")
+            if maximum and any(
+                char_count(str(sources[i]["text"])) > maximum for i in indexes
+            ):
+                warnings.append(
+                    f"第 {number} 批未处理的原字幕可能超过最大 {maximum} 字，需重试或人工拆分。"
+                )
+            output_groups.extend(by_source[i] for i in indexes)
+            continue
+        for group in refine_groups(groups, maximum):
+            parts, over = limit_groups(group, maximum)
+            output_groups.extend(parts)
+            if over:
+                warnings.append(
+                    f"第 {group[0].source + 1} 条原字幕含超长完整词项、数字单位或无词级时间段，无法安全满足最大 {maximum} 字；已保留。"
+                )
+        _notify_status(
+            on_status,
+            "toolbox_status_llm_batch_done",
+            current=number,
+            total=len(batches),
+        )
+    if batches and failed == len(batches):
+        raise ValueError("所有批次的网络/服务请求都失败，未写出输出产物。")
+    covered = {u.source for group in output_groups for u in group}
+    output_groups.extend(by_source[i] for i in range(len(sources)) if i not in covered)
+    output_groups.sort(key=lambda group: (group[0].source, group[0].start))
+    used_ids = {str(s["id"]) for s in sources}
+    rebuilt = []
+    part_number = 0
+    for group in output_groups:
+        source_indexes = list(dict.fromkeys(u.source for u in group))
+        original = sources[source_indexes[0]]
+        if len(source_indexes) == 1 and group == by_source[source_indexes[0]]:
+            rebuilt.append(copy.deepcopy(original))
+            continue
+        part_number += 1
+        segment = _copy_common_metadata([sources[i] for i in source_indexes])
+        segment.update(
+            {
+                "id": _unique_derived_segment_id(
+                    original, f"c{source_indexes[0] + 1:04d}", part_number, used_ids
+                ),
+                "text": "".join(u.text for u in group),
+                "start": group[0].start,
+                "end": group[-1].end,
+            }
+        )
+        for key in SAFE_SCALARS:
+            if key in original and all(
+                sources[i].get(key) == original[key] for i in source_indexes
+            ):
+                segment[key] = copy.deepcopy(original[key])
+        if all(u.item is not None for u in group):
+            segment["items"] = [copy.deepcopy(u.item) for u in group]
+        rebuilt.append(segment)
+    if len(rebuilt) != len(sources) or any(
+        s.get("id") != r.get("id") for s, r in zip(sources, rebuilt)
+    ):
+        # Positional references would point at another cue after insert/remove.
+        for segment in rebuilt:
+            segment.pop("color_ref", None)
+            segment.pop("sticker_ref", None)
+    processed = copy.deepcopy(project)
+    processed["segments"] = rebuilt
+    warnings.append(
+        "已按字词时间码的合法边界重新断句，原文、标点与词级时间保留；无词级时间段只沿现有段边界处理。"
+    )
+    _raise_if_cancelled(is_cancelled)
+    if begin_commit is not None and not begin_commit():
+        raise LlmClientError(
+            "操作已取消。", category="cancelled", operation="resegment"
+        )
+    _notify_status(on_status, "toolbox_status_writing")
+    return _write(
+        processed,
+        source_project,
+        source_srt,
+        "resegment",
+        request.output_mode,
+        warnings=tuple(warnings),
+        output_directory=request.output_directory,
+        media_path=request.media_path,
+        comparison_source=project if request.generate_comparison else None,
+    )
