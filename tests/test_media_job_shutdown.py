@@ -16,8 +16,20 @@ class MediaJobShutdownTests(unittest.TestCase):
         fixture = fixtures.MediaJobsHttpTests()
         fixture.setUp()
         self.addCleanup(fixture.tearDown)
-        for attribute in ("server_editor", "server", "origin", "base", "request", "payload", "wait"):
+        for attribute in ("server_editor", "server", "origin", "base", "request", "payload", "wait", "root"):
             setattr(self, attribute, getattr(fixture, attribute))
+
+    def test_shutdown_fixture_setup_creates_missing_temp_root(self):
+        cold_root = self.root / "clean-checkout" / ".debug-runs"
+        self.assertFalse(cold_root.exists())
+        cold_fixture = MediaJobShutdownTests()
+        with mock.patch.object(fixtures, "MEDIA_JOBS_TEST_TEMP_ROOT", cold_root):
+            cold_fixture.setUp()
+        try:
+            self.assertTrue(cold_root.is_dir())
+            self.assertEqual(cold_fixture.root.parent, cold_root)
+        finally:
+            cold_fixture.doCleanups()
 
     def test_shutdown_waits_for_open_download_disposal(self):
         tools = mock.Mock(ffmpeg=Path("ffmpeg"), ffprobe=Path("ffprobe"))

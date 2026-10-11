@@ -17,10 +17,18 @@ from pathlib import Path
 from maw.media_jobs import (MAX_MEDIA_JOB_STDERR_BYTES, MediaJobBusy,
                             MediaJobManager, MediaJobUnavailable)
 
+MEDIA_JOBS_TEST_TEMP_ROOT = Path(__file__).resolve().parents[1] / ".debug-runs"
+
+
+def media_jobs_test_temp_directory():
+    # Clean checkouts and CI have no ignored debug directory yet.
+    MEDIA_JOBS_TEST_TEMP_ROOT.mkdir(parents=True, exist_ok=True)
+    return tempfile.TemporaryDirectory(dir=MEDIA_JOBS_TEST_TEMP_ROOT)
+
 
 class MediaJobsTests(unittest.TestCase):
     def setUp(self):
-        self.temp = tempfile.TemporaryDirectory(dir=Path(__file__).resolve().parents[1] / ".debug-runs")
+        self.temp = media_jobs_test_temp_directory()
         self.manager = MediaJobManager(temp_root=self.temp.name)
         self.source = Path("source.mp4")
 
@@ -30,6 +38,20 @@ class MediaJobsTests(unittest.TestCase):
 
     def start(self, runner):
         return self.manager.start(self.source, (7, "opaque-source"), [(0, 1000)], runner)
+
+    def test_controller_and_http_setup_create_missing_temp_roots(self):
+        for fixture_type in (MediaJobsTests, MediaJobsHttpTests):
+            with self.subTest(fixture=fixture_type.__name__):
+                cold_root = Path(self.temp.name) / fixture_type.__name__ / ".debug-runs"
+                self.assertFalse(cold_root.exists())
+                fixture = fixture_type()
+                with mock.patch.object(sys.modules[__name__], "MEDIA_JOBS_TEST_TEMP_ROOT", cold_root):
+                    fixture.setUp()
+                try:
+                    self.assertTrue(cold_root.is_dir())
+                    self.assertEqual(Path(fixture.temp.name).parent, cold_root)
+                finally:
+                    fixture.tearDown()
 
     def wait(self, job, state):
         deadline = time.monotonic() + 5
@@ -318,7 +340,7 @@ class MediaJobsHttpTests(unittest.TestCase):
     def setUp(self):
         from tests.test_local_editor_server import server_editor
         self.server_editor = server_editor
-        self.temp = tempfile.TemporaryDirectory(dir=Path(__file__).resolve().parents[1] / ".debug-runs")
+        self.temp = media_jobs_test_temp_directory()
         self.root = Path(self.temp.name)
         self.source = self.root / "source.mp4"
         self.source.write_bytes(b"unchanged source")
