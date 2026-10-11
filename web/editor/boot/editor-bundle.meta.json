@@ -222,7 +222,7 @@
     "shared/utils/history.js": "0929c838e2fb6359d9e441dfc18b663a68b23b17319a43ea5f6855aace5483f7",
     "shared/utils/markers.js": "e24a8cf115a58475fc7b293f550dbdebf52cbedca54277315a36d739050d4dbf",
     "shared/utils/multi-subtitle.js": "030482c28fd76a1fc1241feaad5a96c64511b91de12e8efbc16fffe48603b42b",
-    "shared/utils/word-timing.js": "f0d4c58a2eaabf2169b9eb801b3a822ac29a548ac0230953c8f20c6106340b46",
+    "shared/utils/word-timing.js": "3f2cf2f252747be5105c7e767b8987f9d6ef3678ba17080bfa181eff7628678e",
     "shared/utils/word-split.js": "28a8d6092bcaf156fe989cb7bb9eea9c4d550d9ca7e50d6787af48307a697ad3",
     "shared/utils/srt.js": "e46cac86f1685bbbb06bfea449f186104e23c805f5c1a47ee4ced5ba141b24c1",
     "shared/utils/lrc.js": "febdcceebbb5884cbb75a60cba261af53c92779bb6eb21cedb486563e3f39644",
@@ -313,7 +313,7 @@
     "editor/ui/editor-context-menus.js": "166d7a79714ded5556e62c2879363e0ecd6844b43cc6cc96ae96b996d16bd8f8",
     "editor/cues/editor-text-cleanup.js": "9bc96ae38c0745e45565e17eaad4ee4cfd2f486770e806ebb84e4f06f8a8c8c7",
     "editor/media/editor-waveform-init.js": "9be89de9dddf1b6208a581dee9fef7ec23924f6f0c1f36d15af0b071c280ce78",
-    "editor/cues/editor-word-timing.js": "b526d9448fc2adc9dcb76bf2847ad9e4fe39177c927359671b2eb023d5a34c6b",
+    "editor/cues/editor-word-timing.js": "c107d1c91da4ec3a28de10086d4864301b73bb68de3f7300d1e272a8957e8ced",
     "editor/media/editor-media-step.js": "778e52252d7ebd14fdc196687c6bdf333f7527970bf65ffd21c8406c8707323c",
     "editor/styles/editor-appearance-inputs.js": "233d2aef602beaa26cad764a555837f056c3de44f076232fed093c641bdb5342",
     "editor/ui/editor-behavior-hints.js": "d581e6819ad54d1a878625a7b96a5d7734bc18a0778693c89132e4bbd8bfb9f9",
@@ -497,7 +497,7 @@
         "format": "esm"
       },
       "web/shared/utils/word-timing.js": {
-        "bytes": 14053,
+        "bytes": 15370,
         "imports": [],
         "format": "esm"
       },
@@ -692,7 +692,7 @@
         "format": "esm"
       },
       "web/editor-entry.mjs": {
-        "bytes": 1817730,
+        "bytes": 1818157,
         "imports": [
           {
             "path": "web/shared/host/storage.js",
@@ -1076,7 +1076,7 @@
             "bytesInOutput": 10186
           },
           "web/shared/utils/word-timing.js": {
-            "bytesInOutput": 6085
+            "bytesInOutput": 6484
           },
           "web/shared/utils/word-split.js": {
             "bytesInOutput": 1919
@@ -1193,10 +1193,10 @@
             "bytesInOutput": 4406
           },
           "web/editor-entry.mjs": {
-            "bytesInOutput": 1056230
+            "bytesInOutput": 1056439
           }
         },
-        "bytes": 1404669
+        "bytes": 1405277
       }
     }
   }
