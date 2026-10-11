@@ -35,7 +35,9 @@ async function seed(page) {
     MaweBoot.DATA.segments[0].disabled = true;
     MaweMarkerEditing.afterExternalMarkersChange();
   });
-  await page.locator('#markers-quick-toggle').click();
+  // 带标记的工程在载入时会自动启用标记轨道；这里确保开启而不是翻转。
+  const quickToggle = page.locator('#markers-quick-toggle');
+  if ((await quickToggle.getAttribute('aria-pressed')) !== 'true') await quickToggle.click();
   await page.locator('#markers-manage').click();
   await expect(page.locator('.markers-item')).toHaveCount(3);
 }

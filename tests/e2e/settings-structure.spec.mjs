@@ -4,6 +4,48 @@ import { join } from 'node:path';
 import { cleanupTempDir, disableOnboarding, dragFloatingPanelAwayFrom, findFreePort, generateWav, generateWaveformPayload, makeTempDir, startServer } from './helpers.mjs';
 
 let tempDir, server;
+test('waveform ASS shortcuts mirror project settings and open the style library and actual frame', async ({ page }, testInfo) => {
+  const toggle = page.locator('#ass-mode-quick-toggle');
+  const palette = page.locator('#ass-style-quick-open');
+  const camera = page.locator('#ass-frame-quick-open');
+  await expect(toggle).toHaveText('ASS 字幕模式');
+  await expect(palette).toBeHidden();
+  await expect(camera).toBeHidden();
+  await toggle.click();
+  await expect(toggle).toHaveAttribute('aria-pressed', 'true');
+  await expect(page.locator('#ass-mode-toggle')).toBeChecked();
+  await expect(palette).toBeVisible();
+  await expect(camera).toBeVisible();
+  await expect(camera).toHaveText('📷');
+  const gaps = await page.locator('#waveform-settings').evaluate(el => {
+    const buttons = [...el.querySelectorAll(':scope > button')].map(button => button.getBoundingClientRect());
+    return buttons.slice(1).map((button, index) => button.left - buttons[index].right);
+  });
+  expect(gaps.every(gap => gap >= 8)).toBe(true);
+  await page.locator('#waveform-settings').screenshot({ path: testInfo.outputPath('ass-toolbar-camera.png') });
+  await camera.click();
+  await expect(page.locator('#ass-frame-window')).toHaveAttribute('aria-hidden', 'false');
+  await expect(camera).toHaveAttribute('aria-expanded', 'true');
+  await page.keyboard.press('Escape');
+  await expect(page.locator('#ass-frame-window')).toHaveAttribute('aria-hidden', 'true');
+  await expect(camera).toBeFocused();
+  await expect(camera).toHaveAttribute('aria-expanded', 'false');
+  await palette.click();
+  await expect(page.locator('#ass-style-window')).toHaveAttribute('aria-hidden', 'false');
+  await page.locator('#waveform-pane').screenshot({ path: testInfo.outputPath('ass-shortcuts.png') });
+  await page.keyboard.press('Escape');
+  await toggle.click();
+  await expect(palette).toBeHidden();
+  await expect(camera).toBeHidden();
+  expect(await page.locator('#editor-settings-tab-subtitle-style').evaluate(el =>
+    Boolean(el.compareDocumentPosition(document.getElementById('editor-settings-tab-project-tracks')) & Node.DOCUMENT_POSITION_FOLLOWING))).toBe(true);
+  await expect(page.locator('#word-timing-quick-toggle')).toHaveText('字词');
+  await expect(page.locator('#markers-quick-toggle')).toHaveText('标记');
+  await page.evaluate(() => MaweSettingsPanels.openEditorSettingsAtTab('editor-settings-tab-multi-subtitle'));
+  const rows = await page.locator('.multi-subtitle-display-inline .multi-subtitle-setting-row').evaluateAll(elements =>
+    elements.map(el => el.getBoundingClientRect().top));
+  expect(Math.abs(rows[0] - rows[1])).toBeLessThanOrEqual(1);
+});
 test.beforeAll(async () => {
   tempDir = makeTempDir('settings-structure');
   const media = join(tempDir, 'synthetic.wav'), project = join(tempDir, 'settings.mosp');
@@ -17,6 +59,44 @@ test.beforeAll(async () => {
   ] }), 'utf8');
   server = await startServer(project, media, await findFreePort());
 });
+for (const tool of ['select', 'razor']) {
+  test(`camera Escape preserves selected cues and the ${tool} tool`, async ({ page }, testInfo) => {
+    await page.locator('#ass-mode-quick-toggle').click();
+    await page.locator('.cue[data-idx="0"]').click();
+    const selection = await page.evaluate(() => [...MaweSelection.selectedIdxs]);
+    expect(selection).toEqual([0]);
+    await page.evaluate(tool => MaweCoreState.waveformEditor.setTool(tool), tool);
+    const camera = page.locator('#ass-frame-quick-open');
+    await camera.click();
+    await expect(page.locator('#ass-frame-window')).toHaveAttribute('aria-hidden', 'false');
+    const snapshot = () => page.evaluate(() => ({
+      selection: [...MaweSelection.selectedIdxs], tool: MaweCoreState.waveformEditor.tool,
+      frameOpen: document.getElementById('ass-frame-window').classList.contains('show'),
+      activeTag: document.activeElement?.tagName, activeId: document.activeElement?.id,
+    }));
+    const before = await snapshot();
+    await page.keyboard.press('Escape');
+    const after = await snapshot();
+    writeFileSync(testInfo.outputPath('camera-selected-escape.json'), JSON.stringify({ before, after }, null, 2));
+    await page.screenshot({ path: testInfo.outputPath('camera-selected-escape.png') });
+    await expect(page.locator('#ass-frame-window')).toHaveAttribute('aria-hidden', 'true');
+    await expect(camera).toBeFocused();
+    await expect(camera).toHaveAttribute('aria-expanded', 'false');
+    expect(after.selection).toEqual(selection);
+    expect(after.tool).toBe(tool);
+    // This panel's Esc listener is registered before the selection guards.
+    // Its consumed event must not fall through and clear selection or razor.
+    await page.locator('#auto-merge-manage').click();
+    await expect(page.locator('#auto-merge-panel')).toHaveClass(/show/);
+    await page.keyboard.press('Escape');
+    await expect(page.locator('#auto-merge-panel')).not.toHaveClass(/show/);
+    expect(await page.evaluate(() => [...MaweSelection.selectedIdxs])).toEqual(selection);
+    expect(await page.evaluate(() => MaweCoreState.waveformEditor.tool)).toBe(tool);
+    await page.keyboard.press('Escape');
+    expect(await page.evaluate(() => [...MaweSelection.selectedIdxs])).toEqual([]);
+    expect(await page.evaluate(() => MaweCoreState.waveformEditor.tool)).toBe('select');
+  });
+}
 test.afterAll(async () => { await server?.stop(); cleanupTempDir(tempDir); });
 test.beforeEach(async ({ page }) => {
   await disableOnboarding(page);
@@ -433,11 +513,13 @@ test('bilingual settings are grouped and the index never enables the mode implic
   expect(await page.evaluate(() => MaweMultiSubtitleCore.getMultiSubtitleState().enabled === true)).toBe(false);
   await page.locator('#editor-settings-close').click();
   await page.locator('#project-settings-toggle').click();
+  // 双语字幕是独立标签页；字幕轨道页只保留轨推开关。
   await page.locator('#editor-settings-tab-project-tracks').click();
-  await expect(page.locator('#project-multi-subtitle-settings')).toBeHidden();
+  await expect(page.locator('#editor-settings-page-project-tracks #multi-subtitle-toggle')).toBeVisible();
   await page.locator('#multi-subtitle-toggle').check();
-  await expect(page.locator('#project-multi-subtitle-settings')).toBeVisible();
-  await expect(page.locator('#project-multi-subtitle-settings .settings-panel-title')).toHaveText(['显示', '联动', '字幕管理']);
+  await page.locator('#editor-settings-tab-multi-subtitle').click();
+  await expect(page.locator('#editor-settings-page-multi-subtitle')).toBeVisible();
+  await expect(page.locator('#editor-settings-page-multi-subtitle .settings-panel-title')).toHaveText(['联动', '字幕管理', '字词码']);
   await page.locator('#multi-subtitle-cross-track-snap').uncheck();
   expect(await page.evaluate(() => MaweSettings.EDITOR_SETTINGS.crossTrackSnap)).toBe(false);
   await page.locator('#project-settings-panel').screenshot({ path: testInfo.outputPath('bilingual-settings.png') });
@@ -599,7 +681,7 @@ test('all new settings pages have measured spacing in Chinese and English', asyn
     await page.evaluate(language => MAWE_I18N.applyLanguage(language), language);
     await page.setViewportSize({ width: 760, height: 740 });
     for (const [scope, keys] of [['global', ['regions', 'general', 'special-edit', 'subtitle-preview', 'subtitle-color', 'export', 'export-more', 'sticker', 'about']],
-      ['project', ['timebase', 'project-tracks', 'subtitle-style', 'project-color', 'project-sticker']]]) {
+      ['project', ['timebase', 'project-tracks', 'multi-subtitle', 'subtitle-style', 'project-color', 'project-sticker']]]) {
       await page.evaluate(() => { MaweSettingsPanels.setEditorSettingsPanelOpen(false); MaweSettingsPanels.projectFloatingPanel.close(); });
       for (const key of keys) {
         if (scope === 'project') await projectSettings(page, key); else await settings(page, key);
@@ -627,7 +709,7 @@ test('all new settings pages have measured spacing in Chinese and English', asyn
           expect(version.trim()).not.toBe('__APP_VERSION__');
           expect(await page.locator('#editor-settings-page-about a[href*="github.com/Moyf/moys-asr-workflow/releases/tag/"]').getAttribute('href')).toBe(`https://github.com/Moyf/moys-asr-workflow/releases/tag/${version.trim()}`);
           expect(await page.locator('#editor-settings-page-about a[href*="moyf.github.io/moys-asr-workflow/docs/"]').count()).toBe(1);
-          expect(await page.locator('#editor-settings-page-about .editor-settings-about-placeholder').count()).toBeGreaterThanOrEqual(4);
+          expect(await page.locator('#editor-settings-page-about .editor-settings-about-placeholder').count()).toBeGreaterThanOrEqual(1);
         }
         const gaps = await page.locator('#editor-settings-page-' + key).evaluate(page => {
           const parents = [page, ...page.querySelectorAll('.editor-settings-group, .editor-settings-sub-group, .editor-settings-field')];

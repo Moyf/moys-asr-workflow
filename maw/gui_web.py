@@ -1172,7 +1172,7 @@ class LauncherApi:
             )
             self._emit_postprocess_status("toolbox_status_writing")
         except (OSError, UnicodeError, ValueError, TextConversionUnavailable) as error:
-            return {"ok": False, "field": "postprocessInput", "code": file_error_code(error) or "postprocess_failed", "detail": str(error), "error": str(error)}
+            return {"ok": False, "field": "postprocessInput", "code": file_error_code(error) or "toolbox_failed", "detail": str(error), "error": str(error)}
         return _subtitle_artifact_result(result)
 
     def check_script_alignment(self, payload: Mapping[str, object]) -> dict[str, object]:
@@ -1352,7 +1352,7 @@ class LauncherApi:
         except SubtitleMatchError as error:
             return _error_result("postprocessScriptPath", "subtitle_invalid", str(error))
         except (OSError, UnicodeError, ValueError) as error:
-            return {"ok": False, "field": "postprocessScriptPath", "code": file_error_code(error) or "postprocess_failed", "detail": str(error), "error": str(error)}
+            return {"ok": False, "field": "postprocessScriptPath", "code": file_error_code(error) or "toolbox_failed", "detail": str(error), "error": str(error)}
         return _subtitle_artifact_result(result)
 
     def run_ai_cleanup(self, payload: Mapping[str, object]) -> dict[str, object]:
@@ -1390,7 +1390,7 @@ class LauncherApi:
         if not settings.api_key and _postprocess_api_key_required(preset.id, settings.base_url):
             return _error_result("postprocessApiKey", "api_key_missing", "Post-processing API key is required.")
         if not settings.base_url or not settings.model:
-            return {"ok": False, "field": "postprocessProvider", "code": "postprocess_failed", "detail": "LLM API URL and model are required.", "error": "LLM API URL and model are required."}
+            return {"ok": False, "field": "postprocessProvider", "code": "toolbox_failed", "detail": "LLM API URL and model are required.", "error": "LLM API URL and model are required."}
         def emit_status(key: str, details: Mapping[str, int] | None = None) -> None:
             self._emit_postprocess_status(key, details, operation_id=operation.operation_id)
 
@@ -1451,11 +1451,11 @@ class LauncherApi:
         except LlmClientError as error:
             if error.category == "cancelled" or operation.cancel_event.is_set():
                 return {"ok": False, "code": "postprocess_cancelled", "detail": "AI cleanup was cancelled."}
-            return _llm_error_result("postprocessScriptPath", "postprocess_failed", error)
+            return _llm_error_result("postprocessScriptPath", "toolbox_failed", error)
         except AiCleanupError as error:
-            return _llm_error_result("postprocessScriptPath", "postprocess_failed", error)
+            return _llm_error_result("postprocessScriptPath", "toolbox_failed", error)
         except (OSError, UnicodeError, ValueError) as error:
-            return {"ok": False, "field": "postprocessScriptPath", "code": file_error_code(error) or "postprocess_failed", "detail": str(error), "error": str(error)}
+            return {"ok": False, "field": "postprocessScriptPath", "code": file_error_code(error) or "toolbox_failed", "detail": str(error), "error": str(error)}
         return _subtitle_artifact_result(result)
 
     def run_ocr_dedup(self, payload: Mapping[str, object]) -> dict[str, object]:
@@ -1471,7 +1471,7 @@ class LauncherApi:
             return _error_result("ocrModel", "ocr_model_missing", str(error))
         ffmpeg = _postprocess_ffmpeg(self.paths.env_path)
         if ffmpeg is None:
-            return {"ok": False, "field": "ocrVideoPath", "code": "postprocess_failed", "detail": "找不到 FFmpeg，无法抽取视频画面。", "error": "找不到 FFmpeg，无法抽取视频画面。"}
+            return {"ok": False, "field": "ocrVideoPath", "code": "toolbox_failed", "detail": "找不到 FFmpeg，无法抽取视频画面。", "error": "找不到 FFmpeg，无法抽取视频画面。"}
         self._emit_postprocess_status("toolbox_status_reading")
         try:
             raw_threshold = payload.get("threshold")
@@ -1496,7 +1496,7 @@ class LauncherApi:
         except OcrRuntimeCancelled as error:
             return _error_result("ocrModel", "ocr_runtime_cancelled", str(error))
         except (OSError, UnicodeError, ValueError, OcrRuntimeError) as error:
-            return {"ok": False, "field": "ocrVideoPath", "code": file_error_code(error) or "postprocess_failed", "detail": str(error), "error": str(error)}
+            return {"ok": False, "field": "ocrVideoPath", "code": file_error_code(error) or "toolbox_failed", "detail": str(error), "error": str(error)}
         return {"ok": True, **result}
 
     def run_llm_postprocess(self, payload: Mapping[str, object]) -> dict[str, object]:
@@ -1531,7 +1531,7 @@ class LauncherApi:
         if not settings.api_key and _postprocess_api_key_required(preset.id, settings.base_url):
             return _error_result("postprocessApiKey", "api_key_missing", "Post-processing API key is required.")
         if not settings.base_url or not settings.model:
-            return {"ok": False, "field": "postprocessProvider", "code": "postprocess_failed", "detail": "LLM API URL and model are required.", "error": "LLM API URL and model are required."}
+            return {"ok": False, "field": "postprocessProvider", "code": "toolbox_failed", "detail": "LLM API URL and model are required.", "error": "LLM API URL and model are required."}
         batch_number = 0
 
         def emit_status(key: str, details: Mapping[str, int] | None = None) -> None:
@@ -1582,15 +1582,15 @@ class LauncherApi:
         except (LlmClientError, PostprocessStepError) as error:
             if error.category == "cancelled" or operation_state.cancel_event.is_set():
                 return {"ok": False, "code": "postprocess_cancelled", "detail": "AI post-processing was cancelled."}
-            return _llm_error_result("postprocessInput", "postprocess_failed", error)
+            return _llm_error_result("postprocessInput", "toolbox_failed", error)
         except (OSError, UnicodeError, ValueError, RuntimeError) as error:
-            return {"ok": False, "field": "postprocessInput", "code": file_error_code(error) or "postprocess_failed", "detail": str(error), "error": str(error)}
+            return {"ok": False, "field": "postprocessInput", "code": file_error_code(error) or "toolbox_failed", "detail": str(error), "error": str(error)}
         return _subtitle_artifact_result(result)
 
     def run_ffconcat_rebuild(self, payload: Mapping[str, object]) -> dict[str, object]:
         ffmpeg = _postprocess_ffmpeg(self.paths.env_path)
         if ffmpeg is None:
-            return {"ok": False, "field": "postprocessFfconcat", "code": "postprocess_failed", "detail": "FFmpeg was not found.", "error": "FFmpeg was not found."}
+            return {"ok": False, "field": "postprocessFfconcat", "code": "toolbox_failed", "detail": "FFmpeg was not found.", "error": "FFmpeg was not found."}
         self._emit_postprocess_status("toolbox_status_validating_media")
         try:
             self._emit_postprocess_status("toolbox_status_rebuilding_media")
@@ -1602,7 +1602,7 @@ class LauncherApi:
                 ffmpeg_path=ffmpeg,
             )
         except (OSError, ValueError, RuntimeError) as error:
-            return {"ok": False, "field": "postprocessFfconcat", "code": file_error_code(error) or "postprocess_failed", "detail": str(error), "error": str(error)}
+            return {"ok": False, "field": "postprocessFfconcat", "code": file_error_code(error) or "toolbox_failed", "detail": str(error), "error": str(error)}
         return {
             "ok": True,
             "sourceMediaPath": str(result.source_media_path),
@@ -4439,7 +4439,7 @@ def _script_match_input_error_code(
     input_paths = tuple(path.expanduser().resolve(strict=False) for path in (project_path, srt_path) if path is not None)
     if error_path in input_paths:
         return "subtitle_invalid"
-    return "postprocess_failed"
+    return "toolbox_failed"
 
 
 def _match_coverage_error_result(field: str, error: MatchCoverageError) -> dict[str, object]:

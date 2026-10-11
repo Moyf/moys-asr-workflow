@@ -68,19 +68,27 @@ function aiLifecycleHarness() {
   let sequence = 0;
   let cancelResult = { ok: true, active: true, cancelled: true };
   const context = vm.createContext({
-    $: element, busy: false, activePostprocessOperationId: "",
+    $: element, busy: false, activeToolId: "llm", runningToolId: "", toolboxResultTool: "", toolboxStreamTool: "",
+    activePostprocessOperationId: "",
     displayedPostprocessOperationId: "", postprocessOperationReady: false,
     postprocessOperationSequence: 0, postprocessCancelling: false,
     postprocessSettingsActionVisible: false,
     window: { crypto: { randomUUID: () => `operation-${++sequence}` } },
+    document: { querySelector: () => null },
     t: (key) => key, autoLlmReady: () => true, setFieldError() {},
+    aiCleanupProviderId: () => "deepseek",
     resolveInputPaths: () => ({ projectPath: "source.mosp" }),
     provider: () => ({ id: "deepseek" }), taskPromptText: () => "task",
     postprocessFieldId: () => "", postprocessErrorText: (result) => result.code || "failed",
     setBusy(value, key) {
       context.busy = value;
-      if (value) context.setResult(key);
-      else context.renderPostprocessResultActions();
+      if (value) {
+        if (!context.runningToolId) context.runningToolId = context.activeToolId;
+        context.setResult(key);
+      } else {
+        context.runningToolId = "";
+        context.renderPostprocessResultActions();
+      }
     },
     applySubtitleResult() { context.setResult("success", "success"); },
     bridge(method, payload) {
@@ -95,11 +103,13 @@ function aiLifecycleHarness() {
     "renderPostprocessResultActions", "setResult", "newPostprocessOperationId",
     "beginAiPostprocessOperation", "finishAiPostprocessOperation", "cancelAiPostprocess",
     "renderPostprocessStatus", "resetStreamOutput", "beginStreamOutput", "appendStreamText",
-    "renderPostprocessStream", "runAiCleanup", "runLlm",
+    "renderPostprocessStream", "syncSharedOutputVisibility", "resultOwningTool",
+    "scrollToolboxContentToTop", "runAiCleanup", "runLlm",
   ];
   vm.runInContext(functions.map(launcherFunction).join("\n"), context);
   return {
     runs, cancels, element,
+    switchTool(tool) { context.activeToolId = tool; context.syncSharedOutputVisibility(); },
     run: (entry) => entry === "cleanup" ? context.runAiCleanup({ projectPath: "source.mosp" }, "script.txt") : context.runLlm(),
     admit: (operationId) => context.renderPostprocessStatus({ stage: "admitted", key: "toolbox_status_starting", operationId }),
     stream: (operationId, kind, text = "") => context.renderPostprocessStream({ operationId, kind, text, batch: 1 }),
@@ -113,6 +123,22 @@ function aiLifecycleHarness() {
 }
 
 for (const entry of ["cleanup", "llm"]) {
+  test(`${entry} accumulates stream output while another tool is visible`, async () => {
+    const ui = aiLifecycleHarness();
+    const running = ui.run(entry);
+    const { payload, resolve } = ui.runs[0];
+    ui.stream(payload.operationId, 'content', 'before');
+    ui.switchTool('extractAudio');
+    assert.equal(ui.element('toolboxStreamOutput').classList.contains('hidden'), true);
+    ui.stream(payload.operationId, 'reasoning', 'hidden reasoning');
+    ui.stream(payload.operationId, 'content', ' hidden tail');
+    ui.switchTool('llm');
+    assert.equal(ui.element('toolboxStreamOutput').classList.contains('hidden'), false);
+    assert.equal(ui.element('toolboxModelOutput').textContent, 'before hidden tail');
+    assert.equal(ui.element('toolboxThinkingOutput').textContent, 'hidden reasoning');
+    resolve({ ok: true });
+    await running;
+  });
   test(`${entry} keeps queued reasoning/content after the completion Promise settles`, async () => {
     const ui = aiLifecycleHarness();
     const running = ui.run(entry);
@@ -203,6 +229,142 @@ test("missing AI provider offers settings and media rebuild tab alone stays hidd
   assert.match(html, /id="toolboxFfconcatTab" class="toolbox-tab hidden"/);
   assert.match(html, /id="toolboxFfconcatPanel"/);
   assert.match(html, /id="toolboxUtilitiesTabList"[^]*?<div class="toolbox-tab-list">/);
+});
+
+test("provider key status prefers a loaded key, then local no-key, then missing", () => {
+  const context = vm.createContext({ t: (key) => key });
+  vm.runInContext(launcherFunction("providerKeyStatusText"), context);
+  const status = context.providerKeyStatusText;
+  assert.equal(status({ maskedApiKey: "sk-…1", apiKeyRequired: true }), "toolbox_key_loaded");
+  assert.equal(status({ maskedApiKey: "", apiKeyRequired: false }), "toolbox_key_not_required");
+  assert.equal(status({ maskedApiKey: "", apiKeyRequired: true }), "toolbox_key_empty");
+  assert.match(strings, /toolbox_key_not_required:\s*"本地服务，无需密钥"/);
+  assert.match(strings, /toolbox_key_not_required:\s*"Local service; no API key needed"/);
+});
+
+function providerOwnershipHarness({ remembered = {} } = {}) {
+  const elements = new Map();
+  const selects = new Set(["postprocessProvider", "llmProvider", "postprocessAiCleanupProvider"]);
+  function element(id) {
+    if (!elements.has(id)) {
+      let value = "";
+      const options = [];
+      const classes = new Set();
+      elements.set(id, {
+        id, options, textContent: "", placeholder: "", checked: false,
+        get value() { return value; },
+        set value(next) { value = !selects.has(id) || options.some(option => option.value === next) ? next : ""; },
+        set innerHTML(_next) { options.length = 0; value = ""; },
+        add(option) { options.push(option); if (!value) value = option.value; },
+        classList: { toggle(name, force) { if (force) classes.add(name); else classes.delete(name); } },
+      });
+    }
+    return elements.get(id);
+  }
+  const providers = [
+    { id: "deepseek", label: "DeepSeek", maskedApiKey: "deepseek-mask" },
+    { id: "qwen", label: "Qwen", maskedApiKey: "qwen-mask" },
+    { id: "custom", displayName: "First slot", hasBaseUrl: true },
+    { id: "custom2", displayName: "Second slot", hasBaseUrl: false },
+    { id: "custom3", displayName: "Third slot", hasBaseUrl: false },
+  ];
+  const requests = [];
+  const noop = () => {};
+  const context = vm.createContext({
+    $: element, window: { MAWLauncher: { config: { postprocessProviders: providers } } },
+    Option: function Option(text, value) { this.textContent = text; this.value = value; },
+    t: key => key, postprocessApiKeyRequest: 0, llmProviderByTask: remembered,
+    LLM_PROVIDER_TASK_GROUPS: { proofread: "proofread" },
+    bridge(method, payload) { return new Promise(resolve => requests.push({ method, payload, resolve })); },
+    renderModelChoices: noop, clearSettingsErrors: noop, setSettingsSaveStatus: noop,
+    AUTO_STEP_ORDER: ["match"], AUTO_STEP_CHECKBOXES: { match: "autoStepMatch" },
+    llmPrompts: {}, activeLlmOperation: "", ocrVideoManual: false,
+    defaultAutoPlan: () => ({ enabled: false, steps: [] }),
+    renderAiCleanupMode: noop, validateMatchPunctuation: noop, refreshScriptPreview: noop,
+    syncReplacementSeparator: noop, renderReplacementPreview: noop,
+    autoLlmOperation: value => value, saveLlmPrompts: noop, loadLlmPrompt: noop,
+    renderOcrRegion: noop, setAutoStepsExpanded: noop, renderAutoPostprocessState: noop,
+    updateBackfillLabels: noop, autoOcrVideoPath: () => "", ocrRegionPayload: () => ({}),
+    punctuationLines: () => [], parseReplacements: () => [], replacementRuleText: () => "", getLlmPrompt: () => "",
+    stepProviderId: () => element("postprocessProvider").value,
+  });
+  const functions = [
+    "provider", "isCustomSlot", "customSlotLabelKey", "customSlotVisibleInToolbox",
+    "fillProviderSelects", "syncProviderOptionLabels", "providerLabel", "providerKeyStatusText",
+    "renderProviderKeyStatus", "renderAiCleanupProviderStatus", "loadPostprocessApiKey",
+    "updateCustomDisplayName", "renderProvider", "knownProviderId", "llmTaskGroup",
+    "providerIdForTask", "aiCleanupProviderId", "applyAutoPostprocessPlan", "autoPlanFromControls",
+  ];
+  vm.runInContext(functions.map(launcherFunction).join("\n"), context);
+  context.fillProviderSelects("deepseek");
+  return { context, element, providers, requests };
+}
+
+test("editing an unconfigured settings slot preserves the toolbox provider and loads its own key", async () => {
+  const ui = providerOwnershipHarness();
+  ui.element("llmProvider").value = "custom2";
+  ui.context.renderProvider("custom2", { syncToolbox: false });
+  assert.equal(ui.element("postprocessProvider").value, "deepseek");
+  assert.equal(ui.element("llmProvider").value, "custom2");
+  const request = ui.requests[0];
+  assert.equal(request.payload.providerId, "custom2");
+  request.resolve({ ok: true, apiKey: "test-second-slot-key", maskedApiKey: "second-mask" });
+  await new Promise(setImmediate);
+  assert.equal(ui.element("llmApiKey").value, "test-second-slot-key");
+  assert.match(ui.element("postprocessProviderStatus").textContent, /DeepSeek/);
+  assert.match(ui.element("llmKeyStatus").textContent, /toolbox_key_loaded/);
+});
+
+test("late settings key responses cannot replace another settings slot", async () => {
+  const ui = providerOwnershipHarness();
+  ui.context.renderProvider("custom2", { syncToolbox: false });
+  ui.context.renderProvider("custom3", { syncToolbox: false });
+  ui.requests[1].resolve({ ok: true, apiKey: "test-third-slot-key" });
+  await new Promise(setImmediate);
+  ui.requests[0].resolve({ ok: true, apiKey: "test-second-slot-key" });
+  await new Promise(setImmediate);
+  assert.equal(ui.element("llmApiKey").value, "test-third-slot-key");
+  assert.equal(ui.element("postprocessProvider").value, "deepseek");
+});
+
+test("a filtered preferred provider keeps valid toolbox defaults and remains editable in settings", () => {
+  const ui = providerOwnershipHarness();
+  for (const id of ["postprocessProvider", "llmProvider", "postprocessAiCleanupProvider"]) ui.element(id).innerHTML = "";
+  ui.context.fillProviderSelects("custom2");
+  assert.equal(ui.element("postprocessProvider").value, "deepseek");
+  assert.equal(ui.element("postprocessAiCleanupProvider").value, "deepseek");
+  assert.equal(ui.element("llmProvider").value, "custom2");
+  ui.context.renderProvider("qwen", { syncToolbox: false });
+  assert.equal(ui.element("postprocessProvider").value, "deepseek");
+  assert.equal(ui.element("llmProvider").value, "qwen");
+});
+
+test("renaming a hidden settings slot changes only that slot", () => {
+  const ui = providerOwnershipHarness();
+  ui.context.renderProvider("custom2", { syncToolbox: false });
+  ui.context.updateCustomDisplayName("Named second slot");
+  assert.equal(ui.providers.find(item => item.id === "custom").displayName, "First slot");
+  assert.equal(ui.providers.find(item => item.id === "custom2").displayName, "Named second slot");
+  assert.equal(ui.element("postprocessProvider").value, "deepseek");
+  assert.equal(ui.element("llmProvider").value, "custom2");
+});
+
+test("old automatic cleanup plans restore their provider without new task memory", () => {
+  const ui = providerOwnershipHarness();
+  ui.context.applyAutoPostprocessPlan({ enabled: true, steps: [{ id: "match", enabled: true, aiCleanup: true, providerId: "qwen" }] });
+  assert.equal(ui.element("postprocessAiCleanupProvider").value, "qwen");
+  assert.equal(ui.context.aiCleanupProviderId(), "qwen");
+  assert.equal(ui.context.autoPlanFromControls().steps.find(step => step.id === "match").providerId, "qwen");
+  assert.equal(ui.element("postprocessProvider").value, "deepseek");
+});
+
+test("cleanup restoration keeps current task memory and falls back to a visible provider", () => {
+  for (const remembered of [{ ai_cleanup: "deepseek" }, { ai_cleanup: "custom2" }]) {
+    const ui = providerOwnershipHarness({ remembered });
+    ui.context.applyAutoPostprocessPlan({ steps: [{ id: "match", aiCleanup: true, providerId: "qwen" }] });
+    assert.equal(ui.element("postprocessAiCleanupProvider").value, "deepseek");
+    assert.equal(ui.context.aiCleanupProviderId(), "deepseek");
+  }
 });
 
 test("green-screen generation does not require or disable for missing media", () => {
