@@ -22,10 +22,13 @@
 
 ## 先读这些文件
 
+先读根规则，再按本次变更范围选择相关文件。
+
 ```text
 README.md                     # 新用户的安装和最短路径
 docs/user/WORKFLOW.md              # 全流程、参数、排错
 JSON_SCHEMA.md                # JSON 工程契约
+maw_gui.py + maw/cli.py        # 公开 CLI 与命令分派（指南见 docs/user/CLI.md）
 generate_subtitle_qwen_api.py # API 转写入口
 edit.py + maw/waveform.py     # 单文件编辑器生成和波形缓存
 server-editor/serve.py        # 推荐的 localhost 编辑器
@@ -51,6 +54,8 @@ uv run python edit.py --blank
 不要手改 `blank-editor.html` 内联副本。所有文本文件必须保持 UTF-8 与 LF（`\n`）换行，包括 Windows 上编辑的 `.py`、`.js`、`.html`、`.md`、`.yml`、`.ps1` 等文件；禁止提交 CRLF（`\r\n`）。不要依赖开发者机器的 `core.autocrlf`，以仓库 `.gitattributes` 的 `eol=lf` 规则为准。
 
 ## 开发与验证
+
+以下是维护者准备环境和手动验证的命令；Agent 执行遵循本节后面的命令与日志纪律。
 
 ```powershell
 uv sync

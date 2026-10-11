@@ -71,6 +71,6 @@
 | unversioned | 2026-08-03 | [Qwen-Audio Filetrans 开发计划](unversioned/2026-08-03/Qwen-Audio-Filetrans%20%E5%BC%80%E5%8F%91%E8%AE%A1%E5%88%92.md) | 保留原始结论与验证范围 |
 | unversioned | 2026-08-03 | [MAW 1.2 本地模型 Launcher 开发记录](unversioned/2026-08-03/MAW%201.2%20%E6%9C%AC%E5%9C%B0%E6%A8%A1%E5%9E%8B%20Launcher%20%E5%BC%80%E5%8F%91%E8%AE%B0%E5%BD%95.md) | 保留原始结论与验证范围 |
 | unversioned | 2026-07-28 | [ASR 供应商调研：Fun-ASR 与豆包大模型录音文件识别](unversioned/2026-07-28/ASR_PROVIDER_RESEARCH.md) | 保留原始结论与验证范围 |
-| unversioned | 2026-07-27 | [MAW 1.1 开发追踪](unversioned/2026-07-27/MAW%201.1%20%E5%BC%80%E5%8F%91%E8%BF%BD%E8%B8%AA.md) | 保留原始结论与验证范围 |
+| 1.1.0 | 2026-07-27 | [MAW 1.1 开发追踪](1.1.0/2026-07-27/MAW%201.1%20%E5%BC%80%E5%8F%91%E8%BF%BD%E8%B8%AA.md) | 正文明确版本目标为 1.1.0；保留原始结论与验证范围 |
 | unversioned | undated | [editor-settings.html](unversioned/undated/editor-settings-report/editor-settings.html) | 共享报告；源材料在同目录 |
 | 1.8.0-beta.1 | 2026-10-09 | [maw-verification-v1.8.0b1-to-main.html](1.8.0-beta.1/2026-10-09/first-verification/maw-verification-v1.8.0b1-to-main.html) | 共享报告；源材料在同目录 |

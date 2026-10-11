@@ -33,8 +33,8 @@ jobs:
       # These checks need only the standard libraries: no uv/pnpm install.
       - name: Documentation navigation, consumers and regression tests
         run: |
-          python scripts/check_docs.py
-          python -m unittest discover -s tests -p test_docs_check.py
+          python scripts/run_check.py --timeout 180 -- python scripts/check_docs.py
+          python scripts/run_check.py --timeout 180 -- python scripts/run_tests.py tests/test_docs_check.py
       - name: Runner output, exit codes and timeout cleanup
         run: python scripts/run_check.py --timeout 60 -- python -m unittest tests.test_run_check tests.test_compact_assertions
       - name: Server diagnostics and process lifecycle

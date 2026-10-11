@@ -1,7 +1,8 @@
 """Read-only documentation navigation, local links and consumer checks.
 
 Uses only Python's standard library. Baseline exceptions identify historical
-links, not permission to introduce additional missing targets.
+links, not permission to introduce additional missing targets. Their default
+treatment stays tolerant; ``--strict`` also fails while any of them remain.
 """
 from __future__ import annotations
 
@@ -20,23 +21,53 @@ ROOT = Path(__file__).resolve().parents[1]
 SCHEME = re.compile(r"^[a-z][a-z0-9+.-]*:", re.I)
 HTML_TARGET = re.compile(r'''\b(?:href|src)\s*=\s*["']([^"']+)["']''', re.I)
 EXPLICIT_ID = re.compile(r'''\b(?:id|name)\s*=\s*["']([^"']+)["']''', re.I)
+INLINE_CODE = re.compile(r"(?<!`)(`+)(?!`)(?:(?!\n[ \t]*\n)[\s\S])*?(?<!`)\1(?!`)")
+
+
+def inline_code_spans(text: str):
+    cursor = 0
+    while match := INLINE_CODE.search(text, cursor):
+        before = match.start() - 1
+        while before >= 0 and text[before] == "\\":
+            before -= 1
+        if (match.start() - before - 1) % 2:
+            cursor = match.start() + len(match[1])
+        else:
+            yield match.span()
+            cursor = match.end()
 
 
 def visible_text(text: str) -> str:
     """Drop fenced code and comments while preserving source line numbers."""
-    text = re.sub(r"<!--[\s\S]*?-->", lambda m: "\n" * m[0].count("\n"), text)
-    result, fence = [], None
-    for line in text.splitlines():
-        match = re.match(r"^\s*(`{3,}|~{3,})", line)
-        if match:
-            marker = match[1]
-            if fence is None:
-                fence = marker
-            elif marker[0] == fence[0] and len(marker) >= len(fence):
+    code_spans = list(inline_code_spans(text))
+    result, fence, comment, offset = [], None, False, 0
+    for raw in text.splitlines(keepends=True):
+        line = raw.rstrip("\r\n")
+        match = re.match(r"^ {0,3}(`{3,}|~{3,})(.*)$", line)
+        if fence:
+            if match and match[1][0] == fence[0] and len(match[1]) >= len(fence) and not match[2].strip():
                 fence = None
             result.append("")
+        elif match and not comment:
+            fence = match[1]
+            result.append("")
         else:
-            result.append("" if fence else line)
+            visible, cursor = [], 0
+            while cursor < len(line):
+                if comment:
+                    end = line.find("-->", cursor)
+                    if end < 0:
+                        break
+                    cursor, comment = end + 3, False
+                elif line.startswith("<!--", cursor) and not any(
+                    start <= offset + cursor < end for start, end in code_spans
+                ):
+                    cursor, comment = cursor + 4, True
+                else:
+                    visible.append(line[cursor])
+                    cursor += 1
+            result.append("".join(visible))
+        offset += len(raw)
     return "\n".join(result)
 
 
@@ -44,11 +75,15 @@ def anchors(text: str) -> set[str]:
     text = visible_text(text)
     result = set(EXPLICIT_ID.findall(text))
     seen: Counter[str] = Counter()
-    for line in text.splitlines():
+    lines = text.splitlines()
+    for number, line in enumerate(lines):
         match = re.match(r"^\s{0,3}#{1,6}\s+(.+?)\s*#*\s*$", line)
-        if not match:
+        title = match[1] if match else None
+        if title is None and line.strip() and number + 1 < len(lines) and re.fullmatch(r" {0,3}(?:=+|-+)\s*", lines[number + 1]):
+            title = line.strip()
+        if title is None:
             continue
-        title = re.sub(r"<[^>]+>", "", match[1]).lower()
+        title = re.sub(r"<[^>]+>", "", title).lower()
         title = re.sub(r"\[([^]]+)\]\([^)]*\)", r"\1", title)
         slug = "".join(c for c in title if c.isalnum() or c in " _-").replace(" ", "-")
         occurrence = seen[slug]
@@ -63,9 +98,12 @@ def links(text: str):
     Balanced parentheses and angle destinations permit filenames with spaces.
     Wiki image embeds in preserved feedback also have a local file target.
     """
-    for number, line in enumerate(visible_text(text).splitlines(), 1):
-        # Inline code may show an intentionally hypothetical link.
-        line = re.sub(r"(`+).*?\1", "", line)
+    text = visible_text(text)
+    characters = list(text)
+    for start, end in inline_code_spans(text):
+        characters[start:end] = ["\n" if c == "\n" else " " for c in text[start:end]]
+    text = "".join(characters)
+    for number, line in enumerate(text.splitlines(), 1):
         for match in HTML_TARGET.finditer(line):
             yield number, match[1]
         for match in re.finditer(r"!?\[\[([^]|]+)(?:\|[^]]+)?\]\]", line):
@@ -102,6 +140,7 @@ def links(text: str):
 
 
 def destination(source: str, target: str) -> tuple[str, str] | None:
+    target = re.sub(r"\\([!\"#$%&'()*+,\-./:;<=>?@\[\]\\^_`{|}~])", r"\1", target)
     if not target or SCHEME.match(target) or target.startswith(("/", "//")):
         return None
     url = urlsplit(target)
@@ -207,10 +246,14 @@ def structure(texts: dict[str, str], paths: set[str]) -> list[str]:
     return errors
 
 
-def compare(issues: list[dict], baseline: list[dict], mapping: dict[str, str] | None = None) -> list[dict]:
+def baseline_signatures(baseline: list[dict], mapping: dict[str, str] | None = None) -> set[tuple[str, str, str, str]]:
     mapping = mapping or {}
-    known = {(mapping.get(i["source"], i["source"]), mapping.get(i["resolved"], i["resolved"]),
-              i.get("fragment", ""), i["reason"]) for i in baseline}
+    return {(mapping.get(i["source"], i["source"]), mapping.get(i["resolved"], i["resolved"]),
+             i.get("fragment", ""), i["reason"]) for i in baseline}
+
+
+def compare(issues: list[dict], baseline: list[dict], mapping: dict[str, str] | None = None) -> list[dict]:
+    known = baseline_signatures(baseline, mapping)
     return [issue for issue in issues if signature(issue) not in known]
 
 
@@ -220,33 +263,39 @@ def main() -> int:
     parser.add_argument("--base-ref", help="Compare links with a locally available Git snapshot")
     parser.add_argument("--mapping", type=Path, help="JSON old-to-new path mapping for migration comparison")
     parser.add_argument("--scan-only", action="store_true", help="Inventory links without requiring the new structure")
+    parser.add_argument("--strict", action="store_true", help="Also fail on registered historical broken links")
     parser.add_argument("--json", action="store_true", help="Emit machine-readable results to stdout; never write files")
     args = parser.parse_args()
     texts, paths = read_tree(args.root)
     issues = scan(texts, paths)
+    mapping = {}
     if args.base_ref:
         before, old_paths = read_tree(args.root, args.base_ref)
         baseline = scan(before, old_paths)
-        mapping = json.loads(args.mapping.read_text(encoding="utf-8")) if args.mapping else {}
-        new = compare(issues, baseline, mapping)
+        if args.mapping:
+            mapping = json.loads(args.mapping.read_text(encoding="utf-8"))
     else:
         baseline = json.loads(texts.get("scripts/docs-link-exceptions.json", '{"issues":[]}'))["issues"]
-        new = compare(issues, baseline)
+    known = baseline_signatures(baseline, mapping)
+    registered = [issue for issue in issues if signature(issue) in known]
+    new = [issue for issue in issues if signature(issue) not in known]
     errors = [] if args.scan_only else structure(texts, paths)
     if not args.scan_only:
         ignored = subprocess.run(["git", "check-ignore", "--no-index", "-q", ".artifacts/docs-check/probe.txt"], cwd=args.root).returncode == 0
         if not ignored:
             errors.append("/.artifacts/ is not ignored")
-    result = {"files": len(paths), "existing_links": len(issues) - len(new), "new_links": new, "structure_errors": errors, "issues": issues}
+    result = {"files": len(paths), "existing_links": len(registered), "new_links": new, "structure_errors": errors, "issues": issues}
     if args.json:
         print(json.dumps(result, ensure_ascii=False, indent=2))
     else:
-        print(f"docs: {len(paths)} files; {len(issues) - len(new)} known historical links; {len(new)} new broken links; {len(errors)} structure errors")
+        print(f"docs: {len(paths)} files; {len(registered)} known historical links; {len(new)} new broken links; {len(errors)} structure errors")
+        if args.strict:
+            print(f"strict: {len(registered)} registered historical broken links fail in this mode")
         for error in errors:
             print(error)
-        for issue in new[:30]:
+        for issue in (new + registered if args.strict else new)[:30]:
             print(f'{issue["source"]}:{issue["line"]}: {issue["reason"]}: {issue["target"]}')
-    return int(bool(new or errors))
+    return int(bool(new or errors or (args.strict and registered)))
 
 
 if __name__ == "__main__":

@@ -29,6 +29,8 @@
 
 新增独立指南、工程说明或计划登记到 `INDEX.md`，日志登记到日志索引，附件随所属正文引用。通用的现行说明引用走主题入口；精确章节、历史证据、图片和程序输入使用直接目标。正文移动时更新映射并保持主题 ID 稳定。
 
+官网已公开的页面 URL 与主题 ID 同样保持稳定。归档原文记录当时状态，当前正文改名不回写归档内容。
+
 CURRENT 按具体版本或代码范围描述参考价值。有新证据时更新相关条目，结论进入现行说明后收束对应待办。已知正文位置时可直接阅读，历史资料按追溯需要查阅。
 
 ### 更新与退役
@@ -43,10 +45,12 @@ CURRENT 按具体版本或代码范围描述参考价值。有新证据时更新
 
 ```sh
 python scripts/check_docs.py
-python -m unittest discover -s tests -p test_docs_check.py
+python scripts/run_tests.py tests/test_docs_check.py
 ```
 
-检查默认只读，覆盖 Git 已跟踪及未忽略的新文件，验证当前入口、独立文档登记、日志可达性、内部链接/锚点/图片、官网源文档、已知消费者与临时区隔离。`scripts/docs-link-exceptions.json` 只登记迁移基线中旧 README 的历史断链；新断链会失败。结构检查用于验证路径与依赖，正文正确性结合实际改动审阅。Markdown 代码示例和动态拼接路径不能由链接扫描证明，相关消费者仍需运行对应测试。
+Agent 与 CI 使用 `python scripts/run_check.py --timeout 180 --` 包装上述命令，按根规则保存有界摘要与原始日志。
+
+检查默认只读，覆盖 Git 已跟踪及未忽略的新文件，验证当前入口、独立文档登记、日志可达性、内部链接/锚点/图片、官网源文档、已知消费者与临时区隔离。`scripts/docs-link-exceptions.json` 只登记迁移基线中旧 README 的历史断链；新断链会失败。使用 `--strict` 可复核全部仍存在的历史断链，严格模式下它们也导致失败。结构检查用于验证路径与依赖，正文正确性结合实际改动审阅。Markdown 代码示例和动态拼接路径不能由链接扫描证明，相关消费者仍需运行对应测试。
 
 比较迁移前快照时，可运行 `python scripts/check_docs.py --base-ref <本地提交> --mapping <旧路径到新路径的JSON>`；只读输出 JSON 使用 `--json`，原始输出保存到 `.artifacts/<task-id>/`。
 

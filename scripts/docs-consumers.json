@@ -11,6 +11,9 @@
     "docs/logs/unversioned/2026-10-08/esm-research/ESM_PRODUCTION_MERGE_RESULTS.json",
     "docs/logs/unversioned/2026-10-08/esm-research/ESM_PRODUCTION_PR_SNAPSHOT.json",
     "docs/logs/unversioned/2026-10-08/esm-research/ESM_UPSTREAM_MERGE_RESULTS.json",
-    "docs/logs/unversioned/2026-10-08/esm-research/ESM_UPSTREAM_PR_SNAPSHOT.json"
+    "docs/logs/unversioned/2026-10-08/esm-research/ESM_UPSTREAM_PR_SNAPSHOT.json",
+    "tests/fixtures/docs-navigation/docs/导航 入口.html",
+    "tests/fixtures/docs-navigation/docs/带 空格/字幕 指南.html",
+    "tests/fixtures/docs-navigation/docs/图片 素材/导航 示意.svg"
   ]
 }

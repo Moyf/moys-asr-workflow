@@ -18,9 +18,9 @@
 
 ## 代码风格
 
-文档分类、稳定入口、临时输出与退役遵循[文档约定](docs/README.md#doc-policy)。文档变更在根目录运行 `python scripts/check_docs.py`；新增检查的回归使用 `python -m unittest discover -s tests -p test_docs_check.py`。
+文档分类、稳定入口、临时输出与退役遵循[文档约定](docs/README.md#doc-policy)。文档变更在根目录运行 `python scripts/check_docs.py`；新增检查的回归使用 `python scripts/run_tests.py tests/test_docs_check.py`。Agent 执行时按根规则用 `scripts/run_check.py` 包装命令。
 
-- Python：遵循现有代码风格；安装环境后使用 `uv run --no-sync python -m unittest discover -s tests -p "test_*.py"`。
+- Python：遵循现有代码风格；安装环境后使用 `uv run --no-sync python scripts/run_tests.py`。
 - 前端（web/）：LF 换行，保持既有缩进风格
 
 所有文本使用 UTF-8 与 LF。前端装配检查、类型检查与浏览器回归见 [开发概览](docs/INDEX.md#engineering-development)。
