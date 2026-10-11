@@ -21,14 +21,14 @@ verification-checklist/
 先用仓库内示例生成一页：
 
 ```powershell
-python tools/verification-checklist/build.py --data tools/verification-checklist/examples/checklist.json --output "$env:TEMP/verification.html"
-Start-Process "$env:TEMP/verification.html"
+python tools/verification-checklist/build.py --data tools/verification-checklist/examples/checklist.json --output ".artifacts/verification/verification.html"
+Start-Process ".artifacts/verification/verification.html"
 ```
 
 实际任务将 AI 输出保存为 JSON，再生成：
 
 ```powershell
-python tools/verification-checklist/build.py --data "$env:TEMP/checklist.json" --output "$env:TEMP/verification.html"
+python tools/verification-checklist/build.py --data ".artifacts/verification/checklist.json" --output ".artifacts/verification/verification.html"
 ```
 
 生成前检查必填字段、字段类型、未知字段、重复 JSON 字段、稳定 ID、徽标类型和表格列数；字段校验错误包含路径，拒绝孤立 Unicode 代理字符及 HTML 无法保留的 NUL 字符。完整页面先写到输出目录的临时文件，再替换目标，校验或写入失败保留已有输出。所有数据文本都做 HTML 转义，不支持原始 HTML、Markdown 或脚本；命令只是展示，不会执行。JSON 支持 UTF-8 BOM。
@@ -36,14 +36,14 @@ python tools/verification-checklist/build.py --data "$env:TEMP/checklist.json" -
 兼容已有分区 HTML 输入：
 
 ```powershell
-python tools/verification-checklist/build.py --title "本次功能核对" --subtitle "范围、基线与已知未验证边界" --sections "$env:TEMP/verification-sections.html" --output "$env:TEMP/verification.html"
-Start-Process "$env:TEMP/verification.html"
+python tools/verification-checklist/build.py --title "本次功能核对" --subtitle "范围、基线与已知未验证边界" --sections ".artifacts/verification/verification-sections.html" --output ".artifacts/verification/verification.html"
+Start-Process ".artifacts/verification/verification.html"
 ```
 
-默认将生成物放仓库外，不加入 Git。用户明确要求更新已有核对页时：
+默认将生成物放在仓库根 `.artifacts/<task-id>/`，不加入 Git；用户已指定仓库外目录时遵从指定。用户明确要求更新已有核对页时：
 
 ```powershell
-python tools/verification-checklist/build.py --refresh "$env:TEMP/verification.html"
+python tools/verification-checklist/build.py --refresh ".artifacts/verification/verification.html"
 ```
 
 更新会覆盖目标文件的页面外壳，保留页面标题、可见标题、分区内容与核对项 ID；可加 `--output` 另存。浏览器刷新后生效。同标题、同浏览器存储环境中的既有勾选与备注继续读取；迁移到别的浏览器或来源不保证共享本机存储。分段拼装的旧页面也要同步头尾分段，以免下一次拼装覆盖工具更新。
