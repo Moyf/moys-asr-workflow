@@ -218,7 +218,7 @@
     "shared/utils/split-trim.js": "322d10161f098d7730c5c1e3ff9d0c293a2b12e16311bd98d8f0cd69938ac54d",
     "shared/utils/timeline.js": "906181e39d7a1aa59919ed5b073383d19d4be545f1ff18ec721fcf013a283182",
     "shared/utils/settings.js": "9b643cf26b8758e6ab92f43bf81e0f5897d1edae28b8efabfb674c2b15bc999f",
-    "shared/utils/gap-remove.js": "a1b87f7b0990bac026bc38ddb6231777cebd2dc9ef8c803baf70ee09bc9e4350",
+    "shared/utils/gap-remove.js": "b0edba447e6d5319d01e206a8da244bb15963f1b7c80c48ca733e145dce66c17",
     "shared/utils/history.js": "0929c838e2fb6359d9e441dfc18b663a68b23b17319a43ea5f6855aace5483f7",
     "shared/utils/markers.js": "e24a8cf115a58475fc7b293f550dbdebf52cbedca54277315a36d739050d4dbf",
     "shared/utils/multi-subtitle.js": "030482c28fd76a1fc1241feaad5a96c64511b91de12e8efbc16fffe48603b42b",
@@ -237,7 +237,7 @@
     "shared/utils/preview-geometry.js": "7b9a6232d51808e4fb9e342f4bc385079a866557194fa83f41381c13a4ca3b42",
     "shared/utils/lottie.js": "a74b0332e76eef35299d9567c052584a61383134cf03e9ea5279b11e6d4e69ea",
     "shared/utils/ograf.js": "94b88b7db9ea4fd862dc49985f1a5e46bcef6bc70837cb656b0cd1b085a40d89",
-    "shared/editor-utils.js": "40263d6c074efd5efca133869dbe421439c898bbcdc73b2e8d09fd90dc4d5497",
+    "shared/editor-utils.js": "add68f925fa37d3c2781c2be12aae014bb679c0dd3c3f8a7835f3eec57d9a196",
     "shared/editor-i18n.js": "3c560cfc5d5c9ce41507fe5e7c450e10866c44da37fd643d2f92024235be09f9",
     "shared/tooltip.js": "e800623864ea73a6ecbbb225c1d283573b81c055f6191a27ad7c0ed9778b4c88",
     "editor/media/waveform/constants.js": "d5bd567ad4dcbee81995e275e8bf0be571b47e28952fa944478a66aa78e079e4",
@@ -291,7 +291,7 @@
     "editor/media/editor-preview-geometry.js": "a25ce72a3dcdf49a2a5f6a9e62cfc2241e91aac47e6cbb0fbb47d804b147beca",
     "editor/media/editor-playback-loop.js": "fe71bdf0c4f1b76fe0b3f0a9262a0ae7172201d5fbaade52d7e4803ba8e67530",
     "editor/media/editor-sticker-overlay.js": "5f5799615e6ef890cf7360ee4ae0a85123acdee9d27a79cec801a68a9648c863",
-    "editor/io/editor-export-srt.js": "77095c1d2227dd75fde41620e2b58772f389f343bf6af9fee018a5904ff0d4ff",
+    "editor/io/editor-export-srt.js": "e15bc10d349396601b269c5c7808b2060dcd890a521f6eb9f031d8d61437f0c8",
     "editor/io/editor-export-timeline.js": "b3fe38336828a6b7d81fdab1f56dcf5b0eb669984d4a958ff7eecd3363461bca",
     "editor/io/editor-server-save.js": "d49528b92ccfdc8320a1319fa1558ad2e8a12e518d7b18e48cfabbe5b9c09ba8",
     "editor/ui/editor-workspaces.js": "6a0dcfab40bffcce3b10dae025d4ca20413f059a0905df93a11af9132cc7d58c",
@@ -367,7 +367,7 @@
     "editor/styles/editor-wiring-ass-canvas.js": "760124beb2fc0b54d19f82ccfb325cd9d0ba7f032897c5107f35a8ebed7699ee",
     "editor/styles/editor-wiring-ass-frame.js": "1a3c186069460cde01b86e0c1614b8b71d3f9fa7c4ef377988824b14adff69e5",
     "editor/media/editor-wiring-sticker-preview.js": "fa46c5d9075247e627f4fea99cd13d36d1492e4bd5ee1c7a51f046168abbbdb8",
-    "editor/io/editor-wiring-export-context.js": "89ac0732b2bcb77878991af980335662d739e4d1cfff65152e4878b042545f0e",
+    "editor/io/editor-wiring-export-context.js": "af4c5c25d8fe67e680f106088d9f3ba22a71cfe18500c159ce81921568ddbf7e",
     "editor/io/editor-wiring-export-actions.js": "6882f8894642f27b54756a8494d2328ec414dbf39e446ea8bc86903480f74028",
     "editor/ui/editor-wiring-toolbar-menus.js": "7b6594d2a19ced6990cdacbf1e258861467de9f40cf087e51142d1ffcc737b45",
     "editor/io/editor-wiring-project-inputs.js": "83f60f05a35b1aa96f88f9cbb50e7f361cc77072c255f148b66c1edd396b3020",
@@ -477,7 +477,7 @@
         "format": "esm"
       },
       "web/shared/utils/gap-remove.js": {
-        "bytes": 6228,
+        "bytes": 8098,
         "imports": [],
         "format": "esm"
       },
@@ -692,7 +692,7 @@
         "format": "esm"
       },
       "web/editor-entry.mjs": {
-        "bytes": 1807505,
+        "bytes": 1807877,
         "imports": [
           {
             "path": "web/shared/host/storage.js",
@@ -1064,7 +1064,7 @@
             "bytesInOutput": 9601
           },
           "web/shared/utils/gap-remove.js": {
-            "bytesInOutput": 2844
+            "bytesInOutput": 3815
           },
           "web/shared/utils/history.js": {
             "bytesInOutput": 1315
@@ -1193,10 +1193,10 @@
             "bytesInOutput": 4423
           },
           "web/editor-entry.mjs": {
-            "bytesInOutput": 1049314
+            "bytesInOutput": 1049468
           }
         },
-        "bytes": 1397838
+        "bytes": 1398963
       }
     }
   }

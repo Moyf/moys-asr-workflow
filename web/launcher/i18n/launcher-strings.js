@@ -1299,3 +1299,30 @@ Object.assign(STRINGS.en, {
   toolbox_chain_timestamps: "[Generate timestamps]",
   toolbox_timestamp_model_not_ready: "The aligner is not ready. Download it first.",
 });
+
+Object.assign(STRINGS.zh, {
+  toolbox_ai_cleanup_task: "AI 口播整理",
+  auto_step_cleanup: "AI 口播整理",
+  toolbox_cleanup_reference: "参考文稿（可选）",
+  toolbox_cleanup_reference_placeholder: "留空按转写整理，或选择 .txt / .md 文稿",
+  toolbox_cleanup_task_hint: "整理重录、真重复与句内磕巴；原始转写可恢复，删除写为空隙，存疑写为待核查区段。",
+  toolbox_generate_comparison: "生成处理前后对比结果",
+  toolbox_generate_comparison_hint: "同时生成本地 HTML，可查看原文、处理结果及待核查原因。",
+  toolbox_comparison_path: "处理前后对比：",
+  artifact_type_comparison: "对比 HTML",
+  toolbox_task_cleanup: "按完整表达整理口播：清理作废 take、真重复、过程话和句内磕巴，守住信息与承接。不改写原文；参考文稿可选。模型编辑文字稿，本地脚本转换为可恢复的空隙和待核查区段，再做漏清扫描与剪后审计。",
+  ai_cleanup_stats_summary: "文稿对应 {matched} 段 · 改说 {rephrased} 段 · 额外保留 {extras} 段 · 整段删除 {removed} 段 · 局部删减 {edited} 段 / {items} 个词项 · 待核查 {review} 段",
+});
+Object.assign(STRINGS.en, {
+  toolbox_ai_cleanup_task: "Spoken-word cleanup",
+  auto_step_cleanup: "Spoken-word cleanup",
+  toolbox_cleanup_reference: "Reference manuscript (optional)",
+  toolbox_cleanup_reference_placeholder: "Leave empty or choose a .txt / .md manuscript",
+  toolbox_cleanup_task_hint: "Clean retakes, true repeats and false starts. Source words remain recoverable; cuts become gaps and uncertain content becomes review regions.",
+  toolbox_generate_comparison: "Generate before/after comparison",
+  toolbox_generate_comparison_hint: "Also save an offline HTML showing source, result and review reasons.",
+  toolbox_comparison_path: "Before/after comparison:",
+  artifact_type_comparison: "Comparison HTML",
+  toolbox_task_cleanup: "Compare complete expressions and clean failed takes, true repeats, process talk and false starts without rewriting source words. A reference is optional. Local scripts convert the editing draft to reversible cuts and review regions, followed by a missed-cut scan and continuity audit.",
+  ai_cleanup_stats_summary: "Matched {matched} · Rephrased {rephrased} · Extra kept {extras} · Deleted cues {removed} · Partial edits {edited} / {items} items · Pending review {review}",
+});

@@ -60,6 +60,7 @@ class LlmPostprocessRequest:
     merge_bilingual: bool = False
     embed_translations: bool = False
     bilingual_line_order: str = ""
+    generate_comparison: bool = False
 
 
 class PostprocessStepError(RuntimeError):
@@ -462,6 +463,7 @@ def run_llm_postprocess(
         warnings,
         output_directory=request.output_directory,
         media_path=request.media_path,
+        comparison_source=project if request.generate_comparison else None,
     )
 
 
@@ -1817,6 +1819,7 @@ def _write(
     warnings: tuple[str, ...] = (),
     output_directory: Path | None = None,
     media_path: Path | None = None,
+    comparison_source: Mapping[str, object] | None = None,
 ) -> SubtitleArtifact:
     return write_artifacts(
         project,
@@ -1828,6 +1831,7 @@ def _write(
         warnings=warnings,
         output_directory=output_directory,
         media_path=media_path,
+        comparison_source=comparison_source,
     )
 
 

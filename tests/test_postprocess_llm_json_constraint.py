@@ -286,39 +286,30 @@ class JsonConstraintDowngradeTests(unittest.TestCase):
             ]
         )
         with mock.patch("maw.postprocess_llm.requests.Session", return_value=session):
-            result = llm_complete(_make_settings())("Return JSON.", [])
+            result = llm_complete(_make_settings())("Return JSON.", [{"id": "c001", "asrText": "test", "proposed": "keep"}])
         self.assertEqual(result, {"decisions": []})
         self.assertEqual(session.post.call_count, 3)
 
-    def test_cleanup_schema_follows_decision_and_readthrough_payloads(self) -> None:
+    def test_cleanup_draft_is_text_and_audit_retains_json_schema(self) -> None:
         from maw.postprocess_ai_cleanup import llm_complete
         from maw.postprocess_ai_cleanup_review import review_decisions
-
-        payloads: list[dict] = []
-
-        def post_effect(url, json: dict | None = None, **_kwargs):
-            assert json is not None
+        payloads = []
+        def post_effect(url, json=None, **kwargs):
             payloads.append(json)
             fmt = json.get("response_format")
-            if fmt is None or fmt["type"] == "json_object":
+            if fmt is None:
+                return _response_mock(_completion_body("[c001] test"))
+            if fmt["type"] == "json_object":
                 return _rejection_response_mock()
-            # A grammar-enforcing endpoint emits only the required envelope.
-            required = fmt["json_schema"]["schema"]["required"]
-            content = '{"reviews":[]}' if required == ["reviews"] else '{"decisions":[]}'
-            return _response_mock(_completion_body(content))
-
+            self.assertEqual(fmt["json_schema"]["schema"]["required"], ["reviews"])
+            return _response_mock(_completion_body('{"reviews":[]}'))
         transport = llm_complete(_make_settings())
-        with mock.patch(
-            "maw.postprocess_llm.requests.Session",
-            return_value=_mock_session(post_effect),
-        ):
-            self.assertEqual(transport("Return decisions.", [{"id": "c001", "asrText": "test"}]), {"decisions": []})
-            flags = review_decisions(transport, [{"id": "c001", "asrText": "test", "proposed": "discard"}])
-            self.assertEqual(flags, {})
-            self.assertEqual(transport("Return decisions.", [{"id": "c002", "asrText": "next"}]), {"decisions": []})
-        self.assertEqual(len(payloads), 4)
-        envelopes = [payload["response_format"]["json_schema"]["schema"]["required"] for payload in payloads[1:]]
-        self.assertEqual(envelopes, [["decisions"], ["reviews"], ["decisions"]])
+        with mock.patch("maw.postprocess_llm.requests.Session", return_value=_mock_session(post_effect)):
+            self.assertEqual(transport("Edit draft.", [{"id": "c001", "asrText": "test"}]), {"timeline": "[c001] test"})
+            self.assertEqual(review_decisions(transport, [{"id": "c001", "asrText": "test", "proposed": "keep"}]), {})
+            self.assertEqual(transport("Edit draft.", [{"id": "c001", "asrText": "test"}]), {"timeline": "[c001] test"})
+        self.assertNotIn("response_format", payloads[0])
+        self.assertNotIn("response_format", payloads[-1])
 
     def test_unrelated_400_does_not_retry_or_poison_cache(self) -> None:
         response = _rejection_response_mock()
@@ -467,13 +458,13 @@ class TruncatedJsonRepairTests(unittest.TestCase):
     def test_cleanup_llm_complete_repairs_truncated_response(self) -> None:
         from maw.postprocess_ai_cleanup import llm_complete
 
-        truncated = '{"decisions":[{"id":"c001","decision":"keep"}]'
+        truncated = '{"reviews":[{"id":"c001","reason":"复核"}]'
         session = _mock_session(
             lambda *_a, **_k: _response_mock(_completion_body(truncated))
         )
         with mock.patch("maw.postprocess_llm.requests.Session", return_value=session):
-            result = llm_complete(_make_settings())("Return JSON.", [])
-        self.assertEqual(result, {"decisions": [{"id": "c001", "decision": "keep"}]})
+            result = llm_complete(_make_settings())("Return JSON.", [{"id": "c001", "asrText": "test", "proposed": "keep"}])
+        self.assertEqual(result, {"reviews": [{"id": "c001", "reason": "复核"}]})
 
 
 def _rejection_response_mock() -> mock.Mock:

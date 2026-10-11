@@ -364,6 +364,12 @@
                 <span id="autoStepMatchHint" class="auto-step-hint hint"></span>
                 <button id="configureAutoMatch" class="inline-link" type="button" data-i18n="auto_configure">配置</button>
               </div>
+              <div class="auto-step-row" data-auto-step-row="cleanup">
+                <label class="check-field" for="autoStepCleanup"><input id="autoStepCleanup" type="checkbox"><span data-i18n="auto_step_cleanup">AI 口播整理</span></label>
+                <span id="autoStepCleanupStatus" class="auto-step-status hint"></span>
+                <span id="autoStepCleanupHint" class="auto-step-hint hint"></span>
+                <button id="configureAutoCleanup" class="inline-link" type="button" data-i18n="auto_configure">配置</button>
+              </div>
               <div class="auto-step-row" data-auto-step-row="replace">
                 <label class="check-field" for="autoStepReplace"><input id="autoStepReplace" type="checkbox"><span data-i18n="auto_step_replace">固定替换</span></label>
                 <span id="autoStepReplaceStatus" class="auto-step-status hint"></span>
@@ -782,17 +788,6 @@
            </div>
           <p id="postprocessScriptPathError" class="field-error"></p>
         </div>
-        <div class="field">
-          <label class="check-field" for="postprocessAiCleanup">
-            <input id="postprocessAiCleanup" type="checkbox">
-            <span data-i18n="toolbox_ai_cleanup">调用 AI 进行整理（录音优先）</span>
-          </label>
-          <p class="hint" data-i18n="toolbox_ai_cleanup_hint">由 AI 判断并移除重录废片、试麦和流程对话；文稿只作证据，不替换字幕文字。自动移除与待复核会写入工程，待复核项需在编辑器中确认。</p>
-          <div id="postprocessAiCleanupNotesField" class="hidden" style="margin-top: 8px;">
-            <label for="postprocessAiCleanupNotes" data-i18n="toolbox_ai_cleanup_notes">补充说明</label>
-            <textarea id="postprocessAiCleanupNotes" rows="2" autocomplete="off" data-i18n-placeholder="toolbox_ai_cleanup_notes_placeholder"></textarea>
-          </div>
-        </div>
         <div class="field" id="postprocessMatchModeField">
           <label for="postprocessMatchMode" data-i18n="toolbox_match_mode">换行来源</label>
          <select id="postprocessMatchMode">
@@ -984,12 +979,27 @@
             <select id="postprocessOperation">
                   <option value="translate_zh" data-i18n="toolbox_translate_zh">翻译成中文</option>
                   <option value="translate_en" data-i18n="toolbox_translate_en">翻译成英文</option>
+                  <option value="ai_cleanup" data-i18n="toolbox_ai_cleanup_task">AI 口播整理</option>
                   <option value="proofread" data-i18n="toolbox_proofread">校对文本</option>
                   <option value="resegment" data-i18n="toolbox_resegment">重新断句</option>
                   <option value="custom" data-i18n="toolbox_custom">自定义</option>
             </select>
           </div>
         </div>
+        <div id="postprocessCleanupOptions" class="hidden" style="margin-top: 16px;">
+          <label for="postprocessCleanupScriptPath" data-i18n="toolbox_cleanup_reference">参考文稿（可选）</label>
+          <div class="input-action-row" style="margin-top: 8px; display: flex; gap: 8px;">
+            <input id="postprocessCleanupScriptPath" type="text" style="flex: 1; min-width: 0;" autocomplete="off" data-i18n-placeholder="toolbox_cleanup_reference_placeholder">
+            <button id="pickPostprocessCleanupScript" type="button" data-i18n="browse">浏览</button>
+          </div>
+          <p id="postprocessCleanupScriptPathError" class="field-error"></p>
+          <p class="hint" style="margin-top: 8px;" data-i18n="toolbox_cleanup_task_hint">整理重录、真重复与句内磕巴，保留原始文字；删除写为空隙，存疑写为待核查区段。</p>
+        </div>
+        <label class="check-field" for="postprocessGenerateComparison" style="margin-top: 16px;">
+          <input id="postprocessGenerateComparison" type="checkbox">
+          <span data-i18n="toolbox_generate_comparison">生成处理前后对比结果</span>
+        </label>
+        <p class="hint" style="margin-top: 8px;" data-i18n="toolbox_generate_comparison_hint">同时生成本地 HTML，可查看原文、处理结果及待核查原因。</p>
         <div id="postprocessTranslationOptions" class="toolbox-translation-options hidden">
           <div class="toolbox-merge-row">
             <label class="check-field" for="postprocessMergeBilingual">

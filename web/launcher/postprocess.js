@@ -3,7 +3,7 @@
 
   const $ = (id) => document.getElementById(id);
   const panels = { waveform: "toolboxWaveformPanel", match: "toolboxMatchPanel", timestamps: "toolboxTimestampsPanel", ocr: "toolboxOcrPanel", llm: "toolboxLlmPanel", replace: "toolboxReplacePanel", ffconcat: "toolboxFfconcatPanel", alignment: "toolboxAlignmentPanel", burnSubtitle: "toolboxBurnSubtitlePanel", extractAudio: "toolboxExtractAudioPanel" };
-  const TASK_PROMPT_KEYS = { proofread: "toolbox_task_proofread", resegment: "toolbox_task_resegment", translate_en: "toolbox_task_translate_en", translate_zh: "toolbox_task_translate_zh" };
+  const TASK_PROMPT_KEYS = { ai_cleanup: "toolbox_task_cleanup", proofread: "toolbox_task_proofread", resegment: "toolbox_task_resegment", translate_en: "toolbox_task_translate_en", translate_zh: "toolbox_task_translate_zh" };
   const SUBTITLE_EXTS = new Set([".mosp", ".json", ".srt"]);
   const SUBTITLE_BURN_EXTS = new Set([".srt", ".ass", ".ssa"]);
   const ALIGNMENT_PROJECT_EXTS = new Set([".mosp", ".json"]);
@@ -20,6 +20,7 @@
     proofread: "proofread",
     resegment: "resegment",
     custom: "custom",
+    ai_cleanup: "cleanup",
   });
   const ALIGNMENT_GAP_REMOVE_KEY = "maw.launcher.alignment.gap_remove";
   const ALIGNMENT_GAP_REMOVE_DEFAULTS = Object.freeze({
@@ -32,9 +33,10 @@
   const TOOLBOX_MIN_WIDTH = 360;
   const TOOLBOX_MIN_HEIGHT = 320;
   const TOOLBOX_MAX_HEIGHT = 680;
-  const AUTO_STEP_ORDER = ["match", "replace", "proofread", "resegment", "ocr", "translate", "burn"];
+  const AUTO_STEP_ORDER = ["match", "cleanup", "replace", "proofread", "resegment", "ocr", "translate", "burn"];
   const AUTO_STEP_CHECKBOXES = {
     match: "autoStepMatch",
+    cleanup: "autoStepCleanup",
     replace: "autoStepReplace",
     proofread: "autoStepProofread",
     resegment: "autoStepResegment",
@@ -42,8 +44,8 @@
     translate: "autoStepTranslate",
     burn: "autoStepBurn",
   };
-  const AUTO_STEP_TOOLS = { match: "match", replace: "replace", proofread: "llm", resegment: "llm", ocr: "ocr", translate: "llm", burn: "burnSubtitle" };
-  const AUTO_LLM_OPERATIONS = { proofread: "proofread", resegment: "resegment" };
+  const AUTO_STEP_TOOLS = { match: "match", cleanup: "llm", replace: "replace", proofread: "llm", resegment: "llm", ocr: "ocr", translate: "llm", burn: "burnSubtitle" };
+  const AUTO_LLM_OPERATIONS = { cleanup: "ai_cleanup", proofread: "proofread", resegment: "resegment" };
   let autoPlanSaveTimer = 0;
   let pendingAutoStep = "";
   let toolboxOpenMode = "manual";
@@ -94,6 +96,7 @@
     const display = $("postprocessTaskPrompt");
     display.textContent = prompt || t("toolbox_task_none");
     display.classList.toggle("empty", !prompt);
+    $("postprocessCleanupOptions")?.classList.toggle("hidden", operation !== "ai_cleanup");
     const translateOperation = ["translate_zh", "translate_en"].includes(operation);
     $("postprocessTranslationOptions")?.classList.toggle("hidden", !translateOperation);
     if (translateOperation) {
@@ -180,6 +183,7 @@
   /** 某个 LLM 步骤实际使用的供应商：优先该任务记住的，否则用当前选中项。 */
   function stepProviderId(stepId) {
     const fallback = $("postprocessProvider").value || "deepseek";
+    if (stepId === "cleanup") return providerIdForTask("ai_cleanup") || fallback;
     if (stepId === "translate") return providerIdForTask("translate_zh") || fallback;
     if (stepId === "proofread" || stepId === "resegment") return providerIdForTask(stepId) || fallback;
     return fallback;
@@ -427,7 +431,8 @@
       enabled: false,
       retainIntermediate: true,
       steps: [
-        { id: "match", enabled: false, scriptPath: "", matchMode: "script", aiCleanup: false, aiCleanupNotes: "", extraSplitPunctuation: ["，", "。", "？", "！", "；", ",", "."], preservePunctuation: ["？", "！"], cleanMarkdownSymbols: true },
+        { id: "match", enabled: false, scriptPath: "", matchMode: "script", extraSplitPunctuation: ["，", "。", "？", "！", "；", ",", "."], preservePunctuation: ["？", "！"], cleanMarkdownSymbols: true },
+        { id: "cleanup", enabled: false, scriptPath: "", providerId: "deepseek", customPrompt: "", generateComparison: false },
         { id: "replace", enabled: false, replacements: [], conversion: "off" },
         { id: "proofread", enabled: false, providerId: "deepseek", customPrompt: "" },
         { id: "resegment", enabled: false, providerId: "deepseek", customPrompt: "" },
@@ -1438,7 +1443,7 @@
   }
 
   function artifactLabel(kind) {
-    return t(kind === "project" ? "artifact_type_project" : "artifact_type_srt");
+    return t(kind === "comparison" ? "artifact_type_comparison" : kind === "project" ? "artifact_type_project" : "artifact_type_srt");
   }
 
   function renderArtifactButton(button) {
@@ -1491,6 +1496,7 @@
     const artifacts = [
       { kind: "project", path: result.projectPath },
       { kind: "srt", path: result.srtPath },
+      { kind: "comparison", path: result.comparisonPath },
     ].filter((artifact, index, all) => artifact.path && all.findIndex((candidate) => candidate.path === artifact.path) === index);
     if (!artifacts.length) return;
     const container = $("toolboxChain");
@@ -1513,7 +1519,7 @@
       button.dataset.artifactName = fileName(path);
       button.dataset.artifactPath = path;
       renderArtifactButton(button);
-      button.addEventListener("click", () => selectChainPath(path, button));
+      button.addEventListener("click", () => { if (kind === "comparison") void bridge("open_file", { path }); else selectChainPath(path, button); });
       button.addEventListener("contextmenu", (event) => openArtifactMenu(event, path, button));
       button.addEventListener("dblclick", async (event) => {
         event.preventDefault();
@@ -1550,6 +1556,7 @@
     setMatchStats(chain?.kind === "ai_cleanup" && result.stats ? aiCleanupStatsText(result.stats) : "");
     void refreshScriptPreview();
     const warnings = Array.isArray(result.warnings) ? [...result.warnings] : [];
+    if (result.comparisonPath) warnings.push(`${t("toolbox_comparison_path")} ${result.comparisonPath}`);
     if (result.reportPath) warnings.push(`${t("toolbox_ocr_report_path")} ${result.reportPath}`);
     setResult(`${t("toolbox_done")}${warnings.length ? `\n${warnings.join("\n")}` : ""}`, "success");
   }
@@ -1561,7 +1568,9 @@
       .replace("{rephrased}", String(stats.rephrased ?? 0))
       .replace("{extras}", String(stats.extrasKept ?? 0))
       .replace("{removed}", String(stats.removed ?? 0))
-      .replace("{review}", String(stats.pendingReview ?? 0));
+      .replace("{review}", String(stats.pendingReview ?? 0))
+      .replace("{edited}", String(stats.editedSegments ?? 0))
+      .replace("{items}", String(stats.removedItems ?? 0));
     const pending = Number(stats.pendingReview ?? 0) > 0
       ? t("ai_cleanup_stats_review_pending")
       : t("ai_cleanup_stats_review_clear");
@@ -1629,7 +1638,7 @@
   }
 
   function selectAutoLlmOperation(stepId) {
-    if (!["proofread", "resegment", "translate"].includes(stepId)) return;
+    if (!["cleanup", "proofread", "resegment", "translate"].includes(stepId)) return;
     switchLlmOperation(autoLlmOperation(stepId));
   }
 
@@ -1650,7 +1659,7 @@
       const conversion = $("postprocessConversion").value;
       return conversion === "off" ? rules : `${rules} · ${t(`toolbox_conversion_${conversion}`)}`;
     }
-    if (["proofread", "resegment", "translate"].includes(stepId)) {
+    if (["cleanup", "proofread", "resegment", "translate"].includes(stepId)) {
       const operation = autoLlmOperation(stepId);
       return truncateHint(getLlmPrompt(operation) || taskPromptText(operation)) || t("toolbox_task_none");
     }
@@ -1677,12 +1686,13 @@
       retainIntermediate: Boolean($("autoPostprocessRetain")?.checked),
       steps: [
         // 始终上报用户的单文件勾选；批量运行由后端统一跳过文稿匹配，前端不改写、不持久化批量态。
-        { id: "match", enabled: Boolean($("autoStepMatch")?.checked), scriptPath: $("postprocessScriptPath").value.trim(), matchMode: $("postprocessMatchMode").value, aiCleanup: Boolean($("postprocessAiCleanup")?.checked), aiCleanupNotes: $("postprocessAiCleanupNotes")?.value.trim() || "", providerId, extraSplitPunctuation: punctuationLines("postprocessExtraSplitPunctuation"), preservePunctuation: punctuationLines("postprocessPreservePunctuation"), cleanMarkdownSymbols: Boolean($("postprocessCleanMarkdownSymbols")?.checked) },
+        { id: "match", enabled: Boolean($("autoStepMatch")?.checked), scriptPath: $("postprocessScriptPath").value.trim(), matchMode: $("postprocessMatchMode").value, extraSplitPunctuation: punctuationLines("postprocessExtraSplitPunctuation"), preservePunctuation: punctuationLines("postprocessPreservePunctuation"), cleanMarkdownSymbols: Boolean($("postprocessCleanMarkdownSymbols")?.checked) },
+        { id: "cleanup", enabled: Boolean($("autoStepCleanup")?.checked), scriptPath: $("postprocessCleanupScriptPath").value.trim(), providerId: stepProviderId("cleanup"), customPrompt: getLlmPrompt("ai_cleanup"), generateComparison: Boolean($("postprocessGenerateComparison")?.checked) },
         { id: "replace", enabled: Boolean($("autoStepReplace")?.checked), replacements: parseReplacements(), replacementSeparator: $("postprocessReplacementSeparator").value, replacementTrim: $("postprocessReplacementTrim").checked, replacementCustomSeparator: $("postprocessReplacementCustomSeparator").value, conversion: $("postprocessConversion").value },
-        { id: "proofread", enabled: Boolean($("autoStepProofread")?.checked), providerId: stepProviderId("proofread"), customPrompt: getLlmPrompt("proofread") },
-        { id: "resegment", enabled: Boolean($("autoStepResegment")?.checked), providerId: stepProviderId("resegment"), customPrompt: getLlmPrompt("resegment") },
+        { id: "proofread", enabled: Boolean($("autoStepProofread")?.checked), providerId: stepProviderId("proofread"), customPrompt: getLlmPrompt("proofread"), generateComparison: Boolean($("postprocessGenerateComparison")?.checked) },
+        { id: "resegment", enabled: Boolean($("autoStepResegment")?.checked), providerId: stepProviderId("resegment"), customPrompt: getLlmPrompt("resegment"), generateComparison: Boolean($("postprocessGenerateComparison")?.checked) },
         { id: "ocr", enabled: Boolean($("autoStepOcr")?.checked), videoPath: ocrVideoManual ? $("ocrVideoPath").value.trim() : "", videoPathMode: ocrVideoManual ? "manual" : "auto", ...ocr, threshold: Number($("ocrThreshold").value), report: Boolean($("ocrReport").checked) },
-        { id: "translate", enabled: Boolean($("autoStepTranslate")?.checked), providerId: stepProviderId("translate"), target: $("autoTranslateTarget").value || "zh", mergeBilingual: Boolean($("autoTranslateMergeBilingual")?.checked), embedTranslations: Boolean($("autoTranslateBackfill")?.checked), bilingualLineOrder: $("autoTranslateBilingualOrder")?.value || "", customPrompt: getLlmPrompt(autoLlmOperation("translate")) },
+        { id: "translate", enabled: Boolean($("autoStepTranslate")?.checked), providerId: stepProviderId("translate"), target: $("autoTranslateTarget").value || "zh", mergeBilingual: Boolean($("autoTranslateMergeBilingual")?.checked), embedTranslations: Boolean($("autoTranslateBackfill")?.checked), bilingualLineOrder: $("autoTranslateBilingualOrder")?.value || "", customPrompt: getLlmPrompt(autoLlmOperation("translate")), generateComparison: Boolean($("postprocessGenerateComparison")?.checked) },
         { id: "burn", enabled: Boolean($("autoStepBurn")?.checked), videoEncoder: "auto" },
       ],
     };
@@ -1697,10 +1707,14 @@
     if (stepId === "match") {
       const path = $("postprocessScriptPath").value.trim();
       if (!path || !SCRIPT_EXTS.has(extension(path))) return false;
-      return !$("postprocessAiCleanup")?.checked || autoLlmReady($("postprocessProvider").value);
+      return true;
+    }
+    if (stepId === "cleanup") {
+      const path = $("postprocessCleanupScriptPath").value.trim();
+      return (!path || SCRIPT_EXTS.has(extension(path))) && autoLlmReady(stepProviderId(stepId));
     }
     if (stepId === "replace") return parseReplacements().length > 0 || $("postprocessConversion").value !== "off";
-    if (["proofread", "resegment", "translate"].includes(stepId)) return autoLlmReady(stepProviderId(stepId));
+    if (["cleanup", "proofread", "resegment", "translate"].includes(stepId)) return autoLlmReady(stepProviderId(stepId));
     if (stepId === "ocr") {
       const config = window.MAWLauncher.config || {};
       const ocrModel = (Array.isArray(config.ocrModels) ? config.ocrModels : [])
@@ -1725,7 +1739,7 @@
   }
 
   function autoStepLabel(stepId) {
-    return t({ match: "auto_step_match", replace: "auto_step_replace", proofread: "auto_step_proofread", resegment: "auto_step_resegment", ocr: "auto_step_ocr", translate: "auto_step_translate", burn: "auto_step_burn" }[stepId] || stepId);
+    return t({ match: "auto_step_match", cleanup: "auto_step_cleanup", replace: "auto_step_replace", proofread: "auto_step_proofread", resegment: "auto_step_resegment", ocr: "auto_step_ocr", translate: "auto_step_translate", burn: "auto_step_burn" }[stepId] || stepId);
   }
 
   function renderAutoPostprocessState() {
@@ -1736,10 +1750,10 @@
       const status = $(`autoStep${stepId[0].toUpperCase()}${stepId.slice(1)}Status`);
       const row = document.querySelector(`[data-auto-step-row="${stepId}"]`);
       const enabled = Boolean(checkbox?.checked);
-      const available = stepId !== "match" || !batchMode;
-      if (stepId === "match" && batchMode && checkbox) {
+      const available = !["match", "cleanup"].includes(stepId) || !batchMode;
+      if (["match", "cleanup"].includes(stepId) && batchMode && checkbox) {
         checkbox.disabled = true;
-      } else if (stepId === "match" && checkbox) {
+      } else if (["match", "cleanup"].includes(stepId) && checkbox) {
         checkbox.disabled = false;
       }
       const ready = autoStepReady(stepId);
@@ -1812,9 +1826,10 @@
   }
 
   function autoStepFocusField(stepId) {
+    if (stepId === "cleanup" && $("postprocessCleanupScriptPath").value.trim() && !SCRIPT_EXTS.has(extension($("postprocessCleanupScriptPath").value))) return "postprocessCleanupScriptPath";
     if (stepId === "match") return "postprocessScriptPath";
     if (stepId === "replace") return parseReplacements().length ? "postprocessConversion" : "postprocessReplacements";
-    if (["proofread", "resegment", "translate"].includes(stepId)) return "postprocessPrompt";
+    if (["cleanup", "proofread", "resegment", "translate"].includes(stepId)) return "postprocessPrompt";
     if (stepId === "burn") {
       return "toolboxUtilityMediaPath";
     }
@@ -1834,7 +1849,7 @@
 
   function openAutoStep(stepId, invalidField = "", { highlightConnection = false } = {}) {
     pendingAutoStep = stepId;
-    const llmStep = ["proofread", "resegment", "translate"].includes(stepId);
+    const llmStep = ["cleanup", "proofread", "resegment", "translate"].includes(stepId);
     if (llmStep && !autoLlmReady(stepProviderId(stepId))) {
       const item = provider(stepProviderId(stepId));
       const focusId = ["llmApiKey", "llmBaseUrl", "llmModel"].includes(invalidField)
@@ -1875,6 +1890,11 @@
     $("autoPostprocessEnabled").checked = Boolean(plan.enabled);
     $("autoPostprocessRetain").checked = plan.retainIntermediate === undefined ? true : Boolean(plan.retainIntermediate);
     const byId = new Map(Array.isArray(plan.steps) ? plan.steps.map((step) => [step.id, step]) : []);
+    const legacyMatch = byId.get("match");
+    if (legacyMatch?.aiCleanup) {
+      if (!byId.has("cleanup")) byId.set("cleanup", { ...legacyMatch, id: "cleanup", customPrompt: legacyMatch.aiCleanupNotes || "" });
+      byId.set("match", { ...legacyMatch, enabled: false, aiCleanup: false });
+    }
     AUTO_STEP_ORDER.forEach((stepId) => { $(AUTO_STEP_CHECKBOXES[stepId]).checked = Boolean(byId.get(stepId)?.enabled); });
     const match = byId.get("match") || {};
     $("postprocessMatchMode").value = match.matchMode === "text" ? "text" : "script";
@@ -1882,11 +1902,11 @@
     $("postprocessExtraSplitPunctuation").value = Array.isArray(match.extraSplitPunctuation) ? match.extraSplitPunctuation.join("\n") : "";
     $("postprocessPreservePunctuation").value = Array.isArray(match.preservePunctuation) ? match.preservePunctuation.join("\n") : "";
     $("postprocessCleanMarkdownSymbols").checked = match.cleanMarkdownSymbols !== false;
-    $("postprocessAiCleanup").checked = match.aiCleanup === true;
-    renderAiCleanupMode();
-    const aiCleanupNotesField = $("postprocessAiCleanupNotesField");
-    aiCleanupNotesField?.classList.toggle("hidden", match.aiCleanup !== true);
-    $("postprocessAiCleanupNotes").value = typeof match.aiCleanupNotes === "string" ? match.aiCleanupNotes : "";
+    const cleanup = byId.get("cleanup") || {};
+    $("postprocessCleanupScriptPath").value = String(cleanup.scriptPath || "");
+    $("postprocessGenerateComparison").checked = Boolean(cleanup.generateComparison);
+    if (cleanup.providerId) rememberProviderForTask("ai_cleanup", cleanup.providerId);
+    if (typeof cleanup.customPrompt === "string") llmPrompts.ai_cleanup = cleanup.customPrompt;
     validateMatchPunctuation();
     void refreshScriptPreview();
     const replace = byId.get("replace") || {};
@@ -1956,10 +1976,6 @@
       setResult(t("toolbox_need_script"), "error");
       return;
     }
-    if ($("postprocessAiCleanup").checked) {
-      await runAiCleanup(paths, scriptPath);
-      return;
-    }
     if (!validateMatchPunctuation()) {
       setResult(t("toolbox_preserve_punctuation_invalid"), "error");
       return;
@@ -1988,7 +2004,7 @@
       setResult(t("toolbox_ai_cleanup_need_provider"), "error", { showAiSettings: true });
       return;
     }
-    setFieldError("postprocessScriptPath", "");
+    setFieldError("postprocessCleanupScriptPath", "");
     const operationId = beginAiPostprocessOperation();
     beginStreamOutput();
     setBusy(true, "toolbox_status_ai_cleanup");
@@ -2000,7 +2016,8 @@
         scriptPath,
         providerId,
         cleanMarkdownSymbols: $("postprocessCleanMarkdownSymbols").checked,
-        notes: $("postprocessAiCleanupNotes")?.value.trim() || "",
+        notes: $("postprocessPrompt").value.trim(),
+        generateComparison: Boolean($("postprocessGenerateComparison")?.checked),
       });
       cancelled = result.code === "postprocess_cancelled";
       if (result.ok) applySubtitleResult(result, { kind: "ai_cleanup" });
@@ -2010,14 +2027,6 @@
       finishAiPostprocessOperation(operationId, cancelled);
       setBusy(false);
     }
-  }
-
-  // AI 整理模式下录音优先：换行来源与断句符号不参与，收起对应控件。
-  function renderAiCleanupMode() {
-    const aiEnabled = Boolean($("postprocessAiCleanup")?.checked);
-    $("postprocessMatchModeField")?.classList.toggle("hidden", aiEnabled);
-    $("postprocessPunctHint")?.classList.toggle("hidden", aiEnabled);
-    $("postprocessAiCleanupNotesField")?.classList.toggle("hidden", !aiEnabled);
   }
 
   function scriptAlignmentPayload() {
@@ -2300,6 +2309,10 @@
     if (!paths) return;
     const item = provider();
     const operation = $("postprocessOperation").value;
+    if (operation === "ai_cleanup") {
+      await runAiCleanup(paths, $("postprocessCleanupScriptPath").value.trim());
+      return;
+    }
     const customPrompt = $("postprocessPrompt").value.trim();
     setFieldError("postprocessPrompt", "");
     if (operation === "custom" && !customPrompt) {
@@ -2318,6 +2331,7 @@
         operationId,
         operation,
         taskPrompt: taskPromptText(operation),
+        generateComparison: Boolean($("postprocessGenerateComparison")?.checked),
         customPrompt,
         providerId: item.id,
         reasoningMode: $("llmReasoningMode").value,
@@ -2633,8 +2647,12 @@
   $("postprocessExtraSplitPunctuation").addEventListener("input", () => { validateMatchPunctuation(); void refreshScriptPreview(); persistAutoPlanSoon(); });
   $("postprocessPreservePunctuation").addEventListener("input", () => { validateMatchPunctuation(); void refreshScriptPreview(); persistAutoPlanSoon(); });
   $("postprocessMatchMode").addEventListener("change", () => { validateMatchPunctuation(); void refreshScriptPreview(); persistAutoPlanSoon(); });
-  $("postprocessAiCleanup").addEventListener("change", () => { renderAiCleanupMode(); renderAutoPostprocessState(); persistAutoPlanSoon(); });
-  $("postprocessAiCleanupNotes").addEventListener("input", () => { persistAutoPlanSoon(); });
+  $("postprocessCleanupScriptPath").addEventListener("input", () => { renderAutoPostprocessState(); persistAutoPlanSoon(); });
+  $("postprocessGenerateComparison").addEventListener("change", persistAutoPlanSoon);
+  $("pickPostprocessCleanupScript").addEventListener("click", async () => {
+    const result = await bridge("choose_file", { kind: "script" });
+    if (result.ok) { $("postprocessCleanupScriptPath").value = result.path; $("postprocessCleanupScriptPath").dispatchEvent(new Event("input", { bubbles: true })); }
+  });
   $("runOcrDedup").addEventListener("click", runOcrDedup);
   $("ocrModel").addEventListener("change", renderOcrModel);
   $("openOcrSettings").addEventListener("click", () => window.MAWLauncher.openSettings("ocrSettingsSection"));
