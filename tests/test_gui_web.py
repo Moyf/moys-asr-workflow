@@ -1628,10 +1628,10 @@ class GuiWebBridgeTests(CompactContainerAssertions, unittest.TestCase):
         prefs = self.api.save_prefs({"language": "safe\x85FFMPEG_PATH=payload"})
         ffmpeg = self.api.save_ffmpeg_path({"path": "safe\u2029FFMPEG_PATH=payload"})
 
-        for result in (settings, prefs, ffmpeg):
+        for result, code in ((settings, "api_key_invalid_format"), (prefs, "config_save_failed"), (ffmpeg, "config_save_failed")):
             with self.subTest(result=result):
                 self.assertFalse(result["ok"])
-                self.assertEqual(result["code"], "config_save_failed")
+                self.assertEqual(result["code"], code)
         self.assertFalse(self.env_path.exists())
 
     def test_fixed_replacement_bridge_returns_chainable_project_and_srt_paths(self) -> None:
@@ -2026,11 +2026,11 @@ class GuiWebBridgeTests(CompactContainerAssertions, unittest.TestCase):
         needles = [
             'function isCustomSlot(item) { return ["custom", "custom2", "custom3"].includes(String(item?.id || "")); }',
             "function customSlotVisibleInToolbox(item)",
-            'if (select.id === "postprocessProvider" && !customSlotVisibleInToolbox(item)) return;',
+            'if (select.id !== "llmProvider" && !customSlotVisibleInToolbox(item)) return;',
             "fillProviderSelects(selectedProvider);",
             "fillProviderSelects(item.id);",
             # 设置页 change 直接渲染 llmProvider 的值；工具箱保持自身选中项。
-            'renderProvider($("llmProvider").value)',
+            'renderProvider($("llmProvider").value, { syncToolbox: false })',
         ]
         missing = [needle for needle in needles if needle not in script]
         self.assertEqual(missing, [], f"postprocess.js 缺少：{missing}")
@@ -2735,7 +2735,7 @@ class GuiWebBridgeTests(CompactContainerAssertions, unittest.TestCase):
             })
 
         self.assertFalse(result["ok"])
-        self.assertEqual(result["code"], "postprocess_failed")
+        self.assertEqual(result["code"], "toolbox_failed")
         for secret in (
             "api-key-secret",
             "https://api.example.test/v1/chat/completions?api_key=query-secret",
@@ -2976,6 +2976,16 @@ class GuiWebBridgeTests(CompactContainerAssertions, unittest.TestCase):
         self.assertFalse(result["ok"])
         self.assertEqual(result["field"], "mediaPath")
         self.assertEqual(result["code"], "audio_tracks_unavailable")
+
+    def test_get_audio_tracks_successful_empty_probe_remains_distinct(self) -> None:
+        media = self.root / "clip.mp4"
+        media.write_bytes(b"media")
+        with mock.patch("maw.gui_web._postprocess_ffmpeg_tools", return_value=FfmpegTools(ffprobe=Path("ffprobe"))), \
+                mock.patch("maw.gui_web.inspect_audio_tracks", return_value=()) as probe:
+            result = self.api.get_audio_tracks({"mediaPath": str(media)})
+        self.assertTrue(result["ok"])
+        self.assertEqual(result["tracks"], [])
+        probe.assert_called_once()
 
     def test_extract_audio_bridge_uses_selected_track_and_returns_m4a(self) -> None:
         media = self.root / "clip.mp4"
@@ -3993,7 +4003,7 @@ class GuiWebBridgeTests(CompactContainerAssertions, unittest.TestCase):
         ffprobe = self.root / "ffprobe.exe"
         with (
             mock.patch("maw.gui_web._postprocess_ffmpeg_tools", return_value=FfmpegTools(ffprobe=ffprobe)),
-            mock.patch("maw.gui_web.resolve_default_audio_track", return_value=2) as resolve_default,
+            mock.patch("maw.gui_web.probe_audio_tracks", return_value=[{'audio_index': 0}, {'audio_index': 1}, {'audio_index': 2, 'default': True}]) as resolve_default,
             mock.patch("maw.gui_web.threading.Thread", return_value=worker) as thread,
         ):
             result = self.api.start_batch_transcription({
@@ -4008,9 +4018,9 @@ class GuiWebBridgeTests(CompactContainerAssertions, unittest.TestCase):
         assert request is not None
         self.assertEqual(request.audio_track, 2)
         self.assertEqual(request.default_audio_track, 2)
+        self.assertEqual(request.audio_track_count, 3)
         resolve_default.assert_called_once_with(
             media.resolve(),
-            None,
             ffprobe_path=ffprobe,
         )
 
@@ -4021,7 +4031,7 @@ class GuiWebBridgeTests(CompactContainerAssertions, unittest.TestCase):
         worker.is_alive.return_value = False
 
         with (
-            mock.patch("maw.gui_web.resolve_default_audio_track") as resolve_default,
+            mock.patch("maw.gui_web.probe_audio_tracks") as resolve_default,
             mock.patch("maw.gui_web.threading.Thread", return_value=worker) as thread,
         ):
             result = self.api.start_batch_transcription({
@@ -4030,6 +4040,7 @@ class GuiWebBridgeTests(CompactContainerAssertions, unittest.TestCase):
                     "apiKey": "sk-test",
                     "audioTrack": 0,
                     "defaultAudioTrack": 2,
+                    "audioTrackCount": 99,
                 },
             })
 
@@ -4039,7 +4050,57 @@ class GuiWebBridgeTests(CompactContainerAssertions, unittest.TestCase):
         assert request is not None
         self.assertEqual(request.audio_track, 0)
         self.assertEqual(request.default_audio_track, 2)
+        self.assertIsNone(request.audio_track_count)
         resolve_default.assert_not_called()
+
+    def test_batch_reuses_existing_probe_to_skip_missing_tracks_but_not_failed_probe(self) -> None:
+        for index, tracks in enumerate(([], None)):
+            media = self.root / f"clip{index}.mp4"
+            media.write_bytes(b"media")
+        worker = mock.Mock()
+        worker.is_alive.return_value = False
+        with mock.patch("maw.gui_web.probe_audio_tracks", side_effect=[[], None]) as probe, \
+                mock.patch("maw.gui_web.threading.Thread", return_value=worker) as thread:
+            result = self.api.start_batch_transcription({
+                "items": [{"id": str(i), "mediaPath": str(self.root / f"clip{i}.mp4")} for i in range(2)],
+                "settings": {"apiKey": "sk-test", "audioTrackCount": 0},
+            })
+        self.assertTrue(result["ok"])
+        items = thread.call_args.kwargs["args"][0]
+        self.assertIsNone(items[0].request)
+        self.assertEqual(items[0].preflight_code, "audio_tracks_missing")
+        self.assertIsNotNone(items[1].request)
+        self.assertIsNone(items[1].request.audio_track_count)
+        self.assertEqual(probe.call_count, 2)
+
+    def test_batch_all_missing_tracks_returns_specific_error_without_worker(self) -> None:
+        media = self.root / "clip.mp4"
+        media.write_bytes(b"media")
+        with mock.patch("maw.gui_web.probe_audio_tracks", return_value=[]) as probe, \
+                mock.patch("maw.gui_web.threading.Thread") as thread:
+            result = self.api.start_batch_transcription({
+                "items": [{"id": "clip", "mediaPath": str(media)}], "settings": {"apiKey": "sk-test"},
+            })
+        self.assertFalse(result["ok"])
+        self.assertEqual(result["code"], "audio_tracks_missing")
+        probe.assert_called_once()
+        thread.assert_not_called()
+
+    def test_start_blocks_known_zero_tracks_without_new_probe_or_worker(self) -> None:
+        media = self.root / "clip.mp4"
+        media.write_bytes(b"media")
+        with mock.patch("maw.gui_web.probe_audio_tracks") as probe, \
+                mock.patch("maw.gui_web.inspect_audio_tracks") as inspect, \
+                mock.patch("maw.gui_web.threading.Thread") as thread:
+            result = self.api.start_transcription({
+                "mediaPath": str(media), "srtPath": str(self.root / "out.srt"),
+                "apiKey": "sk-test", "audioTrackCount": 0,
+            })
+        self.assertFalse(result["ok"])
+        self.assertEqual(result["code"], "audio_tracks_missing")
+        probe.assert_not_called()
+        inspect.assert_not_called()
+        thread.assert_not_called()
 
     def test_local_request_skips_api_key_and_carries_engine_options(self) -> None:
         media = self.root / "clip.mp3"
@@ -4245,6 +4306,117 @@ class GuiWebBridgeTests(CompactContainerAssertions, unittest.TestCase):
         self.assertFalse(result["ok"])
         self.assertEqual(result["field"], "apiKey")
         self.assertEqual(result["code"], "api_key_missing")
+
+    def test_credentials_block_single_and_batch_before_network_or_worker_start(self) -> None:
+        media = self.root / "clip.mp3"
+        media.write_bytes(b"media")
+        for key, expected in (("", "api_key_missing"), ("   ", "api_key_missing"),
+                              ("Bearer test-only-private-123", "api_key_invalid_format"),
+                              ("中文密钥说明", "api_key_invalid_format")):
+            with self.subTest(key=key), mock.patch.dict(os.environ, {"DASHSCOPE_API_KEY": ""}), \
+                 mock.patch("maw.gui_web.threading.Thread") as thread, \
+                 mock.patch("requests.sessions.Session.request", side_effect=AssertionError("Credential checks must stay offline")) as network:
+                payload = {"mediaPath": str(media), "srtPath": str(self.root / "out.srt"), "apiKey": key}
+                result = self.api.start_transcription(payload)
+                self.assertFalse(result["ok"])
+                self.assertEqual(result["code"], expected)
+                self.assertEqual(result["field"], "apiKey")
+                if key.strip():
+                    self.assertNotIn(key, json.dumps(result, ensure_ascii=False))
+                batch = self.api.start_batch_transcription({
+                    "items": [{"id": "a", "mediaPath": str(media), "srtPath": str(self.root / "out.srt")}],
+                    "settings": {"apiKey": key, "audioTrack": 0, "defaultAudioTrack": 0},
+                })
+                self.assertFalse(batch["ok"])
+                self.assertEqual(batch["code"], expected)
+                self.assertEqual(batch["field"], "apiKey")
+                thread.assert_not_called()
+                network.assert_not_called()
+                self.assertIsNone(self.api.worker)
+                self.assertIsNone(self.api.batch_worker)
+
+    def test_whitespace_system_key_no_longer_bypasses_start_checks(self) -> None:
+        media = self.root / "clip.mp3"
+        media.write_bytes(b"media")
+        with mock.patch.dict(os.environ, {"DASHSCOPE_API_KEY": "   "}), \
+             mock.patch("maw.gui_web.threading.Thread") as thread:
+            result = self.api.start_transcription({"mediaPath": str(media), "srtPath": str(self.root / "out.srt")})
+        self.assertEqual(result["code"], "api_key_missing")
+        thread.assert_not_called()
+
+    def test_saved_or_system_key_format_is_checked_without_disclosing_it(self) -> None:
+        media = self.root / "clip.mp3"
+        media.write_bytes(b"media")
+        key = "Bearer test-only-private-456"
+        for source in ("file", "system"):
+            with self.subTest(source=source):
+                self.env_path.write_text(f"DASHSCOPE_API_KEY={key if source == 'file' else ''}\n", encoding="utf-8")
+                with mock.patch.dict(os.environ, {"DASHSCOPE_API_KEY": key if source == "system" else ""}):
+                    result = self.api.start_transcription({"mediaPath": str(media), "srtPath": str(self.root / "out.srt")})
+                self.assertEqual(result["code"], "api_key_invalid_format")
+                self.assertNotIn(key, json.dumps(result))
+
+    def test_saving_invalid_key_stays_offline_and_preserves_existing_config(self) -> None:
+        original = "DASHSCOPE_API_KEY=test-only-saved-token\n"
+        self.env_path.write_text(original, encoding="utf-8")
+        with mock.patch("requests.sessions.Session.request", side_effect=AssertionError("No key probe")) as network:
+            result = self.api.save_settings({"providerId": "qwen", "apiKey": "Bearer test-only-private-789"})
+        self.assertEqual(result["code"], "api_key_invalid_format")
+        self.assertEqual(self.env_path.read_text(encoding="utf-8"), original)
+        self.assertNotIn("test-only-private-789", json.dumps(result))
+        network.assert_not_called()
+
+    def test_worker_classifies_api_failure_and_preserves_original_detail(self) -> None:
+        key = "test-only-opaque-credential"
+        request = TranscriptionRequest(media_path=self.root / "clip.wav", srt_path=self.root / "clip.srt",
+                                       provider="qwen", api_key=key)
+        detail = f"RuntimeError: 获取上传凭证失败 (HTTP 401): code=InvalidApiKey | request_id=test-request | provided: {key}"
+        self.api._log_sink = LocalLogSink(directory=self.root / "logs")
+
+        def transcribe(*args, on_event, **kwargs):
+            on_event(detail)
+            raise TranscriptionProcessError(1, [detail])
+
+        with mock.patch("maw.gui_web.run_transcription", side_effect=transcribe):
+            self.api._worker_main(request, threading.Event())
+        event_script = self.window.scripts[-1]
+        self.assertIn('"code": "asr_auth_failed"', event_script)
+        self.assertIn("InvalidApiKey", event_script)
+        self.assertIn("test-request", event_script)
+        self.assertNotIn(key, "".join(self.window.scripts))
+        disk_log = next((self.root / "logs").glob("*.log")).read_text(encoding="utf-8")
+        self.assertIn("test-request", disk_log)
+        self.assertNotIn(key, disk_log)
+
+    def test_worker_empty_audio_diagnosis_is_friendly_and_never_emits_done(self) -> None:
+        from maw.audio_diagnostics import AudioInputError
+        request = TranscriptionRequest(media_path=self.root / 'clip.mkv', srt_path=self.root / 'clip.srt', provider='local')
+        error = AudioInputError('asr_empty_result_multitrack', 'known_count=2, selected audio_index=0')
+        with mock.patch('maw.gui_web.run_transcription', side_effect=error), \
+                mock.patch('maw.gui_web.run_postprocess_pipeline') as postprocess:
+            self.api._worker_main(request, threading.Event())
+        script = self.window.scripts[-1]
+        self.assertIn('"code": "asr_empty_result_multitrack"', script)
+        self.assertIn('known_count=2', script)
+        self.assertNotIn('"type": "done"', script)
+        postprocess.assert_not_called()
+
+    def test_worker_unknown_probe_reports_audio_extraction_possible_causes_without_reprobe(self) -> None:
+        import subprocess
+        request = TranscriptionRequest(media_path=self.root / 'clip.mkv', srt_path=self.root / 'clip.srt', provider='local')
+        line = 'subprocess.CalledProcessError: ' + str(subprocess.CalledProcessError(
+            1, ['ffmpeg', '-map', '0:a:0', '-vn', 'audio.wav']))
+        error = TranscriptionProcessError(1, [line])
+        with mock.patch('maw.gui_web.run_transcription', side_effect=error), \
+                mock.patch('maw.gui_web.run_postprocess_pipeline') as postprocess, \
+                mock.patch('maw.gui_web.probe_audio_tracks', side_effect=AssertionError('No new probe')), \
+                mock.patch('maw.gui_web.inspect_audio_tracks', side_effect=AssertionError('No reinspection')):
+            self.api._worker_main(request, threading.Event())
+        script = self.window.scripts[-1]
+        self.assertIn('"code": "audio_extraction_failed"', script)
+        self.assertIn('CalledProcessError', script)
+        self.assertNotIn('"type": "done"', script)
+        postprocess.assert_not_called()
 
     def test_start_transcription_accepts_api_key_from_env_file(self) -> None:
         """Given saved API key, When field is empty, Then resolved key is used."""
@@ -4458,6 +4630,16 @@ class GuiWebBridgeTests(CompactContainerAssertions, unittest.TestCase):
 
         self.assertEqual(request.audio_track, 0)
         self.assertEqual(request.default_audio_track, 2)
+
+    def test_request_from_payload_carries_only_valid_track_counts_for_guidance(self) -> None:
+        media = self.root / 'clip.mp4'
+        media.write_bytes(b'media')
+        for value, expected in ((None, None), (3, 3), (1, 1), (True, None), (False, None), ('3', None), ('0', None), (-1, None)):
+            request = _request_from_payload({
+                'mediaPath': str(media), 'srtPath': str(self.root / 'out.srt'),
+                'apiKey': 'sk-test', 'audioTrackCount': value,
+            }, self.env_path)
+            self.assertEqual(request.audio_track_count, expected)
 
     def test_request_from_payload_leaves_missing_default_disposition_for_cli_probe(self) -> None:
         media = self.root / "clip.mp4"
@@ -5359,7 +5541,6 @@ class LauncherAssetContractTests(CompactContainerAssertions, unittest.TestCase):
         self.assertNotIn("toolbox-output-hint", page)
         self.assertNotIn("toolbox_beta_notice_prefix", page)
         self.assertIn('class="hint toolbox-panel-hint"', page)
-        self.assertIn('class="hint toolbox-full-line-hint"', page)
         self.assertIn('document.querySelectorAll("[data-tool-action]")', script)
         self.assertIn('event.type === "postprocess_status"', launcher_script)
         self.assertIn('event.type === "postprocess_stream"', launcher_script)
@@ -5483,7 +5664,8 @@ class LauncherAssetContractTests(CompactContainerAssertions, unittest.TestCase):
         self.assertLess(content, progress)
         self.assertLess(progress, result)
         self.assertIn('id="toolboxResult" class="toolbox-result hidden"', page)
-        self.assertIn('result.classList.remove("hidden")', script)
+        self.assertIn('function syncSharedOutputVisibility()', script)
+        self.assertIn('toolboxResultTool = resultOwningTool()', script)
         self.assertLess(result, match_panel)
         self.assertLess(utilities_tabs, match_panel)
         self.assertLess(match_panel, llm_panel)

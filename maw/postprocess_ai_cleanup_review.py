@@ -15,6 +15,8 @@ def readthrough_prompt(notes: str = "") -> str:
     return (
         "这是 AI 口播整理的第二道工序：剪后通读与信息损失审计，不重新剪辑。\n"
         "输入是按录音顺序排列的原始字幕；proposed=discard 的文字拟被删除，其余文字拟保留。"
+        "proposed=partial 表示局部移除：实际保留文字是 retainedText，removedText 是拟删除原文字词。"
+        "partial 必须只读 retainedText 作为成品，检查 removedText 的信息损失；复核此 id 会恢复全部局部建议。"
         "跳过拟删除文字，把保留文字依次连起来读。检查主语、指代、背景、所以/但是等承接、"
         "方法步骤、数字、限定条件与因果是否仍成立。对每段拟删除内容核对：独有信息是否在"
         "alternativeText 或其他保留文字中完整覆盖？病句不等于无效内容，不能因相似而丢失步骤。\n"

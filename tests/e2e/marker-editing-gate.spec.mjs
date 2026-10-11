@@ -11,6 +11,32 @@ test.beforeAll(async () => {
 });
 test.afterAll(async () => { await server?.stop(); cleanupTempDir(tempDir); });
 
+test('automatic project markers never persist through unrelated settings or an unmarked project', async ({ page }) => {
+  await disableOnboarding(page);
+  await page.addInitScript(() => localStorage.setItem('moy.asr.editor.settings.v1',
+    JSON.stringify({ markerEditingEnabled: false, autoSaveProject: false })));
+  await page.goto(server.url);
+  await page.evaluate(waveform => {
+    MaweProjectLoad.applyCanonicalProject({ segments: [], markers: [{ id: 'review', start: 100 }], waveform }, 'marked.mosp');
+    MaweSettings.updateEditorSettings({ toastPosition: 'bottom-right' });
+  }, generateWaveformPayload(6000));
+  await expect(page.locator('#markers-quick-toggle')).toHaveAttribute('aria-pressed', 'true');
+  expect(await page.evaluate(() => JSON.parse(localStorage.getItem(MaweSettings.EDITOR_SETTINGS_KEY)).markerEditingEnabled)).toBe(false);
+  await page.locator('#project-settings-toggle').click();
+  await expect(page.locator('#project-marker-track-toggle')).toBeChecked();
+  await page.locator('#project-settings-close').click();
+  await page.locator('#markers-quick-toggle').click();
+  await expect(page.locator('#markers-quick-toggle')).toHaveAttribute('aria-pressed', 'false');
+  await page.evaluate(waveform => {
+    MaweProjectLoad.applyCanonicalProject({ segments: [], markers: [{ id: 'review', start: 100 }], waveform }, 'marked.mosp');
+  }, generateWaveformPayload(6000));
+  await expect(page.locator('#markers-quick-toggle')).toHaveAttribute('aria-pressed', 'true');
+  await page.evaluate(waveform => MaweProjectLoad.applyCanonicalProject({ segments: [], waveform }, 'empty.mosp'), generateWaveformPayload(6000));
+  await expect(page.locator('#markers-quick-toggle')).toHaveAttribute('aria-pressed', 'false');
+  await expect(page.locator('.waveform-marker-track')).toHaveCount(0);
+  expect(await page.evaluate(() => JSON.parse(localStorage.getItem(MaweSettings.EDITOR_SETTINGS_KEY)).markerEditingEnabled)).toBe(false);
+});
+
 async function seed(page) {
   await disableOnboarding(page);
   await page.goto(server.url);
@@ -25,6 +51,9 @@ async function seed(page) {
     waveform: generateWaveformPayload(6000),
   });
   await expect(page.locator('.overlay-track-cue')).toHaveCount(1);
+  // 带标记的工程导入后自动开启；这些用例从用户手动关闭后的状态验证门控。
+  await expect(page.locator('#markers-quick-toggle')).toHaveAttribute('aria-pressed', 'true');
+  await page.locator('#markers-quick-toggle').click();
   await page.locator('[data-waveform-mode="multi"]').click();
 }
 
@@ -39,7 +68,7 @@ async function markerData(page) {
   return page.evaluate(() => MaweBoot.DATA.markers.map(marker => ({ ...marker })));
 }
 
-test('disabled marker editing leaves imported and rebuilt waveforms free for cue gestures', async ({ page }) => {
+test('disabling auto-enabled markers leaves imported and rebuilt waveforms free for cue gestures', async ({ page }) => {
   await seed(page);
   const original = await markerData(page);
   await expect(page.locator('#markers-quick-toggle')).toHaveAttribute('aria-pressed', 'false');

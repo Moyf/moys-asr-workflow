@@ -1,13 +1,14 @@
 import { expect, test } from '@playwright/test';
+import { writeFileSync } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 
-import { disableOnboarding } from './helpers.mjs';
+import { cleanupTempDir, disableOnboarding, findFreePort, generateWaveformPayload,
+  generateWav, makeTempDir, startServer } from './helpers.mjs';
 
 
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..');
 const launcherUrl = pathToFileURL(path.join(repoRoot, 'web', 'launcher', 'index.html')).href;
-const blankEditorUrl = pathToFileURL(path.join(repoRoot, 'blank-editor.html')).href;
 
 
 async function openLauncher(page) {
@@ -157,8 +158,28 @@ test('shows the installed OCR settings hint and highlights video drops', async (
 
 
 test('keeps every Editor settings gear visible while left toolbar content shrinks', async ({ page }) => {
+  const tempDir = makeTempDir('waveform-toolbar-layout');
+  let server;
+  try {
+    const mediaPath = path.join(tempDir, 'layout.wav');
+    const projectPath = path.join(tempDir, 'layout.mosp');
+    generateWav(mediaPath, 10);
+    writeFileSync(projectPath, JSON.stringify({
+      media: 'layout.wav', waveform: generateWaveformPayload(10000),
+      segments: [{ id: 'layout-main', start: 0, end: 5000, text: 'Layout check',
+        items: [{ start: 0, end: 5000, text: 'Layout check' }] }],
+    }), 'utf-8');
+    server = await startServer(projectPath, mediaPath, await findFreePort());
+    await checkEditorSettingsGears(page, server.url);
+  } finally {
+    await server?.stop();
+    cleanupTempDir(tempDir);
+  }
+});
+
+async function checkEditorSettingsGears(page, url) {
   await disableOnboarding(page);
-  await page.goto(blankEditorUrl);
+  await page.goto(url);
   await page.waitForSelector('#editor-workspace');
 
   for (const width of [620, 480, 360]) {
@@ -188,6 +209,26 @@ test('keeps every Editor settings gear visible while left toolbar content shrink
       expect(gear.buttonRight).toBeGreaterThan(gear.toolbarLeft);
       expect(gear.gearFlexShrink).toBe('0');
     }
+    const controls = page.locator('.waveform-toolbar-controls');
+    const controlsState = await controls.evaluate(element => ({
+      overflowX: getComputedStyle(element).overflowX,
+      clientWidth: element.clientWidth,
+      labelsDoNotWrap: [...element.querySelectorAll('button')]
+        .every(button => getComputedStyle(button).whiteSpace === 'nowrap'),
+    }));
+    expect(controlsState.overflowX).toBe('auto');
+    expect(controlsState.clientWidth).toBeGreaterThan(0);
+    expect(controlsState.labelsDoNotWrap).toBe(true);
+    // Keyboard focus must reveal the last action while the settings stay fixed.
+    await controls.locator('button:visible').last().focus();
+    expect(await controls.evaluate(element => {
+      const rect = element.getBoundingClientRect();
+      const last = document.activeElement.getBoundingClientRect();
+      const gear = document.getElementById('waveform-settings-toggle').getBoundingClientRect();
+      const toolbar = element.closest('.toolbar').getBoundingClientRect();
+      return last.left >= rect.left - 1 && last.right <= rect.right + 1
+        && gear.left >= toolbar.left && gear.right <= toolbar.right;
+    })).toBe(true);
   }
 
   const editorScrollbarState = await page.evaluate(() => [
@@ -206,4 +247,4 @@ test('keeps every Editor settings gear visible while left toolbar content shrink
     expect(state.scrollbarWidth, state.selector).toBe('thin');
     expect(state.webkitWidth, state.selector).toBe('6px');
   }
-});
+}

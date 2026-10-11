@@ -17,7 +17,7 @@ import sys
 import unicodedata
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Iterable, Sequence
+from typing import Callable, Iterable, Iterator, Sequence
 
 
 PRESERVED_END_PUNCTUATION = frozenset("！？：!?:")
@@ -40,6 +40,52 @@ _MARKDOWN_HEADING_PREFIX = re.compile(r"^[ \t]{0,3}#{1,6}(?:[ \t]+|$)", re.MULTI
 
 class AlignmentError(ValueError):
     """Raised when input or alignment cannot produce a valid result."""
+
+
+class MatchCancelledError(RuntimeError):
+    """Raised before artifact commit when a local matching task is cancelled."""
+
+
+def check_match_cancelled(is_cancelled: Callable[[], bool] | None) -> None:
+    if is_cancelled is not None and is_cancelled():
+        raise MatchCancelledError("文稿匹配已取消。")
+
+
+class _CancellationText(str):
+    """Keep difflib's algorithm while checking its indexing and setup loops.
+
+    A stage check alone cannot interrupt SequenceMatcher's quadratic search.
+    It indexes a for each outer search iteration, and b for prefix/suffix
+    expansion; iterating b builds its character index. No algorithm or junk
+    policy is changed by this string wrapper.
+    """
+
+    is_cancelled: Callable[[], bool]
+
+    def __new__(cls, value: str, is_cancelled: Callable[[], bool]) -> _CancellationText:
+        instance = super().__new__(cls, value)
+        instance.is_cancelled = is_cancelled
+        return instance
+
+    def __getitem__(self, index: int | slice) -> str:
+        check_match_cancelled(self.is_cancelled)
+        return super().__getitem__(index)
+
+    def __iter__(self) -> Iterator[str]:
+        for index, char in enumerate(super().__iter__()):
+            if index % 256 == 0:
+                check_match_cancelled(self.is_cancelled)
+            yield char
+
+
+def cancellable_sequence_matcher(
+    source: str, target: str, *, is_cancelled: Callable[[], bool] | None = None
+) -> difflib.SequenceMatcher:
+    check_match_cancelled(is_cancelled)
+    if is_cancelled is not None:
+        source = _CancellationText(source, is_cancelled)
+        target = _CancellationText(target, is_cancelled)
+    return difflib.SequenceMatcher(None, source, target, autojunk=False)
 
 
 @dataclass(frozen=True)
@@ -80,7 +126,9 @@ def normalize_character(character: str) -> str:
     return "".join(result)
 
 
-def normalize_text(text: str) -> str:
+def normalize_text(text: str, *, is_cancelled: Callable[[], bool] | None = None) -> str:
+    if is_cancelled is not None:
+        text = _CancellationText(text, is_cancelled)
     return "".join(normalize_character(character) for character in text)
 
 
@@ -149,7 +197,8 @@ def _milliseconds(value: object, location: str) -> int:
     return milliseconds
 
 
-def parse_mosp(text: str) -> tuple[list[TimedChar], int, int]:
+def parse_mosp(text: str, *, is_cancelled: Callable[[], bool] | None = None) -> tuple[list[TimedChar], int, int]:
+    check_match_cancelled(is_cancelled)
     try:
         project = json.loads(text.lstrip("\ufeff"))
     except json.JSONDecodeError as exc:
@@ -167,6 +216,7 @@ def parse_mosp(text: str) -> tuple[list[TimedChar], int, int]:
     previous_segment_end = -1
     previous_item_end = -1
     for segment_index, segment in enumerate(segments):
+        check_match_cancelled(is_cancelled)
         location = f"segments[{segment_index}]"
         if not isinstance(segment, dict):
             raise AlignmentError(f"{location} 必须是 JSON 对象")
@@ -182,6 +232,7 @@ def parse_mosp(text: str) -> tuple[list[TimedChar], int, int]:
         if not isinstance(items, list) or not items:
             raise AlignmentError(f"{location} 缺少字词级 items 时间数据")
         for item_index, item in enumerate(items):
+            check_match_cancelled(is_cancelled)
             item_count += 1
             item_location = f"{location}.items[{item_index}]"
             if not isinstance(item, dict):
@@ -201,7 +252,7 @@ def parse_mosp(text: str) -> tuple[list[TimedChar], int, int]:
 
             characters = [
                 normalized
-                for source_character in item_text
+                for source_character in (_CancellationText(item_text, is_cancelled) if is_cancelled is not None else item_text)
                 for normalized in normalize_character(source_character)
             ]
             if not characters:
@@ -209,6 +260,7 @@ def parse_mosp(text: str) -> tuple[list[TimedChar], int, int]:
             duration = item_end - item_start
             count = len(characters)
             for character_index, character in enumerate(characters):
+                check_match_cancelled(is_cancelled)
                 start = item_start + duration * character_index / count
                 end = item_start + duration * (character_index + 1) / count
                 timed.append(TimedChar(character, start, end, segment_index))
@@ -229,11 +281,15 @@ def _raw_manuscript_segments(
     text: str,
     split_punctuation: frozenset[str],
     preserve_punctuation: frozenset[str],
+    *,
+    is_cancelled: Callable[[], bool] | None = None,
 ) -> list[str]:
+    check_match_cancelled(is_cancelled)
     segments: list[str] = []
     current: list[str] = []
     index = 0
     while index < len(text):
+        check_match_cancelled(is_cancelled)
         character = text[index]
         if character in split_punctuation:
             if character in preserve_punctuation:
@@ -242,6 +298,7 @@ def _raw_manuscript_segments(
             while index < len(text) and (
                 text[index] in split_punctuation or text[index] in CLOSING_PUNCTUATION
             ):
+                check_match_cancelled(is_cancelled)
                 if (
                     text[index] in preserve_punctuation
                     or text[index] in CLOSING_PUNCTUATION
@@ -265,12 +322,16 @@ def split_manuscript(
     text: str,
     split_punctuation: frozenset[str] = SPLIT_PUNCTUATION,
     preserve_punctuation: frozenset[str] = PRESERVED_END_PUNCTUATION,
+    *,
+    is_cancelled: Callable[[], bool] | None = None,
 ) -> tuple[str, list[ManuscriptSegment]]:
+    check_match_cancelled(is_cancelled)
     display_text = _clean_manuscript_for_display(text)
     if "\n" not in split_punctuation:
         display_text = display_text.replace("\n", "")
     raw_segments = _raw_manuscript_segments(
-        display_text, split_punctuation, preserve_punctuation
+        display_text, split_punctuation, preserve_punctuation,
+        is_cancelled=is_cancelled,
     )
     if not raw_segments:
         raise AlignmentError("文稿为空")
@@ -279,7 +340,8 @@ def split_manuscript(
     merged: list[str] = []
     leading = ""
     for raw in raw_segments:
-        if not normalize_text(raw):
+        check_match_cancelled(is_cancelled)
+        if not normalize_text(raw, is_cancelled=is_cancelled):
             if merged:
                 merged[-1] += raw
             else:
@@ -296,7 +358,8 @@ def split_manuscript(
     segments: list[ManuscriptSegment] = []
     cursor = 0
     for value in merged:
-        normalized = normalize_text(value)
+        check_match_cancelled(is_cancelled)
+        normalized = normalize_text(value, is_cancelled=is_cancelled)
         start = cursor
         cursor += len(normalized)
         normalized_parts.append(normalized)
@@ -310,12 +373,16 @@ def _allocate_interval(
     end_index: int,
     start_ms: float,
     end_ms: float,
+    *,
+    is_cancelled: Callable[[], bool] | None = None,
 ) -> None:
+    check_match_cancelled(is_cancelled)
     count = end_index - start_index
     if count <= 0:
         return
     end_ms = max(start_ms, end_ms)
     for offset, index in enumerate(range(start_index, end_index)):
+        check_match_cancelled(is_cancelled)
         item_start = start_ms + (end_ms - start_ms) * offset / count
         item_end = start_ms + (end_ms - start_ms) * (offset + 1) / count
         timings[index] = (item_start, item_end)
@@ -325,9 +392,12 @@ def align_character_timings(
     asr_chars: Sequence[TimedChar],
     manuscript_text: str,
     policy: str,
+    *,
+    is_cancelled: Callable[[], bool] | None = None,
 ) -> tuple[list[tuple[float, float]], dict[str, object]]:
+    check_match_cancelled(is_cancelled)
     asr_text = "".join(item.char for item in asr_chars)
-    matcher = difflib.SequenceMatcher(None, asr_text, manuscript_text, autojunk=False)
+    matcher = cancellable_sequence_matcher(asr_text, manuscript_text, is_cancelled=is_cancelled)
     opcodes = matcher.get_opcodes()
     matched_count = sum(i2 - i1 for tag, i1, i2, _j1, _j2 in opcodes if tag == "equal")
     asr_unmatched = sum(i2 - i1 for tag, i1, i2, _j1, _j2 in opcodes if tag != "equal")
@@ -343,9 +413,11 @@ def align_character_timings(
 
     timings: list[tuple[float, float] | None] = [None] * len(manuscript_text)
     for tag, i1, i2, j1, _j2 in opcodes:
+        check_match_cancelled(is_cancelled)
         if tag != "equal":
             continue
         for offset in range(i2 - i1):
+            check_match_cancelled(is_cancelled)
             source = asr_chars[i1 + offset]
             timings[j1 + offset] = (source.start_ms, source.end_ms)
 
@@ -359,16 +431,19 @@ def align_character_timings(
         previous_anchor: list[int | None] = []
         nearest: int | None = None
         for index in range(len(timings)):
+            check_match_cancelled(is_cancelled)
             if timings[index] is not None:
                 nearest = index
             previous_anchor.append(nearest)
         next_anchor: list[int | None] = [None] * len(timings)
         nearest = None
         for index in range(len(timings) - 1, -1, -1):
+            check_match_cancelled(is_cancelled)
             if timings[index] is not None:
                 nearest = index
             next_anchor[index] = nearest
         for index, timing in enumerate(timings):
+            check_match_cancelled(is_cancelled)
             if timing is not None:
                 continue
             left = previous_anchor[index]
@@ -385,11 +460,13 @@ def align_character_timings(
     else:
         index = 0
         while index < len(timings):
+            check_match_cancelled(is_cancelled)
             if timings[index] is not None:
                 index += 1
                 continue
             run_start = index
             while index < len(timings) and timings[index] is None:
+                check_match_cancelled(is_cancelled)
                 index += 1
             run_end = index
             left_timing = timings[run_start - 1] if run_start > 0 else None
@@ -397,7 +474,8 @@ def align_character_timings(
             interval_start = left_timing[1] if left_timing is not None else global_start
             interval_end = right_timing[0] if right_timing is not None else global_end
             _allocate_interval(
-                timings, run_start, run_end, interval_start, interval_end
+                timings, run_start, run_end, interval_start, interval_end,
+                is_cancelled=is_cancelled,
             )
 
     resolved = [timing for timing in timings if timing is not None]
@@ -407,6 +485,7 @@ def align_character_timings(
     low_confidence: list[dict[str, object]] = []
     unmatched_source_char_indexes: set[int] = set()
     for tag, i1, i2, j1, j2 in opcodes:
+        check_match_cancelled(is_cancelled)
         if tag == "equal":
             continue
         if tag == "delete":
@@ -426,6 +505,7 @@ def align_character_timings(
     source_character_counts: dict[int, int] = {}
     unmatched_source_character_counts: dict[int, int] = {}
     for index, source in enumerate(asr_chars):
+        check_match_cancelled(is_cancelled)
         source_character_counts[source.cue_index] = source_character_counts.get(source.cue_index, 0) + 1
         if index in unmatched_source_char_indexes:
             unmatched_source_character_counts[source.cue_index] = (
@@ -453,14 +533,18 @@ def align_character_timings(
 
 
 def _repair_output_timings(
-    raw: Sequence[tuple[float, float, str]], global_start: int, global_end: int
+    raw: Sequence[tuple[float, float, str]], global_start: int, global_end: int,
+    *,
+    is_cancelled: Callable[[], bool] | None = None,
 ) -> list[OutputCue]:
+    check_match_cancelled(is_cancelled)
     count = len(raw)
     if global_end - global_start < count:
         raise AlignmentError(f"ASR 总时长不足以为 {count} 条字幕各分配至少 1 ms")
     output: list[OutputCue] = []
     previous_end = global_start
     for index, (raw_start, raw_end, text) in enumerate(raw):
+        check_match_cancelled(is_cancelled)
         remaining_after = count - index - 1
         latest_start = global_end - remaining_after - 1
         start = min(max(round(raw_start), previous_end, global_start), latest_start)
@@ -476,9 +560,13 @@ def build_output_cues(
     timings: Sequence[tuple[float, float]],
     global_start: int,
     global_end: int,
+    *,
+    is_cancelled: Callable[[], bool] | None = None,
 ) -> list[OutputCue]:
+    check_match_cancelled(is_cancelled)
     raw: list[tuple[float, float, str]] = []
     for segment in segments:
+        check_match_cancelled(is_cancelled)
         if segment.normalized_start >= segment.normalized_end:
             continue
         start = timings[segment.normalized_start][0]
@@ -486,22 +574,27 @@ def build_output_cues(
         raw.append((start, end, segment.text))
     if not raw:
         raise AlignmentError("没有生成任何字幕")
-    return _repair_output_timings(raw, global_start, global_end)
+    return _repair_output_timings(raw, global_start, global_end, is_cancelled=is_cancelled)
 
 
 def build_mosp_segments(
     segments: Sequence[ManuscriptSegment],
     timings: Sequence[tuple[float, float]],
     output_cues: Sequence[OutputCue],
+    *,
+    is_cancelled: Callable[[], bool] | None = None,
 ) -> list[dict[str, object]]:
+    check_match_cancelled(is_cancelled)
     if len(segments) != len(output_cues):
         raise AlignmentError("内部错误：文稿分段与输出字幕数量不一致")
     result: list[dict[str, object]] = []
     for segment, output_cue in zip(segments, output_cues):
+        check_match_cancelled(is_cancelled)
         raw_items: list[tuple[float, float, str]] = []
         pending_prefix = ""
         normalized_index = segment.normalized_start
         for source_character in segment.text:
+            check_match_cancelled(is_cancelled)
             normalized = normalize_character(source_character)
             if not normalized:
                 if raw_items:
@@ -527,7 +620,8 @@ def build_mosp_segments(
             raise AlignmentError("内部错误：MOSP item 未覆盖完整文稿分段")
 
         repaired_items = _repair_output_timings(
-            raw_items, output_cue.start_ms, output_cue.end_ms
+            raw_items, output_cue.start_ms, output_cue.end_ms,
+            is_cancelled=is_cancelled,
         )
         result.append(
             {
@@ -557,22 +651,26 @@ def _align_mosp_and_manuscript(
     policy: str = "fuzzy",
     split_punctuation: frozenset[str] = SPLIT_PUNCTUATION,
     preserve_punctuation: frozenset[str] = PRESERVED_END_PUNCTUATION,
+    *,
+    is_cancelled: Callable[[], bool] | None = None,
 ) -> tuple[
     list[OutputCue],
     dict[str, object],
     list[ManuscriptSegment],
     list[tuple[float, float]],
 ]:
+    check_match_cancelled(is_cancelled)
     if policy not in {"fuzzy", "strict", "nearest"}:
         raise AlignmentError(f"不支持的错漏策略：{policy}")
-    asr_chars, segment_count, item_count = parse_mosp(mosp_text)
+    asr_chars, segment_count, item_count = parse_mosp(mosp_text, is_cancelled=is_cancelled)
     normalized_manuscript, segments = split_manuscript(
-        manuscript_text, split_punctuation, preserve_punctuation
+        manuscript_text, split_punctuation, preserve_punctuation,
+        is_cancelled=is_cancelled,
     )
-    timings, report = align_character_timings(asr_chars, normalized_manuscript, policy)
+    timings, report = align_character_timings(asr_chars, normalized_manuscript, policy, is_cancelled=is_cancelled)
     global_start = round(asr_chars[0].start_ms)
     global_end = round(asr_chars[-1].end_ms)
-    output = build_output_cues(segments, timings, global_start, global_end)
+    output = build_output_cues(segments, timings, global_start, global_end, is_cancelled=is_cancelled)
     report["input_segments"] = segment_count
     report["input_items"] = item_count
     report["output_cues"] = len(output)
@@ -602,20 +700,24 @@ def generate_matched_mosp(
     policy: str = "fuzzy",
     split_punctuation: frozenset[str] = SPLIT_PUNCTUATION,
     preserve_punctuation: frozenset[str] = PRESERVED_END_PUNCTUATION,
+    *,
+    is_cancelled: Callable[[], bool] | None = None,
 ) -> tuple[list[OutputCue], dict[str, object], str]:
+    check_match_cancelled(is_cancelled)
     output, report, segments, timings = _align_mosp_and_manuscript(
         mosp_text,
         manuscript_text,
         policy,
         split_punctuation,
         preserve_punctuation,
+        is_cancelled=is_cancelled,
     )
     try:
         project = json.loads(mosp_text.lstrip("\ufeff"))
     except json.JSONDecodeError as exc:  # parse_mosp normally reports this first.
         raise AlignmentError("MOSP JSON 无效") from exc
     project["schema"] = PROJECT_SCHEMA
-    project["segments"] = build_mosp_segments(segments, timings, output)
+    project["segments"] = build_mosp_segments(segments, timings, output, is_cancelled=is_cancelled)
     content = json.dumps(project, ensure_ascii=False, indent=2) + "\n"
     return output, report, content
 

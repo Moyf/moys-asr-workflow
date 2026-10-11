@@ -78,6 +78,75 @@ class BatchRunnerTests(unittest.TestCase):
         self.assertEqual(result["outcomes"][1]["code"], "transcription_failed")
         self.assertEqual(result["outcomes"][1]["error"], "provider failed")
 
+    def test_preparation_failure_before_request_snapshot_does_not_break_batch(self) -> None:
+        def transcribe(request, *, cancel_event):
+            return TranscriptionResult(request.srt_path, request.srt_path.with_suffix(".mosp"), None)
+        with mock.patch("maw.launcher_batch._batch_unique_output_path",
+                        side_effect=[OSError("unexpected preparation failure"), self.root / "clip-1.srt"]):
+            result = run_batch(self._items(2), settings={}, manifest_path=self.root / "manifest.json",
+                               cancel_event=threading.Event(), transcribe=transcribe)
+        self.assertEqual(result["outcomes"][0]["code"], "transcription_failed")
+        self.assertIn("unexpected preparation failure", result["outcomes"][0]["error"])
+        self.assertEqual(result["outcomes"][1]["status"], "done")
+
+    def test_api_failure_in_one_item_is_classified_without_stopping_later_items(self) -> None:
+        from maw.gui_workflow import TranscriptionProcessError
+        detail = "获取上传凭证失败 (HTTP 401): code=InvalidApiKey | request_id=test-request"
+        def transcribe(request, *, cancel_event):
+            if request.media_path.stem == "clip-0":
+                raise TranscriptionProcessError(1, [detail])
+            return TranscriptionResult(request.srt_path, request.srt_path.with_suffix(".mosp"), None)
+        result = run_batch(self._items(2), settings={}, manifest_path=self.root / "manifest.json",
+                           cancel_event=threading.Event(), transcribe=transcribe)
+        self.assertEqual(result["outcomes"][0]["code"], "asr_auth_failed")
+        self.assertIn(detail, result["outcomes"][0]["error"])
+        self.assertEqual(result["outcomes"][1]["status"], "done")
+
+    def test_empty_audio_item_skips_postprocess_preserves_diagnosis_and_continues(self) -> None:
+        from maw.audio_diagnostics import AudioInputError
+        events = []
+        def transcribe(request, *, cancel_event):
+            if request.media_path.stem == 'clip-0':
+                raise AudioInputError('asr_empty_result_multitrack', 'known_count=2, selected audio_index=0')
+            return TranscriptionResult(request.srt_path, request.srt_path.with_suffix('.mosp'), None)
+        manifest = self.root / 'manifest.json'
+        result = run_batch(self._items(2), settings={}, manifest_path=manifest,
+                           cancel_event=threading.Event(), transcribe=transcribe, on_event=events.append)
+        self.assertEqual(result['outcomes'][0]['code'], 'asr_empty_result_multitrack')
+        self.assertEqual(result['outcomes'][1]['status'], 'done')
+        self.assertIn('known_count=2', manifest.read_text(encoding='utf-8'))
+        self.assertTrue(any(event.get('code') == 'asr_empty_result_multitrack' for event in events))
+
+    def test_unknown_audio_probe_extraction_failure_is_friendly_and_batch_continues(self) -> None:
+        import subprocess
+        from maw.gui_workflow import TranscriptionProcessError
+        line = 'subprocess.CalledProcessError: ' + str(subprocess.CalledProcessError(
+            1, ['ffmpeg', '-map', '0:a:0', '-vn', 'audio.wav']))
+        def transcribe(request, *, cancel_event):
+            if request.media_path.stem == 'clip-0':
+                raise TranscriptionProcessError(1, [line])
+            return TranscriptionResult(request.srt_path, request.srt_path.with_suffix('.mosp'), None)
+        result = run_batch(self._items(2), settings={}, manifest_path=self.root / 'manifest.json',
+                           cancel_event=threading.Event(), transcribe=transcribe)
+        self.assertEqual(result['outcomes'][0]['code'], 'audio_extraction_failed')
+        self.assertEqual(result['outcomes'][1]['status'], 'done')
+
+    def test_api_failure_does_not_leak_active_key_to_events_or_manifest(self) -> None:
+        from dataclasses import replace
+        from maw.gui_workflow import TranscriptionProcessError
+        key = "test-only-opaque-credential"
+        items = tuple(replace(item, request=replace(item.request, api_key=key)) for item in self._items(1))
+        events = []
+        def transcribe(request, *, cancel_event):
+            raise TranscriptionProcessError(1, [f"HTTP 401 | InvalidApiKey | provided: {key} | request_id=test-request"])
+        manifest_path = self.root / "manifest.json"
+        result = run_batch(items, settings={"apiKey": key}, manifest_path=manifest_path,
+                           cancel_event=threading.Event(), transcribe=transcribe, on_event=events.append)
+        for text in (json.dumps(result), json.dumps(events), manifest_path.read_text(encoding="utf-8")):
+            self.assertNotIn(key, text)
+            self.assertIn("test-request", text)
+        self.assertEqual(result["outcomes"][0]["code"], "asr_auth_failed")
+
     def test_file_failure_is_classified_and_later_items_continue(self) -> None:
         import errno
         from maw.file_errors import IntermediateFileError

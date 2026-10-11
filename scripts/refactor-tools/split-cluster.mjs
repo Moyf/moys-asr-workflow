@@ -1,5 +1,5 @@
 // 按行区间从 web/editor.js 拆出顶层声明，生成 IIFE 模块并更新 editor-scripts.txt。
-// 用法: node docs/temp/split-cluster.mjs docs/temp/cluster-xxx.json
+// 用法: node scripts/refactor-tools/split-cluster.mjs .artifacts/refactor/cluster-xxx.json
 // spec: {
 //   file, ns, header,                 // 模块文件名 / 命名空间 / 头注释
 //   ranges: [[a,b], ...],             // editor.js 行区间（含），仅顶层声明被搬出

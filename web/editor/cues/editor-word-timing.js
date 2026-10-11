@@ -26,9 +26,11 @@
     if (toggle) toggle.checked = enabled;
     syncQuickToggle();
     MaweCoreState.waveformEditor?.pane.classList.toggle('word-timing-mode', enabled);
+    // 启用/关闭时切到字词码预设的行高与每行长度（关闭恢复原设置）。
+    MaweDisplaySettings?.syncWordTimingWaveformSettings?.(enabled);
     refresh();
   }
-  // 波形工具栏的快捷按钮（🔤）与项目设置镜像开关由模板可选提供；不存在时零开销。
+  // 波形工具栏的「字词」按钮与项目设置镜像开关由模板可选提供；不存在时零开销。
   function syncQuickToggle() {
     const quick = document.getElementById('word-timing-quick-toggle');
     if (quick) {
@@ -81,9 +83,14 @@
     if (result.items) {
       segment.items = result.items;
       if (selection?.segment === segment) selection.items = result.items;
+      const details = Array.isArray(result.details) ? result.details : [];
+      // 提示条空间有限：超过 3 处只展示前 3 处并以「等」收尾。
+      const shown = details.slice(0, 3).map(d => `[${d.before} -> ${d.after}]`).join(' ');
+      const more = details.length > 3 ? ' 等' : '';
+      const suffix = details.length ? `（共${result.changed}处：${shown}${more}）` : `（${result.changed} 处）`;
       MaweHint.flashHint(ui(
-        `已同步字词时间码文字（${result.changed} 处）`,
-        `Synced timed text labels (${result.changed})`,
+        `已同步字词时间码文字${suffix}`,
+        `Synced timed text labels (${result.changed}: ${shown}${more})`,
       ), 'success');
     } else if (result.warn && !quietMismatch) {
       MaweHint.flashHint(ui(

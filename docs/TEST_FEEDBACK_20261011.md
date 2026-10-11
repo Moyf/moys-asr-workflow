@@ -45,3 +45,12 @@
 
 - Chromium 页面交互和视觉截图未验证：本地测试服务器无法在当前沙箱中启动；预览摘要的按钮间距由 CSS 设置为 12px，并由 E2E 检查，但该 E2E 未能进入页面。
 - 未执行 tag 或发布；Chromium 人工检查仍待维护者在可启动 Server 的环境中完成。
+
+## 最新主线合并与收尾验证
+
+- 合并 `origin/main` 的 `d2d12b42`：冲突已解决；Launcher 桥同时保留警告滚动与 API Key 校验接口，供应商设置沿用主线的槽位过滤及设置页隔离行为。CHANGELOG 同时保留两边新增的用户可见条目。
+- `node scripts/build-editor.mjs --write` 与 `node scripts/build-launcher.mjs --write` → 成功；随后两条 `--check` 新鲜度检查均通过。
+- `node node_modules/typescript/bin/tsc -p tsconfig.typecheck.json` → 通过。
+- `node --test tests/test_launcher_feedback_ui.mjs` → 21/21 通过，包含运行中编辑器图标和供应商槽位行为。
+- `pnpm run check:editor`、`pnpm run check:launcher`、`pnpm run typecheck` 未能进入脚本：pnpm 尝试在沙箱临时目录更新自身时遇到 `EPERM`；已用本地 Node 直接运行对应 bundle 新鲜度检查和 TypeScript 编译。
+- 单个 Python 定向测试在测试初始化写入系统临时目录时遇到 `PermissionError`，未进入断言；没有重试，也没有扩大测试范围。浏览器交互仍按前述环境限制待人工核验。

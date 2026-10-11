@@ -42,8 +42,8 @@ class ReleaseNotesTests(unittest.TestCase):
         self.assertIn("2. 双击对应的 `MAW` 可执行文件，打开启动器", notes)
         self.assertIn("3. 在启动器中，可以执行字幕转写、生成工程等操作", notes)
         self.assertIn("4. 完成后，启动字幕编辑器，进行字幕精修", notes)
-        self.assertIn("[完整使用文档](https://github.com/Moyf/moys-asr-workflow/blob/main/docs/WORKFLOW.md)", notes)
-        self.assertIn("[常见问题](https://github.com/Moyf/moys-asr-workflow/blob/main/docs/FAQ.md)", notes)
+        self.assertIn("[完整使用文档](https://github.com/Moyf/moys-asr-workflow/blob/main/docs/user/WORKFLOW.md)", notes)
+        self.assertIn("[常见问题](https://github.com/Moyf/moys-asr-workflow/blob/main/docs/user/FAQ.md)", notes)
         self.assertIn("### ✨ 新增", notes)
 
     def test_failed_platforms_render_failure_marks_without_links(self) -> None:

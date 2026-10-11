@@ -52,5 +52,17 @@ for (const language of ['zh', 'en']) {
     }));
     await expect(message).toContainText(language === 'zh' ? '缩短原文件名' : 'Shorten the source filename');
     await expect(message).not.toContainText(language === 'zh' ? '从失败步骤重试' : 'retry from the failed step');
+    // The transcription pipeline keeps its own copy: first line, then the reason.
+    await page.evaluate(() => window.MAWLauncher.onBackendEvent({
+      type: 'error', code: 'postprocess_failed', detail: '所有非空字幕已经是中文，没有需要翻译的内容，未写出输出产物。',
+    }));
+    await expect(message).toContainText(language === 'zh' ? '可从失败步骤重试。' : 'retry from the failed step.');
+    await expect(message).toContainText(language === 'zh' ? '失败原因：所有非空字幕已经是中文' : 'Reason: 所有非空字幕已经是中文');
+    // Manual toolbox runs must not mention transcription or the automatic chain.
+    await page.evaluate(() => window.MAWLauncher.onBackendEvent({
+      type: 'error', code: 'toolbox_failed', detail: '所有非空字幕已经是中文，没有需要翻译的内容，未写出输出产物。',
+    }));
+    await expect(message).toContainText(language === 'zh' ? '处理失败，原因：所有非空字幕已经是中文' : 'Processing failed. Reason: 所有非空字幕已经是中文');
+    await expect(message).not.toContainText(language === 'zh' ? '转写已完成' : 'Transcription completed');
   });
 }

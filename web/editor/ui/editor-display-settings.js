@@ -38,22 +38,59 @@
   let previousMultiSubtitlePreviewEnabled = false;
 
 
-  let waveformRowHeightBeforeMultiSubtitle = null;
+  let waveformRowHeightBeforeModes = null;
+  let secondsPerRowBeforeWordTiming = null;
+  const waveformModes = [];
 
 
 
-  function syncMultiSubtitleWaveformRowHeight(enabled, enteringEnabled, leavingEnabled) {
-    if (!MaweCoreState.waveformEditor?.getRowHeight || !MaweCoreState.waveformEditor?.setRowHeight) return;
-    if (enteringEnabled) {
-      waveformRowHeightBeforeMultiSubtitle = MaweCoreState.waveformEditor.getRowHeight();
-      MaweCoreState.waveformEditor.setRowHeight(MaweSettings.EDITOR_SETTINGS.multiSubtitleRowHeight);
-    } else if (leavingEnabled && Number.isFinite(waveformRowHeightBeforeMultiSubtitle)) {
-      const previous = waveformRowHeightBeforeMultiSubtitle;
-      waveformRowHeightBeforeMultiSubtitle = null;
-      MaweCoreState.waveformEditor.setRowHeight(previous);
-    } else if (!enabled) {
-      waveformRowHeightBeforeMultiSubtitle = null;
+  function applyWaveformModeRowHeight() {
+    const editor = MaweCoreState.waveformEditor;
+    if (!editor) return;
+    const mode = waveformModes.at(-1);
+    const height = mode === 'word'
+      ? MaweSettings.EDITOR_SETTINGS.wordTimingRowHeight
+      : mode === 'multi' ? MaweSettings.EDITOR_SETTINGS.multiSubtitleRowHeight : waveformRowHeightBeforeModes;
+    if (Number.isFinite(height)) editor.setRowHeight(height);
+  }
+
+  // 共享基线，最近开启的模式优先。关闭非顶层模式不会改动当前行高；
+  // 关闭顶层时回到剩余模式的预设，全部关闭后才恢复原始行高。
+  function syncWaveformModeRowHeight(mode, enabled) {
+    const editor = MaweCoreState.waveformEditor;
+    if (!editor) return;
+    const index = waveformModes.indexOf(mode);
+    if (enabled === (index >= 0)) return;
+    if (enabled) {
+      if (!waveformModes.length) waveformRowHeightBeforeModes = editor.getRowHeight();
+      waveformModes.push(mode);
+    } else {
+      waveformModes.splice(index, 1);
+      if (index < waveformModes.length) return;
     }
+    applyWaveformModeRowHeight();
+    if (!waveformModes.length) waveformRowHeightBeforeModes = null;
+  }
+
+  function syncMultiSubtitleWaveformRowHeight(enabled) {
+    syncWaveformModeRowHeight('multi', enabled);
+  }
+
+
+
+  // 每行长度仅受字词模式影响，与两个模式的行高恢复分开处理。
+  function syncWordTimingWaveformSettings(enabled) {
+    const editor = MaweCoreState.waveformEditor;
+    if (!editor) return;
+    const wasEnabled = waveformModes.includes('word');
+    if (enabled && !wasEnabled) {
+      secondsPerRowBeforeWordTiming = editor.settings.secondsPerRow;
+      editor.setSecondsPerRow(MaweSettings.EDITOR_SETTINGS.wordTimingSecondsPerRow);
+    } else if (!enabled && wasEnabled) {
+      editor.setSecondsPerRow(secondsPerRowBeforeWordTiming);
+      secondsPerRowBeforeWordTiming = null;
+    }
+    syncWaveformModeRowHeight('word', enabled);
   }
 
 
@@ -71,7 +108,6 @@
   const leavingEnabled = !enabled && previousMultiSubtitlePreviewEnabled;
   syncMultiSubtitleWaveformRowHeight(enabled, enteringEnabled, leavingEnabled);
   MaweSplitMode.refreshMergeJoinModeHint();
-  if (MaweDom.projectMultiSubtitleSettings) MaweDom.projectMultiSubtitleSettings.hidden = !enabled;
   if (MaweDom.multiSubtitleEmptyHint) {
     MaweSettingsPanels.updateRegionalSettingsAvailability();
     MaweDom.multiSubtitleEmptyHint.hidden = !(enabled && !track.segments.length);
@@ -89,7 +125,7 @@
   if (MaweDom.multiSubtitleToggle) MaweDom.multiSubtitleToggle.title = MaweMultiSubtitleCore.MULTI_SUBTITLE_TOGGLE_TITLE;
   if (MaweDom.multiSubtitleDisplayMode) {
     MaweDom.multiSubtitleDisplayMode.value = MaweMultiSubtitleCore.getMultiSubtitleState().display_mode || 'both';
-    MaweDom.multiSubtitleDisplayMode.hidden = !enabled;
+    MaweDom.multiSubtitleDisplayMode.disabled = !enabled;
   }
   if (MaweDom.multiSubtitleMainLanguageMode) {
     MaweDom.multiSubtitleMainLanguageMode.value = MaweMultiSubtitleCore.getMainSubtitleSplitMode(MaweBoot.DATA.segments[0]);
@@ -103,8 +139,24 @@
     MaweDom.multiSubtitleExtensionRowHeight.value = String(MaweSettings.EDITOR_SETTINGS.multiSubtitleRowHeight);
     MaweDom.multiSubtitleExtensionRowHeight.disabled = !enabled;
   }
-  if (MaweDom.multiSubtitleExtensionRowHeightSetting) {
-    MaweDom.multiSubtitleExtensionRowHeightSetting.hidden = !enabled;
+  if (MaweDom.wordTimingRowHeight) {
+    MaweDom.wordTimingRowHeight.value = String(MaweSettings.EDITOR_SETTINGS.wordTimingRowHeight);
+  }
+  if (MaweDom.wordTimingSecondsPerRow) {
+    MaweDom.wordTimingSecondsPerRow.value = String(MaweSettings.EDITOR_SETTINGS.wordTimingSecondsPerRow);
+  }
+  // 波形工具栏的「双语 / 重叠」快捷开关：aria 状态与对应工程设置开关保持一致。
+  const multiQuickToggle = document.getElementById('multi-subtitle-quick-toggle');
+  if (multiQuickToggle) {
+    const multiEnabled = MaweMultiSubtitleCore.getMultiSubtitleState().enabled === true;
+    multiQuickToggle.classList.toggle('active', multiEnabled);
+    multiQuickToggle.setAttribute('aria-pressed', String(multiEnabled));
+  }
+  const overlayQuickToggle = document.getElementById('overlay-quick-toggle');
+  if (overlayQuickToggle) {
+    const overlayEnabled = getOverlayTrack()?.enabled === true;
+    overlayQuickToggle.classList.toggle('active', overlayEnabled);
+    overlayQuickToggle.setAttribute('aria-pressed', String(overlayEnabled));
   }
   if (MaweDom.multiSubtitleCrossTrackSnapToggle) {
     MaweDom.multiSubtitleCrossTrackSnapToggle.checked = MaweSettings.EDITOR_SETTINGS.crossTrackSnap;
@@ -256,9 +308,9 @@
     applyCueListDisplaySettings,
     get previousMultiSubtitlePreviewEnabled() { return previousMultiSubtitlePreviewEnabled; },
     set previousMultiSubtitlePreviewEnabled(v) { previousMultiSubtitlePreviewEnabled = v; },
-    get waveformRowHeightBeforeMultiSubtitle() { return waveformRowHeightBeforeMultiSubtitle; },
-    set waveformRowHeightBeforeMultiSubtitle(v) { waveformRowHeightBeforeMultiSubtitle = v; },
+    applyWaveformModeRowHeight,
     syncMultiSubtitleWaveformRowHeight,
+    syncWordTimingWaveformSettings,
     updateMultiSubtitleUi,
     bindCueListDisplayToggle,
     applyCueEditorDisplaySettings,

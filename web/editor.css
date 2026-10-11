@@ -952,6 +952,21 @@
   .toolbar .settings-anchor > button.active {
     position: relative; z-index: 421;
   }
+  /* 左侧操作单独滚动，右侧设置始终留在工具栏内；焦点导航也会滚动到对应按钮。 */
+  .toolbar.waveform-toolbar > .layout-toolbar-label { flex: 0 0 auto; white-space: nowrap; }
+  .toolbar.waveform-toolbar > .waveform-toolbar-controls {
+    display: flex; align-items: center; gap: 6px;
+    flex: 1 1 auto; min-width: 0;
+    overflow-x: auto; overflow-y: hidden;
+    scrollbar-width: none;
+  }
+  .waveform-toolbar-controls::-webkit-scrollbar { display: none; }
+  .waveform-toolbar-controls > * { flex: 0 0 auto; }
+  .waveform-toolbar-controls button { white-space: nowrap; }
+  .waveform-settings { gap: 8px; }
+  .toolbar.waveform-toolbar > .waveform-edit-tools { flex: 0 0 auto; }
+  .waveform-edit-tools > button { white-space: nowrap; }
+  .toolbar .waveform-settings > #ass-mode-quick-toggle { font-size: 12px; line-height: 1.4; }
   .settings-panel {
     position: fixed; z-index: 420;
     display: flex; flex-direction: column; gap: 12px;
@@ -966,7 +981,7 @@
     position: relative; z-index: 80;
   }
   .settings-panel-section {
-    display: flex; flex-wrap: wrap; align-items: center; gap: 8px;
+    display: flex; flex-wrap: wrap; align-items: center;
     min-width: 0; padding: 8px 10px;
     background: var(--bg-raised); border: 1px solid var(--border-subtle);
     border-radius: var(--radius-md);
@@ -1076,7 +1091,7 @@
     white-space: nowrap;
   }
   .multi-subtitle-settings-menu { max-height: min(620px, calc(100vh - 110px)); overflow-y: auto; }
-  .multi-subtitle-settings-section { box-sizing: border-box; }
+  .multi-subtitle-settings-section { box-sizing: border-box; gap: 8px; }
   .multi-subtitle-settings-section + .multi-subtitle-settings-section { margin-top: 8px; }
   .multi-subtitle-settings-section .settings-panel-title { text-align: left; }
   .multi-subtitle-settings-section .multi-subtitle-setting-row,
@@ -1085,6 +1100,8 @@
   .multi-subtitle-settings-section > .dropdown-item { flex: 0 0 100%; box-sizing: border-box; margin: 0; }
   .multi-subtitle-settings-section .multi-subtitle-setting-toggle { white-space: normal; }
   .waveform-settings-section { width: 100%; }
+  .waveform-settings-section > .settings-panel-title-row,
+  .waveform-settings-section > .settings-panel-title { margin-bottom: 8px; }
   .waveform-settings-title { text-transform: none; text-align: left; }
   .waveform-settings-section .editor-settings-item.waveform-settings-toggle-row { flex: 0 0 100%; white-space: normal; }
   .waveform-settings-section .editor-settings-item {
@@ -1346,7 +1363,7 @@
   .editor-settings-region-card > button { flex: 0 0 auto; }
   .editor-settings-page[hidden] { display: none; }
   .editor-settings-group {
-    display: flex; flex-direction: column; align-items: stretch; gap: 16px;
+    display: flex; flex-direction: column; align-items: stretch;
     min-width: 0; padding: 8px 10px;
     background: var(--bg-raised); border: 1px solid var(--border-subtle); border-radius: var(--radius-md);
   }
@@ -1404,9 +1421,11 @@
   }
   .editor-settings-about-version {
     display: flex; flex: 0 0 100%; align-items: center; justify-content: space-between; gap: 12px;
-    padding-bottom: 8px; border-bottom: 1px solid var(--border-subtle);
+    margin-bottom: 12px; padding-bottom: 8px; border-bottom: 1px solid var(--border-subtle);
     color: var(--text-secondary); font-size: 13px;
   }
+  /* about 页的 group 内 heading 与内容网格保留间距（.editor-settings-group 已去全局 gap）。 */
+  #editor-settings-page-about .editor-settings-group-heading { margin-bottom: 12px; }
   .editor-settings-about-version strong { color: var(--text-primary); font-variant-numeric: tabular-nums; }
   .editor-settings-about-grid {
     display: grid; grid-template-columns: repeat(auto-fit, minmax(190px, 1fr));
@@ -1426,6 +1445,17 @@
   .editor-settings-about-placeholder { flex: 0 0 auto; color: var(--text-muted); white-space: nowrap; }
   html[lang="en"] .editor-settings-about-locale-zh,
   html:not([lang="en"]) .editor-settings-about-locale-en { display: none; }
+  /* 关于页底部的装饰性署名图文：整体居中，不参与上面的入口网格。 */
+  .editor-settings-about-credits {
+    display: flex; flex-direction: column; align-items: center; gap: 8px;
+    width: 100%; margin-top: 12px; text-align: center;
+  }
+  .editor-settings-about-credits img {
+    width: 120px; height: 120px; object-fit: contain; border-radius: var(--radius-sm);
+  }
+  .editor-settings-about-credits p {
+    margin: 0; color: var(--text-secondary); font-size: 12px; line-height: 1.7;
+  }
   .editor-settings-segmented {
     display: grid; grid-template-columns: repeat(3, minmax(0, 1fr));
     gap: 2px; width: 100%; padding: 2px;
@@ -1621,13 +1651,13 @@
   .editor-settings-panel button:disabled,
   .editor-settings-panel select:disabled,
   .editor-settings-panel input:disabled { opacity: .42; cursor: not-allowed; }
-  /* inline action 跳转后的目标提示：所在分组边框闪烁三次（flashSettingsTarget）。 */
+  /* inline action 跳转后的目标提示：所在分组边框闪烁两次（flashSettingsTarget）。 */
   @keyframes settings-flash-ring {
     0%, 100% { box-shadow: 0 0 0 0 transparent; }
-    12%, 45%, 78% { box-shadow: 0 0 0 2px var(--accent-line); }
-    28%, 62% { box-shadow: 0 0 0 2px transparent; }
+    10%, 50% { box-shadow: 0 0 0 2px var(--accent-line); }
+    30%, 75% { box-shadow: 0 0 0 2px transparent; }
   }
-  .settings-flash { animation: settings-flash-ring 1.5s ease; border-radius: var(--radius-md); }
+  .settings-flash { animation: settings-flash-ring 1.2s ease; border-radius: var(--radius-md); }
   .editor-settings-stepper {
     display: inline-flex; align-items: center; overflow: hidden;
     border: 1px solid var(--border); border-radius: var(--radius-sm);
@@ -2199,6 +2229,23 @@
   }
   .multi-subtitle-setting-row > span { min-width: 0; white-space: normal; line-height: 1.3; }
   .multi-subtitle-setting-row select { width: 108px; min-width: 0; }
+  /* 双语字幕页的「显示」设置一行化：标签+下拉并排，剩余项（徽标/提示）自动换行；
+     字幕管理按钮保留 10px 间距（继承 section 的 gap 并加大一档）。 */
+  .multi-subtitle-display-inline { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); align-items: center; gap: 8px; }
+  .multi-subtitle-display-inline > .settings-panel-title,
+  .multi-subtitle-display-inline > .multi-subtitle-setting-toggle,
+  .multi-subtitle-display-inline > .settings-panel-hint { grid-column: 1 / -1; }
+  .multi-subtitle-display-inline .multi-subtitle-setting-row {
+    flex: 1 1 180px; display: flex; align-items: center; gap: 8px; padding: 0;
+  }
+  .multi-subtitle-display-inline .multi-subtitle-setting-row > span { flex: 1; }
+  .multi-subtitle-display-inline .multi-subtitle-setting-row select { width: 80px; flex-shrink: 0; }
+  .multi-subtitle-display-inline .multi-subtitle-setting-toggle { flex: 0 0 auto; }
+  .multi-subtitle-display-inline .settings-panel-hint { flex-basis: 100%; }
+  .multi-subtitle-manage-section { gap: 10px; }
+  @media (max-width: 600px) {
+    .multi-subtitle-display-inline { grid-template-columns: minmax(0, 1fr); }
+  }
   /* 空副轨的行内提示：允许手动添加，导入字幕为可选入口。 */
   .multi-subtitle-empty-hint {
     color: var(--text-muted); font-size: 12px;
@@ -4353,3 +4400,20 @@
 .mawe-tooltip .mawe-tooltip-arrow.above { clip-path: polygon(0px 7px, 14px 7px, 7px 14px); }
 .mawe-tooltip .mawe-tooltip-arrow.right { clip-path: polygon(7px 0px, 7px 14px, 0px 7px); }
 .mawe-tooltip .mawe-tooltip-arrow.left  { clip-path: polygon(7px 0px, 7px 14px, 14px 7px); }
+
+.gap-video-job {
+  position: fixed;
+  right: 20px;
+  bottom: 24px;
+  z-index: 10020;
+  width: min(360px, calc(100vw - 40px));
+  padding: 16px;
+  border: 1px solid var(--border-strong);
+  border-radius: 10px;
+  background: var(--bg-overlay);
+  color: var(--text-primary);
+  box-shadow: 0 8px 28px #0005;
+}
+.gap-video-job progress { display: block; width: 100%; margin: 12px 0; }
+.gap-video-job button { padding: 6px 16px; cursor: pointer; }
+.gap-video-job button:disabled { cursor: default; opacity: .6; }
