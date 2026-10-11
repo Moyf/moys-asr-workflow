@@ -1079,19 +1079,19 @@ Object.assign(STRINGS.en, {
 });
 Object.assign(STRINGS.zh, {
   toolbox_open_ai_settings: "打开 AI 设置",
-  toolbox_stop_ai: "停止 AI 处理",
-  toolbox_status_cancelling_ai: "正在停止 AI 处理……",
-  toolbox_ai_cancelled: "AI 处理已取消。",
-  toolbox_ai_cancel_failed: "无法停止 AI 处理",
-  toolbox_ai_cancel_too_late: "AI 处理已进入收尾或保存阶段，无法取消。"
+  toolbox_stop_ai: "停止字幕处理",
+  toolbox_status_cancelling_ai: "正在停止字幕处理……",
+  toolbox_ai_cancelled: "字幕处理已取消。",
+  toolbox_ai_cancel_failed: "无法停止字幕处理",
+  toolbox_ai_cancel_too_late: "字幕处理已进入收尾或保存阶段，无法取消。"
 });
 Object.assign(STRINGS.en, {
   toolbox_open_ai_settings: "Open AI settings",
-  toolbox_stop_ai: "Stop AI processing",
-  toolbox_status_cancelling_ai: "Stopping AI processing…",
-  toolbox_ai_cancelled: "AI processing was cancelled.",
-  toolbox_ai_cancel_failed: "Could not stop AI processing",
-  toolbox_ai_cancel_too_late: "AI processing has reached finalization or saving and can no longer be cancelled."
+  toolbox_stop_ai: "Stop subtitle processing",
+  toolbox_status_cancelling_ai: "Stopping subtitle processing…",
+  toolbox_ai_cancelled: "Subtitle processing was cancelled.",
+  toolbox_ai_cancel_failed: "Could not stop subtitle processing",
+  toolbox_ai_cancel_too_late: "Subtitle processing has reached finalization or saving and can no longer be cancelled."
 });
 Object.assign(STRINGS.zh, {
   toolbox_open: "打开工具箱", toolbox_title: "工具箱", toolbox_group_postprocess: "字幕处理", toolbox_group_utilities: "媒体工具", toolbox_no_media: "未选择媒体", toolbox_input_empty: "未选择文件", toolbox_chain_heading: "处理结果（点击可切换输入）", toolbox_resize_width: "调整工具箱宽度", toolbox_resize_height: "调整工具箱高度",
