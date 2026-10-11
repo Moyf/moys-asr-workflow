@@ -26,7 +26,7 @@ async function fixture(page, mode, run) {
       job.payload = JSON.parse(data);
       res.writeHead(202); return res.end(JSON.stringify(job));
     }
-    if (req.url.endsWith('/cancel')) {
+    if (req.url.endsWith('/cancel') || req.url === '/jobs/cancel-admission') {
       if (mode === 'cleanup-stop') Object.assign(job, { state: 'failed', cleanupError: 'Access denied' });
       else if (mode !== 'failed-cleanup') Object.assign(job, { cleanupComplete: true, state: job.state === 'failed' ? 'failed' : 'cancelled' });
       return res.end(JSON.stringify(job));
@@ -86,6 +86,7 @@ test('audio source uses WAV picker, media capability, exact intervals and comple
     expect(picker.suggestedName).toBe('music_gap-removed.wav');
     expect(picker.types).toEqual([{ description: '重组后音频', accept: { 'audio/wav': ['.wav'] } }]);
     expect(job.payload).toEqual({ requestToken: 'audio', bindingGeneration: 1, sourceMediaId: 'audio-source', selectedAudioTrack: 0,
+      admissionToken: expect.stringMatching(/^[a-f0-9]{64}$/), admissionDeadline: expect.any(Number),
       intervals: [{ startMs: 123, endMs: 567 }, { startMs: 1001, endMs: 1502 }] });
     expect(await page.evaluate(() => window.bytes)).toBe(4);
     expect(await page.evaluate(() => window.hints.at(-1).text)).toBe('去空隙音频已重组并保存');

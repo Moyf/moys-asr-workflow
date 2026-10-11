@@ -23,6 +23,7 @@ import subprocess
 import sys
 import tempfile
 import threading
+import time
 import webbrowser
 import zipfile
 from collections.abc import Callable
@@ -55,7 +56,7 @@ from maw.app_paths import default_server_settings_path, legacy_server_settings_p
 from maw.ass_styles import load_ass_style_library, save_ass_style_library  # noqa: E402
 from maw.ffmpeg import resolve_ffmpeg_tools  # noqa: E402
 from maw.media_jobs import (  # noqa: E402
-    MediaJob, MediaJobBusy, MediaJobCancelled, MediaJobManager, MediaJobUnavailable,
+    MEDIA_JOB_ADMISSION_TTL, MediaJob, MediaJobBusy, MediaJobCancelled, MediaJobManager, MediaJobUnavailable,
 )
 from maw.media_export_audio import rebuild_gap_removed_audio  # noqa: E402
 from maw.gui_config import DEFAULT_ENV_PATH, load_env  # noqa: E402
@@ -2246,6 +2247,8 @@ class EditorRequestHandler(BaseHTTPRequestHandler):
             self.export_gap_removed_video()
         elif path == "/api/exports/gap-removed-video/jobs":
             self.start_gap_removed_video_job()
+        elif path == "/api/exports/gap-removed-video/jobs/cancel-admission":
+            self.cancel_gap_removed_video_admission()
         elif path.startswith("/api/exports/gap-removed-video/jobs/"):
             self.gap_removed_video_job_request(path, cancel=True)
         elif path == "/api/exports/lottie":
@@ -2480,6 +2483,15 @@ class EditorRequestHandler(BaseHTTPRequestHandler):
         try:
             request = self.read_json_request(max_bytes=8 * 1024 * 1024)
             self._check_request_token(request)
+            admission_token = request.get("admissionToken")
+            if "admissionToken" in request:
+                self.editor_server.media_jobs.validate_admission_token(admission_token)
+                # The cancellation memory outlives the client deadline. A POST
+                # delayed beyond that memory must never start forgotten work.
+                deadline = request.get("admissionDeadline")
+                now = time.time() * 1000
+                if type(deadline) is not int or not now < deadline <= now + MEDIA_JOB_ADMISSION_TTL * 1000:
+                    raise MediaJobCancelled("媒体重组已停止")
             intervals = normalize_gap_removed_intervals(request.get("intervals"))
             source_snapshot = self.editor_server.gap_removed_media_source_snapshot(request)
             source = source_snapshot.path
@@ -2503,21 +2515,38 @@ class EditorRequestHandler(BaseHTTPRequestHandler):
             # Admission and the snapshot use the same binding generation. A
             # rebind between snapshot and admission must not launch stale work.
             with self.editor_server.settings_lock:
+                if admission_token is not None and time.time() * 1000 >= deadline:
+                    raise MediaJobCancelled("媒体重组已停止")
                 if binding != (self.editor_server.binding_generation, self.editor_server.source_media_id):
                     raise ProjectBindingChangedError("工程或媒体绑定已变更，请重新打开工程后导出")
                 job = self.editor_server.media_jobs.start(source, binding, intervals, rebuild,
-                    output_extension=source_snapshot.output_extension)
+                    output_extension=source_snapshot.output_extension, admission_token=admission_token)
             self.send_json(HTTPStatus.ACCEPTED, job.snapshot())
         except PermissionError as error:
             self.send_json(HTTPStatus.FORBIDDEN, {"ok": False, "error": str(error)})
         except (ProjectBindingChangedError, MediaJobBusy) as error:
             self.send_json(HTTPStatus.CONFLICT, {"ok": False, "error": str(error)})
+        except MediaJobCancelled as error:
+            self.send_json(HTTPStatus.CONFLICT, {"ok": False, "error": str(error), "cleanupComplete": True})
         except (UnicodeDecodeError, json.JSONDecodeError, ValueError) as error:
             self.send_json(HTTPStatus.BAD_REQUEST, gap_removed_export_error_payload(error))
         except (OSError, MediaJobUnavailable) as error:
             if job is not None:
                 self.editor_server.media_jobs.cancel(job.id)
             self.send_json(HTTPStatus.SERVICE_UNAVAILABLE, {"ok": False, "error": str(error)})
+
+    def cancel_gap_removed_video_admission(self) -> None:
+        try:
+            request = self.read_json_request()
+            self._check_request_token(request)
+            snapshot = self.editor_server.media_jobs.cancel_admission(request.get("admissionToken"))
+            self.send_json(HTTPStatus.OK, snapshot)
+        except PermissionError as error:
+            self.send_json(HTTPStatus.FORBIDDEN, {"ok": False, "error": str(error)})
+        except MediaJobBusy as error:
+            self.send_json(HTTPStatus.CONFLICT, {"ok": False, "error": str(error)})
+        except (UnicodeDecodeError, json.JSONDecodeError, ValueError) as error:
+            self.send_json(HTTPStatus.BAD_REQUEST, {"ok": False, "error": str(error)})
 
     def gap_removed_video_job_request(self, path: str, *, cancel: bool = False, include_body: bool = True) -> None:
         parts = path.removeprefix("/api/exports/gap-removed-video/jobs/").split("/")

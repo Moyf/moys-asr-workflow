@@ -24,8 +24,22 @@ async function fixture(mode, run) {
       const payload = JSON.parse(data);
       const jobId = String(++generation);
       jobs.set(jobId, { ok: true, jobId, state: 'running', stage: mode === 'prepare' ? 'preparing' : 'rebuilding', progress: .35,
-        bindingGeneration: payload.bindingGeneration, sourceMediaId: payload.sourceMediaId });
+        bindingGeneration: payload.bindingGeneration, sourceMediaId: payload.sourceMediaId,
+        admissionToken: payload.admissionToken });
+      if (mode.startsWith('admission-')) {
+        // The server has admitted real work, but JavaScript cannot parse its ID.
+        if (mode === 'admission-body') { res.writeHead(202); res.write('{"ok":true,'); }
+        return;
+      }
       res.writeHead(202); res.end(JSON.stringify(jobs.get(jobId))); return;
+    }
+    if (req.method === 'POST' && req.url === '/jobs/cancel-admission') {
+      let data = ''; for await (const chunk of req) data += chunk;
+      const payload = JSON.parse(data);
+      const job = [...jobs.values()].find(job => job.admissionToken === payload.admissionToken);
+      if (!job) { res.writeHead(404); res.end('{}'); return; }
+      job.state = 'cancelled'; job.cleanupComplete = true;
+      res.end(JSON.stringify(job)); return;
     }
     const match = req.url.match(/^\/jobs\/(\d+)(\/cancel|\/download)?$/);
     const job = match && jobs.get(match[1]);
@@ -99,6 +113,29 @@ for (const mode of ['prepare', 'rebuild', 'transfer', 'write']) {
       await expect.poll(() => state.jobs.size).toBe(2);
       await page.click('#gap-video-job-stop');
       await expect(page.locator('#download-gap-removed-video')).toBeEnabled();
+    });
+  });
+}
+
+for (const delay of ['headers', 'body']) for (const action of ['stop', 'pagehide']) {
+  test(`${action} cancels admitted work before delayed admission ${delay} delivers jobId`, async ({ page }) => {
+    await fixture(`admission-${delay}`, async (origin, state) => {
+      await install(page, origin, `admission-${delay}`);
+      await page.click('#download-gap-removed-video');
+      await expect.poll(() => state.jobs.size).toBe(1);
+      expect(await page.evaluate(() => window.__maweGapRemovedVideoTask.id)).toBeNull();
+      const job = [...state.jobs.values()][0];
+      expect(job.admissionToken).toMatch(/^[a-f0-9]{64}$/);
+      if (action === 'pagehide') await page.goto('about:blank');
+      else await page.click('#gap-video-job-stop');
+      await expect.poll(() => job.state).toBe('cancelled');
+      expect(state.requests).toContain('/jobs/cancel-admission');
+      expect(state.requests.some(path => path.endsWith('/download'))).toBe(false);
+      if (action === 'stop') {
+        await expect.poll(() => page.evaluate(() => window.hints.includes('视频导出已停止'))).toBe(true);
+        await expect(page.locator('#download-gap-removed-video')).toBeEnabled();
+        expect(await page.evaluate(() => window.__maweGapRemovedVideoTask)).toBeNull();
+      }
     });
   });
 }

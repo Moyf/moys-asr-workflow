@@ -553,7 +553,7 @@ document.getElementById('download-gap-removed-video')?.addEventListener('click',
     else progressBar.value = Math.max(0, Math.min(1, value));
   };
   const stopBackend = () => {
-    if (!task?.id) return Promise.resolve();
+    if (!task) return Promise.resolve();
     if (task.cancelRequest) return task.cancelRequest;
     task.cancelRequest = (async () => {
       const controller = new AbortController();
@@ -566,10 +566,11 @@ document.getElementById('download-gap-removed-video')?.addEventListener('click',
       });
       try {
         await Promise.race([(async () => { while (true) {
-        const reply = await MaweHost.server.fetch(`${jobsUrl}/${encodeURIComponent(task.id)}/cancel`, {
+        const cancelUrl = task.id ? `${jobsUrl}/${encodeURIComponent(task.id)}/cancel` : `${jobsUrl}/cancel-admission`;
+        const reply = await MaweHost.server.fetch(cancelUrl, {
           method: 'POST', keepalive: true, signal: controller.signal,
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ requestToken }),
+          body: JSON.stringify({ requestToken, admissionToken: task.admissionToken }),
         });
         const state = await reply.json();
         if (!reply.ok) throw new Error(state.error || tr('无法确认导出已停止，请重试'));
@@ -630,7 +631,7 @@ document.getElementById('download-gap-removed-video')?.addEventListener('click',
     rejectStop(error);
     setProgress(mediaText('正在停止导出…'));
     stopButton.disabled = true;
-    if (task.id) void stopBackend().catch(() => {});
+    void stopBackend().catch(() => {});
   };
   const ensureCurrent = () => {
     if (!isBindingCurrent() || config.gapRemovedVideoJobsUrl !== jobsUrl) {
@@ -647,7 +648,9 @@ document.getElementById('download-gap-removed-video')?.addEventListener('click',
     // A second picker can resume while another export is already running.
     if (window.__maweGapRemovedVideoTask) return;
     if (typeof jobsUrl === 'string' && jobsUrl) {
-      task = { id: null, controller: new AbortController(), stopRequested: false, cancelRequest: null };
+      const random = crypto.getRandomValues(new Uint8Array(32));
+      const admissionToken = Array.from(random, value => value.toString(16).padStart(2, '0')).join('');
+      task = { id: null, admissionToken, controller: new AbortController(), stopRequested: false, cancelRequest: null };
       window.__maweGapRemovedVideoTask = task;
       button.disabled = true;
       panel = document.createElement('div');
@@ -667,13 +670,15 @@ document.getElementById('download-gap-removed-video')?.addEventListener('click',
       document.body.append(panel);
       window.addEventListener('pagehide', requestStop);
       setProgress(mediaText('正在准备导出…'));
-      // Do not abort admission before obtaining its ID: that would orphan an
-      // admitted task. A stop during this request is applied as soon as it returns.
-      const admission = await MaweHost.server.fetch(jobsUrl, {
+      // The client token makes cancellation safe even before the server ID is
+      // delivered, including pagehide or a response which never finishes.
+      const admission = await raceStop(MaweHost.server.fetch(jobsUrl, {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ requestToken, bindingGeneration, sourceMediaId, intervals, ...audioSelection }),
-      });
-      let state = await admission.json();
+        body: JSON.stringify({ requestToken, bindingGeneration, sourceMediaId, intervals, ...audioSelection,
+          admissionToken, admissionDeadline: Date.now() + 60000 }),
+        signal: task.controller.signal,
+      }));
+      let state = await raceStop(admission.json());
       if (!admission.ok) throw new Error(state.error || `服务器返回 ${admission.status}`);
       if (typeof state.jobId !== 'string' || !state.jobId) throw new Error(mediaText('导出状态异常，请重试'));
       task.id = state.jobId;

@@ -7,6 +7,7 @@ from __future__ import annotations
 
 import secrets
 import os
+import re
 import signal
 import shutil
 import subprocess
@@ -22,6 +23,8 @@ from maw.gui_platform import (popen_process_tree, process_group_kwargs,
 MAX_MEDIA_JOB_STDOUT_BYTES = 2 * 1024 * 1024
 MAX_MEDIA_JOB_STDERR_BYTES = 64 * 1024
 MEDIA_JOB_PIPE_READ_CHARS = 4096
+MEDIA_JOB_ADMISSION_TTL = 120
+MAX_MEDIA_JOB_ADMISSIONS = 256
 
 
 class MediaJobCancelled(RuntimeError):
@@ -167,10 +170,52 @@ class MediaJobManager:
         self.ready_timeout = ready_timeout
         self.temp_root = temp_root
         self.closed = False
+        self.admissions = {}
+
+    @staticmethod
+    def validate_admission_token(token):
+        if not isinstance(token, str) or not re.fullmatch(r"[A-Za-z0-9_-]{32,128}", token):
+            raise ValueError("媒体任务取消标识无效")
+
+    def _prune_admissions(self):
+        now = time.monotonic()
+        for token, (expires, job_id) in list(self.admissions.items()):
+            job = self.jobs.get(job_id)
+            if expires <= now and (job is None or job.disposed):
+                del self.admissions[token]
+
+    def _require_admission_capacity(self):
+        if len(self.admissions) >= MAX_MEDIA_JOB_ADMISSIONS:
+            raise MediaJobBusy("媒体任务取消记录已满，请稍后重试")
+
+    def cancel_admission(self, token):
+        """Cancel an admitted job or remember cancellation before admission."""
+        self.validate_admission_token(token)
+        with self.lock:
+            self._prune_admissions()
+            record = self.admissions.get(token)
+            if record is not None and record[1] is not None:
+                job = self.jobs.get(record[1])
+                if job is not None:
+                    return self.cancel(job.id)
+            if record is None:
+                self._require_admission_capacity()
+            self.admissions[token] = (time.monotonic() + MEDIA_JOB_ADMISSION_TTL, None)
+            return {"ok": True, "state": "cancelled", "cleanupComplete": True}
 
     def start(self, source: Path, binding: tuple[int, str], intervals,
-              runner: Callable[[MediaJob], object], *, output_extension: str | None = None) -> MediaJob:
+              runner: Callable[[MediaJob], object], *, output_extension: str | None = None,
+              admission_token: str | None = None) -> MediaJob:
         with self.lock:
+            if admission_token is not None:
+                self.validate_admission_token(admission_token)
+                self._prune_admissions()
+                record = self.admissions.get(admission_token)
+                if record is not None:
+                    if record[1] is None:
+                        raise MediaJobCancelled("媒体重组已停止")
+                    raise MediaJobBusy("此媒体任务已经接纳，请勿重复提交")
+                self._require_admission_capacity()
             if output_extension is not None and (not isinstance(output_extension, str)
                     or not output_extension.startswith(".") or not output_extension[1:].isalnum()):
                 raise ValueError("输出文件扩展名无效")
@@ -191,6 +236,8 @@ class MediaJobManager:
                     del self.jobs[key]
             self.jobs[job.id] = job
             self.active = job
+            if admission_token is not None:
+                self.admissions[admission_token] = (time.monotonic() + MEDIA_JOB_ADMISSION_TTL, job.id)
 
             def work():
                 try:

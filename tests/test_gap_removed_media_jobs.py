@@ -14,7 +14,8 @@ import urllib.error
 from unittest import mock
 from pathlib import Path
 
-from maw.media_jobs import (MAX_MEDIA_JOB_STDERR_BYTES, MediaJobBusy,
+from maw.media_jobs import (MAX_MEDIA_JOB_STDERR_BYTES, MAX_MEDIA_JOB_ADMISSIONS,
+                            MEDIA_JOB_ADMISSION_TTL, MediaJobBusy, MediaJobCancelled,
                             MediaJobManager, MediaJobUnavailable)
 
 MEDIA_JOBS_TEST_TEMP_ROOT = Path(__file__).resolve().parents[1] / ".debug-runs"
@@ -77,6 +78,56 @@ class MediaJobsTests(unittest.TestCase):
         self.assertFalse(job.directory.exists())
         self.assertEqual(self.manager.cancel(job.id)["state"], "completed")
         self.assertIsNone(self.manager.active)
+
+    def test_cancel_before_admission_creates_no_job_directory_thread_or_slot(self):
+        token = "a" * 64
+        cancelled = self.manager.cancel_admission(token)
+        self.assertTrue(cancelled["cleanupComplete"])
+        with mock.patch("maw.media_jobs.MediaJob") as constructor:
+            with self.assertRaises(MediaJobCancelled):
+                self.manager.start(self.source, (7, "source"), [(0, 1000)], lambda _: None,
+                                   admission_token=token)
+            constructor.assert_not_called()
+        self.assertEqual(self.manager.jobs, {})
+        self.assertTrue(self.manager.slot.acquire(blocking=False))
+        self.manager.slot.release()
+        self.assertEqual(list(Path(self.temp.name).iterdir()), [])
+
+    def test_admission_memory_is_bounded_expires_and_preserves_active_token(self):
+        token = "a" * 64
+        job = self.manager.start(self.source, (7, "source"), [(0, 1000)],
+                                 lambda job: job.cancelled.wait(5), admission_token=token)
+        now = time.monotonic()
+        with mock.patch("maw.media_jobs.time.monotonic", return_value=now + MEDIA_JOB_ADMISSION_TTL + 1):
+            for index in range(MAX_MEDIA_JOB_ADMISSIONS - 1):
+                self.manager.cancel_admission(f"{index:064x}")
+            with self.assertRaises(MediaJobBusy):
+                self.manager.cancel_admission("z" * 64)
+            self.assertEqual(len(self.manager.admissions), MAX_MEDIA_JOB_ADMISSIONS)
+            self.assertEqual(self.manager.admissions[token][1], job.id)
+            self.manager.cancel_admission(token)
+        self.assertTrue(job.disposed_event.wait(5))
+        with mock.patch("maw.media_jobs.time.monotonic", return_value=now + MEDIA_JOB_ADMISSION_TTL * 2 + 2):
+            self.manager.cancel_admission("z" * 64)
+        self.assertEqual(len(self.manager.admissions), 1)
+
+    def test_duplicate_token_cannot_admit_another_job_and_legacy_calls_still_work(self):
+        token = "d" * 64
+        job = self.manager.start(self.source, (7, "source"), [(0, 1000)],
+                                 lambda job: job.output.write_bytes(b"media"), admission_token=token)
+        self.wait(job, "ready")
+        self.manager.cancel_admission(token)
+        with self.assertRaises(MediaJobBusy):
+            self.manager.start(self.source, (7, "source"), [(0, 1000)], lambda _: None,
+                               admission_token=token)
+        legacy = self.start(lambda job: job.output.write_bytes(b"legacy"))
+        self.wait(legacy, "ready")
+        self.manager.cancel(legacy.id)
+
+    def test_admission_token_validation_rejects_missing_short_and_path_tokens(self):
+        for token in (None, True, "short", "../" + "a" * 64, "a" * 129):
+            with self.subTest(token=token), self.assertRaises(ValueError):
+                self.manager.cancel_admission(token)
 
     def test_real_process_is_killed_and_waited_before_slot_release(self):
         started = threading.Event()
@@ -384,6 +435,64 @@ class MediaJobsHttpTests(unittest.TestCase):
                 return result
             time.sleep(.01)
         self.assertEqual(result["state"], state)
+
+    def test_http_cancel_first_rejects_admission_and_expired_deadlines(self):
+        token = "b" * 64
+        cancel = {"requestToken": self.server.request_token, "admissionToken": token}
+        self.assertEqual(self.request(self.base + "/cancel-admission", {**cancel, "requestToken": "wrong"})[0], 403)
+        self.assertEqual(self.request(self.base + "/cancel-admission", cancel)[0], 200)
+        payload = {**self.payload(), "admissionToken": token, "admissionDeadline": int(time.time() * 1000) + 60000}
+        with mock.patch.object(self.server_editor, "editor_ffmpeg_tools", return_value=mock.Mock(
+                ffmpeg=Path("ffmpeg"), ffprobe=Path("ffprobe"))):
+            self.assertEqual(self.request(self.base, payload)[0], 409)
+        self.assertEqual(self.server.media_jobs.jobs, {})
+        with mock.patch.object(self.server_editor, "editor_ffmpeg_tools") as tools:
+            self.assertEqual(self.request(self.base, {**payload, "admissionToken": "c" * 64,
+                                                     "admissionDeadline": int(time.time() * 1000) - 1})[0], 409)
+            tools.assert_not_called()
+        self.assertIsNone(self.server.media_jobs.active)
+
+    def test_http_cancel_token_cleans_admitted_job_while_202_delivery_is_delayed(self):
+        admitted = threading.Event()
+        release_response = threading.Event()
+        replies = []
+        token = "e" * 64
+        original_send_json = self.server_editor.EditorRequestHandler.send_json
+
+        def delayed_send(handler, status, payload):
+            if status == 202:
+                admitted.set()
+                release_response.wait(5)
+            return original_send_json(handler, status, payload)
+
+        def rebuild(source, intervals, output, **kwargs):
+            job = kwargs["job"]
+            output.write_bytes(b"partial")
+            job.cancelled.wait(5)
+            job.check_cancelled()
+
+        payload = {**self.payload(), "admissionToken": token, "admissionDeadline": int(time.time() * 1000) + 60000}
+        with mock.patch.object(self.server_editor.EditorRequestHandler, "send_json", delayed_send), \
+                mock.patch.object(self.server_editor, "editor_ffmpeg_tools", return_value=mock.Mock(
+                    ffmpeg=Path("ffmpeg"), ffprobe=Path("ffprobe"))), \
+                mock.patch.object(self.server_editor, "rebuild_gap_removed_video", side_effect=rebuild):
+            request_thread = threading.Thread(target=lambda: replies.append(self.request(self.base, payload)))
+            request_thread.start()
+            try:
+                self.assertTrue(admitted.wait(5))
+                job = self.server.media_jobs.active
+                self.assertIsNotNone(job)
+                status, _ = self.request(self.base + "/cancel-admission", {
+                    "requestToken": self.server.request_token, "admissionToken": token})
+                self.assertEqual(status, 200)
+                self.assertTrue(job.disposed_event.wait(5))
+                self.assertFalse(job.directory.exists())
+                self.assertIsNone(self.server.media_jobs.active)
+                self.assertEqual(replies, [], "admission is still waiting for response delivery")
+            finally:
+                release_response.set()
+                request_thread.join(5)
+        self.assertEqual(replies[0][0], 202)
 
     def test_http_job_bound_snapshot_download_and_token(self):
         captured = {}
