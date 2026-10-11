@@ -106,7 +106,7 @@
   function runSizeScale(style, run) {
     const size = run?.size === 'small' ? style.smallTextScale
       : run?.size === 'large' ? style.largeTextScale : 1;
-    return size * (run?.emphasized ? style.emphasisScale : 1);
+    return size * (run?.emphasized ? style.emphasisScale : 1) * (run?.comment ? (style.commentScale || 1) : 1);
   }
 
 
@@ -187,6 +187,7 @@
 
   function runFillColor(style, run) {
     if (run?.speakerColor) return run.speakerColor;
+    if (run?.comment && style.commentStyle !== 'stroke') return style.commentColor;
     if (run?.emphasized && style.emphasisStyle === 'text') return style.emphasisColor;
     return style.primaryColor;
   }
@@ -194,6 +195,7 @@
 
   function runDecorColor(style, run) {
     if (run?.speakerColor) return run.speakerColor;
+    if (run?.comment && style.commentStyle !== 'stroke') return style.commentColor;
     if ((run?.underlined || run?.struck) && run?.emphasized && style.emphasisStyle === 'text') {
       return style.emphasisColor;
     }
@@ -215,7 +217,8 @@
     const style = track.style;
     return JSON.stringify([
       line.items.map((item) => [item.text, Boolean(item.run.emphasized), Boolean(item.run.underlined),
-        Boolean(item.run.struck), item.run.size || '', item.run.speakerColor || '', quantize(item.width)]),
+        Boolean(item.run.struck), item.run.size || '', Boolean(item.run.comment),
+        item.run.speakerColor || '', quantize(item.width)]),
       quantize(ratio), fontFamilyCss(style.fontName), Boolean(style.bold), Boolean(style.italic),
       Math.round(Number(track.nativeFontSize) || 1),
       quantize(style.spacing), quantize(style.outline), style.outlineColor,
@@ -330,6 +333,14 @@
           paintItemText(lg, item, pad + item.x, baseline, info, 'stroke');
         });
       }
+      if (style.commentStyle === 'stroke') {
+        lg.strokeStyle = style.commentColor;
+        line.items.forEach((item) => {
+          if (!item.run.comment) return;
+          const info = applyItemFont(lg, track, item.run, ratio);
+          paintItemText(lg, item, pad + item.x, baseline, info, 'stroke');
+        });
+      }
       g.globalAlpha = clampOpacityPercent(style.outlineOpacity);
       g.drawImage(layer, 0, 0);
       g.globalAlpha = 1;
@@ -343,6 +354,12 @@
       if (borderBox && item.run.emphasized && style.emphasisStyle === 'stroke') {
         g.globalAlpha = clampOpacityPercent(style.outlineOpacity);
         g.fillStyle = style.emphasisColor;
+        g.fillRect(x, baseline - item.ascent, item.width, item.ascent + item.descent);
+        g.globalAlpha = 1;
+      }
+      if (borderBox && item.run.comment && style.commentStyle === 'stroke') {
+        g.globalAlpha = clampOpacityPercent(style.outlineOpacity);
+        g.fillStyle = style.commentColor;
         g.fillRect(x, baseline - item.ascent, item.width, item.ascent + item.descent);
         g.globalAlpha = 1;
       }
@@ -413,6 +430,7 @@
         struck: Boolean(style.strikeOut) || Boolean(item.run.struck),
         emphasized: Boolean(item.run.emphasized),
         size: item.run.size || '',
+        comment: Boolean(item.run.comment),
           emphasisStroke: item.run.emphasized && style.emphasisStyle === 'stroke' && !borderBox
             ? style.emphasisColor : '',
           emphasisBox: item.run.emphasized && style.emphasisStyle === 'stroke' && borderBox

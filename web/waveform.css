@@ -909,6 +909,39 @@
 .waveform-pane.word-timing-mode .waveform-cue-block.word-timing-background .waveform-cue-handle {
   opacity: 0.9;
 }
+/* 字词时间码（多行波形）分层实验：字词块贴底压扁、文本垂直居中；
+   字幕块抬到字词块上方并稍加高，两层不再互相遮挡。
+   仅作用多行波形（basic 单行与双语 lane 各有自己的布局，不参与）。
+   徽章 bottom 同步按「块底 30 + 块高 38 + 间距 2」上移。 */
+.waveform-pane.word-timing-mode:not(.waveform-basic) .waveform-word-block,
+.waveform-pane.word-timing-mode:not(.waveform-basic) .waveform-word-boundary {
+  bottom: 7px;
+  height: 20px;
+}
+.waveform-pane.word-timing-mode:not(.waveform-basic) .waveform-word-block {
+  display: flex;
+  align-items: center;
+}
+.waveform-pane.word-timing-mode:not(.waveform-basic) .waveform-word-block .waveform-word-label {
+  line-height: normal;
+}
+.waveform-pane.word-timing-mode:not(.waveform-basic) .waveform-cue-block {
+  bottom: 30px;
+  height: 38px;
+  line-height: 38px;
+}
+/* 分层后字幕块不再垫在字词块下面，从背景透明度恢复到接近常规可见度；
+   选中态恢复完整不透明（描边仍保持去辉光，避免与字词块双层描边叠加）。 */
+.waveform-pane.word-timing-mode:not(.waveform-basic) .waveform-cue-block.word-timing-background {
+  opacity: 0.8;
+}
+.waveform-pane.word-timing-mode:not(.waveform-basic) .waveform-cue-block.word-timing-background.selected,
+.waveform-pane.word-timing-mode:not(.waveform-basic) .waveform-cue-block.word-timing-background.selected:hover {
+  opacity: 1;
+}
+.waveform-pane.word-timing-mode:not(.waveform-basic) .waveform-cue-badge {
+  bottom: calc(70px + var(--badge-stack-index, 0) * 16px);
+}
 .waveform-word-block {
   position: absolute; z-index: 6; bottom: 9px; height: 31px; min-width: 2px;
   padding: 2px 7px; box-sizing: border-box; border-radius: 4px;
@@ -1181,6 +1214,13 @@
   border-radius: 0;
   box-shadow: none;
 }
+/* 单点标记的命中区比旗标视觉左右各宽 4px：贴着旗标边缘按下时
+   仍然进入拖动，而不是误触轨道空白新建标记。 */
+.waveform-marker-item.point::after {
+  content: "";
+  position: absolute;
+  inset: 0 -4px;
+}
 .waveform-marker-point-shape {
   position: absolute; inset: 0; pointer-events: none;
   background: var(--marker-color, #3e63dd);
@@ -1246,7 +1286,6 @@
   pointer-events: none;
   z-index: 12;
   opacity: 0.85;
-  box-shadow: 0 0 0 1.5px var(--wave-split-flash, #ffd43b);
 }
 /* 复核状态统一显示在左侧；已确认保留名称，整体降低透明度。 */
 .waveform-marker-item.review-confirmed { opacity: 0.5; }

@@ -420,8 +420,10 @@ def validate_plan(
             if ffmpeg_path is None or not ffmpeg_path.is_file():
                 errors.append({"step": step_id, "field": "ocrVideoPath", "message": "找不到 FFmpeg，无法执行 OCR 字幕去重。"})
         elif step_id == "burn":
-            if media_path.suffix.lower() not in VIDEO_EXTENSIONS or not media_path.is_file():
-                errors.append({"step": step_id, "field": "mediaPath", "message": "烧录字幕需要一个存在的视频文件。"})
+            # 自动流程的烧录由转写原媒体直接驱动，不要求预先填写；
+            # 原媒体是音频时按「绿幕视频」处理（用字幕时间轴生成绿幕底）。
+            if not media_path.is_file():
+                errors.append({"step": step_id, "field": "mediaPath", "message": "找不到原始媒体文件，无法烧录字幕。"})
             if ffmpeg_path is None or not ffmpeg_path.is_file():
                 errors.append({"step": step_id, "field": "mediaPath", "message": "找不到 FFmpeg，无法烧录字幕。"})
     return plan, tuple(errors)
@@ -1050,10 +1052,14 @@ def _run_step(
             _emit(on_event, {"stage": "detail", "step": step_id, "key": "toolbox_status_burning", **dict(details)})
 
         try:
+            # 原媒体是音频时无法烧录画面：视作勾选「绿幕视频」，
+            # 用字幕时间轴生成绿幕底视频而不是烧进原画面。
+            green_screen = media_path.suffix.lower() not in VIDEO_EXTENSIONS
             result = run_burn_subtitles(
                 BurnSubtitleRequest(
                     media_path=media_path,
                     subtitle_path=srt_path,
+                    green_screen=green_screen,
                     video_encoder=normalize_video_encoder(step.get("videoEncoder")),
                 ),
                 ffmpeg_path=ffmpeg_path,

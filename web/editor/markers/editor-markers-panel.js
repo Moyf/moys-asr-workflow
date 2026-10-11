@@ -336,7 +336,24 @@
     actions.appendChild(deleteButton);
 
     editor.append(nameLabel, colorRow, noteLabel, timeRow, actions);
+    // 记录各控件展开时的初值：点「完成」时只提交真正改过的字段。
+    editor.querySelectorAll('input, textarea').forEach((control) => {
+      control.dataset.editorInit = control.value;
+    });
     return editor;
+  }
+
+
+  // 「完成」收尾：把尚未触发 change 的已改输入先提交（pointerdown 阻止了
+  // 焦点转移，blur→change 不会发生）。只派发值有变化的控件，避免同值提交
+  // 污染撤销历史。
+  function flushMarkerEditor(item) {
+    const editor = item.querySelector('.markers-item-editor');
+    if (!editor) return;
+    editor.querySelectorAll('input, textarea').forEach((control) => {
+      if (control.value === (control.dataset.editorInit ?? control.value)) return;
+      control.dispatchEvent(new Event('change'));
+    });
   }
 
 
@@ -419,18 +436,26 @@
     editButton.textContent = isEditing ? '完成' : '编辑';
     editButton.title = isEditing ? '完成' : '展开编辑此标记（名称 / 颜色 / 备注 / 时间 / 复核）';
     editButton.setAttribute('aria-label', isEditing ? '完成' : `编辑 ${marker.name || (isRegion ? '区段' : '标记')}`);
+    // 阻止焦点转移：否则编辑输入的 blur→change→全量重渲染会先摘掉本按钮，
+    // 用户要点两次「完成」才能收起编辑框。
+    editButton.addEventListener('pointerdown', (event) => {
+      if (isEditing) event.preventDefault();
+    });
     editButton.addEventListener('click', () => {
+      if (isEditing) flushMarkerEditor(item);
       selectedMarkerId = marker.id;
       editingMarkerId = editingMarkerId === marker.id ? null : marker.id;
       render();
     });
     if (!batchMode) item.appendChild(editButton);
 
-    if (showNotesToggle?.checked) {
+    // 勾选「显示备注」只为有备注的标记追加内容；空备注不留「-」占位。
+    const noteText = marker.note?.trim();
+    if (showNotesToggle?.checked && noteText) {
       const note = document.createElement('div');
       note.className = 'markers-item-note';
       note.dataset.markerProjectContent = 'true';
-      note.textContent = marker.note?.trim() ? marker.note : '-';
+      note.textContent = marker.note;
       item.appendChild(note);
     }
     if (!batchMode && marker.id === editingMarkerId) item.appendChild(buildMarkerEditor(marker));

@@ -188,7 +188,7 @@ Object.assign(ERROR_TEXT.en, {
   alignment_failed: (detail) => `Word/character timestamp generation failed: ${detail || "check the media, subtitle text, and aligner."}`,
 });
 Object.assign(STRINGS.zh, {
-  start_server_editor: "打开编辑器",
+  start_server_editor: "🎬 打开编辑器",
   toolbox_chain_hint: "每次生成新文件，并自动作为下一步输入；选择工具后运行。",
   error_notice_title: "任务未完成",
   error_notice_close: "关闭提示",
@@ -202,7 +202,7 @@ Object.assign(STRINGS.zh, {
   error_copy_report_failed: "复制失败，请手动复制日志。",
 });
 Object.assign(STRINGS.en, {
-  start_server_editor: "Open editor",
+  start_server_editor: "🎬 Open editor",
   toolbox_chain_hint: "Choose a tool to run; each run creates a new file and uses it as the next input.",
   error_notice_title: "Task not completed",
   error_notice_close: "Dismiss message",

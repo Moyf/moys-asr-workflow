@@ -277,7 +277,7 @@ class GuiConfigTests(unittest.TestCase):
         provider = gui_config.PROVIDERS[0]
 
         self.assertEqual(provider.id, "qwen")
-        self.assertEqual(provider.label, "阿里云百炼（千问）")
+        self.assertEqual(provider.label, "阿里云百炼（推荐 / 千问）")
         self.assertEqual(provider.key_url, "https://platform.qianwenai.com/home/")
         self.assertEqual(provider.key_label, "千问AI平台")
         self.assertEqual(provider.models[0].id, "qwen-audio-3.0-asr-flash-filetrans")
@@ -356,7 +356,8 @@ class GuiConfigTests(unittest.TestCase):
         provider = gui_config.provider_by_id("deepseek")
 
         self.assertEqual(provider.label, "DeepSeek（？）")
-        self.assertTrue(provider.divider_before)
+        # 与必剪之间的分隔线已移除（261011 反馈）：两项紧挨成「非转写/实验性」分组。
+        self.assertFalse(provider.divider_before)
         self.assertFalse(provider.requires_api_key)
         self.assertFalse(provider.supports_language)
         self.assertIn("文本模型", provider.note)

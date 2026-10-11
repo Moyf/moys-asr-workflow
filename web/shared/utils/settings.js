@@ -61,7 +61,7 @@ export function createUtilsModule(dependencies) {
     splitTrimSymbols: [...DEFAULT_SPLIT_TRIM_SYMBOLS],
     overlayEnabled: true, extensionOverlayEnabled: true, assMode: false,
     assFrameStagePreview: false, assFrameAutoRender: true,
-    assEmphasisSyntax: 'both', assSpecialSymbolRule: 'both', assUnderlineEnabled: true, assStrikeEnabled: true, assSmallTextEnabled: true, assLargeTextEnabled: true, multiSubtitleRowHeight: 168,
+    assEmphasisSyntax: 'both', assSpecialSymbolRule: 'both', assUnderlineEnabled: true, assStrikeEnabled: true, assSmallTextEnabled: true, assLargeTextEnabled: true, assCommentEnabled: true, multiSubtitleRowHeight: 168,
     subtitleColorPaletteEnabled: false,
     exportStartAtZero: false, cueListShowIndex: true, cueListShowTime: true,
     cueListShowSticker: true, cueListShowCharcount: true, cueListAutoScrollOnClick: true,
@@ -148,6 +148,7 @@ export function createUtilsModule(dependencies) {
       assStrikeEnabled: savedSettings.assStrikeEnabled !== false,
       assSmallTextEnabled: savedSettings.assSmallTextEnabled !== false,
       assLargeTextEnabled: savedSettings.assLargeTextEnabled !== false,
+      assCommentEnabled: savedSettings.assCommentEnabled !== false,
       // 自定义五色开关：关闭时一律使用内置色值（自定义值保留以便再次开启）。
       subtitleColorPaletteEnabled: savedSettings.subtitleColorPaletteEnabled === true,
       multiSubtitleRowHeight: EDITOR_SETTING_ROW_HEIGHTS.includes(Number(savedSettings.multiSubtitleRowHeight))

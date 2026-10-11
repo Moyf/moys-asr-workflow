@@ -4,21 +4,26 @@
 //
 // 设计要点：
 // - 事件委托监听 pointerover/pointerout，现有 250+ 处 title 零改动自动升级；
-// - 悬停达阈值时摘下 title（抑制原生气泡），离开时原样放回；
-// - 摘下期间外部代码改写 title（i18n 翻译、波形模块动态提示）会被吸收，
-//   离开时放回最新值；
-// - 空间不足时按 下 → 上 → 右 → 左 顺序换位，箭头随位置翻转。
+// - title 属性在加载时立即转存为 data-title 并从 DOM 移除（后续写入由
+//   MutationObserver 持续转存）：Chromium 的原生气泡定时器一旦排程，移除
+//   title 并不总会撤销它（实测与自定义气泡同时出现），所以不能靠悬停时
+//   摘除来抑制原生气泡，必须让 DOM 里根本没有 title 可读；
+// - 空间不足时按 下 → 上 → 右 → 左 顺序换位，箭头随位置翻转；
+// - 下/上方向气泡与目标左对齐，箭头靠近目标左缘（锚点在左不在中间）。
 (function initMaweTooltip(global) {
   'use strict';
 
-  const ATTACH_SELECTOR = '[title]:not(iframe):not(object):not(embed)';
+  const ATTACH_SELECTOR = '[data-title]:not(iframe):not(object):not(embed)';
   const FORCE_NATIVE_SELECTOR = '[data-tooltip-force-native]';
+  const TITLE_SOURCE_ATTR = 'title';
+  const TITLE_STORE_ATTR = 'data-title';
   const SHOW_DELAY_MS = 350;
   const HIDE_DELAY_MS = 80;
   const EDGE_GAP = 8;
   const ARROW_OFFSET = 9;
   const ARROW_BOX = 14;  // 箭头包围盒（内含 10px 旋转方块）
   const ARROW_LEN = 7;   // 三角凸出气泡边缘的长度
+  const ANCHOR_MAX_INSET = 24; // 下/上方向锚点最多深入目标左侧的像素
 
   let root = null;
   let bubble = null;
@@ -27,8 +32,48 @@
   let pendingTarget = null;
   let showTimer = 0;
   let hideTimer = 0;
-  let detached = null; // { element, title } 悬停期间摘下的 title
   let titleWatcher = null;
+
+  function isForceNative(element) {
+    return element.matches ? element.matches(FORCE_NATIVE_SELECTOR) : false;
+  }
+
+  // SVG 元素（含 namespaceURI 判定）与强制原生元素保留原生 title，不转存。
+  function storeTitle(element) {
+    if (element.namespaceURI && element.namespaceURI.includes('svg')) return;
+    if (isForceNative(element)) return;
+    if (!element.hasAttribute(TITLE_SOURCE_ATTR)) return;
+    const text = element.getAttribute(TITLE_SOURCE_ATTR) || '';
+    element.removeAttribute(TITLE_SOURCE_ATTR);
+    if (text) element.setAttribute(TITLE_STORE_ATTR, text);
+    else element.removeAttribute(TITLE_STORE_ATTR);
+  }
+
+  function storeTitlesInTree(rootNode) {
+    if (rootNode.nodeType === 1) storeTitle(rootNode);
+    if (rootNode.querySelectorAll) {
+      rootNode.querySelectorAll(`[${TITLE_SOURCE_ATTR}]`).forEach(storeTitle);
+    }
+  }
+
+  // 外部代码写 title（i18n 翻译、波形模块动态提示）会被持续转存；
+  // 若改的正是当前显示中的元素，气泡文本与位置同步刷新。
+  function absorbTitleChanges(records) {
+    records.forEach((record) => {
+      if (record.type === 'attributes') {
+        if (record.attributeName !== TITLE_SOURCE_ATTR) return;
+        const element = record.target;
+        storeTitle(element);
+        if (element !== target) return;
+        const text = element.getAttribute(TITLE_STORE_ATTR) || '';
+        if (!text) { hideNow(); return; }
+        bubble.textContent = text;
+        placement();
+        return;
+      }
+      record.addedNodes.forEach(storeTitlesInTree);
+    });
+  }
 
   function ensureDom() {
     if (root) return;
@@ -44,21 +89,12 @@
     root.appendChild(arrow);
     document.body.appendChild(root);
     titleWatcher = new MutationObserver(absorbTitleChanges);
-  }
-
-  function absorbTitleChanges(records, refresh = true) {
-    if (!detached || !records.some(record => record.target === detached.element)) return;
-    const element = detached.element;
-    detached.title = element.getAttribute('title') || '';
-    // Do not observe our own removal; an external set/remove sequence may
-    // intentionally clear the title, and must not restore the previous text.
-    titleWatcher.disconnect();
-    element.removeAttribute('title');
-    titleWatcher.observe(element, { attributes: true, attributeFilter: ['title'] });
-    if (!refresh) return;
-    if (!detached.title) { hideNow(); return; }
-    bubble.textContent = detached.title;
-    placement();
+    titleWatcher.observe(document.documentElement, {
+      subtree: true,
+      childList: true,
+      attributes: true,
+      attributeFilter: [TITLE_SOURCE_ATTR],
+    });
   }
 
   const px = (value) => `${Math.round(value)}px`;
@@ -113,19 +149,21 @@
         .map((key) => ({ key, room: room[key] }))
         .sort((a, b) => b.room - a.room)[0];
     }
+    // 锚点靠近目标左缘：窄元素（开关、复选框）取自身中心，宽元素最多深入 24px。
+    const anchorX = rect.left + Math.min(rect.width / 2, ANCHOR_MAX_INSET);
     const centerX = rect.left + rect.width / 2;
     const centerY = rect.top + rect.height / 2;
     let bubbleX = 0;
     let bubbleY = 0;
     if (chosen.key === 'below') {
-      bubbleX = clampAxis(centerX - size.w / 2, viewportW, size.w);
+      bubbleX = clampAxis(rect.left, viewportW, size.w);
       bubbleY = rect.bottom + ARROW_OFFSET;
       // 箭头中心向气泡内侧偏 1px：让三角填充盖住接缝处的气泡边框线。
-      placeArrow('below', clampArrowAlong(centerX, bubbleX, size.w), bubbleY + 1);
+      placeArrow('below', clampArrowAlong(anchorX, bubbleX, size.w), bubbleY + 1);
     } else if (chosen.key === 'above') {
-      bubbleX = clampAxis(centerX - size.w / 2, viewportW, size.w);
+      bubbleX = clampAxis(rect.left, viewportW, size.w);
       bubbleY = rect.top - ARROW_OFFSET - size.h;
-      placeArrow('above', clampArrowAlong(centerX, bubbleX, size.w), bubbleY + size.h - 1);
+      placeArrow('above', clampArrowAlong(anchorX, bubbleX, size.w), bubbleY + size.h - 1);
     } else if (chosen.key === 'right') {
       bubbleX = Math.min(rect.right + ARROW_OFFSET, viewportW - size.w - EDGE_GAP);
       bubbleY = clampAxis(centerY - size.h / 2, viewportH, size.h);
@@ -140,21 +178,7 @@
   }
 
   function currentTitleText(element) {
-    if (detached && detached.element === element) return detached.title;
-    return element.getAttribute('title') || '';
-  }
-
-  function detachTitle(element) {
-    detached = { element, title: element.getAttribute('title') || '' };
-    element.removeAttribute('title');
-    titleWatcher.observe(element, { attributes: true, attributeFilter: ['title'] });
-  }
-
-  function restoreTitle() {
-    if (!detached) return;
-    const { element, title } = detached;
-    detached = null;
-    if (element.isConnected && title) element.setAttribute('title', title);
+    return element.getAttribute(TITLE_STORE_ATTR) || '';
   }
 
   function hideNow() {
@@ -162,13 +186,6 @@
     showTimer = 0;
     global.clearTimeout(hideTimer);
     hideTimer = 0;
-    if (detached) {
-      if (titleWatcher) {
-        absorbTitleChanges(titleWatcher.takeRecords(), false);
-        titleWatcher.disconnect();
-      }
-      restoreTitle();
-    }
     target = null;
     pendingTarget = null;
     if (root) { root.classList.remove('show'); root.setAttribute('aria-hidden', 'true'); }
@@ -180,11 +197,8 @@
     const text = currentTitleText(element);
     target = null;
     if (!text) return;
-    // ensureDom 必须先于 detachTitle：它负责创建 titleWatcher，
-    // 否则首次显示时 detachTitle 里的 observe 会抛 null。
     ensureDom();
     target = element;
-    detachTitle(element);
     bubble.textContent = text;
     placement();
     root.classList.add('show');
@@ -232,6 +246,10 @@
   function start() {
     if (document.documentElement.dataset.maweTooltipReady === 'true') return;
     document.documentElement.dataset.maweTooltipReady = 'true';
+    // 转存先于事件绑定：页面里已有的 title 立即从 DOM 消失，
+    // 保证第一个 pointerover 之前原生气泡就无文本可采样。
+    ensureDom();
+    storeTitlesInTree(document.documentElement);
     document.addEventListener('pointerover', onPointerOver, true);
     document.addEventListener('pointerout', onPointerOut, true);
     document.addEventListener('keydown', event => { if (event.key === 'Escape') hideNow(); }, true);

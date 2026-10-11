@@ -134,6 +134,12 @@
     e.preventDefault();
     const sel = window.getSelection();
     if (sel) sel.removeAllRanges();
+    // 字词时间码模式下主字幕文本与字词绑定，行内改文本必然失配：
+    // 拦下行内编辑并提示先退出字词码模式（叠加/副字幕不受影响，仍可跳编辑区）。
+    if (window.MaweWordTiming?.enabled) {
+      MaweHint.flashHint('请先退出字词码模式再编辑主字幕！', 'warning');
+      return;
+    }
     // 普通双击的第一次 pointerdown 已选中该 cue；只有从特殊子控件触发、且尚未选中时
     // 才补一次选择，避免双击再次提交当前面板并重绘波形布局。
     if (!MaweSelection.selectedIdxs.has(idx)) MaweSelection.selectOnly(idx);
