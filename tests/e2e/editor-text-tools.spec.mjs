@@ -193,20 +193,20 @@ test('batch replacement uses shared capture replacement and current-scope previe
   await expect(page.locator('#replace-scope-info')).toHaveText('当前范围：全部 1 条字幕');
   await page.locator('#find-input').fill('(猫)-(狗|鸟)');
   await page.locator('#use-regex').check();
-  await page.locator('#replace-input').fill('$2/$1');
+  await page.locator('#replace-input').fill('$02/$01');
   await expect(page.locator('#replace-preview')).toContainText('鸟/猫');
   await page.locator('#replace-confirm').click();
   await expect.poll(() => page.evaluate(() => MaweBoot.DATA.segments[0].text)).toBe('狗/猫\n鸟/猫');
 });
 
 test('text processing converts clear Chinese numbers with surrounding spaces', async ({ page }) => {
-  await seed(page, { text: '一百八十六', timed: false });
+  await seed(page, { text: '一百八十六，等三两分钟，八九不离十', timed: false });
   await page.locator('#batch-operations-btn').click();
   await page.locator('#text-process-btn').click();
   await page.locator('#text-process-convert-numbers').check();
-  await expect(page.locator('#text-process-preview')).toContainText('处理后： 186 ');
+  await expect(page.locator('#text-process-preview')).toContainText('处理后： 186 ，等三两分钟，八九不离十');
   await page.locator('#text-process-confirm').click();
-  await expect(page.locator('.cue[data-idx="0"] .text')).toHaveText(' 186 ');
+  await expect(page.locator('.cue[data-idx="0"] .text')).toHaveText(' 186 ，等三两分钟，八九不离十');
 });
 
 test('portable file uses the same fade rules and SRT export settings', async ({ page }) => {

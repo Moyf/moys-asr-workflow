@@ -70,20 +70,39 @@
 
   function installInlineWarningVisibility() {
     if (!document.body || typeof global.MutationObserver !== 'function') return;
-    const revealFrom = (node) => {
-      const root = node?.nodeType === 1 ? node : node?.parentElement;
-      if (!root) return;
-      const candidates = new Set();
-      if (root.matches?.(inlineWarningSelector)) candidates.add(root);
-      root.closest?.(inlineWarningSelector) && candidates.add(root.closest(inlineWarningSelector));
-      root.querySelectorAll?.(inlineWarningSelector).forEach((element) => candidates.add(element));
-      candidates.forEach((element) => revealInlineWarning(element));
+    const elementFor = (node) => node?.nodeType === 1 ? node : node?.parentElement;
+    const collectClosest = (root, candidates) => {
+      const warning = root?.closest?.(inlineWarningSelector);
+      if (warning) candidates.add(warning);
+    };
+    const collectSubtree = (root, candidates) => {
+      collectClosest(root, candidates);
+      root?.querySelectorAll?.(inlineWarningSelector).forEach((element) => candidates.add(element));
     };
     const observer = new global.MutationObserver((records) => {
+      const targets = new Set();
+      const subtrees = new Set();
+      const candidates = new Set();
       records.forEach((record) => {
-        revealFrom(record.target);
-        record.addedNodes?.forEach(revealFrom);
+        const target = elementFor(record.target);
+        if (target) targets.add(target);
+        // Insertion changes the target warning's text, but does not require a
+        // traversal of its completed parent list for every appended row.
+        if (record.type === 'attributes' && target) subtrees.add(target);
+        record.addedNodes?.forEach((node) => {
+          const root = elementFor(node);
+          if (root) subtrees.add(root);
+        });
       });
+      targets.forEach((root) => collectClosest(root, candidates));
+      subtrees.forEach((root) => {
+        // A newly inserted/changed ancestor already covers nested records.
+        for (let parent = root.parentElement; parent; parent = parent.parentElement) {
+          if (subtrees.has(parent)) return;
+        }
+        collectSubtree(root, candidates);
+      });
+      candidates.forEach((element) => revealInlineWarning(element));
     });
     observer.observe(document.body, {
       subtree: true,
@@ -92,7 +111,9 @@
       attributes: true,
       attributeFilter: ['class', 'hidden', 'role'],
     });
-    revealFrom(document.body);
+    const initial = new Set();
+    collectSubtree(document.body, initial);
+    initial.forEach((element) => revealInlineWarning(element));
   }
 
   installInlineWarningVisibility();

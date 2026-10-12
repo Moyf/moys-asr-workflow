@@ -786,7 +786,14 @@
 
 
   function timedTextEditHasUnappliedChanges() {
-    return Boolean(MaweDom.timedTextEditDraft?.report?.stats.changedSegments || MaweDom.timedTextEditDraft?.singleLineError);
+    // The report is debounced; closing or switching scope can happen before it
+    // catches up with input. Compare the current draft itself to its source.
+    const draft = MaweDom.timedTextEditDraft;
+    if (!draft) return false;
+    syncTimedTextEditDraftFromDom();
+    return Boolean(draft.singleLineError
+      || draft.texts.length !== draft.sourceSegments.length
+      || draft.sourceSegments.some((segment, index) => String(segment?.text || '') !== draft.texts[index]));
   }
 
 

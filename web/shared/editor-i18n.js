@@ -226,7 +226,7 @@
     '字词拆成字幕…': 'Split words into subtitles…',
     '字词拆成字幕': 'Split words into subtitles',
     '确认转换': 'Confirm conversion',
-    '请注意！转换操作不可逆！': 'Warning: This conversion cannot be undone!',
+    '可通过撤销恢复；不提供反向转换工具。': 'You can undo this conversion; no reverse-conversion tool is provided.',
     '此操作会使用字词时间码来生成拆碎后的字幕块，将完整的句子变成一个一个单词显示。': 'This uses word timings to split each complete sentence into individual word subtitles.',
     '请确认你需要这个效果再使用。': 'Use this only if this is the result you need.',
     '调整字词起点': 'Adjust timed text start',
@@ -1406,7 +1406,7 @@
   // and read-only previews. Translate their surrounding controls and labels.
   const PROJECT_TEXT_SELECTOR = [
     '.cue .text', '.multi-cue-column .text', '.waveform-cue-label',
-    '.timed-text-edit-diff-part', '[data-word-project-content]',
+    '.timed-text-edit-diff-part', '#timed-text-edit-search-mirror', '[data-word-project-content]',
     '.multi-subtitle-split-char',
     '.multi-subtitle-split-preview-left', '.multi-subtitle-split-preview-right',
     '.cue .sticker-slot .sname', '.cue .sticker-slot img', '#sticker-preview-name',

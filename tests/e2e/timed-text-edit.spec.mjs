@@ -271,9 +271,42 @@ test('search reveals filtered rows in the center and highlights/scrolls the matc
   await expect(rows).toBeHidden();
 });
 
+test('English whole-text search mirror preserves subtitles through highlights and language switches', async ({ page }, testInfo) => {
+  await page.addInitScript(() => localStorage.setItem('moy.asr.editor.onboarding.v1', 'completed'));
+  await page.goto(`${server.url}?lang=en`);
+  await page.evaluate(() => {
+    MaweBoot.DATA.segments[0].text = '查找';
+    MaweBoot.DATA.segments[1].text = '查找保存';
+    MaweCuePanel.renderAll({ waveform: 'full' });
+  });
+  await page.locator('#timed-text-edit-btn').click();
+  await page.locator('#timed-text-edit-view [data-view="single"]').click();
+  const mirror = page.locator('#timed-text-edit-search-mirror');
+  const textarea = page.locator('#timed-text-edit-single-textarea');
+  await expect(mirror).toHaveText('查找\n查找保存');
+  await page.locator('#timed-text-edit-find').fill('查找');
+  await expect(mirror.locator('.search-match')).toHaveText(['查找', '查找']);
+  await expect(mirror).toHaveText('查找\n查找保存');
+  await expect(textarea).toHaveValue('查找\n查找保存');
+  for (const language of ['zh', 'en']) {
+    await page.evaluate((value) => MAWE_I18N.applyLanguage(value), language);
+    await expect(mirror).toHaveText('查找\n查找保存');
+    await expect(textarea).toHaveValue('查找\n查找保存');
+  }
+  const spacing = await page.locator('.timed-text-edit-search').evaluate((element) => ({
+    margin: parseFloat(getComputedStyle(element).marginTop),
+    distance: element.getBoundingClientRect().top - element.previousElementSibling.getBoundingClientRect().bottom,
+  }));
+  expect(spacing.margin).toBeGreaterThanOrEqual(8);
+  expect(spacing.distance).toBeGreaterThanOrEqual(8);
+  console.log('pure-text search spacing:', JSON.stringify(spacing));
+  await page.locator('#timed-text-edit-modal').screenshot({ path: testInfo.outputPath('english-project-search.png') });
+});
+
 test('regex replacement uses captures, single replacement advances, and changes stay in the draft until applied', async ({ page }) => {
   await page.addInitScript(() => localStorage.setItem('moy.asr.editor.onboarding.v1', 'completed'));
   await page.goto(server.url);
+  const before = await page.evaluate(() => JSON.parse(JSON.stringify(MaweBoot.DATA.segments)));
   await page.locator('#timed-text-edit-btn').click();
   await page.locator('#timed-text-edit-view [data-view="single"]').click();
   const find = page.locator('#timed-text-edit-find');
@@ -286,7 +319,7 @@ test('regex replacement uses captures, single replacement advances, and changes 
   await expect(page.locator('#timed-text-edit-search-count')).toHaveText('2/7');
   expect(await page.evaluate(() => MaweBoot.DATA.segments[1].text)).toBe('abc');
   await find.fill('([a-z])');
-  await replacement.fill('$1$1');
+  await replacement.fill('$01$01');
   await page.locator('#timed-text-edit-replace-all').click();
   await expect(page.locator('#timed-text-edit-single-textarea')).toHaveValue('XX是这颗\naabbcc');
   expect(await page.evaluate(() => MaweBoot.DATA.segments[1].text)).toBe('abc');
@@ -294,6 +327,11 @@ test('regex replacement uses captures, single replacement advances, and changes 
   await expect(page.locator('#timed-text-edit-modal')).not.toHaveClass(/show/);
   expect(await page.evaluate(() => MaweBoot.DATA.segments[0].text)).toBe('XX是这颗');
   expect(await page.evaluate(() => MaweBoot.DATA.segments[1].text)).toBe('aabbcc');
+  const applied = await page.evaluate(() => JSON.parse(JSON.stringify(MaweBoot.DATA.segments)));
+  await page.keyboard.press('Control+z');
+  expect(await page.evaluate(() => JSON.parse(JSON.stringify(MaweBoot.DATA.segments)))).toEqual(before);
+  await page.keyboard.press('Control+Shift+z');
+  expect(await page.evaluate(() => JSON.parse(JSON.stringify(MaweBoot.DATA.segments)))).toEqual(applied);
 });
 
 test('cancelling pure-text replacement discards the draft', async ({ page }) => {
@@ -309,6 +347,36 @@ test('cancelling pure-text replacement discards the draft', async ({ page }) => 
   await page.locator('#timed-text-edit-cancel').click();
   await expect(page.locator('#timed-text-edit-modal')).not.toHaveClass(/show/);
   expect(await page.evaluate(() => MaweBoot.DATA.segments[1].text)).toBe('abc');
+});
+
+test('immediate close and scope changes confirm the latest draft before its report debounce', async ({ page }) => {
+  await page.addInitScript(() => localStorage.setItem('moy.asr.editor.onboarding.v1', 'completed'));
+  await page.goto(server.url);
+  await page.locator('#timed-text-edit-btn').click();
+  const result = await page.evaluate(() => {
+    let confirmations = 0;
+    const originalConfirm = window.confirm;
+    window.confirm = () => { confirmations += 1; return false; };
+    try {
+      const textarea = document.querySelector('#timed-text-edit-rows textarea');
+      textarea.value = 'latest unreported edit';
+      textarea.dispatchEvent(new Event('input', { bubbles: true }));
+      document.querySelector('#timed-text-edit-cancel').click();
+      const openAfterClose = MaweDom.timedTextEditModal.classList.contains('show');
+      document.querySelector('#timed-text-edit-show-disabled').click();
+      return {
+        confirmations, openAfterClose,
+        showDisabled: MaweDom.timedTextEditDraft?.showDisabled,
+        text: MaweDom.timedTextEditDraft?.texts[0],
+        originalText: MaweBoot.DATA.segments[0].text,
+      };
+    } finally { window.confirm = originalConfirm; }
+  });
+  expect(result.confirmations).toBe(2);
+  expect(result.openAfterClose).toBe(true);
+  expect(result.showDisabled).toBe(false);
+  expect(result.text).toBe('latest unreported edit');
+  expect(result.originalText).toBe('就是这颗');
 });
 
 test('editor scrolls newly rendered inline warnings but leaves visible and repeated warnings in place', async ({ page }) => {
@@ -347,4 +415,37 @@ test('editor scrolls newly rendered inline warnings but leaves visible and repea
   expect(positions.first).toBeGreaterThan(0);
   expect(positions.duplicate).toBe(0);
   expect(positions.alreadyVisible).toBe(0);
+});
+
+test('warning observer scans inserted rows without repeatedly traversing their parent list', async ({ page }) => {
+  await page.goto(server.url);
+  const scans = await page.evaluate(async () => {
+    const list = document.createElement('div');
+    document.body.appendChild(list);
+    await new Promise((resolve) => requestAnimationFrame(resolve));
+    const originalQuery = Element.prototype.querySelectorAll;
+    let parentScans = 0;
+    let visitedElements = 0;
+    Element.prototype.querySelectorAll = function(selector) {
+      if (selector.includes('[role="alert"]') && (this === list || list.contains(this))) {
+        if (this === list) parentScans += 1;
+        visitedElements += originalQuery.call(this, '*').length;
+      }
+      return originalQuery.call(this, selector);
+    };
+    try {
+      for (let index = 0; index < 200; index += 1) {
+        const row = document.createElement('div');
+        row.appendChild(document.createElement('span'));
+        list.appendChild(row);
+      }
+      await new Promise((resolve) => requestAnimationFrame(resolve));
+      return { parentScans, visitedElements };
+    } finally {
+      Element.prototype.querySelectorAll = originalQuery;
+      list.remove();
+    }
+  });
+  expect(scans.parentScans).toBe(0);
+  expect(scans.visitedElements).toBeLessThanOrEqual(200);
 });

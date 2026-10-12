@@ -2049,6 +2049,18 @@ test('applies number conversion before the shared wrapping operation', () => {
   }), '[ 186 ]');
 });
 
+test('preserves approximate adjacent digits and repeated idioms without changing exact digit notation', () => {
+  for (const text of [
+    '等三两分钟', '来了两三个人', '再等一两天', '七八天以后', '八九不离十',
+    '八九不离十，再算八九不离十', '大概四五十分钟', '三两分钟后再等三两分钟',
+  ]) {
+    assert.equal(helpers.convertChineseNumbers(text), text, text);
+  }
+  assert.equal(helpers.convertChineseNumbers('二〇二六年'), ' 2026 年');
+  assert.equal(helpers.convertChineseNumbers('零八号'), ' 08 号');
+  assert.equal(helpers.convertChineseNumbers('一三八零零'), ' 13800 ');
+});
+
 test('searches subtitle lines with literal and case-sensitive matching', () => {
   const insensitive = helpers.collectTextSearchMatches(['Moy moy', 'Moy'], 'moy');
   assert.equal(insensitive.error, null);
@@ -2080,6 +2092,26 @@ test('regex replacements support captures while literal replacements stay litera
   assert.deepEqual(Array.from(helpers.replaceAllTextSearchMatches(lines, matches, '$2-$1', { useRegex: true })), ['狗-猫 鸟-猫']);
   const literal = helpers.collectTextSearchMatches(['a'], 'a').matches[0];
   assert.deepEqual(Array.from(helpers.replaceTextSearchMatch(['a'], literal, '$1')), ['$1']);
+});
+
+test('shared regex substitution agrees with native replacement for numbered and named capture references', () => {
+  const cases = [
+    { text: '猫', pattern: '(猫)' },
+    { text: '猫', pattern: '(猫)(狗)?' },
+    { text: '猫', pattern: '(?<animal>猫)' },
+    { text: '猫', pattern: '(?<toString>猫)' },
+    { text: 'abcdefghij', pattern: '(a)(b)(c)(d)(e)(f)(g)(h)(i)(j)' },
+  ];
+  const templates = ['$01', '$09', '$00', '$0', '$1', '$10', '$12', '$99', '$001',
+    '$<animal>', '$<missing>', '$<toString>', '$<constructor>', '$<>', '$$', '$&', "$`-$'", '$1$01'];
+  for (const { text, pattern } of cases) {
+    const matches = helpers.collectTextSearchMatches([text], pattern, { useRegex: true }).matches;
+    for (const replacement of templates) {
+      const expected = text.replace(new RegExp(pattern, 'giu'), replacement);
+      const actual = helpers.replaceAllTextSearchMatches([text], matches, replacement, { useRegex: true });
+      assert.equal(actual[0], expected, `${pattern} / ${replacement}`);
+    }
+  }
 });
 
 test('previews text processing only for the selected subtitle indexes', () => {

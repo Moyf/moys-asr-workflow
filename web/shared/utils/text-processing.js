@@ -102,18 +102,21 @@ export function createUtilsModule(dependencies) {
     const source = String(template == null ? '' : template);
     const captures = Array.isArray(match?.captures) ? match.captures : [];
     const groups = match?.groups || null;
-    return source.replace(/\$(\$|&|`|'|<([^>]+)>|(\d{1,2}))/g, (token, kind, groupName, digits) => {
+    return source.replace(/\$(\$|&|`|'|<([^>]*)>|(\d{1,2}))/g, (token, kind, groupName, digits) => {
       if (kind === '$') return '$';
       if (kind === '&') return match.text;
       if (kind === '`') return line.slice(0, match.start);
       if (kind === "'") return line.slice(match.end);
-      if (groupName) return groups && Object.hasOwn(groups, groupName) ? String(groups[groupName] ?? '') : token;
+      if (groupName !== undefined) {
+        if (!groups) return token;
+        return Object.hasOwn(groups, groupName) ? String(groups[groupName] ?? '') : '';
+      }
       const requested = String(digits || '');
       if (!requested) return token;
       const count = captures.length;
       const twoDigit = Number(requested);
       const oneDigit = Number(requested[0]);
-      if (requested.length === 2 && requested[0] !== '0' && twoDigit <= count) return String(captures[twoDigit - 1] ?? '');
+      if (requested.length === 2 && twoDigit > 0 && twoDigit <= count) return String(captures[twoDigit - 1] ?? '');
       if (oneDigit > 0 && oneDigit <= count) {
         return `${String(captures[oneDigit - 1] ?? '')}${requested.slice(1)}`;
       }
@@ -211,7 +214,7 @@ export function createUtilsModule(dependencies) {
     '十有八九', '百里挑一', '一了百了', '一朝一夕', '一穷二白', '一呼百应', '一成不变',
     '一鸣惊人', '二话不说', '两全其美', '三长两短', '三姑六婆', '三番五次', '五花八门',
     '六神无主', '七嘴八舌', '八面玲珑', '九死一生', '九霄云外', '十拿九稳', '百发百中',
-    '百战百胜', '千篇一律', '千辛万苦', '千方百计', '千千万万', '万万没想到',
+    '百战百胜', '千篇一律', '千辛万苦', '千方百计', '千千万万', '万万没想到', '八九不离十',
   ]);
   const CHINESE_MEASURE_SUFFIXES = Object.freeze([
     '个', '条', '只', '次', '分', '秒', '年', '月', '日', '天', '小时', '分钟', '秒钟',
@@ -308,8 +311,9 @@ export function createUtilsModule(dependencies) {
     const previous = source.slice(Math.max(0, start - 4), start);
     const next = source.slice(end, end + 3);
     if (previous.endsWith('百分之') || previous.endsWith('分之') || next.startsWith('分之')) return true;
-    if (CHINESE_NUMBER_IDIOMS.some((idiom) => source.includes(idiom)
-        && source.indexOf(idiom) < end && source.indexOf(idiom) + idiom.length > start)) return true;
+    // Adjacent digits usually express an approximate quantity (「两三」「三两」),
+    // not a positional digit sequence. Keep them even without a measure word.
+    if (/^负?(?:一[二两]|[二两]三|三[两四]|四五|五六|六七|七八|八九)(?:点[零〇一二两三四五六七八九]+)?$/u.test(matched)) return true;
     // 「一万一」「十几」「一百八」等口语缩略存在多种数值解释，保持原文。
     if (/[万亿][零〇一二两三四五六七八九]$/u.test(matched)) return true;
     if (/[百千][一二两三四五六七八九]$/u.test(matched)) return true;
