@@ -27,6 +27,10 @@
     projectInput.disabled = busy || !overrideToggle.checked;
     projectButton.disabled = busy || !overrideToggle.checked;
     defaultInput.disabled = busy; defaultButton.disabled = busy; overrideToggle.disabled = busy;
+    const defaultChoose = document.getElementById('sticker-root-choose');
+    const projectChoose = document.getElementById('project-sticker-root-choose');
+    if (defaultChoose) defaultChoose.disabled = busy;
+    if (projectChoose) projectChoose.disabled = busy || !overrideToggle.checked;
     if (!serverEnabled) {
       defaultStatus.textContent = '便携编辑器保存目录配置；读取本地图片需要 Server 编辑器。';
       projectStatus.textContent = defaultStatus.textContent;
@@ -34,6 +38,11 @@
   }
   async function requestRoot(root, activate) {
     if (!serverEnabled) return null;
+    if (MaweHost.desktop.available()) {
+      const result = await MaweHost.desktop.command('setStickerRoot', { path: root, activate });
+      if (result.status !== 'ok') throw new Error(result.error?.message || '目录读取失败');
+      return result.data;
+    }
     const response = await MaweHost.server.fetch(MaweBoot.SERVER_CONFIG.stickerRootUrl, {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ requestToken: MaweBoot.SERVER_CONFIG.requestToken, path: root, activate }),
@@ -50,6 +59,7 @@
     }
     MaweStickerOverlay.stickerAssetRevision += 1;
     MaweExportTimeline.updateStickerExportButtons(); MaweCuePanel.renderAll();
+    window.MOSEUpdateDesktopPathActions?.();
   }
   function enqueue(action) { pending = pending.catch(() => {}).then(action); return pending; }
   async function applyRoot(scope, value) {

@@ -19,3 +19,5 @@ function syncFlvHints() {
   $("mediaPathFlvHint")?.classList.toggle("hidden", ext($("mediaPath").value.trim()) !== ".flv");
   $("serverMediaFlvHint")?.classList.toggle("hidden", ext($("serverMediaPath").value.trim()) !== ".flv");
 }
+
+// 媒体表单：音轨探测、媒体/工程路径设置与校验提示。

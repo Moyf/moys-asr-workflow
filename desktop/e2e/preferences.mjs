@@ -16,7 +16,7 @@ test('desktop preferences survive restart and a fresh browser origin', { timeout
   const env = { ...process.env, MAW_APP_DATA_ROOT: settings, MAW_DESKTOP_SMOKE: '1' };
   delete env.ELECTRON_RUN_AS_NODE;
   const launch = () => electron.launch({
-    executablePath: process.env.MOSE_TEST_EXECUTABLE || createRequire(path.join(desktop, 'package.json'))('electron'),
+    executablePath: process.env.MOSE_TEST_EXECUTABLE || process.env.MOSE_TEST_ELECTRON_EXECUTABLE || createRequire(path.join(desktop, 'package.json'))('electron'),
     args: [...(process.env.MOSE_TEST_EXECUTABLE ? [] : [desktop]), `--user-data-dir=${path.join(root, 'profile')}`], env,
   });
   let instance = await launch();
@@ -36,7 +36,7 @@ test('desktop preferences survive restart and a fresh browser origin', { timeout
     await instance.evaluate(async ({ session }) => {
       await session.defaultSession.clearStorageData({ storages: ['localstorage'] });
     });
-    await instance.evaluate(({ dialog }) => { dialog.showMessageBoxSync = () => 0; });
+    await instance.evaluate(({ dialog }) => { dialog.showMessageBox = async () => ({ response: 1 }); });
     await instance.close();
     instance = await launch();
     const second = await instance.firstWindow();
@@ -57,7 +57,7 @@ test('desktop preferences survive restart and a fresh browser origin', { timeout
     assert.equal(restored.waveform.secondsPerRow, 10);
     console.log(`Preference restart origins: ${firstOrigin} -> ${await second.evaluate(() => location.origin)}`);
   } finally {
-    await instance.evaluate(({ dialog }) => { dialog.showMessageBoxSync = () => 0; }).catch(() => {});
+    await instance.evaluate(({ dialog }) => { dialog.showMessageBox = async () => ({ response: 1 }); }).catch(() => {});
     await instance.close().catch(() => {});
   }
 });

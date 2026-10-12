@@ -40,6 +40,7 @@ function moveSettingsFocus(event) {
 function openSettings(sectionId = "", focusId = "") {
   selectSettingsTab(settingsTabForSection(sectionId) || activeSettingsTab);
   $("settingsModal").classList.remove("hidden");
+  renderUpdate();
   refreshFfmpeg();
   void refreshOcrRuntime();
   renderStickerCurrent();
@@ -61,6 +62,32 @@ function openSettings(sectionId = "", focusId = "") {
   }
 }
 function closeSettings() { $("settingsModal").classList.add("hidden"); }
+async function openPreferredEditor() {
+  clearErrors();
+  $("htmlMenu").classList.add("hidden");
+  if (state.moseStarting || state.serverStarting) return;
+  const projectPath = $("jsonPath").value.trim();
+  state.moseStarting = true;
+  renderServerButton();
+  try {
+    const result = await bridge("open_preferred_editor", serverPayload());
+    if (!result.ok) {
+      applyErrorResult(result);
+      return;
+    }
+    if (result.usedMose) {
+      $("openMawe").classList.remove("attention");
+      setStatus(t("mose_started"));
+      appendLog(t("mose_started"));
+      return;
+    }
+    appendLog(t("mose_fallback"));
+    await applyServerLaunchResult(result, projectPath, t("mose_fallback"));
+  } finally {
+    state.moseStarting = false;
+    renderServerButton();
+  }
+}
 async function openServerEditor() {
   clearErrors();
   $("htmlMenu").classList.add("hidden");
@@ -81,28 +108,7 @@ async function openServerEditor() {
       }
     }
     const result = await bridge("start_server", serverPayload());
-    if (result.ok) {
-      serverRestartProjectPath = null;
-      state.serverRunning = !result.serverAlreadyRunning;
-      state.serverProjectPath = state.serverRunning ? projectPath : "";
-      state.detectedServerUrl = result.serverAlreadyRunning ? result.url || "" : "";
-      $("openMawe").classList.remove("attention");
-      renderServerButton();
-      if (result.url) {
-        if (restartProjectPath !== null && projectPath === restartProjectPath) {
-          // 断线重启：编辑器页面通常还开着且 URL 不变，不重复打开新页面，
-          // 只更新提示；用户刷新原页面即可继续编辑（未保存内容仍在页面里）。
-          startServerStatusMonitor();
-          setStatus(t("server_restarted_hint"));
-        } else {
-          setServerStatus(result.url, Boolean(result.serverAlreadyRunning));
-          startServerStatusMonitor();
-          await bridge("open_url", { url: result.url });
-        }
-      } else setStatus(t("ready"));
-    } else {
-      applyErrorResult(result);
-    }
+    await applyServerLaunchResult(result, projectPath, "", restartProjectPath);
   } finally {
     state.serverStarting = false;
     renderServerButton();
@@ -177,3 +183,5 @@ async function init() {
     await openPreferredEditor();
   }
 }
+
+// 完成通知与后端事件分发（handleBackendEvent）。

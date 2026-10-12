@@ -28,7 +28,6 @@ bindDropField("stickerDir", "stickerDir");
 bindDropField("toolboxInputDropZone", "toolboxInput", "toolboxInputDropZone");
 bindDropField("toolboxUtilityMediaDropZone", "toolboxUtilityMedia", "toolboxUtilityMediaDropZone");
 bindDropField("toolboxTimestampMediaDropZone", "toolboxTimestampMedia", "toolboxTimestampMediaDropZone");
-bindDropField("toolboxTimestampScriptDropZone", "toolboxTimestampScript", "toolboxTimestampScriptDropZone");
 bindDropField("toolboxBurnSubtitleDropZone", "toolboxBurnSubtitle", "toolboxBurnSubtitleDropZone");
 bindDropField("toolboxFfconcatDropZone", "toolboxFfconcat", "toolboxFfconcatDropZone");
 bindDropField("toolboxAlignmentProjectDropZone", "toolboxAlignmentProject", "toolboxAlignmentProjectDropZone");

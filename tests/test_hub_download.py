@@ -63,8 +63,14 @@ class PrepareHubSnapshotTests(unittest.TestCase):
             snapshot.mkdir(parents=True)
             (snapshot / "model.safetensors").write_bytes(b"weights")
 
+            # Keep the host machine's real Hugging Face cache from winning this
+            # ModelScope-specific fixture before the mirrored cache is checked.
             with mock.patch.dict(os.environ, {"MODELSCOPE_CACHE": str(modelscope)}):
-                result = prepare_hub_snapshot("OpenMOSS-Team/MOSS-Transcribe-Diarize")
+                with mock.patch(
+                    "maw.local_models._huggingface_cache_roots",
+                    return_value=[Path(temp_dir) / "empty-huggingface-cache"],
+                ):
+                    result = prepare_hub_snapshot("OpenMOSS-Team/MOSS-Transcribe-Diarize")
 
         self.assertEqual(result.source, "cache")
         self.assertEqual(result.path.resolve(), snapshot.resolve())

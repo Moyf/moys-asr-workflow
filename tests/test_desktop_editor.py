@@ -6,7 +6,9 @@ import json
 import tempfile
 import threading
 import unittest
+from unittest import mock
 import urllib.error
+import urllib.parse
 import urllib.request
 import wave
 from pathlib import Path
@@ -17,11 +19,11 @@ from tests.test_local_editor_server import server_editor as server
 class DesktopEditorTests(unittest.TestCase):
     def setUp(self) -> None:
         self.temp = tempfile.TemporaryDirectory()
-        self.root = Path(self.temp.name)
+        self.root = Path(self.temp.name).resolve()
         self.editor = server.EditorServer(
             ("127.0.0.1", 0), server.ServerProject({"segments": []}, None, None, None, []),
             settings_path=self.root / "settings.json", no_waveform=True,
-            desktop_mode=True, desktop_token="test-desktop-token",
+            desktop_mode=True, desktop_token="test-desktop-token", desktop_command_key="test-command-key",
         )
         self.addCleanup(self.editor.server_close)
         self.addCleanup(self.temp.cleanup)
@@ -29,6 +31,15 @@ class DesktopEditorTests(unittest.TestCase):
     def project_file(self, name: str = "工程.mosp", **fields: object) -> Path:
         path = self.root / name
         path.write_text(json.dumps({"schema": "moy.asr.project.v1", "segments": [], **fields}), encoding="utf-8")
+        return path
+
+    def media_file(self, name: str = "chosen audio.wav") -> Path:
+        path = self.root / name
+        with wave.open(str(path), "wb") as output:
+            output.setnchannels(1)
+            output.setsampwidth(2)
+            output.setframerate(8000)
+            output.writeframes(b"\x00\x00" * 8000)
         return path
 
     def test_native_open_keeps_missing_media_project_editable_and_recent(self) -> None:
@@ -47,18 +58,22 @@ class DesktopEditorTests(unittest.TestCase):
         with self.assertRaises(server.MediaResolutionError):
             server.load_project(self.project_file(media="missing.wav"), None, None, no_waveform=True, peaks_per_second=100)
 
-    def test_save_snapshot_rebases_relative_media_without_writing_a_file(self) -> None:
+    def test_failed_native_save_preserves_binding_and_source_file(self) -> None:
         path = self.project_file(media="missing.wav")
         self.editor.open_project_path(str(path))
-        snapshot = {**self.editor.project.data, "waveform": {"cached": True}}
-        result = self.editor.prepare_desktop_project(snapshot)
-        self.assertEqual(result["media"], (self.root / "missing.wav").as_posix())
-        self.assertNotIn("waveform", result)
-        self.assertIn("waveform", snapshot)
-        self.assertEqual(json.loads(path.read_text(encoding="utf-8"))["media"], "missing.wav")
-        self.assertEqual(self.editor.prepare_desktop_project({"segments": [], "media": ""}, new_project=True)["media"], "")
-        with self.assertRaises(ValueError):
-            self.editor.prepare_desktop_project(None)
+        original = path.read_bytes()
+        generation = self.editor.project_generation
+        target = self.root / "new.mosp"
+        with mock.patch.object(server, "write_project_json", side_effect=OSError("write denied")):
+            with self.assertRaisesRegex(OSError, "write denied"):
+                self.editor.save_desktop_project(
+                    "saveAs", self.editor.project.data, target_path=str(target),
+                    expected_generation=generation, expected_revision=None, backup_limit=None,
+                )
+        self.assertEqual(self.editor.project.json_path, path)
+        self.assertEqual(self.editor.project_generation, generation)
+        self.assertEqual(path.read_bytes(), original)
+        self.assertFalse(target.exists())
 
     def test_bad_project_does_not_replace_current_or_enter_recents(self) -> None:
         good = self.project_file()
@@ -70,7 +85,7 @@ class DesktopEditorTests(unittest.TestCase):
         self.assertEqual(self.editor.project.json_path, good)
         self.assertEqual([p.path for p in self.editor.settings.recent_projects], [good])
 
-    def test_native_media_preview_commits_only_after_acceptance_and_rejects_stale_ticket(self) -> None:
+    def test_native_media_reassociation_preserves_file_and_rejects_stale_generation(self) -> None:
         path = self.project_file(media="missing.wav")
         self.editor.open_project_path(str(path))
         media = self.root / "chosen audio.wav"
@@ -79,32 +94,118 @@ class DesktopEditorTests(unittest.TestCase):
             output.setsampwidth(2)
             output.setframerate(8000)
             output.writeframes(b"\x00\x00" * 8000)
-        snapshot = {**self.editor.project.data, "waveform": {"old": True}}
-        preview = self.editor.stage_desktop_media(str(media), snapshot)
-        self.assertIsNone(self.editor.project.media_path)
-        self.assertNotIn("waveform", preview["project"])
-        self.editor.commit_desktop_media(preview["ticket"])
+        generation = self.editor.project_generation
+        with mock.patch.object(server, "validate_desktop_media"):
+            ticket, _ = self.editor.prepare_desktop_media(str(media), generation)
+        self.assertIsNone(self.editor.project.source_media_path)
+        self.assertEqual(self.editor.project_generation, generation)
+        self.editor.commit_desktop_media(ticket)
         self.assertEqual(self.editor.project.source_media_path, media)
         self.assertEqual(self.editor.project.json_path, path)
-        self.assertEqual(self.editor.project.data["media"], media.as_posix())
         self.assertEqual(json.loads(path.read_text(encoding="utf-8"))["media"], "missing.wav")
-        stale = self.editor.stage_desktop_media(str(media), self.editor.project.data)
-        self.editor.open_project_path(str(path))
         with self.assertRaises(server.ProjectMutationInProgressError):
-            self.editor.commit_desktop_media(stale["ticket"])
+            self.editor.prepare_desktop_media(str(media), generation)
         with self.assertRaises(ValueError):
-            self.editor.stage_desktop_media(str(self.root / "settings.json"), snapshot)
+            self.editor.prepare_desktop_media(str(self.root / "settings.json"), self.editor.project_generation)
+
+    def test_rejected_media_preview_preserves_binding_and_runtime_caches(self) -> None:
+        path = self.project_file(media="missing.wav")
+        self.editor.open_project_path(str(path))
+        current = self.editor.project
+        current.data["waveform"] = {"peak_count": 1, "peaks": [1]}
+        generation = self.editor.project_generation
+        with mock.patch.object(server, "validate_desktop_media"):
+            ticket, _ = self.editor.prepare_desktop_media(str(self.media_file()), generation)
+        self.assertIs(self.editor.project, current)
+        self.assertEqual(self.editor.project_generation, generation)
+        self.assertEqual(self.editor.desktop_preview_media_path(ticket), self.root / "chosen audio.wav")
+        self.editor.discard_desktop_media(ticket)
+        self.assertIsNone(self.editor.desktop_preview_media_path(ticket))
+        with self.assertRaises(server.ProjectMutationInProgressError):
+            self.editor.commit_desktop_media(ticket)
+        self.assertEqual(current.data["waveform"]["peaks"], [1])
+        self.assertEqual(json.loads(path.read_text(encoding="utf-8"))["media"], "missing.wav")
+
+    def test_media_commit_keeps_subtitles_saved_during_preview(self) -> None:
+        path = self.project_file(media="missing.wav")
+        self.editor.open_project_path(str(path))
+        with mock.patch.object(server, "validate_desktop_media"):
+            ticket, _ = self.editor.prepare_desktop_media(str(self.media_file()), self.editor.project_generation)
+        edited = {**self.editor.project.data, "segments": [{"start": 0, "end": 1000, "text": "预览期间已保存"}]}
+        self.editor.save_project(edited)
+        self.editor.commit_desktop_media(ticket)
+        self.assertEqual(self.editor.project.data["segments"][0]["text"], "预览期间已保存")
+        self.assertEqual(json.loads(path.read_text(encoding="utf-8"))["segments"][0]["text"], "预览期间已保存")
+        self.assertNotIn("waveform", self.editor.project.data)
+
+    def test_media_commit_rejects_another_project_and_double_commit(self) -> None:
+        self.editor.open_project_path(str(self.project_file()))
+        media = self.media_file()
+        with mock.patch.object(server, "validate_desktop_media"):
+            ticket, _ = self.editor.prepare_desktop_media(str(media), self.editor.project_generation)
+        next_path = self.project_file("second.mosp", media="other-missing.wav")
+        self.editor.open_project_path(str(next_path))
+        with self.assertRaises(server.ProjectMutationInProgressError):
+            self.editor.commit_desktop_media(ticket)
+        self.assertIsNone(self.editor.desktop_preview_media_path(ticket))
+        with mock.patch.object(server, "validate_desktop_media"):
+            ticket, _ = self.editor.prepare_desktop_media(str(media), self.editor.project_generation)
+        self.editor.commit_desktop_media(ticket)
+        generation = self.editor.project_generation
+        with self.assertRaises(server.ProjectMutationInProgressError):
+            self.editor.commit_desktop_media(ticket)
+        self.assertEqual(self.editor.project_generation, generation)
+
+    def test_accepted_media_stream_survives_save_as_and_failed_next_preview(self) -> None:
+        self.editor.open_project_path(str(self.project_file()))
+        media = self.media_file()
+        with mock.patch.object(server, "validate_desktop_media"):
+            ticket, _ = self.editor.prepare_desktop_media(str(media), self.editor.project_generation)
+        self.editor.commit_desktop_media(ticket)
+        target = self.root / "new.mosp"
+        self.editor.save_desktop_project(
+            "saveAs", self.editor.project.data, target_path=str(target),
+            expected_generation=self.editor.project_generation, expected_revision=None, backup_limit=None,
+        )
+        self.assertEqual(self.editor.desktop_preview_media_path(ticket), media)
+        with mock.patch.object(server, "validate_desktop_media"):
+            rejected, _ = self.editor.prepare_desktop_media(str(self.media_file("second.wav")), self.editor.project_generation)
+        self.editor.discard_desktop_media(rejected)
+        self.assertEqual(self.editor.desktop_preview_media_path(ticket), media)
+        self.assertEqual(len(self.editor.desktop_media_previews), 1)
+
+    def test_media_preview_http_requires_token_and_has_no_arbitrary_path(self) -> None:
+        self.editor.open_project_path(str(self.project_file()))
+        media = self.media_file()
+        with mock.patch.object(server, "validate_desktop_media"):
+            ticket, _ = self.editor.prepare_desktop_media(str(media), self.editor.project_generation)
+        thread = threading.Thread(target=self.editor.serve_forever, daemon=True)
+        thread.start()
+        self.addCleanup(thread.join)
+        self.addCleanup(self.editor.shutdown)
+        url = f"http://127.0.0.1:{self.editor.server_address[1]}/media?desktopPreview={ticket}"
+        with self.assertRaises(urllib.error.HTTPError) as rejected:
+            urllib.request.urlopen(url)
+        self.assertEqual(rejected.exception.code, 403)
+        headers = {"X-MAW-Desktop-Token": "test-desktop-token", "Range": "bytes=0-15"}
+        with urllib.request.urlopen(urllib.request.Request(url, headers=headers)) as response:
+            self.assertEqual(response.status, 206)
+            self.assertEqual(response.read(), media.read_bytes()[:16])
+        for invalid in ("unknown", str(media)):
+            with self.assertRaises(urllib.error.HTTPError) as rejected:
+                urllib.request.urlopen(urllib.request.Request(url.replace(ticket, urllib.parse.quote(invalid, safe="")), headers=headers))
+            self.assertEqual(rejected.exception.code, 404)
 
     def test_private_state_requires_token_and_is_absent_in_public_server(self) -> None:
         thread = threading.Thread(target=self.editor.serve_forever, daemon=True)
         thread.start()
         self.addCleanup(thread.join)
         self.addCleanup(self.editor.shutdown)
-        url = f"http://127.0.0.1:{self.editor.server_address[1]}/api/desktop/state"
+        url = f"http://127.0.0.1:{self.editor.server_address[1]}/api/desktop/project/status"
         with self.assertRaises(urllib.error.HTTPError) as rejected:
             urllib.request.urlopen(url)
         self.assertEqual(rejected.exception.code, 403)
-        request = urllib.request.Request(url, headers={"X-MAW-Desktop-Token": "test-desktop-token"})
+        request = urllib.request.Request(url, headers={"X-MAW-Desktop-Token": "test-desktop-token", "X-MAW-Desktop-Command-Key": "test-command-key"})
         with urllib.request.urlopen(request) as response:
             self.assertTrue(json.load(response)["ok"])
         self.editor.desktop_mode = False

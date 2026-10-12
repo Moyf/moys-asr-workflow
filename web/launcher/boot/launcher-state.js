@@ -214,7 +214,12 @@ Object.assign(ERROR_TEXT.en, {
   alignment_failed: (detail) => `Word/character timestamp generation failed: ${detail || "check the media, subtitle text, and aligner."}`,
 });
 Object.assign(STRINGS.zh, {
-  start_server_editor: "🎬 打开编辑器",
+  start_server_editor: "🌐 启动 Server 版字幕编辑器",
+  open_preferred_editor: "🎬 在 MOSE 中打开",
+  open_mose: "🎬 在 MOSE 中打开",
+  mose_starting: "正在启动 MOSE……",
+  mose_started: "MOSE 编辑器已启动",
+  mose_fallback: "MOSE 不可用，已回退到 Server 版编辑器。",
   toolbox_chain_hint: "每次生成新文件，并自动作为下一步输入；选择工具后运行。",
   error_notice_title: "任务未完成",
   error_notice_close: "关闭提示",
@@ -230,7 +235,12 @@ Object.assign(STRINGS.zh, {
   error_copy_report_failed: "复制失败，请手动复制日志。",
 });
 Object.assign(STRINGS.en, {
-  start_server_editor: "🎬 Open editor",
+  start_server_editor: "🌐 Start Server editor",
+  open_preferred_editor: "🎬 Open in MOSE",
+  open_mose: "🎬 Open in MOSE",
+  mose_starting: "Starting MOSE…",
+  mose_started: "MOSE editor started",
+  mose_fallback: "MOSE is unavailable; opened the Server editor instead.",
   toolbox_chain_hint: "Choose a tool to run; each run creates a new file and uses it as the next input.",
   error_notice_title: "Task not completed",
   error_notice_close: "Dismiss message",

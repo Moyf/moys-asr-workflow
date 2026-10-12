@@ -10,6 +10,7 @@ import {
   parseProjectArgs,
   resolvePackagedMawPath,
   resolveSourcePython,
+  showAndFocusWindow,
 } from '../src/runtime_helpers.cjs';
 
 test('project argument parsing accepts .mosp and legacy .json only', () => {
@@ -39,6 +40,36 @@ test('resolvePackagedMawPath locates the sibling MAW executable', () => {
     resolvePackagedMawPath(executable, { platform: 'win32' }),
     path.win32.resolve('suite', 'MAW', 'MAW.exe'),
   );
+});
+
+test('showAndFocusWindow restores and reveals a hidden minimized window', () => {
+  const calls = [];
+  const window = {
+    isDestroyed: () => false,
+    isMinimized: () => true,
+    restore: () => calls.push('restore'),
+    isVisible: () => false,
+    show: () => calls.push('show'),
+    focus: () => calls.push('focus'),
+  };
+
+  assert.equal(showAndFocusWindow(window), true);
+  assert.deepEqual(calls, ['restore', 'show', 'focus']);
+});
+
+test('showAndFocusWindow ignores a destroyed window', () => {
+  let called = false;
+  const window = {
+    isDestroyed: () => true,
+    isMinimized: () => { called = true; return false; },
+    restore: () => { called = true; },
+    isVisible: () => { called = true; return false; },
+    show: () => { called = true; },
+    focus: () => { called = true; },
+  };
+
+  assert.equal(showAndFocusWindow(window), false);
+  assert.equal(called, false);
 });
 
 test('native packages use their own resources backend, including paths with spaces', () => {

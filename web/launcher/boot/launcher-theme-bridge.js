@@ -46,3 +46,5 @@ function waitForBackend(timeoutMs = 1800) {
 }
 
 function setRunning(running) { state.running = running; $("progress").classList.toggle("hidden", !running); $("start").classList.toggle("hidden", running); $("stop").classList.toggle("hidden", !running); $("start").disabled = running; $("stop").disabled = !running; setStatus(running ? t("running") : t("ready")); }
+
+// 表单同步：下拉填充、provider 高级选项、热词与音轨设备选项。

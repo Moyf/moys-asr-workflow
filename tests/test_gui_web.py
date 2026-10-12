@@ -3339,6 +3339,8 @@ class GuiWebBridgeTests(CompactContainerAssertions, unittest.TestCase):
         self.assertTrue(result["usedMose"])
         self.assertEqual(popen.call_args.args[0], [str(executable), str(project.resolve())])
         self.assertEqual(popen.call_args.kwargs["cwd"], str(self.root))
+        self.assertNotIn("startupinfo", popen.call_args.kwargs)
+        self.assertNotIn("creationflags", popen.call_args.kwargs)
 
     def test_open_preferred_editor_falls_back_to_server_when_mose_is_missing(self) -> None:
         with mock.patch.object(

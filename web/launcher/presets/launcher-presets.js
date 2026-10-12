@@ -531,3 +531,5 @@ $("asrPresetRootCurrent").addEventListener("click", async () => {
   const result = await bridge("open_asr_preset_folder");
   if (!result.ok) $("asrPresetRootStatus").textContent = `${t("preset_folder_open_failed")}: ${localizedPresetError(result.error || result.detail)}`;
 });
+
+// 偏好持久化与界面缩放（Ctrl+滚轮/快捷键）。
