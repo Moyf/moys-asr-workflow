@@ -90,23 +90,35 @@ export function createWaveformModule(dependencies) {
             if (requestedDelta > neighborMaxDelta || requestedDelta < neighborMinDelta) {
               const mediaDuration = Number(this.durationMs) > 0 ? clock.fromMs(this.durationMs) : Infinity;
               const appliedDelta = clamp(requestedDelta, -mainOriginal.start, mediaDuration - mainOriginal.end);
-              // 先把段移到指针对应位置（可越过邻居），迁移后快照才与实际一致。
-              clock.setStart(segment, mainOriginal.start + appliedDelta);
-              clock.setEnd(segment, mainOriginal.end + appliedDelta);
-              if (Array.isArray(mainOriginal.items)) {
-                segment.items = mainOriginal.items.map((item) => {
-                  const copy = { ...item };
-                  clock.setItemStart(copy, clock.getItemStart(item) + appliedDelta);
-                  clock.setItemEnd(copy, clock.getItemEnd(item) + appliedDelta);
-                  return copy;
-                });
+              // 换轨只为落进与主轨重叠（主轨自己进不去）的区域。指针目标落点
+              // 若与主轨并无重叠——典型是目标处已有另一条叠加字幕把上方占住，
+              // 转上去也站不稳——下一帧就会满足回轨条件，两条轨来回换导致
+              // 字幕疯狂上下闪烁；此时保持原轨不做任何事，让常规邻居钳制把
+              // 段停在边界即可。
+              const simStart = mainOriginal.start + appliedDelta;
+              const simEnd = mainOriginal.end + appliedDelta;
+              const landsOnMainOverlap = mainSegments.some((other, idx) => (
+                idx !== drag.index && simEnd > clock.getStart(other) && simStart < clock.getEnd(other)
+              ));
+              if (landsOnMainOverlap) {
+                // 先把段移到指针对应位置（可越过邻居），迁移后快照才与实际一致。
+                clock.setStart(segment, mainOriginal.start + appliedDelta);
+                clock.setEnd(segment, mainOriginal.end + appliedDelta);
+                if (Array.isArray(mainOriginal.items)) {
+                  segment.items = mainOriginal.items.map((item) => {
+                    const copy = { ...item };
+                    clock.setItemStart(copy, clock.getItemStart(item) + appliedDelta);
+                    clock.setItemEnd(copy, clock.getItemEnd(item) + appliedDelta);
+                    return copy;
+                  });
+                }
+                const overlayIndex = this.options.convertCueToOverlay(drag.index);
+                if (Number.isInteger(overlayIndex) && overlayIndex >= 0) {
+                  this.rebaseCueDragToTrack(drag, 'overlay', overlayIndex, clock, rawDelta);
+                  return;
+                }
+                restoreTiming(segment, mainOriginal, clock);
               }
-              const overlayIndex = this.options.convertCueToOverlay(drag.index);
-              if (Number.isInteger(overlayIndex) && overlayIndex >= 0) {
-                this.rebaseCueDragToTrack(drag, 'overlay', overlayIndex, clock, rawDelta);
-                return;
-              }
-              restoreTiming(segment, mainOriginal, clock);
             }
           }
         } else if (drag.track === 'overlay'
