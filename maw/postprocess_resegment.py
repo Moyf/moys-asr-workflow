@@ -408,6 +408,7 @@ def run_resegment(
     _notify_status(on_status, "toolbox_status_preparing_llm")
     output_groups: list[list[Unit]] = []
     warnings = []
+    annotations = []
     failed = 0
     for number, batch in enumerate(batches, 1):
         _raise_if_cancelled(is_cancelled)
@@ -455,12 +456,18 @@ def run_resegment(
                 warnings.append(
                     f"第 {number} 批未处理的原字幕可能超过最大 {maximum} 字，需重试或人工拆分。"
                 )
+            annotations.append({"source_ids": [f"c{i + 1:04d}" for i in indexes], "kind": "review", "message": "网络/服务请求失败，本段保留原文，需重试断句。"})
             output_groups.extend(by_source[i] for i in indexes)
             continue
+        from maw.postprocess_annotations import validate_annotations
+        notes, note_warnings = validate_annotations(response.get("annotations"), {f"c{i + 1:04d}": sources[i] for i in indexes})
+        annotations.extend(notes)
+        warnings.extend(note_warnings)
         for group in refine_groups(groups, maximum):
             parts, over = limit_groups(group, maximum)
             output_groups.extend(parts)
             if over:
+                annotations.append({"source_ids": [f"c{i + 1:04d}" for i in dict.fromkeys(u.source for u in group)], "kind": "review", "message": f"完整词项、数字单位或无词级时间段无法安全满足最大 {maximum} 字；已保留，请人工核查。"})
                 warnings.append(
                     f"第 {group[0].source + 1} 条原字幕含超长完整词项、数字单位或无词级时间段，无法安全满足最大 {maximum} 字；已保留。"
                 )
@@ -513,6 +520,8 @@ def run_resegment(
             segment.pop("sticker_ref", None)
     processed = copy.deepcopy(project)
     processed["segments"] = rebuilt
+    from maw.postprocess_annotations import write_annotations
+    warnings.extend(write_annotations(processed, {f"c{i + 1:04d}": s for i, s in enumerate(sources)}, annotations, "resegment"))
     warnings.append(
         "已按字词时间码的合法边界重新断句，原文、标点与词级时间保留；无词级时间段只沿现有段边界处理。"
     )

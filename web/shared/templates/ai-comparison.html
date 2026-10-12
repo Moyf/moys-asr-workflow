@@ -3,13 +3,16 @@
 <title>AI 处理前后对比</title>
 <style>
 :root{font-family:system-ui,"Microsoft YaHei",sans-serif;color:#24312e;background:#f3f5f1}body{max-width:1200px;margin:36px auto;padding:0 24px}h1{font-size:30px;margin-bottom:8px}.hint{color:#62706b;line-height:1.7}.controls{display:flex;gap:16px;align-items:center;flex-wrap:wrap;margin:24px 0}select,input{font:inherit;padding:8px;border:1px solid #c3cec5;border-radius:6px}input[type=search]{flex:1;min-width:200px}.columns{display:grid;grid-template-columns:1fr 1fr;gap:20px}.card{background:#fff;padding:22px;border:1px solid #d9e0d9;border-radius:12px;margin:16px 0}.text{white-space:pre-wrap;line-height:1.95;overflow-wrap:anywhere}h2{font-size:18px;margin:0 0 14px}.meta{color:#65736b;font-size:13px;margin-bottom:12px}.reason{background:#fff1d7;padding:10px 14px;border-radius:6px;margin-top:16px;white-space:pre-wrap}del{color:#af3535;background:#ffe9e6;text-decoration-thickness:2px}.removed{color:#8d9690}.badge{padding:3px 10px;border-radius:20px;background:#e5eee4;margin-left:10px}summary{cursor:pointer}#summary{font-weight:600}@media(max-width:680px){body{padding:0 14px;margin:20px auto}.columns{grid-template-columns:1fr;gap:8px}.card{padding:16px}}@media print{.controls{display:none}.card{break-inside:avoid}}
+textarea{box-sizing:border-box;width:100%;min-height:110px;resize:vertical;padding:12px;font:inherit;line-height:1.7;border:1px solid #a7b7ae;border-radius:8px}textarea[aria-invalid=true]{border-color:#b22d2d}.edit-actions{margin:20px 0;padding:18px;background:#fff;border:1px solid #d9e0d9;border-radius:12px}.edit-buttons{display:flex;flex-wrap:wrap;gap:12px;margin-top:14px}button{font:inherit;padding:10px 16px;border:1px solid #7d9689;border-radius:8px;cursor:pointer}button:disabled{opacity:.5;cursor:default}#edit-status{margin-top:12px;white-space:pre-wrap}.edited{background:#fff1d7}
 </style></head><body>
 <h1>AI 处理前后对比</h1><p class="hint">划删显示已生效的删除；待核查内容仍保留。此页是生成时的结果快照，工程后续修改不会同步到此页。</p>
 <p id="summary"></p>
+<section id="edit-actions" class="edit-actions" hidden><strong>译文核对</strong><p class="hint">只修改译文，时间和其他轨道保持快照内容。修改保存在当前页面；下载「核对后 MOSP」可在 MAWE 继续编辑。此页不会回写磁盘工程。</p><div class="edit-buttons"><button id="download-project" type="button" disabled>下载核对后 MOSP</button><button id="reset-translations" type="button">恢复全部原译文</button></div><div id="edit-status" role="status" aria-live="polite"></div></section>
 <details class="card"><summary>连续文稿 · 通读检查</summary><div class="columns" style="margin-top:16px"><section><h2>处理前</h2><div id="before" class="text"></div></section><section><h2>处理后</h2><div id="after" class="text"></div></section></div></details>
 <div class="controls"><label for="filter">显示</label><select id="filter"><option value="all">全部</option><option value="changed">有修改</option><option value="review">待核查</option></select><input id="search" type="search" placeholder="搜索原文、结果或原因" aria-label="搜索"></div>
 <main id="rows"></main><p id="empty" class="hint" hidden>没有符合条件的记录。</p>
 <script id="comparison-data" type="application/json">{{DATA}}</script>
+<script>{{REVIEW_SCRIPT}}</script>
 <script>
 const data=JSON.parse(document.getElementById('comparison-data').textContent);
 const byId=id=>document.getElementById(id);
@@ -18,9 +21,19 @@ byId('summary').textContent=`${operations[data.operation]||data.operation} · ${
 byId('before').textContent=data.before;
 byId('after').textContent=data.after;
 const labels={discard:'整段删除',edit:'局部删除',review:'待核查',keep:'保留',changed:'已修改'};
+let packet=null,entries=new Map(),edits=new Map();
+function rowAfter(row){return entries.has(row.id)?(edits.get(row.id)??entries.get(row.id).translation):row.after;}
+function editList(){return [...edits].map(([id,text])=>({id,text}));}
+function updateDraft(){
+ const changed=[...edits].filter(([id,text])=>text!==entries.get(id).translation);
+ const problems=changed.filter(([,text])=>!text.trim()||text.length>20000||/[\x00-\x08\x0b\x0c\x0e-\x1f\x7f]/.test(text)).map(([id])=>`${id}：译文为空、超长或含无效字符`);
+ byId('edit-status').textContent=`手动修改 ${changed.length} 条${problems.length?'；请修正后导出：\n'+problems.join('\n'):'；可下载核对后的工程。'}`;
+ byId('download-project').disabled=!packet||problems.length>0;
+ byId('after').textContent=data.rows.map(rowAfter).join('\n');
+}
 function render(){
  const filter=byId('filter').value,query=byId('search').value.toLowerCase();
- const visible=data.rows.filter(r=>(filter!=='changed'||r.before!==r.after)&&(filter!=='review'||r.review)&&`${r.before}\n${r.after}\n${r.reason}`.toLowerCase().includes(query));
+ const visible=data.rows.filter(r=>(filter!=='changed'||r.before!==rowAfter(r))&&(filter!=='review'||r.review)&&`${r.before}\n${rowAfter(r)}\n${r.reason}\n${(r.notes||[]).join('\n')}`.toLowerCase().includes(query));
  byId('rows').replaceChildren();byId('empty').hidden=visible.length>0;
  for(const row of visible){
   const card=document.createElement('article');card.className='card';
@@ -28,15 +41,38 @@ function render(){
   const badge=document.createElement('span');badge.className='badge';badge.textContent=labels[row.decision]||labels.keep;meta.append(badge);card.append(meta);
   const cols=document.createElement('div');cols.className='columns';
   const before=document.createElement('section'),after=document.createElement('section');
-  const left=document.createElement('h2');left.textContent='处理前';before.append(left);
-  const right=document.createElement('h2');right.textContent='处理后';after.append(right);
+  const left=document.createElement('h2');left.textContent=packet?'原文':'处理前';before.append(left);
+  const right=document.createElement('h2');right.textContent=packet?'译文':'处理后';after.append(right);
   const annotated=document.createElement('div');annotated.className='text';
-  for(const part of row.parts){const span=document.createElement(part.deleted?'del':'span');span.textContent=part.text;annotated.append(span);}before.append(annotated);
-  const cleaned=document.createElement('div');cleaned.className='text';cleaned.textContent=row.after||'（整段删除）';if(!row.after)cleaned.classList.add('removed');after.append(cleaned);
+  for(const part of packet?[{text:entries.get(row.id)?.source??row.before}]:row.parts){const span=document.createElement(part.deleted?'del':'span');span.textContent=part.text;annotated.append(span);}before.append(annotated);
+  const entry=entries.get(row.id);
+  if(entry?.editable){
+   const input=document.createElement('textarea');input.value=rowAfter(row);input.setAttribute('aria-label',`译文 ${row.id}`);input.dataset.cueId=row.id;
+   input.addEventListener('input',()=>{edits.set(row.id,input.value);input.setAttribute('aria-invalid',String(!input.value.trim()||input.value.length>20000));card.classList.toggle('edited',input.value!==entry.translation);updateDraft();});
+   card.classList.toggle('edited',input.value!==entry.translation);after.append(input);
+  }else{const cleaned=document.createElement('div');cleaned.className='text';cleaned.textContent=rowAfter(row)||'（整段删除）';if(!rowAfter(row))cleaned.classList.add('removed');after.append(cleaned);}
   cols.append(before,after);card.append(cols);
-  if(row.reason){const reason=document.createElement('div');reason.className='reason';reason.textContent=(row.review?'待核查：':'处理原因：')+row.reason;card.append(reason);}
+  if(row.reason&&!(row.notes||[]).length){const reason=document.createElement('div');reason.className='reason';reason.textContent=(row.review?'待核查：':'处理原因：')+row.reason;card.append(reason);}
+  for(const note of row.notes||[]){const element=document.createElement('div');element.className='reason';element.textContent=note;card.append(element);}
   byId('rows').append(card);
  }
 }
 byId('filter').addEventListener('change',render);byId('search').addEventListener('input',render);render();
+byId('reset-translations').addEventListener('click',()=>{edits.clear();updateDraft();render();});
+byId('download-project').addEventListener('click',async()=>{
+ byId('download-project').disabled=true;
+ try{
+  const {project,changed}=await MAWTranslationReview.applyEdits(data.translationReview,editList());
+  const blob=new Blob([JSON.stringify(project,null,2)+'\n'],{type:'application/json;charset=utf-8'}),url=URL.createObjectURL(blob),link=document.createElement('a');
+  link.href=url;link.download=data.translationReview.filename;link.click();setTimeout(()=>URL.revokeObjectURL(url),1000);
+  byId('edit-status').textContent=`已下载核对后 MOSP，手动修改 ${changed} 条。`;
+ }catch(error){byId('edit-status').textContent=error.message;}
+ finally{byId('download-project').disabled=false;}
+});
+if(data.translationReview){
+ byId('edit-actions').hidden=false;
+ MAWTranslationReview.readPacket(data.translationReview).then(value=>{
+  packet=value;entries=new Map(packet.entries.map(entry=>[entry.id,entry]));updateDraft();render();
+ }).catch(error=>{byId('edit-status').textContent=error.message;byId('download-project').disabled=true;});
+}
 </script></body></html>

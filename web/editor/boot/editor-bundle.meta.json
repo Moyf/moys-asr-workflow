@@ -220,7 +220,7 @@
     "shared/utils/settings.js": "04070ab6822b8d95545bc12430542d650ed4483a37fbeacf47ce4f6307cafd76",
     "shared/utils/gap-remove.js": "5d88757283e06f853bf9bdeb1f0f2a98347f4b502fac3888875a8d0f17f8cd70",
     "shared/utils/history.js": "0929c838e2fb6359d9e441dfc18b663a68b23b17319a43ea5f6855aace5483f7",
-    "shared/utils/markers.js": "e24a8cf115a58475fc7b293f550dbdebf52cbedca54277315a36d739050d4dbf",
+    "shared/utils/markers.js": "74eaa15e9daf23a77495b4709c2180ff2ca8a40f2a2e6bd1d94836278879a37b",
     "shared/utils/multi-subtitle.js": "030482c28fd76a1fc1241feaad5a96c64511b91de12e8efbc16fffe48603b42b",
     "shared/utils/word-timing.js": "3f2cf2f252747be5105c7e767b8987f9d6ef3678ba17080bfa181eff7628678e",
     "shared/utils/word-split.js": "28a8d6092bcaf156fe989cb7bb9eea9c4d550d9ca7e50d6787af48307a697ad3",
@@ -487,7 +487,7 @@
         "format": "esm"
       },
       "web/shared/utils/markers.js": {
-        "bytes": 9698,
+        "bytes": 10222,
         "imports": [],
         "format": "esm"
       },
@@ -1070,7 +1070,7 @@
             "bytesInOutput": 1328
           },
           "web/shared/utils/markers.js": {
-            "bytesInOutput": 4010
+            "bytesInOutput": 4400
           },
           "web/shared/utils/multi-subtitle.js": {
             "bytesInOutput": 10160
@@ -1196,7 +1196,7 @@
             "bytesInOutput": 1086476
           }
         },
-        "bytes": 1443497
+        "bytes": 1443887
       }
     }
   }

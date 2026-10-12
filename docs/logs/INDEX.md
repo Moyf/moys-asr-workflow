@@ -85,3 +85,5 @@
 | 1.1.0 | 2026-07-27 | [MAW 1.1 开发追踪](1.1.0/2026-07-27/MAW%201.1%20%E5%BC%80%E5%8F%91%E8%BF%BD%E8%B8%AA.md) | 正文明确版本目标为 1.1.0；保留原始结论与验证范围 |
 | unversioned | undated | [editor-settings.html](unversioned/undated/editor-settings-report/editor-settings.html) | 共享报告；源材料在同目录 |
 | 1.8.0-beta.1 | 2026-10-09 | [maw-verification-v1.8.0b1-to-main.html](1.8.0-beta.1/2026-10-09/first-verification/maw-verification-v1.8.0b1-to-main.html) | 共享报告；源材料在同目录 |
+
+- [AI 备注与译文核对实现](unversioned/2026-10-12/AI_REVIEW_IMPLEMENTATION.md)：通用工程备注和离线译文编辑的进度、证据与边界。
