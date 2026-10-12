@@ -45,7 +45,16 @@ class EditorManifestTests(unittest.TestCase):
         )
         artifact = self.web / "editor/boot/editor-bundle.js"
         artifact.write_text("// complete artifact\n",encoding="utf-8")
-        self.assertEqual(edit.build_editor_scripts(), "// complete artifact")
+        with patch.object(edit, "ensure_bundle") as ensure:
+            self.assertEqual(edit.build_editor_scripts(), "// complete artifact")
+        ensure.assert_called_once_with(self.root, "editor", allow_build=True)
+
+    def test_frozen_renderer_never_attempts_a_source_build(self) -> None:
+        artifact = self.web / "editor/boot/editor-bundle.js"
+        artifact.write_text("// packaged artifact\n", encoding="utf-8")
+        with patch.object(edit.sys, "frozen", True, create=True), patch.object(edit, "ensure_bundle") as ensure:
+            self.assertEqual(edit.build_editor_scripts(), "// packaged artifact")
+        ensure.assert_called_once_with(self.root, "editor", allow_build=False)
 
     def test_rejects_empty_duplicate_missing_and_directory_entries(self) -> None:
         (self.web / "directory.js").mkdir()

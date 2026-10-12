@@ -43,6 +43,22 @@ jobs:
       - name: Install locked dependencies
         run: uv sync --group build --frozen
 
+      - name: Set up pnpm
+        uses: pnpm/action-setup@v6
+        with:
+          version: 11.28.4
+          run_install: false
+      - name: Set up Node
+        uses: actions/setup-node@v5
+        with:
+          node-version: '22'
+          cache: pnpm
+          cache-dependency-path: pnpm-lock.yaml
+      - name: Build web bundles
+        # bundle 是构建产物（不入库）：Python 全量测试与打包都会读取，在测试前
+        # 显式构建（pnpm install 的 postinstall 也会构建，这里保持显式不依赖钩子）。
+        run: pnpm install --frozen-lockfile && pnpm run build
+
       - name: Run packaging contract tests
         run: uv run python scripts/run_tests.py tests/test_packaging_contract.py
 

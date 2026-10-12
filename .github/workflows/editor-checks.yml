@@ -68,9 +68,11 @@ jobs:
           cache: pnpm
           cache-dependency-path: pnpm-lock.yaml
       - run: pnpm install --frozen-lockfile
-      # Check the committed artifacts before anything can regenerate them.
-      - run: pnpm run check:editor
-      - run: pnpm run check:launcher
+      # Bundles are build artifacts (not committed): build once for every later
+      # step that reads them (assembly contracts, test:unit, e2e). pnpm install
+      # already builds via postinstall; keep this explicit so it does not rely
+      # on the hook.
+      - run: pnpm run build
       - run: pnpm run typecheck
       - uses: actions/setup-python@v6
         with:
