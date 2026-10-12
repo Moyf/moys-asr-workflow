@@ -688,7 +688,7 @@ test('exports a gap-removed styled ASS subtitle with shifted timing', async ({ p
   await page.locator('#gap-removed-export-btn').click();
   await expect(page.locator('#gap-removed-subtitle-export-separator')).toBeVisible();
   await expect(page.locator('#gap-removed-export-menu > .dropdown-item:visible').allTextContents())
-    .resolves.toEqual(['SRT', 'SRT（按颜色拆分）', 'ASS（带样式）', '重组后视频']);
+    .resolves.toEqual(['SRT', 'SRT（按颜色拆分）', 'ASS（带样式）', '重组后音频']);
   await expect(page.locator('#gap-removed-otio-menu').locator('xpath=preceding-sibling::*[1]'))
     .toHaveText('OTIO');
 

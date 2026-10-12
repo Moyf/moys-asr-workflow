@@ -115,9 +115,8 @@ for (const language of ['zh', 'en']) {
 }
 
 async function openMultiSubtitleSettings(page) {
-  // 双语字幕设置已并入工程设置 → 字幕轨道页。
-  await openSettingsPage(page, 'project-tracks');
-  await expect(page.locator('#project-multi-subtitle-settings')).toBeVisible();
+  await openSettingsPage(page, 'multi-subtitle');
+  await expect(page.locator('#editor-settings-page-multi-subtitle')).toBeVisible();
 }
 
 async function waitForLayoutBox(locator, message) {
@@ -748,13 +747,16 @@ test('uses the main cue-row layout when displaying only the extension track', as
       labelRight: label?.getBoundingClientRect().right ?? 0,
       selectLeft: select?.getBoundingClientRect().left ?? 0,
       selectWidth: select ? getComputedStyle(select).width : '',
+      rowGap: element.nextElementSibling.getBoundingClientRect().top - element.getBoundingClientRect().bottom,
     };
   });
-  expect(settingBoxes.selectLeft).toBeGreaterThanOrEqual(settingBoxes.labelRight);
-  expect(settingBoxes.selectWidth).toBe('108px');
+  expect(settingBoxes.selectLeft).toBeGreaterThanOrEqual(settingBoxes.labelRight + 8);
+  expect(settingBoxes.selectWidth).toBe('80px');
+  expect(settingBoxes.rowGap).toBeGreaterThanOrEqual(8);
 
   await page.locator('#multi-subtitle-display-mode').selectOption('main');
-  const mainCue = page.locator('#cues-container > .cue[data-idx="0"]');
+  const mainCue = page.locator('#cues-container > .cue[data-idx="0"]:not(.multi-dual-cue)');
+  await expect(mainCue.locator(':scope > .text')).toBeVisible();
   const readCueLayout = (element) => {
     const read = (node) => {
       const style = getComputedStyle(node);
@@ -787,7 +789,11 @@ test('uses the main cue-row layout when displaying only the extension track', as
   await expect(extensionCue.locator('.index')).toHaveText('1');
   await expect(extensionCue.locator('.time-start')).toHaveText('00:00.050');
   await expect(extensionCue.locator('.charcount')).toBeVisible();
-  expect(await extensionCue.evaluate(readCueLayout)).toEqual(mainLayout);
+  const extensionLayout = await extensionCue.evaluate(readCueLayout);
+  writeFileSync(test.info().outputPath('extension-only-layout.json'), JSON.stringify({ settingBoxes, mainLayout, extensionLayout }, null, 2));
+  await closeSettingsPanels(page);
+  await page.locator('#cues-container').screenshot({ path: test.info().outputPath('extension-only-layout.png') });
+  expect(extensionLayout).toEqual(mainLayout);
 });
 
 test('raises both subtitle lanes moderately in basic waveform mode', async ({ page }) => {
@@ -4337,7 +4343,7 @@ test('ASS mode previews and exports extension cues with the shared extension sty
   // 叠加字幕固定锚定在主字幕上方（88 + round(1.2 * 86) = 191）。
   expect(result.overlayAnchor.y).toBeLessThan(result.mainAnchor.y - result.mainHeight);
   // 导出：副字幕 Layer 1 + 独立 Extension 样式；叠加轨 Layer 2 + 固化
-  // 链式边距 268 的 Overlay 样式。
+  // 主样式 marginV 88 + 1.2 × 字号 86 = 191 的 Overlay 样式。
   const dialogueLines = result.ass.split('\n').filter((line) => line.startsWith('Dialogue:'));
   expect(dialogueLines).toHaveLength(3);
   expect(dialogueLines[1]).toMatch(/^Dialogue: 1,/);
@@ -4346,10 +4352,10 @@ test('ASS mode previews and exports extension cues with the shared extension sty
   expect(dialogueLines[2]).toContain(`\\pos(${result.overlayAnchor.x},${result.overlayAnchor.y})`);
   const extensionStyleLine = result.ass.split('\n').find((line) => line.startsWith('Style: Extension,'));
   expect(extensionStyleLine).toBeTruthy();
-  expect(extensionStyleLine.endsWith(',10,10,36,1')).toBe(true);
+  expect(extensionStyleLine).toMatch(/,10,10,36,1$/);
   const overlayStyleLine = result.ass.split('\n').find((line) => line.startsWith('Style: Overlay,'));
   expect(overlayStyleLine).toBeTruthy();
-  expect(overlayStyleLine.endsWith(',10,10,268,1')).toBe(true);
+  expect(overlayStyleLine).toMatch(/,10,10,191,1$/);
 
   const variants = await page.evaluate(() => {
     const main = ASS_STYLE_LIBRARY.styles.find((style) => style.id === 'ass');
@@ -4373,7 +4379,7 @@ test('ASS mode previews and exports extension cues with the shared extension sty
   });
   const windowRow = alignment => alignment >= 7 ? 0 : alignment >= 4 ? 1 : 2;
   for (const variant of variants) {
-    const alignment = (variant.extensionAlignment - 1) % 3 + 1;
+    const alignment = variant.extensionAlignment;
     expect(variant.extension.alignment).toBe(alignment);
     // 叠加字幕的对齐列跟随主字幕。
     const overlayAlignment = (variant.mainAlignment - 1) % 3 + 1;
@@ -4382,7 +4388,7 @@ test('ASS mode previews and exports extension cues with the shared extension sty
     const mainTop = variant.main.anchor.y - variant.main.height * mainRow / 2;
     // 副字幕固定在其样式行位的预设位置（MarginV 36）；底部行位于主字幕下方。
     const extRow = windowRow(variant.extensionAlignment);
-    const extExpectedY = [1080 - 36, 540, 36][extRow];
+    const extExpectedY = [36, 540, 1080 - 36][extRow];
     expect(variant.extension.anchor.y).toBeCloseTo(extExpectedY, 0);
     // 叠加字幕固定锚定在主字幕上方。
     expect(variant.overlay.anchor.y).toBeLessThan(mainTop);

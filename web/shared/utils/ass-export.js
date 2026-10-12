@@ -394,7 +394,9 @@ export function createUtilsModule(dependencies) {
       for (const slice of plan.slices) {
         if (slice.diagnostic) continue;
         for (const piece of slice.pieces) for (const item of slice.items) {
-          const scale = slice.scale;
+          // Fixed extensions keep their own scale in every override, including
+          // inline font-size resets and animation targets.
+          const scale = item.absolute ? 1 : slice.scale;
           const scaledStyle = { ...item.style, spacing: item.style.spacing * scale,
             outline: item.style.outline * scale, shadow: item.style.shadow * scale };
           const transformTargets = profile.animations.t.enabled
@@ -433,12 +435,11 @@ export function createUtilsModule(dependencies) {
           }
           const transformTarget = transformTargets.fontSize;
           // 固定层不参与组缩放：其 	 字号动画目标保持样式原值。
-          const targetScale = item.absolute ? 1 : scale;
           const fontTransform = transformTarget === undefined ? null : {
             startMs: profile.animations.t.startMs - (piece.start - item.start),
             endMs: (profile.animations.t.startMs === 0 && profile.animations.t.endMs === 0
               ? item.end - item.start : profile.animations.t.endMs) - (piece.start - item.start),
-            accel: profile.animations.t.accel, target: Number((transformTarget * targetScale).toFixed(4)),
+            accel: profile.animations.t.accel, target: Number((transformTarget * scale).toFixed(4)),
           };
           const content = slice.legacy && !(item.sharedStackCue && (fontTransform || sharedDecorations)) ? item.originalText : assEmphasizedText('', scaledStyle, size, emphasisSyntax,
             { ...inlineOptions, preparedRuns: item.runs, fontTransform });

@@ -228,8 +228,8 @@
     "shared/utils/lrc.js": "febdcceebbb5884cbb75a60cba261af53c92779bb6eb21cedb486563e3f39644",
     "shared/utils/ass-style.js": "10a409eae7bd440a69883f71292e34442a659a5714e7d753235594ffada4d0fa",
     "shared/utils/ass-animation.js": "2c3f97db642cbdb3602eb53a99d31e8a6c7720adb3783473613f88ba3b340d34",
-    "shared/utils/ass-canvas-layout.js": "ea99d8ea2c3cb95e174b3b7c3d3eb991ef7b83d8acc852778bb8b5cdbe02cd75",
-    "shared/utils/ass-export.js": "4f052c0bbe612ab2b1ed8b22068abdd3a1a81dc0054c13bb42aa19cf0363902b",
+    "shared/utils/ass-canvas-layout.js": "0e4c34133037659a0e7c609bb75d7de6b18c98677b109bc5e70a74610d143588",
+    "shared/utils/ass-export.js": "4f6527b5d7afef2aa7e853e2100fb165d5f43553072561a32fca4a61db2b99ea",
     "shared/utils/export-plan.js": "74328922e80ce96ad7002c3fdaa2687a8f11c17d9bf7550b8e36dd5f5ef2542d",
     "shared/utils/fcp7.js": "1ed3e9af7d41dcefaa4fd3ab53348b5bebc7b3430f2f84d7676401d12086b9cc",
     "shared/utils/export-workflow.js": "606cdab0c13fe1ba8384a9fbcfcb52afdeb8f63930ab939892601d81799f0b10",
@@ -527,7 +527,7 @@
         "format": "esm"
       },
       "web/shared/utils/ass-export.js": {
-        "bytes": 29145,
+        "bytes": 29242,
         "imports": [],
         "format": "esm"
       },
@@ -692,7 +692,7 @@
         "format": "esm"
       },
       "web/editor-entry.mjs": {
-        "bytes": 1869943,
+        "bytes": 1871016,
         "imports": [
           {
             "path": "web/shared/host/storage.js",
@@ -1094,7 +1094,7 @@
             "bytesInOutput": 3817
           },
           "web/shared/utils/ass-export.js": {
-            "bytesInOutput": 11576
+            "bytesInOutput": 11570
           },
           "web/shared/utils/export-plan.js": {
             "bytesInOutput": 13470
@@ -1193,10 +1193,10 @@
             "bytesInOutput": 4427
           },
           "web/editor-entry.mjs": {
-            "bytesInOutput": 1086850
+            "bytesInOutput": 1087407
           }
         },
-        "bytes": 1441901
+        "bytes": 1442452
       }
     }
   }

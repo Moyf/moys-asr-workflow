@@ -24,6 +24,8 @@ test.afterAll(async () => { await server?.stop(); cleanupTempDir(tempDir); });
 const cue = (id, text, start = 0, end = 4000) => ({ id, text, start, end });
 const cases = [
   { name: 'static single-line control', times: [1000] },
+  { name: '1440p preview and burn share the native frame coordinate system',
+    width: 2560, height: 1440, times: [1000] },
   { name: 'main explicit multiline', main: 'Main one\nMain two\nMain three', times: [1000] },
   { name: 'secondary explicit multiline', extension: 'Secondary one\nSecondary two\nSecondary three', times: [1000] },
   { name: 'largest emphasis and comment runs', main: 'Main **BIG**\n//COMMENT//',
@@ -95,7 +97,7 @@ async function configure(page, fixture) {
       commentScale: f.commentScale ?? 0.8, emphasisStyle: 'text', commentStyle: 'text' };
     Object.assign(main, common, { primaryColor: '#ff0000', emphasisColor: '#ff0000', commentColor: '#ff0000' });
     // 副字幕跟随其样式预设：默认 marginV 60 让它落在主字幕（180）下方。
-    Object.assign(extension, common, { fontSize: 72, alignment: f.extensionAlignment ?? 2,
+    Object.assign(extension, common, { fontSize: f.extensionFontSize ?? 72, alignment: f.extensionAlignment ?? 2,
       marginV: f.extensionMarginV ?? 60,
       primaryColor: '#00ff00', emphasisColor: '#00ff00', commentColor: '#00ff00' });
     ASS_STYLE_LIBRARY.assProfiles[0].animations = {
@@ -106,7 +108,7 @@ async function configure(page, fixture) {
     for (const [name, value] of [['red', '#ff0000'], ['green', '#00ff00'], ['blue', '#0000ff']]) {
       MaweColors.COLOR_BY_NAME[name].value = value;
     }
-    MaweBoot.DATA.media_metadata = { video_width: 1280, video_height: 720 };
+    MaweBoot.DATA.media_metadata = { video_width: f.width ?? 1280, video_height: f.height ?? 720 };
     MaweBoot.DATA.segments = f.mainSegments || [{ id: 'main', start: 0, end: 4000, text: f.main || 'Main' }];
     MaweBoot.DATA.multi_subtitle = { enabled: true, tracks: [{ id: 'extension', segments:
       f.extensionSegments || [{ id: 'extension', start: 0, end: 4000, text: f.extension || 'Secondary' }] }] };
@@ -428,15 +430,50 @@ test('all simultaneously active main, secondary and overlay cues are actually pa
   }
 });
 
-test('overlapping secondary M and W cues occupy separate actual pixel bands', async ({ page }, testInfo) => {
-  await configure(page, { extensionSegments: [cue('ext-M', 'M', 0, 2000), cue('ext-W', 'W', 500, 1500)] });
+test('three overlapping secondary cues occupy separate actual pixel bands', async ({ page }, testInfo) => {
+  await configure(page, { extensionSegments: [cue('ext-M', 'M', 0, 2000),
+    cue('ext-W', 'W', 500, 1500), cue('ext-H', 'H', 500, 1500)] });
   const frame = await capture(page, 1000);
   await evidence(frame, testInfo, 'secondary-collision');
   const pixels = libass(frame.ass, 1000, testInfo, 'secondary-collision');
   writeFileSync(testInfo.outputPath('secondary-collision-libass.json'), JSON.stringify(pixels, null, 2));
-  expect.soft(frame.texts, 'both active cues reach real Canvas paint').toEqual(expect.arrayContaining(['M', 'W']));
-  expect.soft(frame.nativeTracks.extension.bands, 'Canvas separates same-track simultaneous cues').toHaveLength(2);
-  expect(pixels.tracks.extension.bands, 'libass separates same-track simultaneous cues').toHaveLength(2);
+  expect.soft(frame.texts, 'all active cues reach real Canvas paint').toEqual(expect.arrayContaining(['M', 'W', 'H']));
+  expect.soft(frame.nativeTracks.extension.bands, 'Canvas separates same-track simultaneous cues').toHaveLength(3);
+  expect(pixels.tracks.extension.bands, 'libass separates same-track simultaneous cues').toHaveLength(3);
+});
+
+test('secondary preset paint remains fixed before during and after the main cue', async ({ page }, testInfo) => {
+  await configure(page, { mainSegments: [cue('short-main', 'Main', 500, 1500)],
+    extensionSegments: [cue('long-secondary', 'Secondary', 0, 2000)], overlaySegments: [] });
+  let previous;
+  for (const time of [250, 1000, 1750]) {
+    const frame = await capture(page, time);
+    await evidence(frame, testInfo, `secondary-alone-${time}`);
+    const pixels = libass(frame.ass, time, testInfo, `secondary-alone-${time}`);
+    writeFileSync(testInfo.outputPath(`secondary-alone-${time}-libass.json`), JSON.stringify(pixels, null, 2));
+    const actual = frame.nativeTracks.extension.box;
+    expect(actual, 'Canvas paints the fixed extension').not.toBeNull();
+    expect(pixels.tracks.extension.box, 'libass paints the fixed extension').not.toBeNull();
+    for (const coordinate of [0, 1, 2, 3]) expect(Math.abs(actual[coordinate]
+      - pixels.tracks.extension.box[coordinate]), `fixed extension edge ${coordinate} at ${time}ms`).toBeLessThanOrEqual(3);
+    if (previous) expect(actual, 'main entering/leaving cannot move the extension').toEqual(previous);
+    previous = actual;
+  }
+});
+
+test('cumulative fixed secondary overflow refuses export instead of silently overlapping', async ({ page }) => {
+  await configure(page, { height: 240, extensionFontSize: 168, extensionMarginV: 20,
+    extensionSegments: [cue('ext-a', 'A\nA'), cue('ext-b', 'B\nB'), cue('ext-c', 'C\nC')] });
+  await expect(page.locator('#overlay')).toHaveAttribute('data-ass-stack-status', 'unavailable');
+  const result = await page.evaluate(() => {
+    let plan;
+    MaweExportSrt.buildAss({ preview: true, allowAssPlanDiagnostics: true, onAssPlan: value => { plan = value; } });
+    return { diagnostics: plan.diagnostics, painted: window.MaweAssCanvas.lastRender.tracks.length };
+  });
+  expect(result.diagnostics).toHaveLength(1);
+  expect(result.diagnostics[0].message).toMatch(/固定副字幕.*同时容纳/);
+  expect(result.painted).toBe(0);
+  await expect(page.evaluate(() => MaweExportSrt.buildAss())).rejects.toThrow(/固定副字幕.*同时容纳/);
 });
 
 test('positive spacing and coloured outline shadow keep complete multiline edge paint visible', async ({ page }, testInfo) => {
