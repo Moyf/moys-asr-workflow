@@ -303,17 +303,11 @@ def run_ai_cleanup(
         if outcome == DECISION_DISCARD:
             local = _local_removal(clip, decisions[clip.id])[0]
             if local is not None:
-                for first, last in local:
-                    selected = clip.items[first:last]
-                    scope = {
-                        "start": int(selected[0]["start"]),
-                        "end": int(selected[-1]["end"]),
-                        "text": "".join(str(item["text"]) for item in selected),
-                    }
-                    removed_ranges.append({
-                        "start": scope["start"], "end": scope["end"],
-                        "cleanup_scope": {"segment_id": str(segment["id"]), "item_start": first, "item_end": last, "text": scope["text"]},
-                    })
+                source_indices = [clip.source_item_indices[index] for first, last in local for index in range(first, last)]
+                ranges = scoped_item_ranges(segment, source_indices)
+                removed_ranges.extend(ranges)
+                for removed_range in ranges:
+                    scope = {**removed_range, "text": removed_range["cleanup_scope"]["text"]}
                     ai_markers.append(_ai_annotation(scope, "删除", reasons[clip.id] or "可核验的局部口吃", pending=False))
                 stats["removed"] += 1
                 continue
