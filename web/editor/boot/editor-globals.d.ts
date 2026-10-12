@@ -154,6 +154,7 @@ declare const MaweDom: any;
 declare const MaweMultiSubtitleCore: any;
 declare const ASS_STYLE_LIBRARY: any;
 declare const mergedExportSegments: any;
+declare const aiCleanupExportSegments: any;
 declare const activeExtensionSegments: any;
 
 interface Window {

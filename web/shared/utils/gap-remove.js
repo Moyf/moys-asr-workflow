@@ -64,6 +64,56 @@ export function createUtilsModule(dependencies) {
 
   const buildGapRemovedIntervals = GAP_REMOVE_CORE.buildGapRemovedIntervals;
 
+  // Export projection only: raw source cues remain recoverable in the editor.
+  function buildAiCleanupSegments(segments, gapRemove) {
+    const source = Array.isArray(segments) ? segments : [];
+    const aiRanges = gapRemove?.provenance?.sources?.ai_cleanup;
+    if (!Array.isArray(aiRanges) || !aiRanges.length) return source;
+    const provenance = normalizeGapRemoveProvenance(gapRemove.provenance, gapRemove.gaps);
+    const active = getRemovedGapRanges(Array.isArray(gapRemove.gaps) ? gapRemove.gaps : gapRangesFromProvenance(provenance));
+    return source.flatMap((segment) => {
+      if (!segment || segment.disabled || !Array.isArray(segment.items)) return [segment];
+      const text = String(segment.text || '');
+      let cursor = 0;
+      const spans = [];
+      for (const item of segment.items) {
+        const value = String(item?.text || '');
+        const start = value ? text.indexOf(value, cursor) : -1;
+        if (start < 0 || /[\p{L}\p{N}]/u.test(text.slice(cursor, start))) return [segment];
+        cursor = start + value.length;
+        spans.push({ start, end: cursor });
+      }
+      if (/[\p{L}\p{N}]/u.test(text.slice(cursor))) return [segment];
+      const deleted = segment.items.map((item) => Number.isInteger(item.start) && Number.isInteger(item.end) && item.end > item.start
+        && aiRanges.some((range) => {
+          if (!Number.isInteger(range.start) || !Number.isInteger(range.end)) return false;
+          const scope = range.cleanup_scope;
+          if (!scope || typeof scope !== 'object') return false;
+          {
+            if (scope.segment_id !== segment.id || !Number.isInteger(scope.item_start) || !Number.isInteger(scope.item_end)
+                || scope.item_start < 0 || scope.item_end > segment.items.length || scope.item_start >= scope.item_end) return false;
+            const selected = segment.items.slice(scope.item_start, scope.item_end);
+            if (selected[0].start !== range.start || selected.at(-1).end !== range.end
+                || selected.map(i => i.text).join('') !== scope.text) return false;
+          }
+          return range.start <= item.start && item.end <= range.end;
+        })
+        && active.some((range) => range.start <= item.start && item.end <= range.end));
+      if (!deleted.some(Boolean)) return [segment];
+      let cleaned = '';
+      let previous = 0;
+      spans.forEach((span, index) => {
+        cleaned += text.slice(previous, span.start);
+        if (!deleted[index]) cleaned += text.slice(span.start, span.end);
+        previous = span.end;
+      });
+      cleaned += text.slice(previous);
+      const items = segment.items.filter((_item, index) => !deleted[index]);
+      return [{ ...segment, text: cleaned.trim(), items,
+        ...(items.length ? { start: items[0].start, end: items.at(-1).end } : {}) }];
+    });
+  }
+
 
   // Dynamic-caption exporters need the same compressed timeline as SRT/OTIO,
   // while preserving the source segment objects for the editor. Items that are
@@ -120,5 +170,5 @@ export function createUtilsModule(dependencies) {
     return { start, end };
   }
 
-  return Object.freeze({ GAP_REMOVE_DISABLE_COVERAGE_DEFAULT, GAP_REMOVE_DISABLE_REMAINING_DEFAULT_MS, GAP_REMOVE_DISABLE_REMAINING_MAX_MS, appendGapRemoveManualOverrides, applyGapRemoveRange, buildGapRemovedDynamicSegments, buildGapRemovedIntervals, clampGapRemoveDisableCoverage, clampGapRemoveDisableRemaining, copyGapRemoveRange, decorateGapRemoveGaps, detectAudioGapRemoveGaps, findGapRemoveDisableMatches, gapRangesFromProvenance, getGapRemoveDisplayGaps, getGapRemoveDisplayType, getRemovedGapRanges, isGapRemoveDisplayProtected, mapGapRemovedTime, moveGapRemoveProvenance, moveGapRemoveRange, normalizeGapRemoveData, normalizeGapRemoveGaps, normalizeGapRemoveProvenance, removeGapRemoveProvenanceRange, replaceGapRemoveProvenanceSource, resizeGapRemoveBoundary, resolveGapFillRange, shrinkGapRemoveGaps });
+  return Object.freeze({ buildAiCleanupSegments, GAP_REMOVE_DISABLE_COVERAGE_DEFAULT, GAP_REMOVE_DISABLE_REMAINING_DEFAULT_MS, GAP_REMOVE_DISABLE_REMAINING_MAX_MS, appendGapRemoveManualOverrides, applyGapRemoveRange, buildGapRemovedDynamicSegments, buildGapRemovedIntervals, clampGapRemoveDisableCoverage, clampGapRemoveDisableRemaining, copyGapRemoveRange, decorateGapRemoveGaps, detectAudioGapRemoveGaps, findGapRemoveDisableMatches, gapRangesFromProvenance, getGapRemoveDisplayGaps, getGapRemoveDisplayType, getRemovedGapRanges, isGapRemoveDisplayProtected, mapGapRemovedTime, moveGapRemoveProvenance, moveGapRemoveRange, normalizeGapRemoveData, normalizeGapRemoveGaps, normalizeGapRemoveProvenance, removeGapRemoveProvenanceRange, replaceGapRemoveProvenanceSource, resizeGapRemoveBoundary, resolveGapFillRange, shrinkGapRemoveGaps });
 }

@@ -17,6 +17,17 @@ _CONDITIONS = re.compile(
 _FILLER_ONLY = re.compile("[啊呀呢吧呃嗯哦唉]+")
 
 
+def protected_information_loss_reason(source: str, replacement: str) -> str | None:
+    """Check facts before any repeated-speech normalization shortcut."""
+    source = unicodedata.normalize("NFKC", source).lower()
+    replacement = unicodedata.normalize("NFKC", replacement).lower()
+    if Counter(_NUMBERS.findall(source)) != Counter(_NUMBERS.findall(replacement)):
+        return "备用片段的数字或比例不同，需要确认信息覆盖"
+    if Counter(_CONDITIONS.findall(source)) != Counter(_CONDITIONS.findall(replacement)):
+        return "备用片段的否定或限定条件不同，需要确认信息覆盖"
+    return None
+
+
 def information_loss_reason(source: str, replacement: str) -> str | None:
     """Similarity is evidence of another take, never proof that it covers facts.
 
@@ -26,17 +37,22 @@ def information_loss_reason(source: str, replacement: str) -> str | None:
     """
     source = unicodedata.normalize("NFKC", source).lower()
     replacement = unicodedata.normalize("NFKC", replacement).lower()
-    if Counter(_NUMBERS.findall(source)) != Counter(_NUMBERS.findall(replacement)):
-        return "备用片段的数字或比例不同，需要确认信息覆盖"
-    if Counter(_CONDITIONS.findall(source)) != Counter(_CONDITIONS.findall(replacement)):
-        return "备用片段的否定或限定条件不同，需要确认信息覆盖"
     original = "".join(char for char in source if char.isalnum())
     alternate = "".join(char for char in replacement if char.isalnum())
+    protected = protected_information_loss_reason(source, replacement)
+    if protected:
+        return protected
+    if original and original in alternate:
+        return None
     matcher = difflib.SequenceMatcher(None, original, alternate, autojunk=False)
-    for operation, start, end, _alt_start, _alt_end in matcher.get_opcodes():
+    for operation, start, end, alt_start, alt_end in matcher.get_opcodes():
         if operation not in {"delete", "replace"}:
             continue
         missing = original[start:end]
+        # A one-character grammatical homophone at the same aligned boundary
+        # is comparison evidence only. Source words are never corrected here.
+        if operation == "replace" and len(missing) == 1 and missing in "的得地" and alternate[alt_start:alt_end] in "的得地" and alt_end - alt_start == 1:
+            continue
         if missing and not _FILLER_ONLY.fullmatch(missing):
             return f"备用片段未能字面覆盖原段信息「{missing[:40]}」，需要复核"
     return None

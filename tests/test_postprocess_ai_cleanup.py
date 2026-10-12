@@ -306,7 +306,7 @@ class RetakeRemovalTest(AiCleanupTestCase):
         self.assertEqual(stats["removed"], 1)
         self.assertEqual(stats["pendingReview"], 0)
         self.assertTrue(
-            any("自动移除 1 段" in warning for warning in artifact.warnings)
+            any("整段移除 1 段" in warning for warning in artifact.warnings)
         )
 
 
@@ -746,6 +746,9 @@ class ClipPayloadPrivacyTest(AiCleanupTestCase):
                 "prevScriptLine",
                 "nextScriptLine",
                 "scriptMatch",
+                "itemTexts",
+                "sourceLine",
+                "contextText",
                 "items",
             },
         )
@@ -928,6 +931,7 @@ class InvalidResponseTest(AiCleanupTestCase):
             script_path=script_path,
             output_mode=OutputMode.BOTH,
             output_directory=self.directory,
+            review_enabled=False,
         )
         artifact = run_ai_cleanup(request, complete=complete)
         self.assertEqual(len(calls), 2)
@@ -1049,55 +1053,16 @@ class MarkersRoundTripTest(AiCleanupTestCase):
 
 
 class LlmCompleteTransportTest(unittest.TestCase):
-    def test_llm_complete_calls_transport_with_signature_and_retries_json(self) -> None:
-        """llm_complete 走真实传输闭包：on_delta 以关键字传递，坏 JSON 重试一次。"""
-
-        import maw.postprocess_ai_cleanup as cleanup_module
+    def test_llm_complete_uses_text_transport_for_editing_draft(self) -> None:
+        from unittest import mock
+        from maw.postprocess_ai_cleanup import llm_complete
         from maw.postprocess_llm import LlmSettings
-
-        seen: list[dict[str, object]] = []
-
-        def fake_completion(
-            settings, prompt, cues, *, on_delta, use_json_format=True,
-            is_cancelled=None, on_response=None,
-            response_json_schema=None,
-        ):
-            attempt = len(seen)
-            seen.append(
-                {
-                    "prompt": prompt,
-                    "cues": cues,
-                    "onDelta": on_delta,
-                    "useJsonFormat": use_json_format,
-                    "schema": response_json_schema,
-                }
-            )
-            content = '{"decisions": []}' if attempt else "{not json"
-            return {"choices": [{"message": {"content": content}}]}
-
-        settings = LlmSettings(
-            provider_id="custom",
-            api_key="key",
-            base_url="https://example.invalid/v4",
-            model="demo",
-        )
-        original = cleanup_module._request_completion
-        cleanup_module._request_completion = fake_completion
-        try:
-            result = cleanup_module.llm_complete(settings)(
-                "system prompt", [{"id": "c001", "asrText": "文字"}]
-            )
-        finally:
-            cleanup_module._request_completion = original
-        self.assertEqual(result, {"decisions": []})
-        self.assertEqual(len(seen), 2)
-        self.assertIsNone(seen[0]["onDelta"])
-        self.assertIsNone(seen[1]["onDelta"])
-        self.assertEqual(
-            seen[0]["schema"], cleanup_module.AI_CLEANUP_DECISIONS_JSON_SCHEMA
-        )
-        self.assertNotIn("未通过本地协议校验", str(seen[0]["prompt"]))
-        self.assertIn("未通过本地协议校验", str(seen[1]["prompt"]))
+        settings = LlmSettings(provider_id="custom", api_key="key", base_url="https://example.invalid/v1", model="demo")
+        with mock.patch("maw.postprocess_ai_cleanup._request_completion", return_value={"choices": [{"message": {"content": "[c001] 文字"}}]}) as transport:
+            result = llm_complete(settings)("edit", [{"id": "c001", "asrText": "文字"}])
+        self.assertEqual(result, {"timeline": "[c001] 文字"})
+        self.assertFalse(transport.call_args.kwargs["use_json_format"])
+        self.assertIsNone(transport.call_args.kwargs["response_json_schema"])
 
     def test_llm_complete_streams_deltas_through_the_shared_transport(self) -> None:
         from unittest import mock
@@ -1126,7 +1091,7 @@ class LlmCompleteTransportTest(unittest.TestCase):
                 "system prompt", [{"id": "c001", "asrText": "文字"}]
             )
 
-        self.assertEqual(result, {"decisions": []})
+        self.assertEqual(result, {"timeline": '{"decisions":[]}'})
         self.assertIn(("content", '{"decisions":[]}'), deltas)
         self.assertTrue(session.post.call_args.kwargs["json"]["stream"])
         self.assertTrue(session.post.call_args.kwargs["stream"])
@@ -1170,13 +1135,14 @@ class CleanupNotesTest(AiCleanupTestCase):
                     output_mode=OutputMode.BOTH,
                     output_directory=self.directory,
                     notes="  保留所有数字\n去除试麦  ",
+                    review_enabled=False,
                 ),
                 complete=complete,
             )
         self.assertEqual(len(prompts), 3)
         for prompt in prompts:
             self.assertIn("保留所有数字\n去除试麦", prompt)
-            self.assertIn("不得据此改写、翻译或总结任何文字", prompt)
+            self.assertIn("不能改写、翻译、补写、重排", prompt)
         output = json.loads(artifact.project_path.read_text(encoding="utf-8"))
         for before, after in zip(original, output["segments"], strict=True):
             for key in ("text", "start", "end", "items"):
