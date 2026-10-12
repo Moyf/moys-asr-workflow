@@ -2,10 +2,10 @@
 
 const STRINGS = {
   zh: {
-    media_output: "1️⃣ 选择媒体",
-    recognition: "2️⃣ 识别设置",
-    server: "5️⃣ 编辑器",
-    logs: "4️⃣ 日志",
+    media_output: "选择媒体",
+    recognition: "识别设置",
+    server: "编辑器",
+    logs: "日志",
     provider: "识别方式",
     test_run: "测试运行",
     test_run_title: "仅截取前2分钟内容，用于测试功能和 API",
@@ -161,10 +161,10 @@ language_filter_hint_suffix: "中开启。",
     speaker_colors_title: "转写时按说话人自动着色（生成后仍可在编辑器修改）"
   },
   en: {
-    media_output: "1️⃣ Choose media",
-    recognition: "2️⃣ Recognition Settings",
-    server: "5️⃣ Editor",
-    logs: "4️⃣ Logs",
+    media_output: "Choose media",
+    recognition: "Recognition Settings",
+    server: "Editor",
+    logs: "Logs",
     provider: "Recognition source",
     test_run: "Test run",
     test_run_title: "Trim to the first 2 minutes to test the workflow and API",
@@ -516,7 +516,7 @@ Object.assign(STRINGS.en, {
   batch_remove: "Remove",
 });
 Object.assign(STRINGS.zh, {
-  auto_postprocess_title: "3️⃣ 转写后自动处理",
+  auto_postprocess_title: "转写后自动处理",
   auto_postprocess_hint: "转写完成后自动执行；需先在工具箱进行配置。",
   auto_postprocess_enable: "启用自动处理",
   auto_postprocess_steps: "处理步骤",
@@ -652,7 +652,7 @@ Object.assign(STRINGS.zh, {
   local_runtime_unknown: "未知"
 });
 Object.assign(STRINGS.en, {
-  auto_postprocess_title: "3️⃣ Post-transcription processing",
+  auto_postprocess_title: "Post-transcription processing",
   auto_postprocess_hint: "Runs automatically after transcription; configure the steps in the toolbox first.",
   auto_postprocess_enable: "Enable auto-processing",
   auto_postprocess_steps: "Steps",
