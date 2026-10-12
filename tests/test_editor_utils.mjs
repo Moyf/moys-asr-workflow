@@ -1993,6 +1993,26 @@ test('builds expandable replacement rows with before and after text', () => {
   ]);
 });
 
+test('batch replacement preview shares search replacement rules and preserves embedded line breaks', () => {
+  const regex = helpers.buildReplacementPreview(
+    [{ text: '猫-狗\n猫-鸟' }],
+    [0],
+    '(?<left>猫)-(?<right>狗|鸟)',
+    '$<right>/$1',
+    { caseSensitive: true, useRegex: true },
+  );
+  assert.equal(regex.matchCount, 2);
+  assert.equal(regex.rows[0].after, '狗/猫\n鸟/猫');
+
+  const literal = helpers.buildReplacementPreview(
+    [{ text: 'a.b axb' }], [0], 'a.b', '$&', { caseSensitive: true, useRegex: false },
+  );
+  assert.equal(literal.rows[0].after, '$& axb');
+
+  const invalid = helpers.buildReplacementPreview([{ text: 'abc' }], [0], '[', 'x', { useRegex: true });
+  assert.match(invalid.error, /character class|unterminated|invalid/i);
+});
+
 test('applies common text processing operations in a stable order', () => {
   assert.equal(
     helpers.applyTextProcessing('  **hello**  ', {
@@ -2008,6 +2028,90 @@ test('applies common text processing operations in a stable order', () => {
     'hello',
   );
   assert.equal(helpers.applyTextProcessing('中文', { capitalize: true }), '中文');
+});
+
+test('converts clear Chinese number expressions and preserves ambiguous language', () => {
+  assert.equal(helpers.convertChineseNumbers('一百八十六'), ' 186 ');
+  assert.equal(helpers.convertChineseNumbers('二〇二六'), ' 2026 ');
+  assert.equal(helpers.convertChineseNumbers('二零二六'), ' 2026 ');
+  assert.equal(helpers.convertChineseNumbers('负三点五'), ' -3.5 ');
+  assert.equal(helpers.convertChineseNumbers('我有三只猫'), '我有 3 只猫');
+  assert.equal(helpers.convertChineseNumbers('一百零八\n二十'), ' 108 \n 20 ');
+  for (const ambiguous of ['一万一', '一百八', '十几', '三心二意', '百分之三十', '三分之一', '我看了一眼']) {
+    assert.equal(helpers.convertChineseNumbers(ambiguous), ambiguous, ambiguous);
+  }
+});
+
+test('applies number conversion before the shared wrapping operation', () => {
+  assert.equal(helpers.applyTextProcessing('**一百八十六**', {
+    stripMarkdown: true, trim: true, convertChineseNumbers: true,
+    addWrapChars: true, wrapLeft: '[', wrapRight: ']',
+  }), '[ 186 ]');
+});
+
+test('preserves approximate adjacent digits and repeated idioms without changing exact digit notation', () => {
+  for (const text of [
+    '等三两分钟', '来了两三个人', '再等一两天', '七八天以后', '八九不离十',
+    '八九不离十，再算八九不离十', '大概四五十分钟', '三两分钟后再等三两分钟',
+  ]) {
+    assert.equal(helpers.convertChineseNumbers(text), text, text);
+  }
+  assert.equal(helpers.convertChineseNumbers('二〇二六年'), ' 2026 年');
+  assert.equal(helpers.convertChineseNumbers('零八号'), ' 08 号');
+  assert.equal(helpers.convertChineseNumbers('一三八零零'), ' 13800 ');
+});
+
+test('searches subtitle lines with literal and case-sensitive matching', () => {
+  const insensitive = helpers.collectTextSearchMatches(['Moy moy', 'Moy'], 'moy');
+  assert.equal(insensitive.error, null);
+  assert.deepEqual(Array.from(insensitive.matches, ({ lineIndex, start, text }) => ({ lineIndex, start, text })), [
+    { lineIndex: 0, start: 0, text: 'Moy' },
+    { lineIndex: 0, start: 4, text: 'moy' },
+    { lineIndex: 1, start: 0, text: 'Moy' },
+  ]);
+  assert.equal(helpers.collectTextSearchMatches(['a.b axb'], 'a.b').matches.length, 1);
+  assert.equal(helpers.collectTextSearchMatches(['Moy moy'], 'moy', { caseSensitive: true }).matches.length, 1);
+});
+
+test('search reports invalid patterns and advances through zero-length regex matches', () => {
+  const invalid = helpers.collectTextSearchMatches(['abc'], '[', { useRegex: true });
+  assert.match(invalid.error, /character class|unterminated|invalid/i);
+  const zeroLength = helpers.collectTextSearchMatches(['abc', ''], '^|$', { useRegex: true });
+  assert.equal(zeroLength.error, null);
+  assert.deepEqual(Array.from(zeroLength.matches, ({ lineIndex, start, end }) => ({ lineIndex, start, end })), [
+    { lineIndex: 0, start: 0, end: 0 },
+    { lineIndex: 0, start: 3, end: 3 },
+    { lineIndex: 1, start: 0, end: 0 },
+  ]);
+});
+
+test('regex replacements support captures while literal replacements stay literal', () => {
+  const lines = ['猫-狗 猫-鸟'];
+  const matches = helpers.collectTextSearchMatches(lines, '(?<left>猫)-(?<right>狗|鸟)', { useRegex: true }).matches;
+  assert.deepEqual(Array.from(helpers.replaceTextSearchMatch(lines, matches[0], '$<right>/$1', { useRegex: true })), ['狗/猫 猫-鸟']);
+  assert.deepEqual(Array.from(helpers.replaceAllTextSearchMatches(lines, matches, '$2-$1', { useRegex: true })), ['狗-猫 鸟-猫']);
+  const literal = helpers.collectTextSearchMatches(['a'], 'a').matches[0];
+  assert.deepEqual(Array.from(helpers.replaceTextSearchMatch(['a'], literal, '$1')), ['$1']);
+});
+
+test('shared regex substitution agrees with native replacement for numbered and named capture references', () => {
+  const cases = [
+    { text: '猫', pattern: '(猫)' },
+    { text: '猫', pattern: '(猫)(狗)?' },
+    { text: '猫', pattern: '(?<animal>猫)' },
+    { text: '猫', pattern: '(?<toString>猫)' },
+    { text: 'abcdefghij', pattern: '(a)(b)(c)(d)(e)(f)(g)(h)(i)(j)' },
+  ];
+  const templates = ['$01', '$09', '$00', '$0', '$1', '$10', '$12', '$99', '$001',
+    '$<animal>', '$<missing>', '$<toString>', '$<constructor>', '$<>', '$$', '$&', "$`-$'", '$1$01'];
+  for (const { text, pattern } of cases) {
+    const matches = helpers.collectTextSearchMatches([text], pattern, { useRegex: true }).matches;
+    for (const replacement of templates) {
+      const expected = text.replace(new RegExp(pattern, 'giu'), replacement);
+      const actual = helpers.replaceAllTextSearchMatches([text], matches, replacement, { useRegex: true });
+      assert.equal(actual[0], expected, `${pattern} / ${replacement}`);
+    }
+  }
 });
 
 test('previews text processing only for the selected subtitle indexes', () => {
@@ -5443,7 +5547,9 @@ test('buildAssPayload writes extension cues on layer 1 with a single Extension s
   assert.ok(dialogue.length > 3);
   const extensions = dialogue.filter(line => line.startsWith('Dialogue: 1,'));
   assert.ok(extensions.length > 0 && extensions.every(line => line.includes(',Extension,,0,0,0,')));
-  assert.ok(extensions.some(line => line.includes('\\move(')), 'secondary cues follow main movement');
+  // 副字幕固定在样式预设位置：绝对 \pos、无移动动画（不跟随主字幕 \move）。
+  assert.ok(extensions.every(line => line.includes('\\pos(')), 'secondary cues keep their preset position');
+  assert.ok(extensions.every(line => !line.includes('\\move(')), 'secondary cues do not follow main movement');
   assert.ok(extensions.every(line => /\\(?:fad|fade)\(/.test(line)));
   // 副字幕样式：独立样式行，字号按 1080p 参考换算，边距完全来自样式。
   const extensionStyle = ass.split('\n').find((line) => line.startsWith('Style: Extension,'));
@@ -5466,7 +5572,8 @@ test('buildAssPayload chains the overlay anchor above the extension track', () =
   const overlayStyleOnly = withoutExtension.split('\n')
     .find((line) => line.startsWith('Style: Overlay,'));
   assert.ok(overlayStyleOnly.endsWith(',10,10,166,1'));
-  // 有副字幕（边距 166、字号 54）：叠加锚定链式上叠 = 166 + round(64.8) = 231。
+  // 副字幕位置跟随其样式预设（本例 marginV 166），不再参与叠加字幕的锚定：
+  // 有无副字幕，叠加字幕都固定锚定在主字幕上方 166。
   const withExtension = helpers.buildAssPayload(
     [{ start: 100, end: 900, text: 'main' }],
     {
@@ -5477,7 +5584,10 @@ test('buildAssPayload chains the overlay anchor above the extension track', () =
   );
   const overlayStyleChained = withExtension.split('\n')
     .find((line) => line.startsWith('Style: Overlay,'));
-  assert.ok(overlayStyleChained.endsWith(',10,10,231,1'));
+  assert.ok(overlayStyleChained.endsWith(',10,10,166,1'));
+  // 副字幕事件行不覆盖 MarginV（第三个边距位为 0 = 使用样式预设值）。
+  const extensionEvent = withExtension.split('\n').find((line) => line.startsWith('Dialogue: 1,'));
+  assert.ok(extensionEvent.includes(',Extension,,0,0,0,'));
 });
 
 test('buildAssPayload overlay style inherits the anchor layer horizontal alignment and side margins', () => {
@@ -5489,9 +5599,9 @@ test('buildAssPayload overlay style inherits the anchor layer horizontal alignme
     overlaySegments: [{ start: 150, end: 850, text: 'overlay' }],
     appearance: {},
   };
-  // 副字幕样式为顶部居中（Alignment 8，左右边距 40/50）；副字幕自身锚定
-  // 主字幕上方（主 marginV 80 + round(1.2 × 72) = 166），叠加轨再链其上：
-  // 166 + round(1.2 × 54) = 231。水平对齐与边距继承副字幕样式，垂直贴底。
+  // 副字幕样式为顶部居中（Alignment 8，左右边距 40/50）：它只影响副字幕
+  // 自己的固定位置；叠加字幕始终锚定主字幕上方，对齐与水平边距来自主样式
+  // （80 + round(1.2 × 72) = 166）。
   const topExtension = helpers.buildAssPayload(
     [{ start: 100, end: 900, text: 'main' }],
     {
@@ -5505,8 +5615,8 @@ test('buildAssPayload overlay style inherits the anchor layer horizontal alignme
   const overlayStyleChained = topExtension.split('\n')
     .find((line) => line.startsWith('Style: Overlay,'));
   assert.ok(overlayStyleChained);
-  assert.match(overlayStyleChained, /,2,40,50,231,1$/);
-  // 副字幕全部禁用：不链式，叠加样式回到主样式的底部居中（80 + 86.4 → 166）。
+  assert.match(overlayStyleChained, /,2,10,10,166,1$/);
+  // 副字幕全部禁用：叠加字幕同样是主样式锚定的 166。
   const disabledExtension = helpers.buildAssPayload(
     [{ start: 100, end: 900, text: 'main' }],
     {
@@ -5548,13 +5658,33 @@ test('buildAssPayload uses shared absolute stacked positions for top, middle and
           assert.ok(Math.abs(Number(position[1]) - item.anchor.x) < 0.001);
           assert.ok(Math.abs(Number(position[2]) - item.anchor.y) < 0.001);
           assert.ok(events[index].includes(`\\an${item.alignment}\\q2`));
+          // 副字幕跟随样式预设定位，不参与避碰收缩：允许按预设贴边。
+          if (item.role === 'extension') continue;
           assert.ok(item.anchor.y + item.rect.top * item.scale >= 0);
           assert.ok(item.anchor.y + item.rect.bottom * item.scale <= playResY);
         }
-        for (let index = 1; index < frame.items.length; index += 1) {
-          const below = frame.items[index - 1], above = frame.items[index];
-          assert.ok(above.anchor.y + above.rect.bottom * above.scale < below.anchor.y + below.rect.top * below.scale);
-        }
+        const byRole = (role) => frame.items.find((item) => item.role === role);
+        const mainItem = byRole('main');
+        const extensionItem = byRole('extension');
+        const overlayItem = byRole('overlay');
+        assert.ok(mainItem && extensionItem && overlayItem);
+        // 叠加字幕在主字幕上方，两层不重叠。
+        assert.ok(overlayItem.anchor.y + overlayItem.rect.bottom * overlayItem.scale
+          < mainItem.anchor.y + mainItem.rect.top * mainItem.scale);
+        // 副字幕固定层：锚点 = 样式对齐 + MarginV 的标准锚点，越界时按文字
+        // 边界收进画面（与排布平移、主字幕的移动动画完全无关）。
+        const padding = Math.max(2, Math.round(playResY / 135));
+        const extensionExpected = helpers.assCanvasAnchorPoint({
+          alignment: extensionStyle.alignment,
+          margins: { left: extensionStyle.marginL, right: extensionStyle.marginR, vertical: extensionStyle.marginV },
+          playResX, playResY,
+        });
+        const clampedExpected = {
+          x: Math.min(Math.max(extensionExpected.x, padding - extensionItem.rect.left), playResX - padding - extensionItem.rect.right),
+          y: Math.min(Math.max(extensionExpected.y, padding - extensionItem.rect.top), playResY - padding - extensionItem.rect.bottom),
+        };
+        assert.ok(Math.abs(extensionItem.anchor.x - clampedExpected.x) < 0.001);
+        assert.ok(Math.abs(extensionItem.anchor.y - clampedExpected.y) < 0.001);
       }
     }
   }
@@ -6683,6 +6813,7 @@ test('wrap chars presets insert at both ends and skip already wrapped text', () 
       { id: 'underline', label: '下划线', left: '__', right: '__', ass: true },
       { id: 'strike', label: '删除线', left: '~~', right: '~~', ass: true },
       { id: 'fade', label: '淡出淡入', left: '>>', right: '<<', ass: true },
+      { id: 'comment', label: '注释文本', left: '//', right: '//', ass: true },
       { id: 'note', label: '音符', left: '♪', right: '♪' },
       { id: 'music', label: '双音符', left: '♬', right: '♬' },
       { id: 'bracket', label: '中括号', left: '[', right: ']' },
@@ -6713,6 +6844,9 @@ test('wrap chars menu copy has English translations', () => {
   const keys = [
     '左右添加字符', '左右添加字符预设', '自定义左右字符', '左侧字符', '右侧字符', '插入',
     '左右添加字符（插入到字幕两端）',
+    'ASS 特殊文本样式', '普通字符', '♪音符♪', '♬双音符♬', '[中括号]',
+    '左侧添加', '右侧添加', '输入左侧字符', '输入右侧字符', '自定义左右添加字符',
+    '数字转换', '将明确的中文数字转写为数字，前后留空格',
     '在选中字幕文本两端原样插入字符；不做样式转换，也不受「单双符号」规则影响。',
     '选中字幕已包裹相同符号，未重复添加', '没有可添加字符的字幕',
     '请至少输入一侧字符', '请先选择要处理的字幕',
@@ -6876,7 +7010,7 @@ test('wrap preset tooltips translate their literal characters', () => {
 test('AI cleanup export projection respects active ownership, restoration and punctuation', () => {
   const source = [{ id: 's1', start: 0, end: 600, text: '介绍，方法。', items: [{ text: '介绍', start: 0, end: 200 }, { text: '方法', start: 200, end: 600 }] }];
   const original = JSON.stringify(source);
-  const range = { start: 0, end: 200 };
+  const range = { start: 0, end: 200, cleanup_scope: { segment_id: 's1', item_start: 0, item_end: 1, text: '介绍' } };
   const gapRemove = { gaps: [{ ...range, removed: true }], provenance: { sources: { ai_cleanup: [range] } } };
   const cleaned = helpers.buildAiCleanupSegments(source, gapRemove);
   assert.equal(cleaned[0].text, '，方法。');
@@ -6886,5 +7020,7 @@ test('AI cleanup export projection respects active ownership, restoration and pu
   assert.equal(helpers.buildAiCleanupSegments(source, gapRemove)[0].text, '介绍，方法。');
   gapRemove.gaps[0].removed = true;
   gapRemove.provenance.sources = { audio_gate: [range] };
+  assert.equal(helpers.buildAiCleanupSegments(source, gapRemove)[0].text, '介绍，方法。');
+  gapRemove.provenance.sources = { ai_cleanup: [{ start: 0, end: 200 }] };
   assert.equal(helpers.buildAiCleanupSegments(source, gapRemove)[0].text, '介绍，方法。');
 });

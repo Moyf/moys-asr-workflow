@@ -34,6 +34,15 @@
   <link rel="stylesheet" href="launcher.css">
 </head>
 <body>
+  <!-- 段落标题序号用 SVG keycap 徽章：彩色 emoji 序号依赖系统 emoji 字体完整覆盖
+       U+FE0F/U+20E3，部分 Linux 发行版会渲染成「3x」，改为 SVG 后全平台一致。 -->
+  <svg class="keycap-sprite" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+    <symbol id="keycap-1" viewBox="0 0 64 64"><rect class="keycap-bg" x="3" y="3" width="58" height="58" rx="16"></rect><text class="keycap-num" x="32" y="44" text-anchor="middle" font-size="34" font-weight="700">1</text></symbol>
+    <symbol id="keycap-2" viewBox="0 0 64 64"><rect class="keycap-bg" x="3" y="3" width="58" height="58" rx="16"></rect><text class="keycap-num" x="32" y="44" text-anchor="middle" font-size="34" font-weight="700">2</text></symbol>
+    <symbol id="keycap-3" viewBox="0 0 64 64"><rect class="keycap-bg" x="3" y="3" width="58" height="58" rx="16"></rect><text class="keycap-num" x="32" y="44" text-anchor="middle" font-size="34" font-weight="700">3</text></symbol>
+    <symbol id="keycap-4" viewBox="0 0 64 64"><rect class="keycap-bg" x="3" y="3" width="58" height="58" rx="16"></rect><text class="keycap-num" x="32" y="44" text-anchor="middle" font-size="34" font-weight="700">4</text></symbol>
+    <symbol id="keycap-5" viewBox="0 0 64 64"><rect class="keycap-bg" x="3" y="3" width="58" height="58" rx="16"></rect><text class="keycap-num" x="32" y="44" text-anchor="middle" font-size="34" font-weight="700">5</text></symbol>
+  </svg>
   <main class="shell" inert aria-busy="true">
     <div class="shell-scroll">
     <header class="hero">
@@ -56,7 +65,7 @@
     </header>
 
     <section id="mediaCard" class="card drop-card" aria-labelledby="mediaTitle">
-      <h2 id="mediaTitle" data-i18n="media_output">1️⃣ 选择媒体</h2>
+      <h2 id="mediaTitle"><svg class="keycap" aria-hidden="true"><use href="#keycap-1"></use></svg><span data-i18n="media_output">选择媒体</span></h2>
       <div class="mode-switch-row">
         <div class="segmented" role="group" aria-label="转写模式" data-i18n-aria-label="mode_label">
           <button type="button" class="segment active" id="singleMode" aria-pressed="true" data-i18n="mode_single">单文件</button>
@@ -115,7 +124,7 @@
     </section>
 
     <section id="recognitionCard" class="card" aria-labelledby="settingsTitle">
-      <h2 id="settingsTitle" data-i18n="recognition">2️⃣ 识别设置</h2>
+      <h2 id="settingsTitle"><svg class="keycap" aria-hidden="true"><use href="#keycap-2"></use></svg><span data-i18n="recognition">识别设置</span></h2>
       <div class="provider-row">
         <div class="field provider-field">
           <label for="provider" data-i18n="provider">识别方式</label>
@@ -343,7 +352,7 @@
      </section>
 
     <section id="autoPostprocessCard" class="card" aria-labelledby="autoPostprocessTitle">
-      <h2 id="autoPostprocessTitle" data-i18n="auto_postprocess_title">3️⃣ 转写后自动处理</h2>
+      <h2 id="autoPostprocessTitle"><svg class="keycap" aria-hidden="true"><use href="#keycap-3"></use></svg><span data-i18n="auto_postprocess_title">转写后自动处理</span></h2>
       <p class="hint" data-i18n="auto_postprocess_hint">转写完成后自动执行；需先在工具箱进行配置。</p>
       <p id="batchManuscriptNotice" class="toolbox-notice hidden" role="note" data-i18n="batch_manuscript_disabled">批量模式不支持逐文件文稿映射。本次批量运行会跳过文稿匹配；单文件设置保持不变。</p>
       <label class="check-field auto-postprocess-toggle" for="autoPostprocessEnabled">
@@ -441,7 +450,7 @@
     </section>
 
     <section class="card" aria-labelledby="logTitle">
-      <h2 id="logTitle" data-i18n="logs">4️⃣ 日志</h2>
+      <h2 id="logTitle"><svg class="keycap" aria-hidden="true"><use href="#keycap-4"></use></svg><span data-i18n="logs">日志</span></h2>
       <div id="progress" class="progress hidden" aria-hidden="true"><span></span></div>
       <p id="logLatest" class="log-latest hidden" aria-live="polite"></p>
       <pre id="log" class="log" aria-live="polite"></pre>
@@ -451,7 +460,7 @@
     </section>
 
     <section id="serverCard" class="card" aria-labelledby="serverTitle">
-      <h2 id="serverTitle" data-i18n="server">5️⃣ 编辑器</h2>
+      <h2 id="serverTitle"><svg class="keycap" aria-hidden="true"><use href="#keycap-5"></use></svg><span data-i18n="server">编辑器</span></h2>
       <div id="serverBody">
         <div class="field">
           <label for="jsonPath" data-i18n="json_project">工程文件</label>

@@ -202,23 +202,29 @@ window.MAWE.register('utils-ass-canvas-layout', function createUtilsModule(depen
     const sy = max('scaleY', 100) / 100;
     const angleA = Number(styles[0].angle) || 0;
     const angleB = Number(styles[1].angle) || 0;
-    if (angleA !== angleB) {
-      // A sweep may reach its largest box between endpoints (e.g. 0 -> 180).
-      const radius = Math.max(...[rect.left, rect.right].flatMap(x =>
-        [rect.top, rect.bottom].map(y => Math.hypot(x, y))));
-      const reach = radius * Math.max(sx, sy);
-      return { left: -reach, right: reach, top: -reach, bottom: reach };
+    const from = Math.min(angleA, angleB) * Math.PI / 180;
+    const to = Math.max(angleA, angleB) * Math.PI / 180;
+    // Bound the actual rotation sweep, including extrema between endpoints.
+    // A full-circle radius wrongly rejects a fixed cue that only turns 10°.
+    // Keep both screen signs and both scale/rotation orders conservative.
+    const extrema = (cosine, sine, start, end) => {
+      const at = angle => cosine * Math.cos(angle) + sine * Math.sin(angle);
+      const values = [at(start), at(end)];
+      const critical = Math.atan2(sine, cosine);
+      for (let k = Math.ceil((start - critical) / Math.PI); k <= Math.floor((end - critical) / Math.PI); k += 1) {
+        values.push(at(critical + k * Math.PI));
+      }
+      return values;
+    };
+    const horizontal = [], vertical = [];
+    for (const [start, end] of [[from, to], [-to, -from]]) {
+      for (const x of [rect.left, rect.right]) for (const y of [rect.top, rect.bottom]) {
+        horizontal.push(...extrema(sx * x, -sx * y, start, end), ...extrema(sx * x, -sy * y, start, end));
+        vertical.push(...extrema(sy * y, sy * x, start, end), ...extrema(sy * y, sx * x, start, end));
+      }
     }
-    const angle = angleA * Math.PI / 180;
-    // Include both rotation conventions: Canvas and libass use different screen
-    // signs. This envelope is conservative for either 2D renderer.
-    const corners = [angle, -angle].flatMap(a => [rect.left, rect.right].flatMap(x =>
-      [rect.top, rect.bottom].flatMap(y => [
-        { x: sx * (x * Math.cos(a) - y * Math.sin(a)), y: sy * (x * Math.sin(a) + y * Math.cos(a)) },
-        { x: sx * x * Math.cos(a) - sy * y * Math.sin(a), y: sx * x * Math.sin(a) + sy * y * Math.cos(a) },
-      ])));
-    return { left: Math.min(...corners.map(p => p.x)), right: Math.max(...corners.map(p => p.x)),
-      top: Math.min(...corners.map(p => p.y)), bottom: Math.max(...corners.map(p => p.y)) };
+    return { left: Math.min(...horizontal), right: Math.max(...horizontal),
+      top: Math.min(...vertical), bottom: Math.max(...vertical) };
   }
 
   function assStackRawRoot(slice, time) {
@@ -325,28 +331,73 @@ window.MAWE.register('utils-ass-canvas-layout', function createUtilsModule(depen
         diagnostics.push({ start, end, message: slice.diagnostic }); slices.push(slice); continue;
       }
       let previous = null;
+      // 副字幕轨内的碰撞堆叠基准：同一排布切片内多条副字幕互相错开
+      //（模拟 libass 同层碰撞避免），第一条仍严格落在其样式预设位置。
+      let extensionPrevious = null;
       for (const item of ordered) {
         let cue = prepared.get(item);
         if (!cue) {
           cue = { ...item, runs: assStackWrappedRuns(item, Math.max(1, width - item.style.marginL - item.style.marginR), measure) };
           prepared.set(item, cue);
         }
-        const alignment = item === root ? item.style.alignment : assCanvasAlignmentGrid(item.style.alignment).column + 1;
+        // 副字幕是固定层：位置完全跟随其样式预设（对齐 + MarginV，即主字幕
+        // 下方的常规位置），不参与向上堆叠、不改变主/叠加字幕的堆叠链，
+        // 也不计入整组包围盒（「空间不足整组移入」不搬动固定层）。
+        const fixed = item.role === 'extension';
+        const alignment = item === root || fixed ? item.style.alignment
+          : assCanvasAlignmentGrid(item.style.alignment).column + 1;
         const rect = assStackCueBounds(cue, start, end, alignment, measure, profile);
-        const ownAnchor = assCanvasAnchorPoint({ alignment, margins: { left: item.style.marginL, right: item.style.marginR }, playResX: width, playResY: height });
-        const offset = { x: item === root ? 0 : ownAnchor.x - baseAnchor.x,
-          y: previous ? previous.top - Math.max(2, Math.round(previous.fontSize * 0.2)) - rect.bottom : 0 };
-        const placement = { ...cue, alignment, offset, rect };
+        if (fixed && (rect.right - rect.left > width - slice.padding * 2
+          || rect.bottom - rect.top > height - slice.padding * 2)) {
+          slice.diagnostic = 'ASS 固定副字幕超出可用画面；请减少同时显示的文字或调小副字幕样式后重试。';
+          break;
+        }
+        const ownAnchor = assCanvasAnchorPoint({ alignment,
+          margins: { left: item.style.marginL, right: item.style.marginR,
+            vertical: fixed ? item.style.marginV : undefined },
+          playResX: width, playResY: height });
+        // 副字幕是固定层：位置完全跟随其样式预设（对齐 + MarginV，即主字幕
+        // 下方的常规位置），不参与向上堆叠、不跟随主/叠加字幕的排布平移与
+        // 移动动画（与 libass 对无 \move 的不同层字幕的原生行为一致）。
+        // 同轨多条副字幕之间保留 libass 式碰撞错开；固定层不计入整组包围盒，
+        // 主字幕与叠加字幕的防出画移入也不被副字幕的位置限制。
+        const fixedAnchor = fixed ? (() => {
+          const anchor = extensionPrevious
+            ? { x: ownAnchor.x, y: extensionPrevious.top
+              - Math.max(2, Math.round(extensionPrevious.fontSize * 0.2)) - rect.bottom }
+            : ownAnchor;
+          return {
+            x: Math.min(Math.max(anchor.x, slice.padding - rect.left), width - slice.padding - rect.right),
+            y: Math.min(Math.max(anchor.y, slice.padding - rect.top), height - slice.padding - rect.bottom),
+          };
+        })() : null;
+        if (fixed && extensionPrevious && fixedAnchor.y + rect.bottom > extensionPrevious.top
+          - Math.max(2, Math.round(extensionPrevious.fontSize * 0.2)) + 1e-7) {
+          slice.diagnostic = 'ASS 固定副字幕无法在画面中同时容纳；请减少重叠字幕或调小副字幕样式后重试。';
+          break;
+        }
+        const offset = fixed ? { x: fixedAnchor.x, y: fixedAnchor.y }
+          : item === root ? { x: 0, y: 0 }
+          : { x: ownAnchor.x - baseAnchor.x,
+            y: previous ? previous.top - Math.max(2, Math.round(previous.fontSize * 0.2)) - rect.bottom : 0 };
+        const placement = { ...cue, alignment, offset, rect, absolute: fixed };
         slice.items.push(placement);
+        if (fixed) {
+          extensionPrevious = { top: fixedAnchor.y + rect.top, fontSize: cue.fontSize };
+          continue;
+        }
         const world = { left: offset.x + rect.left, right: offset.x + rect.right,
           top: offset.y + rect.top, bottom: offset.y + rect.bottom };
         for (const key of ['left', 'top']) slice.box[key] = Math.min(slice.box[key], world[key]);
         for (const key of ['right', 'bottom']) slice.box[key] = Math.max(slice.box[key], world[key]);
         previous = { ...world, fontSize: cue.fontSize };
       }
+      if (slice.diagnostic) {
+        diagnostics.push({ start, end, message: slice.diagnostic }); slices.push(slice); continue;
+      }
       slice.scale = Math.min(1, (width - slice.padding * 2) / Math.max(1, slice.box.right - slice.box.left),
         (height - slice.padding * 2) / Math.max(1, slice.box.bottom - slice.box.top));
-      const smallest = Math.min(...ordered.flatMap(item => {
+      const smallest = Math.min(...ordered.filter(item => item.role !== 'extension').flatMap(item => {
         const values = [start, end].map(time => {
           const state = dependencies.assStackAnimationState(profile, time - item.start, item.end - item.start);
           return state.transformProgress === null ? item.fontSize
@@ -384,8 +435,12 @@ window.MAWE.register('utils-ass-canvas-layout', function createUtilsModule(depen
       : Math.min(1, Math.max(0, (timeMs - piece.start) / Math.max(1, piece.end - piece.start)));
     const root = { x: piece.from.x + (piece.to.x - piece.from.x) * amount,
       y: piece.from.y + (piece.to.y - piece.from.y) * amount };
-    return { items: slice.items.map(item => ({ ...item, scale: slice.scale,
-      anchor: { x: root.x + item.offset.x * slice.scale, y: root.y + item.offset.y * slice.scale } })), diagnostic: '' };
+    return { items: slice.items.map(item => {
+      // 固定层（副字幕）的锚点是绝对坐标：不随主字幕的排布平移或移动动画。
+      if (item.absolute) return { ...item, scale: 1, anchor: { x: item.offset.x, y: item.offset.y } };
+      return { ...item, scale: slice.scale,
+        anchor: { x: root.x + item.offset.x * slice.scale, y: root.y + item.offset.y * slice.scale } };
+    }), diagnostic: '' };
   }
 
 

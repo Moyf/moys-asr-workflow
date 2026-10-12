@@ -66,4 +66,4 @@ def comparison_data(before: Mapping[str, object], after: Mapping[str, object], o
 def render_comparison(data: Mapping[str, object]) -> str:
     template = Path(__file__).resolve().parents[1] / "web" / "shared" / "templates" / "ai-comparison.html"
     encoded = json.dumps(data, ensure_ascii=False).replace("<", "\\u003c").replace(">", "\\u003e").replace("&", "\\u0026")
-    return template.read_text(encoding="utf-8").replace("{{DATA}}", encoded).replace("{{REVIEW_SCRIPT}}", template.with_name("ai-translation-review.js").read_text(encoding="utf-8"))
+    return template.read_text(encoding="utf-8").replace("{{REVIEW_SCRIPT}}", template.with_name("ai-translation-review.js").read_text(encoding="utf-8")).replace("{{DATA}}", encoded)

@@ -42,6 +42,20 @@ test('AI annotation provenance survives normalization and manual review edits', 
 });
 
 
+test('truncation removes boundary whitespace while preserving AI snapshots and manual edits', () => {
+  const generated = { start: 0, end: 1000, name: `${'甲'.repeat(119)} 后文`,
+    color: '#3e63dd', note: `${'注'.repeat(499)} 更多`, review: null };
+  const raw = { id: 'ai-space', ...generated,
+    ai: { schema: 'maw.ai-annotation.v1', task: 'custom', run_id: 'a'.repeat(32),
+      key: 'b'.repeat(64), generated } };
+  const saved = plain(utils.markersToProjectField([raw])).items[0];
+  assert.equal(saved.name, '甲'.repeat(119));
+  assert.equal(saved.note, '注'.repeat(499));
+  assert.deepEqual(saved.ai.generated, { ...generated, name: saved.name, note: saved.note });
+  saved.note = '用户修改';
+  assert.equal(plain(utils.markersToProjectField([saved])).items[0].note, '用户修改');
+});
+
 test('normalizeMarkers accepts bare arrays and {items} payloads, drops invalid rows', () => {
   const bare = utils.normalizeMarkers([
     { id: 'm1', start: 1200.4, name: '  开场 ', color: '#E5484D', note: ' hi ' },

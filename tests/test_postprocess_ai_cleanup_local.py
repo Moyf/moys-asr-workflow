@@ -8,9 +8,10 @@ import unittest
 from pathlib import Path
 
 from maw.postprocess import OutputMode
-from maw.postprocess_ai_cleanup import AiCleanupRequest, build_clips, run_ai_cleanup, _build_clips
+from maw.postprocess_ai_cleanup import AiCleanupRequest, build_clips, run_ai_cleanup, _build_clips, _build_gap_remove
+from maw.postprocess_ai_cleanup_items import scoped_item_ranges, verified_scope_indices
 from maw.postprocess_io import read_project, render_srt
-from maw.script_alignment import _normalize_gap_provenance
+from maw.script_alignment import _gap_ranges_from_provenance, _normalize_gap_provenance
 
 
 def cue(rows, *, text=None):
@@ -62,6 +63,51 @@ class LocalCleanupTests(unittest.TestCase):
         self.assertNotIn("我这……", render_srt(output))
         items = json.loads(calls[0][1][0]["items"])
         self.assertEqual(set(items[0]), {"id", "text"})
+
+    def test_repeated_local_cleanup_maps_filtered_items_back_to_source_and_restores_old_cuts(self):
+        cases = [
+            ([("啊", 0, 200), ("嗯", 200, 400), ("介绍功能", 400, 1200)], [0], [1], "啊介绍功能"),
+            ([("啊", 0, 200), ("嗯", 200, 400), ("呃", 400, 600), ("哦", 600, 800), ("介绍功能", 800, 1200)], [0, 2], [1, 3], "啊呃介绍功能"),
+        ]
+        for rows, old_deleted, new_deleted, restored_text in cases:
+            for wire_key in ("removeItemIds", "removeItemRanges"):
+                with self.subTest(old_deleted=old_deleted, wire_key=wire_key):
+                    segment = cue(rows)
+                    initial = {"segments": [segment]}
+                    gap = _build_gap_remove(initial, scoped_item_ranges(segment, old_deleted))
+                    clips = _build_clips([segment], ["介绍功能"], project={**initial, "gap_remove": gap})
+                    self.assertEqual(clips[0].source_item_indices[:-1], new_deleted)
+                    ids = [f"c001:i{index + 1:03d}" for index in range(len(new_deleted))]
+                    removed_text = "".join(segment["items"][index]["text"] for index in new_deleted)
+                    decision = {wire_key: ids if wire_key == "removeItemIds" else [ids], "evidence": removed_text}
+                    output, stats, calls = self.run_case(segment, decision, "介绍功能", extras={"gap_remove": gap})
+                    self.assertEqual(output["segments"][0], segment)
+                    self.assertEqual(stats["removed"], 1)
+                    self.assertEqual(calls[0][1][0]["asrText"], removed_text + "介绍功能")
+                    scopes = output["gap_remove"]["provenance"]["sources"]["ai_cleanup"]
+                    self.assertTrue(all(list(verified_scope_indices(scope, segment)) for scope in scopes))
+                    actual_indices = sorted(index for scope in scopes for index in verified_scope_indices(scope, segment))
+                    self.assertEqual(actual_indices, sorted(old_deleted + new_deleted))
+                    new_scopes = [scope for scope in scopes if scope["cleanup_scope"]["item_start"] in new_deleted]
+                    self.assertEqual(len(new_scopes), len(new_deleted))
+                    marker_ranges = sorted((marker["start"], marker["end"], marker["name"]) for marker in output["markers"]["items"])
+                    self.assertEqual(marker_ranges, sorted((scope["start"], scope["end"], scope["cleanup_scope"]["text"]) for scope in new_scopes))
+                    self.assertIn("介绍功能", render_srt(output))
+                    self.assertNotIn(removed_text + "介绍功能", render_srt(output))
+                    # An additional keep pass sees only retained text and preserves cuts.
+                    kept, keep_stats, keep_calls = self.run_case(segment, {"decision": "keep"}, "介绍功能", extras={"gap_remove": output["gap_remove"], "markers": output["markers"]})
+                    self.assertEqual(keep_calls[0][1][0]["asrText"], "介绍功能")
+                    self.assertEqual(keep_stats["removed"], 0)
+                    self.assertEqual(kept["gap_remove"], output["gap_remove"])
+                    self.assertIn("介绍功能", render_srt(kept))
+                    restored = copy.deepcopy(output)
+                    provenance = restored["gap_remove"]["provenance"]
+                    provenance["manual_overrides"].extend({"start": segment["items"][index]["start"], "end": segment["items"][index]["end"], "removed": False} for index in old_deleted)
+                    restored["gap_remove"]["gaps"] = _gap_ranges_from_provenance(provenance)
+                    self.assertIn(restored_text, render_srt(restored))
+                    provenance["manual_overrides"].extend({"start": segment["items"][index]["start"], "end": segment["items"][index]["end"], "removed": False} for index in new_deleted)
+                    restored["gap_remove"]["gaps"] = _gap_ranges_from_provenance(provenance)
+                    self.assertIn(segment["text"], render_srt(restored))
 
     def test_two_nonadjacent_groups_and_readthrough_restore_all(self):
         decision = {"removeItemRanges": [["c001:i001"], ["c001:i004"]], "evidence": "我嗯"}

@@ -22,7 +22,6 @@ class AppPathsTests(unittest.TestCase):
 
                 self.assertEqual(root, local_app_data / "MAW")
                 self.assertEqual(app_paths.default_log_directory(), root / "logs")
-                self.assertEqual(app_paths.default_emoji_font_path(), root / "NotoColorEmoji.ttf")
                 self.assertEqual(app_paths.default_server_settings_path(), root / "server-editor-settings.json")
 
     def test_macos_user_data_root_uses_maw_application_support(self) -> None:

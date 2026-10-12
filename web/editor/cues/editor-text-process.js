@@ -32,16 +32,16 @@
   const textProcessCapitalize = document.getElementById('text-process-capitalize');
 
 
-  const textProcessPrefix = document.getElementById('text-process-prefix');
+  const textProcessConvertNumbers = document.getElementById('text-process-convert-numbers');
 
 
   const textProcessPrefixInput = document.getElementById('text-process-prefix-input');
 
 
-  const textProcessSuffix = document.getElementById('text-process-suffix');
-
-
   const textProcessSuffixInput = document.getElementById('text-process-suffix-input');
+
+
+  const textProcessCustomWrapFields = document.getElementById('text-process-custom-wrap-fields');
 
 
   const textProcessStripMarkdown = document.getElementById('text-process-strip-markdown');
@@ -128,17 +128,16 @@
 
 
   function getTextProcessOptions() {
+    const customWrap = textProcessWrapPreset?.id === 'custom';
     return {
       trim: textProcessTrim.checked,
       capitalize: textProcessCapitalize.checked,
-      addPrefix: textProcessPrefix.checked,
-      prefix: textProcessPrefixInput.value,
-      addSuffix: textProcessSuffix.checked,
-      suffix: textProcessSuffixInput.value,
+      convertChineseNumbers: textProcessConvertNumbers.checked,
       stripMarkdown: textProcessStripMarkdown.checked,
-      skipWrapped: Boolean(textProcessWrapPreset
-        && textProcessWrapPreset.left === textProcessPrefixInput.value
-        && textProcessWrapPreset.right === textProcessSuffixInput.value),
+      addWrapChars: Boolean(textProcessWrapPreset),
+      wrapLeft: customWrap ? textProcessPrefixInput.value : (textProcessWrapPreset?.left || ''),
+      wrapRight: customWrap ? textProcessSuffixInput.value : (textProcessWrapPreset?.right || ''),
+      skipWrapped: true,
     };
   }
 
@@ -147,8 +146,8 @@
   function refreshTextProcessScopeInfo() {
     const selected = textProcessScope && textProcessScope.length;
     textProcessScopeInfo.textContent = selected
-      ? `范围：仅选中的 ${textProcessScope.length} 条字幕`
-      : `范围：全部 ${MaweBoot.DATA.segments.length} 条字幕`;
+      ? `当前范围：仅选中的 ${textProcessScope.length} 条字幕`
+      : `当前范围：全部 ${MaweBoot.DATA.segments.length} 条字幕`;
     textProcessScopeInfo.classList.toggle('selected', Boolean(selected));
   }
 
@@ -168,8 +167,9 @@
 
   function renderTextProcessPreview() {
     const options = getTextProcessOptions();
+    const wrapHasCharacters = options.addWrapChars && (options.wrapLeft || options.wrapRight);
     const hasOperation = textProcessTrim.checked || textProcessCapitalize.checked
-      || textProcessPrefix.checked || textProcessSuffix.checked || textProcessStripMarkdown.checked;
+      || textProcessConvertNumbers.checked || textProcessStripMarkdown.checked || wrapHasCharacters;
     const targets = textProcessTargets();
     textProcessPreview.replaceChildren();
     if (!hasOperation) {
@@ -185,15 +185,28 @@
       rows,
     };
     textProcessPreview.style.color = result.changedCount ? '' : 'var(--text-muted)';
+    const changedRows = result.rows.filter((row) => row.changed);
     const summary = document.createElement('div');
-    summary.className = 'replace-preview-summary';
-    summary.textContent = result.changedCount
+    summary.className = 'replace-preview-summary text-process-preview-summary';
+    const summaryText = document.createElement('span');
+    summaryText.textContent = result.changedCount
       ? `将处理 ${result.targetCount} 条字幕，预计修改 ${result.changedCount} 条（展开查看前后文本）`
       : `选定的 ${result.targetCount} 条字幕不会发生变化`;
+    summary.appendChild(summaryText);
+    const detailRows = [];
+    let expandAllButton = null;
+    if (changedRows.length) {
+      expandAllButton = document.createElement('button');
+      expandAllButton.type = 'button';
+      expandAllButton.className = 'text-process-preview-toggle';
+      expandAllButton.textContent = '全部展开';
+      summary.appendChild(expandAllButton);
+    }
     textProcessPreview.appendChild(summary);
-    result.rows.filter((row) => row.changed).forEach((row) => {
+    changedRows.forEach((row) => {
       const details = document.createElement('details');
       details.className = 'replace-preview-row';
+      detailRows.push(details);
       const title = document.createElement('summary');
       title.textContent = textProcessTargetLabel(row);
       details.appendChild(title);
@@ -206,14 +219,30 @@
       details.append(before, after);
       textProcessPreview.appendChild(details);
     });
+    if (expandAllButton) {
+      const refreshExpandLabel = () => {
+        expandAllButton.textContent = detailRows.every((details) => details.open)
+          ? '全部收缩' : '全部展开';
+      };
+      expandAllButton.addEventListener('click', () => {
+        const expand = !detailRows.every((details) => details.open);
+        detailRows.forEach((details) => { details.open = expand; });
+        refreshExpandLabel();
+      });
+      detailRows.forEach((details) => details.addEventListener('toggle', refreshExpandLabel));
+    }
     textProcessConfirm.disabled = false;
   }
 
 
 
   function refreshTextProcessInputState() {
-    textProcessPrefixInput.disabled = !textProcessPrefix.checked;
-    textProcessSuffixInput.disabled = !textProcessSuffix.checked;
+    const customWrap = textProcessWrapPreset?.id === 'custom';
+    if (textProcessCustomWrapFields) textProcessCustomWrapFields.hidden = !customWrap;
+    document.querySelectorAll('#text-process-wrap-presets-ass [data-wrap-preset-id], #text-process-wrap-presets-common [data-wrap-preset-id]')
+      .forEach((button) => {
+      button.setAttribute('aria-pressed', String(button.dataset.wrapPresetId === (textProcessWrapPreset?.id || '')));
+    });
   }
 
 
@@ -298,8 +327,9 @@
     textProcessSelectionSnapshot = textProcessSelectionTargets();
     textProcessSelectedOnlyCb.checked = textProcessSelectionSnapshot.length > 0;
     refreshTextProcessSelectionControl();
-    [textProcessTrim, textProcessCapitalize, textProcessPrefix,
-      textProcessSuffix, textProcessStripMarkdown].forEach((input) => { input.checked = false; });
+    [textProcessTrim, textProcessCapitalize, textProcessConvertNumbers,
+      textProcessStripMarkdown].forEach((input) => { input.checked = false; });
+    textProcessWrapPreset = null;
     textProcessPrefixInput.value = '';
     textProcessSuffixInput.value = '';
     refreshTextProcessInputState();
@@ -317,10 +347,10 @@
     textProcessConfirm,
     textProcessTrim,
     textProcessCapitalize,
-    textProcessPrefix,
+    textProcessConvertNumbers,
     textProcessPrefixInput,
-    textProcessSuffix,
     textProcessSuffixInput,
+    textProcessCustomWrapFields,
     textProcessStripMarkdown,
     get textProcessSelectionSnapshot() { return textProcessSelectionSnapshot; },
     set textProcessSelectionSnapshot(v) { textProcessSelectionSnapshot = v; },

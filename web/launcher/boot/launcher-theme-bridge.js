@@ -14,16 +14,6 @@ function revealLauncher() {
   document.body.classList.add("launcher-ready");
 }
 
-// keycap 表情（1️⃣ 等）依赖彩色 emoji 字体：后端把 Noto Color Emoji 缓存到本机
-// 后提供 file:// URI，这里注入 @font-face；注入一次即可，重复事件会被跳过。
-function injectEmojiFont(uri) {
-  if (!uri || document.querySelector("style[data-emoji-font]")) return;
-  const style = document.createElement("style");
-  style.dataset.emojiFont = "1";
-  style.textContent = `@font-face{font-family:"MAW Emoji";src:url("${uri}") format("truetype");font-weight:400;font-display:swap;}`;
-  document.head.appendChild(style);
-}
-
 async function bridge(method, payload = {}) {
   try {
     return await api[method](payload);

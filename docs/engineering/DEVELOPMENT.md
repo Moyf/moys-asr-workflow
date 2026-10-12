@@ -45,9 +45,9 @@ Server 的内置预设覆盖、命名工作区和活动名称保存在本机设�
 
 ## 编辑器源码地图
 
-`web/editor-scripts.txt` 是 esbuild 的源码执行顺序，也是 Server、便携 HTML 与 Electron 桌面壳共用的编辑器装配清单；当前构建含 188 个输入，`web/editor-modules.json` 标出 61 个真正的 ESM 工厂与外部桥，其余 127 个输入保留 classic 共享作用域，目录不决定顺序。构建器拒绝路径穿越、重复输入及符号链接越界。便携 HTML 与 localhost 都内联同一份已提交的 `web/editor/boot/editor-bundle.js`，用户运行编辑器不需要 Node。
+`web/editor-scripts.txt` 是 esbuild 的源码执行顺序，也是 Server、便携 HTML 与 Electron 桌面壳共用的编辑器装配清单；当前构建含 188 个输入，`web/editor-modules.json` 标出 61 个真正的 ESM 工厂与外部桥，其余 127 个输入保留 classic 共享作用域，目录不决定顺序。构建器拒绝路径穿越、重复输入及符号链接越界。便携 HTML 与 localhost 都内联同一份 esbuild 产物 `web/editor/boot/editor-bundle.js`；产物不进 Git，发布包内自带，用户运行编辑器不需要 Node，从源码运行则由 Server 在每次渲染前自动构建（需要 Node 22.13+ 与 `pnpm install`）。
 
-编辑器 JS、清单或构建配置变化后执行 `pnpm run build:editor`，提交 bundle 和 `.meta.json`；`pnpm run check:editor` 只读检查新鲜度，不会自动修复。Server 调试时另开 `pnpm run watch:editor`，CSS 和模板仍按请求读取。构建和 Node 测试要求 Node 22.13+；源码目录显式声明 `type: module`，不依赖语法自动检测。类型检查包括迁移的全部工厂与既有六文件范围。实施、实验及上游合并经验见 [ESM 迁移台账](../logs/unversioned/undated/ESM_MIGRATION.md)。
+编辑器 JS、清单或构建配置变化后执行 `pnpm run build:editor`（产物不入库；Server 渲染前也会自动重建）；`pnpm run check:editor` 只读检查新鲜度，不会自动修复。Server 调试时另开 `pnpm run watch:editor`，CSS 和模板仍按请求读取。构建和 Node 测试要求 Node 22.13+；源码目录显式声明 `type: module`，不依赖语法自动检测。类型检查包括迁移的全部工厂与既有六文件范围。实施、实验及上游合并经验见 [ESM 迁移台账](../logs/unversioned/undated/ESM_MIGRATION.md)。
 
 | 位置 | 职责 |
 | --- | --- |
@@ -121,4 +121,4 @@ README 只保留入口；主线放 WORKFLOW，高级操作放专题，字段放 
 uv run --no-sync python edit.py --blank
 ```
 
-发布时核对版本号、CHANGELOG、README、生成产物、许可与第三方声明，检查没有密钥、媒体或个人路径。GitHub Release 前用 `scripts/prepare_release_notes.py --tag VERSION --output PATH` 生成并检查 notes；发布不等于只建 tag。远端、push、tag 和 Release 均需维护者明确要求。
+发布时核对版本号、CHANGELOG、README、生成产物、许可与第三方声明，检查没有密钥、媒体或个人路径。2.0 起先用 `scripts/prepare_release_notes.py --tag VERSION --write-doc` 从 CL 生成并提交版本文档，再用 `--check-doc` 检查新鲜度、`--output PATH` 检查最终 Release notes；beta 汇总、正式版精简和小版本基础内容引用见[发布管线](../INDEX.md#engineering-releases)。发布不等于只建 tag。远端、push、tag 和 Release 均需维护者明确要求。

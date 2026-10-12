@@ -9,8 +9,10 @@ from collections.abc import Mapping
 
 
 def compose_translation(source: str, translation: str, mode: str, first: bool) -> str:
-    if mode != "bilingual" or not source.strip() or source.strip() == translation.strip():
+    if mode != "bilingual" or not source.strip():
         return translation
+    if not translation.strip() or source.strip() == translation.strip():
+        return source
     return f"{translation}\n{source}" if first else f"{source}\n{translation}"
 
 

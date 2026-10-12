@@ -40,6 +40,7 @@
 | unversioned | 2026-10-11 | [PR #211 媒体重组修复与音频导出](unversioned/2026-10-11/PR211_MEDIA_EXPORT_FIXES.md) | 保留原始结论、统计和验证范围 |
 | unversioned | 2026-10-11 | [PR #208 Launcher 空结果与音轨诊断](unversioned/2026-10-11/PR208_AUDIO_DIAGNOSTICS_20261011.md) | 保留当前方案、历史方案和各轮验证范围 |
 | unversioned | 2026-10-11 | [MAW20 PR-D 可靠字词局部 AI 移除](unversioned/2026-10-11/maw20-gap/MAW20_GAP_D.md) | 保留协议范围、合成验证与真实模型验收边界 |
+| unversioned | 2026-10-11 | [PR #223 编辑器反馈实施记录](unversioned/2026-10-11/PR223_EDITOR_FEEDBACK.md) | 保留 PR 原始开发与当时验证边界；后续审阅见开放 PR 计划 |
 | unversioned | 2026-10-11 | [MAW20 PR-C 去空隙视频后台任务](unversioned/2026-10-11/maw20-gap/MAW20_GAP_C.md) | 保留原始结论、统计和验证范围 |
 | unversioned | 2026-10-11 | [MAW20 PR-B 普通文稿匹配取消](unversioned/2026-10-11/maw20-gap/MAW20_GAP_B.md) | 保留原始结论、统计和验证范围 |
 | unversioned | 2026-10-11 | [MAW20 PR-A 视频导出绑定时序](unversioned/2026-10-11/maw20-gap/MAW20_GAP_A.md) | 保留原始结论、统计和验证范围 |

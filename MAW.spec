@@ -11,6 +11,33 @@ except ImportError:  # pragma: no cover - only reached outside a PyInstaller bui
 
 ROOT = Path(SPECPATH).resolve()
 
+# bundle 是构建产物（不入库）：打包前必须先构建（build-windows.ps1 /
+# build-appimage.sh / release 工作流都会显式构建）。在这里 fail fast，
+# 避免 PyInstaller 把缺失产物的 web/ 静默打成无法加载编辑器的坏包。
+_BUNDLE_ARTIFACTS = [
+    ROOT / "web" / "editor" / "boot" / "editor-bundle.js",
+    ROOT / "web" / "editor" / "boot" / "editor-bundle.meta.json",
+    ROOT / "web" / "launcher" / "boot" / "launcher-bundle.js",
+    ROOT / "web" / "launcher" / "boot" / "launcher-bundle.meta.json",
+]
+_MISSING_BUNDLES = [p for p in _BUNDLE_ARTIFACTS if not p.is_file()]
+if _MISSING_BUNDLES:
+    raise SystemExit(
+        "MAW.spec: 缺少 web 构建产物: "
+        + ", ".join(p.relative_to(ROOT).as_posix() for p in _MISSING_BUNDLES)
+        + "。请先执行 pnpm install --frozen-lockfile && pnpm run build 再打包。"
+    )
+
+# Existing but stale artifacts are also unsafe, including a previous successful
+# bundle left behind after a failed local build command.
+sys.path.insert(0, str(ROOT))
+from maw.web_build import bundle_status
+
+for _kind in ("editor", "launcher"):
+    _status, _reason = bundle_status(ROOT, _kind)
+    if _status != "fresh":
+        raise SystemExit(f"MAW.spec: {_kind} bundle {_status}: {_reason}。请重新构建后再打包。")
+
 binaries = []
 if sys.platform == "linux":
     # Qt 6.5+ 的 xcb 平台插件需要 libxcb-cursor；部分环境（如 ubuntu-22.04
@@ -97,6 +124,7 @@ datas = [
     (str(ROOT / "maw" / "postprocess_translation_review.py"), "local-runtime/maw"),
     (str(ROOT / "maw" / "postprocess_comparison.py"), "local-runtime/maw"),
     (str(ROOT / "maw" / "postprocess_ai_cleanup_items.py"), "local-runtime/maw"),
+    (str(ROOT / "maw" / "postprocess_ai_cleanup_safety.py"), "local-runtime/maw"),
     (str(ROOT / "maw" / "file_errors.py"), "local-runtime/maw"),
     (str(ROOT / "maw" / "local_runtime_worker.py"), "local-runtime/maw"),
     (str(ROOT / "maw" / "media.py"), "local-runtime/maw"),
@@ -126,6 +154,7 @@ datas = [
     (str(ROOT / "maw" / "postprocess_translation_review.py"), "ocr-runtime/maw"),
     (str(ROOT / "maw" / "postprocess_comparison.py"), "ocr-runtime/maw"),
     (str(ROOT / "maw" / "postprocess_ai_cleanup_items.py"), "ocr-runtime/maw"),
+    (str(ROOT / "maw" / "postprocess_ai_cleanup_safety.py"), "ocr-runtime/maw"),
     (str(ROOT / "maw" / "file_errors.py"), "ocr-runtime/maw"),
     (str(ROOT / "maw" / "postprocess_ocr.py"), "ocr-runtime/maw"),
     (str(ROOT / "maw" / "text_conversion.py"), "ocr-runtime/maw"),

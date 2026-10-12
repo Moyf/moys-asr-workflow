@@ -17,6 +17,17 @@ _CONDITIONS = re.compile(
 _FILLER_ONLY = re.compile("[啊呀呢吧呃嗯哦唉]+")
 
 
+def protected_information_loss_reason(source: str, replacement: str) -> str | None:
+    """Check facts before any repeated-speech normalization shortcut."""
+    source = unicodedata.normalize("NFKC", source).lower()
+    replacement = unicodedata.normalize("NFKC", replacement).lower()
+    if Counter(_NUMBERS.findall(source)) != Counter(_NUMBERS.findall(replacement)):
+        return "备用片段的数字或比例不同，需要确认信息覆盖"
+    if Counter(_CONDITIONS.findall(source)) != Counter(_CONDITIONS.findall(replacement)):
+        return "备用片段的否定或限定条件不同，需要确认信息覆盖"
+    return None
+
+
 def information_loss_reason(source: str, replacement: str) -> str | None:
     """Similarity is evidence of another take, never proof that it covers facts.
 
@@ -28,10 +39,9 @@ def information_loss_reason(source: str, replacement: str) -> str | None:
     replacement = unicodedata.normalize("NFKC", replacement).lower()
     original = "".join(char for char in source if char.isalnum())
     alternate = "".join(char for char in replacement if char.isalnum())
-    if Counter(_NUMBERS.findall(source)) != Counter(_NUMBERS.findall(replacement)):
-        return "备用片段的数字或比例不同，需要确认信息覆盖"
-    if Counter(_CONDITIONS.findall(source)) != Counter(_CONDITIONS.findall(replacement)):
-        return "备用片段的否定或限定条件不同，需要确认信息覆盖"
+    protected = protected_information_loss_reason(source, replacement)
+    if protected:
+        return protected
     if original and original in alternate:
         return None
     matcher = difflib.SequenceMatcher(None, original, alternate, autojunk=False)

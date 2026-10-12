@@ -53,3 +53,26 @@ test('reject unknown or duplicate IDs, empty/control text, arbitrary fields and 
   const snapshot = JSON.stringify(packet);
   await assert.rejects(adapter.applyEdits({ ...review, snapshot, sha256: createHash('sha256').update(snapshot).digest('hex') }, []), /映射/);
 });
+
+test('bilingual adapter follows the writer for whitespace equality, blank translations and both line orders', async () => {
+  for (const [source, translation] of [[' API ', 'API'], ['API', ' API '], ['source', ' '], [' ', 'translated']]) {
+    for (const translationFirst of [false, true]) {
+      const resultText = !source.trim() ? translation
+        : !translation.trim() || source.trim() === translation.trim() ? source
+          : translationFirst ? `${translation}\n${source}` : `${source}\n${translation}`;
+      const cue = { id: 'a', start: 0, end: 1000 };
+      const packet = { schema: 'maw.translation-review.v1',
+        source: { schema: 'moy.asr.project.v1', segments: [{ ...cue, text: source }] },
+        result: { schema: 'moy.asr.project.v1', segments: [{ ...cue, text: resultText }] },
+        mode: 'bilingual', translationFirst,
+        entries: [{ ...cue, source, translation, editable: Boolean(source.trim()) }] };
+      const snapshot = JSON.stringify(packet);
+      const review = { snapshot, sha256: createHash('sha256').update(snapshot).digest('hex') };
+      assert.deepEqual(plain((await adapter.applyEdits(review, [])).project), packet.result);
+      if (source.trim()) {
+        const edited = await adapter.applyEdits(review, [{ id: 'a', text: source.trim() }]);
+        assert.equal(edited.project.segments[0].text, source);
+      }
+    }
+  }
+});

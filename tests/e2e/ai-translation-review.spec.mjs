@@ -57,3 +57,30 @@ for (const mode of ['single', 'backfill', 'bilingual']) {
     expect(errors).toEqual([]);
   });
 }
+
+test('offline bilingual boundary text preserves whitespace and literal template tokens', async ({ page }, testInfo) => {
+  const errors = [];
+  page.on('pageerror', error => errors.push(error.message));
+  await page.goto(pathToFileURL(cases.boundary.html).href);
+  const input = page.getByRole('textbox', { name: '译文 main-space', exact: true });
+  await expect(input).toHaveValue('API');
+  await expect(page.getByRole('textbox', { name: '译文 main-token', exact: true }))
+    .toHaveValue('translated {{REVIEW_SCRIPT}} {{DATA}}');
+  expect(await page.evaluate(() => window.__bad)).toBeUndefined();
+  await input.fill('Explain API');
+  const downloadPromise = page.waitForEvent('download');
+  await page.locator('#download-project').click();
+  const output = testInfo.outputPath('boundary-edited.mosp');
+  await (await downloadPromise).saveAs(output);
+  const result = JSON.parse(readFileSync(output, 'utf8'));
+  const expected = JSON.parse(readFileSync(cases.boundary.project, 'utf8'));
+  expected.segments[0].text = ' API \nExplain API';
+  delete expected.segments[0].items;
+  expected.segments[0]._dirty = true;
+  expect(result).toEqual(expected);
+  execFileSync(python, [helper, '--validate', output], { timeout: 30000, stdio: 'pipe' });
+  await page.locator('#reset-translations').click();
+  await expect(input).toHaveValue('API');
+  await page.screenshot({ path: testInfo.outputPath('boundary-review.png'), fullPage: true });
+  expect(errors).toEqual([]);
+});

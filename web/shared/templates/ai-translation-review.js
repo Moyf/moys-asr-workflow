@@ -2,7 +2,8 @@
 (function (root) {
   'use strict';
   function compose(entry, text, packet) {
-    if (packet.mode !== 'bilingual' || !entry.source.trim() || entry.source.trim() === text.trim()) return text;
+    if (packet.mode !== 'bilingual' || !entry.source.trim()) return text;
+    if (!text.trim() || entry.source.trim() === text.trim()) return entry.source;
     return packet.translationFirst ? `${text}\n${entry.source}` : `${entry.source}\n${text}`;
   }
   async function readPacket(review) {

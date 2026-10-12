@@ -88,7 +88,8 @@ export function createUtilsModule(dependencies) {
         && aiRanges.some((range) => {
           if (!Number.isInteger(range.start) || !Number.isInteger(range.end)) return false;
           const scope = range.cleanup_scope;
-          if (scope) {
+          if (!scope || typeof scope !== 'object') return false;
+          {
             if (scope.segment_id !== segment.id || !Number.isInteger(scope.item_start) || !Number.isInteger(scope.item_end)
                 || scope.item_start < 0 || scope.item_end > segment.items.length || scope.item_start >= scope.item_end) return false;
             const selected = segment.items.slice(scope.item_start, scope.item_end);

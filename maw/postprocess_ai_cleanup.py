@@ -20,7 +20,7 @@ from pathlib import Path
 from typing import Final
 
 from maw.postprocess import OutputMode
-from maw.postprocess_ai_cleanup_safety import information_loss_reason
+from maw.postprocess_ai_cleanup_safety import information_loss_reason, protected_information_loss_reason
 from maw.postprocess_ai_cleanup_timeline import parse_timeline, draft_line
 from maw.postprocess_ai_cleanup_review import review_decisions
 from maw.postprocess_ai_cleanup_items import collapse_echo, scoped_item_ranges, remaining_text, item_text_spans, active_deleted_items
@@ -303,17 +303,11 @@ def run_ai_cleanup(
         if outcome == DECISION_DISCARD:
             local = _local_removal(clip, decisions[clip.id])[0]
             if local is not None:
-                for first, last in local:
-                    selected = clip.items[first:last]
-                    scope = {
-                        "start": int(selected[0]["start"]),
-                        "end": int(selected[-1]["end"]),
-                        "text": "".join(str(item["text"]) for item in selected),
-                    }
-                    removed_ranges.append({
-                        "start": scope["start"], "end": scope["end"],
-                        "cleanup_scope": {"segment_id": str(segment["id"]), "item_start": first, "item_end": last, "text": scope["text"]},
-                    })
+                source_indices = [clip.source_item_indices[index] for first, last in local for index in range(first, last)]
+                ranges = scoped_item_ranges(segment, source_indices)
+                removed_ranges.extend(ranges)
+                for removed_range in ranges:
+                    scope = {**removed_range, "text": removed_range["cleanup_scope"]["text"]}
                     ai_markers.append(_ai_annotation(scope, "删除", reasons[clip.id] or "可核验的局部口吃", pending=False))
                 stats["removed"] += 1
                 continue
@@ -805,7 +799,11 @@ def _resolve_decisions(
             removed = "".join(str(clip.items[index]["text"]) for index in deleted)
             replacement = "".join(other.text for other in alt_clips if resolved[other.id] not in {DECISION_DISCARD, DECISION_EDIT} and other.id != clip.id)
             evidence_ok = bool(evidence) and _contains_normalized(_normalize_text(removed).value, evidence)
-            safe = collapse_echo(clip.text) == collapse_echo(kept) or bool(re.fullmatch(r"[嗯啊呃哦唉、，。\s]+|想一下|我重说", removed)) or bool(replacement) and information_loss_reason(removed, replacement) is None
+            shortcut_safe = protected_information_loss_reason(clip.text, kept) is None and (
+                collapse_echo(clip.text) == collapse_echo(kept)
+                or bool(re.fullmatch(r"[嗯啊呃哦唉、，。\s]+|想一下|我重说", removed))
+            )
+            safe = shortcut_safe or bool(replacement) and information_loss_reason(removed, replacement) is None
             if not evidence_ok or not safe:
                 resolved[clip.id] = DECISION_REVIEW
                 reasons[clip.id] = "词项删除缺少可验证的重复、口水词或保留版本覆盖证据"

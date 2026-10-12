@@ -9,7 +9,7 @@ from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
-from maw.postprocess_ai_cleanup_items import item_text_spans
+from maw.postprocess_ai_cleanup_items import item_text_spans, scoped_item_ranges, verified_scope_indices
 from maw.postprocess_io import SubtitleArtifact
 from maw.postprocess_llm import (
     LlmClientError,
@@ -342,6 +342,72 @@ def refine_groups(groups: list[list[Unit]], maximum: int) -> list[list[Unit]]:
     return result
 
 
+def remap_cleanup_scopes(
+    project: JsonDict, sources: Sequence[JsonDict], rebuilt: Sequence[JsonDict],
+    output_groups: Sequence[Sequence[Unit]], by_source: Mapping[int, Sequence[Unit]],
+) -> None:
+    """Rebind exact source words without changing audio cuts or restoration."""
+    gap_remove = project.get("gap_remove")
+    provenance = gap_remove.get("provenance") if isinstance(gap_remove, dict) else None
+    source_layers = provenance.get("sources") if isinstance(provenance, dict) else None
+    entries = source_layers.get("ai_cleanup") if isinstance(source_layers, dict) else None
+    if not isinstance(entries, list):
+        return
+    originals = {str(segment["id"]): segment for segment in sources}
+    locations = {}
+    for segment, group in zip(rebuilt, output_groups):
+        items = segment.get("items")
+        if not isinstance(items, list) or len(items) != len(group) or any(unit.item is None or item != unit.item for item, unit in zip(items, group)):
+            continue
+        for index, unit in enumerate(group):
+            if unit.item is not None:
+                locations[unit.id] = (segment, index)
+    units_by_segment = {str(segment["id"]): by_source[index] for index, segment in enumerate(sources)}
+    remapped = []
+    used_ids = {str(entry.get("id")) for entry in entries if isinstance(entry, dict)}
+    for entry in entries:
+        scope = entry.get("cleanup_scope") if isinstance(entry, dict) else None
+        original = originals.get(str(scope.get("segment_id"))) if isinstance(scope, dict) else None
+        indices = verified_scope_indices(entry, original) if original is not None else range(0)
+        units = units_by_segment.get(str(original["id"])) if original is not None else None
+        if not indices:
+            remapped.append(entry)
+            continue
+        if units is None or len(units) != len(original["items"]) or any(units[i].id not in locations for i in indices):
+            raise ValueError("重新断句无法保持局部删减的完整词项绑定；未写出结果，请保留原工程。")
+        targets = {}
+        for index in indices:
+            segment, new_index = locations[units[index].id]
+            target = targets.setdefault(segment["id"], (segment, []))
+            target[1].append(new_index)
+        pieces = [piece for segment, indexes in targets.values() for piece in scoped_item_ranges(segment, indexes)]
+        pieces.sort(key=lambda piece: piece["start"])
+        # Item boundaries can leave a pause between newly split cues. Preserve
+        # that audio-only range; it never grants permission to remove words.
+        cursor = entry["start"]
+        ranges = []
+        for piece in pieces:
+            if cursor < piece["start"]:
+                ranges.append({"start": cursor, "end": piece["start"]})
+            ranges.append(piece)
+            cursor = piece["end"]
+        if cursor < entry["end"]:
+            ranges.append({"start": cursor, "end": entry["end"]})
+        for number, piece in enumerate(ranges):
+            updated = {key: copy.deepcopy(value) for key, value in entry.items() if key != "cleanup_scope"}
+            updated.update(piece)
+            if number and "id" in updated:
+                base = f"{entry['id']}-resegment-{number}"
+                candidate, suffix = base, 1
+                while candidate in used_ids:
+                    candidate = f"{base}-{suffix}"
+                    suffix += 1
+                updated["id"] = candidate
+                used_ids.add(candidate)
+            remapped.append(updated)
+    source_layers["ai_cleanup"] = remapped
+
+
 def run_resegment(
     request: LlmPostprocessRequest,
     *,
@@ -373,11 +439,18 @@ def run_resegment(
     )
     sources = _segments(project)
     by_source = {index: source_units(s, index) for index, s in enumerate(sources)}
+    multi = project.get("multi_subtitle")
+    bindings = multi.get("bindings", []) if isinstance(multi, dict) else []
+    bound_ids = {main_id for binding in bindings if isinstance(binding, dict) for main_id in binding.get("main_segment_ids", [])}
+    preserved_bound = []
     rows: list[dict[str, JsonValue]] = []
     blocks = []
     previous_index = None
     for index, segment in enumerate(sources):
-        if segment.get("disabled") or not str(segment.get("text") or "").strip():
+        bound = segment.get("id") in bound_ids
+        if bound:
+            preserved_bound.append(index)
+        if bound or segment.get("disabled") or not str(segment.get("text") or "").strip():
             if rows:
                 blocks.append(rows)
             rows, previous_index = [], None
@@ -407,7 +480,11 @@ def run_resegment(
     batches = [batch for block in blocks for batch in _llm_batches(block)]
     _notify_status(on_status, "toolbox_status_preparing_llm")
     output_groups: list[list[Unit]] = []
-    warnings = []
+    warnings = [
+        f"第 {index + 1} 条字幕已有一对一副字幕绑定，已保留原 ID、文字与时间；请先重新断句，再翻译或创建绑定。"
+        + (f"该段超过最大 {maximum} 字，需先解除绑定后人工处理。" if maximum and char_count(str(sources[index]["text"])) > maximum else "")
+        for index in preserved_bound
+    ]
     annotations = []
     failed = 0
     for number, batch in enumerate(batches, 1):
@@ -520,6 +597,7 @@ def run_resegment(
             segment.pop("sticker_ref", None)
     processed = copy.deepcopy(project)
     processed["segments"] = rebuilt
+    remap_cleanup_scopes(processed, sources, rebuilt, output_groups, by_source)
     from maw.postprocess_annotations import write_annotations
     warnings.extend(write_annotations(processed, {f"c{i + 1:04d}": s for i, s in enumerate(sources)}, annotations, "resegment"))
     warnings.append(

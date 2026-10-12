@@ -5,6 +5,20 @@
 (function initMaweTimedTextEdit(global) {
   'use strict';
 
+  const timedTextEditFindInput = document.getElementById('timed-text-edit-find');
+  const timedTextEditReplaceInput = document.getElementById('timed-text-edit-replace');
+  const timedTextEditSearchCount = document.getElementById('timed-text-edit-search-count');
+  const timedTextEditSearchError = document.getElementById('timed-text-edit-search-error');
+  const timedTextEditSearchMirror = document.getElementById('timed-text-edit-search-mirror');
+  const timedTextEditSearchReplaceToggle = document.getElementById('timed-text-edit-replace-toggle');
+  const timedTextEditSearchReplaceRow = document.getElementById('timed-text-edit-replace-row');
+  const timedTextEditSearchCase = document.getElementById('timed-text-edit-case');
+  const timedTextEditSearchRegex = document.getElementById('timed-text-edit-regex');
+  const timedTextEditSearchPrevious = document.getElementById('timed-text-edit-find-previous');
+  const timedTextEditSearchNext = document.getElementById('timed-text-edit-find-next');
+  const timedTextEditSearchReplaceOne = document.getElementById('timed-text-edit-replace-one');
+  const timedTextEditSearchReplaceAll = document.getElementById('timed-text-edit-replace-all');
+  let timedTextEditSearchIndex = -1;
 
 
   // === 纯文本编辑（支持调整字幕行结构的 MVP） ===
@@ -322,6 +336,189 @@
       MaweDom.timedTextEditSingleTextarea.value = MaweDom.timedTextEditDraft.singleText;
       MaweCueElements.updateTimedTextEditSingleGuide();
     }
+    refreshTimedTextEditSearch({ preserveIndex: true });
+  }
+
+
+  function timedTextEditSearchOptions() {
+    return {
+      caseSensitive: timedTextEditSearchCase?.getAttribute('aria-pressed') === 'true',
+      useRegex: timedTextEditSearchRegex?.getAttribute('aria-pressed') === 'true',
+    };
+  }
+
+
+  function collectTimedTextEditSearchMatches() {
+    if (!MaweDom.timedTextEditDraft) return { error: null, matches: [] };
+    return window.AsrEditorUtils.collectTextSearchMatches(
+      MaweDom.timedTextEditDraft.texts,
+      timedTextEditFindInput?.value || '',
+      timedTextEditSearchOptions(),
+    );
+  }
+
+
+  function renderTimedTextEditSearchMirror(matches) {
+    const mirror = timedTextEditSearchMirror;
+    if (!mirror || !MaweDom.timedTextEditDraft) return;
+    const text = MaweDom.timedTextEditDraft.singleText || '';
+    const current = matches[timedTextEditSearchIndex] || null;
+    mirror.replaceChildren();
+    let cursor = 0;
+    matches.forEach((match) => {
+      const start = Math.max(cursor, Math.min(text.length, match.globalStart));
+      const end = Math.max(start, Math.min(text.length, match.globalEnd));
+      if (start > cursor) mirror.appendChild(document.createTextNode(text.slice(cursor, start)));
+      const mark = document.createElement('span');
+      mark.className = `search-match${match === current ? ' is-current' : ''}${start === end ? ' is-zero-length' : ''}`;
+      mark.dataset.searchMatchIndex = String(match.matchIndex);
+      if (start < end) mark.textContent = text.slice(start, end);
+      mirror.appendChild(mark);
+      cursor = end;
+    });
+    if (cursor < text.length) mirror.appendChild(document.createTextNode(text.slice(cursor)));
+    const textarea = MaweDom.timedTextEditSingleTextarea;
+    mirror.scrollTop = textarea?.scrollTop || 0;
+    mirror.scrollLeft = textarea?.scrollLeft || 0;
+  }
+
+
+  function refreshTimedTextEditSearch({ resetIndex = false, preserveIndex = false } = {}) {
+    const result = collectTimedTextEditSearchMatches();
+    const matches = result.matches || [];
+    if (result.error || !matches.length) timedTextEditSearchIndex = -1;
+    else if (resetIndex) timedTextEditSearchIndex = 0;
+    else if (preserveIndex) timedTextEditSearchIndex = Math.max(0, Math.min(timedTextEditSearchIndex, matches.length - 1));
+    else timedTextEditSearchIndex = timedTextEditSearchIndex < 0
+      ? 0 : Math.min(timedTextEditSearchIndex, matches.length - 1);
+
+    if (timedTextEditSearchError) {
+      timedTextEditSearchError.textContent = result.error
+        ? `${window.MAWE_I18N?.translateText?.('正则表达式无效') || '正则表达式无效'}：${result.error}` : '';
+      timedTextEditSearchError.hidden = !result.error;
+    }
+    if (timedTextEditSearchCount) {
+      timedTextEditSearchCount.textContent = timedTextEditSearchIndex < 0
+        ? `0/${matches.length}` : `${timedTextEditSearchIndex + 1}/${matches.length}`;
+    }
+    const canReplace = !result.error && matches.length > 0;
+    if (timedTextEditSearchReplaceOne) timedTextEditSearchReplaceOne.disabled = !canReplace;
+    if (timedTextEditSearchReplaceAll) timedTextEditSearchReplaceAll.disabled = !canReplace;
+    renderTimedTextEditSearchMirror(matches);
+    MaweDom.timedTextEditRows?.querySelectorAll('.timed-text-edit-row.search-current').forEach((row) => {
+      row.classList.remove('search-current');
+    });
+    return result;
+  }
+
+
+  function revealTimedTextEditSearchMatch(match, matches) {
+    if (!match || !MaweDom.timedTextEditDraft) return;
+    const draft = MaweDom.timedTextEditDraft;
+    if (draft.view !== 'single') {
+      const rowReports = timedTextEditDraftRowReports(draft.report, draft.texts);
+      const rowReport = rowReports[match.lineIndex];
+      if (draft.filter && (!rowReport || timedTextEditRowFilterKey(rowReport) !== draft.filter)) {
+        draft.filter = null;
+        flushTimedTextEditReport();
+      }
+      const row = MaweDom.timedTextEditRows.querySelector(`.timed-text-edit-row[data-index="${match.lineIndex}"]`);
+      if (row) {
+        row.classList.add('search-current');
+        const containerRect = MaweDom.timedTextEditRows.getBoundingClientRect();
+        const rowRect = row.getBoundingClientRect();
+        MaweDom.timedTextEditRows.scrollTop += rowRect.top - containerRect.top
+          + rowRect.height / 2 - MaweDom.timedTextEditRows.clientHeight / 2;
+        const textarea = row.querySelector('textarea');
+        textarea?.setSelectionRange(match.start, match.end);
+      }
+    } else {
+      const textarea = MaweDom.timedTextEditSingleTextarea;
+      const highlight = timedTextEditSearchMirror?.querySelector(
+        `.search-match[data-search-match-index="${match.matchIndex}"]`,
+      );
+      if (textarea) textarea.setSelectionRange(match.globalStart, match.globalEnd);
+      if (textarea && highlight) {
+        const range = document.createRange();
+        if (highlight.firstChild) range.selectNodeContents(highlight);
+        else range.selectNode(highlight);
+        const rect = range.getBoundingClientRect();
+        const editorRect = textarea.getBoundingClientRect();
+        if (rect.width || rect.height) {
+          textarea.scrollTop += rect.top - editorRect.top - textarea.clientHeight / 2 + rect.height / 2;
+          textarea.scrollLeft += rect.left - editorRect.left - textarea.clientWidth / 2 + rect.width / 2;
+          timedTextEditSearchMirror.scrollTop = textarea.scrollTop;
+          timedTextEditSearchMirror.scrollLeft = textarea.scrollLeft;
+        }
+      }
+    }
+    timedTextEditFindInput?.focus({ preventScroll: true });
+  }
+
+
+  function moveTimedTextEditSearchMatch(direction) {
+    const result = refreshTimedTextEditSearch({ preserveIndex: true });
+    const matches = result.matches || [];
+    if (result.error || !matches.length) return false;
+    timedTextEditSearchIndex = ((timedTextEditSearchIndex + direction) % matches.length + matches.length) % matches.length;
+    refreshTimedTextEditSearch({ preserveIndex: true });
+    revealTimedTextEditSearchMatch(matches[timedTextEditSearchIndex], matches);
+    return true;
+  }
+
+
+  function applyTimedTextEditSearchReplacement(replaceAll) {
+    const result = refreshTimedTextEditSearch({ preserveIndex: true });
+    const matches = result.matches || [];
+    if (result.error || !matches.length || !MaweDom.timedTextEditDraft) return false;
+    const draft = MaweDom.timedTextEditDraft;
+    const previousIndex = Math.max(0, timedTextEditSearchIndex);
+    const current = matches[previousIndex];
+    const options = timedTextEditSearchOptions();
+    const replacement = timedTextEditReplaceInput?.value || '';
+    const currentLine = draft.texts[current.lineIndex] || '';
+    const inserted = options.useRegex
+      ? window.AsrEditorUtils.expandTextSearchReplacement(replacement, current, currentLine)
+      : replacement;
+    const nextLines = replaceAll
+      ? window.AsrEditorUtils.replaceAllTextSearchMatches(draft.texts, matches, replacement, options)
+      : window.AsrEditorUtils.replaceTextSearchMatch(draft.texts, current, replacement, options);
+    draft.texts.splice(0, draft.texts.length, ...normalizeTimedTextEditDraftLines(nextLines));
+    draft.singleText = draft.texts.join('\n');
+    draft.singleLineError = '';
+    renderTimedTextEditRows();
+    renderTimedTextEditView();
+    flushTimedTextEditReport();
+    const nextResult = refreshTimedTextEditSearch({ preserveIndex: false });
+    if (nextResult.matches.length) {
+      let nextIndex = 0;
+      if (replaceAll) {
+        nextIndex = Math.min(previousIndex, nextResult.matches.length - 1);
+      } else {
+        const afterInsertedText = current.globalStart + inserted.length;
+        const skipSameZeroLengthMatch = current.start === current.end && inserted.length === 0;
+        nextIndex = nextResult.matches.findIndex((match) => skipSameZeroLengthMatch
+          ? match.globalStart > afterInsertedText
+          : match.globalStart >= afterInsertedText);
+        if (nextIndex < 0) nextIndex = 0;
+      }
+      timedTextEditSearchIndex = nextIndex;
+      refreshTimedTextEditSearch({ preserveIndex: true });
+      revealTimedTextEditSearchMatch(nextResult.matches[nextIndex], nextResult.matches);
+    }
+    return true;
+  }
+
+
+  function setTimedTextEditReplaceExpanded(expanded, { focus = false } = {}) {
+    const open = Boolean(expanded);
+    if (!timedTextEditSearchReplaceRow || !timedTextEditSearchReplaceToggle) return;
+    timedTextEditSearchReplaceRow.hidden = !open;
+    timedTextEditSearchReplaceToggle.setAttribute('aria-expanded', String(open));
+    timedTextEditSearchReplaceToggle.textContent = open ? '▾' : '▸';
+    timedTextEditSearchReplaceToggle.title = window.MAWE_I18N?.translateText?.(open ? '隐藏替换' : '显示替换')
+      || (open ? '隐藏替换' : '显示替换');
+    if (focus) (open ? timedTextEditReplaceInput : timedTextEditFindInput)?.focus();
   }
 
 
@@ -519,6 +716,7 @@
       MaweDom.timedTextEditReportHint.textContent = '当前没有显示中的字幕；打开“显示已禁用字幕”后才能编辑。';
     }
     MaweDom.timedTextEditApply.disabled = !report.valid;
+    refreshTimedTextEditSearch({ preserveIndex: true });
   }
 
 
@@ -588,7 +786,14 @@
 
 
   function timedTextEditHasUnappliedChanges() {
-    return Boolean(MaweDom.timedTextEditDraft?.report?.stats.changedSegments || MaweDom.timedTextEditDraft?.singleLineError);
+    // The report is debounced; closing or switching scope can happen before it
+    // catches up with input. Compare the current draft itself to its source.
+    const draft = MaweDom.timedTextEditDraft;
+    if (!draft) return false;
+    syncTimedTextEditDraftFromDom();
+    return Boolean(draft.singleLineError
+      || draft.texts.length !== draft.sourceSegments.length
+      || draft.sourceSegments.some((segment, index) => String(segment?.text || '') !== draft.texts[index]));
   }
 
 
@@ -795,11 +1000,76 @@
     if (MaweInlineEdit.editingState) MaweInlineEdit.finishEdit(true);
     MaweDom.timedTextEditReturnFocus = document.activeElement instanceof HTMLElement
       ? document.activeElement : null;
+    timedTextEditFindInput.value = '';
+    timedTextEditReplaceInput.value = '';
+    timedTextEditSearchCase?.setAttribute('aria-pressed', 'false');
+    timedTextEditSearchRegex?.setAttribute('aria-pressed', 'false');
+    timedTextEditSearchIndex = -1;
+    setTimedTextEditReplaceExpanded(false);
     loadTimedTextEditTrack(currentTimedTextEditKind());
     MaweDom.timedTextEditModal.classList.add('show');
     setTimeout(() => (MaweDom.timedTextEditDraft?.view === 'single'
       ? MaweDom.timedTextEditSingleTextarea : MaweDom.timedTextEditRows.querySelector('textarea'))?.focus(), 50);
   }
+
+
+  function onTimedTextEditSearchKeydown(event) {
+    if (!MaweDom.timedTextEditModal?.classList.contains('show')) return;
+    const modifier = event.ctrlKey || event.metaKey;
+    const key = String(event.key || '').toLowerCase();
+    if (modifier && !event.altKey && key === 'f') {
+      event.preventDefault();
+      event.stopImmediatePropagation();
+      timedTextEditFindInput?.focus();
+      timedTextEditFindInput?.select();
+      return;
+    }
+    if (modifier && !event.altKey && key === 'h') {
+      event.preventDefault();
+      event.stopImmediatePropagation();
+      setTimedTextEditReplaceExpanded(true, { focus: true });
+      timedTextEditReplaceInput?.select();
+      return;
+    }
+    if (event.target !== timedTextEditFindInput || event.key !== 'Enter'
+        || event.isComposing || event.keyCode === 229) return;
+    event.preventDefault();
+    event.stopImmediatePropagation();
+    moveTimedTextEditSearchMatch(event.shiftKey ? -1 : 1);
+  }
+
+
+  timedTextEditFindInput?.addEventListener('input', () => {
+    const result = refreshTimedTextEditSearch({ resetIndex: true });
+    if (result.matches.length) revealTimedTextEditSearchMatch(result.matches[0], result.matches);
+  });
+  [timedTextEditSearchCase, timedTextEditSearchRegex].forEach((button) => {
+    button?.addEventListener('click', () => {
+      button.setAttribute('aria-pressed', String(button.getAttribute('aria-pressed') !== 'true'));
+      const result = refreshTimedTextEditSearch({ resetIndex: true });
+      if (result.matches.length) revealTimedTextEditSearchMatch(result.matches[0], result.matches);
+    });
+  });
+  timedTextEditSearchReplaceToggle?.addEventListener('click', () => {
+    setTimedTextEditReplaceExpanded(timedTextEditSearchReplaceRow?.hidden);
+  });
+  timedTextEditSearchPrevious?.addEventListener('click', () => moveTimedTextEditSearchMatch(-1));
+  timedTextEditSearchNext?.addEventListener('click', () => moveTimedTextEditSearchMatch(1));
+  timedTextEditSearchReplaceOne?.addEventListener('click', () => applyTimedTextEditSearchReplacement(false));
+  timedTextEditSearchReplaceAll?.addEventListener('click', () => applyTimedTextEditSearchReplacement(true));
+  MaweDom.timedTextEditSingleTextarea?.addEventListener('scroll', () => {
+    if (!timedTextEditSearchMirror) return;
+    timedTextEditSearchMirror.scrollTop = MaweDom.timedTextEditSingleTextarea.scrollTop;
+    timedTextEditSearchMirror.scrollLeft = MaweDom.timedTextEditSingleTextarea.scrollLeft;
+  });
+  document.addEventListener('keydown', onTimedTextEditSearchKeydown, true);
+  document.addEventListener('mawe:languagechange', () => {
+    if (timedTextEditSearchReplaceToggle) {
+      const open = timedTextEditSearchReplaceToggle.getAttribute('aria-expanded') === 'true';
+      timedTextEditSearchReplaceToggle.title = window.MAWE_I18N?.translateText?.(open ? '隐藏替换' : '显示替换')
+        || (open ? '隐藏替换' : '显示替换');
+    }
+  });
 
   global.MaweTimedTextEdit = Object.freeze({
     timedTextEditSegments,
@@ -817,6 +1087,10 @@
     renderTimedTextEditRows,
     timedTextEditCanUseSingleView,
     renderTimedTextEditView,
+    refreshTimedTextEditSearch,
+    moveTimedTextEditSearchMatch,
+    applyTimedTextEditSearchReplacement,
+    revealTimedTextEditSearchMatch,
     timedTextEditRowFilterKey,
     timedTextEditDraftRowReports,
     normalizeTimedTextEditDraftLines,

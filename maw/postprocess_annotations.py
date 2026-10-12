@@ -44,11 +44,16 @@ def append_markers(existing: object, markers: Sequence[Mapping[str, object]]) ->
     items = field.get("items")
     items = items if isinstance(items, list) else []
     used = {m.get("id") for m in items if isinstance(m, Mapping) and isinstance(m.get("id"), str)}
-    for raw in sorted(markers, key=lambda m: (int(m["start"]), str(m.get("name", "")))):
+    ordered = sorted(markers, key=lambda m: (int(m["start"]), str(m.get("name", ""))))
+    # Generated IDs must not take an explicit ID from a later marker in time.
+    reserved = {m.get("id") for m in ordered
+                if isinstance(m.get("id"), str) and m["id"].strip()}
+    for raw in ordered:
         marker = copy.deepcopy(dict(raw))
-        if not marker.get("id") or marker["id"] in used:
+        marker_id = marker.get("id")
+        if not isinstance(marker_id, str) or not marker_id.strip() or marker_id in used:
             number = 1
-            while f"marker-{number:03d}" in used:
+            while f"marker-{number:03d}" in used or f"marker-{number:03d}" in reserved:
                 number += 1
             marker["id"] = f"marker-{number:03d}"
         used.add(marker["id"])
@@ -98,9 +103,9 @@ def write_annotations(project: dict, sources: Mapping[str, Mapping[str, object]]
         if key in protected:
             continue
         source, kind = entry["source"], entry["kind"]
-        message = "；".join(entry["messages"])[:300]
+        message = "；".join(entry["messages"])[:300].strip()
         marker = {"start": source["start"], "end": source["end"],
-                  "name": re.sub(r"[\x00-\x1f\x7f]+", " ", str(source.get("text") or "AI 备注")).strip()[:20],
+                  "name": re.sub(r"[\x00-\x1f\x7f]+", " ", str(source.get("text") or "AI 备注")).strip()[:20].strip(),
                   "color": "#f5a623" if kind == "review" else "#3e63dd",
                   "note": f"[AI] {'待核查' if kind == 'review' else '注'}：{message}"}
         if kind == "review":

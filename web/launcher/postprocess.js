@@ -157,6 +157,15 @@
       const raw = window.localStorage?.getItem(LLM_PROVIDER_BY_TASK_KEY);
       const parsed = raw ? JSON.parse(raw) : {};
       llmProviderByTask = parsed && typeof parsed === "object" && !Array.isArray(parsed) ? parsed : {};
+      // Older versions used the operation name; current plans use the step name.
+      // A newer valid choice always wins over the old key and saved plans.
+      if (Object.hasOwn(llmProviderByTask, "ai_cleanup")) {
+        if (!knownProviderId(llmProviderByTask.cleanup) && knownProviderId(llmProviderByTask.ai_cleanup)) {
+          llmProviderByTask.cleanup = llmProviderByTask.ai_cleanup;
+        }
+        delete llmProviderByTask.ai_cleanup;
+        saveLlmProviderByTask();
+      }
     } catch (error) {
       llmProviderByTask = {};
     }
@@ -1058,6 +1067,9 @@
     result.classList.toggle("success", kind === "success");
     result.classList.toggle("error", kind === "error");
     renderPostprocessResultActions();
+    if (kind === "error" || options.revealWarning === true) {
+      window.MAWLauncher.revealFeedback?.(result, message);
+    }
   }
 
   function newPostprocessOperationId() {
@@ -1204,6 +1216,8 @@
     status.textContent = message;
     status.classList.toggle("success", kind === "success");
     status.classList.toggle("error", kind === "error");
+    if (kind === "error") window.MAWLauncher.revealFeedback?.(status, message);
+    else if (!message) window.MAWLauncher.revealFeedback?.(status, "");
     if (message && timeoutMs > 0) {
       saveStatusTimer = window.setTimeout(() => setSettingsSaveStatus(""), timeoutMs);
     }
@@ -1428,7 +1442,7 @@
         await window.MAWLauncher.openServerEditor();
       }
       const warnings = Array.isArray(result.warnings) ? result.warnings : [];
-      setResult(`${t("toolbox_done")}\n${result.projectPath}${warnings.length ? `\n${warnings.join("\n")}` : ""}`, "success");
+      setResult(`${t("toolbox_done")}\n${result.projectPath}${warnings.length ? `\n${warnings.join("\n")}` : ""}`, "success", { revealWarning: warnings.length > 0 });
     } finally {
       setBusy(false);
     }
@@ -1468,6 +1482,7 @@
       hint.textContent = message;
       hint.classList.toggle("visible", Boolean(message));
     }
+    window.MAWLauncher.revealFeedback?.(hint, message);
   }
 
   function clearSettingsErrors() {
@@ -1614,7 +1629,7 @@
     const warnings = Array.isArray(result.warnings) ? [...result.warnings] : [];
     if (result.comparisonPath) warnings.push(`${t("toolbox_comparison_path")} ${result.comparisonPath}`);
     if (result.reportPath) warnings.push(`${t("toolbox_ocr_report_path")} ${result.reportPath}`);
-    setResult(`${t("toolbox_done")}${warnings.length ? `\n${warnings.join("\n")}` : ""}`, "success");
+    setResult(`${t("toolbox_done")}${warnings.length ? `\n${warnings.join("\n")}` : ""}`, "success", { revealWarning: warnings.length > 0 });
   }
 
   // AI 整理统计：五个分项计数；有待复核时只陈述事实并提示确认，不宣称已完成人工校对。
@@ -1962,7 +1977,8 @@
     $("postprocessResegmentMaxChars").value = String(byId.get("resegment")?.maxChars || "");
     const cleanup = byId.get("cleanup") || {};
     $("postprocessCleanupScriptPath").value = String(cleanup.scriptPath || "");
-    $("postprocessGenerateComparison").checked = Boolean(cleanup.generateComparison);
+    $("postprocessGenerateComparison").checked = ["cleanup", "proofread", "resegment", "translate"]
+      .some((stepId) => Boolean(byId.get(stepId)?.generateComparison));
     if (cleanup.providerId && !llmProviderByTask[llmTaskGroup("ai_cleanup")]
         && customSlotVisibleInToolbox(provider(cleanup.providerId))) {
       rememberProviderForTask("ai_cleanup", cleanup.providerId);
@@ -2019,7 +2035,8 @@
   function initializeAutoPostprocess() {
     const plan = window.MAWLauncher.config?.postprocessAutoPlan || defaultAutoPlan();
     applyAutoPostprocessPlan(plan);
-    const providerId = (plan.steps || []).find((step) => step.enabled && step.providerId)?.providerId;
+    const providerId = providerIdForTask(activeLlmOperation || $("postprocessOperation").value)
+      || (plan.steps || []).find((step) => step.enabled && step.providerId)?.providerId;
     // 记住的供应商若已不在工具箱下拉（如未填 URL 的 #2/#3），保持默认选中，避免工具箱与表单不一致。
     if (providerId && Array.from($("postprocessProvider").options).some((option) => option.value === providerId)) {
       $("postprocessProvider").value = providerId;
@@ -2193,7 +2210,7 @@
       });
       if (result.ok) {
         applySubtitleResult(result, { kind: "timestamps" });
-        if (scriptMode) setResult([t("toolbox_done"), scriptAlignmentSummary(result.report), ...(result.warnings || [])].filter(Boolean).join("\n"), "success");
+        if (scriptMode) setResult([t("toolbox_done"), scriptAlignmentSummary(result.report), ...(result.warnings || [])].filter(Boolean).join("\n"), "success", { revealWarning: Boolean(result.warnings?.length) });
       }
       else {
         const message = postprocessErrorText(result);

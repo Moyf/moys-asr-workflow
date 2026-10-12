@@ -1,6 +1,40 @@
 import { test, expect } from '@playwright/test';
 
 const launcherUrl = new URL('../../web/launcher/index.html', import.meta.url).href;
+
+test('startup migrates legacy cleanup memory, preserves newer choices and restores comparison from other AI steps', async ({ page }) => {
+  const errors = [];
+  page.on('pageerror', error => errors.push(error.message));
+  await page.addInitScript(() => {
+    localStorage.setItem('maw.launcher.llm.provider_by_task', JSON.stringify({ ai_cleanup: 'qwen', cleanup: 'deepseek' }));
+    const dispatch = window.dispatchEvent.bind(window);
+    window.dispatchEvent = event => {
+      if (event.type === 'mawlauncherready') {
+        window.MAWLauncher.config.postprocessAutoPlan = { enabled: true, steps: [
+          { id: 'match', enabled: true, aiCleanup: true, providerId: 'qwen' },
+          { id: 'proofread', enabled: false, generateComparison: true },
+        ] };
+        document.getElementById('postprocessOperation').value = 'ai_cleanup';
+      }
+      return dispatch(event);
+    };
+  });
+  await page.goto(launcherUrl);
+  await page.waitForFunction(() => window.MAWLauncher?.config?.postprocessProviders?.length);
+  await page.evaluate(() => window.MAWLauncher.openToolboxAiProcessing());
+  await expect(page.locator('#postprocessProvider')).toHaveValue('deepseek');
+  await expect(page.locator('#postprocessGenerateComparison')).toBeChecked();
+  const result = await page.evaluate(() => ({
+    memory: JSON.parse(localStorage.getItem('maw.launcher.llm.provider_by_task')),
+    plan: window.MAWLauncher.getAutoPostprocessPayload(),
+  }));
+  expect(result.memory.cleanup).toBe('deepseek');
+  expect(result.memory.ai_cleanup).toBeUndefined();
+  expect(result.plan.steps.find(step => step.id === 'cleanup').providerId).toBe('deepseek');
+  expect(result.plan.steps.filter(step => ['cleanup', 'proofread', 'resegment', 'translate'].includes(step.id)).every(step => step.generateComparison)).toBe(true);
+  expect(errors).toEqual([]);
+});
+
 test('AI cleanup independently remembers its provider for manual requests and saved plans', async ({ page }, testInfo) => {
   const pageErrors = [];
   page.on('pageerror', error => pageErrors.push(error.message));

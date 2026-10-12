@@ -225,6 +225,7 @@
 
 
   function updateAiCleanupReviewMuteButton(button, markerId) {
+    if (!button) return;
     button.hidden = !isAiCleanupReviewMarker(MaweMarkerEditing.findMarker(markerId));
     const status = aiCleanupReviewMuteState(markerId);
     const label = !status.owned ? '设静音'
@@ -240,6 +241,29 @@
     button.title = window.MAWE_I18N?.translateText(title) || title;
     button.setAttribute('aria-pressed', String(status.owned));
     button.classList.toggle('is-muted', status.owned);
+  }
+
+
+  function createAiCleanupReviewMuteButton(markerId) {
+    const button = document.createElement('button');
+    button.type = 'button';
+    button.className = 'markers-ai-review-mute-toggle';
+    button.dataset.aiCleanupReviewMute = markerId;
+    updateAiCleanupReviewMuteButton(button, markerId);
+    button.addEventListener('click', () => {
+      const marker = MaweMarkerEditing.findMarker(markerId);
+      const result = marker && MaweGapRemoveUi.toggleAiCleanupReviewMute(marker);
+      if (!result?.changed) {
+        MaweHint.flashHint('无法静音此复核区段；请检查起止时间', 'warning');
+        return;
+      }
+      MaweHint.flashHint(
+        result.muted ? '已静音 AI 复核区段' : '已取消 AI 复核静音',
+        'success',
+      );
+      refreshAiCleanupReviewMuteButtons();
+    });
+    return button;
   }
 
 
@@ -271,14 +295,16 @@
 
   function refreshAiCleanupReviewMuteButtons() {
     const list = MaweDom.markersList;
-    if (!list) return;
-    list.querySelectorAll('[data-ai-cleanup-review-mute]').forEach((button) => {
-      updateAiCleanupReviewMuteButton(button, button.dataset.aiCleanupReviewMute);
-    });
-    list.querySelectorAll('[data-ai-cleanup-review-status]').forEach((button) => {
-      const marker = MaweMarkerEditing.findMarker(button.dataset.aiCleanupReviewStatus);
-      updateAiCleanupReviewStatusButton(button, marker);
-    });
+    if (list) {
+      list.querySelectorAll('[data-ai-cleanup-review-mute]').forEach((button) => {
+        updateAiCleanupReviewMuteButton(button, button.dataset.aiCleanupReviewMute);
+      });
+      list.querySelectorAll('[data-ai-cleanup-review-status]').forEach((button) => {
+        const marker = MaweMarkerEditing.findMarker(button.dataset.aiCleanupReviewStatus);
+        updateAiCleanupReviewStatusButton(button, marker);
+      });
+    }
+    MaweCoreState.waveformEditor?.syncMarkerQuickEdit?.();
   }
 
 
@@ -472,22 +498,7 @@
     });
     updateAiCleanupReviewStatusButton(reviewToggle, marker);
     reviewActions.appendChild(reviewToggle);
-    const muteButton = document.createElement('button');
-    muteButton.type = 'button';
-    muteButton.className = 'markers-ai-review-mute-toggle';
-    muteButton.dataset.aiCleanupReviewMute = marker.id;
-    updateAiCleanupReviewMuteButton(muteButton, marker.id);
-    muteButton.addEventListener('click', () => {
-      const result = MaweGapRemoveUi.toggleAiCleanupReviewMute(marker);
-      if (!result?.changed) {
-        MaweHint.flashHint('无法静音此复核区段；请检查起止时间', 'warning');
-        return;
-      }
-      MaweHint.flashHint(
-        result.muted ? '已静音 AI 复核区段' : '已取消 AI 复核静音',
-        'success',
-      );
-    });
+    const muteButton = createAiCleanupReviewMuteButton(marker.id);
     reviewActions.appendChild(muteButton);
     actions.appendChild(reviewActions);
     const locateButton = document.createElement('button');
@@ -768,6 +779,9 @@
     openAndLocate,
     resetSelection,
     refreshAiCleanupReviewMuteButtons,
+    createAiCleanupReviewMuteButton,
+    updateAiCleanupReviewMuteButton,
+    updateAiCleanupReviewStatusButton,
     getSelectedMarkerId: () => selectedMarkerId,
   });
   document.addEventListener('mawe:languagechange', refreshAiCleanupReviewMuteButtons);
