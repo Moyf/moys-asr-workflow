@@ -226,6 +226,12 @@ class EditorAssetContractTests(CompactContainerAssertions, unittest.TestCase):
         ),
         )
 
+    # bundle 是构建产物（不入库）：本地未跑 pnpm install 时跳过，CI / 开发机在
+    # postinstall 或显式 build 之后一定存在。
+    @unittest.skipUnless(
+        (ROOT / "web" / "editor" / "boot" / "editor-bundle.js").is_file(),
+        "editor-bundle.js 未构建（pnpm install 的 postinstall 会自动构建）",
+    )
     def test_editor_script_payload_is_one_complete_artifact(self) -> None:
         with patch.object(edit, "read_editor_script_manifest", side_effect=AssertionError("runtime source assembly")):
             payload = edit.build_editor_scripts()

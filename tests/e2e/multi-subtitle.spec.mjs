@@ -1253,7 +1253,7 @@ test('applies text processing to selected extension subtitles', async ({ page })
   await page.locator('#batch-operations-btn').click();
   await page.locator('#text-process-btn').click();
   await expect(page.locator('#text-process-selected-only')).toBeChecked();
-  await page.locator('#text-process-prefix').check();
+  await page.locator('#text-process-wrap-presets-common').getByRole('button', { name: '自定义' }).click();
   await page.locator('#text-process-prefix-input').fill('X ');
   await expect(page.locator('#text-process-preview')).toContainText('副字幕第 1 条');
   await page.locator('#text-process-confirm').click();

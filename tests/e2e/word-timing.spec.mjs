@@ -344,7 +344,11 @@ test('conversion reviews skips and bindings, is atomic and preserves items on sa
   });
   await page.locator('.word-timing-advanced > .item').first().click();
   await page.locator('.word-timing-advanced .danger').click();
-  await expect(page.locator('#word-conversion-summary')).toContainText('可转换 1 句，生成 2 条字幕；跳过 2 句，解除 1 个副字幕绑定');
+  await expect(page.locator('#word-conversion-summary')).toContainText('将转换1句，生成2条新的字幕（跳过2句，解除1个副字幕绑定）');
+  await expect(page.locator('#word-conversion-warning')).toHaveText('可通过撤销恢复；不提供反向转换工具。');
+  await page.evaluate(() => MAWE_I18N.applyLanguage('en'));
+  await expect(page.locator('#word-conversion-warning')).toHaveText('You can undo this conversion; no reverse-conversion tool is provided.');
+  await page.evaluate(() => MAWE_I18N.applyLanguage('zh'));
   await expect(page.locator('#word-conversion-skipped')).toContainText('文字未被完整覆盖');
   const spacing = await page.locator('.word-conversion-actions').evaluate(el => ({
     margin: parseFloat(getComputedStyle(el).marginTop),
@@ -352,6 +356,9 @@ test('conversion reviews skips and bindings, is atomic and preserves items on sa
   }));
   expect(spacing.margin).toBeGreaterThanOrEqual(8);
   expect(spacing.distance).toBeGreaterThanOrEqual(8);
+  console.log('word conversion spacing:', JSON.stringify(spacing));
+  const confirmStyle = await page.locator('#word-conversion-confirm').evaluate((button) => getComputedStyle(button).backgroundColor);
+  expect(confirmStyle).not.toBe('rgba(0, 0, 0, 0)');
   await page.locator('#word-conversion-dialog').screenshot({ path: testInfo.outputPath('word-conversion.png') });
   await page.locator('#word-conversion-confirm').click();
   await expect(page.locator('#word-conversion-dialog')).not.toBeVisible();
@@ -571,7 +578,7 @@ test('English UI does not translate project words or their hover text', async ({
   await expect(word(page, 0).locator('.waveform-word-label')).toHaveText('字词时间码');
   await expect(word(page, 0)).toHaveAttribute('data-title', /^字词时间码/);
   await page.evaluate(() => MaweWordTiming.openConversion([0]));
-  await expect(page.locator('#word-conversion-warning')).toContainText('has not been realigned to audio');
+  await expect(page.locator('#word-conversion-description')).toContainText('split each complete sentence into individual word subtitles');
 });
 
 test('no-op gestures do not create undo history and leaving words clears their highlight', async ({ page }) => {

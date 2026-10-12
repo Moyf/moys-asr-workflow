@@ -1993,6 +1993,26 @@ test('builds expandable replacement rows with before and after text', () => {
   ]);
 });
 
+test('batch replacement preview shares search replacement rules and preserves embedded line breaks', () => {
+  const regex = helpers.buildReplacementPreview(
+    [{ text: '猫-狗\n猫-鸟' }],
+    [0],
+    '(?<left>猫)-(?<right>狗|鸟)',
+    '$<right>/$1',
+    { caseSensitive: true, useRegex: true },
+  );
+  assert.equal(regex.matchCount, 2);
+  assert.equal(regex.rows[0].after, '狗/猫\n鸟/猫');
+
+  const literal = helpers.buildReplacementPreview(
+    [{ text: 'a.b axb' }], [0], 'a.b', '$&', { caseSensitive: true, useRegex: false },
+  );
+  assert.equal(literal.rows[0].after, '$& axb');
+
+  const invalid = helpers.buildReplacementPreview([{ text: 'abc' }], [0], '[', 'x', { useRegex: true });
+  assert.match(invalid.error, /character class|unterminated|invalid/i);
+});
+
 test('applies common text processing operations in a stable order', () => {
   assert.equal(
     helpers.applyTextProcessing('  **hello**  ', {
@@ -2008,6 +2028,90 @@ test('applies common text processing operations in a stable order', () => {
     'hello',
   );
   assert.equal(helpers.applyTextProcessing('中文', { capitalize: true }), '中文');
+});
+
+test('converts clear Chinese number expressions and preserves ambiguous language', () => {
+  assert.equal(helpers.convertChineseNumbers('一百八十六'), ' 186 ');
+  assert.equal(helpers.convertChineseNumbers('二〇二六'), ' 2026 ');
+  assert.equal(helpers.convertChineseNumbers('二零二六'), ' 2026 ');
+  assert.equal(helpers.convertChineseNumbers('负三点五'), ' -3.5 ');
+  assert.equal(helpers.convertChineseNumbers('我有三只猫'), '我有 3 只猫');
+  assert.equal(helpers.convertChineseNumbers('一百零八\n二十'), ' 108 \n 20 ');
+  for (const ambiguous of ['一万一', '一百八', '十几', '三心二意', '百分之三十', '三分之一', '我看了一眼']) {
+    assert.equal(helpers.convertChineseNumbers(ambiguous), ambiguous, ambiguous);
+  }
+});
+
+test('applies number conversion before the shared wrapping operation', () => {
+  assert.equal(helpers.applyTextProcessing('**一百八十六**', {
+    stripMarkdown: true, trim: true, convertChineseNumbers: true,
+    addWrapChars: true, wrapLeft: '[', wrapRight: ']',
+  }), '[ 186 ]');
+});
+
+test('preserves approximate adjacent digits and repeated idioms without changing exact digit notation', () => {
+  for (const text of [
+    '等三两分钟', '来了两三个人', '再等一两天', '七八天以后', '八九不离十',
+    '八九不离十，再算八九不离十', '大概四五十分钟', '三两分钟后再等三两分钟',
+  ]) {
+    assert.equal(helpers.convertChineseNumbers(text), text, text);
+  }
+  assert.equal(helpers.convertChineseNumbers('二〇二六年'), ' 2026 年');
+  assert.equal(helpers.convertChineseNumbers('零八号'), ' 08 号');
+  assert.equal(helpers.convertChineseNumbers('一三八零零'), ' 13800 ');
+});
+
+test('searches subtitle lines with literal and case-sensitive matching', () => {
+  const insensitive = helpers.collectTextSearchMatches(['Moy moy', 'Moy'], 'moy');
+  assert.equal(insensitive.error, null);
+  assert.deepEqual(Array.from(insensitive.matches, ({ lineIndex, start, text }) => ({ lineIndex, start, text })), [
+    { lineIndex: 0, start: 0, text: 'Moy' },
+    { lineIndex: 0, start: 4, text: 'moy' },
+    { lineIndex: 1, start: 0, text: 'Moy' },
+  ]);
+  assert.equal(helpers.collectTextSearchMatches(['a.b axb'], 'a.b').matches.length, 1);
+  assert.equal(helpers.collectTextSearchMatches(['Moy moy'], 'moy', { caseSensitive: true }).matches.length, 1);
+});
+
+test('search reports invalid patterns and advances through zero-length regex matches', () => {
+  const invalid = helpers.collectTextSearchMatches(['abc'], '[', { useRegex: true });
+  assert.match(invalid.error, /character class|unterminated|invalid/i);
+  const zeroLength = helpers.collectTextSearchMatches(['abc', ''], '^|$', { useRegex: true });
+  assert.equal(zeroLength.error, null);
+  assert.deepEqual(Array.from(zeroLength.matches, ({ lineIndex, start, end }) => ({ lineIndex, start, end })), [
+    { lineIndex: 0, start: 0, end: 0 },
+    { lineIndex: 0, start: 3, end: 3 },
+    { lineIndex: 1, start: 0, end: 0 },
+  ]);
+});
+
+test('regex replacements support captures while literal replacements stay literal', () => {
+  const lines = ['猫-狗 猫-鸟'];
+  const matches = helpers.collectTextSearchMatches(lines, '(?<left>猫)-(?<right>狗|鸟)', { useRegex: true }).matches;
+  assert.deepEqual(Array.from(helpers.replaceTextSearchMatch(lines, matches[0], '$<right>/$1', { useRegex: true })), ['狗/猫 猫-鸟']);
+  assert.deepEqual(Array.from(helpers.replaceAllTextSearchMatches(lines, matches, '$2-$1', { useRegex: true })), ['狗-猫 鸟-猫']);
+  const literal = helpers.collectTextSearchMatches(['a'], 'a').matches[0];
+  assert.deepEqual(Array.from(helpers.replaceTextSearchMatch(['a'], literal, '$1')), ['$1']);
+});
+
+test('shared regex substitution agrees with native replacement for numbered and named capture references', () => {
+  const cases = [
+    { text: '猫', pattern: '(猫)' },
+    { text: '猫', pattern: '(猫)(狗)?' },
+    { text: '猫', pattern: '(?<animal>猫)' },
+    { text: '猫', pattern: '(?<toString>猫)' },
+    { text: 'abcdefghij', pattern: '(a)(b)(c)(d)(e)(f)(g)(h)(i)(j)' },
+  ];
+  const templates = ['$01', '$09', '$00', '$0', '$1', '$10', '$12', '$99', '$001',
+    '$<animal>', '$<missing>', '$<toString>', '$<constructor>', '$<>', '$$', '$&', "$`-$'", '$1$01'];
+  for (const { text, pattern } of cases) {
+    const matches = helpers.collectTextSearchMatches([text], pattern, { useRegex: true }).matches;
+    for (const replacement of templates) {
+      const expected = text.replace(new RegExp(pattern, 'giu'), replacement);
+      const actual = helpers.replaceAllTextSearchMatches([text], matches, replacement, { useRegex: true });
+      assert.equal(actual[0], expected, `${pattern} / ${replacement}`);
+    }
+  }
 });
 
 test('previews text processing only for the selected subtitle indexes', () => {
@@ -6709,6 +6813,7 @@ test('wrap chars presets insert at both ends and skip already wrapped text', () 
       { id: 'underline', label: '下划线', left: '__', right: '__', ass: true },
       { id: 'strike', label: '删除线', left: '~~', right: '~~', ass: true },
       { id: 'fade', label: '淡出淡入', left: '>>', right: '<<', ass: true },
+      { id: 'comment', label: '注释文本', left: '//', right: '//', ass: true },
       { id: 'note', label: '音符', left: '♪', right: '♪' },
       { id: 'music', label: '双音符', left: '♬', right: '♬' },
       { id: 'bracket', label: '中括号', left: '[', right: ']' },
@@ -6739,6 +6844,9 @@ test('wrap chars menu copy has English translations', () => {
   const keys = [
     '左右添加字符', '左右添加字符预设', '自定义左右字符', '左侧字符', '右侧字符', '插入',
     '左右添加字符（插入到字幕两端）',
+    'ASS 特殊文本样式', '普通字符', '♪音符♪', '♬双音符♬', '[中括号]',
+    '左侧添加', '右侧添加', '输入左侧字符', '输入右侧字符', '自定义左右添加字符',
+    '数字转换', '将明确的中文数字转写为数字，前后留空格',
     '在选中字幕文本两端原样插入字符；不做样式转换，也不受「单双符号」规则影响。',
     '选中字幕已包裹相同符号，未重复添加', '没有可添加字符的字幕',
     '请至少输入一侧字符', '请先选择要处理的字幕',

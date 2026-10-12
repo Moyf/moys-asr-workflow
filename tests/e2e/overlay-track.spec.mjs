@@ -274,6 +274,67 @@ test('Shift+drag converts to overlay on overlap and returns to the main track wh
   expect(afterStay.overlay_track.segments[0]).toMatchObject({ id: 'main-002' });
 });
 
+test('Shift+drag toward a spot already blocked by an overlay cue stays on the main track', async ({ page }) => {
+  // 目标位置上方已被另一条叠加字幕占住（转过去也与主轨无重叠）时，
+  // 主→叠换轨会立刻满足回轨条件、两条轨来回翻转闪烁；修复后应保持
+  // 原轨什么都不做，由邻居钳制把字幕停在边界。
+  const project = {
+    segments: [
+      { id: 'main-001', start: 3000, end: 5000, text: 'anchor cue' },
+      { id: 'main-002', start: 5200, end: 7200, text: 'dragged cue' },
+    ],
+    overlay_track: {
+      enabled: true,
+      segments: [{ id: 'overlay-001', start: 0, end: 2000, text: 'blocking overlay' }],
+    },
+    waveform: generateWaveformPayload(8000),
+  };
+  await page.goto(server.url);
+  await dropProject(page, project);
+  await expect(page.locator('.waveform-cue-block[data-track="main"][data-idx="1"]')).toBeVisible();
+  await expect(page.locator('.waveform-cue-block[data-track="overlay"][data-overlay-idx="0"]')).toBeVisible();
+
+  const rowGeometry = await page.evaluate(() => {
+    const row = document.querySelector('.waveform-cue-block[data-track="main"]').closest('.waveform-row');
+    const rect = row.getBoundingClientRect();
+    const startMs = Number(row.dataset.startMs);
+    const endMs = Number(row.dataset.endMs);
+    const timeToX = (timeMs) => rect.left + ((timeMs - startMs) / (endMs - startMs)) * rect.width;
+    // 落点 [0,2000] 与主轨两条字幕都无重叠，且该处上方正是 blocking overlay。
+    return { blockedX: timeToX(1000), overlapX: timeToX(4000) };
+  });
+  const block = page.locator('.waveform-cue-block[data-track="main"][data-idx="1"]');
+  const box = await block.boundingBox();
+  const centerY = box.y + box.height / 2;
+
+  // 单步越过 anchor（无中间帧落在重叠区）：落点与主轨无重叠 → 不换轨。
+  await page.keyboard.down('Shift');
+  await page.mouse.move(box.x + box.width / 2, centerY);
+  await page.mouse.down();
+  await page.mouse.move(rowGeometry.blockedX, centerY);
+  await expect(page.locator('.waveform-cue-block[data-track="overlay"][data-overlay-idx="1"]')).toHaveCount(0);
+  await page.keyboard.up('Shift');
+  await page.mouse.up();
+  const afterBlocked = await page.evaluate(() => JSON.parse(MaweJsonRepair.buildJson()));
+  expect(afterBlocked.segments.map((segment) => segment.id)).toEqual(['main-001', 'main-002']);
+  // 被邻居钳制贴在 anchor 右侧边界，不产生任何换轨。
+  expect(afterBlocked.segments[1]).toMatchObject({ start: 5000, end: 7000 });
+  expect(afterBlocked.overlay_track.segments).toHaveLength(1);
+
+  // 指针移回与主轨重叠的位置：换轨通道保持可用（原行为不回归）。
+  const boxAfter = await page.locator('.waveform-cue-block[data-track="main"][data-idx="1"]').boundingBox();
+  await page.keyboard.down('Shift');
+  await page.mouse.move(boxAfter.x + boxAfter.width / 2, boxAfter.y + boxAfter.height / 2);
+  await page.mouse.down();
+  await page.mouse.move(rowGeometry.overlapX, boxAfter.y + boxAfter.height / 2, { steps: 12 });
+  await expect(page.locator('.waveform-cue-block[data-track="overlay"][data-overlay-idx="1"]')).toHaveCount(1);
+  await page.keyboard.up('Shift');
+  await page.mouse.up();
+  const afterConverted = await page.evaluate(() => JSON.parse(MaweJsonRepair.buildJson()));
+  expect(afterConverted.segments.map((segment) => segment.id)).toEqual(['main-001']);
+  expect(afterConverted.overlay_track.segments.map((segment) => segment.id)).toEqual(['overlay-001', 'main-002']);
+});
+
 test('keeps the selection on the converted cue after a Shift+drag track change', async ({ page }) => {
   const project = {
     segments: [

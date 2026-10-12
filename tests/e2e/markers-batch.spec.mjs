@@ -187,6 +187,55 @@ test('AI review mute is source-scoped and updates through undo, redo, and unmute
   });
 });
 
+test('waveform marker popup shares AI review mute state with the management panel', async ({ page }) => {
+  await seed(page);
+  const managerRow = page.locator('[data-marker-id="ai-review"]');
+  await managerRow.locator('.markers-item-edit').click();
+  const managerMute = managerRow.locator('.markers-ai-review-mute-toggle');
+  await expect(managerMute).toHaveText('设静音');
+  const waveformMarker = page.locator('.waveform-marker-item[data-marker-id="ai-review"]');
+  await expect(waveformMarker).toBeVisible();
+  await page.locator('#markers-manage').click();
+  await expect(page.locator('#markers-panel')).not.toHaveClass(/show/);
+  await waveformMarker.dblclick();
+
+  const popup = page.locator('.waveform-marker-quick-edit');
+  const popupMute = popup.locator('.markers-ai-review-mute-toggle');
+  const expectWaveMute = async (label) => {
+    if (!await popup.count()) await waveformMarker.dblclick();
+    await expect(popupMute).toHaveText(label);
+  };
+  const expectManagerMute = async (label) => {
+    await page.locator('#markers-manage').click();
+    if (!await managerMute.count()) await managerRow.locator('.markers-item-edit').click();
+    await expect(managerMute).toHaveText(label);
+    await page.locator('#markers-manage').click();
+  };
+  await expect(popupMute).toBeVisible();
+  await expect(popupMute).toHaveText('设静音');
+  await popupMute.click();
+  await expect(popupMute).toHaveText('已静音');
+  await expect(popup.locator('.markers-review-toggle')).toHaveText('已移除');
+  await expectManagerMute('已静音');
+
+  await page.locator('#undo-btn').click();
+  await expectWaveMute('设静音');
+  await expectManagerMute('设静音');
+  await page.locator('#redo-btn').click();
+  await expectWaveMute('已静音');
+  await expectManagerMute('已静音');
+
+  await page.evaluate(() => MaweMarkerEditing.updateMarkerFields('ai-review', { end: 4500 }));
+  await expectWaveMute('部分静音');
+  await expectManagerMute('部分静音');
+  await page.evaluate(() => MAWE_I18N.applyLanguage('en'));
+  await expectWaveMute('Partially muted');
+  await expectManagerMute('Partially muted');
+  await page.evaluate(() => MAWE_I18N.applyLanguage('zh'));
+  await expectWaveMute('部分静音');
+  await expectManagerMute('部分静音');
+});
+
 test('AI review mute keeps split records with another marker owner', async ({ page }) => {
   await seed(page);
   await page.evaluate(() => {

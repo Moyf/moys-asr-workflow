@@ -10,6 +10,9 @@ on:
       - "docs/**"
       - "edit.py"
       - "web/**"
+      - "scripts/build-*.mjs"
+      - "package.json"
+      - "pnpm-lock.yaml"
       - "maw/quapeaks.py"
       - "maw/**"
       - ".github/workflows/deploy-editor-pages.yml"
@@ -58,7 +61,12 @@ jobs:
         with:
           node-version: "22"
           cache: pnpm
-          cache-dependency-path: website/pnpm-lock.yaml
+          cache-dependency-path: |
+            pnpm-lock.yaml
+            website/pnpm-lock.yaml
+
+      - name: Build web bundles
+        run: pnpm install --frozen-lockfile && pnpm run build
 
       - name: Install website dependencies
         working-directory: website
