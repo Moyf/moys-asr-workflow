@@ -7,6 +7,7 @@
 ### 🔄 变更
 
 - **esbuild bundle 不再提交进仓库** ： 编辑器与 Launcher 的构建产物（`web/*/boot/*-bundle.js` 及 `.meta.json`）改为本地生成、不入 Git，PR diff 不再被压缩产物噪声淹没，分支合并也不再在这两个文件上冲突。`pnpm install` 通过 postinstall 自动构建；Server 渲染页面前、Launcher 启动前与 `edit.py --blank` 前会校验产物新鲜度并自动重建（需要 Node 与 pnpm）；发布打包脚本与 release CI 在打包前显式构建，MAW.spec 对缺失产物直接报错。从源码运行现在需要一次性安装 Node.js 与 pnpm；发布包不受影响，仍然无需 Node。
+- **段落标题序号改为 SVG 徽章** ： Launcher 五个分区标题（选择媒体 / 识别设置 / 转写后自动处理 / 日志 / 编辑器）的序号不再使用彩色 emoji（1️⃣ 等），改为内置 SVG 绘制的 keycap 徽章，全平台外观一致；同时移除 Linux 首次启动时下载 Noto Color Emoji 字体的逻辑，Linux 不再依赖系统 emoji 字体或联网下载，其余平台的序号样式也随之统一。
 
 ### ✨ 提升
 
