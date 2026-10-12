@@ -157,6 +157,15 @@
       const raw = window.localStorage?.getItem(LLM_PROVIDER_BY_TASK_KEY);
       const parsed = raw ? JSON.parse(raw) : {};
       llmProviderByTask = parsed && typeof parsed === "object" && !Array.isArray(parsed) ? parsed : {};
+      // Older versions used the operation name; current plans use the step name.
+      // A newer valid choice always wins over the old key and saved plans.
+      if (Object.hasOwn(llmProviderByTask, "ai_cleanup")) {
+        if (!knownProviderId(llmProviderByTask.cleanup) && knownProviderId(llmProviderByTask.ai_cleanup)) {
+          llmProviderByTask.cleanup = llmProviderByTask.ai_cleanup;
+        }
+        delete llmProviderByTask.ai_cleanup;
+        saveLlmProviderByTask();
+      }
     } catch (error) {
       llmProviderByTask = {};
     }
@@ -1962,7 +1971,8 @@
     $("postprocessResegmentMaxChars").value = String(byId.get("resegment")?.maxChars || "");
     const cleanup = byId.get("cleanup") || {};
     $("postprocessCleanupScriptPath").value = String(cleanup.scriptPath || "");
-    $("postprocessGenerateComparison").checked = Boolean(cleanup.generateComparison);
+    $("postprocessGenerateComparison").checked = ["cleanup", "proofread", "resegment", "translate"]
+      .some((stepId) => Boolean(byId.get(stepId)?.generateComparison));
     if (cleanup.providerId && !llmProviderByTask[llmTaskGroup("ai_cleanup")]
         && customSlotVisibleInToolbox(provider(cleanup.providerId))) {
       rememberProviderForTask("ai_cleanup", cleanup.providerId);
@@ -2019,7 +2029,8 @@
   function initializeAutoPostprocess() {
     const plan = window.MAWLauncher.config?.postprocessAutoPlan || defaultAutoPlan();
     applyAutoPostprocessPlan(plan);
-    const providerId = (plan.steps || []).find((step) => step.enabled && step.providerId)?.providerId;
+    const providerId = providerIdForTask(activeLlmOperation || $("postprocessOperation").value)
+      || (plan.steps || []).find((step) => step.enabled && step.providerId)?.providerId;
     // 记住的供应商若已不在工具箱下拉（如未填 URL 的 #2/#3），保持默认选中，避免工具箱与表单不一致。
     if (providerId && Array.from($("postprocessProvider").options).some((option) => option.value === providerId)) {
       $("postprocessProvider").value = providerId;

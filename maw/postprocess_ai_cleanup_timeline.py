@@ -8,6 +8,40 @@ from collections.abc import Mapping, Sequence
 from maw.postprocess_ai_cleanup_items import item_text_spans
 
 
+def escape_source_text(text: str) -> str:
+    """Keep source syntax literal; only inserted unescaped markers edit it."""
+    return text.replace("\\", "\\\\").replace("~", "\\~").replace("%", "\\%").replace("\n", "\\n").replace("\r", "\\r")
+
+
+def _marked_source(body: str) -> tuple[str, set[int]]:
+    output: list[str] = []
+    mask: set[int] = set()
+    cutting = False
+    cut_start = 0
+    cursor = 0
+    escapes = {"\\": "\\", "~": "~", "%": "%", "n": "\n", "r": "\r"}
+    while cursor < len(body):
+        if body[cursor] == "\\" and cursor + 1 < len(body) and body[cursor + 1] in escapes:
+            char = escapes[body[cursor + 1]]
+            cursor += 2
+        elif body.startswith("~~", cursor):
+            if cutting and len(output) == cut_start:
+                raise ValueError("划删标记必须配对且非空")
+            cutting = not cutting
+            cut_start = len(output)
+            cursor += 2
+            continue
+        else:
+            char = body[cursor]
+            cursor += 1
+        if cutting:
+            mask.add(len(output))
+        output.append(char)
+    if cutting:
+        raise ValueError("划删标记必须配对且非空")
+    return "".join(output), mask
+
+
 def draft_line(clip_id: str, text: str, deleted: Sequence[int] = (), items: Sequence[Mapping[str, object]] = ()) -> str:
     spans = item_text_spans(text, items) if deleted else []
     removed = set(deleted)
@@ -18,7 +52,7 @@ def draft_line(clip_id: str, text: str, deleted: Sequence[int] = (), items: Sequ
         if (offset in mask) != cutting:
             output.append("~~")
             cutting = not cutting
-        output.append(char)
+        output.append(escape_source_text(char))
     if cutting:
         output.append("~~")
     return f"[{clip_id}] {''.join(output)}"
@@ -41,25 +75,16 @@ def parse_timeline(text: str, rows: Sequence[Mapping[str, str]], items_by_id: Ma
         body = match[2]
         note = ""
         review = False
-        annotation = re.search(r"\s*%{1,2}(待确认|待核查|删除|删减)[：:](.*?)%{1,2}\s*$", body)
+        annotation = re.search(r"\s*(?<!\\)%{1,2}(待确认|待核查|删除|删减)[：:](.*?)(?<!\\)%{1,2}\s*$", body)
         if annotation:
             note = annotation[2].strip()
             review = annotation[1] in {"待确认", "待核查"}
             if not note:
                 raise ValueError("待确认或删除注释需要具体原因")
             body = body[:annotation.start()]
-        pieces = body.split("~~")
-        if len(pieces) % 2 == 0 or any(not pieces[index] for index in range(1, len(pieces), 2)):
-            raise ValueError("划删标记必须配对且非空")
-        original = "".join(pieces)
+        original, mask = _marked_source(body)
         if original != row["asrText"]:
             raise ValueError(f"{row['id']} 改写了原文；只能插入划删或行尾注释")
-        mask: set[int] = set()
-        cursor = 0
-        for index, piece in enumerate(pieces):
-            if index % 2:
-                mask.update(range(cursor, cursor + len(piece)))
-            cursor += len(piece)
         items = items_by_id[row["id"]]
         spans = item_text_spans(original, items)
         if spans is None:

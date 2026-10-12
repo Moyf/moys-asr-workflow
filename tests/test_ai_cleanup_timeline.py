@@ -5,8 +5,8 @@ import re
 
 from maw.postprocess import LlmPostprocessRequest, OutputMode, run_llm_postprocess
 from maw.postprocess_ai_cleanup import AiCleanupRequest, build_clips, run_ai_cleanup
-from maw.postprocess_ai_cleanup_items import cleaned_srt_segments, remaining_text
-from maw.postprocess_ai_cleanup_timeline import parse_timeline
+from maw.postprocess_ai_cleanup_items import cleaned_srt_segments, collapse_echo, remaining_text
+from maw.postprocess_ai_cleanup_timeline import draft_line, escape_source_text, parse_timeline
 from maw.postprocess_comparison import comparison_data, render_comparison
 from maw.postprocess_io import render_srt
 from maw.postprocess_llm import LlmClientError
@@ -75,6 +75,28 @@ class TimelineCleanupTest(CompactContainerAssertions, AiCleanupTestCase):
         self.assertNotIn("gap_remove", project)
         self.assertEqual(project["markers"]["items"][0]["review"]["status"], "pending")
 
+    def test_repeated_digits_and_negation_are_not_echo_shortcuts(self):
+        for value in ("1212元", "１２１２元", "十二十二元", "不能不能公开", "not not available"):
+            with self.subTest(value=value):
+                self.assertEqual(collapse_echo(value), value)
+        self.assertEqual(collapse_echo("这个这个方法"), "这个方法")
+        source = _write_project(self.directory, _project([{
+            "start": 0, "end": 600, "text": "1212元",
+            "items": [{"start": 0, "end": 200, "text": "12"}, {"start": 200, "end": 400, "text": "12"}, {"start": 400, "end": 600, "text": "元"}],
+        }]))
+        artifact = run_ai_cleanup(
+            AiCleanupRequest(project_path=source, srt_path=None, script_path=None, output_mode=OutputMode.BOTH, review_enabled=False),
+            complete=lambda _p, _r: {"timeline": "[c001] ~~12~~12元"},
+        )
+        project = json.loads(artifact.project_path.read_text(encoding="utf-8"))
+        self.assertEqual(artifact.stats["removedItems"], 0)
+        self.assertNotIn("gap_remove", project)
+        self.assertIn("1212元", artifact.srt_path.read_text(encoding="utf-8-sig"))
+        self.assertEqual(project["markers"]["items"][0]["review"]["status"], "pending")
+        artifact, project, _ = self.execute(["这不能不能公开"], "[c001] 这~~不能~~不能公开")
+        self.assertEqual(artifact.stats["removedItems"], 0)
+        self.assertNotIn("gap_remove", project)
+
     def test_final_audit_can_restore_partial_cut(self):
         artifact, project, _ = self.execute(["这个这个方法"], "[c001] ~~这个~~这个方法", reviews=[{"id": "c001", "reason": "复核：可能是强调，请回听"}])
         self.assertEqual(artifact.stats["editedSegments"], 0)
@@ -108,6 +130,23 @@ class TimelineCleanupTest(CompactContainerAssertions, AiCleanupTestCase):
         parsed = parse_timeline("[c001] ~~介绍~~，方法。", rows, {"c001": items})
         self.assertEqual(parsed["decisions"][0]["deleteItems"], [0])
         self.assertEqual(remaining_text(rows[0]["asrText"], items, [0]), "，方法。")
+
+    def test_literal_markers_and_backslashes_roundtrip_with_inserted_deletions(self):
+        for text in ("原文~~强调~~保留", "100% %待确认：这是原文%", r"路径\new\文件~~", "第一行\n第二行"):
+            with self.subTest(text=text):
+                items = [{"text": char} for char in text]
+                rows = [{"id": "c001", "asrText": text, "scriptLine": ""}]
+                kept = parse_timeline(draft_line("c001", text), rows, {"c001": items})
+                self.assertEqual(kept["decisions"][0]["decision"], "keep")
+                edited = parse_timeline(draft_line("c001", text, [0], items), rows, {"c001": items})
+                self.assertEqual(edited["decisions"][0]["deleteItems"], [0])
+                review = parse_timeline(draft_line("c001", text) + " %待确认：人工核查%", rows, {"c001": items})
+                self.assertEqual(review["decisions"][0]["reason"], "人工核查")
+        literal = "~~原文格式~~"
+        artifact, project, calls = self.execute([literal], "[c001] " + escape_source_text(literal))
+        self.assertEqual(project["segments"][0]["text"], literal)
+        self.assertEqual(calls[0][1][0]["sourceLine"], draft_line("c001", literal))
+        self.assertIn(literal, artifact.srt_path.read_text(encoding="utf-8-sig"))
 
     def test_same_manuscript_line_supports_multiple_short_cues(self):
         rows = build_clips([_segment(0, 1000, "先介绍工具"), _segment(1000, 2000, "再讲操作")], ["先介绍工具再讲操作"])

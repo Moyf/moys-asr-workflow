@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import re
 from collections.abc import Mapping, Sequence
+from maw.postprocess_ai_cleanup_safety import protected_information_loss_reason
 
 
 def collapse_echo(text: str) -> str:
@@ -12,7 +13,7 @@ def collapse_echo(text: str) -> str:
     value = text
     pattern = re.compile(r"(.{2,40}?)\1+")
     for _ in range(3):
-        updated = pattern.sub(r"\1", value)
+        updated = pattern.sub(lambda match: match[0] if protected_information_loss_reason(match[0], match[1]) else match[1], value)
         if updated == value:
             break
         value = updated
@@ -74,6 +75,25 @@ def scoped_item_ranges(segment: Mapping[str, object], deleted: Sequence[int]) ->
     return ranges
 
 
+def verified_scope_indices(entry: Mapping[str, object], segment: Mapping[str, object]) -> range:
+    """Verify a scope against source words even when its audio is restored."""
+    scope = entry.get("cleanup_scope")
+    items = segment.get("items")
+    if not isinstance(scope, Mapping) or not isinstance(items, list) or scope.get("segment_id") != segment.get("id"):
+        return range(0)
+    first, last = scope.get("item_start"), scope.get("item_end")
+    if type(first) is not int or type(last) is not int or not 0 <= first < last <= len(items):
+        return range(0)
+    selected = items[first:last]
+    if not all(isinstance(item, Mapping) for item in selected):
+        return range(0)
+    if type(entry.get("start")) is not int or type(entry.get("end")) is not int or entry["end"] <= entry["start"]:
+        return range(0)
+    if entry["start"] != selected[0].get("start") or entry["end"] != selected[-1].get("end") or scope.get("text") != "".join(str(i.get("text") or "") for i in selected):
+        return range(0)
+    return range(first, last)
+
+
 def active_deleted_items(project: Mapping[str, object], items: Sequence[Mapping[str, object]], *, segment: Mapping[str, object] | None = None) -> list[int]:
     """Return source item indices covered by active AI-owned cuts."""
     gap_remove = project.get("gap_remove")
@@ -88,16 +108,8 @@ def active_deleted_items(project: Mapping[str, object], items: Sequence[Mapping[
     for entry in ai_ranges:
         if not isinstance(entry, Mapping) or type(entry.get("start")) is not int or type(entry.get("end")) is not int:
             continue
-        scope = entry.get("cleanup_scope")
-        if scope is not None:
-            if not isinstance(scope, Mapping) or segment is None or scope.get("segment_id") != segment.get("id"):
-                continue
-            first, last = scope.get("item_start"), scope.get("item_end")
-            if type(first) is not int or type(last) is not int or not 0 <= first < last <= len(items):
-                continue
-            selected = items[first:last]
-            if entry.get("start") != selected[0].get("start") or entry.get("end") != selected[-1].get("end") or scope.get("text") != "".join(str(i.get("text") or "") for i in selected):
-                continue
+        if segment is None or not verified_scope_indices(entry, segment):
+            continue
         verified.append(entry)
     ai_ranges = verified
     active = [gap for gap in gap_remove.get("gaps", []) if isinstance(gap, Mapping) and gap.get("removed", True)]

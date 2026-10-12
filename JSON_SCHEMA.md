@@ -948,6 +948,6 @@ uv run python edit.py your_generated.mosp
 
 ### AI 口播整理的文字编辑稿
 
-编辑稿是处理协议，不是工程新真源，不增加 MOSP 顶层 schema。未标记文字保留；`~~完整 item~~` 经本地校验后映射到 `gap_remove.provenance.sources.ai_cleanup`，`%待确认：理由%` 映射到 `markers.items[*].review` 的 `pending` 区段。模型只返回原文划删，不返回时间码。
+编辑稿是处理协议，不是工程新真源，不增加 MOSP 顶层 schema。未标记文字保留；`~~完整 item~~` 经本地校验后映射到 `gap_remove.provenance.sources.ai_cleanup`，`%待确认：理由%` 映射到 `markers.items[*].review` 的 `pending` 区段。原文字面 `~`、`%`、反斜杠和换行在编辑底稿中转义，解码后逐字核验；模型只插入未转义的处理标记，不返回时间码。重新断句按源 item 重绑可靠局部 scope，原文、cut 时间并集与人工恢复保持可用。
 
 句内删减保留 `segments[*].text/items`，导出时根据仍处于激活状态的 AI 空隙派生文字；普通 `audio_gate` 空隙不删字幕文字，恢复 AI 空隙后导出文字恢复。整段删除另设置 `disabled=true`，其绑定副字幕同时禁用；局部删减不会改写副字幕。所有生成时间范围仍为整数毫秒。对比 HTML 使用本地 `maw.ai-comparison.v1` 快照数据，不作为字幕或工程真源。

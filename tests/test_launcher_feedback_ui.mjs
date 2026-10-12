@@ -295,11 +295,13 @@ function providerOwnershipHarness({ remembered = {} } = {}) {
   ];
   const requests = [];
   const noop = () => {};
+  const storage = new Map([["maw.launcher.llm.provider_by_task", JSON.stringify(remembered)]]);
   const context = vm.createContext({
-    $: element, window: { MAWLauncher: { config: { postprocessProviders: providers } } },
+    $: element, window: { MAWLauncher: { config: { postprocessProviders: providers } }, localStorage: { getItem: key => storage.get(key), setItem: (key, value) => storage.set(key, value) } },
     Option: function Option(text, value) { this.textContent = text; this.value = value; },
     t: key => key, postprocessApiKeyRequest: 0, llmProviderByTask: remembered,
     LLM_PROVIDER_TASK_GROUPS: { proofread: "proofread", ai_cleanup: "cleanup" },
+    LLM_PROVIDER_BY_TASK_KEY: "maw.launcher.llm.provider_by_task",
     bridge(method, payload) { return new Promise(resolve => requests.push({ method, payload, resolve })); },
     renderModelChoices: noop, clearSettingsErrors: noop, setSettingsSaveStatus: noop,
     AUTO_STEP_ORDER: ["match", "cleanup"], AUTO_STEP_CHECKBOXES: { match: "autoStepMatch", cleanup: "autoStepCleanup" },
@@ -318,11 +320,11 @@ function providerOwnershipHarness({ remembered = {} } = {}) {
     "fillProviderSelects", "syncProviderOptionLabels", "providerLabel", "providerKeyStatusText",
     "renderProviderKeyStatus", "loadPostprocessApiKey",
     "updateCustomDisplayName", "renderProvider", "knownProviderId", "llmTaskGroup",
-    "providerIdForTask", "rememberProviderForTask", "stepProviderId", "applyAutoPostprocessPlan", "autoPlanFromControls",
+    "loadLlmProviderByTask", "saveLlmProviderByTask", "providerIdForTask", "rememberProviderForTask", "stepProviderId", "applyAutoPostprocessPlan", "initializeAutoPostprocess", "autoPlanFromControls",
   ];
   vm.runInContext(functions.map(launcherFunction).join("\n"), context);
   context.fillProviderSelects("deepseek");
-  return { context, element, providers, requests };
+  return { context, element, providers, requests, storage };
 }
 
 test("editing an unconfigured settings slot preserves the toolbox provider and loads its own key", async () => {
@@ -391,6 +393,40 @@ test("cleanup restoration keeps current task memory and falls back to a visible 
     assert.equal(ui.context.stepProviderId("cleanup"), "deepseek");
     assert.equal(ui.context.stepProviderId("cleanup"), "deepseek");
   }
+});
+
+test("legacy cleanup provider memory migrates before an older plan is applied", () => {
+  for (const [remembered, expected] of [
+    [{ ai_cleanup: "qwen" }, "qwen"],
+    [{ ai_cleanup: "qwen", cleanup: "deepseek" }, "deepseek"],
+    [{ ai_cleanup: "qwen", cleanup: "deleted-provider" }, "qwen"],
+  ]) {
+    const ui = providerOwnershipHarness({ remembered });
+    ui.element("postprocessOperation").value = "ai_cleanup";
+    ui.context.loadLlmProviderByTask();
+    ui.context.window.MAWLauncher.config.postprocessAutoPlan = { enabled: true, steps: [{ id: "match", enabled: true, aiCleanup: true, providerId: "custom" }] };
+    ui.context.initializeAutoPostprocess();
+    assert.equal(ui.context.stepProviderId("cleanup"), expected);
+    assert.equal(ui.element("postprocessProvider").value, expected);
+    const stored = JSON.parse(ui.storage.get("maw.launcher.llm.provider_by_task"));
+    assert.equal(stored.cleanup, expected);
+    assert.equal(Object.hasOwn(stored, "ai_cleanup"), false);
+  }
+});
+
+test("shared comparison option restores from every AI step and survives saving", () => {
+  for (const stepId of ["cleanup", "proofread", "resegment", "translate"]) {
+    const ui = providerOwnershipHarness();
+    ui.context.applyAutoPostprocessPlan({ steps: [{ id: stepId, enabled: true, generateComparison: true }] });
+    assert.equal(ui.element("postprocessGenerateComparison").checked, true, stepId);
+    const plan = ui.context.autoPlanFromControls();
+    for (const aiStep of plan.steps.filter(step => ["cleanup", "proofread", "resegment", "translate"].includes(step.id))) {
+      assert.equal(aiStep.generateComparison, true, `${stepId} -> ${aiStep.id}`);
+    }
+  }
+  const ui = providerOwnershipHarness();
+  ui.context.applyAutoPostprocessPlan({ steps: [{ id: "proofread", generateComparison: false }] });
+  assert.equal(ui.element("postprocessGenerateComparison").checked, false);
 });
 
 test("green-screen generation does not require or disable for missing media", () => {

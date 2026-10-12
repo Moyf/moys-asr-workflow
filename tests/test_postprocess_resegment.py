@@ -8,11 +8,17 @@ from unittest import mock
 
 from maw.postprocess import LlmPostprocessRequest, OutputMode, run_llm_postprocess
 from maw.postprocess_io import read_project
+from maw.postprocess_io import render_srt
+from maw.postprocess_ai_cleanup import AiCleanupRequest, run_ai_cleanup
+from maw.postprocess_ai_cleanup_items import cleaned_srt_segments
+from maw.script_alignment import _gap_ranges_from_provenance
 from maw.postprocess_llm import LlmClientError, LlmSettings
 from maw.postprocess_resegment import (
     char_count,
     complete_boundaries,
     normalize_max_chars,
+    remap_cleanup_scopes,
+    source_units,
 )
 
 
@@ -58,6 +64,107 @@ class ResegmentTests(unittest.TestCase):
 
     def last_boundary(self, _prompt, rows):
         return {"draft": f"[{rows[-1]['items'][-1]['id']}]"}
+
+    def test_itemless_cue_cannot_remove_cut_cue_word_bindings(self):
+        import copy
+        from maw.postprocess_ai_cleanup import _build_gap_remove
+        from maw.postprocess_ai_cleanup_items import scoped_item_ranges
+        source = timed("这个这个方法", list("这个这个方法"), id="cut-cue")
+        itemless = {"start": 1300, "end": 2500, "text": "没有词级时间", "id": "plain-cue"}
+        project = {"segments": [source, itemless]}
+        project["gap_remove"] = _build_gap_remove(project, scoped_item_ranges(source, [0, 1]))
+        self.source.write_text(json.dumps(project, ensure_ascii=False), encoding="utf-8")
+        calls = []
+        def complete(_prompt, rows):
+            calls.append(rows)
+            return self.last_boundary(_prompt, rows)
+        artifact = run_llm_postprocess(
+            LlmPostprocessRequest(project_path=self.source, srt_path=None, output_mode=OutputMode.BOTH, operation="resegment", custom_prompt=""),
+            complete=complete,
+        )
+        after = read_project(artifact.project_path)
+        self.assertEqual(len(calls), 2)
+        self.assertEqual([s["id"] for s in after["segments"]], ["cut-cue", "plain-cue"])
+        self.assertNotIn("这个这个方法", render_srt(after))
+        self.assertIn("这个方法", render_srt(after))
+        self.assertIn("没有词级时间", render_srt(after))
+        by_source = {i: source_units(segment, i) for i, segment in enumerate(project["segments"])}
+        # A future caller must fail safely if it bypasses the separate batches.
+        mixed = [{"id": "mixed", "start": 0, "end": 2500, "text": source["text"] + itemless["text"]}]
+        with self.assertRaisesRegex(ValueError, "词项绑定"):
+            remap_cleanup_scopes(copy.deepcopy(project), project["segments"], mixed, [[*by_source[0], *by_source[1]]], by_source)
+
+    def test_bound_main_cue_is_preserved_while_unbound_cues_resegment_and_reopen(self):
+        source = timed("绑定正文", ["绑定", "正文"], 700, id="bound-main")
+        project = {
+            "segments": [timed("介绍方法", ["介绍", "方法"], id="first"), source, timed("后续内容", ["后续", "内容"], 2000, id="last")],
+            "multi_subtitle": {"schema": "moy.asr.multi_subtitle.v1", "enabled": False, "display_mode": "both", "tracks": [
+                {"id": "english", "role": "extension", "segments": [{"id": "translated", "text": "Bound text", "start": 700, "end": 1100}]}
+            ], "bindings": [{"id": "one-to-one", "track_id": "english", "main_segment_ids": ["bound-main"], "extension_segment_ids": ["translated"], "start_offset_ms": 0, "end_offset_ms": 0}]},
+        }
+        self.source.write_text(json.dumps(project, ensure_ascii=False), encoding="utf-8")
+        calls = []
+        def complete(_prompt, rows):
+            calls.append(rows)
+            return self.last_boundary(_prompt, rows)
+        artifact = run_llm_postprocess(
+            LlmPostprocessRequest(project_path=self.source, srt_path=None, output_mode=OutputMode.BOTH, operation="resegment", custom_prompt="", max_chars=2),
+            complete=complete,
+        )
+        reopened = read_project(artifact.project_path)
+        self.assertEqual([row["id"] for batch in calls for row in batch], ["c0001", "c0003"])
+        self.assertEqual(next(segment for segment in reopened["segments"] if segment["id"] == "bound-main"), source)
+        self.assertEqual([s["text"] for s in reopened["segments"]], ["介绍", "方法", "绑定正文", "后续", "内容"])
+        self.assertEqual(reopened["multi_subtitle"], read_project(self.source)["multi_subtitle"])
+        self.assertTrue(any("一对一" in warning and "超过最大 2 字" in warning for warning in artifact.warnings))
+        self.assertIn("绑定正文", artifact.srt_path.read_text(encoding="utf-8-sig"))
+
+    def test_cleanup_split_merge_and_manual_restore_preserve_words_and_audio(self):
+        source = timed("这个这个这个方法", list("这个这个这个方法"), id="original")
+        for item in source["items"]:
+            item["end"] -= 80  # A cut spanning a split must retain internal pauses.
+        self.source.write_text(json.dumps({"segments": [source]}, ensure_ascii=False), encoding="utf-8")
+        cleanup = run_ai_cleanup(
+            AiCleanupRequest(project_path=self.source, srt_path=None, script_path=None, output_mode=OutputMode.BOTH, review_enabled=False),
+            complete=lambda _p, _r: {"timeline": "[c001] ~~这个这个~~这个方法"},
+        )
+        cleaned = read_project(cleanup.project_path)
+        self.assertEqual("".join(s["text"] for s in cleaned_srt_segments(cleaned, cleaned["segments"])), "这个方法")
+        original_gaps = cleaned["gap_remove"]["gaps"]
+        split = run_llm_postprocess(
+            LlmPostprocessRequest(project_path=cleanup.project_path, srt_path=None, output_mode=OutputMode.BOTH, operation="resegment", custom_prompt=""),
+            complete=lambda _p, _r: {"draft": "[c0001a0001]\n[c0001a0003]\n[c0001a0008]"},
+        )
+        split_project = read_project(split.project_path)
+        self.assertEqual("".join(s["text"] for s in split_project["segments"]), source["text"])
+        self.assertEqual("".join(s["text"] for s in cleaned_srt_segments(split_project, split_project["segments"])), "这个方法")
+        provenance = split_project["gap_remove"]["provenance"]
+        cuts = provenance["sources"]["ai_cleanup"]
+        self.assertEqual(len([r for r in cuts if r.get("cleanup_scope")]), 3)
+        self.assertEqual(len([r for r in cuts if not r.get("cleanup_scope")]), 2)
+        self.assertEqual(_gap_ranges_from_provenance(provenance), _gap_ranges_from_provenance(cleaned["gap_remove"]["provenance"]))
+        self.assertEqual(split_project["gap_remove"]["gaps"], original_gaps)
+        self.assertIn("这个方法", split.srt_path.read_text(encoding="utf-8-sig"))
+        # Re-running cleanup sees retained words, rather than resurrected ones.
+        seen_text = []
+        def keep_remaining(_prompt, rows):
+            seen_text.extend(row["asrText"] for row in rows)
+            return {"timeline": "\n".join(f"[{row['id']}] {row['asrText']}" for row in rows)}
+        run_ai_cleanup(
+            AiCleanupRequest(project_path=split.project_path, srt_path=None, script_path=None, output_mode=OutputMode.BOTH, review_enabled=False),
+            complete=keep_remaining,
+        )
+        self.assertEqual("".join(seen_text), "这个方法")
+        merged = run_llm_postprocess(
+            LlmPostprocessRequest(project_path=split.project_path, srt_path=None, output_mode=OutputMode.BOTH, operation="resegment", custom_prompt=""),
+            complete=self.last_boundary,
+        )
+        merged_project = read_project(merged.project_path)
+        self.assertEqual("".join(s["text"] for s in cleaned_srt_segments(merged_project, merged_project["segments"])), "这个方法")
+        gap_remove = merged_project["gap_remove"]
+        gap_remove["provenance"]["manual_overrides"].append({"id": "restore", "start": 0, "end": 720, "removed": False})
+        gap_remove["gaps"] = _gap_ranges_from_provenance(gap_remove["provenance"])
+        self.assertIn(source["text"], render_srt(merged_project))
 
     def test_sparse_draft_preserves_punctuation_and_item_times(self):
         source = timed("介绍，方法。", ["介绍", "方法"])

@@ -218,7 +218,7 @@
     "shared/utils/split-trim.js": "322d10161f098d7730c5c1e3ff9d0c293a2b12e16311bd98d8f0cd69938ac54d",
     "shared/utils/timeline.js": "906181e39d7a1aa59919ed5b073383d19d4be545f1ff18ec721fcf013a283182",
     "shared/utils/settings.js": "04070ab6822b8d95545bc12430542d650ed4483a37fbeacf47ce4f6307cafd76",
-    "shared/utils/gap-remove.js": "5d88757283e06f853bf9bdeb1f0f2a98347f4b502fac3888875a8d0f17f8cd70",
+    "shared/utils/gap-remove.js": "3ee8b4ffc21f99c8beab9933befe729faadf10a68a1d8a62dc73e3a001d683d3",
     "shared/utils/history.js": "0929c838e2fb6359d9e441dfc18b663a68b23b17319a43ea5f6855aace5483f7",
     "shared/utils/markers.js": "e24a8cf115a58475fc7b293f550dbdebf52cbedca54277315a36d739050d4dbf",
     "shared/utils/multi-subtitle.js": "030482c28fd76a1fc1241feaad5a96c64511b91de12e8efbc16fffe48603b42b",
@@ -477,7 +477,7 @@
         "format": "esm"
       },
       "web/shared/utils/gap-remove.js": {
-        "bytes": 9033,
+        "bytes": 9087,
         "imports": [],
         "format": "esm"
       },
@@ -1064,7 +1064,7 @@
             "bytesInOutput": 10099
           },
           "web/shared/utils/gap-remove.js": {
-            "bytesInOutput": 4347
+            "bytesInOutput": 4378
           },
           "web/shared/utils/history.js": {
             "bytesInOutput": 1328
@@ -1196,7 +1196,7 @@
             "bytesInOutput": 1086476
           }
         },
-        "bytes": 1443497
+        "bytes": 1443528
       }
     }
   }
