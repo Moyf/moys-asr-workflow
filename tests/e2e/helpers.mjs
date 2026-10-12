@@ -241,7 +241,7 @@ export async function disableOnboarding(page) {
 
 // Follow the public settings entry points after project/global settings were separated.
 export async function openSettingsPage(page, key) {
-  const project = ['timebase', 'project-tracks', 'subtitle-style', 'project-color', 'project-sticker'].includes(key);
+  const project = ['timebase', 'project-tracks', 'multi-subtitle', 'subtitle-style', 'project-color', 'project-sticker'].includes(key);
   const panel = project ? 'project-settings' : 'editor-settings';
   const other = project ? 'editor-settings' : 'project-settings';
   if (await page.locator(`#${other}-panel`).isVisible()) await page.locator(`#${other}-close`).click();
