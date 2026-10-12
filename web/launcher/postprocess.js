@@ -1067,6 +1067,9 @@
     result.classList.toggle("success", kind === "success");
     result.classList.toggle("error", kind === "error");
     renderPostprocessResultActions();
+    if (kind === "error" || options.revealWarning === true) {
+      window.MAWLauncher.revealFeedback?.(result, message);
+    }
   }
 
   function newPostprocessOperationId() {
@@ -1213,6 +1216,8 @@
     status.textContent = message;
     status.classList.toggle("success", kind === "success");
     status.classList.toggle("error", kind === "error");
+    if (kind === "error") window.MAWLauncher.revealFeedback?.(status, message);
+    else if (!message) window.MAWLauncher.revealFeedback?.(status, "");
     if (message && timeoutMs > 0) {
       saveStatusTimer = window.setTimeout(() => setSettingsSaveStatus(""), timeoutMs);
     }
@@ -1437,7 +1442,7 @@
         await window.MAWLauncher.openServerEditor();
       }
       const warnings = Array.isArray(result.warnings) ? result.warnings : [];
-      setResult(`${t("toolbox_done")}\n${result.projectPath}${warnings.length ? `\n${warnings.join("\n")}` : ""}`, "success");
+      setResult(`${t("toolbox_done")}\n${result.projectPath}${warnings.length ? `\n${warnings.join("\n")}` : ""}`, "success", { revealWarning: warnings.length > 0 });
     } finally {
       setBusy(false);
     }
@@ -1477,6 +1482,7 @@
       hint.textContent = message;
       hint.classList.toggle("visible", Boolean(message));
     }
+    window.MAWLauncher.revealFeedback?.(hint, message);
   }
 
   function clearSettingsErrors() {
@@ -1623,7 +1629,7 @@
     const warnings = Array.isArray(result.warnings) ? [...result.warnings] : [];
     if (result.comparisonPath) warnings.push(`${t("toolbox_comparison_path")} ${result.comparisonPath}`);
     if (result.reportPath) warnings.push(`${t("toolbox_ocr_report_path")} ${result.reportPath}`);
-    setResult(`${t("toolbox_done")}${warnings.length ? `\n${warnings.join("\n")}` : ""}`, "success");
+    setResult(`${t("toolbox_done")}${warnings.length ? `\n${warnings.join("\n")}` : ""}`, "success", { revealWarning: warnings.length > 0 });
   }
 
   // AI 整理统计：五个分项计数；有待复核时只陈述事实并提示确认，不宣称已完成人工校对。
@@ -2204,7 +2210,7 @@
       });
       if (result.ok) {
         applySubtitleResult(result, { kind: "timestamps" });
-        if (scriptMode) setResult([t("toolbox_done"), scriptAlignmentSummary(result.report), ...(result.warnings || [])].filter(Boolean).join("\n"), "success");
+        if (scriptMode) setResult([t("toolbox_done"), scriptAlignmentSummary(result.report), ...(result.warnings || [])].filter(Boolean).join("\n"), "success", { revealWarning: Boolean(result.warnings?.length) });
       }
       else {
         const message = postprocessErrorText(result);

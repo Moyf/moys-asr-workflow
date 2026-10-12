@@ -170,8 +170,8 @@
     const ids = new Set(plan?.conversions.map(c => c.id) || []);
     const count = bindings.filter(binding => binding.main_segment_ids?.some(id => ids.has(id)) || ids.has(binding.main_segment_id)).length;
     document.getElementById('word-conversion-summary').textContent = ui(
-      `可转换 ${plan?.conversions.length || 0} 句，生成 ${plan?.generatedCount || 0} 条字幕；跳过 ${plan?.skipped.length || 0} 句，解除 ${count} 个副字幕绑定。`,
-      `Convert ${plan?.conversions.length || 0} sentences into ${plan?.generatedCount || 0} subtitles; skip ${plan?.skipped.length || 0} sentences and remove ${count} secondary subtitle bindings.`,
+      `将转换${plan?.conversions.length || 0}句，生成${plan?.generatedCount || 0}条新的字幕（跳过${plan?.skipped.length || 0}句，解除${count}个副字幕绑定）`,
+      `Convert ${plan?.conversions.length || 0} sentences into ${plan?.generatedCount || 0} new subtitles (skip ${plan?.skipped.length || 0} sentences and unlink ${count} secondary subtitles)`,
     );
     const reasons = {
       missing: ui('没有有效字词时间码', 'No valid timed text blocks'),

@@ -159,6 +159,7 @@ export interface WaveformOptions {
   enterOverlayCueEditor?(...args: unknown[]): void;
   showExtensionContextMenu?(...args: unknown[]): void;
   enterExtensionCueEditor?(...args: unknown[]): void;
+  onMainCueDoubleClickBlocked?(): void;
   activateExtensionCue?(...args: unknown[]): void;
   onBeginEdit?(...args: unknown[]): void;
   onCommitEdit?(...args: unknown[]): void;

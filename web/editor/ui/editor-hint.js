@@ -34,6 +34,91 @@
   }
 
 
+  const inlineWarningMessages = new WeakMap();
+  const inlineWarningSelector = [
+    '[role="alert"]', '.warning', '.ass-frame-warnings',
+    '#multi-subtitle-split-error', '#timed-text-edit-single-hint:not([hidden])',
+  ].join(', ');
+
+  function revealInlineWarning(element, message = element?.textContent) {
+    if (!element) return;
+    const value = String(message || '').trim();
+    if (!value) {
+      inlineWarningMessages.delete(element);
+      return;
+    }
+    if (!element.isConnected || element.hidden || !element.getClientRects().length) return;
+    if (inlineWarningMessages.get(element) === value) return;
+    const rect = element.getBoundingClientRect();
+    let visibleTop = Math.max(0, rect.top);
+    let visibleBottom = Math.min(global.innerHeight || 0, rect.bottom);
+    for (let parent = element.parentElement; parent && parent !== document.body; parent = parent.parentElement) {
+      const style = global.getComputedStyle(parent);
+      if (!/(auto|scroll|hidden|clip)/.test(style.overflowY)) continue;
+      const clip = parent.getBoundingClientRect();
+      visibleTop = Math.max(visibleTop, clip.top);
+      visibleBottom = Math.min(visibleBottom, clip.bottom);
+    }
+    if (visibleTop <= rect.top + 1 && visibleBottom >= rect.bottom - 1) {
+      inlineWarningMessages.set(element, value);
+      return;
+    }
+    inlineWarningMessages.set(element, value);
+    const reducedMotion = global.matchMedia?.('(prefers-reduced-motion: reduce)').matches;
+    element.scrollIntoView({ behavior: reducedMotion ? 'auto' : 'smooth', block: 'center', inline: 'nearest' });
+  }
+
+  function installInlineWarningVisibility() {
+    if (!document.body || typeof global.MutationObserver !== 'function') return;
+    const elementFor = (node) => node?.nodeType === 1 ? node : node?.parentElement;
+    const collectClosest = (root, candidates) => {
+      const warning = root?.closest?.(inlineWarningSelector);
+      if (warning) candidates.add(warning);
+    };
+    const collectSubtree = (root, candidates) => {
+      collectClosest(root, candidates);
+      root?.querySelectorAll?.(inlineWarningSelector).forEach((element) => candidates.add(element));
+    };
+    const observer = new global.MutationObserver((records) => {
+      const targets = new Set();
+      const subtrees = new Set();
+      const candidates = new Set();
+      records.forEach((record) => {
+        const target = elementFor(record.target);
+        if (target) targets.add(target);
+        // Insertion changes the target warning's text, but does not require a
+        // traversal of its completed parent list for every appended row.
+        if (record.type === 'attributes' && target) subtrees.add(target);
+        record.addedNodes?.forEach((node) => {
+          const root = elementFor(node);
+          if (root) subtrees.add(root);
+        });
+      });
+      targets.forEach((root) => collectClosest(root, candidates));
+      subtrees.forEach((root) => {
+        // A newly inserted/changed ancestor already covers nested records.
+        for (let parent = root.parentElement; parent; parent = parent.parentElement) {
+          if (subtrees.has(parent)) return;
+        }
+        collectSubtree(root, candidates);
+      });
+      candidates.forEach((element) => revealInlineWarning(element));
+    });
+    observer.observe(document.body, {
+      subtree: true,
+      childList: true,
+      characterData: true,
+      attributes: true,
+      attributeFilter: ['class', 'hidden', 'role'],
+    });
+    const initial = new Set();
+    collectSubtree(document.body, initial);
+    initial.forEach((element) => revealInlineWarning(element));
+  }
+
+  installInlineWarningVisibility();
+
+
 
   function flashHint(msg, type = 'default', options = {}) {
     let stack = document.getElementById('hint-stack');
@@ -78,6 +163,7 @@
     dismissHintCard,
     applyHintPosition,
     flashHint,
+    revealInlineWarning,
     get lastScaleLimitMsg() { return lastScaleLimitMsg; },
     set lastScaleLimitMsg(v) { lastScaleLimitMsg = v; },
     get lastScaleLimitAt() { return lastScaleLimitAt; },

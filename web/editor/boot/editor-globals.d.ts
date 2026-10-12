@@ -160,6 +160,12 @@ declare const activeExtensionSegments: any;
 interface Window {
   AsrEditorUtils: any;
   MAWE_I18N: any;
+  MaweMarkersPanel?: {
+    createAiCleanupReviewMuteButton?: (markerId: string) => HTMLButtonElement;
+    updateAiCleanupReviewMuteButton?: (button: HTMLElement, markerId: string) => void;
+    updateAiCleanupReviewStatusButton?: (button: HTMLElement, marker: any) => void;
+    refreshAiCleanupReviewMuteButtons?: () => void;
+  };
   ASR_EDITOR_PALETTE?: Array<{ name: string; value: string }>;
   showSaveFilePicker?: any;
 }

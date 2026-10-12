@@ -248,6 +248,8 @@ export function createWaveformModule(dependencies) {
       const actionsRow = document.createElement('div');
       actionsRow.className = 'markers-item-actions';
       actionsRow.appendChild(reviewToggle);
+      const muteButton = window.MaweMarkersPanel?.createAiCleanupReviewMuteButton?.(markerId);
+      if (muteButton) actionsRow.appendChild(muteButton);
       const deleteButton = document.createElement('button');
       deleteButton.type = 'button';
       deleteButton.className = 'danger';
@@ -297,19 +299,25 @@ export function createWaveformModule(dependencies) {
       });
       const reviewToggle = (/** @type {HTMLElement} */ (popup.querySelector('.markers-review-toggle')));
       if (reviewToggle) {
-        // 无前缀，仅状态名；配色与编辑卡一致（待复核琥珀 / 已确认绿）。
-        reviewToggle.textContent = utils.markerReviewStatusLabel(marker);
-        reviewToggle.classList.toggle('has-review', Boolean(marker.review));
-        reviewToggle.classList.toggle('pending', marker.review?.status === 'pending');
-        reviewToggle.classList.toggle('confirmed', marker.review?.status === 'confirmed');
-        if (marker.review?.reason) {
-          reviewToggle.title = marker.review.reason;
-          reviewToggle.dataset.markerProjectReason = 'true';
-        } else {
-          reviewToggle.title = '';
-          delete reviewToggle.dataset.markerProjectReason;
+        const updateReviewStatus = window.MaweMarkersPanel?.updateAiCleanupReviewStatusButton;
+        if (typeof updateReviewStatus === 'function') updateReviewStatus(reviewToggle, marker);
+        else {
+          // 管理面板模块未加载时保留普通标记的复核状态呈现。
+          reviewToggle.textContent = utils.markerReviewStatusLabel(marker);
+          reviewToggle.classList.toggle('has-review', Boolean(marker.review));
+          reviewToggle.classList.toggle('pending', marker.review?.status === 'pending');
+          reviewToggle.classList.toggle('confirmed', marker.review?.status === 'confirmed');
+          if (marker.review?.reason) {
+            reviewToggle.title = marker.review.reason;
+            reviewToggle.dataset.markerProjectReason = 'true';
+          } else {
+            reviewToggle.title = '';
+            delete reviewToggle.dataset.markerProjectReason;
+          }
         }
       }
+      const muteButton = /** @type {HTMLElement|null} */ (popup.querySelector('[data-ai-cleanup-review-mute]'));
+      if (muteButton) window.MaweMarkersPanel?.updateAiCleanupReviewMuteButton?.(muteButton, marker.id);
     }
 
 

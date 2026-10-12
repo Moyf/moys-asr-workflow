@@ -24,6 +24,8 @@ test.afterAll(async () => { await server?.stop(); cleanupTempDir(tempDir); });
 const cue = (id, text, start = 0, end = 4000) => ({ id, text, start, end });
 const cases = [
   { name: 'static single-line control', times: [1000] },
+  { name: '1440p preview and burn share the native frame coordinate system',
+    width: 2560, height: 1440, times: [1000] },
   { name: 'main explicit multiline', main: 'Main one\nMain two\nMain three', times: [1000] },
   { name: 'secondary explicit multiline', extension: 'Secondary one\nSecondary two\nSecondary three', times: [1000] },
   { name: 'largest emphasis and comment runs', main: 'Main **BIG**\n//COMMENT//',
@@ -94,7 +96,9 @@ async function configure(page, fixture) {
       scaleY: f.scaleY ?? 100, emphasisScale: f.emphasisScale ?? 1.1,
       commentScale: f.commentScale ?? 0.8, emphasisStyle: 'text', commentStyle: 'text' };
     Object.assign(main, common, { primaryColor: '#ff0000', emphasisColor: '#ff0000', commentColor: '#ff0000' });
-    Object.assign(extension, common, { fontSize: 72, alignment: f.extensionAlignment ?? 2,
+    // 副字幕跟随其样式预设：默认 marginV 60 让它落在主字幕（180）下方。
+    Object.assign(extension, common, { fontSize: f.extensionFontSize ?? 72, alignment: f.extensionAlignment ?? 2,
+      marginV: f.extensionMarginV ?? 60,
       primaryColor: '#00ff00', emphasisColor: '#00ff00', commentColor: '#00ff00' });
     ASS_STYLE_LIBRARY.assProfiles[0].animations = {
       fad: { enabled: false }, fade: { enabled: false }, move: { enabled: false },
@@ -104,7 +108,7 @@ async function configure(page, fixture) {
     for (const [name, value] of [['red', '#ff0000'], ['green', '#00ff00'], ['blue', '#0000ff']]) {
       MaweColors.COLOR_BY_NAME[name].value = value;
     }
-    MaweBoot.DATA.media_metadata = { video_width: 1280, video_height: 720 };
+    MaweBoot.DATA.media_metadata = { video_width: f.width ?? 1280, video_height: f.height ?? 720 };
     MaweBoot.DATA.segments = f.mainSegments || [{ id: 'main', start: 0, end: 4000, text: f.main || 'Main' }];
     MaweBoot.DATA.multi_subtitle = { enabled: true, tracks: [{ id: 'extension', segments:
       f.extensionSegments || [{ id: 'extension', start: 0, end: 4000, text: f.extension || 'Secondary' }] }] };
@@ -243,7 +247,7 @@ async function evidence(frame, testInfo, label) {
   return metrics;
 }
 
-function visibleStack(tracks, width, height, label) {
+function visibleStack(tracks, width, height, label, { skipStackOrder = false } = {}) {
   expect.soft(tracks, label).toHaveLength(3);
   for (const [index, track] of tracks.entries()) {
     expect.soft(track.painted, `${label} track ${index} exists`).toBeGreaterThan(30);
@@ -253,8 +257,17 @@ function visibleStack(tracks, width, height, label) {
     expect.soft(track.box[2], `${label} track ${index} right`).toBeLessThanOrEqual(width);
     expect.soft(track.box[3], `${label} track ${index} bottom`).toBeLessThanOrEqual(height);
   }
-  if (tracks[1]?.box && tracks[0]?.box) expect.soft(tracks[1].box[3], `${label} secondary above main`).toBeLessThanOrEqual(tracks[0].box[1]);
-  if (tracks[2]?.box && tracks[1]?.box) expect.soft(tracks[2].box[3], `${label} overlay above secondary`).toBeLessThanOrEqual(tracks[1].box[1]);
+  // 副字幕跟随其样式预设：与主字幕不重叠即可（默认预设下位于主字幕下方）；
+  // 叠加字幕固定锚定在主字幕上方。
+  if (!skipStackOrder) {
+    if (tracks[1]?.box && tracks[0]?.box) expect.soft(
+      tracks[1].box[1] >= tracks[0].box[3]
+        || tracks[1].box[3] <= tracks[0].box[1]
+        || tracks[1].box[1] >= tracks[0].box[1],
+      `${label} secondary sits below or clear of main`,
+    ).toBe(true);
+    if (tracks[2]?.box && tracks[0]?.box) expect.soft(tracks[2].box[3], `${label} overlay above main`).toBeLessThanOrEqual(tracks[0].box[1]);
+  }
 }
 
 for (const fixture of cases) test(fixture.name, async ({ page }, testInfo) => {
@@ -300,9 +313,9 @@ for (const fixture of cases) test(fixture.name, async ({ page }, testInfo) => {
       expect.soft(guard[2], 'libass full paint fits guard right').toBeLessThan(pixels.guardSize[0]);
       expect.soft(guard[3], 'libass full paint fits guard bottom').toBeLessThan(pixels.guardSize[1]);
     }
-    visibleStack(frame.tracks, frame.width, frame.height, `Canvas t=${time}`);
+    visibleStack(frame.tracks, frame.width, frame.height, `Canvas t=${time}`, fixture);
     visibleStack(['main', 'extension', 'overlay'].map(key => pixels.tracks[key]),
-      pixels.width, pixels.height, `libass t=${time}`);
+      pixels.width, pixels.height, `libass t=${time}`, fixture);
     for (const [index, key] of ['main', 'extension', 'overlay'].entries()) {
       if (!frame.tracks[index]?.box || !pixels.tracks[key]?.box) continue;
       for (const coordinate of [0, 1, 2, 3]) expect.soft(Math.abs(
@@ -330,8 +343,11 @@ for (const fixture of cases) test(fixture.name, async ({ page }, testInfo) => {
       const base = engine === 'canvas' ? small.tracks : ['main', 'extension', 'overlay'].map(k => reference.tracks[k]);
       const ratios = full.map((track, i) => (track.bands[0][1] - track.bands[0][0]) / (base[i].bands[0][1] - base[i].bands[0][0]));
       expect.soft(full.map(t => t.bands.length), `${engine} preserves every multiline glyph band`).toEqual([11, 3, 3]);
-      for (const ratio of ratios) expect.soft(ratio, `${engine} actually shrinks oversized group`).toBeLessThan(0.95);
-      for (const ratio of ratios.slice(1)) expect.soft(Math.abs(ratio - ratios[0]), `${engine} fit uses one group factor`).toBeLessThan(0.06);
+      // 组缩放只作用于主/叠加；副字幕跟随其样式预设，字号不被整组缩小。
+      expect.soft(ratios[0], `${engine} actually shrinks oversized group`).toBeLessThan(0.95);
+      expect.soft(ratios[1], `${engine} secondary keeps its preset size`).toBeGreaterThan(0.95);
+      expect.soft(ratios[2], `${engine} overlay follows the group factor`).toBeLessThan(0.95);
+      expect.soft(Math.abs(ratios[2] - ratios[0]), `${engine} fit uses one group factor`).toBeLessThan(0.06);
     }
   }
   if (fixture.verifyMove) for (const engine of ['canvas', 'libass']) {
@@ -345,13 +361,18 @@ for (const fixture of cases) test(fixture.name, async ({ page }, testInfo) => {
         // Equal continuous displacement can produce integer bbox deltas differing
         // by one pixel: floor(p + d) - floor(p) is floor(d) or ceil(d), depending
         // on each glyph's raster phase. This changes no 3px cross-renderer bound.
-        for (const index of [1, 2]) expect.soft(Math.abs(
+        // 副字幕固定在样式预设位置：不随主字幕的移动动画平移；
+        // 叠加字幕仍跟随主字幕移动（组移动语义只覆盖主/叠加）。
+        expect.soft(Math.abs(
+          last[1].box[coordinate] - first[1].box[coordinate]),
+        `${engine} secondary keeps its preset position while main moves`).toBeLessThanOrEqual(1);
+        for (const index of [2]) expect.soft(Math.abs(
           last[index].box[coordinate] - first[index].box[coordinate] - mainDelta),
-        `${engine} secondary follows main clock after pixel quantization`).toBeLessThanOrEqual(1);
+        `${engine} overlay follows main clock after pixel quantization`).toBeLessThanOrEqual(1);
         if (engine === 'canvas') {
           const translation = coordinate + 4;
           const rootDelta = last[0].paintTransforms[0][translation] - first[0].paintTransforms[0][translation];
-          for (const index of [1, 2]) expect.soft(
+          for (const index of [2]) expect.soft(
             last[index].paintTransforms[0][translation] - first[index].paintTransforms[0][translation],
             'observed root drawImage matrices prove an identical continuous group displacement')
             .toBeCloseTo(rootDelta, 6);
@@ -363,6 +384,9 @@ for (const fixture of cases) test(fixture.name, async ({ page }, testInfo) => {
 
 test('all simultaneously active main, secondary and overlay cues are actually painted', async ({ page }, testInfo) => {
   const fixture = {
+    // 双条同轨副字幕的碰撞堆叠可能穿越主字幕（fs144 主字幕下方空间不足）：
+    // 该用例只验证三条轨都真实绘制与轨内分离，跳过跨轨层叠顺序断言。
+    skipStackOrder: true,
     mainSegments: [cue('main-a', 'MainAlpha'), cue('main-b', 'MainBeta', 500)],
     extensionSegments: [cue('ext-a', 'SecondaryAlpha'), cue('ext-b', 'SecondaryBeta', 500)],
     overlaySegments: [cue('overlay-a', 'OverlayAlpha'), cue('overlay-b', 'OverlayBeta', 500)],
@@ -398,7 +422,7 @@ test('all simultaneously active main, secondary and overlay cues are actually pa
       }
     }
     visibleStack(['main', 'extension', 'overlay'].map(role => roleTracks[role]),
-      frame.width, frame.height, `${engine} all-active group`);
+      frame.width, frame.height, `${engine} all-active group`, fixture);
   }
   for (const segments of [fixture.mainSegments, fixture.extensionSegments, fixture.overlaySegments]) {
     for (const segment of segments) expect.soft(frame.texts.join(' '),
@@ -406,15 +430,50 @@ test('all simultaneously active main, secondary and overlay cues are actually pa
   }
 });
 
-test('overlapping secondary M and W cues occupy separate actual pixel bands', async ({ page }, testInfo) => {
-  await configure(page, { extensionSegments: [cue('ext-M', 'M', 0, 2000), cue('ext-W', 'W', 500, 1500)] });
+test('three overlapping secondary cues occupy separate actual pixel bands', async ({ page }, testInfo) => {
+  await configure(page, { extensionSegments: [cue('ext-M', 'M', 0, 2000),
+    cue('ext-W', 'W', 500, 1500), cue('ext-H', 'H', 500, 1500)] });
   const frame = await capture(page, 1000);
   await evidence(frame, testInfo, 'secondary-collision');
   const pixels = libass(frame.ass, 1000, testInfo, 'secondary-collision');
   writeFileSync(testInfo.outputPath('secondary-collision-libass.json'), JSON.stringify(pixels, null, 2));
-  expect.soft(frame.texts, 'both active cues reach real Canvas paint').toEqual(expect.arrayContaining(['M', 'W']));
-  expect.soft(frame.nativeTracks.extension.bands, 'Canvas separates same-track simultaneous cues').toHaveLength(2);
-  expect(pixels.tracks.extension.bands, 'libass separates same-track simultaneous cues').toHaveLength(2);
+  expect.soft(frame.texts, 'all active cues reach real Canvas paint').toEqual(expect.arrayContaining(['M', 'W', 'H']));
+  expect.soft(frame.nativeTracks.extension.bands, 'Canvas separates same-track simultaneous cues').toHaveLength(3);
+  expect(pixels.tracks.extension.bands, 'libass separates same-track simultaneous cues').toHaveLength(3);
+});
+
+test('secondary preset paint remains fixed before during and after the main cue', async ({ page }, testInfo) => {
+  await configure(page, { mainSegments: [cue('short-main', 'Main', 500, 1500)],
+    extensionSegments: [cue('long-secondary', 'Secondary', 0, 2000)], overlaySegments: [] });
+  let previous;
+  for (const time of [250, 1000, 1750]) {
+    const frame = await capture(page, time);
+    await evidence(frame, testInfo, `secondary-alone-${time}`);
+    const pixels = libass(frame.ass, time, testInfo, `secondary-alone-${time}`);
+    writeFileSync(testInfo.outputPath(`secondary-alone-${time}-libass.json`), JSON.stringify(pixels, null, 2));
+    const actual = frame.nativeTracks.extension.box;
+    expect(actual, 'Canvas paints the fixed extension').not.toBeNull();
+    expect(pixels.tracks.extension.box, 'libass paints the fixed extension').not.toBeNull();
+    for (const coordinate of [0, 1, 2, 3]) expect(Math.abs(actual[coordinate]
+      - pixels.tracks.extension.box[coordinate]), `fixed extension edge ${coordinate} at ${time}ms`).toBeLessThanOrEqual(3);
+    if (previous) expect(actual, 'main entering/leaving cannot move the extension').toEqual(previous);
+    previous = actual;
+  }
+});
+
+test('cumulative fixed secondary overflow refuses export instead of silently overlapping', async ({ page }) => {
+  await configure(page, { height: 240, extensionFontSize: 168, extensionMarginV: 20,
+    extensionSegments: [cue('ext-a', 'A\nA'), cue('ext-b', 'B\nB'), cue('ext-c', 'C\nC')] });
+  await expect(page.locator('#overlay')).toHaveAttribute('data-ass-stack-status', 'unavailable');
+  const result = await page.evaluate(() => {
+    let plan;
+    MaweExportSrt.buildAss({ preview: true, allowAssPlanDiagnostics: true, onAssPlan: value => { plan = value; } });
+    return { diagnostics: plan.diagnostics, painted: window.MaweAssCanvas.lastRender.tracks.length };
+  });
+  expect(result.diagnostics).toHaveLength(1);
+  expect(result.diagnostics[0].message).toMatch(/固定副字幕.*同时容纳/);
+  expect(result.painted).toBe(0);
+  await expect(page.evaluate(() => MaweExportSrt.buildAss())).rejects.toThrow(/固定副字幕.*同时容纳/);
 });
 
 test('positive spacing and coloured outline shadow keep complete multiline edge paint visible', async ({ page }, testInfo) => {

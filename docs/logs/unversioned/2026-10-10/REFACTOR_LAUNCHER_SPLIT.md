@@ -89,7 +89,7 @@
 5. errors：错误报告/诊断/复制（1855~2071 + 2095 起 error* 函数）
 6. server-monitor：服务器状态监控
 7. theme-zoom：主题 + 缩放
-8. bridge：`bridge` / `waitForBackend` / `revealLauncher` / `injectEmojiFont`
+8. bridge：`bridge` / `waitForBackend` / `revealLauncher`
 9. form-sync：`sync*` / `render*` 表单域
 10. presets：预设管理（preset* / AsrPreset）
 11. local-models：本地模型 / 运行时 / OCR / 对齐模型

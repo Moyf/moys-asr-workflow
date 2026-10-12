@@ -1,8 +1,8 @@
 // Transitional build: real ESM factories plus one ordered legacy scope.
-// Portable HTML and localhost embed the same checked-in classic artifact.
+// Portable HTML and localhost embed the same generated classic artifact.
 import fs from 'node:fs';
 import path from 'node:path';
-import { createHash } from 'node:crypto';
+import { createHash, randomUUID } from 'node:crypto';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import * as acorn from 'acorn';
 import * as esbuild from 'esbuild';
@@ -13,6 +13,50 @@ export const BUILD_INFO = 'editor/boot/editor-bundle.meta.json';
 const sha = value => createHash('sha256').update(value).digest('hex');
 const json = value => JSON.stringify(value, null, 2) + '\n';
 const parse = (source, sourceType) => acorn.parse(source, {ecmaVersion:'latest', sourceType});
+
+export const captureBuildInputs = (root, names) => Object.fromEntries(names
+  .map(name => [name, fs.readFileSync(path.join(root, name), 'utf8')]));
+export const dependencyHash = snapshot => sha(['package.json', 'pnpm-lock.yaml']
+  .map(name => snapshot[name]).join('\n'));
+export function assertBuildInputsUnchanged(root, snapshot) {
+  for (const [name, text] of Object.entries(snapshot)) {
+    if (fs.readFileSync(path.join(root, name), 'utf8') !== text) {
+      throw new Error(`Build input changed during compilation: ${name}; retry the build`);
+    }
+  }
+}
+
+// Readers must see a complete JS file even when a watch build or another process
+// publishes at the same time. Stage both files first; metadata is the commit
+// record, published last. Its bundleHash rejects interrupted/mixed generations.
+async function replaceFile(source, destination) {
+  for (let attempt = 0; ; attempt++) {
+    try { fs.renameSync(source, destination); return; }
+    catch (error) {
+      // Windows can briefly deny replacement while a page reader or antivirus
+      // holds the old file open. Keep the previous complete file while retrying.
+      if (attempt >= 100 || !['EPERM','EACCES','EBUSY'].includes(error.code)) throw error;
+      await new Promise(resolve => setTimeout(resolve, 10));
+    }
+  }
+}
+
+export async function writeArtifact(root, bundle, buildInfo, built) {
+  const paths = [bundle, buildInfo].map(name => path.join(root, 'web', name));
+  fs.mkdirSync(path.dirname(paths[0]), {recursive:true});
+  const temporary = paths.map(destination => path.join(path.dirname(destination),
+    `.maw-bundle-${randomUUID()}.tmp`));
+  try {
+    fs.writeFileSync(temporary[0], built.code, {flag:'wx'});
+    fs.writeFileSync(temporary[1], json(built.metadata), {flag:'wx'});
+    await replaceFile(temporary[0], paths[0]);
+    await replaceFile(temporary[1], paths[1]);
+  } finally {
+    for (const file of temporary) {
+      try { fs.unlinkSync(file); } catch (error) { if (error.code !== 'ENOENT') throw error; }
+    }
+  }
+}
 
 export function validateSources(files) {
   if (!files.length || new Set(files).size !== files.length) throw new Error('Empty or duplicate source manifest');
@@ -105,20 +149,25 @@ export async function compileSources(root, files, modules, read, options = {}) {
 }
 
 export async function buildEditor(root = ROOT, options = {}) {
-  const files = readSources(root), modules = readModules(root);
-  const configText = fs.readFileSync(path.join(root,'web/editor-modules.json'),'utf8');
-  const config = JSON.parse(configText), inputHashes = {};
+  const snapshot = captureBuildInputs(root, ['web/editor-scripts.txt', 'web/editor-modules.json',
+    'scripts/build-editor.mjs', 'package.json', 'pnpm-lock.yaml']);
+  const files = readSources(root), configText = snapshot['web/editor-modules.json'];
+  const config = JSON.parse(configText), modules = config.modules, inputHashes = {};
   const result = await compileSources(root,files,modules,file => {
     const original = fs.readFileSync(path.join(root,'web',file),'utf8');
+    snapshot['web/'+file] = original;
     const source = options.transform ? options.transform(file,original) : original;
     inputHashes[file] = sha(source); return source;
   },{bridges:config.externalBridges,trace:true});
+  assertBuildInputsUnchanged(root, snapshot);
   const metadata = {format:1,esbuild:esbuild.version,sourceFiles:files,esmFactories:modules.length,
-    inputs:inputHashes,configHash:sha(configText),builderHash:sha(fs.readFileSync(fileURLToPath(import.meta.url))),
+    inputs:inputHashes,configHash:sha(configText),builderHash:sha(snapshot['scripts/build-editor.mjs']),
+    dependencyHash:dependencyHash(snapshot),
     // esbuild sees remaining classic sources as a single transitional scope.
     // Explicit hashes above cover every source, including this virtual input.
     metafile:result.metafile};
   const identity = `/* MAW ESM artifact: ${sha(result.code+json(metadata))} */`;
+  metadata.bundleHash = sha(identity+'\n'+result.code);
   return {...result,code:identity+'\n'+result.code,identity,metadata};
 }
 
@@ -128,6 +177,9 @@ export function assertFresh(actual, expected) {
 
 export async function checkEditor(root = ROOT) {
   const built = await buildEditor(root);
+  // Bundles are build artifacts (not committed): a missing file is the normal
+  // fresh-clone state, so point at the build command instead of "stale".
+  if (!fs.existsSync(path.join(root,'web',BUNDLE))) throw new Error('Editor bundle missing; run pnpm run build:editor');
   assertFresh(fs.readFileSync(path.join(root,'web',BUNDLE),'utf8'),built.code);
   assertFresh(fs.readFileSync(path.join(root,'web',BUILD_INFO),'utf8'),json(built.metadata));
   return built;
@@ -136,8 +188,7 @@ export async function checkEditor(root = ROOT) {
 async function writeEditor(root) {
   const built = await buildEditor(root);
   // Write only after the entire build succeeds; never repair while checking.
-  fs.writeFileSync(path.join(root,'web',BUNDLE),built.code);
-  fs.writeFileSync(path.join(root,'web',BUILD_INFO),json(built.metadata));
+  await writeArtifact(root, BUNDLE, BUILD_INFO, built);
   console.log(`Editor: ${built.modules.length} ESM factories / ${built.sourceFiles.length} sources`);
 }
 
@@ -159,7 +210,8 @@ if (process.argv[1] && import.meta.url === pathToFileURL(path.resolve(process.ar
       running = false;
     };
     fs.watch(path.join(root,'web'),{recursive:true},(_event,file) => {
-      if (file && ![BUNDLE,BUILD_INFO].includes(file.replaceAll('\\','/'))) void rebuild();
+      if (file && ![BUNDLE,BUILD_INFO].includes(file.replaceAll('\\','/'))
+          && !/\.maw-bundle-[^/\\]+\.tmp$/.test(file)) void rebuild();
     });
     fs.watch(fileURLToPath(import.meta.url), () => {
       console.error('Build script changed; restart pnpm run watch:editor');

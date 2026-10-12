@@ -173,6 +173,8 @@
       if (reason === 'too-short') MaweHint.flashHint('该空白区域不足 100ms，无法新增字幕', 'warning');
       if (reason === 'occupied') MaweHint.flashHint('该位置已有字幕，无法新增字幕', 'warning');
     },
+    // 字词时间码显示时双击波形主字幕块的拦截提示（列表行内编辑不受影响）。
+    onMainCueDoubleClickBlocked: () => MaweHint.flashHint('请先退出字词码模式再编辑主字幕！', 'warning'),
     // 剃刀工具：在波形指针位置安全拆分字幕。复用右键菜单的波形时间拆分路径；
     // 有可靠主轨字词时间码时沿用字词锚点，否则在弹窗中保留指针的绝对切点。
     splitCueAtTime: (idx, timeMs) => MaweSplitContext.splitFromContextMenu(idx, 0, 0, timeMs),

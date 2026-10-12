@@ -23,8 +23,8 @@ from typing import BinaryIO, Final, final
 
 from send2trash import send2trash
 
-from maw.app_paths import default_emoji_font_path
 from maw.app_paths import application_directory, default_app_data_root
+from maw.web_build import BundlePreflightError, ensure_bundle
 from maw.asr_presets import (
     MAX_NAME_LENGTH,
     create_preset,
@@ -474,74 +474,6 @@ def _launcher_icon_path() -> Path:
     return asset_path("assets/maw.ico")
 
 
-# ---- Linux keycap 表情字体（Noto Color Emoji）----
-# 段落标题的 keycap 表情（1️⃣ 等）由「数字 + U+FE0F + U+20E3」组成，需要彩色 emoji 字体
-# 完整覆盖才可正常成型；部分 Linux 发行版（如 SteamOS 的 Twemoji）缺少 U+FE0F，会渲染成
-# 「3x」。Windows / macOS 系统 emoji 字体已覆盖 keycap，无需额外处理。
-# Linux 下首次启动时按顺序尝试以下地址下载到 MAW 用户数据目录，成功即缓存，之后离线可用；
-# 可通过 MAW_EMOJI_FONT_URL 环境变量整体覆盖（例如指向其它可用镜像）。
-_EMOJI_FONT_MIN_BYTES = 1_000_000
-_EMOJI_FONT_REMOTE_URLS: Final[Sequence[str]] = (
-    "https://cdn.jsdelivr.net/gh/googlefonts/noto-emoji@main/fonts/NotoColorEmoji.ttf",
-    "https://fastly.jsdelivr.net/gh/googlefonts/noto-emoji@main/fonts/NotoColorEmoji.ttf",
-    "https://gcore.jsdelivr.net/gh/googlefonts/noto-emoji@main/fonts/NotoColorEmoji.ttf",
-)
-
-
-def _emoji_font_cache_path() -> Path:
-    """返回 MAW 用户数据目录中的 Emoji 字体缓存路径。"""
-    return default_emoji_font_path()
-
-
-def _emoji_font_urls() -> list[str]:
-    override = os.environ.get("MAW_EMOJI_FONT_URL", "").strip()
-    return ([override] if override else []) + list(_EMOJI_FONT_REMOTE_URLS)
-
-
-def _valid_emoji_font(path: Path) -> bool:
-    """轻量校验：足够大且带 TrueType 魔数，避免把 HTML 错误页等垃圾当成字体缓存。"""
-    try:
-        if path.stat().st_size < _EMOJI_FONT_MIN_BYTES:
-            return False
-        with path.open("rb") as handle:
-            return handle.read(4) == b"\x00\x01\x00\x00"
-    except OSError:
-        return False
-
-
-def download_emoji_font(urls: Sequence[str], dest: Path, timeout: float = 20.0) -> Path | None:
-    """按顺序尝试下载 Noto Color Emoji 到 dest；全部失败时清理临时文件并返回 None。"""
-    dest.parent.mkdir(parents=True, exist_ok=True)
-    partial = dest.with_name(dest.name + ".part")
-    for url in urls:
-        if not url:
-            continue
-        try:
-            # URLs are restricted to the HTTPS-only CDN allowlist by the caller.
-            with urlopen(url, timeout=timeout) as response:  # noqa: S310
-                if getattr(response, "status", None) != 200:
-                    continue
-                size = 0
-                with partial.open("wb") as handle:
-                    while True:
-                        chunk = response.read(1 << 16)
-                        if not chunk:
-                            break
-                        handle.write(chunk)
-                        size += len(chunk)
-                if size < _EMOJI_FONT_MIN_BYTES:
-                    continue
-            partial.replace(dest)
-            return dest
-        except (OSError, URLError, ValueError):
-            continue
-    try:
-        partial.unlink(missing_ok=True)
-    except OSError:
-        pass
-    return None
-
-
 @final
 class LauncherApi:
     def __init__(
@@ -567,7 +499,6 @@ class LauncherApi:
         self.local_runtime_cancel_event: Event | None = None
         self.local_runtime_worker: threading.Thread | None = None
         self.local_runtime_worker_engine = ""
-        self._emoji_font_worker: threading.Thread | None = None
         self.ocr_runtime_cancel_event: Event | None = None
         self.ocr_runtime_worker: threading.Thread | None = None
         self.server_process: subprocess.Popen[str] | None = None
@@ -659,38 +590,6 @@ class LauncherApi:
             return {"ok": True, "active": False, "cancelled": False}
         accepted = operation.cancel()
         return {"ok": True, "active": True, "cancelled": accepted}
-
-    def get_emoji_font_path(self, _payload: Mapping[str, object] | None = None) -> dict[str, object]:
-        """返回本地可用的 Noto Color Emoji 路径（file:// URI；未就绪或非 Linux 为空字符串）。
-
-        仅 Linux 需要：缓存已存在时直接返回；否则启动后台下载，完成后通过
-        emojiFontReady 事件通知页面注入 @font-face（期间回退系统字体）。
-        """
-        if sys.platform != "linux":
-            return {"ok": True, "path": ""}
-        dest = _emoji_font_cache_path()
-        if _valid_emoji_font(dest):
-            return {"ok": True, "path": dest.as_uri()}
-        self._start_emoji_font_download(dest)
-        return {"ok": True, "path": ""}
-
-    def _start_emoji_font_download(self, dest: Path) -> None:
-        worker = self._emoji_font_worker
-        if worker is not None and worker.is_alive():
-            return
-        worker = threading.Thread(
-            target=self._download_emoji_font_worker,
-            args=(dest,),
-            daemon=True,
-            name="emoji-font-download",
-        )
-        self._emoji_font_worker = worker
-        worker.start()
-
-    def _download_emoji_font_worker(self, dest: Path) -> None:
-        path = download_emoji_font(_emoji_font_urls(), dest)
-        if path is not None:
-            self.pump.enqueue({"type": "emojiFontReady", "path": path.as_uri()})
 
     def _ocr_runtime_status(self):
         runtime_root = effective_config_value(self.paths.env_path, "MAW_OCR_RUNTIME_ROOT")
@@ -3880,6 +3779,14 @@ def run_app(*, debug: bool = False, devtools: bool = False, server_port: int | N
     # 事件流与进程内 print/traceback 共用同一个 sink：单锁单文件。
     log_sink = LocalLogSink()
     log_sink.write_text("MAW v" + _app_version(paths), label="session")
+    # bundle 是构建产物（不入库）：加载 launcher 页面前确保与源码一致，必要时
+    # 自动重建。合成路径（测试用的临时 LauncherPaths）没有 web/ 源码树，跳过。
+    if (paths.root / "web").is_dir():
+        try:
+            ensure_bundle(paths.root, "launcher", allow_build=not getattr(sys, "frozen", False))
+        except BundlePreflightError as error:
+            log_sink.write_text(str(error), label="session")
+            raise SystemExit(f"MAW Launcher 无法启动：{error}") from error
     api = LauncherApi(paths=paths, default_server_port=server_port, log_sink=log_sink)
     install_stdio_tee(log_sink)
     launcher_url = paths.launcher_html.resolve().as_uri()
