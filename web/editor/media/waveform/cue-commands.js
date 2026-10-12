@@ -193,6 +193,24 @@ export function createWaveformModule(dependencies) {
       const segments = this.options.getSegments(drag.track || 'main');
       const timing = drag.timing || this.cueTiming();
       const durationMs = Number(this.durationMs) > 0 ? timing.fromMs(this.durationMs) : Infinity;
+      if (drag.moveTracks) {
+        if (!drag.started) {
+          drag.started = true;
+          this.options.onBeginEdit?.('移动字幕时间');
+        }
+        if (this.isAdjacentCueAdjustmentIndependent(altKey)) drag.allowSqueeze = true;
+        const original = drag.originals.get(drag.index);
+        const anchor = drag.moveTracks.find((move) => move.track === drag.track).moveAnchorSegment;
+        const before = timing.getStart(anchor);
+        this.applySelectedMoveDrag(drag, before - original.start + deltaMs, true);
+        drag.startPointerTime -= timing.getStart(anchor) - before;
+        // 鼠标未移动时保持键盘微调的精确位置，避免下一次 pointermove
+        // 把刚离开邻居边界的字幕重新吸回去；鼠标移动后恢复吸附。
+        drag.keyboardAdjustedClientX = drag.currentClientX;
+        drag.changed = true;
+        this.scheduleRefreshCueBlocks();
+        return true;
+      }
       let plan;
       let apply;
       if (drag.kind === 'move') {
@@ -306,6 +324,7 @@ export function createWaveformModule(dependencies) {
       drag.startPointerTime = timing.fromMs(
         this.timeFromPointerUnbounded({ clientX: drag.currentClientX }, drag.row, drag.geometry),
       );
+      if (drag.moveTracks) drag.keyboardAdjustedClientX = drag.currentClientX;
       this.scheduleRefreshCueBlocks();
       return true;
     }
@@ -313,6 +332,13 @@ export function createWaveformModule(dependencies) {
 
     /** @this {import('./waveform-types.js').WaveformInstance} */
     cancelCueDrag() {
+      const markerDrag = this.markerDrag || this.markerCreateDrag;
+      if (markerDrag) {
+        const position = markerDrag.lastEvent || { clientX: markerDrag.startClientX, clientY: markerDrag.startClientY };
+        this.endMarkerDrag({ type: 'pointercancel', pointerId: markerDrag.pointerId,
+          clientX: position.clientX, clientY: position.clientY });
+        return true;
+      }
       if (this.createCueDrag?.finish) {
         this.createCueDrag.finish(false);
         this.setStatus('已取消新增字幕');
@@ -325,17 +351,13 @@ export function createWaveformModule(dependencies) {
       window.removeEventListener('pointerup', this._dragEnd);
       window.removeEventListener('pointercancel', this._dragEnd);
       try { drag.captureTarget?.releasePointerCapture?.(drag.pointerId); } catch (_) {}
-      const segments = this.options.getSegments(drag.track || 'main');
-      drag.cancelOriginals.forEach((original, idx) => {
-        const segment = segments[idx];
-        if (!segment) return;
-        restoreTiming(segment, original, drag.timing || this.cueTiming());
-      });
+      this.restoreSelectedMoveDrag(drag);
       (/** @type {NodeListOf<HTMLElement>} */ (this.content.querySelectorAll('.waveform-cue-block.dragging, .waveform-cue-boundary.dragging')))
         .forEach((block) => block.classList.remove('dragging'));
       this.pane.classList.remove('cue-drag-active');
       this.pane.classList.remove('shared-boundary-drag-active');
       this.drag = null;
+      this.options.onCancelEdit?.();
       this.refreshCueOverlay();
       if (this.isCueBoundaryDrag(drag)) this.restorePointerLineAfterBoundaryDrag(pointerPosition);
       this.setStatus('已取消字幕调整');

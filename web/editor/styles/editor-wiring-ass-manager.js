@@ -670,6 +670,14 @@ assSpecialSymbolRule?.addEventListener('change', () => {
   MawePlaybackLoop.refreshSubtitlePreview();
 });
 function syncAssModeControl() {
+  const enabled = MaweSettings.EDITOR_SETTINGS.assMode === true;
+  const quickToggle = document.getElementById('ass-mode-quick-toggle');
+  if (quickToggle) {
+    quickToggle.classList.toggle('active', enabled);
+    quickToggle.setAttribute('aria-pressed', String(enabled));
+  }
+  const quickOpen = document.getElementById('ass-style-quick-open');
+  if (quickOpen) quickOpen.hidden = !enabled;
   syncAssSymbolRule();
   syncAssModeDependentControls();
   updateAssStylePreviewModeHints();
@@ -691,6 +699,9 @@ assModeToggle?.addEventListener('change', () => {
   MawePlaybackLoop.refreshSubtitlePreview();
   MaweHint.flashHint(assModeToggle.checked ? '已开启 ASS 字幕模式预览' : '已恢复原有字幕预览', 'success');
 });
+
+document.getElementById('ass-mode-quick-toggle')?.addEventListener('click', () => assModeToggle?.click());
+document.getElementById('ass-style-quick-open')?.addEventListener('click', () => assStyleManagerOpenButton?.click());
 
 assInlineTextToggles.forEach((input) => {
   input.addEventListener('change', () => {

@@ -14,7 +14,7 @@ $ErrorActionPreference = "Stop"
 $repoRoot = (Resolve-Path (Join-Path $PSScriptRoot "..\..")).Path
 Set-Location -LiteralPath $repoRoot
 
-$runRoot = Join-Path ([System.IO.Path]::GetTempPath()) "maw-e2e-bg"
+$runRoot = Join-Path $repoRoot ".artifacts\e2e-bg"
 $runDir = Join-Path $runRoot ("run-" + (Get-Date -Format "yyyyMMdd-HHmmss"))
 New-Item -ItemType Directory -Force -Path $runDir | Out-Null
 

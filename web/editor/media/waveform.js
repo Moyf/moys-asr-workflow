@@ -249,6 +249,7 @@ window.AsrWaveform = {
       fitWaveformScaleToLoudness: WaveformEditor.prototype.fitWaveformScaleToLoudness,
       renderWaveformScaleLabel: WaveformEditor.prototype.renderWaveformScaleLabel,
       setRowHeight: WaveformEditor.prototype.setRowHeight,
+      setSecondsPerRow: WaveformEditor.prototype.setSecondsPerRow,
       buildWaveformEnvelope,
       sampleInterpolatedPeak,
       normalizeLayoutData,

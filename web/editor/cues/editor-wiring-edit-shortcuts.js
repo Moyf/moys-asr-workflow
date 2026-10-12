@@ -441,12 +441,15 @@ document.addEventListener('keydown', (e) => {
   if (!MaweCoreState.waveformEditor) return;
   // Escape：上下文菜单/弹窗/编辑态各自先处理；只有波形工具在 razor 时才切回。
   if (e.key === 'Escape') {
+    if (e.defaultPrevented) return;
     if (MaweInlineEdit.editingState) return;
     if (MaweDom.ctxmenu.classList.contains('show')) return;
     if (MaweDom.replaceModal.classList.contains('show')) return;
     if (MaweDom.stickerModal.classList.contains('show')) return;
     if (MaweDom.stickerPreviewModal.classList.contains('show')) return;
     if (MaweDom.projectMediaModal.classList.contains('show')) return;
+    // 已打开的浮窗优先关闭，不能先取消其背后的拖动或切换剃刀工具。
+    if (MaweFloatingPanel.floatingSurfaceStack.some(MaweFloatingPanel.floatingSurfaceIsOpen)) return;
     if (MaweCoreState.waveformEditor.cancelCueDrag()) {
       e.preventDefault();
       e.stopPropagation();

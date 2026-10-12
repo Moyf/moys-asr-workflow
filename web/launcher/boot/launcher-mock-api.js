@@ -87,7 +87,7 @@ function mockApi() {
           maskedApiKey: saved.apiKey ? "sk-…demo" : "",
           supportsSpeaker: false,
           multiLanguage: false,
-          note: "默认连接 OpenAI 官方服务；OpenRouter 会自动适配预设模型 ID。其他中转站请选择“自定义（Custom）”并填写服务商提供的完整模型名；接口必须返回 segments 或 words 时间戳。",
+          note: "默认连接 OpenAI 官方服务；OpenRouter 会自动适配预设模型 ID。其他中转站请选择“自定义（Custom）”模型，并填写服务商提供的名称。",
           commonLanguages: ["", "zh", "en"],
           models: [
             { id: "whisper-1", label: "whisper-1", envKey: "MAW_OPENAI_ASR_API_KEY", note: "支持 Prompt 提示词；Whisper 提示词最多 224 tokens。", openrouterNote: "OpenRouter 参考价：$0.006 / 分钟。", priceNote: "OpenAI 官方参考价：$0.006 / 分钟（约 $0.36 / 小时）", supportsSpeaker: false, supportsPrompt: true, languages: [{ id: "", label: "自动识别" }, { id: "zh", label: "中文 / Mandarin" }, { id: "en", label: "英语 / English" }] },
@@ -135,7 +135,7 @@ function mockApi() {
           supportsSpeaker: true,
           multiLanguage: false,
           dividerBefore: true,
-          note: "媒体会直接上传到火山引擎；base64 直传单文件 ≤25MB 且 ≤120 分钟，MAW 会先提取为低码率单声道音频再提交。",
+          note: "媒体会直接上传到火山引擎；单文件需 ≤25MB 且 ≤120 分钟。",
           commonLanguages: ["", "zh", "yue", "en", "ja", "ko"],
           models: [{ id: "volc.seedasr.auc", label: "豆包录音文件识别 2.0（Seed-ASR）", envKey: "VOLC_API_KEY", note: "支持说话人分离与即时热词；2.0 准确率更高。", supportsSpeaker: true, languages: [{ id: "", label: "自动识别" }, { id: "zh", label: "中文 / Mandarin" }, { id: "en", label: "英语 / English" }, { id: "ja", label: "日语 / Japanese" }, { id: "ko", label: "韩语 / Korean" }] }],
           regions: [],
@@ -173,8 +173,8 @@ function mockApi() {
         {
           id: "deepseek", label: "DeepSeek（？）", keyUrl: "", apiKey: "", maskedApiKey: "",
           supportsSpeaker: false, multiLanguage: false, requiresApiKey: false, supportsLanguage: false,
-          note: "DeepSeek 是文本模型，请在工具箱的 AI 处理里使用。", commonLanguages: [], regions: [], languages: [],
-          models: [{ id: "deepseek-not-an-asr", label: "DeepSeek 不是转写模型", envKey: "", languages: [] }],
+          note: "🐳 蓝色大肥鱼不支持语音转写，它是个文本模型！\n不过你可以在「AI处理」中使用它来翻译啥的。", commonLanguages: [], regions: [], languages: [],
+          models: [{ id: "deepseek-not-an-asr", label: "DeepSeek 不是转写模型", envKey: "", note: "被问太多次了所以专门加上这个说明 _(:з」∠)_", languages: [] }],
         }
       ]
       };

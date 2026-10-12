@@ -662,6 +662,7 @@ DEEPSEEK_PLACEHOLDER_MODELS: Final[tuple[ModelConfig, ...]] = (
         id="deepseek-not-an-asr",
         label="Deepseek 目前不提供转写模型",
         env_key="",
+        note="被问太多次了所以专门加上这个说明 _(:з」∠)_",
         languages=(),
     ),
 )
@@ -686,7 +687,7 @@ PROVIDERS: Final[tuple[ProviderConfig, ...]] = (
         regions=(),
         languages=LANGUAGES,
         common_languages=QWEN_COMMON_LANGUAGES,
-        note="默认连接 OpenAI 官方服务；OpenRouter 会自动适配预设模型 ID。其他中转站请选择“自定义（Custom）”并填写服务商提供的完整模型名；接口必须返回 segments 或 words 时间戳。",
+        note="默认连接 OpenAI 官方服务；OpenRouter 会自动适配预设模型 ID。其他中转站请选择“自定义（Custom）”模型，并填写服务商提供的名称。",
         secondary_key_url=OPENROUTER_ASR_KEY_URL,
     ),
     ProviderConfig(
@@ -712,8 +713,7 @@ PROVIDERS: Final[tuple[ProviderConfig, ...]] = (
         common_languages=DOUBAO_COMMON_LANGUAGES,
         divider_before=True,
         note=(
-            "媒体会直接上传到火山引擎；base64 直传单文件 ≤25MB 且 ≤120 分钟，"
-            "MAW 会先提取为低码率单声道音频再提交。"
+            "媒体会直接上传到火山引擎；单文件需 ≤25MB 且 ≤120 分钟。"
         ),
     ),
     ProviderConfig(
@@ -766,7 +766,7 @@ PROVIDERS: Final[tuple[ProviderConfig, ...]] = (
         requires_api_key=False,
         supports_language=False,
         note=(
-            "🐳 蓝色大肥鱼不支持语音转写，它是个文本模型！（太多人问了所以专门加个说明）\n"
+            "🐳 蓝色大肥鱼不支持语音转写，它是个文本模型！\n"
             "不过你可以在「AI处理」中使用它来翻译啥的。"
         ),
     ),
@@ -900,8 +900,8 @@ def api_key_for_provider(provider_id: str, path: Path = DEFAULT_ENV_PATH, enviro
     if not provider.models:
         return ""
     env_key = provider.models[0].env_key
-    env = environ or os.environ
-    return env.get(env_key) or load_env(path).get(env_key, "")
+    env = environ if environ is not None else os.environ
+    return str(env.get(env_key) or "").strip() or load_env(path).get(env_key, "").strip()
 
 
 def region_label(region_id: str) -> str:
