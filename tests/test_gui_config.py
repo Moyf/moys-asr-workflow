@@ -277,7 +277,7 @@ class GuiConfigTests(unittest.TestCase):
         provider = gui_config.PROVIDERS[0]
 
         self.assertEqual(provider.id, "qwen")
-        self.assertEqual(provider.label, "阿里云百炼（千问）")
+        self.assertEqual(provider.label, "阿里云百炼（推荐 / 千问）")
         self.assertEqual(provider.key_url, "https://platform.qianwenai.com/home/")
         self.assertEqual(provider.key_label, "千问AI平台")
         self.assertEqual(provider.models[0].id, "qwen-audio-3.0-asr-flash-filetrans")
@@ -334,7 +334,44 @@ class GuiConfigTests(unittest.TestCase):
         divider_index = next(index for index, item in enumerate(visible) if item.divider_before)
 
         self.assertEqual([item.id for item in visible[:divider_index]], ["qwen", "openai", "local"])
-        self.assertEqual([item.id for item in visible[divider_index:]], ["doubao", "soniox", "bcut"])
+        self.assertEqual([item.id for item in visible[divider_index:]], ["doubao", "soniox", "bcut", "deepseek"])
+
+    def test_custom_llm_slots_are_three_parallel_presets(self) -> None:
+        """Given the post-process presets, When custom slots are read, Then three parallel slots exist."""
+        from maw import postprocess_llm
+
+        custom_slots = [preset for preset in postprocess_llm.PRESETS if postprocess_llm.is_custom_slot(preset.id)]
+
+        self.assertEqual([preset.id for preset in custom_slots], ["custom", "custom2", "custom3"])
+        self.assertEqual(
+            [preset.env_prefix for preset in custom_slots],
+            ["MAW_POSTPROCESS_CUSTOM", "MAW_POSTPROCESS_CUSTOM2", "MAW_POSTPROCESS_CUSTOM3"],
+        )
+        self.assertTrue(all(preset.base_url == "" and preset.model == "" for preset in custom_slots))
+        self.assertFalse(postprocess_llm.is_custom_slot("deepseek"))
+        self.assertEqual(postprocess_llm.preset_by_id("custom3").id, "custom3")
+
+    def test_provider_registry_contains_deepseek_easter_egg_placeholder(self) -> None:
+        """Given the provider registry, When DeepSeek is inspected, Then it is a non-transcribable placeholder."""
+        provider = gui_config.provider_by_id("deepseek")
+
+        self.assertEqual(provider.label, "DeepSeek（？）")
+        # 与必剪之间的分隔线已移除（261011 反馈）：两项紧挨成「非转写/实验性」分组。
+        self.assertFalse(provider.divider_before)
+        self.assertFalse(provider.requires_api_key)
+        self.assertFalse(provider.supports_language)
+        self.assertIn("文本模型", provider.note)
+        self.assertIn("AI处理", provider.note)
+        self.assertIn("\n", provider.note)  # 两行提示：第一行说明，第二行指向 AI 处理
+
+    def test_is_deepseek_base_url_matches_official_hosts(self) -> None:
+        """Given custom OpenAI-compatible base URLs, When checked, Then only DeepSeek hosts are flagged."""
+        self.assertTrue(gui_config.is_deepseek_base_url("https://api.deepseek.com"))
+        self.assertTrue(gui_config.is_deepseek_base_url("https://api.deepseek.com/v1"))
+        self.assertTrue(gui_config.is_deepseek_base_url("api.deepseek.com"))
+        self.assertFalse(gui_config.is_deepseek_base_url("https://api.openai.com/v1"))
+        self.assertFalse(gui_config.is_deepseek_base_url(""))
+        self.assertFalse(gui_config.is_deepseek_base_url("https://deepseek.com.example.com/v1"))
 
     def test_provider_registry_contains_custom_openai_compatible_asr(self) -> None:
         provider = gui_config.provider_by_id("openai")
@@ -360,7 +397,9 @@ class GuiConfigTests(unittest.TestCase):
         self.assertEqual(provider.models[-1].label, "自定义（Custom）")
         self.assertEqual(provider.models[0].env_key, "MAW_OPENAI_ASR_API_KEY")
         self.assertEqual(provider.regions, ())
-        self.assertIn("时间戳", provider.note)
+        self.assertIn("OpenAI 官方服务", provider.note)
+        self.assertIn("OpenRouter", provider.note)
+        self.assertIn("自定义（Custom）", provider.note)
         self.assertIn("OpenRouter", provider.models[0].openrouter_note)
         self.assertIn("0.006", provider.models[0].price_note)
         self.assertTrue(provider.models[0].supports_prompt)
@@ -442,7 +481,7 @@ class GuiConfigTests(unittest.TestCase):
         self.assertEqual(moss.engine, "moss")
         self.assertTrue(moss.supports_speaker)
         self.assertIn("transformers", moss.requires_runtime)
-        # MOSS 输出契约只有段级时间戳（docs/LOCAL_ASR.md），说明里必须提前提醒。
+        # MOSS 输出契约只有段级时间戳（docs/user/LOCAL_ASR.md），说明里必须提前提醒。
         self.assertIn("仅段级时间码", moss.note)
         firered = provider.models[-2]
         self.assertEqual(firered.engine, "firered")
@@ -622,6 +661,24 @@ class GuiConfigTests(unittest.TestCase):
 
             with mock.patch.dict(os.environ, {}, clear=True):
                 self.assertEqual(gui_config.api_key_for_provider("soniox", env_path), "file-soniox")
+
+
+class ApiKeyNormalizationTests(unittest.TestCase):
+    def test_whitespace_system_key_uses_saved_key_or_remains_missing(self):
+        from maw.gui_config import api_key_for_provider
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / ".env"
+            self.assertEqual(api_key_for_provider("qwen", path, {"DASHSCOPE_API_KEY": "  "}), "")
+            path.write_text("DASHSCOPE_API_KEY=test-only-saved-token\n", encoding="utf-8")
+            self.assertEqual(api_key_for_provider("qwen", path, {"DASHSCOPE_API_KEY": "  "}),
+                             "test-only-saved-token")
+            self.assertEqual(api_key_for_provider("qwen", path, {"DASHSCOPE_API_KEY": "  test-only-system-token  "}),
+                             "test-only-system-token")
+
+    def test_explicit_empty_environment_does_not_read_host_credentials(self):
+        from maw.gui_config import api_key_for_provider
+        with tempfile.TemporaryDirectory() as directory, mock.patch.dict(os.environ, {"DASHSCOPE_API_KEY": "host-only-token"}):
+            self.assertEqual(api_key_for_provider("qwen", Path(directory) / ".env", {}), "")
 
 
 if __name__ == "__main__":

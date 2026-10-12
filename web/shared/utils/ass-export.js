@@ -60,23 +60,42 @@ export function createUtilsModule(dependencies) {
   }
 
   function assEmphasizedText(text, style, fontSize, emphasisSyntax, inlineOptions) {
-    const runs = assInlineStyleRuns(text, emphasisSyntax, inlineOptions);
+    const runs = inlineOptions?.preparedRuns || assInlineStyleRuns(text, emphasisSyntax, inlineOptions);
     return runs.map((run) => {
       const content = escapeAssText(run.text);
       let startTags = '';
       let endTags = '';
+      if (run.speakerColor) {
+        startTags += `\\1c${assOverrideColorFromHex(run.speakerColor)}`;
+        endTags += `\\1c${assOverrideColorFromHex(style.primaryColor)}`;
+      }
       if (run.emphasized) {
         const tag = style.emphasisStyle === 'stroke' ? '3c' : '1c';
         const baseColor = style.emphasisStyle === 'stroke' ? style.outlineColor : style.primaryColor;
         startTags += `\\${tag}${assOverrideColorFromHex(style.emphasisColor)}`;
         endTags += `\\${tag}${assOverrideColorFromHex(baseColor)}`;
       }
+      // 注释 run 的颜色/比例覆盖在强调之后写入：同一 run 同时命中时注释优先。
+      if (run.comment) {
+        const tag = style.commentStyle === 'stroke' ? '3c' : '1c';
+        const baseColor = style.commentStyle === 'stroke' ? style.outlineColor : style.primaryColor;
+        startTags += `\\${tag}${assOverrideColorFromHex(style.commentColor)}`;
+        endTags += `\\${tag}${assOverrideColorFromHex(baseColor)}`;
+      }
       const sizeScale = run.size === 'small' ? style.smallTextScale : run.size === 'large' ? style.largeTextScale : 1;
       const emphasisScale = run.emphasized ? style.emphasisScale : 1;
-      const scaledFontSize = Math.max(1, Math.round(fontSize * sizeScale * emphasisScale));
-      if (scaledFontSize !== fontSize) {
+      const commentScale = run.comment ? (style.commentScale || 1) : 1;
+      const runScale = sizeScale * emphasisScale * commentScale;
+      const scaledFontSize = Math.max(1, Math.round(fontSize * runScale));
+      if (runScale !== 1) {
         startTags += `\\fs${scaledFontSize}`;
         endTags += `\\fs${fontSize}`;
+        const transform = inlineOptions?.fontTransform;
+        if (transform) {
+          const timing = `${transform.startMs},${transform.endMs},${transform.accel}`;
+          startTags += `\\t(${timing},\\fs${Math.max(1, Number((transform.target * runScale).toFixed(4)))})`;
+          endTags += `\\t(${timing},\\fs${transform.target})`;
+        }
       }
       if (run.struck && !style.strikeOut) {
         startTags += '\\s1';
@@ -172,6 +191,16 @@ export function createUtilsModule(dependencies) {
       ? normalizeSpeakerLabelSeparator(options.speakerLabelSeparator)
       : DEFAULT_SPEAKER_LABEL_SEPARATOR;
     const events = [];
+    const stackItems = [];
+    const addStackItem = (role, segment, index, context, start, end, style, size, styleName, speakerName, fade, originalText) => {
+      const colorName = effectiveColorName(segment, context);
+      const speakerColor = colorStyle === 'text' || colorStyle === 'speaker'
+        ? colorStyles.find(entry => entry.name === colorName)?.value || style.primaryColor : style.primaryColor;
+      const runs = assInlineStyleRuns(fade.text, emphasisSyntax, inlineOptions);
+      if (speakerName) runs.unshift({ text: `${speakerName}${speakerLabelSeparator}`, speakerColor });
+      stackItems.push({ role, segment, index, start: start * 10, end: end * 10,
+        style, fontSize: size, styleName, speakerName, runs, fad: fade.fad, originalText });
+    };
     // 颜色样式只有在 ASS 能表达为整句样式（text / stroke）时才生成
     // 调色板样式；speaker 只给说话人前缀加局部颜色，none 回落 Default。
     const assColorGroupsSupported = colorStyle === 'text' || colorStyle === 'stroke';
@@ -222,15 +251,15 @@ export function createUtilsModule(dependencies) {
       });
       const animationTags = assMode
         ? assAnimationOverrideTags(profile, { fad: sentenceFade?.fad || null }) : '';
+      if (assMode) addStackItem('main', segment, sourceIndex, source, startCentiseconds, endCentiseconds, styleForEvent, fontSize, styleName, speakerName, sentenceFade, eventText);
       const decoratedText = animationTags ? `{${animationTags}}${eventText}` : eventText;
       events.push(
         `Dialogue: 0,${formatAssTime(startCentiseconds * 10)},${formatAssTime(endCentiseconds * 10)},${styleName},${normalizeAssEventField(speakerName)},0,0,0,,${decoratedText}`,
       );
     });
 
-    // 副字幕轨（多重字幕）：所有副字幕共用一个样式（不支持颜色分组），
-    // 事件引用独立 Extension 样式，边距/对齐完全由该样式决定。
-    // \fad/\fade/\t 逐句应用；\move 的绝对坐标只属于主字幕。
+    // Prepare extension style/content. ASS events below are regenerated from
+    // the shared active-cue plan, which supplies group positions and movement.
     const extensionSource = Array.isArray(options.extensionSegments)
       ? options.extensionSegments : [];
     const hasExtensionCues = extensionSource.some((segment) => segment && segment.disabled !== true);
@@ -240,8 +269,27 @@ export function createUtilsModule(dependencies) {
     const extensionScaledFontSize = extensionStyle
       ? normalizeAssFontSize(extensionStyle.fontSize * resolution.height / ASS_REFERENCE_PLAY_RES_Y)
       : 0;
+    // Nominal style-field defaults are retained for compatibility. Active ASS
+    // events explicitly override them with the shared measured stack plan.
+    const mainAnchor = dependencies.assCanvasAnchorPoint({
+      alignment: baseStyle.alignment,
+      margins: { left: baseStyle.marginL, right: baseStyle.marginR, vertical: baseStyle.marginV },
+      playResX: resolution.width, playResY: resolution.height,
+    });
+    const extensionAnchor = assMode && extensionStyle
+      ? dependencies.assCanvasStackedAnchor({
+        belowAnchor: mainAnchor, belowAlignment: baseStyle.alignment, belowFontSize: fontSize,
+        alignment: extensionStyle.alignment,
+        margins: { left: extensionStyle.marginL, right: extensionStyle.marginR },
+        playResX: resolution.width, playResY: resolution.height,
+      }) : null;
+    const anchorTags = (position) => position
+      ? `\\an${position.alignment}\\pos(${position.anchor.x},${position.anchor.y})` : '';
+    const extensionAnchorMarginV = assMode && extensionStyle
+      ? resolution.height - extensionAnchor.anchor.y
+      : Math.max(0, Number(extensionStyle?.marginV) || 0);
     if (assMode && extensionStyle) {
-      extensionSource.forEach((segment) => {
+      extensionSource.forEach((segment, index) => {
         if (!segment || segment.disabled === true) return;
         const rawStart = normalizeAssTimeMs(mapTime(segment.start));
         const rawEnd = normalizeAssTimeMs(mapTime(segment.end));
@@ -250,41 +298,61 @@ export function createUtilsModule(dependencies) {
         const endCentiseconds = Math.max(startCentiseconds + 1, Math.round(rawEnd / 10));
         const extensionFade = assSentenceFadeTags(segment.text, profile, inlineOptions.assSpecialSymbolRule);
         const extensionAnimationTags = assAnimationOverrideTags(profile, { includeMove: false, fad: extensionFade.fad });
-        const extensionContent = assEmphasizedText(extensionFade.text, extensionStyle, extensionScaledFontSize, emphasisSyntax, inlineOptions);
-        const extensionText = extensionAnimationTags
-          ? `{${extensionAnimationTags}}${extensionContent}` : extensionContent;
+        // 说话人前缀与主字幕同规则：开启「字幕显示说话人前缀」时副字幕
+        // 也按自身轨的颜色映射追加前缀（上下文用副字幕轨自身数组）。
+        const extensionSpeakerName = speakerLabels
+          ? speakerLabelForSegment(segment, extensionSource, speakerLabels) : '';
+        const extensionContent = assEventText({
+          segment,
+          text: extensionFade.text,
+          speakerName: extensionSpeakerName,
+          speakerLabelSeparator,
+          colorName: effectiveColorName(segment, extensionSource),
+          colorStyles,
+          style: extensionStyle,
+          fontSize: extensionScaledFontSize,
+          colorStyle,
+          speakerLabels,
+          assMode,
+          emphasisSyntax,
+          inlineOptions,
+        });
+        addStackItem('extension', segment, index, extensionSource, startCentiseconds, endCentiseconds, extensionStyle, extensionScaledFontSize, 'Extension', extensionSpeakerName, extensionFade);
+        const extensionText = `{${anchorTags(extensionAnchor)}}`
+          + (extensionAnimationTags ? `{${extensionAnimationTags}}` : '') + extensionContent;
         events.push(
-          `Dialogue: 1,${formatAssTime(startCentiseconds * 10)},${formatAssTime(endCentiseconds * 10)},Extension,,0,0,0,,${extensionText}`,
+          `Dialogue: 1,${formatAssTime(startCentiseconds * 10)},${formatAssTime(endCentiseconds * 10)},Extension,,0,0,${extensionAnchorMarginV},,${extensionText}`,
         );
       });
     }
 
-    // 叠加轨事件：引用独立的 Overlay 样式（字段与主字幕样式完全一致，
-    // 仅把 MarginV 固化为算好的锚定结果），事件行不再携带边距覆盖。颜色
-    // 映射与主字幕一致（none 模式一起回落）；\fad/\fade/\t 逐句应用，
-    // \move 的绝对坐标只属于主字幕。锚定公式固定为「下方最近一层字幕的
-    // 垂直边距 + 1.2 × 该层字号」：有副字幕时叠在副字幕上方，否则叠在主
-    // 字幕上方（1.2 倍在两层文字之间留出空档）。ASS 模式下各层边距来自
-    // 样式库（用户可改），legacy 模式主字幕固定 80。
+    // Overlay inherits main typography and the extension's horizontal style
+    // when enabled. Active-event positions and motion come from the stack plan.
     const overlaySource = Array.isArray(options.overlaySegments) ? options.overlaySegments : [];
     const hasOverlayCues = overlaySource.some((segment) => segment && segment.disabled !== true);
+    const overlayAnchorStyle = extensionAnchor && hasExtensionCues ? extensionStyle : baseStyle;
+    const overlayAnchor = assMode ? dependencies.assCanvasStackedAnchor({
+      belowAnchor: extensionAnchor && hasExtensionCues ? extensionAnchor.anchor : mainAnchor,
+      belowAlignment: extensionAnchor && hasExtensionCues ? extensionAnchor.alignment : baseStyle.alignment,
+      belowFontSize: extensionAnchor && hasExtensionCues ? extensionScaledFontSize : fontSize,
+      alignment: overlayAnchorStyle.alignment,
+      margins: { left: overlayAnchorStyle.marginL, right: overlayAnchorStyle.marginR },
+      playResX: resolution.width, playResY: resolution.height,
+    }) : null;
     const overlayMarginV = assMode
-      ? (extensionStyle && hasExtensionCues
-        ? Math.max(0, Number(extensionStyle.marginV) || 0) + Math.round(1.2 * extensionScaledFontSize)
-        : Math.max(0, Number(baseStyle.marginV) || 0) + Math.round(1.2 * fontSize))
+      ? resolution.height - overlayAnchor.anchor.y
       : 80 + Math.round(1.2 * fontSize);
-    // 链式锚定发生在哪一层的坐标系里，叠加样式就继承哪一层的对齐与水平
-    // 边距：否则副字幕样式改成顶部/侧边对齐时，固化边距会按主样式的基准
-    // 边解释，叠加轨落到画面另一侧。字体与颜色仍跟随主字幕样式。
+    // Inherit the anchor layer's horizontal alignment/margins, with a bottom
+    // vertical attachment matching the explicit position in every event.
     const overlayBaseStyle = assMode
       ? (extensionStyle && hasExtensionCues
         ? {
           ...baseStyle,
-          alignment: extensionStyle.alignment,
+          alignment: overlayAnchor.alignment,
           marginL: extensionStyle.marginL,
           marginR: extensionStyle.marginR,
         }
-        : baseStyle)
+        : { ...baseStyle, alignment: overlayAnchor.alignment })
       : {
         ...ASS_DEFAULT_ASS_STYLE,
         fontName: fontFamily,
@@ -308,7 +376,7 @@ export function createUtilsModule(dependencies) {
       assColorGroupsSupported && ASS_COLOR_STYLE_NAMES.includes(colorName)
         ? `Overlay ${colorName.toUpperCase()}` : 'Overlay'
     );
-    overlaySource.forEach((segment) => {
+    overlaySource.forEach((segment, index) => {
       if (!segment || segment.disabled === true) return;
       const rawStart = normalizeAssTimeMs(mapTime(segment.start));
       const rawEnd = normalizeAssTimeMs(mapTime(segment.end));
@@ -320,15 +388,89 @@ export function createUtilsModule(dependencies) {
         ? assSentenceFadeTags(segment.text, profile, inlineOptions.assSpecialSymbolRule) : null;
       const overlayAnimationTags = assMode
         ? assAnimationOverrideTags(profile, { includeMove: false, fad: overlayFade.fad }) : '';
+      // 叠加字幕同样跟随「字幕显示说话人前缀」：映射按叠加轨自身数组解析。
+      const overlaySpeakerName = speakerLabels
+        ? speakerLabelForSegment(segment, overlaySource, speakerLabels) : '';
       const overlayContent = assMode
-        ? assEmphasizedText(overlayFade.text, overlayStyleFor(overlayColorName), fontSize, emphasisSyntax, inlineOptions)
+        ? assEventText({
+          segment,
+          text: overlayFade.text,
+          speakerName: overlaySpeakerName,
+          speakerLabelSeparator,
+          colorName: overlayColorName,
+          colorStyles,
+          style: overlayStyleFor(overlayColorName),
+          fontSize,
+          colorStyle,
+          speakerLabels,
+          assMode,
+          emphasisSyntax,
+          inlineOptions,
+        })
         : escapeAssText(segment.text);
-      const overlayText = overlayAnimationTags
-        ? `{${overlayAnimationTags}}${overlayContent}` : overlayContent;
+      if (assMode) addStackItem('overlay', segment, index, overlaySource, startCentiseconds, endCentiseconds, overlayStyleFor(overlayColorName), fontSize, overlayStyleNameFor(overlayColorName), overlaySpeakerName, overlayFade);
+      const overlayText = (overlayAnchor ? `{${anchorTags(overlayAnchor)}}` : '')
+        + (overlayAnimationTags ? `{${overlayAnimationTags}}` : '') + overlayContent;
       events.push(
         `Dialogue: 2,${formatAssTime(startCentiseconds * 10)},${formatAssTime(endCentiseconds * 10)},${overlayStyleNameFor(overlayColorName)},,0,0,0,,${overlayText}`,
       );
     });
+
+    if (assMode) {
+      const plan = dependencies.assCreateStackPlan({ items: stackItems, profile,
+        width: resolution.width, height: resolution.height, measure: options.measureAssRun });
+      if (typeof options.onAssPlan === 'function') options.onAssPlan({ ...plan, profile });
+      if (options.allowAssPlanDiagnostics) return '';
+      if (!options.allowAssPlanDiagnostics && plan.diagnostics.length) throw new Error(plan.diagnostics[0].message);
+      events.length = 0;
+      const number = value => Number(value.toFixed(4));
+      for (const slice of plan.slices) {
+        if (slice.diagnostic) continue;
+        for (const piece of slice.pieces) for (const item of slice.items) {
+          const scale = slice.scale;
+          const scaledStyle = { ...item.style, spacing: item.style.spacing * scale,
+            outline: item.style.outline * scale, shadow: item.style.shadow * scale };
+          const transformTargets = profile.animations.t.enabled
+            ? dependencies.assTransformStyleTargets(profile.animations.t.tags) : {};
+          const sharedDecorations = (!slice.legacy || item.sharedStackCue)
+            && (transformTargets.underline !== undefined || transformTargets.strikeOut !== undefined);
+          if (sharedDecorations) {
+            // libass applies these discrete t targets at cue start. Inline
+            // marker resets must restore that effective value, including off.
+            for (const key of ['underline', 'strikeOut']) {
+              if (transformTargets[key] !== undefined) scaledStyle[key] = Boolean(transformTargets[key]);
+            }
+          }
+          const size = Math.max(1, number(item.fontSize * scale));
+          const animation = piece.start === item.start && piece.end === item.end && scale === 1
+            ? assAnimationOverrideTags(profile, { includeMove: slice.legacy, fad: item.fad })
+            : dependencies.assAnimationSliceTags(profile, { offsetMs: piece.start - item.start,
+              durationMs: item.end - item.start, includeMove: slice.legacy, fad: item.fad, scale });
+          let position = '';
+          if (!slice.legacy) {
+            const from = { x: number(piece.from.x + item.offset.x * scale), y: number(piece.from.y + item.offset.y * scale) };
+            const to = { x: number(piece.to.x + item.offset.x * scale), y: number(piece.to.y + item.offset.y * scale) };
+            const instant = piece.instant === null || piece.instant === undefined ? null : piece.instant - piece.start;
+            const moveStart = instant === null ? 0 : instant;
+            const moveEnd = instant === null ? piece.end - piece.start : instant === 0 ? 1 : instant;
+            position = from.x === to.x && from.y === to.y ? `\\pos(${from.x},${from.y})`
+              : `\\move(${from.x},${from.y},${to.x},${to.y},${moveStart},${moveEnd})`;
+            position = `\\an${item.alignment}\\q2${position}\\fs${size}\\fsp${number(scaledStyle.spacing)}\\bord${number(scaledStyle.outline)}\\shad${number(scaledStyle.shadow)}`;
+          }
+          const transformTarget = transformTargets.fontSize;
+          const fontTransform = transformTarget === undefined ? null : {
+            startMs: profile.animations.t.startMs - (piece.start - item.start),
+            endMs: (profile.animations.t.startMs === 0 && profile.animations.t.endMs === 0
+              ? item.end - item.start : profile.animations.t.endMs) - (piece.start - item.start),
+            accel: profile.animations.t.accel, target: Number((transformTarget * scale).toFixed(4)),
+          };
+          const content = slice.legacy && !(item.sharedStackCue && (fontTransform || sharedDecorations)) ? item.originalText : assEmphasizedText('', scaledStyle, size, emphasisSyntax,
+            { ...inlineOptions, preparedRuns: item.runs, fontTransform });
+          const decorated = (position ? `{${position}}` : '') + (animation ? `{${animation}}` : '') + content;
+          events.push(`Dialogue: ${{ main: 0, extension: 1, overlay: 2 }[item.role]},${formatAssTime(piece.start)},${formatAssTime(piece.end)},${item.styleName},${normalizeAssEventField(item.speakerName)},0,0,0,,${decorated}`);
+        }
+      }
+    }
 
     return [
       '[Script Info]',

@@ -72,6 +72,28 @@
   }
 
 
+  // 搜索词按字面匹配；名称与备注仍由文本节点渲染，不将工程内容解析为 HTML。
+  function appendSearchHighlightedText(container, value) {
+    const text = String(value ?? '');
+    const query = filter.query.trim();
+    if (!query) {
+      container.textContent = text;
+      return;
+    }
+    const pattern = new RegExp(query.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'gi');
+    let cursor = 0;
+    for (const match of text.matchAll(pattern)) {
+      container.appendChild(document.createTextNode(text.slice(cursor, match.index)));
+      const highlight = document.createElement('mark');
+      highlight.className = 'markers-search-match';
+      highlight.textContent = match[0];
+      container.appendChild(highlight);
+      cursor = match.index + match[0].length;
+    }
+    container.appendChild(document.createTextNode(text.slice(cursor)));
+  }
+
+
   // 颜色过滤下拉：按当前工程中出现的颜色去重；保留已选值（颜色消失时回退 all）。
   function syncColorFilterOptions(markers) {
     if (!MaweDom.markersFilterColor) return;
@@ -131,6 +153,132 @@
       badge.dataset.markerProjectReason = 'true';
     }
     return badge;
+  }
+
+
+  function isAiCleanupReviewMarker(marker) {
+    if (typeof marker?.id !== 'string') return false;
+    if (isAiCleanupReviewMuted(marker.id)) return true;
+    const start = Number(marker?.start);
+    const end = Number(marker?.end);
+    const hasReviewState = marker.review?.status === 'pending' || marker.review?.status === 'confirmed';
+    return /^\[AI\]\s*/i.test(String(marker.note || '').trim())
+      && Number.isFinite(start)
+      && Number.isFinite(end)
+      && end > start
+      && hasReviewState;
+  }
+
+
+  function isAiCleanupReviewMuted(markerId) {
+    const source = MaweGapRemoveData.getGapRemoveData(false)?.provenance?.sources?.ai_cleanup_review;
+    return Array.isArray(source) && source.some((range) => (
+      (range.review_marker_id || range.id) === markerId
+    ));
+  }
+
+
+  function aiCleanupReviewMuteState(markerId, marker = MaweMarkerEditing.findMarker(markerId)) {
+    const state = MaweGapRemoveData.getGapRemoveData(false);
+    const ranges = state?.provenance?.sources?.ai_cleanup_review;
+    const ownedRanges = Array.isArray(ranges) ? ranges.filter((range) => (
+      (range.review_marker_id || range.id) === markerId
+    )) : [];
+    if (!ownedRanges.length) {
+      return { owned: false, matchesCurrentRange: false, removed: false, partiallyRemoved: false };
+    }
+    const markerStart = Math.round(Number(marker?.start));
+    const markerEnd = Math.round(Number(marker?.end));
+    // 来源裁剪可拆出多条归属片段；当前区段包含全部片段时仍关联同一静音。
+    // 没有另存原始几何，包围这些片段的区段扩大也按此几何关联解释。
+    const matchesCurrentRange = Number.isFinite(markerStart) && Number.isFinite(markerEnd)
+      && markerEnd > markerStart
+      && ownedRanges.every((range) => range.start >= markerStart && range.end <= markerEnd)
+      && ownedRanges.some((range) => range.start < markerEnd && range.end > markerStart);
+
+    const removedGaps = (Array.isArray(state?.gaps) ? state.gaps : [])
+      .filter((gap) => gap?.removed !== false)
+      .map((gap) => ({ start: Number(gap.start), end: Number(gap.end) }))
+      .filter((gap) => Number.isFinite(gap.start) && Number.isFinite(gap.end) && gap.end > gap.start)
+      .sort((left, right) => left.start - right.start || left.end - right.end);
+    const overlapsRemoved = (range) => removedGaps.some((gap) => gap.start < range.end && gap.end > range.start);
+    const isFullyRemoved = (range) => {
+      let cursor = Number(range.start);
+      const end = Number(range.end);
+      for (const gap of removedGaps) {
+        if (gap.end <= cursor) continue;
+        if (gap.start > cursor) return false;
+        cursor = Math.max(cursor, gap.end);
+        if (cursor >= end) return true;
+      }
+      return cursor >= end;
+    };
+    const currentRange = { start: markerStart, end: markerEnd };
+    const removed = matchesCurrentRange && isFullyRemoved(currentRange);
+    return {
+      owned: true,
+      matchesCurrentRange,
+      removed,
+      partiallyRemoved: matchesCurrentRange && !removed && overlapsRemoved(currentRange),
+    };
+  }
+
+
+  function updateAiCleanupReviewMuteButton(button, markerId) {
+    button.hidden = !isAiCleanupReviewMarker(MaweMarkerEditing.findMarker(markerId));
+    const status = aiCleanupReviewMuteState(markerId);
+    const label = !status.owned ? '设静音'
+      : !status.matchesCurrentRange ? '取消原静音'
+        : status.removed ? '已静音'
+          : status.partiallyRemoved ? '部分静音' : '取消静音';
+    const title = status.owned
+      ? status.matchesCurrentRange
+        ? '取消会仅撤销此 AI 复核项的静音来源'
+        : '此复核区段已被编辑；点击仅撤销旧范围的 AI 静音来源'
+      : '静音此 AI 复核项对应的媒体区段';
+    button.textContent = window.MAWE_I18N?.translateText(label) || label;
+    button.title = window.MAWE_I18N?.translateText(title) || title;
+    button.setAttribute('aria-pressed', String(status.owned));
+    button.classList.toggle('is-muted', status.owned);
+  }
+
+
+  function updateAiCleanupReviewStatusButton(button, marker) {
+    if (!button || !marker) return;
+    const status = aiCleanupReviewMuteState(marker.id);
+    const removed = status.matchesCurrentRange && status.removed;
+    const partiallyRemoved = status.matchesCurrentRange && status.partiallyRemoved;
+    const label = removed ? '已移除'
+      : partiallyRemoved ? '部分移除'
+        : markerUtils().markerReviewStatusLabel(marker);
+    button.textContent = window.MAWE_I18N?.translateText(label) || label;
+    button.classList.toggle('pending', !removed && !partiallyRemoved && marker.review?.status === 'pending');
+    button.classList.toggle('confirmed', !removed && !partiallyRemoved && marker.review?.status === 'confirmed');
+    button.classList.toggle('removed', removed);
+    button.classList.toggle('partially-removed', partiallyRemoved);
+    button.disabled = removed || partiallyRemoved;
+    const title = removed || partiallyRemoved
+      ? (removed ? 'AI 复核区段已移除' : 'AI 复核区段已部分移除')
+      : String(marker.review?.reason || '');
+    button.title = window.MAWE_I18N?.translateText(title) || title;
+    if (marker.review?.reason && !removed && !partiallyRemoved) {
+      button.dataset.markerProjectReason = 'true';
+    } else {
+      delete button.dataset.markerProjectReason;
+    }
+  }
+
+
+  function refreshAiCleanupReviewMuteButtons() {
+    const list = MaweDom.markersList;
+    if (!list) return;
+    list.querySelectorAll('[data-ai-cleanup-review-mute]').forEach((button) => {
+      updateAiCleanupReviewMuteButton(button, button.dataset.aiCleanupReviewMute);
+    });
+    list.querySelectorAll('[data-ai-cleanup-review-status]').forEach((button) => {
+      const marker = MaweMarkerEditing.findMarker(button.dataset.aiCleanupReviewStatus);
+      updateAiCleanupReviewStatusButton(button, marker);
+    });
   }
 
 
@@ -306,10 +454,14 @@
 
     const actions = document.createElement('div');
     actions.className = 'markers-item-actions';
+    const reviewActions = document.createElement('div');
+    reviewActions.className = 'markers-review-actions';
     // 复核三态 toggle（左下角）：无 → 待复核 → 已确认 → 无；每次点击进撤销历史。
     const reviewToggle = document.createElement('button');
     reviewToggle.type = 'button';
     reviewToggle.className = `markers-review-toggle${marker.review ? ' has-review' : ''}${marker.review?.status === 'pending' ? ' pending' : ''}${marker.review?.status === 'confirmed' ? ' confirmed' : ''}`;
+    // 资格可在 gap history 恢复时变化；保持控件身份，刷新时不重建编辑卡片。
+    reviewToggle.dataset.aiCleanupReviewStatus = marker.id;
     reviewToggle.textContent = utils.markerReviewStatusLabel(marker);
     if (marker.review?.reason) {
       reviewToggle.title = marker.review.reason;
@@ -318,7 +470,26 @@
     reviewToggle.addEventListener('click', () => {
       MaweMarkerEditing.updateMarkerFields(marker.id, { review: utils.nextMarkerReviewStatus(marker) });
     });
-    actions.appendChild(reviewToggle);
+    updateAiCleanupReviewStatusButton(reviewToggle, marker);
+    reviewActions.appendChild(reviewToggle);
+    const muteButton = document.createElement('button');
+    muteButton.type = 'button';
+    muteButton.className = 'markers-ai-review-mute-toggle';
+    muteButton.dataset.aiCleanupReviewMute = marker.id;
+    updateAiCleanupReviewMuteButton(muteButton, marker.id);
+    muteButton.addEventListener('click', () => {
+      const result = MaweGapRemoveUi.toggleAiCleanupReviewMute(marker);
+      if (!result?.changed) {
+        MaweHint.flashHint('无法静音此复核区段；请检查起止时间', 'warning');
+        return;
+      }
+      MaweHint.flashHint(
+        result.muted ? '已静音 AI 复核区段' : '已取消 AI 复核静音',
+        'success',
+      );
+    });
+    reviewActions.appendChild(muteButton);
+    actions.appendChild(reviewActions);
     const locateButton = document.createElement('button');
     locateButton.type = 'button';
     locateButton.textContent = '定位试听';
@@ -336,7 +507,24 @@
     actions.appendChild(deleteButton);
 
     editor.append(nameLabel, colorRow, noteLabel, timeRow, actions);
+    // 记录各控件展开时的初值：点「完成」时只提交真正改过的字段。
+    editor.querySelectorAll('input, textarea').forEach((control) => {
+      control.dataset.editorInit = control.value;
+    });
     return editor;
+  }
+
+
+  // 「完成」收尾：把尚未触发 change 的已改输入先提交（pointerdown 阻止了
+  // 焦点转移，blur→change 不会发生）。只派发值有变化的控件，避免同值提交
+  // 污染撤销历史。
+  function flushMarkerEditor(item) {
+    const editor = item.querySelector('.markers-item-editor');
+    if (!editor) return;
+    editor.querySelectorAll('input, textarea').forEach((control) => {
+      if (control.value === (control.dataset.editorInit ?? control.value)) return;
+      control.dispatchEvent(new Event('change'));
+    });
   }
 
 
@@ -379,8 +567,12 @@
 
     const title = document.createElement('span');
     title.className = 'markers-item-title';
-    title.textContent = marker.name || (isRegion ? '区段' : '标记');
-    if (marker.name) title.dataset.markerProjectContent = 'true';
+    if (marker.name) {
+      appendSearchHighlightedText(title, marker.name);
+      title.dataset.markerProjectContent = 'true';
+    } else {
+      title.textContent = isRegion ? '区段' : '标记';
+    }
 
     const time = document.createElement('span');
     time.className = 'markers-item-time';
@@ -419,18 +611,26 @@
     editButton.textContent = isEditing ? '完成' : '编辑';
     editButton.title = isEditing ? '完成' : '展开编辑此标记（名称 / 颜色 / 备注 / 时间 / 复核）';
     editButton.setAttribute('aria-label', isEditing ? '完成' : `编辑 ${marker.name || (isRegion ? '区段' : '标记')}`);
+    // 阻止焦点转移：否则编辑输入的 blur→change→全量重渲染会先摘掉本按钮，
+    // 用户要点两次「完成」才能收起编辑框。
+    editButton.addEventListener('pointerdown', (event) => {
+      if (isEditing) event.preventDefault();
+    });
     editButton.addEventListener('click', () => {
+      if (isEditing) flushMarkerEditor(item);
       selectedMarkerId = marker.id;
       editingMarkerId = editingMarkerId === marker.id ? null : marker.id;
       render();
     });
     if (!batchMode) item.appendChild(editButton);
 
-    if (showNotesToggle?.checked) {
+    // 勾选「显示备注」只为有备注的标记追加内容；空备注不留「-」占位。
+    const noteText = marker.note?.trim();
+    if (showNotesToggle?.checked && noteText) {
       const note = document.createElement('div');
       note.className = 'markers-item-note';
       note.dataset.markerProjectContent = 'true';
-      note.textContent = marker.note?.trim() ? marker.note : '-';
+      appendSearchHighlightedText(note, marker.note);
       item.appendChild(note);
     }
     if (!batchMode && marker.id === editingMarkerId) item.appendChild(buildMarkerEditor(marker));
@@ -567,6 +767,8 @@
     isOpen,
     openAndLocate,
     resetSelection,
+    refreshAiCleanupReviewMuteButtons,
     getSelectedMarkerId: () => selectedMarkerId,
   });
+  document.addEventListener('mawe:languagechange', refreshAiCleanupReviewMuteButtons);
 })(typeof window !== 'undefined' ? window : globalThis);

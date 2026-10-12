@@ -216,24 +216,9 @@ function syncAssStyleForm(style) {
   if (smallTextField) smallTextField.hidden = MaweSettings.EDITOR_SETTINGS.assSmallTextEnabled === false;
   if (largeTextField) largeTextField.hidden = MaweSettings.EDITOR_SETTINGS.assLargeTextEnabled === false;
   if (assStylePreviewSample) {
-    const preview = safeStyle;
-    const borderBox = Number(preview.borderStyle) === 3;
-    assStylePreviewSample.textContent = 'Aa 字幕预览 / 字幕样例';
-    assStylePreviewSample.style.fontFamily = MaweAppearance.subtitleFontFamilyCss(preview.fontName);
-    assStylePreviewSample.style.fontSize = `${Math.max(1, Number(preview.fontSize) || 24) * (window.MaweAssPreview?.fontScale(preview) || 1)}px`;
-    assStylePreviewSample.style.fontWeight = preview.bold ? '700' : '400';
-    assStylePreviewSample.style.fontStyle = preview.italic ? 'italic' : 'normal';
-    assStylePreviewSample.style.textDecorationLine = [preview.underline ? 'underline' : '', preview.strikeOut ? 'line-through' : ''].filter(Boolean).join(' ') || 'none';
-    assStylePreviewSample.style.color = preview.primaryColor;
-    assStylePreviewSample.style.webkitTextStroke = !borderBox && preview.outline > 0
-      ? `${2 * preview.outline}px ${window.AsrEditorUtils.assCssColorWithOpacity(preview.outlineColor, preview.outlineOpacity)}` : '';
-    assStylePreviewSample.style.paintOrder = !borderBox && preview.outline > 0 ? 'stroke fill' : '';
-    assStylePreviewSample.style.filter = preview.shadow > 0 ? `drop-shadow(${preview.shadow}px ${preview.shadow}px 0 ${window.AsrEditorUtils.assCssColorWithOpacity(preview.backColor, preview.backOpacity)})` : '';
-    assStylePreviewSample.style.letterSpacing = `${preview.spacing}px`;
-    assStylePreviewSample.style.transform = `scale(${Number(preview.scaleX) / 100}, ${Number(preview.scaleY) / 100}) rotate(${Number(preview.angle) || 0}deg)`;
-    assStylePreviewSample.style.background = borderBox
-      ? window.AsrEditorUtils.assCssColorWithOpacity(preview.outlineColor, preview.outlineOpacity) : 'transparent';
-    assStylePreviewSample.style.padding = borderBox ? `${preview.outline}px` : '0';
+    // 样例与视频预览共用 Canvas 光栅管线：描边/底框/阴影观感一致。
+    // style.fontSize 即样例画布上的字形高度（ascent+descent 语义）。
+    window.MaweAssCanvas?.renderSample(assStylePreviewSample, safeStyle, 'Aa 字幕预览 / 字幕样例');
   }
   updateAssStylePreviewModeHints();
 }
@@ -662,11 +647,19 @@ function syncAssSymbolRule() {
       const sample = (width) => `${marker.repeat(width)}${label}${marker.repeat(width)}`;
       return rule === 'both' ? `${sample(1)}/${sample(2)}` : sample(2);
     });
-      formatHint.textContent = rule === 'none' ? '符号规则已关闭，字幕中的符号将保留原文。'
+    // 注释是固定双符号 //，不随单双规则变化。
+    examples.push('//注释//');
+    const sentence = rule === 'none' ? '符号规则已关闭，字幕中的符号将保留原文。'
       : `你可以使用 ${examples.join('、')} 等符号来对特定字词添加特殊样式。`;
+    // 拼接结果按整句查翻译表：英文界面下动态重建也能得到英文提示。
+    formatHint.textContent = window.MAWE_I18N?.translateText?.(sentence) || sentence;
   }
   document.querySelectorAll('[data-ass-symbol]').forEach((hint) => {
     const { assSymbol: marker, assSymbolLabel: label } = hint.dataset;
+    if (hint.dataset.assSymbolFixed === 'true') {
+      hint.textContent = `${marker}${label}${marker}`;
+      return;
+    }
     const sample = (width) => `${marker.repeat(width)}${label}${marker.repeat(width)}`;
     hint.textContent = rule === 'both' ? `${sample(1)}/${sample(2)}` : sample(2);
   });
@@ -677,6 +670,14 @@ assSpecialSymbolRule?.addEventListener('change', () => {
   MawePlaybackLoop.refreshSubtitlePreview();
 });
 function syncAssModeControl() {
+  const enabled = MaweSettings.EDITOR_SETTINGS.assMode === true;
+  const quickToggle = document.getElementById('ass-mode-quick-toggle');
+  if (quickToggle) {
+    quickToggle.classList.toggle('active', enabled);
+    quickToggle.setAttribute('aria-pressed', String(enabled));
+  }
+  const quickOpen = document.getElementById('ass-style-quick-open');
+  if (quickOpen) quickOpen.hidden = !enabled;
   syncAssSymbolRule();
   syncAssModeDependentControls();
   updateAssStylePreviewModeHints();
@@ -698,6 +699,9 @@ assModeToggle?.addEventListener('change', () => {
   MawePlaybackLoop.refreshSubtitlePreview();
   MaweHint.flashHint(assModeToggle.checked ? '已开启 ASS 字幕模式预览' : '已恢复原有字幕预览', 'success');
 });
+
+document.getElementById('ass-mode-quick-toggle')?.addEventListener('click', () => assModeToggle?.click());
+document.getElementById('ass-style-quick-open')?.addEventListener('click', () => assStyleManagerOpenButton?.click());
 
 assInlineTextToggles.forEach((input) => {
   input.addEventListener('change', () => {

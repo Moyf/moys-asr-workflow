@@ -13,6 +13,8 @@ export function createWaveformModule(dependencies) {
       event.preventDefault();
       drag.currentClientX = event.clientX;
       drag.lastPointerPosition = { clientX: event.clientX, clientY: event.clientY };
+      const keepKeyboardPosition = drag.keyboardAdjustedClientX === event.clientX;
+      if (!keepKeyboardPosition) delete drag.keyboardAdjustedClientX;
       const timing = drag.timing || this.cueTiming();
       if (drag.sharedBoundaryZone) {
         const pointerRow = this.findVisibleWaveformRowAtY(event.clientY);
@@ -30,6 +32,10 @@ export function createWaveformModule(dependencies) {
       if (!drag.started && !hasMeaningfulMovement) return;
       if (!drag.started) {
         drag.started = true;
+        // A cue click can become a double-click that opens the editor. Keep the
+        // original hit target for a no-movement gesture; only transfer capture
+        // to the stable pane once a real drag starts (before rows are rebuilt).
+        try { drag.captureTarget?.setPointerCapture?.(drag.pointerId); } catch (_) {}
         const label = drag.kind === 'move' ? '移动字幕时间'
           : drag.kind === 'resize-boundary-independent' ? '独立调整字幕边界'
           : '调整字幕边界';
@@ -44,12 +50,13 @@ export function createWaveformModule(dependencies) {
       if (drag.track === 'extension' && event.altKey) drag.independent = true;
       // Shift+拖动是精确自由放置（邻居挡路时换轨而不是吸附），全程禁用吸附，
       // 否则刚拖出重叠区就会被吸回邻居边界。
-      const disableSnap = drag.independent === true || drag.shiftOverlay === true;
-      if (drag.kind === 'move') this.applyMoveDrag(drag, deltaTime, disableSnap, drag.allowSqueeze);
+      const disableSnap = drag.independent === true || drag.shiftOverlay === true || keepKeyboardPosition;
+      if (drag.moveTracks) this.applySelectedMoveDrag(drag, deltaTime, disableSnap);
+      else if (drag.kind === 'move') this.applyMoveDrag(drag, deltaTime, disableSnap, drag.allowSqueeze);
       else if (drag.kind === 'resize-boundary') this.applyBoundaryDrag(drag, deltaTime, drag.independent);
       else if (drag.kind === 'resize-boundary-independent') this.applyIndependentBoundaryDrag(drag, deltaTime);
       else this.applyResizeDrag(drag, deltaTime, drag.independent);
-      this.options.syncBoundCueDrag?.(drag);
+      if (!drag.moveTracks) this.options.syncBoundCueDrag?.(drag);
       drag.changed = true;
       if (this.isCueBoundaryDrag(drag)) this.refreshBoundaryDragPointerLine();
       this.scheduleRefreshCueBlocks();
@@ -57,7 +64,7 @@ export function createWaveformModule(dependencies) {
 
 
     /** @this {import('./waveform-types.js').WaveformInstance} */
-    applyMoveDrag(drag, rawDelta, disableSnap, allowSqueeze = false) {
+    applyMoveDrag(drag, rawDelta, disableSnap, allowSqueeze = false, fixedDelta = null) {
       const clock = resolveTiming(drag.timing || this.cueTiming());
       // Shift+拖动的动态换轨（只作用于单条拖动）：
       // 1) 主轨上请求位移被邻居挡住 → 先把段移到指针对应位置，再转入叠加轨；
@@ -137,62 +144,7 @@ export function createWaveformModule(dependencies) {
           if (!moved.has(idx)) restoreSegment(idx, original);
         });
       }
-      let minDelta = -Infinity;
-      let maxDelta = Infinity;
-      const duration = Number(this.durationMs) > 0 ? clock.fromMs(this.durationMs) : Infinity;
-      for (const idx of drag.indices) {
-        const original = drag.originals.get(idx);
-        minDelta = Math.max(minDelta, -original.start);
-        maxDelta = Math.min(maxDelta, duration - original.end);
-        if (allowSqueeze) {
-          let previousIndex = idx - 1;
-          while (previousIndex >= 0 && moved.has(previousIndex)) previousIndex -= 1;
-          if (previousIndex >= 0) {
-            const previous = originalFor(previousIndex);
-            minDelta = Math.max(minDelta, previous.start + clock.minDuration - original.start);
-          }
-          let nextIndex = idx + 1;
-          while (nextIndex < segments.length && moved.has(nextIndex)) nextIndex += 1;
-          if (nextIndex < segments.length) {
-            const next = originalFor(nextIndex);
-            maxDelta = Math.min(maxDelta, next.end - clock.minDuration - original.end);
-          }
-        } else {
-          if (idx > 0 && !moved.has(idx - 1)) {
-            minDelta = Math.max(minDelta, clock.getEnd(segments[idx - 1]) - original.start);
-          }
-          if (idx + 1 < segments.length && !moved.has(idx + 1)) {
-            maxDelta = Math.min(maxDelta, clock.getStart(segments[idx + 1]) - original.end);
-          }
-        }
-      }
-      let delta = rawDelta;
-      if (!disableSnap) {
-        const candidates = [];
-        const playhead = clock.fromMs(this.currentTimeMs());
-        const crossTrackTargets = (this.options.getCrossTrackSnapTargets?.(drag.track) || [])
-          .map((target) => clock.fromMs(target));
-        for (const idx of drag.indices) {
-          const original = drag.originals.get(idx);
-          candidates.push(playhead - original.start, playhead - original.end);
-          if (!allowSqueeze) {
-            if (idx > 0 && !moved.has(idx - 1)) {
-              candidates.push(clock.getEnd(segments[idx - 1]) - original.start);
-            }
-            if (idx + 1 < segments.length && !moved.has(idx + 1)) {
-              candidates.push(clock.getStart(segments[idx + 1]) - original.end);
-            }
-          }
-          crossTrackTargets.forEach((target) => {
-            if (Number.isFinite(target)) candidates.push(target - original.start, target - original.end);
-          });
-        }
-        const nearest = candidates.reduce((best, value) => (
-          Math.abs(value - delta) < Math.abs(best - delta) ? value : best
-        ), Infinity);
-        if (Number.isFinite(nearest) && Math.abs(nearest - delta) <= clock.snapThreshold) delta = nearest;
-      }
-      delta = clamp(clock.round(delta), minDelta, maxDelta);
+      const delta = fixedDelta ?? this.moveDragDelta(drag, rawDelta, disableSnap, allowSqueeze).delta;
       for (const idx of drag.indices) {
         const original = drag.originals.get(idx);
         const segment = segments[idx];
@@ -256,6 +208,112 @@ export function createWaveformModule(dependencies) {
       }
       const deltaLabel = clock.unit === 'frames' ? `${delta >= 0 ? '+' : ''}${delta}F` : `${delta >= 0 ? '+' : ''}${delta} ms`;
       this.setStatus(`${allowSqueeze ? '挤压移动' : '移动'} ${drag.indices.length} 条 · ${deltaLabel}`);
+    }
+
+
+    /** @this {import('./waveform-types.js').WaveformInstance} */
+    moveDragDelta(drag, rawDelta, disableSnap, allowSqueeze = false) {
+      const clock = resolveTiming(drag.timing || this.cueTiming());
+      const segments = this.options.getSegments(drag.track);
+      const moved = new Set(drag.indices);
+      const originalFor = (idx) => drag.squeezeOriginals?.get(idx)
+        || drag.originals.get(idx) || snapshotTiming(segments[idx], clock);
+      let minDelta = -Infinity;
+      let maxDelta = Infinity;
+      const duration = Number(this.durationMs) > 0 ? clock.fromMs(this.durationMs) : Infinity;
+      for (const idx of drag.indices) {
+        const original = drag.originals.get(idx);
+        minDelta = Math.max(minDelta, -original.start);
+        maxDelta = Math.min(maxDelta, duration - original.end);
+        if (allowSqueeze) {
+          let previousIndex = idx - 1;
+          while (previousIndex >= 0 && moved.has(previousIndex)) previousIndex -= 1;
+          if (previousIndex >= 0) {
+            const previous = originalFor(previousIndex);
+            minDelta = Math.max(minDelta, previous.start + clock.minDuration - original.start);
+          }
+          let nextIndex = idx + 1;
+          while (nextIndex < segments.length && moved.has(nextIndex)) nextIndex += 1;
+          if (nextIndex < segments.length) {
+            const next = originalFor(nextIndex);
+            maxDelta = Math.min(maxDelta, next.end - clock.minDuration - original.end);
+          }
+        } else {
+          if (idx > 0 && !moved.has(idx - 1)) {
+            minDelta = Math.max(minDelta, clock.getEnd(segments[idx - 1]) - original.start);
+          }
+          if (idx + 1 < segments.length && !moved.has(idx + 1)) {
+            maxDelta = Math.min(maxDelta, clock.getStart(segments[idx + 1]) - original.end);
+          }
+        }
+      }
+      let delta = rawDelta;
+      let snapDelta = null;
+      if (!disableSnap) {
+        const candidates = [];
+        const playhead = clock.fromMs(this.currentTimeMs());
+        const crossTrackTargets = (this.options.getCrossTrackSnapTargets?.(drag.track, drag.selectedMoveSegments) || [])
+          .map((target) => clock.fromMs(target));
+        for (const idx of drag.indices) {
+          const original = drag.originals.get(idx);
+          candidates.push(playhead - original.start, playhead - original.end);
+          if (!allowSqueeze) {
+            if (idx > 0 && !moved.has(idx - 1)) {
+              candidates.push(clock.getEnd(segments[idx - 1]) - original.start);
+            }
+            if (idx + 1 < segments.length && !moved.has(idx + 1)) {
+              candidates.push(clock.getStart(segments[idx + 1]) - original.end);
+            }
+          }
+          crossTrackTargets.forEach((target) => {
+            if (Number.isFinite(target)) candidates.push(target - original.start, target - original.end);
+          });
+        }
+        const nearest = candidates.reduce((best, value) => (
+          Math.abs(value - delta) < Math.abs(best - delta) ? value : best
+        ), Infinity);
+        if (Number.isFinite(nearest) && Math.abs(nearest - delta) <= clock.snapThreshold) {
+          delta = nearest;
+          snapDelta = nearest;
+        }
+      }
+      return { minDelta, maxDelta, snapDelta, delta: clamp(clock.round(delta), minDelta, maxDelta) };
+    }
+
+
+    /** @this {import('./waveform-types.js').WaveformInstance} */
+    applySelectedMoveDrag(drag, rawDelta, disableSnap) {
+      const moves = drag.moveTracks;
+      const clock = resolveTiming(drag.timing || this.cueTiming());
+      const beforeSegments = moves.map((move) => [...this.options.getSegments(move.track)]);
+      moves.forEach((move) => {
+        move.allowSqueeze = drag.allowSqueeze;
+        this.options.prepareBoundCueDrag?.(move);
+      });
+      this.reindexSelectedMoveTracks(drag);
+      const plans = moves.map((move) => this.moveDragDelta(move, rawDelta, disableSnap, drag.allowSqueeze));
+      const minDelta = Math.max(...plans.map((plan) => plan.minDelta));
+      const maxDelta = Math.min(...plans.map((plan) => plan.maxDelta));
+      const snaps = plans.map((plan) => plan.snapDelta).filter((delta) =>
+        delta !== null && delta >= minDelta && delta <= maxDelta);
+      const nearest = snaps.length ? snaps.reduce((best, delta) =>
+        Math.abs(delta - rawDelta) < Math.abs(best - rawDelta) ? delta : best)
+        : rawDelta;
+      const delta = clamp(clock.round(nearest), minDelta, maxDelta);
+      moves.forEach((move) => {
+        this.applyMoveDrag(move, delta, true, drag.allowSqueeze, delta);
+        const segments = this.options.getSegments(move.track);
+        move.commitIndices.forEach((idx) => { if (segments[idx]) move.moveCommitSegments.add(segments[idx]); });
+      });
+      moves.forEach((move) => this.options.syncBoundCueDrag?.(move));
+      this.reindexSelectedMoveTracks(drag);
+      if (moves.some((move, index) => {
+        const segments = this.options.getSegments(move.track);
+        return segments.length !== beforeSegments[index].length
+          || segments.some((segment, idx) => segment !== beforeSegments[index][idx]);
+      })) this.refreshCueOverlay();
+      const count = moves.reduce((total, move) => total + move.indices.length, 0);
+      this.setStatus(`移动 ${count} 条 · ${delta >= 0 ? '+' : ''}${delta}${clock.unit === 'frames' ? 'F' : ' ms'}`);
     }
 
 
@@ -357,11 +415,7 @@ export function createWaveformModule(dependencies) {
       this.pane.classList.remove('shared-boundary-drag-active');
       this.drag = null;
       if (event.type === 'pointercancel') {
-        drag.cancelOriginals.forEach((original, idx) => {
-          const segment = this.options.getSegments(drag.track || 'main')[idx];
-          if (!segment) return;
-          restoreTiming(segment, original, drag.timing || this.cueTiming());
-        });
+        this.restoreSelectedMoveDrag(drag);
         this.options.onCancelEdit?.();
         this.refreshCueOverlay();
         restorePointerLine();
@@ -391,10 +445,14 @@ export function createWaveformModule(dependencies) {
         return;
       }
       const commitIndices = [...(drag.commitIndices || drag.indices)];
-      const segments = this.options.getSegments(drag.track || 'main');
-      commitIndices.forEach((idx) => { if (segments[idx]) segments[idx]._dirty = true; });
+      const tracks = (drag.moveTracks || [drag]).map((move) => {
+        const indices = [...(move.commitIndices || move.indices)];
+        const segments = this.options.getSegments(move.track);
+        indices.forEach((idx) => { if (segments[idx]) segments[idx]._dirty = true; });
+        return { track: move.track, indices };
+      });
       this.options.onCommitEdit(commitIndices, drag.kind, drag.track || 'main', drag.independent === true,
-        { trackChanged: drag.trackChanged === true });
+        { trackChanged: drag.trackChanged === true, moveTracks: drag.moveTracks ? tracks : null });
       this.refreshCueOverlay();
       restorePointerLine();
     }

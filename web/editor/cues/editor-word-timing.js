@@ -26,9 +26,11 @@
     if (toggle) toggle.checked = enabled;
     syncQuickToggle();
     MaweCoreState.waveformEditor?.pane.classList.toggle('word-timing-mode', enabled);
+    // 启用/关闭时切到字词码预设的行高与每行长度（关闭恢复原设置）。
+    MaweDisplaySettings?.syncWordTimingWaveformSettings?.(enabled);
     refresh();
   }
-  // 波形工具栏的快捷按钮（🔤）与项目设置镜像开关由模板可选提供；不存在时零开销。
+  // 波形工具栏的「字词」按钮与项目设置镜像开关由模板可选提供；不存在时零开销。
   function syncQuickToggle() {
     const quick = document.getElementById('word-timing-quick-toggle');
     if (quick) {
@@ -73,7 +75,7 @@
     if (selection?.segment === segment) selection.items = items;
   }
   // 等长替换（改错别字）时同步 items 文字；在文本提交点调用，与文字同一命令快照。
-  // quietMismatch：逐键实时路径（字幕面板输入框）不弹失败提示，避免打字被刷屏。
+  // quietMismatch 供仍然逐键处理的旧调用路径抑制重复提示。
   function syncTextChange(segment, previousText, { quietMismatch = false } = {}) {
     if (!segment || typeof segment.text !== 'string') return;
     const result = global.AsrEditorUtils.planWordTimingTextSync(segment, previousText);
@@ -81,14 +83,19 @@
     if (result.items) {
       segment.items = result.items;
       if (selection?.segment === segment) selection.items = result.items;
+      const details = Array.isArray(result.details) ? result.details : [];
+      // 提示条空间有限：超过 3 处只展示前 3 处并以「等」收尾。
+      const shown = details.slice(0, 3).map(d => `[${d.before} -> ${d.after}]`).join(' ');
+      const more = details.length > 3 ? ' 等' : '';
+      const suffix = details.length ? `（共${result.changed}处：${shown}${more}）` : `（${result.changed} 处）`;
       MaweHint.flashHint(ui(
-        `已同步字词时间码文字（${result.changed} 处）`,
-        `Synced timed text labels (${result.changed})`,
+        `已同步字词时间码文字${suffix}`,
+        `Synced timed text labels (${result.changed}: ${shown}${more})`,
       ), 'success');
     } else if (result.warn && !quietMismatch) {
       MaweHint.flashHint(ui(
-        '字词时间码未同步：文字不是等长替换，字词文字保持原样',
-        'Timed text not synced: only equal-length replacements update word labels',
+        `字词时间码未同步：[${result.before} -> ${result.after}] 不是等长替换`,
+        `Timed text not synced: [${result.before} -> ${result.after}] is not an equal-length replacement`,
       ), 'warning');
     }
   }

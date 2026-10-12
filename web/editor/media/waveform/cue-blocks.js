@@ -47,7 +47,7 @@ export function createWaveformModule(dependencies) {
 
       this.appendGapBlocks(row, startMs, endMs);
       this.appendCueBlocks(row, startMs, endMs, groupBadges || computeGroupBadges(this.options.getSegments('main')));
-      // 通用 Marker / Region 轨道：最顶层独立手势，无标记时不渲染。
+      // 通用 Marker / Region 轨道：遵守标记编辑开关，启用时空轨也可添加标记。
       this.appendMarkerTrack(row, startMs, endMs);
 
       row.addEventListener('pointerdown', (event) => {
@@ -270,6 +270,12 @@ export function createWaveformModule(dependencies) {
     appendCueBlocks(row, startMs, endMs, groupBadges = null) {
       // 传统模式沿用旧版系统光标（ew-resize）；原创边界光标只在
       const multiLane = this.options.multiSubtitleVisible?.() === true;
+      // 字词码布局分级：多行波形行高 ≥96 且非双语行时上下等高分两层（字幕块
+      // 全功能）；否则叠加显示（字幕块垫底变暗受限）。basic 单行行高充裕，
+      // 维持历史叠加布局（字幕块 72px 垫底）。
+      const wordTimingFullLane = this.options.wordTiming?.enabled
+        && this.settings.mode === 'multi' && !multiLane
+        && (Number(this.settings.rowHeight) || 0) >= 96;
       const segments = this.options.getSegments('main');
       const selected = this.options.getSelection('main');
       const bindingMarkerTargets = this.options.getBindingMarkerTargets?.() || {};
@@ -313,7 +319,7 @@ export function createWaveformModule(dependencies) {
           const blockWidthPx = ((badgeVisibleEnd - badgeVisibleStart) / badgeDuration) * this.content.clientWidth;
           if (blockWidthPx >= 24) badges.forEach((badge, badgeIndex) => {
             const badgeEl = document.createElement('span');
-            badgeEl.className = `waveform-cue-badge ${badge.type}`;
+            badgeEl.className = `waveform-cue-badge ${badge.type}${wordTimingFullLane ? ' word-timing-full' : ''}`;
             badgeEl.textContent = badge.type === 'sticker' && badge.total === 1
               ? '🦊'
               : `${badge.type === 'color' ? '🎨' : '🦊'} ${badge.ordinal}/${badge.total}`;
@@ -325,7 +331,8 @@ export function createWaveformModule(dependencies) {
         }
         // 字词时间码模式下整句块退为背景，但选中句仍保留两端手柄，
         // 让用户能在这个模式下拖动整句边界；未选中句不显示，避免与字词块抢指针。
-        const sentenceHandles = !this.options.wordTiming?.enabled || selected.has(index);
+        // 等高分层（full）时字幕块保持全功能：手柄常显、拖动行为与常规一致。
+        const sentenceHandles = !this.options.wordTiming?.enabled || wordTimingFullLane || selected.has(index);
         if (sentenceHandles && segment.start >= startMs) {
           const leftHandle = document.createElement('span');
           leftHandle.className = 'waveform-cue-handle left';
@@ -342,9 +349,13 @@ export function createWaveformModule(dependencies) {
         }
         this.layoutBlock(block, segment, startMs, endMs, row);
         block.dataset.track = 'main';
-        if (this.options.wordTiming?.enabled) block.classList.add('word-timing-background');
+        if (this.options.wordTiming?.enabled) {
+          // 等高分层的字幕块不降级为背景（保持高亮样式与拖动）；叠加模式才垫底变暗。
+          block.classList.add(wordTimingFullLane ? 'word-timing-full' : 'word-timing-background');
+          if (!wordTimingFullLane) block.classList.add('word-timing-compact');
+        }
         block.addEventListener('pointerdown', (event) => {
-          if (!this.options.wordTiming?.enabled) return this.beginCueDrag(event, index, row, 'main');
+          if (!this.options.wordTiming?.enabled || wordTimingFullLane) return this.beginCueDrag(event, index, row, 'main');
           event.preventDefault(); event.stopPropagation();
           if (event.button !== 0) return;
           this.focusWaveform();
@@ -386,10 +397,16 @@ export function createWaveformModule(dependencies) {
         // 多行模式的行高真源是 settings.rowHeight：createMultiRow 在
         // createRow 返回后才写 row.style.height，这里读内联样式恒为空，
         // cover-mode 会永远不生效。
+        // 双语行叠加块放在主字幕格上方（CSS 同步），需要高度 = 上下 inset
+        // (14) + 两格 lane + 块 35 + 间隙 1；放不下时同样回退 cover。
         const rowHeightPx = this.settings.mode === 'multi'
           ? Number(this.settings.rowHeight) || 0
           : Number.parseFloat(row.style.height) || 0;
-        const overlayCoverMode = rowHeightPx > 0 && rowHeightPx < 84;
+        const laneHeight = multiLane
+          ? Math.min(this.settings.mode === 'basic' ? 54 : this.options.wordTiming?.enabled ? 44 : 35, (rowHeightPx - 14) / 2)
+          : 0;
+        const overlayCoverMode = rowHeightPx > 0
+          && rowHeightPx < (multiLane ? 50 + laneHeight * 2 : 84);
         const activeOverlayIndex = findActiveCueIndex(overlaySegments, now);
         const firstOverlayIndex = firstCueIndexOverlapping(overlaySegments, startMs);
         for (let index = firstOverlayIndex; index < overlaySegments.length; index += 1) {
@@ -679,6 +696,18 @@ export function createWaveformModule(dependencies) {
           groupBadges,
         );
       });
+      const drag = this.drag;
+      if (drag?.started) {
+        for (const move of drag.moveTracks || [drag]) {
+          const indices = new Set(move.indices);
+          rows.forEach((row) => row.querySelectorAll(`.waveform-cue-block[data-track="${move.track}"]`)
+            .forEach((element) => {
+              const block = /** @type {HTMLElement} */ (element);
+              const index = Number(block.dataset.overlayIdx ?? block.dataset.extIdx ?? block.dataset.idx);
+              if (indices.has(index)) block.classList.add('dragging');
+            }));
+        }
+      }
       this.updatePlayback(false);
     }
 
@@ -695,6 +724,13 @@ export function createWaveformModule(dependencies) {
           activeSeamDrag.previewRowIndex = ownerRowIndex;
           this.refreshCueOverlay();
         }
+      }
+      const activeCueDrag = this.drag && this.drag.started && !this.drag.sharedBoundaryZone
+        ? this.drag : null;
+      if (activeCueDrag && (activeCueDrag.moveTracks || [activeCueDrag]).some((move) => this.cueDragOverlayOccupancyChanged(move))) {
+        // 轻量块重排只能更新已有 DOM；当字幕跨行后，必须在目标行创建新片段、
+        // 并移除源行旧片段。指针捕获在稳定 pane 上，覆盖层重建不会中断拖动。
+        this.refreshCueOverlay();
       }
       const segments = this.options.getSegments('main');
       const extensionSegments = this.options.getExtensionSegments?.() || [];
@@ -753,6 +789,38 @@ export function createWaveformModule(dependencies) {
       }
       this.positionPlayheads();
       this.refreshBoundaryDragPointerLine();
+    }
+
+
+    /** @this {import('./waveform-types.js').WaveformInstance} */
+    cueDragOverlayOccupancyChanged(drag) {
+      const rows = [...(/** @type {NodeListOf<import('./waveform-types.js').WaveformRow>} */ (
+        this.content.querySelectorAll('.waveform-row')
+      ))];
+      if (!rows.length) return false;
+      const segments = drag.track === 'extension'
+        ? (this.options.getExtensionSegments?.() || [])
+        : (this.options.getSegments(drag.track) || []);
+      const occupancy = rows.map((row) => ({
+        startMs: Number(row.dataset.startMs), endMs: Number(row.dataset.endMs),
+        indices: new Set([...row.querySelectorAll(`.waveform-cue-block[data-track="${drag.track}"]`)]
+          .map((element) => {
+            const block = /** @type {HTMLElement} */ (element);
+            return Number(block.dataset.overlayIdx ?? block.dataset.extIdx ?? block.dataset.idx);
+          })),
+      }));
+      return drag.indices.some((index) => {
+        const segment = segments[index];
+        if (!segment) return false;
+        const hiddenDisabled = segment.disabled
+          && (this.options.getHideDisabled?.() || this.settings.disabledDisplay === 'hidden');
+        return occupancy.some(({ startMs, endMs, indices }) => {
+          const shouldExist = !hiddenDisabled
+            && Number(segment.start) < endMs && Number(segment.end) > startMs;
+          const exists = indices.has(index);
+          return shouldExist !== exists;
+        });
+      });
     }
 
 

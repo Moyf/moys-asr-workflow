@@ -170,6 +170,7 @@ test('equal-length replacement remaps item texts by their sentence spans', () =>
   const plan = utils.planWordTimingTextSync({ ...source, text: '我最喜欢！' }, source.text);
   assert.deepEqual(plain(plan.items.map(item => item.text)), ['我', '最喜欢！']);
   assert.equal(plan.changed, 1);
+  assert.deepEqual(plain(plan.details), [{ before: '很喜欢', after: '最喜欢！' }]);
   // 标点替换同样按所属 span 同步
   const punctuation = utils.planWordTimingTextSync({ ...source, text: '我很喜欢？' }, source.text);
   assert.equal(punctuation.items[1].text, '很喜欢？');
@@ -181,10 +182,41 @@ test('leading punctuation attaches to the first item span like display mapping',
   assert.deepEqual(plain(plan.items.map(item => item.text)), ['，你', '号']);
 });
 
+test('unequal edits sync when the changed region stays inside one item span', () => {
+  const source = sentence();
+  // 句中插入文字落在「很喜欢」块内部 → 文字写回该块，时间不动
+  const inserted = utils.planWordTimingTextSync({ ...source, text: '我很真喜欢！' }, source.text);
+  assert.deepEqual(plain(inserted.items.map(item => item.text)), ['我', '很真喜欢！']);
+  assert.deepEqual(plain(inserted.details), [{ before: '很喜欢', after: '很真喜欢！' }]);
+  assert.deepEqual(plain(inserted.items.map(item => [item.start, item.end])), [[120, 200], [300, 550]]);
+  // 「兔 → Two」非等长替换落在单块 span 内：时间不动，仅写回该块文字
+  const hare = { text: '这是兔个', items: [
+    { text: '这', start: 0, end: 25 }, { text: '是', start: 25, end: 50 },
+    { text: '兔', start: 50, end: 100 }, { text: '个', start: 100, end: 200 },
+  ] };
+  const replaced = utils.planWordTimingTextSync({ ...hare, text: '这是Two个' }, hare.text);
+  assert.deepEqual(plain(replaced.items.map(item => item.text)), ['这', '是', 'Two', '个']);
+  assert.deepEqual(plain(replaced.details), [{ before: '兔', after: 'Two' }]);
+  assert.deepEqual(plain(replaced.items.map(item => [item.start, item.end])), [[0, 25], [25, 50], [50, 100], [100, 200]]);
+});
+
 test('unequal edits only warn when the changed region crosses timed spans', () => {
   const source = sentence();
-  // 句中插入文字 → 提示未同步
-  assert.deepEqual(plain(utils.planWordTimingTextSync({ ...source, text: '我很真喜欢！' }, source.text)), { warn: true });
+  // 删除的字完整吃掉一个块的 audible 文字 → 该块失去时间意义，提示未同步
+  assert.deepEqual(plain(utils.planWordTimingTextSync({ ...source, text: '很喜欢！' }, source.text)), {
+    warn: true,
+    before: '我',
+    after: '',
+  });
+  // 变更区域横跨两个块（「很喜」整体删除，公共后缀「欢！」不参与分配）→ 提示未同步
+  const split = { ...sentence(), items: [
+    { text: '我很', start: 120, end: 300 }, { text: '喜欢', start: 300, end: 550 },
+  ] };
+  assert.deepEqual(plain(utils.planWordTimingTextSync({ ...split, text: '我欢！' }, split.text)), {
+    warn: true,
+    before: '很喜',
+    after: '',
+  });
   // 结尾追加不跨入任何 item span → 静默忽略
   assert.equal(utils.planWordTimingTextSync({ ...source, text: `${source.text}啊` }, source.text), null);
   // 开头追加同样不跨入（首 item span 从 0 开始，但 region 为空）
@@ -206,8 +238,11 @@ test('text sync preserves non-BMP characters and uses character counts for repla
     assert.deepEqual(plain(result.items.map(item => [item.start, item.end])), [[0, 100], [100, 200], [200, 300]]);
   }
   assert.deepEqual(items.map(item => item.text), [...previous]);
-  // Same UTF-16 length is not the same number of characters.
-  assert.deepEqual(plain(utils.planWordTimingTextSync({ text: '吉祥野家', items }, previous)), { warn: true });
+  // Same UTF-16 length is not the same number of characters; the single-char
+  // block 「𠮷」 fully covers the changed region, so the 2-char text syncs in.
+  const shrunk = utils.planWordTimingTextSync({ text: '吉祥野家', items }, previous);
+  assert.deepEqual(plain(shrunk.items.map(item => item.text)), ['吉祥', '野', '家']);
+  assert.deepEqual(plain(shrunk.details), [{ before: '𠮷', after: '吉祥' }]);
 });
 
 test('text sync keeps emoji punctuation attached without shifting later item spans', () => {

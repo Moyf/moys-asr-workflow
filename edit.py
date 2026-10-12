@@ -24,6 +24,7 @@
 """
 
 import argparse
+import base64
 import html
 import json
 import os
@@ -114,6 +115,16 @@ def get_app_version() -> str:
         return BUNDLED_EDITOR_VERSION
     match = re.search(r'(?m)^version = "([^"]+)"\r?$', text)
     return match.group(1) if match else BUNDLED_EDITOR_VERSION
+
+
+def get_app_release_url() -> str:
+    """Use the matching tag for a versioned build and the release list for dev builds."""
+    version = get_app_version().strip()
+    is_version = re.fullmatch(r"\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?", version)
+    is_dev_version = re.search(r"(?:^|[.-])(?:dev|local|dirty|unknown)(?:[.-]|$)", version, re.IGNORECASE)
+    if not is_version or is_dev_version:
+        return "https://github.com/Moyf/moys-asr-workflow/releases"
+    return f"https://github.com/Moyf/moys-asr-workflow/releases/tag/v{version}"
 
 
 def media_tag(media_path: Path, media_url: str) -> str:
@@ -259,6 +270,13 @@ def render_editor_page(**context: str) -> str:
         "__NINJA_SFX_BASE_URL_JSON__": context.get("ninja_sfx_base_url_json", '"web/sfx/"'),
         "__UI_LANGUAGE_JSON__": context.get("ui_language_json", "null"),
         "__APP_VERSION__": context["app_version"],
+        "__ABOUT_GIF_URL__": "assets/moi_dancing.gif"
+        if context.get("server_config_json", "null") != "null"
+        else "data:image/gif;base64," + base64.b64encode((WEB_DIR / "assets/moi_dancing.gif").read_bytes()).decode("ascii"),
+        "__RELEASE_URL__": context.get(
+            "release_url",
+            html.escape(get_app_release_url(), quote=True),
+        ),
         "__JSON_DISPLAY__": context["json_display"],
         "__JSON_NAME_CLASS__": context["json_name_class"],
         "__MEDIA_NAME_DISPLAY__": context["media_name_display"],

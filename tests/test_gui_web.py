@@ -3,12 +3,14 @@
 from __future__ import annotations
 
 from tests.compact_assertions import CompactContainerAssertions
+from tests.launcher_sources import launcher_sources_dedented, launcher_sources_text
 
 import json
 import os
 import sys
 import tempfile
 import threading
+import time
 import unittest
 from collections.abc import Mapping
 from http import HTTPStatus
@@ -54,7 +56,7 @@ class FakeWindow:
 
 
 @final
-class GuiWebBridgeTests(unittest.TestCase):
+class GuiWebBridgeTests(CompactContainerAssertions, unittest.TestCase):
     def setUp(self) -> None:
         self.temp_dir = tempfile.TemporaryDirectory()
         self.root = Path(self.temp_dir.name)
@@ -83,6 +85,420 @@ class GuiWebBridgeTests(unittest.TestCase):
                                              "notes": "  保留所有数字  "})
         self.assertTrue(result["ok"])
         self.assertEqual(cleanup.call_args.args[0].notes, "保留所有数字")
+
+    def test_ai_cleanup_stream_cancel_closes_response_and_writes_no_artifact(self) -> None:
+        project = self.root / "cancel-cleanup.mosp"
+        script = self.root / "cancel-cleanup.txt"
+        project.write_text(
+            json.dumps({
+                "schema": "moy.asr.project.v1",
+                "segments": [{
+                    "id": "seg-1",
+                    "start": 0,
+                    "end": 1000,
+                    "text": "你好",
+                    "items": [
+                        {"text": "你", "start": 0, "end": 500},
+                        {"text": "好", "start": 500, "end": 1000},
+                    ],
+                }],
+            }, ensure_ascii=False),
+            encoding="utf-8",
+        )
+        script.write_text("你好", encoding="utf-8")
+        response = mock.Mock()
+        response_closed = threading.Event()
+        response.close.side_effect = response_closed.set
+
+        def request_completion(_settings, _prompt, cues, *, on_delta, is_cancelled, on_response, **_kwargs):
+            on_response(response)
+            decisions = [
+                {
+                    "id": cue["id"],
+                    "decision": "keep",
+                    "reason": "与文稿对应",
+                    "scriptLine": cue["scriptLine"],
+                }
+                for cue in cues
+                if cue.get("contextOnly") != "true"
+            ]
+            content = json.dumps({"decisions": decisions}, ensure_ascii=False)
+            try:
+                on_delta("content", content)
+                return {"choices": [{"message": {"content": content}}]}
+            finally:
+                on_response(None)
+
+        emit_stream = self.api._emit_postprocess_stream
+
+        def emit_then_cancel(kind, text, batch, *, operation_id=""):
+            emit_stream(kind, text, batch, operation_id=operation_id)
+            if kind == "content":
+                cancelled = self.api.cancel_postprocess({"operationId": operation_id})
+                self.assertEqual(cancelled, {"ok": True, "active": True, "cancelled": True})
+
+        with (
+            mock.patch("maw.postprocess_ai_cleanup._request_completion", side_effect=request_completion),
+            mock.patch.object(self.api, "_emit_postprocess_stream", side_effect=emit_then_cancel),
+        ):
+            result = self.api.run_ai_cleanup({
+                "projectPath": str(project),
+                "scriptPath": str(script),
+                "outputMode": "json",
+                "providerId": "deepseek",
+                "apiKey": "sk-test",
+                "baseUrl": "https://api.deepseek.com",
+                "model": "deepseek-chat",
+                "operationId": "ai-cleanup-cancel-test",
+            })
+
+        self.api.pump.shutdown()
+        scripts = "\n".join(self.window.scripts)
+        self.assertFalse(result["ok"])
+        self.assertEqual(result["code"], "postprocess_cancelled")
+        self.assertTrue(response_closed.wait(1), "response close runs asynchronously")
+        response.close.assert_called_once_with()
+        self.assertIn('"type": "postprocess_stream"', scripts)
+        self.assertIn('"operationId": "ai-cleanup-cancel-test"', scripts)
+        self.assertEqual(
+            sorted(path.name for path in self.root.iterdir()),
+            [".env.example", "cancel-cleanup.mosp", "cancel-cleanup.txt"],
+        )
+
+    def test_ai_cleanup_streams_each_batch_and_review_with_retry_reset(self) -> None:
+        project = self.root / "stream-cleanup.mosp"
+        script = self.root / "stream-cleanup.txt"
+        project.write_text(
+            json.dumps({
+                "schema": "moy.asr.project.v1",
+                "segments": [
+                    {
+                        "id": "trial",
+                        "start": 0,
+                        "end": 2000,
+                        "text": "试麦试麦听得到吗",
+                        "items": [
+                            {"text": "试麦", "start": 0, "end": 500},
+                            {"text": "试麦", "start": 500, "end": 1000},
+                            {"text": "听得到吗", "start": 1000, "end": 2000},
+                        ],
+                    },
+                    {
+                        "id": "kept",
+                        "start": 2000,
+                        "end": 3000,
+                        "text": "你好",
+                        "items": [
+                            {"text": "你", "start": 2000, "end": 2500},
+                            {"text": "好", "start": 2500, "end": 3000},
+                        ],
+                    },
+                ],
+            }, ensure_ascii=False),
+            encoding="utf-8",
+        )
+        script.write_text("你好", encoding="utf-8")
+        events: list[tuple[str, str, int, str]] = []
+        request_count = 0
+
+        def request_completion(_settings, prompt, cues, *, on_delta, on_response, **_kwargs):
+            nonlocal request_count
+            request_count += 1
+            on_response(None)
+            if request_count == 1:
+                # Missing strings cannot be repaired by closing containers;
+                # keep this a syntax retry within the same transport batch.
+                content = '{"decisions":"unfinished'
+            elif "第二道工序" in prompt:
+                content = json.dumps({"reviews": []}, ensure_ascii=False)
+            else:
+                decisions = []
+                for cue in cues:
+                    if cue.get("contextOnly") == "true":
+                        continue
+                    if cue["id"] == "c001":
+                        decisions.append({
+                            "id": cue["id"],
+                            "decision": "discard",
+                            "scriptLine": "",
+                            "reason": "试麦",
+                            "evidence": "听得到吗",
+                        })
+                    else:
+                        decisions.append({
+                            "id": cue["id"],
+                            "decision": "keep",
+                            "scriptLine": cue["scriptLine"],
+                            "reason": "对应文稿",
+                        })
+                content = json.dumps({"decisions": decisions}, ensure_ascii=False)
+            on_delta("content", content)
+            return {"choices": [{"message": {"content": content}}]}
+
+        emit_stream = self.api._emit_postprocess_stream
+
+        def record_stream(kind, text, batch, *, operation_id=""):
+            events.append((kind, text, batch, operation_id))
+            emit_stream(kind, text, batch, operation_id=operation_id)
+
+        with (
+            mock.patch("maw.postprocess_ai_cleanup.CLIPS_PER_REQUEST", 1),
+            mock.patch("maw.postprocess_ai_cleanup._request_completion", side_effect=request_completion),
+            mock.patch.object(self.api, "_emit_postprocess_stream", side_effect=record_stream),
+        ):
+            result = self.api.run_ai_cleanup({
+                "projectPath": str(project),
+                "scriptPath": str(script),
+                "outputMode": "json",
+                "providerId": "deepseek",
+                "apiKey": "sk-test",
+                "baseUrl": "https://api.deepseek.com",
+                "model": "deepseek-chat",
+                "operationId": "ai-cleanup-batches-test",
+            })
+
+        self.api.pump.shutdown()
+        self.assertTrue(result["ok"])
+        self.assertEqual(request_count, 4)  # Two initial batches, retry, and readthrough.
+        self.assertEqual({event[2] for event in events}, {1, 2, 3})
+        self.assertEqual(
+            [(kind, batch) for kind, _text, batch, _operation in events if kind == "reset"],
+            [("reset", 1), ("reset", 1), ("reset", 2), ("reset", 3)],
+        )
+        self.assertEqual(
+            {batch for kind, _text, batch, _operation in events if kind == "content"},
+            {1, 2, 3},
+        )
+        self.assertTrue(all(event[3] == "ai-cleanup-batches-test" for event in events))
+
+    def test_ai_cleanup_loopback_stream_cancel_returns_promptly_and_discards_late_delta(self) -> None:
+        import requests
+
+        project = self.root / "cancel-loopback.mosp"
+        script = self.root / "cancel-loopback.txt"
+        project.write_text(
+            json.dumps({
+                "schema": "moy.asr.project.v1",
+                "segments": [{
+                    "id": "seg-1",
+                    "start": 0,
+                    "end": 1000,
+                    "text": "你好",
+                    "items": [
+                        {"text": "你", "start": 0, "end": 500},
+                        {"text": "好", "start": 500, "end": 1000},
+                    ],
+                }],
+            }, ensure_ascii=False),
+            encoding="utf-8",
+        )
+        script.write_text("你好", encoding="utf-8")
+
+        request_received = threading.Event()
+        release_stream = threading.Event()
+        late_chunk_sent = threading.Event()
+        handler_finished = threading.Event()
+        response_closed = threading.Event()
+        first_delta = threading.Event()
+        late_delta = threading.Event()
+        stream_events: list[tuple[str, str, int, str]] = []
+        stream_events_lock = threading.Lock()
+        results: list[object] = []
+        run_finished = threading.Event()
+
+        class Handler(BaseHTTPRequestHandler):
+            protocol_version = "HTTP/1.1"
+
+            def log_message(self, _format: str, *_args: object) -> None:
+                return
+
+            def do_POST(self) -> None:
+                content_length = int(self.headers.get("Content-Length", "0"))
+                _ = self.rfile.read(content_length)
+                try:
+                    self.send_response(200)
+                    self.send_header("Content-Type", "text/event-stream")
+                    self.send_header("Transfer-Encoding", "chunked")
+                    self.end_headers()
+
+                    def write_chunk(payload: bytes) -> None:
+                        self.wfile.write(f"{len(payload):X}\r\n".encode("ascii"))
+                        self.wfile.write(payload + b"\r\n")
+                        self.wfile.flush()
+
+                    def event(content: str) -> bytes:
+                        data = json.dumps(
+                            {"choices": [{"delta": {"content": content}}]},
+                            ensure_ascii=False,
+                        ).encode("utf-8")
+                        # requests.iter_lines uses 512-byte chunks by default;
+                        # padding makes each event readable while the next is stalled.
+                        return b"data: " + data + b"\n\n:" + b"x" * 600 + b"\n\n"
+
+                    write_chunk(event("取消前已到达"))
+                    request_received.set()
+                    if not release_stream.wait(5):
+                        return
+                    write_chunk(event("取消后迟到内容"))
+                    late_chunk_sent.set()
+                    write_chunk(b"data: [DONE]\n\n:" + b"x" * 600 + b"\n\n")
+                    self.wfile.write(b"0\r\n\r\n")
+                    self.wfile.flush()
+                except OSError:
+                    # A successful cancellation may close the peer before all
+                    # buffered chunks can be sent; cleanup remains bounded.
+                    pass
+                finally:
+                    handler_finished.set()
+
+        class QuietServer(ThreadingHTTPServer):
+            def handle_error(self, _request, _client_address) -> None:
+                # The client may close an intentionally stalled stream while
+                # the handler is returning to read its next HTTP/1.1 request.
+                return
+
+        server = QuietServer(("127.0.0.1", 0), Handler)
+        server.daemon_threads = True
+        server_thread = threading.Thread(target=server.serve_forever, daemon=True)
+        server_thread.start()
+
+        original_post = requests.Session.post
+
+        def tracking_post(session, *args, **kwargs):
+            response = original_post(session, *args, **kwargs)
+            original_close = response.close
+
+            def close_response() -> None:
+                try:
+                    original_close()
+                finally:
+                    response_closed.set()
+
+            response.close = close_response
+            return response
+
+        emit_stream = self.api._emit_postprocess_stream
+
+        def record_stream(kind, text, batch, *, operation_id=""):
+            with stream_events_lock:
+                stream_events.append((kind, text, batch, operation_id))
+            emit_stream(kind, text, batch, operation_id=operation_id)
+            if kind == "content" and "取消前已到达" in text:
+                first_delta.set()
+            if kind == "content" and "取消后迟到内容" in text:
+                late_delta.set()
+
+        operation_id = "loopback-stalled-sse-cancel"
+
+        def run_cleanup() -> None:
+            try:
+                results.append(self.api.run_ai_cleanup({
+                    "projectPath": str(project),
+                    "scriptPath": str(script),
+                    "outputMode": "json",
+                    "providerId": "deepseek",
+                    "apiKey": "sk-test",
+                    "baseUrl": f"http://127.0.0.1:{server.server_port}/v1",
+                    "model": "deepseek-chat",
+                    "operationId": operation_id,
+                }))
+            except BaseException as error:
+                results.append(error)
+            finally:
+                run_finished.set()
+
+        runner = threading.Thread(target=run_cleanup, daemon=True)
+        try:
+            with (
+                mock.patch.object(requests.Session, "post", new=tracking_post),
+                mock.patch.object(self.api, "_emit_postprocess_stream", side_effect=record_stream),
+            ):
+                runner.start()
+                self.assertTrue(request_received.wait(2), "loopback provider should send its first SSE chunk")
+                self.assertTrue(first_delta.wait(2), "the first streamed delta should reach the bridge")
+
+                cancel_started = time.monotonic()
+                cancelled = self.api.cancel_postprocess({"operationId": operation_id})
+                cancel_elapsed = time.monotonic() - cancel_started
+                self.assertEqual(cancelled, {"ok": True, "active": True, "cancelled": True})
+                self.assertLess(cancel_elapsed, 0.5, "cancel bridge must not wait on the blocked response close")
+                self.assertTrue(run_finished.wait(1), "cancelled cleanup should return without waiting for SSE read")
+                self.assertEqual(len(results), 1)
+                self.assertIsInstance(results[0], dict)
+                self.assertEqual(results[0]["code"], "postprocess_cancelled")  # type: ignore[index]
+
+                # Resume only after cancellation. Late SSE content must be
+                # discarded before delta delivery or artifact writing.
+                release_stream.set()
+                self.assertTrue(late_chunk_sent.wait(2), "server should send the delayed SSE event")
+                self.assertTrue(handler_finished.wait(2), "loopback handler should finish within the bound")
+                self.assertTrue(response_closed.wait(2), "async response close should eventually finish")
+                self.assertFalse(late_delta.is_set(), "late SSE content must not be emitted after cancel")
+                with stream_events_lock:
+                    self.assertEqual(
+                        [text for kind, text, _batch, _operation in stream_events if kind == "content"],
+                        ["取消前已到达"],
+                    )
+                self.assertEqual(
+                    sorted(path.name for path in self.root.iterdir()),
+                    [".env.example", "cancel-loopback.mosp", "cancel-loopback.txt"],
+                    "cancelled streaming cleanup must not write artifacts",
+                )
+        finally:
+            release_stream.set()
+            server.shutdown()
+            server.server_close()
+            server_thread.join(timeout=1)
+            runner.join(timeout=1)
+            self.api.pump.shutdown()
+            self.assertFalse(server_thread.is_alive())
+            self.assertFalse(runner.is_alive())
+            _ = handler_finished.wait(1)
+
+    def test_ai_cleanup_cancel_after_first_artifact_write_begins_is_rejected(self) -> None:
+        import maw.postprocess_ai_cleanup as cleanup_core
+
+        project = self.root / "commit-cleanup.mosp"
+        script = self.root / "commit-cleanup.txt"
+        project.write_text(
+            json.dumps({"segments": [{"id": "seg-1", "start": 0, "end": 1000, "text": "你好"}]}, ensure_ascii=False),
+            encoding="utf-8",
+        )
+        script.write_text("你好", encoding="utf-8")
+
+        def request_completion(_settings, _prompt, cues, **_kwargs):
+            return {"decisions": [
+                {"id": cue["id"], "decision": "keep", "reason": "与文稿对应", "scriptLine": cue["scriptLine"]}
+                for cue in cues
+                if cue.get("contextOnly") != "true"
+            ]}
+
+        original_write = cleanup_core.write_artifacts
+
+        def cancel_after_commit_starts(*args, **kwargs):
+            cancelled = self.api.cancel_postprocess({"operationId": "ai-cleanup-commit-test"})
+            self.assertEqual(cancelled, {"ok": True, "active": True, "cancelled": False})
+            return original_write(*args, **kwargs)
+
+        with (
+            mock.patch("maw.postprocess_ai_cleanup._request_completion", side_effect=request_completion),
+            mock.patch("maw.postprocess_ai_cleanup.write_artifacts", side_effect=cancel_after_commit_starts),
+        ):
+            result = self.api.run_ai_cleanup({
+                "projectPath": str(project),
+                "scriptPath": str(script),
+                "outputMode": "json",
+                "providerId": "deepseek",
+                "apiKey": "sk-test",
+                "baseUrl": "https://api.deepseek.com",
+                "model": "deepseek-chat",
+                "operationId": "ai-cleanup-commit-test",
+            })
+
+        self.assertTrue(result["ok"])
+        output_project = Path(str(result["projectPath"]))
+        self.assertTrue(output_project.is_file())
+        self.assertNotEqual(output_project, project)
 
     def tearDown(self) -> None:
         self.temp_dir.cleanup()
@@ -159,7 +575,7 @@ class GuiWebBridgeTests(unittest.TestCase):
         self.assertEqual(config["ocrRuntime"]["status"], "checking")
         self.assertEqual([model["id"] for model in config["ocrModels"]], ["pp-ocrv6-tiny", "pp-ocrv6-small"])
         self.assertEqual(config["providers"][0]["keyUrl"], "https://platform.qianwenai.com/home/")
-        self.assertEqual(config["providers"][0]["label"], "阿里云百炼（千问）")
+        self.assertEqual(config["providers"][0]["label"], "阿里云百炼（推荐 / 千问）")
         self.assertEqual(config["providers"][0]["keyButtonLabel"], "千问AI平台")
         self.assertNotIn("tencent", [provider["id"] for provider in config["providers"]])
         self.assertEqual(len(config["providers"][0]["commonLanguages"]), 10)
@@ -556,7 +972,7 @@ class GuiWebBridgeTests(unittest.TestCase):
     def test_local_runtime_supports_a_custom_root_directory(self) -> None:
         """Given OCR-like custom folder support, When configuring local runtime, Then the same settings flow exists."""
         page = (ROOT / "web" / "launcher" / "index.html").read_text(encoding="utf-8")
-        script = (ROOT / "web" / "launcher" / "launcher.js").read_text(encoding="utf-8")
+        script = launcher_sources_text(ROOT)
         backend = (ROOT / "maw" / "gui_web.py").read_text(encoding="utf-8")
         env_example = (ROOT / ".env.example").read_text(encoding="utf-8")
 
@@ -717,6 +1133,36 @@ class GuiWebBridgeTests(unittest.TestCase):
                 self.env_path,
             )
         self.assertEqual(context.exception.code, "openai_diarize_openrouter_unsupported")
+
+    def test_deepseek_provider_is_rejected_before_transcription(self) -> None:
+        """Given the DeepSeek placeholder provider, When starting transcription, Then preflight rejects it."""
+        media = self.root / "clip.wav"
+        media.write_bytes(b"audio")
+
+        with self.assertRaises(PreflightError) as context:
+            _request_from_payload({
+                "providerId": "deepseek",
+                "modelId": "deepseek-not-an-asr",
+                "mediaPath": str(media),
+                "srtPath": str(self.root / "clip.srt"),
+            }, self.env_path)
+        self.assertEqual(context.exception.code, "deepseek_transcribe_unsupported")
+
+    def test_custom_openai_base_url_pointing_at_deepseek_is_rejected(self) -> None:
+        """Given a custom OpenAI base URL on DeepSeek, When starting transcription, Then preflight rejects it."""
+        media = self.root / "clip.wav"
+        media.write_bytes(b"audio")
+
+        with self.assertRaises(PreflightError) as context:
+            _request_from_payload({
+                "providerId": "openai",
+                "modelId": "whisper-1",
+                "mediaPath": str(media),
+                "srtPath": str(self.root / "clip.srt"),
+                "apiKey": "sk-deepseek",
+                "openaiBaseUrl": "https://api.deepseek.com/v1",
+            }, self.env_path)
+        self.assertEqual(context.exception.code, "deepseek_transcribe_unsupported")
 
     def test_openrouter_prefixes_builtin_openai_model_but_preserves_custom_model(self) -> None:
         media = self.root / "clip.wav"
@@ -1039,6 +1485,31 @@ class GuiWebBridgeTests(unittest.TestCase):
         self.assertEqual(result["code"], "invalid_reasoning_mode")
         self.assertFalse(self.env_path.exists())
 
+    def test_three_custom_slots_expose_independent_settings(self) -> None:
+        """Given three custom slots, When the second one is saved, Then only it carries the display name."""
+        result = self.api.save_postprocess_settings({
+            "providerId": "custom2",
+            "apiKey": "sk-local",
+            "baseUrl": "http://127.0.0.1:11434/v1",
+            "model": "qwen3:8b",
+            "displayName": "本地 Ollama",
+        })
+
+        self.assertTrue(result["ok"])
+        env_text = self.env_path.read_text(encoding="utf-8")
+        self.assertIn("MAW_POSTPROCESS_CUSTOM2_BASE_URL=http://127.0.0.1:11434/v1", env_text)
+        self.assertIn("MAW_POSTPROCESS_CUSTOM2_DISPLAY_NAME=本地 Ollama", env_text)
+        providers = {item["id"]: item for item in self.api.get_config()["postprocessProviders"]}
+        self.assertEqual(
+            [item for item in providers if item.startswith("custom")],
+            ["custom", "custom2", "custom3"],
+        )
+        self.assertEqual(providers["custom2"]["label"], "本地 Ollama")
+        self.assertEqual(providers["custom2"]["displayName"], "本地 Ollama")
+        self.assertEqual(providers["custom"]["displayName"], "")
+        self.assertTrue(providers["custom2"]["hasBaseUrl"] and providers["custom2"]["hasModel"])
+        self.assertFalse(providers["custom3"]["hasBaseUrl"] or providers["custom3"]["hasModel"])
+
     def test_custom_postprocess_display_name_is_saved_and_returned(self) -> None:
         result = self.api.save_postprocess_settings({
             "providerId": "custom",
@@ -1092,6 +1563,29 @@ class GuiWebBridgeTests(unittest.TestCase):
         self.assertTrue(result["verified"])
         self.assertEqual(events, [("tested", False)])
         self.assertIn("MAW_POSTPROCESS_CUSTOM_API_KEY=sk-tested", self.env_path.read_text(encoding="utf-8"))
+
+    def test_postprocess_connection_returns_effective_saved_or_default_fields(self) -> None:
+        for provider_id, stored_url, stored_model, expected_url, expected_model in (
+            ("custom2", "http://127.0.0.1:1234/v1", "local-model", "http://127.0.0.1:1234/v1", "local-model"),
+            ("deepseek", "", "", "https://api.deepseek.com", "deepseek-flash"),
+        ):
+            with self.subTest(provider=provider_id):
+                self.api.save_postprocess_settings({
+                    "providerId": provider_id, "apiKey": "sk-fallback-secret",
+                    "baseUrl": stored_url, "model": stored_model,
+                })
+                with mock.patch("maw.gui_web.test_llm_connection") as check_connection:
+                    result = self.api.test_postprocess_connection({
+                        "providerId": provider_id, "apiKey": "", "baseUrl": "", "model": "", "save": True,
+                    })
+                self.assertTrue(result["ok"])
+                self.assertTrue(result["verified"])
+                self.assertEqual(result["baseUrl"], expected_url)
+                self.assertEqual(result["model"], expected_model)
+                settings = check_connection.call_args.args[0]
+                self.assertEqual((settings.base_url, settings.model), (result["baseUrl"], result["model"]))
+                self.assertNotIn("apiKey", result)
+                self.assertNotIn("sk-fallback-secret", str(result))
 
     def test_postprocess_connection_does_not_save_when_check_fails(self) -> None:
         with mock.patch(
@@ -1182,10 +1676,10 @@ class GuiWebBridgeTests(unittest.TestCase):
         prefs = self.api.save_prefs({"language": "safe\x85FFMPEG_PATH=payload"})
         ffmpeg = self.api.save_ffmpeg_path({"path": "safe\u2029FFMPEG_PATH=payload"})
 
-        for result in (settings, prefs, ffmpeg):
+        for result, code in ((settings, "api_key_invalid_format"), (prefs, "config_save_failed"), (ffmpeg, "config_save_failed")):
             with self.subTest(result=result):
                 self.assertFalse(result["ok"])
-                self.assertEqual(result["code"], "config_save_failed")
+                self.assertEqual(result["code"], code)
         self.assertFalse(self.env_path.exists())
 
     def test_fixed_replacement_bridge_returns_chainable_project_and_srt_paths(self) -> None:
@@ -1345,7 +1839,7 @@ class GuiWebBridgeTests(unittest.TestCase):
         self.assertNotIn('generateSpectral: $("generateSpectral").checked', script)
         self.assertIn('id="generateWaveform"', html)
         self.assertIn('id="runWaveform"', html)
-        self.assertIn('toolbox_run_waveform: "生成波形并打开编辑器"', (ROOT / "web" / "launcher" / "launcher.js").read_text(encoding="utf-8"))
+        self.assertIn('toolbox_run_waveform: "生成波形并打开编辑器"', launcher_sources_text(ROOT))
         self.assertIn("async function generateWaveformProject(openEditor)", script)
         self.assertIn('setResult(postprocessErrorText(result), "error")', script)
         self.assertNotIn("t(result.code)", script)
@@ -1355,7 +1849,7 @@ class GuiWebBridgeTests(unittest.TestCase):
     def test_launcher_toolbox_uses_primary_tabs_for_postprocessing_and_utilities(self) -> None:
         """Given Launcher assets, When rendering Toolbox, Then primary tabs split subtitle and media workflows."""
         html = (ROOT / "web" / "launcher" / "index.html").read_text(encoding="utf-8")
-        strings = (ROOT / "web" / "launcher" / "launcher.js").read_text(encoding="utf-8")
+        strings = launcher_sources_text(ROOT)
         script = (ROOT / "web" / "launcher" / "postprocess.js").read_text(encoding="utf-8")
 
         header = html.index('class="toolbox-header"')
@@ -1392,7 +1886,7 @@ class GuiWebBridgeTests(unittest.TestCase):
         self.assertLess(html.index('id="toolboxExtractAudioTab"'), html.index('id="toolboxWaveformTab"'))
         # 媒体工具记住上次选择的工具；从未选择时回退到第一项（烧录字幕）。
         self.assertIn(
-            'const activeTab = activeToolboxView().querySelector(".toolbox-tab.active") || activeToolboxView().querySelector(".toolbox-tab");',
+            'const activeTab = activeToolboxView().querySelector(".toolbox-tab.active:not(.hidden)") || activeToolboxView().querySelector(".toolbox-tab:not(.hidden)");',
             script,
         )
         self.assertIn(
@@ -1443,7 +1937,7 @@ class GuiWebBridgeTests(unittest.TestCase):
 
     def test_launcher_exposes_separate_speech_alignment_toolbox_contract(self) -> None:
         page = (ROOT / "web" / "launcher" / "index.html").read_text(encoding="utf-8")
-        launcher_script = (ROOT / "web" / "launcher" / "launcher.js").read_text(encoding="utf-8")
+        launcher_script = launcher_sources_text(ROOT)
         postprocess_script = (ROOT / "web" / "launcher" / "postprocess.js").read_text(encoding="utf-8")
         styles = (ROOT / "web" / "launcher" / "launcher.css").read_text(encoding="utf-8")
 
@@ -1513,6 +2007,105 @@ class GuiWebBridgeTests(unittest.TestCase):
         self.assertIn('$("toolboxDrawer").classList.toggle("toolbox-utilities-active", section === "utilities")', postprocess_script)
         self.assertNotIn('"alignment"', postprocess_script[postprocess_script.index("const AUTO_STEP_ORDER"):postprocess_script.index("let autoPlanSaveTimer")])
 
+    def test_deepseek_note_links_to_toolbox_ai_processing(self) -> None:
+        """Given the DeepSeek easter-egg note, When rendered, Then the AI-processing link opens the toolbox tab."""
+        launcher_script = launcher_sources_text(ROOT)
+        postprocess_script = (ROOT / "web" / "launcher" / "postprocess.js").read_text(encoding="utf-8")
+
+        needles = {
+            "launcher.js": [
+                "function renderProviderNote(providerItem)",
+                'link.dataset.i18n = "toolbox_llm";',
+                "window.MAWLauncher?.openToolboxAiProcessing?.()",
+            ],
+            "postprocess.js": [
+                "window.MAWLauncher.openToolboxAiProcessing = () => {",
+                'selectTool("llm");',
+            ],
+        }
+        missing = [needle for needle in needles["launcher.js"] if needle not in launcher_script]
+        missing += [needle for needle in needles["postprocess.js"] if needle not in postprocess_script]
+        self.assertEqual(missing, [], f"缺少彩蛋链接契约：{missing}")
+
+    def test_llm_provider_is_remembered_per_task(self) -> None:
+        """Given the AI-processing panel, When tasks and providers change, Then each task keeps its own provider."""
+        script = (ROOT / "web" / "launcher" / "postprocess.js").read_text(encoding="utf-8")
+
+        needles = [
+            'const LLM_PROVIDER_BY_TASK_KEY = "maw.launcher.llm.provider_by_task";',
+            'translate_zh: "translate"',
+            'translate_en: "translate"',
+            "function providerIdForTask(operation)",
+            "function rememberProviderForTask(operation, providerId)",
+            "restoreProviderForTask(next);",
+            'rememberProviderForTask($("postprocessOperation").value, $("postprocessProvider").value)',
+            'providerId: stepProviderId("proofread")',
+            'providerId: stepProviderId("resegment")',
+            'providerId: stepProviderId("translate")',
+        ]
+        missing = [needle for needle in needles if needle not in script]
+        self.assertEqual(missing, [], f"缺少按任务记忆契约：{missing}")
+
+    def test_loopback_base_url_accepts_common_local_endpoints(self) -> None:
+        """Given local LLM endpoints, When checking loopback detection, Then scheme-less forms still match."""
+        from maw import gui_web
+
+        for base_url in (
+            "http://127.0.0.1:1234/v1",
+            "127.0.0.1:1234/v1",
+            "http://localhost:11434",
+            "localhost:8080/api",
+            "http://[::1]:1234/v1",
+        ):
+            self.assertTrue(gui_web._loopback_base_url(base_url), base_url)
+        for base_url in ("https://api.deepseek.com", "example.com/v1", "", "http://0.0.0.0:1234"):
+            self.assertFalse(gui_web._loopback_base_url(base_url), base_url or "<empty>")
+
+    def test_toolbox_hides_unconfigured_custom_slots(self) -> None:
+        """Given custom slots #2/#3 without a base URL, When rendering provider selects, Then only the toolbox hides them.
+
+        工具箱下拉隐藏未填 URL 的自定义接口 #2/#3；设置页保留全部槽位作为补填入口。
+        设置页切换供应商时直接以 llmProvider 的值渲染，不得先把值同步给工具箱下拉——
+        未配置槽位在工具箱没有对应 option，直同步会复现跳回第一项问题（261011 反馈 #33/#36）。
+        """
+        script = (ROOT / "web" / "launcher" / "postprocess.js").read_text(encoding="utf-8")
+        launcher_script = launcher_sources_text(ROOT)
+
+        needles = [
+            'function isCustomSlot(item) { return ["custom", "custom2", "custom3"].includes(String(item?.id || "")); }',
+            "function customSlotVisibleInToolbox(item)",
+            'if (select.id !== "llmProvider" && !customSlotVisibleInToolbox(item)) return;',
+            "fillProviderSelects(selectedProvider);",
+            "fillProviderSelects(item.id);",
+            # 设置页 change 直接渲染 llmProvider 的值；工具箱保持自身选中项。
+            'renderProvider($("llmProvider").value, { syncToolbox: false })',
+        ]
+        missing = [needle for needle in needles if needle not in script]
+        self.assertEqual(missing, [], f"postprocess.js 缺少：{missing}")
+        self.assertNotIn('$("postprocessProvider").value = $("llmProvider").value', script)
+
+        label_keys = ["llm_custom_provider_2", "llm_custom_provider_3"]
+        missing_keys = [key for key in label_keys if key not in launcher_script]
+        self.assertEqual(missing_keys, [], f"launcher.js 缺少槽位文案：{missing_keys}")
+
+    def test_custom_provider_label_mentions_local_models(self) -> None:
+        """Given the custom LLM provider, When labeled, Then its name and the local-model hint are present."""
+        launcher_script = launcher_sources_text(ROOT)
+        html = (ROOT / "web" / "launcher" / "index.html").read_text(encoding="utf-8")
+
+        missing = [needle for needle in [
+            'llm_custom_provider: "自定义接口（或本地模型）"',
+            "llm_local_model_hint:",
+        ] if needle not in launcher_script]
+        if 'data-i18n="llm_local_model_hint"' not in html:
+            missing.append('index.html 缺少本地模型提示')
+        if "OpenAI 通用接口" in launcher_script:
+            missing.append("launcher.js 仍残留旧称谓")
+        for spec in (ROOT / "tests" / "e2e").glob("launcher*.spec.mjs"):
+            if "OpenAI 通用接口" in spec.read_text(encoding="utf-8"):
+                missing.append(f"{spec.name} 仍断言旧称谓")
+        self.assertEqual(missing, [], f"更名契约缺失：{missing}")
+
     def test_toolbox_close_restores_trigger_focus_and_ffconcat_marks_its_input(self) -> None:
         """Given Toolbox source, When closing or validating FFconcat, Then focus and invalid state stay accessible."""
         html = (ROOT / "web" / "launcher" / "index.html").read_text(encoding="utf-8")
@@ -1528,7 +2121,7 @@ class GuiWebBridgeTests(unittest.TestCase):
     def test_toolbox_presentation_and_ffconcat_drop_contracts(self) -> None:
         """Given Launcher assets, When rendering Toolbox utilities, Then feedback, drop targets, and labels stay scoped."""
         html = (ROOT / "web" / "launcher" / "index.html").read_text(encoding="utf-8")
-        script = (ROOT / "web" / "launcher" / "launcher.js").read_text(encoding="utf-8")
+        script = launcher_sources_text(ROOT)
         styles = (ROOT / "web" / "launcher" / "launcher.css").read_text(encoding="utf-8")
 
         self.assertNotIn('class="toolbox-beta"', html)
@@ -1796,7 +2389,7 @@ class GuiWebBridgeTests(unittest.TestCase):
             encoding="utf-8",
         )
 
-        def complete(_settings, _prompt, _cues, *, on_delta):
+        def complete(_settings, _prompt, _cues, *, on_delta, is_cancelled=None, on_response=None):
             on_delta("reset", "")
             on_delta("reasoning", "先检查")
             on_delta("content", '{"groups":[')
@@ -1815,6 +2408,7 @@ class GuiWebBridgeTests(unittest.TestCase):
                 "model": "deepseek-chat",
                 "reasoningMode": "medium",
                 "customPrompt": "",
+                "operationId": "llm-stream-test",
             })
 
         self.api.pump.shutdown()
@@ -1826,6 +2420,253 @@ class GuiWebBridgeTests(unittest.TestCase):
         self.assertIn('"kind": "reset"', scripts)
         self.assertIn('"kind": "reasoning"', scripts)
         self.assertIn('"kind": "content"', scripts)
+        self.assertIn('"operationId": "llm-stream-test"', scripts)
+
+    def test_llm_bridge_cancel_closes_active_response_and_writes_no_artifact(self) -> None:
+        project = self.root / "cancel-me.mosp"
+        project.write_text(
+            json.dumps({"segments": [{"start": 0, "end": 1000, "text": "待处理"}]}, ensure_ascii=False),
+            encoding="utf-8",
+        )
+        response = mock.Mock()
+        response_closed = threading.Event()
+        response.close.side_effect = response_closed.set
+
+        def complete(_settings, _prompt, _cues, *, on_delta, is_cancelled, on_response):
+            on_response(response)
+            cancelled = self.api.cancel_postprocess({"operationId": "llm-cancel-test"})
+            self.assertEqual(cancelled, {"ok": True, "active": True, "cancelled": True})
+            self.assertTrue(is_cancelled())
+            self.assertTrue(response_closed.wait(1), "response close runs asynchronously")
+            response.close.assert_called_once_with()
+            on_response(None)
+            return {"groups": [{"id": "c0001", "text": "不应写出"}]}
+
+        with mock.patch("maw.gui_web.complete_subtitle_groups", side_effect=complete):
+            result = self.api.run_llm_postprocess({
+                "projectPath": str(project),
+                "outputMode": "json",
+                "operation": "proofread",
+                "providerId": "deepseek",
+                "apiKey": "sk-test",
+                "baseUrl": "https://api.deepseek.com",
+                "model": "deepseek-chat",
+                "customPrompt": "",
+                "operationId": "llm-cancel-test",
+            })
+
+        self.assertFalse(result["ok"])
+        self.assertEqual(result["code"], "postprocess_cancelled")
+        self.assertEqual(sorted(path.name for path in self.root.iterdir()), [".env.example", "cancel-me.mosp"])
+
+    def test_llm_cancel_after_first_artifact_write_begins_is_rejected(self) -> None:
+        import maw.postprocess as postprocess_core
+
+        project = self.root / "commit-llm.mosp"
+        project.write_text(
+            json.dumps({"segments": [{"id": "seg-1", "start": 0, "end": 1000, "text": "原文"}]}, ensure_ascii=False),
+            encoding="utf-8",
+        )
+        original_write = postprocess_core._write
+
+        def cancel_after_commit_starts(*args, **kwargs):
+            cancelled = self.api.cancel_postprocess({"operationId": "llm-commit-test"})
+            self.assertEqual(cancelled, {"ok": True, "active": True, "cancelled": False})
+            return original_write(*args, **kwargs)
+
+        with (
+            mock.patch(
+                "maw.gui_web.complete_subtitle_groups",
+                return_value={"groups": [{"id": "c0001", "text": "改正"}]},
+            ),
+            mock.patch("maw.postprocess._write", side_effect=cancel_after_commit_starts),
+        ):
+            result = self.api.run_llm_postprocess({
+                "projectPath": str(project),
+                "outputMode": "json",
+                "operation": "proofread",
+                "providerId": "deepseek",
+                "apiKey": "sk-test",
+                "baseUrl": "https://api.deepseek.com",
+                "model": "deepseek-chat",
+                "customPrompt": "",
+                "operationId": "llm-commit-test",
+            })
+
+        self.assertTrue(result["ok"])
+        output_project = Path(str(result["projectPath"]))
+        self.assertTrue(output_project.is_file())
+        self.assertNotEqual(output_project, project)
+
+    def test_ai_postprocess_admission_precedes_settings_and_can_cancel_preparation(self) -> None:
+        emit = self.api._emit
+        for method_name, process_name in (
+            ("run_ai_cleanup", "process_ai_cleanup"),
+            ("run_llm_postprocess", "process_llm_postprocess"),
+        ):
+            with self.subTest(method=method_name):
+                operation_id = f"admit-{method_name}"
+                events: list[dict[str, object]] = []
+
+                def record_event(event):
+                    events.append(dict(event))
+                    emit(event)
+
+                def read_settings(*_args):
+                    self.assertIn(operation_id, self.api._postprocess_operations)
+                    self.assertEqual(events, [{
+                        "type": "postprocess_status",
+                        "key": "toolbox_status_starting",
+                        "stage": "admitted",
+                        "operationId": operation_id,
+                    }])
+                    self.assertEqual(
+                        self.api.cancel_postprocess({"operationId": operation_id}),
+                        {"ok": True, "active": True, "cancelled": True},
+                    )
+                    return {"apiKey": "sk-test", "baseUrl": "", "model": "", "reasoningMode": "off"}
+
+                with (
+                    mock.patch.object(self.api, "_emit", side_effect=record_event),
+                    mock.patch("maw.gui_web._postprocess_values", side_effect=read_settings),
+                    mock.patch(f"maw.gui_web.{process_name}") as process,
+                ):
+                    result = getattr(self.api, method_name)({
+                        "operationId": operation_id,
+                        "scriptPath": str(self.root / "unused.txt"),
+                    })
+                self.assertEqual(result["code"], "postprocess_cancelled")
+                process.assert_not_called()
+                self.assertEqual(self.api._postprocess_operations, {})
+
+    def test_ai_postprocess_conflicting_operation_is_not_admitted(self) -> None:
+        operation = self.api._begin_postprocess_operation({"operationId": "already-active"})
+        self.assertIsNotNone(operation)
+        try:
+            with mock.patch.object(self.api, "_emit") as emit:
+                for method_name in ("run_ai_cleanup", "run_llm_postprocess"):
+                    result = getattr(self.api, method_name)({"operationId": "already-active"})
+                    self.assertEqual(result["code"], "postprocess_operation_conflict")
+                emit.assert_not_called()
+        finally:
+            self.api._finish_postprocess_operation(operation)
+
+    def test_ai_postprocess_cancel_while_loading_settings_does_not_run(self) -> None:
+        import maw.gui_web as gui_web
+
+        load_values = gui_web._postprocess_values
+        for method_name, process_name in (
+            ("run_ai_cleanup", "process_ai_cleanup"),
+            ("run_llm_postprocess", "process_llm_postprocess"),
+        ):
+            for read_error in (False, True):
+                with self.subTest(method=method_name, read_error=read_error):
+                    reading = threading.Event()
+                    release = threading.Event()
+                    results: list[object] = []
+                    operation_id = f"prepare-{method_name}-{read_error}"
+
+                    def delayed_values(*args):
+                        reading.set()
+                        if not release.wait(5):
+                            raise AssertionError("test did not release settings read")
+                        if read_error:
+                            raise OSError("settings read failed after cancellation")
+                        return load_values(*args)
+
+                    def run() -> None:
+                        try:
+                            results.append(getattr(self.api, method_name)({
+                                "operationId": operation_id,
+                                "projectPath": str(self.root / "unused.mosp"),
+                                "scriptPath": str(self.root / "unused.txt"),
+                                "apiKey": "sk-test",
+                            }))
+                        except BaseException as error:
+                            results.append(error)
+
+                    with (
+                        mock.patch("maw.gui_web._postprocess_values", side_effect=delayed_values),
+                        mock.patch(f"maw.gui_web.{process_name}") as process,
+                    ):
+                        runner = threading.Thread(target=run, daemon=True)
+                        runner.start()
+                        try:
+                            self.assertTrue(reading.wait(1), "operation should read settings")
+                            self.assertEqual(
+                                self.api.cancel_postprocess({"operationId": operation_id}),
+                                {"ok": True, "active": True, "cancelled": True},
+                            )
+                            release.set()
+                            runner.join(timeout=1)
+                            self.assertFalse(runner.is_alive())
+                            self.assertEqual(len(results), 1)
+                            self.assertIsInstance(results[0], dict)
+                            self.assertEqual(results[0]["code"], "postprocess_cancelled")  # type: ignore[index]
+                            process.assert_not_called()
+                            self.assertEqual(self.api._postprocess_operations, {})
+                        finally:
+                            release.set()
+                            runner.join(timeout=2)
+
+    def test_ai_postprocess_preparation_errors_release_operation(self) -> None:
+        for method_name, payload, expected_code in (
+            ("run_ai_cleanup", {}, "script_invalid"),
+            ("run_llm_postprocess", {"operation": "custom"}, "custom_prompt_required"),
+        ):
+            with self.subTest(method=method_name, stage="validation"):
+                result = getattr(self.api, method_name)({"operationId": "prepare-error", **payload})
+                self.assertEqual(result["code"], expected_code)
+                self.assertEqual(self.api._postprocess_operations, {})
+            with self.subTest(method=method_name, stage="settings"):
+                with mock.patch("maw.gui_web._postprocess_values", side_effect=OSError("settings unavailable")):
+                    with self.assertRaisesRegex(OSError, "settings unavailable"):
+                        getattr(self.api, method_name)({
+                            "operationId": "prepare-error",
+                            "scriptPath": str(self.root / "unused.txt"),
+                        })
+                self.assertEqual(self.api._postprocess_operations, {})
+
+    def test_llm_translation_and_repair_cancel_are_reported_as_cancelled(self) -> None:
+        for operation, text in (("translate_zh", "hello"), ("translate_en", "你好")):
+            project = self.root / f"cancel-{operation}.mosp"
+            project.write_text(json.dumps({
+                "segments": [{"id": "seg-1", "start": 0, "end": 1000, "text": text}],
+            }, ensure_ascii=False), encoding="utf-8")
+            for repair in (False, True):
+                for cancel_via_api in (False, True):
+                    with self.subTest(operation=operation, repair=repair, cancel_via_api=cancel_via_api):
+                        requests = 0
+                        operation_id = f"cancel-{operation}-{repair}-{cancel_via_api}"
+
+                        def complete(*_args, **_kwargs):
+                            nonlocal requests
+                            requests += 1
+                            if repair and requests == 1:
+                                return {"groups": []}
+                            if cancel_via_api:
+                                self.assertEqual(
+                                    self.api.cancel_postprocess({"operationId": operation_id}),
+                                    {"ok": True, "active": True, "cancelled": True},
+                                )
+                            raise LlmClientError("操作已取消。", category="cancelled", operation="completion")
+
+                        with (
+                            mock.patch("maw.gui_web.complete_subtitle_groups", side_effect=complete),
+                            mock.patch("maw.postprocess._write") as write,
+                        ):
+                            result = self.api.run_llm_postprocess({
+                                "projectPath": str(project),
+                                "outputMode": "json",
+                                "operation": operation,
+                                "apiKey": "sk-test",
+                                "operationId": operation_id,
+                            })
+                        self.assertFalse(result["ok"])
+                        self.assertEqual(result["code"], "postprocess_cancelled")
+                        self.assertEqual(requests, 2 if repair else 1)
+                        write.assert_not_called()
+                        self.assertEqual(self.api._postprocess_operations, {})
 
     def test_llm_bridge_forwards_bilingual_merge_option(self) -> None:
         artifact = SimpleNamespace(
@@ -1942,7 +2783,7 @@ class GuiWebBridgeTests(unittest.TestCase):
             })
 
         self.assertFalse(result["ok"])
-        self.assertEqual(result["code"], "postprocess_failed")
+        self.assertEqual(result["code"], "toolbox_failed")
         for secret in (
             "api-key-secret",
             "https://api.example.test/v1/chat/completions?api_key=query-secret",
@@ -2183,6 +3024,16 @@ class GuiWebBridgeTests(unittest.TestCase):
         self.assertFalse(result["ok"])
         self.assertEqual(result["field"], "mediaPath")
         self.assertEqual(result["code"], "audio_tracks_unavailable")
+
+    def test_get_audio_tracks_successful_empty_probe_remains_distinct(self) -> None:
+        media = self.root / "clip.mp4"
+        media.write_bytes(b"media")
+        with mock.patch("maw.gui_web._postprocess_ffmpeg_tools", return_value=FfmpegTools(ffprobe=Path("ffprobe"))), \
+                mock.patch("maw.gui_web.inspect_audio_tracks", return_value=()) as probe:
+            result = self.api.get_audio_tracks({"mediaPath": str(media)})
+        self.assertTrue(result["ok"])
+        self.assertEqual(result["tracks"], [])
+        probe.assert_called_once()
 
     def test_extract_audio_bridge_uses_selected_track_and_returns_m4a(self) -> None:
         media = self.root / "clip.mp4"
@@ -3502,7 +4353,7 @@ class GuiWebBridgeTests(unittest.TestCase):
         ffprobe = self.root / "ffprobe.exe"
         with (
             mock.patch("maw.gui_web._postprocess_ffmpeg_tools", return_value=FfmpegTools(ffprobe=ffprobe)),
-            mock.patch("maw.gui_web.resolve_default_audio_track", return_value=2) as resolve_default,
+            mock.patch("maw.gui_web.probe_audio_tracks", return_value=[{'audio_index': 0}, {'audio_index': 1}, {'audio_index': 2, 'default': True}]) as resolve_default,
             mock.patch("maw.gui_web.threading.Thread", return_value=worker) as thread,
         ):
             result = self.api.start_batch_transcription({
@@ -3517,9 +4368,9 @@ class GuiWebBridgeTests(unittest.TestCase):
         assert request is not None
         self.assertEqual(request.audio_track, 2)
         self.assertEqual(request.default_audio_track, 2)
+        self.assertEqual(request.audio_track_count, 3)
         resolve_default.assert_called_once_with(
             media.resolve(),
-            None,
             ffprobe_path=ffprobe,
         )
 
@@ -3530,7 +4381,7 @@ class GuiWebBridgeTests(unittest.TestCase):
         worker.is_alive.return_value = False
 
         with (
-            mock.patch("maw.gui_web.resolve_default_audio_track") as resolve_default,
+            mock.patch("maw.gui_web.probe_audio_tracks") as resolve_default,
             mock.patch("maw.gui_web.threading.Thread", return_value=worker) as thread,
         ):
             result = self.api.start_batch_transcription({
@@ -3539,6 +4390,7 @@ class GuiWebBridgeTests(unittest.TestCase):
                     "apiKey": "sk-test",
                     "audioTrack": 0,
                     "defaultAudioTrack": 2,
+                    "audioTrackCount": 99,
                 },
             })
 
@@ -3548,7 +4400,57 @@ class GuiWebBridgeTests(unittest.TestCase):
         assert request is not None
         self.assertEqual(request.audio_track, 0)
         self.assertEqual(request.default_audio_track, 2)
+        self.assertIsNone(request.audio_track_count)
         resolve_default.assert_not_called()
+
+    def test_batch_reuses_existing_probe_to_skip_missing_tracks_but_not_failed_probe(self) -> None:
+        for index, tracks in enumerate(([], None)):
+            media = self.root / f"clip{index}.mp4"
+            media.write_bytes(b"media")
+        worker = mock.Mock()
+        worker.is_alive.return_value = False
+        with mock.patch("maw.gui_web.probe_audio_tracks", side_effect=[[], None]) as probe, \
+                mock.patch("maw.gui_web.threading.Thread", return_value=worker) as thread:
+            result = self.api.start_batch_transcription({
+                "items": [{"id": str(i), "mediaPath": str(self.root / f"clip{i}.mp4")} for i in range(2)],
+                "settings": {"apiKey": "sk-test", "audioTrackCount": 0},
+            })
+        self.assertTrue(result["ok"])
+        items = thread.call_args.kwargs["args"][0]
+        self.assertIsNone(items[0].request)
+        self.assertEqual(items[0].preflight_code, "audio_tracks_missing")
+        self.assertIsNotNone(items[1].request)
+        self.assertIsNone(items[1].request.audio_track_count)
+        self.assertEqual(probe.call_count, 2)
+
+    def test_batch_all_missing_tracks_returns_specific_error_without_worker(self) -> None:
+        media = self.root / "clip.mp4"
+        media.write_bytes(b"media")
+        with mock.patch("maw.gui_web.probe_audio_tracks", return_value=[]) as probe, \
+                mock.patch("maw.gui_web.threading.Thread") as thread:
+            result = self.api.start_batch_transcription({
+                "items": [{"id": "clip", "mediaPath": str(media)}], "settings": {"apiKey": "sk-test"},
+            })
+        self.assertFalse(result["ok"])
+        self.assertEqual(result["code"], "audio_tracks_missing")
+        probe.assert_called_once()
+        thread.assert_not_called()
+
+    def test_start_blocks_known_zero_tracks_without_new_probe_or_worker(self) -> None:
+        media = self.root / "clip.mp4"
+        media.write_bytes(b"media")
+        with mock.patch("maw.gui_web.probe_audio_tracks") as probe, \
+                mock.patch("maw.gui_web.inspect_audio_tracks") as inspect, \
+                mock.patch("maw.gui_web.threading.Thread") as thread:
+            result = self.api.start_transcription({
+                "mediaPath": str(media), "srtPath": str(self.root / "out.srt"),
+                "apiKey": "sk-test", "audioTrackCount": 0,
+            })
+        self.assertFalse(result["ok"])
+        self.assertEqual(result["code"], "audio_tracks_missing")
+        probe.assert_not_called()
+        inspect.assert_not_called()
+        thread.assert_not_called()
 
     def test_local_request_skips_api_key_and_carries_engine_options(self) -> None:
         media = self.root / "clip.mp3"
@@ -3754,6 +4656,117 @@ class GuiWebBridgeTests(unittest.TestCase):
         self.assertFalse(result["ok"])
         self.assertEqual(result["field"], "apiKey")
         self.assertEqual(result["code"], "api_key_missing")
+
+    def test_credentials_block_single_and_batch_before_network_or_worker_start(self) -> None:
+        media = self.root / "clip.mp3"
+        media.write_bytes(b"media")
+        for key, expected in (("", "api_key_missing"), ("   ", "api_key_missing"),
+                              ("Bearer test-only-private-123", "api_key_invalid_format"),
+                              ("中文密钥说明", "api_key_invalid_format")):
+            with self.subTest(key=key), mock.patch.dict(os.environ, {"DASHSCOPE_API_KEY": ""}), \
+                 mock.patch("maw.gui_web.threading.Thread") as thread, \
+                 mock.patch("requests.sessions.Session.request", side_effect=AssertionError("Credential checks must stay offline")) as network:
+                payload = {"mediaPath": str(media), "srtPath": str(self.root / "out.srt"), "apiKey": key}
+                result = self.api.start_transcription(payload)
+                self.assertFalse(result["ok"])
+                self.assertEqual(result["code"], expected)
+                self.assertEqual(result["field"], "apiKey")
+                if key.strip():
+                    self.assertNotIn(key, json.dumps(result, ensure_ascii=False))
+                batch = self.api.start_batch_transcription({
+                    "items": [{"id": "a", "mediaPath": str(media), "srtPath": str(self.root / "out.srt")}],
+                    "settings": {"apiKey": key, "audioTrack": 0, "defaultAudioTrack": 0},
+                })
+                self.assertFalse(batch["ok"])
+                self.assertEqual(batch["code"], expected)
+                self.assertEqual(batch["field"], "apiKey")
+                thread.assert_not_called()
+                network.assert_not_called()
+                self.assertIsNone(self.api.worker)
+                self.assertIsNone(self.api.batch_worker)
+
+    def test_whitespace_system_key_no_longer_bypasses_start_checks(self) -> None:
+        media = self.root / "clip.mp3"
+        media.write_bytes(b"media")
+        with mock.patch.dict(os.environ, {"DASHSCOPE_API_KEY": "   "}), \
+             mock.patch("maw.gui_web.threading.Thread") as thread:
+            result = self.api.start_transcription({"mediaPath": str(media), "srtPath": str(self.root / "out.srt")})
+        self.assertEqual(result["code"], "api_key_missing")
+        thread.assert_not_called()
+
+    def test_saved_or_system_key_format_is_checked_without_disclosing_it(self) -> None:
+        media = self.root / "clip.mp3"
+        media.write_bytes(b"media")
+        key = "Bearer test-only-private-456"
+        for source in ("file", "system"):
+            with self.subTest(source=source):
+                self.env_path.write_text(f"DASHSCOPE_API_KEY={key if source == 'file' else ''}\n", encoding="utf-8")
+                with mock.patch.dict(os.environ, {"DASHSCOPE_API_KEY": key if source == "system" else ""}):
+                    result = self.api.start_transcription({"mediaPath": str(media), "srtPath": str(self.root / "out.srt")})
+                self.assertEqual(result["code"], "api_key_invalid_format")
+                self.assertNotIn(key, json.dumps(result))
+
+    def test_saving_invalid_key_stays_offline_and_preserves_existing_config(self) -> None:
+        original = "DASHSCOPE_API_KEY=test-only-saved-token\n"
+        self.env_path.write_text(original, encoding="utf-8")
+        with mock.patch("requests.sessions.Session.request", side_effect=AssertionError("No key probe")) as network:
+            result = self.api.save_settings({"providerId": "qwen", "apiKey": "Bearer test-only-private-789"})
+        self.assertEqual(result["code"], "api_key_invalid_format")
+        self.assertEqual(self.env_path.read_text(encoding="utf-8"), original)
+        self.assertNotIn("test-only-private-789", json.dumps(result))
+        network.assert_not_called()
+
+    def test_worker_classifies_api_failure_and_preserves_original_detail(self) -> None:
+        key = "test-only-opaque-credential"
+        request = TranscriptionRequest(media_path=self.root / "clip.wav", srt_path=self.root / "clip.srt",
+                                       provider="qwen", api_key=key)
+        detail = f"RuntimeError: 获取上传凭证失败 (HTTP 401): code=InvalidApiKey | request_id=test-request | provided: {key}"
+        self.api._log_sink = LocalLogSink(directory=self.root / "logs")
+
+        def transcribe(*args, on_event, **kwargs):
+            on_event(detail)
+            raise TranscriptionProcessError(1, [detail])
+
+        with mock.patch("maw.gui_web.run_transcription", side_effect=transcribe):
+            self.api._worker_main(request, threading.Event())
+        event_script = self.window.scripts[-1]
+        self.assertIn('"code": "asr_auth_failed"', event_script)
+        self.assertIn("InvalidApiKey", event_script)
+        self.assertIn("test-request", event_script)
+        self.assertNotIn(key, "".join(self.window.scripts))
+        disk_log = next((self.root / "logs").glob("*.log")).read_text(encoding="utf-8")
+        self.assertIn("test-request", disk_log)
+        self.assertNotIn(key, disk_log)
+
+    def test_worker_empty_audio_diagnosis_is_friendly_and_never_emits_done(self) -> None:
+        from maw.audio_diagnostics import AudioInputError
+        request = TranscriptionRequest(media_path=self.root / 'clip.mkv', srt_path=self.root / 'clip.srt', provider='local')
+        error = AudioInputError('asr_empty_result_multitrack', 'known_count=2, selected audio_index=0')
+        with mock.patch('maw.gui_web.run_transcription', side_effect=error), \
+                mock.patch('maw.gui_web.run_postprocess_pipeline') as postprocess:
+            self.api._worker_main(request, threading.Event())
+        script = self.window.scripts[-1]
+        self.assertIn('"code": "asr_empty_result_multitrack"', script)
+        self.assertIn('known_count=2', script)
+        self.assertNotIn('"type": "done"', script)
+        postprocess.assert_not_called()
+
+    def test_worker_unknown_probe_reports_audio_extraction_possible_causes_without_reprobe(self) -> None:
+        import subprocess
+        request = TranscriptionRequest(media_path=self.root / 'clip.mkv', srt_path=self.root / 'clip.srt', provider='local')
+        line = 'subprocess.CalledProcessError: ' + str(subprocess.CalledProcessError(
+            1, ['ffmpeg', '-map', '0:a:0', '-vn', 'audio.wav']))
+        error = TranscriptionProcessError(1, [line])
+        with mock.patch('maw.gui_web.run_transcription', side_effect=error), \
+                mock.patch('maw.gui_web.run_postprocess_pipeline') as postprocess, \
+                mock.patch('maw.gui_web.probe_audio_tracks', side_effect=AssertionError('No new probe')), \
+                mock.patch('maw.gui_web.inspect_audio_tracks', side_effect=AssertionError('No reinspection')):
+            self.api._worker_main(request, threading.Event())
+        script = self.window.scripts[-1]
+        self.assertIn('"code": "audio_extraction_failed"', script)
+        self.assertIn('CalledProcessError', script)
+        self.assertNotIn('"type": "done"', script)
+        postprocess.assert_not_called()
 
     def test_start_transcription_accepts_api_key_from_env_file(self) -> None:
         """Given saved API key, When field is empty, Then resolved key is used."""
@@ -3967,6 +4980,16 @@ class GuiWebBridgeTests(unittest.TestCase):
 
         self.assertEqual(request.audio_track, 0)
         self.assertEqual(request.default_audio_track, 2)
+
+    def test_request_from_payload_carries_only_valid_track_counts_for_guidance(self) -> None:
+        media = self.root / 'clip.mp4'
+        media.write_bytes(b'media')
+        for value, expected in ((None, None), (3, 3), (1, 1), (True, None), (False, None), ('3', None), ('0', None), (-1, None)):
+            request = _request_from_payload({
+                'mediaPath': str(media), 'srtPath': str(self.root / 'out.srt'),
+                'apiKey': 'sk-test', 'audioTrackCount': value,
+            }, self.env_path)
+            self.assertEqual(request.audio_track_count, expected)
 
     def test_request_from_payload_leaves_missing_default_disposition_for_cli_probe(self) -> None:
         media = self.root / "clip.mp4"
@@ -4775,7 +5798,7 @@ class LauncherAssetContractTests(CompactContainerAssertions, unittest.TestCase):
     def test_launcher_exposes_chainable_postprocess_toolbox(self) -> None:
         page = (ROOT / "web" / "launcher" / "index.html").read_text(encoding="utf-8")
         script = (ROOT / "web" / "launcher" / "postprocess.js").read_text(encoding="utf-8")
-        launcher_script = (ROOT / "web" / "launcher" / "launcher.js").read_text(encoding="utf-8")
+        launcher_script = launcher_sources_text(ROOT)
         stylesheet = (ROOT / "web" / "launcher" / "launcher.css").read_text(encoding="utf-8")
 
         for control in (
@@ -4862,7 +5885,7 @@ class LauncherAssetContractTests(CompactContainerAssertions, unittest.TestCase):
         self.assertLess(settings_grid, settings_actions)
         self.assertLess(settings_actions, model_status)
         self.assertLess(settings_actions, api_key)
-        self.assertIn('displayName: item.id === "custom" ? $("llmCustomDisplayName").value.trim() : ""', script)
+        self.assertIn('displayName: isCustomSlot(item) ? $("llmCustomDisplayName").value.trim() : ""', script)
         self.assertIn('bridge("choose_file", { kind: "script" })', script)
         self.assertIn('bridge("choose_file", { kind: "subtitle" })', script)
         self.assertIn('bridge("choose_file", { kind: "video" })', script)
@@ -4891,7 +5914,6 @@ class LauncherAssetContractTests(CompactContainerAssertions, unittest.TestCase):
         self.assertNotIn("toolbox-output-hint", page)
         self.assertNotIn("toolbox_beta_notice_prefix", page)
         self.assertIn('class="hint toolbox-panel-hint"', page)
-        self.assertIn('class="hint toolbox-full-line-hint"', page)
         self.assertIn('document.querySelectorAll("[data-tool-action]")', script)
         self.assertIn('event.type === "postprocess_status"', launcher_script)
         self.assertIn('event.type === "postprocess_stream"', launcher_script)
@@ -4908,7 +5930,7 @@ class LauncherAssetContractTests(CompactContainerAssertions, unittest.TestCase):
 
     def test_launcher_reveals_form_after_initialization_without_a_boot_page(self) -> None:
         page = (ROOT / "web" / "launcher" / "index.html").read_text(encoding="utf-8")
-        script = (ROOT / "web" / "launcher" / "launcher.js").read_text(encoding="utf-8")
+        script = launcher_sources_text(ROOT)
         stylesheet = (ROOT / "web" / "launcher" / "launcher.css").read_text(encoding="utf-8")
 
         self.assertNotIn('id="launcherBoot"', page)
@@ -4932,7 +5954,7 @@ class LauncherAssetContractTests(CompactContainerAssertions, unittest.TestCase):
         self.assertIn('let localModelsRequest = 0;', script)
         self.assertIn('statusRequestId !== localStatusRequest', script)
         self.assertIn('Promise.allSettled', script)
-        self.assertIn('revealLauncher();\n    window.dispatchEvent(new CustomEvent("mawlauncherready"));\n    refreshStartupState();', script)
+        self.assertIn('revealLauncher();\nwindow.dispatchEvent(new CustomEvent("mawlauncherready"));\nrefreshStartupState();', launcher_sources_dedented(ROOT))
         self.assertIn('void init().catch((error) => {', script)
 
     def test_custom_llm_task_requires_a_prompt(self) -> None:
@@ -4971,7 +5993,7 @@ class LauncherAssetContractTests(CompactContainerAssertions, unittest.TestCase):
 
     def test_empty_auto_postprocess_plan_guides_step_selection(self) -> None:
         script = (ROOT / "web" / "launcher" / "postprocess.js").read_text(encoding="utf-8")
-        launcher_script = (ROOT / "web" / "launcher" / "launcher.js").read_text(encoding="utf-8")
+        launcher_script = launcher_sources_text(ROOT)
 
         self.assertIn('auto_summary_empty: "请在下方「处理步骤」中勾选需要的工序。"', launcher_script)
         self.assertIn('summary.textContent = t("auto_summary_empty")', script)
@@ -5015,7 +6037,8 @@ class LauncherAssetContractTests(CompactContainerAssertions, unittest.TestCase):
         self.assertLess(content, progress)
         self.assertLess(progress, result)
         self.assertIn('id="toolboxResult" class="toolbox-result hidden"', page)
-        self.assertIn('result.classList.remove("hidden")', script)
+        self.assertIn('function syncSharedOutputVisibility()', script)
+        self.assertIn('toolboxResultTool = resultOwningTool()', script)
         self.assertLess(result, match_panel)
         self.assertLess(utilities_tabs, match_panel)
         self.assertLess(match_panel, llm_panel)
@@ -5036,7 +6059,7 @@ class LauncherAssetContractTests(CompactContainerAssertions, unittest.TestCase):
         self.assertIn('id="toolboxResizeY" class="toolbox-resize-y" role="separator" aria-orientation="horizontal"', page)
         self.assertIn('id="toolboxResizeX" class="toolbox-resize-x" role="separator" aria-orientation="vertical"', page)
         self.assertIn('id="toolboxMatchTab" class="toolbox-tab active"', page)
-        self.assertIn('id="toolboxFfconcatTab" class="toolbox-tab"', page)
+        self.assertIn('id="toolboxFfconcatTab" class="toolbox-tab hidden"', page)
         self.assertIn("overflow-y: auto", stylesheet)
         self.assertNotIn("resize: both", stylesheet)
         self.assertIn("block-size: min(640px, calc(100dvh - 156px))", stylesheet)
@@ -5055,7 +6078,7 @@ class LauncherAssetContractTests(CompactContainerAssertions, unittest.TestCase):
 
     def test_toolbox_panels_are_grouped_into_titled_cards(self) -> None:
         page = (ROOT / "web" / "launcher" / "index.html").read_text(encoding="utf-8")
-        launcher_script = (ROOT / "web" / "launcher" / "launcher.js").read_text(encoding="utf-8")
+        launcher_script = launcher_sources_text(ROOT)
         stylesheet = (ROOT / "web" / "launcher" / "launcher.css").read_text(encoding="utf-8")
 
         for key in (
@@ -5086,7 +6109,7 @@ class LauncherAssetContractTests(CompactContainerAssertions, unittest.TestCase):
     def test_llm_save_feedback_is_local_and_transient(self) -> None:
         page = (ROOT / "web" / "launcher" / "index.html").read_text(encoding="utf-8")
         script = (ROOT / "web" / "launcher" / "postprocess.js").read_text(encoding="utf-8")
-        launcher_script = (ROOT / "web" / "launcher" / "launcher.js").read_text(encoding="utf-8")
+        launcher_script = launcher_sources_text(ROOT)
         stylesheet = (ROOT / "web" / "launcher" / "launcher.css").read_text(encoding="utf-8")
 
         self.assertIn('id="llmSettingsSaveStatus"', page)
@@ -5108,10 +6131,11 @@ class LauncherAssetContractTests(CompactContainerAssertions, unittest.TestCase):
         self.assertIn('function llmBuiltInProviderKeyGuidance(context = {})', launcher_script)
         self.assertIn('["deepseek", "zhipu", "qwen"].includes(providerId)', launcher_script)
         self.assertIn('官方控制台获取的 API Key', launcher_script)
-        self.assertIn('第三方平台，请选择“OpenAI 通用接口”', launcher_script)
-        self.assertIn('当前供应商：OpenAI 通用接口。请核对供应商 API URL、API Key 是否来自同一服务商', launcher_script)
-        self.assertIn('llm_custom_provider: "OpenAI 通用接口"', launcher_script)
-        self.assertIn('llm_custom_provider: "OpenAI-compatible API"', launcher_script)
+        self.assertIn('第三方平台，请选择“自定义接口（或本地模型）”', launcher_script)
+        self.assertIn('当前供应商：{provider}。请核对供应商 API URL、API Key 是否来自同一服务商', launcher_script)
+        self.assertIn('llm_custom_provider: "自定义接口（或本地模型）"', launcher_script)
+        self.assertIn('llm_custom_provider: "Custom API (or local model)"', launcher_script)
+        self.assertIn('llm_local_model_hint:', launcher_script)
         self.assertIn('toolbox_key_loaded: "已从本地环境读取密钥 {key}"', launcher_script)
         self.assertIn('toolbox_key_loaded: "Loaded key from local environment: {key}"', launcher_script)
         self.assertIn('errorText: errText', launcher_script)
@@ -5149,7 +6173,7 @@ class LauncherAssetContractTests(CompactContainerAssertions, unittest.TestCase):
         )
 
     def test_launcher_message_url_stops_before_closing_punctuation(self) -> None:
-        script = (ROOT / "web" / "launcher" / "launcher.js").read_text(encoding="utf-8")
+        script = launcher_sources_text(ROOT)
 
         expected = r'''const urlPattern = /https?:\/\/[^\s<>"'|)\]}，。；：！？）】》」』]+/gi;'''
         self.assertIn(expected, script)
@@ -5157,7 +6181,7 @@ class LauncherAssetContractTests(CompactContainerAssertions, unittest.TestCase):
     def test_launcher_punctuation_defaults_match_the_shared_settings_copy(self) -> None:
         page = (ROOT / "web" / "launcher" / "index.html").read_text(encoding="utf-8")
         script = (ROOT / "web" / "launcher" / "postprocess.js").read_text(encoding="utf-8")
-        launcher_script = (ROOT / "web" / "launcher" / "launcher.js").read_text(encoding="utf-8")
+        launcher_script = launcher_sources_text(ROOT)
         stylesheet = (ROOT / "web" / "launcher" / "launcher.css").read_text(encoding="utf-8")
 
         self.assertIn(
@@ -5202,7 +6226,7 @@ class LauncherAssetContractTests(CompactContainerAssertions, unittest.TestCase):
 
     def test_launcher_reports_media_drop_rejection_and_output_collision(self) -> None:
         page = (ROOT / "web" / "launcher" / "index.html").read_text(encoding="utf-8")
-        script = (ROOT / "web" / "launcher" / "launcher.js").read_text(encoding="utf-8")
+        script = launcher_sources_text(ROOT)
 
         self.assertIn('id="srtPathNotice" class="hint warn hidden"', page)
         self.assertIn("drop_reject_media", script)
@@ -5215,7 +6239,7 @@ class LauncherAssetContractTests(CompactContainerAssertions, unittest.TestCase):
     def test_launcher_file_path_inputs_have_drop_routes(self) -> None:
         """Given Launcher path inputs, When checking drag/drop wiring, Then every file/path target is bound."""
         page = (ROOT / "web" / "launcher" / "index.html").read_text(encoding="utf-8")
-        script = (ROOT / "web" / "launcher" / "launcher.js").read_text(encoding="utf-8")
+        script = launcher_sources_text(ROOT)
         stylesheet = (ROOT / "web" / "launcher" / "launcher.css").read_text(encoding="utf-8")
 
         for field, target in (
@@ -5237,7 +6261,7 @@ class LauncherAssetContractTests(CompactContainerAssertions, unittest.TestCase):
 
     def test_launcher_exposes_segmentation_controls_and_payload_fields(self) -> None:
         page = (ROOT / "web" / "launcher" / "index.html").read_text(encoding="utf-8")
-        script = (ROOT / "web" / "launcher" / "launcher.js").read_text(encoding="utf-8")
+        script = launcher_sources_text(ROOT)
         stylesheet = (ROOT / "web" / "launcher" / "launcher.css").read_text(encoding="utf-8")
 
         for control in ("segmentationField", "maxLen", "minLen", "maxWords", "minWords", "gapSplit"):
@@ -5275,7 +6299,7 @@ class LauncherAssetContractTests(CompactContainerAssertions, unittest.TestCase):
 
     def test_sticker_picker_saves_immediately_without_a_separate_button(self) -> None:
         page = (ROOT / "web" / "launcher" / "index.html").read_text(encoding="utf-8")
-        script = (ROOT / "web" / "launcher" / "launcher.js").read_text(encoding="utf-8")
+        script = launcher_sources_text(ROOT)
         backend = (ROOT / "maw" / "gui_web.py").read_text(encoding="utf-8")
 
         self.assertNotIn('id="saveStickerDir"', page)
@@ -5286,7 +6310,7 @@ class LauncherAssetContractTests(CompactContainerAssertions, unittest.TestCase):
         self.assertIn('def open_sticker_folder(', backend)
 
     def test_ffmpeg_save_distinguishes_write_failure_from_missing_tools(self) -> None:
-        script = (ROOT / "web" / "launcher" / "launcher.js").read_text(encoding="utf-8")
+        script = launcher_sources_text(ROOT)
 
         self.assertIn("config_save_failed", script)
         self.assertIn("result.found === false", script)
@@ -5302,7 +6326,7 @@ class LauncherAssetContractTests(CompactContainerAssertions, unittest.TestCase):
 
     def test_single_file_editor_controls_are_opt_in_and_contextual(self) -> None:
         page = (ROOT / "web" / "launcher" / "index.html").read_text(encoding="utf-8")
-        script = (ROOT / "web" / "launcher" / "launcher.js").read_text(encoding="utf-8")
+        script = launcher_sources_text(ROOT)
 
         self.assertIn('id="generateHtml" type="checkbox"', page)
         self.assertIn('id="debugRaw" type="checkbox"', page)
@@ -5323,7 +6347,7 @@ class LauncherAssetContractTests(CompactContainerAssertions, unittest.TestCase):
 
     def test_launcher_batch_and_single_stop_controls_are_wired(self) -> None:
         page = (ROOT / "web" / "launcher" / "index.html").read_text(encoding="utf-8")
-        script = (ROOT / "web" / "launcher" / "launcher.js").read_text(encoding="utf-8")
+        script = launcher_sources_text(ROOT)
         batch_script = (ROOT / "web" / "launcher" / "batch.js").read_text(encoding="utf-8")
 
         self.assertIn('id="stop" class="ghost server-stop hidden"', page)
@@ -5341,7 +6365,7 @@ class LauncherAssetContractTests(CompactContainerAssertions, unittest.TestCase):
 
     def test_server_status_uses_clickable_link_and_independent_stop_control(self) -> None:
         page = (ROOT / "web" / "launcher" / "index.html").read_text(encoding="utf-8")
-        script = (ROOT / "web" / "launcher" / "launcher.js").read_text(encoding="utf-8")
+        script = launcher_sources_text(ROOT)
 
         self.assertIn('function setServerStatus(url, alreadyRunning = false, prefix = "")', script)
         self.assertIn('bridge("open_url", { url })', script)
@@ -5360,7 +6384,7 @@ class LauncherAssetContractTests(CompactContainerAssertions, unittest.TestCase):
 
     def test_launcher_hero_links_include_github_tutorial_and_support(self) -> None:
         page = (ROOT / "web" / "launcher" / "index.html").read_text(encoding="utf-8")
-        script = (ROOT / "web" / "launcher" / "launcher.js").read_text(encoding="utf-8")
+        script = launcher_sources_text(ROOT)
 
         self.assertIn('<div class="hero-home-links">', page)
         self.assertIn('id="homeLink" class="text-link" type="button" data-i18n="github_link">Github', page)
@@ -5418,7 +6442,7 @@ class LauncherAssetContractTests(CompactContainerAssertions, unittest.TestCase):
 
     def test_html_editor_menu_uses_current_labels_and_closes_outside_the_menu(self) -> None:
         page = (ROOT / "web" / "launcher" / "index.html").read_text(encoding="utf-8")
-        script = (ROOT / "web" / "launcher" / "launcher.js").read_text(encoding="utf-8")
+        script = launcher_sources_text(ROOT)
 
         self.assertIn("用便携编辑器打开", page)
         self.assertIn("打开空白编辑器", page)
@@ -5426,7 +6450,7 @@ class LauncherAssetContractTests(CompactContainerAssertions, unittest.TestCase):
 
     def test_launcher_prefers_mose_and_keeps_server_in_split_menu(self) -> None:
         page = (ROOT / "web" / "launcher" / "index.html").read_text(encoding="utf-8")
-        script = (ROOT / "web" / "launcher" / "launcher.js").read_text(encoding="utf-8")
+        script = launcher_sources_text(ROOT)
 
         self.assertIn('id="openMawe" class="ghost split-main" type="button" data-i18n="open_preferred_editor"', page)
         self.assertIn('id="openServerEditor"', page)
@@ -5440,7 +6464,7 @@ class LauncherAssetContractTests(CompactContainerAssertions, unittest.TestCase):
         self.assertIn('bridge("start_server"', script)
 
     def test_launcher_opens_association_project_after_startup_update_check(self) -> None:
-        script = (ROOT / "web" / "launcher" / "launcher.js").read_text(encoding="utf-8")
+        script = launcher_sources_text(ROOT)
 
         check = script.index("await checkForUpdates(false, true);")
         ready = script.index('window.dispatchEvent(new CustomEvent("mawlauncherready"));')
@@ -5450,7 +6474,7 @@ class LauncherAssetContractTests(CompactContainerAssertions, unittest.TestCase):
         self.assertIn("resolveUpdateCheckWaiter", script)
 
     def test_project_change_marks_server_editor_action_for_rebinding(self) -> None:
-        script = (ROOT / "web" / "launcher" / "launcher.js").read_text(encoding="utf-8")
+        script = launcher_sources_text(ROOT)
 
         self.assertIn('function setJsonPath(path)', script)
         self.assertIn('$("openMawe").classList.add("attention")', script)
@@ -5458,7 +6482,7 @@ class LauncherAssetContractTests(CompactContainerAssertions, unittest.TestCase):
 
     def test_language_filter_hint_is_available_to_single_language_providers(self) -> None:
         page = (ROOT / "web" / "launcher" / "index.html").read_text(encoding="utf-8")
-        script = (ROOT / "web" / "launcher" / "launcher.js").read_text(encoding="utf-8")
+        script = launcher_sources_text(ROOT)
         stylesheet = (ROOT / "web" / "launcher" / "launcher.css").read_text(encoding="utf-8")
 
         self.assertIn('id="languageFilterHint"', page)
@@ -5479,7 +6503,7 @@ class LauncherAssetContractTests(CompactContainerAssertions, unittest.TestCase):
 
     def test_qwen_audio_launcher_exposes_one_shot_context_and_hotwords_only(self) -> None:
         page = (ROOT / "web" / "launcher" / "index.html").read_text(encoding="utf-8")
-        script = (ROOT / "web" / "launcher" / "launcher.js").read_text(encoding="utf-8")
+        script = launcher_sources_text(ROOT)
 
         for field in ("qwenAudioContext", "qwenAudioHotwordsMode", "qwenAudioHotwords", "qwenAudioHotwordsFile", "qwenAudioHotwordWeight"):
             self.assertIn(f'id="{field}"', page)
@@ -5501,7 +6525,7 @@ class LauncherAssetContractTests(CompactContainerAssertions, unittest.TestCase):
 
     def test_soniox_launcher_exposes_documented_context_sections(self) -> None:
         page = (ROOT / "web" / "launcher" / "index.html").read_text(encoding="utf-8")
-        script = (ROOT / "web" / "launcher" / "launcher.js").read_text(encoding="utf-8")
+        script = launcher_sources_text(ROOT)
         stylesheet = (ROOT / "web" / "launcher" / "launcher.css").read_text(encoding="utf-8")
 
         for field in (
@@ -5553,7 +6577,7 @@ class LauncherAssetContractTests(CompactContainerAssertions, unittest.TestCase):
 
     def test_advanced_options_are_grouped_into_titled_cards(self) -> None:
         page = (ROOT / "web" / "launcher" / "index.html").read_text(encoding="utf-8")
-        script = (ROOT / "web" / "launcher" / "launcher.js").read_text(encoding="utf-8")
+        script = launcher_sources_text(ROOT)
         stylesheet = (ROOT / "web" / "launcher" / "launcher.css").read_text(encoding="utf-8")
 
         self.assertIn('id="segmentationField" class="segmentation-settings-fields"', page)
@@ -5595,7 +6619,7 @@ class LauncherAssetContractTests(CompactContainerAssertions, unittest.TestCase):
 
     def test_qwen_regional_settings_live_at_bottom_of_llm_with_advanced_link(self) -> None:
         page = (ROOT / "web" / "launcher" / "index.html").read_text(encoding="utf-8")
-        script = (ROOT / "web" / "launcher" / "launcher.js").read_text(encoding="utf-8")
+        script = launcher_sources_text(ROOT)
 
         llm_panel = page.index('data-settings-panel="llm"')
         dashscope_panel = page.index('id="dashscopeRegionPanel"')
@@ -5629,7 +6653,7 @@ class LauncherAssetContractTests(CompactContainerAssertions, unittest.TestCase):
 
     def test_length_limit_is_not_exposed_in_launcher_ui(self) -> None:
         page = (ROOT / "web" / "launcher" / "index.html").read_text(encoding="utf-8")
-        script = (ROOT / "web" / "launcher" / "launcher.js").read_text(encoding="utf-8")
+        script = launcher_sources_text(ROOT)
 
         self.assertNotIn('id="lengthLimitField"', page)
         self.assertNotIn('id="lengthLimit"', page)
@@ -5639,7 +6663,7 @@ class LauncherAssetContractTests(CompactContainerAssertions, unittest.TestCase):
 
     def test_launcher_language_setting_uses_saved_or_system_preference(self) -> None:
         page = (ROOT / "web" / "launcher" / "index.html").read_text(encoding="utf-8")
-        script = (ROOT / "web" / "launcher" / "launcher.js").read_text(encoding="utf-8")
+        script = launcher_sources_text(ROOT)
 
         self.assertNotIn('id="langToggle"', page)
         self.assertIn('id="settingsButton"', page)
@@ -5665,7 +6689,7 @@ class LauncherAssetContractTests(CompactContainerAssertions, unittest.TestCase):
 
     def test_launcher_theme_round_trips_through_local_config(self) -> None:
         page = (ROOT / "web" / "launcher" / "index.html").read_text(encoding="utf-8")
-        script = (ROOT / "web" / "launcher" / "launcher.js").read_text(encoding="utf-8")
+        script = launcher_sources_text(ROOT)
         backend = (ROOT / "maw" / "gui_web.py").read_text(encoding="utf-8")
 
         self.assertIn('id="themeDark"', page)
@@ -5676,7 +6700,7 @@ class LauncherAssetContractTests(CompactContainerAssertions, unittest.TestCase):
         self.assertIn('updates["MAW_GUI_THEME"]', backend)
 
     def test_server_start_button_exposes_disabled_starting_state(self) -> None:
-        script = (ROOT / "web" / "launcher" / "launcher.js").read_text(encoding="utf-8")
+        script = launcher_sources_text(ROOT)
 
         self.assertIn('const SERVER_STARTING_TEXT = { zh: "启动中……", en: "Starting…" };', script)
         self.assertIn("button.disabled = state.moseStarting || state.serverStarting;", script)
@@ -5692,7 +6716,7 @@ class LauncherAssetContractTests(CompactContainerAssertions, unittest.TestCase):
     def test_launcher_log_and_server_notice_layout(self) -> None:
         page = (ROOT / "web" / "launcher" / "index.html").read_text(encoding="utf-8")
         stylesheet = (ROOT / "web" / "launcher" / "launcher.css").read_text(encoding="utf-8")
-        script = (ROOT / "web" / "launcher" / "launcher.js").read_text(encoding="utf-8")
+        script = launcher_sources_text(ROOT)
 
         self.assertIn('id="openLogFolder" class="inline-link" type="button" data-i18n="open_log_folder">打开日志文件夹', page)
         self.assertNotIn("📁 打开日志文件夹", page)
@@ -5712,7 +6736,7 @@ class LauncherAssetContractTests(CompactContainerAssertions, unittest.TestCase):
         self.assertIn("  margin-bottom: 12px;", stylesheet)
 
     def test_local_model_preparation_exposes_progress_events_and_cache_heartbeat(self) -> None:
-        script = (ROOT / "web" / "launcher" / "launcher.js").read_text(encoding="utf-8")
+        script = launcher_sources_text(ROOT)
         local_models = (ROOT / "maw" / "local_models.py").read_text(encoding="utf-8")
         backend = (ROOT / "maw" / "gui_web.py").read_text(encoding="utf-8")
 
@@ -5727,7 +6751,7 @@ class LauncherAssetContractTests(CompactContainerAssertions, unittest.TestCase):
         self.assertIn('"type": "localPrepareCancelled"', backend)
 
     def test_local_model_paths_are_scoped_to_the_selected_model(self) -> None:
-        script = (ROOT / "web" / "launcher" / "launcher.js").read_text(encoding="utf-8")
+        script = launcher_sources_text(ROOT)
 
         self.assertIn("localModelPaths", script)
         self.assertIn("syncLocalModelPath(model)", script)
@@ -5735,7 +6759,7 @@ class LauncherAssetContractTests(CompactContainerAssertions, unittest.TestCase):
 
     def test_local_runtime_installation_has_separate_progress_and_repair_controls(self) -> None:
         page = (ROOT / "web" / "launcher" / "index.html").read_text(encoding="utf-8")
-        script = (ROOT / "web" / "launcher" / "launcher.js").read_text(encoding="utf-8")
+        script = launcher_sources_text(ROOT)
         backend = (ROOT / "maw" / "gui_web.py").read_text(encoding="utf-8")
 
         self.assertIn('id="installLocalRuntime"', page)
@@ -5757,7 +6781,7 @@ class LauncherAssetContractTests(CompactContainerAssertions, unittest.TestCase):
 
     def test_local_runtime_lives_in_settings_runtime_tab_with_advanced_check_link(self) -> None:
         page = (ROOT / "web" / "launcher" / "index.html").read_text(encoding="utf-8")
-        script = (ROOT / "web" / "launcher" / "launcher.js").read_text(encoding="utf-8")
+        script = launcher_sources_text(ROOT)
         stylesheet = (ROOT / "web" / "launcher" / "launcher.css").read_text(encoding="utf-8")
 
         runtime_tab_panel = page.index('data-settings-panel="runtime"')
@@ -5886,7 +6910,7 @@ class LauncherAssetContractTests(CompactContainerAssertions, unittest.TestCase):
 
     def test_launcher_deep_link_scrolls_only_the_settings_container(self) -> None:
         """Given a settings deep link, When opening a section, Then only .settings-scroll moves."""
-        script = (ROOT / "web" / "launcher" / "launcher.js").read_text(encoding="utf-8")
+        script = launcher_sources_text(ROOT)
         stylesheet = (ROOT / "web" / "launcher" / "launcher.css").read_text(encoding="utf-8")
         page = (ROOT / "web" / "launcher" / "index.html").read_text(encoding="utf-8")
 
@@ -5933,7 +6957,7 @@ class LauncherAssetContractTests(CompactContainerAssertions, unittest.TestCase):
 
     def test_launcher_localizes_backend_config_labels_in_english_mode(self) -> None:
         """Given backend config labels arrive in Chinese, When the GUI is English, Then ids map to English labels."""
-        script = (ROOT / "web" / "launcher" / "launcher.js").read_text(encoding="utf-8")
+        script = launcher_sources_text(ROOT)
         backend = (ROOT / "maw" / "gui_config.py").read_text(encoding="utf-8")
 
         self.assertIn('note="轻量多语种识别；原生字词级时间码；可复用 Qwen3-ForcedAligner"', backend)
@@ -5953,11 +6977,11 @@ class LauncherAssetContractTests(CompactContainerAssertions, unittest.TestCase):
         self.assertIn('function renderModelNote()', script)
         self.assertIn('syncLocalModelPath(model); syncLocalDeviceOptions(model); renderModelNote();', script)
         self.assertIn('"price-note"', script)
-        self.assertIn('$("providerNote").textContent = providerNoteText(current);', script)
+        self.assertIn('renderProviderNote(current);', script)
         self.assertIn('renderServerButton(); refillSelectLabels();', script)
 
     def test_launcher_ignores_runtime_event_payloads_until_fresh_status_is_loaded(self) -> None:
-        script = (ROOT / "web" / "launcher" / "launcher.js").read_text(encoding="utf-8")
+        script = launcher_sources_text(ROOT)
 
         self.assertIn('const requestId = ++ocrRuntimeRequest;', script)
         self.assertIn('if (requestId !== ocrRuntimeRequest) return result;', script)
@@ -5969,7 +6993,7 @@ class LauncherAssetContractTests(CompactContainerAssertions, unittest.TestCase):
 
     def test_ocr_runtime_ready_hint_uses_a_clickable_directory_link(self) -> None:
         page = (ROOT / "web" / "launcher" / "index.html").read_text(encoding="utf-8")
-        script = (ROOT / "web" / "launcher" / "launcher.js").read_text(encoding="utf-8")
+        script = launcher_sources_text(ROOT)
         backend = (ROOT / "maw" / "gui_web.py").read_text(encoding="utf-8")
 
         self.assertIn('id="ocrRuntimeHint"', page)
@@ -5979,7 +7003,7 @@ class LauncherAssetContractTests(CompactContainerAssertions, unittest.TestCase):
 
     def test_model_cache_path_saves_without_a_separate_button(self) -> None:
         page = (ROOT / "web" / "launcher" / "index.html").read_text(encoding="utf-8")
-        script = (ROOT / "web" / "launcher" / "launcher.js").read_text(encoding="utf-8")
+        script = launcher_sources_text(ROOT)
 
         self.assertNotIn('id="saveLocalModelCache"', page)
         self.assertIn('$("localModelCachePath").addEventListener("change"', script)
@@ -6007,7 +7031,7 @@ class LauncherAssetContractTests(CompactContainerAssertions, unittest.TestCase):
 
     def test_launcher_separates_auto_translation_hints_from_toolbox_hints(self) -> None:
         page = (ROOT / "web" / "launcher" / "index.html").read_text(encoding="utf-8")
-        launcher_script = (ROOT / "web" / "launcher" / "launcher.js").read_text(encoding="utf-8")
+        launcher_script = launcher_sources_text(ROOT)
         postprocess_script = (ROOT / "web" / "launcher" / "postprocess.js").read_text(encoding="utf-8")
 
         self.assertIn('data-i18n="settings_tab_llm">AI 模型</button>', page)
@@ -6028,7 +7052,7 @@ class LauncherAssetContractTests(CompactContainerAssertions, unittest.TestCase):
     def test_launcher_keeps_settings_actions_visible_and_isolates_toolbox_wheel(self) -> None:
         page = (ROOT / "web" / "launcher" / "index.html").read_text(encoding="utf-8")
         script = (ROOT / "web" / "launcher" / "postprocess.js").read_text(encoding="utf-8")
-        launcher_script = (ROOT / "web" / "launcher" / "launcher.js").read_text(encoding="utf-8")
+        launcher_script = launcher_sources_text(ROOT)
         stylesheet = (ROOT / "web" / "launcher" / "launcher.css").read_text(encoding="utf-8")
 
         self.assertIn('<div class="settings-scroll">', page)
@@ -6045,7 +7069,7 @@ class LauncherAssetContractTests(CompactContainerAssertions, unittest.TestCase):
 
     def test_launcher_settings_use_tabs_and_preserve_deep_links(self) -> None:
         page = (ROOT / "web" / "launcher" / "index.html").read_text(encoding="utf-8")
-        script = (ROOT / "web" / "launcher" / "launcher.js").read_text(encoding="utf-8")
+        script = launcher_sources_text(ROOT)
         stylesheet = (ROOT / "web" / "launcher" / "launcher.css").read_text(encoding="utf-8")
 
         self.assertIn('id="settingsTabList" class="settings-tabs" role="tablist"', page)

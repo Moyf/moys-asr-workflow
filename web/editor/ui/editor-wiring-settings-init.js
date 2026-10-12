@@ -214,7 +214,11 @@ MaweDom.multiSubtitleDisplayMode?.addEventListener('change', () => {
   return MaweCommands.run('切换双语字幕列表', (command) => {
     multi.display_mode = MULTI_SUBTITLE_UTILS.MULTI_SUBTITLE_DISPLAY_MODES.has(next) ? next : 'both';
     multi._dirty = true;
-    command.commit({ cueList: true, waveform: 'none' });
+    // 三种显示模式的行 DOM 结构互不相同，列表只能全量重建（长工程会明显卡顿）。
+    // 这里不同步重建：先提交变更并让下拉框状态上屏，下一帧再重建列表，
+    // 避免同一次 change 里既做视觉反馈又扛整表重建。
+    command.commit({ cueList: false, waveform: 'none' });
+    requestAnimationFrame(() => MaweCuePanel.renderAll({ waveform: 'none' }));
   });
 });
 MaweDom.multiSubtitleMainLanguageMode?.addEventListener('change', () => {
@@ -246,7 +250,25 @@ MaweDom.multiSubtitleExtensionLanguageMode?.addEventListener('change', () => {
 MaweDom.multiSubtitleExtensionRowHeight?.addEventListener('change', () => {
   const next = MaweSettings.normalizeMultiSubtitleRowHeight(MaweDom.multiSubtitleExtensionRowHeight.value);
   MaweSettings.updateEditorSettings({ multiSubtitleRowHeight: next });
-  if (MaweMultiSubtitleCore.multiSubtitleVisible()) MaweCoreState.waveformEditor?.setRowHeight(next);
+  MaweDisplaySettings.applyWaveformModeRowHeight();
+});
+// 字词码预设：写入偏好；字词时间码已启用时立即应用到波形。
+MaweDom.wordTimingRowHeight?.addEventListener('change', () => {
+  const next = MaweSettings.normalizeMultiSubtitleRowHeight(MaweDom.wordTimingRowHeight.value);
+  MaweSettings.updateEditorSettings({ wordTimingRowHeight: next });
+  MaweDisplaySettings.applyWaveformModeRowHeight();
+});
+MaweDom.wordTimingSecondsPerRow?.addEventListener('change', () => {
+  const next = Number(MaweDom.wordTimingSecondsPerRow.value);
+  MaweSettings.updateEditorSettings({ wordTimingSecondsPerRow: next });
+  if (window.MaweWordTiming?.enabled === true) MaweCoreState.waveformEditor?.setSecondsPerRow(next);
+});
+// 波形工具栏的「双语 / 重叠」快捷开关：复用工程设置开关的 change 逻辑。
+document.getElementById('multi-subtitle-quick-toggle')?.addEventListener('click', () => {
+  MaweDom.multiSubtitleToggle?.click();
+});
+document.getElementById('overlay-quick-toggle')?.addEventListener('click', () => {
+  overlayTrackToggle?.click();
 });
 MaweDom.multiSubtitleCrossTrackSnapToggle?.addEventListener('change', () => {
   MaweSettings.updateEditorSettings({ crossTrackSnap: MaweDom.multiSubtitleCrossTrackSnapToggle.checked });

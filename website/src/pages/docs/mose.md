@@ -2,16 +2,18 @@
 layout: "../../layouts/DocLayout.astro"
 title: "MOSE 独立编辑器"
 description: "Electron 原生工程操作、三端打包、系统打开方式与更新范围。"
-source: "docs/MOSE.md"
+source: "docs/engineering/MOSE.md"
 ---
 
-<!-- Generated from docs/MOSE.md. Run pnpm run sync:docs to refresh. -->
+<!-- Generated from docs/engineering/MOSE.md. Run pnpm run sync:docs to refresh. -->
 
 | 名称 | 当前定位 |
 | --- | --- |
 | MAW — Moy's ASR Workflow | 转写与处理工作流，包含 Launcher、公开 CLI 与本机服务。 |
 | MAWE — Moy's ASR Workflow Editor | 共享的字幕编辑前端，支持本机 Server、便携 HTML 与在线浏览器入口。 |
 | MOSE — Moy's Open Subtitle Editor | 本分支的 Electron 独立窗口，复用同一前端、Server 与工程契约，并提供原生文件能力。 |
+
+桌面壳路线已于 2026-10-08 确定为 **Electron**；早期保留的 Tauri 实验目录已移除，决策记录见 [desktop README](https://github.com/Moyf/moys-asr-workflow/blob/main/desktop/README.md)。
 
 本分支 `desktop/` 使用 Electron。Launcher 优先查找 MOSE，缺失或启动失败时回退到浏览器 Server。三者共享 `.mosp` / 兼容 `.json`；SRT、Resolve JSON、保留区域 JSON 和 `.workspace.json` 各有用途，不能代替字幕工程。格式见 [JSON_SCHEMA](../json-schema/)。
 

@@ -9,6 +9,8 @@ const repairedTimingCount = MaweJsonRepair.normalizeProjectTimings(MaweBoot.DATA
 // 统一用数组，写出文件时再经 markersToProjectField 包回。不在这里换掉的话，
 // 轨道不渲染，且首次 markerList() 会把包装对象整个清掉。
 MaweBoot.DATA.markers = window.AsrEditorUtils.normalizeMarkers(MaweBoot.DATA.markers);
+// 带 markers 的工程（如 AI 整理产物）默认启用标记轨道，方便直接复核待确认项。
+window.MaweMarkerEditing?.enableForProjectMarkers?.(MaweBoot.DATA.markers);
 MaweTimeline.syncProjectTimebaseAndBindingOffsets(MaweBoot.DATA, { preferFrames: false });
 MaweBoot.maweDebug('boot:begin', {
   server: Boolean(MaweBoot.SERVER_CONFIG),

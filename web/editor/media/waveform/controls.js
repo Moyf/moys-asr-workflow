@@ -71,10 +71,7 @@ export function createWaveformModule(dependencies) {
         this.focusWaveform();
       });
       this.secondsPerRowSelect?.addEventListener('change', () => {
-        this.settings.secondsPerRow = Number(this.secondsPerRowSelect.value);
-        saveSettings(this.settings);
-        this.multiRange = [-1, -1];
-        this.render();
+        this.setSecondsPerRow(this.secondsPerRowSelect.value);
       });
       this.rowHeightSelect?.addEventListener('change', () => {
         this.setRowHeight(Number(this.rowHeightSelect.value));

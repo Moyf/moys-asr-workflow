@@ -8,6 +8,7 @@
 
 
 MaweDom.overlayTextEl.append(MaweDom.overlayMainTextNode);
+MaweDom.overlayExtensionTextEl.append(MaweDom.overlayExtensionSpeakerLabelEl, MaweDom.overlayExtensionTextNode);
 
 const overlayTrackTextEl = document.getElementById('overlay-track-text');
 // 叠加轨预览的说话人标签：结构与主字幕预览一致（彩色标签 span + 文本节点）。

@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from tests.compact_assertions import CompactContainerAssertions
+
 import io
 import tempfile
 import unittest
@@ -28,7 +30,7 @@ from generate_subtitle_qwen_api import (
 from maw.qwen_audio import parse_qwen_audio_hotwords
 
 
-class QwenAudioAdapterTests(unittest.TestCase):
+class QwenAudioAdapterTests(CompactContainerAssertions, unittest.TestCase):
     def test_qwen_audio_is_the_default_filetrans_model(self) -> None:
         self.assertEqual(FILETRANS_MODEL, QWEN_AUDIO_FILETRANS_MODEL)
 

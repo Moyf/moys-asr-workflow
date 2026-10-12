@@ -9,6 +9,16 @@
 // 模板占位符由 edit.py / server-editor 在装配时注入真实 JSON。
 
 declare const __DATA_JSON__: ProjectData;
+
+interface Window {
+  MaweAssCanvas: {
+    measureRun(style: any, nativeFontSize: number, run: any, text: string): { width: number; ascent: number; descent: number };
+    clearCaches(): void;
+    render(payload: any): void;
+    hide(): void;
+    readonly lastRender: any;
+  };
+}
 declare const __FILENAME_BASE_JSON__: string;
 declare const __STICKERS_JSON__: any[];
 declare const __STICKER_ROOT_JSON__: string;
@@ -88,6 +98,7 @@ interface MaweBootApi {
 }
 
 interface MaweExportSrtApi {
+  cleanupMainSegments: () => ProjectSegment[];
   currentAssVideoResolution: any;
   assExportOptions: any;
   buildAss: any;
@@ -235,8 +246,11 @@ declare const MaweServerSave: any;
 interface Window {
   MaweCommands: MaweCommandsApi;
   MaweViewUpdates: typeof MaweViewUpdates;
+  MaweMarkerEditing?: { isEditingEnabled(): boolean };
   webkitAudioContext?: typeof AudioContext;
   AsrGapRemoveCore: {
+    projectCleanupRetainedSegments(segments: ProjectSegment[], gapRemove: unknown): ProjectSegment[];
+    getCleanupScopeItems(segment: ProjectSegment, gap: unknown): ProjectSegmentItem[];
     isGapRemoveDisplayProtected(gap: import('../media/waveform/waveform-types.js').Gap): boolean;
   };
 }

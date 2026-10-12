@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from tests.compact_assertions import CompactContainerAssertions
+
 import importlib.util
 import json
 import sys
@@ -24,7 +26,7 @@ sys.modules[SPEC.name] = SERVER
 SPEC.loader.exec_module(SERVER)
 
 
-class ServerAlignTests(unittest.TestCase):
+class ServerAlignTests(CompactContainerAssertions, unittest.TestCase):
     def test_load_state_reads_quapeaks_waveform_for_runtime_gap_detection(self) -> None:
         with TemporaryDirectory() as temporary:
             root = Path(temporary)

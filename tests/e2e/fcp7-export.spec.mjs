@@ -267,7 +267,7 @@ test('translates the export modal into English and keeps native text checked', a
 
   await openFcp7Modal(page);
   await expect(page.locator('#fcp7-export-title'))
-    .toHaveText('Premiere FCP 7 XML (experimental)');
+    .toHaveText('Premiere FCP 7 XML');
   await expect(page.locator('#fcp7-export-confirm')).toHaveText('Export XML');
   await expect(page.locator('#fcp7-export-modal')).toContainText('Write native subtitle text objects');
   await expect(page.locator('#fcp7-export-native-text')).toBeChecked();

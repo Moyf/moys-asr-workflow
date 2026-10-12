@@ -58,8 +58,11 @@
       if (extensionText) {
         const cue = extensionText.closest('.cue');
         if (cue) MaweCueListAnchor.scrollCueToCenter(cue);
-        setTimeout(() => MaweInlineEdit.startExtensionEdit(extensionText, index, track), 0);
       }
+      // 拖动创建后聚焦下方副字幕编辑区（而不是列表行内编辑），
+      // 视线自然落在「新建条目 → 直接打字」的路径上。
+      MaweCuePanel.setCurrentCuePanelExtensionIndex(index, track);
+      MaweCuePanel.focusCuePanelText(index, 'extension');
       MaweCoreState.waveformEditor?.revealTime(safeStart, true);
       MaweHint.flashHint(`已新增第 ${index + 1} 条副字幕`, 'success');
     });
@@ -204,8 +207,10 @@
       if (extensionText) {
         const cue = extensionText.closest('.cue');
         if (cue) MaweCueListAnchor.scrollCueToCenter(cue);
-        setTimeout(() => MaweInlineEdit.startExtensionEdit(extensionText, index, track), 0);
       }
+      // 与拖动创建一致：聚焦下方副字幕编辑区，直接输入文本。
+      MaweCuePanel.setCurrentCuePanelExtensionIndex(index, track);
+      MaweCuePanel.focusCuePanelText(index, 'extension');
       MaweCoreState.waveformEditor?.revealTime(adjustedStart, true);
       MaweHint.flashHint(`已新增第 ${index + 1} 条副字幕`, 'success');
     });

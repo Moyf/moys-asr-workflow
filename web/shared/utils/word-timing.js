@@ -244,8 +244,11 @@ export function createWordTiming(dependencies) {
     return spans;
   }
 
-  // Equal-length text replacement (typo fixes) remaps item texts in place;
-  // other edits stay untouched and only warn when they cross timed ranges.
+  // Text edits remap item texts in place when unambiguous: equal-length
+  // replacements always do, and unequal edits do when the whole changed region
+  // (an insertion point included) stays inside a single item span. Other edits
+  // stay untouched and only warn when they cross timed ranges. `details`
+  // carries [before, after] per changed item for user-facing hints.
   function planWordTimingTextSync(segment, previousText) {
     const text = segment?.text;
     const items = segment?.items;
@@ -257,12 +260,17 @@ export function createWordTiming(dependencies) {
     if (nextChars.length === previousChars.length) {
       const nextItems = cloneJsonValue(items);
       let changed = 0;
+      const details = [];
       ranges.forEach((range, index) => {
         if (!range) return;
         const next = nextChars.slice(range.start, range.end).join('');
-        if (next && next !== nextItems[index]?.text) { nextItems[index].text = next; changed += 1; }
+        if (next && next !== nextItems[index]?.text) {
+          details.push({ before: nextItems[index]?.text ?? '', after: next });
+          nextItems[index].text = next;
+          changed += 1;
+        }
       });
-      return changed ? { items: nextItems, changed } : null;
+      return changed ? { items: nextItems, changed, details } : null;
     }
     let prefix = 0;
     const limit = Math.min(previousChars.length, nextChars.length);
@@ -271,8 +279,33 @@ export function createWordTiming(dependencies) {
     while (suffix < limit - prefix
         && previousChars[previousChars.length - 1 - suffix] === nextChars[nextChars.length - 1 - suffix]) suffix += 1;
     const regionStart = prefix, regionEnd = previousChars.length - suffix;
-    const crosses = ranges.some(range => range && range.start < regionEnd && range.end > regionStart);
-    return crosses ? { warn: true } : null;
+    const nextRegionEnd = nextChars.length - suffix;
+    const crossed = ranges.map((range, index) => ({ range, index }))
+      .filter(({ range }) => range && range.start < regionEnd && range.end > regionStart);
+    // The changed region lies within one item span: write the new span text
+    // back with unchanged timing, then re-verify the neutral-character mapping.
+    if (crossed.length === 1) {
+      const { range, index } = crossed[0];
+      if (range.start <= regionStart && regionEnd <= range.end) {
+        const next = nextChars.slice(range.start, range.end + nextRegionEnd - regionEnd).join('');
+        if (audible(next).length || !audible(items[index]?.text).length) {
+          const nextItems = cloneJsonValue(items);
+          const before = nextItems[index]?.text ?? '';
+          if (next !== before) {
+            nextItems[index].text = next;
+            if (wordCharRanges(text, nextItems)) {
+              return { items: nextItems, changed: 1, details: [{ before, after: next }] };
+            }
+          }
+        }
+      }
+    }
+    if (!crossed.length) return null;
+    return {
+      warn: true,
+      before: previousChars.slice(regionStart, regionEnd).join(''),
+      after: nextChars.slice(prefix, nextRegionEnd).join(''),
+    };
   }
   return Object.freeze({ getWordTimingEntries, editWordTiming, mergeWordTimingItems, planWordTimingConversion, planWordTimingTextSync });
 }

@@ -77,7 +77,7 @@ def _missing_moss_dependency(cause: ImportError) -> MissingLocalDependency:
     package = actual or "moss-transcribe-diarize"
     return MissingLocalDependency(
         f"缺少 MOSS 本地运行环境依赖 {package}；请在 Launcher 中安装 MOSS 运行环境，"
-        "或按 docs/LOCAL_ASR.md 配置独立的 MOSS 开发环境。"
+        "或按 docs/user/LOCAL_ASR.md 配置独立的 MOSS 开发环境。"
     )
 
 

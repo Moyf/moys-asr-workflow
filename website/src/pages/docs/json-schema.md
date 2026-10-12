@@ -300,12 +300,28 @@ source: "JSON_SCHEMA.md"
       "removed": false,
       "source": "audio_gate",
       "origins": ["audio_gate", "manual"]
+    },
+    {
+      "start": 8420,
+      "end": 9160,
+      "removed": true,
+      "source": "ai_cleanup_review",
+      "origins": ["ai_cleanup_review"]
     }
   ],
   "provenance": {
     "schema": "moy.asr.gap_provenance.v1",
     "sources": {
       "script_alignment": [],
+      "ai_cleanup": [],
+      "ai_cleanup_review": [
+        {
+          "id": "review-range-001",
+          "start": 8420,
+          "end": 9160,
+          "review_marker_id": "ai-review-001"
+        }
+      ],
       "audio_gate": [
         { "id": "silence-001", "start": 1280, "end": 2440 }
       ]
@@ -320,7 +336,12 @@ source: "JSON_SCHEMA.md"
 
 - `detector` 固定为 `audio_gate`：扫描波形峰值包络，声音高于 `threshold_db` 时打开 gate，低于 `threshold_db - hysteresis_db` 后才关闭；不会用字幕之间的时间差推断空隙。
 - `gaps[*].source` 和 `gaps[*].origins` 是根据 `provenance` 派生的可读字段：`source` 表示唯一的初始自动来源；`origins` 列出当前区间的全部贡献来源。多个自动来源重叠时 `source` 为 `null`；只有人工覆盖时才为 `manual`。它们不是来源真源，旧客户端可以忽略。
-- `provenance` 是可选的来源真源，当前来源层为 `script_alignment`、`ai_cleanup`、`audio_gate` 与 `manual_overrides`；`legacy` 是兼容读取字段，启用的旧范围会迁入 `audio_gate`，旧的 `removed: false` 范围会迁入 `manual_overrides`，规范化输出中的 `legacy` 为空数组。支持它的新客户端据此分层重扫和重建最终 `gaps`。`ai_cleanup` 层由 AI 口播整理（Launcher 工具箱 / match 步骤的「使用 AI 整理」模式）写入，与 `script_alignment` 一样始终为移除区间；在编辑器中按层恢复或重扫时，其余来源层保持不变。
+- `provenance` 是可选的来源真源，当前来源层为 `script_alignment`、`ai_cleanup`、`ai_cleanup_review`、`audio_gate` 与 `manual_overrides`；`legacy` 是兼容读取字段，启用的旧范围会迁入 `audio_gate`，旧的 `removed: false` 范围会迁入 `manual_overrides`，规范化输出中的 `legacy` 为空数组。支持它的新客户端据此分层重扫和重建最终 `gaps`。`ai_cleanup` 层由 AI 口播整理（Launcher 工具箱 / match 步骤的「使用 AI 整理」模式）写入，与 `script_alignment` 一样始终为移除区间；在编辑器中按层恢复或重扫时，其余来源层保持不变。`ai_cleanup_review` 是独立来源层，由用户在编辑器中对待复核 AI 标记选择「静音区段」时写入；它不属于 AI 自动整理结果，始终作为移除区间，并且不会被 `ai_cleanup` 自动整理层的重建或恢复覆盖。
+- `ai_cleanup_review` 范围可带可选的 `review_marker_id`，指向对应的 `markers[*].id`，使区间与触发该静音操作的待复核标记保持关联。`id` 标识来源范围；范围被裁剪或拆分时，拆出的范围可以有各自的 `id`，但保留同一个 `review_marker_id`。取消该标记的静音会按此关联移除对应来源范围。
+- `ai_cleanup` 的可靠局部移除范围可带 `cleanup_scope`：`{ "segment_id": "main-001", "item_start": 0, "item_end": 2, "text": "啊，我这……" }`。索引是源主字幕 `items` 的零基连续区间，`item_end` 不含末项，`text` 是所选项的精确拼接；起止时间直接复制首末项边界。它仅由 cleanup 局部安全校验通过后写入；旧整段 AI 范围不带此字段。Python 与浏览器的来源规范化均保留合法字段。
+- 局部移除保留源字幕的稳定 ID、原文、全部 `items` 和 enabled 状态。SRT、ASS、TXT、动态字幕、OTIO 字幕标记和 FCP/XML 导出使用保留内容投影：只认仍存在的 `ai_cleanup.cleanup_scope`，核对主轨 ID、连续索引、精确拼接文字和真实端点，并仅隐藏完全被当前生效 gap 覆盖的所选 item。普通静音、旧整段 AI、`ai_cleanup_review` 或副/叠加轨不能单独授权剪字。普通导出保留源时轴，去空隙导出在投影后统一压缩时间；副轨译文与叠加轨仍保留其独立内容。人工恢复范围或清除自动 AI 来源后，投影恢复相应源字词；后续编辑使映射失配时，保守保留原文，不猜位置。
+- 编辑器源列表保留完整原文，CSS/ASS Canvas 实际播放与导出共享保留内容投影；缓存比较保留字词边界，范围恢复后立即重建。内建标点规整仅迁移规整前已精确核验的 scope 拼接文字；原失配 scope 及普通用户编辑不自动修复。
+- cleanup 专属临时 LLM 协议保留 `keep/review/discard` 整段响应兼容。请求可带 `items` JSON 字符串，解码后仅有临时 `{id,text}`，不发送时间码、路径或工程稳定 ID；保持传输层 `dict[str,str]` 约定。`discard` 可选 `removeItemIds: ["c001:i001", "c001:i002"]`，或多局部 `removeItemRanges: [["c001:i001"], ["c001:i004"]]`，两字段不得同时出现。每组非空、有序、连续、无重复，组间递增且不重叠；`evidence` 必须精确等于所有所选组按原序拼接的原文，不用 `altTakeId`。不存在、乱序、缺可靠时间/文字、数字/限定条件、不能覆盖文稿信息或没有有效剩余，整项降为待复核。每组独立写范围和同范围标记，第二道通读以 `proposed: partial`、`retainedText`、`removedText` 检查真实正文；复核该片段恢复本次所有局部组。
 - `minimum_ms` 的允许范围是 100–60000，单位为毫秒；默认 500。判定基于应用前/后端预留后的最终移除区间，预留吃完整段时不纳入移除。
 - `threshold_db` 的范围是 -96–0，默认 -24；`hysteresis_db` 的范围是 0–30，默认 2。比如阈值 -24、滞回 2 时，声音达到 -24 才算有声，低于 -26 才重新算静音。建议使用 1–3dB；过高会延迟回到静音。滞回位于「空隙检测与调整」折叠区内。
 - `lead_in_ms` / `lead_out_ms` 是每段空隙两侧保留的静音毫秒数，范围 0–2000，默认前端 40、后端 80。扫描得到的原始静音区间会在起点加 `lead_in_ms`、终点减 `lead_out_ms` 后再写入 `gaps`，避免剪掉空隙后两句贴得太急；预留后的区间短于 `minimum_ms` 时整段保留。这两个值在扫描生成空隙时继续生效；对已有结果点击「收缩空隙」时，会再次按当前值向内调整现有区间，是额外的可撤销微调。
@@ -407,7 +428,7 @@ source: "JSON_SCHEMA.md"
     "x": 0.1, "y": 0.76, "width": 0.8, "height": 0.16, "font_size": 32, "font_family": "yahei", "color": "#ffffff",
     "speaker_labels": { "mapping_enabled": true, "enabled": true, "separator": "：", "names": { "yellow": "SP1", "green": "SP2", "red": "SP3", "purple": "SP4", "blue": "SP5" } }
   },
-  "extension_subtitle": { "font_size": 30, "font_family": "yahei", "color": "#ffd34d" },
+  "extension_subtitle": { "font_size": 30, "font_family": "yahei", "color": "#eac953" },
   "sticker": { "x": 0.73, "y": 0.04, "width": 0.24, "height": 0.3 }
 }
 ```
@@ -422,7 +443,7 @@ source: "JSON_SCHEMA.md"
 | `font_family` | `string` | 否 | 字幕预览字体族：内置键 `default`、`yahei`、`hei`、`song`、`sans`，或本机字体族名称（最长 128 个字符） |
 | `background_color` | `string` | 否 | 字幕预览背景色，6 位十六进制颜色 `#RRGGBB`；缺失时使用黑色 |
 | `background_alpha` | `number` | 否 | 字幕预览背景不透明度，范围 `[0, 1]`；缺失时使用 `0.65`，设为 `0` 时隐藏背景 |
-| `color` | `string` | 否 | 六位十六进制颜色，如 `#ffffff`；主字幕默认白色，副字幕默认黄色 `#ffd34d` |
+| `color` | `string` | 否 | 六位十六进制颜色，如 `#ffffff`；主字幕默认白色，副字幕默认黄色 `#eac953` |
 | `color_underline` | `boolean` | 否 | 播放预览是否按字幕颜色快照应用颜色样式；缺失时视为 `true`（默认开启），设为 `false` 时关闭颜色预览。保留该字段以兼容旧工程 |
 | `color_style` | `string` | 否 | CSS 预览的颜色样式：`underline`（下划线，默认）、`text`（文字颜色）或 `stroke`（描边）；历史值 `shadow` 保留读取兼容 |
 | `ass_color_style` | `string` | 否 | ASS 导出与 ASS 预览中颜色字幕的应用方式：`text`（作为字幕颜色，默认）、`speaker`（仅作为说话人名称颜色）、`stroke`（作为描边颜色）或 `none`（无影响，颜色字幕使用统一样式） |
@@ -911,7 +932,7 @@ uv run python edit.py your_generated.mosp
 | `preview.extension_subtitle` | object | ❌ | 副字幕样式；沿用主字幕预览框 |
 | `preview.extension_subtitle.font_size` | number | ❌ | px，范围 `[12,96]`；缺失时默认比主字幕小 2px |
 | `preview.extension_subtitle.font_family` | string | ❌ | `default` / `yahei` / `hei` / `song` / `sans` |
-| `preview.extension_subtitle.color` | string | ❌ | `#RRGGBB` 六位十六进制颜色，默认 `#ffd34d` |
+| `preview.extension_subtitle.color` | string | ❌ | `#RRGGBB` 六位十六进制颜色，默认 `#eac953` |
 | `preview.sticker.x` | number | ❌ | 归一化 `[0,1]`，`x + width <= 1` |
 | `preview.sticker.y` | number | ❌ | 归一化 `[0,1]`，`y + height <= 1` |
 | `preview.sticker.width` | number | ❌ | 归一化 `[0,1]`，编辑器最小 0.20 |

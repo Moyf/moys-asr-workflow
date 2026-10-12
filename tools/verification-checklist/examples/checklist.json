@@ -1,0 +1,54 @@
+{
+  "schema": "maw.verification-checklist.source.v1",
+  "title": "MAW 核查清单 · JSON 生成示例",
+  "subtitle": "示例数据；自动化证据与人工确认分别记录，所有核对项初始未勾选。",
+  "sections": [
+    {
+      "id": "implementation",
+      "title": "实现 / 审查结论",
+      "blocks": [
+        { "type": "text", "text": "AI 只编写 JSON，脚本负责生成分区、目录和核对项。" },
+        { "type": "note", "text": "本页是格式示例，表格中的命令不代表已经执行或通过。" },
+        {
+          "type": "list",
+          "ordered": true,
+          "items": ["整理范围、基线与证据。", "生成 JSON 并运行 build.py。", "在生成页完成人工核对并导出结果。"]
+        }
+      ]
+    },
+    {
+      "id": "automation",
+      "title": "自动化验证证据",
+      "open": false,
+      "blocks": [
+        { "type": "command", "text": "python scripts/run_tests.py --pattern test_verification_checklist.py" },
+        {
+          "type": "table",
+          "headers": ["检查", "结果", "边界"],
+          "rows": [["生成器定向测试", "待执行", "不能代替人工验收"], ["页面交互", "待核查", "勾选、备注、导出与刷新"]]
+        }
+      ]
+    },
+    {
+      "id": "manual",
+      "title": "人工核验",
+      "badge": { "kind": "todo", "text": "待人工确认" },
+      "blocks": [
+        {
+          "type": "check",
+          "id": "manual-persistence",
+          "entry": "生成的 HTML 页面",
+          "action": "勾选本项，点击备注填写两行文字，然后刷新",
+          "expected": "勾选与备注仍保留，进度显示 1 / 2"
+        },
+        {
+          "type": "check",
+          "id": "manual-export",
+          "entry": "侧栏导出范围",
+          "action": "选择仅未确认项并导出 JSON",
+          "expected": "只包含未勾选项目，保留稳定 ID 与备注"
+        }
+      ]
+    }
+  ]
+}

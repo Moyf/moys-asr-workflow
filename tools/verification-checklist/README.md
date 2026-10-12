@@ -10,27 +10,100 @@
 verification-checklist/
   README.md                              使用说明与导出契约
   build.py                               生成页面 / 更新既有页面
+  examples/checklist.json                 AI 编写数据的完整示例
   templates/verification-checklist.html   唯一页面模板，内含样式与脚本
 ```
 
 ## 生成与更新
 
-准备 UTF-8 的分区 HTML，再在仓库根目录执行（Python 标准库即可，无需安装依赖）：
+推荐流程：AI 生成 UTF-8 JSON 数据，运行脚本校验并填入统一模板，双击生成的 HTML 开始核对。只需 Python 标准库，无需安装依赖，也无需每次手写 HTML。
+
+先用仓库内示例生成一页：
 
 ```powershell
-python tools/verification-checklist/build.py --title "本次功能核对" --subtitle "范围、基线与已知未验证边界" --sections "$env:TEMP/verification-sections.html" --output "$env:TEMP/verification.html"
-Start-Process "$env:TEMP/verification.html"
+python tools/verification-checklist/build.py --data tools/verification-checklist/examples/checklist.json --output ".artifacts/verification/verification.html"
+Start-Process ".artifacts/verification/verification.html"
 ```
 
-默认将生成物放仓库外，不加入 Git。用户明确要求更新已有核对页时：
+实际任务将 AI 输出保存为 JSON，再生成：
 
 ```powershell
-python tools/verification-checklist/build.py --refresh "$env:TEMP/verification.html"
+python tools/verification-checklist/build.py --data ".artifacts/verification/checklist.json" --output ".artifacts/verification/verification.html"
+```
+
+生成前检查必填字段、字段类型、未知字段、重复 JSON 字段、稳定 ID、徽标类型和表格列数；字段校验错误包含路径，拒绝孤立 Unicode 代理字符及 HTML 无法保留的 NUL 字符。完整页面先写到输出目录的临时文件，再替换目标，校验或写入失败保留已有输出。所有数据文本都做 HTML 转义，不支持原始 HTML、Markdown 或脚本；命令只是展示，不会执行。JSON 支持 UTF-8 BOM。
+
+兼容已有分区 HTML 输入：
+
+```powershell
+python tools/verification-checklist/build.py --title "本次功能核对" --subtitle "范围、基线与已知未验证边界" --sections ".artifacts/verification/verification-sections.html" --output ".artifacts/verification/verification.html"
+Start-Process ".artifacts/verification/verification.html"
+```
+
+默认将生成物放在仓库根 `.artifacts/<task-id>/`，不加入 Git；用户已指定仓库外目录时遵从指定。用户明确要求更新已有核对页时：
+
+```powershell
+python tools/verification-checklist/build.py --refresh ".artifacts/verification/verification.html"
 ```
 
 更新会覆盖目标文件的页面外壳，保留页面标题、可见标题、分区内容与核对项 ID；可加 `--output` 另存。浏览器刷新后生效。同标题、同浏览器存储环境中的既有勾选与备注继续读取；迁移到别的浏览器或来源不保证共享本机存储。分段拼装的旧页面也要同步头尾分段，以免下一次拼装覆盖工具更新。
 
-也可手动复制模板，替换 `{{TITLE}}`、`{{SUBTITLE}}`、`{{SECTIONS}}`；标题和副标题需要 HTML 转义。模板注释、脚本里不要出现这些占位符原文。
+模板占位符由脚本替换；模板注释、脚本里不要出现占位符原文。
+
+## AI 生成用 JSON 契约
+
+输入版本是 `maw.verification-checklist.source.v1`，与下文的核对结果导出格式不同；结果快照不能作为生成数据或进度导入。最小示例：
+
+```json
+{
+  "schema": "maw.verification-checklist.source.v1",
+  "title": "本次功能核对 · 2026-10-11",
+  "subtitle": "范围、代码基线、已验证证据与未验证边界",
+  "sections": [
+    {
+      "id": "manual-export",
+      "title": "人工核验：导出",
+      "badge": { "kind": "todo", "text": "待核查" },
+      "blocks": [
+        { "type": "note", "text": "自动化通过不能代替人工确认。" },
+        {
+          "type": "check",
+          "id": "export-srt",
+          "entry": "编辑器 → 导出",
+          "action": "选择 SRT 并保存",
+          "expected": "文件内容与字幕一致"
+        }
+      ]
+    }
+  ]
+}
+```
+
+顶层四个字段全部必填；`subtitle` 可为空。`sections` 和每区的 `blocks` 必须为非空数组，按数据顺序显示。分区必填 `id`、`title`、`blocks`，可选 `open`（布尔，默认 `true`）和 `badge`（必填 `kind`、`text`，`kind` 为 `pass` / `fixed` / `todo`）。全部对象拒绝未声明字段。
+
+| `blocks[].type` | 必填字段 | 可选字段 / 显示方式 |
+| --- | --- | --- |
+| `text` | `text` | 普通说明，换行保留 |
+| `note` | `text` | 次级说明，换行保留 |
+| `command` | `text` | 等宽命令块，空白原样保留，局部横向滚动 |
+| `list` | `items`（非空字符串数组） | `ordered`（布尔，默认 `false`） |
+| `table` | `headers`（非空字符串数组）、`rows`（二维字符串数组） | 行列数必须与表头一致；允许零行与空单元格，宽表局部滚动 |
+| `check` | `id`、`entry`、`action`、`expected` | 自动组装「入口 → 操作 → 预期」，初始未勾选 |
+
+除明确允许为空的字段外，字符串不能只含空白。ID 必须以 ASCII 字母开头，仅含字母、数字、`-`、`_`，分区和核对项共用全页唯一空间；不能使用模板保留 ID（如 `reset`、`toc`）、`checklist-note-` 前缀或 JS 原型属性名（如 `constructor`）。同一任务重复生成时保持标题与 ID 不变，原有本机勾选和备注才能继续读取；全新任务使用独立标题。不要按位置自动重新编号，也不要复用已有 ID 表示另一个核对项。
+
+可将以下提示词交给 AI，并附上当前任务证据与 `examples/checklist.json`：
+
+```text
+根据已提供的任务范围、代码基线和验证证据生成核查清单 JSON。
+严格遵循 tools/verification-checklist/README.md 的 source.v1 契约和示例；
+只输出一个 JSON 对象，不输出 Markdown 代码围栏，不编写 HTML。
+按实现/审查结论、修复记录、自动化证据、人工核验、后续操作安排分区。
+说明、命令、列表和表格放在只读 blocks 中；不要把自动化通过转换成人工勾选。
+人工核对项使用 check，并分别填写 entry、action、expected。
+每项必须可执行、可观察，证据不足处写明未验证，不编造结果。
+使用有语义的唯一稳定 ID；更新已有任务时保留标题和既有 ID。
+```
 
 ## 编写核对项
 
@@ -89,5 +162,17 @@ python tools/verification-checklist/build.py --refresh "$env:TEMP/verification.h
 `scope` 为 `all` 或 `unconfirmed`。`summary` 的前三项始终统计整页，`ignored` 为被忽略分组的核对项数，`unconfirmed` 为既未确认也未被忽略的项数，`exported` 为实际导出项数；每项含 `ignored` 布尔字段标记所在分组是否被忽略。`scope` 为 `unconfirmed` 时忽略分组的核对项不导出。只导出核对项及其分区标题，不导出只读报告、表格或个人文件路径。筛选后没有核对项的分区省略，核对项文字规范化连续空白，备注保留原始换行和空白。没有可导出的项目时按钮禁用。时间为 UTC ISO 8601，下载文件名包含范围与日期。
 
 ## 修改与验证
+
+生成器定向测试（包括 JSON 校验、文本转义、BOM、输入文件保护与旧页刷新）：
+
+```powershell
+python scripts/run_tests.py --pattern test_verification_checklist.py
+```
+
+安装仓库 Node 开发依赖与 Playwright 浏览器后，运行生成页回归（只打开本地文件，不启动服务；可用 `MAW_E2E_PYTHON` 指定 Python）：
+
+```powershell
+pnpm exec playwright test tests/e2e/verification-checklist.spec.mjs --project=chromium
+```
 
 维护模板后同步更新明确指定的旧页面；不改 MAW 的 `blank-editor.html`。保留 `content-visibility` 优化、打印覆盖与局部宽内容滚动，长清单压力检查和间距实测遵循上级 `tools/AGENTS.md`。

@@ -8,6 +8,7 @@
   const GAP_PROVENANCE_SOURCES = Object.freeze([
     'script_alignment',
     'ai_cleanup',
+    'ai_cleanup_review',
     'audio_gate',
     'manual',
     'legacy',
@@ -223,6 +224,17 @@
       start,
       end,
     };
+    if (source === 'ai_cleanup') {
+      const scope = normalizeCleanupScope(item.cleanup_scope);
+      if (scope && Number.isInteger(item.start) && Number.isInteger(item.end)
+          && item.start === start && item.end === end) result.cleanup_scope = scope;
+    }
+    if (source === 'ai_cleanup_review') {
+      const reviewMarkerId = typeof item.review_marker_id === 'string'
+        ? item.review_marker_id.trim()
+        : '';
+      if (reviewMarkerId) result.review_marker_id = reviewMarkerId;
+    }
     if (source === 'manual' || source === 'legacy') result.removed = item.removed !== false;
     else result.removed = true;
     if (source === 'manual' && item.operation === GAP_REMOVE_MANUAL_OPERATION_BOUNDARY_RESIZE) {
@@ -296,6 +308,7 @@
       sources: {
         script_alignment: normalizeProvenanceRangeList(rawSources.script_alignment, 'script_alignment', {sort: true}),
         ai_cleanup: normalizeProvenanceRangeList(rawSources.ai_cleanup, 'ai_cleanup', {sort: true}),
+        ai_cleanup_review: normalizeProvenanceRangeList(rawSources.ai_cleanup_review, 'ai_cleanup_review', {sort: true}),
         audio_gate: normalizeProvenanceRangeList(
           [...(Array.isArray(rawSources.audio_gate) ? rawSources.audio_gate : []), ...legacyAudioGaps],
           'audio_gate',
@@ -417,6 +430,9 @@
     provenance.sources.ai_cleanup.forEach((gap) => {
       result = applyGapStateRange(result, gap.start, gap.end, true);
     });
+    provenance.sources.ai_cleanup_review.forEach((gap) => {
+      result = applyGapStateRange(result, gap.start, gap.end, true);
+    });
     provenance.sources.audio_gate.forEach((gap) => {
       result = applyGapStateRange(result, gap.start, gap.end, true);
     });
@@ -439,6 +455,7 @@
     const records = [
       ...provenance.sources.script_alignment,
       ...provenance.sources.ai_cleanup,
+      ...provenance.sources.ai_cleanup_review,
       ...provenance.sources.audio_gate,
       ...provenance.manual_overrides.filter((record) => (
         !isBoundaryResizeRecord(record) && !isGapMoveRecord(record)
@@ -491,7 +508,8 @@
 
   function replaceGapRemoveProvenanceSource(value, source, ranges, fallbackGaps = []) {
     const next = normalizeGapRemoveProvenance(value, fallbackGaps);
-    if (source === 'script_alignment' || source === 'ai_cleanup' || source === 'audio_gate') {
+    if (source === 'script_alignment' || source === 'ai_cleanup'
+        || source === 'ai_cleanup_review' || source === 'audio_gate') {
       next.sources[source] = normalizeProvenanceRangeList(ranges, source, {sort: true});
     }
     return next;
@@ -552,10 +570,12 @@
     const hasAudio = has('audio_gate');
     const hasScript = has('script_alignment');
     const hasAiCleanup = has('ai_cleanup');
+    const hasAiCleanupReview = has('ai_cleanup_review');
     const hasManual = has('manual');
-    const automaticOriginCount = [hasAudio, hasScript, hasAiCleanup].filter(Boolean).length;
+    const automaticOriginCount = [hasAudio, hasScript, hasAiCleanup, hasAiCleanupReview].filter(Boolean).length;
     if (automaticOriginCount > 1) return hasManual ? 'multi_source_manual' : 'multi_source';
     if (hasScript) return hasManual ? 'script_alignment_manual' : 'script_alignment';
+    if (hasAiCleanupReview) return hasManual ? 'ai_cleanup_review_manual' : 'ai_cleanup_review';
     if (hasAiCleanup) return hasManual ? 'ai_cleanup_manual' : 'ai_cleanup';
     if (hasAudio) return hasManual ? 'audio_gate_manual' : 'audio_gate';
     if (hasManual) return 'manual';
@@ -603,6 +623,7 @@
       sources: {
         script_alignment: removeFrom(provenance.sources.script_alignment, 'script_alignment', true),
         ai_cleanup: removeFrom(provenance.sources.ai_cleanup, 'ai_cleanup', true),
+        ai_cleanup_review: removeFrom(provenance.sources.ai_cleanup_review, 'ai_cleanup_review', true),
         audio_gate: removeFrom(provenance.sources.audio_gate, 'audio_gate', true),
       },
       manual_overrides: removeFrom(provenance.manual_overrides, 'manual', false),
@@ -629,6 +650,7 @@
       sources: {
         script_alignment: removeFrom(provenance.sources.script_alignment, 'script_alignment', true),
         ai_cleanup: removeFrom(provenance.sources.ai_cleanup, 'ai_cleanup', true),
+        ai_cleanup_review: removeFrom(provenance.sources.ai_cleanup_review, 'ai_cleanup_review', true),
         audio_gate: removeFrom(provenance.sources.audio_gate, 'audio_gate', true),
       },
       manual_overrides: normalizeProvenanceRangeList(
@@ -724,6 +746,7 @@
       sources: {
         script_alignment: removeFrom(provenance.sources.script_alignment, 'script_alignment', true),
         ai_cleanup: removeFrom(provenance.sources.ai_cleanup, 'ai_cleanup', true),
+        ai_cleanup_review: removeFrom(provenance.sources.ai_cleanup_review, 'ai_cleanup_review', true),
         audio_gate: removeFrom(provenance.sources.audio_gate, 'audio_gate', true),
       },
       manual_overrides: normalizeProvenanceRangeList(manual, 'manual'),
@@ -1382,7 +1405,70 @@
     return intervals;
   }
 
+  function normalizeCleanupScope(value) {
+    if (!value || typeof value !== 'object'
+        || typeof value.segment_id !== 'string' || !value.segment_id || value.segment_id.length > 160
+        || !Number.isInteger(value.item_start) || value.item_start < 0
+        || !Number.isInteger(value.item_end) || value.item_end <= value.item_start
+        || typeof value.text !== 'string' || !value.text) return null;
+    return { segment_id: value.segment_id, item_start: value.item_start, item_end: value.item_end, text: value.text };
+  }
+
+  function reliableCleanupItems(segment) {
+    const items = segment?.items;
+    if (!Number.isInteger(segment?.start) || !Number.isInteger(segment?.end)
+        || !Array.isArray(items) || !items.length) return [];
+    let previousEnd = segment.start;
+    for (const item of items) {
+      if (typeof item?.text !== 'string' || !item.text
+          || !Number.isInteger(item.start) || !Number.isInteger(item.end)
+          || item.start < previousEnd || item.end <= item.start || item.end > segment.end) return [];
+      previousEnd = item.end;
+    }
+    return items.map((item) => item.text).join('') === String(segment.text || '').trim() ? items : [];
+  }
+
+  function getCleanupScopeItems(segment, gap) {
+    const items = reliableCleanupItems(segment);
+    const scope = normalizeCleanupScope(gap?.cleanup_scope);
+    if (!items.length || !scope || scope.segment_id !== segment.id || scope.item_end > items.length) return [];
+    const selected = items.slice(scope.item_start, scope.item_end);
+    return selected[0].start === gap.start && selected.at(-1).end === gap.end
+      && selected.map((item) => item.text).join('') === scope.text ? selected : [];
+  }
+
+  // Projection keeps one cue per source cue, preserving ID/color-ref indexes.
+  // Only verified local AI scopes authorize hiding words; ordinary silence
+  // ranges, old whole-cue AI decisions and independent tracks never do.
+  function projectCleanupRetainedSegments(segments, gapRemove) {
+    const source = Array.isArray(segments) ? segments : [];
+    if (!gapRemove || typeof gapRemove !== 'object') return source;
+    const scopes = gapRemove.provenance?.sources?.ai_cleanup;
+    if (!Array.isArray(scopes) || !scopes.some((range) => range?.cleanup_scope
+        && source.some((segment) => segment?.id === range.cleanup_scope.segment_id))) return source;
+    const provenance = normalizeGapRemoveProvenance(gapRemove.provenance, gapRemove.gaps);
+    const effective = getRemovedGapRanges(gapRangesFromProvenance(provenance));
+    return source.map((segment) => {
+      const items = reliableCleanupItems(segment);
+      if (!items.length || segment.disabled === true) return segment;
+      const hidden = new Set();
+      for (const gap of provenance.sources.ai_cleanup) {
+        const scope = gap.cleanup_scope;
+        if (!getCleanupScopeItems(segment, gap).length) continue;
+        for (let index = scope.item_start; index < scope.item_end; index += 1) {
+          if (effective.some((range) => range.start <= items[index].start && items[index].end <= range.end)) hidden.add(index);
+        }
+      }
+      if (!hidden.size) return segment;
+      const kept = items.filter((_item, index) => !hidden.has(index));
+      return { ...segment, text: kept.map((item) => item.text).join(''), items: kept.map((item) => ({ ...item })),
+        ...(kept.length ? { start: kept[0].start, end: kept.at(-1).end } : { disabled: true }) };
+    });
+  }
+
   global.AsrGapRemoveCore = Object.freeze({
+    getCleanupScopeItems,
+    projectCleanupRetainedSegments,
     GAP_REMOVE_SCHEMA,
     GAP_PROVENANCE_SCHEMA,
     GAP_PROVENANCE_SOURCES,

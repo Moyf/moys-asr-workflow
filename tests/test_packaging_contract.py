@@ -1,10 +1,14 @@
 from __future__ import annotations
 
+from tests.compact_assertions import CompactContainerAssertions
+
 import ast
 import re
 import tomllib
 import unittest
 from pathlib import Path
+
+from tests.launcher_sources import launcher_sources_text
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -85,13 +89,13 @@ def _local_runtime_spec_entry(relative_path: str) -> str:
     return f"(str({expression}), \"{target}\")"
 
 
-class PackagingContractTests(unittest.TestCase):
+class PackagingContractTests(CompactContainerAssertions, unittest.TestCase):
     def test_launcher_version_matches_project_metadata(self) -> None:
         """Given project metadata, When the Launcher is packaged, Then every displayed fallback version matches it."""
         project = tomllib.loads(read_text("pyproject.toml"))
         version = project["project"]["version"]
         launcher_html = read_text("web/launcher/index.html")
-        launcher_js = read_text("web/launcher/launcher.js")
+        launcher_js = launcher_sources_text(ROOT)
         editor = read_text("edit.py")
 
         self.assertIn('id="appVersion"', launcher_html)
@@ -480,6 +484,33 @@ class PackagingContractTests(unittest.TestCase):
             parts = Path(relative_path).parts
             expression = " / ".join(["ROOT", *(f'"{part}"' for part in parts)])
             self.assertIn(f'(str({expression}), "ocr-runtime/maw")', spec)
+
+    def test_media_job_runtime_copies_include_local_import_dependencies(self) -> None:
+        """Given copied media jobs, When either runtime imports them, Then local dependencies are present."""
+        spec = read_text("MAW.spec")
+        for module in sorted(_local_import_graph({"maw.media_jobs"})):
+            path = _local_module_path(module)
+            if path is None:
+                continue
+            parts = path.relative_to(ROOT).parts
+            expression = " / ".join(["ROOT", *(f'"{part}"' for part in parts)])
+            for runtime in ("local-runtime", "ocr-runtime"):
+                target = runtime + "/" + "/".join(parts[:-1])
+                self.assertIn(f'(str({expression}), "{target}")', spec)
+
+    def test_audio_export_runtime_copies_include_local_import_dependencies(self) -> None:
+        """Accurate audio exports remain importable from copied packaged runtimes."""
+        spec = read_text("MAW.spec")
+        self.assertIn('"maw.media_export_audio"', spec)
+        for module in sorted(_local_import_graph({"maw.media_export_audio"})):
+            path = _local_module_path(module)
+            if path is None:
+                continue
+            parts = path.relative_to(ROOT).parts
+            expression = " / ".join(["ROOT", *(f'"{part}"' for part in parts)])
+            for runtime in ("local-runtime", "ocr-runtime"):
+                target = runtime + "/" + "/".join(parts[:-1])
+                self.assertIn(f'(str({expression}), "{target}")', spec)
 
     def test_macos_bundle_uses_the_icns_app_icon(self) -> None:
         """Given a macOS app bundle, When PyInstaller builds it, Then the bundle has the branded ICNS icon."""

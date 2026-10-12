@@ -45,7 +45,7 @@ MAW 帮你把字幕生成后的校对、整理和交付接起来。它以云端 
 
 Windows 官方安装版会在 Launcher 启动时每天最多检查一次新版本，也可以在「配置 → 软件更新」手动检查；更新器会从公开 GitHub Release 下载并校验新版 Installer。便携版、macOS 和 Linux 会打开对应发布页供手动下载。更新不会删除 `%LOCALAPPDATA%\MAW` 下的 `.env`、日志、模型缓存或更新状态。当前 Windows Installer 未配置代码签名，首次运行可能出现 SmartScreen 提示；请核验官方来源和文件哈希。
 
-源码安装、命令行起步和媒体迁移见 [从零完成一次字幕工程](../workflow/)；遇到启动或转写问题看 [常见问题](../faq/)。
+源码安装、命令行起步和媒体迁移见 [从零完成一次字幕工程](../documentation-index/#user-workflow)；遇到启动或转写问题看 [常见问题](../documentation-index/#user-faq)。
 
 ## 可以做什么
 
@@ -56,27 +56,27 @@ Windows 官方安装版会在 Launcher 启动时每天最多检查一次新版�
 - 字幕编辑：多行波形定位、拆分合并与中缝联动、主/副/叠加字幕、说话人颜色、表情包、标记与区段、可撤销的空隙移除。
 - 呈现与导出：ASS 样式与本机实际渲染帧预览，主字幕/副字幕/双语整合 SRT、ASS、TXT，以及按用途提供的 OTIO、FFconcat 等交换文件。
 - 媒体工具：烧录字幕、提取指定音轨、生成绿幕字幕视频，以及按保留区间重组媒体。
-- 实验性入口：Launcher 与 CLI 的本地模型、免 Key 的必剪 ASR。范围和运行环境见 [本地 ASR](../local-asr/)。
+- 实验性入口：Launcher 与 CLI 的本地模型、免 Key 的必剪 ASR。范围和运行环境见 [本地 ASR](../documentation-index/#user-local-asr)。
 
 ## 按任务查文档
 
 | 你要做的事 | 文档 |
 | --- | --- |
-| 第一次安装并完成字幕 | [完整工作流](../workflow/) |
-| 配置模型、热词、预设或批量任务 | [Launcher 指南](../launcher/) · [服务商配置](../providers/) |
-| 校对、匹配文稿、翻译或处理媒体 | [工具箱](../toolbox/) · [自动处理](../postprocess-pipeline/) |
-| 编辑时间轴、保存和导出 | [编辑器指南](../editor-guide/) · [ASS 样式](../ass-styles/) |
-| 写批处理或接入自动化 | [CLI](../cli/) |
-| 已有准确文稿与录音，跳过 ASR 生成字幕 | [文稿驱动对齐（实验性）](https://github.com/Moyf/moys-asr-workflow/blob/main/docs/SCRIPT_DRIVEN_ALIGNMENT.md) |
-| 开发与数据集成 | [开发概览](../development/) · [工程格式](../json-schema/) · [ESM 迁移与上游交接](https://github.com/Moyf/moys-asr-workflow/blob/main/docs/dev/ESM_MIGRATION.md) |
+| 第一次安装并完成字幕 | [完整工作流](../documentation-index/#user-workflow) |
+| 配置模型、热词、预设或批量任务 | [Launcher 指南](../documentation-index/#user-launcher) · [服务商配置](../documentation-index/#user-providers) |
+| 校对、匹配文稿、翻译或处理媒体 | [工具箱](../documentation-index/#user-toolbox) · [自动处理](../documentation-index/#user-postprocess) |
+| 编辑时间轴、保存和导出 | [编辑器指南](../documentation-index/#user-editor) · [ASS 样式](../documentation-index/#user-ass) |
+| 写批处理或接入自动化 | [CLI](../documentation-index/#user-cli) |
+| 已有准确文稿与录音，跳过 ASR 生成字幕 | [文稿驱动对齐（实验性）](../documentation-index/#user-script-alignment) |
+| 开发与数据集成 | [开发概览](../documentation-index/#engineering-development) · [工程格式](../json-schema/) · [ESM 迁移与上游交接](https://github.com/Moyf/moys-asr-workflow/blob/main/docs/logs/unversioned/undated/ESM_MIGRATION.md) |
 
 全部专题、技术契约与历史记录见 [文档索引](../documentation-index/)。
 
 ## 文件与数据
 
-保留原始媒体和 `.mosp` 工程；工程内容是 UTF-8 JSON，旧 `.json` 工程继续支持。SRT / ASS 是交付格式，不能代替包含可用字词时间码、编辑状态、主副轨和标记等数据的工程。波形是可重建缓存，不是工程真源。本机 Server 支持多版本备份，恢复与媒体迁移见 [编辑器指南](../editor-guide/)。
+保留原始媒体和 `.mosp` 工程；工程内容是 UTF-8 JSON，旧 `.json` 工程继续支持。SRT / ASS 是交付格式，不能代替包含可用字词时间码、编辑状态、主副轨和标记等数据的工程。波形是可重建缓存，不是工程真源。本机 Server 支持多版本备份，恢复与媒体迁移见 [编辑器指南](../documentation-index/#user-editor)。
 
-云端转写会将音频发送给你选择的服务商；LLM 后处理会发送字幕文字，AI 整理还会发送文稿文字。MAW 没有自己的云端转写服务器，编辑和保存默认在本机完成。API Key 在本机配置，费用和数据政策见 [服务商配置](../providers/)。
+云端转写会将音频发送给你选择的服务商；LLM 后处理会发送字幕文字，AI 整理还会发送文稿文字。MAW 没有自己的云端转写服务器，编辑和保存默认在本机完成。API Key 在本机配置，费用和数据政策见 [服务商配置](../documentation-index/#user-providers)。
 
 官方 MAW + MOSE 套件中的目录必须保持 `MAW\MAW.exe` 与 `MAW\MOSE\MOSE.exe` 的相对关系；MOSE 不能脱离同套件的 `MAW.exe` 单独运行。`.mosp` 关联指向 `MAW.exe --open-project`，双击工程会先完成更新检查再打开 MOSE；关联只在当前用户范围生效，不会强制覆盖 Windows 的已有默认应用选择。旧 `.json` 仍兼容打开但不建立系统关联。
 

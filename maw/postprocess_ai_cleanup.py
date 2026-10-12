@@ -25,14 +25,21 @@ from maw.postprocess_ai_cleanup_safety import information_loss_reason
 from maw.postprocess_ai_cleanup_review import review_decisions
 from maw.postprocess_io import SubtitleArtifact, write_artifacts
 from maw.postprocess_llm import (
-    LlmClientError,
-    LlmSettings,
     MAX_RESPONSE_ATTEMPTS,
+    LlmClientError,
+    LlmDelta,
+    LlmSettings,
+    _loads_with_trailing_repair,
     _request_completion,
     _response_content,
     _strip_json_fence,
 )
-from maw.postprocess_match import _load_input, _normalize_text, _read_script, clean_markdown_inline_symbols
+from maw.postprocess_match import (
+    _load_input,
+    _normalize_text,
+    _read_script,
+    clean_markdown_inline_symbols,
+)
 from maw.postprocess_match import _NormalizedText
 from maw.project_preview import JsonDict, JsonValue
 from maw.script_alignment import (
@@ -42,11 +49,75 @@ from maw.script_alignment import (
     _gap_ranges_from_provenance,
     _normalize_gap_provenance,
     _replace_provenance_source,
+    reliable_cleanup_items,
 )
 
 
 GAP_REMOVE_SCHEMA: Final[str] = "moy.asr.gap_remove.v1"
 MARKERS_SCHEMA: Final[str] = "moy.asr.markers.v1"
+
+# json_schema 约束载荷：仅约束结构（端点语法层），语义仍由本地协议校验兜底。
+AI_CLEANUP_DECISIONS_JSON_SCHEMA: Final[dict[str, object]] = {
+    "name": "maw_ai_cleanup_decisions",
+    "schema": {
+        "type": "object",
+        "properties": {
+            "decisions": {
+                "type": "array",
+                "items": {
+                    "type": "object",
+                    "properties": {
+                        "id": {"type": "string"},
+                        "decision": {"type": "string"},
+                        "scriptLine": {"type": "string"},
+                        "reason": {"type": "string"},
+                        "evidence": {"type": "string"},
+                        "altTakeId": {"type": "string"},
+                        "removeItemIds": {"type": "array", "items": {"type": "string"}},
+                        "removeItemRanges": {"type": "array", "items": {"type": "array", "items": {"type": "string"}}},
+                    },
+                    "required": ["id", "decision", "scriptLine"],
+                },
+            }
+        },
+        "required": ["decisions"],
+    },
+}
+AI_CLEANUP_REVIEWS_JSON_SCHEMA: Final[dict[str, object]] = {
+    "name": "maw_ai_cleanup_reviews",
+    "schema": {
+        "type": "object",
+        "properties": {
+            "reviews": {
+                "type": "array",
+                "items": {
+                    "type": "object",
+                    "properties": {
+                        "id": {"type": "string"},
+                        "reason": {"type": "string"},
+                    },
+                    "required": ["id", "reason"],
+                    "additionalProperties": False,
+                },
+            },
+        },
+        "required": ["reviews"],
+        "additionalProperties": False,
+    },
+}
+
+
+def _cleanup_response_schema(clips: list[dict[str, str]]) -> dict[str, object]:
+    # Readthrough rows carry the proposed first-pass outcome, including their
+    # read-only neighbors. Decision rows never carry this field. Select the
+    # grammar from that internal payload contract, not from user prompt text;
+    # the cached endpoint mode is shared by both operations, but their schemas
+    # must remain separate.
+    if clips and all("proposed" in row for row in clips):
+        return AI_CLEANUP_REVIEWS_JSON_SCHEMA
+    return AI_CLEANUP_DECISIONS_JSON_SCHEMA
+
+
 MARKER_REVIEW_COLOR: Final[str] = "#f5a623"
 MARKER_REVIEW_REASON_MAX_LENGTH: Final[int] = 300
 MARKER_NOTE_MAX_LENGTH: Final[int] = 500
@@ -108,9 +179,16 @@ class _Clip:
     script_line: str = ""
     script_line_index: int = -1
     script_match: str = "none"
+    items: tuple[Mapping[str, object], ...] = ()
 
 
-def llm_complete(settings: LlmSettings) -> Callable[[str, list[dict[str, str]]], Mapping[str, object]]:
+def llm_complete(
+    settings: LlmSettings,
+    *,
+    on_delta: LlmDelta | None = None,
+    is_cancelled: Callable[[], bool] | None = None,
+    on_response: Callable[[object | None], None] | None = None,
+) -> Callable[[str, list[dict[str, str]]], Mapping[str, object]]:
     """Build the transport closure used by :func:`run_ai_cleanup`.
 
     JSON syntax errors retry once with an augmented prompt (the same policy as
@@ -122,14 +200,32 @@ def llm_complete(settings: LlmSettings) -> Callable[[str, list[dict[str, str]]],
     def complete(prompt: str, clips: list[dict[str, str]]) -> Mapping[str, object]:
         last_error = "响应不是有效的 JSON。"
         for attempt in range(MAX_RESPONSE_ATTEMPTS):
-            current_prompt = prompt if not attempt else _retry_prompt(prompt, last_error)
-            body = _request_completion(settings, current_prompt, clips, on_delta=None)
+            current_prompt = (
+                prompt if not attempt else _retry_prompt(prompt, last_error)
+            )
+            if on_delta is not None:
+                # Each request is a distinct batch/protocol attempt. Clear
+                # partial text before retrying malformed provider output.
+                on_delta("reset", "")
+            body = _request_completion(
+                settings,
+                current_prompt,
+                clips,
+                on_delta=on_delta,
+                is_cancelled=is_cancelled,
+                on_response=on_response,
+                response_json_schema=_cleanup_response_schema(clips),
+            )
             content = _response_content(body)
             try:
-                return json.loads(_strip_json_fence(content))
+                return _loads_with_trailing_repair(_strip_json_fence(content))
             except json.JSONDecodeError as error:
                 last_error = f"JSON syntax error: {error.msg} at character {error.pos}"
-        raise LlmClientError(f"LLM returned invalid JSON after retry: {last_error}", category="protocol", operation="ai_cleanup")
+        raise LlmClientError(
+            f"LLM returned invalid JSON after retry: {last_error}",
+            category="protocol",
+            operation="ai_cleanup",
+        )
 
     return complete
 
@@ -139,10 +235,14 @@ def run_ai_cleanup(
     *,
     complete: Callable[[str, list[dict[str, str]]], Mapping[str, object]],
     on_status: Callable[[str], None] | None = None,
+    is_cancelled: Callable[[], bool] | None = None,
+    begin_commit: Callable[[], bool] | None = None,
 ) -> SubtitleArtifact:
     """Run the recording-first cleanup and write ``ai_cleanup`` artifacts."""
 
-    project, source_project, source_srt = _load_input(request.project_path, request.srt_path)
+    project, source_project, source_srt = _load_input(
+        request.project_path, request.srt_path
+    )
     script_path, script_text = _read_script(request.script_path)
     if request.clean_markdown_symbols:
         script_text = clean_markdown_inline_symbols(script_text)
@@ -155,30 +255,64 @@ def run_ai_cleanup(
         raise AiCleanupError("字幕工程中没有可整理的字幕段。")
 
     clips = _build_clips(segments, script_lines)
-    decisions = _collect_decisions(complete, clips, script_lines, on_status=on_status, notes=request.notes)
+    _raise_if_cancelled(is_cancelled)
+    decisions = _collect_decisions(
+        complete, clips, script_lines, on_status=on_status, notes=request.notes
+    )
+    _raise_if_cancelled(is_cancelled)
     resolved, reasons = _resolve_decisions(clips, decisions)
     if request.review_enabled and DECISION_DISCARD in resolved.values():
         flags = review_decisions(
-            complete, _readthrough_rows(segments, clips, decisions, resolved),
-            notes=request.notes, on_status=on_status,
+            complete,
+            _readthrough_rows(segments, clips, decisions, resolved),
+            notes=request.notes,
+            on_status=on_status,
         )
+        _raise_if_cancelled(is_cancelled)
         for clip_id, reason in flags.items():
             resolved[clip_id] = DECISION_REVIEW
             reasons[clip_id] = reason
 
-    removed_ranges: list[dict[str, int]] = []
+    removed_ranges: list[dict[str, object]] = []
     discarded_main_ids: set[str] = set()
     ai_markers: list[dict[str, object]] = []
-    stats = {"matchedLines": 0, "rephrased": 0, "extrasKept": 0, "removed": 0, "pendingReview": 0}
+    stats = {
+        "matchedLines": 0,
+        "rephrased": 0,
+        "extrasKept": 0,
+        "removed": 0,
+        "pendingReview": 0,
+    }
     clip_segments = {clip.segment_index for clip in clips}
     for clip in clips:
         outcome = resolved[clip.id]
         segment = segments[clip.segment_index]
         assert isinstance(segment, dict)
         if outcome == DECISION_DISCARD:
+            local = _local_removal(clip, decisions[clip.id])[0]
+            if local is not None:
+                for first, last in local:
+                    selected = clip.items[first:last]
+                    scope = {
+                        "start": int(selected[0]["start"]),
+                        "end": int(selected[-1]["end"]),
+                        "text": "".join(str(item["text"]) for item in selected),
+                    }
+                    removed_ranges.append({
+                        "start": scope["start"], "end": scope["end"],
+                        "cleanup_scope": {"segment_id": str(segment["id"]), "item_start": first, "item_end": last, "text": scope["text"]},
+                    })
+                    ai_markers.append(_ai_annotation(scope, "删除", reasons[clip.id] or "可核验的局部口吃", pending=False))
+                stats["removed"] += 1
+                continue
             segment["disabled"] = True
             discarded_main_ids.add(str(segment["id"]))
-            removed_ranges.append({"start": int(segment.get("start", 0)), "end": int(segment.get("end", 0))})
+            removed_ranges.append(
+                {
+                    "start": int(segment.get("start", 0)),
+                    "end": int(segment.get("end", 0)),
+                }
+            )
             reason = reasons[clip.id] or "有证据的无效录制内容"
             alt = decisions[clip.id].get("altTakeId")
             if alt:
@@ -202,7 +336,11 @@ def run_ai_cleanup(
 
     # 缺少字词时间的段不送 LLM，也不移除：保留原文并生成复核标记。
     for index, segment in enumerate(segments):
-        if not isinstance(segment, dict) or segment.get("disabled") is True or index in clip_segments:
+        if (
+            not isinstance(segment, dict)
+            or segment.get("disabled") is True
+            or index in clip_segments
+        ):
             continue
         if _segment_has_item_timings(segment):
             continue
@@ -217,10 +355,16 @@ def run_ai_cleanup(
     if ai_markers:
         project["markers"] = _build_markers_field(ai_markers, project.get("markers"))
 
+    _raise_if_cancelled(is_cancelled)
+
     warnings = (
         f"文稿来源：{script_path}",
         f"AI 整理：自动移除 {stats['removed']} 段，待复核 {stats['pendingReview']} 段。",
     )
+    if begin_commit is not None and not begin_commit():
+        raise LlmClientError(
+            "操作已取消。", category="cancelled", operation="ai_cleanup"
+        )
     return write_artifacts(
         project,
         source_project_path=source_project,
@@ -235,15 +379,28 @@ def run_ai_cleanup(
     )
 
 
-def build_clips(segments: Sequence[JsonValue], script_lines: Sequence[str]) -> list[dict[str, str]]:
+def _raise_if_cancelled(is_cancelled: Callable[[], bool] | None) -> None:
+    if is_cancelled is not None and is_cancelled():
+        raise LlmClientError(
+            "操作已取消。", category="cancelled", operation="ai_cleanup"
+        )
+
+
+def build_clips(
+    segments: Sequence[JsonValue], script_lines: Sequence[str]
+) -> list[dict[str, str]]:
     """Return the LLM clip payload (temp ids, text only, no timings or paths)."""
 
-    return _clips_payload(_build_clips(list(segments), list(script_lines)), script_lines)
+    return _clips_payload(
+        _build_clips(list(segments), list(script_lines)), script_lines
+    )
 
 
 def _readthrough_rows(
-    segments: Sequence[JsonValue], clips: Sequence[_Clip],
-    decisions: Mapping[str, Mapping[str, object]], resolved: Mapping[str, str],
+    segments: Sequence[JsonValue],
+    clips: Sequence[_Clip],
+    decisions: Mapping[str, Mapping[str, object]],
+    resolved: Mapping[str, str],
 ) -> list[dict[str, str]]:
     by_index = {clip.segment_index: clip for clip in clips}
     by_id = {clip.id: clip for clip in clips}
@@ -256,9 +413,22 @@ def _readthrough_rows(
             continue
         clip = by_index.get(index)
         if clip is None:
-            rows.append({"id": f"u{index + 1:03d}", "asrText": text, "proposed": "review", "contextOnly": "true"})
+            rows.append(
+                {
+                    "id": f"u{index + 1:03d}",
+                    "asrText": text,
+                    "proposed": "review",
+                    "contextOnly": "true",
+                }
+            )
             continue
         row = {"id": clip.id, "asrText": clip.text, "proposed": resolved[clip.id]}
+        local, _ = _local_removal(clip, decisions[clip.id])
+        if local is not None and resolved[clip.id] == DECISION_DISCARD:
+            deleted = {index for first, last in local for index in range(first, last)}
+            row["retainedText"] = "".join(str(item["text"]) for index, item in enumerate(clip.items) if index not in deleted)
+            row["removedText"] = "".join(str(item["text"]) for index, item in enumerate(clip.items) if index in deleted)
+            row["proposed"] = "partial"
         alt = by_id.get(str(decisions[clip.id].get("altTakeId") or ""))
         if alt is not None:
             row["alternativeId"] = alt.id
@@ -276,12 +446,15 @@ def _build_clips(segments: list[JsonValue], script_lines: list[str]) -> list[_Cl
         if not text or not _segment_has_item_timings(segment):
             # 没有文字或没有字词时间的段不参与自动移除；后者生成待复核标记。
             continue
-        clips.append(_Clip(
-            id=f"c{len(clips) + 1:03d}",
-            segment_index=index,
-            text=text,
-            norm=_normalize_text(text),
-        ))
+        clips.append(
+            _Clip(
+                id=f"c{len(clips) + 1:03d}",
+                segment_index=index,
+                text=text,
+                norm=_normalize_text(text),
+                items=tuple(reliable_cleanup_items(segment)),
+            )
+        )
     _assign_script_lines(clips, script_lines)
     return clips
 
@@ -311,8 +484,12 @@ def _assign_script_lines(clips: list[_Clip], script_lines: list[str]) -> None:
     for clip in clips:
         best_index = -1
         best_ratio = 0.0
-        for line_index in range(cursor, min(cursor + SCRIPT_LOOKAHEAD, len(lines_norm))):
-            ratio = difflib.SequenceMatcher(None, clip.norm.value, lines_norm[line_index].value, autojunk=False).ratio()
+        for line_index in range(
+            cursor, min(cursor + SCRIPT_LOOKAHEAD, len(lines_norm))
+        ):
+            ratio = difflib.SequenceMatcher(
+                None, clip.norm.value, lines_norm[line_index].value, autojunk=False
+            ).ratio()
             if ratio > best_ratio:
                 best_index = line_index
                 best_ratio = ratio
@@ -338,8 +515,14 @@ def _collect_decisions(
             on_status("toolbox_status_ai_cleanup")
         batch_end = batch_start + CLIPS_PER_REQUEST
         batch = clips[batch_start:batch_end]
-        context = clips[max(0, batch_start - CONTEXT_CLIPS):min(len(clips), batch_end + CONTEXT_CLIPS)]
-        decisions.update(_complete_batch(complete, batch, script_lines, context=context, notes=notes))
+        context = clips[
+            max(0, batch_start - CONTEXT_CLIPS) : min(
+                len(clips), batch_end + CONTEXT_CLIPS
+            )
+        ]
+        decisions.update(
+            _complete_batch(complete, batch, script_lines, context=context, notes=notes)
+        )
     return decisions
 
 
@@ -358,8 +541,12 @@ def _complete_batch(
     last_error = ""
     for attempt in range(MAX_RESPONSE_ATTEMPTS):
         _ = attempt
-        parsed = complete(prompt if not last_error else _retry_prompt(prompt, last_error), payload)
-        protocol_error = _protocol_error(parsed, expected_ids, reference_ids={clip.id for clip in references})
+        parsed = complete(
+            prompt if not last_error else _retry_prompt(prompt, last_error), payload
+        )
+        protocol_error = _protocol_error(
+            parsed, expected_ids, reference_ids={clip.id for clip in references}
+        )
         if protocol_error is None:
             return {
                 str(decision.get("id")): decision
@@ -367,27 +554,41 @@ def _complete_batch(
                 if isinstance(decision, Mapping)
             }
         last_error = protocol_error
-    raise LlmClientError(f"AI 整理响应在重试后仍未通过协议校验：{last_error}", category="protocol", operation="ai_cleanup")
+    raise LlmClientError(
+        f"AI 整理响应在重试后仍未通过协议校验：{last_error}",
+        category="protocol",
+        operation="ai_cleanup",
+    )
 
 
 def _clips_payload(
-    batch: Sequence[_Clip], script_lines: Sequence[str], *, target_ids: set[str] | None = None,
+    batch: Sequence[_Clip],
+    script_lines: Sequence[str],
+    *,
+    target_ids: set[str] | None = None,
 ) -> list[dict[str, str]]:
     """Return the wire payload: temp ids and text only, no timings or paths."""
 
     payload: list[dict[str, str]] = []
     for clip in batch:
         line_index = clip.script_line_index
-        payload.append({
-            "id": clip.id,
-            "asrText": clip.text,
-            "scriptLine": clip.script_line,
-            "prevScriptLine": _line_at(script_lines, line_index - 1),
-            "nextScriptLine": _line_at(script_lines, line_index + 1),
-            "scriptMatch": clip.script_match,
-        })
+        payload.append(
+            {
+                "id": clip.id,
+                "asrText": clip.text,
+                "scriptLine": clip.script_line,
+                "prevScriptLine": _line_at(script_lines, line_index - 1),
+                "nextScriptLine": _line_at(script_lines, line_index + 1),
+                "scriptMatch": clip.script_match,
+            }
+        )
         if target_ids is not None and clip.id not in target_ids:
             payload[-1]["contextOnly"] = "true"
+        if clip.items:
+            payload[-1]["items"] = json.dumps([
+                {"id": f"{clip.id}:i{index + 1:03d}", "text": item["text"]}
+                for index, item in enumerate(clip.items)
+            ], ensure_ascii=False)
     return payload
 
 
@@ -417,6 +618,12 @@ def _system_prompt(notes: str = "") -> str:
         "- review：不确定就复核。识别疑似错误、内容与文稿冲突、拿不准是否该删、切点不安全时选 review。\n"
         "规则：拿不准一律 review，不要为了输出整洁而 discard；不要改写、翻译或总结任何文字；"
         "scriptLine 原样返回输入值。\n"
+        "局部口吃可用 discard 加 removeItemIds，仅移除一个连续、有序、无重复的 items ID 数组。"
+        "items 是 JSON 字符串，里面只有临时 ID 和原文字词；必须逐项引用，不能自己编时间码或按字符比例猜切点。"
+        "局部 evidence 必须原样引用所选 items 的完整拼接文字，不用 altTakeId。保留其余字词；"
+        "没有 items、定位不清、数字或独有文稿信息、没有有效剩余时选 review。\n"
+        "同句多块用 removeItemRanges（多个连续 ID 数组）代替 removeItemIds；组间按原文顺序不重叠，"
+        "evidence 精确引用所有所选组按顺序拼接的文字。任一组不可靠就整项 review。\n"
         "信息覆盖检查：主题相同不等于重复。整段移除前确认保留版本完整覆盖原段的事实、数字、"
         "人物身份、方法、步骤、案例、限定条件、否定、因果和承接；病句或口误中的独有信息也要保留。"
         "不能完整覆盖就 review，不设目标删减比例。重来信号仅作用于明确指向的当前 take，"
@@ -440,7 +647,10 @@ def _retry_prompt(prompt: str, reason: str) -> str:
 
 
 def _protocol_error(
-    parsed: object, expected_ids: set[str], *, reference_ids: set[str] | None = None,
+    parsed: object,
+    expected_ids: set[str],
+    *,
+    reference_ids: set[str] | None = None,
 ) -> str | None:
     if not isinstance(parsed, dict):
         return "响应必须是 JSON 对象"
@@ -465,7 +675,10 @@ def _protocol_error(
         if not isinstance(decision.get("reason", ""), str):
             return f"片段 {clip_id} 的 reason 必须是字符串"
         alt_take = decision.get("altTakeId", "")
-        if alt_take != "" and (not isinstance(alt_take, str) or alt_take not in (reference_ids or expected_ids)):
+        if alt_take != "" and (
+            not isinstance(alt_take, str)
+            or alt_take not in (reference_ids or expected_ids)
+        ):
             return f"片段 {clip_id} 的 altTakeId 不是本次输入的片段 id"
         evidence = decision.get("evidence", "")
         if evidence != "" and not isinstance(evidence, str):
@@ -487,8 +700,13 @@ def _resolve_decisions(
     """
 
     by_id = {clip.id: clip for clip in clips}
-    resolved = {clip.id: str(decisions[clip.id].get("decision") or DECISION_KEEP) for clip in clips}
-    reasons = {clip.id: str(decisions[clip.id].get("reason") or "").strip() for clip in clips}
+    resolved = {
+        clip.id: str(decisions[clip.id].get("decision") or DECISION_KEEP)
+        for clip in clips
+    }
+    reasons = {
+        clip.id: str(decisions[clip.id].get("reason") or "").strip() for clip in clips
+    }
     norms = {clip.id: clip.norm.value for clip in clips}
 
     def downgrade(clip_id: str, reason: str) -> None:
@@ -501,6 +719,11 @@ def _resolve_decisions(
         if resolved[clip.id] != DECISION_DISCARD:
             continue
         decision = decisions[clip.id]
+        if "removeItemIds" in decision or "removeItemRanges" in decision:
+            _local, local_reason = _local_removal(clip, decision)
+            if local_reason:
+                downgrade(clip.id, local_reason)
+            continue
         alt_take_id = str(decision.get("altTakeId") or "")
         evidence = str(decision.get("evidence") or "")
         alt_clip = by_id.get(alt_take_id) if alt_take_id else None
@@ -509,7 +732,9 @@ def _resolve_decisions(
             if alt_take_id == clip.id:
                 downgrade(clip.id, "altTakeId 指向自身")
                 continue
-            ratio = difflib.SequenceMatcher(None, clip.norm.value, alt_clip.norm.value, autojunk=False).ratio()
+            ratio = difflib.SequenceMatcher(
+                None, clip.norm.value, alt_clip.norm.value, autojunk=False
+            ).ratio()
             if ratio < ALT_TAKE_MIN_RATIO:
                 downgrade(clip.id, "备用片段与当前片段相似度过低")
                 continue
@@ -523,7 +748,9 @@ def _resolve_decisions(
 
         # 没有备用片段时，本地必须能佐证这是一次可机械确认的移除。
         evidence_ok = bool(evidence) and _contains_normalized(norms[clip.id], evidence)
-        pattern_ok = bool(_PROCESS_TALK_PATTERN.search(clip.text)) or _is_repeated_text(clip, clips, resolved)
+        pattern_ok = bool(_PROCESS_TALK_PATTERN.search(clip.text)) or _is_repeated_text(
+            clip, clips, resolved
+        )
         has_digits = any(char.isdigit() for char in norms[clip.id])
         sole_script_line = clip.script_line_index >= 0 and not any(
             other.script_line_index == clip.script_line_index and other.id != clip.id
@@ -545,7 +772,55 @@ def _contains_normalized(haystack_norm: str, evidence: str) -> bool:
     return bool(needle) and needle in haystack_norm
 
 
-def _is_repeated_text(clip: _Clip, clips: Sequence[_Clip], resolved: Mapping[str, str]) -> bool:
+def _local_removal(
+    clip: _Clip, decision: Mapping[str, object],
+) -> tuple[list[tuple[int, int]] | None, str | None]:
+    """Resolve exact temporary references; never infer character timecodes."""
+    if "removeItemIds" not in decision and "removeItemRanges" not in decision:
+        return None, None
+    if "removeItemIds" in decision and "removeItemRanges" in decision:
+        return None, "局部范围字段不能同时提供，需要复核"
+    groups = decision.get("removeItemRanges", [decision.get("removeItemIds")])
+    if not clip.items:
+        return None, "局部移除缺少可靠字词映射，需要复核"
+    if not isinstance(groups, list) or not groups:
+        return None, "局部字词引用必须是非空连续数组，需要复核"
+    known = [f"{clip.id}:i{index + 1:03d}" for index in range(len(clip.items))]
+    ranges: list[tuple[int, int]] = []
+    for ids in groups:
+        if not isinstance(ids, list) or not ids or any(not isinstance(value, str) for value in ids):
+            return None, "局部字词引用必须是非空连续数组，需要复核"
+        if any(value not in known for value in ids) or len(set(ids)) != len(ids):
+            return None, "局部字词引用不存在或重复，需要复核"
+        first = known.index(ids[0])
+        last = first + len(ids)
+        if ids != known[first:last] or (ranges and first < ranges[-1][1]):
+            return None, "局部字词引用必须按原顺序连续且各组不重叠，需要复核"
+        ranges.append((first, last))
+    deleted = {index for first, last in ranges for index in range(first, last)}
+    removed = "".join(str(item["text"]) for index, item in enumerate(clip.items) if index in deleted)
+    remaining = [item for index, item in enumerate(clip.items) if index not in deleted]
+    retained = "".join(str(item["text"]) for item in remaining)
+    if decision.get("altTakeId") or decision.get("evidence") != removed:
+        return None, "局部证据必须精确覆盖引用字词，需要复核"
+    if not _normalize_text(retained).value or sum(int(item["end"]) - int(item["start"]) for item in remaining) < 100:
+        return None, "局部移除后没有有效剩余字幕，需要复核"
+    from maw.postprocess_ai_cleanup_safety import local_information_loss_reason
+    for first, last in ranges:
+        reason = local_information_loss_reason(
+            "".join(str(item["text"]) for item in clip.items[first:last]), retained,
+            "".join(str(item["text"]) for index, item in enumerate(clip.items) if index < first and index not in deleted),
+            "".join(str(item["text"]) for index, item in enumerate(clip.items) if index >= last and index not in deleted),
+            clip.script_line,
+        )
+        if reason:
+            return None, reason
+    return ranges, None
+
+
+def _is_repeated_text(
+    clip: _Clip, clips: Sequence[_Clip], resolved: Mapping[str, str]
+) -> bool:
     value = clip.norm.value
     if len(value) < REPEAT_MIN_CHARS:
         return False
@@ -564,7 +839,11 @@ def _marker_name(text: str) -> str:
 
 
 def _ai_annotation(
-    segment: Mapping[str, object], operation: str, reason: str, *, pending: bool = True,
+    segment: Mapping[str, object],
+    operation: str,
+    reason: str,
+    *,
+    pending: bool = True,
 ) -> dict[str, object]:
     compact = _CONTROL_CHARS.sub(" ", reason).strip()
     compact = re.sub(r"^(?:\[AI\]\s*)+", "", compact, flags=re.IGNORECASE)
@@ -609,7 +888,9 @@ def _disable_bound_extensions(project: JsonDict, main_ids: set[str]) -> None:
                 segment["disabled"] = True
 
 
-def _build_gap_remove(project: JsonDict, removed_ranges: Sequence[Mapping[str, int]]) -> dict[str, object]:
+def _build_gap_remove(
+    project: JsonDict, removed_ranges: Sequence[Mapping[str, object]]
+) -> dict[str, object]:
     existing = project.get("gap_remove")
     has_existing = isinstance(existing, Mapping)
     provenance = _normalize_gap_provenance(
@@ -617,34 +898,44 @@ def _build_gap_remove(project: JsonDict, removed_ranges: Sequence[Mapping[str, i
         existing.get("gaps") if has_existing else None,
     )
     ranges = [
-        {"start": int(raw_range["start"]), "end": int(raw_range["end"])}
-        for raw_range in sorted(removed_ranges, key=lambda item: (int(item["start"]), int(item["end"])))
+        {**raw_range, "start": int(raw_range["start"]), "end": int(raw_range["end"])}
+        for raw_range in sorted(
+            removed_ranges, key=lambda item: (int(item["start"]), int(item["end"]))
+        )
         if int(raw_range["end"]) > int(raw_range["start"])
     ]
     provenance = _replace_provenance_source(provenance, "ai_cleanup", ranges)
     gaps = _decorate_gap_ranges(_gap_ranges_from_provenance(provenance), provenance)
-    base: dict[str, object] = dict(existing) if has_existing else {
-        "detector": "audio_gate",
-        "minimum_ms": int(MAWE_GAP_REMOVE_DEFAULTS["minimum_ms"]),
-        "threshold_db": float(MAWE_GAP_REMOVE_DEFAULTS["threshold_db"]),
-        "hysteresis_db": float(MAWE_GAP_REMOVE_DEFAULTS["hysteresis_db"]),
-        "lead_in_ms": int(MAWE_GAP_REMOVE_DEFAULTS["lead_in_ms"]),
-        "lead_out_ms": int(MAWE_GAP_REMOVE_DEFAULTS["lead_out_ms"]),
-        "skip_playback": True,
-        "operation_mode": DEFAULT_GAP_REMOVE_OPERATION_MODE,
-        "disable_coverage_percent": 80,
-        "disable_remaining_ms": 300,
-    }
-    base.update({
-        "schema": GAP_REMOVE_SCHEMA,
-        "manual_corrections": bool(provenance["manual_overrides"]),
-        "gaps": gaps,
-        "provenance": provenance,
-    })
+    base: dict[str, object] = (
+        dict(existing)
+        if has_existing
+        else {
+            "detector": "audio_gate",
+            "minimum_ms": int(MAWE_GAP_REMOVE_DEFAULTS["minimum_ms"]),
+            "threshold_db": float(MAWE_GAP_REMOVE_DEFAULTS["threshold_db"]),
+            "hysteresis_db": float(MAWE_GAP_REMOVE_DEFAULTS["hysteresis_db"]),
+            "lead_in_ms": int(MAWE_GAP_REMOVE_DEFAULTS["lead_in_ms"]),
+            "lead_out_ms": int(MAWE_GAP_REMOVE_DEFAULTS["lead_out_ms"]),
+            "skip_playback": True,
+            "operation_mode": DEFAULT_GAP_REMOVE_OPERATION_MODE,
+            "disable_coverage_percent": 80,
+            "disable_remaining_ms": 300,
+        }
+    )
+    base.update(
+        {
+            "schema": GAP_REMOVE_SCHEMA,
+            "manual_corrections": bool(provenance["manual_overrides"]),
+            "gaps": gaps,
+            "provenance": provenance,
+        }
+    )
     return base
 
 
-def _build_markers_field(ai_markers: list[dict[str, object]], existing: object = None) -> dict[str, object]:
+def _build_markers_field(
+    ai_markers: list[dict[str, object]], existing: object = None
+) -> dict[str, object]:
     """Assemble deletion annotations and review regions in canonical markers.
 
     Preserve existing annotations and allocate fresh IDs for new review items.
@@ -654,28 +945,38 @@ def _build_markers_field(ai_markers: list[dict[str, object]], existing: object =
     base = copy.deepcopy(dict(existing)) if isinstance(existing, Mapping) else {}
     raw_items = base.get("items")
     items = list(raw_items) if isinstance(raw_items, list) else []
-    ordered = sorted(ai_markers, key=lambda marker: (int(marker["start"]), str(marker["name"])))
-    used = {str(marker["id"]) for marker in items if isinstance(marker, Mapping) and isinstance(marker.get("id"), str)}
+    ordered = sorted(
+        ai_markers, key=lambda marker: (int(marker["start"]), str(marker["name"]))
+    )
+    used = {
+        str(marker["id"])
+        for marker in items
+        if isinstance(marker, Mapping) and isinstance(marker.get("id"), str)
+    }
     for marker in ordered:
         index = 1
         while f"marker-{index:03d}" in used:
             index += 1
         marker_id = f"marker-{index:03d}"
         used.add(marker_id)
-        items.append({
-            "id": marker_id,
-            "start": int(marker["start"]),
-            "name": _sanitize_marker_text(marker["name"], MARKER_NAME_MAX_LENGTH),
-            "color": str(marker["color"]),
-            "note": _sanitize_marker_text(marker["note"], MARKER_NOTE_MAX_LENGTH),
-        })
+        items.append(
+            {
+                "id": marker_id,
+                "start": int(marker["start"]),
+                "name": _sanitize_marker_text(marker["name"], MARKER_NAME_MAX_LENGTH),
+                "color": str(marker["color"]),
+                "note": _sanitize_marker_text(marker["note"], MARKER_NOTE_MAX_LENGTH),
+            }
+        )
         if marker.get("end") is not None:
             items[-1]["end"] = int(marker["end"])
         review = marker.get("review")
         if isinstance(review, Mapping):
             items[-1]["review"] = {
                 "status": "pending",
-                "reason": _sanitize_marker_text(review["reason"], MARKER_REVIEW_REASON_MAX_LENGTH),
+                "reason": _sanitize_marker_text(
+                    review["reason"], MARKER_REVIEW_REASON_MAX_LENGTH
+                ),
             }
     base.update({"schema": MARKERS_SCHEMA, "items": items})
     return base

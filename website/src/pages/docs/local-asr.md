@@ -2,10 +2,10 @@
 layout: "../../layouts/DocLayout.astro"
 title: "实验性本地 ASR"
 description: "本地模型入口、安装方式和 Beta 使用边界。"
-source: "docs/LOCAL_ASR.md"
+source: "docs/user/LOCAL_ASR.md"
 ---
 
-<!-- Generated from docs/LOCAL_ASR.md. Run pnpm run sync:docs to refresh. -->
+<!-- Generated from docs/user/LOCAL_ASR.md. Run pnpm run sync:docs to refresh. -->
 
 本地模型已接入 Launcher，也可从独立 CLI 调用。它们与云端转写共用 SRT / `.mosp` / MAWE 流程，但运行环境、硬件性能和模型组合仍属实验范围，先用自己的短音频验收。
 

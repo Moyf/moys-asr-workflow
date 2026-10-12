@@ -3,6 +3,7 @@ from __future__ import annotations
 from tests.compact_assertions import CompactContainerAssertions
 
 import sys
+import base64
 import json
 import re
 from unittest.mock import patch
@@ -20,6 +21,12 @@ import edit  # noqa: E402
 
 
 class EditorAssetContractTests(CompactContainerAssertions, unittest.TestCase):
+    def test_portable_about_gif_is_self_contained(self) -> None:
+        page = edit.build_blank_html()
+        match = re.search(r'src="data:image/gif;base64,([^"]+)"', page)
+        self.assertIsNotNone(match)
+        self.assertEqual(base64.b64decode(match.group(1)), (edit.WEB_DIR / 'assets/moi_dancing.gif').read_bytes())
+
     def source_contract_text(self) -> str:
         """Historical source-shape checks inspect sources, not esbuild printing."""
         return "\n\n".join(edit.read_web_asset(name) for name in edit.read_editor_script_manifest())
@@ -74,6 +81,7 @@ class EditorAssetContractTests(CompactContainerAssertions, unittest.TestCase):
                 "shared/utils/ograf.js",
                 "shared/editor-utils.js",
                 "shared/editor-i18n.js",
+                "shared/tooltip.js",
                 "editor/media/waveform/constants.js",
                 "editor/media/waveform/labels.js",
                 "editor/media/waveform/scale.js",

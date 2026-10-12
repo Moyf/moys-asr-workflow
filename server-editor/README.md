@@ -1,6 +1,6 @@
 # 本机编辑器 Server
 
-Server 从 `web/` 渲染 MAWE，并提供媒体 Range 请求、受限工程保存与本机设置。只监听 `127.0.0.1`。日常编辑操作见 [编辑器指南](../docs/EDITOR_GUIDE.md)，打包应用的服务管理见 [CLI](../docs/CLI.md)。
+Server 从 `web/` 渲染 MAWE，并提供媒体 Range 请求、受限工程保存与本机设置。只监听 `127.0.0.1`。日常编辑操作见 [编辑器指南](../docs/user/EDITOR_GUIDE.md)，打包应用的服务管理见 [CLI](../docs/user/CLI.md)。
 
 ## 源码启动
 
@@ -41,7 +41,7 @@ MOSE Electron 使用同一 Server 的受令牌保护桌面模式。原生选择�
 
 Server 绑定的工程可以原子保存，覆盖前保留 `<文件名>.mosp.bak` 或 `.json.bak`。另存为只接受当前目录内的 `.mosp` / `.json` 文件名，拒绝路径、盘符与上级目录。
 
-浏览器授权文件句柄与下载式保存的区别、自动保存及多版本 `.mosp-bak` 恢复，统一见 [编辑器保存说明](../docs/EDITOR_GUIDE.md#5-保存另存为与备份)。无媒体或仅 SRT 的工程也可保存，不会因此扫描同名媒体。
+浏览器授权文件句柄与下载式保存的区别、自动保存及多版本 `.mosp-bak` 恢复，统一见 [编辑器保存说明](../docs/user/EDITOR_GUIDE.md#5-保存另存为与备份)。无媒体或仅 SRT 的工程也可保存，不会因此扫描同名媒体。
 
 MOSE 原生新建/另存为由主进程保存对话框选择目标并写盘，再重新绑定 Server；可跨目录，不通过 HTTP 开放任意路径写入。随机端口不影响用户级最近工程和引导完成状态。三端打包与系统关联见 [MOSE](../docs/MOSE.md)。
 
@@ -57,7 +57,7 @@ MOSE 每次启动都会让 Server 使用新的随机 localhost 端口，而浏�
 
 损坏或失效的最近记录会提示并回到空白页面，不扫描目录。`--blank` 优先于恢复设置。Windows 旧设置路径只在新文件不存在时读取，保存始终写新路径。
 
-浏览器偏好仍可能按 localhost 端口隔离；Server 引导状态、命名工作区及 ASS 样式库使用用户级文件。数据边界见 [开发概览](../docs/DEVELOPMENT.md)。
+浏览器偏好仍可能按 localhost 端口隔离；Server 引导状态、命名工作区及 ASS 样式库使用用户级文件。数据边界见 [开发概览](../docs/engineering/DEVELOPMENT.md)。
 
 ## 前端维护
 

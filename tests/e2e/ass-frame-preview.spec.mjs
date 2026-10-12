@@ -57,9 +57,7 @@ test('only auto-renders while the comparison window or stage overlay needs a fra
   // Cover the render timer: neither consumer is visible by default.
   await page.waitForTimeout(350);
   expect(requests).toBe(0);
-  await openSettingsPage(page, 'subtitle-style');
-  await page.locator('#ass-frame-preview-open').click();
-  await closeSettingsPanels(page);
+  await page.locator('#ass-frame-quick-open').click();
   await expect(page.locator('#ass-frame-image')).toBeVisible();
   await expect(page.locator('#ass-frame-window-status')).toHaveText('渲染完成');
   await page.locator('#ass-frame-window-close').click();
@@ -135,7 +133,7 @@ test('style preview opens the actual frame window and displays each missing char
   });
   expect(gap).toBeGreaterThanOrEqual(8);
   await expect(button).toHaveText('打开 ASS 实际画面预览窗口');
-  await expect(button.locator('..')).toContainText('如果想要查看当前画面的实际 ASS 字幕效果，可以');
+  await expect(button.locator('..')).toContainText('如果想要查看当前画面实际的 ASS 字幕效果，可以');
   const linkStyle = await button.evaluate((element) => {
     const style = getComputedStyle(element);
     return { color: style.color, background: style.backgroundColor, border: style.borderTopWidth, underline: style.textDecorationLine };

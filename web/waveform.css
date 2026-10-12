@@ -554,6 +554,10 @@
 .waveform-basic .waveform-row.multi-subtitle-row {
   --multi-subtitle-lane-height: min(54px, calc((100% - (var(--multi-subtitle-bottom-inset) * 2) - var(--multi-subtitle-lane-gap)) / 2));
 }
+/* 字词叠加时加高垫底句块，露出可点击区域；低行高仍限制在行内。 */
+.waveform-multi .waveform-pane.word-timing-mode .waveform-row.multi-subtitle-row {
+  --multi-subtitle-lane-height: min(44px, calc((100% - (var(--multi-subtitle-bottom-inset) * 2) - var(--multi-subtitle-lane-gap)) / 2));
+}
 .waveform-row.multi-subtitle-row.show-track-badges::before {
   content: "1";
   color: var(--active-cue-fg);
@@ -909,6 +913,41 @@
 .waveform-pane.word-timing-mode .waveform-cue-block.word-timing-background .waveform-cue-handle {
   opacity: 0.9;
 }
+/* 字词时间码（多行波形）布局分级：
+   - 行高 ≥96 且非双语行（word-timing-full）：字幕块与字词块上下两层、等高
+     （各 35px）。字幕块保持全功能——位置/样式/拖动都不降级，选中句高亮照旧；
+     字词块作为额外的一层显示在字幕块正上方。
+   - 行高不足或双语行（word-timing-compact / background）：沿用叠加显示，
+     字幕块垫底变暗、受限为点击选中（无双重描边），但垫高到 44px，顶部露出
+     一条操作区域；字词块叠在其上。 */
+.waveform-multi .waveform-pane.word-timing-mode .waveform-row:not(.multi-subtitle-row) .waveform-word-block.word-timing-full,
+.waveform-multi .waveform-pane.word-timing-mode .waveform-row:not(.multi-subtitle-row) .waveform-word-boundary.word-timing-full {
+  bottom: 44px;
+  height: 35px;
+}
+.waveform-multi .waveform-pane.word-timing-mode .waveform-row:not(.multi-subtitle-row) .waveform-word-block.word-timing-full {
+  display: flex;
+  align-items: center;
+}
+.waveform-multi .waveform-pane.word-timing-mode .waveform-row:not(.multi-subtitle-row) .waveform-word-block.word-timing-full .waveform-word-label {
+  line-height: normal;
+}
+.waveform-multi .waveform-pane.word-timing-mode .waveform-row:not(.multi-subtitle-row) .waveform-cue-block.word-timing-background.word-timing-compact {
+  bottom: 7px;
+  height: 44px;
+  line-height: 44px;
+}
+.waveform-multi .waveform-pane.word-timing-mode .waveform-row:not(.multi-subtitle-row) .waveform-word-block.word-timing-compact,
+.waveform-multi .waveform-pane.word-timing-mode .waveform-row:not(.multi-subtitle-row) .waveform-word-boundary.word-timing-compact {
+  bottom: 9px;
+  height: 31px;
+}
+.waveform-multi .waveform-pane.word-timing-mode .waveform-row:not(.multi-subtitle-row) .waveform-cue-badge.word-timing-full {
+  bottom: calc(81px + var(--badge-stack-index, 0) * 16px);
+}
+.waveform-multi .waveform-pane.word-timing-mode .waveform-row:not(.multi-subtitle-row) .waveform-cue-badge {
+  bottom: calc(53px + var(--badge-stack-index, 0) * 16px);
+}
 .waveform-word-block {
   position: absolute; z-index: 6; bottom: 9px; height: 31px; min-width: 2px;
   padding: 2px 7px; box-sizing: border-box; border-radius: 4px;
@@ -934,7 +973,7 @@
 .waveform-row.multi-subtitle-row .waveform-word-block,
 .waveform-row.multi-subtitle-row .waveform-word-boundary {
   bottom: calc(var(--multi-subtitle-bottom-inset) + var(--multi-subtitle-lane-height) + var(--multi-subtitle-lane-gap) + 2px);
-  height: calc(var(--multi-subtitle-lane-height) - 4px);
+  height: max(1px, min(31px, calc(var(--multi-subtitle-lane-height) - 12px)));
 }
 .waveform-cue-block.dragging::before { opacity: calc(var(--wave-drag-brightness) - 1); }
 .waveform-cue-handle {
@@ -1148,9 +1187,23 @@
 .waveform-cue-block.waveform-overlay-block.overlay-cover-mode {
   bottom: 7px;
 }
+/* 双语行内叠加块不再使用 50% 线：双语行主块顶 = inset + 两格 lane，
+   基础波形（lane 54px、行高 192）的主块顶会越过 50% 线与叠加块重叠。
+   这里把叠加块放到主字幕格上方 1px；放不下时由 JS 回退 overlay-cover-mode。 */
+.waveform-row.multi-subtitle-row .waveform-cue-block.waveform-overlay-block {
+  bottom: calc(var(--multi-subtitle-bottom-inset) + var(--multi-subtitle-lane-height) * 2 + 1px);
+}
+.waveform-row.multi-subtitle-row .waveform-cue-block.waveform-overlay-block.overlay-cover-mode {
+  bottom: calc(var(--multi-subtitle-bottom-inset) + var(--multi-subtitle-lane-height) + var(--multi-subtitle-lane-gap));
+  height: var(--multi-subtitle-lane-height);
+  line-height: var(--multi-subtitle-lane-height);
+}
 /* 叠加块的徽章：挂在叠加块（bottom 50% + 高 35px）上方，避免与下半区徽章混叠。 */
 .waveform-cue-badge.waveform-overlay-cue-badge {
   bottom: calc(50% + 37px + var(--badge-stack-index, 0) * 16px);
+}
+.waveform-row.multi-subtitle-row .waveform-cue-badge.waveform-overlay-cue-badge {
+  bottom: calc(var(--multi-subtitle-bottom-inset) + var(--multi-subtitle-lane-height) * 2 + 38px + var(--badge-stack-index, 0) * 16px);
 }
 
 /* === 通用 Marker / Region 轨道 ===
@@ -1180,6 +1233,13 @@
   background: transparent;
   border-radius: 0;
   box-shadow: none;
+}
+/* 单点标记的命中区比旗标视觉左右各宽 4px：贴着旗标边缘按下时
+   仍然进入拖动，而不是误触轨道空白新建标记。 */
+.waveform-marker-item.point::after {
+  content: "";
+  position: absolute;
+  inset: 0 -4px;
 }
 .waveform-marker-point-shape {
   position: absolute; inset: 0; pointer-events: none;
@@ -1246,7 +1306,6 @@
   pointer-events: none;
   z-index: 12;
   opacity: 0.85;
-  box-shadow: 0 0 0 1.5px var(--wave-split-flash, #ffd43b);
 }
 /* 复核状态统一显示在左侧；已确认保留名称，整体降低透明度。 */
 .waveform-marker-item.review-confirmed { opacity: 0.5; }

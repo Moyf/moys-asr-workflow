@@ -2,10 +2,10 @@
 layout: "../../layouts/DocLayout.astro"
 title: "Launcher 工具箱"
 description: "文稿匹配、AI 整理、翻译、时间码与媒体处理。"
-source: "docs/TOOLBOX.md"
+source: "docs/user/TOOLBOX.md"
 ---
 
-<!-- Generated from docs/TOOLBOX.md. Run pnpm run sync:docs to refresh. -->
+<!-- Generated from docs/user/TOOLBOX.md. Run pnpm run sync:docs to refresh. -->
 
 工具箱分为「字幕处理」与「媒体工具」。前者处理字幕文字或时间码，后者处理媒体。希望转写后自动执行多个步骤时，使用 [自动处理链](../postprocess-pipeline/)。
 
@@ -46,7 +46,7 @@ LLM 收到临时 ID、字幕和文稿文字，不收到音频、路径或时间�
 
 每批附带前后各 3 段只读录音上下文，模型只裁决当前批，可以引用相邻重录版本。替代版本的数字、比例、否定/限定条件不同，或原段信息无法确认已覆盖时，转为待复核；主题相似不能作为删掉独有步骤的理由。
 
-出现候选移除时，默认追加一次「剪后通读」：按拟保留顺序检查指代、背景、因果承接和被删信息的覆盖，只能恢复不安全删除或新增复核项，不能增加删除。内部 `AiCleanupRequest.review_enabled` 可关闭此工序，GUI 暂不提供开关；无候选移除时跳过复查。复查失败不写出部分结果。额外请求和费用估算见 [复查任务记录](https://github.com/Moyf/moys-asr-workflow/blob/main/docs/TEST_FEEDBACK_AI_CLEANUP_REVIEW.md#第二道工序的成本估算)，实际以供应商账单为准。
+出现候选移除时，默认追加一次「剪后通读」：按拟保留顺序检查指代、背景、因果承接和被删信息的覆盖，只能恢复不安全删除或新增复核项，不能增加删除。内部 `AiCleanupRequest.review_enabled` 可关闭此工序，GUI 暂不提供开关；无候选移除时跳过复查。复查失败不写出部分结果。额外请求和费用估算见 [复查任务记录](https://github.com/Moyf/moys-asr-workflow/blob/main/docs/logs/unversioned/2026-10-04/TEST_FEEDBACK_AI_CLEANUP_REVIEW.md#第二道工序的成本估算)，实际以供应商账单为准。
 
 所有新 AI 注释采用 `[AI] 操作：原因`：自动移除写 `[AI] 删除：…` 区段，替代版本存疑写 `[AI] 替代项：…`，其他疑点写 `[AI] 复核：…`。在编辑器「标记与区段」搜索 `[AI]`，点击「批量选择」，可逐项勾选或全选当前筛选结果，再批量删除注释；改变筛选会取消隐藏项的选择，整次删除可一步撤销。删除这些注释不会恢复字幕或空隙移除决定。
 
@@ -73,9 +73,9 @@ LLM 收到临时 ID、字幕和文稿文字，不收到音频、路径或时间�
 
 ## 生成时间码
 
-各功能的输入、文字真源、时间处理和重录能力见 [文稿与时间码工具对比](https://github.com/Moyf/moys-asr-workflow/blob/main/docs/ALIGNMENT_FEATURES.md)。
+各功能的输入、文字真源、时间处理和重录能力见 [文稿与时间码工具对比](https://github.com/Moyf/moys-asr-workflow/blob/main/docs/user/ALIGNMENT_FEATURES.md)。
 
-已有准确文稿与录音但没有工程时，将处理方式切为「仅使用文稿对齐」。每个非空行生成一条字幕，同时输出新 MOSP 与 SRT；短录音整段对齐，长录音使用静音或人工锚点。此模式只使用 Qwen ForcedAligner，需听审录音，详见 [文稿驱动对齐（实验性）](https://github.com/Moyf/moys-asr-workflow/blob/main/docs/SCRIPT_DRIVEN_ALIGNMENT.md)。
+已有准确文稿与录音但没有工程时，将处理方式切为「仅使用文稿对齐」。每个非空行生成一条字幕，同时输出新 MOSP 与 SRT；短录音整段对齐，长录音使用静音或人工锚点。此模式只使用 Qwen ForcedAligner，需听审录音，详见 [文稿驱动对齐（实验性）](https://github.com/Moyf/moys-asr-workflow/blob/main/docs/user/SCRIPT_DRIVEN_ALIGNMENT.md)。
 
 可先检查输入与分块，无需下载模型；检查不改变当前工程或写出字幕。文稿模式支持独立的音轨序号 / 输出目录，生成结果列出采用的策略、行数与块数。
 
@@ -115,6 +115,6 @@ FFprobe 列出音轨序号、语言、标题、编码和声道信息。选择音
 
 ### FFconcat 媒体重组
 
-先在编辑器移除空隙并导出 FFconcat，再选取该文件重组当前媒体。只接受 `ffconcat version 1.0`、`file`、`inpoint`、`outpoint` 和 `duration`，所有文件引用必须指向当前媒体；外部媒体与网络地址会拒绝。
+在编辑器中使用「去空隙导出 → 重组后视频」，按当前工程绑定的源媒体和保留区间生成新媒体。视频重组采用流复制，实际切点受关键帧与编码包边界影响，需试听核对。音频工程显示「重组后音频」，使用当前选定音轨解码后按样本精确裁切和拼接，导出 WAV，保持源采样率、声道及采样精度；音频切点不受视频关键帧或压缩音频包边界限制。工程与 SRT 时间轴不会自动改写，应同时导出配套的去空隙字幕。
 
-重组采用流复制，结果是新媒体，工程/SRT 时间轴不会自动改写。应从编辑器导出配套的去空隙字幕；流复制的实际切点受媒体关键帧与编码影响，需要试听核对。
+如果要交给外部 FFmpeg 工具，可从「去空隙导出」单独导出 FFconcat 文件，并与配套的去空隙字幕一起使用。

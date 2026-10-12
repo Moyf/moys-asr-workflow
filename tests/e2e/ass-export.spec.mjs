@@ -13,6 +13,30 @@ import {
 
 const DURATION_MS = 4_000;
 
+test('sample Canvas contains scaled and rotated glyphs without edge clipping', async ({ page }) => {
+  await disableOnboarding(page);
+  await page.goto(server.url);
+  await page.waitForFunction(() => window.MaweAssCanvas?.renderSample);
+  const results = await page.evaluate(() => [0, 45, 90].map(angle => {
+    const canvas = document.createElement('canvas');
+    window.MaweAssCanvas.renderSample(canvas, { fontName: 'Arial', fontSize: 32, scaleX: 200, scaleY: 150,
+      angle, primaryColor: '#ffffff', outline: 4, outlineColor: '#ff0000', outlineOpacity: 100,
+      shadow: 4, backColor: '#000000', backOpacity: 100 }, 'Sample 字幕');
+    const pixels = canvas.getContext('2d').getImageData(0, 0, canvas.width, canvas.height).data;
+    let painted = 0, edge = 0;
+    for (let y = 0; y < canvas.height; y++) for (let x = 0; x < canvas.width; x++) {
+      if (!pixels[(y * canvas.width + x) * 4 + 3]) continue;
+      painted++;
+      if (x === 0 || y === 0 || x === canvas.width - 1 || y === canvas.height - 1) edge++;
+    }
+    return { angle, painted, edge };
+  }));
+  for (const result of results) {
+    expect(result.painted, `angle ${result.angle}`).toBeGreaterThan(100);
+    expect(result.edge, `angle ${result.angle}`).toBe(0);
+  }
+});
+
 function generateAssProjectJson(filePath) {
   const project = {
     media: 'synthetic.wav',
@@ -200,6 +224,83 @@ test('ASS preview preserves explicit line breaks without container wrapping', as
   await expect(page.locator('#overlay-main-text')).toHaveCSS('word-break', 'break-word');
 });
 
+test('speaker prefixes use each track colour in actual Canvas paint, ASS and CSS previews', async ({ page }, testInfo) => {
+  await disableOnboarding(page);
+  await page.goto(server.url);
+  const result = await page.evaluate(async () => {
+    await loadAssStyleLibrary({ force: true });
+    ASS_STYLE_LIBRARY = window.AsrEditorUtils.defaultAssStyleLibrary();
+    ASS_STYLE_LIBRARY.styles.find(entry => entry.id === 'ass-extension').primaryColor = '#123456';
+    MaweBoot.DATA.segments = [{ start: 1000, end: 2500, text: 'main text', color: { name: 'red' } }];
+    MaweBoot.DATA.multi_subtitle = { enabled: true, tracks: [{ id: 'ext-speakers', segments: [
+      { start: 1000, end: 2500, text: 'disabled colour head', color: { name: 'green' }, disabled: true },
+      { start: 1000, end: 2500, text: 'extension text', color_ref: { name: 'green', headIdx: 0 } },
+    ] }] };
+    MaweBoot.DATA.overlay_track = { enabled: true, segments: [
+      { start: 1000, end: 2500, text: 'overlay text', color: { name: 'purple' } },
+    ] };
+    MaweBoot.DATA.preview = { subtitle: { ass_color_style: 'speaker', color_style: 'text',
+      speaker_labels: { mapping_enabled: true, enabled: true, separator: '：', names: {
+        red: 'MainSpeaker', green: 'SecondarySpeaker', purple: 'OverlaySpeaker',
+      } } } };
+    Object.assign(MaweSettings.EDITOR_SETTINGS, { assMode: true, exportSpeakerLabels: true });
+    MaweDom.overlayToggle.checked = true;
+    MaweDom.extensionOverlayToggle.checked = true;
+    MaweCoreState.player.currentTime = 1.5;
+    const painted = [];
+    const original = CanvasRenderingContext2D.prototype.fillText;
+    CanvasRenderingContext2D.prototype.fillText = function (text, ...args) {
+      painted.push({ text, color: this.fillStyle });
+      return original.call(this, text, ...args);
+    };
+    try {
+      window.MaweAssCanvas.clearCaches();
+      MawePlaybackLoop.refreshSubtitlePreview(1500, 0);
+    } finally {
+      CanvasRenderingContext2D.prototype.fillText = original;
+    }
+    return {
+      painted,
+      ass: MaweExportSrt.buildAss({ preview: true }),
+      palette: Object.fromEntries(MaweColors.COLOR_PALETTE.map(item => [item.name, item.value])),
+    };
+  });
+  for (const [name, color] of [['MainSpeaker', 'red'], ['SecondarySpeaker', 'green'], ['OverlaySpeaker', 'purple']]) {
+    expect(result.painted).toContainEqual({ text: `${name}：`, color: result.palette[color] });
+    const assColor = await page.evaluate(hex => `${window.AsrEditorUtils.assColorFromHex(hex)}&`, result.palette[color]);
+    expect(result.ass).toContain(`{\\1c${assColor}}${name}：`);
+  }
+  expect(result.painted).toContainEqual({ text: 'extension text', color: '#123456' });
+  await page.locator('.player-stage').screenshot({ path: testInfo.outputPath('ass-track-speaker-prefixes.png') });
+  await page.evaluate(() => {
+    MaweSettings.EDITOR_SETTINGS.assMode = false;
+    MawePlaybackLoop.refreshSubtitlePreview(1500, 0);
+  });
+  await expect(page.locator('#overlay-main-text')).toHaveText('MainSpeaker：main text');
+  await expect(page.locator('#overlay-extension-text')).toHaveText('SecondarySpeaker：extension text');
+  await expect(page.locator('#overlay-extension-speaker-label')).toHaveCSS('color', 'rgb(102, 187, 106)');
+  await expect(page.locator('#overlay-track-text')).toHaveText('OverlaySpeaker：overlay text');
+  await page.locator('.player-stage').screenshot({ path: testInfo.outputPath('css-track-speaker-prefixes.png') });
+  await page.evaluate(() => {
+    MaweBoot.DATA.preview.subtitle.speaker_labels.enabled = false;
+    MawePlaybackLoop.refreshSubtitlePreview(1500, 0);
+  });
+  await expect(page.locator('#overlay-extension-text')).toHaveText('extension text');
+  await expect(page.locator('#overlay-extension-speaker-label')).toBeHidden();
+  const disabledPreview = await page.evaluate(() => ({
+    preview: MaweExportSrt.buildAss({ preview: true }),
+    exported: MaweExportSrt.buildAss(),
+  }));
+  expect(disabledPreview.preview).not.toContain('SecondarySpeaker');
+  expect(disabledPreview.exported).toContain('SecondarySpeaker');
+  const disabledMapping = await page.evaluate(() => {
+    MaweBoot.DATA.preview.subtitle.speaker_labels.mapping_enabled = false;
+    MawePlaybackLoop.refreshSubtitlePreview(1500, 0);
+    return MaweExportSrt.buildAss();
+  });
+  expect(disabledMapping).not.toContain('SecondarySpeaker');
+});
+
 test('inherits ASS track colours through inline formatting and keeps explicit emphasis colours', async ({ page }) => {
   await disableOnboarding(page);
   await page.goto(server.url);
@@ -209,7 +310,8 @@ test('inherits ASS track colours through inline formatting and keeps explicit em
     const main = ASS_STYLE_LIBRARY.styles.find((entry) => entry.id === 'ass');
     const extension = ASS_STYLE_LIBRARY.styles.find((entry) => entry.id === 'ass-extension');
     Object.assign(main, { primaryColor: '#22cc55', emphasisStyle: 'stroke', emphasisColor: '#ff0000' });
-    Object.assign(extension, { primaryColor: '#ffd34d', emphasisStyle: 'stroke', emphasisColor: '#ff0000' });
+    // Avoid the legacy built-in default colour that the style migration upgrades.
+    Object.assign(extension, { primaryColor: '#f1d24c', emphasisStyle: 'stroke', emphasisColor: '#ff0000' });
     const text = '普通 **强调** __下划线__ ~~删除线~~ --缩小-- ++放大++';
     MaweBoot.DATA.segments = [{ id: 'main-colour', start: 1000, end: 3000, text }];
     MaweBoot.DATA.multi_subtitle = { enabled: true, tracks: [{ id: 'extension-colour', segments: [{ id: 'ext-colour', start: 1000, end: 3000, text }] }] };
@@ -235,9 +337,9 @@ test('inherits ASS track colours through inline formatting and keeps explicit em
   });
   // 强调走 stroke 模式：所有 run 的填充保持轨道主色，强调描边用强调色。
   // 计数与旧 DOM 断言对齐：纯字号 run（缩小/放大）也计入。
-  for (const [part, colour] of [['main', '#22cc55'], ['extension', '#ffd34d']]) {
+  for (const [part, colour] of [['main', '#22cc55'], ['extension', '#f1d24c']]) {
     expect(payload[part].flaggedRuns).toBe(5);
-    expect(payload[part].fills.every((fill) => fill === colour)).toBe(true);
+    expect(payload[part].fills.every((fill) => fill === colour), JSON.stringify({ part, ...payload[part] })).toBe(true);
     expect(payload[part].emphasisStrokes).toEqual(['#ff0000']);
   }
   await page.evaluate(() => {
@@ -275,7 +377,8 @@ test('ASS emphasis controls drive preview and inline export color', async ({ pag
   await page.locator('#ass-mode-toggle').check();
   await openSettingsPage(page, 'special-edit');
   await expect(page.locator('#ass-inline-text-settings')).toBeVisible();
-  await expect(page.locator('#ass-inline-text-settings input[type=checkbox]')).toHaveCount(5);
+  await expect(page.locator('#ass-inline-text-settings input[type=checkbox]')).toHaveCount(6);
+  await expect(page.locator('[data-ass-symbol="//"]')).toHaveText('//注释//');
   await expect(page.locator('#ass-inline-text-title')).toHaveText('特殊文本');
   await expect(page.locator('#ass-special-symbol-rule')).toHaveValue('both');
   await expect(page.locator('#ass-special-symbol-rule option:checked')).toHaveText('单双皆可');
@@ -585,7 +688,7 @@ test('exports a gap-removed styled ASS subtitle with shifted timing', async ({ p
   await page.locator('#gap-removed-export-btn').click();
   await expect(page.locator('#gap-removed-subtitle-export-separator')).toBeVisible();
   await expect(page.locator('#gap-removed-export-menu > .dropdown-item:visible').allTextContents())
-    .resolves.toEqual(['SRT', 'SRT（按颜色拆分）', 'ASS（带样式）']);
+    .resolves.toEqual(['SRT', 'SRT（按颜色拆分）', 'ASS（带样式）', '重组后视频']);
   await expect(page.locator('#gap-removed-otio-menu').locator('xpath=preceding-sibling::*[1]'))
     .toHaveText('OTIO');
 
@@ -707,9 +810,21 @@ test('uses outline colour for sample boxes and preserves zero scaling', async ({
     }, { persist: false });
   });
   const sample = page.locator('#ass-style-preview-sample');
-  await expect(sample).toHaveCSS('background-color', 'rgba(255, 0, 0, 0.5)');
-  await expect(sample).toHaveCSS('-webkit-text-stroke-width', '0px');
-  await expect(sample).toHaveCSS('padding-top', '4px');
+  // 样例画布像素断言：BorderStyle 3 底框吃描边色与 50% 不透明度。
+  const sampleStats = () => page.evaluate(() => {
+    const canvas = document.querySelector('#ass-style-preview-sample');
+    if (!canvas || !canvas.width) return { painted: 0, red50: 0 };
+    const { data } = canvas.getContext('2d').getImageData(0, 0, canvas.width, canvas.height);
+    const near = (value, target) => Math.abs(value - target) <= 3;
+    const stats = { painted: 0, red50: 0 };
+    for (let i = 0; i < data.length; i += 4) {
+      const r = data[i]; const g = data[i + 1]; const b = data[i + 2]; const a = data[i + 3];
+      if (a > 0) stats.painted++;
+      if (a > 90 && a < 170 && near(r, 255) && near(g, 0) && near(b, 0)) stats.red50++;
+    }
+    return stats;
+  });
+  expect((await sampleStats()).red50).toBeGreaterThan(100);
   const spacing = await sample.evaluate((element) => {
     const label = document.querySelector('.ass-style-preview-label');
     return element.getBoundingClientRect().top - label.getBoundingClientRect().bottom;
@@ -772,9 +887,9 @@ test('uses outline colour for sample boxes and preserves zero scaling', async ({
     syncAssStyleForm(style);
     MawePlaybackLoop.refreshSubtitlePreview(1500, 0);
   });
-  // 零缩放：主字幕不再占据任何画布像素；样式窗 DOM 样例同步塌缩。
+  // 零缩放：主字幕与样式窗样例画布都不再占据任何像素。
   expect((await canvasStats()).painted).toBe(0);
-  await expect(sample).toHaveCSS('transform', 'matrix(0, 0, 0, 1, 0, 0)');
+  expect((await sampleStats()).painted).toBe(0);
 });
 
 test('offsets the opaque shadow and keeps the border box shadow unclipped', async ({ page }) => {

@@ -116,6 +116,18 @@ def is_openrouter_base_url(base_url: str) -> bool:
     return hostname in {"openrouter.ai", "www.openrouter.ai"}
 
 
+def is_deepseek_base_url(base_url: str) -> bool:
+    value = str(base_url or "").strip()
+    if not value:
+        return False
+    try:
+        parsed = urlparse(value if "://" in value else f"https://{value}")
+        hostname = (parsed.hostname or "").casefold().rstrip(".")
+    except ValueError:
+        return False
+    return hostname in {"api.deepseek.com", "www.deepseek.com", "deepseek.com"}
+
+
 def openai_model_for_base_url(base_url: str, model_id: str) -> str:
     model = str(model_id or "").strip()
     if is_openrouter_base_url(base_url) and model in OPENAI_ASR_PRESET_MODEL_IDS:
@@ -644,10 +656,21 @@ BCUT_MODELS: Final[tuple[ModelConfig, ...]] = (
     ),
 )
 
+# DeepSeek 彩蛋占位模型：仅供 UI 展示；后端会直接拦截，不发起任何转写请求。
+DEEPSEEK_PLACEHOLDER_MODELS: Final[tuple[ModelConfig, ...]] = (
+    ModelConfig(
+        id="deepseek-not-an-asr",
+        label="Deepseek 目前不提供转写模型",
+        env_key="",
+        note="被问太多次了所以专门加上这个说明 _(:з」∠)_",
+        languages=(),
+    ),
+)
+
 PROVIDERS: Final[tuple[ProviderConfig, ...]] = (
     ProviderConfig(
         id="qwen",
-        label="阿里云百炼（千问）",
+        label="阿里云百炼（推荐 / 千问）",
         key_url="https://platform.qianwenai.com/home/",
         key_label="千问AI平台",
         models=QWEN_MODELS,
@@ -664,7 +687,7 @@ PROVIDERS: Final[tuple[ProviderConfig, ...]] = (
         regions=(),
         languages=LANGUAGES,
         common_languages=QWEN_COMMON_LANGUAGES,
-        note="默认连接 OpenAI 官方服务；OpenRouter 会自动适配预设模型 ID。其他中转站请选择“自定义（Custom）”并填写服务商提供的完整模型名；接口必须返回 segments 或 words 时间戳。",
+        note="默认连接 OpenAI 官方服务；OpenRouter 会自动适配预设模型 ID。其他中转站请选择“自定义（Custom）”模型，并填写服务商提供的名称。",
         secondary_key_url=OPENROUTER_ASR_KEY_URL,
     ),
     ProviderConfig(
@@ -690,8 +713,7 @@ PROVIDERS: Final[tuple[ProviderConfig, ...]] = (
         common_languages=DOUBAO_COMMON_LANGUAGES,
         divider_before=True,
         note=(
-            "媒体会直接上传到火山引擎；base64 直传单文件 ≤25MB 且 ≤120 分钟，"
-            "MAW 会先提取为低码率单声道音频再提交。"
+            "媒体会直接上传到火山引擎；单文件需 ≤25MB 且 ≤120 分钟。"
         ),
     ),
     ProviderConfig(
@@ -730,6 +752,22 @@ PROVIDERS: Final[tuple[ProviderConfig, ...]] = (
             "非官方免费接口：无需 API Key，仅支持中文，单文件上限 2 小时；"
             "接口可能随时变更、失效或触发限流，请勿高频调用。"
             "重要或批量任务建议使用上方正式供应商。"
+        ),
+    ),
+    # 彩蛋占位：DeepSeek 是文本模型，没有语音转写 API；仅提示用户去后处理翻译使用。
+    # 与必剪之间不再加分隔线：两项紧挨着更符合「非转写/实验性入口」的分组直觉。
+    ProviderConfig(
+        id="deepseek",
+        label="DeepSeek（？）",
+        key_url="https://platform.deepseek.com/api_keys",
+        models=DEEPSEEK_PLACEHOLDER_MODELS,
+        regions=(),
+        languages=(),
+        requires_api_key=False,
+        supports_language=False,
+        note=(
+            "🐳 蓝色大肥鱼不支持语音转写，它是个文本模型！\n"
+            "不过你可以在「AI处理」中使用它来翻译啥的。"
         ),
     ),
 )
@@ -862,8 +900,8 @@ def api_key_for_provider(provider_id: str, path: Path = DEFAULT_ENV_PATH, enviro
     if not provider.models:
         return ""
     env_key = provider.models[0].env_key
-    env = environ or os.environ
-    return env.get(env_key) or load_env(path).get(env_key, "")
+    env = environ if environ is not None else os.environ
+    return str(env.get(env_key) or "").strip() or load_env(path).get(env_key, "").strip()
 
 
 def region_label(region_id: str) -> str:

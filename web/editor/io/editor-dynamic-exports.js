@@ -93,7 +93,7 @@
   function updateLottieExportButton() {
     const button = document.getElementById('download-lottie');
     if (!button) return;
-    if (!button.dataset.originalTitle) button.dataset.originalTitle = button.title;
+    if (!button.dataset.originalTitle) button.dataset.originalTitle = button.dataset.title || button.title;
     const disabled = !lottieExportAvailable();
     button.classList.toggle('sticker-disabled', disabled);
     button.setAttribute('aria-disabled', disabled ? 'true' : 'false');
@@ -215,7 +215,7 @@
   function updateOgrafExportButton() {
     const button = document.getElementById('download-ograf');
     if (!button) return;
-    if (!button.dataset.originalTitle) button.dataset.originalTitle = button.title;
+    if (!button.dataset.originalTitle) button.dataset.originalTitle = button.dataset.title || button.title;
     const disabled = !ografExportAvailable();
     button.classList.toggle('sticker-disabled', disabled);
     button.setAttribute('aria-disabled', disabled ? 'true' : 'false');
