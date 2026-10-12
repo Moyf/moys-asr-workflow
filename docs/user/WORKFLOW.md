@@ -20,7 +20,7 @@ Launcher 是转写与工具箱入口；MAWE 是编辑器。当前日常编辑使
 
 ### 从源码运行
 
-需要 Python 3.11+、[uv](https://docs.astral.sh/uv/) 和 FFmpeg / FFprobe。在仓库根目录执行：
+需要 Python 3.11+、[uv](https://docs.astral.sh/uv/)、Node.js 22.13+、pnpm 和 FFmpeg / FFprobe。在仓库根目录执行：
 
 ```sh
 python --version
@@ -28,10 +28,11 @@ uv --version
 ffmpeg -version
 ffprobe -version
 uv sync
+pnpm install --frozen-lockfile
 uv run --no-sync python maw_gui.py
 ```
 
-环境安装完成后，后续命令使用 `--no-sync`，避免每次启动重新同步依赖。普通源码安装不包含本地 ASR 与 OCR 的可选依赖。开发检查见 [DEVELOPMENT](../engineering/DEVELOPMENT.md)。
+`pnpm install` 会构建编辑器与 Launcher 的前端产物；后续源码入口在产物缺失或过期时自动重建。发布包已经包含产物，无需安装 Node 或 pnpm。Python 环境安装完成后，后续命令使用 `--no-sync`，避免每次启动重新同步依赖。普通源码安装不包含本地 ASR 与 OCR 的可选依赖。开发检查见 [DEVELOPMENT](../engineering/DEVELOPMENT.md)。
 
 ## 2. 配置转写方式
 
