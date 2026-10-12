@@ -28,6 +28,16 @@ if _MISSING_BUNDLES:
         + "。请先执行 pnpm install --frozen-lockfile && pnpm run build 再打包。"
     )
 
+# Existing but stale artifacts are also unsafe, including a previous successful
+# bundle left behind after a failed local build command.
+sys.path.insert(0, str(ROOT))
+from maw.web_build import bundle_status
+
+for _kind in ("editor", "launcher"):
+    _status, _reason = bundle_status(ROOT, _kind)
+    if _status != "fresh":
+        raise SystemExit(f"MAW.spec: {_kind} bundle {_status}: {_reason}。请重新构建后再打包。")
+
 binaries = []
 if sys.platform == "linux":
     # Qt 6.5+ 的 xcb 平台插件需要 libxcb-cursor；部分环境（如 ubuntu-22.04

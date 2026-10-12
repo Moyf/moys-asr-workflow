@@ -240,7 +240,8 @@ def read_editor_script_manifest() -> tuple[str, ...]:
 
 
 def build_editor_scripts() -> str:
-    """Inline the complete esbuild artifact; Node is only a developer dependency."""
+    """Preflight every portable/server renderer before reading the artifact."""
+    ensure_bundle(WEB_DIR.parent, "editor", allow_build=not getattr(sys, "frozen", False))
     return read_web_asset("editor/boot/editor-bundle.js").rstrip()
 
 
@@ -364,7 +365,7 @@ def main():
 
     # bundle 是构建产物（不入库）：渲染编辑器页面前确保与源码一致，必要时自动重建。
     try:
-        ensure_bundle(Path(__file__).parent, "editor")
+        ensure_bundle(WEB_DIR.parent, "editor", allow_build=not getattr(sys, "frozen", False))
     except BundlePreflightError as error:
         print(str(error), file=sys.stderr)
         return 1

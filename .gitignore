@@ -79,3 +79,5 @@ build-appimage/
 # Local diagnostic output (never source or test fixtures).
 /.debug-runs/
 /debug.log
+# Atomic bundle staging files left by an interrupted build.
+**/.maw-bundle-*.tmp

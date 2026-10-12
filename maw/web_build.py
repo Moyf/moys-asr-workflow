@@ -8,8 +8,8 @@ editor / launcher 的 esbuild bundle 是构建产物，不进 Git。三个运行
 
 新鲜度判定复刻 ``scripts/build-editor.mjs`` 写入 ``.meta.json`` 的哈希方案：
 清单文件列表（sourceFiles）、每个源文件的 sha256（inputs）、模块配置文本
-哈希（configHash）与构建器脚本哈希（builderHash）。esbuild 的输出由这四者
-唯一决定，因此逐项比对即可在不启动 Node 的情况下判断产物是否过期。
+哈希（configHash）、构建器脚本哈希（builderHash）与依赖声明哈希
+（dependencyHash）。bundleHash 同时验证产物完整性。
 
 本模块只依赖标准库：打包配置（MAW.spec）与所有 Python 入口都能安全引用。
 """
@@ -17,17 +17,18 @@ editor / launcher 的 esbuild bundle 是构建产物，不进 Git。三个运行
 from __future__ import annotations
 
 import json
+import re
+import shutil
 import subprocess
 import threading
 import time
-import shutil
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Final
 
 _BUILD_TIMEOUT_SECONDS: Final = 120.0
-# ThreadingHTTPServer 的页面渲染与 GUI 启动可能并发触发重建；esbuild 并发
-# 写同一产物会互相截断，进程内用一把锁串行化。
+# ThreadingHTTPServer 的页面渲染与 GUI 启动可能并发触发重建；进程内串行
+# 预检避免重复构建，跨进程由构建器的原子发布与 bundleHash 保证安全。
 _BUILD_LOCK = threading.Lock()
 
 
@@ -77,10 +78,10 @@ def _sha256_text(text: str) -> str:
     return hashlib.sha256(text.encode("utf-8")).hexdigest()
 
 
-def _manifest_files(manifest_path: Path) -> list[str]:
+def _manifest_files(text: str) -> list[str]:
     """按构建器的解析规则展开清单：去掉 ``#`` 注释与空白行。"""
     entries: list[str] = []
-    for line in manifest_path.read_text(encoding="utf-8").splitlines():
+    for line in text.splitlines():
         entry = line.split("#", 1)[0].strip()
         if entry:
             entries.append(entry)
@@ -89,8 +90,10 @@ def _manifest_files(manifest_path: Path) -> list[str]:
 
 def _read_or_none(path: Path) -> str | None:
     try:
-        return path.read_text(encoding="utf-8")
-    except OSError:
+        # 与 Node 的 utf8 读取一致，不把 CRLF 静默转为 LF 后再算哈希。
+        with path.open(encoding="utf-8", newline="") as stream:
+            return stream.read()
+    except (OSError, UnicodeError):
         return None
 
 
@@ -106,7 +109,7 @@ def bundle_status(root: Path, kind: str) -> tuple[str, str]:
         meta = json.loads(meta_text)
     except ValueError:
         return "stale", f"{spec.meta.as_posix()} 不是有效的 JSON"
-    if meta.get("format") != 1:
+    if not isinstance(meta, dict) or type(meta.get("format")) is not int or meta["format"] != 1:
         return "stale", f"{spec.meta.as_posix()} 的 format 版本未知"
     inputs = meta.get("inputs")
     source_files = meta.get("sourceFiles")
@@ -116,11 +119,28 @@ def bundle_status(root: Path, kind: str) -> tuple[str, str]:
     manifest_text = _read_or_none(root / spec.manifest)
     if manifest_text is None:
         return "stale", f"无法读取清单 {spec.manifest.as_posix()}"
-    if _manifest_files(root / spec.manifest) != source_files:
+    files = _manifest_files(manifest_text)
+    if not files or len(files) != len(set(files)) or any(
+        not file.endswith(".js") or re.search(r"[\\:]", file)
+        or any(part in ("", ".", "..") for part in file.split("/"))
+        or file in (item.bundle.relative_to("web").as_posix() for item in _SPECS.values())
+        for file in files
+    ):
+        return "stale", f"清单 {spec.manifest.as_posix()} 含无效源文件路径"
+    if files != source_files:
         return "stale", f"清单 {spec.manifest.as_posix()} 与构建时不一致"
+    if set(inputs) != set(files) or any(
+        not isinstance(value, str) or not re.fullmatch(r"[0-9a-f]{64}", value)
+        for value in inputs.values()
+    ):
+        return "stale", "构建信息未完整覆盖清单中的源码哈希"
 
+    web_root = (root / "web").resolve()
     for relative, expected in inputs.items():
-        text = _read_or_none(root / "web" / relative)
+        source = root / "web" / relative
+        if not source.resolve().is_relative_to(web_root):
+            return "stale", f"源文件路径越出 web/: {relative}"
+        text = _read_or_none(source)
         if text is None:
             return "stale", f"源文件丢失: web/{relative}"
         if _sha256_text(text) != expected:
@@ -137,14 +157,23 @@ def bundle_status(root: Path, kind: str) -> tuple[str, str]:
     if _sha256_text(joined) != meta.get("builderHash"):
         return "stale", "构建器脚本已变更"
 
+    dependencies = [_read_or_none(root / name) for name in ("package.json", "pnpm-lock.yaml")]
+    if any(text is None for text in dependencies) or _sha256_text(
+        "\n".join(text for text in dependencies if text is not None)
+    ) != meta.get("dependencyHash"):
+        return "stale", "前端构建依赖声明已变更或缺失"
+    bundle_text = _read_or_none(root / spec.bundle)
+    if bundle_text is None or _sha256_text(bundle_text) != meta.get("bundleHash"):
+        return "stale", "bundle 内容与构建信息不一致"
+
     return "fresh", "产物与源码一致"
 
 
 def _manual_message(spec: _BundleSpec, status: str, reason: str, blocker: str) -> str:
     state = "缺失" if status == "missing" else "过期"
     return (
-        f"web/{spec.bundle.as_posix()} {state}（{reason}），{blocker}，无法自动重建。\n"
-        "请先安装 Node.js（≥18）与 pnpm，然后在仓库根目录执行：\n"
+        f"{spec.bundle.as_posix()} {state}（{reason}），{blocker}，无法自动重建。\n"
+        "请先安装 Node.js（≥22.13）与 pnpm，然后在仓库根目录执行：\n"
         f"  pnpm install --frozen-lockfile\n"
         f"  pnpm run {spec.pnpm_script}"
     )
@@ -184,6 +213,10 @@ def _run_build(root: Path, spec: _BundleSpec, status: str, reason: str) -> None:
         raise BundlePreflightError(
             f"自动重建 {spec.bundle.as_posix()} 超时（>{_BUILD_TIMEOUT_SECONDS:.0f}s）。"
             f"请手动执行 pnpm run {spec.pnpm_script} 查看具体错误。"
+        ) from error
+    except OSError as error:
+        raise BundlePreflightError(
+            _manual_message(spec, status, reason, f"Node.js 无法启动（{error}）")
         ) from error
     if completed.returncode != 0:
         tail = "\n".join((completed.stderr or completed.stdout or "").splitlines()[-8:])
