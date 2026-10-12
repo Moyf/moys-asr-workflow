@@ -27,7 +27,7 @@
 
 ## 编辑器前端构建
 
-编辑器 JS 由 esbuild 打包；Server 和便携 HTML 读取仓库已提交的 bundle，不再运行时拼接 JS 源文件。只运行现有编辑器不需要 Node，也不必每次启动都构建；开发构建与 Node 测试要求 Node 22.13+。
+编辑器 JS 由 esbuild 打包；Server 和便携 HTML 读取本地生成的 bundle，不再运行时拼接 JS 源文件。从源码运行需要 Node 22.13+ 与 pnpm，首次安装依赖时自动构建；后续启动检查新鲜度，仅在产物缺失或过期时重建。发布包内置 bundle，用户无需 Node。
 
 在仓库根目录执行：
 

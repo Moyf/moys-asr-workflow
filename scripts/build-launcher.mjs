@@ -1,12 +1,13 @@
 // Launcher 装配构建器：复用 build-editor.mjs 的编译核心（compileSources），
-// 按 web/launcher-scripts.txt 清单原序把 classic 模块装配为提交进仓库的单文件产物。
-// pywebview 以 file:// URI 加载 index.html，运行时不依赖 Node；bundle 必须随源码重建提交。
+// 按 web/launcher-scripts.txt 清单原序把 classic 模块装配为单文件构建产物。
+// pywebview 以 file:// URI 加载 index.html；发布包内置 bundle，运行时不依赖 Node。
 import fs from 'node:fs';
 import path from 'node:path';
 import { createHash } from 'node:crypto';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import * as esbuild from 'esbuild';
-import { compileSources, validateSources } from './build-editor.mjs';
+import { assertBuildInputsUnchanged, captureBuildInputs, compileSources,
+  dependencyHash, validateSources, writeArtifact } from './build-editor.mjs';
 
 const ROOT = fileURLToPath(new URL('../', import.meta.url));
 export const BUNDLE = 'launcher/boot/launcher-bundle.js';
@@ -34,27 +35,33 @@ export function readConfig(root = ROOT) {
 }
 
 export async function buildLauncher(root = ROOT) {
+  const snapshot = captureBuildInputs(root, ['web/launcher-scripts.txt', 'web/'+CONFIG,
+    ...BUILDERS, 'package.json', 'pnpm-lock.yaml']);
   const files = readSources(root);
-  const config = readConfig(root);
+  const configText = snapshot['web/'+CONFIG], config = JSON.parse(configText);
   const modules = config.modules ?? [];
   const inputHashes = {};
   const result = await compileSources(root, files, modules, file => {
     const source = fs.readFileSync(path.join(root, 'web', file), 'utf8');
+    snapshot['web/'+file] = source;
     inputHashes[file] = sha(source);
     return source;
   }, { bridges: config.externalBridges ?? [], trace: true });
+  assertBuildInputsUnchanged(root, snapshot);
   const metadata = {
     format: 1,
     esbuild: esbuild.version,
     sourceFiles: files,
     esmFactories: modules.length,
     inputs: inputHashes,
-    configHash: sha(fs.readFileSync(path.join(root, 'web', CONFIG), 'utf8')),
+    configHash: sha(configText),
     // compileSources 来自 build-editor.mjs，它的变更同样要求重建产物。
-    builderHash: sha(BUILDERS.map(name => fs.readFileSync(path.join(root, name), 'utf8')).join('\n')),
+    builderHash: sha(BUILDERS.map(name => snapshot[name]).join('\n')),
+    dependencyHash: dependencyHash(snapshot),
     metafile: result.metafile,
   };
   const identity = `/* MAW Launcher artifact: ${sha(result.code + json(metadata))} */`;
+  metadata.bundleHash = sha(identity + '\n' + result.code);
   return { ...result, code: identity + '\n' + result.code, identity, metadata };
 }
 
@@ -75,9 +82,7 @@ export async function checkLauncher(root = ROOT) {
 async function writeLauncher(root) {
   const built = await buildLauncher(root);
   // Write only after the entire build succeeds; never repair while checking.
-  fs.mkdirSync(path.join(root, 'web', path.dirname(BUNDLE)), { recursive: true });
-  fs.writeFileSync(path.join(root, 'web', BUNDLE), built.code);
-  fs.writeFileSync(path.join(root, 'web', BUILD_INFO), json(built.metadata));
+  await writeArtifact(root, BUNDLE, BUILD_INFO, built);
   console.log(`Launcher: ${built.modules.length} ESM factories / ${built.sourceFiles.length} sources`);
 }
 
@@ -99,7 +104,8 @@ if (process.argv[1] && import.meta.url === pathToFileURL(path.resolve(process.ar
       running = false;
     };
     fs.watch(path.join(root, 'web'), { recursive: true }, (_event, file) => {
-      if (file && ![BUNDLE, BUILD_INFO].includes(file.replaceAll('\\', '/'))) void rebuild();
+      if (file && ![BUNDLE, BUILD_INFO].includes(file.replaceAll('\\', '/'))
+          && !/\.maw-bundle-[^/\\]+\.tmp$/.test(file)) void rebuild();
     });
     for (const builder of BUILDERS) fs.watch(path.join(root, builder), () => {
       console.error('Build script changed; restart pnpm run watch:launcher');

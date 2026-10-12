@@ -39,15 +39,17 @@ class _FakeRepo:
         for relative in self.sources:
             path = root / "web" / relative
             path.parent.mkdir(parents=True, exist_ok=True)
-            path.write_text(f"// {relative}\n", encoding="utf-8")
+            path.write_text(f"// {relative}\n", encoding="utf-8", newline="\n")
         self.manifest.parent.mkdir(parents=True, exist_ok=True)
-        self.manifest.write_text("\n".join(self.sources) + "\n", encoding="utf-8")
-        self.config.write_text('{\n  "modules": []\n}\n', encoding="utf-8")
+        self.manifest.write_text("\n".join(self.sources) + "\n", encoding="utf-8", newline="\n")
+        self.config.write_text('{\n  "modules": []\n}\n', encoding="utf-8", newline="\n")
         self.builders = [root / builder for builder in spec.builders]
         for builder in self.builders:
             builder.parent.mkdir(parents=True, exist_ok=True)
-            builder.write_text(f"// builder {builder.name}\n", encoding="utf-8")
+            builder.write_text(f"// builder {builder.name}\n", encoding="utf-8", newline="\n")
         (root / "node_modules" / "esbuild").mkdir(parents=True, exist_ok=True)
+        (root / "package.json").write_text('{"devDependencies": {}}\n', encoding="utf-8", newline="\n")
+        (root / "pnpm-lock.yaml").write_text("lockfileVersion: '9.0'\n", encoding="utf-8", newline="\n")
 
     def source_text(self, relative: str) -> str:
         return (self.root / "web" / relative).read_text(encoding="utf-8")
@@ -63,10 +65,15 @@ class _FakeRepo:
             "inputs": inputs,
             "configHash": _sha(self.config.read_text(encoding="utf-8")),
             "builderHash": builder_hash,
+            "dependencyHash": _sha("\n".join(
+                (self.root / name).read_text(encoding="utf-8")
+                for name in ("package.json", "pnpm-lock.yaml")
+            )),
+            "bundleHash": _sha("/* fake artifact */\n"),
         }
         self.bundle.parent.mkdir(parents=True, exist_ok=True)
-        self.bundle.write_text("/* fake artifact */\n", encoding="utf-8")
-        self.meta.write_text(json.dumps(metadata) + "\n", encoding="utf-8")
+        self.bundle.write_text("/* fake artifact */\n", encoding="utf-8", newline="\n")
+        self.meta.write_text(json.dumps(metadata) + "\n", encoding="utf-8", newline="\n")
 
 
 class BundleStatusTests(unittest.TestCase):
@@ -149,6 +156,44 @@ class BundleStatusTests(unittest.TestCase):
         editor_builder.write_text("// builder v2\n", encoding="utf-8")
 
         self.assertEqual(web_build.bundle_status(self.root, "launcher")[0], "stale")
+
+    def test_incomplete_input_ledger_cannot_hide_changed_source(self) -> None:
+        self.repo.materialize()
+        metadata = json.loads(self.repo.meta.read_text(encoding="utf-8"))
+        del metadata["inputs"][self.repo.sources[0]]
+        self.repo.meta.write_text(json.dumps(metadata), encoding="utf-8")
+        (self.root / "web" / self.repo.sources[0]).write_text("changed", encoding="utf-8")
+        self.assertEqual(web_build.bundle_status(self.root, "editor")[0], "stale")
+
+    def test_corrupt_metadata_is_stale_without_uncaught_errors(self) -> None:
+        self.repo.materialize()
+        for value in ([], None, 1, {"format": True}, {"format": 1, "inputs": {}, "sourceFiles": []}):
+            with self.subTest(value=value):
+                self.repo.meta.write_text(json.dumps(value), encoding="utf-8")
+                self.assertEqual(web_build.bundle_status(self.root, "editor")[0], "stale")
+        self.repo.meta.write_bytes(b"\xff")
+        self.assertEqual(web_build.bundle_status(self.root, "editor")[0], "stale")
+
+    def test_corrupt_or_truncated_bundle_is_stale(self) -> None:
+        self.repo.materialize()
+        for contents in (b"", b"/* truncated", b"\xff"):
+            with self.subTest(contents=contents):
+                self.repo.bundle.write_bytes(contents)
+                self.assertEqual(web_build.bundle_status(self.root, "editor")[0], "stale")
+
+    def test_dependency_declarations_invalidate_bundle(self) -> None:
+        self.repo.materialize()
+        (self.root / "pnpm-lock.yaml").write_text("lockfileVersion: '10.0'\n", encoding="utf-8")
+        self.assertEqual(web_build.bundle_status(self.root, "editor")[0], "stale")
+
+    def test_invalid_manifest_cannot_read_outside_web(self) -> None:
+        self.repo.materialize()
+        metadata = json.loads(self.repo.meta.read_text(encoding="utf-8"))
+        metadata["sourceFiles"] = ["../outside.js"]
+        metadata["inputs"] = {"../outside.js": _sha("outside")}
+        self.repo.manifest.write_text("../outside.js\n", encoding="utf-8")
+        self.repo.meta.write_text(json.dumps(metadata), encoding="utf-8")
+        self.assertEqual(web_build.bundle_status(self.root, "editor")[0], "stale")
 
 
 class EnsureBundleRebuildTests(unittest.TestCase):
@@ -240,6 +285,22 @@ class EnsureBundleRebuildTests(unittest.TestCase):
         self.repo.bundle.write_text("/* fake artifact */\n", encoding="utf-8")
 
         self.assertEqual(web_build.ensure_bundle(self.root, "editor", allow_build=False), "fresh")
+
+
+class BundlePackagingTests(unittest.TestCase):
+    def test_packaging_rejects_present_but_corrupt_bundle(self) -> None:
+        guard = (ROOT / "MAW.spec").read_text(encoding="utf-8").split("binaries = []", 1)[0]
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            repos = [_FakeRepo(root, kind) for kind in ("editor", "launcher")]
+            for repo in repos:
+                repo.materialize()
+            with mock.patch.object(web_build, "bundle_status", wraps=web_build.bundle_status) as status:
+                exec(compile(guard, "MAW.spec", "exec"), {"SPECPATH": str(root)})
+            self.assertEqual(status.call_count, 2)
+            repos[0].bundle.write_bytes(b"truncated")
+            with self.assertRaisesRegex(SystemExit, "bundle stale"):
+                exec(compile(guard, "MAW.spec", "exec"), {"SPECPATH": str(root)})
 
 
 if __name__ == "__main__":
