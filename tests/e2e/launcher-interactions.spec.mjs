@@ -1238,9 +1238,46 @@ test('launcher reports a server disconnect without manual refresh', async ({ pag
 
   await page.locator('#openMawe').click();
   await expect(page.locator('#status')).toContainText('字幕编辑服务器已断开', { timeout: 10_000 });
-  await expect(page.locator('#openMawe')).toContainText('打开编辑器');
+  await expect(page.locator('#openMawe')).toContainText('🎬 打开编辑器');
   await expect(page.locator('#stopServer')).toBeHidden();
   expect(await page.evaluate(() => window.__serverStatusCalls)).toBeGreaterThanOrEqual(2);
+});
+
+test('launcher scrolls a new hidden warning into view once', async ({ page }) => {
+  await page.emulateMedia({ reducedMotion: 'reduce' });
+  await page.goto(`file://${launcherPath}`);
+  await page.waitForFunction(() => window.MAWLauncher?.config?.postprocessProviders?.length > 0);
+  const scroll = page.locator('.shell-scroll');
+  const firstScroll = await page.evaluate(async () => {
+    const shell = document.querySelector('.shell-scroll');
+    shell.scrollTop = 0;
+    const warning = document.createElement('p');
+    warning.textContent = 'new warning test';
+    warning.style.marginTop = '1200px';
+    shell.append(warning);
+    window.MAWLauncher.revealFeedback(warning, warning.textContent);
+    await new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)));
+    const result = shell.scrollTop;
+    shell.scrollTop = 0;
+    window.MAWLauncher.revealFeedback(warning, warning.textContent);
+    await new Promise(resolve => requestAnimationFrame(resolve));
+    return { first: result, duplicate: shell.scrollTop };
+  });
+  expect(firstScroll.first).toBeGreaterThan(0);
+  expect(firstScroll.duplicate).toBe(0);
+
+  const visibleScroll = await page.evaluate(async () => {
+    const shell = document.querySelector('.shell-scroll');
+    shell.scrollTop = 0;
+    const warning = document.createElement('p');
+    warning.textContent = 'visible warning test';
+    shell.prepend(warning);
+    window.MAWLauncher.revealFeedback(warning, warning.textContent);
+    await new Promise(resolve => requestAnimationFrame(resolve));
+    return shell.scrollTop;
+  });
+  expect(visibleScroll).toBe(0);
+  await expect(scroll).toBeVisible();
 });
 
 test('restarting after a server disconnect does not reopen the editor page', async ({ page }) => {
@@ -1265,19 +1302,19 @@ test('restarting after a server disconnect does not reopen the editor page', asy
 
   // 先让服务器上线，使监控启动并处于 connected 状态。
   await page.locator('#openMawe').click();
-  await expect(page.locator('#openMawe')).toContainText('打开编辑器', { timeout: 10_000 });
+  await expect(page.locator('#openMawe')).toContainText('🎬 打开编辑器', { timeout: 10_000 });
   await page.waitForFunction(() => window.__openUrlCalls.length === 1);
 
   // 模拟断开。
   await page.evaluate(() => { window.__serverHealthy = false; });
   await expect(page.locator('#status')).toContainText('字幕编辑服务器已断开', { timeout: 10_000 });
-  await expect(page.locator('#openMawe')).toContainText('打开编辑器');
+  await expect(page.locator('#openMawe')).toContainText('🎬 打开编辑器');
 
   // 模拟重启成功：只更新提示，不再调用 open_url 打开新页面。
   await page.evaluate(() => { window.__serverHealthy = true; });
   await page.locator('#openMawe').click();
   await expect(page.locator('#status')).toContainText('回到原编辑器页面', { timeout: 10_000 });
-  await expect(page.locator('#openMawe')).toContainText('打开编辑器');
+  await expect(page.locator('#openMawe')).toContainText('🎬 打开编辑器');
   await expect(page.locator('#stopServer')).toBeVisible();
   await page.waitForFunction(() => window.__openUrlCalls.length === 1, undefined, { timeout: 5_000 });
   expect(await page.evaluate(() => window.__openUrlCalls[0])).toBe('http://127.0.0.1:8250/');

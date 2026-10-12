@@ -123,9 +123,90 @@ test('batch wrap presets skip existing wrappers and keep preview and undo consis
   await page.locator('#ass-mode-toggle').check();
   await page.locator('#project-settings-close').click();
   await page.evaluate(() => MaweTextProcess.openTextProcessModal());
-  await page.locator('#text-process-wrap-presets button').filter({ hasText: '强调文本' }).click();
+  await page.locator('#text-process-wrap-presets-ass button').filter({ hasText: '强调文本' }).click();
   expect(await page.evaluate(() => MaweTextProcess.buildTextProcessPreview(MaweTextProcess.textProcessTargets(),
     MaweTextProcess.getTextProcessOptions())[0].after)).toBe('**甲乙**');
+});
+
+test('text processing uses the custom wrapping row and allows one-sided characters', async ({ page }) => {
+  await seed(page);
+  await page.locator('#batch-operations-btn').click();
+  await page.locator('#text-process-btn').click();
+  await expect(page.locator('.text-process-wrap-preset-row-ass')).toBeHidden();
+  await expect(page.locator('#text-process-wrap-presets-common')).toContainText('♪音符♪');
+  await expect(page.locator('.text-process-wrap-preset-row-ass')).toBeHidden();
+  await expect(page.locator('#text-process-wrap-presets-common')).toContainText('♪音符♪');
+  const custom = page.locator('#text-process-wrap-presets-common').getByRole('button', { name: '自定义' });
+  await custom.click();
+  await expect(page.locator('#text-process-custom-wrap-fields')).toBeVisible();
+  await page.locator('#text-process-prefix-input').fill('【');
+  await expect(page.locator('#text-process-preview')).toContainText('处理后：【甲乙丙丁');
+  await page.locator('#text-process-confirm').click();
+  await expect(page.locator('.cue[data-idx="0"] .text')).toHaveText('【甲乙丙丁');
+});
+
+test('text process preview expands all rows and syncs the action label', async ({ page }) => {
+  await page.evaluate(() => {
+    MaweBoot.DATA.segments = [
+      { id: 'main-a', start: 1000, end: 2000, text: ' 甲 ', items: null },
+      { id: 'main-b', start: 2000, end: 3000, text: ' 乙 ', items: null },
+    ];
+    MaweCuePanel.renderAll({ waveform: 'full' });
+  });
+  const follow = page.locator('#cue-list-follow');
+  await expect(follow).toHaveText('跟随中');
+  await page.evaluate(() => MaweCueListAnchor.interruptCueListFollowing());
+  await expect(follow).toHaveText('恢复跟随');
+  await follow.click();
+  await expect(follow).toHaveText('跟随中');
+
+  await expect(page.locator('#filter-over')).toHaveText('🧐');
+  await expect(page.locator('#filter-over')).toHaveAttribute('aria-label', '仅看超长');
+  expect(await page.locator('#timed-text-edit-btn').evaluate((button) => button.previousElementSibling?.classList.contains('sep')))
+    .toBe(false);
+
+  await page.locator('#batch-operations-btn').click();
+  await page.locator('#text-process-btn').click();
+  await expect(page.locator('#text-process-scope-info')).toHaveText('当前范围：全部 2 条字幕');
+  await page.locator('#text-process-trim').check();
+  const preview = page.locator('#text-process-preview');
+  const rows = preview.locator('details.replace-preview-row');
+  await expect(rows).toHaveCount(2);
+  const expand = preview.locator('.text-process-preview-toggle');
+  expect(await preview.locator('.text-process-preview-summary').evaluate((summary) => {
+    return Number.parseFloat(getComputedStyle(summary).columnGap);
+  })).toBeGreaterThanOrEqual(8);
+  await expect(expand).toHaveText('全部展开');
+  await expand.click();
+  await expect(preview.locator('details[open]')).toHaveCount(2);
+  await expect(expand).toHaveText('全部收缩');
+  await rows.first().locator('summary').click();
+  await expect(expand).toHaveText('全部展开');
+  await expand.click();
+  await expect(preview.locator('details[open]')).toHaveCount(2);
+});
+
+test('batch replacement uses shared capture replacement and current-scope preview', async ({ page }) => {
+  await seed(page, { text: '猫-狗\n猫-鸟', timed: false });
+  await page.locator('#batch-operations-btn').click();
+  await page.locator('#replace-btn').click();
+  await expect(page.locator('#replace-scope-info')).toHaveText('当前范围：全部 1 条字幕');
+  await page.locator('#find-input').fill('(猫)-(狗|鸟)');
+  await page.locator('#use-regex').check();
+  await page.locator('#replace-input').fill('$02/$01');
+  await expect(page.locator('#replace-preview')).toContainText('鸟/猫');
+  await page.locator('#replace-confirm').click();
+  await expect.poll(() => page.evaluate(() => MaweBoot.DATA.segments[0].text)).toBe('狗/猫\n鸟/猫');
+});
+
+test('text processing converts clear Chinese numbers with surrounding spaces', async ({ page }) => {
+  await seed(page, { text: '一百八十六，等三两分钟，八九不离十', timed: false });
+  await page.locator('#batch-operations-btn').click();
+  await page.locator('#text-process-btn').click();
+  await page.locator('#text-process-convert-numbers').check();
+  await expect(page.locator('#text-process-preview')).toContainText('处理后： 186 ，等三两分钟，八九不离十');
+  await page.locator('#text-process-confirm').click();
+  await expect(page.locator('.cue[data-idx="0"] .text')).toHaveText(' 186 ，等三两分钟，八九不离十');
 });
 
 test('portable file uses the same fade rules and SRT export settings', async ({ page }) => {

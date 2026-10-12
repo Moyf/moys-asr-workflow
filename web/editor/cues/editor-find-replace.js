@@ -53,24 +53,10 @@
 
 
 
-  function getReplaceTargets() {
-    if (replaceScope && replaceScope.length) {
-      return replaceScope.map(i => MaweBoot.DATA.segments[i]).filter(Boolean);
-    }
-    return MaweBoot.DATA.segments;
-  }
-
-
-
-  function buildReplaceRegex() {
-    const find = findInput.value;
-    if (!find) return null;
-    const flags = (caseSensitiveCb.checked ? '' : 'i') + 'g';
-    if (useRegexCb.checked) {
-      try { return new RegExp(find, flags); } catch (e) { return { error: e.message }; }
-    } else {
-      return new RegExp(find.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), flags);
-    }
+  function getReplaceTargetIndexes() {
+    return replaceScope && replaceScope.length
+      ? [...replaceScope]
+      : MaweBoot.DATA.segments.map((_, index) => index);
   }
 
 
@@ -83,11 +69,9 @@
       replacePreview.style.color = '#888';
       return;
     }
-    const targetIndexes = replaceScope && replaceScope.length
-      ? replaceScope : MaweBoot.DATA.segments.map((_, index) => index);
     const result = window.AsrEditorUtils.buildReplacementPreview(
       MaweBoot.DATA.segments,
-      targetIndexes,
+      getReplaceTargetIndexes(),
       find,
       replaceInput.value,
       { caseSensitive: caseSensitiveCb.checked, useRegex: useRegexCb.checked },
@@ -126,11 +110,11 @@
   function refreshScopeInfo() {
     if (replaceScope && replaceScope.length) {
       replaceModalTitle.textContent = `批量替换（仅 ${replaceScope.length} 条选中）`;
-      replaceScopeInfo.textContent = `范围限定为已选中的 ${replaceScope.length} 条字幕`;
+      replaceScopeInfo.textContent = `当前范围：仅选中的 ${replaceScope.length} 条字幕`;
       replaceScopeInfo.style.color = '#d4a04a';
     } else {
       replaceModalTitle.textContent = '批量替换';
-      replaceScopeInfo.textContent = `范围：全部 ${MaweBoot.DATA.segments.length} 条字幕`;
+      replaceScopeInfo.textContent = `当前范围：全部 ${MaweBoot.DATA.segments.length} 条字幕`;
       replaceScopeInfo.style.color = '#888';
     }
   }
@@ -177,8 +161,7 @@
     get replaceSelectionSnapshot() { return replaceSelectionSnapshot; },
     set replaceSelectionSnapshot(v) { replaceSelectionSnapshot = v; },
     normalizeBatchSelection,
-    getReplaceTargets,
-    buildReplaceRegex,
+    getReplaceTargetIndexes,
     updatePreview,
     refreshScopeInfo,
     refreshReplaceSelectionControl,
