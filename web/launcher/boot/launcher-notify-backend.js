@@ -93,7 +93,6 @@ function handleBackendEvent(event) {
   if (event.type === "batch_done" || event.type === "batchDone") notifyBatchComplete(event);
   if (event.type === "error") notifySingleFailure(event);
   if (["batchStarted", "batchItem", "batchItemLog", "batchDone", "batch_started", "batch_item", "batch_item_log", "batch_done"].includes(event.type)) window.MAWLauncher?.onBatchEvent?.(event);
-  if (event.type === "emojiFontReady" && event.path) injectEmojiFont(event.path);
   if (event.type === "log") appendLog(event.message, { quietLatest: Boolean(state.localRuntimeInstalling || state.ocrRuntimeInstalling || state.alignmentPreparing) });
   if (event.type === "postprocess_status") window.MAWLauncher?.onPostprocessStatus?.(event);
   if (event.type === "postprocess_stream") window.MAWLauncher?.onPostprocessStream?.(event);
