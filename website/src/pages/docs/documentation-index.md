@@ -172,6 +172,11 @@ source: "docs/INDEX.md"
 
 [同步与构建](https://github.com/Moyf/moys-asr-workflow/blob/main/website/docs/CONTENT_SYNC.md)
 
+<a name="engineering-releases"></a>
+### 版本更新文档与发布管线
+
+[生成、校验与发布](https://github.com/Moyf/moys-asr-workflow/blob/main/docs/releases/README.md)
+
 <a name="logs"></a>
 ## 日志与历史
 
