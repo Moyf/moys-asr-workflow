@@ -1267,8 +1267,6 @@ class LauncherApi:
         self, payload: Mapping[str, object], operation: _PostprocessOperation
     ) -> dict[str, object]:
         script_path = _optional_path(payload.get("scriptPath"))
-        if script_path is None:
-            return _error_result("postprocessScriptPath", "script_invalid", "A script file is required.")
         project_path = _optional_path(payload.get("projectPath"))
         srt_path = _optional_path(payload.get("srtPath"))
         preset = preset_by_id(str(payload.get("providerId") or "deepseek"))
@@ -1328,6 +1326,7 @@ class LauncherApi:
                     media_path=_optional_path(payload.get("mediaPath")),
                     clean_markdown_symbols=payload.get("cleanMarkdownSymbols", True) is not False,
                     notes=str(payload.get("notes") or "").strip(),
+                    generate_comparison=bool(payload.get("generateComparison")),
                 ),
                 complete=complete,
                 on_status=emit_status,
@@ -1344,17 +1343,17 @@ class LauncherApi:
                 project_path=project_path,
                 srt_path=srt_path,
             )
-            return _error_result("postprocessScriptPath", code, str(error))
+            return _error_result("postprocessCleanupScriptPath", code, str(error))
         except ProjectValidationFailed as error:
-            return _error_result("postprocessScriptPath", "subtitle_invalid", str(error))
+            return _error_result("postprocessCleanupScriptPath", "subtitle_invalid", str(error))
         except LlmClientError as error:
             if error.category == "cancelled" or operation.cancel_event.is_set():
                 return {"ok": False, "code": "postprocess_cancelled", "detail": "AI cleanup was cancelled."}
-            return _llm_error_result("postprocessScriptPath", "toolbox_failed", error)
+            return _llm_error_result("postprocessCleanupScriptPath", "postprocess_failed", error)
         except AiCleanupError as error:
-            return _llm_error_result("postprocessScriptPath", "toolbox_failed", error)
+            return _llm_error_result("postprocessCleanupScriptPath", "postprocess_failed", error)
         except (OSError, UnicodeError, ValueError) as error:
-            return {"ok": False, "field": "postprocessScriptPath", "code": file_error_code(error) or "toolbox_failed", "detail": str(error), "error": str(error)}
+            return {"ok": False, "field": "postprocessCleanupScriptPath", "code": file_error_code(error) or "postprocess_failed", "detail": str(error), "error": str(error)}
         return _subtitle_artifact_result(result)
 
     def run_ocr_dedup(self, payload: Mapping[str, object]) -> dict[str, object]:
@@ -1410,6 +1409,11 @@ class LauncherApi:
     ) -> dict[str, object]:
         preset = preset_by_id(str(payload.get("providerId") or "deepseek"))
         operation = str(payload.get("operation") or "proofread")
+        from maw.postprocess_resegment import complete_boundaries, normalize_max_chars
+        try:
+            max_chars = normalize_max_chars(payload.get("maxChars")) if operation == "resegment" else 0
+        except ValueError as error:
+            return _error_result("postprocessResegmentMaxChars", "invalid_max_chars", str(error))
         custom_prompt = str(payload.get("customPrompt") or "").strip()
         if operation == "custom" and not custom_prompt:
             return _error_result("postprocessPrompt", "custom_prompt_required")
@@ -1447,7 +1451,8 @@ class LauncherApi:
                 raise LlmClientError("操作已取消。", category="cancelled", operation="completion")
             batch_number += 1
             current_batch = batch_number
-            return complete_subtitle_groups(
+            completion = complete_boundaries if operation == "resegment" else complete_subtitle_groups
+            return completion(
                 settings,
                 prompt,
                 cues,
@@ -1470,6 +1475,8 @@ class LauncherApi:
                     merge_bilingual=bool(payload.get("mergeBilingual")),
                     embed_translations=bool(payload.get("embedTranslations")),
                     bilingual_line_order=str(payload.get("bilingualLineOrder") or ""),
+                    generate_comparison=bool(payload.get("generateComparison")),
+                    max_chars=max_chars,
                 ),
                 complete=complete,
                 on_status=emit_status,
@@ -4280,7 +4287,7 @@ def _batch_postprocess_plan(plan: Mapping[str, object]) -> dict[str, object]:
         **dict(plan),
         "steps": [
             {**dict(step), "enabled": False}
-            if isinstance(step, Mapping) and str(step.get("id") or "") == "match"
+            if isinstance(step, Mapping) and str(step.get("id") or "") in {"match", "cleanup"}
             else step
             for step in steps
         ],
@@ -4336,12 +4343,12 @@ def _burn_crf_override(raw: object) -> int | None:
 def _script_match_input_error_code(
     error: PostprocessFileError,
     *,
-    script_path: Path,
+    script_path: Path | None,
     project_path: Path | None,
     srt_path: Path | None,
 ) -> str:
     error_path = error.path.expanduser().resolve(strict=False)
-    if error_path == script_path.expanduser().resolve(strict=False):
+    if script_path is not None and error_path == script_path.expanduser().resolve(strict=False):
         return "script_invalid"
     input_paths = tuple(path.expanduser().resolve(strict=False) for path in (project_path, srt_path) if path is not None)
     if error_path in input_paths:
@@ -4537,6 +4544,7 @@ def _subtitle_artifact_result(result: object) -> dict[str, object]:
         "projectPath": str(getattr(result, "project_path", None) or ""),
         "srtPath": str(getattr(result, "srt_path", None) or ""),
         "translatedSrtPath": str(getattr(result, "translated_srt_path", None) or ""),
+        "comparisonPath": str(getattr(result, "comparison_path", None) or ""),
         "warnings": list(getattr(result, "warnings", ())),
         "stats": dict(stats) if isinstance(stats, Mapping) else None,
     }

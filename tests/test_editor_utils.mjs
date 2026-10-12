@@ -7005,3 +7005,22 @@ test('wrap preset tooltips translate their literal characters', () => {
       `Insert ${preset.left} and ${preset.right} at the subtitle ends`);
   }
 });
+
+
+test('AI cleanup export projection respects active ownership, restoration and punctuation', () => {
+  const source = [{ id: 's1', start: 0, end: 600, text: '介绍，方法。', items: [{ text: '介绍', start: 0, end: 200 }, { text: '方法', start: 200, end: 600 }] }];
+  const original = JSON.stringify(source);
+  const range = { start: 0, end: 200, cleanup_scope: { segment_id: 's1', item_start: 0, item_end: 1, text: '介绍' } };
+  const gapRemove = { gaps: [{ ...range, removed: true }], provenance: { sources: { ai_cleanup: [range] } } };
+  const cleaned = helpers.buildAiCleanupSegments(source, gapRemove);
+  assert.equal(cleaned[0].text, '，方法。');
+  assert.equal(cleaned[0].items.length, 1);
+  assert.equal(JSON.stringify(source), original);
+  gapRemove.gaps[0].removed = false;
+  assert.equal(helpers.buildAiCleanupSegments(source, gapRemove)[0].text, '介绍，方法。');
+  gapRemove.gaps[0].removed = true;
+  gapRemove.provenance.sources = { audio_gate: [range] };
+  assert.equal(helpers.buildAiCleanupSegments(source, gapRemove)[0].text, '介绍，方法。');
+  gapRemove.provenance.sources = { ai_cleanup: [{ start: 0, end: 200 }] };
+  assert.equal(helpers.buildAiCleanupSegments(source, gapRemove)[0].text, '介绍，方法。');
+});

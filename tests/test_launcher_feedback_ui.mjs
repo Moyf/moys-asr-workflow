@@ -41,6 +41,20 @@ function launcherFunction(name) {
   return source.slice(start, start + 1 + next);
 }
 
+test("resegmentation validates optional character limits before starting", () => {
+  const field = { value: "" };
+  const context = vm.createContext({ $: () => field });
+  vm.runInContext(launcherFunction("resegmentMaxCharsValid"), context);
+  for (const value of ["", "1", "18", "500"]) {
+    field.value = value;
+    assert.equal(context.resegmentMaxCharsValid(), true, value);
+  }
+  for (const value of ["0", "-1", "501", "1.5", "1e2", "invalid"]) {
+    field.value = value;
+    assert.equal(context.resegmentMaxCharsValid(), false, value);
+  }
+});
+
 function aiLifecycleHarness() {
   const elements = new Map();
   const fields = {
@@ -81,7 +95,7 @@ function aiLifecycleHarness() {
     window: { crypto: { randomUUID: () => `operation-${++sequence}` } },
     document: { querySelector: () => null },
     t: (key) => key, autoLlmReady: () => true, setFieldError() {},
-    aiCleanupProviderId: () => "deepseek",
+    stepProviderId: () => "deepseek",
     resolveInputPaths: () => ({ projectPath: "source.mosp" }),
     provider: () => ({ id: "deepseek" }), taskPromptText: () => "task",
     postprocessFieldId: () => "", postprocessErrorText: (result) => result.code || "failed",
@@ -247,9 +261,20 @@ test("provider key status prefers a loaded key, then local no-key, then missing"
   assert.match(strings, /toolbox_key_not_required:\s*"Local service; no API key needed"/);
 });
 
+test("busy-state controls exist in the Launcher page", () => {
+  const body = launcherFunction("setBusy");
+  const lists = [...body.matchAll(/\[([^\]]+)\]\.forEach\(\(id\) =>/g)];
+  assert.ok(lists.length > 0);
+  for (const list of lists) {
+    for (const [, id] of list[1].matchAll(/"([^"]+)"/g)) {
+      assert.ok(html.includes(`id="${id}"`), `missing busy-state control: ${id}`);
+    }
+  }
+});
+
 function providerOwnershipHarness({ remembered = {} } = {}) {
   const elements = new Map();
-  const selects = new Set(["postprocessProvider", "llmProvider", "postprocessAiCleanupProvider"]);
+  const selects = new Set(["postprocessProvider", "llmProvider"]);
   function element(id) {
     if (!elements.has(id)) {
       let value = "";
@@ -275,14 +300,16 @@ function providerOwnershipHarness({ remembered = {} } = {}) {
   ];
   const requests = [];
   const noop = () => {};
+  const storage = new Map([["maw.launcher.llm.provider_by_task", JSON.stringify(remembered)]]);
   const context = vm.createContext({
-    $: element, window: { MAWLauncher: { config: { postprocessProviders: providers } } },
+    $: element, window: { MAWLauncher: { config: { postprocessProviders: providers } }, localStorage: { getItem: key => storage.get(key), setItem: (key, value) => storage.set(key, value) } },
     Option: function Option(text, value) { this.textContent = text; this.value = value; },
     t: key => key, postprocessApiKeyRequest: 0, llmProviderByTask: remembered,
-    LLM_PROVIDER_TASK_GROUPS: { proofread: "proofread" },
+    LLM_PROVIDER_TASK_GROUPS: { proofread: "proofread", ai_cleanup: "cleanup" },
+    LLM_PROVIDER_BY_TASK_KEY: "maw.launcher.llm.provider_by_task",
     bridge(method, payload) { return new Promise(resolve => requests.push({ method, payload, resolve })); },
     renderModelChoices: noop, clearSettingsErrors: noop, setSettingsSaveStatus: noop,
-    AUTO_STEP_ORDER: ["match"], AUTO_STEP_CHECKBOXES: { match: "autoStepMatch" },
+    AUTO_STEP_ORDER: ["match", "cleanup"], AUTO_STEP_CHECKBOXES: { match: "autoStepMatch", cleanup: "autoStepCleanup" },
     llmPrompts: {}, activeLlmOperation: "", ocrVideoManual: false,
     defaultAutoPlan: () => ({ enabled: false, steps: [] }),
     renderAiCleanupMode: noop, validateMatchPunctuation: noop, refreshScriptPreview: noop,
@@ -291,18 +318,18 @@ function providerOwnershipHarness({ remembered = {} } = {}) {
     renderOcrRegion: noop, setAutoStepsExpanded: noop, renderAutoPostprocessState: noop,
     updateBackfillLabels: noop, autoOcrVideoPath: () => "", ocrRegionPayload: () => ({}),
     punctuationLines: () => [], parseReplacements: () => [], replacementRuleText: () => "", getLlmPrompt: () => "",
-    stepProviderId: () => element("postprocessProvider").value,
+    saveLlmProviderByTask: noop,
   });
   const functions = [
     "provider", "isCustomSlot", "customSlotLabelKey", "customSlotVisibleInToolbox",
     "fillProviderSelects", "syncProviderOptionLabels", "providerLabel", "providerKeyStatusText",
-    "renderProviderKeyStatus", "renderAiCleanupProviderStatus", "loadPostprocessApiKey",
+    "renderProviderKeyStatus", "loadPostprocessApiKey",
     "updateCustomDisplayName", "renderProvider", "knownProviderId", "llmTaskGroup",
-    "providerIdForTask", "aiCleanupProviderId", "applyAutoPostprocessPlan", "autoPlanFromControls",
+    "loadLlmProviderByTask", "saveLlmProviderByTask", "providerIdForTask", "rememberProviderForTask", "stepProviderId", "applyAutoPostprocessPlan", "initializeAutoPostprocess", "autoPlanFromControls",
   ];
   vm.runInContext(functions.map(launcherFunction).join("\n"), context);
   context.fillProviderSelects("deepseek");
-  return { context, element, providers, requests };
+  return { context, element, providers, requests, storage };
 }
 
 test("editing an unconfigured settings slot preserves the toolbox provider and loads its own key", async () => {
@@ -334,10 +361,10 @@ test("late settings key responses cannot replace another settings slot", async (
 
 test("a filtered preferred provider keeps valid toolbox defaults and remains editable in settings", () => {
   const ui = providerOwnershipHarness();
-  for (const id of ["postprocessProvider", "llmProvider", "postprocessAiCleanupProvider"]) ui.element(id).innerHTML = "";
+  for (const id of ["postprocessProvider", "llmProvider"]) ui.element(id).innerHTML = "";
   ui.context.fillProviderSelects("custom2");
   assert.equal(ui.element("postprocessProvider").value, "deepseek");
-  assert.equal(ui.element("postprocessAiCleanupProvider").value, "deepseek");
+  assert.equal(ui.context.stepProviderId("cleanup"), "deepseek");
   assert.equal(ui.element("llmProvider").value, "custom2");
   ui.context.renderProvider("qwen", { syncToolbox: false });
   assert.equal(ui.element("postprocessProvider").value, "deepseek");
@@ -357,19 +384,54 @@ test("renaming a hidden settings slot changes only that slot", () => {
 test("old automatic cleanup plans restore their provider without new task memory", () => {
   const ui = providerOwnershipHarness();
   ui.context.applyAutoPostprocessPlan({ enabled: true, steps: [{ id: "match", enabled: true, aiCleanup: true, providerId: "qwen" }] });
-  assert.equal(ui.element("postprocessAiCleanupProvider").value, "qwen");
-  assert.equal(ui.context.aiCleanupProviderId(), "qwen");
-  assert.equal(ui.context.autoPlanFromControls().steps.find(step => step.id === "match").providerId, "qwen");
+  assert.equal(ui.element("autoStepCleanup").checked, true);
+  assert.equal(ui.element("autoStepMatch").checked, false);
+  assert.equal(ui.context.stepProviderId("cleanup"), "qwen");
+  assert.equal(ui.context.autoPlanFromControls().steps.find(step => step.id === "cleanup").providerId, "qwen");
   assert.equal(ui.element("postprocessProvider").value, "deepseek");
 });
 
 test("cleanup restoration keeps current task memory and falls back to a visible provider", () => {
-  for (const remembered of [{ ai_cleanup: "deepseek" }, { ai_cleanup: "custom2" }]) {
+  for (const remembered of [{ cleanup: "deepseek" }, { cleanup: "custom2" }]) {
     const ui = providerOwnershipHarness({ remembered });
     ui.context.applyAutoPostprocessPlan({ steps: [{ id: "match", aiCleanup: true, providerId: "qwen" }] });
-    assert.equal(ui.element("postprocessAiCleanupProvider").value, "deepseek");
-    assert.equal(ui.context.aiCleanupProviderId(), "deepseek");
+    assert.equal(ui.context.stepProviderId("cleanup"), "deepseek");
+    assert.equal(ui.context.stepProviderId("cleanup"), "deepseek");
   }
+});
+
+test("legacy cleanup provider memory migrates before an older plan is applied", () => {
+  for (const [remembered, expected] of [
+    [{ ai_cleanup: "qwen" }, "qwen"],
+    [{ ai_cleanup: "qwen", cleanup: "deepseek" }, "deepseek"],
+    [{ ai_cleanup: "qwen", cleanup: "deleted-provider" }, "qwen"],
+  ]) {
+    const ui = providerOwnershipHarness({ remembered });
+    ui.element("postprocessOperation").value = "ai_cleanup";
+    ui.context.loadLlmProviderByTask();
+    ui.context.window.MAWLauncher.config.postprocessAutoPlan = { enabled: true, steps: [{ id: "match", enabled: true, aiCleanup: true, providerId: "custom" }] };
+    ui.context.initializeAutoPostprocess();
+    assert.equal(ui.context.stepProviderId("cleanup"), expected);
+    assert.equal(ui.element("postprocessProvider").value, expected);
+    const stored = JSON.parse(ui.storage.get("maw.launcher.llm.provider_by_task"));
+    assert.equal(stored.cleanup, expected);
+    assert.equal(Object.hasOwn(stored, "ai_cleanup"), false);
+  }
+});
+
+test("shared comparison option restores from every AI step and survives saving", () => {
+  for (const stepId of ["cleanup", "proofread", "resegment", "translate"]) {
+    const ui = providerOwnershipHarness();
+    ui.context.applyAutoPostprocessPlan({ steps: [{ id: stepId, enabled: true, generateComparison: true }] });
+    assert.equal(ui.element("postprocessGenerateComparison").checked, true, stepId);
+    const plan = ui.context.autoPlanFromControls();
+    for (const aiStep of plan.steps.filter(step => ["cleanup", "proofread", "resegment", "translate"].includes(step.id))) {
+      assert.equal(aiStep.generateComparison, true, `${stepId} -> ${aiStep.id}`);
+    }
+  }
+  const ui = providerOwnershipHarness();
+  ui.context.applyAutoPostprocessPlan({ steps: [{ id: "proofread", generateComparison: false }] });
+  assert.equal(ui.element("postprocessGenerateComparison").checked, false);
 });
 
 test("green-screen generation does not require or disable for missing media", () => {

@@ -783,7 +783,7 @@ class PostprocessTests(unittest.TestCase):
         self.assertIn("atom ID", received[0][0])
         self.assertEqual(segment_items(received[0][1][0])[0]["id"], "c0001a0001")
 
-    def test_llm_resegment_falls_back_safely_when_provider_returns_cue_groups(self) -> None:
+    def test_llm_resegment_maps_legacy_cue_groups_to_existing_word_boundaries(self) -> None:
         project = sample_project(self.media)
         project_segments(project)[1]["items"] = [
             {"start": 1200, "end": 1600, "text": "下"},
@@ -807,8 +807,8 @@ class PostprocessTests(unittest.TestCase):
         if result.project_path is None:
             self.fail("JSON output mode must create a project")
         output = project_segments(read_project(result.project_path))
-        self.assertTrue(all("items" not in segment for segment in output))
-        self.assertIn("未返回字词边界", "".join(result.warnings))
+        self.assertTrue(all("items" in segment for segment in output))
+        self.assertEqual([segment["text"] for segment in output], ["酒很好喝", "下一句"])
 
     def test_llm_text_edit_preserves_unknown_metadata_and_untouched_word_timings(self) -> None:
         project = sample_project(self.media)
@@ -924,7 +924,7 @@ class PostprocessTests(unittest.TestCase):
             self.fail("JSON output mode must create a project file")
         output = project_segments(read_project(result.project_path))
         ids = [str(segment["id"]) for segment in output]
-        self.assertEqual(ids, ["source-first-part-001", "source-first-part-002", "source-second-part-001"])
+        self.assertEqual(ids, ["source-first-part-001", "source-first-part-002", "source-second"])
         self.assertEqual(len(ids), len(set(ids)))
 
     def test_llm_regroup_removes_all_positional_visual_refs_and_word_timings(self) -> None:

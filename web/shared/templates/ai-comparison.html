@@ -1,0 +1,42 @@
+<!doctype html>
+<html lang="zh-CN"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>AI 处理前后对比</title>
+<style>
+:root{font-family:system-ui,"Microsoft YaHei",sans-serif;color:#24312e;background:#f3f5f1}body{max-width:1200px;margin:36px auto;padding:0 24px}h1{font-size:30px;margin-bottom:8px}.hint{color:#62706b;line-height:1.7}.controls{display:flex;gap:16px;align-items:center;flex-wrap:wrap;margin:24px 0}select,input{font:inherit;padding:8px;border:1px solid #c3cec5;border-radius:6px}input[type=search]{flex:1;min-width:200px}.columns{display:grid;grid-template-columns:1fr 1fr;gap:20px}.card{background:#fff;padding:22px;border:1px solid #d9e0d9;border-radius:12px;margin:16px 0}.text{white-space:pre-wrap;line-height:1.95;overflow-wrap:anywhere}h2{font-size:18px;margin:0 0 14px}.meta{color:#65736b;font-size:13px;margin-bottom:12px}.reason{background:#fff1d7;padding:10px 14px;border-radius:6px;margin-top:16px;white-space:pre-wrap}del{color:#af3535;background:#ffe9e6;text-decoration-thickness:2px}.removed{color:#8d9690}.badge{padding:3px 10px;border-radius:20px;background:#e5eee4;margin-left:10px}summary{cursor:pointer}#summary{font-weight:600}@media(max-width:680px){body{padding:0 14px;margin:20px auto}.columns{grid-template-columns:1fr;gap:8px}.card{padding:16px}}@media print{.controls{display:none}.card{break-inside:avoid}}
+</style></head><body>
+<h1>AI 处理前后对比</h1><p class="hint">划删显示已生效的删除；待核查内容仍保留。此页是生成时的结果快照，工程后续修改不会同步到此页。</p>
+<p id="summary"></p>
+<details class="card"><summary>连续文稿 · 通读检查</summary><div class="columns" style="margin-top:16px"><section><h2>处理前</h2><div id="before" class="text"></div></section><section><h2>处理后</h2><div id="after" class="text"></div></section></div></details>
+<div class="controls"><label for="filter">显示</label><select id="filter"><option value="all">全部</option><option value="changed">有修改</option><option value="review">待核查</option></select><input id="search" type="search" placeholder="搜索原文、结果或原因" aria-label="搜索"></div>
+<main id="rows"></main><p id="empty" class="hint" hidden>没有符合条件的记录。</p>
+<script id="comparison-data" type="application/json">{{DATA}}</script>
+<script>
+const data=JSON.parse(document.getElementById('comparison-data').textContent);
+const byId=id=>document.getElementById(id);
+const operations={ai_cleanup:'AI 口播整理',proofread:'校对文本',resegment:'重新断句',translate_en:'翻译成英文',translate_zh:'翻译成中文',custom:'自定义处理'};
+byId('summary').textContent=`${operations[data.operation]||data.operation} · ${data.rows.length} 条原始字幕 · ${data.rows.filter(r=>r.before!==r.after).length} 条有修改 · ${data.rows.filter(r=>r.review).length} 条待核查`;
+byId('before').textContent=data.before;
+byId('after').textContent=data.after;
+const labels={discard:'整段删除',edit:'局部删除',review:'待核查',keep:'保留',changed:'已修改'};
+function render(){
+ const filter=byId('filter').value,query=byId('search').value.toLowerCase();
+ const visible=data.rows.filter(r=>(filter!=='changed'||r.before!==r.after)&&(filter!=='review'||r.review)&&`${r.before}\n${r.after}\n${r.reason}`.toLowerCase().includes(query));
+ byId('rows').replaceChildren();byId('empty').hidden=visible.length>0;
+ for(const row of visible){
+  const card=document.createElement('article');card.className='card';
+  const meta=document.createElement('div');meta.className='meta';meta.textContent=`${row.id} · ${(row.start/1000).toFixed(2)}–${(row.end/1000).toFixed(2)} s`;
+  const badge=document.createElement('span');badge.className='badge';badge.textContent=labels[row.decision]||labels.keep;meta.append(badge);card.append(meta);
+  const cols=document.createElement('div');cols.className='columns';
+  const before=document.createElement('section'),after=document.createElement('section');
+  const left=document.createElement('h2');left.textContent='处理前';before.append(left);
+  const right=document.createElement('h2');right.textContent='处理后';after.append(right);
+  const annotated=document.createElement('div');annotated.className='text';
+  for(const part of row.parts){const span=document.createElement(part.deleted?'del':'span');span.textContent=part.text;annotated.append(span);}before.append(annotated);
+  const cleaned=document.createElement('div');cleaned.className='text';cleaned.textContent=row.after||'（整段删除）';if(!row.after)cleaned.classList.add('removed');after.append(cleaned);
+  cols.append(before,after);card.append(cols);
+  if(row.reason){const reason=document.createElement('div');reason.className='reason';reason.textContent=(row.review?'待核查：':'处理原因：')+row.reason;card.append(reason);}
+  byId('rows').append(card);
+ }
+}
+byId('filter').addEventListener('change',render);byId('search').addEventListener('input',render);render();
+</script></body></html>
