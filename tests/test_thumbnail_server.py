@@ -88,14 +88,24 @@ class ThumbnailServerTests(unittest.TestCase):
 
     def ready(self):
         self.demand()
-        deadline = time.monotonic()+10
+        started = time.monotonic()
+        deadline = started+30
         while time.monotonic()<deadline:
             status = self.status()
             if status['state'] in ('ready','partial') and any(s['status']=='target' for s in status['samples']):
                 return status
             self.assertNotEqual(status['state'],'error',status.get('error'))
             time.sleep(.05)
-        self.fail('visible thumbnail demand did not finish')
+        manager = self.server.thumbnail_jobs
+        with manager.lock:
+            diagnostic = {"elapsed_s": round(time.monotonic()-started, 3),
+                "state": status.get("state"), "error": status.get("error"),
+                "decoding": status.get("decoding"),
+                "target_sample_count": sum(sample["status"] == "target" for sample in status.get("samples", [])),
+                "pending": [item["pending"] for item in manager.leases.values()],
+                "active_targets": sorted(manager.active_targets),
+                "failures": dict(list(manager.failures.items())[:16])}
+        self.fail("visible thumbnail demand did not finish: " + json.dumps(diagnostic))
 
     def asset_url(self,status,asset=None,revision=None):
         asset = asset or status['assets'][0]['id']

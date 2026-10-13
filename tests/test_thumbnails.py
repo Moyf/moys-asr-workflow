@@ -50,36 +50,48 @@ class ThumbnailTests(unittest.TestCase):
                 self.assertIsNone(t.probe_video(path))
 
     def test_child_cancel_and_timeout_reap_process(self):
-        cancel = threading.Event()
-        cancelled_at = []
-        processes = []
-        real_spawn = t.subprocess.Popen
-        def request_cancel():
-            cancelled_at.append(time.monotonic())
-            cancel.set()
-        timer = threading.Timer(0.15, request_cancel)
-        def spawn(*args, **kwargs):
-            process = real_spawn(*args, **kwargs)
-            processes.append(process)
-            if len(processes) == 1:
-                # Request cancellation only after a real child was created.
-                timer.start()
-            return process
-        with mock.patch.object(t.subprocess, "Popen", side_effect=spawn):
-            try:
-                with self.assertRaises(t.ThumbnailCancelled):
-                    t._run([sys.executable, "-c", "import time; time.sleep(30)"], timeout_s=2, cancel=cancel)
-                finished = time.monotonic()
-            finally:
-                timer.cancel()
-                if timer.ident is not None:
-                    timer.join()
-            # Keep the <1s cancellation bound, excluding process startup and timer delay.
-            self.assertLess(finished-cancelled_at[0], 1)
-            self.assertIsNotNone(processes[0].poll())
-            with self.assertRaises(t.ThumbnailError):
-                t._run([sys.executable, "-c", "import time; time.sleep(30)"], timeout_s=0.1)
-            self.assertIsNotNone(processes[1].poll())
+        with tempfile.TemporaryDirectory() as temp:
+            ready = Path(temp) / "ready"
+            cancel = threading.Event()
+            cancelled_at = []
+            processes = []
+            readiness_errors = []
+            real_spawn = t.subprocess.Popen
+            def request_cancel():
+                deadline = time.monotonic() + 8
+                while not ready.exists():
+                    if time.monotonic() >= deadline or processes[0].poll() is not None:
+                        readiness_errors.append("child did not reach its running state")
+                        break
+                    time.sleep(.01)
+                cancelled_at.append(time.monotonic())
+                cancel.set()
+            watcher = threading.Thread(target=request_cancel)
+            def spawn(*args, **kwargs):
+                process = real_spawn(*args, **kwargs)
+                processes.append(process)
+                if len(processes) == 1:
+                    # Windows may still be loading the image after Popen returns.
+                    # Exercise cancellation of running work, not cold loader teardown.
+                    watcher.start()
+                return process
+            script = f"from pathlib import Path; import time; Path({str(ready)!r}).write_text('ready'); time.sleep(30)"
+            with mock.patch.object(t.subprocess, "Popen", side_effect=spawn):
+                try:
+                    with self.assertRaises(t.ThumbnailCancelled):
+                        t._run([sys.executable, "-c", script], timeout_s=10, cancel=cancel)
+                    finished = time.monotonic()
+                finally:
+                    cancel.set()
+                    if watcher.ident is not None:
+                        watcher.join(10)
+                self.assertFalse(watcher.is_alive())
+                self.assertEqual(readiness_errors, [])
+                self.assertLess(finished-cancelled_at[0], 1)
+                self.assertIsNotNone(processes[0].poll())
+                with self.assertRaises(t.ThumbnailError):
+                    t._run([sys.executable, "-c", "import time; time.sleep(30)"], timeout_s=0.1)
+                self.assertIsNotNone(processes[1].poll())
 
     def test_large_child_output_cannot_fill_pipe(self):
         result = t._run([sys.executable, "-c", "import sys; sys.stderr.write('a'*1000000); print('done')"], timeout_s=5)

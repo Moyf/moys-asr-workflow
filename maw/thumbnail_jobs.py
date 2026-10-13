@@ -228,7 +228,11 @@ def build_base(path, *, cancel=None, progress=None, ffmpeg_path=None, coordinato
     deadline = time.monotonic() + timeout_s
 
     def before_batch(_targets):
+        yielded = False
         while coordinator.paused(identity, background=True):
+            if not yielded and progress is not None:
+                progress("[thumbnails] 同源播放或可见画面需求优先，基础画面生成已暂停")
+            yielded = True
             if time.monotonic() > deadline or (cancel is not None and cancel.is_set()):
                 if cancel is not None and cancel.is_set():
                     raise thumbnail_cache.ThumbnailCancelled("base thumbnail generation cancelled")
@@ -236,6 +240,8 @@ def build_base(path, *, cancel=None, progress=None, ffmpeg_path=None, coordinato
             if source_key(path) != identity:
                 raise OSError("thumbnail source changed")
             time.sleep(.05)
+        if yielded and progress is not None:
+            progress("[thumbnails] 同源优先需求已释放，继续生成基础画面")
 
     def extract(media, targets, **kwargs):
         while True:

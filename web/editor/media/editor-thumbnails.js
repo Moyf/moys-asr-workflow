@@ -41,24 +41,35 @@ export function createThumbnailModule(dependencies) {
     return [...result].sort((a, b) => a - b);
   }
 
+  function prefetchRanges(ranges, duration) {
+    return mergeRanges(ranges.map(range => {
+      const padding = Math.round((range.end_ms - range.start_ms) * 0.15);
+      return {start_ms: range.start_ms - padding, end_ms: range.end_ms + padding};
+    }), duration);
+  }
+
   function makeDemand(rows, duration, previousInterval = 0) {
     const visible = mergeRanges(rows.map(row => ({start_ms: row.start, end_ms: row.end})), duration);
     const pxPerSecond = rows.length ? rows[0].width * 1000 / Math.max(1, rows[0].end - rows[0].start) : 1;
     const interval = chooseInterval(pxPerSecond, previousInterval);
-    const span = visible.reduce((sum, range) => sum + range.end_ms - range.start_ms, 0);
-    const padding = span * 0.15;
-    const ranges = mergeRanges(visible.map(range => ({start_ms: range.start_ms - padding,
-      end_ms: range.end_ms + padding})), duration);
-    const representative = [...new Set(visible.flatMap(range => {
-      const first = Math.floor(range.start_ms / interval) * interval;
-      const middle = Math.floor((range.start_ms + range.end_ms) / 2 / interval) * interval;
-      return [first, middle].filter(time => time >= 0 && time < duration);
-    }))];
-    return { interval_ms: interval, ranges, representative_ms: representative };
+    // The Server adds the single 15% prefetch band and assigns its lower priority.
+    const visibleRows = rows.flatMap(row => mergeRanges([{start_ms:row.start, end_ms:row.end}], duration))
+      .sort((a, b) => a.start_ms - b.start_ms || a.end_ms - b.end_ms);
+    const representatives = new Set();
+    const addRepresentative = time => {
+      if (representatives.size < 32 && time >= 0 && time < duration) representatives.add(time);
+    };
+    // Give every row a center before spending the bounded representative budget on second pictures.
+    for (const range of visibleRows) {
+      addRepresentative(Math.floor((range.start_ms + range.end_ms) / 2 / interval) * interval);
+    }
+    for (const range of visibleRows) addRepresentative(Math.floor(range.start_ms / interval) * interval);
+    return { interval_ms: interval, ranges: visible, representative_ms: [...representatives] };
   }
 
   function createController(onChange) {
-    let binding = '', lease = '', source = '', revision = '', view = 0;
+    let binding = '', lease = '', source = '', revision = '', view = 0, playheadMs = 0;
+    let preloadRanges = [];
     const clientId = browser.crypto?.randomUUID?.() || `filmstrip-${Date.now()}-${Math.random().toString(36).slice(2)}`;
     let controlRequest = null;
     const protectedKeys = new Set();
@@ -72,7 +83,7 @@ export function createThumbnailModule(dependencies) {
     const failures = {status:0, demand:0, control:0};
     const dirtyRanges = [];
     const requests = new Set(), images = new Map(), imageQueue = new Map();
-    const imagePending = new Set(), imageFailures = new Set();
+    const imagePending = new Set(), imageFailures = new Set(), imageCapacityFailures = new Set();
     let imageBytes = 0, imageActive = 0, paintFrame = 0;
     const config = () => getConfig() || {};
     const urls = () => config().thumbnailUrls || {};
@@ -112,7 +123,7 @@ export function createThumbnailModule(dependencies) {
         entry.image.close?.();
         if (entry.url) browser.URL.revokeObjectURL(entry.url);
       }
-      images.clear(); imageQueue.clear(); imageFailures.clear(); imageBytes = 0;
+      images.clear(); imageQueue.clear(); imageFailures.clear(); imageCapacityFailures.clear(); imageBytes = 0;
     }
     function abortRequests() {
       for (const controller of requests) controller.abort();
@@ -162,7 +173,7 @@ export function createThumbnailModule(dependencies) {
           oldEntry.image.close?.(); if (oldEntry.url) browser.URL.revokeObjectURL(oldEntry.url);
         }
         // An oversized active view reduces image admission instead of thrashing its own assets.
-        if (imageBytes + bytes > IMAGE_BUDGET) { imageFailures.add(key); return; }
+        if (imageBytes + bytes > IMAGE_BUDGET) { imageCapacityFailures.add(key); return; }
         images.set(key, {image: bitmap, bytes, url: blobUrl});
         imageBytes += bytes; bitmap = null; blobUrl = ''; evict(); repaint(sampleRanges([...samples, ...fallbackSamples].filter(candidate => imageKey(candidate) === key)));
       } catch (_) { if (!abort.signal.aborted) imageFailures.add(key); }
@@ -181,7 +192,7 @@ export function createThumbnailModule(dependencies) {
     function preload() {
       if (!active() || networkSuspended) return;
       // Limit asset reads to this view, including the bounded neighbouring placeholder range.
-      const nearby = demand.ranges;
+      const nearby = preloadRanges;
       protectedKeys.clear();
       for (const sample of samples) {
         if (typeof sample.asset !== 'string') continue;
@@ -194,7 +205,8 @@ export function createThumbnailModule(dependencies) {
         if (!nearby.some(range => sample.requested_ms >= range.start_ms - demand.interval_ms * 2
             && sample.requested_ms < range.end_ms + demand.interval_ms * 2)) continue;
         const key = imageKey(sample);
-        if (images.has(key) || imageQueue.has(key) || imagePending.has(key) || imageFailures.has(key)) continue;
+        if (images.has(key) || imageQueue.has(key) || imagePending.has(key) || imageFailures.has(key)
+            || imageCapacityFailures.has(key)) continue;
         if (imageQueue.size < 64) imageQueue.set(key, sample);
       }
       drainImages();
@@ -272,7 +284,7 @@ export function createThumbnailModule(dependencies) {
       demandBusy = true;
       const epoch = requestEpoch, requestedBinding = binding, requestedView = view;
       try {
-        const result = await send(urls().demand, {binding, lease, client_id:clientId, view, ...demand, playing, visible:true});
+        const result = await send(urls().demand, {binding, lease, client_id:clientId, view, ...demand, playhead_ms:playheadMs, playing, visible:true});
         failures.demand = 0; ingest(result, requestedBinding, requestedView, epoch);
       } catch (_) { networkFailed('demand', epoch, requestedView); }
       finally {
@@ -329,16 +341,29 @@ export function createThumbnailModule(dependencies) {
         // A newer control view prevents a late ordinary demand from restoring old playback state.
         view += 1;
         const epoch = requestEpoch, requestedBinding = binding, requestedView = view;
-        void send(urls().demand, {binding, lease, client_id:clientId, view, ...demand, playing, visible:true}, true)
+        void send(urls().demand, {binding, lease, client_id:clientId, view, ...demand, playhead_ms:playheadMs, playing, visible:true}, true)
           .then(result => { failures.control = 0; ingest(result, requestedBinding, requestedView, epoch); })
           .catch(() => networkFailed('control', epoch, requestedView));
+      },
+      setPlayhead(time) {
+        if (!Number.isFinite(time)) return;
+        const next = Math.max(0, Math.min(Number.MAX_SAFE_INTEGER, Math.round(time)));
+        if (next === playheadMs) return;
+        playheadMs = next;
+        // Source-time seeks only reprioritize existing targets; playback never sends per-frame work.
+        if (playing || !active() || networkSuspended) return;
+        browser.clearTimeout(debounce);
+        debounce = browser.setTimeout(() => void submit(), 200);
       },
       setView(rows, duration) {
         if (!active()) return;
         const next = makeDemand(rows, duration, demand.interval_ms);
         const key = JSON.stringify(next);
         if (key === demandKey) { preload(); return; }
-        demandKey = key; demand = next;
+        demandKey = key; demand = next; preloadRanges = prefetchRanges(next.ranges, duration);
+        // Admission pressure belongs to this view; a smaller/new view can evict old assets.
+        // Transport, corrupt-image and individually oversized failures retain their bounded guard.
+        imageCapacityFailures.clear();
         if (networkSuspended) { resumeNetwork(); return; }
         view += 1;
         browser.clearTimeout(debounce); preload();
@@ -369,5 +394,5 @@ export function createThumbnailModule(dependencies) {
     };
     return controller;
   }
-  return { createController, chooseInterval, mergeRanges, gridTargets, makeDemand, IMAGE_BUDGET, DISPLAY_WIDTH };
+  return { createController, chooseInterval, mergeRanges, gridTargets, makeDemand, prefetchRanges, IMAGE_BUDGET, DISPLAY_WIDTH };
 }

@@ -285,8 +285,11 @@ def embed_media_caches(
             if cleaned["removed_count"]:
                 print(f"[thumbnails] 已回收 {cleaned['removed_count']} 份过期画面缓存")
         # Original video only: a derived WAV is never a thumbnail fallback.
+        # Normal Launcher/CLI callers use stdout, captured by their existing log UI.
+        # Keep explicit callbacks unchanged for embedded callers.
+        progress = thumbnail_progress if thumbnail_progress is not None else lambda message: print(message, flush=True)
         thumbnail_manifest = build_base(source_path, cancel=cancel,
-            progress=thumbnail_progress, ffmpeg_path=ffmpeg_bin)
+            progress=progress, ffmpeg_path=ffmpeg_bin)
         if thumbnail_manifest is not None:
             if thumbnail_manifest.get("cache_hit"):
                 print("[thumbnails] 已复用原视频基础画面缓存")

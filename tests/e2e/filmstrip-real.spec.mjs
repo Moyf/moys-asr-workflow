@@ -84,6 +84,8 @@ test('real video frames stay cached during playback, stop decoding and resume th
   await page.setInputFiles('#load-media-file',replacement);
   await expect(page.locator('.waveform-filmstrip')).toHaveCount(0);
   expect(await page.evaluate(()=>MaweBoot.SERVER_CONFIG.thumbnailBinding)).toBe('');
+  await expect(page.locator('#waveform-show-thumbnails')).toBeDisabled();
+  await expect(page.locator('#waveform-thumbnail-status')).toHaveText('从本机 Server 加载视频后可用');
   writeFileSync('.artifacts/filmstrip/filmstrip-real-evidence.json',JSON.stringify({states:states.map(({state,decoding,samples})=>({state,decoding,samples:samples.length})),releaseCount:requests.filter(request=>new URL(request.url).pathname.endsWith('/release')).length},null,2)+'\n');
 });
 

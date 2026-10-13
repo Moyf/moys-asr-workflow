@@ -26,6 +26,7 @@ from maw.thumbnails import IMAGE_SPEC, FrameResult, ThumbnailCancelled, Thumbnai
 
 SCHEMA = "moy.asr.thumbnails.v1"
 GENERATOR_VERSION = 3
+BASE_IDENTITY_FIELDS = ("schema", "generator_version", "source_signature", "video_stream_index", "duration_ms", "source_start_ms", "video_start_ms", "time_origin", "image_spec")
 MAX_SPRITE_FRAMES = 64
 MEDIA_QUOTA_BYTES = 64 * 1024 * 1024
 GLOBAL_QUOTA_BYTES = 512 * 1024 * 1024
@@ -677,11 +678,49 @@ def _all_base_hits(media_path: Path | str) -> list[tuple[Path | None, dict]]:
     return hits
 
 
-def load_base(media_path: Path | str) -> dict | None:
+def _compatible_base_hits(media_path: Path | str) -> list[tuple[Path | None, dict]]:
     hits = _all_base_hits(media_path)
     if not hits:
+        return []
+    def rank(value):
+        return (value["base_complete"], -value["target_interval"], value["valid_count"], value["cache_revision"])
+    hits.sort(key=lambda hit: rank(hit[1]), reverse=True)
+    best = hits[0][1]
+    return [(path, value) for path, value in hits if all(value[field] == best[field] for field in BASE_IDENTITY_FIELDS)]
+
+
+def _base_revision(hits) -> str:
+    revisions = sorted({value["cache_revision"] for _, value in hits})
+    return revisions[0] if len(revisions) == 1 else hashlib.sha256(json.dumps(revisions).encode()).hexdigest()[:32]
+
+
+def load_base(media_path: Path | str) -> dict | None:
+    """Merge compatible samples without promoting partial coverage to completion.
+
+    The best persisted manifest still owns the full-grid completion metadata.
+    Other candidates only contribute reusable samples and their original crops.
+    This query view is never serialized back to a sidecar.
+    """
+    hits = _compatible_base_hits(media_path)
+    if not hits:
         return None
-    return max((value for _, value in hits), key=lambda v: (v["base_complete"], -v["target_interval"], v["valid_count"]))
+    if len(hits) == 1:
+        return hits[0][1]
+    result = dict(hits[0][1])
+    samples, assets = {}, {}
+    for _, value in hits:
+        for sample in value["samples"]:
+            samples.setdefault(sample["requested_ms"], sample)
+        for asset in value["assets"]:
+            assets.setdefault(asset["id"], asset)
+    result["samples"] = sorted(samples.values(), key=lambda sample: sample["requested_ms"])
+    used = {sample["asset"] for sample in result["samples"] if sample["asset"]}
+    result["assets"] = [assets[asset] for asset in sorted(used)]
+    result["valid_count"] = sum(sample["status"] == "target" for sample in result["samples"])
+    result["cache_revision"] = _base_revision(hits)
+    if not result["base_complete"]:
+        result["coverage"] = [[sample["requested_ms"], min(result["duration_ms"], sample["requested_ms"] + result["sampling_interval"])] for sample in result["samples"] if sample["status"] == "target"]
+    return result
 
 
 def read_asset(media_path: Path | str, asset_id: str, *, cache_revision: str | None = None) -> bytes | None:
@@ -692,8 +731,12 @@ def read_asset(media_path: Path | str, asset_id: str, *, cache_revision: str | N
     except (OSError, ThumbnailError):
         return None
     if asset_id.startswith("sprite-"):
-        for path, value in _all_base_hits(media_path):
-            if cache_revision and value["cache_revision"] != cache_revision:
+        hits = _compatible_base_hits(media_path)
+        combined = _base_revision(hits) if hits else ""
+        if cache_revision and cache_revision != combined and not any(value["cache_revision"] == cache_revision for _, value in hits):
+            return None
+        for path, value in hits:
+            if cache_revision and cache_revision != combined and value["cache_revision"] != cache_revision:
                 continue
             if not any(asset["id"] == asset_id for asset in value["assets"]):
                 continue
@@ -813,44 +856,69 @@ def _base_budget(path, media_path, manifest, size):
             for registered, in db.execute("SELECT path FROM bases").fetchall():
                 if not Path(registered).is_file():
                     db.execute("DELETE FROM bases WHERE path=?", (registered,))
-            if not _evict(db, key, size, set()):
+            previous = db.execute("SELECT size FROM bases WHERE path=? AND media=?", (canonical, key)).fetchone()
+            # The same-path write lock keeps this old allocation exclusive to
+            # its replacement. Reserve only growth, while retaining the old
+            # registry entry until publication succeeds. Other paths cannot
+            # spend that credit; staging keeps its existing separate bounds.
+            incoming = max(0, size - previous[0]) if previous else size
+            if not _evict(db, key, incoming, set()):
                 raise OSError("thumbnail cache disk budget exhausted")
-            db.execute("INSERT INTO base_reservations VALUES(?,?,?,?)", (owner, key, size, time.time()+60))
+            db.execute("INSERT INTO base_reservations VALUES(?,?,?,?)", (owner, key, incoming, time.time()+60))
         yield
         with contextlib.closing(_connect()) as db, db:
             db.execute("INSERT OR REPLACE INTO bases VALUES(?,?,?,?)", (canonical, key, path.stat().st_size, time.time()))
+            db.execute("DELETE FROM base_reservations WHERE owner=?", (owner,))
     finally:
         with contextlib.closing(_connect()) as db, db:
             db.execute("DELETE FROM base_reservations WHERE owner=?", (owner,))
 
 
-def _atomic_save(path: Path, manifest: dict, blobs: dict, media_path: Path | str, *, cancel=None) -> None:
+def _atomic_save(path: Path, manifest: dict, blobs: dict, media_path: Path | str, *, cancel=None) -> bool:
     size = len(json.dumps(manifest, separators=(",", ":")).encode()) + sum(value.stat().st_size if isinstance(value, Path) else len(value) for value in blobs.values()) + (len(blobs)+1)*200
     if size > MAX_SIDECAR_BYTES:
         raise ThumbnailError("base sidecar exceeds size budget")
-    with _write_lock(path.with_name(path.name + ".lock"), cancel=cancel), _base_budget(path, media_path, manifest, size):
-        fd, name = tempfile.mkstemp(prefix=".mothumbs-", dir=path.parent)
-        try:
-            with os.fdopen(fd, "wb") as output, zipfile.ZipFile(output, "w", compression=zipfile.ZIP_STORED) as archive:
-                archive.writestr("manifest.json", json.dumps(manifest, separators=(",", ":")))
-                for asset, jpeg in blobs.items():
-                    if cancel is not None and cancel.is_set():
-                        raise ThumbnailCancelled("thumbnail publication cancelled")
-                    archive.writestr("assets/" + asset + ".jpg", jpeg.read_bytes() if isinstance(jpeg, Path) else jpeg)
-            if source_signature(Path(media_path)) != manifest["source_signature"]:
-                raise ThumbnailError("source changed during thumbnail generation")
-            for attempt in range(5):
-                try:
-                    os.replace(name, path)
-                    break
-                except PermissionError:
-                    if attempt == 4:
-                        raise
-                    if cancel is not None and cancel.is_set():
-                        raise ThumbnailCancelled("thumbnail publication cancelled")
-                    time.sleep(0.05 * (attempt + 1))
-        finally:
-            Path(name).unlink(missing_ok=True)
+    with _write_lock(path.with_name(path.name + ".lock"), cancel=cancel):
+        if source_signature(media_path) != manifest["source_signature"]:
+            raise ThumbnailError("source changed before thumbnail publication")
+        if path.name.endswith(".partial"):
+            previous = _load_candidate(path, manifest["source_signature"])
+            if previous and all(previous[field] == manifest[field] for field in BASE_IDENTITY_FIELDS):
+                old_targets = {sample["requested_ms"] for sample in previous["samples"]}
+                new_targets = {sample["requested_ms"] for sample in manifest["samples"]}
+                if not old_targets.issubset(new_targets):
+                    # An early cancellation or another grid must not discard
+                    # sealed coverage. Fresh individual frames remain reusable.
+                    return False
+        with _base_budget(path, media_path, manifest, size):
+            _publish_base(path, manifest, blobs, media_path, cancel=cancel)
+        return True
+
+
+def _publish_base(path, manifest, blobs, media_path, *, cancel=None):
+    """Called only while the same-path write lock and quota reservation are held."""
+    fd, name = tempfile.mkstemp(prefix=".mothumbs-", dir=path.parent)
+    try:
+        with os.fdopen(fd, "wb") as output, zipfile.ZipFile(output, "w", compression=zipfile.ZIP_STORED) as archive:
+            archive.writestr("manifest.json", json.dumps(manifest, separators=(",", ":")))
+            for asset, jpeg in blobs.items():
+                if cancel is not None and cancel.is_set():
+                    raise ThumbnailCancelled("thumbnail publication cancelled")
+                archive.writestr("assets/" + asset + ".jpg", jpeg.read_bytes() if isinstance(jpeg, Path) else jpeg)
+        if source_signature(Path(media_path)) != manifest["source_signature"]:
+            raise ThumbnailError("source changed during thumbnail generation")
+        for attempt in range(5):
+            try:
+                os.replace(name, path)
+                break
+            except PermissionError:
+                if attempt == 4:
+                    raise
+                if cancel is not None and cancel.is_set():
+                    raise ThumbnailCancelled("thumbnail publication cancelled")
+                time.sleep(0.05 * (attempt + 1))
+    finally:
+        Path(name).unlink(missing_ok=True)
 
 
 def load_or_build_base(media_path: Path | str, *, cancel=None, progress=None, batch_extract=None, before_batch=None, batch_pack=None, target_interval: int | None = None, ffmpeg_path: str | None = None, timeout_s: float = 1200) -> dict:
@@ -962,7 +1030,14 @@ def load_or_build_base(media_path: Path | str, *, cancel=None, progress=None, ba
         for target in paths:
             path = target if complete else target.with_name(target.name + ".partial")
             try:
-                _atomic_save(path, manifest, blobs, media_path)
+                published = _atomic_save(path, manifest, blobs, media_path)
+                if published is False:
+                    retained = _load_candidate(path, signature)
+                    if retained is None:
+                        raise OSError("retained thumbnail cache is unavailable")
+                    # Return the layout actually on disk. Fresh unsealed sprite
+                    # bytes disappear with staging; independent frames remain cached.
+                    manifest = dict(retained, cache_hit=False, state=manifest["state"])
                 persisted = True
                 break
             except (OSError, sqlite3.Error):

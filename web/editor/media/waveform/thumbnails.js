@@ -25,7 +25,10 @@ export function createWaveformModule(dependencies) {
           if (dirtyRanges.some(range => range.end_ms > start && range.start_ms < end)) this.drawThumbnails(row, true);
         });
       });
-      this.thumbnailPlayListener = () => this.thumbnailController.setPlaying(!this.player?.paused);
+      this.thumbnailPlayListener = () => {
+        this.thumbnailController.setPlayhead(this.currentTimeMs());
+        this.thumbnailController.setPlaying(!this.player?.paused);
+      };
       const toggle = /** @type {HTMLInputElement | null} */ (document.getElementById('waveform-show-thumbnails'));
       if (toggle) {
         toggle.checked = this.thumbnailController.enabled;

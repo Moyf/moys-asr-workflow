@@ -51,6 +51,23 @@ class ThumbnailCoordinatorTests(unittest.TestCase):
         self.coordinator.release('view')
         self.assertFalse(self.coordinator.paused('video', background=True))
 
+    def test_build_base_reports_pause_and_resume_once(self):
+        from maw import thumbnail_cache
+        from maw.thumbnail_jobs import build_base
+        source = self.root / "video.mp4"
+        source.write_bytes(b"source")
+        messages = []
+        def build(path, **kwargs):
+            kwargs["before_batch"]([0])
+            return {"state": "ready"}
+        with mock.patch.object(self.coordinator, "paused", side_effect=[True, True, False]), mock.patch("maw.thumbnail_jobs.time.sleep"), mock.patch.object(thumbnail_cache, "load_or_build_base", side_effect=build):
+            result = build_base(source, coordinator=self.coordinator, progress=messages.append)
+        self.assertEqual(result["state"], "ready")
+        self.assertEqual(messages, [
+            "[thumbnails] 同源播放或可见画面需求优先，基础画面生成已暂停",
+            "[thumbnails] 同源优先需求已释放，继续生成基础画面",
+        ])
+
     def test_claim_batch_and_lease_limits(self):
         self.assertEqual(len(self.coordinator.claim('v', [str(i) for i in range(100)], 'o')), 16)
         for index in range(64):

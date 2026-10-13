@@ -30,7 +30,7 @@ function harness(changes=[]) {
   const core=createThumbnailModule({browser,getConfig:()=>config,
     storage:{getItem:key=>values.get(key) ?? null,setItem:(key,value)=>values.set(key,value)}});
   const controller=core.createController((layoutChanged,ranges=[])=>changes.push({layoutChanged,ranges}));
-  return {core,controller,calls,closedImages,values,
+  return {core,controller,calls,closedImages,values,browser,
     respond(fn) { responder=fn; },
     async flush() { for(let i=0;i<200;i++) await Promise.resolve(); },
     async advance(delay) {
@@ -60,7 +60,8 @@ test('density uses CSS pixels with hysteresis, source-zero targets and a real ta
   assert.equal(core.chooseInterval(core.DISPLAY_WIDTH/(Math.sqrt(2)*1.05),1000),1000, 'retain near-boundary density');
   assert.deepEqual(core.gridTargets([{start_ms:100,end_ms:1100},{start_ms:800,end_ms:1500}],250,1100),[0,250,500,750,1000]);
   const demand=core.makeDemand([{start:1000,end:5000,width:400},{start:4000,end:8000,width:400}],9000);
-  assert.deepEqual(demand.ranges,[{start_ms:0,end_ms:9000}]);
+  assert.deepEqual(demand.ranges,[{start_ms:1000,end_ms:8000}]);
+  assert.deepEqual(core.prefetchRanges(demand.ranges,9000),[{start_ms:0,end_ms:9000}]);
   assert.ok(demand.representative_ms.every(time=>time% demand.interval_ms===0 && time<9000));
 });
 
@@ -217,4 +218,107 @@ test('explicit no-video prefix beats future and old cached pictures without asse
   assert.equal(h.controller.picture(5000,2000),null,'fallback remains bounded in source time');
   assert.ok(h.calls.filter(call=>call.url.includes('/asset/')).every(call=>!call.url.includes('null')&&!call.url.includes('undefined')));
   h.controller.close();
+});
+
+test('capacity refusal recovers in a narrower view while real image failures stay bounded',async()=>{
+  const h=harness();
+  const samples=Array.from({length:40},(_,index)=>({requested_ms:index*250,status:'target',asset:`sprite-${index}`,
+    crop_rect:[0,0,160,90],cache_revision:'r1'}));
+  h.respond(call=>manifest(call,{samples}));
+  h.controller.setBinding('video-a');await h.flush();
+  h.controller.setView([{start:0,end:10000,width:1000}],20000);await h.advance(200);
+  assert.equal(h.controller.picture(9750,0),null,'the wide active view exceeds the shared cap');
+  const assetReads=()=>h.calls.filter(call=>call.url.includes('/asset/sprite-39?')).length;
+  const refusedReads=assetReads();await h.advance(2000);
+  assert.equal(assetReads(),refusedReads,'unchanged polling does not repeat admission failures');
+  h.controller.setView([{start:9500,end:10000,width:1000}],20000);await h.advance(200);
+  assert.ok(h.controller.picture(9750,0),'a narrower view admits its formerly refused sprite');
+  assert.ok(assetReads()>refusedReads);assert.ok(h.controller.bytes<=h.core.IMAGE_BUDGET);
+  h.controller.close();
+
+  for (const failure of ['transport','corrupt','oversized']) {
+    const failed=harness();
+    failed.respond(call=>manifest(call,{samples:[samples[0]]}));
+    const originalFetch=failed.browser.fetch;
+    if(failure==='transport')failed.browser.fetch=async function(url,options){
+      if(String(url).includes('/asset/')){failed.calls.push({url:String(url),options});return {ok:false,status:404};}
+      return originalFetch.call(this,url,options);
+    };
+    if(failure==='corrupt')failed.browser.createImageBitmap=async()=>{throw new Error('bad JPEG');};
+    if(failure==='oversized')failed.browser.createImageBitmap=async()=>({width:100000,height:1000,close(){}});
+    failed.controller.setBinding('video-a');await failed.flush();
+    failed.controller.setView([{start:0,end:1000,width:1000}],20000);await failed.advance(200);
+    const reads=failed.calls.filter(call=>call.url.includes('/asset/')).length;assert.equal(reads,1);
+    failed.controller.setView([{start:0,end:2000,width:1000}],20000);await failed.advance(200);await failed.advance(2000);
+    assert.equal(failed.calls.filter(call=>call.url.includes('/asset/')).length,reads,`${failure} keeps its bounded failure guard across views`);
+    failed.controller.close();
+  }
+});
+
+test('demand keeps visible targets separate from the single bounded prefetch band',async()=>{
+  const h=harness();h.respond(call=>manifest(call));
+  const rows=[{start:10000,end:20000,width:1000}];
+  const demand=h.core.makeDemand(rows,40000);
+  assert.deepEqual(demand.ranges,[{start_ms:10000,end_ms:20000}]);
+  assert.deepEqual(h.core.prefetchRanges(demand.ranges,40000),[{start_ms:8500,end_ms:21500}]);
+  assert.deepEqual(h.core.prefetchRanges([{start_ms:0,end_ms:1000},{start_ms:9000,end_ms:10000}],10000),
+    [{start_ms:0,end_ms:1150},{start_ms:8850,end_ms:10000}]);
+  h.controller.setBinding('video-a');await h.flush();h.controller.setView(rows,40000);await h.advance(200);
+  assert.deepEqual(h.calls.filter(call=>call.body?.visible).at(-1).body.ranges,demand.ranges,
+    'Server plan_targets alone expands visible ranges and marks its prefetch as priority 2');
+  h.controller.close();
+});
+
+test('source playhead reprioritizes the same view with bounded paused seeks and no playing frame requests',async()=>{
+  const h=harness();h.respond(call=>manifest(call));
+  h.controller.setBinding('video-a');await h.flush();
+  h.controller.setView([{start:0,end:10000,width:1000}],20000);await h.advance(200);
+  const demands=()=>h.calls.filter(call=>call.body?.visible);
+  const view=demands().at(-1).body.view, before=demands().length;
+  for(let time=1000;time<=9500;time+=500)h.controller.setPlayhead(time);
+  await h.advance(199);assert.equal(demands().length,before);
+  await h.advance(1);assert.equal(demands().length,before+1);
+  assert.equal(demands().at(-1).body.playhead_ms,9500);assert.equal(demands().at(-1).body.view,view);
+  h.controller.setPlaying(true);await h.flush();const playingView=demands().at(-1).body.view;
+  const playingCount=demands().length;
+  for(let time=10000;time<=15000;time+=40)h.controller.setPlayhead(time);
+  await h.advance(300);assert.equal(demands().length,playingCount,'frames update local priority only');
+  h.controller.setPlaying(false);await h.flush();
+  assert.equal(demands().at(-1).body.playhead_ms,15000,'pause carries the newest source playhead');
+  assert.equal(demands().at(-1).body.playing,false);assert.ok(demands().at(-1).body.view>playingView);
+  h.controller.close();
+});
+
+test('representative priority covers each visible row before optional second pictures and stays bounded',()=>{
+  const {core}=harness();
+  const rows=Array.from({length:20},(_,index)=>({start:index*10000,end:(index+1)*10000,width:1000}));
+  const demand=core.makeDemand(rows,200000);
+  assert.deepEqual(demand.ranges,[{start_ms:0,end_ms:200000}],'visible ranges still merge once');
+  for(const row of rows)assert.ok(demand.representative_ms.some(time=>time>=row.start&&time<row.end),
+    `row starting at ${row.start} receives a representative before second pictures`);
+  assert.equal(demand.representative_ms.length,32);
+  assert.deepEqual(core.makeDemand([...rows, ...rows].reverse(),200000).representative_ms,demand.representative_ms,
+    'duplicate rows and DOM insertion order do not duplicate or reshuffle representatives');
+  assert.ok(demand.representative_ms.every(time=>time>=0&&time<200000&&time%demand.interval_ms===0));
+  const many=core.makeDemand(Array.from({length:80},(_,index)=>({start:index*10000,end:(index+1)*10000,width:1000})),800000);
+  assert.equal(many.representative_ms.length,32,'the Server representative limit is never exceeded');
+  const tail=core.makeDemand([{start:19000,end:23000,width:400},{start:21000,end:22000,width:100}],20500);
+  assert.ok(tail.representative_ms.every(time=>time>=0&&time<20500&&time%tail.interval_ms===0));
+});
+
+test('play and pause events capture their current source head before sending the control state',async()=>{
+  const source=fs.readFileSync(new URL('../web/editor/media/waveform/thumbnails.js',import.meta.url),'utf8');
+  const {createWaveformModule}=await import(`data:text/javascript;base64,${Buffer.from(source).toString('base64')}`);
+  const previousDocument=globalThis.document, previousWindow=globalThis.window, calls=[];
+  globalThis.document={getElementById:()=>null,addEventListener(){}};
+  globalThis.window={addEventListener(){}};
+  try {
+    const controller={setPlayhead:time=>calls.push(['head',time]),setPlaying:playing=>calls.push(['playing',playing])};
+    const methods=createWaveformModule({thumbnailCore:{createController:()=>controller},ROW_GAP:10});
+    const editor={player:{paused:true},currentTimeMs:()=>8500,setThumbnailBinding(){}};
+    methods.initThumbnails.value.call(editor);editor.thumbnailPlayListener();
+    assert.deepEqual(calls,[['head',8500],['playing',false]]);
+    calls.length=0;editor.player.paused=false;editor.currentTimeMs=()=>12500;editor.thumbnailPlayListener();
+    assert.deepEqual(calls,[['head',12500],['playing',true]]);
+  } finally {globalThis.document=previousDocument;globalThis.window=previousWindow;}
 });

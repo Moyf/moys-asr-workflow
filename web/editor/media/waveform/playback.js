@@ -10,6 +10,7 @@ export function createWaveformModule(dependencies) {
     updatePlayback(allowFollow = true) {
       if (!this.payload) return;
       const now = this.currentTimeMs();
+      this.thumbnailController?.setPlayhead(now);
       const segments = this.options.getSegments('main');
       const activeIndex = findActiveCueIndex(segments, now);
       const activeVisualHit = activeIndex >= 0 && isActiveCueVisualHit(segments, activeIndex, now);

@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import contextlib
+import io
 import tempfile
 import unittest
 from pathlib import Path
@@ -44,6 +46,17 @@ class ThumbnailMediaCacheTests(unittest.TestCase):
         merged=media_cache.merge_media_caches({'segments':self.project['segments']},result)
         self.assertNotIn('thumbnail_cache',merged)
         self.assertEqual(merged['media_metadata']['selected_audio_track'],2)
+
+    def test_default_thumbnail_progress_reaches_launcher_output(self):
+        output = io.StringIO()
+        def build_with_progress(path, *, progress, **kwargs):
+            progress("[thumbnails] 1/2")
+            progress("[thumbnails] 2/2")
+            return {"state": "ready", "persisted": True}
+        with mock.patch.object(thumbnail_jobs, "build_base", side_effect=build_with_progress), contextlib.redirect_stdout(output):
+            media_cache.embed_media_caches(self.project, self.source)
+        self.assertIn("[thumbnails] 1/2", output.getvalue())
+        self.assertIn("[thumbnails] 2/2", output.getvalue())
 
     def test_video_source_missing_never_uses_derived_audio_for_thumbnails(self):
         self.source.rename(self.root/'moved.mp4')

@@ -264,6 +264,156 @@ class ThumbnailCacheTests(unittest.TestCase):
         self.assertTrue(manifest["base_complete"])
         self.assertTrue(all(t >= 32000 for batch in self.calls for t in batch))
 
+    def test_coarse_and_partial_sprites_share_query_and_cross_session_resume(self):
+        self.video = VideoInfo(1, 400000, 0)
+        c.probe_video.return_value = self.video
+        self.build(target_interval=10000)
+        c._write_disabled.add(c.identity_key(self.media))
+        cancel = threading.Event()
+        def cropped(blob, samples, **kwargs):
+            return {sample["requested_ms"]: FrameResult(sample["requested_ms"], sample["actual_pts_ms"], "target", jpeg(suffix=str(sample["requested_ms"]).encode())) for sample in samples}
+        def progress(message):
+            if int(message.split()[-1].split("/")[0]) >= 64:
+                cancel.set()
+        with mock.patch.object(c, "_crop_sprite", side_effect=cropped):
+            with self.assertRaises(ThumbnailCancelled):
+                self.build(target_interval=2000, cancel=cancel, progress=progress)
+        partial_path = c.base_path(self.media).with_name(c.base_path(self.media).name + ".partial")
+        partial = c._load_candidate(partial_path, c.source_signature(self.media))
+        self.assertFalse(partial["base_complete"])
+        self.assertTrue(any(sample["requested_ms"] == 2000 for sample in partial["samples"]))
+        c._session.clear()
+        c._session_assets.clear()
+        c._write_disabled.clear()
+        view = c.sample_manifest(self.media, [0, 2000])
+        self.assertTrue(view["base_complete"])
+        self.assertEqual(view["target_interval"], 10000)
+        self.assertEqual([sample["status"] for sample in view["samples"]], ["target", "target"])
+        self.assertIsNotNone(c.lookup_frames(self.media, [2000])[0])
+        for sample in view["samples"]:
+            self.assertIsNotNone(c.read_asset(self.media, sample["asset"], cache_revision=view["cache_revision"]))
+        self.calls.clear()
+        with mock.patch.object(c, "_crop_sprite", side_effect=cropped):
+            upgraded = self.build(target_interval=2000)
+        self.assertTrue(upgraded["base_complete"])
+        self.assertFalse(any(2000 in batch for batch in self.calls))
+        self.assertIsNone(c.read_asset(self.media, view["samples"][0]["asset"], cache_revision=view["cache_revision"]))
+        self.assertNotEqual(upgraded["cache_revision"], view["cache_revision"])
+
+    def test_atomic_replace_budget_reuses_old_allocation_and_preserves_failure(self):
+        manifest = self.build()
+        path = c.base_path(self.media)
+        blobs = {asset["id"]: c.read_asset(self.media, asset["id"]) for asset in manifest["assets"]}
+        with contextlib.closing(c._connect()) as db, db:
+            db.execute("DELETE FROM samples")
+            db.execute("DELETE FROM assets")
+        original_size = path.stat().st_size
+        incoming = len(json.dumps(manifest, separators=(",", ":")).encode()) + sum(map(len, blobs.values())) + (len(blobs)+1)*200
+        quota = max(original_size, incoming) + 256
+        for quota_field in ("MEDIA_QUOTA_BYTES", "GLOBAL_QUOTA_BYTES"):
+            with self.subTest(quota=quota_field):
+                with mock.patch.object(c, quota_field, quota):
+                    c._atomic_save(path, manifest, blobs, self.media)
+                    last_valid = path.read_bytes()
+                    with contextlib.closing(c._connect()) as db:
+                        old_row = db.execute("SELECT media,size,used FROM bases WHERE path=?", (os.path.normcase(str(path.resolve())),)).fetchone()
+                    with mock.patch.object(c.os, "replace", side_effect=PermissionError("busy")):
+                        with self.assertRaises(PermissionError):
+                            c._atomic_save(path, manifest, blobs, self.media)
+                    self.assertEqual(path.read_bytes(), last_valid)
+                    with contextlib.closing(c._connect()) as db:
+                        self.assertEqual(db.execute("SELECT media,size,used FROM bases WHERE path=?", (os.path.normcase(str(path.resolve())),)).fetchone(), old_row)
+                        self.assertEqual(db.execute("SELECT COUNT(*) FROM base_reservations").fetchone()[0], 0)
+
+    def test_concurrent_base_reservation_cannot_spend_replace_credit_twice(self):
+        manifest = self.build()
+        path = c.base_path(self.media)
+        with contextlib.closing(c._connect()) as db, db:
+            db.execute("DELETE FROM samples")
+            db.execute("DELETE FROM assets")
+        old_size = path.stat().st_size
+        new_size = old_size + 1000
+        other = self.root / "other.mothumbs"
+        admitted, release, errors = threading.Event(), threading.Event(), []
+        def reserve():
+            try:
+                with c._base_budget(path, self.media, manifest, new_size):
+                    admitted.set()
+                    release.wait(3)
+            except Exception as error:
+                errors.append(error)
+                admitted.set()
+        with mock.patch.object(c, "MEDIA_QUOTA_BYTES", new_size + 256):
+            thread = threading.Thread(target=reserve)
+            thread.start()
+            try:
+                self.assertTrue(admitted.wait(2))
+                self.assertEqual(errors, [])
+                with self.assertRaises(OSError):
+                    with c._base_budget(other, self.media, manifest, 1000):
+                        self.fail("concurrent publication exceeded quota")
+            finally:
+                release.set()
+                thread.join(3)
+        self.assertFalse(thread.is_alive())
+        self.assertEqual(errors, [])
+
+    def test_cancelled_retry_preserves_sealed_partial_and_allows_added_coverage(self):
+        self.video = VideoInfo(1, 400000, 0)
+        c.probe_video.return_value = self.video
+        def stop_after(count):
+            cancel = threading.Event()
+            def progress(message):
+                if int(message.split()[-1].split("/")[0]) >= count:
+                    cancel.set()
+            with self.assertRaises(ThumbnailCancelled):
+                self.build(cancel=cancel, progress=progress)
+        stop_after(64)
+        path = c.base_path(self.media).with_name(c.base_path(self.media).name + ".partial")
+        original = path.read_bytes()
+        cancel = threading.Event()
+        cancel.set()
+        with self.assertRaises(ThumbnailCancelled):
+            self.build(cancel=cancel)
+        self.assertEqual(path.read_bytes(), original)
+        self.assertEqual(c.load_base(self.media)["valid_count"], 64)
+        stop_after(128)
+        self.assertEqual(c.load_base(self.media)["valid_count"], 128)
+        self.assertNotEqual(path.read_bytes(), original)
+        # A different partial grid must not trade away the sealed earlier grid.
+        existing = c.load_base(self.media)
+        frame = FrameResult(250, 0, "target", jpeg())
+        asset = "sprite-different-grid"
+        newer = c._manifest(self.video, c.source_signature(self.media), interval=250,
+            samples=[c._sample(frame, asset)], assets=[{"id":asset,"width":1280,"height":90,"valid_count":1}])
+        last_valid = path.read_bytes()
+        c._atomic_save(path, newer, {asset:jpeg(1280,90)}, self.media)
+        self.assertEqual(path.read_bytes(), last_valid)
+        self.assertEqual(c.load_base(self.media)["cache_revision"], existing["cache_revision"])
+
+    def test_retained_partial_return_uses_only_the_persisted_sprite_layout(self):
+        self.video = VideoInfo(1, 400000, 0)
+        c.probe_video.return_value = self.video
+        cancel = threading.Event()
+        def progress(message):
+            if int(message.split()[-1].split("/")[0]) >= 64:
+                cancel.set()
+        with self.assertRaises(ThumbnailCancelled):
+            self.build(cancel=cancel, progress=progress)
+        retained = c.load_base(self.media)
+        def unavailable(path, targets, **kwargs):
+            return [FrameResult(target, None, "unavailable", None) for target in targets]
+        def cropped(blob, samples, **kwargs):
+            return {sample["requested_ms"]: FrameResult(sample["requested_ms"], sample["actual_pts_ms"], "target", jpeg()) for sample in samples}
+        with mock.patch.object(c, "_crop_sprite", side_effect=cropped):
+            partial = c.load_or_build_base(self.media, batch_extract=unavailable, target_interval=5000)
+        self.assertTrue(partial["persisted"])
+        self.assertFalse(partial["base_complete"])
+        self.assertEqual(partial["cache_revision"], retained["cache_revision"])
+        self.assertEqual(partial["valid_count"], retained["valid_count"])
+        for asset in partial["assets"]:
+            self.assertIsNotNone(c.read_asset(self.media, asset["id"], cache_revision=partial["cache_revision"]))
+
     def test_cross_session_grid_reuse_and_actual_pts_asset_dedup(self):
         c.get_or_extract_frames(self.media, [0, 250, 500], extractor=self.extract)
         first = c.sample_manifest(self.media, [0, 250, 500])
