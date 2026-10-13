@@ -34,7 +34,8 @@ from maw.postprocess import (
     run_llm_postprocess,
 )
 from maw.postprocess_ai_cleanup import AiCleanupRequest, llm_complete, run_ai_cleanup
-from maw.postprocess_io import SubtitleArtifact, read_project, write_artifacts
+from maw.postprocess_resegment import complete_boundaries, normalize_max_chars
+from maw.postprocess_io import _available_output, SubtitleArtifact, read_project, write_artifacts
 from maw.postprocess_llm import (
     DEFAULT_REASONING_MODE,
     LlmSettings,
@@ -60,6 +61,7 @@ POSTPROCESS_PLAN_VERSION: Final[int] = 2
 POSTPROCESS_CONFIG_FILENAME: Final[str] = "maw-postprocess.json"
 STEP_ORDER: Final[tuple[str, ...]] = (
     "match",
+    "cleanup",
     "replace",
     "proofread",
     "resegment",
@@ -94,11 +96,12 @@ def default_postprocess_plan() -> dict[str, object]:
                 "preservePunctuation": list(DEFAULT_PRESERVE_PUNCTUATION),
                 "cleanMarkdownSymbols": True,
             },
+            {"id": "cleanup", "enabled": False, "scriptPath": "", "providerId": "deepseek", "customPrompt": "", "generateComparison": False, "cleanMarkdownSymbols": True},
             {"id": "replace", "enabled": False, "replacements": [], "replacementSeparator": "arrow", "replacementTrim": True, "replacementCustomSeparator": "", "conversion": TextConversion.OFF.value},
-            {"id": "proofread", "enabled": False, "providerId": "deepseek", "customPrompt": ""},
-            {"id": "resegment", "enabled": False, "providerId": "deepseek", "customPrompt": ""},
+            {"id": "proofread", "enabled": False, "providerId": "deepseek", "customPrompt": "", "generateComparison": False},
+            {"id": "resegment", "enabled": False, "providerId": "deepseek", "customPrompt": "", "generateComparison": False, "maxChars": 0},
             {"id": "ocr", "enabled": False, "videoPath": "", "videoPathMode": "", "regionMode": "full", "regionX1": 0, "regionY1": 0, "regionX2": 100, "regionY2": 100, "threshold": 0.5, "report": False},
-            {"id": "translate", "enabled": False, "providerId": "deepseek", "target": "zh", "mergeBilingual": False, "embedTranslations": False, "bilingualLineOrder": "", "customPrompt": ""},
+            {"id": "translate", "enabled": False, "providerId": "deepseek", "target": "zh", "mergeBilingual": False, "embedTranslations": False, "bilingualLineOrder": "", "customPrompt": "", "generateComparison": False},
             {"id": "burn", "enabled": False, "videoEncoder": "auto"},
         ],
     }
@@ -127,6 +130,11 @@ def normalize_plan(raw: object) -> dict[str, object]:
                 step_id = str(item.get("id") or "")
                 if step_id in STEP_ORDER:
                     by_id[step_id] = item
+    legacy_match = by_id.get("match", {})
+    if legacy_match.get("aiCleanup") is True:
+        if "cleanup" not in by_id:
+            by_id["cleanup"] = {"id": "cleanup", "enabled": legacy_match.get("enabled", False), "scriptPath": legacy_match.get("scriptPath", ""), "providerId": legacy_match.get("providerId", "deepseek"), "customPrompt": legacy_match.get("aiCleanupNotes", "")}
+        by_id["match"] = {**legacy_match, "enabled": False, "aiCleanup": False}
     normalized_steps: list[dict[str, object]] = []
     for default_step in defaults["steps"]:
         assert isinstance(default_step, dict)
@@ -145,6 +153,11 @@ def normalize_plan(raw: object) -> dict[str, object]:
                 step[key] = bool(value)
             elif key == "conversion":
                 step[key] = normalize_text_conversion_mode(value).value
+            elif key == "maxChars":
+                try:
+                    step[key] = normalize_max_chars(value)
+                except ValueError:
+                    step[key] = str(value)
             elif key == "target":
                 step[key] = str(value or "zh") if str(value or "zh") in TRANSLATION_TARGETS else "zh"
             elif key == "mergeBilingual":
@@ -155,7 +168,7 @@ def normalize_plan(raw: object) -> dict[str, object]:
                 step[key] = str(value or "") if str(value or "") in BILINGUAL_LINE_ORDERS else ""
             elif key in {"regionX1", "regionY1", "regionX2", "regionY2", "threshold"}:
                 step[key] = _number_or_default(value, step[key])
-            elif key == "report":
+            elif key in {"report", "generateComparison"}:
                 step[key] = bool(value)
             elif key == "matchMode":
                 step[key] = str(value or "script") if str(value or "script") in {"script", "text"} else "script"
@@ -320,7 +333,7 @@ def snapshot_postprocess_llm_settings(
         if step_id == "match":
             if step.get("aiCleanup") is not True:
                 continue
-        elif step_id not in {"proofread", "resegment", "translate"}:
+        elif step_id not in {"cleanup", "proofread", "resegment", "translate"}:
             continue
         provider_id = str(step.get("providerId") or "deepseek")
         if provider_id in snapshot:
@@ -387,10 +400,19 @@ def validate_plan(
                 provider_error = _llm_provider_error(step, env_path=env_path, llm_settings=llm_settings)
                 if provider_error is not None:
                     errors.append(provider_error)
-        elif step_id in {"proofread", "resegment", "translate"}:
+        elif step_id in {"cleanup", "proofread", "resegment", "translate"}:
             provider_error = _llm_provider_error(step, env_path=env_path, llm_settings=llm_settings)
             if provider_error is not None:
                 errors.append(provider_error)
+            if step_id == "resegment":
+                try:
+                    normalize_max_chars(step.get("maxChars"))
+                except ValueError as error:
+                    errors.append({"step": step_id, "field": "postprocessResegmentMaxChars", "message": str(error)})
+            if step_id == "cleanup" and str(step.get("scriptPath") or "").strip():
+                path = Path(str(step["scriptPath"])).expanduser()
+                if path.suffix.lower() not in SCRIPT_EXTENSIONS or not path.is_file():
+                    errors.append({"step": step_id, "field": "postprocessCleanupScriptPath", "message": "参考文稿必须是存在的文本文件，也可留空。"})
             if step_id == "translate" and str(step.get("target") or "zh") not in TRANSLATION_TARGETS:
                 errors.append({"step": step_id, "field": "autoTranslateTarget", "message": "翻译目标必须是中文或英文。"})
             if step_id == "translate" and bool(step.get("mergeBilingual")) and bool(step.get("embedTranslations")):
@@ -506,9 +528,8 @@ def _pipeline_artifact_path(
 
 def _pipeline_step_operation(step: Mapping[str, object]) -> str:
     step_id = str(step.get("id") or "")
-    if step_id == "match":
-        if step.get("aiCleanup") is True:
-            return "ai_cleanup"
+    if step_id == "cleanup" or step_id == "match" and step.get("aiCleanup") is True:
+        return "ai_cleanup"
     if step_id == "translate":
         target = str(step.get("target") or "zh")
         return f"translate-{target}"
@@ -852,6 +873,12 @@ def run_postprocess_pipeline(
             if isinstance(translated_srt_path, Path):
                 current_translated_srt = translated_srt_path
             completed.append(step_id)
+            comparison_path = getattr(artifact, "comparison_path", None)
+            if isinstance(comparison_path, Path):
+                destination = _available_output(project_path, f"{_pipeline_step_operation(step)}-comparison", ".html")
+                _relocate_pipeline_artifact(comparison_path, destination)
+                warnings.append(f"处理前后对比：{destination}")
+                manifest_steps[index - 1]["comparisonPath"] = str(destination)
             warnings.extend(artifact.warnings)
             step_elapsed = time.perf_counter() - step_t0
             manifest_steps[index - 1]["status"] = "done"
@@ -969,19 +996,19 @@ def _run_step(
 ) -> SubtitleArtifact:
     step_id = str(step["id"])
     output_mode = OutputMode.BOTH
+    if step_id == "cleanup" or step_id == "match" and step.get("aiCleanup") is True:
+        return _run_ai_cleanup_step(
+            step,
+            project_path=project_path,
+            srt_path=srt_path,
+            media_path=media_path,
+            env_path=env_path,
+            output_directory=output_directory,
+            cancel_event=cancel_event,
+            on_event=on_event,
+            llm_settings=llm_settings,
+        )
     if step_id == "match":
-        if step.get("aiCleanup") is True:
-            return _run_ai_cleanup_step(
-                step,
-                project_path=project_path,
-                srt_path=srt_path,
-                media_path=media_path,
-                env_path=env_path,
-                output_directory=output_directory,
-                cancel_event=cancel_event,
-                on_event=on_event,
-                llm_settings=llm_settings,
-            )
         return run_script_match(ScriptMatchRequest(
             project_path=project_path,
             srt_path=srt_path,
@@ -1093,7 +1120,8 @@ def _run_step(
     )
     def complete(prompt: str, cues: list[dict[str, JsonValue]]) -> Mapping[str, JsonValue]:
         _check_cancel(cancel_event)
-        return complete_subtitle_groups(settings, prompt, cues)
+        completion = complete_boundaries if step_id == "resegment" else complete_subtitle_groups
+        return completion(settings, prompt, cues)
 
     def on_status(key: str, details: Mapping[str, int]) -> None:
         _check_cancel(cancel_event)
@@ -1108,6 +1136,8 @@ def _run_step(
         output_directory=output_directory,
         media_path=media_path,
         bilingual_line_order=str(step.get("bilingualLineOrder") or ""),
+        max_chars=normalize_max_chars(step.get("maxChars")) if step_id == "resegment" else 0,
+        generate_comparison=bool(step.get("generateComparison")),
     ), complete=complete, on_status=on_status)
 
 
@@ -1142,17 +1172,18 @@ def _run_ai_cleanup_step(
 
     def on_status(key: str) -> None:
         _check_cancel(cancel_event)
-        _emit(on_event, {"stage": "detail", "step": "match", "key": key})
+        _emit(on_event, {"stage": "detail", "step": "cleanup", "key": key})
 
     return run_ai_cleanup(AiCleanupRequest(
         project_path=project_path,
         srt_path=srt_path,
-        script_path=Path(str(step.get("scriptPath") or "")).expanduser(),
+        script_path=Path(str(step["scriptPath"])).expanduser() if str(step.get("scriptPath") or "").strip() else None,
         output_mode=OutputMode.BOTH,
         output_directory=output_directory,
         media_path=media_path,
         clean_markdown_symbols=step.get("cleanMarkdownSymbols", True) is not False,
-        notes=str(step.get("aiCleanupNotes") or "").strip(),
+        notes=str(step.get("customPrompt") or step.get("aiCleanupNotes") or "").strip(),
+        generate_comparison=bool(step.get("generateComparison")),
     ), complete=complete, on_status=on_status)
 
 

@@ -25,7 +25,7 @@ test('stack sweep renders all overlapping cues and fits the complete group at th
   const item = (role, index, start, end, text) => ({ role, index, start, end, style,
     fontSize: 72, runs: [{ text }] });
   const plan = h.assCreateStackPlan({ profile, items: [item('main', 0, 0, 2000, 'MAIN\nLINE'),
-    item('extension', 0, 0, 2000, 'MMMMMMMM'), item('extension', 1, 500, 1500, 'WWWWWWWW')] });
+    item('overlay', 0, 0, 2000, 'MMMMMMMM'), item('overlay', 1, 500, 1500, 'WWWWWWWW')] });
   assert.deepEqual(Array.from(plan.slices, slice => [slice.start, slice.end]), [[0, 500], [500, 1500], [1500, 2000]]);
   const frame = h.assStackFrame(plan, 1000);
   assert.equal(frame.items.length, 3);
@@ -37,6 +37,93 @@ test('stack sweep renders all overlapping cues and fits the complete group at th
     const below = frame.items[i - 1], above = frame.items[i];
     assert.ok(above.anchor.y + above.rect.bottom * above.scale < below.anchor.y + below.rect.top * below.scale);
   }
+});
+
+test('fixed extension keeps its preset anchor alone and across main cue boundaries', () => {
+  let plan;
+  const ass = h.buildAssPayload([{ start: 500, end: 1500, text: 'MAIN' }], {
+    assProfile: { animations: {} },
+    assStyle: { fontSize: 72, marginV: 160 },
+    assExtensionStyle: { fontSize: 36, alignment: 3, marginR: 50, marginV: 60 },
+    extensionSegments: [{ start: 0, end: 2000, text: 'EXT' }],
+    onAssPlan: value => { plan = value; },
+  });
+  for (const time of [0, 499, 500, 1499, 1500, 1999]) {
+    const extension = h.assStackFrame(plan, time).items.find(item => item.role === 'extension');
+    same(extension.anchor, { x: 1870, y: 1020 });
+    assert.equal(extension.scale, 1);
+  }
+  const events = ass.split('\n').filter(line => line.startsWith('Dialogue: 1,'));
+  assert.equal(events.length, 3);
+  assert.ok(events.every(line => line.includes(String.raw`\pos(1870,1020)`)));
+  assert.ok(events.every(line => !line.includes(String.raw`\move(`)));
+});
+
+test('three overlapping fixed extension cues accumulate absolute collision bounds', () => {
+  const style = h.normalizeAssStyle({ fontSize: 54, alignment: 2, marginV: 60 });
+  const items = Array.from({ length: 3 }, (_, index) => ({ role: 'extension', index,
+    start: 0, end: 2000, style, fontSize: 54, runs: [{ text: `EXT ${index}` }] }));
+  const plan = h.assCreateStackPlan({ items, profile: h.normalizeAssProfile({ animations: {} }) });
+  const fixed = h.assStackFrame(plan, 1000).items;
+  assert.equal(fixed.length, 3);
+  assert.equal(fixed[0].anchor.y, 1020);
+  for (let index = 1; index < fixed.length; index += 1) {
+    const below = fixed[index - 1], above = fixed[index];
+    assert.equal(above.anchor.x, below.anchor.x);
+    assert.equal(above.scale, 1);
+    assert.equal(above.anchor.y + above.rect.bottom,
+      below.anchor.y + below.rect.top - Math.max(2, Math.round(below.fontSize * 0.2)));
+    assert.ok(above.anchor.y + above.rect.top > 0);
+  }
+});
+
+test('fixed extensions report cumulative stack overflow instead of clamping cues onto each other', () => {
+  const style = h.normalizeAssStyle({ fontSize: 36, alignment: 2, marginV: 20, outline: 0, shadow: 0 });
+  const items = Array.from({ length: 3 }, (_, index) => ({ role: 'extension', index,
+    start: 0, end: 2000, style, fontSize: 36, runs: [{ text: 'EXT\nLINE' }] }));
+  const plan = height => h.assCreateStackPlan({ items, width: 1280, height,
+    profile: h.normalizeAssProfile({ animations: {} }) });
+  assert.equal(plan(320).diagnostics.length, 0, 'the same fixed cues fit in a taller frame');
+  const crowded = plan(240);
+  assert.match(crowded.diagnostics[0]?.message || 'no diagnostic', /固定副字幕.*同时容纳/);
+  assert.equal(h.assStackFrame(crowded, 1000).items.length, 0, 'unavailable placement cannot silently paint overlap');
+});
+
+test('fixed extension inline sizes and animation targets ignore the main overlay fit scale', () => {
+  let plan;
+  const output = h.buildAssPayload([{ start: 0, end: 2000, text: Array(10).fill('MAIN').join('\n') }], {
+    assStyle: { fontSize: 96 },
+    assExtensionStyle: { fontSize: 36, emphasisScale: 1.5, spacing: 3, outline: 2, shadow: 1 },
+    extensionSegments: [{ start: 0, end: 2000, text: '**BIG** tail' }],
+    overlaySegments: [{ start: 0, end: 2000, text: Array(5).fill('OVERLAY').join('\n') }],
+    assProfile: { animations: { t: { enabled: true, startMs: 0, endMs: 1500,
+      tags: String.raw`\fs120\fsp6\bord4\shad2` } } },
+    onAssPlan: value => { plan = value; },
+  });
+  assert.ok(plan.slices[0].scale < 1, 'main and overlay must actually shrink in this fixture');
+  const extension = output.split('\n').find(line => line.startsWith('Dialogue: 1,'));
+  assert.ok(extension.includes(String.raw`\fs36\fsp3\bord2\shad1`));
+  assert.ok(extension.includes(String.raw`\t(0,1500,1,\fs120\fsp6\bord4\shad2)`));
+  assert.ok(extension.includes(String.raw`\fs54\t(0,1500,1,\fs180)`));
+  assert.ok(extension.includes(String.raw`\fs36\t(0,1500,1,\fs120)`));
+  assert.equal(h.assStackFrame(plan, 1000).items.find(item => item.role === 'extension').scale, 1);
+});
+
+test('fixed extension bounds cover the actual rotation sweep instead of a full circle', () => {
+  const style = h.normalizeAssStyle({ fontSize: 36, marginV: 60 });
+  const extension = { role: 'extension', index: 0, start: 0, end: 2000,
+    style, fontSize: 36, runs: [{ text: 'Wide' }] };
+  const measure = () => ({ width: 1000, ascent: 40, descent: 10 });
+  const plan = angle => h.assCreateStackPlan({ width: 1280, height: 720, measure, items: [extension],
+    profile: h.normalizeAssProfile({ animations: { t: { enabled: true, tags: `\\frz${angle}` } } }) });
+  const narrow = plan(10);
+  assert.equal(narrow.diagnostics.length, 0, 'a short sweep fits without shrinking the fixed layer');
+  const padding = Math.ceil(style.outline + style.shadow + Math.max(2, 36 * 0.08));
+  const expectedHeight = (50 + padding * 2) * Math.cos(Math.PI / 18)
+    + (1000 + padding * 2) * Math.sin(Math.PI / 18);
+  const bounds = narrow.slices[0].items[0].rect;
+  assert.ok(Math.abs(bounds.bottom - bounds.top - expectedHeight) < 1e-9);
+  assert.match(plan(180).diagnostics[0].message, /固定副字幕超出/, 'interior sweep extrema still prevent clipping');
 });
 
 test('stack plan refuses unknown geometry, while single main retains original motion', () => {
@@ -106,7 +193,8 @@ test('stack rejects negative spacing and does not silently fit tiny formatted ru
   assert.match(h.assCreateStackPlan({ profile, items: [item('main'), item('extension')] }).diagnostics[0].message, /负字距/);
   style.spacing = 0;
   const enormous = { ...item('extension'), runs: [{ text: ('BIG\n').repeat(200) }] };
-  assert.match(h.assCreateStackPlan({ profile, items: [item('main'), enormous] }).diagnostics[0].message, /可读/);
+  assert.match(h.assCreateStackPlan({ profile, items: [item('main'), enormous] }).diagnostics[0].message, /固定副字幕超出/);
+  assert.match(h.assCreateStackPlan({ profile, items: [item('main'), { ...enormous, role: 'overlay' }] }).diagnostics[0].message, /可读/);
 });
 
 test('formatted font transforms retain the source clock and plain fractional fit never resets font animation', () => {

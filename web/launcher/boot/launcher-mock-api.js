@@ -303,8 +303,7 @@ save_local_settings: async ({ runtimePath }) => { state.config.localRuntime = { 
     open_output_folder: async () => ({ ok: true }),
     open_log_folder: async () => ({ ok: true }),
     open_html: async () => ({ ok: true }),
-    open_faq: async () => ({ ok: true }),
-    get_emoji_font_path: async () => ({ ok: true, path: "" })
+    open_faq: async () => ({ ok: true })
   };
 }
 

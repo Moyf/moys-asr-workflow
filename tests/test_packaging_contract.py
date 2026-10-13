@@ -90,6 +90,15 @@ def _local_runtime_spec_entry(relative_path: str) -> str:
 
 
 class PackagingContractTests(CompactContainerAssertions, unittest.TestCase):
+    def test_pages_builds_repository_bundles_before_portable_editor(self) -> None:
+        workflow = read_text(".github/workflows/deploy-editor-pages.yml")
+        build_step = workflow.index("- name: Build web bundles")
+        portable_step = workflow.index("- name: Add portable editor page")
+        self.assertLess(build_step, portable_step)
+        root_build = workflow[build_step:workflow.index("- name: Install website dependencies")]
+        self.assertIn("pnpm install --frozen-lockfile && pnpm run build", root_build)
+        self.assertNotIn("working-directory: website", root_build)
+
     def test_launcher_version_matches_project_metadata(self) -> None:
         """Given project metadata, When the Launcher is packaged, Then every displayed fallback version matches it."""
         project = tomllib.loads(read_text("pyproject.toml"))

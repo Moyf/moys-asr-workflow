@@ -223,6 +223,33 @@ function syncFixedFooterClearance() {
     if (noticeBottom > footerTop || statusBottom > footerTop) shellScroll.scrollTop = shellScroll.scrollHeight;
   }
 }
+const launcherFeedbackMessages = new WeakMap();
+function revealLauncherFeedback(element, message) {
+  if (!element) return;
+  const value = String(message || "").trim();
+  if (!value) {
+    launcherFeedbackMessages.delete(element);
+    return;
+  }
+  if (launcherFeedbackMessages.get(element) === value) return;
+  launcherFeedbackMessages.set(element, value);
+  window.requestAnimationFrame(() => {
+    if (!element.isConnected) return;
+    const rect = element.getBoundingClientRect();
+    let visibleTop = Math.max(0, rect.top);
+    let visibleBottom = Math.min(window.innerHeight, rect.bottom);
+    for (let parent = element.parentElement; parent && parent !== document.body; parent = parent.parentElement) {
+      const style = window.getComputedStyle(parent);
+      if (!/(auto|scroll|hidden|clip)/.test(style.overflowY)) continue;
+      const clip = parent.getBoundingClientRect();
+      visibleTop = Math.max(visibleTop, clip.top);
+      visibleBottom = Math.min(visibleBottom, clip.bottom);
+    }
+    if (visibleTop <= rect.top + 1 && visibleBottom >= rect.bottom - 1) return;
+    const reducedMotion = window.matchMedia?.("(prefers-reduced-motion: reduce)").matches;
+    element.scrollIntoView({ behavior: reducedMotion ? "auto" : "smooth", block: "center", inline: "nearest" });
+  });
+}
 function revealErrorNotice(notice) {
   syncFixedFooterClearance();
   const shellScroll = document.querySelector(".shell-scroll");
@@ -230,7 +257,7 @@ function revealErrorNotice(notice) {
     shellScroll.scrollTop = shellScroll.scrollHeight;
     return;
   }
-  notice.scrollIntoView({ behavior: "smooth", block: "nearest" });
+  revealLauncherFeedback(notice, notice.textContent);
   window.requestAnimationFrame(() => {
     const footer = document.querySelector(".actions");
     if (!footer) return;
@@ -265,12 +292,14 @@ function hideErrorNotice() {
   const notice = $("errorNotice");
   notice.classList.add("hidden");
   notice.dataset.action = "";
+  revealLauncherFeedback(notice, "");
   clearErrorReport();
 }
 function showErrorNotice(message, code = "", detail = "", diagnostics = "", context = null) {
   const notice = $("errorNotice");
   const action = $("errorNoticeAction");
   const issue = $("errorNoticeIssue");
+  revealLauncherFeedback(notice, "");
   clearErrorReport();
   const diagnostic = diagnosticText(diagnostics);
   const version = context?.version || state.config?.appVersion || $("appVersion")?.textContent?.trim().replace(/^v/, "") || "unknown";

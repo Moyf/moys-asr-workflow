@@ -40,31 +40,37 @@ document.getElementById('replace-btn')?.addEventListener('click', () => MaweFind
 document.getElementById('replace-cancel')?.addEventListener('click', () => MaweDom.replaceModal.classList.remove('show'));
 MaweDom.replaceModal.addEventListener('click', (e) => { if (e.target === MaweDom.replaceModal) MaweDom.replaceModal.classList.remove('show'); });
 document.getElementById('replace-confirm')?.addEventListener('click', () => {
-  const re = MaweFindReplace.buildReplaceRegex();
-  if (!re || re.error) return;
-  const repl = MaweFindReplace.replaceInput.value;
-  // 先 dry-run 确认是否真的会改动，避免空操作压栈
-  let willChange = 0;
-  MaweFindReplace.getReplaceTargets().forEach(s => {
-    re.lastIndex = 0;
-    if (s.text.replace(re, repl) !== s.text) willChange++;
-  });
-  if (willChange === 0) {
+  const options = {
+    caseSensitive: MaweFindReplace.caseSensitiveCb.checked,
+    useRegex: MaweFindReplace.useRegexCb.checked,
+  };
+  const preview = window.AsrEditorUtils.buildReplacementPreview(
+    MaweBoot.DATA.segments,
+    MaweFindReplace.getReplaceTargetIndexes(),
+    MaweFindReplace.findInput.value,
+    MaweFindReplace.replaceInput.value,
+    options,
+  );
+  if (preview.error) {
+    MaweFindReplace.updatePreview();
+    return;
+  }
+  if (!preview.rows.length) {
     MaweDom.replaceModal.classList.remove('show');
     MaweHint.flashHint('没有匹配的内容', 'invalid');
     return;
   }
   return MaweCommands.run('批量替换', (command) => {
     let changedRows = 0, syncedRows = 0;
-    MaweFindReplace.getReplaceTargets().forEach(s => {
-      re.lastIndex = 0;
-      const newText = s.text.replace(re, repl);
-      if (newText !== s.text) {
-        const previousText = s.text;
-        s.text = newText; s._dirty = true; changedRows++;
-        const result = window.AsrEditorUtils.planWordTimingTextSync(s, previousText);
-        if (result?.items) { s.items = result.items; syncedRows++; }
-      }
+    preview.rows.forEach((row) => {
+      const segment = MaweBoot.DATA.segments[row.index];
+      if (!segment || segment.text !== row.before) return;
+      const previousText = segment.text;
+      segment.text = row.after;
+      segment._dirty = true;
+      changedRows++;
+      const result = window.AsrEditorUtils.planWordTimingTextSync(segment, previousText);
+      if (result?.items) { segment.items = result.items; syncedRows++; }
     });
     MaweDom.replaceModal.classList.remove('show');
     command.commit({ cueList: true });
@@ -124,8 +130,8 @@ MaweTextProcess.textProcessSelectedOnlyCb?.addEventListener('change', () => {
   MaweTextProcess.refreshTextProcessScopeInfo();
   MaweTextProcess.renderTextProcessPreview();
 });
-[MaweTextProcess.textProcessTrim, MaweTextProcess.textProcessCapitalize, MaweTextProcess.textProcessPrefix,
-  MaweTextProcess.textProcessSuffix, MaweTextProcess.textProcessStripMarkdown].forEach((input) => {
+[MaweTextProcess.textProcessTrim, MaweTextProcess.textProcessCapitalize,
+  MaweTextProcess.textProcessConvertNumbers, MaweTextProcess.textProcessStripMarkdown].forEach((input) => {
   input?.addEventListener('change', () => {
     MaweTextProcess.refreshTextProcessInputState();
     MaweTextProcess.renderTextProcessPreview();
@@ -206,32 +212,70 @@ MaweTextProcess.textProcessConfirm?.addEventListener('click', () => {
 // 「左右添加字符」批量预设：填充前缀/后缀输入并勾选，复用上方预览与应用流程。
 // ASS 特殊文本格式预设仅在当前工程启用 ASS 字幕模式时展示。
 (() => {
-  const presetHost = document.getElementById('text-process-wrap-presets');
-  if (!presetHost) return;
+  const assPresetHost = document.getElementById('text-process-wrap-presets-ass');
+  const commonPresetHost = document.getElementById('text-process-wrap-presets-common');
+  const presetRows = document.querySelectorAll('.text-process-wrap-preset-row-ass');
+  if (!assPresetHost || !commonPresetHost) return;
+  const customPreset = { id: 'custom', label: '自定义', left: '', right: '' };
+  const localizedPresetLabels = { note: '♪音符♪', music: '♬双音符♬', bracket: '[中括号]' };
+  function selectPreset(preset) {
+    const selected = MaweTextProcess.textProcessWrapPreset?.id === preset.id;
+    MaweTextProcess.textProcessWrapPreset = selected ? null : preset;
+    MaweTextProcess.refreshTextProcessInputState();
+    MaweTextProcess.renderTextProcessPreview();
+    if (!selected && preset.id === 'custom') MaweTextProcess.textProcessPrefixInput?.focus();
+  }
   (window.AsrEditorUtils.WRAP_CHAR_PRESETS || []).forEach((preset) => {
     const btn = document.createElement('button');
     btn.type = 'button';
-    btn.textContent = preset.label;
-    btn.title = `在字幕两端插入 ${preset.left} 和 ${preset.right}`;
-    if (preset.ass) btn.dataset.assOnly = 'true';
-    btn.addEventListener('click', () => {
-      MaweTextProcess.textProcessWrapPreset = preset;
-      MaweTextProcess.textProcessPrefix.checked = true;
-      MaweTextProcess.textProcessSuffix.checked = true;
-      MaweTextProcess.textProcessPrefixInput.value = preset.left;
-      MaweTextProcess.textProcessSuffixInput.value = preset.right;
-      MaweTextProcess.refreshTextProcessInputState();
-      MaweTextProcess.renderTextProcessPreview();
-    });
-    presetHost.appendChild(btn);
+    btn.dataset.wrapPresetLabel = localizedPresetLabels[preset.id] || preset.label;
+    btn.title = '左右添加字符（插入到字幕两端）';
+    btn.dataset.wrapPresetId = preset.id;
+    btn.addEventListener('click', () => selectPreset(preset));
+    (preset.ass ? assPresetHost : commonPresetHost).appendChild(btn);
   });
+  const customButton = document.createElement('button');
+  customButton.type = 'button';
+  customButton.dataset.wrapPresetLabel = customPreset.label;
+  customButton.title = '自定义左右字符';
+  customButton.dataset.wrapPresetId = customPreset.id;
+  customButton.addEventListener('click', () => selectPreset(customPreset));
+  commonPresetHost.appendChild(customButton);
+
   function refreshWrapPresetVisibility() {
     const assMode = MaweSettings.EDITOR_SETTINGS.assMode === true;
-    presetHost.querySelectorAll('[data-ass-only]').forEach((btn) => { btn.hidden = !assMode; });
+    presetRows.forEach((row) => { row.hidden = !assMode; });
+    const selectedPreset = MaweTextProcess.textProcessWrapPreset;
+    if (!assMode && selectedPreset?.ass) {
+      MaweTextProcess.textProcessWrapPreset = null;
+      MaweTextProcess.refreshTextProcessInputState();
+      MaweTextProcess.renderTextProcessPreview();
+    }
   }
+  function refreshWrapPresetCopy() {
+    const translate = (text) => window.MAWE_I18N?.translateText?.(text) || text;
+    presetRows.forEach((row) => row.querySelectorAll('[data-wrap-preset-label]').forEach((button) => {
+      button.textContent = translate(button.dataset.wrapPresetLabel);
+      button.title = translate(button.dataset.wrapPresetId === 'custom'
+        ? '自定义左右字符' : '左右添加字符（插入到字幕两端）');
+    }));
+    commonPresetHost.querySelectorAll('[data-wrap-preset-label]').forEach((button) => {
+      button.textContent = translate(button.dataset.wrapPresetLabel);
+      button.title = translate(button.dataset.wrapPresetId === 'custom'
+        ? '自定义左右字符' : '左右添加字符（插入到字幕两端）');
+    });
+    assPresetHost.querySelectorAll('[data-wrap-preset-label]').forEach((button) => {
+      button.textContent = translate(button.dataset.wrapPresetLabel);
+      button.title = translate('左右添加字符（插入到字幕两端）');
+    });
+  }
+  refreshWrapPresetCopy();
   refreshWrapPresetVisibility();
   document.getElementById('ass-mode-toggle')?.addEventListener('change', refreshWrapPresetVisibility);
-  document.addEventListener('mawe:languagechange', refreshWrapPresetVisibility);
+  document.addEventListener('mawe:languagechange', () => {
+    refreshWrapPresetCopy();
+    refreshWrapPresetVisibility();
+  });
 })();
 
 // 「左右添加字符」自定义弹窗：左右两个输入框原样插入到选中字幕两端。
@@ -348,6 +392,7 @@ MaweDom.timedTextEditSingleTextarea?.addEventListener('input', () => {
   );
   MaweDom.timedTextEditDraft.singleText = MaweDom.timedTextEditDraft.texts.join('\n');
   MaweDom.timedTextEditDraft.singleLineError = '';
+  MaweTimedTextEdit.refreshTimedTextEditSearch({ preserveIndex: true });
   MaweTimedTextEdit.scheduleTimedTextEditReport();
 });
 MaweDom.timedTextEditView?.addEventListener('click', (event) => {

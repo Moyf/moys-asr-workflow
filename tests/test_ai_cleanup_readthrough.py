@@ -26,6 +26,8 @@ class ReadthroughTest(CompactContainerAssertions, AiCleanupTestCase):
             self.calls.append((prompt, rows))
             if "第二道工序" in prompt:
                 return response(rows) if callable(response) else response
+            if "这是漏清扫描" in prompt:
+                return {"decisions": [{"id": row["id"], "decision": "keep", "scriptLine": row["scriptLine"]} for row in rows if row.get("contextOnly") != "true"]}
             return {"decisions": [
                 {"id": "c001", "decision": "discard" if discard else "keep", "scriptLine": "",
                  "reason": "删除：试麦", "evidence": "试麦"},
@@ -45,7 +47,7 @@ class ReadthroughTest(CompactContainerAssertions, AiCleanupTestCase):
         ]}, untimed=True, on_status=status.append)
         output = json.loads(artifact.project_path.read_text(encoding="utf-8"))
         self.assertTrue(AiCleanupRequest.__dataclass_fields__["review_enabled"].default)
-        self.assertEqual(len(self.calls), 2)
+        self.assertEqual(len(self.calls), 3)
         self.assertIn("toolbox_status_ai_cleanup_review", status)
         rows = self.calls[-1][1]
         self.assertEqual([row["asrText"] for row in rows], ["试麦听得到吗", "这是关键方法", "所以有这个结果"])
@@ -60,7 +62,7 @@ class ReadthroughTest(CompactContainerAssertions, AiCleanupTestCase):
     def test_sparse_empty_review_keeps_proposed_cut(self):
         artifact = self.execute({"reviews": []})
         output = json.loads(artifact.project_path.read_text(encoding="utf-8"))
-        self.assertEqual(len(self.calls), 2)
+        self.assertEqual(len(self.calls), 3)
         self.assertTrue(output["segments"][0]["disabled"])
         self.assertEqual(artifact.stats["removed"], 1)
 
@@ -68,7 +70,7 @@ class ReadthroughTest(CompactContainerAssertions, AiCleanupTestCase):
         for enabled, discard in ((False, True), (True, False)):
             with self.subTest(enabled=enabled, discard=discard):
                 self.execute({"reviews": []}, enabled=enabled, discard=discard)
-                self.assertEqual(len(self.calls), 1)
+                self.assertEqual(len(self.calls), 3 if enabled else 1)
 
     def test_invalid_second_pass_never_writes_partial_output(self):
         for response in (
@@ -78,7 +80,7 @@ class ReadthroughTest(CompactContainerAssertions, AiCleanupTestCase):
         ):
             with self.subTest(response=response), self.assertRaises(LlmClientError):
                 self.execute(response)
-            self.assertEqual(len(self.calls), 3)
+            self.assertEqual(len(self.calls), 4)
             self.assertEqual(list(self.directory.glob("*.mosp")), [self.source])
             self.assertFalse(json.loads(self.source.read_text(encoding="utf-8"))["segments"][0].get("disabled"))
 
@@ -103,7 +105,7 @@ class ReadthroughTest(CompactContainerAssertions, AiCleanupTestCase):
                 raise RuntimeError("cancelled")
         with self.assertRaisesRegex(RuntimeError, "cancelled"):
             self.execute({"reviews": []}, on_status=status)
-        self.assertEqual(len(self.calls), 1)
+        self.assertEqual(len(self.calls), 2)
         self.assertEqual(list(self.directory.glob("*.mosp")), [self.source])
 
     def test_pipeline_cancel_during_final_readthrough_does_not_write_artifacts(self):
@@ -120,6 +122,8 @@ class ReadthroughTest(CompactContainerAssertions, AiCleanupTestCase):
             if "第二道工序" in prompt:
                 cancelled.set()
                 return {"reviews": []}
+            if "这是漏清扫描" in prompt:
+                return {"decisions": [{"id": row["id"], "decision": "keep", "scriptLine": row["scriptLine"]} for row in rows if row.get("contextOnly") != "true"]}
             return {"decisions": [
                 {"id": "c001", "decision": "discard", "scriptLine": "",
                  "reason": "删除：试麦", "evidence": "试麦"},
@@ -136,7 +140,7 @@ class ReadthroughTest(CompactContainerAssertions, AiCleanupTestCase):
                     cancel_event=cancelled, on_event=None,
                     llm_settings={"deepseek": {"apiKey": "test", "baseUrl": "https://example.com", "model": "test"}},
                 )
-        self.assertEqual(len(calls), 2)
+        self.assertEqual(len(calls), 3)
         self.assertEqual(source.read_bytes(), original)
         self.assertEqual(list(self.directory.glob("*.mosp")), [source])
         self.assertFalse(list(self.directory.glob("*.srt")))

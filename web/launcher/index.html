@@ -34,6 +34,15 @@
   <link rel="stylesheet" href="launcher.css">
 </head>
 <body>
+  <!-- 段落标题序号用 SVG keycap 徽章：彩色 emoji 序号依赖系统 emoji 字体完整覆盖
+       U+FE0F/U+20E3，部分 Linux 发行版会渲染成「3x」，改为 SVG 后全平台一致。 -->
+  <svg class="keycap-sprite" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+    <symbol id="keycap-1" viewBox="0 0 64 64"><rect class="keycap-bg" x="3" y="3" width="58" height="58" rx="16"></rect><text class="keycap-num" x="32" y="44" text-anchor="middle" font-size="34" font-weight="700">1</text></symbol>
+    <symbol id="keycap-2" viewBox="0 0 64 64"><rect class="keycap-bg" x="3" y="3" width="58" height="58" rx="16"></rect><text class="keycap-num" x="32" y="44" text-anchor="middle" font-size="34" font-weight="700">2</text></symbol>
+    <symbol id="keycap-3" viewBox="0 0 64 64"><rect class="keycap-bg" x="3" y="3" width="58" height="58" rx="16"></rect><text class="keycap-num" x="32" y="44" text-anchor="middle" font-size="34" font-weight="700">3</text></symbol>
+    <symbol id="keycap-4" viewBox="0 0 64 64"><rect class="keycap-bg" x="3" y="3" width="58" height="58" rx="16"></rect><text class="keycap-num" x="32" y="44" text-anchor="middle" font-size="34" font-weight="700">4</text></symbol>
+    <symbol id="keycap-5" viewBox="0 0 64 64"><rect class="keycap-bg" x="3" y="3" width="58" height="58" rx="16"></rect><text class="keycap-num" x="32" y="44" text-anchor="middle" font-size="34" font-weight="700">5</text></symbol>
+  </svg>
   <main class="shell" inert aria-busy="true">
     <div class="shell-scroll">
     <header class="hero">
@@ -63,7 +72,7 @@
     </div>
 
     <section id="mediaCard" class="card drop-card" aria-labelledby="mediaTitle">
-      <h2 id="mediaTitle" data-i18n="media_output">1️⃣ 选择媒体</h2>
+      <h2 id="mediaTitle"><svg class="keycap" aria-hidden="true"><use href="#keycap-1"></use></svg><span data-i18n="media_output">选择媒体</span></h2>
       <div class="mode-switch-row">
         <div class="segmented" role="group" aria-label="转写模式" data-i18n-aria-label="mode_label">
           <button type="button" class="segment active" id="singleMode" aria-pressed="true" data-i18n="mode_single">单文件</button>
@@ -122,7 +131,7 @@
     </section>
 
     <section id="recognitionCard" class="card" aria-labelledby="settingsTitle">
-      <h2 id="settingsTitle" data-i18n="recognition">2️⃣ 识别设置</h2>
+      <h2 id="settingsTitle"><svg class="keycap" aria-hidden="true"><use href="#keycap-2"></use></svg><span data-i18n="recognition">识别设置</span></h2>
       <div class="provider-row">
         <div class="field provider-field">
           <label for="provider" data-i18n="provider">识别方式</label>
@@ -350,7 +359,7 @@
      </section>
 
     <section id="autoPostprocessCard" class="card" aria-labelledby="autoPostprocessTitle">
-      <h2 id="autoPostprocessTitle" data-i18n="auto_postprocess_title">3️⃣ 转写后自动处理</h2>
+      <h2 id="autoPostprocessTitle"><svg class="keycap" aria-hidden="true"><use href="#keycap-3"></use></svg><span data-i18n="auto_postprocess_title">转写后自动处理</span></h2>
       <p class="hint" data-i18n="auto_postprocess_hint">转写完成后自动执行；需先在工具箱进行配置。</p>
       <p id="batchManuscriptNotice" class="toolbox-notice hidden" role="note" data-i18n="batch_manuscript_disabled">批量模式不支持逐文件文稿映射。本次批量运行会跳过文稿匹配；单文件设置保持不变。</p>
       <label class="check-field auto-postprocess-toggle" for="autoPostprocessEnabled">
@@ -370,6 +379,12 @@
                 <span id="autoStepMatchStatus" class="auto-step-status hint"></span>
                 <span id="autoStepMatchHint" class="auto-step-hint hint"></span>
                 <button id="configureAutoMatch" class="inline-link" type="button" data-i18n="auto_configure">配置</button>
+              </div>
+              <div class="auto-step-row" data-auto-step-row="cleanup">
+                <label class="check-field" for="autoStepCleanup"><input id="autoStepCleanup" type="checkbox"><span data-i18n="auto_step_cleanup">AI 口播整理</span></label>
+                <span id="autoStepCleanupStatus" class="auto-step-status hint"></span>
+                <span id="autoStepCleanupHint" class="auto-step-hint hint"></span>
+                <button id="configureAutoCleanup" class="inline-link" type="button" data-i18n="auto_configure">配置</button>
               </div>
               <div class="auto-step-row" data-auto-step-row="replace">
                 <label class="check-field" for="autoStepReplace"><input id="autoStepReplace" type="checkbox"><span data-i18n="auto_step_replace">固定替换</span></label>
@@ -442,7 +457,7 @@
     </section>
 
     <section class="card" aria-labelledby="logTitle">
-      <h2 id="logTitle" data-i18n="logs">4️⃣ 日志</h2>
+      <h2 id="logTitle"><svg class="keycap" aria-hidden="true"><use href="#keycap-4"></use></svg><span data-i18n="logs">日志</span></h2>
       <div id="progress" class="progress hidden" aria-hidden="true"><span></span></div>
       <p id="logLatest" class="log-latest hidden" aria-live="polite"></p>
       <pre id="log" class="log" aria-live="polite"></pre>
@@ -452,7 +467,7 @@
     </section>
 
     <section id="serverCard" class="card" aria-labelledby="serverTitle">
-      <h2 id="serverTitle" data-i18n="server">5️⃣ 编辑器</h2>
+      <h2 id="serverTitle"><svg class="keycap" aria-hidden="true"><use href="#keycap-5"></use></svg><span data-i18n="server">编辑器</span></h2>
       <div id="serverBody">
         <div class="field">
           <label for="jsonPath" data-i18n="json_project">工程文件</label>
@@ -594,7 +609,7 @@
           <pre id="toolboxThinkingOutput" class="toolbox-stream-text"></pre>
         </details>
         <details id="toolboxModelPanel" class="toolbox-stream-panel" open>
-          <summary><span data-i18n="toolbox_model_output">模型输出（JSON）</span><span id="toolboxModelCount" class="hint"></span></summary>
+          <summary><span data-i18n="toolbox_model_output">模型输出</span><span id="toolboxModelCount" class="hint"></span></summary>
           <pre id="toolboxModelOutput" class="toolbox-stream-text"></pre>
         </details>
       </div>
@@ -790,22 +805,6 @@
            </div>
           <p id="postprocessScriptPathError" class="field-error"></p>
         </div>
-        <div class="field">
-          <label class="check-field" for="postprocessAiCleanup">
-            <input id="postprocessAiCleanup" type="checkbox">
-            <span data-i18n="toolbox_ai_cleanup">调用 AI 进行整理（录音优先）</span>
-          </label>
-          <p class="hint" data-i18n="toolbox_ai_cleanup_hint">当你的录音有比较多错漏、重复时，可以启用开关，让 AI 尝试帮你校对并清理，保留正确的录音。准确度取决于 AI 和语音情况。</p>
-          <div id="postprocessAiCleanupProviderField" class="hidden">
-            <label for="postprocessAiCleanupProvider" data-i18n="toolbox_provider">供应商</label>
-            <select id="postprocessAiCleanupProvider"></select>
-            <p class="toolbox-settings-hint"><span id="postprocessAiCleanupProviderStatus" class="hint"></span> <button id="openLlmSettingsFromAiCleanup" class="inline-link" type="button" data-i18n="toolbox_open_settings">在 ⚙️ 设置中配置 AI 处理用的模型</button></p>
-          </div>
-          <div id="postprocessAiCleanupNotesField" class="hidden" style="margin-top: 8px;">
-            <label for="postprocessAiCleanupNotes" data-i18n="toolbox_ai_cleanup_notes">补充说明</label>
-            <textarea id="postprocessAiCleanupNotes" rows="2" autocomplete="off" data-i18n-placeholder="toolbox_ai_cleanup_notes_placeholder"></textarea>
-          </div>
-        </div>
         <div class="field" id="postprocessMatchModeField">
           <label for="postprocessMatchMode" data-i18n="toolbox_match_mode">换行来源</label>
          <select id="postprocessMatchMode">
@@ -997,12 +996,33 @@
             <select id="postprocessOperation">
                   <option value="translate_zh" data-i18n="toolbox_translate_zh">翻译成中文</option>
                   <option value="translate_en" data-i18n="toolbox_translate_en">翻译成英文</option>
+                  <option value="ai_cleanup" data-i18n="toolbox_ai_cleanup_task">AI 口播整理</option>
                   <option value="proofread" data-i18n="toolbox_proofread">校对文本</option>
                   <option value="resegment" data-i18n="toolbox_resegment">重新断句</option>
                   <option value="custom" data-i18n="toolbox_custom">自定义</option>
             </select>
           </div>
         </div>
+        <div id="postprocessCleanupOptions" class="hidden" style="margin-top: 16px;">
+          <label for="postprocessCleanupScriptPath" data-i18n="toolbox_cleanup_reference">参考文稿（可选）</label>
+          <div class="input-action-row" style="margin-top: 8px; display: flex; gap: 8px;">
+            <input id="postprocessCleanupScriptPath" type="text" style="flex: 1; min-width: 0;" autocomplete="off" data-i18n-placeholder="toolbox_cleanup_reference_placeholder">
+            <button id="pickPostprocessCleanupScript" type="button" data-i18n="choose">选择</button>
+          </div>
+          <p id="postprocessCleanupScriptPathError" class="field-error"></p>
+          <p class="hint" style="margin-top: 8px;" data-i18n="toolbox_cleanup_task_hint">整理重录、真重复与句内磕巴，保留原始文字；删除写为空隙，存疑写为待核查区段。</p>
+        </div>
+        <div id="postprocessResegmentOptions" class="hidden" style="margin-top: 16px;">
+          <label for="postprocessResegmentMaxChars" data-i18n="toolbox_resegment_max_chars">每条字幕最大字数（可选）</label>
+          <input id="postprocessResegmentMaxChars" type="number" min="1" max="500" step="1" inputmode="numeric" style="display: block; margin-top: 8px; width: 160px;" data-i18n-placeholder="toolbox_resegment_max_placeholder">
+          <p id="postprocessResegmentMaxCharsError" class="field-error"></p>
+          <p class="hint" style="margin-top: 8px;" data-i18n="toolbox_resegment_max_hint">留空按自然语义断句；中文、英文和标点逐字符计数，空白不计。无法安全拆分的超长词项或缺时间码段会保留并提示。</p>
+        </div>
+        <label class="check-field" for="postprocessGenerateComparison" style="margin-top: 16px;">
+          <input id="postprocessGenerateComparison" type="checkbox">
+          <span data-i18n="toolbox_generate_comparison">生成处理前后对比结果</span>
+        </label>
+        <p class="hint" style="margin-top: 8px;" data-i18n="toolbox_generate_comparison_hint">同时生成本地 HTML，可查看原文、处理结果及待核查原因。</p>
         <div id="postprocessTranslationOptions" class="toolbox-translation-options hidden">
           <div class="toolbox-merge-row">
             <label class="check-field" for="postprocessMergeBilingual">

@@ -225,11 +225,14 @@
     '高级操作': 'Advanced actions',
     '字词拆成字幕…': 'Split words into subtitles…',
     '字词拆成字幕': 'Split words into subtitles',
-        '选择文件夹…': 'Choose folder…',
+    '选择文件夹…': 'Choose folder…',
     '选择文件位置并保存工程': 'Choose a file location and save the project',
     '正在打开工程…': 'Opening project…',
     '工程媒体未找到。请点击“加载媒体”重新定位文件。': 'Project media was not found. Click “Load media” to locate it.',
 '确认转换': 'Confirm conversion',
+    '可通过撤销恢复；不提供反向转换工具。': 'You can undo this conversion; no reverse-conversion tool is provided.',
+    '此操作会使用字词时间码来生成拆碎后的字幕块，将完整的句子变成一个一个单词显示。': 'This uses word timings to split each complete sentence into individual word subtitles.',
+    '请确认你需要这个效果再使用。': 'Use this only if this is the result you need.',
     '调整字词起点': 'Adjust timed text start',
     '调整字词终点': 'Adjust timed text end',
     '拖动调整贴合字词边界（两侧一起移动）': 'Drag the shared timed text boundary',
@@ -291,6 +294,15 @@
     "棕": "Brown",
     '跟随播放': 'Follow playback',
     '定位当前播放头并恢复字幕跟随；手动翻看后可再次点击': 'Locate the playhead and resume subtitle following; click again after browsing manually',
+    '跟随中': 'Following',
+    '恢复跟随': 'Resume following',
+    '播放时列表会跟随当前字幕；手动翻看后会暂停跟随。': 'The list follows the current subtitle during playback; manual browsing pauses following.',
+    '定位当前播放字幕并恢复跟随。': 'Locate the current subtitle and resume following.',
+    '播放时列表会跟随当前字幕；手动翻看后可点击恢复跟随。': 'The list follows the current subtitle during playback; click Resume following after browsing manually.',
+    '全部展开': 'Expand all',
+    '全部收缩': 'Collapse all',
+    '选择要对字幕批量执行的文本操作（若处理结尾为空，会保留空字幕行）。': 'Choose a text operation for these subtitles. Subtitle rows remain even if processing leaves them empty.',
+    '当前范围：全部字幕': 'Current scope: all subtitles',
     '自动备份': 'Automatic backups',
     '打开备份文件夹': 'Open backup folder',
     '复制备份目录路径': 'Copy backup folder path',
@@ -744,7 +756,13 @@
     '左右添加字符预设': 'Character wrapping presets',
     '左右添加字符': 'Wrap with characters', '自定义左右字符': 'Custom wrap characters',
     '左侧字符': 'Left characters', '右侧字符': 'Right characters', '插入': 'Insert',
-    '音符': 'Music note', '淡出淡入': 'Fade in/out',
+    '音符': 'Music note', '淡出淡入': 'Fade in/out', '注释文本': 'Comment text',
+    'ASS 特殊文本样式': 'ASS text styles', '普通字符': 'Regular characters',
+    '♪音符♪': '♪Music note♪', '♬双音符♬': '♬Double music notes♬', '[中括号]': '[Square brackets]',
+    '左侧添加': 'Add on the left', '右侧添加': 'Add on the right',
+    '输入左侧字符': 'Characters to add on the left', '输入右侧字符': 'Characters to add on the right',
+    '自定义左右添加字符': 'Custom wrapping characters',
+    '数字转换': 'Convert Chinese numerals', '将明确的中文数字转写为数字，前后留空格': 'Convert clear Chinese numerals to digits, with a space on each side',
     '左右添加字符（插入到字幕两端）': 'Wrap with characters (inserted at both ends)',
     '在选中字幕文本两端原样插入字符；不做样式转换，也不受「单双符号」规则影响。': 'Insert characters verbatim at both ends of the selected subtitles; no style conversion and unaffected by the single or double symbol rule.',
     '选中字幕已包裹相同符号，未重复添加': 'The selected subtitles are already wrapped with the same characters; nothing was added',
@@ -1076,7 +1094,10 @@
   '导入媒体后显示波形（大媒体需要先用 MAW 生成波形后拖入）': 'Import media to show the waveform (for large media, generate the waveform with MAW first and drag it in)',
     '‹ 前一条': '‹ Previous', '后一条 ›': 'Next ›', '＋ 表情包': '＋ Sticker',
     '在光标处拆分': 'Split at cursor', '在光标处拆分（': 'Split at cursor (', '范围：全部字幕': 'Scope: all subtitles',
-    '查找': 'Find', '替换为': 'Replace with', '批量替换': 'Batch replace',
+    '查找': 'Find', '查找字幕文本': 'Find subtitle text', '字幕文本查找与替换': 'Find and replace subtitle text',
+    '替换为': 'Replace with', '批量替换': 'Batch replace', '单个替换': 'Replace current',
+    '全量替换': 'Replace all matches', '上一条': 'Previous match', '下一条': 'Next match',
+    '显示替换': 'Show replace', '隐藏替换': 'Hide replace', '正则表达式无效': 'Invalid regular expression',
     '纯文本编辑…': 'Plain text edit…', '纯文本编辑': 'Plain text edit', '编辑轨道': 'Edit track',
     '编辑视图': 'Edit view', '逐条编辑': 'Edit row by row', '整体编辑': 'Whole text', '单文本框': 'Single text area',
     '显示已禁用字幕': 'Show disabled subtitles',
@@ -1406,7 +1427,7 @@
   // and read-only previews. Translate their surrounding controls and labels.
   const PROJECT_TEXT_SELECTOR = [
     '.cue .text', '.multi-cue-column .text', '.waveform-cue-label',
-    '.timed-text-edit-diff-part', '[data-word-project-content]',
+    '.timed-text-edit-diff-part', '#timed-text-edit-search-mirror', '[data-word-project-content]',
     '.multi-subtitle-split-char',
     '.multi-subtitle-split-preview-left', '.multi-subtitle-split-preview-right',
     '.cue .sticker-slot .sname', '.cue .sticker-slot img', '#sticker-preview-name',
@@ -1491,6 +1512,10 @@
     if (lang !== EN) return text;
     if (EN_TEXT[text]) return EN_TEXT[text];
     if (EN_ATTR[text]) return EN_ATTR[text];
+    let scope = /^当前范围：全部 (\d+) 条字幕$/.exec(text);
+    if (scope) return `Current scope: all ${scope[1]} subtitles`;
+    scope = /^当前范围：仅选中的 (\d+) 条字幕$/.exec(text);
+    if (scope) return `Current scope: selected ${scope[1]} subtitles`;
     // Platform labels are applied before translation. Reuse the Ctrl wording
     // on macOS while keeping the key label users actually press.
     if (text.startsWith('Cmd+')) {

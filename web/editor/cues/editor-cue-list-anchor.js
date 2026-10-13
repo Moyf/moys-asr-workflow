@@ -195,8 +195,21 @@
 
   function setCueListFollowing(enabled) {
     cueListScroll.following = enabled;
-    cueListFollowButton?.setAttribute('aria-pressed', String(enabled));
+    if (!cueListFollowButton) return;
+    const label = enabled ? '跟随中' : '恢复跟随';
+    const hint = enabled
+      ? '播放时列表会跟随当前字幕；手动翻看后会暂停跟随。'
+      : '定位当前播放字幕并恢复跟随。';
+    const translate = (value) => global.MAWE_I18N?.translateText?.(value) || value;
+    cueListFollowButton.textContent = translate(label);
+    cueListFollowButton.title = translate(hint);
+    cueListFollowButton.setAttribute('aria-label', translate(label));
+    cueListFollowButton.setAttribute('aria-pressed', String(enabled));
   }
+
+
+
+  setCueListFollowing(cueListScroll.following);
 
 
 

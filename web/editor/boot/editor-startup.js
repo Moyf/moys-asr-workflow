@@ -73,6 +73,7 @@ if (MaweBoot.SERVER_CONFIG?.startupStatus !== 'loading') void MaweWaveformInit.l
 
 document.getElementById('filter-over')?.addEventListener('click', (e) => {
   e.currentTarget.classList.toggle('active');
+  e.currentTarget.setAttribute('aria-pressed', String(e.currentTarget.classList.contains('active')));
   if (!e.currentTarget.classList.contains('active')) {
     MaweCueElements.clearTemporaryVisibleSplitCues();
   }

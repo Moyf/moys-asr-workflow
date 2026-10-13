@@ -154,11 +154,18 @@ declare const MaweDom: any;
 declare const MaweMultiSubtitleCore: any;
 declare const ASS_STYLE_LIBRARY: any;
 declare const mergedExportSegments: any;
+declare const aiCleanupExportSegments: any;
 declare const activeExtensionSegments: any;
 
 interface Window {
   AsrEditorUtils: any;
   MAWE_I18N: any;
+  MaweMarkersPanel?: {
+    createAiCleanupReviewMuteButton?: (markerId: string) => HTMLButtonElement;
+    updateAiCleanupReviewMuteButton?: (button: HTMLElement, markerId: string) => void;
+    updateAiCleanupReviewStatusButton?: (button: HTMLElement, marker: any) => void;
+    refreshAiCleanupReviewMuteButtons?: () => void;
+  };
   ASR_EDITOR_PALETTE?: Array<{ name: string; value: string }>;
   showSaveFilePicker?: any;
   MOSEConfirmProjectSwitch?: () => Promise<boolean>;

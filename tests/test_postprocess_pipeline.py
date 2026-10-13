@@ -71,16 +71,51 @@ class PostprocessPipelineTests(CompactContainerAssertions, unittest.TestCase):
     def conversion_step(self, mode: str = "to_traditional") -> dict[str, object]:
         return {"id": "replace", "enabled": True, "replacements": [], "conversion": mode}
 
+    def test_comparison_survives_discarding_intermediate_artifacts(self) -> None:
+        def fake_process(request, **_kwargs):
+            directory = request.output_directory
+            project = directory / "processed.mosp"
+            srt = directory / "processed.srt"
+            comparison = directory / "comparison.html"
+            project.write_bytes(request.project_path.read_bytes())
+            srt.write_bytes(request.srt_path.read_bytes())
+            comparison.write_text("<!doctype html><title>对比</title>", encoding="utf-8")
+            self.assertTrue(request.generate_comparison)
+            return SubtitleArtifact(request.project_path, request.srt_path, project, srt, comparison_path=comparison)
+        step = {"id": "proofread", "enabled": True, "providerId": "deepseek", "generateComparison": True}
+        with mock.patch("maw.postprocess_pipeline.run_llm_postprocess", side_effect=fake_process):
+            result = run_postprocess_pipeline(self.plan(step), media_path=self.media, project_path=self.project, srt_path=self.srt, env_path=self.env_path, ffmpeg_path=None, cancel_event=Event(), llm_settings={"deepseek": {"apiKey": "key", "baseUrl": "https://example.test", "model": "model", "verified": "1"}})
+        self.assertFalse(result.run_directory.exists())
+        comparisons = list(self.root.glob("*.html"))
+        self.assertEqual(len(comparisons), 1)
+        self.assertIn("对比", comparisons[0].read_text(encoding="utf-8"))
+        self.assertTrue(result.project_path.is_file())
+        self.assertTrue(result.srt_path.is_file())
+
     def match_step(self, enabled: bool = True) -> dict[str, object]:
         script = self.root / "script.txt"
         script.write_text("正字\n保留\n", encoding="utf-8")
         return {"id": "match", "enabled": enabled, "scriptPath": str(script)}
 
+    def test_resegment_limit_survives_plan_and_request_and_invalid_field_validation(self) -> None:
+        settings = {"deepseek": {"apiKey": "test-key", "baseUrl": "https://example.test/v1", "model": "test", "verified": "1"}}
+        plan = self.plan({"id": "resegment", "enabled": True, "providerId": "deepseek", "maxChars": "18"})
+        normalized, errors = validate_plan(plan, env_path=self.env_path, media_path=self.media, llm_settings=settings)
+        self.assertFalse(errors)
+        self.assertEqual(next(s for s in normalized["steps"] if s["id"] == "resegment")["maxChars"], 18)
+        with mock.patch("maw.postprocess_pipeline.run_llm_postprocess", return_value=SubtitleArtifact(self.project, self.srt, self.project, self.srt)) as process:
+            run_postprocess_pipeline(plan, media_path=self.media, project_path=self.project, srt_path=self.srt, env_path=self.env_path, ffmpeg_path=None, cancel_event=Event(), llm_settings=settings)
+        self.assertEqual(process.call_args.args[0].max_chars, 18)
+        plan["steps"][0]["maxChars"] = "-1"
+        _, errors = validate_plan(plan, env_path=self.env_path, media_path=self.media, llm_settings=settings)
+        self.assertEqual(errors[0]["field"], "postprocessResegmentMaxChars")
+
     def test_ai_cleanup_notes_survive_plan_normalization_and_request(self) -> None:
         step = self.match_step()
         step.update(aiCleanup=True, aiCleanupNotes="  保留所有数字  ")
         plan = normalize_plan(self.plan(step))
-        self.assertEqual(plan["steps"][0]["aiCleanupNotes"], "保留所有数字")
+        self.assertFalse(plan["steps"][0]["enabled"])
+        self.assertEqual(plan["steps"][1]["customPrompt"], "保留所有数字")
         with mock.patch("maw.postprocess_pipeline.run_ai_cleanup",
                         return_value=SubtitleArtifact(self.project, self.srt, self.project, self.srt)) as cleanup:
             run_postprocess_pipeline(plan, media_path=self.media, project_path=self.project,
@@ -115,8 +150,8 @@ class PostprocessPipelineTests(CompactContainerAssertions, unittest.TestCase):
 
         self.assertFalse(plan["enabled"])
         self.assertTrue(plan["retainIntermediate"])
-        self.assertEqual([step["id"] for step in plan["steps"]], ["match", "replace", "proofread", "resegment", "ocr", "translate", "burn"])
-        self.assertEqual(plan["steps"][1]["conversion"], "off")
+        self.assertEqual([step["id"] for step in plan["steps"]], ["match", "cleanup", "replace", "proofread", "resegment", "ocr", "translate", "burn"])
+        self.assertEqual(plan["steps"][2]["conversion"], "off")
         translate_step = next(step for step in plan["steps"] if step["id"] == "translate")
         self.assertFalse(translate_step["mergeBilingual"])
         self.assertEqual(plan["steps"][0]["matchMode"], "script")
@@ -236,19 +271,19 @@ class PostprocessPipelineTests(CompactContainerAssertions, unittest.TestCase):
         plan, errors = validate_plan(self.plan(self.conversion_step()), env_path=self.env_path, media_path=self.media, ffmpeg_path=None)
 
         self.assertEqual(errors, ())
-        self.assertEqual(plan["steps"][1]["conversion"], "to_traditional")
+        self.assertEqual(plan["steps"][2]["conversion"], "to_traditional")
 
     def test_validation_preserves_taiwan_traditional_conversion_mode(self) -> None:
         plan, errors = validate_plan(self.plan(self.conversion_step("to_traditional_twp")), env_path=self.env_path, media_path=self.media, ffmpeg_path=None)
 
         self.assertEqual(errors, ())
-        self.assertEqual(plan["steps"][1]["conversion"], "to_traditional_twp")
+        self.assertEqual(plan["steps"][2]["conversion"], "to_traditional_twp")
 
     def test_validation_preserves_hong_kong_traditional_conversion_mode(self) -> None:
         plan, errors = validate_plan(self.plan(self.conversion_step("to_traditional_hk")), env_path=self.env_path, media_path=self.media, ffmpeg_path=None)
 
         self.assertEqual(errors, ())
-        self.assertEqual(plan["steps"][1]["conversion"], "to_traditional_hk")
+        self.assertEqual(plan["steps"][2]["conversion"], "to_traditional_hk")
 
     def test_pipeline_runs_conversion_before_translation_steps(self) -> None:
         self.project.write_text(

@@ -158,9 +158,6 @@ async function init() {
   applyTheme();
   state.config.zoomPercent = applyZoomPercent(state.config.zoomPercent);
   window.MAWLauncher.config = state.config;
-  void bridge("get_emoji_font_path").then((emojiFont) => {
-    if (emojiFont && emojiFont.ok && emojiFont.path) injectEmojiFont(emojiFont.path);
-  });
   state.lang = state.config.guiLang || systemLanguage();
   if (!state.config.guiLang) {
     const result = await bridge("save_prefs", { guiLang: state.lang });

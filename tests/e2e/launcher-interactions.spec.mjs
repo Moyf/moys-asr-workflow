@@ -1366,6 +1366,43 @@ test('launcher reports a server disconnect without manual refresh', async ({ pag
   expect(await page.evaluate(() => window.__serverStatusCalls)).toBeGreaterThanOrEqual(2);
 });
 
+test('launcher scrolls a new hidden warning into view once', async ({ page }) => {
+  await page.emulateMedia({ reducedMotion: 'reduce' });
+  await page.goto(`file://${launcherPath}`);
+  await page.waitForFunction(() => window.MAWLauncher?.config?.postprocessProviders?.length > 0);
+  const scroll = page.locator('.shell-scroll');
+  const firstScroll = await page.evaluate(async () => {
+    const shell = document.querySelector('.shell-scroll');
+    shell.scrollTop = 0;
+    const warning = document.createElement('p');
+    warning.textContent = 'new warning test';
+    warning.style.marginTop = '1200px';
+    shell.append(warning);
+    window.MAWLauncher.revealFeedback(warning, warning.textContent);
+    await new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)));
+    const result = shell.scrollTop;
+    shell.scrollTop = 0;
+    window.MAWLauncher.revealFeedback(warning, warning.textContent);
+    await new Promise(resolve => requestAnimationFrame(resolve));
+    return { first: result, duplicate: shell.scrollTop };
+  });
+  expect(firstScroll.first).toBeGreaterThan(0);
+  expect(firstScroll.duplicate).toBe(0);
+
+  const visibleScroll = await page.evaluate(async () => {
+    const shell = document.querySelector('.shell-scroll');
+    shell.scrollTop = 0;
+    const warning = document.createElement('p');
+    warning.textContent = 'visible warning test';
+    shell.prepend(warning);
+    window.MAWLauncher.revealFeedback(warning, warning.textContent);
+    await new Promise(resolve => requestAnimationFrame(resolve));
+    return shell.scrollTop;
+  });
+  expect(visibleScroll).toBe(0);
+  await expect(scroll).toBeVisible();
+});
+
 test('restarting after a server disconnect does not reopen the editor page', async ({ page }) => {
   await page.goto(`file://${launcherPath}`);
   await page.waitForFunction(() => window.MAWLauncher?.config?.postprocessProviders?.length > 0);

@@ -11,7 +11,7 @@
   let EXPORT_KEEP_DISABLED_PLACEHOLDER = false;
 
   function cleanupMainSegments() {
-    return window.AsrGapRemoveCore.projectCleanupRetainedSegments(MaweBoot.DATA.segments, MaweBoot.DATA.gap_remove);
+    return window.AsrEditorUtils.buildAiCleanupSegments(MaweBoot.DATA.segments, MaweBoot.DATA.gap_remove);
   }
 
   function cleanupMergedExportSegments() {
@@ -266,7 +266,7 @@
   const extensionSegments = preview && !MaweDom.extensionOverlayToggle?.checked
     ? [] : activeExtensionSegments();
   const firstEnabledIndex = window.AsrEditorUtils.getSrtExportFirstIndex(
-    MaweBoot.DATA.segments,
+    cleanupMainSegments(),
     MaweSettings.EDITOR_SETTINGS.exportStartAtZero,
   );
   return window.AsrEditorUtils.buildAssPayload(preview && !MaweDom.overlayToggle.checked
@@ -342,7 +342,7 @@
     return null;
   }
   const firstEnabledIndex = window.AsrEditorUtils.getSrtExportFirstIndex(
-    MaweBoot.DATA.segments,
+    cleanupMainSegments(),
     MaweSettings.EDITOR_SETTINGS.exportStartAtZero,
   );
   // 去空隙 ASS 与常规 ASS 同一三轨契约：叠加轨与副字幕也随导出，

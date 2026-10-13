@@ -8,13 +8,18 @@
 // 合并导出池：主轨 + 叠加轨按 start 归并。叠加段的 color_ref 指向叠加轨
 // 自身数组，不能在合并后的大数组里按下标解析，因此同时返回归属集合，
 // 由 colorContextResolver 提供每条段的颜色/说话人解析上下文。
+function aiCleanupExportSegments(segments) {
+  return window.AsrEditorUtils.buildAiCleanupSegments(segments, MaweBoot.DATA.gap_remove);
+}
+
 function mergedExportSegments() {
+  const mainSegments = aiCleanupExportSegments(MaweBoot.DATA.segments);
   const overlaySegments = overlayTrackVisible() ? (getOverlayTrack()?.segments || []) : [];
   if (!overlaySegments.length) {
-    return { segments: MaweBoot.DATA.segments, overlaySet: new Set(), overlaySegments };
+    return { segments: mainSegments, overlaySet: new Set(), overlaySegments };
   }
   return {
-    segments: MULTI_SUBTITLE_UTILS.mergeMainAndOverlaySegments(MaweBoot.DATA.segments, overlaySegments),
+    segments: MULTI_SUBTITLE_UTILS.mergeMainAndOverlaySegments(mainSegments, overlaySegments),
     overlaySet: new Set(overlaySegments),
     overlaySegments,
   };

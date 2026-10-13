@@ -2105,7 +2105,7 @@ __WAVEFORM_CSS__
   <div class="cues-container" id="cues-container" tabindex="0" aria-label="字幕列表">
     <div class="toolbar cue-list-toolbar">
       <span class="info layout-toolbar-label">字幕</span>
-      <button type="button" id="cue-list-follow" aria-pressed="true" title="定位当前播放头并恢复字幕跟随；手动翻看后可再次点击">跟随播放</button>
+      <button type="button" id="cue-list-follow" aria-pressed="true" title="播放时列表会跟随当前字幕；手动翻看后会暂停跟随。">跟随中</button>
       <div class="settings-anchor cue-list-settings" id="cue-list-settings">
         <button type="button" id="cue-list-settings-toggle" class="cue-list-settings-toggle" title="字幕列表设置" aria-label="字幕列表设置" aria-expanded="false" aria-controls="cue-list-settings-panel" aria-haspopup="dialog">⚙️</button>
         <div class="settings-panel cue-list-settings-panel" id="cue-list-settings-panel" role="dialog" aria-label="字幕列表设置" hidden>
@@ -2135,7 +2135,7 @@ __WAVEFORM_CSS__
         <div class="settings-panel-section cue-list-settings-section"><span class="settings-panel-title">跟随</span>
 <label class="toggle settings-panel-item cue-list-setting-toggle" title="关闭后，通过字幕列表点击字幕时不会自动滚动列表">
               <input type="checkbox" id="cue-list-auto-scroll-on-click" checked> 点击字幕后自动滚动
-            </label><small class="settings-panel-hint">工具栏「跟随播放」可定位播放头并恢复跟随。</small></div>
+            </label><small class="settings-panel-hint">播放时列表会跟随当前字幕；手动翻看后可点击恢复跟随。</small></div>
 </div>
       </div>
       <span class="input-clear" id="search-wrap">
@@ -2147,17 +2147,16 @@ __WAVEFORM_CSS__
         <div class="dropdown-menu color-filter-menu" id="color-filter-menu" role="menu"></div>
       </div>
       <span class="info cue-list-count">显示 <b id="visible-count">0</b> / <b id="total-count">0</b></span>
-      <span class="sep"></span>
+      <button type="button" id="timed-text-edit-btn" title="集中编辑字幕文本，并预览拆分、合并和字词时间码映射结果" aria-label="纯文本编辑">📝</button>
       <div class="dropdown batch-operations-dropdown" id="batch-operations-dropdown">
         <button type="button" id="batch-operations-btn" aria-expanded="false" aria-controls="batch-operations-menu" aria-haspopup="menu">批量操作 ▾</button>
         <div class="dropdown-menu" id="batch-operations-menu" role="menu">
           <button type="button" class="dropdown-item" id="replace-btn" role="menuitem">批量替换</button>
-          <button type="button" class="dropdown-item" id="timed-text-edit-btn" role="menuitem" title="集中编辑字幕文本，并预览拆分、合并和字词时间码映射结果">纯文本编辑</button>
           <button type="button" class="dropdown-item" id="text-process-btn" role="menuitem">文本处理</button>
         </div>
       </div>
       <span class="sep" id="filter-over-sep"></span>
-      <button id="filter-over" title="只显示超过阈值的字幕（再次点击关闭）">仅看超长</button>
+      <button id="filter-over" title="只显示超过阈值的字幕（再次点击关闭）" aria-label="仅看超长" aria-pressed="false">🧐</button>
     </div>
       <div class="cues-empty" id="cues-empty">拖入工程或 SRT/LRC 字幕后显示字幕列表</div>
   </div>
@@ -2313,7 +2312,7 @@ __WAVEFORM_CSS__
 <div class="modal-mask" id="replace-modal">
   <div class="modal">
     <h3 id="replace-modal-title">批量替换</h3>
-    <div id="replace-scope-info" style="font-size:12px;color:#888;margin-bottom:8px;">范围：全部字幕</div>
+    <div id="replace-scope-info" style="font-size:12px;color:#888;margin-bottom:8px;">当前范围：全部字幕</div>
     <label class="modal-check-row" for="replace-selected-only">
       <input type="checkbox" id="replace-selected-only" disabled>
       <span>仅处理选中的字幕</span>
@@ -2341,9 +2340,9 @@ __WAVEFORM_CSS__
        aria-labelledby="text-process-title" aria-describedby="text-process-description">
     <h3 id="text-process-title">文本处理</h3>
     <p class="modal-desc" id="text-process-description">
-      选择要执行的文本操作；字幕行不会被删除，处理为空时会保留空字幕行。字词时间码会按文本编辑规则尽量保留。
+      选择要对字幕批量执行的文本操作（若处理结尾为空，会保留空字幕行）。
     </p>
-    <div id="text-process-scope-info" class="text-process-scope-info">范围：全部字幕</div>
+    <div id="text-process-scope-info" class="text-process-scope-info">当前范围：全部字幕</div>
     <label class="modal-check-row" for="text-process-selected-only">
       <input type="checkbox" id="text-process-selected-only" disabled>
       <span>仅处理选中的字幕</span>
@@ -2360,15 +2359,10 @@ __WAVEFORM_CSS__
         <span>首字母大写</span>
         <span class="modal-hint">只作用于第一个字母</span>
       </label>
-      <label class="text-process-operation text-process-operation-input" for="text-process-prefix">
-        <input type="checkbox" id="text-process-prefix">
-        <span>添加前缀</span>
-        <input type="text" id="text-process-prefix-input" placeholder="插入到字幕开头" disabled>
-      </label>
-      <label class="text-process-operation text-process-operation-input" for="text-process-suffix">
-        <input type="checkbox" id="text-process-suffix">
-        <span>附加内容</span>
-        <input type="text" id="text-process-suffix-input" placeholder="插入到字幕结尾" disabled>
+      <label class="text-process-operation" for="text-process-convert-numbers">
+        <input type="checkbox" id="text-process-convert-numbers">
+        <span>数字转换</span>
+        <span class="modal-hint">将明确的中文数字转写为数字，前后留空格</span>
       </label>
       <label class="text-process-operation" for="text-process-strip-markdown">
         <input type="checkbox" id="text-process-strip-markdown">
@@ -2378,7 +2372,20 @@ __WAVEFORM_CSS__
     </div>
     <div class="text-process-wrap-presets" aria-label="左右添加字符预设">
       <div class="text-process-wrap-presets-head">左右添加字符（插入到字幕两端）</div>
-      <div class="text-process-wrap-preset-buttons" id="text-process-wrap-presets"></div>
+      <div class="text-process-wrap-preset-row text-process-wrap-preset-row-ass">
+        <span class="text-process-wrap-preset-row-label">ASS 特殊文本样式</span>
+        <div class="text-process-wrap-preset-buttons" id="text-process-wrap-presets-ass"></div>
+      </div>
+      <div class="text-process-wrap-preset-row">
+        <span class="text-process-wrap-preset-row-label">普通字符</span>
+        <div class="text-process-wrap-preset-buttons" id="text-process-wrap-presets-common"></div>
+      </div>
+      <div class="text-process-custom-wrap-fields" id="text-process-custom-wrap-fields" hidden>
+        <label for="text-process-prefix-input">左侧添加</label>
+        <input type="text" id="text-process-prefix-input" placeholder="输入左侧字符">
+        <label for="text-process-suffix-input">右侧添加</label>
+        <input type="text" id="text-process-suffix-input" placeholder="输入右侧字符">
+      </div>
     </div>
     <div class="preview text-process-preview" id="text-process-preview">选择操作后查看预览</div>
     <div class="actions">
@@ -2427,12 +2434,14 @@ __WAVEFORM_CSS__
   </form>
 </dialog>
 
-<dialog id="word-conversion-dialog" class="word-conversion-dialog" aria-labelledby="word-conversion-title" aria-describedby="word-conversion-warning">
+<dialog id="word-conversion-dialog" class="modal word-conversion-dialog" aria-labelledby="word-conversion-title" aria-describedby="word-conversion-warning word-conversion-description">
   <h3 id="word-conversion-title">字词拆成字幕</h3>
-  <p id="word-conversion-warning">此操作会替换选中的整句结构，并解除相关副字幕绑定；副字幕内容与时间保留。字词范围可能更短，产生更多空隙。新增文字可能共用旧时间范围，没有重新对齐音频。每个块转为一条字幕，不按字数细分时间。可通过撤销恢复，不提供反向转换工具。</p>
-  <p id="word-conversion-summary" role="status" aria-live="polite"></p>
+  <p id="word-conversion-warning" class="word-conversion-warning">可通过撤销恢复；不提供反向转换工具。</p>
+  <p id="word-conversion-description" class="word-conversion-description">此操作会使用字词时间码来生成拆碎后的字幕块，将完整的句子变成一个一个单词显示。</p>
+  <p class="word-conversion-description">请确认你需要这个效果再使用。</p>
+  <p id="word-conversion-summary" class="modal-hint word-conversion-summary" role="status" aria-live="polite"></p>
   <ul id="word-conversion-skipped"></ul>
-  <div class="word-conversion-actions">
+  <div class="actions word-conversion-actions">
     <button type="button" id="word-conversion-cancel" autofocus>取消</button>
     <button type="button" id="word-conversion-confirm" class="danger" disabled>确认转换</button>
   </div>
@@ -2449,6 +2458,25 @@ __WAVEFORM_CSS__
       </div>
       <button type="button" id="timed-text-edit-close" class="timed-text-edit-close"
               title="关闭（Esc）" aria-label="关闭纯文本编辑">×</button>
+    </div>
+    <div class="timed-text-edit-search" role="search" aria-label="字幕文本查找与替换">
+      <div class="timed-text-edit-search-row">
+        <button type="button" id="timed-text-edit-replace-toggle" class="timed-text-edit-search-expand"
+                aria-expanded="false" aria-controls="timed-text-edit-replace-row" title="显示替换">▸</button>
+        <input type="text" id="timed-text-edit-find" placeholder="查找" autocomplete="off" spellcheck="false" aria-label="查找字幕文本">
+        <button type="button" id="timed-text-edit-case" class="timed-text-edit-search-option" aria-pressed="false" title="区分大小写">Aa</button>
+        <button type="button" id="timed-text-edit-regex" class="timed-text-edit-search-option" aria-pressed="false" title="正则表达式">.*</button>
+        <span id="timed-text-edit-search-count" class="timed-text-edit-search-count" role="status" aria-live="polite">0/0</span>
+        <button type="button" id="timed-text-edit-find-previous" title="上一条">上一条</button>
+        <button type="button" id="timed-text-edit-find-next" title="下一条">下一条</button>
+      </div>
+      <div id="timed-text-edit-search-error" class="timed-text-edit-search-error" role="alert" hidden></div>
+      <div class="timed-text-edit-search-row timed-text-edit-replace-row" id="timed-text-edit-replace-row" hidden>
+        <label for="timed-text-edit-replace">替换为</label>
+        <input type="text" id="timed-text-edit-replace" placeholder="替换为" autocomplete="off" spellcheck="false">
+        <button type="button" id="timed-text-edit-replace-one" disabled>单个替换</button>
+        <button type="button" id="timed-text-edit-replace-all" disabled>全量替换</button>
+      </div>
     </div>
     <div class="timed-text-edit-toolbar">
       <div class="timed-text-edit-track-control" id="timed-text-edit-track-control">
@@ -2483,6 +2511,7 @@ __WAVEFORM_CSS__
         </div>
         <div class="timed-text-edit-rows" id="timed-text-edit-rows"></div>
         <div id="timed-text-edit-single-editor" class="timed-text-edit-single-editor" hidden>
+          <div id="timed-text-edit-search-mirror" class="timed-text-edit-search-mirror" aria-hidden="true"></div>
           <textarea id="timed-text-edit-single-textarea" class="timed-text-edit-single-textarea"
                     aria-label="单文本框编辑" spellcheck="false" wrap="off"></textarea>
           <span id="timed-text-edit-single-guide" class="timed-text-edit-single-guide" aria-hidden="true"></span>

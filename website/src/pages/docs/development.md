@@ -134,4 +134,4 @@ README 只保留入口；主线放 WORKFLOW，高级操作放专题，字段放 
 uv run --no-sync python edit.py --blank
 ```
 
-发布时核对版本号、CHANGELOG、README、生成产物、许可与第三方声明，检查没有密钥、媒体或个人路径。GitHub Release 前用 `scripts/prepare_release_notes.py --tag VERSION --output PATH` 生成并检查 notes；发布不等于只建 tag。远端、push、tag 和 Release 均需维护者明确要求。
+发布时核对版本号、CHANGELOG、README、生成产物、许可与第三方声明，检查没有密钥、媒体或个人路径。2.0 起先用 `scripts/prepare_release_notes.py --tag VERSION --write-doc` 从 CL 生成并提交版本文档，再用 `--check-doc` 检查新鲜度、`--output PATH` 检查最终 Release notes；beta 汇总、正式版精简和小版本基础内容引用见[发布管线](../documentation-index/#engineering-releases)。发布不等于只建 tag。远端、push、tag 和 Release 均需维护者明确要求。
