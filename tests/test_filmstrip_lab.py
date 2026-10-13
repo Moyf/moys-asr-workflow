@@ -5,6 +5,7 @@ from pathlib import Path
 import sys
 import tempfile
 import threading
+from types import SimpleNamespace
 import unittest
 from unittest.mock import patch
 from urllib.error import HTTPError
@@ -65,7 +66,10 @@ class FilmstripPolicyTests(unittest.TestCase):
                 def wait(self, timeout=None):
                     self.waited = True
             process = Process()
-            with patch.object(backend.subprocess, "Popen", return_value=process):
+            # Identity probes the tool stat, but no real executable is needed.
+            ffmpeg = Path(directory) / "ffmpeg-test.exe"
+            ffmpeg.write_bytes(b"stub")
+            with patch.object(backend, "resolve_ffmpeg_tools", return_value=SimpleNamespace(ffmpeg=ffmpeg)), patch.object(backend.subprocess, "Popen", return_value=process):
                 with self.assertRaises(backend.Cancelled):
                     backend.generate(media, INFO, Path(directory) / "cache", cancel=event)
             self.assertTrue(process.killed); self.assertTrue(process.waited)

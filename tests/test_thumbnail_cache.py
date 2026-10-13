@@ -142,7 +142,8 @@ class ThumbnailCacheTests(unittest.TestCase):
             cleaned = c.cleanup_registered(inactive_before=1_700_000_000)
         self.assertEqual(cleaned["removed_count"], 1)
         self.assertEqual(cleaned["errors"], [])
-        self.assertEqual(recycled, [path])
+        # Registry paths resolve Windows 8.3 aliases before recycling.
+        self.assertEqual([file.resolve() for file in recycled], [path.resolve()])
         self.assertTrue(untouched.is_file())
         with contextlib.closing(c._connect()) as db:
             self.assertEqual(db.execute("SELECT COUNT(*) FROM bases").fetchone()[0], 0)
@@ -386,7 +387,8 @@ class ThumbnailCacheTests(unittest.TestCase):
         self.assertIsNone(c.load_base(self.media))
 
     def test_atomic_windows_replace_retry_and_old_file_preservation(self):
-        manifest = self.build()
+        with mock.patch.object(c.zipfile.time, "localtime", return_value=(2020, 1, 1, 0, 0, 0, 2, 1, -1)):
+            manifest = self.build()
         original = c.base_path(self.media).read_bytes()
         asset = manifest["assets"][0]["id"]
         blobs = {asset: c.read_asset(self.media, asset)}
@@ -397,13 +399,17 @@ class ThumbnailCacheTests(unittest.TestCase):
             if len(calls) < 3:
                 raise PermissionError("busy")
             real(source, target)
-        with mock.patch.object(c.os, "replace", side_effect=replace):
+        with mock.patch.object(c.zipfile.time, "localtime", return_value=(2020, 1, 1, 0, 0, 2, 2, 1, -1)), mock.patch.object(c.os, "replace", side_effect=replace):
             c._atomic_save(c.base_path(self.media), manifest, blobs, self.media)
         self.assertEqual(len(calls), 3)
+        # ZIP timestamps may change after a successful retry. A later failure
+        # must preserve that latest successful publication byte for byte.
+        last_valid = c.base_path(self.media).read_bytes()
+        self.assertNotEqual(last_valid, original)
         with mock.patch.object(c.os, "replace", side_effect=PermissionError("busy")):
             with self.assertRaises(PermissionError):
                 c._atomic_save(c.base_path(self.media), manifest, blobs, self.media)
-        self.assertEqual(c.base_path(self.media).read_bytes(), original)
+        self.assertEqual(c.base_path(self.media).read_bytes(), last_valid)
 
     def test_output_candidates_and_bounded_nearby_preview(self):
         self.build()

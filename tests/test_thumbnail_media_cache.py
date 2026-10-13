@@ -35,7 +35,9 @@ class ThumbnailMediaCacheTests(unittest.TestCase):
         with mock.patch.object(thumbnail_jobs,'build_base',return_value=manifest) as build:
             result=media_cache.embed_media_caches(self.project,self.wav,source_media_path=self.source,audio_track=2)
         self.assertEqual(build.call_args.args[0],self.source)
-        self.assertIn(self.source.with_name(self.source.name+".mothumbs"), self.cleaner.call_args.kwargs["exclude_paths"])
+        # waveform candidates normalize Windows short-path aliases.
+        excluded = [path.resolve() for path in self.cleaner.call_args.kwargs["exclude_paths"]]
+        self.assertIn(self.source.with_name(self.source.name+".mothumbs").resolve(), excluded)
         self.assertEqual(self.cleaner.call_args.kwargs["limit"],8)
         self.assertIs(result.thumbnail_cache,manifest)
         self.assertNotIn('thumbnail_cache',result.project)
