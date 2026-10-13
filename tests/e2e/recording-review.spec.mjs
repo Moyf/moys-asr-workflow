@@ -129,6 +129,7 @@ test('Launcher recording mode reuses selected ASR settings and opens its raw pro
   expect(await page.evaluate(()=>window.recordingServerPayload.projectPath)).toBe('/tmp/raw.mosp');
   const gap=await page.locator('#toolboxAlignmentInputs').evaluate(node=>node.getBoundingClientRect().top-node.previousElementSibling.getBoundingClientRect().bottom);
   expect(gap).toBeGreaterThanOrEqual(8);
+  writeFileSync(test.info().outputPath("spacing.json"),JSON.stringify({minimum:8,measuredVerticalGap:gap},null,2));
   await page.locator('#toolboxAlignmentPanel').screenshot({path:test.info().outputPath('recording-launcher.png')});
 });
 
