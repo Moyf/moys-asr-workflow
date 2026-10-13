@@ -49,6 +49,7 @@ shared/utils/ograf.js
 shared/editor-utils.js
 shared/editor-i18n.js
 shared/tooltip.js
+editor/media/editor-thumbnails.js
 editor/media/waveform/constants.js
 editor/media/waveform/labels.js
 editor/media/waveform/scale.js
@@ -74,6 +75,7 @@ editor/media/waveform/gap-drag.js
 editor/media/waveform/markers.js
 editor/media/waveform/cue-drag-update.js
 editor/media/waveform/playback.js
+editor/media/waveform/thumbnails.js
 editor/media/waveform.js
 editor/ui/editor-hint.js
 editor/media/editor-jkl.js

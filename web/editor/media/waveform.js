@@ -2,7 +2,11 @@
 (function () {
   'use strict';
 
+  const thumbnailCore = window.MAWE.resolve('editor-thumbnails', {
+    browser: window, getConfig: () => window.MaweBoot?.SERVER_CONFIG, storage: window.MaweHost.storage,
+  });
   const helpers = {
+    thumbnailCore,
     storage: window.MaweHost.storage,
     gapRemoveCore: window.AsrGapRemoveCore,
     getLanguage: () => window.MAWE_I18N?.language,
@@ -165,6 +169,7 @@ constructor(options) {
       };
       this._onPlayerTime = () => this.updatePlayback();
       this._onResize = () => this.scheduleRender();
+      this.initThumbnails();
       this.bindControls();
       this.bindDockHandles();
       this.applyLayout();
@@ -187,6 +192,7 @@ constructor(options) {
       Object.defineProperty(prototype, key, descriptors[key]);
     }
   }
+  installMethods(WaveformEditor.prototype, window.MAWE.resolve('waveform-thumbnails', helpers));
   installMethods(WaveformEditor.prototype, window.MAWE.resolve('waveform-controls', helpers));
   installMethods(WaveformEditor.prototype, window.MAWE.resolve('waveform-pointer', helpers));
   installMethods(WaveformEditor.prototype, window.MAWE.resolve('waveform-workspace', helpers));

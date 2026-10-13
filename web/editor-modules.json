@@ -305,6 +305,16 @@
       "file": "editor/media/waveform/playback.js",
       "name": "waveform-playback",
       "exportName": "createWaveformModule"
+    },
+    {
+      "file": "editor/media/editor-thumbnails.js",
+      "name": "editor-thumbnails",
+      "exportName": "createThumbnailModule"
+    },
+    {
+      "file": "editor/media/waveform/thumbnails.js",
+      "name": "waveform-thumbnails",
+      "exportName": "createWaveformModule"
     }
   ],
   "externalBridges": [

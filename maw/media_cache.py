@@ -27,6 +27,8 @@ class MediaCacheResult:
     project: dict[str, Any]
     waveform_error: Exception | None = None
     reapeaks_path: Path | None = None
+    thumbnail_cache: dict[str, Any] | None = None
+    thumbnail_error: Exception | None = None
 
 
 # 生成后需要合并进最终工程的缓存键。CLI 在临时目录存活期内先调用
@@ -90,6 +92,8 @@ def embed_media_caches(
     audio_track: int = 0,
     default_audio_track: int = 0,
     decode_audio_track: int | None = None,
+    cancel=None,
+    thumbnail_progress=None,
 ) -> MediaCacheResult:
     """嵌入波形缓存并生成 .ReaPeaks 缓存（best-effort）。
 
@@ -263,8 +267,22 @@ def embed_media_caches(
                 audio_track=audio_track,
                 default_audio_track=default_audio_track,
             )
+    thumbnail_manifest = None
+    thumbnail_error = None
+    try:
+        from maw.thumbnail_jobs import build_base
+        # Original video only: a derived WAV is never a thumbnail fallback.
+        thumbnail_manifest = build_base(source_path, cancel=cancel,
+            progress=thumbnail_progress, ffmpeg_path=ffmpeg_bin)
+        if thumbnail_manifest is not None:
+            print(f"[thumbnails] 视频画面缓存: {thumbnail_manifest.get('state', 'ready')}")
+    except Exception as error:
+        thumbnail_error = error
+        print(f"[thumbnails] 警告: {error}；已跳过画面缓存")
     return MediaCacheResult(
         project=project,
         waveform_error=waveform_result.error,
         reapeaks_path=reapeaks_path,
+        thumbnail_cache=thumbnail_manifest,
+        thumbnail_error=thumbnail_error,
     )

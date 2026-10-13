@@ -1,5 +1,7 @@
 # #229 视频缩略图实验与方案比较
 
+本页保留阶段 0 的原型与合成测量历史。后续依据 [owner 的详细实现计划](https://github.com/Moyf/moys-asr-workflow/issues/229#issuecomment-6138129094) 开始正式接线；当前分支包含未完成的开发检查点，上方画面带位置已确定。以下原型数据和旧决策状态不代表正式一期已验收。
+
 2026-10-13；基线 `a34d502a33cfe9fcff0288c13b04f6bba3ca48fa`。
 范围：[Issue #229](https://github.com/Moyf/moys-asr-workflow/issues/229) 的发散原型与证据；owner 尚未决定正式方案。本页不改变正式编辑器、MOSP schema、缓存真源或产品默认值。没有产品 CHANGELOG 条目。
 

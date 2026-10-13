@@ -154,15 +154,15 @@ export function createWaveformModule(dependencies) {
       }
       const rowDurationMs = this.settings.secondsPerRow * 1000;
       const rowIndex = clamp(Math.floor(timeMs / rowDurationMs), 0, Math.max(0, Math.ceil(this.durationMs / rowDurationMs) - 1));
-      const stride = this.settings.rowHeight + ROW_GAP;
+      const stride = this.getTimelineRowHeight() + ROW_GAP;
       const currentScrollTop = this.scroll.scrollTop;
       const rowInComfortZone = isMultiRowInComfortZone(
-        rowIndex, currentScrollTop, this.scroll.clientHeight, this.settings.rowHeight,
+        rowIndex, currentScrollTop, this.scroll.clientHeight, this.getTimelineRowHeight(),
       );
       const scrollTop = center && rowInComfortZone
         ? currentScrollTop
         : (center
-          ? rowIndex * stride - Math.max(0, (this.scroll.clientHeight - this.settings.rowHeight) * 0.45)
+          ? rowIndex * stride - Math.max(0, (this.scroll.clientHeight - this.getTimelineRowHeight()) * 0.45)
           : rowIndex * stride);
       const nextScrollTop = Math.max(0, scrollTop);
       this.autoScrolling = Math.abs(nextScrollTop - currentScrollTop) > 0.5;
