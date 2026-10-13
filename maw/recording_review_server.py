@@ -59,8 +59,8 @@ class RecordingReviewJob:
                 raise RecordingWorkflowError("文稿生成正在运行，请先停止。")
             self.cancel = Event()
             self.status = {"status": "running", "message": "正在准备文稿时间码。",
-                           "selectionDigest": self.current_digest}
-            self.thread = Thread(target=self._run, args=(dict(request), self.cancel, source_items), daemon=True)
+                           "selectionDigest": self.current_digest, "operation": "fill" if source_items else "start"}
+            self.thread = Thread(target=self._run, args=(result["review"]["request"], self.cancel, source_items), daemon=True)
             self.thread.start()
         return self.snapshot()
 
@@ -73,8 +73,8 @@ class RecordingReviewJob:
                 path.write_text(json.dumps(request, ensure_ascii=False), encoding="utf-8")
                 result = run_timestamp_alignment_in_runtime(
                     model_id=QWEN_FORCED_ALIGNER_MODEL_ID, project_path=self.state.project_path,
-                    script_path=None if source_items else self.state.script_path, media_path=self.state.media_path,
-                    recording_request_path=None if source_items else path, output_mode="json",
+                    script_path=self.state.script_path, media_path=self.state.media_path,
+                    recording_request_path=path, recording_operation="fill" if source_items else "align", output_mode="json",
                     cancel_event=cancel, on_event=self._progress,
                 )
             self.check_inputs()

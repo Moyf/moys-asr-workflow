@@ -485,8 +485,11 @@ def run_timestamp_alignment_in_runtime(
     silence_ms: int = 500,
     anchors_path: str | Path | None = None,
     recording_request_path: str | Path | None = None,
+    recording_operation: str = "align",
 ) -> dict[str, object]:
     """Run the post-processing aligner in the managed local runtime."""
+    if recording_operation not in {"align", "fill"}:
+        raise LocalRuntimeError("不支持的录音审查操作。")
     status = managed_runtime_status(model_cache_root)
     if not status.ready and (not recording_request_path or getattr(sys, "frozen", False)):
         raise LocalRuntimeError("本地模型运行时尚未安装，请先安装本地模型支持。")
@@ -496,7 +499,7 @@ def run_timestamp_alignment_in_runtime(
     command = [
         str(status.python_path) if status.ready else sys.executable,
         str(helper),
-        "recording-align" if recording_request_path else ("script-align" if script_path else "timestamp-align"),
+        f"recording-{recording_operation}" if recording_request_path else ("script-align" if script_path else "timestamp-align"),
         "--model-id",
         model_id,
         "--output-mode",
@@ -540,7 +543,7 @@ def run_timestamp_alignment_in_runtime(
             result = payload
             return
         if on_event is not None:
-            on_event(line)
+            on_event(str(payload.get("message")) if isinstance(payload, dict) and payload.get("type") == "progress" else line)
 
     _run_process(
         command,

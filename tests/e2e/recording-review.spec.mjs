@@ -28,11 +28,28 @@ test('existing take review exposes independent ASR confirmation and blocks uncon
     await expect(page.locator('#recording-generate')).toBeEnabled();
     const gap=await page.locator('.recording-actions').evaluate(node=>node.getBoundingClientRect().top-node.previousElementSibling.getBoundingClientRect().bottom);
     expect(gap).toBeGreaterThanOrEqual(8);
+    writeFileSync(test.info().outputPath("spacing.json"),JSON.stringify({minimum:8,measuredVerticalGap:gap},null,2));
     await page.locator('#recording-panel').screenshot({path:test.info().outputPath('recording-review.png')});
+    await page.locator('#skip-gap-playback').uncheck();
+    const gapRange=page.locator('#gap-overlay .gap-range:not(.gap-range-preview)').first();
+    await expect(gapRange).toBeVisible();
+    await gapRange.click({modifiers:['Alt']});
+    await expect(gapRange).toHaveClass(/restored/);
+    await expect.poll(()=>page.evaluate(()=>window.MAWRecordingReview.snapshot().gapRemove?.gaps.some(g=>g.removed===false))).toBe(true);
+    await expect.poll(()=>page.evaluate(()=>{
+      const signature=window.MAWRecordingReview.snapshot().inputSignature;
+      return JSON.parse(localStorage.getItem('maw.recording.review.v1.'+signature))?.gapRemove?.gaps.some(g=>g.removed===false);
+    })).toBe(true);
     await page.reload();
     await expect(page.locator('#recording-enable')).toBeChecked();
     await expect(page.locator('#recording-lines input[data-line-id="line-002"]')).toBeChecked();
     await expect(page.locator('#recording-generate')).toBeEnabled();
+    await expect(page.locator('#skip-gap-playback')).not.toBeChecked();
+    await expect(page.locator('#gap-overlay .gap-range.restored')).toHaveCount(1);
+    expect(await page.evaluate(()=>{
+      const signature=window.MAWRecordingReview.snapshot().inputSignature;
+      return JSON.parse(localStorage.getItem('maw.recording.review.v1.'+signature)).requestToken;
+    })).toBeUndefined();
     const state=await(await page.request.get(server.url+'api/state')).json();
     const noToken=await page.request.post(server.url+'api/recording/start',{data:{inputSignature:state.recordingInputSignature}});
     expect(noToken.status()).toBe(403);
@@ -113,4 +130,40 @@ test('Launcher recording mode reuses selected ASR settings and opens its raw pro
   const gap=await page.locator('#toolboxAlignmentInputs').evaluate(node=>node.getBoundingClientRect().top-node.previousElementSibling.getBoundingClientRect().bottom);
   expect(gap).toBeGreaterThanOrEqual(8);
   await page.locator('#toolboxAlignmentPanel').screenshot({path:test.info().outputPath('recording-launcher.png')});
+});
+
+test('review can retry after failure and resume cancellation or source fill after reload',async({page})=>{
+  const dir=makeTempDir('recording-lifecycle');let server;
+  try {
+    const media=generateWav(join(dir,'audio.wav'),3),source=join(dir,'raw.mosp'),script=join(dir,'script.txt');
+    writeFileSync(source,JSON.stringify({model:'qwen3-asr',language:'zh',media,
+      segments:[{id:'s1',text:'你好世界',start:500,end:2000}]}));
+    writeFileSync(script,'你好，世界。');
+    server=await startAlignmentServer(source,script,await findFreePort());
+    let status='idle',operation='start',starts=0;
+    const body=()=>({ok:true,status,operation,message:status==='error'?'模拟模型失败':status,
+      ...(status==='complete'?{artifact:{projectPath:'filled.mosp'}}:{})});
+    await page.route('**/api/recording/status',route=>route.fulfill({json:body()}));
+    await page.route('**/api/recording/start',route=>{starts++;status='error';return route.fulfill({json:{ok:true,status:'running',operation}});});
+    await page.route('**/api/recording/cancel',route=>{status='cancelled';return route.fulfill({json:body()});});
+    await page.route('**/api/recording/fill',route=>{operation='fill';status='complete';return route.fulfill({json:body()});});
+    await page.goto(server.url);await page.locator('#recording-enable').check();await page.locator('#recording-source').check();
+    await expect(page.locator('#recording-generate')).toBeEnabled();
+    await page.locator('#recording-generate').click();
+    await expect(page.locator('#recording-status')).toContainText('模拟模型失败');
+    await expect(page.locator('#recording-generate')).toBeEnabled();
+    await page.locator('#recording-generate').click();
+    await expect.poll(()=>starts).toBe(2);
+    await expect(page.locator('#recording-generate')).toBeEnabled();
+    status='running';await page.reload();
+    await expect(page.locator('#recording-cancel')).toBeEnabled();
+    await expect(page.locator('#recording-generate')).toBeDisabled();
+    await page.locator('#recording-cancel').click();
+    await expect(page.locator('#recording-status')).toContainText('cancelled');
+    await expect(page.locator('#recording-generate')).toBeEnabled();
+    await page.locator('#recording-fill').click();
+    await expect(page.locator('#recording-status')).toContainText('已补码');
+    await expect(page.locator('#recording-status')).toContainText('filled.mosp');
+    await page.locator('#recording-panel').screenshot({path:test.info().outputPath('recording-lifecycle.png')});
+  } finally {await server?.stop();cleanupTempDir(dir);}
 });

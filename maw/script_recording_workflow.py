@@ -61,7 +61,10 @@ def validate_media_binding(project: Mapping[str, Any], project_path: Path, media
 
 def evidence_errors(project: Mapping[str, Any], source_confirmed: bool) -> list[str]:
     errors = []
-    recording = (project.get("script_alignment") or {}).get("recording")
+    metadata = project.get("script_alignment")
+    if metadata is not None and not isinstance(metadata, Mapping):
+        errors.append("口播审查元数据格式无效；请使用原始 ASR 工程。")
+    recording = metadata.get("recording") if isinstance(metadata, Mapping) else None
     if recording or "aligner" in str(project.get("model", "")).lower():
         errors.append("文稿时间码工程不能当作独立 ASR 证据；请选择原始 ASR 工程。")
     if project.get("translation") or project.get("overlay_track") or project.get("subtitle_tracks"):
@@ -69,6 +72,26 @@ def evidence_errors(project: Mapping[str, Any], source_confirmed: bool) -> list[
     if not source_confirmed:
         errors.append("请确认输入是未被文稿替换的原始 ASR 结果。")
     return errors
+
+
+def canonical_review_request(request: Mapping[str, Any], gap_remove: Mapping[str, Any]) -> dict[str, Any]:
+    """Persist semantic review choices, never transport tokens or client paths."""
+    maps = {}
+    for key in ("selectedByLine", "candidateActions", "extraActions", "confirmedByLine"):
+        value = request.get(key, {})
+        if not isinstance(value, dict) or any(not isinstance(k, str) or
+                (not isinstance(v, str) and not (key == "selectedByLine" and v is None))
+                for k, v in value.items()):
+            raise RecordingWorkflowError("选择与确认必须是字符串键值对象。")
+        maps[key] = dict(value)
+    # The existing gap normalizer supplies validated provenance and integer ranges.
+    gap_keys = ("schema", "detector", "minimum_ms", "threshold_db", "hysteresis_db",
+                "lead_in_ms", "lead_out_ms", "disable_coverage_percent", "disable_remaining_ms",
+                "skip_playback", "manual_corrections", "operation_mode", "gaps", "provenance")
+    return {**maps, "inputSignature": str(request.get("inputSignature") or ""),
+            "sourceConfirmed": request.get("sourceConfirmed") is True,
+            "preferLatest": request.get("preferLatest") is True,
+            "gapRemove": copy.deepcopy({k: gap_remove[k] for k in gap_keys if k in gap_remove})}
 
 
 def _candidate_slices(alignment: Mapping[str, Any], selection: Mapping[str, Any],
@@ -81,6 +104,19 @@ def _candidate_slices(alignment: Mapping[str, Any], selection: Mapping[str, Any]
 
 def _slice_text(slices: list[dict[str, Any]]) -> str:
     return "".join(str(part.get("sourceText", "")) for part in slices)
+
+
+def _source_speakers(project: Mapping[str, Any], slices: list[dict[str, Any]]) -> set[str]:
+    source = {str(c.get("id") or f"main-{i + 1:03d}"): c
+              for i, c in enumerate(project.get("segments", []))}
+    labels = set()
+    for part in slices:
+        cue = source.get(str(part.get("sourceCueId")), {})
+        items = (cue.get("items") or [])[part.get("itemStart", 0):part.get("itemEnd")]
+        labels.update(str(item.get("speaker") or cue.get("speaker") or "") for item in items)
+        if not items:
+            labels.add(str(cue.get("speaker") or ""))
+    return labels
 
 
 def recommend_recording(project: Mapping[str, Any], script: str, *,
@@ -131,7 +167,10 @@ def review_recording(project: Mapping[str, Any], alignment: dict[str, Any],
         raise RecordingWorkflowError("选择、确认与额外内容操作必须是对象。")
     selection = make_selection_manifest(alignment, selected,
                                         candidate_actions=candidate_actions, extra_actions=extra_actions)
+    if gap_remove is not None and not isinstance(gap_remove, Mapping):
+        raise RecordingWorkflowError("静音切除状态必须是对象。")
     reviewed = apply_alignment_to_project(project, alignment, selection, gap_remove_override=gap_remove)
+    snapshot = canonical_review_request(request, reviewed.get("gap_remove", {}))
     chosen = {c["lineId"]: c for c in selection["selected"]}
     blockers = [{"lineId": "", "reason": error}
                 for error in evidence_errors(project, request.get("sourceConfirmed") is True)]
@@ -141,6 +180,7 @@ def review_recording(project: Mapping[str, Any], alignment: dict[str, Any],
         entry = chosen.get(line["id"])
         reasons = []
         slices = []
+        speaker = ""
         if entry is None:
             reasons.append("没有选择对应的完整念读；不能补出未读文字。")
         else:
@@ -150,6 +190,11 @@ def review_recording(project: Mapping[str, Any], alignment: dict[str, Any],
             if not slices:
                 reasons.append("所选候选没有有效源切片。")
             else:
+                speakers = _source_speakers(project, slices)
+                if len(speakers) > 1:
+                    reasons.append("本行来源说话人不一致；请按已确认的说话人边界拆分文稿。")
+                elif speakers:
+                    speaker = next(iter(speakers))
                 if slices[0]["start"] < previous_end:
                     reasons.append("选声范围重叠或与文稿顺序冲突。")
                 previous_end = slices[-1]["end"]
@@ -173,11 +218,12 @@ def review_recording(project: Mapping[str, Any], alignment: dict[str, Any],
             blockers.append({"lineId": line["id"], "reason": reason})
         lines.append({"lineId": line["id"], "text": line["text"],
                       "candidateId": entry["candidateId"] if entry else None,
-                      "sourceSlices": slices, "sourceText": _slice_text(slices), "reasons": reasons})
+                      "sourceSlices": slices, "sourceText": _slice_text(slices), "speaker": speaker, "reasons": reasons})
     for extra in selection.get("unresolvedExtraIds", []):
         blockers.append({"lineId": "", "reason": f"额外片段 {extra} 仍待复核。"})
     review = {"ready": not blockers, "blockers": blockers, "lines": lines,
-              "selectionDigest": _digest(request), "keptExtraCount": len(selection.get("keptExtras", []))}
+              "selectionDigest": _digest(snapshot), "request": snapshot,
+              "keptExtraCount": len(selection.get("keptExtras", []))}
     return review, selection, reviewed
 
 
@@ -276,6 +322,10 @@ def finalize_recording(project: Mapping[str, Any], alignment: dict[str, Any], re
             tokens = aligner.align(joined, unicodedata.normalize("NFC", line["text"]), language=language)
             cue = tokens_to_script_segments([line["text"]], tokens, 0, duration)[0]
             cue["items"] = map_joined_items(cue["items"], ranges)
+            if line["speaker"]:
+                cue["speaker"] = line["speaker"]
+                for item in cue["items"]:
+                    item["speaker"] = line["speaker"]
             cue["start"], cue["end"] = cue["items"][0]["start"], cue["items"][-1]["end"]
             generated.append(cue)
     _check_cancel(cancel_event)
@@ -302,6 +352,8 @@ def finalize_recording(project: Mapping[str, Any], alignment: dict[str, Any], re
         cue["id"] = identifier
     output["segments"].extend(generated)
     output["segments"].sort(key=lambda cue: (cue["start"], cue["end"]))
+    from maw.timestamp_alignment import _project_granularity
+    output["timestamp_granularity"] = _project_granularity(output)
     output["preserve_punctuation"] = True
     output["media"] = str(media.resolve())
     output["script_alignment"]["recording"] = {
@@ -358,8 +410,54 @@ def run_recording_job(project_path: Path, script_path: Path, request: Mapping[st
                   "warnings": output["script_alignment"]["recording"]["warnings"]}
         report = {"version": 1, "status": "complete", "inputSignature": signature,
                   "sourceProjectPath": str(project_path.resolve()), "scriptPath": str(script_path.resolve()),
-                  "request": dict(request), "review": review, "artifact": result}
+                  "request": review.get("request", {}), "review": review, "artifact": result}
         (staging / "report.json").write_text(json.dumps(report, ensure_ascii=False, indent=2) + "\n",
+                                           encoding="utf-8", newline="\n")
+        _check_cancel(cancel_event)
+        if input_signature(project_path, script_path, media) != signature:
+            raise RecordingWorkflowError("写出前输入已变化；请重新审查。")
+        os.replace(staging, final_directory)
+    return result
+
+
+def run_source_items_job(project_path: Path, script_path: Path, request: Mapping[str, Any], *,
+                         media: Path | None = None, model_path: Path | None = None,
+                         device: str = "auto", cancel_event: Any = None,
+                         on_event: Callable[[str], None] | None = None) -> dict[str, Any]:
+    """Fill original ASR items using the existing aligner; publish only a complete result."""
+    from maw.alignment_models import QWEN_FORCED_ALIGNER_MODEL_ID
+    from maw.timestamp_alignment import align_project
+    project, _, media = load_recording_inputs(project_path, script_path, media)
+    errors = evidence_errors(project, request.get("sourceConfirmed") is True)
+    if errors:
+        raise RecordingWorkflowError("; ".join(errors))
+    signature = input_signature(project_path, script_path, media)
+    if request.get("inputSignature") != signature:
+        raise RecordingWorkflowError("输入已变化；请重新打开审查页。")
+    _check_cancel(cancel_event)
+    emit = on_event or (lambda _: None)
+    emit("正在补充原始 ASR 字词码；保留识别文字。")
+    final_directory = project_path.parent / f"{project_path.stem}.asr-items-reviewed-{uuid.uuid4().hex[:8]}"
+    with tempfile.TemporaryDirectory(prefix=".maw-recording-stage-", dir=project_path.parent) as directory:
+        staging = Path(directory) / "result"
+        staging.mkdir()
+        report = align_project(project, media_path=media, model_id=QWEN_FORCED_ALIGNER_MODEL_ID,
+                               mode="fill", model_path=model_path or "", device=device,
+                               cancel_event=cancel_event, on_event=emit)
+        _check_cancel(cancel_event)
+        if report.failed_segments:
+            raise RecordingWorkflowError("部分 ASR 源段补码失败；不发布部分工程，请保留原始 ASR 后重试。")
+        if input_signature(project_path, script_path, media) != signature:
+            raise RecordingWorkflowError("补码期间输入已变化；拒绝发布旧结果。")
+        artifact = write_artifacts(strip_inline_caches(project), source_project_path=project_path,
+                                   source_srt_path=None, operation="timestamps", write_project=True,
+                                   write_srt=False, output_directory=staging, media_path=media,
+                                   warnings=report.warnings)
+        result = {"projectPath": str(final_directory / artifact.project_path.name),
+                  "reportPath": str(final_directory / "report.json"), "warnings": list(report.warnings)}
+        payload = {"version": 1, "status": "complete", "operation": "source-items",
+                   "inputSignature": signature, "report": report.to_payload(), "artifact": result}
+        (staging / "report.json").write_text(json.dumps(payload, ensure_ascii=False, indent=2) + "\n",
                                            encoding="utf-8", newline="\n")
         _check_cancel(cancel_event)
         if input_signature(project_path, script_path, media) != signature:

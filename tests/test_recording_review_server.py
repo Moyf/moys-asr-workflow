@@ -111,6 +111,48 @@ class RecordingServerTests(unittest.TestCase):
                         script_path=self.script,recording_request_path=self.root/"request.json")
         self.assertEqual(result["artifact"]["projectPath"],"out.mosp")
 
+    def test_source_fill_dispatch_uses_checked_recording_worker_and_reports_failure(self):
+        with mock.patch("maw.local_runtime.run_timestamp_alignment_in_runtime",return_value={"artifact":{"projectPath":"filled.mosp"}}) as worker:
+            self.post("/api/recording/fill",self.body)
+            self.server.recording_job.thread.join(timeout=3)
+            self.assertEqual(worker.call_args.kwargs["recording_operation"],"fill")
+            self.assertEqual(worker.call_args.kwargs["script_path"],self.script.resolve())
+            self.assertTrue(worker.call_args.kwargs["recording_request_path"])
+            self.assertEqual(self.get("/api/recording/status")["operation"],"fill")
+        with mock.patch("maw.local_runtime.run_timestamp_alignment_in_runtime",return_value={"artifact":{},"report":{"failedSegments":1}}):
+            self.post("/api/recording/fill",self.body)
+            self.server.recording_job.thread.join(timeout=3)
+            self.assertEqual(self.get("/api/recording/status")["status"],"error")
+
+    def test_source_fill_current_python_dispatch_and_progress(self):
+        from maw.local_runtime import run_timestamp_alignment_in_runtime
+        messages=[]
+        def process(command,**kwargs):
+            self.assertIn("recording-fill",command)
+            kwargs["on_line"](json.dumps({"type":"progress","message":"正在补码"}))
+            kwargs["on_line"](json.dumps({"type":"result","artifact":{"projectPath":"filled.mosp"}}))
+            return 0
+        with mock.patch("maw.local_runtime.managed_runtime_status",return_value=SimpleNamespace(ready=False)), mock.patch("maw.local_runtime._run_process",side_effect=process):
+            run_timestamp_alignment_in_runtime(model_id="qwen",project_path=self.source,
+                    script_path=self.script,recording_request_path=self.root/"request.json",
+                    recording_operation="fill",on_event=messages.append)
+        self.assertEqual(messages,["正在补码"])
+
+    def test_worker_entry_dispatches_both_recording_operations(self):
+        import io
+        from contextlib import redirect_stdout
+        from maw.local_runtime_worker import main
+        request_path=self.root/"request.json"
+        request_path.write_text(json.dumps({"sourceConfirmed":True}),encoding="utf-8")
+        for command,target in (("recording-align","run_recording_job"),("recording-fill","run_source_items_job")):
+            with self.subTest(command=command), mock.patch("maw.script_recording_workflow."+target,return_value={"projectPath":"out.mosp"}) as operation:
+                output=io.StringIO()
+                with redirect_stdout(output):
+                    self.assertEqual(main([command,"--model-id","qwen","--project-path",str(self.source),
+                        "--script-path",str(self.script),"--recording-request-path",str(request_path)]),0)
+                self.assertEqual(operation.call_args.args[:2],(self.source,self.script))
+                self.assertEqual(json.loads(output.getvalue().splitlines()[-1])["type"],"result")
+
 
 class RecordingPreparationTests(unittest.TestCase):
     def test_existing_asr_runner_keeps_raw_evidence_and_ignores_postprocessing(self):
@@ -141,3 +183,23 @@ class RecordingPreparationTests(unittest.TestCase):
                 job.thread.start();job.thread.join(timeout=3)
             self.assertEqual(job.snapshot()["status"],"error")
             self.assertNotIn("projectPath",job.snapshot())
+
+    def test_cancelled_asr_and_launcher_bridge_lifecycle(self):
+        from maw.gui_web import LauncherApi, LauncherPaths
+        with tempfile.TemporaryDirectory() as directory:
+            root=Path(directory);script=root/"script.txt";script.write_text("你好",encoding="utf-8")
+            request=TranscriptionRequest(root/"a.wav",root/"a.srt")
+            job=RecordingPreparation(request,script)
+            job.cancel.set()
+            with mock.patch("maw.recording_preparation.run_transcription",return_value=SimpleNamespace(json_path=root/"raw.mosp",srt_path=root/"raw.srt")):
+                job.thread.start();job.thread.join(timeout=3)
+            self.assertEqual(job.snapshot()["status"],"cancelled")
+            api=LauncherApi(paths=LauncherPaths(root=root,env_path=root/"unused-config",launcher_html=root/"launcher.html"),window_getter=lambda:None)
+            with mock.patch("maw.gui_web._request_from_payload",return_value=request) as convert, mock.patch("maw.gui_web._frozen_ffmpeg_preflight",return_value=None), mock.patch("maw.recording_preparation.run_transcription",return_value=SimpleNamespace(json_path=root/"raw.mosp",srt_path=root/"raw.srt")):
+                result=api.start_recording_review({"scriptPath":str(script),"transcription":{"providerId":"selected","testRun":True}})
+                self.assertTrue(result["ok"])
+                api.worker.join(timeout=3)
+                self.assertEqual(convert.call_args.args[0],{"providerId":"selected","testRun":False})
+                self.assertEqual(api.recording_review_status()["status"],"ready")
+                api.cancel_recording_review()
+                self.assertTrue(api._recording_preparation.cancel.is_set())
