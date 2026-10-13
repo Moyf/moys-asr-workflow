@@ -1,22 +1,16 @@
 // The filmstrip shell adds height without changing subtitle/marker lane geometry.
 export function createWaveformModule(dependencies) {
   'use strict';
-  const { thumbnailCore, ROW_GAP } = dependencies;
+  const { thumbnailCore, ROW_GAP, localizedWaveformMessage } = dependencies;
   class WaveformMethods {
     /** @this {import('./waveform-types.js').WaveformInstance} */
     initThumbnails() {
       this.thumbnailLayoutHeight = 0;
-      this.thumbnailController = thumbnailCore.createController(layoutChanged => {
-        const toggle = /** @type {HTMLInputElement | null} */ (document.getElementById('waveform-show-thumbnails'));
-        if (toggle) {
-          toggle.checked = this.thumbnailController.enabled;
-          toggle.disabled = !window.MaweBoot?.SERVER_CONFIG?.thumbnailBinding
-            || ['unavailable', 'error'].includes(this.thumbnailController.state);
-          toggle.parentElement.title = `视频画面 · ${this.thumbnailController.state}`;
-        }
+      this.thumbnailController = thumbnailCore.createController((layoutChanged, dirtyRanges = []) => {
+        this.updateThumbnailStatus();
         if (layoutChanged) {
           const oldStride = this.settings.rowHeight + this.thumbnailLayoutHeight + ROW_GAP;
-          const anchorRow = Math.floor(this.scroll.scrollTop / Math.max(1, oldStride));
+          const anchorRow = this.scroll.scrollTop / Math.max(1, oldStride);
           this.thumbnailLayoutHeight = this.thumbnailHeight();
           cancelAnimationFrame(this.resizeFrame);
           this.resizeFrame = requestAnimationFrame(() => {
@@ -26,7 +20,10 @@ export function createWaveformModule(dependencies) {
               this.renderMultiVisible();
             }
           });
-        } else this.renderedRows.forEach(row => this.drawThumbnails(row));
+        } else this.renderedRows.forEach(row => {
+          const start = Number(row.dataset.startMs), end = Number(row.dataset.endMs);
+          if (dirtyRanges.some(range => range.end_ms > start && range.start_ms < end)) this.drawThumbnails(row, true);
+        });
       });
       this.thumbnailPlayListener = () => this.thumbnailController.setPlaying(!this.player?.paused);
       const toggle = /** @type {HTMLInputElement | null} */ (document.getElementById('waveform-show-thumbnails'));
@@ -35,8 +32,51 @@ export function createWaveformModule(dependencies) {
         toggle.disabled = !window.MaweBoot?.SERVER_CONFIG?.thumbnailBinding;
         toggle.addEventListener('change', () => this.thumbnailController.setEnabled(toggle.checked));
       }
+      document.addEventListener('mawe:languagechange', () => this.updateThumbnailStatus());
+      window.addEventListener('online', () => this.thumbnailController.retry());
       window.addEventListener('pagehide', () => this.thumbnailController.close());
       this.setThumbnailBinding(window.MaweBoot?.SERVER_CONFIG?.thumbnailBinding || '');
+    }
+    /** @this {import('./waveform-types.js').WaveformInstance} */
+    thumbnailStatusText() {
+      const labels = {
+        idle: ['正在准备视频画面', 'Preparing video pictures'],
+        queued: ['等待补齐画面', 'Pictures queued'],
+        generating: ['正在补齐画面', 'Loading pictures'],
+        partial: ['画面逐步补齐', 'Pictures loading progressively'],
+        ready: ['画面已就绪', 'Pictures ready'],
+        paused: ['播放中：暂停补帧', 'Playing: picture generation paused'],
+        unavailable: ['当前媒体没有可用画面', 'No video pictures available for this media'],
+        error: ['画面缓存暂不可用', 'Picture cache unavailable'],
+        cancelled: ['已取消画面加载', 'Picture loading cancelled'],
+        'network-error': ['连接中断；重新显示或网络恢复后重试', 'Connection lost; re-enable pictures or reconnect to retry'],
+      };
+      const pair = labels[this.thumbnailController.state] || labels.idle;
+      let text = localizedWaveformMessage(pair[0], pair[1]);
+      if (this.thumbnailController.persisted === false) {
+        text += ' · ' + localizedWaveformMessage('本次会话缓存', 'Session cache');
+      }
+      return text;
+    }
+    /** @this {import('./waveform-types.js').WaveformInstance} */
+    updateThumbnailStatus() {
+      const toggle = /** @type {HTMLInputElement | null} */ (document.getElementById('waveform-show-thumbnails'));
+      const status = document.getElementById('waveform-thumbnail-status');
+      const hasBinding = !!window.MaweBoot?.SERVER_CONFIG?.thumbnailBinding;
+      const text = !hasBinding
+        ? localizedWaveformMessage('从本机 Server 加载视频后可用', 'Available after loading video through the local Server')
+        : !this.thumbnailController.enabled
+          ? localizedWaveformMessage('视频画面已隐藏', 'Video pictures hidden')
+          : this.thumbnailStatusText();
+      if (toggle) {
+        toggle.checked = this.thumbnailController.enabled;
+        toggle.disabled = !hasBinding || ['unavailable', 'error'].includes(this.thumbnailController.state);
+        toggle.parentElement.title = text;
+      }
+      if (status && status.textContent !== text) status.textContent = text;
+      for (const row of this.renderedRows) {
+        if (row._thumbnailCanvas) row._thumbnailCanvas.title = text;
+      }
     }
     /** @this {import('./waveform-types.js').WaveformInstance} */
     setThumbnailBinding(binding) {
@@ -96,17 +136,20 @@ export function createWaveformModule(dependencies) {
       for (const row of this.renderedRows) this.drawThumbnails(row);
     }
     /** @this {import('./waveform-types.js').WaveformInstance} */
-    drawThumbnails(row) {
+    drawThumbnails(row, force = false) {
       const canvas = row._thumbnailCanvas;
       if (!canvas || !this.thumbnailController?.visible) return;
       const width = Math.max(1, row.clientWidth), height = 48;
       const dpr = Math.min(2, window.devicePixelRatio || 1);
+      const start = Number(row.dataset.startMs), end = Number(row.dataset.endMs);
+      const interval = this.thumbnailController.interval;
+      const renderKey = `${width}|${dpr}|${start}|${end}|${interval}`;
+      if (!force && row._thumbnailRenderKey === renderKey) return;
+      row._thumbnailRenderKey = renderKey;
       canvas.width = Math.round(width * dpr); canvas.height = height * dpr;
       const ctx = canvas.getContext('2d', {alpha:false});
       ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
       ctx.fillStyle = this._getWaveColors().rowBg; ctx.fillRect(0, 0, width, height);
-      const start = Number(row.dataset.startMs), end = Number(row.dataset.endMs);
-      const interval = this.thumbnailController.interval;
       const pxPerMs = width / Math.max(1, end - start);
       const tileWidth = height * 160 / 90;
       for (let time = Math.floor(start / interval) * interval; time < end; time += interval) {
@@ -127,7 +170,7 @@ export function createWaveformModule(dependencies) {
         }
         ctx.restore();
       }
-      canvas.title = `视频画面 · ${this.thumbnailController.state}`;
+      canvas.title = this.thumbnailStatusText();
     }
   }
   const descriptors = Object.getOwnPropertyDescriptors(WaveformMethods.prototype);

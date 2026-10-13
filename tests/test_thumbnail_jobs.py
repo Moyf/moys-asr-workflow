@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import multiprocessing
-import sqlite3
 import tempfile
 import time
 import unittest
@@ -89,9 +88,11 @@ class ThumbnailDemandTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as temp:
             coord = ThumbnailCoordinator(Path(temp)/'jobs.sqlite3')
             manager = ThumbnailJobManager(coordinator=coord)
-            manager.bind(Path(temp)/'media.mp4', 'binding')
+            path = Path(temp)/'media.mp4'
+            path.write_bytes(b"media")
+            manager.bind(path, 'binding')
             manager.info = SimpleNamespace(stream_index=0, duration_ms=10000)
-            manager.identity = 'source'
+            manager.identity = source_key(path)
             manager._start = lambda: None
             manager._snapshot = lambda lease: dict(manager.leases[lease], lease=lease)
             base = {'binding':'binding', 'client_id':'tab', 'view':5, 'interval_ms':1000,
@@ -101,11 +102,11 @@ class ThumbnailDemandTests(unittest.TestCase):
             self.assertEqual(first['lease'], second['lease'])
             self.assertTrue(second['playing'])
             self.assertEqual(second['view'], 5)
-            self.assertTrue(coord.paused('source'))
+            self.assertTrue(coord.paused(manager.identity))
             current = manager.demand(dict(base, view=6, playing=False))
             self.assertFalse(current['playing'])
             manager.release('binding', first['lease'])
-            self.assertFalse(coord.paused('source', background=True))
+            self.assertFalse(coord.paused(manager.identity, background=True))
             manager.close()
 
     def test_binding_change_cancels_old_work_and_clears_lease(self):
@@ -122,6 +123,76 @@ class ThumbnailDemandTests(unittest.TestCase):
             with self.assertRaises(ValueError):
                 manager.status('old')
             manager.close()
+
+
+    def test_background_packs_fresh_frames_when_cache_admission_refuses(self):
+        from maw import thumbnail_cache, thumbnails
+        from maw.thumbnail_jobs import coordinated_extract
+        with tempfile.TemporaryDirectory() as temp:
+            path = Path(temp)/"video.mp4"
+            path.write_bytes(b"source")
+            coord = ThumbnailCoordinator(Path(temp)/"jobs.sqlite3")
+            fresh = thumbnails.FrameResult(0,0,"target",b"jpeg")
+            with mock.patch.object(thumbnail_cache,"lookup_frames",return_value=[None]), \
+                 mock.patch.object(thumbnail_cache,"sample_key",return_value="frame-key"), \
+                 mock.patch.object(thumbnail_cache,"register_frames",return_value=[]), \
+                 mock.patch.object(thumbnail_cache,"get_or_extract_frames",side_effect=AssertionError("fresh frame lost")), \
+                 mock.patch.object(thumbnails,"extract_frames",return_value=[fresh]) as decode:
+                result = coordinated_extract(path,[0],coordinator=coord,background=True)
+            self.assertEqual(result,[fresh])
+            decode.assert_called_once()
+
+    def test_release_before_lease_adoption_blocks_late_requests(self):
+        manager = ThumbnailJobManager()
+        manager.bind(None, "binding")
+        manager._start = lambda: None
+        manager._snapshot = lambda lease: {"lease":lease}
+        first = manager.status("binding",client="tab",view=3)
+        manager.release("binding", "", client="tab", view=3)
+        self.assertNotIn(first["lease"],manager.leases)
+        for view in (0, 2, 3):
+            with self.assertRaises(ValueError):
+                manager.status("binding",client="tab",view=view)
+        self.assertTrue(manager.status("binding",client="tab",view=4)["lease"])
+        manager.close()
+
+    def test_playback_cancels_sprite_and_resumes_same_block(self):
+        from maw import thumbnails
+        from maw.thumbnail_jobs import coordinated_pack
+        import threading
+        with tempfile.TemporaryDirectory() as temp:
+            path = Path(temp)/"media.mp4"
+            path.write_bytes(b"source")
+            coord = ThumbnailCoordinator(Path(temp)/"jobs.sqlite3")
+            started = threading.Event()
+            attempts = []
+            result = []
+            def tile(jpegs, **kwargs):
+                attempts.append(jpegs)
+                if len(attempts) == 1:
+                    started.set()
+                    self.assertTrue(kwargs["cancel"].wait(2))
+                    raise thumbnails.ThumbnailCancelled("playing")
+                return b"sprite"
+            def wait(_targets):
+                deadline = time.monotonic()+3
+                while coord.paused(source_key(path), background=True):
+                    if time.monotonic() > deadline:
+                        raise TimeoutError("lease did not release")
+                    time.sleep(.01)
+            with mock.patch.object(thumbnails, "make_sprite", side_effect=tile):
+                worker = threading.Thread(target=lambda: result.append(coordinated_pack(path,[b"frame"],
+                    coordinator=coord,before_batch=wait)))
+                worker.start()
+                self.assertTrue(started.wait(2))
+                coord.lease("playing",source_key(path),playing=True)
+                time.sleep(.15)
+                self.assertTrue(worker.is_alive())
+                coord.release("playing")
+                worker.join(3)
+                self.assertFalse(worker.is_alive())
+            self.assertEqual(result,[b"sprite"])
+            self.assertEqual(attempts,[[b"frame"],[b"frame"]])
 
 
 if __name__ == '__main__':

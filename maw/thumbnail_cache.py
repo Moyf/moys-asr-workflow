@@ -16,16 +16,16 @@ import time
 import uuid
 import zipfile
 from collections import OrderedDict
+from dataclasses import replace
 from pathlib import Path
 from typing import Sequence
 
 from maw.app_paths import default_app_data_root
 from maw.output_naming import waveform_dirs
 from maw.thumbnails import IMAGE_SPEC, FrameResult, ThumbnailCancelled, ThumbnailError, VideoInfo, base_interval_ms, batches, extract_frames, make_sprite, probe_video
-from maw.waveform import media_signature
 
 SCHEMA = "moy.asr.thumbnails.v1"
-GENERATOR_VERSION = 1
+GENERATOR_VERSION = 3
 MAX_SPRITE_FRAMES = 64
 MEDIA_QUOTA_BYTES = 64 * 1024 * 1024
 GLOBAL_QUOTA_BYTES = 512 * 1024 * 1024
@@ -34,6 +34,8 @@ MAX_MANIFEST_BYTES = 16 * 1024 * 1024
 MAX_ASSET_BYTES = 2 * 1024 * 1024
 MAX_SIDECAR_BYTES = 512 * 1024 * 1024
 MAX_SAMPLES = 250_000
+MAX_INDEX_BYTES = 32 * 1024 * 1024
+BASE_GENERATION_BYTES = 64 * 1024 * 1024
 _lock = threading.RLock()
 _video_memo: dict[str, VideoInfo | None] = {}
 _base_memo: OrderedDict[tuple, dict] = OrderedDict()
@@ -41,7 +43,8 @@ _session: OrderedDict[tuple[str, int], FrameResult] = OrderedDict()
 _session_assets: dict[tuple[str, str], bytes] = {}
 _write_disabled: set[str] = set()
 _session_bases: dict[str, dict] = {}
-_session_pins: dict[tuple[str, str], float] = {}
+_session_pins: dict[tuple[str, str, str], float] = {}
+_base_touch: dict[str, float] = {}
 
 
 def cache_root() -> Path:
@@ -55,21 +58,37 @@ def base_path(media_path: Path | str) -> Path:
 
 def base_candidates(media_path: Path | str) -> list[Path]:
     media = Path(media_path)
-    return [directory / (media.name + ".mothumbs") for directory in waveform_dirs(media)]
+    paths = [directory / (media.name + ".mothumbs") for directory in waveform_dirs(media)]
+    try:
+        paths.append(cache_root() / "bases" / (_source_key(media) + ".mothumbs"))
+    except OSError:
+        pass
+    return paths
 
 
-def _source_key(media_path: Path | str) -> str:
+def source_signature(media_path: Path | str) -> dict:
+    """Browser fields plus exact nanoseconds for persistent cache identity."""
     media = Path(media_path).resolve()
-    return hashlib.sha256(json.dumps([os.path.normcase(str(media)), media_signature(media)], sort_keys=True).encode()).hexdigest()
+    stat = media.stat()
+    return {"name": media.name, "size": stat.st_size,
+            "modified_ms": stat.st_mtime_ns // 1_000_000,
+            "modified_ns": stat.st_mtime_ns}
 
 
-def _info(media_path: Path | str, *, cancel=None) -> VideoInfo | None:
+def _source_key(media_path: Path | str, signature: dict | None = None) -> str:
+    media = Path(media_path).resolve()
+    return hashlib.sha256(json.dumps([os.path.normcase(str(media)), signature if signature is not None else source_signature(media)], sort_keys=True).encode()).hexdigest()
+
+
+def _info(media_path: Path | str, *, cancel=None, ffmpeg_path=None) -> VideoInfo | None:
     key = _source_key(media_path)
     with _lock:
         if key in _video_memo:
             return _video_memo[key]
     cached = load_base(media_path)
-    video = VideoInfo(cached["video_stream_index"], cached["duration_ms"], cached["source_start_ms"]) if cached else probe_video(media_path, cancel=cancel)
+    video = VideoInfo(cached["video_stream_index"], cached["duration_ms"], cached["source_start_ms"], cached["video_start_ms"]) if cached else probe_video(media_path, cancel=cancel, ffmpeg_path=ffmpeg_path)
+    if _source_key(media_path) != key:
+        raise ThumbnailError("source changed during video probe")
     with _lock:
         if len(_video_memo) > 128:
             _video_memo.clear()
@@ -77,15 +96,15 @@ def _info(media_path: Path | str, *, cancel=None) -> VideoInfo | None:
     return video
 
 
-def identity_key(media_path: Path | str, info: VideoInfo | None = None) -> str:
-    video = info or _info(media_path)
+def identity_key(media_path: Path | str, info: VideoInfo | None = None, *, ffmpeg_path=None) -> str:
+    video = info or _info(media_path, ffmpeg_path=ffmpeg_path)
     if video is None:
         raise ThumbnailError("media contains no video")
     return hashlib.sha256(json.dumps([_source_key(media_path), video.stream_index, IMAGE_SPEC, GENERATOR_VERSION], sort_keys=True).encode()).hexdigest()
 
 
-def sample_key(media_path: Path | str, requested_ms: int, stream_index: int | None = None) -> str:
-    video = _info(media_path)
+def sample_key(media_path: Path | str, requested_ms: int, stream_index: int | None = None, *, ffmpeg_path=None) -> str:
+    video = _info(media_path, ffmpeg_path=ffmpeg_path)
     _validate_targets([requested_ms], video, stream_index)
     return f"{identity_key(media_path, video)}:{requested_ms}"
 
@@ -103,14 +122,25 @@ def _connect() -> sqlite3.Connection:
     root = cache_root()
     root.mkdir(parents=True, exist_ok=True)
     db = sqlite3.connect(root / "frames.sqlite3", timeout=5)
-    db.execute("PRAGMA busy_timeout=5000")
-    db.executescript("""
-        CREATE TABLE IF NOT EXISTS assets(media TEXT, asset TEXT, jpeg BLOB NOT NULL, size INTEGER NOT NULL, used REAL NOT NULL, PRIMARY KEY(media,asset));
-        CREATE TABLE IF NOT EXISTS samples(media TEXT, requested INTEGER, actual INTEGER, status TEXT NOT NULL, asset TEXT, PRIMARY KEY(media,requested));
-        CREATE TABLE IF NOT EXISTS pins(media TEXT, asset TEXT, expires REAL NOT NULL, PRIMARY KEY(media,asset));
-        CREATE INDEX IF NOT EXISTS asset_lru ON assets(used);
-    """)
-    return db
+    try:
+        db.execute("PRAGMA busy_timeout=5000")
+        # New databases reclaim deleted pages. Existing v1 databases keep their
+        # layout but share this hard physical page bound and reuse free pages.
+        db.execute("PRAGMA auto_vacuum=INCREMENTAL")
+        page_size = db.execute("PRAGMA page_size").fetchone()[0]
+        db.execute(f"PRAGMA max_page_count={(GLOBAL_QUOTA_BYTES + MAX_INDEX_BYTES) // page_size}")
+        db.executescript("""
+            CREATE TABLE IF NOT EXISTS assets(media TEXT, asset TEXT, jpeg BLOB NOT NULL, size INTEGER NOT NULL, used REAL NOT NULL, PRIMARY KEY(media,asset));
+            CREATE TABLE IF NOT EXISTS samples(media TEXT, requested INTEGER, actual INTEGER, status TEXT NOT NULL, asset TEXT, PRIMARY KEY(media,requested));
+            CREATE TABLE IF NOT EXISTS pins_leases(media TEXT, asset TEXT, owner TEXT, expires REAL NOT NULL, PRIMARY KEY(media,asset,owner));
+            CREATE TABLE IF NOT EXISTS bases(path TEXT PRIMARY KEY,media TEXT,size INTEGER NOT NULL,used REAL NOT NULL);
+            CREATE TABLE IF NOT EXISTS base_reservations(owner TEXT PRIMARY KEY,media TEXT,size INTEGER NOT NULL,expires REAL NOT NULL);
+            CREATE INDEX IF NOT EXISTS asset_lru ON assets(used);
+        """)
+        return db
+    except BaseException:
+        db.close()
+        raise
 
 
 def _asset_id(jpeg: bytes) -> str:
@@ -158,16 +188,24 @@ def _warning(key: str) -> None:
 
 def _remember(key: str, frame: FrameResult) -> None:
     with _lock:
+        now = time.time()
+        for pin, expires in list(_session_pins.items()):
+            if expires <= now:
+                del _session_pins[pin]
+        if frame.jpeg:
+            asset_key = (key, _asset_id(frame.jpeg))
+            # Canonical bytes ensure held low-fps frames are measured once even
+            # when separate batches returned equal but distinct byte objects.
+            canonical = _session_assets.setdefault(asset_key, frame.jpeg)
+            frame = replace(frame, jpeg=canonical)
         _session[(key, frame.requested_ms)] = frame
         _session.move_to_end((key, frame.requested_ms))
-        if frame.jpeg:
-            _session_assets[(key, _asset_id(frame.jpeg))] = frame.jpeg
         total = sum(len(value) for value in _session_assets.values())
-        now = time.time()
+        protected = {(media, asset) for media, asset, _owner in _session_pins}
         for asset_key in list(_session_assets):
             if total <= SESSION_QUOTA_BYTES:
                 break
-            if _session_pins.get(asset_key, 0) > now:
+            if asset_key in protected:
                 continue
             total -= len(_session_assets.pop(asset_key))
             for sample in list(_session):
@@ -178,57 +216,217 @@ def _remember(key: str, frame: FrameResult) -> None:
             _session.popitem(last=False)
 
 
-def protect_assets(media_path: Path | str, asset_ids: Sequence[str], *, lease_seconds: float = 30) -> None:
+def protect_assets(media_path: Path | str, asset_ids: Sequence[str], *, lease_seconds: float = 30, owner: str = "default") -> None:
     key = identity_key(media_path)
     expires = time.time() + min(120, max(1, lease_seconds))
     with _lock:
         for asset in asset_ids:
-            _session_pins[(key, asset)] = expires
+            _session_pins[(key, asset, owner)] = expires
     try:
         with contextlib.closing(_connect()) as db, db:
-            db.executemany("INSERT OR REPLACE INTO pins VALUES(?,?,?)", [(key, asset, expires) for asset in asset_ids])
+            db.executemany("INSERT OR REPLACE INTO pins_leases VALUES(?,?,?,?)", [(key, asset, owner, expires) for asset in asset_ids])
     except (OSError, sqlite3.Error):
         _warning(key)
 
 
-def release_assets(media_path: Path | str, asset_ids: Sequence[str]) -> None:
+def release_assets(media_path: Path | str, asset_ids: Sequence[str], *, owner: str = "default") -> None:
     key = identity_key(media_path)
     with _lock:
         for asset in asset_ids:
-            _session_pins.pop((key, asset), None)
+            _session_pins.pop((key, asset, owner), None)
     try:
         with contextlib.closing(_connect()) as db, db:
-            db.executemany("DELETE FROM pins WHERE media=? AND asset=?", [(key, asset) for asset in asset_ids])
+            db.executemany("DELETE FROM pins_leases WHERE media=? AND asset=? AND owner=?", [(key, asset, owner) for asset in asset_ids])
     except (OSError, sqlite3.Error):
         pass
 
 
+def release_owner(owner: str) -> None:
+    """Release a view's pins even after its former source was replaced."""
+    with _lock:
+        for pin in list(_session_pins):
+            if pin[2] == owner:
+                del _session_pins[pin]
+    try:
+        with contextlib.closing(_connect()) as db, db:
+            db.execute("DELETE FROM pins_leases WHERE owner=?", (owner,))
+    except (OSError, sqlite3.Error):
+        pass
+
+
+def _recycle_registered_file(path: Path) -> None:
+    """Recycle a single validated cache file, never delete a directory tree."""
+    if os.name == "nt":
+        import ctypes
+        from ctypes import wintypes
+
+        class FileOperation(ctypes.Structure):
+            _fields_ = [("hwnd", wintypes.HWND), ("function", wintypes.UINT),
+                        ("source", wintypes.LPCWSTR), ("destination", wintypes.LPCWSTR),
+                        ("flags", wintypes.WORD), ("aborted", wintypes.BOOL),
+                        ("mapping", ctypes.c_void_p), ("title", wintypes.LPCWSTR)]
+
+        operation = FileOperation()
+        operation.function = 3  # FO_DELETE with FOF_ALLOWUNDO moves to Recycle Bin.
+        operation.source = str(path) + "\0\0"
+        operation.flags = 0x0040 | 0x0010 | 0x0004 | 0x0400
+        shell = ctypes.WinDLL("shell32")
+        shell.SHFileOperationW.argtypes = [ctypes.POINTER(FileOperation)]
+        result = shell.SHFileOperationW(ctypes.byref(operation))
+        if result or operation.aborted or path.exists():
+            raise OSError("registered thumbnail cache could not be recycled")
+    else:
+        import shutil
+        import sys
+        from urllib.parse import quote
+        if sys.platform == "darwin":
+            trash = Path.home() / ".Trash"
+            trash.mkdir(parents=True, exist_ok=True)
+            shutil.move(str(path), str(trash / (uuid.uuid4().hex + "-" + path.name)))
+        else:
+            trash = Path(os.environ.get("XDG_DATA_HOME") or Path.home() / ".local" / "share") / "Trash"
+            files, info = trash / "files", trash / "info"
+            files.mkdir(parents=True, exist_ok=True)
+            info.mkdir(parents=True, exist_ok=True)
+            name = uuid.uuid4().hex + "-" + path.name
+            metadata = info / (name + ".trashinfo")
+            metadata.write_text("[Trash Info]\nPath=" + quote(str(path), safe="/") + "\nDeletionDate=" + time.strftime("%Y-%m-%dT%H:%M:%S") + "\n", encoding="utf-8", newline="\n")
+            shutil.move(str(path), str(files / name))
+
+
+def cleanup_registered(*, inactive_before: float, limit: int = 8, exclude_paths: Sequence[Path | str] = ()) -> dict:
+    """Recycle only old registered base files without active pins/reservations.
+
+    No source directory is scanned. Exclusions automatically include the
+    corresponding partial file, so the caller can protect every current-source
+    base_candidates entry before cache lookup or generation.
+    """
+    if not isinstance(limit, int) or isinstance(limit, bool) or not 1 <= limit <= 32:
+        raise ValueError("cleanup limit must be between1 and32")
+    excluded = set()
+    for path in exclude_paths:
+        name = os.path.normcase(str(Path(path).resolve()))
+        excluded.update((name, name + ".partial"))
+    result = {"removed_count": 0, "missing_count": 0, "released_bytes": 0, "skipped_active": 0, "skipped_excluded": 0, "errors": []}
+    try:
+        with contextlib.closing(_connect()) as db, db:
+            db.execute("DELETE FROM pins_leases WHERE expires<=?", (time.time(),))
+            db.execute("DELETE FROM base_reservations WHERE expires<=?", (time.time(),))
+            rows = db.execute("SELECT path,media FROM bases WHERE used<=? ORDER BY used LIMIT ?", (inactive_before, limit*4)).fetchall()
+        for name, media in rows:
+            if result["removed_count"] + result["missing_count"] >= limit:
+                break
+            if name in excluded:
+                result["skipped_excluded"] += 1
+                continue
+            path = Path(name)
+            if not (path.name.endswith(".mothumbs") or path.name.endswith(".mothumbs.partial")) or path.is_symlink():
+                result["errors"].append({"name": path.name, "reason": "not a registered regular sidecar"})
+                continue
+            try:
+                with _write_lock(path.with_name(path.name + ".lock"), timeout_s=.2), contextlib.closing(_connect()) as db, db:
+                    db.execute("BEGIN IMMEDIATE")
+                    row = db.execute("SELECT size,used FROM bases WHERE path=? AND media=?", (name, media)).fetchone()
+                    active = db.execute("SELECT 1 FROM pins_leases WHERE media=? AND expires>? UNION ALL SELECT 1 FROM base_reservations WHERE media=? AND expires>?", (media, time.time(), media, time.time())).fetchone()
+                    if not row or row[1] > inactive_before or active:
+                        result["skipped_active"] += 1
+                        continue
+                    if not path.exists():
+                        result["missing_count"] += 1
+                    else:
+                        stat = path.stat()
+                        if not path.is_file() or stat.st_mtime > inactive_before or stat.st_size != row[0]:
+                            result["skipped_active"] += 1
+                            continue
+                        # A registered path that was replaced by a user's
+                        # unrelated file must not be removed using stale data.
+                        with zipfile.ZipFile(path) as archive:
+                            entry = archive.getinfo("manifest.json")
+                            if entry.file_size > MAX_MANIFEST_BYTES:
+                                raise ValueError("manifest budget exceeded")
+                            manifest = json.loads(archive.read(entry))
+                            if manifest.get("schema") != SCHEMA or not isinstance(manifest.get("cache_revision"), str):
+                                raise ValueError("registered sidecar was replaced")
+                        _recycle_registered_file(path)
+                        result["removed_count"] += 1
+                    db.execute("DELETE FROM bases WHERE path=?", (name,))
+                    result["released_bytes"] += row[0]
+                    with _lock:
+                        for memo in list(_base_memo):
+                            if os.path.normcase(memo[0]) == name:
+                                del _base_memo[memo]
+            except (OSError, ThumbnailError, ValueError, KeyError, zipfile.BadZipFile, sqlite3.Error) as error:
+                result["errors"].append({"name": path.name, "reason": str(error)[:160]})
+    except (OSError, sqlite3.Error) as error:
+        result["errors"].append({"name": "registry", "reason": str(error)[:160]})
+    return result
+
+
+def _sizes(db, media):
+    media_size, global_size = db.execute("SELECT COALESCE(SUM(CASE WHEN media=? THEN size ELSE 0 END),0),COALESCE(SUM(size),0) FROM assets", (media,)).fetchone()
+    for table in ("bases", "base_reservations"):
+        where = " WHERE expires>" + str(time.time()) if table == "base_reservations" else ""
+        own, total = db.execute(f"SELECT COALESCE(SUM(CASE WHEN media=? THEN size ELSE 0 END),0),COALESCE(SUM(size),0) FROM {table}{where}", (media,)).fetchone()
+        media_size += own
+        global_size += total
+    return media_size, global_size
+
+
 def _evict(db, media: str, incoming: int, protected: set[str]) -> bool:
-    db.execute("DELETE FROM pins WHERE expires<=?", (time.time(),))
-    media_size = db.execute("SELECT COALESCE(SUM(size),0) FROM assets WHERE media=?", (media,)).fetchone()[0]
-    global_size = db.execute("SELECT COALESCE(SUM(size),0) FROM assets").fetchone()[0]
-    rows = db.execute("SELECT a.media,a.asset,a.size FROM assets a LEFT JOIN pins p ON a.media=p.media AND a.asset=p.asset WHERE p.asset IS NULL ORDER BY a.used").fetchall()
-    for owner, asset, size in rows:
+    db.execute("DELETE FROM pins_leases WHERE expires<=?", (time.time(),))
+    db.execute("DELETE FROM base_reservations WHERE expires<=?", (time.time(),))
+    media_size, global_size = _sizes(db, media)
+    rows = db.execute("SELECT a.media,a.asset,a.size FROM assets a WHERE NOT EXISTS(SELECT 1 FROM pins_leases p WHERE p.media=a.media AND p.asset=a.asset) ORDER BY a.used").fetchall()
+    for source, asset, size in rows:
         if media_size + incoming <= MEDIA_QUOTA_BYTES and global_size + incoming <= GLOBAL_QUOTA_BYTES:
             return True
-        if owner == media and asset in protected:
+        if source == media and asset in protected:
             continue
-        if media_size + incoming > MEDIA_QUOTA_BYTES and owner != media:
+        if media_size + incoming > MEDIA_QUOTA_BYTES and source != media:
             continue
-        db.execute("DELETE FROM samples WHERE media=? AND asset=?", (owner, asset))
-        db.execute("DELETE FROM assets WHERE media=? AND asset=?", (owner, asset))
+        db.execute("DELETE FROM samples WHERE media=? AND asset=?", (source, asset))
+        db.execute("DELETE FROM assets WHERE media=? AND asset=?", (source, asset))
         global_size -= size
-        if owner == media:
+        if source == media:
             media_size -= size
+    db.execute("PRAGMA incremental_vacuum(64)")
     return media_size + incoming <= MEDIA_QUOTA_BYTES and global_size + incoming <= GLOBAL_QUOTA_BYTES
 
 
-def register_frames(media_path: Path | str, frames: Sequence[FrameResult], *, info: VideoInfo | None = None) -> list[dict]:
-    video = info or _info(media_path)
+def cache_pressure(media_path: Path | str) -> dict:
+    key = identity_key(media_path)
+    with _lock:
+        session_size = sum(len(value) for value in _session_assets.values())
+        disabled = key in _write_disabled
+    try:
+        with contextlib.closing(_connect()) as db:
+            own, total = _sizes(db, key)
+    except (OSError, sqlite3.Error):
+        own, total, disabled = MEDIA_QUOTA_BYTES, GLOBAL_QUOTA_BYTES, True
+    return {"media_available_bytes": max(0, MEDIA_QUOTA_BYTES-own),
+            "global_available_bytes": max(0, GLOBAL_QUOTA_BYTES-total),
+            "session_available_bytes": max(0, SESSION_QUOTA_BYTES-session_size),
+            "write_disabled": disabled}
+
+
+def can_prefetch(media_path: Path | str) -> bool:
+    pressure = cache_pressure(media_path)
+    return not pressure["write_disabled"] and min(pressure["media_available_bytes"], pressure["global_available_bytes"], pressure["session_available_bytes"]) >= 64 * 1024
+
+
+def register_frames(media_path: Path | str, frames: Sequence[FrameResult], *, info: VideoInfo | None = None, ffmpeg_path=None, expected_source: dict | None = None) -> list[dict]:
+    signature = source_signature(media_path)
+    if expected_source is not None and signature != expected_source:
+        raise ThumbnailError("source changed before thumbnail registration")
+    video = info or _info(media_path, ffmpeg_path=ffmpeg_path)
     _validate_targets([f.requested_ms for f in frames], video)
     if video is None:
         return []
-    key = identity_key(media_path, video)
+    if source_signature(media_path) != signature:
+        raise ThumbnailError("source changed during thumbnail registration")
+    # Derive the destination from the captured identity. Even if replacement
+    # happens after this check, old frames can only enter their old namespace.
+    key = hashlib.sha256(json.dumps([_source_key(media_path, signature), video.stream_index, IMAGE_SPEC, GENERATOR_VERSION], sort_keys=True).encode()).hexdigest()
     for frame in frames:
         if frame.status == "target" and (frame.actual_pts_ms is None or not 0 <= frame.actual_pts_ms < video.duration_ms or not frame.jpeg or _jpeg_dimensions(frame.jpeg) != (160, 90)):
             raise ThumbnailError("invalid sampled frame")
@@ -245,6 +443,11 @@ def register_frames(media_path: Path | str, frames: Sequence[FrameResult], *, in
                             _warning(key)
                             continue
                         db.execute("INSERT OR REPLACE INTO assets VALUES(?,?,?,?,?)", (key, asset, frame.jpeg, len(frame.jpeg), time.time()))
+                    if db.execute("SELECT COUNT(*) FROM samples").fetchone()[0] >= MAX_SAMPLES:
+                        db.execute("DELETE FROM samples WHERE rowid IN (SELECT rowid FROM samples WHERE status='unavailable' LIMIT 256)")
+                    if db.execute("SELECT COUNT(*) FROM samples").fetchone()[0] >= MAX_SAMPLES and not db.execute("SELECT 1 FROM samples WHERE media=? AND requested=?", (key, frame.requested_ms)).fetchone():
+                        _warning(key)
+                        continue
                     db.execute("INSERT OR REPLACE INTO samples VALUES(?,?,?,?,?)", (key, frame.requested_ms, frame.actual_pts_ms, frame.status, asset))
         except (OSError, sqlite3.Error):
             _warning(key)
@@ -274,30 +477,31 @@ def _persistent_frames(key: str, values: Sequence[int]) -> dict[int, FrameResult
     return found
 
 
-def lookup_frames(media_path: Path | str, requested_ms: Sequence[int], *, stream_index: int | None = None) -> list[FrameResult | None]:
+def lookup_frames(media_path: Path | str, requested_ms: Sequence[int], *, stream_index: int | None = None, ffmpeg_path=None) -> list[FrameResult | None]:
     """Metadata-only cache query: sprite hits never launch FFmpeg."""
-    video = _info(media_path)
+    video = _info(media_path, ffmpeg_path=ffmpeg_path)
     _validate_targets(requested_ms, video, stream_index)
     if video is None:
         return [FrameResult(t, None, "unavailable", None) for t in requested_ms]
     key = identity_key(media_path, video)
     with _lock:
         found = {t: _session[(key, t)] for t in requested_ms if (key, t) in _session}
+    found.update((t, FrameResult(t, None, "unavailable", None)) for t in requested_ms if t < video.video_start_ms)
     found.update(_persistent_frames(key, [t for t in set(requested_ms) if t not in found]))
     base = load_base(media_path)
     if base:
         for sample in base["samples"]:
             target = sample["requested_ms"]
             if target in requested_ms and target not in found:
-                found[target] = FrameResult(target, sample["actual_pts_ms"], "target", None)
+                found[target] = FrameResult(target, sample["actual_pts_ms"], sample["status"], None)
     return [found.get(t) for t in requested_ms]
 
 
-def _crop_sprite(jpeg: bytes, samples: Sequence[dict], *, cancel=None) -> dict[int, FrameResult]:
+def _crop_sprite(jpeg: bytes, samples: Sequence[dict], *, cancel=None, ffmpeg_path=None) -> dict[int, FrameResult]:
     """Unpack all requested crops in one image-only FFmpeg task."""
     from maw.ffmpeg import resolve_ffmpeg_tool
     from maw.thumbnails import _run
-    tool = resolve_ffmpeg_tool("ffmpeg")
+    tool = resolve_ffmpeg_tool("ffmpeg", ffmpeg_path)
     if tool is None or not samples:
         return {}
     with tempfile.TemporaryDirectory(prefix="maw-crop-") as temp:
@@ -317,7 +521,7 @@ def _crop_sprite(jpeg: bytes, samples: Sequence[dict], *, cancel=None) -> dict[i
         return {sample["requested_ms"]: FrameResult(sample["requested_ms"], sample["actual_pts_ms"], "target", (root / f"{i}.jpg").read_bytes()) for i, sample in enumerate(samples)}
 
 
-def _with_jpegs(media_path, frames, *, cancel=None):
+def _with_jpegs(media_path, frames, *, cancel=None, ffmpeg_path=None):
     missing = {frame.requested_ms for frame in frames if frame is not None and frame.status == "target" and frame.jpeg is None}
     if not missing:
         return frames
@@ -331,32 +535,32 @@ def _with_jpegs(media_path, frames, *, cancel=None):
     for asset, samples in groups.items():
         jpeg = read_asset(media_path, asset, cache_revision=base["cache_revision"])
         if jpeg:
-            found.update(_crop_sprite(jpeg, samples, cancel=cancel))
+            found.update(_crop_sprite(jpeg, samples, cancel=cancel, ffmpeg_path=ffmpeg_path))
     return [found.get(frame.requested_ms, frame) if frame else None for frame in frames]
 
 
-def get_or_extract_frames(media_path: Path | str, requested_ms: Sequence[int], *, stream_index: int | None = None, cancel=None, extractor=None) -> list[FrameResult]:
-    cached = _with_jpegs(media_path, lookup_frames(media_path, requested_ms, stream_index=stream_index), cancel=cancel)
-    missing = sorted({t for t, value in zip(requested_ms, cached) if value is None or value.status == "preview"})
+def get_or_extract_frames(media_path: Path | str, requested_ms: Sequence[int], *, stream_index: int | None = None, cancel=None, extractor=None, ffmpeg_path=None) -> list[FrameResult]:
+    cached = _with_jpegs(media_path, lookup_frames(media_path, requested_ms, stream_index=stream_index, ffmpeg_path=ffmpeg_path), cancel=cancel, ffmpeg_path=ffmpeg_path)
+    missing = sorted({t for t, value in zip(requested_ms, cached) if value is None or value.status == "preview" or (value.status == "target" and value.jpeg is None)})
     if missing:
-        video = _info(media_path, cancel=cancel)
-        expected = _source_key(media_path)
-        generated = (extractor or extract_frames)(media_path, missing, stream_index=video.stream_index, cancel=cancel)
-        if _source_key(media_path) != expected:
+        video = _info(media_path, cancel=cancel, ffmpeg_path=ffmpeg_path)
+        expected = source_signature(media_path)
+        generated = extractor(media_path, missing, stream_index=video.stream_index, cancel=cancel) if extractor else extract_frames(media_path, missing, stream_index=video.stream_index, cancel=cancel, ffmpeg_path=ffmpeg_path)
+        if source_signature(media_path) != expected:
             raise ThumbnailError("source changed during thumbnail extraction")
-        register_frames(media_path, generated, info=video)
+        register_frames(media_path, generated, info=video, ffmpeg_path=ffmpeg_path, expected_source=expected)
         by_target = {frame.requested_ms: frame for frame in generated}
         return [by_target.get(t, value) for t, value in zip(requested_ms, cached)]
     return cached
 
 
-def get_or_extract_frame(media_path: Path | str, requested_ms: int, *, stream_index: int | None = None, cancel=None) -> FrameResult:
-    return get_or_extract_frames(media_path, [requested_ms], stream_index=stream_index, cancel=cancel)[0]
+def get_or_extract_frame(media_path: Path | str, requested_ms: int, *, stream_index: int | None = None, cancel=None, ffmpeg_path=None) -> FrameResult:
+    return get_or_extract_frames(media_path, [requested_ms], stream_index=stream_index, cancel=cancel, ffmpeg_path=ffmpeg_path)[0]
 
 
 def _manifest(video: VideoInfo, signature: dict, *, interval: int, samples=None, assets=None, complete=False, revision=None) -> dict:
     samples = samples or []
-    return {"schema": SCHEMA, "generator_version": GENERATOR_VERSION, "cache_revision": revision or uuid.uuid4().hex, "source_signature": signature, "video_stream_index": video.stream_index, "duration_ms": video.duration_ms, "source_start_ms": video.start_ms, "time_origin": "source-start-ms", "image_spec": dict(IMAGE_SPEC), "sampling_interval": interval, "target_interval": interval, "base_complete": complete, "valid_count": sum(s["status"] == "target" for s in samples), "coverage": [[0, video.duration_ms]] if complete else [[s["requested_ms"], min(video.duration_ms, s["requested_ms"] + interval)] for s in samples if s["status"] == "target"], "samples": samples, "assets": assets or [], "state": "ready" if complete else "partial", "persisted": True}
+    return {"schema": SCHEMA, "generator_version": GENERATOR_VERSION, "cache_revision": revision or uuid.uuid4().hex, "source_signature": signature, "video_stream_index": video.stream_index, "duration_ms": video.duration_ms, "source_start_ms": video.start_ms, "time_origin": "source-format-start-ms", "video_start_ms": video.video_start_ms, "image_spec": dict(IMAGE_SPEC), "sampling_interval": interval, "target_interval": interval, "base_complete": complete, "valid_count": sum(s["status"] == "target" for s in samples), "coverage": [[video.video_start_ms, video.duration_ms]] if complete else [[s["requested_ms"], min(video.duration_ms, s["requested_ms"] + interval)] for s in samples if s["status"] == "target"], "samples": samples, "assets": assets or [], "state": "ready" if complete else "partial", "persisted": True}
 
 
 def _valid_manifest(value, signature, entries) -> bool:
@@ -367,6 +571,9 @@ def _valid_manifest(value, signature, entries) -> bool:
     if not isinstance(duration, int) or isinstance(duration, bool) or duration <= 0 or interval not in (250, 500, 1000, 2000, 5000, 10000) or not isinstance(samples, list) or len(samples) > MAX_SAMPLES or not isinstance(assets, list):
         return False
     if not isinstance(value.get("video_stream_index"), int) or value["video_stream_index"] < 0 or not isinstance(value.get("source_start_ms"), int) or not isinstance(value.get("cache_revision"), str) or len(value["cache_revision"]) != 32:
+        return False
+    video_start = value.get("video_start_ms")
+    if value.get("time_origin") != "source-format-start-ms" or not isinstance(video_start, int) or isinstance(video_start, bool) or not 0 <= video_start < duration:
         return False
     if value.get("sampling_interval") not in (250, 500, 1000, 2000, 5000, 10000):
         return False
@@ -385,13 +592,20 @@ def _valid_manifest(value, signature, entries) -> bool:
         if not isinstance(sample, dict):
             return False
         target, actual, asset, crop = (sample.get(field) for field in ("requested_ms", "actual_pts_ms", "asset", "crop_rect"))
-        if not isinstance(target, int) or isinstance(target, bool) or not 0 <= target < duration or target in seen or sample.get("status") != "target" or not isinstance(actual, int) or not 0 <= actual < duration or not isinstance(asset, str) or asset not in asset_map:
+        if not isinstance(target, int) or isinstance(target, bool) or not 0 <= target < duration or target in seen:
+            return False
+        if sample.get("status") == "unavailable":
+            if target >= video_start or actual is not None or asset is not None:
+                return False
+            seen.add(target)
+            continue
+        if sample.get("status") != "target" or not isinstance(actual, int) or not video_start <= actual < duration or not isinstance(asset, str) or asset not in asset_map:
             return False
         if not isinstance(crop, list) or len(crop) != 4 or any(not isinstance(x, int) or isinstance(x, bool) for x in crop) or crop[2:] != [160, 90] or crop[0] < 0 or crop[1] < 0 or crop[0] + 160 > 1280 or crop[1] + 90 > asset_map[asset]["height"]:
             return False
         seen.add(target)
         counts[asset] += 1
-    if len(seen) != value.get("valid_count") or any(counts[asset] != row["valid_count"] for asset, row in asset_map.items()):
+    if sum(counts.values()) != value.get("valid_count") or any(counts[asset] != row["valid_count"] for asset, row in asset_map.items()):
         return False
     complete = all(t in seen for t in range(0, duration, interval)) and value["sampling_interval"] <= interval
     return value.get("base_complete") is complete
@@ -422,23 +636,40 @@ def _load_candidate(path: Path, signature: dict) -> dict | None:
                     return None
         with _lock:
             _base_memo[memo_key] = value
-            while len(_base_memo) > 16:
+            while len(_base_memo) > 16 or sum(len(json.dumps(v)) for v in _base_memo.values()) > MAX_MANIFEST_BYTES:
                 _base_memo.popitem(last=False)
         return value
     except (OSError, ValueError, TypeError, KeyError, zipfile.BadZipFile, RuntimeError):
         return None
 
 
+def _touch_base(path: Path) -> None:
+    canonical = os.path.normcase(str(path.resolve()))
+    now = time.time()
+    with _lock:
+        if now - _base_touch.get(canonical, 0) < 60:
+            return
+        _base_touch[canonical] = now
+        if len(_base_touch) > 128:
+            _base_touch.pop(next(iter(_base_touch)))
+    try:
+        with contextlib.closing(_connect()) as db, db:
+            db.execute("UPDATE bases SET used=? WHERE path=?", (now, canonical))
+    except (OSError, sqlite3.Error):
+        pass
+
+
 def _all_base_hits(media_path: Path | str) -> list[tuple[Path | None, dict]]:
     try:
-        signature, key = media_signature(Path(media_path)), _source_key(media_path)
+        signature, key = source_signature(Path(media_path)), _source_key(media_path)
     except OSError:
         return []
     hits = []
-    for path in [*base_candidates(media_path), cache_root() / "bases" / (key + ".mothumbs")]:
+    for path in base_candidates(media_path):
         for candidate in (path, path.with_name(path.name + ".partial")):
             value = _load_candidate(candidate, signature)
             if value:
+                _touch_base(candidate)
                 hits.append((candidate, value))
     with _lock:
         if key in _session_bases:
@@ -498,7 +729,7 @@ def sample_manifest(media_path: Path | str, requested_ms: Sequence[int], *, stre
         return {"schema": SCHEMA, "samples": [], "assets": [], "state": "unavailable"}
     _validate_targets(requested_ms, video, stream_index)
     key, base = identity_key(media_path, video), load_base(media_path)
-    result = _manifest(video, media_signature(Path(media_path)), interval=base_interval_ms(video.duration_ms), revision=key[:32])
+    result = _manifest(video, source_signature(Path(media_path)), interval=base_interval_ms(video.duration_ms), revision=key[:32])
     result.update(base or {})
     result["samples"], result["assets"] = [], []
     base_map = {s["requested_ms"]: s for s in base["samples"]} if base else {}
@@ -508,6 +739,9 @@ def sample_manifest(media_path: Path | str, requested_ms: Sequence[int], *, stre
     local.update(persistent)
     assets = {a["id"]: a for a in base["assets"]} if base else {}
     for target in requested_ms:
+        if target < video.video_start_ms:
+            result["samples"].append(_sample(FrameResult(target, None, "unavailable", None), None))
+            continue
         if target in base_map:
             sample = dict(base_map[target])
         elif target in local:
@@ -567,15 +801,43 @@ def _write_lock(path: Path, *, cancel=None, timeout_s=20):
                 fcntl.flock(handle.fileno(), fcntl.LOCK_UN)
 
 
-def _atomic_save(path: Path, manifest: dict, blobs: dict[str, bytes], media_path: Path | str, *, cancel=None) -> None:
-    with _write_lock(path.with_name(path.name + ".lock"), cancel=cancel):
+@contextlib.contextmanager
+def _base_budget(path, media_path, manifest, size):
+    key = identity_key(media_path, VideoInfo(manifest["video_stream_index"], manifest["duration_ms"], manifest["source_start_ms"]))
+    owner = uuid.uuid4().hex
+    canonical = os.path.normcase(str(path.resolve()))
+    try:
+        with contextlib.closing(_connect()) as db, db:
+            db.execute("BEGIN IMMEDIATE")
+            # Missing registered caches no longer occupy their old allocation.
+            for registered, in db.execute("SELECT path FROM bases").fetchall():
+                if not Path(registered).is_file():
+                    db.execute("DELETE FROM bases WHERE path=?", (registered,))
+            if not _evict(db, key, size, set()):
+                raise OSError("thumbnail cache disk budget exhausted")
+            db.execute("INSERT INTO base_reservations VALUES(?,?,?,?)", (owner, key, size, time.time()+60))
+        yield
+        with contextlib.closing(_connect()) as db, db:
+            db.execute("INSERT OR REPLACE INTO bases VALUES(?,?,?,?)", (canonical, key, path.stat().st_size, time.time()))
+    finally:
+        with contextlib.closing(_connect()) as db, db:
+            db.execute("DELETE FROM base_reservations WHERE owner=?", (owner,))
+
+
+def _atomic_save(path: Path, manifest: dict, blobs: dict, media_path: Path | str, *, cancel=None) -> None:
+    size = len(json.dumps(manifest, separators=(",", ":")).encode()) + sum(value.stat().st_size if isinstance(value, Path) else len(value) for value in blobs.values()) + (len(blobs)+1)*200
+    if size > MAX_SIDECAR_BYTES:
+        raise ThumbnailError("base sidecar exceeds size budget")
+    with _write_lock(path.with_name(path.name + ".lock"), cancel=cancel), _base_budget(path, media_path, manifest, size):
         fd, name = tempfile.mkstemp(prefix=".mothumbs-", dir=path.parent)
         try:
             with os.fdopen(fd, "wb") as output, zipfile.ZipFile(output, "w", compression=zipfile.ZIP_STORED) as archive:
                 archive.writestr("manifest.json", json.dumps(manifest, separators=(",", ":")))
                 for asset, jpeg in blobs.items():
-                    archive.writestr("assets/" + asset + ".jpg", jpeg)
-            if media_signature(Path(media_path)) != manifest["source_signature"]:
+                    if cancel is not None and cancel.is_set():
+                        raise ThumbnailCancelled("thumbnail publication cancelled")
+                    archive.writestr("assets/" + asset + ".jpg", jpeg.read_bytes() if isinstance(jpeg, Path) else jpeg)
+            if source_signature(Path(media_path)) != manifest["source_signature"]:
                 raise ThumbnailError("source changed during thumbnail generation")
             for attempt in range(5):
                 try:
@@ -591,89 +853,128 @@ def _atomic_save(path: Path, manifest: dict, blobs: dict[str, bytes], media_path
             Path(name).unlink(missing_ok=True)
 
 
-def _pack(media_path: Path | str, video: VideoInfo, signature: dict, frames: Sequence[FrameResult], interval: int, *, complete: bool, cancel=None) -> tuple[dict, dict[str, bytes]]:
-    samples, assets, blobs = [], [], {}
-    valid = sorted((frame for frame in frames if frame.status == "target" and frame.jpeg), key=lambda frame: frame.requested_ms)
-    for start in range(0, len(valid), MAX_SPRITE_FRAMES):
-        block = valid[start:start+MAX_SPRITE_FRAMES]
-        jpeg = make_sprite([frame.jpeg for frame in block], cancel=cancel)
-        asset = "sprite-" + hashlib.sha256(jpeg).hexdigest()[:24] + "-" + str(start // MAX_SPRITE_FRAMES)
-        blobs[asset] = jpeg
-        assets.append({"id": asset, "width": 1280, "height": math.ceil(len(block)/8)*90, "valid_count": len(block)})
-        samples.extend(_sample(frame, asset, [(index % 8)*160, (index//8)*90, 160, 90]) for index, frame in enumerate(block))
-    return _manifest(video, signature, interval=interval, samples=samples, assets=assets, complete=complete), blobs
+def load_or_build_base(media_path: Path | str, *, cancel=None, progress=None, batch_extract=None, before_batch=None, batch_pack=None, target_interval: int | None = None, ffmpeg_path: str | None = None, timeout_s: float = 1200) -> dict:
+    """Launcher grid generation with bounded staging and cancellable packing.
 
-
-def load_or_build_base(media_path: Path | str, *, cancel=None, progress=None, batch_extract=None, before_batch=None, target_interval: int | None = None, ffmpeg_path: str | None = None, timeout_s: float = 1200) -> dict:
-    """Launcher-only full coverage with resumable independent batch storage.
-
-    batch_extract is the shared flight coordinator callback. before_batch waits
-    for playback/visible leases outside all cache write locks.
+    At most 64 source JPEGs are retained by the packer. Completed sprites are
+    staged on disk, then streamed into an atomic ZIP. Every short source batch
+    independently persists first, so cancellation can resume without tiling
+    unsealed frames after the cancellation signal.
     """
-    video = _info(media_path, cancel=cancel)
+    video = _info(media_path, cancel=cancel, ffmpeg_path=ffmpeg_path)
     if video is None:
         return {"schema": SCHEMA, "state": "unavailable", "samples": [], "assets": [], "base_complete": False}
-    signature, key = media_signature(Path(media_path)), identity_key(media_path, video)
+    signature, key = source_signature(media_path), identity_key(media_path, video)
     interval = target_interval or base_interval_ms(video.duration_ms)
     if interval not in (250, 500, 1000, 2000, 5000, 10000):
         raise ValueError("invalid base interval")
-    existing = load_base(media_path)
-    targets = list(range(0, video.duration_ms, interval))
-    if len(targets) > MAX_SAMPLES:
+    count = (video.duration_ms + interval - 1) // interval
+    if count > MAX_SAMPLES:
         raise ThumbnailError("base thumbnail grid exceeds manifest budget")
+    targets = list(range(0, video.duration_ms, interval))
+    existing = load_base(media_path)
     if existing and existing["base_complete"] and existing["target_interval"] <= interval:
         existing_targets = {s["requested_ms"] for s in existing["samples"]}
         if all(target in existing_targets for target in targets):
-            return existing
-    completed: dict[int, FrameResult] = {}
+            return dict(existing, cache_hit=True)
+    completed, samples, assets, pending = set(), [], [], []
+    empty_samples = {}
     failure = None
     deadline = time.monotonic() + timeout_s
-    try:
-        for batch in batches(targets):
+    with tempfile.TemporaryDirectory(prefix="maw-base-") as staging:
+        blobs = {}
+        staged_bytes = 0
+
+        def check():
             if cancel is not None and cancel.is_set():
                 raise ThumbnailCancelled("base thumbnail generation cancelled")
             if time.monotonic() >= deadline:
                 raise ThumbnailError("base thumbnail generation timed out")
+            if source_signature(media_path) != signature:
+                raise ThumbnailError("source changed during thumbnail generation")
+
+        def flush():
+            nonlocal staged_bytes
+            if not pending:
+                return
+            check()
             if before_batch:
-                before_batch(batch)
-            cached = _with_jpegs(media_path, lookup_frames(media_path, batch), cancel=cancel)
-            completed.update((frame.requested_ms, frame) for frame in cached if frame is not None and frame.status == "target" and frame.jpeg)
-            missing = [t for t, frame in zip(batch, cached) if frame is None or frame.status == "preview"]
-            if missing:
-                if batch_extract:
-                    generated = batch_extract(media_path, missing, stream_index=video.stream_index, cancel=cancel)
-                else:
-                    generated = extract_frames(media_path, missing, stream_index=video.stream_index, cancel=cancel, ffmpeg_path=ffmpeg_path, info=video, timeout_s=min(45, max(0.01, deadline-time.monotonic())))
-                if media_signature(Path(media_path)) != signature:
-                    raise ThumbnailError("source changed during thumbnail generation")
-                register_frames(media_path, generated, info=video)
-                completed.update((frame.requested_ms, frame) for frame in generated if frame.status == "target")
-            if progress:
-                progress(f"[thumbnails] {len(completed)}/{len(targets)}")
-    except (ThumbnailError, OSError) as exc:
-        failure = exc
-    complete = len(completed) == len(targets)
-    # Already completed frame records persist after every short batch. Packing
-    # cancelled work is bounded separately and does not resume source decoding.
-    manifest, blobs = _pack(media_path, video, signature, list(completed.values()), interval, complete=complete)
-    manifest["state"] = "cancelled" if isinstance(failure, ThumbnailCancelled) else "error" if failure else "ready" if complete else "partial"
-    persisted = False
-    paths = [base_path(media_path), cache_root() / "bases" / (_source_key(media_path) + ".mothumbs")]
-    for target in paths:
-        path = target if complete else target.with_name(target.name + ".partial")
+                before_batch([frame.requested_ms for frame in pending])
+            check()
+            packing = {"cancel": cancel, "timeout_s": min(20, max(.01, deadline-time.monotonic()))}
+            images = [frame.jpeg for frame in pending]
+            jpeg = batch_pack(images, **packing) if batch_pack else make_sprite(images, ffmpeg_path=ffmpeg_path, **packing)
+            check()
+            if staged_bytes + len(jpeg) > BASE_GENERATION_BYTES:
+                raise ThumbnailError("base thumbnail staging budget exhausted")
+            asset = "sprite-" + hashlib.sha256(jpeg).hexdigest()[:24] + "-" + str(len(assets))
+            file = Path(staging) / (asset + ".jpg")
+            file.write_bytes(jpeg)
+            blobs[asset] = file
+            staged_bytes += len(jpeg)
+            assets.append({"id": asset, "width": 1280, "height": math.ceil(len(pending)/8)*90, "valid_count": len(pending)})
+            samples.extend(_sample(frame, asset, [(index % 8)*160, (index//8)*90, 160, 90]) for index, frame in enumerate(pending))
+            pending.clear()
+
         try:
-            _atomic_save(path, manifest, blobs, media_path)
-            persisted = True
-            break
-        except OSError:
-            continue
-    manifest["persisted"] = persisted
-    if not persisted:
-        _warning(key)
-        with _lock:
-            _session_bases[_source_key(media_path)] = manifest
-            for asset, jpeg in blobs.items():
-                _session_assets[(key, asset)] = jpeg
-    if failure:
-        raise failure
-    return manifest
+            for batch in batches(targets):
+                check()
+                if before_batch:
+                    before_batch(batch)
+                check()
+                cached = _with_jpegs(media_path, lookup_frames(media_path, batch, ffmpeg_path=ffmpeg_path), cancel=cancel, ffmpeg_path=ffmpeg_path)
+                found = {frame.requested_ms: frame for frame in cached if frame is not None and frame.status == "target" and frame.jpeg}
+                empty_samples.update((frame.requested_ms, _sample(frame, None)) for frame in cached if frame is not None and frame.status == "unavailable" and frame.requested_ms < video.video_start_ms)
+                missing = [t for t, frame in zip(batch, cached) if frame is None or frame.status == "preview"]
+                if missing:
+                    if batch_extract:
+                        generated = batch_extract(media_path, missing, stream_index=video.stream_index, cancel=cancel)
+                    else:
+                        generated = extract_frames(media_path, missing, stream_index=video.stream_index, cancel=cancel, ffmpeg_path=ffmpeg_path, info=video, timeout_s=min(45, max(.01, deadline-time.monotonic())))
+                    check_source = source_signature(media_path)
+                    if check_source != signature:
+                        raise ThumbnailError("source changed during thumbnail generation")
+                    register_frames(media_path, generated, info=video, ffmpeg_path=ffmpeg_path, expected_source=signature)
+                    found.update((frame.requested_ms, frame) for frame in generated if frame.status == "target" and frame.jpeg)
+                    empty_samples.update((frame.requested_ms, _sample(frame, None)) for frame in generated if frame.status == "unavailable" and frame.requested_ms < video.video_start_ms)
+                for target in batch:
+                    if target in empty_samples:
+                        completed.add(target)
+                    if target in found and target not in completed:
+                        pending.append(found[target])
+                        completed.add(target)
+                        if len(pending) == MAX_SPRITE_FRAMES:
+                            flush()
+                if progress:
+                    progress(f"[thumbnails] {len(completed)}/{len(targets)}")
+            flush()
+        except (ThumbnailError, OSError) as exc:
+            failure = exc
+        samples = sorted([*samples, *empty_samples.values()], key=lambda sample: sample["requested_ms"])
+        complete = len(samples) == len(targets)
+        manifest = _manifest(video, signature, interval=interval, samples=samples, assets=assets, complete=complete)
+        manifest["cache_hit"] = False
+        manifest["state"] = "cancelled" if isinstance(failure, ThumbnailCancelled) else "error" if failure else "ready" if complete else "partial"
+        persisted = False
+        paths = [base_path(media_path), cache_root() / "bases" / (_source_key(media_path) + ".mothumbs")]
+        # Publication of already sealed blocks performs bounded disk IO only;
+        # cancellation never starts another image decoder/tiler here.
+        for target in paths:
+            path = target if complete else target.with_name(target.name + ".partial")
+            try:
+                _atomic_save(path, manifest, blobs, media_path)
+                persisted = True
+                break
+            except (OSError, sqlite3.Error):
+                continue
+        manifest["persisted"] = persisted
+        if not persisted:
+            _warning(key)
+            with _lock:
+                if staged_bytes <= SESSION_QUOTA_BYTES - sum(len(value) for value in _session_assets.values()):
+                    _session_bases[_source_key(media_path, signature)] = manifest
+                    for asset, file in blobs.items():
+                        _session_assets[(key, asset)] = file.read_bytes()
+        if failure:
+            raise failure
+        return manifest

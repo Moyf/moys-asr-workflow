@@ -4,7 +4,7 @@ import test from 'node:test';
 const text = fs.readFileSync(new URL('../web/editor/media/editor-thumbnails.js', import.meta.url), 'utf8');
 const { createThumbnailModule } = await import(`data:text/javascript;base64,${Buffer.from(text).toString('base64')}`);
 
-function harness() {
+function harness(changes=[]) {
   let now = 0, serial = 0;
   const timers = new Map(), calls = [], closedImages = [], values = new Map();
   const config = {requestToken:'test-only-token', thumbnailUrls:{status:'/status', demand:'/demand', release:'/release'}};
@@ -29,7 +29,7 @@ function harness() {
   };
   const core=createThumbnailModule({browser,getConfig:()=>config,
     storage:{getItem:key=>values.get(key) ?? null,setItem:(key,value)=>values.set(key,value)}});
-  const controller=core.createController(()=>{});
+  const controller=core.createController((layoutChanged,ranges=[])=>changes.push({layoutChanged,ranges}));
   return {core,controller,calls,closedImages,values,
     respond(fn) { responder=fn; },
     async flush() { for(let i=0;i<200;i++) await Promise.resolve(); },
@@ -108,8 +108,113 @@ test('sprites and frames share a byte cap and over-budget assets do not read aga
   await h.advance(2000);
   assert.equal(h.calls.filter(call=>call.url.includes('/asset/')).length,reads,'bounded admission misses are retained');
   h.controller.setEnabled(false); await h.flush();
-  assert.equal(h.controller.bytes,0);
+  assert.ok(h.controller.bytes>0,'hidden pictures remain in the bounded reusable LRU');
   assert.equal(h.controller.visible,false);
   assert.equal(h.values.get('mawe-filmstrip-visible'),'false');
+  h.controller.close();
+  assert.equal(h.controller.bytes,0, 'page close releases retained pictures');
+});
+
+
+test('unchanged status does not repaint and one decoded asset only dirties nearby time rows',async()=>{
+  const changes=[], h=harness(changes);
+  const sample={requested_ms:5000,actual_pts_ms:5000,status:'target',asset:'one-frame',crop_rect:[0,0,160,90],cache_revision:'r1'};
+  h.respond(call=>manifest(call,{samples:[sample]}));
+  h.controller.setBinding('video-a');await h.flush();
+  h.controller.setView([{start:0,end:30000,width:2560}],40000);await h.advance(200);await h.advance(16);
+  const painted=changes.filter(change=>change.ranges.length);
+  assert.ok(painted.length>0);
+  assert.ok(painted.every(change=>change.ranges.every(range=>range.end_ms<20000)), 'the third time row is untouched');
+  changes.length=0;await h.advance(2000);await h.advance(16);
+  assert.ok(changes.every(change=>change.ranges.length===0),'a stable manifest is not a visual change');
+  h.controller.close();
+});
+
+test('unavailable and error responses explicitly release the acquired lease',async()=>{
+  for(const state of ['unavailable','error']) {
+    const h=harness();h.respond(call=>manifest(call));
+    h.controller.setBinding('video-a');await h.flush();
+    h.respond(call=>manifest(call,{state}));await h.advance(2000);
+    assert.equal(h.controller.visible,false);
+    assert.ok(h.calls.some(call=>call.url==='/release'&&call.body.lease==='lease-a'));
+    const count=h.calls.length;await h.advance(20000);assert.equal(h.calls.length,count,'hidden source stops all heartbeat/poll work');
+    h.controller.close();
+  }
+});
+
+test('three failed demands suspend transport and retain pictures until a deliberate recovery',async()=>{
+  const h=harness();
+  h.respond(call=>manifest(call,{samples:[{requested_ms:0,status:'target',asset:'cached',crop_rect:[0,0,160,90],cache_revision:'r1'}]}));
+  h.controller.setBinding('video-a');await h.flush();
+  h.controller.setView([{start:0,end:10000,width:1000}],20000);await h.advance(200);
+  const bytes=h.controller.bytes;assert.ok(bytes>0);
+  h.respond(call=>{
+    if(call.url==='/demand')throw new Error('synthetic network failure');
+    return manifest(call,{samples:[{requested_ms:0,status:'target',asset:'cached',crop_rect:[0,0,160,90],cache_revision:'r1'}]});
+  });
+  for(let i=0;i<3;i++)await h.advance(2000);
+  assert.equal(h.controller.state,'network-error');assert.equal(h.controller.visible,true);
+  assert.equal(h.controller.bytes,bytes,'a failed server does not erase navigation pictures');
+  const calls=h.calls.length;await h.advance(20000);assert.equal(h.calls.length,calls,'transport does not loop past its retry budget');
+  assert.ok(h.calls.some(call=>call.url==='/release'));
+  h.respond(call=>manifest(call));h.controller.retry();await h.flush();
+  assert.equal(h.controller.state,'ready');await h.advance(2000);
+  assert.ok(h.calls.length>calls,'explicit retry establishes a new bounded attempt');
+  h.controller.close();
+});
+
+
+test('picture feedback uses user-facing bilingual states and explains session-only persistence',async()=>{
+  const source=fs.readFileSync(new URL('../web/editor/media/waveform/thumbnails.js',import.meta.url),'utf8');
+  const {createWaveformModule}=await import(`data:text/javascript;base64,${Buffer.from(source).toString('base64')}`);
+  let language='zh';
+  const methods=createWaveformModule({localizedWaveformMessage:(zh,en)=>language==='en'?en:zh});
+  const editor={thumbnailController:{state:'paused',persisted:false}};
+  assert.equal(methods.thumbnailStatusText.value.call(editor),'播放中：暂停补帧 · 本次会话缓存');
+  language='en';
+  assert.equal(methods.thumbnailStatusText.value.call(editor),'Playing: picture generation paused · Session cache');
+  editor.thumbnailController.state='network-error';
+  assert.match(methods.thumbnailStatusText.value.call(editor),/re-enable pictures or reconnect/);
+});
+
+
+test('hide releases a client view before its lease is adopted and re-enable uses a newer view',async()=>{
+  const h=harness();let resolveStatus;
+  h.respond(call=>call.url.includes('/status')?new Promise(resolve=>{resolveStatus=()=>resolve(manifest(call));}):manifest(call));
+  h.controller.setBinding('video-a');
+  const status=h.calls.find(call=>call.url.includes('/status'));
+  const oldView=Number(new URL(status.url).searchParams.get('view'));
+  h.controller.setEnabled(false);await h.flush();
+  const released=h.calls.find(call=>call.url==='/release');
+  assert.ok(released,'an anonymous allocation can be cancelled before its response');
+  assert.equal(released.body.lease,'');assert.equal(released.body.client_id,'stable-client');
+  assert.equal(released.body.view,oldView);
+  resolveStatus();await h.flush();assert.equal(h.controller.visible,false);
+  h.respond(call=>manifest(call));h.controller.setEnabled(true);await h.flush();
+  const newest=h.calls.filter(call=>call.url.includes('/status')).at(-1);
+  assert.ok(Number(new URL(newest.url).searchParams.get('view'))>released.body.view,'re-enable advances past the Server release fence');
+  h.controller.close();
+});
+
+
+test('explicit no-video prefix beats future and old cached pictures without asset reads',async()=>{
+  const h=harness();
+  h.respond(call=>manifest(call,{samples:[{requested_ms:0,status:'target',asset:'old-zero',crop_rect:[0,0,160,90],cache_revision:'r1'}]}));
+  h.controller.setBinding('video-a');await h.flush();
+  h.controller.setView([{start:0,end:10000,width:1000}],20000);await h.advance(200);
+  assert.ok(h.controller.picture(0,2000),'establish an older decoded picture at zero');
+  h.respond(call=>manifest(call,{cache_revision:'r2',samples:[
+    {requested_ms:0,actual_pts_ms:null,status:'unavailable',asset:null},
+    {requested_ms:1000,actual_pts_ms:null,status:'unavailable',asset:null},
+    {requested_ms:2000,actual_pts_ms:2000,status:'target',asset:'future-frame',crop_rect:[0,0,160,90],cache_revision:'r2'},
+  ]}));
+  await h.advance(2000);
+  assert.equal(h.controller.picture(0,2000),null,'an old zero-origin frame cannot cover the real source prefix');
+  assert.equal(h.controller.picture(500,2000),null,'a prefix sampling cell remains blank between grid points');
+  assert.equal(h.controller.picture(1000,2000),null,'the nearby future frame cannot leak into the prefix');
+  assert.ok(h.controller.picture(2000,2000),'video appears at its actual source start');
+  assert.ok(h.controller.picture(3500,2000),'nearby fallback remains useful in an ordinary cache miss');
+  assert.equal(h.controller.picture(5000,2000),null,'fallback remains bounded in source time');
+  assert.ok(h.calls.filter(call=>call.url.includes('/asset/')).every(call=>!call.url.includes('null')&&!call.url.includes('undefined')));
   h.controller.close();
 });

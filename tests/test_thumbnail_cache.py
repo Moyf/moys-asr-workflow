@@ -4,6 +4,7 @@ import contextlib
 import io
 import json
 import os
+import sqlite3
 import tempfile
 import threading
 import unittest
@@ -29,7 +30,7 @@ class ThumbnailCacheTests(unittest.TestCase):
         self.patches = [mock.patch.object(c, "cache_root", return_value=self.root / "app"), mock.patch.object(c, "waveform_dirs", return_value=[self.root, self.root / "_maw", self.root / "video_maw"]), mock.patch.object(c, "probe_video", return_value=self.video), mock.patch.object(c, "make_sprite", side_effect=lambda frames, **kw: jpeg(1280, ((len(frames)+7)//8)*90))]
         for patch in self.patches:
             patch.start()
-        for collection in (c._video_memo, c._base_memo, c._session, c._session_assets, c._write_disabled, c._session_bases, c._session_pins):
+        for collection in (c._video_memo, c._base_memo, c._session, c._session_assets, c._write_disabled, c._session_bases, c._session_pins, c._base_touch):
             collection.clear()
         self.calls = []
 
@@ -48,6 +49,8 @@ class ThumbnailCacheTests(unittest.TestCase):
     def test_complete_base_opaque_assets_stored_zip_and_hot_hit(self):
         manifest = self.build()
         self.assertTrue(manifest["base_complete"])
+        self.assertFalse(manifest["cache_hit"])
+        self.assertTrue(self.build()["cache_hit"])
         self.assertEqual(manifest["valid_count"], 20)
         with zipfile.ZipFile(c.base_path(self.media)) as archive:
             self.assertTrue(all(info.compress_type == zipfile.ZIP_STORED for info in archive.infolist()))
@@ -70,6 +73,168 @@ class ThumbnailCacheTests(unittest.TestCase):
         self.assertEqual(first["cache_revision"], second["cache_revision"])
         asset = first["samples"][0]["asset"]
         self.assertIsNotNone(c.read_asset(self.media, asset, cache_revision=second["cache_revision"]))
+
+    def test_same_millisecond_same_size_source_replacement_invalidates_all_caches(self):
+        stat = self.media.stat()
+        anchor = (stat.st_mtime_ns // 1_000_000) * 1_000_000
+        os.utime(self.media, ns=(stat.st_atime_ns, anchor+100))
+        first = self.build()
+        original_key = c.identity_key(self.media)
+        original_browser_ms = first["source_signature"]["modified_ms"]
+        self.media.write_bytes(b"SOURCE")
+        os.utime(self.media, ns=(stat.st_atime_ns, anchor+900))
+        self.assertEqual(c.source_signature(self.media)["modified_ms"], original_browser_ms)
+        self.assertNotEqual(c.identity_key(self.media), original_key)
+        self.assertIsNone(c.load_base(self.media))
+        self.assertEqual(c.lookup_frames(self.media, [0]), [None])
+
+    def test_owner_release_keeps_other_process_asset_pin(self):
+        frame = c.get_or_extract_frames(self.media, [0], extractor=self.extract)[0]
+        asset = c._asset_id(frame.jpeg)
+        c.protect_assets(self.media, [asset], owner="first")
+        c.protect_assets(self.media, [asset], owner="second")
+        c.release_assets(self.media, [asset], owner="first")
+        with contextlib.closing(c._connect()) as db:
+            rows = db.execute("SELECT owner FROM pins_leases WHERE asset=?", (asset,)).fetchall()
+        self.assertEqual(rows, [("second",)])
+        with mock.patch.object(c, "MEDIA_QUOTA_BYTES", len(frame.jpeg)+1):
+            c.get_or_extract_frames(self.media, [2000], extractor=self.extract)
+        self.assertIsNotNone(c.read_asset(self.media, asset))
+        self.media.write_bytes(b"replacement")
+        c.release_owner("second")
+        with contextlib.closing(c._connect()) as db:
+            self.assertEqual(db.execute("SELECT COUNT(*) FROM pins_leases").fetchone()[0], 0)
+
+    def test_physical_sqlite_page_cap_and_prefetch_pressure(self):
+        with mock.patch.object(c, "GLOBAL_QUOTA_BYTES", 128*1024), mock.patch.object(c, "MAX_INDEX_BYTES", 64*1024):
+            with contextlib.closing(c._connect()) as db:
+                self.assertLessEqual(db.execute("PRAGMA max_page_count").fetchone()[0] * db.execute("PRAGMA page_size").fetchone()[0], 192*1024)
+                with self.assertRaises(sqlite3.OperationalError):
+                    db.execute("INSERT INTO assets VALUES(?,?,?,?,?)", ("test", "large", bytes(256*1024), 256*1024, 0))
+        self.assertTrue(c.can_prefetch(self.media))
+        c._warning(c.identity_key(self.media))
+        self.assertFalse(c.can_prefetch(self.media))
+
+    def age_base(self):
+        path = c.base_path(self.media)
+        old = 1_600_000_000
+        os.utime(path, (old, old))
+        with contextlib.closing(c._connect()) as db, db:
+            db.execute("UPDATE bases SET used=?", (old,))
+        c._base_memo.clear()
+        c._base_touch.clear()
+        return path
+
+    def test_cleanup_only_registered_inactive_sidecar_and_excludes_current_source(self):
+        self.build()
+        path = self.age_base()
+        untouched = self.root / "unregistered.mothumbs"
+        untouched.write_bytes(b"private file")
+        recycled = []
+        trash = self.root / "trash"
+        trash.mkdir()
+        def recycle(file):
+            recycled.append(file)
+            file.replace(trash / file.name)
+        with mock.patch.object(c, "_recycle_registered_file", side_effect=recycle):
+            protected = c.cleanup_registered(inactive_before=1_700_000_000, exclude_paths=c.base_candidates(self.media))
+            self.assertEqual(protected["removed_count"], 0)
+            cleaned = c.cleanup_registered(inactive_before=1_700_000_000)
+        self.assertEqual(cleaned["removed_count"], 1)
+        self.assertEqual(cleaned["errors"], [])
+        self.assertEqual(recycled, [path])
+        self.assertTrue(untouched.is_file())
+        with contextlib.closing(c._connect()) as db:
+            self.assertEqual(db.execute("SELECT COUNT(*) FROM bases").fetchone()[0], 0)
+
+    def test_cleanup_skips_unexpired_pins_and_reservations(self):
+        manifest = self.build()
+        path = self.age_base()
+        c.protect_assets(self.media, [manifest["assets"][0]["id"]], owner="live")
+        with mock.patch.object(c, "_recycle_registered_file", side_effect=AssertionError("active cache recycled")):
+            self.assertEqual(c.cleanup_registered(inactive_before=1_700_000_000)["skipped_active"], 1)
+        c.release_owner("live")
+        with contextlib.closing(c._connect()) as db, db:
+            db.execute("INSERT INTO base_reservations VALUES(?,?,?,?)", ("producer", c.identity_key(self.media), 100, 9_999_999_999))
+        with mock.patch.object(c, "_recycle_registered_file", side_effect=AssertionError("producer cache recycled")):
+            self.assertEqual(c.cleanup_registered(inactive_before=1_700_000_000)["skipped_active"], 1)
+        self.assertTrue(path.is_file())
+
+    def test_cleanup_does_not_recycle_replaced_file_and_base_read_refreshes_usage(self):
+        self.build()
+        path = self.age_base()
+        self.assertIsNotNone(c.load_base(self.media))
+        with mock.patch.object(c, "_recycle_registered_file", side_effect=AssertionError("recent cache recycled")):
+            self.assertEqual(c.cleanup_registered(inactive_before=1_700_000_000)["removed_count"], 0)
+        self.age_base()
+        original_size = path.stat().st_size
+        path.write_bytes(b"x" * original_size)
+        os.utime(path, (1_600_000_000, 1_600_000_000))
+        with mock.patch.object(c, "_recycle_registered_file", side_effect=AssertionError("user file recycled")):
+            result = c.cleanup_registered(inactive_before=1_700_000_000)
+        self.assertEqual(result["removed_count"], 0)
+        self.assertEqual(len(result["errors"]), 1)
+        self.assertTrue(path.is_file())
+
+    def test_sidecar_budget_counts_registered_bases(self):
+        manifest = self.build()
+        self.assertTrue(manifest["persisted"])
+        pressure = c.cache_pressure(self.media)
+        self.assertLess(pressure["media_available_bytes"], c.MEDIA_QUOTA_BYTES)
+        with contextlib.closing(c._connect()) as db:
+            self.assertGreater(db.execute("SELECT SUM(size) FROM bases").fetchone()[0], 0)
+
+    def test_injected_pack_hook_receives_cancel_and_bounded_deadline(self):
+        cancel = threading.Event()
+        seen = []
+        def pack(images, *, cancel=None, timeout_s=0):
+            self.assertGreater(timeout_s, 0)
+            self.assertLessEqual(timeout_s, 20)
+            seen.append((len(images), cancel))
+            return jpeg(1280, ((len(images)+7)//8)*90)
+        manifest = self.build(cancel=cancel, batch_pack=pack)
+        self.assertTrue(manifest["base_complete"])
+        self.assertEqual(seen, [(20, cancel)])
+        c.make_sprite.assert_not_called()
+
+    def test_failed_persistence_after_source_change_keeps_old_session_namespace(self):
+        def fail(path, manifest, blobs, media_path, **kwargs):
+            self.media.write_bytes(b"replacement")
+            raise OSError("storage unavailable")
+        with mock.patch.object(c, "_atomic_save", side_effect=fail):
+            self.assertFalse(self.build()["persisted"])
+        self.assertIsNone(c.load_base(self.media))
+        self.assertEqual(c.lookup_frames(self.media, [0]), [None])
+
+    def test_cancel_during_sprite_packing_reaps_and_keeps_resume_frames(self):
+        cancel = threading.Event()
+        def pack(frames, **kwargs):
+            self.assertIs(kwargs["cancel"], cancel)
+            cancel.set()
+            raise ThumbnailCancelled("packing interrupted")
+        with mock.patch.object(c, "make_sprite", side_effect=pack):
+            with self.assertRaises(ThumbnailCancelled):
+                c.load_or_build_base(self.media, cancel=cancel, batch_extract=self.extract)
+        self.assertFalse(c.load_base(self.media)["base_complete"])
+        self.calls.clear()
+        self.assertTrue(self.build()["base_complete"])
+        self.assertEqual(self.calls, [])
+
+    def test_explicit_tool_path_reaches_probe_pack_and_cached_sprite_crop(self):
+        c._video_memo.clear()
+        self.build(ffmpeg_path="custom-tools")
+        c.probe_video.assert_called_with(self.media, cancel=None, ffmpeg_path="custom-tools")
+        self.assertEqual(c.make_sprite.call_args.kwargs["ffmpeg_path"], "custom-tools")
+        c._session.clear()
+        c._session_assets.clear()
+        with contextlib.closing(c._connect()) as db, db:
+            db.execute("DELETE FROM samples")
+            db.execute("DELETE FROM assets")
+        def cropped(blob, samples, **kwargs):
+            self.assertEqual(kwargs["ffmpeg_path"], "custom-tools")
+            return {sample["requested_ms"]: FrameResult(sample["requested_ms"], sample["actual_pts_ms"], "target", jpeg()) for sample in samples}
+        with mock.patch.object(c, "_crop_sprite", side_effect=cropped):
+            self.assertIsNotNone(c.get_or_extract_frames(self.media, [0], ffmpeg_path="custom-tools")[0].jpeg)
 
     def test_no_100_frame_cap_and_tail_count(self):
         self.video = VideoInfo(1, 260001, 0)
@@ -111,6 +276,40 @@ class ThumbnailCacheTests(unittest.TestCase):
         old_key = c.identity_key(self.media)
         self.media.write_bytes(b"new source")
         self.assertNotEqual(old_key, c.identity_key(self.media))
+        self.assertEqual(c.lookup_frames(self.media, [0]), [None])
+
+    def test_symlink_registration_matches_resolved_source_namespace(self):
+        alias = self.root / "alias.mkv"
+        try:
+            alias.symlink_to(self.media)
+        except OSError:
+            self.skipTest("symlink creation is unavailable")
+        expected = c.source_signature(alias)
+        self.assertEqual(expected, c.source_signature(self.media))
+        self.assertEqual(c.identity_key(alias), c.identity_key(self.media))
+        c.register_frames(alias, self.extract(alias, [0]), info=self.video, expected_source=expected)
+        self.assertIsNotNone(c.lookup_frames(self.media, [0])[0])
+
+    def test_registration_replacement_at_entry_rejects_old_frames(self):
+        expected = c.source_signature(self.media)
+        frames = self.extract(self.media, [0])
+        self.media.write_bytes(b"replacement")
+        with self.assertRaises(ThumbnailError):
+            c.register_frames(self.media, frames, info=self.video, expected_source=expected)
+        self.assertEqual(c.lookup_frames(self.media, [0]), [None])
+
+    def test_replacement_after_registration_check_keeps_old_namespace(self):
+        expected = c.source_signature(self.media)
+        frames = self.extract(self.media, [0])
+        source_key = c._source_key
+        changed = [False]
+        def key(path, signature=None):
+            if signature is not None and not changed[0]:
+                changed[0] = True
+                self.media.write_bytes(b"replacement")
+            return source_key(path, signature)
+        with mock.patch.object(c, "_source_key", side_effect=key):
+            c.register_frames(self.media, frames, info=self.video, expected_source=expected)
         self.assertEqual(c.lookup_frames(self.media, [0]), [None])
 
     def test_source_replaced_while_extraction_rejects_registration(self):

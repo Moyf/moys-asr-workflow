@@ -21,6 +21,26 @@ class ThumbnailTests(unittest.TestCase):
         self.assertTrue(all(len(group) <= 16 and group[-1]-group[0] <= t.MAX_BATCH_SPAN_MS for group in groups))
         self.assertEqual(len([v for g in groups for v in g]), len(set([1000, 0, *range(2000, 50000, 250)])))
 
+    def test_tool_override_selects_ffprobe_peer_and_sprite_encoder(self):
+        with tempfile.TemporaryDirectory() as temp:
+            path = Path(temp) / "source.mkv"
+            path.write_bytes(b"source")
+            payload = {"streams": []}
+            with mock.patch.object(t, "resolve_ffmpeg_tool", return_value=Path("tool")) as resolve, mock.patch.object(t, "_run", return_value=subprocess.CompletedProcess([], 0, json.dumps(payload).encode(), b"")):
+                t.probe_video(path, ffmpeg_path="custom-tools")
+                resolve.assert_called_with("ffprobe", "custom-tools")
+            video = t.VideoInfo(0, 1000, 0)
+            payload = {"frames": [{"best_effort_timestamp_time": "0"}]}
+            with mock.patch.object(t, "resolve_ffmpeg_tool", return_value=Path("tool")) as resolve, mock.patch.object(t, "_run", return_value=subprocess.CompletedProcess([], 0, json.dumps(payload).encode(), b"")):
+                self.assertEqual(t._frame_times(path, video, [0], timeout_s=1, cancel=None, ffmpeg_path="custom-tools"), [0])
+                resolve.assert_called_with("ffprobe", "custom-tools")
+            def fake_run(command, **kwargs):
+                Path(command[-1]).write_bytes(b"jpeg")
+                return subprocess.CompletedProcess([], 0, b"", b"")
+            with mock.patch.object(t, "resolve_ffmpeg_tool", return_value=Path("tool")) as resolve, mock.patch.object(t, "_run", side_effect=fake_run):
+                self.assertEqual(t.make_sprite([b"jpeg"], ffmpeg_path="custom-tools"), b"jpeg")
+                resolve.assert_called_with("ffmpeg", "custom-tools")
+
     def test_audio_and_attached_picture_are_skipped(self):
         with tempfile.TemporaryDirectory() as temp:
             path = Path(temp) / "input.wav"
@@ -74,6 +94,31 @@ class ThumbnailIntegrationTests(unittest.TestCase):
         self.assertEqual(frames[0].jpeg, frames[1].jpeg)
         with self.assertRaises(ValueError):
             t.extract_frames(path, [info.duration_ms], info=info)
+
+    def test_source_format_clock_preserves_delayed_video_and_empty_head(self):
+        path = self.root / "offset.mp4"
+        subprocess.run(["ffmpeg", "-nostdin", "-v", "error", "-f", "lavfi", "-i", "sine=frequency=440:sample_rate=48000:duration=5", "-itsoffset", "2", "-f", "lavfi", "-i", "testsrc2=size=320x180:rate=10:duration=3", "-map", "1:v:0", "-map", "0:a:0", "-c:v", "libx264", "-g", "30", "-threads", "2", "-fps_mode", "passthrough", "-c:a", "aac", "-y", str(path)], check=True, capture_output=True, timeout=15)
+        info = t.probe_video(path)
+        self.assertEqual((info.start_ms, info.video_start_ms, info.duration_ms), (0, 2000, 5000))
+        frames = t.extract_frames(path, [0, 1000, 2500, 4999], info=info)
+        self.assertEqual([frame.status for frame in frames], ["unavailable", "unavailable", "target", "target"])
+        self.assertEqual([frame.actual_pts_ms for frame in frames], [None, None, 2500, 4900])
+        # A simple source-clock override is an independent oracle for the JPEG,
+        # so relabelling a mistakenly selected4.5s frame as2.5s cannot pass.
+        oracle = t.extract_frames(path, [2500], info=t.VideoInfo(info.stream_index, 5000, 0))[0]
+        self.assertEqual(frames[2].jpeg, oracle.jpeg)
+        with tempfile.TemporaryDirectory() as cache_dir:
+            from maw import thumbnail_cache as cache
+            directory = Path(cache_dir)
+            with mock.patch.object(cache, "cache_root", return_value=directory / "app"), mock.patch.object(cache, "waveform_dirs", return_value=[directory]):
+                manifest = cache.load_or_build_base(path)
+                self.assertTrue(manifest["base_complete"])
+                self.assertEqual(manifest["valid_count"], 2)
+                self.assertEqual([sample["status"] for sample in manifest["samples"]], ["unavailable", "target", "target"])
+                self.assertEqual(cache.load_base(path)["time_origin"], "source-format-start-ms")
+                self.assertEqual(cache.lookup_frames(path, [0])[0].status, "unavailable")
+                self.assertEqual(cache.sample_manifest(path, [500])["samples"][0]["asset"], None)
+                self.assertEqual(cache.sample_manifest(path, [500])["samples"][0]["status"], "unavailable")
 
     def test_nonzero_start_pts_is_normalized(self):
         path = self.video(filters="setpts=PTS+5/TB")

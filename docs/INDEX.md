@@ -132,9 +132,9 @@
 [打开正文](engineering/PRPROJ_CAPABILITY.md)
 
 <a name="engineering-filmstrip-exploration"></a>
-### 视频缩略图实验（#229）
+### 视频画面轨道与缓存（#229）
 
-[原型、实测与待决定项](engineering/FILMSTRIP_EXPLORATION.md)
+[正式实现、缓存契约、验证与实验历史](engineering/FILMSTRIP_EXPLORATION.md)
 
 ## 共享计划
 

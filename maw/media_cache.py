@@ -1,4 +1,4 @@
-"""媒体派生缓存生成编排：波形嵌入 + 可选 reapeaks 频谱缓存。
+"""媒体派生缓存生成编排：波形、reapeaks 与原视频画面缓存。
 
 各 provider CLI 的 ``--with-waveform`` 统一走这里，避免逐个 CLI 重复
 ``waveform.embed_waveform`` / ``quapeaks.generate_for_media`` 的调用与
@@ -8,6 +8,7 @@
 from __future__ import annotations
 
 import struct
+import time
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
@@ -115,6 +116,8 @@ def embed_media_caches(
     覆盖。
 
     波形失败仅警告、reapeaks 失败仅跳过，与既有降级语义一致。
+    视频缩略图仅从原始 source_media_path 生成，独立保存，不进入工程 payload。
+    纯音频跳过，缩略图失败不阻断字幕保存。取消信号只控制画面缓存子任务。
     ``generate_spectral`` 关闭时仍生成 reapeaks wave 层，但跳过频谱 FFT
     与工程内的 spectral payload。
     """
@@ -271,11 +274,28 @@ def embed_media_caches(
     thumbnail_error = None
     try:
         from maw.thumbnail_jobs import build_base
+        from maw import thumbnail_cache
+        if source_path.is_file():
+            # Bound cleanup to registered, inactive derived files; protect this task's
+            # current candidates before checking a potentially old valid cache hit.
+            current = [*thumbnail_cache.base_candidates(source_path),
+                thumbnail_cache.cache_root()/"bases"/(thumbnail_cache._source_key(source_path)+".mothumbs")]
+            cleaned = thumbnail_cache.cleanup_registered(inactive_before=time.time()-30*86400,
+                limit=8, exclude_paths=current)
+            if cleaned["removed_count"]:
+                print(f"[thumbnails] 已回收 {cleaned['removed_count']} 份过期画面缓存")
         # Original video only: a derived WAV is never a thumbnail fallback.
         thumbnail_manifest = build_base(source_path, cancel=cancel,
             progress=thumbnail_progress, ffmpeg_path=ffmpeg_bin)
         if thumbnail_manifest is not None:
-            print(f"[thumbnails] 视频画面缓存: {thumbnail_manifest.get('state', 'ready')}")
+            if thumbnail_manifest.get("cache_hit"):
+                print("[thumbnails] 已复用原视频基础画面缓存")
+            elif thumbnail_manifest.get("state") == "unavailable":
+                print("[thumbnails] 无视频画面，已跳过")
+            else:
+                status = thumbnail_manifest.get("state", "ready")
+                persisted = "已保存" if thumbnail_manifest.get("persisted", True) else "仅本次会话"
+                print(f"[thumbnails] 原视频画面缓存: {status}（{persisted}）")
     except Exception as error:
         thumbnail_error = error
         print(f"[thumbnails] 警告: {error}；已跳过画面缓存")

@@ -1,4 +1,71 @@
-# #229 视频缩略图实验与方案比较
+# 视频画面轨道与缓存（#229）
+
+正式实现依据 [Moyf 的详细计划](https://github.com/Moyf/moys-asr-workflow/issues/229#issuecomment-6138129094)。画面带放在每行波形/字幕区域上方，初始 48px；用户已确认该位置，owner 最新正文也已统一为上方。以下描述当前 Server 实现；文末保留阶段 0 的独立实验历史，不能将旧原型指标当作生产算法数据。
+
+## 入口与数据边界
+
+- Launcher 的媒体缓存阶段从 `source_media_path` 原视频生成全片基础档。时长≤10分钟为2秒档，10～60分钟为5秒档，更长素材为10秒粗档。纯音频与 attached_pic 封面不生成。错误采用 best-effort，字幕和工程保存仍可继续。
+- Server 只登记当前工程授权的原媒体。状态首次请求仅探测媒体；缺少基础文件时，只处理当前视图，不在打开或空闲时扫描全片。客户端不传文件路径。
+- 画面带采用源时间零点网格250/500/1000/2000/5000/10000ms，按CSS显示宽度/时间比例选择密度，带迟滞与200ms防抖。代表画面、可见目标、前后各15%有限预取依次处理，多行去重。
+- `.mosp` 的 `segments` 仍为字幕真源。图片、sprite及补帧索引均在工程外；音轨、字幕和空隙修改不改变同一原视频的画面身份。便携空壳与浏览器未绑定File自动隐藏，不尝试读取相邻sidecar。
+
+## 模块与契约
+
+| 模块 | 职责 |
+| --- | --- |
+| `maw/thumbnails.py` | 排除封面的视频探测、短区间批量解码、真实源PTS、SAR/旋转、160×90 JPEG、取消回收 |
+| `maw/thumbnail_cache.py` | 基础`.mothumbs`、独立补帧、身份、原子发布、配额、保护与会话降级 |
+| `maw/thumbnail_jobs.py` | 单Server worker、视图差集、租约、跨进程flight去重、播放暂停与Launcher恢复 |
+| `maw/media_cache.py` | 原视频全片编排与best-effort结果，不向工程合并图片 |
+| `server-editor/serve.py` | 绑定、配置注入、受限状态/需求/登记资产接口 |
+| `web/editor/media/editor-thumbnails.js` | 自动密度、传输、版本隔离、图片LRU与资源释放 |
+| `web/editor/media/waveform/thumbnails.js` | 上方画面带、局部绘制、总stride、点击/拖动与原seek接线 |
+
+缓存schema为`moy.asr.thumbnails.v1`，生成器版本3。身份含原媒体位置的摘要、name/size/modified_ms/modified_ns、视频流、图片规格与生成器版本。旧生成器版本按miss重建。`time_origin`为`source-format-start-ms`，以源容器起点归一化，保留视频晚于音频开始的偏移；前置无画面网格以unavailable明确记录，不显示未来帧。这些合法空格可计入目标档位完成，但不计valid_count。FrameResult区分`requested_ms`、归一化`actual_pts_ms`、`target/preview/unavailable`与JPEG字节，不通过名义FPS推算PTS。
+
+基础文件为`<完整媒体名>.mothumbs`，ZIP_STORED封装manifest和最多64帧一块的sprite，尾块记录真实有效格数。manifest含`cache_revision/source_signature/video_stream_index/duration_ms/time_origin/image_spec/coverage/sampling_interval/target_interval/base_complete/valid_count/samples/assets`；样本含asset与crop_rect。`base_complete`仅证明`target_interval`所要求网格已完成，10秒粗档不会被当作5秒/2秒档命中。升级时复用已有兼容时间点。
+
+媒体旁、`_maw`和每视频输出目录沿用waveform候选位置。只读目录退到应用`thumbnail-cache`，持久写入失败退到本次会话；同一身份停止重复写入警告。基础文件临时写入/原子替换，OS写锁与Windows有限重试保护旧有效版本；部分文件独立发布，完成的短批次补帧立即可复用。新补帧不重写基础文件。
+
+同源任务的SQLite登记独立于字幕/ASR。播放租约8秒、flight续期30秒、最多512条flight、每Server最多8个页面/512目标、单解码worker、每目标最多2次失败尝试。Source批次最多16目标/30秒跨度，Server优先批次使用8秒邻近范围；不为凑64格等待首屏。Launcher全片期限20分钟，播放/可见需求优先于它的下一批；暂停或失联释放租约后恢复原任务。
+
+POST需求与释放校验随机requestToken及loopback Host/Origin，JSON≤64KiB；GET索引与JPEG只接受绑定和已登记opaque asset，版本过期409，HEAD不写正文。响应同时区分binding、source_identity与view；旧view不能撤回新playing状态，旧源结果只可进入它自己的缓存命名空间。`decoding`表示实际调用仍在运行，可与`paused`共同确认解码已经退出。
+
+## 资源与显示
+
+统一decoded-image LRU预算48MiB，sprite和独立帧一起计量；Bitmap/Blob URL按淘汰释放。当前视图读图、请求、失败重试与图片admission有界。三次连续网络失败停止本轮传输并释放租约，保留已解码图片，实际新视图/在线恢复允许重新尝试。隐藏撤销需求、保留本页可复用图片；换源/关闭释放资源。
+
+Launcher媒体缓存阶段最多清理8个30天前未使用的登记基础文件，保护当前源候选、其他视图pins和在途预留；仅将经验证的旧sidecar移至回收站，不扫描未登记媒体目录。补帧与登记基础文件合计预算64MiB/媒体、512MiB全局，SQLite额外限制索引和物理页增长。保护按页面owner隔离并续租，释放一个窗口不放开其他窗口正在使用的图片。配额不足优先淘汰非活动补帧，停止预取；写入失败不无限重抽。基础封装流式staging，最多持有64张源JPEG，sprite逐块入ZIP，取消不再启动额外封装。
+
+总行高由原波形高度加独立画面带统一计算，虚拟化、reveal、播放跟随、跨行Y命中与尾行宽度共用stride。图片就绪只重绘相交画面行，播放帧只更新播放头。画面带事件复用既有暂停、拖动预览与帧吸附，阻止误触字幕创建或空隙修改。
+
+## 生产算法测量与验证边界
+
+2026-10-13，Windows 11 / Ryzen 7 6800H / FFmpeg8.1.1。资源测量为生成器版本2、源起点为零的生产模块；版本3补齐混合流起点和清理，未重新运行长片profile。使用合成夹具，冷表示新身份/缓存目录；OS文件缓存及其它工作负载未隔离。带10ms进程采样的测量与无采样测量分开。
+
+| 素材/操作 | 实际结果 |
+| --- | --- |
+| 30s H.264，2s基础档 | 15有效样本；带监测冷1.056s，热0.0094s/0工具进程 |
+| 4K3840×2160/15fps/5s，首批4目标 | 冷1.743s，热0.0125s；带监测父+子峰值137.82MiB |
+| 4K短片，2s基础档 | 3有效样本；带监测冷1.738s |
+| 2h320×180/2fps，10s基础档 | 720样本；带监测冷82.704s，热0.0171s/0工具进程 |
+| 2h同规格，无高频监测的新冷缓存 | 冷79.783s，热0.0211s，720有效样本 |
+| 2h缓存体积 | sidecar2,106,465B，frames.sqlite3约3,264,512B |
+| 2h带监测资源 | 父Python峰43.27MiB、子进程峰28.48MiB、同时合计峰68.69MiB；累计子CPU36.61s |
+| 4K源FFmpeg取消 | 信号至返回32.8ms，ThumbnailCancelled，全部子进程回收 |
+| 正在运行的64帧sprite取消 | 信号至返回52.3ms，ThumbnailCancelled，全部子进程回收 |
+
+HEVC、ProRes、旋转、VFR及双视频流容器的默认真实视频流冷/热抽帧均取得有效JPEG；抽帧能力不证明浏览器能播放所有原codec。温缓存记录的RSS=0表示短请求未被采样捕获，不是零内存。48MiB图片预算不包括视频解码器、Canvas、GPU或整个浏览器进程。
+
+最终相关JS412项通过，真实/mocked浏览器4项通过，类型/构建新鲜度/源码静态检查和文档结构检查通过。Python最终定向112项中111通过、1项因Windows软链接权限跳过，覆盖本特性与资产/打包契约。全量首轮2248项发现3个资产顺序/打包遗漏，修复后的对应52项通过；第二轮在360秒内未完成，保留为全量验证边界，没有再循环重跑。不能将定向通过写成全量通过。
+
+原始JSON和截图留在忽略的`.artifacts/filmstrip`；不提交媒体、截图、sidecar或个人路径。Python覆盖PTS/末帧/缓存/取消/损坏/只读/粗档升级/原视频编排；Server覆盖受限HTTP、可见区warm不解码、绑定/版本/视图；跨进程测试使用真实FFmpeg验证播放停止<1秒、原Launcher等待/恢复及同目标去重。实际浏览器用真实Server/FFmpeg视频，另有mock transport测试覆盖几何与失败恢复；两层分开记录。音频0秒/视频2秒的混合起点素材也与实际浏览器画面比对：currentTime2.5s的缓存实际PTS2.5s，缩放JPEG与原播放器平均RGB差8.37，另一个4.5s帧差26.20；0/1秒明确无画面。
+
+真实高码率两小时高清素材、弱机器、网络磁盘、Firefox/Safari、macOS/Linux和安装包未由本机合成矩阵覆盖。人工核查重点为镜头导航质量、原字幕/字词/marker操作、去空隙试听/派生绑定与长时播放；这些边界在PR和核查页保留，不用自动化替维护者勾选。内联副本待发布前统一重生成。
+
+---
+
+# 阶段 0：原型与方案比较（历史）
 
 本页保留阶段 0 的原型与合成测量历史。后续依据 [owner 的详细实现计划](https://github.com/Moyf/moys-asr-workflow/issues/229#issuecomment-6138129094) 开始正式接线；当前分支包含未完成的开发检查点，上方画面带位置已确定。以下原型数据和旧决策状态不代表正式一期已验收。
 

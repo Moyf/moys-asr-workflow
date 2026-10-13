@@ -182,6 +182,11 @@
       "exportName": "createUtilsModule"
     },
     {
+      "file": "editor/media/editor-thumbnails.js",
+      "name": "editor-thumbnails",
+      "exportName": "createThumbnailModule"
+    },
+    {
       "file": "editor/media/waveform/constants.js",
       "name": "waveform-constants",
       "exportName": "createWaveformModule"
@@ -305,11 +310,6 @@
       "file": "editor/media/waveform/playback.js",
       "name": "waveform-playback",
       "exportName": "createWaveformModule"
-    },
-    {
-      "file": "editor/media/editor-thumbnails.js",
-      "name": "editor-thumbnails",
-      "exportName": "createThumbnailModule"
     },
     {
       "file": "editor/media/waveform/thumbnails.js",

@@ -2281,24 +2281,29 @@ class EditorRequestHandler(BaseHTTPRequestHandler):
     def thumbnail_request(self, path: str, *, mutate: bool = False, include_body: bool = True) -> None:
         """Opaque assets and current binding only; client paths are never accepted."""
         manager = self.editor_server.thumbnail_jobs
+        def send(status, payload):
+            self.send_json(status, payload, include_body=include_body)
         try:
+            host = self.headers.get("Host", "")
+            port = self.editor_server.server_address[1]
+            if host not in (f"127.0.0.1:{port}", f"localhost:{port}"):
+                raise PermissionError("invalid thumbnail host")
+            origin = self.headers.get("Origin")
+            if origin and origin != f"http://{host}":
+                raise PermissionError("invalid thumbnail origin")
             if mutate:
                 length = int(self.headers.get("Content-Length", "0"))
                 if length > 65536:
                     raise ValueError("thumbnail request too large")
-                request = self.read_json_request()
+                request = self.read_json_request(max_bytes=65536)
                 self._check_request_token(request)
-                origin = self.headers.get("Origin")
-                if origin and origin != f"http://{self.headers.get('Host')}":
-                    self.send_json(HTTPStatus.FORBIDDEN, {"error": "invalid thumbnail origin"})
-                    return
                 if "path" in request or "media_path" in request or "source_media_path" in request:
                     raise ValueError("thumbnail client paths are forbidden")
                 if path.endswith("/release"):
-                    manager.release(request.get("binding"), request.get("lease"))
-                    self.send_json(HTTPStatus.OK, {"ok": True})
+                    manager.release(request.get("binding"), request.get("lease"), client=request.get("client_id", ""), view=request.get("view"))
+                    send(HTTPStatus.OK, {"ok": True})
                 else:
-                    self.send_json(HTTPStatus.OK, manager.demand(request))
+                    send(HTTPStatus.OK, manager.demand(request))
                 return
             query = parse_qs(urlsplit(self.path).query)
             binding = query.get("binding", [""])[0]
@@ -2308,7 +2313,7 @@ class EditorRequestHandler(BaseHTTPRequestHandler):
                     raise ValueError("invalid thumbnail asset")
                 jpeg = manager.read_asset(binding, asset, query.get("revision", [""])[0])
                 if jpeg is None:
-                    self.send_json(HTTPStatus.NOT_FOUND, {"error": "thumbnail asset unavailable"})
+                    send(HTTPStatus.NOT_FOUND, {"error": "thumbnail asset unavailable"})
                     return
                 self.send_response(HTTPStatus.OK)
                 self.send_header("Content-Type", "image/jpeg")
@@ -2320,14 +2325,14 @@ class EditorRequestHandler(BaseHTTPRequestHandler):
             else:
                 payload = manager.status(binding, lease=query.get("lease", [None])[0],
                     client=query.get("client_id", [""])[0], view=int(query.get("view", ["0"])[0]))
-                self.send_json(HTTPStatus.OK, payload)
+                send(HTTPStatus.OK, payload)
         except PermissionError as error:
-            self.send_json(HTTPStatus.FORBIDDEN, {"error": str(error)})
-        except ValueError as error:
+            send(HTTPStatus.FORBIDDEN, {"error": str(error)})
+        except (ValueError, UnicodeError, TypeError) as error:
             status = HTTPStatus.CONFLICT if "stale" in str(error) or "source changed" in str(error) else HTTPStatus.BAD_REQUEST
-            self.send_json(status, {"error": str(error)})
+            send(status, {"error": str(error)})
         except (OSError, RuntimeError) as error:
-            self.send_json(HTTPStatus.SERVICE_UNAVAILABLE, {"state": "error", "error": str(error)})
+            send(HTTPStatus.SERVICE_UNAVAILABLE, {"state": "error", "error": str(error)})
 
     def send_localized_error(self, status: HTTPStatus, detail: str) -> None:
         """Send a localized error body without putting non-Latin-1 text in the status line."""
@@ -3095,14 +3100,15 @@ class EditorRequestHandler(BaseHTTPRequestHandler):
             return
         self.send_localized_error(HTTPStatus.NOT_FOUND, "未知资源")
 
-    def send_json(self, status: HTTPStatus, payload: dict) -> None:
+    def send_json(self, status: HTTPStatus, payload: dict, *, include_body: bool = True) -> None:
         body = json.dumps(payload, ensure_ascii=False).encode("utf-8")
         self.send_response(status)
         self.send_header("Content-Type", "application/json; charset=utf-8")
         self.send_header("Content-Length", str(len(body)))
         self.send_header("Cache-Control", "no-store")
         self.end_headers()
-        self.wfile.write(body)
+        if include_body:
+            self.wfile.write(body)
 
     def send_video_attachment(self, path: Path, filename: str, *, job: MediaJob | None = None) -> bool:
         """Stream verified temporary media and keep it alive until the response ends."""
