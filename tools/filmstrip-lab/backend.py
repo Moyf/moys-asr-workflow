@@ -100,7 +100,8 @@ def process_metrics(process) -> dict:
             (name, ctypes.c_size_t) for name in ("PeakWorkingSetSize", "WorkingSetSize",
             "QuotaPeakPagedPoolUsage", "QuotaPagedPoolUsage", "QuotaPeakNonPagedPoolUsage",
             "QuotaNonPagedPoolUsage", "PagefileUsage", "PeakPagefileUsage")]
-    memory = Counters(); memory.cb = ctypes.sizeof(memory)
+    memory = Counters()
+    memory.cb = ctypes.sizeof(memory)
     handle = wintypes.HANDLE(int(process._handle))
     if ctypes.windll.psapi.GetProcessMemoryInfo(handle, ctypes.byref(memory), memory.cb):
         result["peak_working_set_bytes"] = memory.PeakWorkingSetSize
