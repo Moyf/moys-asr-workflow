@@ -131,6 +131,11 @@
 
 [打开正文](engineering/PRPROJ_CAPABILITY.md)
 
+<a name="engineering-filmstrip-exploration"></a>
+### 视频缩略图实验（#229）
+
+[原型、实测与待决定项](engineering/FILMSTRIP_EXPLORATION.md)
+
 ## 共享计划
 
 这些阶段方案保留原始基线与状态；是否继续实施以本分支代码、后续记录和维护者确认为准。编辑器设置方案已有实施记录，旧前端方案不代表当前代码布局。

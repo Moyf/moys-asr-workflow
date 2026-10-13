@@ -209,6 +209,7 @@ class Handler(BaseHTTPRequestHandler):
                 return self.reply({"waveform": media["waveform"]})
         static = {
             "/": (ROOT / "web/experiments/filmstrip/index.html", "text/html; charset=utf-8"),
+            "/verification": (ROOT / ".artifacts/filmstrip/verification.html", "text/html; charset=utf-8"),
             "/lab.mjs": (ROOT / "web/experiments/filmstrip/lab.mjs", "text/javascript"),
             "/core.mjs": (ROOT / "web/experiments/filmstrip/core.mjs", "text/javascript"),
             "/lab.css": (ROOT / "web/experiments/filmstrip/lab.css", "text/css"),

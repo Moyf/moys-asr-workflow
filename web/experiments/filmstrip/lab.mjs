@@ -195,7 +195,7 @@ async function browserFrames(row, signal, first, began) {
   if (Number($('stream').value) !== media.videos[0]?.index) throw new Error('浏览器路线只支持浏览器默认视频流');
   for (const cell of cellsFor(row)) {
     const key = frameKey(cell.sourceMs);
-    if (cache.get(key)) { measurement.hits = (measurement.hits || 0) + 1; continue; }
+    if (cache.get(key)) { measurement.hits = (measurement.hits || 0) + 1; draw(row); first(began); continue; }
     const bitmap = await seekFrame(decoder, cell.sourceMs / 1000, signal);
     cache.set(key, bitmap, 160 * 90 * 4); measurement.decoded = (measurement.decoded || 0) + 1;
     draw(row); first(began);

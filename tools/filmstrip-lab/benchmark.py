@@ -63,6 +63,10 @@ def fixtures():
 
 def measure():
     results = []
+    previous = {}
+    result_file = ART / "backend-results.json"
+    if result_file.exists():
+        previous = {r.get("key"): r for r in json.loads(result_file.read_text(encoding="utf-8"))["results"]}
     for path in sorted((ART / "media").iterdir()):
         info = probe(path)
         if not info["videos"]:
@@ -77,7 +81,7 @@ def measure():
                     kwargs.update(start=3000, span=1800)
                 cold = generate(path, info, ART / "benchmark-cache", **kwargs)
                 warm = generate(path, info, ART / "benchmark-cache", **kwargs)
-                results.append({
+                row = {
                     "media": path.name, "info": info, "mode": mode, "stream": stream["index"],
                     "frames": cold["config"]["count"], "bytes": cold["bytes"],
                     "coldSeconds": cold["elapsed"], "coldWasHit": cold["hit"],
@@ -86,8 +90,13 @@ def measure():
                     "cpuSeconds": cold.get("cpu_seconds"), "peakWorkingSetBytes": cold.get("peak_working_set_bytes"),
                     "base64Bytes": len(base64.b64encode((ART / "benchmark-cache" / cold["key"] / "sprite.jpg").read_bytes())),
                     "precision": cold["precision"],
-                })
-                print(f"{path.name} stream={stream['index']} {mode}: cold={cold['elapsed']:.3f}s warm={warm['elapsed']:.4f}s bytes={cold['bytes']}", flush=True)
+                }
+                if cold["hit"] and cold["key"] in previous:
+                    row.update({k: previous[cold["key"]][k] for k in
+                                ("coldSeconds", "coldWasHit", "firstBatchSeconds", "completeSeconds")})
+                    row["measurementReused"] = True
+                results.append(row)
+                print(f"{path.name} stream={stream['index']} {mode}: recorded-cold={row['coldSeconds']:.3f}s warm={warm['elapsed']:.4f}s bytes={cold['bytes']} cache-hit={cold['hit']} reused={row.get('measurementReused', False)}", flush=True)
     version = subprocess.run([str(resolve_ffmpeg_tools().ffmpeg), "-version"], capture_output=True, text=True, timeout=10).stdout.splitlines()[0]
     (ART / "backend-results.json").write_text(json.dumps({
         "platform": platform.platform(), "python": platform.python_version(), "ffmpeg": version,
