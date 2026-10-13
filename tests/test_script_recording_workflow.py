@@ -190,4 +190,3 @@ class RecordingReviewTests(unittest.TestCase):
         self.assertEqual(ranges,[(1000,1300),(1500,2000)])
         restored=_ranges_without_gaps([{"start":1000,"end":2000}], [{"start":1300,"end":1500,"removed":False}])
         self.assertEqual(restored,[(1000,2000)])
-

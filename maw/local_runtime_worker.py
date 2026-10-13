@@ -58,6 +58,8 @@ def build_parser() -> argparse.ArgumentParser:
     script_align.add_argument("--silence-db", type=float, default=-35.0)
     script_align.add_argument("--silence-ms", type=int, default=500)
     script_align.add_argument("--anchors-path", default="")
+    recording = subparsers.add_parser("recording-align", parents=[script_align], add_help=False)
+    recording.add_argument("--recording-request-path", required=True)
     return parser
 
 
@@ -125,6 +127,18 @@ def main(argv: Sequence[str] | None = None) -> int:
         except Exception as error:  # noqa: BLE001 - worker boundary must return a readable error
             print(json.dumps({"type": "error", "detail": f"FunASR ct-punc 加载或推理失败：{error}"}, ensure_ascii=False))
             return 1
+    if args.command == "recording-align":
+        from maw.script_recording_workflow import run_recording_job
+        request = json.loads(Path(args.recording_request_path).read_text(encoding="utf-8"))
+        artifact = run_recording_job(
+            Path(args.project_path), Path(args.script_path), request,
+            media=Path(args.media_path) if args.media_path else None,
+            model_path=Path(args.model_path) if args.model_path else None,
+            device=args.device, language=args.language,
+            on_event=lambda message: print(json.dumps({"type": "progress", "message": message}, ensure_ascii=False), flush=True),
+        )
+        print(json.dumps({"type": "result", "artifact": artifact, "report": {"strategy": "reviewed_script"}}, ensure_ascii=False))
+        return 0
     if args.command in {"timestamp-align", "script-align"}:
         from maw.alignment_models import resolve_model_cache_root
         from maw.timestamp_alignment import TimestampAlignmentRequest, run_timestamp_alignment

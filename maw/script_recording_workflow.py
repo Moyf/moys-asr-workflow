@@ -366,4 +366,3 @@ def run_recording_job(project_path: Path, script_path: Path, request: Mapping[st
             raise RecordingWorkflowError("写出前输入已变化；请重新审查。")
         os.replace(staging, final_directory)
     return result
-
