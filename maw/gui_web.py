@@ -3797,7 +3797,7 @@ def run_app(*, debug: bool = False, devtools: bool = False, server_port: int | N
         width=900,
         height=880,
         min_size=(760, 640),
-        background_color="#16181d",
+        background_color="#1c1c20",
         text_select=True,
     )
     if window is not None:

@@ -145,6 +145,11 @@
 
 [打开正文](plans/EDITOR_SETTINGS_PLAN.md)
 
+<a name="plan-launcher-redesign"></a>
+### Launcher 现代化改版设计方案
+
+[打开正文](plans/LAUNCHER_REDESIGN.md)
+
 <a name="plan-editor-modules"></a>
 ### MAWE 前端渐进式重构企划案
 
