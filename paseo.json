@@ -1,4 +1,10 @@
 {
+  "worktree": {
+    "setup": [
+      "pnpm i",
+      "uv sync"
+    ]
+  },
   "scripts": {
     "gui": {
       "command": "uv run python maw_gui.py --debug"
