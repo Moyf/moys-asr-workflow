@@ -36,6 +36,20 @@ def timed(text, parts, start=0, **metadata):
 
 
 class ResegmentTests(unittest.TestCase):
+    def test_unsplittable_limits_are_pending_regions_without_modifying_source(self):
+        _, artifact = self.run_case(
+            [timed("完整名称不能拆", ["完整名称不能拆"])],
+            lambda _prompt, _rows: {"draft": "[c0001a0001]"}, max_chars=3,
+        )
+        project = read_project(artifact.project_path)
+        marker = project["markers"]["items"][0]
+        self.assertEqual(marker["review"]["status"], "pending")
+        self.assertEqual(marker["ai"]["task"], "resegment")
+        self.assertEqual((marker["start"], marker["end"]), (0, 200))
+        self.assertTrue(marker["note"].startswith("[AI] 待核查："))
+        self.assertEqual(project["segments"][0]["text"], "完整名称不能拆")
+        self.assertTrue(artifact.warnings)
+
     def setUp(self):
         self.temp = tempfile.TemporaryDirectory()
         self.addCleanup(self.temp.cleanup)

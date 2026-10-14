@@ -13,6 +13,7 @@ from typing import Final
 
 from maw.output_naming import TRANSLATION_TARGET_NAMES, translation_marker_name
 from maw.postprocess_io import SubtitleArtifact, read_project, read_srt, write_artifacts
+from maw.postprocess_annotations import ANNOTATION_PROMPT, validate_annotations, write_annotations
 from maw.postprocess_llm import LlmClientError
 from maw.project import normalize_project
 from maw.project_preview import JsonDict, JsonValue
@@ -288,6 +289,7 @@ def run_llm_postprocess(
         strict_translation=strict_translation,
         item_aware_resegment=item_aware_resegment,
     )
+    system_prompt += ANNOTATION_PROMPT
     cues = _llm_cues(project, include_items=item_aware_resegment)
     preserved_blank_source_ids: set[str] = set()
     preserved_target_source_ids: set[str] = set()
@@ -422,7 +424,7 @@ def run_llm_postprocess(
             *warnings,
         )
     else:
-        warnings = tuple(warnings)
+        warnings = (*response_warnings, *warnings)
     if degraded_warnings:
         warnings = (*degraded_warnings, *warnings)
     if preserved_blank_source_ids:
@@ -438,6 +440,13 @@ def run_llm_postprocess(
         )
     if len(batches) > 1:
         warnings = (f"字幕较长，已分批处理（共 {len(batches)} 批）。",) + warnings
+    sources_for_notes = {f"c{i:04d}": segment for i, segment in enumerate(_segments(project), 1)}
+    task_annotations = list(response.get("annotations", []))
+    for source_id in sorted(degraded_source_ids):
+        task_annotations.append({"source_ids": [source_id], "kind": "review", "message": "网络/服务请求失败，本段保留原文，需重试处理。"})
+    note_warnings = write_annotations(processed, sources_for_notes, task_annotations, request.operation)
+    warnings = (*warnings, *note_warnings)
+    translation_snapshot = copy.deepcopy(processed) if strict_translation else None
     output_operation = request.operation
     if request.merge_bilingual and strict_translation:
         processed = merge_bilingual_project(
@@ -452,6 +461,8 @@ def run_llm_postprocess(
         processed = embed_translated_project(project, processed)
         output_operation = f"{request.operation}-{BACKFILL_ARTIFACT_MARKER}"
         warnings = ("已将翻译结果回填进原字幕，输出为单条字幕。", *warnings)
+    if "markers" in (translation_snapshot or {}):
+        processed["markers"] = copy.deepcopy(translation_snapshot["markers"])
     _raise_if_cancelled(is_cancelled)
     _notify_status(on_status, "toolbox_status_writing")
     if begin_commit is not None and not begin_commit():
@@ -468,6 +479,8 @@ def run_llm_postprocess(
         output_directory=request.output_directory,
         media_path=request.media_path,
         comparison_source=project if request.generate_comparison else None,
+        comparison_translation=translation_snapshot if request.generate_comparison else None,
+        bilingual_line_order=request.bilingual_line_order,
     )
 
 
@@ -760,6 +773,7 @@ def _merge_translation_response_parts(
             ):
                 groups_by_source_id[source_ids[0]] = group
     return {
+        "annotations": [a for response in response_parts for a in response.get("annotations", [])],
         "groups": [
             groups_by_source_id[str(cue["id"])]
             for cue in batch
@@ -985,7 +999,8 @@ def _sanitize_llm_response(
         )
     skipped_ids = frozenset(skipped_details)
     details = tuple(skipped_details[cue_id] for cue_id in expected_ids if cue_id in skipped_details)
-    return {"groups": accepted_groups}, skipped_ids, details, "cues"
+    annotations, note_warnings = validate_annotations(response.get("annotations"), cue_by_id)
+    return {"groups": accepted_groups, "annotations": annotations}, skipped_ids, (*details, *note_warnings), "cues"
 
 
 def _response_mode(response: Mapping[str, JsonValue], *, item_aware_resegment: bool) -> str:
@@ -1740,7 +1755,7 @@ def _combine_llm_responses(responses: Sequence[Mapping[str, JsonValue]]) -> Json
         if not isinstance(raw_groups, list):
             raise ValueError("LLM response must contain a groups array")
         groups.extend(raw_groups)
-    return {"groups": groups}
+    return {"groups": groups, "annotations": [a for response in responses for a in response.get("annotations", [])]}
 
 
 def _protocol_prompt(
@@ -1824,6 +1839,8 @@ def _write(
     output_directory: Path | None = None,
     media_path: Path | None = None,
     comparison_source: Mapping[str, object] | None = None,
+    comparison_translation: Mapping[str, object] | None = None,
+    bilingual_line_order: str = "",
 ) -> SubtitleArtifact:
     return write_artifacts(
         project,
@@ -1836,6 +1853,8 @@ def _write(
         output_directory=output_directory,
         media_path=media_path,
         comparison_source=comparison_source,
+        comparison_translation=comparison_translation,
+        bilingual_line_order=bilingual_line_order,
     )
 
 

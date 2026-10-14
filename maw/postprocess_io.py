@@ -127,6 +127,8 @@ def write_artifacts(
     stats: Mapping[str, int] | None = None,
     comparison_source: Mapping[str, object] | None = None,
     comparison_rows: list[Mapping[str, object]] | None = None,
+    comparison_translation: Mapping[str, object] | None = None,
+    bilingual_line_order: str = "",
 ) -> SubtitleArtifact:
     normalized = normalize_project(project)
     raw_media = normalized.get("media")
@@ -146,7 +148,7 @@ def write_artifacts(
     comparison_html = None
     if comparison_source is not None:
         from maw.postprocess_comparison import comparison_data, render_comparison
-        comparison_html = render_comparison(comparison_data(comparison_source, normalized, operation, comparison_rows or []))
+        comparison_html = render_comparison(comparison_data(comparison_source, normalized, operation, comparison_rows or [], translation=comparison_translation, line_order=bilingual_line_order, download_name=f"{base.stem}.核对后.mosp"))
     if project_path is not None:
         _atomic_write(project_path, json.dumps(normalized, ensure_ascii=False, indent=2) + "\n")
     if srt_path is not None:
