@@ -761,6 +761,7 @@ class EditorAssetTests(CompactContainerAssertions, unittest.TestCase):
         self.assertIn('data-editor-theme="dark"', interface_page)
         self.assertIn('data-editor-theme="system"', interface_page)
         self.assertIn('>自动</button>', interface_page)
+        self.assertIn('data-editor-accent="brand"', interface_page)
         self.assertIn('data-editor-accent="blue"', interface_page)
         self.assertIn('data-editor-accent="red"', interface_page)
         self.assertIn('data-editor-accent="orange"', interface_page)

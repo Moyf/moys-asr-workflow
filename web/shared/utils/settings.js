@@ -10,7 +10,7 @@ export function createUtilsModule(dependencies) {
   const WORD_TIMING_SECONDS_PRESETS = [2, 5, 10, 20, 30];
 
 
-  const EDITOR_ACCENT_COLOR_VALUES = Object.freeze(['blue', 'red', 'orange', 'custom']);
+  const EDITOR_ACCENT_COLOR_VALUES = Object.freeze(['brand', 'blue', 'red', 'orange', 'custom']);
 
   const DEFAULT_EDITOR_ACCENT_CUSTOM_COLOR = '#6ca5e8';
 
@@ -47,7 +47,7 @@ export function createUtilsModule(dependencies) {
 
 
   function normalizeEditorAccentColor(value) {
-    return EDITOR_ACCENT_COLOR_VALUES.includes(value) ? value : 'blue';
+    return EDITOR_ACCENT_COLOR_VALUES.includes(value) ? value : 'brand';
   }
 
 
@@ -90,7 +90,7 @@ export function createUtilsModule(dependencies) {
     ninjaSound: true, ninjaSlashEffect: true, ninjaSlashLengthPercent: 80,
     ninjaSlashRotateAmplitude: 6, crossTrackSnap: true, selectBoundSubtitlePair: true,
     multiSubtitleAutoSyncDuration: true, multiSubtitleShowTrackBadges: false, theme: 'dark',
-    accentColor: 'blue', accentColorCustom: DEFAULT_EDITOR_ACCENT_CUSTOM_COLOR,
+    accentColor: 'brand', accentColorCustom: DEFAULT_EDITOR_ACCENT_CUSTOM_COLOR,
     toastPosition: 'top-center',
     subtitleColorPalette: { ...DEFAULT_EDITOR_SUBTITLE_COLOR_PALETTE },
     waveShapeSource: 'reapeaks',
