@@ -8,6 +8,7 @@
 | --- | --- | --- | --- |
 | unversioned | 2026-10-11 | [AI 口播整理编辑稿改造](unversioned/2026-10-11/AI_CLEANUP_RC.md) | 模型编辑稿、固定转换与删除恢复的实现和验证 |
 | unversioned | 2026-10-11 | [AI 重新断句改进记录](unversioned/2026-10-11/AI_RESEGMENT.md) | 字数上限、复杂用例复测及主分支整合证据 |
+| unversioned | 2026-10-11 | [Agent 长周期修复的踩坑记录：e2e 像素验证体系与语义撤回](unversioned/2026-10-11/agent-e2e-pitfalls.md) | PR #225 撤回 #205 语义后，e2e 像素断言体系的适配坑与规避方法 |
 | unversioned | undated | [符号级合并重放工作流](unversioned/undated/%E7%AC%A6%E5%8F%B7%E7%BA%A7%E5%90%88%E5%B9%B6%E9%87%8D%E6%94%BE%E5%B7%A5%E4%BD%9C%E6%B5%81.md) | 保留原始结论与验证范围 |
 | unversioned | undated | [入口与层次](unversioned/undated/editor-settings-report/editor-settings.md) | 保留原始结论与验证范围 |
 | unversioned | undated | [翻译段本地化（波 1 增补）实施记录](unversioned/undated/TEST_FEEDBACK_TRANSLATE_LOCALIZE.md) | 保留原始结论与验证范围 |
