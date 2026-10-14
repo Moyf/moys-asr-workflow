@@ -189,6 +189,9 @@ git diff --name-status
 - 提交信息不附加任何代理 / AI 署名：禁止 `Co-authored-by`、`Ultraworked with`、工具链接等尾注；提交身份只能是维护者本人。
 - `.env` 只存本机 Key；绝不读取、打印、提交或放进测试夹具。
 - 不加入媒体、识别结果、波形 sidecar、截图或个人绝对路径。
+- 引用报错、日志原文时同样必须脱敏本机路径，用户名就藏在 `C:\Users\<名>\…` 里：路径截断为 `…\npm-cache\…`、`<用户目录>\AppData\…` 这类形式。
+- 记录验证 / 复现位置（worktree、复现环境）用分支名 + 短哈希或泛称（如「另一干净 HEAD 工作树」），不写本机绝对路径。
+- 提交前跑个人路径检查：开发机一次性 `git config core.hooksPath .githooks` 启用 pre-commit；也可手动 `python scripts/check_personal_paths.py`（`--all` 全仓、`--diff-ref main` 查分支新增）。命中先脱敏再提交；测试夹具假路径（test / demo / runner 等）默认放行，新的假名用 `--allow` 或扩充脚本白名单。
 - 本地服务器必须只监听 `127.0.0.1`；不可改成任意本地文件浏览或任意路径写入接口。
 - JSON 的 `segments[*].start/end/items[*].start/end` 都是整数毫秒。修改 schema 必须同步更新 `JSON_SCHEMA.md`、测试与 changelog。
 - `waveform` 是可重建缓存，不能变成工程唯一真源；`segments` 才是字幕真源。
