@@ -5578,7 +5578,10 @@ class LauncherAssetContractTests(CompactContainerAssertions, unittest.TestCase):
         stylesheet = (ROOT / "web" / "launcher" / "launcher.css").read_text(encoding="utf-8")
 
         self.assertNotIn('id="launcherBoot"', page)
-        self.assertIn('background: #16181d;', page)
+        # 首屏底色与 launcher.css 暗色 --bg-base、maw/gui_web.py 窗口 background_color 一致。
+        self.assertIn('background: #1c1c20;', page)
+        self.assertIn('background_color="#1c1c20"', (ROOT / "maw" / "gui_web.py").read_text(encoding="utf-8"))
+        self.assertIn('--bg-base: #1c1c20;', stylesheet)
         self.assertIn('html[data-theme="light"]', page)
         self.assertIn('pointer-events: none;', page)
         self.assertIn('<main class="shell" inert aria-busy="true">', page)
@@ -6361,7 +6364,8 @@ class LauncherAssetContractTests(CompactContainerAssertions, unittest.TestCase):
             self.assertIn(f'<use href="#keycap-{number}"></use>', page)
             self.assertIn(f">{expected}</span>", page)
         self.assertIn('id="keycap-1"', page)
-        self.assertIn(".card h2 {\n  margin: 0 0 12px;\n  color: var(--text-secondary);\n  font-size: 16px;", stylesheet)
+        # 改版令牌：卡片标题 15px、主文字色（docs/plans/LAUNCHER_REDESIGN.md 字号规则）。
+        self.assertIn(".card h2 {\n  margin: 0 0 12px;\n  color: var(--text-primary);\n  font-size: 15px;", stylesheet)
 
     def test_launcher_theme_round_trips_through_local_config(self) -> None:
         page = (ROOT / "web" / "launcher" / "index.html").read_text(encoding="utf-8")

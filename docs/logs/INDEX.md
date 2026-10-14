@@ -18,6 +18,7 @@
 | 1.9.0-beta.1 之后 | 2026-10-15 | [工程媒体关联修复](release1.9.0-beta.1/261015_工程媒体关联/修复记录.md) | 路径设计、Greptile/打包修复、验证与黑屏调查边界 |
 | 1.9.0-beta.1 之后 | 2026-10-15 | [导出菜单、关闭焦点与测试增补](release1.9.0-beta.1/261015_导出菜单与关闭焦点/增补记录.md) | OTIO 留白、Esc/空格、测试隔离与 Tauri 退役 |
 | 1.9.0-beta.1 之后 | 2026-10-15 | [v1.9.0-beta.1 测试反馈与处理记录](release1.9.0-beta.1/261015_测试反馈/TEST_FEEDBACK_BETA1.md) | 30 项实测反馈账本，含 9 份调查报告；已汇总为 Issue #237 |
+| unversioned | 2026-10-14 | [Launcher 现代化改版实施记录](unversioned/2026-10-14/LAUNCHER_REDESIGN_IMPLEMENTATION.md) | 分阶段实施账本、测试约束与验证记录 |
 | unversioned | 2026-10-11 | [AI 口播整理编辑稿改造](unversioned/2026-10-11/AI_CLEANUP_RC.md) | 模型编辑稿、固定转换与删除恢复的实现和验证 |
 | unversioned | 2026-10-11 | [AI 重新断句改进记录](unversioned/2026-10-11/AI_RESEGMENT.md) | 字数上限、复杂用例复测及主分支整合证据 |
 | unversioned | 2026-10-11 | [Agent 长周期修复的踩坑记录：e2e 像素验证体系与语义撤回](unversioned/2026-10-11/agent-e2e-pitfalls.md) | PR #225 撤回 #205 语义后，e2e 像素断言体系的适配坑与规避方法 |
