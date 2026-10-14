@@ -78,7 +78,7 @@ export function createUtilsModule(dependencies) {
     autoSaveProject: true, autoSaveIntervalSeconds: 30, projectBackupEnabled: true,
     stickerOverlayEnabled: false,
     markerEditingEnabled: false, stickersEnabled: true,
-    wordTimingRowHeight: 144, wordTimingSecondsPerRow: 5,
+    wordTimingRowHeight: 168, wordTimingSecondsPerRow: 5,
     stickerOtioExportMode: 'original', clickBehavior: 'select-and-seek', clickTarget: 'pointer',
     pauseOnMouseClick: false,
     otioExportIncludeSrt: true, otioExportIncludeStickers: true, otioExportIncludeMarkers: true,
@@ -159,7 +159,7 @@ export function createUtilsModule(dependencies) {
       multiSubtitleRowHeight: EDITOR_SETTING_ROW_HEIGHTS.includes(Number(savedSettings.multiSubtitleRowHeight))
         ? Number(savedSettings.multiSubtitleRowHeight) : 168,
       wordTimingRowHeight: EDITOR_SETTING_ROW_HEIGHTS.includes(Number(savedSettings.wordTimingRowHeight))
-        ? Number(savedSettings.wordTimingRowHeight) : 144,
+        ? Number(savedSettings.wordTimingRowHeight) : 168,
       wordTimingSecondsPerRow: WORD_TIMING_SECONDS_PRESETS.includes(Number(savedSettings.wordTimingSecondsPerRow))
         ? Number(savedSettings.wordTimingSecondsPerRow) : 5,
       exportStartAtZero: savedSettings.exportStartAtZero === true,
