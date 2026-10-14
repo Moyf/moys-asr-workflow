@@ -1,0 +1,12 @@
+#!/bin/sh
+# 挡下含个人绝对路径的提交，避免本机用户名进入公开仓库。
+# 检查脚本与白名单见 scripts/check_personal_paths.py，
+# 启用方式：git config core.hooksPath .githooks（见 AGENTS.md「代码与安全约束」）。
+if command -v python >/dev/null 2>&1; then
+    exec python scripts/check_personal_paths.py
+elif command -v py >/dev/null 2>&1; then
+    exec py -3 scripts/check_personal_paths.py
+fi
+echo "pre-commit：找不到 python / py，无法运行个人路径检查；" >&2
+echo "  请安装 Python，或临时 git commit --no-verify 并事后手动补跑检查。" >&2
+exit 1
