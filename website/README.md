@@ -24,7 +24,8 @@ pnpm run build
 - 下载按钮指向主仓库的最新 Release，不在此仓库复制版本包。
 - `/docs/` 是从当前仓库公开文档生成的静态阅读区；在 `website/` 中运行 `pnpm run sync:docs` 可刷新内容。
 - 单独运行 Astro 构建不包含 `/editor/`。GitHub Pages 工作流在构建后把编辑器生成到 `website/dist/editor/index.html`，不会重生成仓库根目录的 `blank-editor.html`。
-- `editor-screenshot.jpg` 来自主仓库的编辑器截图，更新截图时应人工确认许可证和内容。
+- 首页（中文 `/`、英文 `/en/`）由 `src/components/Home.astro` 渲染，文案集中在 `src/i18n/home.ts`，样式为独立的 `src/styles/home.css`（令牌沿用 Launcher 改版），交互脚本在 `src/scripts/home.ts`。文档页仍使用 `global.css` / `docs.css`。
+- 首页配图在 `public/home/`，来自主仓库 `docs/assets/` 与 Launcher 改版原型截图；更新截图时应人工确认内容。演示走马灯在 `home.ts` 的 `demos` 里填 `video`（悬停播放）或 `img`，都不填显示「即将推出」。
 
 ## 计划部署
 
