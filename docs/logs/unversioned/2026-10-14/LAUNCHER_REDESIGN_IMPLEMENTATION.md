@@ -5,7 +5,7 @@
 ## 基线
 
 - 分支工作树：`mellow-dragon`，起点 HEAD `fd166d48`。
-- 原型：`.artifacts/launcher-redesign/`（`tokens.css` / `base.css` / `components.css` / `pages.css` / `prototype.html` / `prototype.js`，截图脚本 `shoot.ps1`）。实现时以原型的令牌与组件为准，映射到 `launcher.css` 现有变量名。
+- 原型：[docs/plans/launcher-redesign/](../../../plans/launcher-redesign/README.md)（已入库作参考；本地工作副本与完整截图仍在 `.artifacts/launcher-redesign/`）。实现时以原型的令牌与组件为准，映射到 `launcher.css` 现有变量名。
 - 运行方式：`web/launcher/index.html` 以 file:// 加载；无 pywebview 后端时自动进入 mock（`launcher-mock-api.js`），浏览器直接打开即可预览。
 - 构建：`pnpm run build:launcher`，校验 `pnpm run check:launcher`；bundle 与 `.meta.json` 不进 Git。
 
@@ -54,7 +54,7 @@
 | 截图 | Edge headless 明暗两套，`.artifacts/launcher-redesign/impl-shots/phase1-*.png` | 已自查：无渐变、品牌色正确、对比度正常 |
 
 已有失败（与本改动无关，均已在干净 HEAD 复现或确认）：
-- `launcher-interactions` 两条 batch 用例（`batch start delegates…`、`batchDone fails rows…`）：在干净 HEAD 工作树 `C:/Users/USER/.codex/worktrees/00dd` 同样失败。
+- `launcher-interactions` 两条 batch 用例（`batch start delegates…`、`batchDone fails rows…`）：在另一干净 HEAD 工作树同样失败。
 - `launcher-interactions` 4 条 AI cleanup 用例与 `launcher-script-match-cancel` 2 条：等待 `#postprocessAiCleanup`，该元素在 HEAD 的 `index.html` 中不存在（`git grep` 为 0），属测试与页面漂移。
 - 偶发 `browserType.launch: Timeout 180000ms`：两个 worker 同时启动浏览器的环境问题，单独重跑通过。
 - `launcher-script-match-cancel` 首次失败于 `No module named 'requests'`：需设置 `MAW_E2E_PYTHON` 指向 `.venv\Scripts\python.exe`。

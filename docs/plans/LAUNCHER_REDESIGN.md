@@ -2,7 +2,7 @@
 
 状态：方案已确认，开始分阶段实施（进度见[实施记录](../logs/unversioned/2026-10-14/LAUNCHER_REDESIGN_IMPLEMENTATION.md)）。本文记录设计原则、已确认的决定和实施约束；方案调整时更新本文。
 
-原型放在本地临时区 `.artifacts/launcher-redesign/`（Git 忽略，不入库），入口是 `prototype.html`，截图脚本是 `shoot.ps1`。原型只用来确认方向，数据全是假的，也不代表最终的实现代码。
+原型已入库作为参考：[launcher-redesign/](launcher-redesign/README.md)，入口是 `prototype.html`，截图脚本是 `shoot.ps1`，挑选后的参考截图在 `shots/`。原型只用来确认方向，数据全是假的，也不代表最终的实现代码。
 
 ## 1. 为什么改
 
