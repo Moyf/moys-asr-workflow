@@ -29,6 +29,32 @@ const waveTesting = waveContext.window.AsrWaveform.testing;
 // 统一 JSON 还原成测试 realm 的普通对象再比较。
 const plain = (value) => JSON.parse(JSON.stringify(value));
 
+test('AI annotation provenance survives normalization and manual review edits', () => {
+  const raw = { id: 'ai-1', start: 0, end: 1000, name: '原文', color: '#3e63dd', note: '[AI] 注：术语',
+    ai: { schema: 'maw.ai-annotation.v1', task: 'translate_en', run_id: 'a'.repeat(32), key: 'b'.repeat(64),
+      generated: { start: 0, end: 1000, name: '原文', color: '#3e63dd', note: '[AI] 注：术语', review: null } } };
+  const normalized = plain(utils.normalizeMarkers([raw]))[0];
+  assert.deepEqual(normalized.ai, raw.ai);
+  normalized.note = '用户修改';
+  const saved = plain(utils.markersToProjectField([normalized]));
+  assert.equal(saved.items[0].note, '用户修改');
+  assert.deepEqual(saved.items[0].ai.generated, raw.ai.generated);
+});
+
+
+test('truncation removes boundary whitespace while preserving AI snapshots and manual edits', () => {
+  const generated = { start: 0, end: 1000, name: `${'甲'.repeat(119)} 后文`,
+    color: '#3e63dd', note: `${'注'.repeat(499)} 更多`, review: null };
+  const raw = { id: 'ai-space', ...generated,
+    ai: { schema: 'maw.ai-annotation.v1', task: 'custom', run_id: 'a'.repeat(32),
+      key: 'b'.repeat(64), generated } };
+  const saved = plain(utils.markersToProjectField([raw])).items[0];
+  assert.equal(saved.name, '甲'.repeat(119));
+  assert.equal(saved.note, '注'.repeat(499));
+  assert.deepEqual(saved.ai.generated, { ...generated, name: saved.name, note: saved.note });
+  saved.note = '用户修改';
+  assert.equal(plain(utils.markersToProjectField([saved])).items[0].note, '用户修改');
+});
 
 test('normalizeMarkers accepts bare arrays and {items} payloads, drops invalid rows', () => {
   const bare = utils.normalizeMarkers([
