@@ -71,11 +71,11 @@ test('resolveSession 编辑器透传参数时不再追加 --blank', () => {
   ]);
 });
 
-test('resolveSession launcher 默认裸启动 GUI', () => {
+test('resolveSession launcher 默认带 --debug 启动 GUI', () => {
   const session = resolveSession('launcher');
   assert.deepEqual(session.buildArgs, ['scripts/build-launcher.mjs', '--write']);
   assert.deepEqual(session.watchArgs, ['scripts/build-launcher.mjs', '--watch']);
-  assert.deepEqual(session.runArgs, ['run', '--no-sync', 'python', 'maw_gui.py']);
+  assert.deepEqual(session.runArgs, ['run', '--no-sync', 'python', 'maw_gui.py', '--debug']);
 });
 
 test('resolveSession 未知目标抛错并列出可选项', () => {

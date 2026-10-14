@@ -47,7 +47,7 @@ pnpm run devl           # dev:launcher 的短别名
 
 用 `--` 把工程路径和 Server 参数传给 Python 入口，例如 `pnpm run dev -- "project.mosp" --port 8251`。
 
-会话先完整构建一次 bundle，再挂 watcher，最后运行 `uv run --no-sync python server-editor/serve.py`（编辑器，不带参数时默认空白启动）或 `uv run --no-sync python maw_gui.py`（Launcher，裸启动 GUI）。修改 JS 后自动重建，刷新浏览器查看结果；Ctrl+C 结束开发会话并清理 watcher。脚本不生成 `blank-editor.html`、不自动同步依赖；修改 Python 后仍需停止并重新运行。生命周期由 `node --test tests/test_dev_session.mjs` 守护。
+会话先完整构建一次 bundle，再挂 watcher，最后运行 `uv run --no-sync python server-editor/serve.py`（编辑器，不带参数时默认空白启动；透传任意参数如 `-- -p 8258` 可改为固定端口并恢复上次工程）或 `uv run --no-sync python maw_gui.py`（Launcher，默认带 `--debug` 开启 pywebview 调试；`-- --devtools` 可在启动后自动打开 DevTools）。修改 JS 后自动重建，刷新浏览器查看结果；Ctrl+C 结束开发会话并清理 watcher。脚本不生成 `blank-editor.html`、不自动同步依赖；修改 Python 后仍需停止并重新运行。生命周期由 `node --test tests/test_dev_session.mjs` 守护。
 
 只想用最新代码跑一次、不挂 watcher 时：
 

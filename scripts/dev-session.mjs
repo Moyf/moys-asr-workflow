@@ -19,7 +19,8 @@ const TARGETS = {
   launcher: {
     buildScript: 'scripts/build-launcher.mjs',
     pythonScript: 'maw_gui.py',
-    defaultRunArgs: [],
+    // 旧 Codex/Paseo 入口始终带 -dbg/--debug；Launcher 前端开发需要 pywebview 调试能力。
+    defaultRunArgs: ['--debug'],
   },
 };
 
