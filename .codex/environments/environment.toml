@@ -4,7 +4,7 @@ name = "moys-asr-workflow"
 
 [setup]
 script = '''
-pnpm i
+pnpm install --frozen-lockfile
 uv sync'''
 
 [[actions]]
