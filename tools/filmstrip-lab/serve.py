@@ -64,28 +64,71 @@ class Lab(ThreadingHTTPServer):
 
 
 class Handler(BaseHTTPRequestHandler):
+    MAX_JOB_BODY = 2048
+    MAX_POST_DRAIN = 4096
+
     def log_message(self, *_):
         pass
 
-    def reply(self, value, status=200):
+    def reply(self, value, status=200, *, close=False):
         body = json.dumps(value, ensure_ascii=False).encode()
+        if close:
+            self.close_connection = True
         self.send_response(status)
         self.send_header("Content-Type", "application/json")
         self.send_header("Content-Length", str(len(body)))
         self.send_header("Cache-Control", "no-store")
+        if close:
+            self.send_header("Connection", "close")
         self.end_headers()
         self.wfile.write(body)
 
     def authorized_host(self):
         return self.headers.get("Host") == f"127.0.0.1:{self.server.server_port}"
 
+    def read_post_body(self):
+        if self.headers.get("Transfer-Encoding") is not None:
+            return None, True
+        try:
+            length = int(self.headers.get("Content-Length", "0"))
+        except ValueError:
+            return None, True
+        if not 0 <= length <= self.MAX_POST_DRAIN:
+            return None, True
+        # Closing a Windows socket with an unread POST body can turn a 403/404
+        # response into a connection reset. Bound the read and its total wait.
+        deadline = time.monotonic() + 1.0
+        previous_timeout = self.connection.gettimeout()
+        try:
+            body = bytearray()
+            while len(body) < length:
+                remaining_time = deadline - time.monotonic()
+                if remaining_time <= 0:
+                    return None, True
+                self.connection.settimeout(remaining_time)
+                chunk = self.rfile.read1(length - len(body))
+                if not chunk:
+                    return None, True
+                body.extend(chunk)
+            return bytes(body), False
+        except OSError:
+            return None, True
+        finally:
+            self.connection.settimeout(previous_timeout)
+
     def do_POST(self):
         self.server.last_access = time.monotonic()
-        if (not self.authorized_host()
-                or self.headers.get("X-Lab-Token") != self.server.token
-                or self.headers.get("Origin") not in
-                (None, f"http://127.0.0.1:{self.server.server_port}")):
+        authorized = (self.authorized_host()
+                      and self.headers.get("X-Lab-Token") == self.server.token
+                      and self.headers.get("Origin") in
+                      (None, f"http://127.0.0.1:{self.server.server_port}"))
+        body_bytes, invalid_body = self.read_post_body()
+        if invalid_body:
+            return self.reply({"error": "Invalid request"}, 400, close=True)
+        if not authorized:
             return self.reply({"error": "Forbidden"}, 403)
+        if len(body_bytes) > self.MAX_JOB_BODY:
+            return self.reply({"error": "Invalid request"}, 400, close=True)
         if urlsplit(self.path).path == "/api/cancel":
             with self.server.lock:
                 for job in self.server.jobs.values():
@@ -96,10 +139,9 @@ class Handler(BaseHTTPRequestHandler):
         if urlsplit(self.path).path != "/api/job":
             return self.reply({"error": "Not found"}, 404)
         try:
-            length = int(self.headers.get("Content-Length", "0"))
-            if not 0 < length <= 2048:
+            if not body_bytes:
                 raise ValueError("Body limit")
-            body = json.loads(self.rfile.read(length))
+            body = json.loads(body_bytes)
             if set(body) - {"media", "mode", "start", "span", "count", "stream"}:
                 raise ValueError("Unknown parameters")
             media = self.server.registry[str(body.pop("media"))]
