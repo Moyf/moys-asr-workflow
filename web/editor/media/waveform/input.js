@@ -15,7 +15,14 @@ export function createWaveformModule(dependencies) {
       allowCrossRow = false,
       dragPreview = false,
     ) {
-      const requestedMs = this.pointerTimeMs(event, row, geometry, allowCrossRow);
+      const targetRow = allowCrossRow && this.isMultiMode()
+        ? this.renderedRows.find(candidate => {
+          const rect = (candidate._thumbnailShell || candidate).getBoundingClientRect();
+          return event.clientY >= rect.top && event.clientY <= rect.bottom;
+        }) : null;
+      const requestedMs = targetRow && targetRow !== row
+        ? this.pointerTimeMs(event, targetRow)
+        : this.pointerTimeMs(event, row, geometry, allowCrossRow);
       const timeMs = allowCrossRow
         ? clamp(requestedMs, 0, Math.max(0, this.durationMs))
         : requestedMs;

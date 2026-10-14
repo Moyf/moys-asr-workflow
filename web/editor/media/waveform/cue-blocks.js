@@ -21,6 +21,7 @@ export function createWaveformModule(dependencies) {
       if (basic) row.dataset.basic = 'true';
 
       const canvas = document.createElement('canvas');
+      canvas.className = 'waveform-canvas';
       row.appendChild(canvas);
 
       const time = document.createElement('div');

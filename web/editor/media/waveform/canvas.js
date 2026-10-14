@@ -44,7 +44,7 @@ export function createWaveformModule(dependencies) {
 
     /** @this {import('./waveform-types.js').WaveformInstance} */
     drawRow(row, { measure = true } = {}) {
-      const canvas = row.querySelector('canvas');
+      const canvas = row.querySelector('canvas.waveform-canvas');
       if (!canvas || !this.peaks) return;
       const dpr = Math.min(2, window.devicePixelRatio || 1);
       let width = Number(row._waveformCanvasWidth);

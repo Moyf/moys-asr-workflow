@@ -10,6 +10,7 @@ export function createWaveformModule(dependencies) {
     updatePlayback(allowFollow = true) {
       if (!this.payload) return;
       const now = this.currentTimeMs();
+      this.thumbnailController?.setPlayhead(now);
       const segments = this.options.getSegments('main');
       const activeIndex = findActiveCueIndex(segments, now);
       const activeVisualHit = activeIndex >= 0 && isActiveCueVisualHit(segments, activeIndex, now);
@@ -70,9 +71,9 @@ export function createWaveformModule(dependencies) {
         this.multiFollowCheckPending = false;
         const viewportHeight = this.scroll.clientHeight;
         const rowInComfortZone = viewportHeight > 0 && isMultiRowInComfortZone(
-          rowIndex, this.scroll.scrollTop, viewportHeight, this.settings.rowHeight,
+          rowIndex, this.scroll.scrollTop, viewportHeight, this.getTimelineRowHeight(),
         );
-        const stride = this.settings.rowHeight + ROW_GAP;
+        const stride = this.getTimelineRowHeight() + ROW_GAP;
         const targetScrollTop = clamp(
           rowIndex * stride - viewportHeight * 0.35,
           0,
@@ -108,7 +109,7 @@ export function createWaveformModule(dependencies) {
           mode: this.settings.mode,
           basicWindowStartMs: this.basicWindowStartMs,
           scrollTop: this.scroll?.scrollTop,
-          rowHeight: this.settings.rowHeight,
+          rowHeight: this.getTimelineRowHeight(),
           rowGap: ROW_GAP,
           secondsPerRow: this.settings.secondsPerRow,
         }),
@@ -140,7 +141,7 @@ export function createWaveformModule(dependencies) {
           this.renderBasic();
         } else {
           const rowDurationMs = Math.max(1, this.settings.secondsPerRow * 1000);
-          const stride = this.settings.rowHeight + ROW_GAP;
+          const stride = this.getTimelineRowHeight() + ROW_GAP;
           const rowTop = Math.floor(topEdgeMs / rowDurationMs) * stride;
           const maxTop = Math.max(0, this.scroll.scrollHeight - this.scroll.clientHeight);
           this.scroll.scrollTop = clamp(rowTop, 0, maxTop);

@@ -10,6 +10,9 @@
   // the DOM boundary; project content is excluded from traversal below.
   const EN_TEXT = {
     '导入 ▾': 'Import ▾',
+    '视频画面': 'Video pictures',
+    '在波形上方显示视频画面导航；本机 Server 绑定视频时可用': 'Show video picture navigation above the waveform when video is bound to the local Server',
+    '视频画面导航，点击或拖动定位': 'Video picture navigation; click or drag to seek',
     '字词码': 'Timed words',
     '字词码波形高度': 'Timed word row height',
     '字词码每行长度': 'Timed word row length',
