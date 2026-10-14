@@ -62,3 +62,24 @@
 未验证：真实 pywebview 窗口（只在浏览器 mock 模式下验证）。
 
 第四轮调整（维护者确认阶段 1 后）：亮色主色改为 `#c84545`（与编辑器红一致，`--red` 同步）；暗色主色改为 `#f09a50`（介于 `#ff8f3f` 与 `#e0a05a`，偏亮）。重跑 `test_gui_web.py`（323 通过）与 `launcher-keycaps` e2e（通过），截图已更新。维护者确认测试中的既有失败不在本任务范围内。
+
+### 编辑器配色对齐（维护者要求，2026-10-14）
+
+改动：
+- `web/editor.css`：暗色 `:root` 换成炭灰中性底（`#1c1c20` / `#26262b` …），去掉原蓝调石墨；亮色换成中性白灰。文字、边框、按钮、滚动条、工具栏背板、空状态与 dock 底色同步。波形区保留独立底色，但从深蓝调改为比页面略深的炭灰（`--bg-wave #18181c`、`--wave-row-bg #212126`）；活动字幕块混色改为跟随 `--accent`。
+- 强调色：新增 `brand` 预设并设为默认（暗色 `#f09a50`、亮色 `#c84545`，与 Launcher 一致）；原默认蓝色改为显式 `data-accent="blue"` 预设；暗色橙色预设改为 `#f09a50`（亮色橙 `#d9834a` 不变）。各预设显式设置 `--accent-active-fg`，深色强调底配深色字、红/蓝底配白字。
+- 强调色选项：品牌色作为首项只显示圆点（名称放在 `title` / `aria-label`：「品牌色（默认）」 / 「Brand (default)」）；选中项的圆点加前景色描边环，不再与同色底融成一片。
+- 设置：`web/shared/utils/settings.js`、`web/editor/state/editor-settings.js`、模板首帧脚本的默认值与合法值同步加入 `brand`；无效或缺省值回退 `brand`，已保存的 blue/red/orange/custom 不受影响。
+- 测试：`test_editor_utils.mjs`（默认值与回退）、`test_waveform.py`（品牌色选项）、`editor-i18n-save.spec.mjs`（默认品牌色、选中圆点描边环、各预设选中底色）改为断言新契约。
+
+| 层 | 命令 | 结果 |
+| --- | --- | --- |
+| bundle | `node scripts/build-editor.mjs --check` | fresh |
+| Node 单测 | `node --test tests/test_editor_utils.mjs`（及 syntax / order / waveform_js） | 331 / 395 通过 |
+| Python | `run_tests.py tests/test_waveform.py tests/test_editor_assets.py tests/test_editor_palette.py`（及 test_cli、test_web_build） | 通过 |
+| e2e | `editor-i18n-save.spec.mjs`：主题切换、强调色 | 通过 |
+| 截图 | 临时 Playwright 脚本（已删除），`.artifacts/launcher-redesign/editor-shots/` | 明暗两套自查：无蓝调残留，波形仍有独立底色 |
+
+已有失败（干净 HEAD 同样失败，未处理）：`editor-i18n-save` 的 `English waveform and sticker names…`（表情包 img 未加载）与 `English locale covers the editor shell…`（「重组后音频」「打开全局设置的播放预览页」未翻译）。
+
+未处理：`editor.css` 仍有约 375 处硬编码颜色（例如说话人颜色、语义色、个别组件），本轮只替换令牌层。见方案「后续：颜色令牌统一」。
