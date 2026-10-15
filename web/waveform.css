@@ -1371,3 +1371,13 @@
   align-items: center;
   gap: 5px;
 }
+
+/* Independent navigation strip above the unchanged waveform/subtitle region. */
+.waveform-row-shell { position: absolute; left: 0; touch-action: none; }
+.waveform-row-shell .waveform-row { top: 48px; left: 0; right: 0; }
+.waveform-row-shell-basic { left: 8px; right: 8px; top: 8px; }
+.waveform-basic .waveform-row-shell .waveform-row { inset: 48px 0 auto; width: 100%; }
+.waveform-filmstrip { display: block; position: absolute; top: 0; left: 1px; width: calc(100% - 2px); height: 48px; cursor: crosshair; border-radius: var(--radius-sm); }
+
+#waveform-thumbnail-setting { margin: 8px 0; flex-wrap: wrap; }
+.waveform-thumbnail-status { flex: 0 0 100%; margin-top: 8px; color: var(--text-muted); font-size: 11px; line-height: 1.4; white-space: normal; }

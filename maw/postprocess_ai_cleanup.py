@@ -1035,44 +1035,16 @@ def _build_markers_field(
     Only new review items are time-sorted; existing stable IDs never change.
     """
 
-    base = copy.deepcopy(dict(existing)) if isinstance(existing, Mapping) else {}
-    raw_items = base.get("items")
-    items = list(raw_items) if isinstance(raw_items, list) else []
-    ordered = sorted(
-        ai_markers, key=lambda marker: (int(marker["start"]), str(marker["name"]))
-    )
-    used = {
-        str(marker["id"])
-        for marker in items
-        if isinstance(marker, Mapping) and isinstance(marker.get("id"), str)
-    }
-    for marker in ordered:
-        index = 1
-        while f"marker-{index:03d}" in used:
-            index += 1
-        marker_id = f"marker-{index:03d}"
-        used.add(marker_id)
-        items.append(
-            {
-                "id": marker_id,
-                "start": int(marker["start"]),
-                "name": _sanitize_marker_text(marker["name"], MARKER_NAME_MAX_LENGTH),
-                "color": str(marker["color"]),
-                "note": _sanitize_marker_text(marker["note"], MARKER_NOTE_MAX_LENGTH),
-            }
-        )
-        if marker.get("end") is not None:
-            items[-1]["end"] = int(marker["end"])
-        review = marker.get("review")
-        if isinstance(review, Mapping):
-            items[-1]["review"] = {
-                "status": "pending",
-                "reason": _sanitize_marker_text(
-                    review["reason"], MARKER_REVIEW_REASON_MAX_LENGTH
-                ),
-            }
-    base.update({"schema": MARKERS_SCHEMA, "items": items})
-    return base
+    from maw.postprocess_annotations import append_markers
+    bounded = []
+    for marker in ai_markers:
+        entry = copy.deepcopy(marker)
+        entry["name"] = _sanitize_marker_text(marker["name"], MARKER_NAME_MAX_LENGTH)
+        entry["note"] = _sanitize_marker_text(marker["note"], MARKER_NOTE_MAX_LENGTH)
+        if isinstance(marker.get("review"), Mapping):
+            entry["review"] = {"status": "pending", "reason": _sanitize_marker_text(marker["review"]["reason"], MARKER_REVIEW_REASON_MAX_LENGTH)}
+        bounded.append(entry)
+    return append_markers(existing, bounded)
 
 
 def _sanitize_marker_text(value: object, max_length: int) -> str:

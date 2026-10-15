@@ -294,6 +294,7 @@ def main() -> int:
             path.parent.mkdir(parents=True, exist_ok=True)
             path.write_bytes(document.encode("utf-8"))
             print(f"Generated: {path}")
+            print(f"Log-folder reminder: after publication update docs/logs/INDEX.md to release{args.tag[1:]}/")
         elif args.check_doc:
             release_body(changelog, args.tag, args.releases_dir)
             # Legacy publication fallback must not make an explicit document check pass.

@@ -34,7 +34,7 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from typing import NamedTuple
 from hmac import compare_digest
-from urllib.parse import quote, unquote, urlsplit
+from urllib.parse import parse_qs, quote, unquote, urlsplit
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -54,6 +54,7 @@ mimetypes.add_type("audio/ogg", ".opus")
 import edit  # noqa: E402
 from maw.console import configure_utf8_stdio  # noqa: E402
 from maw import quapeaks  # noqa: E402
+from maw.thumbnail_jobs import ThumbnailJobManager  # noqa: E402
 from maw.project_backups import backup_directory_candidates, write_backup  # noqa: E402
 from maw.app_paths import default_server_settings_path, legacy_server_settings_path  # noqa: E402
 from maw.web_build import BundlePreflightError, ensure_bundle  # noqa: E402
@@ -1068,6 +1069,8 @@ def build_server_page(
             "lottieExportUrl": "/api/exports/lottie",
             "ografExportUrl": "/api/exports/ograf",
             "waveformUrl": "/api/waveform",
+            "thumbnailUrls": {"status": "/api/thumbnails", "demand": "/api/thumbnails/demand",
+                              "asset": "/api/thumbnails/asset/", "release": "/api/thumbnails/release"},
             "startupStatusUrl": "/api/startup-status",
             "startupStatus": startup_status.get("status", "ready"),
             "startupStage": startup_status.get("stage", "ready"),
@@ -1177,6 +1180,9 @@ class EditorServer(ThreadingHTTPServer):
         self.ass_frame_lock = threading.Lock()
         self.gap_removed_video_lock = threading.Lock()
         self.media_jobs = MediaJobManager(self.gap_removed_video_lock)
+        self.thumbnail_jobs = ThumbnailJobManager()
+        self.thumbnail_jobs.bind(project.source_media_path or project.media_path,
+                                 f"{self.binding_generation}:{self.source_media_id}")
         self.libass_supported: bool | None = None
         self.libass_binary_signature: tuple[object, ...] | None = None
         self.reapeaks_generation = 0
@@ -1196,12 +1202,14 @@ class EditorServer(ThreadingHTTPServer):
     def shutdown(self) -> None:
         try:
             self.media_jobs.close()
+            self.thumbnail_jobs.close()
         finally:
             super().shutdown()
 
     def server_close(self) -> None:
         try:
             self.media_jobs.close()
+            self.thumbnail_jobs.close()
         finally:
             super().server_close()
 
@@ -1217,11 +1225,14 @@ class EditorServer(ThreadingHTTPServer):
         self.project = project
         self.binding_generation += 1
         self.source_media_id = secrets.token_urlsafe(24)
+        self.thumbnail_jobs.bind(project.source_media_path or project.media_path,
+                                 f"{self.binding_generation}:{self.source_media_id}")
 
     def _project_binding_payload_locked(self) -> dict[str, object]:
         return {
             "bindingGeneration": self.binding_generation,
             "sourceMediaId": self.source_media_id,
+            "thumbnailBinding": f"{self.binding_generation}:{self.source_media_id}",
         }
 
     def project_binding_payload(self) -> dict[str, object]:
@@ -2224,7 +2235,9 @@ class EditorRequestHandler(BaseHTTPRequestHandler):
 
     def do_POST(self) -> None:  # noqa: N802
         path = urlsplit(self.path).path
-        if path == "/api/shutdown":
+        if path in ("/api/thumbnails/demand", "/api/thumbnails/release"):
+            self.thumbnail_request(path, mutate=True)
+        elif path == "/api/shutdown":
             self.shutdown_server()
         elif path == "/api/project":
             self.save_project()
@@ -2264,6 +2277,62 @@ class EditorRequestHandler(BaseHTTPRequestHandler):
             self.export_ograf()
         else:
             self.send_localized_error(HTTPStatus.NOT_FOUND, "未知 API")
+
+    def thumbnail_request(self, path: str, *, mutate: bool = False, include_body: bool = True) -> None:
+        """Opaque assets and current binding only; client paths are never accepted."""
+        manager = self.editor_server.thumbnail_jobs
+        def send(status, payload):
+            self.send_json(status, payload, include_body=include_body)
+        try:
+            host = self.headers.get("Host", "")
+            port = self.editor_server.server_address[1]
+            if host not in (f"127.0.0.1:{port}", f"localhost:{port}"):
+                raise PermissionError("invalid thumbnail host")
+            origin = self.headers.get("Origin")
+            if origin and origin != f"http://{host}":
+                raise PermissionError("invalid thumbnail origin")
+            if mutate:
+                length = int(self.headers.get("Content-Length", "0"))
+                if length > 65536:
+                    raise ValueError("thumbnail request too large")
+                request = self.read_json_request(max_bytes=65536)
+                self._check_request_token(request)
+                if "path" in request or "media_path" in request or "source_media_path" in request:
+                    raise ValueError("thumbnail client paths are forbidden")
+                if path.endswith("/release"):
+                    manager.release(request.get("binding"), request.get("lease"), client=request.get("client_id", ""), view=request.get("view"))
+                    send(HTTPStatus.OK, {"ok": True})
+                else:
+                    send(HTTPStatus.OK, manager.demand(request))
+                return
+            query = parse_qs(urlsplit(self.path).query)
+            binding = query.get("binding", [""])[0]
+            if path.startswith("/api/thumbnails/asset/"):
+                asset = unquote(path[len("/api/thumbnails/asset/"):])
+                if len(asset) > 128 or "/" in asset or "\\" in asset or ".." in asset:
+                    raise ValueError("invalid thumbnail asset")
+                jpeg = manager.read_asset(binding, asset, query.get("revision", [""])[0])
+                if jpeg is None:
+                    send(HTTPStatus.NOT_FOUND, {"error": "thumbnail asset unavailable"})
+                    return
+                self.send_response(HTTPStatus.OK)
+                self.send_header("Content-Type", "image/jpeg")
+                self.send_header("Content-Length", str(len(jpeg)))
+                self.send_header("Cache-Control", "private, max-age=60")
+                self.end_headers()
+                if include_body:
+                    self.wfile.write(jpeg)
+            else:
+                payload = manager.status(binding, lease=query.get("lease", [None])[0],
+                    client=query.get("client_id", [""])[0], view=int(query.get("view", ["0"])[0]))
+                send(HTTPStatus.OK, payload)
+        except PermissionError as error:
+            send(HTTPStatus.FORBIDDEN, {"error": str(error)})
+        except (ValueError, UnicodeError, TypeError) as error:
+            status = HTTPStatus.CONFLICT if "stale" in str(error) or "source changed" in str(error) else HTTPStatus.BAD_REQUEST
+            send(status, {"error": str(error)})
+        except (OSError, RuntimeError) as error:
+            send(HTTPStatus.SERVICE_UNAVAILABLE, {"state": "error", "error": str(error)})
 
     def send_localized_error(self, status: HTTPStatus, detail: str) -> None:
         """Send a localized error body without putting non-Latin-1 text in the status line."""
@@ -2958,6 +3027,9 @@ class EditorRequestHandler(BaseHTTPRequestHandler):
 
     def handle_request(self, *, include_body: bool) -> None:
         path = urlsplit(self.path).path
+        if path == "/api/thumbnails" or path.startswith("/api/thumbnails/asset/"):
+            self.thumbnail_request(path, include_body=include_body)
+            return
         if path.startswith("/api/exports/gap-removed-video/jobs/"):
             self.gap_removed_video_job_request(path, include_body=include_body)
             return
@@ -3028,14 +3100,15 @@ class EditorRequestHandler(BaseHTTPRequestHandler):
             return
         self.send_localized_error(HTTPStatus.NOT_FOUND, "未知资源")
 
-    def send_json(self, status: HTTPStatus, payload: dict) -> None:
+    def send_json(self, status: HTTPStatus, payload: dict, *, include_body: bool = True) -> None:
         body = json.dumps(payload, ensure_ascii=False).encode("utf-8")
         self.send_response(status)
         self.send_header("Content-Type", "application/json; charset=utf-8")
         self.send_header("Content-Length", str(len(body)))
         self.send_header("Cache-Control", "no-store")
         self.end_headers()
-        self.wfile.write(body)
+        if include_body:
+            self.wfile.write(body)
 
     def send_video_attachment(self, path: Path, filename: str, *, job: MediaJob | None = None) -> bool:
         """Stream verified temporary media and keep it alive until the response ends."""
