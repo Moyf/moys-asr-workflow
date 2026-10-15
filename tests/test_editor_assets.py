@@ -210,6 +210,7 @@ class EditorAssetContractTests(CompactContainerAssertions, unittest.TestCase):
                 "editor/styles/editor-wiring-ass-preview.js",
                 "editor/styles/editor-wiring-ass-canvas.js",
                 "editor/styles/editor-wiring-ass-frame.js",
+                "editor/styles/editor-wiring-ass-cue-position.js",
                 "editor/media/editor-wiring-sticker-preview.js",
                 "editor/io/editor-wiring-export-context.js",
                 "editor/io/editor-wiring-export-actions.js",

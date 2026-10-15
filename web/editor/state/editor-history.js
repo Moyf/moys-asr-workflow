@@ -303,6 +303,7 @@
   // 避免恢复历史后旧拖动仍持有字幕对象，或把预览状态写入 redo。
   // 放在统一入口，同时覆盖快捷键、按钮和直接调用。
   function cancelActiveTimelineGesture() {
+    if (global.MaweAssCuePosition?.cancelDrag()) return true;
     const waveform = MaweCoreState.waveformEditor;
     if (waveform?.wordDrag) {
       waveform.cancelWordDrag();

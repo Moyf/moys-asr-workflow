@@ -30,6 +30,22 @@ export function createUtilsModule(dependencies) {
   }
 
 
+  // Strict optional cue positioning. Empty objects are canonical absence;
+  // invalid coordinates are rejected rather than silently coerced.
+  function normalizeAssOverride(value) {
+    if (value === undefined) return undefined;
+    if (!value || typeof value !== 'object' || Array.isArray(value)) throw new TypeError('assOverride must be an object');
+    const result = {};
+    if (Object.hasOwn(value, 'an')) throw new TypeError('assOverride.an is not supported; use global style alignment');
+    if (Object.hasOwn(value, 'pos')) {
+      if (!value.pos || typeof value.pos !== 'object' || Array.isArray(value.pos)
+        || typeof value.pos.x !== 'number' || typeof value.pos.y !== 'number'
+        || !Number.isFinite(value.pos.x) || !Number.isFinite(value.pos.y)) throw new TypeError('assOverride.pos requires finite numeric x/y');
+      result.pos = { x: value.pos.x, y: value.pos.y };
+    }
+    return Object.keys(result).length ? result : undefined;
+  }
+
   function stableId(value) {
     const id = String(value == null ? '' : value).trim();
     return id && id.length <= 160 ? id : '';
@@ -111,5 +127,5 @@ export function createUtilsModule(dependencies) {
     try { return JSON.parse(JSON.stringify(value)); } catch (_) { return null; }
   }
 
-  return Object.freeze({ PROJECT_SCHEMA, clampInteger, cloneJsonValue, countTextUnits, detectSubtitleSplitMode, effectiveColorName, ensureStableSegmentIds, stableId, supportsProjectSchema, uniqueStableSegmentId });
+  return Object.freeze({ PROJECT_SCHEMA, normalizeAssOverride, clampInteger, cloneJsonValue, countTextUnits, detectSubtitleSplitMode, effectiveColorName, ensureStableSegmentIds, stableId, supportsProjectSchema, uniqueStableSegmentId });
 }

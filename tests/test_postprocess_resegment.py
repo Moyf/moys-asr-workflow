@@ -349,6 +349,24 @@ class ResegmentTests(unittest.TestCase):
             )
         self.assertFalse(list(self.root.glob("*.srt")))
 
+    def test_ass_position_survives_split_and_merge_with_leftmost_inheritance(self):
+        left = {"pos": {"x": 120.5, "y": 200}}
+        right = {"pos": {"x": 600, "y": 800}}
+        source = timed("甲乙", ["甲", "乙"], assOverride=left)
+        def cuts(_prompt, rows):
+            return {"draft": "\n".join(f"[{item['id']}]" for row in rows for item in row["items"])}
+        outputs, _ = self.run_case([source], cuts)
+        self.assertEqual(len(outputs), 2)
+        self.assertTrue(all(segment["assOverride"] == left for segment in outputs))
+        outputs[0]["assOverride"]["pos"]["x"] = 999
+        self.assertEqual(outputs[1]["assOverride"], left)
+        merged, _ = self.run_case([source, timed("丙", ["丙"], 400, assOverride=right)], self.last_boundary)
+        self.assertEqual(len(merged), 1)
+        self.assertEqual(merged[0]["assOverride"], left)
+        del source["assOverride"]
+        without, _ = self.run_case([source, timed("丙", ["丙"], 400, assOverride=right)], self.last_boundary)
+        self.assertNotIn("assOverride", without[0])
+
     def test_limits_count_visible_characters_and_reject_invalid_values(self):
         self.assertEqual(char_count("中文 AI，\n"), 5)
         self.assertEqual(normalize_max_chars("18"), 18)

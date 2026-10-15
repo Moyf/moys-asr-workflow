@@ -1,7 +1,7 @@
 // ass-export: private helpers; dependencies are injected by editor-utils.js.
 export function createUtilsModule(dependencies) {
   'use strict';
-  const { ASS_COLOR_STYLE_NAMES, ASS_DEFAULT_ASS_STYLE, ASS_DEFAULT_COLOR, ASS_DEFAULT_EXTENSION_STYLE, ASS_EVENT_FORMAT, ASS_FALLBACK_COLOR_PALETTE, ASS_REFERENCE_PLAY_RES_Y, ASS_STYLE_FORMAT, DEFAULT_SPEAKER_LABEL_SEPARATOR, assAnimationOverrideTags, assColorFromHex, assInlineStyleRuns, assOverrideColorFromHex, assSentenceFadeTags, assStyleLine, effectiveColorName, escapeAssText, formatAssTime, formatSpeakerLabelledText, getSrtExportFirstIndex, normalizeAssColorStyle, normalizeAssFontFamily, normalizeAssFontSize, normalizeAssLibraryColor, normalizeAssPlayResolution, normalizeAssProfile, normalizeAssStyle, normalizeAssTimeMs, normalizeSpeakerLabelSeparator, normalizeSpeakerLabels, resolveAssFontSize, speakerLabelForSegment } = dependencies;
+  const { ASS_COLOR_STYLE_NAMES, ASS_DEFAULT_ASS_STYLE, ASS_DEFAULT_COLOR, ASS_DEFAULT_EXTENSION_STYLE, ASS_EVENT_FORMAT, ASS_FALLBACK_COLOR_PALETTE, ASS_REFERENCE_PLAY_RES_Y, ASS_STYLE_FORMAT, DEFAULT_SPEAKER_LABEL_SEPARATOR, assAnimationOverrideTags, assColorFromHex, assInlineStyleRuns, assOverrideColorFromHex, assSentenceFadeTags, parseSentenceShakeMarkers, assStyleLine, effectiveColorName, escapeAssText, formatAssTime, formatSpeakerLabelledText, getSrtExportFirstIndex, normalizeAssColorStyle, normalizeAssFontFamily, normalizeAssFontSize, normalizeAssLibraryColor, normalizeAssPlayResolution, normalizeAssProfile, normalizeAssStyle, normalizeAssTimeMs, normalizeSpeakerLabelSeparator, normalizeSpeakerLabels, resolveAssFontSize, speakerLabelForSegment } = dependencies;
 
 
   function normalizeAssHeaderValue(value, fallback = 'MAW') {
@@ -192,14 +192,14 @@ export function createUtilsModule(dependencies) {
       : DEFAULT_SPEAKER_LABEL_SEPARATOR;
     const events = [];
     const stackItems = [];
-    const addStackItem = (role, segment, index, context, start, end, style, size, styleName, speakerName, fade, originalText) => {
+    const addStackItem = (role, segment, index, context, start, end, style, size, styleName, speakerName, fade, originalText, shake = false) => {
       const colorName = effectiveColorName(segment, context);
       const speakerColor = colorStyle === 'text' || colorStyle === 'speaker'
         ? colorStyles.find(entry => entry.name === colorName)?.value || style.primaryColor : style.primaryColor;
       const runs = assInlineStyleRuns(fade.text, emphasisSyntax, inlineOptions);
       if (speakerName) runs.unshift({ text: `${speakerName}${speakerLabelSeparator}`, speakerColor });
       stackItems.push({ role, segment, index, start: start * 10, end: end * 10,
-        style, fontSize: size, styleName, speakerName, runs, fad: fade.fad, originalText });
+        style, fontSize: size, styleName, speakerName, runs, fad: fade.fad, originalText, shake });
     };
     // 颜色样式只有在 ASS 能表达为整句样式（text / stroke）时才生成
     // 调色板样式；speaker 只给说话人前缀加局部颜色，none 回落 Default。
@@ -223,11 +223,15 @@ export function createUtilsModule(dependencies) {
         ? assSentenceFadeTags(segment.text, profile, inlineOptions.assSpecialSymbolRule)
         : null;
       const segmentText = sentenceFade ? sentenceFade.text : String(segment.text ?? '');
+      // 单句 `!!` 原地震动标记同样只在 ASS 模式解析：整句导出时拆分为多条
+      // \pos 抖动事件，预览按同一模式偏移；普通预览与 SRT 不消费定位结果。
+      const sentenceShake = assMode ? parseSentenceShakeMarkers(segmentText) : null;
+      const shakeText = sentenceShake?.shake ? sentenceShake.text : segmentText;
       const text = speakerLabels
         ? formatSpeakerLabelledText(
-          segmentText, segment, source, speakerLabels, speakerLabelSeparator,
+          shakeText, segment, source, speakerLabels, speakerLabelSeparator,
         )
-        : segmentText;
+        : shakeText;
       const colorName = effectiveColorName(segment, source);
       const styleName = assColorGroupsSupported && ASS_COLOR_STYLE_NAMES.includes(colorName)
         ? colorName.toUpperCase() : 'Default';
@@ -236,7 +240,7 @@ export function createUtilsModule(dependencies) {
         : baseStyle;
       const eventText = assEventText({
         segment,
-        text: speakerLabels ? segmentText : text,
+        text: speakerLabels ? shakeText : text,
         speakerName,
         speakerLabelSeparator,
         colorName,
@@ -251,7 +255,10 @@ export function createUtilsModule(dependencies) {
       });
       const animationTags = assMode
         ? assAnimationOverrideTags(profile, { fad: sentenceFade?.fad || null }) : '';
-      if (assMode) addStackItem('main', segment, sourceIndex, source, startCentiseconds, endCentiseconds, styleForEvent, fontSize, styleName, speakerName, sentenceFade, eventText);
+      // 计划条目的 runs/原文本都必须使用剥除 `!!` 后的文本；fad 时长保持
+      // 单句渐入渐出解析结果，两者合并成一个 fade 形参传入。
+      const stackFade = { text: shakeText, fad: sentenceFade?.fad || null };
+      if (assMode) addStackItem('main', segment, sourceIndex, source, startCentiseconds, endCentiseconds, styleForEvent, fontSize, styleName, speakerName, stackFade, eventText, sentenceShake?.shake === true);
       const decoratedText = animationTags ? `{${animationTags}}${eventText}` : eventText;
       events.push(
         `Dialogue: 0,${formatAssTime(startCentiseconds * 10)},${formatAssTime(endCentiseconds * 10)},${styleName},${normalizeAssEventField(speakerName)},0,0,0,,${decoratedText}`,
@@ -411,12 +418,67 @@ export function createUtilsModule(dependencies) {
             }
           }
           const size = Math.max(1, number(item.fontSize * scale));
-          const animation = piece.start === item.start && piece.end === item.end && scale === 1
-            ? assAnimationOverrideTags(profile, { includeMove: slice.legacy, fad: item.fad })
-            : dependencies.assAnimationSliceTags(profile, { offsetMs: piece.start - item.start,
-              durationMs: item.end - item.start, includeMove: slice.legacy, fad: item.fad, scale });
+          // 每条 Dialogue 的发射入口：非震动句只发一次（start/end 即分片
+          // 边界，输出与拆分前逐字节一致）；震动句按固定间隔多次发射。
+          const emitEvent = (start, end, position, { includeMove = slice.legacy && item.role === 'main' && !item.manual } = {}) => {
+            const animation = start === item.start && end === item.end && scale === 1
+              ? assAnimationOverrideTags(profile, { includeMove, fad: item.fad })
+              : dependencies.assAnimationSliceTags(profile, { offsetMs: start - item.start,
+                durationMs: item.end - item.start, includeMove, fad: item.fad, scale });
+            const transformTarget = transformTargets.fontSize;
+            // 固定层不参与组缩放：其 	 字号动画目标保持样式原值。
+            const fontTransform = transformTarget === undefined ? null : {
+              startMs: profile.animations.t.startMs - (start - item.start),
+              endMs: (profile.animations.t.startMs === 0 && profile.animations.t.endMs === 0
+                ? item.end - item.start : profile.animations.t.endMs) - (start - item.start),
+              accel: profile.animations.t.accel, target: Number((transformTarget * scale).toFixed(4)),
+            };
+            // Legacy 震动句带预折行 runs 与 \q2，必须走 runs 渲染而不是原文。
+            const content = slice.legacy && !item.manual && !item.shake && !(item.sharedStackCue && (fontTransform || sharedDecorations)) ? item.originalText : assEmphasizedText('', scaledStyle, size, emphasisSyntax,
+              { ...inlineOptions, preparedRuns: item.runs, fontTransform });
+            const decorated = (position ? `{${position}}` : '') + (animation ? `{${animation}}` : '') + content;
+            events.push(`Dialogue: ${{ main: 0, extension: 1, overlay: 2 }[item.role]},${formatAssTime(start)},${formatAssTime(end)},${item.styleName},${normalizeAssEventField(item.speakerName)},0,0,0,,${decorated}`);
+          };
+          if (item.shake) {
+            // 原地震动：一条 ASS 事件只能有一个定位标签，导出时按固定间隔
+            // 把该句拆成多条 \pos 事件。基准位置取各片起点（与预览逐帧偏移
+            // 同一公式），方案移动/整组位移被逐片采样；淡入淡出与 \t 变换
+            // 使用负相对时钟，跨片不重播、不闪烁。
+            const amplitude = dependencies.assShakeAmplitude(slice.height) * scale;
+            const interval = dependencies.ASS_SHAKE_INTERVAL_MS;
+            for (let shakeStart = piece.start; shakeStart < piece.end;) {
+              // Layout boundaries may fall inside a phase. Resume the cue's
+              // centisecond-quantized clock instead of starting another 60ms.
+              const nextPhase = item.start + (Math.floor((shakeStart - item.start) / interval) + 1) * interval;
+              const shakeEnd = Math.min(piece.end, nextPhase);
+              const offset = dependencies.assShakeOffsetFor(shakeStart - item.start, amplitude);
+              let shakeBase;
+              if (slice.legacy || item.manual) {
+                const state = dependencies.assPreviewAnimationState(profile, shakeStart - item.start, item.end - item.start);
+                const anchor = item.manual ? { x: item.offset.x, y: item.offset.y }
+                  : dependencies.assCanvasAnchorPoint({ alignment: item.style.alignment,
+                    margins: { left: item.style.marginL, right: item.style.marginR, vertical: item.style.marginV },
+                    playResX: slice.width, playResY: slice.height,
+                    move: profile.animations.move.enabled ? { x: state.moveX, y: state.moveY } : null });
+                shakeBase = { x: anchor.x, y: anchor.y };
+              } else {
+                const root = dependencies.assStackPieceRootAt(piece, shakeStart);
+                shakeBase = { x: root.x + item.offset.x * scale, y: root.y + item.offset.y * scale };
+              }
+              let shakePosition = `\\an${item.alignment}\\q2\\pos(${number(shakeBase.x + offset.x)},${number(shakeBase.y + offset.y)})`;
+              // 堆叠组内非固定层句沿用既有内联字号/描边/阴影重置。
+              if (!slice.legacy && !item.absolute) {
+                shakePosition += `\\fs${size}\\fsp${number(scaledStyle.spacing)}\\bord${number(scaledStyle.outline)}\\shad${number(scaledStyle.shadow)}`;
+              }
+              emitEvent(shakeStart, shakeEnd, shakePosition, { includeMove: false });
+              shakeStart = shakeEnd;
+            }
+            continue;
+          }
           let position = '';
-          if (!slice.legacy && item.absolute) {
+          if (item.manual) {
+            position = `\\an${item.alignment}\\q2\\pos(${number(item.offset.x)},${number(item.offset.y)})`;
+          } else if (!slice.legacy && item.absolute) {
             // 固定层（副字幕）：绝对 \\pos 定位在样式预设位置，无移动动画，
             // 也不参与整组缩放：字号与描边阴影保持样式原值。
             const fixedSize = Math.max(1, number(item.fontSize));
@@ -433,18 +495,7 @@ export function createUtilsModule(dependencies) {
               : `\\move(${from.x},${from.y},${to.x},${to.y},${moveStart},${moveEnd})`;
             position = `\\an${item.alignment}\\q2${position}\\fs${size}\\fsp${number(scaledStyle.spacing)}\\bord${number(scaledStyle.outline)}\\shad${number(scaledStyle.shadow)}`;
           }
-          const transformTarget = transformTargets.fontSize;
-          // 固定层不参与组缩放：其 	 字号动画目标保持样式原值。
-          const fontTransform = transformTarget === undefined ? null : {
-            startMs: profile.animations.t.startMs - (piece.start - item.start),
-            endMs: (profile.animations.t.startMs === 0 && profile.animations.t.endMs === 0
-              ? item.end - item.start : profile.animations.t.endMs) - (piece.start - item.start),
-            accel: profile.animations.t.accel, target: Number((transformTarget * scale).toFixed(4)),
-          };
-          const content = slice.legacy && !(item.sharedStackCue && (fontTransform || sharedDecorations)) ? item.originalText : assEmphasizedText('', scaledStyle, size, emphasisSyntax,
-            { ...inlineOptions, preparedRuns: item.runs, fontTransform });
-          const decorated = (position ? `{${position}}` : '') + (animation ? `{${animation}}` : '') + content;
-          events.push(`Dialogue: ${{ main: 0, extension: 1, overlay: 2 }[item.role]},${formatAssTime(piece.start)},${formatAssTime(piece.end)},${item.styleName},${normalizeAssEventField(item.speakerName)},0,0,0,,${decorated}`);
+          emitEvent(piece.start, piece.end, position);
         }
       }
     }
