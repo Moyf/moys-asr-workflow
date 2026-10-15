@@ -35,7 +35,7 @@ sys.modules[SPEC.name] = server_editor
 SPEC.loader.exec_module(server_editor)
 
 
-def fake_video_copy_plan(source, intervals, streams, origin, directory, *_args):
+def fake_video_copy_plan(source, intervals, streams, origin, directory, *_args, **_kwargs):
     """Command/metadata tests isolate the real packet planner tested separately."""
     from maw.media_export_video import VideoCopyPlan
     windows = [(origin + Decimal(start) / 1000, origin + Decimal(end) / 1000, origin)

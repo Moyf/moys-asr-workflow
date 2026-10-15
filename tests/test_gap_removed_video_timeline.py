@@ -79,7 +79,8 @@ class RealVideoTimelineTests(unittest.TestCase):
         self.assertEqual(result.returncode, 0, result.stderr[-2000:])
         return result
 
-    def generate(self, extension=".mp4", *, mixed=False, offset=0, open_gop=False, hevc_only=False):
+    def generate(self, extension=".mp4", *, mixed=False, offset=0, open_gop=False, hevc_only=False,
+                 intra_refresh=False, b_frames=3):
         source = self.root / ("source" + extension)
         command = [FFMPEG, "-y", "-v", "error", "-f", "lavfi", "-i", "testsrc2=size=96x64:rate=25",
                    "-f", "lavfi", "-i", "sine=frequency=400:sample_rate=48000", "-f", "lavfi", "-i",
@@ -87,12 +88,14 @@ class RealVideoTimelineTests(unittest.TestCase):
         if mixed:
             command += ["-map", "0:v"]
         command += ["-map", "1:a", "-map", "2:a", "-c:v:0", "libx265" if hevc_only else "libx264", "-g", "100", "-keyint_min", "100",
-                    "-sc_threshold", "0", "-bf", "3"]
+                    "-sc_threshold", "0", "-bf", str(b_frames)]
         if open_gop and not hevc_only:
-            command += ["-x264-params", "open-gop=1"]
+            command += ["-x264-params", "open-gop=1" + (":b-pyramid=none" if b_frames == 1 else "")]
         if hevc_only:
             command += ["-tag:v:0", "hvc1", "-x265-params",
                         "keyint=100:min-keyint=100:scenecut=0:open-gop=1:log-level=error:pools=1"]
+        if intra_refresh:
+            command += ["-x264-params", "intra-refresh=1:keyint=100:min-keyint=100:ref=1:bframes=0:scenecut=0"]
         if mixed:
             command += ["-c:v:1", "libx265", "-tag:v:1", "hvc1", "-x265-params",
                         "keyint=100:min-keyint=100:scenecut=0:open-gop=0:log-level=error:pools=1"]
@@ -147,14 +150,27 @@ class RealVideoTimelineTests(unittest.TestCase):
                 self.assertTrue(all(right > left for left, right in zip(times, times[1:])))
                 self.assertLess(max(right - left for left, right in zip(times, times[1:])), Decimal("0.05"))
 
-    def test_open_gop_leading_pictures_expand_to_closed_boundaries_instead_of_cutting_references(self):
+    def assert_no_output(self, source, reason):
+        with mock.patch.object(self.server.subprocess, "run", wraps=subprocess.run) as commands:
+            with self.assertRaises(self.server.VideoNoOutput) as result:
+                self.rebuild(source)
+        self.assertEqual(result.exception.timeline["actualRemovedMs"], 0)
+        self.assertIn(reason, result.exception.timeline["diagnosis"]["reasonCounts"])
+        self.assertFalse((self.root / ("result" + source.suffix)).exists())
+        self.assertFalse(any(Path(call.args[0][0]).stem.lower() == "ffmpeg" for call in commands.call_args_list))
+
+    def test_open_gop_without_safe_cut_returns_explicit_no_output_instead_of_complete_source_copy(self):
         source = self.generate(open_gop=True)
-        output, timeline = self.rebuild(source)
-        self.assertEqual(len(timeline["intervals"]), 1)
-        self.assertEqual(self.frames(output, 0), self.frames(source, 0))
+        self.assert_no_output(source, "h264_recovery")
 
     def test_hevc_cra_leading_pictures_also_report_when_no_internal_safe_cut_remains(self):
         source = self.generate(open_gop=True, hevc_only=True)
-        output, timeline = self.rebuild(source)
-        self.assertTrue(timeline["noGapsRemoved"])
-        self.assertEqual(self.frames(output, 0), self.frames(source, 0))
+        self.assert_no_output(source, "hevc_cra")
+
+    def test_recovery_key_flags_are_not_accepted_as_immediate_random_access(self):
+        source = self.generate(intra_refresh=True)
+        self.assert_no_output(source, "h264_recovery")
+
+    def test_review_open_gop_single_b_frame_counterexample_cannot_silently_lose_two_frames(self):
+        source = self.generate(open_gop=True, b_frames=1)
+        self.assert_no_output(source, "h264_recovery")

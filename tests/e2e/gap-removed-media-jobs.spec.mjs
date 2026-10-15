@@ -320,3 +320,63 @@ test('rendered editor reconstructs real video and shows native commit boundary',
     cleanupTempDir(dir);
   }
 });
+
+test('rendered editor real open GOP completes without output and releases its task', async ({ page }, testInfo) => {
+  const dir = makeTempDir('media-jobs-real-no-output');
+  let server;
+  try {
+    const video = join(dir, 'open-gop.mp4');
+    execFileSync('ffmpeg', ['-y', '-nostdin', '-v', 'error', '-f', 'lavfi', '-i', 'testsrc2=size=96x64:rate=25',
+      '-f', 'lavfi', '-i', 'sine=sample_rate=48000', '-t', '12', '-c:v', 'libx264', '-g', '100',
+      '-keyint_min', '100', '-sc_threshold', '0', '-bf', '1', '-x264-params', 'open-gop=1:b-pyramid=none',
+      '-c:a', 'aac', video], { timeout: 15000 });
+    const original = fs.readFileSync(video);
+    server = await startServer(generateProjectJson(join(dir, 'source.mosp')), video, await findFreePort());
+    let downloads = 0;
+    page.on('request', request => { if (/\/jobs\/[^/]+\/download(?:\?|$)/.test(request.url())) downloads++; });
+    await page.goto(server.url);
+    await page.waitForFunction(() => window.MaweProjectLoad && window.MaweExportSrt && MaweBoot.SERVER_CONFIG.canGapRemovedVideoExport);
+    await page.evaluate(() => {
+      window.realNoOutputWrites = 0; window.realNoOutputSrts = 0;
+      window.MaweExportSrt = { ...window.MaweExportSrt, gapRemovedExportContext: () => ({
+        intervals: [{ start: 1000, end: 2000 }, { start: 8500, end: 9500 }],
+      }) };
+      window.MaweExportTimeline = { ...window.MaweExportTimeline, downloadFile: async () => { window.realNoOutputSrts++; } };
+      window.showSaveFilePicker = async () => ({ name: 'result.mp4', createWritable: async () => {
+        window.realNoOutputWrites++;
+        return { write: async () => {}, close: async () => {}, abort: async () => {} };
+      } });
+    });
+    const admission = page.waitForResponse(response => response.request().method() === 'POST'
+      && /\/gap-removed-video\/jobs$/.test(response.url()) && response.status() === 202);
+    await page.evaluate(() => document.getElementById('download-gap-removed-video').click());
+    const { jobId } = await (await admission).json();
+    await expect(page.locator('.gap-video-job[data-no-output="true"]')).toBeVisible({ timeout: 15000 });
+    await expect(page.locator('#gap-video-job-status')).toContainText('未生成视频');
+    await expect(page.locator('#gap-video-job-close')).toBeVisible();
+    await expect(page.locator('#gap-video-job-save-srt')).toHaveCount(0);
+    await expect.poll(() => page.evaluate(() => window.__maweGapRemovedVideoTask)).toBeNull();
+    await expect(page.locator('#download-gap-removed-video')).toBeEnabled();
+    const snapshot = await page.evaluate(async id => {
+      const config = MaweBoot.SERVER_CONFIG;
+      return (await fetch(`${config.gapRemovedVideoJobsUrl}/${encodeURIComponent(id)}`, {
+        headers: { 'X-MAW-Request-Token': config.requestToken },
+      })).json();
+    }, jobId);
+    expect(snapshot).toMatchObject({ state: 'completed', stage: 'no-output', noOutput: true, cleanupComplete: true });
+    expect(snapshot.videoTimeline.actualRemovedMs).toBe(0);
+    expect(snapshot.videoTimeline.gaps.some(gap => gap.reasons.includes('h264_recovery'))).toBe(true);
+    expect(await page.evaluate(() => [window.realNoOutputWrites, window.realNoOutputSrts])).toEqual([0, 0]);
+    expect(downloads).toBe(0);
+    expect(fs.readFileSync(video).equals(original)).toBe(true);
+    fs.writeFileSync(testInfo.outputPath('real-no-output-snapshot.json'), JSON.stringify(snapshot, null, 2));
+    const onboardingSkip = page.getByRole('button', { name: '跳过 (ESC)', exact: true });
+    if (await onboardingSkip.isVisible()) await onboardingSkip.click();
+    await page.screenshot({ path: testInfo.outputPath('real-no-output-result.png') });
+    await page.click('#gap-video-job-close');
+    await expect(page.locator('.gap-video-job')).toHaveCount(0);
+  } finally {
+    await server?.stop();
+    cleanupTempDir(dir);
+  }
+});

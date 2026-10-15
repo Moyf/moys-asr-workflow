@@ -32,6 +32,21 @@ class SubtitleDurationVerificationTests(unittest.TestCase):
                     VideoTimelineError, "包时间线不符合"):
                 verify_video_packets(plan, directory / "output.mp4", ["subtitle"], directory, None, None)
 
+    def test_missing_output_duration_or_pts_does_not_count_as_verified(self):
+        TEMP_ROOT.mkdir(parents=True, exist_ok=True)
+        for output_fields, expected_error in (("pts_time=0|dts_time=0|duration_time=N/A", "持续时间"),
+                                               ("pts_time=N/A|dts_time=0|duration_time=4", "显示时间")):
+            with self.subTest(fields=output_fields), tempfile.TemporaryDirectory(dir=TEMP_ROOT) as temporary:
+                directory = Path(temporary)
+                index = directory / "source-packets.txt"
+                index.write_text("stream_index=0|pts_time=0|dts_time=0|duration_time=4|flags=K\n")
+                plan = VideoCopyPlan({}, [[(Decimal(0), Decimal(4), Decimal(0))]], index, [None])
+                def scan(_source, destination, *_args):
+                    destination.write_text(f"stream_index=0|{output_fields}|flags=K\n")
+                with mock.patch("maw.media_export_video.scan_packets", side_effect=scan), self.assertRaisesRegex(
+                        VideoTimelineError, expected_error):
+                    verify_video_packets(plan, directory / "output.mp4", ["subtitle"], directory, None, None)
+
 
 @unittest.skipUnless(FFMPEG and FFPROBE, "FFmpeg tools unavailable")
 class EmbeddedSubtitleTimelineTests(unittest.TestCase):

@@ -65,7 +65,7 @@ from maw.media_jobs import (  # noqa: E402
 )
 from maw.media_export_audio import rebuild_gap_removed_audio  # noqa: E402
 from maw.media_export_video import (  # noqa: E402
-    VideoTimelineError, packet_filter, prepare_video_copy, verify_video_packets,
+    VideoNoOutput, VideoTimelineError, packet_filter, prepare_video_copy, verify_video_packets,
 )
 from maw.gui_config import DEFAULT_ENV_PATH, load_env  # noqa: E402
 from maw.gui_platform import creationflags, restore_host_library_path, startupinfo  # noqa: E402
@@ -431,6 +431,8 @@ class GapRemovedVideoStream(NamedTuple):
 class GapRemovedVideoProbe(NamedTuple):
     streams: tuple[GapRemovedVideoStream, ...]
     start_time: Decimal
+    stream_metadata: tuple[dict, ...] = ()
+    format_name: str = ""
 
 
 def normalize_gap_removed_intervals(value: object) -> list[tuple[int, int]]:
@@ -462,8 +464,8 @@ def normalize_gap_removed_intervals(value: object) -> list[tuple[int, int]]:
 def _probe_gap_removed_video(path: Path, ffprobe_path: Path, *, job: MediaJob | None = None) -> GapRemovedVideoProbe:
     command = [
         str(ffprobe_path), "-v", "error", "-show_entries",
-        "stream=codec_type,codec_name,profile,codec_tag_string,width,height,channels,sample_rate,channel_layout"
-        ":stream_disposition:stream_tags:format=start_time",
+        "stream=codec_type,codec_name,profile,codec_tag_string,width,height,channels,sample_rate,channel_layout,nal_length_size"
+        ":stream_disposition:stream_tags:format=start_time,format_name",
         "-of", "json", str(path),
     ]
     try:
@@ -527,7 +529,9 @@ def _probe_gap_removed_video(path: Path, ffprobe_path: Path, *, job: MediaJob | 
         # finite magnitudes before arithmetic/formatting can overflow.
         if not start_time.is_finite() or start_time.copy_abs() > Decimal("9223372036854.775807"):
             raise GapRemovedVideoExportError("视频包含无效的媒体起始时间，请检查源文件后重试")
-    return GapRemovedVideoProbe(tuple(signature), start_time)
+    stream_metadata = tuple({"codec_name": stream.get("codec_name"), "nal_length_size": stream.get("nal_length_size")}
+                            for stream in streams)
+    return GapRemovedVideoProbe(tuple(signature), start_time, stream_metadata, str(format_info.get("format_name") or ""))
 
 
 def _gap_removed_video_streams_match(
@@ -594,10 +598,13 @@ def _copy_gap_removed_video(source, intervals, output_path, input_probe, ffmpeg_
              for stream in input_signature]
     check_cancelled = job.check_cancelled if job else lambda: None
     plan = prepare_video_copy(source, intervals, kinds, input_probe.start_time,
-                              directory, ffprobe_path, run, check_cancelled)
+                              directory, ffprobe_path, run, check_cancelled,
+                              stream_metadata=input_probe.stream_metadata, container_name=input_probe.format_name)
     if job:
         with job.manager.lock:
             job.video_timeline = plan.timeline
+    if plan.timeline.get("actualRemovedMs") == 0:
+        raise VideoNoOutput(plan.timeline)
     command = [str(ffmpeg_path), "-y", "-nostdin", "-hide_banner", "-loglevel", "warning",
                "-copyts", "-i", str(source), "-map", "0", "-c", "copy", "-avoid_negative_ts", "disabled"]
     # Restore track metadata explicitly so the muxer cannot choose a different
@@ -2634,8 +2641,11 @@ class EditorRequestHandler(BaseHTTPRequestHandler):
                         ffmpeg_path=tools.ffmpeg, ffprobe_path=tools.ffprobe, job=job,
                         audio_track=source_snapshot.audio_track)
                 else:
-                    rebuild_gap_removed_video(job.source, list(job.intervals), job.output,
-                        ffmpeg_path=tools.ffmpeg, ffprobe_path=tools.ffprobe, job=job)
+                    try:
+                        rebuild_gap_removed_video(job.source, list(job.intervals), job.output,
+                            ffmpeg_path=tools.ffmpeg, ffprobe_path=tools.ffprobe, job=job)
+                    except VideoNoOutput:
+                        job.complete_without_output()
 
             # Admission and the snapshot use the same binding generation. A
             # rebind between snapshot and admission must not launch stale work.
@@ -2763,6 +2773,10 @@ class EditorRequestHandler(BaseHTTPRequestHandler):
                     else:
                         rebuild_gap_removed_video(source, intervals, output_path,
                             ffmpeg_path=tools.ffmpeg, ffprobe_path=tools.ffprobe)
+                except VideoNoOutput as result:
+                    self.send_json(HTTPStatus.OK, {"ok": True, "noOutput": True,
+                        "stage": "no-output", "videoTimeline": result.timeline})
+                    return
                 except ValueError as error:
                     self.send_json(HTTPStatus.UNPROCESSABLE_ENTITY, gap_removed_export_error_payload(error))
                     return
