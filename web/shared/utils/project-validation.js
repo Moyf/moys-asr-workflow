@@ -3,6 +3,7 @@
 (function (global) {
   'use strict';
   const SCHEMA = 'moy.asr.project.v1';
+  const GROUP_SCHEMA = 'moy.asr.project.v2';
   const MULTI = 'moy.asr.multi_subtitle.v1';
   const object = (v) => v !== null && typeof v === 'object' && !Array.isArray(v);
   const integer = Number.isInteger;
@@ -21,6 +22,95 @@
       return before.flatMap((value, i) => changes(value, after[i], `${path}[${i}]`));
     return JSON.stringify(before) === JSON.stringify(after) ? [] : [{ path, kind: 'replace', before, after }];
   }
+
+function validateV2SubtitleGroups(project, report = (_path, _message) => {}) {
+  const errors = [];
+  const error = (path, message) => {
+    errors.push({ path, message });
+    report(path, message);
+  };
+  const object = value => value !== null && typeof value === 'object' && !Array.isArray(value);
+  const validId = value => typeof value === 'string'
+    && value.trim().length > 0 && Array.from(value).length <= 160;
+  const table = project?.subtitle_groups;
+  if (!object(table)) {
+    error('$.subtitle_groups', 'must be an object');
+    return errors;
+  }
+  if (Object.hasOwn(table, 'next_id')
+      && (!Number.isSafeInteger(table.next_id) || table.next_id < 1)) {
+    error('$.subtitle_groups.next_id', 'must be a positive safe integer');
+  }
+
+  const tracks = [['$.segments', project?.segments]];
+  if (object(project?.overlay_track)) {
+    tracks.push(['$.overlay_track.segments', project.overlay_track.segments]);
+  }
+  const multi = project?.multi_subtitle;
+  if (object(multi) && Array.isArray(multi.tracks)) {
+    multi.tracks.forEach((track, index) => {
+      if (object(track)) tracks.push([`$.multi_subtitle.tracks[${index}].segments`, track.segments]);
+    });
+  }
+  const lists = tracks.filter(([, segments]) => Array.isArray(segments));
+  const cueIds = new Set();
+  for (const [path, segments] of lists) {
+    segments.forEach((segment, index) => {
+      if (!object(segment)) return; // Existing segment validator reports this.
+      const identifier = segment.id;
+      // Per-track normalization trims IDs after this check.
+      const canonical = typeof identifier === 'string' ? identifier.trim() : identifier;
+      if (!validId(identifier) || cueIds.has(canonical)) {
+        error(`${path}[${index}].id`, 'must be a unique project-wide cue ID');
+      } else {
+        cueIds.add(canonical);
+      }
+    });
+  }
+
+  for (const kind of ['color', 'sticker']) {
+    const groups = table[kind];
+    if (!Array.isArray(groups)) {
+      error(`$.subtitle_groups.${kind}`, 'must be an array');
+      continue; // Mirrors the Python validator: skip this kind's cue checks.
+    }
+    const groupIds = new Set();
+    groups.forEach((group, index) => {
+      const path = `$.subtitle_groups.${kind}[${index}]`;
+      if (!object(group)) {
+        error(path, 'must be an object');
+        return;
+      }
+      const identifier = group.id;
+      if (!validId(identifier) || groupIds.has(identifier)) {
+        error(`${path}.id`, 'must be a unique non-empty group ID');
+      } else {
+        groupIds.add(identifier);
+      }
+      const value = group.value;
+      if (!object(value) || typeof value.name !== 'string') {
+        error(`${path}.value`, 'must contain a name');
+      } else if (Object.hasOwn(value, 'start') || Object.hasOwn(value, 'end')) {
+        error(`${path}.value`, 'group range is derived from members');
+      }
+    });
+    for (const [path, segments] of lists) {
+      segments.forEach((segment, index) => {
+        if (!object(segment)) return;
+        const field = `${kind}_group_id`;
+        if (Object.hasOwn(segment, field)
+            && (typeof segment[field] !== 'string' || !groupIds.has(segment[field]))) {
+          error(`${path}[${index}].${field}`, 'must reference an existing group');
+        }
+        if (Object.hasOwn(segment, kind) || Object.hasOwn(segment, `${kind}_ref`)) {
+          error(`${path}[${index}].${kind}`, 'legacy group fields are not allowed in v2');
+        }
+      });
+    }
+  }
+  return errors;
+}
+
 
   function validateProject(input) {
     const errors = [];
@@ -266,21 +356,24 @@
     }
     if (!object(input)) return { ok: false, errors: [{ path: '$', message: 'must be an object' }], project: null, preview: null };
     const project = clone(input);
-    if (Object.hasOwn(project, 'schema') && project.schema !== SCHEMA) error('$.schema', `must be ${SCHEMA}`);
-    project.schema = SCHEMA;
+    const schema = project.schema;
+    if (Object.hasOwn(project, 'schema') && schema !== SCHEMA && schema !== GROUP_SCHEMA) error('$.schema', `must be ${SCHEMA} or ${GROUP_SCHEMA}`);
+    project.schema = schema === GROUP_SCHEMA ? GROUP_SCHEMA : SCHEMA;
     optional(project, '$', 'preserve_punctuation', bool, 'must be a boolean');
     if (Object.hasOwn(project, 'timebase')) {
       if (!object(project.timebase)) error('$.timebase', 'must be an object');
       else {
         if (!['milliseconds', 'frames'].includes(project.timebase.unit)) error('$.timebase.unit', 'must be milliseconds or frames');
         fps(project.timebase.fps, '$.timebase.fps');
+        optional(project.timebase, '$.timebase', 'fps_source', (v) => v === 'auto' || v === 'user', 'must be auto or user');
       }
     }
     if (Object.hasOwn(project, 'media_metadata')) metadata(project.media_metadata);
     if (!Array.isArray(project.segments)) error('$.segments', 'must be an array');
     else {
+      if (schema === GROUP_SCHEMA) validateV2SubtitleGroups(project, error);
       segments(project.segments, 'main', '$.segments');
-      for (const field of ['language', 'language_source', 'split_mode', 'timestamp_granularity']) optional(project, '$', field, string, 'must be a string');
+      for (const field of ['language', 'language_source', 'split_mode', 'timestamp_granularity', 'timed_text_edit_view']) optional(project, '$', field, string, 'must be a string');
       /** @type {[string, string[], string][]} */
       const metadataEnums = [
         ['language_source', ['detected', 'hint', 'inferred', 'unknown'], 'must be detected, hint, inferred, or unknown'],
@@ -288,6 +381,9 @@
         ['timestamp_granularity', ['char', 'word', 'segment', 'unknown'], 'must be char, word, segment, or unknown'],
       ];
       for (const [key, values, message] of metadataEnums) if (string(project[key]) && !values.includes(project[key])) error(`$.${key}`, message);
+      if (Object.hasOwn(project, 'timed_text_edit_view') && !['rows', 'single'].includes(project.timed_text_edit_view)) {
+        error('$.timed_text_edit_view', 'must be rows or single');
+      }
       const overlay = project.overlay_track;
       if (overlay != null) {
         if (!object(overlay)) error('$.overlay_track', 'must be an object');

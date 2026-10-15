@@ -27,16 +27,23 @@ class SubtitleGroupContractTests(unittest.TestCase):
 
     def test_rejects_missing_groups_duplicate_identity_bad_reference_and_second_range(self):
         cases = []
-        p = self.fixture(); del p["subtitle_groups"]; cases.append((p, "$.subtitle_groups"))
-        p = self.fixture(); p["overlay_track"]["segments"][0]["id"] = "a"
+        p = self.fixture()
+        del p["subtitle_groups"]
+        cases.append((p, "$.subtitle_groups"))
+        p = self.fixture()
+        p["overlay_track"]["segments"][0]["id"] = "a"
         cases.append((p, "$.overlay_track.segments[0].id"))
-        p = self.fixture(); p["segments"][0]["sticker_group_id"] = "missing"
+        p = self.fixture()
+        p["segments"][0]["sticker_group_id"] = "missing"
         cases.append((p, "$.segments[0].sticker_group_id"))
-        p = self.fixture(); p["subtitle_groups"]["sticker"][0]["value"]["end"] = 9999
+        p = self.fixture()
+        p["subtitle_groups"]["sticker"][0]["value"]["end"] = 9999
         cases.append((p, "$.subtitle_groups.sticker[0].value"))
-        p = self.fixture(); p["segments"][0]["sticker_ref"] = {"headIdx": 0}
+        p = self.fixture()
+        p["segments"][0]["sticker_ref"] = {"headIdx": 0}
         cases.append((p, "$.segments[0].sticker"))
-        p = self.fixture(); p["segments"][0]["sticker_group_id"] = {}
+        p = self.fixture()
+        p["segments"][0]["sticker_group_id"] = {}
         cases.append((p, "$.segments[0].sticker_group_id"))
         for project, path in cases:
             with self.subTest(path=path):
@@ -45,7 +52,8 @@ class SubtitleGroupContractTests(unittest.TestCase):
                 self.assertIn(path, {error.path for error in result.errors})
 
     def test_writer_rejects_future_schema_instead_of_downgrading(self):
-        source = self.fixture(); source["schema"] = "moy.asr.project.v99"
+        source = self.fixture()
+        source["schema"] = "moy.asr.project.v99"
         with self.assertRaises(ValueError):
             serialize_mosp(source)
 
@@ -63,3 +71,108 @@ class SubtitleGroupContractTests(unittest.TestCase):
         self.assertEqual(matched["segments"][0]["assOverride"], {"pos": {"x": 10, "y": 20}})
         with self.assertRaisesRegex(AlignmentError, "独立分组"):
             generate_matched_mosp(json.dumps(source), "o\nne")
+
+    def test_match_accepts_nullable_tracks_and_reserves_all_existing_ids(self):
+        from scripts.mosp_match_text import generate_matched_mosp
+
+        for multi in (
+            None,
+            {"tracks": None},
+            {"tracks": [{"id": "ext", "segments": None}]},
+        ):
+            for overlay in (None, {"segments": None}):
+                with self.subTest(multi=multi, overlay=overlay):
+                    source = {
+                        "schema": "moy.asr.project.v2",
+                        "subtitle_groups": {"color": [], "sticker": []},
+                        "segments": [
+                            {
+                                "id": "main",
+                                "start": 0,
+                                "end": 1000,
+                                "text": "甲乙",
+                                "items": [
+                                    {"text": "甲", "start": 0, "end": 500},
+                                    {"text": "乙", "start": 500, "end": 1000},
+                                ],
+                            }
+                        ],
+                        "multi_subtitle": multi,
+                        "overlay_track": overlay,
+                    }
+                    self.assertTrue(validate_project(source).ok)
+                    _, _, text = generate_matched_mosp(json.dumps(source), "甲。乙")
+                    output = json.loads(text)
+                    self.assertTrue(validate_project(output).ok)
+                    self.assertEqual(
+                        [s["id"] for s in output["segments"]],
+                        ["match-001", "match-002"],
+                    )
+
+    def test_match_rejects_bound_count_change_and_updates_retained_binding_offsets(
+        self,
+    ):
+        from scripts.mosp_match_text import AlignmentError, generate_matched_mosp
+
+        source = {
+            "schema": "moy.asr.project.v2",
+            "subtitle_groups": {"color": [], "sticker": []},
+            "segments": [
+                {
+                    "id": "main",
+                    "start": 0,
+                    "end": 1000,
+                    "text": "甲乙",
+                    "items": [
+                        {"text": "甲", "start": 100, "end": 500},
+                        {"text": "乙", "start": 500, "end": 900},
+                    ],
+                }
+            ],
+            "multi_subtitle": {
+                "tracks": [
+                    {
+                        "id": "ext",
+                        "segments": [
+                            {"id": "translation", "start": 0, "end": 1000, "text": "AB"}
+                        ],
+                    }
+                ],
+                "bindings": [
+                    {
+                        "track_id": "ext",
+                        "main_segment_ids": ["main"],
+                        "extension_segment_ids": ["translation"],
+                        "start_offset_ms": 0,
+                        "end_offset_ms": 0,
+                    }
+                ],
+            },
+        }
+        self.assertTrue(validate_project(source).ok)
+        before = copy.deepcopy(source)
+        with self.assertRaisesRegex(AlignmentError, "双语绑定"):
+            generate_matched_mosp(json.dumps(source), "甲。乙")
+        _, _, text = generate_matched_mosp(json.dumps(source), "甲乙")
+        output = json.loads(text)
+        self.assertTrue(validate_project(output).ok)
+        binding = output["multi_subtitle"]["bindings"][0]
+        self.assertEqual(
+            (binding["start_offset_ms"], binding["end_offset_ms"]), (-100, 100)
+        )
+        self.assertEqual(source, before)
+
+    def test_match_reserves_normalized_other_track_ids(self):
+        from scripts.mosp_match_text import generate_matched_mosp
+
+        source = {"schema": "moy.asr.project.v2", "subtitle_groups": {"color": [], "sticker": []},
+                  "segments": [{"id": "main", "start": 0, "end": 1000, "text": "甲乙",
+                                "items": [{"text": "甲", "start": 0, "end": 500},
+                                          {"text": "乙", "start": 500, "end": 1000}]}],
+                  "overlay_track": {"segments": [
+                      {"id": " match-001 ", "start": 0, "end": 1000, "text": "overlay"}]}}
+        self.assertTrue(validate_project(source).ok)
+        _, _, text = generate_matched_mosp(json.dumps(source), "甲。乙")
+        output = json.loads(text)
+        self.assertTrue(validate_project(output).ok)
+        self.assertEqual([s["id"] for s in output["segments"]], ["match-001-2", "match-002"])

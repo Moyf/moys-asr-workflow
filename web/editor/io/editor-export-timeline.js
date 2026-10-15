@@ -27,7 +27,7 @@
 
   function buildResolveJson() {
     const groupStickers = MaweBoot.DATA.subtitle_groups
-      ? window.AsrEditorUtils.subtitleGroupRanges(MaweBoot.DATA).filter(r => r.enabled).map(r => ({
+      ? window.AsrEditorUtils.subtitleGroupRanges(MaweBoot.DATA, 'sticker', { activeTracksOnly: true }).filter(r => r.enabled).map(r => ({
         group_id: r.id, start_ms: r.start, end_ms: r.end,
         ...window.AsrEditorUtils.cloneJsonValue(r.source),
         abs_path: MaweSelection.stickerAbsPath(r.source),
@@ -563,7 +563,7 @@
   function collectStickerOtioEntries(removed, segments = MaweBoot.DATA.segments) {
   if (MaweBoot.DATA.subtitle_groups) {
     const track = segments === MaweBoot.DATA.overlay_track?.segments ? 'overlay' : 'main';
-    segments = window.AsrEditorUtils.subtitleGroupRanges(MaweBoot.DATA)
+    segments = window.AsrEditorUtils.subtitleGroupRanges(MaweBoot.DATA, 'sticker', { activeTracksOnly: true })
       .filter(range => range.enabled && range.track === track)
       .map(range => ({ start: range.start, end: range.end,
         sticker: { ...range.source, start: range.start, end: range.end } }));

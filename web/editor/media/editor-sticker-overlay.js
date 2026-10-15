@@ -75,7 +75,7 @@
     });
   };
   if (MaweBoot.DATA.subtitle_groups) {
-    for (const range of window.AsrEditorUtils.subtitleGroupRanges(MaweBoot.DATA)) {
+    for (const range of window.AsrEditorUtils.subtitleGroupRanges(MaweBoot.DATA, 'sticker', { activeTracksOnly: true })) {
       if (!range.enabled) continue;
       intervals.push({ ...range, key: range.id });
       boundaries.add(range.start); boundaries.add(range.end);

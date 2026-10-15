@@ -719,18 +719,38 @@ def generate_matched_mosp(
         raise AlignmentError("MOSP JSON 无效") from exc
     source_segments = project["segments"]
     rebuilt = build_mosp_segments(segments, timings, output, is_cancelled=is_cancelled)
+    multi = project.get("multi_subtitle") or {}
+    overlay = project.get("overlay_track") or {}
+    bindings = multi.get("bindings") or []
     grouped = any(s.get("color_group_id") or s.get("sticker_group_id") for s in source_segments)
     if grouped and len(rebuilt) != len(source_segments):
         raise AlignmentError("带独立分组的字幕暂不支持文稿匹配改变条数；请先保留原工程并在编辑器中拆合，避免丢失组关系。")
+    if bindings and len(rebuilt) != len(source_segments):
+        raise AlignmentError("带双语绑定的工程暂不支持文稿匹配改变条数；请先在编辑器中拆合，避免丢失绑定关系。")
     if len(rebuilt) == len(source_segments):
         for original, target in zip(source_segments, rebuilt, strict=True):
             for key, value in original.items():
                 if key not in {"start", "end", "text", "items", "start_frame", "end_frame"}:
                     target[key] = copy.deepcopy(value)
+    # Main cue identities survive one-to-one rebuilding; extension times stay
+    # unchanged, so their recorded offsets must follow the rebuilt main times.
+    main_by_id = {s.get("id"): s for s in rebuilt if s.get("id")}
+    tracks_by_id = {t.get("id"): t for t in multi.get("tracks") or []}
+    for binding in bindings:
+        main_ids = binding.get("main_segment_ids") or [binding.get("main_segment_id")]
+        ext_ids = binding.get("extension_segment_ids") or [binding.get("extension_segment_id")]
+        track_id = binding.get("track_id")
+        track = tracks_by_id.get(track_id) if track_id else next(iter(tracks_by_id.values()), {})
+        main = main_by_id.get(main_ids[0]) if len(main_ids) == 1 else None
+        extension = next((s for s in (track or {}).get("segments") or [] if len(ext_ids) == 1 and s.get("id") == ext_ids[0]), None)
+        if main and extension:
+            for edge in ("start", "end"):
+                binding[f"{edge}_offset_ms"] = extension[edge] - main[edge]
     if project.get("schema") == "moy.asr.project.v2":
-        reserved = {s.get("id") for track in project.get("multi_subtitle", {}).get("tracks", []) for s in track.get("segments", [])}
-        reserved.update(s.get("id") for s in project.get("overlay_track", {}).get("segments", []))
+        reserved = {s.get("id") for track in multi.get("tracks") or [] for s in track.get("segments") or []}
+        reserved.update(s.get("id") for s in overlay.get("segments") or [])
         reserved.update(s.get("id") for s in source_segments)
+        reserved = {identifier.strip() for identifier in reserved if isinstance(identifier, str)}
         for index, target in enumerate(rebuilt):
             if target.get("id"):
                 continue

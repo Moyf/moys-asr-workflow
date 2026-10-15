@@ -459,7 +459,7 @@ export function createUtilsModule(dependencies) {
     // 再对相邻输出行截断的 MASS 对补齐（预览与最终应用同一计划）。
     completeStructureRowMassPairs(outputSegments, options.rule, outputMeta);
 
-    const usedSegments = [...source];
+    const usedSegments = [...(options.reservedSegments || []), ...source];
     outputMeta.forEach((meta, outputIndex) => {
       const sourceIndex = meta.sourceIndexes[0];
       const sourceSegment = source[sourceIndex] || {};

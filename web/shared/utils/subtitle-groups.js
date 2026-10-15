@@ -3,10 +3,11 @@ export function createUtilsModule({ cloneJsonValue, stableId, ensureStableSegmen
   const GROUP_PROJECT_SCHEMA = 'moy.asr.project.v2';
   const kinds = ['color', 'sticker'];
   function subtitleGroupTracks(project) {
-    return [{ key: 'main', segments: project.segments || [] },
-      { key: 'overlay', segments: project.overlay_track?.segments || [] },
+    return [{ key: 'main', enabled: true, segments: project.segments || [] },
+      { key: 'overlay', enabled: project.overlay_track?.enabled === true, segments: project.overlay_track?.segments || [] },
       ...(project.multi_subtitle?.tracks || []).map((track, index) => ({
-        key: `extension-${index + 1}`, trackId: track.id, segments: track.segments || [],
+        key: `extension-${index + 1}`, enabled: project.multi_subtitle.enabled === true,
+        trackId: track.id, segments: track.segments || [],
       }))];
   }
   function migrateSubtitleGroups(project, { fromFile = false } = {}) {
@@ -128,9 +129,11 @@ export function createUtilsModule({ cloneJsonValue, stableId, ensureStableSegmen
     if (reports.length) project.subtitle_group_migration = { remapped_ids: reports };
     return groups;
   }
-  function subtitleGroupRanges(project, kind = 'sticker') {
+  function subtitleGroupRanges(project, kind = 'sticker', { activeTracksOnly = false } = {}) {
     const groups = project.subtitle_groups?.[kind] || [];
-    const tracks = subtitleGroupTracks(project);
+    // Stored membership survives track switches. Presentation uses only enabled
+    // tracks, while editing/serialization still sees every member and group.
+    const tracks = subtitleGroupTracks(project).filter(track => !activeTracksOnly || track.enabled);
     return groups.flatMap(group => {
       const members = tracks.flatMap(track => track.segments.filter(s => s[`${kind}_group_id`] === group.id)
         .map(segment => ({ segment, track: track.key })));
