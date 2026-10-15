@@ -88,40 +88,46 @@ for (const portrait of [false, true]) {
   test(`native fullscreen keeps ${portrait ? 'portrait' : 'landscape'} video and ASS Canvas geometry aligned`, async ({ page }) => {
     await prepare(page, portrait ? portraitServer.url : server.url, portrait ? 360 : 640);
     const telemetry = [];
-    for (const playing of [false, true]) {
-      await page.evaluate(async play => {
-        if (play) await MaweCoreState.player.play(); else MaweCoreState.player.pause();
-      }, playing);
-      for (const fullscreen of [true, false]) {
-        await page.locator('#media-fullscreen').click();
-        await expect.poll(() => page.evaluate(() => Boolean(document.fullscreenElement))).toBe(fullscreen);
-        const frames = await page.evaluate(async () => {
-          const result = [];
-          for (let i = 0; i < 8; i++) {
-            await new Promise(resolve => requestAnimationFrame(resolve));
-            const video = MaweCoreState.player;
-            const stage = MaweDom.playerStage.getBoundingClientRect();
-            const overlay = MaweDom.overlayEl.getBoundingClientRect();
-            const canvas = document.querySelector('.ass-preview-canvas').getBoundingClientRect();
-            const aspect = video.videoWidth / video.videoHeight;
-            result.push({ stage: [stage.width, stage.height], video: [video.videoWidth, video.videoHeight],
-              overlay: [overlay.width, overlay.height], canvas: [canvas.width, canvas.height],
-              expected: [Math.min(stage.width, stage.height * aspect), Math.min(stage.height, stage.width / aspect)] });
+    try {
+      for (const playing of [false, true]) {
+        await page.evaluate(async play => {
+          if (play) await MaweCoreState.player.play(); else MaweCoreState.player.pause();
+        }, playing);
+        for (const fullscreen of [true, false]) {
+          await page.locator('#media-fullscreen').click();
+          await expect.poll(() => page.evaluate(() => Boolean(document.fullscreenElement))).toBe(fullscreen);
+          const frames = await page.evaluate(async () => {
+            const result = [];
+            for (let i = 0; i < 8; i++) {
+              await new Promise(resolve => requestAnimationFrame(resolve));
+              const video = MaweCoreState.player;
+              const stage = MaweDom.playerStage.getBoundingClientRect();
+              const overlay = MaweDom.overlayEl.getBoundingClientRect();
+              const canvas = document.querySelector('.ass-preview-canvas').getBoundingClientRect();
+              const aspect = video.videoWidth / video.videoHeight;
+              result.push({ timestamp: performance.now(), inline: { width: MaweDom.overlayEl.style.width,
+                height: MaweDom.overlayEl.style.height, left: MaweDom.overlayEl.style.left, top: MaweDom.overlayEl.style.top }, stage: [stage.width, stage.height], video: [video.videoWidth, video.videoHeight],
+                overlay: [overlay.width, overlay.height], canvas: [canvas.width, canvas.height],
+                expected: [Math.min(stage.width, stage.height * aspect), Math.min(stage.height, stage.width / aspect)] });
+            }
+            return result;
+          });
+          telemetry.push({ playing, fullscreen, frames });
+          for (const frame of frames.slice(1)) {
+            expect(frame.overlay[0]).toBeCloseTo(frame.expected[0], 0);
+            expect(frame.overlay[1]).toBeCloseTo(frame.expected[1], 0);
+            expect(frame.canvas[0] / frame.canvas[1]).toBeCloseTo(frame.video[0] / frame.video[1], 3);
           }
-          return result;
-        });
-        telemetry.push({ playing, fullscreen, frames });
-        for (const frame of frames.slice(1)) {
-          expect(frame.overlay[0]).toBeCloseTo(frame.expected[0], 0);
-          expect(frame.overlay[1]).toBeCloseTo(frame.expected[1], 0);
-          expect(frame.canvas[0] / frame.canvas[1]).toBeCloseTo(frame.video[0] / frame.video[1], 3);
         }
       }
+    } finally {
+      const artifacts = join(process.cwd(), '.artifacts', 'ass-preview-geometry');
+      mkdirSync(artifacts, { recursive: true });
+      const telemetryJson = JSON.stringify(telemetry, null, 2);
+      writeFileSync(join(artifacts, `${portrait ? 'portrait' : 'landscape'}-frames.json`), telemetryJson);
+      writeFileSync(test.info().outputPath('fullscreen-frames.json'), telemetryJson);
+      await page.screenshot({ path: join(artifacts, `${portrait ? 'portrait' : 'landscape'}.png`) }).catch(() => {});
     }
-    const artifacts = join(process.cwd(), '.artifacts', 'ass-preview-geometry');
-    mkdirSync(artifacts, { recursive: true });
-    writeFileSync(join(artifacts, `${portrait ? 'portrait' : 'landscape'}-frames.json`), JSON.stringify(telemetry, null, 2));
-    await page.screenshot({ path: join(artifacts, `${portrait ? 'portrait' : 'landscape'}.png`) });
   });
 }
 
@@ -148,4 +154,55 @@ test('failed cross-type media import restores observation of the original video'
   });
   expect(result).toEqual({ imported: false, restored: true, attached: true,
     observed: true, detachedTargets: 0 });
+});
+
+test('real resize observers never replace the ASS Canvas box with CSS subtitle geometry', async ({ page }) => {
+  await page.addInitScript(() => {
+    const Original = window.ResizeObserver;
+    window.__assResizeEvents = [];
+    window.ResizeObserver = class extends Original {
+      constructor(callback) {
+        super((entries, observer) => {
+          callback(entries, observer);
+          if (window.MaweSettings?.EDITOR_SETTINGS?.assMode === true && window.MaweDom?.overlayEl) {
+            window.__assResizeEvents.push({ time: performance.now(), width: MaweDom.overlayEl.style.width,
+              height: MaweDom.overlayEl.style.height, targets: entries.map(entry => entry.target.id || entry.target.className) });
+          }
+        });
+      }
+    };
+  });
+  await prepare(page);
+  await page.evaluate(() => {
+    window.__assResizeEvents.length = 0;
+    MaweDom.playerStage.style.width = '80%';
+  });
+  await expect.poll(() => page.evaluate(() => window.__assResizeEvents.length)).toBeGreaterThan(0);
+  const events = await page.evaluate(() => window.__assResizeEvents);
+  const artifacts = join(process.cwd(), '.artifacts', 'ass-preview-geometry');
+  mkdirSync(artifacts, { recursive: true });
+  const eventJson = JSON.stringify(events, null, 2);
+  writeFileSync(join(artifacts, 'resize-observer-writes.json'), eventJson);
+  writeFileSync(test.info().outputPath('resize-observer-writes.json'), eventJson);
+  expect(events.filter(event => event.width.endsWith('%') || event.height.endsWith('%'))).toEqual([]);
+});
+
+test('ASS stores CSS geometry without applying it and restores it immediately when disabled', async ({ page }) => {
+  await prepare(page);
+  const result = await page.evaluate(() => {
+    const geometry = { x: .2, y: .3, width: .4, height: .2 };
+    const style = () => ({ left: MaweDom.overlayEl.style.left, top: MaweDom.overlayEl.style.top,
+      width: MaweDom.overlayEl.style.width, height: MaweDom.overlayEl.style.height });
+    const before = style();
+    MawePreviewGeometry.setPreviewGeometry(geometry);
+    const duringAss = style();
+    MaweSettings.EDITOR_SETTINGS.assMode = false;
+    MawePlaybackLoop.refreshSubtitlePreview(1000, 0);
+    const restored = style();
+    MawePreviewGeometry.applyPreviewGeometryToDom({ x: .1, y: .1, width: .5, height: .3 });
+    return { before, duringAss, restored, ordinaryCss: style() };
+  });
+  expect(result.duringAss).toEqual(result.before);
+  expect(result.restored).toEqual({ left: '20%', top: '30%', width: '40%', height: '20%' });
+  expect(result.ordinaryCss).toEqual({ left: '10%', top: '10%', width: '50%', height: '30%' });
 });
