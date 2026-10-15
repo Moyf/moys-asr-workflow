@@ -893,12 +893,10 @@
 .waveform-cue-block.disabled:hover { opacity: 0.7; }
 .waveform-cue-block.dragging { cursor: grabbing; }
 .waveform-cue-block.word-timing-background { opacity: 0.28; cursor: pointer; }
-/* 字词时间码：选中句去掉黄色描边与辉光，避免与字词块的双层描边叠加；
-   只把不透明度从 0.28 抬到 0.45 作为轻量选中提示。 */
+/* 紧凑叠加仍保留选中句描边；去掉额外辉光以减少字词层视觉干扰。 */
 .waveform-pane.word-timing-mode .waveform-cue-block.word-timing-background.selected,
 .waveform-pane.word-timing-mode .waveform-cue-block.word-timing-background.selected:hover {
   opacity: 0.45;
-  outline-color: transparent;
   box-shadow: none;
 }
 /* 单行双语仍使用紧凑布局，整句文字留在字词块上方的可见区域。 */

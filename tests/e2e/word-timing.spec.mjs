@@ -34,16 +34,16 @@ test('word presets apply immediately and restore across bilingual mode changes',
     MaweCoreState.waveformEditor.setSecondsPerRow(20);
   });
   await setWordTiming(page);
-  expect(await page.evaluate(() => MaweCoreState.waveformEditor.settings.secondsPerRow)).toBe(5);
+  expect(await page.evaluate(() => MaweCoreState.waveformEditor.settings.secondsPerRow)).toBe(20);
   await page.evaluate(() => {
     const input = document.getElementById('word-timing-seconds-per-row');
     input.value = '10'; input.dispatchEvent(new Event('change'));
   });
   expect(await page.evaluate(() => MaweCoreState.waveformEditor.settings.secondsPerRow)).toBe(10);
   await page.locator('#multi-subtitle-quick-toggle').click();
-  expect(await page.evaluate(() => MaweCoreState.waveformEditor.getRowHeight())).toBe(168);
+  expect(await page.evaluate(() => MaweCoreState.waveformEditor.getRowHeight())).toBe(192);
   await setWordTiming(page, false);
-  expect(await page.evaluate(() => MaweCoreState.waveformEditor.getRowHeight())).toBe(168);
+  expect(await page.evaluate(() => MaweCoreState.waveformEditor.getRowHeight())).toBe(192);
   expect(await page.evaluate(() => MaweCoreState.waveformEditor.settings.secondsPerRow)).toBe(20);
   await page.locator('#multi-subtitle-quick-toggle').click();
   expect(await page.evaluate(() => MaweCoreState.waveformEditor.getRowHeight())).toBe(192);

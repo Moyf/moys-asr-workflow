@@ -1411,6 +1411,7 @@
     background: var(--btn-bg); color: var(--btn-text); font-size: 12px; cursor: pointer;
   }
   .project-track-toggle input { flex: 0 0 auto; margin: 0; }
+  .multi-subtitle-mode-controls { margin-bottom: 8px; }
   .project-track-toggle:hover:not(.disabled) {
     background: var(--btn-bg-hover); border-color: var(--btn-border-hover); color: var(--text-primary);
   }

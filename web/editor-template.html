@@ -848,14 +848,10 @@ __WAVEFORM_CSS__
          title="开启后可在叠加轨创建与主字幕时间重叠的叠加字幕；叠加轨不会与双语字幕建立绑定关系">
     <input type="checkbox" id="overlay-track-toggle">
     允许字幕重叠
-  </label><label class="toggle editor-settings-item multi-subtitle-main-toggle project-track-toggle" id="multi-subtitle-toggle-label"
-           title="开启后显示副字幕轨，可手动添加或导入第二条字幕。">
-      <input type="checkbox" id="multi-subtitle-toggle" title="开启后显示副字幕轨，可手动添加或导入第二条字幕。">
-      双语字幕
-    </label><small class="multi-subtitle-empty-hint" id="multi-subtitle-empty-hint" hidden title="在波形副轨空白处右键创建副字幕，或从下方「字幕管理」导入 SRT。">副轨为空，可手动添加或导入</small></div>
+  </label></div>
 <div class="settings-panel-section multi-subtitle-settings-section word-timing-settings-section" role="group" aria-labelledby="word-timing-display-title"><span class="settings-panel-title" id="word-timing-display-title">字词码</span>
 <div class="multi-subtitle-setting-row" id="word-timing-row-height-setting">
-          <span>字词码波形高度</span>
+          <span>自动适配高度</span>
           <select id="word-timing-row-height" title="启用字词时间码时使用的波形行高度">
             <option value="64">64 px</option>
             <option value="80">80 px</option>
@@ -867,7 +863,7 @@ __WAVEFORM_CSS__
           </select>
         </div>
 <div class="multi-subtitle-setting-row" id="word-timing-seconds-per-row-setting">
-          <span>字词码每行长度</span>
+          <span>自动适配每行长度</span>
           <select id="word-timing-seconds-per-row" title="启用字词时间码时使用的波形每行长度">
             <option value="2">2 秒</option>
             <option value="5" selected>5 秒</option>
@@ -876,11 +872,19 @@ __WAVEFORM_CSS__
             <option value="30">30 秒</option>
           </select>
         </div>
-<small class="settings-panel-hint">启用字词时间码时自动切换到这些值；关闭后恢复原来的行高与每行长度。</small>
+<small class="settings-panel-hint">启用字词时间码时，仅在当前行高或每行长度小于预设值时增大；关闭后恢复原值。</small>
 </div>
 </div></div>
 <div class="editor-settings-page" id="editor-settings-page-multi-subtitle" role="tabpanel" aria-labelledby="editor-settings-tab-multi-subtitle" hidden><span class="editor-settings-group-heading" id="project-multi-settings-title">双语字幕</span>
 <div class="editor-settings-group" role="group" aria-labelledby="project-multi-settings-title">
+<div class="editor-settings-sub-group multi-subtitle-mode-controls">
+  <label class="toggle editor-settings-item multi-subtitle-main-toggle project-track-toggle" id="multi-subtitle-toggle-label"
+         title="开启后显示副字幕轨，可手动添加或导入第二条字幕。">
+    <input type="checkbox" id="multi-subtitle-toggle" title="开启后显示副字幕轨，可手动添加或导入第二条字幕。">
+    双语字幕
+  </label>
+  <small class="multi-subtitle-empty-hint" id="multi-subtitle-empty-hint" hidden title="在波形副轨空白处右键创建副字幕，或从下方「字幕管理」导入 SRT。">副轨为空，可手动添加或导入</small>
+</div>
 <div class="settings-panel-section multi-subtitle-settings-section multi-subtitle-display-inline" role="group" aria-label="显示">
 <div class="multi-subtitle-setting-row">
           <span>字幕列表显示</span>
@@ -891,7 +895,7 @@ __WAVEFORM_CSS__
           </select>
         </div>
 <div class="multi-subtitle-setting-row" id="multi-subtitle-extension-row-height-setting">
-          <span>双语波形高度</span>
+          <span>自动适配高度</span>
           <select id="multi-subtitle-extension-row-height" title="启用双语字幕时使用的波形行高度">
             <option value="64">64 px</option>
             <option value="80">80 px</option>
@@ -905,7 +909,7 @@ __WAVEFORM_CSS__
 <label class="multi-subtitle-setting-toggle" title="在双语字幕波形中显示主字幕和副字幕的轨道编号徽标">
           <input type="checkbox" id="multi-subtitle-show-track-badges"> 显示轨道徽标
         </label>
-<small class="settings-panel-hint">双语开启时使用此行高；单轨行高在波形设置中配置。</small>
+<small class="settings-panel-hint">双语开启时，仅在当前行高小于预设值时增大；关闭后恢复原值。单轨行高在波形设置中配置。</small>
 </div>
 <div class="settings-panel-section multi-subtitle-settings-section" role="group" aria-labelledby="multi-settings-link-title"><span class="settings-panel-title" id="multi-settings-link-title">联动</span>
 <label class="multi-subtitle-setting-toggle" title="拖动副字幕时，允许吸附到主字幕轨道的起点和终点">
