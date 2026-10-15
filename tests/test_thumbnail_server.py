@@ -128,6 +128,36 @@ class ThumbnailServerTests(unittest.TestCase):
             self.assertEqual(self.status()['state'],'ready')
             decode.assert_not_called()
 
+    def test_project_payload_reports_base_readiness(self):
+        self.assertFalse(self.server.project_binding_payload()["thumbnailBaseReady"])
+        from maw.thumbnail_jobs import build_base
+        build_base(self.media)
+        self.assertTrue(self.server.project_binding_payload()["thumbnailBaseReady"])
+
+    def test_cache_only_demand_reads_without_decoding(self):
+        from maw import thumbnails
+        with mock.patch.object(thumbnails, 'extract_frames', side_effect=AssertionError('cache-only demand decoded')) as decode:
+            self.demand(decode=False)
+            started = time.monotonic()
+            while time.monotonic() < started+10:
+                status = self.status()
+                if status['state'] in ('partial', 'ready'):
+                    break
+                self.assertNotEqual(status['state'], 'error', status.get('error'))
+                time.sleep(.05)
+            self.assertIn(self.status()['state'], ('partial', 'ready'))
+            self.assertTrue(all(sample.get('asset') is None for sample in self.status()['samples']))
+            self.demand(view=2, decode=False)
+            time.sleep(.3)
+            decode.assert_not_called()
+            manager = self.server.thumbnail_jobs
+            self.assertTrue(all(item.get('decode') is False for item in manager.leases.values()))
+            self.assertFalse(manager.coordinator.paused(manager.identity, background=True),
+                             'cache-only views must not pause the Launcher base build')
+        self.demand(view=3, decode=True)
+        status = self.ready()
+        self.assertTrue(any(sample['status'] == 'target' for sample in status['samples']))
+
     def test_token_host_origin_paths_and_bounds(self):
         body={'binding':self.binding,'client_id':'test','requestToken':self.server.request_token}
         for change,headers,expected in (({'requestToken':'bad'},None,403),

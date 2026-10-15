@@ -77,17 +77,19 @@ test('point markers and drag previews stay 8px across zoom; regions stop auditio
   expect(stopped).toBeLessThan(3.55);
 });
 
-test('single-row filmstrip fits the viewport and bilingual settings keep measured spacing', async ({ page }) => {
+for (const thumbnailMode of ['strip', 'marks']) {
+test(`single-row ${thumbnailMode} thumbnails fit the viewport and bilingual settings keep measured spacing`, async ({ page }) => {
   await load(page);
   await page.setViewportSize({ width: 1100, height: 680 });
-  await page.evaluate(() => {
+  await page.evaluate(mode => {
     const editor = MaweCoreState.waveformEditor;
     // Isolate layout from cache/server state; thumbnail lifecycle is tested by its module.
     editor.thumbnailController.close();
-    editor.thumbnailController = { visible: true, enabled: true, interval: 1000, state: 'ready',
-      setView() {}, picture() { return null; }, setPlayhead() {}, setPlaying() {}, close() {} };
+    editor.thumbnailController = { visible: true, enabled: true, mode, decodeEnabled: true, interval: 1000, state: 'ready',
+      setView() {}, picture() { return null; }, keyframesInRange() { return []; },
+      setPlayhead() {}, setPlaying() {}, close() {} };
     editor.render();
-  });
+  }, thumbnailMode);
   const geometry = await page.evaluate(() => {
     const editor = MaweCoreState.waveformEditor;
     const viewport = editor.scroll.getBoundingClientRect();
@@ -115,6 +117,7 @@ test('single-row filmstrip fits the viewport and bilingual settings keep measure
   await page.locator('#project-settings-panel').screenshot({ path: test.info().outputPath('bilingual-settings.png') });
   await closeSettingsPanels(page);
 });
+}
 
 test('compact timed-word sentences retain their selected outline', async ({ page }) => {
   await load(page);

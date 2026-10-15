@@ -72,7 +72,8 @@ export function findFreePort() {
     srv.on('error', reject);
     srv.listen(0, '127.0.0.1', () => {
       const port = srv.address().port;
-      srv.close(() => resolve(port));
+      // Fetch and Chromium reject the X11 port even when TCP binding succeeds.
+      srv.close(() => port === 6000 ? findFreePort().then(resolve, reject) : resolve(port));
     });
   });
 }

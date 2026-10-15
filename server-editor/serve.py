@@ -1236,7 +1236,21 @@ class EditorServer(ThreadingHTTPServer):
             "bindingGeneration": self.binding_generation,
             "sourceMediaId": self.source_media_id,
             "thumbnailBinding": f"{self.binding_generation}:{self.source_media_id}",
+            # A valid persisted base cache means the Launcher stage ran with
+            # thumbnails enabled; without one the editor keeps its display
+            # toggle off by default so opening a project never starts decoding.
+            "thumbnailBaseReady": self._thumbnail_base_ready(),
         }
+
+    def _thumbnail_base_ready(self) -> bool:
+        from maw import thumbnail_cache
+        path = self.thumbnail_jobs.path
+        if not path:
+            return False
+        try:
+            return thumbnail_cache.has_cached_frames(path)
+        except (OSError, ValueError):
+            return False
 
     def project_binding_payload(self) -> dict[str, object]:
         with self.settings_lock:
