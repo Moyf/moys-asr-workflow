@@ -559,7 +559,7 @@
     '切点数据超出分析范围，未确认安全入口': 'The cut-point data exceeded the analysis limit; a safe entry was not confirmed',
     '显示与解码边界交叠，保留该区间': 'Display and decoding boundaries overlap; this interval was retained',
     '对齐安全关键帧后仍保留部分空隙': 'Alignment to safe keyframes retained part of the gap',
-    '多个视频流没有共同安全切点': 'The video streams do not share a safe cut point',
+    '未找到可用的安全切点': 'No usable safe cut point was found',
     '未提供具体原因': 'No specific reason was provided',
     '暂未提供源区间详情': 'Source interval details are not available yet',
     '仅展示部分明细，计数包含全部空隙。': 'Only some details are shown; the counts include all gaps.',

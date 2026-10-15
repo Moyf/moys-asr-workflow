@@ -578,13 +578,15 @@ document.getElementById('download-gap-removed-video')?.addEventListener('click',
     read_error: '读取媒体信息失败',
     ambiguous_nal_length: '无法确认视频数据单元边界',
     unsupported_lacing: '当前媒体包布局暂不支持安全切点分析',
+    unsupported_packet_transform: '当前媒体包布局暂不支持安全切点分析',
+    container_element_limit: '切点数据超出分析范围，未确认安全入口',
     payload_position_unverified: '无法确认视频数据位置',
     point_budget_exhausted: '已达到分析预算，部分切点尚未确认',
     budget_exhausted: '已达到分析预算，部分切点尚未确认',
     nal_limit: '切点数据超出分析范围，未确认安全入口',
     display_boundary_overlap: '显示与解码边界交叠，保留该区间',
     keyframe_alignment: '对齐安全关键帧后仍保留部分空隙',
-    no_common_video_boundary: '多个视频流没有共同安全切点',
+    no_common_video_boundary: '未找到可用的安全切点',
   };
   const updateRemovalDiagnostics = state => {
     if (!removalSummary) return;
