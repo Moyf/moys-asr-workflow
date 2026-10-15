@@ -48,3 +48,18 @@
   关键帧密度，与片长档位解耦（维护者指出的 10s 网格残留约束已消除）。
   验证：Python 定向 75 项 + 全量 2324 项、node 20 项、e2e 4 项、全部构建与
   规范检查通过。
+- 2026-10-16 续 4：**PR #242 评审（Request changes）6 条行内意见全部属实并修复**：
+  ① 旧识别预设因 BOOL_FIELDS 新字段被整体拒绝加载 → `validate_options` 补
+  `generateThumbnails` 缺省 False（沿用 qwenAudioKeepDialect 迁移模式）+ 旧文件回归测试；
+  ② marks 模式标记图片不进 preload/保护/重绘链路 → preload 候选并入 keyframesData、
+  加载完成 repaint 匹配范围扩展；③ 标记资源缺元数据声明（响应 5 标记仅 2 assets）→
+  标记资产并入 assets 字典（前端可下载 + `_snapshot` pin 覆盖防回收）；
+  ④ 持有回退窗口下界排除远前置地标（视口越过末关键帧返回空）→ 拆分「跨度内标记」
+  与「≤ 首目标的最近前帧」两段查询；⑤ 4000 格上限在生成后才执行 → 抽稀移到规划期
+  （封包扫描后、解码前 select 抽稀），探测分块共享整体 deadline；⑥ 关键帧阶段绕过
+  播放优先调度 → `build_base` 注入暂停感知的 keyframe_extract（watcher + before_batch
+  等待 + 暂停中断后重试），播放/可见需求期间关键帧 ffmpeg 让位。
+  另：评审复现的「双扫描不一致」（负载下 ffprobe 排空静默丢包，合法 JSON 内缺包）
+  → 关键帧扫描每分块两遍取并集；Ruff 未用 bisect 导入移除。send2trash 已在
+  pyproject 声明（工程自动备份设置时加入），评审者/维护者环境属未 uv sync 的正常情况。
+  验证：Python 定向 93 项 + 全量 2327 项、node 21 项、e2e 4 项、ruff 全绿。

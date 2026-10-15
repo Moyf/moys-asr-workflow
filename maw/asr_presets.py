@@ -58,6 +58,8 @@ def validate_options(options: object) -> dict:
         # only inject the default when the field is missing.
         options = dict(options)
         options.setdefault("qwenAudioKeepDialect", False)
+        # Presets saved before the two-tier picture cache predate this switch.
+        options.setdefault("generateThumbnails", False)
         # Older presets stored per-provider prompt/context fields; they all map
         # to the single shared promptContext value now.
         options["promptContext"] = "\n".join(dict.fromkeys(

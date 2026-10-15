@@ -182,7 +182,9 @@ export function createThumbnailModule(dependencies) {
         // An oversized active view reduces image admission instead of thrashing its own assets.
         if (imageBytes + bytes > IMAGE_BUDGET) { imageCapacityFailures.add(key); return; }
         images.set(key, {image: bitmap, bytes, url: blobUrl});
-        imageBytes += bytes; bitmap = null; blobUrl = ''; evict(); repaint(sampleRanges([...samples, ...fallbackSamples].filter(candidate => imageKey(candidate) === key)));
+        imageBytes += bytes; bitmap = null; blobUrl = ''; evict();
+        const matches = [...samples, ...fallbackSamples, ...keyframesData].filter(candidate => imageKey(candidate) === key);
+        repaint(sampleRanges(matches));
       } catch (_) { if (!abort.signal.aborted) imageFailures.add(key); }
       finally {
         browser.clearTimeout(timeout);
@@ -198,23 +200,24 @@ export function createThumbnailModule(dependencies) {
     }
     function preload() {
       if (!active() || networkSuspended) return;
-      // Limit asset reads to this view, including the bounded neighbouring placeholder range.
+      // Limit asset reads to this view, including the bounded neighbouring
+      // placeholder range. Keyframe markers need their own images even when
+      // they do not coincide with a requested grid cell.
       const nearby = preloadRanges;
+      const inView = entry => nearby.some(range => entry.requested_ms >= range.start_ms - demand.interval_ms * 2
+          && entry.requested_ms < range.end_ms + demand.interval_ms * 2);
+      const entries = [...samples.filter(sample => typeof sample.asset === 'string'), ...keyframesData];
       protectedKeys.clear();
-      for (const sample of samples) {
-        if (typeof sample.asset !== 'string') continue;
-        if (nearby.some(range => sample.requested_ms >= range.start_ms - demand.interval_ms * 2
-            && sample.requested_ms < range.end_ms + demand.interval_ms * 2)) protectedKeys.add(imageKey(sample));
+      for (const entry of entries) {
+        if (inView(entry)) protectedKeys.add(imageKey(entry));
       }
       for (const key of imageQueue.keys()) { if (!protectedKeys.has(key)) imageQueue.delete(key); }
-      for (const sample of samples) {
-        if (typeof sample.asset !== 'string') continue;
-        if (!nearby.some(range => sample.requested_ms >= range.start_ms - demand.interval_ms * 2
-            && sample.requested_ms < range.end_ms + demand.interval_ms * 2)) continue;
-        const key = imageKey(sample);
+      for (const entry of entries) {
+        if (!inView(entry)) continue;
+        const key = imageKey(entry);
         if (images.has(key) || imageQueue.has(key) || imagePending.has(key) || imageFailures.has(key)
             || imageCapacityFailures.has(key)) continue;
-        if (imageQueue.size < 64) imageQueue.set(key, sample);
+        if (imageQueue.size < 64) imageQueue.set(key, entry);
       }
       drainImages();
     }

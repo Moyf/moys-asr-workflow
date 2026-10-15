@@ -209,6 +209,47 @@ class ThumbnailIntegrationTests(unittest.TestCase):
         from maw.thumbnail_cache import _jpeg_dimensions
         self.assertEqual(_jpeg_dimensions(frames[1].jpeg), (160, 90))
 
+    def test_keyframe_extraction_decimates_dense_sources_during_planning(self):
+        path = self.root / "dense.mp4"
+        subprocess.run(["ffmpeg", "-nostdin", "-v", "error", "-f", "lavfi",
+                        "-i", "testsrc2=size=320x180:rate=24:duration=2", "-c:v", "libx264",
+                        "-g", "1", "-threads", "2", "-y", str(path)], check=True, capture_output=True, timeout=15)
+        video = t.probe_video(path)
+        scanned = set()
+        for _pass in range(2):
+            scanned.update(t._packet_times(path, video, 0.0, video.duration_ms / 1000, timeout_s=30, cancel=None)[1])
+        scanned = sorted(scanned)
+        frames = t.extract_keyframes(path, info=video, max_cells=10)
+        stride = -(-len(scanned) // 10)
+        expected = [round(value * 1000) for value in scanned[::stride]]
+        self.assertEqual([frame.requested_ms for frame in frames], expected,
+            "decimation is decided during planning from the packet scan")
+        self.assertLessEqual(len(frames), 10)
+        self.assertEqual(frames[0].requested_ms, 0)
+
+    def test_keyframe_stage_yields_to_visible_demand(self):
+        import os
+        path = self.root / "yield.mp4"
+        subprocess.run(["ffmpeg", "-nostdin", "-v", "error", "-f", "lavfi",
+                        "-i", "testsrc2=size=320x180:rate=2:duration=4", "-c:v", "libx264",
+                        "-g", "2", "-threads", "2", "-y", str(path)], check=True, capture_output=True, timeout=15)
+        from maw.thumbnail_jobs import ThumbnailCoordinator, build_base, source_key
+        with tempfile.TemporaryDirectory() as cache_dir:
+            directory = Path(cache_dir)
+            with mock.patch.dict(os.environ, {"MAW_APP_DATA_ROOT": str(directory / "app")}):
+                coordinator = ThumbnailCoordinator(Path(directory) / "jobs.sqlite3")
+                coordinator.lease("blocker", source_key(path), visible=True)
+                messages = []
+                manifest = build_base(path, coordinator=coordinator, exact=False,
+                    timeout_s=1.5, progress=messages.append)
+                self.assertEqual(manifest["keyframe_count"], 0,
+                    "a visible demand blocks the keyframe pass instead of competing")
+                self.assertTrue(any("关键帧底图" in message for message in messages))
+                coordinator.release("blocker")
+                manifest = build_base(path, coordinator=coordinator, exact=False, progress=messages.append)
+                self.assertEqual(manifest["tier"], "keyframes")
+                self.assertGreater(manifest["keyframe_count"], 0, "released demand lets the pass finish")
+
     def test_keyframe_base_registers_previews_and_upgrades_to_exact(self):
         import os
         path = self.root / "tiered.mp4"
@@ -245,6 +286,12 @@ class ThumbnailIntegrationTests(unittest.TestCase):
                 by_refined = {sample["requested_ms"]: sample for sample in refined["samples"]}
                 self.assertEqual(by_refined[2000]["status"], "target")
                 self.assertEqual(by_refined[2000]["actual_pts_ms"], 2000)
+                marker_assets = {marker["asset"] for marker in served["keyframes"]}
+                self.assertTrue(marker_assets <= {a["id"] for a in served["assets"]},
+                    "every marker image is declared in the response assets")
+                held = cache.sample_manifest(path, [2500, 2800])
+                self.assertEqual([sample["actual_pts_ms"] for sample in held["samples"]], [2000, 2000],
+                    "a landmark-free span still holds the nearest preceding landmark")
                 self.assertEqual([marker["requested_ms"] for marker in refined["keyframes"]], window,
                     "landmarks survive exact refinement")
 

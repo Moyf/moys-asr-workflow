@@ -150,6 +150,21 @@ test('keyframe marks mode never joins a decode batch and still reads cached samp
   h.controller.close();
 });
 
+test('marks mode preloads keyframe images that grid samples do not reference',async()=>{
+  const h=harness();
+  const markers=[0,500,1000,1500,2000];
+  h.respond(call=>manifest(call,{
+    samples:[{requested_ms:0,actual_pts_ms:0,status:'preview',asset:'kf0',crop_rect:[0,0,160,90],cache_revision:'r1'},
+      {requested_ms:2000,actual_pts_ms:2000,status:'preview',asset:'kf2000',crop_rect:[0,0,160,90],cache_revision:'r1'}],
+    keyframes:markers.map(ms=>({requested_ms:ms,actual_pts_ms:ms,status:'preview',asset:`kf${ms}`,crop_rect:[0,0,160,90],cache_revision:'r1'}))}));
+  h.controller.setBinding('video-a'); await h.flush();
+  h.controller.setMode('marks');
+  h.controller.setView([{start:0,end:10000,width:1000}],20000); await h.advance(200);
+  const loaded=new Set(h.calls.filter(call=>call.url.includes('/asset/')).map(call=>decodeURIComponent(call.url.split('/asset/')[1].split('?')[0])));
+  for(const marker of markers)assert.ok(loaded.has(`kf${marker}`),`marker image kf${marker} is requested`);
+  h.controller.close();
+});
+
 test('picture exposes the held frame position for marks deduplication',async()=>{
   const h=harness();
   h.respond(call=>manifest(call,{samples:[{requested_ms:2000,actual_pts_ms:1500,status:'preview',asset:'held',crop_rect:[0,0,160,90],cache_revision:'r1'}]}));

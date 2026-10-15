@@ -4,7 +4,6 @@ Decode flights belong to thumbnail_jobs and enter through coordination hooks.
 """
 from __future__ import annotations
 
-import bisect
 import contextlib
 import hashlib
 import json
@@ -36,7 +35,6 @@ MAX_MANIFEST_BYTES = 16 * 1024 * 1024
 MAX_ASSET_BYTES = 2 * 1024 * 1024
 MAX_SIDECAR_BYTES = 512 * 1024 * 1024
 MAX_SAMPLES = 250_000
-MAX_KEYFRAME_CELLS = 4000
 MAX_INDEX_BYTES = 32 * 1024 * 1024
 BASE_GENERATION_BYTES = 64 * 1024 * 1024
 _lock = threading.RLock()
@@ -841,12 +839,18 @@ def sample_manifest(media_path: Path | str, requested_ms: Sequence[int], *, stre
         local = {target: frame for (owner, target), frame in _session.items() if owner == key}
     local.update(persistent)
     assets = {a["id"]: a for a in base["assets"]} if base else {}
-    # Keyframe-tier previews live at their own keyframe PTS. Grid requests hold
-    # the nearest preceding one; marks-mode clients draw the raw markers.
+    # Keyframe-tier landmarks live at their own keyframe PTS. Grid requests
+    # hold the nearest preceding landmark (even far back in long-GOP films or
+    # after decimation); marks-mode clients draw the in-span markers directly.
     if requested_ms:
-        previews = _persistent_markers(key, max(0, min(requested_ms) - base_interval_ms(video.duration_ms)), max(requested_ms))
+        span_low, span_high = min(requested_ms), max(requested_ms)
+        in_span = _persistent_markers(key, span_low, span_high)
+        before = _persistent_markers(key, 0, span_low - 1) if span_low > 0 else []
+        nearest_before = before[-1] if before else None
+        previews = ([nearest_before] if nearest_before else []) + in_span
+        markers = in_span
     else:
-        previews = []
+        previews, markers = [], []
     for target in requested_ms:
         if target < video.video_start_ms:
             result["samples"].append(_sample(FrameResult(target, None, "unavailable", None), None))
@@ -873,9 +877,12 @@ def sample_manifest(media_path: Path | str, requested_ms: Sequence[int], *, stre
         if sample["asset"] and sample["asset"] not in assets:
             assets[sample["asset"]] = {"id": sample["asset"], "width": 160, "height": 90, "valid_count": 1}
     used = {s["asset"] for s in result["samples"] if s["asset"]}
-    if previews:
-        result["keyframes"] = list(previews)
-        used |= {row["asset"] for row in previews}
+    if markers:
+        result["keyframes"] = list(markers)
+        used |= {row["asset"] for row in markers}
+        for row in markers:
+            if row["asset"] not in assets:
+                assets[row["asset"]] = {"id": row["asset"], "width": 160, "height": 90, "valid_count": 1}
     result["assets"] = [asset for ident, asset in assets.items() if ident in used]
     result["persisted"] = key not in _write_disabled
     return result
@@ -995,7 +1002,7 @@ def _publish_base(path, manifest, blobs, media_path, *, cancel=None):
         Path(name).unlink(missing_ok=True)
 
 
-def load_or_build_base(media_path: Path | str, *, cancel=None, progress=None, batch_extract=None, before_batch=None, batch_pack=None, target_interval: int | None = None, ffmpeg_path: str | None = None, timeout_s: float = 1200, keyframes: bool = True, exact: bool = True, decode_threads: int = 2) -> dict:
+def load_or_build_base(media_path: Path | str, *, cancel=None, progress=None, batch_extract=None, before_batch=None, batch_pack=None, target_interval: int | None = None, ffmpeg_path: str | None = None, timeout_s: float = 1200, keyframes: bool = True, exact: bool = True, decode_threads: int = 2, keyframe_extract=None) -> dict:
     """Launcher grid generation with bounded staging and cancellable packing.
 
     The keyframe stage decodes only keyframes in one fast full-file pass and
@@ -1026,12 +1033,10 @@ def load_or_build_base(media_path: Path | str, *, cancel=None, progress=None, ba
         if progress:
             progress("[thumbnails] 正在生成关键帧底图……")
         try:
-            frames = extract_keyframes(media_path, stream_index=video.stream_index, cancel=cancel,
-                ffmpeg_path=ffmpeg_path, info=video, threads=decode_threads,
-                timeout_s=min(600, max(30, timeout_s)))
-            if len(frames) > MAX_KEYFRAME_CELLS:
-                stride = math.ceil(len(frames) / MAX_KEYFRAME_CELLS)
-                frames = frames[::stride]
+            frames = (keyframe_extract() if keyframe_extract is not None else
+                extract_keyframes(media_path, stream_index=video.stream_index, cancel=cancel,
+                    ffmpeg_path=ffmpeg_path, info=video, threads=decode_threads,
+                    timeout_s=min(600, max(30, timeout_s))))
             if frames:
                 # Keyframes are stored at their own PTS: the marker tier keeps
                 # true keyframe density, and grid requests hold the nearest

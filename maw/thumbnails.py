@@ -18,6 +18,7 @@ from maw.gui_platform import creationflags, startupinfo
 IMAGE_SPEC = {"width": 160, "height": 90, "encoding": "jpeg", "fit": "contain", "rotation": "auto", "sar": "display"}
 MAX_BATCH_TARGETS = 16
 MAX_BATCH_SPAN_MS = 30_000
+MAX_KEYFRAME_CELLS = 4000
 
 
 class ThumbnailError(RuntimeError):
@@ -280,12 +281,13 @@ def extract_frames(media_path: Path | str, requested_ms: Sequence[int], *, strea
     return [output[t] for t in values]
 
 
-def extract_keyframes(media_path: Path | str, *, stream_index: int | None = None, cancel: threading.Event | None = None, timeout_s: float = 600, ffmpeg_path: str | None = None, info: VideoInfo | None = None, threads: int = 2) -> list[FrameResult]:
+def extract_keyframes(media_path: Path | str, *, stream_index: int | None = None, cancel: threading.Event | None = None, timeout_s: float = 600, ffmpeg_path: str | None = None, info: VideoInfo | None = None, threads: int = 2, max_cells: int = 4000) -> list[FrameResult]:
     """Decode only keyframes in one full-file pass and stamp their real PTS.
 
     Keyframes decode independently, so a whole film costs a small fraction of
     the exact-grid pass. Frames land on their own presentation timestamps; the
-    cache maps them onto the display grid as held preview cells.
+    cache holds them onto display grids at render time. Dense sources are
+    decimated to ``max_cells`` during planning, before any FFmpeg work.
     """
     video = info or probe_video(media_path, cancel=cancel, ffmpeg_path=ffmpeg_path)
     if video is None:
@@ -298,20 +300,30 @@ def extract_keyframes(media_path: Path | str, *, stream_index: int | None = None
     source_stat = Path(media_path).stat()
     source_identity = (source_stat.st_size, source_stat.st_mtime_ns)
     begin_s, end_s = video.start_ms / 1000, (video.start_ms + video.duration_ms) / 1000
+    deadline = time.monotonic() + timeout_s
     keyframe_times: set[float] = set()
     chunk_s = 300.0
-    position = begin_s
-    while position < end_s:
-        _, keyframes = _packet_times(media_path, video, position, min(position + chunk_s, end_s), timeout_s=timeout_s, cancel=cancel, ffmpeg_path=ffmpeg_path)
-        keyframe_times.update(keyframes)
-        position += chunk_s
+    # Under heavy load the ffprobe drain has been observed to silently drop
+    # packets from an otherwise valid JSON payload. Two unioned passes make a
+    # dropped landmark require two independent losses in the same window.
+    for _pass in range(2):
+        position = begin_s
+        while position < end_s:
+            _, keyframes = _packet_times(media_path, video, position, min(position + chunk_s, end_s), timeout_s=max(1.0, deadline - time.monotonic()), cancel=cancel, ffmpeg_path=ffmpeg_path)
+            keyframe_times.update(keyframes)
+            position += chunk_s
     stamps = sorted(keyframe_times)
     if not stamps:
         return []
+    stride = 1
+    if len(stamps) > max_cells:
+        stride = math.ceil(len(stamps) / max_cells)
+        stamps = stamps[::stride]
     with tempfile.TemporaryDirectory(prefix="maw-keyframes-") as temp:
-        vf = "scale=w='trunc(min(160/iw/sar,90/ih)*iw*sar/2)*2':h='trunc(min(160/iw/sar,90/ih)*ih/2)*2',setsar=1,pad=160:90:(ow-iw)/2:(oh-ih)/2"
+        decimate = f"select='not(mod(n\\,{stride}))'," if stride > 1 else ""
+        vf = decimate + "scale=w='trunc(min(160/iw/sar,90/ih)*iw*sar/2)*2':h='trunc(min(160/iw/sar,90/ih)*ih/2)*2',setsar=1,pad=160:90:(ow-iw)/2:(oh-ih)/2"
         command = [str(tool), "-hide_banner", "-nostdin", "-v", "error", "-skip_frame", "nokey", "-threads", str(threads), "-filter_threads", "1", "-i", str(media_path), "-map", f"0:{video.stream_index}", "-an", "-sn", "-dn", "-vf", vf, "-fps_mode", "passthrough", "-q:v", "5", "-pix_fmt", "yuvj420p", "-y", str(Path(temp) / "%06d.jpg")]
-        result = _run(command, timeout_s=timeout_s, cancel=cancel)
+        result = _run(command, timeout_s=max(1.0, deadline - time.monotonic()), cancel=cancel)
         if result.returncode:
             raise ThumbnailError(result.stderr.decode("utf-8", "replace")[-500:])
         files = sorted(Path(temp).glob("*.jpg"))

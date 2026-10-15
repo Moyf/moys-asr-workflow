@@ -268,9 +268,44 @@ def build_base(path, *, cancel=None, progress=None, ffmpeg_path=None, coordinato
         return coordinated_pack(path, jpegs, coordinator=coordinator, before_batch=before_batch,
                                 ffmpeg_path=ffmpeg_path, **kwargs)
 
+    def keyframe_extract():
+        """Pause-aware keyframe pass; playback and visible demand win."""
+        from maw import thumbnails
+        kf_cancel = threading.Event()
+        done = threading.Event()
+
+        def watch():
+            while not done.wait(.05):
+                try:
+                    obsolete = source_key(path) != identity
+                    paused = coordinator.paused(identity, background=True)
+                except (OSError, sqlite3.Error):
+                    obsolete, paused = True, False
+                if obsolete or paused or (cancel is not None and cancel.is_set()):
+                    kf_cancel.set()
+                    return
+
+        watcher = threading.Thread(target=watch, name="thumbnail-keyframe-cancel", daemon=True)
+        watcher.start()
+        try:
+            while True:
+                before_batch([])
+                try:
+                    return thumbnails.extract_keyframes(path, cancel=kf_cancel, threads=threads,
+                        timeout_s=min(600, max(30, deadline - time.monotonic())))
+                except thumbnails.ThumbnailCancelled:
+                    if cancel is not None and cancel.is_set():
+                        raise
+                    # Paused mid-pass or superseded: before_batch waits for the
+                    # winner, then the pass retries within the same deadline.
+        finally:
+            done.set()
+            watcher.join(.2)
+
     return thumbnail_cache.load_or_build_base(path, cancel=cancel, progress=progress,
         before_batch=before_batch, batch_extract=extract, batch_pack=pack,
-        ffmpeg_path=ffmpeg_path, timeout_s=timeout_s, exact=exact, decode_threads=threads)
+        ffmpeg_path=ffmpeg_path, timeout_s=timeout_s, exact=exact, decode_threads=threads,
+        keyframe_extract=keyframe_extract)
 
 
 def plan_targets(ranges, interval, duration, representatives=(), playhead=None):
