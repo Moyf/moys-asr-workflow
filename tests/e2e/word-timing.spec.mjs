@@ -349,9 +349,11 @@ test('conversion reviews skips and bindings, is atomic and preserves items on sa
   await page.locator('.word-timing-advanced > .item').first().click();
   await page.locator('.word-timing-advanced .danger').click();
   await expect(page.locator('#word-conversion-summary')).toContainText('将转换1句，生成2条新的字幕（跳过2句，解除1个副字幕绑定）');
-  await expect(page.locator('#word-conversion-warning')).toHaveText('可通过撤销恢复；不提供反向转换工具。');
+  await expect(page.locator('#word-conversion-warning')).toHaveCount(0);
+  await expect(page.locator('#word-conversion-undo')).toHaveText('如果不满意可以撤销，或者多选字幕块后重新合并。');
+  expect(await page.locator('#word-conversion-summary').evaluate((el) => parseFloat(getComputedStyle(el).fontSize))).toBeGreaterThanOrEqual(15);
   await page.evaluate(() => MAWE_I18N.applyLanguage('en'));
-  await expect(page.locator('#word-conversion-warning')).toHaveText('You can undo this conversion; no reverse-conversion tool is provided.');
+  await expect(page.locator('#word-conversion-undo')).toHaveText('You can undo the result or select multiple subtitle blocks and merge them again.');
   await page.evaluate(() => MAWE_I18N.applyLanguage('zh'));
   await expect(page.locator('#word-conversion-skipped')).toContainText('文字未被完整覆盖');
   const spacing = await page.locator('.word-conversion-actions').evaluate(el => ({
