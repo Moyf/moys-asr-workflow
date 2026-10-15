@@ -82,11 +82,11 @@ class MediaJob:
                     "cleanupError": self.cleanup_error, "cleanupErrorDetails": self.cleanup_error_details,
                     "cleanupComplete": self.disposed}
 
-    def run_command(self, command, *, timeout=120, duration_ms=None):
+    def run_command(self, command, *, timeout=120, duration_ms=None, cwd=None):
         """Drain both pipes while observing cancellation and FFmpeg progress."""
         self.check_cancelled()
         process = popen_process_tree(command, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
-                                   text=True, encoding="utf-8", errors="replace",
+                                   text=True, encoding="utf-8", errors="replace", cwd=cwd,
                                    **process_group_kwargs())
         with self.manager.lock:
             self.process = process
@@ -224,7 +224,7 @@ class MediaJobManager:
             if self.active and self.active.cleanup_error:
                 self._dispose(self.active)
             if not self.slot.acquire(blocking=False):
-                raise MediaJobBusy("另一个媒体重组任务正在进行，请完成或停止后再试")
+                raise MediaJobBusy("另一个媒体导出任务正在进行，请完成或停止后再试")
             try:
                 job = MediaJob(self, source, binding, intervals, output_extension=output_extension)
             except BaseException:

@@ -214,6 +214,7 @@ class EditorAssetContractTests(CompactContainerAssertions, unittest.TestCase):
                 "editor/media/editor-wiring-sticker-preview.js",
                 "editor/io/editor-wiring-export-context.js",
                 "editor/io/editor-wiring-export-actions.js",
+                "editor/io/editor-wiring-burn-video.js",
                 "editor/ui/editor-wiring-toolbar-menus.js",
                 "editor/io/editor-wiring-project-inputs.js",
                 "editor/media/editor-wiring-media-inputs.js",
