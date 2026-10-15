@@ -92,7 +92,7 @@
 | SRT 的 both 规则与嵌套 fade/shake | 已修复 | fade→shake；双语在逐句清理后直接序列化，避免跨句误配标记；15 种嵌套/规则及说话人回归，与 editor_utils 共 343 项通过，`.artifacts/checks/20261015T040836Z-6084e6c6/result.json` |
 | ASS 震动跨布局边界相位 | 已修复 | 事件在原句 60ms 相位边界或布局边界截断，保留 ASS 厘秒量化基准；3 项新增回归先失败，修复后震动/SRT 共 15/15 通过（逐毫秒唯一覆盖、非厘秒输入、move piece），`.artifacts/checks/20261015T041019Z-61329f8b/result.json`；真实帧补验待完成 |
 | 早期 aria-label 与离屏缓存 nit | 仅说明 | 动态节点由当前 i18n MutationObserver 翻译；无定位句现不显示坐标面板，旧缓存性能问题在当前交互中未触发，不扩大本轮范围 |
-| 验证、清单、提交与原 PR 推送 | 进行中 | 本轮范围验证已通过；清单与提交推送收尾，远端 CI 以最终 HEAD 实查 |
+| 验证、清单、提交与原 PR 推送 | 已修复 | 范围验证通过，统一 HTML 已生成；普通提交与推送至原分支成功，远端 SHA 一致；PR open、mergeable=true、未合并。远端 CI 单独查询，不计作本地通过 |
 
 真实素材、跨平台发行包、全量 e2e 与完整视频编码保持未验证；自动化、浏览器、远端 CI 分层记录。截图、核对 HTML 与原始输出只留 `.artifacts/pr231-completion/` 和 `.artifacts/checks/`。
 
@@ -116,4 +116,11 @@
 
 定位 spec 的横屏合成媒体改为 50fps，让 220ms / 340ms 对应真实帧 PTS；竖屏仍为 25fps。相位新夹具在变更文字和时间前先释放当前文本面板草稿，避免重新选择时将旧草稿提交覆盖测试设置。横竖屏九锚点共 18 组、另加重叠震动 220ms / 340ms 两组实际帧比较：Server libass 与导出包围盒差异 0px，Canvas 与导出最大差异 1px。移动方案仍按事件起点采样基准坐标，本轮只保证震动相位连续，不扩大为连续移动逐帧完全一致的承诺。
 
-合并后实测定位区行间距 8px、文本间距 12px；同窗口选中/定位/重置/取消选中时，编辑区高度 193px、视频高度 188.78125px，top 均不变。已查看定位控件截图。相关截图、布局 JSON 与真实帧证据在 `.artifacts/pr231-completion/final-e2e/` 和 `phase-recheck/`。未生成 `blank-editor.html`，内联副本待发布前统一重生成；未运行完整 Node/Python 全套、全量 e2e、跨平台发行包或完整视频编码。
+合并后实测定位区行间距 8px、文本间距 12px；同窗口选中/定位/重置/取消选中时，编辑区高度 193px、视频高度 188.78125px，top 均不变。已查看定位控件截图。相关截图、布局 JSON 与真实帧证据在 `.artifacts/pr231-completion/final-e2e/` 和 `phase-recheck/`。未生成 `blank-editor.html`，内联副本待发布前统一重生成；全量 Node 尝试未完成，未运行 Python 全套、全量 e2e、跨平台发行包或完整视频编码。
+
+### 本轮提交与远端交付
+
+- `123c8eff`：保存 main 整合及 CHANGELOG 冲突解决，父提交为 `ef77f758` 与 `1d961b90`；保留上游波形、字词码和颜色修复。
+- `60fe80595b8db0bbd658378e117c5cc4571e2845`：评论三项补修、回归测试和指南/官网同步。普通 push 到原 `codex/issue-226-ass-cue-position`；`git ls-remote` 与 GitHub API 均确认同一 SHA。API 确认 PR #231 仍为 open、未合并、mergeable=true。
+- 本段只追加交付记录；本轮清单表不再有待处理、进行中或代码阻塞项。真实素材及跨平台等未验证边界保持独立，远端 CI 以最终提交实时状态报告，不用先前提交状态代替。
+- 核对页由统一工具生成于 `.artifacts/pr231-completion/verification.html`，6 条人工项均保持未勾选；Codex 浏览器打开请求返回 queued，未将其记作已显示。没有启动额外长驻服务。
