@@ -75,6 +75,38 @@ for (const launcher of [false,true]) {
   });
 }
 
+test('cached thumbnails and timed words fit the single-row viewport together',async({page})=>{
+  const {server}=await fixture('complete');
+  try {
+    await disableOnboarding(page);
+    await page.goto(server.url);
+    await page.waitForFunction(()=>MaweCoreState.waveformEditor?.thumbnailController.bytes>0,null,{timeout:30000});
+    await page.evaluate(()=>{
+      MaweBoot.DATA.segments[0].items=[
+        {start:0,end:3500,text:'Synthetic'},
+        {start:3500,end:7000,text:'cache'},
+        {start:7000,end:11000,text:'navigation'},
+      ];
+    });
+    for(const viewport of [{width:1280,height:800},{width:900,height:600}]) {
+      await page.setViewportSize(viewport);
+      await page.locator('[data-waveform-mode="basic"]').click();
+      await page.evaluate(()=>MaweWordTiming.setEnabled(true));
+      await expect(page.locator('.waveform-filmstrip').first()).toBeVisible();
+      await expect.poll(()=>page.evaluate(()=>{
+        const editor=MaweCoreState.waveformEditor;
+        const viewport=editor.scroll.getBoundingClientRect();
+        const row=editor.renderedRows[0];
+        const shell=row._thumbnailShell.getBoundingClientRect();
+        const block=row.querySelector('.waveform-cue-block[data-track="main"]').getBoundingClientRect();
+        return Math.min(shell.top-viewport.top,viewport.bottom-shell.bottom,viewport.bottom-block.bottom);
+      })).toBeGreaterThanOrEqual(8);
+      await expect(page.locator('.waveform-word-block').first()).toBeVisible();
+      await page.locator('.waveform-pane').screenshot({path:test.info().outputPath(`cached-single-${viewport.width}.png`)});
+    }
+  } finally {await server.stop();}
+});
+
 test('partial sidecar is displayed and missing cells are filled by the real worker',async({page})=>{
   const {server}=await fixture('partial');
   try {
