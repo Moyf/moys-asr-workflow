@@ -37,6 +37,25 @@
   随 ASS 开关即时同步（设置加载路径 editor-wiring-settings-init / editor-project-settings 也经此函数覆盖）。
 - i18n：按钮文案「烧录视频」；e2e 新增显隐测试（assMode 关 → 隐藏，开 → 显示，能力位关闭 → 隐藏）。
 
+## 核对清单工具化（第三轮，同日；提交至 main，不经 PR）
+
+把本任务的人工核对清单沉淀为可复用工具链（`tools/verification-checklist/`）：
+
+- **Markdown 源格式（v1）**：清单源文件为带 YAML front-matter 的 Markdown（task/pr/date/status），
+  agent 只写 MD；`build.py --data *.md` 与 JSON 同一套校验，`--check` 只校验，
+  `--to-md` 做 JSON→MD（`--meta` 写 front-matter），`--scan` 汇总核验状态。
+  check 行 ID 放行尾 `<!-- id: -->`、分区 ID 为标题下注释行（GitHub 渲染不可见）；
+  note 行首标记符转义（`\-`、`1\.` 等）。JSON→MD→HTML 与 JSON→HTML 逐字节一致（已验证）。
+- **HTML 页面导出**：新增「导出 Markdown」「复制 Markdown」（与导出 JSON 并排且更靠前），
+  产出核对结果快照（任务列表勾选态 + 引用行备注 + 行尾核对项 ID；被忽略分组标注）。
+  `buildResult` 抽取共享；按钮随「无可导出项」禁用同步。
+- **文档与技能**：工具 README 重写（MD 契约 + 工作流）、skill `verification-checklist` 改为
+  MD-first、根 AGENTS.md「批量改动的人工核查清单」更新为「agents 只写 Markdown」。
+- **本任务的实例**：`docs/logs/release1.9.0-beta.1/EDITOR_BURN_VIDEO.checklist.md`（status: pending），
+  与本台账并排；核验完成后回写 `- [x]` 与 status。
+- 存量问题确认：`tests/test_verification_checklist.py` 在 targeted run 下因裸 `from compact_assertions
+  import` 导入失败（git stash 基线复现，与本次无关；discover 全量模式下正常）。
+
 ## 任务清单
 
 | 状态 | 项 | 说明 |
