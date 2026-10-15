@@ -19,6 +19,17 @@
 
 当前日常编辑以 Server 为主。底层生成器与公开 CLI 的参数、默认输出不同，不应据某个生成器的帮助推断所有入口；区别见 [CLI](../user/CLI.md)。
 
+## 独立编辑入口的版本边界
+
+`maw/editor_entry_policy.py` 以 `pyproject.toml` 的应用主版本为准，打包环境缺少元数据时使用随发行同步的 `maw/diagnostics.py` 版本。1.x 保留过渡生成能力；从 2.0 的首个预发布版本开始，`.edit.html` / `blank-editor.html` 和在线编辑器停止生成、打包与维护。不能仅升级 UI 的版本文字；发布前运行版本同步检查。无法识别的版本按不支持独立入口处理。
+
+- `edit.py` 命令和 `build_blank_html()`、`render_editor_html()` 拒绝生成；公开 CLI 的显式 `--html` 在调用 ASR 前退出。生成器隐式生成及旧 Launcher 配置跳过 HTML，保留正常 SRT / 工程输出；`--no-html` 和 `--json` 继续接受。
+- `MAW.spec` 在 2.0+ 不收录仓库的 `blank-editor.html`；Windows、macOS、AppImage 共用这一清单。仓库旧文件留作历史，不自动删改，不再要求 2.0 发布重生成。
+- Pages 在网站构建后执行 `scripts/prepare_editor_pages.py`：1.x 可生成在线页面，2.0+ 不生成 `/editor/`，发现残留目录时失败，避免上传混合版本。此脚本不删除历史文件；重新构建网站后再执行。网站推荐入口集中到本地应用。
+- `render_editor_page()`、模板、bundle、文件导入、下载式保存降级、Server 保存、备份恢复和媒体导出供本地应用共用，继续保留。HTML 对比报告、人工核验页也不属于此次退役范围。
+
+切换实现不代表发布验收完成。发布 2.0 前仍需在最终集成版本验证：本地应用打开旧工程及媒体、新建/保存/取消/失败保护、备份恢复、字幕与媒体导出，以及三个平台安装包和 Pages 实际产物。历史 HTML 不承诺兼容新版工程；历史发行附件与用户副本保持原样。
+
 ## 数据与持久化
 
 | 数据 | 真源 / 位置 | 边界 |

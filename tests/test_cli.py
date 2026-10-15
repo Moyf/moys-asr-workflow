@@ -89,6 +89,7 @@ class CliTests(unittest.TestCase):
             self.assertIn("--no-html", generator_args)
             self.assertEqual(generator_args[generator_args.index("--output") + 1], str(srt.resolve()))
 
+    @mock.patch("maw.editor_entry_policy.app_version", new=lambda: "1.9.0")
     def test_html_option_renders_portable_editor_after_generator(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
             root = Path(temp_dir).resolve()

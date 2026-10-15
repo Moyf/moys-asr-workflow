@@ -19,7 +19,7 @@ MAW 把语音转写、波形校对、文稿整理和字幕导出接成一条工�
 
 默认通过云端 API 转写，需要准备服务商的 **API Key**，费用由服务商收取；编辑与工程保存在本机完成。实验性本地模型入口见[本地 ASR](../documentation-index/#user-local-asr)。
 
-[下载正式版](https://github.com/Moyf/moys-asr-workflow/releases/latest) · [官网](https://moyf.github.io/moys-asr-workflow/) · [在线编辑器](https://moyf.github.io/moys-asr-workflow/editor/) · [更新记录](https://moyf.github.io/moys-asr-workflow/releases/) · [3 分钟视频速览](https://www.bilibili.com/video/BV1hXum6yELT)
+[下载正式版](https://github.com/Moyf/moys-asr-workflow/releases/latest) · [官网](https://moyf.github.io/moys-asr-workflow/) · [更新记录](https://moyf.github.io/moys-asr-workflow/releases/) · [3 分钟视频速览](https://www.bilibili.com/video/BV1hXum6yELT)
 
 <img src="../../docs-assets/docs/assets/1.6.0/overlay-track.webp" alt="MAWE 编辑器：左侧视频与字幕列表，右侧多行波形和叠加字幕" loading="lazy" decoding="async" />
 

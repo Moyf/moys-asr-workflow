@@ -10,6 +10,8 @@ except ImportError:  # pragma: no cover - only reached outside a PyInstaller bui
     collect_submodules = lambda _package: []
 
 ROOT = Path(SPECPATH).resolve()
+sys.path.insert(0, str(ROOT))
+from maw.editor_entry_policy import standalone_editor_supported
 
 # bundle 是构建产物（不入库）：打包前必须先构建（build-windows.ps1 /
 # build-appimage.sh / release 工作流都会显式构建）。在这里 fail fast，
@@ -80,7 +82,6 @@ datas = [
     (str(ROOT / "LICENSE"), "."),
     (str(ROOT / "THIRD_PARTY_NOTICES.md"), "."),
     (str(ROOT / "FAQ-常见问题.txt"), "."),
-    (str(ROOT / "blank-editor.html"), "."),
     (str(ROOT / "assets" / "maw.ico"), "assets"),
     (str(ROOT / "assets" / "show.webp"), "assets"),
     (str(ROOT / "generate_subtitle_local.py"), "local-runtime"),
@@ -101,6 +102,8 @@ datas = [
     (str(ROOT / "maw" / "__init__.py"), "local-runtime/maw"),
     (str(ROOT / "maw" / "app_paths.py"), "local-runtime/maw"),
     (str(ROOT / "maw" / "console.py"), "local-runtime/maw"),
+    (str(ROOT / "maw" / "editor_entry_policy.py"), "local-runtime/maw"),
+    (str(ROOT / "maw" / "diagnostics.py"), "local-runtime/maw"),
     (str(ROOT / "maw" / "gui_platform.py"), "local-runtime/maw"),
     (str(ROOT / "maw" / "local_models.py"), "local-runtime/maw"),
     (str(ROOT / "maw" / "local_runtime.py"), "local-runtime/maw"),
@@ -186,6 +189,9 @@ datas = [
     (str(ROOT / "maw" / "script_alignment.py"), "ocr-runtime/maw"),
     (str(ROOT / "maw" / "waveform.py"), "ocr-runtime/maw"),
 ]
+if standalone_editor_supported():
+    datas.append((str(ROOT / "blank-editor.html"), "."))
+
 opencc_datas = collect_data_files("opencc")
 datas.extend(opencc_datas)
 # 托管 Runtime 依赖清单（CI 构建时由 maw/runtimes/freezer.py 生成，frozen

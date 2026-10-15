@@ -1,6 +1,6 @@
 import { expect, test } from '@playwright/test';
 import { join } from 'node:path';
-import { buildPortableBlankEditor, cleanupTempDir, disableOnboarding, findFreePort, generateProjectJson,
+import { buildBrowserEditorFixture, cleanupTempDir, disableOnboarding, findFreePort, generateProjectJson,
   generateWav, makeTempDir, openSettingsPage, startServer } from './helpers.mjs';
 
 let server;
@@ -13,7 +13,7 @@ test.beforeAll(async () => {
   const media = join(dir, 'synthetic.wav');
   generateProjectJson(project);
   generateWav(media, 300);
-  portable = buildPortableBlankEditor(join(dir, 'portable.html'));
+  portable = buildBrowserEditorFixture(join(dir, 'portable.html'));
   server = await startServer(project, media, await findFreePort());
 });
 test.afterAll(async () => { await server?.stop(); cleanupTempDir(tempDir); });
