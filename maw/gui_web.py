@@ -2103,7 +2103,7 @@ class LauncherApi:
             probe_path=EDITOR_HEALTH_PROBE_PATH,
             probe_timeout=EDITOR_HEALTH_PROBE_TIMEOUT,
         ) and (not json_text or not owned_server_running):
-            if json_text and str(payload.get("mediaPath") or "").strip():
+            if json_text:
                 return _error_result("port", "server_media_busy", "")
             return {"ok": True, "url": launch_url, "serverAlreadyRunning": True}
         if not json_text:

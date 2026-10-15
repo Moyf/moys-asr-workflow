@@ -17,9 +17,9 @@
     'PlayRes 坐标；方向键微调，Shift：10 像素；重置恢复全局排布': 'PlayRes coordinates; arrow keys adjust, Shift: 10 pixels; reset restores global layout',
 
     '导入 ▾': 'Import ▾',
-    '视频画面': 'Video pictures',
-    '在波形上方显示视频画面导航；本机 Server 绑定视频时可用': 'Show video picture navigation above the waveform when video is bound to the local Server',
-    '视频画面导航，点击或拖动定位': 'Video picture navigation; click or drag to seek',
+    '视频缩略图': 'Video thumbnails',
+    '在波形上方显示视频缩略图导航；本机 Server 绑定视频时可用': 'Show video thumbnail navigation above the waveform when video is bound to the local Server',
+    '视频缩略图导航，点击或拖动定位': 'Video thumbnail navigation; click or drag to seek',
     '字词码': 'Timed words',
     '自动适配高度': 'Auto-fit height',
     '自动适配每行长度': 'Auto-fit row length',
