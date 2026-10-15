@@ -13,6 +13,7 @@ from pathlib import Path
 from typing import Literal, Sequence
 
 from maw.ffmpeg import resolve_ffmpeg_tool
+from maw.gui_platform import creationflags, startupinfo
 
 IMAGE_SPEC = {"width": 160, "height": 90, "encoding": "jpeg", "fit": "contain", "rotation": "auto", "sar": "display"}
 MAX_BATCH_TARGETS = 16
@@ -48,7 +49,16 @@ def _run(command: list[str], *, timeout_s: float, cancel: threading.Event | None
     if cancel is not None and cancel.is_set():
         raise ThumbnailCancelled("thumbnail request cancelled")
     with tempfile.TemporaryFile() as stdout, tempfile.TemporaryFile() as stderr:
-        process = subprocess.Popen(command, stdin=subprocess.DEVNULL, stdout=stdout, stderr=stderr)
+        # 冻结版是无控制台的 GUI 进程：子进程不加 CREATE_NO_WINDOW 时每次
+        # 启动 ffmpeg/ffprobe 都会闪一个新控制台窗口（滚动补帧时表现为无限弹窗）。
+        process = subprocess.Popen(
+            command,
+            stdin=subprocess.DEVNULL,
+            stdout=stdout,
+            stderr=stderr,
+            startupinfo=startupinfo(),
+            creationflags=creationflags(),
+        )
         deadline = time.monotonic() + timeout_s
         try:
             while process.poll() is None:

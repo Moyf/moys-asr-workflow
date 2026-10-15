@@ -21,6 +21,7 @@ from pathlib import Path
 from typing import Any
 
 from maw.ffmpeg import resolve_ffmpeg_tool
+from maw.gui_platform import creationflags, startupinfo
 
 
 WAVEFORM_SCHEMA = "moy.asr.waveform.v1"
@@ -248,6 +249,8 @@ def extract_waveform(
             command,
             stdout=subprocess.PIPE,
             stderr=subprocess.PIPE,
+            startupinfo=startupinfo(),
+            creationflags=creationflags(),
         )
     except OSError as exc:
         raise WaveformError(f"无法启动 ffmpeg: {exc}") from exc
