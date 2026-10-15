@@ -73,7 +73,7 @@ test('AI cleanup independently remembers its provider for manual requests and sa
   await expect.poll(() => page.evaluate(() => window.__cleanupProviderRequest?.providerId)).toBe('deepseek');
   expect(pageErrors).toEqual([]);
   await expect(page.locator('#runLlmPostprocess')).toBeEnabled();
-  await page.locator('#toolboxDrawer').screenshot({ path: testInfo.outputPath('cleanup-provider.png') });
+  await page.locator('#pageToolbox').screenshot({ path: testInfo.outputPath('cleanup-provider.png') });
 });
 
 test('custom slot errors use localized labels and custom authentication guidance', async ({ page }) => {
@@ -95,7 +95,7 @@ test('DeepSeek links to AI Processing and translation restores its own provider'
   await page.locator('#provider').selectOption('deepseek');
   await expect(page.locator('#start')).toBeDisabled();
   await page.locator('#providerNote button').click();
-  await expect(page.locator('#toolboxDrawer')).toBeVisible();
+  await expect(page.locator('#pageToolbox')).toBeVisible();
   await expect(page.locator('#toolboxLlmTab')).toHaveAttribute('aria-selected', 'true');
   await page.locator('#postprocessOperation').selectOption('translate_zh');
   await page.locator('#postprocessProvider').selectOption('qwen');

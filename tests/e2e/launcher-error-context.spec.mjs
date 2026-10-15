@@ -13,7 +13,7 @@ for (const [language, width] of [['zh', 900], ['en', 760]]) {
     if (language === 'en') {
       await page.evaluate(() => window.MAWLauncher.openSettings());
       await page.locator('#langEn').click();
-      await page.locator('#settingsClose').click();
+      await page.locator('#navTranscribe').click();
     }
     await page.evaluate((context) => {
       window.__reports = [];
@@ -71,7 +71,7 @@ test('switching language refreshes context labels without changing the error tim
   ]) {
     await page.evaluate(() => window.MAWLauncher.openSettings());
     await page.locator(language === 'en' ? '#langEn' : '#langZh').click();
-    await page.locator('#settingsClose').click();
+    await page.locator('#navTranscribe').click();
     await expect(page.locator('#errorNoticeContext')).toHaveText(expected);
     await expect(page.locator('#log')).toHaveText(log);
   }

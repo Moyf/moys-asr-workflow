@@ -10,7 +10,7 @@ async function openLauncher(page, language) {
   if (language === 'en') {
     await page.evaluate(() => window.MAWLauncher.openSettings());
     await page.locator('#langEn').click();
-    await page.locator('#settingsClose').click();
+    await page.locator('#navTranscribe').click();
   }
 }
 

@@ -7,7 +7,7 @@ const launcherUrl = new URL('../../web/launcher/index.html', import.meta.url).hr
 test('resegment exposes optional limits, persists the plan and measures field spacing', async ({ page }) => {
   await page.goto(launcherUrl);
   await page.waitForFunction(() => window.MAWLauncher?.config?.postprocessProviders?.length);
-  await page.locator('#toolboxFab').click();
+  await page.locator('#navToolbox').click();
   await page.locator('#toolboxLlmTab').click();
   await page.locator('#postprocessOperation').selectOption('resegment');
   const options = page.locator('#postprocessResegmentOptions');

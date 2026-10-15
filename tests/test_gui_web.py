@@ -1870,7 +1870,7 @@ class GuiWebBridgeTests(CompactContainerAssertions, unittest.TestCase):
         self.assertIn('id="pickToolboxUtilityMedia"', utilities_html)
         self.assertIn('function selectToolboxSection(section)', script)
         self.assertIn('function moveToolFocus(event)', script)
-        self.assertIn('if (!open && wasOpen) $("toolboxFab").focus();', script)
+        self.assertIn('window.MAWLauncher.showPage("toolbox");', script)
         self.assertIn('let utilityMediaManual = false;', script)
         self.assertIn('$("toolboxUtilityMediaPath").value = $("mediaPath").value.trim();', script)
         self.assertIn('bridge("choose_file", { kind: "media" })', script)
@@ -1945,7 +1945,7 @@ class GuiWebBridgeTests(CompactContainerAssertions, unittest.TestCase):
         self.assertIn('.toolbox-utilities-content {\n  display: grid;\n  gap: 12px;', styles)
         self.assertIn('.toolbox-output-action {\n  display: flex;\n  flex: 1 1 auto;\n  gap: 8px;', styles)
         self.assertIn('.toolbox-tab-list-5 {\n  grid-template-columns: repeat(5, minmax(0, 1fr));\n}', styles)
-        self.assertIn('$("toolboxDrawer").classList.toggle("toolbox-utilities-active", section === "utilities")', postprocess_script)
+        self.assertIn('$("toolboxPanel").classList.toggle("toolbox-utilities-active", section === "utilities")', postprocess_script)
         self.assertNotIn('"alignment"', postprocess_script[postprocess_script.index("const AUTO_STEP_ORDER"):postprocess_script.index("let autoPlanSaveTimer")])
 
     def test_deepseek_note_links_to_toolbox_ai_processing(self) -> None:
@@ -2047,13 +2047,13 @@ class GuiWebBridgeTests(CompactContainerAssertions, unittest.TestCase):
                 missing.append(f"{spec.name} 仍断言旧称谓")
         self.assertEqual(missing, [], f"更名契约缺失：{missing}")
 
-    def test_toolbox_close_restores_trigger_focus_and_ffconcat_marks_its_input(self) -> None:
-        """Given Toolbox source, When closing or validating FFconcat, Then focus and invalid state stay accessible."""
+    def test_toolbox_close_returns_to_transcribe_and_ffconcat_marks_its_input(self) -> None:
+        """Given Toolbox source, When leaving the page or validating FFconcat, Then navigation and invalid state stay accessible."""
         html = (ROOT / "web" / "launcher" / "index.html").read_text(encoding="utf-8")
         script = (ROOT / "web" / "launcher" / "postprocess.js").read_text(encoding="utf-8")
 
-        self.assertIn('const wasOpen = !$("toolboxDrawer").classList.contains("hidden");', script)
-        self.assertIn('if (!open && wasOpen) $("toolboxFab").focus();', script)
+        self.assertIn('} else if (window.MAWLauncher.getActivePage() === "toolbox") {\n      window.MAWLauncher.navigateTo("transcribe");', script)
+        self.assertIn('$("toolboxBackToTranscribe").classList.toggle("hidden", toolboxOpenMode !== "auto-config");', script)
         self.assertIn('id="postprocessFfconcatPath"', html)
         self.assertIn('id="postprocessFfconcatPathError"', html)
         self.assertIn('id="toolboxFfconcatDropZone"', html)
@@ -5431,8 +5431,10 @@ class LauncherAssetContractTests(CompactContainerAssertions, unittest.TestCase):
         stylesheet = (ROOT / "web" / "launcher" / "launcher.css").read_text(encoding="utf-8")
 
         for control in (
-            "toolboxFab",
-            "toolboxDrawer",
+            "navToolbox",
+            "pageToolbox",
+            "toolboxPanel",
+            "toolboxBackToTranscribe",
             "toolboxInputDropZone",
             "toolboxInputName",
             "toolboxInputPath",
@@ -5523,8 +5525,9 @@ class LauncherAssetContractTests(CompactContainerAssertions, unittest.TestCase):
         self.assertIn('$("jsonPath").value = result.projectPath', script)
         self.assertIn('$("srtPath").value = result.srtPath', script)
         self.assertIn('$("toolboxUtilityMediaPath").value = result.mediaPath', script)
-        self.assertIn(".toolbox-fab", stylesheet)
-        self.assertIn(".toolbox-drawer", stylesheet)
+        self.assertIn(".toolbox-page {", stylesheet)
+        self.assertNotIn(".toolbox-fab", stylesheet)
+        self.assertNotIn(".toolbox-drawer", stylesheet)
         self.assertIn(".toolbox-content", stylesheet)
         self.assertIn("max-height: 360px", stylesheet)
         self.assertIn("overflow-y: auto", stylesheet)
@@ -5654,7 +5657,7 @@ class LauncherAssetContractTests(CompactContainerAssertions, unittest.TestCase):
         ffconcat_panel = page.index('id="toolboxFfconcatPanel"')
         ffconcat_end = page.index("</section>", ffconcat_panel)
         footer = page.index('class="toolbox-footer"')
-        drawer_end = page.index("</aside>")
+        drawer_end = page.index('</section>', page.index('class="toolbox-footer"'))
 
         self.assertLess(sticky, input_drop_zone)
         self.assertLess(input_drop_zone, chain)
@@ -5677,7 +5680,7 @@ class LauncherAssetContractTests(CompactContainerAssertions, unittest.TestCase):
         self.assertLess(ffconcat_end, footer)
         self.assertLess(footer, drawer_end)
 
-        # 输出选择与各工具执行按钮固定在抽屉底部，不随面板滚动。
+        # 输出选择与各工具执行按钮固定在工具箱页底部，不随面板滚动。
         footer_html = page[footer:drawer_end]
         self.assertIn('id="postprocessOutputMode"', footer_html)
         for tool in ("match", "ocr", "llm", "replace", "ffconcat", "burnSubtitle", "extractAudio"):
@@ -5687,26 +5690,21 @@ class LauncherAssetContractTests(CompactContainerAssertions, unittest.TestCase):
         self.assertIn('id="stopToolboxMedia" class="ghost hidden" type="button" data-i18n="toolbox_stop_media">', footer_html)
         self.assertIn('id="generateWaveform"', footer_html)
 
-        # 自定义顶边 / 左边拖拽把手替代原生 resize。
-        self.assertIn('id="toolboxResizeY" class="toolbox-resize-y" role="separator" aria-orientation="horizontal"', page)
-        self.assertIn('id="toolboxResizeX" class="toolbox-resize-x" role="separator" aria-orientation="vertical"', page)
+        # 工具箱是导航页面（改版阶段 2）：不再有悬浮按钮、抽屉尺寸与拖拽把手。
+        self.assertIn('id="pageToolbox" class="page hidden" data-page="toolbox"', page)
+        self.assertNotIn('id="toolboxResizeY"', page)
+        self.assertNotIn('id="toolboxResizeX"', page)
         self.assertIn('id="toolboxMatchTab" class="toolbox-tab active"', page)
         self.assertIn('id="toolboxFfconcatTab" class="toolbox-tab hidden"', page)
         self.assertIn("overflow-y: auto", stylesheet)
         self.assertNotIn("resize: both", stylesheet)
-        self.assertIn("block-size: min(640px, calc(100dvh - 156px))", stylesheet)
-        self.assertIn("min-inline-size: min(360px, calc(100vw - 24px))", stylesheet)
         self.assertIn(".toolbox-footer", stylesheet)
-        self.assertIn(".toolbox-resize-y", stylesheet)
-        self.assertIn(".toolbox-resize-x", stylesheet)
-        self.assertIn("cursor: n-resize", stylesheet)
-        self.assertIn("cursor: w-resize", stylesheet)
+        self.assertNotIn(".toolbox-resize-", stylesheet)
         self.assertIn(".toolbox-grid > .field", stylesheet)
         self.assertIn(".toolbox-input.drag-over", stylesheet)
         self.assertIn("grid-template-columns: repeat(4", stylesheet)
-        self.assertIn("setPointerCapture", script)
-        self.assertIn("maw.launcher.toolbox.size", script)
-        self.assertIn("restoreToolboxSize", script)
+        self.assertNotIn("maw.launcher.toolbox.size", script)
+        self.assertNotIn("restoreToolboxSize", script)
 
     def test_toolbox_panels_are_grouped_into_titled_cards(self) -> None:
         page = (ROOT / "web" / "launcher" / "index.html").read_text(encoding="utf-8")
@@ -5848,13 +5846,13 @@ class LauncherAssetContractTests(CompactContainerAssertions, unittest.TestCase):
         self.assertIn("cleanMarkdownSymbols: Boolean($(\"postprocessCleanMarkdownSymbols\")?.checked)", script)
         self.assertIn('$("postprocessCleanMarkdownSymbols").addEventListener("input"', script)
 
-    def test_launcher_hero_shows_the_bundled_brand_icon(self) -> None:
+    def test_launcher_nav_shows_the_bundled_brand_icon(self) -> None:
         page = (ROOT / "web" / "launcher" / "index.html").read_text(encoding="utf-8")
         stylesheet = (ROOT / "web" / "launcher" / "launcher.css").read_text(encoding="utf-8")
 
-        self.assertIn('<div class="hero-brand">', page)
-        self.assertIn('<img class="hero-icon" src="../../assets/show.webp"', page)
-        self.assertIn(".hero-icon {\n  width: 72px;\n  height: 72px;", stylesheet)
+        self.assertIn('<img class="nav-logo" src="../../assets/show.webp"', page)
+        self.assertIn(".nav-logo {\n  width: 42px;\n  height: 42px;", stylesheet)
+        self.assertNotIn('class="hero', page)
 
     def test_launcher_reports_media_drop_rejection_and_output_collision(self) -> None:
         page = (ROOT / "web" / "launcher" / "index.html").read_text(encoding="utf-8")
@@ -5912,7 +5910,7 @@ class LauncherAssetContractTests(CompactContainerAssertions, unittest.TestCase):
         self.assertLess(page.index('id="minWords"'), page.index('id="maxWords"'))
         self.assertLess(page.index('id="settingsProcessingPanel"'), page.index('id="segmentationSettingsSection"'))
         self.assertLess(page.index('id="segmentationSettingsSection"'), page.index('id="punctuationSettingsSection"'))
-        self.assertNotIn('id="segmentationField"', page[page.index('id="advancedCard"'):page.index('id="settingsModal"')])
+        self.assertNotIn('id="segmentationField"', page[page.index('id="advancedCard"'):page.index('id="pageSettings"')])
         self.assertIn('maxLen: $("maxLen").value.trim()', script)
         self.assertIn('minLen: $("minLen").value.trim()', script)
         self.assertIn('maxWords: $("maxWords").value.trim()', script)
@@ -6014,23 +6012,36 @@ class LauncherAssetContractTests(CompactContainerAssertions, unittest.TestCase):
         self.assertIn('server_disconnected', script)
         self.assertNotIn('state.serverRunning ? t("server_stop")', script)
 
-    def test_launcher_hero_links_include_github_tutorial_and_support(self) -> None:
+    def test_launcher_help_menu_and_topbar_links(self) -> None:
+        """Given the redesigned shell, When reading the nav, Then GitHub/tutorial live in the help menu and support stays in the top bar."""
         page = (ROOT / "web" / "launcher" / "index.html").read_text(encoding="utf-8")
         script = launcher_sources_text(ROOT)
 
-        self.assertIn('<div class="hero-home-links">', page)
-        self.assertIn('id="homeLink" class="text-link" type="button" data-i18n="github_link">Github', page)
-        self.assertIn('id="tutorialVideoLink" class="text-link" type="button" data-i18n="tutorial_video">教程视频', page)
-        self.assertIn('id="supportLink" class="text-link" type="button" data-i18n="support_link">支持 ❤️', page)
-        self.assertLess(page.index('id="homeLink"'), page.index('id="tutorialVideoLink"'))
-        self.assertLess(page.index('id="tutorialVideoLink"'), page.index('id="supportLink"'))
-        self.assertIn('github_link: "Github"', script)
-        self.assertIn('tutorial_video: "教程视频"', script)
-        self.assertIn('tutorial_video: "Tutorial video"', script)
-        self.assertIn('support_link: "支持 ❤️"', script)
-        self.assertIn('support_link: "Support ❤️"', script)
+        help_menu = page[page.index('id="helpMenu"'):page.index('id="settingsButton"')]
+        self.assertIn('id="helpButton" class="nav-item" type="button" aria-haspopup="menu" aria-expanded="false" aria-controls="helpMenu"', page)
+        for item in ("helpWhatsNew", "helpGuide", "tutorialVideoLink", "helpReportIssue", "homeLink"):
+            self.assertIn(f'id="{item}" type="button" role="menuitem"', help_menu)
+        self.assertLess(help_menu.index('id="helpWhatsNew"'), help_menu.index('id="helpGuide"'))
+        self.assertLess(help_menu.index('id="helpGuide"'), help_menu.index('id="tutorialVideoLink"'))
+        self.assertLess(help_menu.index('id="tutorialVideoLink"'), help_menu.index('id="helpReportIssue"'))
+        self.assertLess(help_menu.index('id="helpReportIssue"'), help_menu.index('id="homeLink"'))
+        # 第一版只做 UI：新功能与报告问题禁用并标「即将推出」，其余三项可点。
+        self.assertIn('id="helpWhatsNew" type="button" role="menuitem" disabled>', help_menu)
+        self.assertIn('id="helpReportIssue" type="button" role="menuitem" disabled>', help_menu)
+        self.assertEqual(help_menu.count('data-i18n="help_coming_soon"'), 2)
+        self.assertIn('help_coming_soon: "即将推出"', script)
+        self.assertIn('help_coming_soon: "Coming soon"', script)
+        self.assertIn('const GUIDE_URL = "https://moyf.github.io/moys-asr-workflow/docs/";', script)
+        self.assertIn('$("helpGuide").addEventListener("click", () => bridge("open_url", { url: GUIDE_URL }));', script)
+        self.assertIn('$("homeLink").addEventListener("click", () => bridge("open_url", { url: HOME_URL }));', script)
         self.assertIn('const TUTORIAL_VIDEO_URL = "https://www.bilibili.com/video/BV1S9bZ6pEHg";', script)
         self.assertIn("$(\"tutorialVideoLink\").addEventListener(\"click\", () => bridge(\"open_url\", { url: TUTORIAL_VIDEO_URL }));", script)
+        topbar = page[page.index('<header class="topbar">'):page.index('</header>', page.index('<header class="topbar">'))]
+        self.assertIn('id="supportLink" class="topbar-link" type="button"', topbar)
+        self.assertIn('id="themeToggle" class="topbar-icon" type="button"', topbar)
+        self.assertNotIn('id="homeLink"', topbar)
+        self.assertIn('support_maw: "支持 MAW"', script)
+        self.assertIn('support_maw: "Support MAW"', script)
         self.assertIn('id="supportModal" class="modal hidden"', page)
         self.assertIn('src="../../assets/support-qr.png"', page)
         self.assertIn('support_desc: "如果 MAW 对你有帮助，可以前往B站小店赞助！"', script)
@@ -6288,8 +6299,8 @@ class LauncherAssetContractTests(CompactContainerAssertions, unittest.TestCase):
         script = launcher_sources_text(ROOT)
 
         self.assertNotIn('id="langToggle"', page)
-        self.assertIn('id="settingsButton"', page)
-        self.assertIn('data-i18n="settings_button"', page)
+        self.assertIn('id="settingsButton" class="nav-item" type="button" data-nav-page="settings"', page)
+        self.assertIn('data-i18n="nav_settings"', page)
         self.assertIn('id="langZh"', page)
         self.assertIn('id="langEn"', page)
         self.assertIn('function systemLanguage()', script)
@@ -6314,10 +6325,14 @@ class LauncherAssetContractTests(CompactContainerAssertions, unittest.TestCase):
             ("2", "识别设置"),
             ("3", "转写后自动处理"),
             ("4", "日志"),
-            ("5", "编辑器"),
         ):
             self.assertIn(f'<use href="#keycap-{number}"></use>', page)
             self.assertIn(f">{expected}</span>", page)
+        # 编辑器卡片移到「工程」页（改版阶段 2），不再带转写流程的序号徽章。
+        self.assertNotIn('<use href="#keycap-5"></use>', page)
+        projects = page[page.index('id="pageProjects"'):page.index('id="pageToolbox"')]
+        self.assertIn('id="serverCard" class="card"', projects)
+        self.assertIn('<h2 id="serverTitle"><span data-i18n="server">编辑器</span></h2>', projects)
         self.assertIn('id="keycap-1"', page)
         # 改版令牌：卡片标题 15px、主文字色（docs/plans/LAUNCHER_REDESIGN.md 字号规则）。
         self.assertIn(".card h2 {\n  margin: 0 0 12px;\n  color: var(--text-primary);\n  font-size: 15px;", stylesheet)
@@ -6579,9 +6594,9 @@ class LauncherAssetContractTests(CompactContainerAssertions, unittest.TestCase):
         """Given the beta7 visual feedback, When styling modals, Then cards widen and settings scroll fades at edges."""
         stylesheet = (ROOT / "web" / "launcher" / "launcher.css").read_text(encoding="utf-8")
 
-        # 弹窗卡片统一加宽；设置弹窗限制最小块高（小屏随视口收缩）。
+        # 弹窗卡片统一加宽；设置已从弹窗改为页面（改版阶段 2），不再限制弹窗块高。
         self.assertIn("width: min(720px, calc(100vw - 32px));", stylesheet)
-        self.assertIn("min-block-size: min(680px, calc(100dvh - 36px));", stylesheet)
+        self.assertNotIn("min-block-size: min(680px, calc(100dvh - 36px));", stylesheet)
         # hero 与本地模型面板不再铺渐变底色。
         self.assertNotIn("background: linear-gradient(135deg, var(--accent-tint), transparent 58%), var(--bg-panel);", stylesheet)
         self.assertNotIn("background: linear-gradient(135deg, var(--accent-tint), transparent 75%), var(--bg-input);", stylesheet)
@@ -6669,7 +6684,7 @@ class LauncherAssetContractTests(CompactContainerAssertions, unittest.TestCase):
         launcher_script = launcher_sources_text(ROOT)
         postprocess_script = (ROOT / "web" / "launcher" / "postprocess.js").read_text(encoding="utf-8")
 
-        self.assertIn('data-i18n="settings_tab_llm">AI 模型</button>', page)
+        self.assertIn('data-i18n="settings_tab_llm">AI 模型</span></button>', page)
         self.assertIn('settings_tab_llm: "AI 模型"', launcher_script)
         self.assertIn('data-i18n="auto_backfill_subtitles_hint">只把少量外文语句翻译成目标语言。</p>', page)
         self.assertIn('auto_backfill_subtitles_hint: "只把少量外文语句翻译成目标语言。"', launcher_script)
@@ -6684,47 +6699,84 @@ class LauncherAssetContractTests(CompactContainerAssertions, unittest.TestCase):
         self.assertIn('renderAutoPostprocessState();', script)
         self.assertIn('maybeEnablePendingAutoStep();', script)
 
-    def test_launcher_keeps_settings_actions_visible_and_isolates_toolbox_wheel(self) -> None:
+    def test_launcher_settings_and_toolbox_pages_scroll_independently(self) -> None:
         page = (ROOT / "web" / "launcher" / "index.html").read_text(encoding="utf-8")
         script = (ROOT / "web" / "launcher" / "postprocess.js").read_text(encoding="utf-8")
         launcher_script = launcher_sources_text(ROOT)
         stylesheet = (ROOT / "web" / "launcher" / "launcher.css").read_text(encoding="utf-8")
 
+        # 设置与工具箱都是导航页面：各自滚动区，不再有关闭按钮或抽屉滚轮拦截。
         self.assertIn('<div class="settings-scroll">', page)
-        self.assertIn('id="toolboxClose"', page)
-        self.assertIn('id="settingsClose"', page)
-        self.assertIn('$("toolboxDrawer").addEventListener("wheel"', script)
-        self.assertIn('event.stopPropagation();', script)
-        self.assertIn('event.preventDefault();', script)
+        self.assertNotIn('id="toolboxClose"', page)
+        self.assertNotIn('id="settingsClose"', page)
+        self.assertNotIn('id="settingsModal"', page)
+        self.assertNotIn('addEventListener("wheel"', script)
         self.assertIn('settings-scroll', launcher_script)
         self.assertIn('.settings-scroll {', stylesheet)
+        self.assertIn('.toolbox-content {', stylesheet)
         self.assertIn('overscroll-behavior: contain;', stylesheet)
-        self.assertIn('#toolboxClose,', stylesheet)
-        self.assertIn('#settingsClose {', stylesheet)
 
     def test_launcher_settings_use_tabs_and_preserve_deep_links(self) -> None:
         page = (ROOT / "web" / "launcher" / "index.html").read_text(encoding="utf-8")
         script = launcher_sources_text(ROOT)
         stylesheet = (ROOT / "web" / "launcher" / "launcher.css").read_text(encoding="utf-8")
 
-        self.assertIn('id="settingsTabList" class="settings-tabs" role="tablist"', page)
+        self.assertIn('id="settingsTabList" class="settings-tabs" role="tablist" aria-orientation="vertical"', page)
         for tab, panel in (
             ("settingsGeneralTab", "settingsGeneralPanel"),
             ("settingsLlmTab", "settingsLlmPanel"),
             ("settingsProcessingTab", "settingsProcessingPanel"),
             ("settingsRuntimeTab", "settingsRuntimePanel"),
+            ("settingsAboutTab", "settingsAboutPanel"),
         ):
             self.assertIn(f'id="{tab}"', page)
             self.assertIn(f'aria-controls="{panel}"', page)
+            self.assertIn(f'id="{panel}"', page)
+        # 分区顺序与方案第 4 节一致：通用、断句与标点、AI 模型、运行环境，「关于」单独一组。
+        tabs = page[page.index('id="settingsTabList"'):page.index('id="settingsAboutTab"')]
+        order = [tabs.index(f'id="{tab}"') for tab in ("settingsGeneralTab", "settingsProcessingTab", "settingsLlmTab", "settingsRuntimeTab")]
+        self.assertEqual(order, sorted(order))
+        self.assertIn('data-i18n="settings_group_about"', tabs)
         self.assertIn('function selectSettingsTab(tabName)', script)
         self.assertIn('function settingsTabForSection(sectionId)', script)
         self.assertIn('selectSettingsTab(settingsTabForSection(sectionId) || activeSettingsTab);', script)
+        self.assertIn('showPage("settings");', script)
+        self.assertIn('id="pageSettings" class="page hidden" data-page="settings"', page)
         self.assertIn('.settings-tabs {', stylesheet)
         self.assertIn('.settings-tab.active {', stylesheet)
-        self.assertIn('.settings-tab.active:focus-visible {', stylesheet)
-        self.assertIn('.settings-modal-card {', stylesheet)
+        self.assertIn('.settings-page {', stylesheet)
+        self.assertNotIn('.settings-modal-card {', stylesheet)
         self.assertIn('scrollbar-gutter: stable;', stylesheet)
         self.assertIn('settings_tab_llm: "AI 模型"', script)
+        self.assertIn('settings_tab_about: "关于与支持"', script)
+        self.assertIn('settings_tab_about: "About & support"', script)
+
+    def test_launcher_left_nav_switches_pages(self) -> None:
+        """Given the redesigned shell, When reading nav markup and wiring, Then each nav item maps to a page."""
+        page = (ROOT / "web" / "launcher" / "index.html").read_text(encoding="utf-8")
+        script = launcher_sources_text(ROOT)
+        stylesheet = (ROOT / "web" / "launcher" / "launcher.css").read_text(encoding="utf-8")
+
+        nav = page[page.index('id="appNav"'):page.index('</nav>', page.index('id="appNav"'))]
+        for nav_id, target in (("navTranscribe", "transcribe"), ("navBatch", "batch"), ("navToolbox", "toolbox"), ("navProjects", "projects"), ("settingsButton", "settings")):
+            self.assertIn(f'id="{nav_id}" class="nav-item', nav)
+            self.assertIn(f'data-nav-page="{target}"', nav)
+        self.assertLess(nav.index('id="helpButton"'), nav.index('id="settingsButton"'))
+        for page_id, name in (("pageTranscribe", "transcribe"), ("pageProjects", "projects"), ("pageToolbox", "toolbox"), ("pageSettings", "settings")):
+            self.assertIn(f'id="{page_id}" class="page', page)
+            self.assertIn(f'data-page="{name}"', page)
+        self.assertNotIn('id="toolboxFab"', page)
+        self.assertIn('launcher/boot/launcher-navigation.js', (ROOT / "web" / "launcher-scripts.txt").read_text(encoding="utf-8"))
+        self.assertIn('function showPage(page)', script)
+        self.assertIn('function navigateTo(page)', script)
+        self.assertIn('window.MAWLauncher?.setTranscribeMode?.(page === "batch" ? "batch" : "single");', script)
+        self.assertIn('function closeSettings() { if (activePage === "settings") navigateTo(settingsReturnPage); }', script)
+        self.assertIn('function expandServer() { $("serverCard").classList.remove("collapsed"); renderChevron("serverCard"); showPage("projects"); }', script)
+        # 窄窗口（< 760px）导航只显示图标，文字保留给读屏。
+        self.assertIn('@media (max-width: 760px) {\n  .app-nav {\n    flex-basis: 56px;', stylesheet)
+        self.assertIn('  .nav-item > span[data-i18n] {\n    position: absolute;', stylesheet)
+        for key in ("nav_transcribe", "nav_batch", "nav_toolbox", "nav_projects", "nav_help", "nav_settings"):
+            self.assertEqual(script.count(f"  {key}: "), 2, key)
 
 
 @final

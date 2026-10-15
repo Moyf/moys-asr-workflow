@@ -240,7 +240,7 @@ test('ASR preset library manages metadata and options independently with keyboar
 
     await page.locator('#langEn').click();
     assert.equal(await page.locator('#manageAsrPresets').textContent(), 'Manage presets');
-    await page.locator('#settingsClose').click();
+    await page.locator('#navTranscribe').click();
     await page.locator('#manageAsrPresets').click();
     await page.waitForFunction(() => document.activeElement.dataset.presetName === '采访');
     const activeItem = await page.locator('#asrPresetList [data-preset-name="采访"]').evaluate(el => ({

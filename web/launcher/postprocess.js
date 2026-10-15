@@ -10,7 +10,6 @@
   const MEDIA_EXTS = new Set([".mp4", ".mkv", ".avi", ".mov", ".wmv", ".flv", ".webm", ".ts", ".m4v", ".mp3", ".wav", ".m4a", ".flac", ".aac", ".ogg"]);
   const VIDEO_EXTS = new Set([".mp4", ".mkv", ".avi", ".mov", ".wmv", ".flv", ".webm", ".ts", ".m4v"]);
   const SCRIPT_EXTS = new Set([".txt", ".md", ".markdown"]);
-  const TOOLBOX_SIZE_KEY = "maw.launcher.toolbox.size";
   const LLM_PROMPTS_KEY = "maw.launcher.llm.prompts";
   const LLM_PROVIDER_BY_TASK_KEY = "maw.launcher.llm.provider_by_task";
   // 各任务独立记忆供应商：两种翻译共用一个槽位，其余任务各自一个。
@@ -30,9 +29,6 @@
     lead_in_ms: 120,
     lead_out_ms: 80,
   });
-  const TOOLBOX_MIN_WIDTH = 360;
-  const TOOLBOX_MIN_HEIGHT = 320;
-  const TOOLBOX_MAX_HEIGHT = 680;
   const AUTO_STEP_ORDER = ["match", "cleanup", "replace", "proofread", "resegment", "ocr", "translate", "burn"];
   const AUTO_STEP_CHECKBOXES = {
     match: "autoStepMatch",
@@ -837,19 +833,20 @@
     void loadPostprocessApiKey(item.id, item.maskedApiKey || "");
   }
 
+  // 工具箱是独立页面：打开即切到工具箱页，关闭回到转写页。
+  // 「仅配置」模式（自动后处理的「配置」按钮）显示「返回转写」入口。
   function setOpen(open) {
-    const wasOpen = !$("toolboxDrawer").classList.contains("hidden");
-    $("toolboxDrawer").classList.toggle("hidden", !open);
-    $("toolboxFab").setAttribute("aria-expanded", String(open));
     if (!open) toolboxOpenMode = "manual";
+    $("toolboxBackToTranscribe").classList.toggle("hidden", toolboxOpenMode !== "auto-config");
     syncPaths();
     if (open) {
+      window.MAWLauncher.showPage("toolbox");
       const activeTab = activeToolboxView().querySelector(".toolbox-tab.active:not(.hidden)")
         || activeToolboxView().querySelector(".toolbox-tab:not(.hidden)");
       if (activeTab) selectTool(activeTab.dataset.tool);
+    } else if (window.MAWLauncher.getActivePage() === "toolbox") {
+      window.MAWLauncher.navigateTo("transcribe");
     }
-    if (open) $("toolboxClose").focus();
-    if (!open && wasOpen) $("toolboxFab").focus();
   }
 
   function setTestConnectionAttention(attention) {
@@ -879,7 +876,7 @@
 
   // 实时输出区在工具箱顶部；运行按钮在面板下方，滚动回顶让用户看到 AI 输出。
   function scrollToolboxContentToTop() {
-    document.querySelector("#toolboxDrawer .toolbox-content")?.scrollTo({ top: 0, behavior: "smooth" });
+    document.querySelector("#toolboxPanel .toolbox-content")?.scrollTo({ top: 0, behavior: "smooth" });
   }
 
   function syncUtilityMediaFieldState() {
@@ -904,7 +901,7 @@
     $("toolboxPostprocessView").classList.toggle("hidden", section !== "postprocess");
     $("toolboxUtilitiesContent").classList.toggle("hidden", section !== "utilities");
     $("toolboxUtilitiesView").classList.toggle("hidden", section !== "utilities");
-    $("toolboxDrawer").classList.toggle("toolbox-utilities-active", section === "utilities");
+    $("toolboxPanel").classList.toggle("toolbox-utilities-active", section === "utilities");
     const activeTab = activeToolboxView().querySelector(".toolbox-tab.active:not(.hidden)") || activeToolboxView().querySelector(".toolbox-tab:not(.hidden)");
     if (activeTab) selectTool(activeTab.dataset.tool);
   }
@@ -955,96 +952,6 @@
     target.focus();
   }
 
-  function clampToolboxSize(width, height) {
-    const viewportWidth = window.MAWLauncher.viewportPixelsToPage(window.innerWidth);
-    const viewportHeight = window.MAWLauncher.viewportPixelsToPage(window.innerHeight);
-    const maxWidth = Math.max(TOOLBOX_MIN_WIDTH, viewportWidth - 40);
-    const maxHeight = Math.max(TOOLBOX_MIN_HEIGHT, Math.min(TOOLBOX_MAX_HEIGHT, viewportHeight - 156));
-    return {
-      width: Math.round(Math.min(Math.max(width, TOOLBOX_MIN_WIDTH), maxWidth)),
-      height: Math.round(Math.min(Math.max(height, TOOLBOX_MIN_HEIGHT), maxHeight)),
-    };
-  }
-
-  function applyToolboxSize(width, height) {
-    const size = clampToolboxSize(width, height);
-    const drawer = $("toolboxDrawer");
-    drawer.style.width = `${size.width}px`;
-    drawer.style.blockSize = `${size.height}px`;
-    return size;
-  }
-
-  function persistToolboxSize(size) {
-    try {
-      localStorage.setItem(TOOLBOX_SIZE_KEY, JSON.stringify(size));
-    } catch (error) { /* localStorage 不可用时仅本次会话生效 */ }
-  }
-
-  function restoreToolboxSize() {
-    let stored = null;
-    try {
-      stored = JSON.parse(localStorage.getItem(TOOLBOX_SIZE_KEY) || "null");
-    } catch (error) {
-      stored = null;
-    }
-    if (!stored || !Number.isFinite(stored.width) || !Number.isFinite(stored.height)) return;
-    applyToolboxSize(stored.width, stored.height);
-  }
-
-  // 抽屉右下锚定：顶边把手向上拉高、左边把手向左拉宽，拖拽结束写入 localStorage。
-  function bindToolboxResize(handle, axis) {
-    handle.addEventListener("pointerdown", (event) => {
-      if (event.button !== 0) return;
-      event.preventDefault();
-      const drawer = $("toolboxDrawer");
-      const style = getComputedStyle(drawer);
-      const start = {
-        x: event.clientX,
-        y: event.clientY,
-        width: Number.parseFloat(style.width),
-        height: Number.parseFloat(style.height),
-      };
-      let size = { width: start.width, height: start.height };
-      handle.setPointerCapture(event.pointerId);
-      handle.classList.add("dragging");
-      const onMove = (moveEvent) => {
-        size = axis === "y"
-          ? applyToolboxSize(start.width, start.height + window.MAWLauncher.viewportPixelsToPage(start.y - moveEvent.clientY))
-          : applyToolboxSize(start.width + window.MAWLauncher.viewportPixelsToPage(start.x - moveEvent.clientX), start.height);
-      };
-      const onEnd = () => {
-        handle.removeEventListener("pointermove", onMove);
-        handle.removeEventListener("pointerup", onEnd);
-        handle.removeEventListener("pointercancel", onEnd);
-        handle.classList.remove("dragging");
-        persistToolboxSize(size);
-      };
-      handle.addEventListener("pointermove", onMove);
-      handle.addEventListener("pointerup", onEnd);
-      handle.addEventListener("pointercancel", onEnd);
-    });
-    handle.addEventListener("keydown", (event) => {
-      const keys = axis === "y" ? ["ArrowUp", "ArrowDown"] : ["ArrowLeft", "ArrowRight"];
-      if (!keys.includes(event.key)) return;
-      event.preventDefault();
-      const step = event.shiftKey ? 96 : 24;
-      const grow = event.key === "ArrowUp" || event.key === "ArrowLeft";
-      const style = getComputedStyle($("toolboxDrawer"));
-      const width = Number.parseFloat(style.width);
-      const height = Number.parseFloat(style.height);
-      const size = axis === "y"
-        ? applyToolboxSize(width, height + (grow ? step : -step))
-        : applyToolboxSize(width + (grow ? step : -step), height);
-      persistToolboxSize(size);
-    });
-  }
-
-  function setupToolboxResize() {
-    bindToolboxResize($("toolboxResizeY"), "y");
-    bindToolboxResize($("toolboxResizeX"), "x");
-    restoreToolboxSize();
-    window.addEventListener("resize", restoreToolboxSize);
-  }
 
   function renderPostprocessResultActions() {
     const stop = $("stopToolboxPostprocess");
@@ -2693,15 +2600,7 @@
     void restoreBurnSubtitleSettings();
   }
 
-  $("toolboxFab").addEventListener("click", () => {
-    toolboxOpenMode = "manual";
-    setOpen($("toolboxDrawer").classList.contains("hidden"));
-  });
-  $("toolboxClose").addEventListener("click", () => setOpen(false));
-  $("toolboxDrawer").addEventListener("wheel", (event) => {
-    event.stopPropagation();
-    if (!event.target?.closest?.(".toolbox-content")) event.preventDefault();
-  }, { passive: false });
+  $("toolboxBackToTranscribe").addEventListener("click", () => setOpen(false));
   document.querySelectorAll("[data-toolbox-section]").forEach((tab) => {
     tab.addEventListener("click", () => selectToolboxSection(tab.dataset.toolboxSection));
     tab.addEventListener("keydown", (event) => {
@@ -3027,9 +2926,16 @@
       setModelChoicesOpen(false);
       return;
     }
-    setOpen(false);
+    if (toolboxOpenMode === "auto-config" && window.MAWLauncher.getActivePage() === "toolbox") setOpen(false);
   });
-  setupToolboxResize();
+  window.addEventListener("mawpagechange", (event) => {
+    // 离开工具箱页即退出「仅配置」模式，下次从导航进入是普通工具箱。
+    if (event.detail.previous === "toolbox" && toolboxOpenMode === "auto-config") {
+      toolboxOpenMode = "manual";
+      $("toolboxBackToTranscribe").classList.add("hidden");
+      if (activeToolId) selectTool(activeToolId);
+    }
+  });
   window.addEventListener("mawlauncherready", initialize, { once: true });
   window.MAWLauncher.onPostprocessStatus = renderPostprocessStatus;
   window.MAWLauncher.onMediaToolLog = renderMediaToolLog;
@@ -3043,8 +2949,12 @@
   window.MAWLauncher.openToolboxAiProcessing = () => {
     // DeepSeek 彩蛋提示里的「AI处理」入口：打开工具箱并切到 AI 处理标签页。
     toolboxOpenMode = "manual";
-    if ($("toolboxDrawer").classList.contains("hidden")) setOpen(true);
+    setOpen(true);
     selectTool("llm");
+  };
+  window.MAWLauncher.openToolbox = () => {
+    toolboxOpenMode = "manual";
+    setOpen(true);
   };
   window.MAWLauncher.onLanguageChanged = () => {
     clearScriptAlignmentCheck();

@@ -287,7 +287,7 @@ function handleBackendEvent(event) {
   if (event.type === "dropReject" && !state.dropTarget && window.MAWLauncher?.onBatchDropReject?.(event.path || "")) return;
   if (event.type === "dropMedia" || event.type === "dropJson" || event.type === "dropSubtitle" || event.type === "dropHotwordFile" || event.type === "dropFfconcat" || event.type === "dropReject") handleRoutedDrop(event.path || "");
 }
-window.MAWLauncher = { backend: "pending", config: null, callBackend: bridge, translate: t, errorText: errText, revealFeedback: revealLauncherFeedback, viewportPixelsToPage, openSettings, closeSettings, setJsonPath, openServerEditor, getAudioTrackForMedia, getTranscriptionPayload: formPayload, validateApiKey, appendLog, confirm: confirmAction, confirmResolve: null, onBackendEvent: handleBackendEvent, onBackendEvents(events) { events.forEach(handleBackendEvent); }, onBatchStart() { hideErrorNotice(); resetBatchNotification(); }, onBatchError: (result) => { state.batchNotification = null; applyErrorResult(result, false); }, onLanguageChanged() {}, onProjectPathChanged() {}, onAlignmentModelsChanged() {}, onMediaPathChanged() {} };
+window.MAWLauncher = { backend: "pending", config: null, callBackend: bridge, translate: t, errorText: errText, revealFeedback: revealLauncherFeedback, viewportPixelsToPage, openSettings, closeSettings, showPage, navigateTo, getActivePage: () => activePage, setJsonPath, openServerEditor, getAudioTrackForMedia, getTranscriptionPayload: formPayload, validateApiKey, appendLog, confirm: confirmAction, confirmResolve: null, onBackendEvent: handleBackendEvent, onBackendEvents(events) { events.forEach(handleBackendEvent); }, onBatchStart() { hideErrorNotice(); resetBatchNotification(); }, onBatchError: (result) => { state.batchNotification = null; applyErrorResult(result, false); }, onLanguageChanged() {}, onProjectPathChanged() {}, onAlignmentModelsChanged() {}, onMediaPathChanged() {}, onTranscribeModeChanged };
 
 $("langZh").addEventListener("click", () => setLanguage("zh"));
 $("langEn").addEventListener("click", () => setLanguage("en"));
@@ -395,7 +395,6 @@ $("prepareAlignmentModel").addEventListener("click", async () => {
   }
 });
 $("ffmpegHelp").addEventListener("click", () => bridge("open_url", { url: "https://ffmpeg.org/download.html" }));
-$("settingsButton").addEventListener("click", openSettings); $("settingsClose").addEventListener("click", closeSettings); $("settingsBackdrop").addEventListener("click", closeSettings); document.addEventListener("keydown", (event) => { if (event.key === "Escape") closeSettings(); });
 $("batchConfirmYes").addEventListener("click", () => finishConfirm(true)); $("batchConfirmNo").addEventListener("click", () => finishConfirm(false));
 $("changeFfmpeg").addEventListener("click", () => $("ffmpegPathBox").classList.remove("hidden"));
 $("saveFfmpeg").addEventListener("click", async () => { const result = await bridge("save_ffmpeg_path", { path: $("ffmpegPath").value.trim() }); if (!result.ok) { const message = ffmpegSaveError(result); setError("ffmpegPath", message); setStatus(message); return; } setError("ffmpegPath", ""); await refreshFfmpeg(); setStatus(t("saved")); });

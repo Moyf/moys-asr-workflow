@@ -3,10 +3,11 @@ import fs from 'node:fs';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 
 const launcherUrl = pathToFileURL(fileURLToPath(new URL('../../web/launcher/index.html', import.meta.url))).href;
-const headings = ['mediaTitle', 'settingsTitle', 'autoPostprocessTitle', 'logTitle', 'serverTitle'];
+// 改版阶段 2：编辑器卡片移到「工程」页，转写流程只保留 1–4 号徽章。
+const headings = ['mediaTitle', 'settingsTitle', 'autoPostprocessTitle', 'logTitle'];
 const labels = {
-  zh: ['选择媒体', '识别设置', '转写后自动处理', '日志', '编辑器'],
-  en: ['Choose media', 'Recognition Settings', 'Post-transcription processing', 'Logs', 'Editor'],
+  zh: ['选择媒体', '识别设置', '转写后自动处理', '日志'],
+  en: ['Choose media', 'Recognition Settings', 'Post-transcription processing', 'Logs'],
 };
 
 test('section badges survive language changes and follow light/dark themes with measured spacing', async ({ page }, testInfo) => {
@@ -18,7 +19,7 @@ test('section badges survive language changes and follow light/dark themes with 
       await page.locator('#settingsButton').click();
       await page.locator(theme === 'dark' ? '#themeDark' : '#themeLight').click();
       await page.locator(language === 'zh' ? '#langZh' : '#langEn').click();
-      await page.keyboard.press('Escape');
+      await page.locator('#navTranscribe').click();
       for (const [index, id] of headings.entries()) {
         const heading = page.locator(`#${id}`);
         await expect(heading.locator('span[data-i18n]')).toHaveText(labels[language][index]);

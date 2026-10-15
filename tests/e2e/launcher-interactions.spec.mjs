@@ -7,7 +7,7 @@ const launcherPath = path.resolve(path.dirname(fileURLToPath(import.meta.url)), 
 async function openLauncher(page) {
   await page.goto(`file://${launcherPath}`);
   await page.waitForFunction(() => window.MAWLauncher?.config?.postprocessProviders?.length > 0);
-  await page.locator('#toolboxFab').click();
+  await page.locator('#navToolbox').click();
 }
 
 async function runReplacement(page, { outputMode = 'both' } = {}) {
@@ -22,6 +22,7 @@ async function runReplacement(page, { outputMode = 'both' } = {}) {
 
 test('OpenAI ASR exposes official and OpenRouter models with a conditional Custom input', async ({ page }) => {
   await openLauncher(page);
+  await page.locator('#navTranscribe').click();
   await page.locator('#provider').selectOption('openai');
 
   await expect(page.locator('#provider option[value="openai"]')).toHaveText('OpenAI 格式通用接口');
@@ -79,6 +80,7 @@ test('OpenAI ASR exposes official and OpenRouter models with a conditional Custo
 
 test('cloud ASR models show provider-specific price hints', async ({ page }) => {
   await openLauncher(page);
+  await page.locator('#navTranscribe').click();
 
   await page.locator('#provider').selectOption('qwen');
   await expect(page.locator('#modelNote')).toContainText('阿里云百炼参考价');
@@ -101,7 +103,11 @@ test('project and tutorial hero links open their configured URLs', async ({ page
     };
   });
 
+  // 改版阶段 2：GitHub 与教程视频移入导航底部的「帮助」菜单。
+  await page.locator('#helpButton').click();
   await page.locator('#homeLink').click();
+  await expect(page.locator('#helpMenu')).toBeHidden();
+  await page.locator('#helpButton').click();
   await page.locator('#tutorialVideoLink').click();
 
   await expect.poll(() => page.evaluate(() => window.__openedUrls)).toEqual([
@@ -153,6 +159,7 @@ test('OCR video source follows a newly dropped video media', async ({ page }) =>
 
 test('automatic OCR video source is not persisted as a manual override', async ({ page }) => {
   await openLauncher(page);
+  await page.locator('#navTranscribe').click();
   await page.locator('#mediaPath').fill('D:\\Demo\\1.mov');
 
   const ocrStep = await page.evaluate(() => window.MAWLauncher.getAutoPostprocessPayload()
@@ -168,6 +175,7 @@ test('automatic OCR video source is not persisted as a manual override', async (
 
 test('automatic subtitle burning follows the selected video', async ({ page }) => {
   await openLauncher(page);
+  await page.locator('#navTranscribe').click();
   await page.locator('#mediaPath').fill('D:\\Demo\\clip.mp4');
   await page.locator('#autoPostprocessEnabled').check();
   await expect(page.locator('[data-auto-step-row="burn"]')).toBeVisible();
@@ -243,7 +251,7 @@ test('translation merge option follows manual and automatic translation controls
   await expect(page.locator('#postprocessTranslationOptions [data-i18n="backfill_subtitles_hint"]')).toHaveText('适用于仅有少量语音需要翻译的情况，将翻译后文本直接回填替换。例如7句中文+3句英文，选择「翻译成中文」并启用回填，将得到10句中文字幕。');
   await page.locator('#postprocessOperation').selectOption('proofread');
   await expect(manualOptions).toBeHidden();
-  await page.locator('#toolboxClose').click();
+  await page.locator('#navTranscribe').click();
 
   await page.evaluate(() => {
     const provider = window.MAWLauncher.config.postprocessProviders.find((item) => item.id === 'deepseek');
@@ -300,7 +308,7 @@ test('automatic LLM setup highlights test connection until clicked', async ({ pa
   await page.locator('#autoPostprocessEnabled').check();
   await page.locator('#autoStepTranslate').click();
   await expect(page.locator('#autoStepTranslate')).not.toBeChecked();
-  await expect(page.locator('#settingsModal')).toBeVisible();
+  await expect(page.locator('#pageSettings')).toBeVisible();
   await expect(page.locator('#settingsLlmTab')).toHaveAttribute('aria-selected', 'true');
   await expect(page.locator('#testLlmConnection')).toHaveClass(/attention/);
   await expect.poll(() => page.locator('#testLlmConnection').evaluate((element) => getComputedStyle(element).animationIterationCount)).toBe('infinite');
@@ -366,7 +374,7 @@ test('blank LLM form fields use the effective connection and save response', asy
   });
   await page.locator('#autoPostprocessEnabled').check();
   await page.locator('#autoStepProofread').click();
-  await expect(page.locator('#settingsModal')).toBeVisible();
+  await expect(page.locator('#pageSettings')).toBeVisible();
   await page.locator('#llmBaseUrl').fill('');
   await page.locator('#llmModel').fill('');
   await page.locator('#testLlmConnection').click();
@@ -599,13 +607,13 @@ test('Launcher settings switch between accessible tabs and deep links', async ({
   await page.locator('#settingsButton').click();
 
   const tabs = page.locator('#settingsTabList [role="tab"]');
-  await expect(tabs).toHaveCount(4);
+  await expect(tabs).toHaveCount(5);
   await expect(page.locator('#settingsTabList')).toHaveAttribute('aria-label', '设置分类');
   await expect(page.locator('#settingsGeneralPanel')).toBeVisible();
   await expect(page.locator('#settingsLlmPanel')).toBeHidden();
   await expect(page.locator('#settingsLlmTab')).toHaveText('AI 模型');
 
-  const settingsCard = page.locator('#settingsModal .settings-modal-card');
+  const settingsCard = page.locator('#pageSettings .settings-page');
   const initialCard = await settingsCard.boundingBox();
   const initialScroll = await page.locator('.settings-scroll').evaluate((element) => ({
     clientWidth: element.clientWidth,
@@ -623,31 +631,37 @@ test('Launcher settings switch between accessible tabs and deep links', async ({
   expect(initialScroll.scrollbarGutter).toContain('stable');
   expect(llmScroll).toBe(initialScroll.clientWidth);
 
-  await page.locator('#settingsLlmTab').press('ArrowRight');
-  await expect(page.locator('#settingsGeneralTab')).toBeFocused();
-  await expect(page.locator('#settingsGeneralPanel')).toBeVisible();
-  await page.locator('#settingsGeneralTab').press('ArrowRight');
-  await expect(page.locator('#settingsProcessingTab')).toBeFocused();
-  await expect(page.locator('#settingsProcessingPanel')).toBeVisible();
-  await page.locator('#settingsProcessingTab').press('ArrowRight');
+  // 竖排分区：通用 → 断句与标点 → AI 模型 → 运行环境 → 关于与支持，方向键循环。
+  await page.locator('#settingsLlmTab').press('ArrowDown');
   await expect(page.locator('#settingsRuntimeTab')).toBeFocused();
   await expect(page.locator('#settingsRuntimePanel')).toBeVisible();
-  await page.locator('#settingsRuntimeTab').press('End');
-  await expect(page.locator('#settingsLlmTab')).toBeFocused();
+  await page.locator('#settingsRuntimeTab').press('ArrowDown');
+  await expect(page.locator('#settingsAboutTab')).toBeFocused();
+  await expect(page.locator('#settingsAboutPanel')).toBeVisible();
+  await page.locator('#settingsAboutTab').press('ArrowDown');
+  await expect(page.locator('#settingsGeneralTab')).toBeFocused();
+  await expect(page.locator('#settingsGeneralPanel')).toBeVisible();
+  await page.locator('#settingsGeneralTab').press('ArrowDown');
+  await expect(page.locator('#settingsProcessingTab')).toBeFocused();
+  await expect(page.locator('#settingsProcessingPanel')).toBeVisible();
+  await page.locator('#settingsProcessingTab').press('End');
+  await expect(page.locator('#settingsAboutTab')).toBeFocused();
 
   await page.evaluate(() => window.MAWLauncher.openSettings('ffmpegSettingsSection'));
   await expect(page.locator('#settingsRuntimeTab')).toHaveAttribute('aria-selected', 'true');
   await expect(page.locator('#ffmpegSettingsSection')).toBeVisible();
 
+  // 窄窗口：分区导航折到内容上方，标签换行而不横向溢出。
   await page.setViewportSize({ width: 520, height: 520 });
   await page.reload();
   await page.waitForFunction(() => window.MAWLauncher?.config?.postprocessProviders?.length > 0);
   await page.locator('#settingsButton').click();
   const tabLayout = await page.locator('#settingsTabList').evaluate((element) => {
     const style = getComputedStyle(element);
-    return { columns: style.gridTemplateColumns.split(' ').length, overflow: element.scrollWidth > element.clientWidth };
+    return { direction: style.flexDirection, wrap: style.flexWrap, overflow: element.scrollWidth > element.clientWidth };
   });
-  expect(tabLayout.columns).toBe(2);
+  expect(tabLayout.direction).toBe('row');
+  expect(tabLayout.wrap).toBe('wrap');
   expect(tabLayout.overflow).toBe(false);
 });
 
@@ -668,7 +682,7 @@ test('Qwen regional settings use a narrow advanced link and live at the bottom o
   await expect(regionalHint.locator('button')).toHaveText('⚙️ 设置 → 运行环境');
   await expect(regionalHint).toContainText('配置阿里云百炼地域。');
   await page.locator('#openDashscopeRegionSettings').click();
-  await expect(page.locator('#settingsModal')).toBeVisible();
+  await expect(page.locator('#pageSettings')).toBeVisible();
   await expect(page.locator('#settingsLlmTab')).toHaveAttribute('aria-selected', 'true');
   await expect(page.locator('#settingsRuntimeTab')).toHaveAttribute('aria-selected', 'false');
   await expect(page.locator('#dashscopeRegionPanel')).toBeVisible();
@@ -696,13 +710,13 @@ test('segmentation settings live under Processing and validation opens that tab'
   await expect(page.locator('#segmentationSettingsSection')).toBeVisible();
   await page.locator('#maxLen').fill('2');
   await page.locator('#minLen').fill('5');
-  await page.locator('#settingsClose').click();
+  await page.locator('#navTranscribe').click();
 
   await page.locator('#mediaPath').fill('D:\\Demo\\clip.mp4');
   await page.locator('#srtPath').fill('D:\\Demo\\clip.srt');
   await page.locator('#start').click();
 
-  await expect(page.locator('#settingsModal')).toBeVisible();
+  await expect(page.locator('#pageSettings')).toBeVisible();
   await expect(page.locator('#settingsProcessingTab')).toHaveAttribute('aria-selected', 'true');
   await expect(page.locator('#segmentationSettingsSection')).toBeVisible();
   await expect(page.locator('#maxLenError')).toHaveText('断句参数无效：请输入整数，并确保单句上限不小于短句合并值。');
@@ -766,12 +780,12 @@ test('local runtime check sits above the local model settings entry and deep-lin
   await expect(page.locator('#localModelCachePathLine')).toContainText('模型缓存：D:\\Models\\MAW');
   await expect(page.locator('#localRuntimeCheckStatus')).toHaveText('本地运行环境未安装');
   await page.locator('#openLocalRuntimeSettings').click();
-  await expect(page.locator('#settingsModal')).toBeVisible();
+  await expect(page.locator('#pageSettings')).toBeVisible();
   await expect(page.locator('#settingsRuntimeTab')).toHaveAttribute('aria-selected', 'true');
   await expect(page.locator('#localRuntimePanel')).toBeVisible();
-  // 深度链接落在 Runtime 面板顶部：内容区回到顶部，弹窗卡片本体不被滚动。
+  // 深度链接落在 Runtime 面板顶部：内容区回到顶部，设置页外层不被滚动。
   await expect.poll(() => page.locator('.settings-scroll').evaluate((el) => el.scrollTop)).toBeLessThan(4);
-  await expect.poll(() => page.locator('.settings-modal-card').evaluate((el) => el.scrollTop)).toBe(0);
+  await expect.poll(() => page.locator('.settings-page').evaluate((el) => el.scrollTop)).toBe(0);
 });
 
 test('English mode localizes provider, model, and language labels from the backend config', async ({ page }) => {
@@ -1009,10 +1023,10 @@ test('runtime errors show an actionable notice outside the log', async ({ page }
   await page.locator('#errorNoticeFaq').click();
   await expect.poll(() => page.evaluate(() => window.__faqCalls.length)).toBe(1);
   await page.locator('#errorNoticeAction').click();
-  await expect(page.locator('#settingsModal')).toBeVisible();
+  await expect(page.locator('#pageSettings')).toBeVisible();
   await expect(page.locator('#ffmpegSettingsSection')).toBeVisible();
 
-  await page.locator('#settingsClose').click();
+  await page.locator('#navTranscribe').click();
   await page.locator('#errorNoticeClose').click();
   await expect(notice).toBeHidden();
   await expect(page.locator('#status')).toBeVisible();
@@ -1021,6 +1035,7 @@ test('runtime errors show an actionable notice outside the log', async ({ page }
 
 test('provider HTTP failures keep retry guidance and original transcription discoverable', async ({ page }) => {
   await openLauncher(page);
+  await page.locator('#navTranscribe').click();
   await page.evaluate(() => window.MAWLauncher.onBackendEvent({
     type: 'error',
     code: 'postprocess_provider_response',
@@ -1223,7 +1238,7 @@ test('launcher reports a server disconnect without manual refresh', async ({ pag
   await page.waitForFunction(() => window.MAWLauncher?.config?.postprocessProviders?.length > 0);
   await page.locator('#settingsButton').click();
   await page.locator('#langZh').click();
-  await page.locator('#settingsClose').click();
+  await page.locator('#navTranscribe').click();
   await page.evaluate(() => {
     const original = window.MAWLauncher.callBackend;
     window.__serverStatusCalls = 0;
@@ -1285,7 +1300,7 @@ test('restarting after a server disconnect does not reopen the editor page', asy
   await page.waitForFunction(() => window.MAWLauncher?.config?.postprocessProviders?.length > 0);
   await page.locator('#settingsButton').click();
   await page.locator('#langZh').click();
-  await page.locator('#settingsClose').click();
+  await page.locator('#navTranscribe').click();
   await page.evaluate(() => {
     const original = window.MAWLauncher.callBackend;
     window.__openUrlCalls = [];
@@ -1429,9 +1444,11 @@ test('artifact rows localize type labels while preserving MOSP-first and SRT-onl
 test('server media accepts a dropped file even when batch mode is selected', async ({ page }) => {
   await page.goto(`file://${launcherPath}`);
   await page.waitForFunction(() => window.MAWLauncher?.config?.postprocessProviders?.length > 0);
+  await page.locator('#navBatch').click();
+  await expect(page.locator('#batchMode')).toHaveAttribute('aria-pressed', 'true');
+  await page.locator('#navProjects').click();
   await page.locator('#jsonPath').fill('D:\\Demo\\missing-media.mosp');
   await page.locator('#serverMediaField').evaluate((element) => element.classList.remove('hidden'));
-  await page.locator('#batchMode').click();
 
   await page.locator('#serverMediaPath').evaluate((input) => {
     const dataTransfer = { types: ['Files'], files: [{ path: 'D:\\Demo\\clip.mp4' }] };
@@ -1610,7 +1627,7 @@ test('batch mode disables manuscript matching without changing its saved single-
   const match = page.locator('#autoStepMatch');
   await match.check();
   await expect(match).toBeChecked();
-  await expect(page.locator('#toolboxDrawer')).toBeHidden();
+  await expect(page.locator('#pageToolbox')).toBeHidden();
   await page.evaluate(() => {
     window.__savedPlans = [];
     const callBackend = window.MAWLauncher.callBackend;
@@ -1776,56 +1793,57 @@ test('artifact context menu opens at the viewport pointer after Launcher zoom', 
   expect(Math.abs(bounds.y - pointer.y)).toBeLessThanOrEqual(2);
 });
 
-test('toolbox resize preserves the other axis and converts pointer deltas through CSS zoom', async ({ page }) => {
-  // Given: an open toolbox at 125% zoom with a stable explicit size.
-  await openLauncher(page);
-  await page.evaluate(() => {
-    for (let index = 0; index < 5; index += 1) {
-      document.dispatchEvent(new WheelEvent('wheel', {
-        bubbles: true,
-        cancelable: true,
-        ctrlKey: true,
-        deltaY: -100,
-      }));
-    }
-    const drawer = document.getElementById('toolboxDrawer');
-    drawer.style.width = '480px';
-    drawer.style.blockSize = '400px';
-  });
-  await expect.poll(() => page.evaluate(() => document.documentElement.style.zoom)).toBe('125%');
-  const before = await page.locator('#toolboxDrawer').evaluate((element) => ({
-    cssWidth: Number.parseFloat(getComputedStyle(element).width),
-    cssHeight: Number.parseFloat(getComputedStyle(element).height),
-  }));
+test('left navigation switches pages, keeps batch mode in sync, and returns from settings and config-only toolbox', async ({ page }) => {
+  // Given: a freshly loaded Launcher on the Transcribe page.
+  await page.goto(`file://${launcherPath}`);
+  await page.waitForFunction(() => window.MAWLauncher?.config?.postprocessProviders?.length > 0);
+  await expect(page.locator('#navTranscribe')).toHaveAttribute('aria-current', 'page');
+  await expect(page.locator('#pageTranscribe')).toBeVisible();
+  await expect(page.locator('#toolboxFab')).toHaveCount(0);
 
-  // When: height grows by 50 viewport pixels, then width grows by 50 viewport pixels.
-  const heightHandle = page.locator('#toolboxResizeY');
-  const heightBox = await heightHandle.boundingBox();
-  await page.mouse.move(heightBox.x + heightBox.width / 2, heightBox.y + heightBox.height / 2);
-  await page.mouse.down();
-  await page.mouse.move(heightBox.x + heightBox.width / 2, heightBox.y + heightBox.height / 2 - 50);
-  await page.mouse.up();
-  const afterHeight = await page.locator('#toolboxDrawer').evaluate((element) => ({
-    cssWidth: Number.parseFloat(getComputedStyle(element).width),
-    cssHeight: Number.parseFloat(getComputedStyle(element).height),
-  }));
+  // When / Then: each nav item shows exactly one page and moves the highlight.
+  for (const [nav, pageId] of [['#navToolbox', '#pageToolbox'], ['#navProjects', '#pageProjects'], ['#settingsButton', '#pageSettings']]) {
+    await page.locator(nav).click();
+    await expect(page.locator(pageId)).toBeVisible();
+    await expect(page.locator(nav)).toHaveAttribute('aria-current', 'page');
+    await expect(page.locator('.page:not(.hidden)')).toHaveCount(1);
+  }
 
-  const widthHandle = page.locator('#toolboxResizeX');
-  const widthBox = await widthHandle.boundingBox();
-  await page.mouse.move(widthBox.x + widthBox.width / 2, widthBox.y + widthBox.height / 2);
-  await page.mouse.down();
-  await page.mouse.move(widthBox.x + widthBox.width / 2 - 50, widthBox.y + widthBox.height / 2);
-  await page.mouse.up();
-  const afterWidth = await page.locator('#toolboxDrawer').evaluate((element) => ({
-    cssWidth: Number.parseFloat(getComputedStyle(element).width),
-    cssHeight: Number.parseFloat(getComputedStyle(element).height),
-  }));
+  // Batch reuses the Transcribe page in phase 2 and follows the in-card mode switch both ways.
+  await page.locator('#navBatch').click();
+  await expect(page.locator('#pageTranscribe')).toBeVisible();
+  await expect(page.locator('#batchMode')).toHaveAttribute('aria-pressed', 'true');
+  await expect(page.locator('#navBatch')).toHaveAttribute('aria-current', 'page');
+  await page.locator('#singleMode').click();
+  await expect(page.locator('#navTranscribe')).toHaveAttribute('aria-current', 'page');
+  await page.locator('#batchMode').click();
+  await expect(page.locator('#navBatch')).toHaveAttribute('aria-current', 'page');
+  await page.locator('#navTranscribe').click();
+  await expect(page.locator('#singleMode')).toHaveAttribute('aria-pressed', 'true');
 
-  // Then: 50 viewport pixels become 40 CSS pixels and each drag leaves its other axis unchanged.
-  expect(afterHeight.cssWidth).toBeCloseTo(before.cssWidth, 0);
-  expect(afterHeight.cssHeight - before.cssHeight).toBeCloseTo(40, 0);
-  expect(afterWidth.cssWidth - afterHeight.cssWidth).toBeCloseTo(40, 0);
-  expect(afterWidth.cssHeight).toBeCloseTo(afterHeight.cssHeight, 0);
+  // A settings deep link opens the Settings page; closeSettings returns to the previous page.
+  await page.locator('#navProjects').click();
+  await page.evaluate(() => window.MAWLauncher.openSettings('ffmpegSettingsSection'));
+  await expect(page.locator('#pageSettings')).toBeVisible();
+  await expect(page.locator('#settingsRuntimeTab')).toHaveAttribute('aria-selected', 'true');
+  await page.evaluate(() => window.MAWLauncher.closeSettings());
+  await expect(page.locator('#pageProjects')).toBeVisible();
+  await expect(page.locator('#navProjects')).toHaveAttribute('aria-current', 'page');
+
+  // An auto-postprocess "Configure" button opens the toolbox in config-only mode with a way back.
+  await page.locator('#navTranscribe').click();
+  await page.locator('#autoPostprocessEnabled').check();
+  await page.locator('#configureAutoReplace').click();
+  await expect(page.locator('#pageToolbox')).toBeVisible();
+  await expect(page.locator('#toolboxConfigOnlyHint')).toBeVisible();
+  await expect(page.locator('#toolboxBackToTranscribe')).toBeVisible();
+  await page.locator('#toolboxBackToTranscribe').click();
+  await expect(page.locator('#pageTranscribe')).toBeVisible();
+  // Re-entering from the nav is the ordinary toolbox again.
+  await page.locator('#navToolbox').click();
+  await expect(page.locator('#toolboxBackToTranscribe')).toBeHidden();
+  await expect(page.locator('#toolboxConfigOnlyHint')).toBeHidden();
+  await expect(page.locator('#runFixedProcess')).toBeVisible();
 });
 
 test('AI cleanup notes persist in the automatic plan and reach the manual request', async ({ page }) => {
