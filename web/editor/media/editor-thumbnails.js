@@ -74,7 +74,15 @@ export function createThumbnailModule(dependencies) {
     let controlRequest = null;
     const protectedKeys = new Set();
     let enabled = true;
-    try { enabled = storage.getItem('mawe-filmstrip-visible') !== 'false'; } catch (_) {}
+    try {
+      const stored = storage.getItem('mawe-filmstrip-visible');
+      if (stored !== null) enabled = stored !== 'false';
+      // Projects without a persisted .mothumbs base start hidden: the user
+      // opted out of generation, so opening them must not begin decoding.
+      else enabled = getConfig()?.thumbnailBaseReady !== false;
+    } catch (_) {}
+    let decodeEnabled = true;
+    try { decodeEnabled = storage.getItem('mawe-filmstrip-decode') !== 'false'; } catch (_) {}
     let available = false, playing = false, closed = false, state = 'idle', persisted = true;
     let samples = [], fallbackSamples = [], assets = [], demand = {interval_ms: 2000, ranges: [], representative_ms: []};
     let demandKey = '', debounce = 0, pollTimer = 0, heartbeat = 0, requestEpoch = 0;
@@ -284,7 +292,7 @@ export function createThumbnailModule(dependencies) {
       demandBusy = true;
       const epoch = requestEpoch, requestedBinding = binding, requestedView = view;
       try {
-        const result = await send(urls().demand, {binding, lease, client_id:clientId, view, ...demand, playhead_ms:playheadMs, playing, visible:true});
+        const result = await send(urls().demand, {binding, lease, client_id:clientId, view, ...demand, playhead_ms:playheadMs, playing, visible:true, decode:decodeEnabled});
         failures.demand = 0; ingest(result, requestedBinding, requestedView, epoch);
       } catch (_) { networkFailed('demand', epoch, requestedView); }
       finally {
@@ -308,6 +316,7 @@ export function createThumbnailModule(dependencies) {
       assetTemplate: '',
       get visible() { return active(); },
       get enabled() { return enabled; },
+      get decodeEnabled() { return decodeEnabled; },
       get state() { return state; },
       get persisted() { return persisted; },
       get interval() { return demand.interval_ms; },
@@ -334,6 +343,18 @@ export function createThumbnailModule(dependencies) {
           heartbeat = browser.setInterval(() => void submit(), 2000);
         }
       },
+      setDecodeEnabled(next) {
+        if (!!next === decodeEnabled) return;
+        decodeEnabled = !!next;
+        try { storage.setItem('mawe-filmstrip-decode', String(decodeEnabled)); } catch (_) {}
+        if (!active()) { onChange(true); return; }
+        // Re-plan this lease so the Server stops or resumes on-demand decoding;
+        // cached samples keep flowing either way.
+        view += 1;
+        browser.clearTimeout(debounce);
+        debounce = browser.setTimeout(() => void submit(), 200);
+        onChange(true);
+      },
       setPlaying(next) {
         if (!!next === playing) return;
         playing = !!next; browser.clearTimeout(debounce);
@@ -341,7 +362,7 @@ export function createThumbnailModule(dependencies) {
         // A newer control view prevents a late ordinary demand from restoring old playback state.
         view += 1;
         const epoch = requestEpoch, requestedBinding = binding, requestedView = view;
-        void send(urls().demand, {binding, lease, client_id:clientId, view, ...demand, playhead_ms:playheadMs, playing, visible:true}, true)
+        void send(urls().demand, {binding, lease, client_id:clientId, view, ...demand, playhead_ms:playheadMs, playing, visible:true, decode:decodeEnabled}, true)
           .then(result => { failures.control = 0; ingest(result, requestedBinding, requestedView, epoch); })
           .catch(() => networkFailed('control', epoch, requestedView));
       },

@@ -35,6 +35,11 @@ export function createWaveformModule(dependencies) {
         toggle.disabled = !window.MaweBoot?.SERVER_CONFIG?.thumbnailBinding;
         toggle.addEventListener('change', () => this.thumbnailController.setEnabled(toggle.checked));
       }
+      const decodeToggle = /** @type {HTMLInputElement | null} */ (document.getElementById('waveform-thumbnail-decode'));
+      if (decodeToggle) {
+        decodeToggle.checked = this.thumbnailController.decodeEnabled;
+        decodeToggle.addEventListener('change', () => this.thumbnailController.setDecodeEnabled(decodeToggle.checked));
+      }
       document.addEventListener('mawe:languagechange', () => this.updateThumbnailStatus());
       window.addEventListener('online', () => this.thumbnailController.retry());
       window.addEventListener('pagehide', () => this.thumbnailController.close());
@@ -64,17 +69,24 @@ export function createWaveformModule(dependencies) {
     /** @this {import('./waveform-types.js').WaveformInstance} */
     updateThumbnailStatus() {
       const toggle = /** @type {HTMLInputElement | null} */ (document.getElementById('waveform-show-thumbnails'));
+      const decodeToggle = /** @type {HTMLInputElement | null} */ (document.getElementById('waveform-thumbnail-decode'));
       const status = document.getElementById('waveform-thumbnail-status');
       const hasBinding = !!window.MaweBoot?.SERVER_CONFIG?.thumbnailBinding;
       const text = !hasBinding
         ? localizedWaveformMessage('从本机 Server 加载视频后可用', 'Available after loading video through the local Server')
         : !this.thumbnailController.enabled
           ? localizedWaveformMessage('视频画面已隐藏', 'Video pictures hidden')
-          : this.thumbnailStatusText();
+          : !this.thumbnailController.decodeEnabled
+            ? localizedWaveformMessage('仅显示缓存画面，不实时补帧', 'Cached pictures only; on-demand decoding off')
+            : this.thumbnailStatusText();
       if (toggle) {
         toggle.checked = this.thumbnailController.enabled;
         toggle.disabled = !hasBinding || ['unavailable', 'error'].includes(this.thumbnailController.state);
         toggle.parentElement.title = text;
+      }
+      if (decodeToggle) {
+        decodeToggle.checked = this.thumbnailController.decodeEnabled;
+        decodeToggle.disabled = !hasBinding || !this.thumbnailController.enabled;
       }
       if (status && status.textContent !== text) status.textContent = text;
       for (const row of this.renderedRows) {

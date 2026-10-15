@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import contextlib
 import io
+import os
 import tempfile
 import unittest
 from pathlib import Path
@@ -46,6 +47,23 @@ class ThumbnailMediaCacheTests(unittest.TestCase):
         merged=media_cache.merge_media_caches({'segments':self.project['segments']},result)
         self.assertNotIn('thumbnail_cache',merged)
         self.assertEqual(merged['media_metadata']['selected_audio_track'],2)
+
+    def test_generate_thumbnails_false_skips_base_build(self):
+        manifest={'state':'ready','samples':[]}
+        with mock.patch.object(thumbnail_jobs,'build_base',return_value=manifest) as build, contextlib.redirect_stdout(io.StringIO()) as output:
+            result=media_cache.embed_media_caches(self.project,self.wav,source_media_path=self.source,audio_track=0,generate_thumbnails=False)
+        build.assert_not_called()
+        self.assertIsNone(result.thumbnail_cache)
+        self.assertIn("已按设置跳过画面缓存生成", output.getvalue())
+
+    def test_environment_disable_stops_thumbnail_stage(self):
+        manifest={'state':'ready','samples':[]}
+        with mock.patch.dict(os.environ, {"MAW_MEDIA_THUMBNAILS": "0"}), \
+             mock.patch.object(thumbnail_jobs,'build_base',return_value=manifest) as build, \
+             contextlib.redirect_stdout(io.StringIO()) as output:
+            media_cache.embed_media_caches(self.project,self.wav,source_media_path=self.source,audio_track=0)
+        build.assert_not_called()
+        self.assertIn("已按设置跳过画面缓存生成", output.getvalue())
 
     def test_default_thumbnail_progress_reaches_launcher_output(self):
         output = io.StringIO()

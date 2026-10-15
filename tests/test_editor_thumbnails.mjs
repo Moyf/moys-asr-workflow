@@ -4,10 +4,10 @@ import test from 'node:test';
 const text = fs.readFileSync(new URL('../web/editor/media/editor-thumbnails.js', import.meta.url), 'utf8');
 const { createThumbnailModule } = await import(`data:text/javascript;base64,${Buffer.from(text).toString('base64')}`);
 
-function harness(changes=[]) {
+function harness(changes=[], configOverrides={}, stored={}) {
   let now = 0, serial = 0;
-  const timers = new Map(), calls = [], closedImages = [], values = new Map();
-  const config = {requestToken:'test-only-token', thumbnailUrls:{status:'/status', demand:'/demand', release:'/release'}};
+  const timers = new Map(), calls = [], closedImages = [], values = new Map(Object.entries(stored));
+  const config = {requestToken:'test-only-token', thumbnailUrls:{status:'/status', demand:'/demand', release:'/release'}, ...configOverrides};
   let responder = async () => ({binding:'video-a', view:1, lease:'lease-a', state:'ready',
     source_identity:'source-a', cache_revision:'r1', duration_ms:20000, samples:[],
     asset_url_template:'/asset/{asset}?binding={binding}&revision={cache_revision}'});
@@ -92,6 +92,45 @@ test('a replaced binding discards its delayed status and releases only the old l
   await h.flush(); await h.advance(2000);
   assert.equal(h.controller.visible,false);
   assert.ok(h.calls.some(call=>call.url==='/release' && call.body.binding==='video-a' && call.body.lease==='lease-a'));
+  h.controller.close();
+});
+
+test('projects without a persisted base start hidden until the user opts in',()=>{
+  const cases=[
+    [{thumbnailBaseReady:false},{},{},false,'no base and no preference starts hidden'],
+    [{thumbnailBaseReady:false},{'mawe-filmstrip-visible':'true'},{},true,'an explicit opt-in wins over the missing base'],
+    [{thumbnailBaseReady:false},{'mawe-filmstrip-visible':'false'},{},false,'an explicit opt-out still hides'],
+    [{thumbnailBaseReady:true},{},{},true,'a persisted base keeps the current default'],
+    [{},{},{},true,'unknown readiness keeps the current default'],
+  ];
+  for(const [overrides,stored,,expected,message] of cases){
+    const h=harness([],overrides,stored);
+    assert.equal(h.controller.enabled,expected,message);
+    h.controller.close();
+  }
+  const h=harness([],{thumbnailBaseReady:false});
+  h.controller.setEnabled(true);
+  assert.equal(h.values.get('mawe-filmstrip-visible'),'true','the explicit choice is persisted');
+  h.controller.close();
+});
+
+test('the decode switch persists and re-plans the lease with decode:false',async()=>{
+  const h=harness(); h.respond(call=>manifest(call));
+  h.controller.setBinding('video-a'); await h.flush();
+  h.controller.setView([{start:0,end:10000,width:1000}],20000); await h.advance(200);
+  const demands=()=>h.calls.filter(call=>call.body?.visible);
+  assert.ok(demands().length>0);
+  assert.equal(demands().at(-1).body.decode,true,'default keeps the current real-time behavior');
+  h.controller.setDecodeEnabled(false); await h.advance(200);
+  assert.equal(h.values.get('mawe-filmstrip-decode'),'false');
+  const hiddenView=demands().at(-1).body.view;
+  assert.equal(demands().at(-1).body.decode,false);
+  h.controller.setPlaying(true); await h.flush();
+  assert.equal(h.calls.find(call=>call.body?.playing===true).body.decode,false,'control requests carry the same flag');
+  h.controller.setPlaying(false); await h.flush();
+  h.controller.setDecodeEnabled(true); await h.advance(200);
+  assert.equal(demands().at(-1).body.decode,true);
+  assert.ok(demands().at(-1).body.view>hiddenView,'re-enabling re-plans with a newer view');
   h.controller.close();
 });
 
@@ -320,5 +359,39 @@ test('play and pause events capture their current source head before sending the
     assert.deepEqual(calls,[['head',8500],['playing',false]]);
     calls.length=0;editor.player.paused=false;editor.currentTimeMs=()=>12500;editor.thumbnailPlayListener();
     assert.deepEqual(calls,[['head',12500],['playing',true]]);
+  } finally {globalThis.document=previousDocument;globalThis.window=previousWindow;}
+});
+
+test('thumbnail settings wire both toggles and explain cache-only status',async()=>{
+  const source=fs.readFileSync(new URL('../web/editor/media/waveform/thumbnails.js',import.meta.url),'utf8');
+  const {createWaveformModule}=await import(`data:text/javascript;base64,${Buffer.from(source).toString('base64')}`);
+  const elements={
+    'waveform-show-thumbnails':{checked:false,disabled:true,parentElement:{title:''},addEventListener(type,fn){this[`on${type}`]=fn;}},
+    'waveform-thumbnail-decode':{checked:false,disabled:false,addEventListener(type,fn){this[`on${type}`]=fn;}},
+    'waveform-thumbnail-status':{textContent:''},
+  };
+  const calls=[];
+  const controller={enabled:true,decodeEnabled:false,state:'ready',persisted:true,
+    setPlayhead(){},setPlaying(){},setEnabled(value){calls.push(['enabled',value]);},setDecodeEnabled(value){calls.push(['decode',value]);}};
+  const previousDocument=globalThis.document, previousWindow=globalThis.window;
+  globalThis.document={getElementById:id=>elements[id]??null,addEventListener(){}};
+  globalThis.window={addEventListener(){},MaweBoot:{SERVER_CONFIG:{thumbnailBinding:'video-a'}}};
+  try {
+    const methods=createWaveformModule({thumbnailCore:{createController:()=>controller},ROW_GAP:10,
+      localizedWaveformMessage:(zh)=>zh});
+    const editor={renderedRows:[],setThumbnailBinding(){}};
+    methods.initThumbnails.value.call(editor);
+    assert.equal(elements['waveform-show-thumbnails'].checked,true);
+    assert.equal(elements['waveform-thumbnail-decode'].checked,false,'the checkbox mirrors the controller state');
+    elements['waveform-thumbnail-decode'].onchange.call(elements['waveform-thumbnail-decode']);
+    assert.deepEqual(calls,[['decode',false]],'the decode checkbox forwards its checked state');
+    methods.updateThumbnailStatus.value.call(editor);
+    assert.equal(elements['waveform-thumbnail-status'].textContent,'仅显示缓存画面，不实时补帧');
+    assert.equal(elements['waveform-thumbnail-decode'].disabled,false,'the decode toggle stays usable while pictures are shown');
+    controller.enabled=false;
+    methods.updateThumbnailStatus.value.call(editor);
+    assert.equal(elements['waveform-thumbnail-status'].textContent,'视频画面已隐藏');
+    assert.equal(elements['waveform-thumbnail-decode'].disabled,true,'the decode toggle disables with the display toggle');
+    assert.equal(elements['waveform-show-thumbnails'].parentElement.title,'视频画面已隐藏');
   } finally {globalThis.document=previousDocument;globalThis.window=previousWindow;}
 });

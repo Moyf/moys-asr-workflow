@@ -37,6 +37,8 @@ async function enableFilmstrip(page) {
   await page.evaluate(()=>{
     MaweBoot.SERVER_CONFIG.thumbnailUrls={status:'/__filmstrip/status',demand:'/__filmstrip/demand',asset:'/__filmstrip/asset/',release:'/__filmstrip/release'};
     MaweBoot.SERVER_CONFIG.thumbnailBinding='test-video';
+    MaweBoot.SERVER_CONFIG.thumbnailBaseReady=true;
+    MaweCoreState.waveformEditor.thumbnailController.setEnabled(true);
     MaweCoreState.waveformEditor.setThumbnailBinding('test-video');
   });
   await expect(page.locator('.waveform-filmstrip').first()).toBeVisible();

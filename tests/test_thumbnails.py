@@ -30,7 +30,7 @@ class ThumbnailTests(unittest.TestCase):
                 t.probe_video(path, ffmpeg_path="custom-tools")
                 resolve.assert_called_with("ffprobe", "custom-tools")
             video = t.VideoInfo(0, 1000, 0)
-            payload = {"frames": [{"best_effort_timestamp_time": "0"}]}
+            payload = {"packets": [{"pts_time": "0"}]}
             with mock.patch.object(t, "resolve_ffmpeg_tool", return_value=Path("tool")) as resolve, mock.patch.object(t, "_run", return_value=subprocess.CompletedProcess([], 0, json.dumps(payload).encode(), b"")):
                 self.assertEqual(t._frame_times(path, video, [0], timeout_s=1, cancel=None, ffmpeg_path="custom-tools"), [0])
                 resolve.assert_called_with("ffprobe", "custom-tools")
@@ -48,6 +48,25 @@ class ThumbnailTests(unittest.TestCase):
             payload = {"streams": [{"index": 0, "codec_type": "audio"}, {"index": 1, "codec_type": "video", "disposition": {"attached_pic": 1}}]}
             with mock.patch.object(t, "resolve_ffmpeg_tool", return_value=Path("ffprobe")), mock.patch.object(t, "_run", return_value=subprocess.CompletedProcess([], 0, json.dumps(payload).encode(), b"")):
                 self.assertIsNone(t.probe_video(path))
+
+    def test_truncated_probe_json_is_retried_once(self):
+        with tempfile.TemporaryDirectory() as temp:
+            path = Path(temp) / "video.mkv"
+            path.write_bytes(b"video")
+            good = json.dumps({"streams": [{"index": 0, "codec_type": "video", "duration": "1"}], "format": {"duration": "1"}}).encode()
+            responses = [subprocess.CompletedProcess([], 0, good[:len(good)//2], b""), subprocess.CompletedProcess([], 0, good, b"")]
+            with mock.patch.object(t, "resolve_ffmpeg_tool", return_value=Path("ffprobe")), mock.patch.object(t, "_run", side_effect=responses) as run:
+                info = t.probe_video(path)
+            self.assertEqual(info.duration_ms, 1000)
+            self.assertEqual(run.call_count, 2)
+
+    def test_repeatedly_truncated_probe_json_reports_probe_failure(self):
+        with tempfile.TemporaryDirectory() as temp:
+            path = Path(temp) / "video.mkv"
+            path.write_bytes(b"video")
+            with mock.patch.object(t, "resolve_ffmpeg_tool", return_value=Path("ffprobe")), mock.patch.object(t, "_run", return_value=subprocess.CompletedProcess([], 0, b"{truncated", b"")):
+                with self.assertRaises(t.ThumbnailError):
+                    t.probe_video(path)
 
     def test_child_cancel_and_timeout_reap_process(self):
         with tempfile.TemporaryDirectory() as temp:

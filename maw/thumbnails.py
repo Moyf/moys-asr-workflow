@@ -91,11 +91,21 @@ def probe_video(media_path: Path | str, *, ffprobe_path: str | None = None, ffmp
     path = Path(media_path).resolve()
     if not path.is_file():
         raise ThumbnailError("media file is unavailable")
-    result = _run([str(tool), "-v", "error", "-show_streams", "-show_format", "-of", "json", str(path)], timeout_s=20, cancel=cancel)
+    command = [str(tool), "-v", "error", "-show_streams", "-show_format", "-of", "json", str(path)]
+    result = _run(command, timeout_s=20, cancel=cancel)
     if result.returncode:
         raise ThumbnailError(result.stderr.decode("utf-8", "replace")[-500:])
     try:
-        payload = json.loads(result.stdout)
+        try:
+            payload = json.loads(result.stdout)
+        except ValueError:
+            # One observed transient short read through the temp-file drain turned
+            # a healthy library into a truncated JSON payload; a fresh probe is far
+            # cheaper than skipping the whole thumbnail stage for that media.
+            result = _run(command, timeout_s=20, cancel=cancel)
+            if result.returncode:
+                raise ThumbnailError(result.stderr.decode("utf-8", "replace")[-500:])
+            payload = json.loads(result.stdout)
         stream = next(s for s in payload["streams"] if s.get("codec_type") == "video" and not s.get("disposition", {}).get("attached_pic"))
         def number(value):
             try:
@@ -167,22 +177,45 @@ def _frame_times(media_path: Path | str, video: VideoInfo, batch: Sequence[int],
     begin = (video.start_ms + max(0, batch[0] - 1000)) / 1000
     end = (video.start_ms + min(video.duration_ms, batch[-1] + 1000)) / 1000
     # Explicit end avoids ffprobe's relative-end-after-keyframe-seek behavior.
-    result = _run([str(probe), "-v", "error", "-threads", "2", "-select_streams", str(video.stream_index), "-read_intervals", f"{begin:.6f}%{end:.6f}", "-show_entries", "frame=best_effort_timestamp_time", "-of", "json", str(media_path)], timeout_s=timeout_s, cancel=cancel)
+    # Packet timestamps carry the same presentation PTS as decoded frames
+    # (verified against -show_frames on real fixtures) without decoding a
+    # single frame; 4K AV1 probes drop from seconds to milliseconds.
+    command = [str(probe), "-v", "error", "-select_streams", str(video.stream_index), "-read_intervals", f"{begin:.6f}%{end:.6f}", "-show_entries", "packet=pts_time,dts_time", "-of", "json", str(media_path)]
+    result = _run(command, timeout_s=timeout_s, cancel=cancel)
     if result.returncode:
         raise ThumbnailError(result.stderr.decode("utf-8", "replace")[-500:])
     try:
-        values = sorted(set(float(frame["best_effort_timestamp_time"]) for frame in json.loads(result.stdout).get("frames", []) if "best_effort_timestamp_time" in frame))
-        return [value for value in values if math.isfinite(value) and -1 <= value * 1000 - video.start_ms < video.duration_ms]
+        try:
+            payload = json.loads(result.stdout)
+        except ValueError:
+            # The same transient short read seen in probe_video can empty or
+            # truncate the packet payload; a fresh scan is cheaper than failing
+            # the whole batch chain.
+            result = _run(command, timeout_s=timeout_s, cancel=cancel)
+            if result.returncode:
+                raise ThumbnailError(result.stderr.decode("utf-8", "replace")[-500:])
+            payload = json.loads(result.stdout)
+        values = set()
+        for packet in json.loads(result.stdout).get("packets", []):
+            stamp = packet.get("pts_time", packet.get("dts_time"))
+            if stamp is None:
+                continue
+            value = float(stamp)
+            if math.isfinite(value):
+                values.add(value)
+        return [value for value in sorted(values) if -1 <= value * 1000 - video.start_ms < video.duration_ms]
     except (TypeError, ValueError, KeyError) as exc:
         raise ThumbnailError("invalid frame timestamps") from exc
 
 
-def extract_frames(media_path: Path | str, requested_ms: Sequence[int], *, stream_index: int | None = None, cancel: threading.Event | None = None, timeout_s: float = 45, ffmpeg_path: str | None = None, info: VideoInfo | None = None) -> list[FrameResult]:
+def extract_frames(media_path: Path | str, requested_ms: Sequence[int], *, stream_index: int | None = None, cancel: threading.Event | None = None, timeout_s: float = 45, ffmpeg_path: str | None = None, info: VideoInfo | None = None, threads: int = 2) -> list[FrameResult]:
     """Batch-decode selected real frames, including VFR and held tail frames.
 
-    The timestamp probe reads a short interval from its preceding keyframe;
-    FFmpeg then encodes only selected source timestamps in one task per batch.
-    No fps resampler or nominal frame-number timestamp enters the result.
+    The timestamp probe reads a short packet-PTS interval from its preceding
+    keyframe without decoding; FFmpeg then encodes only selected source
+    timestamps in one task per batch. No fps resampler or nominal frame-number
+    timestamp enters the result. ``threads`` bounds the decode task and should
+    stay small for interactive callers; background builds may raise it.
     """
     video = info or probe_video(media_path, cancel=cancel, ffmpeg_path=ffmpeg_path)
     if video is None:
@@ -215,7 +248,7 @@ def extract_frames(media_path: Path | str, requested_ms: Sequence[int], *, strea
                 seek = max(0, selected[0] - video.start_ms / 1000 - 0.001)
                 expression = "+".join(f"lt(abs(t-{p:.9f}),0.000001)" for p in selected)
                 vf = f"select='{expression}',scale=w='trunc(min(160/iw/sar,90/ih)*iw*sar/2)*2':h='trunc(min(160/iw/sar,90/ih)*ih/2)*2',setsar=1,pad=160:90:(ow-iw)/2:(oh-ih)/2"
-                command = [str(tool), "-hide_banner", "-nostdin", "-v", "error", "-threads", "2", "-filter_threads", "1", "-copyts", "-ss", f"{seek:.9f}", "-i", str(media_path), "-map", f"0:{video.stream_index}", "-an", "-sn", "-dn", "-vf", vf, "-fps_mode", "passthrough", "-q:v", "5", "-pix_fmt", "yuvj420p", "-threads", "2", "-frames:v", str(len(selected)), "-y", str(Path(temp) / "%06d.jpg")]
+                command = [str(tool), "-hide_banner", "-nostdin", "-v", "error", "-threads", str(threads), "-filter_threads", "1", "-copyts", "-ss", f"{seek:.9f}", "-i", str(media_path), "-map", f"0:{video.stream_index}", "-an", "-sn", "-dn", "-vf", vf, "-fps_mode", "passthrough", "-q:v", "5", "-pix_fmt", "yuvj420p", "-threads", str(threads), "-frames:v", str(len(selected)), "-y", str(Path(temp) / "%06d.jpg")]
                 result = _run(command, timeout_s=max(0.01, deadline - time.monotonic()), cancel=cancel)
                 if result.returncode:
                     raise ThumbnailError(result.stderr.decode("utf-8", "replace")[-500:])
