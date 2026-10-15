@@ -4460,8 +4460,19 @@
   color: var(--text-primary);
   box-shadow: 0 8px 28px #0005;
 }
-.gap-video-job progress { display: block; width: 100%; margin: 12px 0; }
-.gap-video-job button { padding: 6px 16px; cursor: pointer; }
+.gap-video-job progress { display: block; width: 100%; margin: 12px 0; accent-color: var(--accent); }
+.gap-video-job button {
+  padding: 6px 16px;
+  cursor: pointer;
+  color: var(--text-primary);
+  background: var(--bg-input);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-sm);
+}
+.gap-video-job button:hover { background: var(--btn-bg-hover); }
+.gap-video-job-actions { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 12px; }
+.gap-video-job #gap-video-job-expansion { margin-top: 8px; }
+.gap-video-job-explanation { margin-top: 8px; color: var(--text-secondary); font-size: 12px; }
 .gap-video-job button:disabled { cursor: default; opacity: .6; }
 
   .cue-panel-text-row { display: flex; align-items: stretch; gap: 12px; min-width: 0; }
