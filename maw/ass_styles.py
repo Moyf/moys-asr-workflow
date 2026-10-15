@@ -175,7 +175,7 @@ DEFAULT_ASS_STYLE: Final[dict[str, object]] = {
 # 副字幕位于主字幕下方，使用独立颜色、描边及边距。
 DEFAULT_ASS_EXTENSION_STYLE: Final[dict[str, object]] = {
     **_style_defaults("ass-extension", "ASS 副字幕样式"),
-    "primaryColor": "#eac953",
+    "primaryColor": "#f9ca1f",
     "emphasisColor": "#ffaa00",
     "fontSize": 64,
     "outline": 2,
