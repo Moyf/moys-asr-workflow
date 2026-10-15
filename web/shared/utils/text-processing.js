@@ -370,8 +370,8 @@ export function createUtilsModule(dependencies) {
     if (options.addWrapChars) {
       const left = String(options.wrapLeft == null ? '' : options.wrapLeft);
       const right = String(options.wrapRight == null ? '' : options.wrapRight);
-      if (options.skipWrapped && isTextWrappedBy(result, left, right)) return result;
-      result = `${left}${result}${right}`;
+      const wrapped = wrapPreservingSentenceShells(result, left, right, options.skipWrapped);
+      result = wrapped.text;
     }
     if (options.skipWrapped && options.addPrefix && options.addSuffix
         && isTextWrappedBy(result, options.prefix, options.suffix)) return result;
@@ -414,20 +414,73 @@ export function createUtilsModule(dependencies) {
   function parseSentenceFadeMarkers(text, rule) {
     const source = String(text == null ? '' : text);
     if (rule === 'none') return { text: source, fadeIn: false, fadeOut: false };
-    const singleAllowed = rule === 'both' || rule === 'single';
-    let body = source;
-    let fadeIn = false;
-    let fadeOut = false;
-    if (body.startsWith('>>')) body = body.slice(2), fadeIn = true;
-    else if (singleAllowed && body.startsWith('>')) body = body.slice(1), fadeIn = true;
-    if (body.endsWith('<<')) body = body.slice(0, -2), fadeOut = true;
-    else if (singleAllowed && body.endsWith('<')) body = body.slice(0, -1), fadeOut = true;
-    return { text: (fadeIn || fadeOut) ? body : source, fadeIn, fadeOut };
+    const parsed = sentenceShells(source, rule);
+    const fades = parsed.shells.filter(shell => shell.kind === 'fade');
+    return { text: rebuildShells(parsed.body, parsed.shells.filter(shell => shell.kind !== 'fade')),
+      fadeIn: fades.some(shell => Boolean(shell.left)), fadeOut: fades.some(shell => Boolean(shell.right)) };
   }
 
 
   function stripSentenceFadeMarkers(text, rule) {
     return parseSentenceFadeMarkers(text, rule).text;
+  }
+
+
+  // ASS 单句原地震动标记：整行两端各写 `!!` 表示该句导出时按固定间隔拆分
+  // 为多条 \pos 抖动事件（见 ass-canvas-layout 的震动参数）。仅识别双符号，
+  // 没有单双规则；至少要有一个字符的正文才视为标记。整句字号、淡入淡出
+  // 与震动可以按任意嵌套顺序组合，剥除效果标记时保留其余外层格式。
+  function parseSentenceShakeMarkers(text) {
+    const source = String(text == null ? '' : text);
+    const parsed = sentenceShells(source);
+    return { text: rebuildShells(parsed.body, parsed.shells.filter(shell => shell.kind !== 'shake')),
+      shake: parsed.shells.some(shell => shell.kind === 'shake') };
+  }
+
+  // Peel only complete sentence shells. Inline runs in a mixed sentence are
+  // not shells and cannot turn an inner !! into a sentence effect.
+  function sentenceShells(text, rule) {
+    let body = String(text ?? '');
+    const shells = [];
+    const formats = ['++', '--', '**', '__', '~~', '//'];
+    while (body) {
+      const token = ['!!', ...formats].find(token => body.length > token.length * 2
+        && body.startsWith(token) && body.endsWith(token)
+        && (token === '!!' || !body.slice(token.length, -token.length).includes(token)));
+      if (token) {
+        shells.push({ kind: token === '!!' ? 'shake' : 'format', left: token, right: token });
+        body = body.slice(token.length, -token.length);
+        continue;
+      }
+      const single = rule === 'both' || rule === 'single';
+      const left = body.startsWith('>>') ? '>>' : single && body.startsWith('>') ? '>' : '';
+      const right = body.endsWith('<<') ? '<<' : single && body.endsWith('<') ? '<' : '';
+      if (!left && !right) break;
+      // A repeated fade pair is literal after the first pair, matching SRT's
+      // existing parse-once contract (>>>>text<<<< retains >>text<<).
+      if (shells.some(shell => shell.kind === 'fade')) break;
+      shells.push({ kind: 'fade', left, right });
+      body = body.slice(left.length, right ? -right.length : undefined);
+    }
+    return { body, shells };
+  }
+
+  function rebuildShells(body, shells) {
+    return shells.reduceRight((text, shell) => `${shell.left}${text}${shell.right}`, body);
+  }
+
+  function wrapPreservingSentenceShells(source, left, right, skipWrapped) {
+    const parsed = sentenceShells(source);
+    const skipped = skipWrapped && (isTextWrappedBy(source, left, right)
+      || parsed.shells.some(shell => shell.left === left && shell.right === right)
+      || isTextWrappedBy(parsed.body, left, right));
+    return { skipped: Boolean(skipped), text: skipped ? source
+      : rebuildShells(`${left}${parsed.body}${right}`, parsed.shells) };
+  }
+
+
+  function stripSentenceShakeMarkers(text) {
+    return parseSentenceShakeMarkers(text).text;
   }
 
 
@@ -441,6 +494,7 @@ export function createUtilsModule(dependencies) {
     { id: 'underline', label: '下划线', left: '__', right: '__', ass: true },
     { id: 'strike', label: '删除线', left: '~~', right: '~~', ass: true },
     { id: 'fade', label: '淡出淡入', left: '>>', right: '<<', ass: true },
+    { id: 'shake', label: '原地震动', left: '!!', right: '!!', ass: true },
     { id: 'comment', label: '注释文本', left: '//', right: '//', ass: true },
     { id: 'note', label: '音符', left: '♪', right: '♪' },
     { id: 'music', label: '双音符', left: '♬', right: '♬' },
@@ -464,8 +518,8 @@ export function createUtilsModule(dependencies) {
     const l = String(left == null ? '' : left);
     const r = String(right == null ? '' : right);
     if (source === '' || (!l && !r)) return { changed: false, skipped: false, text: source };
-    if (isTextWrappedBy(source, l, r)) return { changed: false, skipped: true, text: source };
-    return { changed: true, skipped: false, text: `${l}${source}${r}` };
+    const result = wrapPreservingSentenceShells(source, l, r, true);
+    return { changed: result.text !== source, ...result };
   }
 
 
@@ -481,6 +535,8 @@ export function createUtilsModule(dependencies) {
     buildTextProcessingPreview,
     parseSentenceFadeMarkers,
     stripSentenceFadeMarkers,
+    parseSentenceShakeMarkers,
+    stripSentenceShakeMarkers,
     convertChineseNumbers,
     WRAP_CHAR_PRESETS,
     isTextWrappedBy,

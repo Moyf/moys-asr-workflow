@@ -389,6 +389,11 @@
       items: rightItems.length ? rightItems : null,
       _dirty: true,
     };
+    // Both halves inherit independent cue positioning (no shared nested pos).
+    if (segment.assOverride) {
+      left.assOverride = window.AsrEditorUtils.normalizeAssOverride(segment.assOverride);
+      right.assOverride = window.AsrEditorUtils.normalizeAssOverride(segment.assOverride);
+    }
     if (segment.sticker) {
       right.sticker = null;
       right.sticker_ref = { name: segment.sticker.name, headIdx: headIndex };

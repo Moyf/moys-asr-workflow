@@ -1,7 +1,7 @@
 // srt: private helpers; dependencies are injected by editor-utils.js.
 export function createUtilsModule(dependencies) {
   'use strict';
-  const { DEFAULT_SPEAKER_LABEL_SEPARATOR, effectiveColorName, formatSpeakerLabelledText, normalizeSpeakerLabelSeparator, normalizeSpeakerLabels, stripSentenceFadeMarkers } = dependencies;
+  const { DEFAULT_SPEAKER_LABEL_SEPARATOR, effectiveColorName, formatSpeakerLabelledText, normalizeSpeakerLabelSeparator, normalizeSpeakerLabels, stripSentenceFadeMarkers, stripSentenceShakeMarkers } = dependencies;
 
 
   function getSrtExportFirstIndex(segments, alignFirstEnabled = false) {
@@ -138,11 +138,13 @@ export function createUtilsModule(dependencies) {
       parts.push(String(outputIndex));
       parts.push(`${formatTime(start)} --> ${formatTime(end)}`);
       const cueText = String(segment.text ?? '');
+      // 与单句渐入渐出同规则：SRT 无法表达震动，剥除 `!!` 标记后输出纯文本。
+      const shakeStripped = stripSentenceShakeMarkers(cueText);
       parts.push(disabled ? '' : speakerLabels
         ? formatSpeakerLabelledText(
-          stripSentenceFadeMarkers(cueText, options.assSpecialSymbolRule), segment, colorContext, speakerLabels, speakerLabelSeparator,
+          stripSentenceFadeMarkers(shakeStripped, options.assSpecialSymbolRule), segment, colorContext, speakerLabels, speakerLabelSeparator,
         )
-        : stripSentenceFadeMarkers(cueText, options.assSpecialSymbolRule));
+        : stripSentenceFadeMarkers(shakeStripped, options.assSpecialSymbolRule));
       parts.push('');
     });
     return parts.join('\n');

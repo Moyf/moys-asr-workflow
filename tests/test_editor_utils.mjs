@@ -6813,6 +6813,7 @@ test('wrap chars presets insert at both ends and skip already wrapped text', () 
       { id: 'underline', label: '下划线', left: '__', right: '__', ass: true },
       { id: 'strike', label: '删除线', left: '~~', right: '~~', ass: true },
       { id: 'fade', label: '淡出淡入', left: '>>', right: '<<', ass: true },
+      { id: 'shake', label: '原地震动', left: '!!', right: '!!', ass: true },
       { id: 'comment', label: '注释文本', left: '//', right: '//', ass: true },
       { id: 'note', label: '音符', left: '♪', right: '♪' },
       { id: 'music', label: '双音符', left: '♬', right: '♬' },

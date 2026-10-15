@@ -15,3 +15,5 @@
 | 去空隙媒体导出 | PR #211 报告所记导出修复范围 | [编辑器指南](../INDEX.md#user-editor)、[工具箱](../INDEX.md#user-toolbox) | [PR #211 记录](unversioned/2026-10-11/PR211_MEDIA_EXPORT_FIXES.md) | 现行指南区分视频流复制的切点限制与音频按采样点输出 WAV；本次归档不重跑报告中的媒体验证矩阵。 |
 | 编辑器设置与字词显示 | PR #218 反馈记录所记设置和显示行为 | [编辑器指南](../INDEX.md#user-editor)、[设置范围](../INDEX.md#engineering-editor-settings) | [PR #218 记录](unversioned/2026-10-11/TEST_FEEDBACK_WORD_TIMING_LAYOUT.md) | 指南与设置清单已补上双语设置页和字词码预设；反馈记录声明没有剩余开发项，Windows 临时目录问题保留为历史说明。 |
 | MAW20 Gap 实现与局部 AI 移除 | PR-A 至 PR-D / 独立审查任务基线 | [Gap 来源与可重建规范](../INDEX.md#engineering-gap)、[编辑器指南](../INDEX.md#user-editor) | [PR-A](unversioned/2026-10-11/maw20-gap/MAW20_GAP_A.md)、[PR-B](unversioned/2026-10-11/maw20-gap/MAW20_GAP_B.md)、[PR-C](unversioned/2026-10-11/maw20-gap/MAW20_GAP_C.md)、[PR-D](unversioned/2026-10-11/maw20-gap/MAW20_GAP_D.md)、[独立审查](unversioned/2026-10-11/maw20-gap/MAW20_GAP_Q.md) | 这些日志记录各自基线和测试边界，不代替当前代码核验；PR-D 的真实模型样片未提供，合成协议验证不构成真实供应商验收。 |
+
+PR #231 定位与震动返工的当前证据见[反馈账本](release1.9.0-beta.1/ASS_POSITION_REWORK.md)；逐句只保存 X/Y，使用全局样式锚点，人工素材确认与自动化检查分别记录。

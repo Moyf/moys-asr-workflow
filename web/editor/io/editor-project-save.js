@@ -160,6 +160,12 @@ markProjectSaved(MaweServerSave.projectFileHandle.name, null, { silent, fingerpr
 
   // 统一保存入口：句柄目标优先（最近一次新建/另存为选定的文件），否则写回服务器绑定工程。
   async function saveCurrentProject({ silent = false } = {}) {
+    // A pointer preview is not committed subtitle truth. Timed autosave waits;
+    // an explicit save first finishes this one history transaction.
+    if (global.MaweAssCuePosition?.dragging) {
+      if (silent) return false;
+      global.MaweAssCuePosition.commitDrag();
+    }
     if (MaweServerSave.projectFileHandle) return saveProjectToHandle({ silent });
     return saveProjectToServer({ silent });
   }

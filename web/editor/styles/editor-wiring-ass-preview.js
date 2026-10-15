@@ -166,6 +166,7 @@ function restoreCssSubtitlePreviewElement(element, appearance, fallbackSize, fal
 
 function restoreCssSubtitlePreview() {
   window.MaweAssCanvas?.hide();
+  window.MaweAssCuePosition?.sync();
   clearAssEmphasisPreview(MaweDom.overlayTextEl);
   clearAssEmphasisPreview(MaweDom.overlayExtensionTextEl);
   clearAssEmphasisPreview(overlayTrackTextEl);
@@ -236,9 +237,9 @@ function assStackInputRevision(tracks, identityTracks = tracks) {
         || previous[3] !== cue.text || previous[4] !== cue.disabled || previous[5] !== color
         || previous[6] !== cue.speaker || previous[7] !== cue.id
         || previous[8] !== cue.color_ref?.headIdx || previous[9] !== cue.color_ref?.name
-        || previous[10] !== retainedItems) {
+        || previous[10] !== retainedItems || previous[11] !== JSON.stringify(cue.assOverride)) {
         snapshot[index] = [identity, cue.start, cue.end, cue.text, cue.disabled, color, cue.speaker, cue.id,
-          cue.color_ref?.headIdx, cue.color_ref?.name, retainedItems]; changed = true;
+          cue.color_ref?.headIdx, cue.color_ref?.name, retainedItems, JSON.stringify(cue.assOverride)]; changed = true;
       }
     }
   }
@@ -306,9 +307,10 @@ function applyAssSubtitlePreview({ tMs, overlaySegments }) {
     const scale = item.scale;
     const style = { ...animated, spacing: animated.spacing * scale,
       outline: animated.outline * scale, shadow: animated.shadow * scale,
-      __assMove: item.legacy && profile.animations.move.enabled ? { x: animation.moveX, y: animation.moveY } : null };
+      __assMove: item.legacy && !item.manual && item.role === 'main' && profile.animations.move.enabled ? { x: animation.moveX, y: animation.moveY } : null };
     return { visible: true, role: item.role, cueId: item.segment.id ?? item.index,
       runs: item.runs, style, animation,
+      shakeOffset: item.shakeOffset || null,
       fractionalFontSize: !item.legacy || item.sharedStackCue,
       nativeFontSize: Math.max(1, animated.fontSize * scale), alignment: item.alignment,
       anchor: item.anchor || null, margins: { left: item.style.marginL, right: item.style.marginR, vertical: item.style.marginV } };
@@ -335,6 +337,7 @@ function restoreAssOverlayTrackPreview() {
 // the Canvas layer reuses exportFontSize for native run sizes.
 window.MaweAssPreview = Object.freeze({
   fontScale: assPreviewFontScale,
+  get stackPlan() { return cachedAssStackPlan; },
   exportFontSize: assPreviewExportFontSize,
 });
 

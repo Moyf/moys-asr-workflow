@@ -7,6 +7,36 @@ window.MAWE.register('utils-ass-canvas-layout', function createUtilsModule(depen
   const ASS_DEFAULT_PLAY_RES_X = 1920;
   const ASS_DEFAULT_PLAY_RES_Y = 1080;
 
+  // ASS 单句原地震动（`!!文字!!` 标记）：ASS 一条事件只能有一个定位标签，
+  // 震动只能在导出时把一句拆成多条短 Dialogue，各自写 \pos。预览按同一
+  // 确定性模式逐帧偏移锚点，保证与导出逐片一致。间隔取 60ms（6 厘秒），
+  // 恰好落在 ASS 时间精度网格上；振幅随 PlayRes 高度缩放，四个相位构成
+  // 对角往复，从第一片起就偏离基准位置。
+  const ASS_SHAKE_INTERVAL_MS = 60;
+  const ASS_SHAKE_PATTERN = Object.freeze([[1, 1], [-1, -1], [1, -1], [-1, 1]]);
+
+  function assShakeAmplitude(playResY) {
+    return Math.max(2, Math.round((Number(playResY) || ASS_DEFAULT_PLAY_RES_Y) / 216));
+  }
+
+  function assShakeOffsetFor(elapsedMs, amplitude) {
+    const step = Math.max(0, Math.floor((Number(elapsedMs) || 0) / ASS_SHAKE_INTERVAL_MS));
+    const [signX, signY] = ASS_SHAKE_PATTERN[step % ASS_SHAKE_PATTERN.length];
+    const amount = Math.max(0, Number(amplitude) || 0);
+    return { x: signX * amount, y: signY * amount };
+  }
+
+  // 排布分片内某时刻的组根坐标：piece 可能带 instant（瞬时切变）或
+  // from→to 线性移动（整组位移 / 方案移动动画）。assStackFrame 与导出的
+  // 震动取样共用这一份公式，保证预览与导出基准位置一致。
+  function assStackPieceRootAt(piece, timeMs) {
+    const amount = piece.instant !== null && piece.instant !== undefined
+      ? (piece.instant === piece.start ? Math.min(1, Math.max(0, timeMs - piece.instant)) : (timeMs > piece.instant ? 1 : 0))
+      : Math.min(1, Math.max(0, (timeMs - piece.start) / Math.max(1, piece.end - piece.start)));
+    return { x: piece.from.x + (piece.to.x - piece.from.x) * amount,
+      y: piece.from.y + (piece.to.y - piece.from.y) * amount };
+  }
+
 
   // ASS Alignment（数字小键盘布局 1-9）→ 网格坐标。column: 0 左 / 1 中 / 2 右；
   // row 采用屏幕语义：0 上 / 1 中 / 2 下（ASS 1-3 是底行，7-9 是顶行）。
@@ -284,7 +314,11 @@ window.MAWE.register('utils-ass-canvas-layout', function createUtilsModule(depen
       if (!events.has(time)) events.set(time, []);
       events.get(time).push({ item, active });
     };
-    for (const item of items || []) { queue(item.start, item, true); queue(item.end, item, false); }
+    for (const raw of items || []) {
+      const override = raw.role === 'main' ? dependencies.normalizeAssOverride(raw.segment?.assOverride) : undefined;
+      const item = override ? { ...raw, assOverride: override, manual: Boolean(override.pos) } : raw;
+      queue(item.start, item, true); queue(item.end, item, false);
+    }
     const times = [...events.keys()].sort((a, b) => a - b);
     const active = new Set();
     const slices = [];
@@ -309,16 +343,31 @@ window.MAWE.register('utils-ass-canvas-layout', function createUtilsModule(depen
       const start = times[i], end = times[i + 1];
       for (const event of events.get(start)) { if (event.active) active.add(event.item); else active.delete(event.item); }
       if (!active.size || end <= start) continue;
-      const ordered = [...active].sort((a, b) => ({ main: 0, extension: 1, overlay: 2 }[a.role]
+      const all = [...active].sort((a, b) => ({ main: 0, extension: 1, overlay: 2 }[a.role]
         - { main: 0, extension: 1, overlay: 2 }[b.role]) || b.start - a.start || a.index - b.index);
-      const root = ordered[0];
+      // Explicit pos cues are independent ASS events: no group fit, collision
+      // avoidance, profile move or automatic translation may change their anchor.
+      const ordered = all.filter(item => !item.manual);
+      const manual = all.filter(item => item.manual).map(item => {
+        const runs = assStackWrappedRuns(item, Math.max(1, width - item.style.marginL - item.style.marginR), measure);
+        return { ...item, runs, alignment: item.style.alignment,
+          offset: { ...item.assOverride.pos }, absolute: true, sharedStackCue: true };
+      });
+      // If every main cue is manual, an overlay keeps its automatic style
+      // anchor; a fixed extension must not become the overlay's moving root.
+      const root = (manual.length && !ordered.some(item => item.role === 'main')
+        ? ordered.find(item => item.role !== 'extension') : null) || ordered[0] || manual[0];
       const baseAnchor = assCanvasAnchorPoint({ alignment: root.style.alignment,
         margins: { left: root.style.marginL, right: root.style.marginR, vertical: root.style.marginV },
         playResX: width, playResY: height });
       const slice = { start, end, root, profile, baseAnchor, width, height, padding: Math.max(2, Math.round(height / 135)),
-        scale: 1, items: [], pieces: [], box: { left: Infinity, top: Infinity, right: -Infinity, bottom: -Infinity }, legacy: false, diagnostic: '' };
-      if (ordered.length === 1 && root.role === 'main') {
-        slice.legacy = true; slice.items = [{ ...root, alignment: root.style.alignment, offset: { x: 0, y: 0 } }];
+        scale: 1, items: [...manual], pieces: [], box: { left: Infinity, top: Infinity, right: -Infinity, bottom: -Infinity }, legacy: false, diagnostic: '' };
+      if (!ordered.length || (ordered.length === 1 && root.role === 'main')) {
+        slice.legacy = true;
+        // Legacy 震动句在导出中带 \q2 与预折行 runs：这里与手动定位句同
+        // 规则预折行，让 Canvas 预览与导出使用同一份换行结果。
+        if (ordered.length) slice.items.push({ ...root, alignment: root.style.alignment, offset: { x: 0, y: 0 },
+          ...(root.shake ? { runs: assStackWrappedRuns(root, Math.max(1, width - root.style.marginL - root.style.marginR), measure) } : {}) });
         slice.pieces = [{ start, end }]; slices.push(slice); continue;
       }
       if (ordered.some(item => item.style.spacing < 0)
@@ -417,7 +466,7 @@ window.MAWE.register('utils-ass-canvas-layout', function createUtilsModule(depen
     }
     const cueKey = item => item.segment || `${item.role}:${item.index}:${item.start}:${item.end}`;
     const groupedCues = new Set(slices.filter(slice => !slice.legacy).flatMap(slice => slice.items.map(cueKey)));
-    for (const slice of slices) for (const item of slice.items) item.sharedStackCue = groupedCues.has(cueKey(item));
+    for (const slice of slices) for (const item of slice.items) item.sharedStackCue = item.manual || groupedCues.has(cueKey(item));
     return { slices, diagnostics, width, height };
   }
 
@@ -428,23 +477,23 @@ window.MAWE.register('utils-ass-canvas-layout', function createUtilsModule(depen
     const slice = slices[lo - 1];
     if (!slice || timeMs >= slice.end) return { items: [], diagnostic: '' };
     if (slice.diagnostic) return { items: [], diagnostic: slice.diagnostic };
-    if (slice.legacy) return { items: slice.items.map(item => ({ ...item, scale: 1, legacy: true })), diagnostic: '' };
+    const shakeOffset = item => item.shake
+      ? { shakeOffset: assShakeOffsetFor(timeMs - item.start, assShakeAmplitude(slice.height) * (item.absolute ? 1 : slice.scale)) } : {};
+    if (slice.legacy) return { items: slice.items.map(item => ({ ...item, scale: 1, legacy: true,
+      ...(item.manual ? { anchor: { ...item.offset } } : {}), ...shakeOffset(item) })), diagnostic: '' };
     const piece = slice.pieces.find(piece => timeMs < piece.end) || slice.pieces[slice.pieces.length - 1];
-    const amount = piece.instant !== null && piece.instant !== undefined
-      ? (piece.instant === piece.start ? Math.min(1, Math.max(0, timeMs - piece.instant)) : (timeMs > piece.instant ? 1 : 0))
-      : Math.min(1, Math.max(0, (timeMs - piece.start) / Math.max(1, piece.end - piece.start)));
-    const root = { x: piece.from.x + (piece.to.x - piece.from.x) * amount,
-      y: piece.from.y + (piece.to.y - piece.from.y) * amount };
+    const root = assStackPieceRootAt(piece, timeMs);
     return { items: slice.items.map(item => {
       // 固定层（副字幕）的锚点是绝对坐标：不随主字幕的排布平移或移动动画。
-      if (item.absolute) return { ...item, scale: 1, anchor: { x: item.offset.x, y: item.offset.y } };
+      if (item.absolute) return { ...item, scale: 1, anchor: { x: item.offset.x, y: item.offset.y }, ...shakeOffset(item) };
       return { ...item, scale: slice.scale,
-        anchor: { x: root.x + item.offset.x * slice.scale, y: root.y + item.offset.y * slice.scale } };
+        anchor: { x: root.x + item.offset.x * slice.scale, y: root.y + item.offset.y * slice.scale }, ...shakeOffset(item) };
     }), diagnostic: '' };
   }
 
 
   return Object.freeze({
+    ASS_SHAKE_INTERVAL_MS,
     assCanvasAlignmentGrid,
     assCanvasAnchorPoint,
     assCanvasBlockTopY,
@@ -453,5 +502,8 @@ window.MAWE.register('utils-ass-canvas-layout', function createUtilsModule(depen
     assCanvasLayoutLines,
     assCreateStackPlan,
     assStackFrame,
+    assShakeAmplitude,
+    assShakeOffsetFor,
+    assStackPieceRootAt,
   });
 });
