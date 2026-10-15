@@ -62,7 +62,7 @@ class TranscriptionRequest:
     base_url: str = ""
     speaker_colors: bool = False
     generate_spectral: bool = False
-    generate_thumbnails: bool = True
+    generate_thumbnails: bool = False
     ui_language: str = "zh"
     generate_html: bool = True
     srt_only: bool = False
