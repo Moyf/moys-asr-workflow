@@ -274,6 +274,7 @@
       else {
         if (!['milliseconds', 'frames'].includes(project.timebase.unit)) error('$.timebase.unit', 'must be milliseconds or frames');
         fps(project.timebase.fps, '$.timebase.fps');
+        optional(project.timebase, '$.timebase', 'fps_source', (v) => v === 'auto' || v === 'user', 'must be auto or user');
       }
     }
     if (Object.hasOwn(project, 'media_metadata')) metadata(project.media_metadata);

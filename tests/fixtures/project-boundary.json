@@ -1086,5 +1086,158 @@
       "$.preview.subtitle.speaker_labels.names"
     ],
     "change_paths": null
+  },
+  {
+    "name": "fps-source-auto",
+    "input": {
+      "segments": [],
+      "timebase": {
+        "unit": "milliseconds",
+        "fps": 30,
+        "fps_source": "auto"
+      }
+    },
+    "strict_ok": true,
+    "import_ok": true,
+    "error_paths": [],
+    "change_paths": [
+      "$.schema"
+    ]
+  },
+  {
+    "name": "fps-source-user",
+    "input": {
+      "segments": [],
+      "timebase": {
+        "unit": "milliseconds",
+        "fps": 30,
+        "fps_source": "user"
+      }
+    },
+    "strict_ok": true,
+    "import_ok": true,
+    "error_paths": [],
+    "change_paths": [
+      "$.schema"
+    ]
+  },
+  {
+    "name": "bad-fps-source-null",
+    "input": {
+      "segments": [],
+      "timebase": {
+        "unit": "milliseconds",
+        "fps": 30,
+        "fps_source": null
+      }
+    },
+    "strict_ok": false,
+    "import_ok": false,
+    "error_paths": [
+      "$.timebase.fps_source"
+    ],
+    "change_paths": null
+  },
+  {
+    "name": "bad-fps-source-empty",
+    "input": {
+      "segments": [],
+      "timebase": {
+        "unit": "milliseconds",
+        "fps": 30,
+        "fps_source": ""
+      }
+    },
+    "strict_ok": false,
+    "import_ok": false,
+    "error_paths": [
+      "$.timebase.fps_source"
+    ],
+    "change_paths": null
+  },
+  {
+    "name": "bad-fps-source-uppercase",
+    "input": {
+      "segments": [],
+      "timebase": {
+        "unit": "milliseconds",
+        "fps": 30,
+        "fps_source": "AUTO"
+      }
+    },
+    "strict_ok": false,
+    "import_ok": false,
+    "error_paths": [
+      "$.timebase.fps_source"
+    ],
+    "change_paths": null
+  },
+  {
+    "name": "bad-fps-source-bool",
+    "input": {
+      "segments": [],
+      "timebase": {
+        "unit": "milliseconds",
+        "fps": 30,
+        "fps_source": false
+      }
+    },
+    "strict_ok": false,
+    "import_ok": false,
+    "error_paths": [
+      "$.timebase.fps_source"
+    ],
+    "change_paths": null
+  },
+  {
+    "name": "bad-fps-source-number",
+    "input": {
+      "segments": [],
+      "timebase": {
+        "unit": "milliseconds",
+        "fps": 30,
+        "fps_source": 0
+      }
+    },
+    "strict_ok": false,
+    "import_ok": false,
+    "error_paths": [
+      "$.timebase.fps_source"
+    ],
+    "change_paths": null
+  },
+  {
+    "name": "bad-fps-source-array",
+    "input": {
+      "segments": [],
+      "timebase": {
+        "unit": "milliseconds",
+        "fps": 30,
+        "fps_source": []
+      }
+    },
+    "strict_ok": false,
+    "import_ok": false,
+    "error_paths": [
+      "$.timebase.fps_source"
+    ],
+    "change_paths": null
+  },
+  {
+    "name": "bad-fps-source-object",
+    "input": {
+      "segments": [],
+      "timebase": {
+        "unit": "milliseconds",
+        "fps": 30,
+        "fps_source": {}
+      }
+    },
+    "strict_ok": false,
+    "import_ok": false,
+    "error_paths": [
+      "$.timebase.fps_source"
+    ],
+    "change_paths": null
   }
 ]

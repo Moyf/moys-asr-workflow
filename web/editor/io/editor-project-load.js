@@ -69,6 +69,7 @@
 
 
 function applyCanonicalProject(data, filename) {
+  const timebase = MaweTimeline.normalizeTimelineTimebase(data.timebase);
   projectBindingEpoch += 1;
   if (MaweBoot.SERVER_CONFIG) MaweBoot.SERVER_CONFIG.thumbnailBinding = '';
   MaweCoreState.waveformEditor?.setThumbnailBinding('');
@@ -93,7 +94,7 @@ function applyCanonicalProject(data, filename) {
   MaweBoot.DATA.timestamp_granularity = typeof data.timestamp_granularity === 'string'
     ? data.timestamp_granularity : undefined;
   MaweBoot.DATA.model = data.model || '';
-  MaweBoot.DATA.timebase = MaweTimeline.normalizeTimelineTimebase(data.timebase);
+  MaweBoot.DATA.timebase = timebase;
   MaweTimeline.timelineFpsManuallySet = MaweTimeline.hasExplicitTimelineFps(data.timebase);
   MaweBoot.DATA.media_metadata = MaweTimeline.normalizeMediaMetadata(data.media_metadata);
   MaweBoot.DATA.media_time_reference = data.media_time_reference || null;
