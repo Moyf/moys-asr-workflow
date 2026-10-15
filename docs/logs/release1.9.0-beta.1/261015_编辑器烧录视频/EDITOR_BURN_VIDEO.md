@@ -51,7 +51,7 @@
   `buildResult` 抽取共享；按钮随「无可导出项」禁用同步。
 - **文档与技能**：工具 README 重写（MD 契约 + 工作流）、skill `verification-checklist` 改为
   MD-first、根 AGENTS.md「批量改动的人工核查清单」更新为「agents 只写 Markdown」。
-- **本任务的实例**：`docs/logs/release1.9.0-beta.1/251015_编辑器烧录视频/EDITOR_BURN_VIDEO.checklist.md`（status: pending），
+- **本任务的实例**：`docs/logs/release1.9.0-beta.1/261015_编辑器烧录视频/EDITOR_BURN_VIDEO.checklist.md`（status: pending），
   与本台账并排；核验完成后回写 `- [x]` 与 status。
 - 存量问题确认：`tests/test_verification_checklist.py` 在 targeted run 下因裸 `from compact_assertions
   import` 导入失败（git stash 基线复现，与本次无关；discover 全量模式下正常）。
