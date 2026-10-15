@@ -20,7 +20,7 @@
      · D 人工核验打勾项（入口 → 操作 → 预期）· E 后续操作步骤；
    4. 左侧目录、分区进度徽标、总进度由脚本自动生成，无需手写；
       勾选与备注按页面标题存 localStorage；含核对项的分区可悬停标题一键忽略
-      （灰色折叠、计数按已处理、不进入未确认导出）；JSON 可导出全部或未确认项。
+      （灰色折叠、计数按已处理、不进入未确认导出）；JSON 可导出全部或未确认和备注项。
       详细使用与导出格式见工具目录 README.md；生成物不提交进仓库。
 -->
 <html lang="zh-CN">
@@ -199,6 +199,7 @@
   .note-toggle svg { width: 16px; height: 16px; }
   .note-toggle:hover, .note-toggle[aria-expanded="true"], .note-toggle.has-note {
     color: var(--accent); background: var(--accent-soft); }
+  .item-copy { grid-column: 2 / -1; justify-self: start; }
   .item-note { grid-column: 2 / -1; min-width: 0; }
   .item-note[hidden] { display: none; }
   .item-note textarea { display: block; width: 100%; min-height: 80px; resize: vertical;
@@ -232,7 +233,7 @@
     .topbar, .sidebar, .side-actions { display: none !important; }
     .layout { display: block; padding: 0; }
     .section { box-shadow: none; break-inside: avoid; content-visibility: visible; }
-    .note-toggle, .item-note { display: none !important; }
+    .note-toggle, .item-copy, .item-note { display: none !important; }
     .print-note:not(:empty) { display: block; grid-column: 2 / -1; margin: 0;
       color: var(--ink2); white-space: pre-wrap; overflow-wrap: anywhere; font-size: 13px; }
   }
@@ -263,7 +264,7 @@
         <label for="export-scope">导出范围</label>
         <select id="export-scope">
           <option value="all">全部核对项</option>
-          <option value="unconfirmed">仅未确认项</option>
+          <option value="unconfirmed" selected>仅未确认和备注项</option>
         </select>
         <button class="primary" id="export-json" type="button">导出 JSON</button>
       </div>
@@ -317,7 +318,7 @@
   var ignored = load(IGNORE_KEY);
   var view = load(VIEW_KEY);
   var hideConfirmed = view.hideConfirmed === true;
-  var autoCollapseCompleted = view.autoCollapseCompleted === true;
+  var autoCollapseCompleted = view.autoCollapseCompleted !== false;
   var records = [];
 
   // 从 summary 提取纯文本标题（跳过徽标 / 进度等元素），优先取 .sec-title。
@@ -401,6 +402,19 @@
     links.forEach(function (a, i) { a.classList.toggle('active', i === idx); });
   }
 
+  function recordNote(record) {
+    return record.textarea ? record.textarea.value : record.note;
+  }
+  function includeRecord(record, scope) {
+    return scope === 'all' || (ignored[record.section.id] !== true
+      && (!record.box.checked || recordNote(record).trim().length > 0));
+  }
+  function refreshExport() {
+    var scope = document.getElementById('export-scope').value;
+    document.getElementById('export-json').disabled = !records.some(function (record) {
+      return includeRecord(record, scope);
+    });
+  }
   function refresh() {
     var doneAll = 0;
     sections.forEach(function (sec, i) {
@@ -446,8 +460,7 @@
     pctEl.classList.toggle('full', pct === 100 && boxes.length > 0);
     document.getElementById('bar').style.width = pct + '%';
     document.getElementById('topbar-i').style.width = pct + '%';
-    var pendingOnly = document.getElementById('export-scope').value === 'unconfirmed';
-    document.getElementById('export-json').disabled = pendingOnly ? doneAll === boxes.length : !boxes.length;
+    refreshExport();
   }
 
   boxes.forEach(function (box, index) {
@@ -466,6 +479,13 @@
     toggle.classList.toggle('has-note', !!record.note);
     item.appendChild(toggle);
     records.push(record);
+    var copy = document.createElement('button');
+    copy.type = 'button';
+    copy.className = 'ghost item-copy';
+    copy.textContent = '复制';
+    copy.setAttribute('aria-label', '复制条目：' + text);
+    copy.setAttribute('data-copy-index', String(index));
+    item.appendChild(copy);
     // 长清单只为正在编辑或已有备注的项目创建输入框，避免几千个隐藏控件参与样式计算。
     function ensureNoteEditor() {
       if (textarea) return;
@@ -493,6 +513,7 @@
         save(NOTES_KEY, notes);
         toggle.classList.toggle('has-note', !!textarea.value);
         printNote.textContent = textarea.value ? '备注：' + textarea.value : '';
+        refreshExport();
       });
     }
     toggle.addEventListener('click', function () {
@@ -520,6 +541,7 @@
     });
   });
   document.getElementById('reset').addEventListener('click', function () {
+    if (!window.confirm('确定重置全部勾选与忽略状态？备注将保留。')) return;
     state = load(KEY, state);
     boxes.forEach(function (box) { box.checked = false; state[box.id] = false; });
     save(KEY, state);
@@ -548,20 +570,33 @@
     save(VIEW_KEY, view);
     refresh();
   });
-  document.getElementById('export-scope').addEventListener('change', refresh);
+  // 单个委托处理器供整张长清单复用，不给每个复制按钮挂监听。
+  document.querySelector('main.content').addEventListener('click', async function (event) {
+    var button = event.target.closest && event.target.closest('button.item-copy');
+    if (!button) return;
+    var record = records[Number(button.getAttribute('data-copy-index'))];
+    if (!record) return;
+    try {
+      await navigator.clipboard.writeText(record.text);
+      if (!storageFailed) status.textContent = '已复制条目文本';
+    } catch (e) {
+      status.textContent = '复制失败，请手动选择并复制条目文本';
+    }
+  });
+  document.getElementById('export-scope').addEventListener('change', refreshExport);
   document.getElementById('export-json').addEventListener('click', function () {
     var scope = document.getElementById('export-scope').value;
     var confirmed = boxes.filter(function (b) { return b.checked; }).length;
     var ignoredCount = records.filter(function (r) { return ignored[r.section.id] === true; }).length;
     var exportedSections = sections.map(function (sec) {
-      // 「仅未确认项」同时排除已勾选与被忽略分组的核对项；全部导出时忽略项
+      // 默认导出未确认项与有备注项的并集，排除忽略组；全部导出时忽略项
       // 原样带出并标记 ignored，核对结果快照不丢信息。
       var items = records.filter(function (r) {
-        return r.section === sec && (scope === 'all' || (!r.box.checked && ignored[sec.id] !== true));
+        return r.section === sec && includeRecord(r, scope);
       }).map(function (r) {
         return { id: r.box.id, text: r.text, confirmed: r.box.checked,
           ignored: ignored[sec.id] === true,
-          note: r.textarea ? r.textarea.value : r.note };
+          note: recordNote(r) };
       });
       return { id: sec.id, title: summaryTitle(sec.querySelector('summary')), items: items };
     }).filter(function (sec) { return sec.items.length; });
@@ -572,7 +607,7 @@
       subtitle: document.querySelector('.page-head .sub').textContent.trim(),
       exportedAt: timestamp, scope: scope,
       summary: { total: boxes.length, confirmed: confirmed, ignored: ignoredCount,
-        unconfirmed: boxes.length - confirmed - ignoredCount, exported: exportedCount },
+        unconfirmed: records.filter(function (r) { return !r.box.checked && ignored[r.section.id] !== true; }).length, exported: exportedCount },
       sections: exportedSections
     };
     var url;
@@ -583,10 +618,10 @@
       anchor = document.createElement('a');
       anchor.href = url;
       var filename = document.title.replace(/[<>:"/\\|?*\u0000-\u001f]/g, '-').replace(/[. ]+$/g, '').slice(0, 100) || 'verification';
-      anchor.download = filename + (scope === 'all' ? '-全部' : '-未确认') + '-' + timestamp.slice(0, 10) + '.json';
+      anchor.download = filename + (scope === 'all' ? '-全部' : '-未确认和备注') + '-' + timestamp.slice(0, 10) + '.json';
       document.body.appendChild(anchor);
       anchor.click();
-      if (!storageFailed) status.textContent = '已发起导出 ' + exportedCount + ' 项（含备注）';
+      if (!storageFailed) status.textContent = '已发起导出 ' + exportedCount + ' 项（' + (scope === 'all' ? '全部核对项' : '仅未确认和备注项') + '）';
     } catch (e) {
       status.classList.add('warning');
       status.textContent = '导出失败，请重试；当前勾选与备注仍保留在页面';
