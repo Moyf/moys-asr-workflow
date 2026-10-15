@@ -1700,7 +1700,7 @@ class GuiWebBridgeTests(CompactContainerAssertions, unittest.TestCase):
         self.assertEqual(project_path.name, "clip.waveform.mosp")
         project = json.loads(project_path.read_text(encoding="utf-8"))
         self.assertEqual(project["segments"], [])
-        self.assertEqual(project["media"], str(media.resolve()))
+        self.assertEqual((project_path.parent / project["media"]).resolve(), media.resolve())
         # 工程去内联：波形缓存不再写进工程文件，只保留在 embed 结果的运行态里。
         self.assertNotIn("waveform", project)
         self.assertNotIn("spectral", project)
@@ -2369,7 +2369,7 @@ class GuiWebBridgeTests(CompactContainerAssertions, unittest.TestCase):
         scripts = "\n".join(self.window.scripts)
         self.assertTrue(result["ok"])
         output_project = Path(str(result["projectPath"]))
-        self.assertEqual(json.loads(output_project.read_text(encoding="utf-8"))["media"], str(media.resolve()))
+        self.assertEqual((output_project.parent / json.loads(output_project.read_text(encoding="utf-8"))["media"]).resolve(), media.resolve())
         self.assertIn('"type": "postprocess_stream"', scripts)
         self.assertIn('"kind": "reset"', scripts)
         self.assertIn('"kind": "reasoning"', scripts)
@@ -3054,12 +3054,14 @@ class GuiWebBridgeTests(CompactContainerAssertions, unittest.TestCase):
                     "mediaPath": str(media),
                     "port": "9876",
                     "guiLang": "en",
+                    "rememberMedia": True,
                 })
 
         command = popen.call_args.args[0]
         self.assertIn("serve.py", command[1])
         self.assertEqual(command[2], str(project))
         self.assertEqual(command[command.index("-m") + 1], str(media))
+        self.assertIn("--remember-media", command)
         self.assertEqual(command[command.index("--port") + 1], "9876")
         self.assertEqual(result["url"], "http://127.0.0.1:9876/?lang=en")
         self.assertEqual(
@@ -3607,6 +3609,19 @@ class GuiWebBridgeTests(CompactContainerAssertions, unittest.TestCase):
         self.assertTrue(result["ok"])
         self.assertTrue(result["serverAlreadyRunning"])
         self.assertEqual(result["url"], "http://127.0.0.1:9876/?lang=zh")
+        popen.assert_not_called()
+
+    def test_start_server_does_not_silently_ignore_manual_media_on_another_server(self) -> None:
+        with mock.patch("maw.gui_web._wait_for_server", return_value=True), \
+                mock.patch("maw.gui_web.subprocess.Popen") as popen:
+            result = self.api.start_server({
+                "jsonPath": str(self.root / "captions.mosp"),
+                "mediaPath": str(self.root / "clip.mp4"),
+                "rememberMedia": True,
+                "port": "9876",
+            })
+        self.assertFalse(result["ok"])
+        self.assertEqual(result["code"], "server_media_busy")
         popen.assert_not_called()
 
     def test_stop_owned_server_releases_completed_process_tree_handle(self) -> None:

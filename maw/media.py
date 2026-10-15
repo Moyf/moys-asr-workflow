@@ -481,7 +481,17 @@ def _path_from_value(value: str, base_dir: Path, *, cwd_relative: bool = False) 
     path = Path(value).expanduser()
     if path.is_absolute():
         return path.resolve()
-    return (Path.cwd() if cwd_relative else base_dir / path).resolve()
+    return ((Path.cwd() if cwd_relative else base_dir) / path).resolve()
+
+
+def project_media_reference(project_path: Path | str, media_path: Path | str) -> str:
+    """Store media relative to the project directory, or absolute across drives."""
+    source = Path(media_path).expanduser().resolve()
+    directory = Path(project_path).expanduser().resolve().parent
+    try:
+        return Path(os.path.relpath(source, directory)).as_posix()
+    except ValueError:
+        return source.as_posix()
 
 
 # ASR 引擎输出的命名后缀（小写、带前导与尾随点，用于文件名中段的标记）。
@@ -574,7 +584,7 @@ def _same_name_candidates(project_path: Path, expected_stem: str) -> tuple[Path,
     if not expected_stem:
         return ()
     try:
-        entries = project_path.parent.iterdir()
+        entries = tuple(project_path.parent.iterdir())
     except OSError:
         return ()
     candidates = [
@@ -660,6 +670,15 @@ def resolve_project_media(
         )
         if resolution is not None:
             return resolution
+    # Legacy generators wrote only the basename even when output lived in a
+    # MAW subfolder. Recover only that exact reference one level up; never scan
+    # arbitrary ancestors or guess another extension there.
+    if base_dir.name.casefold().endswith("_maw") and isinstance(raw_media, str) and raw_media.strip():
+        name = _portable_path_name(raw_media.strip())
+        candidate = base_dir.parent / name
+        if Path(name).suffix.lower() in MEDIA_EXTENSIONS and candidate.is_file():
+            paired = _paired_mp4(candidate)
+            return _classify_existing(project_path, paired or candidate, requested_path=requested)
     return MediaResolution(
         MediaStatus.MISSING,
         project_path,

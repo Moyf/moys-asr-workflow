@@ -2101,6 +2101,8 @@ class LauncherApi:
             probe_path=EDITOR_HEALTH_PROBE_PATH,
             probe_timeout=EDITOR_HEALTH_PROBE_TIMEOUT,
         ) and (not json_text or not owned_server_running):
+            if json_text and str(payload.get("mediaPath") or "").strip():
+                return _error_result("port", "server_media_busy", "")
             return {"ok": True, "url": launch_url, "serverAlreadyRunning": True}
         if not json_text:
             # 无工程：不带 JSON 路径启动，由服务器按「自动打开上次工程」设置恢复最近工程或回落为空白编辑器
@@ -2116,7 +2118,7 @@ class LauncherApi:
                 media_path = None
             if (not media_state.get("hasMedia") or not media_state.get("mediaExists")) and media_path is None:
                 return _error_result("serverMediaPath", "server_media_missing", str(media_state.get("mediaPath") or ""))
-            command = build_serve_command(json_path, media_path, port)
+            command = build_serve_command(json_path, media_path, port, remember_media=payload.get("rememberMedia") is True)
         command.append("--no-open")
         _ = self._stop_owned_server()
         self.server_log_file = tempfile.TemporaryFile(mode="w+b")
