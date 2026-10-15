@@ -54,8 +54,8 @@ source: "docs/user/CLI.md"
 | `--max-len N` / `--min-len N` | 字符型最大长度/短句合并阈值，生成器默认 18 / 5。 |
 | `--max-words N` / `--min-words N` | 单词型最大长度/短句阈值，默认 13 / 3。 |
 | `--gap-split MS` | 停顿切句阈值，默认 500 毫秒。 |
-| `--keep-punct` | 保留句尾标点；默认剥除 `，。；,.`，问叹号保留。 |
-| `--strip-tail-punct CHARS` | 指定剥除的句尾标点；公开入口不转发空字符串，需禁用剥除时使用底层脚本。 |
+| `--keep-punct` | 保留全部句尾标点；默认已保留，此开关还可覆盖显式 `--strip-tail-punct`。 |
+| `--strip-tail-punct CHARS` | 显式指定要删除的句尾标点；默认不剥除。`--keep-punct` 可覆盖显式删除；底层脚本也接受空字符串禁用剥除。 |
 | `--extra-strong-punct CHARS` | 额外强断句符号，仅向 Qwen 下发。 |
 | `--speaker` / `--speaker-colors` | 请求说话人分离；后者同时写颜色快照，无需重复前者。能力取决于模型。 |
 | `-ll` / `--length-limit VALUE` | 限制处理时长，支持 `90`、`20s`、`2m`、`1h`。 |

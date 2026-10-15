@@ -46,9 +46,9 @@ DEFAULT_EXTRA_SPLIT_PUNCTUATION: Final[tuple[str, ...]] = (
     ",",
     ".",
 )
-DEFAULT_PRESERVE_PUNCTUATION: Final[tuple[str, ...]] = ("？", "！")
+DEFAULT_PRESERVE_PUNCTUATION: Final[tuple[str, ...]] = DEFAULT_EXTRA_SPLIT_PUNCTUATION
 # CLI 参数默认值（strip = 默认断句 − 默认保留；strong = 完整默认断句）。
-DEFAULT_STRIP_TAIL_PUNCT: Final[str] = "，。；,."
+DEFAULT_STRIP_TAIL_PUNCT: Final[str] = ""
 DEFAULT_STRONG_PUNCT: Final[str] = "，。？！；,."
 
 
