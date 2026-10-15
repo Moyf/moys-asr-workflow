@@ -530,6 +530,7 @@ document.getElementById('download-gap-removed-video')?.addEventListener('click',
   let reader = null;
   let response = null;
   let transferComplete = false;
+  let noOutputComplete = false;
   let task = null;
   let panel = null;
   let stopButton = null;
@@ -537,6 +538,13 @@ document.getElementById('download-gap-removed-video')?.addEventListener('click',
   let progressBar = null;
   let expansionLabel = null;
   let expansionNotice = null;
+  let removalSummary = null;
+  let removalDetails = null;
+  let removalDetailsTitle = null;
+  let removalDetailsLimit = null;
+  let removalDetailsList = null;
+  let removalDiagnosticKey = null;
+  let removalGapRows = [];
   let rejectStop;
   let committing = false;
   let cleanupWarningShown = false;
@@ -555,6 +563,120 @@ document.getElementById('download-gap-removed-video')?.addEventListener('click',
     statusLabel.textContent = text;
     if (value === null) progressBar.removeAttribute('value');
     else progressBar.value = Math.max(0, Math.min(1, value));
+  };
+  const durationValue = value => typeof value === 'number' && Number.isFinite(value) && value >= 0
+    ? tr('{seconds} 秒').replace('{seconds}', (value / 1000).toFixed(3)) : tr('未知');
+  const diagnosticReasons = {
+    hevc_cra: '此处为 CRA 切点，暂不用于安全切割',
+    h264_recovery: '此处为开放 GOP 或恢复入口，尚未确认可安全拼接',
+    hevc_non_idr: '此处不是独立解码入口',
+    h264_non_idr: '此处不是独立解码入口',
+    unsupported_codec: '当前编码尚未支持安全切点分析',
+    unsupported_container: '当前封装尚未支持安全切点分析',
+    invalid_packet_layout: '媒体包信息不足，无法确认安全切点',
+    invalid_packet_metadata: '媒体包信息不足，无法确认安全切点',
+    read_error: '读取媒体信息失败',
+    ambiguous_nal_length: '无法确认视频数据单元边界',
+    unsupported_lacing: '当前媒体包布局暂不支持安全切点分析',
+    payload_position_unverified: '无法确认视频数据位置',
+    point_budget_exhausted: '已达到分析预算，部分切点尚未确认',
+    budget_exhausted: '已达到分析预算，部分切点尚未确认',
+    nal_limit: '切点数据超出分析范围，未确认安全入口',
+    display_boundary_overlap: '显示与解码边界交叠，保留该区间',
+    keyframe_alignment: '对齐安全关键帧后仍保留部分空隙',
+    no_common_video_boundary: '多个视频流没有共同安全切点',
+  };
+  const updateRemovalDiagnostics = state => {
+    if (!removalSummary) return;
+    const timeline = state.videoTimeline;
+    const key = JSON.stringify([timeline || null, state.stage === 'preparing']);
+    if (key === removalDiagnosticKey) return;
+    removalDiagnosticKey = key;
+    for (const [field, label] of [
+      ['requestedRemovedMs', '计划删除'], ['actualRemovedMs', '实际可删'], ['retainedGapMs', '仍保留'],
+    ]) {
+      const value = removalSummary.querySelector(`[data-removal-value="${field}"]`);
+      value.textContent = timeline ? durationValue(timeline[field]) : tr(state.stage === 'preparing' ? '计算中…' : '未知');
+      value.setAttribute('aria-label', `${tr(label)} ${value.textContent}`);
+    }
+    const gaps = Array.isArray(timeline?.gaps) ? timeline.gaps.filter(gap => (
+      gap && (typeof gap.retainedGapMs === 'number' && gap.retainedGapMs > 0
+        || typeof gap.actualRemovedMs === 'number' && typeof gap.requestedRemovedMs === 'number'
+          && gap.actualRemovedMs < gap.requestedRemovedMs
+        || !Number.isFinite(gap.actualRemovedMs) && Array.isArray(gap.reasons) && gap.reasons.length)
+    )) : [];
+    const count = timeline?.unremovedGapCount;
+    removalDetails.hidden = !(gaps.length || typeof count === 'number' && count > 0);
+    const internal = timeline?.internalUnremovedGapCount;
+    removalDetailsTitle.textContent = typeof count === 'number' && Number.isSafeInteger(count) && count >= 0
+      ? (Number.isSafeInteger(internal) && internal >= 0
+        ? tr('未完全移除的空隙（{count} 段，内部 {internal} 段）').replace('{internal}', String(internal))
+        : tr('未完全移除的空隙（{count} 段）')).replace('{count}', String(count)) : tr('空隙处理详情');
+    removalDetailsLimit.hidden = timeline?.gapDetailsTruncated !== true;
+    removalGapRows = gaps;
+    renderRemovalDetails();
+  };
+  const renderRemovalDetails = () => {
+    // Keep the first precheck response cheap even for projects with many gaps.
+    // Detail rows are created only when requested, and remain in a bounded scroller.
+    if (!removalDetails?.open) return;
+    removalDetailsList.replaceChildren();
+    for (const gap of removalGapRows) {
+      const item = document.createElement('li');
+      const interval = document.createElement('div');
+      interval.className = 'gap-video-job-gap-range';
+      const positionLabel = { leading: '开头空隙', internal: '内部空隙', trailing: '结尾空隙' }[gap.position];
+      interval.textContent = (positionLabel ? `${tr(positionLabel)} · ` : '')
+        + tr('源区间：{start} — {end}').replace('{start}', durationValue(gap.sourceStartMs))
+        .replace('{end}', durationValue(gap.sourceEndMs));
+      const retained = document.createElement('div');
+      retained.textContent = tr('仍保留：{duration}').replace('{duration}', durationValue(gap.retainedGapMs));
+      const reasons = document.createElement('div');
+      reasons.className = 'gap-video-job-gap-reason';
+      const codes = Array.isArray(gap.reasons) ? gap.reasons : [];
+      reasons.textContent = [...new Set(codes.map(code => tr(diagnosticReasons[code] || '未提供具体原因')))].join('；')
+        || tr('未提供具体原因');
+      item.append(interval, retained, reasons);
+      removalDetailsList.append(item);
+    }
+    if (!removalGapRows.length && !removalDetails.hidden) {
+      const item = document.createElement('li');
+      item.textContent = tr('暂未提供源区间详情');
+      removalDetailsList.append(item);
+    }
+  };
+  const finishResultPanel = withoutOutput => {
+    if (!panel) return;
+    panel.dataset.completed = 'true';
+    if (withoutOutput) panel.dataset.noOutput = 'true';
+    setProgress(tr(withoutOutput ? '未能安全移除空隙，未生成视频' : isAudio
+      ? '去空隙音频已重组并保存' : '去空隙视频已重组并保存'), withoutOutput ? null : 1);
+    progressBar.hidden = withoutOutput;
+    stopButton.removeEventListener('click', requestStop);
+    stopButton.remove();
+    const actions = document.createElement('div');
+    actions.className = 'gap-video-job-actions';
+    const srt = withoutOutput ? null : buildVideoSrt?.(videoTimeline);
+    if (srt !== null && srt !== undefined) {
+      const saveSrt = document.createElement('button');
+      saveSrt.id = 'gap-video-job-save-srt';
+      saveSrt.textContent = tr('保存匹配字幕（SRT）');
+      saveSrt.addEventListener('click', async () => {
+        saveSrt.disabled = true;
+        try {
+          await MaweExportTimeline.downloadFile(srt, handle.name.replace(/\.[^.]+$/, '') + '.srt', 'text/plain',
+            { desc: 'SRT', types: { 'text/plain': ['.srt'] } });
+        } catch (error) { MaweHint.flashHint(safeError(error, '字幕保存失败，请重试'), 'warning'); }
+        finally { saveSrt.disabled = false; }
+      });
+      actions.append(saveSrt);
+    }
+    const close = document.createElement('button');
+    close.id = 'gap-video-job-close';
+    close.textContent = tr('关闭');
+    close.addEventListener('click', () => panel.remove(), { once: true });
+    actions.append(close);
+    panel.append(actions);
   };
   const stopBackend = () => {
     if (!task) return Promise.resolve();
@@ -673,6 +795,34 @@ document.getElementById('download-gap-removed-video')?.addEventListener('click',
       stopButton.addEventListener('click', requestStop);
       panel.append(statusLabel, progressBar, stopButton);
       if (!isAudio) {
+        removalSummary = document.createElement('dl');
+        removalSummary.id = 'gap-video-job-removal-summary';
+        removalSummary.className = 'gap-video-job-removal-summary';
+        for (const [field, label] of [
+          ['requestedRemovedMs', '计划删除'], ['actualRemovedMs', '实际可删'], ['retainedGapMs', '仍保留'],
+        ]) {
+          const metric = document.createElement('div');
+          const title = document.createElement('dt');
+          title.textContent = tr(label);
+          const value = document.createElement('dd');
+          value.dataset.removalValue = field;
+          value.textContent = tr('计算中…');
+          metric.append(title, value);
+          removalSummary.append(metric);
+        }
+        removalDetails = document.createElement('details');
+        removalDetails.id = 'gap-video-job-removal-details';
+        removalDetails.hidden = true;
+        removalDetailsTitle = document.createElement('summary');
+        removalDetailsTitle.textContent = tr('空隙处理详情');
+        removalDetailsLimit = document.createElement('div');
+        removalDetailsLimit.className = 'gap-video-job-explanation';
+        removalDetailsLimit.textContent = tr('仅展示部分明细，计数包含全部空隙。');
+        removalDetailsLimit.hidden = true;
+        removalDetailsList = document.createElement('ul');
+        removalDetails.append(removalDetailsTitle, removalDetailsLimit, removalDetailsList);
+        removalDetails.addEventListener('toggle', () => { if (removalDetails.open) renderRemovalDetails(); });
+        progressBar.before(removalSummary, removalDetails);
         expansionLabel = document.createElement('div');
         expansionLabel.id = 'gap-video-job-expansion';
         expansionLabel.textContent = tr('累积偏移时长：计算中…');
@@ -704,13 +854,25 @@ document.getElementById('download-gap-removed-video')?.addEventListener('click',
         if (state.jobId !== task.id || state.bindingGeneration !== bindingGeneration || state.sourceMediaId !== sourceMediaId) {
           throw new Error(mediaText('导出状态异常，请重试'));
         }
+        updateRemovalDiagnostics(state);
         if (expansionLabel) {
           const expansion = state.videoTimeline?.keyframeExpansionMs;
           expansionLabel.textContent = Number.isFinite(expansion) && expansion >= 0
             ? tr('累积偏移时长：{seconds} 秒').replace('{seconds}', (expansion / 1000).toFixed(3))
             : tr(state.stage === 'preparing' ? '累积偏移时长：计算中…' : '累积偏移时长：不可用');
-          expansionNotice.hidden = state.videoTimeline?.noGapsRemoved !== true;
-          expansionNotice.textContent = tr('安全关键帧扩展后未移除空隙，将保留完整媒体。');
+          expansionNotice.hidden = state.noOutput === true || state.videoTimeline?.noGapsRemoved !== true;
+          expansionNotice.textContent = state.noOutput === true ? '' : tr('安全关键帧扩展后未移除空隙，将保留完整媒体。');
+        }
+        if (!isAudio && state.noOutput === true && state.state === 'completed') {
+          videoTimeline = state.videoTimeline;
+          noOutputComplete = true;
+          committing = true;
+          finishResultPanel(true);
+          if (state.cleanupComplete !== true) {
+            try { await confirmBackendCleanup(); }
+            catch (error) { warnCleanup(error); }
+          }
+          return;
         }
         if (state.state === 'ready') { videoTimeline = state.videoTimeline; break; }
         if (['failed', 'cancelled', 'completed'].includes(state.state)) throw new Error(state.error || mediaText('导出状态异常，请重试'));
@@ -790,35 +952,7 @@ document.getElementById('download-gap-removed-video')?.addEventListener('click',
     await writable.close();
     writable = null;
     transferComplete = true;
-    if (panel) {
-      panel.dataset.completed = 'true';
-      setProgress(mediaText('去空隙视频已重组并保存'), 1);
-      stopButton.removeEventListener('click', requestStop);
-      stopButton.remove();
-      const actions = document.createElement('div');
-      actions.className = 'gap-video-job-actions';
-      const srt = buildVideoSrt?.(videoTimeline);
-      if (srt !== null && srt !== undefined) {
-        const saveSrt = document.createElement('button');
-        saveSrt.id = 'gap-video-job-save-srt';
-        saveSrt.textContent = tr('保存匹配字幕（SRT）');
-        saveSrt.addEventListener('click', async () => {
-          saveSrt.disabled = true;
-          try {
-            await MaweExportTimeline.downloadFile(srt, handle.name.replace(/\.[^.]+$/, '') + '.srt', 'text/plain',
-              { desc: 'SRT', types: { 'text/plain': ['.srt'] } });
-          } catch (error) { MaweHint.flashHint(safeError(error, '字幕保存失败，请重试'), 'warning'); }
-          finally { saveSrt.disabled = false; }
-        });
-        actions.append(saveSrt);
-      }
-      const close = document.createElement('button');
-      close.id = 'gap-video-job-close';
-      close.textContent = tr('关闭');
-      close.addEventListener('click', () => panel.remove(), { once: true });
-      actions.append(close);
-      panel.append(actions);
-    }
+    finishResultPanel(false);
     MaweHint.flashHint(mediaText('去空隙视频已重组并保存'), 'success');
     try { await confirmBackendCleanup(); }
     catch (error) { warnCleanup(error); }
@@ -844,13 +978,13 @@ document.getElementById('download-gap-removed-video')?.addEventListener('click',
     }
     if (reader) reader.releaseLock();
     if (writable) await writable.abort().catch(() => {});
-    if (task && !transferComplete) {
+    if (task && !transferComplete && !noOutputComplete) {
       try { await stopBackend(); }
       catch (error) { warnCleanup(error); }
     }
     if (task) {
       window.removeEventListener('pagehide', requestStop);
-      if (!transferComplete) panel.remove();
+      if (!transferComplete && !noOutputComplete) panel.remove();
       if (window.__maweGapRemovedVideoTask === task) window.__maweGapRemovedVideoTask = null;
       button.disabled = false;
     }

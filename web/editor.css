@@ -4452,7 +4452,10 @@
   right: 20px;
   bottom: 24px;
   z-index: 10020;
-  width: min(360px, calc(100vw - 40px));
+  width: min(400px, calc(100vw - 40px));
+  max-height: calc(100dvh - 48px);
+  overflow: auto;
+  box-sizing: border-box;
   padding: 16px;
   border: 1px solid var(--border-strong);
   border-radius: 10px;
@@ -4472,6 +4475,17 @@
 .gap-video-job button:hover { background: var(--btn-bg-hover); }
 .gap-video-job-actions { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 12px; }
 .gap-video-job #gap-video-job-expansion { margin-top: 8px; }
+.gap-video-job-removal-summary { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; margin: 12px 0; }
+.gap-video-job-removal-summary > div { min-width: 0; }
+.gap-video-job-removal-summary dt { color: var(--text-secondary); font-size: 12px; }
+.gap-video-job-removal-summary dd { margin: 4px 0 0; font-size: 13px; overflow-wrap: anywhere; font-variant-numeric: tabular-nums; }
+#gap-video-job-removal-details { margin: 8px 0; font-size: 12px; }
+#gap-video-job-removal-details summary { cursor: pointer; color: var(--text-primary); }
+#gap-video-job-removal-details ul { margin: 8px 0 0; padding-left: 20px; max-height: min(200px, 28dvh); overflow: auto; overscroll-behavior: contain; }
+#gap-video-job-removal-details li { margin: 8px 0; overflow-wrap: anywhere; }
+.gap-video-job-gap-range { font-variant-numeric: tabular-nums; }
+.gap-video-job-gap-reason { color: var(--text-secondary); margin-top: 4px; }
+.gap-video-job progress[hidden] { display: none; }
 .gap-video-job-explanation { margin-top: 8px; color: var(--text-secondary); font-size: 12px; }
 .gap-video-job button:disabled { cursor: default; opacity: .6; }
 
