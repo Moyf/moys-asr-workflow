@@ -10,7 +10,7 @@ from pathlib import Path
 from maw.postprocess_ai_cleanup_items import cleaned_srt_segments, item_text_spans
 
 
-def comparison_data(before: Mapping[str, object], after: Mapping[str, object], operation: str, decisions: Sequence[Mapping[str, object]] = ()) -> dict[str, object]:
+def comparison_data(before: Mapping[str, object], after: Mapping[str, object], operation: str, decisions: Sequence[Mapping[str, object]] = (), *, translation: Mapping[str, object] | None = None, line_order: str = "", download_name: str = "译文.核对后.mosp") -> dict[str, object]:
     source = [s for s in cleaned_srt_segments(before, before.get("segments", [])) if isinstance(s, Mapping) and not s.get("disabled")]
     output = [s for s in cleaned_srt_segments(after, after.get("segments", [])) if isinstance(s, Mapping) and not s.get("disabled")]
     annotations = {str(row["id"]): row for row in decisions}
@@ -46,10 +46,24 @@ def comparison_data(before: Mapping[str, object], after: Mapping[str, object], o
                 if end > start
             ]
         rows.append({"id": clip_id, "start": segment["start"], "end": segment["end"], "before": text, "after": cleaned, "parts": parts, "decision": decision, "review": review, "reason": str(annotation.get("reason") or "\n".join(reasons))})
-    return {"schema": "maw.ai-comparison.v1", "operation": operation, "before": "\n".join(str(s.get("text") or "") for s in source), "after": "\n".join(str(s.get("text") or "") for s in output), "rows": rows}
+    result = {"schema": "maw.ai-comparison.v1", "operation": operation, "before": "\n".join(str(s.get("text") or "") for s in source), "after": "\n".join(str(s.get("text") or "") for s in output), "rows": rows}
+
+    if operation.startswith(("translate_en", "translate_zh")):
+        from maw.postprocess_translation_review import translation_review
+        # Two-file rendering can infer single/backfill output. Stacked output
+        # requires the validated intermediate translation, never split by newline.
+        if translation is not None or not operation.endswith("-bilingual"):
+            result["translationReview"] = translation_review(before, translation or after, after, operation, line_order, download_name)
+    all_markers = markers.get("items", []) if isinstance(markers, Mapping) else []
+    for row in rows:
+        row["notes"] = [str(m.get("note") or "") for m in all_markers if isinstance(m, Mapping)
+                        and isinstance(m.get("ai"), Mapping) and m["ai"].get("task") != "ai_cleanup"
+                        and type(m.get("start")) is int and type(m.get("end")) is int
+                        and m["start"] < row["end"] and m["end"] > row["start"]]
+    return result
 
 
 def render_comparison(data: Mapping[str, object]) -> str:
     template = Path(__file__).resolve().parents[1] / "web" / "shared" / "templates" / "ai-comparison.html"
     encoded = json.dumps(data, ensure_ascii=False).replace("<", "\\u003c").replace(">", "\\u003e").replace("&", "\\u0026")
-    return template.read_text(encoding="utf-8").replace("{{DATA}}", encoded)
+    return template.read_text(encoding="utf-8").replace("{{REVIEW_SCRIPT}}", template.with_name("ai-translation-review.js").read_text(encoding="utf-8")).replace("{{DATA}}", encoded)

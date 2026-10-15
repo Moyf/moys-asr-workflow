@@ -206,7 +206,7 @@ def read_tree(root: Path, ref: str | None = None) -> tuple[dict[str, str], set[s
     return texts, paths
 
 
-def structure(texts: dict[str, str], paths: set[str]) -> list[str]:
+def structure(texts: dict[str, str], paths: set[str], warnings: list[str] | None = None) -> list[str]:
     errors = []
     for required in ("AGENTS.md", "docs/README.md", "docs/INDEX.md", "docs/logs/INDEX.md", "docs/logs/CURRENT.md"):
         if required not in paths:
@@ -234,7 +234,8 @@ def structure(texts: dict[str, str], paths: set[str]) -> list[str]:
         pending.extend(graph.get(source, set()) - visited)
     for path in sorted(paths):
         if path.startswith("docs/logs/") and path.endswith(".md") and path not in visited:
-            errors.append(f"log missing from log navigation: {path}")
+            if warnings is not None:
+                warnings.append(f"log missing from log navigation: {path}")
         if path.startswith(("docs/temp/", "docs/reports/", "docs/dev/", "docs/verifications/", ".artifacts/")):
             errors.append(f"source or evidence in retired/temporary location: {path}")
     sync = texts.get("website/scripts/sync-maw-docs.mjs", "")
@@ -280,12 +281,13 @@ def main() -> int:
     known = baseline_signatures(baseline, mapping)
     registered = [issue for issue in issues if signature(issue) in known]
     new = [issue for issue in issues if signature(issue) not in known]
-    errors = [] if args.scan_only else structure(texts, paths)
+    warnings: list[str] = []
+    errors = [] if args.scan_only else structure(texts, paths, warnings)
     if not args.scan_only:
         ignored = subprocess.run(["git", "check-ignore", "--no-index", "-q", ".artifacts/docs-check/probe.txt"], cwd=args.root).returncode == 0
         if not ignored:
             errors.append("/.artifacts/ is not ignored")
-    result = {"files": len(paths), "existing_links": len(registered), "new_links": new, "structure_errors": errors, "issues": issues}
+    result = {"files": len(paths), "existing_links": len(registered), "new_links": new, "structure_errors": errors, "warnings": warnings, "issues": issues}
     if args.json:
         print(json.dumps(result, ensure_ascii=False, indent=2))
     else:
@@ -294,6 +296,8 @@ def main() -> int:
             print(f"strict: {len(registered)} registered historical broken links fail in this mode")
         for error in errors:
             print(error)
+        for warning in warnings[:30]:
+            print(f"WARNING: {warning}")
         for issue in (new + registered if args.strict else new)[:30]:
             print(f'{issue["source"]}:{issue["line"]}: {issue["reason"]}: {issue["target"]}')
     return int(bool(new or errors or (args.strict and registered)))

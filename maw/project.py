@@ -732,10 +732,42 @@ def _validate_extension_segment(
     if not isinstance(segment.get("text"), str):
         errors.append(ProjectValidationError(f"{path}.text", "must be a string"))
     _validate_frame_pair(segment, path, errors)
+    _validate_ass_override(segment, path, errors)
     # Extension subtitles may come from a project or from a main-track swap.
     # Items are optional, but when present they must follow the same timing
     # contract as main-track items so the data survives a later swap back.
     _validate_items(segment, path, errors)
+
+
+def _validate_ass_override(segment: JsonDict, path: str, errors: list[ProjectValidationError]) -> None:
+    if "assOverride" not in segment:
+        return
+    value = segment["assOverride"]
+    field = f"{path}.assOverride"
+    if not isinstance(value, dict):
+        errors.append(ProjectValidationError(field, "must be an object"))
+        return
+    normalized: JsonDict = {}
+    if "an" in value:
+        errors.append(ProjectValidationError(f"{field}.an", "not supported; use global style alignment"))
+    if "pos" in value:
+        pos = value["pos"]
+        if not isinstance(pos, dict):
+            errors.append(ProjectValidationError(f"{field}.pos", "must be an object with finite numeric x/y"))
+        else:
+            for axis in ("x", "y"):
+                coordinate = pos.get(axis)
+                try:
+                    finite = type(coordinate) in (int, float) and math.isfinite(coordinate)
+                except OverflowError:
+                    finite = False
+                if not finite:
+                    errors.append(ProjectValidationError(f"{field}.pos.{axis}", "must be a finite number"))
+            normalized["pos"] = {axis: pos.get(axis) for axis in ("x", "y")}
+    if normalized:
+        segment["assOverride"] = normalized
+    else:
+        segment.pop("assOverride", None)
 
 
 def _validate_segment(
@@ -760,6 +792,7 @@ def _validate_segment(
     if not isinstance(segment.get("text"), str):
         errors.append(ProjectValidationError(f"{path}.text", "must be a string"))
     _validate_frame_pair(segment, path, errors)
+    _validate_ass_override(segment, path, errors)
     if "speaker" in segment and (not isinstance(segment["speaker"], str) or not segment["speaker"].strip()):
         errors.append(ProjectValidationError(f"{path}.speaker", "must be a non-empty string"))
     _validate_items(segment, path, errors)

@@ -1,7 +1,7 @@
 // srt: private helpers; dependencies are injected by editor-utils.js.
 export function createUtilsModule(dependencies) {
   'use strict';
-  const { DEFAULT_SPEAKER_LABEL_SEPARATOR, effectiveColorName, formatSpeakerLabelledText, normalizeSpeakerLabelSeparator, normalizeSpeakerLabels, stripSentenceFadeMarkers } = dependencies;
+  const { DEFAULT_SPEAKER_LABEL_SEPARATOR, effectiveColorName, formatSpeakerLabelledText, normalizeSpeakerLabelSeparator, normalizeSpeakerLabels, stripSentenceFadeMarkers, stripSentenceShakeMarkers } = dependencies;
 
 
   function getSrtExportFirstIndex(segments, alignFirstEnabled = false) {
@@ -93,6 +93,16 @@ export function createUtilsModule(dependencies) {
   }
 
 
+  function srtSentenceText(text, rule) {
+    // Fade parsing can traverse an outer shake shell using the active rule.
+    // Remove it first so single-symbol fade shells cannot hide an inner shake.
+    return stripSentenceShakeMarkers(stripSentenceFadeMarkers(text, rule));
+  }
+
+  function srtEntry(index, start, end, text, formatTime) {
+    return [String(index), `${formatTime(start)} --> ${formatTime(end)}`, text, ''].join('\n');
+  }
+
   function buildSrtPayload(segments, options = {}) {
     const source = Array.isArray(segments) ? segments : [];
     const colorName = typeof options.colorName === 'string' ? options.colorName : null;
@@ -135,15 +145,13 @@ export function createUtilsModule(dependencies) {
       const mappedEnd = Math.max(0, Math.round(Number(mapTime(segment.end)) || 0));
       const end = options.ensurePositiveDuration ? Math.max(start + 1, mappedEnd) : mappedEnd;
       outputIndex += 1;
-      parts.push(String(outputIndex));
-      parts.push(`${formatTime(start)} --> ${formatTime(end)}`);
-      const cueText = String(segment.text ?? '');
-      parts.push(disabled ? '' : speakerLabels
+      const cueText = srtSentenceText(String(segment.text ?? ''), options.assSpecialSymbolRule);
+      const text = disabled ? '' : speakerLabels
         ? formatSpeakerLabelledText(
-          stripSentenceFadeMarkers(cueText, options.assSpecialSymbolRule), segment, colorContext, speakerLabels, speakerLabelSeparator,
+          cueText, segment, colorContext, speakerLabels, speakerLabelSeparator,
         )
-        : stripSentenceFadeMarkers(cueText, options.assSpecialSymbolRule));
-      parts.push('');
+        : cueText;
+      parts.push(srtEntry(outputIndex, start, end, text, formatTime));
     });
     return parts.join('\n');
   }
@@ -171,7 +179,7 @@ export function createUtilsModule(dependencies) {
       if (end <= start) return;
       const context = track === 0 && typeof options.colorContextResolver === 'function'
         ? options.colorContextResolver(segment) || source : source;
-      const strippedText = stripSentenceFadeMarkers(String(segment.text ?? ''), options.assSpecialSymbolRule);
+      const strippedText = srtSentenceText(String(segment.text ?? ''), options.assSpecialSymbolRule);
       const text = String(labels ? formatSpeakerLabelledText(strippedText, segment, context, labels, separator)
         : strippedText).replace(/\r\n?/g, '\n');
       if (!text.trim()) return;
@@ -197,7 +205,8 @@ export function createUtilsModule(dependencies) {
       else merged.push({ start, end, text });
     });
     // 每条原字幕已按规则清理；合并后再次解析会剥掉被禁用或剩余的字面符号。
-    return buildSrtPayload(merged, { formatTime: options.formatTime, assSpecialSymbolRule: 'none' });
+    const formatTime = typeof options.formatTime === 'function' ? options.formatTime : String;
+    return merged.map((segment, index) => srtEntry(index + 1, segment.start, segment.end, segment.text, formatTime)).join('\n');
   }
 
   function buildPlainTextPayload(segments, options = {}) {

@@ -178,6 +178,36 @@ class DocumentationCheckTests(CompactContainerAssertions, unittest.TestCase):
             self.assertEqual(checker.scan(texts, paths), [])
             self.assertEqual(subprocess.check_output(["git", "status", "--porcelain"], cwd=root), status)
 
+    def test_unindexed_log_warns_without_failing_default_or_strict(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            write_docs_fixture(root, "docs/logs/release1.8.0-beta.1/字幕排查.md", "# 共享记录\n")
+            for extra in ((), ("--strict",)):
+                result = run_docs_check(root, *extra, "--json")
+                self.assertEqual(result.returncode, 0, result.stdout)
+                data = json.loads(result.stdout)
+                self.assertEqual(data["structure_errors"], [])
+                self.assertEqual(len(data["warnings"]), 1)
+                self.assertIn("log missing from log navigation", data["warnings"][0])
+
+    def test_key_document_still_requires_main_index(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            write_docs_fixture(root, "docs/plans/字幕方案.md", "# 方案\n")
+            result = run_docs_check(root, "--json")
+            self.assertEqual(result.returncode, 1)
+            self.assertIn("independent document missing", result.stdout)
+
+    def test_unindexed_log_with_broken_link_still_fails(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            write_docs_fixture(root, "docs/logs/release1.8.0-beta.1/字幕排查.md", "[证据](missing.json)\n")
+            result = run_docs_check(root, "--json")
+            self.assertEqual(result.returncode, 1)
+            data = json.loads(result.stdout)
+            self.assertEqual(len(data["warnings"]), 1)
+            self.assertEqual(len(data["new_links"]), 1)
+
     def test_topic_ids_detect_duplicates_after_html_entity_decoding(self):
         texts = {
             "AGENTS.md": "", "docs/README.md": '<a name="doc-policy"></a>',

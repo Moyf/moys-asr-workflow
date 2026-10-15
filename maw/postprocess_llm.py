@@ -148,6 +148,13 @@ _SUBTITLE_GROUPS_JSON_SCHEMA: Final[dict[str, JsonValue]] = {
         "type": "object",
         "properties": {
             "protocol": {"type": "string"},
+            "annotations": {"type": "array", "maxItems": 80, "items": {
+                "type": "object", "properties": {
+                    "source_ids": {"type": "array", "items": {"type": "string"}},
+                    "kind": {"type": "string", "enum": ["note", "review"]},
+                    "message": {"type": "string", "maxLength": 300},
+                }, "required": ["source_ids", "kind", "message"],
+            }},
             "groups": {
                 "type": "array",
                 "items": {

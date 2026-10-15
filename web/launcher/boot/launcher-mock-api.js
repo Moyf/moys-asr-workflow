@@ -35,7 +35,7 @@ function mockApi() {
       perVideoSubfolder: saved.perVideoSubfolder,
       attachModelName: saved.attachModelName,
       notifyOnComplete: saved.notifyOnComplete === true,
-      appVersion: "1.8.0-beta.1",
+      appVersion: "1.9.0-beta.1",
       asrPresetRoot: saved.asrPresetRoot || "D:\\Models\\MAW\\asr-presets",
       asrPresetRootConfigured: Boolean(saved.asrPresetRoot),
       serverPort: null,

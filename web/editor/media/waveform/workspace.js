@@ -269,7 +269,7 @@ export function createWaveformModule(dependencies) {
     }
 
     /** @this {import('./waveform-types.js').WaveformInstance} */
-    setSecondsPerRow(value) {
+    setSecondsPerRow(value, { render = true } = {}) {
       const next = Number(value);
       if (![2, 5, 10, 20, 30].includes(next)) return false;
       if (this.settings.secondsPerRow === next) return true;
@@ -277,7 +277,7 @@ export function createWaveformModule(dependencies) {
       if (this.secondsPerRowSelect) this.secondsPerRowSelect.value = String(next);
       saveSettings(this.settings);
       this.multiRange = [-1, -1];
-      this.render();
+      if (render) this.render();
       return true;
     }
 
@@ -289,7 +289,7 @@ export function createWaveformModule(dependencies) {
 
 
     /** @this {import('./waveform-types.js').WaveformInstance} */
-    setRowHeight(value) {
+    setRowHeight(value, { render = true } = {}) {
       const next = Number(value);
       if (this.rowHeightDebounceTimer) {
         window.clearTimeout(this.rowHeightDebounceTimer);
@@ -309,7 +309,7 @@ export function createWaveformModule(dependencies) {
       // 与「每行长度」一样走完整重渲染：字幕块的 lane 布局和「行高不足时
       // 覆盖主字幕」的 cover-mode 回退都在 createRow 按当时行高定死，若只调
       // 行几何并复用旧行，叠加块不会随新行高刷新布局。
-      this.render();
+      if (render) this.render();
       return true;
     }
 

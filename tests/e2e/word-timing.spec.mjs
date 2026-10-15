@@ -82,7 +82,9 @@ test('bilingual compact words expose the sentence and low-height overlays stay i
   await page.locator('#waveform-pane').screenshot({ path: testInfo.outputPath('compact-overlay.png') });
 });
 const source = page => page.evaluate(() => JSON.parse(JSON.stringify(MaweBoot.DATA.segments[0])));
-test('full word layout preserves sentence height, highlight and body dragging', async ({ page }) => {
+for (const mode of ['basic', 'multi']) {
+test(`full word layout preserves sentence height, highlight and body dragging in ${mode}`, async ({ page }, testInfo) => {
+  await page.locator(`[data-waveform-mode="${mode}"]`).click();
   await setWordTiming(page);
   const main = page.locator('.waveform-cue-block[data-track="main"][data-idx="0"]').first();
   await expect(main).toHaveClass(/word-timing-full/);
@@ -100,7 +102,9 @@ test('full word layout preserves sentence height, highlight and body dragging', 
   expect((await source(page)).start).toBeGreaterThan(before.start);
   await page.keyboard.press('ControlOrMeta+z');
   expect(await source(page)).toEqual(before);
+  await page.locator('#waveform-pane').screenshot({ path: testInfo.outputPath(`word-full-${mode}.png`) });
 });
+}
 
 test('bilingual overlays keep their lane after creation, undo and redo at 192px', async ({ page }) => {
   await page.locator('#multi-subtitle-quick-toggle').click();
@@ -171,7 +175,7 @@ test('word timing separation stays within multi-row single-track waveforms', asy
   console.log('word timing geometry', JSON.stringify({ multi, basic, lanes }));
   await page.locator('#waveform-pane').screenshot({ path: testInfo.outputPath('word-bilingual-lanes.png') });
   expect(multi).toEqual({ height: 35, bottom: 44 });
-  expect(basic).toEqual({ height: 31, bottom: 9 });
+  expect(basic).toEqual({ height: 35, bottom: 44 });
   expect(lanes.mainBottom).toBeGreaterThan(lanes.extensionBottom);
   expect(lanes.mainRectBottom).toBeLessThanOrEqual(lanes.extensionRectTop + 1);
 });

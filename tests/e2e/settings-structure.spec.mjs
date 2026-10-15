@@ -513,13 +513,15 @@ test('bilingual settings are grouped and the index never enables the mode implic
   expect(await page.evaluate(() => MaweMultiSubtitleCore.getMultiSubtitleState().enabled === true)).toBe(false);
   await page.locator('#editor-settings-close').click();
   await page.locator('#project-settings-toggle').click();
-  // 双语字幕是独立标签页；字幕轨道页只保留轨推开关。
+  // 双语字幕是独立标签页；字词码设置归属字幕轨道。
   await page.locator('#editor-settings-tab-project-tracks').click();
   await expect(page.locator('#editor-settings-page-project-tracks #multi-subtitle-toggle')).toBeVisible();
+  await expect(page.locator('#editor-settings-page-project-tracks #word-timing-row-height')).toHaveValue('168');
+  await expect(page.locator('#editor-settings-page-project-tracks #word-timing-seconds-per-row')).toBeVisible();
   await page.locator('#multi-subtitle-toggle').check();
   await page.locator('#editor-settings-tab-multi-subtitle').click();
   await expect(page.locator('#editor-settings-page-multi-subtitle')).toBeVisible();
-  await expect(page.locator('#editor-settings-page-multi-subtitle .settings-panel-title')).toHaveText(['联动', '字幕管理', '字词码']);
+  await expect(page.locator('#editor-settings-page-multi-subtitle .settings-panel-title')).toHaveText(['联动', '字幕管理']);
   await page.locator('#multi-subtitle-cross-track-snap').uncheck();
   expect(await page.evaluate(() => MaweSettings.EDITOR_SETTINGS.crossTrackSnap)).toBe(false);
   await page.locator('#project-settings-panel').screenshot({ path: testInfo.outputPath('bilingual-settings.png') });

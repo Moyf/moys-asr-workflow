@@ -602,6 +602,8 @@ source: "JSON_SCHEMA.md"
 - `name` 最长 120 字符，`note` 最长 500 字符，写入前去除控制字符；`color` 为 `#RRGGBB` 六位十六进制，非法值回退默认 `#3e63dd`。
 - `review` 是可选的复核状态：`status` 为 `pending`（待复核）或 `confirmed`（已确认），`reason` 最长 300 字符。带 `review.status: "pending"` 的标记在轨道上以脉冲样式显示，并在「标记与区段」管理窗中计数；确认后置为 `confirmed`。AI 口播整理把待复核段写成 `pending` 复核标记（默认色 `#f5a623`），确认与否完全由用户决定。
 - AI 整理的新注释优先写覆盖源字幕的区段（合法 `end > start`），`note` 统一为 `[AI] 操作：原因`。自动删除使用「删除」且不带 `review`；替代版本存疑使用「替代项」，其他待复核使用「复核」，并带 `pending`。这是已有字段的使用约定，不增加 schema 字段；注释与字幕禁用、`gap_remove` 决定独立，删除注释不撤销剪辑。
+- `items[*].ai` 可选，为通用 AI 备注的归属信息：`schema: "maw.ai-annotation.v1"`、任务名 `task`（最多64字符）、32位十六进制 `run_id`、64位十六进制 `key`，及 `generated` 生成状态快照（`start/end/name/color/note/review`，缺失值为 `null`）。此字段只用于追溯与重跑，不改变标记显示或字幕真源；旧工程无此字段仍有效。编辑器保存保留合法归属信息；生成快照中的文本与显示文本采用相同的去控制字符、截断和空白规范化，但不会把人工改动的备注、位置、颜色或复核状态复制回 `generated`。重跑只替换同任务且当前状态仍等于生成快照的备注，保留人工改动并避免在同源同类型位置重复添加；已确认状态也受保护。
+- 通用普通说明使用 `[AI] 注：…`，不含 `review`；待核查说明使用 `[AI] 待核查：…` 和 `review.status=pending`。源 ID 和时间由固定脚本映射，模型不生成毫秒。口播整理保留现有 `[AI] 操作：原因` 行为，复用标记写入与 ID 分配。
 - 读写双方都应容忍未知字段与非法项：规范化丢弃无法解析的项，不抛错。
 
 ---
@@ -638,12 +640,23 @@ source: "JSON_SCHEMA.md"
 | `text` | `string` | **必填** | 字幕显示文本。可含 `\n` 表示换行（在编辑器里渲染为 `<br>`） |
 | `items` | `array<object>` | 推荐填 | 字级时间戳数组。用于「双击拆分时按字分配时间」。可填 `[]`，此时拆分会按字符比例估算时间点 |
 | `disabled` | `bool` | 否 | 禁用该字幕；预览、隐藏禁用项和默认导出会跳过它 |
+| `assOverride` | `object` | 否 | 主字幕逐句 ASS PlayRes 坐标（锚点由全局样式规定）；见下方可选定位契约 |
 | `speaker` | `string` | 否 | 说话人标签（非空字符串）。保存供应商返回的 opaque ID（如 Soniox 的 `"1"`/`"2"`），不转换为整数或姓名。仅当该段所有带语音 items 都是同一 speaker 时才写入；缺少该字段的旧工程继续有效 |
 | `sticker` | `object\|null` | 否 | 表情包 head 信息。见第四节 |
 | `sticker_ref` | `object\|null` | 否 | 引用上方 head 的表情包（跨多句用） |
 | `color` | `object\|null` | 否 | 颜色标记 head。见第四节 |
 | `color_ref` | `object\|null` | 否 | 引用上方 head 的颜色 |
 | `_dirty` | `bool` | 否 | 是否被人工改过。**生成时不要写 `true`**，仅由编辑器内部维护 |
+
+### 逐句 ASS 定位（可选）
+
+主字幕 segment 可保存 `"assOverride": { "pos": { "x": 1720.5, "y": 180 } }`。
+
+- 逐句只保存 X/Y，不支持逐句 `an`；文字块附着点由全局 ASS 样式 alignment 规定，拖动、预览与导出始终共用该锚点。未发布的逐句 `an` 不提供迁移。
+- `pos` 可省略；存在时必须同时包含有限数字 `x` 和 `y`。坐标单位是当前 ASS `PlayResX / PlayResY` 的像素，允许小数、负值与画布外位置，不按视频显示缩放保存，也不钳制到画面内。显式 `pos` 优先于方案 `move`，该主字幕不参与自动组平移、缩放或避碰；其它淡入淡出、变换和说话人颜色保留。
+- 未调整位置的字幕继续参与全局自动排布，不因选择或原地点选写入位置覆盖。实际拖动才保存 `pos`；震动叠加时保存基准坐标，不包含瞬时抖动偏移。
+- 不存在或空对象表示样式默认；规范化与保存不写空对象。非法类型、非有限坐标、缺少任一坐标或逐句 `an` 被拒绝。旧工程无此字段时行为与输出不变。普通预览和 SRT 不消费该字段。
+- 拆分（包括复制/渐进拆分）两端各自深拷贝原覆盖；合并取时间顺序中最左句的完整覆盖，左句没有覆盖时合并结果也没有覆盖。复制/历史记录不得共享嵌套 `pos` 对象。主副换轨保留元数据，副/叠加轨不应用逐句定位；换回主轨后继续生效。
 
 ### 关键约束
 
@@ -897,6 +910,7 @@ uv run python edit.py your_generated.mosp
 | `segments[i].items[k].start_frame` | int | ❌ | 帧编号，与 `end_frame` 成对 |
 | `segments[i].items[k].end_frame` | int | ❌ | 帧编号，与 `start_frame` 成对 |
 | `segments[i].items[k].speaker` | string | ❌ | 说话人 opaque ID |
+| `segments[i].assOverride` | object | ❌ | 可选主字幕 ASS 覆盖：仅有限 PlayRes pos.x/y，使用全局样式锚点；空对象归一化为省略 |
 | `segments[i].speaker` | string | ❌ | 段内统一说话人才写入 |
 | `segments[i].sticker` | object\|null | ❌ | 表情包 head |
 | `segments[i].sticker_ref` | object\|null | ❌ | `{name, headIdx}` |
@@ -951,3 +965,10 @@ uv run python edit.py your_generated.mosp
 - 字段命名保持向后兼容：新增可选字段不会破坏旧 JSON 加载
 - 旧编辑器会忽略新增的 `waveform` 字段；新编辑器可加载完全不含该字段的旧工程
 - 不兼容变更必须升级顶层 schema，并记录到 `CHANGELOG.md`
+
+
+### AI 口播整理的文字编辑稿
+
+编辑稿是处理协议，不是工程新真源，不增加 MOSP 顶层 schema。未标记文字保留；`~~完整 item~~` 经本地校验后映射到 `gap_remove.provenance.sources.ai_cleanup`，`%待确认：理由%` 映射到 `markers.items[*].review` 的 `pending` 区段。原文字面 `~`、`%`、反斜杠和换行在编辑底稿中转义，解码后逐字核验；模型只插入未转义的处理标记，不返回时间码。重新断句按源 item 重绑可靠局部 scope，原文、cut 时间并集与人工恢复保持可用。
+
+句内删减保留 `segments[*].text/items`，导出时根据仍处于激活状态的 AI 空隙派生文字；普通 `audio_gate` 空隙不删字幕文字，恢复 AI 空隙后导出文字恢复。整段删除另设置 `disabled=true`，其绑定副字幕同时禁用；局部删减不会改写副字幕。所有生成时间范围仍为整数毫秒。对比 HTML 使用本地 `maw.ai-comparison.v1` 快照数据，不作为字幕或工程真源。

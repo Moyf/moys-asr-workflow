@@ -1,0 +1,461 @@
+import { expect, test } from '@playwright/test';
+import { execFileSync } from 'node:child_process';
+import { writeFileSync } from 'node:fs';
+import { join, resolve } from 'node:path';
+import { cleanupTempDir, disableOnboarding, findFreePort, generateWaveformPayload, makeTempDir, startServer } from './helpers.mjs';
+let tempDir, server, portraitServer;
+const ffmpeg = process.env.FFMPEG_PATH || 'ffmpeg';
+
+test.beforeAll(async () => {
+  tempDir = makeTempDir('ass-cue-position');
+  const media = join(tempDir, 'synthetic.mp4');
+  // Phase regression samples at 220/340ms must be actual video frame PTS.
+  execFileSync(ffmpeg, ['-hide_banner', '-loglevel', 'error', '-f', 'lavfi', '-i', 'color=black:s=640x360:r=50:d=5', '-c:v', 'libx264', '-y', media]);
+  const project = join(tempDir, 'project.mosp');
+  writeFileSync(project, JSON.stringify({ media: 'synthetic.mp4', preserve_punctuation: true,
+    segments: [{ id: 'main', start: 0, end: 2000, text: 'MMMM' }, { id: 'next', start: 2000, end: 4000, text: 'NEXT' }], waveform: generateWaveformPayload(5000) }));
+  server = await startServer(project, media, await findFreePort());
+  const portraitMedia=join(tempDir,'portrait.mp4'),portraitProject=join(tempDir,'portrait.mosp');
+  execFileSync(ffmpeg,['-hide_banner','-loglevel','error','-f','lavfi','-i','color=black:s=360x640:r=25:d=5','-c:v','libx264','-y',portraitMedia]);
+  writeFileSync(portraitProject,JSON.stringify({media:'portrait.mp4',segments:[{id:'main',start:0,end:2000,text:'MMMM'}],waveform:generateWaveformPayload(5000)}));
+  portraitServer=await startServer(portraitProject,portraitMedia,await findFreePort());
+});
+test.afterAll(async () => { await server?.stop(); await portraitServer?.stop(); if (tempDir) cleanupTempDir(tempDir); });
+test.beforeEach(async ({ page }, info) => {
+  await disableOnboarding(page);
+  await page.addInitScript(() => localStorage.setItem('moy.asr.editor.settings.v1', JSON.stringify({ autoSaveProject: false })));
+  await page.goto(info.title.includes('360x640 actual')?portraitServer.url:server.url);
+  await page.waitForFunction(() => window.MaweCoreState?.player?.videoWidth > 0 && window.MaweAssCuePosition);
+  await page.evaluate(async () => {
+    await loadAssStyleLibrary({ force: true });
+    ASS_STYLE_LIBRARY = AsrEditorUtils.defaultAssStyleLibrary();
+    Object.assign(ASS_STYLE_LIBRARY.styles.find(style => style.id === 'ass'), { fontName: 'Arial', fontSize: 90,
+      outline: 0, shadow: 0, primaryColor: '#ff0000', emphasisColor: '#ff0000', alignment: 2, marginV: 40 });
+    ASS_STYLE_LIBRARY.assProfiles[0].animations = { fad: { enabled: false }, fade: { enabled: false }, move: { enabled: false }, t: { enabled: false } };
+    Object.assign(MaweSettings.EDITOR_SETTINGS, { assMode: true, assFrameAutoRender: false, autoSaveProject: false });
+    MaweDom.overlayToggle.checked = true;
+    delete MaweBoot.DATA.segments[0].assOverride;
+    MaweBoot.DATA.segments[0].text = 'MMMM';
+    MaweCoreState.player.currentTime = 1;
+    MaweSelection.selectOnly(0);
+    MawePlaybackLoop.refreshSubtitlePreview(1000, 0);
+    MaweAssFrame.syncAssFrameControls();
+  });
+  await expect(page.locator('#ass-cue-position')).toBeHidden();
+});
+const snapshot = page => page.evaluate(() => ({ override: MaweBoot.DATA.segments[0].assOverride ?? null,
+  undo: MaweHistory.editorHistory.undoLength(), redo: MaweHistory.editorHistory.redoLength(), dirty: MaweServerSave.hasUnsavedProjectChanges() }));
+
+test('inspector, focus-scoped arrows, reset, undo and save/reopen retain positioning', async ({ page }, info) => {
+  const before = await snapshot(page);
+  const box = page.locator('.ass-cue-drag-target').first();
+  const bounds = await box.boundingBox();
+  await page.mouse.move(bounds.x + bounds.width / 2, bounds.y + bounds.height / 2);
+  await page.mouse.down(); await page.mouse.move(bounds.x + bounds.width / 2 + 20, bounds.y + bounds.height / 2 - 10);
+  await page.mouse.up();
+  await expect(page.locator('#ass-cue-position')).toBeVisible();
+  await page.locator('#ass-cue-x').fill('321.25'); await page.locator('#ass-cue-x').press('Tab');
+  await page.locator('#ass-cue-y').fill('160.5'); await page.locator('#ass-cue-y').press('Tab');
+  expect((await snapshot(page)).override).toEqual({ pos: { x: 321.25, y: 160.5 } });
+  const caret = page.locator('#cue-panel-text');
+  await caret.focus(); await caret.press('ArrowLeft');
+  expect((await snapshot(page)).override.pos.x).toBe(321.25);
+  await page.locator('#ass-cue-position').focus(); await page.keyboard.press('Shift+ArrowRight'); await page.keyboard.press('ArrowDown');
+  expect((await snapshot(page)).override.pos).toEqual({ x: 331.25, y: 161.5 });
+  await page.locator('#ass-cue-x').fill('331.25'); await page.locator('#ass-cue-x').press('ArrowRight');
+  expect((await snapshot(page)).override.pos.x).toBe(332.25);
+  await expect(page.locator('#ass-cue-x')).toHaveValue('332.25');
+  await page.locator('#ass-cue-x').press('ArrowLeft');
+  await page.locator('#ass-cue-reset').click(); expect((await snapshot(page)).override).toBeNull();
+  await page.locator('#undo-btn').click(); expect((await snapshot(page)).override.pos).toEqual({ x: 331.25, y: 161.5 });
+  await page.locator('#redo-btn').click(); expect((await snapshot(page)).override).toBeNull();
+  await page.locator('#undo-btn').click();
+  const save = await page.evaluate(async () => { const json = JSON.parse(MaweJsonRepair.buildJson());
+    await MaweProjectSave.saveProjectToServer({ silent: true }); return json.segments[0].assOverride; });
+  expect(save).toEqual({ pos: { x: 331.25, y: 161.5 } });
+  expect((await snapshot(page)).dirty).toBe(false);
+  await page.reload(); await page.waitForFunction(() => Boolean(MaweBoot.DATA.segments[0].assOverride));
+  expect((await snapshot(page)).override).toEqual(save);
+  await page.evaluate(() => { MaweSettings.EDITOR_SETTINGS.assMode = true; MaweSelection.selectOnly(0); MawePlaybackLoop.refreshSubtitlePreview(1000,0); });
+  const gaps = await page.locator('#ass-cue-position').evaluate(panel => ({
+    rows: parseFloat(getComputedStyle(panel).gap),
+    text: panel.getBoundingClientRect().left - document.getElementById('cue-panel-text').getBoundingClientRect().right,
+    height: panel.getBoundingClientRect().height,
+  }));
+  expect(gaps.rows).toBeGreaterThanOrEqual(8);
+  expect(gaps.text).toBeGreaterThanOrEqual(8);
+  writeFileSync(info.outputPath('spacing.json'), JSON.stringify(gaps, null, 2));
+  await page.locator('#current-cue-panel').screenshot({ path: info.outputPath('inspector.png') });
+  expect(before.override).toBeNull();
+});
+
+test('box drag maps letterbox and scaled portrait/landscape canvases into one undo, cancel and no-op', async ({ page }, info) => {
+  for (const [width, height, boxWidth, boxHeight] of [[640,360,440,300],[360,640,340,280]]) {
+    await page.evaluate(({ width, height, boxWidth, boxHeight }) => {
+      MaweBoot.DATA.media_metadata = { video_width: width, video_height: height };
+      delete MaweBoot.DATA.segments[0].assOverride;
+      MaweDom.playerStage.style.cssText = `flex:0 0 auto;width:${boxWidth}px;height:${boxHeight}px;`;
+      MawePlaybackLoop.refreshSubtitlePreview(1000,0);
+    }, {width,height,boxWidth,boxHeight});
+    await page.locator('.ass-cue-drag-target').first().scrollIntoViewIfNeeded();
+    await page.waitForFunction(() => {
+      const r=MaweDom.playerStage.getBoundingClientRect(),o=MaweDom.overlayEl.getBoundingClientRect();
+      const aspect=MaweCoreState.player.videoWidth/MaweCoreState.player.videoHeight;
+      return Math.abs(o.width-Math.min(r.width,r.height*aspect))<0.1 && Math.abs(o.height-Math.min(r.height,r.width/aspect))<0.1;
+    });
+    const frame = await page.evaluate(() => ({ track: MaweAssCanvas.lastRender.tracks.find(item=>item.role==='main'),
+      rect: (()=>{const r=MaweDom.overlayEl.getBoundingClientRect();return {width:r.width,height:r.height};})() }));
+    const target = page.locator('.ass-cue-drag-target').first();
+    await target.scrollIntoViewIfNeeded(); const rect = await target.boundingBox();
+    const point = { x: rect.x+rect.width/2, y: rect.y+rect.height/2 };
+    const before = await snapshot(page);
+    await page.evaluate(point => {
+      window.__dragEvidence = [{ hit: document.elementFromPoint(point.x, point.y)?.outerHTML,
+        box: (() => { const r=MaweDom.overlayEl.getBoundingClientRect(); return {x:r.x,y:r.y,width:r.width,height:r.height}; })() }];
+      for(const name of ['pointerdown','pointermove','pointerup','pointercancel','lostpointercapture']) document.addEventListener(name, event=>{
+        window.__dragEvidence.push({name,target:event.target.className,id:event.pointerId,x:event.clientX,y:event.clientY,
+          override: JSON.parse(JSON.stringify(MaweBoot.DATA.segments[0].assOverride||null))});
+      }, true);
+    }, point);
+    await page.mouse.move(point.x,point.y); await page.mouse.down();
+    await page.mouse.move(point.x+25,point.y-18,{steps:6}); await page.mouse.up();
+    const changed = await snapshot(page);
+    writeFileSync(info.outputPath(`drag-${width}-diagnostic.json`), JSON.stringify({frame,point,before,changed,events:await page.evaluate(()=>window.__dragEvidence)},null,2));
+    await page.locator('.player-stage').screenshot({path:info.outputPath(`drag-${width}-diagnostic.png`)});
+    expect(changed.undo).toBe(before.undo+1);
+    expect(changed.override.pos.x).toBeCloseTo(frame.track.anchor.x+25*width/frame.rect.width,2);
+    expect(changed.override.pos.y).toBeCloseTo(frame.track.anchor.y-18*height/frame.rect.height,2);
+    await page.locator('#undo-btn').click(); expect((await snapshot(page)).override).toBeNull();
+    await page.locator('#redo-btn').click(); expect((await snapshot(page)).override).toEqual(changed.override);
+    // History restores its selection snapshot. Select again before asking for
+    // a new drag; the first gesture on an unselected cue intentionally cannot move it.
+    await target.click();
+    let currentBox=await target.boundingBox(), next={x:currentBox.x+currentBox.width/2,y:currentBox.y+currentBox.height/2};
+    const committed=await snapshot(page);
+    await page.mouse.move(next.x,next.y); await page.mouse.down(); await page.mouse.move(next.x+12,next.y+9,{steps:3});
+    expect(await page.evaluate(()=>MaweAssCuePosition.dragging)).toBe(true);
+    expect(await page.evaluate(()=>MaweProjectSave.saveCurrentProject({silent:true}))).toBe(false);
+    await page.keyboard.press('Escape'); await page.mouse.up(); expect(await snapshot(page)).toEqual(committed);
+    currentBox=await target.boundingBox();next={x:currentBox.x+currentBox.width/2,y:currentBox.y+currentBox.height/2};
+    await page.mouse.move(next.x,next.y);await page.mouse.down();await page.mouse.move(next.x+10,next.y,{steps:2});
+    expect(await page.evaluate(()=>MaweAssCuePosition.dragging)).toBe(true);
+    await page.evaluate(()=>MaweHistory.performUndo());await page.mouse.up();expect(await snapshot(page)).toEqual(committed);
+    await target.click(); expect(await snapshot(page)).toEqual(committed);
+    currentBox=await target.boundingBox();next={x:currentBox.x+currentBox.width/2,y:currentBox.y+currentBox.height/2};
+    await page.mouse.move(next.x,next.y); await page.mouse.down(); await page.mouse.move(next.x+10,next.y,{steps:2}); await page.mouse.move(next.x,next.y,{steps:2}); await page.mouse.up();
+    expect(await snapshot(page)).toEqual(committed);
+    await page.locator('.player-stage').screenshot({path:info.outputPath(`drag-${width}x${height}.png`)});
+  }
+});
+
+test('active ASS dragging isolates editing shortcuts and cancellation preserves real color history', async ({ page }) => {
+  const state = () => page.evaluate(() => ({
+    project: MaweHistory.snapshotSegments(),
+    selection: MaweHistory.snapshotEditorSelection(),
+    undo: MaweHistory.editorHistory.undoLength(),
+    redo: MaweHistory.editorHistory.redoLength(),
+    dirty: MaweServerSave.hasUnsavedProjectChanges(),
+    modals: [...document.querySelectorAll('.modal.show')].map(element => element.id).sort(),
+  }));
+  const beginDrag = async () => {
+    const box = page.locator('.ass-cue-drag-target.selected');
+    await box.scrollIntoViewIfNeeded();
+    const rect = await box.boundingBox();
+    await page.mouse.move(rect.x + rect.width / 2, rect.y + rect.height / 2);
+    await page.mouse.down();
+    await page.mouse.move(rect.x + rect.width / 2 + 18, rect.y + rect.height / 2 - 8, { steps: 3 });
+    expect(await page.evaluate(() => MaweAssCuePosition.dragging)).toBe(true);
+    expect((await snapshot(page)).override?.pos).toBeTruthy();
+  };
+
+  // Use actual keyboard edits, so the history entry being protected contains
+  // a real color change rather than an injected test-only undo record.
+  await page.locator('.ass-cue-drag-target.selected').focus();
+  await page.keyboard.press('0');
+  const uncolored = await state();
+  await page.keyboard.press('2');
+  const colored = await state();
+  expect(colored.project).not.toEqual(uncolored.project);
+  expect(colored.undo).toBe(uncolored.undo + 1);
+  expect(colored.redo).toBe(0);
+
+  await beginDrag();
+  const preview = await state();
+  expect(preview.project).not.toEqual(colored.project);
+  expect(preview.undo).toBe(colored.undo);
+  // Include a different color and destructive, boundary, selection, playback,
+  // and modal-opening shortcuts while the pointer remains held down.
+  for (const key of ['1', '0', '3', '4', '5', 'Delete', 'Backspace', 'c', 'z', 'x',
+    'Control+Shift+a', 'Control+Shift+d', 'b', 'Shift+b', 'Control+Shift+b',
+    'n', 't', 'g', 'Shift+g', 'h', 'a', 'd', 'Control+a', 'Control+d', 'Space', 'Tab']) {
+    await page.keyboard.press(key);
+    expect(await state(), `held drag must isolate ${key}`).toEqual(preview);
+    expect(await page.evaluate(() => MaweAssCuePosition.dragging), key).toBe(true);
+  }
+  await page.keyboard.press('Escape');
+  await page.mouse.up();
+  expect(await page.evaluate(() => MaweAssCuePosition.dragging)).toBe(false);
+  expect(await state()).toEqual(colored);
+
+  // Every history shortcut cancels only the in-flight gesture. Cover both an
+  // existing undo entry and an existing redo entry without consuming either.
+  for (const key of ['Control+z', 'Control+y', 'Control+Shift+z']) {
+    await beginDrag();
+    await page.keyboard.press(key);
+    await page.mouse.up();
+    expect(await page.evaluate(() => MaweAssCuePosition.dragging)).toBe(false);
+    expect(await state(), `${key} cancels without consuming undo history`).toEqual(colored);
+  }
+  await page.keyboard.press('Control+z');
+  // Ordinary segment history intentionally clears its selection. Restore the
+  // selection before starting another gesture, without creating a mutation.
+  await page.evaluate(() => { MaweSelection.selectOnly(0); MawePlaybackLoop.refreshSubtitlePreview(1000, 0); });
+  const undone = await state();
+  expect(undone.project).toEqual(uncolored.project);
+  expect(undone.undo).toBe(uncolored.undo);
+  expect(undone.redo).toBe(1);
+  expect((await snapshot(page)).override).toBeNull();
+
+  for (const key of ['Control+y', 'Control+Shift+z', 'Control+z']) {
+    await beginDrag();
+    await page.keyboard.press(key);
+    await page.mouse.up();
+    expect(await page.evaluate(() => MaweAssCuePosition.dragging)).toBe(false);
+    expect(await state(), `${key} cancels without consuming redo history`).toEqual(undone);
+  }
+  await page.keyboard.press('Control+y');
+  const redone = await state();
+  expect(redone.project).toEqual(colored.project);
+  expect(redone.undo).toBe(colored.undo);
+  expect(redone.redo).toBe(0);
+  expect((await snapshot(page)).override).toBeNull();
+});
+
+function paintedBox(canvas) {
+  const g=canvas.getContext('2d'),pixels=g.getImageData(0,0,canvas.width,canvas.height).data;
+  let left=Infinity,top=Infinity,right=-Infinity,bottom=-Infinity;
+  for(let y=0;y<canvas.height;y++)for(let x=0;x<canvas.width;x++) {
+    const at=(y*canvas.width+x)*4;
+    if(pixels[at+3]<16 || pixels[at]<60 || pixels[at]<=Math.max(pixels[at+1],pixels[at+2])+30) continue;
+    left=Math.min(left,x);top=Math.min(top,y);right=Math.max(right,x+1);bottom=Math.max(bottom,y+1);
+  }
+  return Number.isFinite(left)?[left,top,right,bottom]:null;
+}
+
+for(const [width,height] of [[640,360],[360,640]]) test(`all nine anchors match Canvas, Server libass and exported ${width}x${height} actual frames`, async ({ page }, info) => {
+  test.setTimeout(180000);
+  await page.locator('#ass-frame-quick-open').click();
+  const evidence=[];
+  for (let an=1;an<=9;an++) {
+    const frame=await page.evaluate(({an,width,height,paintedBox}) => {
+      MaweBoot.DATA.media_metadata={video_width:width,video_height:height};
+      MaweBoot.DATA.segments[0].assOverride={pos:{x:width/2,y:height/2}};
+      ASS_STYLE_LIBRARY.styles.find(style => style.id === 'ass').alignment = an;
+      ASS_STYLE_LIBRARY.assProfiles[0].animations.move={enabled:true,x1:10,y1:10,x2:200,y2:300,t1:0,t2:2000};
+      MawePlaybackLoop.refreshSubtitlePreview(1000,0);
+      const canvas=document.querySelector('.ass-preview-canvas');
+      return { box:(0,eval)(`(${paintedBox})`)(canvas),ass:MaweExportSrt.buildAss() };
+    },{an,width,height,paintedBox:paintedBox.toString()});
+    await page.evaluate(()=>MaweAssFrame.renderAssFrame());
+    await expect(page.locator('#ass-frame-window-status')).toHaveText('渲染完成');
+    const serverBox=await page.evaluate(paintedBox=>{
+      const image=document.getElementById('ass-frame-image'),canvas=document.createElement('canvas');
+      canvas.width=image.naturalWidth;canvas.height=image.naturalHeight;
+      canvas.getContext('2d').drawImage(image,0,0);
+      return (0,eval)(`(${paintedBox})`)(canvas);
+    },paintedBox.toString());
+    const path=info.outputPath(`an-${an}.ass`);writeFileSync(path,frame.ass);
+    const result=JSON.parse(execFileSync(process.env.MAW_PIXEL_PYTHON||process.env.MAW_E2E_PYTHON||'python',
+      [resolve('tests/helpers/ass-stacking-pixel-oracle.py'),path,'1000',info.outputPath(`an-${an}-export`)],
+      {encoding:'utf8',timeout:40000,windowsHide:true}));
+    const exportBox=result.nativeTracks.main.box;
+    expect(frame.box).not.toBeNull();expect(serverBox).not.toBeNull();expect(exportBox).not.toBeNull();
+    for(let axis=0;axis<4;axis++) {
+      expect(Math.abs(frame.box[axis]-exportBox[axis])).toBeLessThanOrEqual(5);
+      expect(Math.abs(serverBox[axis]-exportBox[axis])).toBeLessThanOrEqual(1);
+    }
+    expect(frame.ass.split('\n').filter(line=>line.startsWith('Dialogue: 0,')).every(line=>!line.endsWith('MMMM') || !line.includes('\\move('))).toBe(true);
+    evidence.push({an,canvas:frame.box,server:serverBox,export:exportBox,font:result.fontSelections});
+  }
+  writeFileSync(info.outputPath('frame-comparison.json'),JSON.stringify(evidence,null,2));
+});
+
+
+test('positioned shake phase survives non-periodic overlap in Canvas, Server libass and exported frames', async ({ page }, info) => {
+  test.setTimeout(180000);
+  await page.evaluate(() => {
+    // Release the current text-panel draft before changing fixture timing/text.
+    // Selecting it afterwards must not commit the old draft over this setup.
+    MaweSelection.clearSelection();
+    const [shaken, ordinary] = MaweBoot.DATA.segments;
+    Object.assign(shaken, { start: 100, end: 400, text: '!!MMMM!!', assOverride: { pos: { x: 320, y: 240 } } });
+    delete shaken.color; delete shaken.color_ref;
+    Object.assign(ordinary, { start: 200, end: 300, text: 'NEXT', assOverride: { pos: { x: 120, y: 100 } },
+      color: { name: 'green', value: MaweColors.COLOR_BY_NAME.green.value, start: 200, end: 300 } });
+    delete ordinary.color_ref;
+    MaweBoot.DATA.preview ??= {};
+    MaweBoot.DATA.preview.subtitle = { ...MaweBoot.DATA.preview.subtitle, ass_color_style: 'text' };
+    MaweSelection.selectOnly(0);
+    MawePlaybackLoop.refreshSubtitlePreview(100, 0);
+  });
+  await page.locator('#ass-frame-quick-open').click();
+  const evidence = [];
+  for (const timeMs of [220, 340]) {
+    await page.evaluate(async timeMs => {
+      const player = MaweCoreState.player;
+      await new Promise(resolveSeek => {
+        player.addEventListener('seeked', resolveSeek, { once: true });
+        player.currentTime = timeMs / 1000;
+      });
+      MawePlaybackLoop.refreshSubtitlePreview(timeMs, 0);
+    }, timeMs);
+    const frame = await page.evaluate(({ timeMs, paintedBox }) => {
+      MawePlaybackLoop.refreshSubtitlePreview(timeMs, 0);
+      return { box: (0, eval)(`(${paintedBox})`)(document.querySelector('.ass-preview-canvas')),
+        ass: MaweExportSrt.buildAss(), currentTime: MaweCoreState.player.currentTime,
+        tracks: MaweAssCanvas.lastRender.tracks.map(({ cueId, anchor, positionAnchor, bounds }) => ({ cueId, anchor, positionAnchor, bounds })) };
+    }, { timeMs, paintedBox: paintedBox.toString() });
+    expect(frame.currentTime).toBeCloseTo(timeMs / 1000, 5);
+    await page.evaluate(() => MaweAssFrame.renderAssFrame());
+    await expect(page.locator('#ass-frame-window-status')).toHaveText('渲染完成');
+    const serverBox = await page.evaluate(paintedBox => {
+      const image = document.getElementById('ass-frame-image'), canvas = document.createElement('canvas');
+      canvas.width = image.naturalWidth; canvas.height = image.naturalHeight;
+      canvas.getContext('2d').drawImage(image, 0, 0);
+      return (0, eval)(`(${paintedBox})`)(canvas);
+    }, paintedBox.toString());
+    const path = info.outputPath(`shake-phase-${timeMs}.ass`);
+    writeFileSync(path, frame.ass);
+    const result = JSON.parse(execFileSync(process.env.MAW_PIXEL_PYTHON || process.env.MAW_E2E_PYTHON || 'python',
+      [resolve('tests/helpers/ass-stacking-pixel-oracle.py'), path, String(timeMs), info.outputPath(`shake-phase-${timeMs}-export`)],
+      { encoding: 'utf8', timeout: 40000, windowsHide: true }));
+    const exportBox = result.nativeTracks.main.box;
+    const sample = { timeMs, currentTime: frame.currentTime, canvas: frame.box, server: serverBox, export: exportBox,
+      tracks: frame.tracks, font: result.fontSelections };
+    evidence.push(sample);
+    writeFileSync(info.outputPath('shake-phase-comparison.json'), JSON.stringify(evidence, null, 2));
+    await page.locator('.player-stage').screenshot({ path: info.outputPath(`shake-phase-${timeMs}-canvas.png`) });
+    await page.locator('#ass-frame-image').screenshot({ path: info.outputPath(`shake-phase-${timeMs}-server.png`) });
+    expect(frame.box).not.toBeNull(); expect(serverBox).not.toBeNull(); expect(exportBox).not.toBeNull();
+    for (let axis = 0; axis < 4; axis++) {
+      expect(Math.abs(frame.box[axis] - exportBox[axis]), JSON.stringify(sample)).toBeLessThanOrEqual(5);
+      expect(Math.abs(serverBox[axis] - exportBox[axis]), JSON.stringify(sample)).toBeLessThanOrEqual(1);
+    }
+  }
+});
+
+test('inactive selected cue inspector reuses the cached ASS plan during playback refreshes', async ({page}) => {
+  const result = await page.evaluate(() => {
+    delete MaweBoot.DATA.segments[0].assOverride;
+    MaweSelection.selectOnly(0);
+    MawePlaybackLoop.refreshSubtitlePreview(3000,1);
+    const original=window.MaweExportSrt;
+    let builds=0;
+    window.MaweExportSrt={...original,buildAss(...args){builds++;return original.buildAss(...args);}};
+    try { for(let index=0;index<30;index++) MaweAssCuePosition.sync(); }
+    finally {window.MaweExportSrt=original;}
+    return {builds,selected:MaweCuePanel.getCurrentCuePanelTarget().segment.id,
+      visible:MaweAssCanvas.lastRender.tracks.map(item=>item.cueId)};
+  });
+  expect(result.selected).toBe('main');
+  expect(result.visible).not.toContain('main');
+  expect(result.builds).toBe(0);
+});
+
+test('shaken cue matches Canvas, Server libass and exported frame boxes at sample time', async ({ page }, info) => {
+  const frame = await page.evaluate(({ paintedBox }) => {
+    MaweBoot.DATA.segments[0].text = '!!MMMM!!';
+    MawePlaybackLoop.refreshSubtitlePreview(1000, 0);
+    const canvas = document.querySelector('.ass-preview-canvas');
+    return { box: (0,eval)(`(${paintedBox})`)(canvas), ass: MaweExportSrt.buildAss() };
+  }, { paintedBox: paintedBox.toString() });
+  await page.evaluate(() => MaweAssFrame.renderAssFrame());
+  await expect(page.locator('#ass-frame-window-status')).toHaveText('渲染完成');
+  const serverBox = await page.evaluate(paintedBox => {
+    const image = document.getElementById('ass-frame-image'), canvas = document.createElement('canvas');
+    canvas.width = image.naturalWidth; canvas.height = image.naturalHeight;
+    canvas.getContext('2d').drawImage(image, 0, 0);
+    return (0,eval)(`(${paintedBox})`)(canvas);
+  }, paintedBox.toString());
+  const path = info.outputPath('shake.ass'); writeFileSync(path, frame.ass);
+  const result = JSON.parse(execFileSync(process.env.MAW_PIXEL_PYTHON || process.env.MAW_E2E_PYTHON || 'python',
+    [resolve('tests/helpers/ass-stacking-pixel-oracle.py'), path, '1000', info.outputPath('shake-export')],
+    { encoding: 'utf8', timeout: 40000, windowsHide: true }));
+  const exportBox = result.nativeTracks.main.box;
+  expect(frame.box).not.toBeNull(); expect(serverBox).not.toBeNull(); expect(exportBox).not.toBeNull();
+  for (let axis = 0; axis < 4; axis++) {
+    expect(Math.abs(frame.box[axis] - exportBox[axis])).toBeLessThanOrEqual(5);
+    expect(Math.abs(serverBox[axis] - exportBox[axis])).toBeLessThanOrEqual(1);
+  }
+  expect(frame.ass.split('\n').filter(line => line.startsWith('Dialogue: 0,') && line.includes('MMMM')).length).toBe(Math.ceil(2000 / 60));
+});
+
+test('unselected gesture only selects, no-op stays clean and coordinate visibility never changes panel or video height', async ({page}, info) => {
+  await page.evaluate(() => { MaweSelection.clearSelection(); MawePlaybackLoop.refreshSubtitlePreview(1000,0); });
+  const box = page.locator('.ass-cue-drag-target').first();
+  await expect(box).not.toHaveClass(/selected/);
+  const baseline = await snapshot(page);
+  const layout = () => page.evaluate(() => ['#current-cue-panel', '.player-stage', '#cue-panel-text'].map(id => {
+    const r=document.querySelector(id).getBoundingClientRect(); return {id,top:r.top,height:r.height};
+  }));
+  const before = await layout();
+  let r=await box.boundingBox(), p={x:r.x+r.width/2,y:r.y+r.height/2};
+  await page.mouse.move(p.x,p.y); await page.mouse.down(); await page.mouse.move(p.x+20,p.y+10); await page.mouse.up();
+  expect(await snapshot(page)).toEqual(baseline);
+  await expect(box).toHaveClass(/selected/);
+  await expect(page.locator('#ass-cue-position')).toBeHidden();
+  await box.click(); expect(await snapshot(page)).toEqual(baseline);
+  r=await box.boundingBox(); p={x:r.x+r.width/2,y:r.y+r.height/2};
+  await page.mouse.move(p.x,p.y); await page.mouse.down(); await page.mouse.move(p.x+20,p.y-10); await page.mouse.up();
+  await expect(page.locator('#ass-cue-position')).toBeVisible();
+  expect((await snapshot(page)).undo).toBe(baseline.undo+1);
+  const positioned=await layout();
+  await page.locator('#ass-cue-reset').click();
+  await expect(page.locator('#ass-cue-position')).toBeHidden();
+  const reset=await layout();
+  await page.evaluate(() => MaweSelection.clearSelection());
+  const cleared=await layout();
+  expect(positioned).toEqual(before); expect(reset).toEqual(before); expect(cleared).toEqual(before);
+  writeFileSync(info.outputPath('layout.json'),JSON.stringify({before,positioned,reset,cleared},null,2));
+  await page.locator('#current-cue-panel').screenshot({path:info.outputPath('layout.png')});
+});
+
+test('dragged shaken cue saves the base anchor and window blur cancels the next gesture', async ({page},info) => {
+  await page.locator('#cue-panel-text').fill('++!!喂喂喂嗯!!++');
+  await page.locator('#cue-panel-text').press('Tab');
+  await page.evaluate(() => {MaweCuePanel.commitCuePanelEdit(); MawePlaybackLoop.refreshSubtitlePreview(1000,0);});
+  const box=page.locator('.ass-cue-drag-target').first(),r=await box.boundingBox();
+  const data=await page.evaluate(()=>({anchor:MaweAssCanvas.lastRender.tracks[0].anchor,
+    res:MaweAssCanvas.lastRender.playResX, width:MaweDom.overlayEl.getBoundingClientRect().width,
+    text:MaweBoot.DATA.segments[0].text,count:MaweBoot.DATA.segments.length}));
+  await page.mouse.move(r.x+r.width/2,r.y+r.height/2);await page.mouse.down();await page.mouse.move(r.x+r.width/2+15,r.y+r.height/2);await page.mouse.up();
+  const saved=await snapshot(page);
+  expect(saved.override.pos.x).toBeCloseTo(data.anchor.x+15*data.res/data.width,3);
+  expect(saved.override.pos.y).toBe(data.anchor.y);
+  const next=await box.boundingBox();await page.mouse.move(next.x+next.width/2,next.y+next.height/2);
+  await page.mouse.down();await page.mouse.move(next.x+next.width/2+12,next.y+next.height/2);
+  await page.evaluate(()=>window.dispatchEvent(new Event('blur')));await page.mouse.up();
+  expect(await snapshot(page)).toEqual(saved);
+  expect(await page.evaluate(()=>({text:MaweBoot.DATA.segments[0].text,count:MaweBoot.DATA.segments.length}))).toEqual({text:data.text,count:data.count});
+  await page.locator('.player-stage').screenshot({path:info.outputPath('shake-drag.png')});
+});
+
+test('dragging an automatically stacked upper cue uses the global top anchor', async ({page}) => {
+  const before=await page.evaluate(() => {
+    const cue=MaweBoot.DATA.segments[1]; cue.start=0; cue.end=2000;
+    ASS_STYLE_LIBRARY.styles.find(style=>style.id==='ass').alignment=8;
+    MaweSelection.selectOnly(1); MawePlaybackLoop.refreshSubtitlePreview(1000,0);
+    const frame=MaweAssCanvas.lastRender, record=frame.tracks.find(item=>item.cueId==='next');
+    return {record,res:frame.playResX,width:MaweDom.overlayEl.getBoundingClientRect().width};
+  });
+  expect(before.record.alignment).toBe(2);
+  const box=page.locator('.ass-cue-drag-target.selected'),r=await box.boundingBox();
+  await page.mouse.move(r.x+r.width/2,r.y+r.height/2);await page.mouse.down();
+  await page.mouse.move(r.x+r.width/2+15,r.y+r.height/2);await page.mouse.up();
+  const after=await page.evaluate(()=>({pos:MaweBoot.DATA.segments[1].assOverride.pos,
+    record:MaweAssCanvas.lastRender.tracks.find(item=>item.cueId==='next')}));
+  expect(after.record.alignment).toBe(8);
+  expect(after.pos.x).toBeCloseTo(before.record.positionAnchor.x+15*before.res/before.width,3);
+  expect(after.pos.y).toBeCloseTo(before.record.positionAnchor.y,3);
+  expect(after.record.bounds.top).toBeCloseTo(before.record.bounds.top,2);
+});

@@ -14,6 +14,7 @@ await Promise.all(['shared/editor-utils.js','editor/media/waveform.js'].map(asyn
   const files = manifest.filter(name => name === 'editor/boot/editor-runtime.js'
     || name === 'editor/boot/editor-host.js' || name.startsWith('shared/host/')
     || name === 'shared/gap-remove-core.js' || name === entry
+    || (entry === 'editor/media/waveform.js' && name === 'editor/media/editor-thumbnails.js')
     || directories.some(prefix => name.startsWith(prefix)));
   const built = await compileSources(root,files,modules.filter(item => files.includes(item.file)),
     file => fs.readFileSync(path.join(root,'web',file),'utf8'),{beforeEntry:entry});

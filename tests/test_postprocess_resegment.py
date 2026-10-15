@@ -36,6 +36,20 @@ def timed(text, parts, start=0, **metadata):
 
 
 class ResegmentTests(unittest.TestCase):
+    def test_unsplittable_limits_are_pending_regions_without_modifying_source(self):
+        _, artifact = self.run_case(
+            [timed("完整名称不能拆", ["完整名称不能拆"])],
+            lambda _prompt, _rows: {"draft": "[c0001a0001]"}, max_chars=3,
+        )
+        project = read_project(artifact.project_path)
+        marker = project["markers"]["items"][0]
+        self.assertEqual(marker["review"]["status"], "pending")
+        self.assertEqual(marker["ai"]["task"], "resegment")
+        self.assertEqual((marker["start"], marker["end"]), (0, 200))
+        self.assertTrue(marker["note"].startswith("[AI] 待核查："))
+        self.assertEqual(project["segments"][0]["text"], "完整名称不能拆")
+        self.assertTrue(artifact.warnings)
+
     def setUp(self):
         self.temp = tempfile.TemporaryDirectory()
         self.addCleanup(self.temp.cleanup)
@@ -118,6 +132,42 @@ class ResegmentTests(unittest.TestCase):
         self.assertEqual(reopened["multi_subtitle"], read_project(self.source)["multi_subtitle"])
         self.assertTrue(any("一对一" in warning and "超过最大 2 字" in warning for warning in artifact.warnings))
         self.assertIn("绑定正文", artifact.srt_path.read_text(encoding="utf-8-sig"))
+
+    def test_unprocessed_bound_color_survives_resegment_with_moved_or_rebuilt_head(self):
+        color = {"name": "yellow", "value": "#c4a019"}
+        for preserve_head in (False, True):
+            with self.subTest(preserve_head=preserve_head):
+                segments = [
+                    timed("前面拆分", list("前面拆分"), 0, id="prefix"),
+                    timed("颜色组头", list("颜色组头"), 1000, id="color-head", color=color),
+                    timed("绑定正文", list("绑定正文"), 2000, id="bound", color_ref={"name": "yellow", "headIdx": 1}),
+                ]
+                bound_ids = ["color-head", "bound"] if preserve_head else ["bound"]
+                project = {"segments": segments, "multi_subtitle": {
+                    "enabled": True, "tracks": [{"id": "en", "segments": [
+                        {"id": f"translation-{index}", "text": "text", "start": segments[index]["start"], "end": segments[index]["end"]}
+                        for index in (1, 2) if segments[index]["id"] in bound_ids
+                    ]}], "bindings": [
+                        {"id": f"binding-{index}", "track_id": "en", "main_segment_ids": [segments[index]["id"]],
+                         "extension_segment_ids": [f"translation-{index}"], "start_offset_ms": 0, "end_offset_ms": 0}
+                        for index in (1, 2) if segments[index]["id"] in bound_ids
+                    ]}}
+                self.source.write_text(json.dumps(project, ensure_ascii=False), encoding="utf-8")
+                artifact = run_llm_postprocess(
+                    LlmPostprocessRequest(project_path=self.source, srt_path=None, output_mode=OutputMode.BOTH,
+                                         operation="resegment", custom_prompt="", max_chars=1),
+                    complete=lambda _prompt, rows: {"draft": "\n".join(f"[{item['id']}]" for row in rows for item in row["items"])},
+                )
+                reopened = read_project(artifact.project_path)
+                bound = next(s for s in reopened["segments"] if s["id"] == "bound")
+                self.assertEqual((bound["text"], bound["items"]), (segments[2]["text"], segments[2]["items"]))
+                if preserve_head:
+                    head_index = next(i for i, s in enumerate(reopened["segments"]) if s["id"] == "color-head")
+                    self.assertNotEqual(head_index, 1)
+                    self.assertEqual(bound["color_ref"]["headIdx"], head_index)
+                else:
+                    self.assertNotIn("color_ref", bound)
+                    self.assertEqual(bound["color"], color)
 
     def test_cleanup_split_merge_and_manual_restore_preserve_words_and_audio(self):
         source = timed("这个这个这个方法", list("这个这个这个方法"), id="original")
@@ -298,6 +348,24 @@ class ResegmentTests(unittest.TestCase):
                 begin_commit=lambda: False,
             )
         self.assertFalse(list(self.root.glob("*.srt")))
+
+    def test_ass_position_survives_split_and_merge_with_leftmost_inheritance(self):
+        left = {"pos": {"x": 120.5, "y": 200}}
+        right = {"pos": {"x": 600, "y": 800}}
+        source = timed("甲乙", ["甲", "乙"], assOverride=left)
+        def cuts(_prompt, rows):
+            return {"draft": "\n".join(f"[{item['id']}]" for row in rows for item in row["items"])}
+        outputs, _ = self.run_case([source], cuts)
+        self.assertEqual(len(outputs), 2)
+        self.assertTrue(all(segment["assOverride"] == left for segment in outputs))
+        outputs[0]["assOverride"]["pos"]["x"] = 999
+        self.assertEqual(outputs[1]["assOverride"], left)
+        merged, _ = self.run_case([source, timed("丙", ["丙"], 400, assOverride=right)], self.last_boundary)
+        self.assertEqual(len(merged), 1)
+        self.assertEqual(merged[0]["assOverride"], left)
+        del source["assOverride"]
+        without, _ = self.run_case([source, timed("丙", ["丙"], 400, assOverride=right)], self.last_boundary)
+        self.assertNotIn("assOverride", without[0])
 
     def test_limits_count_visible_characters_and_reject_invalid_values(self):
         self.assertEqual(char_count("中文 AI，\n"), 5)
