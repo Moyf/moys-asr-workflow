@@ -11,6 +11,34 @@ function loadState(project = { segments: [] }) {
   return context.window.MaweState;
 }
 
+test('only the current project load can release saving, and replacement cancels registered media work', () => {
+  const state = loadState();
+  let cancelled = 0;
+  const stop = state.observeProjectLoad(() => cancelled++);
+  const old = state.beginProjectLoad();
+  const next = state.beginProjectLoad();
+  state.finishProjectLoad(old);
+  assert.equal(state.projectLoadPending, true);
+  state.finishProjectLoad(next);
+  assert.equal(state.projectLoadPending, false);
+  assert.equal(cancelled, 2);
+  stop();
+  state.beginProjectLoad();
+  assert.equal(cancelled, 2);
+});
+
+test('superseded project waits finish immediately while late transport completion remains observed', async () => {
+  const state = loadState();
+  const generation = state.beginProjectLoad();
+  let reject;
+  const transport = new Promise((_, fail) => {reject = fail;});
+  const waiting = state.waitForProjectLoad(transport, generation);
+  state.beginProjectLoad();
+  assert.equal(await waiting, null);
+  reject(new Error('late transport failure'));
+  await Promise.resolve();
+});
+
 test('state keeps the original project identity and excludes transient state from project serialization', () => {
   const project = { segments: [{ id: 'one', text: 'original' }] };
   const state = loadState(project);

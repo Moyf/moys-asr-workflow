@@ -32,6 +32,7 @@ async function withFixture(page, run) {
       window.writes = 0;
       window.outputClosed = false;
       window.MaweInlineEdit = {};
+      window.MaweCoreState = {};
       window.MaweBoot = { FILENAME_BASE: 'test', SERVER_CONFIG: {
         canGapRemovedVideoExport: true, gapRemovedVideoSourceName: 'source.mp4',
         gapRemovedVideoExportUrl: '/export', requestToken: 'fixture',
@@ -138,7 +139,9 @@ test(`rendered editor rejects waiting media picker after ${change}`, async ({ pa
     } else {
       // Simulate another tab reopening the same on-disk project. This page
       // retains its old IDs; the actual Python endpoint must reject its POST.
-      const response = await page.request.post(`${server.url}api/recent-projects/open`, { data: { path: project } });
+      const binding = await page.evaluate(() => ({bindingGeneration: MaweBoot.SERVER_CONFIG.bindingGeneration,
+        sourceMediaId: MaweBoot.SERVER_CONFIG.sourceMediaId}));
+      const response = await page.request.post(`${server.url}api/recent-projects/open`, { data: { ...binding, path: project } });
       expect(response.status()).toBe(200);
     }
     await page.evaluate(() => {

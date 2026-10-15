@@ -2268,7 +2268,7 @@ class LocalEditorServerTests(CompactContainerAssertions, unittest.TestCase):
                 def post(endpoint: str, payload: dict) -> tuple[int, dict]:
                     request = urllib.request.Request(
                         f"{base_url}{endpoint}",
-                        data=json.dumps(payload).encode("utf-8"),
+                        data=json.dumps({**server.project_binding_payload(), **payload}).encode("utf-8"),
                         headers={"Content-Type": "application/json"},
                         method="POST",
                     )
@@ -2720,17 +2720,20 @@ class LocalEditorServerTests(CompactContainerAssertions, unittest.TestCase):
             thread.start()
             try:
                 base_url = f"http://127.0.0.1:{server.server_address[1]}"
+                client_binding = server.project_binding_payload()
 
                 def post(payload: dict) -> tuple[int, dict]:
                     request = urllib.request.Request(
                         f"{base_url}/api/project",
-                        data=json.dumps(payload).encode("utf-8"),
+                        data=json.dumps({**client_binding, **payload}).encode("utf-8"),
                         headers={"Content-Type": "application/json"},
                         method="POST",
                     )
                     try:
                         with urllib.request.urlopen(request) as response:
-                            return response.status, json.loads(response.read())
+                            result = json.loads(response.read())
+                            client_binding.update({key: result[key] for key in ("bindingGeneration", "sourceMediaId")})
+                            return response.status, result
                     except urllib.error.HTTPError as error:
                         return error.code, json.loads(error.read())
 
@@ -2802,7 +2805,7 @@ class LocalEditorServerTests(CompactContainerAssertions, unittest.TestCase):
                 def post(payload: dict) -> tuple[int, dict]:
                     request = urllib.request.Request(
                         f"{base_url}/api/project",
-                        data=json.dumps(payload).encode("utf-8"),
+                        data=json.dumps({**server.project_binding_payload(), **payload}).encode("utf-8"),
                         headers={"Content-Type": "application/json"},
                         method="POST",
                     )
@@ -2877,7 +2880,7 @@ class LocalEditorServerTests(CompactContainerAssertions, unittest.TestCase):
                 def post(payload: dict) -> tuple[int, dict]:
                     request = urllib.request.Request(
                         f"{base_url}/api/project",
-                        data=json.dumps({"project": payload}).encode("utf-8"),
+                        data=json.dumps({**server.project_binding_payload(), "project": payload}).encode("utf-8"),
                         headers={"Content-Type": "application/json"},
                         method="POST",
                     )
@@ -2951,7 +2954,7 @@ class LocalEditorServerTests(CompactContainerAssertions, unittest.TestCase):
                 def post(endpoint: str, payload: dict) -> tuple[int, dict]:
                     request = urllib.request.Request(
                         f"{base_url}{endpoint}",
-                        data=json.dumps(payload).encode("utf-8"),
+                        data=json.dumps({**server.project_binding_payload(), **payload}).encode("utf-8"),
                         headers={"Content-Type": "application/json"},
                         method="POST",
                     )
