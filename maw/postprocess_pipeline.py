@@ -1089,6 +1089,9 @@ def _run_step(
                     media_path=media_path,
                     subtitle_path=srt_path,
                     green_screen=green_screen,
+                    # 自动流水线的绿幕（音频素材兜底）没有尺寸选项，
+                    # 显式保持既有 1080p 行为；工具箱手动绿幕默认 4K。
+                    green_screen_size="1080p",
                     video_encoder=normalize_video_encoder(step.get("videoEncoder")),
                 ),
                 ffmpeg_path=ffmpeg_path,

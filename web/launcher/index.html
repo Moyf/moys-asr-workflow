@@ -714,7 +714,16 @@
         </div>
         <div class="toolbox-green-screen-option">
           <label class="check-field" for="toolboxGreenScreen"><input id="toolboxGreenScreen" type="checkbox"><span data-i18n="toolbox_green_screen">生成绿幕视频</span></label>
-          <p class="hint" data-i18n="toolbox_green_screen_hint">无需视频源；用字幕时长生成带字幕的绿色背景视频。默认 1920×1080、30 fps，ASS 优先使用自身画布尺寸；不含音轨。</p>
+          <div id="toolboxGreenScreenSizeField" class="field hidden">
+            <label for="toolboxGreenScreenSize" data-i18n="toolbox_green_screen_size">视频尺寸</label>
+            <select id="toolboxGreenScreenSize">
+              <option value="1080p" data-i18n="toolbox_green_screen_size_1080p">1080P（1920×1080）</option>
+              <option value="2k" data-i18n="toolbox_green_screen_size_2k">2K（2560×1440）</option>
+              <option value="4k" selected data-i18n="toolbox_green_screen_size_4k">4K（3840×2160）</option>
+            </select>
+            <p class="hint" data-i18n="toolbox_green_screen_size_hint">绿幕画布按所选尺寸生成；SRT 烧录样式按该尺寸换算，与编辑器预览一致。ASS 使用自身画布坐标，随尺寸等比缩放。</p>
+          </div>
+          <p class="hint" data-i18n="toolbox_green_screen_hint">无需视频源；用字幕时长生成带字幕的绿色背景视频，30 fps，不含音轨。默认 4K。</p>
         </div>
         <div id="toolboxBurnVideoEncoderField" class="field">
           <label for="toolboxBurnVideoEncoder" data-i18n="toolbox_burn_video_encoder">视频编码器</label>

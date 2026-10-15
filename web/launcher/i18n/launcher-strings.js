@@ -358,13 +358,23 @@ Object.assign(STRINGS.en, {
 Object.assign(STRINGS.zh, {
   toolbox_burn_subtitle_style_hint: "选择 SRT 字幕时，会使用 ASS 样式库中的「SRT 烧录样式」对应的样式；选择 ASS 字幕时，使用 ASS 字幕自身的样式。",
   toolbox_green_screen: "生成绿幕视频",
-  toolbox_green_screen_hint: "无需视频源；用字幕时长生成带字幕的绿色背景视频。默认 1920×1080、30 fps，ASS 优先使用自身画布尺寸；不含音轨。",
+  toolbox_green_screen_hint: "无需视频源；用字幕时长生成带字幕的绿色背景视频，30 fps，不含音轨。默认 4K。",
+  toolbox_green_screen_size: "视频尺寸",
+  toolbox_green_screen_size_1080p: "1080P（1920×1080）",
+  toolbox_green_screen_size_2k: "2K（2560×1440）",
+  toolbox_green_screen_size_4k: "4K（3840×2160）",
+  toolbox_green_screen_size_hint: "绿幕画布按所选尺寸生成；SRT 烧录样式按该尺寸换算，与编辑器预览一致。ASS 使用自身画布坐标，随尺寸等比缩放。",
   toolbox_green_screen_done: "绿幕视频已生成，已切换到新媒体：",
 });
 Object.assign(STRINGS.en, {
   toolbox_burn_subtitle_style_hint: "SRT subtitles are burned with the style assigned as the SRT burn style in the ASS style library; ASS / SSA subtitles keep their own embedded styles.",
   toolbox_green_screen: "Generate green-screen video",
-  toolbox_green_screen_hint: "No source video needed. Creates a green background with burned subtitles through the last cue. Defaults to 1920×1080 at 30 fps; ASS canvas size takes priority. No audio track.",
+  toolbox_green_screen_hint: "No source video needed. Creates a green background with burned subtitles through the last cue, at 30 fps. Defaults to 4K. No audio track.",
+  toolbox_green_screen_size: "Video size",
+  toolbox_green_screen_size_1080p: "1080p (1920×1080)",
+  toolbox_green_screen_size_2k: "2K (2560×1440)",
+  toolbox_green_screen_size_4k: "4K (3840×2160)",
+  toolbox_green_screen_size_hint: "The green canvas is generated at the selected size; SRT burn styles are rescaled for that size to match the editor preview. ASS subtitles keep their own canvas coordinates and scale with the output size.",
   toolbox_green_screen_done: "Green-screen video created; switched to the new media:",
 });
 Object.assign(STRINGS.zh, {

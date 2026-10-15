@@ -2835,6 +2835,7 @@ class GuiWebBridgeTests(CompactContainerAssertions, unittest.TestCase):
 
         self.assertTrue(result["ok"])
         self.assertEqual(burn.call_args.kwargs["ffmpeg_path"], ffmpeg)
+        self.assertIsNone(burn.call_args.kwargs["ffprobe_path"])
         self.assertEqual(burn.call_args.args[0].srt_style["fontName"], "Microsoft YaHei")
         self.assertEqual(burn.call_args.args[0].video_encoder, "auto")
         self.assertIsNone(burn.call_args.args[0].crf)
@@ -2855,12 +2856,29 @@ class GuiWebBridgeTests(CompactContainerAssertions, unittest.TestCase):
             with mock.patch("maw.gui_web.process_burn_subtitles") as burn:
                 burn.return_value = SimpleNamespace(source_media_path=None, subtitle_path=subtitle,
                                                     media_path=output, video_encoder="cpu")
-                result = self.api.run_burn_subtitles({"subtitlePath": str(subtitle), "greenScreen": True})
+                result = self.api.run_burn_subtitles(
+                    {"subtitlePath": str(subtitle), "greenScreen": True, "greenScreenSize": "1080p"})
         self.assertTrue(result["ok"])
         self.assertIsNone(burn.call_args.args[0].media_path)
         self.assertTrue(burn.call_args.args[0].green_screen)
+        self.assertEqual(burn.call_args.args[0].green_screen_size, "1080p")
         self.assertEqual(result["sourceMediaPath"], "")
         self.assertEqual(result["mediaPath"], str(output))
+
+    def test_green_screen_burn_bridge_passes_size_selection_through(self) -> None:
+        subtitle = self.root / "green.srt"
+        subtitle.write_text("1\n00:00:00,000 --> 00:00:01,000\n你好\n", encoding="utf-8")
+        ffmpeg = self.root / ("ffmpeg.exe" if os.name == "nt" else "ffmpeg")
+        ffmpeg.write_bytes(b"exe")
+        output = self.root / "green.green-screen.mp4"
+        with mock.patch("maw.gui_web._postprocess_ffmpeg_tools", return_value=FfmpegTools(ffmpeg=ffmpeg, ffprobe=None)):
+            with mock.patch("maw.gui_web.process_burn_subtitles") as burn:
+                burn.return_value = SimpleNamespace(source_media_path=None, subtitle_path=subtitle,
+                                                    media_path=output, video_encoder="cpu")
+                result = self.api.run_burn_subtitles({"subtitlePath": str(subtitle), "greenScreen": True})
+        self.assertTrue(result["ok"])
+        # 未选择尺寸时桥接透传空串；默认档位（4K）由后端统一裁决。
+        self.assertEqual(burn.call_args.args[0].green_screen_size, "")
 
     def test_media_tool_progress_is_compact_and_latest_message_ready(self) -> None:
         self.assertEqual(
