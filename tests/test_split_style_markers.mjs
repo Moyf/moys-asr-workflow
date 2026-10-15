@@ -118,3 +118,65 @@ test('ordered multiple wrappers include custom pairs and reuse existing individu
   assert.equal(apply('【**甲**】', pairs), '**++【甲】++**');
   assert.equal(apply('****甲****', [pairs[0]]), '****甲****');
 });
+
+
+test('same-style single/double nesting and overlap preserve actual ASS rendering and timed items', () => {
+  const render = (text) => utils.assInlineStyleRuns(text, 'both', settings).flatMap((run) =>
+    Array.from(run.text, (character) => [character, run.emphasized, run.underlined, run.struck, run.size, run.comment]));
+  for (const source of ['**a*bc*d**', '*a**bc**d*', '*a**bc*d**', '**a*bc**d*',
+    '~~甲~乙丙~丁~~', '~甲~~乙丙~~丁~', '__甲_乙丙_丁__', '_甲__乙丙__丁_',
+    '++甲+乙丙+丁++', '+甲++乙丙++丁+', '--甲-乙丙-丁--', '-甲--乙丙--丁-']) {
+    const spoken = render(source).map(([character]) => character).join('');
+    const offset = source.indexOf(source.includes('c') ? 'c' : '丙');
+    for (const itemText of [spoken, source]) {
+      const segment = { id: 'nested', text: source, start: 0, end: 4000,
+        items: [{ text: itemText, start: 0, end: 4000 }] };
+      const snapshot = JSON.stringify(segment);
+      const pair = core.buildSplitPair(segment, offset, null, 'nested', true, 'continuous');
+      assert.ok(pair, source);
+      assert.deepEqual(render(pair.left.text).concat(render(pair.right.text)), render(source), source);
+      assert.equal(pair.left.end, 2000, source);
+      assert.equal(pair.right.start, 2000, source);
+      assert.equal(pair.left.items[0].end, 2000, source);
+      assert.equal(pair.right.items[0].start, 2000, source);
+      assert.equal(pair.left.items.concat(pair.right.items).map(item => item.text).join(''), itemText, source);
+      assert.equal(JSON.stringify(segment), snapshot);
+    }
+  }
+});
+
+test('long repeated speech recovery stays linear for complete coverage and budgets optional ambiguous DP', () => {
+  const original = context.MULTI_SUBTITLE_UTILS;
+  let calls;
+  context.MULTI_SUBTITLE_UTILS = { ...original, alignItemsToText(text, items) {
+    calls += 1;
+    return original.alignItemsToText(text, items);
+  } };
+  try {
+    for (const suffix of ['', '新增']) {
+      const count = 950;
+      const source = { id: 'long', text: 'a**b**'.repeat(count) + suffix, start: 0, end: count * 10,
+        items: Array.from({ length: count }, (_, index) => ({ text: 'ab', start: index * 10, end: (index + 1) * 10 })) };
+      calls = 0;
+      const result = core.splitItemsAtChar(source, Math.floor(source.text.length / 2));
+      assert.equal(calls, 1, 'complete coverage uses linear matching; over-budget ambiguity retains raw fallback');
+      assert.equal(result.leftItems.length + result.rightItems.length, count);
+      assert.equal(result.leftItems.concat(result.rightItems).map(item => item.text).join(''), 'ab'.repeat(count));
+      for (const item of result.leftItems.concat(result.rightItems)) {
+        assert.ok(item.end > item.start);
+        assert.ok(item.start >= source.start && item.end <= source.end);
+      }
+    }
+  } finally { context.MULTI_SUBTITLE_UTILS = original; }
+});
+
+
+test('normalizing redundant styles preserves the caller word-connector trimming contract', () => {
+  const segment = { id: 'comma', start: 0, end: 4000, text: '**a*b,c*d**' };
+  for (const mode of ['word', 'continuous']) {
+    const split = core.buildSplitPair(segment, 6, 2000, 'comma', false, mode);
+    const visible = [split.left, split.right].flatMap(segment => utils.assInlineStyleRuns(segment.text, 'both', settings))
+      .map(run => run.text).join('');
+    assert.equal(visible, mode === 'word' ? 'ab,cd' : 'abcd');
+  }
+});

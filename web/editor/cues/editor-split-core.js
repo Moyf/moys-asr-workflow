@@ -96,19 +96,84 @@
       if (splitVisibleLength(text, index, index + 1, tokens)) positions.push(index);
     }
     const visible = positions.map((index) => text[index]).join('');
-    const recovered = MULTI_SUBTITLE_UTILS.alignItemsToText(visible, items);
-    // Recover speech-only items crossing inserted style tokens. Keep existing raw anchors
-    // authoritative so repeated words and genuinely edited text retain the established policy.
+    const itemTexts = items.map((item) => String(item?.text || ''));
+    let recovered;
+    if (visible === itemTexts.join('')) {
+      // Complete speech coverage is unambiguous even for repeated words: O(text + items).
+      let cursor = 0;
+      recovered = items.map((item, index) => {
+        const itemText = itemTexts[index];
+        const textStart = cursor;
+        cursor += itemText.length;
+        return itemText ? { item, itemText, textStart, textEnd: cursor } : null;
+      });
+    } else {
+      // Recovery is optional and runs on the input path. Keep its extra DP work below
+      // the general aligner's budget; oversized/ambiguous inputs retain the old fallback.
+      if (items.length * (visible.length + 2) > 50_000) return aligned;
+      recovered = MULTI_SUBTITLE_UTILS.alignItemsToText(visible, items);
+    }
+    const previous = [], next = [];
+    let anchor = null;
+    for (let index = 0; index < aligned.length; index++) {
+      previous[index] = anchor;
+      if (aligned[index]) anchor = aligned[index];
+    }
+    anchor = null;
+    for (let index = aligned.length - 1; index >= 0; index--) {
+      next[index] = anchor;
+      if (aligned[index]) anchor = aligned[index];
+    }
+    // Keep existing raw anchors authoritative when recovering a missing speech item.
     return aligned.map((record, index) => {
       const candidate = recovered[index];
       if (record || !candidate) return record;
       const textStart = positions[candidate.textStart];
       const textEnd = positions[candidate.textEnd - 1] + 1;
-      const before = aligned.slice(0, index).filter(Boolean).at(-1);
-      const after = aligned.slice(index + 1).find(Boolean);
-      if ((before && textStart < before.textEnd) || (after && textEnd > after.textStart)) return null;
+      if ((previous[index] && textStart < previous[index].textEnd)
+          || (next[index] && textEnd > next[index].textStart)) return null;
       return { ...candidate, textStart, textEnd, visibleAlignment: true };
     });
+  }
+
+  function splitStyleDisplayPlan(tokens) {
+    const groups = new Map();
+    for (const token of tokens.filter((token) => token.opening)) {
+      const key = token.marker[0];
+      if (!groups.has(key)) groups.set(key, []);
+      groups.get(key).push(token);
+    }
+    const pairs = [], edits = new Map();
+    // Single/double markers of the same style have boolean semantics in the ASS
+    // parser. Coalesce overlapping ranges: emitting their adjacent closures would
+    // create an unrecognised triple marker and expose syntax as literal text.
+    for (const group of groups.values()) {
+      group.sort((a, b) => a.start - b.start || b.end - a.end);
+      let component = [], last = null;
+      const flush = () => {
+        if (!component.length) return;
+        const first = component[0];
+        pairs.push({ ...first, end: last.end });
+        if (component.length > 1) {
+          for (const pair of component) {
+            edits.set(pair.start, { width: pair.width, text: '' });
+            edits.set(pair.end, { width: pair.width, text: '' });
+          }
+          edits.set(first.start, { width: first.width, text: first.marker });
+          edits.set(last.end, { width: last.width, text: first.marker });
+        }
+      };
+      for (const pair of group) {
+        if (last && pair.start >= last.end) { flush(); component = []; last = null; }
+        component.push(pair);
+        if (!last || pair.end > last.end) last = pair;
+      }
+      flush();
+    }
+    for (const token of tokens.filter((token) => token.fade)) {
+      edits.set(token.position, { width: token.width, text: '' });
+    }
+    return { pairs, edits };
   }
 
   function splitVisibleLength(text, start, end, tokens) {
@@ -136,20 +201,30 @@
       }
       if (before === offset) break;
     }
-    const crossing = tokens.filter((token) => token.opening
-      && token.position + token.width < offset && token.end > offset)
+    const display = splitStyleDisplayPlan(tokens);
+    const crossing = display.pairs.filter((token) => token.position + token.width < offset && token.end > offset)
       .sort((a, b) => a.start - b.start);
     const fadeTokens = tokens.filter((token) => token.fade);
-    const withoutFades = (start, end) => text.slice(start, end).split('').filter(
-      (_, index) => !fadeTokens.some((token) => index + start >= token.position
-        && index + start < token.position + token.width),
-    ).join('');
-    // Trim the original split edge before adding closure/reopening markers.
-    // Keep word-mode connector handling when the caller already cleaned this offset.
-    let left = !fadeTokens.length && offset === parts.offset
-      ? parts.left : MULTI_SUBTITLE_UTILS.applySplitEdgeTrim(withoutFades(0, offset), 'end');
-    let right = !fadeTokens.length && offset === parts.offset
-      ? parts.right : MULTI_SUBTITLE_UTILS.applySplitEdgeTrim(withoutFades(offset, text.length), 'start');
+    const displaySlice = (start, end) => {
+      let value = '';
+      for (let index = start; index < end;) {
+        const edit = display.edits.get(index);
+        if (edit) { value += edit.text; index += edit.width; }
+        else { value += text[index]; index += 1; }
+      }
+      return value;
+    };
+    // The caller already trimmed this source offset (and may preserve word-mode
+    // connectors). Render that same source slice before inserting style closures.
+    const sameOffset = offset === parts.offset;
+    let left = !display.edits.size && sameOffset ? parts.left
+      : displaySlice(0, sameOffset ? parts.left.length : offset);
+    let right = !display.edits.size && sameOffset ? parts.right
+      : displaySlice(sameOffset ? text.length - parts.right.length : offset, text.length);
+    if (!sameOffset) {
+      left = MULTI_SUBTITLE_UTILS.applySplitEdgeTrim(left, 'end');
+      right = MULTI_SUBTITLE_UTILS.applySplitEdgeTrim(right, 'start');
+    }
     const content = (start, end) => text.slice(start, end).split('').filter(
       (_, index) => splitVisibleLength(text, index + start, index + start + 1, tokens) > 0,
     ).join('');

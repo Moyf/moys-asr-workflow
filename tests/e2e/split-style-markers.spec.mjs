@@ -110,6 +110,31 @@ for (const includeMarkers of [false, true]) {
   });
 }
 
+for (const includeMarkers of [false, true]) {
+  test(`same-style nested split keeps actual ASS runs emphasized, items include markers=${includeMarkers}`, async ({ page }) => {
+    await page.evaluate((includeMarkers) => {
+      MaweBoot.DATA.segments = [{ id: 'nested', start: 1000, end: 5000, text: '**a*bc*d**',
+        items: [{ text: includeMarkers ? '**a*bc*d**' : 'abcd', start: 1000, end: 5000 }] }];
+      MaweCuePanel.renderAll({ waveform: 'full' });
+      MaweSplitCore.openMainWaveformSplitModal(0, 3000);
+      MaweSplitCore.updateLinkedSplitPreview(5, 'main');
+    }, includeMarkers);
+    await expect(page.locator('#multi-subtitle-split-preview')).toContainText('**ab**');
+    await expect(page.locator('#multi-subtitle-split-preview')).toContainText('**cd**');
+    await page.locator('#multi-subtitle-split-confirm').click();
+    const output = await page.evaluate(() => ({
+      segments: MaweBoot.DATA.segments,
+      runs: MaweBoot.DATA.segments.flatMap(segment => window.AsrEditorUtils.assInlineStyleRuns(
+        segment.text, MaweSettings.EDITOR_SETTINGS.assEmphasisSyntax, MaweSettings.EDITOR_SETTINGS)),
+    }));
+    expect(output.runs.map(run => run.text).join('')).toBe('abcd');
+    expect(output.runs.every(run => run.emphasized)).toBe(true);
+    expect(output.segments.map(segment => [segment.start, segment.end])).toEqual([[1000, 3000], [3000, 5000]]);
+    expect(output.segments.flatMap(segment => segment.items).map(item => item.text).join(''))
+      .toBe(includeMarkers ? '**a*bc*d**' : 'abcd');
+  });
+}
+
 test('fade splits into two complete sentence effects without inventing timed words', async ({ page }) => {
   await page.evaluate(() => {
     MaweBoot.DATA.segments = [{ id: 'a', start: 1000, end: 5000, text: '>>甲乙<<',
