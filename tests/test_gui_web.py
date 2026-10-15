@@ -6103,9 +6103,39 @@ class LauncherAssetContractTests(CompactContainerAssertions, unittest.TestCase):
         self.assertNotIn("openMose", script)
         self.assertNotIn("open_mose", script)
         self.assertFalse(hasattr(LauncherApi, 'open_mose'))
-        self.assertFalse((ROOT / 'desktop' / 'src-tauri').exists())
         self.assertIn('function openServerEditor()', script)
         self.assertIn('bridge("start_server"', script)
+
+    def _assert_retired_tauri_entrypoints_absent(self, root: Path) -> None:
+        # Local target/binaries caches are not maintained source or build inputs.
+        # Do not require their parent directory to vanish to prove retirement.
+        tauri = root / "desktop" / "src-tauri"
+        for name in ("src", "Cargo.toml", "Cargo.lock", "build.rs", "tauri.conf.json", "tauri.conf.json5", "Tauri.toml"):
+            self.assertFalse((tauri / name).exists(), f"Retired Tauri entrypoint is still present: {name}")
+        if tauri.is_dir():
+            self.assertEqual(list(tauri.glob("tauri.*.conf.json")), [])
+        for package_path in (root / "package.json", root / "desktop" / "package.json"):
+            if not package_path.is_file():
+                continue
+            package = json.loads(package_path.read_text(encoding="utf-8"))
+            for command in package.get("scripts", {}).values():
+                self.assertNotIn("tauri", command.lower())
+            for group in ("dependencies", "devDependencies"):
+                self.assertFalse(any(name.startswith("@tauri-apps/") for name in package.get(group, {})))
+
+    def test_retired_tauri_source_and_build_entrypoints_are_absent(self) -> None:
+        self._assert_retired_tauri_entrypoints_absent(ROOT)
+
+    def test_tauri_retirement_check_allows_build_residue_but_rejects_active_entrypoints(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            tauri = root / "desktop" / "src-tauri"
+            (tauri / "target").mkdir(parents=True)
+            (tauri / "binaries").mkdir()
+            self._assert_retired_tauri_entrypoints_absent(root)
+            (tauri / "Cargo.toml").write_text('[package]\nname = "retired"\n', encoding="utf-8")
+            with self.assertRaises(AssertionError):
+                self._assert_retired_tauri_entrypoints_absent(root)
 
     def test_project_change_marks_server_editor_action_for_rebinding(self) -> None:
         script = launcher_sources_text(ROOT)
