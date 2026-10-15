@@ -49,8 +49,6 @@
 | 28 | 调色板黄色默认值改为 `#f9ca1f`；默认字幕颜色的黄色一并改为此值（全盘更新） | 待处理 | 清点完成并核对（四处源头锚点吻合，详见 `TEST_FEEDBACK_BETA1-investigation-yellow-defaults.md`）。黄分四组：**A 调色板黄 `#c4a019`**（源头 `maw/colors.py:16` + JS 镜像 settings.js:23 / ass-style.js:41 + 模板 :1247 + 文档两处）；**B 副字幕默认主色 `#eac953`**（`ass_styles.py:178` + ass-style.js:211 + editor-settings.js:270 + 模板 :1039 + CSS :723/:3156/:3199 + 文档）；**C 内置样式强调色 `#ffd34d`**（`ass_styles.py:134/:245` + ass-style.js:168/:295 + ograf.js/lottie.js 默认 + lottie_glyphs.py:563 RGB 三元组）；**D ASS 主/副强调色 `#ffaa00`（偏橙）**。A/B 确定改；**C/D 是否在「全盘」范围待维护者确认**（D 已偏橙）。不改：迁移判断 `ass_styles.py:401` 的历史旧默认比较、历史记录、语义色（选中琥珀/拆分闪黄/暖色提示/标记色板）。测试断言同步点已列（report 第 4 节）；收尾注意 bundle 重建与旧工程色值快照不动。**维护者拍板（2026-10-15）：只改 A+B**（调色板 + 副字幕默认主色），C/D 保持现值不动；**旧工程存储的色值快照不加迁移** |
 | 29 | 【去空隙导出】重组后视频播放到中间会整段卡住好几秒；参考 LosslessCut 的重剪方案修复 | 待处理 | 根因已查明并核对（子代理报告 + 四处抽查，详见 `TEST_FEEDBACK_BETA1-investigation-gap-export.md`）：现状 = ffconcat 清单 + **纯 `-c copy`**（`serve.py:586-590`），切点直接用静音边界毫秒值、**零关键帧对齐**、零时间戳治理；concat demuxer 对非 intra 编码的 inpoint 会回退到前关键帧多出整段 GOP 的包，复制后拼接点时间戳重叠/倒退（FFmpeg 官方文档明示），卡顿时长 ≈ GOP 长度（2-10s）随切点累积，伴音画错位。**LosslessCut 不卡的根因 = 默认把切点对齐到前关键帧（Keyframe cut）；与维护者接受的 MergeCuts/关键帧延伸完全一致。修复推荐 ①：导出前 ffprobe packet 级关键帧扫描，把每个区间 inpoint 向前吸附到最近关键帧（outpoint 不动）——无损、改动仅限 `rebuild_gap_removed_video` + 清单函数；代价是每段头部含 ≤1 GOP 的被删空隙尾部（多为静音）。备选：② smart cut（切点小头重编码，官方标实验性）；③ 整段重编码（UI「兼容模式」）；④ 音视频分策略合 mux。不建议只加 muxer 参数（止痛不治本）。测试盲区：现有夹具全部 `-g 1` 全 intra，长 GOP 场景零覆盖——修复时补 `-g 250` 夹具断言输出时间戳单调 |
 | 30 | 去空隙导出进度弹窗：按钮样式对齐项目整体（参考其他弹窗）；完成后显示「打开文件夹」和「关闭」按钮 | 待处理 | 已定位：进度面板动态创建（`web/editor/io/editor-wiring-export-actions.js:656-670`，`.gap-video-job` 追加到 body），样式裸奔（editor.css:4410-4425，按钮仅 padding、进度条原生样式，无主题 token）。改法：① 面板与按钮/进度条套项目样式（参考 `.toolbar button` token 或模态 actions 模式，editor.css:3023 一带，深浅主题都检查）；② 成功完成态显示「打开文件夹」+「关闭」：关闭 = 移除面板并清理任务状态（`window.__maweGapRemovedVideoTask`、pagehide 监听）；打开文件夹——编辑器（浏览器 server 模式）侧无既有通道（Launcher 桥的 `open_containing_folder`（gui_web.py:2085）用不上），需在 serve.py 新增受限端点（仅 127.0.0.1、仅打开导出目录）或退化方案显示输出路径，实施时定 |
-| 34 | 若缩略图生成确实就是慢：Launcher「生成频谱数据」开关旁加「生成视频缩略图」开关，**默认关闭**，避免拖慢用户转写 | 待处理 | 位置：Launcher 处理选项「其他」区（`生成频谱数据` 开关旁，截图确认）。默认不勾选。涉及：Launcher 选项 UI + 计划字段 + `maw/media_cache.py` 调用点跳过缩略图生成 + 计划保存/恢复。与 #35 联动 |
-| 35 | 用户未勾「生成视频缩略图」时，工程打开后编辑器「视频缩略图」开关**默认关着**（不是隐藏；用户手动打开后走实时生成，随它） | 待处理 | **维护者更正（2026-10-15）：不隐藏开关，改默认值**。方案：编辑器初始 enabled 取值 = 用户显式偏好（localStorage）优先；无显式偏好时按「该源媒体是否存在有效 `.mothumbs` 基础档」决定默认（无 → 默认关）。信号拟由 serve.py 绑定工程时下发（如 `thumbnailBaseReady`）。与 #34 同批实施 |
 
 ## 阶段汇总
 
@@ -152,11 +150,6 @@
   #7 新文案「ASS 字幕预览 OwO」；#24 采用新语义（未确认 ∪ 有备注）；#12 fade 拆分时两侧
   新行各自补齐完整 `>>…<<` 对。全部回填账本与 Issue #237。**全部条目达到可实施状态，
   等维护者开实施 agent。**
-- 2026-10-15 续 30：**规则变更（维护者指示）：反馈账本按主题分账、不混杂**，细则已补进
-  AGENTS.md 与 skill `feedback-issue-triage`。其后收到的视频缩略图相关反馈（曾临时记为
-  #31-#33）已迁出至独立账本
-  [`../261015_视频缩略图相关/TEST_FEEDBACK_视频缩略图.md`](../261015_视频缩略图相关/TEST_FEEDBACK_视频缩略图.md)
-  （迁移后编号 1-3，并新录 4-5 两项）。本账本维持 30 项不变。
 - 待办顺序：收 #1 子代理报告 → 核对入账并补进 Issue #237 → 后续 agent 按 Issue 实施；维护者
   拍板项见 Issue「待维护者决策」一节。
 - 未决（已收敛）：原 `assets/unknown-*.png` 三张未归属截图随 `assets/` 一并删除

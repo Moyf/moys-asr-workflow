@@ -467,6 +467,7 @@ def run_burn_subtitles(
 
     SRT 烧录前会转换成临时 ASS 并把样式库样式写入 Default 行；PlayRes 取视频
     实际分辨率（绿幕取所选尺寸档位的画布尺寸），使烧录样式与编辑器预览一致。
+    只有 SRT 输入需要探测 PlayRes；ASS/SSA 沿用自身样式，不启动 ffprobe。
     ``ffprobe_path`` 仅用于读取视频尺寸，缺省时沿 ``ffmpeg_path`` 同目录解析，
     再回退 FFMPEG_PATH/PATH；探测失败回退 1080p 参考坐标系。
     """
@@ -492,11 +493,14 @@ def run_burn_subtitles(
         green_input, play_resolution = _green_screen_input(
             subtitle, _green_screen_size_resolution(request.green_screen_size),
         )
-    else:
-        probe_tool = ffprobe_path if ffprobe_path is not None else resolve_ffmpeg_tool(
-            "ffprobe", configured_path=ffmpeg_path,
-        )
-        play_resolution = _probe_play_resolution(media, ffprobe_path=probe_tool)
+    elif subtitle.suffix.lower() == ".srt":
+        # PlayRes 重写只发生在 SRT 转换；ASS/SSA 沿用自身样式，跳过探测。
+        # 探测前先看取消标记，避免取消请求时还要等一次 ffprobe。
+        if cancel_event is None or not cancel_event.is_set():
+            probe_tool = ffprobe_path if ffprobe_path is not None else resolve_ffmpeg_tool(
+                "ffprobe", configured_path=ffmpeg_path,
+            )
+            play_resolution = _probe_play_resolution(media, ffprobe_path=probe_tool)
     prepared_subtitle = subtitle
     converted_subtitle: Path | None = None
     last_error: MediaToolError | None = None
@@ -757,8 +761,12 @@ def _rewrite_ass_default_style(
     style = {**DEFAULT_SRT_STYLE, **dict(_srt_burn_style(srt_style))}
     # 与编辑器预览/前端 ASS 导出同一约定：库样式字号按 1080p 参考存储，
     # 按目标 PlayResY 等比换算；描边、边距等其余字段保持原值。
-    # ass_style_line 内部 round + clamp 1..512，与前端 normalizeAssFontSize 一致。
-    style["fontSize"] = float(style["fontSize"]) * play_resolution[1] / ASS_REFERENCE_PLAY_RES_Y
+    # 前端 Math.round 是 half-up，而 Python round 是银行家舍入，半值
+    # （如 540p 的 33 → 16.5）会差 1px，因此先按 half-up 取整再交给
+    # _normalize_style（clamp 1..512 与前端 normalizeAssFontSize 一致）。
+    style["fontSize"] = math.floor(
+        float(style["fontSize"]) * play_resolution[1] / ASS_REFERENCE_PLAY_RES_Y + 0.5,
+    )
     replacement = ass_style_line(style, name="Default")
     lines = content.splitlines()
     _rewrite_ass_play_resolution(lines, play_resolution)
