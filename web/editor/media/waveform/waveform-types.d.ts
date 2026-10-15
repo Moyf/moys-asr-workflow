@@ -62,7 +62,11 @@ export interface Clock {
   setItemStart(item: TimedItem, value: number): void; setItemEnd(item: TimedItem, value: number): void;
   fromMs(value: number): number; toMs(value: number): number; format(value: number): string;
 }
-export interface WaveformRow extends HTMLDivElement { _waveformPlayhead?: HTMLDivElement; }
+export interface WaveformRow extends HTMLDivElement {
+  _waveformPlayhead?: HTMLDivElement;
+  _waveformCanvasWidth?: number;
+  _waveformCanvasHeight?: number;
+}
 export interface WaveformPointerMarker extends HTMLDivElement { _hideTimer?: number; }
 // The existing renderer assigns disabled to these div-based resizers.
 export interface LayoutDivider extends HTMLDivElement { disabled?: boolean; }

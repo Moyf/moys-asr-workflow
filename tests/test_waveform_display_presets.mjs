@@ -21,11 +21,14 @@ test('row length updates controls, invalidates rows and persists only valid chan
   assert.deepEqual(saved, [{ secondsPerRow: 5 }]);
 });
 
-function fixture() {
+function fixture(mode = 'basic') {
   const editor = { settings: { rowHeight: 192, secondsPerRow: 20 },
+    renders: 0,
+    render() { this.renders += 1; },
+    isMultiMode() { return mode === 'multi'; },
     getRowHeight() { return this.settings.rowHeight; },
-    setRowHeight(value) { this.settings.rowHeight = value; },
-    setSecondsPerRow(value) { this.settings.secondsPerRow = value; },
+    setRowHeight(value, { render = true } = {}) { this.settings.rowHeight = value; if (render) this.render(); },
+    setSecondsPerRow(value, { render = true } = {}) { this.settings.secondsPerRow = value; if (render) this.render(); },
   };
   const settings = { multiSubtitleRowHeight: 168, wordTimingRowHeight: 144, wordTimingSecondsPerRow: 5 };
   const context = { window: {}, MaweCoreState: { waveformEditor: editor }, MaweSettings: { EDITOR_SETTINGS: settings } };
@@ -80,5 +83,24 @@ test('repeated UI sync and project mode changes do not replace the baseline', ()
   f.toggle('multi', true);
   f.toggle('word', false);
   f.toggle('multi', false);
+  assert.deepEqual(f.editor.settings, { rowHeight: 192, secondsPerRow: 20 });
+});
+
+test('word presets redraw multi-row geometry once and preserve its baseline on return', () => {
+  const f = fixture('multi');
+  assert.equal(f.display.syncWordTimingWaveformSettings(true), true);
+  assert.equal(f.editor.renders, 1);
+  assert.equal(f.editor.settings.rowHeight, 144);
+  assert.equal(f.editor.settings.secondsPerRow, 5);
+  assert.equal(f.display.syncWordTimingWaveformSettings(false), true);
+  assert.equal(f.editor.renders, 2);
+  assert.deepEqual(f.editor.settings, { rowHeight: 192, secondsPerRow: 20 });
+});
+
+test('word presets in basic mode leave the Canvas and horizontal view for an overlay-only refresh', () => {
+  const f = fixture();
+  assert.equal(f.display.syncWordTimingWaveformSettings(true), false);
+  assert.equal(f.display.syncWordTimingWaveformSettings(false), false);
+  assert.equal(f.editor.renders, 0);
   assert.deepEqual(f.editor.settings, { rowHeight: 192, secondsPerRow: 20 });
 });

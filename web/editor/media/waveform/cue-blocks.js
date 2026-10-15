@@ -315,7 +315,8 @@ export function createWaveformModule(dependencies) {
           const badgeVisibleStart = Math.max(startMs, segment.start);
           const badgeVisibleEnd = Math.min(endMs, segment.end);
           // 行创建时还未挂载（clientWidth=0），用容器宽度估算块像素宽（行宽=容器宽）
-          const blockWidthPx = ((badgeVisibleEnd - badgeVisibleStart) / badgeDuration) * this.content.clientWidth;
+          const blockWidthPx = ((badgeVisibleEnd - badgeVisibleStart) / badgeDuration)
+            * (row._waveformCanvasWidth || this.content.clientWidth);
           if (blockWidthPx >= 24) badges.forEach((badge, badgeIndex) => {
             const badgeEl = document.createElement('span');
             badgeEl.className = `waveform-cue-badge ${badge.type}${wordTimingFullLane ? ' word-timing-full' : ''}`;

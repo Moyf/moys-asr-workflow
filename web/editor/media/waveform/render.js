@@ -1,7 +1,7 @@
 // render: waveform class methods with explicit dependencies.
 export function createWaveformModule(dependencies) {
   'use strict';
-  const { MULTI_ROW_BUFFER, ROW_GAP, clamp, computeGroupBadges } = dependencies;
+  const { MULTI_ROW_BUFFER, ROW_GAP, clamp, computeGroupBadges, formatCompact } = dependencies;
 
   class WaveformMethods {
 
@@ -30,7 +30,7 @@ export function createWaveformModule(dependencies) {
       if (this.basicRenderFrame) return;
       this.basicRenderFrame = requestAnimationFrame(() => {
         this.basicRenderFrame = 0;
-        this.renderBasic();
+        this.renderBasic({ reuseRow: true });
       });
     }
 
@@ -132,19 +132,45 @@ export function createWaveformModule(dependencies) {
 
 
     /** @this {import('./waveform-types.js').WaveformInstance} */
-    renderBasic() {
+    renderBasic({ reuseRow = false } = {}) {
       if (!this.payload) return;
       const windowMs = this.settings.visibleSeconds * 1000;
       const maxStart = Math.max(0, this.durationMs - windowMs);
       this.basicWindowStartMs = clamp(this.basicWindowStartMs, 0, maxStart);
       const endMs = Math.min(this.durationMs, this.basicWindowStartMs + windowMs);
-      this.content.replaceChildren();
-      this.content.style.height = '100%';
       const groupBadges = computeGroupBadges(this.options.getSegments('main'));
-      const row = this.createRow(this.basicWindowStartMs, endMs, -1, true, groupBadges);
-      this.content.appendChild(row);
+      let row = reuseRow && this.renderedRows.length === 1 ? this.renderedRows[0] : null;
+      const reused = row?.dataset.basic === 'true' && row.parentElement === this.content;
+      if (reused) {
+        // 在修改覆盖层之前只测量一次；保留 Canvas、行事件和指针节点，
+        // 避免滚轮每帧销毁画布并在整行新 DOM 挂载后强制同步布局。
+        const rect = row.getBoundingClientRect();
+        const pointerGeometry = {
+          left: rect.left + row.clientLeft,
+          width: Math.max(1, row.clientWidth),
+          startMs: this.basicWindowStartMs,
+          endMs,
+        };
+        row._waveformCanvasWidth = Math.max(1, Math.round(rect.width));
+        row._waveformCanvasHeight = Math.max(1, Math.round(rect.height));
+        row.dataset.startMs = String(this.basicWindowStartMs);
+        row.dataset.endMs = String(endMs);
+        row.querySelector('.waveform-row-time').textContent = `${formatCompact(this.basicWindowStartMs)} → ${formatCompact(endMs)}`;
+        row.querySelectorAll('.waveform-gap-block, .waveform-cue-block, .waveform-cue-badge, .waveform-cue-boundary, .waveform-word-block, .waveform-word-boundary, .waveform-marker-track')
+          .forEach(element => element.remove());
+        row.classList.remove('waveform-row-has-markers');
+        this.appendGapBlocks(row, this.basicWindowStartMs, endMs);
+        this.appendCueBlocks(row, this.basicWindowStartMs, endMs, groupBadges);
+        this.appendMarkerTrack(row, this.basicWindowStartMs, endMs);
+        this.refreshPointerLine(pointerGeometry);
+      } else {
+        this.content.replaceChildren();
+        this.content.style.height = '100%';
+        row = this.createRow(this.basicWindowStartMs, endMs, -1, true, groupBadges);
+        this.content.appendChild(row);
+      }
       this.renderedRows = [row];
-      this.drawRow(row);
+      this.drawRow(row, { measure: !reused });
       this.updatePlayback(false);
     }
 
