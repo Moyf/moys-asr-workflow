@@ -72,7 +72,7 @@ test('filmstrip preserves the waveform region, seek and scroll anchor',async({pa
   await page.screenshot({path:'.artifacts/filmstrip/filmstrip-settings.png'});
   await page.evaluate(()=>window.MAWE_I18N.applyLanguage('en',false));
   await expect(page.locator('#waveform-thumbnail-status')).toHaveText('Pictures ready · Session cache');
-  await expect(page.locator('#waveform-show-thumbnails')).toHaveAttribute('aria-label','Video pictures');
+  await expect(page.locator('#waveform-show-thumbnails')).toHaveAttribute('aria-label','Video thumbnails');
   await page.screenshot({path:'.artifacts/filmstrip/filmstrip-settings-en.png'});
   await page.evaluate(()=>window.MAWE_I18N.applyLanguage('zh',false));
   await page.locator('#waveform-settings-toggle').click();

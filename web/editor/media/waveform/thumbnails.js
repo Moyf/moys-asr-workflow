@@ -43,7 +43,7 @@ export function createWaveformModule(dependencies) {
     /** @this {import('./waveform-types.js').WaveformInstance} */
     thumbnailStatusText() {
       const labels = {
-        idle: ['正在准备视频画面', 'Preparing video pictures'],
+        idle: ['正在准备视频缩略图', 'Preparing video thumbnails'],
         queued: ['等待补齐画面', 'Pictures queued'],
         generating: ['正在补齐画面', 'Loading pictures'],
         partial: ['画面逐步补齐', 'Pictures loading progressively'],
@@ -69,7 +69,7 @@ export function createWaveformModule(dependencies) {
       const text = !hasBinding
         ? localizedWaveformMessage('从本机 Server 加载视频后可用', 'Available after loading video through the local Server')
         : !this.thumbnailController.enabled
-          ? localizedWaveformMessage('视频画面已隐藏', 'Video pictures hidden')
+          ? localizedWaveformMessage('视频缩略图已隐藏', 'Video thumbnails hidden')
           : this.thumbnailStatusText();
       if (toggle) {
         toggle.checked = this.thumbnailController.enabled;
@@ -98,7 +98,7 @@ export function createWaveformModule(dependencies) {
       if (basic) shell.classList.add('waveform-row-shell-basic');
       const canvas = document.createElement('canvas');
       canvas.className = 'waveform-filmstrip';
-      canvas.setAttribute('aria-label', '视频画面导航，点击或拖动定位');
+      canvas.setAttribute('aria-label', '视频缩略图导航，点击或拖动定位');
       shell.appendChild(canvas); shell.appendChild(row);
       row._thumbnailShell = shell; row._thumbnailCanvas = canvas;
       canvas.addEventListener('pointerdown', event => {
