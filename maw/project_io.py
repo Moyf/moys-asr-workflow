@@ -7,7 +7,7 @@ from collections.abc import Mapping
 from pathlib import Path
 from typing import Any
 
-from maw.media import probe_audio_tracks, probe_video_fps
+from maw.media import probe_audio_tracks, probe_video_fps, project_media_reference
 from maw.project import PROJECT_SCHEMA, ProjectValidationError, ProjectValidationFailed
 from maw.subtitle_groups import GROUP_PROJECT_SCHEMA
 
@@ -17,6 +17,31 @@ from maw.subtitle_groups import GROUP_PROJECT_SCHEMA
 # loudness（整文件响度标量）同样是 reapeaks 响度层的运行态派生物，随保存
 # 一并恢复/剥离，编辑器据此自动定波形振幅。
 INLINE_CACHE_KEYS: tuple[str, ...] = ("waveform", "spectral", "waveform_reapeaks", "loudness")
+
+
+def rebase_project_media(
+    project: Mapping[str, Any],
+    target: Path | str,
+    *,
+    media_path: Path | str | None = None,
+    source_project_path: Path | str | None = None,
+) -> dict[str, Any]:
+    """Copy a project with its media reference rebased to a known save target.
+
+    Explicit media is a native path (relative to cwd); existing relative
+    references belong to the source project, not the process working directory.
+    """
+    result = dict(project)
+    raw = result.get("media")
+    source = media_path
+    if source is None and isinstance(raw, str) and raw.strip():
+        source = Path(raw.strip()).expanduser()
+        if not source.is_absolute():
+            origin = Path(source_project_path or target).expanduser().resolve().parent
+            source = origin / source
+    if source is not None:
+        result["media"] = project_media_reference(target, source)
+    return result
 
 
 def strip_inline_caches(project: Mapping[str, Any]) -> dict[str, Any]:
@@ -173,10 +198,17 @@ def write_mosp(
 
     target = Path(path).expanduser()
     target.parent.mkdir(parents=True, exist_ok=True)
+    portable = rebase_project_media(project, target, media_path=media_path)
+    probe_media_path = media_path
+    raw_media = project.get("media")
+    if probe_media_path is None and isinstance(raw_media, str) and raw_media.strip():
+        probe_media_path = Path(raw_media.strip()).expanduser()
+        if not probe_media_path.is_absolute():
+            probe_media_path = target.resolve().parent / probe_media_path
     target.write_text(
         serialize_mosp(
-            project,
-            media_path=media_path,
+            portable,
+            media_path=probe_media_path,
             ffprobe_path=ffprobe_path,
             selected_audio_track=selected_audio_track,
         ),

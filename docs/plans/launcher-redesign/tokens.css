@@ -1,0 +1,62 @@
+/* 设计令牌：取色自 MAW 吉祥物
+   亮色 = 红白：白就是白，中性灰做层次，红只用于强调（文字、图标、边框、主按钮），不铺粉色底
+   暗色 = 黑橙：发色墨黑 + 角饰橙
+   可读性：正文 >= 7:1；次要文字 --text-3 >= 4.5:1；--text-4 只给占位符与装饰 */
+:root {
+  --bg: #f4f4f5;
+  --surface: #ffffff;
+  --surface-2: #f6f6f7;
+  --surface-3: #ececee;
+  --line: #e6e6e9;
+  --line-strong: #d2d2d7;
+  --text: #1d1d20;
+  --text-2: #46464d;
+  --text-3: #64646c;
+  --text-4: #a1a1a8;
+  --accent: #c8322f;
+  --accent-hover: #ad2826;
+  --accent-text: #ffffff;
+  --accent-tint: #f1f1f3;
+  --accent-tint-2: rgba(200, 50, 47, .18);
+  --ring: rgba(200, 50, 47, .16);
+  --brand-grad: linear-gradient(135deg, #e0453f, #a82320);
+  --gold: #d99a1e;
+  --ok: #1d8a57;
+  --ok-tint: rgba(29, 138, 87, .09);
+  --warn: #946010;
+  --warn-tint: rgba(217, 154, 30, .13);
+  --radius: 14px;
+  --radius-sm: 9px;
+  --shadow: 0 1px 2px rgba(20, 20, 30, .05), 0 2px 8px rgba(20, 20, 30, .04);
+  --shadow-lg: -12px 0 40px rgba(20, 20, 30, .14);
+  --code-bg: #18181b;
+  --font: "Segoe UI", "PingFang SC", "Microsoft YaHei", sans-serif;
+  --mono: ui-monospace, "Cascadia Mono", Consolas, monospace;
+}
+[data-theme="dark"] {
+  --bg: #1c1c20;
+  --surface: #26262b;
+  --surface-2: #2e2e34;
+  --surface-3: #38383f;
+  --line: #36363d;
+  --line-strong: #4a4a52;
+  --text: #f3f1ee;
+  --text-2: #d4d0cb;
+  --text-3: #b0aba5;
+  --text-4: #7c7873;
+  --accent: #ff8f3f;
+  --accent-hover: #ffa25e;
+  --accent-text: #1c0f05;
+  --accent-tint: rgba(255, 143, 63, .12);
+  --accent-tint-2: rgba(255, 143, 63, .24);
+  --ring: rgba(255, 143, 63, .22);
+  --brand-grad: linear-gradient(135deg, #ffab55, #f2622a);
+  --gold: #f0b54a;
+  --ok: #57c993;
+  --ok-tint: rgba(87, 201, 147, .13);
+  --warn: #f2bd5c;
+  --warn-tint: rgba(242, 189, 92, .13);
+  --shadow: 0 1px 2px rgba(0, 0, 0, .25), 0 2px 8px rgba(0, 0, 0, .15);
+  --shadow-lg: -16px 0 48px rgba(0, 0, 0, .45);
+  --code-bg: #17171a;
+}

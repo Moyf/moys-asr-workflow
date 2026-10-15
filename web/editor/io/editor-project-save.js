@@ -115,7 +115,7 @@ const saveUrl = MaweBoot.SERVER_CONFIG.saveUrl;
       // completed edits, while making clear that the bound JSON was not overwritten.
       if (!silent && error instanceof TypeError
           && confirm('无法连接本地编辑器服务器。是否改为导出工程文件，以免丢失改动？')) {
-        const saved = await MaweExportTimeline.downloadFile(projectJson, `${MaweBoot.FILENAME_BASE}.mosp`, 'application/json', {
+        const saved = await MaweExportTimeline.downloadFile(MaweJsonRepair.buildJson({ forFileExport: true }), `${MaweBoot.FILENAME_BASE}.mosp`, 'application/json', {
           desc: 'MOSE 工程文件', types: { 'application/json': ['.mosp', '.json'] }
         });
         if (saved) MaweHint.flashHint('服务器未连接；工程已导出为 .mosp，请重新打开该文件后继续', 'success');
@@ -133,9 +133,11 @@ const saveUrl = MaweBoot.SERVER_CONFIG.saveUrl;
     if (!MaweServerSave.projectFileHandle) return false;
 if (MaweServerSave.projectSaveInFlight || MaweServerSave.projectCheckpointInFlight) return false;
 flushInlineEditsForSave();
-const projectJson = MaweJsonRepair.buildJson();
+const projectJson = MaweJsonRepair.buildJson({ forFileExport: true });
 const epoch = MaweState.projectEpoch;
-const contentFingerprint = MaweState.projectFingerprint(JSON.parse(projectJson));
+// The export copy may use an absolute media reference for its new directory.
+// Acknowledge the equivalent runtime snapshot, captured before the async write.
+const contentFingerprint = MaweState.projectFingerprint();
 MaweServerSave.projectSaveInFlight = true;
 try {
 const handle = MaweServerSave.projectFileHandle;
@@ -178,7 +180,7 @@ return markProjectSaved(handle.name, null, { silent, contentFingerprint, epoch }
     const suggested = `${MaweBoot.FILENAME_BASE}.mosp`;
     // 无原生保存对话框的浏览器：退化为普通下载（文件名不可考，标题保持不变）。
     if (!MaweHost.files.hasSavePicker()) {
-      await MaweExportTimeline.downloadFile(MaweJsonRepair.buildJson(), suggested, 'application/json', {
+      await MaweExportTimeline.downloadFile(MaweJsonRepair.buildJson({ forFileExport: true }), suggested, 'application/json', {
         desc: 'MOSE 工程文件', types: { 'application/json': ['.mosp', '.json'] }
       });
       return;
@@ -194,8 +196,8 @@ return markProjectSaved(handle.name, null, { silent, contentFingerprint, epoch }
       await MaweHost.files.writeBlob(handle, () => {
         if (epoch !== MaweState.projectEpoch) throw new Error('工程已切换，取消旧保存');
         flushInlineEditsForSave();
-        const projectJson = MaweJsonRepair.buildJson();
-        contentFingerprint = MaweState.projectFingerprint(JSON.parse(projectJson));
+        const projectJson = MaweJsonRepair.buildJson({ forFileExport: true });
+        contentFingerprint = MaweState.projectFingerprint();
         return new Blob([projectJson], { type: 'application/json;charset=utf-8' });
       });
       if (epoch !== MaweState.projectEpoch) return false;

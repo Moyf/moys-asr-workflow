@@ -13,7 +13,7 @@
     return changes.some((change) => change.kind !== 'add' || /\.(start|end)$/.test(change.path));
   }
 
-  function buildJson() {
+  function buildJson({ forFileExport = false } = {}) {
   if (!window.AsrEditorUtils.supportsProjectSchema(MaweBoot.DATA)) throw new Error('Unsupported project schema');
   MaweTimeline.syncProjectTimebaseAndBindingOffsets(MaweBoot.DATA, { preferFrames: false });
   const repairedTimingCount = repairCurrentProjectTimings();
@@ -21,7 +21,14 @@
     MaweHint.flashHint(`已自动修复 ${repairedTimingCount} 处异常时间码（保底 100ms）`, 'warning');
   }
   MaweTimeline.syncProjectTimebaseAndBindingOffsets(MaweBoot.DATA, { preferFrames: false });
-  return JSON.stringify(projectSnapshot(), null, 2);
+  const out = projectSnapshot();
+  // File pickers hide the destination directory. Rebase the export copy only;
+  // the pure runtime snapshot remains the checkpoint for later content edits.
+  if (forFileExport && !MaweProjectMediaInputs.currentMediaBlobUrl
+      && MaweBoot.SERVER_CONFIG?.autoLoadedMediaPath) {
+    out.media = MaweBoot.SERVER_CONFIG.autoLoadedMediaPath;
+  }
+  return JSON.stringify(out, null, 2);
 }
 
   // Pure persistence projection shared by save and dirty detection. No timing

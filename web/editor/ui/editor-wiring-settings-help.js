@@ -308,16 +308,16 @@ document.addEventListener('pointerdown', (event) => {
 document.addEventListener('keydown', (event) => {
   if (event.key !== 'Escape') return;
   if (!MaweDom.cueListSettingsPanel?.hidden) {
+    event.preventDefault();
     MaweSettingsPanels.setCueListSettingsPanelOpen(false);
-    MaweDom.cueListSettingsToggle?.focus();
   }
   if (!MaweDom.waveformSettingsPanel?.hidden) {
+    event.preventDefault();
     MaweSettingsPanels.setWaveformSettingsPanelOpen(false);
-    MaweDom.waveformSettingsToggle?.focus();
   }
   if (!MaweDom.cueEditorSettingsPanel?.hidden) {
+    event.preventDefault();
     MaweSettingsPanels.setCueEditorSettingsPanelOpen(false);
-    MaweDom.cueEditorSettingsToggle?.focus();
   }
 });
 window.addEventListener('resize', MaweSettingsPanels.positionCueListSettingsPanel);

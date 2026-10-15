@@ -357,7 +357,7 @@ class PostprocessPipelineTests(CompactContainerAssertions, unittest.TestCase):
         )
         combined = json.loads(result.project_path.read_text(encoding="utf-8"))
 
-        self.assertEqual(combined["media"], str(self.media.resolve()))
+        self.assertEqual((result.project_path.parent / combined["media"]).resolve(), self.media.resolve())
         self.assertEqual([segment["text"] for segment in combined["segments"]], ["原文一", "原文二"])
         self.assertEqual(combined["segments"][0]["items"][0]["text"], "原文一")
         self.assertTrue(combined["multi_subtitle"]["enabled"])

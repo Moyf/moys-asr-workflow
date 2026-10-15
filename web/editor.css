@@ -50,37 +50,37 @@
     /* 原生表单控件（包括 number 输入框的步进器）跟随当前主题绘制。 */
     color-scheme: dark;
 
-    /* 背景 —— 冷调石墨，带轻微蓝调（统一原灰色与蓝石板两个家族） */
-    --bg-base:    #16181d;   /* 页面最底层 */
-    --bg-panel:   #1c1f26;   /* 面板 / 卡片 */
-    --bg-raised:  #22262e;   /* 抬升表面（输入、字幕列表） */
-    --bg-overlay: #282c35;   /* 浮层（模态、菜单、下拉） */
-    --bg-input:   #1a1d24;   /* 文本输入框 */
-    --bg-wave:    #171d23;   /* 波形区画布背板（功能化深蓝调） */
-    --bg-wave-row:#1d252d;   /* 波形行抬升面 */
+    /* 背景 —— 中性炭灰，与 Launcher（web/launcher/launcher.css）同一套令牌 */
+    --bg-base:    #1c1c20;   /* 页面最底层 */
+    --bg-panel:   #26262b;   /* 面板 / 卡片 */
+    --bg-raised:  #2e2e34;   /* 抬升表面（输入、字幕列表） */
+    --bg-overlay: #323238;   /* 浮层（模态、菜单、下拉） */
+    --bg-input:   #232328;   /* 文本输入框 */
+    --bg-wave:    #18181c;   /* 波形区画布背板（比页面略深，突出波形） */
+    --bg-wave-row:#212126;   /* 波形行抬升面 */
 
     /* 文字（暗底长时编辑，主文本瞄准 WCAG AA） */
-    --text-primary:   #e6e9ef;
-    --text-secondary: #a8b1c0;
-    --text-muted:     #6e7686;
-    --text-faint:     #4f5666;
+    --text-primary:   #f3f1ee;
+    --text-secondary: #c9c5bf;
+    --text-muted:     #9a958f;
+    --text-faint:     #6c6863;
 
     /* 边框 —— 低对比发丝线，不再用 #555 粗边 */
-    --border-subtle: #2a2e36;
-    --border:        #353a44;
-    --border-strong: #3d4350;
+    --border-subtle: #36363d;
+    --border:        #44444c;
+    --border-strong: #55555e;
 
-    /* 强调色 —— 蓝色为默认主强调（活动/选中/聚焦）；界面设置可切换整套 accent 令牌。 */
+    /* 强调色 —— 默认品牌色（暗色橙 / 亮色红，与 Launcher 一致）；界面设置可切换蓝/红/橙/自定义整套 accent 令牌。 */
     --accent-blue:   #6ca5e8;
     --accent-custom: var(--accent-blue);
-    --accent:        var(--accent-blue);
-    --accent-active-fg: var(--bg-base);
-    --accent-hover:  #84b7f0;
-    --accent-strong: #5a8fd6;
-    --accent-tint:        rgba(108, 165, 232, 0.12);
-    --accent-tint-strong: rgba(108, 165, 232, 0.22);
-    --accent-soft:        rgba(108, 165, 232, 0.16);
-    --accent-line:   #6ca5e8;
+    --accent:        #f09a50;
+    --accent-active-fg: #1c0f05;
+    --accent-hover:  #f5ad6c;
+    --accent-strong: #e08a40;
+    --accent-tint:        rgba(240, 154, 80, 0.12);
+    --accent-tint-strong: rgba(240, 154, 80, 0.22);
+    --accent-soft:        rgba(240, 154, 80, 0.16);
+    --accent-line:   #f09a50;
 
     /* 琥珀 —— 编辑/脏数据/警告语义（与蓝色不竞争） */
     --amber:        #d49a4a;
@@ -100,12 +100,12 @@
     --green-soft:   rgba(111, 191, 142, 0.14);
 
     /* 按钮 —— 安静的默认家族 */
-    --btn-bg:        #292e37;
-    --btn-bg-hover:  #323843;
-    --btn-bg-active: #232830;
+    --btn-bg:        #2e2e34;
+    --btn-bg-hover:  #38383f;
+    --btn-bg-active: #28282d;
     --btn-border:    var(--border);
     --btn-border-hover: var(--border-strong);
-    --btn-text:      #cdd4e0;
+    --btn-text:      #e6e2dd;
     /* 下拉菜单边框 —— 与按钮边框同色（浅色主题经 --border 自动跟随）。 */
     --menu-border:   var(--btn-border);
 
@@ -137,8 +137,8 @@
     --focus-ring-amber: 0 0 0 2px var(--amber-soft);
 
     /* 滚动条 */
-    --scroll-thumb:        #3a3f4a;
-    --scroll-thumb-hover:  #4a505c;
+    --scroll-thumb:        #45454c;
+    --scroll-thumb-hover:  #55555e;
     --scroll-track:        transparent;
 
     /* 选中黄 —— 波形字幕块选中描边 / 框选 / 徽章（与字幕列表琥珀语义区分） */
@@ -156,15 +156,15 @@
     --layout-insert-fg:      #b9f1d2;
 
     /* 波形画布 —— 供 waveform.js 通过 getComputedStyle 读取以跟随主题 */
-    --wave-row-bg:          #1d252d;
-    --wave-row-border:      #2d3944;
+    --wave-row-bg:          #212126;
+    --wave-row-border:      #34343b;
     --wave-row-grid:        rgba(255, 255, 255, 0.04);
-    --wave-row-tick:        #3b4b59;
+    --wave-row-tick:        #4a4a52;
     --wave-peak:            #65b89a;
-    --wave-peak-dim:        #83909a;
-    --wave-cue-mix:         rgba(15, 22, 28, 0.82);
+    --wave-peak-dim:        #8f8b86;
+    --wave-cue-mix:         rgba(22, 22, 26, 0.82);
     --wave-cue-text:        #eef6ff;
-    --wave-cue-active-mix:  #28547a;
+    --wave-cue-active-mix:  color-mix(in srgb, var(--accent) 40%, #1c1c20);
     --wave-cue-handle:      rgba(231, 244, 255, 0.2);
     --wave-cue-handle-hover: rgba(231, 244, 255, 0.42);
     --wave-cue-boundary:    color-mix(in srgb, color-mix(in srgb, var(--accent) 55%, #e7f4ff) 45%, transparent);
@@ -198,15 +198,15 @@
     --gap-restored-border:    rgba(132, 159, 178, 0.55);
 
     /* 空状态 / dock 拖拽栏 —— 半透明面板背板 */
-    --empty-overlay-1: rgba(23, 29, 35, 0.72);
-    --empty-overlay-2: rgba(23, 29, 35, 0.92);
-    --empty-raised-1:  rgba(34, 38, 46, 0.72);
-    --empty-raised-2:  rgba(34, 38, 46, 0.92);
+    --empty-overlay-1: rgba(24, 24, 28, 0.72);
+    --empty-overlay-2: rgba(24, 24, 28, 0.92);
+    --empty-raised-1:  rgba(46, 46, 52, 0.72);
+    --empty-raised-2:  rgba(46, 46, 52, 0.92);
     /* dock 把手是 absolute/sticky 覆盖在滚动内容上的 chrome（字幕列表 sticky、波形顶部 absolute），
        必须不透明：原 0.94/0.96 alpha 会让下方滚动的字幕/波形隐约透出。取原 alpha 在面板底色上的
        合成色，视觉与原先一致但完全不透。 */
-    --dock-bg:         #151d24;
-    --dock-bg-hover:   #2c363d;
+    --dock-bg:         #19191d;
+    --dock-bg-hover:   #2e2e34;
 
     /* 危险态悬停前景（红底上的浅色文字，暗色主题保持原值） */
     --danger-hover-fg: #ffd6d6;
@@ -215,7 +215,7 @@
     --active-cue-fg: #ffffff;
 
     /* 搜索高亮 mark 前景：琥珀底在两个主题下都是中调，统一用深色字 */
-    --mark-fg: #16181d;
+    --mark-fg: #1c1c20;
 
     /* 禁用字幕行底色（暗色用白提亮、亮色用黑压暗，均极低透明） */
     --disabled-cue-bg: rgba(255, 255, 255, 0.02);
@@ -223,15 +223,15 @@
     /* 面板顶部工具栏背板：不透明（波形工具栏为 absolute 覆盖在滚动内容上，
        透明会透出波形）。原先用 color-mix(…, black) 混黑，亮色主题下会把浅底
        压暗，故改为按面板各自基色派生的独立令牌。 */
-    --panel-toolbar-bg:      #1f232a;   /* 列表 / 播放器面板（源自 --bg-raised 压暗） */
-    --panel-toolbar-bg-wave: #141a1f;   /* 波形面板（源自 --bg-wave 压暗） */
+    --panel-toolbar-bg:      #29292e;   /* 列表 / 播放器面板（源自 --bg-raised 压暗） */
+    --panel-toolbar-bg-wave: #151518;   /* 波形面板（源自 --bg-wave 压暗） */
     --panel-toolbar-shadow: rgba(0, 0, 0, 0.22);
     /* 波形块 hover 提亮系数：暗色提亮深色块；亮色块本身已亮，过高会发白 */
     --wave-hover-brightness: 1.16;
     --wave-gap-hover-brightness: 1.35;
     --wave-drag-brightness: 1.2;
     /* 字幕行悬停底色：比 --accent-tint 明显一档，避免"看不出 hover" */
-    --cue-hover-bg: rgba(108, 165, 232, 0.20);
+    --cue-hover-bg: rgba(240, 154, 80, 0.20);
 
     /* 静音空隙工具窗 —— 原先整块硬编码深蓝灰，亮色主题下无法变亮 */
     --gap-panel-bg-1:     rgba(28, 38, 47, 0.98);
@@ -281,38 +281,38 @@
   [data-theme="light"] {
     color-scheme: light;
 
-    /* 背景 —— 干净的中性浅灰 */
-    --bg-base:    #f5f6f8;
+    /* 背景 —— 中性白灰，与 Launcher 同一套令牌（不带蓝调、不铺红色底） */
+    --bg-base:    #f4f4f5;
     --bg-panel:   #ffffff;
-    --bg-raised:  #eef0f4;
+    --bg-raised:  #f0f0f2;
     --bg-overlay: #ffffff;
-    --bg-input:   #f0f1f5;
-    --bg-wave:    #e8ebee;
-    --bg-wave-row:#dfe4ea;
+    --bg-input:   #f6f6f7;
+    --bg-wave:    #ebebed;
+    --bg-wave-row:#e3e3e6;
 
     /* 文字（深色，亮底 WCAG AA） */
-    --text-primary:   #1f2530;
-    --text-secondary: #5a6473;
-    --text-muted:     #7a8394;   /* 原 #8a93a3 在 raised 底仅 2.7:1（时间码可读性差），压到与暗色同级 3.3:1 */
-    --text-faint:     #96a0b2;   /* 原 #aab2c0 仅 1.9:1，略压至暗色 faint 同级 */
+    --text-primary:   #1d1d20;
+    --text-secondary: #46464d;
+    --text-muted:     #64646c;   /* 原 #8a93a3 在 raised 底仅 2.7:1（时间码可读性差），压到与暗色同级 3.3:1 */
+    --text-faint:     #a1a1a8;   /* 原 #aab2c0 仅 1.9:1，略压至暗色 faint 同级 */
 
     /* 边框 —— 原值在白色面板上几乎消失（subtle 仅 1.2:1，暗色同位 1.5:1），整体加深一档 */
-    --border-subtle: #cfd3dc;
-    --border:        #c3c9d4;
-    --border-strong: #b3bac7;
+    --border-subtle: #dcdce0;
+    --border:        #d2d2d7;
+    --border-strong: #b9b9c0;
 
     /* 强调色 —— 加深以在亮底保持对比。原 #3d7fcf 白底仅 4.1:1、#5091de 作为常驻文字色
        （active 时间码 / 波形时间徽章 / 引用链接）仅 2.9-3.3:1，未达自身「亮底 AA」的设计
        目标；再加深一档至 4.7+ / 5.9+，tint 同步换基色。 */
     --accent-blue:   #3874c9;
-    --accent:        var(--accent-blue);
-    --accent-active-fg: var(--bg-base);
-    --accent-hover:  #2a5a9e;
-    --accent-strong: #2f6bb8;
-    --accent-tint:        rgba(56, 116, 201, 0.12);
-    --accent-tint-strong: rgba(56, 116, 201, 0.20);
-    --accent-soft:        rgba(56, 116, 201, 0.16);
-    --accent-line:   #3874c9;
+    --accent:        #c84545;
+    --accent-active-fg: #ffffff;
+    --accent-hover:  #b03a3a;
+    --accent-strong: #b53e3e;
+    --accent-tint:        rgba(200, 69, 69, 0.12);
+    --accent-tint-strong: rgba(200, 69, 69, 0.20);
+    --accent-soft:        rgba(200, 69, 69, 0.16);
+    --accent-line:   #c84545;
 
     /* 琥珀 —— 原 #b07a28 白底 3.7:1、#c48a36 作文字仅 3.0:1，同步加深 */
     --amber:        #9a6a1e;
@@ -332,13 +332,13 @@
     --green-soft:   rgba(47, 158, 95, 0.14);
 
     /* 按钮 */
-    --btn-bg:        #e8eaf0;
-    --btn-bg-hover:  #dde0e8;
-    --btn-bg-active: #d2d6df;
-    --btn-text:      #3a4250;
+    --btn-bg:        #ededf0;
+    --btn-bg-hover:  #e3e3e7;
+    --btn-bg-active: #d8d8dd;
+    --btn-text:      #2c2c31;
 
     /* 中性 hover —— 亮底用深色低透明 */
-    --hover-bg: rgba(15, 23, 35, 0.04);
+    --hover-bg: rgba(20, 20, 30, 0.04);
 
     /* 阴影 —— 更柔更轻 */
     --shadow-1: 0 1px 2px rgba(15, 23, 35, 0.08);
@@ -346,8 +346,8 @@
     --shadow-3: 0 16px 44px rgba(15, 23, 35, 0.18);
 
     /* 滚动条 */
-    --scroll-thumb:        #c8ccd4;
-    --scroll-thumb-hover:  #b0b6c0;
+    --scroll-thumb:        #cacacf;
+    --scroll-thumb-hover:  #b2b2b9;
 
     /* 选中黄 —— 亮底用深金。原 #b8860b 在徽章白底上仅 3.0:1、在波形行上描边仅 2.9:1
        （暗色同位 10+），再加深至 ~4:1 档 */
@@ -365,10 +365,10 @@
     --layout-insert-fg:      #1f6b3f;
 
     /* 波形画布 */
-    --wave-row-bg:          #dfe4ea;
-    --wave-row-border:      #c4cbd6;
-    --wave-row-grid:        rgba(42, 58, 78, 0.07);
-    --wave-row-tick:        #aeb6c2;
+    --wave-row-bg:          #e3e3e6;
+    --wave-row-border:      #cbcbd1;
+    --wave-row-grid:        rgba(30, 30, 40, 0.07);
+    --wave-row-tick:        #b2b2b9;
     --wave-peak:            #27875f;   /* 原 #2f9e6f 在浅行底上仅 2.6:1，波形峰值发虚，加深至 3.5:1 */
     --wave-peak-dim:        #7d8898;   /* 媒体不可用时的降态峰：与 peak 同明度、去饱和，原值过浅 */
     --wave-cue-mix:         rgba(255, 255, 255, 0.82);
@@ -376,7 +376,7 @@
     --wave-cue-main-bg:     rgba(255, 255, 255, 0.82);
     --wave-cue-extension-bg: rgba(238, 240, 244, 0.68);
     --wave-cue-text:        #16202c;
-    --wave-cue-active-mix:  #a9c8e8;
+    --wave-cue-active-mix:  color-mix(in srgb, var(--accent) 35%, #ffffff);
     --wave-cue-handle:      rgba(32, 52, 80, 0.14);
     --wave-cue-handle-hover: rgba(32, 52, 80, 0.3);
     --wave-cue-boundary:    color-mix(in srgb, color-mix(in srgb, var(--accent) 55%, #20344f) 32%, transparent);
@@ -411,34 +411,34 @@
     --gap-restored-border:    rgba(96, 110, 126, 0.55);
 
     /* 空状态 / dock 拖拽栏 */
-    --empty-overlay-1: rgba(245, 246, 248, 0.72);
-    --empty-overlay-2: rgba(245, 246, 248, 0.92);
-    --empty-raised-1:  rgba(238, 240, 244, 0.72);
-    --empty-raised-2:  rgba(238, 240, 244, 0.92);
-    --dock-bg:         #eef0f4;
-    --dock-bg-hover:   #e2e6ec;
+    --empty-overlay-1: rgba(244, 244, 245, 0.72);
+    --empty-overlay-2: rgba(244, 244, 245, 0.92);
+    --empty-raised-1:  rgba(240, 240, 242, 0.72);
+    --empty-raised-2:  rgba(240, 240, 242, 0.92);
+    --dock-bg:         #f0f0f2;
+    --dock-bg-hover:   #e5e5e8;
 
     /* 危险态悬停前景 —— 亮底红软底上需深色文字 */
     --danger-hover-fg: #b53030;
 
     /* 活动字幕行前景 —— 亮底蓝软底上需深色文字 */
-    --active-cue-fg: #1f2530;
+    --active-cue-fg: #1d1d20;
 
     /* 搜索高亮 mark 前景 —— 亮底琥珀上用深色文字（原复用 --bg-base 会变成浅字压暗琥珀） */
-    --mark-fg: #1f2530;
+    --mark-fg: #1d1d20;
 
     /* 禁用字幕行底色 —— 亮底用深色低透明压暗 */
     --disabled-cue-bg: rgba(15, 23, 35, 0.025);
 
     /* 面板顶部工具栏背板：亮底改为比面板略深的浅灰，同样保持不透明 */
-    --panel-toolbar-bg:      #e7eaef;   /* 列表 / 播放器面板（--bg-raised #eef0f4 略深） */
-    --panel-toolbar-bg-wave: #dfe4ea;   /* 波形面板（--bg-wave #e8ebee 略深） */
+    --panel-toolbar-bg:      #e8e8eb;   /* 列表 / 播放器面板（--bg-raised 略深） */
+    --panel-toolbar-bg-wave: #e3e3e6;   /* 波形面板（--bg-wave 略深） */
     --panel-toolbar-shadow: rgba(15, 23, 35, 0.08);
     --wave-hover-brightness: 1.08;
     --wave-gap-hover-brightness: 1.08;
     --wave-drag-brightness: 1.1;
     /* 字幕行悬停底色：亮底同样需要明显一档（基色跟随 --accent） */
-    --cue-hover-bg: rgba(56, 116, 201, 0.18);
+    --cue-hover-bg: rgba(200, 69, 69, 0.18);
 
     /* 静音空隙工具窗：整窗改为浅色卡片 */
     --gap-panel-bg-1:     rgba(255, 255, 255, 0.99);
@@ -476,8 +476,32 @@
     --gap-scan-shadow:      rgba(176, 105, 45, 0.18);
   }
 
-  /* 可选界面强调色：预设同时覆盖所有由 accent 派生的令牌，保持 hover、聚焦、选中和提示的色相一致。 */
+  /* 可选界面强调色：预设同时覆盖所有由 accent 派生的令牌，保持 hover、聚焦、选中和提示的色相一致。
+     默认（data-accent="brand"）直接使用 :root / [data-theme="light"] 中的品牌色，不需要单独规则。 */
+  :root[data-accent="blue"] {
+    --accent:        #6ca5e8;
+    --accent-active-fg: var(--bg-base);
+    --accent-hover:  #84b7f0;
+    --accent-strong: #5a8fd6;
+    --accent-tint:   rgba(108, 165, 232, 0.12);
+    --accent-tint-strong: rgba(108, 165, 232, 0.22);
+    --accent-soft:   rgba(108, 165, 232, 0.16);
+    --accent-line:   #6ca5e8;
+    --cue-hover-bg:  rgba(108, 165, 232, 0.20);
+  }
+  :root[data-theme="light"][data-accent="blue"] {
+    --accent:        #3874c9;
+    --accent-active-fg: #ffffff;
+    --accent-hover:  #2a5a9e;
+    --accent-strong: #2f6bb8;
+    --accent-tint:   rgba(56, 116, 201, 0.12);
+    --accent-tint-strong: rgba(56, 116, 201, 0.20);
+    --accent-soft:   rgba(56, 116, 201, 0.16);
+    --accent-line:   #3874c9;
+    --cue-hover-bg:  rgba(56, 116, 201, 0.18);
+  }
   :root[data-accent="red"] {
+    --accent-active-fg: #ffffff;
     --accent:        #c25656;
     --accent-hover:  #d06a6a;
     --accent-strong: #b34a4a;
@@ -488,6 +512,7 @@
     --cue-hover-bg:  rgba(194, 86, 86, 0.20);
   }
   :root[data-theme="light"][data-accent="red"] {
+    --accent-active-fg: #ffffff;
     --accent:        #c84545;
     --accent-hover:  #a93232;
     --accent-strong: #b53e3e;
@@ -498,14 +523,15 @@
     --cue-hover-bg:  rgba(200, 69, 69, 0.18);
   }
   :root[data-accent="orange"] {
-    --accent:        #e0a05a;
-    --accent-hover:  #efb16b;
-    --accent-strong: #cc8b42;
-    --accent-tint:   rgba(224, 160, 90, 0.12);
-    --accent-tint-strong: rgba(224, 160, 90, 0.22);
-    --accent-soft:   rgba(224, 160, 90, 0.16);
-    --accent-line:   #e0a05a;
-    --cue-hover-bg:  rgba(224, 160, 90, 0.20);
+    --accent:        #f09a50;
+    --accent-active-fg: #1c0f05;
+    --accent-hover:  #f5ad6c;
+    --accent-strong: #e08a40;
+    --accent-tint:   rgba(240, 154, 80, 0.12);
+    --accent-tint-strong: rgba(240, 154, 80, 0.22);
+    --accent-soft:   rgba(240, 154, 80, 0.16);
+    --accent-line:   #f09a50;
+    --cue-hover-bg:  rgba(240, 154, 80, 0.20);
   }
   :root[data-theme="light"][data-accent="orange"] {
     --accent:        #d9834a;
@@ -519,6 +545,7 @@
     --accent-active-fg: #2d1c13;
   }
   :root[data-accent="custom"] {
+    --accent-active-fg: var(--bg-base);
     --accent:        var(--accent-custom, var(--accent-blue));
     --accent-hover:  color-mix(in srgb, var(--accent-custom, var(--accent-blue)) 82%, white);
     --accent-strong: color-mix(in srgb, var(--accent-custom, var(--accent-blue)) 84%, black);
@@ -1460,7 +1487,9 @@
     gap: 2px; width: 100%; padding: 2px;
     background: var(--bg-input); border: 1px solid var(--border-subtle); border-radius: var(--radius-md);
   }
-  .editor-settings-accent-options { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+  /* 首项品牌色是默认值，只放圆点不写文字（名称在 title / aria-label）。 */
+  .editor-settings-accent-options { grid-template-columns: 36px repeat(4, minmax(0, 1fr)); }
+  .editor-settings-accent-option-icon { padding-inline: 0; }
   .editor-settings-segment {
     min-width: 0; min-height: 26px; padding: 4px 8px;
     border: 0; border-radius: var(--radius-sm);
@@ -1485,9 +1514,16 @@
     display: inline-block; flex: 0 0 auto; width: 10px; height: 10px; border: 1px solid rgba(0, 0, 0, 0.24);
     border-radius: 50%; box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.12);
   }
+  /* 选中项的底色就是该强调色：圆点外加一圈前景色描边，避免圆点与底色融成一片。 */
+  .editor-settings-accent-option.active .editor-settings-accent-swatch {
+    border-color: transparent;
+    box-shadow: 0 0 0 1.5px var(--accent-active-fg, var(--bg-base)), 0 0 0 3px color-mix(in srgb, var(--accent-active-fg, var(--bg-base)) 25%, transparent);
+  }
+  .editor-settings-accent-swatch[data-accent-swatch="brand"] { background: #f09a50; }
   .editor-settings-accent-swatch[data-accent-swatch="blue"] { background: #6ca5e8; }
   .editor-settings-accent-swatch[data-accent-swatch="red"] { background: #c25656; }
-  .editor-settings-accent-swatch[data-accent-swatch="orange"] { background: #e0a05a; }
+  .editor-settings-accent-swatch[data-accent-swatch="orange"] { background: #f09a50; }
+  :root[data-theme="light"] .editor-settings-accent-swatch[data-accent-swatch="brand"] { background: #c84545; }
   .editor-settings-accent-swatch[data-accent-swatch="custom"] { background: var(--accent-custom, var(--accent-blue)); }
   :root[data-theme="light"] .editor-settings-accent-swatch[data-accent-swatch="blue"] { background: #3874c9; }
   :root[data-theme="light"] .editor-settings-accent-swatch[data-accent-swatch="red"] { background: #c84545; }
@@ -2273,6 +2309,10 @@
     transition: background var(--t-fast), color var(--t-fast);
   }
   .toolbar .dropdown-item:hover { background: var(--accent-tint); color: var(--text-primary); }
+  .toolbar .dropdown-submenu-menu > button[data-settings-page] {
+    display: block; width: calc(100% - 16px); box-sizing: border-box;
+    margin: 4px 8px; text-align: left;
+  }
   .toolbar .dropdown-item.disabled { opacity: .42; cursor: not-allowed; pointer-events: none; }
   /* 表情包导出按模式互斥灰显：保留 hover 与 click（title 提示原因、点击给 flashHint 指引） */
   .toolbar .dropdown-item.sticker-disabled { opacity: .42; cursor: not-allowed; }

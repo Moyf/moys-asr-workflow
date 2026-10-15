@@ -329,7 +329,7 @@
     '拖入工程或 SRT/LRC 字幕后显示字幕列表': 'Drop a project or SRT/LRC subtitles to display subtitles',
     '松开以加载工程、媒体或 SRT/LRC 字幕': 'Drop to load a project, media, or SRT/LRC subtitles',
     '自动保存': 'Auto-save', '保存间隔': 'Auto-save interval', '秒': 'sec', '说话人': 'Speaker',
-    '强调色': 'Accent Color', '自定义颜色': 'Custom color', '自定义': 'Custom', '橙色': 'Orange',
+    '强调色': 'Accent Color', '自定义颜色': 'Custom color', '自定义': 'Custom', '橙色': 'Orange', '品牌色（默认）': 'Brand (default)',
     '显示说话人名称': 'Show speaker names',
     '预览显示说话人': 'Show speakers in preview',
     '颜色对应说话人': 'Map colors to speakers',

@@ -50,6 +50,7 @@ class ProjectIoTests(CompactContainerAssertions, unittest.TestCase):
             probe.assert_called_once_with(media, ffprobe_path=ffprobe)
             saved = json.loads(output.read_text(encoding="utf-8"))
             self.assertEqual(saved["schema"], PROJECT_SCHEMA)
+            self.assertEqual(saved["media"], "../clip.mp4")
             self.assertEqual(saved["media_metadata"], metadata)
             self.assertEqual(list(saved)[:3], ["schema", "media", "media_metadata"])
             raw = output.read_bytes()

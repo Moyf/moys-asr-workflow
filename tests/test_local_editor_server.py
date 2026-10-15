@@ -1214,7 +1214,8 @@ class LocalEditorServerTests(CompactContainerAssertions, unittest.TestCase):
         self.assertIn('"gapRemovedVideoExportUrl": "/api/exports/gap-removed-video", "gapRemovedVideoSourceName": "clip.mp3", "canGapRemovedVideoExport": false, ', page)
         self.assertIn('"canPortableStickerExport": true, "canOtozStickerExport": true, ', page)
         self.assertIn('"canOtozTimelineExport": true, "initialStickerCount": 1, ', page)
-        self.assertIn('"autoLoadedMediaName": "clip.mp3", "recentProjectsUrl": "/api/recent-projects/open", ', page)
+        self.assertIn('"autoLoadedMediaName": "clip.mp3"', page)
+        self.assertIn('"recentProjectsUrl": "/api/recent-projects/open"', page)
         self.assertIn('"attachUrl": "/api/project/attach", "settingsUrl": "/api/settings", ', page)
         self.assertIn('"settingsUrl": "/api/settings", "recentProjects": [{"path": "', page)
         self.assertIn('"name": "clip.json"}], "assStylesUrl": "/api/ass-styles", "assFrameUrl": "/api/ass-frame", "autoOpenLastProject": true, "savedWorkspaces": {}, ', page)
@@ -2172,7 +2173,7 @@ class LocalEditorServerTests(CompactContainerAssertions, unittest.TestCase):
         convert.assert_called_once_with(source.resolve(), ffmpeg_path=mock.ANY)
         self.assertEqual(project.media_path, converted)
         self.assertEqual(project.source_media_path, source.resolve())
-        self.assertEqual(project.data["media"], str(source.resolve()))
+        self.assertEqual(project.data["media"], source.name)
 
     def test_flv_conversion_loads_source_reapeaks(self) -> None:
         """只有 flv（走转换）：.ReaPeaks 在 flv 旁，应按原始请求路径加载。"""
@@ -2739,7 +2740,7 @@ class LocalEditorServerTests(CompactContainerAssertions, unittest.TestCase):
                 }
                 normalized_saved_project = {
                     "schema": PROJECT_SCHEMA,
-                    "media": str(self.media),
+                    "media": self.media.name,
                     "segments": [{"id": "main-001", "start": 0, "end": 1000, "text": "保存后的字幕"}],
                 }
                 status, result = post({"project": saved_project, "filename": None})
@@ -3029,7 +3030,7 @@ class LocalEditorServerTests(CompactContainerAssertions, unittest.TestCase):
                     json.loads(self.project_path.read_text(encoding="utf-8")),
                     {
                         "schema": PROJECT_SCHEMA,
-                        "media": str(self.media.resolve()),
+                        "media": self.media.name,
                         "segments": [{"id": "main-001", "start": 0, "end": 1000, "text": "接管后保存"}],
                     },
                 )

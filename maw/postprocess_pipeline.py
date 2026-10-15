@@ -578,7 +578,7 @@ def _relocate_pipeline_artifact(path: Path, destination: Path) -> Path:
     if source.parent == target.parent:
         source.replace(target)
     else:
-        _copy_atomic(source, target)
+        _copy_atomic(source, target, project_file=source.suffix.lower() in {".mosp", ".json"})
     return target
 
 
@@ -643,7 +643,7 @@ def _ensure_initial_pipeline_artifacts(
         targets.append(candidate)
     project_target, srt_target = targets
     if not project_target.is_file():
-        _copy_atomic(source_project_path, project_target)
+        _copy_atomic(source_project_path, project_target, project_file=True)
     if not srt_target.is_file():
         _copy_atomic(source_srt_path, srt_target)
     return project_target, srt_target
@@ -1089,6 +1089,9 @@ def _run_step(
                     media_path=media_path,
                     subtitle_path=srt_path,
                     green_screen=green_screen,
+                    # 自动流水线的绿幕（音频素材兜底）没有尺寸选项，
+                    # 显式保持既有 1080p 行为；工具箱手动绿幕默认 4K。
+                    green_screen_size="1080p",
                     video_encoder=normalize_video_encoder(step.get("videoEncoder")),
                 ),
                 ffmpeg_path=ffmpeg_path,
@@ -1522,7 +1525,7 @@ def _publish_final(
         destinations = (final_project, final_srt, final_translated_srt)
         if all(not path.exists() for path in destinations if path is not None):
             _copy_atomic(srt, final_srt)
-            _copy_atomic(project, final_project)
+            _copy_atomic(project, final_project, project_file=True)
             if translated_srt is not None and final_translated_srt is not None:
                 _copy_atomic(translated_srt, final_translated_srt)
             return final_project.resolve(), final_srt.resolve(), final_translated_srt.resolve() if final_translated_srt is not None else None
@@ -1530,12 +1533,22 @@ def _publish_final(
 
 
 @file_write_operation
-def _copy_atomic(source: Path, destination: Path) -> None:
+def _copy_atomic(source: Path, destination: Path, *, project_file: bool = False) -> None:
     destination.parent.mkdir(parents=True, exist_ok=True)
     descriptor, temporary_name = tempfile.mkstemp(prefix=f".{destination.name}.", suffix=".tmp", dir=destination.parent)
     os.close(descriptor)
     try:
-        shutil.copyfile(source, temporary_name)
+        if project_file and source.resolve().parent != destination.resolve().parent:
+            from maw.project_io import rebase_project_media
+
+            project = json.loads(source.read_text(encoding="utf-8-sig"))
+            portable = rebase_project_media(project, destination, source_project_path=source)
+            if portable != project:
+                Path(temporary_name).write_text(json.dumps(portable, ensure_ascii=False, indent=2) + "\n", encoding="utf-8", newline="\n")
+            else:
+                shutil.copyfile(source, temporary_name)
+        else:
+            shutil.copyfile(source, temporary_name)
         os.replace(temporary_name, destination)
     except OSError:
         try:

@@ -30,6 +30,37 @@ test.beforeEach(async ({ page }) => {
 });
 const dirty = page => page.evaluate(() => MaweServerSave.hasUnsavedProjectChanges());
 
+for (const saveAs of [false, true]) {
+  test(`file ${saveAs ? 'save-as' : 'save'} rebases media without leaving the runtime checkpoint dirty`, async ({ page }) => {
+    const result = await page.evaluate(async saveAs => {
+      const originalMedia = MaweBoot.DATA.media;
+      const nativeMedia = MaweBoot.SERVER_CONFIG.autoLoadedMediaPath;
+      let written;
+      const handle = { name: 'relocated.mosp', async createWritable() {
+        return { async write(blob) { written = JSON.parse(await blob.text()); }, async close() {} };
+      } };
+      if (saveAs) window.showSaveFilePicker = async () => handle;
+      else MaweServerSave.projectFileHandle = handle;
+      if (saveAs) await MaweProjectSave.saveProjectAsToFile();
+      else await MaweProjectSave.saveCurrentProject({ silent: true });
+      const clean = !MaweServerSave.hasUnsavedProjectChanges();
+      MaweBoot.DATA.media = 'another.wav';
+      const mediaEditIsDirty = MaweServerSave.hasUnsavedProjectChanges();
+      MaweBoot.DATA.media = originalMedia;
+      return { originalMedia, nativeMedia, writtenMedia: written.media, clean, mediaEditIsDirty,
+        restoredIsClean: !MaweServerSave.hasUnsavedProjectChanges(),
+        sessionFlagsSaved: JSON.stringify(written).includes('"_dirty"') };
+    }, saveAs);
+    expect(result.nativeMedia).toBeTruthy();
+    expect(result.writtenMedia).toBe(result.nativeMedia);
+    expect(result.writtenMedia).not.toBe(result.originalMedia);
+    expect(result.clean).toBe(true);
+    expect(result.mediaEditIsDirty).toBe(true);
+    expect(result.restoredIsClean).toBe(true);
+    expect(result.sessionFlagsSaved).toBe(false);
+  });
+}
+
 test('legacy flags vanish; real panel edit saves without clearing highlight, then reload resets it', async ({ page }) => {
   expect(await dirty(page)).toBe(false);
   expect(await page.evaluate(() => JSON.stringify(MaweBoot.DATA).includes('"_dirty":true'))).toBe(false);

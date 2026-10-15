@@ -89,6 +89,8 @@ function applyCanonicalProject(data, filename, { repaired = false } = {}) {
   MaweBoot.DATA.schema = data.schema || window.AsrEditorUtils.PROJECT_SCHEMA;
   MaweBoot.DATA.subtitle_groups = window.AsrEditorUtils.cloneJsonValue(data.subtitle_groups);
   MaweBoot.DATA.media = typeof data.media === 'string' ? data.media : '';
+  // A browser-imported project is not the server's native media binding.
+  if (MaweBoot.SERVER_CONFIG) MaweBoot.SERVER_CONFIG.autoLoadedMediaPath = null;
   MaweBoot.DATA.language = data.language || '';
   MaweBoot.DATA.language_source = typeof data.language_source === 'string' ? data.language_source : undefined;
   MaweBoot.DATA.preserve_punctuation = typeof data.preserve_punctuation === 'boolean' ? data.preserve_punctuation : undefined;
