@@ -13,6 +13,35 @@ function fixture() {
     { id: 'c', start: 8000, end: 10000, text: 'three', sticker_ref: { name: 'cat', headIdx: 0 } },
   ], overlay_track: { enabled: true, segments: [] } };
 }
+
+test('text restructuring reserves IDs in other tracks and hidden source cues before publishing', () => {
+  const p = { segments: [{ id: 'a', start: 0, end: 3000, text: '甲乙丙', items: [
+    { text: '甲', start: 0, end: 1000 }, { text: '乙', start: 1000, end: 2000 },
+    { text: '丙', start: 2000, end: 3000 },
+  ] }], overlay_track: { enabled: true, segments: [] } };
+  u.normalizeMultiSubtitleProject(p);
+  p.segments = u.applyTimedTextEdit(p.segments, ['甲乙', '丙']);
+  u.moveSegmentBetweenTracks(p.segments, p.overlay_track.segments, 1);
+  p.multi_subtitle.tracks.push({ id: 'ext', segments: [
+    { id: 'a-text-2-2', start: 0, end: 1000, text: 'hidden extension' },
+  ] });
+  p.segments.push({ id: 'a-text-2-3', start: 4000, end: 5000, text: 'disabled', disabled: true });
+  const source = p.segments.filter(s => !s.disabled);
+  const options = { reservedSegments: u.subtitleGroupTracks(p).flatMap(t => t.segments) };
+  const report = u.buildTimedTextEditReport(source, ['甲', '乙'], options);
+  const next = u.applyTimedTextEdit(source, ['甲', '乙'], options);
+  assert.equal(report.valid, true);
+  assert.deepEqual(plain(report.structure.segments), plain(next));
+  assert.equal(next[0].id, 'a');
+  assert.equal(next[1].id, 'a-text-2-4');
+  p.segments.splice(0, 1, ...next);
+  assert.doesNotThrow(() => u.normalizeMultiSubtitleProject(p));
+  const saved = u.serializeSubtitleGroups(plain(p));
+  const reopened = plain(saved);
+  assert.doesNotThrow(() => u.migrateSubtitleGroups(reopened, { fromFile: true }));
+  assert.deepEqual(plain(u.subtitleGroupTracks(reopened).flatMap(t => t.segments.map(s => s.id))),
+    ['a', 'a-text-2-4', 'a-text-2-3', 'a-text-2', 'a-text-2-2']);
+});
 test('legacy group resolves before moving and spans gaps, late end and deletion of its former head', () => {
   const p = fixture(); u.normalizeMultiSubtitleProject(p);
   const id = p.segments[0].sticker_group_id;
@@ -122,6 +151,34 @@ test('export creates one continuous group clip and maps Gap once across tracks',
   p.segments.forEach(s => { s.disabled = true; }); p.overlay_track.segments[0].disabled = true;
   const disabled = u.buildProjectExportPlan(p, { durationMs: 15000, timelineMode: 'source' });
   assert.equal(disabled.stickers.length + disabled.overlayStickers.length, 0);
+});
+
+test('disabled tracks retain groups but cannot contribute stickers to presentation or FCP XML', () => {
+  const p = fixture(); p.media = 'movie.mp4';
+  p.segments.forEach(s => { if (s.sticker) s.sticker.rel = 'cat.png'; });
+  u.normalizeMultiSubtitleProject(p);
+  const groupId = p.segments[0].sticker_group_id;
+  p.overlay_track.segments.push(...p.segments.splice(1));
+  p.overlay_track.enabled = false;
+  p.multi_subtitle.tracks.push({ id: 'ext', segments: [
+    { id: 'ext-a', start: 14000, end: 15000, text: 'extension', sticker_group_id: groupId },
+  ] });
+  const presentation = () => u.subtitleGroupRanges(p, 'sticker', { activeTracksOnly: true });
+  assert.equal(presentation()[0].end, 3000);
+  u.refreshSubtitleGroupViews(p);
+  assert.equal(p.subtitle_groups.sticker.length, 1);
+  assert.equal(u.subtitleGroupRanges(p)[0].end, 15000);
+  p.segments[0].disabled = true;
+  const plan = u.buildProjectExportPlan(p, { durationMs: 16000 });
+  assert.equal(plan.stickers.length + plan.overlayStickers.length, 0);
+  const xml = u.buildFcp7ExportArtifacts(plan, { fps: '30', nativeTextObjects: true, baseName: 'disabled' })[0].content;
+  assert.doesNotMatch(xml, /cat\.png/);
+  p.overlay_track.enabled = true;
+  assert.equal(presentation()[0].end, 10000);
+  assert.equal(presentation()[0].enabled, true);
+  p.multi_subtitle.enabled = true;
+  assert.equal(presentation()[0].end, 15000);
+  assert.equal(u.subtitleGroupRanges(u.serializeSubtitleGroups(plain(p)))[0].members.length, 4);
 });
 
 test('large legacy input keeps distinct groups and deterministically remaps all cross-track collisions', () => {

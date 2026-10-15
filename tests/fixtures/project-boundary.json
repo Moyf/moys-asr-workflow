@@ -2113,5 +2113,104 @@
       "$.overlay_track.segments[0].id"
     ],
     "change_paths": null
+  },
+  {
+    "name": "v2-normalized-overlay-id-collision",
+    "input": {
+      "schema": "moy.asr.project.v2",
+      "subtitle_groups": {
+        "color": [],
+        "sticker": []
+      },
+      "segments": [
+        {
+          "id": " a ",
+          "start": 0,
+          "end": 1000,
+          "text": "text"
+        }
+      ],
+      "overlay_track": {
+        "segments": [
+          {
+            "id": "a",
+            "start": 0,
+            "end": 1000,
+            "text": "text"
+          }
+        ]
+      }
+    },
+    "strict_ok": false,
+    "import_ok": false,
+    "error_paths": [
+      "$.overlay_track.segments[0].id"
+    ],
+    "change_paths": null
+  },
+  {
+    "name": "v2-normalized-extension-id-collision",
+    "input": {
+      "schema": "moy.asr.project.v2",
+      "subtitle_groups": {
+        "color": [],
+        "sticker": []
+      },
+      "segments": [
+        {
+          "id": " a ",
+          "start": 0,
+          "end": 1000,
+          "text": "text"
+        }
+      ],
+      "multi_subtitle": {
+        "tracks": [
+          {
+            "id": "ext",
+            "segments": [
+              {
+                "id": "a",
+                "start": 0,
+                "end": 1000,
+                "text": "text"
+              }
+            ]
+          }
+        ]
+      }
+    },
+    "strict_ok": false,
+    "import_ok": false,
+    "error_paths": [
+      "$.multi_subtitle.tracks[0].segments[0].id"
+    ],
+    "change_paths": null
+  },
+  {
+    "name": "v2-trimmed-unique-id-and-null-tracks",
+    "input": {
+      "schema": "moy.asr.project.v2",
+      "subtitle_groups": {
+        "color": [],
+        "sticker": []
+      },
+      "segments": [
+        {
+          "id": " a ",
+          "start": 0,
+          "end": 1000,
+          "text": "text"
+        }
+      ],
+      "multi_subtitle": null,
+      "overlay_track": null
+    },
+    "strict_ok": true,
+    "import_ok": true,
+    "error_paths": [],
+    "change_paths": [
+      "$.segments[0].id"
+    ]
   }
 ]

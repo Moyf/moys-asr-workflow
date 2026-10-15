@@ -40,6 +40,7 @@ v2 保留顶层 `segments`、`overlay_track`、`multi_subtitle.tracks` 和现有
 - 各轨字幕 `id` 在整个工程内唯一；段上的 `color_group_id` / `sticker_group_id` 引用对应组表。组 ID 在所属类型内唯一，不能用同名素材或颜色推断组。`next_id` 是新建组的递增计数，随工程和撤销快照保存。
 - `value` 保存完整颜色 / 素材属性及其扩展字段；必须有字符串 `name`。组内不存 `start/end`，其范围是所有成员的最早 `start` 到最晚 `end`。字幕 1–3 / 5–7 / 8–10 秒的一组连续显示 1–10 秒；末条改为 12 秒即覆盖至 12 秒。
 - 禁用成员保留关系并参与范围；全部成员禁用时不显示或导出表情。换轨不拆组；删除头或中间成员后剩余成员仍同组。清除属性只移除所选成员，空组在编辑器中删除。
+- 关闭整条叠加轨或副字幕轨时保留其组关系；预览与导出的表情范围仅由仍启用轨道的成员决定，重新开启后恢复。单条字幕的禁用状态仍按上一条规则处理。
 - 拆分两侧继承原组。同组合并继承；不同组或混有无组字幕时，合并结果不继承该种组关系，未参与合并的成员保留原组。不同组即使素材同名也不合并。重复导入为输入组分配新 ID，避免与当前工程误关联。
 - v1 迁移先在原轨内数组解析 `headIdx`，再规范 ID；跨轨重复字幕 ID 确定性重映射，并更新 bindings。旧ref的第三方附加字段保存在对应段的可选 `color_group_metadata` / `sticker_group_metadata` 对象中（不含旧name/headIdx）；现有同名字段冲突时拒绝迁移而不覆盖。重映射记录在可选 `subtitle_group_migration.remapped_ids`（track/index/from/to）。失效引用或歧义绑定报告错误，不按名称猜引用。
 - v2 落盘不写 `color` / `color_ref` / `sticker` / `sticker_ref`；编辑器内部可生成显示投影，投影的下标与范围不构成持久化关系。三轨共同保留 items、帧、speaker、disabled、assOverride.pos 和第三方扩展。

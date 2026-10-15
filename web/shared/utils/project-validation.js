@@ -58,10 +58,12 @@ function validateV2SubtitleGroups(project, report = (_path, _message) => {}) {
     segments.forEach((segment, index) => {
       if (!object(segment)) return; // Existing segment validator reports this.
       const identifier = segment.id;
-      if (!validId(identifier) || cueIds.has(identifier)) {
+      // Per-track normalization trims IDs after this check.
+      const canonical = typeof identifier === 'string' ? identifier.trim() : identifier;
+      if (!validId(identifier) || cueIds.has(canonical)) {
         error(`${path}[${index}].id`, 'must be a unique project-wide cue ID');
       } else {
-        cueIds.add(identifier);
+        cueIds.add(canonical);
       }
     });
   }

@@ -362,7 +362,7 @@ export function createUtilsModule(dependencies) {
     };
     const overlayStickers = [];
     if (project.subtitle_groups) {
-      const ranges = dependencies.subtitleGroupRanges(project).filter(range => range.enabled);
+      const ranges = dependencies.subtitleGroupRanges(project, 'sticker', { activeTracksOnly: true }).filter(range => range.enabled);
       for (const track of ['main', 'overlay']) {
         const synthetic = ranges.filter(range => range.track === track).map(range => ({
           start: range.start, end: range.end,

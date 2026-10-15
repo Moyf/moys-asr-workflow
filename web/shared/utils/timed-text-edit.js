@@ -432,11 +432,11 @@ export function createUtilsModule(dependencies) {
   }
 
 
-  function buildTimedTextEditReport(segments, draftTexts) {
+  function buildTimedTextEditReport(segments, draftTexts, options = {}) {
     const source = Array.isArray(segments) ? segments : [];
     const texts = Array.isArray(draftTexts) ? draftTexts : [];
     if (timedTextStructureRequested(source, texts)) {
-      const plan = buildTimedTextStructurePlan(source, texts);
+      const plan = buildTimedTextStructurePlan(source, texts, options);
       if (plan.valid) return buildTimedTextStructureReport(source, texts, plan);
       return {
         ...buildTimedTextEditReportFixed(source, texts),
@@ -497,11 +497,11 @@ export function createUtilsModule(dependencies) {
   }
 
 
-  function applyTimedTextEdit(segments, draftTexts) {
+  function applyTimedTextEdit(segments, draftTexts, options = {}) {
     const source = Array.isArray(segments) ? segments : [];
     const texts = Array.isArray(draftTexts) ? draftTexts : [];
     if (timedTextStructureRequested(source, texts)) {
-      const structurePlan = buildTimedTextStructurePlan(source, texts);
+      const structurePlan = buildTimedTextStructurePlan(source, texts, options);
       return structurePlan.valid ? cloneJsonValue(structurePlan.segments) : null;
     }
     if (source.length !== texts.length) return null;

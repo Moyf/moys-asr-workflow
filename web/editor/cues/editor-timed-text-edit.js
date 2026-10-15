@@ -607,6 +607,7 @@
     const report = window.AsrEditorUtils.buildTimedTextEditReport(
       MaweDom.timedTextEditDraft.sourceSegments,
       MaweDom.timedTextEditDraft.texts,
+      { reservedSegments: window.AsrEditorUtils.subtitleGroupTracks(MaweBoot.DATA).flatMap(track => track.segments) },
     );
     MaweDom.timedTextEditDraft.report = report;
     const { stats } = report;

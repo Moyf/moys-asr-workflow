@@ -25,10 +25,13 @@ def validate_subtitle_groups(project):
             if not isinstance(segment, dict):
                 continue
             identifier = segment.get("id")
-            if not isinstance(identifier, str) or not identifier.strip() or len(identifier) > 160 or identifier in ids:
+            # Cue normalizers trim IDs per track. Check their eventual identity
+            # here so acceptance cannot produce cross-track duplicates.
+            canonical = identifier.strip() if isinstance(identifier, str) else None
+            if not canonical or len(identifier) > 160 or canonical in ids:
                 errors.append((f"{path}[{i}].id", "must be a unique project-wide cue ID"))
             else:
-                ids.add(identifier)
+                ids.add(canonical)
     for kind in ("color", "sticker"):
         groups = table.get(kind)
         if not isinstance(groups, list):

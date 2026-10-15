@@ -228,7 +228,7 @@ export function createUtilsModule(dependencies) {
   }
 
 
-  function buildTimedTextStructurePlan(segments, draftTexts) {
+  function buildTimedTextStructurePlan(segments, draftTexts, { reservedSegments = [] } = {}) {
     const source = Array.isArray(segments) ? segments : [];
     const texts = Array.isArray(draftTexts) ? draftTexts : [];
     if (!timedTextStructureRequested(source, texts)) return emptyTimedTextStructurePlan();
@@ -435,7 +435,7 @@ export function createUtilsModule(dependencies) {
       previousOutputEnd = end;
     }
 
-    const usedSegments = [...source];
+    const usedSegments = [...reservedSegments, ...source];
     outputMeta.forEach((meta, outputIndex) => {
       const sourceIndex = meta.sourceIndexes[0];
       const sourceSegment = source[sourceIndex] || {};

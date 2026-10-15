@@ -154,6 +154,7 @@
   // 预览几何：始终写入归一化后的当前几何，便于跨机/重开保持位置。
   const preview = {
     ass_mode: MaweSettings.EDITOR_SETTINGS.assMode === true,
+    sticker: { ...MawePreviewGeometry.getStickerGeometry() },
     subtitle: {
       ...MaweAppearance.getPreviewGeometry(),
       ...MaweAppearance.getSubtitleAppearance(),

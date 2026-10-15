@@ -173,17 +173,20 @@ MaweTextProcess.textProcessConfirm?.addEventListener('click', () => {
     }
     mainDraftTexts[row.index] = row.after;
   });
+  const reservedSegments = window.AsrEditorUtils.subtitleGroupTracks(MaweBoot.DATA).flatMap(track => track.segments);
   const nextMainSegments = mainDraftTexts
-    ? window.AsrEditorUtils.applyTimedTextEdit(MaweBoot.DATA.segments, mainDraftTexts)
+    ? window.AsrEditorUtils.applyTimedTextEdit(MaweBoot.DATA.segments, mainDraftTexts, { reservedSegments })
     : null;
+  if (nextMainSegments) reservedSegments.push(...nextMainSegments);
   const nextExtensionSegments = [];
   for (const draft of extensionDrafts.values()) {
-    const nextSegments = window.AsrEditorUtils.applyTimedTextEdit(draft.track.segments, draft.texts);
+    const nextSegments = window.AsrEditorUtils.applyTimedTextEdit(draft.track.segments, draft.texts, { reservedSegments });
     if (!nextSegments) {
       MaweHint.flashHint('无法应用文本处理：字幕行结构发生了变化', 'warning');
       return;
     }
     nextExtensionSegments.push({ track: draft.track, segments: nextSegments });
+    reservedSegments.push(...nextSegments);
   }
   if (mainDraftTexts && !nextMainSegments) {
     MaweHint.flashHint('无法应用文本处理：字幕行结构发生了变化', 'warning');
@@ -478,6 +481,7 @@ MaweDom.timedTextEditApply?.addEventListener('click', () => {
   const nextSegments = window.AsrEditorUtils.applyTimedTextEdit(
     draft.sourceSegments,
     draft.texts,
+    { reservedSegments: window.AsrEditorUtils.subtitleGroupTracks(MaweBoot.DATA).flatMap(track => track.segments) },
   );
   if (!nextSegments) {
     MaweHint.flashHint('无法应用文本修改：字幕行结构发生了变化', 'warning');
