@@ -571,9 +571,13 @@ test('green-screen burn accepts subtitles without a video source', async ({ page
   await expect(page.locator('#toolboxUtilityMediaPath')).toBeDisabled();
   await expect(page.locator('#pickToolboxUtilityMedia')).toBeDisabled();
   await expect(page.locator('#runBurnSubtitle')).toHaveText('生成绿幕视频');
-  const gap = await page.locator('.toolbox-green-screen-option .hint').evaluate((element) =>
+  const option = page.locator('.toolbox-green-screen-option');
+  const fieldGap = await option.locator('#toolboxGreenScreenSizeField').evaluate((element) =>
     element.getBoundingClientRect().top - element.previousElementSibling.getBoundingClientRect().bottom);
-  expect(gap).toBeGreaterThanOrEqual(8);
+  expect(fieldGap).toBeGreaterThanOrEqual(8);
+  const hintGap = await option.locator('[data-i18n="toolbox_green_screen_hint"]').evaluate((element) =>
+    element.getBoundingClientRect().top - element.previousElementSibling.getBoundingClientRect().bottom);
+  expect(hintGap).toBeGreaterThanOrEqual(8);
   await page.locator('#toolboxBurnSubtitlePath').fill('D:\\Demo\\captions.ass');
   await page.locator('#runBurnSubtitle').click();
   await expect.poll(() => page.evaluate(() => window.__greenBurnCalls.length)).toBe(1);
@@ -1238,7 +1242,7 @@ test('launcher reports a server disconnect without manual refresh', async ({ pag
 
   await page.locator('#openMawe').click();
   await expect(page.locator('#status')).toContainText('字幕编辑服务器已断开', { timeout: 10_000 });
-  await expect(page.locator('#openMawe')).toContainText('🎬 打开编辑器');
+  await expect(page.locator('#openMawe')).toContainText('打开编辑器');
   await expect(page.locator('#stopServer')).toBeHidden();
   expect(await page.evaluate(() => window.__serverStatusCalls)).toBeGreaterThanOrEqual(2);
 });
@@ -1302,19 +1306,19 @@ test('restarting after a server disconnect does not reopen the editor page', asy
 
   // 先让服务器上线，使监控启动并处于 connected 状态。
   await page.locator('#openMawe').click();
-  await expect(page.locator('#openMawe')).toContainText('🎬 打开编辑器', { timeout: 10_000 });
+  await expect(page.locator('#openMawe')).toContainText('打开编辑器', { timeout: 10_000 });
   await page.waitForFunction(() => window.__openUrlCalls.length === 1);
 
   // 模拟断开。
   await page.evaluate(() => { window.__serverHealthy = false; });
   await expect(page.locator('#status')).toContainText('字幕编辑服务器已断开', { timeout: 10_000 });
-  await expect(page.locator('#openMawe')).toContainText('🎬 打开编辑器');
+  await expect(page.locator('#openMawe')).toContainText('打开编辑器');
 
   // 模拟重启成功：只更新提示，不再调用 open_url 打开新页面。
   await page.evaluate(() => { window.__serverHealthy = true; });
   await page.locator('#openMawe').click();
   await expect(page.locator('#status')).toContainText('回到原编辑器页面', { timeout: 10_000 });
-  await expect(page.locator('#openMawe')).toContainText('🎬 打开编辑器');
+  await expect(page.locator('#openMawe')).toContainText('打开编辑器');
   await expect(page.locator('#stopServer')).toBeVisible();
   await page.waitForFunction(() => window.__openUrlCalls.length === 1, undefined, { timeout: 5_000 });
   expect(await page.evaluate(() => window.__openUrlCalls[0])).toBe('http://127.0.0.1:8250/');

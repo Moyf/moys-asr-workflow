@@ -114,6 +114,10 @@ node scripts\build-editor.mjs --write   # 重建（--check 只校验新鲜度；
   使后续命令「永不结束」。**中断/失败后重跑前，先按该文档清理残留进程。**
 - 长命令显式限时：全量 chromium e2e ≤ 15 分钟，单 spec ≤ 10 分钟；优先只跑
   受影响的 spec，全量留给 CI。连续两轮不过先停下分析，不要循环重跑。
+- 多个 agent 会并行跑 e2e（各在自己 worktree）：端口是临时空闲端口，不会冲突；
+  代价是 CPU 竞争拖慢用例。发现其他 worktree 的进程不要杀也不要等；清理残留前
+  必须用 CommandLine 核对归属，只清本 worktree 的进程；并行时只跑受影响的单
+  spec（`-g` 过滤）并放宽耗时预期，不要把「比平时慢」当成回归。
 - 后台任务用 `Start-Process -WindowStyle Hidden`（勿用 `-NoNewWindow`，会占
   住当前控制台），输出重定向到文件。
 - 浏览器验证是可选项：逻辑验证优先单测；反复卡住就降级为人工验收，不要阻塞。

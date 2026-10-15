@@ -145,7 +145,7 @@ python scripts/build_ai_comparison.py before.mosp after.mosp --output comparison
 
 SRT 使用样式库中的 SRT 默认样式；ASS / SSA 保留文件内嵌样式。编码器可自动、CPU 或显式硬件编码器；CRF、预设和音频码率可保存默认值。默认 CRF 18、预设 medium、音频 192k。
 
-「生成绿幕视频」无需视频源：使用纯绿色画布输出无音轨 MP4，结束于最后字幕之后半秒。SRT 默认 1920×1080、30 fps；ASS / SSA 优先采用其脚本分辨率，奇数尺寸补成偶数。没有有效字幕结束时间时不生成结果。
+「生成绿幕视频」无需视频源：使用纯绿色画布输出无音轨 MP4，结束于最后字幕之后半秒，30 fps。勾选后可选择视频尺寸：1080P（1920×1080）/ 2K（2560×1440）/ 4K（3840×2160），默认 4K。SRT 样式按所选尺寸换算，与编辑器预览一致；ASS / SSA 沿用自身画布坐标，随输出尺寸等比缩放。没有有效字幕结束时间时不生成结果。
 
 macOS 烧录需要支持 libass 的 FFmpeg；安装了 Homebrew `ffmpeg-full` 时程序优先尝试它，显式 `FFMPEG_PATH` 仍优先。
 
