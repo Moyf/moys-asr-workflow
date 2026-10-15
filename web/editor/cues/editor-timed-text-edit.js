@@ -783,7 +783,10 @@
     MaweDom.timedTextEditModal.classList.remove('show');
     MaweDom.timedTextEditDraft = null;
     MaweDom.timedTextEditRows.replaceChildren();
-    MaweDom.timedTextEditReturnFocus?.focus();
+    const returnFocus = MaweDom.timedTextEditReturnFocus;
+    if (returnFocus?.matches('button, input, select, textarea, a')) {
+      MaweKeyboardTargets.releaseClosedUiFocus(MaweDom.timedTextEditModal, returnFocus);
+    } else returnFocus?.focus();
     MaweDom.timedTextEditReturnFocus = null;
   }
 
