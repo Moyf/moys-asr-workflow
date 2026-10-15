@@ -1,5 +1,6 @@
 ---
 task: ai-cleanup-records-and-inputs
+pr: 245
 date: 2026-10-16
 status: pending
 ---
