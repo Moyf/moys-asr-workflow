@@ -45,9 +45,15 @@ export function createUtilsModule(dependencies) {
     const fallbackRaw = fallback && typeof fallback === 'object' ? fallback : {};
     const fallbackUnit = typeof fallbackRaw.unit === 'string' && TIMELINE_TIMEBASE_UNITS.includes(fallbackRaw.unit)
       ? fallbackRaw.unit : 'milliseconds';
+    if (Object.prototype.hasOwnProperty.call(raw, 'fps_source')
+        && raw.fps_source !== 'auto' && raw.fps_source !== 'user') {
+      throw new TypeError('timebase.fps_source must be auto or user');
+    }
     return {
       unit: TIMELINE_TIMEBASE_UNITS.includes(raw.unit) ? raw.unit : fallbackUnit,
       fps: normalizeTimelineFps(raw.fps, fallbackRaw.fps ?? DEFAULT_TIMELINE_FPS),
+      // Absence preserves legacy inference; never invent a historical choice.
+      ...(raw.fps_source === undefined ? {} : { fps_source: raw.fps_source }),
     };
   }
 

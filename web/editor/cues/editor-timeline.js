@@ -158,6 +158,8 @@
 
   function hasExplicitTimelineFps(value) {
     if (!value || typeof value !== 'object' || Array.isArray(value)) return false;
+    if (value.fps_source === 'user') return true;
+    if (value.fps_source === 'auto') return false;
     const fps = Number(value.fps);
     if (!Number.isFinite(fps) || fps < MIN_TIMELINE_FPS || fps > MAX_TIMELINE_FPS) return false;
     // A non-default FPS or an already-frame-based project represents an
@@ -174,8 +176,17 @@
 
 
 
-  let timelineFpsManuallySet = hasExplicitTimelineFps(MaweBoot.DATA.timebase);
 
+
+  // Legacy projects keep their original session inference across mode switches.
+  // Persisted intent always wins, including after history restores timebase.
+  let legacyFpsManuallySet = hasExplicitTimelineFps(MaweBoot.DATA.timebase);
+
+  function timelineFpsIsUserSelected() {
+    const timebase = MaweBoot.DATA.timebase;
+    return timebase?.fps_source === 'auto' || timebase?.fps_source === 'user'
+      ? hasExplicitTimelineFps(timebase) : legacyFpsManuallySet;
+  }
 
   function captureProjectVideoDimensions(mediaElement) {
     if (!mediaElement || mediaElement !== MaweCoreState.player || mediaElement.tagName !== 'VIDEO') return false;
@@ -482,15 +493,23 @@
     const nextUnit = patch.unit === 'frames' || patch.unit === 'milliseconds'
       ? patch.unit : current.unit;
     const hasFpsPatch = Object.prototype.hasOwnProperty.call(patch, 'fps');
-    const mediaDefaultFps = !timelineFpsManuallySet
+    const mediaDefaultFps = !timelineFpsIsUserSelected()
       && !hasFpsPatch
       && current.unit !== 'frames'
       && nextUnit === 'frames'
       ? projectMediaVideoFps()
       : null;
     const nextFps = mediaDefaultFps ?? normalizeTimelineFps(patch.fps, current.fps);
+    const nextSource = hasFpsPatch ? 'user' : mediaDefaultFps !== null ? 'auto' : current.fps_source;
+    const next = { ...current, unit: nextUnit, fps: nextFps,
+      ...(nextSource === undefined ? {} : { fps_source: nextSource }) };
     if (current.unit === nextUnit && current.fps === nextFps) {
-      if (hasFpsPatch) timelineFpsManuallySet = true;
+      // A same-value submission changes intent only, never timing or offsets.
+      if (current.fps_source !== nextSource) {
+        MaweBoot.DATA.timebase = next;
+        MaweServerSave.projectImportDirty = true;
+        MaweServerSave.scheduleAutoSaveFlush();
+      }
       refreshTimelineSettingsUi();
       return;
     }
@@ -498,10 +517,9 @@
       refreshTimelineSettingsUi();
       return;
     }
-    if (hasFpsPatch) timelineFpsManuallySet = true;
     // 先按旧时间基准把当前工程的双份时间值同步，再决定新 FPS 下是否保留帧号。
     syncProjectTimebaseAndBindingOffsets(MaweBoot.DATA, { preferFrames: current.unit === 'frames' });
-    MaweBoot.DATA.timebase = { unit: nextUnit, fps: nextFps };
+    MaweBoot.DATA.timebase = next;
     // 变更 FPS 时保持媒体中的实际时间位置，再按新 FPS 重算独立帧字段；
     // 否则同一个帧号会因 FPS 改变而把字幕整体提前或推后。
     syncProjectTimebaseAndBindingOffsets(MaweBoot.DATA, { preferFrames: false });
@@ -550,8 +568,8 @@
     projectTimebase,
     hasExplicitTimelineFps,
     projectMediaVideoFps,
-    get timelineFpsManuallySet() { return timelineFpsManuallySet; },
-    set timelineFpsManuallySet(v) { timelineFpsManuallySet = v; },
+    get timelineFpsManuallySet() { return timelineFpsIsUserSelected(); },
+    set timelineFpsManuallySet(value) { legacyFpsManuallySet = Boolean(value); },
     captureProjectVideoDimensions,
     clearProjectVideoDimensions,
     syncProjectTimebase,
