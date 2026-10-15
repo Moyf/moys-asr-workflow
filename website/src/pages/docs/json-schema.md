@@ -863,18 +863,18 @@ source: "JSON_SCHEMA.md"
 
 生成后任选其一验证：
 
-### 方式 1：用 edit.py 直接生成 HTML
+### 方式 1：用本地 Server 打开工程
 
 ```bash
 cd <MAW 仓库目录>
-uv run python edit.py your_generated.mosp
+uv run --no-sync python server-editor/serve.py your_generated.mosp
 ```
 
-成功会生成 `your_generated.edit.html`。
+检查启动结果与字幕列表；需要媒体播放时，保留工程引用的媒体或用 `-m` 指定。2.0 起不再生成独立 `.edit.html`，旧 HTML 不承诺兼容新版工程。
 
 ### 方式 2：用空壳编辑器加载
 
-1. `file://` 双击打开本仓库根目录的 `blank-editor.html`
+1. 在本地应用打开空白编辑器，或运行 `uv run --no-sync python server-editor/serve.py --blank`
 2. 点「打开工程」选 `.mosp` 或 `.json` 工程文件
 3. 若弹出「文件格式不对，缺少 segments 字段」红色提示，说明顶层结构错误
 4. 若正常显示字幕列表，则格式合格

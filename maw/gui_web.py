@@ -3071,6 +3071,8 @@ class LauncherApi:
         return _open_existing_path(directory)
 
     def open_html(self, _payload: Mapping[str, object] | None = None) -> dict[str, object]:
+        if not standalone_editor_supported():
+            return {"ok": False, "error": RETIREMENT_MESSAGE}
         if self.result and self.result.html_path and self.result.html_path.exists():
             return _open_existing_path(self.result.html_path)
         return {"ok": False, "error": "No editor HTML yet."}
