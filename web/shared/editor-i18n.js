@@ -678,7 +678,7 @@
     '阴影距离': 'Shadow distance', '边框样式': 'Border style', '不透明底框': 'Opaque box', '左下': 'Bottom left', '中下': 'Bottom center',
     '右下': 'Bottom right', '左中': 'Middle left', '中中': 'Middle center', '右中': 'Middle right', '左上': 'Top left',
     '中上': 'Top center', '右上': 'Top right', '左边距': 'Left margin', '右边距': 'Right margin', '垂直边距': 'Vertical margin',
-    'ASS 预览': 'ASS preview', 'Aa 字幕预览 / 字幕样例': 'Aa subtitle preview / sample', 'ASS 输出方案': 'ASS export profile',
+    'ASS 预览': 'ASS preview', 'ASS 字幕预览 OwO': 'ASS subtitle preview OwO', 'ASS 输出方案': 'ASS export profile',
     'ASS 实际画面预览': 'Actual ASS frame preview',
     '在这里配置的覆盖标签会应用到每一句字幕上，例如批量淡入淡出。': 'Override tags configured here are applied to every cue, for example batch fade in and fade out.',
     '需要启用 ASS 字幕模式来预览效果。': 'Enable ASS subtitle mode to preview this style.',

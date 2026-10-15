@@ -2641,7 +2641,7 @@ test('shows independent extension preview controls with yellow defaults', async 
   await expect(page.locator('#extension-subtitle-preview-title')).toBeVisible();
   await expect(page.locator('#extension-subtitle-preview-settings')).toBeVisible();
   await expect(page.locator('#subtitle-color')).toHaveValue('#ffffff');
-  await expect(page.locator('#extension-subtitle-color')).toHaveValue('#eac953');
+  await expect(page.locator('#extension-subtitle-color')).toHaveValue('#f9ca1f');
   await expect(page.locator('#extension-subtitle-background-color')).toHaveValue('#000000');
   await page.locator('#extension-subtitle-font-size').selectOption('14');
   await expect(page.locator('#overlay-extension-text')).toHaveCSS('font-size', '14px');
@@ -4335,7 +4335,7 @@ test('ASS mode previews and exports extension cues with the shared extension sty
   expect(result.trackDebug).toEqual(['ok', 'ok', 'ok']);
   expect(result.mainNative).toBe(86);
   expect(result.extensionNative).toBe(64);
-  expect(result.extensionFill.toLowerCase()).toBe('#eac953');
+  expect(result.extensionFill.toLowerCase()).toBe('#f9ca1f');
   expect(result.extensionAlignment).toBe(2);
   // 底部对齐时主文本块在锚点上方：副字幕锚点低于主字幕锚点即为主下方。
   expect(result.extensionAnchor.y).toBeGreaterThan(result.mainAnchor.y);

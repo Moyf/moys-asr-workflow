@@ -3624,12 +3624,12 @@ test('ASS emphasis syntax colors only marked runs and preserves other export mod
     appearance: { ass_color_style: 'text' },
   };
   const ass = helpers.buildAssPayload(cue, options);
-  assert.match(ass, /前 \{\\1c&H000000FF&\\fs\d+\}重点\{\\1c&H0019A0C4&\\fs\d+\} 后 \{\\1c&H000000FF&\\fs\d+\}再次\{\\1c&H0019A0C4&\\fs\d+\}/);
+  assert.match(ass, /前 \{\\1c&H000000FF&\\fs\d+\}重点\{\\1c&H001FCAF9&\\fs\d+\} 后 \{\\1c&H000000FF&\\fs\d+\}再次\{\\1c&H001FCAF9&\\fs\d+\}/);
   assert.match(ass, /\\fs79/);
   const enlarged = helpers.buildAssPayload(cue, {
     ...options, assStyle: { ...options.assStyle, fontSize: 40, emphasisScale: 1.25 },
   });
-  assert.match(enlarged, /\{\\1c&H000000FF&\\fs50\}重点\{\\1c&H0019A0C4&\\fs40\}/);
+  assert.match(enlarged, /\{\\1c&H000000FF&\\fs50\}重点\{\\1c&H001FCAF9&\\fs40\}/);
   assert.doesNotMatch(ass, /\*\*/);
   const stroke = helpers.buildAssPayload(cue, {
     ...options, assStyle: { ...options.assStyle, emphasisStyle: 'stroke' },
@@ -3647,7 +3647,7 @@ test('ASS emphasis syntax colors only marked runs and preserves other export mod
     extensionSegments: [{ start: 0, end: 1000, text: '副 **重点**' }],
     overlaySegments: [{ start: 0, end: 1000, text: '叠 **重点**' }],
   });
-  assert.match(tracks, /Dialogue: 1,[^\n]*副 \{\\1c&H0000FF00&\\fs81\}重点\{\\1c&H0053C9EA&\\fs54\}/);
+  assert.match(tracks, /Dialogue: 1,[^\n]*副 \{\\1c&H0000FF00&\\fs81\}重点\{\\1c&H001FCAF9&\\fs54\}/);
   assert.match(tracks, /Dialogue: 2,[^\n]*叠 \{\\1c&H000000FF&\\fs\d+\}重点/);
   assert.equal(helpers.normalizeAssStyle({ emphasisScale: 1.27 }).emphasisScale, 1.25);
   assert.equal(helpers.normalizeAssStyle({ emphasisScale: 5 }).emphasisScale, 1.5);
@@ -3845,7 +3845,7 @@ test('builds ASS metadata and five palette styles at the source video resolution
   assert.match(ass, /PlayResX: 3840[\s\S]*PlayResY: 2160/);
   // 无 assProfile 时走 legacy 外观导出：预览字体键 'sans' 固定映射 Arial。
   assert.match(ass, /Style: Default,Arial,256,/);
-  assert.match(ass, /Style: YELLOW,Arial,256,&H0019A0C4,&H0019A0C4,/);
+  assert.match(ass, /Style: YELLOW,Arial,256,&H001FCAF9,&H001FCAF9,/);
   assert.match(ass, /Style: GREEN,Arial,256,&H006ABB66,&H006ABB66,/);
   assert.match(ass, /Style: RED,Arial,256,&H006F7FF0,&H006F7FF0,/);
   assert.match(ass, /Style: PURPLE,Arial,256,&H00E689BF,&H00E689BF,/);
@@ -3875,18 +3875,28 @@ test('migrates legacy builtin names while preserving custom names', () => {
   assert.equal(helpers.assProfileForId(renamed, 'ass').name, '我的方案');
 });
 
+test('preserves saved subtitle palette colors while applying new defaults to missing values', () => {
+  assert.equal(helpers.normalizeSubtitleColorPalette().yellow, '#f9ca1f');
+  assert.equal(helpers.normalizeSubtitleColorPalette({ yellow: '#c4a019' }).yellow, '#c4a019');
+  assert.equal(helpers.normalizeSubtitleColorPalette([{ name: 'yellow', value: '#c4a019' }]).yellow, '#c4a019');
+});
+
 test('migrates the legacy builtin extension style color while preserving custom colors', () => {
   const library = helpers.normalizeAssStyleLibrary({
     styles: [{ id: 'ass-extension', primaryColor: '#ffd34d' }],
     assProfiles: [{ id: 'ass' }],
   });
-  assert.equal(helpers.assStyleForId(library, 'ass-extension').primaryColor, '#eac953');
+  assert.equal(helpers.assStyleForId(library, 'ass-extension').primaryColor, '#f9ca1f');
 
   const customized = helpers.normalizeAssStyleLibrary({
     styles: [{ id: 'ass-extension', primaryColor: '#ff0000' }],
     assProfiles: [{ id: 'ass' }],
   });
   assert.equal(helpers.assStyleForId(customized, 'ass-extension').primaryColor, '#ff0000');
+  const previousDefault = helpers.normalizeAssStyleLibrary({
+    styles: [{ id: 'ass-extension', primaryColor: '#eac953' }],
+  });
+  assert.equal(helpers.assStyleForId(previousDefault, 'ass-extension').primaryColor, '#eac953');
 });
 
 test('migrates v1 emphasis defaults for builtins without changing custom or current values', () => {
@@ -3986,7 +3996,7 @@ test('uses the selected ASS profile style and adds every configured animation to
   const dialogue = ass.split('\n').filter((line) => line.startsWith('Dialogue:'));
   assert.equal(dialogue.length, 2);
   // color_underline 只控制 CSS 预览；ASS 导出的颜色映射不受它影响。
-  assert.match(dialogue[0], /\{\\fad\(120,240\)\\move\(100,200,300,400,50,900\)\\t\(10,800,1\.5,\\fs42\\pos\(10,20\)\)\}\{\\c&H0019A0C4&\}Host：\{\\c&H0019A0C4&\}你好/);
+  assert.match(dialogue[0], /\{\\fad\(120,240\)\\move\(100,200,300,400,50,900\)\\t\(10,800,1\.5,\\fs42\\pos\(10,20\)\)\}\{\\c&H001FCAF9&\}Host：\{\\c&H001FCAF9&\}你好/);
   assert.match(dialogue[1], /\{\\fad\(120,240\)\\move\(100,200,300,400,50,900\)\\t\(10,800,1\.5,\\fs42\\pos\(10,20\)\)\}第二句/);
 });
 
@@ -4025,7 +4035,7 @@ test('keeps speaker labels in the base colour when ASS palette colours are strok
     speakerLabelSeparator: '：',
   });
 
-  assert.match(ass, new RegExp(`Style: YELLOW,${helpers.ASS_DEFAULT_ASS_STYLE.fontName},${helpers.ASS_DEFAULT_ASS_STYLE.fontSize},[^\\n]*,&H0019A0C4`));
+  assert.match(ass, new RegExp(`Style: YELLOW,${helpers.ASS_DEFAULT_ASS_STYLE.fontName},${helpers.ASS_DEFAULT_ASS_STYLE.fontSize},[^\\n]*,&H001FCAF9`));
   assert.match(ass, /Dialogue: 0,0:00:00\.00,0:00:01\.00,YELLOW,Host,0,0,0,,\{\\c&H00563412&\}Host：\{\\c&H00563412&\}你好/);
 });
 
@@ -4051,7 +4061,7 @@ test('applies ASS speaker-only colour to the label without a palette style varia
   assert.doesNotMatch(ass, /Style: YELLOW,/);
   assert.match(
     ass,
-    /Dialogue: 0,0:00:00\.00,0:00:01\.00,Default,Host,0,0,0,,\{\\fad\(120,240\)\}\{\\c&H0019A0C4&\}Host：\{\\c&H00563412&\}你好/,
+    /Dialogue: 0,0:00:00\.00,0:00:01\.00,Default,Host,0,0,0,,\{\\fad\(120,240\)\}\{\\c&H001FCAF9&\}Host：\{\\c&H00563412&\}你好/,
   );
 
   const withoutLabels = helpers.buildAssPayload([

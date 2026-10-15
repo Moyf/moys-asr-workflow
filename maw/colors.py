@@ -5,15 +5,14 @@
 注入为 ``window.ASR_EDITOR_PALETTE``；JSON_SCHEMA.md 第四节的色值表
 与这里保持同步。
 
-五色明度（OKLCH L）以绿色为锚统一（L≈0.718），红/蓝/黄彩度随锚点
-收敛（C≈0.142），色相各自保留；色值最终以 HEX 落盘，OKLCH 仅作
-调色参考。
+红/蓝/紫沿用以绿色为锚的配色，黄色默认值为 #f9ca1f。色值最终
+以 HEX 落盘；已有工程存储的色值快照不随默认调色板迁移。
 """
 
 from __future__ import annotations
 
 COLOR_PALETTE: tuple[tuple[str, str], ...] = (
-    ("yellow", "#c4a019"),
+    ("yellow", "#f9ca1f"),
     ("green", "#66bb6a"),
     ("red", "#f07f6f"),
     ("purple", "#bf89e6"),
