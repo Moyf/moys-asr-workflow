@@ -70,6 +70,7 @@
 
 function applyCanonicalProject(data, filename, { repaired = false } = {}) {
   const timebase = MaweTimeline.normalizeTimelineTimebase(data.timebase);
+  window.AsrEditorUtils.migrateSubtitleGroups(data);
   projectBindingEpoch += 1;
   if (MaweBoot.SERVER_CONFIG) MaweBoot.SERVER_CONFIG.thumbnailBinding = '';
   MaweCoreState.waveformEditor?.setThumbnailBinding('');
@@ -85,7 +86,8 @@ function applyCanonicalProject(data, filename, { repaired = false } = {}) {
   projectExtensionFields = Object.fromEntries(
     Object.entries(data).filter(([key]) => !CANONICAL_PROJECT_FIELDS.has(key)),
   );
-  MaweBoot.DATA.schema = window.AsrEditorUtils.PROJECT_SCHEMA;
+  MaweBoot.DATA.schema = data.schema || window.AsrEditorUtils.PROJECT_SCHEMA;
+  MaweBoot.DATA.subtitle_groups = window.AsrEditorUtils.cloneJsonValue(data.subtitle_groups);
   MaweBoot.DATA.media = typeof data.media === 'string' ? data.media : '';
   MaweBoot.DATA.language = data.language || '';
   MaweBoot.DATA.language_source = typeof data.language_source === 'string' ? data.language_source : undefined;
@@ -333,6 +335,8 @@ function applyCanonicalProject(data, filename, { repaired = false } = {}) {
   MaweCuePanelState.currentCuePanelTrackId = null;
   MaweCuePanelState.resetCuePanelEditState();
   return MaweCommands.run('替换字幕', (command) => {
+    delete MaweBoot.DATA.subtitle_groups;
+    MaweBoot.DATA.schema = window.AsrEditorUtils.PROJECT_SCHEMA;
     MaweBoot.DATA.segments.length = 0;
     (segments || []).forEach((segment) => MaweBoot.DATA.segments.push({ ...segment }));
     // 替换语义同时接管叠加轨：导入双层 SRT 时第二层落到叠加轨；

@@ -8,6 +8,10 @@
 
 
   function syncTimelineGroupRanges() {
+  if (MaweBoot.DATA.subtitle_groups) {
+    window.AsrEditorUtils.refreshSubtitleGroupViews(MaweBoot.DATA);
+    return;
+  }
   function sync(segments, headField, refField) {
     segments.forEach((segment, headIdx) => {
       const head = segment[headField];

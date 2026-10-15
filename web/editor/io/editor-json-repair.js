@@ -30,6 +30,7 @@
   const out = {
     schema: window.AsrEditorUtils.PROJECT_SCHEMA,
     ...projectExtensionFields,
+    subtitle_groups: window.AsrEditorUtils.cloneJsonValue(MaweBoot.DATA.subtitle_groups),
     media: MaweBoot.DATA.media || '',
     language: MaweBoot.DATA.language || '',
     model: MaweBoot.DATA.model || '',
@@ -37,6 +38,7 @@
     timebase: { ...MaweTimeline.projectTimebase() },
     segments: MaweBoot.DATA.segments.map(s => {
       const o = {
+        ...window.AsrEditorUtils.cloneJsonValue(s),
         id: s.id,
         start: s.start, end: s.end, text: s.text,
         start_frame: s.start_frame, end_frame: s.end_frame,
@@ -78,6 +80,7 @@
       source_name: track.source_name || '',
       segments: (track.segments || []).map((segment) => {
         const outSegment = {
+          ...window.AsrEditorUtils.cloneJsonValue(segment),
           id: segment.id,
           start: segment.start,
           end: segment.end,
@@ -109,6 +112,7 @@
       enabled: overlay.enabled === true,
       segments: (overlay.segments || []).map((segment) => {
         const outSegment = {
+          ...window.AsrEditorUtils.cloneJsonValue(segment),
           id: segment.id,
           start: segment.start,
           end: segment.end,
@@ -153,6 +157,7 @@
     preview.extension_subtitle = { ...MaweAppearance.getStoredExtensionSubtitleAppearance() };
   }
   out.preview = preview;
+  window.AsrEditorUtils.serializeSubtitleGroups(out);
   return MaweState.persistenceSnapshot(out);
 }
 

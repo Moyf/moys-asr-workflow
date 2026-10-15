@@ -119,3 +119,20 @@ test('save-as acknowledges its snapshot after close, without clearing highlights
   assert.equal(c.MaweState.hasProjectChanges(), true);
   assert.equal(c.MaweBoot.DATA.segments[0]._dirty, true);
 });
+
+
+test('a failed old handle save cannot show an error on a different project', async () => {
+  const c = fixture(), write = deferred(), hints = [];
+  c.MaweHint.flashHint = message => hints.push(message);
+  c.MaweServerSave.projectFileHandle = { name: 'old-handle.mosp' };
+  c.MaweHost.files.writeBlob = () => write.promise;
+  const saving = c.MaweProjectSave.saveCurrentProject();
+  c.MaweState.beginProjectSession();
+  c.MaweState.establishProjectCheckpoint();
+  c.MaweBoot.PROJECT_NAME = 'new';
+  write.reject(new Error('old handle failed'));
+  assert.equal(await saving, false);
+  assert.deepEqual(hints, []);
+  assert.equal(c.MaweBoot.PROJECT_NAME, 'new');
+  assert.equal(c.MaweState.hasProjectChanges(), false);
+});

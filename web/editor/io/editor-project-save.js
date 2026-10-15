@@ -142,6 +142,7 @@ const handle = MaweServerSave.projectFileHandle;
 await MaweHost.files.writeBlob(handle, () => new Blob([projectJson], { type: 'application/json;charset=utf-8' }));
 return markProjectSaved(handle.name, null, { silent, contentFingerprint, epoch });
     } catch (error) {
+      if (epoch !== MaweState.projectEpoch) return false;
       MaweHint.flashHint(`保存失败：${error?.message || error}`, 'warning');
       return false;
     } finally {

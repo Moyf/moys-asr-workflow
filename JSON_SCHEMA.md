@@ -16,7 +16,37 @@ Python `maw.project_boundary.prepare_project` 与浏览器 `MaweProjectValidatio
 
 可只读检查工程：`python -m maw.project_boundary project.mosp`；加 `--strict` 禁止时间修复。输出 JSON 报告，拒绝时退出码 2，不写源文件。共享语料见 `tests/fixtures/project-boundary.json`，严格校验与导入修复分别验证；CLI、Server、浏览器导入采用同一保守边界。
 
-Gap provenance/兼容投影、第三方扩展与旧缓存继续按原契约读取；缓存仍在写出时剥离。此边界不升级 schema，不替换保存的原子写入和备份。
+Gap provenance/兼容投影、第三方扩展与旧缓存继续按原契约读取；缓存仍在写出时剥离。校验边界本身保留输入 schema；独立组迁移及编辑器保存按下节写 v2，不替换原子写入和备份。
+## v2 独立颜色 / 表情包组
+
+本地编辑器继续读取缺 schema 和 `moy.asr.project.v1` 工程，保存时写 `moy.asr.project.v2`。Python 生成器可继续生成 v1；读写 v2 时必须保留版本，禁止降为 v1。未知版本拒绝写入。旧客户端不能编辑 v2；请保留原始旧工程或备份，不向旧客户端承诺兼容。
+
+v2 保留顶层 `segments`、`overlay_track`、`multi_subtitle.tracks` 和现有 bindings 容器。新增必填 `subtitle_groups`：
+
+```json
+{
+  "schema": "moy.asr.project.v2",
+  "subtitle_groups": {
+    "next_id": 2,
+    "color": [{"id": "color-1", "value": {"name": "blue", "value": "#3388ff"}}],
+    "sticker": [{"id": "sticker-1", "value": {"name": "cat", "rel": "cat.png"}}]
+  },
+  "segments": [{"id": "cue-a", "start": 1000, "end": 3000, "text": "甲", "sticker_group_id": "sticker-1"}],
+  "overlay_track": {"enabled": true, "segments": [{"id": "cue-b", "start": 5000, "end": 10000, "text": "乙", "sticker_group_id": "sticker-1"}]}
+}
+```
+
+- 各轨字幕 `id` 在整个工程内唯一；段上的 `color_group_id` / `sticker_group_id` 引用对应组表。组 ID 在所属类型内唯一，不能用同名素材或颜色推断组。`next_id` 是新建组的递增计数，随工程和撤销快照保存。
+- `value` 保存完整颜色 / 素材属性及其扩展字段；必须有字符串 `name`。组内不存 `start/end`，其范围是所有成员的最早 `start` 到最晚 `end`。字幕 1–3 / 5–7 / 8–10 秒的一组连续显示 1–10 秒；末条改为 12 秒即覆盖至 12 秒。
+- 禁用成员保留关系并参与范围；全部成员禁用时不显示或导出表情。换轨不拆组；删除头或中间成员后剩余成员仍同组。清除属性只移除所选成员，空组在编辑器中删除。
+- 拆分两侧继承原组。同组合并继承；不同组或混有无组字幕时，合并结果不继承该种组关系，未参与合并的成员保留原组。不同组即使素材同名也不合并。重复导入为输入组分配新 ID，避免与当前工程误关联。
+- v1 迁移先在原轨内数组解析 `headIdx`，再规范 ID；跨轨重复字幕 ID 确定性重映射，并更新 bindings。旧ref的第三方附加字段保存在对应段的可选 `color_group_metadata` / `sticker_group_metadata` 对象中（不含旧name/headIdx）；现有同名字段冲突时拒绝迁移而不覆盖。重映射记录在可选 `subtitle_group_migration.remapped_ids`（track/index/from/to）。失效引用或歧义绑定报告错误，不按名称猜引用。
+- v2 落盘不写 `color` / `color_ref` / `sticker` / `sticker_ref`；编辑器内部可生成显示投影，投影的下标与范围不构成持久化关系。三轨共同保留 items、帧、speaker、disabled、assOverride.pos 和第三方扩展。
+- 表情预览、共享时间线导出和 OTIO 按组连续区间输出。重叠组按稳定表顺序显示；单轨 OTIO 遇重叠继续报错。Resolve JSON 使用 `moy.asr_subtitle_editor.resolve.v2`，在顶层 `stickers` 输出连续组区间（group_id/start_ms/end_ms/素材属性），段上保留组 ID；旧 Resolve v1 消费端需适配。
+
+文稿匹配读取并保留 v2；沿既有等条数槽位继承非时间属性。对带独立组且会改变条数的文稿匹配，当前明确拒绝生成有损结果，原工程保留；可先在编辑器中拆合。该限制不影响编辑器正常拆分、合并或重新断句。
+
+以下 v1 字段示例与 headIdx 约束用于历史输入兼容；v2 颜色 / 表情关系以本节为准。整数毫秒、字词、Gap、样式和时间基准的其余契约继续适用。
 
 ## 一、顶层结构
 
@@ -64,7 +94,7 @@ Gap provenance/兼容投影、第三方扩展与旧缓存继续按原契约读�
 
 | 字段 | 类型 | 必填 | 说明 |
 |---|---|---|---|
-| `schema` | `string` | 否（写出时必填） | 当前值为 `moy.asr.project.v1`。没有该字段的历史工程按 v1 读取并在下次保存时补写；无法识别的版本会被拒绝，防止旧客户端破坏未来格式 |
+| `schema` | `string` | 否（写出时必填） | 支持 `moy.asr.project.v1` 与带独立组表的 `moy.asr.project.v2`，详见上文。没有该字段的历史工程按 v1 读取并在下次保存时补写；无法识别的版本会被拒绝，防止旧客户端破坏未来格式 |
 | `segments` | `array<object>` | **必填** | 字幕段数组。**缺失或不是数组时，页面直接弹「文件格式不对，缺少 segments 字段」并拒绝加载** |
 | `media` | `string` | 否 | 媒体文件路径（绝对/相对均可）。便携 HTML 会在“打开工程”时用它的文件名匹配同一次选择的媒体；只选工程文件时会提示用户继续选择媒体。浏览器安全限制下不能自行读取该路径或跳转其目录。服务器编辑器可按该路径自动加载 |
 | `language` | `string` | 否 | 统一后的语言代码，如 `zh`、`en`、`ja`；无法确定时为空字符串。仅用于显示与选择切句计量方式 |
@@ -572,7 +602,7 @@ Gap provenance/兼容投影、第三方扩展与旧缓存继续按原契约读�
 - 主轨和扩展轨段均使用不重复的稳定字符串 ID；当前规范化会为缺失 ID 的输入补齐，并在导出/保存时写入。主轨按 `main-001`、扩展轨按 `<track-id>-segment-001` 的顺序生成；如果生成值与后续显式 ID 冲突，会使用确定性的 `-generated` 后缀。浏览器与 Python 服务端使用同一规则。
 - 当前 MVP 强制每个绑定一对一；数组形式保留给未来一对多关系，但当前校验要求数组长度均为 1，且一个端点不能重复绑定。
 - 自动导入按段级时间码匹配：时间区间有交集，且开始/结束时间差均不超过 `300ms`；冲突选择总差值最小的候选。未匹配段保留，可手动绑定。
-- 副字幕段也可以保存 `color` / `color_ref`；其中 `color_ref.headIdx` 是当前副字幕数组中的 0-based 整数下标，并且必须指向更早的颜色 head。交换主副字幕时，编辑器按绑定关系将主轨颜色映射到新的主轨，同时保留移到副轨的原主轨颜色信息。
+- 副字幕段也可以保存 `color` / `color_ref`；其中 `color_ref.headIdx` 是当前副字幕数组中的 0-based 整数下标，并且必须指向更早的颜色 head。交换主副字幕时，各字幕属性跟随原字幕，不自动映射颜色。
 - SRT 导入没有字词时间码，因此扩展段通常不带 `items`；mosp/json 导入和主副交换可以带上可选 `items`，保存、加载和再次交换时保留它们。
 - `continuous`（字符型）允许字符边界，`word`（单词型）只允许空格或安全标点附近的边界，禁止拆碎单词。切分时会清理断点两侧相邻的中英文逗号、句号及空白；两种模式也分别决定字数统计规则。
 - `enabled: false` 时工程仍保留轨道、绑定、语言类型和 ID；主轨 SRT 导出语义不变，扩展轨使用独立 SRT 导出。

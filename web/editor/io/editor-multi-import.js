@@ -144,9 +144,9 @@
     multi.tracks || [], 'extension-1', 'extension',
   );
   const extensionSegments = pending.segments.map((segment, index) => ({
-    ...segment,
+    ...window.AsrEditorUtils.cloneJsonValue(segment),
     id: MULTI_SUBTITLE_UTILS.uniqueStableSegmentId(
-      pending.segments.slice(0, index), `${trackId}-segment-${String(index + 1).padStart(3, '0')}`, `${trackId}-segment`,
+      [...window.AsrEditorUtils.subtitleGroupTracks(MaweBoot.DATA).flatMap(t => t.segments), ...pending.segments.slice(0, index)], `${trackId}-segment-${String(index + 1).padStart(3, '0')}`, `${trackId}-segment`,
     ),
     _dirty: true,
   }));
@@ -172,6 +172,15 @@
       else multi.tracks.push(track);
     } else {
       multi.tracks = [track, ...(multi.tracks || []).filter((candidate) => candidate.id !== trackId)];
+    }
+    extensionSegments.forEach(s => { delete s.color_group_id; delete s.sticker_group_id; });
+    for (const kind of ['color', 'sticker']) {
+      const sourceGroups = pending.segments.subtitle_groups?.[kind] || [];
+      const members = sourceGroups.map(group => ({ group,
+        indexes: pending.segments.map((s, i) => s[`${kind}_group_id`] === group.id ? i : -1).filter(i => i >= 0) }));
+      for (const { group, indexes } of members) {
+        if (indexes.length) window.AsrEditorUtils.assignSubtitleGroup(MaweBoot.DATA, extensionSegments, indexes, kind, group.value);
+      }
     }
     match.matches.forEach((candidate) => {
       const main = MaweBoot.DATA.segments[candidate.mainIndex];
@@ -264,6 +273,7 @@
         return false;
       }
       const data = imported.project;
+      window.AsrEditorUtils.migrateSubtitleGroups(data, { fromFile: true });
       MaweJsonRepair.noteImportReport(imported.changes);
 const contentRepaired = MaweJsonRepair.importRequiresSave(imported.changes);
 MaweProjectLoad.applyCanonicalProject(data, file.name, { repaired: contentRepaired });

@@ -22,6 +22,11 @@
       "exportName": "createUtilsModule"
     },
     {
+      "file": "shared/utils/subtitle-groups.js",
+      "name": "utils-subtitle-groups",
+      "exportName": "createUtilsModule"
+    },
+    {
       "file": "shared/utils/fonts.js",
       "name": "utils-fonts",
       "exportName": "createUtilsModule"

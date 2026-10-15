@@ -9,6 +9,7 @@ from typing import Any
 
 from maw.media import probe_audio_tracks, probe_video_fps
 from maw.project import PROJECT_SCHEMA, ProjectValidationError, ProjectValidationFailed
+from maw.subtitle_groups import GROUP_PROJECT_SCHEMA
 
 # 工程级波形缓存键。生成端把它们合并进运行态工程供页面即时使用，落盘边界
 # （serialize_mosp / server 保存）统一剥掉：缓存真源是媒体旁的 .quapeaks /
@@ -143,8 +144,8 @@ def serialize_mosp(
     Validation and normalization remain the responsibility of the caller.
     """
 
-    if "schema" in project and project["schema"] != PROJECT_SCHEMA:
-        raise ProjectValidationFailed((ProjectValidationError("$.schema", f"must be {PROJECT_SCHEMA}"),))
+    if "schema" in project and project["schema"] not in (PROJECT_SCHEMA, GROUP_PROJECT_SCHEMA):
+        raise ProjectValidationFailed((ProjectValidationError("$.schema", f"must be {PROJECT_SCHEMA} or {GROUP_PROJECT_SCHEMA}"),))
     enriched = enrich_project_media_metadata(
         project,
         media_path,
@@ -155,9 +156,8 @@ def serialize_mosp(
         merged_metadata = dict(metadata) if isinstance(metadata, Mapping) else {}
         merged_metadata["selected_audio_track"] = selected_audio_track
         enriched["media_metadata"] = merged_metadata
-    enriched.pop("schema", None)
-    canonical = {"schema": PROJECT_SCHEMA, **enriched}
-    canonical = strip_inline_caches(canonical)
+    schema = enriched.pop("schema", PROJECT_SCHEMA)
+    canonical = strip_inline_caches({"schema": schema, **enriched})
     return json.dumps(canonical, ensure_ascii=False, indent=2) + "\n"
 
 
