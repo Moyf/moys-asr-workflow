@@ -341,10 +341,10 @@
               </div>
               <div id="generateThumbnailsField" class="field">
                 <label class="check-field" for="generateThumbnails" data-i18n-title="generate_thumbnails_title">
-                  <input id="generateThumbnails" type="checkbox">
-                  <span data-i18n="generate_thumbnails">生成视频缩略图</span>
+                  <input id="generateThumbnails" type="checkbox" checked>
+                  <span data-i18n="generate_thumbnails">生成高精度画面预览图</span>
                 </label>
-                <p class="hint" data-i18n="generate_thumbnails_hint">转写时为原视频生成 .mothumbs 画面缓存，供编辑器画面带使用；未勾选时编辑器首次打开会按需补帧。</p>
+                <p class="hint" data-i18n="generate_thumbnails_hint">转写时先生成秒级关键帧底图（总是开启），再额外解码精确网格画面供画面带铺满使用；未勾选时编辑器仍可按需补帧。</p>
               </div>
               <div id="debugRawField" class="field">
                 <label class="check-field" for="debugRaw" data-i18n-title="debug_raw_title">

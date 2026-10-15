@@ -95,32 +95,33 @@ test('a replaced binding discards its delayed status and releases only the old l
   h.controller.close();
 });
 
-test('projects without a persisted base start hidden until the user opts in',()=>{
+test('display mode defaults to keyframe marks and falls back to hidden without a base',()=>{
   const cases=[
-    [{thumbnailBaseReady:false},{},{},false,'no base and no preference starts hidden'],
-    [{thumbnailBaseReady:false},{'mawe-filmstrip-visible':'true'},{},true,'an explicit opt-in wins over the missing base'],
-    [{thumbnailBaseReady:false},{'mawe-filmstrip-visible':'false'},{},false,'an explicit opt-out still hides'],
-    [{thumbnailBaseReady:true},{},{},true,'a persisted base keeps the current default'],
-    [{},{},{},true,'unknown readiness keeps the current default'],
+    [{thumbnailBaseReady:false},{},{},'hidden','no base and no preference starts hidden'],
+    [{thumbnailBaseReady:false},{'mawe-filmstrip-mode':'strip'},{},'strip','an explicit mode wins over the missing base'],
+    [{thumbnailBaseReady:false},{'mawe-filmstrip-mode':'hidden'},{},'hidden','an explicit opt-out still hides'],
+    [{thumbnailBaseReady:true},{},{},'marks','a persisted base defaults to keyframe marks'],
+    [{},{},{},'marks','unknown readiness defaults to keyframe marks'],
   ];
   for(const [overrides,stored,,expected,message] of cases){
     const h=harness([],overrides,stored);
-    assert.equal(h.controller.enabled,expected,message);
+    assert.equal(h.controller.mode,expected,message);
     h.controller.close();
   }
   const h=harness([],{thumbnailBaseReady:false});
   h.controller.setEnabled(true);
-  assert.equal(h.values.get('mawe-filmstrip-visible'),'true','the explicit choice is persisted');
+  assert.equal(h.values.get('mawe-filmstrip-mode'),'marks','the explicit choice is persisted');
   h.controller.close();
 });
 
 test('the decode switch persists and re-plans the lease with decode:false',async()=>{
   const h=harness(); h.respond(call=>manifest(call));
   h.controller.setBinding('video-a'); await h.flush();
+  h.controller.setMode('strip');
   h.controller.setView([{start:0,end:10000,width:1000}],20000); await h.advance(200);
   const demands=()=>h.calls.filter(call=>call.body?.visible);
   assert.ok(demands().length>0);
-  assert.equal(demands().at(-1).body.decode,true,'default keeps the current real-time behavior');
+  assert.equal(demands().at(-1).body.decode,true,'film strip keeps the current real-time behavior');
   h.controller.setDecodeEnabled(false); await h.advance(200);
   assert.equal(h.values.get('mawe-filmstrip-decode'),'false');
   const hiddenView=demands().at(-1).body.view;
@@ -131,6 +132,31 @@ test('the decode switch persists and re-plans the lease with decode:false',async
   h.controller.setDecodeEnabled(true); await h.advance(200);
   assert.equal(demands().at(-1).body.decode,true);
   assert.ok(demands().at(-1).body.view>hiddenView,'re-enabling re-plans with a newer view');
+  h.controller.close();
+});
+
+test('keyframe marks mode never joins a decode batch and still reads cached samples',async()=>{
+  const h=harness(); h.respond(call=>manifest(call));
+  h.controller.setBinding('video-a'); await h.flush();
+  h.controller.setView([{start:0,end:10000,width:1000}],20000); await h.advance(200);
+  const demands=()=>h.calls.filter(call=>call.body?.visible);
+  assert.equal(demands().at(-1).body.decode,false,'marks mode is cache-only by design');
+  h.controller.setDecodeEnabled(true);
+  await h.advance(200);
+  assert.equal(demands().at(-1).body.decode,false,'the decode toggle does not apply to marks mode');
+  h.controller.setMode('strip'); await h.advance(200);
+  assert.equal(demands().at(-1).body.decode,true,'switching to film strip resumes decode participation');
+  assert.equal(h.values.get('mawe-filmstrip-mode'),'strip');
+  h.controller.close();
+});
+
+test('picture exposes the held frame position for marks deduplication',async()=>{
+  const h=harness();
+  h.respond(call=>manifest(call,{samples:[{requested_ms:2000,actual_pts_ms:1500,status:'preview',asset:'held',crop_rect:[0,0,160,90],cache_revision:'r1'}]}));
+  h.controller.setBinding('video-a'); await h.flush();
+  h.controller.setView([{start:0,end:10000,width:1000}],20000); await h.advance(200);
+  const picture = h.controller.picture(2000, 4000);
+  assert.equal(picture.actual,1500,'preview samples carry their keyframe position');
   h.controller.close();
 });
 
@@ -150,7 +176,7 @@ test('sprites and frames share a byte cap and over-budget assets do not read aga
   h.controller.setEnabled(false); await h.flush();
   assert.ok(h.controller.bytes>0,'hidden pictures remain in the bounded reusable LRU');
   assert.equal(h.controller.visible,false);
-  assert.equal(h.values.get('mawe-filmstrip-visible'),'false');
+  assert.equal(h.values.get('mawe-filmstrip-mode'),'hidden');
   h.controller.close();
   assert.equal(h.controller.bytes,0, 'page close releases retained pictures');
 });
@@ -362,17 +388,17 @@ test('play and pause events capture their current source head before sending the
   } finally {globalThis.document=previousDocument;globalThis.window=previousWindow;}
 });
 
-test('thumbnail settings wire both toggles and explain cache-only status',async()=>{
+test('thumbnail settings wire the mode select and decode toggle with marks-aware status',async()=>{
   const source=fs.readFileSync(new URL('../web/editor/media/waveform/thumbnails.js',import.meta.url),'utf8');
   const {createWaveformModule}=await import(`data:text/javascript;base64,${Buffer.from(source).toString('base64')}`);
   const elements={
-    'waveform-show-thumbnails':{checked:false,disabled:true,parentElement:{title:''},addEventListener(type,fn){this[`on${type}`]=fn;}},
+    'waveform-thumbnail-mode':{value:'hidden',disabled:true,parentElement:{title:''},addEventListener(type,fn){this[`on${type}`]=fn;}},
     'waveform-thumbnail-decode':{checked:false,disabled:false,addEventListener(type,fn){this[`on${type}`]=fn;}},
     'waveform-thumbnail-status':{textContent:''},
   };
   const calls=[];
-  const controller={enabled:true,decodeEnabled:false,state:'ready',persisted:true,
-    setPlayhead(){},setPlaying(){},setEnabled(value){calls.push(['enabled',value]);},setDecodeEnabled(value){calls.push(['decode',value]);}};
+  const controller={mode:'marks',enabled:true,decodeEnabled:false,state:'ready',persisted:true,
+    setPlayhead(){},setPlaying(){},setEnabled(value){calls.push(['enabled',value]);},setDecodeEnabled(value){calls.push(['decode',value]);},setMode(value){calls.push(['mode',value]);}};
   const previousDocument=globalThis.document, previousWindow=globalThis.window;
   globalThis.document={getElementById:id=>elements[id]??null,addEventListener(){}};
   globalThis.window={addEventListener(){},MaweBoot:{SERVER_CONFIG:{thumbnailBinding:'video-a'}}};
@@ -381,17 +407,20 @@ test('thumbnail settings wire both toggles and explain cache-only status',async(
       localizedWaveformMessage:(zh)=>zh});
     const editor={renderedRows:[],setThumbnailBinding(){}};
     methods.initThumbnails.value.call(editor);
-    assert.equal(elements['waveform-show-thumbnails'].checked,true);
-    assert.equal(elements['waveform-thumbnail-decode'].checked,false,'the checkbox mirrors the controller state');
+    assert.equal(elements['waveform-thumbnail-mode'].value,'marks','the select mirrors the controller mode');
+    assert.equal(elements['waveform-thumbnail-decode'].checked,false,'the decode checkbox mirrors the controller state');
     elements['waveform-thumbnail-decode'].onchange.call(elements['waveform-thumbnail-decode']);
     assert.deepEqual(calls,[['decode',false]],'the decode checkbox forwards its checked state');
+    elements['waveform-thumbnail-mode'].value='hidden';
+    elements['waveform-thumbnail-mode'].onchange.call(elements['waveform-thumbnail-mode']);
+    assert.deepEqual(calls,[['decode',false],['mode','hidden']],'the mode select forwards its value');
     methods.updateThumbnailStatus.value.call(editor);
-    assert.equal(elements['waveform-thumbnail-status'].textContent,'仅显示缓存画面，不实时补帧');
-    assert.equal(elements['waveform-thumbnail-decode'].disabled,false,'the decode toggle stays usable while pictures are shown');
-    controller.enabled=false;
+    assert.equal(elements['waveform-thumbnail-status'].textContent,'显示关键帧标记');
+    assert.equal(elements['waveform-thumbnail-mode'].disabled,false);
+    assert.equal(elements['waveform-thumbnail-decode'].disabled,true,'decode never applies to marks mode');
+    controller.mode='hidden';
     methods.updateThumbnailStatus.value.call(editor);
     assert.equal(elements['waveform-thumbnail-status'].textContent,'视频画面已隐藏');
-    assert.equal(elements['waveform-thumbnail-decode'].disabled,true,'the decode toggle disables with the display toggle');
-    assert.equal(elements['waveform-show-thumbnails'].parentElement.title,'视频画面已隐藏');
+    assert.equal(elements['waveform-thumbnail-mode'].parentElement.title,'视频画面已隐藏');
   } finally {globalThis.document=previousDocument;globalThis.window=previousWindow;}
 });

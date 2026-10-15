@@ -124,8 +124,8 @@ def embed_media_caches(
     与工程内的 spectral payload。
 
     ``generate_thumbnails`` 关闭（或环境变量 ``MAW_MEDIA_THUMBNAILS=0``，Launcher
-    用它把「生成视频缩略图」开关穿透转写子进程边界）时跳过整个画面缓存阶段。
-    编辑器打开工程后仍可在画面带里按需补帧。
+    用它把「生成高精度画面预览图」开关穿透转写子进程边界）时跳过精确网格阶段；
+    关键帧底图不受它影响，总是生成。编辑器打开工程后仍可按需补帧。
     """
     if not isinstance(audio_track, int) or isinstance(audio_track, bool) or audio_track < 0:
         raise ValueError("audio_track must be a non-negative integer")
@@ -279,11 +279,9 @@ def embed_media_caches(
     thumbnail_manifest = None
     thumbnail_error = None
     if generate_thumbnails and os.environ.get("MAW_MEDIA_THUMBNAILS", "1") == "0":
-        # Launcher「生成视频缩略图」默认关闭：通过子进程环境变量穿透转写管线，
-        # 各 provider CLI 无需逐一透传该开关。
+        # 「生成高精度画面预览图」开关经子进程环境变量穿透转写管线，各 provider
+        # CLI 无需逐一透传；关键帧底图不受它影响，总是生成。
         generate_thumbnails = False
-    if not generate_thumbnails:
-        print("[thumbnails] 已按设置跳过画面缓存生成")
     try:
         from maw.thumbnail_jobs import build_base
         from maw import thumbnail_cache
@@ -296,22 +294,24 @@ def embed_media_caches(
                 limit=8, exclude_paths=current)
             if cleaned["removed_count"]:
                 print(f"[thumbnails] 已回收 {cleaned['removed_count']} 份过期画面缓存")
-        if generate_thumbnails:
-            # Original video only: a derived WAV is never a thumbnail fallback.
-            # Normal Launcher/CLI callers use stdout, captured by their existing log UI.
-            # Keep explicit callbacks unchanged for embedded callers.
-            progress = thumbnail_progress if thumbnail_progress is not None else lambda message: print(message, flush=True)
-            thumbnail_manifest = build_base(source_path, cancel=cancel,
-                progress=progress, ffmpeg_path=ffmpeg_bin)
-            if thumbnail_manifest is not None:
-                if thumbnail_manifest.get("cache_hit"):
-                    print("[thumbnails] 已复用原视频基础画面缓存")
-                elif thumbnail_manifest.get("state") == "unavailable":
-                    print("[thumbnails] 无视频画面，已跳过")
-                else:
-                    status = thumbnail_manifest.get("state", "ready")
-                    persisted = "已保存" if thumbnail_manifest.get("persisted", True) else "仅本次会话"
-                    print(f"[thumbnails] 原视频画面缓存: {status}（{persisted}）")
+        # Original video only: a derived WAV is never a thumbnail fallback.
+        # Normal Launcher/CLI callers use stdout, captured by their existing log UI.
+        # Keep explicit callbacks unchanged for embedded callers.
+        progress = thumbnail_progress if thumbnail_progress is not None else lambda message: print(message, flush=True)
+        thumbnail_manifest = build_base(source_path, cancel=cancel,
+            progress=progress, ffmpeg_path=ffmpeg_bin, exact=generate_thumbnails)
+        if thumbnail_manifest is not None:
+            if thumbnail_manifest.get("cache_hit"):
+                print("[thumbnails] 已复用原视频画面缓存")
+            elif thumbnail_manifest.get("state") == "unavailable":
+                print("[thumbnails] 无视频画面，已跳过")
+            elif thumbnail_manifest.get("tier") == "keyframes":
+                note = "" if generate_thumbnails else "（已按设置跳过高精度画面预览图）"
+                print(f"[thumbnails] 关键帧底图完成：{thumbnail_manifest.get('keyframe_count', 0)} 格{note}")
+            else:
+                status = thumbnail_manifest.get("state", "ready")
+                persisted = "已保存" if thumbnail_manifest.get("persisted", True) else "仅本次会话"
+                print(f"[thumbnails] 原视频画面缓存: {status}（{persisted}）")
     except Exception as error:
         thumbnail_error = error
         print(f"[thumbnails] 警告: {error}；已跳过画面缓存")

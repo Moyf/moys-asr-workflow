@@ -1248,7 +1248,7 @@ class EditorServer(ThreadingHTTPServer):
         if not path:
             return False
         try:
-            return thumbnail_cache.load_base(path) is not None
+            return thumbnail_cache.has_cached_frames(path)
         except (OSError, ValueError):
             return False
 

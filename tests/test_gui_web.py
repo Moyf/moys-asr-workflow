@@ -1710,7 +1710,7 @@ class GuiWebBridgeTests(CompactContainerAssertions, unittest.TestCase):
             media.resolve(),
             source_media_path=media.resolve(),
             generate_spectral=True,
-            generate_thumbnails=False,
+            generate_thumbnails=True,
             ffmpeg_bin=str(ffmpeg),
             audio_track=2,
             default_audio_track=1,
@@ -4809,9 +4809,11 @@ class GuiWebBridgeTests(CompactContainerAssertions, unittest.TestCase):
             "apiKey": "sk-test",
         }
 
-        self.assertFalse(_request_from_payload(payload, self.env_path).generate_thumbnails)
-        self.assertTrue(
-            _request_from_payload({**payload, "generateThumbnails": True}, self.env_path).generate_thumbnails
+        self.assertFalse(_request_from_payload(payload, self.env_path).generate_thumbnails is not True)
+        self.assertTrue(_request_from_payload(payload, self.env_path).generate_thumbnails,
+            "旧载荷缺省该字段时按默认开启处理")
+        self.assertFalse(
+            _request_from_payload({**payload, "generateThumbnails": False}, self.env_path).generate_thumbnails
         )
 
     def test_request_from_payload_enables_speaker_colors_only_for_selected_model(self) -> None:
@@ -5951,7 +5953,7 @@ class LauncherAssetContractTests(CompactContainerAssertions, unittest.TestCase):
         self.assertIn('id="generateThumbnails" type="checkbox"', page)
         self.assertIn('id="generateThumbnailsField"', page)
         thumbnails_block = page[page.index('id="generateThumbnailsField"'):page.index('id="debugRawField"')]
-        self.assertNotIn("checked", thumbnails_block, "生成视频缩略图必须默认不勾选")
+        self.assertIn("checked", thumbnails_block, "生成高精度画面预览图默认勾选")
         self.assertIn('class="segmentation-row segmentation-character-row"', page)
         self.assertIn('class="segmentation-row segmentation-word-row"', page)
         self.assertIn('data-i18n="english_segmentation_hint"', page)

@@ -4,7 +4,7 @@
 
 ## 入口与数据边界
 
-- Launcher 的媒体缓存阶段从 `source_media_path` 原视频生成全片基础档。时长≤10分钟为2秒档，10～60分钟为5秒档，更长素材为10秒粗档。纯音频与 attached_pic 封面不生成。错误采用 best-effort，字幕和工程保存仍可继续。**「生成视频缩略图」开关默认关闭**（2026-10-15 维护者指示）：未勾选时 `embed_media_caches` 整段跳过画面缓存（转写子进程经 `MAW_MEDIA_THUMBNAILS=0` 传递，provider CLI 无需逐一透传），编辑器侧按需补帧仍可用。
+- Launcher 的媒体缓存阶段从 `source_media_path` 原视频生成两级画面缓存：**关键帧地标档**总是生成（`-skip_frame nokey` 单遍，只解码关键帧，每关键帧一格、按自身 PTS 存 SQLite preview 行——密度即关键帧密度，超 4000 格均匀抽稀），网格请求由 `sample_manifest` 做「≤ 目标时间的最近地标」持有回退；**高精度画面预览图**由开关控制（默认开，转写子进程经 `MAW_MEDIA_THUMBNAILS=0` 传递，provider CLI 无需逐一透传），走原精确批处理把显示网格升级为精确格。纯音频与 attached_pic 封面不生成。错误采用 best-effort，字幕和工程保存仍可继续。
 - Server 只登记当前工程授权的原媒体。状态首次请求仅探测媒体；缺少基础文件时，只处理当前视图，不在打开或空闲时扫描全片。客户端不传文件路径。
 - 画面带采用源时间零点网格250/500/1000/2000/5000/10000ms，按CSS显示宽度/时间比例选择密度，带迟滞与200ms防抖。代表画面、可见目标、前后各15%有限预取依次处理，多行去重。
 - `.mosp` 的 `segments` 仍为字幕真源。图片、sprite及补帧索引均在工程外；音轨、字幕和空隙修改不改变同一原视频的画面身份。便携空壳与浏览器未绑定File自动隐藏，不尝试读取相邻sidecar。
@@ -42,7 +42,12 @@ Launcher媒体缓存阶段最多清理8个30天前未使用的登记基础文件
 ## 实时补间开关与工程默认（2026-10-15）
 
 - 编辑器波形设置在「视频画面」下新增「实时生成补间」开关（localStorage `mawe-filmstrip-decode`，默认开）：demand 请求携带 `decode` 布尔，服务端为 per-lease 标志。decode 关闭的租约仍读取缓存显示（`lookup_frames`/`sample_manifest` 照旧），但 `_step` 只把 decode 开启租约的目标加入解码批处理；其 `pending` 恒为假，不向协调器声明 visible 需求，**不暂停 Launcher 基础档生成**。demand 里把 decode 置假也会让活跃解码批次的取消判定按 decode 租约集合计算（`demand`/`_release` 同口径）。
-- 绑定载荷新增 `thumbnailBaseReady`（对源媒体做一次 `load_base` 校验，含 memo）：客户端无显式偏好（`mawe-filmstrip-visible` 未存）且该值为假时，画面带默认隐藏；用户手动打开即走按需补帧。显式偏好始终优先。
+- 绑定载荷新增 `thumbnailBaseReady`（`has_cached_frames`：基础 manifest 或 SQLite 关键帧/精确格任一存在即真）：客户端无显式模式偏好时，无缓存 → 默认隐藏，否则默认关键帧标记模式。显式偏好始终优先。
+
+## 实时补间开关与显示模式（2026-10-15 第二批）
+
+- 显示模式三态（对齐达芬奇）：**铺满画面带**（原 Film Strip）/ **关键帧标记**（Thumbnail，默认——每个关键帧位置一帧画面，其余留白）/ **隐藏**。模式存 `mawe-filmstrip-mode`；默认值 = 用户显式偏好 > 无任何画面缓存时 hidden > marks。标记模式跳过实时解码（demand 恒 `decode:false`），直接绘制响应携带的 `keyframes` 标记（真实关键帧密度）；铺满模式按显示网格取「≤ 格时间的最近样本」持有渲染，缺失格由实时解码补精确。
+- 关键帧地标档实测（keyframe-only 单遍）：AV1 4K 5.2min 全片 1.25s（精确档 41.8s 的 1/33）；H.264 4K 10.6min 5.2s（78.6s 的 1/15）。地标密度 = 关键帧密度（2h 流媒体素材可达固定 10s 档的 2.5-5 倍），超 4000 格均匀抽稀；关键帧 JPEG 按内容寻址存储。
 
 ## 生成速度（2026-10-15 归因与修复）
 

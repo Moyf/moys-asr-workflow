@@ -18,7 +18,8 @@
 | 2 | 需求：加一个「实时生成补间」开关；关闭时只读取/显示已有 `.mothumbs` 缓存画面，不为当前视图实时解码 | 已修复 | 已实施（2026-10-15）：① `editor-thumbnails.js` 控制器 `decodeEnabled`（localStorage `mawe-filmstrip-decode`，默认开=保持现状），demand/播放控制请求携带 `decode` 布尔，切换后 view+1 重报租约；② `thumbnail_jobs.demand` 校验并存 per-lease `decode`，`_step` 仅把 decode 开启租约的目标加入解码批，`demand`/`_release` 的在跑批次取消判定同口径；③ decode 关闭租约 `pending` 恒假、不向协调器声明 visible（**不暂停 Launcher 基础档生成**），缺失格继续占位显示，基础档/其他窗口补完的新格随轮询自动出现；④ 模板新增 `#waveform-thumbnail-decode`（主开关关闭时禁用），状态文案「仅显示缓存画面，不实时补帧」。验证：JS 18 项（含开关/文案用例）、Python 定向 354 项、全量 2319 项、e2e filmstrip 2+2 项全过 |
 | 3 | 视频缩略图生成特别慢：`examples/简单剪辑` 生成约 100 张用了约 5 分钟（日志 `[thumbnails] 16/137`、`32/137`、`48/157` 逐步推进） | 已修复 | **归因（2026-10-15 实测，`.artifacts/thumb-perf/`，只读测量）**：素材 = AV1 4K 24fps 5.2 分钟 → 157 目标/10 批。单批 18.0s，其中 `_frame_times` 用 ffprobe `-show_entries frame` **逐帧解码**拿 PTS 占 9.6s（53%），ffmpeg 抽帧解码 ~8.4s（`-threads 2`）。**修复 ①**：PTS 探测改 `-show_entries packet=pts_time,dts_time`（纯解封装不解码），实测同批 815 个 PTS 与逐帧解码**集合完全一致**，单次 9.6s→0.13s（74×）；**修复 ②**：`extract_frames` 增加 `threads` 参数（编辑器按需路径保持默认 2），`build_base` 后台构建用 `min(16, max(2, os.cpu_count()))`（AV1 4K 单批 9.3s→3.3s）。**端到端冷缓存复测：全片 157 帧 5 分钟 → 41.8s**（批均 ~4s，valid_count 157/157 与原 sidecar 一致）。对照验收目标：最难解码的 4K AV1 约 8s/分钟素材；常规 1080p H.264 解码快 3-8×，10 分钟 ≤1 分钟、60 分钟 ≤3 分钟可达。相关测试 64 项全过（test_thumbnails/_jobs/_cache/_media_cache/_server） |
 | 4 | 若缩略图生成确实就是慢：Launcher「生成频谱数据」开关旁加「生成视频缩略图」开关，**默认关闭**，避免拖慢用户转写 | 已修复 | 已实施（2026-10-15）：主表单「其他」区新增 `#generateThumbnails`（默认不勾选，紧随 `generateSpectral`），formPayload/预设 BOOL_FIELDS（`asr_presets.py` + `launcher-presets.js`）与双语文案同步；gui_web 两处 payload 读取 `generateThumbnails` → 请求字段 `generate_thumbnails`（默认 True 保兼容）；转写子进程经 `_child_environment` 注入 `MAW_MEDIA_THUMBNAILS=0`（免于在 6 个 provider CLI 的长位置参数签名里穿线），`embed_media_caches(generate_thumbnails=False)` 跳过整个画面缓存阶段并打印「已按设置跳过画面缓存生成」。「生成波形工程」工具动作随表单默认同样跳过。CLI 直接调用行为不变（默认仍生成），后续如需 `--no-thumbnails` 再议 |
-| 5 | 用户未勾「生成视频缩略图」时，工程打开后编辑器「视频缩略图」开关**默认关着**（不是隐藏；用户手动打开后走实时生成，随它） | 已修复 | 已实施（2026-10-15）：serve.py 绑定载荷新增 `thumbnailBaseReady`（对源媒体做一次 `load_base` 校验，含进程内 memo）；客户端 `createController` 初始 enabled = 显式偏好（localStorage `mawe-filmstrip-visible`）优先，无偏好时 `thumbnailBaseReady === false` → 默认关，其余默认开。手动打开即走按需补帧（配合条目 2 可只读缓存）。注意：控制器只在创建时读一次默认值，页面重载后才吃到新配置。e2e mock 已同步（`thumbnailBaseReady=true` + `setEnabled(true)`）。验证同条目 2 |
+| 5 | 用户未勾「生成视频缩略图」时，工程打开后编辑器「视频缩略图」开关**默认关着**（不是隐藏；用户手动打开后走实时生成，随它） | 已修复（已按后续指示更正） | **后续演进**：显示开关升级为三态（铺满画面带/关键帧标记/隐藏，存 `mawe-filmstrip-mode`）；默认值 = 显式偏好优先，无偏好时无缓存（`has_cached_frames`）→ 隐藏，有缓存 → **关键帧标记**（维护者指定的默认显示方案）。用户手动选择铺满后走按需补帧 |
+| 6 | 问：有没有更优化的方法？我们只需要其中特定的一些画面——找开源项目案例看看怎么做 | 已修复 | **调研**（2026-10-15）：Jellyfin Trickplay（issue 11336，`-skip_frame nokey` 约 110× 提速、可选开关）与 LosslessCut 时间轴缩略图（生产命令同款）均为「关键帧only + 精度换速度」路线；本机实测关键帧单遍：AV1 4K 5.2min 全片 1.25s（精确档 41.8s 的 1/33）、H.264 4K 10.6min 5.2s（1/15）。**实施（维护者逐点拍板后）**：① 两级生成——关键帧地标档总是生成（每关键帧一格、按自身 PTS 存 SQLite preview 行 + 独立 `keyframes` 位置表，精化永不移除地标；超 4000 格均匀抽稀），高精度档由「生成高精度画面预览图」开关控制（默认开，仅门控精确批处理）；② 编辑器显示三态（铺满画面带/关键帧标记/隐藏，默认关键帧标记，无任何缓存时回退隐藏），标记模式直接绘制地标、恒不参与实时解码，铺满模式保留实时补间开关；③ 响应携带 `keyframes` 标记数组，`sample_manifest` 对网格请求做「≤ 目标时间的最近地标」持有回退。验证：Python 定向 75 项 + 全量 2324 项、node 20 项、e2e 4 项、bundles/typecheck/docs/个人路径检查全过 |
 
 ## 阶段汇总
 
@@ -36,3 +37,14 @@
   画面带默认隐藏、手动打开可按需补帧；③ 真实高码率素材的生成速度体感（自动层
   已覆盖四个格式样本）；④ `MAW_MEDIA_THUMBNAILS` 环境变量在冻结包子进程链中的
   传递（本机为源码环境验证）。
+- 2026-10-15 续 2：条目 6 开源调研入账（Jellyfin/LosslessCut 的 keyframe-only 路线 +
+  本机两格式实测 15-33×），两阶段方案草案就绪，**等维护者拍板底图精度契约**后再实施。
+- 2026-10-15 续 3：**条目 6 实施完成（维护者逐点拍板：关键帧密度、三态显示、
+  Thumbnail 默认、高精度档默认开、粗底无开关）**。落地形态：关键帧地标档按自身
+  PTS 入 SQLite preview 行 + 独立位置表（精化不移除地标，4000 格抽稀上限）；
+  `sample_manifest` 持有回退 + `keyframes` 标记数组；编辑器三态选择器 +
+  标记模式绘制（缓存优先、无地标回退网格去重）；Launcher 开关更名
+  「生成高精度画面预览图」默认开（仅门控精确档）。密度认知修正：地标密度=
+  关键帧密度，与片长档位解耦（维护者指出的 10s 网格残留约束已消除）。
+  验证：Python 定向 75 项 + 全量 2324 项、node 20 项、e2e 4 项、全部构建与
+  规范检查通过。

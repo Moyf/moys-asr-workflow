@@ -170,17 +170,19 @@ def batches(requests: Sequence[int]) -> list[list[int]]:
     return result
 
 
-def _frame_times(media_path: Path | str, video: VideoInfo, batch: Sequence[int], *, timeout_s: float, cancel: threading.Event | None, ffmpeg_path: str | None = None) -> list[float]:
+def _packet_times(media_path: Path | str, video: VideoInfo, begin_s: float, end_s: float, *, timeout_s: float, cancel: threading.Event | None, ffmpeg_path: str | None = None) -> tuple[list[float], list[float]]:
+    """Presentation times plus the keyframe-only subset of one interval.
+
+    Packet timestamps carry the same presentation PTS as decoded frames
+    (verified against -show_frames on real fixtures) without decoding a single
+    frame; 4K AV1 probes drop from seconds to milliseconds. Keyframe flags
+    feed the fast keyframe-only base tier.
+    """
     probe = resolve_ffmpeg_tool("ffprobe", ffmpeg_path)
     if probe is None:
         raise ThumbnailError("ffprobe is unavailable")
-    begin = (video.start_ms + max(0, batch[0] - 1000)) / 1000
-    end = (video.start_ms + min(video.duration_ms, batch[-1] + 1000)) / 1000
     # Explicit end avoids ffprobe's relative-end-after-keyframe-seek behavior.
-    # Packet timestamps carry the same presentation PTS as decoded frames
-    # (verified against -show_frames on real fixtures) without decoding a
-    # single frame; 4K AV1 probes drop from seconds to milliseconds.
-    command = [str(probe), "-v", "error", "-select_streams", str(video.stream_index), "-read_intervals", f"{begin:.6f}%{end:.6f}", "-show_entries", "packet=pts_time,dts_time", "-of", "json", str(media_path)]
+    command = [str(probe), "-v", "error", "-select_streams", str(video.stream_index), "-read_intervals", f"{begin_s:.6f}%{end_s:.6f}", "-show_entries", "packet=pts_time,dts_time,flags", "-of", "json", str(media_path)]
     result = _run(command, timeout_s=timeout_s, cancel=cancel)
     if result.returncode:
         raise ThumbnailError(result.stderr.decode("utf-8", "replace")[-500:])
@@ -195,17 +197,30 @@ def _frame_times(media_path: Path | str, video: VideoInfo, batch: Sequence[int],
             if result.returncode:
                 raise ThumbnailError(result.stderr.decode("utf-8", "replace")[-500:])
             payload = json.loads(result.stdout)
-        values = set()
-        for packet in json.loads(result.stdout).get("packets", []):
+        values, keyframes = set(), set()
+        for packet in payload.get("packets", []):
             stamp = packet.get("pts_time", packet.get("dts_time"))
             if stamp is None:
                 continue
             value = float(stamp)
-            if math.isfinite(value):
-                values.add(value)
-        return [value for value in sorted(values) if -1 <= value * 1000 - video.start_ms < video.duration_ms]
+            if not math.isfinite(value):
+                continue
+            values.add(value)
+            if "K" in packet.get("flags", ""):
+                keyframes.add(value)
+
+        def window(items: set[float]) -> list[float]:
+            return [value for value in sorted(items) if -1 <= value * 1000 - video.start_ms < video.duration_ms]
+
+        return window(values), window(keyframes)
     except (TypeError, ValueError, KeyError) as exc:
         raise ThumbnailError("invalid frame timestamps") from exc
+
+
+def _frame_times(media_path: Path | str, video: VideoInfo, batch: Sequence[int], *, timeout_s: float, cancel: threading.Event | None, ffmpeg_path: str | None = None) -> list[float]:
+    begin = (video.start_ms + max(0, batch[0] - 1000)) / 1000
+    end = (video.start_ms + min(video.duration_ms, batch[-1] + 1000)) / 1000
+    return _packet_times(media_path, video, begin, end, timeout_s=timeout_s, cancel=cancel, ffmpeg_path=ffmpeg_path)[0]
 
 
 def extract_frames(media_path: Path | str, requested_ms: Sequence[int], *, stream_index: int | None = None, cancel: threading.Event | None = None, timeout_s: float = 45, ffmpeg_path: str | None = None, info: VideoInfo | None = None, threads: int = 2) -> list[FrameResult]:
@@ -263,6 +278,52 @@ def extract_frames(media_path: Path | str, requested_ms: Sequence[int], *, strea
     if (final_stat.st_size, final_stat.st_mtime_ns) != source_identity:
         raise ThumbnailError("source changed during thumbnail extraction")
     return [output[t] for t in values]
+
+
+def extract_keyframes(media_path: Path | str, *, stream_index: int | None = None, cancel: threading.Event | None = None, timeout_s: float = 600, ffmpeg_path: str | None = None, info: VideoInfo | None = None, threads: int = 2) -> list[FrameResult]:
+    """Decode only keyframes in one full-file pass and stamp their real PTS.
+
+    Keyframes decode independently, so a whole film costs a small fraction of
+    the exact-grid pass. Frames land on their own presentation timestamps; the
+    cache maps them onto the display grid as held preview cells.
+    """
+    video = info or probe_video(media_path, cancel=cancel, ffmpeg_path=ffmpeg_path)
+    if video is None:
+        return []
+    if stream_index is not None and stream_index != video.stream_index:
+        raise ValueError("stream_index does not name the probed video stream")
+    tool = resolve_ffmpeg_tool("ffmpeg", ffmpeg_path)
+    if tool is None:
+        raise ThumbnailError("ffmpeg is unavailable")
+    source_stat = Path(media_path).stat()
+    source_identity = (source_stat.st_size, source_stat.st_mtime_ns)
+    begin_s, end_s = video.start_ms / 1000, (video.start_ms + video.duration_ms) / 1000
+    keyframe_times: set[float] = set()
+    chunk_s = 300.0
+    position = begin_s
+    while position < end_s:
+        _, keyframes = _packet_times(media_path, video, position, min(position + chunk_s, end_s), timeout_s=timeout_s, cancel=cancel, ffmpeg_path=ffmpeg_path)
+        keyframe_times.update(keyframes)
+        position += chunk_s
+    stamps = sorted(keyframe_times)
+    if not stamps:
+        return []
+    with tempfile.TemporaryDirectory(prefix="maw-keyframes-") as temp:
+        vf = "scale=w='trunc(min(160/iw/sar,90/ih)*iw*sar/2)*2':h='trunc(min(160/iw/sar,90/ih)*ih/2)*2',setsar=1,pad=160:90:(ow-iw)/2:(oh-ih)/2"
+        command = [str(tool), "-hide_banner", "-nostdin", "-v", "error", "-skip_frame", "nokey", "-threads", str(threads), "-filter_threads", "1", "-i", str(media_path), "-map", f"0:{video.stream_index}", "-an", "-sn", "-dn", "-vf", vf, "-fps_mode", "passthrough", "-q:v", "5", "-pix_fmt", "yuvj420p", "-y", str(Path(temp) / "%06d.jpg")]
+        result = _run(command, timeout_s=timeout_s, cancel=cancel)
+        if result.returncode:
+            raise ThumbnailError(result.stderr.decode("utf-8", "replace")[-500:])
+        files = sorted(Path(temp).glob("*.jpg"))
+        if len(files) != len(stamps):
+            raise ThumbnailError("keyframe decode did not match the packet scan")
+        frames = []
+        for stamp, file in zip(stamps, files):
+            pts = max(0, round(stamp * 1000) - video.start_ms)
+            frames.append(FrameResult(pts, pts, "preview", file.read_bytes()))
+    if (Path(media_path).stat().st_size, Path(media_path).stat().st_mtime_ns) != source_identity:
+        raise ThumbnailError("source changed during thumbnail extraction")
+    return frames
 
 
 def make_sprite(jpegs: Sequence[bytes], *, cancel: threading.Event | None = None, ffmpeg_path: str | None = None, timeout_s: float = 20) -> bytes:

@@ -220,12 +220,12 @@ def coordinated_pack(path, jpegs, *, coordinator, before_batch, cancel=None, tim
         # The next iteration waits for the lease, then retries this unsealed block.
 
 
-def build_base(path, *, cancel=None, progress=None, ffmpeg_path=None, coordinator=None, timeout_s=1200):
-    """Launcher-only full grid, with visible demand ahead of background batches.
+def build_base(path, *, cancel=None, progress=None, ffmpeg_path=None, coordinator=None, timeout_s=1200, exact: bool = True):
+    """Launcher-only base build: keyframe tier always, exact grid when enabled.
 
-    The base build runs while the user waits for the rest of the pipeline, so it
-    may use the whole machine for its decode tasks; interactive editor batches
-    keep the bounded two-thread default.
+    The keyframe stage decodes only keyframes (seconds for a whole film) and
+    covers the display grid as preview cells; the exact stage — bounded by the
+    same visible-demand priority as before — upgrades them when enabled.
     """
     from maw import thumbnail_cache
     path = Path(path)
@@ -270,7 +270,7 @@ def build_base(path, *, cancel=None, progress=None, ffmpeg_path=None, coordinato
 
     return thumbnail_cache.load_or_build_base(path, cancel=cancel, progress=progress,
         before_batch=before_batch, batch_extract=extract, batch_pack=pack,
-        ffmpeg_path=ffmpeg_path, timeout_s=timeout_s)
+        ffmpeg_path=ffmpeg_path, timeout_s=timeout_s, exact=exact, decode_threads=threads)
 
 
 def plan_targets(ranges, interval, duration, representatives=(), playhead=None):

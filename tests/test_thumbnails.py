@@ -195,6 +195,59 @@ class ThumbnailIntegrationTests(unittest.TestCase):
         jpeg = t.make_sprite([frame.jpeg for frame in frames])
         self.assertEqual(_jpeg_dimensions(jpeg), (1280, 90))
 
+    def test_keyframe_only_extraction_stamps_real_keyframe_pts(self):
+        path = self.root / "keyframes.mp4"
+        subprocess.run(["ffmpeg", "-nostdin", "-v", "error", "-f", "lavfi",
+                        "-i", "testsrc2=size=320x180:rate=2:duration=4", "-c:v", "libx264",
+                        "-g", "2", "-threads", "2", "-y", str(path)], check=True, capture_output=True, timeout=15)
+        video = t.probe_video(path)
+        scanned = t._packet_times(path, video, 0.0, video.duration_ms / 1000, timeout_s=30, cancel=None)[1]
+        frames = t.extract_keyframes(path, info=video)
+        self.assertEqual([f.requested_ms for f in frames], [round(value * 1000) for value in scanned])
+        self.assertTrue(frames and frames[0].requested_ms == 0)
+        self.assertTrue(all(f.status == "preview" and f.actual_pts_ms == f.requested_ms and f.jpeg.startswith(b"\xff\xd8") for f in frames))
+        from maw.thumbnail_cache import _jpeg_dimensions
+        self.assertEqual(_jpeg_dimensions(frames[1].jpeg), (160, 90))
+
+    def test_keyframe_base_registers_previews_and_upgrades_to_exact(self):
+        import os
+        path = self.root / "tiered.mp4"
+        subprocess.run(["ffmpeg", "-nostdin", "-v", "error", "-f", "lavfi",
+                        "-i", "testsrc2=size=320x180:rate=2:duration=4", "-c:v", "libx264",
+                        "-g", "3", "-threads", "2", "-y", str(path)], check=True, capture_output=True, timeout=15)
+        from maw import thumbnail_cache as cache
+        with tempfile.TemporaryDirectory() as cache_dir:
+            directory = Path(cache_dir)
+            with mock.patch.dict(os.environ, {"MAW_APP_DATA_ROOT": str(directory / "app")}), \
+                 mock.patch.object(cache, "cache_root", return_value=directory / "app"), \
+                 mock.patch.object(cache, "waveform_dirs", return_value=[directory]):
+                video = t.probe_video(path)
+                scanned = t._packet_times(path, video, 0.0, video.duration_ms / 1000, timeout_s=30, cancel=None)[1]
+                manifest = cache.load_or_build_base(path, exact=False)
+                self.assertEqual(manifest["tier"], "keyframes")
+                self.assertEqual(manifest["keyframe_count"], len(scanned),
+                    "the landmark tier stores one cell per keyframe at its own PTS")
+                self.assertTrue(cache.has_cached_frames(path))
+                served = cache.sample_manifest(path, [0, 2000])
+                by_target = {sample["requested_ms"]: sample for sample in served["samples"]}
+                self.assertEqual(by_target[0]["status"], "preview")
+                self.assertEqual(by_target[2000]["status"], "preview")
+                covering = [round(value * 1000) for value in scanned if value * 1000 <= 2000.001][-1]
+                self.assertEqual(by_target[2000]["actual_pts_ms"], covering, "cell 2s holds its covering keyframe")
+                markers = served["keyframes"]
+                window = [round(value * 1000) for value in scanned if value * 1000 <= 2000]
+                self.assertEqual([marker["requested_ms"] for marker in markers], window,
+                    "markers cover the requested span, not beyond it")
+                # The exact stage upgrades grid cells to precise frames.
+                frames = t.extract_frames(path, [0, 2000], info=video)
+                cache.register_frames(path, frames, info=video)
+                refined = cache.sample_manifest(path, [0, 2000])
+                by_refined = {sample["requested_ms"]: sample for sample in refined["samples"]}
+                self.assertEqual(by_refined[2000]["status"], "target")
+                self.assertEqual(by_refined[2000]["actual_pts_ms"], 2000)
+                self.assertEqual([marker["requested_ms"] for marker in refined["keyframes"]], window,
+                    "landmarks survive exact refinement")
+
 
 if __name__ == "__main__":
     unittest.main()
