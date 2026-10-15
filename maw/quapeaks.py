@@ -1083,8 +1083,7 @@ def generate_reapeaks_stream_bytes(
             )
             return None
         if stderr:
-            print(f"[reapeaks] 解码失败：{stderr}")
-            return None
+            print(f"[reapeaks] 解码完成，ffmpeg 警告：{stderr}")
         try:
             return streamer.finish(
                 src_timestamp=src_timestamp, src_filesize=src_filesize
