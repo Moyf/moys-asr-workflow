@@ -45,6 +45,56 @@ test('JSON checklist preserves progress and notes and exports stable unconfirmed
   expect(external).toEqual([]);
 });
 
+test('markdown export mirrors confirmations and notes and disables with no exportable items', async ({ page }, testInfo) => {
+  const errors = [];
+  page.on('pageerror', error => errors.push(String(error)));
+  await page.goto(generate(testInfo));
+  await expect(page.locator('#export-md')).toBeVisible();
+  await expect(page.locator('#copy-md')).toBeVisible();
+  await page.locator('#manual-persistence').check();
+  const first = page.locator('#manual .item').first();
+  await first.locator('.note-toggle').click();
+  await first.locator('textarea').fill('第一行\n<script>仅为备注文本</script>');
+
+  const downloaded = page.waitForEvent('download');
+  await page.locator('#export-md').click();
+  const download = await downloaded;
+  expect(download.suggestedFilename()).toMatch(/-全部-\d{4}-\d{2}-\d{2}\.md$/);
+  const markdown = readFileSync(await download.path(), 'utf8');
+  expect(markdown).toMatch(/^# MAW 核查清单 · JSON 生成示例 · 核对结果\n/);
+  expect(markdown).toContain('> 导出范围：全部核对项');
+  expect(markdown).toContain('## 人工核验');
+  expect(markdown).not.toContain('## 实现 / 审查结论');
+  expect(markdown).not.toContain('## 自动化验证证据');
+  expect(markdown).toContain('- [x] 生成的 HTML 页面 → 勾选本项，点击备注填写两行文字，然后刷新 → 勾选与备注仍保留，进度显示 1 / 2 <!-- id: manual-persistence -->');
+  expect(markdown).toContain('  > 第一行\n  > <script>仅为备注文本</script>');
+  expect(markdown).toContain('- [ ] 侧栏导出范围 → 选择仅未确认项并导出 JSON → 只包含未勾选项目，保留稳定 ID 与备注 <!-- id: manual-export -->');
+  expect(errors).toEqual([]);
+
+  await page.locator('#export-scope').selectOption('unconfirmed');
+  const pendingDownload = page.waitForEvent('download');
+  await page.locator('#export-md').click();
+  const pending = readFileSync(await (await pendingDownload).path(), 'utf8');
+  expect(pending).toContain('> 导出范围：仅未确认项');
+  expect(pending).toContain('- [ ] 侧栏导出范围 → 选择仅未确认项并导出 JSON → 只包含未勾选项目，保留稳定 ID 与备注 <!-- id: manual-export -->');
+  expect(pending).not.toContain('## 实现 / 审查结论');
+  expect(pending).not.toContain('第一行');
+});
+
+test('export buttons disable when nothing is exportable in unconfirmed scope', async ({ page }, testInfo) => {
+  await page.goto(generate(testInfo));
+  await page.locator('#manual-persistence').check();
+  await page.locator('#manual-export').check();
+  await page.locator('#export-scope').selectOption('unconfirmed');
+  for (const id of ['export-json', 'export-md', 'copy-md']) {
+    await expect(page.locator(`#${id}`)).toBeDisabled();
+  }
+  await page.locator('#manual-export').uncheck();
+  for (const id of ['export-json', 'export-md', 'copy-md']) {
+    await expect(page.locator(`#${id}`)).toBeEnabled();
+  }
+});
+
 test('JSON command whitespace and long metadata survive rendering at narrow widths', async ({ page }, testInfo) => {
   await page.goto(generate(testInfo, source => {
     source.title = 'T'.repeat(480);
