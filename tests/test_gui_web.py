@@ -1710,6 +1710,7 @@ class GuiWebBridgeTests(CompactContainerAssertions, unittest.TestCase):
             media.resolve(),
             source_media_path=media.resolve(),
             generate_spectral=True,
+            generate_thumbnails=False,
             ffmpeg_bin=str(ffmpeg),
             audio_track=2,
             default_audio_track=1,
@@ -4799,6 +4800,24 @@ class GuiWebBridgeTests(CompactContainerAssertions, unittest.TestCase):
             _request_from_payload({**payload, "generateSpectral": True}, self.env_path).generate_spectral
         )
 
+    def test_request_from_payload_controls_thumbnail_generation(self) -> None:
+        media = self.root / "clip.mp3"
+        media.write_bytes(b"media")
+        payload = {
+            "mediaPath": str(media),
+            "srtPath": str(self.root / "out.srt"),
+            "apiKey": "sk-test",
+        }
+
+        self.assertFalse(_request_from_payload(payload, self.env_path).generate_thumbnails,
+            "旧载荷缺省该字段时按默认关闭处理")
+        self.assertTrue(
+            _request_from_payload({**payload, "generateThumbnails": True}, self.env_path).generate_thumbnails
+        )
+        self.assertFalse(
+            _request_from_payload({**payload, "generateThumbnails": False}, self.env_path).generate_thumbnails
+        )
+
     def test_request_from_payload_enables_speaker_colors_only_for_selected_model(self) -> None:
         media = self.root / "clip.mp3"
         media.write_bytes(b"media")
@@ -5933,6 +5952,10 @@ class LauncherAssetContractTests(CompactContainerAssertions, unittest.TestCase):
             self.assertIn(f'id="{control}"', page)
         self.assertIn('id="generateSpectral" type="checkbox"', page)
         self.assertIn('id="generateSpectralField"', page)
+        self.assertIn('id="generateThumbnails" type="checkbox"', page)
+        self.assertIn('id="generateThumbnailsField"', page)
+        thumbnails_block = page[page.index('id="generateThumbnailsField"'):page.index('id="debugRawField"')]
+        self.assertNotIn("checked", thumbnails_block, "生成高精度画面预览图默认不勾选")
         self.assertIn('class="segmentation-row segmentation-character-row"', page)
         self.assertIn('class="segmentation-row segmentation-word-row"', page)
         self.assertIn('data-i18n="english_segmentation_hint"', page)
@@ -5952,6 +5975,7 @@ class LauncherAssetContractTests(CompactContainerAssertions, unittest.TestCase):
         self.assertIn('minWords: $("minWords").value.trim()', script)
         self.assertIn('gapSplit: $("gapSplit").value.trim()', script)
         self.assertIn('generateSpectral: $("generateSpectral").checked', script)
+        self.assertIn('generateThumbnails: $("generateThumbnails").checked', script)
         self.assertIn('generate_spectral: "生成频谱数据"', script)
         self.assertIn('generate_spectral: "Generate spectral data"', script)
         self.assertIn('segmentation: "断句"', script)

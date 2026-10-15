@@ -7,7 +7,7 @@ const ASR_PRESET_TEXT_FIELDS = [
   "sonioxContextTranslationTerms", "openaiKeywords",
   "maxLen", "minLen", "maxWords", "minWords", "gapSplit",
 ];
-const ASR_PRESET_BOOL_FIELDS = ["speakerColors", "generateSpectral", "debugRaw", "testRun", "qwenAudioKeepDialect"];
+const ASR_PRESET_BOOL_FIELDS = ["speakerColors", "generateSpectral", "generateThumbnails", "debugRaw", "testRun", "qwenAudioKeepDialect"];
 const ASR_SHARED_PROMPT_INPUTS = ["openaiPrompt", "qwenAudioContext", "sonioxContextText"];
 let presetLanguage = null;
 let currentAsrPreset = { name: "", snapshot: null };
@@ -109,6 +109,7 @@ const PRESET_PREVIEW_FIELDS = [
 ];
 const PRESET_PREVIEW_FLAGS = [
   ["speakerColors", "preset_field_speaker_colors"], ["generateSpectral", "preset_field_spectral"],
+  ["generateThumbnails", "preset_field_thumbnails"],
   ["debugRaw", "preset_field_debug"], ["testRun", "preset_field_test_run"], ["qwenAudioKeepDialect", "preset_field_keep_dialect"],
 ];
 function renderPresetOptionsPreview(options) {

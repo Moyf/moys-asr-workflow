@@ -37,6 +37,9 @@ async function enableFilmstrip(page) {
   await page.evaluate(()=>{
     MaweBoot.SERVER_CONFIG.thumbnailUrls={status:'/__filmstrip/status',demand:'/__filmstrip/demand',asset:'/__filmstrip/asset/',release:'/__filmstrip/release'};
     MaweBoot.SERVER_CONFIG.thumbnailBinding='test-video';
+    MaweBoot.SERVER_CONFIG.thumbnailBaseReady=true;
+    MaweCoreState.waveformEditor.thumbnailController.setEnabled(true);
+    MaweCoreState.waveformEditor.thumbnailController.setMode('strip');
     MaweCoreState.waveformEditor.setThumbnailBinding('test-video');
   });
   await expect(page.locator('.waveform-filmstrip').first()).toBeVisible();
@@ -72,7 +75,8 @@ test('filmstrip preserves the waveform region, seek and scroll anchor',async({pa
   await page.screenshot({path:'.artifacts/filmstrip/filmstrip-settings.png'});
   await page.evaluate(()=>window.MAWE_I18N.applyLanguage('en',false));
   await expect(page.locator('#waveform-thumbnail-status')).toHaveText('Pictures ready · Session cache');
-  await expect(page.locator('#waveform-show-thumbnails')).toHaveAttribute('aria-label','Video pictures');
+  await expect(page.locator('#waveform-thumbnail-mode')).toHaveValue('strip');
+  await expect(page.locator('#waveform-thumbnail-mode option[value="marks"]')).toHaveText('Keyframe marks');
   await page.screenshot({path:'.artifacts/filmstrip/filmstrip-settings-en.png'});
   await page.evaluate(()=>window.MAWE_I18N.applyLanguage('zh',false));
   await page.locator('#waveform-settings-toggle').click();
@@ -86,7 +90,9 @@ test('filmstrip preserves the waveform region, seek and scroll anchor',async({pa
   });
   expect(anchors.after).toBeCloseTo(anchors.before,2);await expect(page.locator('.waveform-filmstrip')).toHaveCount(0);
   expect(demands.some(demand=>demand.binding==='test-video')).toBe(true);
-  await page.evaluate(()=>MaweCoreState.waveformEditor.thumbnailController.setEnabled(true));
+  await page.evaluate(()=>{const wave=MaweCoreState.waveformEditor;wave.thumbnailController.setMode('marks');wave.renderMultiVisible();});
+  await expect(page.locator('.waveform-filmstrip').first()).toBeVisible();
+  await page.evaluate(()=>MaweCoreState.waveformEditor.thumbnailController.setMode('strip'));
   await expect(page.locator('.waveform-filmstrip').first()).toBeVisible();
   await page.evaluate(()=>{const wave=MaweCoreState.waveformEditor;wave.settings.mode='basic';wave.render();});
   await expect(page.locator('.waveform-filmstrip')).toHaveCount(1);
