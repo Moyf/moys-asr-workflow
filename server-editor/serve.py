@@ -659,6 +659,7 @@ def ffmpeg_supports_libass(ffmpeg: Path) -> bool:
         probe = subprocess.run(
             [str(ffmpeg), "-hide_banner", "-loglevel", "error", "-filters"],
             capture_output=True, text=True, timeout=30,
+            startupinfo=startupinfo(), creationflags=creationflags(),
         )
     except (OSError, subprocess.SubprocessError):
         return False
@@ -704,6 +705,7 @@ def render_ass_frame_png(
         try:
             result = subprocess.run(  # noqa: S603 - 固定参数的单帧渲染
                 command, cwd=tmp, capture_output=True, timeout=ASS_FRAME_RENDER_TIMEOUT_SEC,
+                startupinfo=startupinfo(), creationflags=creationflags(),
             )
         except subprocess.TimeoutExpired as error:
             raise AssFrameError("渲染当前帧超时；请重试，或检查媒体文件是否异常。") from error

@@ -16,6 +16,7 @@ from pathlib import Path
 from typing import Any, Final
 
 from maw.ffmpeg import resolve_ffmpeg_tool
+from maw.gui_platform import creationflags, startupinfo
 from maw.output_naming import MEDIA_SUFFIX_NAMES, OPERATION_NAMES, TRANSLATION_MARKER_NAMES, TRANSLATION_TARGET_NAMES, maw_root
 
 
@@ -155,6 +156,8 @@ def probe_video_fps(
             errors="replace",
             check=True,
             timeout=10,
+            startupinfo=startupinfo(),
+            creationflags=creationflags(),
         )
         payload = json.loads(result.stdout or "")
     except (OSError, subprocess.SubprocessError, TypeError, ValueError):
@@ -232,6 +235,8 @@ def probe_audio_tracks(
             errors="replace",
             check=True,
             timeout=10,
+            startupinfo=startupinfo(),
+            creationflags=creationflags(),
         )
         payload = json.loads(result.stdout or "")
     except (OSError, subprocess.SubprocessError, TypeError, ValueError):
@@ -446,6 +451,7 @@ def convert_media_for_browser(
         try:
             result = subprocess.run(
                 command, capture_output=True, text=True, encoding="utf-8", errors="replace",
+                startupinfo=startupinfo(), creationflags=creationflags(),
             )
         except OSError as error:
             temporary.unlink(missing_ok=True)

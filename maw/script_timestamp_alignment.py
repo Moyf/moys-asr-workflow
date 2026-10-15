@@ -22,6 +22,7 @@ from typing import Any
 
 from maw.alignment_models import QWEN_FORCED_ALIGNER_MODEL_ID, alignment_model_by_id
 from maw.ffmpeg import resolve_ffmpeg_tool
+from maw.gui_platform import creationflags, startupinfo
 from maw.language import normalize_language_code, split_mode_for_text
 from maw.postprocess_io import SubtitleArtifact, write_artifacts
 from maw.project_io import enrich_project_media_metadata
@@ -267,7 +268,10 @@ def tokens_to_script_segments(
 
 def _run_ffmpeg(command: list[str]) -> subprocess.CompletedProcess[str]:
     try:
-        return subprocess.run(command, capture_output=True, text=True, encoding="utf-8", errors="replace", check=True)
+        return subprocess.run(
+            command, capture_output=True, text=True, encoding="utf-8", errors="replace", check=True,
+            startupinfo=startupinfo(), creationflags=creationflags(),
+        )
     except (OSError, subprocess.CalledProcessError) as error:
         detail = error.stderr[-800:] if isinstance(error, subprocess.CalledProcessError) else str(error)
         raise TimestampAlignmentError(f"FFmpeg 文稿对齐音频处理失败：{detail}") from error
