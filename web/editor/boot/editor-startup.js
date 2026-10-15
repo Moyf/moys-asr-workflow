@@ -4,7 +4,7 @@
 // 加载时统一拉齐到至少 100ms，避免拆分后看不见字幕块、工程无法保存。
 MaweTimeline.syncProjectTimebaseAndBindingOffsets(MaweBoot.DATA, { preferFrames: MaweBoot.DATA.timebase?.unit === 'frames' });
 const repairedGroupReferenceCount = window.AsrEditorUtils.repairGroupReferenceIndices(MaweBoot.DATA.segments);
-const repairedTimingCount = MaweJsonRepair.normalizeProjectTimings(MaweBoot.DATA);
+const repairedTimingCount = MaweJsonRepair.normalizeProjectTimings(MaweBoot.DATA, { preserveValid: true });
 // 服务器注入的工程里 markers 是 MOSP 包装对象（{schema, items}）；编辑器内部
 // 统一用数组，写出文件时再经 markersToProjectField 包回。不在这里换掉的话，
 // 轨道不渲染，且首次 markerList() 会把包装对象整个清掉。
@@ -47,6 +47,12 @@ window.MAWE_EDITOR_BRIDGE = Object.freeze({
 window.MAWE?.register('editor-bridge', () => window.MAWE_EDITOR_BRIDGE);
 MaweCuePanel.renderAll({ waveform: 'full' });
 MaweState.noteSavedSegments();
+const importedProjectChanges = MaweBoot.SERVER_CONFIG?.projectImportChanges || [];
+MaweJsonRepair.noteImportReport(importedProjectChanges);
+if (importedProjectChanges.some((change) => change.kind !== 'add' || /\.(start|end)$/.test(change.path))) {
+  MaweServerSave.projectImportDirty = true;
+  MaweHint.flashHint(`导入修复了 ${importedProjectChanges.length} 处工程字段；请检查后保存`, 'warning');
+}
 MaweBoot.maweDebug('boot:complete', {
   renderedSegments: MaweCoreState.container?.querySelectorAll?.('.cue-row')?.length || 0,
   recentProjectsVisible: MaweDom.recentProjectsEl ? !MaweDom.recentProjectsEl.hidden : false,

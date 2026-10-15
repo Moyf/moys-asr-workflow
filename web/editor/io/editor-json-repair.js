@@ -7,7 +7,11 @@
 
 
 
+  let lastImportReport = [];
+  function noteImportReport(changes) { lastImportReport = JSON.parse(JSON.stringify(changes)); }
+
   function buildJson() {
+  if (!window.AsrEditorUtils.supportsProjectSchema(MaweBoot.DATA)) throw new Error('Unsupported project schema');
   MaweTimeline.syncProjectTimebaseAndBindingOffsets(MaweBoot.DATA, { preferFrames: false });
   const repairedTimingCount = repairCurrentProjectTimings();
   if (repairedTimingCount > 0) {
@@ -284,11 +288,29 @@
   // 保存/导出前的最后一道时间码兜底。波形拖动会把词时间码按像素取整，
   // 极短词可能因此出现 1ms 的前后重叠；打开工程时的修复不足以覆盖这种
   // “打开后编辑、随后保存”的路径。主轨和所有副字幕轨统一使用同一规则。
-  function normalizeProjectTimings(project, { repairSegmentRanges = true } = {}) {
+  function hasValidTimingRanges(segments) {
+    let previous = 0;
+    return !Array.isArray(segments) || segments.every((segment) => {
+      if (!segment || !Number.isInteger(segment.start) || !Number.isInteger(segment.end)
+          || segment.start < previous || segment.end <= segment.start) return false;
+      previous = segment.end;
+      let itemEnd = segment.start;
+      return segment.items === undefined || (Array.isArray(segment.items) && segment.items.every((item) => {
+        if (!item || !Number.isInteger(item.start) || !Number.isInteger(item.end)
+            || item.start < itemEnd || item.end < item.start || item.end > segment.end) return false;
+        itemEnd = item.end;
+        return true;
+      }));
+    });
+  }
+
+  function normalizeProjectTimings(project, { repairSegmentRanges = true, preserveValid = false } = {}) {
   if (!project || typeof project !== 'object') return 0;
-  const normalize = repairSegmentRanges
+  if (preserveValid && [project.segments, project.overlay_track?.segments,
+    ...(project.multi_subtitle?.tracks || []).map((track) => track?.segments)].every(hasValidTimingRanges)) return 0;
+  const normalize = (segments) => (repairSegmentRanges
     ? window.AsrEditorUtils.normalizeSegmentTimings
-    : window.AsrEditorUtils.normalizeItemTimingRanges;
+    : window.AsrEditorUtils.normalizeItemTimingRanges)(segments, 100, { preserveZero: preserveValid });
   const cleanup = captureCleanupNormalization(project.segments, project);
   let fixed = normalize(project.segments);
   fixed = Math.max(0, fixed - migrateCleanupNormalization(cleanup));
@@ -316,11 +338,12 @@
 
 
 
-  function repairTimingGroup(segments) {
+  function repairTimingGroup(segments, { preserveValid = false } = {}) {
     const source = Array.isArray(segments) ? segments : [];
+    if (preserveValid && hasValidTimingRanges(source)) return { fixed: 0, changed: [] };
     const before = source.map((segment) => timingRepairSignature(segment));
     const cleanup = captureCleanupNormalization(source, source === MaweBoot.DATA.segments ? MaweBoot.DATA : null);
-    const fixed = Math.max(0, window.AsrEditorUtils.normalizeItemTimingRanges(source)
+    const fixed = Math.max(0, window.AsrEditorUtils.normalizeItemTimingRanges(source, 100, { preserveZero: preserveValid })
       - migrateCleanupNormalization(cleanup));
     const changed = source.filter((segment, index) => (
       timingRepairSignature(segment) !== before[index]
@@ -331,14 +354,14 @@
 
 
   function repairCurrentProjectTimings() {
-  const main = repairTimingGroup(MaweBoot.DATA.segments);
+  const main = repairTimingGroup(MaweBoot.DATA.segments, { preserveValid: true });
   const extension = (MaweMultiSubtitleCore.getMultiSubtitleState().tracks || []).reduce((result, track) => {
-    const repaired = repairTimingGroup(track?.segments);
+    const repaired = repairTimingGroup(track?.segments, { preserveValid: true });
     result.fixed += repaired.fixed;
     result.changed.push(...repaired.changed);
     return result;
   }, { fixed: 0, changed: [] });
-  const overlay = repairTimingGroup(getOverlayTrack()?.segments);
+  const overlay = repairTimingGroup(getOverlayTrack()?.segments, { preserveValid: true });
   const fixed = main.fixed + extension.fixed + overlay.fixed;
   if (fixed > 0) {
     MaweMultiSubtitleCore.markMainSegmentsDirty(main.changed);
@@ -353,6 +376,8 @@
 
   global.MaweJsonRepair = Object.freeze({
     buildJson,
+    noteImportReport,
+    get lastImportReport() { return JSON.parse(JSON.stringify(lastImportReport)); },
     normalizeProjectTimings,
     timingRepairSignature,
     repairTimingGroup,

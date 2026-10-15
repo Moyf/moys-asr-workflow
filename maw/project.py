@@ -28,6 +28,8 @@ MAX_STABLE_ID_LENGTH = 160
 def repair_segment_durations(
     segments: list[JsonValue],
     min_ms: int = MIN_SEGMENT_DURATION_MS,
+    *,
+    preserve_zero: bool = False,
 ) -> int:
     """Widen zero/negative segment and item ranges to at least ``min_ms`` in place.
 
@@ -61,10 +63,11 @@ def repair_segment_durations(
                 item_end = item.get("end")
                 item_start = item_start if type(item_start) is int else previous_item_end
                 item_end = item_end if type(item_end) is int else item_start
+                was_zero = preserve_zero and item_end == item_start
                 if item_start < previous_item_end:
                     item_start = previous_item_end
                     fixed += 1
-                if item_end <= item_start:
+                if item_end < item_start or (item_end == item_start and not was_zero):
                     item_end = item_start + floor
                     fixed += 1
                 item["start"] = item_start
@@ -88,6 +91,8 @@ def repair_segment_durations(
 def repair_item_timing_ranges(
     segments: list[JsonValue],
     min_ms: int = MIN_SEGMENT_DURATION_MS,
+    *,
+    preserve_zero: bool = False,
 ) -> int:
     """Repair only word/item ranges, preserving the enclosing segment ranges."""
     floor = max(1, int(min_ms))
@@ -111,10 +116,11 @@ def repair_item_timing_ranges(
             if type(item_end) is not int:
                 item_end = item_start
                 fixed += 1
+            was_zero = preserve_zero and item_end == item_start
             if item_start < previous_item_end:
                 item_start = previous_item_end
                 fixed += 1
-            if item_end <= item_start:
+            if item_end < item_start or (item_end == item_start and not was_zero):
                 item_end = item_start + floor
                 fixed += 1
             item["start"] = item_start
@@ -127,6 +133,7 @@ def repair_project_timing_ranges(
     project: JsonValue,
     *,
     repair_segment_ranges: bool = True,
+    preserve_zero: bool = True,
 ) -> int:
     """Repair main and multi-subtitle track timings before strict validation.
 
@@ -139,12 +146,12 @@ def repair_project_timing_ranges(
         return 0
     main_segments = project.get("segments")
     repair = repair_segment_durations if repair_segment_ranges else repair_item_timing_ranges
-    fixed = repair(main_segments) if isinstance(main_segments, list) else 0
+    fixed = repair(main_segments, preserve_zero=preserve_zero) if isinstance(main_segments, list) else 0
     overlay = project.get("overlay_track")
     if isinstance(overlay, dict):
         overlay_segments = overlay.get("segments")
         if isinstance(overlay_segments, list):
-            fixed += repair(overlay_segments)
+            fixed += repair(overlay_segments, preserve_zero=preserve_zero)
     multi = project.get("multi_subtitle")
     if not isinstance(multi, dict):
         return fixed
@@ -155,7 +162,7 @@ def repair_project_timing_ranges(
         if isinstance(track, dict):
             segments = track.get("segments")
             if isinstance(segments, list):
-                fixed += repair(segments)
+                fixed += repair(segments, preserve_zero=preserve_zero)
     return fixed
 
 
@@ -309,7 +316,7 @@ def _validate_timebase(project: JsonDict, errors: list[ProjectValidationError]) 
         errors.append(ProjectValidationError("$.timebase", "must be an object"))
         return
     unit = timebase.get("unit")
-    if unit not in TIMELINE_TIMEBASE_UNITS:
+    if not isinstance(unit, str) or unit not in TIMELINE_TIMEBASE_UNITS:
         errors.append(ProjectValidationError("$.timebase.unit", "must be milliseconds or frames"))
     fps = timebase.get("fps")
     if type(fps) not in (int, float) or not math.isfinite(float(fps)):
@@ -522,7 +529,7 @@ def _normalize_multi_subtitle(
         errors.append(ProjectValidationError("$.multi_subtitle.display_mode", "must be one of main, extension, both"))
 
     main_split_mode = raw.get("main_split_mode")
-    if main_split_mode is not None and main_split_mode not in MULTI_SUBTITLE_SPLIT_MODES:
+    if main_split_mode is not None and (not isinstance(main_split_mode, str) or main_split_mode not in MULTI_SUBTITLE_SPLIT_MODES):
         errors.append(ProjectValidationError("$.multi_subtitle.main_split_mode", "must be continuous or word"))
 
     tracks = raw.get("tracks")
@@ -553,7 +560,7 @@ def _normalize_multi_subtitle(
         split_mode = track.get("split_mode")
         if split_mode is None:
             track["split_mode"] = "word"
-        elif split_mode not in MULTI_SUBTITLE_SPLIT_MODES:
+        elif not isinstance(split_mode, str) or split_mode not in MULTI_SUBTITLE_SPLIT_MODES:
             errors.append(ProjectValidationError(f"{path}.split_mode", "must be continuous or word"))
         raw_segments = track.get("segments")
         if raw_segments is None:

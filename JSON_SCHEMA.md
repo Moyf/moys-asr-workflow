@@ -8,6 +8,16 @@
 
 ---
 
+### 导入边界与修复报告
+
+缺省 schema 的旧 `.json` / `.mosp` 继续接受，补当前 schema 和缺失稳定 ID；显式坏 ID、重复 ID、失效引用和未知 schema 拒绝，不按颜色/表情名称猜引用，不覆盖源文件。写出函数也拒绝未知 schema，不能先降为当前版本再保存。
+
+Python `maw.project_boundary.prepare_project` 与浏览器 `MaweProjectValidation.prepareProject` 返回 `ok/errors/project/changes`。错误含 JSON 路径；失败时 `project` 为 null、`changes` 为空。成功时 changes 为实际差异（path、kind、before/after），区分缺省补齐与实质修复；再次导入规范化结果不产生新差异。浏览器运行态 `MaweJsonRepair.lastImportReport` 保留报告，Server 修复通过启动配置传入；报告不作为工程字段写回。
+
+可只读检查工程：`python -m maw.project_boundary project.mosp`；加 `--strict` 禁止时间修复。输出 JSON 报告，拒绝时退出码 2，不写源文件。共享语料见 `tests/fixtures/project-boundary.json`，严格校验与导入修复分别验证；CLI、Server、浏览器导入采用同一保守边界。
+
+Gap provenance/兼容投影、第三方扩展与旧缓存继续按原契约读取；缓存仍在写出时剥离。此边界不升级 schema，不替换保存的原子写入和备份。
+
 ## 一、顶层结构
 
 ```json
@@ -656,8 +666,8 @@
 - `start` / `end` / `items[*].start` / `items[*].end` 全部是**整数毫秒**（不是秒、不是字符串、不是浮点）；它们是兼容时间字段
 - `start_frame` / `end_frame` 与 `items[*].start_frame` / `items[*].end_frame` 是可选的独立帧字段，必须成对出现并为非负整数，结束帧大于起始帧
 - 进入帧模式后，编辑器以帧字段为操作真源，同时更新毫秒投影；切换 FPS 会保留实际媒体时间并重新计算帧编号
-- `segments` 建议按时间升序排列，且 `segments[i].end <= segments[i+1].start`
-- 代码不强校验时间重叠，但重叠会导致播放器跳转/高亮行为异常
+- 同一轨道的 `segments` 必须按时间升序且不重叠：`segments[i].end <= segments[i+1].start`；独立轨道之间可以重叠
+- 严格校验拒绝段/词重叠。旧工程导入只对整数时间范围异常在副本上修复并报告，不把字符串、布尔值或小数时间强制转换为整数；保存仍保留词级修复兜底，段重叠拒绝写入
 - `items` 首元素 `start` 建议等于 segment `start`，末元素 `end` 建议等于 segment `end`
 - 带 `speaker` 的工程遇到说话人变化时**必须切分字幕**，不能把两个 speaker 合入同一 segment
 
@@ -690,9 +700,10 @@
 ### 生成建议
 
 - 中文逐字给时间戳，英文按词给
-- 标点符号可作为零宽 item（`start == end`），或并入前一个字的 item，代码都能容忍
+- 标点符号可作为零宽 item（`start == end`），或在生成时并入前一个字的 item。旧格式允许零宽 item，合法零宽项在毫秒模式导入与保存时原样保留，不自动合并文字或扩成 100ms
 - 若生成模型拿不到字级时间，**填 `[]` 也可接受**，编辑器会按字符比例自动插值（拆分时间精度会下降）
 - 如果 `items` 字段整个缺失，编辑器视同 `[]`
+- items 必须位于所属段范围内，按顺序不重叠；`text/items` 不一致可能来自尚未同步的文字编辑，导入保留两份已知内容，不据此伪造字词时间。依赖精确映射的拆分、AI 局部删除等操作必须另行核验映射。
 
 ---
 

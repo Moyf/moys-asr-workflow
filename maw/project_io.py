@@ -8,7 +8,7 @@ from pathlib import Path
 from typing import Any
 
 from maw.media import probe_audio_tracks, probe_video_fps
-from maw.project import PROJECT_SCHEMA
+from maw.project import PROJECT_SCHEMA, ProjectValidationError, ProjectValidationFailed
 
 # 工程级波形缓存键。生成端把它们合并进运行态工程供页面即时使用，落盘边界
 # （serialize_mosp / server 保存）统一剥掉：缓存真源是媒体旁的 .quapeaks /
@@ -119,6 +119,8 @@ def serialize_mosp(
     Validation and normalization remain the responsibility of the caller.
     """
 
+    if "schema" in project and project["schema"] != PROJECT_SCHEMA:
+        raise ProjectValidationFailed((ProjectValidationError("$.schema", f"must be {PROJECT_SCHEMA}"),))
     enriched = enrich_project_media_metadata(
         project,
         media_path,
