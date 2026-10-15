@@ -19,6 +19,7 @@ const revealIo = new IntersectionObserver((entries) => {
   }
 }, { threshold: 0.15, rootMargin: '0px 0px -8% 0px' });
 document.querySelectorAll('.reveal').forEach((el) => revealIo.observe(el));
+root.classList.add('reveal-ready');
 
 // —— 功能区：文字段落经过视口中线时切换左侧画面 ——
 const steps = [...document.querySelectorAll('.step')];

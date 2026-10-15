@@ -196,7 +196,9 @@ main, .site-footer { position: relative; z-index: 1; }
 .window > img { width: 100%; height: auto; }
 
 /* —— 滚动出现 —— */
-.reveal { opacity: 0; transform: translateY(28px); transition: opacity .7s ease, transform .7s cubic-bezier(.2, .7, .2, 1); }
+.reveal { opacity: 1; transform: none; transition: opacity .7s ease, transform .7s cubic-bezier(.2, .7, .2, 1); }
+/* 观察器就绪后才隐藏；:where 保持优先级，让减少动态规则继续覆盖。 */
+.reveal:where(.reveal-ready *) { opacity: 0; transform: translateY(28px); }
 .reveal.is-in { opacity: 1; transform: none; }
 .reveal[data-delay="1"] { transition-delay: .08s; }
 .reveal[data-delay="2"] { transition-delay: .16s; }
