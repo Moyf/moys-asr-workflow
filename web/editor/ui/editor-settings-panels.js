@@ -169,6 +169,7 @@
     setSettingsPanelOwnerOpen(MaweDom.cueListSettingsPanel, open);
     MaweDom.cueListSettingsToggle.classList.toggle('active', open);
     MaweDom.cueListSettingsToggle.setAttribute('aria-expanded', String(open));
+    if (!open) MaweKeyboardTargets.releaseClosedUiFocus(MaweDom.cueListSettingsPanel, MaweDom.cueListSettingsToggle);
     if (open) {
       MaweFloatingPanel.bringFloatingSurfaceToFront(MaweDom.cueListSettingsPanel);
       positionCueListSettingsPanel();
@@ -190,6 +191,7 @@
     setSettingsPanelOwnerOpen(MaweDom.cueEditorSettingsPanel, open);
     MaweDom.cueEditorSettingsToggle.classList.toggle('active', open);
     MaweDom.cueEditorSettingsToggle.setAttribute('aria-expanded', String(open));
+    if (!open) MaweKeyboardTargets.releaseClosedUiFocus(MaweDom.cueEditorSettingsPanel, MaweDom.cueEditorSettingsToggle);
     if (open) {
       MaweFloatingPanel.bringFloatingSurfaceToFront(MaweDom.cueEditorSettingsPanel);
       positionCueEditorSettingsPanel();
@@ -211,6 +213,7 @@
     setSettingsPanelOwnerOpen(MaweDom.waveformSettingsPanel, open);
     MaweDom.waveformSettingsToggle.classList.toggle('active', open);
     MaweDom.waveformSettingsToggle.setAttribute('aria-expanded', String(open));
+    if (!open) MaweKeyboardTargets.releaseClosedUiFocus(MaweDom.waveformSettingsPanel, MaweDom.waveformSettingsToggle);
     if (open) {
       MaweFloatingPanel.bringFloatingSurfaceToFront(MaweDom.waveformSettingsPanel);
       positionWaveformSettingsPanel();
