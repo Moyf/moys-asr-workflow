@@ -258,28 +258,16 @@
     try {
       const text = await MaweLoadingProgress.readFileTextWithProgress(file);
       MaweLoadingProgress.updateEditorLoading(60, `正在解析工程 ${file.name}…`);
-      const data = JSON.parse(text);
-      if (data && typeof data === 'object' && !Array.isArray(data)
-          && Object.prototype.hasOwnProperty.call(data, 'schema')
-          && !window.AsrEditorUtils.supportsProjectSchema(data)) {
-        MaweHint.flashHint('不支持的工程格式版本，请使用新版 MAW 打开。', 'warning');
+      const imported = window.MaweProjectValidation.prepareProject(JSON.parse(text));
+      if (!imported.ok) {
+        MaweHint.flashHint(`工程校验失败：${imported.errors.map((error) => `${error.path}: ${error.message}`).join('; ')}`, 'warning');
         return false;
       }
-      // 先兜底修复 0 长/倒挂时间码（保底 100ms），再校验结构，让旧工程仍能打开。
-      if (data && Array.isArray(data.segments)) {
-        data.timebase = MaweTimeline.normalizeTimelineTimebase(data.timebase);
-        window.AsrEditorUtils.normalizeMultiSubtitleProject(data);
-        MaweTimeline.syncProjectTimebaseAndBindingOffsets(data, { preferFrames: data.timebase.unit === 'frames' });
-        window.AsrEditorUtils.normalizeSegmentTimings(data.segments);
-        window.AsrEditorUtils.repairGroupReferenceIndices(data.segments);
-        MaweJsonRepair.normalizeProjectTimings(data);
-        MaweTimeline.syncProjectTimebaseAndBindingOffsets(data, { preferFrames: false });
-      }
-      if (!MaweProjectLoad.isMawProject(data)) {
-        MaweHint.flashHint('打开了错误的文件，请使用 MAW 生成的工程文件。', 'warning');
-        return false;
-      }
+      const data = imported.project;
+      MaweJsonRepair.noteImportReport(imported.changes);
 MaweProjectLoad.applyCanonicalProject(data, file.name);
+MaweServerSave.projectImportDirty = imported.changes.some((change) => change.kind !== 'add' || /\.(start|end)$/.test(change.path));
+if (MaweServerSave.projectImportDirty) MaweHint.flashHint(`导入修复了 ${imported.changes.length} 处工程字段；请检查后保存`, 'warning');
 // 工程可能携带新 sticker_root；刷新表情包导出按钮的互斥灰显状态
 MaweExportTimeline.updateStickerExportButtons();
 const expectedName = window.AsrEditorUtils.fileBasename(MaweBoot.DATA.media);

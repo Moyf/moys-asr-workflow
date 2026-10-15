@@ -9,7 +9,7 @@ from pathlib import Path
 from unittest import mock
 
 from maw.media import resolve_default_audio_track
-from maw.project import PROJECT_SCHEMA
+from maw.project import PROJECT_SCHEMA, ProjectValidationFailed
 from maw.project_io import (
     INLINE_CACHE_KEYS,
     default_audio_track_from_metadata,
@@ -57,14 +57,14 @@ class ProjectIoTests(CompactContainerAssertions, unittest.TestCase):
             self.assertNotIn(b"\r\n", raw)
             self.assertNotIn("media_metadata", project)
 
-    def test_write_mosp_replaces_missing_or_stale_schema_with_current_schema(self) -> None:
+    def test_write_mosp_rejects_unknown_schema_without_overwriting(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
             output = Path(temp_dir) / "project.mosp"
-
-            write_mosp(output, {"schema": "moy.asr.project.draft", "segments": []})
-
-            saved = json.loads(output.read_text(encoding="utf-8"))
-            self.assertEqual(saved["schema"], PROJECT_SCHEMA)
+            output.write_text("original", encoding="utf-8")
+            for schema in ("moy.asr.project.v99", "moy.asr.project.draft", None):
+                with self.subTest(schema=schema), self.assertRaises(ProjectValidationFailed):
+                    write_mosp(output, {"schema": schema, "segments": []})
+                self.assertEqual(output.read_text(encoding="utf-8"), "original")
 
     def test_write_mosp_persists_selected_audio_track_without_caches(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:

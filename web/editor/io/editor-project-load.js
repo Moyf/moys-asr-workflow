@@ -266,41 +266,7 @@ function applyCanonicalProject(data, filename) {
 
 
   function isMawProject(data) {
-    if (!data || typeof data !== 'object' || !Array.isArray(data.segments)) return false;
-    if (data.preserve_punctuation !== undefined && typeof data.preserve_punctuation !== 'boolean') return false;
-    if (data.media_metadata !== undefined && data.media_metadata !== null
-        && !MaweTimeline.normalizeMediaMetadata(data.media_metadata)) return false;
-    if (data.timebase !== undefined) {
-      const timebase = data.timebase;
-      if (!timebase || typeof timebase !== 'object' || Array.isArray(timebase)
-          || (timebase.unit !== 'milliseconds' && timebase.unit !== 'frames')
-          || typeof timebase.fps !== 'number' || !Number.isFinite(timebase.fps)
-          || timebase.fps < MaweTimeline.MIN_TIMELINE_FPS || timebase.fps > MaweTimeline.MAX_TIMELINE_FPS) return false;
-    }
-    const hasOptionalFramePair = (value) => {
-      const hasStart = Object.prototype.hasOwnProperty.call(value || {}, 'start_frame');
-      const hasEnd = Object.prototype.hasOwnProperty.call(value || {}, 'end_frame');
-      return (!hasStart && !hasEnd) || MaweTimeline.hasValidFramePair(value);
-    };
-    let previousEnd = 0;
-    return data.segments.every((segment) => {
-      if (!segment || typeof segment !== 'object'
-          || !Number.isInteger(segment.start) || !Number.isInteger(segment.end)
-          || segment.start < 0 || segment.end <= segment.start || segment.start < previousEnd
-          || typeof segment.text !== 'string' || !hasOptionalFramePair(segment)) return false;
-      previousEnd = segment.end;
-      if (!Array.isArray(segment.items)) return segment.items === undefined;
-      let itemEnd = segment.start;
-      return segment.items.every((item) => {
-        if (!item || typeof item !== 'object'
-            || !Number.isInteger(item.start) || !Number.isInteger(item.end)
-            || item.start < segment.start || item.end > segment.end || item.end <= item.start
-            || item.start < itemEnd || typeof item.text !== 'string'
-            || !hasOptionalFramePair(item)) return false;
-        itemEnd = item.end;
-        return true;
-      });
-    });
+    return window.MaweProjectValidation.validateProject(data).ok;
   }
 
 
