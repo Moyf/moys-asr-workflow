@@ -2421,11 +2421,11 @@ __WAVEFORM_CSS__
   </form>
 </dialog>
 
-<dialog id="word-conversion-dialog" class="modal word-conversion-dialog" aria-labelledby="word-conversion-title" aria-describedby="word-conversion-warning word-conversion-description">
+<dialog id="word-conversion-dialog" class="modal word-conversion-dialog" aria-labelledby="word-conversion-title" aria-describedby="word-conversion-description word-conversion-guidance word-conversion-undo">
   <h3 id="word-conversion-title">字词拆成字幕</h3>
-  <p id="word-conversion-warning" class="word-conversion-warning">可通过撤销恢复；不提供反向转换工具。</p>
-  <p id="word-conversion-description" class="word-conversion-description">此操作会使用字词时间码来生成拆碎后的字幕块，将完整的句子变成一个一个单词显示。</p>
-  <p class="word-conversion-description">请确认你需要这个效果再使用。</p>
+  <p id="word-conversion-description" class="word-conversion-description">此操作会使用字词时间码来生成拆碎后的字幕块，将完整的句子变成一个一个单词逐个显示。</p>
+  <p id="word-conversion-guidance" class="word-conversion-description">请确认你需要这个效果再使用。</p>
+  <p id="word-conversion-undo" class="word-conversion-description">如果不满意可以撤销，或者多选字幕块后重新合并。</p>
   <p id="word-conversion-summary" class="modal-hint word-conversion-summary" role="status" aria-live="polite"></p>
   <ul id="word-conversion-skipped"></ul>
   <div class="actions word-conversion-actions">

@@ -5,12 +5,9 @@
 .modal.word-conversion-dialog:not([open]) { display: none; }
 .word-conversion-dialog::backdrop { background: rgba(0, 0, 0, 0.55); }
 .word-conversion-dialog p { margin: 0; line-height: 1.6; }
-.word-conversion-dialog .word-conversion-warning {
-  margin-top: 2px; color: var(--red-hover); font-weight: 700;
-}
 .word-conversion-dialog .word-conversion-description + .word-conversion-description { margin-top: 8px; }
 .modal.word-conversion-dialog .word-conversion-summary {
-  margin-top: 12px; color: var(--text-muted); line-height: 1.5;
+  margin-top: 12px; color: var(--text-muted); line-height: 1.5; font-size: 15px;
 }
 .word-conversion-dialog ul { margin: 10px 0 0; padding-left: 22px; line-height: 1.6; }
 .word-conversion-dialog ul:empty { display: none; }
