@@ -124,3 +124,28 @@ for (const portrait of [false, true]) {
     await page.screenshot({ path: join(artifacts, `${portrait ? 'portrait' : 'landscape'}.png`) });
   });
 }
+
+test('failed cross-type media import restores observation of the original video', async ({ page }) => {
+  await page.addInitScript(() => {
+    const Original = window.ResizeObserver;
+    window.__resizeObservers = [];
+    window.ResizeObserver = class extends Original {
+      constructor(callback) { super(callback); this.targets = new Set(); window.__resizeObservers.push(this); }
+      observe(target, options) { this.targets.add(target); return super.observe(target, options); }
+      unobserve(target) { this.targets.delete(target); return super.unobserve(target); }
+      disconnect() { this.targets.clear(); return super.disconnect(); }
+    };
+  });
+  await prepare(page);
+  const result = await page.evaluate(async () => {
+    const original = MaweCoreState.player;
+    const observer = window.__resizeObservers.find(item => item.targets.has(original));
+    const imported = await MaweMediaLoad.loadMediaFile(new File(['invalid audio data'], 'invalid.wav', { type: 'audio/wav' }));
+    return { imported, restored: MaweCoreState.player === original,
+      attached: document.getElementById('player') === original,
+      observed: observer.targets.has(original),
+      detachedTargets: [...observer.targets].filter(target => !target.isConnected).length };
+  });
+  expect(result).toEqual({ imported: false, restored: true, attached: true,
+    observed: true, detachedTargets: 0 });
+});
