@@ -5,11 +5,19 @@ import tempfile
 import unittest
 from pathlib import Path
 from unittest import mock
+from html.parser import HTMLParser
+from urllib.parse import quote, unquote, urljoin, urlsplit
 
 from maw.media import MediaStatus, project_media_reference, resolve_project_media
 from maw.project_io import rebase_project_media, write_mosp
 from tests.test_local_editor_server import server_editor
 from tests.compact_assertions import CompactContainerAssertions
+
+
+class MediaSourceParser(HTMLParser):
+    def handle_starttag(self, tag, attrs):
+        if tag == "source":
+            self.src = dict(attrs)["src"]
 
 
 class ProjectMediaReferenceTests(CompactContainerAssertions, unittest.TestCase):
@@ -160,7 +168,45 @@ class ProjectMediaReferenceTests(CompactContainerAssertions, unittest.TestCase):
                 mock.patch.object(edit, "render_editor_page", return_value="<!doctype html>") as render:
             self.assertEqual(edit.main(), 0)
         self.assertTrue(target.is_file())
-        self.assertIn("../" + self.media.name, render.call_args.kwargs["media_html"])
+        self.assertIn(quote("../" + self.media.name, safe="/"), render.call_args.kwargs["media_html"])
+
+    def render_media_source(self, media: Path, *, cross_drive: bool = False) -> str:
+        import edit
+
+        media.parent.mkdir(parents=True, exist_ok=True)
+        media.write_bytes(b"fixture")
+        reference = project_media_reference(self.output, media)
+        self.output.write_text(json.dumps({"media": reference, "segments": []}), encoding="utf-8")
+        with mock.patch("sys.argv", ["edit.py", str(self.output), "--no-waveform"]), \
+                mock.patch.object(edit, "ensure_bundle"), \
+                mock.patch.object(edit, "get_default_sticker_dir", return_value=""), \
+                mock.patch.object(edit, "enrich_project_media_metadata", side_effect=lambda data, **_: data), \
+                mock.patch.object(edit, "render_editor_page", return_value="fixture") as render:
+            if cross_drive:
+                with mock.patch.object(edit.os.path, "relpath", side_effect=ValueError("different drives")):
+                    self.assertEqual(edit.main(), 0)
+            else:
+                self.assertEqual(edit.main(), 0)
+        self.assertEqual(json.loads(self.output.read_text(encoding="utf-8"))["media"], reference)
+        parser = MediaSourceParser()
+        parser.feed(render.call_args.kwargs["media_html"])
+        return parser.src
+
+    def test_relative_media_urls_encode_reserved_characters_without_changing_project_paths(self) -> None:
+        for filename in ("clip#1.mp4", "clip%20name.mp4", "片 段 #20%.mp4", "clip&name.mp4"):
+            with self.subTest(filename=filename):
+                media = self.root / "folder #20%" / filename
+                src = self.render_media_source(media)
+                relative = "../folder #20%/" + filename
+                self.assertEqual(src, quote(relative, safe="/"))
+                resolved = urlsplit(urljoin(self.output.with_suffix(".edit.html").as_uri(), src))
+                self.assertEqual(resolved.fragment, "")
+                self.assertEqual(resolved.query, "")
+                self.assertEqual(Path(unquote(resolved.path)).parts[-2:], (media.parent.name, filename))
+
+    def test_cross_drive_html_media_url_is_not_double_encoded(self) -> None:
+        media = self.root / "clip #20%.mp4"
+        self.assertEqual(self.render_media_source(media, cross_drive=True), media.as_uri())
 
 
 if __name__ == "__main__":
