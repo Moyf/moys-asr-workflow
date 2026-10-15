@@ -7,10 +7,13 @@ const launcherDir = new URL("../web/launcher/", import.meta.url);
 const html = readFileSync(new URL("index.html", launcherDir), "utf8");
 const source = readFileSync(new URL("postprocess.js", launcherDir), "utf8");
 const strings = readFileSync(new URL("i18n/launcher-strings.js", launcherDir), "utf8");
+const stateSource = readFileSync(new URL("boot/launcher-state.js", launcherDir), "utf8");
 
-test("the running-server editor action keeps its icon in both languages", () => {
-  assert.match(strings, /open_editor:\s*"🎬 打开编辑器"/);
-  assert.match(strings, /open_editor:\s*"🎬 Open editor"/);
+test("the editor action uses plain labels without emoji in both languages", () => {
+  assert.match(strings, /open_editor:\s*"打开编辑器"/);
+  assert.match(strings, /open_editor:\s*"Open editor"/);
+  assert.match(stateSource, /start_server_editor:\s*"打开编辑器"/);
+  assert.doesNotMatch(strings, /open_editor:\s*"[^"]*[\u{1F300}-\u{1FAFF}\u{2600}-\u{27BF}]/u);
 });
 
 test("AI processing exposes current-operation cancel and streamed output", () => {
