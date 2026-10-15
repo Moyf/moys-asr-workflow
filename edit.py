@@ -33,6 +33,7 @@ import struct
 import sys
 from pathlib import Path
 from typing import NotRequired, TypedDict
+from urllib.parse import quote
 
 from maw.colors import COLOR_PALETTE
 from maw.console import configure_utf8_stdio
@@ -465,7 +466,7 @@ def main():
 
     # 媒体 URL
     try:
-        media_url = Path(os.path.relpath(media_path, output_path.parent)).as_posix()
+        media_url = quote(Path(os.path.relpath(media_path, output_path.parent)).as_posix(), safe="/")
     except ValueError:
         media_url = media_path.as_uri()
 
