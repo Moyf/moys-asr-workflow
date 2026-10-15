@@ -6,6 +6,7 @@ type DescriptorValues<D, K extends keyof D> = {
   [P in K]: D[P] extends TypedPropertyDescriptor<infer V> ? V : never;
 };
 type WaveformMethods =
+  DescriptorValues<ReturnType<typeof import('./thumbnails.js').createWaveformModule>, 'initThumbnails' | 'thumbnailStatusText' | 'updateThumbnailStatus' | 'setThumbnailBinding' | 'thumbnailHeight' | 'getTimelineRowHeight' | 'wrapThumbnailRow' | 'appendTimelineRow' | 'syncThumbnailView' | 'drawThumbnails'> &
   DescriptorValues<ReturnType<typeof import('./word-blocks.js').createWordBlocks>, 'appendWordBlocks' | 'refreshWordBlocks' | 'previewWordBlocks' | 'rebuildWordBlocksForSegment' | 'beginWordDrag' | 'updateWordDrag' | 'detachWordDrag' | 'endWordDrag' | 'cancelWordDrag'> &
   DescriptorValues<ReturnType<typeof import('./canvas.js').createWaveformModule>, 'getWaveformEnvelope' | 'drawRow'> &
   DescriptorValues<ReturnType<typeof import('./controls.js').createWaveformModule>, 'isAdjacentCueAdjustmentIndependent' | 'isSharedBoundaryHandleIndependent' | 'adjacentSnapModeStatusHint' | 'hasCueDrag' | 'bindControls'> &
@@ -62,7 +63,14 @@ export interface Clock {
   setItemStart(item: TimedItem, value: number): void; setItemEnd(item: TimedItem, value: number): void;
   fromMs(value: number): number; toMs(value: number): number; format(value: number): string;
 }
-export interface WaveformRow extends HTMLDivElement { _waveformPlayhead?: HTMLDivElement; }
+export interface WaveformRow extends HTMLDivElement {
+  _waveformPlayhead?: HTMLDivElement;
+  _waveformCanvasWidth?: number;
+  _waveformCanvasHeight?: number;
+  _thumbnailRenderKey?: string;
+  _thumbnailShell?: HTMLDivElement;
+  _thumbnailCanvas?: HTMLCanvasElement;
+}
 export interface WaveformPointerMarker extends HTMLDivElement { _hideTimer?: number; }
 // The existing renderer assigns disabled to these div-based resizers.
 export interface LayoutDivider extends HTMLDivElement { disabled?: boolean; }
@@ -196,6 +204,9 @@ export interface WaveformOptions {
 }
 
 export interface WaveformState {
+  thumbnailController: ReturnType<ReturnType<typeof import('../editor-thumbnails.js').createThumbnailModule>['createController']>;
+  thumbnailPlayListener: () => void;
+  thumbnailLayoutHeight: number;
   wordDrag: WordDragState | null;
   wordRefreshFrame: number;
   options: WaveformOptions;

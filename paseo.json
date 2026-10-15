@@ -1,11 +1,17 @@
 {
+  "worktree": {
+    "setup": [
+      "pnpm i",
+      "uv sync"
+    ]
+  },
   "scripts": {
-    "gui": {
-      "command": "uv run python maw_gui.py --debug"
+    "dev-启动器": {
+      "command": "pnpm run dev:launcher"
     },
-    "serve": {
+    "dev-编辑器": {
       "type": "service",
-      "command": "uv run python server-editor/serve.py"
+      "command": "pnpm run dev:editor"
     }
   },
   "metadataGeneration": {

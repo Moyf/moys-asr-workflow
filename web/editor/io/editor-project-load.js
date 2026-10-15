@@ -70,6 +70,8 @@
 
 function applyCanonicalProject(data, filename) {
   projectBindingEpoch += 1;
+  if (MaweBoot.SERVER_CONFIG) MaweBoot.SERVER_CONFIG.thumbnailBinding = '';
+  MaweCoreState.waveformEditor?.setThumbnailBinding('');
   MaweWordTiming.reset();
   // 原地换工程：在途/已排期的延迟波形载荷（含响度标尺）全部作废，见
   // deferredReapeaksEpoch 的说明。
@@ -223,6 +225,8 @@ function applyCanonicalProject(data, filename) {
   // 便携表情包 OTIO 也随之退回引用原始素材（服务器已不跟踪当前工程）。
   function detachServerProjectSaving() {
     projectBindingEpoch += 1;
+    if (MaweBoot.SERVER_CONFIG) MaweBoot.SERVER_CONFIG.thumbnailBinding = '';
+    MaweCoreState.waveformEditor?.setThumbnailBinding('');
     if (MaweBoot.SERVER_CONFIG) {
       MaweBoot.SERVER_CONFIG.canSave = false;
       MaweBoot.SERVER_CONFIG.canPortableStickerExport = false;

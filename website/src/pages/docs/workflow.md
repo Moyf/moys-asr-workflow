@@ -27,7 +27,7 @@ Launcher 是转写与工具箱入口；MAWE 是编辑器。当前日常编辑使
 
 ### 从源码运行
 
-需要 Python 3.11+、[uv](https://docs.astral.sh/uv/) 和 FFmpeg / FFprobe。在仓库根目录执行：
+需要 Python 3.11+、[uv](https://docs.astral.sh/uv/)、Node.js 22.13+、pnpm 和 FFmpeg / FFprobe。在仓库根目录执行：
 
 ```sh
 python --version
@@ -35,10 +35,11 @@ uv --version
 ffmpeg -version
 ffprobe -version
 uv sync
+pnpm install --frozen-lockfile
 uv run --no-sync python maw_gui.py
 ```
 
-环境安装完成后，后续命令使用 `--no-sync`，避免每次启动重新同步依赖。普通源码安装不包含本地 ASR 与 OCR 的可选依赖。开发检查见 [DEVELOPMENT](../development/)。
+`pnpm install` 会构建编辑器与 Launcher 的前端产物；后续源码入口在产物缺失或过期时自动重建。发布包已经包含产物，无需安装 Node 或 pnpm。Python 环境安装完成后，后续命令使用 `--no-sync`，避免每次启动重新同步依赖。普通源码安装不包含本地 ASR 与 OCR 的可选依赖。开发检查见 [DEVELOPMENT](../development/)。
 
 ## 2. 配置转写方式
 
@@ -72,6 +73,7 @@ uv run --no-sync python maw_gui.py -i "example.mp4" -o "example.srt" -ll 2m
 | `.srt` | 通用字幕交付，可从工程重新导出。 |
 | `.json` | 兼容旧工程；内容格式与 `.mosp` 相同，已有文件无需迁移。 |
 | `.mopeaks` / `.quapeaks` | 可重建波形缓存，不能代替工程。 |
+| `.mothumbs` | 原视频的基础画面缓存，图片不存进工程，可由 Launcher 重建。 |
 | `.edit.html` | 可选便携编辑页面，可从工程重新生成。 |
 
 进程退出码为 `0` 且预期文件存在才表示成功。识别为空、上传失败或配置错误时查看具体日志；排错见 [FAQ](../faq/)。

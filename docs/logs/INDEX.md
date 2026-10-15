@@ -1,6 +1,14 @@
 # 日志索引
 
-记录保留当时语境。版本和任务日期取正文、明确任务信息；未知使用 `unversioned` / `undated`，不把本地检出时间或最近 Git 提交时间当作任务日期。跨版本记录只保留一份，范围见正文。
+<!-- log-release-baseline: 1.9.0-beta.1 -->
+
+新共享日志放在 `docs/logs/release1.9.0-beta.1/`，表示 **1.9.0-beta.1 之后的开发**。文件名写清主题；不增加日期目录，提交时间与演进通过 Git 历史追溯。目录不是声明这些记录已随该版本发布。
+
+此表是可选的查阅入口，漏登记只提示；关键指南、方案和工程文档仍必须登记[主索引](../INDEX.md)。当前仍有参考价值或未决事项的记录可精选进 [CURRENT](CURRENT.md)。
+
+确认发布成功后，将顶部基线和当前目录提示更新为新版本；后续日志归入新版本之后的开发。旧日志继续保留在原版本目录。完整步骤见[发布指南](../releases/README.md)。
+
+以下旧目录保留原路径与当时语境，不要求批量迁移。跨版本记录只保留一份，范围见正文。
 
 现行说明见[主题索引](../INDEX.md)，当前参考价值与未决事项见 [CURRENT](CURRENT.md)。截图、冻结 JSON、HTML 与源分段随所属记录保留；新生成的原始输出和预览进入根 `.artifacts/<task-id>/`。
 
@@ -8,6 +16,7 @@
 | --- | --- | --- | --- |
 | unversioned | 2026-10-11 | [AI 口播整理编辑稿改造](unversioned/2026-10-11/AI_CLEANUP_RC.md) | 模型编辑稿、固定转换与删除恢复的实现和验证 |
 | unversioned | 2026-10-11 | [AI 重新断句改进记录](unversioned/2026-10-11/AI_RESEGMENT.md) | 字数上限、复杂用例复测及主分支整合证据 |
+| unversioned | 2026-10-11 | [Agent 长周期修复的踩坑记录：e2e 像素验证体系与语义撤回](unversioned/2026-10-11/agent-e2e-pitfalls.md) | PR #225 撤回 #205 语义后，e2e 像素断言体系的适配坑与规避方法 |
 | unversioned | undated | [符号级合并重放工作流](unversioned/undated/%E7%AC%A6%E5%8F%B7%E7%BA%A7%E5%90%88%E5%B9%B6%E9%87%8D%E6%94%BE%E5%B7%A5%E4%BD%9C%E6%B5%81.md) | 保留原始结论与验证范围 |
 | unversioned | undated | [入口与层次](unversioned/undated/editor-settings-report/editor-settings.md) | 保留原始结论与验证范围 |
 | unversioned | undated | [翻译段本地化（波 1 增补）实施记录](unversioned/undated/TEST_FEEDBACK_TRANSLATE_LOCALIZE.md) | 保留原始结论与验证范围 |
@@ -86,3 +95,5 @@
 | 1.1.0 | 2026-07-27 | [MAW 1.1 开发追踪](1.1.0/2026-07-27/MAW%201.1%20%E5%BC%80%E5%8F%91%E8%BF%BD%E8%B8%AA.md) | 正文明确版本目标为 1.1.0；保留原始结论与验证范围 |
 | unversioned | undated | [editor-settings.html](unversioned/undated/editor-settings-report/editor-settings.html) | 共享报告；源材料在同目录 |
 | 1.8.0-beta.1 | 2026-10-09 | [maw-verification-v1.8.0b1-to-main.html](1.8.0-beta.1/2026-10-09/first-verification/maw-verification-v1.8.0b1-to-main.html) | 共享报告；源材料在同目录 |
+
+- [AI 备注与译文核对实现](unversioned/2026-10-12/AI_REVIEW_IMPLEMENTATION.md)：通用工程备注和离线译文编辑的进度、证据与边界。

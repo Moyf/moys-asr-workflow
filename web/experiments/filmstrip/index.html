@@ -1,0 +1,49 @@
+<!doctype html>
+<html lang="zh-CN">
+<head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>MAW · #229 Filmstrip Lab</title><link rel="stylesheet" href="/lab.css"></head>
+<body>
+<main>
+<header><div><p class="eyebrow">ISSUE 229 / EXPERIMENT</p><h1>画面与时间的另一种连接</h1>
+<p>视频缩略图路线对比 · 独立实验，不保存或修改 MOSP</p></div>
+<span class="badge">方案待讨论</span></header>
+<section class="card controls">
+<div class="control-row">
+<label>合成素材<select id="media"></select></label>
+<label>抽取路线<select id="route"><option value="fixed">A · 整片固定预算</option>
+<option value="adaptive">A · 自适应密度 15s</option><option value="window">A · 可视窗口 sprite</option>
+<option value="browser">B · 浏览器可视区</option><option value="hybrid">C · 粗 sprite + 浏览器细化</option></select></label>
+<label>本地媒体（仅浏览器）<input type="file" id="file" accept="video/*,audio/*"></label>
+<button id="refresh">重新测量 / 清空内存缓存</button><button id="export">导出便携试验页</button>
+</div>
+<div class="control-row">
+<label>轨道位置<select id="position"><option value="above">波形上方</option><option value="between" selected>波形与 cues 之间</option><option value="lane">独立可折叠 lane</option></select></label>
+<label>高度<select id="height"><option value="48">48 px</option><option value="72" selected>72 px</option><option value="96">96 px</option></select></label>
+<label>密度<select id="density"><option value="96">密 · 96 px</option><option value="144" selected>中 · 144 px</option><option value="192">疏 · 192 px</option></select></label>
+<label>行数<select id="rows"><option>1</option><option>2</option><option>3</option></select></label>
+<label>视频流<select id="stream"></select></label>
+<label><input type="checkbox" id="gap">压缩 25%–35% 示例空隙</label>
+<label><input type="checkbox" id="collapse">折叠缩略图</label>
+</div>
+<p class="hint">原媒体时钟驱动播放器；视图、波形和缩略图共用一个时间映射。cues 为合成演示，长素材无音频时显示空波形。</p>
+</section>
+<div class="workspace">
+<section class="card player-card"><h2>主播放器</h2><video id="player" controls preload="metadata"></video>
+<p id="player-state">抽帧使用第二个 video，主播放器时钟保持独立。</p>
+<p class="hint">点击或拖动时间轴会有意定位主播放器。后台抽帧不会调用它的 seek。</p></section>
+<section class="card timeline-card"><div class="control-row"><h2>时间轴原型</h2>
+<label>缩放 px/s<input id="zoom" type="range" min="0" max="100" value="40"></label>
+<span id="window-label"></span></div><div id="timelines"></div></section>
+</div>
+<section class="card"><h2>本次测量</h2><div id="metrics" role="status">等待加载</div>
+<p id="status" aria-live="polite"></p><button id="save-metrics">下载本次测量 JSON</button>
+<p class="hint">首次可见包含 HTTP/解码/绘制；A 原始抽取耗时来自 Server。B 只计当前可视区，不声称完整长片抽取成本。内存字节是 RGBA 估算，GPU/解码器内存未计。</p></section>
+<section class="card notes"><h2>要比较的设计选择</h2><div class="choices">
+<p><strong>A / sprite</strong><br>codec 覆盖广，可保存 sidecar。整片 fps 仍需顺序解码；固定帧数只限制图片体积。</p>
+<p><strong>B / 可视区</strong><br>便携页零 Server；只 seek 屏内帧，小 LRU。受浏览器 codec 和随机 seek 性能影响。</p>
+<p><strong>C / 分级</strong><br>先显示粗图，再细化当前窗口。多一层失效、取消和资源管理，需要证明收益。</p></div>
+<p>可移植页仅嵌入选择的 sprite 与小型波形，媒体须重新选择；不修改正式 schema。导航采样时间不是逐帧 PTS，不能用作字幕时间真源。</p></section>
+</main>
+<video id="decoder" muted playsinline preload="auto" aria-hidden="true"></video>
+<script src="/gap.js"></script><script type="module" src="/lab.mjs"></script>
+</body></html>

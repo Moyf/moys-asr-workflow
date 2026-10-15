@@ -5,7 +5,12 @@
   "private": true,
   "description": "Dev-only browser regression tooling for MAW (Playwright). No production dependency.",
   "scripts": {
-    "dev": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/dev-editor.ps1",
+    "dev": "node scripts/dev-session.mjs editor",
+    "dev:editor": "node scripts/dev-session.mjs editor",
+    "dev:launcher": "node scripts/dev-session.mjs launcher",
+    "devl": "node scripts/dev-session.mjs launcher",
+    "launcher": "node scripts/dev-session.mjs launcher --once",
+    "editor": "node scripts/dev-session.mjs editor --once",
     "test": "playwright test --project=chromium",
     "test:headed": "playwright test --project=chromium --headed",
     "typecheck": "tsc -p tsconfig.typecheck.json",

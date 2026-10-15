@@ -83,6 +83,9 @@
       // BWF metadata is optional; an unreadable header must not block playback.
     }
 
+    if (MaweBoot.SERVER_CONFIG) MaweBoot.SERVER_CONFIG.thumbnailBinding = '';
+    MaweCoreState.waveformEditor?.setThumbnailBinding('');
+
     // A server-bound video export can only use the server's original media.
     // Once the user replaces it with a browser-local file, invalidate that
     // capability so later exports cannot silently use stale source footage.

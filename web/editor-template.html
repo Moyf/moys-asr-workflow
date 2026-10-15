@@ -852,7 +852,33 @@ __WAVEFORM_CSS__
            title="开启后显示副字幕轨，可手动添加或导入第二条字幕。">
       <input type="checkbox" id="multi-subtitle-toggle" title="开启后显示副字幕轨，可手动添加或导入第二条字幕。">
       双语字幕
-    </label><small class="multi-subtitle-empty-hint" id="multi-subtitle-empty-hint" hidden title="在波形副轨空白处右键创建副字幕，或从下方「字幕管理」导入 SRT。">副轨为空，可手动添加或导入</small></div></div></div>
+    </label><small class="multi-subtitle-empty-hint" id="multi-subtitle-empty-hint" hidden title="在波形副轨空白处右键创建副字幕，或从下方「字幕管理」导入 SRT。">副轨为空，可手动添加或导入</small></div>
+<div class="settings-panel-section multi-subtitle-settings-section word-timing-settings-section" role="group" aria-labelledby="word-timing-display-title"><span class="settings-panel-title" id="word-timing-display-title">字词码</span>
+<div class="multi-subtitle-setting-row" id="word-timing-row-height-setting">
+          <span>字词码波形高度</span>
+          <select id="word-timing-row-height" title="启用字词时间码时使用的波形行高度">
+            <option value="64">64 px</option>
+            <option value="80">80 px</option>
+            <option value="96">96 px</option>
+            <option value="120">120 px</option>
+            <option value="144">144 px</option>
+            <option value="168" selected>168 px</option>
+            <option value="192">192 px</option>
+          </select>
+        </div>
+<div class="multi-subtitle-setting-row" id="word-timing-seconds-per-row-setting">
+          <span>字词码每行长度</span>
+          <select id="word-timing-seconds-per-row" title="启用字词时间码时使用的波形每行长度">
+            <option value="2">2 秒</option>
+            <option value="5" selected>5 秒</option>
+            <option value="10">10 秒</option>
+            <option value="20">20 秒</option>
+            <option value="30">30 秒</option>
+          </select>
+        </div>
+<small class="settings-panel-hint">启用字词时间码时自动切换到这些值；关闭后恢复原来的行高与每行长度。</small>
+</div>
+</div></div>
 <div class="editor-settings-page" id="editor-settings-page-multi-subtitle" role="tabpanel" aria-labelledby="editor-settings-tab-multi-subtitle" hidden><span class="editor-settings-group-heading" id="project-multi-settings-title">双语字幕</span>
 <div class="editor-settings-group" role="group" aria-labelledby="project-multi-settings-title">
 <div class="settings-panel-section multi-subtitle-settings-section multi-subtitle-display-inline" role="group" aria-label="显示">
@@ -896,31 +922,7 @@ __WAVEFORM_CSS__
 <button type="button" id="multi-subtitle-import" title="导入 SRT 到副轨；已有副字幕时可预览并确认替换">导入副字幕</button>
 <button type="button" id="multi-subtitle-swap" title="交换主字幕和副字幕的文本、时间与绑定关系">交换主副字幕</button>
 </div>
-<div class="settings-panel-section multi-subtitle-settings-section" role="group" aria-labelledby="word-timing-display-title"><span class="settings-panel-title" id="word-timing-display-title">字词码</span>
-<div class="multi-subtitle-setting-row" id="word-timing-row-height-setting">
-          <span>字词码波形高度</span>
-          <select id="word-timing-row-height" title="启用字词时间码时使用的波形行高度">
-            <option value="64">64 px</option>
-            <option value="80">80 px</option>
-            <option value="96">96 px</option>
-            <option value="120">120 px</option>
-            <option value="144" selected>144 px</option>
-            <option value="168">168 px</option>
-            <option value="192">192 px</option>
-          </select>
-        </div>
-<div class="multi-subtitle-setting-row" id="word-timing-seconds-per-row-setting">
-          <span>字词码每行长度</span>
-          <select id="word-timing-seconds-per-row" title="启用字词时间码时使用的波形每行长度">
-            <option value="2">2 秒</option>
-            <option value="5" selected>5 秒</option>
-            <option value="10">10 秒</option>
-            <option value="20">20 秒</option>
-            <option value="30">30 秒</option>
-          </select>
-        </div>
-<small class="settings-panel-hint">启用字词时间码时自动切换到这些值；关闭后恢复原来的行高与每行长度。</small>
-</div>
+
 </div></div>
 <div class="editor-settings-page" id="editor-settings-page-subtitle-style" role="tabpanel" aria-labelledby="editor-settings-tab-subtitle-style" hidden>
 
@@ -1985,6 +1987,10 @@ __WAVEFORM_CSS__
               <input type="checkbox" id="waveform-spectral-color" aria-describedby="waveform-spectral-status"> 频谱颜色
               <span class="waveform-spectral-status" id="waveform-spectral-status" role="status" aria-live="polite" aria-atomic="true" hidden></span>
             </label>
+            <label class="toggle editor-settings-item waveform-settings-toggle-row" id="waveform-thumbnail-setting" title="在波形上方显示视频画面导航；本机 Server 绑定视频时可用">
+              <input type="checkbox" id="waveform-show-thumbnails" aria-label="视频画面" aria-describedby="waveform-thumbnail-status" checked disabled> 视频画面
+              <span id="waveform-thumbnail-status" class="waveform-thumbnail-status" role="status" aria-live="polite" aria-atomic="true"></span>
+            </label>
             <span class="editor-settings-item">振幅
               <span class="editor-settings-stepper">
                 <button type="button" id="waveform-scale-down" title="减小波形振幅">−</button>
@@ -2432,49 +2438,53 @@ __WAVEFORM_CSS__
       <button type="button" id="timed-text-edit-close" class="timed-text-edit-close"
               title="关闭（Esc）" aria-label="关闭纯文本编辑">×</button>
     </div>
-    <div class="timed-text-edit-search" role="search" aria-label="字幕文本查找与替换">
-      <div class="timed-text-edit-search-row">
-        <button type="button" id="timed-text-edit-replace-toggle" class="timed-text-edit-search-expand"
-                aria-expanded="false" aria-controls="timed-text-edit-replace-row" title="显示替换">▸</button>
-        <input type="text" id="timed-text-edit-find" placeholder="查找" autocomplete="off" spellcheck="false" aria-label="查找字幕文本">
-        <button type="button" id="timed-text-edit-case" class="timed-text-edit-search-option" aria-pressed="false" title="区分大小写">Aa</button>
-        <button type="button" id="timed-text-edit-regex" class="timed-text-edit-search-option" aria-pressed="false" title="正则表达式">.*</button>
-        <span id="timed-text-edit-search-count" class="timed-text-edit-search-count" role="status" aria-live="polite">0/0</span>
-        <button type="button" id="timed-text-edit-find-previous" title="上一条">上一条</button>
-        <button type="button" id="timed-text-edit-find-next" title="下一条">下一条</button>
-      </div>
-      <div id="timed-text-edit-search-error" class="timed-text-edit-search-error" role="alert" hidden></div>
-      <div class="timed-text-edit-search-row timed-text-edit-replace-row" id="timed-text-edit-replace-row" hidden>
-        <label for="timed-text-edit-replace">替换为</label>
-        <input type="text" id="timed-text-edit-replace" placeholder="替换为" autocomplete="off" spellcheck="false">
-        <button type="button" id="timed-text-edit-replace-one" disabled>单个替换</button>
-        <button type="button" id="timed-text-edit-replace-all" disabled>全量替换</button>
-      </div>
-    </div>
     <div class="timed-text-edit-toolbar">
-      <div class="timed-text-edit-track-control" id="timed-text-edit-track-control">
-        <label for="timed-text-edit-track">编辑轨道</label>
-        <select id="timed-text-edit-track">
-          <option value="main">主字幕</option>
-          <option value="extension">副字幕</option>
-        </select>
+      <div class="timed-text-edit-controls">
+        <div class="timed-text-edit-track-control" id="timed-text-edit-track-control">
+          <label for="timed-text-edit-track">编辑轨道</label>
+          <select id="timed-text-edit-track">
+            <option value="main">主字幕</option>
+            <option value="extension">副字幕</option>
+          </select>
+        </div>
+        <div class="timed-text-edit-view-control">
+          <span>编辑视图</span>
+          <div id="timed-text-edit-view" class="timed-text-edit-view-switch" role="group" aria-label="编辑视图">
+            <button type="button" data-view="rows" aria-pressed="true">逐条编辑</button>
+            <span class="timed-text-edit-single-view-hint">
+              <button type="button" data-view="single" aria-pressed="false">整体编辑</button>
+            </span>
+          </div>
+        </div>
+        <div class="timed-text-edit-charcount-control" id="timed-text-edit-charcount-control" hidden>
+          <label for="timed-text-edit-charcount-threshold">字数阈值</label>
+          <input id="timed-text-edit-charcount-threshold" type="number" min="1" max="200" step="1" value="16">
+        </div>
+        <label class="timed-text-edit-show-disabled-control" for="timed-text-edit-show-disabled">
+          <input type="checkbox" id="timed-text-edit-show-disabled">
+          显示已禁用字幕
+        </label>
+        <span class="timed-text-edit-source-info" id="timed-text-edit-source-info"></span>
       </div>
-      <div class="timed-text-edit-view-control">
-        <span>编辑视图</span>
-        <div id="timed-text-edit-view" class="timed-text-edit-view-switch" role="group" aria-label="编辑视图">
-          <button type="button" data-view="rows" aria-pressed="true">逐条编辑</button>
-          <button type="button" data-view="single" aria-pressed="false">整体编辑</button>
+      <div class="timed-text-edit-search" role="search" aria-label="字幕文本查找与替换">
+        <div class="timed-text-edit-search-row">
+          <button type="button" id="timed-text-edit-replace-toggle" class="timed-text-edit-search-expand"
+                  aria-expanded="false" aria-controls="timed-text-edit-replace-row" title="显示替换">▸</button>
+          <input type="text" id="timed-text-edit-find" placeholder="查找" autocomplete="off" spellcheck="false" aria-label="查找字幕文本">
+          <button type="button" id="timed-text-edit-case" class="timed-text-edit-search-option" aria-pressed="false" title="区分大小写">Aa</button>
+          <button type="button" id="timed-text-edit-regex" class="timed-text-edit-search-option" aria-pressed="false" title="正则表达式">.*</button>
+          <span id="timed-text-edit-search-count" class="timed-text-edit-search-count" role="status" aria-live="polite">0/0</span>
+          <button type="button" id="timed-text-edit-find-previous" title="上一条">上一条</button>
+          <button type="button" id="timed-text-edit-find-next" title="下一条">下一条</button>
+        </div>
+        <div id="timed-text-edit-search-error" class="timed-text-edit-search-error" role="alert" hidden></div>
+        <div class="timed-text-edit-search-row timed-text-edit-replace-row" id="timed-text-edit-replace-row" hidden>
+          <label for="timed-text-edit-replace">替换为</label>
+          <input type="text" id="timed-text-edit-replace" placeholder="替换为" autocomplete="off" spellcheck="false">
+          <button type="button" id="timed-text-edit-replace-one" disabled>单个替换</button>
+          <button type="button" id="timed-text-edit-replace-all" disabled>全量替换</button>
         </div>
       </div>
-      <div class="timed-text-edit-charcount-control" id="timed-text-edit-charcount-control" hidden>
-        <label for="timed-text-edit-charcount-threshold">字数阈值</label>
-        <input id="timed-text-edit-charcount-threshold" type="number" min="1" max="200" step="1" value="16">
-      </div>
-      <label class="timed-text-edit-show-disabled-control" for="timed-text-edit-show-disabled">
-        <input type="checkbox" id="timed-text-edit-show-disabled">
-        显示已禁用字幕
-      </label>
-      <span class="timed-text-edit-source-info" id="timed-text-edit-source-info"></span>
     </div>
     <div class="timed-text-edit-layout">
       <section class="timed-text-edit-input-panel" aria-labelledby="timed-text-edit-input-title">

@@ -3,14 +3,16 @@ version = 1
 name = "moys-asr-workflow"
 
 [setup]
-script = ""
+script = '''
+pnpm install --frozen-lockfile
+uv sync'''
 
 [[actions]]
 name = "gui"
 icon = "run"
-command = "uv run python maw_gui.py -dbg"
+command = "pnpm run dev:launcher"
 
 [[actions]]
 name = "server"
 icon = "tool"
-command = "uv run python server-editor/serve.py --port 8258"
+command = "pnpm run dev:editor"

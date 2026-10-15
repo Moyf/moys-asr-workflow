@@ -66,6 +66,7 @@ uv run --no-sync python maw_gui.py -i "example.mp4" -o "example.srt" -ll 2m
 | `.srt` | 通用字幕交付，可从工程重新导出。 |
 | `.json` | 兼容旧工程；内容格式与 `.mosp` 相同，已有文件无需迁移。 |
 | `.mopeaks` / `.quapeaks` | 可重建波形缓存，不能代替工程。 |
+| `.mothumbs` | 原视频的基础画面缓存，图片不存进工程，可由 Launcher 重建。 |
 | `.edit.html` | 可选便携编辑页面，可从工程重新生成。 |
 
 进程退出码为 `0` 且预期文件存在才表示成功。识别为空、上传失败或配置错误时查看具体日志；排错见 [FAQ](FAQ.md)。

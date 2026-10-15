@@ -1,7 +1,7 @@
 // render: waveform class methods with explicit dependencies.
 export function createWaveformModule(dependencies) {
   'use strict';
-  const { MULTI_ROW_BUFFER, ROW_GAP, clamp, computeGroupBadges } = dependencies;
+  const { MULTI_ROW_BUFFER, ROW_GAP, clamp, computeGroupBadges, formatCompact } = dependencies;
 
   class WaveformMethods {
 
@@ -30,7 +30,7 @@ export function createWaveformModule(dependencies) {
       if (this.basicRenderFrame) return;
       this.basicRenderFrame = requestAnimationFrame(() => {
         this.basicRenderFrame = 0;
-        this.renderBasic();
+        this.renderBasic({ reuseRow: true });
       });
     }
 
@@ -100,7 +100,7 @@ export function createWaveformModule(dependencies) {
       // 字幕块/空隙块/播放头均为百分比定位，会随行宽自动跟随；
       // 只有 canvas 位图需要按新尺寸临时拉伸
       this.renderedRows.forEach((row) => {
-        const canvas = row.querySelector('canvas');
+        const canvas = /** @type {HTMLCanvasElement | null} */ (row.querySelector('canvas.waveform-canvas'));
         if (!canvas) return;
         canvas.style.width = '100%';
         canvas.style.height = '100%';
@@ -116,6 +116,7 @@ export function createWaveformModule(dependencies) {
         return;
       }
       this.renderedRows.forEach((row) => this.drawRow(row, { measure }));
+      this.syncThumbnailView();
       this.updatePlayback(false);
     }
 
@@ -132,19 +133,48 @@ export function createWaveformModule(dependencies) {
 
 
     /** @this {import('./waveform-types.js').WaveformInstance} */
-    renderBasic() {
+    renderBasic({ reuseRow = false } = {}) {
       if (!this.payload) return;
       const windowMs = this.settings.visibleSeconds * 1000;
       const maxStart = Math.max(0, this.durationMs - windowMs);
       this.basicWindowStartMs = clamp(this.basicWindowStartMs, 0, maxStart);
       const endMs = Math.min(this.durationMs, this.basicWindowStartMs + windowMs);
-      this.content.replaceChildren();
-      this.content.style.height = '100%';
       const groupBadges = computeGroupBadges(this.options.getSegments('main'));
-      const row = this.createRow(this.basicWindowStartMs, endMs, -1, true, groupBadges);
-      this.content.appendChild(row);
+      let row = reuseRow && this.renderedRows.length === 1 ? this.renderedRows[0] : null;
+      const reused = row?.dataset.basic === 'true'
+        && (row._thumbnailShell || row).parentElement === this.content
+        && Boolean(row._thumbnailShell) === Boolean(this.thumbnailHeight());
+      if (reused) {
+        // 在修改覆盖层之前只测量一次；保留 Canvas、行事件和指针节点，
+        // 避免滚轮每帧销毁画布并在整行新 DOM 挂载后强制同步布局。
+        const rect = row.getBoundingClientRect();
+        const pointerGeometry = {
+          left: rect.left + row.clientLeft,
+          width: Math.max(1, row.clientWidth),
+          startMs: this.basicWindowStartMs,
+          endMs,
+        };
+        row._waveformCanvasWidth = Math.max(1, Math.round(rect.width));
+        row._waveformCanvasHeight = Math.max(1, Math.round(rect.height));
+        row.dataset.startMs = String(this.basicWindowStartMs);
+        row.dataset.endMs = String(endMs);
+        row.querySelector('.waveform-row-time').textContent = `${formatCompact(this.basicWindowStartMs)} → ${formatCompact(endMs)}`;
+        row.querySelectorAll('.waveform-gap-block, .waveform-cue-block, .waveform-cue-badge, .waveform-cue-boundary, .waveform-word-block, .waveform-word-boundary, .waveform-marker-track')
+          .forEach(element => element.remove());
+        row.classList.remove('waveform-row-has-markers');
+        this.appendGapBlocks(row, this.basicWindowStartMs, endMs);
+        this.appendCueBlocks(row, this.basicWindowStartMs, endMs, groupBadges);
+        this.appendMarkerTrack(row, this.basicWindowStartMs, endMs);
+        this.refreshPointerLine(pointerGeometry);
+      } else {
+        this.content.replaceChildren();
+        this.content.style.height = '100%';
+        row = this.createRow(this.basicWindowStartMs, endMs, -1, true, groupBadges);
+        this.appendTimelineRow(row, true);
+      }
       this.renderedRows = [row];
-      this.drawRow(row);
+      this.drawRow(row, { measure: !reused });
+      this.syncThumbnailView();
       this.updatePlayback(false);
     }
 
@@ -153,7 +183,7 @@ export function createWaveformModule(dependencies) {
     renderMulti() {
       const rowDurationMs = this.settings.secondsPerRow * 1000;
       const rowCount = Math.max(1, Math.ceil(this.durationMs / rowDurationMs));
-      this.content.style.height = `${rowCount * (this.settings.rowHeight + ROW_GAP) - ROW_GAP}px`;
+      this.content.style.height = `${rowCount * (this.getTimelineRowHeight() + ROW_GAP) - ROW_GAP}px`;
       this.multiRange = [-1, -1];
       this.multiFollowCheckPending = true;
       this.renderMultiVisible(true);
@@ -165,10 +195,11 @@ export function createWaveformModule(dependencies) {
       if (!this.isMultiMode() || !this.payload) return;
       const rowDurationMs = this.settings.secondsPerRow * 1000;
       const rowCount = Math.max(1, Math.ceil(this.durationMs / rowDurationMs));
-      const stride = this.settings.rowHeight + ROW_GAP;
+      const stride = this.getTimelineRowHeight() + ROW_GAP;
       const first = clamp(Math.floor(this.scroll.scrollTop / stride) - MULTI_ROW_BUFFER, 0, rowCount - 1);
       const last = clamp(Math.ceil((this.scroll.scrollTop + this.scroll.clientHeight) / stride) + MULTI_ROW_BUFFER, 0, rowCount - 1);
       if (!force && first === this.multiRange[0] && last === this.multiRange[1]) {
+        this.syncThumbnailView();
         this.updatePlayback(false);
         return;
       }
@@ -180,10 +211,11 @@ export function createWaveformModule(dependencies) {
         this.content.replaceChildren();
         const rows = [];
         for (let index = first; index <= last; index++) {
-          rows.push(this.content.appendChild(this.createMultiRow(index, rowDurationMs, groupBadges)));
+          rows.push(this.appendTimelineRow(this.createMultiRow(index, rowDurationMs, groupBadges)));
         }
         this.renderedRows = rows;
         for (const row of rows) this.drawRow(row);
+        this.syncThumbnailView();
         this.updatePlayback(false);
         return;
       }
@@ -194,15 +226,16 @@ export function createWaveformModule(dependencies) {
       const existing = new Set();
       (/** @type {NodeListOf<import('./waveform-types.js').WaveformRow>} */ (this.content.querySelectorAll('.waveform-row'))).forEach((row) => {
         if (wanted.has(row.dataset.rowIndex)) existing.add(row.dataset.rowIndex);
-        else row.remove();
+        else (row._thumbnailShell || row).remove();
       });
       const created = [];
       for (let index = first; index <= last; index++) {
         if (existing.has(String(index))) continue;
-        created.push(this.content.appendChild(this.createMultiRow(index, rowDurationMs, groupBadges)));
+        created.push(this.appendTimelineRow(this.createMultiRow(index, rowDurationMs, groupBadges)));
       }
       this.renderedRows = [...(/** @type {NodeListOf<import('./waveform-types.js').WaveformRow>} */ (this.content.querySelectorAll('.waveform-row')))];
       for (const row of created) this.drawRow(row);
+      this.syncThumbnailView();
       this.updatePlayback(false);
     }
 
@@ -212,7 +245,7 @@ export function createWaveformModule(dependencies) {
       const startMs = index * rowDurationMs;
       const endMs = Math.min(this.durationMs, startMs + rowDurationMs);
       const row = this.createRow(startMs, endMs, index, false, groupBadges);
-      row.style.top = `${index * (this.settings.rowHeight + ROW_GAP)}px`;
+      row.style.top = `${index * (this.getTimelineRowHeight() + ROW_GAP)}px`;
       row.style.height = `${this.settings.rowHeight}px`;
       // 最后一行只代表媒体剩余的真实时长；缩短容器不会减少采样量，
       // 但能避免把不存在的尾部时间误画成整行波形。

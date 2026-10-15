@@ -37,17 +37,26 @@ pnpm run build:editor          # 编辑器 JS、清单或构建配置变化后
 pnpm run check:editor          # 提交及发布打包前检查产物新鲜度
 ```
 
-Windows 频繁开发可用一个命令完成首次构建、启动 JS watcher 和 Python Server（环境先由 `uv sync`、`pnpm install --frozen-lockfile` 准备）：
+频繁开发可用一个命令完成首次构建、启动 JS watcher 和 Python 入口（环境先由 `uv sync`、`pnpm install --frozen-lockfile` 准备）。入口跨平台（Windows / macOS / Linux），由 `scripts/dev-session.mjs` 驱动：
 
 ```sh
-pnpm run dev
-# 用 -- 把工程路径和 Server 参数传给开发脚本
-pnpm run dev -- "project.mosp" --port 8251
+pnpm run dev            # 编辑器开发会话（dev:editor 的默认别名）
+pnpm run dev:launcher   # Launcher 开发会话
+pnpm run devl           # dev:launcher 的短别名
 ```
 
-`pnpm run dev` 复用 `scripts/dev-editor.ps1`，当前是 Windows / PowerShell 开发入口；其他系统仍可分别运行 `pnpm run watch:editor` 和 Python Server。
+用 `--` 把工程路径和 Server 参数传给 Python 入口，例如 `pnpm run dev -- "project.mosp" --port 8251`。
 
-不带参数时默认空白启动；修改 JS 后自动重建，刷新浏览器查看结果，Ctrl+C 结束开发会话并清理 watcher。脚本不生成 `blank-editor.html`、不自动同步依赖；修改 Python 后仍需停止并重新运行脚本。生命周期检查可运行 `powershell -NoProfile -File tests/test_dev_editor.ps1`。
+会话先完整构建一次 bundle，再挂 watcher，最后运行 `uv run --no-sync python server-editor/serve.py`（编辑器，不带参数时默认空白启动；透传任意参数如 `-- -p 8258` 可改为固定端口并恢复上次工程）或 `uv run --no-sync python maw_gui.py`（Launcher，默认带 `--debug` 开启 pywebview 调试；`-- --devtools` 可在启动后自动打开 DevTools）。修改 JS 后自动重建，刷新浏览器查看结果；Ctrl+C 结束开发会话并清理 watcher。脚本不生成 `blank-editor.html`、不自动同步依赖；修改 Python 后仍需停止并重新运行。生命周期由 `node --test tests/test_dev_session.mjs` 守护。
+
+只想用最新代码跑一次、不挂 watcher 时：
+
+```sh
+pnpm run launcher       # 构建 Launcher bundle 后打开 maw_gui.py
+pnpm run editor         # 构建编辑器 bundle 后启动 server-editor/serve.py
+```
+
+两者同样支持 `--` 透传参数，如 `pnpm run editor -- "project.mosp" --port 8251`。
 
 - 修改编辑器 JS 后需要重建：持续调试用 `pnpm run watch:editor` 或 `pnpm run dev`；直接刷新 Server 页面也会触发自动重建（serve.py 渲染前校验产物新鲜度）。
 - bundle 与 `.meta.json` 是构建产物，不进 Git（.gitignore 已忽略）；不要手改生成产物。

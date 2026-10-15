@@ -138,9 +138,19 @@ source: "docs/INDEX.md"
 
 [打开正文](https://github.com/Moyf/moys-asr-workflow/blob/main/docs/engineering/PRPROJ_CAPABILITY.md)
 
+<a name="engineering-filmstrip-exploration"></a>
+### 视频画面轨道与缓存（#229）
+
+[正式实现、缓存契约、验证与实验历史](https://github.com/Moyf/moys-asr-workflow/blob/main/docs/engineering/FILMSTRIP_EXPLORATION.md)
+
 ## 共享计划
 
 这些阶段方案保留原始基线与状态；是否继续实施以本分支代码、后续记录和维护者确认为准。编辑器设置方案已有实施记录，旧前端方案不代表当前代码布局。
+
+<a name="plan-ai-processing-review"></a>
+### AI 核对页与通用工程备注
+
+[打开方案](https://github.com/Moyf/moys-asr-workflow/blob/main/docs/plans/AI_PROCESSING_REVIEW.md)
 
 <a name="plan-editor-settings"></a>
 ### 编辑器设置整理实施计划
