@@ -233,6 +233,7 @@
     $("dropZone").textContent = t(batch ? "batch_drop_zone" : "drop_hint");
     $("batchManuscriptNotice").classList.toggle("hidden", !batch);
     window.MAWLauncher.onBatchModeChanged?.(batch);
+    window.MAWLauncher.onTranscribeModeChanged?.(mode);
     renderQueue();
   }
 
@@ -393,6 +394,8 @@
     $("stopBatch").addEventListener("click", stopBatch);
     $("mediaCard").addEventListener("drop", handleDrop, true);
     window.MAWLauncher.onBatchEvent = handleBatchEvent;
+    window.MAWLauncher.setTranscribeMode = setMode;
+    window.MAWLauncher.getTranscribeMode = () => state.mode;
     window.MAWLauncher.onBatchDrop = (path) => {
       if (state.mode !== "batch" || state.running || !path) return false;
       addPaths([path]);

@@ -9,7 +9,7 @@ test('resegment exposes optional limits, persists the plan and measures field sp
   await page.goto(launcherUrl);
   await completeStaticLauncherDiscovery(page);
   await page.waitForFunction(() => window.MAWLauncher?.config?.postprocessProviders?.length);
-  await page.locator('#toolboxFab').click();
+  await page.locator('#navToolbox').click();
   await page.locator('#toolboxLlmTab').click();
   await page.locator('#postprocessOperation').selectOption('resegment');
   const options = page.locator('#postprocessResegmentOptions');

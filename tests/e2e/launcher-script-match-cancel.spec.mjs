@@ -75,7 +75,7 @@ for (const group of ['plain', 'timed']) {
           return original(method, payload);
         };
       });
-      await page.locator('#toolboxFab').click();
+      await page.locator('#navToolbox').click();
       await page.locator('#toolboxMatchTab').click();
       await expect(page.locator('#postprocessScriptPath')).toBeVisible();
       const [large, small] = backend.fixtures[group];
