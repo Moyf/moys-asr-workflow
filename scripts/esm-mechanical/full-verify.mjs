@@ -28,7 +28,7 @@ def render(**context):
     context['data_json'] = sys.argv[2]
     return original(**context)
 edit.render_editor_page = render
-pathlib.Path(sys.argv[1]).write_text(edit.build_blank_html(), encoding='utf-8', newline='\\n')
+pathlib.Path(sys.argv[1]).write_text((getattr(edit, "render_empty_editor_page", None) or edit.build_blank_html)(), encoding='utf-8', newline='\\n')
 `, output, JSON.stringify(sample)], { cwd: projectRoot, windowsHide: true, env: process.env });
   return output;
 }

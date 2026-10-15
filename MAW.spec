@@ -41,6 +41,21 @@ for _kind in ("editor", "launcher"):
         raise SystemExit(f"MAW.spec: {_kind} bundle {_status}: {_reason}。请重新构建后再打包。")
 
 binaries = []
+# Metadata controls source builds; frozen programs use the bundled fallbacks.
+# Reject mixed versions before collecting a package, including manual builds.
+import subprocess
+
+_version_check = subprocess.run(
+    [sys.executable, str(ROOT / "scripts" / "sync_launcher_version.py"), "--check"],
+    cwd=ROOT, capture_output=True, text=True, check=False,
+)
+if _version_check.returncode:
+    raise SystemExit(
+        "MAW.spec: bundled version markers disagree with project metadata. "
+        "Run python scripts/sync_launcher_version.py --write, rebuild bundles, then package again.\n"
+        + (_version_check.stderr or _version_check.stdout).strip()
+    )
+
 if sys.platform == "linux":
     # Qt 6.5+ 的 xcb 平台插件需要 libxcb-cursor；部分环境（如 ubuntu-22.04
     # runner）PyInstaller 的 ldd 分析收集不到它，导致 AppImage 无法启动。

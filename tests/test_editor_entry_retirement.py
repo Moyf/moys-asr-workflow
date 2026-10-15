@@ -134,14 +134,22 @@ class EditorEntryRetirementTests(unittest.TestCase):
     def test_all_generating_consumers_gate_their_optional_artifact(self):
         # These generators invoke a separate process: catch omissions without
         # running paid ASR or installing model runtimes.
+        expected = {f"generate_subtitle_{provider}_api.py" for provider in ("bcut", "doubao", "openai", "qwen", "soniox")}
+        found = set()
         for path in ROOT.glob("generate_subtitle_*_api.py"):
             source = path.read_text(encoding="utf-8")
-            if "if not args.no_html:" not in source and "should_generate_standalone_editor" not in source:
-                continue  # Tencent accepts --no-html but does not generate HTML.
             tree = ast.parse(source)
-            gates = [node for node in ast.walk(tree) if isinstance(node, ast.Call)
-                     and isinstance(node.func, ast.Name) and node.func.id == "should_generate_standalone_editor"]
-            self.assertTrue(gates, path.name)
+            html_scripts = [node for node in ast.walk(tree)
+                            if isinstance(node, ast.Constant) and node.value == "edit.py"]
+            if not html_scripts:
+                continue  # Tencent accepts --no-html but does not generate HTML.
+            found.add(path.name)
+            gates = [node for node in ast.walk(tree) if isinstance(node, ast.If)
+                     and isinstance(node.test, ast.Call) and isinstance(node.test.func, ast.Name)
+                     and node.test.func.id == "should_generate_standalone_editor"]
+            self.assertEqual(len(gates), 1, path.name)
+            self.assertTrue(all(node in list(ast.walk(gates[0])) for node in html_scripts), path.name)
+        self.assertEqual(found, expected)
 
 
 if __name__ == "__main__":

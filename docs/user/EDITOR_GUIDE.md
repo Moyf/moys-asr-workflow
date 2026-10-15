@@ -1,6 +1,6 @@
 # MAWE 编辑器指南
 
-MAWE 是 MAW 的字幕编辑器。日常使用本机 Server；便携 HTML 与在线页面用于浏览器中的兼容操作。它们共用前端代码与 `.mosp` / 旧 `.json` 工程格式。
+MAWE 是 MAW 的字幕编辑器，日常使用本地应用或本机 Server。从 2.0（含预发布版）起停止生成与维护独立 HTML / 在线编辑器；1.x 历史副本可继续使用，但不承诺兼容新版工程。本地应用继续共用 Web 前端，并兼容 `.mosp` / 旧 `.json` 工程。
 
 源码启动见 [Server README](../../server-editor/README.md)，首次转写见 [工作流](WORKFLOW.md)。
 

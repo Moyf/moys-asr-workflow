@@ -56,7 +56,7 @@ Launcher 在 ASR 明确返回空结果，或输出工程没有任何有效字幕
 
 工程的媒体引用可能失效。通过 Launcher 重新选择，或源码启动时用 `-m` 覆盖。直接拖入工程不一定能让 Server 接管；没有写入绑定时需导出工程保存。条件见 [Server README](../../server-editor/README.md)。
 
-便携 HTML 的 file:// 媒体权限与 Seek 兼容性有限，日常优先使用 Server。不要用普通 `python -m http.server` 替代专用媒体 Range 服务。
+1.x 历史便携 HTML 的 file:// 媒体权限与 Seek 兼容性有限。2.0 起停止生成与维护独立 HTML / 在线编辑器，日常使用本地应用或 Server；旧 HTML 不承诺兼容新版工程。不要用普通 `python -m http.server` 替代专用媒体 Range 服务。
 
 ## 字幕不在媒体旁，或缓存重新生成
 

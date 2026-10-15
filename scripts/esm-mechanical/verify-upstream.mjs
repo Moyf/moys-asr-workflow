@@ -29,7 +29,7 @@ let freshness = false, buildError = null;
 try { freshness = (await buildEditor(root)).code === artifact; }
 catch (error) { buildError = error.message.replaceAll(root, '<experiment>'); }
 const portable = path.join(root, 'upstream-feature-probe.html');
-execFileSync(python, ['-c', "import edit,pathlib,sys; pathlib.Path(sys.argv[1]).write_text(edit.build_blank_html(),encoding='utf-8',newline='\\n')", portable],
+execFileSync(python, ['-c', "import edit,pathlib,sys; pathlib.Path(sys.argv[1]).write_text((getattr(edit, 'render_empty_editor_page', None) or edit.build_blank_html)(),encoding='utf-8',newline='\\n')", portable],
   { cwd: root, windowsHide: true, env: process.env });
 const browser = await chromium.launch();
 async function probe(url) {
