@@ -24,12 +24,12 @@ test.beforeEach(async ({ page }) => {
 });
 
 async function saveAndReopen(page) {
-  const response = page.waitForResponse((response) => (
-    response.url().endsWith('/api/project') && response.request().method() === 'POST'
-  ));
-  await page.keyboard.press('Control+s');
-  const saved = await response;
-  expect(saved.ok(), await saved.text()).toBe(true);
+  if (await page.locator('#project-settings-close').isVisible()) await page.locator('#project-settings-close').click();
+  const saved = await page.evaluate(async () => {
+    try { return { ok: await MaweProjectSave.saveCurrentProject({ silent: true }), canSave: MaweBoot.SERVER_CONFIG.canSave }; }
+    catch (error) { return { error: String(error) }; }
+  });
+  expect(saved).toMatchObject({ ok: true });
   const project = JSON.parse(readFileSync(projectPath, 'utf8'));
   await page.reload();
   await expect.poll(() => page.evaluate(() => MaweBoot.DATA.segments.map(s => s.id)))
@@ -43,6 +43,8 @@ test('swapping once and twice preserves speaker and discarded cues through save 
       { id: `${prefix}-discarded`, start: 1000, end: 2000, text: `${prefix} discarded`, speaker: `${prefix}-speaker`, disabled: true, assOverride: { pos: { x: 123, y: 456 } }, vendor: { nested: ['keep'] }, sticker: { name: prefix, filename: `${prefix}.png`, start: 1000, end: 2000 }, color: { name: prefix === 'main' ? 'blue' : 'yellow', value: '#123456', start: 1000, end: 2000 } },
       { id: `${prefix}-enabled`, start: 3000, end: 4000, text: `${prefix} enabled`, speaker: `${prefix}-other`, disabled: false },
     ];
+    delete MaweBoot.DATA.subtitle_groups;
+    MaweBoot.DATA.schema = 'moy.asr.project.v1';
     MaweBoot.DATA.segments = makeSegments('main');
     MaweBoot.DATA.multi_subtitle = { schema: 'moy.asr.multi_subtitle.v1', enabled: true,
       display_mode: 'both', tracks: [{ id: 'ext', name: '译文', segments: makeSegments('ext') }],
@@ -55,8 +57,8 @@ test('swapping once and twice preserves speaker and discarded cues through save 
   });
   for (let round = 0; round < 2; round++) {
     // 双语字幕设置已并入工程设置 → 字幕轨道页。
-    await openSettingsPage(page, 'project-tracks');
-    await expect(page.locator('#project-multi-subtitle-settings')).toBeVisible();
+    await openSettingsPage(page, 'multi-subtitle');
+    await expect(page.locator('#multi-subtitle-swap')).toBeVisible();
     await page.locator('#multi-subtitle-swap').click();
     const expectedMain = round === 0 ? 'ext' : 'main';
     await expect.poll(() => page.evaluate(() => MaweBoot.DATA.segments[0].id))
@@ -66,8 +68,8 @@ test('swapping once and twice preserves speaker and discarded cues through save 
       const prefix = segments[0].id.split('-')[0];
       expect(segments[0].assOverride).toEqual({ pos: { x: 123, y: 456 } });
       expect(segments[0].vendor).toEqual({ nested: ['keep'] });
-      expect(segments[0].sticker.name).toBe(prefix);
-      expect(segments[0].color.name).toBe(prefix === 'main' ? 'blue' : 'yellow');
+      expect(saved.subtitle_groups.sticker.find(g => g.id === segments[0].sticker_group_id).value.name).toBe(prefix);
+      expect(saved.subtitle_groups.color.find(g => g.id === segments[0].color_group_id).value.name).toBe(prefix === 'main' ? 'blue' : 'yellow');
       expect(segments.map(s => [s.speaker, Boolean(s.disabled)]))
         .toEqual([[`${prefix}-speaker`, true], [`${prefix}-other`, false]]);
     }
@@ -90,6 +92,8 @@ for (const path of ['extension', 'linked']) {
   for (const targetIndex of [1, 3]) {
     test(`${path} split at color ${targetIndex === 1 ? 'head' : 'member'} keeps track references valid through undo and save`, async ({ page }) => {
       const before = await page.evaluate((targetIndex) => {
+        delete MaweBoot.DATA.subtitle_groups;
+        MaweBoot.DATA.schema = 'moy.asr.project.v1';
         const segments = Array.from({ length: 6 }, (_, index) => ({
           id: `ext-${index}`, start: 1000 + index * 2000, end: 2800 + index * 2000,
           text: '甲乙丙丁', speaker: 'ext-speaker',
@@ -137,8 +141,9 @@ for (const path of ['extension', 'linked']) {
         .toEqual(before);
       await page.locator('#redo-btn').click();
       const saved = await saveAndReopen(page);
-      expect(saved.multi_subtitle.tracks[0].segments.map(s => s.color_ref || null))
-        .toEqual(after.map(s => s.color_ref || null));
+      expect(saved.multi_subtitle.tracks[0].segments.map(s => s.color_group_id || null))
+        .toEqual(after.map(s => s.color_group_id || null));
+      expect(JSON.stringify(saved)).not.toContain('headIdx');
       expect(await page.evaluate(() => MaweBoot.DATA.multi_subtitle.tracks[0].segments.map(s => s.color_ref || null)))
         .toEqual(after.map(s => s.color_ref || null));
       expect(await page.evaluate(() => MaweBoot.DATA.multi_subtitle.tracks[0].segments.map(s => s.speaker)))

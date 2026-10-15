@@ -17,6 +17,7 @@
   const out = {
     schema: window.AsrEditorUtils.PROJECT_SCHEMA,
     ...projectExtensionFields,
+    subtitle_groups: window.AsrEditorUtils.cloneJsonValue(MaweBoot.DATA.subtitle_groups),
     media: MaweBoot.DATA.media || '',
     language: MaweBoot.DATA.language || '',
     model: MaweBoot.DATA.model || '',
@@ -145,6 +146,7 @@
     preview.extension_subtitle = { ...MaweAppearance.getStoredExtensionSubtitleAppearance() };
   }
   out.preview = preview;
+  window.AsrEditorUtils.serializeSubtitleGroups(out);
   return JSON.stringify(out, null, 2);
 }
 

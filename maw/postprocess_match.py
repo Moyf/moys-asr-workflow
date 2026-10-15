@@ -419,7 +419,9 @@ def _preserve_equal_count_segment_metadata(
         check_match_cancelled(is_cancelled)
         if not isinstance(source_segment, dict) or not isinstance(matched_segment, dict):
             continue
-        for key in ("id", "speaker", "disabled", "sticker", "sticker_ref", "color", "color_ref"):
+        for key in source_segment:
+            if key in {"start", "end", "text", "items", "start_frame", "end_frame"}:
+                continue
             check_match_cancelled(is_cancelled)
             if key in source_segment:
                 matched_segment[key] = copy.deepcopy(source_segment[key])

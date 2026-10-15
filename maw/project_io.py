@@ -129,8 +129,10 @@ def serialize_mosp(
         merged_metadata = dict(metadata) if isinstance(metadata, Mapping) else {}
         merged_metadata["selected_audio_track"] = selected_audio_track
         enriched["media_metadata"] = merged_metadata
-    enriched.pop("schema", None)
-    canonical = {"schema": PROJECT_SCHEMA, **enriched}
+    schema = enriched.pop("schema", PROJECT_SCHEMA)
+    if schema not in (PROJECT_SCHEMA, "moy.asr.project.v2"):
+        raise ValueError("Unsupported project schema")
+    canonical = {"schema": schema, **enriched}
     # canonical 是本函数新建的顶层 dict，在这里剥离不影响调用方的运行态。
     for key in INLINE_CACHE_KEYS:
         canonical.pop(key, None)

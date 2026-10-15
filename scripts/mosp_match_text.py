@@ -9,6 +9,7 @@ each item, then difflib anchors those characters to the corrected manuscript.
 from __future__ import annotations
 
 import argparse
+import copy
 import difflib
 import json
 import math
@@ -205,7 +206,7 @@ def parse_mosp(text: str, *, is_cancelled: Callable[[], bool] | None = None) -> 
         raise AlignmentError(f"MOSP JSON 无效：第 {exc.lineno} 行第 {exc.colno} 列") from exc
     if not isinstance(project, dict):
         raise AlignmentError("MOSP 顶层必须是 JSON 对象")
-    if "schema" in project and project.get("schema") != PROJECT_SCHEMA:
+    if "schema" in project and project.get("schema") not in (PROJECT_SCHEMA, "moy.asr.project.v2"):
         raise AlignmentError(f"不支持的 MOSP 工程版本：{project.get('schema')}")
     segments = project.get("segments")
     if not isinstance(segments, list) or not segments:
@@ -716,8 +717,30 @@ def generate_matched_mosp(
         project = json.loads(mosp_text.lstrip("\ufeff"))
     except json.JSONDecodeError as exc:  # parse_mosp normally reports this first.
         raise AlignmentError("MOSP JSON 无效") from exc
-    project["schema"] = PROJECT_SCHEMA
-    project["segments"] = build_mosp_segments(segments, timings, output, is_cancelled=is_cancelled)
+    source_segments = project["segments"]
+    rebuilt = build_mosp_segments(segments, timings, output, is_cancelled=is_cancelled)
+    grouped = any(s.get("color_group_id") or s.get("sticker_group_id") for s in source_segments)
+    if grouped and len(rebuilt) != len(source_segments):
+        raise AlignmentError("带独立分组的字幕暂不支持文稿匹配改变条数；请先保留原工程并在编辑器中拆合，避免丢失组关系。")
+    if len(rebuilt) == len(source_segments):
+        for original, target in zip(source_segments, rebuilt, strict=True):
+            for key, value in original.items():
+                if key not in {"start", "end", "text", "items", "start_frame", "end_frame"}:
+                    target[key] = copy.deepcopy(value)
+    if project.get("schema") == "moy.asr.project.v2":
+        reserved = {s.get("id") for track in project.get("multi_subtitle", {}).get("tracks", []) for s in track.get("segments", [])}
+        reserved.update(s.get("id") for s in project.get("overlay_track", {}).get("segments", []))
+        reserved.update(s.get("id") for s in source_segments)
+        for index, target in enumerate(rebuilt):
+            if target.get("id"):
+                continue
+            base = f"match-{index + 1:03d}"
+            identifier = base; suffix = 2
+            while identifier in reserved:
+                identifier = f"{base}-{suffix}"; suffix += 1
+            target["id"] = identifier; reserved.add(identifier)
+    project["schema"] = project.get("schema", PROJECT_SCHEMA)
+    project["segments"] = rebuilt
     content = json.dumps(project, ensure_ascii=False, indent=2) + "\n"
     return output, report, content
 

@@ -74,8 +74,16 @@
       boundaries.add(end);
     });
   };
-  collect(MaweBoot.DATA.segments, 'main');
-  collect(getOverlayTrack()?.segments || [], 'overlay');
+  if (MaweBoot.DATA.subtitle_groups) {
+    for (const range of window.AsrEditorUtils.subtitleGroupRanges(MaweBoot.DATA)) {
+      if (!range.enabled) continue;
+      intervals.push({ ...range, key: range.id });
+      boundaries.add(range.start); boundaries.add(range.end);
+    }
+  } else {
+    collect(MaweBoot.DATA.segments, 'main');
+    collect(getOverlayTrack()?.segments || [], 'overlay');
+  }
   stickerIntervals = intervals;
   stickerIntervalBoundaries = [...boundaries].sort((a, b) => a - b);
   stickerIntervalCacheVersion = stickerOverlayDataVersion;

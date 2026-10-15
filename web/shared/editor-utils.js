@@ -7,6 +7,7 @@
     getNavigator: () => window.MaweHost.runtime.getNavigator(),
   };
   Object.assign(helpers, window.MAWE.resolve('utils-data', helpers));
+  Object.assign(helpers, window.MAWE.resolve('utils-subtitle-groups', helpers));
   Object.assign(helpers, window.MAWE.resolve('utils-fonts', helpers));
   Object.assign(helpers, window.MAWE.resolve('utils-speakers', helpers));
   Object.assign(helpers, window.MAWE.resolve('utils-media-metadata', helpers));
@@ -335,6 +336,8 @@
   } = helpers;
 
 window.AsrEditorUtils = {
+    cloneJsonValue: helpers.cloneJsonValue,
+    ...window.MAWE.resolve('utils-subtitle-groups', helpers),
   ...wordTimingHelpers,
     PROJECT_SCHEMA,
     supportsProjectSchema,

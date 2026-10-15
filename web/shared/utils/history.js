@@ -8,11 +8,12 @@ export function createUtilsModule(dependencies) {
     segments: '编辑', layout: '调整工作区', gap_remove: '空隙移除', preview: '预览', markers: '标记',
   });
 
-  function buildSegmentsHistorySnapshot(segments, multiSubtitle, overlayTrack = null) {
+  function buildSegmentsHistorySnapshot(segments, multiSubtitle, overlayTrack = null, subtitleGroups = null) {
     return {
       segments: cloneJsonValue(segments),
       multi_subtitle: cloneJsonValue(multiSubtitle),
       overlay_track: cloneJsonValue(overlayTrack),
+      subtitle_groups: cloneJsonValue(subtitleGroups),
     };
   }
 

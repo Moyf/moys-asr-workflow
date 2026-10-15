@@ -31,6 +31,7 @@
     MaweBoot.DATA.segments,
     MaweMultiSubtitleCore.getMultiSubtitleState(),
     getOverlayTrack(),
+    MaweBoot.DATA.subtitle_groups,
   );
 }
 
@@ -271,6 +272,7 @@
   // 视口属于本次撤销动作，不随历史快照恢复。
   const cueListAnchor = MaweCueListAnchor.captureCueListRenderAnchor();
   const previousWaveformStructure = MaweMultiSubtitleCore.multiSubtitleWaveformStructureKey();
+  MaweBoot.DATA.subtitle_groups = snapshot.subtitle_groups || null;
   MaweBoot.DATA.segments.length = 0;
   (snapshot.segments || []).forEach(s => MaweBoot.DATA.segments.push(s));
   MaweBoot.DATA.multi_subtitle = snapshot.multi_subtitle || {

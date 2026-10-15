@@ -1,7 +1,7 @@
 // multi-subtitle: private helpers; dependencies are injected by editor-utils.js.
 export function createUtilsModule(dependencies) {
   'use strict';
-  const { cloneJsonValue, detectSubtitleSplitMode, ensureStableSegmentIds, stableId } = dependencies;
+  const { cloneJsonValue, detectSubtitleSplitMode, ensureStableSegmentIds, stableId, migrateSubtitleGroups, refreshSubtitleGroupViews } = dependencies;
 
 
   // === 多重字幕（双语字幕）===
@@ -174,6 +174,7 @@ export function createUtilsModule(dependencies) {
 
   function normalizeMultiSubtitleProject(project) {
     if (!project || typeof project !== 'object') return project;
+    migrateSubtitleGroups(project);
     ensureStableSegmentIds(project.segments, 'main');
     for (const segment of project.segments || []) {
       const override = dependencies.normalizeAssOverride(segment.assOverride);
@@ -182,6 +183,7 @@ export function createUtilsModule(dependencies) {
     }
     project.overlay_track = normalizeOverlayTrack(project.overlay_track);
     project.multi_subtitle = normalizeMultiSubtitle(project.multi_subtitle, project.segments);
+    refreshSubtitleGroupViews(project);
     return project;
   }
 

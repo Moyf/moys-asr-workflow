@@ -79,7 +79,7 @@ window.MAWE.register('editor-state', function createEditorState(project) {
   // Compare only subtitle truth, never DOM, playback or rebuildable waveform caches.
   function segmentsFingerprint() {
     return JSON.stringify({ segments: project.segments, multi_subtitle: project.multi_subtitle,
-      overlay_track: project.overlay_track }, (key, value) => key === '_dirty' ? undefined : value);
+      overlay_track: project.overlay_track, subtitle_groups: project.subtitle_groups }, (key, value) => key === '_dirty' ? undefined : value);
   }
   let savedSegments = null;
   function noteSavedSegments(fingerprint = segmentsFingerprint()) { savedSegments = fingerprint; }
