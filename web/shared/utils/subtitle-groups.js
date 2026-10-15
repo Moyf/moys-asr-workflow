@@ -9,9 +9,16 @@ export function createUtilsModule({ cloneJsonValue, stableId, ensureStableSegmen
         key: `extension-${index + 1}`, trackId: track.id, segments: track.segments || [],
       }))];
   }
-  function migrateSubtitleGroups(project) {
+  function migrateSubtitleGroups(project, { fromFile = false } = {}) {
     if (project.schema === GROUP_PROJECT_SCHEMA && !project.subtitle_groups) {
       throw new Error('subtitle_groups: v2 projects require a group table');
+    }
+    if (fromFile && project.schema === GROUP_PROJECT_SCHEMA) {
+      for (const track of subtitleGroupTracks(project)) for (const [index, cue] of track.segments.entries()) {
+        for (const kind of kinds) if (Object.hasOwn(cue, kind) || Object.hasOwn(cue, `${kind}_ref`)) {
+          throw new Error(`${track.key}[${index}].${kind}: legacy group fields are not allowed in v2`);
+        }
+      }
     }
     if (project.subtitle_groups) {
       const table = project.subtitle_groups;
