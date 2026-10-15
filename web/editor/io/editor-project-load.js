@@ -68,7 +68,7 @@
 
 
 
-function applyCanonicalProject(data, filename) {
+function applyCanonicalProject(data, filename, { repaired = false } = {}) {
   projectBindingEpoch += 1;
   if (MaweBoot.SERVER_CONFIG) MaweBoot.SERVER_CONFIG.thumbnailBinding = '';
   MaweCoreState.waveformEditor?.setThumbnailBinding('');
@@ -126,6 +126,7 @@ function applyCanonicalProject(data, filename) {
   data.segments.forEach((segment) => MaweBoot.DATA.segments.push(segment));
   MaweBoot.DATA.multi_subtitle = MULTI_SUBTITLE_UTILS.normalizeMultiSubtitle(data.multi_subtitle, MaweBoot.DATA.segments);
   MaweBoot.DATA.overlay_track = MULTI_SUBTITLE_UTILS.normalizeOverlayTrack(data.overlay_track);
+  MaweState.beginProjectSession();
   MaweTimeline.syncProjectTimebaseAndBindingOffsets(MaweBoot.DATA, { preferFrames: MaweBoot.DATA.timebase.unit === 'frames' });
   MaweHistory.editorHistory.clear();
   MaweHistory.updateUndoRedoButtons();
@@ -145,7 +146,7 @@ function applyCanonicalProject(data, filename) {
   MaweCuePanel.renderAll({ waveform: 'full', preserveCueListScroll: false });
   MaweProjectSettings.syncControls();
   MaweStickerRoot.activateProjectRoot();
-  MaweState.noteSavedSegments();
+  MaweState.establishProjectCheckpoint({ repaired });
   MawePlaybackLoop.refreshSubtitlePreview(0, -1);
   updateUnloadedMediaLabel(MaweBoot.DATA.media);
   window.MaweGapRemovedMediaExport?.updateButton();

@@ -14,6 +14,12 @@
     MaweHint.flashHint(`已自动修复 ${repairedTimingCount} 处异常时间码（保底 100ms）`, 'warning');
   }
   MaweTimeline.syncProjectTimebaseAndBindingOffsets(MaweBoot.DATA, { preferFrames: false });
+  return JSON.stringify(projectSnapshot(), null, 2);
+}
+
+  // Pure persistence projection shared by save and dirty detection. No timing
+  // repair, stateful track getter or synchronization is allowed in this reader.
+  function projectSnapshot() {
   const out = {
     schema: window.AsrEditorUtils.PROJECT_SCHEMA,
     ...projectExtensionFields,
@@ -33,8 +39,6 @@
         color: s.color || null,
         color_ref: s.color_ref || null,
       };
-      // 持久化"已改动"标记，便于二次打开时仍能识别脏行 / 离开提醒等
-      if (s._dirty) o._dirty = true;
       // 持久化"禁用"标记（未禁用的不写字段，加载时默认 undefined=falsy 兼容旧工程）
       if (s.disabled) o.disabled = true;
       const override = window.AsrEditorUtils.normalizeAssOverride(s.assOverride);
@@ -49,13 +53,15 @@
   if (typeof MaweBoot.DATA.timestamp_granularity === 'string') {
     out.timestamp_granularity = MaweBoot.DATA.timestamp_granularity;
   }
-  const multi = MaweMultiSubtitleCore.getMultiSubtitleState();
+  const multi = MaweBoot.DATA.multi_subtitle || {};
   out.multi_subtitle = {
     schema: multi.schema || MULTI_SUBTITLE_UTILS.MULTI_SUBTITLE_SCHEMA,
     enabled: multi.enabled === true,
     display_mode: multi.display_mode || 'both',
     main_split_mode: MaweMultiSubtitleCore.isConfiguredSubtitleSplitMode(multi.main_split_mode)
-      ? multi.main_split_mode : MaweMultiSubtitleCore.getMainSubtitleSplitMode(MaweBoot.DATA.segments[0]),
+      ? multi.main_split_mode : (['word', 'continuous'].includes(MaweSettings.EDITOR_SETTINGS.mainSplitModeOverride)
+        ? MaweSettings.EDITOR_SETTINGS.mainSplitModeOverride
+        : window.AsrEditorUtils.detectSubtitleSplitMode(MaweBoot.DATA.segments[0]?.text || '')),
     tracks: (multi.tracks || []).map((track) => ({
       id: track.id,
       role: 'extension',
@@ -75,7 +81,6 @@
         if (Array.isArray(segment.items)) outSegment.items = segment.items;
         if (segment.color != null) outSegment.color = segment.color;
         if (segment.color_ref != null) outSegment.color_ref = segment.color_ref;
-        if (segment._dirty) outSegment._dirty = true;
         if (segment.disabled) outSegment.disabled = true;
         if (segment.assOverride !== undefined) outSegment.assOverride = window.AsrEditorUtils.normalizeAssOverride(segment.assOverride);
         if (typeof segment.speaker === 'string' && segment.speaker.trim()) outSegment.speaker = segment.speaker;
@@ -91,7 +96,7 @@
       end_offset_ms: binding.end_offset_ms || 0,
     })),
   };
-  const overlay = getOverlayTrack();
+  const overlay = MaweBoot.DATA.overlay_track;
   if (overlay?.enabled === true || overlay?.segments?.length) {
     out.overlay_track = {
       enabled: overlay.enabled === true,
@@ -109,7 +114,6 @@
           color: segment.color || null,
           color_ref: segment.color_ref || null,
         };
-        if (segment._dirty) outSegment._dirty = true;
         if (segment.disabled) outSegment.disabled = true;
         if (segment.assOverride !== undefined) outSegment.assOverride = window.AsrEditorUtils.normalizeAssOverride(segment.assOverride);
         if (typeof segment.speaker === 'string' && segment.speaker.trim()) outSegment.speaker = segment.speaker;
@@ -138,11 +142,11 @@
       speaker_labels: MaweSpeakerLabels.getSpeakerLabelSettings(),
     },
   };
-  if (MaweMultiSubtitleCore.getActiveExtensionTrack() || MaweBoot.DATA.preview?.extension_subtitle) {
+  if (multi.tracks?.length || MaweBoot.DATA.preview?.extension_subtitle) {
     preview.extension_subtitle = { ...MaweAppearance.getStoredExtensionSubtitleAppearance() };
   }
   out.preview = preview;
-  return JSON.stringify(out, null, 2);
+  return MaweState.persistenceSnapshot(out);
 }
 
 
@@ -304,6 +308,15 @@
 
 
 
+  // Observe the existing normalization pipeline, including earlier timebase
+  // synchronization whose edits are not represented in repair counters.
+  function projectTimingSignature(project) {
+    const signatures = segments => (segments || []).map(timingRepairSignature);
+    return JSON.stringify([signatures(project?.segments),
+      (project?.multi_subtitle?.tracks || []).map(track => signatures(track.segments)),
+      signatures(project?.overlay_track?.segments)]);
+  }
+
   function timingRepairSignature(segment) {
     return JSON.stringify({
       start: segment?.start,
@@ -353,8 +366,10 @@
 
   global.MaweJsonRepair = Object.freeze({
     buildJson,
+    projectSnapshot,
     normalizeProjectTimings,
     timingRepairSignature,
+    projectTimingSignature,
     repairTimingGroup,
     repairCurrentProjectTimings
   });

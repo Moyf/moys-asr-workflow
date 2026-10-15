@@ -265,21 +265,25 @@
         MaweHint.flashHint('不支持的工程格式版本，请使用新版 MAW 打开。', 'warning');
         return false;
       }
+      let repaired = 0;
+      const timingBefore = MaweJsonRepair.projectTimingSignature(data);
       // 先兜底修复 0 长/倒挂时间码（保底 100ms），再校验结构，让旧工程仍能打开。
       if (data && Array.isArray(data.segments)) {
         data.timebase = MaweTimeline.normalizeTimelineTimebase(data.timebase);
         window.AsrEditorUtils.normalizeMultiSubtitleProject(data);
         MaweTimeline.syncProjectTimebaseAndBindingOffsets(data, { preferFrames: data.timebase.unit === 'frames' });
-        window.AsrEditorUtils.normalizeSegmentTimings(data.segments);
-        window.AsrEditorUtils.repairGroupReferenceIndices(data.segments);
-        MaweJsonRepair.normalizeProjectTimings(data);
+        repaired += window.AsrEditorUtils.normalizeSegmentTimings(data.segments);
+        repaired += window.AsrEditorUtils.repairGroupReferenceIndices(data.segments);
+        repaired += MaweJsonRepair.normalizeProjectTimings(data);
         MaweTimeline.syncProjectTimebaseAndBindingOffsets(data, { preferFrames: false });
       }
       if (!MaweProjectLoad.isMawProject(data)) {
         MaweHint.flashHint('打开了错误的文件，请使用 MAW 生成的工程文件。', 'warning');
         return false;
       }
-MaweProjectLoad.applyCanonicalProject(data, file.name);
+const contentRepaired = repaired > 0 || timingBefore !== MaweJsonRepair.projectTimingSignature(data);
+MaweProjectLoad.applyCanonicalProject(data, file.name, { repaired: contentRepaired });
+if (contentRepaired) MaweHint.flashHint('已修复工程数据，请保存修复结果', 'warning');
 // 工程可能携带新 sticker_root；刷新表情包导出按钮的互斥灰显状态
 MaweExportTimeline.updateStickerExportButtons();
 const expectedName = window.AsrEditorUtils.fileBasename(MaweBoot.DATA.media);
