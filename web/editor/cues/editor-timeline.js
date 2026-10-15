@@ -63,7 +63,7 @@
 
 
 
-  function syncTimeRangeObjectTimebase(value, timebase, { preferFrames = false, frameBounds = null } = {}) {
+  function syncTimeRangeObjectTimebase(value, timebase, { preferFrames = false, frameBounds = null, allowZero = false } = {}) {
     if (!value || typeof value !== 'object') return null;
     const frameMode = timebase.unit === 'frames';
     const hasFrames = hasValidFramePair(value);
@@ -92,12 +92,13 @@
       value.start = millisecondsFromFrameNumber(startFrame, timebase.fps);
       value.end = millisecondsFromFrameNumber(endFrame, timebase.fps);
     } else {
+      const minDuration = allowZero ? 0 : 1;
       const startMs = Number.isFinite(rawStartMs)
         ? Math.max(0, Math.round(rawStartMs)) : millisecondsFromFrameNumber(startFrame, timebase.fps);
       const endMs = Number.isFinite(rawEndMs)
-        ? Math.max(startMs + 1, Math.round(rawEndMs)) : millisecondsFromFrameNumber(endFrame, timebase.fps);
+        ? Math.max(startMs + minDuration, Math.round(rawEndMs)) : millisecondsFromFrameNumber(endFrame, timebase.fps);
       value.start = startMs;
-      value.end = Math.max(startMs + 1, endMs);
+      value.end = Math.max(startMs + minDuration, endMs);
       value.start_frame = frameNumberFromMilliseconds(value.start, timebase.fps);
       value.end_frame = Math.max(
         value.start_frame + 1,
@@ -124,7 +125,7 @@
     const frameBounds = timebase.unit === 'frames'
       ? { start: segment.start_frame, end: segment.end_frame } : null;
     segment.items.forEach((item) => {
-      syncTimeRangeObjectTimebase(item, timebase, { preferFrames, frameBounds });
+      syncTimeRangeObjectTimebase(item, timebase, { preferFrames, frameBounds, allowZero: true });
     });
     if (timebase.unit === 'frames') {
       window.AsrEditorUtils.normalizeFrameItemTimingRanges(segment);

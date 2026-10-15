@@ -38,6 +38,7 @@ from urllib.parse import quote
 from maw.colors import COLOR_PALETTE
 from maw.console import configure_utf8_stdio
 from maw.project import ProjectValidationFailed, normalize_project
+from maw.project_boundary import import_project
 from maw.project_io import (
     default_audio_track_from_metadata,
     enrich_project_media_metadata,
@@ -401,7 +402,7 @@ def main():
         return 1
 
     try:
-        data = normalize_project(json.loads(json_path.read_text(encoding="utf-8")))
+        data = import_project(json.loads(json_path.read_text(encoding="utf-8")))
     except ProjectValidationFailed as exc:
         print(f"错误: {exc}")
         return 1
