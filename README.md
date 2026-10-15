@@ -29,7 +29,7 @@ MAW 帮你把字幕生成后的校对、整理和交付接起来。它以云端 
 
 ## 开始使用
 
-最新测试版：[v1.9.0-beta.1](https://github.com/Moyf/moys-asr-workflow/releases/tag/v1.9.0-beta.1)。下方 Releases 入口提供稳定版。
+最新测试版：[v1.9.0-beta.2](https://github.com/Moyf/moys-asr-workflow/releases/tag/v1.9.0-beta.2)。下方 Releases 入口提供稳定版。
 
 1. 从 [Releases](https://github.com/Moyf/moys-asr-workflow/releases/latest) 选择与你的系统和架构对应的包。完整版 `MAW` 包含 FFmpeg / FFprobe；`MAW-lite` 需要自行安装这两个工具。实际可下载平台以该版本附件为准。
 2. 解压完整目录，启动 Windows 的 `MAW.exe` 或 macOS 的 `MAW.app`。
