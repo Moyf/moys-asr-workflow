@@ -165,8 +165,21 @@
     edit('设置 ASS 字幕位置', segment => write(segment, { ...segment.assOverride, pos: { ...anchorFor(segment), [axis]: value } }));
   });
   document.getElementById('ass-cue-reset').addEventListener('click', () => edit('重置 ASS 字幕定位', segment => { delete segment.assOverride; segment._dirty = true; }));
+  // A drag owns a full-project command snapshot. Run before document capture
+  // listeners too: no second edit or navigation may publish history inside it.
+  global.addEventListener('keydown', event => {
+    if (!drag) return;
+    event.preventDefault(); event.stopImmediatePropagation();
+    if (event.key === 'Escape') finish(true);
+    else if ((event.ctrlKey || event.metaKey) && !event.altKey) {
+      const key = event.key.toLowerCase();
+      if (key === 'z') {
+        if (event.shiftKey) global.MaweHistory.performRedo();
+        else global.MaweHistory.performUndo();
+      } else if (key === 'y' && !event.shiftKey) global.MaweHistory.performRedo();
+    }
+  }, true);
   document.addEventListener('keydown', event => {
-    if (drag && event.key === 'Escape') { event.preventDefault(); event.stopImmediatePropagation(); finish(true); return; }
     if (!enabled() || event.ctrlKey || event.metaKey || event.altKey) return;
     const element = event.target;
     if (!element?.closest?.('#ass-cue-position, .ass-cue-drag-target')) return;

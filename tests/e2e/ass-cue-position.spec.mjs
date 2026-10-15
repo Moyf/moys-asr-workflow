@@ -9,7 +9,8 @@ const ffmpeg = process.env.FFMPEG_PATH || 'ffmpeg';
 test.beforeAll(async () => {
   tempDir = makeTempDir('ass-cue-position');
   const media = join(tempDir, 'synthetic.mp4');
-  execFileSync(ffmpeg, ['-hide_banner', '-loglevel', 'error', '-f', 'lavfi', '-i', 'color=black:s=640x360:r=25:d=5', '-c:v', 'libx264', '-y', media]);
+  // Phase regression samples at 220/340ms must be actual video frame PTS.
+  execFileSync(ffmpeg, ['-hide_banner', '-loglevel', 'error', '-f', 'lavfi', '-i', 'color=black:s=640x360:r=50:d=5', '-c:v', 'libx264', '-y', media]);
   const project = join(tempDir, 'project.mosp');
   writeFileSync(project, JSON.stringify({ media: 'synthetic.mp4', preserve_punctuation: true,
     segments: [{ id: 'main', start: 0, end: 2000, text: 'MMMM' }, { id: 'next', start: 2000, end: 4000, text: 'NEXT' }], waveform: generateWaveformPayload(5000) }));
@@ -147,6 +148,89 @@ test('box drag maps letterbox and scaled portrait/landscape canvases into one un
   }
 });
 
+test('active ASS dragging isolates editing shortcuts and cancellation preserves real color history', async ({ page }) => {
+  const state = () => page.evaluate(() => ({
+    project: MaweHistory.snapshotSegments(),
+    selection: MaweHistory.snapshotEditorSelection(),
+    undo: MaweHistory.editorHistory.undoLength(),
+    redo: MaweHistory.editorHistory.redoLength(),
+    dirty: MaweServerSave.hasUnsavedProjectChanges(),
+    modals: [...document.querySelectorAll('.modal.show')].map(element => element.id).sort(),
+  }));
+  const beginDrag = async () => {
+    const box = page.locator('.ass-cue-drag-target.selected');
+    await box.scrollIntoViewIfNeeded();
+    const rect = await box.boundingBox();
+    await page.mouse.move(rect.x + rect.width / 2, rect.y + rect.height / 2);
+    await page.mouse.down();
+    await page.mouse.move(rect.x + rect.width / 2 + 18, rect.y + rect.height / 2 - 8, { steps: 3 });
+    expect(await page.evaluate(() => MaweAssCuePosition.dragging)).toBe(true);
+    expect((await snapshot(page)).override?.pos).toBeTruthy();
+  };
+
+  // Use actual keyboard edits, so the history entry being protected contains
+  // a real color change rather than an injected test-only undo record.
+  await page.locator('.ass-cue-drag-target.selected').focus();
+  await page.keyboard.press('0');
+  const uncolored = await state();
+  await page.keyboard.press('2');
+  const colored = await state();
+  expect(colored.project).not.toEqual(uncolored.project);
+  expect(colored.undo).toBe(uncolored.undo + 1);
+  expect(colored.redo).toBe(0);
+
+  await beginDrag();
+  const preview = await state();
+  expect(preview.project).not.toEqual(colored.project);
+  expect(preview.undo).toBe(colored.undo);
+  // Include a different color and destructive, boundary, selection, playback,
+  // and modal-opening shortcuts while the pointer remains held down.
+  for (const key of ['1', '0', '3', '4', '5', 'Delete', 'Backspace', 'c', 'z', 'x',
+    'Control+Shift+a', 'Control+Shift+d', 'b', 'Shift+b', 'Control+Shift+b',
+    'n', 't', 'g', 'Shift+g', 'h', 'a', 'd', 'Control+a', 'Control+d', 'Space', 'Tab']) {
+    await page.keyboard.press(key);
+    expect(await state(), `held drag must isolate ${key}`).toEqual(preview);
+    expect(await page.evaluate(() => MaweAssCuePosition.dragging), key).toBe(true);
+  }
+  await page.keyboard.press('Escape');
+  await page.mouse.up();
+  expect(await page.evaluate(() => MaweAssCuePosition.dragging)).toBe(false);
+  expect(await state()).toEqual(colored);
+
+  // Every history shortcut cancels only the in-flight gesture. Cover both an
+  // existing undo entry and an existing redo entry without consuming either.
+  for (const key of ['Control+z', 'Control+y', 'Control+Shift+z']) {
+    await beginDrag();
+    await page.keyboard.press(key);
+    await page.mouse.up();
+    expect(await page.evaluate(() => MaweAssCuePosition.dragging)).toBe(false);
+    expect(await state(), `${key} cancels without consuming undo history`).toEqual(colored);
+  }
+  await page.keyboard.press('Control+z');
+  // Ordinary segment history intentionally clears its selection. Restore the
+  // selection before starting another gesture, without creating a mutation.
+  await page.evaluate(() => { MaweSelection.selectOnly(0); MawePlaybackLoop.refreshSubtitlePreview(1000, 0); });
+  const undone = await state();
+  expect(undone.project).toEqual(uncolored.project);
+  expect(undone.undo).toBe(uncolored.undo);
+  expect(undone.redo).toBe(1);
+  expect((await snapshot(page)).override).toBeNull();
+
+  for (const key of ['Control+y', 'Control+Shift+z', 'Control+z']) {
+    await beginDrag();
+    await page.keyboard.press(key);
+    await page.mouse.up();
+    expect(await page.evaluate(() => MaweAssCuePosition.dragging)).toBe(false);
+    expect(await state(), `${key} cancels without consuming redo history`).toEqual(undone);
+  }
+  await page.keyboard.press('Control+y');
+  const redone = await state();
+  expect(redone.project).toEqual(colored.project);
+  expect(redone.undo).toBe(colored.undo);
+  expect(redone.redo).toBe(0);
+  expect((await snapshot(page)).override).toBeNull();
+});
+
 function paintedBox(canvas) {
   const g=canvas.getContext('2d'),pixels=g.getImageData(0,0,canvas.width,canvas.height).data;
   let left=Infinity,top=Infinity,right=-Infinity,bottom=-Infinity;
@@ -196,6 +280,69 @@ for(const [width,height] of [[640,360],[360,640]]) test(`all nine anchors match 
   writeFileSync(info.outputPath('frame-comparison.json'),JSON.stringify(evidence,null,2));
 });
 
+
+test('positioned shake phase survives non-periodic overlap in Canvas, Server libass and exported frames', async ({ page }, info) => {
+  test.setTimeout(180000);
+  await page.evaluate(() => {
+    // Release the current text-panel draft before changing fixture timing/text.
+    // Selecting it afterwards must not commit the old draft over this setup.
+    MaweSelection.clearSelection();
+    const [shaken, ordinary] = MaweBoot.DATA.segments;
+    Object.assign(shaken, { start: 100, end: 400, text: '!!MMMM!!', assOverride: { pos: { x: 320, y: 240 } } });
+    delete shaken.color; delete shaken.color_ref;
+    Object.assign(ordinary, { start: 200, end: 300, text: 'NEXT', assOverride: { pos: { x: 120, y: 100 } },
+      color: { name: 'green', value: MaweColors.COLOR_BY_NAME.green.value, start: 200, end: 300 } });
+    delete ordinary.color_ref;
+    MaweBoot.DATA.preview ??= {};
+    MaweBoot.DATA.preview.subtitle = { ...MaweBoot.DATA.preview.subtitle, ass_color_style: 'text' };
+    MaweSelection.selectOnly(0);
+    MawePlaybackLoop.refreshSubtitlePreview(100, 0);
+  });
+  await page.locator('#ass-frame-quick-open').click();
+  const evidence = [];
+  for (const timeMs of [220, 340]) {
+    await page.evaluate(async timeMs => {
+      const player = MaweCoreState.player;
+      await new Promise(resolveSeek => {
+        player.addEventListener('seeked', resolveSeek, { once: true });
+        player.currentTime = timeMs / 1000;
+      });
+      MawePlaybackLoop.refreshSubtitlePreview(timeMs, 0);
+    }, timeMs);
+    const frame = await page.evaluate(({ timeMs, paintedBox }) => {
+      MawePlaybackLoop.refreshSubtitlePreview(timeMs, 0);
+      return { box: (0, eval)(`(${paintedBox})`)(document.querySelector('.ass-preview-canvas')),
+        ass: MaweExportSrt.buildAss(), currentTime: MaweCoreState.player.currentTime,
+        tracks: MaweAssCanvas.lastRender.tracks.map(({ cueId, anchor, positionAnchor, bounds }) => ({ cueId, anchor, positionAnchor, bounds })) };
+    }, { timeMs, paintedBox: paintedBox.toString() });
+    expect(frame.currentTime).toBeCloseTo(timeMs / 1000, 5);
+    await page.evaluate(() => MaweAssFrame.renderAssFrame());
+    await expect(page.locator('#ass-frame-window-status')).toHaveText('渲染完成');
+    const serverBox = await page.evaluate(paintedBox => {
+      const image = document.getElementById('ass-frame-image'), canvas = document.createElement('canvas');
+      canvas.width = image.naturalWidth; canvas.height = image.naturalHeight;
+      canvas.getContext('2d').drawImage(image, 0, 0);
+      return (0, eval)(`(${paintedBox})`)(canvas);
+    }, paintedBox.toString());
+    const path = info.outputPath(`shake-phase-${timeMs}.ass`);
+    writeFileSync(path, frame.ass);
+    const result = JSON.parse(execFileSync(process.env.MAW_PIXEL_PYTHON || process.env.MAW_E2E_PYTHON || 'python',
+      [resolve('tests/helpers/ass-stacking-pixel-oracle.py'), path, String(timeMs), info.outputPath(`shake-phase-${timeMs}-export`)],
+      { encoding: 'utf8', timeout: 40000, windowsHide: true }));
+    const exportBox = result.nativeTracks.main.box;
+    const sample = { timeMs, currentTime: frame.currentTime, canvas: frame.box, server: serverBox, export: exportBox,
+      tracks: frame.tracks, font: result.fontSelections };
+    evidence.push(sample);
+    writeFileSync(info.outputPath('shake-phase-comparison.json'), JSON.stringify(evidence, null, 2));
+    await page.locator('.player-stage').screenshot({ path: info.outputPath(`shake-phase-${timeMs}-canvas.png`) });
+    await page.locator('#ass-frame-image').screenshot({ path: info.outputPath(`shake-phase-${timeMs}-server.png`) });
+    expect(frame.box).not.toBeNull(); expect(serverBox).not.toBeNull(); expect(exportBox).not.toBeNull();
+    for (let axis = 0; axis < 4; axis++) {
+      expect(Math.abs(frame.box[axis] - exportBox[axis]), JSON.stringify(sample)).toBeLessThanOrEqual(5);
+      expect(Math.abs(serverBox[axis] - exportBox[axis]), JSON.stringify(sample)).toBeLessThanOrEqual(1);
+    }
+  }
+});
 
 test('inactive selected cue inspector reuses the cached ASS plan during playback refreshes', async ({page}) => {
   const result = await page.evaluate(() => {

@@ -140,6 +140,39 @@ test('SRT export strips shake markers even though shake itself is ASS-only', () 
   assert.ok(!srt.includes('!!'));
 });
 
+test('SRT sentence effects follow the symbol rule in either nesting order and parse fade once', () => {
+  for (const [text, rule, expected] of [
+    ['>!!text!!<', 'both', 'text'], ['!!>text<!!', 'both', 'text'],
+    ['>>!!text!!<<', 'double', 'text'], ['!!>>text<<!!', 'double', 'text'],
+    ['++>!!text!!<++', 'both', '++text++'],
+    ['>>>>!!text!!<<<<', 'double', '>>text<<'], ['>>>>text<<<<', 'double', '>>text<<'],
+    ['>!!text!!<', 'double', '>!!text!!<'], ['!!>text<!!', 'double', '>text<'],
+    ['>!!text!!<', 'none', '>!!text!!<'], ['!!>text<!!', 'none', '>text<'],
+    ['>>!!text!!<<', 'none', '>>text<<'], ['!!text!!', 'none', 'text'],
+    ['>!!text<', 'both', '!!text'], ['plain !!inline!! text', 'both', 'plain !!inline!! text'],
+  ]) {
+    const cue = { start: 0, end: 1000, text };
+    const options = { assSpecialSymbolRule: rule };
+    const srt = h.buildSrtPayload([cue], options);
+    assert.equal(srt, `1\n0 --> 1000\n${expected}\n`, `${rule}: ${text}`);
+    assert.equal(h.buildBilingualSrtPayload([cue], [], options), srt, `bilingual ${rule}: ${text}`);
+    assert.equal(cue.text, text);
+  }
+});
+
+test('bilingual SRT cleans each cue before labels and merging without reparsing combined literal text', () => {
+  const main = [{ start: 0, end: 1000, text: '>!!main!!<', color: { name: 'red' } }];
+  const secondary = [{ start: 0, end: 1000, text: '!!>translation<!!', color: { name: 'red' } }];
+  const options = { assSpecialSymbolRule: 'both', speakerLabelsEnabled: true,
+    speakerLabels: { red: 'Speaker' }, speakerLabelSeparator: ': ' };
+  const single = h.buildSrtPayload(main, options);
+  assert.equal(single, '1\n0 --> 1000\nSpeaker: main\n');
+  assert.equal(h.buildBilingualSrtPayload(main, secondary, options),
+    single.replace('main\n', 'main\nSpeaker: translation\n'));
+  assert.equal(h.buildBilingualSrtPayload([{ ...main[0], text: '!!literal' }],
+    [{ ...secondary[0], text: 'literal!!' }], {}), '1\n0 --> 1000\n!!literal\nliteral!!\n');
+});
+
 test('whole-sentence shells preserve size, shake and fade in either order without mutating segments', () => {
   for (const text of ['++!!喂喂喂嗯!!++', '>>++!!喂喂喂嗯!!++<<', '!!>>++喂喂喂嗯++<<!!']) {
     const segments = [{ start: 0, end: 1000, text }];
@@ -169,4 +202,87 @@ test('right-click and batch wrapping preserve existing outer shells and skip nes
   assert.equal(h.wrapCharsAroundText(expected, '**', '**').skipped, true);
   assert.equal(h.applyTextProcessing(expected, { addWrapChars: true, wrapLeft: '!!', wrapRight: '!!', skipWrapped: true }), expected);
   assert.equal(h.parseSentenceShakeMarkers('++a++ !!b!!').shake, false);
+});
+
+const shakeEventTime = value => {
+  const [hours, minutes, seconds] = value.split(':').map(Number);
+  return Math.round((hours * 3600 + minutes * 60 + seconds) * 1000);
+};
+
+function shakeEvents(output, text) {
+  return dialogues(output).filter(line => line.includes(text)).map(line => {
+    const fields = line.split(',');
+    assert.equal(positions(line).length, 1);
+    assert.ok(!line.includes('\\move('));
+    return { start: shakeEventTime(fields[1]), end: shakeEventTime(fields[2]), pos: positions(line)[0] };
+  }).sort((a, b) => a.start - b.start);
+}
+
+function assertShakeCoverageAndPhase(plan, events, id, { moving = false } = {}) {
+  const cue = plan.slices.flatMap(slice => slice.items).find(item => item.segment.id === id);
+  assert.ok(cue);
+  assert.equal(events[0].start, cue.start);
+  assert.equal(events.at(-1).end, cue.end);
+  for (const [index, event] of events.entries()) {
+    assert.ok(event.end > event.start);
+    assert.equal(event.start % 10, 0);
+    assert.equal(event.end % 10, 0);
+    if (index) assert.equal(events[index - 1].end, event.start);
+  }
+  // Check every integer millisecond, including both sides of each boundary.
+  // Moving bases are sampled at event start; only shake phase is compared at
+  // later frames, without claiming continuous move equals sampled ASS pos.
+  for (let time = cue.start; time < cue.end; time += 1) {
+    const active = events.filter(event => event.start <= time && time < event.end);
+    assert.equal(active.length, 1, `unique event at ${time}ms`);
+    const frame = h.assStackFrame(plan, time).items.find(item => item.segment.id === id);
+    const base = moving
+      ? h.assStackFrame(plan, active[0].start).items.find(item => item.segment.id === id).anchor
+      : frame.anchor;
+    for (const [axis, index] of [['x', 0], ['y', 1]]) {
+      assert.ok(Math.abs(active[0].pos[index] - base[axis] - frame.shakeOffset[axis]) < 0.0002,
+        `${axis} shake phase at ${time}ms in [${active[0].start},${active[0].end})`);
+    }
+  }
+}
+
+test('shake phase survives overlapping cue start and end between original phase boundaries', () => {
+  let plan;
+  const output = h.buildAssPayload([
+    { id: 'shake-phase', start: 100, end: 400, text: '!!phase-static!!', assOverride: { pos: { x: 300, y: 200 } } },
+    { id: 'overlap', start: 200, end: 300, text: 'other' },
+  ], { assProfile: {}, onAssPlan: value => { plan = value; } });
+  const events = shakeEvents(output, 'phase-static');
+  assertShakeCoverageAndPhase(plan, events, 'shake-phase');
+  assert.deepEqual(events.map(event => [event.start, event.end]),
+    [[100, 160], [160, 200], [200, 220], [220, 280], [280, 300], [300, 340], [340, 400]]);
+});
+
+test('shake phase uses the ASS-quantized cue origin for non-centisecond input', () => {
+  let plan;
+  const output = h.buildAssPayload([
+    { id: 'quantized-phase', start: 107, end: 407, text: '!!phase-quantized!!', assOverride: { pos: { x: 300, y: 200 } } },
+    { id: 'overlap', start: 205, end: 305, text: 'other' },
+  ], { assProfile: {}, onAssPlan: value => { plan = value; } });
+  const events = shakeEvents(output, 'phase-quantized');
+  assert.equal(plan.slices[0].items.find(item => item.shake).start, 110);
+  assertShakeCoverageAndPhase(plan, events, 'quantized-phase');
+  assert.deepEqual(events.map(event => [event.start, event.end]),
+    [[110, 170], [170, 210], [210, 230], [230, 290], [290, 310], [310, 350], [350, 410]]);
+});
+
+test('shake phase survives non-periodic move layout piece boundaries', () => {
+  let plan;
+  const output = h.buildAssPayload([
+    { id: 'moving-phase', start: 100, end: 500, text: '!!phase-moving!!' },
+    { id: 'stacked', start: 100, end: 500, text: 'other' },
+  ], { assProfile: { animations: { move: {
+    enabled: true, x1: 800, y1: 600, x2: 900, y2: 650, t1: 100, t2: 250,
+  } } }, onAssPlan: value => { plan = value; } });
+  const events = shakeEvents(output, 'phase-moving');
+  const boundaries = plan.slices.flatMap(slice => slice.pieces.slice(1).map(piece => piece.start));
+  assert.ok(boundaries.includes(200));
+  assert.ok(boundaries.includes(350));
+  assertShakeCoverageAndPhase(plan, events, 'moving-phase', { moving: true });
+  for (const time of [200, 220, 350, 400]) assert.ok(events.some(event => event.start === time));
 });

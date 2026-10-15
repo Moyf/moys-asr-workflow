@@ -445,8 +445,12 @@ export function createUtilsModule(dependencies) {
             // 同一公式），方案移动/整组位移被逐片采样；淡入淡出与 \t 变换
             // 使用负相对时钟，跨片不重播、不闪烁。
             const amplitude = dependencies.assShakeAmplitude(slice.height) * scale;
-            for (let shakeStart = piece.start; shakeStart < piece.end; shakeStart += dependencies.ASS_SHAKE_INTERVAL_MS) {
-              const shakeEnd = Math.min(piece.end, shakeStart + dependencies.ASS_SHAKE_INTERVAL_MS);
+            const interval = dependencies.ASS_SHAKE_INTERVAL_MS;
+            for (let shakeStart = piece.start; shakeStart < piece.end;) {
+              // Layout boundaries may fall inside a phase. Resume the cue's
+              // centisecond-quantized clock instead of starting another 60ms.
+              const nextPhase = item.start + (Math.floor((shakeStart - item.start) / interval) + 1) * interval;
+              const shakeEnd = Math.min(piece.end, nextPhase);
               const offset = dependencies.assShakeOffsetFor(shakeStart - item.start, amplitude);
               let shakeBase;
               if (slice.legacy || item.manual) {
@@ -467,6 +471,7 @@ export function createUtilsModule(dependencies) {
                 shakePosition += `\\fs${size}\\fsp${number(scaledStyle.spacing)}\\bord${number(scaledStyle.outline)}\\shad${number(scaledStyle.shadow)}`;
               }
               emitEvent(shakeStart, shakeEnd, shakePosition, { includeMove: false });
+              shakeStart = shakeEnd;
             }
             continue;
           }
