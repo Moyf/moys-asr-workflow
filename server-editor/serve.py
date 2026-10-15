@@ -607,7 +607,7 @@ def _copy_gap_removed_video(source, intervals, output_path, input_probe, ffmpeg_
         # container header. Some source hvcC arrays are accepted for decoding
         # but cannot survive a direct MP4 stream copy. Target each output stream
         # separately so mixed codecs and multiple video streams remain intact.
-        filters = packet_filter(plan.windows[index], kinds[index] == "video") if kinds[index] != "attachment" else "null"
+        filters = packet_filter(plan.windows[index], kinds[index] == "video", subtitle=kinds[index] == "subtitle") if kinds[index] != "attachment" else "null"
         if plan.initial_dts[index] is not None:
             filters = f"setts=pts=PTS:dts='if(eq(DTS,NOPTS),{plan.initial_dts[index]}/TB+N*DURATION,DTS)'," + filters
         if stream.codec_signature[:2] == ("video", "hevc"):

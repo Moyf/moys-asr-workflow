@@ -161,7 +161,7 @@ def prepare_video_copy(source, intervals, streams, origin, directory, ffprobe, r
             if kind == "video":
                 packet_start = safe[index][start] if start != origin else groups[index][0][1]
                 packet_end = safe[index][end] if end != source_end else source_end + 1
-            elif start == origin and first[index] is not None:
+            elif kind != "subtitle" and start == origin and first[index] is not None:
                 # Preserve codec priming at the beginning of the original file.
                 packet_start = min(start, first[index])
             windows[index].append((packet_start, packet_end, start - output))
@@ -188,11 +188,52 @@ def _lookup(windows, variable, value, otherwise):
     return f"if(lt({variable},{start - epsilon}),{left},if(lt({variable},{end - epsilon}),{hit},{right}))"
 
 
-def packet_filter(windows, video):
+def _mapped_time_expression(windows, variable):
+    """Clamp gaps onto their shared output boundary without a linear scan."""
+    if not windows:
+        return "0"
+    middle = len(windows) // 2
+    start, end, shift = windows[middle]
+    left = _mapped_time_expression(windows[:middle], variable) if middle else str(start - shift)
+    right = _mapped_time_expression(windows[middle + 1:], variable) if middle + 1 < len(windows) else str(end - shift)
+    return f"if(lt({variable},{start}),{left},if(lt({variable},{end}),({variable})-{shift},{right}))"
+
+
+def map_retained_time(windows, time):
+    """Independent Decimal projection used to verify subtitle packet duration."""
+    low, high = 0, len(windows)
+    while low < high:
+        middle = (low + high) // 2
+        if time >= windows[middle][1]:
+            low = middle + 1
+        else:
+            high = middle
+    if low == len(windows):
+        return windows[-1][1] - windows[-1][2]
+    start, _end, shift = windows[low]
+    return max(start, time) - shift
+
+
+def packet_filter(windows, video, *, subtitle=False):
     variable = "dts*tb" if video else "pts*tb"
     keep = _lookup(windows, variable, lambda *_: "1", "0")
     shift = _lookup(windows, "DTS*TB" if video else "PTS*TB", lambda _s, _e, delta: str(delta), "0")
-    return f"noise=amount=0:drop='not({keep})',setts=pts='PTS-({shift})/TB':dts='DTS-({shift})/TB'"
+    if not subtitle:
+        return f"noise=amount=0:drop='not({keep})',setts=pts='PTS-({shift})/TB':dts='DTS-({shift})/TB'"
+    # A text subtitle is an interval, not merely a packet start. A caption
+    # spanning several kept parts remains contiguous after concatenation;
+    # captions starting in a removed gap can still have a retained tail.
+    noise_start = _mapped_time_expression(windows, "pts*tb")
+    noise_end = _mapped_time_expression(windows, "(pts+duration)*tb")
+    mapped_start = _mapped_time_expression(windows, "PTS*TB")
+    mapped_end = _mapped_time_expression(windows, "(PTS+DURATION)*TB")
+    mapped_dts = _mapped_time_expression(windows, "DTS*TB")
+    # Zero/unknown-duration event packets retain the existing point selection
+    # and translation. Do not reinterpret them as subtitle display intervals.
+    return (f"noise=amount=0:drop='if(gt(duration,0),lte(({noise_end})-({noise_start}),tb/2),not({keep}))',"
+            f"setts=pts='if(gt(DURATION,0),({mapped_start})/TB,PTS-({shift})/TB)':"
+            f"dts='if(gt(DURATION,0),if(eq(DTS,NOPTS),DTS,({mapped_dts})/TB),DTS-({shift})/TB)':"
+            f"duration='if(gt(DURATION,0),(({mapped_end})-({mapped_start}))/TB,DURATION)'")
 
 
 def verify_video_packets(plan, output, streams, directory, ffprobe, run, check_cancelled=lambda: None):
@@ -201,40 +242,48 @@ def verify_video_packets(plan, output, streams, directory, ffprobe, run, check_c
     cursors = [0] * len(streams)
     with ExitStack() as stack:
         writers = [stack.enter_context(path.open("w", encoding="utf-8", newline="\n")) for path in expected_paths]
-        for count, (index, pts, dts, _duration, _key) in enumerate(packets(plan.index_path, plan.initial_dts)):
+        for count, (index, pts, dts, duration, _key) in enumerate(packets(plan.index_path, plan.initial_dts)):
             if count % 4096 == 0:
                 check_cancelled()
             if streams[index] == "attachment":
                 continue
+            windows = plan.windows[index]
+            if streams[index] == "subtitle" and duration is not None and duration > 0:
+                mapped_start = map_retained_time(windows, pts)
+                mapped_end = map_retained_time(windows, pts + duration)
+                if mapped_end > mapped_start:
+                    mapped_dts = map_retained_time(windows, dts) if dts is not None else "N/A"
+                    writers[index].write(f"{mapped_start}|{mapped_dts}|{mapped_end - mapped_start}\n")
+                continue
             position = dts if streams[index] == "video" else pts
             if position is None:
                 continue
-            windows = plan.windows[index]
             while cursors[index] < len(windows) and position >= windows[cursors[index]][1]:
                 cursors[index] += 1
             if cursors[index] == len(windows):
                 continue
             start, end, shift = windows[cursors[index]]
             if start <= position < end:
-                writers[index].write(f"{pts - shift if pts is not None else 'N/A'}|{dts - shift if dts is not None else 'N/A'}\n")
+                writers[index].write(f"{pts - shift if pts is not None else 'N/A'}|{dts - shift if dts is not None else 'N/A'}|N/A\n")
     result_index = directory / "output-packets.txt"
     scan_packets(output, result_index, ffprobe, run)
     previous = [None] * len(streams)
     with ExitStack() as stack:
         readers = [stack.enter_context(path.open(encoding="utf-8")) for path in expected_paths]
-        for count, (index, pts, dts, _duration, _key) in enumerate(packets(result_index)):
+        for count, (index, pts, dts, duration, _key) in enumerate(packets(result_index)):
             if count % 4096 == 0:
                 check_cancelled()
             if streams[index] == "attachment":
                 continue
             fields = readers[index].readline().strip().split("|")
-            if len(fields) != 2:
+            if len(fields) != 3:
                 raise VideoTimelineError("导出结果出现重复媒体包，未保存结果")
-            expected_pts, expected_dts = map(_number, fields)
-            for actual, expected in ((pts, expected_pts), (dts, expected_dts)):
+            expected_pts, expected_dts, expected_duration = map(_number, fields)
+            for actual, expected in ((pts, expected_pts), (dts, expected_dts), (duration, expected_duration)):
                 if actual is not None and expected is not None and abs(actual - expected) > Decimal("0.0021"):
                     raise VideoTimelineError("导出结果的包时间线不符合保留区间，未保存结果",
-                                             details=f"stream={index}; pts/dts={pts}/{dts}; expected={expected_pts}/{expected_dts}")
+                                             details=f"stream={index}; pts/dts/duration={pts}/{dts}/{duration}; "
+                                             f"expected={expected_pts}/{expected_dts}/{expected_duration}")
             if dts is not None:
                 if previous[index] is not None and dts < previous[index]:
                     raise VideoTimelineError("导出结果的解码时间倒退，未保存结果")
