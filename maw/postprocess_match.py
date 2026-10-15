@@ -47,9 +47,9 @@ DEFAULT_EXTRA_SPLIT_PUNCTUATION: Final[tuple[str, ...]] = (
     ".",
     ";",
 )
-DEFAULT_PRESERVE_PUNCTUATION: Final[tuple[str, ...]] = ("？", "！")
+DEFAULT_PRESERVE_PUNCTUATION: Final[tuple[str, ...]] = DEFAULT_EXTRA_SPLIT_PUNCTUATION
 # CLI 参数默认值（strip = 默认断句 − 默认保留；strong = 完整默认断句）。
-DEFAULT_STRIP_TAIL_PUNCT: Final[str] = "，。；,.;"
+DEFAULT_STRIP_TAIL_PUNCT: Final[str] = ""
 DEFAULT_STRONG_PUNCT: Final[str] = "，。？！；,.;"
 
 
@@ -151,6 +151,13 @@ def run_script_match(
             request.match_mode,
             is_cancelled=is_cancelled,
         )
+    # Both character-timed and sentence-level matching must keep the same v2
+    # group contract. The fallback must not silently reassign grouped content.
+    if len(matched["segments"]) != len(project["segments"]) and any(
+        segment.get("color_group_id") or segment.get("sticker_group_id")
+        for segment in project["segments"]
+    ):
+        raise ValueError("带独立分组的字幕暂不支持文稿匹配改变条数；请先在编辑器中拆合，避免丢失组关系。")
     check_match_cancelled(is_cancelled)
     if begin_commit is not None and not begin_commit():
         raise MatchCancelledError("文稿匹配已取消。")
@@ -420,7 +427,9 @@ def _preserve_equal_count_segment_metadata(
         check_match_cancelled(is_cancelled)
         if not isinstance(source_segment, dict) or not isinstance(matched_segment, dict):
             continue
-        for key in ("id", "speaker", "disabled", "sticker", "sticker_ref", "color", "color_ref"):
+        for key in source_segment:
+            if key in {"start", "end", "text", "items", "start_frame", "end_frame"}:
+                continue
             check_match_cancelled(is_cancelled)
             if key in source_segment:
                 matched_segment[key] = copy.deepcopy(source_segment[key])
