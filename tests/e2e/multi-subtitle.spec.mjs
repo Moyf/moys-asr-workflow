@@ -176,7 +176,7 @@ test('creates an empty secondary track on enable and imports subtitles optionall
     .toHaveAttribute('data-title', '开启后显示副字幕轨，可手动添加或导入第二条字幕。');
   await setProjectTrackEnabled(page, 'multi-subtitle-toggle', true);
   await expect(page.locator('#project-multi-subtitle-settings')).not.toHaveAttribute('hidden');
-  await openSettingsPage(page, 'project-tracks');
+  await openSettingsPage(page, 'multi-subtitle');
   await expect(page.locator('#multi-subtitle-empty-hint')).toBeVisible();
   await closeSettingsPanels(page);
   const trackId = await page.evaluate(() => MaweMultiSubtitleCore.getActiveExtensionTrack().id);
@@ -3870,7 +3870,7 @@ test('confirms main replacement and makes both replacement paths undoable', asyn
   await page.locator('#multi-subtitle-import-result-confirm').click();
   await expect(page.locator('#multi-subtitle-toggle')).toBeChecked();
   await page.keyboard.press('ControlOrMeta+z');
-  await openSettingsPage(page, 'project-tracks');
+  await openSettingsPage(page, 'multi-subtitle');
   await expect(page.locator('#multi-subtitle-toggle-label')).toBeVisible();
   await closeSettingsPanels(page);
   await expect(page.locator('#multi-subtitle-toggle')).not.toBeDisabled();

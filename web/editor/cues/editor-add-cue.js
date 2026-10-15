@@ -87,7 +87,9 @@
   const end = Math.max(requestedStart, requestedEnd);
   if (!Number.isFinite(start) || !Number.isFinite(end)) return;
   if (MaweBoot.DATA.segments.some((segment) => start < segment.end && end > segment.start)) {
-    MaweHint.flashHint('拖动范围包含已有字幕，无法新增字幕', 'warning');
+    MaweHint.flashHint(getOverlayTrack()?.enabled === true
+      ? '拖动范围包含已有字幕，无法新增字幕'
+      : '拖动范围包含已有字幕，无法新增字幕。如果你需要重叠字幕，请先开启「重叠」功能。', 'warning');
     return;
   }
   const insertAt = MaweBoot.DATA.segments.findIndex((segment) => segment.start > start);

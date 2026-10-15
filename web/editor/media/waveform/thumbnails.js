@@ -121,8 +121,11 @@ export function createWaveformModule(dependencies) {
         row.style.top = '48px'; row.style.width = '100%';
       }
       if (shell !== row && basic) {
-        shell.style.height = `${Math.max(1, this.scroll.clientHeight - 16) + 48}px`;
-        row.style.height = `${Math.max(1, this.scroll.clientHeight - 16)}px`;
+        // content begins below the waveform toolbar; scroll.clientHeight also
+        // includes that reserved area. Percent geometry keeps resize in sync
+        // without measuring a stale content height during the mode transition.
+        shell.style.bottom = '8px';
+        row.style.height = `calc(100% - ${this.thumbnailHeight()}px)`;
       }
       this.content.appendChild(shell);
       return row;

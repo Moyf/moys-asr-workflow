@@ -303,7 +303,7 @@ export async function toggleGlobalSettings(page) {
 }
 
 export async function setProjectTrackEnabled(page, id, enabled) {
-  await openSettingsPage(page, 'project-tracks');
+  await openSettingsPage(page, id === 'multi-subtitle-toggle' ? 'multi-subtitle' : 'project-tracks');
   await page.locator(`#${id}`).setChecked(enabled);
   await closeSettingsPanels(page);
 }
