@@ -111,6 +111,29 @@ test('copy uses item text only and reports clipboard rejection', async ({ page }
   await expect(page.locator('#save-status')).toContainText('复制失败');
 });
 
+test('clipboard failure preserves an existing storage warning and in-memory notes', async ({ page }, testInfo) => {
+  await page.addInitScript(() => {
+    Object.defineProperty(Storage.prototype, 'setItem', { value() { throw new Error('storage blocked'); } });
+    Object.defineProperty(navigator, 'clipboard', { configurable: true, value: {
+      writeText: async () => { throw new Error('clipboard denied'); },
+    } });
+  });
+  await page.goto(generate(testInfo));
+  const item = page.locator('#manual .item').first();
+  await item.locator('.note-toggle').click();
+  await item.locator('textarea').fill('存储失败仍保留的备注');
+  const status = page.locator('#save-status');
+  await expect(status).toContainText('本机存储不可用');
+  await item.locator('.item-copy').click();
+  await expect(status).toContainText('本机存储不可用');
+  await expect(status).toContainText('请导出 JSON');
+  await expect(status).toContainText('复制失败');
+  await expect(status).toHaveClass(/warning/);
+  await expect(item.locator('textarea')).toHaveValue('存储失败仍保留的备注');
+  await page.locator('#manual-persistence').check();
+  await expect(status).toContainText('本机存储不可用');
+});
+
 test('JSON command whitespace and long metadata survive rendering at narrow widths', async ({ page }, testInfo) => {
   await page.goto(generate(testInfo, source => {
     source.title = 'T'.repeat(480);

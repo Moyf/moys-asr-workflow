@@ -580,7 +580,9 @@
       await navigator.clipboard.writeText(record.text);
       if (!storageFailed) status.textContent = '已复制条目文本';
     } catch (e) {
-      status.textContent = '复制失败，请手动选择并复制条目文本';
+      if (storageFailed) storageWarning();
+      status.textContent = (storageFailed ? status.textContent + '；' : '')
+        + '复制失败，请手动选择并复制条目文本';
     }
   });
   document.getElementById('export-scope').addEventListener('change', refreshExport);
