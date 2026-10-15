@@ -61,7 +61,7 @@
       const data = JSON.parse(await readFileTextWithProgress(file));
       if (!data || !Array.isArray(data.segments)) throw new Error('缺少有效 segments 数组');
       if (!window.AsrEditorUtils.supportsProjectSchema(data)) throw new Error('不支持的工程格式版本');
-      window.AsrEditorUtils.migrateSubtitleGroups(data);
+      window.AsrEditorUtils.migrateSubtitleGroups(data, { fromFile: true });
       const sourceSegments = window.AsrEditorUtils.cloneJsonValue(data.segments);
       window.AsrEditorUtils.normalizeSegmentTimings(sourceSegments);
       const validSegments = sourceSegments.filter((segment) => segment.text.trim());

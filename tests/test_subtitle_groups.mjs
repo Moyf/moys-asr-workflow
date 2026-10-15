@@ -101,6 +101,15 @@ test('canonical groups reject ambiguous identity, dangling membership, independe
   assert.throws(() => u.migrateSubtitleGroups(p), /ambiguous binding/);
 });
 
+test('v2 file boundary rejects legacy fields while runtime may rebuild display views', () => {
+  const p = fixture(); u.normalizeMultiSubtitleProject(p);
+  const saved = u.serializeSubtitleGroups(plain(p));
+  assert.doesNotThrow(() => u.migrateSubtitleGroups(saved, { fromFile: true }));
+  saved.segments[0].sticker_ref = { headIdx: 99 };
+  assert.throws(() => u.migrateSubtitleGroups(saved, { fromFile: true }), /legacy group fields/);
+  assert.doesNotThrow(() => u.migrateSubtitleGroups(p));
+});
+
 test('export creates one continuous group clip and maps Gap once across tracks', () => {
   const p = fixture(); p.media = 'synthetic.wav'; u.normalizeMultiSubtitleProject(p);
   u.moveSegmentBetweenTracks(p.segments, p.overlay_track.segments, 1);
@@ -113,4 +122,22 @@ test('export creates one continuous group clip and maps Gap once across tracks',
   p.segments.forEach(s => { s.disabled = true; }); p.overlay_track.segments[0].disabled = true;
   const disabled = u.buildProjectExportPlan(p, { durationMs: 15000, timelineMode: 'source' });
   assert.equal(disabled.stickers.length + disabled.overlayStickers.length, 0);
+});
+
+test('large legacy input keeps distinct groups and deterministically remaps all cross-track collisions', () => {
+  const cues = () => Array.from({ length: 1000 }, (_, index) => ({
+    id: `cue-${index}`, start: index * 2000, end: index * 2000 + 1000, text: `cue ${index}`,
+    ...(index % 50 === 0 ? { sticker: { name: 'same-name', rel: 'cat.png' } }
+      : { sticker_ref: { name: 'same-name', headIdx: index - index % 50 } }),
+  }));
+  const p = { segments: cues(), overlay_track: { enabled: true, segments: cues() } };
+  u.normalizeMultiSubtitleProject(p);
+  const all = u.subtitleGroupTracks(p).flatMap(t => t.segments);
+  assert.equal(new Set(all.map(s => s.id)).size, 2000);
+  assert.equal(p.subtitle_groups.sticker.length, 40);
+  assert.equal(p.subtitle_group_migration.remapped_ids.length, 1000);
+  const saved = u.serializeSubtitleGroups(plain(p));
+  assert.doesNotMatch(JSON.stringify(saved), /headIdx/);
+  u.normalizeMultiSubtitleProject(saved);
+  assert.equal(u.subtitleGroupRanges(saved).length, 40);
 });

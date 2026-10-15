@@ -276,6 +276,7 @@
       }
       // 先兜底修复 0 长/倒挂时间码（保底 100ms），再校验结构，让旧工程仍能打开。
       if (data && Array.isArray(data.segments)) {
+        window.AsrEditorUtils.migrateSubtitleGroups(data, { fromFile: true });
         data.timebase = MaweTimeline.normalizeTimelineTimebase(data.timebase);
         window.AsrEditorUtils.normalizeMultiSubtitleProject(data);
         MaweTimeline.syncProjectTimebaseAndBindingOffsets(data, { preferFrames: data.timebase.unit === 'frames' });
