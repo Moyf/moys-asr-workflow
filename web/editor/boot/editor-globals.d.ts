@@ -219,6 +219,14 @@ interface MaweStateApi {
   readonly editing: { editingState: any; extensionEditingState: any };
   readonly changes: { projectImportDirty: boolean; gapRemoveDirty: boolean; previewGeometryDirty: boolean };
   hasProjectChanges(pendingText?: boolean): boolean;
+  readonly projectEpoch: number;
+  projectFingerprint(value?: any): string;
+  persistenceSnapshot(value: any): any;
+  setSnapshotReader(reader: () => any): void;
+  beginProjectSession(): void;
+  establishProjectCheckpoint(options?: { repaired?: boolean }): void;
+  rememberSessionHighlights(): void;
+  restoreSessionHighlights(): void;
   segmentsFingerprint(): string;
   noteSavedSegments(fingerprint?: string): void;
   markSaved(): void;

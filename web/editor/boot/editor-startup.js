@@ -1,5 +1,8 @@
 
 // === 启动 ===
+MaweState.beginProjectSession();
+MaweState.setSnapshotReader(MaweJsonRepair.projectSnapshot);
+const timingBeforeStartup = MaweJsonRepair.projectTimingSignature(MaweBoot.DATA);
 // 兜底：工程可能带有上游写入的 0 长/倒挂段、词时间码（旧版工具或异常识别结果），
 // 加载时统一拉齐到至少 100ms，避免拆分后看不见字幕块、工程无法保存。
 MaweTimeline.syncProjectTimebaseAndBindingOffsets(MaweBoot.DATA, { preferFrames: MaweBoot.DATA.timebase?.unit === 'frames' });
@@ -46,10 +49,13 @@ window.MAWE_EDITOR_BRIDGE = Object.freeze({
 });
 window.MAWE?.register('editor-bridge', () => window.MAWE_EDITOR_BRIDGE);
 MaweCuePanel.renderAll({ waveform: 'full' });
-MaweState.noteSavedSegments();
 const importedProjectChanges = MaweBoot.SERVER_CONFIG?.projectImportChanges || [];
 MaweJsonRepair.noteImportReport(importedProjectChanges);
-if (importedProjectChanges.some((change) => change.kind !== 'add' || /\.(start|end)$/.test(change.path))) {
+const startupContentRepaired = repairedTimingCount > 0 || repairedGroupReferenceCount > 0
+  || timingBeforeStartup !== MaweJsonRepair.projectTimingSignature(MaweBoot.DATA)
+  || MaweJsonRepair.importRequiresSave(importedProjectChanges);
+MaweState.establishProjectCheckpoint({ repaired: startupContentRepaired });
+if (MaweJsonRepair.importRequiresSave(importedProjectChanges)) {
   MaweServerSave.projectImportDirty = true;
   MaweHint.flashHint(`导入修复了 ${importedProjectChanges.length} 处工程字段；请检查后保存`, 'warning');
 }
@@ -62,6 +68,8 @@ MaweBoot.maweDebug('boot:complete', {
 MaweGapRemoveUi.updateGapRemoveUi();
 if (repairedTimingCount > 0) {
   MaweHint.flashHint(`已自动修复 ${repairedTimingCount} 处异常时间码（保底 100ms）`, 'warning');
+} else if (startupContentRepaired && repairedGroupReferenceCount === 0) {
+  MaweHint.flashHint('已修复工程数据，请保存修复结果', 'warning');
 } else if (repairedGroupReferenceCount > 0) {
   MaweHint.flashHint(`已自动修复 ${repairedGroupReferenceCount} 处分组引用`, 'warning');
 }

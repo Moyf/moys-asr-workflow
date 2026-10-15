@@ -265,8 +265,9 @@
       }
       const data = imported.project;
       MaweJsonRepair.noteImportReport(imported.changes);
-MaweProjectLoad.applyCanonicalProject(data, file.name);
-MaweServerSave.projectImportDirty = imported.changes.some((change) => change.kind !== 'add' || /\.(start|end)$/.test(change.path));
+const contentRepaired = MaweJsonRepair.importRequiresSave(imported.changes);
+MaweProjectLoad.applyCanonicalProject(data, file.name, { repaired: contentRepaired });
+MaweServerSave.projectImportDirty = contentRepaired;
 if (MaweServerSave.projectImportDirty) MaweHint.flashHint(`导入修复了 ${imported.changes.length} 处工程字段；请检查后保存`, 'warning');
 // 工程可能携带新 sticker_root；刷新表情包导出按钮的互斥灰显状态
 MaweExportTimeline.updateStickerExportButtons();

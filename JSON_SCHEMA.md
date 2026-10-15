@@ -633,8 +633,7 @@ Gap provenance/兼容投影、第三方扩展与旧缓存继续按原契约读�
   "sticker": null,
   "sticker_ref": null,
   "color": null,
-  "color_ref": null,
-  "_dirty": false
+  "color_ref": null
 }
 ```
 
@@ -654,7 +653,7 @@ Gap provenance/兼容投影、第三方扩展与旧缓存继续按原契约读�
 | `sticker_ref` | `object\|null` | 否 | 引用上方 head 的表情包（跨多句用） |
 | `color` | `object\|null` | 否 | 颜色标记 head。见第四节 |
 | `color_ref` | `object\|null` | 否 | 引用上方 head 的颜色 |
-| `_dirty` | `bool` | 否 | 是否被人工改过。**生成时不要写 `true`**，仅由编辑器内部维护 |
+| `_dirty` | `bool` | 否 | 旧会话高亮字段；加载时忽略，所有保存入口剥除。新工程不写入 |
 
 ### 逐句 ASS 定位（可选）
 
@@ -859,7 +858,7 @@ Gap provenance/兼容投影、第三方扩展与旧缓存继续按原契约读�
 6. items 首项 start = segment.start，末项 end = segment.end
 7. 标点作为零宽 item（start=end）或并入前一个字
 8. sticker / sticker_ref / color / color_ref 全部填 null
-9. 不要输出 _dirty 字段
+9. 不要输出 _dirty 字段。工程未保存检查点和字幕变动高亮仅存在于当前会话；保存成功更新检查点但保留高亮，重开或切换工程清除高亮。
 10. 不要输出任何 JSON 之外的解释文字、Markdown 代码块标记
 11. 中文逐字给时间戳，英文按词给
 12. media / language / model 字段按需填写，允许省略
@@ -925,7 +924,7 @@ uv run python edit.py your_generated.mosp
 | `segments[i].sticker_ref` | object\|null | ❌ | `{name, headIdx}` |
 | `segments[i].color` | object\|null | ❌ | `{name, value, start, end}` |
 | `segments[i].color_ref` | object\|null | ❌ | `{name, headIdx}` |
-| `segments[i]._dirty` | bool | ❌ | 生成时不要写 |
+| `segments[i]._dirty` | bool | ❌ | 旧输入忽略，保存剥除 |
 | `media` | string | ❌ | 媒体文件路径 |
 | `language` | string | ❌ | 语言代码 |
 | `model` | string | ❌ | 模型名 |
