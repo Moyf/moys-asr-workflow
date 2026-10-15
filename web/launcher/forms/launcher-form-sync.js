@@ -38,7 +38,15 @@ function renderServerButton() {
 }
 async function stopEditorServer() { if (state.serverStopping) return; state.serverStopping = true; renderServerButton(); try { const result = await bridge("stop_server", serverPayload()); if (!result.ok) { applyErrorResult(result); return; } stopServerStatusMonitor(); serverRestartProjectPath = null; state.serverRunning = false; state.serverProjectPath = ""; state.detectedServerUrl = ""; setStatus(t("ready")); } finally { state.serverStopping = false; renderServerButton(); } }
 async function checkExistingServer(prefix = "") { const requestId = ++serverStatusRequest; const previousUrl = state.detectedServerUrl; state.detectedServerUrl = ""; const result = await bridge("get_server_status", serverPayload()); if (requestId !== serverStatusRequest) return result; if (!result.ok || !result.running || !result.url) { state.serverRunning = false; state.serverProjectPath = ""; if (prefix) setStatus(`${prefix}，${t("server_start_hint")}`); else if (previousUrl) setStatus(t("ready")); renderServerButton(); return result; } const isExternalServer = !state.serverRunning; state.detectedServerUrl = isExternalServer ? result.url : ""; setServerStatus(result.url, isExternalServer, prefix); renderServerButton(); startServerStatusMonitor(); return result; }
-function syncHtmlMenu() { const enabled = $("generateHtml").checked; $("openHtml").classList.toggle("hidden", !enabled); $("openHtml").disabled = enabled && !state.result?.htmlPath; }
+function syncHtmlMenu() {
+  const supported = state.config?.standaloneEditorSupported !== false;
+  const enabled = supported && $("generateHtml").checked;
+  $("generateHtml").disabled = !supported;
+  $("openMenu").classList.toggle("hidden", !supported);
+  $("openBlankHtml").classList.toggle("hidden", !supported);
+  $("openHtml").classList.toggle("hidden", !enabled);
+  $("openHtml").disabled = enabled && !state.result?.htmlPath;
+}
 function renderChevron(id) { const arrow = $(id).querySelector(".chevron"); if (arrow) arrow.textContent = $(id).classList.contains("collapsed") ? "▸" : "▾"; }
 function renderStickerCurrent() { const path = String(state.config?.stickerDir || "").trim(); const button = $("stickerCurrent"); button.textContent = path || t("unset"); button.disabled = !path; $("stickerDir").value = path; }
 async function saveStickerDirectory(path) { $("stickerDir").value = path; const result = await bridge("save_sticker_dir", { path }); setError("stickerDir", result.ok ? "" : errText(result.code, result.detail || result.error)); if (result.ok) { state.config.stickerDir = result.stickerDir; renderStickerCurrent(); setStatus(t("saved")); } else setStatus(errText(result.code, result.detail || result.error)); return result; }

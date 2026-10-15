@@ -7,13 +7,54 @@ source: "JSON_SCHEMA.md"
 
 <!-- Generated from JSON_SCHEMA.md. Run pnpm run sync:docs to refresh. -->
 
-本文档定义 MAWE（Moy's ASR Workflow Editor）、`edit.py` 生成的 `.edit.html` 以及 `blank-editor.html` 共同接受的工程文件格式。工程文件内容是 UTF-8 JSON；`.mosp` 是当前默认和推荐的扩展名，`.json` 作为旧工程与兼容输入/输出扩展名继续支持。
+本文档定义本地 MAWE（Moy's ASR Workflow Editor）当前接受的工程文件格式。工程文件内容是 UTF-8 JSON；`.mosp` 是当前默认和推荐的扩展名，`.json` 作为旧工程与兼容输入/输出扩展名继续支持。历史 `.edit.html` 和 `blank-editor.html` 仅按各自版本支持旧工程；2.0 起停止维护这些入口，不承诺旧副本兼容下述 v2 格式。
 
 用途：让任意来源（ASR、第三方模型生成、人工手写）的 JSON 都能直接被编辑器加载、编辑、再导出。
 
 适用版本：对应 `edit.py` / `generate_subtitle_qwen_api.py` 当前实现。
 
 ---
+
+### 导入边界与修复报告
+
+缺省 schema 的旧 `.json` / `.mosp` 继续接受，补当前 schema 和缺失稳定 ID；显式坏 ID、重复 ID、失效引用和未知 schema 拒绝，不按颜色/表情名称猜引用，不覆盖源文件。写出函数也拒绝未知 schema，不能先降为当前版本再保存。
+
+Python `maw.project_boundary.prepare_project` 与浏览器 `MaweProjectValidation.prepareProject` 返回 `ok/errors/project/changes`。错误含 JSON 路径；失败时 `project` 为 null、`changes` 为空。成功时 changes 为实际差异（path、kind、before/after），区分缺省补齐与实质修复；再次导入规范化结果不产生新差异。浏览器运行态 `MaweJsonRepair.lastImportReport` 保留报告，Server 修复通过启动配置传入；报告不作为工程字段写回。
+
+可只读检查工程：`python -m maw.project_boundary project.mosp`；加 `--strict` 禁止时间修复。输出 JSON 报告，拒绝时退出码 2，不写源文件。共享语料见 `tests/fixtures/project-boundary.json`，严格校验与导入修复分别验证；CLI、Server、浏览器导入采用同一保守边界。
+
+Gap provenance/兼容投影、第三方扩展与旧缓存继续按原契约读取；缓存仍在写出时剥离。校验边界本身保留输入 schema；独立组迁移及编辑器保存按下节写 v2，不替换原子写入和备份。
+
+## v2 独立颜色 / 表情包组
+
+本地编辑器继续读取缺 schema 和 `moy.asr.project.v1` 工程，保存时写 `moy.asr.project.v2`。Python 生成器可继续生成 v1；读写 v2 时必须保留版本，禁止降为 v1。未知版本拒绝写入。旧客户端不能编辑 v2；请保留原始旧工程或备份，不向旧客户端承诺兼容。
+
+v2 保留顶层 `segments`、`overlay_track`、`multi_subtitle.tracks` 和现有 bindings 容器。新增必填 `subtitle_groups`：
+
+```json
+{
+  "schema": "moy.asr.project.v2",
+  "subtitle_groups": {
+    "next_id": 2,
+    "color": [{"id": "color-1", "value": {"name": "blue", "value": "#3388ff"}}],
+    "sticker": [{"id": "sticker-1", "value": {"name": "cat", "rel": "cat.png"}}]
+  },
+  "segments": [{"id": "cue-a", "start": 1000, "end": 3000, "text": "甲", "sticker_group_id": "sticker-1"}],
+  "overlay_track": {"enabled": true, "segments": [{"id": "cue-b", "start": 5000, "end": 10000, "text": "乙", "sticker_group_id": "sticker-1"}]}
+}
+```
+
+- 各轨字幕 `id` 在整个工程内唯一；段上的 `color_group_id` / `sticker_group_id` 引用对应组表。组 ID 在所属类型内唯一，不能用同名素材或颜色推断组。`next_id` 是新建组的递增计数，随工程和撤销快照保存。
+- `value` 保存完整颜色 / 素材属性及其扩展字段；必须有字符串 `name`。组内不存 `start/end`，其范围是所有成员的最早 `start` 到最晚 `end`。字幕 1–3 / 5–7 / 8–10 秒的一组连续显示 1–10 秒；末条改为 12 秒即覆盖至 12 秒。
+- 禁用成员保留关系并参与范围；全部成员禁用时不显示或导出表情。换轨不拆组；删除头或中间成员后剩余成员仍同组。清除属性只移除所选成员，空组在编辑器中删除。
+- 拆分两侧继承原组。同组合并继承；不同组或混有无组字幕时，合并结果不继承该种组关系，未参与合并的成员保留原组。不同组即使素材同名也不合并。重复导入为输入组分配新 ID，避免与当前工程误关联。
+- v1 迁移先在原轨内数组解析 `headIdx`，再规范 ID；跨轨重复字幕 ID 确定性重映射，并更新 bindings。旧ref的第三方附加字段保存在对应段的可选 `color_group_metadata` / `sticker_group_metadata` 对象中（不含旧name/headIdx）；现有同名字段冲突时拒绝迁移而不覆盖。重映射记录在可选 `subtitle_group_migration.remapped_ids`（track/index/from/to）。失效引用或歧义绑定报告错误，不按名称猜引用。
+- v2 落盘不写 `color` / `color_ref` / `sticker` / `sticker_ref`；编辑器内部可生成显示投影，投影的下标与范围不构成持久化关系。三轨共同保留 items、帧、speaker、disabled、assOverride.pos 和第三方扩展。
+- 表情预览、共享时间线导出和 OTIO 按组连续区间输出。重叠组按稳定表顺序显示；单轨 OTIO 遇重叠继续报错。Resolve JSON 使用 `moy.asr_subtitle_editor.resolve.v2`，在顶层 `stickers` 输出连续组区间（group_id/start_ms/end_ms/素材属性），段上保留组 ID；旧 Resolve v1 消费端需适配。
+
+文稿匹配读取并保留 v2；沿既有等条数槽位继承非时间属性。对带独立组且会改变条数的文稿匹配，当前明确拒绝生成有损结果，原工程保留；可先在编辑器中拆合。该限制不影响编辑器正常拆分、合并或重新断句。
+
+以下 v1 字段示例与 headIdx 约束用于历史输入兼容；v2 颜色 / 表情关系以本节为准。整数毫秒、字词、Gap、样式和时间基准的其余契约继续适用。
 
 ## 一、顶层结构
 
@@ -61,7 +102,7 @@ source: "JSON_SCHEMA.md"
 
 | 字段 | 类型 | 必填 | 说明 |
 |---|---|---|---|
-| `schema` | `string` | 否（写出时必填） | 当前值为 `moy.asr.project.v1`。没有该字段的历史工程按 v1 读取并在下次保存时补写；无法识别的版本会被拒绝，防止旧客户端破坏未来格式 |
+| `schema` | `string` | 否（写出时必填） | 支持 `moy.asr.project.v1` 与带独立组表的 `moy.asr.project.v2`，详见上文。没有该字段的历史工程按 v1 读取并在下次保存时补写；无法识别的版本会被拒绝，防止旧客户端破坏未来格式 |
 | `segments` | `array<object>` | **必填** | 字幕段数组。**缺失或不是数组时，页面直接弹「文件格式不对，缺少 segments 字段」并拒绝加载** |
 | `media` | `string` | 否 | 媒体文件路径（绝对/相对均可）。便携 HTML 会在“打开工程”时用它的文件名匹配同一次选择的媒体；只选工程文件时会提示用户继续选择媒体。浏览器安全限制下不能自行读取该路径或跳转其目录。服务器编辑器可按该路径自动加载 |
 | `language` | `string` | 否 | 统一后的语言代码，如 `zh`、`en`、`ja`；无法确定时为空字符串。仅用于显示与选择切句计量方式 |
@@ -88,6 +129,11 @@ source: "JSON_SCHEMA.md"
 `media_metadata.audio_tracks` 是从源容器读取的音轨清单。`audio_index` 是音频流内部的从 0 开始顺序，`stream_index` 是源容器中的 FFmpeg stream index；其余字段用于保留编码、声道、采样率、语言、标题和默认标记。`media_metadata.selected_audio_track` 保存本工程转写时实际选择的零基音轨，编辑器重新打开工程时优先恢复该选择；旧工程没有此字段时，从已有波形载荷恢复，仍无记录则使用容器默认轨（没有 default disposition 时为索引 0）。编辑器导出 OTIO 时会为每条清单建立独立的 `Audio` 轨道，在达芬奇使用的 `Resolve_OTIO.Channels` 中写入源音轨/声道映射，并在 `moy` 元数据中保留对应的 stream index。旧工程缺少音轨清单时继续生成一条兼容的音频轨道。
 
 `timebase` 是字幕编辑器的时间基准，不改变媒体本身的时间单位。`unit: "milliseconds"` 保持旧行为；`unit: "frames"` 时，拖动、边界调整、方向键和 A/D 微调使用独立的帧字段，`fps` 决定帧与实际媒体时间的换算。为兼容旧工具，`start` / `end` 及字词时间码仍始终保存为整数毫秒；帧模式额外保存成对的 `start_frame` / `end_frame` 字段。帧时间码显示采用较通行的非丢帧格式 `HH:MM:SS:FF`，其中 `FF` 是当前秒内的帧号。
+
+`timebase.fps_source` 可选，合法值仅为 `auto`（自动采用媒体 FPS）或 `user`（用户明确提交 FPS，包含默认值 30）。来源随工程保存；`user` 优先于数值推断，`auto` 不因非 30 或帧模式变成用户指定。自动取值仍只在从毫秒模式切入帧模式时进行，换媒体或加载工程本身不新增重映射；用户改 FPS 和切换时间单位沿用现有确认与同步规则。FPS 输入框按 Enter 可提交与当前相同的值。
+
+旧工程缺少 `fps_source` 时保留缺失：帧模式或非 30 FPS 沿用旧的显式选择推断，毫秒模式 30 可在切入帧模式时采用媒体值；不凭旧值补写用户意图。仅记录来源不得改写 segments、items、帧字段或绑定 offset，不升级工程 schema。非法来源（含 null、空串或其他类型）拒绝读取，不静默降为自动。
+
 
 ### 1.0 工程文件扩展名
 
@@ -564,7 +610,7 @@ source: "JSON_SCHEMA.md"
 - 主轨和扩展轨段均使用不重复的稳定字符串 ID；当前规范化会为缺失 ID 的输入补齐，并在导出/保存时写入。主轨按 `main-001`、扩展轨按 `<track-id>-segment-001` 的顺序生成；如果生成值与后续显式 ID 冲突，会使用确定性的 `-generated` 后缀。浏览器与 Python 服务端使用同一规则。
 - 当前 MVP 强制每个绑定一对一；数组形式保留给未来一对多关系，但当前校验要求数组长度均为 1，且一个端点不能重复绑定。
 - 自动导入按段级时间码匹配：时间区间有交集，且开始/结束时间差均不超过 `300ms`；冲突选择总差值最小的候选。未匹配段保留，可手动绑定。
-- 副字幕段也可以保存 `color` / `color_ref`；其中 `color_ref.headIdx` 是当前副字幕数组中的 0-based 整数下标，并且必须指向更早的颜色 head。交换主副字幕时，编辑器按绑定关系将主轨颜色映射到新的主轨，同时保留移到副轨的原主轨颜色信息。
+- 副字幕段也可以保存 `color` / `color_ref`；其中 `color_ref.headIdx` 是当前副字幕数组中的 0-based 整数下标，并且必须指向更早的颜色 head。交换主副字幕时，各字幕属性跟随原字幕，不自动映射颜色。
 - SRT 导入没有字词时间码，因此扩展段通常不带 `items`；mosp/json 导入和主副交换可以带上可选 `items`，保存、加载和再次交换时保留它们。
 - `continuous`（字符型）允许字符边界，`word`（单词型）只允许空格或安全标点附近的边界，禁止拆碎单词。切分时会清理断点两侧相邻的中英文逗号、句号及空白；两种模式也分别决定字数统计规则。
 - `enabled: false` 时工程仍保留轨道、绑定、语言类型和 ID；主轨 SRT 导出语义不变，扩展轨使用独立 SRT 导出。
@@ -625,8 +671,7 @@ source: "JSON_SCHEMA.md"
   "sticker": null,
   "sticker_ref": null,
   "color": null,
-  "color_ref": null,
-  "_dirty": false
+  "color_ref": null
 }
 ```
 
@@ -646,7 +691,7 @@ source: "JSON_SCHEMA.md"
 | `sticker_ref` | `object\|null` | 否 | 引用上方 head 的表情包（跨多句用） |
 | `color` | `object\|null` | 否 | 颜色标记 head。见第四节 |
 | `color_ref` | `object\|null` | 否 | 引用上方 head 的颜色 |
-| `_dirty` | `bool` | 否 | 是否被人工改过。**生成时不要写 `true`**，仅由编辑器内部维护 |
+| `_dirty` | `bool` | 否 | 旧会话高亮字段；加载时忽略，所有保存入口剥除。新工程不写入 |
 
 ### 逐句 ASS 定位（可选）
 
@@ -663,8 +708,8 @@ source: "JSON_SCHEMA.md"
 - `start` / `end` / `items[*].start` / `items[*].end` 全部是**整数毫秒**（不是秒、不是字符串、不是浮点）；它们是兼容时间字段
 - `start_frame` / `end_frame` 与 `items[*].start_frame` / `items[*].end_frame` 是可选的独立帧字段，必须成对出现并为非负整数，结束帧大于起始帧
 - 进入帧模式后，编辑器以帧字段为操作真源，同时更新毫秒投影；切换 FPS 会保留实际媒体时间并重新计算帧编号
-- `segments` 建议按时间升序排列，且 `segments[i].end <= segments[i+1].start`
-- 代码不强校验时间重叠，但重叠会导致播放器跳转/高亮行为异常
+- 同一轨道的 `segments` 必须按时间升序且不重叠：`segments[i].end <= segments[i+1].start`；独立轨道之间可以重叠
+- 严格校验拒绝段/词重叠。旧工程导入只对整数时间范围异常在副本上修复并报告，不把字符串、布尔值或小数时间强制转换为整数；保存仍保留词级修复兜底，段重叠拒绝写入
 - `items` 首元素 `start` 建议等于 segment `start`，末元素 `end` 建议等于 segment `end`
 - 带 `speaker` 的工程遇到说话人变化时**必须切分字幕**，不能把两个 speaker 合入同一 segment
 
@@ -697,9 +742,10 @@ source: "JSON_SCHEMA.md"
 ### 生成建议
 
 - 中文逐字给时间戳，英文按词给
-- 标点符号可作为零宽 item（`start == end`），或并入前一个字的 item，代码都能容忍
+- 标点符号可作为零宽 item（`start == end`），或在生成时并入前一个字的 item。旧格式允许零宽 item，合法零宽项在毫秒模式导入与保存时原样保留，不自动合并文字或扩成 100ms
 - 若生成模型拿不到字级时间，**填 `[]` 也可接受**，编辑器会按字符比例自动插值（拆分时间精度会下降）
 - 如果 `items` 字段整个缺失，编辑器视同 `[]`
+- items 必须位于所属段范围内，按顺序不重叠；`text/items` 不一致可能来自尚未同步的文字编辑，导入保留两份已知内容，不据此伪造字词时间。依赖精确映射的拆分、AI 局部删除等操作必须另行核验映射。
 
 ---
 
@@ -850,7 +896,7 @@ source: "JSON_SCHEMA.md"
 6. items 首项 start = segment.start，末项 end = segment.end
 7. 标点作为零宽 item（start=end）或并入前一个字
 8. sticker / sticker_ref / color / color_ref 全部填 null
-9. 不要输出 _dirty 字段
+9. 不要输出 _dirty 字段。工程未保存检查点和字幕变动高亮仅存在于当前会话；保存成功更新检查点但保留高亮，重开或切换工程清除高亮。
 10. 不要输出任何 JSON 之外的解释文字、Markdown 代码块标记
 11. 中文逐字给时间戳，英文按词给
 12. media / language / model 字段按需填写，允许省略
@@ -863,18 +909,18 @@ source: "JSON_SCHEMA.md"
 
 生成后任选其一验证：
 
-### 方式 1：用 edit.py 直接生成 HTML
+### 方式 1：用本地 Server 打开工程
 
 ```bash
 cd <MAW 仓库目录>
-uv run python edit.py your_generated.mosp
+uv run --no-sync python server-editor/serve.py your_generated.mosp
 ```
 
-成功会生成 `your_generated.edit.html`。
+检查启动结果与字幕列表；需要媒体播放时，保留工程引用的媒体或用 `-m` 指定。2.0 起不再生成独立 `.edit.html`，旧 HTML 不承诺兼容新版工程。
 
 ### 方式 2：用空壳编辑器加载
 
-1. `file://` 双击打开本仓库根目录的 `blank-editor.html`
+1. 在本地应用打开空白编辑器，或运行 `uv run --no-sync python server-editor/serve.py --blank`
 2. 点「打开工程」选 `.mosp` 或 `.json` 工程文件
 3. 若弹出「文件格式不对，缺少 segments 字段」红色提示，说明顶层结构错误
 4. 若正常显示字幕列表，则格式合格
@@ -916,7 +962,7 @@ uv run python edit.py your_generated.mosp
 | `segments[i].sticker_ref` | object\|null | ❌ | `{name, headIdx}` |
 | `segments[i].color` | object\|null | ❌ | `{name, value, start, end}` |
 | `segments[i].color_ref` | object\|null | ❌ | `{name, headIdx}` |
-| `segments[i]._dirty` | bool | ❌ | 生成时不要写 |
+| `segments[i]._dirty` | bool | ❌ | 旧输入忽略，保存剥除 |
 | `media` | string | ❌ | 媒体文件路径 |
 | `language` | string | ❌ | 语言代码 |
 | `model` | string | ❌ | 模型名 |

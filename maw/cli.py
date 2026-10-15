@@ -14,6 +14,7 @@ from pathlib import Path
 from urllib.error import HTTPError, URLError
 from urllib.request import Request, urlopen
 
+from maw.editor_entry_policy import RETIREMENT_MESSAGE, standalone_editor_supported
 from maw.console import configure_utf8_stdio
 from maw.gui_config import DEFAULT_MODEL_ID
 from maw.gui_platform import asset_path
@@ -126,7 +127,7 @@ def build_parser(prog: str | None = None) -> argparse.ArgumentParser:
         help="在 .ReaPeaks 波形缓存中额外生成频谱数据（需要 --with-waveform）",
     )
     html_group = parser.add_mutually_exclusive_group()
-    html_group.add_argument("--html", action="store_true", help="额外生成便携 .edit.html（默认不生成）")
+    html_group.add_argument("--html", action="store_true", help="仅 1.x：额外生成便携 .edit.html；2.0 起退役，请用 --server")
     html_group.add_argument("--no-html", dest="no_html", action="store_true", help="兼容旧 CLI；默认行为就是不生成 HTML")
     parser.add_argument("--debug", action="store_true", help="输出 API 调试信息")
 
@@ -154,6 +155,10 @@ def main(argv: Sequence[str] | None = None) -> int:
     prepare_cli_stdio()
     parser = build_parser()
     args = parser.parse_args(argv)
+    if args.html and not standalone_editor_supported():
+        parser.error(RETIREMENT_MESSAGE)
+    if args.html:
+        print("[deprecated] " + RETIREMENT_MESSAGE, file=sys.stderr)
     if args.alignment_check and not args.align_script:
         parser.error("--alignment-check 需要 --align-script")
     if args.align_script:

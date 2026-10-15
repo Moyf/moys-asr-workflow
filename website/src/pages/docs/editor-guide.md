@@ -7,7 +7,7 @@ source: "docs/user/EDITOR_GUIDE.md"
 
 <!-- Generated from docs/user/EDITOR_GUIDE.md. Run pnpm run sync:docs to refresh. -->
 
-MAWE 是 MAW 的字幕编辑器。日常使用本机 Server；便携 HTML 与在线页面用于浏览器中的兼容操作。它们共用前端代码与 `.mosp` / 旧 `.json` 工程格式。
+MAWE 是 MAW 的字幕编辑器，日常使用本地应用或本机 Server。从 2.0（含预发布版）起停止生成与维护独立 HTML / 在线编辑器；1.x 历史副本可继续使用，但不承诺兼容新版工程。本地应用继续共用 Web 前端，并兼容 `.mosp` / 旧 `.json` 工程。
 
 源码启动见 [Server README](https://github.com/Moyf/moys-asr-workflow/blob/main/server-editor/README.md)，首次转写见 [工作流](../workflow/)。
 
@@ -173,6 +173,8 @@ B 按指针区域决定切点：在已选字幕行按文字位置，在波形按
 | 普通导入、便携或下载回退 | 没有可写绑定时，使用导出工程下载；支持句柄时可通过另存为取得授权。 |
 
 Ctrl/Cmd+S 保存，Ctrl/Cmd+Shift+S 另存为。浏览器新建时解除旧 Server 工程绑定，防止串写。Server 导入工程的接管条件见 [Server README](https://github.com/Moyf/moys-asr-workflow/blob/main/server-editor/README.md)。服务退出但页面仍开着时，可以导出工程保留改动。
+
+字幕的变动高亮记录当前会话修改过的字幕，保存成功后仍保留；重开或切换工程才清除。未保存提醒独立比较最近成功保存的工程内容，撤销回保存点不再提示未保存；保存失败或保存期间继续修改，仍保留未保存提醒。旧工程中的 `_dirty` 不恢复高亮或触发未保存提醒，下一次保存会剥除。导入时实际修复的数据需重新保存。
 
 自动保存按设置执行；文字提交还有短暂防抖保存。覆盖 Server 工程前保留 `.mosp.bak` 或 `.json.bak`，它是紧邻的上一个磁盘版本。
 

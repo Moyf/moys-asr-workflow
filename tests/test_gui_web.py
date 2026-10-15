@@ -3758,6 +3758,7 @@ class GuiWebBridgeTests(CompactContainerAssertions, unittest.TestCase):
         self.assertEqual(result["field"], "serverMediaPath")
         self.assertEqual(result["code"], "server_media_missing")
 
+    @mock.patch("maw.editor_entry_policy.app_version", new=lambda: "1.9.0")
     def test_open_blank_html_opens_repo_template_when_present(self) -> None:
         """Given blank editor exists, When opened, Then browser receives its file URL."""
         blank = self.root / "blank-editor.html"
@@ -3769,6 +3770,7 @@ class GuiWebBridgeTests(CompactContainerAssertions, unittest.TestCase):
         self.assertTrue(result["ok"])
         open_path.assert_called_once_with(blank)
 
+    @mock.patch("maw.editor_entry_policy.app_version", new=lambda: "1.9.0")
     def test_open_blank_html_reports_missing_template_without_raising(self) -> None:
         """Given blank editor is missing, When opened, Then JS receives structured failure."""
         with mock.patch("maw.gui_web.asset_path", return_value=self.root / "missing-blank-editor.html"):

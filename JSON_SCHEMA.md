@@ -1,6 +1,6 @@
 # 字幕工程文件规范（`.mosp` / `.json`）
 
-本文档定义 MAWE（Moy's ASR Workflow Editor）、`edit.py` 生成的 `.edit.html` 以及 `blank-editor.html` 共同接受的工程文件格式。工程文件内容是 UTF-8 JSON；`.mosp` 是当前默认和推荐的扩展名，`.json` 作为旧工程与兼容输入/输出扩展名继续支持。
+本文档定义本地 MAWE（Moy's ASR Workflow Editor）当前接受的工程文件格式。工程文件内容是 UTF-8 JSON；`.mosp` 是当前默认和推荐的扩展名，`.json` 作为旧工程与兼容输入/输出扩展名继续支持。历史 `.edit.html` 和 `blank-editor.html` 仅按各自版本支持旧工程；2.0 起停止维护这些入口，不承诺旧副本兼容下述 v2 格式。
 
 用途：让任意来源（ASR、第三方模型生成、人工手写）的 JSON 都能直接被编辑器加载、编辑、再导出。
 
@@ -17,6 +17,7 @@ Python `maw.project_boundary.prepare_project` 与浏览器 `MaweProjectValidatio
 可只读检查工程：`python -m maw.project_boundary project.mosp`；加 `--strict` 禁止时间修复。输出 JSON 报告，拒绝时退出码 2，不写源文件。共享语料见 `tests/fixtures/project-boundary.json`，严格校验与导入修复分别验证；CLI、Server、浏览器导入采用同一保守边界。
 
 Gap provenance/兼容投影、第三方扩展与旧缓存继续按原契约读取；缓存仍在写出时剥离。校验边界本身保留输入 schema；独立组迁移及编辑器保存按下节写 v2，不替换原子写入和备份。
+
 ## v2 独立颜色 / 表情包组
 
 本地编辑器继续读取缺 schema 和 `moy.asr.project.v1` 工程，保存时写 `moy.asr.project.v2`。Python 生成器可继续生成 v1；读写 v2 时必须保留版本，禁止降为 v1。未知版本拒绝写入。旧客户端不能编辑 v2；请保留原始旧工程或备份，不向旧客户端承诺兼容。
@@ -901,18 +902,18 @@ v2 保留顶层 `segments`、`overlay_track`、`multi_subtitle.tracks` 和现有
 
 生成后任选其一验证：
 
-### 方式 1：用 edit.py 直接生成 HTML
+### 方式 1：用本地 Server 打开工程
 
 ```bash
 cd <MAW 仓库目录>
-uv run python edit.py your_generated.mosp
+uv run --no-sync python server-editor/serve.py your_generated.mosp
 ```
 
-成功会生成 `your_generated.edit.html`。
+检查启动结果与字幕列表；需要媒体播放时，保留工程引用的媒体或用 `-m` 指定。2.0 起不再生成独立 `.edit.html`，旧 HTML 不承诺兼容新版工程。
 
 ### 方式 2：用空壳编辑器加载
 
-1. `file://` 双击打开本仓库根目录的 `blank-editor.html`
+1. 在本地应用打开空白编辑器，或运行 `uv run --no-sync python server-editor/serve.py --blank`
 2. 点「打开工程」选 `.mosp` 或 `.json` 工程文件
 3. 若弹出「文件格式不对，缺少 segments 字段」红色提示，说明顶层结构错误
 4. 若正常显示字幕列表，则格式合格
