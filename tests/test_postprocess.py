@@ -3289,6 +3289,18 @@ class MediaToolTests(CompactContainerAssertions, unittest.TestCase):
         self.assertIn("[Script Info]", contents)
         self.assertLess(contents.index("[Script Info]"), contents.index("[V4+ Styles]"))
 
+    def test_rewrite_ass_default_style_rounds_half_up_like_preview(self) -> None:
+        # 540p 参考下库字号 33 → 16.5：前端 Math.round 为 half-up 写 17，
+        # Python round 的银行家舍入会写 16；烧录必须与预览一致。
+        generated = self.root / "generated-540p.ass"
+        generated.write_text("[V4+ Styles]\nStyle: Default,Arial,16,old\n", encoding="utf-8")
+
+        _rewrite_ass_default_style(
+            generated, {"fontName": "Microsoft YaHei", "fontSize": 33}, play_resolution=(960, 540),
+        )
+
+        self.assertIn("Style: Default,Microsoft YaHei,17,", generated.read_text(encoding="utf-8"))
+
     def test_burn_subtitles_keeps_existing_ass_input_without_conversion(self) -> None:
         subtitle = self.root / "clip.ass"
         _ = subtitle.write_text("[Script Info]\n", encoding="utf-8")
@@ -3301,6 +3313,51 @@ class MediaToolTests(CompactContainerAssertions, unittest.TestCase):
         self.assertEqual(len(popen.call_args_list), 1)
         command = popen.call_args.args[0]
         self.assertEqual(command[command.index("-vf") + 1], "ass=filename='clip.ass'")
+
+    def test_burn_subtitles_skips_playres_probe_for_ass_subtitles(self) -> None:
+        # ASS/SSA 沿用自身样式，PlayRes 重写不会发生，不应启动 ffprobe。
+        subtitle = self.root / "clip.ass"
+        _ = subtitle.write_text("[Script Info]\n", encoding="utf-8")
+        with mock.patch(
+            "maw.postprocess_ffmpeg.probe_video_fps",
+            side_effect=AssertionError("ASS 烧录不应探测 PlayRes"),
+        ), mock.patch("maw.postprocess_ffmpeg.subprocess.Popen", side_effect=self._fake_process):
+            _ = run_burn_subtitles(
+                BurnSubtitleRequest(media_path=self.media, subtitle_path=subtitle, video_encoder="cpu"),
+                ffmpeg_path=Path("ffmpeg"),
+            )
+
+    def test_burn_subtitles_skips_playres_probe_when_already_cancelled(self) -> None:
+        # 取消请求先于探测：跳过 ffprobe，直接进入取消路径。
+        cancel_event = Event()
+        cancel_event.set()
+
+        def cancelled_process(command: list[str], **_kwargs: object):
+            class CancelledProcess:
+                pid = None
+
+                def __init__(self) -> None:
+                    self.stdout = StringIO("")
+                    self.stderr = StringIO("")
+
+                def poll(self) -> int:
+                    return 0
+
+                def wait(self, timeout: float | None = None) -> int:
+                    return 0
+
+            return CancelledProcess()
+
+        with mock.patch(
+            "maw.postprocess_ffmpeg.probe_video_fps",
+            side_effect=AssertionError("已取消时不应探测"),
+        ), mock.patch("maw.postprocess_ffmpeg.subprocess.Popen", side_effect=cancelled_process):
+            with self.assertRaises(MediaToolError):
+                _ = run_burn_subtitles(
+                    BurnSubtitleRequest(media_path=self.media, subtitle_path=self.subtitle, video_encoder="cpu"),
+                    ffmpeg_path=Path("ffmpeg"),
+                    cancel_event=cancel_event,
+                )
 
     def test_burn_subtitles_aborts_when_libass_reports_a_missing_glyph(self) -> None:
         subtitle = self.root / "clip.ass"
