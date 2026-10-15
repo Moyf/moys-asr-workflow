@@ -167,7 +167,7 @@ for (const fps of [30, 29.97]) {
 test('accepts legacy and current project schemas but rejects unknown versions', () => {
   assert.equal(helpers.supportsProjectSchema({ segments: [] }), true);
   assert.equal(helpers.supportsProjectSchema({ schema: helpers.PROJECT_SCHEMA, segments: [] }), true);
-  assert.equal(helpers.supportsProjectSchema({ schema: 'moy.asr.project.v2', segments: [] }), false);
+  assert.equal(helpers.supportsProjectSchema({ schema: 'moy.asr.project.v99', segments: [] }), false);
 });
 
 test('maps searchable font input text back to stored family keys', () => {

@@ -434,6 +434,9 @@ export function createUtilsModule(dependencies) {
         return emptyTimedTextStructurePlan('拆句后产生了无效的字幕时间范围。');
       }
       const segment = cloneJsonValue(source[first] || {});
+      for (const field of ['color_group_id', 'sticker_group_id']) {
+        if (!overlaps.every(({ sourceIndex }) => source[sourceIndex]?.[field] === source[first]?.[field])) delete segment[field];
+      }
       segment.start = start;
       segment.end = end;
       segment.text = lines[outputIndex];

@@ -31,6 +31,7 @@
     MaweBoot.DATA.segments,
     MaweMultiSubtitleCore.getMultiSubtitleState(),
     getOverlayTrack(),
+    MaweBoot.DATA.subtitle_groups,
   );
 }
 
@@ -272,6 +273,7 @@
   const cueListAnchor = MaweCueListAnchor.captureCueListRenderAnchor();
   const previousWaveformStructure = MaweMultiSubtitleCore.multiSubtitleWaveformStructureKey();
   MaweState.rememberSessionHighlights();
+  MaweBoot.DATA.subtitle_groups = snapshot.subtitle_groups || null;
   MaweBoot.DATA.segments.length = 0;
   (snapshot.segments || []).forEach(s => MaweBoot.DATA.segments.push(s));
   MaweBoot.DATA.multi_subtitle = snapshot.multi_subtitle || {

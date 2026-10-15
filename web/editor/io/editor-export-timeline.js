@@ -26,6 +26,12 @@
 
 
   function buildResolveJson() {
+    const groupStickers = MaweBoot.DATA.subtitle_groups
+      ? window.AsrEditorUtils.subtitleGroupRanges(MaweBoot.DATA).filter(r => r.enabled).map(r => ({
+        group_id: r.id, start_ms: r.start, end_ms: r.end,
+        ...window.AsrEditorUtils.cloneJsonValue(r.source),
+        abs_path: MaweSelection.stickerAbsPath(r.source),
+      })) : null;
     const segments = MaweExportSrt.cleanupMainSegments().map((seg, idx) => {
       const headIdx = seg.sticker_ref?.headIdx;
       const head = Number.isInteger(headIdx) ? MaweBoot.DATA.segments[headIdx] : null;
@@ -45,18 +51,21 @@
         color: seg.color || null,
         color_ref: seg.color_ref || null,
         resolve_color: colorName,
-        sticker,
-        sticker_ref: validStickerRef ? seg.sticker_ref || null : null,
+        sticker: groupStickers ? null : sticker,
+        sticker_group_id: seg.sticker_group_id,
+        color_group_id: seg.color_group_id,
+        sticker_ref: !groupStickers && validStickerRef ? seg.sticker_ref || null : null,
       };
     });
     const colorCount = segments.filter(s => s.resolve_color).length;
-    const stickerCount = segments.filter(s => s.sticker).length;
+    const stickerCount = groupStickers?.length || segments.filter(s => s.sticker).length;
     if (!colorCount && !stickerCount) {
       MaweHint.flashHint('没有颜色或表情包配置，无法导出 Resolve JSON', 'invalid');
       return null;
     }
     return JSON.stringify({
-      schema: 'moy.asr_subtitle_editor.resolve.v1',
+      schema: groupStickers ? 'moy.asr_subtitle_editor.resolve.v2' : 'moy.asr_subtitle_editor.resolve.v1',
+      ...(groupStickers ? { stickers: groupStickers, subtitle_groups: MaweBoot.DATA.subtitle_groups } : {}),
       source: 'moys-asr-workflow',
       filename_base: MaweBoot.FILENAME_BASE,
       media: MaweBoot.DATA.media || '',
@@ -552,6 +561,14 @@
   // 并跳过完全落在空隙内、映射后时长归零的条目。removed 为空数组时退化为原始时间线。
   // 表情包必须有真实磁盘路径（服务器 OTIO/OTIOZ 均按 sticker_rel 读盘）。
   function collectStickerOtioEntries(removed, segments = MaweBoot.DATA.segments) {
+  if (MaweBoot.DATA.subtitle_groups) {
+    const track = segments === MaweBoot.DATA.overlay_track?.segments ? 'overlay' : 'main';
+    segments = window.AsrEditorUtils.subtitleGroupRanges(MaweBoot.DATA)
+      .filter(range => range.enabled && range.track === track)
+      .map(range => ({ start: range.start, end: range.end,
+        sticker: { ...range.source, start: range.start, end: range.end } }));
+  }
+
   const entries = [];
   for (let idx = 0; idx < segments.length; idx++) {
     const seg = segments[idx];

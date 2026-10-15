@@ -61,6 +61,7 @@ interface ProjectWaveformInfo {
 }
 
 interface ProjectData {
+  subtitle_groups?: unknown;
   schema?: string;
   segments: ProjectSegment[];
   media?: string;
