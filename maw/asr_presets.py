@@ -23,7 +23,7 @@ TEXT_FIELDS = (
     "sonioxContextTerms", "sonioxContextTranslationTerms",
     "openaiKeywords", "maxLen", "minLen", "maxWords", "minWords", "gapSplit",
 )
-BOOL_FIELDS = ("speakerColors", "generateSpectral", "debugRaw", "testRun", "qwenAudioKeepDialect")
+BOOL_FIELDS = ("speakerColors", "generateSpectral", "generateThumbnails", "debugRaw", "testRun", "qwenAudioKeepDialect")
 # Form inputs that share the single "promptContext" preset value across providers.
 SHARED_PROMPT_INPUTS = ("openaiPrompt", "qwenAudioContext", "sonioxContextText")
 _INVALID_NAME_CHARS = frozenset('<>:"/\\|?*')
@@ -58,6 +58,8 @@ def validate_options(options: object) -> dict:
         # only inject the default when the field is missing.
         options = dict(options)
         options.setdefault("qwenAudioKeepDialect", False)
+        # Presets saved before the two-tier picture cache predate this switch.
+        options.setdefault("generateThumbnails", False)
         # Older presets stored per-provider prompt/context fields; they all map
         # to the single shared promptContext value now.
         options["promptContext"] = "\n".join(dict.fromkeys(

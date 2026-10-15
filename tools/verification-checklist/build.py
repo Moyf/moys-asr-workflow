@@ -418,7 +418,8 @@ def source_to_markdown(source, meta=None):
                 lines.extend((f"{marker} {item}" for item in block["items"]))
                 lines.append("")
             elif kind == "table":
-                escape_cell = lambda cell: str(cell).replace("|", "\\|")
+                def escape_cell(cell):
+                    return str(cell).replace("|", "\\|")
                 for cell in [cell for row in block["rows"] for cell in row] + list(block["headers"]):
                     if "\n" in str(cell):
                         raise ValueError("表格单元格不能包含换行")
