@@ -1,6 +1,8 @@
 import copy
 import json
 import unittest
+import tempfile
+from pathlib import Path
 
 from maw.project import normalize_project, validate_project
 from maw.project_io import serialize_mosp
@@ -162,6 +164,27 @@ class SubtitleGroupContractTests(unittest.TestCase):
         )
         self.assertEqual(source, before)
 
+        for field in ("main", "track", "main-ref", "extension-ref", "extension", "track-ref"):
+            with self.subTest(padded=field):
+                padded = copy.deepcopy(source)
+                track = padded["multi_subtitle"]["tracks"][0]
+                binding = padded["multi_subtitle"]["bindings"][0]
+                if field == "main":
+                    padded["segments"][0]["id"] = " main "
+                elif field == "track":
+                    track["id"] = " ext "
+                elif field == "main-ref":
+                    binding["main_segment_ids"] = [" main "]
+                elif field == "extension-ref":
+                    binding["extension_segment_ids"] = [" translation "]
+                elif field == "extension":
+                    track["segments"][0]["id"] = " translation "
+                else:
+                    binding["track_id"] = " ext "
+                self.assertTrue(validate_project(padded).ok)
+                _, _, text = generate_matched_mosp(json.dumps(padded), "甲乙")
+                self.assertTrue(validate_project(json.loads(text)).ok)
+
     def test_match_reserves_normalized_other_track_ids(self):
         from scripts.mosp_match_text import generate_matched_mosp
 
@@ -176,3 +199,26 @@ class SubtitleGroupContractTests(unittest.TestCase):
         output = json.loads(text)
         self.assertTrue(validate_project(output).ok)
         self.assertEqual([s["id"] for s in output["segments"]], ["match-001-2", "match-002"])
+
+    def test_sentence_level_match_rejects_lossy_group_changes_before_writing(self):
+        from maw.postprocess import OutputMode
+        from maw.postprocess_match import ScriptMatchRequest, run_script_match
+
+        source = {"schema": "moy.asr.project.v2", "subtitle_groups": {"color": [], "sticker": [
+            {"id": "s1", "value": {"name": "cat"}}, {"id": "s2", "value": {"name": "dog"}}]},
+            "segments": [{"id": text, "text": text, "start": index * 1000, "end": (index + 1) * 1000,
+                          "sticker_group_id": "s1" if index == 0 else "s2"}
+                         for index, text in enumerate("ABC")]}
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            project = root / "input.mosp"
+            script = root / "script.txt"
+            project.write_text(json.dumps(source), encoding="utf8")
+            script.write_text("AB\nC", encoding="utf8")
+            before = project.read_bytes()
+            request = ScriptMatchRequest(project, None, script, OutputMode.BOTH,
+                                         output_directory=root / "output", match_mode="script")
+            with self.assertRaisesRegex(ValueError, "独立分组"):
+                run_script_match(request)
+            self.assertFalse((root / "output").exists())
+            self.assertEqual(project.read_bytes(), before)

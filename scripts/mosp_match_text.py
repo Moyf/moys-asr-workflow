@@ -734,15 +734,18 @@ def generate_matched_mosp(
                     target[key] = copy.deepcopy(value)
     # Main cue identities survive one-to-one rebuilding; extension times stay
     # unchanged, so their recorded offsets must follow the rebuilt main times.
-    main_by_id = {s.get("id"): s for s in rebuilt if s.get("id")}
-    tracks_by_id = {t.get("id"): t for t in multi.get("tracks") or []}
+    def canonical_id(value):
+        return value.strip() if isinstance(value, str) else value
+
+    main_by_id = {canonical_id(s.get("id")): s for s in rebuilt if s.get("id")}
+    tracks_by_id = {canonical_id(t.get("id")): t for t in multi.get("tracks") or []}
     for binding in bindings:
         main_ids = binding.get("main_segment_ids") or [binding.get("main_segment_id")]
         ext_ids = binding.get("extension_segment_ids") or [binding.get("extension_segment_id")]
-        track_id = binding.get("track_id")
+        track_id = canonical_id(binding.get("track_id"))
         track = tracks_by_id.get(track_id) if track_id else next(iter(tracks_by_id.values()), {})
-        main = main_by_id.get(main_ids[0]) if len(main_ids) == 1 else None
-        extension = next((s for s in (track or {}).get("segments") or [] if len(ext_ids) == 1 and s.get("id") == ext_ids[0]), None)
+        main = main_by_id.get(canonical_id(main_ids[0])) if len(main_ids) == 1 else None
+        extension = next((s for s in (track or {}).get("segments") or [] if len(ext_ids) == 1 and canonical_id(s.get("id")) == canonical_id(ext_ids[0])), None)
         if main and extension:
             for edge in ("start", "end"):
                 binding[f"{edge}_offset_ms"] = extension[edge] - main[edge]

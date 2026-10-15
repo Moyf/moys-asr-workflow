@@ -150,6 +150,13 @@ def run_script_match(
             request.match_mode,
             is_cancelled=is_cancelled,
         )
+    # Both character-timed and sentence-level matching must keep the same v2
+    # group contract. The fallback must not silently reassign grouped content.
+    if len(matched["segments"]) != len(project["segments"]) and any(
+        segment.get("color_group_id") or segment.get("sticker_group_id")
+        for segment in project["segments"]
+    ):
+        raise ValueError("带独立分组的字幕暂不支持文稿匹配改变条数；请先在编辑器中拆合，避免丢失组关系。")
     check_match_cancelled(is_cancelled)
     if begin_commit is not None and not begin_commit():
         raise MatchCancelledError("文稿匹配已取消。")

@@ -133,10 +133,12 @@ Windows 使用 `scripts/run-e2e.ps1`，脚本检查 quapeaks，并在需要时�
 
 README 只保留入口；主线放 WORKFLOW，高级操作放专题，字段放 JSON_SCHEMA。反馈和开发进度写任务账本。官网文档由 [同步脚本](https://github.com/Moyf/moys-asr-workflow/blob/main/website/docs/CONTENT_SYNC.md) 生成，不手改副本。
 
-日常改编辑器 JS 要重建 esbuild 产物，但不重生成 `blank-editor.html`。在 PR 描述注明“内联副本待发布前统一重生成”；发布前或维护者明确要求时才执行：
+日常改编辑器 JS 要重建 esbuild 产物，但不重生成 `blank-editor.html`。仅 1.x 过渡版本在发布前或维护者明确要求时生成内联副本，并在相应 PR 描述注明“内联副本待发布前统一重生成”：
 
 ```sh
 uv run --no-sync python edit.py --blank
 ```
+
+2.0（含预发布版）起不执行此命令，不要求重生成内联副本；只构建和验证本地应用共用资源。
 
 发布时核对版本号、CHANGELOG、README、生成产物、许可与第三方声明，检查没有密钥、媒体或个人路径。2.0 起先用 `scripts/prepare_release_notes.py --tag VERSION --write-doc` 从 CL 生成并提交版本文档，再用 `--check-doc` 检查新鲜度、`--output PATH` 检查最终 Release notes；beta 汇总、正式版精简和小版本基础内容引用见[发布管线](../documentation-index/#engineering-releases)。发布不等于只建 tag。远端、push、tag 和 Release 均需维护者明确要求。
