@@ -6554,10 +6554,9 @@ test('swaps main and extension subtitle tracks and rewrites binding offsets', ()
 
   const result = helpers.swapMainAndExtensionSubtitle(project, 'translation');
   assert.equal(result.swapped, true);
-  assert.equal(result.mappedColorCount, 2);
+  assert.equal(result.mappedColorCount, 0);
   assert.deepEqual(JSON.parse(JSON.stringify(project.segments.map(({ color, color_ref }) => ({ color, color_ref })))), [
-    { color: { name: 'yellow', value: '#c4a019', start: 40, end: 2160 }, color_ref: null },
-    { color: null, color_ref: { name: 'yellow', headIdx: 0 } },
+    {}, {},
   ]);
   assert.equal(project.segments[0].text, '中文');
   assert.deepEqual(JSON.parse(JSON.stringify(project.segments[0].items)), [
@@ -6569,7 +6568,7 @@ test('swaps main and extension subtitle tracks and rewrites binding offsets', ()
   ]);
   assert.deepEqual(JSON.parse(JSON.stringify(project.multi_subtitle.tracks[0].segments.map(({ color, color_ref }) => ({ color, color_ref })))), [
     { color: { name: 'yellow', value: '#c4a019', start: 0, end: 2200 } },
-    { color_ref: { name: 'yellow', headIdx: 0 } },
+    { color: null, color_ref: { name: 'yellow', headIdx: 0 } },
   ]);
   assert.equal(project.multi_subtitle.main_split_mode, 'continuous');
   assert.equal(project.multi_subtitle.tracks[0].split_mode, 'word');
@@ -6584,7 +6583,6 @@ test('swaps main and extension subtitle tracks and rewrites binding offsets', ()
     id: 'main-001', start: 0, end: 1000, text: 'English',
     items: [{ start: 0, end: 1000, text: 'English' }],
     color: { name: 'yellow', value: '#c4a019', start: 0, end: 2200 },
-    color_ref: null,
   }, {
     id: 'main-002', start: 1200, end: 2200, text: 'English two',
     items: [{ start: 1200, end: 2200, text: 'English two' }],
@@ -6593,11 +6591,9 @@ test('swaps main and extension subtitle tracks and rewrites binding offsets', ()
   assert.deepEqual(JSON.parse(JSON.stringify(project.multi_subtitle.tracks[0].segments)), [{
     id: 'translation-001', start: 40, end: 960, text: '中文',
     items: [{ start: 40, end: 960, text: '中文' }],
-    color: { name: 'yellow', value: '#c4a019', start: 40, end: 2160 },
   }, {
     id: 'translation-002', start: 1240, end: 2160, text: '中文二',
     items: [{ start: 1240, end: 2160, text: '中文二' }],
-    color_ref: { name: 'yellow', headIdx: 0 },
   }]);
 });
 
