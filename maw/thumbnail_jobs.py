@@ -271,36 +271,43 @@ def build_base(path, *, cancel=None, progress=None, ffmpeg_path=None, coordinato
     def keyframe_extract():
         """Pause-aware keyframe pass; playback and visible demand win."""
         from maw import thumbnails
-        kf_cancel = threading.Event()
-        done = threading.Event()
+        while True:
+            before_batch([])
+            if cancel is not None and cancel.is_set():
+                raise thumbnails.ThumbnailCancelled("base thumbnail generation cancelled")
+            if source_key(path) != identity:
+                raise OSError("thumbnail source changed")
+            remaining = deadline - time.monotonic()
+            if remaining <= 0:
+                raise TimeoutError("thumbnail base generation timed out")
+            # Each attempt owns its cancellation signal and watcher. A pause
+            # must not leave the next attempt permanently cancelled.
+            kf_cancel = threading.Event()
+            done = threading.Event()
 
-        def watch():
-            while not done.wait(.05):
-                try:
-                    obsolete = source_key(path) != identity
-                    paused = coordinator.paused(identity, background=True)
-                except (OSError, sqlite3.Error):
-                    obsolete, paused = True, False
-                if obsolete or paused or (cancel is not None and cancel.is_set()):
-                    kf_cancel.set()
-                    return
+            def watch():
+                while not done.wait(.05):
+                    try:
+                        obsolete = source_key(path) != identity
+                        paused = coordinator.paused(identity, background=True)
+                    except (OSError, sqlite3.Error):
+                        obsolete, paused = True, False
+                    if obsolete or paused or (cancel is not None and cancel.is_set()):
+                        kf_cancel.set()
+                        return
 
-        watcher = threading.Thread(target=watch, name="thumbnail-keyframe-cancel", daemon=True)
-        watcher.start()
-        try:
-            while True:
-                before_batch([])
-                try:
-                    return thumbnails.extract_keyframes(path, cancel=kf_cancel, threads=threads,
-                        timeout_s=min(600, max(30, deadline - time.monotonic())))
-                except thumbnails.ThumbnailCancelled:
-                    if cancel is not None and cancel.is_set():
-                        raise
-                    # Paused mid-pass or superseded: before_batch waits for the
-                    # winner, then the pass retries within the same deadline.
-        finally:
-            done.set()
-            watcher.join(.2)
+            watcher = threading.Thread(target=watch, name="thumbnail-keyframe-cancel", daemon=True)
+            watcher.start()
+            try:
+                return thumbnails.extract_keyframes(path, cancel=kf_cancel, threads=threads,
+                    ffmpeg_path=ffmpeg_path, timeout_s=min(600, remaining))
+            except thumbnails.ThumbnailCancelled:
+                if cancel is not None and cancel.is_set():
+                    raise
+                # before_batch waits for playback before starting a fresh pass.
+            finally:
+                done.set()
+                watcher.join(.2)
 
     return thumbnail_cache.load_or_build_base(path, cancel=cancel, progress=progress,
         before_batch=before_batch, batch_extract=extract, batch_pack=pack,

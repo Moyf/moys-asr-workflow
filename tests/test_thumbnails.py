@@ -68,6 +68,23 @@ class ThumbnailTests(unittest.TestCase):
                 with self.assertRaises(t.ThumbnailError):
                     t.probe_video(path)
 
+    def test_keyframe_scan_does_not_start_another_chunk_after_deadline(self):
+        with tempfile.TemporaryDirectory() as directory:
+            source = Path(directory) / "long.mp4"
+            source.write_bytes(b"source")
+            with mock.patch.object(t, "resolve_ffmpeg_tool", return_value=Path("ffmpeg")), \
+                 mock.patch.object(t.time, "monotonic", return_value=100) as clock:
+                def scan(*args, **kwargs):
+                    clock.return_value = 102
+                    return [0.0], [0.0]
+
+                with mock.patch.object(t, "_packet_times", side_effect=scan) as packets, \
+                     mock.patch.object(t, "_run") as decode:
+                    with self.assertRaisesRegex(t.ThumbnailError, "timed out"):
+                        t.extract_keyframes(source, info=t.VideoInfo(0, 900_000, 0), timeout_s=1)
+                self.assertEqual(packets.call_count, 1)
+                decode.assert_not_called()
+
     def test_child_cancel_and_timeout_reap_process(self):
         with tempfile.TemporaryDirectory() as temp:
             ready = Path(temp) / "ready"

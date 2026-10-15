@@ -301,6 +301,15 @@ def extract_keyframes(media_path: Path | str, *, stream_index: int | None = None
     source_identity = (source_stat.st_size, source_stat.st_mtime_ns)
     begin_s, end_s = video.start_ms / 1000, (video.start_ms + video.duration_ms) / 1000
     deadline = time.monotonic() + timeout_s
+
+    def remaining():
+        if cancel is not None and cancel.is_set():
+            raise ThumbnailCancelled("thumbnail request cancelled")
+        seconds = deadline - time.monotonic()
+        if seconds <= 0:
+            raise ThumbnailError("keyframe extraction timed out")
+        return seconds
+
     keyframe_times: set[float] = set()
     chunk_s = 300.0
     # Under heavy load the ffprobe drain has been observed to silently drop
@@ -309,7 +318,7 @@ def extract_keyframes(media_path: Path | str, *, stream_index: int | None = None
     for _pass in range(2):
         position = begin_s
         while position < end_s:
-            _, keyframes = _packet_times(media_path, video, position, min(position + chunk_s, end_s), timeout_s=max(1.0, deadline - time.monotonic()), cancel=cancel, ffmpeg_path=ffmpeg_path)
+            _, keyframes = _packet_times(media_path, video, position, min(position + chunk_s, end_s), timeout_s=remaining(), cancel=cancel, ffmpeg_path=ffmpeg_path)
             keyframe_times.update(keyframes)
             position += chunk_s
     stamps = sorted(keyframe_times)
@@ -323,7 +332,7 @@ def extract_keyframes(media_path: Path | str, *, stream_index: int | None = None
         decimate = f"select='not(mod(n\\,{stride}))'," if stride > 1 else ""
         vf = decimate + "scale=w='trunc(min(160/iw/sar,90/ih)*iw*sar/2)*2':h='trunc(min(160/iw/sar,90/ih)*ih/2)*2',setsar=1,pad=160:90:(ow-iw)/2:(oh-ih)/2"
         command = [str(tool), "-hide_banner", "-nostdin", "-v", "error", "-skip_frame", "nokey", "-threads", str(threads), "-filter_threads", "1", "-i", str(media_path), "-map", f"0:{video.stream_index}", "-an", "-sn", "-dn", "-vf", vf, "-fps_mode", "passthrough", "-q:v", "5", "-pix_fmt", "yuvj420p", "-y", str(Path(temp) / "%06d.jpg")]
-        result = _run(command, timeout_s=max(1.0, deadline - time.monotonic()), cancel=cancel)
+        result = _run(command, timeout_s=remaining(), cancel=cancel)
         if result.returncode:
             raise ThumbnailError(result.stderr.decode("utf-8", "replace")[-500:])
         files = sorted(Path(temp).glob("*.jpg"))
