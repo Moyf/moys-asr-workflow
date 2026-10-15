@@ -27,7 +27,7 @@ class TimelineCleanupTest(CompactContainerAssertions, AiCleanupTestCase):
             if "这是漏清扫描" in prompt:
                 return {"timeline": scan if scan is not None else "\n".join(row["currentTimeline"] for row in rows if row.get("contextOnly") != "true")}
             return {"timeline": draft}
-        artifact = run_ai_cleanup(AiCleanupRequest(project_path=source, srt_path=None, script_path=None, output_mode=OutputMode.BOTH, output_directory=self.directory, generate_comparison=comparison), complete=complete)
+        artifact = run_ai_cleanup(AiCleanupRequest(project_path=source, srt_path=None, script_path=None, output_mode=OutputMode.BOTH, output_directory=self.directory, generate_comparison=comparison, review_enabled=True), complete=complete)
         self.assertEqual(source.read_bytes(), original)
         return artifact, json.loads(artifact.project_path.read_text(encoding="utf-8")), calls
 

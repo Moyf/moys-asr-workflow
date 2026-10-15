@@ -97,6 +97,19 @@ class PostprocessPipelineTests(CompactContainerAssertions, unittest.TestCase):
         script.write_text("正字\n保留\n", encoding="utf-8")
         return {"id": "match", "enabled": enabled, "scriptPath": str(script)}
 
+    def test_cleanup_record_survives_discarding_intermediates_and_review_is_forwarded(self):
+        def fake_process(request, **_kwargs):
+            self.assertTrue(request.review_enabled)
+            directory = request.output_directory
+            record = directory / "cleanup-record.md"
+            record.write_text("阶段记录", encoding="utf-8")
+            return SubtitleArtifact(request.project_path, request.srt_path, request.project_path, request.srt_path, diagnostic_path=record)
+        with mock.patch("maw.postprocess_pipeline.run_ai_cleanup", side_effect=fake_process):
+            result = run_postprocess_pipeline(self.plan({"id": "cleanup", "enabled": True, "reviewEnabled": True}), media_path=self.media, project_path=self.project, srt_path=self.srt, env_path=self.env_path, ffmpeg_path=None, cancel_event=Event(), llm_settings={"deepseek": {"apiKey": "key", "baseUrl": "https://example.test", "model": "model", "verified": "1"}})
+        self.assertFalse(result.run_directory.exists())
+        self.assertEqual(len(list(self.root.glob("*.md"))), 1)
+        self.assertTrue(any("阶段记录" in warning for warning in result.warnings))
+
     def test_resegment_limit_survives_plan_and_request_and_invalid_field_validation(self) -> None:
         settings = {"deepseek": {"apiKey": "test-key", "baseUrl": "https://example.test/v1", "model": "test", "verified": "1"}}
         plan = self.plan({"id": "resegment", "enabled": True, "providerId": "deepseek", "maxChars": "18"})

@@ -652,7 +652,8 @@ class PostprocessTests(unittest.TestCase):
                         ),
                         complete=complete,
                     )
-            self.assertEqual(set(self.root.iterdir()), before)
+            expected = before | ({self.root / "clip.resegment-record.md"} if operation in {"resegment", "custom"} else set())
+            self.assertEqual(set(self.root.iterdir()), expected)
 
     def test_llm_protocol_failure_still_aborts_the_run(self) -> None:
         def complete(_prompt: str, _cues: list[dict[str, JsonValue]]) -> JsonDict:

@@ -85,6 +85,10 @@ class GuiWebBridgeTests(CompactContainerAssertions, unittest.TestCase):
                                              "notes": "  保留所有数字  "})
         self.assertTrue(result["ok"])
         self.assertEqual(cleanup.call_args.args[0].notes, "保留所有数字")
+        self.assertFalse(cleanup.call_args.args[0].review_enabled)
+        with mock.patch("maw.gui_web.process_ai_cleanup", return_value=SimpleNamespace()) as cleanup:
+            self.api.run_ai_cleanup({"providerId": "deepseek", "apiKey": "fake", "reviewEnabled": True})
+        self.assertTrue(cleanup.call_args.args[0].review_enabled)
 
     def test_ai_cleanup_stream_cancel_closes_response_and_writes_no_artifact(self) -> None:
         project = self.root / "cancel-cleanup.mosp"
@@ -162,7 +166,7 @@ class GuiWebBridgeTests(CompactContainerAssertions, unittest.TestCase):
         self.assertIn('"operationId": "ai-cleanup-cancel-test"', scripts)
         self.assertEqual(
             sorted(path.name for path in self.root.iterdir()),
-            [".env.example", "cancel-cleanup.mosp", "cancel-cleanup.txt"],
+            [".env.example", "cancel-cleanup.ai-cleanup-record.md", "cancel-cleanup.mosp", "cancel-cleanup.txt"],
         )
 
     def test_ai_cleanup_streams_each_batch_and_review_with_retry_reset(self) -> None:
@@ -244,6 +248,7 @@ class GuiWebBridgeTests(CompactContainerAssertions, unittest.TestCase):
                 "baseUrl": "https://api.deepseek.com",
                 "model": "deepseek-chat",
                 "operationId": "ai-cleanup-batches-test",
+                "reviewEnabled": True,
             })
 
         self.api.pump.shutdown()
@@ -430,8 +435,8 @@ class GuiWebBridgeTests(CompactContainerAssertions, unittest.TestCase):
                     )
                 self.assertEqual(
                     sorted(path.name for path in self.root.iterdir()),
-                    [".env.example", "cancel-loopback.mosp", "cancel-loopback.txt"],
-                    "cancelled streaming cleanup must not write artifacts",
+                    [".env.example", "cancel-loopback.ai-cleanup-record.md", "cancel-loopback.mosp", "cancel-loopback.txt"],
+                    "cancelled streaming cleanup keeps only its trace and source inputs",
                 )
         finally:
             release_stream.set()

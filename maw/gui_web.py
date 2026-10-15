@@ -1327,6 +1327,7 @@ class LauncherApi:
                     clean_markdown_symbols=payload.get("cleanMarkdownSymbols", True) is not False,
                     notes=str(payload.get("notes") or "").strip(),
                     generate_comparison=bool(payload.get("generateComparison")),
+                    review_enabled=bool(payload.get("reviewEnabled", False)),
                 ),
                 complete=complete,
                 on_status=emit_status,
@@ -1438,18 +1439,25 @@ class LauncherApi:
         batch_number = 0
 
         def emit_status(key: str, details: Mapping[str, int] | None = None) -> None:
+            nonlocal batch_number, request_attempt
+            if operation == "resegment" and key == "toolbox_status_llm_batch" and details:
+                batch_number = int(details.get("current", 0))
+                request_attempt = int(details.get("attempt", 1))
             self._emit_postprocess_status(key, details, operation_id=operation_state.operation_id)
 
+        request_attempt = 1
         def emit_delta(kind: str, text: str, batch: int) -> None:
             if operation_state.cancel_event.is_set():
                 raise LlmClientError("操作已取消。", category="cancelled", operation="completion")
-            self._emit_postprocess_stream(kind, text, batch, operation_id=operation_state.operation_id)
+            extra = {"attempt": request_attempt} if operation == "resegment" else {}
+            self._emit_postprocess_stream(kind, text, batch, operation_id=operation_state.operation_id, **extra)
 
         def complete(prompt: str, cues: list[dict[str, JsonValue]]) -> dict[str, JsonValue]:
             nonlocal batch_number
             if operation_state.cancel_event.is_set():
                 raise LlmClientError("操作已取消。", category="cancelled", operation="completion")
-            batch_number += 1
+            if operation != "resegment" or not batch_number:
+                batch_number += 1
             current_batch = batch_number
             completion = complete_boundaries if operation == "resegment" else complete_subtitle_groups
             return completion(
@@ -3488,7 +3496,7 @@ class LauncherApi:
         self._emit(event)
 
     def _emit_postprocess_stream(
-        self, kind: str, text: str, batch: int, *, operation_id: str = ""
+        self, kind: str, text: str, batch: int, *, operation_id: str = "", attempt: int = 1
     ) -> None:
         if kind != "reset" and not text:
             return
@@ -3501,6 +3509,8 @@ class LauncherApi:
         }
         if operation_id:
             event["operationId"] = operation_id
+        if attempt > 1:
+            event["attempt"] = attempt
         self._emit(event)
 
     def _handle_postprocess_pipeline_event(self, event: Mapping[str, object]) -> None:
@@ -4551,6 +4561,7 @@ def _subtitle_artifact_result(result: object) -> dict[str, object]:
         "srtPath": str(getattr(result, "srt_path", None) or ""),
         "translatedSrtPath": str(getattr(result, "translated_srt_path", None) or ""),
         "comparisonPath": str(getattr(result, "comparison_path", None) or ""),
+        "diagnosticPath": str(getattr(result, "diagnostic_path", None) or ""),
         "warnings": list(getattr(result, "warnings", ())),
         "stats": dict(stats) if isinstance(stats, Mapping) else None,
     }

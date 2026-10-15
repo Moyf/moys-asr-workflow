@@ -255,6 +255,12 @@
     if (/^file:\/\//i.test(media) || /^[A-Za-z]:[\\/]/.test(media) || media.startsWith('/')) {
       return stickerTargetUrl(media);
     }
+    // Portable projects keep a relative media reference. The localhost host
+    // already resolved its source; this binding is cleared on project import.
+    const boundMedia = String(MaweBoot.SERVER_CONFIG?.autoLoadedMediaPath || '').trim();
+    if (/^file:\/\//i.test(boundMedia) || /^[A-Za-z]:[\\/]/.test(boundMedia) || boundMedia.startsWith('/')) {
+      return stickerTargetUrl(boundMedia);
+    }
     const current = String(MaweCoreState.player?.currentSrc || '').trim();
     if (/^file:\/\//i.test(current)) return current;
     return '';

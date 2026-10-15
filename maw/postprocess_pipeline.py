@@ -96,7 +96,7 @@ def default_postprocess_plan() -> dict[str, object]:
                 "preservePunctuation": list(DEFAULT_PRESERVE_PUNCTUATION),
                 "cleanMarkdownSymbols": True,
             },
-            {"id": "cleanup", "enabled": False, "scriptPath": "", "providerId": "deepseek", "customPrompt": "", "generateComparison": False, "cleanMarkdownSymbols": True},
+            {"id": "cleanup", "enabled": False, "scriptPath": "", "providerId": "deepseek", "customPrompt": "", "generateComparison": False, "cleanMarkdownSymbols": True, "reviewEnabled": False},
             {"id": "replace", "enabled": False, "replacements": [], "replacementSeparator": "arrow", "replacementTrim": True, "replacementCustomSeparator": "", "conversion": TextConversion.OFF.value},
             {"id": "proofread", "enabled": False, "providerId": "deepseek", "customPrompt": "", "generateComparison": False},
             {"id": "resegment", "enabled": False, "providerId": "deepseek", "customPrompt": "", "generateComparison": False, "maxChars": 0},
@@ -168,7 +168,7 @@ def normalize_plan(raw: object) -> dict[str, object]:
                 step[key] = str(value or "") if str(value or "") in BILINGUAL_LINE_ORDERS else ""
             elif key in {"regionX1", "regionY1", "regionX2", "regionY2", "threshold"}:
                 step[key] = _number_or_default(value, step[key])
-            elif key in {"report", "generateComparison"}:
+            elif key in {"report", "generateComparison", "reviewEnabled"}:
                 step[key] = bool(value)
             elif key == "matchMode":
                 step[key] = str(value or "script") if str(value or "script") in {"script", "text"} else "script"
@@ -873,6 +873,14 @@ def run_postprocess_pipeline(
             if isinstance(translated_srt_path, Path):
                 current_translated_srt = translated_srt_path
             completed.append(step_id)
+            diagnostic_path = getattr(artifact, "diagnostic_path", None)
+            if isinstance(diagnostic_path, Path):
+                record_operation = "resegment-record" if step_id == "resegment" else "ai-cleanup-record"
+                destination = _available_output(project_path, record_operation, ".md")
+                _relocate_pipeline_artifact(diagnostic_path, destination)
+                record_label = "重新断句阶段记录" if step_id == "resegment" else "AI 整理阶段记录"
+                warnings.append(f"{record_label}：{destination}")
+                manifest_steps[index - 1]["diagnosticPath"] = str(destination)
             comparison_path = getattr(artifact, "comparison_path", None)
             if isinstance(comparison_path, Path):
                 destination = _available_output(project_path, f"{_pipeline_step_operation(step)}-comparison", ".html")
@@ -1187,6 +1195,7 @@ def _run_ai_cleanup_step(
         clean_markdown_symbols=step.get("cleanMarkdownSymbols", True) is not False,
         notes=str(step.get("customPrompt") or step.get("aiCleanupNotes") or "").strip(),
         generate_comparison=bool(step.get("generateComparison")),
+        review_enabled=bool(step.get("reviewEnabled", False)),
     ), complete=complete, on_status=on_status)
 
 
