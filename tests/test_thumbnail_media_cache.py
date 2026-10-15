@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import contextlib
 import io
+import os
 import tempfile
 import unittest
 from pathlib import Path
@@ -46,6 +47,25 @@ class ThumbnailMediaCacheTests(unittest.TestCase):
         merged=media_cache.merge_media_caches({'segments':self.project['segments']},result)
         self.assertNotIn('thumbnail_cache',merged)
         self.assertEqual(merged['media_metadata']['selected_audio_track'],2)
+
+    def test_generate_thumbnails_false_skips_exact_stage(self):
+        manifest = {"schema": "moy.asr.thumbnails.v1", "state": "ready", "tier": "keyframes", "keyframe_count": 7,
+            "samples": [], "assets": [], "base_complete": False, "cache_hit": False, "persisted": True}
+        with mock.patch.object(thumbnail_jobs, 'build_base', return_value=manifest) as build, contextlib.redirect_stdout(io.StringIO()) as output:
+            result = media_cache.embed_media_caches(self.project, self.wav, source_media_path=self.source, audio_track=0, generate_thumbnails=False)
+        self.assertFalse(build.call_args.kwargs["exact"])
+        self.assertIs(result.thumbnail_cache, manifest)
+        self.assertIn("关键帧底图完成：7 格（已按设置跳过高精度画面预览图）", output.getvalue())
+
+    def test_environment_disable_stops_exact_stage(self):
+        manifest = {"schema": "moy.asr.thumbnails.v1", "state": "ready", "tier": "keyframes", "keyframe_count": 3,
+            "samples": [], "assets": [], "base_complete": False, "cache_hit": False, "persisted": True}
+        with mock.patch.dict(os.environ, {"MAW_MEDIA_THUMBNAILS": "0"}), \
+             mock.patch.object(thumbnail_jobs, 'build_base', return_value=manifest) as build, \
+             contextlib.redirect_stdout(io.StringIO()) as output:
+            media_cache.embed_media_caches(self.project, self.wav, source_media_path=self.source, audio_track=0)
+        self.assertFalse(build.call_args.kwargs["exact"])
+        self.assertIn("关键帧底图完成：3 格（已按设置跳过高精度画面预览图）", output.getvalue())
 
     def test_default_thumbnail_progress_reaches_launcher_output(self):
         output = io.StringIO()

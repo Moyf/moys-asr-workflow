@@ -8,36 +8,36 @@
 
 ```text
 verification-checklist/
-  README.md                              使用说明与导出契约
-  build.py                               生成页面 / 更新既有页面
-  examples/checklist.json                 AI 编写数据的完整示例
+  README.md                               使用说明与导出契约
+  build.py                                校验 / 生成页面 / JSON⇄MD 转换（仅标准库）
+  examples/checklist.json                 JSON 授权数据示例（与 MD 契约等价）
   templates/verification-checklist.html   唯一页面模板，内含样式与脚本
 ```
 
 ## 生成与更新
 
-推荐流程：AI 生成 UTF-8 JSON 数据，运行脚本校验并填入统一模板，双击生成的 HTML 开始核对。只需 Python 标准库，无需安装依赖，也无需每次手写 HTML。
-
-先用仓库内示例生成一页：
+推荐流程：AI 直接编写 **Markdown 清单**（契约见下节），脚本校验后填入统一模板生成交互页；同一份 MD 可贴进 PR 评论（渲染为带勾选框的清单），reviewer 取回原文即可重新生成 HTML。JSON 授权数据继续支持。只需 Python 标准库。
 
 ```powershell
-python tools/verification-checklist/build.py --data tools/verification-checklist/examples/checklist.json --output ".artifacts/verification/verification.html"
-Start-Process ".artifacts/verification/verification.html"
+# Markdown 授权数据 → 交互 HTML（--data 自动识别 .md / .json）
+python tools/verification-checklist/build.py --data "docs/logs/release<版本>/<主题>.checklist.md" --output ".artifacts/verification/verification.html"
+
+# 只校验不产出（agent 自查 / CI 用）；校验失败会指出行号与原因
+python tools/verification-checklist/build.py --check "docs/logs/release<版本>/<主题>.checklist.md"
+
+# JSON → Markdown（--meta 写入 front-matter；不提供 --meta 则生成无 front-matter 的评论版）
+python tools/verification-checklist/build.py --to-md <清单>.json --meta task=<任务ID> --meta pr=<PR号> --meta date=YYYY-MM-DD --meta status=pending --output "<主题>.checklist.md"
+
+# 状态追踪：汇总目录下全部 *.checklist.md 的 front-matter 状态与勾选进度
+python tools/verification-checklist/build.py --scan docs/logs
 ```
 
-实际任务将 AI 输出保存为 JSON，再生成：
-
-```powershell
-python tools/verification-checklist/build.py --data ".artifacts/verification/checklist.json" --output ".artifacts/verification/verification.html"
-```
-
-生成前检查必填字段、字段类型、未知字段、重复 JSON 字段、稳定 ID、徽标类型和表格列数；字段校验错误包含路径，拒绝孤立 Unicode 代理字符及 HTML 无法保留的 NUL 字符。完整页面先写到输出目录的临时文件，再替换目标，校验或写入失败保留已有输出。所有数据文本都做 HTML 转义，不支持原始 HTML、Markdown 或脚本；命令只是展示，不会执行。JSON 支持 UTF-8 BOM。
+生成前检查必填字段、字段类型、未知字段、重复字段、稳定 ID、徽标类型和表格列数（MD 与 JSON 同一套校验）；字段校验错误包含路径或行号，拒绝孤立 Unicode 代理字符及 HTML 无法保留的 NUL 字符。完整页面先写到输出目录的临时文件，再替换目标，校验或写入失败保留已有输出。所有数据文本都做 HTML 转义，不支持原始 HTML、脚本；命令只是展示，不会执行。JSON 支持 UTF-8 BOM。
 
 兼容已有分区 HTML 输入：
 
 ```powershell
 python tools/verification-checklist/build.py --title "本次功能核对" --subtitle "范围、基线与已知未验证边界" --sections ".artifacts/verification/verification-sections.html" --output ".artifacts/verification/verification.html"
-Start-Process ".artifacts/verification/verification.html"
 ```
 
 默认将生成物放在仓库根 `.artifacts/<task-id>/`，不加入 Git；用户已指定仓库外目录时遵从指定。用户明确要求更新已有核对页时：
@@ -50,7 +50,53 @@ python tools/verification-checklist/build.py --refresh ".artifacts/verification/
 
 模板占位符由脚本替换；模板注释、脚本里不要出现占位符原文。
 
-## AI 生成用 JSON 契约
+## Markdown 源格式（v1，推荐）
+
+清单源文件是普通 Markdown，自带 YAML front-matter；它可以入库、可以整段贴进 PR 评论（HTML 注释元数据在 GitHub 渲染时不可见，任务项显示为原生勾选框），reviewer 复制原文另存为 `.md` 后用 `--data` 或 `--check` 即可校验/再生成交互页。
+
+可以使用四反引号嵌套围栏的占位（此处保持原结构）：
+
+````markdown
+---
+task: editor-burn-video        # 任务 ID（追踪用，可选）
+pr: 241                        # 关联 PR（可选，整数）
+date: 2026-10-15               # 创建日期（可选，YYYY-MM-DD）
+status: pending                # 核验状态：pending | partial | passed（有 front-matter 时必填）
+updated: 2026-10-16            # 最近更新日期（可选）
+---
+
+# 页面标题（唯一，也是 HTML localStorage 存档键）
+
+> 副标题一行（范围、基线、已验证证据与未验证边界）
+
+## 分区标题
+<!-- id: section-stable-id -->
+<!-- badge: todo 待核查 -->
+
+普通段落就是一个 note 块；行首恰好是 - / 1. / > / # / ``` 时写 \-、1\.、\> 转义。
+
+- 无序列表块
+1. 有序列表块
+
+```命令块（或行内 ```命令```）```
+
+| 表头 | 表头 |
+| --- | --- |
+| 单元格内 \| 需转义 |  |
+
+- [ ] **入口**：操作；预期：预期行为 <!-- id: check-stable-id -->
+````
+
+规则与边界：
+
+- 分区必须有 `<!-- id: -->`；核对项 ID 放行尾 `<!-- id: -->`（GitHub 渲染不可见，保留稳定 ID 供 HTML 勾选进度持久化）。`<!-- id: -->`、`<!-- badge: -->` 之外的 HTML 注释禁止出现在内容里。
+- check 行的分隔符 `；预期：` 只能出现一次；entry/action/expected 内不得包含 `**`、`<!--`、换行。
+- 核验完成后：把对应项改成 `- [x]`，front-matter `status` 更新为 `partial` / `passed`，提交回文档目录——这就是状态追踪的载体（`--scan` 汇总）。
+- MD v1 不支持的 source 特性：`text` 块（改用 note）、分区 `open: false`（全部展开）、多行 note / 表格单元格换行——这些仍走 JSON。
+- 存放位置：`docs/logs/release<版本>/<主题>.checklist.md`，与任务台账放在一起；HTML 生成物不入库（源入库、产物再生成）。贴 PR 评论时去掉 front-matter（`--to-md` 不带 `--meta` 即可）。
+- JS/HTML 工具页里「导出 Markdown / 复制 Markdown」导出的是**核对结果快照**（勾选态 `- [x]`、备注 `>` 引用行、行尾核对项 ID），格式与源清单的 check 行语法对齐，但它不是可再生的源清单（无 badge/note 等只读内容）。
+
+## JSON 契约（兼容格式）
 
 输入版本是 `maw.verification-checklist.source.v1`，与下文的核对结果导出格式不同；结果快照不能作为生成数据或进度导入。最小示例：
 
@@ -95,14 +141,15 @@ python tools/verification-checklist/build.py --refresh ".artifacts/verification/
 可将以下提示词交给 AI，并附上当前任务证据与 `examples/checklist.json`：
 
 ```text
-根据已提供的任务范围、代码基线和验证证据生成核查清单 JSON。
-严格遵循 tools/verification-checklist/README.md 的 source.v1 契约和示例；
-只输出一个 JSON 对象，不输出 Markdown 代码围栏，不编写 HTML。
-按实现/审查结论、修复记录、自动化证据、人工核验、后续操作安排分区。
-说明、命令、列表和表格放在只读 blocks 中；不要把自动化通过转换成人工勾选。
-人工核对项使用 check，并分别填写 entry、action、expected。
+根据已提供的任务范围、代码基线和验证证据，编写核查清单 Markdown 源文件。
+严格遵循 tools/verification-checklist/README.md 的「Markdown 源格式（v1）」契约；
+front-matter 填 task/pr/date/status（status 先写 pending），正文按
+实现/审查结论 → 修复记录 → 自动化证据 → 人工核验 → 后续操作分区。
+说明、命令、列表和表格是只读 blocks；不要把自动化通过转换成人工勾选。
+人工核对项写 `- [ ] **入口**：操作；预期：结果 <!-- id: 稳定ID -->` 行；
 每项必须可执行、可观察，证据不足处写明未验证，不编造结果。
-使用有语义的唯一稳定 ID；更新已有任务时保留标题和既有 ID。
+分区与核对项使用有语义的唯一稳定 ID；更新已有任务时保留标题和既有 ID。
+写完运行 build.py --check <文件>.md 自查，通过后再生成 HTML。
 ```
 
 ## 编写核对项
@@ -128,14 +175,23 @@ python tools/verification-checklist/build.py --refresh ".artifacts/verification/
 
 1. 点击核对项文字或复选框确认，左栏和分区进度自动更新。分区内全部核对项已勾选时，标题栏显示淡绿色（展开、折叠均保留），与更鲜明的进度徽标区分；取消勾选或重置后恢复原色，只读分区不变色。
 2. 点击每项右侧「备注」输入多行说明。输入即时保存在本机，已有备注刷新后自动展开；收起输入框不会删除备注。
-3. 左栏选择「全部核对项」或「仅未确认项」，点击「导出 JSON」。备注不影响确认状态，未确认即 checkbox 未勾选。
+3. 左栏选择「全部核对项」或「仅未确认项」，点击「导出 JSON」（机器可读快照）或「导出 Markdown」（人可读副本，勾选态为任务列表、备注为引用行、行尾核对项 ID，可直接贴进 PR / 文档）；「复制 Markdown」把同样的内容写入剪贴板，无剪贴板 API 的环境自动回退。
 4. 「隐藏已勾选」仅隐藏已确认项，再点击「显示已勾选」恢复；显示偏好按页面保存。进度、备注和导出范围不变，隐藏模式下「全部核对项」仍导出所有项。
 5. 左栏「全勾选后自动收起」开启后，勾选某组最后一个未确认项时自动折叠该组；开关状态按页面保存。它不改变已有组的展开状态，取消勾选后可手动重新展开。
 6. 鼠标悬停在含核对项分区的标题栏时，计数左侧出现「忽略」按钮：点击后整组标题变灰并自动折叠，组内项目按已处理计算（总进度、分组与目录计数同步），不再出现在「隐藏已勾选」视图和「仅未确认项」导出中；悬停再点「取消忽略」恢复展开与真实勾选计数。「重置勾选」会一并清除忽略状态，备注保留。
 7. 「重置勾选」仅清除确认与忽略状态，保留备注；要删除某条备注，展开后清空文字。
 8. 打印时自动展开分区并显示完整备注，结束后恢复原来的折叠状态；隐藏已勾选模式下打印只含当前显示的核对项。
 
-存储失败时页面明确提示，请立即导出留存；即使本机存储不可用，当前页面仍能勾选、填写备注与导出。JSON 是核对结果快照，本工具暂不提供导入或跨设备同步。导出文件含你填写的备注，分享前检查内容。
+存储失败时页面明确提示，请立即导出留存；即使本机存储不可用，当前页面仍能勾选、填写备注与导出。导出的 JSON / Markdown 是核对结果快照，本工具暂不提供导入或跨设备同步。导出文件含你填写的备注，分享前检查内容。
+
+## 核对结果 Markdown 格式
+
+「导出 Markdown / 复制 Markdown」产出与结果 JSON 同构的可读副本：
+
+- `# {标题} · 核对结果` + 引用行元信息（副标题、导出范围、时间、总计/已确认/忽略/未确认/导出数）。
+- 每个含核对项的分区一个 `## 分区标题`（被忽略的分组在 `scope: all` 导出中标注「（已忽略）」）。
+- 核对项 `- [x] / - [ ] {入口 → 操作 → 预期} <!-- id: 稳定ID -->`，多行备注紧跟缩进引用行 `  > …`（逐字保留）。
+- 与源清单的 check 行语法对齐，但它不含 badge / note 等只读内容，**不是**可再生的源清单；把它转回 HTML 请用源 `.checklist.md`。
 
 ## JSON 结果格式
 
@@ -163,10 +219,10 @@ python tools/verification-checklist/build.py --refresh ".artifacts/verification/
 
 ## 修改与验证
 
-生成器定向测试（包括 JSON 校验、文本转义、BOM、输入文件保护与旧页刷新）：
+生成器定向测试（JSON/Markdown 授权契约、往返、转义、front-matter 校验、scan、输入文件保护与旧页刷新）：
 
 ```powershell
-python scripts/run_tests.py --pattern test_verification_checklist.py
+uv run --no-sync python scripts/run_tests.py tests/test_verification_checklist.py tests/test_verification_checklist_build.py
 ```
 
 安装仓库 Node 开发依赖与 Playwright 浏览器后，运行生成页回归（只打开本地文件，不启动服务；可用 `MAW_E2E_PYTHON` 指定 Python）：

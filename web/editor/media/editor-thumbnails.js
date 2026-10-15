@@ -73,10 +73,17 @@ export function createThumbnailModule(dependencies) {
     const clientId = browser.crypto?.randomUUID?.() || `filmstrip-${Date.now()}-${Math.random().toString(36).slice(2)}`;
     let controlRequest = null;
     const protectedKeys = new Set();
-    let enabled = true;
-    try { enabled = storage.getItem('mawe-filmstrip-visible') !== 'false'; } catch (_) {}
+    let mode = 'marks';
+    try {
+      const stored = storage.getItem('mawe-filmstrip-mode');
+      mode = stored === 'strip' || stored === 'marks' || stored === 'hidden' ? stored
+        : getConfig()?.thumbnailBaseReady === false ? 'hidden' : 'marks';
+    } catch (_) {}
+    const displayOn = () => mode !== 'hidden';
+    let decodeEnabled = true;
+    try { decodeEnabled = storage.getItem('mawe-filmstrip-decode') !== 'false'; } catch (_) {}
     let available = false, playing = false, closed = false, state = 'idle', persisted = true;
-    let samples = [], fallbackSamples = [], assets = [], demand = {interval_ms: 2000, ranges: [], representative_ms: []};
+    let samples = [], fallbackSamples = [], assets = [], keyframesData = [], demand = {interval_ms: 2000, ranges: [], representative_ms: []};
     let demandKey = '', debounce = 0, pollTimer = 0, heartbeat = 0, requestEpoch = 0;
     let statusBusy = false, demandBusy = false, demandAgain = false;
     let networkSuspended = false;
@@ -112,7 +119,7 @@ export function createThumbnailModule(dependencies) {
       onChange(false, []);
     }
     function resumeNetwork() {
-      if (!binding || !enabled || closed) return;
+      if (!binding || !displayOn() || closed) return;
       networkSuspended = false; failures.status = failures.demand = failures.control = 0;
       available = true; state = 'idle'; view += 1;
       void poll(); heartbeat = browser.setInterval(() => void submit(), 2000);
@@ -129,7 +136,7 @@ export function createThumbnailModule(dependencies) {
       for (const controller of requests) controller.abort();
       requests.clear(); imageQueue.clear();
     }
-    function active() { return !closed && enabled && available && !!binding; }
+    function active() { return !closed && displayOn() && available && !!binding; }
     function evict() {
       while (imageBytes > IMAGE_BUDGET && images.size) {
         const [key, entry] = images.entries().next().value;
@@ -175,7 +182,9 @@ export function createThumbnailModule(dependencies) {
         // An oversized active view reduces image admission instead of thrashing its own assets.
         if (imageBytes + bytes > IMAGE_BUDGET) { imageCapacityFailures.add(key); return; }
         images.set(key, {image: bitmap, bytes, url: blobUrl});
-        imageBytes += bytes; bitmap = null; blobUrl = ''; evict(); repaint(sampleRanges([...samples, ...fallbackSamples].filter(candidate => imageKey(candidate) === key)));
+        imageBytes += bytes; bitmap = null; blobUrl = ''; evict();
+        const matches = [...samples, ...fallbackSamples, ...keyframesData].filter(candidate => imageKey(candidate) === key);
+        repaint(sampleRanges(matches));
       } catch (_) { if (!abort.signal.aborted) imageFailures.add(key); }
       finally {
         browser.clearTimeout(timeout);
@@ -191,23 +200,24 @@ export function createThumbnailModule(dependencies) {
     }
     function preload() {
       if (!active() || networkSuspended) return;
-      // Limit asset reads to this view, including the bounded neighbouring placeholder range.
+      // Limit asset reads to this view, including the bounded neighbouring
+      // placeholder range. Keyframe markers need their own images even when
+      // they do not coincide with a requested grid cell.
       const nearby = preloadRanges;
+      const inView = entry => nearby.some(range => entry.requested_ms >= range.start_ms - demand.interval_ms * 2
+          && entry.requested_ms < range.end_ms + demand.interval_ms * 2);
+      const entries = [...samples.filter(sample => typeof sample.asset === 'string'), ...keyframesData];
       protectedKeys.clear();
-      for (const sample of samples) {
-        if (typeof sample.asset !== 'string') continue;
-        if (nearby.some(range => sample.requested_ms >= range.start_ms - demand.interval_ms * 2
-            && sample.requested_ms < range.end_ms + demand.interval_ms * 2)) protectedKeys.add(imageKey(sample));
+      for (const entry of entries) {
+        if (inView(entry)) protectedKeys.add(imageKey(entry));
       }
       for (const key of imageQueue.keys()) { if (!protectedKeys.has(key)) imageQueue.delete(key); }
-      for (const sample of samples) {
-        if (typeof sample.asset !== 'string') continue;
-        if (!nearby.some(range => sample.requested_ms >= range.start_ms - demand.interval_ms * 2
-            && sample.requested_ms < range.end_ms + demand.interval_ms * 2)) continue;
-        const key = imageKey(sample);
+      for (const entry of entries) {
+        if (!inView(entry)) continue;
+        const key = imageKey(entry);
         if (images.has(key) || imageQueue.has(key) || imagePending.has(key) || imageFailures.has(key)
             || imageCapacityFailures.has(key)) continue;
-        if (imageQueue.size < 64) imageQueue.set(key, sample);
+        if (imageQueue.size < 64) imageQueue.set(key, entry);
       }
       drainImages();
     }
@@ -216,7 +226,7 @@ export function createThumbnailModule(dependencies) {
       if (expectedView !== view || Number(result.view) !== view) return;
       // A changed source cannot reuse decoded assets from the previous identity.
       const nextSource = JSON.stringify(result.source_identity || null);
-      if (source && nextSource !== source) { dropImages(); fallbackSamples = []; }
+      if (source && nextSource !== source) { dropImages(); fallbackSamples = []; keyframesData = []; }
       source = nextSource;
       if (result.lease) lease = result.lease;
       if (revision && result.cache_revision !== revision) {
@@ -225,11 +235,16 @@ export function createThumbnailModule(dependencies) {
       revision = result.cache_revision || '';
       controller.assetTemplate = result.asset_url_template || '';
       const previousSamples = samples;
+      const previousKeyframes = keyframesData;
       samples = Array.isArray(result.samples) ? result.samples.filter(sample =>
         Number.isFinite(sample.requested_ms)
         && ((sample.status === 'unavailable' && sample.asset == null)
           || (typeof sample.asset === 'string' && Array.isArray(sample.crop_rect) && sample.crop_rect.length === 4)))
         .map(sample => ({...sample, cache_revision:sample.cache_revision || revision})) : [];
+      keyframesData = Array.isArray(result.keyframes) ? result.keyframes.filter(marker =>
+        Number.isFinite(marker.requested_ms) && typeof marker.asset === 'string'
+        && Array.isArray(marker.crop_rect) && marker.crop_rect.length === 4)
+        .map(marker => ({...marker, cache_revision:marker.cache_revision || revision})) : [];
       assets = Array.isArray(result.assets) ? result.assets : [];
       if (typeof result.persisted === 'boolean') persisted = result.persisted;
       state = result.state || 'idle';
@@ -243,6 +258,10 @@ export function createThumbnailModule(dependencies) {
       const current = new Map(samples.map(sample => [sample.requested_ms, sampleSignature(sample)]));
       const changedSamples = [...samples.filter(sample => previous.get(sample.requested_ms) !== current.get(sample.requested_ms)),
         ...previousSamples.filter(sample => !current.has(sample.requested_ms))];
+      const keyframesChanged = previousKeyframes.length !== keyframesData.length
+        || keyframesData.some((marker, index) => marker.asset !== previousKeyframes[index]?.asset
+          || marker.requested_ms !== previousKeyframes[index]?.requested_ms);
+      if (keyframesChanged) changedSamples.push({start_ms: 0, end_ms: Number.MAX_SAFE_INTEGER});
       preload(); onChange(changed, []); repaint(sampleRanges(changedSamples)); schedulePoll();
     }
     async function send(url, body = null, control = false) {
@@ -260,12 +279,12 @@ export function createThumbnailModule(dependencies) {
     }
     function schedulePoll() {
       browser.clearTimeout(pollTimer);
-      if (!binding || !enabled || closed || !available || networkSuspended) return;
+      if (!binding || !displayOn() || closed || !available || networkSuspended) return;
       // Even ready manifests may gain compatible Launcher base sprites.
       pollTimer = browser.setTimeout(() => void poll(), state === 'ready' ? 2000 : 400);
     }
     async function poll() {
-      if (!binding || !enabled || closed || networkSuspended || statusBusy || !urls().status) return;
+      if (!binding || !displayOn() || closed || networkSuspended || statusBusy || !urls().status) return;
       const epoch = requestEpoch, requestedBinding = binding, requestedView = view;
       statusBusy = true;
       try {
@@ -279,12 +298,12 @@ export function createThumbnailModule(dependencies) {
       finally { statusBusy = false; }
     }
     async function submit() {
-      if (!binding || !enabled || closed || !available || networkSuspended || !urls().demand) return;
+      if (!binding || !displayOn() || closed || !available || networkSuspended || !urls().demand) return;
       if (demandBusy) { demandAgain = true; return; }
       demandBusy = true;
       const epoch = requestEpoch, requestedBinding = binding, requestedView = view;
       try {
-        const result = await send(urls().demand, {binding, lease, client_id:clientId, view, ...demand, playhead_ms:playheadMs, playing, visible:true});
+        const result = await send(urls().demand, {binding, lease, client_id:clientId, view, ...demand, playhead_ms:playheadMs, playing, visible:true, decode:decodeEnabled && mode === 'strip'});
         failures.demand = 0; ingest(result, requestedBinding, requestedView, epoch);
       } catch (_) { networkFailed('demand', epoch, requestedView); }
       finally {
@@ -307,7 +326,9 @@ export function createThumbnailModule(dependencies) {
     const controller = {
       assetTemplate: '',
       get visible() { return active(); },
-      get enabled() { return enabled; },
+      get enabled() { return displayOn(); },
+      get mode() { return mode; },
+      get decodeEnabled() { return decodeEnabled; },
       get state() { return state; },
       get persisted() { return persisted; },
       get interval() { return demand.interval_ms; },
@@ -315,7 +336,7 @@ export function createThumbnailModule(dependencies) {
       get manifestAssets() { return assets; },
       setBinding(next) {
         if (String(next || '') === binding) return;
-        release(); binding = String(next || ''); source = ''; samples = []; fallbackSamples = []; state = 'idle'; persisted = true;
+        release(); binding = String(next || ''); source = ''; samples = []; fallbackSamples = []; keyframesData = []; state = 'idle'; persisted = true;
         available = !!binding && !!urls().status; networkSuspended = false;
         failures.status = failures.demand = failures.control = 0;
         view += 1; onChange(true);
@@ -324,15 +345,44 @@ export function createThumbnailModule(dependencies) {
         }
       },
       setEnabled(next) {
-        if (!!next === enabled) return;
-        enabled = !!next; try { storage.setItem('mawe-filmstrip-visible', String(enabled)); } catch (_) {}
-        release(false); onChange(true);
-        if (enabled && binding) {
-          available = true; networkSuspended = false;
-          failures.status = failures.demand = failures.control = 0;
-          view += 1; void poll();
-          heartbeat = browser.setInterval(() => void submit(), 2000);
+        // Backward-compatible shim: true restores the default shown mode.
+        controller.setMode(next === false ? 'hidden' : (mode === 'hidden' ? 'marks' : mode));
+      },
+      setMode(next) {
+        if ((next !== 'strip' && next !== 'marks' && next !== 'hidden') || next === mode) return;
+        const wasOn = displayOn();
+        mode = next;
+        try { storage.setItem('mawe-filmstrip-mode', mode); } catch (_) {}
+        if (wasOn && !displayOn()) {
+          release(false); onChange(true); return;
         }
+        if (!wasOn && displayOn()) {
+          onChange(true);
+          if (binding) {
+            available = true; networkSuspended = false;
+            failures.status = failures.demand = failures.control = 0;
+            view += 1; void poll();
+            heartbeat = browser.setInterval(() => void submit(), 2000);
+          }
+          return;
+        }
+        // strip <-> marks: re-plan decode participation and repaint both lanes.
+        view += 1;
+        browser.clearTimeout(debounce);
+        onChange(true);
+        if (active()) debounce = browser.setTimeout(() => void submit(), 200);
+      },
+      setDecodeEnabled(next) {
+        if (!!next === decodeEnabled) return;
+        decodeEnabled = !!next;
+        try { storage.setItem('mawe-filmstrip-decode', String(decodeEnabled)); } catch (_) {}
+        if (!active()) { onChange(true); return; }
+        // Re-plan this lease so the Server stops or resumes on-demand decoding;
+        // cached samples keep flowing either way.
+        view += 1;
+        browser.clearTimeout(debounce);
+        debounce = browser.setTimeout(() => void submit(), 200);
+        onChange(true);
       },
       setPlaying(next) {
         if (!!next === playing) return;
@@ -341,7 +391,7 @@ export function createThumbnailModule(dependencies) {
         // A newer control view prevents a late ordinary demand from restoring old playback state.
         view += 1;
         const epoch = requestEpoch, requestedBinding = binding, requestedView = view;
-        void send(urls().demand, {binding, lease, client_id:clientId, view, ...demand, playhead_ms:playheadMs, playing, visible:true}, true)
+        void send(urls().demand, {binding, lease, client_id:clientId, view, ...demand, playhead_ms:playheadMs, playing, visible:true, decode:decodeEnabled && mode === 'strip'}, true)
           .then(result => { failures.control = 0; ingest(result, requestedBinding, requestedView, epoch); })
           .catch(() => networkFailed('control', epoch, requestedView));
       },
@@ -373,21 +423,32 @@ export function createThumbnailModule(dependencies) {
         // A known source-time cell without video is authoritative. Nearby/future pictures
         // and compatible older assets may fill a cache miss, but never this explicit gap.
         if (samples.some(sample => sample.status === 'unavailable' && sample.asset == null
-            && time >= sample.requested_ms && time < sample.requested_ms + demand.interval_ms)) return null;
-        let best = null, distance = Infinity;
+            && time >= sample.requested_ms && time < sample.requested_ms + demand.interval_ms)) return null;        let best = null, distance = Infinity;
         for (const sample of [...samples, ...fallbackSamples]) {
           if (typeof sample.asset !== 'string') continue;
           const delta = Math.abs(sample.requested_ms - time);
           if (delta > maxDistance || delta >= distance) continue;
           const key = imageKey(sample), entry = images.get(key);
           if (!entry) continue;
-          best = {image:entry.image, crop:sample.crop_rect, status:sample.status}; distance = delta;
+          best = {image:entry.image, crop:sample.crop_rect, status:sample.status, actual:sample.actual_pts_ms}; distance = delta;
           images.delete(key); images.set(key, entry);
         }
         return best;
       },
+      keyframesInRange(start, end) {
+        // Marks-mode markers: decoded keyframe pictures inside one row window.
+        const markers = [];
+        for (const marker of keyframesData) {
+          if (marker.requested_ms < start || marker.requested_ms >= end) continue;
+          const key = imageKey(marker), entry = images.get(key);
+          if (!entry) continue;
+          markers.push({requested_ms: marker.requested_ms, image: entry.image, crop: marker.crop_rect});
+          images.delete(key); images.set(key, entry);
+        }
+        return markers;
+      },
       retry() {
-        if (!binding || !enabled || closed) return;
+        if (!binding || !displayOn() || closed) return;
         release(false); resumeNetwork();
       },
       close() { release(); closed = true; browser.cancelAnimationFrame(paintFrame); },

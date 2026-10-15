@@ -1,6 +1,6 @@
 import { expect, test } from '@playwright/test';
 import { execFileSync } from 'node:child_process';
-import { writeFileSync } from 'node:fs';
+import { readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { cleanupTempDir, disableOnboarding, findFreePort, generateWav, generateWaveformPayload, makeTempDir, startServer } from './helpers.mjs';
 
@@ -38,7 +38,7 @@ function matchingDecoders() {
 
 async function opened(page) {
   await disableOnboarding(page);await page.addInitScript(()=>{
-    localStorage.setItem('mawe-filmstrip-visible','true');
+    localStorage.setItem('mawe-filmstrip-mode','strip');
     localStorage.setItem('moy.asr.editor.settings.v1',JSON.stringify({autoSaveProject:false,autoSnapAdjacentCues:false}));
   });
   const states=[], requests=[];
@@ -79,12 +79,12 @@ test('real video frames stay cached during playback, stop decoding and resume th
   await expect(page.locator('.waveform-filmstrip')).toHaveCount(0);
   await expect.poll(()=>requests.filter(request=>new URL(request.url).pathname.endsWith('/release')).length).toBeGreaterThan(0);
   expect(await page.evaluate(()=>MaweCoreState.waveformEditor.thumbnailController.bytes)).toBe(beforeHide);
-  await page.evaluate(()=>MaweCoreState.waveformEditor.thumbnailController.setEnabled(true));
+  await page.evaluate(()=>{const controller=MaweCoreState.waveformEditor.thumbnailController;controller.setEnabled(true);controller.setMode('strip');});
   await expect(page.locator('.waveform-filmstrip').first()).toBeVisible();
   await page.setInputFiles('#load-media-file',replacement);
   await expect(page.locator('.waveform-filmstrip')).toHaveCount(0);
   expect(await page.evaluate(()=>MaweBoot.SERVER_CONFIG.thumbnailBinding)).toBe('');
-  await expect(page.locator('#waveform-show-thumbnails')).toBeDisabled();
+  await expect(page.locator('#waveform-thumbnail-mode')).toBeDisabled();
   await expect(page.locator('#waveform-thumbnail-status')).toHaveText('从本机 Server 加载视频后可用');
   writeFileSync('.artifacts/filmstrip/filmstrip-real-evidence.json',JSON.stringify({states:states.map(({state,decoding,samples})=>({state,decoding,samples:samples.length})),releaseCount:requests.filter(request=>new URL(request.url).pathname.endsWith('/release')).length},null,2)+'\n');
 });
@@ -125,4 +125,53 @@ test('video filmstrip respects tail width, cross-row seek, frame snapping and ex
   await page.evaluate(()=>MaweCoreState.waveformEditor.setRowHeight(64));
   expect(await page.locator('.waveform-row').first().evaluate(row=>row.getBoundingClientRect().height)).toBe(64);
   await page.screenshot({path:'.artifacts/filmstrip/filmstrip-real-interactions.png'});
+});
+
+test('video preview preferences stay outside project checkpoints while v2 groups and FPS survive save and reopen',async({page})=>{
+  const {requests}=await opened(page);
+  const dirty=()=>page.evaluate(()=>MaweState.hasProjectChanges());
+  expect(await dirty()).toBe(false);
+  const snapshot=await page.evaluate(()=>MaweJsonRepair.buildJson());
+  await page.evaluate(()=>{
+    const controller=MaweCoreState.waveformEditor.thumbnailController;
+    controller.setDecodeEnabled(false);
+    MaweCoreState.waveformEditor.render();
+  });
+  await expect.poll(()=>requests.some(request=>request.url.endsWith('/demand')&&request.body.decode===false)).toBe(true);
+  for(const mode of ['marks','hidden','strip']){
+    await page.evaluate(mode=>{
+      MaweCoreState.waveformEditor.thumbnailController.setMode(mode);
+      MaweCoreState.waveformEditor.render();
+    },mode);
+    expect(await dirty()).toBe(false);
+    expect(await page.evaluate(()=>MaweJsonRepair.buildJson())).toBe(snapshot);
+  }
+  await page.evaluate(()=>MaweCommands.run('group and FPS edit',()=>{
+    MaweBoot.DATA.timebase.fps_source='user';
+    MaweTimeline.timelineFpsManuallySet=true;
+    MaweBoot.DATA.subtitle_groups={color:[{id:'preview-color',value:{name:'blue'}}],sticker:[]};
+    MaweBoot.DATA.segments[0].color_group_id='preview-color';
+    MaweBoot.DATA.segments[0].text='Saved with video preview';
+    MaweBoot.DATA.segments[0].items=[];
+    MaweBoot.DATA.segments[0]._dirty=true;
+  }));
+  expect(await dirty()).toBe(true);
+  expect(await page.evaluate(()=>MaweProjectSave.saveCurrentProject())).toBe(true);
+  expect(await dirty()).toBe(false);
+  const saved=JSON.parse(readFileSync(project,'utf8'));
+  expect(saved.schema).toBe('moy.asr.project.v2');
+  expect(saved.timebase.fps_source).toBe('user');
+  expect(saved.subtitle_groups.color[0].id).toBe('preview-color');
+  expect(saved.segments[0].color_group_id).toBe('preview-color');
+  expect(saved.segments[0].text).toBe('Saved with video preview');
+  expect(saved.segments[0]._dirty).toBeUndefined();
+  for(const key of ['waveform','spectral','waveform_reapeaks','loudness'])expect(saved[key]).toBeUndefined();
+  await page.reload();
+  await page.waitForFunction(()=>MaweCoreState.waveformEditor?.thumbnailController?.bytes>0);
+  expect(await dirty()).toBe(false);
+  expect(await page.evaluate(()=>({source:MaweBoot.DATA.timebase.fps_source,
+    group:MaweBoot.DATA.segments[0].color_group_id,
+    mode:MaweCoreState.waveformEditor.thumbnailController.mode,
+    decode:MaweCoreState.waveformEditor.thumbnailController.decodeEnabled})))
+    .toEqual({source:'user',group:'preview-color',mode:'strip',decode:false});
 });

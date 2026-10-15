@@ -1995,9 +1995,17 @@ __WAVEFORM_CSS__
               <input type="checkbox" id="waveform-spectral-color" aria-describedby="waveform-spectral-status"> 频谱颜色
               <span class="waveform-spectral-status" id="waveform-spectral-status" role="status" aria-live="polite" aria-atomic="true" hidden></span>
             </label>
-            <label class="toggle editor-settings-item waveform-settings-toggle-row" id="waveform-thumbnail-setting" title="在波形上方显示视频画面导航；本机 Server 绑定视频时可用">
-              <input type="checkbox" id="waveform-show-thumbnails" aria-label="视频画面" aria-describedby="waveform-thumbnail-status" checked disabled> 视频画面
+            <label class="editor-settings-item waveform-settings-toggle-row" id="waveform-thumbnail-setting" title="在波形上方显示视频画面导航；本机 Server 绑定视频时可用">
+              <span>视频画面</span>
+              <select id="waveform-thumbnail-mode" aria-describedby="waveform-thumbnail-status">
+                <option value="strip">铺满画面带</option>
+                <option value="marks">关键帧标记</option>
+                <option value="hidden">隐藏画面带</option>
+              </select>
               <span id="waveform-thumbnail-status" class="waveform-thumbnail-status" role="status" aria-live="polite" aria-atomic="true"></span>
+            </label>
+            <label class="toggle editor-settings-item waveform-settings-toggle-row" id="waveform-thumbnail-decode-setting" title="铺满模式下为当前视图实时解码缺失的画面格；关闭后只读取并显示已有缓存画面。关键帧标记模式不参与实时解码">
+              <input type="checkbox" id="waveform-thumbnail-decode" aria-label="实时生成补间" aria-describedby="waveform-thumbnail-status" checked> 实时生成补间
             </label>
             <span class="editor-settings-item">振幅
               <span class="editor-settings-stepper">

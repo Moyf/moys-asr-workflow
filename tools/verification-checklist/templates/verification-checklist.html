@@ -265,6 +265,8 @@
           <option value="all">全部核对项</option>
           <option value="unconfirmed">仅未确认项</option>
         </select>
+        <button id="export-md" type="button">导出 Markdown</button>
+        <button id="copy-md" type="button">复制 Markdown</button>
         <button class="primary" id="export-json" type="button">导出 JSON</button>
       </div>
       <p class="save-status" id="save-status" role="status" aria-live="polite">勾选与备注自动保存在本机</p>
@@ -297,7 +299,7 @@
   function storageWarning() {
     storageFailed = true;
     status.classList.add('warning');
-    status.textContent = '本机存储不可用或数据损坏，请导出 JSON 留存本次结果';
+    status.textContent = '本机存储不可用或数据损坏，请导出 JSON 或 Markdown 留存本次结果';
   }
   function load(key, fallback) {
     try {
@@ -447,7 +449,10 @@
     document.getElementById('bar').style.width = pct + '%';
     document.getElementById('topbar-i').style.width = pct + '%';
     var pendingOnly = document.getElementById('export-scope').value === 'unconfirmed';
-    document.getElementById('export-json').disabled = pendingOnly ? doneAll === boxes.length : !boxes.length;
+    var exportDisabled = pendingOnly ? doneAll === boxes.length : !boxes.length;
+    document.getElementById('export-json').disabled = exportDisabled;
+    document.getElementById('export-md').disabled = exportDisabled;
+    document.getElementById('copy-md').disabled = exportDisabled;
   }
 
   boxes.forEach(function (box, index) {
@@ -549,8 +554,9 @@
     refresh();
   });
   document.getElementById('export-scope').addEventListener('change', refresh);
-  document.getElementById('export-json').addEventListener('click', function () {
-    var scope = document.getElementById('export-scope').value;
+
+  // 导出结果快照：JSON 为机器可读契约，Markdown 为人可读副本（可贴 PR / 文档）。
+  function buildResult(scope) {
     var confirmed = boxes.filter(function (b) { return b.checked; }).length;
     var ignoredCount = records.filter(function (r) { return ignored[r.section.id] === true; }).length;
     var exportedSections = sections.map(function (sec) {
@@ -566,27 +572,55 @@
       return { id: sec.id, title: summaryTitle(sec.querySelector('summary')), items: items };
     }).filter(function (sec) { return sec.items.length; });
     var exportedCount = exportedSections.reduce(function (sum, sec) { return sum + sec.items.length; }, 0);
-    var timestamp = new Date().toISOString();
-    var result = {
+    return {
       schema: 'maw.verification-checklist.v1', title: document.title,
       subtitle: document.querySelector('.page-head .sub').textContent.trim(),
-      exportedAt: timestamp, scope: scope,
+      exportedAt: new Date().toISOString(), scope: scope,
       summary: { total: boxes.length, confirmed: confirmed, ignored: ignoredCount,
         unconfirmed: boxes.length - confirmed - ignoredCount, exported: exportedCount },
       sections: exportedSections
     };
+  }
+
+  // 结果 Markdown：勾选态用任务列表（- [x] / - [ ]），核对项 ID 以 HTML 注释放行尾
+  // （GitHub 渲染不可见），多行备注缩进为引用行。与 build.py 的源格式注释约定一致。
+  function buildResultMarkdown(result) {
+    var scopeText = result.scope === 'all' ? '全部核对项' : '仅未确认项';
+    var lines = ['# ' + result.title + ' · 核对结果', '',
+      '> ' + result.subtitle,
+      '> 导出范围：' + scopeText + ' · 导出时间 ' + result.exportedAt
+        + ' · 总计 ' + result.summary.total + ' 项：已确认 ' + result.summary.confirmed
+        + ' / 忽略 ' + result.summary.ignored + ' / 未确认 ' + result.summary.unconfirmed
+        + '（本次导出 ' + result.summary.exported + ' 项）'];
+    result.sections.forEach(function (section) {
+      var ignoredSection = section.items.some(function (item) { return item.ignored; });
+      lines.push('', '## ' + section.title + (ignoredSection ? '（已忽略）' : ''));
+      section.items.forEach(function (item) {
+        lines.push('- [' + (item.confirmed ? 'x' : ' ') + '] ' + item.text
+          + ' <!-- id: ' + item.id + ' -->');
+        var note = String(item.note || '').replace(/\s+$/, '');
+        if (note) note.split(/\r?\n/).forEach(function (noteLine) {
+          lines.push('  > ' + noteLine);
+        });
+      });
+    });
+    return lines.join('\n') + '\n';
+  }
+
+  function downloadResult(result, content, mime, extension, statusText) {
     var url;
     var anchor;
     try {
-      var blob = new Blob([JSON.stringify(result, null, 2) + '\n'], { type: 'application/json;charset=utf-8' });
+      var blob = new Blob([content], { type: mime });
       url = URL.createObjectURL(blob);
       anchor = document.createElement('a');
       anchor.href = url;
       var filename = document.title.replace(/[<>:"/\\|?*\u0000-\u001f]/g, '-').replace(/[. ]+$/g, '').slice(0, 100) || 'verification';
-      anchor.download = filename + (scope === 'all' ? '-全部' : '-未确认') + '-' + timestamp.slice(0, 10) + '.json';
+      anchor.download = filename + (result.scope === 'all' ? '-全部' : '-未确认') + '-'
+        + result.exportedAt.slice(0, 10) + extension;
       document.body.appendChild(anchor);
       anchor.click();
-      if (!storageFailed) status.textContent = '已发起导出 ' + exportedCount + ' 项（含备注）';
+      if (!storageFailed) status.textContent = statusText;
     } catch (e) {
       status.classList.add('warning');
       status.textContent = '导出失败，请重试；当前勾选与备注仍保留在页面';
@@ -594,6 +628,48 @@
       if (anchor) anchor.remove();
       if (url) setTimeout(function () { URL.revokeObjectURL(url); }, 1000);
     }
+  }
+
+  document.getElementById('export-json').addEventListener('click', function () {
+    var result = buildResult(document.getElementById('export-scope').value);
+    downloadResult(result, JSON.stringify(result, null, 2) + '\n',
+      'application/json;charset=utf-8', '.json', '已发起导出 ' + result.summary.exported + ' 项（含备注）');
+  });
+
+  document.getElementById('export-md').addEventListener('click', function () {
+    var result = buildResult(document.getElementById('export-scope').value);
+    downloadResult(result, buildResultMarkdown(result), 'text/markdown;charset=utf-8', '.md',
+      '已发起导出 ' + result.summary.exported + ' 项的 Markdown（含备注）');
+  });
+
+  document.getElementById('copy-md').addEventListener('click', function () {
+    var result = buildResult(document.getElementById('export-scope').value);
+    var markdown = buildResultMarkdown(result);
+    var finish = function () {
+      if (!storageFailed) status.textContent = '已复制 ' + result.summary.exported + ' 项的 Markdown（含备注）';
+    };
+    var fail = function () {
+      status.classList.add('warning');
+      status.textContent = '复制失败，请改用「导出 Markdown」保存结果';
+    };
+    var fallback = function () {
+      try {
+        var area = document.createElement('textarea');
+        area.value = markdown;
+        area.setAttribute('readonly', '');
+        area.style.position = 'fixed';
+        area.style.opacity = '0';
+        document.body.appendChild(area);
+        area.select();
+        var ok = document.execCommand('copy');
+        area.remove();
+        if (ok) { finish(); return; }
+      } catch (e) { /* 走失败提示 */ }
+      fail();
+    };
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+      navigator.clipboard.writeText(markdown).then(finish, fallback);
+    } else fallback();
   });
 
   // 滚动监听：高亮当前阅读位置对应的目录项。只在纵向位置变化时刷新，

@@ -4,7 +4,7 @@
 
 ## 入口与数据边界
 
-- Launcher 的媒体缓存阶段从 `source_media_path` 原视频生成全片基础档。时长≤10分钟为2秒档，10～60分钟为5秒档，更长素材为10秒粗档。纯音频与 attached_pic 封面不生成。错误采用 best-effort，字幕和工程保存仍可继续。
+- Launcher 的媒体缓存阶段从 `source_media_path` 原视频生成两级画面缓存：**关键帧地标档**总是生成（`-skip_frame nokey` 单遍，只解码关键帧，每关键帧一格、按自身 PTS 存 SQLite preview 行——密度即关键帧密度，超 4000 格均匀抽稀），网格请求由 `sample_manifest` 做「≤ 目标时间的最近地标」持有回退；**高精度画面预览图**由开关控制（默认开，转写子进程经 `MAW_MEDIA_THUMBNAILS=0` 传递，provider CLI 无需逐一透传），走原精确批处理把显示网格升级为精确格。纯音频与 attached_pic 封面不生成。错误采用 best-effort，字幕和工程保存仍可继续。
 - Server 只登记当前工程授权的原媒体。状态首次请求仅探测媒体；缺少基础文件时，只处理当前视图，不在打开或空闲时扫描全片。客户端不传文件路径。
 - 画面带采用源时间零点网格250/500/1000/2000/5000/10000ms，按CSS显示宽度/时间比例选择密度，带迟滞与200ms防抖。代表画面、可见目标、前后各15%有限预取依次处理，多行去重。
 - `.mosp` 的 `segments` 仍为字幕真源。图片、sprite及补帧索引均在工程外；音轨、字幕和空隙修改不改变同一原视频的画面身份。便携空壳与浏览器未绑定File自动隐藏，不尝试读取相邻sidecar。
@@ -15,11 +15,11 @@
 | --- | --- |
 | `maw/thumbnails.py` | 排除封面的视频探测、短区间批量解码、真实源PTS、SAR/旋转、160×90 JPEG、取消回收 |
 | `maw/thumbnail_cache.py` | 基础`.mothumbs`、独立补帧、身份、原子发布、配额、保护与会话降级 |
-| `maw/thumbnail_jobs.py` | 单Server worker、视图差集、租约、跨进程flight去重、播放暂停与Launcher恢复 |
+| `maw/thumbnail_jobs.py` | 单Server worker、视图差集、租约、跨进程flight去重、播放暂停与Launcher恢复、cache-only租约 |
 | `maw/media_cache.py` | 原视频全片编排与best-effort结果，不向工程合并图片 |
-| `server-editor/serve.py` | 绑定、配置注入、受限状态/需求/登记资产接口 |
-| `web/editor/media/editor-thumbnails.js` | 自动密度、传输、版本隔离、图片LRU与资源释放 |
-| `web/editor/media/waveform/thumbnails.js` | 上方画面带、局部绘制、总stride、点击/拖动与原seek接线 |
+| `server-editor/serve.py` | 绑定、配置注入、受限状态/需求/登记资产接口、`thumbnailBaseReady`下发 |
+| `web/editor/media/editor-thumbnails.js` | 自动密度、传输、版本隔离、图片LRU与资源释放、decode偏好 |
+| `web/editor/media/waveform/thumbnails.js` | 上方画面带、局部绘制、总stride、点击/拖动与原seek接线、双开关 |
 
 缓存schema为`moy.asr.thumbnails.v1`，生成器版本3。身份含原媒体位置的摘要、name/size/modified_ms/modified_ns、视频流、图片规格与生成器版本。旧生成器版本按miss重建。`time_origin`为`source-format-start-ms`，以源容器起点归一化，保留视频晚于音频开始的偏移；前置无画面网格以unavailable明确记录，不显示未来帧。这些合法空格可计入目标档位完成，但不计valid_count。FrameResult区分`requested_ms`、归一化`actual_pts_ms`、`target/preview/unavailable`与JPEG字节，不通过名义FPS推算PTS。
 
@@ -38,6 +38,20 @@ POST需求与释放校验随机requestToken及loopback Host/Origin，JSON≤64Ki
 Launcher媒体缓存阶段最多清理8个30天前未使用的登记基础文件，保护当前源候选、其他视图pins和在途预留；仅将经验证的旧sidecar移至回收站，不扫描未登记媒体目录。补帧与登记基础文件合计预算64MiB/媒体、512MiB全局，SQLite额外限制索引和物理页增长。保护按页面owner隔离并续租，释放一个窗口不放开其他窗口正在使用的图片。配额不足优先淘汰非活动补帧，停止预取；写入失败不无限重抽。基础封装流式staging，最多持有64张源JPEG，sprite逐块入ZIP，取消不再启动额外封装。
 
 总行高由原波形高度加独立画面带统一计算，虚拟化、reveal、播放跟随、跨行Y命中与尾行宽度共用stride。图片就绪只重绘相交画面行，播放帧只更新播放头。画面带事件复用既有暂停、拖动预览与帧吸附，阻止误触字幕创建或空隙修改。
+
+## 实时补间开关与工程默认（2026-10-15）
+
+- 编辑器波形设置在「视频画面」下新增「实时生成补间」开关（localStorage `mawe-filmstrip-decode`，默认开）：demand 请求携带 `decode` 布尔，服务端为 per-lease 标志。decode 关闭的租约仍读取缓存显示（`lookup_frames`/`sample_manifest` 照旧），但 `_step` 只把 decode 开启租约的目标加入解码批处理；其 `pending` 恒为假，不向协调器声明 visible 需求，**不暂停 Launcher 基础档生成**。demand 里把 decode 置假也会让活跃解码批次的取消判定按 decode 租约集合计算（`demand`/`_release` 同口径）。
+- 绑定载荷新增 `thumbnailBaseReady`（`has_cached_frames`：基础 manifest 或 SQLite 关键帧/精确格任一存在即真）：客户端无显式模式偏好时，无缓存 → 默认隐藏，否则默认关键帧标记模式。显式偏好始终优先。
+
+## 实时补间开关与显示模式（2026-10-15 第二批）
+
+- 显示模式三态（对齐达芬奇）：**铺满画面带**（原 Film Strip）/ **关键帧标记**（Thumbnail，默认——每个关键帧位置一帧画面，其余留白）/ **隐藏**。模式存 `mawe-filmstrip-mode`；默认值 = 用户显式偏好 > 无任何画面缓存时 hidden > marks。标记模式跳过实时解码（demand 恒 `decode:false`），直接绘制响应携带的 `keyframes` 标记（真实关键帧密度）；铺满模式按显示网格取「≤ 格时间的最近样本」持有渲染，缺失格由实时解码补精确。
+- 关键帧地标档实测（keyframe-only 单遍）：AV1 4K 5.2min 全片 1.25s（精确档 41.8s 的 1/33）；H.264 4K 10.6min 5.2s（78.6s 的 1/15）。地标密度 = 关键帧密度（2h 流媒体素材可达固定 10s 档的 2.5-5 倍），超 4000 格均匀抽稀；关键帧 JPEG 按内容寻址存储。
+
+## 生成速度（2026-10-15 归因与修复）
+
+此前每批先用 ffprobe `-show_entries frame` **逐帧解码**读取 PTS，再由 ffmpeg 解码同一跨度抽帧，双端 `-threads 2`：4K AV1 素材单批 ~18s（其中探测占 9.6s），5.2 分钟片全片 ~5 分钟。现改为：PTS 探测读 `-show_entries packet=pts_time,dts_time`（纯解封装不解码，实测与逐帧解码的 PTS 集合完全一致，单批 9.6s→0.13s）；`extract_frames` 增加 `threads` 参数（编辑器按需路径保持默认 2），`build_base` 用 `min(16, cpu_count)`。实测冷缓存全片（Ryzen 7 6800H / FFmpeg 8.1.1）：AV1 4K 5.2min 157格 41.8s；H.264 4K 10.6min 127格 78.6s；H.264 720p 28.6min 344格 64.9s；HEVC 4K60 0.75min 23格 10.4s；结果 valid_count 与旧 sidecar 一致。另加固：`probe_video` 对一次观测到的截断 JSON 短读重试一次（回归测试覆盖）。
 
 ## 生产算法测量与验证边界
 
