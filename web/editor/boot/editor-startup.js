@@ -18,7 +18,6 @@ MaweBoot.maweDebug('boot:begin', {
   media: MaweBoot.DATA.media || '',
   recentProjects: MaweBoot.SERVER_CONFIG?.recentProjects?.length || 0,
 });
-MaweTextCleanup.cleanPunctuation();
 MaweServerSave.configureServerSaveControls();
 MaweServerSave.configureServerAutoSave();
 MaweServerSave.configureRecentProjects();

@@ -116,3 +116,9 @@ uv run --no-sync python edit.py "example.mosp" -m "example.mp4"
 - 转写后自动执行处理链：[转写后自动处理](POSTPROCESS_PIPELINE.md)。
 - 写批处理或让自动化工具调用：[CLI](CLI.md)。
 - 启动、API、媒体和保存问题：[FAQ](FAQ.md)。
+
+## 标点保留与主动删除
+
+新设置下，转写、文稿匹配与 Editor 手动拆分默认保留标点；打开旧工程或外部工程也不自动修改 text 或字词文字。切句规则保持，拆分仍修剪边界空白。已有 Launcher 和 Editor 设置继续生效，不会因为与旧默认相同而重置。
+
+需要删除时，沿用固定替换 / 批量替换，或主动配置 Launcher 的句尾保留清单、Editor 的拆分边界删除符号。Editor 的拆分符号「恢复默认」现在恢复为不删除任何标点；合并仍使用当前字符型 / 单词型连接符设置。

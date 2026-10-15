@@ -435,7 +435,7 @@ def generate_srt(segments: list[dict]) -> str:
 # 强标点）；configure_extra_strong_punct 按运行时配置整体覆盖，空集合 =
 # 仅按换行断句。
 _DEFAULT_EXTRA_STRONG_PUNCT = "，。？！；,."
-_DEFAULT_STRIP_TAIL_PUNCT = "，。；,."
+_DEFAULT_STRIP_TAIL_PUNCT = ""
 _EXTRA_STRONG_PUNCT: set[str] = {ch for ch in _DEFAULT_EXTRA_STRONG_PUNCT if not ch.isspace()}
 
 
@@ -2271,11 +2271,11 @@ def main():
     )
     parser.add_argument(
         "--keep-punct", action="store_true",
-        help="保留每条字幕末尾的逗号和句号（默认去除）",
+        help="保留全部句尾标点，覆盖 --strip-tail-punct 的显式删除设置",
     )
     parser.add_argument(
         "--strip-tail-punct", default=_DEFAULT_STRIP_TAIL_PUNCT,
-        help="句尾剥除的标点集合；传空串禁用剥除（默认 = 共享断句配置默认清单 − 默认保留符号）",
+        help="句尾剥除的标点集合；传空串禁用剥除（默认保留全部标点）",
     )
     parser.add_argument(
         "--extra-strong-punct", default=_DEFAULT_EXTRA_STRONG_PUNCT,

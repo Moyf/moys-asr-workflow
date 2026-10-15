@@ -2150,6 +2150,19 @@ class GuiWebBridgeTests(CompactContainerAssertions, unittest.TestCase):
         self.assertTrue(result["ok"])
         self.assertEqual(result["preview"], "第一句\n第二句？\n第三句")
 
+    def test_script_preview_and_match_default_to_preserving_punctuation(self) -> None:
+        project = self.root / "default-punctuation.mosp"
+        script = self.root / "default-punctuation.txt"
+        project.write_text(json.dumps({"segments": [{"start": 0, "end": 1000, "text": "你好世界"}]}), encoding="utf-8")
+        script.write_text("你好，世界。", encoding="utf-8")
+        preview = self.api.read_script_preview({"path": str(script)})
+        self.assertEqual(preview["preview"], "你好，\n世界。")
+        match_preview = self.api.preview_script_match({"projectPath": str(project), "scriptPath": str(script)})
+        self.assertEqual(match_preview["preview"], "1. 你好，\n2. 世界。")
+        result = self.api.run_script_match({"projectPath": str(project), "scriptPath": str(script), "outputMode": "project"})
+        self.assertTrue(result["ok"])
+        self.assertEqual("".join(segment["text"] for segment in read_project(Path(result["projectPath"]))["segments"]), "你好，世界。")
+
     def test_script_match_bridge_forwards_markdown_cleanup_setting(self) -> None:
         project = self.root / "clip.mosp"
         script = self.root / "inline-match.md"
@@ -5814,7 +5827,7 @@ class LauncherAssetContractTests(CompactContainerAssertions, unittest.TestCase):
         stylesheet = (ROOT / "web" / "launcher" / "launcher.css").read_text(encoding="utf-8")
 
         self.assertIn(
-            '{ id: "match", enabled: false, scriptPath: "", matchMode: "script", extraSplitPunctuation: ["，", "。", "？", "！", "；", ",", "."], preservePunctuation: ["？", "！"], cleanMarkdownSymbols: true },',
+            '{ id: "match", enabled: false, scriptPath: "", matchMode: "script", extraSplitPunctuation: ["，", "。", "？", "！", "；", ",", "."], preservePunctuation: ["，", "。", "？", "！", "；", ",", "."], cleanMarkdownSymbols: true },',
             script,
         )
         self.assertIn('subtitle_invalid: (detail) => `字幕或工程解析失败：', launcher_script)
