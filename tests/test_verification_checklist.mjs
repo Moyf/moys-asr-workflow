@@ -35,13 +35,14 @@ const scopeSelector = "document.getElementById('export-json')";
 function status() {
   return { textContent: '', classList: { add() {} } };
 }
-function exportFixture(scope = 'all', confirmed = [true, false], ignored = {}) {
+function exportFixture(scope = 'all', confirmed = [true, false], ignored = {}, noteValues) {
   const sections = ['alpha', 'beta', 'readonly'].map(id => ({ id, querySelector: () => ({ title: id }) }));
   const records = confirmed.map((checked, i) => ({
     section: sections[i], box: { id: `check-${i}`, checked }, text: `操作 ${i} → 预期`,
     textarea: i === 1 ? { value: '  第一行\n第二行 <script>原样记录</script>  ' } : null,
     note: i === 0 ? '' : '旧备注',
   }));
+  if (noteValues) records.forEach((r, i) => { r.textarea = null; r.note = noteValues[i]; });
   let payload;
   let download;
   const context = {
@@ -57,7 +58,9 @@ function exportFixture(scope = 'all', confirmed = [true, false], ignored = {}) {
     URL: { createObjectURL: () => 'blob:test', revokeObjectURL() {} },
     setTimeout(fn) { fn(); },
   };
-  vm.runInNewContext(`(${handler(scopeSelector, 'click')})()`, context);
+  vm.createContext(context);
+  vm.runInContext(['recordNote', 'includeRecord'].map(declaration).join('\n'), context);
+  vm.runInContext(`(${handler(scopeSelector, 'click')})()`, context);
   return { result: payload && JSON.parse(payload), download, context };
 }
 
@@ -93,8 +96,21 @@ test('ignored group items count as handled and stay out of unconfirmed export', 
   assert.deepEqual(ignoredPending.sections, []);
 });
 
-test('all-confirmed filtered snapshot contains no sections', () => {
-  const { result } = exportFixture('unconfirmed', [true, true]);
+test('filtered export includes confirmed notes but ignores whitespace notes and ignored groups', () => {
+  const { result, download } = exportFixture('unconfirmed', [true, true]);
+  assert.equal(result.summary.exported, 1);
+  assert.deepEqual(result.sections.map(s => s.id), ['beta']);
+  assert.equal(result.sections[0].items[0].confirmed, true);
+  assert.match(download, /-未确认和备注-/);
+  const ignored = exportFixture('unconfirmed', [true, true], { beta: true }).result;
+  assert.equal(ignored.summary.unconfirmed, 0);
+  assert.equal(ignored.summary.exported, 0);
+  const blank = exportFixture('unconfirmed', [true, true], {}, ['', ' \n\t ']).result;
+  assert.equal(blank.summary.exported, 0);
+});
+
+test('all-confirmed filtered snapshot without notes contains no sections', () => {
+  const { result } = exportFixture('unconfirmed', [true, true], {}, ['', '']);
   assert.equal(result.summary.exported, 0);
   assert.deepEqual(result.sections, []);
 });
@@ -144,6 +160,7 @@ test('checkbox reset preserves notes and unrelated persisted item state', () => 
   Object.assign(context, {
     KEY: 'legacy', IGNORE_KEY: 'legacy:ignored', state: {}, ignored: { 'sec-1': true },
     boxes: [{ id: 'check-0', checked: true }], notes: { 'check-0': '备注' }, refresh() {},
+    window: { confirm: () => true },
   });
   vm.runInContext(`(${handler("document.getElementById('reset')", 'click')})()`, context);
   assert.equal(context.boxes[0].checked, false);
@@ -152,6 +169,22 @@ test('checkbox reset preserves notes and unrelated persisted item state', () => 
   // 处理器在 VM realm 内重建对象，JSON 往返后再比较（跨 realm 原型不同）。
   assert.deepEqual(JSON.parse(JSON.stringify(context.ignored)), {});
   assert.deepEqual(saved.find(([key]) => key === 'legacy:ignored')[1], {});
+});
+
+test('cancelling reset does not read or write storage or change current state', () => {
+  const context = {
+    window: { confirm: () => false },
+    state: { 'check-0': true }, ignored: { alpha: true }, notes: { 'check-0': '备注' },
+    boxes: [{ checked: true }],
+    load() { throw new Error('reset must not load'); },
+    save() { throw new Error('reset must not save'); },
+    refresh() { throw new Error('reset must not refresh'); },
+  };
+  vm.runInNewContext(`(${handler("document.getElementById('reset')", 'click')})()`, context);
+  assert.equal(context.boxes[0].checked, true);
+  assert.deepEqual(context.state, { 'check-0': true });
+  assert.deepEqual(context.ignored, { alpha: true });
+  assert.deepEqual(context.notes, { 'check-0': '备注' });
 });
 
 test('ignore toggle persists per section, collapses on ignore and reopens on cancel', () => {
@@ -187,6 +220,7 @@ test('note input persists multiline text without affecting confirmation', () => 
     NOTES_KEY: 'notes', notes: {}, box: { id: 'check-0', checked: true },
     record: { note: '' }, textarea: { value: '  复现\n下一步  ' }, printNote: { textContent: '' },
     toggle: { classList: { toggle() {} } },
+    refreshExport() {},
   });
   vm.runInContext(`(${handler('textarea', 'input')})()`, context);
   assert.equal(saved[0][0], 'notes');
