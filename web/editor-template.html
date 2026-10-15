@@ -1951,7 +1951,14 @@ __WAVEFORM_CSS__
       </div>
       <div class="cue-panel-text-wrap">
         <div class="cue-panel-target" id="cue-panel-target">未选择</div>
-        <textarea id="cue-panel-text" rows="3" placeholder="选择一条字幕开始编辑…"></textarea>
+        <div class="cue-panel-text-row">
+          <textarea id="cue-panel-text" rows="3" placeholder="选择一条字幕开始编辑…"></textarea>
+          <div id="ass-cue-position" class="ass-cue-position" hidden aria-label="主字幕 ASS 定位" tabindex="0" title="PlayRes 坐标；方向键微调，Shift：10 像素；重置恢复全局排布">
+            <label>X <input id="ass-cue-x" type="number" step="1" aria-label="ASS 锚点 X"></label>
+            <label>Y <input id="ass-cue-y" type="number" step="1" aria-label="ASS 锚点 Y"></label>
+            <button id="ass-cue-reset" type="button">重置定位</button>
+          </div>
+        </div>
         <div class="cue-panel-metrics">
           <span>总长度 <b id="cue-panel-total-length">0</b></span>
           <span>字/秒 <b id="cue-panel-chars-per-second">0.00</b></span>

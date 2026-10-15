@@ -37,6 +37,8 @@
       if (s._dirty) o._dirty = true;
       // 持久化"禁用"标记（未禁用的不写字段，加载时默认 undefined=falsy 兼容旧工程）
       if (s.disabled) o.disabled = true;
+      const override = window.AsrEditorUtils.normalizeAssOverride(s.assOverride);
+      if (override) o.assOverride = override;
       if (typeof s.speaker === 'string' && s.speaker.trim()) o.speaker = s.speaker;
       return o;
     }),
@@ -75,6 +77,7 @@
         if (segment.color_ref != null) outSegment.color_ref = segment.color_ref;
         if (segment._dirty) outSegment._dirty = true;
         if (segment.disabled) outSegment.disabled = true;
+        if (segment.assOverride !== undefined) outSegment.assOverride = window.AsrEditorUtils.normalizeAssOverride(segment.assOverride);
         if (typeof segment.speaker === 'string' && segment.speaker.trim()) outSegment.speaker = segment.speaker;
         return outSegment;
       }),
@@ -108,6 +111,7 @@
         };
         if (segment._dirty) outSegment._dirty = true;
         if (segment.disabled) outSegment.disabled = true;
+        if (segment.assOverride !== undefined) outSegment.assOverride = window.AsrEditorUtils.normalizeAssOverride(segment.assOverride);
         if (typeof segment.speaker === 'string' && segment.speaker.trim()) outSegment.speaker = segment.speaker;
         return outSegment;
       }),

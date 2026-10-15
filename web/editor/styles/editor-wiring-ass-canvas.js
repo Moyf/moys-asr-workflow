@@ -423,6 +423,10 @@
       playResY,
       move: track.anchor || style.__assMove || null,
     });
+    // 原地震动：预览按导出同一模式逐帧偏移绘制与命中包围盒；record.anchor
+    // 保留基准锚点，逐句定位检查器与拖动以基准为准。
+    const shakeOffset = track.shakeOffset;
+    const drawAnchor = shakeOffset ? { x: anchor.x + shakeOffset.x, y: anchor.y + shakeOffset.y } : anchor;
     // 渲染参数快照（e2e 断言用）：行/字段尺寸与最终落色直接取自绘制路径，
     // 保证测试看到的就是画布实际消费的值。
     const borderBox = Math.round(Number(style.borderStyle) || 1) === 3;
@@ -466,7 +470,7 @@
     ctx.globalAlpha = alpha;
     // translate → ASS-sign rotation → scale: glyphs are scaled before the
     // final rotation, matching libass for anisotropic scale and 2D angles.
-    ctx.translate(anchor.x, anchor.y);
+    ctx.translate(drawAnchor.x, drawAnchor.y);
     // \frx/\fry 是 3D 透视旋转，Canvas 2D 无法真正表达；旧 CSS 预览用
     // perspective 近似，这里以旋转后的正交投影等价式（rotateX 压缩纵向、
     // rotateY 压缩横向，>90° 自然镜像）保留动画表现，仅缺少斜切效果。
@@ -491,6 +495,30 @@
       }
       lineTop += line.ascent + line.descent;
     });
+    // Hit geometry follows the same 2D transform used for the pixels.
+    const pad = Math.ceil((Number(style.outline) || 0) + (Number(style.shadow) || 0) + 2);
+    const left = u.assCanvasLineOffsetX(grid.column, layout.blockWidth) - pad;
+    const top = u.assCanvasBlockTopY(grid.row, layout.blockHeight) - pad;
+    const sx = Math.max(0, Number(style.scaleX ?? 100)) / 100 * foreshortenX;
+    const sy = Math.max(0, Number(style.scaleY ?? 100)) / 100 * foreshortenY;
+    const theta = -angle * Math.PI / 180;
+    // Automatic stacking can attach an upper cue by its bottom edge even
+    // when the global style uses a top/centre anchor. Re-express its base
+    // point using the global attachment before the cue becomes manual.
+    const positionGrid = u.assCanvasAlignmentGrid(style.alignment);
+    const anchorDx = (positionGrid.column - grid.column) * layout.blockWidth / 2;
+    const anchorDy = (positionGrid.row - grid.row) * layout.blockHeight / 2;
+    record.positionAnchor = {
+      x: anchor.x + anchorDx * sx * Math.cos(theta) - anchorDy * sy * Math.sin(theta),
+      y: anchor.y + anchorDx * sx * Math.sin(theta) + anchorDy * sy * Math.cos(theta),
+    };
+    const corners = [left, left + layout.blockWidth + 2 * pad].flatMap(x =>
+      [top, top + layout.blockHeight + 2 * pad].map(y => ({
+        x: drawAnchor.x + x * sx * Math.cos(theta) - y * sy * Math.sin(theta),
+        y: drawAnchor.y + x * sx * Math.sin(theta) + y * sy * Math.cos(theta),
+      })));
+    record.bounds = { left: Math.min(...corners.map(p => p.x)), right: Math.max(...corners.map(p => p.x)),
+      top: Math.min(...corners.map(p => p.y)), bottom: Math.max(...corners.map(p => p.y)) };
     ctx.restore();
     return record;
   }
@@ -519,6 +547,7 @@
       records.push(drawTrack(track, width, height));
     });
     lastRender = { playResX: width, playResY: height, tracks: records };
+    global.MaweAssCuePosition?.sync();
   }
 
 

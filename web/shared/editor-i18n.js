@@ -9,6 +9,13 @@
   // The editor keeps one source template. Exact UI strings are translated at
   // the DOM boundary; project content is excluded from traversal below.
   const EN_TEXT = {
+    '主字幕 ASS 定位': 'Main ASS cue positioning',
+    '重置定位': 'Reset position',
+    'ASS 锚点 X': 'ASS anchor X', 'ASS 锚点 Y': 'ASS anchor Y',
+    '选择主字幕，选中后拖动 ASS 位置': 'Select the main cue, then drag its ASS position',
+    '请输入有限坐标': 'Enter a finite coordinate',
+    'PlayRes 坐标；方向键微调，Shift：10 像素；重置恢复全局排布': 'PlayRes coordinates; arrow keys adjust, Shift: 10 pixels; reset restores global layout',
+
     '导入 ▾': 'Import ▾',
     '视频画面': 'Video pictures',
     '在波形上方显示视频画面导航；本机 Server 绑定视频时可用': 'Show video picture navigation above the waveform when video is bound to the local Server',
@@ -740,6 +747,7 @@
     '左右添加字符': 'Wrap with characters', '自定义左右字符': 'Custom wrap characters',
     '左侧字符': 'Left characters', '右侧字符': 'Right characters', '插入': 'Insert',
     '音符': 'Music note', '淡出淡入': 'Fade in/out', '注释文本': 'Comment text',
+    '原地震动': 'Shake in place',
     'ASS 特殊文本样式': 'ASS text styles', '普通字符': 'Regular characters',
     '♪音符♪': '♪Music note♪', '♬双音符♬': '♬Double music notes♬', '[中括号]': '[Square brackets]',
     '左侧添加': 'Add on the left', '右侧添加': 'Add on the right',
