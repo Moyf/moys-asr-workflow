@@ -478,6 +478,11 @@
           </div>
           <p class="hint warn" data-i18n="server_media_missing">工程找不到媒体时，请手动选择。</p>
           <p id="serverMediaFlvHint" class="hint warn hidden" data-i18n="flv_media_hint" aria-live="polite">flv 无法预览，将会自动转换成 mp4 格式</p>
+          <label class="check-field" style="margin-top: 8px" for="serverRememberMedia">
+            <input id="serverRememberMedia" type="checkbox" checked>
+            <span data-i18n="server_remember_media">记住关联，更新工程文件</span>
+          </label>
+          <p class="hint" style="margin-top: 8px" data-i18n="server_remember_media_hint">成功加载后写回媒体路径并保留备份；取消勾选则仅本次使用。</p>
           <p id="serverMediaPathError" class="field-error"></p>
         </div>
         <div class="field"><label for="port" data-i18n="port">端口</label><div class="port-row"><input id="port" type="number" min="1" max="65535" value="8250"><button id="refreshServerStatus" class="ghost small" type="button" data-i18n="server_refresh" title="刷新当前端口的服务器状态">刷新</button></div><p id="portError" class="field-error"></p></div>
