@@ -6,7 +6,7 @@ import {
   cleanupTempDir,
   disableOnboarding,
   findFreePort,
-  buildPortableBlankEditor,
+  buildBrowserEditorFixture,
   generateWaveformPayload,
   makeTempDir,
   startStaticServer, closeSettingsPanels, dragFloatingPanelAwayFrom, openSettingsPage, setProjectTrackEnabled, toggleGlobalSettings } from './helpers.mjs';
@@ -16,7 +16,7 @@ let server;
 
 test.beforeAll(async () => {
   tempDir = makeTempDir('multi-subtitle');
-  const blankPath = buildPortableBlankEditor(join(tempDir, 'blank-editor.html'));
+  const blankPath = buildBrowserEditorFixture(join(tempDir, 'blank-editor.html'));
   server = await startStaticServer(blankPath, await findFreePort());
 });
 

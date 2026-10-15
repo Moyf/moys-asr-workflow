@@ -34,6 +34,7 @@ import sys
 from pathlib import Path
 from typing import NotRequired, TypedDict
 
+from maw.editor_entry_policy import RETIREMENT_MESSAGE, require_standalone_editor
 from maw.colors import COLOR_PALETTE
 from maw.console import configure_utf8_stdio
 from maw.project import ProjectValidationFailed, normalize_project
@@ -296,6 +297,12 @@ def render_editor_page(**context: str) -> str:
 
 
 def build_blank_html(ninja_sfx_base_url_json: str | None = None) -> str:
+    """Legacy standalone entry, supported only before MAW 2.0."""
+    require_standalone_editor()
+    return render_empty_editor_page(ninja_sfx_base_url_json)
+
+
+def render_empty_editor_page(ninja_sfx_base_url_json: str | None = None) -> str:
     """生成一个空壳全功能编辑器 HTML（不预先自包含任何工程数据）。
 
     页面功能与 .edit.html 完全一致（始终是最新模板），但初始没有字幕 / 媒体。
@@ -330,7 +337,7 @@ def build_blank_html(ninja_sfx_base_url_json: str | None = None) -> str:
 
 def main():
     configure_utf8_stdio()
-    parser = argparse.ArgumentParser(description="MAWE — Moy's ASR Workflow Editor（含表情包管理 + 多选）")
+    parser = argparse.ArgumentParser(description="MAWE 1.x 旧独立 HTML 生成器（2.0 起退役）", epilog=RETIREMENT_MESSAGE)
     parser.add_argument(
         "json_path", nargs="?",
         help="工程文件路径（.mosp 或 .json，由 generate_subtitle_qwen_api.py --json 生成）；--blank 模式下可省略",
@@ -362,6 +369,11 @@ def main():
         help=f"波形峰值密度（默认: {DEFAULT_PEAKS_PER_SECOND}/秒）",
     )
     args = parser.parse_args()
+    try:
+        require_standalone_editor()
+    except ValueError as error:
+        parser.error(str(error))
+    print("[deprecated] " + RETIREMENT_MESSAGE, file=sys.stderr)
 
     # bundle 是构建产物（不入库）：渲染编辑器页面前确保与源码一致，必要时自动重建。
     try:

@@ -23,6 +23,7 @@ from typing import BinaryIO, Final, final
 
 from send2trash import send2trash
 
+from maw.editor_entry_policy import RETIREMENT_MESSAGE, standalone_editor_supported
 from maw.app_paths import application_directory, default_app_data_root
 from maw.web_build import BundlePreflightError, ensure_bundle
 from maw.asr_presets import (
@@ -708,6 +709,7 @@ class LauncherApi:
             "language": config.language,
             "guiLang": config.gui_lang,
             "appVersion": _app_version(self.paths),
+            "standaloneEditorSupported": standalone_editor_supported(),
             "asrPresetRoot": str(asr_preset_root),
             "asrPresetRootConfigured": asr_preset_root_configured,
             "stickerDir": config.sticker_dir,
@@ -3074,6 +3076,8 @@ class LauncherApi:
         return {"ok": False, "error": "No editor HTML yet."}
 
     def open_blank_html(self, _payload: Mapping[str, object] | None = None) -> dict[str, object]:
+        if not standalone_editor_supported():
+            return {"ok": False, "error": RETIREMENT_MESSAGE}
         path = self.paths.root / "blank-editor.html"
         if not path.exists():
             frozen_path = asset_path("blank-editor.html")

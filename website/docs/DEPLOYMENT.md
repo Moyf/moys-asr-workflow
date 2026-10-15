@@ -1,5 +1,7 @@
 # 部署备忘
 
+版本边界：下文独立 HTML / 在线编辑器的生成步骤仅适用于 1.x。2.0（含预发布版）起停止生成、打包和部署；历史文件保留。本地 Server 与共享 Web 前端继续维护，推荐下载本地应用。Pages 使用 `scripts/prepare_editor_pages.py` 执行版本策略，不直接调用旧生成命令。
+
 ## Vercel（当前优先候选）
 
 在 Vercel 导入本仓库，将 Root Directory 设为 `website`，Framework Preset 选择 Astro，Build Command 使用 `pnpm run build`，Output Directory 使用 `dist`。

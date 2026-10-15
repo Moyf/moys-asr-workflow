@@ -1,7 +1,7 @@
 import { expect, test } from '@playwright/test';
 import { join } from 'node:path';
 import {
-  buildPortableBlankEditor, cleanupTempDir, disableOnboarding, findFreePort,
+  buildBrowserEditorFixture, cleanupTempDir, disableOnboarding, findFreePort,
   generateWaveformPayload, makeTempDir, startStaticServer,
 } from './helpers.mjs';
 
@@ -9,7 +9,7 @@ let tempDir;
 let server;
 test.beforeAll(async () => {
   tempDir = makeTempDir('timeline-selected-drag');
-  server = await startStaticServer(buildPortableBlankEditor(join(tempDir, 'blank.html')), await findFreePort());
+  server = await startStaticServer(buildBrowserEditorFixture(join(tempDir, 'blank.html')), await findFreePort());
 });
 test.afterAll(async () => { await server?.stop(); cleanupTempDir(tempDir); });
 

@@ -67,7 +67,7 @@ uv run --no-sync python maw_gui.py -i "example.mp4" -o "example.srt" -ll 2m
 | `.json` | 兼容旧工程；内容格式与 `.mosp` 相同，已有文件无需迁移。 |
 | `.mopeaks` / `.quapeaks` | 可重建波形缓存，不能代替工程。 |
 | `.mothumbs` | 原视频的基础画面缓存，图片不存进工程，可由 Launcher 重建。 |
-| `.edit.html` | 可选便携编辑页面，可从工程重新生成。 |
+| `.edit.html` | 仅 1.x 的旧便携编辑页面；2.0 起停止生成。历史副本可保留，不承诺兼容新版工程。 |
 
 进程退出码为 `0` 且预期文件存在才表示成功。识别为空、上传失败或配置错误时查看具体日志；排错见 [FAQ](FAQ.md)。
 
@@ -97,7 +97,7 @@ uv run --no-sync python server-editor/serve.py --blank
 
 需要核对细粒度时间时，在波形区 ⚙️ 设置中开启「字词时间码」：查看并在句内调整已有字词块。一个块可包含多个共享范围的字词，新增文字不代表重新对齐音频；没有时间码的位置不会自动补建。
 
-需要便携 HTML 时可从已有工程生成（媒体仍需单独携带）：
+以下生成命令仅供仍使用 1.x 的用户过渡（媒体仍需单独携带）。2.0（含预发布版）起停止生成 `.edit.html` / `blank-editor.html`，在线编辑器也停止生成与部署；请使用上述本地应用 / Server 入口。旧发行附件和用户副本不会被删除，但不承诺兼容 2.0 及后续工程：
 
 ```sh
 uv run --no-sync python edit.py "example.mosp" -m "example.mp4"
