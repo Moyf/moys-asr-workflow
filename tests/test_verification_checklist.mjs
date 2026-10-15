@@ -66,13 +66,14 @@ function exportFixture(scope = 'all', confirmed = [true, false], ignored = {}, n
 }
 
 const mdScopeSelector = "document.getElementById('export-md')";
-function markdownFixture(scope = 'all', confirmed = [true, false], ignored = {}, mode = 'export') {
+function markdownFixture(scope = 'all', confirmed = [true, false], ignored = {}, mode = 'export', noteValues) {
   const sections = ['alpha', 'beta'].map(id => ({ id, querySelector: () => ({ title: id }) }));
   const records = confirmed.map((checked, i) => ({
     section: sections[i], box: { id: `check-${i}`, checked }, text: `操作 ${i} → 预期`,
     textarea: i === 1 ? { value: '  第一行\n第二行 <script>原样记录</script>  ' } : null,
     note: i === 0 ? '' : '旧备注',
   }));
+  if (noteValues) records.forEach((r, i) => { r.textarea = null; r.note = noteValues[i]; });
   let payload;
   let download;
   let copied;
@@ -197,6 +198,19 @@ test('markdown export marks ignored groups and copy uses the clipboard with fall
   const fallbackSource = markdownFixture('all', [true, false], {}, 'fallback');
   await new Promise(resolve => setTimeout(resolve, 0));
   assert.match(fallbackSource.context.status.textContent, /已复制 2 项/);
+});
+
+test('Markdown download and copy preserve trailing note spaces and blank lines like JSON', () => {
+  const note = '首行  \n末行  \n\n';
+  const jsonNote = exportFixture('unconfirmed', [true, true], {}, ['', note])
+    .result.sections[0].items[0].note;
+  assert.equal(jsonNote, note);
+  for (const mode of ['export', 'copy', 'fallback']) {
+    const { markdown } = markdownFixture('unconfirmed', [true, true], {}, mode, ['', note]);
+    const quote = markdown.split('\n').filter(line => line.startsWith('  > '))
+      .map(line => line.slice(4)).join('\n');
+    assert.equal(quote, jsonNote, mode);
+  }
 });
 
 function storageContext(raw, blocked = false) {

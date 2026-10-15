@@ -635,7 +635,7 @@
       section.items.forEach(function (item) {
         lines.push('- [' + (item.confirmed ? 'x' : ' ') + '] ' + item.text
           + ' <!-- id: ' + item.id + ' -->');
-        var note = String(item.note || '').replace(/\s+$/, '');
+        var note = String(item.note || '');
         if (note) note.split(/\r?\n/).forEach(function (noteLine) {
           lines.push('  > ' + noteLine);
         });
