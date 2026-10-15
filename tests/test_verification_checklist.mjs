@@ -32,6 +32,8 @@ function handler(selector, event) {
   return source.slice(found.start, found.end);
 }
 const scopeSelector = "document.getElementById('export-json')";
+const sharedDeclarations = ['storageWarning', 'recordNote', 'includeRecord', 'buildResult', 'buildResultMarkdown', 'downloadResult']
+  .map(declaration).join('\n');
 function status() {
   return { textContent: '', classList: { add() {} } };
 }
@@ -59,9 +61,42 @@ function exportFixture(scope = 'all', confirmed = [true, false], ignored = {}, n
     setTimeout(fn) { fn(); },
   };
   vm.createContext(context);
-  vm.runInContext(['recordNote', 'includeRecord'].map(declaration).join('\n'), context);
-  vm.runInContext(`(${handler(scopeSelector, 'click')})()`, context);
+  vm.runInContext(`${sharedDeclarations}\n(${handler(scopeSelector, 'click')})()`, context);
   return { result: payload && JSON.parse(payload), download, context };
+}
+
+const mdScopeSelector = "document.getElementById('export-md')";
+function markdownFixture(scope = 'all', confirmed = [true, false], ignored = {}, mode = 'export') {
+  const sections = ['alpha', 'beta'].map(id => ({ id, querySelector: () => ({ title: id }) }));
+  const records = confirmed.map((checked, i) => ({
+    section: sections[i], box: { id: `check-${i}`, checked }, text: `操作 ${i} → 预期`,
+    textarea: i === 1 ? { value: '  第一行\n第二行 <script>原样记录</script>  ' } : null,
+    note: i === 0 ? '' : '旧备注',
+  }));
+  let payload;
+  let download;
+  let copied;
+  const context = {
+    sections, records, boxes: records.map(r => r.box), storageFailed: false, status: status(), ignored,
+    summaryTitle: summary => summary.title,
+    document: {
+      title: '验证:导出/测试',
+      getElementById: () => ({ value: scope }), querySelector: () => ({ textContent: ' 范围说明 ' }),
+      createElement: () => ({
+        setAttribute() {}, style: {}, select() { copied = this.value; },
+        click() { download = this.download; }, remove() {},
+      }),
+      body: { appendChild() {} },
+      execCommand: () => true,
+    },
+    navigator: mode === 'copy' ? { clipboard: { writeText: text => { copied = text; return Promise.resolve(); } } } : {},
+    Blob: class { constructor(parts, options) { payload = parts.join(''); this.type = options.type; } },
+    URL: { createObjectURL: () => 'blob:test', revokeObjectURL() {} },
+    setTimeout(fn) { fn(); },
+  };
+  const selector = mode !== 'export' ? "document.getElementById('copy-md')" : mdScopeSelector;
+  vm.runInNewContext(`${sharedDeclarations}\n(${handler(selector, 'click')})()`, context);
+  return { markdown: mode !== 'export' ? copied : payload, download, context };
 }
 
 test('exports complete results with section identity, metadata and verbatim multiline notes', () => {
@@ -118,10 +153,50 @@ test('all-confirmed filtered snapshot without notes contains no sections', () =>
 test('download failure leaves current results available and reports failure', () => {
   const { context } = exportFixture();
   context.URL.createObjectURL = () => { throw new Error('download blocked'); };
-  vm.runInNewContext(`(${handler(scopeSelector, 'click')})()`, context);
+  vm.runInNewContext(`${sharedDeclarations}\n(${handler(scopeSelector, 'click')})()`, context);
   assert.match(context.status.textContent, /导出失败/);
   assert.equal(context.boxes[0].checked, true);
   assert.match(context.records[1].textarea.value, /第二行/);
+  context.storageFailed = true;
+  vm.runInNewContext(`${sharedDeclarations}\n(${handler(scopeSelector, 'click')})()`, context);
+  assert.match(context.status.textContent, /本机存储不可用.*导出失败/);
+});
+
+test('markdown export mirrors the result snapshot with task list and verbatim notes', async () => {
+  const { markdown, download } = markdownFixture();
+  assert.match(markdown, /^# 验证:导出\/测试 · 核对结果\n\n> 范围说明\n/);
+  assert.match(markdown, /> 导出范围：全部核对项 · 导出时间 \d{4}-\d\d-\d\dT[^\n]*总计 2 项：已确认 1 \/ 忽略 0 \/ 未确认 1（本次导出 2 项）/);
+  assert.match(markdown, /## alpha\n- \[x\] 操作 0 → 预期 <!-- id: check-0 -->\n/);
+  assert.match(markdown, /## beta\n- \[ \] 操作 1 → 预期 <!-- id: check-1 -->\n  >   第一行\n  > 第二行 <script>原样记录<\/script>/);
+  assert.ok(markdown.endsWith('\n'));
+  assert.ok(!/[<>:"*?]/.test(download.slice(0, download.length - '全部-2026-10-15.md'.length)));
+  assert.ok(download.endsWith('.md'));
+
+  const pending = markdownFixture('unconfirmed');
+  assert.ok(!pending.markdown.includes('## alpha'));
+  assert.match(pending.markdown, /## beta\n- \[ \] 操作 1 → 预期 <!-- id: check-1 -->/);
+  const noted = markdownFixture('unconfirmed', [true, true]);
+  assert.match(noted.markdown, /导出范围：仅未确认和备注项/);
+  assert.match(noted.markdown, /## beta\n- \[x\] 操作 1/);
+  assert.ok(!noted.markdown.includes('## alpha'));
+  const ignored = markdownFixture('unconfirmed', [true, true], { beta: true });
+  assert.ok(!ignored.markdown.includes('## beta'));
+});
+
+test('markdown export marks ignored groups and copy uses the clipboard with fallback', async () => {
+  const ignoredAll = markdownFixture('all', [true, false], { beta: true });
+  assert.match(ignoredAll.markdown, /## beta（已忽略）\n/);
+  assert.match(ignoredAll.markdown, /- \[ \] 操作 1 → 预期 <!-- id: check-1 -->/);
+
+  const copied = markdownFixture('all', [true, false], {}, 'copy');
+  await new Promise(resolve => setTimeout(resolve, 0));
+  assert.match(copied.markdown, /^# 验证:导出\/测试 · 核对结果/);
+  assert.match(copied.context.status.textContent, /已复制 2 项/);
+
+  // 无 clipboard API 的环境走 execCommand 回退，同样报告成功。
+  const fallbackSource = markdownFixture('all', [true, false], {}, 'fallback');
+  await new Promise(resolve => setTimeout(resolve, 0));
+  assert.match(fallbackSource.context.status.textContent, /已复制 2 项/);
 });
 
 function storageContext(raw, blocked = false) {

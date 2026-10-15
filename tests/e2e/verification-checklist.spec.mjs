@@ -6,15 +6,22 @@ import { fileURLToPath, pathToFileURL } from 'node:url';
 const builder = fileURLToPath(new URL('../../tools/verification-checklist/build.py', import.meta.url));
 const example = fileURLToPath(new URL('../../tools/verification-checklist/examples/checklist.json', import.meta.url));
 
-function generate(testInfo, update = () => {}) {
+function generate(testInfo, update = () => {}, format = 'json') {
   const source = JSON.parse(readFileSync(example, 'utf8'));
   update(source);
   const data = testInfo.outputPath('source.json');
   const output = testInfo.outputPath('checklist.html');
   writeFileSync(data, JSON.stringify(source), 'utf8');
-  execFileSync(process.env.MAW_E2E_PYTHON || 'python', [builder, '--data', data, '--output', output], {
+  const run = args => execFileSync(process.env.MAW_E2E_PYTHON || 'python', [builder, ...args], {
     env: { ...process.env, PYTHONUTF8: '1' }, timeout: 15_000, maxBuffer: 64 * 1024,
   });
+  let input = data;
+  if (format === 'markdown') {
+    input = testInfo.outputPath('source.checklist.md');
+    run(['--to-md', data, '--meta', 'task=checklist-regression', '--meta', 'status=pending', '--output', input]);
+    run(['--check', input]);
+  }
+  run(['--data', input, '--output', output]);
   return pathToFileURL(output).href;
 }
 
@@ -47,6 +54,20 @@ test('JSON checklist preserves progress and notes and exports pending and noted 
   expect(external).toEqual([]);
 });
 
+test('Markdown source generates unchecked items with the same default export behavior', async ({ page }, testInfo) => {
+  await page.goto(generate(testInfo, source => {
+    for (const section of source.sections) {
+      delete section.open;
+      for (const block of section.blocks) if (block.type === 'text') block.type = 'note';
+    }
+  }, 'markdown'));
+  await expect(page.locator('#num')).toHaveText('0 / 2');
+  await expect(page.locator('#manual-persistence')).not.toBeChecked();
+  await expect(page.locator('#export-scope')).toHaveValue('unconfirmed');
+  await expect(page.locator('#auto-collapse-completed')).toHaveAttribute('aria-pressed', 'true');
+  await expect(page.locator('.item-copy')).toHaveCount(2);
+});
+
 test('default auto-collapse preserves an explicitly disabled preference after reload', async ({ page }, testInfo) => {
   await page.goto(generate(testInfo));
   const toggle = page.locator('#auto-collapse-completed');
@@ -65,9 +86,13 @@ test('default auto-collapse preserves an explicitly disabled preference after re
   const item = page.locator('#manual .item').first();
   await item.locator('.note-toggle').click();
   await item.locator('textarea').fill('已确认但仍有反馈');
-  await expect(page.locator('#export-json')).toBeEnabled();
+  for (const id of ['export-json', 'export-md', 'copy-md']) {
+    await expect(page.locator(`#${id}`)).toBeEnabled();
+  }
   await item.locator('textarea').fill(' \n\t ');
-  await expect(page.locator('#export-json')).toBeDisabled();
+  for (const id of ['export-json', 'export-md', 'copy-md']) {
+    await expect(page.locator(`#${id}`)).toBeDisabled();
+  }
 });
 
 test('reset cancellation preserves checks, ignored groups and notes; acceptance clears only progress', async ({ page }, testInfo) => {
@@ -132,6 +157,74 @@ test('clipboard failure preserves an existing storage warning and in-memory note
   await expect(item.locator('textarea')).toHaveValue('存储失败仍保留的备注');
   await page.locator('#manual-persistence').check();
   await expect(status).toContainText('本机存储不可用');
+  await page.evaluate(() => { document.execCommand = () => false; });
+  await page.locator('#copy-md').click();
+  await expect(status).toContainText('本机存储不可用');
+  await expect(status).toContainText('导出 Markdown');
+  await expect(status).toContainText('复制失败');
+});
+
+test('markdown export mirrors confirmations and notes and disables with no exportable items', async ({ page }, testInfo) => {
+  const errors = [];
+  page.on('pageerror', error => errors.push(String(error)));
+  await page.goto(generate(testInfo));
+  await expect(page.locator('#export-md')).toBeVisible();
+  await expect(page.locator('#copy-md')).toBeVisible();
+  await page.locator('#manual-persistence').check();
+  const first = page.locator('#manual .item').first();
+  await first.locator('.note-toggle').click();
+  await first.locator('textarea').fill('第一行\n<script>仅为备注文本</script>');
+  await page.locator('#export-scope').selectOption('all');
+
+  const downloaded = page.waitForEvent('download');
+  await page.locator('#export-md').click();
+  const download = await downloaded;
+  expect(download.suggestedFilename()).toMatch(/-全部-\d{4}-\d{2}-\d{2}\.md$/);
+  const markdown = readFileSync(await download.path(), 'utf8');
+  expect(markdown).toMatch(/^# MAW 核查清单 · JSON 生成示例 · 核对结果\n/);
+  expect(markdown).toContain('> 导出范围：全部核对项');
+  expect(markdown).toContain('## 人工核验');
+  expect(markdown).not.toContain('## 实现 / 审查结论');
+  expect(markdown).not.toContain('## 自动化验证证据');
+  expect(markdown).toContain('- [x] 生成的 HTML 页面 → 勾选本项，点击备注填写两行文字，然后刷新 → 勾选与备注仍保留，进度显示 1 / 2 <!-- id: manual-persistence -->');
+  expect(markdown).toContain('  > 第一行\n  > <script>仅为备注文本</script>');
+  expect(markdown).toContain('- [ ] 侧栏导出范围 → 选择默认范围并导出 JSON → 包含未确认或有非空备注的项目，排除忽略组，保留稳定 ID 与备注 <!-- id: manual-export -->');
+  expect(errors).toEqual([]);
+
+  await page.locator('#export-scope').selectOption('unconfirmed');
+  const pendingDownload = page.waitForEvent('download');
+  await page.locator('#export-md').click();
+  const pending = readFileSync(await (await pendingDownload).path(), 'utf8');
+  expect(pending).toContain('> 导出范围：仅未确认和备注项');
+  expect(pending).toContain('- [ ] 侧栏导出范围 → 选择默认范围并导出 JSON → 包含未确认或有非空备注的项目，排除忽略组，保留稳定 ID 与备注 <!-- id: manual-export -->');
+  expect(pending).not.toContain('## 实现 / 审查结论');
+  expect(pending).toContain('第一行');
+  expect(pending).toContain('<!-- id: manual-persistence -->');
+  await page.evaluate(() => {
+    Object.defineProperty(navigator, 'clipboard', { configurable: true, value: {
+      writeText: async text => { window.copiedMarkdown = text; },
+    } });
+  });
+  await page.locator('#copy-md').click();
+  const copied = await page.evaluate(() => window.copiedMarkdown);
+  expect(copied).toContain('导出范围：仅未确认和备注项');
+  expect(copied).toContain('第一行');
+  expect(copied).toContain('<!-- id: manual-persistence -->');
+});
+
+test('export buttons disable when nothing is exportable in unconfirmed scope', async ({ page }, testInfo) => {
+  await page.goto(generate(testInfo));
+  await page.locator('#manual-persistence').check();
+  await page.locator('#manual-export').check();
+  await page.locator('#export-scope').selectOption('unconfirmed');
+  for (const id of ['export-json', 'export-md', 'copy-md']) {
+    await expect(page.locator(`#${id}`)).toBeDisabled();
+  }
+  await page.locator('#expand').click();
+  await page.locator('#manual-export').uncheck();
+  for (const id of ['export-json', 'export-md', 'copy-md']) {
+    await expect(page.locator(`#${id}`)).toBeEnabled();
+  }
 });
 
 test('JSON command whitespace and long metadata survive rendering at narrow widths', async ({ page }, testInfo) => {
