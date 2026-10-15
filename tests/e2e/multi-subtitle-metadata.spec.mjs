@@ -40,7 +40,7 @@ async function saveAndReopen(page) {
 test('swapping once and twice preserves speaker and discarded cues through save and reopen', async ({ page }) => {
   await page.evaluate(() => {
     const makeSegments = (prefix) => [
-      { id: `${prefix}-discarded`, start: 1000, end: 2000, text: `${prefix} discarded`, speaker: `${prefix}-speaker`, disabled: true },
+      { id: `${prefix}-discarded`, start: 1000, end: 2000, text: `${prefix} discarded`, speaker: `${prefix}-speaker`, disabled: true, assOverride: { pos: { x: 123, y: 456 } }, vendor: { nested: ['keep'] }, sticker: { name: prefix, filename: `${prefix}.png`, start: 1000, end: 2000 }, color: { name: prefix === 'main' ? 'blue' : 'yellow', value: '#123456', start: 1000, end: 2000 } },
       { id: `${prefix}-enabled`, start: 3000, end: 4000, text: `${prefix} enabled`, speaker: `${prefix}-other`, disabled: false },
     ];
     MaweBoot.DATA.segments = makeSegments('main');
@@ -64,6 +64,10 @@ test('swapping once and twice preserves speaker and discarded cues through save 
     const saved = await saveAndReopen(page);
     for (const segments of [saved.segments, saved.multi_subtitle.tracks[0].segments]) {
       const prefix = segments[0].id.split('-')[0];
+      expect(segments[0].assOverride).toEqual({ pos: { x: 123, y: 456 } });
+      expect(segments[0].vendor).toEqual({ nested: ['keep'] });
+      expect(segments[0].sticker.name).toBe(prefix);
+      expect(segments[0].color.name).toBe(prefix === 'main' ? 'blue' : 'yellow');
       expect(segments.map(s => [s.speaker, Boolean(s.disabled)]))
         .toEqual([[`${prefix}-speaker`, true], [`${prefix}-other`, false]]);
     }
