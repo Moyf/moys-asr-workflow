@@ -20,7 +20,7 @@ export function createWaveformModule(dependencies) {
 
 
     /** @this {import('./waveform-types.js').WaveformInstance} */
-    refreshPointerLine() {
+    refreshPointerLine(geometry = null) {
       if (this.pointerLineOverrideActive) {
         if (this.markerDrag || this.markerCreateDrag) this.refreshMarkerDragPointerLine();
         else this.refreshBoundaryDragPointerLine();
@@ -28,20 +28,19 @@ export function createWaveformModule(dependencies) {
       }
       if (!this.pointerLineEvent || !this.pointerLineRow || !this.pointerLineMarker) return;
       if (!this.pointerLineRow.isConnected) return;
-      this.showPointerLine(this.pointerLineEvent, this.pointerLineRow, this.pointerLineMarker);
+      this.showPointerLine(this.pointerLineEvent, this.pointerLineRow, this.pointerLineMarker, geometry);
     }
 
 
     /** @this {import('./waveform-types.js').WaveformInstance} */
-    showPointerLine(event, row, marker) {
+    showPointerLine(event, row, marker, geometry = null) {
       if (!row || !marker) return;
-      const rect = row.getBoundingClientRect();
-      const contentLeft = rect.left + row.clientLeft;
-      const contentWidth = Math.max(1, row.clientWidth);
+      const contentLeft = geometry ? geometry.left : row.getBoundingClientRect().left + row.clientLeft;
+      const contentWidth = Math.max(1, geometry ? geometry.width : row.clientWidth);
       const rawLeft = clamp(event.clientX - contentLeft, 0, contentWidth);
       const startMs = Number(row.dataset.startMs);
       const endMs = Number(row.dataset.endMs);
-      const timeMs = this.pointerTimeMs(event, row);
+      const timeMs = this.pointerTimeMs(event, row, geometry);
       const left = Number.isFinite(timeMs) && Number.isFinite(startMs) && Number.isFinite(endMs)
         ? clamp(((timeMs - startMs) / Math.max(1, endMs - startMs)) * contentWidth, 0, contentWidth)
         : rawLeft;

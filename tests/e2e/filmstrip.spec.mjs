@@ -90,6 +90,23 @@ test('filmstrip preserves the waveform region, seek and scroll anchor',async({pa
   await expect(page.locator('.waveform-filmstrip').first()).toBeVisible();
   await page.evaluate(()=>{const wave=MaweCoreState.waveformEditor;wave.settings.mode='basic';wave.render();});
   await expect(page.locator('.waveform-filmstrip')).toHaveCount(1);
+  await page.evaluate(()=>{
+    const wave=MaweCoreState.waveformEditor;
+    wave.settings.visibleSeconds=10;wave.basicWindowStartMs=0;wave.render();
+    const row=wave.renderedRows[0];
+    row.dataset.testIdentity='stable';
+    row.querySelector('canvas.waveform-canvas').dataset.testIdentity='stable';
+    row._thumbnailCanvas.dataset.testIdentity='stable';
+  });
+  const basicRow=page.locator('.waveform-row').first();
+  const basicBox=await basicRow.boundingBox();
+  await page.mouse.move(basicBox.x+basicBox.width/2,basicBox.y+basicBox.height/2);
+  await page.mouse.wheel(0,120);
+  await expect.poll(()=>basicRow.getAttribute('data-start-ms')).toBe('1200');
+  await expect(basicRow).toHaveAttribute('data-test-identity','stable');
+  await expect(basicRow.locator('canvas.waveform-canvas')).toHaveAttribute('data-test-identity','stable');
+  await expect(page.locator('.waveform-filmstrip')).toHaveAttribute('data-test-identity','stable');
+  await expect(page.locator('.waveform-row-shell-basic > .waveform-row')).toHaveCount(1);
   await page.screenshot({path:'.artifacts/filmstrip/filmstrip-basic.png'});
   expect(errors).toEqual([]);
 });

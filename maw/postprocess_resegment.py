@@ -592,9 +592,20 @@ def run_resegment(
         s.get("id") != r.get("id") for s, r in zip(sources, rebuilt)
     ):
         # Positional references would point at another cue after insert/remove.
+        rebuilt_indices = {str(segment["id"]): index for index, segment in enumerate(rebuilt)}
         for segment in rebuilt:
-            segment.pop("color_ref", None)
+            color_ref = segment.pop("color_ref", None)
             segment.pop("sticker_ref", None)
+            if isinstance(color_ref, dict):
+                # Bound/disabled cues were copied unchanged. Keep their visible
+                # color even when an unrelated cue changes the array indices.
+                original_head = sources[color_ref["headIdx"]]
+                new_index = rebuilt_indices.get(str(original_head["id"]))
+                if new_index is not None and isinstance(rebuilt[new_index].get("color"), dict):
+                    color_ref["headIdx"] = new_index
+                    segment["color_ref"] = color_ref
+                elif isinstance(original_head.get("color"), dict):
+                    segment["color"] = copy.deepcopy(original_head["color"])
     processed = copy.deepcopy(project)
     processed["segments"] = rebuilt
     remap_cleanup_scopes(processed, sources, rebuilt, output_groups, by_source)

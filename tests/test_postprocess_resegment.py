@@ -133,6 +133,42 @@ class ResegmentTests(unittest.TestCase):
         self.assertTrue(any("一对一" in warning and "超过最大 2 字" in warning for warning in artifact.warnings))
         self.assertIn("绑定正文", artifact.srt_path.read_text(encoding="utf-8-sig"))
 
+    def test_unprocessed_bound_color_survives_resegment_with_moved_or_rebuilt_head(self):
+        color = {"name": "yellow", "value": "#c4a019"}
+        for preserve_head in (False, True):
+            with self.subTest(preserve_head=preserve_head):
+                segments = [
+                    timed("前面拆分", list("前面拆分"), 0, id="prefix"),
+                    timed("颜色组头", list("颜色组头"), 1000, id="color-head", color=color),
+                    timed("绑定正文", list("绑定正文"), 2000, id="bound", color_ref={"name": "yellow", "headIdx": 1}),
+                ]
+                bound_ids = ["color-head", "bound"] if preserve_head else ["bound"]
+                project = {"segments": segments, "multi_subtitle": {
+                    "enabled": True, "tracks": [{"id": "en", "segments": [
+                        {"id": f"translation-{index}", "text": "text", "start": segments[index]["start"], "end": segments[index]["end"]}
+                        for index in (1, 2) if segments[index]["id"] in bound_ids
+                    ]}], "bindings": [
+                        {"id": f"binding-{index}", "track_id": "en", "main_segment_ids": [segments[index]["id"]],
+                         "extension_segment_ids": [f"translation-{index}"], "start_offset_ms": 0, "end_offset_ms": 0}
+                        for index in (1, 2) if segments[index]["id"] in bound_ids
+                    ]}}
+                self.source.write_text(json.dumps(project, ensure_ascii=False), encoding="utf-8")
+                artifact = run_llm_postprocess(
+                    LlmPostprocessRequest(project_path=self.source, srt_path=None, output_mode=OutputMode.BOTH,
+                                         operation="resegment", custom_prompt="", max_chars=1),
+                    complete=lambda _prompt, rows: {"draft": "\n".join(f"[{item['id']}]" for row in rows for item in row["items"])},
+                )
+                reopened = read_project(artifact.project_path)
+                bound = next(s for s in reopened["segments"] if s["id"] == "bound")
+                self.assertEqual((bound["text"], bound["items"]), (segments[2]["text"], segments[2]["items"]))
+                if preserve_head:
+                    head_index = next(i for i, s in enumerate(reopened["segments"]) if s["id"] == "color-head")
+                    self.assertNotEqual(head_index, 1)
+                    self.assertEqual(bound["color_ref"]["headIdx"], head_index)
+                else:
+                    self.assertNotIn("color_ref", bound)
+                    self.assertEqual(bound["color"], color)
+
     def test_cleanup_split_merge_and_manual_restore_preserve_words_and_audio(self):
         source = timed("这个这个这个方法", list("这个这个这个方法"), id="original")
         for item in source["items"]:

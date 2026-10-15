@@ -10,10 +10,10 @@ export function createWordBlocks(dependencies) {
       const timing = resolveTiming(this.options.getCueTiming?.());
       const entries = window.AsrEditorUtils.getWordTimingEntries(segment, timing);
       const selection = this.options.wordTiming.getSelection(segment);
-      // 与主块（appendCueBlocks）同一套分级：多行 ≥96 非双语 = 等高上层，否则叠加。
-      const fullLane = this.settings.mode === 'multi'
-        && this.options.multiSubtitleVisible?.() !== true
-        && (Number(this.settings.rowHeight) || 0) >= 96;
+      // 与整句块采用相同分层条件，确保字词与整句的操作区域不重叠。
+      const fullLane = this.options.multiSubtitleVisible?.() !== true
+        && (this.settings.mode === 'basic'
+          || (this.settings.mode === 'multi' && (Number(this.settings.rowHeight) || 0) >= 96));
       entries.forEach(entry => {
         const range = { start: timing.toMs(entry.start), end: timing.toMs(entry.end) };
         if (range.end <= startMs || range.start >= endMs) return;

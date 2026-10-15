@@ -318,7 +318,11 @@
     if (!MaweDom.timedTextEditDraft) return;
     const canUseSingle = timedTextEditCanUseSingleView();
     const singleOption = MaweDom.timedTextEditView?.querySelector('[data-view="single"]');
-    if (singleOption) singleOption.disabled = !canUseSingle;
+    if (singleOption) {
+      singleOption.disabled = !canUseSingle;
+      const reason = canUseSingle ? '' : '当前字幕包含换行，暂不能切换到整体编辑视图';
+      singleOption.parentElement.title = window.MAWE_I18N?.translateText?.(reason) || reason;
+    }
     if (!canUseSingle && MaweDom.timedTextEditDraft.view === 'single') MaweDom.timedTextEditDraft.view = 'rows';
     const single = MaweDom.timedTextEditDraft.view === 'single' && canUseSingle;
     MaweDom.timedTextEditView?.querySelectorAll('[data-view]').forEach((button) => {
