@@ -193,6 +193,29 @@ class ProjectIoTests(CompactContainerAssertions, unittest.TestCase):
 class InlineCacheStripTests(CompactContainerAssertions, unittest.TestCase):
     """工程去内联：各层波形缓存（含响度统计）只活在运行态，落盘边界统一剥离。"""
 
+    def test_session_flags_are_removed_at_all_save_boundaries_without_mutation(self) -> None:
+        segment = {"id": "s", "text": "saved", "_dirty": True,
+                   "assOverride": {"pos": {"x": -12, "y": 80}},
+                   "vendor": {"_dirty": "extension value"}}
+        project = {"segments": [segment], "_dirty": True,
+                   "timebase": {"fps": 30, "fps_source": "user"},
+                   "multi_subtitle": {"_dirty": True, "tracks": [
+                       {"id": "e", "_dirty": True, "segments": [segment]}]},
+                   "overlay_track": {"_dirty": True, "segments": [segment]},
+                   "vendor": {"_dirty": "extension value"}}
+        original = json.loads(json.dumps(project))
+        for saved in (strip_inline_caches(project), json.loads(serialize_mosp(project))):
+            self.assertNotIn("_dirty", saved)
+            self.assertNotIn("_dirty", saved["multi_subtitle"])
+            for track in [saved, saved["overlay_track"], *saved["multi_subtitle"]["tracks"]]:
+                self.assertNotIn("_dirty", track)
+                self.assertNotIn("_dirty", track["segments"][0])
+                self.assertEqual(track["segments"][0]["assOverride"], segment["assOverride"])
+                self.assertEqual(track["segments"][0]["vendor"], segment["vendor"])
+            self.assertEqual(saved["vendor"], project["vendor"])
+            self.assertEqual(saved["timebase"], project["timebase"])
+        self.assertEqual(project, original)
+
     def test_serialize_mosp_strips_inline_caches_and_keeps_input_intact(self) -> None:
         payload = {
             "schema": "moy.asr.waveform.v1",
