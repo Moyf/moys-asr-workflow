@@ -10,6 +10,7 @@ test.beforeEach(async ({ page }) => {
   const media = join(dir, 'synthetic.wav');
   generateWav(media, 5);
   writeFileSync(join(dir, 'cat.png'), Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+j5V8AAAAASUVORK5CYII=', 'base64'));
+  writeFileSync(join(dir, 'dog.png'), readFileSync(join(dir, 'cat.png')));
   writeFileSync(projectPath, JSON.stringify({ media, sticker_root: dir,
     segments: [{ id: 'a', start: 0, end: 3000, text: '甲乙丙',
       items: [{ text: '甲', start: 0, end: 1000 }, { text: '乙', start: 1000, end: 2000 },
@@ -103,4 +104,56 @@ test('sticker geometry participates in saved checkpoints, undo and actual save/r
   await expect(page.locator('#cues-container')).toBeVisible();
   expect(await page.evaluate(() => MawePreviewGeometry.getStickerGeometry())).toEqual(moved);
   expect(await page.evaluate(() => MaweServerSave.hasUnsavedProjectChanges())).toBe(false);
+});
+
+test('manual creation and word conversion reserve IDs after track transfers', async ({ page }) => {
+  const ids = await page.evaluate(() => {
+    const u = window.AsrEditorUtils, data = MaweBoot.DATA;
+    data.segments[0].id = 'main-1';
+    u.moveSegmentBetweenTracks(data.segments, data.overlay_track.segments, 0);
+    MaweAddCue.addCueRangeFromWaveform(3200, 4200);
+    return u.subtitleGroupTracks(data).flatMap(t => t.segments.map(s => s.id));
+  });
+  expect(ids).toEqual(['main-1-2', 'main-1']);
+  // Recreate a timed main cue whose converted first item already exists on a
+  // different track, then apply the production conversion dialog.
+  await page.evaluate(() => {
+    const data = MaweBoot.DATA;
+    MaweCuePanel.commitCuePanelEdit();
+    MaweCuePanelState.currentCuePanelIdx = -1;
+    data.overlay_track.segments[0].id = 'a-item-1';
+    data.segments[0] = { id: 'a', start: 3200, end: 4200, text: '甲乙', items: [
+      { text: '甲', start: 3200, end: 3700 }, { text: '乙', start: 3700, end: 4200 },
+    ] };
+    MaweWordTiming.openConversion([0]);
+  });
+  await expect(page.locator('#word-conversion-summary')).toContainText('生成2条');
+  await page.locator('#word-conversion-confirm').click();
+  await expect(page.locator('#word-conversion-dialog')).not.toBeVisible();
+  expect(await page.evaluate(() => MaweProjectSave.saveCurrentProject())).toBe(true);
+  await page.reload();
+  await expect(page.locator('#cues-container')).toBeVisible();
+  const saved = await page.evaluate(() => window.AsrEditorUtils.subtitleGroupTracks(MaweBoot.DATA).flatMap(t => t.segments.map(s => s.id)));
+  expect(new Set(saved).size).toBe(3);
+  expect(saved).toContain('a-item-1-2');
+});
+
+test('same-name groups render their own asset and clear at the exact final boundary', async ({ page }) => {
+  const result = await page.evaluate(() => {
+    const u = window.AsrEditorUtils, data = MaweBoot.DATA;
+    data.segments.push({ id: 'second', start: 3100, end: 4000, text: 'second' });
+    u.assignSubtitleGroup(data, data.segments, [1], 'sticker', { name: 'cat', rel: 'dog.png' });
+    MaweDom.stickerOverlayToggle.checked = true;
+    MaweStickerOverlay.stickerOverlayDataVersion += 1;
+    MaweStickerOverlay.renderStickerOverlay(1000);
+    const first = MaweStickerOverlay.stickerOverlayContent.querySelector('img').src;
+    MaweStickerOverlay.renderStickerOverlay(3500);
+    const second = MaweStickerOverlay.stickerOverlayContent.querySelector('img').src;
+    return { first, second, atEnd: MaweStickerOverlay.activeStickersAt(4000).length,
+      afterEnd: MaweStickerOverlay.activeStickersAt(4500).length };
+  });
+  expect(result.first).toContain('cat.png');
+  expect(result.second).toContain('dog.png');
+  expect(result.atEnd).toBe(0);
+  expect(result.afterEnd).toBe(0);
 });

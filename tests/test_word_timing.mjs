@@ -117,6 +117,15 @@ test('conversion preserves all original text and one item per output without str
   }
   assert.equal(utils.planWordTimingConversion(plan.segments, [0, 1]).conversions.length, 0);
 });
+
+test('word conversion reserves cue IDs belonging to other project tracks', () => {
+  const source = sentence();
+  const plan = utils.planWordTimingConversion([source], [0], undefined, {
+    reservedSegments: [{ id: 'sentence-item-1' }, { id: 'sentence-item-1-2' }, { id: 'sentence-item-2' }],
+  });
+  assert.deepEqual(plain(plan.segments.map(s => s.id)), ['sentence-item-1-3', 'sentence-item-2-2']);
+  assert.equal(plan.segments.map(s => s.text).join(''), source.text);
+});
 test('conversion repairs head/ref indices outside selected sentences and assigns collision-free IDs', () => {
   const source = { ...sentence(), color: { name: 'red', start: 100, end: 1800 } };
   const later = { id: 'sentence-item-1', start: 1000, end: 1800, text: '后', color_ref: { name: 'red', headIdx: 0 } };

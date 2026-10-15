@@ -214,7 +214,8 @@ function addOverlayRangeFromWaveform(requestedStart, requestedEnd, clickX, click
   MaweCuePanel.commitCuePanelEdit();
   return MaweCommands.run('新增叠加字幕', (command) => {
     overlay.segments.splice(index, 0, {
-      id: MULTI_SUBTITLE_UTILS.uniqueStableSegmentId(overlay.segments, `overlay-${index + 1}`, 'overlay'),
+      id: MULTI_SUBTITLE_UTILS.uniqueStableSegmentId(
+        window.AsrEditorUtils.subtitleGroupTracks(MaweBoot.DATA).flatMap(t => t.segments), `overlay-${index + 1}`, 'overlay'),
       start: safeStart,
       end: safeEnd,
       text: '',
