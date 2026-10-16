@@ -44,18 +44,20 @@
 
 
 
-  function applyWaveformModeRowHeight({ render = true } = {}) {
+  function applyWaveformModeRowHeight({ render = true, minimumHeight = null } = {}) {
     const editor = MaweCoreState.waveformEditor;
     if (!editor) return;
-    const mode = waveformModes.at(-1);
-    const height = mode === 'word'
-      ? MaweSettings.EDITOR_SETTINGS.wordTimingRowHeight
-      : mode === 'multi' ? MaweSettings.EDITOR_SETTINGS.multiSubtitleRowHeight : waveformRowHeightBeforeModes;
+    const heights = [waveformRowHeightBeforeModes, minimumHeight];
+    for (const mode of waveformModes) {
+      heights.push(mode === 'word' ? MaweSettings.EDITOR_SETTINGS.wordTimingRowHeight
+        : MaweSettings.EDITOR_SETTINGS.multiSubtitleRowHeight);
+    }
+    const height = Math.max(...heights.filter(Number.isFinite));
     if (Number.isFinite(height)) editor.setRowHeight(height, { render });
   }
 
-  // 共享基线，最近开启的模式优先。关闭非顶层模式不会改动当前行高；
-  // 关闭顶层时回到剩余模式的预设，全部关闭后才恢复原始行高。
+  // 预设仅作为高度下限：开启任一模式不缩小现有行高；关闭时重新计算
+  // 剩余模式需要的下限，全部关闭后恢复共享的原始行高。
   function syncWaveformModeRowHeight(mode, enabled, { render = true } = {}) {
     const editor = MaweCoreState.waveformEditor;
     if (!editor) return;
@@ -66,9 +68,8 @@
       waveformModes.push(mode);
     } else {
       waveformModes.splice(index, 1);
-      if (index < waveformModes.length) return;
     }
-    applyWaveformModeRowHeight({ render });
+    applyWaveformModeRowHeight({ render, minimumHeight: enabled ? editor.getRowHeight() : null });
     if (!waveformModes.length) waveformRowHeightBeforeModes = null;
   }
 
@@ -85,7 +86,8 @@
     const wasEnabled = waveformModes.includes('word');
     if (enabled && !wasEnabled) {
       secondsPerRowBeforeWordTiming = editor.settings.secondsPerRow;
-      editor.setSecondsPerRow(MaweSettings.EDITOR_SETTINGS.wordTimingSecondsPerRow, { render: false });
+      editor.setSecondsPerRow(Math.max(secondsPerRowBeforeWordTiming,
+        MaweSettings.EDITOR_SETTINGS.wordTimingSecondsPerRow), { render: false });
     } else if (!enabled && wasEnabled) {
       editor.setSecondsPerRow(secondsPerRowBeforeWordTiming, { render: false });
       secondsPerRowBeforeWordTiming = null;

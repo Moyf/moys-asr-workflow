@@ -4,12 +4,9 @@ from tests.compact_assertions import CompactContainerAssertions
 
 import json
 import unittest
-from pathlib import Path
 
 import edit
 from maw.colors import COLOR_PALETTE
-
-REPO_ROOT = Path(__file__).resolve().parents[1]
 
 
 class EditorPaletteInjectionTests(CompactContainerAssertions, unittest.TestCase):
@@ -31,11 +28,18 @@ class EditorPaletteInjectionTests(CompactContainerAssertions, unittest.TestCase)
         for name, value in COLOR_PALETTE:
             self.assertIn(json.dumps({"name": name, "value": value}, ensure_ascii=False), page)
 
-    def test_committed_blank_editor_stays_in_sync(self) -> None:
-        blank = (REPO_ROOT / "blank-editor.html").read_text(encoding="utf-8")
+    def test_blank_editor_renderer_injects_current_palette(self) -> None:
+        # The committed portable copy is regenerated before releases, not on
+        # every source edit. Exercise the real blank renderer without writing it.
+        blank = edit.build_blank_html()
 
-        self.assertIn("window.ASR_EDITOR_PALETTE = ", blank)
-        self.assertIn(edit.build_palette_json(), blank)
+        assignment = "window.ASR_EDITOR_PALETTE = "
+        self.assertIn(assignment, blank)
+        injected, _ = json.JSONDecoder().raw_decode(blank.split(assignment, 1)[1])
+        self.assertEqual(
+            injected,
+            [{"name": name, "value": value} for name, value in COLOR_PALETTE],
+        )
         self.assertNotIn("__PALETTE_JSON__", blank)
 
     @staticmethod

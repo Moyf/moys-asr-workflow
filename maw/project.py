@@ -413,13 +413,15 @@ def _validate_transcription_metadata(
     errors: list[ProjectValidationError],
 ) -> None:
     """Validate optional ASR metadata without changing legacy project values."""
-    for field in ("language", "language_source", "split_mode", "timestamp_granularity"):
+    for field in ("language", "language_source", "split_mode", "timestamp_granularity", "timed_text_edit_view"):
         if field in project and not isinstance(project[field], str):
             errors.append(ProjectValidationError(f"$.{field}", "must be a string"))
     language_source = project.get("language_source")
     if isinstance(language_source, str) and language_source not in LANGUAGE_SOURCES:
         errors.append(ProjectValidationError("$.language_source", "must be detected, hint, inferred, or unknown"))
     split_mode = project.get("split_mode")
+    if "timed_text_edit_view" in project and project["timed_text_edit_view"] not in ("rows", "single"):
+        errors.append(ProjectValidationError("$.timed_text_edit_view", "must be rows or single"))
     if isinstance(split_mode, str) and split_mode not in SPLIT_MODES:
         errors.append(ProjectValidationError("$.split_mode", "must be continuous or word"))
     timestamp_granularity = project.get("timestamp_granularity")

@@ -97,7 +97,7 @@ language_filter_hint_suffix: "中开启。",
     preset_field_prompt_context: "提示词", preset_field_hotwords_keywords: "热词", preset_field_hotword_file: "热词文件",
     preset_field_soniox_general: "通用上下文", preset_field_translation_terms: "翻译词汇", preset_field_language: "语言",
     preset_field_punctuation: "标点模型", preset_field_alignment: "对齐模型",
-    preset_field_hotword_weight: "热词权重", preset_field_speaker_colors: "显示说话人", preset_field_spectral: "生成频谱数据", preset_field_enabled: "是",
+    preset_field_hotword_weight: "热词权重", preset_field_speaker_colors: "显示说话人", preset_field_spectral: "生成频谱数据", preset_field_thumbnails: "生成高精度画面预览图", preset_field_enabled: "是",
     preset_field_max_len: "最大字数", preset_field_min_len: "最少字数", preset_field_max_words: "最多单词", preset_field_min_words: "最少单词", preset_field_gap_split: "间隔分句",
     preset_field_debug: "调试运行", preset_field_test_run: "快速测试", preset_field_keep_dialect: "保留方言表达",
     preset_modal_saved_in: "预设文件夹：", preset_modal_settings_lead: "（可在 ", preset_modal_settings_link: "设置", preset_modal_settings_tail: " 中更改）",
@@ -260,7 +260,7 @@ language_filter_hint_suffix: "中开启。",
     preset_field_prompt_context: "Prompt", preset_field_hotwords_keywords: "Hotwords", preset_field_hotword_file: "Hotword file",
     preset_field_soniox_general: "General context", preset_field_translation_terms: "Translation terms", preset_field_language: "Language",
     preset_field_punctuation: "Punctuation model", preset_field_alignment: "Alignment model",
-    preset_field_hotword_weight: "Hotword weight", preset_field_speaker_colors: "Speaker labels", preset_field_spectral: "Generate spectral data", preset_field_enabled: "Yes",
+    preset_field_hotword_weight: "Hotword weight", preset_field_speaker_colors: "Speaker labels", preset_field_spectral: "Generate spectral data", preset_field_thumbnails: "Generate high-precision preview frames", preset_field_enabled: "Yes",
     preset_field_max_len: "Max characters", preset_field_min_len: "Min characters", preset_field_max_words: "Max words", preset_field_min_words: "Min words", preset_field_gap_split: "Gap split",
     preset_field_debug: "Debug run", preset_field_test_run: "Quick test", preset_field_keep_dialect: "Keep dialect",
     preset_modal_saved_in: "Preset folder: ", preset_modal_settings_lead: " (change in ", preset_modal_settings_link: "Settings", preset_modal_settings_tail: ")",
@@ -380,10 +380,10 @@ Object.assign(STRINGS.en, {
   toolbox_green_screen_done: "Green-screen video created; switched to the new media:",
 });
 Object.assign(STRINGS.zh, {
-  toolbox_burn_crf: "画质 CRF", toolbox_burn_crf_hint: "数值越小画质越高、文件越大；常用 16–23，默认 18。", toolbox_burn_crf_invalid: "CRF 需要是 0–51 之间的整数。", toolbox_burn_preset: "编码预设", toolbox_burn_preset_hint: "仅 CPU 编码使用：越慢压缩率越高、耗时越长；一般保持 medium。", toolbox_burn_audio_bitrate: "音频码率", toolbox_burn_audio_bitrate_hint: "码率越高音质越好、文件越大；默认 192k。", toolbox_burn_save_defaults: "保存为默认参数", toolbox_burn_settings_saved: "已保存为默认参数，之后烧录会自动预填。"
+  toolbox_burn_crf: "画质 CRF", toolbox_burn_crf_hint: "数值越小画质越高、文件越大；常用 16–23，默认 21。", toolbox_burn_crf_invalid: "CRF 需要是 0–51 之间的整数。", toolbox_burn_preset: "编码预设", toolbox_burn_preset_hint: "仅 CPU 编码使用：越慢压缩率越高、耗时越长；一般保持 medium。", toolbox_burn_audio_bitrate: "音频码率", toolbox_burn_audio_bitrate_hint: "码率越高音质越好、文件越大；默认 192k。", toolbox_burn_save_defaults: "保存为默认参数", toolbox_burn_settings_saved: "已保存为默认参数，之后烧录会自动预填。"
 });
 Object.assign(STRINGS.en, {
-  toolbox_burn_crf: "Quality CRF", toolbox_burn_crf_hint: "Lower CRF means higher quality and larger files; 16–23 is common, default 18.", toolbox_burn_crf_invalid: "CRF must be an integer between 0 and 51.", toolbox_burn_preset: "Encoder preset", toolbox_burn_preset_hint: "Applies to CPU encoding only: slower presets compress better but take longer; keep medium in most cases.", toolbox_burn_audio_bitrate: "Audio bitrate", toolbox_burn_audio_bitrate_hint: "Higher bitrate sounds better and grows the file; default 192k.", toolbox_burn_save_defaults: "Save as defaults", toolbox_burn_settings_saved: "Saved as defaults; future runs will prefill these."
+  toolbox_burn_crf: "Quality CRF", toolbox_burn_crf_hint: "Lower CRF means higher quality and larger files; 16–23 is common, default 21.", toolbox_burn_crf_invalid: "CRF must be an integer between 0 and 51.", toolbox_burn_preset: "Encoder preset", toolbox_burn_preset_hint: "Applies to CPU encoding only: slower presets compress better but take longer; keep medium in most cases.", toolbox_burn_audio_bitrate: "Audio bitrate", toolbox_burn_audio_bitrate_hint: "Higher bitrate sounds better and grows the file; default 192k.", toolbox_burn_save_defaults: "Save as defaults", toolbox_burn_settings_saved: "Saved as defaults; future runs will prefill these."
 });
 Object.assign(STRINGS.zh, {
   toolbox_burn_video_encoder: "视频编码器",
@@ -812,6 +812,9 @@ Object.assign(STRINGS.zh, {
   generate_spectral: "生成频谱数据",
   generate_spectral_hint: "默认只生成波形；频谱会增加耗时和文件体积",
   generate_spectral_title: "为媒体旁的 .ReaPeaks 缓存额外生成频谱层；不影响原生波形。",
+  generate_thumbnails: "生成高精度画面预览图",
+  generate_thumbnails_hint: "转写时先生成秒级关键帧底图（总是开启），再额外解码精确网格画面供画面带铺满使用；未勾选时编辑器仍可按需补帧。",
+  generate_thumbnails_title: "在关键帧底图之上额外生成高精度画面预览图；不勾选可加快转写，编辑器仍可按需补帧。",
   segmentation: "断句",
   max_len: "单句上限（字数）",
   min_len: "短句合并（字数）",
@@ -901,6 +904,9 @@ Object.assign(STRINGS.en, {
   generate_spectral: "Generate spectral data",
   generate_spectral_hint: "Generates the waveform only by default; spectral data adds processing time and file size.",
   generate_spectral_title: "Add a spectral layer to the .ReaPeaks cache beside the media; this does not change the native waveform.",
+  generate_thumbnails: "Generate high-precision preview frames",
+  generate_thumbnails_hint: "Transcription always builds a seconds-fast keyframe base first; enabling this additionally decodes the precise grid used by the film strip. When unchecked, the editor still fills pictures on demand.",
+  generate_thumbnails_title: "Build high-precision preview frames on top of the keyframe base. Leave unchecked to keep transcription fast; the editor can still decode pictures on demand.",
   segmentation: "Splitting",
   max_len: "Max characters per subtitle",
   min_len: "Short-cue merge (characters)",

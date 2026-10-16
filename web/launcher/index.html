@@ -98,7 +98,7 @@
     </nav>
     <div class="app-main">
     <header class="topbar">
-      <div class="wordmark">Moy's ASR Workflow <span class="version" id="appVersion">v1.9.0-beta.1</span></div>
+      <div class="wordmark">Moy's ASR Workflow <span class="version" id="appVersion">v1.9.0-beta.2</span></div>
       <span id="demoBadge" class="demo-badge hidden" data-i18n="demo_mode">演示模式</span>
       <span class="topbar-spacer"></span>
       <button id="supportLink" class="topbar-link" type="button"><svg class="i" aria-hidden="true"><use href="#i-heart"></use></svg><span data-i18n="support_maw">支持 MAW</span></button>
@@ -403,9 +403,16 @@
                 <div id="generateSpectralField" class="misc-option">
                   <div class="misc-option-copy">
                     <label class="misc-option-label" for="generateSpectral" data-i18n-title="generate_spectral_title"><span data-i18n="generate_spectral">生成频谱数据</span></label>
-                    <p class="hint" data-i18n="generate_spectral_hint">默认只生成波形；频谱会增加耗时和文件体积</p>
+                    <p class="hint" data-i18n="generate_spectral_hint">默认只生成 reapeaks 波形层；勾选后会额外计算频谱，耗时和文件体积都会增加。</p>
                   </div>
                   <input id="generateSpectral" type="checkbox" class="auto-head-switch">
+                </div>
+                <div id="generateThumbnailsField" class="misc-option">
+                  <div class="misc-option-copy">
+                    <label class="misc-option-label" for="generateThumbnails" data-i18n-title="generate_thumbnails_title"><span data-i18n="generate_thumbnails">生成高精度画面预览图</span></label>
+                    <p class="hint" data-i18n="generate_thumbnails_hint">转写时先生成秒级关键帧底图（总是开启），再额外解码精确网格画面供画面带铺满使用；未勾选时编辑器仍可按需补帧。</p>
+                  </div>
+                  <input id="generateThumbnails" type="checkbox" class="auto-head-switch">
                 </div>
                 <div id="debugRawField" class="misc-option">
                   <div class="misc-option-copy">
@@ -414,7 +421,6 @@
                   </div>
                   <input id="debugRaw" type="checkbox" class="auto-head-switch">
                 </div>
-                <div class="misc-option misc-option-placeholder" aria-hidden="true"></div>
               </div>
             </div>
           </div>
@@ -867,8 +873,8 @@
         <div class="toolbox-grid">
           <div class="field">
             <label for="toolboxBurnCrf" data-i18n="toolbox_burn_crf">画质 CRF</label>
-            <input id="toolboxBurnCrf" type="number" min="0" max="51" step="1" value="18" autocomplete="off">
-            <p class="hint" data-i18n="toolbox_burn_crf_hint">数值越小画质越高、文件越大；常用 16–23，默认 18。</p>
+            <input id="toolboxBurnCrf" type="number" min="0" max="51" step="1" value="21" autocomplete="off">
+            <p class="hint" data-i18n="toolbox_burn_crf_hint">数值越小画质越高、文件越大；常用 16–23，默认 21。</p>
             <p id="toolboxBurnCrfError" class="field-error"></p>
           </div>
           <div class="field">

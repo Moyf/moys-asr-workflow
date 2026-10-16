@@ -84,7 +84,29 @@ node.exe / chrome.exe / python.exe——会误杀 agent 守护进程、其他 wo
    POSIX 使用独立进程组；停止等待管道关闭并显式报告超时。它也覆盖包装进程
    先退出的情况，详见 [E2E 服务进程生命周期](E2E_PROCESS_LIFECYCLE.md)。
 
+## 多 agent 并行运行（2026-10-15 起成为常态）
+
+同一仓库的多个 agent 会在各自的 worktree 同时跑 e2e（本机已实测出现：一个
+paseo worktree 会话在跑全量 playwright + serve.py 时，另一个会话同时验证）。
+
+- **端口不会冲突**：helpers 为每个 fixture 找 127.0.0.1 上的临时空闲端口
+  （`createServer` 探测，无硬编码），并行运行互不抢占。真正的代价是 CPU
+  竞争拖慢用例——60 条 spec 平时 3.7 分钟，竞争下可能明显更久。
+- **清理必须先核对归属**：诊断与清理命令按「本 worktree 路径 + playwright」
+  过滤 CommandLine；直接按进程名、端口或「看起来像 serve.py」清理会误杀
+  并行 agent 的进程树，让对方误判为残留泄漏。
+- **遇到其他 worktree 的进程：不杀、不等、不慌**。缩小自己的运行范围
+  （单 spec + `-g` 过滤）、给 run_check/命令超时留富余；不要把「比平时慢」
+  或一次偶发超时当成回归去循环重跑。
+- 自身的进程树交给 run_check 超时回收即可（它会按 PID 杀整棵树）；手工
+  Start-Process 启动的服务用完必须自己收尾。
+
 ## 事件记录
+
+- 2026-10-15，#240 合并后验证轮：本会话全量 e2e 被 run_check 超时回收后，发现
+  另一 agent worktree 正在并行跑全量 e2e（含 serve.py 父子进程）。按 CommandLine
+  核对归属确认非本会话残留，未动外部进程；随后单 spec 重跑（`-g` 过滤）3.7 分钟
+  正常完成。期间确认 helpers 的临时端口机制让两边互不干扰，CPU 竞争只影响耗时。
 
 - 2026-10-08，PR #180 修复轮：全量 e2e 被中断后残留 12 个 serve.py（6 组），
   一条后台命令在 UI 上显示运行 10 小时+；按上述流程清理后重跑正常。同日第二

@@ -159,6 +159,335 @@ def unique_json_object(pairs):
     return result
 
 
+# === Markdown 源格式（v1）：与 JSON 同一 source 契约的便携载体，可贴 PR 评论 ===
+
+MD_FRONT_KEYS = ("task", "pr", "date", "status", "updated")
+MD_FRONT_STATUS = ("pending", "partial", "passed")
+MD_DATE_RE = re.compile(r"\d{4}-\d{2}-\d{2}")
+MD_SECTION_ID_RE = re.compile(r"^<!-- id: ([A-Za-z][A-Za-z0-9_-]*) -->$")
+MD_BADGE_RE = re.compile(r"^<!-- badge: (pass|fixed|todo) (.+?) -->$")
+MD_CHECK_RE = re.compile(r"^- \[([ xX])\] \*\*(.+?)\*\*：(.+)$")
+MD_CHECK_TRAILING_ID_RE = re.compile(r"<!-- id: ([A-Za-z][A-Za-z0-9_-]*) -->\s*$")
+MD_HEADING_SPLIT_RE = re.compile(r"^(\d+)\. (.+)$")
+
+
+def validate_front_matter(meta, path_label="front-matter"):
+    """校验 --meta 与 MD front-matter 共用的元数据字段（status 为追踪核心）。"""
+    unknown = set(meta) - set(MD_FRONT_KEYS)
+    if unknown:
+        raise ValueError(f"{path_label} 未知字段: {', '.join(sorted(unknown))}")
+    if "status" not in meta:
+        raise ValueError(f"{path_label} 缺少 status（pending / partial / passed）")
+    if meta["status"] not in MD_FRONT_STATUS:
+        raise ValueError(f"{path_label}.status: expected one of {MD_FRONT_STATUS}")
+    if "pr" in meta and not re.fullmatch(r"\d+", meta["pr"]):
+        raise ValueError(f"{path_label}.pr: expected an integer")
+    for key in ("date", "updated"):
+        if key in meta and not MD_DATE_RE.fullmatch(meta[key]):
+            raise ValueError(f"{path_label}.{key}: expected YYYY-MM-DD")
+    return meta
+
+
+def parse_front_matter(text):
+    """拆出文件头部的扁平 key: value front-matter；没有时返回 (None, 原文)。"""
+    if not text.startswith("---\n"):
+        return None, text
+    head, separator, body = text[4:].partition("\n---\n")
+    if not separator:
+        raise ValueError("front-matter 未闭合：缺少收尾的 --- 行")
+    meta = {}
+    for line in head.splitlines():
+        if not line.strip():
+            continue
+        key, colon, value = line.partition(":")
+        if not colon:
+            raise ValueError(f"front-matter 行无效（需要 key: value）: {line!r}")
+        if key.strip() in meta:
+            raise ValueError(f"front-matter 重复字段: {key.strip()}")
+        meta[key.strip()] = value.strip()
+    validate_front_matter(meta)
+    return meta, body
+
+
+def escape_markdown_paragraph(text):
+    """段落是普通行；行首恰好是列表/引用/标题/围栏标记时转义，避免被读成块。"""
+    if text.startswith("- "):
+        return "\\- " + text[2:]
+    numbered = MD_HEADING_SPLIT_RE.match(text)
+    if numbered:
+        return f"{numbered.group(1)}\\. {numbered.group(2)}"
+    if re.match(r"^(>|#|```)", text):
+        return "\\" + text
+    return text
+
+
+def unescape_markdown_paragraph(text):
+    if text.startswith("\\- "):
+        return "- " + text[3:]
+    numbered = re.match(r"^(\d+)\\. ", text)
+    if numbered:
+        return f"{numbered.group(1)}. " + text[numbered.end():]
+    for marker in ("\\> ", "\\# ", "\\```"):
+        if text.startswith(marker):
+            return text[1:]
+    return text
+
+
+def parse_markdown_source(text):
+    """把 Markdown 源格式还原为 source 契约 dict（front-matter 单独返回）。"""
+    meta, body = parse_front_matter(text)
+    title = subtitle = None
+    sections, current = [], None
+    list_items = list_context = None
+    table_start = table_lines = None
+    fence_open = command_lines = None
+
+    def flush_list():
+        nonlocal list_items, list_context
+        if list_items is not None:
+            block = {"type": "list", "items": list_items}
+            if list_context:
+                block["ordered"] = True
+            current["blocks"].append(block)
+            list_items = None
+
+    def flush_table():
+        nonlocal table_lines
+        if table_lines is not None:
+            if len(table_lines) < 2 or not re.fullmatch(r"\|(\s*:?-+:?\s*\|)+", table_lines[1]):
+                raise ValueError(f"第 {table_start} 行: 表格第二行必须是 | --- | 分隔行")
+            headers = split_markdown_row(table_lines[0])
+            rows = [split_markdown_row(line) for line in table_lines[2:]]
+            for row in rows:
+                if len(row) != len(headers):
+                    raise ValueError(f"第 {table_start} 行: 表格行单元格数与表头不一致")
+            current["blocks"].append({"type": "table", "headers": headers, "rows": rows})
+            table_lines = None
+
+    def flush_command():
+        nonlocal command_lines
+        if command_lines is not None:
+            current["blocks"].append({"type": "command", "text": "\n".join(command_lines)})
+            command_lines = None
+
+    def flush_all():
+        flush_list()
+        flush_table()
+        flush_command()
+
+    for line_no, raw in enumerate(body.splitlines(), start=1):
+        line = raw.rstrip()
+        if fence_open:
+            if line.strip() == "```":
+                flush_command()
+                fence_open = None
+            else:
+                command_lines.append(raw)
+            continue
+        if line.strip().startswith("```"):
+            stripped = line.strip()
+            flush_all()
+            if len(stripped) > 6 and stripped.endswith("```"):
+                current["blocks"].append({"type": "command", "text": stripped[3:-3]})
+                continue
+            fence_open = True
+            command_lines = []
+            continue
+        if not line.strip():
+            flush_all()
+            continue
+        if line.startswith("## "):
+            flush_all()
+            current = {"id": None, "title": line[3:].strip(), "blocks": []}
+            sections.append(current)
+            continue
+        if current is None:
+            if line.startswith("# "):
+                if title is not None:
+                    raise ValueError(f"第 {line_no} 行: 出现第二个 H1 标题")
+                title = line[2:].strip()
+                continue
+            if line.startswith(">"):
+                if subtitle is not None:
+                    raise ValueError(f"第 {line_no} 行: 出现第二行副标题")
+                subtitle = line[1:].strip()
+                continue
+            raise ValueError(f"第 {line_no} 行: 标题区之外无法解析的内容")
+        if current["id"] is None:
+            section_id = MD_SECTION_ID_RE.match(line.strip())
+            if section_id:
+                current["id"] = section_id.group(1)
+                continue
+        badge = MD_BADGE_RE.match(line.strip())
+        if badge:
+            current["badge"] = {"kind": badge.group(1), "text": badge.group(2)}
+            continue
+        check = MD_CHECK_RE.match(line)
+        if check:
+            flush_all()
+            entry, tail = check.group(2), check.group(3)
+            id_match = MD_CHECK_TRAILING_ID_RE.search(tail)
+            if not id_match:
+                raise ValueError(f"第 {line_no} 行: check 行结尾缺少 <!-- id: stable-id -->")
+            rest = tail[:id_match.start()].rstrip()
+            action, separator, expected = rest.partition("；预期：")
+            if not separator:
+                raise ValueError(f"第 {line_no} 行: check 行缺少「；预期：」分隔")
+            for name, value in (("entry", entry), ("action", action), ("expected", expected)):
+                if "**" in value or "<!--" in value:
+                    raise ValueError(f"第 {line_no} 行: check {name} 不能包含 ** 或 <!--")
+            if "；预期：" in action:
+                raise ValueError(f"第 {line_no} 行: check action 不能包含「；预期：」分隔符")
+            current["blocks"].append({"type": "check", "id": id_match.group(1),
+                "entry": entry.strip(), "action": action.strip(), "expected": expected.strip()})
+            continue
+        if line.startswith("| "):
+            flush_list()
+            flush_command()
+            if table_lines is None:
+                table_start = line_no
+                table_lines = []
+            table_lines.append(line)
+            continue
+        numbered = MD_HEADING_SPLIT_RE.match(line)
+        if line.startswith("- ") or numbered:
+            flush_table()
+            flush_command()
+            item = numbered.group(2).strip() if numbered else line[2:].strip()
+            ordered = bool(numbered)
+            if list_items is None or list_context != ordered:
+                flush_list()
+                list_items, list_context = [], ordered
+            list_items.append(item)
+            continue
+        flush_all()
+        current["blocks"].append({"type": "note", "text": unescape_markdown_paragraph(line.strip())})
+    flush_all()
+    if title is None:
+        raise ValueError("缺少 `# 页面标题`（H1）")
+    if subtitle is None:
+        raise ValueError("缺少 `> 副标题` 行")
+    if not sections:
+        raise ValueError("没有 `## ` 分区")
+    for index, section in enumerate(sections):
+        if section["id"] is None:
+            raise ValueError(f"分区 {section['title']!r} 缺少 <!-- id: stable-id --> 注释")
+    return meta, {"schema": SOURCE_SCHEMA, "title": title, "subtitle": subtitle,
+                  "sections": sections}
+
+
+def split_markdown_row(line):
+    body = line.strip().removeprefix("|").removesuffix("|")
+    return [cell.replace("\\|", "|").strip() for cell in re.split(r"(?<!\\)\|", body)]
+
+
+def source_to_markdown(source, meta=None):
+    """把 source 契约转成 Markdown 源格式；meta 提供时写入 front-matter。"""
+    if meta is not None:
+        validate_front_matter(meta)
+    for key in ("title", "subtitle"):
+        if "\n" in str(source.get(key, "")):
+            raise ValueError(f"source.{key}: MD v1 标题与副标题必须是单行")
+    lines = []
+    if meta:
+        lines.append("---")
+        lines.extend(f"{key}: {meta[key]}" for key in MD_FRONT_KEYS if key in meta)
+        lines.extend(("---", ""))
+    lines.extend((f"# {source['title']}", "", f"> {source['subtitle']}", ""))
+    for section in source["sections"]:
+        if section.get("open") is False:
+            raise ValueError(f"分区 {section['title']!r}: MD v1 不支持折叠分区（去掉 open: false）")
+        lines.append(f"## {section['title']}")
+        lines.append(f"<!-- id: {section['id']} -->")
+        badge = section.get("badge")
+        if badge:
+            lines.append(f"<!-- badge: {badge['kind']} {badge['text']} -->")
+        lines.append("")
+        for block in section["blocks"]:
+            kind = block["type"]
+            if kind == "note":
+                if "\n" in block["text"]:
+                    raise ValueError(f"note {block['text'][:24]!r}: MD v1 说明必须是单行（其余拆成多条）")
+                lines.extend((escape_markdown_paragraph(block["text"]), ""))
+            elif kind == "command":
+                if "```" in block["text"]:
+                    raise ValueError("command 文本不能包含 ``` 围栏")
+                lines.extend(("```", block["text"], "```", ""))
+            elif kind == "list":
+                marker = "1." if block.get("ordered") else "-"
+                lines.extend((f"{marker} {item}" for item in block["items"]))
+                lines.append("")
+            elif kind == "table":
+                def escape_cell(cell):
+                    return str(cell).replace("|", "\\|")
+                for cell in [cell for row in block["rows"] for cell in row] + list(block["headers"]):
+                    if "\n" in str(cell):
+                        raise ValueError("表格单元格不能包含换行")
+                lines.append("| " + " | ".join(escape_cell(cell) for cell in block["headers"]) + " |")
+                lines.append("| " + " | ".join(["---"] * len(block["headers"])) + " |")
+                for row in block["rows"]:
+                    lines.append("| " + " | ".join(escape_cell(cell) for cell in row) + " |")
+                lines.append("")
+            elif kind == "check":
+                for name in ("entry", "action", "expected"):
+                    value = str(block[name])
+                    if "**" in value or "<!--" in value or "\n" in value:
+                        raise ValueError(f"check {block['id']} 的 {name} 不能包含 **、<!-- 或换行")
+                if "；预期：" in str(block["action"]):
+                    raise ValueError(f"check {block['id']} 的 action 不能包含「；预期：」分隔符")
+                lines.append(f"- [ ] **{block['entry']}**：{block['action']}；预期：{block['expected']}"
+                             f" <!-- id: {block['id']} -->")
+            else:
+                raise ValueError(f"MD v1 暂不支持块类型: {kind}（text 块请改用 note）")
+        lines.append("")
+    return "\n".join(lines).rstrip("\n") + "\n"
+
+
+def load_authoring_data(path):
+    """读取 JSON 或 Markdown 授权数据；返回 (front_matter|None, source)。"""
+    text = path.read_text(encoding="utf-8-sig")
+    if path.suffix.lower() == ".json":
+        return None, json.loads(text, object_pairs_hook=unique_json_object)
+    if path.suffix.lower() == ".md":
+        return parse_markdown_source(text)
+    raise ValueError(f"不支持的清单数据格式: {path.name}（.json 或 .md）")
+
+
+def parse_meta_args(pairs):
+    if not pairs:
+        return None
+    meta = {}
+    for pair in pairs:
+        key, separator, value = pair.partition("=")
+        if not separator or not key.strip() or not value.strip():
+            raise ValueError(f"--meta 需要 KEY=VALUE: {pair!r}")
+        if key.strip() in meta:
+            raise ValueError(f"--meta 重复字段: {key.strip()}")
+        meta[key.strip()] = value
+    return meta
+
+
+def scan_checklists(root):
+    """汇总目录下全部 *.checklist.md 的 front-matter 状态与勾选进度。"""
+    files = sorted(root.rglob("*.checklist.md"))
+    if not files:
+        return [f"未找到 *.checklist.md：{root}"]
+    rows = []
+    for path in files:
+        try:
+            meta, body = parse_front_matter(path.read_text(encoding="utf-8-sig"))
+        except (OSError, ValueError) as error:
+            rows.append(f"{'invalid':>8}  {path}：{error}")
+            continue
+        meta = meta or {}
+        checked = sum(1 for line in body.splitlines() if line.startswith("- [x]"))
+        unchecked = sum(1 for line in body.splitlines() if line.startswith("- [ ]"))
+        display = path.relative_to(root) if path.is_relative_to(root) else path
+        rows.append(f"{meta.get('status', '—'):>8}  {checked}/{checked + unchecked:<3}  "
+                    f"pr={meta.get('pr', '—'):<6} {meta.get('task', '—'):<26} {display}")
+    return rows
+
+
 def write_page(output, content):
     """Replace a page only after its complete UTF-8 content has been written."""
     encoded = content.encode("utf-8")
@@ -233,22 +562,63 @@ def extract_page(content):
     return fields
 
 
-def main():
+def main(argv=None):
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--data", type=Path, help="UTF-8 JSON checklist authoring data")
+    parser.add_argument("--data", type=Path, help="UTF-8 JSON/Markdown checklist authoring data")
+    parser.add_argument("--check", type=Path, help="Validate a JSON/Markdown checklist without writing output")
+    parser.add_argument("--to-md", type=Path, dest="to_md",
+                        help="Convert a JSON checklist into the Markdown source format")
+    parser.add_argument("--meta", action="append", default=[], metavar="KEY=VALUE",
+                        help="Front-matter for --to-md: task/pr/date/status/updated")
+    parser.add_argument("--scan", type=Path, help="Summarize *.checklist.md status under a directory")
     parser.add_argument("--title", help="Plain-text page title (also the persistence identity)")
     parser.add_argument("--subtitle", help="Plain-text scope and verification context")
     parser.add_argument("--sections", type=Path, help="UTF-8 HTML containing the section cards")
-    parser.add_argument("--output", type=Path, help="Output HTML; defaults to refresh input")
+    parser.add_argument("--output", type=Path, help="Output HTML/MD; defaults to refresh input")
     parser.add_argument("--refresh", type=Path, help="Apply latest template to an existing checklist")
-    args = parser.parse_args()
+    args = parser.parse_args(argv)
     try:
-        if args.data:
-            if any(value is not None for value in (args.refresh, args.title, args.subtitle, args.sections)):
-                parser.error("--data cannot be combined with --refresh, --title, --subtitle or --sections")
+        if args.scan:
+            if any(value is not None for value in (args.data, args.check, args.to_md, args.refresh,
+                                                   args.title, args.subtitle, args.sections, args.output)) \
+                    or args.meta:
+                parser.error("--scan cannot be combined with other generation flags")
+            print("\n".join(scan_checklists(args.scan)))
+            return
+        if args.check:
+            if any(value is not None for value in (args.data, args.to_md, args.refresh, args.title,
+                                                   args.subtitle, args.sections, args.output)) or args.meta:
+                parser.error("--check cannot be combined with other generation flags")
+            _, source = load_authoring_data(args.check)
+            source_sections(source)
+            print(f"Checklist OK: {args.check}")
+            return
+        if args.to_md:
+            if any(value is not None for value in (args.data, args.check, args.refresh, args.title,
+                                                   args.subtitle, args.sections)):
+                parser.error("--to-md cannot be combined with other generation flags")
+            if args.to_md.suffix.lower() != ".json":
+                raise ValueError("--to-md 输入必须是 .json")
             if args.output is None:
-                parser.error("JSON generation requires --output")
-            source = json.loads(args.data.read_text(encoding="utf-8-sig"), object_pairs_hook=unique_json_object)
+                parser.error("--to-md requires --output")
+            if args.output.resolve() == args.to_md.resolve():
+                parser.error("Output must not overwrite the JSON source")
+            meta = parse_meta_args(args.meta)
+            source = json.loads(args.to_md.read_text(encoding="utf-8-sig"),
+                                object_pairs_hook=unique_json_object)
+            source_sections(source)
+            write_page(args.output, source_to_markdown(source, meta))
+            print(f"Updated checklist: {args.output}")
+            return
+        if args.data:
+            if any(value is not None for value in (args.refresh, args.title, args.subtitle, args.sections)) \
+                    or args.meta:
+                parser.error("--data cannot be combined with --refresh, --title, --subtitle, --sections or --meta")
+            if args.output is None:
+                parser.error("JSON/Markdown generation requires --output")
+            if args.output.suffix.lower() == ".md":
+                parser.error("--data 生成 HTML 时 --output 请使用 .html（导出 MD 请用 --to-md）")
+            _, source = load_authoring_data(args.data)
             result = render_source(source)
             output = args.output
         elif args.refresh:

@@ -176,7 +176,7 @@ test('creates an empty secondary track on enable and imports subtitles optionall
     .toHaveAttribute('data-title', '开启后显示副字幕轨，可手动添加或导入第二条字幕。');
   await setProjectTrackEnabled(page, 'multi-subtitle-toggle', true);
   await expect(page.locator('#project-multi-subtitle-settings')).not.toHaveAttribute('hidden');
-  await openSettingsPage(page, 'project-tracks');
+  await openSettingsPage(page, 'multi-subtitle');
   await expect(page.locator('#multi-subtitle-empty-hint')).toBeVisible();
   await closeSettingsPanels(page);
   const trackId = await page.evaluate(() => MaweMultiSubtitleCore.getActiveExtensionTrack().id);
@@ -2641,7 +2641,7 @@ test('shows independent extension preview controls with yellow defaults', async 
   await expect(page.locator('#extension-subtitle-preview-title')).toBeVisible();
   await expect(page.locator('#extension-subtitle-preview-settings')).toBeVisible();
   await expect(page.locator('#subtitle-color')).toHaveValue('#ffffff');
-  await expect(page.locator('#extension-subtitle-color')).toHaveValue('#eac953');
+  await expect(page.locator('#extension-subtitle-color')).toHaveValue('#f9ca1f');
   await expect(page.locator('#extension-subtitle-background-color')).toHaveValue('#000000');
   await page.locator('#extension-subtitle-font-size').selectOption('14');
   await expect(page.locator('#overlay-extension-text')).toHaveCSS('font-size', '14px');
@@ -3870,7 +3870,7 @@ test('confirms main replacement and makes both replacement paths undoable', asyn
   await page.locator('#multi-subtitle-import-result-confirm').click();
   await expect(page.locator('#multi-subtitle-toggle')).toBeChecked();
   await page.keyboard.press('ControlOrMeta+z');
-  await openSettingsPage(page, 'project-tracks');
+  await openSettingsPage(page, 'multi-subtitle');
   await expect(page.locator('#multi-subtitle-toggle-label')).toBeVisible();
   await closeSettingsPanels(page);
   await expect(page.locator('#multi-subtitle-toggle')).not.toBeDisabled();
@@ -4335,7 +4335,7 @@ test('ASS mode previews and exports extension cues with the shared extension sty
   expect(result.trackDebug).toEqual(['ok', 'ok', 'ok']);
   expect(result.mainNative).toBe(86);
   expect(result.extensionNative).toBe(64);
-  expect(result.extensionFill.toLowerCase()).toBe('#eac953');
+  expect(result.extensionFill.toLowerCase()).toBe('#f9ca1f');
   expect(result.extensionAlignment).toBe(2);
   // 底部对齐时主文本块在锚点上方：副字幕锚点低于主字幕锚点即为主下方。
   expect(result.extensionAnchor.y).toBeGreaterThan(result.mainAnchor.y);

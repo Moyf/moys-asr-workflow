@@ -273,7 +273,10 @@ class ThumbnailCacheTests(unittest.TestCase):
         def cropped(blob, samples, **kwargs):
             return {sample["requested_ms"]: FrameResult(sample["requested_ms"], sample["actual_pts_ms"], "target", jpeg(suffix=str(sample["requested_ms"]).encode())) for sample in samples}
         def progress(message):
-            if int(message.split()[-1].split("/")[0]) >= 64:
+            head = message.split()[-1].split("/")[0]
+            if not head.isdigit():
+                return
+            if int(head) >= 64:
                 cancel.set()
         with mock.patch.object(c, "_crop_sprite", side_effect=cropped):
             with self.assertRaises(ThumbnailCancelled):
@@ -364,7 +367,8 @@ class ThumbnailCacheTests(unittest.TestCase):
         def stop_after(count):
             cancel = threading.Event()
             def progress(message):
-                if int(message.split()[-1].split("/")[0]) >= count:
+                head = message.split()[-1].split("/")[0]
+                if head.isdigit() and int(head) >= count:
                     cancel.set()
             with self.assertRaises(ThumbnailCancelled):
                 self.build(cancel=cancel, progress=progress)
@@ -396,7 +400,10 @@ class ThumbnailCacheTests(unittest.TestCase):
         c.probe_video.return_value = self.video
         cancel = threading.Event()
         def progress(message):
-            if int(message.split()[-1].split("/")[0]) >= 64:
+            head = message.split()[-1].split("/")[0]
+            if not head.isdigit():
+                return
+            if int(head) >= 64:
                 cancel.set()
         with self.assertRaises(ThumbnailCancelled):
             self.build(cancel=cancel, progress=progress)
