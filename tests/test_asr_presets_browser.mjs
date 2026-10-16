@@ -81,6 +81,8 @@ test('ASR preset library manages metadata and options independently with keyboar
     }, config);
     await page.reload();
     await page.waitForFunction(() => window.MAWLauncher?.config?.providers?.length);
+    await page.waitForFunction(() => document.body.dataset.workflowReady === 'true');
+    await page.locator('#recognitionExpand').click();
     const originalModel = await page.locator('#model').inputValue();
     assert.equal(await page.locator('#currentAsrPresetName').textContent(), '当前未选择预设');
     assert.equal(await page.locator('#currentAsrPresetPrefix').isVisible(), false);

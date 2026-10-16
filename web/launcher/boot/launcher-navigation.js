@@ -1,11 +1,11 @@
 // 左侧导航与页面切换：转写 / 批量 / 工具箱 / 工程 / 设置，以及帮助菜单与顶栏主题切换。
-// 批量在阶段 2 仍复用转写页（batch.js 的 setMode），只在导航上单独高亮。
+// 批量使用独立页面；模式仍由 batch.js 管理，运行中不能被导航改写。
 
 const GUIDE_URL = "https://moyf.github.io/moys-asr-workflow/docs/";
 let activePage = "transcribe";
 let settingsReturnPage = "transcribe";
 
-function pageSection(page) { return page === "batch" ? "transcribe" : page; }
+function pageSection(page) { return page; }
 function showPage(page) {
   const previous = activePage;
   const section = pageSection(page);
@@ -37,9 +37,8 @@ function navigateTo(page) {
 }
 // batch.js 的单文件/批量切换回调：停留在转写页时同步导航高亮。
 function onTranscribeModeChanged(mode) {
-  if (pageSection(activePage) !== "transcribe") return;
-  activePage = mode === "batch" ? "batch" : "transcribe";
-  syncNavHighlight();
+  if (!["transcribe", "batch"].includes(activePage)) return;
+  showPage(mode === "batch" ? "batch" : "transcribe");
 }
 
 function setHelpMenuOpen(open) {

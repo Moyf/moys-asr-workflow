@@ -7,6 +7,7 @@ from tests.launcher_sources import launcher_sources_dedented, launcher_sources_t
 
 import json
 import os
+import re
 import sys
 import tempfile
 import threading
@@ -1827,11 +1828,11 @@ class GuiWebBridgeTests(CompactContainerAssertions, unittest.TestCase):
         self.assertLess(html.index('id="toolboxExtractAudioTab"'), html.index('id="toolboxWaveformTab"'))
         # 媒体工具记住上次选择的工具；从未选择时回退到第一项（烧录字幕）。
         self.assertIn(
-            'const activeTab = activeToolboxView().querySelector(".toolbox-tab.active:not(.hidden)") || activeToolboxView().querySelector(".toolbox-tab:not(.hidden)");',
+            'toolboxSectionForTool(tab.dataset.tool) === section',
             script,
         )
         self.assertIn(
-            'return activeToolboxSection === "postprocess" ? $("toolboxPostprocessView") : $("toolboxUtilitiesView");',
+            'return $("toolboxToolNav");',
             script,
         )
         self.assertNotIn('id="toolboxWaveformTab"', postprocess_html)
@@ -1853,7 +1854,7 @@ class GuiWebBridgeTests(CompactContainerAssertions, unittest.TestCase):
         self.assertIn('toolbox_extract_audio: "Extract audio"', strings)
         self.assertIn('toolbox_timestamps: "生成时间码"', strings)
         self.assertIn('toolbox_timestamps: "Generate timestamps"', strings)
-        self.assertEqual(html.count('role="tablist"'), 4)
+        self.assertEqual(html.count('role="tablist"'), 5)
         self.assertIn('id="toolboxPostprocessTabList"', html)
         self.assertIn('id="toolboxUtilitiesTabList"', html)
         self.assertIn('<div class="toolbox-tab-list toolbox-tab-list-5">', postprocess_html)
@@ -1931,7 +1932,7 @@ class GuiWebBridgeTests(CompactContainerAssertions, unittest.TestCase):
         self.assertIn('target === "toolboxAlignmentScript"', launcher_script)
         self.assertNotIn('target === "toolboxAlignmentMedia"', launcher_script)
         self.assertIn('return ["alignment", "waveform", "ffconcat", "burnSubtitle", "extractAudio"].includes(tool)', postprocess_script)
-        self.assertIn('$("toolboxUtilityMediaDropZone").classList.toggle("hidden", section !== "utilities"', postprocess_script)
+        self.assertIn('$("toolboxUtilityMediaDropZone").classList.toggle("hidden", !["burnSubtitle", "extractAudio", "waveform"].includes(tool) || configOnly)', postprocess_script)
         self.assertIn('function syncUtilityMediaFieldState()', postprocess_script)
         self.assertIn('$("toolboxUtilityMediaPath").disabled = disabled', postprocess_script)
         self.assertIn('mediaPath: $("toolboxUtilityMediaPath").value.trim()', postprocess_script)
@@ -5589,7 +5590,7 @@ class LauncherAssetContractTests(CompactContainerAssertions, unittest.TestCase):
         self.assertIn('let localModelsRequest = 0;', script)
         self.assertIn('statusRequestId !== localStatusRequest', script)
         self.assertIn('Promise.allSettled', script)
-        self.assertIn('revealLauncher();\nwindow.dispatchEvent(new CustomEvent("mawlauncherready"));\nrefreshStartupState();', launcher_sources_dedented(ROOT))
+        self.assertIn('revealLauncher();\nwindow.dispatchEvent(new CustomEvent("mawlauncherready"));\ninitializeLauncherWorkflow();\ninitializeLauncherProjects();\nrefreshStartupState();', launcher_sources_dedented(ROOT))
         self.assertIn('void init().catch((error) => {', script)
 
     def test_custom_llm_task_requires_a_prompt(self) -> None:
@@ -5615,8 +5616,11 @@ class LauncherAssetContractTests(CompactContainerAssertions, unittest.TestCase):
         self.assertIn('data-i18n="toolbox_merge_bilingual"', page)
         self.assertIn('data-i18n="auto_merge_bilingual"', page)
         self.assertIn('id="autoPostprocessOptions" class="auto-postprocess-options hidden"', page)
-        self.assertIn('id="autoPostprocessStepsCard" class="sub-accordion collapsed"', page)
-        self.assertIn('id="autoPostprocessStepsToggle"', page)
+        self.assertIn('id="autoPostprocessStepsCard" class="sub-accordion"', page)
+        # 头部合并总开关后，行结构是「圆形编号 | 名称 | 配置 | 开关」。
+        self.assertIn('class="auto-step-num" aria-hidden="true"', page)
+        self.assertIn('id="autoPostprocessEnabled" type="checkbox" class="auto-head-switch"', page)
+        self.assertNotIn('id="autoPostprocessStepsToggle"', page)
         for step_id in ("Match", "Replace", "Proofread", "Resegment", "Ocr", "Translate"):
             self.assertIn(f'id="autoStep{step_id}Hint"', page)
         self.assertIn('$("postprocessOperation").addEventListener("change", () => switchLlmOperation($("postprocessOperation").value))', script)
@@ -5789,7 +5793,8 @@ class LauncherAssetContractTests(CompactContainerAssertions, unittest.TestCase):
         self.assertNotIn("setOpen(true)", pending_step)
         self.assertIn("font-size: 14px;", stylesheet)
         self.assertIn("font-size: 13px;", stylesheet)
-        self.assertNotIn("font-size: 11px", stylesheet)
+        # 设计规范只允许导航的队列数字角标使用 11px；正文仍不能缩小。
+        self.assertNotIn("font-size: 11px", re.sub(r"\.nav-badge\s*\{[^}]*\}", "", stylesheet))
         self.assertNotIn("font: 11px", stylesheet)
         self.assertIn(".local-status-row > button", stylesheet)
 
@@ -6323,7 +6328,7 @@ class LauncherAssetContractTests(CompactContainerAssertions, unittest.TestCase):
         for number, expected in (
             ("1", "选择媒体"),
             ("2", "识别设置"),
-            ("3", "转写后自动处理"),
+            ("3", "自动后处理"),
             ("4", "日志"),
         ):
             self.assertIn(f'<use href="#keycap-{number}"></use>', page)

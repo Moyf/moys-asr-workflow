@@ -2,6 +2,14 @@ import { test, expect } from '@playwright/test';
 
 const launcherUrl = new URL('../../web/launcher/index.html', import.meta.url).href;
 
+async function chooseTaskProvider(page, provider) {
+  await page.locator('#openLlmSettings').click();
+  await page.locator('#llmProvider').selectOption(provider);
+  await page.locator('#saveLlmSettings').click();
+  await expect(page.locator('#postprocessProvider')).toHaveValue(provider);
+  await page.evaluate(() => window.MAWLauncher.closeSettings());
+}
+
 test('startup migrates legacy cleanup memory, preserves newer choices and restores comparison from other AI steps', async ({ page }) => {
   const errors = [];
   page.on('pageerror', error => errors.push(error.message));
@@ -41,16 +49,16 @@ test('AI cleanup independently remembers its provider for manual requests and sa
   await page.goto(launcherUrl);
   await page.waitForFunction(() => window.MAWLauncher?.config?.postprocessProviders?.length);
   await page.evaluate(() => window.MAWLauncher.openToolboxAiProcessing());
-  await page.locator('#postprocessOperation').selectOption('translate_zh');
-  await page.locator('#postprocessProvider').selectOption('qwen');
-  await page.locator('#postprocessOperation').selectOption('ai_cleanup');
-  await page.locator('#postprocessProvider').selectOption('deepseek');
+  await page.locator('#toolboxLlmTab').click();
+  await chooseTaskProvider(page, 'qwen');
+  await page.locator('#toolboxCleanupTab').click();
+  await chooseTaskProvider(page, 'deepseek');
   expect(await page.evaluate(() => window.MAWLauncher.getAutoPostprocessPayload().steps.find(s => s.id === 'cleanup').providerId)).toBe('deepseek');
   await page.reload();
   await page.waitForFunction(() => window.MAWLauncher?.config?.postprocessProviders?.length);
   await page.evaluate(() => window.MAWLauncher.openToolboxAiProcessing());
   await expect(page.locator('#postprocessProvider')).toHaveValue('qwen');
-  await page.locator('#postprocessOperation').selectOption('ai_cleanup');
+  await page.locator('#toolboxCleanupTab').click();
   await expect(page.locator('#postprocessProvider')).toHaveValue('deepseek');
   await page.evaluate(() => {
     Object.assign(window.MAWLauncher.config.postprocessProviders.find(p => p.id === 'deepseek'),
@@ -92,16 +100,18 @@ test('custom slot errors use localized labels and custom authentication guidance
 test('DeepSeek links to AI Processing and translation restores its own provider', async ({ page }) => {
   await page.goto(launcherUrl);
   await page.waitForFunction(() => window.MAWLauncher?.config?.postprocessProviders?.length);
+  await page.locator('#recognitionExpand').click();
   await page.locator('#provider').selectOption('deepseek');
   await expect(page.locator('#start')).toBeDisabled();
   await page.locator('#providerNote button').click();
   await expect(page.locator('#pageToolbox')).toBeVisible();
   await expect(page.locator('#toolboxLlmTab')).toHaveAttribute('aria-selected', 'true');
-  await page.locator('#postprocessOperation').selectOption('translate_zh');
-  await page.locator('#postprocessProvider').selectOption('qwen');
-  await page.locator('#postprocessOperation').selectOption('proofread');
-  await page.locator('#postprocessProvider').selectOption('deepseek');
-  await page.locator('#postprocessOperation').selectOption('translate_en');
+  await page.locator('#toolboxLlmTab').click();
+  await chooseTaskProvider(page, 'qwen');
+  await page.locator('#toolboxProofreadTab').click();
+  await chooseTaskProvider(page, 'deepseek');
+  await page.locator('#toolboxLlmTab').click();
+  await page.locator('#toolboxTranslateTarget').selectOption('en');
   await expect(page.locator('#postprocessProvider')).toHaveValue('qwen');
   const plan = await page.evaluate(() => window.MAWLauncher.getAutoPostprocessPayload());
   expect(plan.steps.find(step => step.id === 'translate').providerId).toBe('qwen');

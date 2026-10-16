@@ -85,6 +85,12 @@ function notifySingleFailure(event) {
 }
 
 function handleBackendEvent(event) {
+  if (event.type === "dropMediaBatch") {
+    if (!state.dropTarget || state.dropTarget === "media") {
+      clearDropState(); window.MAWLauncher.addBatchPaths?.(event.paths || []);
+    } else handleRoutedDrop(event.paths?.[0] || "");
+    return;
+  }
   if (event.type === "batch_started" || event.type === "batchStarted") {
     resetBatchNotification(event.total);
   }
@@ -271,6 +277,7 @@ function handleBackendEvent(event) {
   }
   if (event.type === "done") {
     state.result = event.result;
+    launcherProjects?.remember(event.result?.jsonPath);
     setRunning(false);
     hideErrorNotice();
     $("retryPostprocess")?.classList.add("hidden");
@@ -283,11 +290,14 @@ function handleBackendEvent(event) {
     if (event.result?.videoPath) appendLog(`${t("toolbox_burn_done")}\n${event.result.videoPath}`);
     void checkExistingServer(t("done"));
   }
+  launcherWorkflow?.onEvent(event);
   if (event.type === "dropMedia" && !state.dropTarget && window.MAWLauncher?.onBatchDrop?.(event.path || "")) return;
   if (event.type === "dropReject" && !state.dropTarget && window.MAWLauncher?.onBatchDropReject?.(event.path || "")) return;
   if (event.type === "dropMedia" || event.type === "dropJson" || event.type === "dropSubtitle" || event.type === "dropHotwordFile" || event.type === "dropFfconcat" || event.type === "dropReject") handleRoutedDrop(event.path || "");
 }
 window.MAWLauncher = { backend: "pending", config: null, callBackend: bridge, translate: t, errorText: errText, revealFeedback: revealLauncherFeedback, viewportPixelsToPage, openSettings, closeSettings, showPage, navigateTo, getActivePage: () => activePage, setJsonPath, openServerEditor, getAudioTrackForMedia, getTranscriptionPayload: formPayload, validateApiKey, appendLog, confirm: confirmAction, confirmResolve: null, onBackendEvent: handleBackendEvent, onBackendEvents(events) { events.forEach(handleBackendEvent); }, onBatchStart() { hideErrorNotice(); resetBatchNotification(); }, onBatchError: (result) => { state.batchNotification = null; applyErrorResult(result, false); }, onLanguageChanged() {}, onProjectPathChanged() {}, onAlignmentModelsChanged() {}, onMediaPathChanged() {}, onTranscribeModeChanged };
+
+window.MAWLauncher.createPostprocessUI = createLauncherPostprocessUI;
 
 $("langZh").addEventListener("click", () => setLanguage("zh"));
 $("langEn").addEventListener("click", () => setLanguage("en"));
@@ -314,11 +324,15 @@ $("errorNoticeAction").addEventListener("click", () => {
   if (action === "ffmpeg-settings") openSettings("ffmpegSettingsSection", "ffmpegPath");
   if (action === "api-key") {
     closeSettings();
+    navigateTo("transcribe");
+    launcherWorkflow?.expandRecognition();
     $("apiKey").scrollIntoView({ behavior: "smooth", block: "center" });
     $("apiKey").focus({ preventScroll: true });
   }
   if (action === "audio-track") {
     closeSettings();
+    navigateTo("transcribe");
+    launcherWorkflow?.revealMediaFields();
     const field = $("audioTrackField").classList.contains("hidden") ? $("mediaPath") : $("audioTrack");
     field.scrollIntoView({ behavior: "smooth", block: "center" });
     field.focus({ preventScroll: true });

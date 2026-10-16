@@ -18,6 +18,9 @@ launcher/forms/launcher-prefs-zoom.js
 launcher/forms/launcher-media-form.js
 launcher/server/launcher-media-server.js
 launcher/boot/launcher-navigation.js
+launcher/boot/launcher-postprocess-ui.js
+launcher/boot/launcher-workflow-ui.js
+launcher/boot/launcher-projects-ui.js
 launcher/boot/launcher-settings-startup.js
 launcher/boot/launcher-notify-backend.js
 launcher/boot/launcher-wiring.js

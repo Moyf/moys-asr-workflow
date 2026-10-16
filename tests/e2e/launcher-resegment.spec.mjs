@@ -8,8 +8,7 @@ test('resegment exposes optional limits, persists the plan and measures field sp
   await page.goto(launcherUrl);
   await page.waitForFunction(() => window.MAWLauncher?.config?.postprocessProviders?.length);
   await page.locator('#navToolbox').click();
-  await page.locator('#toolboxLlmTab').click();
-  await page.locator('#postprocessOperation').selectOption('resegment');
+  await page.locator('#toolboxResegmentTab').click();
   const options = page.locator('#postprocessResegmentOptions');
   const maximum = page.locator('#postprocessResegmentMaxChars');
   await expect(options).toBeVisible();
@@ -17,19 +16,23 @@ test('resegment exposes optional limits, persists the plan and measures field sp
   await maximum.fill('18');
   const plan = await page.evaluate(() => window.MAWLauncher.getAutoPostprocessPayload());
   expect(plan.steps.find(s => s.id === 'resegment').maxChars).toBe('18');
-  await page.locator('#postprocessOperation').selectOption('proofread');
+  await page.locator('#toolboxProofreadTab').click();
   await expect(options).toBeHidden();
-  await page.locator('#postprocessOperation').selectOption('resegment');
+  await page.locator('#toolboxResegmentTab').click();
   await expect(maximum).toHaveValue('18');
   await options.scrollIntoViewIfNeeded();
   const distances = await options.evaluate(node => {
     const rect = e => e.getBoundingClientRect();
     let previous = node.previousElementSibling;
     while (previous && !rect(previous).height) previous = previous.previousElementSibling;
+    previous ||= node.closest('.toolbox-panel').querySelector('.llm-title-row');
     const label = node.querySelector('label');
     const input = node.querySelector('input');
     const hint = node.querySelector('.hint');
-    return { above: rect(node).top - rect(previous).bottom, inputAfterLabel: rect(input).top - rect(label).bottom, hintAfterInput: rect(hint).top - rect(input).bottom, below: rect(node.nextElementSibling).top - rect(node).bottom };
+    let next = node.nextElementSibling;
+    while (next && !rect(next).height) next = next.nextElementSibling;
+    next ||= node.parentElement.nextElementSibling;
+    return { above: rect(node).top - rect(previous).bottom, inputAfterLabel: rect(input).top - rect(label).bottom, hintAfterInput: rect(hint).top - rect(input).bottom, below: rect(next).top - rect(node).bottom };
   });
   for (const [key, value] of Object.entries(distances)) expect(value, key).toBeGreaterThanOrEqual(8);
   const directory = process.env.MAW_RESEGMENT_ARTIFACT_DIR;
