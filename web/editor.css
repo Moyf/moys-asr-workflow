@@ -606,7 +606,7 @@
   .server-connection-banner-icon {
     flex: 0 0 auto; display: grid; place-items: center;
     width: 22px; height: 22px; margin-top: 1px;
-    color: var(--danger-hover-fg); background: var(--red);
+    color: #fff; background: var(--red);
     border-radius: 50%; font-size: 15px; font-weight: 800; line-height: 1;
   }
   .server-connection-banner-copy { display: grid; gap: 2px; min-width: 0; }
@@ -1113,10 +1113,10 @@
     white-space: nowrap;
   }
   .multi-subtitle-settings-menu { max-height: min(620px, calc(100vh - 110px)); overflow-y: auto; }
-  .multi-subtitle-settings-section { box-sizing: border-box; gap: 8px; }
+  .multi-subtitle-settings-section { box-sizing: border-box; }
   .multi-subtitle-settings-section + .multi-subtitle-settings-section { margin-top: 8px; }
   .word-timing-settings-section { margin-top: 8px; }
-  .multi-subtitle-settings-section .settings-panel-title { text-align: left; }
+  .multi-subtitle-settings-section .settings-panel-title { text-align: left; margin-bottom: 8px; }
   .multi-subtitle-settings-section .multi-subtitle-setting-row,
   .multi-subtitle-settings-section .multi-subtitle-setting-toggle,
   .multi-subtitle-settings-section .settings-panel-hint,

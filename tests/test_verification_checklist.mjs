@@ -32,7 +32,7 @@ function handler(selector, event) {
   return source.slice(found.start, found.end);
 }
 const scopeSelector = "document.getElementById('export-json')";
-const sharedDeclarations = ['storageWarning', 'recordNote', 'includeRecord', 'buildResult', 'buildResultMarkdown', 'downloadResult']
+const sharedDeclarations = ['storageWarning', 'recordNote', 'includeRecord', 'buildResult', 'buildResultMarkdown', 'downloadResult', 'flashCopyButton']
   .map(declaration).join('\n');
 function status() {
   return { textContent: '', classList: { add() {} } };
@@ -40,7 +40,8 @@ function status() {
 function exportFixture(scope = 'all', confirmed = [true, false], ignored = {}, noteValues) {
   const sections = ['alpha', 'beta', 'readonly'].map(id => ({ id, querySelector: () => ({ title: id }) }));
   const records = confirmed.map((checked, i) => ({
-    section: sections[i], box: { id: `check-${i}`, checked }, text: `操作 ${i} → 预期`,
+    section: sections[i], box: { id: `check-${i}`, checked },
+    text: `目的 ${i}\n（操作）操作步骤 ${i}\n（预期）预期`,
     textarea: i === 1 ? { value: '  第一行\n第二行 <script>原样记录</script>  ' } : null,
     note: i === 0 ? '' : '旧备注',
   }));
@@ -69,7 +70,8 @@ const mdScopeSelector = "document.getElementById('export-md')";
 function markdownFixture(scope = 'all', confirmed = [true, false], ignored = {}, mode = 'export', noteValues) {
   const sections = ['alpha', 'beta'].map(id => ({ id, querySelector: () => ({ title: id }) }));
   const records = confirmed.map((checked, i) => ({
-    section: sections[i], box: { id: `check-${i}`, checked }, text: `操作 ${i} → 预期`,
+    section: sections[i], box: { id: `check-${i}`, checked },
+    text: `目的 ${i}\n（操作）操作步骤 ${i}\n（预期）预期`,
     textarea: i === 1 ? { value: '  第一行\n第二行 <script>原样记录</script>  ' } : null,
     note: i === 0 ? '' : '旧备注',
   }));
@@ -82,7 +84,10 @@ function markdownFixture(scope = 'all', confirmed = [true, false], ignored = {},
     summaryTitle: summary => summary.title,
     document: {
       title: '验证:导出/测试',
-      getElementById: () => ({ value: scope }), querySelector: () => ({ textContent: ' 范围说明 ' }),
+      getElementById: id => id === 'copy-md'
+        ? { value: scope, textContent: '复制 Markdown', classList: { add() {}, remove() {} } }
+        : { value: scope },
+      querySelector: () => ({ textContent: ' 范围说明 ' }),
       createElement: () => ({
         setAttribute() {}, style: {}, select() { copied = this.value; },
         click() { download = this.download; }, remove() {},
@@ -167,18 +172,18 @@ test('markdown export mirrors the result snapshot with task list and verbatim no
   const { markdown, download } = markdownFixture();
   assert.match(markdown, /^# 验证:导出\/测试 · 核对结果\n\n> 范围说明\n/);
   assert.match(markdown, /> 导出范围：全部核对项 · 导出时间 \d{4}-\d\d-\d\dT[^\n]*总计 2 项：已确认 1 \/ 忽略 0 \/ 未确认 1（本次导出 2 项）/);
-  assert.match(markdown, /## alpha\n- \[x\] 操作 0 → 预期 <!-- id: check-0 -->\n/);
-  assert.match(markdown, /## beta\n- \[ \] 操作 1 → 预期 <!-- id: check-1 -->\n  >   第一行\n  > 第二行 <script>原样记录<\/script>/);
+  assert.match(markdown, /## alpha\n- \[x\] 目的 0\n  （操作）操作步骤 0\n  （预期）预期\n  <!-- id: check-0 -->\n/);
+  assert.match(markdown, /## beta\n- \[ \] 目的 1\n  （操作）操作步骤 1\n  （预期）预期\n  <!-- id: check-1 -->\n  >   第一行\n  > 第二行 <script>原样记录<\/script>/);
   assert.ok(markdown.endsWith('\n'));
   assert.ok(!/[<>:"*?]/.test(download.slice(0, download.length - '全部-2026-10-15.md'.length)));
   assert.ok(download.endsWith('.md'));
 
   const pending = markdownFixture('unconfirmed');
   assert.ok(!pending.markdown.includes('## alpha'));
-  assert.match(pending.markdown, /## beta\n- \[ \] 操作 1 → 预期 <!-- id: check-1 -->/);
+  assert.match(pending.markdown, /## beta\n- \[ \] 目的 1\n  （操作）操作步骤 1/);
   const noted = markdownFixture('unconfirmed', [true, true]);
   assert.match(noted.markdown, /导出范围：仅未确认和备注项/);
-  assert.match(noted.markdown, /## beta\n- \[x\] 操作 1/);
+  assert.match(noted.markdown, /## beta\n- \[x\] 目的 1/);
   assert.ok(!noted.markdown.includes('## alpha'));
   const ignored = markdownFixture('unconfirmed', [true, true], { beta: true });
   assert.ok(!ignored.markdown.includes('## beta'));
@@ -187,7 +192,7 @@ test('markdown export mirrors the result snapshot with task list and verbatim no
 test('markdown export marks ignored groups and copy uses the clipboard with fallback', async () => {
   const ignoredAll = markdownFixture('all', [true, false], { beta: true });
   assert.match(ignoredAll.markdown, /## beta（已忽略）\n/);
-  assert.match(ignoredAll.markdown, /- \[ \] 操作 1 → 预期 <!-- id: check-1 -->/);
+  assert.match(ignoredAll.markdown, /- \[ \] 目的 1/);
 
   const copied = markdownFixture('all', [true, false], {}, 'copy');
   await new Promise(resolve => setTimeout(resolve, 0));

@@ -50,7 +50,7 @@ python tools/verification-checklist/build.py --refresh ".artifacts/verification/
 
 模板占位符由脚本替换；模板注释、脚本里不要出现占位符原文。
 
-## Markdown 源格式（v1，推荐）
+## Markdown 源格式（v2）
 
 清单源文件是普通 Markdown，自带 YAML front-matter；它可以入库、可以整段贴进 PR 评论（HTML 注释元数据在 GitHub 渲染时不可见，任务项显示为原生勾选框），reviewer 复制原文另存为 `.md` 后用 `--data` 或 `--check` 即可校验/再生成交互页。
 
@@ -84,25 +84,29 @@ updated: 2026-10-16            # 最近更新日期（可选）
 | --- | --- |
 | 单元格内 \| 需转义 |  |
 
-- [ ] **入口**：操作；预期：预期行为 <!-- id: check-stable-id -->
+- [ ] **核对项测试目的（一句话说清验证什么）**
+  （操作）入口 → 具体操作步骤
+  （预期）可观察的预期行为
+  （说明）补充背景或边界（可选；没有补充就整行省略，不要硬加）
+  <!-- id: check-stable-id -->
 ````
 
 规则与边界：
 
-- 分区必须有 `<!-- id: -->`；核对项 ID 放行尾 `<!-- id: -->`（GitHub 渲染不可见，保留稳定 ID 供 HTML 勾选进度持久化）。`<!-- id: -->`、`<!-- badge: -->` 之外的 HTML 注释禁止出现在内容里。
-- check 行的分隔符 `；预期：` 只能出现一次；entry/action/expected 内不得包含 `**`、`<!--`、换行。
+- 分区必须有 `<!-- id: -->`；核对项的 ID 注释放块尾（缩进两格独占一行，GitHub 渲染不可见，保留稳定 ID 供 HTML 勾选进度持久化）。`<!-- id: -->`、`<!-- badge: -->` 之外的 HTML 注释禁止出现在内容里。
+- 核对项块的字段顺序固定（操作）→（预期）→（说明）；（操作）（预期）必填，（说明）可选；目的与字段不得包含 `**`、`<!--`、换行。目的行必须以 `- [ ]` / `- [x]` 加粗短句开头，`**` 闭合后不能再有内容。
 - 核验完成后：把对应项改成 `- [x]`，front-matter `status` 更新为 `partial` / `passed`，提交回文档目录——这就是状态追踪的载体（`--scan` 汇总）。
-- MD v1 不支持的 source 特性：`text` 块（改用 note）、分区 `open: false`（全部展开）、多行 note / 表格单元格换行——这些仍走 JSON。
+- MD v2 不支持的 source 特性：`text` 块（改用 note）、分区 `open: false`（全部展开）、多行 note / 表格单元格换行——这些仍走 JSON。
 - 存放位置：`docs/logs/release<版本>/<主题>.checklist.md`，与任务台账放在一起；HTML 生成物不入库（源入库、产物再生成）。贴 PR 评论时去掉 front-matter（`--to-md` 不带 `--meta` 即可）。
-- JS/HTML 工具页里「导出 Markdown / 复制 Markdown」导出的是**核对结果快照**（勾选态 `- [x]`、备注 `>` 引用行、行尾核对项 ID），格式与源清单的 check 行语法对齐，但它不是可再生的源清单（无 badge/note 等只读内容）。
+- JS/HTML 工具页里「导出 Markdown / 复制 Markdown」导出的是**核对结果快照**（勾选态 `- [x]`、缩进字段块、块尾核对项 ID、备注 `>` 引用行），格式与源清单的核对项块语法对齐，但它不是可再生的源清单（无 badge/note 等只读内容）。
 
 ## JSON 契约（兼容格式）
 
-输入版本是 `maw.verification-checklist.source.v1`，与下文的核对结果导出格式不同；结果快照不能作为生成数据或进度导入。最小示例：
+输入版本是 `maw.verification-checklist.source.v2`，与下文的核对结果导出格式不同；结果快照不能作为生成数据或进度导入。最小示例：
 
 ```json
 {
-  "schema": "maw.verification-checklist.source.v1",
+  "schema": "maw.verification-checklist.source.v2",
   "title": "本次功能核对 · 2026-10-11",
   "subtitle": "范围、代码基线、已验证证据与未验证边界",
   "sections": [
@@ -115,8 +119,8 @@ updated: 2026-10-16            # 最近更新日期（可选）
         {
           "type": "check",
           "id": "export-srt",
-          "entry": "编辑器 → 导出",
-          "action": "选择 SRT 并保存",
+          "purpose": "导出内容正确",
+          "operation": "编辑器 → 导出：选择 SRT 并保存",
           "expected": "文件内容与字幕一致"
         }
       ]
@@ -134,7 +138,7 @@ updated: 2026-10-16            # 最近更新日期（可选）
 | `command` | `text` | 等宽命令块，空白原样保留，局部横向滚动 |
 | `list` | `items`（非空字符串数组） | `ordered`（布尔，默认 `false`） |
 | `table` | `headers`（非空字符串数组）、`rows`（二维字符串数组） | 行列数必须与表头一致；允许零行与空单元格，宽表局部滚动 |
-| `check` | `id`、`entry`、`action`、`expected` | 自动组装「入口 → 操作 → 预期」，初始未勾选 |
+| `check` | `id`、`purpose`、`operation`、`expected` | 可选 `note`；页面渲染为目的 / 操作 / 预期 / 说明四行，初始未勾选 |
 
 除明确允许为空的字段外，字符串不能只含空白。ID 必须以 ASCII 字母开头，仅含字母、数字、`-`、`_`，分区和核对项共用全页唯一空间；不能使用模板保留 ID（如 `reset`、`toc`）、`checklist-note-` 前缀或 JS 原型属性名（如 `constructor`）。同一任务重复生成时保持标题与 ID 不变，原有本机勾选和备注才能继续读取；全新任务使用独立标题。不要按位置自动重新编号，也不要复用已有 ID 表示另一个核对项。
 
@@ -142,11 +146,12 @@ updated: 2026-10-16            # 最近更新日期（可选）
 
 ```text
 根据已提供的任务范围、代码基线和验证证据，编写核查清单 Markdown 源文件。
-严格遵循 tools/verification-checklist/README.md 的「Markdown 源格式（v1）」契约；
+严格遵循 tools/verification-checklist/README.md 的「Markdown 源格式（v2）」契约；
 front-matter 填 task/pr/date/status（status 先写 pending），正文按
 实现/审查结论 → 修复记录 → 自动化证据 → 人工核验 → 后续操作分区。
 说明、命令、列表和表格是只读 blocks；不要把自动化通过转换成人工勾选。
-人工核对项写 `- [ ] **入口**：操作；预期：结果 <!-- id: 稳定ID -->` 行；
+人工核对项写 v2 块：`- [ ] **测试目的**` 加缩进续行 `（操作）…`、`（预期）…`、
+可选 `（说明）…`，块尾 `<!-- id: 稳定ID -->` 注释；说明只在有真实补充时写。
 每项必须可执行、可观察，证据不足处写明未验证，不编造结果。
 分区与核对项使用有语义的唯一稳定 ID；更新已有任务时保留标题和既有 ID。
 写完运行 build.py --check <文件>.md 自查，通过后再生成 HTML。
@@ -161,9 +166,9 @@ front-matter 填 task/pr/date/status（status 先写 pending），正文按
   <summary><span class="sec-title">导出功能</span><span class="badge fixed">已修复</span></summary>
   <div class="body">
     <p class="note">自动化结果与未验证边界。</p>
-    <div class="item">
+    <div class="item" data-copy="导出内容正确（操作）进入导出 → 选择格式并保存（预期）文件内容与字幕一致">
       <input type="checkbox" id="export-01">
-      <label for="export-01">进入导出 → 选择格式并保存 → 检查文件内容符合预期。</label>
+      <label for="export-01"><span class="item-purpose">导出内容正确</span><span class="item-line item-op"><span class="item-entry">编辑器 → 导出</span>选择 SRT 并保存</span><span class="item-line item-exp">文件内容与字幕一致</span></label>
     </div>
   </div>
 </details>
@@ -181,7 +186,7 @@ front-matter 填 task/pr/date/status（status 先写 pending），正文按
 6. 鼠标悬停在含核对项分区的标题栏时，计数左侧出现「忽略」按钮：点击后整组标题变灰并自动折叠，组内项目按已处理计算（总进度、分组与目录计数同步），不再出现在「隐藏已勾选」视图和「仅未确认和备注项」导出中（即使有备注）；悬停再点「取消忽略」恢复展开与真实勾选计数。「重置勾选」会一并清除忽略状态，备注保留。
 7. 「重置勾选」先要求二次确认，确认后仅清除确认与忽略状态，保留备注；取消时不改变页面与保存状态。要删除某条备注，展开后清空文字。
 8. 打印时自动展开分区并显示完整备注，结束后恢复原来的折叠状态；隐藏已勾选模式下打印只含当前显示的核对项。
-9. 每条核对项下方的「复制」复制该项的「入口 → 操作 → 预期」文本，不包含按钮、勾选状态或备注。浏览器不允许访问剪贴板时会提示手动选择复制。
+9. 每条核对项右侧的「复制」复制该项的目的与（操作）（预期）（说明）全文，不包含按钮、勾选状态或核验备注。浏览器不允许访问剪贴板时会提示手动选择复制。
 
 存储失败时页面明确提示，请立即导出留存；即使本机存储不可用，当前页面仍能勾选、填写备注与导出。导出的 JSON / Markdown 是核对结果快照，本工具暂不提供导入或跨设备同步。导出文件含你填写的备注，分享前检查内容。
 
@@ -191,8 +196,8 @@ front-matter 填 task/pr/date/status（status 先写 pending），正文按
 
 - `# {标题} · 核对结果` + 引用行元信息（副标题、导出范围、时间、总计/已确认/忽略/未确认/导出数）。
 - 每个含核对项的分区一个 `## 分区标题`（被忽略的分组在 `scope: all` 导出中标注「（已忽略）」）。
-- 核对项 `- [x] / - [ ] {入口 → 操作 → 预期} <!-- id: 稳定ID -->`，多行备注紧跟缩进引用行 `  > …`（逐字保留）。
-- 与源清单的 check 行语法对齐，但它不含 badge / note 等只读内容，**不是**可再生的源清单；把它转回 HTML 请用源 `.checklist.md`。
+- 核对项按源格式输出为 `- [x] / - [ ] {目的}` 加缩进字段块（（操作）（预期）（说明）逐行），块尾 `<!-- id: 稳定ID -->`，多行备注紧跟缩进引用行 `  > …`（逐字保留）。
+- 与源清单的核对项块语法对齐，但它不含 badge / note 等只读内容，**不是**可再生的源清单；把它转回 HTML 请用源 `.checklist.md`。
 
 ## JSON 结果格式
 
@@ -209,7 +214,7 @@ front-matter 填 task/pr/date/status（status 先写 pending），正文按
       "id": "feature-export",
       "title": "导出功能",
       "items": [
-        { "id": "export-01", "text": "入口 → 操作 → 预期", "confirmed": false, "ignored": false, "note": "尚待人工核验" }
+        { "id": "export-01", "text": "导出内容正确\n（操作）编辑器 → 导出：选择 SRT 并保存\n（预期）文件内容与字幕一致", "confirmed": false, "ignored": false, "note": "尚待人工核验" }
       ]
     }
   ]

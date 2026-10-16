@@ -125,11 +125,15 @@ test('copy uses item text only and reports clipboard rejection', async ({ page }
   });
   await page.goto(generate(testInfo));
   const item = page.locator('#manual .item').first();
-  const text = (await item.locator('label').textContent()).replace(/\s+/g, ' ').trim();
+  const purpose = (await item.locator('.item-purpose').textContent()).trim();
   await item.locator('.note-toggle').click();
   await item.locator('textarea').fill('备注不能混入复制文本');
   await item.locator('.item-copy').click();
-  expect(await page.evaluate(() => window.copiedItem)).toBe(text);
+  const copied = await page.evaluate(() => window.copiedItem);
+  expect(copied.split('\n')[0]).toBe(purpose);
+  expect(copied).toContain('（操作）');
+  expect(copied).toContain('（预期）');
+  expect(copied).not.toContain('备注不能混入复制文本');
   await expect(page.locator('#manual-persistence')).not.toBeChecked();
   await page.evaluate(() => { navigator.clipboard.writeText = async () => { throw new Error('denied'); }; });
   await item.locator('.item-copy').click();
@@ -186,9 +190,9 @@ test('markdown export mirrors confirmations and notes and disables with no expor
   expect(markdown).toContain('## 人工核验');
   expect(markdown).not.toContain('## 实现 / 审查结论');
   expect(markdown).not.toContain('## 自动化验证证据');
-  expect(markdown).toContain('- [x] 生成的 HTML 页面 → 勾选本项，点击备注填写两行文字，然后刷新 → 勾选与备注仍保留，进度显示 1 / 2 <!-- id: manual-persistence -->');
+  expect(markdown).toContain('- [x] 勾选与备注在刷新后保留\n  （操作）生成的 HTML 页面 → 勾选本项，点击备注填写两行文字，然后刷新\n  （预期）勾选与备注仍保留，进度显示 1 / 2\n  <!-- id: manual-persistence -->');
   expect(markdown).toContain('  > 第一行\n  > <script>仅为备注文本</script>');
-  expect(markdown).toContain('- [ ] 侧栏导出范围 → 选择默认范围并导出 JSON → 包含未确认或有非空备注的项目，排除忽略组，保留稳定 ID 与备注 <!-- id: manual-export -->');
+  expect(markdown).toContain('- [ ] 默认导出范围为未确认与备注并集\n  （操作）侧栏导出范围 → 选择默认范围并导出 JSON\n  （预期）包含未确认或有非空备注的项目，排除忽略组，保留稳定 ID 与备注\n  <!-- id: manual-export -->');
   expect(errors).toEqual([]);
 
   await page.locator('#export-scope').selectOption('unconfirmed');
@@ -196,7 +200,7 @@ test('markdown export mirrors confirmations and notes and disables with no expor
   await page.locator('#export-md').click();
   const pending = readFileSync(await (await pendingDownload).path(), 'utf8');
   expect(pending).toContain('> 导出范围：仅未确认和备注项');
-  expect(pending).toContain('- [ ] 侧栏导出范围 → 选择默认范围并导出 JSON → 包含未确认或有非空备注的项目，排除忽略组，保留稳定 ID 与备注 <!-- id: manual-export -->');
+  expect(pending).toContain('- [ ] 默认导出范围为未确认与备注并集');
   expect(pending).not.toContain('## 实现 / 审查结论');
   expect(pending).toContain('第一行');
   expect(pending).toContain('<!-- id: manual-persistence -->');

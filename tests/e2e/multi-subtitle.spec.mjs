@@ -747,12 +747,10 @@ test('uses the main cue-row layout when displaying only the extension track', as
       labelRight: label?.getBoundingClientRect().right ?? 0,
       selectLeft: select?.getBoundingClientRect().left ?? 0,
       selectWidth: select ? getComputedStyle(select).width : '',
-      rowGap: element.nextElementSibling.getBoundingClientRect().top - element.getBoundingClientRect().bottom,
     };
   });
   expect(settingBoxes.selectLeft).toBeGreaterThanOrEqual(settingBoxes.labelRight + 8);
   expect(settingBoxes.selectWidth).toBe('80px');
-  expect(settingBoxes.rowGap).toBeGreaterThanOrEqual(8);
 
   await page.locator('#multi-subtitle-display-mode').selectOption('main');
   const mainCue = page.locator('#cues-container > .cue[data-idx="0"]:not(.multi-dual-cue)');
