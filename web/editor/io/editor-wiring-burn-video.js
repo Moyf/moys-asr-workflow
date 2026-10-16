@@ -16,8 +16,20 @@ function burnVideoText(text) {
   return window.MAWE_I18N?.translateText?.(text) || text;
 }
 
+function burnVideoMediaCurrent(config) {
+  if (config?.canBurnVideoExport !== true || !config.burnVideoJobsUrl) return false;
+  const player = window.MaweCoreState?.player;
+  const source = player?.currentSrc || player?.querySelector?.('source')?.src || player?.src;
+  if (!source) return false;
+  try {
+    const url = new URL(source, location.href);
+    return url.origin === location.origin && url.pathname === '/media';
+  } catch (_) { return false; }
+}
+
 function burnVideoBindingCurrent(config, snapshot) {
-  return MaweBoot.SERVER_CONFIG === config && config.burnVideoJobsUrl === snapshot.jobsUrl
+  return burnVideoMediaCurrent(config) && MaweBoot.SERVER_CONFIG === config
+    && config.burnVideoJobsUrl === snapshot.jobsUrl
     && config.requestToken === snapshot.requestToken
     && config.bindingGeneration === snapshot.bindingGeneration
     && config.sourceMediaId === snapshot.sourceMediaId
@@ -39,7 +51,7 @@ async function runBurnVideoJob({ button, label, buildRequest, suggestedName, sta
   const config = MaweBoot.SERVER_CONFIG;
   if (window.__maweBurnVideoTask) return;
   if (MaweInlineEdit.editingState) MaweInlineEdit.finishEdit(true);
-  if (!config?.burnVideoJobsUrl || !Number.isSafeInteger(config.bindingGeneration) || config.bindingGeneration < 1
+  if (!burnVideoMediaCurrent(config) || !Number.isSafeInteger(config.bindingGeneration) || config.bindingGeneration < 1
       || typeof config.sourceMediaId !== 'string' || !config.sourceMediaId
       || typeof config.burnVideoSourceName !== 'string' || !config.burnVideoSourceName) {
     MaweHint.flashHint(tr('请从启动器打开关联源媒体的工程，再烧录视频'), 'warning');
@@ -197,7 +209,7 @@ async function runBurnVideoJob({ button, label, buildRequest, suggestedName, sta
     error.name = 'AbortError';
     rejectStop(error);
     setProgress(tr('正在停止烧录…'));
-    stopButton.disabled = true;
+    if (stopButton) stopButton.disabled = true;
     void stopBackend().catch(() => {});
   };
   const ensureCurrent = () => {
@@ -216,7 +228,7 @@ async function runBurnVideoJob({ button, label, buildRequest, suggestedName, sta
     if (window.__maweBurnVideoTask) return;
     const random = crypto.getRandomValues(new Uint8Array(32));
     const admissionToken = Array.from(random, value => value.toString(16).padStart(2, '0')).join('');
-    task = { id: null, admissionToken, controller: new AbortController(), stopRequested: false, cancelRequest: null };
+    task = { id: null, admissionToken, controller: new AbortController(), stopRequested: false, cancelRequest: null, requestStop };
     window.__maweBurnVideoTask = task;
     button.disabled = true;
     panel = document.createElement('div');
@@ -384,10 +396,25 @@ document.getElementById('download-gap-removed-burn-video')?.addEventListener('cl
 // ASS 模式切换由 editor-wiring-ass-manager.js 的 syncAssModeControl 调用 syncButton 同步。
 function updateBurnVideoButton() {
   const config = MaweBoot.SERVER_CONFIG;
-  const button = document.getElementById('burn-video-export-btn');
-  if (!button) return;
   const assMode = window.MaweSettings?.EDITOR_SETTINGS?.assMode === true;
-  button.hidden = !(config?.canBurnVideoExport && config?.burnVideoJobsUrl && assMode);
+  const visible = burnVideoMediaCurrent(config) && assMode;
+  const button = document.getElementById('burn-video-export-btn');
+  if (button) button.hidden = !visible;
+  const gapButton = document.getElementById('download-gap-removed-burn-video');
+  if (gapButton) gapButton.hidden = !visible;
+}
+
+function invalidateBurnVideoBinding() {
+  const config = MaweBoot.SERVER_CONFIG;
+  if (config) {
+    config.canBurnVideoExport = false;
+    config.burnVideoSourceName = null;
+    config.burnVideoJobsUrl = null;
+  }
+  updateBurnVideoButton();
+  // Admission/body/write operations may be pending without another poll.
+  // Cancel through the task's captured URL/token, not the invalidated config.
+  window.__maweBurnVideoTask?.requestStop?.();
 }
 updateBurnVideoButton();
-window.MaweBurnVideoExport = Object.freeze({ syncButton: updateBurnVideoButton });
+window.MaweBurnVideoExport = Object.freeze({ syncButton: updateBurnVideoButton, invalidateBinding: invalidateBurnVideoBinding });

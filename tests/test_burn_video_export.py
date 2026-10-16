@@ -5,6 +5,8 @@ from tests.compact_assertions import CompactContainerAssertions
 
 import importlib.util
 import json
+import shutil
+import struct
 import subprocess
 import sys
 import tempfile
@@ -102,7 +104,7 @@ class BurnAssVideoTests(CompactContainerAssertions, unittest.TestCase):
                 ffmpeg_path=Path("ffmpeg"), ffprobe_path=Path("ffprobe"))
         self.assertEqual(seen["cwd"], self.output.parent)
 
-    def test_interval_burn_uses_ffconcat_input(self) -> None:
+    def test_interval_burn_filters_decoded_video_and_audio(self) -> None:
         streams = [
             {"codec_type": "video", "codec_name": "h264"},
             {"codec_type": "audio", "codec_name": "aac", "channels": 2, "sample_rate": "48000"},
@@ -120,12 +122,15 @@ class BurnAssVideoTests(CompactContainerAssertions, unittest.TestCase):
             server_editor.burn_ass_video(self.source, [(0, 1250), (2000, 3500)], ASS_TEXT, self.output,
                 ffmpeg_path=Path("ffmpeg"), ffprobe_path=Path("ffprobe"))
         command = next(command for command in self.calls if command[0] == "ffmpeg")
-        self.assertEqual(command[command.index("-f") + 1], "concat")
-        self.assertEqual(command[command.index("-safe") + 1], "0")
-        concat_path = Path(command[command.index("-i") + 1])
-        concat_text = concat_path.read_text(encoding="utf-8")
-        self.assertIn("inpoint 1.400\noutpoint 2.650", concat_text)
-        self.assertIn("inpoint 3.400\noutpoint 4.900", concat_text)
+        self.assertNotIn("concat", command)
+        self.assertEqual(command[command.index("-i") + 1], str(self.source.resolve()))
+        graph = Path(command[command.index("-filter_complex_script") + 1]).read_text(encoding="utf-8")
+        self.assertIn("atrim=start=0.000:end=1.250", graph)
+        self.assertIn("atrim=start=2.000:end=3.500", graph)
+        self.assertIn("[burn_video]", command)
+        self.assertIn("[burn_audio_0]", command)
+        durations = [command[index + 1] for index, value in enumerate(command) if value == "-t"]
+        self.assertEqual(durations, ["3.500", "2.750"])
 
     def test_auto_encoder_fallback_retries_next_encoder(self) -> None:
         def run(command, **kwargs):
@@ -345,3 +350,170 @@ class BurnVideoJobHttpTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class BurnVideoPrecisionTests(CompactContainerAssertions, unittest.TestCase):
+    """Real decoded media, including cuts between keyframes and audio samples."""
+
+    @classmethod
+    def setUpClass(cls):
+        cls.ffmpeg = shutil.which('ffmpeg')
+        cls.ffprobe = shutil.which('ffprobe')
+        if not cls.ffmpeg or not cls.ffprobe:
+            raise unittest.SkipTest('Real burn precision checks require FFmpeg and FFprobe')
+
+    def run_tool(self, args):
+        return subprocess.run(args, capture_output=True, check=True, timeout=45)
+
+    def test_long_gop_cuts_exclude_removed_frames_and_keep_audio_clock(self):
+        with tempfile.TemporaryDirectory() as folder:
+            root = Path(folder)
+            source = root / 'colors.mp4'
+            command = [self.ffmpeg, '-y', '-hide_banner', '-loglevel', 'error']
+            for color in ('red', 'green', 'blue'):
+                command += ['-f', 'lavfi', '-i', f'color={color}:s=160x90:r=25:d=1']
+            for hz in (440, 880, 1320):
+                command += ['-f', 'lavfi', '-i', f'sine=frequency={hz}:sample_rate=48000:duration=1']
+            command += ['-filter_complex', '[0:v][1:v][2:v]concat=n=3:v=1:a=0[v];[3:a][4:a][5:a]concat=n=3:v=0:a=1[a]',
+                        '-map', '[v]', '-map', '[a]', '-c:v', 'libx264', '-g', '250', '-keyint_min', '250',
+                        '-sc_threshold', '0', '-bf', '2', '-pix_fmt', 'yuv420p', '-c:a', 'aac', str(source)]
+            self.run_tool(command)
+            for start in (1250, 1240):
+                with self.subTest(start=start):
+                    output = root / f'burn-{start}' / 'out.mp4'
+                    with mock.patch.object(server_editor, 'video_encoder_attempts', return_value=('cpu',)):
+                        server_editor.burn_ass_video(source, [(start, start + 500), (start + 1000, start + 1500)],
+                            ASS_TEXT.replace('你好', 'OK'), output, ffmpeg_path=Path(self.ffmpeg), ffprobe_path=Path(self.ffprobe))
+                    probe = json.loads(self.run_tool([self.ffprobe, '-v', 'error', '-count_frames', '-show_entries',
+                        'stream=codec_type,nb_read_frames,duration:format=duration', '-of', 'json', str(output)]).stdout)
+                    self.assertAlmostEqual(float(probe['format']['duration']), 1.0, delta=0.041)
+                    video = next(stream for stream in probe['streams'] if stream['codec_type'] == 'video')
+                    self.assertLessEqual(abs(int(video['nb_read_frames']) - 25), 1)
+                    pixels = self.run_tool([self.ffmpeg, '-v', 'error', '-i', str(output), '-vf', 'scale=1:1',
+                        '-fps_mode', 'passthrough', '-pix_fmt', 'rgb24', '-f', 'rawvideo', '-']).stdout
+                    colors = [max(range(3), key=lambda channel: pixels[i + channel]) for i in range(0, len(pixels), 3)]
+                    self.assertNotIn(0, colors, 'Removed red frames must never survive either cut')
+                    self.assertIn(1, colors)
+                    self.assertIn(2, colors)
+                    pcm = self.run_tool([self.ffmpeg, '-v', 'error', '-i', str(output), '-vn', '-ac', '1', '-ar', '48000',
+                        '-f', 'f32le', '-']).stdout
+                    samples = struct.unpack('<' + 'f' * (len(pcm) // 4), pcm)
+                    self.assertLessEqual(abs(len(samples) - 48000), 1024)
+                    for begin, end, expected in ((0.1, 0.4, 880), (0.6, 0.9, 1320)):
+                        section = samples[int(begin * 48000):int(end * 48000)]
+                        crossings = sum(a <= 0 < b for a, b in zip(section, section[1:]))
+                        self.assertAlmostEqual(crossings / (end - begin), expected, delta=8)
+
+    def test_nonzero_origin_keeps_two_audio_tracks_and_initial_audio_offset(self):
+        with tempfile.TemporaryDirectory() as folder:
+            root = Path(folder)
+            source = root / 'offset.mkv'
+            self.run_tool([self.ffmpeg, '-y', '-v', 'error', '-f', 'lavfi', '-i',
+                'color=green:s=160x90:r=25:d=3', '-itsoffset', '0.2', '-f', 'lavfi', '-i',
+                'sine=frequency=880:sample_rate=48000:duration=2.8', '-f', 'lavfi', '-i',
+                'sine=frequency=1320:sample_rate=48000:duration=3', '-map', '0:v', '-map', '1:a', '-map', '2:a',
+                '-c:v', 'libx264', '-g', '250', '-sc_threshold', '0', '-c:a', 'pcm_s16le',
+                '-metadata:s:a:0', 'language=eng', '-metadata:s:a:1', 'language=jpn',
+                '-disposition:a:0', '0', '-disposition:a:1', 'default', '-output_ts_offset', '2', str(source)])
+            output = root / 'output' / 'out.mp4'
+            with mock.patch.object(server_editor, 'video_encoder_attempts', return_value=('cpu',)):
+                server_editor.burn_ass_video(source, [(100, 600), (2100, 2600)], ASS_TEXT.replace('你好', 'OK'), output,
+                    ffmpeg_path=Path(self.ffmpeg), ffprobe_path=Path(self.ffprobe))
+            probe = json.loads(self.run_tool([self.ffprobe, '-v', 'error', '-show_entries',
+                'stream=codec_type:stream_tags=language:stream_disposition:format=duration', '-of', 'json', str(output)]).stdout)
+            self.assertAlmostEqual(float(probe['format']['duration']), 1.0, delta=0.041)
+            audios = [stream for stream in probe['streams'] if stream['codec_type'] == 'audio']
+            self.assertEqual(len(audios), 2)
+            self.assertEqual([a['tags'].get('language') for a in audios], ['eng', 'jpn'])
+            self.assertEqual([a['disposition']['default'] for a in audios], [0, 1])
+            pcm = self.run_tool([self.ffmpeg, '-v', 'error', '-i', str(output), '-map', '0:a:0', '-ac', '1', '-ar', '48000',
+                '-f', 'f32le', '-']).stdout
+            samples = struct.unpack('<' + 'f' * (len(pcm) // 4), pcm)
+            # The first kept interval starts 100ms before this audio stream.
+            # Resetting to STARTPTS would erase that genuine A/V offset.
+            self.assertLess(max(abs(v) for v in samples[:2400]), 0.002)
+            self.assertGreater(max(abs(v) for v in samples[7200:12000]), 0.03)
+            # An entire kept interval can precede a delayed audio stream.
+            # It must remain silence, not disappear and pull later sound early.
+            early_output = root / 'early' / 'out.mp4'
+            with mock.patch.object(server_editor, 'video_encoder_attempts', return_value=('cpu',)):
+                server_editor.burn_ass_video(source, [(0, 100), (300, 800)], ASS_TEXT.replace('你好', 'OK'), early_output,
+                    ffmpeg_path=Path(self.ffmpeg), ffprobe_path=Path(self.ffprobe))
+            raw = self.run_tool([self.ffmpeg, '-v', 'error', '-i', str(early_output), '-map', '0:a:0', '-ac', '1',
+                '-ar', '48000', '-f', 'f32le', '-']).stdout
+            early_samples = struct.unpack('<' + 'f' * (len(raw) // 4), raw)
+            self.assertLess(max(abs(v) for v in early_samples[:4000]), 0.002)
+            self.assertGreater(max(abs(v) for v in early_samples[9600:14400]), 0.03)
+
+    def test_ass_events_use_the_shortened_output_clock(self):
+        with tempfile.TemporaryDirectory() as folder:
+            root = Path(folder)
+            source = root / 'green.mp4'
+            self.run_tool([self.ffmpeg, '-y', '-v', 'error', '-f', 'lavfi', '-i',
+                'color=green:s=160x90:r=25:d=3', '-c:v', 'libx264', '-g', '250', '-sc_threshold', '0', str(source)])
+            ass = ('[Script Info]\nScriptType: v4.00+\nPlayResX: 160\nPlayResY: 90\n'
+                   '[V4+ Styles]\nFormat: Name, Fontname, Fontsize, PrimaryColour, SecondaryColour, OutlineColour, BackColour, Bold, Italic, Underline, StrikeOut, ScaleX, ScaleY, Spacing, Angle, BorderStyle, Outline, Shadow, Alignment, MarginL, MarginR, MarginV, Encoding\n'
+                   'Style: Default,Arial,32,&H000000FF,&H000000FF,&H00000000,&H00000000,0,0,0,0,100,100,0,0,1,0,0,8,1,1,1,1\n'
+                   '[Events]\nFormat: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text\n'
+                   'Dialogue: 0,0:00:00.60,0:00:00.90,Default,,0,0,0,,MMMM\n')
+            output = root / 'out' / 'caption.mp4'
+            with mock.patch.object(server_editor, 'video_encoder_attempts', return_value=('cpu',)):
+                server_editor.burn_ass_video(source, [(1000, 1500), (2000, 2500)], ass, output,
+                    ffmpeg_path=Path(self.ffmpeg), ffprobe_path=Path(self.ffprobe))
+            def red_pixels(at):
+                raw = self.run_tool([self.ffmpeg, '-v', 'error', '-ss', str(at), '-i', str(output),
+                    '-frames:v', '1', '-pix_fmt', 'rgb24', '-f', 'rawvideo', '-']).stdout
+                return sum(raw[i] > 120 and raw[i] > raw[i + 1] * 1.5 and raw[i] > raw[i + 2] * 1.5
+                    for i in range(0, len(raw), 3))
+            self.assertEqual(red_pixels(0.2), 0)
+            self.assertGreater(red_pixels(0.7), 20)
+
+    def test_video_only_precise_cuts_do_not_require_audio(self):
+        with tempfile.TemporaryDirectory() as folder:
+            root = Path(folder)
+            source = root / 'silent.mp4'
+            self.run_tool([self.ffmpeg, '-y', '-v', 'error', '-f', 'lavfi', '-i',
+                'color=green:s=160x90:r=25:d=3', '-c:v', 'libx264', '-g', '250', '-sc_threshold', '0', str(source)])
+            output = root / 'output' / 'out.mp4'
+            with mock.patch.object(server_editor, 'video_encoder_attempts', return_value=('cpu',)):
+                server_editor.burn_ass_video(source, [(1250, 1750), (2250, 2750)], ASS_TEXT.replace('你好', 'OK'), output,
+                    ffmpeg_path=Path(self.ffmpeg), ffprobe_path=Path(self.ffprobe))
+            probe = json.loads(self.run_tool([self.ffprobe, '-v', 'error', '-show_entries',
+                'stream=codec_type:format=duration', '-of', 'json', str(output)]).stdout)
+            self.assertAlmostEqual(float(probe['format']['duration']), 1.0, delta=0.041)
+            self.assertEqual([stream['codec_type'] for stream in probe['streams']], ['video'])
+
+
+class BurnVideoDiagnosticTests(unittest.TestCase):
+    def test_early_split_glyph_warning_survives_later_stderr_and_blocks_output(self):
+        with tempfile.TemporaryDirectory() as folder:
+            root = Path(folder)
+            source = root / 'source.mp4'
+            source.write_bytes(b'source')
+            warning = ('[Parsed_ass_0] fontselect: failed to find any fallback '
+                       'with glyph 0x4E2D for font: (MissingFont, 400, 0)\n')
+            script = root / 'encoder.py'
+            script.write_text('import sys\nfrom pathlib import Path\n'
+                + 'Path(sys.argv[1]).write_bytes(b"invalid-video")\n'
+                + 'sys.stderr.write(' + repr('x' * 4070 + warning) + ')\n'
+                + "sys.stderr.write(('later warning ' * 16 + '\\n') * 1200)\n", encoding='utf-8')
+            manager = server_editor.MediaJobManager(temp_root=root)
+            def burn(job):
+                original = job.run_command
+                def run(command, **kwargs):
+                    return original([sys.executable, str(script), command[-1]], **kwargs)
+                job.run_command = run
+                server_editor.burn_ass_video(source, [], ASS_TEXT, job.output,
+                    ffmpeg_path=Path('ffmpeg'), ffprobe_path=Path('ffprobe'), job=job)
+            try:
+                with mock.patch.object(server_editor, 'video_encoder_attempts', return_value=('cpu',)), \
+                     mock.patch.object(server_editor, '_probe_media_duration_ms', return_value=1000):
+                    job = manager.start(source, (1, 'bound'), [], burn, output_extension='.mp4')
+                    job.thread.join(10)
+                self.assertFalse(job.thread.is_alive())
+                self.assertEqual(job.state, 'failed', job.error)
+                self.assertIn('缺少字形', job.error)
+                self.assertTrue(job.disposed_event.wait(2))
+                self.assertFalse(job.output.exists())
+            finally:
+                manager.close()

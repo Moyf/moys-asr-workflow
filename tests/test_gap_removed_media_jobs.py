@@ -220,6 +220,26 @@ class MediaJobsTests(unittest.TestCase):
         self.assertIn("标准输出超过安全大小上限", job.error)
         self.assertFalse(job.directory.exists())
 
+    def test_stderr_observer_failure_reaps_process_and_releases_slot(self):
+        seen = []
+        def observe(chunk):
+            seen.append(chunk)
+            raise ValueError('diagnostic rejected')
+        def runner(job):
+            job.output.write_bytes(b'partial')
+            job.run_command([sys.executable, '-u', '-c',
+                "import sys,time; print('reject', file=sys.stderr, flush=True); time.sleep(60)"],
+                on_stderr=observe)
+        job = self.start(runner)
+        self.wait(job, 'failed')
+        job.thread.join(2)
+        self.assertFalse(job.thread.is_alive())
+        self.assertIn('diagnostic rejected', job.error)
+        self.assertEqual(len(seen), 1)
+        self.assertFalse(job.directory.exists())
+        retry = self.start(lambda next_job: next_job.output.write_bytes(b'retry'))
+        self.wait(retry, 'ready')
+
     def test_giant_unicode_stderr_line_retains_only_bounded_diagnostics(self):
         captured = []
         def runner(job):

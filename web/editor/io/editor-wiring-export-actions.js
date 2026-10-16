@@ -819,7 +819,8 @@ window.MaweGapRemovedMediaExport = Object.freeze({
     button.title = audio ? '按保留区域精确裁切音频，导出为 WAV。' : '按保留区域重组视频；切点可能受关键帧影响。';
     // 烧录需要视频画面；音频工程隐藏去空隙菜单里的烧录入口。
     const burnItem = document.getElementById('download-gap-removed-burn-video');
-    if (burnItem) burnItem.hidden = audio;
+    if (burnItem) burnItem.hidden = audio || !config?.canBurnVideoExport || !config?.burnVideoJobsUrl
+      || window.MaweSettings?.EDITOR_SETTINGS?.assMode !== true;
   },
 });
 window.MaweGapRemovedMediaExport.updateButton();

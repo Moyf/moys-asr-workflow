@@ -685,6 +685,43 @@ def _probe_media_duration_ms(path: Path, ffprobe_path: Path, *, job: MediaJob | 
     return min(int(seconds * 1000), 9_007_199_254_740_991)
 
 
+def _burn_interval_filter(intervals: list[tuple[int, int]], audio_count: int) -> str:
+    """Decode once; keep only requested frames and map both clocks to kept time.
+
+    Video selection avoids duplicating long decoded frame queues per interval.
+    Audio is trimmed at sample boundaries and padded to each requested span;
+    it is concatenated separately so a rounded video frame cannot extend a join.
+    """
+    def seconds(ms):
+        return format(Decimal(ms).scaleb(-3), 'f')
+
+    selected = '+'.join(f'gte(t,{seconds(start)})*lt(t,{seconds(end)})' for start, end in intervals)
+    shifts = [seconds(intervals[0][0])]
+    for (_, previous_end), (start, _) in zip(intervals, intervals[1:]):
+        shifts.append(f'if(gte(T,{seconds(start)}),{seconds(start - previous_end)},0)')
+    graph = [f"[0:v:0]select='{selected}',setpts='PTS-({'+'.join(shifts)})/TB',"
+             "ass=filename='burn.ass'[burn_video]"]
+    for audio in range(audio_count):
+        inputs = [f'cut_audio_{audio}_{index}' for index in range(len(intervals))]
+        base = f'base_audio_{audio}'
+        # Fill leading stream delay before splitting, including intervals that
+        # contain no source samples at all; per-cut padding cannot fill an
+        # empty branch. Infinite trailing padding is bounded by each atrim.
+        graph.append(f'[0:a:{audio}]aresample=async=1:first_pts=0,apad[{base}]')
+        if len(intervals) > 1:
+            graph.append(f'[{base}]asplit={len(intervals)}' + ''.join(f'[{name}]' for name in inputs))
+        else:
+            inputs = [base]
+        outputs = []
+        for index, ((start, end), name) in enumerate(zip(intervals, inputs)):
+            output = f'kept_audio_{audio}_{index}'
+            outputs.append(f'[{output}]')
+            graph.append(f'[{name}]atrim=start={seconds(start)}:end={seconds(end)},'
+                         f'asetpts=PTS-{seconds(start)}/TB[{output}]')
+        graph.append(''.join(outputs) + f'concat=n={len(intervals)}:v=0:a=1[burn_audio_{audio}]')
+    return ';\n'.join(graph) + '\n'
+
+
 def burn_ass_video(
     source_path: Path,
     intervals: list[tuple[int, int]],
@@ -699,8 +736,8 @@ def burn_ass_video(
 
     与「实际画面预览」和 Launcher 烧录共用约定：ASS 写入输出目录、滤镜参数
     只带文件名、进程 cwd 指向该目录，规避盘符冒号等路径转义差异。给定时
-    区间时通过 ffconcat 顺序拼接保留区间后再烧录——整片重新编码，切点不受
-    关键帧对齐限制，字幕时间轴即收缩后的去空隙时间轴。
+    区间时在解码后选择视频帧、按采样裁剪音轨，再映射到同一收缩时间轴；
+    不把 ffconcat 的解码预滚帧当作用户保留内容。
     """
     try:
         source = source_path.expanduser().resolve(strict=True)
@@ -719,26 +756,41 @@ def burn_ass_video(
 
     if job:
         job.update("preparing")
+    input_args = ["-i", str(source)]
     if intervals:
+        intervals = normalize_gap_removed_intervals([
+            {"startMs": start, "endMs": end} for start, end in intervals
+        ])
         probe = _probe_gap_removed_video(source, ffprobe_path, job=job)
-        concat_path = output_path.with_suffix(".ffconcat")
-        concat_path.write_text(
-            _gap_removed_ffconcat_text(source, intervals, start_time=probe.start_time),
-            encoding="utf-8",
-        )
-        input_args = ["-f", "concat", "-safe", "0", "-i", str(concat_path)]
+        audio_streams = [stream for stream in probe.streams if stream.codec_signature[0] == "audio"]
+        audio_count = len(audio_streams)
+        # Input-side accurate seeking bounds decoding to the requested hull;
+        # FFmpeg still decodes keyframe preroll before discarding it. All filter
+        # clocks below are relative to this seek origin, including audio delay.
+        seek_start, seek_end = intervals[0][0], intervals[-1][1]
+        input_args = ["-ss", format(Decimal(seek_start).scaleb(-3), "f"),
+                      "-t", format(Decimal(seek_end - seek_start).scaleb(-3), "f"), "-i", str(source)]
+        relative_intervals = [(start - seek_start, end - seek_start) for start, end in intervals]
+        graph_path = output_path.with_suffix(".filters")
+        graph_path.write_text(_burn_interval_filter(relative_intervals, audio_count), encoding="utf-8", newline="\n")
         duration_ms = sum(end - start for start, end in intervals)
+        # A video frame can straddle the end of an interval. Independent audio
+        # concatenation and explicit output duration keep it from moving joins.
+        filter_args = ["-filter_complex_script", str(graph_path), "-map", "[burn_video]"]
+        for audio, stream in enumerate(audio_streams):
+            filter_args.extend(("-map", f"[burn_audio_{audio}]",
+                                f"-map_metadata:s:a:{audio}", f"0:s:a:{audio}",
+                                f"-disposition:a:{audio}", "+".join(stream.disposition) or "0"))
+        filter_args.extend(("-fps_mode", "vfr", "-t", format(Decimal(duration_ms).scaleb(-3), "f")))
     else:
-        input_args = ["-i", str(source)]
         duration_ms = _probe_media_duration_ms(source, ffprobe_path, job=job)
+        filter_args = ["-map", "0:v:0", "-map", "0:a?", "-vf", "ass=filename='burn.ass'"]
 
     requested_encoder = normalize_video_encoder(None)
     attempts = video_encoder_attempts(ffmpeg_path, requested_encoder)
     common_command = [
         str(ffmpeg_path), "-y", "-nostdin", "-hide_banner", "-loglevel", "warning",
-        *input_args,
-        "-map", "0:v:0", "-map", "0:a?", "-map_metadata", "0",
-        "-vf", "ass=filename='burn.ass'",
+        *input_args, *filter_args, "-map_metadata", "0",
         "-sws_flags", "spline+accurate_rnd+full_chroma_int",
     ]
     last_error: BurnVideoExportError | None = None
@@ -755,13 +807,28 @@ def burn_ass_video(
             command.extend(("-progress", "pipe:1", "-nostats"))
             job.update("burning")
         command.append(str(output_path))
+        glyph_tail = ""
+        def inspect_glyphs(chunk):
+            nonlocal glyph_tail
+            # Match warnings split across run_command's bounded reads, without
+            # retaining an unbounded FFmpeg line or depending on the log tail.
+            glyph_tail = (glyph_tail + chunk)[-8192:]
+            missing = libass_missing_glyphs(glyph_tail)
+            if missing:
+                glyph, family = missing[0]
+                raise BurnVideoExportError(
+                    f"字幕字体「{family}」缺少字形{glyph}，已中止烧录以避免输出方框；"
+                    "请在字幕样式中更换可用字体。", details=glyph_tail)
         try:
             completed = job.run_command(command, timeout=86_400, duration_ms=duration_ms,
-                                        cwd=output_path.parent) if job else subprocess.run(
+                                        cwd=output_path.parent, on_stderr=inspect_glyphs) if job else subprocess.run(
                 command, capture_output=True, text=True, encoding="utf-8", errors="replace",
                 timeout=86_400, check=False, cwd=output_path.parent,
                 startupinfo=startupinfo(), creationflags=creationflags(),
             )
+        except BurnVideoExportError:
+            output_path.unlink(missing_ok=True)
+            raise
         except subprocess.TimeoutExpired as error:
             output_path.unlink(missing_ok=True)
             raise BurnVideoExportError("视频烧录超时") from error

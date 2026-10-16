@@ -90,3 +90,8 @@
 - `playwright test --project=chromium tests/e2e/ass-export.spec.mjs` → 19 passed（入口调整后复跑）
 - `playwright test tests/e2e/gap-removed-media-jobs.spec.mjs tests/e2e/gap-removed-audio-export.spec.mjs` → 35 passed + 1 存量失败（见上）
 - `git diff --check`、`scripts/check_personal_paths.py --diff-ref main` → 干净
+
+
+## 2026-10-16 正确性复审补充
+
+上文 ffconcat 直接重编码即可精确切点的判断已由真实长 GOP 反例推翻。当前修复改为解码后选择/裁剪与统一音画时钟；同时补齐媒体替换/解绑时烧录失效及全程缺字诊断。历史验证不能替代修复后的验证，详见[复审与修复记录](../../release1.9.0-beta.2/261016_PR241正确性复审/修复与验证.md)。

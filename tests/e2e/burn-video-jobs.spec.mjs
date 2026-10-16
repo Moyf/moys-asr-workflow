@@ -79,6 +79,7 @@ async function install(page, origin, mode) {
   await page.evaluate(mode => {
     window.hints = []; window.saved = false;
     window.MaweInlineEdit = {};
+    window.MaweCoreState = { player: { currentSrc: location.origin + '/media' } };
     window.MaweProjectLoad = { projectBindingEpoch: 1 };
     window.MaweSettings = { EDITOR_SETTINGS: { assMode: mode !== 'ass-off' } };
     window.MaweBoot = { FILENAME_BASE: 'fixture', SERVER_CONFIG: { canBurnVideoExport: true,
@@ -218,3 +219,50 @@ test('toolbar burn button shows only in ASS mode with a bound video project', as
     await expect(page.locator('#burn-video-export-btn')).toBeHidden();
   });
 });
+
+
+test('picker resume rejects revoked burn capability before creating a job', async ({ page }) => {
+  await fixture('ready', async (origin, state) => {
+    await install(page, origin, 'ready');
+    await page.evaluate(() => {
+      MaweHost.files.pickSaveFile = () => new Promise(resolve => {
+        window.finishPicker = () => resolve({ name: 'result.mp4' });
+      });
+    });
+    await page.click('#burn-video-export-btn');
+    await expect.poll(() => page.evaluate(() => Boolean(window.finishPicker))).toBe(true);
+    await page.evaluate(() => {
+      MaweBoot.SERVER_CONFIG.canBurnVideoExport = false;
+      window.finishPicker();
+    });
+    await expect.poll(() => page.evaluate(() => window.hints.some(t => t.includes('绑定已变更')))).toBe(true);
+    expect(state.payloads).toEqual([]);
+    expect(await page.evaluate(() => window.saved)).toBe(false);
+  });
+});
+
+for (const phase of ['admission-body', 'write-pending']) {
+  test(`detach cancels burn during ${phase} without committing output`, async ({ page }) => {
+    await fixture(phase === 'admission-body' ? phase : 'ready', async (origin, state) => {
+      await install(page, origin, 'ready');
+      await page.evaluate(phase => {
+        window.MaweServerSave = { configureServerSaveControls() {}, scheduleAutoSave() {} };
+        window.MaweDynamicExports = { updateLottieExportButton() {}, updateOgrafExportButton() {} };
+        window.fileAborted = false;
+        if (phase === 'write-pending') MaweHost.files.pickSaveFile = async () => ({ name: 'result.mp4',
+          createWritable: async () => ({ write: () => new Promise(() => { window.writeStarted = true; }),
+            close: async () => { window.saved = true; }, abort: async () => { window.fileAborted = true; } }) });
+      }, phase);
+      await page.addScriptTag({ content: fs.readFileSync(new URL('../../web/editor/io/editor-project-load.js', import.meta.url), 'utf8') });
+      await page.click('#burn-video-export-btn');
+      await expect.poll(() => state.jobs.size).toBe(1);
+      if (phase === 'write-pending') await expect.poll(() => page.evaluate(() => window.writeStarted)).toBe(true);
+      await page.evaluate(() => MaweProjectLoad.detachServerProjectSaving());
+      await expect.poll(() => [...state.jobs.values()][0].state).toBe('cancelled');
+      await expect.poll(() => page.evaluate(() => window.__maweBurnVideoTask)).toBeNull();
+      expect(await page.evaluate(() => window.saved)).toBe(false);
+      if (phase === 'write-pending') expect(await page.evaluate(() => window.fileAborted)).toBe(true);
+      await expect(page.locator('#burn-video-export-btn')).toBeHidden();
+    });
+  });
+}
