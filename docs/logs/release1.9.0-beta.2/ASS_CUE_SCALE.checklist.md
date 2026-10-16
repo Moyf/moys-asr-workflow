@@ -8,7 +8,7 @@ status: partial
 
 # 主字幕单句缩放核对
 
-> 基线 `2cc67041`；PR #248 已打开。最近 CI 的浏览器测试仍为 28/29；自动堆叠场景现已明确调大基础字号并匹配 640×360 契约用例，待新 CI。此清单保留给维护者复核四角手势、真实工程及 PR 反馈。
+> 基线 `2cc67041`；PR #248 仍打开。最终 Editor CI 浏览器测试 29/29 通过，三条 Greptile inline thread 已回复并解决；此清单保留给维护者复核四角手势、真实工程及播放器边界。
 
 ## 实现 / 审查结论
 <!-- id: implementation-review -->
@@ -22,7 +22,7 @@ status: partial
 - [x] **类型检查**：运行 `node node_modules/typescript/bin/tsc --project tsconfig.typecheck.json`；预期：以退出码 0 完成 <!-- id: typecheck -->
 - [x] **Node 契约测试**：用 `scripts/run_check.py --timeout 180` 运行编辑器脚本顺序、缩放定位、Canvas 排布、命令隔离与震动测试；预期：57 项通过 <!-- id: node-tests -->
 - [x] **Python 契约测试**：用 `scripts/run_check.py --timeout 180` 运行 `scripts/run_tests.py tests/test_ass_cue_position.py`；预期：4 项通过 <!-- id: python-tests -->
-- [ ] **浏览器 e2e**：运行 `tests/e2e/ass-cue-position.spec.mjs --project=chromium`；预期：29 项通过，涵盖九锚点、横竖屏、震动、libass / ASS 帧、滚轮可见性、命令事务与缩放堆叠；提交 `a04bcad4` 的 CI 仍为 28/29，10 行夹具在 640×360、字号 90 的画面下仍未触发组适配倍率；当前测试将字号调至 150，Node 契约同步为 640×360 / 150 并已 9/9 通过，待新 CI 验证 <!-- id: e2e -->
+- [x] **浏览器 e2e**：提交 `c03bf021` 的 Editor workflow run `38875181279` 运行 `tests/e2e/ass-cue-position.spec.mjs --project=chromium`；预期：29 项通过，涵盖九锚点、横竖屏、震动、libass / ASS 帧、滚轮可见性、命令事务与缩放堆叠；实际：29/29 通过。10 行夹具在字号 90 下未触发自动适配，最终设为字号 150 后通过 <!-- id: e2e -->
 - [x] **差异空白检查**：运行 `git diff --check`；预期：无空白错误 <!-- id: diff-check -->
 
 ## 人工核验
@@ -39,7 +39,7 @@ status: partial
 <!-- id: fixes-and-pr -->
 
 - [x] **提交与 PR**：查看本分支提交和 PR 文件列表；预期：只包含本功能源码、测试、文档和本清单，没有 bundle、便携页、媒体或个人路径 <!-- id: review-pr-scope -->
-- [ ] **PR CI 与反馈**：查看 Editor workflow run `38873569216` 后续提交触发的 CI 与三条 Greptile inline thread；预期：确认 Node、Python、类型、构建和 29 项浏览器测试通过，记录实际结果，再回复或解决已验证的线程 <!-- id: review-feedback -->
+- [x] **PR CI 与反馈**：检查 Editor run `38875181279`、Python lint run `38875181328`、Windows 预览包 run `38875181281` 与三条 Greptile inline thread；预期：记录实际验证并处理反馈；实际：三个 workflow 均通过，三条线程已回复并解决 <!-- id: review-feedback -->
 
 ## 后续操作
 <!-- id: follow-up -->

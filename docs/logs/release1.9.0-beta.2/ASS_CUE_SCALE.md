@@ -21,7 +21,7 @@
 | 紧凑控件 | 已修复 | 倍率在 X/Y 左侧独立显隐；e2e 和本地页面测量确认间距、单行标签、编辑区高度与视频顶部位置稳定，并完成截图自查 |
 | 测试与文档 | 已修复 | JSON 契约、用户指南、CHANGELOG、官网 JSON Schema 副本和开发方案已更新；bundle、类型检查、Node/Python 测试通过；未重生成 `blank-editor.html` |
 | 提交与 PR | 已修复 | 提交 `2d5333fd`，普通推送至 `feat/ass-cue-scale`，已创建 PR #248；GitHub 文件清单与本地预期的 23 个文件一致 |
-| 一轮 PR 反馈 | 进行中 | 三处代码修正及回归用例已补；Node 57 项、Python 4 项、类型检查和 bundle 新鲜度通过。PR CI run `38873569216` 的全量 Node、Python、类型和 FFmpeg 步骤通过，浏览器 e2e 28/29；10 行夹具仍未触发 `groupScale`，现已显式调大合成场景字号并把 Node 契约改成同一 640×360 / 150 号场景，单测 9/9 通过，待新 CI |
+| 一轮 PR 反馈 | 已修复 | 三条 Greptile 意见均已处理、回复并解决。Editor CI run `38875181279` 的浏览器 e2e 29/29、全量 Node、Python assembly contracts、类型检查和构建通过；Python lint run `38875181328`、Windows 预览包 run `38875181281` 通过 |
 
 验证记录逐层回写。用户真实素材、其它系统、完整视频编码与发行包不由合成页自动化代替。
 
@@ -29,9 +29,9 @@
 
 | 条目 | 反馈 | 状态 | 处理与实际验证 |
 | --- | --- | --- | --- |
-| 1 | 预览关闭或选中字幕当前未渲染时，视频区滚轮仍修改保存倍率。 | 已修复 | 已要求 ASS 模式主字幕开关、overlay 可见、当前 cue 有非零透明度且未跳过的 Canvas 记录；隐藏预览/离屏回归包含在 CI 浏览器步骤中，该步骤唯一失败发生在单独的自动堆叠夹具。 |
-| 2 | 240ms 滚轮事务可与颜色编辑或定位/缩放拖动重叠，Esc 可能恢复过期快照。 | 已修复 | 新命令捕获快照前提交未结束的滚轮事务；定位或 handle 指针事务期间拒绝滚轮。`test_editor_commands.mjs` 7/7 通过，浏览器事务回归包含在 CI 浏览器步骤中，该步骤唯一失败发生在单独的自动堆叠夹具。 |
-| 3 | ASS 导出将已按单句倍率测量的自动排布偏移再次乘以单句倍率，造成导出位置偏离预览。 | 进行中 | 位置偏移现在只使用组适配倍率，字体/效果/动画/震动幅度保留组合倍率。`test_ass_cue_position.mjs` 的 9 项契约通过；其 Canvas/libass/导出帧自动堆叠 e2e 连续两轮未触发 `groupScale`，10 行在 640×360 / 字号 90 的场景仍不足。本轮 e2e 基础字号调至 150，Node 契约改用 640×360 / 字号 150，9/9 通过，等待 CI 重验。 |
+| 1 | 预览关闭或选中字幕当前未渲染时，视频区滚轮仍修改保存倍率。 | 已修复 | 滚轮现在要求 ASS 主字幕预览开启且选中 cue 有当前、可见、未跳过的渲染记录；Editor CI run `38875181279` 的隐藏预览 / 离屏浏览器回归通过，29 项全部通过。审查线程已回复并解决。 |
+| 2 | 240ms 滚轮事务可与颜色编辑或定位/缩放拖动重叠，Esc 可能恢复过期快照。 | 已修复 | 其他编辑命令捕获快照前会提交未结束的滚轮事务；定位或 handle 指针手势期间拒绝滚轮。命令回归通过，Editor CI run `38875181279` 的浏览器事务场景通过；审查线程已回复并解决。 |
+| 3 | ASS 导出将已按单句倍率测量的自动排布偏移再次乘以单句倍率，造成导出位置偏离预览。 | 已修复 | 自动排布偏移只应用组适配倍率，文字与效果使用组适配倍率和单句倍率的乘积。Node 契约 9/9、最终 Canvas/libass/导出帧自动堆叠 e2e 通过；审查线程已回复并解决。 |
 
 ## 最终验证
 
@@ -61,8 +61,9 @@
 - 提交 `6a08c2ae` 的全量 Node 737/737、Python assembly contracts 29/29 与 FFmpeg 安装通过；浏览器步骤运行 29 项，其中 23 项通过，定位 spec 的 6 个像素对照在 Python venv 缺 `PIL` 时失败，未报告为产品回归。Pillow 已加进默认 dev group，`uv.lock` 保留现有包版本并同步 dev 元数据；`uv lock --check --python python --cache-dir .artifacts/uv-cache` 通过。后续提交 `2d254988` 的 CI 浏览器项为 28/29，唯一失败为组适配倍率未触发，详见下一条。
 - `tests/test_packaging_contract.py` 29/29 通过（`.artifacts/checks/20261016T080736Z-2c5ce0e8/result.json`），确认 Pillow 仍是开发依赖而非运行时依赖；`uv lock --check --python python --cache-dir .artifacts/uv-cache` 通过。
 - 提交 `a04bcad4` 的 Editor workflow run `38873569216` 全量 Node 单测、Python assembly contracts、类型检查与 FFmpeg 步骤通过，浏览器测试仍为 28/29；唯一失败的 `scaled automatic stack...` 仍读到 `groupScale: 1`。之前 10 行夹具在 640×360 / 字号 90 的实际浏览器预览中没有触发自动适配。本轮将 e2e 字号改为 150，并把 `tests/test_ass_cue_position.mjs` 的契约场景匹配为 640×360 / 字号 150，单测 9/9 通过（`.artifacts/checks/20261016T083441Z-db30a2d0/result.json`）；`node --check` 通过（`.artifacts/checks/20261016T083441Z-6a0c3a26/result.json`）。下一轮 CI 尚待推送。
-- 当前验证快照为分支 `feat/ass-cue-scale` 的 HEAD `a04bcad4` 加 5 个未提交文件：`tests/e2e/ass-cue-position.spec.mjs`、`tests/test_ass_cue_position.mjs`、进度账本、方案和人工清单。两项 Node 单测 9/9 通过（`.artifacts/checks/20261016T083441Z-db30a2d0/result.json`），`node --check` 通过（`.artifacts/checks/20261016T083718Z-0df22f3c/result.json`）；清单源校验、workflow YAML 解析、个人路径扫描、`git diff --check` 与 `.artifacts/ass-cue-scale/verification.html` 重建均通过。本机浏览器服务仍受回环探活限制；最新 PR CI run `38873569216` 的 e2e 仍为 28/29，当前夹具修改待新 CI 验证。
+- 提交 `c03bf021` 的最终 Editor workflow run `38875181279` 成功：全量 Node 单测、TypeScript、Python assembly contracts、FFmpeg 准备及浏览器 e2e 均通过，浏览器共 29/29。Python lint run `38875181328` 与 Windows 预览包 run `38875181281` 通过；三个 Greptile review thread 均已回复并解决。
+- 代码验证对应 PR head `c03bf021`（当时工作树干净）。该提交时 GitHub PR 显示 28 个文件、1,043 行新增、114 行删除；分支沿用原有提交历史，没有重放或覆盖上游历史。本轮最终本地夹具 Node 契约 9/9、e2e 语法、核对清单校验 / HTML 重建、workflow YAML、个人路径扫描及 `git diff --check` 均通过；浏览器策略仍拒绝打开 `file://` 核对页，且本机 e2e 服务无法通过 loopback 探活，浏览器 e2e 以 CI 29/29 为验证证据。
 
 环境记录：`uv run --no-sync` 的解释器缓存和 `pnpm exec` 的包管理器自更新都被本机沙箱权限挡住；改用已安装解释器和本地 Playwright CLI。第一轮 e2e 的帧对比环境缺少 Pillow，改用已有 Pillow 的解释器后完整 13/13 通过。此次新增浏览器用例仍因本机回环探活失败而未完成；完整 Node 单测还因 Playwright 浏览器缺失及服务型用例超时而在 180 秒上限退出，具体如上，均不计为通过。核对清单 HTML 已生成且源文档通过校验，但浏览器策略拒绝 `file://` 页面，所以交互页预览未完成；最终仍需以 PR CI 结果为准。
 
-未验证边界：维护者真实工程和目标播放器表现、完整视频烧录、外部 CI / reviewer 反馈。便携内联副本 `blank-editor.html` 按仓库约定留待发布前统一重生成。
+未验证边界：维护者真实工程和目标播放器表现、完整视频烧录仍需人工验收。便携内联副本 `blank-editor.html` 按仓库约定留待发布前统一重生成。
