@@ -22,7 +22,7 @@ import edit  # noqa: E402
 
 class EditorAssetContractTests(CompactContainerAssertions, unittest.TestCase):
     def test_portable_about_gif_is_self_contained(self) -> None:
-        page = edit.build_blank_html()
+        page = edit.render_empty_editor_page()
         match = re.search(r'src="data:image/gif;base64,([^"]+)"', page)
         self.assertIsNotNone(match)
         self.assertEqual(base64.b64decode(match.group(1)), (edit.WEB_DIR / 'assets/moi_dancing.gif').read_bytes())
@@ -46,6 +46,8 @@ class EditorAssetContractTests(CompactContainerAssertions, unittest.TestCase):
                 "editor/boot/editor-host.js",
                 "shared/gap-remove-core.js",
                 "shared/utils/data.js",
+                "shared/utils/project-validation.js",
+                "shared/utils/subtitle-groups.js",
                 "shared/utils/fonts.js",
                 "shared/utils/speakers.js",
                 "shared/utils/media-metadata.js",
@@ -238,7 +240,7 @@ class EditorAssetContractTests(CompactContainerAssertions, unittest.TestCase):
     def test_editor_script_payload_is_one_complete_artifact(self) -> None:
         with patch.object(edit, "read_editor_script_manifest", side_effect=AssertionError("runtime source assembly")):
             payload = edit.build_editor_scripts()
-            page = edit.build_blank_html()
+            page = edit.render_empty_editor_page()
         self.assertEqual(payload, edit.read_web_asset("editor/boot/editor-bundle.js").rstrip())
         self.assertIn(payload.splitlines()[0], page)
         metadata = json.loads(edit.read_web_asset("editor/boot/editor-bundle.meta.json"))
@@ -486,7 +488,7 @@ class EditorAssetContractTests(CompactContainerAssertions, unittest.TestCase):
         self.assertNotIn("const portableStickerExportEnabled", script)
 
     def test_generated_page_contains_compatibility_facades_in_order(self) -> None:
-        page = edit.build_blank_html()
+        page = edit.render_empty_editor_page()
         tokens = set(re.findall(r"__[A-Z][A-Z0-9_]+__",
                                 edit.read_web_asset("editor-template.html") + self.source_contract_text()))
         for token in tokens:

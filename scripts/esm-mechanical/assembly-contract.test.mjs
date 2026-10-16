@@ -52,7 +52,7 @@ edit.read_web_asset = read
 def forbidden(): raise AssertionError('Python is still assembling source manifest')
 edit.read_editor_script_manifest = forbidden
 payload = edit.build_editor_scripts()
-page = edit.build_blank_html()
+page = (getattr(edit, "render_empty_editor_page", None) or edit.build_blank_html)()
 print(json.dumps({'reads': reads, 'hash': hashlib.sha256(payload.encode()).hexdigest(), 'embedded': payload.splitlines()[0] in page}))
 `));
   assert.ok(fs.existsSync(bundlePath), 'E3: full artifact is absent');

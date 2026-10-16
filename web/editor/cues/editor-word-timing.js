@@ -162,7 +162,9 @@
   function conversionPlan() {
     if (!conversionTarget || conversionTarget.project !== MaweBoot.DATA.segments) return null;
     const indices = MaweBoot.DATA.segments.map((segment, index) => conversionTarget.ids.includes(segment.id) ? index : -1).filter(i => i >= 0);
-    return global.AsrEditorUtils.planWordTimingConversion(MaweBoot.DATA.segments, indices, clock());
+    return global.AsrEditorUtils.planWordTimingConversion(MaweBoot.DATA.segments, indices, clock(), {
+      reservedSegments: global.AsrEditorUtils.subtitleGroupTracks(MaweBoot.DATA).flatMap(t => t.segments),
+    });
   }
   function renderConversion() {
     const plan = conversionPlan();

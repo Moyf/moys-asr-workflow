@@ -11,6 +11,12 @@
   function groupMemberIdxs(idx) {
     const seg = MaweBoot.DATA.segments[idx];
     if (!seg) return [idx];
+    if (MaweBoot.DATA.subtitle_groups) {
+      return MaweBoot.DATA.segments.flatMap((candidate, index) => (
+        index === idx || ['color_group_id', 'sticker_group_id'].some(field => seg[field] && candidate[field] === seg[field])
+          ? [index] : []
+      ));
+    }
     const heads = new Set();
     if (seg.sticker) heads.add(idx);
     else if (seg.sticker_ref) heads.add(seg.sticker_ref.headIdx);

@@ -228,7 +228,7 @@ export function createUtilsModule(dependencies) {
   }
 
 
-  function buildTimedTextStructurePlan(segments, draftTexts) {
+  function buildTimedTextStructurePlan(segments, draftTexts, { reservedSegments = [] } = {}) {
     const source = Array.isArray(segments) ? segments : [];
     const texts = Array.isArray(draftTexts) ? draftTexts : [];
     if (!timedTextStructureRequested(source, texts)) return emptyTimedTextStructurePlan();
@@ -414,6 +414,9 @@ export function createUtilsModule(dependencies) {
         return emptyTimedTextStructurePlan('拆句后产生了无效的字幕时间范围。');
       }
       const segment = cloneJsonValue(source[first] || {});
+      for (const field of ['color_group_id', 'sticker_group_id']) {
+        if (!overlaps.every(({ sourceIndex }) => source[sourceIndex]?.[field] === source[first]?.[field])) delete segment[field];
+      }
       segment.start = start;
       segment.end = end;
       segment.text = lines[outputIndex];
@@ -432,7 +435,7 @@ export function createUtilsModule(dependencies) {
       previousOutputEnd = end;
     }
 
-    const usedSegments = [...source];
+    const usedSegments = [...reservedSegments, ...source];
     outputMeta.forEach((meta, outputIndex) => {
       const sourceIndex = meta.sourceIndexes[0];
       const sourceSegment = source[sourceIndex] || {};

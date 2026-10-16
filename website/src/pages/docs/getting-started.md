@@ -19,7 +19,7 @@ MAW 帮你把字幕生成后的校对、整理和交付接起来。它以云端 
 
 除了修改文字和时间，你还可以用文稿辅助校对、可逆地移除停顿、管理主副字幕，再交付字幕或剪辑交换文件。保留 `.mosp` 工程，下一次修改就能从当前结果继续。
 
-[官网](https://moyf.github.io/moys-asr-workflow/) · [在线编辑器](https://moyf.github.io/moys-asr-workflow/editor/) · [3 分钟视频速览](https://www.bilibili.com/video/BV1hXum6yELT)
+[官网](https://moyf.github.io/moys-asr-workflow/) · [下载本地应用](https://github.com/Moyf/moys-asr-workflow/releases/latest) · [3 分钟视频速览](https://www.bilibili.com/video/BV1hXum6yELT)
 
 <img src="../../docs-assets/docs/assets/1.6.0/overlay-track.webp" alt="MAWE 编辑器：左侧视频与字幕列表，右侧多行波形和叠加字幕" loading="lazy" decoding="async" />
 
