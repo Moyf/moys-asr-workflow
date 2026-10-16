@@ -3705,14 +3705,13 @@ input:not([type="checkbox"]):not([type="radio"]), select:not([multiple]) { min-h
 .auto-retain-row { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-top: 14px; padding-top: 12px; border-top: 1px solid var(--border-subtle); }
 .auto-retain-label { font-weight: 600; font-size: 14px; cursor: pointer; }
 .auto-retain-row .hint { margin-top: 6px; }
-/* 「其他」组：2×2 网格，右下留占位格给后续设置。 */
+/* 「其他」组：2×2 网格（四格全部启用，行间用 border-top 分隔）。 */
 .misc-options-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 0 24px; }
 .misc-option { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 12px 0; border-top: 1px solid var(--border-subtle); }
 .misc-options-grid .misc-option:nth-child(-n+2) { border-top: 0; }
 .misc-option-copy { flex: 1; min-width: 0; }
 .misc-option-label { display: inline-flex; font-weight: 600; font-size: 14px; cursor: pointer; }
 .misc-option .hint { margin-top: 6px; }
-.misc-option-placeholder { border-top: 0; }
 @media (max-width: 700px) {
   .misc-options-grid { grid-template-columns: 1fr; }
   .misc-options-grid .misc-option:nth-child(2) { border-top: 1px solid var(--border-subtle); }
