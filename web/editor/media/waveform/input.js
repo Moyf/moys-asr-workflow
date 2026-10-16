@@ -609,11 +609,11 @@ export function createWaveformModule(dependencies) {
           return;
         }
         const windowMs = this.settings.visibleSeconds * 1000;
-        const maxStart = Math.max(0, this.durationMs - windowMs);
         const delta = Math.sign(scrollDelta) * windowMs * 0.12;
-        this.basicWindowStartMs = clamp(this.basicWindowStartMs + delta, 0, maxStart);
         this.manualFollowUntil = Date.now() + 3000;
-        this.scheduleBasicRender();
+        // 批次 2：窗口推进与钳制都由 panBasicByMs 处理——平移走位图平移
+        // + 露出窄条补绘，内部无法原位表达时自动回退全量重绘路径。
+        this.panBasicByMs(delta);
         return;
       }
       if (this.isMultiMode() && (event.ctrlKey || event.metaKey)) {

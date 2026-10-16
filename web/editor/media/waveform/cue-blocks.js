@@ -1,7 +1,7 @@
 // cue-blocks: waveform class methods with explicit dependencies.
 export function createWaveformModule(dependencies) {
   'use strict';
-  const { colorForSegment, computeGroupBadges, cueBlockContinuationEdges, findActiveCueIndex, firstCueIndexOverlapping, formatCompact, gapOperationAllowsBoundary, gapOperationAllowsMiddle, gapRemoveDisplayLabel, hasSubtitleColor, isActiveCueVisualHit, localizedWaveformMessage } = dependencies;
+  const { colorForSegment, cueBlockContinuationEdges, findActiveCueIndex, firstCueIndexOverlapping, formatCompact, gapOperationAllowsBoundary, gapOperationAllowsMiddle, gapRemoveDisplayLabel, hasSubtitleColor, isActiveCueVisualHit, localizedWaveformMessage } = dependencies;
 
   class WaveformMethods {
 
@@ -47,7 +47,7 @@ export function createWaveformModule(dependencies) {
       row.appendChild(splitFlash);
 
       this.appendGapBlocks(row, startMs, endMs);
-      this.appendCueBlocks(row, startMs, endMs, groupBadges || computeGroupBadges(this.options.getSegments('main')));
+      this.appendCueBlocks(row, startMs, endMs, groupBadges || this.computeGroupBadgesCached(this.options.getSegments('main')));
       // 通用 Marker / Region 轨道：遵守标记编辑开关，启用时空轨也可添加标记。
       this.appendMarkerTrack(row, startMs, endMs);
 
@@ -282,7 +282,7 @@ export function createWaveformModule(dependencies) {
       const mainBindingMarkers = bindingMarkerTargets.main;
       const now = this.currentTimeMs();
       const activeMainIndex = findActiveCueIndex(segments, now);
-      const badgesByIndex = groupBadges || computeGroupBadges(segments);
+      const badgesByIndex = groupBadges || this.computeGroupBadgesCached(segments);
       const firstMainIndex = firstCueIndexOverlapping(segments, startMs);
       for (let index = firstMainIndex; index < segments.length; index += 1) {
         const segment = segments[index];
@@ -356,13 +356,11 @@ export function createWaveformModule(dependencies) {
           if (!wordTimingFullLane) block.classList.add('word-timing-compact');
         }
         block.addEventListener('pointerdown', (event) => {
-          if (!this.options.wordTiming?.enabled || wordTimingFullLane) return this.beginCueDrag(event, index, row, 'main');
-          event.preventDefault(); event.stopPropagation();
-          if (event.button !== 0) return;
-          this.focusWaveform();
-          if (event.ctrlKey || event.metaKey) this.options.toggleCueSelection?.(index);
-          else if (event.shiftKey) this.options.selectCueRange?.(index);
-          else this.options.selectCue(index);
+          // 账本 #24：字词码模式下整句块（含紧凑垫底）与常规模式一致允许
+          // 拖动；Ctrl/Shift 多选与 Shift 范围选择由 beginCueDrag 内置处理，
+          // 提交层的 items 重映射（cue-drag-update 的 move 平移 / boundary
+          // 比例重映射）保证字词跟随整句边界。字词块是独立元素，不受影响。
+          return this.beginCueDrag(event, index, row, 'main');
         });
         block.addEventListener('contextmenu', (event) => {
           event.preventDefault();
@@ -398,7 +396,7 @@ export function createWaveformModule(dependencies) {
       if (overlaySegments.length) {
         const overlaySelected = this.options.getOverlaySelection?.() || new Set();
         const overlayBadges = this.settings.showGroupBadges !== false
-          ? computeGroupBadges(overlaySegments) : null;
+          ? this.computeGroupBadgesCached(overlaySegments) : null;
         // 行高不足（50% 线放不下 35px 叠加块 + 7px 底边距）时叠加块直接盖在
         // 主字幕块上方，此时不渲染叠加徽章，避免与下半区徽章混叠。
         // 多行模式的行高真源是 settings.rowHeight：createMultiRow 在
@@ -685,12 +683,108 @@ export function createWaveformModule(dependencies) {
     }
 
 
+    // 平移期轻量重排（账本 #22 批次 2）：句块与徽章按新窗口原位重算
+    // left/width/hidden，不重建 DOM。返回 false 表示存在无法原位表达的
+    // 结构差异（新窗口出现无 DOM 块的字幕、segment 丢失、句块手柄存在性
+    // 需要变化），由调用方回退 renderBasic 全量重建。
+    /** @this {import('./waveform-types.js').WaveformInstance} */
+    relayoutCueBlocksInRow(row, startMs, endMs) {
+      const segments = this.options.getSegments('main');
+      const duration = Math.max(1, endMs - startMs);
+      const blocks = [.../** @type {NodeListOf<HTMLElement>} */ (row.querySelectorAll('.waveform-cue-block[data-track="main"]'))];
+      const wordTimingEnabled = Boolean(this.options.wordTiming?.enabled);
+      const multiLane = this.options.multiSubtitleVisible?.() === true;
+      // 句块手柄存在性（与 appendCueBlocks 创建条件一致）：非字词模式按
+      // 窗口边界；字词 full lane 常显；紧凑模式仅选中句。平移不改选区。
+      const fullLane = wordTimingEnabled && !multiLane && (this.settings.mode === 'basic'
+        || (this.settings.mode === 'multi' && (Number(this.settings.rowHeight) || 0) >= 96));
+      const selected = this.options.getSelection('main');
+      for (const block of blocks) {
+        const index = Number(block.dataset.idx);
+        const segment = segments[index];
+        if (!segment) return false;
+        const wantLeft = segment.start >= startMs;
+        const wantRight = segment.end <= endMs;
+        const sentenceHandles = !wordTimingEnabled || fullLane || selected.has(index);
+        const expectLeft = sentenceHandles && wantLeft;
+        const expectRight = sentenceHandles && wantRight;
+        if (expectLeft !== Boolean(block.querySelector('.waveform-cue-handle.left'))
+          || expectRight !== Boolean(block.querySelector('.waveform-cue-handle.right'))) {
+          return false;
+        }
+        this.layoutBlock(block, segment, startMs, endMs, row);
+      }
+      // 新窗口内每条可见字幕都必须已有 DOM 块；缺失 → 结构变化。
+      const hideDisabled = this.options.getHideDisabled?.() || this.settings.disabledDisplay === 'hidden';
+      for (let index = firstCueIndexOverlapping(segments, startMs); index < segments.length; index += 1) {
+        const segment = segments[index];
+        if (segment.start >= endMs) break;
+        if (segment.end <= startMs) continue;
+        if (segment.disabled && hideDisabled) continue;
+        let present = false;
+        for (const block of blocks) {
+          if (Number(block.dataset.idx) === index) { present = true; break; }
+        }
+        if (!present) return false;
+      }
+      // 徽章位置随句块平移（badge 挂在同一 row 上，按 seg-id 找回）。
+      const badges = [.../** @type {NodeListOf<HTMLElement>} */ (row.querySelectorAll('.waveform-cue-badge[data-seg-id]'))];
+      if (badges.length) {
+        const indexById = new Map();
+        segments.forEach((segment, index) => { if (segment.id) indexById.set(segment.id, index); });
+        for (const badge of badges) {
+          const segment = segments[indexById.get(badge.dataset.segId) ?? -1];
+          if (!segment) return false;
+          const visibleStart = Math.max(startMs, segment.start);
+          badge.style.left = `${((visibleStart - startMs) / duration) * 100}%`;
+        }
+      }
+      return true;
+    }
+
+
+    // 空隙块原位重排；gap 增减（块数不匹配）、索引失效或手柄存在性变化
+    // 时返回 false（调用方回退 refreshGapOverlay 整层重建，空隙块数量少）。
+    /** @this {import('./waveform-types.js').WaveformInstance} */
+    relayoutGapBlocksInRow(row, startMs, endMs) {
+      const gaps = this.options.getGapRemoveGaps?.() || [];
+      const blocks = [.../** @type {NodeListOf<HTMLElement>} */ (row.querySelectorAll('.waveform-gap-block'))];
+      const expected = [];
+      for (let index = firstCueIndexOverlapping(gaps, startMs); index < gaps.length; index += 1) {
+        const gap = gaps[index];
+        if (!gap) continue;
+        if (gap.start >= endMs) break;
+        if (gap.end <= startMs) continue;
+        expected.push({ gap, index });
+      }
+      if (blocks.length !== expected.length) return false;
+      const boundaryEnabled = gapOperationAllowsBoundary(this.options.getGapOperationMode?.() || 'boundary_drag');
+      for (const block of blocks) {
+        const entry = expected.find(candidate => candidate.index === Number(block.dataset.gapIndex));
+        if (!entry) return false;
+        if (boundaryEnabled) {
+          const wantLeft = entry.gap.start >= startMs;
+          const wantRight = entry.gap.end <= endMs;
+          if (wantLeft !== Boolean(block.querySelector('.waveform-gap-handle.left'))
+            || wantRight !== Boolean(block.querySelector('.waveform-gap-handle.right'))) {
+            return false;
+          }
+        }
+        this.layoutGapBlock(block, entry.gap, startMs, endMs);
+      }
+      return true;
+    }
+
+
     /** @this {import('./waveform-types.js').WaveformInstance} */
     refreshCueOverlay() {
       if (!this.payload) return;
+      // 覆盖层重建的入口都可能伴随分组字段变化（颜色/表情包/拆分合并/
+      // 撤销重做）：徽章缓存纪元在此推进，后续读取按新纪元重算。
+      this.invalidateGroupBadges();
       const rows = [...(/** @type {NodeListOf<import('./waveform-types.js').WaveformRow>} */ (this.content.querySelectorAll('.waveform-row')))];
       if (!rows.length) return;
-      const groupBadges = computeGroupBadges(this.options.getSegments('main'));
+      const groupBadges = this.computeGroupBadgesCached(this.options.getSegments('main'));
       rows.forEach((row) => {
         // 绑定、解绑和字幕时间变化只影响覆盖层；保留已有行与 Canvas，
         // 避免重新采样/绘制波形导致操作出现一帧卡顿。
@@ -716,6 +810,9 @@ export function createWaveformModule(dependencies) {
         }
       }
       this.updatePlayback(false);
+      // 字块几何/文本可能随整层重建变化：同步重绘全文预览气泡层
+      //（仅基础模式 + 字词码生效，内部自带模式守卫）。
+      this.refreshWordChips();
     }
 
 

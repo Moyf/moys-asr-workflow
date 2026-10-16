@@ -241,7 +241,7 @@ test('expanded wrapping menu stays inside a short viewport and keeps custom wrap
   await seed(page);
   await page.setViewportSize({ width: 1280, height: 500 });
   await page.evaluate(() => MaweContextMenus.showContextMenu(350, 350, 0));
-  await page.locator('.word-timing-advanced > .item').hover();
+  // 「左右添加字符」已提为顶层菜单行，无需先展开「高级操作」。
   await page.getByText('左右添加字符', { exact: true }).click();
   const bounds = await page.locator('#ctxmenu').boundingBox();
   expect(bounds.y).toBeGreaterThanOrEqual(0);

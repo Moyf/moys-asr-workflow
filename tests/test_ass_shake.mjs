@@ -19,9 +19,9 @@ test('sentence shake marker parsing strips both ends only for double symbols wit
   // 四个字符时两端标记完全重叠，视为普通感叹号文本而不是空正文标记。
   assert.deepEqual(plain(h.parseSentenceShakeMarkers('!!!!')), { text: '!!!!', shake: false });
   assert.deepEqual(plain(h.parseSentenceShakeMarkers('!!a!!b!!')), { text: 'a!!b', shake: true });
-  // 右键预设表登记双感叹号，且仅在 ASS 模式展示。
+  // 右键预设表登记双感叹号（句级效果），且仅在 ASS 模式展示。
   assert.deepEqual(plain(h.WRAP_CHAR_PRESETS.find(preset => preset.id === 'shake')),
-    { id: 'shake', label: '原地震动', left: '!!', right: '!!', ass: true });
+    { id: 'shake', label: '原地震动', left: '!!', right: '!!', ass: true, sentenceLevel: true });
 });
 
 test('export splits a shaken cue into interval events with exactly one pos and no move', () => {
@@ -144,12 +144,13 @@ test('SRT sentence effects follow the symbol rule in either nesting order and pa
   for (const [text, rule, expected] of [
     ['>!!text!!<', 'both', 'text'], ['!!>text<!!', 'both', 'text'],
     ['>>!!text!!<<', 'double', 'text'], ['!!>>text<<!!', 'double', 'text'],
-    ['++>!!text!!<++', 'both', '++text++'],
+    // MASS 成对符号（含 ++ 与行内 !! 对）随任务 4 一并剥离，孤儿保留字面
+    ['++>!!text!!<++', 'both', 'text'],
     ['>>>>!!text!!<<<<', 'double', '>>text<<'], ['>>>>text<<<<', 'double', '>>text<<'],
-    ['>!!text!!<', 'double', '>!!text!!<'], ['!!>text<!!', 'double', '>text<'],
+    ['>!!text!!<', 'double', '>text<'], ['!!>text<!!', 'double', '>text<'],
     ['>!!text!!<', 'none', '>!!text!!<'], ['!!>text<!!', 'none', '>text<'],
     ['>>!!text!!<<', 'none', '>>text<<'], ['!!text!!', 'none', 'text'],
-    ['>!!text<', 'both', '!!text'], ['plain !!inline!! text', 'both', 'plain !!inline!! text'],
+    ['>!!text<', 'both', '!!text'], ['plain !!inline!! text', 'both', 'plain inline text'],
   ]) {
     const cue = { start: 0, end: 1000, text };
     const options = { assSpecialSymbolRule: rule };

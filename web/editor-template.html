@@ -2133,10 +2133,7 @@ __WAVEFORM_CSS__
             </label><small class="settings-panel-hint">播放时列表会跟随当前字幕；手动翻看后可点击恢复跟随。</small></div>
 </div>
       </div>
-      <span class="input-clear" id="search-wrap">
-        <input type="text" id="search" placeholder="过滤字幕…" autocomplete="off">
-        <span class="clear-x" id="search-clear" title="清空">×</span>
-      </span>
+      <input type="search" id="search" placeholder="过滤字幕" autocomplete="off">
       <div class="dropdown color-filter-dropdown" id="color-filter-dropdown">
         <button type="button" id="color-filter-btn" hidden title="按颜色过滤显示的字幕" aria-expanded="false" aria-controls="color-filter-menu">🎨</button>
         <div class="dropdown-menu color-filter-menu" id="color-filter-menu" role="menu"></div>
@@ -2362,7 +2359,7 @@ __WAVEFORM_CSS__
       <label class="text-process-operation" for="text-process-strip-markdown">
         <input type="checkbox" id="text-process-strip-markdown">
         <span>去除 md 格式符号</span>
-        <span class="modal-hint">移除常见 Markdown 标记</span>
+        <span class="modal-hint">移除常见 Markdown 标记；含特殊文本样式（MASS）符号时会一并移除，建议先清理再加样式</span>
       </label>
     </div>
     <div class="text-process-wrap-presets" aria-label="左右添加字符预设">
@@ -2370,6 +2367,10 @@ __WAVEFORM_CSS__
       <div class="text-process-wrap-preset-row text-process-wrap-preset-row-ass">
         <span class="text-process-wrap-preset-row-label">ASS 特殊文本样式</span>
         <div class="text-process-wrap-preset-buttons" id="text-process-wrap-presets-ass"></div>
+      </div>
+      <div class="text-process-wrap-preset-row text-process-wrap-preset-row-ass">
+        <span class="text-process-wrap-preset-row-label text-process-wrap-sentence-badge">整句</span>
+        <div class="text-process-wrap-preset-buttons" id="text-process-wrap-presets-ass-sentence"></div>
       </div>
       <div class="text-process-wrap-preset-row">
         <span class="text-process-wrap-preset-row-label">普通字符</span>
@@ -2530,6 +2531,10 @@ __WAVEFORM_CSS__
       </aside>
     </div>
     <div class="actions">
+      <label class="timed-text-edit-trim-toggle" for="timed-text-edit-trim" title="应用修改时去掉每条字幕文本首尾的空格">
+        <input type="checkbox" id="timed-text-edit-trim">
+        修改后移除字幕前后空格
+      </label>
       <button type="button" id="timed-text-edit-cancel">取消</button>
       <button type="button" id="timed-text-edit-apply" class="primary" disabled>应用修改</button>
     </div>

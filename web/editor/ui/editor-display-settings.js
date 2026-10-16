@@ -43,6 +43,17 @@
   const waveformModes = [];
 
 
+  // 字词码/双语字幕等开关联动会自动改行高或每行长度：多行模式按新几何
+  // 重建后，原有像素 scrollTop 不再对准原时间位置。几何确实变化且重渲染
+  // 完成后，把波形滚回播放头所在行（复用 revealTime 现成 API）。
+  // basic 模式不使用这些几何预设、不存在漂移，不调用以免无谓移动视窗。
+  function revealPlayheadAfterWaveformGeometryChange(editor) {
+    if (!editor?.isMultiMode() || typeof editor.revealTime !== 'function') return;
+    const currentTimeSeconds = MaweCoreState.player?.currentTime;
+    if (!Number.isFinite(currentTimeSeconds)) return;
+    editor.revealTime(currentTimeSeconds * 1000, true);
+  }
+
 
   function applyWaveformModeRowHeight({ render = true } = {}) {
     const editor = MaweCoreState.waveformEditor;
@@ -51,7 +62,13 @@
     const height = mode === 'word'
       ? MaweSettings.EDITOR_SETTINGS.wordTimingRowHeight
       : mode === 'multi' ? MaweSettings.EDITOR_SETTINGS.multiSubtitleRowHeight : waveformRowHeightBeforeModes;
-    if (Number.isFinite(height)) editor.setRowHeight(height, { render });
+    if (!Number.isFinite(height)) return;
+    const rowHeightBefore = editor.settings.rowHeight;
+    editor.setRowHeight(height, { render });
+    // render:false 的调用方（字词码开关联动）在其统一 editor.render() 之后再回滚视口。
+    if (render && editor.settings.rowHeight !== rowHeightBefore) {
+      revealPlayheadAfterWaveformGeometryChange(editor);
+    }
   }
 
   // 共享基线，最近开启的模式优先。关闭非顶层模式不会改动当前行高；
@@ -83,6 +100,8 @@
     const editor = MaweCoreState.waveformEditor;
     if (!editor) return;
     const wasEnabled = waveformModes.includes('word');
+    const secondsPerRowBefore = editor.settings.secondsPerRow;
+    const rowHeightBefore = editor.settings.rowHeight;
     if (enabled && !wasEnabled) {
       secondsPerRowBeforeWordTiming = editor.settings.secondsPerRow;
       editor.setSecondsPerRow(MaweSettings.EDITOR_SETTINGS.wordTimingSecondsPerRow, { render: false });
@@ -95,6 +114,12 @@
     // 切换字词只需调用方刷新字幕层，保留 Canvas 和当前水平视窗。
     if (enabled !== wasEnabled && editor.isMultiMode()) {
       editor.render();
+      // 行高或每行长度确实被预设改变时，重渲染后的像素 scrollTop 不再
+      // 对准原时间；把波形滚回播放头所在行，避免改完设置找不到原位置。
+      if (editor.settings.secondsPerRow !== secondsPerRowBefore
+        || editor.settings.rowHeight !== rowHeightBefore) {
+        revealPlayheadAfterWaveformGeometryChange(editor);
+      }
       return true;
     }
     return false;
@@ -316,6 +341,7 @@
     get previousMultiSubtitlePreviewEnabled() { return previousMultiSubtitlePreviewEnabled; },
     set previousMultiSubtitlePreviewEnabled(v) { previousMultiSubtitlePreviewEnabled = v; },
     applyWaveformModeRowHeight,
+    revealPlayheadAfterWaveformGeometryChange,
     syncMultiSubtitleWaveformRowHeight,
     syncWordTimingWaveformSettings,
     updateMultiSubtitleUi,

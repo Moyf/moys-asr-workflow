@@ -1,0 +1,213 @@
+import assert from 'node:assert/strict';
+import test from 'node:test';
+import fs from 'node:fs';
+import vm from 'node:vm';
+import { loadEditorModule } from './helpers/editor-module-loader.mjs';
+
+const context = { window: {} };
+loadEditorModule(context, 'shared/editor-utils.js');
+const h = context.window.AsrEditorUtils;
+const plain = value => JSON.parse(JSON.stringify(value));
+
+// 拆分核心与合并路径是 classic 作用域脚本：按 test_ass_cue_position 的方式
+// 注入最小全局桩后在独立 context 里加载真实源码。
+const splitContext = () => ({
+  window: { AsrEditorUtils: h },
+  MULTI_SUBTITLE_UTILS: h,
+  MaweMultiSubtitleCore: { SUBTITLE_MIN_DURATION_MS: 100 },
+  MaweSettings: { EDITOR_SETTINGS: { assSpecialSymbolRule: 'both' } },
+});
+const mergeContext = (segments) => ({
+  window: { AsrEditorUtils: h },
+  MaweBoot: { DATA: { segments } },
+  MaweMultiSubtitleCore: {
+    getMultiSubtitleState: () => ({ tracks: [] }), multiSubtitleVisible: () => false,
+    getMainSubtitleSplitMode: () => 'continuous', mergeJoinSeparatorForMode: () => '',
+    removeBindingsForSegmentIds() {},
+  },
+  MaweTextCleanup: { syncTimelineGroupRanges() {} },
+  MaweSettings: { EDITOR_SETTINGS: { assSpecialSymbolRule: 'both' } },
+});
+
+// === 任务 4：stripMassMarkers（成对剥、孤儿留） ===
+
+test('stripMassMarkers removes recognized pairs and keeps orphan markers literal', () => {
+  assert.equal(h.stripMassMarkers('**强调**文本*', 'both'), '强调文本*');
+  assert.equal(h.stripMassMarkers('*强调', 'both'), '*强调');
+  assert.equal(h.stripMassMarkers('**强调**', 'both'), '强调');
+  // 八对中的其余同符号对：放大 / 缩小 / 下划线 / 删除线 / 注释 / 原地震动
+  assert.equal(h.stripMassMarkers('++大++文本', 'both'), '大文本');
+  assert.equal(h.stripMassMarkers('--小--文本', 'both'), '小文本');
+  assert.equal(h.stripMassMarkers('__线__文本', 'both'), '线文本');
+  assert.equal(h.stripMassMarkers('~~删~~文本', 'both'), '删文本');
+  assert.equal(h.stripMassMarkers('//注释//正文', 'both'), '注释正文');
+  assert.equal(h.stripMassMarkers('!!震动!!文本', 'both'), '震动文本');
+  // 句级 fade >>…<< 是非对称标记，由 stripSentenceFadeMarkers 负责，这里不动
+  assert.equal(h.stripMassMarkers('>>淡入<<', 'both'), '>>淡入<<');
+  // 与句级 fade/shake 剥离协调：同一条链不重复剥、不互相破坏
+  assert.equal(h.srtSentenceText('>>淡入**强调**淡出<<', 'both'), '淡入强调淡出');
+  assert.equal(h.srtSentenceText('!!震动**重点**!!', 'both'), '震动重点');
+  // fade parse-once 语义不被 MASS 剥离破坏（第二个 fade 对保持字面）
+  assert.equal(h.srtSentenceText('>>>>原文<<<<', 'double'), '>>原文<<');
+});
+
+test('stripMassMarkers follows the special symbol rule like recognition does', () => {
+  assert.equal(h.stripMassMarkers('*单*双**', 'double'), '*单*双**');
+  assert.equal(h.stripMassMarkers('**双**', 'double'), '双');
+  assert.equal(h.stripMassMarkers('*单*双**', 'none'), '*单*双**');
+  assert.equal(h.stripMassMarkers('**双**', 'none'), '**双**');
+  assert.deepEqual(plain(h.massMarkedRanges('*a* **b**', 'both').map(range => [range.start, range.end, range.width])),
+    [[0, 2, 1], [4, 7, 2]]);
+});
+
+test('SRT and TXT exports strip MASS pairs while ASS export keeps them', () => {
+  const cues = [{ start: 0, end: 1000, text: '我是今天的*解说*' }];
+  assert.ok(h.buildSrtPayload(cues).includes('\n我是今天的解说\n'));
+  assert.ok(h.buildSrtPayload(cues, { assSpecialSymbolRule: 'double' }).includes('\n我是今天的*解说*\n'));
+  assert.equal(h.buildPlainTextPayload([{ text: '**强调**和!!震动!!' }, { text: '孤*儿' }]),
+    '强调和震动\n孤*儿');
+  // ASS 导出（非 assMode）保留字面符号，MASS 在 ASS 是合法语法
+  const ass = h.buildAssPayload([{ start: 0, end: 1000, text: '**强调**' }]);
+  assert.ok(ass.includes('**强调**'));
+});
+
+// === 任务 2：completeSplitMassPairs（拆分补齐） ===
+
+test('split completion completes a pair straddling the cut on both sides', () => {
+  // 维护者拍板示例：今天*的 ｜ 解说* → 今天*的* ｜ *解说*
+  assert.deepEqual(plain(h.completeSplitMassPairs('今天*的', '解说*', 'both')),
+    { left: '今天*的*', right: '*解说*', leftAppend: '*', rightPrepend: '*' });
+  assert.deepEqual(plain(h.completeSplitMassPairs('今天**的', '解说**', 'both')),
+    { left: '今天**的**', right: '**解说**', leftAppend: '**', rightPrepend: '**' });
+  assert.deepEqual(plain(h.completeSplitMassPairs('!!今天的', '解说!!', 'both')),
+    { left: '!!今天的!!', right: '!!解说!!', leftAppend: '!!', rightPrepend: '!!' });
+});
+
+test('split completion fills the sentence-level fade pair on both sides', () => {
+  assert.deepEqual(plain(h.completeSplitMassPairs('>>今天的', '解说<<', 'both')),
+    { left: '>>今天的<<', right: '>>解说<<', leftAppend: '<<', rightPrepend: '>>' });
+  assert.deepEqual(plain(h.completeSplitMassPairs('>今天的', '解说<', 'single')),
+    { left: '>今天的<', right: '>解说<', leftAppend: '<', rightPrepend: '>' });
+});
+
+test('split completion keeps orphan markers and skips sides without body', () => {
+  // 找不到成对的孤儿符号维持字面
+  assert.deepEqual(plain(h.completeSplitMassPairs('今天*的', '解说', 'both')),
+    { left: '今天*的', right: '解说', leftAppend: '', rightPrepend: '' });
+  // 刀点恰在开符号之后：左无正文不补闭（避免拼出 ++++），右补齐成对
+  assert.deepEqual(plain(h.completeSplitMassPairs('强调**', '文本**完', 'both')),
+    { left: '强调**', right: '**文本**完', leftAppend: '', rightPrepend: '**' });
+  // 双符号规则下单符号对不识别，维持字面
+  assert.deepEqual(plain(h.completeSplitMassPairs('今天*的', '解说*', 'double')),
+    { left: '今天*的', right: '解说*', leftAppend: '', rightPrepend: '' });
+});
+
+test('split pair wiring completes texts and items in buildSplitPair with conservation', () => {
+  // items 取「同步归位后」的真实形态：符号按任务 1 的规则落在相邻 item 文本里
+  const segment = { id: 'a', start: 0, end: 2000, text: '今天*的解说*完', items: [
+    { text: '今天*', start: 0, end: 600 }, { text: '的', start: 600, end: 900 },
+    { text: '解说*', start: 900, end: 1500 }, { text: '完', start: 1500, end: 1900 },
+  ] };
+  const built = buildViaFreshContext(segment, 5);
+  assert.equal(built.left.text, '今天*的解*');
+  assert.equal(built.right.text, '*说*完');
+  // items 层同步补符号：每侧 items 拼接 == 其文本
+  assert.equal(built.left.items.map(item => item.text).join(''), built.left.text);
+  assert.equal(built.right.items.map(item => item.text).join(''), built.right.text);
+  assert.deepEqual(plain(built.left.items.map(item => [item.start, item.end])),
+    [[0, 600], [600, 900], [900, 1100]]);
+  assert.deepEqual(plain(built.right.items.map(item => [item.start, item.end])),
+    [[1100, 1500], [1500, 1900]]);
+  // 补齐后的两侧各自按同规则重新成对
+  assert.deepEqual(plain(h.massMarkedRanges(built.left.text, 'both').map(range => [range.start, range.end])),
+    [[2, 5]]);
+  assert.deepEqual(plain(h.massMarkedRanges(built.right.text, 'both').map(range => [range.start, range.end])),
+    [[0, 2]]);
+});
+
+function buildViaFreshContext(segment, offset) {
+  const context = splitContext();
+  vm.runInNewContext(fs.readFileSync(new URL('../web/editor/cues/editor-split-core.js', import.meta.url), 'utf8'), context);
+  return context.window.MaweSplitCore.buildSplitPair(segment, offset, 1000, 'a', true, 'continuous', { headIndex: 0 });
+}
+
+test('split pair wiring fills the fade shell on both halves', () => {
+  // items 含行首/行尾中性字符（fade 标记与「的」归前一 item）
+  const segment = { id: 'f', start: 0, end: 2000, text: '>>今天的解说<<', items: [
+    { text: '>>今天的', start: 0, end: 800 }, { text: '解说<<', start: 800, end: 1900 },
+  ] };
+  const built = buildViaFreshContext(segment, 5);
+  assert.equal(built.left.text, '>>今天的<<');
+  assert.equal(built.right.text, '>>解说<<');
+  assert.equal(built.left.items.map(item => item.text).join(''), built.left.text);
+  assert.equal(built.right.items.map(item => item.text).join(''), built.right.text);
+});
+
+// === 任务 3：合并折叠 ===
+
+test('merge join folds adjacent close+open pairs of the same marker', () => {
+  const segments = [
+    { text: '今天*的*', items: [{ text: '今天*的*', start: 0, end: 500 }] },
+    { text: '*解说*', items: [{ text: '*解说*', start: 500, end: 1000 }] },
+  ];
+  const joined = h.joinSegmentTextsMassFold(segments, '', 'both');
+  // 今天*的* + *解说* → 今天*的*解说*（防止拼出 ** 被解析成强调）
+  assert.equal(joined.text, '今天*的*解说*');
+  // items 层同步折叠：前段末 item 保留闭符号，后段首 item 裁掉开符号
+  assert.deepEqual(plain(joined.items.map(item => item.text)), ['今天*的*', '解说*']);
+  assert.equal(joined.items.map(item => item.text).join(''), joined.text);
+  // 空格分隔不产生符号连跑，不折叠
+  const spaced = h.joinSegmentTextsMassFold(segments, ' ', 'both');
+  assert.equal(spaced.text, '今天*的* *解说*');
+  assert.deepEqual(plain(spaced.items.map(item => item.text)), ['今天*的*', '*解说*']);
+});
+
+test('merge join folds double markers and rejoins sentence-level fade shells', () => {
+  const doubled = h.joinSegmentTextsMassFold([
+    { text: '今天**的**', items: [{ text: '今天**的**', start: 0, end: 500 }] },
+    { text: '**解说**', items: [{ text: '**解说**', start: 500, end: 1000 }] },
+  ], '', 'both');
+  assert.equal(doubled.text, '今天**的**解说**');
+  assert.deepEqual(plain(doubled.items.map(item => item.text)), ['今天**的**', '解说**']);
+  assert.equal(doubled.items.map(item => item.text).join(''), doubled.text);
+
+  const fade = h.joinSegmentTextsMassFold([
+    { text: '>>A<<', items: [{ text: '>>A<<', start: 0, end: 500 }] },
+    { text: '>>B<<', items: [{ text: '>>B<<', start: 500, end: 1000 }] },
+  ], '', 'both');
+  // fade 折叠是拆分补齐的逆操作：合并回一个完整句级外壳
+  assert.equal(fade.text, '>>AB<<');
+  assert.deepEqual(plain(fade.items.map(item => item.text)), ['>>A', 'B<<']);
+  assert.equal(fade.items.map(item => item.text).join(''), fade.text);
+});
+
+test('merge join only folds recognized close/open pairs and respects the rule', () => {
+  // 前段末尾不是已识别对的闭符号（孤儿）→ 不折叠
+  assert.equal(h.joinSegmentTextsMassFold([
+    { text: 'abc*' }, { text: '*def*' },
+  ], '', 'both').text, 'abc**def*');
+  // 双符号规则下单符号相邻不构成折叠
+  assert.equal(h.joinSegmentTextsMassFold([
+    { text: '今天*的*' }, { text: '*解说*' },
+  ], '', 'double').text, '今天*的**解说*');
+  // none 规则全量不识别
+  assert.equal(h.joinSegmentTextsMassFold([
+    { text: '今天*的*' }, { text: '*解说*' },
+  ], '', 'none').text, '今天*的**解说*');
+  // 纯 joinSegmentTexts 保持原语义不变
+  assert.equal(h.joinSegmentTexts([{ text: 'a*b*' }, { text: '*c' }], ''), 'a*b**c');
+});
+
+test('mergeContiguousIndices folds the junction and keeps items conserved', () => {
+  const segments = [
+    { id: 'a', start: 0, end: 1000, text: '今天*的*', items: [{ text: '今天*的*', start: 0, end: 1000 }] },
+    { id: 'b', start: 1000, end: 2000, text: '*解说*', items: [{ text: '*解说*', start: 1000, end: 2000 }] },
+  ];
+  const context = mergeContext(segments);
+  vm.runInNewContext(fs.readFileSync(new URL('../web/editor/cues/editor-segment-ops.js', import.meta.url), 'utf8'), context);
+  const merged = context.window.MaweSegmentOps.mergeContiguousIndices([0, 1]);
+  assert.equal(merged.text, '今天*的*解说*');
+  assert.deepEqual(plain(merged.items.map(item => item.text)), ['今天*的*', '解说*']);
+  assert.equal(merged.items.map(item => item.text).join(''), merged.text);
+  assert.deepEqual([merged.start, merged.end], [0, 2000]);
+});

@@ -666,6 +666,8 @@ function syncAssSymbolRule() {
 }
 assSpecialSymbolRule?.addEventListener('change', () => {
   MaweSettings.updateEditorSettings({ assSpecialSymbolRule: assSpecialSymbolRule.value });
+  // 字词块归位的 MASS 成对检测与识别规则保持同源（见 editor-wiring-initial-config）。
+  window.AsrEditorUtils.setMassSymbolRule(assSpecialSymbolRule.value);
   syncAssSymbolRule();
   MawePlaybackLoop.refreshSubtitlePreview();
 });

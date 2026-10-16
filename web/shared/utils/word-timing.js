@@ -1,9 +1,16 @@
 // Existing items are timed text ranges, not necessarily individual words.
 export function createWordTiming(dependencies) {
   'use strict';
-  const { cloneJsonValue, isTimedTextNeutralToken, uniqueStableSegmentId } = dependencies;
+  const { appendMassMarkersToLastItem, cloneJsonValue, completeSplitMassPairs, isTimedTextNeutralToken, massMarkedRanges, prependMassMarkersToFirstItem, uniqueStableSegmentId } = dependencies;
   const neutral = ch => isTimedTextNeutralToken(ch, true);
   const audible = text => Array.from(String(text || '')).filter(ch => !neutral(ch));
+  // 「特殊文本规则」与 assSpecialSymbolRule 设置同源（默认单双皆可）；编辑器
+  // 启动与设置变更时经 setMassSymbolRule 同步，纯函数场景可直接调用。
+  let activeMassSymbolRule = 'both';
+  function setMassSymbolRule(rule) {
+    activeMassSymbolRule = ['none', 'single', 'double', 'both'].includes(rule) ? rule : 'both';
+    return activeMassSymbolRule;
+  }
   function wordClock(timing) {
     if (timing?.unit === 'frames') return timing;
     return { ...timing,
@@ -33,6 +40,70 @@ export function createWordTiming(dependencies) {
     return entries;
   }
 
+  // MASS 成对区间换算成码点下标（assMarkedRanges 用 UTF-16 下标，而词块
+  // 遍历按 Array.from 的码点进行；符号字符全为 BMP，宽度两种下标一致）。
+  function massPairCodePointRanges(sourceChars, rule) {
+    const text = sourceChars.join('');
+    const codePointAt = new Array(text.length + 1).fill(-1);
+    let offset = 0;
+    for (let index = 0; index < sourceChars.length; index += 1) {
+      codePointAt[offset] = index;
+      offset += sourceChars[index].length;
+    }
+    codePointAt[offset] = sourceChars.length;
+    const ranges = [];
+    massMarkedRanges(text, rule).forEach(({ start, end, width }) => {
+      const startCodePoint = codePointAt[start];
+      const endCodePoint = codePointAt[end];
+      if (startCodePoint < 0 || endCodePoint < 0) return;
+      ranges.push({ start: startCodePoint, end: endCodePoint, width });
+    });
+    return ranges;
+  }
+
+  // MASS 成对符号归属（同 item 归位规则）：一对符号包裹的全部可听内容落在
+  // 单个 item 的 audible 范围内时，两个符号字符都归属该 item；跨 item 的对、
+  // 纯中性内容的对与孤儿符号维持「中性字符挂靠前一发音 item」的现状。
+  // audibleOwnerAt(offset)：可听字符返回所属 item 下标，中性字符返回 -1，
+  // 无法归属（部分匹配未命中的可听字符）返回 null 表示整对放弃。
+  function massPairCharOwners(sourceChars, audibleOwnerAt, rule) {
+    const owners = new Map();
+    massPairCodePointRanges(sourceChars, rule).forEach(({ start, end, width }) => {
+      let owner = -1;
+      for (let offset = start + width; offset < end; offset += 1) {
+        const resolved = audibleOwnerAt(offset);
+        if (resolved === null) return;
+        if (resolved < 0) continue;
+        if (owner >= 0 && resolved !== owner) return;
+        owner = resolved;
+      }
+      if (owner < 0) return;
+      for (let offset = start; offset < end + width; offset += 1) owners.set(offset, owner);
+    });
+    return owners;
+  }
+
+  // 精确覆盖场景的可听字符归属表：按 counts 顺序把第 i 个可听字符位映射到
+  // 所属 item（与 wordCharRanges 的顺序推进模型一致），中性字符为 -1。
+  function countsAudibleOwners(sourceChars, counts) {
+    const boundaries = [];
+    let total = 0;
+    counts.forEach((count) => {
+      total += count;
+      boundaries.push(total);
+    });
+    const ownerAt = new Array(sourceChars.length).fill(-1);
+    let audibleIndex = 0;
+    for (let offset = 0; offset < sourceChars.length; offset += 1) {
+      if (neutral(sourceChars[offset])) continue;
+      const owner = boundaries.findIndex(boundary => audibleIndex < boundary);
+      if (owner < 0) return null;
+      ownerAt[offset] = owner;
+      audibleIndex += 1;
+    }
+    return ownerAt;
+  }
+
   // Reattach neutral characters from the sentence without inventing time.
   // Require an exact audible sequence, including repeated words, before mapping.
   function wordTextsFromSource(text, entries) {
@@ -40,9 +111,20 @@ export function createWordTiming(dependencies) {
     const source = Array.from(String(text || ''));
     const counts = entries.map(entry => audible(entry.item.text).length);
     if (audible(text).join('') !== entries.map(entry => audible(entry.item.text).join('')).join('')) return null;
+    const ownerAt = countsAudibleOwners(source, counts);
+    const forcedOwners = ownerAt
+      ? massPairCharOwners(source, offset => ownerAt[offset], activeMassSymbolRule)
+      : new Map();
     const texts = entries.map(() => '');
     let owner = 0, used = 0;
-    for (const ch of source) {
+    for (let offset = 0; offset < source.length; offset += 1) {
+      const ch = source[offset];
+      const forced = forcedOwners.get(offset);
+      // 成对符号整体划给包裹的 item：遇到该 item 的符号时直接跳转归属。
+      if (forced !== undefined && forced > owner) {
+        owner = forced;
+        used = 0;
+      }
       if (!neutral(ch) && used === counts[owner] && owner + 1 < entries.length) {
         owner += 1;
         used = 0;
@@ -80,11 +162,27 @@ export function createWordTiming(dependencies) {
     if (earliest.some((position, index) => position < 0 || position !== latest[index])) return null;
     const owners = new Map();
     words.forEach((word, index) => word.forEach((_, offset) => owners.set(earliest[index] + offset, index)));
+    // 与 wordCharRanges / wordTextsFromSource 同一条成对符号归属规则，
+    // 否则显示重分配与同步复验会互相打架。
+    const audibleIndexAt = new Array(source.length).fill(-1);
+    let running = 0;
+    for (let offset = 0; offset < source.length; offset += 1) {
+      if (!neutral(source[offset])) audibleIndexAt[offset] = running++;
+    }
+    const forcedOwners = massPairCharOwners(source, (offset) => {
+      const audibleIndex = audibleIndexAt[offset];
+      if (audibleIndex < 0) return -1;
+      return owners.has(audibleIndex) ? owners.get(audibleIndex) : null;
+    }, activeMassSymbolRule);
     const texts = entries.map(() => '');
     let owner = 0, audibleIndex = 0;
-    for (const token of source) {
-      if (neutral(token)) texts[owner] += token;
-      else {
+    for (let offset = 0; offset < source.length; offset += 1) {
+      const token = source[offset];
+      if (neutral(token)) {
+        const forced = forcedOwners.get(offset);
+        if (forced !== undefined && forced > owner) owner = forced;
+        texts[owner] += token;
+      } else {
         const matchedOwner = owners.get(audibleIndex++);
         if (matchedOwner === undefined) continue;
         owner = matchedOwner;
@@ -155,7 +253,34 @@ export function createWordTiming(dependencies) {
     return items;
   }
 
-  function planWordTimingConversion(segments, indices, timing) {
+  // 字词拆字幕出口的 MASS 补齐（账本 #21）：转换把原句按字词切开，跨行的
+  // 成对符号（如 __really fun__ → __really / fun__）按同一 helper 在相邻
+  // 输出行两侧补齐。只处理 items 与文本一一对应（转换产物不变式）或无
+  // items 的行，其余行（未转换的原 items 结构）不动。
+  function conversionRowFollowable(segment) {
+    return !Array.isArray(segment?.items)
+      || (segment.items.length === 1 && segment.items[0]?.text === segment.text);
+  }
+
+  function completeConvertedOutputMassPairs(output, rule) {
+    const rows = Array.isArray(output) ? output : [];
+    if (!rule || rule === 'none') return rows;
+    for (let index = 1; index < rows.length; index += 1) {
+      const previous = rows[index - 1];
+      const next = rows[index];
+      if (!previous || !next) continue;
+      if (!conversionRowFollowable(previous) || !conversionRowFollowable(next)) continue;
+      const completed = completeSplitMassPairs(previous.text, next.text, rule);
+      if (!completed.leftAppend && !completed.rightPrepend) continue;
+      previous.text = completed.left;
+      next.text = completed.right;
+      appendMassMarkersToLastItem(previous.items, completed.leftAppend);
+      prependMassMarkersToFirstItem(next.items, completed.rightPrepend);
+    }
+    return rows;
+  }
+
+  function planWordTimingConversion(segments, indices, timing, options = {}) {
     const clock = wordClock(timing);
     const conversions = [], skipped = [];
     const usedIds = segments.map(s => ({ id: s.id }));
@@ -213,17 +338,25 @@ export function createWordTiming(dependencies) {
       });
       return pieces;
     });
+    completeConvertedOutputMassPairs(output, options.rule);
     return { segments: output, conversions, skipped, generatedCount: conversions.reduce((n, c) => n + c.segments.length, 0) };
   }
 
   // Map each audible item to its contiguous [start, end) character span in the
   // sentence text. Neutral characters attach to the preceding audible item and
-  // leading text to the first one, exactly like full-coverage display. Returns
+  // leading text to the first one, exactly like full-coverage display. A MASS
+  // pair whose wrapped audible content falls entirely inside one item attaches
+  // both marker characters to that item instead (same rule as the display
+  // redistribution, so sync re-verification cannot disagree). Returns
   // null unless items cover the audible text completely and in order.
   function wordCharRanges(text, items) {
     const source = Array.from(String(text || ''));
     const counts = items.map(item => audible(item?.text).length);
     if (audible(text).join('') !== items.map((item, index) => audible(item?.text).join('')).join('')) return null;
+    const ownerAt = countsAudibleOwners(source, counts);
+    const forcedOwners = ownerAt
+      ? massPairCharOwners(source, offset => ownerAt[offset], activeMassSymbolRule)
+      : new Map();
     const spans = items.map(() => null);
     let owner = counts.findIndex(count => count > 0);
     if (owner < 0) return null;
@@ -231,6 +364,14 @@ export function createWordTiming(dependencies) {
     let spanStart = 0;
     for (let offset = 0; offset < source.length; offset += 1) {
       const ch = source[offset];
+      const forced = forcedOwners.get(offset);
+      // 成对符号整体划给包裹的 item：跨越 item 边界时先收口当前 span。
+      if (forced !== undefined && forced > owner) {
+        spans[owner] = { start: spanStart, end: offset };
+        owner = forced;
+        used = 0;
+        spanStart = offset;
+      }
       if (!neutral(ch) && used === counts[owner]) {
         spans[owner] = { start: spanStart, end: offset };
         do { owner += 1; } while (owner < counts.length && counts[owner] === 0);
@@ -301,11 +442,16 @@ export function createWordTiming(dependencies) {
       }
     }
     if (!crossed.length) return null;
+    // 「发音序列不变」静默同步（账本 #25）：非等长编辑只增删了中性字符
+    // （MASS/标点/空白）且变更区域无法落进单一 item 时，items 原样保留即为
+    // 正确结果——中性归属由显示层的成对符号归位规则自动生效，不再弹
+    // 「不是等长替换」警告。等长替换（含标点替换）不受影响，仍走原同步。
+    if (audible(text).join('') === audible(previousText).join('')) return null;
     return {
       warn: true,
       before: previousChars.slice(regionStart, regionEnd).join(''),
       after: nextChars.slice(prefix, nextRegionEnd).join(''),
     };
   }
-  return Object.freeze({ getWordTimingEntries, editWordTiming, mergeWordTimingItems, planWordTimingConversion, planWordTimingTextSync });
+  return Object.freeze({ getWordTimingEntries, editWordTiming, mergeWordTimingItems, planWordTimingConversion, planWordTimingTextSync, setMassSymbolRule });
 }

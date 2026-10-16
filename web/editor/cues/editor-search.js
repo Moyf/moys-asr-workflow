@@ -1,4 +1,4 @@
-// 搜索：过滤应用、防抖与清空按钮。
+// 搜索：过滤应用与防抖。
 // 由 split-cluster codemod 自 editor.js 拆出：状态为本模块私有，外部仅经
 // window.MaweSearch 冻结门面访问（可变状态为访问器属性，赋值语义不变）。
 // 清单位置在 editor.js 之前；editor.js 全局仅在延迟执行的回调中访问。
@@ -75,18 +75,9 @@
   let searchDebounce = null;
 
 
-  const searchWrap = document.getElementById('search-wrap');
-
-
-  function refreshSearchClearVisibility() {
-    searchWrap.classList.toggle('has-value', MaweDom.searchEl.value.length > 0);
-  }
-
   global.MaweSearch = Object.freeze({
     applySearch,
     get searchDebounce() { return searchDebounce; },
     set searchDebounce(v) { searchDebounce = v; },
-    searchWrap,
-    refreshSearchClearVisibility
   });
 })(typeof window !== 'undefined' ? window : globalThis);

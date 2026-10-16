@@ -85,6 +85,10 @@
   }
 
 
+  // items 层符号补位已上移共享 utils（appendMassMarkersToLastItem /
+  // prependMassMarkersToFirstItem），拆分补齐与各转换出口共用同一实现。
+
+
 
   function forceSplitCutForSegments(segments, requestedCutMs) {
     const ranges = (Array.isArray(segments) ? segments : [segments])
@@ -439,6 +443,18 @@
     : MULTI_SUBTITLE_UTILS.splitSubtitleText(text, safeOffset, mode);
   if (!parts) return null;
   if (splitTextMode === 'progressive') parts.right = text;
+  // 拆分补齐（维护者拍板）：跨拆分点的 MASS 符号对在两侧文本各补齐成对
+  // （含句级 fade >>…<< 的「两侧各自补齐完整对」规则）；复制/渐进拆分两侧
+  // 含整句原文，本身无孤儿问题，跳过。补齐只发生在两侧端点，parts.offset
+  // 不变，下方 splitItemsAtChar 的文本对齐不受影响。
+  let massCompletion = null;
+  if (!duplicateOutputText && splitTextMode !== 'progressive') {
+    massCompletion = MULTI_SUBTITLE_UTILS.completeSplitMassPairs(
+      parts.left, parts.right, MaweSettings.EDITOR_SETTINGS.assSpecialSymbolRule,
+    );
+    parts.left = massCompletion.left;
+    parts.right = massCompletion.right;
+  }
   const itemParts = splitItemsAtChar(
     includeItems ? segment : { ...segment, items: [] },
     parts.offset,
@@ -447,8 +463,10 @@
   );
   // 复制原文后，原有逐词时间码无法再与两侧文本一一对应；清空 items，
   // 避免把只属于一半文本的时间码带到重复文本上。
-  const leftItems = duplicateOutputText ? [] : cleanSplitItems(itemParts.leftItems, 'left');
-  const rightItems = (duplicateOutputText || splitTextMode === 'progressive') ? [] : cleanSplitItems(itemParts.rightItems, 'right');
+  const leftItems = duplicateOutputText
+    ? [] : appendMassMarkersToLastItem(cleanSplitItems(itemParts.leftItems, 'left'), massCompletion?.leftAppend);
+  const rightItems = (duplicateOutputText || splitTextMode === 'progressive')
+    ? [] : prependMassMarkersToFirstItem(cleanSplitItems(itemParts.rightItems, 'right'), massCompletion?.rightPrepend);
   const splitMs = Number.isFinite(itemParts.splitMs) ? itemParts.splitMs : Math.round(cutMs);
   // 左右两段可各自贴合自家词边界（词间有静音空隙时非对称）。
   const leftEnd = Number.isFinite(itemParts.leftEndMs) ? itemParts.leftEndMs : splitMs;
@@ -1747,6 +1765,8 @@
 
     let leftText = window.AsrEditorUtils.applySplitEdgeTrim(fullText.slice(0, cursorOffset), 'end');
     let rightText = window.AsrEditorUtils.applySplitEdgeTrim(fullText.slice(cursorOffset), 'start');
+    // 拆分补齐与弹窗路径共用同一条规则；复制/渐进拆分两侧含整句原文，跳过。
+    let massCompletion = null;
     if (duplicateSplit) {
       // 复制拆分：两侧都保留整句原文。
       leftText = fullText;
@@ -1754,6 +1774,12 @@
     } else if (progressiveSplit) {
       // 渐进拆分：前半句仍是左半，后半句保留整句原文（含被拆走的前缀）。
       rightText = fullText;
+    } else {
+      massCompletion = window.AsrEditorUtils.completeSplitMassPairs(
+        leftText, rightText, MaweSettings.EDITOR_SETTINGS.assSpecialSymbolRule,
+      );
+      leftText = massCompletion.left;
+      rightText = massCompletion.right;
     }
     if (!leftText || !rightText) {
       MaweInlineEdit.finishEdit(false);
@@ -1835,8 +1861,8 @@
     // 字幕列表手工拆分允许用户指定任意字符位置，但时间码必须落在实际 item
     // 的安全范围内；当切点在 item 内时，splitItemsAtChar 已为两侧生成 item 副本。
     // 左右边界已在上文（含强制重试的降级调和）结算完毕，这里直接消费。
-    const leftItemsClean = cleanSplitItems(itemSplit.leftItems, 'left');
-    const rightItemsClean = cleanSplitItems(itemSplit.rightItems, 'right');
+    const leftItemsClean = appendMassMarkersToLastItem(cleanSplitItems(itemSplit.leftItems, 'left'), massCompletion?.leftAppend);
+    const rightItemsClean = prependMassMarkersToFirstItem(cleanSplitItems(itemSplit.rightItems, 'right'), massCompletion?.rightPrepend);
     // 复制拆分两侧都是全文、渐进拆分后半句带上复制来的前缀：逐词时间码再也
     // 对不上文本，清空对应一侧的 items；渐进拆分前半句仍是原文左半，保留。
     const leftItemsFinal = duplicateSplit ? [] : leftItemsClean;

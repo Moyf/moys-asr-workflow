@@ -1210,3 +1210,57 @@ test('row height changes refit the active loudness auto-fit', () => {
   assert.equal(noStats.settings.waveformScale, 1);
   assert.equal(noStats.renders, 1);
 });
+
+// 字词气泡布局纯函数：截断才出 / 同屏上限 / 三行堆叠 / 优先级丢弃。
+const computeWordChipLayout = helpers.computeWordChipLayout;
+const WORD_CHIP_OPTIONS = { rowWidth: 6200, rowHeight: 300, stripTopPx: 116, referenceX: 400 };
+
+test('word chip layout only emits chips for truncated blocks', () => {
+  const blocks = [
+    // 可用宽度 200-14=186，文本 10px 完全放得下：不出现气泡。
+    { text: '短', textWidth: 10, leftPx: 0, widthPx: 200, isPlaying: false, order: 0 },
+    // 可用宽度 80-14=66，文本 120px 溢出：唯一气泡，水平居中于块。
+    { text: '很长的字词文本内容', textWidth: 120, leftPx: 220, widthPx: 80, isPlaying: false, order: 1 },
+  ];
+  const layout = computeWordChipLayout(blocks, WORD_CHIP_OPTIONS);
+  assert.equal(layout.placed.length, 1);
+  assert.equal(layout.placed[0].text, '很长的字词文本内容');
+  assert.equal(layout.placed[0].row, 0);
+  // chip 中心对准块中心 220+40=260，宽 132 → x=194。
+  assert.equal(layout.placed[0].x, 194);
+  assert.equal(layout.dropped, 0);
+});
+
+test('word chip layout caps chips per screen at 24', () => {
+  // 30 个互不重叠的截断块：密度上限 24 生效，丢弃 6 个。
+  const blocks = Array.from({ length: 30 }, (_, index) => ({
+    text: `词-${index}`, textWidth: 80, leftPx: index * 200, widthPx: 60,
+    isPlaying: false, order: index,
+  }));
+  const layout = computeWordChipLayout(blocks, WORD_CHIP_OPTIONS);
+  assert.equal(layout.placed.length, 24);
+  assert.equal(layout.dropped, 6);
+  assert.ok(layout.placed.every(chip => chip.row === 0), '互不重叠的气泡都应落在首行');
+  // 优先保留行序靠前的块（同优先级按行序稳定）。
+  assert.deepEqual(Array.from(layout.placed).map(chip => chip.order).slice(0, 3), [0, 1, 2]);
+});
+
+test('word chip layout stacks at most 3 rows and prefers the playing word', () => {
+  // 5 个同位置的截断块，只有最后一个在播放：播放字插队拿首行。
+  const blocks = Array.from({ length: 5 }, (_, index) => ({
+    text: `word-${index}`, textWidth: 120, leftPx: 100, widthPx: 60,
+    isPlaying: index === 4, order: index,
+  }));
+  const layout = computeWordChipLayout(blocks, { ...WORD_CHIP_OPTIONS, rowWidth: 800 });
+  assert.equal(layout.placed.length, 3, '最多向上叠 3 行，其余丢弃');
+  assert.equal(layout.dropped, 2);
+  const playing = layout.placed.find(chip => chip.order === 4);
+  assert.ok(playing, '当前播放字必须保留');
+  assert.equal(playing.row, 0, '播放字优先占据贴条带的首行');
+  assert.deepEqual(Array.from(layout.placed).map(chip => chip.row).sort(), [0, 1, 2]);
+  // y 越小越靠上：首行最贴近条带（画布 y 最大），向上逐行递减。
+  const rows = layout.placed.slice().sort((a, b) => a.row - b.row);
+  assert.ok(rows[0].y > rows[1].y && rows[1].y > rows[2].y);
+  // 播放字之外按距播放头/参考点近者优先拿更低的行：order 0 与 1 同距，行序决胜。
+  assert.deepEqual(Array.from(rows.slice(1)).map(chip => chip.order), [0, 1]);
+});

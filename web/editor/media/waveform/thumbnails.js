@@ -1,11 +1,14 @@
 // The filmstrip shell adds height without changing subtitle/marker lane geometry.
+// Newly loaded pictures fade in over the placeholder grid to avoid popping in.
 export function createWaveformModule(dependencies) {
   'use strict';
+  const THUMBNAIL_FADE_MS = 200;
   const { thumbnailCore, ROW_GAP, localizedWaveformMessage } = dependencies;
   class WaveformMethods {
     /** @this {import('./waveform-types.js').WaveformInstance} */
     initThumbnails() {
       this.thumbnailLayoutHeight = 0;
+      this.thumbnailFadeSeen = new Map();
       this.thumbnailController = thumbnailCore.createController((layoutChanged, dirtyRanges = []) => {
         this.updateThumbnailStatus();
         if (layoutChanged) {
@@ -171,6 +174,7 @@ export function createWaveformModule(dependencies) {
       const tileWidth = height * 160 / 90;
       if (this.thumbnailController.mode === 'marks') {
         // Keyframe marks: one tile per landmark position; gaps stay blank.
+        let fading = false;
         const markers = this.thumbnailController.keyframesInRange(start, end);
         if (markers.length) {
           for (const marker of markers) {
@@ -178,7 +182,10 @@ export function createWaveformModule(dependencies) {
             if (left >= width) continue;
             const [sx, sy, sw, sh] = marker.crop;
             const visibleLeft = Math.max(0, left);
+            const alpha = this.thumbnailFadeAlpha(marker.requested_ms);
+            if (alpha < 1) fading = true;
             ctx.save(); ctx.beginPath(); ctx.rect(visibleLeft, 0, Math.min(tileWidth, width - visibleLeft), height); ctx.clip();
+            ctx.globalAlpha = alpha;
             ctx.drawImage(marker.image, sx, sy, sw, sh, left, 0, tileWidth, height);
             ctx.restore();
           }
@@ -193,17 +200,54 @@ export function createWaveformModule(dependencies) {
             drawn.add(picture.actual);
             const [sx, sy, sw, sh] = picture.crop;
             const visibleLeft = Math.max(0, left);
+            const alpha = this.thumbnailFadeAlpha(picture.actual);
+            if (alpha < 1) fading = true;
             ctx.save(); ctx.beginPath(); ctx.rect(visibleLeft, 0, Math.min(tileWidth, width - visibleLeft), height); ctx.clip();
+            ctx.globalAlpha = alpha;
             ctx.drawImage(picture.image, sx, sy, sw, sh, left, 0, tileWidth, height);
             ctx.restore();
           }
         }
+        if (fading) this.scheduleThumbnailFade(row);
         canvas.title = this.thumbnailStatusText();
         return;
       }
-      for (let time = Math.floor(start / interval) * interval; time < end; time += interval) {
-        const left = Math.max(0, (time - start) * pxPerMs);
-        const right = Math.min(width, (time + interval - start) * pxPerMs);
+      const fading = this.paintThumbnailStripCells(row, ctx, start, end, start, end, width, height, pxPerMs, tileWidth);
+      if (fading) this.scheduleThumbnailFade(row);
+      canvas.title = this.thumbnailStatusText();
+    }
+    /** First-seen clock per picture identity so redraws keep the final opacity. */
+    /** @this {import('./waveform-types.js').WaveformInstance} */
+    thumbnailFadeAlpha(identity) {
+      if (!this.thumbnailFadeSeen) this.thumbnailFadeSeen = new Map();
+      const now = performance.now();
+      let startedAt = this.thumbnailFadeSeen.get(identity);
+      if (startedAt === undefined) {
+        startedAt = now;
+        this.thumbnailFadeSeen.set(identity, startedAt);
+      }
+      return Math.min(1, (now - startedAt) / THUMBNAIL_FADE_MS);
+    }
+    /** @this {import('./waveform-types.js').WaveformInstance} */
+    scheduleThumbnailFade(row) {
+      if (row._thumbnailFadeFrame) cancelAnimationFrame(row._thumbnailFadeFrame);
+      row._thumbnailFadeFrame = requestAnimationFrame(() => {
+        row._thumbnailFadeFrame = 0;
+        this.drawThumbnails(row, true);
+      });
+    }
+
+
+    // strip 模式按采样格绘制 [timeFrom, timeTo) 内的格位；整条重绘与
+    // 滚轮平移的露出格位补绘共用同一实现。返回是否有淡入未完成的格。
+    /** @this {import('./waveform-types.js').WaveformInstance} */
+    paintThumbnailStripCells(row, ctx, startMs, endMs, timeFrom, timeTo, width, height, pxPerMs, tileWidth) {
+      const interval = this.thumbnailController.interval;
+      let fading = false;
+      for (let time = Math.floor(timeFrom / interval) * interval; time < timeTo; time += interval) {
+        const left = Math.max(0, (time - startMs) * pxPerMs);
+        const right = Math.min(width, (time + interval - startMs) * pxPerMs);
+        if (right <= left) continue;
         const picture = this.thumbnailController.picture(time, interval * 2);
         if (!picture) {
           ctx.fillStyle = this._getWaveColors().rowBorder;
@@ -211,15 +255,70 @@ export function createWaveformModule(dependencies) {
           continue;
         }
         const [sx, sy, sw, sh] = picture.crop;
+        const alpha = this.thumbnailFadeAlpha(picture.actual);
+        if (alpha < 1) fading = true;
         // Repeat within each source-zero sampling cell; clip the tail cell to actual media duration.
         ctx.save(); ctx.beginPath(); ctx.rect(left, 0, right - left, height); ctx.clip();
-        const cellStart = (time - start) * pxPerMs;
+        if (alpha < 1) {
+          // Fade in over the placeholder grid instead of popping in.
+          ctx.fillStyle = this._getWaveColors().rowBorder;
+          ctx.fillRect(left + 1, 1, Math.max(0, right - left - 2), height - 2);
+        }
+        const cellStart = (time - startMs) * pxPerMs;
+        ctx.globalAlpha = alpha;
         for (let x = cellStart; x < right; x += tileWidth) {
           ctx.drawImage(picture.image, sx, sy, sw, sh, x, 0, tileWidth, height);
         }
         ctx.restore();
       }
-      canvas.title = this.thumbnailStatusText();
+      return fading;
+    }
+
+
+    // 滚轮平移期的画面带处理（账本 #22 批次 2）：strip 模式位图平移 +
+    // 只重绘露出的格位；marks 模式或无法平移时整条重绘。不更新
+    // _thumbnailRenderKey——滚轮停止后的整行精绘仍会整条重画一次，
+    // 让 renderKey 失效自然发生。
+    /** @this {import('./waveform-types.js').WaveformInstance} */
+    panThumbnailStrip(row, shift, startMs, endMs, width = Math.max(1, row.clientWidth)) {
+      const canvas = row._thumbnailCanvas;
+      if (!canvas || !this.thumbnailController?.visible) return;
+      const height = 48;
+      const dpr = Math.min(2, window.devicePixelRatio || 1);
+      const backShift = Math.round(shift * dpr);
+      if (this.thumbnailController.mode !== 'strip' || !backShift
+        || Math.abs(backShift) >= canvas.width) {
+        this.drawThumbnails(row, true);
+        return;
+      }
+      const ctx = canvas.getContext('2d', { alpha: false });
+      ctx.save();
+      ctx.setTransform(1, 0, 0, 1, 0, 0);
+      if (backShift > 0) {
+        ctx.drawImage(canvas, backShift, 0, canvas.width - backShift, canvas.height,
+          0, 0, canvas.width - backShift, canvas.height);
+      } else {
+        const back = -backShift;
+        ctx.drawImage(canvas, 0, 0, canvas.width - back, canvas.height,
+          back, 0, canvas.width - back, canvas.height);
+      }
+      ctx.restore();
+      ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+      const rangeMs = Math.max(1, endMs - startMs);
+      const pxPerMs = width / rangeMs;
+      const tileWidth = height * 160 / 90;
+      // 只重绘露出的格位；先垫底色再逐格画，避免残留旧内容；多画 1px
+      // 盖住位图平移的取整接缝。
+      const stripX = backShift > 0 ? Math.max(0, width - shift - 1) : 0;
+      const stripWidth = Math.min(width - stripX, Math.abs(shift) + 1);
+      ctx.fillStyle = this._getWaveColors().rowBg;
+      ctx.fillRect(stripX, 0, stripWidth, height);
+      const stripStartMs = startMs + (stripX / width) * rangeMs;
+      const stripEndMs = stripX + stripWidth >= width
+        ? endMs
+        : startMs + ((stripX + stripWidth) / width) * rangeMs;
+      const fading = this.paintThumbnailStripCells(row, ctx, startMs, endMs, stripStartMs, stripEndMs, width, height, pxPerMs, tileWidth);
+      if (fading) this.scheduleThumbnailFade(row);
     }
   }
   const descriptors = Object.getOwnPropertyDescriptors(WaveformMethods.prototype);
