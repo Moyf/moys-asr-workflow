@@ -119,3 +119,53 @@ test('saving an earlier snapshot keeps subsequent edits dirty and clears every t
   assert.equal(state.hasProjectChanges(), false);
   assert.equal(JSON.stringify(project).includes('_dirty'), false);
 });
+
+test('markProjectDirty increments the epoch and notifies registered listeners exactly once', () => {
+  const state = loadState();
+  assert.equal(state.getProjectDirtyEpoch(), 0);
+  const seen = [];
+  const unsubscribe = state.onProjectDirtyChange(epoch => seen.push(epoch));
+  assert.equal(typeof unsubscribe, 'function');
+  state.markProjectDirty();
+  state.markProjectDirty();
+  assert.equal(state.getProjectDirtyEpoch(), 2);
+  assert.deepEqual(seen, [1, 2]);
+  unsubscribe();
+  state.markProjectDirty();
+  assert.equal(state.getProjectDirtyEpoch(), 3);
+  assert.deepEqual(seen, [1, 2]);
+});
+
+test('onProjectDirtyChange dedupes repeat registration and ignores non-functions', () => {
+  const state = loadState();
+  const seen = [];
+  const listener = epoch => seen.push(epoch);
+  const first = state.onProjectDirtyChange(listener);
+  const second = state.onProjectDirtyChange(listener);
+  state.markProjectDirty();
+  assert.deepEqual(seen, [1], 'duplicate registration must not double-fire');
+  first();
+  second();
+  state.markProjectDirty();
+  assert.deepEqual(seen, [1], 'either unsubscribe must remove the shared listener');
+  assert.equal(typeof state.onProjectDirtyChange(null), 'function');
+  state.markProjectDirty();
+  assert.equal(state.getProjectDirtyEpoch(), 3);
+});
+
+test('changes flag writes notify on dirty transitions only, and markSaved stays silent', () => {
+  const state = loadState();
+  let events = 0;
+  state.onProjectDirtyChange(() => { events += 1; });
+  state.changes.previewGeometryDirty = true;
+  assert.equal(events, 1);
+  state.changes.gapRemoveDirty = true;
+  assert.equal(events, 2);
+  state.changes.previewGeometryDirty = false;
+  state.changes.gapRemoveDirty = false;
+  assert.equal(events, 2, 'writing false must not fire the dirty event');
+  state.markSaved();
+  assert.equal(events, 2, 'clearing bookkeeping on save must not fire the dirty event');
+  Object.assign(state.changes, { markersDirty: true, timedTextEditViewDirty: true });
+  assert.equal(events, 4, 'bulk assignment must go through the same notify path');
+});

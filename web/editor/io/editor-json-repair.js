@@ -356,6 +356,9 @@
     if (overlay.changed.length) getOverlayTrack()._dirty = true;
     if (main.changed.length || extension.changed.length) MaweMultiSubtitleCore.markMultiSubtitleStateDirty();
     MaweMultiSubtitleCore.syncBindingOffsets();
+    // buildJson 在每次保存/导出前修复时间码；若随后保存失败，修复必须保持
+    // 未保存状态可见（覆盖仅叠加轨修复、不经过上方漏斗的情况）。
+    MaweState.markProjectDirty();
   }
   return fixed;
 }

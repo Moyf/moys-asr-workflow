@@ -84,7 +84,7 @@ window.MAWE.register('editor-state', function createEditorState(project) {
   function markProjectDirty() {
     projectDirtyEpoch += 1;
     for (const listener of [...projectDirtyListeners]) {
-      try { listener(projectDirtyEpoch); } catch (error) { console.error('editor-state: project dirty listener failed', error); }
+      try { listener(projectDirtyEpoch); } catch (error) { window.console?.error?.('editor-state: project dirty listener failed', error); }
     }
   }
   function getProjectDirtyEpoch() { return projectDirtyEpoch; }
@@ -100,14 +100,20 @@ window.MAWE.register('editor-state', function createEditorState(project) {
   // 外观/标记等代理 setter、撤销恢复的 Object.assign 因此都汇入同一事件。
   const changesFlags = { projectImportDirty: false, gapRemoveDirty: false, previewGeometryDirty: false, markersDirty: false,
     timedTextEditViewDirty: false };
-  const changes = Object.freeze(Object.defineProperties({}, Object.fromEntries(Object.keys(changesFlags).map(key => [key, {
-    get() { return changesFlags[key]; },
-    set(value) {
-      changesFlags[key] = Boolean(value);
-      if (changesFlags[key]) markProjectDirty();
-    },
-    enumerable: true,
-  }]))));
+  // 显式访问器（defineProperties 的动态键 TS 推断不出）：写入 true 触发 markProjectDirty()。
+  const changes = {
+    get projectImportDirty() { return changesFlags.projectImportDirty; },
+    set projectImportDirty(value) { changesFlags.projectImportDirty = Boolean(value); if (changesFlags.projectImportDirty) markProjectDirty(); },
+    get gapRemoveDirty() { return changesFlags.gapRemoveDirty; },
+    set gapRemoveDirty(value) { changesFlags.gapRemoveDirty = Boolean(value); if (changesFlags.gapRemoveDirty) markProjectDirty(); },
+    get previewGeometryDirty() { return changesFlags.previewGeometryDirty; },
+    set previewGeometryDirty(value) { changesFlags.previewGeometryDirty = Boolean(value); if (changesFlags.previewGeometryDirty) markProjectDirty(); },
+    get markersDirty() { return changesFlags.markersDirty; },
+    set markersDirty(value) { changesFlags.markersDirty = Boolean(value); if (changesFlags.markersDirty) markProjectDirty(); },
+    get timedTextEditViewDirty() { return changesFlags.timedTextEditViewDirty; },
+    set timedTextEditViewDirty(value) { changesFlags.timedTextEditViewDirty = Boolean(value); if (changesFlags.timedTextEditViewDirty) markProjectDirty(); },
+  };
+  Object.freeze(changes);
 
   // Compare only subtitle truth, never DOM, playback or rebuildable waveform caches.
   function segmentsFingerprint() {

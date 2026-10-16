@@ -116,6 +116,7 @@ export interface NavigationSnapshot {
   cueListScrollTop?: number; waveformTopEdgeMs?: number;
 }
 export interface WaveformOptions {
+  markProjectDirty?: (() => void) | undefined;
   wordTiming?: {
     readonly enabled: boolean;
     getSelection(segment: Cue): ReadonlySet<number>;
