@@ -730,9 +730,13 @@
   const rightItems = duplicateOutputText
     ? [] : MULTI_SUBTITLE_UTILS.prependMassMarkersToFirstItem(cleanSplitItems(itemParts.rightItems, 'right'), rightPrepend);
   const splitMs = Number.isFinite(itemParts.splitMs) ? itemParts.splitMs : Math.round(cutMs);
-  // 左右两段可各自贴合自家词边界（词间有静音空隙时非对称）。
-  const leftEnd = Number.isFinite(itemParts.leftEndMs) ? itemParts.leftEndMs : splitMs;
-  const rightStart = Number.isFinite(itemParts.rightStartMs) ? itemParts.rightStartMs : splitMs;
+  // 普通拆分保留词间静音；渐进/复制拆分用同一 splitMs 贴合边界，
+  // 避免逐字跳出时闪空。right items 仍用原媒体绝对毫秒，不随段界移动。
+  const keepSplitContiguous = duplicateOutputText || splitTextMode === 'progressive';
+  const leftEnd = keepSplitContiguous
+    ? splitMs : Number.isFinite(itemParts.leftEndMs) ? itemParts.leftEndMs : splitMs;
+  const rightStart = keepSplitContiguous
+    ? splitMs : Number.isFinite(itemParts.rightStartMs) ? itemParts.rightStartMs : splitMs;
   const segmentStart = Number(segment?.start);
   const segmentEnd = Number(segment?.end);
   if (!Number.isFinite(splitMs)
@@ -2090,15 +2094,15 @@
       // 只有第二次强制拆分才把它钳制到两侧各 100ms 的安全范围。
       splitMs = Math.round(t);
     }
-    // 左右两段的结算边界：默认跟随共享切点；词级 items 提供非对称切分
-    // （左段停在自家最后一词的 end，右段起自首词的 start）时分别取用。
-    // 缺词或缺时间码时两者都保持 splitMs，与旧行为一致。
+    // 普通拆分沿用词级 items 的非对称边界，以保留真实静音；渐进/复制拆分
+    // 必须共享 splitMs，避免两条视觉字幕之间闪空。items 时间仍是原媒体时间，
+    // 不因 right.start 左移而平移或重算。
     let leftEnd = splitMs;
     let rightStart = splitMs;
     const resolveSplitBounds = () => {
       let leftEndMs = Number.isFinite(splitMs) ? splitMs : null;
       let rightStartMs = leftEndMs;
-      if (itemSplit && itemSplit.hasItems && Number.isFinite(splitMs)
+      if (!progressiveSplit && !duplicateSplit && itemSplit && itemSplit.hasItems && Number.isFinite(splitMs)
           && Number.isFinite(itemSplit.leftEndMs)) {
         leftEndMs = itemSplit.leftEndMs;
         rightStartMs = Number.isFinite(itemSplit.rightStartMs)

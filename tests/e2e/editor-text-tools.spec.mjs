@@ -27,7 +27,9 @@ test.beforeEach(async ({ page }) => {
 async function seed(page, { text = '甲乙丙丁', timed = true, linked = false } = {}) {
   await page.evaluate(({ text, timed, linked }) => {
     MaweBoot.DATA.segments = [{ id: 'main-1', start: 1000, end: 5000, text,
-      items: timed ? Array.from(text, (text, i) => ({ text, start: 1000 + i * 1000, end: 2000 + i * 1000 })) : null }];
+      items: timed ? Array.from(text, (text, i) => ({ text,
+        start: i === 2 ? 3500 : 1000 + i * 1000,
+        end: i === 2 ? 4000 : 2000 + i * 1000 })) : null }];
     MaweBoot.DATA.multi_subtitle = { schema: 'moy.asr.multi_subtitle.v1', enabled: linked, display_mode: 'both',
       tracks: linked ? [{ id: 'ext-1', role: 'extension', name: '译文', split_mode: 'character',
         segments: [{ id: 'ext-cue', start: 1000, end: 5000, text: '一二三四' }] }] : [],
@@ -53,10 +55,11 @@ for (const mode of ['progressive', 'duplicate']) {
       const result = await page.evaluate(() => MaweBoot.DATA.segments);
       expect(result.map(s => s.text)).toEqual(mode === 'progressive' ? ['甲乙', '甲乙丙丁'] : ['甲乙丙丁', '甲乙丙丁']);
       expect(result.map(s => [s.start, s.end])).toEqual([[1000, 3000], [3000, 5000]]);
+      expect(result[1].start).toBe(result[0].end);
       if (mode === 'duplicate') expect(result[1].items).toBeNull();
       else if (path === 'timed') {
         expect(result[1].items.map(({ text, start, end }) => ({ text, start, end }))).toEqual([
-          { text: '丙', start: 3000, end: 4000 },
+          { text: '丙', start: 3500, end: 4000 },
           { text: '丁', start: 4000, end: 5000 },
         ]);
       }
