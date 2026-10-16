@@ -50,7 +50,7 @@ for (const first of ['multi', 'word']) {
       f.toggle(closeFirst, false);
       const remaining = closeFirst === 'word' ? 'multi' : 'word';
       assert.equal(f.editor.settings.rowHeight, remaining === 'word' ? 144 : 168);
-      assert.equal(f.editor.settings.secondsPerRow, remaining === 'word' ? 5 : 2);
+      assert.equal(f.editor.settings.secondsPerRow, 2);
       f.toggle(remaining, false);
       assert.deepEqual(f.editor.settings, { rowHeight: 64, secondsPerRow: 2 });
     });
@@ -103,7 +103,7 @@ test('word presets redraw multi-row geometry once and preserve its baseline on r
   assert.equal(f.display.syncWordTimingWaveformSettings(true), true);
   assert.equal(f.editor.renders, 1);
   assert.equal(f.editor.settings.rowHeight, 144);
-  assert.equal(f.editor.settings.secondsPerRow, 5);
+  assert.equal(f.editor.settings.secondsPerRow, 2);
   assert.equal(f.display.syncWordTimingWaveformSettings(false), true);
   assert.equal(f.editor.renders, 2);
   assert.deepEqual(f.editor.settings, { rowHeight: 64, secondsPerRow: 2 });
@@ -119,17 +119,40 @@ test('word presets in basic mode leave the Canvas and horizontal view for an ove
 
 for (const first of ['multi', 'word']) {
   for (const closeFirst of ['multi', 'word']) {
-    test(`large waveform values never shrink on enable: ${first}, close ${closeFirst} first`, () => {
+    test(`enabling word caps row seconds at the preset and large heights never shrink: ${first}, close ${closeFirst} first`, () => {
       const f = fixture('multi', 192, 20);
       const second = first === 'multi' ? 'word' : 'multi';
       for (const mode of [first, second]) {
         f.toggle(mode, true);
-        assert.deepEqual(f.editor.settings, { rowHeight: 192, secondsPerRow: 20 });
+        assert.equal(f.editor.settings.rowHeight, 192);
       }
-      for (const mode of [closeFirst, closeFirst === 'word' ? 'multi' : 'word']) {
-        f.toggle(mode, false);
+      // 每行长度按可见范围大小排序：20 秒视窗比 5 秒小，开启字词后收紧到预设。
+      assert.equal(f.editor.settings.secondsPerRow, 5);
+      f.toggle(closeFirst, false);
+      if (closeFirst === 'word') {
         assert.deepEqual(f.editor.settings, { rowHeight: 192, secondsPerRow: 20 });
+      } else {
+        assert.deepEqual(f.editor.settings, { rowHeight: 192, secondsPerRow: 5 });
       }
+      f.toggle(closeFirst === 'word' ? 'multi' : 'word', false);
+      assert.deepEqual(f.editor.settings, { rowHeight: 192, secondsPerRow: 20 });
     });
   }
 }
+
+test('changing the word row-length preset while active never zooms out past the baseline', () => {
+  const f = fixture('multi', 144, 2);
+  f.toggle('word', true);
+  assert.equal(f.editor.settings.secondsPerRow, 2);
+  f.settings.wordTimingSecondsPerRow = 10;
+  f.display.applyWordTimingSecondsPerRow();
+  assert.equal(f.editor.settings.secondsPerRow, 2);
+  const g = fixture('multi', 144, 8);
+  g.toggle('word', true);
+  assert.equal(g.editor.settings.secondsPerRow, 5);
+  g.settings.wordTimingSecondsPerRow = 2;
+  g.display.applyWordTimingSecondsPerRow();
+  assert.equal(g.editor.settings.secondsPerRow, 2);
+  g.toggle('word', false);
+  assert.equal(g.editor.settings.secondsPerRow, 8);
+});

@@ -80,13 +80,16 @@
 
 
   // 每行长度仅受字词模式影响，与两个模式的行高恢复分开处理。
+  // 每行长度按「可见范围大小」排序：秒数越小，可见范围越大、波形越大。
+  // 字词码适配长度是上限：开启字词模式只放大可见范围（Math.min 收紧秒数），
+  // 绝不把秒数抬到用户当前值之上（那会缩小波形）；关闭后恢复原值。
   function syncWordTimingWaveformSettings(enabled) {
     const editor = MaweCoreState.waveformEditor;
     if (!editor) return;
     const wasEnabled = waveformModes.includes('word');
     if (enabled && !wasEnabled) {
       secondsPerRowBeforeWordTiming = editor.settings.secondsPerRow;
-      editor.setSecondsPerRow(Math.max(secondsPerRowBeforeWordTiming,
+      editor.setSecondsPerRow(Math.min(secondsPerRowBeforeWordTiming,
         MaweSettings.EDITOR_SETTINGS.wordTimingSecondsPerRow), { render: false });
     } else if (!enabled && wasEnabled) {
       editor.setSecondsPerRow(secondsPerRowBeforeWordTiming, { render: false });
@@ -100,6 +103,16 @@
       return true;
     }
     return false;
+  }
+
+  // 字词模式激活时按「基线与预设中较小的秒数」应用每行长度（预设是上限），
+  // 供设置面板在字词模式启用中变更适配长度时调用；未启用时不做任何事。
+  function applyWordTimingSecondsPerRow() {
+    const editor = MaweCoreState.waveformEditor;
+    if (!editor || !waveformModes.includes('word')) return false;
+    editor.setSecondsPerRow(Math.min(secondsPerRowBeforeWordTiming,
+      MaweSettings.EDITOR_SETTINGS.wordTimingSecondsPerRow));
+    return true;
   }
 
 
@@ -120,6 +133,10 @@
   if (MaweDom.multiSubtitleEmptyHint) {
     MaweSettingsPanels.updateRegionalSettingsAvailability();
     MaweDom.multiSubtitleEmptyHint.hidden = !(enabled && !track.segments.length);
+    // 「显示」分组（字幕列表显示 / 自动适配高度 / 轨道徽标）仅在双语开启且副轨有内容时显示。
+    if (MaweDom.multiSubtitleDisplaySection) {
+      MaweDom.multiSubtitleDisplaySection.hidden = !(enabled && track.segments.length);
+    }
   }
   if (MaweDom.multiSubtitleToggle) {
     // 勾选状态跟随「多重字幕编辑模式」开关本身：未导入副轨时同样保持勾选。
@@ -320,6 +337,7 @@
     applyWaveformModeRowHeight,
     syncMultiSubtitleWaveformRowHeight,
     syncWordTimingWaveformSettings,
+    applyWordTimingSecondsPerRow,
     updateMultiSubtitleUi,
     bindCueListDisplayToggle,
     applyCueEditorDisplaySettings,
