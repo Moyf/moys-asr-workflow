@@ -1,46 +1,49 @@
-// 工程与媒体文件输入：input 元素、Blob URL 与媒体选择弹窗。
-// 由 split-cluster codemod 自 editor.js 拆出：状态为本模块私有，外部仅经
-// window.MaweProjectMediaInputs 冻结门面访问（可变状态为访问器属性，赋值语义不变）。
-// 清单位置在 editor.js 之前；editor.js 全局仅在延迟执行的回调中访问。
-(function initMaweProjectMediaInputs(global) {
-  'use strict';
+import { freezeFacade } from '../state/editor-facade-utils.js';
+// 真 ESM：模块顶层定义与发布（原转换体 phase-2 语义 = import 求值）。
+// window.<Name> 与导出的 <Name> 是同一对象；消费者逐簇改 import 后移除 window 发布。
+'use strict';
 
 
+// === 打开工程 ===
+const openProjectFileInput = document.getElementById('open-project-file');
 
-  // === 打开工程 ===
-  const openProjectFileInput = document.getElementById('open-project-file');
+const loadMediaFileInput = document.getElementById('load-media-file');
 
+const loadSrtFileInput = document.getElementById('load-srt-file');
 
-  const loadMediaFileInput = document.getElementById('load-media-file');
+const loadLrcFileInput = document.getElementById('load-lrc-file');
 
+let currentMediaBlobUrl = null;
 
-  const loadSrtFileInput = document.getElementById('load-srt-file');
-
-
-  const loadLrcFileInput = document.getElementById('load-lrc-file');
-
-
-  let currentMediaBlobUrl = null;
-
-    // 跟踪 blob URL，便于切换时 revoke 防泄漏
-  let pendingProjectMediaSelection = null;
+  // 跟踪 blob URL，便于切换时 revoke 防泄漏
+let pendingProjectMediaSelection = null;
 
 
+import { MaweDom } from "../ui/editor-dom.js";function closeProjectMediaModal(clearPending = false) {
+  MaweDom.projectMediaModal.classList.remove('show');
+  if (clearPending) pendingProjectMediaSelection = null;
+  setTimeout(() => window.MAWE_ONBOARDING?.scheduleStart(), 0);
+}
 
-  function closeProjectMediaModal(clearPending = false) {
-    MaweDom.projectMediaModal.classList.remove('show');
-    if (clearPending) pendingProjectMediaSelection = null;
-    setTimeout(() => window.MAWE_ONBOARDING?.scheduleStart(), 0);
-  }
+function showProjectMediaModal() {
+  MaweDom.projectMediaModal.classList.add('show');
+  MaweDom.projectMediaSelectButton.focus();
+}
 
+window.MaweProjectMediaInputs = Object.freeze({
+  openProjectFileInput,
+  loadMediaFileInput,
+  loadSrtFileInput,
+  loadLrcFileInput,
+  get currentMediaBlobUrl() { return currentMediaBlobUrl; },
+  set currentMediaBlobUrl(v) { currentMediaBlobUrl = v; },
+  get pendingProjectMediaSelection() { return pendingProjectMediaSelection; },
+  set pendingProjectMediaSelection(v) { pendingProjectMediaSelection = v; },
+  closeProjectMediaModal,
+  showProjectMediaModal
+});
 
-
-  function showProjectMediaModal() {
-    MaweDom.projectMediaModal.classList.add('show');
-    MaweDom.projectMediaSelectButton.focus();
-  }
-
-  global.MaweProjectMediaInputs = Object.freeze({
+export const MaweProjectMediaInputs = freezeFacade({
     openProjectFileInput,
     loadMediaFileInput,
     loadSrtFileInput,
@@ -51,5 +54,8 @@
     set pendingProjectMediaSelection(v) { pendingProjectMediaSelection = v; },
     closeProjectMediaModal,
     showProjectMediaModal
-  });
-})(typeof window !== 'undefined' ? window : globalThis);
+  }, ["currentMediaBlobUrl", "pendingProjectMediaSelection"]);
+window.MaweProjectMediaInputs = MaweProjectMediaInputs;
+
+// 供已迁移消费者经 import 写待选媒体（语义与 facade set pendingProjectMediaSelection 一致）。
+export function setPendingProjectMediaSelection(value) { pendingProjectMediaSelection = value; }

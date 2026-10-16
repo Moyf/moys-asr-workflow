@@ -8,7 +8,7 @@ sys.path.insert(0, str(ROOT))
 import edit  # noqa: E402
 
 TEST = ROOT / "tests" / "test_editor_assets.py"
-manifest = edit.read_editor_script_manifest()
+manifest = edit._editor_source_files()
 entries = "".join(f'                "{name}",\n' for name in manifest)
 source = TEST.read_text(encoding="utf-8")
 updated, count = re.subn(

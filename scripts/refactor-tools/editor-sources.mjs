@@ -1,10 +1,19 @@
-// Developer tooling must enumerate the same ordered sources as the renderer.
-import { existsSync, readFileSync } from 'node:fs';
+// Developer tooling must enumerate the same sources as the builder.
+import { existsSync, readdirSync } from 'node:fs';
 import path from 'node:path';
 
+// 清单退役（批 4）：与 build-editor.deriveSources 同口径的目录推导。
 export function editorScriptFiles(webDir) {
-  return readFileSync(path.join(webDir, 'editor-scripts.txt'), 'utf8').split('\n')
-    .map((line) => line.split('#')[0].trim()).filter(Boolean);
+  return ['editor', 'shared'].flatMap((base) =>
+    (function walk(dir) {
+      return readdirSync(dir, { withFileTypes: true }).flatMap((entry) => {
+        const full = path.join(dir, entry.name);
+        if (entry.isDirectory()) return walk(full);
+        if (!entry.name.endsWith('.js')) return [];
+        return [path.relative(webDir, full).replaceAll('\\', '/')];
+      });
+    })(path.join(webDir, base))
+  ).filter((file) => !file.endsWith('.bundle.js')).sort();
 }
 
 // Historical mutation tools rebuild a single monolith and cannot safely

@@ -48,6 +48,19 @@ function returnsOf(factory, source) {
 }
 
 export function inspectSource(source, file) {
+  // 工厂时代：script 解析失败而 module 解析成功的文件是真 ESM（export 开头），
+  // 不参与 classic 词法共享面（共享名/自由引用/桥），只登记存在。
+  try {
+    parse(source);
+  } catch (scriptError) {
+    try {
+      parse(source, 'module');
+    } catch {
+      throw scriptError;
+    }
+    return { file, declarations: [], free: [], registrations: [], resolutions: [],
+      globals: [], hazards: [], simple: false };
+  }
   const ast = parse(source);
   const registrations = [], resolutions = [], globals = [], hazards = [];
   walk.ancestor(ast, {
@@ -123,7 +136,12 @@ export function inventory(root = ROOT) {
   // Writes cannot be replaced with assignment to an imported binding.
   const crossLexicalWrites = files.flatMap(f => {
     const source = fs.readFileSync(path.join(root, 'web', f.file), 'utf8');
-    const scope = eslintScope.analyze(parse(source), { ecmaVersion: 16, sourceType: 'script' });
+    let scope;
+    try {
+      scope = eslintScope.analyze(parse(source), { ecmaVersion: 16, sourceType: 'script' });
+    } catch {
+      return []; // 真 ESM 文件无 classic 跨词法写
+    }
     return scope.globalScope.through.filter(r => declarationOwners.has(r.identifier.name) && r.isWrite())
       .map(r => ({ consumer: f.file, provider: declarationOwners.get(r.identifier.name),
         name: r.identifier.name, line: r.identifier.loc.start.line }));
@@ -135,7 +153,9 @@ export function inventory(root = ROOT) {
     namespaceOwners.set(name, [...new Set([...(namespaceOwners.get(name) ?? []), file.file])]);
   }
   const namespaceReferences = files.flatMap(f => {
-    const source = fs.readFileSync(path.join(root, 'web', f.file), 'utf8'), ast = parse(source);
+    const source = fs.readFileSync(path.join(root, 'web', f.file), 'utf8');
+    let ast; try { ast = parse(source); } catch { return []; } // 真 ESM 文件跳过
+
     const output = [];
     for (const name of f.free) if (namespaceOwners.has(name)) output.push({ consumer: f.file,
       name, form: 'bare-free-name', candidateProviders: namespaceOwners.get(name), decision: 'preserve-window-bridge' });
@@ -152,7 +172,8 @@ export function inventory(root = ROOT) {
   // Report the ordered inputs, retaining expressions rather than guessing values.
   const accumulatorBags = [];
   for (const file of files) {
-    const source = fs.readFileSync(path.join(root, 'web', file.file), 'utf8'), ast = parse(source);
+    const source = fs.readFileSync(path.join(root, 'web', file.file), 'utf8');
+    let ast; try { ast = parse(source); } catch { continue; } // 真 ESM 文件跳过
     const initializers = [];
     walk.simple(ast, { VariableDeclarator(node) {
       if (node.id.type === 'Identifier' && node.init?.type === 'ObjectExpression') {

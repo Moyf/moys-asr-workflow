@@ -294,12 +294,16 @@ test('English whole-text search mirror preserves subtitles through highlights an
     await expect(textarea).toHaveValue('查找\n查找保存');
   }
   const spacing = await page.locator('.timed-text-edit-search').evaluate((element) => ({
-    margin: parseFloat(getComputedStyle(element).marginTop),
-    distance: element.getBoundingClientRect().top - element.previousElementSibling.getBoundingClientRect().bottom,
+    ...(() => {
+      const search = element.getBoundingClientRect();
+      const controls = element.previousElementSibling.getBoundingClientRect();
+      // The toolbar has two columns on wide screens and one on narrow screens.
+      const sideBySide = search.left >= controls.right - 1;
+      return { axis: sideBySide ? 'horizontal' : 'vertical',
+        distance: sideBySide ? search.left - controls.right : search.top - controls.bottom };
+    })(),
   }));
-  expect(spacing.margin).toBeGreaterThanOrEqual(8);
   expect(spacing.distance).toBeGreaterThanOrEqual(8);
-  console.log('pure-text search spacing:', JSON.stringify(spacing));
   await page.locator('#timed-text-edit-modal').screenshot({ path: testInfo.outputPath('english-project-search.png') });
 });
 

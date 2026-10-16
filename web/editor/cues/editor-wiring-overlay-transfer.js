@@ -1,9 +1,21 @@
+import { MULTI_SUBTITLE_UTILS } from "../boot/editor.js";
+import { updateSelectionCountText } from "./editor-selection-count.js";
 
+import { MawePlaybackLoop } from "../media/editor-playback-loop.js";
+import { MaweHint } from "../ui/editor-hint.js";
+import { MaweBoot } from "../boot/editor-boot.js";
+import { MaweSelection } from "./editor-selection.js";
+import { MaweCuePanelState } from "../state/editor-cue-panel-state.js";
+import { MaweCuePanel } from "./editor-cue-panel.js";
+import { MaweCommands } from "../state/editor-commands.js";
+import { MaweViewUpdates } from "../state/editor-view-updates.js";
+import { MaweSegmentOps } from "./editor-segment-ops.js";
+import { MaweColors } from "../styles/editor-colors.js";
+// 真 ESM：wiring 顶层接线（原转换体 phase-1/phase-2 = import 求值）。
+'use strict';
 
-
-
-
-
+import { MaweMultiSubtitleCore } from '../state/editor-multi-subtitle-core.js';
+export { getOverlayTrack, overlayTrackVisible, detachCuePanelFromTrackEdits, convertMainCuesToOverlay, convertMainCueToOverlayForDrag, convertOverlayCueToMainForDrag, convertOverlayCueToMain, deleteOverlayCues, activeExtensionSegments };
 
 function getOverlayTrack() {
   MaweMultiSubtitleCore.getMultiSubtitleState();
@@ -387,22 +399,8 @@ function activeExtensionSegments() {
 
 MaweMultiSubtitleCore.normalizeMultiSubtitleState();
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-// 原生 number 输入框以 min=10、step=100 计算大于 100 的向下步进时，
-// 会把 200 算成 110。把这个浏览器步进结果还原为用户看到的 100ms 档位，
-// 同时保留 100ms 向下 90ms、向上 200ms 的边界行为。
+// e2e 探针入口（tests/e2e/overlay-track 裸名驱动叠加转主轨；页面代码走
+// 具名 import）。
+Object.defineProperty(window, 'convertOverlayCueToMain', {
+  configurable: true, get: () => convertOverlayCueToMain,
+});

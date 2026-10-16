@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import test from 'node:test';
 import vm from 'node:vm';
+import { compileEditorFixture } from './helpers/editor-module-loader.mjs';
 
 function canvasFixture() {
   const paint = [];
@@ -14,7 +15,7 @@ function canvasFixture() {
     fillText(text) { paint.push({ mode: 'fill', text, color: this.fillStyle }); },
     strokeText(text) { paint.push({ mode: 'stroke', text, color: this.strokeStyle }); },
   }, { get(target, key) { return key in target ? target[key] : () => {}; } });
-  const context = { window: {} };
+  const context = { MaweHost: { runtime: { getNavigator: () => ({ platform: 'Win32' }) } }, URLSearchParams, location: { search: '' }, window: {} };
   loadEditorModule(context, 'shared/editor-utils.js');
   context.window.MaweDom = { overlayEl: { prepend() {} } };
   context.window.MaweAppearance = { subtitleFontFamilyCss: () => 'sans-serif' };
@@ -22,7 +23,7 @@ function canvasFixture() {
     createElement() { const ctx = makeContext(); return { getContext: () => ctx }; },
     fonts: { addEventListener() {} },
   };
-  vm.runInNewContext(fs.readFileSync(new URL('../web/editor/styles/editor-wiring-ass-canvas.js', import.meta.url), 'utf8'), context);
+  vm.runInNewContext(compileEditorFixture('editor/styles/editor-wiring-ass-canvas.js'), context);
   const style = context.window.AsrEditorUtils.normalizeAssStyle({ commentColor: '#111111', outline: 2, shadow: 0 });
   const track = { style, nativeFontSize: 72, runs: [{ text: 'comment', comment: true }] };
   const render = () => context.window.MaweAssCanvas.render({ playResX: 1920, playResY: 1080, tracks: [track] });

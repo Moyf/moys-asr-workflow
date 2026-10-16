@@ -75,14 +75,23 @@ for (let i = 0; i < 100; i++) {
 });
 
 for (const [kind, build] of [['editor', buildEditor], ['launcher', buildLauncher]]) {
-  for (const changed of [`web/${kind}-modules.json`, 'scripts/build-editor.mjs', 'pnpm-lock.yaml', 'web/source.js']) {
+  const source = kind === 'editor' ? 'web/editor/source.js' : 'web/source.js';
+  const inputs = kind === 'editor'
+    ? ['scripts/build-editor.mjs', 'package.json', 'pnpm-lock.yaml', source]
+    : ['web/launcher-modules.json', 'scripts/build-editor.mjs', 'pnpm-lock.yaml', source];
+  for (const changed of inputs) {
     test(`${kind} rejects ${changed} changing while compilation yields`, async t => {
       const root = fixture(t);
       fs.mkdirSync(path.join(root, 'web'), {recursive:true});
+      fs.mkdirSync(path.join(root, 'web/editor'), {recursive:true});
+      fs.mkdirSync(path.join(root, 'web/shared'), {recursive:true});
       fs.mkdirSync(path.join(root, 'scripts'), {recursive:true});
-      fs.writeFileSync(path.join(root, 'web/source.js'), 'window.fixture = 1;\n');
-      fs.writeFileSync(path.join(root, `web/${kind}-scripts.txt`), 'source.js\n');
-      fs.writeFileSync(path.join(root, `web/${kind}-modules.json`), '{"modules":[],"externalBridges":[]}\n');
+      fs.writeFileSync(path.join(root, source), 'window.fixture = 1;\n');
+      if (kind === 'launcher') {
+        fs.writeFileSync(path.join(root, 'web/launcher-scripts.txt'), 'source.js\n');
+        fs.writeFileSync(path.join(root, 'web/launcher-modules.json'), '{"modules":[],"externalBridges":[]}\n');
+        fs.writeFileSync(path.join(root, 'web/shared/tooltip.js'), 'window.MaweTooltip = {};\n');
+      }
       for (const name of ['scripts/build-editor.mjs', 'scripts/build-launcher.mjs', 'package.json', 'pnpm-lock.yaml']) {
         fs.writeFileSync(path.join(root, name), '{}\n');
       }

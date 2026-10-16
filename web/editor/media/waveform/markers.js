@@ -5,7 +5,8 @@
 // 按指针所在行换算，支持视口边缘自动滚动。预览裁剪到可见行。
 // 数据变更不在这里发生：拖动只更新 DOM 预览，提交经 options 回调进入
 // MaweMarkerEditing（撤销/重做与保存状态统一在那一层处理）。
-export function createWaveformModule(dependencies) {
+
+import { MaweSettings } from "../../state/editor-settings.js";export function createWaveformModule(dependencies) {
   'use strict';
   const { clamp, roundMs } = dependencies;
 

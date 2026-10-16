@@ -3,6 +3,7 @@ import { readFileSync } from 'node:fs';
 import test from 'node:test';
 import vm from 'node:vm';
 import { loadEditorModule } from './helpers/editor-module-loader.mjs';
+import { compileEditorUnitFixture, makeDocumentStub } from './helpers/editor-module-loader.mjs';
 
 const utilsContext = { window: {}, TextDecoder, TextEncoder, Uint8Array };
 loadEditorModule(utilsContext, 'shared/editor-utils.js');
@@ -16,15 +17,21 @@ function fixture(storage = new Map([[key, JSON.stringify({ markerEditingEnabled:
       addEventListener(name, handler) { this.listeners[name] = handler; },
     };
   }
-  const context = { window: { AsrEditorUtils: utilsContext.window.AsrEditorUtils,
+  const context = { URLSearchParams, location: { search: '' }, window: { AsrEditorUtils: utilsContext.window.AsrEditorUtils,
     AsrGapRemoveCore: utilsContext.window.AsrGapRemoveCore },
-  MaweHost: { storage: { getItem: name => storage.get(name), setItem: (name, value) => storage.set(name, value) } },
+  MaweHost: { runtime: { getNavigator: () => ({ platform: 'Win32' }) },
+    storage: { getItem: name => storage.get(name), setItem: (name, value) => storage.set(name, value) } },
   MaweState: { preferences: { editor: {} }, changes: {} },
+  getMaweState: () => context.MaweState,
+  MaweBoot: { DATA: { markers: [] } },
   MaweCoreState: { waveformEditor: { refreshMarkerOverlay() {} } },
-  MaweDom: { markersManageButton: { hidden: true } },
-  document: { getElementById: id => elements[id], addEventListener() {} },
+  MaweDom: { markersManageButton: { hidden: true }, markersCloseButton: { addEventListener() {} },
+    ctxmenu: { classList: { contains: () => false } } },
+  MaweHint: { flashHint() {} }, MaweHistory: {}, MaweViewUpdates: { invalidate() {} },
+  MaweInlineEdit: {},
+  document: makeDocumentStub({ getElementById: id => elements[id] }),
   };
-  const evaluate = file => vm.runInNewContext(readFileSync(new URL('../web/' + file, import.meta.url), 'utf8'), context);
+  const evaluate = file => vm.runInNewContext(compileEditorUnitFixture(file), context);
   evaluate('editor/state/editor-settings.js');
   context.MaweSettings = context.window.MaweSettings;
   evaluate('editor/markers/editor-marker-editing.js');

@@ -1,17 +1,29 @@
+import { getOverlayTrack } from "./editor-wiring-overlay-transfer.js";
+import { isPlaybackActive } from "../media/editor-wiring-keyboard-guards.js";
+import { showOverlayContextMenu } from "../ui/editor-wiring-context-menus.js";
+import { updateSelectionCountText } from "./editor-selection-count.js";
+export { updateSelectionCountText } from "./editor-selection-count.js";
 
+// 真 ESM：wiring 顶层接线（原转换体 phase-1/phase-2 = import 求值）。
+'use strict';
 
+import { MaweCuePanel } from './editor-cue-panel.js';
+import { MaweSettings } from '../state/editor-settings.js';
+import { MaweDom } from "../ui/editor-dom.js";
 
-
-  // 用于 Shift+click 范围选
-
-
-
-// 已选计数涵盖主轨/副轨/叠加轨三个选区集。
-function updateSelectionCountText() {
-  MaweDom.selCountEl.textContent = String(
-    MaweSelection.selectedIdxs.size + MaweSelection.selectedExtensionIdxs.size + MaweState.selection.indices('overlay').size,
-  );
-}
+import { MaweCueElements } from "./editor-cue-elements.js";
+import { MawePlaybackLoop } from "../media/editor-playback-loop.js";
+import { MaweHint } from "../ui/editor-hint.js";
+import { MaweCoreState } from "../state/editor-core-state.js";
+import { MaweMultiSubtitleCore } from "../state/editor-multi-subtitle-core.js";
+import { MaweSelection } from "./editor-selection.js";
+import { MaweCuePanelState } from "../state/editor-cue-panel-state.js";
+import { MaweMediaPlayback } from "../media/editor-media-playback.js";
+import { MaweViewUpdates } from "../state/editor-view-updates.js";
+import { MaweTextCleanup } from "./editor-text-cleanup.js";
+import { MaweStickerPicker } from "./editor-sticker-picker.js";
+import { MaweCueListAnchor } from "./editor-cue-list-anchor.js";
+import { MaweCueEvents } from "./editor-cue-events.js";
 // “仅看超长”开启时，刚拆出的字幕临时绕过字数过滤；使用稳定 ID，避免 splice 后下标错位。
 
 // 右键选择「绑定到主字幕」后的等待状态。使用稳定 ID 而不是数组下标，
@@ -199,7 +211,7 @@ MaweDom.cuePanelSplit?.addEventListener('click', MaweCuePanel.splitCuePanelAtCur
 
 // 叠加字幕行选中高亮与选中计数统一同步：叠加轨没有 multi-cue 类，
 // 不能走 updateMultiSelectionClasses，这里按 data-overlay-idx 直接同步。
-function syncOverlaySelectionClasses() {
+export function syncOverlaySelectionClasses() {
   MaweCoreState.container.querySelectorAll('.cue[data-overlay-idx].selected').forEach((el) => {
     if (!MaweState.selection.indices('overlay').has(Number(el.dataset.overlayIdx))) el.classList.remove('selected');
   });
@@ -209,7 +221,7 @@ function syncOverlaySelectionClasses() {
   updateSelectionCountText();
 }
 
-function selectOverlayCueRow(index, { focusEditor = false } = {}) {
+export function selectOverlayCueRow(index, { focusEditor = false } = {}) {
   // 与副字幕 selectOnlyExtension 同一逻辑：点击叠加字幕先清空主轨/副轨
   // 已有选区（clearSelection 同时取消待绑定状态），再单独选中本轨字幕。
   MaweCuePanel.commitCuePanelEdit();
@@ -224,7 +236,7 @@ function selectOverlayCueRow(index, { focusEditor = false } = {}) {
   if (row) MaweCueListAnchor.scrollCueIntoViewIfNeeded(row);
 }
 
-function selectOverlayRange(fromIndex, toIndex) {
+export function selectOverlayRange(fromIndex, toIndex) {
   const segments = getOverlayTrack()?.segments || [];
   const from = Math.max(0, Math.min(fromIndex, toIndex));
   const to = Math.min(segments.length - 1, Math.max(fromIndex, toIndex));
@@ -240,7 +252,7 @@ function selectOverlayRange(fromIndex, toIndex) {
   if (row) MaweCueListAnchor.scrollCueIntoViewIfNeeded(row);
 }
 
-function toggleOverlaySelection(index) {
+export function toggleOverlaySelection(index) {
   if (MaweSelection.isHiddenDisabled(index, getOverlayTrack())) return;  // 隐藏禁用项不参与选择
   const row = MaweCoreState.container.querySelector(`.cue[data-overlay-idx="${index}"]`);
   if (MaweState.selection.indices('overlay').has(index)) {
@@ -257,7 +269,7 @@ function toggleOverlaySelection(index) {
   MaweCoreState.waveformEditor?.updateSelection();
 }
 
-function buildOverlayCueEl(seg, index) {
+export function buildOverlayCueEl(seg, index) {
   const el = MaweCueElements.buildCueEl(seg, index, { overlayTrack: true });
   el.classList.add('overlay-track-cue');
   el.dataset.overlayIdx = String(index);
@@ -307,17 +319,3 @@ function buildOverlayCueEl(seg, index) {
   });
   return el;
 }
-
-
-
-
-
-
-
-
-
-
-
-
-
-// === 字数 ===

@@ -1,116 +1,140 @@
-// One owner for project identity, selection, preferences and transient UI state.
-// The project is the original template object; no second subtitle source exists.
-window.MAWE.register('editor-state', function createEditorState(project) {
-  'use strict';
 
-  const sets = { main: new Set(), extension: new Set(), overlay: new Set() };
-  const anchors = { main: -1, extension: -1, overlay: -1 };
-  const views = Object.fromEntries(Object.entries(sets).map(([kind, set]) => [kind, Object.freeze({
-    get size() { return set.size; },
-    has: index => set.has(index),
-    values: () => set.values(),
-    keys: () => set.keys(),
-    entries: () => set.entries(),
-    forEach(callback, receiver) {
-      set.forEach(index => callback.call(receiver, index, index, views[kind]));
-    },
-    [Symbol.iterator]: () => set.values(),
-  })]));
-  function trackSet(kind) {
-    if (!Object.hasOwn(sets, kind)) throw new TypeError('Unknown selection track: ' + kind);
-    return sets[kind];
-  }
-  const selection = Object.freeze({
-    get mainAnchor() { return anchors.main; },
-    set mainAnchor(index) { anchors.main = index; },
-    get extensionAnchor() { return anchors.extension; },
-    set extensionAnchor(index) { anchors.extension = index; },
-    get overlayAnchor() { return anchors.overlay; },
-    set overlayAnchor(index) { anchors.overlay = index; },
-    indices(kind) { trackSet(kind); return views[kind]; },
-    add(kind, index) {
-      const set = trackSet(kind);
-      if (Number.isInteger(index) && index >= 0) set.add(index);
-    },
-    remove: (kind, index) => trackSet(kind).delete(index),
-    clear: kind => trackSet(kind).clear(),
-    replace(kind, indices) {
-      const set = trackSet(kind);
-      const next = [...indices].filter(index => Number.isInteger(index) && index >= 0);
-      set.clear();
-      next.forEach(index => set.add(index));
-    },
-    removeAndShift(kind, removedIndex) {
-      const set = trackSet(kind);
-      const anchor = anchors[kind];
-      if (!Number.isInteger(removedIndex) || removedIndex < 0) return { wasSelected: false, nextAnchor: anchor };
-      const wasSelected = set.has(removedIndex);
-      const next = [...set].filter(index => index !== removedIndex)
-        .map(index => index > removedIndex ? index - 1 : index);
-      set.clear();
-      next.forEach(index => set.add(index));
-      anchors[kind] = anchor === removedIndex ? -1 : anchor > removedIndex ? anchor - 1 : anchor;
-      return { wasSelected, nextAnchor: anchors[kind] };
-    },
-    anchor(kind) { trackSet(kind); return anchors[kind]; },
-    setAnchor(kind, index) {
-      trackSet(kind);
-      anchors[kind] = Number.isInteger(index) && index >= 0 ? index : -1;
-    },
-    reset() {
-      for (const kind of Object.keys(sets)) { sets[kind].clear(); anchors[kind] = -1; }
-    },
-  });
 
-  const preferences = Object.seal({ editor: {} });
-  const runtime = Object.seal({
-    player: null, waveformEditor: null, playbackFrameId: 0, playbackFramePlayer: null,
-    waveformLoadedFromProject: false,
-  });
-  const panel = Object.seal({
-    gapPreviewRange: null, gapRemovePanelDrag: null,
-    currentCuePanelIdx: -1, currentCuePanelKind: 'main', currentCuePanelTrackId: null,
-    cuePanelUndoPushed: false, cuePanelUndoRecord: null,
-    cuePanelTextEditSnapshot: null, cuePanelCanceling: false,
-  });
-  const editing = Object.seal({ editingState: null, extensionEditingState: null });
-  const changes = Object.seal({ projectImportDirty: false, gapRemoveDirty: false, previewGeometryDirty: false, markersDirty: false });
 
-  // Compare only subtitle truth, never DOM, playback or rebuildable waveform caches.
-  function segmentsFingerprint() {
-    return JSON.stringify({ segments: project.segments, multi_subtitle: project.multi_subtitle,
-      overlay_track: project.overlay_track }, (key, value) => key === '_dirty' ? undefined : value);
-  }
-  let savedSegments = null;
-  function noteSavedSegments(fingerprint = segmentsFingerprint()) { savedSegments = fingerprint; }
-  function clearSubtitleDirtyFlags() {
-    (project.segments || []).forEach(segment => { delete segment._dirty; });
-    for (const track of [project.multi_subtitle, project.overlay_track, ...(project.multi_subtitle?.tracks || [])]) {
-      if (!track) continue;
-      delete track._dirty;
-      (track.segments || []).forEach(segment => { delete segment._dirty; });
-    }
-  }
-  function markSaved() {
-    clearSubtitleDirtyFlags();
-    for (const key of Object.keys(changes)) changes[key] = false;
-  }
-  function reconcileSegmentsDirty() {
-    if (savedSegments === null) return;
-    changes.projectImportDirty = segmentsFingerprint() !== savedSegments;
-    if (!changes.projectImportDirty) clearSubtitleDirtyFlags();
-  }
+// 真 ESM：register+resolve 对 → 具名工厂导出（原注册名 editor-state）。
+export function createEditorState(project) {
+const sets = { main: new Set(), extension: new Set(), overlay: new Set() };
 
-  function hasProjectChanges(pendingText = false) {
-    const dirty = track => Boolean(track?._dirty) || (track?.segments || []).some(segment => segment._dirty);
-    return Boolean(pendingText || changes.projectImportDirty || changes.gapRemoveDirty || changes.previewGeometryDirty
-      || changes.markersDirty
-      || (project.segments || []).some(segment => segment._dirty)
-      || dirty(project.overlay_track) || dirty(project.multi_subtitle)
-      || (project.multi_subtitle?.tracks || []).some(dirty));
-  }
+const anchors = { main: -1, extension: -1, overlay: -1 };
 
-  return Object.freeze({ project, selection, preferences, runtime, panel, editing, changes, hasProjectChanges,
-    segmentsFingerprint, noteSavedSegments, markSaved, reconcileSegmentsDirty });
+const views = Object.fromEntries(Object.entries(sets).map(([kind, set]) => [kind, Object.freeze({
+  get size() { return set.size; },
+  has: index => set.has(index),
+  values: () => set.values(),
+  keys: () => set.keys(),
+  entries: () => set.entries(),
+  forEach(callback, receiver) {
+    set.forEach(index => callback.call(receiver, index, index, views[kind]));
+  },
+  [Symbol.iterator]: () => set.values(),
+})]));
+
+function trackSet(kind) {
+  if (!Object.hasOwn(sets, kind)) throw new TypeError('Unknown selection track: ' + kind);
+  return sets[kind];
+}
+
+const selection = Object.freeze({
+  get mainAnchor() { return anchors.main; },
+  set mainAnchor(index) { anchors.main = index; },
+  get extensionAnchor() { return anchors.extension; },
+  set extensionAnchor(index) { anchors.extension = index; },
+  get overlayAnchor() { return anchors.overlay; },
+  set overlayAnchor(index) { anchors.overlay = index; },
+  indices(kind) { trackSet(kind); return views[kind]; },
+  add(kind, index) {
+    const set = trackSet(kind);
+    if (Number.isInteger(index) && index >= 0) set.add(index);
+  },
+  remove: (kind, index) => trackSet(kind).delete(index),
+  clear: kind => trackSet(kind).clear(),
+  replace(kind, indices) {
+    const set = trackSet(kind);
+    const next = [...indices].filter(index => Number.isInteger(index) && index >= 0);
+    set.clear();
+    next.forEach(index => set.add(index));
+  },
+  removeAndShift(kind, removedIndex) {
+    const set = trackSet(kind);
+    const anchor = anchors[kind];
+    if (!Number.isInteger(removedIndex) || removedIndex < 0) return { wasSelected: false, nextAnchor: anchor };
+    const wasSelected = set.has(removedIndex);
+    const next = [...set].filter(index => index !== removedIndex)
+      .map(index => index > removedIndex ? index - 1 : index);
+    set.clear();
+    next.forEach(index => set.add(index));
+    anchors[kind] = anchor === removedIndex ? -1 : anchor > removedIndex ? anchor - 1 : anchor;
+    return { wasSelected, nextAnchor: anchors[kind] };
+  },
+  anchor(kind) { trackSet(kind); return anchors[kind]; },
+  setAnchor(kind, index) {
+    trackSet(kind);
+    anchors[kind] = Number.isInteger(index) && index >= 0 ? index : -1;
+  },
+  reset() {
+    for (const kind of Object.keys(sets)) { sets[kind].clear(); anchors[kind] = -1; }
+  },
 });
-window.MaweState = window.MAWE.resolve('editor-state', window.MaweBoot.DATA);
+
+const preferences = Object.seal({ editor: {} });
+
+const runtime = Object.seal({
+  player: null, waveformEditor: null, playbackFrameId: 0, playbackFramePlayer: null,
+  waveformLoadedFromProject: false,
+});
+
+const panel = Object.seal({
+  gapPreviewRange: null, gapRemovePanelDrag: null,
+  currentCuePanelIdx: -1, currentCuePanelKind: 'main', currentCuePanelTrackId: null,
+  cuePanelUndoPushed: false, cuePanelUndoRecord: null,
+  cuePanelTextEditSnapshot: null, cuePanelCanceling: false,
+});
+
+const editing = Object.seal({ editingState: null, extensionEditingState: null });
+
+/** @type {{ projectImportDirty: boolean, gapRemoveDirty: boolean, previewGeometryDirty: boolean, markersDirty: boolean }} */
+const changes = Object.seal({ projectImportDirty: false, gapRemoveDirty: false, previewGeometryDirty: false, markersDirty: false });
+
+function segmentsFingerprint() {
+  return JSON.stringify({ segments: project.segments, multi_subtitle: project.multi_subtitle,
+    overlay_track: project.overlay_track }, (key, value) => key === '_dirty' ? undefined : value);
+}
+
+let savedSegments = null;
+
+function noteSavedSegments(fingerprint = segmentsFingerprint()) { savedSegments = fingerprint; }
+
+function clearSubtitleDirtyFlags() {
+  (project.segments || []).forEach(segment => { delete segment._dirty; });
+  for (const track of [project.multi_subtitle, project.overlay_track, ...(project.multi_subtitle?.tracks || [])]) {
+    if (!track) continue;
+    delete track._dirty;
+    (track.segments || []).forEach(segment => { delete segment._dirty; });
+  }
+}
+
+function markSaved() {
+  clearSubtitleDirtyFlags();
+  for (const key of Object.keys(changes)) changes[key] = false;
+}
+
+function reconcileSegmentsDirty() {
+  if (savedSegments === null) return;
+  changes.projectImportDirty = segmentsFingerprint() !== savedSegments;
+  if (!changes.projectImportDirty) clearSubtitleDirtyFlags();
+}
+
+function hasProjectChanges(pendingText = false) {
+  const dirty = track => Boolean(track?._dirty) || (track?.segments || []).some(segment => segment._dirty);
+  return Boolean(pendingText || changes.projectImportDirty || changes.gapRemoveDirty || changes.previewGeometryDirty
+    || changes.markersDirty
+    || (project.segments || []).some(segment => segment._dirty)
+    || dirty(project.overlay_track) || dirty(project.multi_subtitle)
+    || (project.multi_subtitle?.tracks || []).some(dirty));
+}
+
+return Object.freeze({ project, selection, preferences, runtime, panel, editing, changes, hasProjectChanges,
+  segmentsFingerprint, noteSavedSegments, markSaved, reconcileSegmentsDirty });
+}
+
+let instance;
+export function getMaweState() {
+  instance ??= createEditorState(window.MaweBoot.DATA);
+  return instance;
+}
+// MaweBoot.DATA 由 boot 转换体在 phase-2 注入，import 期不存在——
+// 首次访问 window.MaweState 时实例化（启动后）。
+Object.defineProperty(window, 'MaweState', {
+  configurable: true,
+  get: () => getMaweState(),
+});

@@ -47,6 +47,7 @@ test-results/
 web/editor/boot/editor-bundle.js
 web/editor/boot/editor-bundle.meta.json
 web/launcher/boot/launcher-bundle.js
+web/launcher/boot/tooltip-bundle.js
 web/launcher/boot/launcher-bundle.meta.json
 
 # Local Windows GUI packaging outputs. Keep generated executables local.
@@ -81,3 +82,11 @@ build-appimage/
 /debug.log
 # Atomic bundle staging files left by an interrupted build.
 **/.maw-bundle-*.tmp
+full-probe-settings/
+
+# ESM 机械迁移研究产物（E6/E8/E9 探针输出，测试自生成；不入库）
+/full-baseline-probe.html
+/full-current-probe.html
+/full-browser-verdict.json
+/hoisting-probe/
+/live-binding-probe/

@@ -1,12 +1,32 @@
 
+import { MaweMultiImport } from "../io/editor-multi-import.js";
+import { MaweBindingAlign } from "../cues/editor-binding-align.js";
+import { MaweProjectMediaInputs } from "../io/editor-project-media-inputs.js";
+import { MaweSettingsPanels } from "./editor-settings-panels.js";
+import { MaweViewUpdates } from "../state/editor-view-updates.js";
+import { MaweCommands } from "../state/editor-commands.js";
+import { MaweHint } from "./editor-hint.js";
+import { MaweCoreState } from "../state/editor-core-state.js";
+import { MaweMultiSubtitleCore } from "../state/editor-multi-subtitle-core.js";
+import { MaweCuePanel } from "../cues/editor-cue-panel.js";import { overlayTrackToggle, pauseOnMouseClickToggle } from "./editor-wiring-dom-panels.js";
+import { getOverlayTrack } from "../cues/editor-wiring-overlay-transfer.js";
+import { updateAssStyleLibrarySummary, loadAssStyleLibrary } from "../styles/editor-wiring-ass-storage.js";
+import { updateAssStyleLibraryStatus, updateAssStylePreviewModeHints, syncAssModeControl, syncAssStyleManager } from "../styles/editor-wiring-ass-manager.js";
+import { MULTI_SUBTITLE_UTILS } from "../boot/editor.js";
 
-
-
-
-// 浮窗尺寸：与帮助窗口一致，仅在用户拖过右下角缩放手柄后持久化；
-// 未缩放时保持 CSS 默认宽度/自动高度。
-
-
+// 真 ESM：wiring 顶层接线（原转换体 phase-1/phase-2 = import 求值）。
+'use strict';
+import { MaweDisplaySettings } from "./editor-display-settings.js";
+import { MaweSplitMode } from "../cues/editor-split-mode.js";
+import { MaweSegmentOps } from "../cues/editor-segment-ops.js";
+import { MaweJklPlayback } from "../media/editor-jkl.js";
+import { MaweTimeline } from "../cues/editor-timeline.js";
+import { MaweMediaPlayback } from "../media/editor-media-playback.js";
+import { MaweMediaStep } from "../media/editor-media-step.js";
+import { MaweNinja } from "./editor-ninja.js";
+import { MaweAppearance } from "../styles/editor-appearance.js";
+import { MaweDom } from "./editor-dom.js";
+import { MaweSettings } from "../state/editor-settings.js";
 if (MaweDom.editorSettingsPanel) {
   new ResizeObserver(() => {
     if (!MaweDom.editorSettingsPanel.classList.contains('show')) return;
@@ -294,4 +314,3 @@ MaweAppearance.applyExtensionSubtitleAppearance();
 syncAssModeControl();
 syncAssStyleManager();
 void loadAssStyleLibrary();
-// 开/关由 createFloatingPanel 的 manageButton 点击切换接管，这里只负责标签页与关闭按钮。

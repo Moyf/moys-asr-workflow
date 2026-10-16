@@ -318,12 +318,13 @@ test('positioned shake phase survives non-periodic overlap in Canvas, Server lib
     expect(frame.currentTime).toBeCloseTo(timeMs / 1000, 5);
     await page.evaluate(() => MaweAssFrame.renderAssFrame());
     await expect(page.locator('#ass-frame-window-status')).toHaveText('渲染完成');
-    const serverBox = await page.evaluate(paintedBox => {
+    const serverFrame = await page.evaluate(paintedBox => {
       const image = document.getElementById('ass-frame-image'), canvas = document.createElement('canvas');
       canvas.width = image.naturalWidth; canvas.height = image.naturalHeight;
       canvas.getContext('2d').drawImage(image, 0, 0);
-      return (0, eval)(`(${paintedBox})`)(canvas);
+      return { box: (0, eval)(`(${paintedBox})`)(canvas), png: canvas.toDataURL('image/png').split(',')[1] };
     }, paintedBox.toString());
+    const serverBox = serverFrame.box;
     const path = info.outputPath(`shake-phase-${timeMs}.ass`);
     writeFileSync(path, frame.ass);
     const result = JSON.parse(execFileSync(process.env.MAW_PIXEL_PYTHON || process.env.MAW_E2E_PYTHON || 'python',
@@ -335,7 +336,9 @@ test('positioned shake phase survives non-periodic overlap in Canvas, Server lib
     evidence.push(sample);
     writeFileSync(info.outputPath('shake-phase-comparison.json'), JSON.stringify(evidence, null, 2));
     await page.locator('.player-stage').screenshot({ path: info.outputPath(`shake-phase-${timeMs}-canvas.png`) });
-    await page.locator('#ass-frame-image').screenshot({ path: info.outputPath(`shake-phase-${timeMs}-server.png`) });
+    // The preview can hide its image while keeping the decoded server frame;
+    // capture that decoded bitmap directly so visibility does not erase evidence.
+    writeFileSync(info.outputPath(`shake-phase-${timeMs}-server.png`), Buffer.from(serverFrame.png, 'base64'));
     expect(frame.box).not.toBeNull(); expect(serverBox).not.toBeNull(); expect(exportBox).not.toBeNull();
     for (let axis = 0; axis < 4; axis++) {
       expect(Math.abs(frame.box[axis] - exportBox[axis]), JSON.stringify(sample)).toBeLessThanOrEqual(5);

@@ -8,13 +8,11 @@
   },
   "include": [
     "web/editor/boot/editor-globals.d.ts",
-    "web/shared/host/*.js",
-    "web/shared/utils/*.js",
-    "web/editor/media/waveform/*.js",
-    "web/editor/boot/editor-boot.js",
-    "web/editor/state/editor-state.js",
-    "web/editor/state/editor-view-updates.js",
-    "web/editor/state/editor-commands.js",
-    "web/editor/io/editor-export-srt.js"
-  ]
+    "web/editor/boot/editor-facades.generated.d.ts",
+    "web/editor/boot/editor-legacy-dom.d.ts",
+    "web/shared/**/*.js",
+        "web/editor/**/*.js",
+    "web/editor/boot/*.js"
+  ],
+  "exclude": ["web/editor/boot/editor-bundle.js", "web/launcher/**"]
 }

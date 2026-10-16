@@ -1,15 +1,14 @@
 
-// === 打开工程 ===
+import { MaweMultiImport } from "./editor-multi-import.js";
+import { MaweDragDrop } from "./editor-drag-drop.js";
+import { MaweProjectLoad } from "./editor-project-load.js";
+import { MaweServerSave } from "./editor-server-save.js";
+import { MaweHint } from "../ui/editor-hint.js";
 
-
-
-  // 跟踪 blob URL，便于切换时 revoke 防泄漏
-
-
-
-
-
-
+// 真 ESM：wiring 顶层接线（原转换体 phase-1/phase-2 = import 求值）。
+'use strict';
+import { MaweProjectMediaInputs } from "./editor-project-media-inputs.js";
+import { MaweDom } from "../ui/editor-dom.js";
 MaweDom.projectMediaSelectButton.addEventListener('click', () => {
   MaweProjectMediaInputs.closeProjectMediaModal(false);
   MaweProjectMediaInputs.loadMediaFileInput.value = '';

@@ -1,26 +1,19 @@
 
+import { MaweKeyboardTargets } from "./editor-keyboard-targets.js";
+import { MaweSelection } from "./editor-selection.js";
+import { MaweInlineEdit } from "./editor-inline-edit.js";
 
-
-
-// === 滚动 ===
-
-
-// 三种滚动共用一个可取消的操作：布局恢复、主动导航、播放跟随。
-// scroll 事件本身不表示用户输入，懒布局和浏览器边界限制也会触发它。
-
-
-
-
-
-
-
-
-
+// 真 ESM：wiring 顶层接线（原转换体 phase-1/phase-2 = import 求值）。
+'use strict';
+import { MaweCoreState } from "../state/editor-core-state.js";
+import { MaweCueListAnchor } from "./editor-cue-list-anchor.js";
+import { MaweNavPreview, setLastEditRegion, setLastPointerPos } from "./editor-nav-preview.js";
 document.addEventListener('pointerdown', (event) => {
   MaweCueListAnchor.invalidateCueListVisualAnchorRestore({ preserveLayoutAnchor: true });
   // 直接按在容器空白/滚动条上可能开始拖动；普通行点击仍沿用点击设置。
   const rect = MaweCoreState.container.getBoundingClientRect();
-  if (event.target === MaweCoreState.container || (MaweCoreState.container.contains(event.target)
+  const targetNode = /** @type {Node} */ (event.target);
+  if (targetNode === MaweCoreState.container || (MaweCoreState.container.contains(targetNode)
       && event.clientX >= rect.right - 14)) {
     MaweCueListAnchor.cueListScroll.layoutAnchor = null;
     MaweCueListAnchor.setCueListFollowing(false);
@@ -39,7 +32,7 @@ document.addEventListener('keydown', (event) => {
   if (document.querySelector('.modal-mask.show, #ctxmenu.show')
       || event.target?.closest?.('[role="dialog"], [role="menu"]')) return;
   if (event.ctrlKey || event.altKey || event.metaKey) return;
-  if (!(MaweCoreState.container.contains(event.target) || MaweNavPreview.navigationOwner === 'cue-list')) return;
+  if (!(MaweCoreState.container.contains(/** @type {Node} */ (event.target)) || MaweNavPreview.navigationOwner === 'cue-list')) return;
   if (['ArrowUp', 'ArrowDown', 'PageUp', 'PageDown', 'Home', 'End', ' '].includes(event.key)) {
     MaweCueListAnchor.interruptCueListFollowing();
   }
@@ -98,15 +91,15 @@ document.addEventListener('pointerdown', (event) => {
 }, true);
 
 document.addEventListener('pointerdown', (e) => {
-  if (e.target instanceof Element && e.target.closest('.cue')) MaweNavPreview.lastEditRegion = 'cue-list';
-  else if (e.target instanceof Element && e.target.closest('#waveform-pane')) MaweNavPreview.lastEditRegion = 'waveform';
+  if (e.target instanceof Element && e.target.closest('.cue')) setLastEditRegion('cue-list');
+  else if (e.target instanceof Element && e.target.closest('#waveform-pane')) setLastEditRegion('waveform');
 }, true);
 
 
 document.addEventListener('pointerdown', MaweNavPreview.updateNavigationOwner, true);
 document.addEventListener('focusin', MaweNavPreview.updateNavigationOwner, true);
 document.addEventListener('pointermove', (e) => {
-  MaweNavPreview.lastPointerPos = { x: e.clientX, y: e.clientY };
+  setLastPointerPos({ x: e.clientX, y: e.clientY });
 }, true);
 
 
@@ -128,7 +121,3 @@ document.addEventListener('pointermove', (e) => {
 
 document.addEventListener('keydown', (event) => MaweNavPreview.handlePointerBoundaryShortcut(event, 'start'));
 document.addEventListener('keydown', (event) => MaweNavPreview.handlePointerBoundaryShortcut(event, 'end'));
-
-
-
-// === 单击/双击/Shift/Ctrl ===

@@ -1,11 +1,20 @@
+import { ASS_BUILTIN_FONT_SUGGESTIONS, ASS_COLOR_STYLE_VALUES } from "./editor-wiring-ass-storage.js";
+import { subtitleFontFamilyCombobox, subtitleFontFamilyInput, subtitleFontFamilyToggle, subtitleFontFamilyOptions, assFontNameCombobox, assStyleFontToggle, assStyleFontOptions, setSubtitleFontFamilyCombobox, setAssFontNameCombobox } from "../ui/editor-wiring-dom-panels.js";
+import { scheduleAssSubtitlePreviewRefresh } from "../media/editor-wiring-keyboard-guards.js";
 
-// === 字幕预览几何（preview.subtitle）===
-// 归一化 {x,y,width,height} 存于 DATA.preview.subtitle。纯钳制/归一化逻辑在
-// AsrEditorUtils（已单测）；这里只负责 DOM 应用、指针/键盘手势、每手势一条撤销、脏标记。
+// 真 ESM：wiring 顶层接线（原转换体 phase-1/phase-2 = import 求值）。
+'use strict';
+
+import { MaweAppearance } from './editor-appearance.js';
+import { MaweColors } from './editor-colors.js';
+import { MaweDom } from "../ui/editor-dom.js";
 
 
-// 启动早期生成的自定义字体选项先用原始名称占位；共享工具层就绪后立即统一本地化。
-MaweAppearance.relabelSubtitleFontFamilyOptions();
+import { MaweHint } from "../ui/editor-hint.js";
+import { MaweSettings } from "../state/editor-settings.js";
+import { MaweStickerOverlay } from "../media/editor-sticker-overlay.js";
+import { MawePreviewGeometry } from "../media/editor-preview-geometry.js";
+queueMicrotask(() => MaweAppearance.relabelSubtitleFontFamilyOptions());
 
 
 
@@ -224,12 +233,12 @@ function assFontNameComboboxEntries() {
 }
 function getSubtitleFontFamilyCombobox() {
   if (!subtitleFontFamilyCombobox) {
-    subtitleFontFamilyCombobox = createFontFamilyCombobox({
+    setSubtitleFontFamilyCombobox(createFontFamilyCombobox({
       input: subtitleFontFamilyInput,
       toggle: subtitleFontFamilyToggle,
       options: subtitleFontFamilyOptions,
       getEntries: subtitleFontFamilyComboboxEntries,
-    });
+    }));
   }
   return subtitleFontFamilyCombobox;
 }
@@ -241,25 +250,25 @@ function getAssFontNameCombobox() {
       const assDefaultFontName = window.AsrEditorUtils.ASS_DEFAULT_ASS_STYLE?.fontName;
       if (assDefaultFontName) assStyleFontNameInput.placeholder = assDefaultFontName;
     }
-    assFontNameCombobox = createFontFamilyCombobox({
+    setAssFontNameCombobox(createFontFamilyCombobox({
       input: assStyleFontNameInput,
       toggle: assStyleFontToggle,
       options: assStyleFontOptions,
       getEntries: assFontNameComboboxEntries,
-    });
+    }));
   }
   return assFontNameCombobox;
 }
-function rebuildSubtitleFontFamilyOptions() {
+export function rebuildSubtitleFontFamilyOptions() {
   getSubtitleFontFamilyCombobox().refresh();
 }
-function rebuildAssFontNameOptions() {
+export function rebuildAssFontNameOptions() {
   getAssFontNameCombobox().refresh();
 }
 
 
 
-function normalizeAssColorStyleValue(value) {
+export function normalizeAssColorStyleValue(value) {
   return typeof value === 'string' && ASS_COLOR_STYLE_VALUES.includes(value)
     ? value : null;
 }
@@ -315,7 +324,7 @@ MaweColors.subtitleColorPaletteResetButton?.addEventListener('click', () => {
 
 
 
-MaweAppearance.initializeSubtitleFontFamilyScanner();
+queueMicrotask(() => MaweAppearance.initializeSubtitleFontFamilyScanner());
 
 
 // 写回 DATA.preview.subtitle 并刷新 DOM。markDirty=false 用于初次加载，不弄脏工程。
@@ -341,7 +350,7 @@ MaweAppearance.initializeSubtitleFontFamilyScanner();
 
 
 
-MawePreviewGeometry.bindPreviewBoxPointerEvents(MaweDom.overlayEl, 'subtitle');
+queueMicrotask(() => MawePreviewGeometry.bindPreviewBoxPointerEvents(MaweDom.overlayEl, 'subtitle'));
 
 // --- 键盘操作（聚焦时），字幕预览与表情包预览共用 ---
 // 方向键移动 1%；Shift 加速到 10%；Alt+方向缩放；Enter 切换 editable；Esc 失焦。
@@ -353,7 +362,7 @@ MaweDom.overlayEl.addEventListener('keydown', (event) => MawePreviewGeometry.han
 document.addEventListener('pointerdown', (event) => {
   if (MawePreviewGeometry.previewGesture) return;
   [MaweDom.overlayEl, MaweStickerOverlay.stickerOverlayLayer].forEach((el) => {
-    if (el.contains(event.target)) return;
+    if (event.target instanceof Node && el.contains(event.target)) return;
     el.classList.remove('editable');
     if (document.activeElement === el) el.blur();
   });

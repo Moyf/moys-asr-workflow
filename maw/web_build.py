@@ -41,8 +41,8 @@ class _BundleSpec:
     kind: str
     bundle: Path
     meta: Path
-    config: Path
-    manifest: Path
+    config: Path | None
+    manifest: Path | None
     builders: tuple[Path, ...]
     build_script: str
     pnpm_script: str
@@ -53,8 +53,9 @@ _SPECS: Final[dict[str, _BundleSpec]] = {
         kind="editor",
         bundle=Path("web/editor/boot/editor-bundle.js"),
         meta=Path("web/editor/boot/editor-bundle.meta.json"),
-        config=Path("web/editor-modules.json"),
-        manifest=Path("web/editor-scripts.txt"),
+        # 登记表退役（依赖全部 import 直连）：无模块配置可校验。
+        config=None,
+        manifest=None,
         builders=(Path("scripts/build-editor.mjs"),),
         build_script="scripts/build-editor.mjs",
         pnpm_script="build:editor",
@@ -88,6 +89,21 @@ def _manifest_files(text: str) -> list[str]:
     return entries
 
 
+def _editor_source_files(root: Path) -> list[str]:
+    """与 build-editor.deriveSources 同口径：web/editor+web/shared 的
+    全部 .js，排除 bundle 产物（含 editor-bundle）。"""
+    collected: list[str] = []
+    web = root / "web"
+    for base in ("editor", "shared"):
+        for path_in_base in (web / base).rglob("*.js"):
+            relative = path_in_base.relative_to(web).as_posix()
+            if (relative.startswith("shared/templates/") or relative.endswith(".bundle.js")
+                    or relative == "editor/boot/editor-bundle.js"):
+                continue
+            collected.append(relative)
+    return sorted(collected)
+
+
 def _read_or_none(path: Path) -> str | None:
     try:
         # 与 Node 的 utf8 读取一致，不把 CRLF 静默转为 LF 后再算哈希。
@@ -116,24 +132,33 @@ def bundle_status(root: Path, kind: str) -> tuple[str, str]:
     if not isinstance(inputs, dict) or not isinstance(source_files, list):
         return "stale", f"{spec.meta.as_posix()} 缺少 inputs/sourceFiles"
 
-    manifest_text = _read_or_none(root / spec.manifest)
-    if manifest_text is None:
-        return "stale", f"无法读取清单 {spec.manifest.as_posix()}"
-    files = _manifest_files(manifest_text)
+    if spec.manifest is not None:
+        manifest_text = _read_or_none(root / spec.manifest)
+        if manifest_text is None:
+            return "stale", f"无法读取清单 {spec.manifest.as_posix()}"
+        files = _manifest_files(manifest_text)
+        if files != source_files:
+            return "stale", f"清单 {spec.manifest.as_posix()} 与构建时不一致"
+    else:
+        derived = _editor_source_files(root)
+        if derived != sorted(source_files):
+            missing = sorted(set(derived) - set(source_files))
+            extra = sorted(set(source_files) - set(derived))
+            detail = (f"新增 {missing[:3]}" if missing else "") + (f" 移除 {extra[:3]}" if extra else "")
+            return "stale", f"编辑器源码集合与构建时不一致 {detail}"
+        files = source_files
     if not files or len(files) != len(set(files)) or any(
         not file.endswith(".js") or re.search(r"[\\:]", file)
         or any(part in ("", ".", "..") for part in file.split("/"))
         or file in (item.bundle.relative_to("web").as_posix() for item in _SPECS.values())
         for file in files
     ):
-        return "stale", f"清单 {spec.manifest.as_posix()} 含无效源文件路径"
-    if files != source_files:
-        return "stale", f"清单 {spec.manifest.as_posix()} 与构建时不一致"
+        return "stale", "构建信息含无效源文件路径"
     if set(inputs) != set(files) or any(
         not isinstance(value, str) or not re.fullmatch(r"[0-9a-f]{64}", value)
         for value in inputs.values()
     ):
-        return "stale", "构建信息未完整覆盖清单中的源码哈希"
+        return "stale", "构建信息未完整覆盖源码哈希"
 
     web_root = (root / "web").resolve()
     for relative, expected in inputs.items():
@@ -146,9 +171,10 @@ def bundle_status(root: Path, kind: str) -> tuple[str, str]:
         if _sha256_text(text) != expected:
             return "stale", f"源码已变更: web/{relative}"
 
-    config_text = _read_or_none(root / spec.config)
-    if config_text is None or _sha256_text(config_text) != meta.get("configHash"):
-        return "stale", f"模块配置 {spec.config.as_posix()} 已变更"
+    if spec.config is not None:
+        config_text = _read_or_none(root / spec.config)
+        if config_text is None or _sha256_text(config_text) != meta.get("configHash"):
+            return "stale", f"模块配置 {spec.config.as_posix()} 已变更"
 
     builder_texts = [_read_or_none(root / builder) for builder in spec.builders]
     if any(text is None for text in builder_texts):

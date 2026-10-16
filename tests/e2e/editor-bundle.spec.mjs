@@ -5,11 +5,18 @@ import {join} from 'node:path';
 import {pathToFileURL} from 'node:url';
 import {buildPortableBlankEditor, cleanupTempDir, disableOnboarding,
   findFreePort, makeTempDir, startBlankServer} from './helpers.mjs';
-import {readSources} from '../../scripts/build-editor.mjs';
+import {deriveSources} from '../../scripts/build-editor.mjs';
 
 let directory, portable, injected, server;
-const sources = readSources();
+const sources = deriveSources();
+const buildMetadata = JSON.parse(readFileSync('web/editor/boot/editor-bundle.meta.json', 'utf8'));
 const identity = readFileSync('web/editor/boot/editor-bundle.js', 'utf8').split('\n')[0];
+test('bundle metadata covers every discovered source', () => {
+  expect(buildMetadata.sourceFiles).toEqual(sources);
+  const inputs = new Set(Object.keys(buildMetadata.metafile.inputs)
+    .map(file => file.replaceAll('\\', '/').replace(/^web\//, '')));
+  for (const source of sources) expect(inputs, source).toContain(source);
+});
 test.beforeAll(async () => {
   directory = makeTempDir('editor-bundle');
   portable = buildPortableBlankEditor(join(directory, 'current.edit.html'));
@@ -47,14 +54,13 @@ test('minified portable bundle preserves non-default data, paths and generated l
 });
 
 for (const transport of ['file', 'HTTP']) {
-  test(`${transport} executes every source and preserves project/export/undo behavior`, async ({page}) => {
+  test(`${transport} boots and preserves project/export/undo behavior`, async ({page}) => {
     const errors = [];
     page.on('pageerror', error => errors.push(error.message));
     await disableOnboarding(page);
     await page.goto(transport === 'file' ? pathToFileURL(portable).href : server.url);
     await page.waitForFunction(() => Boolean(window.MaweCoreState?.waveformEditor));
     expect(await page.content()).toContain(identity);
-    expect(await page.evaluate(() => window.__mawEsmInitializationTrace)).toEqual(sources);
     const boot = await page.evaluate(() => ({stickers:MaweBoot.STICKERS, root:MaweBoot.STICKER_ROOT,
       server:MaweBoot.SERVER_CONFIG, sfx:MaweBoot.NINJA_SFX_BASE_URL}));
     expect(boot.stickers).toEqual([]);

@@ -1,66 +1,11 @@
 
+import { MaweSearch } from "./editor-search.js";
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-// === 颜色过滤 ===
-// 工程中存在彩色字幕时，在过滤输入框右侧显示 🎨 按钮：
-// 点击行（非 checkbox）= 只显示该颜色；勾选 checkbox = 多选；清除 = 全部显示。
-
-
-
-
- // null = 不过滤；Set<string> = 仅显示这些颜色键
-
-
-
-
-// 双列 / 仅副轨显示模式下，列表行不携带颜色条：按钮隐藏且过滤暂停生效，
-// 避免出现“看不到过滤开关但列表被过滤”的死角。只有单列主轨列表参与过滤。
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
+// 真 ESM：wiring 顶层接线（原转换体 phase-1/phase-2 = import 求值）。
+'use strict';
+import { MaweColorFilter } from "./editor-color-filter.js";
+import { MaweExportMenus } from "../ui/editor-export-menus.js";
+import { MaweDom } from "../ui/editor-dom.js";
 MaweColorFilter.renderColorFilterMenu();
 
 MaweExportMenus.bindToolbarExportDropdown(
@@ -84,5 +29,3 @@ document.getElementById('search-clear')?.addEventListener('click', () => {
   MaweSearch.applySearch('');
   MaweDom.searchEl.focus({ preventScroll: true });
 });
-
-// === 编辑 ===

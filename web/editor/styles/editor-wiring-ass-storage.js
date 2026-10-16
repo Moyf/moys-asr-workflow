@@ -1,21 +1,12 @@
+import { AsrEditorUtils } from "../../shared/editor-utils.js";
+import { assStyleSummary } from "../ui/editor-wiring-dom-panels.js";
+import { assStyleLibraryUsesServerStorage, setAssStyleLibraryStatus, syncAssStyleManager } from "./editor-wiring-ass-manager.js";
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-// CSS 预览的颜色样式（工程 color_style）；ASS 的颜色映射是独立字段
-// ass_color_style（text / speaker / stroke / none），两者语义不同。
-
+import { MawePlaybackLoop } from "../media/editor-playback-loop.js";
+import { MaweBoot } from "../boot/editor-boot.js";
+// 真 ESM：wiring 顶层接线（原转换体 phase-1/phase-2 = import 求值）。
+'use strict';
+export { ASS_COLOR_STYLE_VALUES, DEFAULT_ASS_COLOR_STYLE, ASS_BUILTIN_FONT_SUGGESTIONS, ASS_STYLE_LIBRARY, ASS_STYLE_LIBRARY_READY, assStyleLibraryRevision, setAssStyleLibrary, updateAssStyleLibrarySummary, scheduleAssStyleLibrarySave, persistAssStyleLibrary, loadAssStyleLibrary };
 
 const ASS_COLOR_STYLE_VALUES = Object.freeze(['text', 'speaker', 'stroke', 'none']);
 const DEFAULT_ASS_COLOR_STYLE = 'text';
@@ -53,12 +44,15 @@ const ASS_BUILTIN_FONT_SUGGESTIONS = Object.freeze([
 
 
 const ASS_STYLE_LIBRARY_STORAGE_KEY = 'moy.asr.ass.styles.v1';
-let ASS_STYLE_LIBRARY = window.AsrEditorUtils.defaultAssStyleLibrary();
+let ASS_STYLE_LIBRARY = AsrEditorUtils.defaultAssStyleLibrary();
 let ASS_STYLE_LIBRARY_READY = false;
 let assStyleLibrarySaveTimer = 0;
 let assStyleLibraryLoadPromise = null;
 let assStyleLibraryDirty = false;
 let assStyleLibraryRevision = 0;
+// 供已迁移消费者经 import 写库与修订号（语义与袋内 set 一致）。
+export function setAssStyleLibraryValue(value) { ASS_STYLE_LIBRARY = value; }
+export function bumpAssStyleLibraryRevision() { assStyleLibraryRevision += 1; }
 let assStyleLibrarySaveInFlight = false;
 let assStyleLibraryInFlightRevision = 0;
 
@@ -253,3 +247,13 @@ async function loadAssStyleLibrary({ force = false } = {}) {
   })();
   return assStyleLibraryLoadPromise;
 }
+
+// e2e 探针入口（tests/e2e/ass-export / ass-stacking-boundaries /
+// multi-subtitle / speaker-labels 经裸名驱动样式库；页面代码一律走
+// 具名 import）。活访问器保持写回源绑定。
+Object.defineProperty(window, 'ASS_STYLE_LIBRARY', {
+  configurable: true, get: () => ASS_STYLE_LIBRARY, set: (v) => { ASS_STYLE_LIBRARY = v; },
+});
+Object.defineProperty(window, 'loadAssStyleLibrary', {
+  configurable: true, get: () => loadAssStyleLibrary,
+});

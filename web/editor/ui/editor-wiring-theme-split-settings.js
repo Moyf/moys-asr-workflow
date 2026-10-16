@@ -1,15 +1,15 @@
 
+import { MaweSplitMode } from "../cues/editor-split-mode.js";
+import { MaweFloatingPanel } from "./editor-floating-panel.js";import { MULTI_SUBTITLE_UTILS } from "../boot/editor.js";
 
-
-
-
-
-
-
-
-
-
-
+// 真 ESM：wiring 顶层接线（原转换体 phase-1/phase-2 = import 求值）。
+'use strict';
+import { MaweTheme } from "./editor-theme.js";
+import { MaweHint } from "./editor-hint.js";
+import { MaweSplitTrim } from "../cues/editor-split-trim.js";
+import { MaweSegmentOps } from "../cues/editor-segment-ops.js";
+import { MaweSettings } from "../state/editor-settings.js";
+import { MaweDom } from "./editor-dom.js";
 MaweTheme.applyEditorAccentColor(MaweSettings.EDITOR_SETTINGS.accentColor, { rerenderWaveform: false });
 MaweTheme.applyTheme(MaweSettings.EDITOR_SETTINGS.theme, { rerenderWaveform: false });
 const toastPositionSelect = document.getElementById('editor-toast-position');
@@ -128,11 +128,12 @@ MaweDom.autoMergeAbsorbDirectionSelect?.addEventListener('change', () => {
 });
 MaweDom.autoMergePanel?.querySelectorAll('input[type="number"]').forEach((input) => {
   input.addEventListener('wheel', (event) => {
-    if (!event.deltaY) return;
+    const deltaY = /** @type {WheelEvent} */ (event).deltaY;
+    if (!deltaY) return;
     event.preventDefault();
     input.focus({ preventScroll: true });
     try {
-      if (event.deltaY < 0) input.stepUp();
+      if (deltaY < 0) input.stepUp();
       else input.stepDown();
     } catch (_) {
       return;
@@ -145,11 +146,12 @@ MaweDom.subtitleExtendCloseButton?.addEventListener('click', () => MaweFloatingP
 MaweDom.subtitleExtendRunButton?.addEventListener('click', MaweSegmentOps.extendSubtitleRanges);
 MaweDom.subtitleExtendPanel?.querySelectorAll('input[type="number"]').forEach((input) => {
   input.addEventListener('wheel', (event) => {
-    if (!event.deltaY) return;
+    const deltaY = /** @type {WheelEvent} */ (event).deltaY;
+    if (!deltaY) return;
     event.preventDefault();
     input.focus({ preventScroll: true });
     try {
-      if (event.deltaY < 0) input.stepUp();
+      if (deltaY < 0) input.stepUp();
       else input.stepDown();
     } catch (_) {
       return;

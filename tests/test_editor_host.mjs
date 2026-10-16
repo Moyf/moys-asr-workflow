@@ -1,3 +1,4 @@
+import { compileEditorFixture } from './helpers/editor-module-loader.mjs';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import vm from 'node:vm';
@@ -5,6 +6,7 @@ import test from 'node:test';
 import { createStorage } from '../web/shared/host/storage.js';
 import { createFiles } from '../web/shared/host/files.js';
 import { createServerApi } from '../web/shared/host/server-api.js';
+import { createEditorHost } from '../web/editor/boot/editor-host.js';
 
 const factories = new Map([
   ['shared/host/storage.js', ['host-storage',createStorage]],
@@ -17,7 +19,7 @@ function loadHost(environment = {}) {
   for (const file of ['editor/boot/editor-runtime.js', 'shared/host/storage.js',
     'shared/host/files.js', 'shared/host/server-api.js', 'editor/boot/editor-host.js']) {
     if (factories.has(file)) context.window.MAWE.register(...factories.get(file));
-    else vm.runInNewContext(readFileSync(new URL('../web/' + file, import.meta.url), 'utf8'), context);
+    else vm.runInNewContext(compileEditorFixture(file), context);
   }
   return context;
 }
@@ -94,8 +96,9 @@ test('server transport resolves URLs and preserves request identity and rejectio
 });
 
 test('a desktop host can replace every capability without initializing browser services', () => {
-  const context = loadHost();
+  // editor-host 已转普通 ESM 具名工厂导出；注入能力走 createEditorHost 参数
+  // （旧 MAWE.resolve('editor-host') 注册路径随注册表退役移除）。
   const capabilities = Object.fromEntries(['storage', 'files', 'server', 'runtime'].map(name => [name, { name }]));
-  const host = context.window.MAWE.resolve('editor-host', capabilities);
+  const host = createEditorHost(capabilities);
   for (const name of Object.keys(capabilities)) assert.equal(host[name], capabilities[name]);
 });

@@ -1,3 +1,23 @@
+
+import { MaweMediaStep } from "../media/editor-media-step.js";
+import { MaweBehaviorHints } from "./editor-behavior-hints.js";
+import { MaweNinja } from "./editor-ninja.js";
+import { MaweSearch } from "../cues/editor-search.js";
+import { MaweMediaPlayback } from "../media/editor-media-playback.js";
+import { MaweHistory } from "../state/editor-history.js";
+import { MaweCoreState } from "../state/editor-core-state.js";
+import { MaweSettings } from "../state/editor-settings.js";
+import { MaweCuePanel } from "../cues/editor-cue-panel.js";
+import { MaweTimeline } from "../cues/editor-timeline.js";
+import { MaweCueElements } from "../cues/editor-cue-elements.js";
+import { MawePlaybackLoop } from "../media/editor-playback-loop.js";import { pauseOnMouseClickToggle } from "./editor-wiring-dom-panels.js";
+import { EDITOR_SETTINGS_UTILS } from "../boot/editor.js";
+
+// 真 ESM：wiring 顶层接线（原转换体 phase-1/phase-2 = import 求值）。
+'use strict';
+import { MaweDisplaySettings } from "./editor-display-settings.js";
+import { MaweJklPlayback, setJklPlaybackRate } from "../media/editor-jkl.js";
+import { MaweDom } from "./editor-dom.js";
 MaweDisplaySettings.bindCueListDisplayToggle(MaweDom.cueListShowIndexToggle, 'cueListShowIndex');
 MaweDisplaySettings.bindCueListDisplayToggle(MaweDom.cueListShowTimeToggle, 'cueListShowTime');
 MaweDisplaySettings.bindCueListDisplayToggle(MaweDom.cueListShowStickerToggle, 'cueListShowSticker');
@@ -60,7 +80,7 @@ MaweJklPlayback.jklPlaybackModeSelect?.addEventListener('change', () => {
   const wasReversePlaying = MaweJklPlayback.jklReversePlaying;
   MaweSettings.updateEditorSettings({ jklPlaybackMode: MaweSettings.normalizeJklPlaybackMode(MaweJklPlayback.jklPlaybackModeSelect.value) });
   MaweJklPlayback.stopJklReversePlayback({ render: false });
-  MaweJklPlayback.jklPlaybackRate = 1;
+  setJklPlaybackRate(1);
   MaweCoreState.player.playbackRate = 1;
   if (wasReversePlaying) MawePlaybackLoop.update();
   MaweMediaPlayback.syncMediaControls();

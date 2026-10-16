@@ -1,11 +1,9 @@
 
 
-
-
-
-
-
-
+// 真 ESM：wiring 顶层接线（原转换体 phase-1/phase-2 = import 求值）。
+'use strict';
+import { MaweDom } from "./editor-dom.js";
+export { overlayTrackTextEl, overlayTrackSpeakerLabelEl, overlayTrackTextNode, subtitleFontFamilyInput, subtitleFontFamilyToggle, subtitleFontFamilyOptions, subtitleFontFamilyCombobox, assFontNameCombobox, subtitleColorAssModeHint, subtitleColorAssModeHintLink, assColorStyleRow, assColorStyleSelect, assColorSpeakerHint, assColorSpeakerExportLink, assModeToggle, assInlineTextSettings, assInlineTextTitle, assInlineTextToggles, assStyleManagerOpenButton, assStyleSummary, helpOpenEditorSettingsButtons, pauseOnMouseClickToggle, lottieExportCustomSize, lottieExportCustomWidth, lottieExportCustomHeight, ografExportCustomSize, ografExportCustomWidth, ografExportCustomHeight, overlayTrackToggle, overlayTrackSeparator, multiSubtitleSplitDuplicate, assStyleWindow, assStyleDragHandle, assStyleWindowClose, assStyleWindowCloseFooter, assStyleLibraryStatus, assStyleLocalFontScanButton, assStyleFontToggle, assStyleFontOptions, assStyleCount, assProfileCount, assStyleList, assProfileList, assStyleNewButton, assStyleDuplicateButton, assProfileNewButton, assSrtDefaultStyleSelect, assDefaultProfileSelect, subtitleStyleAssModeHint, mainSubtitleCssFields, mainAssStyleFields, mainAssStyleSelect, mainAssStyleEditButton, extensionSubtitleCssFields, extensionAssStyleFields, extensionAssStyleSelect, extensionAssStyleEditButton, assStyleForm, assProfileForm, assProfileStyleSelect, assProfileExtensionStyleField, assProfileExtensionStyleSelect, assStyleEditorEmpty, assStyleFormTitle, assProfileFormTitle, assStyleSrtHint, assStylePreviewModeHint, assStyleSettingsLink, assStyleBuiltinBadge, assProfileBuiltinBadge, assStyleDeleteSlot, assProfileDeleteSlot, assStylePreviewSample, assProfilePreviewSummary, assStyleSaveButton, assStyleDeleteButton, assStyleLibraryPathHint };
 
 MaweDom.overlayTextEl.append(MaweDom.overlayMainTextNode);
 MaweDom.overlayExtensionTextEl.append(MaweDom.overlayExtensionSpeakerLabelEl, MaweDom.overlayExtensionTextNode);
@@ -28,6 +26,9 @@ const subtitleFontFamilyOptions = document.getElementById('subtitle-font-family-
 // 调用（模块求值 ~12000 行）之前，否则惰性创建赋值会踩暂时性死区。
 let subtitleFontFamilyCombobox = null;
 let assFontNameCombobox = null;
+// 供已迁移消费者经 import 写组合框实例（语义与袋内 set 一致）。
+export function setSubtitleFontFamilyCombobox(value) { subtitleFontFamilyCombobox = value; }
+export function setAssFontNameCombobox(value) { assFontNameCombobox = value; }
 
 
 
@@ -432,56 +433,31 @@ const assStyleLibraryPathHint = document.getElementById('ass-style-library-path-
 // 自动归到全局设置窗口这一层，点击它们时也会把外层窗口带到最前面。
 // 表情包根目录弹窗从全局设置窗口打开，同样入栈，打开时动态置顶盖住窗口
 //（CSS 的 335 只是 JS 初始化前的静态兜底）。
-[
-  MaweDom.editorSettingsPanel,
-  assStyleWindow,
-  MaweDom.helpPanel,
-  MaweDom.gapRemovePanel,
-  MaweDom.autoMergePanel,
-  MaweDom.subtitleExtendPanel,
-  MaweDom.cueListSettingsPanel,
-  MaweDom.cueEditorSettingsPanel,
-  MaweDom.waveformSettingsPanel,
-  document.getElementById('project-settings-panel'),
-  ...document.querySelectorAll('.toolbar .dropdown'),
-].forEach(MaweFloatingPanel.bindFloatingSurfaceActivation);
+// ESM 求值序下本模块可能先于 editor-floating-panel 完成
+// （ass-manager → 本模块 → floating-panel 与 floating-panel → … →
+// ass-manager 的循环边）；微任务在循环内所有模块体求值完成后执行，
+// 此时 bindFloatingSurfaceActivation 必已可用（旧 classic 场景
+// 这段接线同样发生在 phase-2 语义的尾部）。
+queueMicrotask(() => {
+  const bind = window.MaweFloatingPanel?.bindFloatingSurfaceActivation;
+  if (!bind) return;
+  [
+    MaweDom.editorSettingsPanel,
+    assStyleWindow,
+    MaweDom.helpPanel,
+    MaweDom.gapRemovePanel,
+    MaweDom.autoMergePanel,
+    MaweDom.subtitleExtendPanel,
+    MaweDom.cueListSettingsPanel,
+    MaweDom.cueEditorSettingsPanel,
+    MaweDom.waveformSettingsPanel,
+    document.getElementById('project-settings-panel'),
+    ...document.querySelectorAll('.toolbar .dropdown'),
+  ].forEach(bind);
+});
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-// 全局设置窗口：复用 createFloatingPanel 获得拖动、位置持久化、Esc 关闭与按钮 active 态；
-// 窗口内部用左侧垂直标签页切换不同分区，并记忆用户上次停留的分区。
+// e2e 探针入口（tests/e2e/ass-export 裸名勾选 ASS 模式开关；页面代码走
+// 具名 import）。
+Object.defineProperty(window, 'assModeToggle', {
+  configurable: true, get: () => assModeToggle,
+});

@@ -1,50 +1,15 @@
-// Stage a snapshot; publish history only after a real, successful mutation.
-window.MAWE.register('editor-commands', function createEditorCommands(dependencies) {
-  'use strict';
-  const { capture, hasChanges, publish, restore, refresh } = dependencies;
-  function begin(label, options = {}) {
-    const snapshot = capture(label, options);
-    let finished = false;
-    return Object.freeze({
-      commit(invalidation = {}) {
-        if (finished) return false;
-        if (!hasChanges(snapshot)) {
-          restore(snapshot, { dirtyOnly: true });
-          finished = true;
-          return false;
-        }
-        publish(snapshot);
-        finished = true;
-        refresh(invalidation);
-        return true;
-      },
-      cancel() {
-        if (finished) return false;
-        finished = true;
-        restore(snapshot, { dirtyOnly: !hasChanges(snapshot) });
-        return true;
-      },
-      // Used when the caller has already restored a narrower text-edit snapshot.
-      discard() { finished = true; },
-    });
-  }
-  function run(label, mutate, options = {}) {
-    const command = begin(label, options);
-    try {
-      const result = mutate(command);
-      if (result && typeof result.then === 'function') throw new TypeError('Editor mutations must be synchronous');
-      command.commit(options.invalidate);
-      return result;
-    } catch (error) {
-      command.cancel();
-      throw error;
-    }
-  }
-  return Object.freeze({ begin, run });
-});
 
-(function composeEditorCommands() {
-  'use strict';
+// Stage a snapshot; publish history only after a real, successful mutation.
+
+import { createEditorCommands } from './editor-command-factory.js';
+export { createEditorCommands };
+
+import { MaweHistory } from "./editor-history.js";
+
+import { MaweViewUpdates } from "./editor-view-updates.js";
+import { MaweCueListAnchor } from "../cues/editor-cue-list-anchor.js";
+// compose：resolve 参数对象依赖的本地函数（fingerprint 等）。
+
   const fingerprint = value => JSON.stringify(value, (key, item) => key === '_dirty' ? undefined : item);
   const projectSegments = () => ({
     segments: MaweState.project.segments,
@@ -59,7 +24,7 @@ window.MAWE.register('editor-commands', function createEditorCommands(dependenci
       if (key !== '_dirty') restoreDirtyFlags(current[key], previous?.[key]);
     }
   }
-  window.MaweCommands = window.MAWE.resolve('editor-commands', {
+export const MaweCommands = createEditorCommands({
     capture(label, options) {
       MaweCueListAnchor.rememberCueListMutation();
       const record = MaweHistory.captureSegmentsRecord(label, options);
@@ -77,4 +42,4 @@ window.MAWE.register('editor-commands', function createEditorCommands(dependenci
     },
     refresh: invalidation => MaweViewUpdates.invalidate({ save: true, ...invalidation }),
   });
-})();
+if (typeof window !== 'undefined') window.MaweCommands = MaweCommands;

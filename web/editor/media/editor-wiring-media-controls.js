@@ -1,16 +1,20 @@
 
+import { MaweKeyboardTargets } from "../cues/editor-keyboard-targets.js";
+import { MaweNavPreview } from "../cues/editor-nav-preview.js";
+import { MaweCueListAnchor } from "../cues/editor-cue-list-anchor.js";
+import { MaweJklPlayback } from "./editor-jkl.js";
+import { MaweHint } from "../ui/editor-hint.js";
+import { MaweCoreState } from "../state/editor-core-state.js";
+import { MaweSelection } from "../cues/editor-selection.js";
+import { MaweInlineEdit } from "../cues/editor-inline-edit.js";
+import { MaweCuePanel } from "../cues/editor-cue-panel.js";
+import { MaweTimeline } from "../cues/editor-timeline.js";
+import { MawePlaybackLoop } from "./editor-playback-loop.js";
 
-
-
-
-
-
-
-
-
-
-
-
+// 真 ESM：wiring 顶层接线（原转换体 phase-1/phase-2 = import 求值）。
+'use strict';
+import { MaweMediaPlayback } from "./editor-media-playback.js";
+import { MaweDom } from "../ui/editor-dom.js";
 MaweDom.mediaPlayToggle?.addEventListener('click', MaweMediaPlayback.togglePlayback);
 MaweDom.mediaStepBack?.addEventListener('click', () => MaweMediaPlayback.seekMediaBy(-MaweTimeline.timelineMediaSeekStepMilliseconds() / 1000));
 MaweDom.mediaStepForward?.addEventListener('click', () => MaweMediaPlayback.seekMediaBy(MaweTimeline.timelineMediaSeekStepMilliseconds() / 1000));
@@ -163,6 +167,3 @@ document.addEventListener('keydown', (e) => {
   e.preventDefault();
   e.stopPropagation();
 }, true);
-
-// 鼠标点击按钮后不保留按钮焦点，否则下一次空格会触发按钮自身的 click。
-// 键盘触发的 click detail 为 0，保留焦点以维持原生键盘可访问性。

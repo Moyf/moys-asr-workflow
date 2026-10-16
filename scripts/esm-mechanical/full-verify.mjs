@@ -75,7 +75,8 @@ try {
   const file = await probe(pathToFileURL(fullPage).href, true);
   server = await startBlankServer(await findFreePort(), path.join(root, 'full-probe-settings'));
   const http = await probe(server.url, false);
-  const bootShape = probe => probe.boot && JSON.stringify({ registry: probe.boot.registry,
+  // 注册名集合相等即可（注册次序已由 initializationOrder 单独断言）
+  const bootShape = probe => probe.boot && JSON.stringify({ registry: [...probe.boot.registry].sort(),
     host: probe.boot.host, utils: probe.boot.utils });
   const sameResult = probe => probe.result && JSON.stringify(probe.result) === JSON.stringify(old.result);
   const all = [old, file, http];
@@ -91,7 +92,10 @@ try {
     exportSrt: all.every(p => p.result?.srt.includes('First') && p.result?.srt.includes('Second')),
     mergeAndUndo: all.every(p => p.result?.merged && p.result?.undoRestored),
     fileResultMatchesBaseline: Boolean(sameResult(file)), serverResultMatchesBaseline: Boolean(sameResult(http)),
-    explicitInitializationOrder: [file, http].every(p => JSON.stringify(p.boot?.trace) === JSON.stringify(built.sourceFiles)),
+    // 初始化轨迹 = 入口显式序：注册表创建者 → 61 工厂（登记表序）→
+    // bootstrap 基础门面（登记表 bootstrap 序）→ 其余 classic 清单序。
+    // 由构建器权威计算（built.initializationOrder），页面实测必须一致。
+    explicitInitializationOrder: [file, http].every(p => JSON.stringify(p.boot?.trace) === JSON.stringify(built.initializationOrder)),
     knownTokensReplaced: !/__DATA_JSON__|__SERVER_CONFIG_JSON__|__UI_LANGUAGE_JSON__|__NINJA_SFX_BASE_URL_JSON__/.test(html),
   };
   const verdict = { ok: Object.values(checks).every(Boolean), checks,

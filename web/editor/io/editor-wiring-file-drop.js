@@ -1,16 +1,8 @@
 
+import { MaweDragDrop } from "./editor-drag-drop.js";
 
-
-
-
-
-
-// === Drag & Drop：拖入视频/音频/JSON/SRT/LRC 自动加载 ===
-
-
-
-
-  // dragenter/leave 计数，避免子元素进出导致遮罩闪烁
+// 真 ESM：wiring 顶层接线（原转换体 phase-1/phase-2 = import 求值）。
+'use strict';
 window.addEventListener('dragenter', (e) => {
   if (!e.dataTransfer || !e.dataTransfer.types.includes('Files')) return;
   e.preventDefault();

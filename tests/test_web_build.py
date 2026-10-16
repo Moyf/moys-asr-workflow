@@ -31,18 +31,24 @@ class _FakeRepo:
         self.root = root
         self.kind = kind
         spec = web_build._SPECS[kind]
-        self.manifest = root / spec.manifest
-        self.config = root / spec.config
+        self.manifest = None if spec.manifest is None else root / spec.manifest
+        self.config = None if spec.config is None else root / spec.config
         self.bundle = root / spec.bundle
         self.meta = root / spec.meta
-        self.sources = [f"src/{name}.js" for name in ("a", "b")]
+        # 编辑器清单退役：源文件放在目录推导可见的 web/editor/ 下；
+        # launcher 仍走清单。
+        prefix = "editor" if kind == "editor" else "src"
+        self.sources = [f"{prefix}/{name}.js" for name in ("a", "b")]
         for relative in self.sources:
             path = root / "web" / relative
             path.parent.mkdir(parents=True, exist_ok=True)
             path.write_text(f"// {relative}\n", encoding="utf-8", newline="\n")
-        self.manifest.parent.mkdir(parents=True, exist_ok=True)
-        self.manifest.write_text("\n".join(self.sources) + "\n", encoding="utf-8", newline="\n")
-        self.config.write_text('{\n  "modules": []\n}\n', encoding="utf-8", newline="\n")
+        if self.manifest is not None:
+            self.manifest.parent.mkdir(parents=True, exist_ok=True)
+            self.manifest.write_text("\n".join(self.sources) + "\n", encoding="utf-8", newline="\n")
+        # 编辑器登记表退役：编辑器无模块配置；launcher 仍写。
+        if self.config is not None:
+            self.config.write_text('{\n  "modules": []\n}\n', encoding="utf-8", newline="\n")
         self.builders = [root / builder for builder in spec.builders]
         for builder in self.builders:
             builder.parent.mkdir(parents=True, exist_ok=True)
@@ -63,7 +69,8 @@ class _FakeRepo:
             "format": 1,
             "sourceFiles": list(self.sources),
             "inputs": inputs,
-            "configHash": _sha(self.config.read_text(encoding="utf-8")),
+            "configHash": None if self.config is None
+            else _sha(self.config.read_text(encoding="utf-8")),
             "builderHash": builder_hash,
             "dependencyHash": _sha("\n".join(
                 (self.root / name).read_text(encoding="utf-8")
@@ -106,20 +113,17 @@ class BundleStatusTests(unittest.TestCase):
     def test_stale_when_source_changes(self) -> None:
         """Given 源文件被修改, When 预检, Then stale 且说明指向该文件。"""
         self.repo.materialize()
-        (self.root / "web" / "src" / "a.js").write_text("// changed\n", encoding="utf-8")
+        (self.root / "web" / "editor" / "a.js").write_text("// changed\n", encoding="utf-8")
 
         status, reason = web_build.bundle_status(self.root, "editor")
 
         self.assertEqual(status, "stale")
-        self.assertIn("src/a.js", reason)
+        self.assertIn("源码已变更: web/editor/a.js", reason)
 
-    def test_stale_when_manifest_gains_file(self) -> None:
-        """Given 清单新增源文件, When 预检, Then stale（清单与构建时不一致）。"""
+    def test_stale_when_source_set_gains_file(self) -> None:
+        """Given 目录新增源文件（清单退役）, When 预检, Then stale。"""
         self.repo.materialize()
-        (self.root / "web" / "src" / "c.js").write_text("// new\n", encoding="utf-8")
-        self.repo.manifest.write_text(
-            "\n".join([*self.repo.sources, "src/c.js"]) + "\n", encoding="utf-8"
-        )
+        (self.root / "web" / "editor" / "c.js").write_text("// new\n", encoding="utf-8")
 
         status, _ = web_build.bundle_status(self.root, "editor")
 
@@ -137,8 +141,11 @@ class BundleStatusTests(unittest.TestCase):
     def test_stale_when_config_or_builder_changes(self) -> None:
         """Given 模块配置或构建器脚本变更, When 预检, Then stale。"""
         self.repo.materialize()
-        self.repo.config.write_text('{\n  "modules": [],\n  "x": 1\n}\n', encoding="utf-8")
-        self.assertEqual(web_build.bundle_status(self.root, "editor")[0], "stale")
+        # 编辑器登记表退役，config 恒 None——配置变更路径用 launcher 假仓验证。
+        launcher = _FakeRepo(self.root, "launcher")
+        launcher.materialize()
+        launcher.config.write_text('{\n  "modules": [],\n  "x": 1\n}\n', encoding="utf-8")
+        self.assertEqual(web_build.bundle_status(self.root, "launcher")[0], "stale")
 
         self.repo.materialize()
         self.repo.builders[0].write_text("// builder v2\n", encoding="utf-8")
@@ -186,12 +193,11 @@ class BundleStatusTests(unittest.TestCase):
         (self.root / "pnpm-lock.yaml").write_text("lockfileVersion: '10.0'\n", encoding="utf-8")
         self.assertEqual(web_build.bundle_status(self.root, "editor")[0], "stale")
 
-    def test_invalid_manifest_cannot_read_outside_web(self) -> None:
+    def test_invalid_source_metadata_cannot_read_outside_web(self) -> None:
         self.repo.materialize()
         metadata = json.loads(self.repo.meta.read_text(encoding="utf-8"))
         metadata["sourceFiles"] = ["../outside.js"]
         metadata["inputs"] = {"../outside.js": _sha("outside")}
-        self.repo.manifest.write_text("../outside.js\n", encoding="utf-8")
         self.repo.meta.write_text(json.dumps(metadata), encoding="utf-8")
         self.assertEqual(web_build.bundle_status(self.root, "editor")[0], "stale")
 

@@ -1,3 +1,4 @@
+import { compileEditorFixture } from './helpers/editor-module-loader.mjs';
 import { loadEditorModule } from './helpers/editor-module-loader.mjs';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
@@ -14,7 +15,7 @@ const context = { window: {}, TextDecoder, TextEncoder, Uint8Array };
 loadEditorModule(context, 'shared/editor-utils.js');
 const gapCore = context.window.AsrGapRemoveCore;
 const helpers = context.window.AsrEditorUtils;
-const i18nSource = fs.readFileSync(new URL('../web/shared/editor-i18n.js', import.meta.url), 'utf8');
+const i18nSource = compileEditorFixture('shared/editor-i18n.js');
 const i18nContext = { window: {} };
 vm.runInNewContext(i18nSource, i18nContext);
 const i18n = i18nContext.window.MAWE_I18N;

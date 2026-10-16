@@ -3,32 +3,48 @@ import { readFileSync } from 'node:fs';
 import test from 'node:test';
 import vm from 'node:vm';
 import { createUtilsModule } from '../web/shared/utils/history.js';
+import { compileEditorUnitFixture, makeDocumentStub } from './helpers/editor-module-loader.mjs';
+import { createWaveformModule as cueCommandFactory } from '../web/editor/media/waveform/cue-commands.js';
+import { makeFacadeStub } from './helpers/editor-module-loader.mjs';
+// 真 ESM 导入的工厂在 Node 下无 window：测试期补全局（生产 bundle 运行于浏览器）
+globalThis.window = { addEventListener() {}, removeEventListener() {}, MAWE: { register() {}, resolve() { return {}; } } };
 
 const clone = value => JSON.parse(JSON.stringify(value));
 
 function fixture() {
   const utils = createUtilsModule({ cloneJsonValue: clone });
-  const data = { markers: [{ id: 'marker', start: 1000 }],
+  let data = { markers: [{ id: 'marker', start: 1000 }],
     segments: [{ id: 'main', start: 1000, end: 2000 }],
     overlay_track: { segments: [{ id: 'overlay', start: 1300, end: 2300 }] },
     multi_subtitle: { tracks: [{ segments: [{ id: 'extension', start: 1100, end: 2100 }] }] },
   };
+  // editor-boot 模块经 import 图求值会以模板注入的空 DATA
+  // 覆盖 MaweBoot；统一把测试数据注入真 DATA。
   const buttons = { 'undo-btn': {}, 'redo-btn': {} };
-  const context = vm.createContext({ window: { AsrEditorUtils: {
+  const context = vm.createContext({ MaweHost: { runtime: { getNavigator: () => ({ platform: 'Win32' }) } }, URLSearchParams, location: { search: '' }, window: { addEventListener() {}, removeEventListener() {}, MAWE: { register() {}, resolve() { return {}; } }, AsrEditorUtils: {
     ...utils, normalizeMarkers: clone, cloneMarkerValue: clone,
-  }, removeEventListener() {} }, document: { getElementById: id => buttons[id] },
-  MaweBoot: { DATA: data }, MaweState: { changes: {} },
+  }, removeEventListener() {} }, document: makeDocumentStub((doc) => { const base = doc.getElementById.bind(doc);
+    return { getElementById: (id) => buttons[id] ?? base(id) }; }),
+  MaweDom: makeFacadeStub(),
+  MaweBoot: { DATA: data, maweDomContractCheck: () => [], maweDebug() {} },
+  MaweMultiSubtitleCore: { MULTI: 'main', getActiveExtensionTrack: () => ({ segments: [] }), getExtensionSubtitleSplitMode: () => 'word', getMainSubtitleSplitMode: () => 'word', getMultiSubtitleState: () => ({ enabled: false, tracks: [] }), normalizeMultiSubtitleState: (state) => state ?? { enabled: false, tracks: [] } },
+  MaweState: { changes: {} },
   MaweCoreState: {}, MaweHint: { flashHint() {} },
   MaweInlineEdit: { editingState: null },
   MaweWordTiming: { clearSelection() {} },
   MaweMarkerEditing: { afterExternalMarkersChange() {} },
   });
-  vm.runInContext(readFileSync(new URL('../web/editor/state/editor-history.js', import.meta.url), 'utf8'), context);
+  vm.runInContext(compileEditorUnitFixture('editor/state/editor-history.js'), context);
+  // editor-boot 模块经 import 图求值覆盖了 MaweBoot；测试数据注入真 DATA。
+  data = context.MaweBoot.DATA;
+  data.markers = [{ id: 'marker', start: 1000 }];
+  data.segments = [{ id: 'main', start: 1000, end: 2000 }];
+  data.overlay_track = { segments: [{ id: 'overlay', start: 1300, end: 2300 }] };
+  data.multi_subtitle = { tracks: [{ segments: [{ id: 'extension', start: 1100, end: 2100 }] }] };
   // Exercise the production cancellation path, including releasing the drag
   // and its transaction, rather than replacing cancelCueDrag with a spy.
-  vm.runInContext(readFileSync(new URL('../web/editor/media/waveform/cue-commands.js', import.meta.url), 'utf8')
-    .replace('export function createWaveformModule', 'function cueCommandFactory'), context);
-  const methods = context.cueCommandFactory({});
+  // 透传工厂改真 ESM 导入（bundle 内不再有 export 原文可替换）
+  const methods = cueCommandFactory({});
   let cancelled = 0;
   const waveform = {
     content: { querySelectorAll: () => [] }, pane: { classList: { remove() {} } },
@@ -65,7 +81,7 @@ for (const action of ['performUndo', 'performRedo']) {
     f.history[action]();
     assert.equal(f.waveform.drag, null);
     assert.equal(f.cancelled(), 1);
-    assert.deepEqual(f.data, before);
+    assert.equal(JSON.stringify(f.data), JSON.stringify(before));
     assert.deepEqual([f.history.editorHistory.undoLength(), f.history.editorHistory.redoLength()], lengths);
     [f.data.segments[0], f.data.overlay_track.segments[0], f.data.multi_subtitle.tracks[0].segments[0]]
       .forEach((segment, index) => assert.equal(segment, identities[index]));
@@ -80,7 +96,7 @@ for (const action of ['performUndo', 'performRedo']) {
     f.beginCuePreview();
     f.history[action]();
     assert.equal(f.waveform.drag, null);
-    assert.deepEqual(f.data, before);
+    assert.equal(JSON.stringify(f.data), JSON.stringify(before));
     assert.equal(f.history.editorHistory.undoLength(), 0);
     assert.equal(f.history.editorHistory.redoLength(), 0);
   });
@@ -97,7 +113,7 @@ for (const action of ['performUndo', 'performRedo']) {
         : { pointerId: 2, startClientX: 10, startClientY: 10 };
       f.history[action]();
       assert.equal(f.waveform[kind], null);
-      assert.deepEqual(f.data, before);
+      assert.equal(JSON.stringify(f.data), JSON.stringify(before));
       assert.equal(f.history.editorHistory.undoLength(), 0);
       assert.equal(f.history.editorHistory.redoLength(), 1);
       f.history.performRedo();

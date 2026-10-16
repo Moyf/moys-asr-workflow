@@ -1,31 +1,17 @@
+import { MULTI_SUBTITLE_UTILS } from "./editor.js";
+
+// 真 ESM：wiring 顶层接线（原转换体 phase-1/phase-2 = import 求值）。
+'use strict';
+import { MaweColors } from "../styles/editor-colors.js";
+import { MaweHistory } from "../state/editor-history.js";
+import { MaweSettings } from "../state/editor-settings.js";
+import { MaweBoot } from "./editor-boot.js";
+import { AsrWaveform } from "../media/waveform.js";
+import { AsrEditorUtils } from "../../shared/editor-utils.js";
 
 
-
-
-
-
-
-
-
-
-
-
-
-// 把用户配置的拆分移除符号同步给共享工具层；设置面板修改时也会同步。
-MULTI_SUBTITLE_UTILS.setSplitTrimSymbols(MaweSettings.EDITOR_SETTINGS.splitTrimSymbols);
-
-
-
-
-
-
-
-
-
-
-
-
-
+import { MaweTimeline } from "../cues/editor-timeline.js";
+queueMicrotask(() => { MULTI_SUBTITLE_UTILS.setSplitTrimSymbols(MaweSettings.EDITOR_SETTINGS.splitTrimSymbols); });
 
 
 
@@ -52,7 +38,20 @@ MULTI_SUBTITLE_UTILS.setSplitTrimSymbols(MaweSettings.EDITOR_SETTINGS.splitTrimS
 
 
 
-MaweTimeline.syncProjectTimebaseAndBindingOffsets(MaweBoot.DATA, { preferFrames: MaweBoot.DATA.timebase?.unit === 'frames' });
+
+
+
+
+
+
+
+
+
+
+
+
+
+queueMicrotask(() => { MaweTimeline.syncProjectTimebaseAndBindingOffsets(MaweBoot.DATA, { preferFrames: MaweBoot.DATA.timebase?.unit === 'frames' }); });
 
 // 标记颜色：5 种基础色，用于给字幕分组着色。
 // 数据模型与表情包同构：head 持完整 color {name, value, start, end}，后续 ref 持 color_ref {name, headIdx}
@@ -72,7 +71,7 @@ window.AsrWaveform?.setColorPalette?.(MaweColors.COLOR_PALETTE);
 
 
 
-const ASS_PREVIEW_REFERENCE_HEIGHT = Number(window.AsrEditorUtils.ASS_REFERENCE_PLAY_RES_Y) || 1080;
+export const ASS_PREVIEW_REFERENCE_HEIGHT = Number(window.AsrEditorUtils.ASS_REFERENCE_PLAY_RES_Y) || 1080;
 
 
 
@@ -151,6 +150,8 @@ const ASS_PREVIEW_REFERENCE_HEIGHT = Number(window.AsrEditorUtils.ASS_REFERENCE_
 
 
 
-if (MaweHistory.undoBtn) MaweHistory.undoBtn.addEventListener('click', () => MaweHistory.performUndo());
-if (MaweHistory.redoBtn) MaweHistory.redoBtn.addEventListener('click', () => MaweHistory.performRedo());
-MaweHistory.updateUndoRedoButtons();
+queueMicrotask(() => {
+  if (MaweHistory.undoBtn) MaweHistory.undoBtn.addEventListener('click', () => MaweHistory.performUndo());
+  if (MaweHistory.redoBtn) MaweHistory.redoBtn.addEventListener('click', () => MaweHistory.performRedo());
+  MaweHistory.updateUndoRedoButtons();
+});

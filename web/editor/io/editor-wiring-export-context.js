@@ -1,15 +1,22 @@
+import { overlayTrackVisible, getOverlayTrack } from "../cues/editor-wiring-overlay-transfer.js";
+import { MULTI_SUBTITLE_UTILS } from "../boot/editor.js";
+import { AsrEditorUtils } from "../../shared/editor-utils.js";
 
-// === 下载 ===
-// 程序内开关（不暴露 GUI）：导出 SRT 时保留禁用项的时间轴序号但内容替换为空白
+// 真 ESM：wiring 顶层接线（原转换体 phase-1/phase-2 = import 求值）。
+'use strict';
+import { MaweBoot } from "../boot/editor-boot.js";
+import { MaweHint } from "../ui/editor-hint.js";
+import { MaweSettings } from "../state/editor-settings.js";
+import { MaweServerSave } from "./editor-server-save.js";
+import { MaweProjectSave } from "./editor-project-save.js";
+import { MaweExportTimeline } from "./editor-export-timeline.js";
+// 工程扩展字段：project-load 在应用工程时重置（ESM 导入绑定
+// 不可赋值，提供具名 setter）。
+export function setProjectExtensionFields(value) { projectExtensionFields = value; }
+export { mergedExportSegments, exportColorContextResolver, CANONICAL_PROJECT_FIELDS, projectExtensionFields, buildOverlaySubtitleOtioTrack, syncProjectBackupControls };
 
-
-
-
-// 合并导出池：主轨 + 叠加轨按 start 归并。叠加段的 color_ref 指向叠加轨
-// 自身数组，不能在合并后的大数组里按下标解析，因此同时返回归属集合，
-// 由 colorContextResolver 提供每条段的颜色/说话人解析上下文。
 function aiCleanupExportSegments(segments) {
-  return window.AsrEditorUtils.buildAiCleanupSegments(segments, MaweBoot.DATA.gap_remove);
+  return AsrEditorUtils.buildAiCleanupSegments(segments, MaweBoot.DATA.gap_remove);
 }
 
 function mergedExportSegments() {
@@ -250,13 +257,15 @@ function syncProjectBackupControls() {
     }, MaweSettings.EDITOR_SETTINGS.projectBackupMinutes * 60000);
   }
 }
-for (const [id, key, fallback, max] of [
+/** @type {Array<[string, 'projectBackupEnabled'|'projectBackupMinutes'|'projectBackupLimit', number|boolean, number]>} */
+const projectBackupSettings = [
   ['project-backup-enabled', 'projectBackupEnabled', true, 0],
   ['project-backup-minutes', 'projectBackupMinutes', 5, 1440],
   ['project-backup-limit', 'projectBackupLimit', 20, 1000],
-]) {
+];
+for (const [id, key, fallback, max] of projectBackupSettings) {
   document.getElementById(id)?.addEventListener('change', (event) => {
-    const value = max ? Math.min(max, Math.max(1, Math.round(Number(event.target.value) || fallback))) : event.target.checked;
+    const value = max ? Math.min(max, Math.max(1, Math.round(Number(event.target.value) || Number(fallback)))) : event.target.checked;
     MaweSettings.updateEditorSettings({ [key]: value });
     syncProjectBackupControls();
   });
@@ -275,22 +284,3 @@ document.getElementById('project-backup-open')?.addEventListener('click', async 
     MaweHint.flashHint(`打开备份文件夹失败：${error.message || error}`, 'warning');
   }
 });
-
-
-
-
-
-
-
-
-
-// 文字编辑先写入页面内存，避免每个按键都请求服务器；失焦后短暂防抖保存，
-// 这样点击其它字幕或刷新页面时不会因为 30 秒定时保存尚未到点而丢失刚完成的修改。
-
-
-
-
-// 浏览器文件选择器拿不到工程的真实路径，但 MAW 工程记录的媒体是绝对路径。
-// 把工程名与内容交给服务器，由它定位同目录同名工程并接管：
-// 成功后整页刷新，由服务器渲染出自动加载媒体且可直接保存的状态。
-// 任何失败都静默回退为「手动选择媒体」的便携流程。

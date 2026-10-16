@@ -1,4 +1,21 @@
-// 设置搜索：侧栏列出设置项，路径放在提示行，仅在用户选择后跳转。
+
+import { MaweSearch } from "../cues/editor-search.js";
+import { MaweGapRemoveUi } from "./editor-gap-remove-ui.js";
+import { MaweSelection } from "../cues/editor-selection.js";
+import { MaweCueElements } from "../cues/editor-cue-elements.js";import { helpOpenEditorSettingsButtons } from "./editor-wiring-dom-panels.js";
+
+// 真 ESM：wiring 顶层接线（原转换体 phase-1/phase-2 = import 求值）。
+'use strict';
+
+import { MAWE_I18N } from '../../shared/editor-i18n.js';
+import { MaweSettingsPanels } from "./editor-settings-panels.js";
+import { MaweDom } from "./editor-dom.js";
+import { MaweHelpPanel, setHelpPanelSizeSaveTimer } from "./editor-help-panel.js";
+
+// The settings panels are initialized lazily to avoid ESM cycle-time access to
+// the floating-panel module. Initialize after the module graph has evaluated so
+// the main toolbar buttons receive their click handlers before user interaction.
+queueMicrotask(() => MaweSettingsPanels.initializeFloatingPanels());
 (function initSettingsSearch() {
   'use strict';
   const ITEM_SELECTOR = [
@@ -181,26 +198,28 @@
     const { input, results } = state;
     input.addEventListener('input', () => applySettingsSearch(state));
     input.addEventListener('keydown', (event) => {
-      if (event.key === 'Escape' && input.value) {
+      const key = /** @type {KeyboardEvent} */ (event).key;
+      if (key === 'Escape' && input.value) {
         event.preventDefault();
         event.stopPropagation();
         input.value = '';
         applySettingsSearch(state);
-      } else if (event.key === 'ArrowDown' || event.key === 'Enter') {
+      } else if (key === 'ArrowDown' || key === 'Enter') {
         const first = results.querySelector('button');
         if (!first) return;
         event.preventDefault();
-        if (event.key === 'Enter') first.click();
+        if (key === 'Enter') first.click();
         else first.focus();
       }
     });
     results.addEventListener('keydown', (event) => {
+      const key = /** @type {KeyboardEvent} */ (event).key;
       const buttons = [...results.querySelectorAll('button')];
-      const index = buttons.indexOf(document.activeElement);
-      if (index < 0 || !['ArrowDown', 'ArrowUp', 'Home', 'End'].includes(event.key)) return;
+      const index = buttons.indexOf(/** @type {HTMLButtonElement} */ (document.activeElement));
+      if (index < 0 || !['ArrowDown', 'ArrowUp', 'Home', 'End'].includes(key)) return;
       event.preventDefault();
-      const next = event.key === 'Home' ? 0 : event.key === 'End' ? buttons.length - 1
-        : index + (event.key === 'ArrowDown' ? 1 : -1);
+      const next = key === 'Home' ? 0 : key === 'End' ? buttons.length - 1
+        : index + (key === 'ArrowDown' ? 1 : -1);
       if (next < 0) input.focus();
       else buttons[Math.min(next, buttons.length - 1)].focus();
     });
@@ -256,17 +275,18 @@ document.querySelectorAll('[data-settings-tool="gap"]').forEach((button) => {
 [...MaweSettingsPanels.editorSettingsTabs, ...MaweSettingsPanels.projectTabs].forEach((tab) => {
   tab.addEventListener('click', () => MaweSettingsPanels.setEditorSettingsActiveTab(tab));
   tab.addEventListener('keydown', (event) => {
+    const key = /** @type {KeyboardEvent} */ (event).key;
     // 方向键只在可见分区之间循环；隐藏分区（如不可用的「保存」）不参与导航。
     const visibleTabs = [...tab.closest('.editor-settings-nav').querySelectorAll('.editor-settings-nav-tab')].filter((item) => !item.hidden);
     const index = visibleTabs.indexOf(tab);
     let next = -1;
-    if (event.key === 'ArrowDown' || event.key === 'ArrowRight') {
+    if (key === 'ArrowDown' || key === 'ArrowRight') {
       next = (index + 1) % visibleTabs.length;
-    } else if (event.key === 'ArrowUp' || event.key === 'ArrowLeft') {
+    } else if (key === 'ArrowUp' || key === 'ArrowLeft') {
       next = (index - 1 + visibleTabs.length) % visibleTabs.length;
-    } else if (event.key === 'Home') {
+    } else if (key === 'Home') {
       next = 0;
-    } else if (event.key === 'End') {
+    } else if (key === 'End') {
       next = visibleTabs.length - 1;
     }
     if (next < 0) return;
@@ -295,18 +315,18 @@ document.addEventListener('pointerdown', (event) => {
       MaweSearch.applySearch(MaweDom.searchEl.value);
     }
   }
-  if (!MaweDom.cueListSettingsPanel?.hidden && !MaweDom.cueListSettings?.contains(event.target)) {
+  if (!MaweDom.cueListSettingsPanel?.hidden && !MaweDom.cueListSettings?.contains(/** @type {Node} */ (event.target))) {
     MaweSettingsPanels.setCueListSettingsPanelOpen(false);
   }
-  if (!MaweDom.waveformSettingsPanel?.hidden && !MaweDom.waveformSettings?.contains(event.target)) {
+  if (!MaweDom.waveformSettingsPanel?.hidden && !MaweDom.waveformSettings?.contains(/** @type {Node} */ (event.target))) {
     MaweSettingsPanels.setWaveformSettingsPanelOpen(false);
   }
-  if (!MaweDom.cueEditorSettingsPanel?.hidden && !MaweDom.cueEditorSettings?.contains(event.target)) {
+  if (!MaweDom.cueEditorSettingsPanel?.hidden && !MaweDom.cueEditorSettings?.contains(/** @type {Node} */ (event.target))) {
     MaweSettingsPanels.setCueEditorSettingsPanelOpen(false);
   }
 });
 document.addEventListener('keydown', (event) => {
-  if (event.key !== 'Escape') return;
+  if (/** @type {KeyboardEvent} */ (event).key !== 'Escape') return;
   if (!MaweDom.cueListSettingsPanel?.hidden) {
     event.preventDefault();
     MaweSettingsPanels.setCueListSettingsPanelOpen(false);
@@ -373,17 +393,18 @@ MaweDom.helpOpenGapRemovePanelButton?.addEventListener('click', (event) => {
 MaweDom.helpTabButtons.forEach((button) => {
   button.addEventListener('click', () => MaweHelpPanel.selectHelpTab(button.dataset.helpTab));
   button.addEventListener('keydown', (event) => {
+    const key = /** @type {KeyboardEvent} */ (event).key;
     const availableButtons = MaweHelpPanel.visibleHelpTabButtons();
     const index = availableButtons.indexOf(button);
     if (index < 0) return;
     let nextIndex = index;
-    if (event.key === 'ArrowRight' || event.key === 'ArrowDown') {
+    if (key === 'ArrowRight' || key === 'ArrowDown') {
       nextIndex = (index + 1) % availableButtons.length;
-    } else if (event.key === 'ArrowLeft' || event.key === 'ArrowUp') {
+    } else if (key === 'ArrowLeft' || key === 'ArrowUp') {
       nextIndex = (index - 1 + availableButtons.length) % availableButtons.length;
-    } else if (event.key === 'Home') {
+    } else if (key === 'Home') {
       nextIndex = 0;
-    } else if (event.key === 'End') {
+    } else if (key === 'End') {
       nextIndex = availableButtons.length - 1;
     } else {
       return;
@@ -411,7 +432,7 @@ if (MaweDom.helpPanel) {
     if (!MaweDom.helpPanel.classList.contains('show')) return;
     if (!MaweDom.helpPanel.style.width && !MaweDom.helpPanel.style.height) return;
     clearTimeout(MaweHelpPanel.helpPanelSizeSaveTimer);
-    MaweHelpPanel.helpPanelSizeSaveTimer = setTimeout(() => {
+    setHelpPanelSizeSaveTimer(setTimeout(() => {
       const rect = MaweDom.helpPanel.getBoundingClientRect();
       try {
         localStorage.setItem(MaweDom.HELP_PANEL_SIZE_KEY, JSON.stringify({
@@ -420,10 +441,6 @@ if (MaweDom.helpPanel) {
       } catch (_) {
         // file:// 隐私模式下 localStorage 可能被拒；缩放本身仍可用。
       }
-    }, 250);
+    }, 250));
   }).observe(MaweDom.helpPanel);
 }
-
-
-// 明暗主题与界面强调色：令牌全部定义在 CSS，
-// 这里只负责解析偏好、写 <html> 数据属性、持久化，以及通知波形重绘画布。

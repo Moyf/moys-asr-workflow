@@ -1,9 +1,21 @@
+import { multiSubtitleSplitDuplicate } from "../ui/editor-wiring-dom-panels.js";
 
-// === 加载媒体 ===
-// 通过浏览器文件选择器选本地媒体（视频/音频），用 blob URL 替换播放器源。
-// 如果媒体类型与当前播放器标签不一致（video<->audio），会原地替换整个 <video>/<audio> 元素。
+// 真 ESM：wiring 顶层接线（原转换体 phase-1/phase-2 = import 求值）。
+'use strict';
+import { MaweProjectMediaInputs, setPendingProjectMediaSelection } from "../io/editor-project-media-inputs.js";
+import { MaweMultiImport } from "../io/editor-multi-import.js";
+import { MaweSplitCore } from "../cues/editor-split-core.js";
+import { MaweDom } from "../ui/editor-dom.js";
+import { MaweHint } from "../ui/editor-hint.js";
+import { MaweMultiSubtitleCore } from "../state/editor-multi-subtitle-core.js";
+import { MaweServerSave } from "../io/editor-server-save.js";
+import { MaweProjectSave } from "../io/editor-project-save.js";
+import { MaweLoadingProgress } from "../io/editor-loading-progress.js";
+import { MaweKeyboardTargets } from "../cues/editor-keyboard-targets.js";
+import { MaweProjectLoad } from "../io/editor-project-load.js";
+import { MaweMediaLoad } from "./editor-media-load.js";
 document.getElementById('load-media')?.addEventListener('click', () => {
-  MaweProjectMediaInputs.pendingProjectMediaSelection = null;
+  setPendingProjectMediaSelection(null);
   MaweProjectMediaInputs.loadMediaFileInput.value = '';
   MaweProjectMediaInputs.loadMediaFileInput.click();
 });
@@ -92,8 +104,8 @@ MaweDom.multiSubtitleImportModal?.addEventListener('click', (event) => {
   if (event.target === MaweDom.multiSubtitleImportModal) MaweMultiImport.closeMultiSubtitleImportModal();
 });
 MaweDom.multiSubtitleSplitCancel?.addEventListener('click', MaweSplitCore.closeLinkedSplitModal);
-multiSubtitleSplitDuplicate?.addEventListener('click', () => MaweSplitCore.confirmLinkedSplit({ duplicateText: true }));
-MaweDom.multiSubtitleSplitConfirm?.addEventListener('click', MaweSplitCore.confirmLinkedSplit);
+multiSubtitleSplitDuplicate?.addEventListener('click', () => { MaweSplitCore.confirmLinkedSplit({ duplicateText: true }); });
+MaweDom.multiSubtitleSplitConfirm?.addEventListener('click', () => { MaweSplitCore.confirmLinkedSplit(); });
 MaweDom.multiSubtitleSplitModal?.addEventListener('click', (event) => {
   if (event.target === MaweDom.multiSubtitleSplitModal) MaweSplitCore.closeLinkedSplitModal();
 });
@@ -189,7 +201,7 @@ MaweProjectMediaInputs.loadMediaFileInput.addEventListener('change', async (e) =
   const file = e.target.files[0];
   if (!file) return;
   if (!MaweProjectMediaInputs.pendingProjectMediaSelection && !await MaweProjectLoad.ensureProjectCheckpointForImport(file)) return;
-  MaweProjectMediaInputs.pendingProjectMediaSelection = null;
+  setPendingProjectMediaSelection(null);
   const imported = await MaweMediaLoad.loadMediaFile(file);
   if (imported) {
     MaweServerSave.projectImportDirty = true;
@@ -198,5 +210,5 @@ MaweProjectMediaInputs.loadMediaFileInput.addEventListener('change', async (e) =
 });
 
 MaweProjectMediaInputs.loadMediaFileInput.addEventListener('cancel', () => {
-  MaweProjectMediaInputs.pendingProjectMediaSelection = null;
+  setPendingProjectMediaSelection(null);
 });

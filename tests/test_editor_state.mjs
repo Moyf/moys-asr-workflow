@@ -1,12 +1,13 @@
+import { compileEditorFixture } from './helpers/editor-module-loader.mjs';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import vm from 'node:vm';
 import test from 'node:test';
 
 function loadState(project = { segments: [] }) {
-  const context = { window: { MaweBoot: { DATA: project } } };
+  const context = { MaweHost: { runtime: { getNavigator: () => ({ platform: 'Win32' }) } }, URLSearchParams, location: { search: '' }, window: { MaweBoot: { DATA: project } } };
   for (const file of ['editor/boot/editor-runtime.js', 'editor/state/editor-state.js']) {
-    vm.runInNewContext(readFileSync(new URL('../web/' + file, import.meta.url), 'utf8'), context);
+    vm.runInNewContext(compileEditorFixture(file), context);
   }
   return context.window.MaweState;
 }

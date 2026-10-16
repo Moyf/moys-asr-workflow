@@ -1,21 +1,24 @@
-// Explicit project view effects, shared by commands and history adapters.
-window.MAWE.register('editor-view-updates', function createViewUpdates(dependencies) {
-  'use strict';
-  const { renderCues, updatePreview, refreshPreview, scheduleSave } = dependencies;
-  /** @param {ViewInvalidation} [options] */
-  function invalidate({ cueList = false, waveform = 'overlay', preserveCueListScroll = true,
-    cueListAnchor, cueListPatch = null, preview = false, save = false } = {}) {
-    if (cueListPatch) MaweCuePanel.patchCueRows(cueListPatch);
-    else if (cueList) renderCues({ waveform, preserveCueListScroll, cueListAnchor });
-    if (preview === 'update') updatePreview();
-    else if (preview === 'refresh') refreshPreview();
-    if (save) scheduleSave();
-  }
-  return Object.freeze({ invalidate });
-});
-window.MaweViewUpdates = window.MAWE.resolve('editor-view-updates', {
+
+
+
+// 真 ESM：register+resolve 对 → 具名工厂导出（原注册名 editor-view-updates）。
+import { MawePlaybackLoop } from "../media/editor-playback-loop.js";
+import { MaweCuePanel } from "../cues/editor-cue-panel.js";
+
+import { MaweServerSave } from "../io/editor-server-save.js";
+import { createViewUpdates } from './editor-view-updates-factory.js';
+export { createViewUpdates };
+/**
+ * @param {{ renderCues: (options?: any) => void, updatePreview: () => void,
+ *   refreshPreview: () => void, scheduleSave: () => void }} dependencies
+ */
+
+/** @type {{ invalidate(options?: any): void }} */
+export const MaweViewUpdates = /** @type {{ invalidate(options?: any): void }} */ (createViewUpdates({
   renderCues: options => MaweCuePanel.renderAll(options),
+  patchCueRows: patch => MaweCuePanel.patchCueRows(patch),
   updatePreview: () => MawePlaybackLoop.updateWithoutCueListAutoScroll(),
   refreshPreview: () => MawePlaybackLoop.refreshSubtitlePreview(),
   scheduleSave: () => MaweServerSave.scheduleAutoSaveFlush(),
-});
+}));
+if (typeof window !== 'undefined') window.MaweViewUpdates = MaweViewUpdates;

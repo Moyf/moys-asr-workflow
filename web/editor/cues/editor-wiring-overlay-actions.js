@@ -1,8 +1,30 @@
+import { getOverlayTrack, detachCuePanelFromTrackEdits } from "./editor-wiring-overlay-transfer.js";
+import { mergeOverlaySegments } from "./editor-wiring-overlay-split-merge.js";
+import { MULTI_SUBTITLE_UTILS } from "../boot/editor.js";
+import { selectOverlayCueRow } from "./editor-wiring-cue-panel.js";
 
-// === 表情包 ===
-  // 'single' | 'multi'
-     // 要分配的 segment indexes
+// 真 ESM：wiring 顶层接线（原转换体 phase-1/phase-2 = import 求值）。
+'use strict';
+
+import { MaweStickerPicker } from './editor-sticker-picker.js';
+import { MaweDom } from "../ui/editor-dom.js";
+import { MaweTimeline } from "./editor-timeline.js";
+import { MaweHint } from "../ui/editor-hint.js";
+import { MaweCoreState } from "../state/editor-core-state.js";
+import { MaweBoot } from "../boot/editor-boot.js";
+import { MaweSelection } from "./editor-selection.js";
+import { MaweCuePanel } from "./editor-cue-panel.js";
+import { MaweCommands } from "../state/editor-commands.js";
+import { MaweViewUpdates } from "../state/editor-view-updates.js";
+import { MaweSegmentOps } from "./editor-segment-ops.js";
+import { MaweColors } from "../styles/editor-colors.js";
+import { MaweContextMenus } from "../ui/editor-context-menus.js";
+import { MaweColorFilter } from "./editor-color-filter.js";
+export { stickerTargetTrack, previewTrack, stickerSegmentsForTrack, colorGroupHeadIndex, detachColorFromGroup, assignOverlayColor, mergeOverlayCues, clearOverlayColorOnTargets, clearOverlaySticker, addOverlayRangeFromWaveform, addOverlayAtWaveformTime };
+
 let stickerTargetTrack = 'main'; // 'main' | 'overlay'：分配目标所在轨
+// 供已迁移消费者经 import 写分配目标轨（语义与袋内 set 一致）。
+export function setStickerTargetTrack(value) { stickerTargetTrack = value; }
 
 
 
@@ -16,12 +38,14 @@ document.getElementById('sticker-filter')?.addEventListener('input', (e) => {
   MaweStickerPicker.renderStickerGrid(e.target.value);
 });
 document.getElementById('sticker-cancel')?.addEventListener('click', () => MaweDom.stickerModal.classList.remove('show'));
-document.getElementById('sticker-clear')?.addEventListener('click', MaweStickerPicker.clearStickerOnTargets);
+document.getElementById('sticker-clear')?.addEventListener('click', () => MaweStickerPicker.clearStickerOnTargets());
 MaweDom.stickerModal?.addEventListener('click', (e) => { if (e.target === MaweDom.stickerModal) MaweDom.stickerModal.classList.remove('show'); });
 
 // 表情包预览 modal
 
 let previewTrack = 'main';
+// 供已迁移消费者经 import 写预览轨（语义与袋内 set 一致）。
+export function setPreviewTrack(value) { previewTrack = value; }
 function stickerSegmentsForTrack(track) {
   return track === 'overlay' ? (getOverlayTrack()?.segments || []) : MaweBoot.DATA.segments;
 }
@@ -83,7 +107,7 @@ function detachColorFromGroup(idx) {
   if (!segment || !groupColor) return false;
 
   // 先复制颜色；拆分组时原 head 的时间范围可能会被收缩。
-  const detachedColor = {
+  const detachedColor = typeof groupColor === 'string' ? groupColor : {
     ...groupColor,
     start: segment.start,
     end: segment.end,
@@ -268,27 +292,3 @@ function addOverlayAtWaveformTime(timeMs, clickX, clickY) {
   }
   addOverlayRangeFromWaveform(adjustedStart, end, clickX, clickY);
 }
-
-
-
-
-
-
-
-
-
-
-
-// Alt 主字幕拖动中的副字幕挤压是临时预览：同一次拖动把主字幕拉回去时，
-// 副字幕轨也必须从拖动开始时的完整快照恢复，而不能只恢复当前绑定的跟随字幕。
-
-
-
-
-
-
-
-
-
-
-// 右键波形背景：添加空隙、创建字幕，或按右键对应的音频位置拆分命中的字幕。

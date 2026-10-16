@@ -1,5 +1,14 @@
 
+import { MaweHistory } from "../state/editor-history.js";
+import { MaweCuePanelState } from "../state/editor-cue-panel-state.js";
+import { MaweInlineEdit } from "../cues/editor-inline-edit.js";
 
+// 真 ESM：wiring 顶层接线（原转换体 phase-1/phase-2 = import 求值）。
+'use strict';
+import { MaweBehaviorHints } from "./editor-behavior-hints.js";
+import { MaweJklPlayback } from "../media/editor-jkl.js";
+import { MaweGapRemoveUi } from "./editor-gap-remove-ui.js";
+import { MaweDom } from "./editor-dom.js";
 MaweBehaviorHints.refreshClickBehaviorHint();
 document.addEventListener('mawe:languagechange', MaweBehaviorHints.refreshClickBehaviorHint);
 
@@ -118,11 +127,12 @@ MaweDom.gapRemoveDragHandle?.addEventListener('pointercancel', MaweGapRemoveUi.f
 
 MaweDom.gapRemovePanel?.querySelectorAll('input[type="number"]').forEach((input) => {
   input.addEventListener('wheel', (event) => {
-    if (!event.deltaY) return;
+    const deltaY = /** @type {WheelEvent} */ (event).deltaY;
+    if (!deltaY) return;
     event.preventDefault();
     input.focus({ preventScroll: true });
     try {
-      if (event.deltaY < 0) input.stepUp();
+      if (deltaY < 0) input.stepUp();
       else input.stepDown();
     } catch (_) {
       return;
@@ -172,15 +182,3 @@ MaweDom.gapRemoveSkipPlayback?.addEventListener('change', () => {
   MaweGapRemoveUi.setGapRemoveData(state);
   if (!state.skip_playback) MaweCuePanelState.gapPreviewRange = null;
 });
-
-
-
-// 合成表情包文件的 URL（用于 <img src>）
-// 优先级:
-
-
-//   1) sticker.rel + STICKER_ROOT  - 拼出服务器或 file:// URL
-//   2) sticker.path  - 兼容老版工程
-
-
-// 合成表情包文件的操作系统绝对路径（用于导出表情包 OTIO）。

@@ -9,8 +9,26 @@ const source = fs.readFileSync(new URL('../../web/editor/io/editor-wiring-export
 const first = source.indexOf("document.getElementById('download-gap-removed-video')");
 const last = source.indexOf("document.getElementById('download-gap-removed-regions-json')", first);
 const handler = source.slice(first, last);
-const projectLoad = fs.readFileSync(new URL('../../web/editor/io/editor-project-load.js', import.meta.url), 'utf8');
-const i18n = fs.readFileSync(new URL('../../web/shared/editor-i18n.js', import.meta.url), 'utf8');
+// editor-project-load.js 是普通 ESM：fixture 以 classic 直引等价物注入（剥 import/export、预置 legacyBindings 绑定）。
+// 普通 ESM 源 → classic script 等价（fixture 注入场景限定）：
+// 剥 import 行与 export 前缀、预置 legacyBindings 绑定。
+const ESM_BINDING_PROLOGUE = `
+var __mawImportedBindings0 = {
+  projectExtensionFields: {},
+  CANONICAL_PROJECT_FIELDS: [],
+};
+var __mawImportedBindings1 = { MULTI_SUBTITLE_UTILS: {} };
+`;
+function stripEsm(source) {
+  const body = source.split(String.fromCharCode(10)).filter(line => !line.startsWith('import ')).join(String.fromCharCode(10))
+        .replace('export const MaweProjectLoad =', 'var MaweProjectLoad =')
+    .replace('export const MAWE_I18N =', 'var MAWE_I18N =');
+  return ESM_BINDING_PROLOGUE + body;
+}
+
+const projectLoad = stripEsm(fs.readFileSync(new URL('../../web/editor/io/editor-project-load.js', import.meta.url), 'utf8'));
+const i18n = stripEsm(fs.readFileSync(new URL('../../web/shared/editor-i18n.js', import.meta.url), 'utf8'));
+
 
 async function fixture(page, mode, run) {
   const requests = [];

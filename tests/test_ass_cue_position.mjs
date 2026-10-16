@@ -1,9 +1,8 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import fs from 'node:fs';
 import vm from 'node:vm';
 import { createHash } from 'node:crypto';
-import { loadEditorModule } from './helpers/editor-module-loader.mjs';
+import { compileEditorUnitFixture, loadEditorModule } from './helpers/editor-module-loader.mjs';
 const context = { window: {} };
 loadEditorModule(context, 'shared/editor-utils.js');
 const h = context.window.AsrEditorUtils;
@@ -101,7 +100,9 @@ test('secondary tracks ignore positioning metadata, but track swaps retain it fo
 
 test('copy split makes independent overrides and merge preserves the leftmost value', () => {
   const splitContext = { window: { AsrEditorUtils: h }, MULTI_SUBTITLE_UTILS: h, MaweMultiSubtitleCore: { SUBTITLE_MIN_DURATION_MS: 100 } };
-  vm.runInNewContext(fs.readFileSync(new URL('../web/editor/cues/editor-split-core.js', import.meta.url), 'utf8'), splitContext);
+  splitContext.window = splitContext;
+  splitContext.AsrEditorUtils = h;
+  vm.runInNewContext(compileEditorUnitFixture('editor/cues/editor-split-core.js'), splitContext);
   const original = { id: 'a', start: 0, end: 2000, text: 'AB', assOverride: { pos: { x: 100, y: 200 } } };
   const parts = splitContext.window.MaweSplitCore.buildSplitPair(original, 1, 1000, 'a', false, 'continuous', { headIndex: 0, duplicateText: true });
   parts.left.assOverride.pos.x = 111;
@@ -112,7 +113,9 @@ test('copy split makes independent overrides and merge preserves the leftmost va
     MaweMultiSubtitleCore: { getMultiSubtitleState: () => ({ tracks: [] }), multiSubtitleVisible: () => false,
       getMainSubtitleSplitMode: () => 'continuous', mergeJoinSeparatorForMode: () => '', removeBindingsForSegmentIds() {} },
     MaweTextCleanup: { syncTimelineGroupRanges() {} } };
-  vm.runInNewContext(fs.readFileSync(new URL('../web/editor/cues/editor-segment-ops.js', import.meta.url), 'utf8'), mergeContext);
+  mergeContext.window = mergeContext;
+  mergeContext.AsrEditorUtils = h;
+  vm.runInNewContext(compileEditorUnitFixture('editor/cues/editor-segment-ops.js'), mergeContext);
   const merged = mergeContext.window.MaweSegmentOps.mergeContiguousIndices([0, 1]);
   assert.deepEqual(plain(merged.assOverride), plain(parts.left.assOverride));
   merged.assOverride.pos.x = 333;

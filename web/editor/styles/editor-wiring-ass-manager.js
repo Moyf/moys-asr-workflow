@@ -1,5 +1,21 @@
+import { assStyleLibraryStatus, assStyleLibraryPathHint, assStyleForm, assStyleFormTitle, assStyleBuiltinBadge, assStyleSrtHint, assStylePreviewModeHint, assStylePreviewSample, assProfileForm, assProfileFormTitle, assProfileBuiltinBadge, assProfilePreviewSummary, assStyleWindow, assStyleCount, assProfileCount, assStyleList, assProfileList, assSrtDefaultStyleSelect, assDefaultProfileSelect, assProfileExtensionStyleField, assProfileExtensionStyleSelect, assProfileStyleSelect, assStyleEditorEmpty, assStyleDeleteSlot, assProfileDeleteSlot, assStyleDeleteButton, assStyleDragHandle, assStyleManagerOpenButton, assStyleWindowClose, assStyleWindowCloseFooter, assStyleNewButton, assStyleDuplicateButton, assProfileNewButton, assStyleSettingsLink, assStyleSaveButton, mainAssStyleSelect, extensionAssStyleSelect, mainAssStyleEditButton, extensionAssStyleEditButton, assStyleLocalFontScanButton, assInlineTextSettings, assInlineTextTitle, assInlineTextToggles, subtitleStyleAssModeHint, mainSubtitleCssFields, mainAssStyleFields, extensionSubtitleCssFields, extensionAssStyleFields, subtitleColorAssModeHint, assColorStyleRow, assColorSpeakerHint, assColorStyleSelect, assModeToggle } from "../ui/editor-wiring-dom-panels.js";
+import { ASS_STYLE_LIBRARY_READY, ASS_STYLE_LIBRARY, setAssStyleLibraryValue, bumpAssStyleLibraryRevision, setAssStyleLibrary, scheduleAssStyleLibrarySave, updateAssStyleLibrarySummary, loadAssStyleLibrary, persistAssStyleLibrary } from "./editor-wiring-ass-storage.js";
+import { rebuildAssFontNameOptions } from "./editor-wiring-font-geometry.js";
 
-
+// 真 ESM：wiring 顶层接线（原转换体 phase-1/phase-2 = import 求值）。
+'use strict';
+import { MaweFloatingPanel } from "../ui/editor-floating-panel.js";
+import { MawePlaybackLoop } from "../media/editor-playback-loop.js";
+import { MaweHint } from "../ui/editor-hint.js";
+import { MaweBoot } from "../boot/editor-boot.js";
+import { MaweDom } from "../ui/editor-dom.js";
+import { MaweMultiSubtitleCore } from "../state/editor-multi-subtitle-core.js";
+import { MaweSettings } from "../state/editor-settings.js";
+import { MaweAppearance } from "./editor-appearance.js";
+import { MaweHistory } from "../state/editor-history.js";
+import { MawePreviewGeometry } from "../media/editor-preview-geometry.js";
+import { MaweSettingsPanels } from "../ui/editor-settings-panels.js";
+export { assStyleLibraryUsesServerStorage, setAssStyleLibraryStatus, updateAssStyleLibraryStatus, assStyleManagerSetSelection, updateAssStylePreviewModeHints, updateAssStyleManagerLibrary, syncAssStyleForm, syncAssStyleManager, syncAssModeDependentControls, syncAssModeControl };
 
 const ASS_STYLE_WINDOW_POSITION_KEY = 'moy.asr.ass_style.window.v1';
 let assStyleManagerSelection = { kind: 'style', id: 'ass' };
@@ -147,7 +163,7 @@ function updateAssStyleManagerLibrary(mutator, { persist = true } = {}) {
   const next = assStyleManagerClone(ASS_STYLE_LIBRARY);
   if (!next) return;
   mutator(next);
-  assStyleLibraryRevision += 1;
+  bumpAssStyleLibraryRevision();
   setAssStyleLibrary(next, { persistLocal: true });
   if (persist) scheduleAssStyleLibrarySave();
   syncAssStyleManager();
@@ -253,7 +269,7 @@ function syncAssProfileForm(profile) {
 
 function syncAssStyleManager({ force = false } = {}) {
   if (!assStyleWindow) return;
-  ASS_STYLE_LIBRARY = window.AsrEditorUtils.normalizeAssStyleLibrary(ASS_STYLE_LIBRARY);
+  setAssStyleLibraryValue(window.AsrEditorUtils.normalizeAssStyleLibrary(ASS_STYLE_LIBRARY));
   const styles = ASS_STYLE_LIBRARY.styles || [];
   const profiles = ASS_STYLE_LIBRARY.assProfiles || [];
   const selectedCollection = assStyleManagerSelection.kind === 'profile' ? profiles : styles;
@@ -414,20 +430,26 @@ function updateAssStyleAssignment(slot, value) {
   MawePlaybackLoop.refreshSubtitlePreview?.();
 }
 
-const assStyleFloatingPanel = MaweFloatingPanel.createFloatingPanel({
-  panel: assStyleWindow,
-  dragHandle: assStyleDragHandle,
-  manageButton: assStyleManagerOpenButton,
-  anchorButton: assStyleManagerOpenButton,
-  positionKey: ASS_STYLE_WINDOW_POSITION_KEY,
-  onOpen: () => {
-    syncAssStyleManager({ force: true });
-    void loadAssStyleLibrary({ force: true });
-  },
-});
-document.getElementById('ass-frame-style-edit')?.addEventListener('click', () => assStyleFloatingPanel.open());
-assStyleWindowClose?.addEventListener('click', () => assStyleFloatingPanel.close());
-assStyleWindowCloseFooter?.addEventListener('click', () => assStyleFloatingPanel.close());
+// ESM 求值序下本模块可能先于 editor-floating-panel 完成；
+// 浮窗创建推迟到首次访问（消费点都在启动后的回调里）。
+let assStyleFloatingPanel = null;
+function ensureAssStyleFloatingPanel() {
+  if (assStyleFloatingPanel) return;
+  assStyleFloatingPanel = MaweFloatingPanel.createFloatingPanel({
+    panel: assStyleWindow,
+    dragHandle: assStyleDragHandle,
+    manageButton: assStyleManagerOpenButton,
+    anchorButton: assStyleManagerOpenButton,
+    positionKey: ASS_STYLE_WINDOW_POSITION_KEY,
+    onOpen: () => {
+      syncAssStyleManager({ force: true });
+      void loadAssStyleLibrary({ force: true });
+    },
+  });
+  document.getElementById('ass-frame-style-edit')?.addEventListener('click', () => assStyleFloatingPanel.open());
+  assStyleWindowClose?.addEventListener('click', () => assStyleFloatingPanel.close());
+  assStyleWindowCloseFooter?.addEventListener('click', () => assStyleFloatingPanel.close());
+}
 assStyleNewButton?.addEventListener('click', createAssStyle);
 assStyleDuplicateButton?.addEventListener('click', duplicateAssStyle);
 assProfileNewButton?.addEventListener('click', createAssProfile);
@@ -460,12 +482,14 @@ extensionAssStyleSelect?.addEventListener('change', () => {
 });
 // 「使用 ASS 样式」旁的「编辑样式」：打开样式库窗口并定位到下拉当前选中的样式。
 function openAssStyleManagerForStyle(select) {
+  ensureAssStyleFloatingPanel();
   if (!select?.value) return;
   assStyleManagerSetSelection('style', select.value);
   assStyleFloatingPanel.open();
 }
 mainAssStyleEditButton?.addEventListener('click', () => openAssStyleManagerForStyle(mainAssStyleSelect));
 document.getElementById('ass-special-style-edit')?.addEventListener('click', async () => {
+  ensureAssStyleFloatingPanel();
   assStyleFloatingPanel.open();
   await loadAssStyleLibrary({ force: true });
   if (!assStyleWindow.classList.contains('show')) return;
@@ -711,4 +735,16 @@ assInlineTextToggles.forEach((input) => {
     syncAssStyleManager();
     MawePlaybackLoop.refreshSubtitlePreview();
   });
+});
+
+// e2e 探针入口（tests/e2e/ass-export 裸名驱动 ASS 样式管理器；页面代码走
+// 具名 import）。
+Object.defineProperty(window, 'assStyleManagerSetSelection', {
+  configurable: true, get: () => assStyleManagerSetSelection,
+});
+Object.defineProperty(window, 'updateAssStyleManagerLibrary', {
+  configurable: true, get: () => updateAssStyleManagerLibrary,
+});
+Object.defineProperty(window, 'syncAssStyleForm', {
+  configurable: true, get: () => syncAssStyleForm,
 });

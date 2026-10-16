@@ -1,35 +1,21 @@
 
-// === 批量替换 ===
+import { MaweHistory } from "../state/editor-history.js";
+import { MaweCommands } from "../state/editor-commands.js";
+import { MaweHint } from "../ui/editor-hint.js";
+import { MaweBoot } from "../boot/editor-boot.js";
+import { MaweMultiSubtitleCore } from "../state/editor-multi-subtitle-core.js";
+import { MaweSettings } from "../state/editor-settings.js";
 
-
-
-
-
-
-
-
-
-
-// null = 全部；[idxs] = 仅这些行
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
+// 真 ESM：wiring 顶层接线（原转换体 phase-1/phase-2 = import 求值）。
+'use strict';
+import { MaweFindReplace, setReplaceScope } from "./editor-find-replace.js";
+import { MaweTextProcess, setTextProcessScope, setTextProcessWrapPreset } from "./editor-text-process.js";
+import { MaweTimedTextEdit } from "./editor-timed-text-edit.js";
+import { MaweDom } from "../ui/editor-dom.js";
 [MaweFindReplace.findInput, MaweFindReplace.replaceInput].forEach(el => el.addEventListener('input', MaweFindReplace.updatePreview));
 [MaweFindReplace.caseSensitiveCb, MaweFindReplace.useRegexCb].forEach(el => el.addEventListener('change', MaweFindReplace.updatePreview));
 MaweFindReplace.replaceSelectedOnlyCb?.addEventListener('change', () => {
-  MaweFindReplace.replaceScope = MaweFindReplace.replaceSelectedOnlyCb.checked ? [...MaweFindReplace.replaceSelectionSnapshot] : null;
+  setReplaceScope(MaweFindReplace.replaceSelectedOnlyCb.checked ? [...MaweFindReplace.replaceSelectionSnapshot] : null);
   MaweFindReplace.refreshScopeInfo();
   MaweFindReplace.updatePreview();
 });
@@ -40,16 +26,15 @@ document.getElementById('replace-btn')?.addEventListener('click', () => MaweFind
 document.getElementById('replace-cancel')?.addEventListener('click', () => MaweDom.replaceModal.classList.remove('show'));
 MaweDom.replaceModal.addEventListener('click', (e) => { if (e.target === MaweDom.replaceModal) MaweDom.replaceModal.classList.remove('show'); });
 document.getElementById('replace-confirm')?.addEventListener('click', () => {
-  const options = {
-    caseSensitive: MaweFindReplace.caseSensitiveCb.checked,
-    useRegex: MaweFindReplace.useRegexCb.checked,
-  };
   const preview = window.AsrEditorUtils.buildReplacementPreview(
     MaweBoot.DATA.segments,
     MaweFindReplace.getReplaceTargetIndexes(),
     MaweFindReplace.findInput.value,
     MaweFindReplace.replaceInput.value,
-    options,
+    {
+      caseSensitive: MaweFindReplace.caseSensitiveCb.checked,
+      useRegex: MaweFindReplace.useRegexCb.checked,
+    },
   );
   if (preview.error) {
     MaweFindReplace.updatePreview();
@@ -125,8 +110,8 @@ document.getElementById('replace-confirm')?.addEventListener('click', () => {
 
 MaweTextProcess.textProcessButton?.addEventListener('click', MaweTextProcess.openTextProcessModal);
 MaweTextProcess.textProcessSelectedOnlyCb?.addEventListener('change', () => {
-  MaweTextProcess.textProcessScope = MaweTextProcess.textProcessSelectedOnlyCb.checked
-    ? [...MaweTextProcess.textProcessSelectionSnapshot] : null;
+  setTextProcessScope(MaweTextProcess.textProcessSelectedOnlyCb.checked
+    ? [...MaweTextProcess.textProcessSelectionSnapshot] : null);
   MaweTextProcess.refreshTextProcessScopeInfo();
   MaweTextProcess.renderTextProcessPreview();
 });
@@ -209,7 +194,7 @@ MaweTextProcess.textProcessConfirm?.addEventListener('click', () => {
   });
 });
 
-// 「左右添加字符」批量预设：填充前缀/后缀输入并勾选，复用上方预览与应用流程。
+// 「左右添加字符」批量预设：更新预览并复用文本处理应用流程。
 // ASS 特殊文本格式预设仅在当前工程启用 ASS 字幕模式时展示。
 (() => {
   const assPresetHost = document.getElementById('text-process-wrap-presets-ass');
@@ -220,7 +205,7 @@ MaweTextProcess.textProcessConfirm?.addEventListener('click', () => {
   const localizedPresetLabels = { note: '♪音符♪', music: '♬双音符♬', bracket: '[中括号]' };
   function selectPreset(preset) {
     const selected = MaweTextProcess.textProcessWrapPreset?.id === preset.id;
-    MaweTextProcess.textProcessWrapPreset = selected ? null : preset;
+    setTextProcessWrapPreset(selected ? null : preset);
     MaweTextProcess.refreshTextProcessInputState();
     MaweTextProcess.renderTextProcessPreview();
     if (!selected && preset.id === 'custom') MaweTextProcess.textProcessPrefixInput?.focus();
@@ -247,7 +232,7 @@ MaweTextProcess.textProcessConfirm?.addEventListener('click', () => {
     presetRows.forEach((row) => { row.hidden = !assMode; });
     const selectedPreset = MaweTextProcess.textProcessWrapPreset;
     if (!assMode && selectedPreset?.ass) {
-      MaweTextProcess.textProcessWrapPreset = null;
+      setTextProcessWrapPreset(null);
       MaweTextProcess.refreshTextProcessInputState();
       MaweTextProcess.renderTextProcessPreview();
     }

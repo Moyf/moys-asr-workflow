@@ -1,18 +1,18 @@
-// Paused Server video previews use the same native libass frame as the floating
-// comparison window. Playback/file:// keep the immediate CSS approximation.
-(function initMaweAssFrame(global) {
-  'use strict';
+// 真 ESM：模块顶层定义与发布（原转换体 phase-2 语义 = import 求值）。
+// window.<Name> 与导出的 <Name> 是同一对象；消费者逐簇改 import 后移除 window 发布。
+'use strict';
 
-  const openButton = document.getElementById('ass-frame-preview-open');
-  const quickOpenButton = document.getElementById('ass-frame-quick-open');
-  const styleOpenButton = document.getElementById('ass-style-frame-preview-open');
-  const windowEl = document.getElementById('ass-frame-window');
-  if (!openButton || !windowEl) return;
+const openButton = document.getElementById('ass-frame-preview-open');
+const quickOpenButton = document.getElementById('ass-frame-quick-open');
+const styleOpenButton = document.getElementById('ass-style-frame-preview-open');
+const windowEl = document.getElementById('ass-frame-window');
+function installAssFrame() {
+  if (!openButton || !windowEl) return null;
   const imageEl = document.getElementById('ass-frame-image');
   const stageImage = document.getElementById('ass-stage-frame');
   const stageStatus = document.getElementById('ass-stage-status');
-  const stage = global.MaweDom?.playerStage;
-  const player = global.MaweCoreState?.player;
+  const stage = window.MaweDom?.playerStage;
+  const player = window.MaweCoreState?.player;
   const renderButton = document.getElementById('ass-frame-render');
   const windowStatus = document.getElementById('ass-frame-window-status');
   const staleEl = document.getElementById('ass-frame-stale');
@@ -31,14 +31,14 @@
   let presentedCursor = null;
   const REQUEST_TIMEOUT_MS = 165000;
 
-  const translate = (text) => global.MAWE_I18N?.translateText?.(text) || text;
-  const enabled = () => Boolean(global.MaweBoot?.SERVER_CONFIG?.assFrameUrl)
-    && global.MaweSettings?.EDITOR_SETTINGS?.assMode === true;
+  const translate = (text) => window.MAWE_I18N?.translateText?.(text) || text;
+  const enabled = () => Boolean(window.MaweBoot?.SERVER_CONFIG?.assFrameUrl)
+    && window.MaweSettings?.EDITOR_SETTINGS?.assMode === true;
   // 暂停时把实际帧叠加到播放器画面：默认关闭，窗口内开关控制。
   const stageOverlayEnabled = () => autoRenderEnabled()
-    && global.MaweSettings?.EDITOR_SETTINGS?.assFrameStagePreview === true;
+    && window.MaweSettings?.EDITOR_SETTINGS?.assFrameStagePreview === true;
   // 自动渲染：默认开启；关闭后仅在点击「渲染当前帧」时更新。
-  const autoRenderEnabled = () => global.MaweSettings?.EDITOR_SETTINGS?.assFrameAutoRender !== false;
+  const autoRenderEnabled = () => window.MaweSettings?.EDITOR_SETTINGS?.assFrameAutoRender !== false;
   // Avoid serializing the project or spawning FFmpeg when neither view needs it.
   const previewNeeded = () => floatingPanel.isOpen() || stageOverlayEnabled();
 
@@ -46,8 +46,8 @@
     // A browser-only blob upload can differ from the server's bound project.
     // Never replace it with a frame from an unrelated server media file.
     if (player?.tagName !== 'VIDEO' || !player.videoWidth) return false;
-    const url = new URL(player.currentSrc || player.src || global.location.href, global.location.href);
-    return url.origin === global.location.origin && url.pathname === '/media';
+    const url = new URL(player.currentSrc || player.src || window.location.href, window.location.href);
+    return url.origin === window.location.origin && url.pathname === '/media';
   }
 
   function setWindowStatus(text, state = '') {
@@ -77,7 +77,7 @@
     const frameTime = presentedCursor === player.currentTime ? presentedTime : null;
     const frameTimeMs = Math.max(0, (frameTime ?? (Number(player.currentTime) || 0)) * 1000);
     const timeMs = Math.floor(frameTimeMs + 0.000001);
-    const ass = global.MaweExportSrt.buildAss({ preview: true });
+    const ass = window.MaweExportSrt.buildAss({ preview: true });
     return { ass, timeMs, frameTimeMs, generation: mediaGeneration, seek: seekGeneration, source: player.currentSrc,
       key: JSON.stringify([mediaGeneration, player.currentSrc, ass, timeMs]) };
   }
@@ -134,7 +134,7 @@
       desired = null;
       hideStage();
       setStageStatus('');
-      global.clearTimeout(timer);
+      window.clearTimeout(timer);
       timer = 0;
       syncStaleOverlay();
       return;
@@ -143,7 +143,7 @@
       desired = null;
       hideStage();
       setStageStatus(stageOverlayEnabled() ? 'ASS 即时预览' : '');
-      global.clearTimeout(timer);
+      window.clearTimeout(timer);
       timer = 0;
       syncStaleOverlay();
       return;
@@ -164,7 +164,7 @@
     }
     // 合并这段时间内的最新状态，但不反复推迟截止时间。连续刷新
     // （例如列表/播放头更新）也必须让自动渲染获得执行机会。
-    if (!timer) timer = global.setTimeout(() => { timer = 0; refreshDesired(); }, 200);
+    if (!timer) timer = window.setTimeout(() => { timer = 0; refreshDesired(); }, 200);
   }
 
   function refreshDesired() {
@@ -202,13 +202,13 @@
     if (renderButton) renderButton.disabled = true;
     setWindowStatus('正在渲染当前帧…', 'pending');
     const controller = new AbortController();
-    const timeout = global.setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
+    const timeout = window.setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
     try {
-      const response = await fetch(global.MaweBoot.SERVER_CONFIG.assFrameUrl, {
+      const response = await fetch(window.MaweBoot.SERVER_CONFIG.assFrameUrl, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         signal: controller.signal,
-        body: JSON.stringify({ requestToken: global.MaweBoot.SERVER_CONFIG.requestToken || '',
+        body: JSON.stringify({ requestToken: window.MaweBoot.SERVER_CONFIG.requestToken || '',
           ass: request.ass, timeMs: request.timeMs }),
       });
       const payload = await response.json().catch(() => null);
@@ -225,7 +225,7 @@
       // 超时也照常出图（<img> 自身会继续加载），绝不让 pending 卡死。
       await Promise.race([
         decoded.decode().catch(() => {}),
-        new Promise((resolve) => global.setTimeout(resolve, 5000)),
+        new Promise((resolve) => window.setTimeout(resolve, 5000)),
       ]);
       const frame = { key: request.key, url, timeMs: request.frameTimeMs,
         width: decoded.naturalWidth, height: decoded.naturalHeight,
@@ -250,9 +250,9 @@
         : `渲染失败：${error instanceof Error ? error.message : error}`;
       failedKey = request.key;
       setWindowStatus(failureMessage, 'error');
-      if (manual) global.MaweHint?.flashHint?.(failureMessage, 'invalid');
+      if (manual) window.MaweHint?.flashHint?.(failureMessage, 'invalid');
     } finally {
-      global.clearTimeout(timeout);
+      window.clearTimeout(timeout);
       pending = false;
       if (renderButton) renderButton.disabled = false;
       // Don't hide a successfully decoded, current frame again just to queue a
@@ -269,14 +269,14 @@
       setWindowStatus('请先加载 Server 工程的视频并启用 ASS 字幕模式。', 'error');
       return;
     }
-    global.clearTimeout(timer);
+    window.clearTimeout(timer);
     timer = 0;
     failedKey = '';
     capabilityFailure = '';
     await capture(request, true);
   }
 
-  const floatingPanel = global.MaweFloatingPanel.createFloatingPanel({
+  const floatingPanel = window.MaweFloatingPanel.createFloatingPanel({
     panel: windowEl,
     dragHandle: document.getElementById('ass-frame-drag-handle'),
     manageButton: quickOpenButton || openButton,
@@ -303,7 +303,7 @@
     // 自动渲染开启时「渲染当前帧」没有意义，隐藏；关闭后作为手动更新入口显示。
     if (renderButton) renderButton.hidden = autoRenderEnabled();
     if (stageToggle) {
-      stageToggle.checked = global.MaweSettings?.EDITOR_SETTINGS?.assFrameStagePreview === true;
+      stageToggle.checked = window.MaweSettings?.EDITOR_SETTINGS?.assFrameStagePreview === true;
       stageToggle.closest('label').hidden = !autoRenderEnabled();
     }
     if (autoToggle) autoToggle.checked = autoRenderEnabled();
@@ -364,11 +364,11 @@
   document.getElementById('ass-frame-window-close')?.addEventListener('click', () => floatingPanel.close());
   document.getElementById('ass-mode-toggle')?.addEventListener('change', syncAssFrameControls);
   stageToggle?.addEventListener('change', () => {
-    global.MaweSettings?.updateEditorSettings({ assFrameStagePreview: stageToggle.checked });
+    window.MaweSettings?.updateEditorSettings({ assFrameStagePreview: stageToggle.checked });
     syncAssFrameControls();
   });
   autoToggle?.addEventListener('change', () => {
-    global.MaweSettings?.updateEditorSettings({ assFrameAutoRender: autoToggle.checked });
+    window.MaweSettings?.updateEditorSettings({ assFrameAutoRender: autoToggle.checked });
     syncAssFrameControls();
   });
   document.getElementById('ass-frame-size')?.addEventListener('click', (event) => {
@@ -376,6 +376,23 @@
     event.currentTarget.setAttribute('aria-pressed', String(Boolean(native)));
   });
 
-  global.MaweAssFrame = Object.freeze({ syncAssFrameControls, renderAssFrame, syncPreview });
   syncAssFrameControls();
-})(typeof window !== 'undefined' ? window : globalThis);
+  current = Object.freeze({ syncAssFrameControls, renderAssFrame, syncPreview });
+  return current;
+}
+
+// 安装时机：模块体立即执行会早于 deferred phase-2 发布 MaweFloatingPanel /
+// MaweDom 门面，故接线收进 installAssFrame()，在首次访问
+// window.MaweAssFrame 的方法时执行（启动后）。
+let current = Object.freeze({
+  syncAssFrameControls: () => {},
+  renderAssFrame: async () => {},
+  syncPreview: () => {},
+});
+const MaweAssFrame = Object.freeze({
+  get syncAssFrameControls() { installAssFrame(); return current.syncAssFrameControls; },
+  get renderAssFrame() { installAssFrame(); return current.renderAssFrame; },
+  get syncPreview() { installAssFrame(); return current.syncPreview; },
+});
+export { MaweAssFrame };
+window.MaweAssFrame = MaweAssFrame;

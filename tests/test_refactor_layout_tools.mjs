@@ -9,11 +9,15 @@ import { editorScriptFiles, requireLegacyEditor } from '../scripts/refactor-tool
 const root = fileURLToPath(new URL('../', import.meta.url));
 const web = path.join(root, 'web');
 
-test('developer source enumeration follows nested manifest order', () => {
+test('developer source enumeration covers the derived source set', () => {
   const files = editorScriptFiles(web);
-  assert.equal(files[0], 'editor/boot/editor-boot.js');
-  assert.equal(files.at(-1), 'editor/boot/editor-onboarding.js');
+  // 清单退役（批 4）：枚举改为目录推导（字母序），断言集合性质
+  // 而非清单位次。
+  assert.ok(files.length > 100, files.length);
+  assert.ok(files.includes('editor/boot/editor-boot.js'));
+  assert.ok(files.includes('editor/boot/editor-onboarding.js'));
   for (const file of files) assert.ok(existsSync(path.join(web, file)), file);
+  assert.deepEqual([...files].sort(), files, 'derived enumeration is sorted');
 });
 
 test('historical mutation CLIs refuse the sliced layout before writing', () => {

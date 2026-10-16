@@ -1,6 +1,21 @@
-// Project properties are read from the active project; preferences never override them.
-(function initProjectSettings(global) {
-  'use strict';
+import { syncAssModeControl } from "../styles/editor-wiring-ass-manager.js";
+
+import { MaweBoot } from "../boot/editor-boot.js";
+import { MaweDom } from "../ui/editor-dom.js";
+import { MaweSettings } from "./editor-settings.js";
+import { MaweSplitMode } from "../cues/editor-split-mode.js";
+// 真 ESM：模块顶层定义与发布（原转换体 phase-2 语义 = import 求值）。
+// window.<Name> 与导出的 <Name> 是同一对象；消费者逐簇改 import 后移除 window 发布。
+'use strict';
+
+// 安装时机：模块顶层立即读 MaweSettings（其门面由 deferred 转换体
+// 在 phase-2 发布），import 期该门面尚不存在——所有立即读都收敛到
+// install()，首次访问 window.MaweProjectSettings 时执行。
+let installed = false;
+function install() {
+  if (installed) return MaweProjectSettings;
+  installed = true;
+  // Project properties are read from the active project; preferences never override them.
   const settings = MaweSettings.EDITOR_SETTINGS;
   function preview() {
     return MaweBoot.DATA.preview ||= {};
@@ -36,11 +51,19 @@
       },
     },
   });
-  function syncControls() {
-    if (typeof syncAssModeControl === 'function') syncAssModeControl();
-    if (MaweDom.exportSpeakerLabelsToggle) MaweDom.exportSpeakerLabelsToggle.checked = settings.exportSpeakerLabels;
-    MaweSplitMode.refreshMergeJoinModeHint();
-    global.MaweStickerRoot?.syncControls?.();
-  }
-  global.MaweProjectSettings = Object.freeze({ syncControls });
-})(window);
+  return MaweProjectSettings;
+}
+
+function syncControls() {
+  if (typeof syncAssModeControl === 'function') syncAssModeControl();
+  if (MaweDom.exportSpeakerLabelsToggle) MaweDom.exportSpeakerLabelsToggle.checked = /** @type {{ exportSpeakerLabels?: boolean }} */ (install()).exportSpeakerLabels;
+  MaweSplitMode.refreshMergeJoinModeHint();
+  window.MaweStickerRoot?.syncControls?.();
+}
+
+export const MaweProjectSettings = Object.freeze({ syncControls });
+
+Object.defineProperty(window, 'MaweProjectSettings', {
+  configurable: true,
+  get: () => install(),
+});

@@ -1,24 +1,21 @@
+import { MULTI_SUBTITLE_UTILS } from "../boot/editor.js";
+import { DEFAULT_ASS_COLOR_STYLE, ASS_STYLE_LIBRARY } from "./editor-wiring-ass-storage.js";
+import { ASS_PREVIEW_REFERENCE_HEIGHT } from "../boot/editor-wiring-initial-config.js";
+import { overlayTrackTextEl } from "../ui/editor-wiring-dom-panels.js";
+import { activeExtensionSegments } from "../cues/editor-wiring-overlay-transfer.js";
 
-// === ASS 预览接线（Canvas 合成） + 当前行高亮 ===
-
-// ASS 模式下文本统一由 MaweAssCanvas 在 PlayRes 原生分辨率画布上绘制
-//（描边质量与 libass 一致的理由见该模块头注）；本文件只负责组装样式、
-// 动画状态与锚定参数，并把 ASS 模式的 DOM 文本元素整体隐藏。
-// SRT/CSS 预览仍走原有的 DOM 路径，退出 ASS 模式时 restore* 恢复。
-
-// 列表点击关闭自动滚动时，避免这次 seek 的同步 active 更新再次滚动列表；
-// 播放指针拖动期间也暂时保持列表位置，避免连续 seek 触发滚动布局。
-
-
-
-
-
-
-
-
-
-
-
+import { MaweHint } from "../ui/editor-hint.js";
+import { MaweCoreState } from "../state/editor-core-state.js";
+import { MaweBoot } from "../boot/editor-boot.js";
+import { MaweDom } from "../ui/editor-dom.js";
+import { MaweSettings } from "../state/editor-settings.js";
+import { MaweAppearance } from "./editor-appearance.js";
+import { MaweSpeakerLabels } from "./editor-speaker-labels.js";
+import { MaweExportSrt } from "../io/editor-export-srt.js";
+import { MaweColors } from "./editor-colors.js";
+import { MawePreviewGeometry } from "../media/editor-preview-geometry.js";
+// 真 ESM：wiring 顶层接线（原转换体 phase-1/phase-2 = import 求值）。
+'use strict';
 
 
 let lastStableAssPreviewGeometry = null;
@@ -164,7 +161,7 @@ function restoreCssSubtitlePreviewElement(element, appearance, fallbackSize, fal
   element.style.color = appearance.color || fallbackColor;
 }
 
-function restoreCssSubtitlePreview() {
+export function restoreCssSubtitlePreview() {
   window.MaweAssCanvas?.hide();
   window.MaweAssCuePosition?.sync();
   clearAssEmphasisPreview(MaweDom.overlayTextEl);
@@ -248,7 +245,10 @@ function assStackInputRevision(tracks, identityTracks = tracks) {
 }
 document.fonts?.addEventListener('loadingdone', () => { assStackFontRevision += 1; cachedAssStackKey = ''; });
 
-function applyAssSubtitlePreview({ tMs, overlaySegments }) {
+/**
+ * @param {{ tMs: any, segment?: any, extension?: any, overlay?: any, overlaySegments: any, mainColorName?: any, [k: string]: any }} options
+ */
+export function applyAssSubtitlePreview({ tMs, overlaySegments }) {
   const metrics = assPreviewMetrics();
   // Snapshot only project inputs: measurements and animation envelopes are
   // computed once per revision, never once per playback frame. Direct edits
@@ -335,19 +335,9 @@ function restoreAssOverlayTrackPreview() {
 
 // The manager also uses the calibrated font metrics after boot has completed;
 // the Canvas layer reuses exportFontSize for native run sizes.
-window.MaweAssPreview = Object.freeze({
+export const MaweAssPreview = Object.freeze({
   fontScale: assPreviewFontScale,
   get stackPlan() { return cachedAssStackPlan; },
   exportFontSize: assPreviewExportFontSize,
 });
-
-
-
-
-
-// 列表重绘或属性批量变更后的 update() 只刷新时间码与激活态，不触发播放跟随滚动。
-// renderAll 刚重建列表时，content-visibility 让视口外的行仍处于估算占位
-// 高度，updateActiveCue 量到的瞬态几何会把「活动行不在视口」误判成真，
-// 再用被污染的 offsetTop 算出错误目标平滑滚走（页面放大倍率越高、真实
-// 行高与估算差异越大越容易触发）。这些操作是否滚动、滚到哪里都应由
-// 调用方显式决定（例如拆分按来源保持原位或居中新右半段）。
+window.MaweAssPreview = MaweAssPreview;

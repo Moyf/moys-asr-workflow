@@ -1,3 +1,4 @@
+import { compileEditorUnitFixture } from './helpers/editor-module-loader.mjs';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import vm from 'node:vm';
@@ -19,11 +20,11 @@ function fixture(kind) {
     setEnd() {}, selectNodeContents(node) { this.node = node; this.offset = 0; },
   }) };
   const state = { editing: { editingState: null, extensionEditingState: null } };
-  const context = { window: { getSelection: () => selection }, document,
+  const context = { MaweHost: { runtime: { getNavigator: () => ({ platform: 'Win32' }) } }, URLSearchParams, location: { search: '' }, window: { getSelection: () => selection }, document,
     setTimeout: callback => timers.push(callback), MaweState: state,
     MaweNavPreview: { hideCueSplitPreview() {} }, MaweBoot: { DATA: { segments: [{ text: 'Original' }] } },
     MaweCuePanel: { setCurrentCuePanelExtensionIndex() {} } };
-  vm.runInNewContext(readFileSync(new URL('../web/editor/cues/editor-inline-edit.js', import.meta.url), 'utf8'), context);
+  vm.runInNewContext(compileEditorUnitFixture('editor/cues/editor-inline-edit.js'), context);
   const api = context.window.MaweInlineEdit;
   if (kind === 'main') api.startEdit(el, 0, undefined, undefined, { deferCaret: true });
   else api.startExtensionEdit(el, 0, { id: 'extension', segments: [{ text: 'Original' }] }, undefined, undefined, { deferCaret: true });

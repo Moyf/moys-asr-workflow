@@ -3,6 +3,8 @@ import fs from 'node:fs';
 import test from 'node:test';
 import vm from 'node:vm';
 import { createWaveformModule } from '../web/editor/media/waveform/workspace.js';
+import { compileEditorUnitFixture, makeDocumentStub, makeDeepStub } from './helpers/editor-module-loader.mjs';
+import { makeFacadeStub } from './helpers/editor-module-loader.mjs';
 
 test('row length updates controls, invalidates rows and persists only valid changes', () => {
   const saved = [];
@@ -31,10 +33,34 @@ function fixture(mode = 'basic') {
     setSecondsPerRow(value, { render = true } = {}) { this.settings.secondsPerRow = value; if (render) this.render(); },
   };
   const settings = { multiSubtitleRowHeight: 168, wordTimingRowHeight: 144, wordTimingSecondsPerRow: 5 };
-  const context = { window: {}, MaweCoreState: { waveformEditor: editor }, MaweSettings: { EDITOR_SETTINGS: settings } };
-  vm.runInNewContext(fs.readFileSync(new URL('../web/editor/ui/editor-display-settings.js', import.meta.url), 'utf8'), context);
+  const documentStub = makeDocumentStub();
+  const context = { Option: class { constructor(label, value) { this.textContent = label; this.value = value; } },
+    // 微任务（appearance 刷 combobox）触达的模块门面：本夹具不含发布方，给中性桩。
+    MaweSpeakerLabels: { syncSpeakerLabelControls() {}, getSpeakerLabelSettings: () => ({ speaker_labels: [] }), speakerLabelExportOptions: () => ({}) },
+    MaweHost: { runtime: { getNavigator: () => ({ platform: 'Win32' }) } }, URLSearchParams, location: { search: '' }, window: { ASR_EDITOR_PALETTE: [{ name: 'yellow', value: '#123456' }], addEventListener() {}, removeEventListener() {}, document: documentStub },
+    document: documentStub,
+    localStorage: { getItem: () => null, setItem() {}, removeItem() {} },
+    MaweDom: makeFacadeStub(),
+    MaweMultiSubtitleCore: { MULTI: 'main', getActiveExtensionTrack: () => ({ segments: [] }), getExtensionSubtitleSplitMode: () => 'word', getMainSubtitleSplitMode: () => 'word', getMultiSubtitleState: () => ({ enabled: false, tracks: [] }), normalizeMultiSubtitleState: (state) => state ?? { enabled: false, tracks: [] } },
+    MaweCoreState: { waveformEditor: editor }, MaweSettings: { EDITOR_SETTINGS: settings },
+    MaweBoot: { DATA: {}, maweDomContractCheck: () => [], maweDebug() {} },
+    MaweState: { changes: {}, preferences: { editor: {} } },
+    MaweAppearance: makeDeepStub(), MaweTimeline: makeDeepStub(),
+    MaweCuePanel: makeDeepStub(), MaweHistory: makeDeepStub(),
+    MaweHint: makeDeepStub(), MaweColors: makeDeepStub(),
+    MaweStickerOverlay: makeDeepStub(), MawePreviewGeometry: makeDeepStub(),
+  };
+  for (let guard = 0; guard < 40; guard += 1) {
+    try { vm.runInNewContext(compileEditorUnitFixture('editor/ui/editor-display-settings.js'), context); break; }
+    catch (error) {
+      const ref = error.message.match(/^(w+) is not defined/);
+      if (!ref) throw error;
+      context[ref[1]] = makeDeepStub();
+    }
+  }
+  // Isolated module fixture preserves the test-owned state and collaborators.
   const display = context.window.MaweDisplaySettings;
-  return { editor, settings, display,
+  return { editor, settings: context.MaweSettings.EDITOR_SETTINGS, display,
     toggle(mode, enabled) { display[mode === 'word' ? 'syncWordTimingWaveformSettings' : 'syncMultiSubtitleWaveformRowHeight'](enabled); },
   };
 }

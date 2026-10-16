@@ -1,14 +1,23 @@
+import { compileEditorFixture } from './helpers/editor-module-loader.mjs';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import vm from 'node:vm';
 import test from 'node:test';
 
+// commands/view-updates 已转直连工厂（注册表退役）：
+// 测试直接实例化并注入依赖。
+import { createEditorCommands } from '../web/editor/state/editor-command-factory.js';
+import { createViewUpdates } from '../web/editor/state/editor-view-updates-factory.js';
+const viewUpdates = createViewUpdates({
+  renderCues: () => {}, updatePreview: () => {}, refreshPreview: () => {}, scheduleSave: () => {},
+});
+void viewUpdates;
 function registry() {
-  const context = { window: {} };
-  for (const file of ['editor/boot/editor-runtime.js', 'editor/state/editor-view-updates.js', 'editor/state/editor-commands.js']) {
-    vm.runInNewContext(readFileSync(new URL('../web/' + file, import.meta.url), 'utf8'), context);
-  }
-  return context.window.MAWE;
+  return {
+    resolve: (_name, args) => _name === 'editor-view-updates'
+      ? createViewUpdates(args)
+      : createEditorCommands(args),
+  };
 }
 
 function commandFixture() {

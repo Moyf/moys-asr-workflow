@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 import { loadEditorModule } from './helpers/editor-module-loader.mjs';
 
-const context = { window: {} };
+const context = { MaweHost: { runtime: { getNavigator: () => ({ platform: 'Win32' }) } }, URLSearchParams, location: { search: '' }, window: {} };
 loadEditorModule(context, 'shared/editor-utils.js');
 const utils = context.window.AsrEditorUtils;
 const plain = value => JSON.parse(JSON.stringify(value));

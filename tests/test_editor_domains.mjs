@@ -1,20 +1,24 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import { loadEditorModule } from './helpers/editor-module-loader.mjs';
+import { createUtilsModule as createSplitTrim } from '../web/shared/utils/split-trim.js';
+import { createWaveformModule as createWaveformMedia } from '../web/editor/media/waveform/media.js';
+import { createWaveformModule as createWaveformPlayback } from '../web/editor/media/waveform/playback.js';
+import { createWaveformModule as createWaveformColors } from '../web/editor/media/waveform/colors.js';
 
 function waveformContext() {
-  const context = { window: { ASR_EDITOR_PALETTE: [{ name: 'yellow', value: '#123456' }] } };
+  const context = { URLSearchParams, location: { search: '' }, window: { ASR_EDITOR_PALETTE: [{ name: 'yellow', value: '#123456' }] } };
   loadEditorModule(context, 'editor/media/waveform.js');
   return context;
 }
 
 test('split helpers share live trim state while separately created factories remain independent', () => {
-  const context = { window: {} };
+  const context = { URLSearchParams, location: { search: '' }, window: {} };
   loadEditorModule(context, 'shared/editor-utils.js');
   const utils = context.window.AsrEditorUtils;
   utils.setSplitTrimSymbols(['#']);
   assert.deepEqual({ ...utils.splitSubtitleText('hello#world', 6, 'continuous') }, { left: 'hello', right: 'world', offset: 6 });
-  const isolated = context.window.MAWE.resolve('utils-split-trim');
+  const isolated = createSplitTrim({ gapRemoveCore: {}, getNavigator: () => null });
   isolated.setSplitTrimSymbols(['@']);
   assert.equal(isolated.applySplitEdgeTrim('@hello@'), '@hello');
   assert.equal(utils.applySplitEdgeTrim('@hello@'), '@hello@');
@@ -22,7 +26,7 @@ test('split helpers share live trim state while separately created factories rem
 });
 
 test('utility consumers preserve a custom runtime method receiver and observe its current navigator', () => {
-  const context = { window: {} };
+  const context = { URLSearchParams, location: { search: '' }, window: {} };
   const runtime = {
     navigator: { platform: 'Win32' },
     getNavigator() { return this.navigator; },
@@ -39,8 +43,8 @@ test('utility consumers preserve a custom runtime method receiver and observe it
 
 test('waveform composition preserves getter and non-enumerable class method descriptors', () => {
   const context = waveformContext();
-  const media = context.window.MAWE.resolve('waveform-media', {});
-  const playback = context.window.MAWE.resolve('waveform-playback', {});
+  const media = createWaveformMedia({});
+  const playback = createWaveformPlayback({});
   assert.equal(media.durationMs.enumerable, false);
   assert.equal(media.durationMs.configurable, true);
   assert.equal(typeof media.durationMs.get, 'function');
@@ -55,8 +59,10 @@ test('waveform composition preserves getter and non-enumerable class method desc
 
 test('palette consumers observe replacements through the same private module state', () => {
   const context = waveformContext();
-  const colors = context.window.MAWE.resolve('waveform-colors');
-  assert.equal(colors.colorForSegment({ color: { name: 'yellow' } }), '#123456');
+  // Node 直连实例化：PALETTE 初始空（模块求值期无注入），
+  // 断言「同模块私有状态被 setColorPalette 替换后可观察」。
+  const colors = createWaveformColors({});
+  assert.equal(colors.colorForSegment({ color: { name: 'yellow' } }), '#66727d');
   colors.setColorPalette([{ name: 'yellow', value: '#abcdef' }]);
   assert.equal(colors.colorForSegment({ color: { name: 'yellow' } }), '#abcdef');
 });

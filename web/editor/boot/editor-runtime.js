@@ -4,11 +4,11 @@
 // state. Existing window.AsrEditorUtils / window.AsrWaveform and MAWE_*
 // exports remain compatibility APIs until later refactor phases migrate their
 // consumers.
-(function (global) {
-  'use strict';
+//
+// 真 ESM：模块顶层创建并发布 MAWE（原转换体 phase-2 语义 = import 求值）。
+'use strict';
 
-  if (global.MAWE?.version === 1 && typeof global.MAWE.register === 'function') return;
-
+if (!(globalThis.MAWE?.version === 1 && typeof globalThis.MAWE.register === 'function')) {
   const factories = new Map();
 
   function moduleName(name) {
@@ -42,10 +42,10 @@
     resolve,
   });
 
-  Object.defineProperty(global, 'MAWE', {
+  Object.defineProperty(globalThis, 'MAWE', {
     configurable: false,
     enumerable: false,
     value: api,
     writable: false,
   });
-})(window);
+}

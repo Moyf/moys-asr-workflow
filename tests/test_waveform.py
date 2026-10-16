@@ -830,9 +830,9 @@ class EditorAssetTests(CompactContainerAssertions, unittest.TestCase):
         self.assertIn('function confirmTimelineFrameRemap(current, nextUnit, nextFps)', edit.read_web_asset("editor/cues/editor-timeline.js"))
         self.assertIn(
             'if (!confirmTimelineFrameRemap(current, nextUnit, nextFps)) {\n'
-            '      refreshTimelineSettingsUi();\n'
-            '      return;\n'
-            '    }',
+            '    refreshTimelineSettingsUi();\n'
+            '    return;\n'
+            '  }',
             edit.read_web_asset("editor/cues/editor-timeline.js"),
         )
         self.assertIn(
@@ -845,7 +845,7 @@ class EditorAssetTests(CompactContainerAssertions, unittest.TestCase):
             source,
         )
         self.assertIn('function syncProjectTimebaseAndBindingOffsets(', source)
-        self.assertIn('window.AsrEditorUtils.normalizeFrameItemTimingRanges(segment);', source)
+        self.assertIn('AsrEditorUtils.normalizeFrameItemTimingRanges(segment);', source)
         self.assertIn(
             'function buildJson({ forFileExport = false } = {}) {\n'
             '  MaweTimeline.syncProjectTimebaseAndBindingOffsets(MaweBoot.DATA, { preferFrames: false });',
@@ -1091,7 +1091,7 @@ class EditorAssetTests(CompactContainerAssertions, unittest.TestCase):
         self.assertIn('overlaySegments.some((segment) => segment.sticker || segment.sticker_ref)', source)
         self.assertIn('!MaweSettings.EDITOR_SETTINGS.cueListShowSticker || !projectHasStickers,', source)
         self.assertIn('rows.sort((a, b) => a.start - b.start || a.order - b.order);', source)
-        self.assertIn('overlaySegments.forEach((seg, i) => rows.push({ start: seg.start, order: 1, el: buildOverlayCueEl(seg, i) }));', source)
+        self.assertRegex(source, r'overlaySegments\.forEach\(\(seg, i\) =>.*buildOverlayCueEl\(seg, i\)')
         self.assertIn("const multiVisible = MaweMultiSubtitleCore.multiSubtitleVisible();", source)
         self.assertIn('id="multi-subtitle-toggle"', page)
         self.assertIn("cuePanelText?.addEventListener('keydown'", source)
@@ -1272,7 +1272,7 @@ class EditorAssetTests(CompactContainerAssertions, unittest.TestCase):
         self.assertIn('function isPlaybackKeyboardTarget(event)', source)
         self.assertIn('if (MaweInlineEdit.editingState || MaweKeyboardTargets.isTextEditingTarget(e)) return;', source)
         self.assertIn('let interceptedSpace = false;', source)
-        self.assertIn('e.stopImmediatePropagation();', page)
+        self.assertIn('e.stopImmediatePropagation();', source)
         self.assertIn('width: 74px; aspect-ratio: 1;', page)
         # 面板行对选中/未选中使用同一套轨道尺寸：高度只随手动拖拽变化，不再因选中跳变
         self.assertIn('minmax(max-content, calc(var(--layout-row-middle)', page)

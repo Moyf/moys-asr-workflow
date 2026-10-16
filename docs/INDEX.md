@@ -170,6 +170,16 @@
 
 [打开正文](plans/MAWE%20%E6%8E%A5%E7%BA%BF%E6%8B%86%E5%88%86%E4%B8%8E%E7%9B%AE%E5%BD%95%E5%88%86%E5%B1%82%E8%AE%A1%E5%88%92.md)
 
+<a name="plan-pr3-bootstrap-peel"></a>
+### PR3 bootstrap 摘除执行计划
+
+[打开正文](plans/PR3_BOOTSTRAP_PEEL_PLAN.md)
+
+<a name="plan-editor-esm-completion"></a>
+### 编辑器真 ESM 收口计划
+
+[打开正文](plans/EDITOR_ESM_COMPLETION_PLAN.md)
+
 <a name="engineering-project-format"></a>
 ### 工程文件格式
 

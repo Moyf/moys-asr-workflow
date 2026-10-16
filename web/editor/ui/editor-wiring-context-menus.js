@@ -1,11 +1,21 @@
+import { getOverlayTrack, convertOverlayCueToMain, deleteOverlayCues } from "../cues/editor-wiring-overlay-transfer.js";
+import { openOverlaySplitModal } from "../cues/editor-wiring-overlay-split-merge.js";
+import { clearOverlaySticker, assignOverlayColor, clearOverlayColorOnTargets } from "../cues/editor-wiring-overlay-actions.js";
 
+import { MaweCoreState } from "../state/editor-core-state.js";
+import { MaweBoot } from "../boot/editor-boot.js";
+import { MaweDom } from "./editor-dom.js";
+import { MaweSettings } from "../state/editor-settings.js";
+import { MaweCuePanel } from "../cues/editor-cue-panel.js";
+import { MaweMediaPlayback } from "../media/editor-media-playback.js";
+import { MaweTextCleanup } from "../cues/editor-text-cleanup.js";
+import { MaweStickerPicker } from "../cues/editor-sticker-picker.js";
+import { MaweColors } from "../styles/editor-colors.js";
+// 真 ESM：wiring 顶层接线（原转换体 phase-1/phase-2 = import 求值）。
+'use strict';
 
-// === 右键菜单 ===
-
-
-
-// 叠加字幕块的右键菜单：转为主字幕 / 删除。叠加轨不参与拆分合并与绑定。
-function showOverlayContextMenu(x, y, index) {
+import { MaweContextMenus } from './editor-context-menus.js';
+export function showOverlayContextMenu(x, y, index) {
   const overlay = getOverlayTrack();
   const segment = overlay?.segments?.[index];
   if (!segment) return;

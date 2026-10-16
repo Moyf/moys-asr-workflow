@@ -1,9 +1,11 @@
 import assert from 'node:assert/strict';
-import {readFileSync} from 'node:fs';
 import {test} from 'node:test';
 import vm from 'node:vm';
+import {compileEditorUnitFixture} from './helpers/editor-module-loader.mjs';
 
-const source = readFileSync(new URL('../web/editor/io/editor-project-save.js', import.meta.url), 'utf8');
+const source = compileEditorUnitFixture('editor/io/editor-project-save.js', {
+  exposeExports: ['setProjectJsonBuilder'],
+});
 
 function fixture({accept = true, failure = new TypeError('Failed to fetch'), replacement = false} = {}) {
   const calls = {build: [], posted: [], downloaded: [], errors: [], saved: 0, confirmed: 0};
@@ -35,7 +37,9 @@ function fixture({accept = true, failure = new TypeError('Failed to fetch'), rep
     }},
     MaweHint: {flashHint() {}},
   });
+  context.window = context;
   vm.runInContext(source, context);
+  context.__mawTest_setProjectJsonBuilder(context.MaweJsonRepair.buildJson);
   return {context, calls, save: options => context.MaweProjectSave.saveProjectToServer(options)};
 }
 

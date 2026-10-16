@@ -1,58 +1,29 @@
+import { lottieExportCustomSize, ografExportCustomSize } from "../ui/editor-wiring-dom-panels.js";
+
+// 真 ESM：wiring 顶层接线（原转换体 phase-1/phase-2 = import 求值）。
+'use strict';
+import { MaweStickerOtioExport } from "./editor-sticker-otio-export.js";
+import { MaweDynamicExports } from "./editor-dynamic-exports.js";
+import { MaweExportTimeline } from "./editor-export-timeline.js";
+import { MaweProjectSave } from "./editor-project-save.js";
+import { MaweDom } from "../ui/editor-dom.js";
 
 
-
-
-
-
-
-
-
-
-// === 工作区库：服务器版可把工作区（窗口布局 + 显示状态）保存到本机设置，跨工程复用 ===
-
-
-
-
-
-
-
-
-
-
-
-
-// 覆盖可能只存导航状态（后端自动创建），没有布局数据；只有含 navigation
-// 以外字段的覆盖才能作为布局来源，否则退回内置默认布局。
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-// 应用一次下拉选择：saved:* 从本机库恢复；内置 id 优先用本机覆盖版，否则用默认定义。
-// 工作区 = 窗口布局 + 显示状态，切换时同时恢复该工作区保存的显示开关。
-
-
-
-
-
-
+import { MaweHint } from "../ui/editor-hint.js";
+import { MaweCoreState } from "../state/editor-core-state.js";
+import { MaweBoot } from "../boot/editor-boot.js";
+import { MaweMultiSubtitleCore } from "../state/editor-multi-subtitle-core.js";
+import { MaweSettings } from "../state/editor-settings.js";
+import { MaweCuePanelState } from "../state/editor-cue-panel-state.js";
+import { MaweInlineEdit } from "../cues/editor-inline-edit.js";
+import { MaweCuePanel } from "../cues/editor-cue-panel.js";
+import { MaweServerSave } from "./editor-server-save.js";
+import { MaweCommands } from "../state/editor-commands.js";
+import { MaweAppearance } from "../styles/editor-appearance.js";
+import { MaweHistory } from "../state/editor-history.js";
+import { MaweSpeakerLabels } from "../styles/editor-speaker-labels.js";
+import { MaweExportSrt } from "./editor-export-srt.js";
+import { MaweJsonRepair } from "./editor-json-repair.js";
 function projectSaveFingerprint() {
   return JSON.stringify([MaweBoot.DATA.segments, MaweBoot.DATA.multi_subtitle, MaweBoot.DATA.gap_remove,
     MaweBoot.DATA.preview, MaweBoot.DATA.media_metadata, MaweHistory.gapRemoveDirty, MaweAppearance.previewGeometryDirty, MaweServerSave.projectImportDirty]);
@@ -131,12 +102,12 @@ if (MaweProjectSave.jsonNameEl && !MaweProjectSave.jsonNameEl.classList.contains
 
 
 
-document.getElementById('download-fcp7-export')?.addEventListener('click', MaweDynamicExports.openFcp7ExportModal);
+document.getElementById('download-fcp7-export')?.addEventListener('click', () => MaweDynamicExports.openFcp7ExportModal());
 MaweDom.fcp7ExportNativeText?.addEventListener('change', () => {
   // 「导出字幕轨」只在写入原生文本时参与计划构建，未勾选时禁用以免造成可用的假象。
   MaweDom.fcp7ExportSubtitleTracks.disabled = !MaweDom.fcp7ExportNativeText.checked;
 });
-MaweDom.fcp7ExportCancel?.addEventListener('click', MaweDynamicExports.closeFcp7ExportModal);
+MaweDom.fcp7ExportCancel?.addEventListener('click', () => MaweDynamicExports.closeFcp7ExportModal());
 MaweDom.fcp7ExportConfirm?.addEventListener('click', () => { void MaweDynamicExports.exportFcp7Xml(); });
 MaweDom.fcp7ExportModal?.addEventListener('click', (event) => {
   if (event.target === MaweDom.fcp7ExportModal) MaweDynamicExports.closeFcp7ExportModal();
@@ -160,7 +131,7 @@ const DYNAMIC_EXPORT_CUSTOM_SIZE_LIMITS = { min: 16, max: 7680 };
 
 // 打开弹窗时让「合成尺寸」自动匹配工程媒体元数据（schema §1.1 的成对宽高）；
 // 命中预设选项就选中，否则落到自定义并预填媒体尺寸；没有元数据时保持现状。
-function applyMediaSizeToResolutionModal(select, customRow, widthInput, heightInput) {
+export function applyMediaSizeToResolutionModal(select, customRow, widthInput, heightInput) {
   if (!select) return;
   const size = window.AsrEditorUtils?.exportVideoSize?.(MaweBoot.DATA) || null;
   if (size && widthInput && heightInput) {
@@ -176,7 +147,7 @@ function applyMediaSizeToResolutionModal(select, customRow, widthInput, heightIn
   if (customRow) customRow.hidden = select.value !== 'custom';
 }
 
-function dynamicExportCanvasSize(select, widthInput, heightInput) {
+export function dynamicExportCanvasSize(select, widthInput, heightInput) {
   if (select?.value !== 'custom') {
     const match = /^(\d+)x(\d+)$/u.exec(select?.value || '');
     if (!match) return { width: 1920, height: 1080 };
@@ -206,9 +177,9 @@ function bindResolutionCustomSizeToggle(select, customRow) {
 
 
 
-document.getElementById('download-lottie')?.addEventListener('click', MaweDynamicExports.openLottieExportModal);
+document.getElementById('download-lottie')?.addEventListener('click', () => MaweDynamicExports.openLottieExportModal());
 bindResolutionCustomSizeToggle(MaweDom.lottieExportResolution, lottieExportCustomSize);
-MaweDom.lottieExportCancel?.addEventListener('click', MaweDynamicExports.closeLottieExportModal);
+MaweDom.lottieExportCancel?.addEventListener('click', () => MaweDynamicExports.closeLottieExportModal());
 MaweDom.lottieExportConfirm?.addEventListener('click', () => { void MaweDynamicExports.exportLottieDynamicCaptions(); });
 MaweDom.lottieExportModal?.addEventListener('click', (event) => {
   if (event.target === MaweDom.lottieExportModal) MaweDynamicExports.closeLottieExportModal();
@@ -234,9 +205,9 @@ document.addEventListener('keydown', (event) => {
 
 
 
-document.getElementById('download-ograf')?.addEventListener('click', MaweDynamicExports.openOgrafExportModal);
+document.getElementById('download-ograf')?.addEventListener('click', () => MaweDynamicExports.openOgrafExportModal());
 bindResolutionCustomSizeToggle(MaweDom.ografExportResolution, ografExportCustomSize);
-MaweDom.ografExportCancel?.addEventListener('click', MaweDynamicExports.closeOgrafExportModal);
+MaweDom.ografExportCancel?.addEventListener('click', () => MaweDynamicExports.closeOgrafExportModal());
 MaweDom.ografExportConfirm?.addEventListener('click', () => { void MaweDynamicExports.exportOgrafDynamicCaptions(); });
 MaweDom.ografExportModal?.addEventListener('click', (event) => {
   if (event.target === MaweDom.ografExportModal) MaweDynamicExports.closeOgrafExportModal();
@@ -475,9 +446,9 @@ document.getElementById('download-gap-removed-video')?.addEventListener('click',
   const currentAudioTrack = () => {
     const metadata = MaweBoot.DATA?.media_metadata;
     if (metadata && typeof metadata === 'object') {
-      if (Number.isInteger(metadata.selected_audio_track) && metadata.selected_audio_track >= 0) return metadata.selected_audio_track;
+      if (typeof metadata.selected_audio_track === 'number' && Number.isInteger(metadata.selected_audio_track) && metadata.selected_audio_track >= 0) return metadata.selected_audio_track;
       const track = metadata.audio_tracks?.find?.(entry => entry?.default === true
-        && Number.isInteger(entry.audio_index) && entry.audio_index >= 0);
+        && typeof entry.audio_index === 'number' && Number.isInteger(entry.audio_index) && entry.audio_index >= 0);
       return track?.audio_index ?? 0;
     }
     return Number.isInteger(config.gapRemovedMediaAudioTrack) && config.gapRemovedMediaAudioTrack >= 0
@@ -881,7 +852,11 @@ MaweExportTimeline.otioExportOptionInputs.forEach((input) => {
 MaweExportTimeline.syncOtioExportOptionInputs();
 
 // 初始按服务器模式刷新表情包 OTIOZ 导出按钮的可用性
-MaweExportTimeline.updateStickerExportButtons();
-MaweExportTimeline.updateTimelineOtiozExportButtons();
-MaweDynamicExports.updateLottieExportButton();
-MaweDynamicExports.updateOgrafExportButton();
+// 循环 import（dynamic-exports ↔ 本文件）下，顶层立即调用会
+// 在对方门面初始化前执行；microtask 推迟到全部模块求值后。
+queueMicrotask(() => {
+  MaweExportTimeline.updateStickerExportButtons();
+  MaweExportTimeline.updateTimelineOtiozExportButtons();
+  MaweDynamicExports.updateLottieExportButton();
+  MaweDynamicExports.updateOgrafExportButton();
+});

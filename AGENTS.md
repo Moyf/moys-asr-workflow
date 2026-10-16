@@ -34,13 +34,12 @@ maw_gui.py + maw/cli.py        # 公开 CLI 与命令分派（指南见 docs/use
 generate_subtitle_qwen_api.py # API 转写入口
 edit.py + maw/waveform.py     # 单文件编辑器生成和波形缓存
 server-editor/serve.py        # 推荐的 localhost 编辑器
-web/editor-scripts.txt        # 编辑器源码装配顺序
-web/editor/ + web/shared/     # 编辑器领域模块与共享能力
+web/editor/ + web/shared/     # 编辑器领域模块与共享能力（文件集目录推导）
 web/launcher/                # Launcher 前端
 docs/user/LOCAL_ASR.md             # 实验性本地 Qwen3-ASR / FunASR CLI
 ```
 
-`web/` 是唯一前端源码。61 个工厂使用 ESM，其余接线保留 classic 共享作用域；`pnpm run build:editor` 由 esbuild 装配完整 `web/editor/boot/editor-bundle.js`。**bundle 是构建产物，不进 Git**：发布包内置构建好的产物，运行时不需要 Node；从源码运行时 serve.py / maw_gui.py / `edit.py --blank` 会在产物缺失或过期时自动重建（需要 Node 与 `pnpm install`），`pnpm install` 的 postinstall 也会构建一次。修改编辑器 JS 或清单后必须重建（watch:editor 或手动），并运行 `pnpm run check:editor` 验证新鲜度。CSS 与 HTML 模板仍在渲染时读取。
+`web/` 是唯一前端源码。编辑器源码全部是普通 ESM：文件间依赖经静态 import 表达，执行顺序由 esbuild 的 import 图决定（曾经的登记表 `web/editor-modules.json` 与 `MAWE.register/resolve`、`legacyBindings`、window 门面依赖通道已退役）。`pnpm run build:editor` 由 esbuild 装配完整 `web/editor/boot/editor-bundle.js`。**bundle 是构建产物，不进 Git**：发布包内置构建好的产物，运行时不需要 Node；从源码运行时 serve.py / maw_gui.py / `edit.py --blank` 会在产物缺失或过期时自动重建（需要 Node 与 `pnpm install`），`pnpm install` 的 postinstall 也会构建一次。修改编辑器源码或构建器后必须重建（watch:editor 或手动），并运行 `pnpm run check:editor` 验证新鲜度。CSS 与 HTML 模板仍在渲染时读取。
 
 Launcher 前端走同一套装配模式：源码按 `web/launcher-scripts.txt` 清单原序列为 classic 模块（由 `scripts/refactor-tools/split-launcher.mjs` 自旧单文件 launcher.js 机械切割而来，等价审计内建于该工具），`pnpm run build:launcher` 装配 `web/launcher/boot/launcher-bundle.js`；修改 Launcher JS 或清单后必须重建（bundle 与 `.meta.json` 不进 Git，maw_gui.py 启动时会自动重建过期产物），运行 `pnpm run check:launcher`。`batch.js` / `postprocess.js` 仍是 bundle 外的独立脚本，经 `window.MAWLauncher` 桥访问主脚本。
 
@@ -64,16 +63,14 @@ uv sync
 pnpm install --frozen-lockfile
 pnpm run check:editor
 pnpm run typecheck
-node --test tests\test_editor_script_syntax.mjs tests\test_editor_script_order.mjs
+node --test tests\test_editor_script_syntax.mjs tests\test_assembly_contracts.mjs tests\test_editor_bundle.mjs
 node --test tests\test_editor_utils.mjs tests\test_waveform_js.mjs
 uv run python scripts/run_tests.py
 git diff --check
 ```
 
 `web/editor/boot/editor.js` 是加载守卫入口；连续接线位于各领域的
-`editor-wiring-*.js` 中，构建器按 `web/editor-scripts.txt` 原序执行接线与工厂注册。
-`web/editor-modules.json` 明确列出 ESM 工厂与仍需保留的外部桥。工厂只导出函数，不在模块求值时注册；依赖袋继续由门面注入。
-新增业务逻辑写入所属领域模块，避免再扩大入口。目录位置不决定执行顺序。
+`editor-wiring-*.js` 中。源文件集合由构建器从 `web/editor` + `web/shared` 目录推导并经静态 import 图装配；编辑器内部依赖不再走 `MAWE.register/resolve`、`legacyBindings` 或裸 window 门面（登记表 `web/editor-modules.json` 已随之退役）。确有页面、e2e 或 Launcher 外部消费者的 window API 保留：`MAWE_EDITOR_BRIDGE`（startup 发布，6 个 e2e spec 消费）、`MAWE_ONBOARDING`（onboarding 惰性 getter）、`MaweTooltip`（Launcher 经 shared/tooltip 消费）等，由各自明确入口发布。新增业务逻辑写入所属领域模块，避免再扩大入口。目录位置不决定执行顺序。
 
 ### Agent 命令执行：避免 uv 超时卡住
 
@@ -95,7 +92,7 @@ git diff --check
 - 新 worktree 先检查现有环境：锁文件一致时可只读复用主仓库 Python venv，显式设置 `MAW_TEST_PYTHON`（Node 跨语言测试）和 `MAW_E2E_PYTHON`（e2e）；不在共享 venv 上同步不同依赖。Node 在当前 worktree 按锁文件安装一次，e2e 还需浏览器。依赖缺失只记录一次并修复对应层，禁止为同一失败循环重建环境；e2e / Node 的 uv 默认路径使用 `--no-sync`。
 - PowerShell 内联脚本（`node -e "..."`、多层嵌套引号）极易解析失败；复杂逻辑写成临时脚本文件再执行。命令输出为空时，先怀疑参数与引号，而不是重跑同一命令。
 
-自动化测试覆盖数据处理和服务器契约，不能替代真实浏览器中的拖动、播放、Seek 和布局体验。涉及编辑器交互的改动，应至少手动启动：
+自动化测试覆盖数据处理和服务器契约，不能替代真实浏览器中的拖动、播放、Seek 和布局体验。改变编辑器交互行为时，应至少手动启动并体验相关路径；纯装配迁移仍须按迁移计划运行真实页面行为契约，不要求每个内部批次重复人工体验：
 
 ```powershell
 uv run python server-editor\serve.py --blank
@@ -149,10 +146,10 @@ node scripts\build-editor.mjs --write   # 重建（--check 只校验新鲜度；
 
 ### 中断或上下文压缩后的恢复顺序
 
-恢复大型任务时，先执行并阅读：
+恢复大型任务时，先阅读本任务账本（编辑器 ESM 迁移见
+`docs/logs/unversioned/2026-10-13/esm-migration/PR3-STATUS.md`），再执行：
 
 ```powershell
-Get-Content -Raw docs\logs\1.4.0-beta.7\undated\TEST_FEEDBACK_BETA7.md
 git status --short
 git diff --stat
 git diff --name-status
@@ -170,6 +167,8 @@ git diff --name-status
 
 完成一批功能开发 / 反馈修复（多条目、需要维护者实测确认）后，编写一份 Markdown
 核对清单交给维护者，而不是在对话里罗列长清单。**agents 只写 Markdown，不手写 HTML**：
+纯内部装配或类型重构若没有待维护者手动验收的 UI 行为，不触发此清单；
+仍需记录自动化与真实页面验证结果。
 
 1. 编写 `<主题>.checklist.md`（语法契约见 `tools/verification-checklist/README.md`
    「Markdown 源格式（v1）」，可用 skill `verification-checklist`）：YAML front-matter

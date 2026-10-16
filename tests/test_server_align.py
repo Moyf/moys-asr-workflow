@@ -132,7 +132,7 @@ class ServerAlignTests(CompactContainerAssertions, unittest.TestCase):
     def test_rendered_page_inlines_gap_core_and_playback_contract(self) -> None:
         page = SERVER.render_page().decode("utf-8")
         self.assertNotIn("/* __GAP_REMOVE_CORE_JS__ */", page)
-        self.assertIn("global.AsrGapRemoveCore = Object.freeze({", page)
+        self.assertIn("window.AsrGapRemoveCore = Object.freeze({", page)
         self.assertIn("function visibleGapEntries()", page)
         self.assertIn("const source = Array.isArray(gapRemoveConfig?.gaps)", page)
         self.assertIn("const GAP_DISPLAY_LABELS = Object.freeze({", page)

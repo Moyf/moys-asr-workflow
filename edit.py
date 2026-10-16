@@ -191,7 +191,33 @@ def scan_stickers(dir_path: Path, max_depth: int = 3, max_items: int = 500) -> t
 
 
 WEB_DIR = Path(__file__).parent / "web"
-EDITOR_SCRIPT_MANIFEST = "editor-scripts.txt"
+
+
+def _editor_source_files() -> tuple[str, ...]:
+    """与 scripts/build-editor.mjs deriveSources 同口径：web/editor 与
+    web/shared 下的编辑器 .js（排除 bundle 及独立核对页脚本），排序保证确定性。
+
+    清单 editor-scripts.txt 已退役（批 4）：源文件集合从目录推导，
+    装配次序由 ESM import 图决定。
+    """
+    collected: list[str] = []
+    for base in ("editor", "shared"):
+        for path_in_base in (WEB_DIR / base).rglob("*.js"):
+            relative = path_in_base.relative_to(WEB_DIR).as_posix()
+            if (relative.startswith("shared/templates/") or relative.endswith(".bundle.js")
+                    or relative == "editor/boot/editor-bundle.js"):
+                continue
+            collected.append(relative)
+    # 按完整相对路径字符串排序：Path 对象按分段比较（'waveform'
+    # < 'waveform.js'），与 node 侧 deriveSources 的全串排序不一致。
+    collected.sort()
+    if not collected:
+        raise ValueError("Editor source set is empty")
+    return tuple(collected)
+
+
+# 兼容名：历史 needle 测试以清单名取源；清单退役后返回推导集合。
+read_editor_script_manifest = _editor_source_files
 
 
 def ninja_sfx_base_url(output_path: Path) -> str:
@@ -210,34 +236,6 @@ def ninja_sfx_base_url(output_path: Path) -> str:
 def read_web_asset(name: str) -> str:
     """Read a source web asset that will be inlined into generated HTML."""
     return (WEB_DIR / name).read_text(encoding="utf-8")
-
-
-def read_editor_script_manifest() -> tuple[str, ...]:
-    """Read and validate the ordered list of scripts in the editor page."""
-    entries: list[str] = []
-    for line_number, raw_line in enumerate(read_web_asset(EDITOR_SCRIPT_MANIFEST).splitlines(), start=1):
-        entry = raw_line.split("#", 1)[0].strip()
-        if not entry:
-            continue
-        parts = entry.split("/")
-        if (
-            "\\" in entry
-            or ":" in entry
-            or any(part in {"", ".", ".."} for part in parts)
-            or not entry.endswith(".js")
-        ):
-            raise ValueError(f"Invalid editor script manifest entry at line {line_number}: {entry!r}")
-        if entry in entries:
-            raise ValueError(f"Duplicate editor script manifest entry at line {line_number}: {entry!r}")
-        path = WEB_DIR.joinpath(*parts)
-        if not path.resolve().is_relative_to(WEB_DIR.resolve()):
-            raise ValueError(f"Editor script manifest entry escapes web directory: {entry!r}")
-        if not path.is_file():
-            raise ValueError(f"Editor script manifest entry does not exist: {entry!r}")
-        entries.append(entry)
-    if not entries:
-        raise ValueError("Editor script manifest is empty")
-    return tuple(entries)
 
 
 def build_editor_scripts() -> str:

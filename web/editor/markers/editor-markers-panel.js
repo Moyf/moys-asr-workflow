@@ -1,11 +1,19 @@
-// 「标记与区段」管理窗：搜索、过滤、定位试听与逐项编辑。
-// 列表与编辑卡片全部由本模块渲染（textContent 组装，不拼 HTML 字符串）；
-// 数据变更一律经 MaweMarkerEditing，撤销/重做、保存脏标记与波形轨道刷新
-// 都由那一层统一处理，这里只负责展示与输入采集。
-(function initMaweMarkersPanel(global) {
-  'use strict';
 
-  // 管理窗私有 UI 状态：过滤条件、选中高亮项与展开编辑项（不进工程数据）。
+import { MaweGapRemoveUi } from "../ui/editor-gap-remove-ui.js";
+import { MaweMarkerEditing } from "./editor-marker-editing.js";// 真 ESM：模块顶层定义与发布（原转换体 phase-2 语义 = import 求值）。
+// window.<Name> 与导出的 <Name> 是同一对象；消费者逐簇改 import 后移除 window 发布。
+'use strict';
+
+// 顶层立即读 MaweDom（DOM 门面在 deferred phase-2 发布）——
+// 安装改为惰性：首次读 window.MaweMarkersPanel 时执行主体。
+// 装后读取返回已发布面板；安装中途重入返回 null（消费方走可选链）。
+let MaweMarkersPanel = null;
+let installed = false;
+
+import { MaweHint } from "../ui/editor-hint.js";
+import { MaweDom } from "../ui/editor-dom.js";function installPanel() {
+  if (installed) return MaweMarkersPanel;
+  installed = true;
   const filter = { query: '', kind: 'all', color: 'all', review: 'all' };
   let selectedMarkerId = null;
   let editingMarkerId = null;
@@ -41,7 +49,6 @@
     return window.AsrEditorUtils;
   }
 
-
   function formatMarkerTime(ms) {
     const value = Math.max(0, Math.round(Number(ms) || 0));
     const totalSeconds = Math.floor(value / 1000);
@@ -56,7 +63,6 @@
     return `${base}.${pad(milliseconds, 3)}`;
   }
 
-
   function currentFilter() {
     return {
       query: filter.query.trim(),
@@ -66,11 +72,9 @@
     };
   }
 
-
   function filteredMarkers() {
     return markerUtils().filterMarkers(MaweMarkerEditing.getMarkers(), currentFilter());
   }
-
 
   // 搜索词按字面匹配；名称与备注仍由文本节点渲染，不将工程内容解析为 HTML。
   function appendSearchHighlightedText(container, value) {
@@ -92,7 +96,6 @@
     }
     container.appendChild(document.createTextNode(text.slice(cursor)));
   }
-
 
   // 颜色过滤下拉：按当前工程中出现的颜色去重；保留已选值（颜色消失时回退 all）。
   function syncColorFilterOptions(markers) {
@@ -121,7 +124,6 @@
     colorFilterSynced = true;
   }
 
-
   // 摘要行：无过滤时显示全部统计；有过滤时左侧更新为过滤结果。
   function renderSummary(markers, visible) {
     if (!MaweDom.markersSummary) return;
@@ -142,7 +144,6 @@
     MaweDom.markersSummary.textContent = parts.join('；');
   }
 
-
   function buildReviewBadge(marker) {
     if (marker.review?.status !== 'pending' && marker.review?.status !== 'confirmed') return null;
     const badge = document.createElement('span');
@@ -154,7 +155,6 @@
     }
     return badge;
   }
-
 
   function isAiCleanupReviewMarker(marker) {
     if (typeof marker?.id !== 'string') return false;
@@ -169,14 +169,12 @@
       && hasReviewState;
   }
 
-
   function isAiCleanupReviewMuted(markerId) {
     const source = MaweGapRemoveData.getGapRemoveData(false)?.provenance?.sources?.ai_cleanup_review;
     return Array.isArray(source) && source.some((range) => (
       (range.review_marker_id || range.id) === markerId
     ));
   }
-
 
   function aiCleanupReviewMuteState(markerId, marker = MaweMarkerEditing.findMarker(markerId)) {
     const state = MaweGapRemoveData.getGapRemoveData(false);
@@ -223,7 +221,6 @@
     };
   }
 
-
   function updateAiCleanupReviewMuteButton(button, markerId) {
     if (!button) return;
     button.hidden = !isAiCleanupReviewMarker(MaweMarkerEditing.findMarker(markerId));
@@ -266,7 +263,6 @@
     return button;
   }
 
-
   function updateAiCleanupReviewStatusButton(button, marker) {
     if (!button || !marker) return;
     const status = aiCleanupReviewMuteState(marker.id);
@@ -292,21 +288,19 @@
     }
   }
 
-
   function refreshAiCleanupReviewMuteButtons() {
     const list = MaweDom.markersList;
     if (list) {
-      list.querySelectorAll('[data-ai-cleanup-review-mute]').forEach((button) => {
-        updateAiCleanupReviewMuteButton(button, button.dataset.aiCleanupReviewMute);
-      });
-      list.querySelectorAll('[data-ai-cleanup-review-status]').forEach((button) => {
-        const marker = MaweMarkerEditing.findMarker(button.dataset.aiCleanupReviewStatus);
-        updateAiCleanupReviewStatusButton(button, marker);
-      });
+    list.querySelectorAll('[data-ai-cleanup-review-mute]').forEach((button) => {
+      updateAiCleanupReviewMuteButton(button, button.dataset.aiCleanupReviewMute);
+    });
+    list.querySelectorAll('[data-ai-cleanup-review-status]').forEach((button) => {
+      const marker = MaweMarkerEditing.findMarker(button.dataset.aiCleanupReviewStatus);
+      updateAiCleanupReviewStatusButton(button, marker);
+    });
     }
     MaweCoreState.waveformEditor?.syncMarkerQuickEdit?.();
   }
-
 
   // 编辑卡片：仅选中项展开。所有输入只在 change 时提交，避免高频重渲染打断输入。
   function buildMarkerEditor(marker) {
@@ -525,7 +519,6 @@
     return editor;
   }
 
-
   // 「完成」收尾：把尚未触发 change 的已改输入先提交（pointerdown 阻止了
   // 焦点转移，blur→change 不会发生）。只派发值有变化的控件，避免同值提交
   // 污染撤销历史。
@@ -537,7 +530,6 @@
       control.dispatchEvent(new Event('change'));
     });
   }
-
 
   function buildMarkerItem(marker) {
     const utils = markerUtils();
@@ -648,7 +640,6 @@
     return item;
   }
 
-
   function render() {
     if (!MaweDom.markersList) return;
     const markers = MaweMarkerEditing.getMarkers();
@@ -691,9 +682,8 @@
     list.scrollTop = scrollTop;
   }
 
-
   // 工具窗控制器：复用浮动面板工厂（层级栈、拖动、位置持久化、Esc、工具栏按钮 active 态）。
-  const panelController = global.MaweFloatingPanel?.createFloatingPanel?.({
+  const panelController = window.MaweFloatingPanel?.createFloatingPanel?.({
     panel: MaweDom.markersPanel,
     dragHandle: MaweDom.markersDragHandle,
     manageButton: MaweDom.markersManageButton,
@@ -726,7 +716,6 @@
     openPanel();
     MaweMarkerEditing.locateMarker(markerId);
   }
-
 
   // 输入与过滤控件：change/input 即时生效（过滤不进工程数据，不推撤销）。
   MaweDom.markersSearchInput?.addEventListener('input', () => {
@@ -770,7 +759,7 @@
     render();
   });
 
-  global.MaweMarkersPanel = Object.freeze({
+  MaweMarkersPanel = Object.freeze({
     render,
     openPanel,
     closePanel,
@@ -785,4 +774,13 @@
     getSelectedMarkerId: () => selectedMarkerId,
   });
   document.addEventListener('mawe:languagechange', refreshAiCleanupReviewMuteButtons);
-})(typeof window !== 'undefined' ? window : globalThis);
+
+  return MaweMarkersPanel;
+}
+
+Object.defineProperty(window, 'MaweMarkersPanel', {
+  configurable: true,
+  get: () => installPanel(),
+});
+
+export { installPanel as installMarkersPanel };

@@ -1,34 +1,21 @@
+import { MULTI_SUBTITLE_UTILS, SPLIT_ALIGNMENT_DRIFT_WARN_MS } from "../boot/editor.js";
+import { getOverlayTrack } from "./editor-wiring-overlay-transfer.js";
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-// === 拆分 ===
-
-
-
-
-
-
-
+import { MaweHint } from "../ui/editor-hint.js";
+import { MaweCoreState } from "../state/editor-core-state.js";
+import { MaweBoot } from "../boot/editor-boot.js";
+import { MaweDom } from "../ui/editor-dom.js";
+import { MaweMultiSubtitleCore } from "../state/editor-multi-subtitle-core.js";
+import { MaweSelection } from "./editor-selection.js";
+import { MaweCuePanel } from "./editor-cue-panel.js";
+import { MaweCommands } from "../state/editor-commands.js";
+import { MaweSplitCore } from "./editor-split-core.js";
+import { MaweViewUpdates } from "../state/editor-view-updates.js";
+import { MaweCueListAnchor } from "./editor-cue-list-anchor.js";
+import { MaweNinja } from "../ui/editor-ninja.js";
+// 真 ESM：wiring 顶层接线（原转换体 phase-1/phase-2 = import 求值）。
+'use strict';
+export { fallbackSplitOffset, splitOffsetNearTimeForModal, splitOffsetNearTextPositionForModal, flashSplitAlignmentHint, assessSplitAlignment, splitStateTrack, duplicateSplitTimingIsValid, openOverlaySplitModal, commitOverlaySplit, mergeOverlaySegments };
 
 function fallbackSplitOffset(text, requestedOffset = null) {
   const length = String(text || '').length;
@@ -396,40 +383,8 @@ function mergeOverlaySegments(idxs) {
   });
 }
 
-
-
-
-
-// === 拼合字幕 ===
-// 把工具窗参数同步到控件；「合并短句」关闭时禁用短句相关参数。
-
-
-
-
-// 一键处理整段工程：相邻间隔不超过 autoMergeGapMs 时按吸附方向拼接；
-// 过短的字幕（中文 < N 字 / 英文 < N 词）按吸收方向并入相邻字幕。
-
-
-// 「拼合字幕」的自动延展直接修改主轨边界，不能绕过普通时间编辑使用的
-// 绑定同步路径。每个 snap 单独记录旧边界，确保连续间隔同时调整时，副字幕
-// 仍按对应的 start/end offset 跟随；Alt 独立拖动不会进入这里。
-
-
-// === 组拆分 helper（删除 / 清除颜色 / 清除表情包 通用）===
-// cutSet: Set<number> 包含被"切开"的 idx；这些 idx 的 head/ref 字段都会被清空，
-//         同时把它们所在 group 的成员从切点处拆开，切点之后的部分重新组队，
-//         首条升级为新 head，后续 ref 指向它。
-//   - 删除场景：cutSet = 被物理删除的 idx；切完后由调用方负责 splice
-//   - 清除场景：cutSet = 被清除 group 字段的 idx；调用方不删除字幕本身
-
-
-// === 删除 ===
-// 删除一组 idx，并智能维持 head/ref 链（"组拆分"语义）：
-//   核心规则：被删的任一 idx 都会把它所属的 group 拆成"前段"和"后段"
-//     - 前段（idx < 被删 idx 且原本同组）：保留原 head；head 的 .end 收缩到
-//       前段最后一个存活的 ref/head 的 .end
-//     - 后段（idx > 被删 idx 且原本同组）：第一个存活 ref 晋升为新 head，
-//       后续同组 ref 改指向它
-//   当被删的是 head：前段为空，整段后段重组（与之前的"head 晋升"语义吻合）
-//   当被删的是 ref：head 仍是 head，但 group 被切成两块——这是用户原话
-//     "删除中间的 3 → 4 变 head，5 改 ref→4"
+// e2e 探针入口（tests/e2e/overlay-track 裸名驱动叠加拆分弹窗；页面代码走
+// 具名 import）。
+Object.defineProperty(window, 'openOverlaySplitModal', {
+  configurable: true, get: () => openOverlaySplitModal,
+});

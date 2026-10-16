@@ -1,3 +1,39 @@
+
+import { MaweAddCue } from "./editor-add-cue.js";
+import { MaweSplitContext } from "./editor-split-context.js";
+import { MaweMergeAdjacent } from "./editor-merge-adjacent.js";
+import { MaweBindingAlign } from "./editor-binding-align.js";
+import { MaweNinja } from "../ui/editor-ninja.js";
+import { MaweFloatingPanel } from "../ui/editor-floating-panel.js";
+import { MaweKeyboardTargets } from "./editor-keyboard-targets.js";
+import { MaweShortcuts } from "./editor-shortcuts.js";
+import { MaweContextMenus } from "../ui/editor-context-menus.js";
+import { MaweNavPreview } from "./editor-nav-preview.js";
+import { MaweColors } from "../styles/editor-colors.js";
+import { MaweCueListAnchor } from "./editor-cue-list-anchor.js";
+import { MaweStickerPicker } from "./editor-sticker-picker.js";
+import { MaweTextCleanup } from "./editor-text-cleanup.js";
+import { MaweMediaPlayback } from "../media/editor-media-playback.js";
+import { MaweSplitCore } from "./editor-split-core.js";
+import { MaweSegmentOps } from "./editor-segment-ops.js";
+import { MaweJklPlayback } from "../media/editor-jkl.js";
+import { MaweHistory } from "../state/editor-history.js";
+import { MaweHint } from "../ui/editor-hint.js";
+import { MaweCoreState } from "../state/editor-core-state.js";
+import { MaweBoot } from "../boot/editor-boot.js";
+import { MaweDom } from "../ui/editor-dom.js";
+import { MaweMultiSubtitleCore } from "../state/editor-multi-subtitle-core.js";
+import { MaweSelection } from "./editor-selection.js";
+import { MaweSettings } from "../state/editor-settings.js";
+import { MaweCuePanelState } from "../state/editor-cue-panel-state.js";
+import { MaweInlineEdit } from "./editor-inline-edit.js";
+import { MaweCuePanel } from "./editor-cue-panel.js";
+import { MaweTimeline } from "./editor-timeline.js";
+import { MawePlaybackLoop } from "../media/editor-playback-loop.js";import { clearOverlayColorOnTargets, assignOverlayColor, mergeOverlayCues } from "./editor-wiring-overlay-actions.js";
+import { deleteOverlayCues } from "./editor-wiring-overlay-transfer.js";
+
+// 真 ESM：wiring 顶层接线（原转换体 phase-1/phase-2 = import 求值）。
+'use strict';
 document.addEventListener('click', (event) => {
   if (event.detail === 0) return;
   const target = event.target instanceof Element ? event.target : null;

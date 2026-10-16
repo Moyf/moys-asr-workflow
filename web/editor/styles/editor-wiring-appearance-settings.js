@@ -1,3 +1,18 @@
+
+import { MaweAppearanceInputs } from "./editor-appearance-inputs.js";
+import { MaweSettingsPanels } from "../ui/editor-settings-panels.js";
+import { MawePreviewGeometry } from "../media/editor-preview-geometry.js";
+import { MaweSpeakerLabels } from "./editor-speaker-labels.js";
+import { MaweAppearance } from "./editor-appearance.js";
+import { MaweHistory } from "../state/editor-history.js";
+import { MaweHint } from "../ui/editor-hint.js";
+import { MaweSettings } from "../state/editor-settings.js";
+import { MawePlaybackLoop } from "../media/editor-playback-loop.js";import { subtitleFontFamilyInput, assColorStyleSelect, subtitleColorAssModeHintLink, assColorSpeakerExportLink } from "../ui/editor-wiring-dom-panels.js";
+
+// 真 ESM：wiring 顶层接线（原转换体 phase-1/phase-2 = import 求值）。
+'use strict';
+import { MaweColors } from "./editor-colors.js";
+import { MaweDom } from "../ui/editor-dom.js";
 MaweDom.subtitleFontSizeSelect?.addEventListener('change', () => {
   const value = MaweDom.subtitleFontSizeSelect.value;
   MaweHistory.pushPreviewUndo('调整字幕字号', MaweHistory.snapshotPreviewState());

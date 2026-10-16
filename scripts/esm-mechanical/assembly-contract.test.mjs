@@ -91,12 +91,23 @@ test('E5: invalid ESM exports and absent inputs are build failures', async () =>
       + before + '\nwindow.__missingExportCanary = definitelyMissingExport;\n');
     await assert.rejects(buildEditor(root), /No matching export/);
   } finally { fs.writeFileSync(sourcePath, before); }
-  const manifestPath = path.join(root, 'web/editor-sources.txt');
-  const manifest = fs.readFileSync(manifestPath, 'utf8');
+  // 清单退役后「缺失输入」不可构造（集合来自磁盘）；改为断言
+  // 集合确定性：deriveSources 两次一致，且磁盘新增文件会进入集合
+  // （set-driven 行为证据，配合 e2e O5b 金丝雀）。
+  const { deriveSources } = await import(pathToFileURL(path.join(here, '../../scripts/build-editor.mjs')).href);
+  const first = deriveSources(root);
+  assert.deepEqual(deriveSources(root), first, 'derived source set must be deterministic');
+  assert.ok(first.length > 100, 'derived set should cover the editor sources');
+  const stray = path.join(root, 'web/editor/boot/zz-stray-canary.js');
+  fs.writeFileSync(stray, '// E5 canary\n');
   try {
-    fs.writeFileSync(manifestPath, manifest + '\nmissing-input.js\n');
-    await assert.rejects(buildEditor(root), /missing-input|Could not resolve|ENOENT/);
-  } finally { fs.writeFileSync(manifestPath, manifest); }
+    const second = deriveSources(root);
+    assert.ok(second.includes('editor/boot/zz-stray-canary.js'), 'stray file joins the derived set');
+    // 形态门：既非登记工厂也无 initialize 的文件必须构建失败，
+    // 不得静默跳过 import、只进 sourceFiles/trace（漏装伪装成已装配）。
+    await assert.rejects(buildEditor(root),
+      /neither a registered factory nor a classic converter/);
+  } finally { fs.rmSync(stray, { force: true }); }
 });
 
 test('E6: real file and localhost pages satisfy behavioral probes', async () => {
@@ -117,12 +128,17 @@ test('E8: live cross-file writes retain postfix, const and shadowing semantics',
   assert.ok(fs.existsSync(codemodPath), 'E8: full source codemod is absent');
   const { convertAll } = await import(pathToFileURL(codemodPath).href);
   const fixture = path.join(root, 'live-binding-probe');
-  fs.mkdirSync(path.join(fixture, 'web'), { recursive: true });
+  fs.mkdirSync(path.join(fixture, 'web/editor'), { recursive: true });
   fs.writeFileSync(path.join(fixture, '.esm-mechanical-sandbox.json'), '{"purpose":"esm-mechanical-research"}\n');
-  fs.writeFileSync(path.join(fixture, 'web/editor-scripts.txt'), 'owner.js\nconsumer.js\n');
-  fs.writeFileSync(path.join(fixture, 'web/owner.js'),
+  fs.writeFileSync(path.join(fixture, 'web/editor-scripts.txt'), 'editor/owner.js\neditor/consumer.js\n');
+  // deriveSources 按字母序产出（consumer 在前）；phase-2 语义靠
+  // 登记表 bootstrap 显式序（owner 先发布 counter，consumer 再写）。
+  fs.writeFileSync(path.join(fixture, 'web/editor-modules.json'),
+    '{"format":1,"modules":[],"externalBridges":[],'
+    + '"bootstrap":["editor/owner.js","editor/consumer.js"]}');
+  fs.writeFileSync(path.join(fixture, 'web/editor/owner.js'),
     'let counter=1; const fixed=7; function current(){return counter;} window.readCounter=current;\n');
-  fs.writeFileSync(path.join(fixture, 'web/consumer.js'),
+  fs.writeFileSync(path.join(fixture, 'web/editor/consumer.js'),
     'window.postfix=counter++; window.snapshot={counter}; counter+=3; '
     + 'window.shadow=(function(counter){return ++counter;})(40); '
     + 'try { fixed++; } catch(error){ window.constError=error.name; }\n');
@@ -141,13 +157,16 @@ test('E9: forward function/var hoisting and lexical TDZ retain classic semantics
   const { buildEditor } = await api();
   const { convertAll } = await import(pathToFileURL(path.join(here, 'full-convert.mjs')).href);
   const fixture = path.join(root, 'hoisting-probe');
-  fs.mkdirSync(path.join(fixture, 'web'), { recursive: true });
+  fs.mkdirSync(path.join(fixture, 'web/editor'), { recursive: true });
   fs.writeFileSync(path.join(fixture, '.esm-mechanical-sandbox.json'), '{"purpose":"esm-mechanical-research"}\n');
-  fs.writeFileSync(path.join(fixture, 'web/editor-scripts.txt'), 'consumer.js\nowner.js\n');
-  fs.writeFileSync(path.join(fixture, 'web/consumer.js'),
+  fs.writeFileSync(path.join(fixture, 'web/editor-scripts.txt'), 'editor/consumer.js\neditor/owner.js\n');
+  fs.writeFileSync(path.join(fixture, 'web/editor-modules.json'),
+    '{"format":1,"modules":[],"externalBridges":[],'
+    + '"bootstrap":["editor/consumer.js","editor/owner.js"]}');
+  fs.writeFileSync(path.join(fixture, 'web/editor/consumer.js'),
     'window.forwardFunction=futureFunction(); window.forwardVar=futureVar; '
     + 'try { window.forwardLet=futureLet; } catch(error){window.tdz=error.name;}\n');
-  fs.writeFileSync(path.join(fixture, 'web/owner.js'),
+  fs.writeFileSync(path.join(fixture, 'web/editor/owner.js'),
     'var futureVar=9; let futureLet=4; function futureFunction(){return 42;}\n');
   await convertAll(fixture);
   const { code } = await buildEditor(fixture);

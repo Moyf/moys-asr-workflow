@@ -1,317 +1,318 @@
-// 显示设置：字幕列表/编辑区显示项应用、多重字幕行高联动与平台按键标签。
-// 由 split-cluster codemod 自 editor.js 拆出：状态为本模块私有，外部仅经
-// window.MaweDisplaySettings 冻结门面访问（可变状态为访问器属性，赋值语义不变）。
-// 清单位置在 editor.js 之前；editor.js 全局仅在延迟执行的回调中访问。
-(function initMaweDisplaySettings(global) {
-  'use strict';
+import { getOverlayTrack } from "../cues/editor-wiring-overlay-transfer.js";
+import { overlayTrackSeparator, overlayTrackToggle } from "./editor-wiring-dom-panels.js";
+import { syncAssModeDependentControls, syncAssStyleManager } from "../styles/editor-wiring-ass-manager.js";
+
+import { MaweCueElements } from "../cues/editor-cue-elements.js";
+import { MaweCoreState } from "../state/editor-core-state.js";
+import { MaweBoot } from "../boot/editor-boot.js";
+import { MaweDom } from "./editor-dom.js";
+import { MaweMultiSubtitleCore } from "../state/editor-multi-subtitle-core.js";
+import { MaweSettings } from "../state/editor-settings.js";
+import { MaweCueListAnchor } from "../cues/editor-cue-list-anchor.js";
+import { MaweSearch } from "../cues/editor-search.js";
+import { MaweSettingsPanels } from "./editor-settings-panels.js";
+import { MaweSplitMode } from "../cues/editor-split-mode.js";
+// 真 ESM：模块顶层定义与发布（原转换体 phase-2 语义 = import 求值）。
+// window.<Name> 与导出的 <Name> 是同一对象；消费者逐簇改 import 后移除 window 发布。
+'use strict';
 
 
-
-  function applyCueListDisplaySettings({ preserveCueListScroll = true } = {}) {
-  const cueListAnchor = preserveCueListScroll ? MaweCueListAnchor.captureCueListRenderAnchor() : null;
-  MaweDom.cueListShowIndexToggle.checked = MaweSettings.EDITOR_SETTINGS.cueListShowIndex;
-  MaweDom.cueListShowTimeToggle.checked = MaweSettings.EDITOR_SETTINGS.cueListShowTime;
-  MaweDom.cueListShowStickerToggle.checked = MaweSettings.EDITOR_SETTINGS.cueListShowSticker;
-  MaweDom.cueListShowCharcountToggle.checked = MaweSettings.EDITOR_SETTINGS.cueListShowCharcount;
-  MaweDom.cueListAutoScrollOnClickToggle.checked = MaweSettings.EDITOR_SETTINGS.cueListAutoScrollOnClick;
-  MaweDom.cueListKeepSplitVisibleToggle.checked = MaweSettings.EDITOR_SETTINGS.cueListKeepSplitVisible;
-  MaweCueElements.syncCharCountThresholdInputs(MaweSettings.EDITOR_SETTINGS.cueListCharcountThreshold);
-  MaweDom.hideDisabled = MaweSettings.EDITOR_SETTINGS.cueListHideDisabled;
-  MaweDom.hideDisabledToggle.checked = MaweDom.hideDisabled;
-  MaweCoreState.container.classList.toggle('hide-disabled', MaweDom.hideDisabled);
-  MaweCoreState.container.classList.toggle('hide-cue-index', !MaweSettings.EDITOR_SETTINGS.cueListShowIndex);
-  MaweCoreState.container.classList.toggle('hide-cue-time', !MaweSettings.EDITOR_SETTINGS.cueListShowTime);
-  // 设置保留用户的显示偏好；当前工程完全没有表情包时，整列仍自动收起，
-  // 分配首个表情包时由本函数根据最新数据直接恢复。
-  const overlaySegments = getOverlayTrack()?.segments || [];
-  const projectHasStickers = MaweBoot.DATA.segments.some(segment => segment.sticker || segment.sticker_ref)
-    || overlaySegments.some(segment => segment.sticker || segment.sticker_ref);
-  MaweCoreState.container.classList.toggle('hide-cue-sticker',
-    !MaweSettings.EDITOR_SETTINGS.cueListShowSticker || !projectHasStickers,
-  );
-  MaweCoreState.container.classList.toggle('hide-cue-charcount', !MaweSettings.EDITOR_SETTINGS.cueListShowCharcount);
-  MaweCueListAnchor.restoreCueListRenderAnchor(cueListAnchor);
+function applyCueListDisplaySettings({ preserveCueListScroll = true } = {}) {
+const cueListAnchor = preserveCueListScroll ? MaweCueListAnchor.captureCueListRenderAnchor() : null;
+MaweDom.cueListShowIndexToggle.checked = MaweSettings.EDITOR_SETTINGS.cueListShowIndex;
+MaweDom.cueListShowTimeToggle.checked = MaweSettings.EDITOR_SETTINGS.cueListShowTime;
+MaweDom.cueListShowStickerToggle.checked = MaweSettings.EDITOR_SETTINGS.cueListShowSticker;
+MaweDom.cueListShowCharcountToggle.checked = MaweSettings.EDITOR_SETTINGS.cueListShowCharcount;
+MaweDom.cueListAutoScrollOnClickToggle.checked = MaweSettings.EDITOR_SETTINGS.cueListAutoScrollOnClick;
+MaweDom.cueListKeepSplitVisibleToggle.checked = MaweSettings.EDITOR_SETTINGS.cueListKeepSplitVisible;
+MaweCueElements.syncCharCountThresholdInputs(MaweSettings.EDITOR_SETTINGS.cueListCharcountThreshold);
+MaweDom.hideDisabled = MaweSettings.EDITOR_SETTINGS.cueListHideDisabled;
+MaweDom.hideDisabledToggle.checked = MaweDom.hideDisabled;
+MaweCoreState.container.classList.toggle('hide-disabled', MaweDom.hideDisabled);
+MaweCoreState.container.classList.toggle('hide-cue-index', !MaweSettings.EDITOR_SETTINGS.cueListShowIndex);
+MaweCoreState.container.classList.toggle('hide-cue-time', !MaweSettings.EDITOR_SETTINGS.cueListShowTime);
+// 设置保留用户的显示偏好；当前工程完全没有表情包时，整列仍自动收起，
+// 分配首个表情包时由本函数根据最新数据直接恢复。
+const overlaySegments = getOverlayTrack()?.segments || [];
+const projectHasStickers = MaweBoot.DATA.segments.some(segment => segment.sticker || segment.sticker_ref)
+  || overlaySegments.some(segment => segment.sticker || segment.sticker_ref);
+MaweCoreState.container.classList.toggle('hide-cue-sticker',
+  !MaweSettings.EDITOR_SETTINGS.cueListShowSticker || !projectHasStickers,
+);
+MaweCoreState.container.classList.toggle('hide-cue-charcount', !MaweSettings.EDITOR_SETTINGS.cueListShowCharcount);
+MaweCueListAnchor.restoreCueListRenderAnchor(cueListAnchor);
 }
 
+let previousMultiSubtitlePreviewEnabled = false;
 
+let waveformRowHeightBeforeModes = null;
+let secondsPerRowBeforeWordTiming = null;
+const waveformModes = [];
 
-  let previousMultiSubtitlePreviewEnabled = false;
-
-
-  let waveformRowHeightBeforeModes = null;
-  let secondsPerRowBeforeWordTiming = null;
-  const waveformModes = [];
-
-
-
-  function applyWaveformModeRowHeight({ render = true } = {}) {
-    const editor = MaweCoreState.waveformEditor;
-    if (!editor) return;
-    const mode = waveformModes.at(-1);
-    const height = mode === 'word'
-      ? MaweSettings.EDITOR_SETTINGS.wordTimingRowHeight
-      : mode === 'multi' ? MaweSettings.EDITOR_SETTINGS.multiSubtitleRowHeight : waveformRowHeightBeforeModes;
-    if (Number.isFinite(height)) editor.setRowHeight(height, { render });
-  }
-
-  // 共享基线，最近开启的模式优先。关闭非顶层模式不会改动当前行高；
-  // 关闭顶层时回到剩余模式的预设，全部关闭后才恢复原始行高。
-  function syncWaveformModeRowHeight(mode, enabled, { render = true } = {}) {
-    const editor = MaweCoreState.waveformEditor;
-    if (!editor) return;
-    const index = waveformModes.indexOf(mode);
-    if (enabled === (index >= 0)) return;
-    if (enabled) {
-      if (!waveformModes.length) waveformRowHeightBeforeModes = editor.getRowHeight();
-      waveformModes.push(mode);
-    } else {
-      waveformModes.splice(index, 1);
-      if (index < waveformModes.length) return;
-    }
-    applyWaveformModeRowHeight({ render });
-    if (!waveformModes.length) waveformRowHeightBeforeModes = null;
-  }
-
-  function syncMultiSubtitleWaveformRowHeight(enabled) {
-    syncWaveformModeRowHeight('multi', enabled);
-  }
-
-
-
-  // 每行长度仅受字词模式影响，与两个模式的行高恢复分开处理。
-  function syncWordTimingWaveformSettings(enabled) {
-    const editor = MaweCoreState.waveformEditor;
-    if (!editor) return;
-    const wasEnabled = waveformModes.includes('word');
-    if (enabled && !wasEnabled) {
-      secondsPerRowBeforeWordTiming = editor.settings.secondsPerRow;
-      editor.setSecondsPerRow(MaweSettings.EDITOR_SETTINGS.wordTimingSecondsPerRow, { render: false });
-    } else if (!enabled && wasEnabled) {
-      editor.setSecondsPerRow(secondsPerRowBeforeWordTiming, { render: false });
-      secondsPerRowBeforeWordTiming = null;
-    }
-    syncWaveformModeRowHeight('word', enabled, { render: false });
-    // 两个预设一起落地后只绘制一次。单行模式不使用这些几何预设，
-    // 切换字词只需调用方刷新字幕层，保留 Canvas 和当前水平视窗。
-    if (enabled !== wasEnabled && editor.isMultiMode()) {
-      editor.render();
-      return true;
-    }
-    return false;
-  }
-
-
-
-  function updateMultiSubtitleUi() {
-  // 「允许字幕重叠」开关常驻工具栏；勾选状态跟随用户意图（overlay.enabled），
-  // 不要求叠加轨已有字幕，否则空轨道时勾选会被立即弹回。
-  if (overlayTrackSeparator) overlayTrackSeparator.hidden = MaweBoot.DATA.segments.length === 0;
-  if (overlayTrackToggle) overlayTrackToggle.checked = getOverlayTrack()?.enabled === true;
-  const track = MaweMultiSubtitleCore.getActiveExtensionTrack();
-  const hasTrack = Boolean(track && Array.isArray(track.segments));
-  const enabled = hasTrack && MaweMultiSubtitleCore.getMultiSubtitleState().enabled === true;
-  const hasMainSubtitle = MaweBoot.DATA.segments.length > 0;
-  const enteringEnabled = enabled && !previousMultiSubtitlePreviewEnabled;
-  const leavingEnabled = !enabled && previousMultiSubtitlePreviewEnabled;
-  syncMultiSubtitleWaveformRowHeight(enabled, enteringEnabled, leavingEnabled);
-  MaweSplitMode.refreshMergeJoinModeHint();
-  if (MaweDom.multiSubtitleEmptyHint) {
-    MaweSettingsPanels.updateRegionalSettingsAvailability();
-    MaweDom.multiSubtitleEmptyHint.hidden = !(enabled && !track.segments.length);
-  }
-  if (MaweDom.multiSubtitleToggle) {
-    // 勾选状态跟随「多重字幕编辑模式」开关本身：未导入副轨时同样保持勾选。
-    MaweDom.multiSubtitleToggle.checked = MaweMultiSubtitleCore.getMultiSubtitleState().enabled === true;
-    // 开启时创建空副轨；导入第二条字幕是可选操作。
-    MaweDom.multiSubtitleToggle.disabled = false;
-  }
-  if (MaweDom.multiSubtitleToggleLabel) {
-    MaweDom.multiSubtitleToggleLabel.classList.remove('disabled');
-    MaweDom.multiSubtitleToggleLabel.title = MaweMultiSubtitleCore.MULTI_SUBTITLE_TOGGLE_TITLE;
-  }
-  if (MaweDom.multiSubtitleToggle) MaweDom.multiSubtitleToggle.title = MaweMultiSubtitleCore.MULTI_SUBTITLE_TOGGLE_TITLE;
-  if (MaweDom.multiSubtitleDisplayMode) {
-    MaweDom.multiSubtitleDisplayMode.value = MaweMultiSubtitleCore.getMultiSubtitleState().display_mode || 'both';
-    MaweDom.multiSubtitleDisplayMode.disabled = !enabled;
-  }
-  if (MaweDom.multiSubtitleMainLanguageMode) {
-    MaweDom.multiSubtitleMainLanguageMode.value = MaweMultiSubtitleCore.getMainSubtitleSplitMode(MaweBoot.DATA.segments[0]);
-    MaweDom.multiSubtitleMainLanguageMode.hidden = false;
-  }
-  if (MaweDom.multiSubtitleExtensionLanguageMode) {
-    MaweDom.multiSubtitleExtensionLanguageMode.value = MaweMultiSubtitleCore.getExtensionSubtitleSplitMode(track, track?.segments?.[0]);
-    MaweDom.multiSubtitleExtensionLanguageMode.closest('.multi-subtitle-setting-row').hidden = !enabled;
-  }
-  if (MaweDom.multiSubtitleExtensionRowHeight) {
-    MaweDom.multiSubtitleExtensionRowHeight.value = String(MaweSettings.EDITOR_SETTINGS.multiSubtitleRowHeight);
-    MaweDom.multiSubtitleExtensionRowHeight.disabled = !enabled;
-  }
-  if (MaweDom.wordTimingRowHeight) {
-    MaweDom.wordTimingRowHeight.value = String(MaweSettings.EDITOR_SETTINGS.wordTimingRowHeight);
-  }
-  if (MaweDom.wordTimingSecondsPerRow) {
-    MaweDom.wordTimingSecondsPerRow.value = String(MaweSettings.EDITOR_SETTINGS.wordTimingSecondsPerRow);
-  }
-  // 波形工具栏的「双语 / 重叠」快捷开关：aria 状态与对应工程设置开关保持一致。
-  const multiQuickToggle = document.getElementById('multi-subtitle-quick-toggle');
-  if (multiQuickToggle) {
-    const multiEnabled = MaweMultiSubtitleCore.getMultiSubtitleState().enabled === true;
-    multiQuickToggle.classList.toggle('active', multiEnabled);
-    multiQuickToggle.setAttribute('aria-pressed', String(multiEnabled));
-  }
-  const overlayQuickToggle = document.getElementById('overlay-quick-toggle');
-  if (overlayQuickToggle) {
-    const overlayEnabled = getOverlayTrack()?.enabled === true;
-    overlayQuickToggle.classList.toggle('active', overlayEnabled);
-    overlayQuickToggle.setAttribute('aria-pressed', String(overlayEnabled));
-  }
-  if (MaweDom.multiSubtitleCrossTrackSnapToggle) {
-    MaweDom.multiSubtitleCrossTrackSnapToggle.checked = MaweSettings.EDITOR_SETTINGS.crossTrackSnap;
-    MaweDom.multiSubtitleCrossTrackSnapToggle.disabled = !enabled;
-  }
-  if (MaweDom.multiSubtitleSelectBoundPairToggle) {
-    MaweDom.multiSubtitleSelectBoundPairToggle.checked = MaweSettings.EDITOR_SETTINGS.selectBoundSubtitlePair;
-    MaweDom.multiSubtitleSelectBoundPairToggle.disabled = !enabled;
-  }
-  if (MaweDom.multiSubtitleAutoSyncDurationToggle) {
-    MaweDom.multiSubtitleAutoSyncDurationToggle.checked = MaweSettings.EDITOR_SETTINGS.multiSubtitleAutoSyncDuration;
-    MaweDom.multiSubtitleAutoSyncDurationToggle.disabled = !enabled;
-  }
-  if (MaweDom.multiSubtitleShowTrackBadgesToggle) {
-    MaweDom.multiSubtitleShowTrackBadgesToggle.checked = MaweSettings.EDITOR_SETTINGS.multiSubtitleShowTrackBadges;
-    MaweDom.multiSubtitleShowTrackBadgesToggle.disabled = !enabled;
-  }
-  if (MaweDom.multiSubtitleSwapButton) {
-    const canSwap = enabled && (MaweMultiSubtitleCore.getMultiSubtitleState().tracks || []).length === 1
-      && MaweBoot.DATA.segments.length > 0 && (track?.segments || []).length > 0;
-    MaweDom.multiSubtitleSwapButton.disabled = !canSwap;
-    MaweDom.multiSubtitleSwapButton.title = canSwap
-      ? '交换主字幕和副字幕的文本、时间与绑定关系'
-      : '需要已开启双语字幕且主副轨都有字幕';
-  }
-  if (MaweDom.multiSubtitleWaveformControls) MaweDom.multiSubtitleWaveformControls.hidden = !enabled;
-  if (MaweDom.multiSubtitleAlignButton) MaweDom.multiSubtitleAlignButton.hidden = !enabled;
-  if (MaweDom.extensionOverlayToggleWrap) MaweDom.extensionOverlayToggleWrap.hidden = !enabled;
-  if (MaweDom.extensionSubtitlePreviewTitle) MaweDom.extensionSubtitlePreviewTitle.hidden = !enabled;
-  if (MaweDom.extensionSubtitlePreviewSettings) MaweDom.extensionSubtitlePreviewSettings.hidden = !enabled;
-  if (MaweDom.extensionOverlayToggle) {
-    if (enteringEnabled) MaweSettings.updateEditorSettings({ extensionOverlayEnabled: true });
-    MaweDom.extensionOverlayToggle.checked = enabled
-      ? (enteringEnabled || MaweSettings.EDITOR_SETTINGS.extensionOverlayEnabled)
-      : false;
-  }
-  previousMultiSubtitlePreviewEnabled = enabled;
-  // 「仅看超长」按单轨文本字数筛选；多重字幕开启后主/副两栏合并计数失去筛选意义，
-  // 隐藏入口（含前面的分隔线）。若筛选已激活则一并复位，避免残留不可见的过滤状态。
-  const filterOverButton = document.getElementById('filter-over');
-  if (filterOverButton) {
-    filterOverButton.hidden = enabled;
-    const filterOverSep = document.getElementById('filter-over-sep');
-    if (filterOverSep) filterOverSep.hidden = enabled;
-    if (enabled && filterOverButton.classList.contains('active')) {
-      filterOverButton.classList.remove('active');
-      MaweCueElements.clearTemporaryVisibleSplitCues();
-      MaweSearch.applySearch(MaweDom.searchEl.value);
-    }
-  }
-  MaweCoreState.container.classList.toggle('multi-subtitle-enabled', enabled);
-  MaweCoreState.container.dataset.multiDisplayMode = enabled ? (MaweMultiSubtitleCore.getMultiSubtitleState().display_mode || 'both') : 'main';
-  // 多重字幕开合影响副字幕相关的 ASS 样式入口（设置页副字幕组、样式库
-  // 副字幕槽位），同步刷新它们的可见性与选项。
-  syncAssModeDependentControls();
-  syncAssStyleManager();
+function applyWaveformModeRowHeight({ render = true } = {}) {
+  const editor = MaweCoreState.waveformEditor;
+  if (!editor) return;
+  const mode = waveformModes.at(-1);
+  const height = mode === 'word'
+    ? MaweSettings.EDITOR_SETTINGS.wordTimingRowHeight
+    : mode === 'multi' ? MaweSettings.EDITOR_SETTINGS.multiSubtitleRowHeight : waveformRowHeightBeforeModes;
+  if (Number.isFinite(height)) editor.setRowHeight(height, { render });
 }
 
-
-
-  function bindCueListDisplayToggle(toggle, key) {
-    toggle.addEventListener('change', () => {
-      MaweSettings.updateEditorSettings({ [key]: toggle.checked });
-      applyCueListDisplaySettings();
-    });
+// 共享基线，最近开启的模式优先。关闭非顶层模式不会改动当前行高；
+// 关闭顶层时回到剩余模式的预设，全部关闭后才恢复原始行高。
+function syncWaveformModeRowHeight(mode, enabled, { render = true } = {}) {
+  const editor = MaweCoreState.waveformEditor;
+  if (!editor) return;
+  const index = waveformModes.indexOf(mode);
+  if (enabled === (index >= 0)) return;
+  if (enabled) {
+    if (!waveformModes.length) waveformRowHeightBeforeModes = editor.getRowHeight();
+    waveformModes.push(mode);
+  } else {
+    waveformModes.splice(index, 1);
+    if (index < waveformModes.length) return;
   }
+  applyWaveformModeRowHeight({ render });
+  if (!waveformModes.length) waveformRowHeightBeforeModes = null;
+}
 
+function syncMultiSubtitleWaveformRowHeight(enabled, _enteringEnabled = false, _leavingEnabled = false) {
+  syncWaveformModeRowHeight('multi', enabled);
+}
 
-
-  function applyCueEditorDisplaySettings() {
-    MaweDom.cueEditorShowNavigationToggle.checked = MaweSettings.EDITOR_SETTINGS.cueEditorShowNavigation;
-    MaweDom.cueEditorShowTimeActionsToggle.checked = MaweSettings.EDITOR_SETTINGS.cueEditorShowTimeActions;
-    MaweDom.cueEditorShowStickerToggle.checked = MaweSettings.EDITOR_SETTINGS.cueEditorShowSticker;
-    MaweDom.cuePanel.classList.toggle('hide-cue-editor-navigation', !MaweSettings.EDITOR_SETTINGS.cueEditorShowNavigation);
-    MaweDom.cuePanel.classList.toggle('hide-cue-editor-time-actions', !MaweSettings.EDITOR_SETTINGS.cueEditorShowTimeActions);
-    MaweDom.cuePanel.classList.toggle('hide-cue-editor-sticker', !MaweSettings.EDITOR_SETTINGS.cueEditorShowSticker);
+// 每行长度仅受字词模式影响，与两个模式的行高恢复分开处理。
+function syncWordTimingWaveformSettings(enabled) {
+  const editor = MaweCoreState.waveformEditor;
+  if (!editor) return;
+  const wasEnabled = waveformModes.includes('word');
+  if (enabled && !wasEnabled) {
+    secondsPerRowBeforeWordTiming = editor.settings.secondsPerRow;
+    editor.setSecondsPerRow(MaweSettings.EDITOR_SETTINGS.wordTimingSecondsPerRow, { render: false });
+  } else if (!enabled && wasEnabled) {
+    editor.setSecondsPerRow(secondsPerRowBeforeWordTiming, { render: false });
+    secondsPerRowBeforeWordTiming = null;
   }
-
-
-
-  const EDITOR_DISPLAY_KEYS = [
-    'cueListShowIndex', 'cueListShowTime', 'cueListShowSticker', 'cueListShowCharcount',
-    'cueEditorShowNavigation', 'cueEditorShowTimeActions', 'cueEditorShowSticker',
-  ];
-
-
-
-  function getEditorDisplaySettings() {
-    return Object.fromEntries(EDITOR_DISPLAY_KEYS.map((key) => [key, MaweSettings.EDITOR_SETTINGS[key]]));
+  syncWaveformModeRowHeight('word', enabled, { render: false });
+  // 两个预设一起落地后只绘制一次。单行模式不使用这些几何预设，
+  // 切换字词只需调用方刷新字幕层，保留 Canvas 和当前水平视窗。
+  if (enabled !== wasEnabled && editor.isMultiMode()) {
+    editor.render();
+    return true;
   }
+  return false;
+}
 
+function updateMultiSubtitleUi() {
+// 「允许字幕重叠」开关常驻工具栏；勾选状态跟随用户意图（overlay.enabled），
+// 不要求叠加轨已有字幕，否则空轨道时勾选会被立即弹回。
+if (overlayTrackSeparator) overlayTrackSeparator.hidden = MaweBoot.DATA.segments.length === 0;
+if (overlayTrackToggle) overlayTrackToggle.checked = getOverlayTrack()?.enabled === true;
+const track = MaweMultiSubtitleCore.getActiveExtensionTrack();
+const hasTrack = Boolean(track && Array.isArray(track.segments));
+const enabled = hasTrack && MaweMultiSubtitleCore.getMultiSubtitleState().enabled === true;
+const hasMainSubtitle = MaweBoot.DATA.segments.length > 0;
+const enteringEnabled = enabled && !previousMultiSubtitlePreviewEnabled;
+const leavingEnabled = !enabled && previousMultiSubtitlePreviewEnabled;
+syncMultiSubtitleWaveformRowHeight(enabled, enteringEnabled, leavingEnabled);
+MaweSplitMode.refreshMergeJoinModeHint();
+if (MaweDom.multiSubtitleEmptyHint) {
+  MaweSettingsPanels.updateRegionalSettingsAvailability();
+  MaweDom.multiSubtitleEmptyHint.hidden = !(enabled && !track.segments.length);
+}
+if (MaweDom.multiSubtitleToggle) {
+  // 勾选状态跟随「多重字幕编辑模式」开关本身：未导入副轨时同样保持勾选。
+  MaweDom.multiSubtitleToggle.checked = MaweMultiSubtitleCore.getMultiSubtitleState().enabled === true;
+  // 开启时创建空副轨；导入第二条字幕是可选操作。
+  MaweDom.multiSubtitleToggle.disabled = false;
+}
+if (MaweDom.multiSubtitleToggleLabel) {
+  MaweDom.multiSubtitleToggleLabel.classList.remove('disabled');
+  MaweDom.multiSubtitleToggleLabel.title = MaweMultiSubtitleCore.MULTI_SUBTITLE_TOGGLE_TITLE;
+}
+if (MaweDom.multiSubtitleToggle) MaweDom.multiSubtitleToggle.title = MaweMultiSubtitleCore.MULTI_SUBTITLE_TOGGLE_TITLE;
+if (MaweDom.multiSubtitleDisplayMode) {
+  MaweDom.multiSubtitleDisplayMode.value = MaweMultiSubtitleCore.getMultiSubtitleState().display_mode || 'both';
+  MaweDom.multiSubtitleDisplayMode.disabled = !enabled;
+}
+if (MaweDom.multiSubtitleMainLanguageMode) {
+  MaweDom.multiSubtitleMainLanguageMode.value = MaweMultiSubtitleCore.getMainSubtitleSplitMode(MaweBoot.DATA.segments[0]);
+  MaweDom.multiSubtitleMainLanguageMode.hidden = false;
+}
+if (MaweDom.multiSubtitleExtensionLanguageMode) {
+  MaweDom.multiSubtitleExtensionLanguageMode.value = MaweMultiSubtitleCore.getExtensionSubtitleSplitMode(track, track?.segments?.[0]);
+  MaweDom.multiSubtitleExtensionLanguageMode.closest('.multi-subtitle-setting-row').hidden = !enabled;
+}
+if (MaweDom.multiSubtitleExtensionRowHeight) {
+  MaweDom.multiSubtitleExtensionRowHeight.value = String(MaweSettings.EDITOR_SETTINGS.multiSubtitleRowHeight);
+  MaweDom.multiSubtitleExtensionRowHeight.disabled = !enabled;
+}
+if (MaweDom.wordTimingRowHeight) {
+  MaweDom.wordTimingRowHeight.value = String(MaweSettings.EDITOR_SETTINGS.wordTimingRowHeight);
+}
+if (MaweDom.wordTimingSecondsPerRow) {
+  MaweDom.wordTimingSecondsPerRow.value = String(MaweSettings.EDITOR_SETTINGS.wordTimingSecondsPerRow);
+}
+// 波形工具栏的「双语 / 重叠」快捷开关：aria 状态与对应工程设置开关保持一致。
+const multiQuickToggle = document.getElementById('multi-subtitle-quick-toggle');
+if (multiQuickToggle) {
+  const multiEnabled = MaweMultiSubtitleCore.getMultiSubtitleState().enabled === true;
+  multiQuickToggle.classList.toggle('active', multiEnabled);
+  multiQuickToggle.setAttribute('aria-pressed', String(multiEnabled));
+}
+const overlayQuickToggle = document.getElementById('overlay-quick-toggle');
+if (overlayQuickToggle) {
+  const overlayEnabled = getOverlayTrack()?.enabled === true;
+  overlayQuickToggle.classList.toggle('active', overlayEnabled);
+  overlayQuickToggle.setAttribute('aria-pressed', String(overlayEnabled));
+}
+if (MaweDom.multiSubtitleCrossTrackSnapToggle) {
+  MaweDom.multiSubtitleCrossTrackSnapToggle.checked = MaweSettings.EDITOR_SETTINGS.crossTrackSnap;
+  MaweDom.multiSubtitleCrossTrackSnapToggle.disabled = !enabled;
+}
+if (MaweDom.multiSubtitleSelectBoundPairToggle) {
+  MaweDom.multiSubtitleSelectBoundPairToggle.checked = MaweSettings.EDITOR_SETTINGS.selectBoundSubtitlePair;
+  MaweDom.multiSubtitleSelectBoundPairToggle.disabled = !enabled;
+}
+if (MaweDom.multiSubtitleAutoSyncDurationToggle) {
+  MaweDom.multiSubtitleAutoSyncDurationToggle.checked = MaweSettings.EDITOR_SETTINGS.multiSubtitleAutoSyncDuration;
+  MaweDom.multiSubtitleAutoSyncDurationToggle.disabled = !enabled;
+}
+if (MaweDom.multiSubtitleShowTrackBadgesToggle) {
+  MaweDom.multiSubtitleShowTrackBadgesToggle.checked = MaweSettings.EDITOR_SETTINGS.multiSubtitleShowTrackBadges;
+  MaweDom.multiSubtitleShowTrackBadgesToggle.disabled = !enabled;
+}
+if (MaweDom.multiSubtitleSwapButton) {
+  const canSwap = enabled && (MaweMultiSubtitleCore.getMultiSubtitleState().tracks || []).length === 1
+    && MaweBoot.DATA.segments.length > 0 && (track?.segments || []).length > 0;
+  MaweDom.multiSubtitleSwapButton.disabled = !canSwap;
+  MaweDom.multiSubtitleSwapButton.title = canSwap
+    ? '交换主字幕和副字幕的文本、时间与绑定关系'
+    : '需要已开启双语字幕且主副轨都有字幕';
+}
+if (MaweDom.multiSubtitleWaveformControls) MaweDom.multiSubtitleWaveformControls.hidden = !enabled;
+if (MaweDom.multiSubtitleAlignButton) MaweDom.multiSubtitleAlignButton.hidden = !enabled;
+if (MaweDom.extensionOverlayToggleWrap) MaweDom.extensionOverlayToggleWrap.hidden = !enabled;
+if (MaweDom.extensionSubtitlePreviewTitle) MaweDom.extensionSubtitlePreviewTitle.hidden = !enabled;
+if (MaweDom.extensionSubtitlePreviewSettings) MaweDom.extensionSubtitlePreviewSettings.hidden = !enabled;
+if (MaweDom.extensionOverlayToggle) {
+  if (enteringEnabled) MaweSettings.updateEditorSettings({ extensionOverlayEnabled: true });
+  MaweDom.extensionOverlayToggle.checked = enabled
+    ? (enteringEnabled || MaweSettings.EDITOR_SETTINGS.extensionOverlayEnabled)
+    : false;
+}
+previousMultiSubtitlePreviewEnabled = enabled;
+// 「仅看超长」按单轨文本字数筛选；多重字幕开启后主/副两栏合并计数失去筛选意义，
+// 隐藏入口（含前面的分隔线）。若筛选已激活则一并复位，避免残留不可见的过滤状态。
+const filterOverButton = document.getElementById('filter-over');
+if (filterOverButton) {
+  filterOverButton.hidden = enabled;
+  const filterOverSep = document.getElementById('filter-over-sep');
+  if (filterOverSep) filterOverSep.hidden = enabled;
+  if (enabled && filterOverButton.classList.contains('active')) {
+    filterOverButton.classList.remove('active');
+    MaweCueElements.clearTemporaryVisibleSplitCues();
+    MaweSearch.applySearch(MaweDom.searchEl.value);
+  }
+}
+MaweCoreState.container.classList.toggle('multi-subtitle-enabled', enabled);
+MaweCoreState.container.dataset.multiDisplayMode = enabled ? (MaweMultiSubtitleCore.getMultiSubtitleState().display_mode || 'both') : 'main';
+// 多重字幕开合影响副字幕相关的 ASS 样式入口（设置页副字幕组、样式库
+// 副字幕槽位），同步刷新它们的可见性与选项。
+syncAssModeDependentControls();
+syncAssStyleManager();
+}
 
-
-  function applyEditorDisplaySettings(value) {
-    if (!value || typeof value !== 'object') return;
-    const patch = {};
-    EDITOR_DISPLAY_KEYS.forEach((key) => {
-      if (typeof value[key] === 'boolean') patch[key] = value[key];
-    });
-    if (!Object.keys(patch).length) return;
-    MaweSettings.updateEditorSettings(patch);
+function bindCueListDisplayToggle(toggle, key) {
+  toggle.addEventListener('change', () => {
+    MaweSettings.updateEditorSettings({ [key]: toggle.checked });
     applyCueListDisplaySettings();
+  });
+}
+
+function applyCueEditorDisplaySettings() {
+  MaweDom.cueEditorShowNavigationToggle.checked = MaweSettings.EDITOR_SETTINGS.cueEditorShowNavigation;
+  MaweDom.cueEditorShowTimeActionsToggle.checked = MaweSettings.EDITOR_SETTINGS.cueEditorShowTimeActions;
+  MaweDom.cueEditorShowStickerToggle.checked = MaweSettings.EDITOR_SETTINGS.cueEditorShowSticker;
+  MaweDom.cuePanel.classList.toggle('hide-cue-editor-navigation', !MaweSettings.EDITOR_SETTINGS.cueEditorShowNavigation);
+  MaweDom.cuePanel.classList.toggle('hide-cue-editor-time-actions', !MaweSettings.EDITOR_SETTINGS.cueEditorShowTimeActions);
+  MaweDom.cuePanel.classList.toggle('hide-cue-editor-sticker', !MaweSettings.EDITOR_SETTINGS.cueEditorShowSticker);
+}
+
+const EDITOR_DISPLAY_KEYS = [
+  'cueListShowIndex', 'cueListShowTime', 'cueListShowSticker', 'cueListShowCharcount',
+  'cueEditorShowNavigation', 'cueEditorShowTimeActions', 'cueEditorShowSticker',
+];
+
+function getEditorDisplaySettings() {
+  return Object.fromEntries(EDITOR_DISPLAY_KEYS.map((key) => [key, MaweSettings.EDITOR_SETTINGS[key]]));
+}
+
+function applyEditorDisplaySettings(value) {
+  if (!value || typeof value !== 'object') return;
+  const patch = {};
+  EDITOR_DISPLAY_KEYS.forEach((key) => {
+    if (typeof value[key] === 'boolean') patch[key] = value[key];
+  });
+  if (!Object.keys(patch).length) return;
+  MaweSettings.updateEditorSettings(patch);
+  applyCueListDisplaySettings();
+  applyCueEditorDisplaySettings();
+}
+
+function bindCueEditorDisplayToggle(toggle, key) {
+  toggle.addEventListener('change', () => {
+    MaweSettings.updateEditorSettings({ [key]: toggle.checked });
     applyCueEditorDisplaySettings();
+  });
+}
+
+// macOS 用 ⌘（Cmd）替代 Ctrl；Win/Linux 仍显示 Ctrl。
+function modKeyLabel() {
+  return window.AsrEditorUtils?.isMacPlatform() ? 'Cmd' : 'Ctrl';
+}
+
+function splitKeyLabel() {
+  return MaweDom.splitKeySel.value === 'enter' ? 'Enter' : `${modKeyLabel()}+Enter`;
+}
+
+function confirmKeyLabel() {
+  return MaweDom.splitKeySel.value === 'enter' ? `${modKeyLabel()}+Enter` : 'Enter';
+}
+
+// 把帮助面板等静态 <kbd data-mod-key> 与「拆分按键」下拉选项文本按平台替换。
+function applyPlatformKeyLabels() {
+  if (modKeyLabel() === 'Ctrl') return;
+  document.querySelectorAll('[data-mod-key]').forEach((el) => {
+    el.textContent = el.textContent.replace(/^Ctrl/, 'Cmd');
+  });
+  if (MaweDom.splitKeySel) {
+    const opt = MaweDom.splitKeySel.querySelector('option[value="ctrl-enter"]');
+    if (opt) opt.textContent = 'Cmd+Enter';
   }
+}
 
+window.MaweDisplaySettings = Object.freeze({
+  applyCueListDisplaySettings,
+  get previousMultiSubtitlePreviewEnabled() { return previousMultiSubtitlePreviewEnabled; },
+  set previousMultiSubtitlePreviewEnabled(v) { previousMultiSubtitlePreviewEnabled = v; },
+  applyWaveformModeRowHeight,
+  syncMultiSubtitleWaveformRowHeight,
+  syncWordTimingWaveformSettings,
+  updateMultiSubtitleUi,
+  bindCueListDisplayToggle,
+  applyCueEditorDisplaySettings,
+  EDITOR_DISPLAY_KEYS,
+  getEditorDisplaySettings,
+  applyEditorDisplaySettings,
+  bindCueEditorDisplayToggle,
+  modKeyLabel,
+  splitKeyLabel,
+  confirmKeyLabel,
+  applyPlatformKeyLabels
+});
 
-
-  function bindCueEditorDisplayToggle(toggle, key) {
-    toggle.addEventListener('change', () => {
-      MaweSettings.updateEditorSettings({ [key]: toggle.checked });
-      applyCueEditorDisplaySettings();
-    });
-  }
-
-
-
-  // macOS 用 ⌘（Cmd）替代 Ctrl；Win/Linux 仍显示 Ctrl。
-  function modKeyLabel() {
-    return window.AsrEditorUtils?.isMacPlatform() ? 'Cmd' : 'Ctrl';
-  }
-
-
-
-  function splitKeyLabel() {
-    return MaweDom.splitKeySel.value === 'enter' ? 'Enter' : `${modKeyLabel()}+Enter`;
-  }
-
-
-
-  function confirmKeyLabel() {
-    return MaweDom.splitKeySel.value === 'enter' ? `${modKeyLabel()}+Enter` : 'Enter';
-  }
-
-
-
-  // 把帮助面板等静态 <kbd data-mod-key> 与「拆分按键」下拉选项文本按平台替换。
-  function applyPlatformKeyLabels() {
-    if (modKeyLabel() === 'Ctrl') return;
-    document.querySelectorAll('[data-mod-key]').forEach((el) => {
-      el.textContent = el.textContent.replace(/^Ctrl/, 'Cmd');
-    });
-    if (MaweDom.splitKeySel) {
-      const opt = MaweDom.splitKeySel.querySelector('option[value="ctrl-enter"]');
-      if (opt) opt.textContent = 'Cmd+Enter';
-    }
-  }
-
-  global.MaweDisplaySettings = Object.freeze({
+export const MaweDisplaySettings = Object.freeze({
     applyCueListDisplaySettings,
     get previousMultiSubtitlePreviewEnabled() { return previousMultiSubtitlePreviewEnabled; },
     set previousMultiSubtitlePreviewEnabled(v) { previousMultiSubtitlePreviewEnabled = v; },
@@ -330,4 +331,4 @@
     confirmKeyLabel,
     applyPlatformKeyLabels
   });
-})(typeof window !== 'undefined' ? window : globalThis);
+window.MaweDisplaySettings = MaweDisplaySettings;

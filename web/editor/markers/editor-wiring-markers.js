@@ -1,6 +1,10 @@
-// 「标记与区段」工具窗接线：面板控制器由 editor-markers-panel.js 在装载时
-// 通过 createFloatingPanel 创建（这里只补关闭按钮）；开关的启用/禁用逻辑
-// 在 editor-marker-editing.js（applyMarkerEditingEnabled），本文件只绑事件。
+
+
+// 真 ESM：wiring 顶层接线（原转换体 phase-1/phase-2 = import 求值）。
+'use strict';
+import { MaweMarkerEditing } from "./editor-marker-editing.js";
+import { MaweDom } from "../ui/editor-dom.js";
+import { MaweInlineEdit } from "../cues/editor-inline-edit.js";
 MaweDom.markersCloseButton?.addEventListener('click', () => MaweMarkersPanel.closePanel());
 
 function toggleMarkerEditing() {

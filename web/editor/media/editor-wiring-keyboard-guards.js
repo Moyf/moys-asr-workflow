@@ -1,8 +1,8 @@
 
+import { MaweDom } from '../ui/editor-dom.js';
 
-// === 全局键盘 ===
-  // 'enter' or 'ctrl-enter'
-
+// 真 ESM：wiring 顶层接线（原转换体 phase-1/phase-2 = import 求值）。
+'use strict';
 
 
 document.addEventListener('keydown', (e) => {
@@ -98,11 +98,24 @@ document.addEventListener('keydown', (e) => {
 
 
 
-function isPlaybackActive() {
+
+import { MawePlaybackLoop } from "./editor-playback-loop.js";export function isPlaybackActive() {
   return MaweJklPlayback.jklReversePlaying || !MaweCoreState.player.paused;
 }
 
-function pausePlaybackAfterMouseClick() {
+
+import { MaweHint } from "../ui/editor-hint.js";
+import { MaweCoreState } from "../state/editor-core-state.js";
+import { MaweMultiSubtitleCore } from "../state/editor-multi-subtitle-core.js";
+import { MaweSelection } from "../cues/editor-selection.js";
+import { MaweSettings } from "../state/editor-settings.js";
+import { MaweMediaPlayback } from "./editor-media-playback.js";
+import { MaweSplitCore } from "../cues/editor-split-core.js";
+import { MaweJklPlayback } from "./editor-jkl.js";
+import { MaweFloatingPanel } from "../ui/editor-floating-panel.js";
+import { MaweCueEvents } from "../cues/editor-cue-events.js";
+import { MaweTimedTextEdit } from "../cues/editor-timed-text-edit.js";
+import { MaweInlineEdit } from "../cues/editor-inline-edit.js";export function pausePlaybackAfterMouseClick() {
   if (!MaweSettings.EDITOR_SETTINGS.pauseOnMouseClick || !isPlaybackActive()) return;
   if (MaweJklPlayback.jklReversePlaying) MaweJklPlayback.stopJklReversePlayback({ render: false });
   MaweCoreState.player.pause();
@@ -125,7 +138,7 @@ function pausePlaybackAfterMouseClick() {
 
 let assPreviewRefreshFrame = 0;
 let assPreviewRefreshTimer = 0;
-function scheduleAssSubtitlePreviewRefresh() {
+export function scheduleAssSubtitlePreviewRefresh() {
   if (MaweSettings.EDITOR_SETTINGS.assMode !== true) return;
   if (assPreviewRefreshTimer) window.clearTimeout(assPreviewRefreshTimer);
   if (assPreviewRefreshFrame && typeof cancelAnimationFrame === 'function') {
