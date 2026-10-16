@@ -1327,6 +1327,7 @@ class LauncherApi:
                     clean_markdown_symbols=payload.get("cleanMarkdownSymbols", True) is not False,
                     notes=str(payload.get("notes") or "").strip(),
                     generate_comparison=bool(payload.get("generateComparison")),
+                    review_enabled=bool(payload.get("reviewEnabled", False)),
                 ),
                 complete=complete,
                 on_status=emit_status,
@@ -1438,18 +1439,25 @@ class LauncherApi:
         batch_number = 0
 
         def emit_status(key: str, details: Mapping[str, int] | None = None) -> None:
+            nonlocal batch_number, request_attempt
+            if operation == "resegment" and key == "toolbox_status_llm_batch" and details:
+                batch_number = int(details.get("current", 0))
+                request_attempt = int(details.get("attempt", 1))
             self._emit_postprocess_status(key, details, operation_id=operation_state.operation_id)
 
+        request_attempt = 1
         def emit_delta(kind: str, text: str, batch: int) -> None:
             if operation_state.cancel_event.is_set():
                 raise LlmClientError("操作已取消。", category="cancelled", operation="completion")
-            self._emit_postprocess_stream(kind, text, batch, operation_id=operation_state.operation_id)
+            extra = {"attempt": request_attempt} if operation == "resegment" else {}
+            self._emit_postprocess_stream(kind, text, batch, operation_id=operation_state.operation_id, **extra)
 
         def complete(prompt: str, cues: list[dict[str, JsonValue]]) -> dict[str, JsonValue]:
             nonlocal batch_number
             if operation_state.cancel_event.is_set():
                 raise LlmClientError("操作已取消。", category="cancelled", operation="completion")
-            batch_number += 1
+            if operation != "resegment" or not batch_number:
+                batch_number += 1
             current_batch = batch_number
             completion = complete_boundaries if operation == "resegment" else complete_subtitle_groups
             return completion(
@@ -3492,7 +3500,7 @@ class LauncherApi:
         self._emit(event)
 
     def _emit_postprocess_stream(
-        self, kind: str, text: str, batch: int, *, operation_id: str = ""
+        self, kind: str, text: str, batch: int, *, operation_id: str = "", attempt: int = 1
     ) -> None:
         if kind != "reset" and not text:
             return
@@ -3505,6 +3513,8 @@ class LauncherApi:
         }
         if operation_id:
             event["operationId"] = operation_id
+        if attempt > 1:
+            event["attempt"] = attempt
         self._emit(event)
 
     def _handle_postprocess_pipeline_event(self, event: Mapping[str, object]) -> None:
@@ -3516,6 +3526,7 @@ class LauncherApi:
         stage = str(event.get("stage") or "")
         labels = {
             "match": "文稿匹配",
+            "cleanup": "AI 口播整理",
             "replace": "固定替换",
             "proofread": "LLM 校对",
             "resegment": "重新断句",
@@ -3530,6 +3541,8 @@ class LauncherApi:
             if str(event.get("step") or "") == "burn":
                 self._last_media_tool_log_at = 0.0
             self._emit({"type": "log", "message": f"[后处理 {event.get('index', '?')}/{event.get('total', '?')}] {step}：开始"})
+        elif stage == "step_skipped":
+            self._emit({"type": "log", "message": f"[后处理] {event.get('warning', '')}"})
         elif stage == "step_done":
             artifacts = " / ".join(
                 name
@@ -3546,7 +3559,11 @@ class LauncherApi:
                 for name in (str(event.get("projectName") or ""), str(event.get("srtName") or ""), str(event.get("translatedSrtName") or ""), str(event.get("mediaName") or ""))
                 if name
             )
-            self._emit({"type": "log", "message": f"[后处理] 全部完成：{artifacts}"})
+            skipped = event.get("skippedSteps") or []
+            summary = f"处理完成，跳过 {len(skipped)} 个失败的 AI 步骤" if skipped else "全部完成"
+            self._emit({"type": "log", "message": f"[后处理] {summary}：{artifacts}"})
+            for warning in event.get("warnings") or []:
+                self._emit({"type": "log", "message": f"[后处理报告] {warning}"})
             for comparison_path in event.get("comparisonPaths", ()):
                 self._emit({"type": "log", "message": f"[后处理] 处理前后对比：{comparison_path}"})
         elif stage == "cancelled":
@@ -4559,6 +4576,7 @@ def _subtitle_artifact_result(result: object) -> dict[str, object]:
         "srtPath": str(getattr(result, "srt_path", None) or ""),
         "translatedSrtPath": str(getattr(result, "translated_srt_path", None) or ""),
         "comparisonPath": str(getattr(result, "comparison_path", None) or ""),
+        "diagnosticPath": str(getattr(result, "diagnostic_path", None) or ""),
         "warnings": list(getattr(result, "warnings", ())),
         "stats": dict(stats) if isinstance(stats, Mapping) else None,
     }

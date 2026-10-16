@@ -558,7 +558,7 @@
           <p id="toolboxInputPathError" class="field-error"></p>
         </div>
         <div id="toolboxChain" class="toolbox-chain hidden" aria-label="processing artifacts">
-          <p class="toolbox-chain-heading" data-i18n="toolbox_chain_heading">处理结果（点击可切换输入）</p>
+          <p class="toolbox-chain-heading" data-i18n="toolbox_chain_heading">处理结果（点击可切换输入，或查看报告）</p>
           <div id="toolboxChainList" class="toolbox-chain-list"></div>
         </div>
         <nav id="toolboxPostprocessTabList" class="toolbox-tabs" role="tablist" aria-labelledby="toolboxPostprocessPrimaryTab">
@@ -1024,6 +1024,11 @@
           </div>
           <p id="postprocessCleanupScriptPathError" class="field-error"></p>
           <p class="hint" style="margin-top: 8px;" data-i18n="toolbox_cleanup_task_hint">整理重录、真重复与句内磕巴，保留原始文字；删除写为空隙，存疑写为待核查区段。</p>
+          <label class="check-field" for="postprocessCleanupReviewEnabled" style="margin-top: 12px;">
+            <input id="postprocessCleanupReviewEnabled" type="checkbox">
+            <span data-i18n="toolbox_cleanup_review">追加 AI 复查</span>
+          </label>
+          <p class="hint" style="margin-top: 8px;" data-i18n="toolbox_cleanup_review_hint">默认关闭。开启后追加漏清扫描与剪后安全审计，会增加请求次数；每个阶段均保存本地记录。</p>
         </div>
         <div id="postprocessResegmentOptions" class="hidden" style="margin-top: 16px;">
           <label for="postprocessResegmentMaxChars" data-i18n="toolbox_resegment_max_chars">每条字幕最大字数（可选）</label>

@@ -15,13 +15,14 @@ import copy
 import json
 import re
 from collections.abc import Callable, Mapping, Sequence
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from pathlib import Path
 from typing import Final
 
 from maw.postprocess import OutputMode
 from maw.postprocess_ai_cleanup_safety import information_loss_reason, protected_information_loss_reason
 from maw.postprocess_ai_cleanup_timeline import parse_timeline, draft_line
+from maw.postprocess_ai_cleanup_diagnostics import CleanupTrace, record_raw_response
 from maw.postprocess_ai_cleanup_review import review_decisions
 from maw.postprocess_ai_cleanup_items import collapse_echo, scoped_item_ranges, remaining_text, item_text_spans, active_deleted_items
 from maw.postprocess_io import SubtitleArtifact, write_artifacts
@@ -156,8 +157,7 @@ class AiCleanupRequest:
     media_path: Path | None = None
     clean_markdown_symbols: bool = True
     notes: str = ""
-    # Internal switch: callers can disable the second pass; no GUI setting yet.
-    review_enabled: bool = True
+    review_enabled: bool = False
     generate_comparison: bool = False
 
 
@@ -210,6 +210,7 @@ def llm_complete(
                 response_json_schema=AI_CLEANUP_REVIEWS_JSON_SCHEMA if clips and all("proposed" in row for row in clips) else None,
             )
             content = _response_content(body)
+            record_raw_response(current_prompt, content)
             if not clips or not all("proposed" in row for row in clips):
                 return {"timeline": content}
             try:
@@ -252,36 +253,48 @@ def run_ai_cleanup(
     original_project = copy.deepcopy(project)
     clips = _build_clips(segments, script_lines, project=project)
     _raise_if_cancelled(is_cancelled)
-    decisions = _collect_decisions(
-        complete, clips, script_lines, on_status=on_status, notes=request.notes
-    )
-    _raise_if_cancelled(is_cancelled)
-    resolved, reasons = _resolve_decisions(clips, decisions)
-    if request.review_enabled and clips:
-        candidates = _collect_decisions(
-            complete, clips, script_lines, on_status=on_status, notes=request.notes,
-            scan_state=(decisions, resolved),
+    trace = CleanupTrace(complete, base=source_project or source_srt, directory=request.output_directory)
+    try:
+        decisions = _collect_decisions(
+            trace, clips, script_lines, on_status=on_status, notes=request.notes,
+            on_protocol_error=trace.reject,
         )
         _raise_if_cancelled(is_cancelled)
-        for clip_id, candidate in candidates.items():
-            if candidate.get("decision") == DECISION_KEEP:
-                continue
-            if candidate.get("decision") == DECISION_EDIT and resolved[clip_id] == DECISION_EDIT:
-                candidate = {**candidate, "deleteItems": sorted(set(decisions[clip_id].get("deleteItems", [])) | set(candidate.get("deleteItems", [])))}
-                if len(candidate["deleteItems"]) >= len(next(clip.items for clip in clips if clip.id == clip_id)):
-                    candidate = {**candidate, "decision": DECISION_REVIEW, "deleteItems": [], "reason": "累计划删涵盖整段，需要复核"}
-            decisions[clip_id] = candidate
         resolved, reasons = _resolve_decisions(clips, decisions)
-        flags = review_decisions(
-            complete,
-            _readthrough_rows(segments, clips, decisions, resolved),
-            notes=request.notes,
-            on_status=on_status,
-        )
-        _raise_if_cancelled(is_cancelled)
-        for clip_id, reason in flags.items():
-            resolved[clip_id] = DECISION_REVIEW
-            reasons[clip_id] = reason
+        trace.checkpoint("首次整理本地校验", decisions=decisions, resolved=resolved, reasons=reasons)
+        if request.review_enabled and clips:
+            candidates = _collect_decisions(
+                trace, clips, script_lines, on_status=on_status, notes=request.notes,
+                scan_state=(decisions, resolved), on_protocol_error=trace.reject,
+            )
+            _raise_if_cancelled(is_cancelled)
+            for clip_id, candidate in candidates.items():
+                if candidate.get("decision") == DECISION_KEEP:
+                    continue
+                if candidate.get("decision") == DECISION_EDIT and resolved[clip_id] == DECISION_EDIT:
+                    candidate = {**candidate, "deleteItems": sorted(set(decisions[clip_id].get("deleteItems", [])) | set(candidate.get("deleteItems", [])))}
+                    if len(candidate["deleteItems"]) >= len(next(clip.items for clip in clips if clip.id == clip_id)):
+                        candidate = {**candidate, "decision": DECISION_REVIEW, "deleteItems": [], "reason": "累计划删涵盖整段，需要复核"}
+                decisions[clip_id] = candidate
+            resolved, reasons = _resolve_decisions(clips, decisions)
+            trace.checkpoint("漏清扫描本地校验", decisions=decisions, resolved=resolved, reasons=reasons)
+            flags = review_decisions(
+                trace,
+                _readthrough_rows(segments, clips, decisions, resolved),
+                notes=request.notes,
+                on_status=on_status, on_protocol_error=trace.reject,
+            )
+            _raise_if_cancelled(is_cancelled)
+            for clip_id, reason in flags.items():
+                resolved[clip_id] = DECISION_REVIEW
+                reasons[clip_id] = reason
+            trace.checkpoint("剪后安全审计本地校验", flags=flags, resolved=resolved, reasons=reasons)
+    except LlmClientError as error:
+        raise trace.failure(error) from error
+    except Exception as error:
+        trace.status = "中断"
+        trace.checkpoint("中断", error=str(error))
+        raise
 
     removed_ranges: list[dict[str, object]] = []
     discarded_main_ids: set[str] = set()
@@ -370,30 +383,39 @@ def run_ai_cleanup(
     if ai_markers:
         project["markers"] = _build_markers_field(ai_markers, project.get("markers"))
 
-    _raise_if_cancelled(is_cancelled)
+    if is_cancelled is not None and is_cancelled():
+        raise trace.failure(LlmClientError("操作已取消。", category="cancelled", operation="ai_cleanup"))
 
     warnings = (
         f"文稿来源：{script_path}" if script_path else "无参考文稿：按原始转写整理。",
         f"AI 整理：整段移除 {stats['removed']} 段，局部删减 {stats['editedSegments']} 段 / {stats['removedItems']} 个词项，待核查 {stats['pendingReview']} 段。",
     )
     if begin_commit is not None and not begin_commit():
-        raise LlmClientError(
-            "操作已取消。", category="cancelled", operation="ai_cleanup"
+        raise trace.failure(LlmClientError("操作已取消。", category="cancelled", operation="ai_cleanup"))
+    try:
+        artifact = write_artifacts(
+            project,
+            source_project_path=source_project,
+            source_srt_path=source_srt,
+            operation="ai_cleanup",
+            write_project=request.output_mode in {OutputMode.JSON, OutputMode.BOTH},
+            write_srt=request.output_mode in {OutputMode.SRT, OutputMode.BOTH},
+            warnings=warnings,
+            output_directory=request.output_directory,
+            media_path=request.media_path,
+            stats=stats,
+            comparison_source=original_project if request.generate_comparison else None,
+            comparison_rows=[{ "id": str(segments[c.segment_index]["id"]), "decision": resolved[c.id], "reason": reasons[c.id], "deleteItems": [c.source_item_indices[i] for i in decisions[c.id].get("deleteItems", [])] if resolved[c.id] == DECISION_EDIT else [] } for c in clips],
         )
-    return write_artifacts(
-        project,
-        source_project_path=source_project,
-        source_srt_path=source_srt,
-        operation="ai_cleanup",
-        write_project=request.output_mode in {OutputMode.JSON, OutputMode.BOTH},
-        write_srt=request.output_mode in {OutputMode.SRT, OutputMode.BOTH},
-        warnings=warnings,
-        output_directory=request.output_directory,
-        media_path=request.media_path,
-        stats=stats,
-        comparison_source=original_project if request.generate_comparison else None,
-        comparison_rows=[{ "id": str(segments[c.segment_index]["id"]), "decision": resolved[c.id], "reason": reasons[c.id], "deleteItems": [c.source_item_indices[i] for i in decisions[c.id].get("deleteItems", [])] if resolved[c.id] == DECISION_EDIT else [] } for c in clips],
-    )
+    except Exception as error:
+        trace.status = "写出失败"
+        trace.checkpoint("写出失败", error=str(error))
+        raise
+    trace.status = "成功"
+    trace.checkpoint("最终结果", stats=stats, project=artifact.project_path, srt=artifact.srt_path)
+    if trace.save_error:
+        return replace(artifact, warnings=(*artifact.warnings, f"AI 整理记录保存失败：{trace.save_error}"))
+    return artifact
 
 
 def _raise_if_cancelled(is_cancelled: Callable[[], bool] | None) -> None:
@@ -537,6 +559,7 @@ def _collect_decisions(
     on_status: Callable[[str], None] | None,
     notes: str = "",
     scan_state: tuple[Mapping[str, Mapping[str, object]], Mapping[str, str]] | None = None,
+    on_protocol_error: Callable[[str], None] | None = None,
 ) -> dict[str, Mapping[str, object]]:
     decisions: dict[str, Mapping[str, object]] = {}
     for batch_start in range(0, len(clips), CLIPS_PER_REQUEST):
@@ -554,7 +577,7 @@ def _collect_decisions(
             )
         ]
         decisions.update(
-            _complete_batch(complete, batch, script_lines, context=context, notes=notes, scan_state=scan_state)
+            _complete_batch(complete, batch, script_lines, context=context, notes=notes, scan_state=scan_state, on_protocol_error=on_protocol_error)
         )
     return decisions
 
@@ -567,6 +590,7 @@ def _complete_batch(
     context: Sequence[_Clip] = (),
     notes: str = "",
     scan_state: tuple[Mapping[str, Mapping[str, object]], Mapping[str, str]] | None = None,
+    on_protocol_error: Callable[[str], None] | None = None,
 ) -> dict[str, Mapping[str, object]]:
     expected_ids = {clip.id for clip in batch}
     prompt = _system_prompt(notes)
@@ -582,6 +606,7 @@ def _complete_batch(
             row["currentText"] = "" if outcome == DECISION_DISCARD else remaining_text(clip.text, clip.items, deleted)
             row["currentDecision"] = outcome
             row["currentTimeline"] = draft_line(clip.id, clip.text, deleted, clip.items)
+    prompt += "\n本轮仅输出以下目标 ID，严格保持顺序（其余行只读，不输出）：" + "、".join(clip.id for clip in batch)
     last_error = ""
     for attempt in range(MAX_RESPONSE_ATTEMPTS):
         _ = attempt
@@ -594,6 +619,8 @@ def _complete_batch(
                 _infer_draft_alternatives(clips=references, parsed=parsed, scan_state=scan_state)
             except ValueError as error:
                 last_error = str(error)
+                if on_protocol_error:
+                    on_protocol_error(last_error)
                 continue
         protocol_error = _protocol_error(
             parsed, expected_ids, reference_ids={clip.id for clip in references},
@@ -606,6 +633,8 @@ def _complete_batch(
                 if isinstance(decision, Mapping)
             }
         last_error = protocol_error
+        if on_protocol_error:
+            on_protocol_error(last_error)
     raise LlmClientError(
         f"AI 整理响应在重试后仍未通过协议校验：{last_error}",
         category="protocol",
@@ -799,7 +828,7 @@ def _resolve_decisions(
             removed = "".join(str(clip.items[index]["text"]) for index in deleted)
             replacement = "".join(other.text for other in alt_clips if resolved[other.id] not in {DECISION_DISCARD, DECISION_EDIT} and other.id != clip.id)
             evidence_ok = bool(evidence) and _contains_normalized(_normalize_text(removed).value, evidence)
-            shortcut_safe = protected_information_loss_reason(clip.text, kept) is None and (
+            shortcut_safe = protected_information_loss_reason(collapse_echo(clip.text), collapse_echo(kept)) is None and (
                 collapse_echo(clip.text) == collapse_echo(kept)
                 or bool(re.fullmatch(r"[嗯啊呃哦唉、，。\s]+|想一下|我重说", removed))
             )
@@ -856,7 +885,30 @@ def _resolve_decisions(
             downgrade(clip.id, "片段包含数字，需要人工确认")
         elif sole_script_line:
             downgrade(clip.id, "移除后将丢失对应文稿内容，需要人工确认")
+    _keep_complete_retakes(clips, decisions, resolved, reasons)
     return resolved, reasons
+
+
+def _keep_complete_retakes(clips, decisions, resolved, reasons):
+    """Prevent mixing halves of adjacent, literally identical multi-cue takes."""
+    for start in range(len(clips) - 3):
+        for width in range(2, 5):
+            pair = clips[start:start + width * 2]
+            if len(pair) != width * 2 or any(b.segment_index != a.segment_index + 1 for a, b in zip(pair, pair[1:])):
+                continue
+            old, new = pair[:width], pair[width:]
+            if resolved[old[0].id] != DECISION_DISCARD or resolved[new[0].id] != DECISION_KEEP:
+                continue
+            if any(resolved[clip.id] not in {DECISION_KEEP, DECISION_DISCARD} or any(key in decisions[clip.id] for key in ("removeItemIds", "removeItemRanges")) for clip in pair):
+                continue
+            if any(collapse_echo(before.text).strip() != collapse_echo(after.text).strip() for before, after in zip(old, new)):
+                continue
+            for clip in old:
+                resolved[clip.id] = DECISION_DISCARD
+                reasons[clip.id] = "完整重录连续性校验：后面整组逐句覆盖旧版，统一保留后面的完整版本"
+            for clip in new:
+                resolved[clip.id] = DECISION_KEEP
+                reasons[clip.id] = "完整重录连续性校验：随新版开头一起保留，避免拼接旧版收尾"
 
 
 def _contains_normalized(haystack_norm: str, evidence: str) -> bool:

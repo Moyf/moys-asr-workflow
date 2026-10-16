@@ -655,7 +655,7 @@
   }
 
   function clearChainSelection() {
-    document.querySelectorAll(".toolbox-chain-file.selected").forEach((button) => button.classList.remove("selected"));
+    document.querySelectorAll(".toolbox-chain-file.selected, .toolbox-chain-source.selected").forEach((button) => button.classList.remove("selected"));
   }
 
   function syncInputName() {
@@ -1202,6 +1202,9 @@
     const batch = Number(event.batch || 0);
     if (batch > 0) {
       $("toolboxStreamMeta").textContent = t("toolbox_stream_batch").replace("{batch}", String(batch));
+      if (Number(event.attempt || 1) > 1) {
+        $("toolboxStreamMeta").textContent += t("toolbox_stream_retry").replace("{retry}", String(Number(event.attempt) - 1));
+      }
     }
     if (event.kind === "reasoning") {
       $("toolboxThinkingPanel").classList.remove("hidden");
@@ -1510,6 +1513,7 @@
   }
 
   function selectChainPath(path, button) {
+    if (!SUBTITLE_EXTS.has(extension(path))) return;
     inputManual = true;
     $("toolboxInputPath").value = path;
     $("toolboxInputPath").dispatchEvent(new Event("input", { bubbles: true }));
@@ -1519,6 +1523,8 @@
   }
 
   function artifactLabel(kind) {
+    if (kind === "resegment-record") return t("artifact_type_resegment_record");
+    if (kind === "record") return t("artifact_type_cleanup_record");
     return t(kind === "comparison" ? "artifact_type_comparison" : kind === "project" ? "artifact_type_project" : "artifact_type_srt");
   }
 
@@ -1544,6 +1550,7 @@
     closeArtifactMenu();
     artifactMenuTarget = { path, button };
     const menu = $("artifactContextMenu");
+    $("artifactSetTarget").classList.toggle("hidden", !SUBTITLE_EXTS.has(extension(path)));
     menu.classList.remove("hidden");
     menu.style.left = "0";
     menu.style.top = "0";
@@ -1553,7 +1560,7 @@
     const top = Math.min(Math.max(event.clientY, inset), window.innerHeight - rect.height - inset);
     menu.style.left = `${window.MAWLauncher.viewportPixelsToPage(Math.max(inset, left))}px`;
     menu.style.top = `${window.MAWLauncher.viewportPixelsToPage(Math.max(inset, top))}px`;
-    menu.querySelector('[role="menuitem"]')?.focus({ preventScroll: true });
+    menu.querySelector('[role="menuitem"]:not(.hidden)')?.focus({ preventScroll: true });
   }
 
   async function runArtifactAction(action) {
@@ -1573,6 +1580,7 @@
       { kind: "project", path: result.projectPath },
       { kind: "srt", path: result.srtPath },
       { kind: "comparison", path: result.comparisonPath },
+      { kind: chain?.operation === "resegment" ? "resegment-record" : "record", path: result.diagnosticPath },
     ].filter((artifact, index, all) => artifact.path && all.findIndex((candidate) => candidate.path === artifact.path) === index);
     if (!artifacts.length) return;
     const container = $("toolboxChain");
@@ -1595,7 +1603,7 @@
       button.dataset.artifactName = fileName(path);
       button.dataset.artifactPath = path;
       renderArtifactButton(button);
-      button.addEventListener("click", () => { if (kind === "comparison") void bridge("open_file", { path }); else selectChainPath(path, button); });
+      button.addEventListener("click", () => { if (SUBTITLE_EXTS.has(extension(path))) selectChainPath(path, button); else void bridge("open_file", { path }); });
       button.addEventListener("contextmenu", (event) => openArtifactMenu(event, path, button));
       button.addEventListener("dblclick", async (event) => {
         event.preventDefault();
@@ -1612,6 +1620,30 @@
   }
 
   function applySubtitleResult(result, chain) {
+    if (!$("toolboxChainOriginal")) {
+      const input = inputPaths();
+      const path = (input && (input.projectPath || input.srtPath)) || result.sourceProjectPath || result.sourceSrtPath;
+      if (path && SUBTITLE_EXTS.has(extension(path))) {
+        const original = document.createElement("div");
+        original.id = "toolboxChainOriginal";
+        original.className = "toolbox-chain-original";
+        const label = document.createElement("span");
+        label.className = "toolbox-chain-label";
+        label.dataset.i18n = "toolbox_chain_original";
+        label.textContent = t("toolbox_chain_original");
+        const button = document.createElement("button");
+        button.type = "button";
+        button.className = "toolbox-chain-source";
+        button.dataset.artifactKind = extension(path) === ".srt" ? "srt" : "project";
+        button.dataset.artifactName = fileName(path);
+        button.dataset.artifactPath = path;
+        renderArtifactButton(button);
+        button.addEventListener("click", () => selectChainPath(path, button));
+        button.addEventListener("contextmenu", event => openArtifactMenu(event, path, button));
+        original.append(label, button);
+        $("toolboxChainList").prepend(original);
+      }
+    }
     if (result.projectPath) {
       $("jsonPath").value = result.projectPath;
       $("jsonPath").dispatchEvent(new Event("change", { bubbles: true }));
@@ -1633,6 +1665,7 @@
     void refreshScriptPreview();
     const warnings = Array.isArray(result.warnings) ? [...result.warnings] : [];
     if (result.comparisonPath) warnings.push(`${t("toolbox_comparison_path")} ${result.comparisonPath}`);
+    if (result.diagnosticPath) warnings.push(`${t(chain?.operation === "resegment" ? "toolbox_resegment_record_path" : "toolbox_cleanup_record_path")} ${result.diagnosticPath}`);
     if (result.reportPath) warnings.push(`${t("toolbox_ocr_report_path")} ${result.reportPath}`);
     setResult(`${t("toolbox_done")}${warnings.length ? `\n${warnings.join("\n")}` : ""}`, "success", { revealWarning: warnings.length > 0 });
   }
@@ -1762,7 +1795,7 @@
       steps: [
         // 始终上报用户的单文件勾选；批量运行由后端统一跳过文稿匹配，前端不改写、不持久化批量态。
         { id: "match", enabled: Boolean($("autoStepMatch")?.checked), scriptPath: $("postprocessScriptPath").value.trim(), matchMode: $("postprocessMatchMode").value, extraSplitPunctuation: punctuationLines("postprocessExtraSplitPunctuation"), preservePunctuation: punctuationLines("postprocessPreservePunctuation"), cleanMarkdownSymbols: Boolean($("postprocessCleanMarkdownSymbols")?.checked) },
-        { id: "cleanup", enabled: Boolean($("autoStepCleanup")?.checked), scriptPath: $("postprocessCleanupScriptPath").value.trim(), providerId: stepProviderId("cleanup"), customPrompt: getLlmPrompt("ai_cleanup"), generateComparison: Boolean($("postprocessGenerateComparison")?.checked) },
+        { id: "cleanup", enabled: Boolean($("autoStepCleanup")?.checked), scriptPath: $("postprocessCleanupScriptPath").value.trim(), providerId: stepProviderId("cleanup"), customPrompt: getLlmPrompt("ai_cleanup"), generateComparison: Boolean($("postprocessGenerateComparison")?.checked), reviewEnabled: Boolean($("postprocessCleanupReviewEnabled")?.checked) },
         { id: "replace", enabled: Boolean($("autoStepReplace")?.checked), replacements: parseReplacements(), replacementSeparator: $("postprocessReplacementSeparator").value, replacementTrim: $("postprocessReplacementTrim").checked, replacementCustomSeparator: $("postprocessReplacementCustomSeparator").value, conversion: $("postprocessConversion").value },
         { id: "proofread", enabled: Boolean($("autoStepProofread")?.checked), providerId: stepProviderId("proofread"), customPrompt: getLlmPrompt("proofread"), generateComparison: Boolean($("postprocessGenerateComparison")?.checked) },
         { id: "resegment", maxChars: $("postprocessResegmentMaxChars").value.trim(), enabled: Boolean($("autoStepResegment")?.checked), providerId: stepProviderId("resegment"), customPrompt: getLlmPrompt("resegment"), generateComparison: Boolean($("postprocessGenerateComparison")?.checked) },
@@ -1982,6 +2015,7 @@
     $("postprocessResegmentMaxChars").value = String(byId.get("resegment")?.maxChars || "");
     const cleanup = byId.get("cleanup") || {};
     $("postprocessCleanupScriptPath").value = String(cleanup.scriptPath || "");
+    $("postprocessCleanupReviewEnabled").checked = Boolean(cleanup.reviewEnabled);
     $("postprocessGenerateComparison").checked = ["cleanup", "proofread", "resegment", "translate"]
       .some((stepId) => Boolean(byId.get(stepId)?.generateComparison));
     if (cleanup.providerId && !llmProviderByTask[llmTaskGroup("ai_cleanup")]
@@ -2109,6 +2143,7 @@
         cleanMarkdownSymbols: $("postprocessCleanMarkdownSymbols").checked,
         notes: $("postprocessPrompt").value.trim(),
         generateComparison: Boolean($("postprocessGenerateComparison")?.checked),
+        reviewEnabled: Boolean($("postprocessCleanupReviewEnabled")?.checked),
       });
       cancelled = result.code === "postprocess_cancelled";
       if (result.ok) applySubtitleResult(result, { kind: "ai_cleanup" });
@@ -2750,6 +2785,7 @@
   $("postprocessMatchMode").addEventListener("change", () => { validateMatchPunctuation(); void refreshScriptPreview(); persistAutoPlanSoon(); });
   $("postprocessCleanupScriptPath").addEventListener("input", () => { renderAutoPostprocessState(); persistAutoPlanSoon(); });
   $("postprocessGenerateComparison").addEventListener("change", persistAutoPlanSoon);
+  $("postprocessCleanupReviewEnabled").addEventListener("change", persistAutoPlanSoon);
   $("postprocessResegmentMaxChars").addEventListener("input", () => { setFieldError("postprocessResegmentMaxChars", ""); renderAutoPostprocessState(); persistAutoPlanSoon(); });
   $("pickPostprocessCleanupScript").addEventListener("click", async () => {
     const result = await bridge("choose_file", { kind: "script" });
@@ -3046,6 +3082,7 @@
     if (postprocessCancelling) return;
     if (event.stage === "step_start") setResult(`${autoStepLabel(event.step)}：${t("toolbox_running")}`);
     if (event.stage === "step_done") setResult(`${autoStepLabel(event.step)}：${t("toolbox_done")}`, "success");
+    if (event.stage === "done" && event.warnings?.length) setResult(`${t("toolbox_done")}\n${event.warnings.join("\n")}`, "success", { revealWarning: true });
   };
   window.MAWLauncher.getAutoPostprocessPayload = autoPlanFromControls;
   window.MAWLauncher.openToolboxAiProcessing = () => {
@@ -3060,7 +3097,7 @@
     if (window.MAWLauncher.config?.postprocessProviders?.length) renderProviderKeyStatus(provider());
     renderOcrModel();
     renderTimestampModel();
-    document.querySelectorAll(".toolbox-chain-file").forEach(renderArtifactButton);
+    document.querySelectorAll(".toolbox-chain-file, .toolbox-chain-source").forEach(renderArtifactButton);
     syncBurnSubtitleName();
     syncTimestampMediaName();
     renderAudioTracks();

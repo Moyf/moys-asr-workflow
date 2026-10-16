@@ -108,3 +108,7 @@
 | 1.8.0-beta.1 | 2026-10-09 | [maw-verification-v1.8.0b1-to-main.html](1.8.0-beta.1/2026-10-09/first-verification/maw-verification-v1.8.0b1-to-main.html) | 共享报告；源材料在同目录 |
 
 - [AI 备注与译文核对实现](unversioned/2026-10-12/AI_REVIEW_IMPLEMENTATION.md)：通用工程备注和离线译文编辑的进度、证据与边界。
+- [AI 整理诊断与可选复查](release1.9.0-beta.2/261016_AI整理诊断与复查/任务记录.md)：行数差异复现、阶段记录、原始输入与人工核验清单。
+- [AI 整理人工核验清单](release1.9.0-beta.2/261016_AI整理诊断与复查/AI整理.checklist.md)：复查、留档、处理输入和真实听审。
+- [AI 处理核验矩阵](release1.9.0-beta.2/261016_AI整理诊断与复查/AI处理核验矩阵.md)：截图条目 06 / 07 的自动化与本地 Gemma 实测证据。
+- [重新断句诊断](release1.9.0-beta.2/261016_重新断句诊断/任务记录.md)、[流程初审](release1.9.0-beta.2/261016_重新断句诊断/AI处理流程审查.md)、[核查清单](release1.9.0-beta.2/261016_重新断句诊断/重新断句诊断.checklist.md)：断点定位、逐请求留档与重试批次。

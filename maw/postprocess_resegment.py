@@ -6,11 +6,13 @@ import copy
 import json
 import re
 from collections.abc import Mapping, Sequence
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from typing import TYPE_CHECKING
 
 from maw.postprocess_ai_cleanup_items import item_text_spans, scoped_item_ranges, verified_scope_indices
 from maw.postprocess_io import SubtitleArtifact
+from maw.postprocess_draft import draft_lines
+from maw.postprocess_resegment_diagnostics import ResegmentTrace
 from maw.postprocess_llm import (
     LlmClientError,
     LlmDelta,
@@ -49,6 +51,12 @@ class Unit:
     start: int
     end: int
     item: JsonDict | None
+
+
+class BoundaryValidationError(ValueError):
+    def __init__(self, message: str, issues: list[str]) -> None:
+        super().__init__(message)
+        self.issues = issues
 
 
 def source_units(segment: JsonDict, source: int) -> list[Unit]:
@@ -144,12 +152,10 @@ def parse_boundaries(
     positions = {unit_id: index for index, unit_id in enumerate(ids)}
     draft = response.get("draft")
     if isinstance(draft, str):
-        lines = draft.strip().splitlines()
-        if lines and lines[0].startswith("```") and lines[-1] == "```":
-            lines = lines[1:-1]
+        lines = draft_lines(draft)
         # Compatibility for providers/integrations returning the old JSON shape.
-        if draft.lstrip().startswith("{"):
-            return parse_boundaries(json.loads(draft), units)
+        if lines and lines[0].lstrip().startswith("{"):
+            return parse_boundaries(json.loads("\n".join(lines)), units)
         ends = []
         for line in lines:
             match = re.fullmatch(r"\[([^\[\]\s]+)\]", line.strip())
@@ -187,39 +193,51 @@ def parse_boundaries(
                 ends.append(char_ends[cursor])
     if not ends or ends[-1] != len(units) or ends != sorted(set(ends)):
         raise ValueError("断点必须唯一、递增且包含最后一个单元；不能遗漏尾部。")
-    if any(
-        not safe_boundary(
-            "".join(u.text for u in units[max(0, end - 3) : end]),
-            "".join(u.text for u in units[end : end + 3]),
-        )
-        for end in ends[:-1]
-    ):
-        raise ValueError("断点不能拆开数字、比例或数字与单位。")
+    invalid = []
+    for end in ends[:-1]:
+        # Existing source-cue boundaries are already legal recovery points.
+        # Without an intervening space, two separate English cues would
+        # otherwise look like one continuous word to the text-only guard.
+        if units[end - 1].source != units[end].source:
+            continue
+        left = "".join(u.text for u in units[max(0, end - 3) : end])
+        right = "".join(u.text for u in units[end : end + 3])
+        reason = boundary_issue(left, right)
+        if reason:
+            before, after = units[end - 1], units[end]
+            invalid.append(
+                f"断点 [{before.id}] → [{after.id}]（原字幕 {before.source + 1} → {after.source + 1}）："
+                f"左侧 {json.dumps(left[-60:], ensure_ascii=False)} | 右侧 {json.dumps(right[:60], ensure_ascii=False)}；{reason}"
+            )
+    if invalid:
+        detail = "\n".join(invalid[:5])
+        if len(invalid) > 5:
+            detail += f"\n另有 {len(invalid) - 5} 处无效断点，请查看阶段记录。"
+        raise BoundaryValidationError(f"断点不能拆开数字、比例或数字与单位，也不能拆开连续英文字母。共 {len(invalid)} 处：\n{detail}", invalid)
     return [list(units[start:end]) for start, end in zip([0, *ends[:-1]], ends)]
 
 
 def safe_boundary(left: str, right: str) -> bool:
-    if (
-        left
-        and right
-        and re.search(r"[A-Za-z0-9]$", left)
-        and re.match(r"[A-Za-z0-9]", right)
-    ):
-        return False
+    return boundary_issue(left, right) is None
+
+
+def boundary_issue(left: str, right: str) -> str | None:
     # Separators may be individual ASR items. Inspect both sides to distinguish
     # numeric punctuation (16:9 / 1,000 / 1/2) from sentence punctuation.
     if (re.search(r"\d\s*$", left) and re.match(r"\s*[.,:：/／]\s*\d", right)) or (
         re.search(r"\d\s*[.,:：/／]\s*$", left) and re.match(r"\s*\d", right)
     ):
-        return False
+        return "断点拆开了数字中的小数、千位分隔、比例或分数。"
     # Preserve numbers, decimal fractions and common quantity units.
     if re.search(r"\d[.,]?$", left.rstrip()) and re.match(
         r"[\d.%％]|(?:公斤|千克|厘米|毫米|毫秒|分钟|小时|万元|亿元|像素|帧率|帧|元|秒|米|岁|个|年|月|日|天|kg\b|ms\b|cm\b|px\b|fps\b|Hz\b|kHz\b|MHz\b|GB\b|MB\b|kbps\b|Mbps\b)",
         right.lstrip(),
         re.I,
     ):
-        return False
-    return True
+        return "断点拆开了数字、百分比或数字与单位。"
+    if left and right and re.search(r"[A-Za-z0-9]$", left) and re.match(r"[A-Za-z0-9]", right):
+        return "断点两侧为连续英文字母或数字。"
+    return None
 
 
 def boundary_penalty(left: str, right: str) -> int:
@@ -416,6 +434,37 @@ def run_resegment(
     is_cancelled: Callable[[], bool] | None = None,
     begin_commit: Callable[[], bool] | None = None,
 ) -> SubtitleArtifact:
+    from maw.postprocess import PostprocessStepError, _postprocess_step_error
+
+    trace = ResegmentTrace(request.project_path or request.srt_path, request.output_directory)
+    try:
+        artifact = _run_resegment(request, complete=complete, on_status=on_status, is_cancelled=is_cancelled, begin_commit=begin_commit, trace=trace)
+    except Exception as error:
+        trace.finish("已取消" if getattr(error, "category", "") == "cancelled" else "失败", error=str(error))
+        hint = trace.hint()
+        if hint:
+            if isinstance(error, LlmClientError):
+                raise replace(error, message=f"{error}\n{hint}") from error
+            if isinstance(error, PostprocessStepError):
+                raise _postprocess_step_error(f"{error}\n{hint}", error) from error
+            if isinstance(error, ValueError):
+                raise ValueError(f"{error}\n{hint}") from error
+        raise
+    trace.finish("成功", project=artifact.project_path, srt=artifact.srt_path)
+    if trace.save_error:
+        return replace(artifact, warnings=(*artifact.warnings, trace.hint()))
+    return artifact
+
+
+def _run_resegment(
+    request: LlmPostprocessRequest,
+    *,
+    complete: LlmComplete,
+    on_status: LlmStatus | None,
+    is_cancelled: Callable[[], bool] | None,
+    begin_commit: Callable[[], bool] | None,
+    trace: ResegmentTrace,
+) -> SubtitleArtifact:
     from maw.postprocess import (
         _copy_common_metadata,
         _is_transient_llm_failure,
@@ -509,18 +558,24 @@ def run_resegment(
         )
         try:
             for attempt in range(2):
+                _notify_status(on_status, "toolbox_status_llm_batch", current=number, total=len(batches), attempt=attempt + 1)
+                trace.start(number, attempt + 1, prompt, payload)
                 response = complete(prompt, payload)
+                trace.update(response=response)
                 _raise_if_cancelled(is_cancelled)
                 try:
                     groups = parse_boundaries(response, units)
+                    trace.update(validation="通过", groups=[{"endId": group[-1].id, "text": "".join(unit.text for unit in group)} for group in groups])
                     break
                 except (ValueError, TypeError, KeyError) as error:
+                    trace.update(validation="失败", error=str(error), issues=getattr(error, "issues", []))
                     if attempt:
                         raise ValueError(
                             f"第 {number} 批断点校验失败：{error}"
                         ) from error
                     prompt += f"\n上次未通过校验：{error}。请重新输出完整且递增的断点列表，包含最后一个单元。"
         except (LlmClientError, PostprocessStepError) as error:
+            trace.update(error=str(error))
             if not _is_transient_llm_failure(error):
                 raise _postprocess_step_error(
                     f"第 {number} 批重新断句失败：{error}", error
@@ -608,6 +663,7 @@ def run_resegment(
                     segment["color"] = copy.deepcopy(original_head["color"])
     processed = copy.deepcopy(project)
     processed["segments"] = rebuilt
+    trace.results["segments"] = copy.deepcopy(rebuilt)
     remap_cleanup_scopes(processed, sources, rebuilt, output_groups, by_source)
     from maw.postprocess_annotations import write_annotations
     warnings.extend(write_annotations(processed, {f"c{i + 1:04d}": s for i, s in enumerate(sources)}, annotations, "resegment"))
