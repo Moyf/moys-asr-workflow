@@ -240,8 +240,13 @@ markProjectSaved(MaweServerSave.projectFileHandle.name, null, { silent, fingerpr
     return window.MAWE_I18N?.translateText?.(text) || text;
   }
 
-setInterval(updateProjectDirtyIndicator, 1000);
-document.addEventListener('mawe:languagechange', updateProjectDirtyIndicator);
+  // 脏态指示 1s 轮询兜底 + 语言切换重译标题：仅浏览器页面环境启动
+  // （vm 单测环境无定时器/document 事件全局，恢复/保存流程测试不依赖；
+  // 编辑器页面常驻，无需清除）。
+  if (typeof window !== 'undefined' && typeof window.setInterval === 'function') {
+    window.setInterval(updateProjectDirtyIndicator, 1000);
+    document.addEventListener('mawe:languagechange', updateProjectDirtyIndicator);
+  }
 
 global.MaweProjectSave = Object.freeze({
 markProjectSaved,
