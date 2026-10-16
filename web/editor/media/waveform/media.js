@@ -9,12 +9,18 @@ export function createWaveformModule(dependencies) {
     /** @this {import('./waveform-types.js').WaveformInstance} */
     attachPlayer(player) {
       if (this.player) {
+        this.player.removeEventListener('play', this.thumbnailPlayListener);
+        this.player.removeEventListener('pause', this.thumbnailPlayListener);
+        this.player.removeEventListener('ended', this.thumbnailPlayListener);
         this.player.removeEventListener('timeupdate', this._onPlayerTime);
         this.player.removeEventListener('seeked', this._onPlayerTime);
         this.player.removeEventListener('loadedmetadata', this._onPlayerTime);
       }
       this.player = player;
       if (this.player) {
+        this.player.addEventListener('play', this.thumbnailPlayListener);
+        this.player.addEventListener('pause', this.thumbnailPlayListener);
+        this.player.addEventListener('ended', this.thumbnailPlayListener);
         this.player.addEventListener('timeupdate', this._onPlayerTime);
         this.player.addEventListener('seeked', this._onPlayerTime);
         this.player.addEventListener('loadedmetadata', this._onPlayerTime);

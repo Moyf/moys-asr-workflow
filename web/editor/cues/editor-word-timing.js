@@ -27,8 +27,8 @@
     syncQuickToggle();
     MaweCoreState.waveformEditor?.pane.classList.toggle('word-timing-mode', enabled);
     // 启用/关闭时切到字词码预设的行高与每行长度（关闭恢复原设置）。
-    MaweDisplaySettings?.syncWordTimingWaveformSettings?.(enabled);
-    refresh();
+    const rendered = MaweDisplaySettings?.syncWordTimingWaveformSettings?.(enabled);
+    if (!rendered) refresh();
   }
   // 波形工具栏的「字词」按钮与项目设置镜像开关由模板可选提供；不存在时零开销。
   function syncQuickToggle() {

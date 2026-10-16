@@ -91,7 +91,7 @@ export function createUtilsModule() {
   function normalizeMarkerText(value, maxLength) {
     if (typeof value !== 'string') return '';
     // 去掉控制字符后截断，保证 UI 与文件读写稳定。
-    return value.replace(/[\x00-\x1f\x7f]+/g, ' ').trim().slice(0, maxLength);
+    return value.replace(/[\x00-\x1f\x7f]+/g, ' ').trim().slice(0, maxLength).trim();
   }
 
   function normalizeIntMs(value) {
@@ -124,6 +124,18 @@ export function createUtilsModule() {
     if (end !== null && end > start) marker.end = end;
     const review = normalizeReviewField(raw.review);
     if (review) marker.review = review;
+    const ai = raw.ai;
+    if (ai?.schema === 'maw.ai-annotation.v1' && typeof ai.task === 'string' && ai.task.length <= 64
+        && /^[a-f0-9]{32}$/.test(ai.run_id) && /^[a-f0-9]{64}$/.test(ai.key)
+        && ai.generated && typeof ai.generated === 'object') {
+      const generated = Object.fromEntries(['start', 'end', 'name', 'color', 'note', 'review']
+        .map(key => [key, cloneMarkerValue(ai.generated[key] ?? null)]));
+      // The generated snapshot must follow the same text normalization as the visible marker.
+      generated.name = normalizeMarkerText(generated.name, MARKER_NAME_MAX_LENGTH);
+      generated.note = normalizeMarkerText(generated.note, MARKER_NOTE_MAX_LENGTH);
+      if (generated.review) generated.review = normalizeReviewField(generated.review);
+      marker.ai = { schema: ai.schema, task: ai.task, run_id: ai.run_id, key: ai.key, generated };
+    }
     return marker;
   }
 

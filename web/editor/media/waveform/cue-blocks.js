@@ -21,6 +21,7 @@ export function createWaveformModule(dependencies) {
       if (basic) row.dataset.basic = 'true';
 
       const canvas = document.createElement('canvas');
+      canvas.className = 'waveform-canvas';
       row.appendChild(canvas);
 
       const time = document.createElement('div');
@@ -270,12 +271,11 @@ export function createWaveformModule(dependencies) {
     appendCueBlocks(row, startMs, endMs, groupBadges = null) {
       // 传统模式沿用旧版系统光标（ew-resize）；原创边界光标只在
       const multiLane = this.options.multiSubtitleVisible?.() === true;
-      // 字词码布局分级：多行波形行高 ≥96 且非双语行时上下等高分两层（字幕块
-      // 全功能）；否则叠加显示（字幕块垫底变暗受限）。basic 单行行高充裕，
-      // 维持历史叠加布局（字幕块 72px 垫底）。
+      // 非双语行：单行波形或行高 ≥96 的多行波形上下等高分层，整句保留
+      // 拖动与边界操作；低行高或双语行沿用紧凑叠加布局。
       const wordTimingFullLane = this.options.wordTiming?.enabled
-        && this.settings.mode === 'multi' && !multiLane
-        && (Number(this.settings.rowHeight) || 0) >= 96;
+        && !multiLane && (this.settings.mode === 'basic'
+          || (this.settings.mode === 'multi' && (Number(this.settings.rowHeight) || 0) >= 96));
       const segments = this.options.getSegments('main');
       const selected = this.options.getSelection('main');
       const bindingMarkerTargets = this.options.getBindingMarkerTargets?.() || {};
@@ -316,7 +316,8 @@ export function createWaveformModule(dependencies) {
           const badgeVisibleStart = Math.max(startMs, segment.start);
           const badgeVisibleEnd = Math.min(endMs, segment.end);
           // 行创建时还未挂载（clientWidth=0），用容器宽度估算块像素宽（行宽=容器宽）
-          const blockWidthPx = ((badgeVisibleEnd - badgeVisibleStart) / badgeDuration) * this.content.clientWidth;
+          const blockWidthPx = ((badgeVisibleEnd - badgeVisibleStart) / badgeDuration)
+            * (row._waveformCanvasWidth || this.content.clientWidth);
           if (blockWidthPx >= 24) badges.forEach((badge, badgeIndex) => {
             const badgeEl = document.createElement('span');
             badgeEl.className = `waveform-cue-badge ${badge.type}${wordTimingFullLane ? ' word-timing-full' : ''}`;

@@ -64,6 +64,7 @@
       color: colorGroup.head,
       color_ref: colorGroup.ref,
       ...(commonSpeaker !== null ? { speaker: commonSpeaker } : {}),
+      ...(segs[0].assOverride ? { assOverride: window.AsrEditorUtils.normalizeAssOverride(segs[0].assOverride) } : {}),
       disabled: !!segs[0].disabled,  // 合并后取 index=0 的禁用状态
       _dirty: true,
     };

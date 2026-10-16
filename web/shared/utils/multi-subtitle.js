@@ -23,6 +23,9 @@ export function createUtilsModule(dependencies) {
       .filter((segment) => segment && typeof segment === 'object')
       .map((segment) => {
         const copy = { ...segment };
+        const override = dependencies.normalizeAssOverride(segment.assOverride);
+        if (override) copy.assOverride = override;
+        else delete copy.assOverride;
         if (Array.isArray(copy.items)) copy.items = copy.items.map((item) => ({ ...item }));
         else delete copy.items;
         return copy;
@@ -87,6 +90,9 @@ export function createUtilsModule(dependencies) {
         .filter((segment) => segment && typeof segment === 'object')
         .map((segment) => {
           const copy = { ...segment };
+          const override = dependencies.normalizeAssOverride(segment.assOverride);
+          if (override) copy.assOverride = override;
+          else delete copy.assOverride;
           // Extension SRT has no items, while an imported mosp/project or a
           // swapped-down main track may carry optional word timestamps. Keep
           // them when present so a later swap can restore the main track.
@@ -169,6 +175,11 @@ export function createUtilsModule(dependencies) {
   function normalizeMultiSubtitleProject(project) {
     if (!project || typeof project !== 'object') return project;
     ensureStableSegmentIds(project.segments, 'main');
+    for (const segment of project.segments || []) {
+      const override = dependencies.normalizeAssOverride(segment.assOverride);
+      if (override) segment.assOverride = override;
+      else delete segment.assOverride;
+    }
     project.overlay_track = normalizeOverlayTrack(project.overlay_track);
     project.multi_subtitle = normalizeMultiSubtitle(project.multi_subtitle, project.segments);
     return project;
@@ -336,6 +347,7 @@ export function createUtilsModule(dependencies) {
         copy.items = segment.items.map((item) => ({ ...item }));
       }
       copySubtitleColorFields(segment, copy);
+      if (segment.assOverride !== undefined) copy.assOverride = dependencies.normalizeAssOverride(segment.assOverride);
       if (segment.speaker != null) copy.speaker = segment.speaker;
       if (typeof segment.disabled === 'boolean') copy.disabled = segment.disabled;
       if (segment._dirty) copy._dirty = true;

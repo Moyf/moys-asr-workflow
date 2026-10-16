@@ -44,19 +44,19 @@
 
 
 
-  function applyWaveformModeRowHeight() {
+  function applyWaveformModeRowHeight({ render = true } = {}) {
     const editor = MaweCoreState.waveformEditor;
     if (!editor) return;
     const mode = waveformModes.at(-1);
     const height = mode === 'word'
       ? MaweSettings.EDITOR_SETTINGS.wordTimingRowHeight
       : mode === 'multi' ? MaweSettings.EDITOR_SETTINGS.multiSubtitleRowHeight : waveformRowHeightBeforeModes;
-    if (Number.isFinite(height)) editor.setRowHeight(height);
+    if (Number.isFinite(height)) editor.setRowHeight(height, { render });
   }
 
   // 共享基线，最近开启的模式优先。关闭非顶层模式不会改动当前行高；
   // 关闭顶层时回到剩余模式的预设，全部关闭后才恢复原始行高。
-  function syncWaveformModeRowHeight(mode, enabled) {
+  function syncWaveformModeRowHeight(mode, enabled, { render = true } = {}) {
     const editor = MaweCoreState.waveformEditor;
     if (!editor) return;
     const index = waveformModes.indexOf(mode);
@@ -68,7 +68,7 @@
       waveformModes.splice(index, 1);
       if (index < waveformModes.length) return;
     }
-    applyWaveformModeRowHeight();
+    applyWaveformModeRowHeight({ render });
     if (!waveformModes.length) waveformRowHeightBeforeModes = null;
   }
 
@@ -85,12 +85,19 @@
     const wasEnabled = waveformModes.includes('word');
     if (enabled && !wasEnabled) {
       secondsPerRowBeforeWordTiming = editor.settings.secondsPerRow;
-      editor.setSecondsPerRow(MaweSettings.EDITOR_SETTINGS.wordTimingSecondsPerRow);
+      editor.setSecondsPerRow(MaweSettings.EDITOR_SETTINGS.wordTimingSecondsPerRow, { render: false });
     } else if (!enabled && wasEnabled) {
-      editor.setSecondsPerRow(secondsPerRowBeforeWordTiming);
+      editor.setSecondsPerRow(secondsPerRowBeforeWordTiming, { render: false });
       secondsPerRowBeforeWordTiming = null;
     }
-    syncWaveformModeRowHeight('word', enabled);
+    syncWaveformModeRowHeight('word', enabled, { render: false });
+    // 两个预设一起落地后只绘制一次。单行模式不使用这些几何预设，
+    // 切换字词只需调用方刷新字幕层，保留 Canvas 和当前水平视窗。
+    if (enabled !== wasEnabled && editor.isMultiMode()) {
+      editor.render();
+      return true;
+    }
+    return false;
   }
 
 
