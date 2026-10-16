@@ -38,7 +38,7 @@ export function createUtilsModule(dependencies) {
   // this module runs. Keep a small fallback so the utility remains usable in
   // standalone tests and integrations that do not render the full template.
   const ASS_FALLBACK_COLOR_PALETTE = Object.freeze([
-    Object.freeze({ name: 'yellow', value: '#c4a019' }),
+    Object.freeze({ name: 'yellow', value: '#f9ca1f' }),
     Object.freeze({ name: 'green', value: '#66bb6a' }),
     Object.freeze({ name: 'red', value: '#f07f6f' }),
     Object.freeze({ name: 'purple', value: '#bf89e6' }),
@@ -208,7 +208,7 @@ export function createUtilsModule(dependencies) {
   const ASS_DEFAULT_EXTENSION_STYLE = Object.freeze({
     ...ASS_DEFAULT_STYLE,
     id: 'ass-extension', name: 'ASS 副字幕样式',
-    primaryColor: '#eac953', emphasisColor: '#ffaa00',
+    primaryColor: '#f9ca1f', emphasisColor: '#ffaa00',
     fontSize: 64, outline: 2, marginV: 36,
   });
 
@@ -747,5 +747,7 @@ export function createUtilsModule(dependencies) {
     };
   }
 
-  return Object.freeze({ ASS_COLOR_STYLE_NAMES, ASS_DEFAULT_ANIMATIONS, ASS_DEFAULT_ASS_STYLE, ASS_DEFAULT_COLOR, ASS_DEFAULT_EXTENSION_STYLE, ASS_DEFAULT_PLAY_RES_X, ASS_DEFAULT_PLAY_RES_Y, ASS_DEFAULT_PROFILE, ASS_DEFAULT_STYLE, ASS_EVENT_FORMAT, ASS_FALLBACK_COLOR_PALETTE, ASS_REFERENCE_PLAY_RES_Y, ASS_STYLE_FORMAT, ASS_STYLE_LIBRARY_SCHEMA, assAlphaFromOpacity, assColorFromHex, assCssColorWithOpacity, assDefaultFontFamily, assEmphasisRuns, assInlineStyleRuns, assOverrideColorFromHex, assPreviewStyleAt, assProfileForId, assStyleForId, assStyleLine, assTransformStyleTargets, defaultAssStyleLibrary, escapeAssText, formatAssTime, normalizeAssAnimations, normalizeAssColorStyle, normalizeAssFontFamily, normalizeAssFontSize, normalizeAssLibraryColor, normalizeAssPlayResolution, normalizeAssProfile, normalizeAssStyle, normalizeAssStyleLibrary, normalizeAssTimeMs, resolveAssFontSize });
+  // assMarkedRanges 同时供 text-processing 的 MASS 成对检测复用（strip /
+  // 拆分补齐 / 合并折叠 / 字词块归位同一套配对语义），故从这里导出。
+  return Object.freeze({ ASS_COLOR_STYLE_NAMES, ASS_DEFAULT_ANIMATIONS, ASS_DEFAULT_ASS_STYLE, ASS_DEFAULT_COLOR, ASS_DEFAULT_EXTENSION_STYLE, ASS_DEFAULT_PLAY_RES_X, ASS_DEFAULT_PLAY_RES_Y, ASS_DEFAULT_PROFILE, ASS_DEFAULT_STYLE, ASS_EVENT_FORMAT, ASS_FALLBACK_COLOR_PALETTE, ASS_REFERENCE_PLAY_RES_Y, ASS_STYLE_FORMAT, ASS_STYLE_LIBRARY_SCHEMA, assAlphaFromOpacity, assColorFromHex, assCssColorWithOpacity, assDefaultFontFamily, assEmphasisRuns, assInlineStyleRuns, assMarkedRanges, assOverrideColorFromHex, assPreviewStyleAt, assProfileForId, assStyleForId, assStyleLine, assTransformStyleTargets, defaultAssStyleLibrary, escapeAssText, formatAssTime, normalizeAssAnimations, normalizeAssColorStyle, normalizeAssFontFamily, normalizeAssFontSize, normalizeAssLibraryColor, normalizeAssPlayResolution, normalizeAssProfile, normalizeAssStyle, normalizeAssStyleLibrary, normalizeAssTimeMs, resolveAssFontSize });
 }

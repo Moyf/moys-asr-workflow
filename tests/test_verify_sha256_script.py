@@ -30,7 +30,9 @@ def usable_bash() -> str | None:
         " && command -v grep >/dev/null"
     )
     try:
-        proc = subprocess.run([candidate, "-c", probe], capture_output=True, text=True, timeout=60)
+        # The Windows WSL launcher may print UTF-16 diagnostics. This probe
+        # only needs its exit code, so keep bytes instead of decoding them.
+        proc = subprocess.run([candidate, "-c", probe], capture_output=True, timeout=60)
     except (OSError, subprocess.TimeoutExpired):
         return None
     return candidate if proc.returncode == 0 else None

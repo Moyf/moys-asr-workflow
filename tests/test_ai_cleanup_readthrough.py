@@ -46,7 +46,7 @@ class ReadthroughTest(CompactContainerAssertions, AiCleanupTestCase):
             {"id": "c002", "reason": "复核：检查承接"},
         ]}, untimed=True, on_status=status.append)
         output = json.loads(artifact.project_path.read_text(encoding="utf-8"))
-        self.assertTrue(AiCleanupRequest.__dataclass_fields__["review_enabled"].default)
+        self.assertFalse(AiCleanupRequest.__dataclass_fields__["review_enabled"].default)
         self.assertEqual(len(self.calls), 3)
         self.assertIn("toolbox_status_ai_cleanup_review", status)
         rows = self.calls[-1][1]
@@ -134,7 +134,7 @@ class ReadthroughTest(CompactContainerAssertions, AiCleanupTestCase):
         with mock.patch("maw.postprocess_pipeline.llm_complete", return_value=transport):
             with self.assertRaises(PostprocessCancelled):
                 _run_ai_cleanup_step(
-                    {"scriptPath": str(script)}, project_path=source,
+                    {"scriptPath": str(script), "reviewEnabled": True}, project_path=source,
                     srt_path=self.directory / "input.srt", media_path=self.directory / "media.wav",
                     env_path=self.directory / "unused.env", output_directory=self.directory,
                     cancel_event=cancelled, on_event=None,

@@ -58,6 +58,7 @@
       if (candidatePlayer !== oldPlayer && oldParent) {
         oldParent.replaceChild(oldPlayer, candidatePlayer);
         MaweCoreState.player = oldPlayer;
+        observeAssSubtitlePreviewPlayer(oldPlayer);
         MaweCoreState.waveformEditor?.attachPlayer(MaweCoreState.player);
       } else if (previousSource) {
         const previous = oldPlayer.querySelector('source');
@@ -113,6 +114,7 @@
     const stem = file.name.replace(/\.[^.]+$/, '');
     MaweBoot.FILENAME_BASE = stem;
     MaweBoot.DATA.media = file.name;
+    window.MaweBurnVideoExport?.invalidateBinding();
     window.MaweGapRemovedMediaExport?.updateButton();
     MaweBoot.DATA.media_time_reference = mediaTimeReference;
     const mnEl = document.getElementById('media-name');

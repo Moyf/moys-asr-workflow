@@ -91,6 +91,8 @@ git diff --check
 - 对页面 / 内联脚本做成员断言的测试类，继承 `tests/compact_assertions.py` 的 `CompactContainerAssertions` 混入：失败信息压缩为「needle + 容器规模」，比截断更好读。`tests/test_compact_assertions_usage.py` 会扫出漏掉混入的类（漏了直接红灯），压缩行为本身由 `tests/test_run_tests_runner.py` 守门。
 - 后台长驻进程（serve.py、http.server 等）不要用会等待进程树的方式启动：优先用独立终端，或把输出重定向到文件后再以端口探活（如 `Invoke-WebRequest` 轮询），用完必须终止进程。曾发生后台 server 挂住会话 2 小时以上的事故。
 - 禁止用 bash 后台 `&`（含 `nohup ... &`）启动任何长驻进程：stdin 仍挂在会话管道上永不 EOF，即使重定向 stdout/stderr，命令工具也会等待进程树而永久阻塞（2026-10-09 `python -m http.server ... &` 事故，探活成功后仍卡死）。需要本地服务一律 paseo 独立终端启动、用完 kill；一次性验证（如本地打开生成的 HTML）优先静态校验，不起服务。
+- paseo 独立终端发命令必须以 `\r`（回车）结尾：`\n` 只会换行回显、不触发执行，**终端有回显不代表命令已运行**（2026-10-16 事故：`\n` 导致 Launcher 命令未执行，伪装成 GUI 静默退出，绕了一圈查进程、日志和应用逻辑才发现）。启动长驻进程后用 `Get-CimInstance Win32_Process` 确认进程真实存在；注意提权进程的 CommandLine 可能为 null，按 CommandLine 过滤会漏查。
+- paseo `checkout-pr` 拉取 fork PR 可能因 gh GraphQL 调用直接报错：回退用 `git fetch origin pull/<N>/head:<本地分支>` + `git worktree add <路径> <分支>`；产物是普通 git worktree，不注册为 paseo workspace。
 - 已知时长：全量 Python 套件约 110s、单条 e2e spec 约 2 分钟，命令默认超时 120s 处于临界；这些命令显式设置更大的超时，或按文件拆分执行。
 - 新 worktree 先检查现有环境：锁文件一致时可只读复用主仓库 Python venv，显式设置 `MAW_TEST_PYTHON`（Node 跨语言测试）和 `MAW_E2E_PYTHON`（e2e）；不在共享 venv 上同步不同依赖。Node 在当前 worktree 按锁文件安装一次，e2e 还需浏览器。依赖缺失只记录一次并修复对应层，禁止为同一失败循环重建环境；e2e / Node 的 uv 默认路径使用 `--no-sync`。
 - PowerShell 内联脚本（`node -e "..."`、多层嵌套引号）极易解析失败；复杂逻辑写成临时脚本文件再执行。命令输出为空时，先怀疑参数与引号，而不是重跑同一命令。
@@ -172,9 +174,10 @@ git diff --name-status
 核对清单交给维护者，而不是在对话里罗列长清单。**agents 只写 Markdown，不手写 HTML**：
 
 1. 编写 `<主题>.checklist.md`（语法契约见 `tools/verification-checklist/README.md`
-   「Markdown 源格式（v1）」，可用 skill `verification-checklist`）：YAML front-matter
+   「Markdown 源格式（v2）」，可用 skill `verification-checklist`）：YAML front-matter
    （task/pr/date/status: pending）+ `# 标题` + `> 副标题` + `## 分区`；分区标题下有
-   `<!-- id: -->`，核对项为 `- [ ] **入口**：操作；预期：结果 <!-- id: -->` 行。
+   `<!-- id: -->`，核对项为 v2 块：`- [ ] **测试目的**` 加缩进两格的 `（操作）…`、
+   `（预期）…`、可选 `（说明）…` 续行，`<!-- id: -->` 注释放块尾。
    分区约定：实现 / 审查结论（只读）→ 修复与提交记录 → 自动化验证结果（写明命令与
    已知环境性失败，不用自动化冒充人工层）→ 人工核验打勾项 → 后续操作步骤。
 2. 自查并生成：`build.py --check <文件>.md` 通过后
@@ -184,11 +187,12 @@ git diff --name-status
    它同时是 PR 评论的来源（去掉 front-matter 贴出，核对项渲染为原生勾选框；
    reviewer 取回原文即可重新生成 HTML）和核验状态的追踪载体（核验完成后把项改成
    `- [x]`、front-matter status 改 partial/passed；`build.py --scan docs/logs` 汇总）。
-4. 打勾项写成可操作步骤（入口 → 操作 → 预期行为），间距类验收仍按「UI 间距约定」
+4. 打勾项写成可操作步骤（目的 / 操作 / 预期，补充背景放可选说明），间距类验收仍按「UI 间距约定」
    要求实测数据。左侧目录、分区与总进度由模板脚本自动生成，无需手写；勾选状态按
    页面标题存 localStorage，「重置勾选」一键清空勾选并保留备注。页面内可
    「导出 JSON / 导出 Markdown / 复制 Markdown」得到核对结果快照（只含核对项，
-   不是可再生的源清单）。
+   不是可再生的源清单）。默认范围为未确认与非空备注项的并集，排除忽略分组；
+   全部范围保留完整状态。重置勾选会一并清除忽略，仍保留备注。
    工具使用说明、完整语法与生成/更新命令见 `tools/verification-checklist/README.md`。
 5. 不要为单次清单改动模板结构；确需改进时直接修改模板本身，让后续复用受益
    （模板改动跑 README「修改与验证」列出的测试）。

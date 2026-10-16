@@ -97,6 +97,7 @@ __WAVEFORM_CSS__
       </div>
     </span>
     <button id="download-json">导出工程</button>
+    <button type="button" id="burn-video-export-btn" hidden title="用 FFmpeg (libass) 将当前工程的 ASS 字幕烧录进源视频；输出 MP4，需已绑定源媒体。">烧录视频</button>
     <span class="dropdown gap-removed-export-dropdown" id="gap-removed-export-dropdown" hidden>
       <button id="gap-removed-export-btn" title="导出应用当前空隙移除结果的字幕、时间线或保留区域计划" aria-expanded="false" aria-controls="gap-removed-export-menu" aria-haspopup="menu">去空隙导出 ▾</button>
       <div class="dropdown-menu" id="gap-removed-export-menu" role="menu">
@@ -105,6 +106,7 @@ __WAVEFORM_CSS__
         <div class="dropdown-separator" id="gap-removed-subtitle-export-separator" role="separator" hidden></div>
         <div class="dropdown-item" id="download-gap-removed-ass" role="menuitem" tabindex="0" title="按移除静音空隙后的时间轴导出带样式的 ASS 字幕；原工程时间不变">ASS（带样式）</div>
         <div class="dropdown-item" id="download-gap-removed-video" role="menuitem" tabindex="0" title="按保留区域重组视频；切点可能受关键帧影响。">重组后视频</div>
+        <div class="dropdown-item" id="download-gap-removed-burn-video" role="menuitem" tabindex="0" hidden title="按保留区域重新编码并烧录当前 ASS 字幕；重新编码使切点帧级精确，输出 MP4。">重组后烧录视频</div>
         <div class="dropdown-submenu" role="none">
           <div class="dropdown-item dropdown-submenu-toggle" role="menuitem" tabindex="0" aria-haspopup="menu" aria-expanded="false" aria-controls="gap-removed-otio-menu">OTIO</div>
           <div class="dropdown-menu dropdown-submenu-menu" id="gap-removed-otio-menu" role="menu">
@@ -848,14 +850,10 @@ __WAVEFORM_CSS__
          title="开启后可在叠加轨创建与主字幕时间重叠的叠加字幕；叠加轨不会与双语字幕建立绑定关系">
     <input type="checkbox" id="overlay-track-toggle">
     允许字幕重叠
-  </label><label class="toggle editor-settings-item multi-subtitle-main-toggle project-track-toggle" id="multi-subtitle-toggle-label"
-           title="开启后显示副字幕轨，可手动添加或导入第二条字幕。">
-      <input type="checkbox" id="multi-subtitle-toggle" title="开启后显示副字幕轨，可手动添加或导入第二条字幕。">
-      双语字幕
-    </label><small class="multi-subtitle-empty-hint" id="multi-subtitle-empty-hint" hidden title="在波形副轨空白处右键创建副字幕，或从下方「字幕管理」导入 SRT。">副轨为空，可手动添加或导入</small></div>
+  </label></div>
 <div class="settings-panel-section multi-subtitle-settings-section word-timing-settings-section" role="group" aria-labelledby="word-timing-display-title"><span class="settings-panel-title" id="word-timing-display-title">字词码</span>
 <div class="multi-subtitle-setting-row" id="word-timing-row-height-setting">
-          <span>字词码波形高度</span>
+          <span>自动适配高度</span>
           <select id="word-timing-row-height" title="启用字词时间码时使用的波形行高度">
             <option value="64">64 px</option>
             <option value="80">80 px</option>
@@ -867,7 +865,7 @@ __WAVEFORM_CSS__
           </select>
         </div>
 <div class="multi-subtitle-setting-row" id="word-timing-seconds-per-row-setting">
-          <span>字词码每行长度</span>
+          <span>自动适配每行长度</span>
           <select id="word-timing-seconds-per-row" title="启用字词时间码时使用的波形每行长度">
             <option value="2">2 秒</option>
             <option value="5" selected>5 秒</option>
@@ -876,12 +874,20 @@ __WAVEFORM_CSS__
             <option value="30">30 秒</option>
           </select>
         </div>
-<small class="settings-panel-hint">启用字词时间码时自动切换到这些值；关闭后恢复原来的行高与每行长度。</small>
+<small class="settings-panel-hint">启用字词时间码时，仅在当前行高或每行长度小于预设值时增大；关闭后恢复原值。</small>
 </div>
 </div></div>
 <div class="editor-settings-page" id="editor-settings-page-multi-subtitle" role="tabpanel" aria-labelledby="editor-settings-tab-multi-subtitle" hidden><span class="editor-settings-group-heading" id="project-multi-settings-title">双语字幕</span>
 <div class="editor-settings-group" role="group" aria-labelledby="project-multi-settings-title">
-<div class="settings-panel-section multi-subtitle-settings-section multi-subtitle-display-inline" role="group" aria-label="显示">
+<div class="editor-settings-sub-group multi-subtitle-mode-controls">
+  <label class="toggle editor-settings-item multi-subtitle-main-toggle project-track-toggle" id="multi-subtitle-toggle-label"
+         title="开启后显示副字幕轨，可手动添加或导入第二条字幕。">
+    <input type="checkbox" id="multi-subtitle-toggle" title="开启后显示副字幕轨，可手动添加或导入第二条字幕。">
+    双语字幕
+  </label>
+  <small class="multi-subtitle-empty-hint" id="multi-subtitle-empty-hint" hidden title="在波形副轨空白处右键创建副字幕，或从下方「字幕管理」导入 SRT。">副轨为空，可手动添加或导入</small>
+</div>
+<div class="settings-panel-section multi-subtitle-settings-section multi-subtitle-display-inline" role="group" aria-label="显示" id="multi-subtitle-display-section">
 <div class="multi-subtitle-setting-row">
           <span>字幕列表显示</span>
           <select id="multi-subtitle-display-mode" title="双语字幕列表显示方式">
@@ -891,7 +897,7 @@ __WAVEFORM_CSS__
           </select>
         </div>
 <div class="multi-subtitle-setting-row" id="multi-subtitle-extension-row-height-setting">
-          <span>双语波形高度</span>
+          <span>自动适配高度</span>
           <select id="multi-subtitle-extension-row-height" title="启用双语字幕时使用的波形行高度">
             <option value="64">64 px</option>
             <option value="80">80 px</option>
@@ -905,7 +911,7 @@ __WAVEFORM_CSS__
 <label class="multi-subtitle-setting-toggle" title="在双语字幕波形中显示主字幕和副字幕的轨道编号徽标">
           <input type="checkbox" id="multi-subtitle-show-track-badges"> 显示轨道徽标
         </label>
-<small class="settings-panel-hint">双语开启时使用此行高；单轨行高在波形设置中配置。</small>
+<small class="settings-panel-hint">双语开启时，仅在当前行高小于预设值时增大；关闭后恢复原值。单轨行高在波形设置中配置。</small>
 </div>
 <div class="settings-panel-section multi-subtitle-settings-section" role="group" aria-labelledby="multi-settings-link-title"><span class="settings-panel-title" id="multi-settings-link-title">联动</span>
 <label class="multi-subtitle-setting-toggle" title="拖动副字幕时，允许吸附到主字幕轨道的起点和终点">
@@ -1036,7 +1042,7 @@ __WAVEFORM_CSS__
         <div class="subtitle-preview-setting-pair">
           <div class="subtitle-preview-setting-cell" title="选择播放器画面内副字幕预览的文字颜色">
             <span>文字颜色</span>
-            <input type="color" class="editor-settings-color-input" id="extension-subtitle-color" value="#eac953" aria-label="文字颜色">
+            <input type="color" class="editor-settings-color-input" id="extension-subtitle-color" value="#f9ca1f" aria-label="文字颜色">
           </div>
           <div class="subtitle-preview-setting-cell" title="调整播放器画面内副字幕预览的背景色">
             <span>背景颜色</span>
@@ -1245,7 +1251,7 @@ __WAVEFORM_CSS__
         <div class="subtitle-color-palette-grid" id="subtitle-color-palette-grid" hidden>
           <label class="subtitle-color-palette-field" data-subtitle-palette-name="yellow">
             <span class="subtitle-color-palette-label"><span class="subtitle-color-palette-swatch" data-subtitle-palette-swatch="yellow"></span>黄</span>
-            <span class="subtitle-color-palette-value"><input type="color" id="subtitle-color-palette-yellow" data-subtitle-palette-color="yellow" value="#c4a019" aria-label="黄字幕颜色"><input type="text" id="subtitle-color-palette-yellow-hex" data-subtitle-palette-hex="yellow" value="#c4a019" maxlength="7" pattern="^#[0-9a-fA-F]{6}$" spellcheck="false" aria-label="黄字幕颜色十六进制值"></span>
+            <span class="subtitle-color-palette-value"><input type="color" id="subtitle-color-palette-yellow" data-subtitle-palette-color="yellow" value="#f9ca1f" aria-label="黄字幕颜色"><input type="text" id="subtitle-color-palette-yellow-hex" data-subtitle-palette-hex="yellow" value="#f9ca1f" maxlength="7" pattern="^#[0-9a-fA-F]{6}$" spellcheck="false" aria-label="黄字幕颜色十六进制值"></span>
           </label>
           <label class="subtitle-color-palette-field" data-subtitle-palette-name="green">
             <span class="subtitle-color-palette-label"><span class="subtitle-color-palette-swatch" data-subtitle-palette-swatch="green"></span>绿</span>
@@ -2001,9 +2007,9 @@ __WAVEFORM_CSS__
               <input type="checkbox" id="waveform-spectral-color" aria-describedby="waveform-spectral-status"> 频谱颜色
               <span class="waveform-spectral-status" id="waveform-spectral-status" role="status" aria-live="polite" aria-atomic="true" hidden></span>
             </label>
-            <label class="editor-settings-item waveform-settings-toggle-row" id="waveform-thumbnail-setting" title="在波形上方显示视频画面导航；本机 Server 绑定视频时可用">
-              <span>视频画面</span>
-              <select id="waveform-thumbnail-mode" aria-describedby="waveform-thumbnail-status">
+            <label class="editor-settings-item waveform-settings-toggle-row" id="waveform-thumbnail-setting" title="在波形上方显示视频缩略图导航；本机 Server 绑定视频时可用">
+              <span>视频缩略图</span>
+              <select id="waveform-thumbnail-mode" aria-label="视频缩略图" aria-describedby="waveform-thumbnail-status">
                 <option value="strip">铺满画面带</option>
                 <option value="marks">关键帧标记</option>
                 <option value="hidden">隐藏画面带</option>
@@ -2139,10 +2145,7 @@ __WAVEFORM_CSS__
             </label><small class="settings-panel-hint">播放时列表会跟随当前字幕；手动翻看后可点击恢复跟随。</small></div>
 </div>
       </div>
-      <span class="input-clear" id="search-wrap">
-        <input type="text" id="search" placeholder="过滤字幕…" autocomplete="off">
-        <span class="clear-x" id="search-clear" title="清空">×</span>
-      </span>
+      <input type="search" id="search" placeholder="过滤字幕" autocomplete="off">
       <div class="dropdown color-filter-dropdown" id="color-filter-dropdown">
         <button type="button" id="color-filter-btn" hidden title="按颜色过滤显示的字幕" aria-expanded="false" aria-controls="color-filter-menu">🎨</button>
         <div class="dropdown-menu color-filter-menu" id="color-filter-menu" role="menu"></div>
@@ -2368,7 +2371,7 @@ __WAVEFORM_CSS__
       <label class="text-process-operation" for="text-process-strip-markdown">
         <input type="checkbox" id="text-process-strip-markdown">
         <span>去除 md 格式符号</span>
-        <span class="modal-hint">移除常见 Markdown 标记</span>
+        <span class="modal-hint">移除常见 Markdown 标记；含特殊文本样式（MASS）符号时会一并移除，建议先清理再加样式</span>
       </label>
     </div>
     <div class="text-process-wrap-presets" aria-label="左右添加字符预设">
@@ -2376,6 +2379,10 @@ __WAVEFORM_CSS__
       <div class="text-process-wrap-preset-row text-process-wrap-preset-row-ass">
         <span class="text-process-wrap-preset-row-label">ASS 特殊文本样式</span>
         <div class="text-process-wrap-preset-buttons" id="text-process-wrap-presets-ass"></div>
+      </div>
+      <div class="text-process-wrap-preset-row text-process-wrap-preset-row-ass">
+        <span class="text-process-wrap-preset-row-label text-process-wrap-sentence-badge">整句</span>
+        <div class="text-process-wrap-preset-buttons" id="text-process-wrap-presets-ass-sentence"></div>
       </div>
       <div class="text-process-wrap-preset-row">
         <span class="text-process-wrap-preset-row-label">普通字符</span>
@@ -2435,11 +2442,11 @@ __WAVEFORM_CSS__
   </form>
 </dialog>
 
-<dialog id="word-conversion-dialog" class="modal word-conversion-dialog" aria-labelledby="word-conversion-title" aria-describedby="word-conversion-warning word-conversion-description">
+<dialog id="word-conversion-dialog" class="modal word-conversion-dialog" aria-labelledby="word-conversion-title" aria-describedby="word-conversion-description word-conversion-guidance word-conversion-undo">
   <h3 id="word-conversion-title">字词拆成字幕</h3>
-  <p id="word-conversion-warning" class="word-conversion-warning">可通过撤销恢复；不提供反向转换工具。</p>
-  <p id="word-conversion-description" class="word-conversion-description">此操作会使用字词时间码来生成拆碎后的字幕块，将完整的句子变成一个一个单词显示。</p>
-  <p class="word-conversion-description">请确认你需要这个效果再使用。</p>
+  <p id="word-conversion-description" class="word-conversion-description">此操作会使用字词时间码来生成拆碎后的字幕块，将完整的句子变成一个一个单词逐个显示。</p>
+  <p id="word-conversion-guidance" class="word-conversion-description">请确认你需要这个效果再使用。</p>
+  <p id="word-conversion-undo" class="word-conversion-description">如果不满意可以撤销，或者多选字幕块后重新合并。</p>
   <p id="word-conversion-summary" class="modal-hint word-conversion-summary" role="status" aria-live="polite"></p>
   <ul id="word-conversion-skipped"></ul>
   <div class="actions word-conversion-actions">
@@ -2492,20 +2499,23 @@ __WAVEFORM_CSS__
         <div class="timed-text-edit-search-row">
           <button type="button" id="timed-text-edit-replace-toggle" class="timed-text-edit-search-expand"
                   aria-expanded="false" aria-controls="timed-text-edit-replace-row" title="显示替换">▸</button>
-          <input type="text" id="timed-text-edit-find" placeholder="查找" autocomplete="off" spellcheck="false" aria-label="查找字幕文本">
-          <button type="button" id="timed-text-edit-case" class="timed-text-edit-search-option" aria-pressed="false" title="区分大小写">Aa</button>
-          <button type="button" id="timed-text-edit-regex" class="timed-text-edit-search-option" aria-pressed="false" title="正则表达式">.*</button>
-          <span id="timed-text-edit-search-count" class="timed-text-edit-search-count" role="status" aria-live="polite">0/0</span>
-          <button type="button" id="timed-text-edit-find-previous" title="上一条">上一条</button>
-          <button type="button" id="timed-text-edit-find-next" title="下一条">下一条</button>
+          <input type="search" id="timed-text-edit-find" placeholder="查找" autocomplete="off" spellcheck="false" aria-label="查找字幕文本">
+          <div class="timed-text-edit-replace-row" id="timed-text-edit-replace-row" hidden>
+            <input type="text" id="timed-text-edit-replace" placeholder="替换为" autocomplete="off" spellcheck="false" aria-label="替换为">
+            <div class="timed-text-edit-replace-actions">
+              <button type="button" id="timed-text-edit-replace-one" disabled>单个替换</button>
+              <button type="button" id="timed-text-edit-replace-all" disabled>全量替换</button>
+            </div>
+          </div>
+          <div class="timed-text-edit-search-options">
+            <button type="button" id="timed-text-edit-case" class="timed-text-edit-search-option" aria-pressed="false" title="区分大小写">Aa</button>
+            <button type="button" id="timed-text-edit-regex" class="timed-text-edit-search-option" aria-pressed="false" title="正则表达式">.*</button>
+            <span id="timed-text-edit-search-count" class="timed-text-edit-search-count" role="status" aria-live="polite">0/0</span>
+            <button type="button" id="timed-text-edit-find-previous" title="上一条">上一条</button>
+            <button type="button" id="timed-text-edit-find-next" title="下一条">下一条</button>
+          </div>
         </div>
         <div id="timed-text-edit-search-error" class="timed-text-edit-search-error" role="alert" hidden></div>
-        <div class="timed-text-edit-search-row timed-text-edit-replace-row" id="timed-text-edit-replace-row" hidden>
-          <label for="timed-text-edit-replace">替换为</label>
-          <input type="text" id="timed-text-edit-replace" placeholder="替换为" autocomplete="off" spellcheck="false">
-          <button type="button" id="timed-text-edit-replace-one" disabled>单个替换</button>
-          <button type="button" id="timed-text-edit-replace-all" disabled>全量替换</button>
-        </div>
       </div>
     </div>
     <div class="timed-text-edit-layout">
@@ -2517,6 +2527,7 @@ __WAVEFORM_CSS__
         <div class="timed-text-edit-rows" id="timed-text-edit-rows"></div>
         <div id="timed-text-edit-single-editor" class="timed-text-edit-single-editor" hidden>
           <div id="timed-text-edit-search-mirror" class="timed-text-edit-search-mirror" aria-hidden="true"></div>
+          <div id="timed-text-edit-gutter" class="timed-text-edit-gutter" aria-hidden="true"></div>
           <textarea id="timed-text-edit-single-textarea" class="timed-text-edit-single-textarea"
                     aria-label="单文本框编辑" spellcheck="false" wrap="off"></textarea>
           <span id="timed-text-edit-single-guide" class="timed-text-edit-single-guide" aria-hidden="true"></span>
@@ -2536,6 +2547,10 @@ __WAVEFORM_CSS__
       </aside>
     </div>
     <div class="actions">
+      <label class="timed-text-edit-trim-toggle" for="timed-text-edit-trim" title="应用修改时去掉每条字幕文本首尾的空格">
+        <input type="checkbox" id="timed-text-edit-trim">
+        修改后移除字幕前后空格
+      </label>
       <button type="button" id="timed-text-edit-cancel">取消</button>
       <button type="button" id="timed-text-edit-apply" class="primary" disabled>应用修改</button>
     </div>

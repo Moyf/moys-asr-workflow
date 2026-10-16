@@ -157,6 +157,16 @@ source: "docs/INDEX.md"
 
 [打开正文](https://github.com/Moyf/moys-asr-workflow/blob/main/docs/plans/EDITOR_SETTINGS_PLAN.md)
 
+<a name="plan-launcher-redesign"></a>
+### Launcher 现代化改版设计方案
+
+[打开正文](https://github.com/Moyf/moys-asr-workflow/blob/main/docs/plans/LAUNCHER_REDESIGN.md)
+
+<a name="plan-launcher-redesign-prototype"></a>
+### Launcher 改版原型（静态参考）
+
+[打开说明](https://github.com/Moyf/moys-asr-workflow/blob/main/docs/plans/launcher-redesign/README.md)
+
 <a name="plan-editor-modules"></a>
 ### MAWE 前端渐进式重构企划案
 

@@ -48,6 +48,12 @@ from maw.language import (
     timestamp_granularity_for_items,
 )
 from maw.project_io import write_mosp
+from maw.subtitle_segmentation import (
+    protected_offsets,
+    punctuation_item_ends,
+    rebalance_short_groups,
+    split_long_items,
+)
 
 from maw.media_cache import embed_media_caches, merge_media_caches
 from maw.media import resolve_default_audio_track
@@ -434,8 +440,8 @@ def generate_srt(segments: list[dict]) -> str:
 # 模块默认值与 CLI 参数默认值、Launcher 默认计划保持一致（无隐式内置
 # 强标点）；configure_extra_strong_punct 按运行时配置整体覆盖，空集合 =
 # 仅按换行断句。
-_DEFAULT_EXTRA_STRONG_PUNCT = "，。？！；,."
-_DEFAULT_STRIP_TAIL_PUNCT = "，。；,."
+_DEFAULT_EXTRA_STRONG_PUNCT = "，。？！；,.;"
+_DEFAULT_STRIP_TAIL_PUNCT = "，。；,.;"
 _EXTRA_STRONG_PUNCT: set[str] = {ch for ch in _DEFAULT_EXTRA_STRONG_PUNCT if not ch.isspace()}
 
 
@@ -448,6 +454,11 @@ def configure_extra_strong_punct(chars: object) -> None:
 def _strong_punct_set(defaults: str) -> set[str]:
     """默认强断句符号并上额外断句符号后的有效集合。"""
     return set(defaults) | _EXTRA_STRONG_PUNCT
+
+
+def _weak_punct_set() -> set[str]:
+    """超长补拆也只读取共享断句符号，不另藏顿号、冒号或破折号清单。"""
+    return set(_EXTRA_STRONG_PUNCT)
 
 
 def split_by_silence(items: list[dict], min_gap_ms: int) -> list[list[dict]]:
@@ -472,61 +483,8 @@ _split_by_silence = split_by_silence
 
 
 def _split_long_group(items: list[dict], max_len: int, weak_punct: set) -> list[list[dict]]:
-    text_total = "".join(it["text"] for it in items)
-    if len(text_total) <= max_len:
-        return [items]
-
-    # 优先按弱标点拆
-    cum_len = 0
-    punct_idx = None
-    for i, it in enumerate(items):
-        cum_len += len(it["text"])
-        if cum_len > max_len:
-            break
-        if any(c in weak_punct for c in it["text"]):
-            punct_idx = i + 1
-
-    if punct_idx is not None and punct_idx < len(items):
-        return _split_long_group(items[:punct_idx], max_len, weak_punct) + \
-               _split_long_group(items[punct_idx:], max_len, weak_punct)
-
-    # 用 jieba 分词找断点
-    try:
-        import jieba
-        words = list(jieba.cut(text_total))
-    except ImportError:
-        words = list(text_total)  # 无 jieba 则按字硬切
-    boundaries = []
-    pos = 0
-    for w in words:
-        pos += len(w)
-        boundaries.append(pos)
-
-    best_char_pos = None
-    for b in boundaries:
-        if 0 < b <= max_len:
-            if best_char_pos is None or abs(b - max_len) < abs(best_char_pos - max_len):
-                best_char_pos = b
-
-    if best_char_pos is not None and best_char_pos < len(text_total):
-        cum_len = 0
-        split_idx = None
-        for i, it in enumerate(items):
-            cum_len += len(it["text"])
-            if cum_len >= best_char_pos:
-                split_idx = i + 1
-                break
-        if split_idx is not None and 0 < split_idx < len(items):
-            return _split_long_group(items[:split_idx], max_len, weak_punct) + \
-                   _split_long_group(items[split_idx:], max_len, weak_punct)
-
-    # 兜底：按 max_len 字符硬切
-    cum_len = 0
-    for i, it in enumerate(items):
-        cum_len += len(it["text"])
-        if cum_len >= max_len:
-            return [items[:i + 1]] + _split_long_group(items[i + 1:], max_len, weak_punct)
-    return [items]
+    """兼容已有调用方；本地数字保护、完整词边界与相邻句平衡由领域模块负责。"""
+    return split_long_items(items, max_len, weak_punct)
 
 
 QWEN_AUDIO_NATURAL_TARGET_LEN = 13
@@ -555,7 +513,7 @@ def _split_cjk_group_naturally(
     try:
         import jieba.posseg as pseg
     except ImportError:
-        return _split_long_group(items, max_len, set("，、：,;"))
+        return _split_long_group(items, max_len, _weak_punct_set())
 
     tokens: list[tuple[int, int, str, str]] = []
     position = 0
@@ -572,6 +530,7 @@ def _split_cjk_group_naturally(
     for item in items:
         position += len(item.get("text", ""))
         item_ends.append(position)
+    protected = protected_offsets(text_total)
 
     by_end: dict[int, tuple[int, int, str, str]] = {}
     by_start: dict[int, tuple[int, int, str, str]] = {}
@@ -581,7 +540,7 @@ def _split_cjk_group_naturally(
     favorable_flags = {"n", "nr", "ns", "nt", "nz", "vn", "l", "y", "o"}
     acceptable_flags = {"v", "m", "q", "a", "i", "eng"}
     weak_flags = {"d", "p", "r", "uj", "c", "u", "f", "xc", "ul"}
-    weak_punctuation = set("，、：,;")
+    weak_punctuation = _weak_punct_set()
     measure_words = {
         "个", "分钟", "秒", "倍", "次", "岁", "年", "月", "天", "元",
     }
@@ -605,7 +564,7 @@ def _split_cjk_group_naturally(
         if end_index >= len(items):
             return True
         boundary = item_ends[end_index - 1]
-        return not any(start < boundary < end for start, end, _word, _flag in tokens)
+        return boundary not in protected and not any(start < boundary < end for start, end, _word, _flag in tokens)
 
     def boundary_score(end_index: int) -> float:
         boundary = item_ends[end_index - 1]
@@ -695,7 +654,7 @@ def _split_cjk_group_naturally(
         previous_length = sum(len(item.get("text", "")) for item in groups[-2])
         if tail_length < min_len and previous_length + tail_length <= max_len:
             groups[-2].extend(groups.pop())
-    return groups
+    return rebalance_short_groups(groups, max_len, weak_punctuation)
 
 
 def split_words_to_segments(items: list[dict], max_len: int, min_len: int = 5,
@@ -708,11 +667,11 @@ def split_words_to_segments(items: list[dict], max_len: int, min_len: int = 5,
     0. 按静音间隔（>= gap_split_ms）预切
     1. 每个静音组内按强标点（共享断句配置 + 换行）继续切句
     2. 合并过短片段（< min_len 字符），但合并后不得超过 max_len
-    3. 对本身超长的片段，按弱标点（，、：,;）拆分
+    3. 对本身超长的片段，按共享配置中的标点优先拆分
     4. 没有弱标点时，用 jieba 分词找最佳断点
     """
     STRONG_PUNCT = _strong_punct_set("\n")
-    WEAK_PUNCT = set("，、：,;")
+    WEAK_PUNCT = _weak_punct_set()
 
     def to_seg(group):
         text = "".join(it["text"] for it in group)
@@ -727,11 +686,12 @@ def split_words_to_segments(items: list[dict], max_len: int, min_len: int = 5,
     silence_groups = split_by_silence(items, gap_split_ms)
 
     for sg in silence_groups:
+        strong_ends = punctuation_item_ends(sg, STRONG_PUNCT)
         raw_groups: list[list[dict]] = []
         buf: list[dict] = []
-        for it in sg:
+        for index, it in enumerate(sg):
             buf.append(it)
-            if any(c in STRONG_PUNCT for c in it["text"]):
+            if index + 1 in strong_ends:
                 raw_groups.append(buf)
                 buf = []
         if buf:
@@ -765,7 +725,11 @@ def split_words_to_segments(items: list[dict], max_len: int, min_len: int = 5,
                     min_len=min_len,
                 ))
 
-    return [to_seg(g) for g in final if g]
+    segments = [to_seg(g) for g in final if g]
+    overlong = sum(len(segment["text"]) > max_len for segment in segments)
+    if overlong:
+        print(f"[断句] {overlong} 条字幕含不可拆的字词或数字单位，保留完整内容，超过单句上限 {max_len} 字。")
+    return segments
 
 
 # ===== 双轨切句：CJK 检测 + 空格语言（英文等）切句 =====
@@ -776,9 +740,8 @@ def split_words_to_segments(items: list[dict], max_len: int, min_len: int = 5,
 WESTERN_MAX_WORDS = DEFAULT_MAX_WORDS
 WESTERN_MIN_WORDS = DEFAULT_MIN_WORDS
 
-# 句末强标点（完整句子边界）与弱标点（超长时的断点），兼容 CJK 全角
+# 英文句末强标点保留现行句子识别策略；超长补拆标点只读共享配置。
 WESTERN_STRONG_END = ".!?。！？；"
-WESTERN_WEAK_END = ",;:，、：,;—–"
 # 判定时剥掉的尾部引号/括号（如 word." 仍视为句号结尾）
 _TRAILING_QUOTES = "\"'”’)]}』」"
 
@@ -786,11 +749,11 @@ _TRAILING_QUOTES = "\"'”’)]}』」"
 def _western_strong_end() -> str:
     """西文句末强标点。
 
-    西文按「词尾字符」判句末。共享配置默认清单不注入西文句末（默认
-    里的逗号会把英文口语的每个逗号都变成句末，破坏短句合并）；用户
-    在默认清单之外新增的断句符号仍然生效（如 ~）。
+    西文按「词尾字符」判句末。共享配置中的逗号不注入西文句末，避免
+    英文口语的每个逗号都成为句末、破坏短句合并；其余配置符号仍生效，
+    包括已有设置中的英文分号与用户新增符号（如 ~）。
     """
-    extra = _EXTRA_STRONG_PUNCT - set(_DEFAULT_EXTRA_STRONG_PUNCT)
+    extra = _EXTRA_STRONG_PUNCT - {",", "，"}
     return WESTERN_STRONG_END + "".join(sorted(extra))
 
 
@@ -829,7 +792,7 @@ def _split_long_western(group: list[dict], max_words: int) -> list[list[dict]]:
         return [group]
     cut = None
     for i in range(1, min(max_words, len(group) - 1) + 1):
-        if _ends_with_punct(group[i - 1]["text"], WESTERN_WEAK_END):
+        if _ends_with_punct(group[i - 1]["text"], "".join(_weak_punct_set())):
             cut = i
     if cut is None:
         cut = max_words

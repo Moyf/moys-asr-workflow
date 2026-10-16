@@ -6,11 +6,11 @@ type DescriptorValues<D, K extends keyof D> = {
   [P in K]: D[P] extends TypedPropertyDescriptor<infer V> ? V : never;
 };
 type WaveformMethods =
-  DescriptorValues<ReturnType<typeof import('./thumbnails.js').createWaveformModule>, 'initThumbnails' | 'thumbnailStatusText' | 'updateThumbnailStatus' | 'setThumbnailBinding' | 'thumbnailHeight' | 'getTimelineRowHeight' | 'wrapThumbnailRow' | 'appendTimelineRow' | 'syncThumbnailView' | 'drawThumbnails'> &
-  DescriptorValues<ReturnType<typeof import('./word-blocks.js').createWordBlocks>, 'appendWordBlocks' | 'refreshWordBlocks' | 'previewWordBlocks' | 'rebuildWordBlocksForSegment' | 'beginWordDrag' | 'updateWordDrag' | 'detachWordDrag' | 'endWordDrag' | 'cancelWordDrag'> &
-  DescriptorValues<ReturnType<typeof import('./canvas.js').createWaveformModule>, 'getWaveformEnvelope' | 'drawRow'> &
+  DescriptorValues<ReturnType<typeof import('./thumbnails.js').createWaveformModule>, 'initThumbnails' | 'thumbnailStatusText' | 'updateThumbnailStatus' | 'setThumbnailBinding' | 'thumbnailHeight' | 'getTimelineRowHeight' | 'wrapThumbnailRow' | 'appendTimelineRow' | 'syncThumbnailView' | 'drawThumbnails' | 'thumbnailFadeAlpha' | 'scheduleThumbnailFade' | 'paintThumbnailStripCells' | 'panThumbnailStrip'> &
+  DescriptorValues<ReturnType<typeof import('./word-blocks.js').createWordBlocks>, 'appendWordBlocks' | 'appendWordHandle' | 'refreshWordBlocks' | 'previewWordBlocks' | 'rebuildWordBlocksForSegment' | 'beginWordDrag' | 'updateWordDrag' | 'detachWordDrag' | 'endWordDrag' | 'cancelWordDrag' | 'drawWordChips' | 'computeWordChipLayout' | 'refreshWordChips' | 'relayoutWordBlocksInRow'> &
+  DescriptorValues<ReturnType<typeof import('./canvas.js').createWaveformModule>, 'getWaveformColumnEnvelope' | 'drawRow' | 'paintWaveRow'> &
   DescriptorValues<ReturnType<typeof import('./controls.js').createWaveformModule>, 'isAdjacentCueAdjustmentIndependent' | 'isSharedBoundaryHandleIndependent' | 'adjacentSnapModeStatusHint' | 'hasCueDrag' | 'bindControls'> &
-  DescriptorValues<ReturnType<typeof import('./cue-blocks.js').createWaveformModule>, 'createRow' | 'appendGapBlocks' | 'appendCueBlocks' | 'isSegmentHiddenForDisplay' | 'appendSharedBoundaryZones' | 'setBindingMarker' | 'layoutBlock' | 'layoutGapBlock' | 'refreshGapOverlay' | 'bindWordModeSentenceHandle' | 'refreshCueOverlay' | 'cueDragOverlayOccupancyChanged' | 'refreshCueBlocks' | 'refreshBoundaryZones' | 'refreshCueLabel' | 'refreshExtensionCueLabel' | 'updateSelection'> &
+  DescriptorValues<ReturnType<typeof import('./cue-blocks.js').createWaveformModule>, 'createRow' | 'appendGapBlocks' | 'appendCueBlocks' | 'appendCueHandle' | 'appendExtensionHandle' | 'isSegmentHiddenForDisplay' | 'appendSharedBoundaryZones' | 'setBindingMarker' | 'layoutBlock' | 'layoutGapBlock' | 'refreshGapOverlay' | 'relayoutCueBlocksInRow' | 'relayoutGapBlocksInRow' | 'bindWordModeSentenceHandle' | 'refreshCueOverlay' | 'cueDragOverlayOccupancyChanged' | 'refreshCueBlocks' | 'refreshBoundaryZones' | 'refreshCueLabel' | 'refreshExtensionCueLabel' | 'updateSelection'> &
   DescriptorValues<ReturnType<typeof import('./cue-commands.js').createWaveformModule>, 'adjustSelectedByKeyboard' | 'adjustSelectedBoundaryByKeyboard' | 'setCueBoundaryToTime' | 'snapSelectedCueBoundaryByKeyboard' | 'adjustActiveCueDragBy' | 'handleHeldCueKey' | 'snapActiveCueBoundaryByKeyboard' | 'cancelCueDrag' | 'applyIndependentBoundaryDrag'> &
   DescriptorValues<ReturnType<typeof import('./cue-drag-update.js').createWaveformModule>, 'moveCueDrag' | 'moveDragDelta' | 'applySelectedMoveDrag' | 'applyMoveDrag' | 'applyResizeDrag' | 'applyBoundaryDrag' | 'endCueDrag'> &
   DescriptorValues<ReturnType<typeof import('./cue-drag.js').createWaveformModule>, 'beginCueDrag' | 'isSharedBoundary' | 'beginIndependentEdgeDrag' | 'beginSharedBoundaryZoneDrag' | 'cueDragDurationMs' | 'cueTiming' | 'cueTimingDuration' | 'cueTimingValueFromMs' | 'cueTimingValueToMs' | 'formatCueTiming' | 'captureSelectedMoveTracks' | 'reindexSelectedMoveTracks' | 'restoreSelectedMoveDrag' | 'captureCueDragOriginals' | 'rebaseCueDragToTrack'> &
@@ -20,7 +20,7 @@ type WaveformMethods =
   DescriptorValues<ReturnType<typeof import('./media.js').createWaveformModule>, 'attachPlayer' | 'setMediaAvailable' | 'setPayload' | 'getPayload' | 'setSpectralPayload' | 'setReapeaksWaveform' | 'activeWaveShape' | 'getGapRemoveDetectionData' | 'processFile' | 'waitForPlayerDuration' | 'durationMs' | 'currentTimeMs' | 'centerBasicOnCurrentTime'> &
   DescriptorValues<ReturnType<typeof import('./playback.js').createWaveformModule>, 'updatePlayback' | 'getNavigationSnapshot' | 'restoreNavigation' | 'positionPlayheads'> &
   DescriptorValues<ReturnType<typeof import('./pointer.js').createWaveformModule>, 'pointerTimeMs' | 'refreshPointerLine' | 'showPointerLine' | 'hidePointerLine' | 'isCueBoundaryDrag' | 'findVisibleWaveformRowAtPoint' | 'findVisibleWaveformRowAtY' | 'findVisibleWaveformRowForTime' | 'cueBoundaryDragTimeMs' | 'showDragPointerLineAtTime' | 'refreshBoundaryDragPointerLine' | 'restorePointerLineAfterBoundaryDrag' | 'scheduleHoverSeekPreview' | 'cancelHoverSeekPreview' | 'flushHoverSeekPreview'> &
-  DescriptorValues<ReturnType<typeof import('./render.js').createWaveformModule>, 'scheduleRender' | 'scheduleMultiVisible' | 'scheduleBasicRender' | 'scheduleRefreshCueBlocks' | '_readWaveColors' | '_getWaveColors' | 'render' | 'stretchWaveformCanvases' | 'redrawWaveformCanvases' | 'renderSegments' | 'renderBasic' | 'renderMulti' | 'renderMultiVisible' | 'createMultiRow'> &
+  DescriptorValues<ReturnType<typeof import('./render.js').createWaveformModule>, 'scheduleRender' | 'scheduleMultiVisible' | 'scheduleBasicRender' | 'scheduleRefreshCueBlocks' | 'invalidateGroupBadges' | 'computeGroupBadgesCached' | '_readWaveColors' | '_getWaveColors' | 'render' | 'stretchWaveformCanvases' | 'redrawWaveformCanvases' | 'renderSegments' | 'renderBasic' | 'panBasicByMs' | 'relayoutBasicOverlays' | 'rebuildMarkerTrackForPan' | 'renderMulti' | 'renderMultiVisible' | 'createMultiRow'> &
   DescriptorValues<ReturnType<typeof import('./scale-controls.js').createWaveformModule>, 'focusWaveform' | 'changeWaveformScale' | 'applyWaveformScaleSteps' | 'renderWaveformScaleLabel' | 'setLoudnessStats' | 'fitWaveformScaleToLoudness' | 'scheduleWheelScaleChange' | 'scheduleRowHeightChange' | 'updateDisabledVisibility' | 'revealTime' | 'changeZoom' | 'setStatus' | 'setSpectralColorStatus' | 'scheduleSpectralColorRender'> &
   DescriptorValues<ReturnType<typeof import('./workspace.js').createWaveformModule>, 'bindDivider' | 'bindLayoutResizers' | 'applyLayoutVariables' | 'applyLayout' | 'updateAdvancedSettingsAvailability' | 'setMode' | 'setTool' | 'getTool' | 'setLayout' | 'toggleLayoutEditMode' | 'isMultiMode' | 'getRowHeight' | 'setSecondsPerRow' | 'getMaxRowHeight' | 'setRowHeight' | 'isCustomLayout' | 'isPresetResizableLayout' | 'bindDockHandles' | 'bindWorkspaceDockTarget' | 'applyLayoutDrop' | 'showLayoutDropPreview' | 'clearLayoutDropPreview' | 'ensureCustomLayoutRoot' | 'restoreDirectLayoutModules' | 'createCustomLayoutNode' | 'applyCustomSplitRatio' | 'bindCustomLayoutDivider' | 'applyCustomLayoutTree' | 'getLayoutData' | 'getLayoutHistorySnapshot' | 'recordLayoutUndo' | 'restoreLayoutHistorySnapshot' | 'resetLayout' | 'setLayoutData'>;
 
@@ -70,6 +70,7 @@ export interface WaveformRow extends HTMLDivElement {
   _thumbnailRenderKey?: string;
   _thumbnailShell?: HTMLDivElement;
   _thumbnailCanvas?: HTMLCanvasElement;
+  _thumbnailFadeFrame?: number;
 }
 export interface WaveformPointerMarker extends HTMLDivElement { _hideTimer?: number; }
 // The existing renderer assigns disabled to these div-based resizers.
@@ -207,6 +208,7 @@ export interface WaveformState {
   thumbnailController: ReturnType<ReturnType<typeof import('../editor-thumbnails.js').createThumbnailModule>['createController']>;
   thumbnailPlayListener: () => void;
   thumbnailLayoutHeight: number;
+  thumbnailFadeSeen: Map<number, number>;
   wordDrag: WordDragState | null;
   wordRefreshFrame: number;
   options: WaveformOptions;
@@ -258,7 +260,11 @@ export interface WaveformState {
   _markerDragCancel: () => void;
   markerEdgeScrollDirection: number; markerEdgeScrollFrame: number;
   pendingNavigation: NavigationSnapshot | null;
-  _waveColors: {rowBg: string; rowBorder: string; rowGrid: string; rowTick: string; peak: string; peakDim: string};
+  _waveColors: {rowBg: string; rowBorder: string; rowGrid: string; rowTick: string; peak: string; peakDim: string; chipBg: string; chipFg: string};
+  basicPanSettleTimer: number;
+  _waveColumnCache: {source: Int8Array | Float32Array; peakCount: number; peaksPerSecond: number; columnMs: number; coverStartMs: number; coverEndMs: number; columns: number; low: Float32Array; high: Float32Array} | null;
+  _groupBadgesCache: {epoch: number; segments: Cue[]; length: number; badges: Map<number, Array<{type: string; ordinal: number; total: number}>>} | null;
+  _groupBadgesEpoch: number;
   layoutDragging: boolean; layoutDragSource: string | null;
   layoutDropIntent: {mode?: string; kind?: string; targetId?: string; sourceId: string; edge?: string; direction?: string; ratio?: number} | null;
   customLayoutRoot: HTMLElement | null; renderedCustomLayoutTree: LayoutTree | null;

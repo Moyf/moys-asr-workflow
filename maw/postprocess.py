@@ -6,7 +6,7 @@ import copy
 import difflib
 import re
 from collections.abc import Callable, Collection, Mapping, Sequence
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from enum import StrEnum
 from pathlib import Path
 from typing import Final
@@ -269,6 +269,34 @@ def run_llm_postprocess(
     is_cancelled: Callable[[], bool] | None = None,
     begin_commit: Callable[[], bool] | None = None,
 ) -> SubtitleArtifact:
+    if request.operation == "resegment":
+        from maw.postprocess_resegment import run_resegment
+        return run_resegment(request, complete=complete, on_status=on_status, is_cancelled=is_cancelled, begin_commit=begin_commit)
+    from maw.postprocess_llm_diagnostics import LlmFailureTrace
+
+    trace = LlmFailureTrace(complete, request.project_path or request.srt_path, request.output_directory, request.operation)
+    try:
+        return _run_llm_postprocess(request, complete=trace, on_status=on_status, is_cancelled=is_cancelled, begin_commit=begin_commit)
+    except Exception as error:
+        hint = trace.failure(error)
+        if hint:
+            if isinstance(error, LlmClientError):
+                raise replace(error, message=f"{error}\n{hint}") from error
+            if isinstance(error, PostprocessStepError):
+                raise _postprocess_step_error(f"{error}\n{hint}", error) from error
+            if isinstance(error, ValueError):
+                raise ValueError(f"{error}\n{hint}") from error
+        raise
+
+
+def _run_llm_postprocess(
+    request: LlmPostprocessRequest,
+    *,
+    complete: LlmComplete,
+    on_status: LlmStatus | None,
+    is_cancelled: Callable[[], bool] | None,
+    begin_commit: Callable[[], bool] | None,
+) -> SubtitleArtifact:
     _raise_if_cancelled(is_cancelled)
     if request.operation == "resegment":
         from maw.postprocess_resegment import run_resegment
@@ -458,9 +486,14 @@ def run_llm_postprocess(
         output_operation = f"{request.operation}-{BILINGUAL_ARTIFACT_MARKER}"
         warnings = ("已将原始文本和翻译文本合并为单条双语字幕。", *warnings)
     elif request.embed_translations and strict_translation:
-        processed = embed_translated_project(project, processed)
-        output_operation = f"{request.operation}-{BACKFILL_ARTIFACT_MARKER}"
-        warnings = ("已将翻译结果回填进原字幕，输出为单条字幕。", *warnings)
+        embedded = embed_translated_project(project, processed)
+        backfill_warning = translation_backfill_warning(project, embedded)
+        if backfill_warning:
+            warnings = (backfill_warning, *warnings)
+        else:
+            processed = embedded
+            output_operation = f"{request.operation}-{BACKFILL_ARTIFACT_MARKER}"
+            warnings = ("已将翻译结果回填进原字幕，输出为单条字幕。", *warnings)
     if "markers" in (translation_snapshot or {}):
         processed["markers"] = copy.deepcopy(translation_snapshot["markers"])
     _raise_if_cancelled(is_cancelled)
@@ -561,6 +594,23 @@ def merge_bilingual_project(
     merged_project.pop("multi_subtitle", None)
     merged_project.pop("extensionSegments", None)
     return normalize_project(merged_project)
+
+
+def translation_backfill_warning(source_project: JsonDict, embedded_project: JsonDict) -> str | None:
+    """Guard majority replacement using the validated, actual backfill result."""
+    source_segments = _segments(source_project)
+    embedded_segments = _segments(embedded_project)
+    replaced = sum(
+        source.get("text") != embedded.get("text")
+        for source, embedded in zip(source_segments, embedded_segments, strict=True)
+    )
+    total = len(source_segments)
+    if replaced * 2 > total:
+        return (
+            f"已跳过回填：将替换 {replaced}/{total} 条字幕（超过 50%），疑似整篇翻译场景；"
+            "请关闭回填。独立翻译结果已正常保留。"
+        )
+    return None
 
 
 def embed_translated_project(source_project: JsonDict, translated_project: JsonDict) -> JsonDict:

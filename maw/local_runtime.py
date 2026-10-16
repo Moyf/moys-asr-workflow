@@ -484,18 +484,22 @@ def run_timestamp_alignment_in_runtime(
     silence_db: float = -35.0,
     silence_ms: int = 500,
     anchors_path: str | Path | None = None,
+    recording_request_path: str | Path | None = None,
+    recording_operation: str = "align",
 ) -> dict[str, object]:
     """Run the post-processing aligner in the managed local runtime."""
+    if recording_operation not in {"align", "fill"}:
+        raise LocalRuntimeError("不支持的录音审查操作。")
     status = managed_runtime_status(model_cache_root)
-    if not status.ready:
+    if not status.ready and (not recording_request_path or getattr(sys, "frozen", False)):
         raise LocalRuntimeError("本地模型运行时尚未安装，请先安装本地模型支持。")
     helper = LOCAL.bundle_path("maw/local_runtime_worker.py")
     if not helper.exists():
         raise LocalRuntimeError(f"本地运行时助手缺失：{helper}")
     command = [
-        str(status.python_path),
+        str(status.python_path) if status.ready else sys.executable,
         str(helper),
-        "script-align" if script_path else "timestamp-align",
+        f"recording-{recording_operation}" if recording_request_path else ("script-align" if script_path else "timestamp-align"),
         "--model-id",
         model_id,
         "--output-mode",
@@ -505,6 +509,8 @@ def run_timestamp_alignment_in_runtime(
         "--device",
         device,
     ]
+    if recording_request_path:
+        command.extend(["--recording-request-path", str(recording_request_path)])
     if script_path:
         command.extend([
             "--script-path", str(script_path), "--language", language,
@@ -537,11 +543,11 @@ def run_timestamp_alignment_in_runtime(
             result = payload
             return
         if on_event is not None:
-            on_event(line)
+            on_event(str(payload.get("message")) if isinstance(payload, dict) and payload.get("type") == "progress" else line)
 
     _run_process(
         command,
-        env=_runtime_env(model_cache_root, default_runtime_root()),
+        env=_runtime_env(model_cache_root, default_runtime_root() if status.ready else None),
         cancel=cancel_event or Event(),
         on_line=on_line,
         cwd=str(helper.parent),
