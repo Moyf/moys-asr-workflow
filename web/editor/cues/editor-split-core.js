@@ -88,8 +88,25 @@
     return tokens;
   }
 
-  function alignSplitItems(text, items, tokens) {
-    const aligned = MULTI_SUBTITLE_UTILS.alignItemsToText(text, items);
+  function alignSplitItems(text, items, tokens, segment = null) {
+    const itemText = items.map((item) => String(item?.text || '')).join('');
+    const segmentStart = Number(segment?.start);
+    const segmentEnd = Number(segment?.end);
+    let previousEnd = -Infinity;
+    const timedSuffix = itemText && itemText !== text && text.endsWith(itemText)
+      && Number.isFinite(segmentStart) && Number.isFinite(segmentEnd)
+      && items.every((item) => {
+        if (item?.start == null || item?.end == null) return false;
+        const start = Number(item?.start);
+        const end = Number(item?.end);
+        const valid = Number.isFinite(start) && Number.isFinite(end)
+          && start >= segmentStart && end <= segmentEnd && end > start && start >= previousEnd;
+        previousEnd = end;
+        return valid;
+      });
+    // 渐进拆分的右段保留完整文本，却只保留后缀 items；绝对时间码仍在段内。
+    // 这种可从保存后的段/词数据重建的结构必须从右对齐，避免重复词抢占前缀位置。
+    const aligned = MULTI_SUBTITLE_UTILS.alignItemsToText(text, items, { fromEnd: timedSuffix });
     if (!tokens.length || aligned.every((record, index) => record || !items[index]?.text)) return aligned;
     const positions = [];
     for (let index = 0; index < text.length; index++) {
@@ -391,7 +408,7 @@
   // 映射，会让切点随插入文本的长度漂移到错误的词边界（字拆对、时拆错的
   // 根因）。
   const styleTokens = splitStyleTokens(text, currentSplitStyleSettings());
-  const alignmentRecords = alignSplitItems(text, items, styleTokens);
+  const alignmentRecords = alignSplitItems(text, items, styleTokens, segment);
   const records = alignmentRecords.filter(Boolean);
   // 失配词（人工替换/删改遗留）没有可靠的文本位置，但顺序保持对齐给出了
   // 它在词序上最近的两个对齐锚点：两锚点之间的文字空位就是它的替换区。

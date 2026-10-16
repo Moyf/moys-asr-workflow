@@ -6669,6 +6669,17 @@ test('alignItemsToText aligns fully matchable items leftmost like the old greedy
   )), [0, 3, 6]);
 });
 
+test('alignItemsToText can anchor an ordered timed suffix from the end', () => {
+  assert.deepEqual(JSON.parse(JSON.stringify(
+    helpers.alignItemsToText('甲乙甲乙', [{ text: '甲' }, { text: '乙' }], { fromEnd: true })
+      .map((record) => [record.textStart, record.textEnd]),
+  )), [[2, 3], [3, 4]]);
+  assert.deepEqual(JSON.parse(JSON.stringify(
+    helpers.alignItemsToText('ABCDEF', [{ text: 'D' }, { text: 'E' }, { text: 'F' }], { fromEnd: true })
+      .map((record) => [record.textStart, record.textEnd]),
+  )), [[3, 4], [4, 5], [5, 6]]);
+});
+
 test('alignItemsToText drops the extra item when occurrences run out', () => {
   // 只有 2 处「A」：前两个对齐 1、3，最后一个为 null（丢尾不丢首）。
   assert.deepEqual(JSON.parse(JSON.stringify(

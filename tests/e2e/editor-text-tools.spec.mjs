@@ -41,6 +41,42 @@ async function seed(page, { text = '甲乙丙丁', timed = true, linked = false 
   }, { text, timed, linked });
 }
 
+test('progressive right halves realign repeated timed suffix items from the end', async ({ page }) => {
+  const result = await page.evaluate(() => {
+    const source = { start: 1000, end: 5000, text: '甲乙甲乙', items: [
+      { text: '甲', start: 1000, end: 2000 }, { text: '乙', start: 2000, end: 3000 },
+      { text: '甲', start: 3000, end: 4000 }, { text: '乙', start: 4000, end: 5000 },
+    ] };
+    const first = MaweSplitCore.splitItemsAtChar(source, 2, 3000);
+    const right = { ...source, start: first.splitMs, items: first.rightItems };
+    const second = MaweSplitCore.splitItemsAtChar(right, 3);
+    return { first: first.rightItems.map(({ text, start, end }) => [text, start, end]),
+      splitMs: second.splitMs,
+      left: second.leftItems.map(({ text, start, end }) => [text, start, end]),
+      right: second.rightItems.map(({ text, start, end }) => [text, start, end]) };
+  });
+  expect(result.first).toEqual([['甲', 3000, 4000], ['乙', 4000, 5000]]);
+  expect(result.splitMs).toBe(4000);
+  expect(result.left).toEqual([['甲', 3000, 4000]]);
+  expect(result.right).toEqual([['乙', 4000, 5000]]);
+});
+
+test('progressive suffix timings preserve the DE|F cut in a partially timed cue', async ({ page }) => {
+  const result = await page.evaluate(() => {
+    const segment = { start: 3000, end: 6000, text: 'ABCDEF', items: [
+      { text: 'D', start: 3000, end: 4000 }, { text: 'E', start: 4000, end: 5000 },
+      { text: 'F', start: 5000, end: 6000 },
+    ] };
+    const split = MaweSplitCore.splitItemsAtChar(segment, 5);
+    return { splitMs: split.splitMs,
+      left: split.leftItems.map(({ text, start, end }) => [text, start, end]),
+      right: split.rightItems.map(({ text, start, end }) => [text, start, end]) };
+  });
+  expect(result.splitMs).toBe(5000);
+  expect(result.left).toEqual([['D', 3000, 4000], ['E', 4000, 5000]]);
+  expect(result.right).toEqual([['F', 5000, 6000]]);
+});
+
 for (const mode of ['progressive', 'duplicate']) {
   for (const path of ['timed', 'untimed', 'linked']) {
     test(`${mode} split preserves its mode through the ${path} waveform path and undo`, async ({ page }) => {
