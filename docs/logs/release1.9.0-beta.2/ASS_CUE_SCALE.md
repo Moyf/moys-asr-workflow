@@ -21,7 +21,7 @@
 | 紧凑控件 | 已修复 | 倍率在 X/Y 左侧独立显隐；e2e 和本地页面测量确认间距、单行标签、编辑区高度与视频顶部位置稳定，并完成截图自查 |
 | 测试与文档 | 已修复 | JSON 契约、用户指南、CHANGELOG、官网 JSON Schema 副本和开发方案已更新；bundle、类型检查、Node/Python 测试通过；未重生成 `blank-editor.html` |
 | 提交与 PR | 已修复 | 提交 `2d5333fd`，普通推送至 `feat/ass-cue-scale`，已创建 PR #248；GitHub 文件清单与本地预期的 23 个文件一致 |
-| 一轮 PR 反馈 | 进行中 | 三处代码修正及回归用例已补；Node 57 项、Python 4 项、类型检查和 bundle 新鲜度通过。新增浏览器 e2e 未能在本机完成：临时服务已启动，测试端 30 秒内未收到 127.0.0.1 探活响应；待 PR CI 验证 |
+| 一轮 PR 反馈 | 进行中 | 三处代码修正及回归用例已补；Node 57 项、Python 4 项、类型检查和 bundle 新鲜度通过。定位 spec 已加入 PR Editor workflow；首次运行因 Ubuntu runner 缺少 FFmpeg，在用例初始化阶段失败，工作树已增加安装步骤，待提交后重跑 |
 
 验证记录逐层回写。用户真实素材、其它系统、完整视频编码与发行包不由合成页自动化代替。
 
@@ -56,6 +56,9 @@
 - `python scripts/run_check.py --timeout 180 -- node --test tests/*.mjs`：未通过，180 秒超时。日志显示本机缺少 Playwright Chromium 可执行文件，服务/网络相关测试失败，进程生命周期用例超时；不能视为全量 Node 通过。结果 `.artifacts/checks/20261016T071959Z-d7aa39f3/result.json`；随后单独重跑本次受影响的 6 个 Node 文件，57/57 通过，结果 `.artifacts/checks/20261016T072354Z-18b3697f/result.json`。
 - 本轮重新验证：Python 定位契约 4/4 通过（`.artifacts/checks/20261016T071959Z-6c9622ef/result.json`）；类型检查、bundle 新鲜度、清单源校验与 `git diff --check` 通过。`--diff-ref main` 个人路径扫描通过（`.artifacts/checks/20261016T071959Z-4e8094a2/result.json`）。
 - 按源清单重建 `.artifacts/ass-cue-scale/verification.html`；源 Markdown 校验通过。浏览器策略拒绝打开 `file://` 页面，因此交互页浏览器预览仍未完成。
+- 提交 `3c166d29` 的 Editor CI 全部通过，但检查 workflow 后确认其中的 e2e 命令只运行 `editor-bundle` 与 `editor-transactions` 两个 spec。已在 `6e77456c` 将 `ass-cue-position.spec.mjs` 加入该命令；Playwright `--list` 确认共 16 项，等待此更新后的 CI 结果。
+- 提交 `6e77456c` 的全量 Node 737/737、Python assembly contracts 29/29 通过；新增 e2e 第一次运行失败于 `spawnSync ffmpeg ENOENT`，定位 spec 的 16 项在 beforeAll 生成视频时未执行，其余 e2e 的 13 项通过。本轮工作树在 `.github/workflows/editor-checks.yml` 增加 Ubuntu FFmpeg 安装；workflow YAML 解析、清单源校验、个人路径扫描、`git diff --check` 通过，待提交触发 CI 重跑。
+- 当前验证快照为分支 `feat/ass-cue-scale` 的 HEAD `6e77456c` 加 4 个未提交文件：workflow、进度账本、方案和人工核对清单。清单检查结果 `.artifacts/checks/20261016T075043Z-c9f09ba9/result.json`，YAML 检查 `.artifacts/checks/20261016T075043Z-11823917/result.json`，个人路径检查 `.artifacts/checks/20261016T075043Z-c244a149/result.json`；Playwright `--list` 结果 `.artifacts/checks/20261016T073754Z-06ba34bf/result.json`（16 项）；核对页已重建到 `.artifacts/ass-cue-scale/verification.html`。
 
 环境记录：`uv run --no-sync` 的解释器缓存和 `pnpm exec` 的包管理器自更新都被本机沙箱权限挡住；改用已安装解释器和本地 Playwright CLI。第一轮 e2e 的帧对比环境缺少 Pillow，改用已有 Pillow 的解释器后完整 13/13 通过。此次新增浏览器用例仍因本机回环探活失败而未完成；完整 Node 单测还因 Playwright 浏览器缺失及服务型用例超时而在 180 秒上限退出，具体如上，均不计为通过。核对清单 HTML 已生成且源文档通过校验，但浏览器策略拒绝 `file://` 页面，所以交互页预览未完成；最终仍需以 PR CI 结果为准。
 

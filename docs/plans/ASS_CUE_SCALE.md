@@ -4,7 +4,7 @@
 
 单句缩放首版已提交并推送，PR #248 已打开。首轮 review 提出滚轮预览门槛、事务隔离、自动堆叠导出位移三项问题；本轮已补源码修正和回归用例，Node/Python 契约、类型检查与 bundle 新鲜度通过。本机 e2e 服务启动后，测试进程未收到回环地址探活响应；新增浏览器用例仍待 PR CI 或可访问本地服务的环境验证。
 
-本方案记录最终行为和数据契约；逐项验证、截图自查和提交状态见[进度账本](../logs/release1.9.0-beta.2/ASS_CUE_SCALE.md)与[人工核对清单](../logs/release1.9.0-beta.2/ASS_CUE_SCALE.checklist.md)。源码使用 `web/`，editor bundle 已重建且不进 Git；按仓库约定未重生成 `blank-editor.html`。
+本方案记录最终行为和数据契约；逐项验证、截图自查和提交状态见[进度账本](../logs/release1.9.0-beta.2/ASS_CUE_SCALE.md)与[人工核对清单](../logs/release1.9.0-beta.2/ASS_CUE_SCALE.checklist.md)。首轮 review 新增的定位回归 spec 已加入 Editor PR workflow；首次 CI 因 Ubuntu runner 缺少 FFmpeg 在 fixture 初始化时失败，工作树已加安装步骤并通过 YAML 解析，待提交后重跑。源码使用 `web/`，editor bundle 已重建且不进 Git；按仓库约定未重生成 `blank-editor.html`。
 
 ## 用户明确要求
 
