@@ -643,16 +643,23 @@ export function createUtilsModule(dependencies) {
         .some((paired) => paired.start === range.prependAt
           && paired.end === range.prependAt + range.width + range.end - cut));
     let leftAppend = '';
+    // fade 已完整守卫（分层体系）：splitStyledTextParts 已对两侧整句包裹时，
+    // 组合文本仍会判出跨刀点 fade 对，但左/右其实各自已有完整外壳——再补就
+    // 双重包裹。左已有闭（fadeOut）不补闭，右已有开（fadeIn）不补开。
+    const leftFadeComplete = parseSentenceFadeMarkers(left, rule).fadeOut;
     // 左侧补闭符号：按原文闭符号位置升序 = 嵌套逆序（内层先闭）。
     straddling.slice().sort((a, b) => a.end - b.end).forEach((range) => {
       if (range.start + range.width >= cut) return;
+      if (range.kind === 'fade' && leftFadeComplete) return;
       const candidate = left + leftAppend + range.closeMarker;
       if (verifyLeft(candidate, range)) leftAppend += range.closeMarker;
     });
     let rightPrepend = '';
+    const rightFadeStarted = parseSentenceFadeMarkers(right, rule).fadeIn;
     // 右侧补开符号：按原文开符号位置升序（外层在前）。
     straddling.slice().sort((a, b) => a.start - b.start).forEach((range) => {
       if (range.end <= cut) return;
+      if (range.kind === 'fade' && rightFadeStarted) return;
       const prependAt = rightPrepend.length;
       const candidate = `${rightPrepend}${range.marker}${right}`;
       if (verifyRight(candidate, { ...range, prependAt })) rightPrepend += range.marker;
@@ -687,10 +694,11 @@ export function createUtilsModule(dependencies) {
 
 
   // 合并折叠：前段以「已识别对的闭符号」结尾、后段以同符号的开符号开头时，
-  // 移除后段的开符号（保留前段末尾符号），避免拼接出 `**` 之类的同符号连跑
-  // 被误解析成新的对；fade 句级外壳则按拆分补齐的逆操作合并回一个完整对
-  // （前段尾部闭符号与后段头部开符号一并折叠）。不构成折叠时返回 null。
-  // leftTrimmed 是 fade 折叠时前段尾部被裁掉的字符数，供 items 层同步。
+  // 优先整体折叠——前段尾闭与后段首开一并移除，两段内容合成一个跨 junction
+  // 的完整对（样式取两段并集、无孤儿符号、拆分-合并往返无损；复验重 union
+  // 失败则退回仅移后段开符号）。fade 句级外壳同样按整体折叠合并回一个完整
+  // 外壳。不构成折叠时返回 null。
+  // leftTrimmed 是前段尾部被裁掉的字符数，供 items 层同步。
   function foldMassPairJunction(leftText, rightText, rule) {
     const left = String(leftText ?? '');
     const right = String(rightText ?? '');
@@ -718,12 +726,29 @@ export function createUtilsModule(dependencies) {
     for (const marker of markers) {
       const width = marker.length;
       if (!left.endsWith(marker) || !right.startsWith(marker)) continue;
-      const closesAtEnd = assMarkedRanges(left, marker)
-        .some((range) => range.end + range.width === left.length);
-      const opensAtStart = assMarkedRanges(right, marker).some((range) => range.start === 0);
-      if (closesAtEnd && opensAtStart) {
-        return { left, right: right.slice(width), removed: width, leftTrimmed: 0 };
+      const closePair = assMarkedRanges(left, marker)
+        .find((range) => range.end + range.width === left.length);
+      const openPair = assMarkedRanges(right, marker).find((range) => range.start === 0);
+      if (!closePair || !openPair) continue;
+      // 优先整体折叠（前段尾闭 + 后段首开一并移除）：两段的符号本就是同一
+      // 语法对被拆分补齐/独立包裹拆成的两侧，合并时还原为一个跨 junction 的
+      // 完整对——样式取两段并集、不残留孤儿符号，拆分-合并往返无损。
+      // （Greptile P1：只移后段开符号会留前段尾闭孤儿 `**甲**乙**`。）
+      const rejoined = left.slice(0, left.length - width) + right.slice(width);
+      const rejoinedCloseAt = left.length - width + (openPair.end - width);
+      const reunited = assMarkedRanges(rejoined, marker).some((range) => (
+        range.start === closePair.start && range.end === rejoinedCloseAt
+      ));
+      if (reunited) {
+        return {
+          left: left.slice(0, left.length - width),
+          right: right.slice(width),
+          removed: width, leftTrimmed: width,
+        };
       }
+      // 复验失败（重 union 不成立，如中间插了别的符号干扰解析）时退回仅移
+      // 后段开符号，前段尾闭保留防误解析。
+      return { left, right: right.slice(width), removed: width, leftTrimmed: 0 };
     }
     return null;
   }

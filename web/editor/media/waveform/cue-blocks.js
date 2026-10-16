@@ -502,18 +502,8 @@ export function createWaveformModule(dependencies) {
         block.title = label.textContent;
         block.appendChild(label);
         this.setBindingMarker(block, extensionBindingMarkers?.has?.(index) === true);
-        if (segment.start >= startMs) {
-          const leftHandle = document.createElement('span');
-          leftHandle.className = 'waveform-cue-handle left';
-          leftHandle.title = localizedWaveformMessage('调节字幕的左边界（开始时间）', 'Adjust subtitle left boundary (start time)');
-          block.appendChild(leftHandle);
-        }
-        if (segment.end <= endMs) {
-          const rightHandle = document.createElement('span');
-          rightHandle.className = 'waveform-cue-handle right';
-          rightHandle.title = localizedWaveformMessage('调节字幕的右边界（结束时间）', 'Adjust subtitle right boundary (end time)');
-          block.appendChild(rightHandle);
-        }
+        if (segment.start >= startMs) this.appendExtensionHandle(block, 'left');
+        if (segment.end <= endMs) this.appendExtensionHandle(block, 'right');
         this.layoutBlock(block, segment, startMs, endMs, row);
         block.addEventListener('pointerdown', (event) => this.beginCueDrag(event, index, row, 'extension'));
         block.addEventListener('contextmenu', (event) => {
@@ -688,6 +678,20 @@ export function createWaveformModule(dependencies) {
     }
 
 
+    // 副字幕块手柄：与主块手柄同结构，但无字词模式绑定（副轨句柄直接
+    // 走块级 beginCueDrag('extension')，无选中句联动语义）。
+    /** @this {import('./waveform-types.js').WaveformInstance} */
+    appendExtensionHandle(block, side) {
+      const handle = document.createElement('span');
+      handle.className = `waveform-cue-handle ${side}`;
+      handle.title = side === 'left'
+        ? localizedWaveformMessage('调节字幕的左边界（开始时间）', 'Adjust subtitle left boundary (start time)')
+        : localizedWaveformMessage('调节字幕的右边界（结束时间）', 'Adjust subtitle right boundary (end time)');
+      block.appendChild(handle);
+      return handle;
+    }
+
+
     // 平移期轻量重排（账本 #22 批次 2）：句块与徽章按新窗口原位重算
     // left/width/hidden，不重建 DOM。返回 false 表示存在无法原位表达的
     // 结构差异（新窗口出现无 DOM 块的字幕、segment 丢失、句块手柄存在性
@@ -760,6 +764,27 @@ export function createWaveformModule(dependencies) {
         for (const block of overlayBlocks) {
           const segment = overlaySegments[Number(block.dataset.overlayIdx)];
           if (!segment) return false;
+          this.layoutBlock(block, segment, startMs, endMs, row);
+          if (block.hidden) block.remove();
+        }
+      }
+      // 双语行的副字幕（extension）块与主块同构（窗口边界手柄、无字词绑定），
+      // 同样原位重排；完全滑出即移除，重新进入走缺块检测回退全量重建。
+      if (this.options.multiSubtitleVisible?.() === true) {
+        const extensionSegments = this.options.getExtensionSegments?.() || [];
+        const extensionBlocks = [.../** @type {NodeListOf<HTMLElement>} */ (row.querySelectorAll('.waveform-cue-block[data-track="extension"]'))];
+        for (const block of extensionBlocks) {
+          const index = Number(block.dataset.extIdx);
+          const segment = extensionSegments[index];
+          if (!segment) return false;
+          const expectLeft = segment.start >= startMs;
+          const expectRight = segment.end <= endMs;
+          const hasLeft = Boolean(block.querySelector('.waveform-cue-handle.left'));
+          const hasRight = Boolean(block.querySelector('.waveform-cue-handle.right'));
+          if (expectLeft && !hasLeft) this.appendExtensionHandle(block, 'left');
+          if (expectRight && !hasRight) this.appendExtensionHandle(block, 'right');
+          if (!expectLeft && hasLeft) block.querySelector('.waveform-cue-handle.left')?.remove();
+          if (!expectRight && hasRight) block.querySelector('.waveform-cue-handle.right')?.remove();
           this.layoutBlock(block, segment, startMs, endMs, row);
           if (block.hidden) block.remove();
         }

@@ -47,6 +47,7 @@
 | 30 | MASS 配对语义问询：成组应「一对单/一对双」；例 `>>** //The *editing* //process**<<` 解析为 ** ⊃ // ⊃ *editing* 三层、最内层优先；问现状分组与复杂度 | 仅说明（现状已符合） | 沙箱实测（assMarkedRanges 原函数，`.artifacts/1016大核验/mass-pairing-probe.mjs`）：例子当前即解析 **[2,30) ⊃ //[5,21) ⊃ *[11,19)；`**a *b* c**` 双对外/单对内；`*a**b*` 单对外/`**` 字面。现行机制=按（符号×宽度）分道扫描+宽度边界守卫（ass-style.js:66-93），事实即「一对单/一对双」；fade 非对称走句级外壳解析器。**不重写分词器**；增值=例子写成回归测试+规则入 ASS_STYLES 文档（随追加批） |
 | 31 | 右键菜单微调：「左右添加字符」与「高级操作」放一组，**不加分隔线**（现两行之间有 sep） | 进行中（排追加批） | editor-context-menus.js 顶层两行间去 sep（组前分隔线保留）；随 #26/#15 追加批 |
 | 32 | 「字幕列表」左上角「字幕」标签：空间不足时直接隐藏，避免竖排（截图：字/幕被挤成竖排） | 进行中（排追加批） | 定位标签元素（cue-list 工具栏头部）；方案=容器查询宽度不足隐藏（Chromium-only 可用 @container）或 nowrap+裁剪；editor.css 辖区，随 #29 同会话派发 |
+| 34 | Greptile 对 PR #251 的 6 条评审（P1×3/P2×3），逐条验证后修复：P1-1 editor.css:3576 行搜索镜像遮挡文本？P1-2 foldMassPairJunction 双符号折叠残留 `**甲**乙**`？P1-3 completeConvertedOutputMassPairs 波及未选中字幕？P2-1 relayoutBasicOverlays 漏 extension 块与边界手柄？P2-2 连续平移期间画面带永不取新图？P2-3 整体编辑打开时滚动错挂隐藏元素？ | 进行中（两路验证+修复派发） | 分工：session A（ses_ebcc11217）= P1-2/P1-3/P2-3/P1-1（text-processing、word-timing、timed-text-edit 区）；session B（ses_ebc8ab1d）= P2-1/P2-2（waveform render/thumbnails）。纪律：**先验证再修**——Greptile 可能误读（P1-1 疑似误读：#10 设计为仅命中行挂镜像），验证不成立的在报告与账本注明「不成立+依据」；成立的修复+回归测试。**thread ID 映射（处理完须 resolve，GraphQL resolveReviewThread）**：P1-1=PRRT_kwDOTkFWNc6tImgJ、P1-2=ImgQ、P1-3=ImgY、P2-1=Imgc、P2-2=Imgk、P2-3=Imgt（均为 unresolved）。**B 组完成（session B，已回帖+resolve ✓✓）**：P2-1 成立——relayoutBasicOverlays 漏副字幕块与共享边界区，已修（extension 块原位重排 + appendExtensionHandle 提取 + refreshBoundaryZones 接入，探针 0.83px→0、renderBasicCalls=0）；P2-2 成立且**两层饥饿**——panBasicByMs 从不调 setView + applySetView 的 200ms 去抖与 150ms 节流叠用，已修（平移每档经节流 setView + 去抖删除，探针 8 档 demand POST 4 次持续推进）；e2e 53/53。**A 组完成（session A，已回帖+resolve ✓✓✓✓）**：4 条全部成立——P1-2 折叠残留属实但归因修正（非宽度问题，是 batch-1「保留前段闭」语义在双符号/往返下的孤儿缺陷），改为**整体折叠**（junction 两侧符号一并移除、复验重 union 成一个对；`**甲**`+`**乙**`→`**甲乙**`；`今天*的*`+`*解说*`→`今天*的解说*`，经宽度守卫验证 batch-1 示例目标 `今天*的*解说*` 实际会把解说渲染成字面+孤儿——**新语义更正确，行为变更待维护者复核**）；P1-3 属实（补齐扫描全量输出数组），已加 outputSources 同源守卫锁到转换源行；P2-3 属实（single 视图滚错容器），改 caret 预置+focus 滚动；P1-1 成立且根因更准（镜像每行无条件挂载+不透明底），改默认 visibility:hidden 仅命中行 visible。测试 380/0；items 层修复随本批交付（split-core styledClosures 链路） |
 | 33 | 纯文本编辑「整体编辑」加左侧行号（gutter）——维护者问好加吗 | 进行中（排 #23 会话追加） | **好加，基建现成**：整体编辑已有搜索镜像层（`#timed-text-edit-search-mirror` + 滚动同步 :1128-1130 + 逐行偏移计算），行号层=镜像基建的变体：绝对定位数字列 + scrollTop 同步，行号按**字幕行**编号（与逐条编辑「第 N 条」一致；软换行下对齐到每条首行，偏移计算复用搜索镜像的既有逻辑）。要点：textarea 左侧让位（或 gutter 落在现有内边距区）、字体度量严格一致、与搜索高亮共存。同文件 editor-timed-text-edit.js（现无辖区冲突）+ editor.css，随 #29/#32 同批派发 |
 | 25 | 右键添加 MASS 后（`// 文本//` 带空格形式），弹「字词时间码未同步：[...] 不是等长替换」警告，但字词块看起来又显示了——维护者困惑实际状态 | 实施中（追加批在途） | 机制（源自 #5 调查）：加 MASS 改变文本长度 → `planWordTimingTextSync` 等长门槛（word-timing.js:260）不过 → 非等长路径公共前后缀区域跨 item → 警告且 items 不动；字词块仍显示是**显示层重分配**（getWordTimingEntries 用旧 items + 新文本模糊匹配），并非真同步。**修复方向**：等长约束升级为「发音序列不变」——仅增删中性/MASS 字符（含空白）时 items 原样保留、静默成功不警告（items 本就不需要变）；与 #5 任务 1 同函数同批实施。真变长编辑的字数估算归 #15 一并考虑 |
 | 26 | 右键新增「清理文本样式」：对含特殊文本样式（MASS）的字幕，移除所有 MASS 字符；显示位置在「左右添加字符」子菜单行下方 | 实施中（追加批在途） | **复用 #6 的共享 `stripMassMarkers()`**（同函数服务导出剥离与右键清理，只剥成对、孤儿保留字面）；显示条件=任一目标字幕含成对 MASS 符号（检测用配对扫描），点击对全部目标执行、无符号者跳过；走标准命令/撤销路径（与 applyWrapChars 同管道，Ctrl+Z 可回退）；与 #25 协同——清理后长度变化，配合「发音序列不变静默同步」不弹警告；i18n EN 映射（子代理拟词）。依赖 #5/#6 落地，随追加批派发 |
@@ -122,3 +123,24 @@
   「1016 大核验反馈跟踪」**不含项数**——数量只写正文快照，维护者指示避免每次变更改名；正文
   `.artifacts/1016大核验/issue-body.md`，活文档随实施回写）。⑥ 待维护者：15+ 项实测、
   三项小确认（#9 trim 全行 / #13 多选序 / #12 圆点色）；全部批次落地后统一重建 bundle + 全量验证。
+- 续 10（2026-10-16，阶段性提交 + 合并 + PR）：① 三项小确认已拍板（trim 全行 / 最小序号 /
+  琥珀圆点+轮询——轮询实测为 O(字幕数) 布尔检查，开销微秒级）。② 检查点提交 `768f2852`
+  （55 文件 +2519/-305；注意：当时工作区已被切到分支 `feat/record-test-feedback-issue`，
+  与 melodic-cat 同 HEAD 无独有提交，分支名与本批工作吻合故就地提交）。③ 合并 origin/main
+  （PR #243，42 提交）→ 7 文件 9 处冲突全解，合并提交 `1c6459e6`。**体系拍板**：拆分出口
+  = main 的 splitStyledTextParts（刀点吸附，实测不落文本闭符号）+ 本分支 completeSplitMassPairs
+  分层补齐与 items 同步（session A 的「main 已覆盖」推演被实测推翻，两者互补非重复）。
+  已知红：test_mass_markers 2 例集成断言（items 层同步与 main placed 链路交互，追加批修复）。
+  ④ **PR 创建：https://github.com/Moyf/moys-asr-workflow/pull/251**（base main，
+  阶段性落地 19 项，实施中 7 项随后并入；呼应 Issue #250）。⑤ 追加两批派发：
+  #19/#21/#25/#26/#15 + items 调试 → session A（ses_ebcc11217）；#22 批次 1+2 + #24 →
+  session B（ses_ebc8ab1d，已完成）。⑥ #23 微调与 #30/#31/#32/#33 排队（气泡全显示+间距、
+  菜单分组、字幕标签隐藏、整体编辑行号）。
+- 续 11（2026-10-16，Greptile 收线 + 检查点提交）：① **Greptile 6 条全部处置完毕并 resolve**
+  （每条回帖附修复证据）：B 组 2 条（P2-1 漂移/P2-2 取图饥饿）+ A 组 4 条（P1-1 镜像遮挡/
+  P1-2 折叠残留/P1-3 转换波及/P2-3 滚动错挂）**全部成立全部修复**。② ⚠️ **折叠语义行为变更
+  待维护者复核**：合并折叠从「保留前段闭」改为「整体折叠」——`今天*的**解说*` 类合并的产物
+  从 `今天*的*解说*`（宽度守卫下解说说会变字面+孤儿，batch-1 示例的隐性缺陷）变为
+  `今天*的解说*`（单一完整对，两侧均保留样式）。③ session A 交付 items 层修复（styledClosures
+  链路）、#26 清理菜单、#15 估切、静默同步；测试 380/0。④ 检查点提交 + 推送（PR #251 随之
+  更新，CI 的 setInterval 崩溃已另行 hotfix 054ff4c9）。

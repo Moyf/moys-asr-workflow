@@ -230,10 +230,18 @@
     ).join('');
     if (!MULTI_SUBTITLE_UTILS.applySplitEdgeTrim(content(0, offset), 'end')
         || !MULTI_SUBTITLE_UTILS.applySplitEdgeTrim(content(offset, text.length), 'start')) return null;
-    left += [...crossing].reverse().map((token) => token.marker).join('');
-    right = crossing.map((token) => token.marker).join('') + right;
-    if (fadeTokens.length) { left = `>>${left}<<`; right = `>>${right}<<`; }
-    return { left, right, offset };
+    const leftClosures = [...crossing].reverse().map((token) => token.marker).join('');
+    const rightClosures = crossing.map((token) => token.marker).join('');
+    left += leftClosures;
+    right = rightClosures + right;
+    // items 层同步需要知道 styled 在两侧端点追加了什么：左 = crossing 闭符号
+    // （原文嵌套逆序）[+ fade 收口]；右 = [fade 起手 +] crossing 开符号。
+    if (fadeTokens.length) {
+      left = `>>${left}<<`;
+      right = `>>${right}<<`;
+      return { left, right, offset, leftClosures: `${leftClosures}<<`, rightClosures: `>>${rightClosures}` };
+    }
+    return { left, right, offset, leftClosures, rightClosures };
   }
 
   function currentSplitStyleSettings() {
@@ -673,8 +681,12 @@
   let parts = duplicateOutputText
     ? (text ? { left: text, right: text, offset: safeOffset } : null)
     : MULTI_SUBTITLE_UTILS.splitSubtitleText(text, safeOffset, mode);
+  let styledClosures = null;
   if (!duplicateOutputText && splitTextMode !== 'progressive') {
     parts = splitStyledTextParts(text, parts, currentSplitStyleSettings());
+    // styled 的返回值携带两端点闭符号串（leftClosures/rightClosures），供
+    // items 层同步——它对文本层的追加必须同样落到边界 item 上。
+    styledClosures = parts;
   }
   if (!parts) return null;
   if (splitTextMode === 'progressive') parts.right = text;
@@ -688,6 +700,12 @@
     parts.left = massCompletion.left;
     parts.right = massCompletion.right;
   }
+  // items 层追加符号 = styled 端点闭符号 + 补齐符号，顺序与最终两侧文本的
+  // 字符顺序一致（左：styled 闭符号在前、补齐在后；右：补齐在前、styled 在前）。
+  const styledLeftAppend = styledClosures?.leftClosures || '';
+  const styledRightPrepend = styledClosures?.rightClosures || '';
+  const leftAppend = `${styledLeftAppend}${massCompletion?.leftAppend || ''}`;
+  const rightPrepend = `${massCompletion?.rightPrepend || ''}${styledRightPrepend}`;
   const itemParts = splitItemsAtChar(
     includeItems ? segment : { ...segment, items: [] },
     parts.offset,
@@ -697,9 +715,9 @@
   // 复制原文后，原有逐词时间码无法再与两侧文本一一对应；清空 items，
   // 避免把只属于一半文本的时间码带到重复文本上。
   const leftItems = duplicateOutputText
-    ? [] : MULTI_SUBTITLE_UTILS.appendMassMarkersToLastItem(cleanSplitItems(itemParts.leftItems, 'left'), massCompletion?.leftAppend);
+    ? [] : MULTI_SUBTITLE_UTILS.appendMassMarkersToLastItem(cleanSplitItems(itemParts.leftItems, 'left'), leftAppend);
   const rightItems = (duplicateOutputText || splitTextMode === 'progressive')
-    ? [] : MULTI_SUBTITLE_UTILS.prependMassMarkersToFirstItem(cleanSplitItems(itemParts.rightItems, 'right'), massCompletion?.rightPrepend);
+    ? [] : MULTI_SUBTITLE_UTILS.prependMassMarkersToFirstItem(cleanSplitItems(itemParts.rightItems, 'right'), rightPrepend);
   const splitMs = Number.isFinite(itemParts.splitMs) ? itemParts.splitMs : Math.round(cutMs);
   // 左右两段可各自贴合自家词边界（词间有静音空隙时非对称）。
   const leftEnd = Number.isFinite(itemParts.leftEndMs) ? itemParts.leftEndMs : splitMs;
@@ -2012,13 +2030,18 @@
     // splitStyledTextParts 只做刀点吸附（不切碎符号）；跨刀点断对的文本补齐
     // 由 completeSplitMassPairs 兜底（复验失败回退字面），items 同步在下方。
     let massCompletion = null;
+    let styledClosures = null;
     if (!duplicateSplit && !progressiveSplit) {
       parts = splitStyledTextParts(fullText, parts, currentSplitStyleSettings());
-      massCompletion = MULTI_SUBTITLE_UTILS.completeSplitMassPairs(
-        parts.left, parts.right, MaweSettings.EDITOR_SETTINGS.assSpecialSymbolRule,
-      );
-      parts.left = massCompletion.left;
-      parts.right = massCompletion.right;
+      // styled 的返回值携带两端点闭符号串，供 items 层同步（同 buildSplitPair）。
+      styledClosures = parts;
+      if (parts) {
+        massCompletion = MULTI_SUBTITLE_UTILS.completeSplitMassPairs(
+          parts.left, parts.right, MaweSettings.EDITOR_SETTINGS.assSpecialSymbolRule,
+        );
+        parts.left = massCompletion.left;
+        parts.right = massCompletion.right;
+      }
     }
     let leftText = parts?.left || '';
     let rightText = parts?.right || '';
@@ -2113,8 +2136,13 @@
     // 字幕列表手工拆分允许用户指定任意字符位置，但时间码必须落在实际 item
     // 的安全范围内；当切点在 item 内时，splitItemsAtChar 已为两侧生成 item 副本。
     // 左右边界已在上文（含强制重试的降级调和）结算完毕，这里直接消费。
-    const leftItemsClean = MULTI_SUBTITLE_UTILS.appendMassMarkersToLastItem(cleanSplitItems(itemSplit.leftItems, 'left'), massCompletion?.leftAppend);
-    const rightItemsClean = MULTI_SUBTITLE_UTILS.prependMassMarkersToFirstItem(cleanSplitItems(itemSplit.rightItems, 'right'), massCompletion?.rightPrepend);
+    // items 层追加符号 = styled 端点闭符号 + 补齐符号（顺序与最终文本一致）。
+    const styledLeftAppend = styledClosures?.leftClosures || '';
+    const styledRightPrepend = styledClosures?.rightClosures || '';
+    const leftAppend = `${styledLeftAppend}${massCompletion?.leftAppend || ''}`;
+    const rightPrepend = `${massCompletion?.rightPrepend || ''}${styledRightPrepend}`;
+    const leftItemsClean = MULTI_SUBTITLE_UTILS.appendMassMarkersToLastItem(cleanSplitItems(itemSplit.leftItems, 'left'), leftAppend);
+    const rightItemsClean = MULTI_SUBTITLE_UTILS.prependMassMarkersToFirstItem(cleanSplitItems(itemSplit.rightItems, 'right'), rightPrepend);
     // 复制拆分两侧都是全文、渐进拆分后半句带上复制来的前缀：逐词时间码再也
     // 对不上文本，清空对应一侧的 items；渐进拆分前半句仍是原文左半，保留。
     const leftItemsFinal = duplicateSplit ? [] : leftItemsClean;

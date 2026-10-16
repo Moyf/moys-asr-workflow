@@ -348,8 +348,13 @@ export function createThumbnailModule(dependencies) {
       imageCapacityFailures.clear();
       if (networkSuspended) { resumeNetwork(); return; }
       view += 1;
-      browser.clearTimeout(debounce); preload();
-      debounce = browser.setTimeout(() => void submit(), 200);
+      browser.clearTimeout(debounce);
+      // 账本 #22 评审条目 2：setView 入口已节流（150ms 首拍+尾拍收尾），
+      // 这里立即 submit。原来的 200ms 尾随去抖会被连续平移的节流推送
+      //（间隔 < 200ms）不断重置，demand 在持续滚动期间永远发不出去。
+      // setPlayback / setPlayhead 等其它入口的 debounce 语义保持不变。
+      preload();
+      void submit();
     }
     const controller = {
       assetTemplate: '',

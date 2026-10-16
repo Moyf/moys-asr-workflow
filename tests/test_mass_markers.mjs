@@ -7,6 +7,7 @@ import { loadEditorModule } from './helpers/editor-module-loader.mjs';
 const context = { window: {} };
 loadEditorModule(context, 'shared/editor-utils.js');
 const h = context.window.AsrEditorUtils;
+const utils = h;
 const plain = value => JSON.parse(JSON.stringify(value));
 
 // 拆分核心与合并路径是 classic 作用域脚本：按 test_ass_cue_position 的方式
@@ -115,9 +116,11 @@ test('split pair wiring completes texts and items in buildSplitPair with conserv
   assert.equal(built.left.items.map(item => item.text).join(''), built.left.text);
   assert.equal(built.right.items.map(item => item.text).join(''), built.right.text);
   assert.deepEqual(plain(built.left.items.map(item => [item.start, item.end])),
-    [[0, 600], [600, 900], [900, 1100]]);
+    [[0, 600], [600, 900], [900, 1200]]);
   assert.deepEqual(plain(built.right.items.map(item => [item.start, item.end])),
-    [[1100, 1500], [1500, 1900]]);
+    [[1200, 1500], [1500, 1900]]);
+  // 切点时间按 item 内可见字符占比插值（`*` 为中性不占时）：解说* 可见 1/2
+  assert.equal(built.splitMs, 1200);
   // 补齐后的两侧各自按同规则重新成对
   assert.deepEqual(plain(h.massMarkedRanges(built.left.text, 'both').map(range => [range.start, range.end])),
     [[2, 5]]);
@@ -151,10 +154,11 @@ test('merge join folds adjacent close+open pairs of the same marker', () => {
     { text: '*解说*', items: [{ text: '*解说*', start: 500, end: 1000 }] },
   ];
   const joined = h.joinSegmentTextsMassFold(segments, '', 'both');
-  // 今天*的* + *解说* → 今天*的*解说*（防止拼出 ** 被解析成强调）
-  assert.equal(joined.text, '今天*的*解说*');
-  // items 层同步折叠：前段末 item 保留闭符号，后段首 item 裁掉开符号
-  assert.deepEqual(plain(joined.items.map(item => item.text)), ['今天*的*', '解说*']);
+  // 今天*的* + *解说* → 今天*的解说*：junction 处两侧符号整体折叠（前段尾闭
+  // + 后段首开一并移除），两段的样式意图合成一个跨边界完整对（并集、无孤儿）
+  assert.equal(joined.text, '今天*的解说*');
+  // items 层同步折叠：前段末 item 裁掉尾闭、后段首 item 裁掉首开
+  assert.deepEqual(plain(joined.items.map(item => item.text)), ['今天*的', '解说*']);
   assert.equal(joined.items.map(item => item.text).join(''), joined.text);
   // 空格分隔不产生符号连跑，不折叠
   const spaced = h.joinSegmentTextsMassFold(segments, ' ', 'both');
@@ -167,8 +171,8 @@ test('merge join folds double markers and rejoins sentence-level fade shells', (
     { text: '今天**的**', items: [{ text: '今天**的**', start: 0, end: 500 }] },
     { text: '**解说**', items: [{ text: '**解说**', start: 500, end: 1000 }] },
   ], '', 'both');
-  assert.equal(doubled.text, '今天**的**解说**');
-  assert.deepEqual(plain(doubled.items.map(item => item.text)), ['今天**的**', '解说**']);
+  assert.equal(doubled.text, '今天**的解说**');
+  assert.deepEqual(plain(doubled.items.map(item => item.text)), ['今天**的', '解说**']);
   assert.equal(doubled.items.map(item => item.text).join(''), doubled.text);
 
   const fade = h.joinSegmentTextsMassFold([
@@ -206,8 +210,74 @@ test('mergeContiguousIndices folds the junction and keeps items conserved', () =
   const context = mergeContext(segments);
   vm.runInNewContext(fs.readFileSync(new URL('../web/editor/cues/editor-segment-ops.js', import.meta.url), 'utf8'), context);
   const merged = context.window.MaweSegmentOps.mergeContiguousIndices([0, 1]);
-  assert.equal(merged.text, '今天*的*解说*');
-  assert.deepEqual(plain(merged.items.map(item => item.text)), ['今天*的*', '解说*']);
+  assert.equal(merged.text, '今天*的解说*');
+  assert.deepEqual(plain(merged.items.map(item => item.text)), ['今天*的', '解说*']);
   assert.equal(merged.items.map(item => item.text).join(''), merged.text);
   assert.deepEqual([merged.start, merged.end], [0, 2000]);
+});
+
+// === Greptile P1（PR #251）：折叠残留与转换波及 ===
+
+test('merge fold removes both junction markers and reunites the pair across styles', () => {
+  // 双符号：**甲** + **乙** → **甲乙**（一个完整对，无孤儿符号）
+  const double = h.foldMassPairJunction('**甲**', '**乙**', 'both');
+  assert.deepEqual(plain(double), { left: '**甲', right: '乙**', removed: 2, leftTrimmed: 2 });
+  const joinedDouble = double.left + double.right;
+  assert.deepEqual(plain(h.massMarkedRanges(joinedDouble, 'both').filter(range => range.marker === '**').map(range => [range.start, range.end])), [[0, 4]]);
+  assert.equal(h.srtSentenceText(joinedDouble, 'both'), '甲乙');
+  // 单符号：今天*的* + *解说* → 今天*的解说*（两段样式意图的并集）
+  const single = h.foldMassPairJunction('今天*的*', '*解说*', 'both');
+  const joinedSingle = single.left + single.right;
+  assert.equal(joinedSingle, '今天*的解说*');
+  assert.deepEqual(plain(h.massMarkedRanges(joinedSingle, 'both').filter(range => range.marker === '*').map(range => [range.start, range.end])), [[2, 6]]);
+  assert.equal(h.srtSentenceText(joinedSingle, 'both'), '今天的解说');
+  // 拆分-合并往返：拆分补齐产物合并后还原原句（含空格归位）
+  const roundtrip = h.foldMassPairJunction('__really__', '__ fun__', 'both');
+  assert.equal(roundtrip.left + roundtrip.right, '__really fun__');
+  // joinSegmentTextsMassFold 端到端：items 双端裁剪守恒
+  const rows = [
+    { text: '**甲**', items: [{ text: '**甲**', start: 0, end: 500 }] },
+    { text: '**乙**', items: [{ text: '**乙**', start: 500, end: 1000 }] },
+  ];
+  const joinedFold = h.joinSegmentTextsMassFold(rows, '', 'both');
+  assert.equal(joinedFold.text, '**甲乙**');
+  assert.deepEqual(plain(joinedFold.items.map(item => item.text)), ['**甲', '乙**']);
+  assert.equal(joinedFold.items.map(item => item.text).join(''), joinedFold.text);
+});
+
+test('conversion completion only touches rows of the converted sentence', () => {
+  const clock = { unit: 'milliseconds', getStart: s => s.start, getEnd: s => s.end,
+    getItemStart: s => s.start, getItemEnd: s => s.end, setItemStart: () => {}, setItemEnd: () => {} };
+  const segments = [
+    { id: 'a', start: 0, end: 1000, text: '__really fun__', items: [
+      { text: '__really', start: 0, end: 500 }, { text: ' fun__', start: 500, end: 1000 },
+    ] },
+    // 未选中的相邻字幕：字面星号恰好能与相邻行拼出语法对（Greptile P1 用例）
+    { id: 'b', start: 1000, end: 2000, text: '*甲', items: [{ text: '*甲', start: 1000, end: 2000 }] },
+    { id: 'c', start: 2000, end: 3000, text: '乙*', items: [{ text: '乙*', start: 2000, end: 3000 }] },
+  ];
+  const plan = utils.planWordTimingConversion(segments, [0], clock, { rule: 'both' });
+  const texts = plain(plan.segments.map(segment => segment.text));
+  // 被转换字幕的两行之间补齐（空格按中性归属留在前行）
+  assert.deepEqual(texts.slice(0, 2), ['__really __', '__fun__']);
+  assert.deepEqual(plain(plan.segments[0].items.map(item => item.text)), ['__really __']);
+  assert.deepEqual(plain(plan.segments[1].items.map(item => item.text)), ['__fun__']);
+  // 未选中的两条字幕保持字面不动
+  assert.deepEqual(texts.slice(2), ['*甲', '乙*']);
+  // 转换行与未选中行的 junction 不补：row1(.fun__ 尾) 与 *甲 之间无变化
+  assert.equal(plan.segments[1].text, '__fun__');
+});
+
+test('assMarkedRanges nests three MASS pairs in one sentence (ledger #30)', () => {
+  const text = '>>** //The *editing* //process**<<';
+  const ranges = plain(h.massMarkedRanges(text, 'both'));
+  const byMarker = (marker) => ranges.filter(range => range.marker === marker).map(range => [range.start, range.end]);
+  // **[2,30) ⊃ //[5,21) ⊃ *[11,19)：同符号对互不重叠、跨符号允许嵌套
+  assert.deepEqual(byMarker('**'), [[2, 30]]);
+  assert.deepEqual(byMarker('//'), [[5, 21]]);
+  assert.deepEqual(byMarker('*'), [[11, 19]]);
+  // 句级 fade 外壳同样成立
+  const fade = h.parseSentenceFadeMarkers(text, 'both');
+  assert.equal(fade.fadeIn, true);
+  assert.equal(fade.fadeOut, true);
 });

@@ -1182,8 +1182,22 @@
     MaweDom.timedTextEditModal.classList.add('show');
     const scrollRowIndex = timedTextEditInitialScrollRowIndex();
     setTimeout(() => {
-      (MaweDom.timedTextEditDraft?.view === 'single'
-        ? MaweDom.timedTextEditSingleTextarea : MaweDom.timedTextEditRows.querySelector('textarea'))?.focus();
+      // 整体视图没有行元素可滚（Greptile P2：此前无条件查 rows 容器，single
+      // 视图下为空导致选中字幕留在屏外）：把 caret 预置到选中行首再聚焦，
+      // 浏览器随焦点滚动到该行；逐条视图维持 scrollIntoView 原路径。
+      const singleView = MaweDom.timedTextEditDraft?.view === 'single';
+      if (singleView && MaweDom.timedTextEditSingleTextarea) {
+        const textarea = MaweDom.timedTextEditSingleTextarea;
+        const texts = MaweDom.timedTextEditDraft?.texts || [];
+        if (scrollRowIndex >= 0 && scrollRowIndex < texts.length) {
+          const offset = texts.slice(0, scrollRowIndex)
+            .reduce((sum, text) => sum + String(text || '').length + 1, 0);
+          textarea.setSelectionRange(offset, offset);
+        }
+        textarea.focus();
+        return;
+      }
+      MaweDom.timedTextEditRows.querySelector('textarea')?.focus();
       // 行已在 loadTimedTextEditTrack 内同步渲染完成，这里只需滚动定位。
       if (scrollRowIndex >= 0) {
         MaweDom.timedTextEditRows.querySelector(`.timed-text-edit-row[data-index="${scrollRowIndex}"]`)

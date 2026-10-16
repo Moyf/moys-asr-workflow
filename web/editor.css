@@ -3568,13 +3568,16 @@
   /* 逐条行的搜索高亮镜像：结构与整体编辑的 single-editor 一致，
      padding/边框/圆角/字体/行高必须与 .timed-text-edit-row textarea 严格一致。 */
   .timed-text-edit-row-editor { position: relative; min-width: 0; }
+  /* 镜像默认不可见（空镜像也是不透明背景板，会盖住 textarea 的文字——
+     Greptile P1）；仅搜索命中的行（search-highlight）显示镜像承接高亮。 */
   .timed-text-edit-row-search-mirror {
     position: absolute; z-index: 1; inset: 0; overflow: hidden; box-sizing: border-box;
     padding: 6px 8px; color: var(--text-primary); background: var(--bg-input);
     border: 1px solid var(--border); border-radius: var(--radius-sm);
     font: inherit; line-height: 1.45; white-space: pre-wrap; overflow-wrap: break-word;
-    pointer-events: none;
+    pointer-events: none; visibility: hidden;
   }
+  .timed-text-edit-row.search-highlight .timed-text-edit-row-search-mirror { visibility: visible; }
   .timed-text-edit-row-search-mirror .search-match { color: inherit; background: color-mix(in srgb, var(--accent) 25%, transparent); border-radius: 2px; }
   .timed-text-edit-row-search-mirror .search-match.is-current { background: color-mix(in srgb, var(--amber) 45%, transparent); box-shadow: 0 0 0 1px var(--amber-line); }
   .timed-text-edit-row-search-mirror .search-match.is-zero-length { display: inline-block; width: 0; height: 1em; margin-right: -2px; border-left: 2px solid var(--accent); vertical-align: text-bottom; }

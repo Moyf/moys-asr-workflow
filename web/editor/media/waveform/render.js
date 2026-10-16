@@ -274,6 +274,13 @@ export function createWaveformModule(dependencies) {
       const stripX = shift > 0 ? width - stripSpan : 0;
       this.paintWaveRow(row, ctx, width, height, newStart, endMs, stripX, stripSpan, { withChips: false });
       this.rebuildMarkerTrackForPan(row, newStart, endMs);
+      // 评审条目 2：连续平移会不断重置 settle 计时器，若 setView 只在
+      // settle 后经 syncThumbnailView 发出，持续滚动超出已缓存画面时将
+      // 一直停留在占位格。这里每档把新可见范围交给内部节流（首拍立即
+      // + 每 150ms 尾拍收尾）的 setView，取图节奏由节流器保证。
+      if (this.thumbnailController?.visible) {
+        this.thumbnailController.setView([{ start: newStart, end: endMs, width }], this.durationMs);
+      }
       this.panThumbnailStrip(row, shift, newStart, endMs, width);
       this.positionPlayheads();
       this.refreshPointerLine({ left: rect.left + row.clientLeft, width: Math.max(1, row.clientWidth) });
@@ -287,12 +294,15 @@ export function createWaveformModule(dependencies) {
 
 
     // 平移期块层轻量重排：字幕/字词/空隙块按新窗口原位重算 left/width/hidden，
-    // 不重建 DOM。任一层报告结构性差异（无法原位表达）时返回 false。
+    // 不重建 DOM。共享边界区（.waveform-cue-boundary，main+extension 两轨）
+    // 复用 refreshBoundaryZones 的原位重定位（贴合关系变化时原地移除，由
+    // 下次整层重建恢复）。任一层报告结构性差异（无法原位表达）时返回 false。
     /** @this {import('./waveform-types.js').WaveformInstance} */
     relayoutBasicOverlays(row, startMs, endMs, oldStartMs = startMs, oldEndMs = endMs) {
       if (!this.relayoutCueBlocksInRow(row, startMs, endMs)) return false;
       if (!this.relayoutWordBlocksInRow(row, startMs, endMs, oldStartMs, oldEndMs)) return false;
       if (!this.relayoutGapBlocksInRow(row, startMs, endMs)) this.refreshGapOverlay();
+      this.refreshBoundaryZones();
       return true;
     }
 

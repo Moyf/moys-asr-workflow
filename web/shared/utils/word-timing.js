@@ -255,20 +255,27 @@ export function createWordTiming(dependencies) {
 
   // 字词拆字幕出口的 MASS 补齐（账本 #21）：转换把原句按字词切开，跨行的
   // 成对符号（如 __really fun__ → __really / fun__）按同一 helper 在相邻
-  // 输出行两侧补齐。只处理 items 与文本一一对应（转换产物不变式）或无
-  // items 的行，其余行（未转换的原 items 结构）不动。
+  // 输出行两侧补齐。补齐范围锁定在「同一条被转换字幕」切出的相邻输出行
+  // 之间（Greptile P1：全量扫描会把未选中字幕里的字面 `*甲`/`乙*` 被相邻
+  // junction 补成 `*甲*`/`*乙*`，转换连带保存无关修改）——跨字幕边界本就
+  // 不该有语法对，一律不动。
   function conversionRowFollowable(segment) {
     return !Array.isArray(segment?.items)
       || (segment.items.length === 1 && segment.items[0]?.text === segment.text);
   }
 
-  function completeConvertedOutputMassPairs(output, rule) {
+  function completeConvertedOutputMassPairs(output, rule, outputSources) {
     const rows = Array.isArray(output) ? output : [];
+    const sources = Array.isArray(outputSources) ? outputSources : [];
     if (!rule || rule === 'none') return rows;
     for (let index = 1; index < rows.length; index += 1) {
       const previous = rows[index - 1];
       const next = rows[index];
       if (!previous || !next) continue;
+      // 两侧必须来自同一条被转换字幕（sources 记录各行来源段下标，未转换
+      // 行为 -1）；未选中字幕与跨字幕 junction 一律跳过。
+      if (sources[index - 1] === -1 || sources[index] === -1) continue;
+      if (sources[index - 1] !== sources[index]) continue;
       if (!conversionRowFollowable(previous) || !conversionRowFollowable(next)) continue;
       const completed = completeSplitMassPairs(previous.text, next.text, rule);
       if (!completed.leftAppend && !completed.rightPrepend) continue;
@@ -321,8 +328,11 @@ export function createWordTiming(dependencies) {
       oldToNew.set(index, offset);
       offset += byIndex.get(index)?.segments.length || 1;
     });
-    const output = segments.flatMap((segment, index) => {
+    const output = [];
+    const outputSources = [];
+    segments.forEach((segment, index) => {
       const pieces = byIndex.get(index)?.segments || [cloneJsonValue(segment)];
+      const converted = byIndex.has(index);
       pieces.forEach((piece, ordinal) => {
         for (const field of ['color', 'sticker']) {
           const ref = `${field}_ref`;
@@ -335,10 +345,11 @@ export function createWordTiming(dependencies) {
             piece[ref].headIdx = mapped;
           }
         }
+        output.push(piece);
+        outputSources.push(converted ? index : -1);
       });
-      return pieces;
     });
-    completeConvertedOutputMassPairs(output, options.rule);
+    completeConvertedOutputMassPairs(output, options.rule, outputSources);
     return { segments: output, conversions, skipped, generatedCount: conversions.reduce((n, c) => n + c.segments.length, 0) };
   }
 
