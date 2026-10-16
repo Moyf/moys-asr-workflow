@@ -1391,4 +1391,8 @@
 
 #waveform-thumbnail-setting { margin: 8px 0; flex-wrap: wrap; }
 #waveform-thumbnail-decode-setting { margin: 8px 0; padding-left: 22px; }
-.waveform-thumbnail-status { flex: 0 0 100%; margin-top: 8px; color: var(--text-muted); font-size: 11px; line-height: 1.4; white-space: normal; }
+/* 状态文字仅保留给辅助技术：select 的 tooltip 已展示同样内容（
+   updateThumbnailStatus 会同步写父级 title），可见行冗余移除。
+   不用 display:none——该 span 挂 aria-live 且被 select 与补间开关
+   aria-describedby 引用，须留在可访问性树内，故用 sr-only 视觉隐藏。 */
+.waveform-thumbnail-status { position: absolute; width: 1px; height: 1px; margin: -1px; padding: 0; border: 0; overflow: hidden; clip: rect(0, 0, 0, 0); white-space: nowrap; }

@@ -3574,8 +3574,28 @@ class EditorRequestHandler(BaseHTTPRequestHandler):
                 # Browser media elements commonly cancel an old Range request while seeking.
                 return
 
+    # 轮询端点按心跳频率命中（startup-status 由前端就绪/自动保存轮询、
+    # thumbnails/demand 由画面带按需取帧轮询），200 响应刷屏无信息量；
+    # 命中路径且状态码恰为 200 时跳过打印，非 200 响应与其他端点日志
+    # 保持原样（含 send_error 经 log_error 进来的其他格式，解析不出
+    # request 日志形态就不静默）。
+    _QUIET_HTTP_LOG_PATHS = ("/api/startup-status", "/api/thumbnails/demand")
+
+    def _is_quiet_poll_response(self, message: str) -> bool:
+        if urlsplit(getattr(self, "path", "") or "").path not in self._QUIET_HTTP_LOG_PATHS:
+            return False
+        # log_request 的消息格式是 '"<requestline>" <code> <size>'：requestline
+        # 自身含空格，状态码只能从右侧取第二段；解析不出该形态就不静默。
+        parts = message.rsplit(" ", 2)
+        if len(parts) != 3:
+            return False
+        return parts[1] == "200"
+
     def log_message(self, format: str, *args: object) -> None:
-        print(f"[http] {self.address_string()} - {format % args}")
+        message = format % args
+        if self._is_quiet_poll_response(message):
+            return
+        print(f"[http] {self.address_string()} - {message}")
 
 
 def _port_is_free(host: str, port: int) -> bool:
