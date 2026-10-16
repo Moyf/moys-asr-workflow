@@ -415,6 +415,23 @@ source: "JSON_SCHEMA.md"
 
 候选的 `alternativeGroupId` 表示同一文稿行的局部录制组；相邻候选之间默认最多相隔 `10000ms`，且最多跨过 `8` 个源字幕段，限制值记录在对齐结果的 `settings.alternativeMaxGapMs` 与 `settings.alternativeMaxCues` 中。不同组的完整命中不会自动作为 `Alternative` 禁用，而会以 `kind: "extra"`、`reasonCode: "distant-match"` 进入可确认范围，默认保留。
 
+文稿字幕生成可在 `script_alignment.recording` 追加以下诊断字段：
+
+```json
+{
+  "version": 1,
+  "selectionDigest": "sha256-of-canonical-review",
+  "sourceEvidence": "asr-confirmed",
+  "generatedCueIds": ["script-recording-001"],
+  "replacedSourceIds": ["main-001"],
+  "warnings": ["自动推荐仍需听审"]
+}
+```
+
+这不是另一份字幕真源；生成文字与整数毫秒时间仍在 `segments/items`，静音决定仍在 `gap_remove`。`sourceEvidence` 只表示用户确认了原始ASR来源，不是模型念读正确率。`replacedSourceIds` 记录为避免主字幕重叠而从最终工程替换的源cue，完整来源保留在原始ASR文件；未替换的Extra继续保留。最终工程仍遵守主字幕不重叠契约，包括disabled段。此诊断对象随MAWE保存重开保留，不能用它把文稿工程重新当作原始ASR证据。
+
+结果目录中的 `report.json` 是审查快照：只保存必要选择、候选绑定确认、规则、输入签名及规范化gap状态，不保存请求token或未知客户端字段。它不替代MOSP、也不复制完整原ASR工程。源ASR补码报告另标 `operation: "source-items"`，保持原字幕文字，仅补items。
+
 ### 1.4 preview 预览呈现
 
 `preview.ass_mode` 为可选布尔值，记录当前工程是否启用 ASS 字幕模式；缺失时为 `false`，不会从另一工程或浏览器旧偏好继承。字幕样式与颜色呈现继续保存于工程，ASS 样式库与特殊文本规则仍是可复用的本机配置。
@@ -667,7 +684,7 @@ source: "JSON_SCHEMA.md"
 - 进入帧模式后，编辑器以帧字段为操作真源，同时更新毫秒投影；切换 FPS 会保留实际媒体时间并重新计算帧编号
 - `segments` 建议按时间升序排列，且 `segments[i].end <= segments[i+1].start`
 - 代码不强校验时间重叠，但重叠会导致播放器跳转/高亮行为异常
-- `items` 首元素 `start` 建议等于 segment `start`，末元素 `end` 建议等于 segment `end`
+- 普通完整字词时间码中，首元素 `start` 建议等于 segment `start`，末元素 `end` 建议等于 segment `end`；编辑器「渐进拆分」的后半句会保留原后半区间的 items，因此允许仅覆盖文本后缀
 - 带 `speaker` 的工程遇到说话人变化时**必须切分字幕**，不能把两个 speaker 合入同一 segment
 
 ---
@@ -689,7 +706,7 @@ source: "JSON_SCHEMA.md"
 
 | 字段 | 类型 | 必填 | 说明 |
 |---|---|---|---|
-| `text` | `string` | 是 | 单字或单词。**所有 item 的 `text` 拼接后应等于所属 segment 的 `text`**（标点也应包含在内，编辑器拆分时会按需剥掉） |
+| `text` | `string` | 是 | 单字或单词。通常所有 item 的 `text` 拼接后应等于所属 segment 的 `text`（标点也应包含在内，编辑器拆分时会按需剥掉）；渐进拆分后半句允许 items 只对应原文后缀，复制前缀没有时间码 |
 | `start` | `int` | 是 | 该字/词起始时间（毫秒） |
 | `end` | `int` | 是 | 该字/词结束时间（毫秒） |
 | `start_frame` | `int` | 否 | 独立帧起始编号，与 `end_frame` 成对出现 |
