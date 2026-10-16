@@ -792,6 +792,7 @@ export function createUtilsModule(dependencies) {
     };
   }
 
+
   // 三处合并路径（主/副/overlay）共用的「拼接 + 相邻同符号对折叠」：折叠只
   // 作用于无分隔符的拼接边界（空格/换行分隔不会产生符号连跑），并同步返回
   // items 层拼接结果——被折叠掉的符号从对应段边界 item 的文本里裁掉，

@@ -17,7 +17,7 @@ function fixture() {
   const context = vm.createContext({ window: { AsrEditorUtils: {
     ...utils, normalizeMarkers: clone, cloneMarkerValue: clone,
   }, removeEventListener() {} }, document: { getElementById: id => buttons[id] },
-  MaweBoot: { DATA: data }, MaweState: { changes: {} },
+  MaweBoot: { DATA: data }, MaweState: { changes: {}, markProjectDirty() {} },
   MaweCoreState: {}, MaweHint: { flashHint() {} },
   MaweInlineEdit: { editingState: null },
   MaweWordTiming: { clearSelection() {} },
