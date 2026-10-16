@@ -212,7 +212,9 @@ test('English diagnostics translate confirmed reasons without leaking backend co
     await expect(page.locator('#gap-video-job-removal-summary')).toContainText('Planned removal');
     await page.locator('#gap-video-job-removal-details summary').click();
     await expect(page.locator('#gap-video-job-removal-details')).toContainText('open GOP or recovery entry');
-    await expect(page.locator('#gap-video-job-removal-details')).toContainText('do not share a safe cut point');
+    await expect(page.locator('#gap-video-job-removal-details')).toContainText('No usable safe cut point was found');
+    await expect(page.locator('#gap-video-job-removal-details')).not.toContainText('no_common_video_boundary');
+    await expect(page.locator('#gap-video-job-removal-details')).not.toContainText('h264_recovery');
     await page.click('#gap-video-job-stop');
     await expect(page.locator('#download-gap-removed-video')).toBeEnabled();
   });
