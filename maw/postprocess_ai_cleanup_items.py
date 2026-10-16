@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import re
 from collections.abc import Mapping, Sequence
-from maw.postprocess_ai_cleanup_safety import protected_information_loss_reason
+from maw.postprocess_ai_cleanup_safety import protected_information_loss_reason, safe_echo_phrase
 
 
 def collapse_echo(text: str) -> str:
@@ -13,7 +13,7 @@ def collapse_echo(text: str) -> str:
     value = text
     pattern = re.compile(r"(.{2,40}?)\1+")
     for _ in range(3):
-        updated = pattern.sub(lambda match: match[0] if protected_information_loss_reason(match[0], match[1]) else match[1], value)
+        updated = pattern.sub(lambda match: match[1] if safe_echo_phrase(match[1]) or protected_information_loss_reason(match[0], match[1]) is None else match[0], value)
         if updated == value:
             break
         value = updated

@@ -66,8 +66,14 @@ class GuiWebBridgeTests(CompactContainerAssertions, unittest.TestCase):
 
     def test_pipeline_done_logs_final_comparison_paths(self) -> None:
         with mock.patch.object(self.api, "_emit") as emit:
-            self.api._handle_postprocess_pipeline_event({"stage": "done", "comparisonPaths": ["final/proofread.html", "final/translate.html"]})
+            self.api._handle_postprocess_pipeline_event({
+                "stage": "done", "skippedSteps": ["cleanup"],
+                "warnings": ["AI 整理失败并保留输入"],
+                "comparisonPaths": ["final/proofread.html", "final/translate.html"],
+            })
         messages = [call.args[0].get("message", "") for call in emit.call_args_list]
+        self.assertTrue(any("跳过 1 个失败的 AI 步骤" in message for message in messages))
+        self.assertIn("[后处理报告] AI 整理失败并保留输入", messages)
         self.assertIn("[后处理] 处理前后对比：final/proofread.html", messages)
         self.assertIn("[后处理] 处理前后对比：final/translate.html", messages)
 
@@ -99,6 +105,10 @@ class GuiWebBridgeTests(CompactContainerAssertions, unittest.TestCase):
                                              "notes": "  保留所有数字  "})
         self.assertTrue(result["ok"])
         self.assertEqual(cleanup.call_args.args[0].notes, "保留所有数字")
+        self.assertFalse(cleanup.call_args.args[0].review_enabled)
+        with mock.patch("maw.gui_web.process_ai_cleanup", return_value=SimpleNamespace()) as cleanup:
+            self.api.run_ai_cleanup({"providerId": "deepseek", "apiKey": "fake", "reviewEnabled": True})
+        self.assertTrue(cleanup.call_args.args[0].review_enabled)
 
     def test_ai_cleanup_stream_cancel_closes_response_and_writes_no_artifact(self) -> None:
         project = self.root / "cancel-cleanup.mosp"
@@ -176,7 +186,7 @@ class GuiWebBridgeTests(CompactContainerAssertions, unittest.TestCase):
         self.assertIn('"operationId": "ai-cleanup-cancel-test"', scripts)
         self.assertEqual(
             sorted(path.name for path in self.root.iterdir()),
-            [".env.example", "cancel-cleanup.mosp", "cancel-cleanup.txt"],
+            [".env.example", "cancel-cleanup.ai-cleanup-record.md", "cancel-cleanup.mosp", "cancel-cleanup.txt"],
         )
 
     def test_ai_cleanup_streams_each_batch_and_review_with_retry_reset(self) -> None:
@@ -258,6 +268,7 @@ class GuiWebBridgeTests(CompactContainerAssertions, unittest.TestCase):
                 "baseUrl": "https://api.deepseek.com",
                 "model": "deepseek-chat",
                 "operationId": "ai-cleanup-batches-test",
+                "reviewEnabled": True,
             })
 
         self.api.pump.shutdown()
@@ -444,8 +455,8 @@ class GuiWebBridgeTests(CompactContainerAssertions, unittest.TestCase):
                     )
                 self.assertEqual(
                     sorted(path.name for path in self.root.iterdir()),
-                    [".env.example", "cancel-loopback.mosp", "cancel-loopback.txt"],
-                    "cancelled streaming cleanup must not write artifacts",
+                    [".env.example", "cancel-loopback.ai-cleanup-record.md", "cancel-loopback.mosp", "cancel-loopback.txt"],
+                    "cancelled streaming cleanup keeps only its trace and source inputs",
                 )
         finally:
             release_stream.set()
@@ -2426,7 +2437,7 @@ class GuiWebBridgeTests(CompactContainerAssertions, unittest.TestCase):
 
         self.assertFalse(result["ok"])
         self.assertEqual(result["code"], "postprocess_cancelled")
-        self.assertEqual(sorted(path.name for path in self.root.iterdir()), [".env.example", "cancel-me.mosp"])
+        self.assertEqual(sorted(path.name for path in self.root.iterdir() if path.suffix != ".md"), [".env.example", "cancel-me.mosp"])
 
     def test_llm_cancel_after_first_artifact_write_begins_is_rejected(self) -> None:
         import maw.postprocess as postprocess_core
@@ -4537,7 +4548,7 @@ class GuiWebBridgeTests(CompactContainerAssertions, unittest.TestCase):
             "apiKey": "sk-test",
         }, self.env_path)
 
-        self.assertEqual(request.extra_strong_punct, "?!——，。？！；,.")
+        self.assertEqual(request.extra_strong_punct, "?!——，。？！；,.;")
         # 无 version 的旧计划会并入默认断句清单（与保留符号互不影响剥尾集合）。
         self.assertIn("，", request.strip_tail_punct)
 
@@ -5883,7 +5894,7 @@ class LauncherAssetContractTests(CompactContainerAssertions, unittest.TestCase):
         stylesheet = (ROOT / "web" / "launcher" / "launcher.css").read_text(encoding="utf-8")
 
         self.assertIn(
-            '{ id: "match", enabled: false, scriptPath: "", matchMode: "script", extraSplitPunctuation: ["，", "。", "？", "！", "；", ",", "."], preservePunctuation: ["？", "！"], cleanMarkdownSymbols: true },',
+            '{ id: "match", enabled: false, scriptPath: "", matchMode: "script", extraSplitPunctuation: ["，", "。", "？", "！", "；", ",", ".", ";"], preservePunctuation: ["？", "！"], cleanMarkdownSymbols: true },',
             script,
         )
         self.assertIn('subtitle_invalid: (detail) => `字幕或工程解析失败：', launcher_script)

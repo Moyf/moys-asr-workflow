@@ -66,7 +66,10 @@ from maw.media_jobs import (  # noqa: E402
 from maw.media_export_audio import rebuild_gap_removed_audio  # noqa: E402
 from maw.gui_config import DEFAULT_ENV_PATH, load_env  # noqa: E402
 from maw.gui_platform import creationflags, restore_host_library_path, startupinfo  # noqa: E402
-from maw.postprocess_ffmpeg import libass_missing_glyphs  # noqa: E402
+from maw.postprocess_ffmpeg import (  # noqa: E402
+    DEFAULT_BURN_AUDIO_BITRATE, DEFAULT_BURN_CRF, DEFAULT_BURN_PRESET, libass_missing_glyphs,
+    normalize_video_encoder, video_encoder_attempts, video_encoder_options,
+)
 from maw.project import (  # noqa: E402
     ProjectValidationFailed,
     normalize_project,
@@ -382,6 +385,14 @@ class GapRemovedVideoExportInProgressError(RuntimeError):
     """Another gap-removed video export is currently using FFmpeg."""
 
 
+class BurnVideoExportError(ValueError):
+    """ASS burn-in request or its FFmpeg output is invalid."""
+
+    def __init__(self, message: str, *, details: object = None) -> None:
+        super().__init__(message)
+        self.details = str(details).strip()[-4000:] if details else None
+
+
 class ProjectBindingChangedError(RuntimeError):
     """The client export snapshot belongs to an obsolete project binding."""
 
@@ -635,6 +646,214 @@ def rebuild_gap_removed_video(
     if not _gap_removed_video_streams_match(input_signature, output_signature):
         output_path.unlink(missing_ok=True)
         raise GapRemovedVideoExportError("导出结果的媒体流与源视频不一致，未保存结果；请避免过短的保留区间")
+    return output_path
+
+
+def _probe_media_duration_ms(path: Path, ffprobe_path: Path, *, job: MediaJob | None = None) -> int | None:
+    """Read the container duration for FFmpeg progress; None keeps the bar indeterminate."""
+    command = [
+        str(ffprobe_path), "-v", "error", "-show_entries", "format=duration",
+        "-of", "json", str(path),
+    ]
+    try:
+        completed = job.run_command(command) if job else subprocess.run(
+            command, capture_output=True, text=True, encoding="utf-8", errors="replace",
+            timeout=120, check=False, startupinfo=startupinfo(), creationflags=creationflags(),
+        )
+    except (OSError, subprocess.SubprocessError) as error:
+        raise BurnVideoExportError("无法读取视频时长，请检查源文件及媒体工具", details=error) from error
+    if completed.returncode != 0:
+        raise BurnVideoExportError("无法读取视频时长，源文件可能损坏", details=completed.stderr)
+    try:
+        payload = json.loads(completed.stdout)
+    except (TypeError, json.JSONDecodeError) as error:
+        raise BurnVideoExportError("无法读取视频时长，请检查源文件后重试") from error
+    raw = payload.get("format", {}).get("duration") if isinstance(payload, dict) else None
+    if raw is None:
+        return None
+    if isinstance(raw, bool) or not isinstance(raw, (str, int, float)):
+        raise BurnVideoExportError("视频包含无效的时长信息，请检查源文件后重试")
+    try:
+        seconds = Decimal(str(raw))
+    except InvalidOperation as error:
+        raise BurnVideoExportError("视频包含无效的时长信息，请检查源文件后重试") from error
+    if not seconds.is_finite() or seconds < 0:
+        raise BurnVideoExportError("视频包含无效的时长信息，请检查源文件后重试")
+    return min(int(seconds * 1000), 9_007_199_254_740_991)
+
+
+def _burn_interval_filter(intervals: list[tuple[int, int]], audio_count: int) -> str:
+    """Decode once; keep only requested frames and map both clocks to kept time.
+
+    Video selection avoids duplicating long decoded frame queues per interval.
+    Audio is trimmed at sample boundaries and padded to each requested span;
+    it is concatenated separately so a rounded video frame cannot extend a join.
+    """
+    def seconds(ms):
+        return format(Decimal(ms).scaleb(-3), 'f')
+
+    selected = '+'.join(f'gte(t,{seconds(start)})*lt(t,{seconds(end)})' for start, end in intervals)
+    shifts = [seconds(intervals[0][0])]
+    for (_, previous_end), (start, _) in zip(intervals, intervals[1:]):
+        shifts.append(f'if(gte(T,{seconds(start)}),{seconds(start - previous_end)},0)')
+    graph = [f"[0:v:0]select='{selected}',setpts='PTS-({'+'.join(shifts)})/TB',"
+             "ass=filename='burn.ass'[burn_video]"]
+    for audio in range(audio_count):
+        inputs = [f'cut_audio_{audio}_{index}' for index in range(len(intervals))]
+        base = f'base_audio_{audio}'
+        # Fill leading stream delay before splitting, including intervals that
+        # contain no source samples at all; per-cut padding cannot fill an
+        # empty branch. Infinite trailing padding is bounded by each atrim.
+        graph.append(f'[0:a:{audio}]aresample=async=1:first_pts=0,apad[{base}]')
+        if len(intervals) > 1:
+            graph.append(f'[{base}]asplit={len(intervals)}' + ''.join(f'[{name}]' for name in inputs))
+        else:
+            inputs = [base]
+        outputs = []
+        for index, ((start, end), name) in enumerate(zip(intervals, inputs)):
+            output = f'kept_audio_{audio}_{index}'
+            outputs.append(f'[{output}]')
+            graph.append(f'[{name}]atrim=start={seconds(start)}:end={seconds(end)},'
+                         f'asetpts=PTS-{seconds(start)}/TB[{output}]')
+        graph.append(''.join(outputs) + f'concat=n={len(intervals)}:v=0:a=1[burn_audio_{audio}]')
+    return ';\n'.join(graph) + '\n'
+
+
+def burn_ass_video(
+    source_path: Path,
+    intervals: list[tuple[int, int]],
+    ass_text: str,
+    output_path: Path,
+    *,
+    ffmpeg_path: Path,
+    ffprobe_path: Path,
+    job: MediaJob | None = None,
+) -> Path:
+    """Re-encode the source video with the given ASS subtitles burned in.
+
+    与「实际画面预览」和 Launcher 烧录共用约定：ASS 写入输出目录、滤镜参数
+    只带文件名、进程 cwd 指向该目录，规避盘符冒号等路径转义差异。给定时
+    区间时在解码后选择视频帧、按采样裁剪音轨，再映射到同一收缩时间轴；
+    不把 ffconcat 的解码预滚帧当作用户保留内容。
+    """
+    try:
+        source = source_path.expanduser().resolve(strict=True)
+    except OSError as error:
+        raise BurnVideoExportError("当前工程的源媒体文件不存在") from error
+    if not source.is_file() or source.suffix.lower() not in VIDEO_EXTENSIONS:
+        raise BurnVideoExportError("当前工程绑定的媒体不是受支持的视频文件")
+    if not isinstance(ass_text, str) or not ass_text.strip():
+        raise BurnVideoExportError("缺少 ASS 字幕内容")
+    if intervals and any(end <= start for start, end in intervals):
+        raise BurnVideoExportError("去空隙保留区间无效")
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+    ass_path = output_path.with_name("burn.ass")
+    with ass_path.open("w", encoding="utf-8", newline="\n") as handle:
+        handle.write(ass_text)
+
+    if job:
+        job.update("preparing")
+    input_args = ["-i", str(source)]
+    if intervals:
+        intervals = normalize_gap_removed_intervals([
+            {"startMs": start, "endMs": end} for start, end in intervals
+        ])
+        probe = _probe_gap_removed_video(source, ffprobe_path, job=job)
+        audio_streams = [stream for stream in probe.streams if stream.codec_signature[0] == "audio"]
+        audio_count = len(audio_streams)
+        # Input-side accurate seeking bounds decoding to the requested hull;
+        # FFmpeg still decodes keyframe preroll before discarding it. All filter
+        # clocks below are relative to this seek origin, including audio delay.
+        seek_start, seek_end = intervals[0][0], intervals[-1][1]
+        input_args = ["-ss", format(Decimal(seek_start).scaleb(-3), "f"),
+                      "-t", format(Decimal(seek_end - seek_start).scaleb(-3), "f"), "-i", str(source)]
+        relative_intervals = [(start - seek_start, end - seek_start) for start, end in intervals]
+        graph_path = output_path.with_suffix(".filters")
+        graph_path.write_text(_burn_interval_filter(relative_intervals, audio_count), encoding="utf-8", newline="\n")
+        duration_ms = sum(end - start for start, end in intervals)
+        # A video frame can straddle the end of an interval. Independent audio
+        # concatenation and explicit output duration keep it from moving joins.
+        filter_args = ["-filter_complex_script", str(graph_path), "-map", "[burn_video]"]
+        for audio, stream in enumerate(audio_streams):
+            filter_args.extend(("-map", f"[burn_audio_{audio}]",
+                                f"-map_metadata:s:a:{audio}", f"0:s:a:{audio}",
+                                f"-disposition:a:{audio}", "+".join(stream.disposition) or "0"))
+        filter_args.extend(("-fps_mode", "vfr", "-t", format(Decimal(duration_ms).scaleb(-3), "f")))
+    else:
+        duration_ms = _probe_media_duration_ms(source, ffprobe_path, job=job)
+        filter_args = ["-map", "0:v:0", "-map", "0:a?", "-vf", "ass=filename='burn.ass'"]
+
+    requested_encoder = normalize_video_encoder(None)
+    attempts = video_encoder_attempts(ffmpeg_path, requested_encoder)
+    common_command = [
+        str(ffmpeg_path), "-y", "-nostdin", "-hide_banner", "-loglevel", "warning",
+        *input_args, *filter_args, "-map_metadata", "0",
+        "-sws_flags", "spline+accurate_rnd+full_chroma_int",
+    ]
+    last_error: BurnVideoExportError | None = None
+    for encoder in attempts:
+        output_path.unlink(missing_ok=True)
+        command = [
+            *common_command,
+            *video_encoder_options(encoder, DEFAULT_BURN_CRF, DEFAULT_BURN_PRESET),
+            "-pix_fmt", "yuv420p",
+            "-c:a", "aac", "-b:a", DEFAULT_BURN_AUDIO_BITRATE,
+            "-movflags", "+faststart",
+        ]
+        if job:
+            command.extend(("-progress", "pipe:1", "-nostats"))
+            job.update("burning")
+        command.append(str(output_path))
+        glyph_tail = ""
+        def inspect_glyphs(chunk):
+            nonlocal glyph_tail
+            # Match warnings split across run_command's bounded reads, without
+            # retaining an unbounded FFmpeg line or depending on the log tail.
+            glyph_tail = (glyph_tail + chunk)[-8192:]
+            missing = libass_missing_glyphs(glyph_tail)
+            if missing:
+                glyph, family = missing[0]
+                raise BurnVideoExportError(
+                    f"字幕字体「{family}」缺少字形{glyph}，已中止烧录以避免输出方框；"
+                    "请在字幕样式中更换可用字体。", details=glyph_tail)
+        try:
+            completed = job.run_command(command, timeout=86_400, duration_ms=duration_ms,
+                                        cwd=output_path.parent, on_stderr=inspect_glyphs) if job else subprocess.run(
+                command, capture_output=True, text=True, encoding="utf-8", errors="replace",
+                timeout=86_400, check=False, cwd=output_path.parent,
+                startupinfo=startupinfo(), creationflags=creationflags(),
+            )
+        except BurnVideoExportError:
+            output_path.unlink(missing_ok=True)
+            raise
+        except subprocess.TimeoutExpired as error:
+            output_path.unlink(missing_ok=True)
+            raise BurnVideoExportError("视频烧录超时") from error
+        except OSError as error:
+            output_path.unlink(missing_ok=True)
+            raise BurnVideoExportError("无法启动视频烧录，请检查媒体工具", details=error) from error
+        stderr = completed.stderr or ""
+        # 缺字时宁可中止也不产出方框画面；该错误不参与编码器回退。
+        missing = list(libass_missing_glyphs(stderr))
+        if missing:
+            glyph, family = missing[0]
+            output_path.unlink(missing_ok=True)
+            raise BurnVideoExportError(
+                f"字幕字体「{family}」缺少字形{glyph}，已中止烧录以避免输出方框；"
+                "请在字幕样式中更换可用字体。", details=stderr)
+        if completed.returncode != 0:
+            last_error = BurnVideoExportError("视频烧录失败，请检查源文件或缩短区间后重试", details=stderr)
+            if requested_encoder != "auto" or encoder == "cpu":
+                output_path.unlink(missing_ok=True)
+                raise last_error
+            continue
+        break
+    else:
+        output_path.unlink(missing_ok=True)
+        raise last_error or BurnVideoExportError("没有可用的视频编码器。")
+    if not output_path.is_file() or output_path.stat().st_size <= 0:
+        output_path.unlink(missing_ok=True)
+        raise BurnVideoExportError("没有生成有效的视频文件，请检查源文件后重试")
     return output_path
 
 
@@ -1058,6 +1277,13 @@ def build_server_page(
         ),
         "gapRemovedVideoJobsUrl": "/api/exports/gap-removed-video/jobs",
         "canGapRemovedMediaExport": can_gap_media_export,
+        "burnVideoJobsUrl": "/api/exports/burned-video/jobs",
+        "canBurnVideoExport": bool(
+            project.json_path is not None
+            and gap_video_source is not None
+            and gap_media_kind == "video"
+        ),
+        "burnVideoSourceName": gap_video_source.name if gap_video_source else None,
         "gapRemovedMediaKind": gap_media_kind if can_gap_media_export else None,
         "gapRemovedMediaSourceName": gap_video_source.name if gap_video_source else None,
         "gapRemovedMediaAudioTrack": gap_audio_track if can_gap_media_export and gap_media_kind == "audio" else None,
@@ -2306,6 +2532,12 @@ class EditorRequestHandler(BaseHTTPRequestHandler):
             self.cancel_gap_removed_video_admission()
         elif path.startswith("/api/exports/gap-removed-video/jobs/"):
             self.gap_removed_video_job_request(path, cancel=True)
+        elif path == "/api/exports/burned-video/jobs":
+            self.start_burn_video_job()
+        elif path == "/api/exports/burned-video/jobs/cancel-admission":
+            self.cancel_burn_video_admission()
+        elif path.startswith("/api/exports/burned-video/jobs/"):
+            self.burn_video_job_request(path, cancel=True)
         elif path == "/api/exports/lottie":
             self.export_lottie()
         elif path == "/api/exports/ograf":
@@ -2647,6 +2879,12 @@ class EditorRequestHandler(BaseHTTPRequestHandler):
             self.send_json(HTTPStatus.SERVICE_UNAVAILABLE, {"ok": False, "error": str(error)})
 
     def cancel_gap_removed_video_admission(self) -> None:
+        self._cancel_media_job_admission()
+
+    def cancel_burn_video_admission(self) -> None:
+        self._cancel_media_job_admission()
+
+    def _cancel_media_job_admission(self) -> None:
         try:
             request = self.read_json_request()
             self._check_request_token(request)
@@ -2659,8 +2897,88 @@ class EditorRequestHandler(BaseHTTPRequestHandler):
         except (UnicodeDecodeError, json.JSONDecodeError, ValueError) as error:
             self.send_json(HTTPStatus.BAD_REQUEST, {"ok": False, "error": str(error)})
 
+    def start_burn_video_job(self) -> None:
+        """Burn the current project's ASS subtitles into a private MP4 export."""
+        job = None
+        try:
+            request = self.read_json_request(max_bytes=MAX_ASS_FRAME_TEXT_BYTES * 2)
+            self._check_request_token(request)
+            admission_token = request.get("admissionToken")
+            if "admissionToken" in request:
+                self.editor_server.media_jobs.validate_admission_token(admission_token)
+                deadline = request.get("admissionDeadline")
+                now = time.time() * 1000
+                if type(deadline) is not int or not now < deadline <= now + MEDIA_JOB_ADMISSION_TTL * 1000:
+                    raise MediaJobCancelled("视频烧录已停止")
+            ass_text = request.get("ass")
+            if not isinstance(ass_text, str) or not ass_text.strip():
+                raise ValueError("缺少 ASS 字幕内容")
+            if len(ass_text.encode("utf-8")) > MAX_ASS_FRAME_TEXT_BYTES:
+                raise ValueError(f"ASS 字幕内容超过 {MAX_ASS_FRAME_TEXT_BYTES // (1024 * 1024)} MB")
+            raw_intervals = request.get("intervals")
+            if raw_intervals is None:
+                intervals = []
+            else:
+                intervals = normalize_gap_removed_intervals(raw_intervals)
+                if not intervals:
+                    raise ValueError("去空隙保留区间为空")
+            source_snapshot = self.editor_server.gap_removed_media_source_snapshot(request)
+            if source_snapshot.kind != "video":
+                raise BurnVideoExportError("当前工程绑定的是音频，烧录视频需要视频源")
+            source = source_snapshot.path
+            tools = editor_ffmpeg_tools()
+            if tools.ffmpeg is None or tools.ffprobe is None:
+                self.send_json(HTTPStatus.SERVICE_UNAVAILABLE, {
+                    "ok": False, "error": "视频烧录需要可用的 FFmpeg 和 FFprobe",
+                })
+                return
+            if not self.editor_server.ensure_libass_supported(tools.ffmpeg):
+                self.send_json(HTTPStatus.SERVICE_UNAVAILABLE, {
+                    "ok": False,
+                    "error": "当前 FFmpeg 未编译 libass（ass 滤镜），无法烧录字幕；"
+                             "请安装完整版 FFmpeg（如 macOS 的 ffmpeg-full）或将 FFMPEG_PATH 指向带 libass 的构建。",
+                })
+                return
+            binding = (request["bindingGeneration"], request["sourceMediaId"])
+
+            def burn(job: MediaJob) -> None:
+                burn_ass_video(job.source, list(job.intervals), ass_text, job.output,
+                    ffmpeg_path=tools.ffmpeg, ffprobe_path=tools.ffprobe, job=job)
+
+            with self.editor_server.settings_lock:
+                if admission_token is not None and time.time() * 1000 >= deadline:
+                    raise MediaJobCancelled("视频烧录已停止")
+                if binding != (self.editor_server.binding_generation, self.editor_server.source_media_id):
+                    raise ProjectBindingChangedError("工程或媒体绑定已变更，请重新打开工程后导出")
+                job = self.editor_server.media_jobs.start(source, binding, intervals, burn,
+                    output_extension=".mp4", admission_token=admission_token)
+            self.send_json(HTTPStatus.ACCEPTED, job.snapshot())
+        except PermissionError as error:
+            self.send_json(HTTPStatus.FORBIDDEN, {"ok": False, "error": str(error)})
+        except (ProjectBindingChangedError, MediaJobBusy) as error:
+            self.send_json(HTTPStatus.CONFLICT, {"ok": False, "error": str(error)})
+        except MediaJobCancelled as error:
+            self.send_json(HTTPStatus.CONFLICT, {"ok": False, "error": str(error), "cleanupComplete": True})
+        except (UnicodeDecodeError, json.JSONDecodeError, ValueError) as error:
+            self.send_json(HTTPStatus.BAD_REQUEST, gap_removed_export_error_payload(error))
+        except (OSError, MediaJobUnavailable) as error:
+            if job is not None:
+                self.editor_server.media_jobs.cancel(job.id)
+            self.send_json(HTTPStatus.SERVICE_UNAVAILABLE, {"ok": False, "error": str(error)})
+
     def gap_removed_video_job_request(self, path: str, *, cancel: bool = False, include_body: bool = True) -> None:
-        parts = path.removeprefix("/api/exports/gap-removed-video/jobs/").split("/")
+        self._media_job_request(path, prefix="/api/exports/gap-removed-video/jobs",
+            cancel=cancel, include_body=include_body,
+            download_name=lambda job: f"{job.source.stem}_gap-removed{job.output.suffix.lower()}")
+
+    def burn_video_job_request(self, path: str, *, cancel: bool = False, include_body: bool = True) -> None:
+        self._media_job_request(path, prefix="/api/exports/burned-video/jobs",
+            cancel=cancel, include_body=include_body,
+            download_name=lambda job: f"{job.source.stem}_subtitled{job.output.suffix.lower()}")
+
+    def _media_job_request(self, path: str, *, prefix: str, cancel: bool = False, include_body: bool = True,
+                           download_name: Callable[[MediaJob], str]) -> None:
+        parts = path.removeprefix(prefix + "/").split("/")
         expected_suffix = "cancel" if cancel else "download"
         if len(parts) not in {1, 2} or (len(parts) == 2 and parts[1] != expected_suffix) or (cancel and len(parts) != 2):
             self.send_json(HTTPStatus.NOT_FOUND, {"ok": False, "error": "未知媒体任务 API"})
@@ -2707,8 +3025,7 @@ class EditorRequestHandler(BaseHTTPRequestHandler):
             return
         success = False
         try:
-            success = self.send_video_attachment(job.output,
-                f"{job.source.stem}_gap-removed{job.output.suffix.lower()}", job=job)
+            success = self.send_video_attachment(job.output, download_name(job), job=job)
         finally:
             manager.finish_download(job, success=success)
 
@@ -2721,7 +3038,7 @@ class EditorRequestHandler(BaseHTTPRequestHandler):
             source_snapshot = self.editor_server.gap_removed_media_source_snapshot(request)
             source = source_snapshot.path
             if not self.editor_server.gap_removed_video_lock.acquire(blocking=False):
-                raise GapRemovedVideoExportInProgressError("另一个媒体重组任务正在进行，请完成或停止后再试")
+                raise GapRemovedVideoExportInProgressError("另一个媒体导出任务正在进行，请完成或停止后再试")
         except PermissionError as error:
             self.send_json(HTTPStatus.FORBIDDEN, {"ok": False, "error": str(error)})
             return
@@ -3067,6 +3384,9 @@ class EditorRequestHandler(BaseHTTPRequestHandler):
             return
         if path.startswith("/api/exports/gap-removed-video/jobs/"):
             self.gap_removed_video_job_request(path, include_body=include_body)
+            return
+        if path.startswith("/api/exports/burned-video/jobs/"):
+            self.burn_video_job_request(path, include_body=include_body)
             return
         if path == "/api/prproj-capability":
             self.send_json(HTTPStatus.OK, PRPROJ_CAPABILITY)

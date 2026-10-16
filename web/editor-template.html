@@ -97,6 +97,7 @@ __WAVEFORM_CSS__
       </div>
     </span>
     <button id="download-json">导出工程</button>
+    <button type="button" id="burn-video-export-btn" hidden title="用 FFmpeg (libass) 将当前工程的 ASS 字幕烧录进源视频；输出 MP4，需已绑定源媒体。">烧录视频</button>
     <span class="dropdown gap-removed-export-dropdown" id="gap-removed-export-dropdown" hidden>
       <button id="gap-removed-export-btn" title="导出应用当前空隙移除结果的字幕、时间线或保留区域计划" aria-expanded="false" aria-controls="gap-removed-export-menu" aria-haspopup="menu">去空隙导出 ▾</button>
       <div class="dropdown-menu" id="gap-removed-export-menu" role="menu">
@@ -105,6 +106,7 @@ __WAVEFORM_CSS__
         <div class="dropdown-separator" id="gap-removed-subtitle-export-separator" role="separator" hidden></div>
         <div class="dropdown-item" id="download-gap-removed-ass" role="menuitem" tabindex="0" title="按移除静音空隙后的时间轴导出带样式的 ASS 字幕；原工程时间不变">ASS（带样式）</div>
         <div class="dropdown-item" id="download-gap-removed-video" role="menuitem" tabindex="0" title="按保留区域重组视频；切点可能受关键帧影响。">重组后视频</div>
+        <div class="dropdown-item" id="download-gap-removed-burn-video" role="menuitem" tabindex="0" hidden title="按保留区域重新编码并烧录当前 ASS 字幕；重新编码使切点帧级精确，输出 MP4。">重组后烧录视频</div>
         <div class="dropdown-submenu" role="none">
           <div class="dropdown-item dropdown-submenu-toggle" role="menuitem" tabindex="0" aria-haspopup="menu" aria-expanded="false" aria-controls="gap-removed-otio-menu">OTIO</div>
           <div class="dropdown-menu dropdown-submenu-menu" id="gap-removed-otio-menu" role="menu">

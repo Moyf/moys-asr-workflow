@@ -18,7 +18,8 @@ from pathlib import Path
 from threading import Event
 from typing import Final
 
-from maw.file_errors import file_write_operation, intermediate_file_operation
+from maw.file_errors import file_error_code, file_write_operation, intermediate_file_operation
+from maw.local_log import redact_sensitive_text
 from maw.gui_config import load_env
 from maw.output_naming import format_elapsed, operation_suffix, postprocess_workspace, resolve_lang, sanitize_component, translation_marker_name
 from maw.postprocess import (
@@ -26,6 +27,7 @@ from maw.postprocess import (
     FixedProcessRequest,
     LlmPostprocessRequest,
     OutputMode,
+    PostprocessStepError,
     Replacement,
     embed_translated_project,
     fixed_process_operation,
@@ -40,6 +42,7 @@ from maw.postprocess_io import _available_output, SubtitleArtifact, read_project
 from maw.postprocess_llm import (
     DEFAULT_REASONING_MODE,
     LlmSettings,
+    LlmClientError,
     complete_subtitle_groups,
     normalize_reasoning_mode,
     preset_by_id,
@@ -97,7 +100,7 @@ def default_postprocess_plan() -> dict[str, object]:
                 "preservePunctuation": list(DEFAULT_PRESERVE_PUNCTUATION),
                 "cleanMarkdownSymbols": True,
             },
-            {"id": "cleanup", "enabled": False, "scriptPath": "", "providerId": "deepseek", "customPrompt": "", "generateComparison": False, "cleanMarkdownSymbols": True},
+            {"id": "cleanup", "enabled": False, "scriptPath": "", "providerId": "deepseek", "customPrompt": "", "generateComparison": False, "cleanMarkdownSymbols": True, "reviewEnabled": False},
             {"id": "replace", "enabled": False, "replacements": [], "replacementSeparator": "arrow", "replacementTrim": True, "replacementCustomSeparator": "", "conversion": TextConversion.OFF.value},
             {"id": "proofread", "enabled": False, "providerId": "deepseek", "customPrompt": "", "generateComparison": False},
             {"id": "resegment", "enabled": False, "providerId": "deepseek", "customPrompt": "", "generateComparison": False, "maxChars": 0},
@@ -169,7 +172,7 @@ def normalize_plan(raw: object) -> dict[str, object]:
                 step[key] = str(value or "") if str(value or "") in BILINGUAL_LINE_ORDERS else ""
             elif key in {"regionX1", "regionY1", "regionX2", "regionY2", "threshold"}:
                 step[key] = _number_or_default(value, step[key])
-            elif key in {"report", "generateComparison"}:
+            elif key in {"report", "generateComparison", "reviewEnabled"}:
                 step[key] = bool(value)
             elif key == "matchMode":
                 step[key] = str(value or "script") if str(value or "script") in {"script", "text"} else "script"
@@ -463,6 +466,7 @@ class PipelineResult:
     warnings: tuple[str, ...] = ()
     translated_srt_path: Path | None = None
     media_path: Path | None = None
+    skipped_steps: tuple[str, ...] = ()
 
 
 class PostprocessCancelled(RuntimeError):
@@ -725,6 +729,8 @@ def run_postprocess_pipeline(
             else None
         )
         if isinstance(previous_manifest_step, Mapping):
+            if previous_manifest_step.get("status") == "skipped":
+                continue
             previous_media = str(previous_manifest_step.get("mediaPath") or "").strip()
             if previous_media:
                 current_media = Path(previous_media).expanduser().resolve()
@@ -737,8 +743,10 @@ def run_postprocess_pipeline(
                 previous_path = str(previous_manifest_step.get("translatedSrtPath") or "").strip()
                 if previous_path:
                     current_translated_srt = Path(previous_path).expanduser().resolve()
-    completed: list[str] = [str(step["id"]) for step in steps[:max(0, resume_from)]]
-    warnings: list[str] = []
+    previous = manifest.get("steps", [])[:resume_count]
+    skipped = [str(item["id"]) for item in previous if item.get("status") == "skipped"]
+    completed: list[str] = [str(step["id"]) for step in steps[:resume_count] if str(step["id"]) not in skipped]
+    warnings: list[str] = [str(item["warning"]) for item in previous if item.get("warning")]
     pipeline_t0 = time.perf_counter()
     try:
         for index, step in enumerate(steps[max(0, resume_from):], max(0, resume_from) + 1):
@@ -752,6 +760,7 @@ def run_postprocess_pipeline(
             step_t0 = time.perf_counter()
             translation_intermediate_project: Path | None = None
             translation_intermediate_srt: Path | None = None
+            translation_before = (translation_target, bilingual_output, embed_output)
             try:
                 artifact = _run_step(
                     step,
@@ -858,6 +867,34 @@ def run_postprocess_pipeline(
             except PostprocessCancelled:
                 raise
             except Exception as error:
+                _check_cancel(cancel_event)
+                if getattr(error, "category", "") == "cancelled":
+                    raise PostprocessCancelled(str(error)) from error
+                if step_id in {"cleanup", "proofread", "resegment", "translate"} and isinstance(error, (LlmClientError, PostprocessStepError, ValueError)) and not file_error_code(error):
+                    # Nothing from this failed step becomes the next input.
+                    # Keep its files and an exact pre-step input snapshot.
+                    translation_target, bilingual_output, embed_output = translation_before
+                    failed_directory = run_directory / f"failed-{index}-{step_id}"
+                    failed_directory.mkdir(exist_ok=True)
+                    _copy_atomic(current_project, failed_directory / "input.mosp", project_file=True)
+                    _copy_atomic(current_srt, failed_directory / "input.srt")
+                    detail = redact_sensitive_text(error)
+                    _atomic_failure_report(failed_directory, step_id, detail)
+                    warning = f"AI 步骤 {step_id} 失败，已跳过并沿用该步前结果。原因：{detail}\n失败资料：{run_directory}"
+                    skipped.append(step_id)
+                    warnings.append(warning)
+                    manifest_steps[index - 1].update({
+                        "status": "skipped", "error": detail, "warning": warning,
+                        "category": str(getattr(error, "category", "")),
+                        "httpStatus": getattr(error, "status_code", None),
+                        "failureDirectory": str(failed_directory),
+                        "projectPath": str(current_project), "srtPath": str(current_srt),
+                        "elapsedSeconds": round(time.perf_counter() - step_t0, 3),
+                    })
+                    manifest["nextArtifactIndex"] = artifact_index
+                    _write_manifest(run_directory, manifest)
+                    _emit(on_event, {"stage": "step_skipped", "index": index, "total": len(steps), "step": step_id, "warning": warning})
+                    continue
                 raise PostprocessPipelineError(
                     f"处理步骤 {step_id} 失败：{error}",
                     run_directory=run_directory,
@@ -925,6 +962,8 @@ def run_postprocess_pipeline(
             ui_language=language,
         )
         manifest["status"] = "done"
+        manifest["skippedSteps"] = skipped
+        manifest["warnings"] = warnings
         manifest["finalProjectPath"] = str(final_project)
         manifest["finalSrtPath"] = str(final_srt)
         if current_media != media_path:
@@ -937,6 +976,8 @@ def run_postprocess_pipeline(
         print(f"后处理总用时: {format_elapsed(pipeline_elapsed)}")
         _emit(on_event, {
             "stage": "done",
+            "skippedSteps": skipped,
+            "warnings": warnings,
             "total": len(steps),
             "elapsedSeconds": round(pipeline_elapsed, 3),
             "projectName": final_project.name,
@@ -958,8 +999,9 @@ def run_postprocess_pipeline(
             tuple(warnings),
             final_translated_srt,
             current_media if current_media != media_path else None,
+            tuple(skipped),
         )
-        if not bool(normalized.get("retainIntermediate")):
+        if not bool(normalized.get("retainIntermediate")) and not skipped:
             shutil.rmtree(run_directory, ignore_errors=True)
             # 中间产物清掉后，只为这次运行而建的「后处理」根目录如果是空的也一并移除；
             # 仍有其他运行的目录或用户文件时不动（rmdir 只在空目录时成功）。
@@ -990,6 +1032,13 @@ def run_postprocess_pipeline(
         _write_failure_manifest(run_directory, manifest)
         _emit(on_event, {"stage": "failed", "completed": len(completed), "total": len(steps), "runDirectory": str(run_directory)})
         raise
+
+
+@intermediate_file_operation
+def _atomic_failure_report(directory: Path, step: str, detail: str) -> None:
+    from maw.postprocess_io import _atomic_write
+
+    _atomic_write(directory / "failure.md", f"# AI 步骤失败：{step}\n\n已跳过本步骤，使用该步前的结果继续后续工序。\n\n{detail}\n")
 
 
 def _run_step(
@@ -1199,6 +1248,7 @@ def _run_ai_cleanup_step(
         clean_markdown_symbols=step.get("cleanMarkdownSymbols", True) is not False,
         notes=str(step.get("customPrompt") or step.get("aiCleanupNotes") or "").strip(),
         generate_comparison=bool(step.get("generateComparison")),
+        review_enabled=bool(step.get("reviewEnabled", False)),
     ), complete=complete, on_status=on_status)
 
 

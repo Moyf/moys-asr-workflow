@@ -247,6 +247,7 @@ function applyCanonicalProject(data, filename) {
       MaweBoot.SERVER_CONFIG.gapRemovedVideoSourceName = null;
       MaweBoot.SERVER_CONFIG.sourceMediaId = null;
     }
+    window.MaweBurnVideoExport?.invalidateBinding();
     window.MaweGapRemovedMediaExport?.updateButton();
     MaweServerSave.configureServerSaveControls();
     MaweDynamicExports.updateLottieExportButton();
