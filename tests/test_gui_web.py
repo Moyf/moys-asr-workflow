@@ -57,6 +57,26 @@ class FakeWindow:
 
 @final
 class GuiWebBridgeTests(CompactContainerAssertions, unittest.TestCase):
+    def test_open_postprocess_folder_falls_back_after_intermediate_cleanup(self) -> None:
+        self.api.postprocess_workspace_directory = self.root / "deleted-run"
+        self.api.result = SimpleNamespace(srt_path=self.root / "final.srt")
+        with mock.patch("maw.gui_web._open_existing_path", return_value={"ok": True}) as opened:
+            self.assertEqual(self.api.open_postprocess_folder(), {"ok": True})
+        opened.assert_called_once_with(self.root)
+
+    def test_pipeline_done_logs_final_comparison_paths(self) -> None:
+        with mock.patch.object(self.api, "_emit") as emit:
+            self.api._handle_postprocess_pipeline_event({
+                "stage": "done", "skippedSteps": ["cleanup"],
+                "warnings": ["AI 整理失败并保留输入"],
+                "comparisonPaths": ["final/proofread.html", "final/translate.html"],
+            })
+        messages = [call.args[0].get("message", "") for call in emit.call_args_list]
+        self.assertTrue(any("跳过 1 个失败的 AI 步骤" in message for message in messages))
+        self.assertIn("[后处理报告] AI 整理失败并保留输入", messages)
+        self.assertIn("[后处理] 处理前后对比：final/proofread.html", messages)
+        self.assertIn("[后处理] 处理前后对比：final/translate.html", messages)
+
     def setUp(self) -> None:
         self.temp_dir = tempfile.TemporaryDirectory()
         self.root = Path(self.temp_dir.name)

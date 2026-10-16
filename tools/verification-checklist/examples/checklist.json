@@ -1,5 +1,5 @@
 {
-  "schema": "maw.verification-checklist.source.v1",
+  "schema": "maw.verification-checklist.source.v2",
   "title": "MAW 核查清单 · JSON 生成示例",
   "subtitle": "示例数据；自动化证据与人工确认分别记录，所有核对项初始未勾选。",
   "sections": [
@@ -7,7 +7,7 @@
       "id": "implementation",
       "title": "实现 / 审查结论",
       "blocks": [
-        { "type": "text", "text": "AI 只编写 JSON，脚本负责生成分区、目录和核对项。" },
+        { "type": "text", "text": "优先编写 Markdown 清单，JSON 继续兼容；脚本负责生成分区、目录和核对项。" },
         { "type": "note", "text": "本页是格式示例，表格中的命令不代表已经执行或通过。" },
         {
           "type": "list",
@@ -37,16 +37,16 @@
         {
           "type": "check",
           "id": "manual-persistence",
-          "entry": "生成的 HTML 页面",
-          "action": "勾选本项，点击备注填写两行文字，然后刷新",
+          "purpose": "勾选与备注在刷新后保留",
+          "operation": "生成的 HTML 页面 → 勾选本项，点击备注填写两行文字，然后刷新",
           "expected": "勾选与备注仍保留，进度显示 1 / 2"
         },
         {
           "type": "check",
           "id": "manual-export",
-          "entry": "侧栏导出范围",
-          "action": "选择仅未确认项并导出 JSON",
-          "expected": "只包含未勾选项目，保留稳定 ID 与备注"
+          "purpose": "默认导出范围为未确认与备注并集",
+          "operation": "侧栏导出范围 → 选择默认范围并导出 JSON",
+          "expected": "包含未确认或有非空备注的项目，排除忽略组，保留稳定 ID 与备注"
         }
       ]
     }

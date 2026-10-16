@@ -12,6 +12,234 @@
 
 
 
+  const splitStyleVisiblePrefixes = new WeakMap();
+
+  // Match the existing ASS parser's delimiter widths, boundaries and feature gates.
+  // Positions always refer to the source text, never to newly inserted display markers.
+  function splitStyleTokens(text, settings = {}) {
+    if (settings.assMode !== true) return [];
+    const rule = settings.assSpecialSymbolRule;
+    const widths = rule === 'none' ? [] : rule === 'double' ? [2] : [1, 2];
+    const kinds = [
+      ['*', ['single', 'double', 'both'].includes(settings.assEmphasisSyntax)],
+      ['_', settings.assUnderlineEnabled !== false],
+      ['~', settings.assStrikeEnabled !== false],
+      ['-', settings.assSmallTextEnabled !== false],
+      ['+', settings.assLargeTextEnabled !== false],
+      ['//', settings.assCommentEnabled !== false],
+    ];
+    const tokens = [];
+    for (const [symbol, enabled] of kinds) {
+      if (!enabled) continue;
+      for (const width of symbol === '//' ? [2] : widths) {
+        const marker = symbol === '//' ? symbol : symbol.repeat(width);
+        const wordMarker = ['_', '-', '+'].includes(marker[0]);
+        let cursor = 0;
+        while (cursor < text.length) {
+          if (!text.startsWith(marker, cursor)
+              || text[cursor - 1] === marker[0] || text[cursor + width] === marker[0]
+              || (wordMarker && /[a-z0-9]/iu.test(text[cursor - 1] || ''))) {
+            cursor += 1;
+            continue;
+          }
+          let end = text.indexOf(marker, cursor + width);
+          while (end >= 0 && (text[end - 1] === marker[0] || text[end + width] === marker[0])) {
+            end = text.indexOf(marker, end + width);
+          }
+          if (end <= cursor + width
+              || (wordMarker && (/[a-z0-9]/iu.test(text[end + width] || '')
+                || text.slice(cursor + width, end).includes('\n')))) {
+            cursor += width;
+            continue;
+          }
+          const pair = { start: cursor, end, marker, width };
+          tokens.push({ ...pair, position: cursor, opening: true },
+            { ...pair, position: end, opening: false });
+          cursor = end + width;
+        }
+      }
+    }
+    // The fade parser also understands fades nested inside complete sentence shells.
+    const faded = MULTI_SUBTITLE_UTILS.parseSentenceFadeMarkers(text, rule);
+    if (faded.fadeIn || faded.fadeOut) {
+      let start = 0, end = text.length;
+      const shells = ['!!', '++', '--', '**', '__', '~~', '//'];
+      while (start < end) {
+        const body = text.slice(start, end);
+        const shell = shells.find((marker) => body.length > marker.length * 2
+          && body.startsWith(marker) && body.endsWith(marker)
+          && (marker === '!!' || !body.slice(marker.length, -marker.length).includes(marker)));
+        if (shell) { start += shell.length; end -= shell.length; continue; }
+        const single = rule === 'both' || rule === 'single';
+        const left = body.startsWith('>>') ? 2 : single && body.startsWith('>') ? 1 : 0;
+        const right = body.endsWith('<<') ? 2 : single && body.endsWith('<') ? 1 : 0;
+        if (left) tokens.push({ position: start, width: left, fade: true });
+        if (right) tokens.push({ position: end - right, width: right, fade: true });
+        break;
+      }
+    }
+    if (tokens.length) {
+      const hidden = new Uint8Array(text.length);
+      for (const token of tokens) hidden.fill(1, token.position, token.position + token.width);
+      const prefix = new Uint32Array(text.length + 1);
+      for (let index = 0; index < text.length; index++) prefix[index + 1] = prefix[index] + (hidden[index] ? 0 : 1);
+      splitStyleVisiblePrefixes.set(tokens, prefix);
+    }
+    return tokens;
+  }
+
+  function alignSplitItems(text, items, tokens) {
+    const aligned = MULTI_SUBTITLE_UTILS.alignItemsToText(text, items);
+    if (!tokens.length || aligned.every((record, index) => record || !items[index]?.text)) return aligned;
+    const positions = [];
+    for (let index = 0; index < text.length; index++) {
+      if (splitVisibleLength(text, index, index + 1, tokens)) positions.push(index);
+    }
+    const visible = positions.map((index) => text[index]).join('');
+    const itemTexts = items.map((item) => String(item?.text || ''));
+    let recovered;
+    if (visible === itemTexts.join('')) {
+      // Complete speech coverage is unambiguous even for repeated words: O(text + items).
+      let cursor = 0;
+      recovered = items.map((item, index) => {
+        const itemText = itemTexts[index];
+        const textStart = cursor;
+        cursor += itemText.length;
+        return itemText ? { item, itemText, textStart, textEnd: cursor } : null;
+      });
+    } else {
+      // Recovery is optional and runs on the input path. Keep its extra DP work below
+      // the general aligner's budget; oversized/ambiguous inputs retain the old fallback.
+      if (items.length * (visible.length + 2) > 50_000) return aligned;
+      recovered = MULTI_SUBTITLE_UTILS.alignItemsToText(visible, items);
+    }
+    const previous = [], next = [];
+    let anchor = null;
+    for (let index = 0; index < aligned.length; index++) {
+      previous[index] = anchor;
+      if (aligned[index]) anchor = aligned[index];
+    }
+    anchor = null;
+    for (let index = aligned.length - 1; index >= 0; index--) {
+      next[index] = anchor;
+      if (aligned[index]) anchor = aligned[index];
+    }
+    // Keep existing raw anchors authoritative when recovering a missing speech item.
+    return aligned.map((record, index) => {
+      const candidate = recovered[index];
+      if (record || !candidate) return record;
+      const textStart = positions[candidate.textStart];
+      const textEnd = positions[candidate.textEnd - 1] + 1;
+      if ((previous[index] && textStart < previous[index].textEnd)
+          || (next[index] && textEnd > next[index].textStart)) return null;
+      return { ...candidate, textStart, textEnd, visibleAlignment: true };
+    });
+  }
+
+  function splitStyleDisplayPlan(tokens) {
+    const groups = new Map();
+    for (const token of tokens.filter((token) => token.opening)) {
+      const key = token.marker[0];
+      if (!groups.has(key)) groups.set(key, []);
+      groups.get(key).push(token);
+    }
+    const pairs = [], edits = new Map();
+    // Single/double markers of the same style have boolean semantics in the ASS
+    // parser. Coalesce overlapping ranges: emitting their adjacent closures would
+    // create an unrecognised triple marker and expose syntax as literal text.
+    for (const group of groups.values()) {
+      group.sort((a, b) => a.start - b.start || b.end - a.end);
+      let component = [], last = null;
+      const flush = () => {
+        if (!component.length) return;
+        const first = component[0];
+        pairs.push({ ...first, end: last.end });
+        if (component.length > 1) {
+          for (const pair of component) {
+            edits.set(pair.start, { width: pair.width, text: '' });
+            edits.set(pair.end, { width: pair.width, text: '' });
+          }
+          edits.set(first.start, { width: first.width, text: first.marker });
+          edits.set(last.end, { width: last.width, text: first.marker });
+        }
+      };
+      for (const pair of group) {
+        if (last && pair.start >= last.end) { flush(); component = []; last = null; }
+        component.push(pair);
+        if (!last || pair.end > last.end) last = pair;
+      }
+      flush();
+    }
+    for (const token of tokens.filter((token) => token.fade)) {
+      edits.set(token.position, { width: token.width, text: '' });
+    }
+    return { pairs, edits };
+  }
+
+  function splitVisibleLength(text, start, end, tokens) {
+    const prefix = splitStyleVisiblePrefixes.get(tokens);
+    const from = Math.max(0, Math.min(text.length, start));
+    const to = Math.max(from, Math.min(text.length, end));
+    return prefix ? prefix[to] - prefix[from] : to - from;
+  }
+
+  function splitStyledTextParts(text, parts, settings = {}) {
+    if (!parts) return null;
+    const tokens = splitStyleTokens(text, settings);
+    if (!tokens.length) return parts;
+    let offset = parts.offset;
+    // Never bisect a marker. A marker without any body on its side follows its pair.
+    for (let pass = 0; pass < tokens.length; pass++) {
+      const before = offset;
+      for (const token of tokens) {
+        if (token.fade) continue;
+        if ((offset > token.position && offset < token.position + token.width)
+            || (token.opening && offset === token.position + token.width)
+            || (!token.opening && offset === token.position)) {
+          offset = token.opening ? token.position : token.position + token.width;
+        }
+      }
+      if (before === offset) break;
+    }
+    const display = splitStyleDisplayPlan(tokens);
+    const crossing = display.pairs.filter((token) => token.position + token.width < offset && token.end > offset)
+      .sort((a, b) => a.start - b.start);
+    const fadeTokens = tokens.filter((token) => token.fade);
+    const displaySlice = (start, end) => {
+      let value = '';
+      for (let index = start; index < end;) {
+        const edit = display.edits.get(index);
+        if (edit) { value += edit.text; index += edit.width; }
+        else { value += text[index]; index += 1; }
+      }
+      return value;
+    };
+    // The caller already trimmed this source offset (and may preserve word-mode
+    // connectors). Render that same source slice before inserting style closures.
+    const sameOffset = offset === parts.offset;
+    let left = !display.edits.size && sameOffset ? parts.left
+      : displaySlice(0, sameOffset ? parts.left.length : offset);
+    let right = !display.edits.size && sameOffset ? parts.right
+      : displaySlice(sameOffset ? text.length - parts.right.length : offset, text.length);
+    if (!sameOffset) {
+      left = MULTI_SUBTITLE_UTILS.applySplitEdgeTrim(left, 'end');
+      right = MULTI_SUBTITLE_UTILS.applySplitEdgeTrim(right, 'start');
+    }
+    const content = (start, end) => text.slice(start, end).split('').filter(
+      (_, index) => splitVisibleLength(text, index + start, index + start + 1, tokens) > 0,
+    ).join('');
+    if (!MULTI_SUBTITLE_UTILS.applySplitEdgeTrim(content(0, offset), 'end')
+        || !MULTI_SUBTITLE_UTILS.applySplitEdgeTrim(content(offset, text.length), 'start')) return null;
+    left += [...crossing].reverse().map((token) => token.marker).join('');
+    right = crossing.map((token) => token.marker).join('') + right;
+    if (fadeTokens.length) { left = `>>${left}<<`; right = `>>${right}<<`; }
+    return { left, right, offset };
+  }
+
+  function currentSplitStyleSettings() {
+    return typeof MaweSettings === 'undefined' ? {} : MaweSettings.EDITOR_SETTINGS;
+  }
+
   function splitTimeForTextOffset(segment, offset) {
     const timing = splitItemsAtChar(segment, offset);
     if (Number.isFinite(timing.splitMs)) return timing.splitMs;
@@ -147,7 +375,8 @@
   // 其余词仍落回真实位置。旧实现一处失配就把全部对齐作废、退回顺序长度
   // 映射，会让切点随插入文本的长度漂移到错误的词边界（字拆对、时拆错的
   // 根因）。
-  const alignmentRecords = MULTI_SUBTITLE_UTILS.alignItemsToText(text, items);
+  const styleTokens = splitStyleTokens(text, currentSplitStyleSettings());
+  const alignmentRecords = alignSplitItems(text, items, styleTokens);
   const records = alignmentRecords.filter(Boolean);
   // 失配词（人工替换/删改遗留）没有可靠的文本位置，但顺序保持对齐给出了
   // 它在词序上最近的两个对齐锚点：两锚点之间的文字空位就是它的替换区。
@@ -183,6 +412,8 @@
       ? { start: Math.max(safeSegmentStart, safeSegmentEnd - 1), end: safeSegmentEnd }
       : { start: safeSegmentStart, end: Math.min(safeSegmentEnd, safeSegmentStart + 1) };
   };
+  const visibleFraction = (start, cut, end) => splitVisibleLength(text, start, cut, styleTokens)
+    / Math.max(1, splitVisibleLength(text, start, end, styleTokens));
   const previous = [...records].reverse().find((record) => record.textEnd <= safeOffset);
   const next = records.find((record) => record.textStart >= safeOffset);
   const inside = records.find((record) => (
@@ -198,7 +429,7 @@
 
   if (inside) {
     const range = timeRangeFor(inside.item);
-    const fraction = (safeOffset - inside.textStart) / Math.max(1, inside.textEnd - inside.textStart);
+    const fraction = visibleFraction(inside.textStart, safeOffset, inside.textEnd);
     const interpolated = Math.round(range.start + (range.end - range.start) * fraction);
     if (!preserveCutMs || !Number.isFinite(splitMs)
         || (!forceCut && (splitMs < range.start || splitMs > range.end))) {
@@ -233,7 +464,7 @@
     }
   }
   if (!Number.isFinite(splitMs)) {
-    const ratio = safeOffset / Math.max(1, text.length);
+    const ratio = visibleFraction(0, safeOffset, text.length);
     splitMs = Math.round(safeSegmentStart + (safeSegmentEnd - safeSegmentStart) * ratio);
   }
   splitMs = Math.max(safeSegmentStart, Math.min(safeSegmentEnd, Math.round(splitMs)));
@@ -260,14 +491,15 @@
     if (range.end <= range.start) continue;
     const { itemText, textStart, textEnd } = record;
     if (inside === record) {
-      const localOffset = Math.max(0, Math.min(itemText.length, safeOffset - textStart));
+      const localOffset = Math.max(0, Math.min(itemText.length, record.visibleAlignment
+        ? splitVisibleLength(text, textStart, safeOffset, styleTokens) : safeOffset - textStart));
       const leftText = itemText.slice(0, localOffset);
       const rightText = itemText.slice(localOffset);
       const itemSplitMs = preserveCutMs
         && (forceCut || (splitMs >= range.start && splitMs <= range.end))
         ? splitMs
         : Math.round(range.start + (range.end - range.start)
-          * localOffset / Math.max(1, itemText.length));
+          * visibleFraction(textStart, safeOffset, textEnd));
       if (leftText && rightText && itemSplitMs > range.start && itemSplitMs < range.end) {
         leftItems.push({ ...record.item, text: leftText, start: range.start, end: itemSplitMs });
         rightItems.push({ ...record.item, text: rightText, start: itemSplitMs, end: range.end });
@@ -434,9 +666,12 @@
     ? splitMode : MULTI_SUBTITLE_UTILS.detectSubtitleSplitMode(text);
   const safeOffset = Math.max(0, Math.min(text.length, Math.round(Number(offset) || 0)));
   const duplicateOutputText = duplicateText || splitTextMode === 'duplicate';
-  const parts = duplicateOutputText
+  let parts = duplicateOutputText
     ? (text ? { left: text, right: text, offset: safeOffset } : null)
     : MULTI_SUBTITLE_UTILS.splitSubtitleText(text, safeOffset, mode);
+  if (!duplicateOutputText && splitTextMode !== 'progressive') {
+    parts = splitStyledTextParts(text, parts, currentSplitStyleSettings());
+  }
   if (!parts) return null;
   if (splitTextMode === 'progressive') parts.right = text;
   const itemParts = splitItemsAtChar(
@@ -858,9 +1093,12 @@
 
   function splitCutTime(segment, offset, useWordTimestamps = false) {
     if (useWordTimestamps) return Math.round(splitTimeForTextOffset(segment, offset));
-    const textLength = Math.max(1, String(segment?.text || '').length);
+    const text = String(segment?.text || '');
+    const tokens = splitStyleTokens(text, currentSplitStyleSettings());
+    const fraction = splitVisibleLength(text, 0, Number(offset || 0), tokens)
+      / Math.max(1, splitVisibleLength(text, 0, text.length, tokens));
     return Math.round(Number(segment?.start || 0)
-      + ((Number(segment?.end || 0) - Number(segment?.start || 0)) * Number(offset || 0)) / textLength);
+      + (Number(segment?.end || 0) - Number(segment?.start || 0)) * fraction);
   }
 
 
@@ -1230,11 +1468,16 @@
   if (state.kind === 'linked') syncLinkedSplitTime(state, lane, main, extension);
 
   const mainMode = state.mainMode || (main && MaweMultiSubtitleCore.getMainSubtitleSplitMode(main));
-  const mainParts = main
+  let mainParts = main
     ? MULTI_SUBTITLE_UTILS.splitSubtitleText(main.text, state.mainOffset, mainMode)
     : null;
+  if (mainParts && !['duplicate', 'progressive'].includes(state.splitTextMode)) {
+    mainParts = splitStyledTextParts(main.text, mainParts, currentSplitStyleSettings());
+  }
   const extensionParts = extension
-    ? MULTI_SUBTITLE_UTILS.splitSubtitleText(extension.text, state.offset, state.extensionMode)
+    ? splitStyledTextParts(extension.text,
+      MULTI_SUBTITLE_UTILS.splitSubtitleText(extension.text, state.offset, state.extensionMode),
+      currentSplitStyleSettings())
     : null;
   const mainTextValid = !main || Boolean(mainParts);
   const extensionTextValid = !extension || Boolean(extensionParts);
@@ -1745,8 +1988,17 @@
       return false;
     }
 
-    let leftText = window.AsrEditorUtils.applySplitEdgeTrim(fullText.slice(0, cursorOffset), 'end');
-    let rightText = window.AsrEditorUtils.applySplitEdgeTrim(fullText.slice(cursorOffset), 'start');
+    let parts = {
+      left: window.AsrEditorUtils.applySplitEdgeTrim(fullText.slice(0, cursorOffset), 'end'),
+      right: window.AsrEditorUtils.applySplitEdgeTrim(fullText.slice(cursorOffset), 'start'),
+      offset: cursorOffset,
+    };
+    if (!duplicateSplit && !progressiveSplit) {
+      parts = splitStyledTextParts(fullText, parts, currentSplitStyleSettings());
+    }
+    let leftText = parts?.left || '';
+    let rightText = parts?.right || '';
+    const splitOffset = parts?.offset ?? cursorOffset;
     if (duplicateSplit) {
       // 复制拆分：两侧都保留整句原文。
       leftText = fullText;
@@ -1769,10 +2021,12 @@
       return false;
     }
 
-    let itemSplit = splitItemsAtChar(seg, cursorOffset);
+    let itemSplit = splitItemsAtChar({ ...seg, text: fullText }, splitOffset);
     let splitMs = itemSplit.splitMs;
     if (!itemSplit.hasItems || !Number.isFinite(splitMs)) {
-      const ratio = cursorOffset / fullText.length;
+      const tokens = splitStyleTokens(fullText, currentSplitStyleSettings());
+      const ratio = splitVisibleLength(fullText, 0, splitOffset, tokens)
+        / Math.max(1, splitVisibleLength(fullText, 0, fullText.length, tokens));
       const t = seg.start + (seg.end - seg.start) * ratio;
       // 无词级时间码时按光标位置拆分；第一次按键仍保留原始切点，
       // 只有第二次强制拆分才把它钳制到两侧各 100ms 的安全范围。
@@ -1813,8 +2067,8 @@
       }
       splitMs = forcedCut;
       itemSplit = splitItemsAtChar(
-        seg,
-        cursorOffset,
+        { ...seg, text: fullText },
+        splitOffset,
         splitMs,
         { preserveCutMs: true, forceCut: true },
       );
@@ -1957,6 +2211,7 @@
     forcedSplitRetryHint,
     armForcedSplit,
     splitItemsAtChar,
+    splitStyledTextParts,
     buildSplitPair,
     replaceSegmentWithSplit,
     linkedSplitState,

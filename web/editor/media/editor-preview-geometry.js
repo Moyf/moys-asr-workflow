@@ -26,6 +26,11 @@
 
 
   function applyPreviewGeometryToDom(geo) {
+    // ASS owns the full video-space Canvas box. CSS subtitle settings still
+    // update the project, but resize observers must not squeeze that Canvas
+    // into the percentage-based SRT box before the next ASS refresh.
+    // restoreCssSubtitlePreview applies the stored box as soon as ASS is off.
+    if (MaweSettings.EDITOR_SETTINGS.assMode === true) return;
     const css = MaweAppearance.GEO_UTILS.previewGeometryToCss(geo);
     MaweDom.overlayEl.style.left = css.left;
     MaweDom.overlayEl.style.top = css.top;

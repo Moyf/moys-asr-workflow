@@ -520,7 +520,7 @@ test('writes the project title, source resolution, palette styles and speaker na
   // 库样式字号按 1080p 参考存储，导出时换算到 PlayResY：86 × 2160/1080 = 172。
   const assDefaultFont = await page.evaluate(() => window.AsrEditorUtils.ASS_DEFAULT_ASS_STYLE.fontName);
   expect(save.content).toContain(`Style: Default,${assDefaultFont},172,`);
-  expect(save.content).toContain(`Style: YELLOW,${assDefaultFont},172,&H0019A0C4,&H0019A0C4,`);
+  expect(save.content).toContain(`Style: YELLOW,${assDefaultFont},172,&H001FCAF9,&H001FCAF9,`);
   expect(save.content).toContain(`Style: GREEN,${assDefaultFont},172,&H006ABB66,&H006ABB66,`);
   expect(save.content).toContain(`Style: RED,${assDefaultFont},172,&H006F7FF0,&H006F7FF0,`);
   expect(save.content).toContain(`Style: PURPLE,${assDefaultFont},172,&H00E689BF,&H00E689BF,`);

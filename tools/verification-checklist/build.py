@@ -11,7 +11,7 @@ import tempfile
 
 
 TEMPLATE = Path(__file__).parent / "templates" / "verification-checklist.html"
-SOURCE_SCHEMA = "maw.verification-checklist.source.v1"
+SOURCE_SCHEMA = "maw.verification-checklist.source.v2"
 
 
 def object_fields(value, required, optional, path):
@@ -77,7 +77,7 @@ def source_sections(source):
     fields_by_type = {
         "text": ("text",), "note": ("text",), "command": ("text",),
         "list": ("items",), "table": ("headers", "rows"),
-        "check": ("id", "entry", "action", "expected"),
+        "check": ("id", "purpose", "operation", "expected"),
     }
     for index, section in enumerate(array_field(source["sections"], "source.sections")):
         path = f"source.sections[{index}]"
@@ -102,7 +102,7 @@ def source_sections(source):
             kind = block["type"]
             if kind not in fields_by_type:
                 raise ValueError(f"{block_path}.type: unknown block type: {kind}")
-            optional = ("ordered",) if kind == "list" else ()
+            optional = ("ordered",) if kind == "list" else (("note",) if kind == "check" else ())
             object_fields(block, ("type", *fields_by_type[kind]), optional, block_path)
             if kind in ("text", "note"):
                 css = "plain" if kind == "text" else "note"
@@ -135,10 +135,32 @@ def source_sections(source):
                               + '</tr></thead><tbody>' + "".join(rows) + '</tbody></table></div>')
             else:
                 item_id = stable_id(block["id"], f"{block_path}.id")
-                label = " → ".join(prose(block[key], f"{block_path}.{key}")
-                                   for key in ("entry", "action", "expected"))
-                blocks.append(f'<div class="item"><input type="checkbox" id="{item_id}">'
-                              f'<label for="{item_id}">{label}</label></div>')
+                purpose = prose(block["purpose"], f"{block_path}.purpose")
+                operation = prose(block["operation"], f"{block_path}.operation")
+                expected = prose(block["expected"], f"{block_path}.expected")
+                entry_raw, colon, rest_raw = block["operation"].partition("：")
+                if colon and entry_raw.strip() and rest_raw.strip():
+                    entry_html = (f'<span class="item-entry">'
+                                  f'{html.escape(entry_raw.strip(), quote=True)}</span>')
+                    operation = prose(rest_raw.strip(), f"{block_path}.operation")
+                else:
+                    entry_html = ""
+                    operation = prose(block["operation"], f"{block_path}.operation")
+                fields = [
+                    f'<span class="item-purpose">{purpose}</span>',
+                    f'<span class="item-line item-op">{entry_html}{operation}</span>',
+                    f'<span class="item-line item-exp">{expected}</span>',
+                ]
+                copy_parts = [block["purpose"], f"（操作）{block['operation']}",
+                              f"（预期）{block['expected']}"]
+                if "note" in block:
+                    fields.append(f'<span class="item-line item-hint">'
+                                  f'{prose(block["note"], f"{block_path}.note")}</span>')
+                    copy_parts.append(f"（说明）{block['note']}")
+                copy_attr = html.escape("\n".join(copy_parts), quote=True)
+                blocks.append(f'<div class="item" data-copy="{copy_attr}">'
+                              f'<input type="checkbox" id="{item_id}">'
+                              f'<label for="{item_id}">{"".join(fields)}</label></div>')
         sections.append(f'<details class="section" id="{section_id}"' + (' open' if opened else '')
                         + f'><summary><span class="sec-title">{title}</span>{badge}</summary>'
                         + '<div class="body">' + "\n".join(blocks) + '</div></details>')
@@ -159,15 +181,18 @@ def unique_json_object(pairs):
     return result
 
 
-# === Markdown 源格式（v1）：与 JSON 同一 source 契约的便携载体，可贴 PR 评论 ===
+# === Markdown 源格式（v2）：与 JSON 同一 source 契约的便携载体，可贴 PR 评论 ===
 
 MD_FRONT_KEYS = ("task", "pr", "date", "status", "updated")
 MD_FRONT_STATUS = ("pending", "partial", "passed")
 MD_DATE_RE = re.compile(r"\d{4}-\d{2}-\d{2}")
 MD_SECTION_ID_RE = re.compile(r"^<!-- id: ([A-Za-z][A-Za-z0-9_-]*) -->$")
 MD_BADGE_RE = re.compile(r"^<!-- badge: (pass|fixed|todo) (.+?) -->$")
-MD_CHECK_RE = re.compile(r"^- \[([ xX])\] \*\*(.+?)\*\*：(.+)$")
-MD_CHECK_TRAILING_ID_RE = re.compile(r"<!-- id: ([A-Za-z][A-Za-z0-9_-]*) -->\s*$")
+MD_CHECK_RE = re.compile(r"^- \[([ xX])\] \*\*(.+?)\*\*$")
+MD_FIELD_RE = re.compile(r"^  （(操作|预期|说明)）(.+)$")
+MD_ITEM_ID_RE = re.compile(r"^  <!-- id: ([A-Za-z][A-Za-z0-9_-]*) -->$")
+MD_FIELD_ORDER = {(): "操作", ("操作",): "预期", ("操作", "预期"): "说明"}
+MD_FIELD_KEYS = {"操作": "operation", "预期": "expected", "说明": "note"}
 MD_HEADING_SPLIT_RE = re.compile(r"^(\d+)\. (.+)$")
 
 
@@ -241,6 +266,7 @@ def parse_markdown_source(text):
     list_items = list_context = None
     table_start = table_lines = None
     fence_open = command_lines = None
+    pending_check = None
 
     def flush_list():
         nonlocal list_items, list_context
@@ -322,25 +348,44 @@ def parse_markdown_source(text):
         if badge:
             current["badge"] = {"kind": badge.group(1), "text": badge.group(2)}
             continue
+        if pending_check is not None:
+            if not line.strip():
+                continue
+            field = MD_FIELD_RE.match(line)
+            if field:
+                name, value = field.group(1), field.group(2).strip()
+                allowed = MD_FIELD_ORDER.get(tuple(n for n, _ in pending_check["fields"]))
+                if name != allowed:
+                    raise ValueError(f"第 {line_no} 行: 核对项字段顺序应为（操作）→（预期）→（说明）")
+                if "**" in value or "<!--" in value:
+                    raise ValueError(f"第 {line_no} 行: （{name}）不能包含 ** 或 <!--")
+                pending_check["fields"].append((name, value))
+                continue
+            item_id = MD_ITEM_ID_RE.match(line)
+            if item_id:
+                names = tuple(n for n, _ in pending_check["fields"])
+                if names not in (("操作", "预期"), ("操作", "预期", "说明")):
+                    raise ValueError(f"第 {line_no} 行: 核对项缺少（操作）或（预期）字段")
+                block = {"type": "check", "id": item_id.group(1), "purpose": pending_check["purpose"]}
+                for name, value in pending_check["fields"]:
+                    block[MD_FIELD_KEYS[name]] = value
+                current["blocks"].append(block)
+                pending_check = None
+                continue
+            raise ValueError(f"第 {line_no} 行: 核对项应以（操作）/（预期）/（说明）续行和 <!-- id: --> 注释结尾")
         check = MD_CHECK_RE.match(line)
         if check:
             flush_all()
-            entry, tail = check.group(2), check.group(3)
-            id_match = MD_CHECK_TRAILING_ID_RE.search(tail)
-            if not id_match:
-                raise ValueError(f"第 {line_no} 行: check 行结尾缺少 <!-- id: stable-id -->")
-            rest = tail[:id_match.start()].rstrip()
-            action, separator, expected = rest.partition("；预期：")
-            if not separator:
-                raise ValueError(f"第 {line_no} 行: check 行缺少「；预期：」分隔")
-            for name, value in (("entry", entry), ("action", action), ("expected", expected)):
-                if "**" in value or "<!--" in value:
-                    raise ValueError(f"第 {line_no} 行: check {name} 不能包含 ** 或 <!--")
-            if "；预期：" in action:
-                raise ValueError(f"第 {line_no} 行: check action 不能包含「；预期：」分隔符")
-            current["blocks"].append({"type": "check", "id": id_match.group(1),
-                "entry": entry.strip(), "action": action.strip(), "expected": expected.strip()})
+            purpose = check.group(2).strip()
+            if not purpose:
+                raise ValueError(f"第 {line_no} 行: 核对项测试目的不能为空")
+            if "**" in purpose or "<!--" in purpose:
+                raise ValueError(f"第 {line_no} 行: 测试目的不能包含 ** 或 <!--")
+            pending_check = {"purpose": purpose, "fields": []}
             continue
+        if line.startswith("- ["):
+            raise ValueError(f"第 {line_no} 行: 核对行不符合 MD v2 格式"
+                             f"（- [ ] **测试目的** 加缩进的（操作）/（预期）/（说明）续行）")
         if line.startswith("| "):
             flush_list()
             flush_command()
@@ -363,6 +408,8 @@ def parse_markdown_source(text):
         flush_all()
         current["blocks"].append({"type": "note", "text": unescape_markdown_paragraph(line.strip())})
     flush_all()
+    if pending_check is not None:
+        raise ValueError("文件结尾：核对项缺少 <!-- id: stable-id --> 注释行")
     if title is None:
         raise ValueError("缺少 `# 页面标题`（H1）")
     if subtitle is None:
@@ -387,7 +434,7 @@ def source_to_markdown(source, meta=None):
         validate_front_matter(meta)
     for key in ("title", "subtitle"):
         if "\n" in str(source.get(key, "")):
-            raise ValueError(f"source.{key}: MD v1 标题与副标题必须是单行")
+            raise ValueError(f"source.{key}: MD v2标题与副标题必须是单行")
     lines = []
     if meta:
         lines.append("---")
@@ -396,7 +443,7 @@ def source_to_markdown(source, meta=None):
     lines.extend((f"# {source['title']}", "", f"> {source['subtitle']}", ""))
     for section in source["sections"]:
         if section.get("open") is False:
-            raise ValueError(f"分区 {section['title']!r}: MD v1 不支持折叠分区（去掉 open: false）")
+            raise ValueError(f"分区 {section['title']!r}: MD v2不支持折叠分区（去掉 open: false）")
         lines.append(f"## {section['title']}")
         lines.append(f"<!-- id: {section['id']} -->")
         badge = section.get("badge")
@@ -407,7 +454,7 @@ def source_to_markdown(source, meta=None):
             kind = block["type"]
             if kind == "note":
                 if "\n" in block["text"]:
-                    raise ValueError(f"note {block['text'][:24]!r}: MD v1 说明必须是单行（其余拆成多条）")
+                    raise ValueError(f"note {block['text'][:24]!r}: MD v2说明必须是单行（其余拆成多条）")
                 lines.extend((escape_markdown_paragraph(block["text"]), ""))
             elif kind == "command":
                 if "```" in block["text"]:
@@ -429,16 +476,20 @@ def source_to_markdown(source, meta=None):
                     lines.append("| " + " | ".join(escape_cell(cell) for cell in row) + " |")
                 lines.append("")
             elif kind == "check":
-                for name in ("entry", "action", "expected"):
+                for name in ("purpose", "operation", "expected", "note"):
+                    if name == "note" and name not in block:
+                        continue
                     value = str(block[name])
                     if "**" in value or "<!--" in value or "\n" in value:
                         raise ValueError(f"check {block['id']} 的 {name} 不能包含 **、<!-- 或换行")
-                if "；预期：" in str(block["action"]):
-                    raise ValueError(f"check {block['id']} 的 action 不能包含「；预期：」分隔符")
-                lines.append(f"- [ ] **{block['entry']}**：{block['action']}；预期：{block['expected']}"
-                             f" <!-- id: {block['id']} -->")
+                lines.append(f"- [ ] **{block['purpose']}**")
+                lines.append(f"  （操作）{block['operation']}")
+                lines.append(f"  （预期）{block['expected']}")
+                if "note" in block:
+                    lines.append(f"  （说明）{block['note']}")
+                lines.append(f"  <!-- id: {block['id']} -->")
             else:
-                raise ValueError(f"MD v1 暂不支持块类型: {kind}（text 块请改用 note）")
+                raise ValueError(f"MD v2暂不支持块类型: {kind}（text 块请改用 note）")
         lines.append("")
     return "\n".join(lines).rstrip("\n") + "\n"
 

@@ -100,7 +100,12 @@ export function createWaveformModule(dependencies) {
               const landsOnMainOverlap = mainSegments.some((other, idx) => (
                 idx !== drag.index && simEnd > clock.getStart(other) && simStart < clock.getEnd(other)
               ));
-              if (landsOnMainOverlap) {
+              // 叠加轨也必须能容纳目标区间；否则换轨后会被同轨邻居挤回
+              // 主轨空白，下一帧再次换轨，形成逐帧往返闪烁。
+              const overlayOccupied = this.options.getSegments('overlay').some((other) => (
+                simEnd > clock.getStart(other) && simStart < clock.getEnd(other)
+              ));
+              if (landsOnMainOverlap && !overlayOccupied) {
                 // 先把段移到指针对应位置（可越过邻居），迁移后快照才与实际一致。
                 clock.setStart(segment, mainOriginal.start + appliedDelta);
                 clock.setEnd(segment, mainOriginal.end + appliedDelta);

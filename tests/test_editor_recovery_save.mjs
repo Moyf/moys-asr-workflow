@@ -85,6 +85,21 @@ test('successful server saves keep their project-relative reference', async () =
   assert.deepEqual(calls.build, [false]);
 });
 
+test('changing only the timed-text view during a save keeps the newer preference dirty', async () => {
+  const {context, calls, save} = fixture({failure: null});
+  let finish;
+  context.MaweHost.server.fetch = async () => new Promise(resolve => { finish = resolve; });
+  context.MaweBoot.DATA.timed_text_edit_view = 'single';
+  const pending = save();
+  context.MaweBoot.DATA.timed_text_edit_view = 'rows';
+  finish({ok: true, json: async () => ({ok: true, filename: 'captions.mosp'})});
+  assert.equal(await pending, true);
+  assert.equal(calls.saved, 0);
+  context.MaweHost.server.fetch = async () => ({ok: true, json: async () => ({ok: true, filename: 'captions.mosp'})});
+  assert.equal(await save(), true);
+  assert.equal(calls.saved, 1);
+});
+
 test('non-connection errors do not trigger the recovery-download branch', async () => {
   const {calls, save} = fixture({failure: new Error('Invalid project')});
   assert.equal(await save(), false);

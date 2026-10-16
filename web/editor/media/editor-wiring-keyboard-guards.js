@@ -125,33 +125,40 @@ function pausePlaybackAfterMouseClick() {
 
 let assPreviewRefreshFrame = 0;
 let assPreviewRefreshTimer = 0;
+function queueAssSubtitlePreviewRefresh() {
+  if (assPreviewRefreshFrame) return;
+  const refresh = () => {
+    assPreviewRefreshFrame = 0;
+    if (MaweSettings.EDITOR_SETTINGS.assMode === true) MawePlaybackLoop.refreshSubtitlePreview();
+  };
+  if (typeof requestAnimationFrame === 'function') assPreviewRefreshFrame = requestAnimationFrame(refresh);
+  else refresh();
+}
 function scheduleAssSubtitlePreviewRefresh() {
   if (MaweSettings.EDITOR_SETTINGS.assMode !== true) return;
-  if (assPreviewRefreshTimer) window.clearTimeout(assPreviewRefreshTimer);
-  if (assPreviewRefreshFrame && typeof cancelAnimationFrame === 'function') {
-    cancelAnimationFrame(assPreviewRefreshFrame);
-    assPreviewRefreshFrame = 0;
+  // ResizeObserver runs after layout. Draw the overlay and Canvas together on
+  // the next frame, even while fullscreen/resize events keep arriving. A trailing
+  // debounce used to starve paused previews until the entire transition ended.
+  queueAssSubtitlePreviewRefresh();
+  // One bounded follow-up also covers fullscreenchange arriving before layout.
+  // Repeated events never postpone it and no polling continues after it fires.
+  if (!assPreviewRefreshTimer) {
+    assPreviewRefreshTimer = window.setTimeout(() => {
+      assPreviewRefreshTimer = 0;
+      if (MaweSettings.EDITOR_SETTINGS.assMode === true) queueAssSubtitlePreviewRefresh();
+    }, 100);
   }
-  // fullscreenchange may arrive before the browser finishes resizing the stage.
-  // Wait for its size to settle, then draw on the next frame instead of briefly
-  // measuring an in-between rectangle and compressing the Canvas preview.
-  assPreviewRefreshTimer = window.setTimeout(() => {
-    assPreviewRefreshTimer = 0;
-    const refresh = () => {
-      assPreviewRefreshFrame = 0;
-      if (MaweSettings.EDITOR_SETTINGS.assMode !== true) return;
-      MawePlaybackLoop.refreshSubtitlePreview();
-    };
-    if (typeof requestAnimationFrame === 'function') {
-      assPreviewRefreshFrame = requestAnimationFrame(refresh);
-    } else {
-      refresh();
-    }
-  }, 100);
 }
 
-if (typeof ResizeObserver === 'function' && MaweDom.playerStage) {
-  const assPreviewStageObserver = new ResizeObserver(scheduleAssSubtitlePreviewRefresh);
-  assPreviewStageObserver.observe(MaweDom.playerStage);
+let assPreviewObservedPlayer = null;
+const assPreviewStageObserver = typeof ResizeObserver === 'function'
+  ? new ResizeObserver(scheduleAssSubtitlePreviewRefresh) : null;
+function observeAssSubtitlePreviewPlayer(player) {
+  if (!assPreviewStageObserver || assPreviewObservedPlayer === player) return;
+  if (assPreviewObservedPlayer) assPreviewStageObserver.unobserve(assPreviewObservedPlayer);
+  assPreviewObservedPlayer = player?.tagName === 'VIDEO' ? player : null;
+  if (assPreviewObservedPlayer) assPreviewStageObserver.observe(assPreviewObservedPlayer);
 }
+if (MaweDom.playerStage) assPreviewStageObserver?.observe(MaweDom.playerStage);
+observeAssSubtitlePreviewPlayer(MaweCoreState.player);
 window.addEventListener('resize', scheduleAssSubtitlePreviewRefresh);
