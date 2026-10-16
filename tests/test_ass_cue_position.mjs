@@ -83,7 +83,8 @@ test('scaled automatic stack export keeps measured offsets at group scale', () =
     { id: 'scaled', start: 0, end: 2000, text: Array(10).fill('SCALED').join('\n'), assOverride: { scale: 0.62 } },
   ];
   let plan;
-  const output = h.buildAssPayload(segments, { assProfile: {}, assStyle: { fontSize: 72, alignment: 2 },
+  const output = h.buildAssPayload(segments, { assProfile: {}, assStyle: { fontSize: 150, alignment: 2, marginV: 40 },
+    playResX: 640, playResY: 360,
     measureAssRun: measure, onAssPlan: value => { plan = value; } });
   const slice = plan.slices[0];
   const item = slice.items.find(entry => entry.segment.id === 'scaled');
