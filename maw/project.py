@@ -5,6 +5,7 @@ from __future__ import annotations
 import copy
 import math
 from dataclasses import dataclass
+from decimal import Decimal, ROUND_HALF_UP
 from typing import Final, TypeGuard, final
 
 from maw.project_preview import JsonDict, JsonValue, clamped_preview, validate_preview
@@ -761,7 +762,8 @@ def _validate_ass_override(segment: JsonDict, path: str, errors: list[ProjectVal
         if not finite_scale or not 0.1 <= scale <= 5:
             errors.append(ProjectValidationError(f"{field}.scale", "must be a finite number from 0.1 to 5"))
         else:
-            normalized_scale = float(f"{scale:.2f}")
+            # Match JavaScript Number.toFixed(2), including exact binary ties.
+            normalized_scale = float(Decimal(scale).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP))
             if normalized_scale != 1:
                 normalized["scale"] = normalized_scale
     if "pos" in value:

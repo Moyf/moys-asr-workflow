@@ -709,6 +709,53 @@ test('unselected gesture only selects, no-op stays clean and coordinate visibili
   await page.locator('#current-cue-panel').screenshot({path:info.outputPath('layout.png')});
 });
 
+test('shaken cue scale does not depend on pointermove event count', async ({ page }) => {
+  const scales = [];
+  for (const steps of [1, 8]) {
+    await page.evaluate(() => {
+      ASS_STYLE_LIBRARY.styles.find(style => style.id === 'ass').fontSize = 12;
+      Object.assign(MaweBoot.DATA.segments[0], { text: '!!I!!', assOverride: { scale: 4 } });
+      MawePlaybackLoop.refreshSubtitlePreview(1000, 0);
+    });
+    const handle = page.locator('.ass-cue-scale-handle[data-corner="nw"]').filter({ visible: true });
+    const box = await handle.boundingBox();
+    const x = box.x + box.width / 2, y = box.y + box.height / 2;
+    await page.mouse.move(x, y); await page.mouse.down();
+    await page.mouse.move(x - 3, y - 3, { steps }); await page.mouse.up();
+    scales.push((await snapshot(page)).override.scale);
+  }
+  expect(scales[1]).toBe(scales[0]);
+});
+
+test('shaken cue corner scaling projects movement around the stable center', async ({ page }, info) => {
+  await page.evaluate(() => {
+    ASS_STYLE_LIBRARY.styles.find(style => style.id === 'ass').fontSize = 12;
+    MaweBoot.DATA.segments[0].text = '!!I!!';
+    MawePlaybackLoop.refreshSubtitlePreview(1000, 0);
+  });
+  const handle = page.locator('.ass-cue-scale-handle[data-corner="nw"]').filter({ visible: true });
+  const box = await handle.boundingBox();
+  const x = box.x + box.width / 2, y = box.y + box.height / 2;
+  const expected = await page.evaluate(({ x, y }) => {
+    const frame = MaweAssCanvas.lastRender;
+    const record = frame.tracks.find(item => item.cueId === 'main');
+    const rect = MaweDom.overlayEl.getBoundingClientRect();
+    const px = (x - rect.left) * frame.playResX / rect.width;
+    const py = (y - rect.top) * frame.playResY / rect.height;
+    const dx = px - (record.bounds.left + record.bounds.right) / 2;
+    const dy = py - (record.bounds.top + record.bounds.bottom) / 2;
+    const distance = Math.hypot(dx, dy);
+    const sensitivity = Math.max(24, Math.hypot(record.bounds.right - record.bounds.left,
+      record.bounds.bottom - record.bounds.top) / 2);
+    const delta = -3 * frame.playResY / rect.height * dy / distance;
+    return Math.round(Math.min(5, Math.max(0.1, 1 + delta / sensitivity)) * 100) / 100;
+  }, { x, y });
+  await page.mouse.move(x, y); await page.mouse.down();
+  await page.mouse.move(x, y - 3); await page.mouse.up();
+  expect((await snapshot(page)).override.scale).toBe(expected);
+  await page.locator('.player-stage').screenshot({ path: info.outputPath('shake-scale.png') });
+});
+
 test('dragged shaken cue saves the base anchor and window blur cancels the next gesture', async ({page},info) => {
   await page.locator('#cue-panel-text').fill('++!!喂喂喂嗯!!++');
   await page.locator('#cue-panel-text').press('Tab');

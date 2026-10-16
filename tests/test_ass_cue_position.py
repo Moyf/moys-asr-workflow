@@ -17,7 +17,7 @@ class AssCuePositionTests(unittest.TestCase):
             self.assertNotIn("assOverride", normalized["segments"][0])
 
     def test_scale_is_rounded_to_two_decimals_and_default_is_omitted(self):
-        for value, expected in [(1, None), (1.005, None), (1.225, 1.23), (2.675, 2.67)]:
+        for value, expected in [(1, None), (1.005, None), (1.125, 1.13), (1.375, 1.38), (1.225, 1.23), (2.675, 2.67)]:
             with self.subTest(value=value):
                 normalized = normalize_project(self.project({"scale": value}))
                 override = normalized["segments"][0].get("assOverride")

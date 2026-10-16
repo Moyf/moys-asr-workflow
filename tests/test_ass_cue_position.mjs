@@ -34,6 +34,8 @@ test('strict override normalization rejects coercion and returns independent can
   assert.equal(h.normalizeAssOverride(undefined), undefined);
   assert.equal(h.normalizeAssOverride({ scale: 1 }), undefined);
   assert.deepEqual(plain(h.normalizeAssOverride({ scale: 1.225 })), { scale: 1.23 });
+  assert.deepEqual(plain(h.normalizeAssOverride({ scale: 1.125 })), { scale: 1.13 });
+  assert.deepEqual(plain(h.normalizeAssOverride({ scale: 2.675 })), { scale: 2.67 });
   assert.equal(h.normalizeAssOverride({ scale: 1.005 }), undefined);
   assert.deepEqual(plain(h.normalizeAssOverride({ scale: 1.22, pos: { x: 331.5, y: -161.5 } })),
     { scale: 1.22, pos: { x: 331.5, y: -161.5 } }, 'normalization preserves imported fractional coordinates');
