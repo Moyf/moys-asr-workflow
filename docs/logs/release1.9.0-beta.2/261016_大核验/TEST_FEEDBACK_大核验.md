@@ -138,6 +138,15 @@
   #19/#21/#25/#26/#15 + items 调试 → session A（ses_ebcc11217）；#22 批次 1+2 + #24 →
   session B（ses_ebc8ab1d，已完成）。⑥ #23 微调与 #30/#31/#32/#33 排队（气泡全显示+间距、
   菜单分组、字幕标签隐藏、整体编辑行号）。
+- 续 12（2026-10-16，收口）：① CHANGELOG `[未发布]` 三处追加（提升 5 条/修复 1 条/变更 2 条，
+  与 main 已有条目去重）。② **人工核对清单（v2）落地**：`1016大核验.checklist.md`（29 个核对项
+  分 A 波形/MASS/纯文本编辑/杂项四区；`build.py --check` 通过、HTML 已生成不入库；
+  merge-fold 条目按 v2 契约去字面 `**` 改文字描述）。③ 全量验证：`node --test tests/*.mjs`
+  **790/790**（launcher bundle 一并重建后）；两个 bundle 均已重建。④ **CI 收口**：PR #251 的
+  9 例红全部修复推送（7 例 setInterval/document 裸全局→浏览器守卫 hotfix 054ff4c9；
+  5 例 split-style 断言→session A a9f383c6；1 例 lease/debounce→session B 8fa6d14f；
+  Preview Python 单例 RUNNER~1 短路径→3a16d13b resolve() 规范化，并 PR 留言提一嘴）。
+  ⑤ Issue #250 与 PR #251 正文均已回写终态（26 项全 ✅ + 追加批 + 待复核项）。
 - 续 11（2026-10-16，Greptile 收线 + 检查点提交）：① **Greptile 6 条全部处置完毕并 resolve**
   （每条回帖附修复证据）：B 组 2 条（P2-1 漂移/P2-2 取图饥饿）+ A 组 4 条（P1-1 镜像遮挡/
   P1-2 折叠残留/P1-3 转换波及/P2-3 滚动错挂）**全部成立全部修复**。② ⚠️ **折叠语义行为变更
