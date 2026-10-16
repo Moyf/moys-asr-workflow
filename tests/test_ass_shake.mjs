@@ -91,6 +91,21 @@ test('manual anchor plus shake offsets every slice around the saved position wit
   }
 });
 
+test('scale-only shake keeps the global anchor and scales every exported slice', () => {
+  const build = scale => h.buildAssPayload([{ start: 0, end: 200, text: '!!震动!!',
+    ...(scale === 1 ? {} : { assOverride: { scale } }) }], { assStyle: { fontSize: 80 }, assProfile: {} });
+  const plainLines = dialogues(build(1));
+  const scaledLines = dialogues(build(1.22));
+  assert.equal(scaledLines.length, plainLines.length);
+  assert.ok(scaledLines.every(line => line.includes('\\fs97.6')));
+  assert.ok(scaledLines.every(line => line.includes('\\an2')));
+  assert.ok(scaledLines.every(line => !line.includes('\\move(')));
+  const plainFirst = positions(plainLines[0])[0];
+  const scaledFirst = positions(scaledLines[0])[0];
+  assert.ok(Math.abs(scaledFirst[0] - plainFirst[0] - AMPLITUDE_1080 * 0.22) < 0.001);
+  assert.ok(Math.abs(scaledFirst[1] - plainFirst[1] - AMPLITUDE_1080 * 0.22) < 0.001);
+});
+
 test('stack frame preview offsets follow the same deterministic pattern and canvas resolution', () => {
   let plan;
   h.buildAssPayload([{ start: 100, end: 400, text: '!!震动!!' }, { start: 100, end: 400, text: '普通' }],
@@ -257,6 +272,26 @@ test('shake phase survives overlapping cue start and end between original phase 
   assertShakeCoverageAndPhase(plan, events, 'shake-phase');
   assert.deepEqual(events.map(event => [event.start, event.end]),
     [[100, 160], [160, 200], [200, 220], [220, 280], [280, 300], [300, 340], [340, 400]]);
+});
+
+test('scaled automatic shake uses group scale for its offset and combined scale for amplitude', () => {
+  let plan;
+  const output = h.buildAssPayload([
+    { id: 'base', start: 0, end: 180, text: Array(8).fill('base').join('\n') },
+    { id: 'scaled-shake', start: 0, end: 180,
+      text: `!!${Array(8).fill('shake').join('\n')}!!`, assOverride: { scale: 0.62 } },
+  ], { assProfile: {}, assStyle: { fontSize: 150 }, playResX: 640, playResY: 360,
+    onAssPlan: value => { plan = value; } });
+  const slice = plan.slices[0];
+  const item = slice.items.find(entry => entry.segment.id === 'scaled-shake');
+  const frame = h.assStackFrame(plan, 0).items.find(entry => entry.segment.id === 'scaled-shake');
+  const combinedAmplitude = h.assShakeAmplitude(slice.height) * slice.scale * item.cueScale;
+  assert.equal(slice.legacy, false);
+  assert.ok(slice.scale < 1, `expected group fitting but got scale ${slice.scale} in ${JSON.stringify(slice.box)}`);
+  assert.ok(Math.abs(item.offset.y) > 1);
+  assert.equal(item.cueScale, 0.62);
+  assert.deepEqual(plain(frame.shakeOffset), plain(h.assShakeOffsetFor(0, combinedAmplitude)));
+  assertShakeCoverageAndPhase(plan, shakeEvents(output, 'shake'), 'scaled-shake');
 });
 
 test('shake phase uses the ASS-quantized cue origin for non-centisecond input', () => {

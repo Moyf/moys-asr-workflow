@@ -1961,9 +1961,15 @@ __WAVEFORM_CSS__
         <div class="cue-panel-text-row">
           <textarea id="cue-panel-text" rows="3" placeholder="选择一条字幕开始编辑…"></textarea>
           <div id="ass-cue-position" class="ass-cue-position" hidden aria-label="主字幕 ASS 定位" tabindex="0" title="PlayRes 坐标；方向键微调，Shift：10 像素；重置恢复全局排布">
-            <label>X <input id="ass-cue-x" type="number" step="1" aria-label="ASS 锚点 X"></label>
-            <label>Y <input id="ass-cue-y" type="number" step="1" aria-label="ASS 锚点 Y"></label>
-            <button id="ass-cue-reset" type="button">重置定位</button>
+            <div id="ass-cue-scale-controls" class="ass-cue-scale-controls" hidden>
+              <label>倍率 <input id="ass-cue-scale" type="number" min="0.10" max="5.00" step="0.01" value="1.00" aria-label="ASS 字幕缩放倍率"></label>
+              <button id="ass-cue-scale-reset" type="button">重置大小</button>
+            </div>
+            <div id="ass-cue-coordinate-controls" class="ass-cue-coordinate-controls" hidden>
+              <label>X <input id="ass-cue-x" type="number" step="1" aria-label="ASS 锚点 X"></label>
+              <label>Y <input id="ass-cue-y" type="number" step="1" aria-label="ASS 锚点 Y"></label>
+              <button id="ass-cue-reset" type="button">重置定位</button>
+            </div>
           </div>
         </div>
         <div class="cue-panel-metrics">

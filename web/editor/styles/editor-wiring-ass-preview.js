@@ -304,7 +304,7 @@ function applyAssSubtitlePreview({ tMs, overlaySegments }) {
         if (targets[key] !== undefined) animated[key] = Boolean(targets[key]);
       }
     }
-    const scale = item.scale;
+    const scale = item.scale * (item.cueScale || 1);
     const style = { ...animated, spacing: animated.spacing * scale,
       outline: animated.outline * scale, shadow: animated.shadow * scale,
       __assMove: item.legacy && !item.manual && item.role === 'main' && profile.animations.move.enabled ? { x: animation.moveX, y: animation.moveY } : null };

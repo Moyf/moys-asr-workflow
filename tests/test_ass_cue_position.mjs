@@ -26,11 +26,19 @@ test('unpositioned legacy and multi-track exports match original a34d502 bytes',
 
 test('strict override normalization rejects coercion and returns independent canonical copies', () => {
   for (const bad of [null, [], 1, { an: 2 }, { an: 0 }, { an: 10 }, { an: 1.5 }, { an: '2' }, { an: true },
+    { scale: null }, { scale: true }, { scale: '1.2' }, { scale: NaN }, { scale: Infinity }, { scale: 0.09 }, { scale: 5.01 },
     { pos: {} }, { pos: { x: '1', y: 2 } }, { pos: { x: Infinity, y: 2 } }, { pos: { x: 1, y: NaN } }]) {
     assert.throws(() => h.normalizeAssOverride(bad), /assOverride/);
   }
   assert.equal(h.normalizeAssOverride({}), undefined);
   assert.equal(h.normalizeAssOverride(undefined), undefined);
+  assert.equal(h.normalizeAssOverride({ scale: 1 }), undefined);
+  assert.deepEqual(plain(h.normalizeAssOverride({ scale: 1.225 })), { scale: 1.23 });
+  assert.deepEqual(plain(h.normalizeAssOverride({ scale: 1.125 })), { scale: 1.13 });
+  assert.deepEqual(plain(h.normalizeAssOverride({ scale: 2.675 })), { scale: 2.67 });
+  assert.equal(h.normalizeAssOverride({ scale: 1.005 }), undefined);
+  assert.deepEqual(plain(h.normalizeAssOverride({ scale: 1.22, pos: { x: 331.5, y: -161.5 } })),
+    { scale: 1.22, pos: { x: 331.5, y: -161.5 } }, 'normalization preserves imported fractional coordinates');
   const original = { pos: { x: -42.125, y: 1200 } };
   const copy = h.normalizeAssOverride(original);
   assert.deepEqual(plain(copy), original);
@@ -39,6 +47,64 @@ test('strict override normalization rejects coercion and returns independent can
   const project = { segments: [{ start: 0, end: 1000, text: 'old' }, { start: 1000, end: 2000, text: 'empty', assOverride: {} }] };
   h.normalizeMultiSubtitleProject(project);
   assert.ok(project.segments.every(segment => !Object.hasOwn(segment, 'assOverride')));
+});
+
+test('scale-only overrides keep the global anchor and remain in automatic layout', () => {
+  const measure = (style, fontSize, run, text) => ({ width: [...text].length * fontSize / 2,
+    ascent: fontSize * 0.8, descent: fontSize * 0.2 });
+  const profile = { animations: {} };
+  const makePlan = scale => {
+    let plan;
+    h.buildAssPayload([{ id: 'scaled', start: 0, end: 2000, text: 'MAIN', assOverride: { scale } }], {
+      assProfile: profile, assStyle: { fontSize: 72 }, overlaySegments: [{ id: 'overlay', start: 0, end: 2000, text: 'OVERLAY' }],
+      measureAssRun: measure, onAssPlan: value => { plan = value; },
+    });
+    return plan;
+  };
+  const base = makePlan(1);
+  const scaled = makePlan(1.22);
+  const cue = scaled.slices[0].items.find(item => item.segment.id === 'scaled');
+  const frame = h.assStackFrame(scaled, 1000).items.find(item => item.segment.id === 'scaled');
+  const baseFrame = h.assStackFrame(base, 1000).items.find(item => item.segment.id === 'scaled');
+  const baseRect = base.slices[0].items.find(item => item.segment.id === 'scaled').rect;
+  assert.equal(cue.manual, false);
+  assert.equal(cue.cueScale, 1.22);
+  assert.ok(cue.rect.right - cue.rect.left > baseRect.right - baseRect.left);
+  assert.equal(frame.scale, scaled.slices[0].scale);
+  assert.deepEqual(plain(frame.anchor), plain(baseFrame.anchor));
+
+  const output = h.buildAssPayload([{ id: 'scaled', start: 0, end: 2000, text: 'MAIN', assOverride: { scale: 1.22 } }], {
+    assProfile: {}, assStyle: { fontSize: 72 },
+  });
+  assert.match(output, /\\fs87\.84/);
+  assert.doesNotMatch(output, /\\pos\(/, 'scale alone does not create a per-cue position');
+});
+
+test('scaled automatic stack export keeps measured offsets at group scale', () => {
+  const measure = (style, fontSize, run, text) => ({ width: [...text].length * fontSize / 2,
+    ascent: fontSize * 0.8, descent: fontSize * 0.2 });
+  const segments = [
+    { id: 'base', start: 0, end: 2000, text: Array(10).fill('BASE').join('\n') },
+    { id: 'scaled', start: 0, end: 2000, text: Array(10).fill('SCALED').join('\n'), assOverride: { scale: 0.62 } },
+  ];
+  let plan;
+  const output = h.buildAssPayload(segments, { assProfile: {}, assStyle: { fontSize: 150, alignment: 2, marginV: 40 },
+    playResX: 640, playResY: 360,
+    measureAssRun: measure, onAssPlan: value => { plan = value; } });
+  const slice = plan.slices[0];
+  const item = slice.items.find(entry => entry.segment.id === 'scaled');
+  const frameItem = h.assStackFrame(plan, 500).items.find(entry => entry.segment.id === 'scaled');
+  const line = output.split('\n').find(entry => entry.startsWith('Dialogue: 0,') && entry.includes('SCALED'));
+  const position = line.match(/\\pos\(([-\d.]+),([-\d.]+)\)/);
+  assert.equal(slice.legacy, false);
+  assert.ok(slice.scale < 1, 'fixture exercises both group fitting and per-cue scale');
+  assert.ok(Math.abs(item.offset.y) > 1, 'automatic stack gives the cue a measured nonzero offset');
+  assert.ok(position, 'automatic stacked cue uses an explicit exported position');
+  for (const [index, axis] of ['x', 'y'].entries()) {
+    assert.ok(Math.abs(Number(position[index + 1]) - frameItem.anchor[axis]) < 0.0001,
+      `${axis} offset agrees with the shared preview layout`);
+  }
+  assert.match(line, /\\fs[\d.]+/, 'the cue scale still applies to emitted text');
 });
 
 test('global alignments and explicit anchors override profile move without losing fade or transform', () => {

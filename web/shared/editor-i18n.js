@@ -10,11 +10,16 @@
   // the DOM boundary; project content is excluded from traversal below.
   const EN_TEXT = {
     '主字幕 ASS 定位': 'Main ASS cue positioning',
-    '重置定位': 'Reset position',
+    '重置定位': 'Reset position', '重置大小': 'Reset size', '倍率': 'Scale',
+    'ASS 字幕缩放倍率': 'ASS subtitle scale multiplier',
     'ASS 锚点 X': 'ASS anchor X', 'ASS 锚点 Y': 'ASS anchor Y',
     '选择主字幕，选中后拖动 ASS 位置': 'Select the main cue, then drag its ASS position',
     '请输入有限坐标': 'Enter a finite coordinate',
     'PlayRes 坐标；方向键微调，Shift：10 像素；重置恢复全局排布': 'PlayRes coordinates; arrow keys adjust, Shift: 10 pixels; reset restores global layout',
+    '调整主字幕大小（左上角）': 'Resize main subtitle (top left corner)',
+    '调整主字幕大小（右上角）': 'Resize main subtitle (top right corner)',
+    '调整主字幕大小（左下角）': 'Resize main subtitle (bottom left corner)',
+    '调整主字幕大小（右下角）': 'Resize main subtitle (bottom right corner)',
 
     '导入 ▾': 'Import ▾',
     '视频缩略图': 'Video thumbnails',

@@ -2,7 +2,14 @@
 window.MAWE.register('editor-commands', function createEditorCommands(dependencies) {
   'use strict';
   const { capture, hasChanges, publish, restore, refresh } = dependencies;
+  const beforeBeginListeners = new Set();
+  function onBeforeBegin(listener) {
+    if (typeof listener !== 'function') throw new TypeError('Command before-begin listener must be a function');
+    beforeBeginListeners.add(listener);
+    return () => beforeBeginListeners.delete(listener);
+  }
   function begin(label, options = {}) {
+    for (const listener of beforeBeginListeners) listener(label, options);
     const snapshot = capture(label, options);
     let finished = false;
     return Object.freeze({
@@ -40,7 +47,7 @@ window.MAWE.register('editor-commands', function createEditorCommands(dependenci
       throw error;
     }
   }
-  return Object.freeze({ begin, run });
+  return Object.freeze({ begin, run, onBeforeBegin });
 });
 
 (function composeEditorCommands() {

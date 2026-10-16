@@ -1516,6 +1516,7 @@ build = [
     { name = "pyinstaller" },
 ]
 dev = [
+    { name = "pillow" },
     { name = "ruff" },
 ]
 local = [
@@ -1559,7 +1560,10 @@ build = [
     { name = "pillow", specifier = ">=10.0.0" },
     { name = "pyinstaller", specifier = "==6.16.0" },
 ]
-dev = [{ name = "ruff", specifier = ">=0.16.3" }]
+dev = [
+    { name = "pillow", specifier = ">=10.0.0" },
+    { name = "ruff", specifier = ">=0.16.3" },
+]
 local = [
     { name = "accelerate", specifier = ">=1.12" },
     { name = "faster-whisper", specifier = ">=1.2,<2" },
