@@ -772,27 +772,6 @@ export function createUtilsModule(dependencies) {
   }
 
 
-  // 从 itemText 的尾部/头部裁掉至多 limit 个 MASS 符号字符；遇到正文（非
-  // 符号）字符立即停止，绝不裁进 spoken。返回裁后的文本与实际裁掉的字符数。
-  // （Greptile P1：items 只含 spoken 时按字符数硬裁会把整个 item 删掉，
-  // 字词时间码随之丢失——符号只应从 item 边界裁掉其实际包含的那几个。）
-  const MASS_MARKER_CHARACTERS = new Set(['*', '+', '-', '_', '~', '!', '/', '>', '<']);
-
-  function trimMassMarkerCharacters(itemText, limit, edge) {
-    const text = String(itemText || '');
-    let cut = 0;
-    while (cut < limit && cut < text.length) {
-      const character = edge === 'start' ? text[cut] : text[text.length - 1 - cut];
-      if (!MASS_MARKER_CHARACTERS.has(character)) break;
-      cut += 1;
-    }
-    return {
-      text: edge === 'start' ? text.slice(cut) : text.slice(0, text.length - cut),
-      cut,
-    };
-  }
-
-
   // 三处合并路径（主/副/overlay）共用的「拼接 + 相邻同符号对折叠」：折叠只
   // 作用于无分隔符的拼接边界（空格/换行分隔不会产生符号连跑），并同步返回
   // items 层拼接结果——被折叠掉的符号从对应段边界 item 的文本里裁掉，
@@ -819,37 +798,41 @@ export function createUtilsModule(dependencies) {
     const items = [];
     source.forEach((segment, index) => {
       const owned = Array.isArray(segment?.items) ? segment.items : [];
-      // 从尾部/头部裁掉被折叠移除的符号；逐字符只裁 MASS 符号、绝不裁进
-      // spoken（Greptile P1：边界 item 只含 spoken 时不裁，字词时间码不丢）。
-      // 裁后变空的纯符号 item 与既有语义一致，一并移除。
-      let endCut = trailingSlices[index];
+      const ownedText = owned.map(item => String(item?.text || '')).join('');
+      // 先从尾部裁掉折叠掉的闭符号，再从头部裁掉开符号；被裁空的 item 一并
+      // 移除（纯符号 item 没有可保留的时间语义）。
+      const removedEnd = texts[index].slice(texts[index].length - trailingSlices[index]);
+      let endCut = removedEnd && ownedText.endsWith(removedEnd) ? removedEnd.length : 0;
       const trimmedEnd = [];
       for (let cursor = owned.length - 1; cursor >= 0; cursor -= 1) {
-        const item = owned[cursor];
+        const itemText = String(owned[cursor]?.text || '');
         if (endCut > 0) {
-          const trimmed = trimMassMarkerCharacters(item?.text, endCut, 'end');
-          if (!trimmed.cut) {
-            // 边界 item 尾部无符号（visible 形态）：保留原样并停止裁剪
-            trimmedEnd.unshift(item);
-            break;
+          if (!itemText) continue;
+          if (itemText.length <= endCut) {
+            endCut -= itemText.length;
+            continue;
           }
-          endCut -= trimmed.cut;
-          if (trimmed.text) trimmedEnd.unshift({ ...item, text: trimmed.text });
-          // 裁空（纯符号 item）→ 移除；endCut 有剩余则继续向前找符号
-        } else {
-          trimmedEnd.unshift(item);
-        }
-      }
-      const removedStart = texts[index].slice(0, leadingSlices[index]);
-      let startCut = removedStart.length;
-      for (const item of trimmedEnd) {
-        const trimmed = trimMassMarkerCharacters(item?.text, startCut, 'start');
-        if (!trimmed.cut) {
-          items.push(item);
+          trimmedEnd.unshift({ ...owned[cursor], text: itemText.slice(0, itemText.length - endCut) });
+          endCut = 0;
           continue;
         }
-        startCut -= trimmed.cut;
-        if (trimmed.text) items.push({ ...item, text: trimmed.text });
+        trimmedEnd.unshift(owned[cursor]);
+      }
+      const removedStart = texts[index].slice(0, leadingSlices[index]);
+      let startCut = removedStart && ownedText.startsWith(removedStart) ? removedStart.length : 0;
+      for (const item of trimmedEnd) {
+        const itemText = String(item?.text || '');
+        if (startCut > 0) {
+          if (!itemText) continue;
+          if (itemText.length <= startCut) {
+            startCut -= itemText.length;
+            continue;
+          }
+          items.push({ ...item, text: itemText.slice(startCut) });
+          startCut = 0;
+          continue;
+        }
+        items.push(item);
       }
     });
     return { text, items };

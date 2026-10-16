@@ -818,8 +818,9 @@ window.MaweGapRemovedMediaExport = Object.freeze({
     const knownAudio = /\.(wav|mp3|m4a|aac|flac|ogg|opus|wma|aiff?|ape)$/i.test(mediaName);
     const audio = config?.gapRemovedMediaKind === 'audio'
       || (!config?.gapRemovedMediaKind && (knownAudio || (!knownVideo && hasPlayerSource && player?.tagName === 'AUDIO')));
-    button.textContent = audio ? '重组后音频' : '重组后视频';
-    button.title = audio ? '按保留区域精确裁切音频，导出为 WAV。' : '按保留区域重组视频；切点可能受关键帧影响。';
+    const translate = (text) => window.MAWE_I18N?.translateText?.(text) || text;
+    button.textContent = translate(audio ? '重组后音频' : '重组后视频');
+    button.title = translate(audio ? '按保留区域精确裁切音频，导出为 WAV。' : '按保留区域重组视频；切点可能受关键帧影响。');
     // 烧录需要视频画面；音频工程隐藏去空隙菜单里的烧录入口。
     const burnItem = document.getElementById('download-gap-removed-burn-video');
     if (burnItem) burnItem.hidden = audio || !config?.canBurnVideoExport || !config?.burnVideoJobsUrl

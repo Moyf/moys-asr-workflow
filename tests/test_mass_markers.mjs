@@ -343,6 +343,30 @@ test('merge fold keeps spoken-only boundary items (Greptile P1: items trimming)'
   assert.equal(conserved.items.map(item => item.text).join(''), conserved.text);
 });
 
+test('merge folding retains every spoken-only item and later literal symbols', () => {
+  const cases = [
+    [
+      { text: '**甲乙**', items: [{ text: '甲', start: 0, end: 250 }, { text: '乙', start: 250, end: 500 }] },
+      { text: '**丙**', items: [{ text: '丙', start: 500, end: 1000 }] },
+    ],
+    [
+      { text: '**甲**', items: [{ text: '甲', start: 0, end: 500 }] },
+      { text: '**乙-丙**', items: [{ text: '乙', start: 500, end: 600 },
+        { text: '-', start: 600, end: 700 }, { text: '丙', start: 700, end: 1000 }] },
+    ],
+    [
+      { text: '**甲**', items: [{ text: '甲', start: 0, end: 500 }] },
+      { text: '**+乙**', items: [{ text: '+乙', start: 500, end: 1000 }] },
+    ],
+  ];
+  for (const rows of cases) {
+    const before = JSON.stringify(rows);
+    const joined = h.joinSegmentTextsMassFold(rows, '', 'both');
+    assert.deepEqual(plain(joined.items), plain(rows.flatMap(row => row.items)));
+    assert.equal(JSON.stringify(rows), before, 'merge must not mutate the source word timings');
+  }
+});
+
 test('conversion completion spans a style across 3+ output rows (Greptile P1)', () => {
   const clock = { unit: 'milliseconds', getStart: s => s.start, getEnd: s => s.end,
     getItemStart: s => s.start, getItemEnd: s => s.end, setItemStart: () => {}, setItemEnd: () => {} };
