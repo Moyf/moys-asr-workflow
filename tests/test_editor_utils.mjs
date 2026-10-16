@@ -6669,6 +6669,34 @@ test('alignItemsToText aligns fully matchable items leftmost like the old greedy
   )), [0, 3, 6]);
 });
 
+test('alignItemsToText can anchor an ordered timed suffix from the end', () => {
+  assert.deepEqual(JSON.parse(JSON.stringify(
+    helpers.alignItemsToText('甲乙甲乙', [{ text: '甲' }, { text: '乙' }], { fromEnd: true })
+      .map((record) => [record.textStart, record.textEnd]),
+  )), [[2, 3], [3, 4]]);
+  assert.deepEqual(JSON.parse(JSON.stringify(
+    helpers.alignItemsToText('ABCDEF', [{ text: 'D' }, { text: 'E' }, { text: 'F' }], { fromEnd: true })
+      .map((record) => [record.textStart, record.textEnd]),
+  )), [[3, 4], [4, 5], [5, 6]]);
+});
+
+test('right-aligned multi-character words preserve original items and Unicode offsets', () => {
+  for (const [text, items, expected] of [
+    ['上海上海前进', [{ text: '上海', start: 2000 }, { text: '前进', start: 3000 }], [[2, 4], [4, 6]]],
+    ['前🙂A前🙂A', [{ text: '🙂A', start: 2000 }], [[5, 8]]],
+  ]) {
+    const original = JSON.stringify(items);
+    const records = helpers.alignItemsToText(text, items, { fromEnd: true });
+    assert.deepEqual(JSON.parse(JSON.stringify(records.map(record => [record.textStart, record.textEnd]))), expected);
+    records.forEach((record, index) => {
+      assert.equal(record.item, items[index]);
+      assert.equal(record.itemText, items[index].text);
+      assert.equal(text.slice(record.textStart, record.textEnd), items[index].text);
+    });
+    assert.equal(JSON.stringify(items), original);
+  }
+});
+
 test('alignItemsToText drops the extra item when occurrences run out', () => {
   // 只有 2 处「A」：前两个对齐 1、3，最后一个为 null（丢尾不丢首）。
   assert.deepEqual(JSON.parse(JSON.stringify(

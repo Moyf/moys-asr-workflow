@@ -1,8 +1,8 @@
 import {expect, test} from '@playwright/test';
-import {readFileSync} from 'node:fs';
+import {readFileSync, realpathSync} from 'node:fs';
 import {execFileSync} from 'node:child_process';
 import {join} from 'node:path';
-import {pathToFileURL} from 'node:url';
+import {fileURLToPath, pathToFileURL} from 'node:url';
 import {buildPortableBlankEditor, cleanupTempDir, disableOnboarding,
   findFreePort, makeTempDir, startBlankServer} from './helpers.mjs';
 import {readSources} from '../../scripts/build-editor.mjs';
@@ -61,8 +61,8 @@ for (const transport of ['file', 'HTTP']) {
     expect(boot.root).toBe('');
     expect(boot.server === null).toBe(transport === 'file');
     if (transport === 'file') {
-      expect(new URL(boot.sfx, pathToFileURL(portable)).href)
-        .toBe(pathToFileURL(join(process.cwd(), 'web/sfx') + '/').href);
+      expect(realpathSync(fileURLToPath(new URL(boot.sfx, pathToFileURL(portable)))))
+        .toBe(realpathSync(join(process.cwd(), 'web/sfx')));
     } else expect(boot.sfx).toBe('/sfx/');
     const result = await page.evaluate(() => {
       const project = {schema:'moy.asr.project.v1', media:'',
