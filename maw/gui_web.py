@@ -2103,7 +2103,7 @@ class LauncherApi:
             probe_path=EDITOR_HEALTH_PROBE_PATH,
             probe_timeout=EDITOR_HEALTH_PROBE_TIMEOUT,
         ) and (not json_text or not owned_server_running):
-            if json_text and str(payload.get("mediaPath") or "").strip():
+            if json_text:
                 return _error_result("port", "server_media_busy", "")
             return {"ok": True, "url": launch_url, "serverAlreadyRunning": True}
         if not json_text:
@@ -3061,6 +3061,8 @@ class LauncherApi:
             value = self.postprocess_retry_context.get("runDirectory")
             if value:
                 directory = Path(str(value)).expanduser().resolve()
+        if (directory is None or not directory.is_dir()) and self.result is not None:
+            directory = self.result.srt_path.parent
         if directory is None:
             return {"ok": False, "error": "没有可打开的自动后处理中间产物。"}
         return _open_existing_path(directory)
@@ -3318,7 +3320,9 @@ class LauncherApi:
                     "type": "log",
                     "message": f"[计时] 全程耗时为媒体时长的 {total_elapsed / media_duration:.2f} 倍",
                 })
-        self.postprocess_workspace_directory = auto_run_directory if auto_run_directory and auto_run_directory.is_dir() else None
+        self.postprocess_workspace_directory = (
+            auto_run_directory if auto_run_directory.is_dir() else self.result.srt_path.parent
+        ) if auto_run_directory is not None else None
         self._emit({"type": "done", "result": {"srtPath": str(result.srt_path), "translatedSrtPath": str(self.postprocess_translation_srt_path or ""), "jsonPath": str(result.json_path), "htmlPath": str(result.html_path or ""), "rawPath": str(result.raw_path or ""), "videoPath": str(self.postprocess_media_path or ""), "postprocessRunDirectory": str(self.postprocess_workspace_directory or "")}})
         if self.worker is threading.current_thread():
             self.worker = None
@@ -3466,7 +3470,7 @@ class LauncherApi:
         self.postprocess_translation_srt_path = auto_result.translated_srt_path
         self.postprocess_media_path = auto_result.media_path
         self.postprocess_retry_context = None
-        self.postprocess_workspace_directory = auto_result.run_directory if auto_result.run_directory.is_dir() else None
+        self.postprocess_workspace_directory = auto_result.run_directory if auto_result.run_directory.is_dir() else auto_result.srt_path.parent
         self._emit({"type": "done", "result": {"srtPath": str(self.result.srt_path), "translatedSrtPath": str(self.postprocess_translation_srt_path or ""), "jsonPath": str(self.result.json_path), "htmlPath": str(self.result.html_path or ""), "rawPath": str(self.result.raw_path or ""), "videoPath": str(self.postprocess_media_path or ""), "postprocessRunDirectory": str(self.postprocess_workspace_directory or "")}})
         if self.worker is threading.current_thread():
             self.worker = None
@@ -3534,6 +3538,8 @@ class LauncherApi:
             )
             suffix = f"（{artifacts}）" if artifacts else ""
             self._emit({"type": "log", "message": f"[后处理 {event.get('index', '?')}/{event.get('total', '?')}] {step}：完成{suffix}"})
+            for warning in event.get("warnings", ()):
+                self._emit({"type": "log", "message": f"[后处理] {warning}"})
         elif stage == "done":
             artifacts = " / ".join(
                 name
@@ -3541,6 +3547,8 @@ class LauncherApi:
                 if name
             )
             self._emit({"type": "log", "message": f"[后处理] 全部完成：{artifacts}"})
+            for comparison_path in event.get("comparisonPaths", ()):
+                self._emit({"type": "log", "message": f"[后处理] 处理前后对比：{comparison_path}"})
         elif stage == "cancelled":
             self._emit({"type": "log", "message": "[后处理] 已取消；原始转写产物仍然保留。"})
         elif stage == "failed":

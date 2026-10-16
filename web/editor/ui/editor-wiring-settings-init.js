@@ -261,7 +261,7 @@ MaweDom.wordTimingRowHeight?.addEventListener('change', () => {
 MaweDom.wordTimingSecondsPerRow?.addEventListener('change', () => {
   const next = Number(MaweDom.wordTimingSecondsPerRow.value);
   MaweSettings.updateEditorSettings({ wordTimingSecondsPerRow: next });
-  if (window.MaweWordTiming?.enabled === true) MaweCoreState.waveformEditor?.setSecondsPerRow(next);
+  if (window.MaweWordTiming?.enabled === true) MaweDisplaySettings.applyWordTimingSecondsPerRow();
 });
 // 波形工具栏的「双语 / 重叠」快捷开关：复用工程设置开关的 change 逻辑。
 document.getElementById('multi-subtitle-quick-toggle')?.addEventListener('click', () => {

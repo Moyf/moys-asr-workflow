@@ -57,6 +57,20 @@ class FakeWindow:
 
 @final
 class GuiWebBridgeTests(CompactContainerAssertions, unittest.TestCase):
+    def test_open_postprocess_folder_falls_back_after_intermediate_cleanup(self) -> None:
+        self.api.postprocess_workspace_directory = self.root / "deleted-run"
+        self.api.result = SimpleNamespace(srt_path=self.root / "final.srt")
+        with mock.patch("maw.gui_web._open_existing_path", return_value={"ok": True}) as opened:
+            self.assertEqual(self.api.open_postprocess_folder(), {"ok": True})
+        opened.assert_called_once_with(self.root)
+
+    def test_pipeline_done_logs_final_comparison_paths(self) -> None:
+        with mock.patch.object(self.api, "_emit") as emit:
+            self.api._handle_postprocess_pipeline_event({"stage": "done", "comparisonPaths": ["final/proofread.html", "final/translate.html"]})
+        messages = [call.args[0].get("message", "") for call in emit.call_args_list]
+        self.assertIn("[后处理] 处理前后对比：final/proofread.html", messages)
+        self.assertIn("[后处理] 处理前后对比：final/translate.html", messages)
+
     def setUp(self) -> None:
         self.temp_dir = tempfile.TemporaryDirectory()
         self.root = Path(self.temp_dir.name)
