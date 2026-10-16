@@ -20,7 +20,7 @@ export function createUtilsModule(dependencies) {
   ]);
 
   const DEFAULT_EDITOR_SUBTITLE_COLOR_PALETTE = Object.freeze({
-    yellow: '#c4a019',
+    yellow: '#f9ca1f',
     green: '#66bb6a',
     red: '#f07f6f',
     purple: '#bf89e6',

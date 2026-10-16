@@ -58,6 +58,7 @@
       if (candidatePlayer !== oldPlayer && oldParent) {
         oldParent.replaceChild(oldPlayer, candidatePlayer);
         MaweCoreState.player = oldPlayer;
+        observeAssSubtitlePreviewPlayer(oldPlayer);
         MaweCoreState.waveformEditor?.attachPlayer(MaweCoreState.player);
       } else if (previousSource) {
         const previous = oldPlayer.querySelector('source');

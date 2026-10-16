@@ -403,7 +403,7 @@ test('play and pause events capture their current source head before sending the
   } finally {globalThis.document=previousDocument;globalThis.window=previousWindow;}
 });
 
-test('thumbnail settings wire the mode select and decode toggle with marks-aware status',async()=>{
+test('thumbnail settings wire all three modes, cache-only decoding and matching canvas titles',async()=>{
   const source=fs.readFileSync(new URL('../web/editor/media/waveform/thumbnails.js',import.meta.url),'utf8');
   const {createWaveformModule}=await import(`data:text/javascript;base64,${Buffer.from(source).toString('base64')}`);
   const elements={
@@ -412,7 +412,8 @@ test('thumbnail settings wire the mode select and decode toggle with marks-aware
     'waveform-thumbnail-status':{textContent:''},
   };
   const calls=[];
-  const controller={mode:'marks',enabled:true,decodeEnabled:false,state:'ready',persisted:true,
+  const controller={mode:'marks',enabled:true,visible:true,interval:2000,decodeEnabled:false,state:'ready',persisted:true,
+    keyframesInRange:()=>[],picture:()=>null,
     setPlayhead(){},setPlaying(){},setEnabled(value){calls.push(['enabled',value]);},setDecodeEnabled(value){calls.push(['decode',value]);},setMode(value){calls.push(['mode',value]);}};
   const previousDocument=globalThis.document, previousWindow=globalThis.window;
   globalThis.document={getElementById:id=>elements[id]??null,addEventListener(){}};
@@ -420,7 +421,19 @@ test('thumbnail settings wire the mode select and decode toggle with marks-aware
   try {
     const methods=createWaveformModule({thumbnailCore:{createController:()=>controller},ROW_GAP:10,
       localizedWaveformMessage:(zh)=>zh});
-    const editor={renderedRows:[],setThumbnailBinding(){}};
+    const context={setTransform(){},fillRect(){}};
+    const canvas={title:'',getContext:()=>context};
+    const row={_thumbnailCanvas:canvas,clientWidth:320,dataset:{startMs:'0',endMs:'10000'}};
+    const editor=Object.assign(Object.create(Object.defineProperties({},methods)),{
+      renderedRows:[row],setThumbnailBinding(){},_getWaveColors:()=>({rowBg:'#000',rowBorder:'#111'}),
+    });
+    const assertPaintedTitle=expected=>{
+      canvas.title='before repaint';
+      editor.drawThumbnails(row,true);
+      assert.equal(canvas.title,expected,'a real redraw preserves the mode-aware title');
+      assert.equal(elements['waveform-thumbnail-mode'].parentElement.title,expected);
+      assert.equal(elements['waveform-thumbnail-status'].textContent,expected);
+    };
     methods.initThumbnails.value.call(editor);
     assert.equal(elements['waveform-thumbnail-mode'].value,'marks','the select mirrors the controller mode');
     assert.equal(elements['waveform-thumbnail-decode'].checked,false,'the decode checkbox mirrors the controller state');
@@ -431,11 +444,33 @@ test('thumbnail settings wire the mode select and decode toggle with marks-aware
     assert.deepEqual(calls,[['decode',false],['mode','hidden']],'the mode select forwards its value');
     methods.updateThumbnailStatus.value.call(editor);
     assert.equal(elements['waveform-thumbnail-status'].textContent,'显示关键帧标记');
+    assert.equal(canvas.title,'显示关键帧标记');
+    assertPaintedTitle('显示关键帧标记');
     assert.equal(elements['waveform-thumbnail-mode'].disabled,false);
     assert.equal(elements['waveform-thumbnail-decode'].disabled,true,'decode never applies to marks mode');
+    controller.mode='strip';
+    methods.updateThumbnailStatus.value.call(editor);
+    assert.equal(elements['waveform-thumbnail-status'].textContent,'仅显示缓存缩略图，不实时补帧');
+    assert.equal(elements['waveform-thumbnail-mode'].parentElement.title,canvas.title);
+    assert.equal(canvas.title,'仅显示缓存缩略图，不实时补帧');
+    assertPaintedTitle('仅显示缓存缩略图，不实时补帧');
+    assert.equal(elements['waveform-thumbnail-decode'].disabled,false);
+    controller.decodeEnabled=true;
+    methods.updateThumbnailStatus.value.call(editor);
+    assert.equal(elements['waveform-thumbnail-status'].textContent,'画面已就绪');
+    assert.equal(canvas.title,'画面已就绪');
+    assertPaintedTitle('画面已就绪');
+    assert.equal(elements['waveform-thumbnail-decode'].checked,true);
     controller.mode='hidden';
     methods.updateThumbnailStatus.value.call(editor);
-    assert.equal(elements['waveform-thumbnail-status'].textContent,'视频画面已隐藏');
-    assert.equal(elements['waveform-thumbnail-mode'].parentElement.title,'视频画面已隐藏');
+    assert.equal(elements['waveform-thumbnail-status'].textContent,'视频缩略图已隐藏');
+    assert.equal(elements['waveform-thumbnail-mode'].parentElement.title,'视频缩略图已隐藏');
+    assert.equal(canvas.title,'视频缩略图已隐藏');
+    assert.equal(elements['waveform-thumbnail-decode'].disabled,true);
+    globalThis.window.MaweBoot.SERVER_CONFIG.thumbnailBinding='';
+    methods.updateThumbnailStatus.value.call(editor);
+    assert.equal(elements['waveform-thumbnail-status'].textContent,'从本机 Server 加载视频后可用');
+    assert.equal(elements['waveform-thumbnail-mode'].disabled,true);
+    assert.equal(elements['waveform-thumbnail-decode'].disabled,true);
   } finally {globalThis.document=previousDocument;globalThis.window=previousWindow;}
 });

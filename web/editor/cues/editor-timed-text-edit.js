@@ -114,9 +114,12 @@
 
   function renderTimedTextEditRowDiff(rowElement, reportRow) {
     const diffElement = rowElement.querySelector('.timed-text-edit-row-diff');
-    if (!diffElement) return;
+    const timingElement = rowElement.querySelector('.timed-text-edit-row-timing');
+    if (!diffElement || !timingElement) return;
     diffElement.replaceChildren();
-    diffElement.hidden = !reportRow.changed && !reportRow.timingChanged && !reportRow.timingEstimated;
+    timingElement.replaceChildren();
+    diffElement.hidden = !reportRow.changed;
+    timingElement.hidden = !reportRow.timingChanged && !reportRow.timingEstimated && !reportRow.deleted;
     if (reportRow.changed) {
       appendTimedTextEditDiffLine(diffElement, '修改前：', reportRow.diff.before, 'before');
       appendTimedTextEditDiffLine(diffElement, '修改后：', reportRow.diff.after, 'after');
@@ -125,19 +128,19 @@
       const timing = document.createElement('div');
       timing.className = 'timed-text-edit-timing-change';
       timing.textContent = `时间范围：${MaweCueElements.fmtSrtTime(reportRow.beforeStart)} – ${MaweCueElements.fmtSrtTime(reportRow.beforeEnd)} → ${MaweCueElements.fmtSrtTime(reportRow.afterStart)} – ${MaweCueElements.fmtSrtTime(reportRow.afterEnd)}`;
-      diffElement.appendChild(timing);
+      timingElement.appendChild(timing);
     }
     if (reportRow.timingEstimated) {
       const estimated = document.createElement('div');
       estimated.className = 'timed-text-edit-estimated-timing';
       estimated.textContent = '时间范围为自动估算（按原字幕范围/文字长度分配）';
-      diffElement.appendChild(estimated);
+      timingElement.appendChild(estimated);
     }
     if (reportRow.deleted) {
       const deleted = document.createElement('div');
       deleted.className = 'timed-text-edit-deleted-label';
       deleted.textContent = '整句删除（时间码已转移到其他字幕）';
-      diffElement.appendChild(deleted);
+      timingElement.appendChild(deleted);
     }
   }
 
@@ -298,7 +301,10 @@
       const diff = document.createElement('div');
       diff.className = 'timed-text-edit-row-diff';
       diff.hidden = true;
-      main.append(textarea, diff);
+      const timing = document.createElement('div');
+      timing.className = 'timed-text-edit-row-timing';
+      timing.hidden = true;
+      main.append(textarea, diff, timing);
       row.append(meta, main);
       MaweDom.timedTextEditRows.appendChild(row);
     });
@@ -754,7 +760,7 @@
       allSourceSegments: JSON.parse(JSON.stringify(selection.allSegments || [])),
       sourceSegments: JSON.parse(JSON.stringify(sourceSegments || [])),
       texts: (sourceSegments || []).map((segment) => String(segment?.text || '')),
-      view: 'rows',
+      view: MaweBoot.DATA.timed_text_edit_view === 'single' ? 'single' : 'rows',
       filter: null,
       singleText: (sourceSegments || []).map((segment) => String(segment?.text || '')).join('\n'),
       singleLineError: '',

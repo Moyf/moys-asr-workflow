@@ -208,10 +208,13 @@
 
 
   // 定位：跳转播放头到标记位置（区段取起点），跟随播放逻辑滚动波形；
-  // play: true 时跳转后立即播放（「定位试听」按钮），列表项 / 波形点击仍只跳转。
+  // play: true 时区段只试听其范围，单点跳转后播放；列表项 / 波形点击仍只跳转。
   function locateMarker(markerId, { play = false } = {}) {
     const marker = findMarker(markerId);
     if (!marker) return false;
+    if (play && Number.isFinite(marker.end) && marker.end > marker.start) {
+      return MaweMediaPlayback.auditionRange(marker.start, marker.end);
+    }
     const player = MaweCoreState.player;
     if (player && Number.isFinite(Number(player.currentTime))) {
       player.currentTime = marker.start / 1000;

@@ -2244,6 +2244,19 @@ class PostprocessTests(unittest.TestCase):
         self.assertIsNotNone(result.srt_path)
         self.assertEqual(result.srt_path.name, "clip.翻译为中文.回填.srt")
 
+    def test_llm_translation_majority_backfill_outputs_normal_translation(self) -> None:
+        result = run_llm_postprocess(
+            LlmPostprocessRequest(project_path=self.project_path, srt_path=None,
+                output_mode=OutputMode.BOTH, operation="translate_en", custom_prompt="",
+                embed_translations=True, generate_comparison=True),
+            complete=lambda _prompt, cues: {"groups": [{"id": cue["id"], "text": f"Translation {cue['id']}"} for cue in cues]},
+        )
+        self.assertNotIn("backfill", result.project_path.name)
+        self.assertEqual([segment["text"] for segment in project_segments(read_project(result.project_path))], ["Translation c0001", "Translation c0002"])
+        self.assertTrue(result.comparison_path.is_file())
+        self.assertIn("2/2", "\n".join(result.warnings))
+        self.assertIn("请关闭回填", "\n".join(result.warnings))
+
     def test_llm_translation_rejects_merge_bilingual_and_backfill_together(self) -> None:
         with self.assertRaisesRegex(ValueError, "不能同时启用"):
             _ = run_llm_postprocess(
@@ -3093,7 +3106,7 @@ class MediaToolTests(CompactContainerAssertions, unittest.TestCase):
         self.assertNotIn("clip.srt'", command[command.index("-vf") + 1])
         self.assertIn("libx264", command)
         self.assertEqual(command[command.index("-preset") + 1], "medium")
-        self.assertEqual(command[command.index("-crf") + 1], "18")
+        self.assertEqual(command[command.index("-crf") + 1], "21")
         self.assertEqual(command[command.index("-b:a") + 1], "192k")
         self.assertEqual(len(popen.call_args_list), 2)
         self.assertFalse(list(self.root.glob(".*.ass")))

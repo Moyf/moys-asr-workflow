@@ -11,7 +11,7 @@ test.beforeAll(async()=>{
 });
 test.afterAll(async()=>{await server?.stop();cleanupTempDir(tempDir);});
 
-async function enableFilmstrip(page) {
+async function enableFilmstrip(page, state='ready') {
   const demands=[];
   const png=await page.evaluate(()=>{
     const canvas=document.createElement('canvas');canvas.width=160;canvas.height=90;
@@ -28,22 +28,26 @@ async function enableFilmstrip(page) {
     if(body)demands.push(body);
     if(url.pathname.endsWith('/release')) {await route.fulfill({json:{ok:true}});return;}
     const interval=body?.interval_ms||2000;
-    await route.fulfill({json:{binding:'test-video',view:body?.view??Number(url.searchParams.get('view')),lease:'test-lease',state:'ready',
+    await route.fulfill({json:{binding:'test-video',view:body?.view??Number(url.searchParams.get('view')),lease:'test-lease',state,
       source_identity:{signature:'fixture',stream:0},cache_revision:'fixture-1',duration_ms:DURATION_MS,persisted:false,
       asset_url_template:'/__filmstrip/asset/{asset}?binding={binding}&revision={cache_revision}',
-      samples:Array.from({length:Math.ceil(DURATION_MS/interval)},(_,index)=>({requested_ms:index*interval,actual_pts_ms:index*interval,
-        status:'target',asset:'frame',crop_rect:[0,0,160,90],cache_revision:'fixture-1',image_spec:{width:160,height:90}}))}});
+      samples:state==='ready'?Array.from({length:Math.ceil(DURATION_MS/interval)},(_,index)=>({requested_ms:index*interval,actual_pts_ms:index*interval,
+        status:'target',asset:'frame',crop_rect:[0,0,160,90],cache_revision:'fixture-1',image_spec:{width:160,height:90}})):[]}});
   });
   await page.evaluate(()=>{
     MaweBoot.SERVER_CONFIG.thumbnailUrls={status:'/__filmstrip/status',demand:'/__filmstrip/demand',asset:'/__filmstrip/asset/',release:'/__filmstrip/release'};
     MaweBoot.SERVER_CONFIG.thumbnailBinding='test-video';
     MaweBoot.SERVER_CONFIG.thumbnailBaseReady=true;
-    MaweCoreState.waveformEditor.thumbnailController.setEnabled(true);
-    MaweCoreState.waveformEditor.thumbnailController.setMode('strip');
     MaweCoreState.waveformEditor.setThumbnailBinding('test-video');
   });
-  await expect(page.locator('.waveform-filmstrip').first()).toBeVisible();
-  await page.waitForFunction(()=>MaweCoreState.waveformEditor.thumbnailController.bytes>0);
+  await page.locator('#waveform-thumbnail-mode').selectOption('strip',{force:true});
+  if(state==='ready') {
+    await expect(page.locator('.waveform-filmstrip').first()).toBeVisible();
+    await page.waitForFunction(()=>MaweCoreState.waveformEditor.thumbnailController.bytes>0);
+  } else {
+    await page.waitForFunction(expected=>MaweCoreState.waveformEditor.thumbnailController.state===expected,state);
+    await expect(page.locator('.waveform-filmstrip')).toHaveCount(0);
+  }
   return demands;
 }
 
@@ -75,9 +79,16 @@ test('filmstrip preserves the waveform region, seek and scroll anchor',async({pa
   await page.screenshot({path:'.artifacts/filmstrip/filmstrip-settings.png'});
   await page.evaluate(()=>window.MAWE_I18N.applyLanguage('en',false));
   await expect(page.locator('#waveform-thumbnail-status')).toHaveText('Pictures ready · Session cache');
+  await expect(page.locator('#waveform-thumbnail-mode')).toHaveAttribute('aria-label','Video thumbnails');
   await expect(page.locator('#waveform-thumbnail-mode')).toHaveValue('strip');
   await expect(page.locator('#waveform-thumbnail-mode option[value="marks"]')).toHaveText('Keyframe marks');
   await page.screenshot({path:'.artifacts/filmstrip/filmstrip-settings-en.png'});
+  const decodeOffDemandStart=demands.length;
+  await page.locator('#waveform-thumbnail-decode').uncheck();
+  await expect(page.locator('#waveform-thumbnail-status')).toContainText('Cached thumbnails only');
+  await expect.poll(()=>demands.slice(decodeOffDemandStart).some(demand=>demand.decode===false&&Array.isArray(demand.ranges))).toBe(true);
+  await expect(page.locator('.waveform-filmstrip').first()).toBeVisible();
+  await page.locator('#waveform-thumbnail-decode').check();
   await page.evaluate(()=>window.MAWE_I18N.applyLanguage('zh',false));
   await page.locator('#waveform-settings-toggle').click();
   const anchors=await page.evaluate(async()=>{
@@ -135,3 +146,15 @@ test('filmstrip dragging seeks across rows and keeps source-frame snapping',asyn
   await page.mouse.click(x,current.y+24);
   expect(await page.evaluate(()=>document.getElementById('player').currentTime)).toBeCloseTo(expected,3);
 });
+
+for(const [state,message] of [['error','画面缓存暂不可用'],['unavailable','当前媒体没有可用画面']]) {
+  test(`filmstrip ${state} keeps explicit status and the new mode control available`,async({page})=>{
+    await disableOnboarding(page);await page.goto(server.url);
+    await page.waitForFunction(()=>MaweCoreState.waveformEditor?.getPayload());
+    await enableFilmstrip(page,state);
+    await page.locator('#waveform-settings-toggle').click();
+    await expect(page.locator('#waveform-thumbnail-mode')).toHaveValue('strip');
+    await expect(page.locator('#waveform-thumbnail-mode')).toBeEnabled();
+    await expect(page.locator('#waveform-thumbnail-status')).toContainText(message);
+  });
+}

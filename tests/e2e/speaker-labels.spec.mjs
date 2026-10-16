@@ -120,7 +120,7 @@ test('configures preview-only speaker labels and independently controls SRT expo
     };
   });
   expect(previewStructure).toEqual({
-    color: 'rgb(196, 160, 25)',
+    color: 'rgb(249, 202, 31)',
     fontFamily: previewStructure.parentFontFamily,
     parentFontFamily: previewStructure.parentFontFamily,
     childNodes: ['overlay-main-speaker-label', 'Alpha'],
@@ -143,7 +143,7 @@ test('configures preview-only speaker labels and independently controls SRT expo
     };
   });
   expect(colorStylePreview).toEqual({
-    color: 'rgb(196, 160, 25)',
+    color: 'rgb(249, 202, 31)',
     textDecorationLine: 'none',
     textShadow: '',
     textStroke: '',
@@ -164,7 +164,7 @@ test('configures preview-only speaker labels and independently controls SRT expo
   expect(colorStylePreview.color).toBe('rgb(255, 255, 255)');
   expect(colorStylePreview.textDecorationLine).toBe('none');
   expect(colorStylePreview.textShadow).toBe('');
-  expect(colorStylePreview.textStroke).toContain('rgb(196, 160, 25)');
+  expect(colorStylePreview.textStroke).toContain('rgb(249, 202, 31)');
   expect(colorStylePreview.paintOrder).toBe('stroke');
   const strokeLabelColors = await page.evaluate(() => {
     const label = document.getElementById('overlay-main-speaker-label');
@@ -178,7 +178,7 @@ test('configures preview-only speaker labels and independently controls SRT expo
   // 下划线模式：说话人标签沿用颜色快照，不回退到字幕默认颜色。
   await page.locator('#subtitle-color-style').selectOption('underline');
   await expect(page.locator('#subtitle-color-style')).toHaveValue('underline');
-  await expect(page.locator('#overlay-main-speaker-label')).toHaveCSS('color', 'rgb(196, 160, 25)');
+  await expect(page.locator('#overlay-main-speaker-label')).toHaveCSS('color', 'rgb(249, 202, 31)');
   await page.locator('#subtitle-color-style').selectOption('stroke');
   await page.locator('#subtitle-color-underline').uncheck();
   await expect(page.locator('#subtitle-color-style-control')).toBeHidden();
@@ -351,7 +351,7 @@ test('keeps ASS speaker labels in the same style across preview resizing and ful
   // 文本共用同一字号/字体（样式级下划线也作用于标签 run）。
   expect(smallWindow.canvasSize).toEqual([1920, 1080]);
   expect(smallWindow.speakerText).toBe('Host：');
-  expect(smallWindow.speakerColor.toLowerCase()).toBe('#c4a019');
+  expect(smallWindow.speakerColor.toLowerCase()).toBe('#f9ca1f');
   expect(smallWindow.firstItemText).toBe('Host：');
   expect(smallWindow.firstCssSize).toBeGreaterThan(0);
   expect(smallWindow.underlined).toBe(true);
@@ -488,7 +488,7 @@ test('uses ASS speaker-only colour for the label while preserving the base text 
   expect(preview.text).toBe('Host：Alpha');
   expect(preview.speakerText).toBe('Host：');
   // speaker 模式：标签跟随调色色，正文保持样式主色；两者同一 run 管线绘制。
-  expect(preview.speakerColor.toLowerCase()).toBe('#c4a019');
+  expect(preview.speakerColor.toLowerCase()).toBe('#f9ca1f');
   expect(preview.textColor.toLowerCase()).toBe('#123456');
   expect(preview.labelIsFirstRun).toBe(true);
   expect(preview.sameSize).toBe(true);
@@ -534,7 +534,7 @@ test('overlay track speaker labels render through the canvas in ASS mode', async
   expect(payload.domLabelInvisible).toBe(true);
   // text 颜色模式：标签跟随调色色，画在叠加轨首行行首。
   expect(payload.speakerText).toBe('Host：');
-  expect(payload.speakerColor.toLowerCase()).toBe('#c4a019');
+  expect(payload.speakerColor.toLowerCase()).toBe('#f9ca1f');
   expect(payload.firstItemText).toBe('Host：');
-  expect(payload.labelFill.toLowerCase()).toBe('#c4a019');
+  expect(payload.labelFill.toLowerCase()).toBe('#f9ca1f');
 });

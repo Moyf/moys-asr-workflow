@@ -78,7 +78,7 @@ class BurnAssVideoTests(CompactContainerAssertions, unittest.TestCase):
         self.assertEqual(command[command.index("-map") + 1], "0:v:0")
         self.assertEqual(command[command.index("-map", command.index("-map") + 1) + 1], "0:a?")
         self.assertEqual(command[command.index("-c:v") + 1], "libx264")
-        self.assertEqual(command[command.index("-crf") + 1], "18")
+        self.assertEqual(command[command.index("-crf") + 1], "21")
         self.assertEqual(command[command.index("-preset") + 1], "medium")
         self.assertEqual(command[command.index("-c:a") + 1], "aac")
         self.assertEqual(command[command.index("-b:a") + 1], "192k")

@@ -171,7 +171,9 @@
     getOverlayCreateEnabled: () => getOverlayTrack()?.enabled === true,
     onCueCreateRejected: (reason) => {
       if (reason === 'too-short') MaweHint.flashHint('该空白区域不足 100ms，无法新增字幕', 'warning');
-      if (reason === 'occupied') MaweHint.flashHint('该位置已有字幕，无法新增字幕', 'warning');
+      if (reason === 'occupied') MaweHint.flashHint(getOverlayTrack()?.enabled === true
+        ? '该位置已有字幕，无法新增字幕'
+        : '该位置已有字幕，无法新增字幕。如果你需要重叠字幕，请先开启「重叠」功能。', 'warning');
     },
     // 字词时间码显示时双击波形主字幕块的拦截提示（列表行内编辑不受影响）。
     onMainCueDoubleClickBlocked: () => MaweHint.flashHint('请先退出字词码模式再编辑主字幕！', 'warning'),

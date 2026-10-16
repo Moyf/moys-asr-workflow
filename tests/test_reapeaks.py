@@ -285,6 +285,42 @@ class ReapeaksParseTests(unittest.TestCase):
 
 
 class GenerateReapeaksTests(unittest.TestCase):
+    def test_stream_decode_success_with_stderr_keeps_output(self) -> None:
+        self._assert_stream_decode_result(0, b"generated peaks", "ffmpeg 警告")
+
+    def test_stream_decode_nonzero_exit_rejects_output(self) -> None:
+        self._assert_stream_decode_result(1, None, "退出码 1")
+
+    def _assert_stream_decode_result(self, returncode: int, expected: bytes | None, log_fragment: str) -> None:
+        wav = io.BytesIO()
+        with wave.open(wav, "wb") as output:
+            output.setnchannels(1)
+            output.setsampwidth(2)
+            output.setframerate(8000)
+            output.writeframes(b"\x00\x00" * 100)
+        proc = mock.Mock(stdout=io.BytesIO(wav.getvalue()))
+        proc.wait.return_value = returncode
+        proc.poll.return_value = returncode
+        streamer = mock.Mock()
+        streamer.finish.return_value = b"generated peaks"
+        kernel = mock.Mock()
+        kernel.ReapeaksStreamer.return_value = streamer
+        def spawn(*_args, **kwargs):
+            kwargs["stderr"].write(b"[hevc] SPS 0 does not exist")
+            return proc
+        log = io.StringIO()
+        with mock.patch.object(quapeaks, "resolve_ffmpeg", return_value="ffmpeg"), mock.patch.object(
+            quapeaks, "_load_rust_kernel", return_value=kernel
+        ), mock.patch.object(quapeaks.subprocess, "Popen", side_effect=spawn), redirect_stdout(log):
+            result = quapeaks.generate_reapeaks_stream_bytes("clip.mp4")
+        self.assertEqual(result, expected)
+        self.assertIn(log_fragment, log.getvalue())
+        if returncode == 0:
+            streamer.finish.assert_called_once()
+            self.assertNotIn("解码失败", log.getvalue())
+        else:
+            streamer.finish.assert_not_called()
+
     """生成 → 解析 往返：验证 MAW 能自建 .ReaPeaks 并被只读路径读取。"""
 
     def setUp(self) -> None:
