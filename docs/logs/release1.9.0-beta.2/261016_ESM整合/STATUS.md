@@ -17,7 +17,7 @@ ESM 导入图装配，旧 `editor-scripts.txt`、`editor-modules.json` 和运行
   `test_waveform.EditorAssetTests.test_project_waveform_survives_loading_media`
   的旧源码文本断言已更新，随后该文件 25/25 通过。剩余
   `test_thumbnails.ThumbnailIntegrationTests.test_nonzero_start_pts_is_normalized`
-  仍得到 3500 ms 而非 4000 ms；缩略图实现和测试与 `origin/main` 一致。
+  仍得到 3500 ms 而非 4000 ms；在纯 `origin/main` 用同一解释器单跑亦复现。
 
 ## 对照上游的浏览器红灯
 
@@ -29,6 +29,7 @@ ESM 导入图装配，旧 `editor-scripts.txt`、`editor-modules.json` 和运行
 修复：启动时安装工程设置访问器，控件同步读取真实工程设置。JKL 测试在上游
 通过，整合分支原测试失败；等待浏览器异步 seek 收束后验证停止位置，连续
 3 次通过。定时文本搜索在上游通过、整合分支全量偶发红，整合分支单跑通过，
-尚未证明并发条件下稳定。Launcher 取消匹配 2 条尚未在上游执行同命令对照。
+尚未证明并发条件下稳定。Launcher 取消匹配 2 条已在纯 `origin/main`
+用同一命令复现同样的隐藏控件超时。
 
 本记录只证明已列的层与用例；再次全量 Chromium 尚未在最终修订上执行。
