@@ -381,6 +381,11 @@ def _video_encoder_options(mode: str, crf: int, preset: str) -> list[str]:
     raise ValueError(f"unsupported video encoder mode: {mode}")
 
 
+# 编辑器整片烧录（server-editor）与工具箱压制字幕共用同一套编码器探测与参数映射。
+video_encoder_attempts = _video_encoder_attempts
+video_encoder_options = _video_encoder_options
+
+
 def _subtitle_time_ms(value: str) -> int | None:
     match = re.fullmatch(r"\s*(\d+):(\d{2}):(\d{2})[.,](\d{1,3})\s*", value)
     if not match:

@@ -121,7 +121,7 @@ class ScriptTimestampTests(unittest.TestCase):
     @unittest.skipUnless(shutil.which("ffmpeg"), "FFmpeg unavailable")
     def test_real_audio_pipeline_writes_loadable_artifacts_without_asr(self):
         with tempfile.TemporaryDirectory() as directory:
-            root = Path(directory)
+            root = Path(directory).resolve()
             bundle = root / "bundle"
             bundle.mkdir()
             media = bundle / "tone.wav"

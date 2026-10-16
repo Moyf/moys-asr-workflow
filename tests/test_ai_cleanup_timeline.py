@@ -16,6 +16,42 @@ from tests.test_postprocess_ai_cleanup import AiCleanupTestCase, _project, _segm
 
 
 class TimelineCleanupTest(CompactContainerAssertions, AiCleanupTestCase):
+    def test_mixed_retakes_cannot_keep_old_tail_and_cut_new_tail(self):
+        artifact, project, _ = self.execute(
+            ["我也可以只我也可以只显示图片", "但是不说话", "我也可以只显示图片", "但是不说话"],
+            "[c001] ~~我也可以只我也可以只显示图片~~ %删除：旧版%\n[c002] 但是不说话\n"
+            "[c003] 我也可以只显示图片\n[c004] ~~但是不说话~~ %删除：重复%",
+        )
+        self.assertEqual([bool(segment.get("disabled")) for segment in project["segments"]], [True, True, False, False])
+        self.assertEqual(artifact.stats["removed"], 2)
+        self.assertEqual(artifact.stats["pendingReview"], 0)
+
+    def test_take_continuity_does_not_discard_unique_old_tail(self):
+        _, project, _ = self.execute(
+            ["演示这个功能", "但是不能导出", "演示这个功能", "但是不能预览"],
+            "[c001] ~~演示这个功能~~\n[c002] 但是不能导出\n[c003] 演示这个功能\n[c004] 但是不能预览",
+        )
+        self.assertFalse(project["segments"][1].get("disabled"))
+        self.assertFalse(project["segments"][3].get("disabled"))
+
+    def test_literal_restart_with_only_keeps_one_complete_qualified_expression(self):
+        artifact, _project, _ = self.execute(["我也可以只我也可以只显示图片"], "[c001] ~~我也可以只~~我也可以只显示图片 %删除：重复起头%")
+        self.assertEqual(artifact.stats["removedItems"], 5)
+        self.assertEqual(artifact.stats["pendingReview"], 0)
+        self.assertIn("我也可以只显示图片", artifact.srt_path.read_text(encoding="utf-8-sig"))
+        self.assertNotIn("我也可以只我也可以只", artifact.srt_path.read_text(encoding="utf-8-sig"))
+
+    def test_retake_keeps_later_complete_pair_including_its_repeated_ending(self):
+        artifact, project, _ = self.execute(
+            ["我也可以只我也可以只显示图片", "但是不说话", "我也可以只显示图片", "但是不说话"],
+            "[c001] ~~我也可以只我也可以只显示图片~~ %删除：旧版，后面完整重录%\n"
+            "[c002] ~~但是不说话~~ %删除：旧版收尾%\n"
+            "[c003] 我也可以只显示图片\n[c004] 但是不说话",
+        )
+        self.assertEqual([bool(segment.get("disabled")) for segment in project["segments"]], [True, True, False, False])
+        self.assertEqual([segment["text"] for segment in cleaned_srt_segments(project, project["segments"]) if not segment.get("disabled")], ["我也可以只显示图片", "但是不说话"])
+        self.assertNotIn("我也可以只我也可以只", artifact.srt_path.read_text(encoding="utf-8-sig"))
+
     def execute(self, texts, draft, *, scan=None, reviews=(), comparison=False):
         source = _write_project(self.directory, _project([_segment(i * 2000, (i + 1) * 2000, text) for i, text in enumerate(texts)]))
         original = source.read_bytes()
@@ -27,7 +63,7 @@ class TimelineCleanupTest(CompactContainerAssertions, AiCleanupTestCase):
             if "这是漏清扫描" in prompt:
                 return {"timeline": scan if scan is not None else "\n".join(row["currentTimeline"] for row in rows if row.get("contextOnly") != "true")}
             return {"timeline": draft}
-        artifact = run_ai_cleanup(AiCleanupRequest(project_path=source, srt_path=None, script_path=None, output_mode=OutputMode.BOTH, output_directory=self.directory, generate_comparison=comparison), complete=complete)
+        artifact = run_ai_cleanup(AiCleanupRequest(project_path=source, srt_path=None, script_path=None, output_mode=OutputMode.BOTH, output_directory=self.directory, generate_comparison=comparison, review_enabled=True), complete=complete)
         self.assertEqual(source.read_bytes(), original)
         return artifact, json.loads(artifact.project_path.read_text(encoding="utf-8")), calls
 

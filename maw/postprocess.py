@@ -6,7 +6,7 @@ import copy
 import difflib
 import re
 from collections.abc import Callable, Collection, Mapping, Sequence
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from enum import StrEnum
 from pathlib import Path
 from typing import Final
@@ -268,6 +268,34 @@ def run_llm_postprocess(
     on_status: LlmStatus | None = None,
     is_cancelled: Callable[[], bool] | None = None,
     begin_commit: Callable[[], bool] | None = None,
+) -> SubtitleArtifact:
+    if request.operation == "resegment":
+        from maw.postprocess_resegment import run_resegment
+        return run_resegment(request, complete=complete, on_status=on_status, is_cancelled=is_cancelled, begin_commit=begin_commit)
+    from maw.postprocess_llm_diagnostics import LlmFailureTrace
+
+    trace = LlmFailureTrace(complete, request.project_path or request.srt_path, request.output_directory, request.operation)
+    try:
+        return _run_llm_postprocess(request, complete=trace, on_status=on_status, is_cancelled=is_cancelled, begin_commit=begin_commit)
+    except Exception as error:
+        hint = trace.failure(error)
+        if hint:
+            if isinstance(error, LlmClientError):
+                raise replace(error, message=f"{error}\n{hint}") from error
+            if isinstance(error, PostprocessStepError):
+                raise _postprocess_step_error(f"{error}\n{hint}", error) from error
+            if isinstance(error, ValueError):
+                raise ValueError(f"{error}\n{hint}") from error
+        raise
+
+
+def _run_llm_postprocess(
+    request: LlmPostprocessRequest,
+    *,
+    complete: LlmComplete,
+    on_status: LlmStatus | None,
+    is_cancelled: Callable[[], bool] | None,
+    begin_commit: Callable[[], bool] | None,
 ) -> SubtitleArtifact:
     _raise_if_cancelled(is_cancelled)
     if request.operation == "resegment":

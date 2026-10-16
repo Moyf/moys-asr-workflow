@@ -15,6 +15,13 @@ _CONDITIONS = re.compile(
     r"\b(?:not|never|no|without|only|unless|if|at least|at most|may|might|must|should)\b"
 )
 _FILLER_ONLY = re.compile("[啊呀呢吧呃嗯哦唉]+")
+_NEGATIONS = re.compile(r"不|没|未|无|除非|\b(?:not|never|no|without|unless)\b", re.I)
+
+
+def safe_echo_phrase(text: str) -> bool:
+    """Literal repeated positive qualifiers can restart; numbers/negation cannot."""
+    value = unicodedata.normalize("NFKC", text).lower()
+    return not (_NUMBERS.search(value) or _NEGATIONS.search(value))
 
 
 def protected_information_loss_reason(source: str, replacement: str) -> str | None:
@@ -68,7 +75,8 @@ def local_information_loss_reason(
     normalized_removed = unicodedata.normalize("NFKC", removed).lower()
     if _NUMBERS.search(normalized_removed):
         return "局部内容包含数字或比例，需要人工确认"
-    if _CONDITIONS.search(normalized_removed):
+    adjacent_literal = bool(removed) and (after.startswith(removed) or before.endswith(removed))
+    if _CONDITIONS.search(normalized_removed) and not (adjacent_literal and safe_echo_phrase(removed)):
         return "局部内容包含否定或限定条件，需要人工确认"
     lost = normalize(removed)
     # Filler can surround an aborted restart, but never hide substantive words.
