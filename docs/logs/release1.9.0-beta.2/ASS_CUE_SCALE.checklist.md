@@ -8,7 +8,7 @@ status: pending
 
 # 主字幕单句缩放核对
 
-> 基线 `2cc67041`；PR #248 仍打开。最终 Editor CI 浏览器测试 29/29 通过，三条 Greptile inline thread 已回复并解决；此清单保留给维护者复核四角手势、真实工程及播放器边界。
+> 已组合 main 24c6b202；本轮 56 项浏览器、67 项 Python 和 34 项 Node 验证通过，三条 Greptile 反馈已逐条复核。人工体验仍待确认，最终 CI 与合并状态见 PR 评论。
 
 ## 实现 / 审查结论
 <!-- id: implementation-review -->
@@ -27,7 +27,7 @@ Python 契约测试：用 `scripts/run_check.py --timeout 180` 运行 `scripts/r
 浏览器 e2e：提交 `c03bf021` 的 Editor workflow run `38875181279` 运行 `tests/e2e/ass-cue-position.spec.mjs --project=chromium`；预期：29 项通过，涵盖九锚点、横竖屏、震动、libass / ASS 帧、滚轮可见性、命令事务与缩放堆叠；实际：29/29 通过。10 行夹具在字号 90 下未触发自动适配，最终设为字号 150 后通过
 差异空白检查：运行 `git diff --check`；预期：无空白错误
 
-2026-10-17 当前组合验证：67 项 Python、34 项 Node 和完整 18 项 Chromium 测试通过，包含九锚点、横竖屏、Canvas／Server libass／导出实际帧、滚轮可见性及事务隔离。Pillow 按本 PR 锁文件版本放在临时依赖目录；FFmpeg 使用本机已有的 libass 构建，未修改共享虚拟环境。倍率 1.125 的跨语言舍入不一致已复现并统一；震动起终点及不同移动事件次数的探针通过，不将疑点记为缺陷。
+2026-10-17 当前组合验证：67 项 Python、34 项 Node 通过；单独 18 项 ASS Chromium 与组合后的四个 spec 共 56 项 Chromium 测试通过，包含九锚点、横竖屏、Canvas／Server libass／导出实际帧、滚轮可见性及事务隔离。Pillow 按本 PR 锁文件版本放在临时依赖目录；FFmpeg 使用本机已有的 libass 构建，未修改共享虚拟环境。倍率 1.125 的跨语言舍入不一致已复现并统一；震动起终点及不同移动事件次数的探针通过，不将疑点记为缺陷。
 
 ## 人工核验
 <!-- id: manual-acceptance -->
