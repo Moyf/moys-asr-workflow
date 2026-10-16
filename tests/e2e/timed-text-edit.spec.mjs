@@ -13,6 +13,14 @@ import {
 let tempDir;
 let server;
 
+test.beforeEach(async ({ page }) => {
+  // Tests share one server fixture; a view-only change is now a project edit.
+  // Keep automatic saves from leaking one test's draft/project into the next.
+  await page.addInitScript(() => {
+    localStorage.setItem('moy.asr.editor.settings.v1', JSON.stringify({autoSaveProject: false}));
+  });
+});
+
 test.beforeAll(async () => {
   tempDir = makeTempDir('timed-text-edit');
   const mediaPath = join(tempDir, 'synthetic.wav');
@@ -293,11 +301,12 @@ test('English whole-text search mirror preserves subtitles through highlights an
     await expect(mirror).toHaveText('查找\n查找保存');
     await expect(textarea).toHaveValue('查找\n查找保存');
   }
-  const spacing = await page.locator('.timed-text-edit-search').evaluate((element) => ({
-    margin: parseFloat(getComputedStyle(element).marginTop),
-    distance: element.getBoundingClientRect().top - element.previousElementSibling.getBoundingClientRect().bottom,
-  }));
-  expect(spacing.margin).toBeGreaterThanOrEqual(8);
+  const spacing = await page.locator('.timed-text-edit-search').evaluate((element) => {
+    const search = element.getBoundingClientRect();
+    const controls = element.previousElementSibling.getBoundingClientRect();
+    return {distance: search.left >= controls.right
+      ? search.left - controls.right : search.top - controls.bottom};
+  });
   expect(spacing.distance).toBeGreaterThanOrEqual(8);
   console.log('pure-text search spacing:', JSON.stringify(spacing));
   await page.locator('#timed-text-edit-modal').screenshot({ path: testInfo.outputPath('english-project-search.png') });
@@ -448,4 +457,97 @@ test('warning observer scans inserted rows without repeatedly traversing their p
   });
   expect(scans.parentScans).toBe(0);
   expect(scans.visitedElements).toBeLessThanOrEqual(200);
+});
+
+
+test('search clear, native focus order and row diff layout stay usable at narrow widths', async ({ page }, testInfo) => {
+  await page.addInitScript(() => localStorage.setItem('moy.asr.editor.onboarding.v1', 'completed'));
+  await page.goto(server.url);
+  await page.locator('#batch-operations-btn').click();
+  await page.locator('#timed-text-edit-btn').click();
+  await page.locator('#timed-text-edit-replace-toggle').click();
+  const find = page.locator('#timed-text-edit-find');
+  const replacement = page.locator('#timed-text-edit-replace');
+  await find.fill('abc');
+  await expect(find).toHaveAttribute('type', 'search');
+  await find.press('Tab');
+  await expect(replacement).toBeFocused();
+  await replacement.press('Shift+Tab');
+  await expect(find).toBeFocused();
+  const box = await find.boundingBox();
+  await page.mouse.click(box.x + box.width - 18, box.y + box.height / 2);
+  await expect(find).toHaveValue('');
+  await expect(page.locator('#timed-text-edit-search-count')).toHaveText('0/0');
+  await expect(page.locator('.timed-text-edit-row.search-current')).toHaveCount(0);
+  await page.locator('#timed-text-edit-rows textarea').first().fill('就是那颗');
+  const row = page.locator('.timed-text-edit-row').first();
+  await expect(row.locator('.timed-text-edit-row-diff')).toBeVisible();
+  await expect(row.locator('.timed-text-edit-timing-change')).toHaveCount(0);
+  const geometry = await row.evaluate(element => {
+    const input = element.querySelector('textarea').getBoundingClientRect();
+    const diff = element.querySelector('.timed-text-edit-row-diff').getBoundingClientRect();
+    return {gap: diff.left - input.right, topDifference: Math.abs(input.top - diff.top)};
+  });
+  expect(geometry.gap).toBeGreaterThanOrEqual(8);
+  expect(geometry.topDifference).toBeLessThan(2);
+  await page.locator('#timed-text-edit-case').focus();
+  expect(await page.locator('#timed-text-edit-case').evaluate(element => getComputedStyle(element).outlineStyle)).toBe('solid');
+  await page.locator('#timed-text-edit-modal').screenshot({path: testInfo.outputPath('timed-text-wide.png')});
+  await page.setViewportSize({width: 540, height: 760});
+  const overflow = await page.locator('#timed-text-edit-modal').evaluate(element => element.scrollWidth - element.clientWidth);
+  expect(overflow).toBeLessThanOrEqual(1);
+  await page.locator('#timed-text-edit-modal').screenshot({path: testInfo.outputPath('timed-text-narrow.png')});
+});
+
+test('timed-text view preference survives save and reopen and rows is omitted', async ({ page }) => {
+  await page.addInitScript(() => localStorage.setItem('moy.asr.editor.onboarding.v1', 'completed'));
+  await page.goto(server.url);
+  await page.evaluate(() => { MaweSettings.EDITOR_SETTINGS.autoSaveProject = false; });
+  await page.locator('#batch-operations-btn').click();
+  await page.locator('#timed-text-edit-btn').click();
+  await page.locator('#timed-text-edit-view [data-view="single"]').click();
+  expect(await page.evaluate(() => MaweServerSave.hasUnsavedProjectChanges())).toBe(true);
+  expect(await page.evaluate(() => MaweProjectSave.saveProjectToServer())).toBe(true);
+  expect(await page.evaluate(() => MaweServerSave.hasUnsavedProjectChanges())).toBe(false);
+  await page.reload();
+  await page.evaluate(() => { MaweSettings.EDITOR_SETTINGS.autoSaveProject = false; });
+  await page.locator('#batch-operations-btn').click();
+  await page.locator('#timed-text-edit-btn').click();
+  await expect(page.locator('#timed-text-edit-single-textarea')).toBeVisible();
+  await page.locator('#timed-text-edit-view [data-view="rows"]').click();
+  expect(await page.evaluate(() => MaweServerSave.hasUnsavedProjectChanges())).toBe(true);
+  expect(await page.evaluate(() => JSON.parse(MaweJsonRepair.buildJson()).timed_text_edit_view)).toBeUndefined();
+  expect(await page.evaluate(() => MaweProjectSave.saveProjectToServer())).toBe(true);
+  await page.reload();
+  await page.locator('#batch-operations-btn').click();
+  await page.locator('#timed-text-edit-btn').click();
+  await expect(page.locator('#timed-text-edit-rows')).toBeVisible();
+  expect(await page.evaluate(() => MaweBoot.DATA.timed_text_edit_view)).toBeUndefined();
+});
+
+test('unavailable single view falls back only at runtime and loading another project clears its preference', async ({ page }) => {
+  await page.addInitScript(() => localStorage.setItem('moy.asr.editor.onboarding.v1', 'completed'));
+  await page.goto(server.url);
+  await page.evaluate(() => {
+    const project = JSON.parse(MaweJsonRepair.buildJson());
+    project.timed_text_edit_view = 'single';
+    project.segments[0].text = '甲\n乙';
+    MaweProjectLoad.applyCanonicalProject(project, 'multiline.mosp');
+  });
+  await page.locator('#batch-operations-btn').click();
+  await page.locator('#timed-text-edit-btn').click();
+  await expect(page.locator('#timed-text-edit-rows')).toBeVisible();
+  await expect(page.locator('#timed-text-edit-view [data-view="single"]')).toBeDisabled();
+  expect(await page.evaluate(() => JSON.parse(MaweJsonRepair.buildJson()).timed_text_edit_view)).toBe('single');
+  expect(await page.evaluate(() => MaweState.hasProjectChanges())).toBe(false);
+  await page.evaluate(() => {
+    MaweBoot.DATA.timed_text_edit_view = 'rows';
+  });
+  expect(await page.evaluate(() => MaweState.hasProjectChanges())).toBe(true);
+  await page.evaluate(() => {
+    MaweProjectLoad.applyCanonicalProject(MaweProjectLoad.buildBlankProject(), 'blank.mosp');
+  });
+  expect(await page.evaluate(() => MaweBoot.DATA.timed_text_edit_view)).toBe('rows');
+  expect(await page.evaluate(() => MaweState.hasProjectChanges())).toBe(false);
+  expect(await page.evaluate(() => JSON.parse(MaweJsonRepair.buildJson()).timed_text_edit_view)).toBeUndefined();
 });

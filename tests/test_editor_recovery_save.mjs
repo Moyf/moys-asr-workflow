@@ -86,6 +86,32 @@ test('successful server saves keep their project-relative reference', async () =
   assert.deepEqual(calls.build, [false]);
 });
 
+test('changing only the timed-text view during a save keeps the newer preference dirty', async () => {
+  const {context, save} = fixture({failure: null});
+  // Use the content checkpoint owner; markSaved being called no longer means
+  // the current bytes match the request's acknowledged snapshot.
+  context.window = context;
+  for (const file of ['boot/editor-runtime', 'state/editor-state']) {
+    vm.runInContext(readFileSync(new URL(`../web/editor/${file}.js`, import.meta.url), 'utf8'), context);
+  }
+  context.MaweState.beginProjectSession();
+  context.MaweState.establishProjectCheckpoint();
+  let finish;
+  context.MaweHost.server.fetch = async () => new Promise(resolve => { finish = resolve; });
+  context.MaweBoot.DATA.timed_text_edit_view = 'single';
+  const pending = save();
+  context.MaweBoot.DATA.timed_text_edit_view = 'rows';
+  finish({ok: true, json: async () => ({ok: true, filename: 'captions.mosp'})});
+  assert.equal(await pending, true);
+  assert.equal(context.MaweState.hasProjectChanges(), true);
+  context.MaweBoot.DATA.timed_text_edit_view = 'single';
+  assert.equal(context.MaweState.hasProjectChanges(), false);
+  context.MaweBoot.DATA.timed_text_edit_view = 'rows';
+  context.MaweHost.server.fetch = async () => ({ok: true, json: async () => ({ok: true, filename: 'captions.mosp'})});
+  assert.equal(await save(), true);
+  assert.equal(context.MaweState.hasProjectChanges(), false);
+});
+
 test('non-connection errors do not trigger the recovery-download branch', async () => {
   const {calls, save} = fixture({failure: new Error('Invalid project')});
   assert.equal(await save(), false);

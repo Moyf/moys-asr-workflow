@@ -95,7 +95,7 @@ class VerificationChecklistTests(CompactContainerAssertions, unittest.TestCase):
         source["sections"][1]["blocks"][0]["text"] = payload
         source["sections"][1]["blocks"][1]["rows"][0][0] = payload
         source["sections"][2]["badge"]["text"] = payload
-        source["sections"][2]["blocks"][0]["entry"] = payload
+        source["sections"][2]["blocks"][0]["purpose"] = payload
         page = builder.render_source(source)
         self.assertNotIn('<script>alert(1)</script>', page)
         self.assertIn('&lt;script&gt;alert(1)&lt;/script&gt;', page)
@@ -133,8 +133,8 @@ class VerificationChecklistTests(CompactContainerAssertions, unittest.TestCase):
             with self.subTest(path=path), self.assertRaisesRegex(ValueError, message):
                 builder.render_source(source)
         source = example_source()
-        del source["sections"][2]["blocks"][0]["action"]
-        with self.assertRaisesRegex(ValueError, "missing fields: action"):
+        del source["sections"][2]["blocks"][0]["operation"]
+        with self.assertRaisesRegex(ValueError, "missing fields: operation"):
             builder.render_source(source)
         for source in ([], {"sections": []}):
             with self.assertRaises(ValueError):
@@ -159,8 +159,8 @@ class VerificationChecklistTests(CompactContainerAssertions, unittest.TestCase):
     def test_json_rejects_non_renderable_unicode_before_writing(self):
         for value in ('bad\ud800', 'bad\udfff', 'bad\0value'):
             source = example_source()
-            source["sections"][2]["blocks"][0]["entry"] = value
-            with self.subTest(value=repr(value)), self.assertRaisesRegex(ValueError, r"blocks\[0\].entry"):
+            source["sections"][2]["blocks"][0]["purpose"] = value
+            with self.subTest(value=repr(value)), self.assertRaisesRegex(ValueError, r"blocks\[0\].purpose"):
                 builder.render_source(source)
         source = example_source()
         source["sections"][0]["blocks"][0]["text"] = '汉字 😀 𠮷'

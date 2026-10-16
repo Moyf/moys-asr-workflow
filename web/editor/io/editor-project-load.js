@@ -95,6 +95,7 @@ function applyCanonicalProject(data, filename, { repaired = false } = {}) {
   MaweBoot.DATA.language_source = typeof data.language_source === 'string' ? data.language_source : undefined;
   MaweBoot.DATA.preserve_punctuation = typeof data.preserve_punctuation === 'boolean' ? data.preserve_punctuation : undefined;
   MaweBoot.DATA.split_mode = typeof data.split_mode === 'string' ? data.split_mode : undefined;
+  MaweBoot.DATA.timed_text_edit_view = data.timed_text_edit_view === 'single' ? 'single' : 'rows';
   MaweBoot.DATA.timestamp_granularity = typeof data.timestamp_granularity === 'string'
     ? data.timestamp_granularity : undefined;
   MaweBoot.DATA.model = data.model || '';

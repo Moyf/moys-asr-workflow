@@ -2535,7 +2535,7 @@
       result = null;
     }
     if (!result?.ok) return;
-    // CRF 为空串时不能 Number("") 成 0，必须跳过、保留界面默认值 18。
+    // CRF 为空串时不能 Number("") 成 0，必须跳过、保留界面默认值 21。
     const crfText = String(result.crf ?? "").trim();
     if (crfText) {
       const crf = Number(crfText);

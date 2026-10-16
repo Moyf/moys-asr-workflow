@@ -13,6 +13,18 @@ from maw.project import (
 
 
 class ProjectContractTests(unittest.TestCase):
+    def test_timed_text_edit_view_round_trips_and_rejects_invalid_values(self) -> None:
+        for view in ("rows", "single"):
+            with self.subTest(view=view):
+                self.assertEqual(normalize_project({"segments": [], "timed_text_edit_view": view})[
+                    "timed_text_edit_view"], view)
+        self.assertNotIn("timed_text_edit_view", normalize_project({"segments": []}))
+        for view in (None, True, 1, "", "grid", [], {}):
+            with self.subTest(view=view):
+                result = validate_project({"segments": [], "timed_text_edit_view": view})
+                self.assertFalse(result.ok)
+                self.assertIn("$.timed_text_edit_view", {error.path for error in result.errors})
+
     def test_punctuation_policy_is_optional_boolean_and_round_trips(self) -> None:
         project = {"preserve_punctuation": True, "segments": [{"start": 0, "end": 1000, "text": "你好，世界。"}]}
         self.assertTrue(normalize_project(project)["preserve_punctuation"])

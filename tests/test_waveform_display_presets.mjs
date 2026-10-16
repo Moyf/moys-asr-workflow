@@ -21,8 +21,8 @@ test('row length updates controls, invalidates rows and persists only valid chan
   assert.deepEqual(saved, [{ secondsPerRow: 5 }]);
 });
 
-function fixture(mode = 'basic') {
-  const editor = { settings: { rowHeight: 192, secondsPerRow: 20 },
+function fixture(mode = 'basic', rowHeight = 64, secondsPerRow = 2) {
+  const editor = { settings: { rowHeight, secondsPerRow },
     renders: 0,
     render() { this.renders += 1; },
     isMultiMode() { return mode === 'multi'; },
@@ -46,13 +46,13 @@ for (const first of ['multi', 'word']) {
       const second = first === 'multi' ? 'word' : 'multi';
       f.toggle(first, true);
       f.toggle(second, true);
-      assert.equal(f.editor.settings.rowHeight, second === 'word' ? 144 : 168);
+      assert.equal(f.editor.settings.rowHeight, 168);
       f.toggle(closeFirst, false);
       const remaining = closeFirst === 'word' ? 'multi' : 'word';
       assert.equal(f.editor.settings.rowHeight, remaining === 'word' ? 144 : 168);
-      assert.equal(f.editor.settings.secondsPerRow, remaining === 'word' ? 5 : 20);
+      assert.equal(f.editor.settings.secondsPerRow, 2);
       f.toggle(remaining, false);
-      assert.deepEqual(f.editor.settings, { rowHeight: 192, secondsPerRow: 20 });
+      assert.deepEqual(f.editor.settings, { rowHeight: 64, secondsPerRow: 2 });
     });
   }
 }
@@ -66,11 +66,11 @@ test('editing an inactive mode preset preserves the active mode and takes effect
   assert.equal(f.editor.settings.rowHeight, 144);
   f.settings.wordTimingRowHeight = 96;
   f.display.applyWaveformModeRowHeight();
-  assert.equal(f.editor.settings.rowHeight, 96);
+  assert.equal(f.editor.settings.rowHeight, 120);
   f.toggle('word', false);
   assert.equal(f.editor.settings.rowHeight, 120);
   f.toggle('multi', false);
-  assert.equal(f.editor.settings.rowHeight, 192);
+  assert.equal(f.editor.settings.rowHeight, 64);
 });
 
 test('repeated UI sync and project mode changes do not replace the baseline', () => {
@@ -83,7 +83,19 @@ test('repeated UI sync and project mode changes do not replace the baseline', ()
   f.toggle('multi', true);
   f.toggle('word', false);
   f.toggle('multi', false);
-  assert.deepEqual(f.editor.settings, { rowHeight: 192, secondsPerRow: 20 });
+  assert.deepEqual(f.editor.settings, { rowHeight: 64, secondsPerRow: 2 });
+});
+
+test('enabling another mode preserves a height manually enlarged while the first mode is active', () => {
+  const f = fixture();
+  f.toggle('word', true);
+  f.editor.setRowHeight(192);
+  f.toggle('multi', true);
+  assert.equal(f.editor.settings.rowHeight, 192);
+  f.toggle('multi', false);
+  assert.equal(f.editor.settings.rowHeight, 144);
+  f.toggle('word', false);
+  assert.equal(f.editor.settings.rowHeight, 64);
 });
 
 test('word presets redraw multi-row geometry once and preserve its baseline on return', () => {
@@ -91,10 +103,10 @@ test('word presets redraw multi-row geometry once and preserve its baseline on r
   assert.equal(f.display.syncWordTimingWaveformSettings(true), true);
   assert.equal(f.editor.renders, 1);
   assert.equal(f.editor.settings.rowHeight, 144);
-  assert.equal(f.editor.settings.secondsPerRow, 5);
+  assert.equal(f.editor.settings.secondsPerRow, 2);
   assert.equal(f.display.syncWordTimingWaveformSettings(false), true);
   assert.equal(f.editor.renders, 2);
-  assert.deepEqual(f.editor.settings, { rowHeight: 192, secondsPerRow: 20 });
+  assert.deepEqual(f.editor.settings, { rowHeight: 64, secondsPerRow: 2 });
 });
 
 test('word presets in basic mode leave the Canvas and horizontal view for an overlay-only refresh', () => {
@@ -102,5 +114,45 @@ test('word presets in basic mode leave the Canvas and horizontal view for an ove
   assert.equal(f.display.syncWordTimingWaveformSettings(true), false);
   assert.equal(f.display.syncWordTimingWaveformSettings(false), false);
   assert.equal(f.editor.renders, 0);
-  assert.deepEqual(f.editor.settings, { rowHeight: 192, secondsPerRow: 20 });
+  assert.deepEqual(f.editor.settings, { rowHeight: 64, secondsPerRow: 2 });
+});
+
+for (const first of ['multi', 'word']) {
+  for (const closeFirst of ['multi', 'word']) {
+    test(`enabling word caps row seconds at the preset and large heights never shrink: ${first}, close ${closeFirst} first`, () => {
+      const f = fixture('multi', 192, 20);
+      const second = first === 'multi' ? 'word' : 'multi';
+      for (const mode of [first, second]) {
+        f.toggle(mode, true);
+        assert.equal(f.editor.settings.rowHeight, 192);
+      }
+      // 每行长度按可见范围大小排序：20 秒视窗比 5 秒小，开启字词后收紧到预设。
+      assert.equal(f.editor.settings.secondsPerRow, 5);
+      f.toggle(closeFirst, false);
+      if (closeFirst === 'word') {
+        assert.deepEqual(f.editor.settings, { rowHeight: 192, secondsPerRow: 20 });
+      } else {
+        assert.deepEqual(f.editor.settings, { rowHeight: 192, secondsPerRow: 5 });
+      }
+      f.toggle(closeFirst === 'word' ? 'multi' : 'word', false);
+      assert.deepEqual(f.editor.settings, { rowHeight: 192, secondsPerRow: 20 });
+    });
+  }
+}
+
+test('changing the word row-length preset while active never zooms out past the baseline', () => {
+  const f = fixture('multi', 144, 2);
+  f.toggle('word', true);
+  assert.equal(f.editor.settings.secondsPerRow, 2);
+  f.settings.wordTimingSecondsPerRow = 10;
+  f.display.applyWordTimingSecondsPerRow();
+  assert.equal(f.editor.settings.secondsPerRow, 2);
+  const g = fixture('multi', 144, 8);
+  g.toggle('word', true);
+  assert.equal(g.editor.settings.secondsPerRow, 5);
+  g.settings.wordTimingSecondsPerRow = 2;
+  g.display.applyWordTimingSecondsPerRow();
+  assert.equal(g.editor.settings.secondsPerRow, 2);
+  g.toggle('word', false);
+  assert.equal(g.editor.settings.secondsPerRow, 8);
 });

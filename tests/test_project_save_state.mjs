@@ -136,3 +136,68 @@ test('a failed old handle save cannot show an error on a different project', asy
   assert.equal(c.MaweBoot.PROJECT_NAME, 'new');
   assert.equal(c.MaweState.hasProjectChanges(), false);
 });
+
+for (const destination of ['server', 'handle', 'save-as']) {
+  test(`view preference ${destination} completion acknowledges its bytes and preserves later switches`, async () => {
+    const c = fixture(), completion = deferred(), started = deferred();
+    const handle = { name: 'view.mosp' };
+    let written;
+    c.MaweBoot.DATA.timed_text_edit_view = 'single';
+    c.MaweHost.server.fetch = (_url, options) => {
+      written = JSON.parse(options.body).project;
+      started.resolve();
+      return completion.promise;
+    };
+    c.MaweHost.files.pickSaveFile = async () => handle;
+    c.MaweHost.files.writeBlob = async (_handle, build) => {
+      written = JSON.parse(await build().text());
+      started.resolve();
+      await completion.promise;
+    };
+    if (destination === 'handle') c.MaweServerSave.projectFileHandle = handle;
+    const saving = destination === 'save-as' ? c.MaweProjectSave.saveProjectAsToFile() : c.MaweProjectSave.saveCurrentProject();
+    await started.promise;
+    c.MaweBoot.DATA.timed_text_edit_view = 'rows';
+    completion.resolve(ok('view.mosp'));
+    await saving;
+    assert.equal(written.timed_text_edit_view, 'single');
+    assert.equal(c.MaweState.hasProjectChanges(), true);
+    c.MaweBoot.DATA.timed_text_edit_view = 'single';
+    assert.equal(c.MaweState.hasProjectChanges(), false);
+  });
+}
+
+test('view-only failed writes, cancelled save-as and backup-only preserve the saved preference', async () => {
+  const c = fixture();
+  c.MaweBoot.DATA.timed_text_edit_view = 'single';
+  c.MaweHost.server.fetch = async () => ok('backup.mosp');
+  assert.equal(await c.MaweProjectSave.saveProjectToServer({ backupOnly: true }), true);
+  assert.equal(c.MaweState.hasProjectChanges(), true);
+  c.MaweHost.files.pickSaveFile = async () => { throw Object.assign(new Error('cancelled'), { name: 'AbortError' }); };
+  await c.MaweProjectSave.saveProjectAsToFile();
+  assert.equal(c.MaweState.hasProjectChanges(), true);
+  c.MaweServerSave.projectFileHandle = { name: 'failure.mosp' };
+  c.MaweHost.files.writeBlob = async () => { throw new Error('disk full'); };
+  assert.equal(await c.MaweProjectSave.saveCurrentProject(), false);
+  assert.equal(c.MaweState.hasProjectChanges(), true);
+  delete c.MaweBoot.DATA.timed_text_edit_view;
+  assert.equal(c.MaweState.hasProjectChanges(), false);
+});
+
+test('an old server view save cannot acknowledge or rename a new project', async () => {
+  const c = fixture(), response = deferred();
+  c.MaweBoot.DATA.timed_text_edit_view = 'single';
+  c.MaweHost.server.fetch = () => response.promise;
+  const saving = c.MaweProjectSave.saveCurrentProject();
+  c.MaweState.beginProjectSession();
+  c.MaweBoot.DATA.timed_text_edit_view = 'rows';
+  c.MaweState.establishProjectCheckpoint();
+  c.MaweBoot.PROJECT_NAME = 'new';
+  c.MaweBoot.DATA.timed_text_edit_view = 'single';
+  response.resolve(ok('old.mosp'));
+  assert.equal(await saving, false);
+  assert.equal(c.MaweBoot.PROJECT_NAME, 'new');
+  assert.equal(c.MaweState.hasProjectChanges(), true);
+  c.MaweBoot.DATA.timed_text_edit_view = 'rows';
+  assert.equal(c.MaweState.hasProjectChanges(), false);
+});

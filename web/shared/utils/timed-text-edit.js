@@ -345,11 +345,14 @@ export function createUtilsModule(dependencies) {
         itemCoverageData: coverage,
         itemReuse: reuse.percent,
         itemReuseData: reuse,
-        beforeStart: sourceSlice.items[0]?.start ?? Number(output?.start),
-        beforeEnd: sourceSlice.items[sourceSlice.items.length - 1]?.end ?? Number(output?.end),
+        beforeStart: structural ? Number(source[sourceIndexes[0]]?.start)
+          : sourceSlice.items[0]?.start ?? Number(output?.start),
+        beforeEnd: structural ? Number(source[sourceIndexes[sourceIndexes.length - 1]]?.end)
+          : sourceSlice.items[sourceSlice.items.length - 1]?.end ?? Number(output?.end),
         afterStart: Number(output?.start),
         afterEnd: Number(output?.end),
-        timingChanged: structural,
+        timingChanged: structural && (Number(source[sourceIndexes[0]]?.start) !== Number(output?.start)
+          || Number(source[sourceIndexes[sourceIndexes.length - 1]]?.end) !== Number(output?.end)),
         timingEstimated: meta.timingEstimated === true,
       };
     });
@@ -393,8 +396,7 @@ export function createUtilsModule(dependencies) {
         beforeEnd: Number(segment?.end),
         afterStart,
         afterEnd,
-        timingChanged: affected
-          || afterStart !== Number(segment?.start) || afterEnd !== Number(segment?.end),
+        timingChanged: afterStart !== Number(segment?.start) || afterEnd !== Number(segment?.end),
       };
     });
     const changedRows = rows.filter((row) => row.changed);

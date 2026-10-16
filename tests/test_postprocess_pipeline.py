@@ -97,6 +97,141 @@ class PostprocessPipelineTests(CompactContainerAssertions, unittest.TestCase):
         script.write_text("正字\n保留\n", encoding="utf-8")
         return {"id": "match", "enabled": enabled, "scriptPath": str(script)}
 
+    def test_multistep_comparisons_survive_all_translation_wrappers(self) -> None:
+        settings = {"deepseek": {"apiKey": "key", "baseUrl": "https://example.test", "model": "model", "verified": "1"}}
+        for mode in ("track", "bilingual", "backfill"):
+            for retain in (False, True):
+                with self.subTest(mode=mode, retain=retain):
+                    events = []
+                    def fake_process(request, **_kwargs):
+                        project = json.loads(request.project_path.read_text(encoding="utf-8"))
+                        if request.operation.startswith("translate"):
+                            project["segments"][0]["text"] = "Translation"
+                        stem = request.operation
+                        output_project = request.output_directory / f"{stem}.mosp"
+                        output_srt = request.output_directory / f"{stem}.srt"
+                        comparison = request.output_directory / f"{stem}.html"
+                        output_project.write_text(json.dumps(project), encoding="utf-8")
+                        output_srt.write_bytes(request.srt_path.read_bytes())
+                        comparison.write_text(f"report-{stem}", encoding="utf-8")
+                        return SubtitleArtifact(request.project_path, request.srt_path, output_project, output_srt, comparison_path=comparison)
+                    steps = (
+                        {"id": "proofread", "enabled": True, "generateComparison": True},
+                        {"id": "translate", "enabled": True, "target": "en", "generateComparison": True,
+                         "mergeBilingual": mode == "bilingual", "embedTranslations": mode == "backfill"},
+                        {"id": "burn", "enabled": True},
+                    )
+                    video = self.root / "burned.mp4"
+                    video.write_bytes(b"video")
+                    ffmpeg = self.root / "ffmpeg.exe"
+                    ffmpeg.write_bytes(b"fake ffmpeg")
+                    with mock.patch("maw.postprocess_pipeline.run_llm_postprocess", side_effect=fake_process), mock.patch(
+                        "maw.postprocess_pipeline.run_burn_subtitles", return_value=SimpleNamespace(media_path=video)
+                    ):
+                        result = run_postprocess_pipeline(self.plan(*steps, retain=retain), media_path=self.media,
+                            project_path=self.project, srt_path=self.srt, env_path=self.env_path,
+                            ffmpeg_path=ffmpeg, cancel_event=Event(), llm_settings=settings, on_event=events.append)
+                    paths = events[-1]["comparisonPaths"]
+                    self.assertEqual(len(paths), 2)
+                    self.assertTrue(all(Path(path).is_file() for path in paths))
+                    self.assertEqual([Path(path).read_text(encoding="utf-8") for path in paths], ["report-proofread", "report-translate_en"])
+                    self.assertEqual(events[-1]["outputDirectory"], str(result.srt_path.parent))
+                    self.assertEqual(result.run_directory.exists(), retain)
+                    self.assertTrue(result.project_path.is_file())
+                    self.assertTrue(result.srt_path.is_file())
+                    if retain:
+                        manifest = json.loads((result.run_directory / "manifest.json").read_text(encoding="utf-8"))
+                        self.assertEqual([item["comparisonPath"] for item in manifest["steps"][:2]], paths)
+
+    def test_majority_backfill_skips_but_publishes_translation_and_report(self) -> None:
+        events = []
+        def fake_process(request, **_kwargs):
+            project = json.loads(request.project_path.read_text(encoding="utf-8"))
+            for segment in project["segments"]:
+                segment["text"] = "Translated " + segment["text"]
+            output_project = request.output_directory / "translated.mosp"
+            output_srt = request.output_directory / "translated.srt"
+            comparison = request.output_directory / "translated.html"
+            output_project.write_text(json.dumps(project), encoding="utf-8")
+            output_srt.write_text("independent translation", encoding="utf-8")
+            comparison.write_text("translation review", encoding="utf-8")
+            return SubtitleArtifact(request.project_path, request.srt_path, output_project, output_srt, comparison_path=comparison)
+        for retain in (False, True):
+            with self.subTest(retain=retain), mock.patch("maw.postprocess_pipeline.run_llm_postprocess", side_effect=fake_process):
+                result = run_postprocess_pipeline(self.plan({"id": "translate", "enabled": True, "target": "en", "embedTranslations": True}, retain=retain),
+                    media_path=self.media, project_path=self.project, srt_path=self.srt, env_path=self.env_path,
+                    ffmpeg_path=None, cancel_event=Event(), on_event=events.append,
+                    llm_settings={"deepseek": {"apiKey": "key", "baseUrl": "https://example.test", "model": "model", "verified": "1"}}, ui_language="en")
+                self.assertNotIn("backfill", result.srt_path.name)
+                self.assertEqual(result.srt_path.read_text(encoding="utf-8"), "independent translation")
+                self.assertTrue(all(segment["text"].startswith("Translated ") for segment in json.loads(result.project_path.read_text(encoding="utf-8"))["segments"]))
+                self.assertIn("2/2", "\n".join(result.warnings))
+                self.assertTrue(Path(events[-1]["comparisonPaths"][0]).is_file())
+                step_done = next(event for event in reversed(events) if event["stage"] == "step_done")
+                self.assertIn("请关闭回填", "\n".join(step_done["warnings"]))
+                if retain:
+                    manifest = json.loads((result.run_directory / "manifest.json").read_text(encoding="utf-8"))
+                    self.assertFalse(manifest["steps"][0]["backfillApplied"])
+
+    def test_failed_comparison_publication_keeps_run_source(self) -> None:
+        from maw import postprocess_pipeline
+        events = []
+        def fake_process(request, **_kwargs):
+            project = request.output_directory / "processed.mosp"
+            srt = request.output_directory / "processed.srt"
+            comparison = request.output_directory / "comparison.html"
+            project.write_bytes(request.project_path.read_bytes())
+            srt.write_bytes(request.srt_path.read_bytes())
+            comparison.write_text("only report", encoding="utf-8")
+            return SubtitleArtifact(request.project_path, request.srt_path, project, srt, comparison_path=comparison)
+        original_copy = postprocess_pipeline._copy_atomic
+        def copy(source, destination, **kwargs):
+            if destination.suffix == ".html":
+                raise PermissionError("destination unavailable")
+            return original_copy(source, destination, **kwargs)
+        with mock.patch.object(postprocess_pipeline, "run_llm_postprocess", side_effect=fake_process), mock.patch.object(
+            postprocess_pipeline, "_copy_atomic", side_effect=copy
+        ), self.assertRaises(OSError):
+            run_postprocess_pipeline(self.plan({"id": "proofread", "enabled": True}), media_path=self.media,
+                project_path=self.project, srt_path=self.srt, env_path=self.env_path, ffmpeg_path=None,
+                cancel_event=Event(), on_event=events.append,
+                llm_settings={"deepseek": {"apiKey": "key", "baseUrl": "https://example.test", "model": "model", "verified": "1"}})
+        run_directory = Path(events[0]["runDirectory"])
+        self.assertEqual((run_directory / "comparison.html").read_text(encoding="utf-8"), "only report")
+        self.assertEqual(json.loads((run_directory / "manifest.json").read_text(encoding="utf-8"))["status"], "failed")
+
+    def test_skipped_backfill_retry_keeps_normal_translation_naming(self) -> None:
+        translated = self.root / "translated.mosp"
+        translated.write_text(json.dumps({"segments": [{"start": 0, "end": 1000, "text": "First"}, {"start": 1100, "end": 2000, "text": "Second"}]}), encoding="utf-8")
+        translated_srt = self.root / "translated.srt"
+        translated_srt.write_text("independent translation", encoding="utf-8")
+        ffmpeg = self.root / "ffmpeg.exe"
+        ffmpeg.write_bytes(b"fake ffmpeg")
+        video = self.root / "burned.mp4"
+        video.write_bytes(b"video")
+        def fake_process(request, **_kwargs):
+            project = request.output_directory / "translated.mosp"
+            srt = request.output_directory / "translated.srt"
+            project.write_bytes(translated.read_bytes())
+            srt.write_bytes(translated_srt.read_bytes())
+            return SubtitleArtifact(request.project_path, request.srt_path, project, srt)
+        plan = self.plan({"id": "translate", "enabled": True, "target": "en", "embedTranslations": True}, {"id": "burn", "enabled": True})
+        settings = {"deepseek": {"apiKey": "key", "baseUrl": "https://example.test", "model": "model", "verified": "1"}}
+        with mock.patch("maw.postprocess_pipeline.run_llm_postprocess", side_effect=fake_process), mock.patch(
+            "maw.postprocess_pipeline.run_burn_subtitles", side_effect=RuntimeError("burn failed")
+        ), self.assertRaises(PostprocessPipelineError) as failed:
+            run_postprocess_pipeline(plan, media_path=self.media, project_path=self.project, srt_path=self.srt,
+                env_path=self.env_path, ffmpeg_path=ffmpeg, cancel_event=Event(), llm_settings=settings)
+        error = failed.exception
+        with mock.patch("maw.postprocess_pipeline.run_burn_subtitles", return_value=SimpleNamespace(media_path=video)):
+            result = run_postprocess_pipeline(plan, media_path=self.media, project_path=self.project, srt_path=self.srt,
+                env_path=self.env_path, ffmpeg_path=ffmpeg, cancel_event=Event(), llm_settings=settings,
+                resume_directory=error.run_directory, resume_from=error.failed_index,
+                resume_project_path=error.current_project, resume_srt_path=error.current_srt, ui_language="en")
+        self.assertNotIn("backfill", result.srt_path.name)
+        self.assertEqual(result.srt_path.read_text(encoding="utf-8"), "independent translation")
+        self.assertFalse(result.run_directory.exists())
+
     def test_resegment_limit_survives_plan_and_request_and_invalid_field_validation(self) -> None:
         settings = {"deepseek": {"apiKey": "test-key", "baseUrl": "https://example.test/v1", "model": "test", "verified": "1"}}
         plan = self.plan({"id": "resegment", "enabled": True, "providerId": "deepseek", "maxChars": "18"})

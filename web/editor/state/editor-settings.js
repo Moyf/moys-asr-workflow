@@ -267,7 +267,7 @@
   const DEFAULT_SUBTITLE_COLOR = '#ffffff';
 
 
-  const DEFAULT_EXTENSION_SUBTITLE_COLOR = '#eac953';
+  const DEFAULT_EXTENSION_SUBTITLE_COLOR = '#f9ca1f';
 
 
   const SUBTITLE_COLOR_STYLE_VALUES = Object.freeze(['underline', 'text', 'stroke']);

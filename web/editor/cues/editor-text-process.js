@@ -57,7 +57,9 @@
 
 
   let wrapCharsScope = [];
-  let textProcessWrapPreset = null;
+  let textProcessWrapPresets = [];
+  let textProcessPreviewExpanded = false;
+  const textProcessPreviewOpenRows = new Map();
 
 
   let textProcessSelectionSnapshot = [];
@@ -128,15 +130,17 @@
 
 
   function getTextProcessOptions() {
-    const customWrap = textProcessWrapPreset?.id === 'custom';
+    const wraps = textProcessWrapPresets.map((preset) => preset.id === 'custom'
+      ? { left: textProcessPrefixInput.value, right: textProcessSuffixInput.value } : preset);
     return {
       trim: textProcessTrim.checked,
       capitalize: textProcessCapitalize.checked,
       convertChineseNumbers: textProcessConvertNumbers.checked,
       stripMarkdown: textProcessStripMarkdown.checked,
-      addWrapChars: Boolean(textProcessWrapPreset),
-      wrapLeft: customWrap ? textProcessPrefixInput.value : (textProcessWrapPreset?.left || ''),
-      wrapRight: customWrap ? textProcessSuffixInput.value : (textProcessWrapPreset?.right || ''),
+      addWrapChars: wraps.length > 0,
+      wrapPairs: wraps.map(({ left, right }) => ({ left, right })),
+      wrapLeft: wraps.map((preset) => preset.left).join(''),
+      wrapRight: wraps.map((preset) => preset.right).reverse().join(''),
       skipWrapped: true,
     };
   }
@@ -171,6 +175,9 @@
     const hasOperation = textProcessTrim.checked || textProcessCapitalize.checked
       || textProcessConvertNumbers.checked || textProcessStripMarkdown.checked || wrapHasCharacters;
     const targets = textProcessTargets();
+    textProcessPreview.querySelectorAll('details[data-target]').forEach((details) => {
+      textProcessPreviewOpenRows.set(details.dataset.target, details.open);
+    });
     textProcessPreview.replaceChildren();
     if (!hasOperation) {
       textProcessPreview.textContent = '请选择至少一项文本处理操作';
@@ -206,6 +213,8 @@
     changedRows.forEach((row) => {
       const details = document.createElement('details');
       details.className = 'replace-preview-row';
+      details.dataset.target = `${row.kind}:${row.trackId || ''}:${row.index}`;
+      details.open = textProcessPreviewOpenRows.get(details.dataset.target) ?? textProcessPreviewExpanded;
       detailRows.push(details);
       const title = document.createElement('summary');
       title.textContent = textProcessTargetLabel(row);
@@ -226,10 +235,13 @@
       };
       expandAllButton.addEventListener('click', () => {
         const expand = !detailRows.every((details) => details.open);
+        textProcessPreviewExpanded = expand;
+        textProcessPreviewOpenRows.clear();
         detailRows.forEach((details) => { details.open = expand; });
         refreshExpandLabel();
       });
       detailRows.forEach((details) => details.addEventListener('toggle', refreshExpandLabel));
+      refreshExpandLabel();
     }
     textProcessConfirm.disabled = false;
   }
@@ -237,11 +249,11 @@
 
 
   function refreshTextProcessInputState() {
-    const customWrap = textProcessWrapPreset?.id === 'custom';
+    const customWrap = textProcessWrapPresets.some((preset) => preset.id === 'custom');
     if (textProcessCustomWrapFields) textProcessCustomWrapFields.hidden = !customWrap;
     document.querySelectorAll('#text-process-wrap-presets-ass [data-wrap-preset-id], #text-process-wrap-presets-common [data-wrap-preset-id]')
       .forEach((button) => {
-      button.setAttribute('aria-pressed', String(button.dataset.wrapPresetId === (textProcessWrapPreset?.id || '')));
+      button.setAttribute('aria-pressed', String(textProcessWrapPresets.some((preset) => preset.id === button.dataset.wrapPresetId)));
     });
   }
 
@@ -318,7 +330,10 @@
 
 
   function openTextProcessModal() {
-    textProcessWrapPreset = null;
+    textProcessWrapPresets = [];
+    textProcessPreviewExpanded = false;
+    textProcessPreviewOpenRows.clear();
+    textProcessPreview.replaceChildren();
     if (!MaweBoot.DATA.segments.length && !MaweMultiSubtitleCore.getActiveExtensionTrack()?.segments?.length) {
       MaweHint.flashHint('当前没有可处理的字幕', 'invalid');
       return;
@@ -329,7 +344,7 @@
     refreshTextProcessSelectionControl();
     [textProcessTrim, textProcessCapitalize, textProcessConvertNumbers,
       textProcessStripMarkdown].forEach((input) => { input.checked = false; });
-    textProcessWrapPreset = null;
+    textProcessWrapPresets = [];
     textProcessPrefixInput.value = '';
     textProcessSuffixInput.value = '';
     refreshTextProcessInputState();
@@ -369,7 +384,8 @@
     refreshTextProcessInputState,
     closeTextProcessModal,
     openTextProcessModal,
-    set textProcessWrapPreset(value) { textProcessWrapPreset = value; },
+    get textProcessWrapPresets() { return [...textProcessWrapPresets]; },
+    set textProcessWrapPresets(value) { textProcessWrapPresets = [...value]; },
     wrapCharsModal,
     wrapCharsLeftInput,
     wrapCharsRightInput,

@@ -373,7 +373,7 @@ function validateV2SubtitleGroups(project, report = (_path, _message) => {}) {
     else {
       if (schema === GROUP_SCHEMA) validateV2SubtitleGroups(project, error);
       segments(project.segments, 'main', '$.segments');
-      for (const field of ['language', 'language_source', 'split_mode', 'timestamp_granularity']) optional(project, '$', field, string, 'must be a string');
+      for (const field of ['language', 'language_source', 'split_mode', 'timestamp_granularity', 'timed_text_edit_view']) optional(project, '$', field, string, 'must be a string');
       /** @type {[string, string[], string][]} */
       const metadataEnums = [
         ['language_source', ['detected', 'hint', 'inferred', 'unknown'], 'must be detected, hint, inferred, or unknown'],
@@ -381,6 +381,9 @@ function validateV2SubtitleGroups(project, report = (_path, _message) => {}) {
         ['timestamp_granularity', ['char', 'word', 'segment', 'unknown'], 'must be char, word, segment, or unknown'],
       ];
       for (const [key, values, message] of metadataEnums) if (string(project[key]) && !values.includes(project[key])) error(`$.${key}`, message);
+      if (Object.hasOwn(project, 'timed_text_edit_view') && !['rows', 'single'].includes(project.timed_text_edit_view)) {
+        error('$.timed_text_edit_view', 'must be rows or single');
+      }
       const overlay = project.overlay_track;
       if (overlay != null) {
         if (!object(overlay)) error('$.overlay_track', 'must be an object');

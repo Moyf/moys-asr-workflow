@@ -21,7 +21,7 @@ SPEC.loader.exec_module(build)
 
 def minimal_source(**overrides):
     source = {
-        "schema": "maw.verification-checklist.source.v1",
+        "schema": "maw.verification-checklist.source.v2",
         "title": "功能核对",
         "subtitle": "范围与边界",
         "sections": [{
@@ -30,8 +30,8 @@ def minimal_source(**overrides):
             "badge": {"kind": "todo", "text": "待核查"},
             "blocks": [
                 {"type": "note", "text": "自动化结果与未验证边界。"},
-                {"type": "check", "id": "export-01", "entry": "编辑器 → 导出",
-                 "action": "选择 SRT 并保存", "expected": "文件内容与字幕一致"},
+                {"type": "check", "id": "export-01", "purpose": "导出内容正确",
+                 "operation": "编辑器 → 导出：选择 SRT 并保存", "expected": "文件内容与字幕一致"},
             ],
         }],
     }
@@ -55,8 +55,8 @@ class MarkdownRoundTripTests(unittest.TestCase):
                 {"type": "command", "text": "uv run python tools/build.py --flag"},
                 {"type": "table", "headers": ["命令", "结果"],
                  "rows": [["a|b", "12 passed"], ["", ""]]},
-                {"type": "check", "id": "mixed-01", "entry": "入口",
-                 "action": "操作步骤", "expected": "预期结果"},
+                {"type": "check", "id": "mixed-01", "purpose": "导出内容正确",
+                 "operation": "操作步骤", "expected": "预期结果"},
             ],
         }])
         markdown = build.source_to_markdown(source, {"task": "demo", "pr": "1",
@@ -77,7 +77,7 @@ class MarkdownRoundTripTests(unittest.TestCase):
         source = minimal_source()
         markdown = build.source_to_markdown(
             source, {"task": "demo", "status": "partial"})
-        markdown = markdown.replace("- [ ] **编辑器 → 导出**", "- [x] **编辑器 → 导出**")
+        markdown = markdown.replace("- [ ] **导出内容正确**", "- [x] **导出内容正确**")
         html_from_json = build.render_source(source)
         _, parsed = build.parse_markdown_source(markdown)
         self.assertEqual(parsed["sections"][0]["blocks"][1]["id"], "export-01")
@@ -110,29 +110,34 @@ class MarkdownValidationTests(unittest.TestCase):
         self.assertEqual(meta, {"status": "passed"})
         self.assertEqual(source["sections"][0]["blocks"], [{"type": "note", "text": "说明。"}])
 
-    def test_check_line_requires_trailing_id_and_separator(self) -> None:
-        body = "## 分区\n<!-- id: s1 -->\n\n- [ ] **入口**：操作；预期：结果 <!-- id: c1 -->\n"
+    def test_check_block_requires_fields_and_id(self) -> None:
+        body = ("## 分区\n<!-- id: s1 -->\n\n"
+                "- [ ] **导出内容正确**\n  （操作）编辑器 → 导出：选择 SRT 并保存\n"
+                "  （预期）文件内容与字幕一致\n  <!-- id: c1 -->\n")
         meta, source = self.parse(self.md(body))
         self.assertEqual(source["sections"][0]["blocks"][0]["id"], "c1")
+        self.assertEqual(source["sections"][0]["blocks"][0]["operation"], "编辑器 → 导出：选择 SRT 并保存")
         for broken in (
-            "## 分区\n<!-- id: s1 -->\n\n- [ ] **入口**：操作；预期：结果\n",
-            "## 分区\n<!-- id: s1 -->\n\n- [ ] **入口**：操作 <!-- id: c1 -->\n",
-            "## 分区\n<!-- id: s1 -->\n\n- [ ] **入口**：操作；预期：结果 <!-- id: c1 --> 额外\n",
+            "## 分区\n<!-- id: s1 -->\n\n- [ ] **导出内容正确**\n  （操作）操作\n  （预期）结果\n",
+            "## 分区\n<!-- id: s1 -->\n\n- [ ] **导出内容正确**\n  （操作）操作\n  <!-- id: c1 -->\n",
+            "## 分区\n<!-- id: s1 -->\n\n- [ ] **导出内容正确**：v1 旧格式；预期：结果 <!-- id: c1 -->\n",
         ):
             with self.subTest(broken=broken), self.assertRaises(ValueError):
                 self.parse(self.md(broken))
 
-    def test_check_fields_reject_markup_and_separator(self) -> None:
+    def test_check_fields_reject_markup_and_bad_order(self) -> None:
         for body in (
-            "## 分区\n<!-- id: s1 -->\n\n- [ ] **入**口**：操作；预期：结果 <!-- id: c1 -->\n",
-            "## 分区\n<!-- id: s1 -->\n\n- [ ] **入口**：操作 <!-- 注释 -->；预期：结果 <!-- id: c1 -->\n",
+            "## 分区\n<!-- id: s1 -->\n\n- [ ] **目**的**\n  （操作）操作\n  （预期）结果\n  <!-- id: c1 -->\n",
+            "## 分区\n<!-- id: s1 -->\n\n- [ ] **目的**\n  （操作）操作 <!-- 注释 -->\n  （预期）结果\n  <!-- id: c1 -->\n",
+            "## 分区\n<!-- id: s1 -->\n\n- [ ] **目的**\n  （预期）结果\n  <!-- id: c1 -->\n",
+            "## 分区\n<!-- id: s1 -->\n\n- [ ] **目的**\n  （操作）操作\n  （操作）再来一次\n  （预期）结果\n  <!-- id: c1 -->\n",
         ):
             with self.subTest(body=body), self.assertRaises(ValueError):
                 self.parse(self.md(body))
 
     def test_section_requires_id_comment(self) -> None:
         with self.assertRaises(ValueError):
-            self.parse(self.md("## 分区\n\n- [ ] **入口**：操作；预期：结果 <!-- id: c1 -->\n"))
+            self.parse(self.md("## 分区\n\n- [ ] **导出内容正确**\n  （操作）操作\n  （预期）结果\n  <!-- id: c1 -->\n"))
 
     def test_note_starting_with_list_marker_round_trips(self) -> None:
         _, source = self.parse(self.md("## 分区\n<!-- id: s1 -->\n\n1\\. 数字开头的说明。\n"))
@@ -176,8 +181,9 @@ class MetaAndScanTests(unittest.TestCase):
             root = Path(temp)
             (root / "demo.checklist.md").write_text(
                 "---\ntask: demo\npr: 9\nstatus: partial\n---\n\n# 标题\n\n> 副标题\n\n"
-                "## 分区\n<!-- id: s1 -->\n\n- [x] **入口**：操作；预期：结果 <!-- id: c1 -->\n"
-                "- [ ] **入口**：操作；预期：结果 <!-- id: c2 -->\n",
+                "## 分区\n<!-- id: s1 -->\n\n"
+                "- [x] **导出内容正确**\n  （操作）操作\n  （预期）结果\n  <!-- id: c1 -->\n"
+                "- [ ] **导出内容正确**\n  （操作）操作\n  （预期）结果\n  <!-- id: c2 -->\n",
                 encoding="utf-8")
             (root / "broken.checklist.md").write_text("---\nstatus: nope\n---\n", encoding="utf-8")
             rows = build.scan_checklists(root)

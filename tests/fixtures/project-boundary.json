@@ -2212,5 +2212,253 @@
     "change_paths": [
       "$.segments[0].id"
     ]
+  },
+  {
+    "name": "v1-timed-text-view-rows",
+    "input": {
+      "schema": "moy.asr.project.v1",
+      "segments": [],
+      "timed_text_edit_view": "rows"
+    },
+    "strict_ok": true,
+    "import_ok": true,
+    "error_paths": [],
+    "change_paths": null
+  },
+  {
+    "name": "v1-timed-text-view-single",
+    "input": {
+      "schema": "moy.asr.project.v1",
+      "segments": [],
+      "timed_text_edit_view": "single"
+    },
+    "strict_ok": true,
+    "import_ok": true,
+    "error_paths": [],
+    "change_paths": null
+  },
+  {
+    "name": "v1-timed-text-view-invalid",
+    "input": {
+      "schema": "moy.asr.project.v1",
+      "segments": [],
+      "timed_text_edit_view": "invalid"
+    },
+    "strict_ok": false,
+    "import_ok": false,
+    "error_paths": [
+      "$.timed_text_edit_view"
+    ],
+    "change_paths": null
+  },
+  {
+    "name": "v1-timed-text-view-null",
+    "input": {
+      "schema": "moy.asr.project.v1",
+      "segments": [],
+      "timed_text_edit_view": null
+    },
+    "strict_ok": false,
+    "import_ok": false,
+    "error_paths": [
+      "$.timed_text_edit_view"
+    ],
+    "change_paths": null
+  },
+  {
+    "name": "v1-timed-text-view-number",
+    "input": {
+      "schema": "moy.asr.project.v1",
+      "segments": [],
+      "timed_text_edit_view": 7
+    },
+    "strict_ok": false,
+    "import_ok": false,
+    "error_paths": [
+      "$.timed_text_edit_view"
+    ],
+    "change_paths": null
+  },
+  {
+    "name": "v1-timed-text-view-boolean",
+    "input": {
+      "schema": "moy.asr.project.v1",
+      "segments": [],
+      "timed_text_edit_view": false
+    },
+    "strict_ok": false,
+    "import_ok": false,
+    "error_paths": [
+      "$.timed_text_edit_view"
+    ],
+    "change_paths": null
+  },
+  {
+    "name": "v1-timed-text-view-array",
+    "input": {
+      "schema": "moy.asr.project.v1",
+      "segments": [],
+      "timed_text_edit_view": []
+    },
+    "strict_ok": false,
+    "import_ok": false,
+    "error_paths": [
+      "$.timed_text_edit_view"
+    ],
+    "change_paths": null
+  },
+  {
+    "name": "v1-timed-text-view-object",
+    "input": {
+      "schema": "moy.asr.project.v1",
+      "segments": [],
+      "timed_text_edit_view": {}
+    },
+    "strict_ok": false,
+    "import_ok": false,
+    "error_paths": [
+      "$.timed_text_edit_view"
+    ],
+    "change_paths": null
+  },
+  {
+    "name": "v2-timed-text-view-rows",
+    "input": {
+      "schema": "moy.asr.project.v2",
+      "segments": [],
+      "timed_text_edit_view": "rows",
+      "subtitle_groups": {
+        "color": [],
+        "sticker": []
+      }
+    },
+    "strict_ok": true,
+    "import_ok": true,
+    "error_paths": [],
+    "change_paths": null
+  },
+  {
+    "name": "v2-timed-text-view-single",
+    "input": {
+      "schema": "moy.asr.project.v2",
+      "segments": [],
+      "timed_text_edit_view": "single",
+      "subtitle_groups": {
+        "color": [],
+        "sticker": []
+      }
+    },
+    "strict_ok": true,
+    "import_ok": true,
+    "error_paths": [],
+    "change_paths": null
+  },
+  {
+    "name": "v2-timed-text-view-invalid",
+    "input": {
+      "schema": "moy.asr.project.v2",
+      "segments": [],
+      "timed_text_edit_view": "invalid",
+      "subtitle_groups": {
+        "color": [],
+        "sticker": []
+      }
+    },
+    "strict_ok": false,
+    "import_ok": false,
+    "error_paths": [
+      "$.timed_text_edit_view"
+    ],
+    "change_paths": null
+  },
+  {
+    "name": "v2-timed-text-view-null",
+    "input": {
+      "schema": "moy.asr.project.v2",
+      "segments": [],
+      "timed_text_edit_view": null,
+      "subtitle_groups": {
+        "color": [],
+        "sticker": []
+      }
+    },
+    "strict_ok": false,
+    "import_ok": false,
+    "error_paths": [
+      "$.timed_text_edit_view"
+    ],
+    "change_paths": null
+  },
+  {
+    "name": "v2-timed-text-view-number",
+    "input": {
+      "schema": "moy.asr.project.v2",
+      "segments": [],
+      "timed_text_edit_view": 7,
+      "subtitle_groups": {
+        "color": [],
+        "sticker": []
+      }
+    },
+    "strict_ok": false,
+    "import_ok": false,
+    "error_paths": [
+      "$.timed_text_edit_view"
+    ],
+    "change_paths": null
+  },
+  {
+    "name": "v2-timed-text-view-boolean",
+    "input": {
+      "schema": "moy.asr.project.v2",
+      "segments": [],
+      "timed_text_edit_view": false,
+      "subtitle_groups": {
+        "color": [],
+        "sticker": []
+      }
+    },
+    "strict_ok": false,
+    "import_ok": false,
+    "error_paths": [
+      "$.timed_text_edit_view"
+    ],
+    "change_paths": null
+  },
+  {
+    "name": "v2-timed-text-view-array",
+    "input": {
+      "schema": "moy.asr.project.v2",
+      "segments": [],
+      "timed_text_edit_view": [],
+      "subtitle_groups": {
+        "color": [],
+        "sticker": []
+      }
+    },
+    "strict_ok": false,
+    "import_ok": false,
+    "error_paths": [
+      "$.timed_text_edit_view"
+    ],
+    "change_paths": null
+  },
+  {
+    "name": "v2-timed-text-view-object",
+    "input": {
+      "schema": "moy.asr.project.v2",
+      "segments": [],
+      "timed_text_edit_view": {},
+      "subtitle_groups": {
+        "color": [],
+        "sticker": []
+      }
+    },
+    "strict_ok": false,
+    "import_ok": false,
+    "error_paths": [
+      "$.timed_text_edit_view"
+    ],
+    "change_paths": null
   }
 ]
