@@ -29,6 +29,7 @@ import { MaweCuePanelState } from "../state/editor-cue-panel-state.js";
 import { MaweInlineEdit } from "./editor-inline-edit.js";
 import { MaweCuePanel } from "./editor-cue-panel.js";
 import { MaweSegmentOps } from "./editor-segment-ops.js";
+import { MaweKeyboardTargets } from "./editor-keyboard-targets.js";
 import { MawePlaybackLoop } from "../media/editor-playback-loop.js";function timedTextEditSegments(kind) {
   return kind === 'extension' ? MaweMultiSubtitleCore.getActiveExtensionTrack()?.segments || [] : MaweBoot.DATA.segments;
 }

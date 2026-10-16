@@ -11,6 +11,7 @@ import { MaweBoot } from "../boot/editor-boot.js";
 import { MaweHistory } from "../state/editor-history.js";
 import { MaweExportTimeline } from "../io/editor-export-timeline.js";
 import { MaweDisplaySettings } from "./editor-display-settings.js";
+import { getMaweHost } from '../boot/editor-host.js';
 // === 工作区库：服务器版可把工作区（窗口布局 + 显示状态）保存到本机设置，跨工程复用 ===
 const BUILTIN_WORKSPACE_IDS = AsrWaveform?.builtinWorkspaceIds || ['classic', 'wave-right', 'three-fold', 'cinema'];
 
@@ -94,7 +95,7 @@ function restoreWorkspaceSelection() {
 }
 
 async function updateServerWorkspaceSettings(payload) {
-  const response = await MaweHost.server.fetch(MaweBoot.SERVER_CONFIG.settingsUrl, {
+  const response = await getMaweHost().server.fetch(MaweBoot.SERVER_CONFIG.settingsUrl, {
     method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload),
   });
   const result = await response.json();

@@ -12,6 +12,7 @@ import { MaweSettings } from "../state/editor-settings.js";
 import { MaweHistory } from "../state/editor-history.js";
 import { MaweStickerPicker } from "../cues/editor-sticker-picker.js";
 import { MaweFloatingPanel } from "./editor-floating-panel.js";
+import { MaweGapRemoveData } from "./editor-gap-remove-data.js";
 import { MaweCuePanelState } from "../state/editor-cue-panel-state.js";function setGapRemoveData(
   next,
   { dirty = true, provenance = null, manualOverrides = null, clearProvenance = false } = {},

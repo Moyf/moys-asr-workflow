@@ -60,7 +60,9 @@ for (const transport of ['file', 'HTTP']) {
     await disableOnboarding(page);
     await page.goto(transport === 'file' ? pathToFileURL(portable).href : server.url);
     await page.waitForFunction(() => Boolean(window.MaweCoreState?.waveformEditor));
-    expect(await page.content()).toContain(identity);
+    // The portable page minifies its inline bundle and drops the identity comment.
+    // Its live boot assertion below verifies that the bundle actually executed.
+    if (transport === 'HTTP') expect(await page.content()).toContain(identity);
     const boot = await page.evaluate(() => ({stickers:MaweBoot.STICKERS, root:MaweBoot.STICKER_ROOT,
       server:MaweBoot.SERVER_CONFIG, sfx:MaweBoot.NINJA_SFX_BASE_URL}));
     expect(boot.stickers).toEqual([]);

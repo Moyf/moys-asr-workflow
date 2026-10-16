@@ -43,15 +43,15 @@ test('inventory: consumer reads classified, shadowed local not a read', () => {
   assert.equal(report.publishers.MaweFixStr, undefined, 'string/comment text must not create owners');
 });
 
-test('bare-read scan: Object.defineProperty(window, name) owners are included', () => {
+test('bare-read scan: accessor owners are recognized and consumers have no bare reads', () => {
   const outJson = path.join('.artifacts/esm-migration/test-bare-reads.json');
   fs.mkdirSync(path.dirname(path.join(root, outJson)), { recursive: true });
   execFileSync(process.execPath, [bareReadsTool, '--json', outJson],
     { cwd: root, stdio: 'pipe' });
   const report = JSON.parse(fs.readFileSync(path.join(root, outJson), 'utf8'));
   assert.equal(report.publishers.MaweState, 'editor/state/editor-state.js');
-  assert.ok(report.perFile['editor/boot/editor-startup.js']
-    ?.some(({ name }) => name === 'MaweState'), 'startup has unimported MaweState reads');
+  assert.equal(report.counts.bareReads, 0);
+  assert.deepEqual(report.perFile, {});
 });
 
 test('inventory: real repo owners unique, bundle excluded, sccs known', () => {
@@ -64,6 +64,6 @@ test('inventory: real repo owners unique, bundle excluded, sccs known', () => {
   // Pin the current measured cycle shape. When a refactor changes it, update
   // this baseline from the generated report instead of maintaining a partial
   // handwritten member allowlist that silently misses most of the SCC.
-  assert.deepEqual(report.sccs.map(scc => scc.length).sort((a, b) => b - a), [57, 4, 2]);
+  assert.deepEqual(report.sccs.map(scc => scc.length).sort((a, b) => b - a), [58, 4, 2]);
   for (const file of report.sccs.flat()) assert.ok(report.perFile[file], file);
 });

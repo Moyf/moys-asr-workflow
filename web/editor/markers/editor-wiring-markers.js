@@ -5,7 +5,8 @@
 import { MaweMarkerEditing } from "./editor-marker-editing.js";
 import { MaweDom } from "../ui/editor-dom.js";
 import { MaweInlineEdit } from "../cues/editor-inline-edit.js";
-MaweDom.markersCloseButton?.addEventListener('click', () => MaweMarkersPanel.closePanel());
+import { installMarkersPanel } from "./editor-markers-panel.js";
+MaweDom.markersCloseButton?.addEventListener('click', () => installMarkersPanel().closePanel());
 
 function toggleMarkerEditing() {
   MaweMarkerEditing.setEditingEnabled(!MaweMarkerEditing.isEditingEnabled());

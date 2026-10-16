@@ -14,6 +14,7 @@ import { MaweSpeakerLabels } from "../styles/editor-speaker-labels.js";
 import { MaweProjectSave } from "./editor-project-save.js";
 import { MaweExportSrt } from "./editor-export-srt.js";
 import { MaweExportTimeline } from "./editor-export-timeline.js";
+import { getMaweHost } from '../boot/editor-host.js';
 // 真 ESM：模块顶层定义与发布（原转换体 phase-2 语义 = import 求值）。
 // window.<Name> 与导出的 <Name> 是同一对象；消费者逐簇改 import 后移除 window 发布。
 'use strict';
@@ -172,7 +173,7 @@ async function exportLottieDynamicCaptions() {
       subtitle: { ...MaweAppearance.getPreviewGeometry(), ...appearance },
     });
     MaweHint.flashHint(MaweProjectSave.translatedEditorText('正在生成动态字幕 .lottie…'));
-    const response = await MaweHost.server.fetch(MaweBoot.SERVER_CONFIG.lottieExportUrl, {
+    const response = await getMaweHost().server.fetch(MaweBoot.SERVER_CONFIG.lottieExportUrl, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ requestToken: MaweBoot.SERVER_CONFIG.requestToken, animation }),
@@ -279,7 +280,7 @@ async function exportOgrafDynamicCaptions() {
       subtitle: { ...MaweAppearance.getPreviewGeometry(), ...appearance },
     });
     MaweHint.flashHint(MaweProjectSave.translatedEditorText('正在生成动态字幕 .ograf.zip…'));
-    const response = await MaweHost.server.fetch(MaweBoot.SERVER_CONFIG.ografExportUrl, {
+    const response = await getMaweHost().server.fetch(MaweBoot.SERVER_CONFIG.ografExportUrl, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ requestToken: MaweBoot.SERVER_CONFIG.requestToken, graphic }),

@@ -15,6 +15,7 @@ import { MaweSelection } from "../cues/editor-selection.js";
 import { MaweSettings } from "./editor-settings.js";
 import { MaweCuePanelState } from "./editor-cue-panel-state.js";
 import { remapPanelItems } from "../cues/editor-cue-panel-items.js";
+import { getMaweState } from './editor-state.js';
 const MULTI_SUBTITLE_TOLERANCE_MS = AsrEditorUtils.MULTI_SUBTITLE_TOLERANCE_MS || 300;
 
 const MULTI_SUBTITLE_MERGE_OVERLAP_TOLERANCE_MS = 500;
@@ -298,10 +299,10 @@ function extensionTrackSelectionSnapshot(track) {
 
 function restoreExtensionTrackSelection(track, snapshot) {
 if (!track || !snapshot?.active) return;
-MaweState.selection.clear('extension');
+getMaweState().selection.clear('extension');
 snapshot.selectedIds.forEach((id) => {
   const index = track.segments.findIndex((segment) => segment?.id === id);
-  if (index >= 0) MaweState.selection.add('extension', index);
+  if (index >= 0) getMaweState().selection.add('extension', index);
 });
 if (snapshot.currentId && MaweCuePanelState.currentCuePanelKind === 'extension'
     && MaweCuePanelState.currentCuePanelTrackId === track.id) {

@@ -6,7 +6,9 @@ const openButton = document.getElementById('ass-frame-preview-open');
 const quickOpenButton = document.getElementById('ass-frame-quick-open');
 const styleOpenButton = document.getElementById('ass-style-frame-preview-open');
 const windowEl = document.getElementById('ass-frame-window');
+let assFrameInstalled = false;
 function installAssFrame() {
+  if (assFrameInstalled) return current;
   if (!openButton || !windowEl) return null;
   const imageEl = document.getElementById('ass-frame-image');
   const stageImage = document.getElementById('ass-stage-frame');
@@ -378,6 +380,7 @@ function installAssFrame() {
 
   syncAssFrameControls();
   current = Object.freeze({ syncAssFrameControls, renderAssFrame, syncPreview });
+  assFrameInstalled = true;
   return current;
 }
 
@@ -396,3 +399,5 @@ const MaweAssFrame = Object.freeze({
 });
 export { MaweAssFrame };
 window.MaweAssFrame = MaweAssFrame;
+// 直接点击帧预览入口也需要已绑定的监听器；待 ESM 图求值完毕后安装。
+queueMicrotask(installAssFrame);

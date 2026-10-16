@@ -31,6 +31,7 @@ import { MaweCuePanel } from "./editor-cue-panel.js";
 import { MaweTimeline } from "./editor-timeline.js";
 import { MawePlaybackLoop } from "../media/editor-playback-loop.js";import { clearOverlayColorOnTargets, assignOverlayColor, mergeOverlayCues } from "./editor-wiring-overlay-actions.js";
 import { deleteOverlayCues } from "./editor-wiring-overlay-transfer.js";
+import { getMaweState } from '../state/editor-state.js';
 
 // 真 ESM：wiring 顶层接线（原转换体 phase-1/phase-2 = import 求值）。
 'use strict';
@@ -309,10 +310,10 @@ document.addEventListener('keydown', (e) => {
   if (MaweDom.projectMediaModal.classList.contains('show')) return;
   if (MaweDom.ctxmenu.classList.contains('show')) return;
   if (e.ctrlKey || e.altKey || e.metaKey || e.shiftKey) return;
-  if (MaweSelection.selectedIdxs.size === 0 && MaweState.selection.indices('overlay').size === 0) return;
+  if (MaweSelection.selectedIdxs.size === 0 && getMaweState().selection.indices('overlay').size === 0) return;
   e.preventDefault();
-  if (MaweState.selection.indices('overlay').size > 0) {
-    const overlayIdxs = [...MaweState.selection.indices('overlay')].sort((x, y) => x - y);
+  if (getMaweState().selection.indices('overlay').size > 0) {
+    const overlayIdxs = [...getMaweState().selection.indices('overlay')].sort((x, y) => x - y);
     MaweStickerPicker.openStickerPicker(overlayIdxs, overlayIdxs.length > 1, { overlay: true });
     return;
   }
@@ -337,10 +338,10 @@ document.addEventListener('keydown', (e) => {
   if (MaweDom.projectMediaModal.classList.contains('show')) return;
   if (MaweDom.ctxmenu.classList.contains('show')) return;
   if (e.ctrlKey || e.altKey || e.metaKey || e.shiftKey) return;
-  if (MaweSelection.selectedIdxs.size === 0 && MaweState.selection.indices('overlay').size === 0) return;
+  if (MaweSelection.selectedIdxs.size === 0 && getMaweState().selection.indices('overlay').size === 0) return;
   e.preventDefault();
-  if (MaweState.selection.indices('overlay').size > 0) {
-    const overlayIdxs = [...MaweState.selection.indices('overlay')].sort((x, y) => x - y);
+  if (getMaweState().selection.indices('overlay').size > 0) {
+    const overlayIdxs = [...getMaweState().selection.indices('overlay')].sort((x, y) => x - y);
     if (e.key === '0') {
       clearOverlayColorOnTargets(overlayIdxs);
       return;
@@ -405,10 +406,10 @@ document.addEventListener('keydown', (e) => {
   e.stopPropagation();
   const currentTarget = MaweCuePanel.getCurrentCuePanelTarget();
   if (
-    MaweState.selection.indices('overlay').size > 1
+    getMaweState().selection.indices('overlay').size > 1
     && (currentTarget?.kind === 'overlay' || (MaweSelection.selectedIdxs.size === 0 && MaweSelection.selectedExtensionIdxs.size === 0))
   ) {
-    mergeOverlayCues([...MaweState.selection.indices('overlay')]);
+    mergeOverlayCues([...getMaweState().selection.indices('overlay')]);
     return;
   }
   if (
@@ -458,10 +459,10 @@ document.addEventListener('keydown', (e) => {
     MaweSegmentOps.deleteExtensionSegments([...MaweSelection.selectedExtensionIdxs]);
     return;
   }
-  if (MaweSelection.selectedIdxs.size === 0 && MaweSelection.selectedExtensionIdxs.size === 0 && MaweState.selection.indices('overlay').size > 0) {
+  if (MaweSelection.selectedIdxs.size === 0 && MaweSelection.selectedExtensionIdxs.size === 0 && getMaweState().selection.indices('overlay').size > 0) {
     e.preventDefault();
     e.stopPropagation();
-    deleteOverlayCues([...MaweState.selection.indices('overlay')]);
+    deleteOverlayCues([...getMaweState().selection.indices('overlay')]);
     return;
   }
   if (MaweSelection.selectedIdxs.size === 0) return;

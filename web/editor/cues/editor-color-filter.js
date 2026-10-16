@@ -15,6 +15,7 @@ import { MaweExportSrt } from "../io/editor-export-srt.js";
 import { MaweColors } from "../styles/editor-colors.js";
 import { MaweSearch } from "./editor-search.js";
 import { MaweStickerOverlay } from "../media/editor-sticker-overlay.js";
+import { getMaweState } from '../state/editor-state.js';
 // 真 ESM：模块顶层定义与发布（原转换体 phase-2 语义 = import 求值）。
 // window.<Name> 与导出的 <Name> 是同一对象；消费者逐簇改 import 后移除 window 发布。
 'use strict';
@@ -123,7 +124,7 @@ MaweSelection.clearSelection({ silent: true });
 MaweBoot.DATA.segments.forEach((seg, idx) => {
   if (MaweSelection.isHiddenDisabled(idx)) return;
   if (!colorFilterSelection.has(effectiveCueColorKey(seg))) return;
-  MaweState.selection.add('main', idx);
+  getMaweState().selection.add('main', idx);
   const el = MaweCoreState.container.querySelector(`.cue[data-idx="${idx}"]`);
   if (el) el.classList.add('selected');
 });

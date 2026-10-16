@@ -13,6 +13,8 @@ import { MaweExportSrt } from "./editor-export-srt.js";
 import { MaweColors } from "../styles/editor-colors.js";
 import { MaweDisplaySettings } from "../ui/editor-display-settings.js";
 import { MaweWorkspaces } from "../ui/editor-workspaces.js";
+import { MaweGapRemoveData } from "../ui/editor-gap-remove-data.js";
+import { getMaweHost } from '../boot/editor-host.js';
 // 真 ESM：模块顶层定义与发布（原转换体 phase-2 语义 = import 求值）。
 // window.<Name> 与导出的 <Name> 是同一对象；消费者逐簇改 import 后移除 window 发布。
 'use strict';
@@ -243,6 +245,9 @@ function mediaTargetUrl() {
   if (/^file:\/\//i.test(media) || /^[A-Za-z]:[\\/]/.test(media) || media.startsWith('/')) {
     return stickerTargetUrl(media);
   }
+  // 服务器工程通常保存相对媒体路径；导出 OTIO 使用服务端已解析的绝对路径。
+  const serverMedia = String(MaweBoot.SERVER_CONFIG?.autoLoadedMediaPath || '').trim();
+  if (serverMedia) return stickerTargetUrl(serverMedia);
   const current = String(MaweCoreState.player?.currentSrc || '').trim();
   if (/^file:\/\//i.test(current)) return current;
   return '';
@@ -613,7 +618,7 @@ async function exportStickerOtoz(kind, buildTimeline, filename, description) {
   }
   MaweHint.flashHint(tr('正在生成表情包 OTIOZ 打包工程…'));
   try {
-    const response = await MaweHost.server.fetch(MaweBoot.SERVER_CONFIG.otiozStickerExportUrl, {
+    const response = await getMaweHost().server.fetch(MaweBoot.SERVER_CONFIG.otiozStickerExportUrl, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
@@ -647,7 +652,7 @@ async function exportTimelineOtioz(kind, buildTimeline, filename, description) {
   }
   MaweHint.flashHint(tr('正在生成时间线 OTIOZ 打包工程…'));
   try {
-    const response = await MaweHost.server.fetch(MaweBoot.SERVER_CONFIG.otiozTimelineExportUrl, {
+    const response = await getMaweHost().server.fetch(MaweBoot.SERVER_CONFIG.otiozTimelineExportUrl, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
@@ -730,13 +735,13 @@ async function downloadFile(content, filename, mime, accept, { usePicker = true,
     ? new Uint8Array([0xEF, 0xBB, 0xBF, ...new TextEncoder().encode(String(content))])
     : content;
   // 优先尝试 File System Access API（弹出保存路径选择对话框）
-  if (usePicker && MaweHost.files.hasSavePicker()) {
+  if (usePicker && getMaweHost().files.hasSavePicker()) {
     try {
-      const handle = await MaweHost.files.pickSaveFile({
+      const handle = await getMaweHost().files.pickSaveFile({
         suggestedName: filename,
         types: accept ? [{ description: accept.desc, accept: accept.types }] : undefined,
       });
-      await MaweHost.files.writeBlob(handle, () => new Blob([fileContent], { type: mime + ';charset=utf-8' }));
+      await getMaweHost().files.writeBlob(handle, () => new Blob([fileContent], { type: mime + ';charset=utf-8' }));
       return detailed ? { status: 'saved' } : true;
     } catch (e) {
       // 用户取消保存对话框 — 静默退出，不回退
@@ -747,7 +752,7 @@ async function downloadFile(content, filename, mime, accept, { usePicker = true,
   }
   // 兜底：传统 anchor 下载（不弹路径选择）
   const blob = new Blob([fileContent], { type: mime + ';charset=utf-8' });
-  MaweHost.files.downloadBlob(blob, filename);
+  getMaweHost().files.downloadBlob(blob, filename);
   return detailed ? { status: 'dispatched' } : true;
 }
 

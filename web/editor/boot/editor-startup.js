@@ -27,6 +27,7 @@ import { MaweWorkspaces } from "../ui/editor-workspaces.js";
 import { MaweWaveformInit } from "../media/editor-waveform-init.js";
 import { MaweServerConnection } from "../io/editor-server-connection.js";
 import { MaweHelpPanel } from "../ui/editor-help-panel.js";
+import { getMaweState } from '../state/editor-state.js';
 // 真 ESM：wiring 顶层接线（原转换体 phase-1/phase-2 = import 求值）。
 'use strict';
 setSubtitlePreviewHandlers({ applyAss: applyAssSubtitlePreview, restoreCss: restoreCssSubtitlePreview });
@@ -90,7 +91,7 @@ function renderFirstFrame() {
   MaweWorkspaces.configureWorkspaceTransfer();
   MaweDom.totalCountEl.textContent = String(MaweBoot.DATA.segments.length);
   MaweCuePanel.renderAll({ waveform: 'full' });
-  MaweState.noteSavedSegments();
+  getMaweState().noteSavedSegments();
   MaweBoot.maweDebug('boot:complete', {
     renderedSegments: MaweCoreState.container?.querySelectorAll?.('.cue-row')?.length || 0,
     recentProjectsVisible: MaweDom.recentProjectsEl ? !MaweDom.recentProjectsEl.hidden : false,
@@ -124,14 +125,14 @@ function bindStartupControls() {
       // 清理选中集中的禁用项（隐藏了但还留在选中集会造成状态不一致）
       [...MaweSelection.selectedIdxs].forEach(i => {
         if (MaweBoot.DATA.segments[i]?.disabled) {
-          MaweState.selection.remove('main', i);
+          getMaweState().selection.remove('main', i);
           const el = MaweCoreState.container.querySelector(`.cue[data-idx="${i}"]`);
           if (el) el.classList.remove('selected');
         }
       });
       const extensionTrack = MaweMultiSubtitleCore.getActiveExtensionTrack();
       [...MaweSelection.selectedExtensionIdxs].forEach((index) => {
-        if (extensionTrack?.segments[index]?.disabled) MaweState.selection.remove('extension', index);
+        if (extensionTrack?.segments[index]?.disabled) getMaweState().selection.remove('extension', index);
       });
       MaweSelection.updateMultiSelectionClasses();
       updateSelectionCountText();

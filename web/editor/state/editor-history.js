@@ -28,6 +28,7 @@ import { MaweCueListAnchor } from "../cues/editor-cue-list-anchor.js";
 import { MaweGapRemoveUi } from "../ui/editor-gap-remove-ui.js";
 import { MawePreviewGeometry } from "../media/editor-preview-geometry.js";
 import { MaweWordTiming } from "../cues/editor-word-timing.js";
+import { getMaweState } from './editor-state.js';
 // === 统一撤销/重做 ===
 // 四种记录 kind 共享一个历史栈：
 //   segments   —— 字幕增删改、拆分合并、表情包/颜色、批量替换等
@@ -62,7 +63,7 @@ return {
   extensionIds: extensionTrack
     ? [...MaweSelection.selectedExtensionIdxs].map((index) => extensionTrack.segments[index]?.id).filter(Boolean)
     : [],
-  overlayIds: [...MaweState.selection.indices('overlay')]
+  overlayIds: [...getMaweState().selection.indices('overlay')]
     .map((index) => getOverlayTrack()?.segments?.[index]?.id)
     .filter(Boolean),
   panelKind: MaweCuePanelState.currentCuePanelKind,
@@ -74,7 +75,7 @@ return {
     : MaweBoot.DATA.segments[MaweCuePanelState.currentCuePanelIdx]?.id || null,
   lastMainId: MaweBoot.DATA.segments[MaweSelection.lastClickedIdx]?.id || null,
   lastExtensionId: extensionTrack?.segments?.[MaweSelection.lastClickedExtensionIdx]?.id || null,
-  lastOverlayId: getOverlayTrack()?.segments?.[MaweState.selection.overlayAnchor]?.id || null,
+  lastOverlayId: getOverlayTrack()?.segments?.[getMaweState().selection.overlayAnchor]?.id || null,
 };
 }
 
@@ -85,7 +86,7 @@ function captureSegmentsRecord(label, { captureView = false } = {}) {
     'segments', label, snapshotSegments(), captureView ? snapshotEditorSelection() : null,
     { clone: false },
   );
-  record.projectChanges = { projectImportDirty: MaweState.changes.projectImportDirty };
+  record.projectChanges = { projectImportDirty: getMaweState().changes.projectImportDirty };
   return record;
 }
 
@@ -104,7 +105,7 @@ function pushLayoutUndo(label, snapshot) {
 function pushGapRemoveUndo(label) {
   editorHistory.push(AsrEditorUtils.buildHistoryRecord('gap_remove', label, {
     gapRemove: MaweBoot.DATA.gap_remove,
-    gapRemoveDirty: MaweState.changes.gapRemoveDirty,
+    gapRemoveDirty: getMaweState().changes.gapRemoveDirty,
   }));
   updateUndoRedoButtons();
 }
@@ -162,7 +163,7 @@ function snapshotCurrentForKind(kind, label, sourceRecord = null) {
   if (kind === 'gap_remove') {
     return AsrEditorUtils.buildHistoryRecord('gap_remove', label, {
       gapRemove: MaweBoot.DATA.gap_remove,
-      gapRemoveDirty: MaweState.changes.gapRemoveDirty,
+      gapRemoveDirty: getMaweState().changes.gapRemoveDirty,
     });
   }
   if (kind === 'markers') {
@@ -178,29 +179,29 @@ function snapshotCurrentForKind(kind, label, sourceRecord = null) {
 
 function restoreEditorSelection(snapshot) {
 if (!snapshot) return;
-MaweState.selection.clear('main');
-MaweState.selection.clear('extension');
-MaweState.selection.clear('overlay');
+getMaweState().selection.clear('main');
+getMaweState().selection.clear('extension');
+getMaweState().selection.clear('overlay');
 const mainIds = new Set(snapshot.mainIds || []);
 MaweBoot.DATA.segments.forEach((segment, index) => {
-  if (mainIds.has(segment?.id)) MaweState.selection.add('main', index);
+  if (mainIds.has(segment?.id)) getMaweState().selection.add('main', index);
 });
 const extensionTrack = MaweMultiSubtitleCore.getExtensionTrack(snapshot.extensionTrackId) || MaweMultiSubtitleCore.getActiveExtensionTrack();
 const extensionIds = new Set(snapshot.extensionIds || []);
 if (extensionTrack) {
   extensionTrack.segments.forEach((segment, index) => {
-    if (extensionIds.has(segment?.id)) MaweState.selection.add('extension', index);
+    if (extensionIds.has(segment?.id)) getMaweState().selection.add('extension', index);
   });
 }
 const overlayIds = new Set(snapshot.overlayIds || []);
 (getOverlayTrack()?.segments || []).forEach((segment, index) => {
-  if (overlayIds.has(segment?.id)) MaweState.selection.add('overlay', index);
+  if (overlayIds.has(segment?.id)) getMaweState().selection.add('overlay', index);
 });
 MaweSelection.lastClickedIdx = snapshot.lastMainId
   ? MaweBoot.DATA.segments.findIndex((segment) => segment?.id === snapshot.lastMainId) : -1;
 MaweSelection.lastClickedExtensionIdx = extensionTrack && snapshot.lastExtensionId
   ? extensionTrack.segments.findIndex((segment) => segment?.id === snapshot.lastExtensionId) : -1;
-MaweState.selection.overlayAnchor = snapshot.lastOverlayId != null
+getMaweState().selection.overlayAnchor = snapshot.lastOverlayId != null
   ? (getOverlayTrack()?.segments || []).findIndex((segment) => segment?.id === snapshot.lastOverlayId) : -1;
 const panelTrack = snapshot.panelTrackId ? MaweMultiSubtitleCore.getExtensionTrack(snapshot.panelTrackId) : null;
 if (snapshot.panelKind === 'extension' && panelTrack && snapshot.panelId) {
@@ -229,12 +230,12 @@ if (MaweCuePanelState.currentCuePanelIdx < 0) {
   MaweCuePanelState.currentCuePanelTrackId = null;
 }
 MaweDom.selCountEl.textContent = String(
-  MaweSelection.selectedIdxs.size + MaweSelection.selectedExtensionIdxs.size + MaweState.selection.indices('overlay').size,
+  MaweSelection.selectedIdxs.size + MaweSelection.selectedExtensionIdxs.size + getMaweState().selection.indices('overlay').size,
 );
 MaweSelection.selectedIdxs.forEach((index) => {
   MaweCoreState.container.querySelector(`.cue[data-idx="${index}"]`)?.classList.add('selected');
 });
-MaweState.selection.indices('overlay').forEach((index) => {
+getMaweState().selection.indices('overlay').forEach((index) => {
   MaweCoreState.container.querySelector(`.cue[data-overlay-idx="${index}"]`)?.classList.add('selected');
 });
 MaweSelection.updateMultiSelectionClasses();
@@ -254,7 +255,7 @@ if (record.kind === 'layout') {
 }
 if (record.kind === 'gap_remove') {
   MaweBoot.DATA.gap_remove = record.gapRemove;
-  MaweState.changes.gapRemoveDirty = record.gapRemoveDirty;
+  getMaweState().changes.gapRemoveDirty = record.gapRemoveDirty;
   MaweGapRemoveUi.updateGapRemoveUi();
   return true;
 }
@@ -283,9 +284,9 @@ MaweBoot.DATA.multi_subtitle = snapshot.multi_subtitle || {
   schema: 'moy.asr.multi_subtitle.v1', enabled: false, display_mode: 'both', tracks: [], bindings: [],
 };
 MaweBoot.DATA.overlay_track = MULTI_SUBTITLE_UTILS.normalizeOverlayTrack(snapshot.overlay_track);
-if (record.projectChanges) Object.assign(MaweState.changes, record.projectChanges);
+if (record.projectChanges) Object.assign(getMaweState().changes, record.projectChanges);
 MaweMultiSubtitleCore.normalizeMultiSubtitleState();
-MaweState.reconcileSegmentsDirty();
+getMaweState().reconcileSegmentsDirty();
 // 历史恢复会改变下标身份；丢弃旧面板绑定，避免 clearSelection() 把旧面板
 // 内容提交到恢复后占据同一下标的另一条字幕，并因此生成新历史、清空 redo。
 MaweCuePanelState.currentCuePanelIdx = -1;
@@ -379,8 +380,8 @@ function updateUndoRedoButtons() {
 window.MaweHistory = Object.freeze({
   UNDO_LIMIT,
   editorHistory,
-  get gapRemoveDirty() { return MaweState.changes.gapRemoveDirty; },
-  set gapRemoveDirty(v) { MaweState.changes.gapRemoveDirty = v; },
+  get gapRemoveDirty() { return getMaweState().changes.gapRemoveDirty; },
+  set gapRemoveDirty(v) { getMaweState().changes.gapRemoveDirty = v; },
   snapshotSegments,
   snapshotEditorSelection,
   captureSegmentsRecord,
@@ -405,8 +406,8 @@ window.MaweHistory = Object.freeze({
 export const MaweHistory = freezeFacade({
     UNDO_LIMIT,
     editorHistory,
-    get gapRemoveDirty() { return MaweState.changes.gapRemoveDirty; },
-    set gapRemoveDirty(v) { MaweState.changes.gapRemoveDirty = v; },
+    get gapRemoveDirty() { return getMaweState().changes.gapRemoveDirty; },
+    set gapRemoveDirty(v) { getMaweState().changes.gapRemoveDirty = v; },
     snapshotSegments,
     snapshotEditorSelection,
     captureSegmentsRecord,

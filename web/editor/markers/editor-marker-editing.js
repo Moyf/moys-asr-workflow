@@ -11,7 +11,9 @@ import { MaweBoot } from "../boot/editor-boot.js";
 import { MaweDom } from "../ui/editor-dom.js";
 import { MaweHistory } from "../state/editor-history.js";
 import { MaweViewUpdates } from "../state/editor-view-updates.js";
-import { MaweSettings } from "../state/editor-settings.js";function isEditingEnabled() {
+import { MaweSettings } from "../state/editor-settings.js";
+import { getMaweState } from '../state/editor-state.js';
+function isEditingEnabled() {
   return markerEditingSessionOverride ?? (MaweSettings.EDITOR_SETTINGS.markerEditingEnabled === true);
 }
 
@@ -56,7 +58,7 @@ function commitMarkerChange(label, mutate) {
   if (mutate(list) === false) return null;
   MaweBoot.DATA.markers = utils.normalizeMarkers(list);
   MaweHistory.pushMarkersUndo(label, before);
-  MaweState.changes.markersDirty = true;
+  getMaweState().changes.markersDirty = true;
   refreshWaveformMarkers();
   window.MaweMarkersPanel?.render?.();
   MaweViewUpdates.invalidate({ save: true });

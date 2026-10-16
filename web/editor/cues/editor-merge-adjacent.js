@@ -6,6 +6,7 @@ import { MaweBoot } from "../boot/editor-boot.js";
 import { MaweSelection } from "./editor-selection.js";
 import { MaweCuePanel } from "./editor-cue-panel.js";
 import { MaweSegmentOps } from "./editor-segment-ops.js";
+import { getMaweState } from '../state/editor-state.js';
 // 真 ESM：模块顶层定义与发布（原转换体 phase-2 语义 = import 求值）。
 // window.<Name> 与导出的 <Name> 是同一对象；消费者逐簇改 import 后移除 window 发布。
 'use strict';
@@ -22,10 +23,10 @@ const segments = extension
 let index = Number.isInteger(target?.index) ? target.index : -1;
 if (index < 0) {
   const selected = extension ? MaweSelection.selectedExtensionIdxs
-    : overlay ? MaweState.selection.indices('overlay') : MaweSelection.selectedIdxs;
+    : overlay ? getMaweState().selection.indices('overlay') : MaweSelection.selectedIdxs;
   if (selected.size === 1) index = [...selected][0];
   else index = extension ? MaweSelection.lastClickedExtensionIdx
-    : overlay ? MaweState.selection.overlayAnchor : MaweSelection.lastClickedIdx;
+    : overlay ? getMaweState().selection.overlayAnchor : MaweSelection.lastClickedIdx;
 }
 const neighbor = index + direction;
 if (!segments[index] || !segments[neighbor]) {

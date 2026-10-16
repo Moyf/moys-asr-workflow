@@ -14,6 +14,7 @@
     "test": "playwright test --project=chromium",
     "test:headed": "playwright test --project=chromium --headed",
     "typecheck": "node scripts/typecheck-baseline.mjs",
+    "check:esm": "node scripts/esm-migration/bare-reads.mjs --check && node scripts/esm-migration/check-plain-imports.mjs --check",
     "build": "node scripts/build-editor.mjs --write && node scripts/build-launcher.mjs --write",
     "postinstall": "pnpm run build",
     "build:editor": "node scripts/build-editor.mjs --write",

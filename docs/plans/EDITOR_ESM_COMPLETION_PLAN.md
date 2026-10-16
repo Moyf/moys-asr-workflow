@@ -2,7 +2,7 @@
 title: 编辑器真 ESM 收口计划
 created_at: 2026-10-14
 updated_at: 2026-10-16
-status: done
+status: validating
 ---
 
 > **整合状态（2026-10-16）**：迁移成果已在
@@ -11,8 +11,12 @@ status: done
 > `web/shared/templates/` 不属于编辑器 bundle。终点 1–4 已全部达成：
 > 全部编辑器源码为普通 ESM（0 转换体/0 工厂/0 桥/0 保序表），
 > `web/editor-modules.json` 已删除；启动序列收敛为
-> `startupEditor` 五步具名操作；e2e/Node/Python/typecheck 矩阵
-> 见 PR 描述。下文保留为当时的执行依据。
+> `startupEditor` 五步具名操作。Node 729/729、typecheck 0 新增、
+> 构建新鲜度与 ESM 静态门禁通过；Chromium 全量 825/847，剩余
+> 22 条需逐项核对（其中 `server-align` 5 条对应的源码、测试与
+> `origin/main` 完全相同）。Python 全量 2340 项中缩略图时长
+> 1 条失败，相关实现与上游相同。验证未完成前不宣称 PR 全绿。
+> 下文保留为当时的执行依据。
 
 
 # 编辑器真 ESM 收口：交给代码 agent 的执行单

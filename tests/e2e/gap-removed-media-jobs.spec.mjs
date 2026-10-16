@@ -8,7 +8,7 @@ import { makeTempDir, cleanupTempDir, generateProjectJson, startServer, findFree
 const source = fs.readFileSync(new URL('../../web/editor/io/editor-wiring-export-actions.js', import.meta.url), 'utf8');
 const start = source.indexOf("document.getElementById('download-gap-removed-video')");
 const end = source.indexOf("document.getElementById('download-gap-removed-regions-json')", start);
-const handler = source.slice(start, end);
+const handler = `const getMaweHost = () => window.MaweHost;\n${source.slice(start, end)}`;
 
 async function fixture(mode, run) {
   const jobs = new Map();
@@ -211,10 +211,12 @@ test('rendered editor reconstructs real video and shows native commit boundary',
     await page.goto(server.url);
     await page.waitForFunction(() => window.MaweProjectLoad && window.MaweExportSrt && MaweBoot.SERVER_CONFIG.canGapRemovedVideoExport);
     await page.evaluate(() => {
-      window.realVideoHints = []; window.realVideoBytes = 0; window.realVideoClosed = false; window.realVideoCommitting = false;
-      const originalHint = window.MaweHint;
-      window.MaweHint = { ...originalHint, flashHint: text => window.realVideoHints.push(text) };
-      window.MaweExportSrt = { ...window.MaweExportSrt, gapRemovedExportContext: () => ({ intervals: [{ start: 0, end: 500 }, { start: 1000, end: 1500 }] }) };
+      MaweBoot.DATA.gap_remove = { gaps: [
+        { start: 500, end: 1000, removed: true },
+        { start: 1500, end: MaweCoreState.waveformEditor.durationMs, removed: true },
+      ] };
+      MaweGapRemoveUi.updateGapRemoveUi();
+      window.realVideoBytes = 0; window.realVideoClosed = false; window.realVideoCommitting = false;
       window.showSaveFilePicker = async () => ({ name: 'result.mp4', createWritable: async () => ({
         write: async bytes => { window.realVideoBytes += bytes.byteLength; },
         close: async () => { window.realVideoCommitting = true; await new Promise(resolve => { window.realVideoFinishCommit = resolve; }); window.realVideoClosed = true; },
@@ -244,7 +246,7 @@ test('rendered editor reconstructs real video and shows native commit boundary',
     await testInfo.attach('media-job-panel-spacing', { path: spacingPath, contentType: 'application/json' });
     await page.screenshot({ path: testInfo.outputPath('real-editor-media-job-commit.png') });
     await page.evaluate(() => window.realVideoFinishCommit());
-    await expect.poll(() => page.evaluate(() => window.realVideoHints.some(text => text.includes('已重组并保存')))).toBe(true);
+    await expect(page.locator('#hint-stack')).toContainText('已重组并保存');
     expect(fs.readFileSync(video).equals(original)).toBe(true);
   } finally {
     await server?.stop();

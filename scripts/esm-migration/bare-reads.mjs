@@ -108,3 +108,4 @@ fs.writeFileSync(path.join(ROOT, jsonOut), JSON.stringify({
   perFile,
 }, null, 1));
 console.log(`bare-reads: files=${files.length} publishers=${Object.keys(publishers).length} filesWithBareReads=${filesWith} bareReads=${total}`);
+if (args.includes('--check') && total) process.exitCode = 1;

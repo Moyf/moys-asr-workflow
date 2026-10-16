@@ -19,6 +19,7 @@ import { MaweSpeakerLabels } from "../styles/editor-speaker-labels.js";
 import { MaweCueListAnchor } from "../cues/editor-cue-list-anchor.js";
 import { MaweColors } from "../styles/editor-colors.js";
 import { MaweStickerOverlay } from "./editor-sticker-overlay.js";
+import { MaweGapRemoveData } from "../ui/editor-gap-remove-data.js";
 // 真 ESM：模块顶层定义与发布（原转换体 phase-2 语义 = import 求值）。
 // window.<Name> 与导出的 <Name> 是同一对象；消费者逐簇改 import 后移除 window 发布。
 'use strict';

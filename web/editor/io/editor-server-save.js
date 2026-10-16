@@ -22,6 +22,8 @@ import { MaweStickerOtioExport } from "./editor-sticker-otio-export.js";
 'use strict';
 
 import { MaweBoot } from '../boot/editor-boot.js';
+import { getMaweHost } from '../boot/editor-host.js';
+import { getMaweState } from '../state/editor-state.js';
 
 
 let projectCheckpointed = Boolean(MaweBoot.SERVER_CONFIG?.canSave)
@@ -325,7 +327,7 @@ function scheduleAutoSave() {
   function configureServerAutoSave() {
     if (!MaweDom.serverAutoSaveSettings || !MaweDom.autoSaveProjectToggle || !MaweDom.autoSaveIntervalField || !MaweDom.autoSaveIntervalInput) return;
     // 服务器绑定工程或浏览器保存对话框（句柄模式）任一可用时都可自动保存。
-    const available = Boolean(MaweBoot.SERVER_CONFIG?.saveUrl || MaweHost.files.hasSavePicker());
+    const available = Boolean(MaweBoot.SERVER_CONFIG?.saveUrl || getMaweHost().files.hasSavePicker());
     MaweDom.serverAutoSaveSettings.hidden = !available;
     // 自动保存不可用时隐藏「保存」标签页，避免设置窗口出现空白分区。
     const saveTab = document.getElementById('editor-settings-tab-save');
@@ -353,7 +355,7 @@ function scheduleAutoSave() {
 }
 
 function hasUnsavedProjectChanges() {
-  return MaweState.hasProjectChanges(MaweProjectSave.inlineEditHasUncommittedText());
+  return getMaweState().hasProjectChanges(MaweProjectSave.inlineEditHasUncommittedText());
 }
 
 // 文字编辑先写入页面内存，避免每个按键都请求服务器；失焦后短暂防抖保存，
@@ -379,7 +381,7 @@ async function openRecentProject(project) {
     return;
   }
   try {
-    const response = await MaweHost.server.fetch(MaweBoot.SERVER_CONFIG.recentProjectsUrl, {
+    const response = await getMaweHost().server.fetch(MaweBoot.SERVER_CONFIG.recentProjectsUrl, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ path: project.path }),
@@ -406,7 +408,7 @@ async function openRecentProject(project) {
 // 任何失败都静默回退为「手动选择媒体」的便携流程。
 async function attachProjectToServer(fileName, projectData) {
   try {
-    const response = await MaweHost.server.fetch(MaweBoot.SERVER_CONFIG.attachUrl, {
+    const response = await getMaweHost().server.fetch(MaweBoot.SERVER_CONFIG.attachUrl, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ fileName, project: projectData }),
@@ -507,7 +509,7 @@ function configureServerProjectSettings() {
       const enabled = MaweDom.autoOpenLastProjectToggle.checked;
       MaweDom.autoOpenLastProjectToggle.disabled = true;
       try {
-        const response = await MaweHost.server.fetch(MaweBoot.SERVER_CONFIG.settingsUrl, {
+        const response = await getMaweHost().server.fetch(MaweBoot.SERVER_CONFIG.settingsUrl, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ autoOpenLastProject: enabled }),
@@ -529,8 +531,8 @@ function configureServerProjectSettings() {
 }
 
 window.MaweServerSave = Object.freeze({
-  get projectImportDirty() { return MaweState.changes.projectImportDirty; },
-  set projectImportDirty(v) { MaweState.changes.projectImportDirty = v; },
+  get projectImportDirty() { return getMaweState().changes.projectImportDirty; },
+  set projectImportDirty(v) { getMaweState().changes.projectImportDirty = v; },
   get projectCheckpointed() { return projectCheckpointed; },
   set projectCheckpointed(v) { projectCheckpointed = v; },
   get projectCheckpointInFlight() { return projectCheckpointInFlight; },
@@ -566,8 +568,8 @@ window.MaweServerSave = Object.freeze({
 });
 
 export const MaweServerSave = freezeFacade({
-    get projectImportDirty() { return MaweState.changes.projectImportDirty; },
-    set projectImportDirty(v) { MaweState.changes.projectImportDirty = v; },
+    get projectImportDirty() { return getMaweState().changes.projectImportDirty; },
+    set projectImportDirty(v) { getMaweState().changes.projectImportDirty = v; },
     get projectCheckpointed() { return projectCheckpointed; },
     set projectCheckpointed(v) { projectCheckpointed = v; },
     get projectCheckpointInFlight() { return projectCheckpointInFlight; },

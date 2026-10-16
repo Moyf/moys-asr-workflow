@@ -12,7 +12,9 @@ import { MaweHint } from "../ui/editor-hint.js";
 import { MaweBoot } from "../boot/editor-boot.js";
 import { MaweSettings } from "../state/editor-settings.js";
 import { MaweExportTimeline } from "./editor-export-timeline.js";
-import { MaweInlineEdit } from "../cues/editor-inline-edit.js";function syncStickerOtioExportMode() {
+import { MaweInlineEdit } from "../cues/editor-inline-edit.js";
+import { getMaweHost } from '../boot/editor-host.js';
+function syncStickerOtioExportMode() {
   const available = Boolean(
     MaweBoot.SERVER_CONFIG?.canPortableStickerExport && MaweBoot.SERVER_CONFIG?.portableStickerExportUrl
   );
@@ -41,7 +43,7 @@ async function exportStickerOtio(kind, buildTimeline, filename, description) {
   }
   MaweHint.flashHint('正在生成便携表情包 OTIO 文件夹…');
   try {
-    const response = await MaweHost.server.fetch(MaweBoot.SERVER_CONFIG.portableStickerExportUrl, {
+    const response = await getMaweHost().server.fetch(MaweBoot.SERVER_CONFIG.portableStickerExportUrl, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({

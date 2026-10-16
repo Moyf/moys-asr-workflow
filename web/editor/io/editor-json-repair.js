@@ -10,6 +10,8 @@ import { MaweSettings } from "../state/editor-settings.js";
 import { MaweAppearance } from "../styles/editor-appearance.js";
 import { MaweSpeakerLabels } from "../styles/editor-speaker-labels.js";
 import { MaweExportTimeline } from "./editor-export-timeline.js";
+import { MaweGapRemoveData } from "../ui/editor-gap-remove-data.js";
+import { MaweProjectMediaInputs } from "./editor-project-media-inputs.js";
 // 真 ESM：模块顶层定义与发布（原转换体 phase-2 语义 = import 求值）。
 // window.<Name> 与导出的 <Name> 是同一对象；消费者逐簇改 import 后移除 window 发布。
 'use strict';

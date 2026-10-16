@@ -8,7 +8,7 @@ const source = fs.readFileSync(new URL('../../web/editor/io/editor-wiring-export
 const start = source.indexOf("document.getElementById('download-gap-removed-video')");
 const end = source.indexOf("document.getElementById('download-gap-removed-regions-json')", start);
 if (start < 0 || end <= start) throw new Error('Video handler not found');
-const handler = source.slice(start, end);
+const handler = `const getMaweHost = () => window.MaweHost;\n${source.slice(start, end)}`;
 // editor-project-load.js 是普通 ESM：fixture 以 classic 直引等价物注入（剥 import/export、预置 legacyBindings 绑定）。
 // 普通 ESM 源 → classic script 等价（fixture 注入场景限定）：
 // 剥 import 行与 export 前缀、预置 legacyBindings 绑定。
@@ -50,6 +50,7 @@ async function withFixture(page, run) {
       window.writes = 0;
       window.outputClosed = false;
       window.MaweInlineEdit = {};
+      window.MaweCoreState = { player: null, waveformEditor: null };
       window.MaweBoot = { FILENAME_BASE: 'test', SERVER_CONFIG: {
         canGapRemovedVideoExport: true, gapRemovedVideoSourceName: 'source.mp4',
         gapRemovedVideoExportUrl: '/export', requestToken: 'fixture',
@@ -137,10 +138,10 @@ test(`rendered editor rejects waiting media picker after ${change}`, async ({ pa
           || request.url().endsWith('/api/exports/gap-removed-video/jobs')) posts += 1;
     });
     await page.evaluate(() => {
-      window.bindingHints = [];
-      const original = window.MaweHint;
-      window.MaweHint = { ...original, flashHint: text => window.bindingHints.push(text) };
-      window.MaweExportSrt = { ...window.MaweExportSrt, gapRemovedExportContext: () => ({ intervals: [{ start: 0, end: 1000 }] }) };
+      MaweBoot.DATA.gap_remove = { gaps: [
+        { start: 1000, end: MaweCoreState.waveformEditor.durationMs, removed: true },
+      ] };
+      MaweGapRemoveUi.updateGapRemoveUi();
       window.showSaveFilePicker = () => new Promise(resolve => {
         window.bindingPickerPending = true;
         window.bindingPickerResolve = () => resolve({ name: 'result.wav', createWritable: async () => { throw new Error('must not create'); } });
@@ -162,11 +163,11 @@ test(`rendered editor rejects waiting media picker after ${change}`, async ({ pa
     await page.evaluate(() => {
       window.bindingPickerResolve();
     });
-    await expect.poll(() => page.evaluate(() => window.bindingHints.at(-1))).toContain('绑定已变更');
+    await expect(page.locator('#hint-stack')).toContainText('绑定已变更');
     expect(await page.evaluate(() => MaweProjectLoad.projectBindingEpoch)).toBe(before + (change === 'canonical-reload' ? 1 : 0));
     expect(posts).toBe(change === 'canonical-reload' ? 0 : 1);
     if (change === 'server-rebind') {
-      expect(await page.evaluate(() => window.bindingHints.at(-1))).toContain('导出失败');
+      await expect(page.locator('#hint-stack')).toContainText('导出失败');
     }
   } finally {
     await server?.stop();

@@ -23,7 +23,9 @@ let serverConnectionFailureCount = 0;
 
 import { MaweHint } from "../ui/editor-hint.js";
 import { MaweLoadingProgress } from "./editor-loading-progress.js";
-import { MaweBoot } from "../boot/editor-boot.js";function serverConnectionCheckUrl() {
+import { MaweBoot } from "../boot/editor-boot.js";
+import { getMaweHost } from '../boot/editor-host.js';
+function serverConnectionCheckUrl() {
   return MaweBoot.SERVER_CONFIG?.healthUrl || MaweBoot.SERVER_CONFIG?.startupStatusUrl || '';
 }
 
@@ -48,7 +50,7 @@ async function checkServerConnection() {
   const timeout = window.setTimeout(() => controller.abort(), SERVER_CONNECTION_REQUEST_TIMEOUT_MS);
   let healthy = false;
   try {
-    const response = await MaweHost.server.fetch(url, { cache: 'no-store', signal: controller.signal });
+    const response = await getMaweHost().server.fetch(url, { cache: 'no-store', signal: controller.signal });
     const result = await response.json().catch(() => null);
     healthy = response.ok && result?.ok === true;
   } catch (_error) {
@@ -136,7 +138,7 @@ async function loadServerStartup() {
   );
   const poll = async () => {
     try {
-      const response = await MaweHost.server.fetch(url, { cache: 'no-store' });
+      const response = await getMaweHost().server.fetch(url, { cache: 'no-store' });
       const result = await response.json().catch(() => ({}));
       if (!response.ok || result.ok !== true) {
         throw new Error(result.error || `服务器返回 ${response.status}`);

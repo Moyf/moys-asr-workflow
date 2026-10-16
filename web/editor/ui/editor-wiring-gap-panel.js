@@ -1,4 +1,5 @@
 
+import { MaweGapRemoveData } from "./editor-gap-remove-data.js";
 import { MaweHistory } from "../state/editor-history.js";
 import { MaweCuePanelState } from "../state/editor-cue-panel-state.js";
 import { MaweInlineEdit } from "../cues/editor-inline-edit.js";

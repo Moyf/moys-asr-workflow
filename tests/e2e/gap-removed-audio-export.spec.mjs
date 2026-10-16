@@ -8,7 +8,7 @@ import { makeTempDir, cleanupTempDir, generateWav, generateProjectJson, startSer
 const source = fs.readFileSync(new URL('../../web/editor/io/editor-wiring-export-actions.js', import.meta.url), 'utf8');
 const first = source.indexOf("document.getElementById('download-gap-removed-video')");
 const last = source.indexOf("document.getElementById('download-gap-removed-regions-json')", first);
-const handler = source.slice(first, last);
+const handler = `const getMaweHost = () => window.MaweHost;\n${source.slice(first, last)}`;
 // editor-project-load.js 是普通 ESM：fixture 以 classic 直引等价物注入（剥 import/export、预置 legacyBindings 绑定）。
 // 普通 ESM 源 → classic script 等价（fixture 注入场景限定）：
 // 剥 import 行与 export 前缀、预置 legacyBindings 绑定。
@@ -67,6 +67,7 @@ async function fixture(page, mode, run) {
     await page.evaluate(mode => {
       window.hints = []; window.saved = false; window.bytes = 0; window.writableCreated = false;
       window.MaweInlineEdit = {};
+      window.MaweCoreState = { player: null, waveformEditor: null };
       window.MaweProjectLoad = { projectBindingEpoch: 1 };
       window.MaweBoot = { FILENAME_BASE: 'music', DATA: { media: 'source.mp3' }, SERVER_CONFIG: {
         canGapRemovedVideoExport: false, gapRemovedVideoSourceName: null,
@@ -250,16 +251,18 @@ test('rendered audio editor offers WAV and saves the real server output', async 
     await page.waitForFunction(() => window.MaweExportSrt && MaweBoot.SERVER_CONFIG.canGapRemovedMediaExport);
     await expect(page.locator('#download-gap-removed-video')).toHaveText('重组后音频');
     await page.evaluate(() => {
-      MaweBoot.DATA.gap_remove = { gaps: [{ start: 567, end: 1001, removed: true }] };
+      MaweBoot.DATA.gap_remove = { gaps: [
+        { start: 0, end: 123, removed: true },
+        { start: 567, end: 1001, removed: true },
+        { start: 1502, end: MaweCoreState.waveformEditor.durationMs, removed: true },
+      ] };
       MaweGapRemoveUi.updateGapRemoveUi();
     });
     await page.click('#gap-removed-export-btn');
     await expect(page.locator('#download-gap-removed-video')).toBeVisible();
     await page.screenshot({ path: testInfo.outputPath('real-audio-export-menu.png') });
     await page.evaluate(() => {
-      window.audioChunks = []; window.audioSaved = false; window.audioHints = [];
-      window.MaweHint = { ...window.MaweHint, flashHint: text => window.audioHints.push(text) };
-      window.MaweExportSrt = { ...window.MaweExportSrt, gapRemovedExportContext: () => ({ intervals: [{ start: 123, end: 567 }, { start: 1001, end: 1502 }] }) };
+      window.audioChunks = []; window.audioSaved = false;
       window.showSaveFilePicker = async options => {
         window.audioPicker = options;
         return { name: 'result.wav', createWritable: async () => ({ write: async bytes => window.audioChunks.push(Array.from(bytes)),
@@ -268,6 +271,7 @@ test('rendered audio editor offers WAV and saves the real server output', async 
       document.getElementById('download-gap-removed-video').click();
     });
     await expect.poll(() => page.evaluate(() => window.audioSaved), { timeout: 15000 }).toBe(true);
+    await expect(page.locator('#hint-stack')).toContainText('去空隙音频已重组并保存');
     expect(await page.evaluate(() => window.audioPicker.types[0].accept)).toEqual({ 'audio/wav': ['.wav'] });
     const output = Buffer.from(await page.evaluate(() => window.audioChunks.flat()));
     expect(output.subarray(0, 4).toString()).toBe('RIFF');
@@ -288,7 +292,6 @@ test('rendered audio editor offers WAV and saves the real server output', async 
     expect(dataBytes).not.toBeNull();
     expect(dataBytes / blockAlign).toBe(Math.round(567 * sampleRate / 1000) - Math.round(123 * sampleRate / 1000)
       + Math.round(1502 * sampleRate / 1000) - Math.round(1001 * sampleRate / 1000));
-    expect(await page.evaluate(() => window.audioHints.at(-1))).toBe('去空隙音频已重组并保存');
     await page.screenshot({ path: testInfo.outputPath('real-audio-editor-saved.png') });
   } finally {
     await server?.stop();
@@ -310,15 +313,20 @@ test('rendered compressed stereo audio exports float WAV decodable by the browse
     await page.waitForFunction(() => window.MaweExportSrt && MaweBoot.SERVER_CONFIG.canGapRemovedMediaExport);
     await expect(page.locator('#download-gap-removed-video')).toHaveText('重组后音频');
     await page.evaluate(() => {
-      window.floatChunks = []; window.floatSaved = false; window.floatHints = [];
-      window.MaweHint = { ...window.MaweHint, flashHint: text => window.floatHints.push(text) };
-      window.MaweExportSrt = { ...window.MaweExportSrt, gapRemovedExportContext: () => ({ intervals: [{ start: 123, end: 567 }, { start: 1001, end: 1502 }] }) };
+      MaweBoot.DATA.gap_remove = { gaps: [
+        { start: 0, end: 123, removed: true },
+        { start: 567, end: 1001, removed: true },
+        { start: 1502, end: MaweCoreState.waveformEditor.durationMs, removed: true },
+      ] };
+      MaweGapRemoveUi.updateGapRemoveUi();
+      window.floatChunks = []; window.floatSaved = false;
       window.showSaveFilePicker = async () => ({ name: 'result.wav', createWritable: async () => ({
         write: async bytes => window.floatChunks.push(Array.from(bytes)), close: async () => { window.floatSaved = true; }, abort: async () => {},
       }) });
       document.getElementById('download-gap-removed-video').click();
     });
     await expect.poll(() => page.evaluate(() => window.floatSaved), { timeout: 15000 }).toBe(true);
+    await expect(page.locator('#hint-stack')).toContainText('去空隙音频已重组并保存');
     const output = Buffer.from(await page.evaluate(() => window.floatChunks.flat()));
     fs.writeFileSync(testInfo.outputPath('stereo-float-gap-removed.wav'), output);
     const decoded = await page.evaluate(async () => {
@@ -341,7 +349,6 @@ test('rendered compressed stereo audio exports float WAV decodable by the browse
     expect(decoded.duration).toBeCloseTo(expectedSamples / 44100, 8);
     expect(decoded.peaks.every(peak => peak > .1 && peak < .5)).toBe(true);
     expect(fs.readFileSync(mp3).equals(original)).toBe(true);
-    expect(await page.evaluate(() => window.floatHints.at(-1))).toBe('去空隙音频已重组并保存');
     fs.writeFileSync(testInfo.outputPath('browser-decoded-audio.json'), JSON.stringify(decoded, null, 2));
   } finally {
     await server?.stop();

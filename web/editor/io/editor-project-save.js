@@ -20,6 +20,8 @@ import { MaweViewUpdates } from "../state/editor-view-updates.js";
 import { MaweExportTimeline } from "./editor-export-timeline.js";
 import { MaweWordTiming } from "../cues/editor-word-timing.js";
 import { MaweCuePanel } from "../cues/editor-cue-panel.js";
+import { getMaweState } from '../state/editor-state.js';
+import { getMaweHost } from '../boot/editor-host.js';
 let projectJsonBuilder;
 
 export function setProjectJsonBuilder(builder) {
@@ -92,9 +94,9 @@ function markProjectSaved(filename, backupName, { silent = false, fingerprint = 
 // 请求在途时的新编辑继续保持脏状态，失败请求从不进入这里。
 const unchanged = !inlineEditHasUncommittedText()
 && (fingerprint === null || fingerprint === projectSaveFingerprint());
-MaweState.noteSavedSegments(contentFingerprint);
+getMaweState().noteSavedSegments(contentFingerprint);
 if (unchanged) {
-MaweState.markSaved();
+getMaweState().markSaved();
 MaweCoreState.container.querySelectorAll('.dirty').forEach(element => element.classList.remove('dirty'));
 }
 MaweBoot.PROJECT_NAME = filename.replace(/\.(json|mosp)$/i, '');
@@ -118,11 +120,11 @@ if (MaweServerSave.projectSaveInFlight || MaweServerSave.projectCheckpointInFlig
 flushInlineEditsForSave();
 const projectJson = buildProjectJson();
 const fingerprint = projectSaveFingerprint();
-const contentFingerprint = MaweState.segmentsFingerprint();
+const contentFingerprint = getMaweState().segmentsFingerprint();
 MaweServerSave.projectSaveInFlight = true;
 try {
 const saveUrl = MaweBoot.SERVER_CONFIG.saveUrl;
-    const response = await MaweHost.server.fetch(saveUrl, {
+    const response = await getMaweHost().server.fetch(saveUrl, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
@@ -164,10 +166,10 @@ if (MaweServerSave.projectSaveInFlight || MaweServerSave.projectCheckpointInFlig
 flushInlineEditsForSave();
 const projectJson = buildProjectJson({ forFileExport: true });
 const fingerprint = projectSaveFingerprint();
-const contentFingerprint = MaweState.segmentsFingerprint();
+const contentFingerprint = getMaweState().segmentsFingerprint();
 MaweServerSave.projectSaveInFlight = true;
 try {
-await MaweHost.files.writeBlob(MaweServerSave.projectFileHandle, () => new Blob([projectJson], { type: 'application/json;charset=utf-8' }));
+await getMaweHost().files.writeBlob(MaweServerSave.projectFileHandle, () => new Blob([projectJson], { type: 'application/json;charset=utf-8' }));
 markProjectSaved(MaweServerSave.projectFileHandle.name, null, { silent, fingerprint, contentFingerprint });
     return true;
   } catch (error) {
@@ -199,23 +201,23 @@ async function saveProjectAsToFile() {
   MaweCuePanel.commitCuePanelEdit();
   const suggested = `${MaweBoot.FILENAME_BASE}.mosp`;
   // 无原生保存对话框的浏览器：退化为普通下载（文件名不可考，标题保持不变）。
-  if (!MaweHost.files.hasSavePicker()) {
+  if (!getMaweHost().files.hasSavePicker()) {
     await MaweExportTimeline.downloadFile(buildProjectJson({ forFileExport: true }), suggested, 'application/json', {
       desc: 'MOSE 工程文件', types: { 'application/json': ['.mosp', '.json'] }
     });
     return;
   }
   try {
-    const handle = await MaweHost.files.pickSaveFile({
+    const handle = await getMaweHost().files.pickSaveFile({
       suggestedName: suggested,
       types: [{ description: 'MOSE 工程文件', accept: { 'application/json': ['.mosp', '.json'] } }],
     });
     let fingerprint, contentFingerprint;
-    await MaweHost.files.writeBlob(handle, () => {
+    await getMaweHost().files.writeBlob(handle, () => {
       flushInlineEditsForSave();
       const projectJson = buildProjectJson({ forFileExport: true });
       fingerprint = projectSaveFingerprint();
-      contentFingerprint = MaweState.segmentsFingerprint();
+      contentFingerprint = getMaweState().segmentsFingerprint();
       return new Blob([projectJson], { type: 'application/json;charset=utf-8' });
     });
     MaweServerSave.projectFileHandle = handle;

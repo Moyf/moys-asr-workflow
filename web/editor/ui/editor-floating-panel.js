@@ -6,6 +6,7 @@ import { MaweDom } from "./editor-dom.js";
 
 import { MaweInlineEdit } from "../cues/editor-inline-edit.js";
 import { MaweSegmentOps } from "../cues/editor-segment-ops.js";
+import { MaweKeyboardTargets } from "../cues/editor-keyboard-targets.js";
 // 所有非模态浮层共用一个前置栈：最后点击、打开或获得焦点的浮层排在最上面。
 // 起始值高于普通设置弹窗（420），但低于拖拽遮罩和加载层（500/510）。
 const FLOATING_SURFACE_Z_INDEX_BASE = 430;

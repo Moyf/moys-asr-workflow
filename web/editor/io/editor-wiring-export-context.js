@@ -10,6 +10,7 @@ import { MaweSettings } from "../state/editor-settings.js";
 import { MaweServerSave } from "./editor-server-save.js";
 import { MaweProjectSave } from "./editor-project-save.js";
 import { MaweExportTimeline } from "./editor-export-timeline.js";
+import { getMaweHost } from '../boot/editor-host.js';
 // 工程扩展字段：project-load 在应用工程时重置（ESM 导入绑定
 // 不可赋值，提供具名 setter）。
 export function setProjectExtensionFields(value) { projectExtensionFields = value; }
@@ -274,7 +275,7 @@ for (const [id, key, fallback, max] of projectBackupSettings) {
 document.getElementById('project-backup-open')?.addEventListener('click', async () => {
   if (!MaweServerSave.serverProjectSavingEnabled() || MaweServerSave.projectFileHandle) return;
   try {
-    const response = await MaweHost.server.fetch('/api/project/backups/open', {
+    const response = await getMaweHost().server.fetch('/api/project/backups/open', {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ requestToken: MaweBoot.SERVER_CONFIG.requestToken }),
     });

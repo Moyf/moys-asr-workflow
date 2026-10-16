@@ -5,6 +5,7 @@
 import { AsrEditorUtils } from '../../shared/editor-utils.js';
 import { AsrGapRemoveCore } from '../../shared/gap-remove-core.js';
 import { getMaweState } from './editor-state.js';
+import { getMaweHost } from '../boot/editor-host.js';
 
 
 const EDITOR_SETTINGS_KEY = 'moy.asr.editor.settings.v1';
@@ -254,8 +255,8 @@ const SUBTITLE_FONT_FAMILY_CSS = Object.freeze({
 function readEditorSettings() {
   let saved = {};
   let legacyAssStyleLibrary = null;
-  try { saved = JSON.parse(MaweHost.storage.getItem(EDITOR_SETTINGS_KEY) || '{}'); } catch (_) { /* invalid storage */ }
-  try { legacyAssStyleLibrary = JSON.parse(MaweHost.storage.getItem('moy.asr.ass.styles.v1') || 'null'); } catch (_) { /* invalid storage */ }
+  try { saved = JSON.parse(getMaweHost().storage.getItem(EDITOR_SETTINGS_KEY) || '{}'); } catch (_) { /* invalid storage */ }
+  try { legacyAssStyleLibrary = JSON.parse(getMaweHost().storage.getItem('moy.asr.ass.styles.v1') || 'null'); } catch (_) { /* invalid storage */ }
   const settings = AsrEditorUtils.normalizeEditorSettings({
     ...saved,
     cueListAutoScrollOnClick: saved.cueListAutoScrollOnClick !== false,
@@ -316,7 +317,7 @@ function saveEditorSettings(settings) {
   try {
     const personal = { ...settings };
     for (const key of ['assMode', 'mainSplitModeOverride', 'exportSpeakerLabels']) delete personal[key];
-    MaweHost.storage.setItem(EDITOR_SETTINGS_KEY, JSON.stringify(personal));
+    getMaweHost().storage.setItem(EDITOR_SETTINGS_KEY, JSON.stringify(personal));
   } catch (_) {
     // file:// 隐私模式可能拒绝 localStorage；本次页面仍保持可用。
   }
@@ -334,7 +335,7 @@ function getEditorSettings() {
 function updateEditorSettings(patch) {
   const settings = getEditorSettings();
   Object.assign(settings, patch);
-  if ('assMode' in patch || 'exportSpeakerLabels' in patch) MaweState.changes.previewGeometryDirty = true;
+  if ('assMode' in patch || 'exportSpeakerLabels' in patch) getMaweState().changes.previewGeometryDirty = true;
   saveEditorSettings(settings);
 }
 

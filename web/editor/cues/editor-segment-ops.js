@@ -22,7 +22,9 @@ import { MaweCommands } from "../state/editor-commands.js";
 import { MaweViewUpdates } from "../state/editor-view-updates.js";
 import { MaweTextCleanup } from "./editor-text-cleanup.js";
 import { MaweCueListAnchor } from "./editor-cue-list-anchor.js";
-import { MawePlaybackLoop } from "../media/editor-playback-loop.js";function mergeContiguousIndices(sorted) {
+import { MawePlaybackLoop } from "../media/editor-playback-loop.js";
+import { getMaweState } from '../state/editor-state.js';
+function mergeContiguousIndices(sorted) {
   const segs = sorted.map(i => MaweBoot.DATA.segments[i]);
   const mergeStart = segs[0]?.start;
   const mergeEnd = segs[segs.length - 1]?.end;
@@ -734,7 +736,7 @@ function deleteExtensionSegments(indices, track = MaweMultiSubtitleCore.getActiv
     MaweMultiSubtitleCore.removeBindingsForSegmentIds([], [...unboundIds]);
     remainingIndices.reverse().forEach((index) => track.segments.splice(index, 1));
     MaweMultiSubtitleCore.markMultiSubtitleDirty();
-    MaweState.selection.clear('extension');
+    getMaweState().selection.clear('extension');
     command.commit({ cueList: true });
     MaweHint.flashHint(`已删除 ${remainingIndices.length} 条副字幕`, 'success');
   });

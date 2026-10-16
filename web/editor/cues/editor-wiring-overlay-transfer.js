@@ -15,6 +15,7 @@ import { MaweColors } from "../styles/editor-colors.js";
 'use strict';
 
 import { MaweMultiSubtitleCore } from '../state/editor-multi-subtitle-core.js';
+import { getMaweState } from '../state/editor-state.js';
 export { getOverlayTrack, overlayTrackVisible, detachCuePanelFromTrackEdits, convertMainCuesToOverlay, convertMainCueToOverlayForDrag, convertOverlayCueToMainForDrag, convertOverlayCueToMain, deleteOverlayCues, activeExtensionSegments };
 
 function getOverlayTrack() {
@@ -221,13 +222,13 @@ function convertMainCueToOverlayForDrag(index) {
   if (newIndex < 0) return -1;
   applyCueColorSnapshot(segment, colorSnapshot);
   applyCueStickerSnapshot(segment, stickerSnapshot);
-  const { wasSelected, nextAnchor } = MaweState.selection.removeAndShift('main', index);
+  const { wasSelected, nextAnchor } = getMaweState().selection.removeAndShift('main', index);
   MaweSelection.lastClickedIdx = nextAnchor;
   updateSelectionCountText();
   if (panelWasHere) MaweCuePanel.setCuePanelTarget('overlay', newIndex);
   if (wasSelected) {
-    MaweState.selection.add('overlay', newIndex);
-    MaweState.selection.overlayAnchor = newIndex;
+    getMaweState().selection.add('overlay', newIndex);
+    getMaweState().selection.overlayAnchor = newIndex;
   }
   return newIndex;
 }
@@ -255,8 +256,8 @@ function convertOverlayCueToMainForDrag(index) {
   applyCueColorSnapshot(segment, colorSnapshot);
   applyCueStickerSnapshot(segment, stickerSnapshot);
   shiftMainGroupRefsAfterInsert(newIndex);
-  const { wasSelected, nextAnchor } = MaweState.selection.removeAndShift('overlay', index);
-  MaweState.selection.overlayAnchor = nextAnchor;
+  const { wasSelected, nextAnchor } = getMaweState().selection.removeAndShift('overlay', index);
+  getMaweState().selection.overlayAnchor = nextAnchor;
   updateSelectionCountText();
   if (panelWasHere) MaweCuePanel.setCuePanelTarget('main', newIndex);
   if (wasSelected && !MaweSelection.isHiddenDisabled(newIndex)) {
@@ -283,7 +284,7 @@ function convertOverlayCueToMain(index) {
     applyCueColorSnapshot(segment, colorSnapshot);
     applyCueStickerSnapshot(segment, stickerSnapshot);
     shiftMainGroupRefsAfterInsert(newIndex);
-    MaweState.selection.removeAndShift('overlay', index);
+    getMaweState().selection.removeAndShift('overlay', index);
     command.commit({ cueList: true, waveform: 'full' });
 
     MaweHint.flashHint('已转为主字幕', 'success');
@@ -303,8 +304,8 @@ function deleteOverlayCues(indices) {
       resetOverlayGroupRefs(sorted[index]);
       overlay.segments.splice(sorted[index], 1);
     }
-    MaweState.selection.clear('overlay');
-    MaweState.selection.overlayAnchor = -1;
+    getMaweState().selection.clear('overlay');
+    getMaweState().selection.overlayAnchor = -1;
     overlay._dirty = true;
     command.commit({ cueList: true, waveform: 'full' });
 

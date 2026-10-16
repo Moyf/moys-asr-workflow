@@ -23,8 +23,9 @@ import { MaweServerSave } from "./editor-server-save.js";
 
 import { MaweExportTimeline } from "./editor-export-timeline.js";
 import { MaweStickerOverlay } from "../media/editor-sticker-overlay.js";
+import { getMaweHost } from '../boot/editor-host.js';
 function getDefaultRoot() {
-  try { return normalizeRoot(MaweHost.storage.getItem(DEFAULT_ROOT_KEY)); } catch (_) { return ''; }
+  try { return normalizeRoot(getMaweHost().storage.getItem(DEFAULT_ROOT_KEY)); } catch (_) { return ''; }
 }
 function projectRoot() { return normalizeRoot(MaweBoot.DATA.sticker_root); }
 function syncControls() {
@@ -42,7 +43,7 @@ function syncControls() {
 }
 async function requestRoot(root, activate) {
   if (!serverEnabled) return null;
-  const response = await MaweHost.server.fetch(MaweBoot.SERVER_CONFIG.stickerRootUrl, {
+  const response = await getMaweHost().server.fetch(MaweBoot.SERVER_CONFIG.stickerRootUrl, {
     method: 'POST', headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ requestToken: MaweBoot.SERVER_CONFIG.requestToken, path: root, activate }),
   });
@@ -72,7 +73,7 @@ async function applyRoot(scope, value) {
       const result = await requestRoot(effective, active);
       if (generation !== epoch) return;
       const checked = result?.root || effective;
-      if (scope === 'default') MaweHost.storage.setItem(DEFAULT_ROOT_KEY, root ? checked : '');
+      if (scope === 'default') getMaweHost().storage.setItem(DEFAULT_ROOT_KEY, root ? checked : '');
       else { MaweBoot.DATA.sticker_root = root ? checked : ''; MaweServerSave.projectImportDirty = true; }
       if (active) publish(checked, result);
       syncControls();

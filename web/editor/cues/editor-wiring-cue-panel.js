@@ -24,6 +24,7 @@ import { MaweTextCleanup } from "./editor-text-cleanup.js";
 import { MaweStickerPicker } from "./editor-sticker-picker.js";
 import { MaweCueListAnchor } from "./editor-cue-list-anchor.js";
 import { MaweCueEvents } from "./editor-cue-events.js";
+import { getMaweState } from '../state/editor-state.js';
 // “仅看超长”开启时，刚拆出的字幕临时绕过字数过滤；使用稳定 ID，避免 splice 后下标错位。
 
 // 右键选择「绑定到主字幕」后的等待状态。使用稳定 ID 而不是数组下标，
@@ -213,9 +214,9 @@ MaweDom.cuePanelSplit?.addEventListener('click', MaweCuePanel.splitCuePanelAtCur
 // 不能走 updateMultiSelectionClasses，这里按 data-overlay-idx 直接同步。
 export function syncOverlaySelectionClasses() {
   MaweCoreState.container.querySelectorAll('.cue[data-overlay-idx].selected').forEach((el) => {
-    if (!MaweState.selection.indices('overlay').has(Number(el.dataset.overlayIdx))) el.classList.remove('selected');
+    if (!getMaweState().selection.indices('overlay').has(Number(el.dataset.overlayIdx))) el.classList.remove('selected');
   });
-  MaweState.selection.indices('overlay').forEach((index) => {
+  getMaweState().selection.indices('overlay').forEach((index) => {
     MaweCoreState.container.querySelector(`.cue[data-overlay-idx="${index}"]`)?.classList.add('selected');
   });
   updateSelectionCountText();
@@ -226,8 +227,8 @@ export function selectOverlayCueRow(index, { focusEditor = false } = {}) {
   // 已有选区（clearSelection 同时取消待绑定状态），再单独选中本轨字幕。
   MaweCuePanel.commitCuePanelEdit();
   MaweSelection.clearSelection({ silent: true });
-  MaweState.selection.add('overlay', index);
-  MaweState.selection.overlayAnchor = index;
+  getMaweState().selection.add('overlay', index);
+  getMaweState().selection.overlayAnchor = index;
   MaweCuePanel.setCuePanelTarget('overlay', index);
   if (focusEditor) MaweCuePanel.focusCuePanelText(index, 'overlay');
   syncOverlaySelectionClasses();
@@ -240,10 +241,10 @@ export function selectOverlayRange(fromIndex, toIndex) {
   const segments = getOverlayTrack()?.segments || [];
   const from = Math.max(0, Math.min(fromIndex, toIndex));
   const to = Math.min(segments.length - 1, Math.max(fromIndex, toIndex));
-  MaweState.selection.clear('overlay');
+  getMaweState().selection.clear('overlay');
   for (let index = from; index <= to; index += 1) {
     if (MaweSelection.isHiddenDisabled(index, getOverlayTrack())) continue;
-    MaweState.selection.add('overlay', index);
+    getMaweState().selection.add('overlay', index);
   }
   MaweCuePanel.setCuePanelTarget('overlay', toIndex);
   syncOverlaySelectionClasses();
@@ -255,14 +256,14 @@ export function selectOverlayRange(fromIndex, toIndex) {
 export function toggleOverlaySelection(index) {
   if (MaweSelection.isHiddenDisabled(index, getOverlayTrack())) return;  // 隐藏禁用项不参与选择
   const row = MaweCoreState.container.querySelector(`.cue[data-overlay-idx="${index}"]`);
-  if (MaweState.selection.indices('overlay').has(index)) {
-    MaweState.selection.remove('overlay', index);
+  if (getMaweState().selection.indices('overlay').has(index)) {
+    getMaweState().selection.remove('overlay', index);
     row?.classList.remove('selected');
   } else {
-    MaweState.selection.add('overlay', index);
+    getMaweState().selection.add('overlay', index);
     row?.classList.add('selected');
   }
-  MaweState.selection.overlayAnchor = index;
+  getMaweState().selection.overlayAnchor = index;
   // 与副字幕 Ctrl 多选一致：面板跟随被切换的字幕，便于继续编辑。
   MaweCuePanel.setCuePanelTarget('overlay', index);
   updateSelectionCountText();
@@ -274,11 +275,11 @@ export function buildOverlayCueEl(seg, index) {
   el.classList.add('overlay-track-cue');
   el.dataset.overlayIdx = String(index);
   el.removeAttribute('data-idx');
-  el.classList.toggle('selected', MaweState.selection.indices('overlay').has(index));
+  el.classList.toggle('selected', getMaweState().selection.indices('overlay').has(index));
   el.addEventListener('click', (event) => {
     event.stopPropagation();
-    if (event.shiftKey && MaweState.selection.overlayAnchor >= 0) {
-      selectOverlayRange(MaweState.selection.overlayAnchor, index);
+    if (event.shiftKey && getMaweState().selection.overlayAnchor >= 0) {
+      selectOverlayRange(getMaweState().selection.overlayAnchor, index);
       return;
     }
     if (event.ctrlKey || event.metaKey) {

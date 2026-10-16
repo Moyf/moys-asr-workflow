@@ -24,6 +24,8 @@ import { MaweHistory } from "../state/editor-history.js";
 import { MaweSpeakerLabels } from "../styles/editor-speaker-labels.js";
 import { MaweExportSrt } from "./editor-export-srt.js";
 import { MaweJsonRepair } from "./editor-json-repair.js";
+import { MaweGapRemoveData } from "../ui/editor-gap-remove-data.js";
+import { getMaweHost } from '../boot/editor-host.js';
 function projectSaveFingerprint() {
   return JSON.stringify([MaweBoot.DATA.segments, MaweBoot.DATA.multi_subtitle, MaweBoot.DATA.gap_remove,
     MaweBoot.DATA.preview, MaweBoot.DATA.media_metadata, MaweHistory.gapRemoveDirty, MaweAppearance.previewGeometryDirty, MaweServerSave.projectImportDirty]);
@@ -429,7 +431,7 @@ document.getElementById('download-gap-removed-video')?.addEventListener('click',
     MaweHint.flashHint(mediaText('请从启动器打开关联源媒体的工程，再导出重组结果'), 'warning');
     return;
   }
-  if (!MaweHost.files.hasSavePicker() || !outputMime || !outputExtension
+  if (!getMaweHost().files.hasSavePicker() || !outputMime || !outputExtension
       || (!isAudio && mimeByExtension[outputExtension] !== outputMime) || (isAudio && (outputExtension !== '.wav' || outputMime !== 'audio/wav'))) {
     MaweHint.flashHint(mediaText('当前浏览器或媒体格式不支持重组后视频保存'), 'warning');
     return;
@@ -471,7 +473,7 @@ document.getElementById('download-gap-removed-video')?.addEventListener('click',
   let handle;
   try {
     const suggestedName = `${MaweBoot.FILENAME_BASE}_${window.MAWE_I18N?.exportTag?.('gap-removed') || 'gap-removed'}${outputExtension}`;
-    handle = await MaweHost.files.pickSaveFile({
+    handle = await getMaweHost().files.pickSaveFile({
       suggestedName,
       types: [{ description: mediaText('重组后视频'), accept: { [outputMime]: [outputExtension] } }],
     });
@@ -538,7 +540,7 @@ document.getElementById('download-gap-removed-video')?.addEventListener('click',
       try {
         await Promise.race([(async () => { while (true) {
         const cancelUrl = task.id ? `${jobsUrl}/${encodeURIComponent(task.id)}/cancel` : `${jobsUrl}/cancel-admission`;
-        const reply = await MaweHost.server.fetch(cancelUrl, {
+        const reply = await getMaweHost().server.fetch(cancelUrl, {
           method: 'POST', keepalive: true, signal: controller.signal,
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ requestToken, admissionToken: task.admissionToken }),
@@ -575,7 +577,7 @@ document.getElementById('download-gap-removed-video')?.addEventListener('click',
     try {
       await Promise.race([(async () => {
         while (true) {
-          const reply = await MaweHost.server.fetch(`${jobsUrl}/${encodeURIComponent(task.id)}`, {
+          const reply = await getMaweHost().server.fetch(`${jobsUrl}/${encodeURIComponent(task.id)}`, {
             headers: { 'X-MAW-Request-Token': requestToken }, signal: controller.signal,
           });
           const state = await reply.json();
@@ -643,7 +645,7 @@ document.getElementById('download-gap-removed-video')?.addEventListener('click',
       setProgress(mediaText('正在准备导出…'));
       // The client token makes cancellation safe even before the server ID is
       // delivered, including pagehide or a response which never finishes.
-      const admission = await raceStop(MaweHost.server.fetch(jobsUrl, {
+      const admission = await raceStop(getMaweHost().server.fetch(jobsUrl, {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ requestToken, bindingGeneration, sourceMediaId, intervals, ...audioSelection,
           admissionToken, admissionDeadline: Date.now() + 60000 }),
@@ -668,7 +670,7 @@ document.getElementById('download-gap-removed-video')?.addEventListener('click',
         const percent = ['rebuilding', 'exporting'].includes(state.stage) && typeof state.progress === 'number' ? state.progress : null;
         setProgress(mediaText(stages[state.stage] || '正在准备导出…') + (percent === null ? '' : ` ${Math.round(percent * 100)}%`), percent);
         await raceStop(pause());
-        const poll = await raceStop(MaweHost.server.fetch(`${jobsUrl}/${encodeURIComponent(task.id)}`, {
+        const poll = await raceStop(getMaweHost().server.fetch(`${jobsUrl}/${encodeURIComponent(task.id)}`, {
           headers: { 'X-MAW-Request-Token': requestToken }, signal: task.controller.signal,
         }));
         state = await raceStop(poll.json());
@@ -676,12 +678,12 @@ document.getElementById('download-gap-removed-video')?.addEventListener('click',
       }
       ensureCurrent();
       setProgress(mediaText('正在下载并写入视频…'), 0);
-      response = await raceStop(MaweHost.server.fetch(`${jobsUrl}/${encodeURIComponent(task.id)}/download`, {
+      response = await raceStop(getMaweHost().server.fetch(`${jobsUrl}/${encodeURIComponent(task.id)}/download`, {
         headers: { 'X-MAW-Request-Token': requestToken }, signal: task.controller.signal,
       }));
     } else {
     MaweHint.flashHint(mediaText('正在重组去空隙视频…'));
-    response = await MaweHost.server.fetch(exportUrl, {
+    response = await getMaweHost().server.fetch(exportUrl, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({

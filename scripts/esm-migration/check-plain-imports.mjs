@@ -17,10 +17,7 @@ const webRoot = path.join(root, 'web');
 const publishers = new Map(); // facade → {module, export}
 for (const f of files) {
   const src = fs.readFileSync(path.join(webRoot, f), 'utf8');
-  void 0;
-void 0;
-void 0;
-for (const m of src.matchAll(/export const (Mawe\w+|Asr\w+|MAWE_\w+) =/g)) {
+  for (const m of src.matchAll(/export const (Mawe\w+|Asr\w+|MAWE_\w+) =/g)) {
     publishers.set(m[1], { module: f.replace(/^web\//, ''), export: m[1] });
   }
 }
@@ -86,3 +83,4 @@ for (const r of report) {
   for (const m of r.missing) console.log('  ' + m.name + ' ← ' + (m.from ?? '?'));
 }
 console.log('files with missing imports:', report.length);
+if (process.argv.includes('--check') && report.length) process.exitCode = 1;

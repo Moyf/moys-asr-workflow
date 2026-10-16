@@ -16,6 +16,7 @@ import { MaweDom } from "../ui/editor-dom.js";
 import { MaweSettings } from "../state/editor-settings.js";
 import { MaweSpeakerLabels } from "./editor-speaker-labels.js";
 import { MaweColors } from "./editor-colors.js";
+import { getMaweState } from '../state/editor-state.js';
 // === 字幕预览几何（preview.subtitle）===
 // 归一化 {x,y,width,height} 存于 DATA.preview.subtitle。纯钳制/归一化逻辑在
 // AsrEditorUtils（已单测）；这里只负责 DOM 应用、指针/键盘手势、每手势一条撤销、脏标记。
@@ -372,7 +373,7 @@ MaweBoot.DATA.preview.subtitle = {
   ...next,
   speaker_labels: MaweSpeakerLabels.getSpeakerLabelSettings(),
 };
-if (markDirty) MaweState.changes.previewGeometryDirty = true;
+if (markDirty) getMaweState().changes.previewGeometryDirty = true;
 applySubtitleAppearance(MaweBoot.DATA.preview.subtitle);
 return next;
 }
@@ -494,7 +495,7 @@ function setExtensionSubtitleAppearance(patch, { markDirty = true } = {}) {
   if (!MaweBoot.DATA.preview || typeof MaweBoot.DATA.preview !== 'object') MaweBoot.DATA.preview = {};
   if (Object.keys(next).length) MaweBoot.DATA.preview.extension_subtitle = next;
   else delete MaweBoot.DATA.preview.extension_subtitle;
-  if (markDirty) MaweState.changes.previewGeometryDirty = true;
+  if (markDirty) getMaweState().changes.previewGeometryDirty = true;
   applyExtensionSubtitleAppearance(MaweBoot.DATA.preview.extension_subtitle);
   return next;
 }
@@ -504,7 +505,7 @@ function restoreExtensionSubtitleAppearance(value, { markDirty = true } = {}) {
   if (!MaweBoot.DATA.preview || typeof MaweBoot.DATA.preview !== 'object') MaweBoot.DATA.preview = {};
   if (Object.keys(next).length) MaweBoot.DATA.preview.extension_subtitle = next;
   else delete MaweBoot.DATA.preview.extension_subtitle;
-  if (markDirty) MaweState.changes.previewGeometryDirty = true;
+  if (markDirty) getMaweState().changes.previewGeometryDirty = true;
   applyExtensionSubtitleAppearance(MaweBoot.DATA.preview.extension_subtitle);
 }
 
@@ -516,8 +517,8 @@ function normalizeSubtitleColorStyle(value) {
 window.MaweAppearance = Object.freeze({
   normalizeSubtitleColorStyle,
   GEO_UTILS,
-  get previewGeometryDirty() { return MaweState.changes.previewGeometryDirty; },
-  set previewGeometryDirty(v) { MaweState.changes.previewGeometryDirty = v; },
+  get previewGeometryDirty() { return getMaweState().changes.previewGeometryDirty; },
+  set previewGeometryDirty(v) { getMaweState().changes.previewGeometryDirty = v; },
   getPreviewGeometry,
   normalizeSubtitleFontFamilyName,
   normalizeSubtitleBackgroundColor,
@@ -566,8 +567,8 @@ window.MaweAppearance = Object.freeze({
 export const MaweAppearance = freezeFacade({
     normalizeSubtitleColorStyle,
     GEO_UTILS,
-    get previewGeometryDirty() { return MaweState.changes.previewGeometryDirty; },
-    set previewGeometryDirty(v) { MaweState.changes.previewGeometryDirty = v; },
+    get previewGeometryDirty() { return getMaweState().changes.previewGeometryDirty; },
+    set previewGeometryDirty(v) { getMaweState().changes.previewGeometryDirty = v; },
     getPreviewGeometry,
     normalizeSubtitleFontFamilyName,
     normalizeSubtitleBackgroundColor,

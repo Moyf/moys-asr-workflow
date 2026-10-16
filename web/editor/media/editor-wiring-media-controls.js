@@ -15,6 +15,7 @@ import { MawePlaybackLoop } from "./editor-playback-loop.js";
 'use strict';
 import { MaweMediaPlayback } from "./editor-media-playback.js";
 import { MaweDom } from "../ui/editor-dom.js";
+import { getMaweState } from '../state/editor-state.js';
 MaweDom.mediaPlayToggle?.addEventListener('click', MaweMediaPlayback.togglePlayback);
 MaweDom.mediaStepBack?.addEventListener('click', () => MaweMediaPlayback.seekMediaBy(-MaweTimeline.timelineMediaSeekStepMilliseconds() / 1000));
 MaweDom.mediaStepForward?.addEventListener('click', () => MaweMediaPlayback.seekMediaBy(MaweTimeline.timelineMediaSeekStepMilliseconds() / 1000));
@@ -71,7 +72,7 @@ document.addEventListener('keydown', (e) => {
   const activeTrack = extensionTarget ? 'extension'
     : overlayTarget ? 'overlay' : 'main';
   const selected = extensionTarget ? MaweSelection.selectedExtensionIdxs
-    : overlayTarget ? MaweState.selection.indices('overlay') : MaweSelection.selectedIdxs;
+    : overlayTarget ? getMaweState().selection.indices('overlay') : MaweSelection.selectedIdxs;
   if (e.shiftKey && !commandKey) {
     // Shift 是显式的边界贴合命令，不受自动吸附默认值影响；Alt 只反转
     // 普通移动/边界微调的自动联动模式。

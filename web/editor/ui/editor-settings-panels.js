@@ -7,6 +7,7 @@ import { MaweFloatingPanel } from "./editor-floating-panel.js";
 
 
 import { MaweSettings } from "../state/editor-settings.js";
+import { MaweKeyboardTargets } from "../cues/editor-keyboard-targets.js";
 // 全局设置窗口：复用 createFloatingPanel 获得拖动、位置持久化、Esc 关闭与按钮 active 态；
 // 窗口内部用左侧垂直标签页切换不同分区，并记忆用户上次停留的分区。
 const editorSettingsTabs = MaweDom.editorSettingsPanel

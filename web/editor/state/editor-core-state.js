@@ -1,4 +1,5 @@
 import { freezeFacade } from './editor-facade-utils.js';
+import { getMaweState } from './editor-state.js';
 // 真 ESM：模块顶层定义与发布（原转换体 phase-2 语义 = import 求值）。
 // window.<Name> 与导出的 <Name> 是同一对象；消费者逐簇改 import 后移除 window 发布。
 'use strict';
@@ -25,16 +26,16 @@ function isReapeaksFile(file) {
 
 export const MaweCoreState = freezeFacade({
     container,
-    get player() { MaweState.runtime.player ??= /** @type {HTMLMediaElement|null} */ (document.getElementById('player')); return MaweState.runtime.player; },
-    set player(v) { MaweState.runtime.player = v; },
-    get waveformEditor() { return MaweState.runtime.waveformEditor; },
-    set waveformEditor(v) { MaweState.runtime.waveformEditor = v; },
-    get playbackFrameId() { return MaweState.runtime.playbackFrameId; },
-    set playbackFrameId(v) { MaweState.runtime.playbackFrameId = v; },
-    get playbackFramePlayer() { return MaweState.runtime.playbackFramePlayer; },
-    set playbackFramePlayer(v) { MaweState.runtime.playbackFramePlayer = v; },
-    get waveformLoadedFromProject() { return MaweState.runtime.waveformLoadedFromProject; },
-    set waveformLoadedFromProject(v) { MaweState.runtime.waveformLoadedFromProject = v; },
+    get player() { getMaweState().runtime.player ??= /** @type {HTMLMediaElement|null} */ (document.getElementById('player')); return getMaweState().runtime.player; },
+    set player(v) { getMaweState().runtime.player = v; },
+    get waveformEditor() { return getMaweState().runtime.waveformEditor; },
+    set waveformEditor(v) { getMaweState().runtime.waveformEditor = v; },
+    get playbackFrameId() { return getMaweState().runtime.playbackFrameId; },
+    set playbackFrameId(v) { getMaweState().runtime.playbackFrameId = v; },
+    get playbackFramePlayer() { return getMaweState().runtime.playbackFramePlayer; },
+    set playbackFramePlayer(v) { getMaweState().runtime.playbackFramePlayer = v; },
+    get waveformLoadedFromProject() { return getMaweState().runtime.waveformLoadedFromProject; },
+    set waveformLoadedFromProject(v) { getMaweState().runtime.waveformLoadedFromProject = v; },
     MEDIA_FILE_RE,
     isMediaFile,
     isReapeaksFile

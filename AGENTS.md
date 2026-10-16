@@ -62,6 +62,7 @@ uv run python edit.py --blank
 uv sync
 pnpm install --frozen-lockfile
 pnpm run check:editor
+pnpm run check:esm
 pnpm run typecheck
 node --test tests\test_editor_script_syntax.mjs tests\test_assembly_contracts.mjs tests\test_editor_bundle.mjs
 node --test tests\test_editor_utils.mjs tests\test_waveform_js.mjs

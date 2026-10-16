@@ -11,6 +11,7 @@ import { MaweSettings } from "../state/editor-settings.js";
 import { MaweCuePanel } from "./editor-cue-panel.js";
 import { MaweCommands } from "../state/editor-commands.js";
 import { MaweViewUpdates } from "../state/editor-view-updates.js";
+import { getMaweState } from '../state/editor-state.js';
 // 真 ESM：模块顶层定义与发布（原转换体 phase-2 语义 = import 求值）。
 // window.<Name> 与导出的 <Name> 是同一对象；消费者逐簇改 import 后移除 window 发布。
 'use strict';
@@ -64,7 +65,7 @@ function selectCueByClick(idx) {
       MaweCuePanel.commitCuePanelEdit();
       MaweSelection.clearSelection({ silent: true });
       members.forEach((i) => {
-        MaweState.selection.add('main', i);
+        getMaweState().selection.add('main', i);
         MaweSelection.syncBoundSelection('main', i);
         const el = MaweCoreState.container.querySelector(`.cue[data-idx="${i}"]`);
         if (el) el.classList.add('selected');

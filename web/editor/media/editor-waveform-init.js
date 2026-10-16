@@ -32,6 +32,8 @@ import { MaweWordTiming } from "../cues/editor-word-timing.js";
 import { MaweAddCue } from "../cues/editor-add-cue.js";
 import { MaweSplitContext } from "../cues/editor-split-context.js";
 import { MaweBoundDrag } from "../cues/editor-bound-drag.js";
+import { MaweGapRemoveData } from "../ui/editor-gap-remove-data.js";
+import { getMaweState } from '../state/editor-state.js';
 // 真 ESM：模块顶层定义与发布（原转换体 phase-2 语义 = import 求值）。
 // window.<Name> 与导出的 <Name> 是同一对象；消费者逐簇改 import 后移除 window 发布。
 'use strict';
@@ -81,9 +83,9 @@ MaweCoreState.waveformEditor = window.AsrWaveform.create({
     return targets;
   },
   getSelection: (track = 'main') => track === 'extension' ? MaweSelection.selectedExtensionIdxs
-    : track === 'overlay' ? MaweState.selection.indices('overlay') : MaweSelection.selectedIdxs,
+    : track === 'overlay' ? getMaweState().selection.indices('overlay') : MaweSelection.selectedIdxs,
   getExtensionSelection: () => MaweSelection.selectedExtensionIdxs,
-  getOverlaySelection: () => MaweState.selection.indices('overlay'),
+  getOverlaySelection: () => getMaweState().selection.indices('overlay'),
   getBindingMarkerTargets: MaweMultiSubtitleCore.getBindingMarkerTargets,
   multiSubtitleVisible: () => MaweMultiSubtitleCore.multiSubtitleVisible(),
   // 波形上已经选中的块不会再次调用 selectCue；单独提供激活回调，
@@ -102,13 +104,13 @@ MaweCoreState.waveformEditor = window.AsrWaveform.create({
   },
   selectOverlayCue: (idx) => {
     selectOverlayCueRow(idx);
-    MaweState.selection.overlayAnchor = idx;
+    getMaweState().selection.overlayAnchor = idx;
   },
   toggleOverlaySelection: (idx) => toggleOverlaySelection(idx),
   selectOverlayRange: (idx) => {
-    if (MaweState.selection.overlayAnchor >= 0) selectOverlayRange(MaweState.selection.overlayAnchor, idx);
+    if (getMaweState().selection.overlayAnchor >= 0) selectOverlayRange(getMaweState().selection.overlayAnchor, idx);
     else selectOverlayCueRow(idx);
-    MaweState.selection.overlayAnchor = idx;
+    getMaweState().selection.overlayAnchor = idx;
   },
   activateOverlayCue: (idx) => {
     MaweCuePanel.setCuePanelTarget('overlay', idx);

@@ -13,6 +13,7 @@ import { MaweSplitCore } from "./editor-split-core.js";
 import { MaweViewUpdates } from "../state/editor-view-updates.js";
 import { MaweCueListAnchor } from "./editor-cue-list-anchor.js";
 import { MaweNinja } from "../ui/editor-ninja.js";
+import { getMaweState } from '../state/editor-state.js';
 // 真 ESM：wiring 顶层接线（原转换体 phase-1/phase-2 = import 求值）。
 'use strict';
 export { fallbackSplitOffset, splitOffsetNearTimeForModal, splitOffsetNearTextPositionForModal, flashSplitAlignmentHint, assessSplitAlignment, splitStateTrack, duplicateSplitTimingIsValid, openOverlaySplitModal, commitOverlaySplit, mergeOverlaySegments };
@@ -277,9 +278,9 @@ function commitOverlaySplit(
     MaweSplitCore.closeLinkedSplitModal();
     MaweSelection.clearSelection({ commitCuePanel: false });
     command.commit({ cueList: true });
-    MaweState.selection.clear('overlay');
-    MaweState.selection.add('overlay', overlayIndex + 1);
-    MaweState.selection.overlayAnchor = overlayIndex + 1;
+    getMaweState().selection.clear('overlay');
+    getMaweState().selection.add('overlay', overlayIndex + 1);
+    getMaweState().selection.overlayAnchor = overlayIndex + 1;
     MaweCuePanel.setCuePanelTarget('overlay', overlayIndex + 1);
     MaweViewUpdates.invalidate({ preview: 'update' });
     MaweSplitCore.flashSplitFeedback({
@@ -371,9 +372,9 @@ function mergeOverlaySegments(idxs) {
     track.segments.splice(sorted[0], sorted.length, merged);
     track._dirty = true;
     command.commit({ cueList: true });
-    MaweState.selection.clear('overlay');
-    MaweState.selection.add('overlay', sorted[0]);
-    MaweState.selection.overlayAnchor = sorted[0];
+    getMaweState().selection.clear('overlay');
+    getMaweState().selection.add('overlay', sorted[0]);
+    getMaweState().selection.overlayAnchor = sorted[0];
     MaweCuePanel.setCuePanelTarget('overlay', sorted[0]);
     MaweViewUpdates.invalidate({ preview: 'update' });
     const el = MaweCoreState.container.querySelector(`.overlay-track-cue[data-overlay-idx="${sorted[0]}"]`);

@@ -15,6 +15,8 @@ import { MaweAppearance } from "../styles/editor-appearance.js";
 import { MaweSpeakerLabels } from "../styles/editor-speaker-labels.js";
 import { MaweColors } from "../styles/editor-colors.js";
 import { MaweExportTimeline } from "./editor-export-timeline.js";
+import { MaweGapRemoveData } from "../ui/editor-gap-remove-data.js";
+import { getMaweHost } from '../boot/editor-host.js';
 // 真 ESM：模块顶层定义与发布（原转换体 phase-2 语义 = import 求值）。
 // window.<Name> 与导出的 <Name> 是同一对象；消费者逐簇改 import 后移除 window 发布。
 'use strict';
@@ -88,9 +90,9 @@ const buildPayload = (color) => window.AsrEditorUtils.buildSrtPayload(segments, 
 let filenameBase = `${MaweBoot.FILENAME_BASE}${gapSuffix}`;
 // 浏览器不允许从一个文件句柄取得其父目录，因此不再请求文件夹权限。
 // 先让用户选择一个 SRT 文件名，并把该名称（不含 .srt）作为所有颜色文件的前缀。
-if (MaweSettings.EDITOR_SETTINGS.exportColorUnified && MaweHost.files.hasSavePicker()) {
+if (MaweSettings.EDITOR_SETTINGS.exportColorUnified && getMaweHost().files.hasSavePicker()) {
   try {
-    const handle = await MaweHost.files.pickSaveFile({
+    const handle = await getMaweHost().files.pickSaveFile({
       id: 'maw-color-srt-export-prefix',
       suggestedName: `${filenameBase}.srt`,
       types: [{ description: 'SRT 字幕文件（作为导出前缀）', accept: { 'text/plain': ['.srt'] } }],
@@ -106,7 +108,7 @@ for (const color of colors) {
   const filename = `${filenameBase}_${colorExportFilenameSuffix(color, speakerSettings)}.srt`;
   if (MaweSettings.EDITOR_SETTINGS.exportColorUnified) {
     const blob = new Blob([buildPayload(color)], { type: 'text/plain;charset=utf-8' });
-    MaweHost.files.downloadBlob(blob, filename);
+    getMaweHost().files.downloadBlob(blob, filename);
   } else {
     const saved = await MaweExportTimeline.downloadFile(
       buildPayload(color), filename, 'text/plain',

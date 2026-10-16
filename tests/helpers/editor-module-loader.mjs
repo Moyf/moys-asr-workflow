@@ -252,7 +252,7 @@ export function compileIsolatedEsmFixture(file, providedBindings, { exposeExport
   const result = esbuild.buildSync({
     stdin: { contents: isolated + '\n' + exposed, resolveDir: path.dirname(absolute), loader: 'js', sourcefile: file },
     absWorkingDir: root, bundle: true, format: 'iife', write: false, logLevel: 'silent',
-    banner: { js: "'use strict'; (() => { if (typeof globalThis.queueMicrotask !== 'function') globalThis.queueMicrotask = fn => Promise.resolve().then(fn); if (typeof globalThis.freezeFacade !== 'function') globalThis.freezeFacade = facade => Object.freeze(facade); const w = globalThis.window; if (w && w !== globalThis) { for (const k of Object.getOwnPropertyNames(w)) if (!(k in globalThis)) { try { globalThis[k] = w[k]; } catch {} } try { globalThis.window = globalThis; } catch {} } })();" },
+    banner: { js: "'use strict'; (() => { if (typeof globalThis.queueMicrotask !== 'function') globalThis.queueMicrotask = fn => Promise.resolve().then(fn); if (typeof globalThis.freezeFacade !== 'function') globalThis.freezeFacade = facade => Object.freeze(facade); const w = globalThis.window; if (w && w !== globalThis) { for (const k of Object.getOwnPropertyNames(w)) if (!(k in globalThis)) { try { globalThis[k] = w[k]; } catch {} } try { globalThis.window = globalThis; } catch {} } if (typeof globalThis.getMaweState !== 'function' && 'MaweState' in globalThis) globalThis.getMaweState = () => globalThis.MaweState; if (typeof globalThis.getMaweHost !== 'function' && 'MaweHost' in globalThis) globalThis.getMaweHost = () => globalThis.MaweHost; })();" },
     define: DEFINES,
   });
   return result.outputFiles[0].text;

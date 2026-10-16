@@ -25,6 +25,9 @@ import { MaweWorkspaces } from "../ui/editor-workspaces.js";
 import { MaweWaveformInit } from "../media/editor-waveform-init.js";
 import { MaweDynamicExports } from "./editor-dynamic-exports.js";
 import { MaweStickerRoot } from "./editor-sticker-root.js";
+import { MaweProjectSettings } from "../state/editor-project-settings.js";
+import { getMaweState } from '../state/editor-state.js';
+import { getMaweHost } from '../boot/editor-host.js';
 // 真 ESM：模块顶层定义与发布（原转换体 phase-2 语义 = import 求值）。
 // window.<Name> 与导出的 <Name> 是同一对象；消费者逐簇改 import 后移除 window 发布。
 'use strict';
@@ -128,7 +131,7 @@ window.MaweMarkersPanel?.resetSelection?.();
 MaweBoot.DATA.script_alignment = data.script_alignment || null;
 MaweBoot.DATA.preview = (data.preview && typeof data.preview === 'object') ? data.preview : null;
 MaweHistory.gapRemoveDirty = false;
-MaweState.changes.markersDirty = false;
+getMaweState().changes.markersDirty = false;
 MaweAppearance.previewGeometryDirty = false;
 MaweServerSave.projectImportDirty = false;
 // 外部载入的工程没有页面持有的文件句柄；新建/另存为会在载入后重新绑定句柄。
@@ -161,7 +164,7 @@ MaweGapRemoveUi.updateGapRemoveUi();
 MaweCuePanel.renderAll({ waveform: 'full', preserveCueListScroll: false });
 MaweProjectSettings.syncControls();
 MaweStickerRoot.activateProjectRoot();
-MaweState.noteSavedSegments();
+getMaweState().noteSavedSegments();
 MawePlaybackLoop.refreshSubtitlePreview(0, -1);
 updateUnloadedMediaLabel(MaweBoot.DATA.media);
 window.MaweGapRemovedMediaExport?.updateButton();
@@ -188,18 +191,18 @@ async function createProjectCheckpoint(project, suggestedName) {
   }
   MaweServerSave.projectCheckpointInFlight = true;
   try {
-    if (!MaweHost.files.hasSavePicker() || !MaweHost.runtime.hasUserActivation()) {
+    if (!getMaweHost().files.hasSavePicker() || !getMaweHost().runtime.hasUserActivation()) {
       // 检查点只用于确认后续导入可以继续；无用户手势时不能弹出保存对话框，
       // 直接建立内存工程检查点，后续仍通过显式导出保存。
       applyCanonicalProject(project, suggestedName);
       detachServerProjectSaving();
       return true;
     }
-    const handle = await MaweHost.files.pickSaveFile({
+    const handle = await getMaweHost().files.pickSaveFile({
       suggestedName,
       types: [{ description: 'MOSE 工程文件', accept: { 'application/json': ['.mosp', '.json'] } }],
     });
-    await MaweHost.files.writeBlob(handle, () => new Blob([JSON.stringify(project, null, 2)], { type: 'application/json;charset=utf-8' }));
+    await getMaweHost().files.writeBlob(handle, () => new Blob([JSON.stringify(project, null, 2)], { type: 'application/json;charset=utf-8' }));
     applyCanonicalProject(project, handle.name);
     MaweServerSave.projectFileHandle = handle;
     // detachServerProjectSaving 内部会刷新保存控件并重启自动保存。
@@ -263,7 +266,7 @@ function detachServerProjectSaving() {
 
 async function ensureProjectCheckpointForImport(file, { usePicker = true } = {}) {
   if (MaweServerSave.projectCheckpointed) return true;
-  if (usePicker && MaweHost.files.hasSavePicker()) {
+  if (usePicker && getMaweHost().files.hasSavePicker()) {
     return createProjectCheckpoint(buildBlankProject(), suggestedProjectName(file));
   }
   // Drag/drop imports are asynchronous by the time they reach here; do not
@@ -387,7 +390,7 @@ return MaweCommands.run('替换字幕', (command) => {
   MULTI_SUBTITLE_UTILS.normalizeMultiSubtitleProject(MaweBoot.DATA);
   MaweBoot.DATA.gap_remove = null;
   MaweHistory.gapRemoveDirty = false;
-  MaweState.changes.markersDirty = false;
+  getMaweState().changes.markersDirty = false;
   MaweServerSave.projectImportDirty = true;
   MaweHistory.updateUndoRedoButtons();
   MaweSelection.clearSelection({ commitCuePanel: false });

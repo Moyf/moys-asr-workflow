@@ -450,6 +450,9 @@ function ensureAssStyleFloatingPanel() {
   assStyleWindowClose?.addEventListener('click', () => assStyleFloatingPanel.close());
   assStyleWindowCloseFooter?.addEventListener('click', () => assStyleFloatingPanel.close());
 }
+// 旧装配会在启动时给样式库按钮绑定点击事件。ESM 环里的依赖
+// 求值完毕后再创建浮窗，既避开 TDZ，也保留这个直接入口。
+queueMicrotask(ensureAssStyleFloatingPanel);
 assStyleNewButton?.addEventListener('click', createAssStyle);
 assStyleDuplicateButton?.addEventListener('click', duplicateAssStyle);
 assProfileNewButton?.addEventListener('click', createAssProfile);

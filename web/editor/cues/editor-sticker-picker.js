@@ -15,6 +15,7 @@ import { MaweSegmentOps } from "./editor-segment-ops.js";
 import { MaweColors } from "../styles/editor-colors.js";
 import { MaweDisplaySettings } from "../ui/editor-display-settings.js";
 import { MaweColorFilter } from "./editor-color-filter.js";
+import { getMaweState } from '../state/editor-state.js';
 // 真 ESM：模块顶层定义与发布（原转换体 phase-2 语义 = import 求值）。
 // window.<Name> 与导出的 <Name> 是同一对象；消费者逐簇改 import 后移除 window 发布。
 'use strict';
@@ -315,7 +316,7 @@ return MaweCommands.run('切换禁用', (command) => {
   if (MaweDom.hideDisabled && !allDisabled) {
     if (isOverlay) {
       validIdxs.forEach((index) => {
-        MaweState.selection.remove('overlay', index);
+        getMaweState().selection.remove('overlay', index);
         MaweCoreState.container.querySelector(`.cue[data-overlay-idx="${index}"]`)?.classList.remove('selected');
       });
     } else {
@@ -325,11 +326,11 @@ return MaweCommands.run('切换禁用', (command) => {
         ? new Map([[extensionTrack, new Set(validIdxs)]])
         : boundExtensionTargets;
       mainDisabled.forEach((index) => {
-        MaweState.selection.remove('main', index);
+        getMaweState().selection.remove('main', index);
         MaweCoreState.container.querySelector(`.cue[data-idx="${index}"]`)?.classList.remove('selected');
       });
       extensionDisabled.forEach((indexes) => indexes.forEach((index) => {
-        MaweState.selection.remove('extension', index);
+        getMaweState().selection.remove('extension', index);
         MaweCoreState.container.querySelectorAll(
           `.multi-cue[data-ext-idx="${index}"], .multi-extension-cue[data-ext-idx="${index}"]`,
         ).forEach((el) => el.classList.remove('selected'));

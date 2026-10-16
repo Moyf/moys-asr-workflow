@@ -9,7 +9,7 @@ const source = fs.readFileSync(new URL('../../web/editor/io/editor-wiring-export
 const handlerStart = source.indexOf("document.getElementById('download-gap-removed-video')");
 const handlerEnd = source.indexOf("document.getElementById('download-gap-removed-regions-json')", handlerStart);
 if (handlerStart < 0 || handlerEnd <= handlerStart) throw new Error('Video export handler not found');
-const handler = source.slice(handlerStart, handlerEnd);
+const handler = `const getMaweHost = () => window.MaweHost;\n${source.slice(handlerStart, handlerEnd)}`;
 
 async function withVideoServer(mode, run) {
   let active = false;

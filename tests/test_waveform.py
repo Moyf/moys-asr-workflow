@@ -391,7 +391,7 @@ class EditorAssetTests(CompactContainerAssertions, unittest.TestCase):
         waveform_init = (ROOT / "web" / "editor/media/editor-waveform-init.js").read_text(encoding="utf-8")
         waveform = edit.build_editor_scripts()
         self.assertIn("waveformLoadedFromProject: false", state)
-        self.assertIn("get waveformLoadedFromProject() { return MaweState.runtime.waveformLoadedFromProject; }", core_state)
+        self.assertIn("get waveformLoadedFromProject() { return getMaweState().runtime.waveformLoadedFromProject; }", core_state)
         self.assertIn(
             "MaweCoreState.waveformLoadedFromProject = MaweCoreState.waveformEditor.setPayload(MaweBoot.DATA.waveform",
             waveform_init,

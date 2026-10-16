@@ -281,7 +281,8 @@ import { MaweFloatingPanel } from "./editor-floating-panel.js";function bindTool
   }
 }
 
-function positionBatchOperationsMenu() {
+
+import { MaweKeyboardTargets } from "../cues/editor-keyboard-targets.js";function positionBatchOperationsMenu() {
   const dropdown = document.getElementById('batch-operations-dropdown');
   const button = document.getElementById('batch-operations-btn');
   const menu = document.getElementById('batch-operations-menu');

@@ -20,7 +20,9 @@ import { MaweCueListAnchor } from "./editor-cue-list-anchor.js";
 import { MaweNavPreview } from "./editor-nav-preview.js";
 import { MaweContextMenus } from "../ui/editor-context-menus.js";
 import { MaweWordTiming } from "./editor-word-timing.js";
-import { MawePlaybackLoop } from "../media/editor-playback-loop.js";function deferCaretPlacement(textEl, applyCaret) {
+import { MawePlaybackLoop } from "../media/editor-playback-loop.js";
+import { getMaweState } from '../state/editor-state.js';
+function deferCaretPlacement(textEl, applyCaret) {
   // A new user action owns the caret, even if the native double-click repair
   // timer has not run yet. Observe capture phase before keyboard guards.
   const root = textEl.ownerDocument;
@@ -46,8 +48,8 @@ function startExtensionEdit(
 ) {
   if (!el || !track?.segments?.[index]) return;
   MaweNavPreview.hideCueSplitPreview();
-  if (MaweState.editing.editingState) finishEdit(true);
-  if (MaweState.editing.extensionEditingState) finishExtensionEdit(true);
+  if (getMaweState().editing.editingState) finishEdit(true);
+  if (getMaweState().editing.extensionEditingState) finishExtensionEdit(true);
   MaweCuePanel.setCurrentCuePanelExtensionIndex(index, track);
   const textEl = el.querySelector('.text') || el;
   const segment = track.segments[index];
@@ -58,13 +60,13 @@ function startExtensionEdit(
   const session = {
     el, index, trackId: track.id, textEl, original: segment.text || '', caretCharOffset,
   };
-  MaweState.editing.extensionEditingState = session;
+  getMaweState().editing.extensionEditingState = session;
   el.classList.add('editing');
   textEl.setAttribute('contenteditable', 'plaintext-only');
   textEl.innerText = segment.text || '';
   textEl.focus();
   const applyCaret = () => {
-    if (MaweState.editing.extensionEditingState !== session) return;
+    if (getMaweState().editing.extensionEditingState !== session) return;
     const selection = window.getSelection();
     selection.removeAllRanges();
     if (caretCharOffset !== null && textEl.firstChild) {
@@ -94,8 +96,8 @@ function syncCuePanelAfterInlineEdit(kind, index, trackId = null) {
 }
 
 function finishExtensionEdit(save) {
-  if (!MaweState.editing.extensionEditingState) return;
-  const { el, index, trackId, textEl, original } = MaweState.editing.extensionEditingState;
+  if (!getMaweState().editing.extensionEditingState) return;
+  const { el, index, trackId, textEl, original } = getMaweState().editing.extensionEditingState;
   const track = MaweMultiSubtitleCore.getExtensionTrack(trackId);
   const segment = track?.segments?.[index];
   textEl.removeAttribute('contenteditable');
@@ -121,7 +123,7 @@ function finishExtensionEdit(save) {
   }
   MaweCoreState.waveformEditor?.refreshExtensionCueLabel(index, trackId);
   syncCuePanelAfterInlineEdit('extension', index, trackId);
-  MaweState.editing.extensionEditingState = null;
+  getMaweState().editing.extensionEditingState = null;
   MaweViewUpdates.invalidate({ preview: 'refresh' });
 }
 
@@ -129,7 +131,7 @@ function bindExtensionCueEvents(el, index, track = MaweMultiSubtitleCore.getActi
 if (!el || !track?.segments?.[index]) return;
 let pointerDown = null;
 el.addEventListener('pointerdown', (event) => {
-  if (event.button !== 0 || (MaweState.editing.extensionEditingState?.el === el)) return;
+  if (event.button !== 0 || (getMaweState().editing.extensionEditingState?.el === el)) return;
   event.stopPropagation();
   if (event.altKey) {
     event.preventDefault();
@@ -169,7 +171,7 @@ el.addEventListener('click', (event) => {
 });
 el.addEventListener('pointermove', (event) => {
   event.stopPropagation();
-  if (MaweState.editing.extensionEditingState?.el === el) {
+  if (getMaweState().editing.extensionEditingState?.el === el) {
     MaweNavPreview.hideCueSplitPreview();
     return;
   }
@@ -203,7 +205,7 @@ el.addEventListener('contextmenu', (event) => {
 }
 
 function startEdit(el, idx, clickX, clickY, { deferCaret = false } = {}) {
-  if (MaweState.editing.editingState) finishEdit(true);
+  if (getMaweState().editing.editingState) finishEdit(true);
   MaweNavPreview.hideCueSplitPreview();
   const textEl = el.querySelector('.text');
   if (!textEl) return;
@@ -213,13 +215,13 @@ function startEdit(el, idx, clickX, clickY, { deferCaret = false } = {}) {
     caretCharOffset = caretCharFromPoint(textEl, clickX, clickY);
   }
   const session = { el, idx, textEl, original: seg.text };
-  MaweState.editing.editingState = session;
+  getMaweState().editing.editingState = session;
   el.classList.add('editing');
   textEl.setAttribute('contenteditable', 'plaintext-only');
   textEl.innerText = seg.text;
   textEl.focus();
   const applyCaret = () => {
-    if (MaweState.editing.editingState !== session) return;
+    if (getMaweState().editing.editingState !== session) return;
     const sel = window.getSelection();
     sel.removeAllRanges();
     if (caretCharOffset !== null && textEl.firstChild) {
@@ -244,7 +246,7 @@ function startEdit(el, idx, clickX, clickY, { deferCaret = false } = {}) {
 }
 
 function setEditingCaretOffset(offset) {
-  const textEl = MaweState.editing.editingState?.textEl;
+  const textEl = getMaweState().editing.editingState?.textEl;
   const node = textEl?.firstChild;
   if (!node || !Number.isFinite(offset)) return false;
   const pos = Math.max(0, Math.min(Math.round(offset), node.textContent.length));
@@ -289,8 +291,8 @@ function caretCharFromPoint(root, x, y) {
 }
 
 function finishEdit(save) {
-  if (!MaweState.editing.editingState) return;
-  const { el, idx, textEl, original } = MaweState.editing.editingState;
+  if (!getMaweState().editing.editingState) return;
+  const { el, idx, textEl, original } = getMaweState().editing.editingState;
   textEl.removeAttribute('contenteditable');
   el.classList.remove('editing');
   if (save) {
@@ -314,15 +316,15 @@ function finishEdit(save) {
   );
   MaweCoreState.waveformEditor?.refreshCueLabel(idx);
   syncCuePanelAfterInlineEdit('main', idx);
-  MaweState.editing.editingState = null;
+  getMaweState().editing.editingState = null;
   MaweViewUpdates.invalidate({ preview: 'refresh' });
 }
 
 window.MaweInlineEdit = Object.freeze({
-  get editingState() { return MaweState.editing.editingState; },
-  set editingState(v) { MaweState.editing.editingState = v; },
-  get extensionEditingState() { return MaweState.editing.extensionEditingState; },
-  set extensionEditingState(v) { MaweState.editing.extensionEditingState = v; },
+  get editingState() { return getMaweState().editing.editingState; },
+  set editingState(v) { getMaweState().editing.editingState = v; },
+  get extensionEditingState() { return getMaweState().editing.extensionEditingState; },
+  set extensionEditingState(v) { getMaweState().editing.extensionEditingState = v; },
   startExtensionEdit,
   syncCuePanelAfterInlineEdit,
   finishExtensionEdit,
@@ -336,10 +338,10 @@ window.MaweInlineEdit = Object.freeze({
 });
 
 export const MaweInlineEdit = freezeFacade({
-    get editingState() { return MaweState.editing.editingState; },
-    set editingState(v) { MaweState.editing.editingState = v; },
-    get extensionEditingState() { return MaweState.editing.extensionEditingState; },
-    set extensionEditingState(v) { MaweState.editing.extensionEditingState = v; },
+    get editingState() { return getMaweState().editing.editingState; },
+    set editingState(v) { getMaweState().editing.editingState = v; },
+    get extensionEditingState() { return getMaweState().editing.extensionEditingState; },
+    set extensionEditingState(v) { getMaweState().editing.extensionEditingState = v; },
     startExtensionEdit,
     syncCuePanelAfterInlineEdit,
     finishExtensionEdit,
