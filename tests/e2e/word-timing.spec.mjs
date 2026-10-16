@@ -27,6 +27,40 @@ test.beforeEach(async ({ page }) => {
   await expect(page.locator('.waveform-row').first()).toBeVisible();
 });
 const word = (page, index) => page.locator(`.waveform-word-block[data-segment-idx="0"][data-item-idx="${index}"]`).first();
+
+test('Q preserves the viewed waveform time when the playhead is offscreen', async ({ page }) => {
+  const media = join(tempDir, 'long-wave.wav'), project = join(tempDir, 'long-wave.mosp');
+  generateWav(media, 120);
+  writeFileSync(project, JSON.stringify({ media, waveform: generateWaveformPayload(120000), segments: [] }));
+  const longServer = await startServer(project, media, await findFreePort());
+  try {
+    await page.goto(longServer.url);
+    await page.locator('[data-waveform-mode="multi"]').click();
+    await page.evaluate(() => {
+      const editor = MaweCoreState.waveformEditor;
+      editor.scroll.style.flex = '0 0 160px';
+      editor.scroll.style.height = '160px';
+      editor.setSecondsPerRow(20);
+      editor.setRowHeight(64);
+      editor.scroll.scrollTop = editor.scroll.scrollHeight;
+    });
+    await expect.poll(() => page.evaluate(() => MaweDisplaySettings.captureWaveformViewportCenterTimeMs(MaweCoreState.waveformEditor))).toBeGreaterThan(60000);
+    const anchor = await page.evaluate(() => MaweDisplaySettings.captureWaveformViewportCenterTimeMs(MaweCoreState.waveformEditor));
+    await page.keyboard.press('q');
+    await expect(page.locator('#word-timing-quick-toggle')).toHaveAttribute('aria-pressed', 'true');
+    await expect.poll(() => page.evaluate(time => {
+      const editor = MaweCoreState.waveformEditor;
+      const viewport = editor.scroll.getBoundingClientRect();
+      return [...editor.content.querySelectorAll('.waveform-row')].some(row => {
+        const box = row.getBoundingClientRect();
+        return Number(row.dataset.startMs) <= time && time <= Number(row.dataset.endMs)
+          && box.top < viewport.bottom && box.bottom > viewport.top;
+      });
+    }, anchor)).toBe(true);
+  } finally {
+    await longServer.stop();
+  }
+});
 test('word presets apply immediately and restore across bilingual mode changes', async ({ page }) => {
   await page.locator('[data-waveform-mode="multi"]').click();
   await page.evaluate(() => {

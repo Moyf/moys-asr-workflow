@@ -216,6 +216,45 @@ test('mergeContiguousIndices folds the junction and keeps items conserved', () =
   assert.deepEqual([merged.start, merged.end], [0, 2000]);
 });
 
+test('merge keeps spoken-only and partially marked items with their exact timing', () => {
+  for (const texts of [['甲', '乙'], ['**甲', '乙**'], ['**甲**', '乙']]) {
+    const segments = texts.map((text, index) => ({
+      id: String(index), start: index * 1000, end: (index + 1) * 1000,
+      text: index === 0 ? '**甲**' : '**乙**',
+      items: [{ text, start: index * 1000 + 100, end: index * 1000 + 800, speaker: 'A' }],
+    }));
+    const snapshot = JSON.stringify(segments);
+    const joined = h.joinSegmentTextsMassFold(segments, '', 'both');
+    assert.equal(joined.text, '**甲乙**');
+    assert.equal(joined.items.length, 2);
+    assert.deepEqual(plain(joined.items.map(item => [h.stripMassMarkers(item.text, 'both').replaceAll('*', ''), item.start, item.end, item.speaker])),
+      [['甲', 100, 800, 'A'], ['乙', 1100, 1800, 'A']]);
+    assert.equal(JSON.stringify(segments), snapshot);
+    const context = mergeContext(plain(segments));
+    vm.runInNewContext(fs.readFileSync(new URL('../web/editor/cues/editor-segment-ops.js', import.meta.url), 'utf8'), context);
+    assert.equal(context.window.MaweSegmentOps.mergeContiguousIndices([0, 1]).items.length, 2);
+  }
+});
+
+test('word conversion completes styles spanning three or more outputs without changing timing', () => {
+  for (const [text, words] of [
+    ['__one two three__', ['one', ' two', ' three']],
+    ['>>甲乙丙<<', ['甲', '乙', '丙']],
+  ]) {
+    const source = [{ id: 'source', start: 0, end: 1500, text,
+      items: words.map((word, index) => ({ text: word, start: index * 500, end: (index + 1) * 500 })) },
+    { id: 'untouched', start: 2000, end: 2500, text: '*字面' }];
+    const snapshot = JSON.stringify(source);
+    const plan = h.planWordTimingConversion(source, [0], undefined, { rule: 'both' });
+    const expected = text.startsWith('__') ? ['__one __', '__two __', '__three__'] : ['>>甲<<', '>>乙<<', '>>丙<<'];
+    assert.deepEqual(plain(plan.segments.slice(0, 3).map(row => row.text)), expected);
+    assert.deepEqual(plain(plan.segments.slice(0, 3).map(row => row.items[0].text)), expected);
+    assert.deepEqual(plain(plan.segments.slice(0, 3).map(row => [row.start, row.end])), [[0, 500], [500, 1000], [1000, 1500]]);
+    assert.equal(plan.segments[3].text, '*字面');
+    assert.equal(JSON.stringify(source), snapshot);
+  }
+});
+
 // === Greptile P1（PR #251）：折叠残留与转换波及 ===
 
 test('merge fold removes both junction markers and reunites the pair across styles', () => {
@@ -317,11 +356,11 @@ test('conversion completion spans a style across 3+ output rows (Greptile P1)', 
   ];
   const plan = utils.planWordTimingConversion(segments, [0], clock, { rule: 'both' });
   const texts = plain(plan.segments.map(segment => segment.text));
-  // 跨 3 行的 __ 对：首行补闭、末行补开、中间行不动
-  assert.deepEqual(texts.slice(0, 3), ['__one __', 'two ', '__three__']);
+  // 跨 3 行的 __ 对：每个输出行都补齐为自包含的完整对（中间行不丢样式）
+  assert.deepEqual(texts.slice(0, 3), ['__one __', '__two __', '__three__']);
   // 跨源不波及回归：未选中的 b/c 保持字面
   assert.deepEqual(texts.slice(3), ['*甲', '乙*']);
-  // items 同步守恒（首末行各挂一半符号）
+  // items 同步守恒（每行 items 拼接 == 其文本）
   assert.deepEqual(plain(plan.segments[0].items.map(item => item.text)), ['__one __']);
   assert.deepEqual(plain(plan.segments[2].items.map(item => item.text)), ['__three__']);
 });

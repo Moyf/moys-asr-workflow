@@ -85,8 +85,8 @@ if (!silent) MaweHint.flashHint('保存成功！', 'success');
 
 // 工程「未保存」指示：右上角文件名前加琥珀色圆点（CSS ::before，不进 textContent，
 // 不影响点击复制），title 提示有未保存的修改。#json-name 在 i18n 的属性跳过名单里，
-// title 需在此处按当前语言手动翻译；脏状态变化没有单一入口，除保存/加载后的即时
-// 刷新外，用轻量轮询兜底（hasProjectChanges 只做标志与 _dirty 遍历，无指纹开销）。
+// title 需在此处按当前语言手动翻译；调用方为 markProjectDirty 事件回调（即时）、
+// 保存完成的直接刷新与 O(1) 轮询兜底（见文件底部），回调内部按当前工程状态整体重算。
 function updateProjectDirtyIndicator() {
 const jsonEl = document.getElementById('json-name');
 if (!jsonEl || jsonEl.classList.contains('empty')) return;
@@ -240,11 +240,25 @@ markProjectSaved(MaweServerSave.projectFileHandle.name, null, { silent, fingerpr
     return window.MAWE_I18N?.translateText?.(text) || text;
   }
 
-  // 脏态指示 1s 轮询兜底 + 语言切换重译标题：仅浏览器页面环境启动
-  // （vm 单测环境无定时器/document 事件全局，恢复/保存流程测试不依赖；
-  // 编辑器页面常驻，无需清除）。
-  if (typeof window !== 'undefined' && typeof window.setInterval === 'function') {
-    window.setInterval(updateProjectDirtyIndicator, 1000);
+  // 脏态指示：事件驱动 + O(1) 轮询兜底 + 语言切换重译标题。dirty 事件由
+  // editor-state 的 markProjectDirty() 触发（changes 标志与各编辑路径收口），
+  // 保存完成走 markProjectSaved 的直接刷新（清洁态即时）。轮询只比较
+  // projectDirtyEpoch（O(1) 自愈），绝不在此做 hasProjectChanges 的 O(N) 扫描；
+  // 指纹等重判定只允许出现在事件回调驱动的 updateProjectDirtyIndicator 里。
+  // 仅浏览器页面环境启动（vm 单测环境无定时器/document 事件全局，恢复/保存
+  // 流程测试不依赖；编辑器页面常驻，无需清除）。
+  if (typeof window !== 'undefined' && typeof MaweState?.onProjectDirtyChange === 'function') {
+    MaweState.onProjectDirtyChange(() => updateProjectDirtyIndicator());
+  }
+  if (typeof window !== 'undefined' && typeof window.setInterval === 'function'
+      && typeof MaweState?.getProjectDirtyEpoch === 'function') {
+    let lastSeenDirtyEpoch = MaweState.getProjectDirtyEpoch();
+    window.setInterval(() => {
+      const epoch = MaweState.getProjectDirtyEpoch();
+      if (epoch === lastSeenDirtyEpoch) return;
+      lastSeenDirtyEpoch = epoch;
+      updateProjectDirtyIndicator();
+    }, 1000);
     document.addEventListener('mawe:languagechange', updateProjectDirtyIndicator);
   }
 

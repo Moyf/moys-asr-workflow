@@ -59,6 +59,32 @@ test.afterAll(async () => {
   cleanupTempDir(tempDir);
 });
 
+test('overall editing completes MASS styles in both preview and saved word timings', async ({ page }) => {
+  await page.addInitScript(() => localStorage.setItem('moy.asr.editor.onboarding.v1', 'completed'));
+  await page.goto(server.url);
+  await page.evaluate(() => {
+    MaweSettings.EDITOR_SETTINGS.assMode = true;
+    MaweSettings.EDITOR_SETTINGS.assSpecialSymbolRule = 'both';
+    MaweBoot.DATA.segments.splice(0, MaweBoot.DATA.segments.length, {
+      id: 'styled', start: 0, end: 1500, text: '**甲乙丙**', items: [
+        { text: '**甲', start: 0, end: 500 }, { text: '乙', start: 500, end: 1000 }, { text: '丙**', start: 1000, end: 1500 },
+      ],
+    });
+    MaweCuePanel.renderAll();
+  });
+  await page.locator('#batch-operations-btn').click();
+  await page.locator('#timed-text-edit-btn').click();
+  await page.locator('#timed-text-edit-view [data-view="single"]').click();
+  await page.locator('#timed-text-edit-single-textarea').fill('**甲\n乙\n丙**');
+  const expected = ['**甲**', '**乙**', '**丙**'];
+  await expect.poll(() => page.evaluate(() => MaweDom.timedTextEditDraft.report.previewSegments?.map(row => row.text) || [])).toEqual(expected);
+  await page.locator('#timed-text-edit-apply').click();
+  await expect(page.locator('#timed-text-edit-modal')).not.toHaveClass(/show/);
+  const saved = await page.evaluate(() => MaweBoot.DATA.segments.map(row => ({ text: row.text, items: row.items })));
+  expect(saved.map(row => row.text)).toEqual(expected);
+  expect(saved.flatMap(row => row.items).map(item => [item.start, item.end])).toEqual([[0, 500], [500, 1000], [1000, 1500]]);
+});
+
 test('shows an invalid toast when applying unchanged text', async ({ page }) => {
   await page.addInitScript(() => {
     localStorage.setItem('moy.asr.editor.onboarding.v1', 'completed');

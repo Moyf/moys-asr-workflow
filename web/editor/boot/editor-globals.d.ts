@@ -224,6 +224,9 @@ interface MaweStateApi {
   noteSavedSegments(fingerprint?: string): void;
   markSaved(): void;
   reconcileSegmentsDirty(): void;
+  markProjectDirty(): void;
+  getProjectDirtyEpoch(): number;
+  onProjectDirtyChange(listener: (epoch: number) => void): () => void;
 }
 declare var MaweState: MaweStateApi;
 interface Window {

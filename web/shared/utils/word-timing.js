@@ -1,7 +1,7 @@
 // Existing items are timed text ranges, not necessarily individual words.
 export function createWordTiming(dependencies) {
   'use strict';
-  const { appendMassMarkersToLastItem, cloneJsonValue, completeSplitMassPairs, isTimedTextNeutralToken, massMarkedRanges, prependMassMarkersToFirstItem, uniqueStableSegmentId } = dependencies;
+  const { cloneJsonValue, completeMassTextRows, isTimedTextNeutralToken, massMarkedRanges, uniqueStableSegmentId } = dependencies;
   const neutral = ch => isTimedTextNeutralToken(ch, true);
   const audible = text => Array.from(String(text || '')).filter(ch => !neutral(ch));
   // 「特殊文本规则」与 assSpecialSymbolRule 设置同源（默认单双皆可）；编辑器
@@ -268,44 +268,12 @@ export function createWordTiming(dependencies) {
     const rows = Array.isArray(output) ? output : [];
     const sources = Array.isArray(outputSources) ? outputSources : [];
     if (!rule || rule === 'none') return rows;
-    // 相邻 junction 补齐（2 行拆断场景）：同源相邻行的断对两侧补全。
-    for (let index = 1; index < rows.length; index += 1) {
-      const previous = rows[index - 1];
-      const next = rows[index];
-      if (!previous || !next) continue;
-      // 两侧必须来自同一条被转换字幕（sources 记录各行来源段下标，未转换
-      // 行为 -1）；未选中字幕与跨字幕 junction 一律跳过。
-      if (sources[index - 1] === -1 || sources[index] === -1) continue;
-      if (sources[index - 1] !== sources[index]) continue;
-      if (!conversionRowFollowable(previous) || !conversionRowFollowable(next)) continue;
-      const completed = completeSplitMassPairs(previous.text, next.text, rule);
-      if (!completed.leftAppend && !completed.rightPrepend) continue;
-      previous.text = completed.left;
-      next.text = completed.right;
-      appendMassMarkersToLastItem(previous.items, completed.leftAppend);
-      prependMassMarkersToFirstItem(next.items, completed.rightPrepend);
-    }
-    // 跨 3+ 行的样式（Greptile P1：__one two three__ 拆三行，任意相邻对都
-    // 不含两端符号）：按每个转换源的完整行 span 处理——首行补闭、末行补开
-    // （completeSplitMassPairs 对 span 首尾文本的 combined 复验跨行成立），
-    // 中间行不动。与相邻 junction 补齐幂等（已补齐的 span 复验失败即跳过）。
-    let spanStart = -1;
-    for (let index = 0; index <= rows.length; index += 1) {
-      const source = index < rows.length ? sources[index] : -1;
-      if (source !== -1 && spanStart >= 0 && source === sources[spanStart]) continue;
-      // span [spanStart, index-1] 在此收口
-      if (spanStart >= 0 && index - spanStart >= 2) {
-        const first = rows[spanStart];
-        const last = rows[index - 1];
-        const completed = completeSplitMassPairs(first.text, last.text, rule);
-        if (completed.leftAppend || completed.rightPrepend) {
-          first.text = completed.left;
-          last.text = completed.right;
-          appendMassMarkersToLastItem(first.items, completed.leftAppend);
-          prependMassMarkersToFirstItem(last.items, completed.rightPrepend);
-        }
-      }
-      spanStart = source !== -1 ? index : -1;
+    for (let start = 0; start < rows.length;) {
+      if (!(sources[start] >= 0) || !conversionRowFollowable(rows[start])) { start += 1; continue; }
+      let end = start + 1;
+      while (end < rows.length && sources[end] === sources[start] && conversionRowFollowable(rows[end])) end += 1;
+      completeMassTextRows(rows.slice(start, end), rule);
+      start = end;
     }
     return rows;
   }
