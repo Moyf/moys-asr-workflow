@@ -39,6 +39,58 @@
   });
 }
 
+  // Capture rendered text now: the result panel may outlive edits or a newly
+  // loaded project. Video subtitles follow the returned media timeline rather
+  // than the independent, millisecond-precise gap-removed SRT preference.
+  function captureVideoSrt() {
+    const { segments, overlaySet, overlaySegments } = cleanupMergedExportSegments();
+    const options = {
+      colorContextResolver: exportColorContextResolver(overlaySet, overlaySegments),
+      ...MaweSpeakerLabels.speakerLabelExportOptions(),
+      assSpecialSymbolRule: MaweSettings.EDITOR_SETTINGS.assSpecialSymbolRule,
+      formatTime: MaweCueElements.fmtSrtTime,
+    };
+    const snapshot = segments.filter(segment => segment.disabled !== true).map(segment => ({
+      start: segment.start, end: segment.end,
+      text: window.AsrEditorUtils.buildSrtPayload([segment], options).split('\n').slice(2).join('\n').trimEnd(),
+    }));
+    return (timeline) => {
+      if (!Array.isArray(timeline?.intervals) || !timeline.intervals.length) return null;
+      let previousSourceEnd = -Infinity;
+      let previousOutputEnd = 0;
+      for (const interval of timeline.intervals) {
+        const values = [interval.sourceStartMs, interval.sourceEndMs, interval.outputStartMs, interval.outputEndMs];
+        if (!values.every(Number.isFinite) || interval.sourceStartMs < previousSourceEnd
+            || interval.sourceEndMs <= interval.sourceStartMs || interval.outputStartMs < previousOutputEnd
+            || Math.abs(interval.outputEndMs - interval.outputStartMs - interval.sourceEndMs + interval.sourceStartMs) > 1) return null;
+        previousSourceEnd = interval.sourceEndMs;
+        previousOutputEnd = interval.outputEndMs;
+      }
+      const cues = [];
+      for (const segment of snapshot) {
+        let low = 0;
+        let high = timeline.intervals.length;
+        while (low < high) {
+          const middle = (low + high) >>> 1;
+          if (timeline.intervals[middle].sourceEndMs <= segment.start) low = middle + 1;
+          else high = middle;
+        }
+        for (let index = low; index < timeline.intervals.length; index += 1) {
+          const interval = timeline.intervals[index];
+          if (interval.sourceStartMs >= segment.end) break;
+          const start = Math.max(segment.start, interval.sourceStartMs);
+          const end = Math.min(segment.end, interval.sourceEndMs);
+          if (end <= start) continue;
+          const mappedStart = Math.round(interval.outputStartMs + start - interval.sourceStartMs);
+          const mappedEnd = Math.round(interval.outputStartMs + end - interval.sourceStartMs);
+          if (mappedEnd > mappedStart) cues.push({ start: mappedStart, end: mappedEnd, text: segment.text });
+        }
+      }
+      cues.sort((left, right) => left.start - right.start);
+      return cues.map((cue, index) => `${index + 1}\n${MaweCueElements.fmtSrtTime(cue.start)} --> ${MaweCueElements.fmtSrtTime(cue.end)}\n${cue.text}\n`).join('\n');
+    };
+  }
+
 
 
 
@@ -427,6 +479,7 @@
     get EXPORT_KEEP_DISABLED_PLACEHOLDER() { return EXPORT_KEEP_DISABLED_PLACEHOLDER; },
     set EXPORT_KEEP_DISABLED_PLACEHOLDER(v) { EXPORT_KEEP_DISABLED_PLACEHOLDER = v; },
     buildSrt,
+    captureVideoSrt,
     downloadColorSrts,
     gapRemovedExportContext,
     buildDynamicCaptionExportData,
