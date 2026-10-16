@@ -53,7 +53,13 @@ for (const mode of ['progressive', 'duplicate']) {
       const result = await page.evaluate(() => MaweBoot.DATA.segments);
       expect(result.map(s => s.text)).toEqual(mode === 'progressive' ? ['甲乙', '甲乙丙丁'] : ['甲乙丙丁', '甲乙丙丁']);
       expect(result.map(s => [s.start, s.end])).toEqual([[1000, 3000], [3000, 5000]]);
-      expect(result[1].items).toBeNull();
+      if (mode === 'duplicate') expect(result[1].items).toBeNull();
+      else if (path === 'timed') {
+        expect(result[1].items.map(({ text, start, end }) => ({ text, start, end }))).toEqual([
+          { text: '丙', start: 3000, end: 4000 },
+          { text: '丁', start: 4000, end: 5000 },
+        ]);
+      }
       if (mode === 'duplicate') expect(result[0].items).toBeNull();
       else if (path === 'timed') expect(result[0].items.map(i => i.text)).toEqual(['甲', '乙']);
       await page.locator('#undo-btn').click();

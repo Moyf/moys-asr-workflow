@@ -727,7 +727,7 @@
   // 避免把只属于一半文本的时间码带到重复文本上。
   const leftItems = duplicateOutputText
     ? [] : MULTI_SUBTITLE_UTILS.appendMassMarkersToLastItem(cleanSplitItems(itemParts.leftItems, 'left'), leftAppend);
-  const rightItems = (duplicateOutputText || splitTextMode === 'progressive')
+  const rightItems = duplicateOutputText
     ? [] : MULTI_SUBTITLE_UTILS.prependMassMarkersToFirstItem(cleanSplitItems(itemParts.rightItems, 'right'), rightPrepend);
   const splitMs = Number.isFinite(itemParts.splitMs) ? itemParts.splitMs : Math.round(cutMs);
   // 左右两段可各自贴合自家词边界（词间有静音空隙时非对称）。
@@ -2158,10 +2158,10 @@
     const rightPrepend = `${itemsFollowText ? (massCompletion?.rightPrepend || '') : ''}${styledRightPrepend}`;
     const leftItemsClean = MULTI_SUBTITLE_UTILS.appendMassMarkersToLastItem(cleanSplitItems(itemSplit.leftItems, 'left'), leftAppend);
     const rightItemsClean = MULTI_SUBTITLE_UTILS.prependMassMarkersToFirstItem(cleanSplitItems(itemSplit.rightItems, 'right'), rightPrepend);
-    // 复制拆分两侧都是全文、渐进拆分后半句带上复制来的前缀：逐词时间码再也
-    // 对不上文本，清空对应一侧的 items；渐进拆分前半句仍是原文左半，保留。
+    // 复制拆分两侧都是全文，逐词时间码再也对不上文本，清空两侧 items；
+    // 渐进拆分后半句虽然带上复制来的前缀，但后半区间的 items 仍有效，保留。
     const leftItemsFinal = duplicateSplit ? [] : leftItemsClean;
-    const rightItemsFinal = (duplicateSplit || progressiveSplit) ? [] : rightItemsClean;
+    const rightItemsFinal = duplicateSplit ? [] : rightItemsClean;
 
     const { left: leftSeg, right: rightSeg } = createSplitSegments(seg, {
       idBase: seg.id || `main-${idx}`, headIndex: idx,
