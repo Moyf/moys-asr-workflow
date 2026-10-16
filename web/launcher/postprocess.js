@@ -449,7 +449,7 @@
 
   function defaultAutoPlan() {
     return {
-      version: 1,
+      version: 2,
       enabled: false,
       retainIntermediate: true,
       steps: [
@@ -1756,7 +1756,7 @@
     // 各 LLM 步骤用自己任务记住的供应商（见 stepProviderId）；没有记录时沿用当前选中项。
     const ocr = ocrRegionPayload();
     return {
-      version: 1,
+      version: 2,
       enabled: Boolean($("autoPostprocessEnabled")?.checked),
       retainIntermediate: Boolean($("autoPostprocessRetain")?.checked),
       steps: [
