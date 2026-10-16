@@ -94,9 +94,14 @@ export function createUtilsModule(dependencies) {
     const list = Array.isArray(items) ? items : [];
     if (fromEnd) {
       const reversedText = Array.from(value).reverse().join('');
-      const reversed = alignItemsToText(reversedText, [...list].reverse());
-      return reversed.reverse().map((record) => record ? {
-        ...record,
+      const reversedItems = [...list].reverse().map((item) => ({
+        ...item,
+        text: Array.from(String(item?.text || '')).reverse().join(''),
+      }));
+      const reversed = alignItemsToText(reversedText, reversedItems);
+      return reversed.reverse().map((record, index) => record ? {
+        item: list[index],
+        itemText: String(list[index]?.text || ''),
         textStart: value.length - record.textEnd,
         textEnd: value.length - record.textStart,
       } : null);

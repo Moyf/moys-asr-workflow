@@ -77,6 +77,22 @@ test('progressive suffix timings preserve the DE|F cut in a partially timed cue'
   expect(result.right).toEqual([['F', 5000, 6000]]);
 });
 
+test('progressive repeated multi-character words keep the suffix cut and timing', async ({ page }) => {
+  const result = await page.evaluate(() => {
+    const segment = { start: 3000, end: 5000, text: '上海上海前进', items: [
+      { text: '上海', start: 3000, end: 4000 },
+      { text: '前进', start: 4000, end: 5000 },
+    ] };
+    const split = MaweSplitCore.splitItemsAtChar(segment, 4);
+    return { splitMs: split.splitMs,
+      left: split.leftItems.map(({ text, start, end }) => [text, start, end]),
+      right: split.rightItems.map(({ text, start, end }) => [text, start, end]) };
+  });
+  expect(result.splitMs).toBe(4000);
+  expect(result.left).toEqual([['上海', 3000, 4000]]);
+  expect(result.right).toEqual([['前进', 4000, 5000]]);
+});
+
 for (const mode of ['progressive', 'duplicate']) {
   for (const path of ['timed', 'untimed', 'linked']) {
     test(`${mode} split preserves its mode through the ${path} waveform path and undo`, async ({ page }) => {
