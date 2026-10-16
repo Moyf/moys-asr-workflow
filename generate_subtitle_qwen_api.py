@@ -749,11 +749,11 @@ _TRAILING_QUOTES = "\"'”’)]}』」"
 def _western_strong_end() -> str:
     """西文句末强标点。
 
-    西文按「词尾字符」判句末。共享配置默认清单不注入西文句末（默认
-    里的逗号会把英文口语的每个逗号都变成句末，破坏短句合并）；用户
-    在默认清单之外新增的断句符号仍然生效（如 ~）。
+    西文按「词尾字符」判句末。共享配置中的逗号不注入西文句末，避免
+    英文口语的每个逗号都成为句末、破坏短句合并；其余配置符号仍生效，
+    包括已有设置中的英文分号与用户新增符号（如 ~）。
     """
-    extra = _EXTRA_STRONG_PUNCT - set(_DEFAULT_EXTRA_STRONG_PUNCT)
+    extra = _EXTRA_STRONG_PUNCT - {",", "，"}
     return WESTERN_STRONG_END + "".join(sorted(extra))
 
 
