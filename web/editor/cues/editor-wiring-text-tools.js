@@ -213,9 +213,10 @@ MaweTextProcess.textProcessConfirm?.addEventListener('click', () => {
 // ASS 特殊文本格式预设仅在当前工程启用 ASS 字幕模式时展示。
 (() => {
   const assPresetHost = document.getElementById('text-process-wrap-presets-ass');
+  const assSentencePresetHost = document.getElementById('text-process-wrap-presets-ass-sentence');
   const commonPresetHost = document.getElementById('text-process-wrap-presets-common');
   const presetRows = document.querySelectorAll('.text-process-wrap-preset-row-ass');
-  if (!assPresetHost || !commonPresetHost) return;
+  if (!assPresetHost || !assSentencePresetHost || !commonPresetHost) return;
   const customPreset = { id: 'custom', label: '自定义', left: '', right: '' };
   const localizedPresetLabels = { note: '♪音符♪', music: '♬双音符♬', bracket: '[中括号]' };
   function selectPreset(preset) {
@@ -227,6 +228,8 @@ MaweTextProcess.textProcessConfirm?.addEventListener('click', () => {
     MaweTextProcess.renderTextProcessPreview();
     if (!selected && preset.id === 'custom') MaweTextProcess.textProcessPrefixInput?.focus();
   }
+  // ASS 区两行展示：行内 MASS 样式在第一行，句级效果（淡出淡入 / 原地震动）
+  // 按预设元数据 sentenceLevel 归入第二行，行首由模板提供「整句」badge。
   (window.AsrEditorUtils.WRAP_CHAR_PRESETS || []).forEach((preset) => {
     const btn = document.createElement('button');
     btn.type = 'button';
@@ -234,7 +237,8 @@ MaweTextProcess.textProcessConfirm?.addEventListener('click', () => {
     btn.title = '左右添加字符（插入到字幕两端）';
     btn.dataset.wrapPresetId = preset.id;
     btn.addEventListener('click', () => selectPreset(preset));
-    (preset.ass ? assPresetHost : commonPresetHost).appendChild(btn);
+    (preset.sentenceLevel ? assSentencePresetHost
+      : preset.ass ? assPresetHost : commonPresetHost).appendChild(btn);
   });
   const customButton = document.createElement('button');
   customButton.type = 'button';
@@ -267,6 +271,10 @@ MaweTextProcess.textProcessConfirm?.addEventListener('click', () => {
         ? '自定义左右字符' : '左右添加字符（插入到字幕两端）');
     });
     assPresetHost.querySelectorAll('[data-wrap-preset-label]').forEach((button) => {
+      button.textContent = translate(button.dataset.wrapPresetLabel);
+      button.title = translate('左右添加字符（插入到字幕两端）');
+    });
+    assSentencePresetHost.querySelectorAll('[data-wrap-preset-label]').forEach((button) => {
       button.textContent = translate(button.dataset.wrapPresetLabel);
       button.title = translate('左右添加字符（插入到字幕两端）');
     });
@@ -451,6 +459,15 @@ MaweDom.timedTextEditTrack?.addEventListener('change', () => {
   });
 });
 MaweDom.timedTextEditClose?.addEventListener('click', MaweTimedTextEdit.requestCloseTimedTextEdit);
+MaweDom.timedTextEditTrimToggle?.addEventListener('change', () => {
+  const draft = MaweDom.timedTextEditDraft;
+  if (!draft) {
+    MaweDom.timedTextEditTrimToggle.checked = false;
+    return;
+  }
+  draft.trimWhitespace = MaweDom.timedTextEditTrimToggle.checked;
+  MaweTimedTextEdit.flushTimedTextEditReport();
+});
 MaweDom.timedTextEditCancel?.addEventListener('click', MaweTimedTextEdit.requestCloseTimedTextEdit);
 MaweDom.timedTextEditModal?.addEventListener('click', (event) => {
   if (event.target === MaweDom.timedTextEditModal) MaweTimedTextEdit.requestCloseTimedTextEdit();
@@ -482,9 +499,11 @@ MaweDom.timedTextEditApply?.addEventListener('click', () => {
     MaweTimedTextEdit.closeTimedTextEdit();
     return;
   }
+  const effectiveTexts = MaweTimedTextEdit.timedTextEditEffectiveTexts();
   const nextSegments = window.AsrEditorUtils.applyTimedTextEdit(
     draft.sourceSegments,
-    draft.texts,
+    effectiveTexts,
+    { rule: MaweSettings.EDITOR_SETTINGS.assSpecialSymbolRule },
   );
   if (!nextSegments) {
     MaweHint.flashHint('无法应用文本修改：字幕行结构发生了变化', 'warning');
@@ -506,7 +525,7 @@ MaweDom.timedTextEditApply?.addEventListener('click', () => {
       targetSegments,
       nextSegments,
       draft.report,
-      draft.texts,
+      effectiveTexts,
       draft.sourceSegmentIndexes,
     );
     if (draft.kind === 'extension') MaweMultiSubtitleCore.markMultiSubtitleStateDirty();

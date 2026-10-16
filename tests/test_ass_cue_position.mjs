@@ -114,7 +114,8 @@ test('copy split makes independent overrides and merge preserves the leftmost va
   const mergeContext = { window: { AsrEditorUtils: h }, MaweBoot: { DATA: { segments: segs } },
     MaweMultiSubtitleCore: { getMultiSubtitleState: () => ({ tracks: [] }), multiSubtitleVisible: () => false,
       getMainSubtitleSplitMode: () => 'continuous', mergeJoinSeparatorForMode: () => '', removeBindingsForSegmentIds() {} },
-    MaweTextCleanup: { syncTimelineGroupRanges() {} } };
+    MaweTextCleanup: { syncTimelineGroupRanges() {} },
+    MaweSettings: { EDITOR_SETTINGS: { assSpecialSymbolRule: 'both' } } };
   vm.runInNewContext(fs.readFileSync(new URL('../web/editor/cues/editor-segment-ops.js', import.meta.url), 'utf8'), mergeContext);
   const merged = mergeContext.window.MaweSegmentOps.mergeContiguousIndices([0, 1]);
   assert.deepEqual(plain(merged.assOverride), plain(parts.left.assOverride));

@@ -19,20 +19,30 @@ test('paired markers follow their body when cutting beside or inside the delimit
   for (const [left, right] of [['**', '**'], ['++', '++'], ['--', '--'], ['__', '__'], ['~~', '~~'], ['//', '//']]) {
     const text = `甲${left}乙丙${right}丁`;
     for (const offset of [1, 2, 3]) {
-      assert.deepEqual(parts(text, offset), { left: '甲', right: `${left}乙丙${right}丁`, offset: 1 });
+      // 刀点吸附到对之前：无跨刀对，端点闭符号串为空
+      assert.deepEqual(parts(text, offset), { left: '甲', right: `${left}乙丙${right}丁`, offset: 1,
+        leftClosures: '', rightClosures: '', displayEdits: false });
     }
     for (const offset of [5, 6, 7]) {
-      assert.deepEqual(parts(text, offset), { left: `甲${left}乙丙${right}`, right: '丁', offset: 7 });
+      // 刀点吸附到对之后：同样无跨刀对
+      assert.deepEqual(parts(text, offset), { left: `甲${left}乙丙${right}`, right: '丁', offset: 7,
+        leftClosures: '', rightClosures: '', displayEdits: false });
     }
-    assert.deepEqual(parts(text, 4), { left: `甲${left}乙${right}`, right: `${left}丙${right}丁`, offset: 4 });
+    // 刀点在对内部：两侧各补齐完整对，端点闭符号串 = 被跨对的符号
+    assert.deepEqual(parts(text, 4), { left: `甲${left}乙${right}`, right: `${left}丙${right}丁`, offset: 4,
+      leftClosures: right, rightClosures: left, displayEdits: false });
   }
 });
 
 test('nested styles close in reverse order and reopen in source order', () => {
+  // 刀点同时跨 ** 与 ++ 两对：左端点闭符号按嵌套逆序（内层 ++ 先闭、外层 ** 后闭），
+  // 右端点开符号按源序（外层 ** 先开、内层 ++ 后开）
   assert.deepEqual(parts('甲**++乙丙++**丁', 6),
-    { left: '甲**++乙++**', right: '**++丙++**丁', offset: 6 });
+    { left: '甲**++乙++**', right: '**++丙++**丁', offset: 6, leftClosures: '++**', rightClosures: '**++',
+      displayEdits: false });
+  // 刀点吸附到 ** 开符号之前：两对都完整留在右侧，端点闭符号串为空
   assert.deepEqual(parts('甲**++乙丙++**丁', 5),
-    { left: '甲', right: '**++乙丙++**丁', offset: 1 });
+    { left: '甲', right: '**++乙丙++**丁', offset: 1, leftClosures: '', rightClosures: '', displayEdits: false });
   assert.equal(parts('**甲乙**', 2), null);
 });
 
@@ -51,10 +61,19 @@ test('literal, disabled and unpaired symbols remain unchanged', () => {
 });
 
 test('fade gives both output sentences a complete pair including nested styles', () => {
-  assert.deepEqual(parts('>>甲乙<<', 3), { left: '>>甲<<', right: '>>乙<<', offset: 3 });
-  assert.deepEqual(parts('++>>甲乙<<++', 5), { left: '>>++甲++<<', right: '>>++乙++<<', offset: 5 });
-  assert.deepEqual(parts('>甲乙<', 2), { left: '>>甲<<', right: '>>乙<<', offset: 2 });
-  assert.deepEqual(parts('>>>>甲乙<<<<', 5), { left: '>>>>甲<<', right: '>>乙<<<<', offset: 5 });
+  // 句级 fade 外壳被剥出原文再重包：端点闭符号串 = wrap 的两半（<< / >>）
+  assert.deepEqual(parts('>>甲乙<<', 3), { left: '>>甲<<', right: '>>乙<<', offset: 3,
+    leftClosures: '<<', rightClosures: '>>', displayEdits: false });
+  // 嵌套：跨刀的 ++ 对闭合随端点闭符号串输出，fade wrap 的两半缀在两端
+  assert.deepEqual(parts('++>>甲乙<<++', 5), { left: '>>++甲++<<', right: '>>++乙++<<', offset: 5,
+    leftClosures: '++<<', rightClosures: '>>++', displayEdits: false });
+  // 单符号 fade（规则 both 识别 > <）同样重包为双符号完整对
+  assert.deepEqual(parts('>甲乙<', 2), { left: '>>甲<<', right: '>>乙<<', offset: 2,
+    leftClosures: '<<', rightClosures: '>>', displayEdits: false });
+  // 重复 fade 按 parse-once 语义只识别外层：内层 >> 保留可见、闭符号串仍 = wrap 两半
+  assert.deepEqual(parts('>>>>甲乙<<<<', 5), { left: '>>>>甲<<', right: '>>乙<<<<', offset: 5,
+    leftClosures: '<<', rightClosures: '>>', displayEdits: false });
+  // 规则 none 不识别任何符号：走无 token 早退，返回原切片且无闭符号串键
   assert.deepEqual(parts('>>甲乙<<', 3, { ...settings, assSpecialSymbolRule: 'none' }),
     { left: '>>甲', right: '乙<<', offset: 3 });
 });
@@ -80,7 +99,15 @@ test('source markers consume no speech duration whether items include or omit th
     assert.equal(split.right.start, 1000);
     assert.equal(split.left.items[0].end, 1000);
     assert.equal(split.right.items[0].start, 1000);
-    assert.equal(split.left.items[0].text + split.right.items[0].text, items[0].text);
+    // items 守恒形态（item 文本含符号）closure 落到边界 item，各侧 items
+    // 拼接 == 各自文本；visible 形态（item 只有文字）closure 留在句文本层，
+    // items 保持纯文字切片拼接回原文。
+    if (items[0].text === '**甲乙**') {
+      assert.equal(split.left.items[0].text, split.left.text);
+      assert.equal(split.right.items[0].text, split.right.text);
+    } else {
+      assert.equal(split.left.items[0].text + split.right.items[0].text, items[0].text);
+    }
     assert.equal(JSON.stringify(segment), snapshot);
   }
   const recovered = core.buildSplitPair({ id: 'speech', text: '甲++乙丙++', start: 0, end: 3000,
@@ -139,7 +166,19 @@ test('same-style single/double nesting and overlap preserve actual ASS rendering
       assert.equal(pair.right.start, 2000, source);
       assert.equal(pair.left.items[0].end, 2000, source);
       assert.equal(pair.right.items[0].start, 2000, source);
-      assert.equal(pair.left.items.concat(pair.right.items).map(item => item.text).join(''), itemText, source);
+      // items 断言三分支：① 守恒形态且无符号合并渲染（displayEdits）——
+      // closure 落到 items，各侧 items 拼接 == 各自文本；② 守恒形态但有
+      // 合并渲染——合并渲染与逐字切片天然不一致，items 保持原切片，拼接
+      // 回原 item 文本；③ visible 形态——closure 留在句文本层，纯文字
+      // 切片拼接回 spoken。
+      const concat = pair.left.items.concat(pair.right.items).map(item => item.text).join('');
+      if (itemText === source && !pair.parts.displayEdits) {
+        assert.equal(pair.left.items.map(item => item.text).join(''), pair.left.text, source);
+        assert.equal(pair.right.items.map(item => item.text).join(''), pair.right.text, source);
+      } else {
+        assert.equal(concat, itemText, source);
+      }
+      assert.equal(JSON.stringify(segment), snapshot);
       assert.equal(JSON.stringify(segment), snapshot);
     }
   }

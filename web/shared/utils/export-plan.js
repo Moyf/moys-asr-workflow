@@ -1,7 +1,7 @@
 // export-plan: private helpers; dependencies are injected by editor-utils.js.
 export function createUtilsModule(dependencies) {
   'use strict';
-  const { assDefaultFontFamily, buildGapRemovedIntervals, formatSpeakerLabelledText, mapGapRemovedTime, gapRemoveCore } = dependencies;
+  const { assDefaultFontFamily, buildGapRemovedIntervals, formatSpeakerLabelledText, mapGapRemovedTime, gapRemoveCore, srtSentenceText } = dependencies;
 
 
   const EXPORT_FRAME_PROFILES = Object.freeze({
@@ -290,11 +290,14 @@ export function createUtilsModule(dependencies) {
         return null;
       }
       if (rawStart !== start || rawEnd !== end) warnings.push({ code: 'clamped_cue_to_duration', track, index });
+      // FCP7 文本对象与 plan 内嵌 SRT 同属纯文本出口：剥离句级 fade/shake
+      // 与成对 MASS 符号（与 SRT/TXT 同链路），rule 由调用方按设置传入。
+      const exportText = srtSentenceText(String(segment.text || ''), options.assSpecialSymbolRule);
       return {
         id: String(segment.id || `${track}-${index}`), track, index,
         text: options.speakerLabelsEnabled === true
-          ? formatSpeakerLabelledText(segment.text || '', segment, extensionColorContexts.get(segment) || segments, options.speakerLabels, options.speakerLabelSeparator)
-          : String(segment.text || ''),
+          ? formatSpeakerLabelledText(exportText, segment, extensionColorContexts.get(segment) || segments, options.speakerLabels, options.speakerLabelSeparator)
+          : exportText,
         sourceStartMs: start, sourceEndMs: end,
         startMs: mappedStart, endMs: mappedEnd,
       };

@@ -772,7 +772,7 @@
     '左右添加字符预设': 'Character wrapping presets',
     '左右添加字符': 'Wrap with characters', '自定义左右字符': 'Custom wrap characters',
     '左侧字符': 'Left characters', '右侧字符': 'Right characters', '插入': 'Insert',
-    '音符': 'Music note', '淡出淡入': 'Fade in/out', '注释文本': 'Comment text',
+    '音符': 'Music note', '淡出淡入': 'Fade in/out', '弱化文本': 'Subdued text', '整句': 'Sentence',
     '原地震动': 'Shake in place',
     'ASS 特殊文本样式': 'ASS text styles', '普通字符': 'Regular characters',
     '♪音符♪': '♪Music note♪', '♬双音符♬': '♬Double music notes♬', '[中括号]': '[Square brackets]',
@@ -1135,6 +1135,8 @@
     '结构调整（时间码已重新分配）': 'Structure change (word timings redistributed)',
     '原本没有字词码': 'No word timings originally', '字符变化': 'Character changes', '字幕行': 'Subtitle rows',
     '修改前：': 'Before: ', '修改后：': 'After: ', '前：': 'Before: ', '后：': 'After: ',
+    '时间范围：': 'Time range: ', '估算': 'Est.',
+    '修改后移除字幕前后空格': 'Trim leading and trailing spaces when applying',
     '还没有修改内容。': 'No changes yet.',
     '修改后会保持当前字幕段的开始、结束时间不变。': 'The subtitle segment start and end times stay unchanged after editing.',
     '部分字幕无法可靠映射原字词时间码；应用后只保留字幕段整体时间范围。': 'Some subtitles cannot reliably map their original word timings; applying the edit keeps only the overall subtitle segment range.',
@@ -1168,7 +1170,7 @@
     '文本处理…': 'Text processing…', '文本处理': 'Text processing', '仅处理选中的字幕': 'Process selected subtitles only', '需要先选中至少1条字幕才可启用': 'Select at least one subtitle first to enable this option',
     'Trim': 'Trim', '修剪前后空白': 'Trim surrounding whitespace', '去除字幕前方和后方的空格': 'Remove spaces before and after the subtitle text', '去除前后空白': 'Remove surrounding whitespace', '首字母大写': 'Capitalize first letter', '只作用于第一个字母': 'Only affects the first letter',
     '添加前缀': 'Add prefix', '插入到字幕开头': 'Insert at the beginning', '附加内容': 'Add suffix', '插入到字幕结尾': 'Insert at the end',
-    '去除 md 格式符号': 'Remove Markdown formatting', '移除常见 Markdown 标记': 'Remove common Markdown markers',
+    '去除 md 格式符号': 'Remove Markdown formatting', '移除常见 Markdown 标记；含特殊文本样式（MASS）符号时会一并移除，建议先清理再加样式': 'Remove common Markdown markers; special text style (MASS) markers are also removed — clean first, then add styles',
     '文本处理操作': 'Text-processing operations', '选择操作后查看预览': 'Select an operation to preview', '至少选择一项文本处理操作': 'Select at least one text-processing operation', '当前文本处理对于选中的字幕没有任何影响，未作改动': 'The current text processing has no effect on the selected subtitles; no changes were made',
     '应用处理': 'Apply processing', '处理前：': 'Before: ', '处理后：': 'After: ',
     '选择要执行的文本操作；字幕行不会被删除，处理为空时会保留空字幕行。字词时间码会按文本编辑规则尽量保留。': 'Choose text operations; subtitle rows are not deleted, and empty results remain as empty rows. Word timings are retained when possible using the text-editing rules.',
@@ -1276,7 +1278,7 @@
     '选择本地媒体文件并加载到播放器': 'Choose a local media file and load it in the player',
     '单独打开工程；浏览器无法自动读取关联媒体时会提示选择': 'Open a project by itself; the browser will prompt when it cannot read related media automatically',
     '设置表情包根目录': 'Set sticker root folder',
-    '过滤字幕…': 'Filter subtitles…', '清空': 'Clear', '正在加载…': 'Loading…',
+    '过滤字幕': 'Filter subtitles', '清空': 'Clear', '正在加载…': 'Loading…',
     '只显示超过阈值的字幕（再次点击关闭）': 'Show only subtitles over the threshold (click again to turn off)',
     '查看鼠标操作与键盘快捷键': 'View mouse and keyboard shortcuts',
     '打开全局设置窗口': 'Open the global settings window', '展开字幕、波形与导出设置': 'Open subtitle, waveform, and export settings',
@@ -1437,6 +1439,8 @@
     '黄字幕颜色十六进制值': 'Yellow subtitle color hex value', '绿字幕颜色十六进制值': 'Green subtitle color hex value',
     '红字幕颜色十六进制值': 'Red subtitle color hex value', '紫字幕颜色十六进制值': 'Purple subtitle color hex value',
     '蓝字幕颜色十六进制值': 'Blue subtitle color hex value',
+    '缺少可靠时间码，新时间范围基于字数估算。': 'No reliable timecodes available; the new time range is estimated from text length.',
+    '应用修改时去掉每条字幕文本首尾的空格': 'Remove leading and trailing spaces from every subtitle text when applying',
   };
 
   const textOriginals = new WeakMap();
@@ -1601,11 +1605,6 @@
     if (match) return `Word-timing coverage: ${match[1]}/${match[2]}`;
     match = /^原始时间码复用率：\s*(\d+)\/(\d+)$/.exec(text);
     if (match) return `Original timing reuse: ${match[1]}/${match[2]}`;
-    if (text === '时间范围为自动估算（按原字幕范围/文字长度分配）') {
-      return 'Time range estimated from the original cue range and text length';
-    }
-    match = /^时间范围：(.+?)\s*[–-]\s*(.+?)\s*→\s*(.+?)\s*[–-]\s*(.+)$/.exec(text);
-    if (match) return `Time range: ${match[1]} - ${match[2]} -> ${match[3]} - ${match[4]}`;
     match = /^版本号\s+(.+)$/.exec(text);
     if (match) return `Version ${match[1]}`;
     // 动态 title / 徽标：带变量的属性文案
@@ -1622,6 +1621,8 @@
     if (match) return `Project path is no longer valid: ${match[1]}`;
     match = /^点击复制工程文件名：(.+)$/.exec(text);
     if (match) return `Click to copy the project file name: ${match[1]}`;
+    match = /^有未保存的修改；点击复制工程文件名：(.+)$/.exec(text);
+    if (match) return `Unsaved changes; click to copy the project file name: ${match[1]}`;
     match = /^点击复制媒体名：(.+)$/.exec(text);
     if (match) return `Click to copy the media name: ${match[1]}`;
     match = /^工程关联媒体：(.+)$/.exec(text);

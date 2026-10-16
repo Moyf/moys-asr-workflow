@@ -162,6 +162,7 @@ function applyCanonicalProject(data, filename) {
     jsonEl.classList.remove('empty');
     jsonEl.onclick = () => MaweExportTimeline.copyText(filename, `已复制：${filename}`);
   }
+  MaweProjectSave.updateProjectDirtyIndicator();
   MaweServerSave.projectCheckpointed = true;
   MaweServerSave.configureServerSaveControls();
   MaweServerSave.scheduleAutoSave();

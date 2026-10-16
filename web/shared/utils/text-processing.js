@@ -1,6 +1,7 @@
 // text-processing: private helpers; dependencies are injected by editor-utils.js.
 export function createUtilsModule(dependencies) {
   'use strict';
+  const { assMarkedRanges } = dependencies;
 
 
   function buildReplacementPreview(segments, indexes, find, replacement, options = {}) {
@@ -471,8 +472,22 @@ export function createUtilsModule(dependencies) {
     return shells.reduceRight((text, shell) => `${shell.left}${text}${shell.right}`, body);
   }
 
+  // 句级效果符号对（淡出淡入 / 原地震动）：ASS 只在整句两端识别它们，
+  // 因此插入时必须包裹在现有全部符号最外层，否则样式失效。
+  // 成对才视为句级壳（见 sentenceShells 的剥离条件），孤儿字面保持不动。
+  const SENTENCE_LEVEL_WRAP_PAIRS = Object.freeze([
+    ['>>', '<<'],
+    ['!!', '!!'],
+  ]);
+
+  function isSentenceLevelWrapPair(left, right) {
+    return SENTENCE_LEVEL_WRAP_PAIRS.some(([l, r]) => l === left && r === right);
+  }
+
   // Preserve existing sentence effects while nesting the selected wrappers in click order.
   // Reuse selected shells instead of doubling an already present individual style.
+  // 句级对（fade/shake）恒重建在现有句级壳之外（最新最外，与单对路径一致），
+  // 行内对落回现有壳之内——分层规则与 wrapPreservingSentenceShells 相同。
   function wrapTextWithPairs(source, pairs, skipWrapped) {
     const wraps = pairs.map(({ left, right }) => ({ left: String(left ?? ''), right: String(right ?? '') }))
       .filter(({ left, right }) => left || right);
@@ -491,7 +506,9 @@ export function createUtilsModule(dependencies) {
         body = body.slice(left.length, -right.length);
       }
     }
-    return { text: rebuildShells(rebuildShells(body, wraps), retained), skipped: false };
+    const sentenceWraps = wraps.filter(({ left, right }) => isSentenceLevelWrapPair(left, right));
+    const inlineWraps = wraps.filter(({ left, right }) => !isSentenceLevelWrapPair(left, right));
+    return { text: rebuildShells(rebuildShells(rebuildShells(body, inlineWraps), retained), sentenceWraps), skipped: false };
   }
 
   function wrapPreservingSentenceShells(source, left, right, skipWrapped) {
@@ -499,8 +516,14 @@ export function createUtilsModule(dependencies) {
     const skipped = skipWrapped && (isTextWrappedBy(source, left, right)
       || parsed.shells.some(shell => shell.left === left && shell.right === right)
       || isTextWrappedBy(parsed.body, left, right));
-    return { skipped: Boolean(skipped), text: skipped ? source
-      : rebuildShells(`${left}${parsed.body}${right}`, parsed.shells) };
+    if (skipped) return { skipped: true, text: source };
+    // 句级预设恒包裹在最外层（先重建现有壳，再用句级对包住；重复应用同一
+    // 句级对已在上方跳过）。行内预设维持现行行为：包住剥壳后的正文，重建时
+    // 落回现有符号（含句级壳）之内。
+    if (isSentenceLevelWrapPair(left, right)) {
+      return { skipped: false, text: `${left}${rebuildShells(parsed.body, parsed.shells)}${right}` };
+    }
+    return { skipped: false, text: rebuildShells(`${left}${parsed.body}${right}`, parsed.shells) };
   }
 
 
@@ -509,18 +532,327 @@ export function createUtilsModule(dependencies) {
   }
 
 
+  // === MASS（Markdown-ASS）成对标记 ===
+  // 权威清单 = WRAP_CHAR_PRESETS 中 ass:true 的 8 对（** ++ -- __ ~~ >>…<< !! //）。
+  // 行内同符号对（** ++ -- __ ~~ // !!）复用 assMarkedRanges 的配对语义，
+  // 找不到成对的孤儿符号一律按字面保留；句级 fade >>…<< 是非对称标记，
+  // 单独按 parseSentenceFadeMarkers 的行首/行尾语义处理，不进 assMarkedRanges。
+  // rule 与「特殊文本规则」设置（assSpecialSymbolRule）同源：
+  // none 不识别任何符号；double 只识别双符号；both / single（含缺省）识别单双。
+  function massSymbolWidths(rule) {
+    return rule === 'none' ? [] : rule === 'double' ? [2] : [1, 2];
+  }
+
+
+  // 收集文本里全部 MASS 成对区间（UTF-16 下标，与 assMarkedRanges 一致），
+  // 附带 marker 字符串供补齐/折叠使用；按出现顺序排序。rule none 时全量
+  // 不识别（与 assMarkedRuns 的特殊文本规则语义一致）。
+  function massMarkedRanges(source, rule) {
+    if (rule === 'none') return [];
+    const text = String(source ?? '');
+    const ranges = [];
+    massSymbolWidths(rule).forEach((width) => {
+      ['*', '_', '+', '-', '~'].forEach((symbol) => {
+        const marker = symbol.repeat(width);
+        assMarkedRanges(text, marker).forEach((range) => {
+          ranges.push({ ...range, marker });
+        });
+      });
+    });
+    ['//', '!!'].forEach((marker) => {
+      assMarkedRanges(text, marker).forEach((range) => {
+        ranges.push({ ...range, marker });
+      });
+    });
+    return ranges.sort((a, b) => a.start - b.start || a.end - b.end);
+  }
+
+
+  // 剥离成对 MASS 符号、保留正文；孤儿符号维持字面。供 SRT/TXT 等纯文本
+  // 导出使用；句级 fade/shake 仍由 stripSentenceFade/ShakeMarkers 负责（先行
+  // 剥离），这里只处理剩余的行内成对符号，两者不会互相重复或破坏。
+  function stripMassMarkers(text, rule) {
+    const source = String(text ?? '');
+    const cuts = [];
+    massMarkedRanges(source, rule).forEach(({ start, end, width }) => {
+      cuts.push([start, start + width], [end, end + width]);
+    });
+    if (!cuts.length) return source;
+    cuts.sort((a, b) => a[0] - b[0] || a[1] - b[1]);
+    let result = '';
+    let cursor = 0;
+    for (const [from, to] of cuts) {
+      if (from < cursor) continue;
+      result += source.slice(cursor, from);
+      cursor = Math.max(cursor, to);
+    }
+    return result + source.slice(cursor);
+  }
+
+
+  // 整行句级 fade 外壳（>>…<<，含单双规则的单符号形式）；没有完整对时返回 null。
+  function fadeShellPair(text, rule) {
+    if (rule === 'none') return null;
+    const source = String(text ?? '');
+    const single = rule === 'both' || rule === 'single';
+    const open = source.startsWith('>>') ? '>>' : single && source.startsWith('>') ? '>' : '';
+    const close = source.endsWith('<<') ? '<<' : single && source.endsWith('<') ? '<' : '';
+    if (!open || !close || source.length <= open.length + close.length) return null;
+    return { open, close };
+  }
+
+
+  // 拆分补齐（维护者拍板方案 2）：拆开后若某个 MASS 符号对的开口/闭口分处
+  // 两侧片段，两侧各补齐成对——文本层加符号，leftAppend / rightPrepend 返回
+  // 需要同步补进边界 item 的符号串。fade >>…<< 句级外壳与行内同符号对一起
+  // 收集（账本 #19①：>>!!这样的｜文字!!<< 两侧都补齐 → >>!!这样的!!<< /
+  // >>!!文字!!<<）；左侧补闭符号按原文闭符号顺序（嵌套逆序、内层先闭），
+  // 右侧补开符号按原文开符号顺序。只补「该侧还有正文」的对（刀点恰在符号
+  // 端点时该侧维持孤儿字面），并复验补齐结果确实按同规则成对，失败即回退
+  // 为字面，不产生第三个符号。
+  function completeSplitMassPairs(leftText, rightText, rule) {
+    const left = String(leftText ?? '');
+    const right = String(rightText ?? '');
+    const combined = left + right;
+    const cut = left.length;
+    if (!combined) return { left, right, leftAppend: '', rightPrepend: '' };
+    // 收集所有跨拆分点的对：行内同符号对 + 整行句级 fade 外壳。
+    const straddling = massMarkedRanges(combined, rule)
+      .filter(({ start, end, width }) => start < cut && end + width > cut)
+      .map(({ start, end, width, marker }) => ({ kind: 'inline', start, end, width, marker, closeMarker: marker }));
+    const fade = fadeShellPair(combined, rule);
+    if (fade && cut > fade.open.length && cut < combined.length - fade.close.length) {
+      straddling.push({
+        kind: 'fade', start: 0, end: combined.length - fade.close.length,
+        width: fade.open.length, marker: fade.open, closeMarker: fade.close,
+      });
+    }
+    const verifyLeft = (candidate, range) => (range.kind === 'fade'
+      ? (() => {
+        const check = parseSentenceFadeMarkers(candidate, rule);
+        return check.fadeIn && check.fadeOut;
+      })()
+      : assMarkedRanges(candidate, range.marker)
+        .some((paired) => paired.start === range.start && paired.end + paired.width === candidate.length));
+    const verifyRight = (candidate, range) => (range.kind === 'fade'
+      ? (() => {
+        const check = parseSentenceFadeMarkers(candidate, rule);
+        return check.fadeIn && check.fadeOut;
+      })()
+      : assMarkedRanges(candidate, range.marker)
+        .some((paired) => paired.start === range.prependAt
+          && paired.end === range.prependAt + range.width + range.end - cut));
+    let leftAppend = '';
+    // fade 已完整守卫（分层体系）：splitStyledTextParts 已对两侧整句包裹时，
+    // 组合文本仍会判出跨刀点 fade 对，但左/右其实各自已有完整外壳——再补就
+    // 双重包裹。左已有闭（fadeOut）不补闭，右已有开（fadeIn）不补开。
+    const leftFadeComplete = parseSentenceFadeMarkers(left, rule).fadeOut;
+    // 左侧补闭符号：按原文闭符号位置升序 = 嵌套逆序（内层先闭）。
+    straddling.slice().sort((a, b) => a.end - b.end).forEach((range) => {
+      if (range.start + range.width >= cut) return;
+      if (range.kind === 'fade' && leftFadeComplete) return;
+      const candidate = left + leftAppend + range.closeMarker;
+      if (verifyLeft(candidate, range)) leftAppend += range.closeMarker;
+    });
+    let rightPrepend = '';
+    const rightFadeStarted = parseSentenceFadeMarkers(right, rule).fadeIn;
+    // 右侧补开符号：按原文开符号位置升序（外层在前）。
+    straddling.slice().sort((a, b) => a.start - b.start).forEach((range) => {
+      if (range.end <= cut) return;
+      if (range.kind === 'fade' && rightFadeStarted) return;
+      const prependAt = rightPrepend.length;
+      const candidate = `${rightPrepend}${range.marker}${right}`;
+      if (verifyRight(candidate, { ...range, prependAt })) rightPrepend += range.marker;
+    });
+    // 返回补齐后的两侧文本；leftAppend / rightPrepend 供 items 层同步补符号。
+    return {
+      left: left + leftAppend,
+      right: rightPrepend + right,
+      leftAppend,
+      rightPrepend,
+    };
+  }
+
+
+  // 拆分/转换产物的 items 层符号补位（共享实现，split-core 与各转换出口共用）：
+  // 文本层补在两侧端点的 MASS 符号，对应挂到边界 item 的文本末尾/开头（与
+  // 「中性字符挂靠前一发音 item / 行首归第一 item」的归属规则一致），保证
+  // items 拼接 == 其文本。
+  function appendMassMarkersToLastItem(items, markers) {
+    if (!markers || !Array.isArray(items) || !items.length) return items;
+    const last = items[items.length - 1];
+    items[items.length - 1] = { ...last, text: `${String(last?.text || '')}${markers}` };
+    return items;
+  }
+
+  function prependMassMarkersToFirstItem(items, markers) {
+    if (!markers || !Array.isArray(items) || !items.length) return items;
+    const first = items[0];
+    items[0] = { ...first, text: `${markers}${String(first?.text || '')}` };
+    return items;
+  }
+
+  // Split against the whole remaining phrase so pairs spanning three or more
+  // rows remain visible at every cut. Callers supply rows from one source only.
+  function completeMassTextRows(rows, rule) {
+    if (!rule || rule === 'none' || rows.length < 2) return rows;
+    let remaining = rows.map(row => String(row.text || '')).join('');
+    for (let index = 0; index < rows.length - 1; index += 1) {
+      const current = rows[index];
+      remaining = remaining.slice(current.text.length);
+      const completed = completeSplitMassPairs(current.text, remaining, rule);
+      current.text = completed.left;
+      appendMassMarkersToLastItem(current.items, completed.leftAppend);
+      rows[index + 1].text = completed.rightPrepend + rows[index + 1].text;
+      prependMassMarkersToFirstItem(rows[index + 1].items, completed.rightPrepend);
+      remaining = completed.right;
+    }
+    return rows;
+  }
+
+
+  // 合并折叠：前段以「已识别对的闭符号」结尾、后段以同符号的开符号开头时，
+  // 优先整体折叠——前段尾闭与后段首开一并移除，两段内容合成一个跨 junction
+  // 的完整对（样式取两段并集、无孤儿符号、拆分-合并往返无损；复验重 union
+  // 失败则退回仅移后段开符号）。fade 句级外壳同样按整体折叠合并回一个完整
+  // 外壳。不构成折叠时返回 null。
+  // leftTrimmed 是前段尾部被裁掉的字符数，供 items 层同步。
+  function foldMassPairJunction(leftText, rightText, rule) {
+    const left = String(leftText ?? '');
+    const right = String(rightText ?? '');
+    if (!left || !right) return null;
+    const leftFade = fadeShellPair(left, rule);
+    const rightFade = fadeShellPair(right, rule);
+    if (leftFade && rightFade) {
+      const trimmedLeft = left.slice(0, left.length - leftFade.close.length);
+      const trimmedRight = right.slice(rightFade.open.length);
+      const check = parseSentenceFadeMarkers(trimmedLeft + trimmedRight, rule);
+      if (check.fadeIn && check.fadeOut) {
+        return {
+          left: trimmedLeft, right: trimmedRight,
+          removed: rightFade.open.length, leftTrimmed: leftFade.close.length,
+        };
+      }
+    }
+    const markers = [];
+    massSymbolWidths(rule).forEach((width) => {
+      ['*', '_', '+', '-', '~'].forEach((symbol) => markers.push(symbol.repeat(width)));
+    });
+    markers.push('//', '!!');
+    // 双符号是「左右添加字符」预设的规范形式，优先判定。
+    markers.sort((a, b) => b.length - a.length);
+    for (const marker of markers) {
+      const width = marker.length;
+      if (!left.endsWith(marker) || !right.startsWith(marker)) continue;
+      const closePair = assMarkedRanges(left, marker)
+        .find((range) => range.end + range.width === left.length);
+      const openPair = assMarkedRanges(right, marker).find((range) => range.start === 0);
+      if (!closePair || !openPair) continue;
+      // 优先整体折叠（前段尾闭 + 后段首开一并移除）：两段的符号本就是同一
+      // 语法对被拆分补齐/独立包裹拆成的两侧，合并时还原为一个跨 junction 的
+      // 完整对——样式取两段并集、不残留孤儿符号，拆分-合并往返无损。
+      // （Greptile P1：只移后段开符号会留前段尾闭孤儿 `**甲**乙**`。）
+      const rejoined = left.slice(0, left.length - width) + right.slice(width);
+      const rejoinedCloseAt = left.length - width + (openPair.end - width);
+      const reunited = assMarkedRanges(rejoined, marker).some((range) => (
+        range.start === closePair.start && range.end === rejoinedCloseAt
+      ));
+      if (reunited) {
+        return {
+          left: left.slice(0, left.length - width),
+          right: right.slice(width),
+          removed: width, leftTrimmed: width,
+        };
+      }
+      // 复验失败（重 union 不成立，如中间插了别的符号干扰解析）时退回仅移
+      // 后段开符号，前段尾闭保留防误解析。
+      return { left, right: right.slice(width), removed: width, leftTrimmed: 0 };
+    }
+    return null;
+  }
+
+
+  // 三处合并路径（主/副/overlay）共用的「拼接 + 相邻同符号对折叠」：折叠只
+  // 作用于无分隔符的拼接边界（空格/换行分隔不会产生符号连跑），并同步返回
+  // items 层拼接结果——被折叠掉的符号从对应段边界 item 的文本里裁掉，
+  // 保证每段 items 拼接 == 其文本的守恒契约随文本一起成立。
+  function joinSegmentTextsMassFold(segments, separator, rule) {
+    const source = Array.isArray(segments) ? segments : [];
+    const texts = source.map((segment) => String(segment?.text || ''));
+    const leadingSlices = source.map(() => 0);
+    const trailingSlices = source.map(() => 0);
+    let text = texts[0] || '';
+    for (let index = 1; index < texts.length; index += 1) {
+      let part = texts[index];
+      if (separator === '' && text && part) {
+        const folded = foldMassPairJunction(text, part, rule);
+        if (folded) {
+          text = folded.left;
+          part = folded.right;
+          leadingSlices[index] = folded.removed;
+          trailingSlices[index - 1] = folded.leftTrimmed;
+        }
+      }
+      text += `${separator}${part}`;
+    }
+    const items = [];
+    source.forEach((segment, index) => {
+      const owned = Array.isArray(segment?.items) ? segment.items : [];
+      const ownedText = owned.map(item => String(item?.text || '')).join('');
+      // 先从尾部裁掉折叠掉的闭符号，再从头部裁掉开符号；被裁空的 item 一并
+      // 移除（纯符号 item 没有可保留的时间语义）。
+      const removedEnd = texts[index].slice(texts[index].length - trailingSlices[index]);
+      let endCut = removedEnd && ownedText.endsWith(removedEnd) ? removedEnd.length : 0;
+      const trimmedEnd = [];
+      for (let cursor = owned.length - 1; cursor >= 0; cursor -= 1) {
+        const itemText = String(owned[cursor]?.text || '');
+        if (endCut > 0) {
+          if (!itemText) continue;
+          if (itemText.length <= endCut) {
+            endCut -= itemText.length;
+            continue;
+          }
+          trimmedEnd.unshift({ ...owned[cursor], text: itemText.slice(0, itemText.length - endCut) });
+          endCut = 0;
+          continue;
+        }
+        trimmedEnd.unshift(owned[cursor]);
+      }
+      const removedStart = texts[index].slice(0, leadingSlices[index]);
+      let startCut = removedStart && ownedText.startsWith(removedStart) ? removedStart.length : 0;
+      for (const item of trimmedEnd) {
+        const itemText = String(item?.text || '');
+        if (startCut > 0) {
+          if (!itemText) continue;
+          if (itemText.length <= startCut) {
+            startCut -= itemText.length;
+            continue;
+          }
+          items.push({ ...item, text: itemText.slice(startCut) });
+          startCut = 0;
+          continue;
+        }
+        items.push(item);
+      }
+    });
+    return { text, items };
+  }
+
+
   // 「左右添加字符」预设：主字幕右键菜单与批量面板共用同一张数据表，便于后续加项。
   // 一律使用双符号形式；「单双符号」设置只影响识别/解析，不影响这里插入的内容。
+  // 数组序即菜单与批量面板的展示序；sentenceLevel: true 的预设是句级效果
+  // （整句生效，插入时恒包裹在所有符号最外层），菜单与面板按它分组。
   const WRAP_CHAR_PRESETS = Object.freeze([
     // ass: true 的预设是 ASS 特殊文本格式，仅在当前工程启用 ASS 字幕模式时展示。
     { id: 'emphasis', label: '强调文本', left: '**', right: '**', ass: true },
     { id: 'large', label: '放大文本', left: '++', right: '++', ass: true },
+    { id: 'comment', label: '弱化文本', left: '//', right: '//', ass: true },
     { id: 'small', label: '缩小文本', left: '--', right: '--', ass: true },
-    { id: 'underline', label: '下划线', left: '__', right: '__', ass: true },
     { id: 'strike', label: '删除线', left: '~~', right: '~~', ass: true },
-    { id: 'fade', label: '淡出淡入', left: '>>', right: '<<', ass: true },
-    { id: 'shake', label: '原地震动', left: '!!', right: '!!', ass: true },
-    { id: 'comment', label: '注释文本', left: '//', right: '//', ass: true },
+    { id: 'underline', label: '下划线', left: '__', right: '__', ass: true },
+    { id: 'fade', label: '淡出淡入', left: '>>', right: '<<', ass: true, sentenceLevel: true },
+    { id: 'shake', label: '原地震动', left: '!!', right: '!!', ass: true, sentenceLevel: true },
     { id: 'note', label: '音符', left: '♪', right: '♪' },
     { id: 'music', label: '双音符', left: '♬', right: '♬' },
     { id: 'bracket', label: '中括号', left: '[', right: ']' },
@@ -562,6 +894,14 @@ export function createUtilsModule(dependencies) {
     stripSentenceFadeMarkers,
     parseSentenceShakeMarkers,
     stripSentenceShakeMarkers,
+    completeSplitMassPairs,
+    completeMassTextRows,
+    appendMassMarkersToLastItem,
+    prependMassMarkersToFirstItem,
+    foldMassPairJunction,
+    joinSegmentTextsMassFold,
+    massMarkedRanges,
+    stripMassMarkers,
     convertChineseNumbers,
     WRAP_CHAR_PRESETS,
     isTextWrappedBy,

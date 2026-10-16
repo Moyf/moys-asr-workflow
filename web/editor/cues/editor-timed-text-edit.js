@@ -10,6 +10,7 @@
   const timedTextEditSearchCount = document.getElementById('timed-text-edit-search-count');
   const timedTextEditSearchError = document.getElementById('timed-text-edit-search-error');
   const timedTextEditSearchMirror = document.getElementById('timed-text-edit-search-mirror');
+  const timedTextEditGutter = document.getElementById('timed-text-edit-gutter');
   const timedTextEditSearchReplaceToggle = document.getElementById('timed-text-edit-replace-toggle');
   const timedTextEditSearchReplaceRow = document.getElementById('timed-text-edit-replace-row');
   const timedTextEditSearchCase = document.getElementById('timed-text-edit-case');
@@ -112,6 +113,70 @@
 
 
 
+  function timedTextEditTimingPill(value, kind) {
+    const pill = document.createElement('span');
+    pill.className = kind ? `timed-text-edit-timing-pill ${kind}` : 'timed-text-edit-timing-pill';
+    pill.textContent = value;
+    return pill;
+  }
+
+
+  function timedTextEditEstimatedBadge() {
+    // badge 文案与 title 只写中文原文，i18n 的 MutationObserver 会按当前语言翻译。
+    const badge = document.createElement('span');
+    badge.className = 'timed-text-edit-estimated-badge';
+    badge.textContent = '估算';
+    badge.title = '缺少可靠时间码，新时间范围基于字数估算。';
+    return badge;
+  }
+
+
+  function appendTimedTextEditTimingChange(container, beforeStart, beforeEnd, afterStart, afterEnd, timingEstimated) {
+    // diff 布局：未变化的值只出现一次，箭头分隔变化对，起止沿用「 – 」。
+    // timing 未变化但为估算时，badge 单独成行，避免估算提示凭空消失。
+    if (beforeStart !== afterStart || beforeEnd !== afterEnd) {
+      const timing = document.createElement('div');
+      timing.className = 'timed-text-edit-timing-change';
+      timing.appendChild(document.createTextNode('时间范围：'));
+      if (beforeStart !== afterStart && beforeEnd !== afterEnd) {
+        timing.append(
+          timedTextEditTimingPill(MaweCueElements.fmtSrtTime(beforeStart), 'before'),
+          document.createTextNode(' – '),
+          timedTextEditTimingPill(MaweCueElements.fmtSrtTime(beforeEnd), 'before'),
+          document.createTextNode(' → '),
+          timedTextEditTimingPill(MaweCueElements.fmtSrtTime(afterStart), 'after'),
+          document.createTextNode(' – '),
+          timedTextEditTimingPill(MaweCueElements.fmtSrtTime(afterEnd), 'after'),
+        );
+      } else if (beforeStart !== afterStart) {
+        timing.append(
+          timedTextEditTimingPill(MaweCueElements.fmtSrtTime(beforeStart), 'before'),
+          document.createTextNode(' – '),
+          timedTextEditTimingPill(MaweCueElements.fmtSrtTime(afterStart), 'after'),
+          document.createTextNode(' → '),
+          timedTextEditTimingPill(MaweCueElements.fmtSrtTime(afterEnd)),
+        );
+      } else {
+        timing.append(
+          timedTextEditTimingPill(MaweCueElements.fmtSrtTime(beforeStart)),
+          document.createTextNode(' → '),
+          timedTextEditTimingPill(MaweCueElements.fmtSrtTime(beforeEnd), 'before'),
+          document.createTextNode(' – '),
+          timedTextEditTimingPill(MaweCueElements.fmtSrtTime(afterEnd), 'after'),
+        );
+      }
+      if (timingEstimated) timing.appendChild(timedTextEditEstimatedBadge());
+      container.appendChild(timing);
+      return;
+    }
+    if (!timingEstimated) return;
+    const estimatedOnly = document.createElement('div');
+    estimatedOnly.className = 'timed-text-edit-timing-change';
+    estimatedOnly.appendChild(timedTextEditEstimatedBadge());
+    container.appendChild(estimatedOnly);
+  }
+
+
   function renderTimedTextEditRowDiff(rowElement, reportRow) {
     const diffElement = rowElement.querySelector('.timed-text-edit-row-diff');
     const timingElement = rowElement.querySelector('.timed-text-edit-row-timing');
@@ -124,17 +189,15 @@
       appendTimedTextEditDiffLine(diffElement, '修改前：', reportRow.diff.before, 'before');
       appendTimedTextEditDiffLine(diffElement, '修改后：', reportRow.diff.after, 'after');
     }
-    if (reportRow.timingChanged) {
-      const timing = document.createElement('div');
-      timing.className = 'timed-text-edit-timing-change';
-      timing.textContent = `时间范围：${MaweCueElements.fmtSrtTime(reportRow.beforeStart)} – ${MaweCueElements.fmtSrtTime(reportRow.beforeEnd)} → ${MaweCueElements.fmtSrtTime(reportRow.afterStart)} – ${MaweCueElements.fmtSrtTime(reportRow.afterEnd)}`;
-      timingElement.appendChild(timing);
-    }
-    if (reportRow.timingEstimated) {
-      const estimated = document.createElement('div');
-      estimated.className = 'timed-text-edit-estimated-timing';
-      estimated.textContent = '时间范围为自动估算（按原字幕范围/文字长度分配）';
-      timingElement.appendChild(estimated);
+    if (reportRow.timingChanged || reportRow.timingEstimated) {
+      appendTimedTextEditTimingChange(
+        timingElement,
+        reportRow.beforeStart,
+        reportRow.beforeEnd,
+        reportRow.afterStart,
+        reportRow.afterEnd,
+        reportRow.timingEstimated,
+      );
     }
     if (reportRow.deleted) {
       const deleted = document.createElement('div');
@@ -180,6 +243,9 @@
 
   function renderTimedTextEditChangeList(report) {
     const wasOpen = MaweDom.timedTextEditChangeDetails.open;
+    // 默认展开：用户没有手动点过 summary（changeListTouched）时，有修改内容就展开；
+    // 一旦手动收起/展开过，后续渲染只保留用户的选择，避免每次击键把面板强行弹开。
+    const touched = Boolean(MaweDom.timedTextEditDraft?.changeListTouched);
     MaweDom.timedTextEditChangeList.replaceChildren();
     const filter = MaweDom.timedTextEditDraft?.filter || null;
     const deletedRows = report.structure?.valid
@@ -210,17 +276,15 @@
       item.appendChild(title);
       appendTimedTextEditDiffLine(item, '前：', row.diff.before, 'before');
       appendTimedTextEditDiffLine(item, '后：', row.diff.after, 'after');
-      if (row.timingChanged) {
-        const timing = document.createElement('div');
-        timing.className = 'timed-text-edit-timing-change';
-        timing.textContent = `时间范围：${MaweCueElements.fmtSrtTime(row.beforeStart)} – ${MaweCueElements.fmtSrtTime(row.beforeEnd)} → ${MaweCueElements.fmtSrtTime(row.afterStart)} – ${MaweCueElements.fmtSrtTime(row.afterEnd)}`;
-        item.appendChild(timing);
-      }
-      if (row.timingEstimated) {
-        const estimated = document.createElement('div');
-        estimated.className = 'timed-text-edit-estimated-timing';
-        estimated.textContent = '时间范围为自动估算（按原字幕范围/文字长度分配）';
-        item.appendChild(estimated);
+      if (row.timingChanged || row.timingEstimated) {
+        appendTimedTextEditTimingChange(
+          item,
+          row.beforeStart,
+          row.beforeEnd,
+          row.afterStart,
+          row.afterEnd,
+          row.timingEstimated,
+        );
       }
       if (row.deleted) {
         const deleted = document.createElement('div');
@@ -230,7 +294,7 @@
       }
       MaweDom.timedTextEditChangeList.appendChild(item);
     });
-    MaweDom.timedTextEditChangeDetails.open = wasOpen;
+    MaweDom.timedTextEditChangeDetails.open = touched ? wasOpen : true;
   }
 
 
@@ -301,10 +365,17 @@
       const diff = document.createElement('div');
       diff.className = 'timed-text-edit-row-diff';
       diff.hidden = true;
+      // 行编辑器容器承载搜索高亮镜像（结构与整体编辑的 single-editor 一致）。
+      const editor = document.createElement('div');
+      editor.className = 'timed-text-edit-row-editor';
+      const mirror = document.createElement('div');
+      mirror.className = 'timed-text-edit-row-search-mirror';
+      mirror.setAttribute('aria-hidden', 'true');
+      editor.append(mirror, textarea);
       const timing = document.createElement('div');
       timing.className = 'timed-text-edit-row-timing';
       timing.hidden = true;
-      main.append(textarea, diff, timing);
+      main.append(editor, diff, timing);
       row.append(meta, main);
       MaweDom.timedTextEditRows.appendChild(row);
     });
@@ -346,7 +417,31 @@
       MaweDom.timedTextEditSingleTextarea.value = MaweDom.timedTextEditDraft.singleText;
       MaweCueElements.updateTimedTextEditSingleGuide();
     }
+    updateTimedTextEditGutter();
     refreshTimedTextEditSearch({ preserveIndex: true });
+  }
+
+
+  // 整体编辑行号列（账本 #33）：textarea 左侧的字幕行序号。单视图关闭软换行
+  // （white-space: pre + wrap="off"），可视行与字幕行一一对应，序号即「第 N 条」；
+  // 行号取自 textarea 当前值（含末尾因输入习惯多出的空行），与草稿的规范化
+  // 结果无关。数字列不横向滚动：只在 textarea 滚动时同步 scrollTop。
+  function updateTimedTextEditGutter() {
+    if (!timedTextEditGutter || !MaweDom.timedTextEditDraft) return;
+    const numbers = window.AsrEditorUtils.timedTextEditGutterNumbers(
+      MaweDom.timedTextEditSingleTextarea?.value ?? '',
+    );
+    // 序号始终是 1..N 的位置编号，行数没变就没有任何可见变化。
+    if (timedTextEditGutter.childElementCount === numbers.length) return;
+    const fragment = document.createDocumentFragment();
+    numbers.forEach((number) => {
+      const line = document.createElement('div');
+      line.className = 'timed-text-edit-gutter-line';
+      line.textContent = String(number);
+      fragment.appendChild(line);
+    });
+    timedTextEditGutter.replaceChildren(fragment);
+    timedTextEditGutter.scrollTop = MaweDom.timedTextEditSingleTextarea?.scrollTop || 0;
   }
 
 
@@ -393,6 +488,54 @@
   }
 
 
+  // 逐条编辑的每行高亮：与整体编辑的镜像层同款做法。只为有命中的行渲染镜像
+  // 并把该行文字透明化（行多时不给无命中行增加任何渲染成本）。
+  function renderTimedTextEditRowSearchMirrors(matches, currentMatch) {
+    const rowsContainer = MaweDom.timedTextEditRows;
+    if (!rowsContainer || !MaweDom.timedTextEditDraft) return;
+    const matchesByLine = new Map();
+    (matches || []).forEach((match) => {
+      if (!matchesByLine.has(match.lineIndex)) matchesByLine.set(match.lineIndex, []);
+      matchesByLine.get(match.lineIndex).push(match);
+    });
+    if (!matchesByLine.size) {
+      rowsContainer.querySelectorAll('.timed-text-edit-row.search-highlight').forEach((row) => {
+        row.classList.remove('search-highlight');
+        row.querySelector('.timed-text-edit-row-search-mirror')?.replaceChildren();
+      });
+      return;
+    }
+    rowsContainer.querySelectorAll('.timed-text-edit-row').forEach((row) => {
+      const mirror = row.querySelector('.timed-text-edit-row-search-mirror');
+      if (!mirror) return;
+      const lineMatches = matchesByLine.get(Number(row.dataset.index));
+      if (!lineMatches?.length) {
+        if (mirror.firstChild) mirror.replaceChildren();
+        row.classList.remove('search-highlight');
+        return;
+      }
+      row.classList.add('search-highlight');
+      const text = String(MaweDom.timedTextEditDraft.texts?.[Number(row.dataset.index)] ?? '');
+      mirror.replaceChildren();
+      let cursor = 0;
+      lineMatches.forEach((match) => {
+        const start = Math.max(cursor, Math.min(text.length, match.start));
+        const end = Math.max(start, Math.min(text.length, match.end));
+        if (start > cursor) mirror.appendChild(document.createTextNode(text.slice(cursor, start)));
+        const mark = document.createElement('span');
+        mark.className = `search-match${match === currentMatch ? ' is-current' : ''}${start === end ? ' is-zero-length' : ''}`;
+        mark.dataset.searchMatchIndex = String(match.matchIndex);
+        if (start < end) mark.textContent = text.slice(start, end);
+        mirror.appendChild(mark);
+        cursor = end;
+      });
+      if (cursor < text.length) mirror.appendChild(document.createTextNode(text.slice(cursor)));
+      mirror.scrollTop = row.querySelector('textarea')?.scrollTop || 0;
+      mirror.scrollLeft = row.querySelector('textarea')?.scrollLeft || 0;
+    });
+  }
+
+
   function refreshTimedTextEditSearch({ resetIndex = false, preserveIndex = false } = {}) {
     const result = collectTimedTextEditSearchMatches();
     const matches = result.matches || [];
@@ -415,6 +558,7 @@
     if (timedTextEditSearchReplaceOne) timedTextEditSearchReplaceOne.disabled = !canReplace;
     if (timedTextEditSearchReplaceAll) timedTextEditSearchReplaceAll.disabled = !canReplace;
     renderTimedTextEditSearchMirror(matches);
+    renderTimedTextEditRowSearchMirrors(matches, matches[timedTextEditSearchIndex] || null);
     MaweDom.timedTextEditRows?.querySelectorAll('.timed-text-edit-row.search-current').forEach((row) => {
       row.classList.remove('search-current');
     });
@@ -549,12 +693,18 @@
         .filter((row) => Number.isInteger(row?.draftIndex))
         .map((row) => [row.draftIndex, row]),
     );
-    const deletedRows = (report.rows || []).filter((row) => row?.deleted);
-    let deletedIndex = 0;
+    // 空草稿行按顺序对应「没有输出」的来源行：既包括被清空删除的行，也包括本来就为空的行。
+    // 只取 deleted 行会让已空的来源行错误消耗队列，真正清空的行反而拿不到 deleted 行
+    // （报告为 null、diff 维持初始 hidden），表现为「整句删除」提示时有时无。
+    const removedRows = (report.rows || []).filter((row) => {
+      const outputIndexes = report.structure?.sourceOutputIndexes?.[row.index];
+      return !Array.isArray(outputIndexes) || !outputIndexes.length;
+    });
+    let removedIndex = 0;
     return source.map((text, index) => {
       const output = outputByDraftIndex.get(index);
       if (output) return output;
-      if (!String(text == null ? '' : text).trim()) return deletedRows[deletedIndex++] || null;
+      if (!String(text == null ? '' : text).trim()) return removedRows[removedIndex++] || null;
       return null;
     });
   }
@@ -608,11 +758,24 @@
 
 
 
+  // 勾选「修改后移除字幕前后空格」时，报告预览与应用都使用 trim 后的文本，
+  // 保证「看到的 diff」与「实际应用的结果」一致；草稿 texts 本身保持原样。
+  function timedTextEditEffectiveTexts() {
+    const draft = MaweDom.timedTextEditDraft;
+    const texts = Array.isArray(draft?.texts) ? draft.texts : [];
+    if (draft?.trimWhitespace !== true) return texts;
+    return texts.map((text) => String(text == null ? '' : text).trim());
+  }
+
+
+
   function updateTimedTextEditReport() {
     if (!MaweDom.timedTextEditDraft) return;
+    const draftTexts = timedTextEditEffectiveTexts();
     const report = window.AsrEditorUtils.buildTimedTextEditReport(
       MaweDom.timedTextEditDraft.sourceSegments,
-      MaweDom.timedTextEditDraft.texts,
+      draftTexts,
+      { rule: MaweSettings.EDITOR_SETTINGS.assSpecialSymbolRule },
     );
     MaweDom.timedTextEditDraft.report = report;
     const { stats } = report;
@@ -637,22 +800,24 @@
     );
 
     MaweDom.timedTextEditReportMapping.replaceChildren();
-    appendTimedTextEditDivider(MaweDom.timedTextEditReportMapping);
-    appendTimedTextEditStat(MaweDom.timedTextEditReportMapping, '未修改（原样保留）', `${stats.unchangedSegments} 条`, 'unchanged', stats.unchangedSegments);
-    appendTimedTextEditStat(MaweDom.timedTextEditReportMapping, '修改后完整映射', `${stats.fullMappedCues} 条`, 'full', stats.fullMappedCues);
-    appendTimedTextEditStat(MaweDom.timedTextEditReportMapping, '部分保留', `${stats.partialMappedCues} 条`, 'partial', stats.partialMappedCues);
-    appendTimedTextEditStat(MaweDom.timedTextEditReportMapping, '边界移动（转移时间码）', `${stats.boundaryMappedCues} 条`, 'boundary', stats.boundaryMappedCues);
-    if (stats.structureMappedCues > 0) {
-      appendTimedTextEditStat(
-        MaweDom.timedTextEditReportMapping,
-        '结构调整（重新分配时间码）',
-        `${stats.structureMappedCues} 条`,
-        'structure',
-        stats.structureMappedCues,
-      );
+    // 0 条的映射项不显示，只保留数量大于 0 的行；全部为 0 时连同分隔线一起隐藏。
+    const mappingEntries = [
+      ['未修改（原样保留）', 'unchanged', stats.unchangedSegments],
+      ['修改后完整映射', 'full', stats.fullMappedCues],
+      ['部分保留', 'partial', stats.partialMappedCues],
+      ['边界移动（转移时间码）', 'boundary', stats.boundaryMappedCues],
+      ['结构调整（重新分配时间码）', 'structure', stats.structureMappedCues],
+      ['时间码丢失', 'lost', stats.lostMappedCues],
+      ['原本没有字词码', 'unavailable', stats.unavailableMappedCues],
+    ];
+    if (mappingEntries.some(([, , count]) => count > 0)) {
+      appendTimedTextEditDivider(MaweDom.timedTextEditReportMapping);
+      mappingEntries.forEach(([label, filterKey, count]) => {
+        if (count > 0) {
+          appendTimedTextEditStat(MaweDom.timedTextEditReportMapping, label, `${count} 条`, filterKey, count);
+        }
+      });
     }
-    appendTimedTextEditStat(MaweDom.timedTextEditReportMapping, '时间码丢失', `${stats.lostMappedCues} 条`, 'lost', stats.lostMappedCues);
-    appendTimedTextEditStat(MaweDom.timedTextEditReportMapping, '原本没有字词码', `${stats.unavailableMappedCues} 条`, 'unavailable', stats.unavailableMappedCues);
     MaweDom.timedTextEditShowAll.hidden = !MaweDom.timedTextEditDraft.filter;
     MaweDom.timedTextEditShowAll.textContent = '显示全部';
 
@@ -679,7 +844,7 @@
       MaweDom.timedTextEditReportHint.textContent = '当前修改可以完整复用原字词时间码；字幕段整体时间范围不会改变。';
     }
 
-    const draftRowReports = timedTextEditDraftRowReports(report, MaweDom.timedTextEditDraft.texts);
+    const draftRowReports = timedTextEditDraftRowReports(report, draftTexts);
     draftRowReports.forEach((rowReport, index) => {
       const rowElement = MaweDom.timedTextEditRows.querySelector(`.timed-text-edit-row[data-index="${index}"]`);
       if (!rowElement) return;
@@ -689,7 +854,7 @@
         && (!rowReport || timedTextEditRowFilterKey(rowReport) !== MaweDom.timedTextEditDraft.filter);
       if (rowReport) renderTimedTextEditRowDiff(rowElement, rowReport);
     });
-    MaweDom.timedTextEditDraft.texts.forEach((text, index) => {
+    MaweDom.timedTextEditDraft.texts.forEach((_text, index) => {
       const rowElement = MaweDom.timedTextEditRows.querySelector(`.timed-text-edit-row[data-index="${index}"]`);
       const coverage = rowElement?.querySelector('.timed-text-edit-coverage');
       const reuse = rowElement?.querySelector('.timed-text-edit-reuse');
@@ -698,12 +863,13 @@
         ? report.previewSegments[rowReport.index]
         : (!report.structure?.valid ? report.rows[index]?.items : null);
       const items = report.structure?.valid ? preview?.items : preview;
+      const effectiveText = draftTexts[index];
       const coverageData = rowReport?.itemCoverageData
-        || window.AsrEditorUtils.timedTextItemCoverage(text, items);
+        || window.AsrEditorUtils.timedTextItemCoverage(effectiveText, items);
       const reuseData = rowReport?.itemReuseData || {
         percent: 0,
         reusedCharacters: 0,
-        totalCharacters: Array.from(String(text == null ? '' : text)).length,
+        totalCharacters: Array.from(String(effectiveText == null ? '' : effectiveText)).length,
       };
       renderTimedTextEditMetric(
         coverage,
@@ -762,11 +928,13 @@
       texts: (sourceSegments || []).map((segment) => String(segment?.text || '')),
       view: MaweBoot.DATA.timed_text_edit_view === 'single' ? 'single' : 'rows',
       filter: null,
+      trimWhitespace: false,
       singleText: (sourceSegments || []).map((segment) => String(segment?.text || '')).join('\n'),
       singleLineError: '',
       report: null,
     };
     if (MaweDom.timedTextEditShowDisabledToggle) MaweDom.timedTextEditShowDisabledToggle.checked = Boolean(showDisabled);
+    if (MaweDom.timedTextEditTrimToggle) MaweDom.timedTextEditTrimToggle.checked = false;
     MaweDom.timedTextEditSourceInfo.textContent = `${timedTextEditTrackLabel(nextKind)} · ${sourceSegments.length} 条${hiddenDisabledCount ? `（已隐藏 ${hiddenDisabledCount} 条禁用字幕）` : ''}`;
     renderTimedTextEditRows();
     renderTimedTextEditView();
@@ -1005,6 +1173,23 @@
 
 
 
+  // 打开编辑窗口时定位选中字幕对应的草稿行（多选取序号最小的一条）。
+  // 选中项不在当前显示范围（如已禁用被隐藏）时维持原状。
+  function timedTextEditInitialScrollRowIndex() {
+    const draft = MaweDom.timedTextEditDraft;
+    if (!draft) return -1;
+    const selected = draft.kind === 'extension'
+      ? MaweSelection.selectedExtensionIdxs : MaweSelection.selectedIdxs;
+    let target = -1;
+    (selected || []).forEach((index) => {
+      if (Number.isInteger(index) && index >= 0 && (target < 0 || index < target)) target = index;
+    });
+    if (target < 0) return -1;
+    return (draft.sourceSegmentIndexes || []).indexOf(target);
+  }
+
+
+
   function openTimedTextEdit() {
     if (!MaweBoot.DATA.segments.length && !MaweMultiSubtitleCore.getActiveExtensionTrack()?.segments?.length) {
       MaweHint.flashHint('当前没有可编辑的字幕', 'invalid');
@@ -1021,8 +1206,30 @@
     setTimedTextEditReplaceExpanded(false);
     loadTimedTextEditTrack(currentTimedTextEditKind());
     MaweDom.timedTextEditModal.classList.add('show');
-    setTimeout(() => (MaweDom.timedTextEditDraft?.view === 'single'
-      ? MaweDom.timedTextEditSingleTextarea : MaweDom.timedTextEditRows.querySelector('textarea'))?.focus(), 50);
+    const scrollRowIndex = timedTextEditInitialScrollRowIndex();
+    setTimeout(() => {
+      // 整体视图没有行元素可滚（Greptile P2：此前无条件查 rows 容器，single
+      // 视图下为空导致选中字幕留在屏外）：把 caret 预置到选中行首再聚焦，
+      // 浏览器随焦点滚动到该行；逐条视图维持 scrollIntoView 原路径。
+      const singleView = MaweDom.timedTextEditDraft?.view === 'single';
+      if (singleView && MaweDom.timedTextEditSingleTextarea) {
+        const textarea = MaweDom.timedTextEditSingleTextarea;
+        const texts = MaweDom.timedTextEditDraft?.texts || [];
+        if (scrollRowIndex >= 0 && scrollRowIndex < texts.length) {
+          const offset = texts.slice(0, scrollRowIndex)
+            .reduce((sum, text) => sum + String(text || '').length + 1, 0);
+          textarea.setSelectionRange(offset, offset);
+        }
+        textarea.focus();
+        return;
+      }
+      MaweDom.timedTextEditRows.querySelector('textarea')?.focus();
+      // 行已在 loadTimedTextEditTrack 内同步渲染完成，这里只需滚动定位。
+      if (scrollRowIndex >= 0) {
+        MaweDom.timedTextEditRows.querySelector(`.timed-text-edit-row[data-index="${scrollRowIndex}"]`)
+          ?.scrollIntoView({ block: 'center' });
+      }
+    }, 50);
   }
 
 
@@ -1071,11 +1278,29 @@
   timedTextEditSearchReplaceOne?.addEventListener('click', () => applyTimedTextEditSearchReplacement(false));
   timedTextEditSearchReplaceAll?.addEventListener('click', () => applyTimedTextEditSearchReplacement(true));
   MaweDom.timedTextEditSingleTextarea?.addEventListener('scroll', () => {
+    if (timedTextEditGutter) timedTextEditGutter.scrollTop = MaweDom.timedTextEditSingleTextarea.scrollTop;
     if (!timedTextEditSearchMirror) return;
     timedTextEditSearchMirror.scrollTop = MaweDom.timedTextEditSingleTextarea.scrollTop;
     timedTextEditSearchMirror.scrollLeft = MaweDom.timedTextEditSingleTextarea.scrollLeft;
   });
+  // 输入过程中的增删行要立刻反映到行号列；行数不变时 updateTimedTextEditGutter
+  // 直接跳过，逐键成本可以忽略。
+  MaweDom.timedTextEditSingleTextarea?.addEventListener('input', updateTimedTextEditGutter);
+  // 逐条行 textarea 滚动时同步各自的高亮镜像（捕获阶段委托，行可随时增删）。
+  MaweDom.timedTextEditRows?.addEventListener('scroll', (event) => {
+    const textarea = event.target;
+    if (!(textarea instanceof HTMLTextAreaElement)) return;
+    const mirror = textarea.parentElement?.querySelector(':scope > .timed-text-edit-row-search-mirror');
+    if (!mirror) return;
+    mirror.scrollTop = textarea.scrollTop;
+    mirror.scrollLeft = textarea.scrollLeft;
+  }, true);
   document.addEventListener('keydown', onTimedTextEditSearchKeydown, true);
+  // 记录用户对「查看修改内容」的手动开合：click 只由用户触发，
+  // 程序里的 details.open = ... 赋值不会经过这里。
+  MaweDom.timedTextEditChangeDetails?.querySelector('summary')?.addEventListener('click', () => {
+    if (MaweDom.timedTextEditDraft) MaweDom.timedTextEditDraft.changeListTouched = true;
+  });
   document.addEventListener('mawe:languagechange', () => {
     if (timedTextEditSearchReplaceToggle) {
       const open = timedTextEditSearchReplaceToggle.getAttribute('aria-expanded') === 'true';
@@ -1092,6 +1317,7 @@
     appendTimedTextEditStat,
     appendTimedTextEditDivider,
     appendTimedTextEditDiffLine,
+    appendTimedTextEditTimingChange,
     renderTimedTextEditRowDiff,
     timedTextEditMappingLabel,
     timedTextEditCoverageClass,
@@ -1108,6 +1334,7 @@
     timedTextEditDraftRowReports,
     normalizeTimedTextEditDraftLines,
     syncTimedTextEditDraftFromDom,
+    timedTextEditEffectiveTexts,
     cancelTimedTextEditReport,
     flushTimedTextEditReport,
     scheduleTimedTextEditReport,

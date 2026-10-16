@@ -892,7 +892,9 @@
 }
 .waveform-cue-block.disabled:hover { opacity: 0.7; }
 .waveform-cue-block.dragging { cursor: grabbing; }
-.waveform-cue-block.word-timing-background { opacity: 0.28; cursor: pointer; }
+/* 字词码垫底句块：不透明度压暗提示叠加态；账本 #24 后与常规句块一致
+   可拖动，光标沿用 grab（原 pointer 是“仅选中”时期的遗留）。 */
+.waveform-cue-block.word-timing-background { opacity: 0.28; cursor: grab; }
 /* 紧凑叠加仍保留选中句描边；去掉额外辉光以减少字词层视觉干扰。 */
 .waveform-pane.word-timing-mode .waveform-cue-block.word-timing-background.selected,
 .waveform-pane.word-timing-mode .waveform-cue-block.word-timing-background.selected:hover {
@@ -912,16 +914,23 @@
   opacity: 0.9;
 }
 /* 字词时间码布局分级：
-   - 单行波形或行高 ≥96 的非双语行（word-timing-full）：上下两层、等高
-     （各 35px）。字幕块保持全功能——位置/样式/拖动都不降级，选中句高亮照旧；
-     字词块作为额外的一层显示在字幕块正上方。
+   - 单行波形或行高 ≥96 的非双语行（word-timing-full）：字词条带浮在字幕块
+     正上方的独立一层（两者 y 范围不重叠、无半透明叠加），整体作为浮层叠在
+     波形背景上（波形峰形在块间/块后可见）。波形 canvas 保持全行高，几何不随
+     字词码开关变化；单行模式的字幕块保持原有厚度（max(35px, min(72px, 40%))），
+     并保持全功能——位置/样式/拖动都不降级，选中句高亮照旧。
    - 行高不足或双语行（word-timing-compact / background）：沿用叠加显示，
      字幕块垫底变暗、受限为点击选中（无双重描边），但垫高到 44px，顶部露出
      一条操作区域；字词块叠在其上。 */
-:is(.waveform-basic, .waveform-multi) .waveform-pane.word-timing-mode .waveform-row:not(.multi-subtitle-row) .waveform-word-block.word-timing-full,
-:is(.waveform-basic, .waveform-multi) .waveform-pane.word-timing-mode .waveform-row:not(.multi-subtitle-row) .waveform-word-boundary.word-timing-full {
+:is(.waveform-basic, .waveform-multi) .waveform-pane.word-timing-mode .waveform-row:not(.multi-subtitle-row) :is(.waveform-word-block, .waveform-word-boundary).word-timing-full {
   bottom: 44px;
   height: 35px;
+}
+/* 多行行高的字幕块仍是固定 35px（无 40% 增高），条带保持紧贴其上；
+   单行模式的块会增高到 max(35px, min(72px, 40%))，条带 bottom 同步按
+   「块底 7 + 间距 2 + 原厚度块高」计算（与 .waveform-basic .waveform-cue-badge 同式）。 */
+.waveform-basic .waveform-pane.word-timing-mode .waveform-row:not(.multi-subtitle-row) :is(.waveform-word-block, .waveform-word-boundary).word-timing-full {
+  bottom: calc(9px + max(35px, min(72px, 40%)));
 }
 :is(.waveform-basic, .waveform-multi) .waveform-pane.word-timing-mode .waveform-row:not(.multi-subtitle-row) .waveform-word-block.word-timing-full {
   display: flex;
@@ -942,6 +951,10 @@
 }
 :is(.waveform-basic, .waveform-multi) .waveform-pane.word-timing-mode .waveform-row:not(.multi-subtitle-row) .waveform-cue-badge.word-timing-full {
   bottom: calc(81px + var(--badge-stack-index, 0) * 16px);
+}
+/* 单行模式徽章随条带上移：条带 bottom (9 + 原厚度块高) + 条带高 35 + 间距 2。 */
+.waveform-basic .waveform-pane.word-timing-mode .waveform-row:not(.multi-subtitle-row) .waveform-cue-badge.word-timing-full {
+  bottom: calc(46px + max(35px, min(72px, 40%)) + var(--badge-stack-index, 0) * 16px);
 }
 .waveform-multi .waveform-pane.word-timing-mode .waveform-row:not(.multi-subtitle-row) .waveform-cue-badge {
   bottom: calc(53px + var(--badge-stack-index, 0) * 16px);
@@ -1082,9 +1095,8 @@
   font-size: 13px;
   line-height: 1.35;
 }
-.waveform-basic .waveform-pane.word-timing-mode .waveform-cue-block.word-timing-full {
-  height: 35px;
-}
+/* 字词码模式下单行字幕块不再另设高度：沿用上面的原厚度（几何不随
+   字词码开关变化），条带与徽章按 max(35px, min(72px, 40%)) 上移。 */
 .waveform-row.multi-subtitle-row .waveform-cue-block[data-track="main"],
 .waveform-row.multi-subtitle-row .waveform-cue-block[data-track="extension"] {
   /* 标签和字幕块都使用同一个 lane 高度；块轮廓是画在盒外的 outline，
@@ -1379,4 +1391,8 @@
 
 #waveform-thumbnail-setting { margin: 8px 0; flex-wrap: wrap; }
 #waveform-thumbnail-decode-setting { margin: 8px 0; padding-left: 22px; }
-.waveform-thumbnail-status { flex: 0 0 100%; margin-top: 8px; color: var(--text-muted); font-size: 11px; line-height: 1.4; white-space: normal; }
+/* 状态文字仅保留给辅助技术：select 的 tooltip 已展示同样内容（
+   updateThumbnailStatus 会同步写父级 title），可见行冗余移除。
+   不用 display:none——该 span 挂 aria-live 且被 select 与补间开关
+   aria-describedby 引用，须留在可访问性树内，故用 sr-only 视觉隐藏。 */
+.waveform-thumbnail-status { position: absolute; width: 1px; height: 1px; margin: -1px; padding: 0; border: 0; overflow: hidden; clip: rect(0, 0, 0, 0); white-space: nowrap; }
