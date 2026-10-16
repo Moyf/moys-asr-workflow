@@ -8,7 +8,7 @@ status: partial
 
 # 主字幕单句缩放核对
 
-> 基线 `2cc67041`；PR #248 已打开。自动化与本机合成工程交互已通过；此清单保留给维护者复核四角手势、真实工程及 PR 反馈。
+> 基线 `2cc67041`；PR #248 已打开。首轮 CI 浏览器测试 28/29 通过；自动堆叠夹具已修正，待新 CI。此清单保留给维护者复核四角手势、真实工程及 PR 反馈。
 
 ## 实现 / 审查结论
 <!-- id: implementation-review -->
@@ -22,7 +22,7 @@ status: partial
 - [x] **类型检查**：运行 `node node_modules/typescript/bin/tsc --project tsconfig.typecheck.json`；预期：以退出码 0 完成 <!-- id: typecheck -->
 - [x] **Node 契约测试**：用 `scripts/run_check.py --timeout 180` 运行编辑器脚本顺序、缩放定位、Canvas 排布、命令隔离与震动测试；预期：57 项通过 <!-- id: node-tests -->
 - [x] **Python 契约测试**：用 `scripts/run_check.py --timeout 180` 运行 `scripts/run_tests.py tests/test_ass_cue_position.py`；预期：4 项通过 <!-- id: python-tests -->
-- [ ] **浏览器 e2e**：运行 `tests/e2e/ass-cue-position.spec.mjs --project=chromium`；预期：16 项通过，涵盖九锚点、横竖屏、震动、libass / ASS 帧、滚轮可见性、命令事务与缩放堆叠；CI 已修复 FFmpeg 缺失，但 6 个像素对照失败于默认 venv 缺少 Pillow；Pillow 已加入 dev 组，待新 CI 验证 <!-- id: e2e -->
+- [ ] **浏览器 e2e**：运行 `tests/e2e/ass-cue-position.spec.mjs --project=chromium`；预期：29 项通过，涵盖九锚点、横竖屏、震动、libass / ASS 帧、滚轮可见性、命令事务与缩放堆叠；提交 `2d254988` 的 CI 为 28/29，唯一失败是自动堆叠夹具的 5/4 行文本未触发自动缩放；现已将两条夹具都改为 10 行，待新 CI 验证 <!-- id: e2e -->
 - [x] **差异空白检查**：运行 `git diff --check`；预期：无空白错误 <!-- id: diff-check -->
 
 ## 人工核验
@@ -39,7 +39,7 @@ status: partial
 <!-- id: fixes-and-pr -->
 
 - [x] **提交与 PR**：查看本分支提交和 PR 文件列表；预期：只包含本功能源码、测试、文档和本清单，没有 bundle、便携页、媒体或个人路径 <!-- id: review-pr-scope -->
-- [ ] **PR CI 与反馈**：查看安装 FFmpeg、Pillow 后的新 CI 与三条 Greptile inline thread；预期：确认新增 e2e 与缩放后自动堆叠帧对照通过，记录实际结果，再回复或解决已验证的线程 <!-- id: review-feedback -->
+- [ ] **PR CI 与反馈**：查看 workflow run `38871854550` 后续提交触发的 CI 与三条 Greptile inline thread；预期：确认 Node、Python、类型、构建和 29 项浏览器测试通过，记录实际结果，再回复或解决已验证的线程 <!-- id: review-feedback -->
 
 ## 后续操作
 <!-- id: follow-up -->

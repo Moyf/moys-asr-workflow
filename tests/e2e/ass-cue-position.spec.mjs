@@ -641,9 +641,9 @@ test('scaled main cue matches Canvas, Server libass and exported frame boxes', a
 test('scaled automatic stack matches Canvas, Server libass and exported frame boxes', async ({ page }, info) => {
   const frame = await page.evaluate(({ paintedBox }) => {
     const [base, scaled] = MaweBoot.DATA.segments;
-    Object.assign(base, { start: 0, end: 2000, text: Array(5).fill('BASE').join('\n') });
+    Object.assign(base, { start: 0, end: 2000, text: Array(10).fill('BASE').join('\n') });
     delete base.assOverride;
-    Object.assign(scaled, { start: 0, end: 2000, text: Array(4).fill('SCALED').join('\n'), assOverride: { scale: 0.62 } });
+    Object.assign(scaled, { start: 0, end: 2000, text: Array(10).fill('SCALED').join('\n'), assOverride: { scale: 0.62 } });
     MaweSelection.selectOnly(0);
     MawePlaybackLoop.refreshSubtitlePreview(1000, 0);
     const canvas = document.querySelector('.ass-preview-canvas');
