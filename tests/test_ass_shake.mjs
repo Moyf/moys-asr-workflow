@@ -91,6 +91,21 @@ test('manual anchor plus shake offsets every slice around the saved position wit
   }
 });
 
+test('scale-only shake keeps the global anchor and scales every exported slice', () => {
+  const build = scale => h.buildAssPayload([{ start: 0, end: 200, text: '!!震动!!',
+    ...(scale === 1 ? {} : { assOverride: { scale } }) }], { assStyle: { fontSize: 80 }, assProfile: {} });
+  const plainLines = dialogues(build(1));
+  const scaledLines = dialogues(build(1.22));
+  assert.equal(scaledLines.length, plainLines.length);
+  assert.ok(scaledLines.every(line => line.includes('\\fs97.6')));
+  assert.ok(scaledLines.every(line => line.includes('\\an2')));
+  assert.ok(scaledLines.every(line => !line.includes('\\move(')));
+  const plainFirst = positions(plainLines[0])[0];
+  const scaledFirst = positions(scaledLines[0])[0];
+  assert.ok(Math.abs(scaledFirst[0] - plainFirst[0] - AMPLITUDE_1080 * 0.22) < 0.001);
+  assert.ok(Math.abs(scaledFirst[1] - plainFirst[1] - AMPLITUDE_1080 * 0.22) < 0.001);
+});
+
 test('stack frame preview offsets follow the same deterministic pattern and canvas resolution', () => {
   let plan;
   h.buildAssPayload([{ start: 100, end: 400, text: '!!震动!!' }, { start: 100, end: 400, text: '普通' }],

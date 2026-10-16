@@ -4466,14 +4466,26 @@
 
   .cue-panel-text-row { display: flex; align-items: stretch; gap: 12px; min-width: 0; }
   .cue-panel-text-row #cue-panel-text { flex: 1; min-width: 0; }
-  .ass-cue-position { flex: 0 0 90px; display: flex; flex-direction: column; gap: 8px; justify-content: center; }
+  .ass-cue-position { flex: 0 0 auto; display: flex; flex-direction: row; align-items: center; gap: 8px; }
   .ass-cue-position[hidden] { display: none; }
   .ass-cue-position label { display: flex; align-items: center; gap: 8px; font-size: 11px; }
-  .ass-cue-position input { width: 70px; min-width: 0; height: 22px; padding: 2px 4px; border: 1px solid var(--border-strong); border-radius: var(--radius-sm); color: var(--text-primary); background: var(--bg-base); }
-  .current-cue-panel #ass-cue-reset { padding: 2px 4px; height: 22px; font-size: 11px; }
+  .ass-cue-coordinate-controls, .ass-cue-scale-controls { display: flex; flex: 0 0 auto; flex-direction: column; justify-content: center; gap: 8px; }
+  .ass-cue-coordinate-controls { width: 90px; }
+  .ass-cue-scale-controls { width: 92px; }
+  .ass-cue-scale-controls label { white-space: nowrap; }
+  .ass-cue-coordinate-controls[hidden], .ass-cue-scale-controls[hidden] { display: none; }
+  .ass-cue-position input { width: 64px; min-width: 0; height: 22px; padding: 2px 4px; border: 1px solid var(--border-strong); border-radius: var(--radius-sm); color: var(--text-primary); background: var(--bg-base); }
+  .ass-cue-coordinate-controls input { width: 68px; }
+  .ass-cue-scale-controls input { width: 60px; }
+  .current-cue-panel #ass-cue-reset, .current-cue-panel #ass-cue-scale-reset { padding: 2px 4px; height: 22px; font-size: 11px; }
   .ass-cue-drag-target { position: absolute; z-index: 8; padding: 0; background: transparent; border: 1px solid transparent; pointer-events: auto; touch-action: none; cursor: pointer; }
   .ass-cue-drag-target.selected { cursor: grab; }
   .ass-cue-drag-target.selected, .ass-cue-drag-target.selected:focus-visible { border-color: var(--accent); outline: 1px dashed var(--accent); outline-offset: 2px; }
   .ass-cue-drag-target.dragging { cursor: grabbing; }
+  .ass-cue-scale-handle { position: absolute; z-index: 10; width: 12px; height: 12px; padding: 0; transform: translate(-50%, -50%); border: 1px solid #fff; border-radius: 2px; background: var(--accent); box-shadow: 0 0 0 1px #0008; pointer-events: auto; touch-action: none; }
+  .ass-cue-scale-handle[hidden] { display: none; }
+  .ass-cue-scale-handle--nw, .ass-cue-scale-handle--se { cursor: nwse-resize; }
+  .ass-cue-scale-handle--ne, .ass-cue-scale-handle--sw { cursor: nesw-resize; }
+  .ass-cue-scale-handle.dragging { background: var(--text-primary); }
 
   .player-stage.ass-stage-ready #overlay .ass-cue-drag-target { visibility: visible; }

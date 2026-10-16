@@ -34,7 +34,7 @@ interface ProjectSegmentItem {
   text?: string;
 }
 
-interface AssCueOverride { pos?: { x: number; y: number }; }
+interface AssCueOverride { pos?: { x: number; y: number }; scale?: number; }
 interface ProjectSegment {
   start: Milliseconds;
   end: Milliseconds;

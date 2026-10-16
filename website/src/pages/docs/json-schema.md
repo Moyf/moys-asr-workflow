@@ -640,7 +640,7 @@ source: "JSON_SCHEMA.md"
 | `text` | `string` | **必填** | 字幕显示文本。可含 `\n` 表示换行（在编辑器里渲染为 `<br>`） |
 | `items` | `array<object>` | 推荐填 | 字级时间戳数组。用于「双击拆分时按字分配时间」。可填 `[]`，此时拆分会按字符比例估算时间点 |
 | `disabled` | `bool` | 否 | 禁用该字幕；预览、隐藏禁用项和默认导出会跳过它 |
-| `assOverride` | `object` | 否 | 主字幕逐句 ASS PlayRes 坐标（锚点由全局样式规定）；见下方可选定位契约 |
+| `assOverride` | `object` | 否 | 主字幕逐句 ASS 覆盖：可独立保存 PlayRes 坐标与整体缩放；见下方契约 |
 | `speaker` | `string` | 否 | 说话人标签（非空字符串）。保存供应商返回的 opaque ID（如 Soniox 的 `"1"`/`"2"`），不转换为整数或姓名。仅当该段所有带语音 items 都是同一 speaker 时才写入；缺少该字段的旧工程继续有效 |
 | `sticker` | `object\|null` | 否 | 表情包 head 信息。见第四节 |
 | `sticker_ref` | `object\|null` | 否 | 引用上方 head 的表情包（跨多句用） |
@@ -648,14 +648,15 @@ source: "JSON_SCHEMA.md"
 | `color_ref` | `object\|null` | 否 | 引用上方 head 的颜色 |
 | `_dirty` | `bool` | 否 | 是否被人工改过。**生成时不要写 `true`**，仅由编辑器内部维护 |
 
-### 逐句 ASS 定位（可选）
+### 逐句 ASS 定位与缩放（可选）
 
-主字幕 segment 可保存 `"assOverride": { "pos": { "x": 1720.5, "y": 180 } }`。
+主字幕 segment 可独立保存大小和位置，例如 `"assOverride": { "scale": 1.22, "pos": { "x": 1720, "y": 180 } }`。两个字段都可以单独省略。
 
-- 逐句只保存 X/Y，不支持逐句 `an`；文字块附着点由全局 ASS 样式 alignment 规定，拖动、预览与导出始终共用该锚点。未发布的逐句 `an` 不提供迁移。
-- `pos` 可省略；存在时必须同时包含有限数字 `x` 和 `y`。坐标单位是当前 ASS `PlayResX / PlayResY` 的像素，允许小数、负值与画布外位置，不按视频显示缩放保存，也不钳制到画面内。显式 `pos` 优先于方案 `move`，该主字幕不参与自动组平移、缩放或避碰；其它淡入淡出、变换和说话人颜色保留。
-- 未调整位置的字幕继续参与全局自动排布，不因选择或原地点选写入位置覆盖。实际拖动才保存 `pos`；震动叠加时保存基准坐标，不包含瞬时抖动偏移。
-- 不存在或空对象表示样式默认；规范化与保存不写空对象。非法类型、非有限坐标、缺少任一坐标或逐句 `an` 被拒绝。旧工程无此字段时行为与输出不变。普通预览和 SRT 不消费该字段。
+- `scale` 是整体缩放倍率，范围 `0.10–5.00`，归一化到两位小数；`1.00` 是默认值并省略。它统一缩放字体、句内相对字号、字距、描边、阴影和字号动画目标。只设置 `scale` 不创建 `pos`，字幕继续参与全局自动排布、避碰与整体适配。
+- `pos` 存储当前 ASS `PlayResX / PlayResY` 画布坐标，必须同时包含有限数字 `x` 和 `y`；允许历史工程中的小数、负值与画布外位置。编辑器显示坐标为整数，新输入、方向键微调和拖动保存时四舍五入到整数；读取旧小数或只改大小时不自动改写坐标。显式 `pos` 优先于方案 `move`，该主字幕不参与自动组平移或避碰。
+- 逐句不保存 `an`；文字块附着点由全局 ASS 样式 alignment 规定，拖动、缩放、预览与导出始终共用该锚点。震动叠加时保存基准坐标，不包含瞬时抖动偏移。
+- 重置大小只清除 `scale`，重置定位只清除 `pos`；未设置对应字段时，相应控件隐藏。选择或原地点选不写位置覆盖。
+- 不存在或空对象表示样式默认；规范化与保存不写空对象。非数字、非有限或超范围的倍率、非法坐标、缺少任一坐标或逐句 `an` 被拒绝。普通预览和 SRT 不消费该字段。
 - 拆分（包括复制/渐进拆分）两端各自深拷贝原覆盖；合并取时间顺序中最左句的完整覆盖，左句没有覆盖时合并结果也没有覆盖。复制/历史记录不得共享嵌套 `pos` 对象。主副换轨保留元数据，副/叠加轨不应用逐句定位；换回主轨后继续生效。
 
 ### 关键约束
@@ -910,7 +911,7 @@ uv run python edit.py your_generated.mosp
 | `segments[i].items[k].start_frame` | int | ❌ | 帧编号，与 `end_frame` 成对 |
 | `segments[i].items[k].end_frame` | int | ❌ | 帧编号，与 `start_frame` 成对 |
 | `segments[i].items[k].speaker` | string | ❌ | 说话人 opaque ID |
-| `segments[i].assOverride` | object | ❌ | 可选主字幕 ASS 覆盖：仅有限 PlayRes pos.x/y，使用全局样式锚点；空对象归一化为省略 |
+| `segments[i].assOverride` | object | ❌ | 可选主字幕 ASS 覆盖：`scale` 为 0.10–5.00 的两位倍率，`pos` 为有限 PlayRes x/y 坐标，字段独立且使用全局样式锚点；空对象归一化为省略 |
 | `segments[i].speaker` | string | ❌ | 段内统一说话人才写入 |
 | `segments[i].sticker` | object\|null | ❌ | 表情包 head |
 | `segments[i].sticker_ref` | object\|null | ❌ | `{name, headIdx}` |

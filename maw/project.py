@@ -750,6 +750,18 @@ def _validate_ass_override(segment: JsonDict, path: str, errors: list[ProjectVal
     normalized: JsonDict = {}
     if "an" in value:
         errors.append(ProjectValidationError(f"{field}.an", "not supported; use global style alignment"))
+    if "scale" in value:
+        scale = value["scale"]
+        try:
+            finite_scale = type(scale) in (int, float) and math.isfinite(scale)
+        except OverflowError:
+            finite_scale = False
+        if not finite_scale or not 0.1 <= scale <= 5:
+            errors.append(ProjectValidationError(f"{field}.scale", "must be a finite number from 0.1 to 5"))
+        else:
+            normalized_scale = float(f"{scale:.2f}")
+            if normalized_scale != 1:
+                normalized["scale"] = normalized_scale
     if "pos" in value:
         pos = value["pos"]
         if not isinstance(pos, dict):
