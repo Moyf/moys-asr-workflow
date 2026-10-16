@@ -474,6 +474,9 @@
   const timedTextEditChangeDetails = document.getElementById('timed-text-edit-change-details');
 
 
+  const timedTextEditTrimToggle = document.getElementById('timed-text-edit-trim');
+
+
   const timedTextEditChangeList = document.getElementById('timed-text-edit-change-list');
 
 
@@ -1179,6 +1182,7 @@
     timedTextEditShowAll,
     timedTextEditReportHint,
     timedTextEditChangeDetails,
+    timedTextEditTrimToggle,
     timedTextEditChangeList,
     TIMED_TEXT_EDIT_REPORT_DEBOUNCE_MS,
     get timedTextEditDraft() { return timedTextEditDraft; },

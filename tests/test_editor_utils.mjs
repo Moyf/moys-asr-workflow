@@ -2679,6 +2679,19 @@ test('does not require word timings for an unchanged trailing line break', () =>
     .map((segment) => segment.text), ['就是', '这颗']);
 });
 
+test('numbers timed-text-edit gutter lines by subtitle order', () => {
+  const gutterNumbers = (value) => Array.from(helpers.timedTextEditGutterNumbers(value));
+  // 可视行与字幕行一一对应：第 N 行 = 第 N 条（与逐条编辑的「第 N 条」一致）。
+  assert.deepEqual(gutterNumbers('就是\n这颗\n呀'), [1, 2, 3]);
+  // 空值也是一行（一条空字幕），而不是没有行号。
+  assert.deepEqual(gutterNumbers(''), [1]);
+  assert.deepEqual(gutterNumbers(null), [1]);
+  // 末尾因输入习惯多出的空行是可视行，占一个序号。
+  assert.deepEqual(gutterNumbers('就是\n这颗\n'), [1, 2, 3]);
+  // CRLF 先归一成 LF，避免拆出带 \r 的伪行。
+  assert.deepEqual(gutterNumbers('就是\r\n这颗\r呀'), [1, 2, 3]);
+});
+
 test('estimates a structural split when the source has no usable word timings', () => {
   const source = [{ id: 'cue-1', start: 0, end: 1000, text: '就是这颗' }];
   const report = helpers.buildTimedTextEditReport(source, ['就是', '这颗']);
@@ -3718,7 +3731,11 @@ test('ASS accepts single and double stars and tildes together, including nested 
     assert.match(line, /\}单星\{/);
     assert.match(line, /\}双星\{/);
   });
-  assert.ok(helpers.buildSrtPayload(cues).includes(text));
+  // SRT/TXT 纯文本出口随任务 4 剥离成对 MASS 符号（孤儿保留字面）
+  assert.ok(helpers.buildSrtPayload(cues).includes('单星 双星 单波浪 双波浪'));
+  assert.ok(!helpers.buildSrtPayload(cues).includes('~'));
+  assert.equal(helpers.buildSrtPayload([{ start: 0, end: 1000, text: '~未闭合 **未闭合' }])
+    .split('\n')[2], '~未闭合 **未闭合');
 });
 
 test('ASS special text checkboxes independently disable marker parsing and preserve disabled markers', () => {
@@ -6820,12 +6837,12 @@ test('wrap chars presets insert at both ends and skip already wrapped text', () 
     [
       { id: 'emphasis', label: '强调文本', left: '**', right: '**', ass: true },
       { id: 'large', label: '放大文本', left: '++', right: '++', ass: true },
+      { id: 'comment', label: '弱化文本', left: '//', right: '//', ass: true },
       { id: 'small', label: '缩小文本', left: '--', right: '--', ass: true },
-      { id: 'underline', label: '下划线', left: '__', right: '__', ass: true },
       { id: 'strike', label: '删除线', left: '~~', right: '~~', ass: true },
-      { id: 'fade', label: '淡出淡入', left: '>>', right: '<<', ass: true },
-      { id: 'shake', label: '原地震动', left: '!!', right: '!!', ass: true },
-      { id: 'comment', label: '注释文本', left: '//', right: '//', ass: true },
+      { id: 'underline', label: '下划线', left: '__', right: '__', ass: true },
+      { id: 'fade', label: '淡出淡入', left: '>>', right: '<<', ass: true, sentenceLevel: true },
+      { id: 'shake', label: '原地震动', left: '!!', right: '!!', ass: true, sentenceLevel: true },
       { id: 'note', label: '音符', left: '♪', right: '♪' },
       { id: 'music', label: '双音符', left: '♬', right: '♬' },
       { id: 'bracket', label: '中括号', left: '[', right: ']' },
@@ -6849,6 +6866,57 @@ test('wrap chars presets insert at both ends and skip already wrapped text', () 
   assert.equal(helpers.isTextWrappedBy('**文**', '>>', '<<'), false);
 });
 
+test('sentence-level wrap pairs stay outermost while inline presets nest inside', () => {
+  const wrap = (text, left, right) => helpers.wrapCharsAroundText(text, left, right).text;
+  // 句级预设（淡出淡入 / 原地震动）恒包裹在现有全部符号最外层，否则整句样式失效。
+  assert.equal(wrap('**你好**', '>>', '<<'), '>>**你好**<<');
+  assert.equal(wrap('++--你好--++', '!!', '!!'), '!!++--你好--++!!');
+  assert.equal(wrap('!!你好!!', '>>', '<<'), '>>!!你好!!<<');
+  // 行内预设插在句级符号之内；多层句级时插在最内层句级符号之内。
+  assert.equal(wrap('>>你好<<', '**', '**'), '>>**你好**<<');
+  assert.equal(wrap('>>!!你好!!<<', '**', '**'), '>>!!**你好**!!<<');
+  // 无句级时行内维持现行行为：包在已有行内符号之内。
+  assert.equal(wrap('++你好++', '**', '**'), '++**你好**++');
+  // 后应用的句级包在已有句级之外（最新最外）；同一句级对不重复包裹。
+  assert.equal(wrap('>>你好<<', '!!', '!!'), '!!>>你好<<!!');
+  assert.deepEqual({ ...helpers.wrapCharsAroundText('>>你好<<', '>>', '<<') },
+    { changed: false, skipped: true, text: '>>你好<<' });
+  assert.deepEqual({ ...helpers.wrapCharsAroundText('>>!!你好!!<<', '!!', '!!') },
+    { changed: false, skipped: true, text: '>>!!你好!!<<' });
+  // 孤儿符号不成对、不算句级壳：字面原样保留，新句级对照常包在外层。
+  assert.equal(wrap('你好!!', '!!', '!!'), '!!你好!!!!');
+});
+
+test('applying every wrap preset in click order keeps text intact and sentence pairs outermost', () => {
+  // 维护者截图场景：多选逐个叠加全部预设（旧实现按点击顺序向内包裹，句级
+  // 符号埋在中间失效）。新规则下句级对必须始终位于最外层。
+  const clickOrder = ['bracket', 'strike', 'underline', 'small', 'large', 'emphasis', 'fade', 'shake'];
+  const allPairs = Array.from(helpers.WRAP_CHAR_PRESETS, (preset) => [preset.left, preset.right]);
+  const stripAll = (text) => {
+    let current = text;
+    for (let changed = true; changed;) {
+      changed = false;
+      for (const [left, right] of allPairs) {
+        while (current.length > left.length + right.length && helpers.isTextWrappedBy(current, left, right)) {
+          current = current.slice(left.length, current.length - right.length);
+          changed = true;
+        }
+      }
+    }
+    return current;
+  };
+  let text = '文';
+  for (const id of clickOrder) {
+    const preset = helpers.WRAP_CHAR_PRESETS.find((item) => item.id === id);
+    const result = helpers.wrapCharsAroundText(text, preset.left, preset.right);
+    assert.equal(result.skipped, false, id);
+    text = result.text;
+    // 守恒：除新增符号对外，原文不变。
+    assert.equal(stripAll(text), '文', id);
+  }
+  assert.equal(text, '!!>>~~__--++**[文]**++--__~~<<!!');
+});
+
 test('wrap chars menu copy has English translations', () => {
   for (const preset of helpers.WRAP_CHAR_PRESETS) {
     assert.notEqual(i18n.translateText(preset.label, 'en'), preset.label, preset.label);
@@ -6856,7 +6924,7 @@ test('wrap chars menu copy has English translations', () => {
   const keys = [
     '左右添加字符', '左右添加字符预设', '自定义左右字符', '左侧字符', '右侧字符', '插入',
     '左右添加字符（插入到字幕两端）',
-    'ASS 特殊文本样式', '普通字符', '♪音符♪', '♬双音符♬', '[中括号]',
+    'ASS 特殊文本样式', '普通字符', '整句', '♪音符♪', '♬双音符♬', '[中括号]',
     '左侧添加', '右侧添加', '输入左侧字符', '输入右侧字符', '自定义左右添加字符',
     '数字转换', '将明确的中文数字转写为数字，前后留空格',
     '在选中字幕文本两端原样插入字符；不做样式转换，也不受「单双符号」规则影响。',

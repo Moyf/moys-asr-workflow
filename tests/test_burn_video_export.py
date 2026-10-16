@@ -124,13 +124,41 @@ class BurnAssVideoTests(CompactContainerAssertions, unittest.TestCase):
         command = next(command for command in self.calls if command[0] == "ffmpeg")
         self.assertNotIn("concat", command)
         self.assertEqual(command[command.index("-i") + 1], str(self.source.resolve()))
-        graph = Path(command[command.index("-filter_complex_script") + 1]).read_text(encoding="utf-8")
+        graph = Path(command[command.index("-/filter_complex") + 1]).read_text(encoding="utf-8")
         self.assertIn("atrim=start=0.000:end=1.250", graph)
         self.assertIn("atrim=start=2.000:end=3.500", graph)
         self.assertIn("[burn_video]", command)
         self.assertIn("[burn_audio_0]", command)
         durations = [command[index + 1] for index, value in enumerate(command) if value == "-t"]
         self.assertEqual(durations, ["3.500", "2.750"])
+
+    def test_interval_burn_retries_legacy_syntax_only_for_unknown_option(self) -> None:
+        for error in ("Unrecognized option '/filter_complex'.", "Encoder initialization failed"):
+            with self.subTest(error=error):
+                calls = []
+
+                def run(command, **kwargs):
+                    if command[0] == "ffprobe":
+                        return subprocess.CompletedProcess(command, 0,
+                            stdout=json.dumps({"streams": [{"codec_type": "video", "codec_name": "h264"}]}), stderr="")
+                    calls.append(list(command))
+                    if "-/filter_complex" in command:
+                        return subprocess.CompletedProcess(command, 1, stdout="", stderr=error)
+                    Path(command[-1]).write_bytes(b"burned")
+                    return subprocess.CompletedProcess(command, 0, stdout="", stderr="")
+
+                with mock.patch.object(server_editor.subprocess, "run", side_effect=run):
+                    def burn():
+                        return server_editor.burn_ass_video(self.source, [(0, 1000)], ASS_TEXT, self.output,
+                            ffmpeg_path=Path("ffmpeg"), ffprobe_path=Path("ffprobe"))
+                    if error.startswith("Unrecognized option"):
+                        self.assertEqual(burn(), self.output)
+                        self.assertEqual(len(calls), 2)
+                        self.assertIn("-filter_complex_script", calls[1])
+                    else:
+                        with self.assertRaises(server_editor.BurnVideoExportError):
+                            burn()
+                        self.assertEqual(len(calls), 1)
 
     def test_auto_encoder_fallback_retries_next_encoder(self) -> None:
         def run(command, **kwargs):

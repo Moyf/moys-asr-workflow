@@ -11,6 +11,9 @@
   Object.assign(helpers, window.MAWE.resolve('utils-speakers', helpers));
   Object.assign(helpers, window.MAWE.resolve('utils-media-metadata', helpers));
   Object.assign(helpers, window.MAWE.resolve('utils-navigation', helpers));
+  // ass-style 需要先于 text-processing / word-timing / srt 解析：MASS 成对
+  // 检测（strip / 拆分补齐 / 合并折叠 / 字词块归位）都复用它导出的 assMarkedRanges。
+  Object.assign(helpers, window.MAWE.resolve('utils-ass-style', helpers));
   Object.assign(helpers, window.MAWE.resolve('utils-text-processing', helpers));
   Object.assign(helpers, window.MAWE.resolve('utils-timed-text-core', helpers));
   Object.assign(helpers, window.MAWE.resolve('utils-timed-text-plans', helpers));
@@ -28,7 +31,6 @@
   Object.assign(helpers, window.MAWE.resolve('utils-word-split', helpers));
   Object.assign(helpers, window.MAWE.resolve('utils-srt', helpers));
   Object.assign(helpers, window.MAWE.resolve('utils-lrc', helpers));
-  Object.assign(helpers, window.MAWE.resolve('utils-ass-style', helpers));
   Object.assign(helpers, window.MAWE.resolve('utils-ass-animation', helpers));
   Object.assign(helpers, window.MAWE.resolve('utils-ass-canvas-layout', helpers));
   Object.assign(helpers, window.MAWE.resolve('utils-ass-export', helpers));
@@ -176,6 +178,7 @@
     clampTimelineFrameStep,
     cleanSplitTextParts,
     cloneMarkerValue,
+    completeSplitMassPairs,
     configuredEnterAction,
     copyGapRemoveRange,
     countPendingReviewMarkers,
@@ -200,6 +203,7 @@
     filterFontFamilyOptions,
     filterMarkers,
     findAdjacentCueIndex,
+    foldMassPairJunction,
     findCueNavigationTarget,
     findCueSelectionExtensionTarget,
     findGapRemoveDisableMatches,
@@ -222,8 +226,10 @@
     isPendingReviewMarker,
     isRegionMarker,
     isShortSubtitleText,
+    isTimedTextNeutralToken,
     isWordSplitConnector,
     joinSegmentTexts,
+    joinSegmentTextsMassFold,
     mapExportTime,
     mapGapRemovedTime,
     markerKind,
@@ -231,6 +237,9 @@
     markerPresetColorLabel,
     markerReviewStatusLabel,
     markerSummary,
+    appendMassMarkersToLastItem,
+    massMarkedRanges,
+    prependMassMarkersToFirstItem,
     markerVisibleRange,
     markersToProjectField,
     matchSubtitleSegments,
@@ -318,6 +327,8 @@
     splitAlignmentDriftMs,
     splitCharOffsetAtTime,
     splitSubtitleText,
+    srtSentenceText,
+    stripMassMarkers,
     subtitleFontFamilyDisplayName,
     subtitleFontFamilyInputToStored,
     subtitleFontFamilyStoredToInput,
@@ -326,6 +337,7 @@
     supportsProjectSchema,
     swapMainAndExtensionSubtitle,
     timedTextEditDirtyFlags,
+    timedTextEditGutterNumbers,
     timedTextItemCoverage,
     timedTextItemReuse,
     uniqueStableSegmentId,
@@ -384,6 +396,7 @@ window.AsrEditorUtils = {
     buildTimedTextStructurePlan,
     buildTimedTextEditReport,
     timedTextEditDirtyFlags,
+    timedTextEditGutterNumbers,
     applyTimedTextEdit,
     countTextUnits,
     countSubtitleUnits,
@@ -532,6 +545,11 @@ window.AsrEditorUtils = {
     shiftSelectionAfterRemoval,
     buildSrtPayload,
     buildBilingualSrtPayload,
+    buildPlainTextPayload,
+    srtSentenceText,
+    stripMassMarkers,
+    completeSplitMassPairs,
+    joinSegmentTextsMassFold,
     normalizeAssFontFamily,
     normalizeAssFontSize,
     resolveAssFontSize,
@@ -594,6 +612,10 @@ window.AsrEditorUtils = {
     getRemovedGapRanges,
     findGapRemoveDisableMatches,
     mapGapRemovedTime,
+    appendMassMarkersToLastItem,
+    massMarkedRanges,
+    prependMassMarkersToFirstItem,
+    foldMassPairJunction,
     buildGapRemovedIntervals,
     buildGapRemovedDynamicSegments,
     buildAiCleanupSegments,

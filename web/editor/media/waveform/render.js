@@ -61,6 +61,9 @@ export function createWaveformModule(dependencies) {
         rowTick: get('--wave-row-tick', '#3b4b59'),
         peak: get('--wave-peak', '#65b89a'),
         peakDim: get('--wave-peak-dim', '#83909a'),
+        // 全文预览气泡沿用徽章底/字幕文字两个令牌，深浅主题自动翻转。
+        chipBg: get('--wave-badge-bg', 'rgba(0, 0, 0, 0.65)'),
+        chipFg: get('--wave-cue-text', '#eef6ff'),
       };
     }
 
@@ -76,6 +79,8 @@ export function createWaveformModule(dependencies) {
     render() {
       // 主题切换后令牌值变化：每次全量渲染前刷新画布颜色缓存，供 drawRow 读取。
       this._readWaveColors();
+      // 全量渲染可能来自数据变更（工程加载/撤销重做）：徽章缓存作废。
+      this.invalidateGroupBadges();
       this.applyLayout();
       if (!this.payload || !this.peaks) {
         this.content.replaceChildren();
@@ -132,6 +137,30 @@ export function createWaveformModule(dependencies) {
     }
 
 
+    // 组序号徽章缓存：computeGroupBadges 对全部段全量扫描，曾挂在滚轮
+    // 平移热路径上每帧重算。徽章只依赖 color/sticker 分组字段，与时间
+    // 无关；缓存按「失效纪元 + 段数组引用 + 长度」命中，任何可能改分组
+    // 的路径（refreshCueOverlay/render）先推进纪元，未变数据直接复用。
+    /** @this {import('./waveform-types.js').WaveformInstance} */
+    invalidateGroupBadges() {
+      this._groupBadgesEpoch = (this._groupBadgesEpoch || 0) + 1;
+    }
+
+
+    /** @this {import('./waveform-types.js').WaveformInstance} */
+    computeGroupBadgesCached(segments) {
+      const epoch = this._groupBadgesEpoch || 0;
+      const cache = this._groupBadgesCache;
+      if (cache && cache.epoch === epoch && cache.segments === segments
+        && cache.length === segments.length) {
+        return cache.badges;
+      }
+      const badges = computeGroupBadges(segments);
+      this._groupBadgesCache = { epoch, segments, length: segments.length, badges };
+      return badges;
+    }
+
+
     /** @this {import('./waveform-types.js').WaveformInstance} */
     renderBasic({ reuseRow = false } = {}) {
       if (!this.payload) return;
@@ -139,7 +168,7 @@ export function createWaveformModule(dependencies) {
       const maxStart = Math.max(0, this.durationMs - windowMs);
       this.basicWindowStartMs = clamp(this.basicWindowStartMs, 0, maxStart);
       const endMs = Math.min(this.durationMs, this.basicWindowStartMs + windowMs);
-      const groupBadges = computeGroupBadges(this.options.getSegments('main'));
+      const groupBadges = this.computeGroupBadgesCached(this.options.getSegments('main'));
       let row = reuseRow && this.renderedRows.length === 1 ? this.renderedRows[0] : null;
       const reused = row?.dataset.basic === 'true'
         && (row._thumbnailShell || row).parentElement === this.content
@@ -179,6 +208,115 @@ export function createWaveformModule(dependencies) {
     }
 
 
+    // 滚轮平移基础波形（账本 #22 批次 2）：不再整行重绘——先把已绘位图
+    // 按整数设备像素平移，再只精绘露出的窄条；块层原位重排（结构变化
+    // 回退全量）；滚轮停止 ~160ms 后 renderBasic 整行精绘对齐（chip 层、
+    // 徽章宽度阈值、画面带 renderKey 全部刷新）。
+    /** @this {import('./waveform-types.js').WaveformInstance} */
+    panBasicByMs(deltaMs) {
+      const windowMs = this.settings.visibleSeconds * 1000;
+      const maxStart = Math.max(0, this.durationMs - windowMs);
+      const oldStart = clamp(this.basicWindowStartMs, 0, maxStart);
+      const newStart = clamp(oldStart + deltaMs, 0, maxStart);
+      const appliedMs = newStart - oldStart;
+      this.basicWindowStartMs = newStart;
+      if (appliedMs === 0) return;
+      const row = this.renderedRows[0];
+      const canvas = row
+        ? /** @type {HTMLCanvasElement | null} */ (row.querySelector('canvas.waveform-canvas'))
+        : null;
+      const width = row ? Number(row._waveformCanvasWidth) : NaN;
+      const height = row ? Number(row._waveformCanvasHeight) : NaN;
+      if (this.settings.mode !== 'basic' || !row || row.dataset.basic !== 'true' || !canvas
+        || !Number.isFinite(width) || width < 8 || !Number.isFinite(height) || height < 8
+        || !this.payload || !this.peaks) {
+        this.scheduleBasicRender();
+        return;
+      }
+      const oldEndMs = Math.min(this.durationMs, oldStart + windowMs);
+      const oldRangeMs = Math.max(1, oldEndMs - oldStart);
+      const endMs = Math.min(this.durationMs, newStart + windowMs);
+      // 用旧窗口的真实跨度换算像素位移（媒体尾端窗口会被截短）。
+      const shift = Math.round((appliedMs / oldRangeMs) * width);
+      if (shift === 0 || Math.abs(shift) >= width) {
+        this.scheduleBasicRender();
+        return;
+      }
+      // 布局读取放在写样式之前，避免同帧读写强制回流。
+      const rect = row.getBoundingClientRect();
+      row.dataset.startMs = String(newStart);
+      row.dataset.endMs = String(endMs);
+      const timeLabel = row.querySelector('.waveform-row-time');
+      if (timeLabel) timeLabel.textContent = `${formatCompact(newStart)} → ${formatCompact(endMs)}`;
+      // 块层先原位重排（失败 = 存在无法原位表达的结构差异，如块进出窗口）；
+      // 回退 scheduleBasicRender（rAF 合并）走全量重建，与旧路径一致。
+      if (!this.relayoutBasicOverlays(row, newStart, endMs, oldStart, oldEndMs)) {
+        this.scheduleBasicRender();
+        return;
+      }
+      const dpr = Math.min(2, window.devicePixelRatio || 1);
+      const backShift = Math.round(shift * dpr);
+      const ctx = canvas.getContext('2d', { alpha: false });
+      // 位图平移在设备像素坐标系进行（整数偏移，不触发重采样插值）。
+      ctx.save();
+      ctx.setTransform(1, 0, 0, 1, 0, 0);
+      if (backShift > 0) {
+        ctx.drawImage(canvas, backShift, 0, canvas.width - backShift, canvas.height,
+          0, 0, canvas.width - backShift, canvas.height);
+      } else {
+        const back = -backShift;
+        ctx.drawImage(canvas, 0, 0, canvas.width - back, canvas.height,
+          back, 0, canvas.width - back, canvas.height);
+      }
+      ctx.restore();
+      // 补画露出的窄条；多画 1px 盖住位图平移的取整接缝。
+      const stripSpan = Math.min(width, Math.abs(shift) + 1);
+      const stripX = shift > 0 ? width - stripSpan : 0;
+      this.paintWaveRow(row, ctx, width, height, newStart, endMs, stripX, stripSpan, { withChips: false });
+      this.rebuildMarkerTrackForPan(row, newStart, endMs);
+      // 评审条目 2：连续平移会不断重置 settle 计时器，若 setView 只在
+      // settle 后经 syncThumbnailView 发出，持续滚动超出已缓存画面时将
+      // 一直停留在占位格。这里每档把新可见范围交给内部节流（首拍立即
+      // + 每 150ms 尾拍收尾）的 setView，取图节奏由节流器保证。
+      if (this.thumbnailController?.visible) {
+        this.thumbnailController.setView([{ start: newStart, end: endMs, width }], this.durationMs);
+      }
+      this.panThumbnailStrip(row, shift, newStart, endMs, width);
+      this.positionPlayheads();
+      this.refreshPointerLine({ left: rect.left + row.clientLeft, width: Math.max(1, row.clientWidth) });
+      if (this.basicPanSettleTimer) clearTimeout(this.basicPanSettleTimer);
+      this.basicPanSettleTimer = setTimeout(() => {
+        this.basicPanSettleTimer = 0;
+        if (this.settings.mode !== 'basic' || !this.payload) return;
+        this.renderBasic({ reuseRow: true });
+      }, 160);
+    }
+
+
+    // 平移期块层轻量重排：字幕/字词/空隙块按新窗口原位重算 left/width/hidden，
+    // 不重建 DOM。共享边界区（.waveform-cue-boundary，main+extension 两轨）
+    // 复用 refreshBoundaryZones 的原位重定位（贴合关系变化时原地移除，由
+    // 下次整层重建恢复）。任一层报告结构性差异（无法原位表达）时返回 false。
+    /** @this {import('./waveform-types.js').WaveformInstance} */
+    relayoutBasicOverlays(row, startMs, endMs, oldStartMs = startMs, oldEndMs = endMs) {
+      if (!this.relayoutCueBlocksInRow(row, startMs, endMs)) return false;
+      if (!this.relayoutWordBlocksInRow(row, startMs, endMs, oldStartMs, oldEndMs)) return false;
+      if (!this.relayoutGapBlocksInRow(row, startMs, endMs)) this.refreshGapOverlay();
+      this.refreshBoundaryZones();
+      return true;
+    }
+
+
+    // 标记轨元素按窗口百分比定位，平移期直接按新窗口重建（窗口内标记
+    // 通常为 0 至少数个，重建成本远低于字幕/字词层的逐块重排）。
+    /** @this {import('./waveform-types.js').WaveformInstance} */
+    rebuildMarkerTrackForPan(row, startMs, endMs) {
+      row.querySelectorAll('.waveform-marker-track').forEach(element => element.remove());
+      row.classList.remove('waveform-row-has-markers');
+      this.appendMarkerTrack(row, startMs, endMs);
+    }
+
+
     /** @this {import('./waveform-types.js').WaveformInstance} */
     renderMulti() {
       const rowDurationMs = this.settings.secondsPerRow * 1000;
@@ -205,7 +343,7 @@ export function createWaveformModule(dependencies) {
       }
       this.multiRange = [first, last];
       this.content.style.height = `${rowCount * stride - ROW_GAP}px`;
-      const groupBadges = computeGroupBadges(this.options.getSegments('main'));
+      const groupBadges = this.computeGroupBadgesCached(this.options.getSegments('main'));
       if (force) {
         // 全量重建：先完成所有 DOM 变更再统一绘制，避免逐行强制同步布局
         this.content.replaceChildren();

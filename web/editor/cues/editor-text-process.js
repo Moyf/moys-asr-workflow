@@ -251,7 +251,7 @@
   function refreshTextProcessInputState() {
     const customWrap = textProcessWrapPresets.some((preset) => preset.id === 'custom');
     if (textProcessCustomWrapFields) textProcessCustomWrapFields.hidden = !customWrap;
-    document.querySelectorAll('#text-process-wrap-presets-ass [data-wrap-preset-id], #text-process-wrap-presets-common [data-wrap-preset-id]')
+    document.querySelectorAll('#text-process-wrap-presets-ass [data-wrap-preset-id], #text-process-wrap-presets-ass-sentence [data-wrap-preset-id], #text-process-wrap-presets-common [data-wrap-preset-id]')
       .forEach((button) => {
       button.setAttribute('aria-pressed', String(textProcessWrapPresets.some((preset) => preset.id === button.dataset.wrapPresetId)));
     });

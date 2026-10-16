@@ -79,7 +79,23 @@ jsonEl.textContent = filename;
 jsonEl.title = `点击复制工程文件名：${filename}`;
 jsonEl.classList.remove('empty');
 }
+updateProjectDirtyIndicator();
 if (!silent) MaweHint.flashHint('保存成功！', 'success');
+}
+
+// 工程「未保存」指示：右上角文件名前加琥珀色圆点（CSS ::before，不进 textContent，
+// 不影响点击复制），title 提示有未保存的修改。#json-name 在 i18n 的属性跳过名单里，
+// title 需在此处按当前语言手动翻译；脏状态变化没有单一入口，除保存/加载后的即时
+// 刷新外，用轻量轮询兜底（hasProjectChanges 只做标志与 _dirty 遍历，无指纹开销）。
+function updateProjectDirtyIndicator() {
+const jsonEl = document.getElementById('json-name');
+if (!jsonEl || jsonEl.classList.contains('empty')) return;
+const dirty = Boolean(MaweServerSave?.hasUnsavedProjectChanges?.());
+jsonEl.classList.toggle('dirty', dirty);
+const filename = String(jsonEl.textContent || '').trim();
+if (!filename) return;
+const text = dirty ? `有未保存的修改；点击复制工程文件名：${filename}` : `点击复制工程文件名：${filename}`;
+jsonEl.title = window.MAWE_I18N?.translateText?.(text) || text;
 }
 
 
@@ -224,6 +240,14 @@ markProjectSaved(MaweServerSave.projectFileHandle.name, null, { silent, fingerpr
     return window.MAWE_I18N?.translateText?.(text) || text;
   }
 
+  // 脏态指示 1s 轮询兜底 + 语言切换重译标题：仅浏览器页面环境启动
+  // （vm 单测环境无定时器/document 事件全局，恢复/保存流程测试不依赖；
+  // 编辑器页面常驻，无需清除）。
+  if (typeof window !== 'undefined' && typeof window.setInterval === 'function') {
+    window.setInterval(updateProjectDirtyIndicator, 1000);
+    document.addEventListener('mawe:languagechange', updateProjectDirtyIndicator);
+  }
+
 global.MaweProjectSave = Object.freeze({
 markProjectSaved,
 saveProjectToServer,
@@ -231,6 +255,7 @@ saveProjectToHandle,
 saveCurrentProject,
 saveProjectAsToFile,
 inlineEditHasUncommittedText,
+updateProjectDirtyIndicator,
 mediaNameEl,
 jsonNameEl,
 translatedEditorText

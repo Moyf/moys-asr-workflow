@@ -65,17 +65,25 @@ test('density uses CSS pixels with hysteresis, source-zero targets and a real ta
   assert.ok(demand.representative_ms.every(time=>time% demand.interval_ms===0 && time<9000));
 });
 
-test('play immediately updates the shared lease before the pending view debounce',async()=>{
+test('play submits its control with the shared lease while the throttled view demand submits immediately',async()=>{
   const h=harness(); h.respond(call=>manifest(call));
   h.controller.setBinding('video-a'); await h.flush();
   h.controller.setView([{start:0,end:10000,width:1000}],20000);
-  assert.equal(h.calls.filter(call=>call.body?.visible).length,0);
+  // setView 已由 panBasicByMs 的 150ms 节流器节流（首拍立即+尾拍收尾），
+  // applySetView 内不再有 200ms 尾随去抖：demand 在调用当场同步发出。
+  const demand=h.calls.find(call=>call.body?.visible && call.url==='/demand');
+  assert.ok(demand,'throttled view push submits without advancing timers');
+  assert.equal(demand.body.lease,'lease-a');
+  assert.equal(demand.body.playing,false);
   h.controller.setPlaying(true); await h.flush();
   const control=h.calls.find(call=>call.body?.playing===true);
   assert.ok(control,'play must submit without advancing 200ms');
   assert.equal(control.body.lease,'lease-a');
   assert.equal(control.body.client_id,'stable-client');
   assert.equal(control.body.requestToken,'test-only-token');
+  // 时序契约：lease 是共享变量，demand 与 control 都在发送瞬间读取当前值，
+  // 没有任何延迟构造的请求体可能携带过期 lease；control(playing=true) 在
+  // demand(playing=false) 之后到达，服务器最终状态正确。
   await h.advance(2000);
   assert.ok(h.calls.filter(call=>call.body?.playing===true).length>=2,'refresh the playback lease');
   h.controller.close();

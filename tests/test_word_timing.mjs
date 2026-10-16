@@ -251,3 +251,81 @@ test('text sync keeps emoji punctuation attached without shifting later item spa
   ] }, '🙂你好啊');
   assert.deepEqual(plain(result.items.map(item => item.text)), ['🙂你', '好呀']);
 });
+
+// === MASS 成对符号同 item 归位（任务 1：同步 + 显示一致） ===
+
+const massSentence = (text, itemTexts) => ({ text, start: 0, end: 900, items: itemTexts.map((itemText, index) => ({
+  text: itemText, start: index * 300, end: (index + 1) * 300 - 100,
+})) });
+
+test('MASS pair wrapped inside one item attaches both markers to that item in display', () => {
+  const source = massSentence('我是今天的*解说*', ['我是', '今天的', '解说']);
+  const entries = utils.getWordTimingEntries(source);
+  // 「我是今天的*解说*」→「我是」「今天的」「*解说*」（维护者拍板的期望形态）
+  assert.deepEqual(plain(entries.map(entry => entry.text)), ['我是', '今天的', '*解说*']);
+  // 守恒：显示重分配不增删任何字符
+  assert.equal(entries.map(entry => entry.text).join(''), source.text);
+  // items 原文不被显示重分配改写
+  assert.deepEqual(plain(source.items.map(item => item.text)), ['我是', '今天的', '解说']);
+  // 双符号形式同样归位
+  const doubled = massSentence('我是今天的**解说**', ['我是', '今天的', '解说']);
+  assert.deepEqual(plain(utils.getWordTimingEntries(doubled).map(entry => entry.text)),
+    ['我是', '今天的', '**解说**']);
+});
+
+test('MASS pair spanning items and orphan symbols keep the legacy attach behavior', () => {
+  // 跨 item 的对：维持「散落」现状
+  const spanning = massSentence('*今天的解说*', ['今天', '解说']);
+  assert.deepEqual(plain(utils.getWordTimingEntries(spanning).map(entry => entry.text)),
+    ['*今天', '解说*']);
+  // 孤儿符号（找不到成对）：维持按字面挂靠前一发音 item
+  const orphan = massSentence('我是今天的*解说', ['我是', '今天的', '解说']);
+  assert.deepEqual(plain(utils.getWordTimingEntries(orphan).map(entry => entry.text)),
+    ['我是', '今天的*', '解说']);
+  // 成对内容全部是中性字符（如纯标点）：没有可归属的 item，维持「挂靠前一
+  // 发音 item」的现状
+  const neutralBody = massSentence('前*（）*后', ['前', '后']);
+  assert.deepEqual(plain(utils.getWordTimingEntries(neutralBody).map(entry => entry.text)),
+    ['前*（）*', '后']);
+});
+
+test('special symbol rule gates the pair attribution the same way as recognition', () => {
+  const source = massSentence('我是今天的*解说*', ['我是', '今天的', '解说']);
+  utils.setMassSymbolRule('double');
+  try {
+    // 双符号规则下单 * 不成对 → 维持散落
+    assert.deepEqual(plain(utils.getWordTimingEntries(source).map(entry => entry.text)),
+      ['我是', '今天的*', '解说*']);
+  } finally {
+    utils.setMassSymbolRule('both');
+  }
+  assert.deepEqual(plain(utils.getWordTimingEntries(source).map(entry => entry.text)),
+    ['我是', '今天的', '*解说*']);
+});
+
+test('text sync lands a same-item MASS pair on the wrapped item and re-verifies with the same rule', () => {
+  const previousText = '我是今天的解说';
+  const segment = massSentence(previousText, ['我是', '今天的', '解说']);
+  const plan = utils.planWordTimingTextSync({ ...segment, text: '我是今天的*解说*' }, previousText);
+  assert.deepEqual(plain(plan.items.map(item => item.text)), ['我是', '今天的', '*解说*']);
+  // 守恒：items 拼接 == 同步后的文本
+  assert.equal(plan.items.map(item => item.text).join(''), '我是今天的*解说*');
+  // 归位只移动字符归属，item 时间不动
+  assert.deepEqual(plain(plan.items.map(item => [item.start, item.end])),
+    [[0, 200], [300, 500], [600, 800]]);
+  // 等长再次编辑：等长判定与复验用同一条规则，仍然收敛
+  const again = utils.planWordTimingTextSync(
+    { ...segment, text: '我是今天的*解谈*', items: plan.items }, '我是今天的*解说*',
+  );
+  assert.deepEqual(plain(again.items.map(item => item.text)), ['我是', '今天的', '*解谈*']);
+  assert.equal(again.items.map(item => item.text).join(''), '我是今天的*解谈*');
+});
+
+test('pair attribution survives non-BMP characters before the markers', () => {
+  // assMarkedRanges 用 UTF-16 下标、词块遍历按码点：🙂 占 2 个 UTF-16 单位，
+  // 成对区间必须换算回码点下标，否则符号会挂错 item。
+  const source = massSentence('🙂说*重*点', ['🙂说', '重点']);
+  const entries = utils.getWordTimingEntries(source);
+  assert.deepEqual(plain(entries.map(entry => entry.text)), ['🙂说', '*重*点']);
+  assert.equal(entries.map(entry => entry.text).join(''), '🙂说*重*点');
+});

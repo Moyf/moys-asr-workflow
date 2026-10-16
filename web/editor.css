@@ -588,6 +588,11 @@
   }
   h1 .json-name:hover { background: var(--bg-raised); color: var(--accent-hover); border-color: var(--border-strong); }
   h1 .json-name.empty { color: var(--text-faint); border-color: var(--border-subtle); background: transparent; cursor: default; pointer-events: none; }
+  /* 工程未保存指示：文件名前的琥珀色圆点（与工具栏 dirty 按钮同色系）；伪元素不进 textContent，不影响点击复制 */
+  h1 .json-name.dirty::before {
+    content: '●'; color: var(--amber-hover);
+    font-size: 10px; margin-right: 4px; vertical-align: 1px;
+  }
 
   /* === Server connection warning ===
      This is a persistent state banner rather than a transient flashHint: once
@@ -831,27 +836,13 @@
     margin-bottom: 6px; flex-wrap: wrap; font-size: 12px;
   }
   .toolbar.row-actions { margin-bottom: 6px; }
-  .toolbar input[type=text] {
+  .toolbar input[type=text], .toolbar input[type=search] {
     background: var(--bg-input); color: var(--text-primary); border: 1px solid var(--border);
     border-radius: var(--radius-sm); padding: 4px 8px; font-size: 13px; min-width: 200px;
     min-height: var(--control-h);
     transition: border-color var(--t-fast), box-shadow var(--t-fast);
   }
-  .toolbar input[type=text]:focus { outline: none; border-color: var(--accent); box-shadow: var(--focus-ring); }
-  .toolbar .input-clear {
-    position: relative; display: inline-flex; align-items: center;
-  }
-  .toolbar .input-clear input[type=text] { padding-right: 24px; }
-  .toolbar .input-clear .clear-x {
-    position: absolute; right: 6px; top: 50%; transform: translateY(-50%);
-    cursor: pointer; color: var(--text-muted); font-size: 14px; line-height: 1;
-    background: var(--border-strong); border-radius: 50%; width: 16px; height: 16px;
-    display: none; align-items: center; justify-content: center;
-    user-select: none; padding: 0;
-    transition: background var(--t-fast), color var(--t-fast);
-  }
-  .toolbar .input-clear .clear-x:hover { background: var(--scroll-thumb-hover); color: var(--text-primary); }
-  .toolbar .input-clear.has-value .clear-x { display: inline-flex; }
+  .toolbar input[type=text]:focus, .toolbar input[type=search]:focus { outline: none; border-color: var(--accent); box-shadow: var(--focus-ring); }
   .toolbar input[type=number] {
     background: var(--bg-input); color: var(--text-primary); border: 1px solid var(--border);
     border-radius: var(--radius-sm); padding: 4px 6px; font-size: 13px; width: 56px;
@@ -948,8 +939,7 @@
   .toolbar.cue-list-toolbar,
   .toolbar.waveform-toolbar,
   .toolbar.cue-editor-toolbar { overflow-x: hidden; }
-  .toolbar.cue-list-toolbar .input-clear { flex: 1 1 auto; min-width: 0; }
-  .toolbar.cue-list-toolbar .input-clear input[type=text] { min-width: 0; width: 20ch; max-width: 100%; }
+  .toolbar.cue-list-toolbar #search { flex: 1 1 auto; min-width: 0; width: 20ch; max-width: 100%; }
   /* 字幕列表操作按钮在窄宽度下保持单行，并用省略号收缩文本。 */
   .toolbar.cue-list-toolbar #batch-operations-dropdown,
   .toolbar.cue-list-toolbar #batch-operations-btn,
@@ -976,6 +966,10 @@
   }
   /* 左侧操作单独滚动，右侧设置始终留在工具栏内；焦点导航也会滚动到对应按钮。 */
   .toolbar.waveform-toolbar > .layout-toolbar-label { flex: 0 0 auto; white-space: nowrap; }
+  /* 「字幕」标签同样不收缩不换行（挤成竖排很难看，账本 #32）；空间不足时由
+     editor-cue-list-anchor 的 ResizeObserver 直接隐藏整个标签让位给功能控件。 */
+  .toolbar.cue-list-toolbar > .layout-toolbar-label { flex: 0 0 auto; white-space: nowrap; }
+  .toolbar.cue-list-toolbar > .layout-toolbar-label[hidden] { display: none; }
   .toolbar.waveform-toolbar > .waveform-toolbar-controls {
     display: flex; align-items: center; gap: 6px;
     flex: 1 1 auto; min-width: 0;
@@ -3360,6 +3354,13 @@
   .text-process-custom-wrap-fields { margin-top: 10px; }
   .text-process-wrap-preset-row[hidden] { display: none; }
   .text-process-wrap-preset-row-label { color: var(--text-secondary); font-size: 12px; line-height: 28px; white-space: nowrap; }
+  /* 句级行行首的「整句」胶囊 badge：与相邻按钮保持视觉对齐（按钮高约 28px）。 */
+  .text-process-wrap-sentence-badge {
+    justify-self: start; margin-top: 4px; padding: 1px 8px;
+    border: 1px solid var(--border-subtle); border-radius: 999px;
+    background: var(--bg-input); color: var(--text-secondary); font-size: 11px; line-height: 16px;
+    white-space: nowrap;
+  }
   .text-process-wrap-preset-buttons { display: flex; flex-wrap: wrap; gap: 6px; }
   .text-process-wrap-preset-buttons button {
     padding: 5px 10px; font-size: 12px; border-radius: var(--radius-sm);
@@ -3560,20 +3561,66 @@
     .timed-text-edit-row-main { grid-template-columns: minmax(0, 1fr); }
   }
   .timed-text-edit-row textarea {
-    display: block; width: 100%; min-height: 34px; box-sizing: border-box; resize: vertical;
+    display: block; width: 100%; min-height: 34px; box-sizing: border-box; resize: vertical; margin: 0;
     padding: 6px 8px; color: var(--text-primary); background: var(--bg-input);
     border: 1px solid var(--border); border-radius: var(--radius-sm); font: inherit; line-height: 1.45;
+    /* 显式声明与镜像层一致的换行规则，保证高亮位置逐行对齐 */
+    white-space: pre-wrap; overflow-wrap: break-word;
   }
   .timed-text-edit-row.deleted textarea { border-color: var(--red); color: var(--red-hover); }
   .timed-text-edit-row textarea:focus { outline: none; border-color: var(--accent); box-shadow: var(--focus-ring); }
+  /* 逐条行的搜索高亮镜像：结构与整体编辑的 single-editor 一致，
+     padding/边框/圆角/字体/行高必须与 .timed-text-edit-row textarea 严格一致。 */
+  .timed-text-edit-row-editor { position: relative; min-width: 0; }
+  /* 镜像默认不可见（空镜像也是不透明背景板，会盖住 textarea 的文字——
+     Greptile P1）；仅搜索命中的行（search-highlight）显示镜像承接高亮。 */
+  .timed-text-edit-row-search-mirror {
+    position: absolute; z-index: 1; inset: 0; overflow: hidden; box-sizing: border-box;
+    padding: 6px 8px; color: var(--text-primary); background: var(--bg-input);
+    border: 1px solid var(--border); border-radius: var(--radius-sm);
+    font: inherit; line-height: 1.45; white-space: pre-wrap; overflow-wrap: break-word;
+    pointer-events: none; visibility: hidden;
+  }
+  .timed-text-edit-row.search-highlight .timed-text-edit-row-search-mirror { visibility: visible; }
+  .timed-text-edit-row-search-mirror .search-match { color: inherit; background: color-mix(in srgb, var(--accent) 25%, transparent); border-radius: 2px; }
+  .timed-text-edit-row-search-mirror .search-match.is-current { background: color-mix(in srgb, var(--amber) 45%, transparent); box-shadow: 0 0 0 1px var(--amber-line); }
+  .timed-text-edit-row-search-mirror .search-match.is-zero-length { display: inline-block; width: 0; height: 1em; margin-right: -2px; border-left: 2px solid var(--accent); vertical-align: text-bottom; }
+  .timed-text-edit-row.search-highlight textarea {
+    color: transparent; -webkit-text-fill-color: transparent; caret-color: var(--text-primary);
+    background: transparent;
+  }
+  .timed-text-edit-row.search-highlight textarea::selection { color: transparent; background: color-mix(in srgb, var(--accent) 28%, transparent); }
+  /* 「修改后移除字幕前后空格」：固定在弹窗操作行最左（按钮保持右对齐） */
+  .timed-text-edit-trim-toggle {
+    display: inline-flex; align-items: center; gap: 5px; margin-right: auto;
+    color: var(--text-secondary); cursor: pointer; user-select: none; font-size: 12px;
+  }
   .timed-text-edit-single-editor {
     position: relative; display: flex; flex: 1 1 auto; min-height: 0; margin: 10px; overflow: hidden;
     font: inherit;
   }
   .timed-text-edit-single-editor[hidden] { display: none; }
+  /* 行号 gutter（账本 #33）：绝对定位数字列，随 textarea 滚动（JS 同步
+     scrollTop），不参与横向滚动。宽度与文字让位统一由
+     --timed-text-edit-gutter-w 驱动：数字列 ~3ch 右对齐 + 12px 与正文的间隔。 */
+  .timed-text-edit-single-editor { --timed-text-edit-gutter-w: calc(3ch + 12px); }
+  .timed-text-edit-gutter {
+    position: absolute; z-index: 2; top: 1px; bottom: 1px; left: 0;
+    width: var(--timed-text-edit-gutter-w); box-sizing: border-box; overflow: hidden;
+    padding: 10px 8px 10px 0;
+    color: var(--text-muted); font: inherit; line-height: 1.65;
+    text-align: right; font-variant-numeric: tabular-nums;
+    background: var(--bg-input); border-right: 1px solid var(--border-subtle);
+    border-radius: var(--radius-sm) 0 0 var(--radius-sm);
+    pointer-events: none; user-select: none;
+  }
+  /* 行号行盒与镜像层文字行严格同高：同样的 font: inherit + line-height 1.65，
+     首行同样从 padding-top 10px 起（top/bottom 已对齐镜像 1px 边框）。 */
+  .timed-text-edit-gutter-line { line-height: 1.65; }
   .timed-text-edit-search-mirror {
     position: absolute; z-index: 1; inset: 0; overflow: hidden; box-sizing: border-box;
-    padding: 10px 12px; color: var(--text-primary); background: var(--bg-input);
+    padding: 10px 12px; padding-left: calc(var(--timed-text-edit-gutter-w) + 12px);
+    color: var(--text-primary); background: var(--bg-input);
     border: 1px solid var(--border); border-radius: var(--radius-sm);
     font: inherit; line-height: 1.65; white-space: pre; overflow-wrap: normal; pointer-events: none;
   }
@@ -3582,7 +3629,9 @@
   .timed-text-edit-search-mirror .search-match.is-zero-length { display: inline-block; width: 0; height: 1em; margin-right: -2px; border-left: 2px solid var(--accent); vertical-align: text-bottom; }
   .timed-text-edit-single-textarea {
     display: block; flex: 1 1 auto; width: 100%; min-height: 0; height: 100%; margin: 0;
-    position: relative; z-index: 2; box-sizing: border-box; resize: none; padding: 10px 12px; color: transparent;
+    position: relative; z-index: 2; box-sizing: border-box; resize: none; padding: 10px 12px;
+    padding-left: calc(var(--timed-text-edit-gutter-w) + 12px);
+    color: transparent;
     -webkit-text-fill-color: transparent; caret-color: var(--text-primary);
     background: transparent; border: 1px solid transparent; border-radius: var(--radius-sm);
     font: inherit; line-height: 1.65; white-space: pre; overflow: auto;
@@ -3591,7 +3640,7 @@
   .timed-text-edit-single-textarea:focus { outline: none; }
   .timed-text-edit-single-guide {
     position: absolute; z-index: 3; top: 1px; bottom: 1px;
-    left: calc(13px + var(--timed-text-edit-line-width, 16em)); width: 1px;
+    left: calc(var(--timed-text-edit-gutter-w) + 13px + var(--timed-text-edit-line-width, 16em)); width: 1px;
     background: var(--accent-line); opacity: .55; pointer-events: none;
     transition: left 100ms ease;
   }
@@ -3610,7 +3659,20 @@
   .timed-text-edit-diff-part.add { color: var(--green-hover); text-decoration: underline; text-decoration-thickness: 1px; }
   .timed-text-edit-diff-part.remove { color: var(--red-hover); text-decoration: line-through; }
   .timed-text-edit-timing-change { padding: 3px 6px; color: var(--accent-hover); background: color-mix(in srgb, var(--accent) 8%, transparent); border-radius: 3px; font-size: 11px; font-variant-numeric: tabular-nums; }
-  .timed-text-edit-estimated-timing { padding: 3px 6px; color: var(--amber-hover); background: color-mix(in srgb, var(--amber-line) 9%, transparent); border-radius: 3px; font-size: 11px; }
+  /* timing 行内的胶囊时间值：未变化用原文本色，旧值红+删除线、新值绿，与文本 diff 配色一致。 */
+  .timed-text-edit-timing-pill {
+    display: inline-block; padding: 0 6px; border-radius: 999px;
+    background: color-mix(in srgb, currentColor 12%, transparent);
+  }
+  .timed-text-edit-timing-pill.before { color: var(--red-hover); text-decoration: line-through; }
+  .timed-text-edit-timing-pill.after { color: var(--green-hover); }
+  .timed-text-edit-estimated-badge {
+    display: inline-block; padding: 0 5px;
+    color: var(--amber-hover); background: color-mix(in srgb, var(--amber-line) 9%, transparent);
+    border: 1px solid var(--amber-line); border-radius: 3px;
+  }
+  /* 估算 badge 跟在时间胶囊后时保持 ≥8px 间距；单独成行时不缩进。 */
+  .timed-text-edit-estimated-badge:not(:first-child) { margin-left: 8px; }
   .timed-text-edit-deleted-label { padding: 3px 6px; color: var(--red-hover); background: color-mix(in srgb, var(--red) 10%, transparent); border-radius: 3px; font-size: 11px; }
   .timed-text-edit-report { padding: 12px; overflow-y: auto; }
   .timed-text-edit-report h4 { margin: 0 0 9px; color: var(--text-primary); font-size: 13px; }
@@ -3930,6 +3992,12 @@
   .ctxmenu .item kbd {
     background: var(--bg-input); color: var(--text-muted); padding: 1px 6px; border-radius: var(--radius-sm);
     font-family: var(--font-mono); font-size: 11px; border: 1px solid var(--border-subtle);
+  }
+  /* 句级效果预设的「整句」胶囊：缀在标签后，提示该样式只对整句生效。 */
+  .ctxmenu .ctxmenu-sentence-badge {
+    padding: 0 6px; border: 1px solid var(--border-subtle); border-radius: 999px;
+    background: var(--bg-input); color: var(--text-muted); font-size: 10px; line-height: 14px;
+    white-space: nowrap;
   }
 
   /* === 可配置位置的提示卡片（flashHint），默认顶部居中 ===

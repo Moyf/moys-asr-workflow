@@ -773,7 +773,7 @@ def burn_ass_video(
         duration_ms = sum(end - start for start, end in intervals)
         # A video frame can straddle the end of an interval. Independent audio
         # concatenation and explicit output duration keep it from moving joins.
-        filter_args = ["-filter_complex_script", str(graph_path), "-map", "[burn_video]"]
+        filter_args = ["-/filter_complex", str(graph_path), "-map", "[burn_video]"]
         for audio, stream in enumerate(audio_streams):
             filter_args.extend(("-map", f"[burn_audio_{audio}]",
                                 f"-map_metadata:s:a:{audio}", f"0:s:a:{audio}",
@@ -817,12 +817,21 @@ def burn_ass_video(
                     f"字幕字体「{family}」缺少字形{glyph}，已中止烧录以避免输出方框；"
                     "请在字幕样式中更换可用字体。", details=glyph_tail)
         try:
-            completed = job.run_command(command, timeout=86_400, duration_ms=duration_ms,
-                                        cwd=output_path.parent, on_stderr=inspect_glyphs) if job else subprocess.run(
-                command, capture_output=True, text=True, encoding="utf-8", errors="replace",
-                timeout=86_400, check=False, cwd=output_path.parent,
-                startupinfo=startupinfo(), creationflags=creationflags(),
-            )
+            def run_encode(args):
+                return job.run_command(args, timeout=86_400, duration_ms=duration_ms,
+                                       cwd=output_path.parent, on_stderr=inspect_glyphs) if job else subprocess.run(
+                    args, capture_output=True, text=True, encoding="utf-8", errors="replace",
+                    timeout=86_400, check=False, cwd=output_path.parent,
+                    startupinfo=startupinfo(), creationflags=creationflags(),
+                )
+            completed = run_encode(command)
+            # FFmpeg 9 removed filter_complex_script. Older installations that
+            # predate option-file syntax may still use it; retry only a parser
+            # rejection, before any media was decoded or encoded.
+            if (completed.returncode != 0 and "-/filter_complex" in command
+                    and "Unrecognized option '/filter_complex'" in (completed.stderr or "")):
+                command[command.index("-/filter_complex")] = "-filter_complex_script"
+                completed = run_encode(command)
         except BurnVideoExportError:
             output_path.unlink(missing_ok=True)
             raise
@@ -3574,8 +3583,28 @@ class EditorRequestHandler(BaseHTTPRequestHandler):
                 # Browser media elements commonly cancel an old Range request while seeking.
                 return
 
+    # 轮询端点按心跳频率命中（startup-status 由前端就绪/自动保存轮询、
+    # thumbnails/demand 由画面带按需取帧轮询），200 响应刷屏无信息量；
+    # 命中路径且状态码恰为 200 时跳过打印，非 200 响应与其他端点日志
+    # 保持原样（含 send_error 经 log_error 进来的其他格式，解析不出
+    # request 日志形态就不静默）。
+    _QUIET_HTTP_LOG_PATHS = ("/api/startup-status", "/api/thumbnails/demand")
+
+    def _is_quiet_poll_response(self, message: str) -> bool:
+        if urlsplit(getattr(self, "path", "") or "").path not in self._QUIET_HTTP_LOG_PATHS:
+            return False
+        # log_request 的消息格式是 '"<requestline>" <code> <size>'：requestline
+        # 自身含空格，状态码只能从右侧取第二段；解析不出该形态就不静默。
+        parts = message.rsplit(" ", 2)
+        if len(parts) != 3:
+            return False
+        return parts[1] == "200"
+
     def log_message(self, format: str, *args: object) -> None:
-        print(f"[http] {self.address_string()} - {format % args}")
+        message = format % args
+        if self._is_quiet_poll_response(message):
+            return
+        print(f"[http] {self.address_string()} - {message}")
 
 
 def _port_is_free(host: str, port: int) -> bool:
