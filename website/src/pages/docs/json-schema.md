@@ -683,7 +683,7 @@ source: "JSON_SCHEMA.md"
 - 进入帧模式后，编辑器以帧字段为操作真源，同时更新毫秒投影；切换 FPS 会保留实际媒体时间并重新计算帧编号
 - `segments` 建议按时间升序排列，且 `segments[i].end <= segments[i+1].start`
 - 代码不强校验时间重叠，但重叠会导致播放器跳转/高亮行为异常
-- `items` 首元素 `start` 建议等于 segment `start`，末元素 `end` 建议等于 segment `end`
+- 普通完整字词时间码中，首元素 `start` 建议等于 segment `start`，末元素 `end` 建议等于 segment `end`；编辑器「渐进拆分」的后半句会保留原后半区间的 items，因此允许仅覆盖文本后缀
 - 带 `speaker` 的工程遇到说话人变化时**必须切分字幕**，不能把两个 speaker 合入同一 segment
 
 ---
@@ -705,7 +705,7 @@ source: "JSON_SCHEMA.md"
 
 | 字段 | 类型 | 必填 | 说明 |
 |---|---|---|---|
-| `text` | `string` | 是 | 单字或单词。**所有 item 的 `text` 拼接后应等于所属 segment 的 `text`**（标点也应包含在内，编辑器拆分时会按需剥掉） |
+| `text` | `string` | 是 | 单字或单词。通常所有 item 的 `text` 拼接后应等于所属 segment 的 `text`（标点也应包含在内，编辑器拆分时会按需剥掉）；渐进拆分后半句允许 items 只对应原文后缀，复制前缀没有时间码 |
 | `start` | `int` | 是 | 该字/词起始时间（毫秒） |
 | `end` | `int` | 是 | 该字/词结束时间（毫秒） |
 | `start_frame` | `int` | 否 | 独立帧起始编号，与 `end_frame` 成对出现 |
