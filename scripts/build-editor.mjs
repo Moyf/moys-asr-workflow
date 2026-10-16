@@ -95,6 +95,18 @@ function validateModule(source, item) {
   }
 }
 
+function validateInitModule(source, item) {
+  if (item.kind !== 'init') return;
+  // An init module replaces a manifest slot in place: the classic body moves
+  // into one exported initializer that the assembler calls at the same
+  // position, so evaluation order and classic-scope visibility stay identical.
+  const ast = parse(source,'module');
+  if (ast.body.length !== 1 || ast.body[0]?.type !== 'ExportNamedDeclaration'
+      || ast.body[0].declaration?.type !== 'FunctionDeclaration') {
+    throw new Error(`Init module must export exactly one function: ${item.file}`);
+  }
+}
+
 export async function compileSources(root, files, modules, read, options = {}) {
   validateSources(files);
   const byFile = new Map(), names = new Set();
@@ -108,7 +120,10 @@ export async function compileSources(root, files, modules, read, options = {}) {
   const sources = new Map(files.map(file => [file,read(file)]));
   const imports = modules.map((item,index) =>
     `import { ${item.exportName} as factory${index} } from ${JSON.stringify('maw-factory:'+item.file)};`);
-  for (const item of modules) validateModule(sources.get(item.file),item);
+  for (const item of modules) {
+    if (item.kind === 'init') validateInitModule(sources.get(item.file),item);
+    else validateModule(sources.get(item.file),item);
+  }
   // Keep lexical declarations INSIDE this function: esbuild otherwise lowers
   // module-level let/const to var and loses the classic scope's TDZ semantics.
   const body = ['function initializeLegacy() {'];
@@ -124,7 +139,10 @@ export async function compileSources(root, files, modules, read, options = {}) {
   for (const file of files) {
     const item = byFile.get(file);
     if (options.beforeEntry === file) body.push('globalThis.__mawBeforeFixture?.(window);');
-    if (item) body.push(`window.MAWE.register(${JSON.stringify(item.name)}, factory${modules.indexOf(item)});`);
+    if (item?.kind === 'init') {
+      const index = modules.indexOf(item);
+      body.push(`// Init module: ${file}\nfactory${index}();`);
+    } else if (item) body.push(`window.MAWE.register(${JSON.stringify(item.name)}, factory${modules.indexOf(item)});`);
     else {
       try { parse(sources.get(file),'script'); }
       catch (error) { throw new Error(`Legacy source must remain classic until explicitly migrated: ${file}: ${error.message}`); }
@@ -159,6 +177,20 @@ export async function buildEditor(root = ROOT, options = {}) {
     const source = options.transform ? options.transform(file,original) : original;
     inputHashes[file] = sha(source); return source;
   },{bridges:config.externalBridges,trace:true});
+  // New dependencies pulled in through a static import graph are build
+  // inputs too: hash every web/ module the metafile recorded beyond the
+  // manifest so adding, editing or deleting any of them invalidates the
+  // artifact exactly like a manifest source would.
+  for (const input of Object.keys(result.metafile.inputs)) {
+    const web = input.replace(/\\/g,'/');
+    const relative = web.startsWith('web/') && web.endsWith('.js') ? web.slice(4) : null;
+    if (!relative || relative in inputHashes) continue;
+    if (!files.includes(relative)) {
+      const original = fs.readFileSync(path.join(root,'web',relative),'utf8');
+      snapshot['web/'+relative] = original;
+      inputHashes[relative] = sha(original);
+    }
+  }
   assertBuildInputsUnchanged(root, snapshot);
   const metadata = {format:1,esbuild:esbuild.version,sourceFiles:files,esmFactories:modules.length,
     inputs:inputHashes,configHash:sha(configText),builderHash:sha(snapshot['scripts/build-editor.mjs']),

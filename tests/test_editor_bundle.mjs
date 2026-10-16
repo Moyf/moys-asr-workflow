@@ -103,3 +103,62 @@ test('assembly rejects invalid exports, effects, duplicate/unsafe paths and omit
     return file === 'editor/boot/editor-runtime.js' ? source+'\nexport const accidental=1;' : source;
   }}), /classic|export/i);
 });
+
+test('init module replaces its manifest slot in place with unchanged order', async () => {
+  const { compileSources } = await import(builder);
+  const files = ['first.js', 'seam.js', 'helper.js', 'last.js'];
+  const source = new Map([
+    // first.js sees the classic scope and runs before the seam slot.
+    ['first.js', `window.events=['first'];
+      window.MAWE={register(name, factory) { window.events.push(name); }};`],
+    // seam.js is the same classic body wrapped in one exported initializer.
+    ['seam.js', `export function runSeam() {
+      window.seamState='from-init';
+      window.events.push('seam');
+    }`],
+    // A plain factory that the init module imports explicitly; its helper
+    // must be available to the classic scope after the seam runs.
+    ['helper.js', `export function createHelper(deps) { return deps; }`],
+    ['last.js', `window.afterSeam=window.seamState; window.events.push('last');`],
+  ]);
+  const modules = [
+    {file:'seam.js', kind:'init', name:'seam', exportName:'runSeam'},
+    {file:'helper.js', name:'helper', exportName:'createHelper'},
+  ];
+  const { code, metafile } = await compileSources(root, files, modules,
+    file => source.get(file), {});
+  const context = {window:{}};
+  vm.runInNewContext(code, context);
+  // Same positional order: first -> seam (classic body in place) -> helper
+  // registration at its own manifest slot -> last.
+  assert.deepEqual([...context.window.events], ['first','seam','helper','last']);
+  assert.equal(context.window.seamState,'from-init');
+  assert.equal(context.window.afterSeam,'from-init');
+  // Both seam modules are explicit esbuild inputs.
+  assert.ok(metafile.inputs['web/seam.js']);
+  assert.ok(metafile.inputs['web/helper.js']);
+});
+
+test('init module rejects extra statements and factories reject kind misuse', async () => {
+  const { compileSources } = await import(builder);
+  await assert.rejects(compileSources(root,['seam.js'],
+    [{file:'seam.js', kind:'init', name:'seam', exportName:'runSeam'}],
+    () => 'const extra=1; export function runSeam() {}'), /exactly one function/i);
+  await assert.rejects(compileSources(root,['seam.js'],
+    [{file:'seam.js', kind:'init', name:'seam', exportName:'runSeam'}],
+    () => 'const extra=1;\nexport function runSeam() {}\nfunction second() {}'), /exactly one function/i);
+});
+
+test('transitive imports invalidate the artifact like manifest sources', async () => {
+  const { buildEditor } = await import(builder);
+  // Fonts is an ESM factory in the manifest whose source feeds the bundle
+  // through the explicit import graph; editing it must change the produced
+  // code, the inputs ledger and therefore the identity of the artifact.
+  const transform = marker => (file, source) =>
+    file === 'shared/utils/fonts.js' ? source.replace('Microsoft YaHei', marker) : source;
+  const first = await buildEditor(root, {transform: transform('MAWTransitiveV1')});
+  const second = await buildEditor(root, {transform: transform('MAWTransitiveV2')});
+  assert.notEqual(first.code, second.code);
+  assert.ok(second.metadata.inputs['shared/utils/fonts.js']);
+  assert.ok(second.metafile.inputs['web/shared/utils/fonts.js']);
+});
