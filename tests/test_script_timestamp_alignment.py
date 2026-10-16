@@ -151,7 +151,10 @@ class ScriptTimestampTests(unittest.TestCase):
             self.assertTrue(project["preserve_punctuation"])
             self.assertTrue(report.warnings)
             self.assertIsNone(artifact.source_srt_path)
-            relative_project = artifact.project_path.relative_to(bundle)
+            # Temp 目录在部分 runner 上会以 8.3 短名形式出现（RUNNER~1），
+            # 与管线内解析出的长名路径 relative_to 会误判越界——比较前统一
+            # resolve 规范化。
+            relative_project = artifact.project_path.resolve().relative_to(bundle.resolve())
             moved = root / "moved-bundle"
             bundle.rename(moved)
             moved_project = moved / relative_project
