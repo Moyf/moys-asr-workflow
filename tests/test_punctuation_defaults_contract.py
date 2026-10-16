@@ -39,9 +39,9 @@ def source_text(relative_path: str) -> str:
 class PunctuationDefaultsContractTests(unittest.TestCase):
     def test_canonical_defaults_keep_expected_semantics(self) -> None:
         # 断句清单 = 完整默认；保留 = ？！；剥尾 = 断句 − 保留（单字符）。
-        self.assertEqual(EXPECTED_BREAK, "，。？！；,.")
+        self.assertEqual(EXPECTED_BREAK, "，。？！；,.;")
         self.assertEqual(EXPECTED_KEEP, "？！")
-        self.assertEqual(EXPECTED_STRIP, "，。；,.")
+        self.assertEqual(EXPECTED_STRIP, "，。；,.;")
         # CLI 默认值的规范声明常量与派生值一致。
         self.assertEqual(DEFAULT_STRONG_PUNCT, EXPECTED_BREAK)
         self.assertEqual(DEFAULT_STRIP_TAIL_PUNCT, EXPECTED_STRIP)
@@ -50,6 +50,15 @@ class PunctuationDefaultsContractTests(unittest.TestCase):
         text = source_text("generate_subtitle_qwen_api.py")
         self.assertIn(f'_DEFAULT_EXTRA_STRONG_PUNCT = "{EXPECTED_BREAK}"', text)
         self.assertIn(f'_DEFAULT_STRIP_TAIL_PUNCT = "{EXPECTED_STRIP}"', text)
+
+    def test_saved_v2_symbols_are_not_overwritten_by_new_defaults(self) -> None:
+        from maw.postprocess_pipeline import normalize_plan
+        plan = normalize_plan({"version": 2, "steps": [{
+            "id": "match", "extraSplitPunctuation": ["、"], "preservePunctuation": [],
+        }]})
+        match = next(step for step in plan["steps"] if step["id"] == "match")
+        self.assertEqual(match["extraSplitPunctuation"], ["、"])
+        self.assertEqual(match["preservePunctuation"], [])
 
     def test_local_engine_tail_punct_follows_shared_constants(self) -> None:
         text = source_text("maw/local_asr.py")
