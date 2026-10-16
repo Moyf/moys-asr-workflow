@@ -226,3 +226,36 @@ test('replacing a displayed group head keeps cross-track members while a member 
     assert.equal(selected[`${kind}_group_id`], oldId);
   }
 });
+
+test('legacy singular bindings survive collision remapping with an omitted track ID', () => {
+  for (const legacyId of ['a', ' a ']) {
+    const p = fixture();
+    p.multi_subtitle = { enabled: true, tracks: [{ segments: [{ id: legacyId, start: 1000, end: 3000, text: 'translation' }] }],
+      bindings: [{ main_segment_id: 'a', extension_segment_id: legacyId }] };
+    u.normalizeMultiSubtitleProject(p);
+    assert.equal(p.multi_subtitle.bindings.length, 1);
+    assert.deepEqual(plain(p.multi_subtitle.bindings[0].main_segment_ids), ['a']);
+    assert.deepEqual(plain(p.multi_subtitle.bindings[0].extension_segment_ids), [p.multi_subtitle.tracks[0].segments[0].id]);
+  }
+});
+
+test('ambiguous or invalid binding tracks reject migration without changing the project', () => {
+  const base = fixture();
+  base.multi_subtitle = { tracks: ['one', 'two'].map(id => ({ id, segments: [plain(base.segments[0])] })),
+    bindings: [{ main_segment_id: 'a', extension_segment_id: 'a' }] };
+  for (const canonical of [false, true]) for (const trackId of [undefined, '', 'missing']) {
+    const p = plain(base);
+    if (canonical) {
+      p.multi_subtitle.bindings[0].track_id = 'two';
+      u.normalizeMultiSubtitleProject(p);
+    }
+    if (trackId === undefined) delete p.multi_subtitle.bindings[0].track_id;
+    else p.multi_subtitle.bindings[0].track_id = trackId;
+    const before = JSON.stringify(p);
+    assert.throws(() => u.normalizeMultiSubtitleProject(p), /ambiguous.*extension track/);
+    assert.equal(JSON.stringify(p), before);
+  }
+  base.multi_subtitle.bindings[0].track_id = 'two';
+  u.normalizeMultiSubtitleProject(base);
+  assert.deepEqual(plain(base.multi_subtitle.bindings[0].extension_segment_ids), [base.multi_subtitle.tracks[1].segments[0].id]);
+});

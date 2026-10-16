@@ -42,9 +42,9 @@ v2 保留顶层 `segments`、`overlay_track`、`multi_subtitle.tracks` 和现有
 - 禁用成员保留关系并参与范围；全部成员禁用时不显示或导出表情。换轨不拆组；删除头或中间成员后剩余成员仍同组。清除属性只移除所选成员，空组在编辑器中删除。
 - 关闭整条叠加轨或副字幕轨时保留其组关系；预览与导出的表情范围仅由仍启用轨道的成员决定，重新开启后恢复。单条字幕的禁用状态仍按上一条规则处理。
 - 拆分两侧继承原组。同组合并继承；不同组或混有无组字幕时，合并结果不继承该种组关系，未参与合并的成员保留原组。不同组即使素材同名也不合并。重复导入为输入组分配新 ID，避免与当前工程误关联。
-- v1 迁移先在原轨内数组解析 `headIdx`，再规范 ID；跨轨重复字幕 ID 确定性重映射，并更新 bindings。旧ref的第三方附加字段保存在对应段的可选 `color_group_metadata` / `sticker_group_metadata` 对象中（不含旧name/headIdx）；现有同名字段冲突时拒绝迁移而不覆盖。重映射记录在可选 `subtitle_group_migration.remapped_ids`（track/index/from/to）。失效引用或歧义绑定报告错误，不按名称猜引用。
+- v1 迁移先在原轨内数组解析 `headIdx`，再规范 ID；跨轨重复字幕 ID 确定性重映射，并更新 bindings。旧单数绑定端点同样保留，缺省 `track_id` 仅在唯一副轨时补齐，多副轨歧义在变更 ID 前拒绝。旧ref的第三方附加字段保存在对应段的可选 `color_group_metadata` / `sticker_group_metadata` 对象中（不含旧name/headIdx）；现有同名字段冲突时拒绝迁移而不覆盖。重映射记录在可选 `subtitle_group_migration.remapped_ids`（track/index/from/to）。失效引用或歧义绑定报告错误，不按名称猜引用。
 - v2 落盘不写 `color` / `color_ref` / `sticker` / `sticker_ref`；编辑器内部可生成显示投影，投影的下标与范围不构成持久化关系。三轨共同保留 items、帧、speaker、disabled、assOverride.pos 和第三方扩展。
-- 表情预览、共享时间线导出和 OTIO 按组连续区间输出。重叠组按稳定表顺序显示；单轨 OTIO 遇重叠继续报错。Resolve JSON 使用 `moy.asr_subtitle_editor.resolve.v2`，在顶层 `stickers` 输出连续组区间（group_id/start_ms/end_ms/素材属性），段上保留组 ID；旧 Resolve v1 消费端需适配。
+- 表情预览、共享时间线导出和 OTIO 按组连续区间输出。独立表情 OTIO（含去空隙模式）包含启用轨道的所有组，每组仅输出一次；完整时间线仍按主/叠加归属分轨。重叠组按稳定表顺序显示；单轨 OTIO 遇重叠继续报错。Resolve JSON 使用 `moy.asr_subtitle_editor.resolve.v2`，在顶层 `stickers` 输出连续组区间（group_id/start_ms/end_ms/素材属性）；派生 ID 和范围优先于素材扩展中的同名字段，段上保留组 ID；旧 Resolve v1 消费端需适配。
 
 文稿匹配读取并保留 v2；沿既有等条数槽位继承非时间属性。对带独立组且会改变条数的文稿匹配，当前明确拒绝生成有损结果，原工程保留；可先在编辑器中拆合。该限制不影响编辑器正常拆分、合并或重新断句。
 

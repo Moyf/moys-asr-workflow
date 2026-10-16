@@ -7,10 +7,20 @@ export function createUtilsModule({ cloneJsonValue, stableId, ensureStableSegmen
       { key: 'overlay', enabled: project.overlay_track?.enabled === true, segments: project.overlay_track?.segments || [] },
       ...(project.multi_subtitle?.tracks || []).map((track, index) => ({
         key: `extension-${index + 1}`, enabled: project.multi_subtitle.enabled === true,
-        trackId: track.id, segments: track.segments || [],
+        trackId: stableId(track.id) || `extension-${index + 1}`, segments: track.segments || [],
       }))];
   }
   function migrateSubtitleGroups(project, { fromFile = false } = {}) {
+    const tracks = subtitleGroupTracks(project);
+    const extensions = tracks.filter(track => track.trackId);
+    const bindingTrackId = binding => {
+      const id = stableId(binding.track_id);
+      if (id && extensions.filter(track => track.trackId === id).length === 1) return id;
+      if (binding.track_id == null && extensions.length === 1) return extensions[0].trackId;
+      throw new Error('multi_subtitle.bindings.track_id: ambiguous binding or missing extension track');
+    };
+    // Validate before changing cue identities or choosing a default binding track.
+    for (const binding of project.multi_subtitle?.bindings || []) bindingTrackId(binding);
     if (project.schema === GROUP_PROJECT_SCHEMA && !project.subtitle_groups) {
       throw new Error('subtitle_groups: v2 projects require a group table');
     }
@@ -50,7 +60,8 @@ export function createUtilsModule({ cloneJsonValue, stableId, ensureStableSegmen
       }
       return table;
     }
-    const tracks = subtitleGroupTracks(project);
+    const bindingIds = (binding, field) => Array.isArray(binding[field]) ? binding[field]
+      : binding[field.slice(0, -1)] ? [binding[field.slice(0, -1)]] : [];
     const groups = { color: [], sticker: [] };
     // Resolve before filtering, sorting or changing any identities.
     const memberships = [];
@@ -83,16 +94,17 @@ export function createUtilsModule({ cloneJsonValue, stableId, ensureStableSegmen
     }
     const reports = [];
     for (const track of tracks) {
+      const rawIds = track.segments.map(segment => segment.id);
       const originalIds = track.segments.map(s => stableId(s.id));
       const duplicates = new Set(originalIds.filter((id, index) => id && originalIds.indexOf(id) !== index));
       for (const binding of project.multi_subtitle?.bindings || []) {
-        const ids = track.key === 'main' ? binding.main_segment_ids
-          : binding.track_id === track.trackId ? binding.extension_segment_ids : [];
-        if ((ids || []).some(id => duplicates.has(id))) throw new Error(`${track.key}: ambiguous binding cue ID`);
+        const ids = track.key === 'main' ? bindingIds(binding, 'main_segment_ids')
+          : bindingTrackId(binding) === track.trackId ? bindingIds(binding, 'extension_segment_ids') : [];
+        if ((ids || []).some(id => duplicates.has(stableId(id)))) throw new Error(`${track.key}: ambiguous binding cue ID`);
       }
       ensureStableSegmentIds(track.segments, track.key === 'main' ? 'main' : track.key === 'overlay' ? 'overlay' : `${track.trackId || track.key}-segment`);
       track.segments.forEach((segment, index) => {
-        if (originalIds[index] !== segment.id) reports.push({ track: track.key, index, from: originalIds[index], to: segment.id });
+        if (rawIds[index] !== segment.id) reports.push({ track: track.key, index, from: rawIds[index] ?? '', to: segment.id });
       });
     }
     // Reserve IDs across all tracks. Binding endpoints are track-scoped in v1.
@@ -116,9 +128,10 @@ export function createUtilsModule({ cloneJsonValue, stableId, ensureStableSegmen
       });
       for (const binding of project.multi_subtitle?.bindings || []) {
         const field = track.key === 'main' ? 'main_segment_ids'
-          : track.trackId === binding.track_id ? 'extension_segment_ids' : null;
+          : track.trackId === bindingTrackId(binding) ? 'extension_segment_ids' : null;
         if (!field) continue;
-        binding[field] = (binding[field] || []).map(id => {
+        binding[field] = bindingIds(binding, field).map(rawId => {
+          const id = stableId(rawId);
           if (counts.get(id) > 1) throw new Error(`${track.key}: ambiguous binding cue ID ${id}`);
           return mapping.get(id) || id;
         });
@@ -142,6 +155,7 @@ export function createUtilsModule({ cloneJsonValue, stableId, ensureStableSegmen
         start: Math.min(...members.map(m => m.segment.start)),
         end: Math.max(...members.map(m => m.segment.end)),
         enabled: members.some(m => !m.segment.disabled),
+        hasOverlay: members.some(m => m.track === 'overlay' && !m.segment.disabled),
         track: members.some(m => m.track !== 'overlay') ? 'main' : 'overlay' }];
     });
   }
