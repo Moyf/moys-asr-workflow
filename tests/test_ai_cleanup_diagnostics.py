@@ -18,7 +18,7 @@ class CleanupDiagnosticsTest(CompactContainerAssertions, AiCleanupTestCase):
         ]))
         return AiCleanupRequest(source, None, None, OutputMode.BOTH, review_enabled=review)
 
-    def test_default_only_calls_first_pass_and_archives_success(self):
+    def test_default_only_calls_first_pass_and_does_not_archive_success(self):
         request = self.request_for()
         calls = []
         def complete(prompt, rows):
@@ -26,10 +26,8 @@ class CleanupDiagnosticsTest(CompactContainerAssertions, AiCleanupTestCase):
             return {"timeline": "[c001] 试麦听得到吗\n[c002] 正式内容"}
         artifact = run_ai_cleanup(request, complete=complete)
         self.assertEqual(len(calls), 1)
-        record = artifact.diagnostic_path.read_text(encoding="utf-8")
-        self.assertIn("状态：成功", record)
-        self.assertIn("首次整理本地校验", record)
-        self.assertIn("最终结果", record)
+        self.assertIsNone(artifact.diagnostic_path)
+        self.assertFalse(list(self.directory.glob("*.md")))
         self.assertFalse(normalize_plan({})["steps"][1]["reviewEnabled"])
         self.assertTrue(normalize_plan({"steps": [{"id": "cleanup", "reviewEnabled": True}]})["steps"][1]["reviewEnabled"])
 
@@ -51,21 +49,18 @@ class CleanupDiagnosticsTest(CompactContainerAssertions, AiCleanupTestCase):
         self.assertEqual(len(list(self.directory.glob("*.mosp"))), 1)
         self.assertFalse(list(self.directory.glob("*.srt")))
 
-    def test_report_written_between_stages_and_unique_across_runs(self):
+    def test_successful_review_keeps_evidence_in_memory_only(self):
         request = self.request_for(review=True)
         def complete(prompt, rows):
+            self.assertFalse(list(self.directory.glob("*.md")))
             if "第二道工序" in prompt:
-                self.assertIn("漏清扫描本地校验", next(self.directory.glob("*.md")).read_text(encoding="utf-8"))
                 return {"reviews": []}
             if "这是漏清扫描" in prompt:
                 return {"timeline": "\n".join(row["currentTimeline"] for row in rows if row.get("contextOnly") != "true")}
             return {"timeline": "[c001] 试麦听得到吗\n[c002] 正式内容"}
-        first = run_ai_cleanup(request, complete=complete)
-        first_record = first.diagnostic_path.read_bytes()
-        second = run_ai_cleanup(request, complete=complete)
-        self.assertNotEqual(first.diagnostic_path, second.diagnostic_path)
-        self.assertEqual(first.diagnostic_path.read_bytes(), first_record)
-        self.assertIn("剪后安全审计本地校验", second.diagnostic_path.read_text(encoding="utf-8"))
+        artifact = run_ai_cleanup(request, complete=complete)
+        self.assertIsNone(artifact.diagnostic_path)
+        self.assertFalse(list(self.directory.glob("*.md")))
 
     def test_transport_error_and_report_write_error_preserve_cause(self):
         request = self.request_for()
@@ -92,11 +87,12 @@ class CleanupDiagnosticsTest(CompactContainerAssertions, AiCleanupTestCase):
         contents = iter([
             "[c001] 试麦听得到吗\n[c002] 正式内容",
             "[c001] 试麦听得到吗\n[c002] 正式内容",
-            "invalid-audit-json", '{"reviews": []}',
+            "invalid-audit-json", "still-invalid", "invalid-again", "still-invalid",
         ])
         with mock.patch("maw.postprocess_ai_cleanup._request_completion", side_effect=lambda *_a, **_k: {"choices": [{"message": {"content": next(contents)}}]}):
-            artifact = run_ai_cleanup(request, complete=llm_complete(LlmSettings("custom", "", "http://localhost:1234/v1", "test")))
-        record = artifact.diagnostic_path.read_text(encoding="utf-8")
+            with self.assertRaises(LlmClientError):
+                run_ai_cleanup(request, complete=llm_complete(LlmSettings("custom", "", "http://localhost:1234/v1", "test")))
+        record = next(self.directory.glob("*.md")).read_text(encoding="utf-8")
         self.assertIn("invalid-audit-json", record)
         self.assertIn('"rawResponses"', record)
 

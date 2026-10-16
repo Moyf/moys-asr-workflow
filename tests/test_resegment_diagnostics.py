@@ -42,7 +42,7 @@ class ResegmentDiagnosticsTests(CompactContainerAssertions, unittest.TestCase):
         self.assertFalse(list(self.root.glob("*.srt")))
         self.assertEqual(len(list(self.root.glob("*.mosp"))), 1)
 
-    def test_retry_status_uses_same_batch_and_record_is_written_before_retry(self):
+    def test_retry_status_uses_same_batch_and_success_leaves_no_record(self):
         calls = []
         statuses = []
         def complete(prompt, rows):
@@ -50,17 +50,15 @@ class ResegmentDiagnosticsTests(CompactContainerAssertions, unittest.TestCase):
             if len(calls) == 1:
                 return {"draft": "[c0001a0001]"}
             if len(calls) == 2:
-                record = next(self.root.glob("*.md")).read_text(encoding="utf-8")
-                self.assertIn('"validation": "失败"', record)
-                self.assertIn("第 1 批 · 第 2 次请求", record)
+                self.assertFalse(list(self.root.glob("*.md")))
             return {"draft": f"[{rows[-1]['items'][-1]['id']}]"}
         with mock.patch("maw.postprocess.MAX_LLM_CUES_PER_REQUEST", 1):
             artifact = self.run_case([timed("演示方法", ["演示", "方法"]), timed("结束", ["结束"], 500)], complete,
                                      on_status=lambda key, details: statuses.append((key, details)))
         attempts = [(d["current"], d["attempt"]) for k, d in statuses if k == "toolbox_status_llm_batch" and "attempt" in d]
         self.assertEqual(attempts, [(1, 1), (1, 2), (2, 1)])
-        self.assertIn("状态：成功", artifact.diagnostic_path.read_text(encoding="utf-8"))
-        self.assertIn('"segments"', artifact.diagnostic_path.read_text(encoding="utf-8"))
+        self.assertIsNone(artifact.diagnostic_path)
+        self.assertFalse(list(self.root.glob("*.md")))
 
     def test_english_reason_is_explicit_and_full_report_keeps_all_invalid_boundaries(self):
         units = source_units(timed("xxxxxxxx", ["x"] * 8), 0)
@@ -104,9 +102,9 @@ class ResegmentDiagnosticsTests(CompactContainerAssertions, unittest.TestCase):
         self.assertTrue(result["ok"], result)
         content = [call for call in stream.call_args_list if call.args[0] == "content"]
         self.assertEqual([(call.args[2], call.kwargs["attempt"]) for call in content], [(1, 1), (1, 2)])
-        self.assertTrue(Path(result["diagnosticPath"]).is_file())
+        self.assertFalse(result.get("diagnosticPath"))
 
-    def test_pipeline_keeps_record_when_intermediate_directory_is_discarded(self):
+    def test_pipeline_success_leaves_no_record_when_intermediates_are_discarded(self):
         self.source.write_text(json.dumps({"segments": [timed("演示方法", ["演示", "方法"])]}, ensure_ascii=False), encoding="utf-8")
         srt = self.root / "input.srt"
         srt.write_text("1\n00:00:00,000 --> 00:00:00,400\n演示方法\n", encoding="utf-8")
@@ -122,6 +120,5 @@ class ResegmentDiagnosticsTests(CompactContainerAssertions, unittest.TestCase):
             )
         self.assertFalse(result.run_directory.exists())
         records = list(self.root.glob("*.resegment-record*.md"))
-        self.assertEqual(len(records), 1)
-        self.assertIn("状态：成功", records[0].read_text(encoding="utf-8"))
-        self.assertTrue(any("重新断句阶段记录" in warning for warning in result.warnings))
+        self.assertEqual(records, [])
+        self.assertFalse(any("阶段记录" in warning for warning in result.warnings))

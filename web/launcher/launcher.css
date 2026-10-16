@@ -2282,7 +2282,7 @@ textarea::placeholder {
   border-radius: var(--radius-sm);
   color: var(--accent);
   background: transparent;
-  font-family: var(--font-mono);
+  font-family: var(--font-sans);
   font-size: 13px;
   line-height: 1.3;
   text-align: left;

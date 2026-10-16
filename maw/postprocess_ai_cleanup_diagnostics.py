@@ -77,6 +77,8 @@ class CleanupTrace:
         return replace(error, message=f"{error}\nAI 整理记录：{self.path}")
 
     def save(self) -> None:
+        if self.status in {"进行中", "成功"}:
+            return
         sections = [
             "# AI 整理阶段记录",
             f"版本：{self.context['version']}\n发生时间：{self.context['occurredAt']}\n状态：{self.status}",

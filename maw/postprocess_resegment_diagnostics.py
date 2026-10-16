@@ -46,7 +46,7 @@ class ResegmentTrace:
         return f"重新断句阶段记录：{self.path}" if self.path is not None else ""
 
     def save(self) -> None:
-        if self.path is None:
+        if self.path is None or self.status in {"进行中", "成功"}:
             return
         sections = [
             "# 重新断句阶段记录",

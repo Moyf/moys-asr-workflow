@@ -415,7 +415,7 @@ def run_ai_cleanup(
     trace.checkpoint("最终结果", stats=stats, project=artifact.project_path, srt=artifact.srt_path)
     if trace.save_error:
         return replace(artifact, warnings=(*artifact.warnings, f"AI 整理记录保存失败：{trace.save_error}"))
-    return replace(artifact, diagnostic_path=trace.path)
+    return artifact
 
 
 def _raise_if_cancelled(is_cancelled: Callable[[], bool] | None) -> None:
@@ -828,7 +828,7 @@ def _resolve_decisions(
             removed = "".join(str(clip.items[index]["text"]) for index in deleted)
             replacement = "".join(other.text for other in alt_clips if resolved[other.id] not in {DECISION_DISCARD, DECISION_EDIT} and other.id != clip.id)
             evidence_ok = bool(evidence) and _contains_normalized(_normalize_text(removed).value, evidence)
-            shortcut_safe = protected_information_loss_reason(clip.text, kept) is None and (
+            shortcut_safe = protected_information_loss_reason(collapse_echo(clip.text), collapse_echo(kept)) is None and (
                 collapse_echo(clip.text) == collapse_echo(kept)
                 or bool(re.fullmatch(r"[嗯啊呃哦唉、，。\s]+|想一下|我重说", removed))
             )
@@ -885,7 +885,30 @@ def _resolve_decisions(
             downgrade(clip.id, "片段包含数字，需要人工确认")
         elif sole_script_line:
             downgrade(clip.id, "移除后将丢失对应文稿内容，需要人工确认")
+    _keep_complete_retakes(clips, decisions, resolved, reasons)
     return resolved, reasons
+
+
+def _keep_complete_retakes(clips, decisions, resolved, reasons):
+    """Prevent mixing halves of adjacent, literally identical multi-cue takes."""
+    for start in range(len(clips) - 3):
+        for width in range(2, 5):
+            pair = clips[start:start + width * 2]
+            if len(pair) != width * 2 or any(b.segment_index != a.segment_index + 1 for a, b in zip(pair, pair[1:])):
+                continue
+            old, new = pair[:width], pair[width:]
+            if resolved[old[0].id] != DECISION_DISCARD or resolved[new[0].id] != DECISION_KEEP:
+                continue
+            if any(resolved[clip.id] not in {DECISION_KEEP, DECISION_DISCARD} or any(key in decisions[clip.id] for key in ("removeItemIds", "removeItemRanges")) for clip in pair):
+                continue
+            if any(collapse_echo(before.text).strip() != collapse_echo(after.text).strip() for before, after in zip(old, new)):
+                continue
+            for clip in old:
+                resolved[clip.id] = DECISION_DISCARD
+                reasons[clip.id] = "完整重录连续性校验：后面整组逐句覆盖旧版，统一保留后面的完整版本"
+            for clip in new:
+                resolved[clip.id] = DECISION_KEEP
+                reasons[clip.id] = "完整重录连续性校验：随新版开头一起保留，避免拼接旧版收尾"
 
 
 def _contains_normalized(haystack_norm: str, evidence: str) -> bool:

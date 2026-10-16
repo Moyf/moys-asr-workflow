@@ -2417,7 +2417,7 @@ class GuiWebBridgeTests(CompactContainerAssertions, unittest.TestCase):
 
         self.assertFalse(result["ok"])
         self.assertEqual(result["code"], "postprocess_cancelled")
-        self.assertEqual(sorted(path.name for path in self.root.iterdir()), [".env.example", "cancel-me.mosp"])
+        self.assertEqual(sorted(path.name for path in self.root.iterdir() if path.suffix != ".md"), [".env.example", "cancel-me.mosp"])
 
     def test_llm_cancel_after_first_artifact_write_begins_is_rejected(self) -> None:
         import maw.postprocess as postprocess_core

@@ -434,7 +434,7 @@ def run_resegment(
     is_cancelled: Callable[[], bool] | None = None,
     begin_commit: Callable[[], bool] | None = None,
 ) -> SubtitleArtifact:
-    from maw.postprocess import PostprocessStepError
+    from maw.postprocess import PostprocessStepError, _postprocess_step_error
 
     trace = ResegmentTrace(request.project_path or request.srt_path, request.output_directory)
     try:
@@ -443,15 +443,17 @@ def run_resegment(
         trace.finish("已取消" if getattr(error, "category", "") == "cancelled" else "失败", error=str(error))
         hint = trace.hint()
         if hint:
-            if isinstance(error, (LlmClientError, PostprocessStepError)):
+            if isinstance(error, LlmClientError):
                 raise replace(error, message=f"{error}\n{hint}") from error
+            if isinstance(error, PostprocessStepError):
+                raise _postprocess_step_error(f"{error}\n{hint}", error) from error
             if isinstance(error, ValueError):
                 raise ValueError(f"{error}\n{hint}") from error
         raise
     trace.finish("成功", project=artifact.project_path, srt=artifact.srt_path)
     if trace.save_error:
         return replace(artifact, warnings=(*artifact.warnings, trace.hint()))
-    return replace(artifact, diagnostic_path=trace.path)
+    return artifact
 
 
 def _run_resegment(

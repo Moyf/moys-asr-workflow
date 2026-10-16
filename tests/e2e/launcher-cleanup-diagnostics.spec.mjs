@@ -2,6 +2,18 @@ import { test, expect } from '@playwright/test';
 
 const launcherUrl = new URL('../../web/launcher/index.html', import.meta.url).href;
 
+test('automatic processing reports skipped AI steps at the end', async ({ page }, testInfo) => {
+  await page.goto(launcherUrl);
+  await page.waitForFunction(() => window.MAWLauncher?.onPostprocessPipeline);
+  await page.locator('#toolboxFab').click();
+  await page.evaluate(() => window.MAWLauncher.onPostprocessPipeline({
+    stage: 'done', skippedSteps: ['cleanup'], warnings: ['AI 整理失败，已沿用上一步字幕；失败资料已保留。'],
+  }));
+  await expect(page.locator('#toolboxResult')).toContainText('AI 整理失败');
+  await expect(page.locator('#toolboxResult')).toContainText('失败资料已保留');
+  await page.locator('#toolboxDrawer').screenshot({ path: testInfo.outputPath('automatic-ai-failure-report.png') });
+});
+
 test('cleanup review defaults off, persists and reaches requests; reports never become processing targets', async ({ page }, testInfo) => {
   const errors = [];
   page.on('pageerror', error => errors.push(error.message));
@@ -109,6 +121,12 @@ for (const extension of ['mosp', 'srt']) {
     await expect(original.locator('button')).toHaveText(extension === 'srt' ? 'SRT 字幕' : 'MOSP 工程');
     await expect(original.locator('button')).toHaveAttribute('data-artifact-path', source);
     await expect(page.locator('#toolboxChainList > :first-child')).toHaveId('toolboxChainOriginal');
+    await expect(page.locator('.toolbox-chain-heading')).toHaveText('处理结果（点击可切换输入，或查看报告）');
+    const fonts = await page.locator('.toolbox-chain-source').evaluate(element => ({
+      actual: getComputedStyle(element).fontFamily,
+      expected: getComputedStyle(document.body).fontFamily,
+    }));
+    expect(fonts.actual).toBe(fonts.expected);
     const gap = await original.evaluate(element => element.nextElementSibling.getBoundingClientRect().top - element.getBoundingClientRect().bottom);
     expect(gap).toBeGreaterThanOrEqual(8);
     await page.locator('#toolboxDrawer').screenshot({ path: testInfo.outputPath(`original-${extension}.png`) });

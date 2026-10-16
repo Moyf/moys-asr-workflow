@@ -3522,6 +3522,7 @@ class LauncherApi:
         stage = str(event.get("stage") or "")
         labels = {
             "match": "文稿匹配",
+            "cleanup": "AI 口播整理",
             "replace": "固定替换",
             "proofread": "LLM 校对",
             "resegment": "重新断句",
@@ -3536,6 +3537,8 @@ class LauncherApi:
             if str(event.get("step") or "") == "burn":
                 self._last_media_tool_log_at = 0.0
             self._emit({"type": "log", "message": f"[后处理 {event.get('index', '?')}/{event.get('total', '?')}] {step}：开始"})
+        elif stage == "step_skipped":
+            self._emit({"type": "log", "message": f"[后处理] {event.get('warning', '')}"})
         elif stage == "step_done":
             artifacts = " / ".join(
                 name
@@ -3550,7 +3553,11 @@ class LauncherApi:
                 for name in (str(event.get("projectName") or ""), str(event.get("srtName") or ""), str(event.get("translatedSrtName") or ""), str(event.get("mediaName") or ""))
                 if name
             )
-            self._emit({"type": "log", "message": f"[后处理] 全部完成：{artifacts}"})
+            skipped = event.get("skippedSteps") or []
+            summary = f"处理完成，跳过 {len(skipped)} 个失败的 AI 步骤" if skipped else "全部完成"
+            self._emit({"type": "log", "message": f"[后处理] {summary}：{artifacts}"})
+            for warning in event.get("warnings") or []:
+                self._emit({"type": "log", "message": f"[后处理报告] {warning}"})
         elif stage == "cancelled":
             self._emit({"type": "log", "message": "[后处理] 已取消；原始转写产物仍然保留。"})
         elif stage == "failed":

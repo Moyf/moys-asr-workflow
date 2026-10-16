@@ -3082,6 +3082,7 @@
     if (postprocessCancelling) return;
     if (event.stage === "step_start") setResult(`${autoStepLabel(event.step)}：${t("toolbox_running")}`);
     if (event.stage === "step_done") setResult(`${autoStepLabel(event.step)}：${t("toolbox_done")}`, "success");
+    if (event.stage === "done" && event.warnings?.length) setResult(`${t("toolbox_done")}\n${event.warnings.join("\n")}`, "success", { revealWarning: true });
   };
   window.MAWLauncher.getAutoPostprocessPayload = autoPlanFromControls;
   window.MAWLauncher.openToolboxAiProcessing = () => {
