@@ -13,7 +13,7 @@ from pathlib import Path
 from unittest import mock
 
 from maw.media_jobs import MediaJobManager, MediaJobBusy
-from tests.test_local_editor_server import server_editor
+from tests.test_local_editor_server import server_editor, fake_video_copy_plan
 
 
 class MediaExportBackendTests(unittest.TestCase):
@@ -167,6 +167,8 @@ class MediaExportBackendTests(unittest.TestCase):
 
 
 class VideoHeaderAndCleanupTests(unittest.TestCase):
+    @mock.patch.object(server_editor, "prepare_video_copy", new=fake_video_copy_plan)
+    @mock.patch.object(server_editor, "verify_video_packets", new=lambda *_: None)
     def test_mixed_video_codecs_filter_each_hevc_stream_only(self):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
@@ -191,7 +193,9 @@ class VideoHeaderAndCleanupTests(unittest.TestCase):
                     ffmpeg_path=Path("ffmpeg"), ffprobe_path=Path("ffprobe"))
             command = next(c for c in commands if c[0] == "ffmpeg")
             filters = [(flag, value) for flag, value in zip(command, command[1:]) if flag.startswith("-bsf:")]
-            self.assertEqual(filters, [("-bsf:0", "hevc_mp4toannexb"), ("-bsf:3", "hevc_mp4toannexb")])
+            self.assertEqual([flag for flag, value in filters if value.startswith("hevc_mp4toannexb,")],
+                             ["-bsf:0", "-bsf:3"])
+            self.assertTrue(all("noise=amount=0:drop=" in value for _, value in filters))
             self.assertIn("-map", command)
             self.assertEqual(sum(c[0] == "ffprobe" for c in commands), 2)
 

@@ -62,6 +62,7 @@ class MediaJob:
         self.timer = None
         self.abort_download = None
         self.disposed_event = threading.Event()
+        self.no_output = False
 
     def check_cancelled(self):
         if self.cancelled.is_set():
@@ -73,6 +74,15 @@ class MediaJob:
             self.stage = stage
             self.progress = None if progress is None else max(0, min(1, progress))
 
+    def complete_without_output(self):
+        """Publish a planned no-file result; the runner still owns cleanup."""
+        with self.manager.lock:
+            self.check_cancelled()
+            self.no_output = True
+            self.state = "completed"
+            self.stage = "no-output"
+            self.progress = 1
+
     def snapshot(self):
         with self.manager.lock:
             return {"ok": True, "jobId": self.id, "state": self.state,
@@ -80,7 +90,8 @@ class MediaJob:
                     "bindingGeneration": self.binding[0], "sourceMediaId": self.binding[1],
                     "error": self.error, "errorDetails": self.error_details,
                     "cleanupError": self.cleanup_error, "cleanupErrorDetails": self.cleanup_error_details,
-                    "cleanupComplete": self.disposed}
+                    "cleanupComplete": self.disposed,
+                    **({"noOutput": True} if self.no_output else {})}
 
     def run_command(self, command, *, timeout=120, duration_ms=None, cwd=None, on_stderr=None):
         """Drain both pipes while observing cancellation and FFmpeg progress."""
@@ -262,6 +273,9 @@ class MediaJobManager:
                     runner(job)
                     with self.lock:
                         job.check_cancelled()
+                        if job.no_output:
+                            self._dispose(job)
+                            return
                         job.state = "ready"
                         job.stage = "ready"
                         job.progress = 1

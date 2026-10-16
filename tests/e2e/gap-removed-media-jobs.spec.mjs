@@ -26,6 +26,11 @@ async function fixture(mode, run) {
       jobs.set(jobId, { ok: true, jobId, state: 'running', stage: mode === 'prepare' ? 'preparing' : 'rebuilding', progress: .35,
         bindingGeneration: payload.bindingGeneration, sourceMediaId: payload.sourceMediaId,
         admissionToken: payload.admissionToken });
+      if (mode.startsWith('timeline-')) jobs.get(jobId).videoTimeline = {
+        keyframeExpansionMs: mode === 'timeline-all' ? 1000 : Number(mode.slice('timeline-'.length)),
+        noGapsRemoved: mode === 'timeline-all',
+        intervals: [{ sourceStartMs: 0, sourceEndMs: 2000, outputStartMs: 0, outputEndMs: 2000 }],
+      };
       if (mode.startsWith('admission-')) {
         // The server has admitted real work, but JavaScript cannot parse its ID.
         if (mode === 'admission-body') { res.writeHead(202); res.write('{"ok":true,'); }
@@ -180,6 +185,58 @@ test('binding changed during processing stops old job before download', async ({
   });
 });
 
+test('completed result stays closable after task cleanup and does not block another export', async ({ page }) => {
+  await fixture('success', async (origin, state) => {
+    await install(page, origin, 'success');
+    await page.click('#download-gap-removed-video');
+    await expect(page.locator('#gap-video-job-close')).toBeVisible();
+    await expect(page.locator('#gap-video-job-status')).toContainText('已重组并保存');
+    await expect(page.locator('#gap-video-job-expansion')).toContainText('不可用');
+    await expect.poll(() => page.evaluate(() => window.__maweGapRemovedVideoTask)).toBeNull();
+    await expect(page.locator('#gap-video-job-stop')).toHaveCount(0);
+    await expect(page.locator('#download-gap-removed-video')).toBeEnabled();
+    await page.click('#download-gap-removed-video');
+    await expect.poll(() => state.jobs.size).toBe(2);
+    await expect(page.locator('#gap-video-job-close')).toBeVisible();
+    await expect(page.locator('.gap-video-job')).toHaveCount(1);
+    await page.click('#gap-video-job-close');
+    await expect(page.locator('.gap-video-job')).toHaveCount(0);
+  });
+});
+
+for (const expansion of [0, 2500]) {
+  test(`completed result reports known ${expansion}ms expansion and saves SRT only on a second gesture`, async ({ page }) => {
+    await fixture(`timeline-${expansion}`, async origin => {
+      await install(page, origin, `timeline-${expansion}`);
+      await page.evaluate(() => {
+        window.currentSubtitle = 'captured source subtitle';
+        window.MaweExportSrt.captureVideoSrt = () => {
+          const captured = window.currentSubtitle;
+          return () => captured;
+        };
+        window.savedSrts = [];
+        window.MaweExportTimeline = { downloadFile: async (content, name) => window.savedSrts.push({ content, name }) };
+      });
+      await page.click('#download-gap-removed-video');
+      await expect(page.locator('#gap-video-job-expansion')).toHaveText(`累积偏移时长：${(expansion / 1000).toFixed(3)} 秒`);
+      await expect(page.locator('#gap-video-job-save-srt')).toBeVisible();
+      expect(await page.evaluate(() => window.savedSrts.length)).toBe(0);
+      await page.evaluate(() => { window.currentSubtitle = 'another project'; });
+      await page.click('#gap-video-job-save-srt');
+      expect(await page.evaluate(() => window.savedSrts)).toEqual([{ content: 'captured source subtitle', name: 'result.srt' }]);
+    });
+  });
+}
+
+test('safe expansion that retains the whole source explicitly says no gaps were removed', async ({ page }) => {
+  await fixture('timeline-all', async origin => {
+    await install(page, origin, 'timeline-all');
+    await page.click('#download-gap-removed-video');
+    await expect(page.locator('#gap-video-job-close')).toBeVisible();
+    await expect(page.locator('.gap-video-job')).toContainText('未移除空隙，将保留完整媒体');
+  });
+});
+
 for (const mode of ['cancel-headers', 'cancel-body']) {
   test(`${mode} uses a bounded cleanup deadline without claiming stopped`, async ({ page }) => {
     await fixture(mode, async (origin, state) => {
@@ -222,7 +279,7 @@ test('rendered editor reconstructs real video and shows native commit boundary',
       }) });
       document.getElementById('download-gap-removed-video').click();
     });
-    await expect.poll(() => page.evaluate(() => window.realVideoCommitting), { timeout: 15000 }).toBe(true);
+    await expect.poll(() => page.evaluate(() => window.realVideoCommitting || window.realVideoHints.join(' | ')), { timeout: 15000 }).toBe(true);
     await expect(page.locator('#gap-video-job-stop')).toBeDisabled();
     await expect(page.locator('#gap-video-job-status')).toContainText('正在完成保存');
     expect(await page.evaluate(() => window.realVideoBytes)).toBeGreaterThan(0);
@@ -245,7 +302,79 @@ test('rendered editor reconstructs real video and shows native commit boundary',
     await page.screenshot({ path: testInfo.outputPath('real-editor-media-job-commit.png') });
     await page.evaluate(() => window.realVideoFinishCommit());
     await expect.poll(() => page.evaluate(() => window.realVideoHints.some(text => text.includes('已重组并保存')))).toBe(true);
+    await expect(page.locator('#gap-video-job-close')).toBeVisible();
+    await expect(page.locator('#gap-video-job-save-srt')).toBeVisible();
+    await expect(page.locator('#gap-video-job-expansion')).not.toContainText('不可用');
+    const resultSpacing = await page.evaluate(() => {
+      const actions = document.querySelector('.gap-video-job-actions').getBoundingClientRect();
+      const bar = document.querySelector('.gap-video-job progress').getBoundingClientRect();
+      return actions.top - bar.bottom;
+    });
+    expect(resultSpacing).toBeGreaterThanOrEqual(8);
+    await page.screenshot({ path: testInfo.outputPath('real-editor-media-job-result-dark.png') });
+    await page.evaluate(() => { document.documentElement.dataset.theme = 'light'; });
+    await page.screenshot({ path: testInfo.outputPath('real-editor-media-job-result-light.png') });
     expect(fs.readFileSync(video).equals(original)).toBe(true);
+  } finally {
+    await server?.stop();
+    cleanupTempDir(dir);
+  }
+});
+
+test('rendered editor real open GOP completes without output and releases its task', async ({ page }, testInfo) => {
+  const dir = makeTempDir('media-jobs-real-no-output');
+  let server;
+  try {
+    const video = join(dir, 'open-gop.mp4');
+    execFileSync('ffmpeg', ['-y', '-nostdin', '-v', 'error', '-f', 'lavfi', '-i', 'testsrc2=size=96x64:rate=25',
+      '-f', 'lavfi', '-i', 'sine=sample_rate=48000', '-t', '12', '-c:v', 'libx264', '-g', '100',
+      '-keyint_min', '100', '-sc_threshold', '0', '-bf', '1', '-x264-params', 'open-gop=1:b-pyramid=none',
+      '-c:a', 'aac', video], { timeout: 15000 });
+    const original = fs.readFileSync(video);
+    server = await startServer(generateProjectJson(join(dir, 'source.mosp')), video, await findFreePort());
+    let downloads = 0;
+    page.on('request', request => { if (/\/jobs\/[^/]+\/download(?:\?|$)/.test(request.url())) downloads++; });
+    await page.goto(server.url);
+    await page.waitForFunction(() => window.MaweProjectLoad && window.MaweExportSrt && MaweBoot.SERVER_CONFIG.canGapRemovedVideoExport);
+    await page.evaluate(() => {
+      window.realNoOutputWrites = 0; window.realNoOutputSrts = 0;
+      window.MaweExportSrt = { ...window.MaweExportSrt, gapRemovedExportContext: () => ({
+        intervals: [{ start: 1000, end: 2000 }, { start: 8500, end: 9500 }],
+      }) };
+      window.MaweExportTimeline = { ...window.MaweExportTimeline, downloadFile: async () => { window.realNoOutputSrts++; } };
+      window.showSaveFilePicker = async () => ({ name: 'result.mp4', createWritable: async () => {
+        window.realNoOutputWrites++;
+        return { write: async () => {}, close: async () => {}, abort: async () => {} };
+      } });
+    });
+    const admission = page.waitForResponse(response => response.request().method() === 'POST'
+      && /\/gap-removed-video\/jobs$/.test(response.url()) && response.status() === 202);
+    await page.evaluate(() => document.getElementById('download-gap-removed-video').click());
+    const { jobId } = await (await admission).json();
+    await expect(page.locator('.gap-video-job[data-no-output="true"]')).toBeVisible({ timeout: 15000 });
+    await expect(page.locator('#gap-video-job-status')).toContainText('未生成视频');
+    await expect(page.locator('#gap-video-job-close')).toBeVisible();
+    await expect(page.locator('#gap-video-job-save-srt')).toHaveCount(0);
+    await expect.poll(() => page.evaluate(() => window.__maweGapRemovedVideoTask)).toBeNull();
+    await expect(page.locator('#download-gap-removed-video')).toBeEnabled();
+    const snapshot = await page.evaluate(async id => {
+      const config = MaweBoot.SERVER_CONFIG;
+      return (await fetch(`${config.gapRemovedVideoJobsUrl}/${encodeURIComponent(id)}`, {
+        headers: { 'X-MAW-Request-Token': config.requestToken },
+      })).json();
+    }, jobId);
+    expect(snapshot).toMatchObject({ state: 'completed', stage: 'no-output', noOutput: true, cleanupComplete: true });
+    expect(snapshot.videoTimeline.actualRemovedMs).toBe(0);
+    expect(snapshot.videoTimeline.gaps.some(gap => gap.reasons.includes('h264_recovery'))).toBe(true);
+    expect(await page.evaluate(() => [window.realNoOutputWrites, window.realNoOutputSrts])).toEqual([0, 0]);
+    expect(downloads).toBe(0);
+    expect(fs.readFileSync(video).equals(original)).toBe(true);
+    fs.writeFileSync(testInfo.outputPath('real-no-output-snapshot.json'), JSON.stringify(snapshot, null, 2));
+    const onboardingSkip = page.getByRole('button', { name: '跳过 (ESC)', exact: true });
+    if (await onboardingSkip.isVisible()) await onboardingSkip.click();
+    await page.screenshot({ path: testInfo.outputPath('real-no-output-result.png') });
+    await page.click('#gap-video-job-close');
+    await expect(page.locator('.gap-video-job')).toHaveCount(0);
   } finally {
     await server?.stop();
     cleanupTempDir(dir);
