@@ -56,7 +56,8 @@ function install() {
 
 function syncControls() {
   if (typeof syncAssModeControl === 'function') syncAssModeControl();
-  if (MaweDom.exportSpeakerLabelsToggle) MaweDom.exportSpeakerLabelsToggle.checked = /** @type {{ exportSpeakerLabels?: boolean }} */ (install()).exportSpeakerLabels;
+  install();
+  if (MaweDom.exportSpeakerLabelsToggle) MaweDom.exportSpeakerLabelsToggle.checked = MaweSettings.EDITOR_SETTINGS.exportSpeakerLabels;
   MaweSplitMode.refreshMergeJoinModeHint();
   window.MaweStickerRoot?.syncControls?.();
 }

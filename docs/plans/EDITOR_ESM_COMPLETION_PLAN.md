@@ -11,7 +11,7 @@ status: validating
 > `web/shared/templates/` 不属于编辑器 bundle。终点 1–4 已全部达成：
 > 全部编辑器源码为普通 ESM（0 转换体/0 工厂/0 桥/0 保序表），
 > `web/editor-modules.json` 已删除；启动序列收敛为
-> `startupEditor` 五步具名操作。Node 729/729、typecheck 0 新增、
+> `startupEditor` 中的具名操作。Node 729/729、typecheck 0 新增、
 > 构建新鲜度与 ESM 静态门禁通过；Chromium 全量 825/847，剩余
 > 22 条需逐项核对（其中 `server-align` 5 条对应的源码、测试与
 > `origin/main` 完全相同）。Python 全量 2340 项中缩略图时长

@@ -11,6 +11,7 @@ import { MaweDom } from "../ui/editor-dom.js";
 import { MaweMultiSubtitleCore } from "../state/editor-multi-subtitle-core.js";
 import { MaweSelection } from "../cues/editor-selection.js";
 import { MaweSettings } from "../state/editor-settings.js";
+import { MaweProjectSettings } from "../state/editor-project-settings.js";
 import { MaweCuePanelState } from "../state/editor-cue-panel-state.js";
 import { MaweCuePanel } from "../cues/editor-cue-panel.js";
 import { MaweServerSave } from "../io/editor-server-save.js";
@@ -33,9 +34,10 @@ import { getMaweState } from '../state/editor-state.js';
 setSubtitlePreviewHandlers({ applyAss: applyAssSubtitlePreview, restoreCss: restoreCssSubtitlePreview });
 setProjectJsonBuilder(MaweJsonRepair.buildJson);
 // 启动序列：全部模块求值完成（所有门面已发布）后执行，
-// 由四个具名步骤表达——修复工程数据、发布窄桥接、渲染首帧、绑定启动控件。
+// 由具名步骤表达——修复工程数据、安装工程设置、发布窄桥接、渲染首帧、绑定启动控件。
 queueMicrotask(function startupEditor() {
   const repaired = repairProjectData();
+  MaweProjectSettings.syncControls();
   publishEditorBridge();
   renderFirstFrame();
   bindStartupControls();

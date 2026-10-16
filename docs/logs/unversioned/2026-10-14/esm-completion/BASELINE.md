@@ -1,9 +1,9 @@
 # 真 ESM 收口实施账本
 
-接续 [PR3 bootstrap 摘除计划](../../plans/PR3_BOOTSTRAP_PEEL_PLAN.md)
-与 [编辑器真 ESM 收口计划](../../plans/EDITOR_ESM_COMPLETION_PLAN.md)。
+接续 [PR3 bootstrap 摘除计划](../../../../plans/PR3_BOOTSTRAP_PEEL_PLAN.md)
+与 [编辑器真 ESM 收口计划](../../../../plans/EDITOR_ESM_COMPLETION_PLAN.md)。
 本账本只记本任务批次的证据；PR3 历史事实见
-[PR3-STATUS](../2026-10-13/esm-migration/PR3-STATUS.md)，不改写。
+[PR3-STATUS](../../2026-10-13/esm-migration/PR3-STATUS.md)，不改写。
 
 ## 第 0 步：基线（10-14）
 
