@@ -157,3 +157,118 @@ test('imported project cues get independent groups and IDs; failed loading and S
   await page.locator('#undo-btn').click();
   expect(await page.evaluate(() => MaweBoot.DATA.multi_subtitle.tracks[0].segments[0].sticker_group_id)).toBe(importedIds[1]);
 });
+
+test('overlay-only groups export once, hidden tracks stay hidden, and end-boundary sampling expires the sticker cache', async ({ page }) => {
+  await disableOnboarding(page);
+  await page.goto(server.url);
+  await expect(page.locator('#cues-container')).toBeVisible();
+  await expect.poll(() => page.evaluate(() => MaweCoreState.player.duration)).toBeGreaterThan(0);
+  const actual = await page.evaluate(media => {
+    const u = window.AsrEditorUtils;
+    const fixture = { schema: 'moy.asr.project.v1',
+      segments: [{ id: 'plain', start: 0, end: 500, text: 'plain' }],
+      overlay_track: { enabled: true, segments: [{ id: 'overlay', start: 1000, end: 3000, text: 'overlay',
+        sticker: { name: 'overlay', rel: 'cat.png', start_ms: 0, end_ms: 1, group_id: 'vendor-value' } }] },
+      multi_subtitle: { enabled: false, tracks: [{ id: 'ext', segments: [{ id: 'extension', start: 5000, end: 7000, text: 'hidden',
+        sticker: { name: 'hidden', rel: 'cat.png' } }] }] } };
+    u.normalizeMultiSubtitleProject(fixture);
+    MaweBoot.DATA.segments = fixture.segments;
+    MaweBoot.DATA.overlay_track = fixture.overlay_track;
+    MaweBoot.DATA.multi_subtitle = fixture.multi_subtitle;
+    MaweBoot.DATA.subtitle_groups = fixture.subtitle_groups;
+    // Server playback uses a relative URL; OTIO requires the original disk path.
+    MaweBoot.DATA.media = media;
+    MaweSettings.updateEditorSettings({ autoSaveProject: false });
+    MaweCuePanel.renderAll();
+    const ranges = timeline => {
+      if (!timeline) throw new Error(`Timeline rejected: ${document.querySelector('#hint-stack')?.textContent}; media=${MaweExportTimeline.mediaTargetUrl()}; duration=${MaweCoreState.player.duration}`);
+      return JSON.parse(timeline).tracks.children.flatMap(track => track.children || [])
+      .filter(clip => clip.OTIO_SCHEMA === 'Clip.2' && clip.metadata?.moy?.sticker_rel)
+      .map(clip => [clip.metadata.moy.start_ms, clip.metadata.moy.end_ms]);
+    };
+    const preview = [2999, 3000, 3001, 6000].map(t => MaweStickerOverlay.activeStickersAt(t).map(s => s.name));
+    const plan = u.buildProjectExportPlan(MaweBoot.DATA, { durationMs: 15000, timelineMode: 'source' });
+    MaweBoot.DATA.gap_remove = { gaps: [{ start: 1500, end: 2000, removed: true }] };
+    return { preview, standalone: ranges(MaweExportTimeline.buildStickerOtio()),
+      gapRemoved: ranges(MaweExportTimeline.buildGapRemovedStickerOtio()),
+      timeline: ranges(MaweExportTimeline.buildTimelineOtio({ includeStickers: true })),
+      resolve: JSON.parse(MaweExportTimeline.buildResolveJson()).stickers.map(s => ({
+        id: s.group_id, start: s.start_ms, end: s.end_ms,
+      })),
+      id: fixture.subtitle_groups.sticker[0].id,
+      plan: [...plan.stickers, ...plan.overlayStickers].map(s => [s.startMs, s.endMs]) };
+  }, join(dir, 'synthetic.wav'));
+  expect(actual.preview).toEqual([['overlay'], [], [], []]);
+  expect(actual.standalone).toEqual([[1000, 3000]]);
+  expect(actual.gapRemoved).toEqual([[1000, 2500]]);
+  expect(actual.timeline).toEqual([[1000, 3000]]);
+  expect(actual.resolve).toEqual([{ id: actual.id, start: 1000, end: 3000 }]);
+  expect(actual.plan).toEqual([[1000, 3000]]);
+  const response = page.waitForResponse(r => r.url().endsWith('/api/project') && r.request().method() === 'POST');
+  await page.keyboard.press('Control+s');
+  expect((await response).ok()).toBe(true);
+  const saved = JSON.parse(readFileSync(projectPath, 'utf8'));
+  expect(saved.subtitle_groups.sticker).toHaveLength(2);
+  expect(saved.multi_subtitle.enabled).toBe(false);
+  await page.reload();
+  await expect(page.locator('#cues-container')).toBeVisible();
+  expect(await page.evaluate(() => ({
+    active: [2999, 3000, 6000].map(t => MaweStickerOverlay.activeStickersAt(t).map(s => s.name)),
+    groups: MaweBoot.DATA.subtitle_groups.sticker.length,
+  }))).toEqual({ active: [['overlay'], [], []], groups: 2 });
+  await expect.poll(() => page.evaluate(() => MaweCoreState.player.duration)).toBeGreaterThan(0);
+  expect(await page.evaluate(() => {
+    MaweBoot.DATA.multi_subtitle.enabled = true;
+    MaweCuePanel.renderAll();
+    return MaweStickerOverlay.activeStickersAt(6000).map(s => s.name);
+  })).toEqual(['hidden']);
+  expect(await page.evaluate(media => {
+    MaweBoot.DATA.overlay_track.enabled = false;
+    MaweBoot.DATA.media = media;
+    MaweCuePanel.renderAll();
+    const ranges = timeline => JSON.parse(timeline).tracks.children.flatMap(track => track.children || [])
+      .filter(clip => clip.OTIO_SCHEMA === 'Clip.2' && clip.metadata?.moy?.sticker_rel)
+      .map(clip => [clip.metadata.moy.start_ms, clip.metadata.moy.end_ms]);
+    const plan = window.AsrEditorUtils.buildProjectExportPlan(MaweBoot.DATA, { durationMs: 15000, timelineMode: 'source' });
+    return { standalone: ranges(MaweExportTimeline.buildStickerOtio()),
+      gapRemoved: ranges(MaweExportTimeline.buildGapRemovedStickerOtio()),
+      timeline: ranges(MaweExportTimeline.buildTimelineOtio({ includeStickers: true })),
+      plan: [...plan.stickers, ...plan.overlayStickers].map(s => [s.startMs, s.endMs]) };
+  }, join(dir, 'synthetic.wav'))).toEqual({ standalone: [[5000, 7000]], gapRemoved: [[4500, 6500]],
+    timeline: [[5000, 7000]], plan: [[5000, 7000]] });
+});
+
+test('mixed groups retain overlay preview layout only while overlay members are active', async ({ page }) => {
+  await disableOnboarding(page);
+  await page.goto(server.url);
+  await expect(page.locator('#cues-container')).toBeVisible();
+  const states = await page.evaluate(() => {
+    const u = window.AsrEditorUtils;
+    const fixture = { segments: [{ id: 'main', start: 0, end: 1000, text: 'main', sticker: { name: 'cat', rel: 'cat.png' } }],
+      overlay_track: { enabled: true, segments: [{ id: 'overlay', start: 1000, end: 2000, text: 'overlay' }] } };
+    u.normalizeMultiSubtitleProject(fixture);
+    fixture.overlay_track.segments[0].sticker_group_id = fixture.segments[0].sticker_group_id;
+    Object.assign(MaweBoot.DATA, fixture);
+    MaweSettings.updateEditorSettings({ autoSaveProject: false, stickersEnabled: true });
+    MaweDom.stickerOverlayToggle.checked = true;
+    const sample = () => {
+      MaweStickerOverlay.stickerOverlayDataVersion += 1;
+      MaweStickerOverlay.renderStickerOverlay(500);
+      return MaweStickerOverlay.stickerOverlayContent.classList.contains('has-overlay-sticker');
+    };
+    const enabled = sample();
+    fixture.overlay_track.segments[0].disabled = true;
+    const disabled = sample();
+    fixture.overlay_track.segments[0].disabled = false;
+    fixture.overlay_track.enabled = false;
+    return [enabled, disabled, sample()];
+  });
+  expect(states).toEqual([true, false, false]);
+  await page.evaluate(() => {
+    MaweBoot.DATA.overlay_track.enabled = true;
+    MaweStickerOverlay.stickerOverlayDataVersion += 1;
+    MaweStickerOverlay.renderStickerOverlay(500);
+  });
+  mkdirSync('.artifacts/e-last-audit', { recursive: true });
+  await page.screenshot({ path: '.artifacts/e-last-audit/mixed-overlay.png', fullPage: true });
+});

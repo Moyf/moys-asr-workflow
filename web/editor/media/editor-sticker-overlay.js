@@ -112,7 +112,7 @@
   // 当前时刻是否有叠加轨表情包在显示（同名素材在主轨同时显示时也算——
   // 预览层展示的就是这张图，叠加归属用于决定预览内容区是否加高）。
   activeStickerHasOverlay = stickerIntervals.some((interval) => (
-    interval.track === 'overlay'
+    (interval.hasOverlay || interval.track === 'overlay')
     && time >= interval.start && time < interval.end
     && found.has(interval.key)
   ));

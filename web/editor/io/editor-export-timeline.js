@@ -28,8 +28,8 @@
   function buildResolveJson() {
     const groupStickers = MaweBoot.DATA.subtitle_groups
       ? window.AsrEditorUtils.subtitleGroupRanges(MaweBoot.DATA, 'sticker', { activeTracksOnly: true }).filter(r => r.enabled).map(r => ({
-        group_id: r.id, start_ms: r.start, end_ms: r.end,
         ...window.AsrEditorUtils.cloneJsonValue(r.source),
+        group_id: r.id, start_ms: r.start, end_ms: r.end,
         abs_path: MaweSelection.stickerAbsPath(r.source),
       })) : null;
     const segments = MaweExportSrt.cleanupMainSegments().map((seg, idx) => {
@@ -538,7 +538,7 @@
   function buildStickerOtio() {
     // 传空数组而非 null：函数体内用 removed.length 判断是否走去空隙映射分支，
     // 空数组 .length===0（falsy）正确退化为原始时间线，且避免 null.length 崩溃。
-    const collected = collectStickerOtioEntries([]);
+    const collected = collectStickerOtioEntries([], undefined, { allGroups: true });
     if (collected.error) {
       MaweHint.flashHint(collected.error, 'warning');
       return null;
@@ -560,11 +560,11 @@
   // 收集表情包条目；当传入 removed gaps 时，把每条表情包的时间映射到去空隙后的时间线，
   // 并跳过完全落在空隙内、映射后时长归零的条目。removed 为空数组时退化为原始时间线。
   // 表情包必须有真实磁盘路径（服务器 OTIO/OTIOZ 均按 sticker_rel 读盘）。
-  function collectStickerOtioEntries(removed, segments = MaweBoot.DATA.segments) {
+  function collectStickerOtioEntries(removed, segments = MaweBoot.DATA.segments, { allGroups = false } = {}) {
   if (MaweBoot.DATA.subtitle_groups) {
     const track = segments === MaweBoot.DATA.overlay_track?.segments ? 'overlay' : 'main';
     segments = window.AsrEditorUtils.subtitleGroupRanges(MaweBoot.DATA, 'sticker', { activeTracksOnly: true })
-      .filter(range => range.enabled && range.track === track)
+      .filter(range => range.enabled && (allGroups || range.track === track))
       .map(range => ({ start: range.start, end: range.end,
         sticker: { ...range.source, start: range.start, end: range.end } }));
   }
@@ -639,7 +639,7 @@
       MaweHint.flashHint('没有已移除的静音空隙；请先在「静音空隙」中扫描', 'invalid');
       return null;
     }
-    const collected = collectStickerOtioEntries(removed);
+    const collected = collectStickerOtioEntries(removed, undefined, { allGroups: true });
     if (collected.error) {
       MaweHint.flashHint(collected.error, 'warning');
       return null;
