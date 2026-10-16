@@ -299,6 +299,16 @@ for (const gesture of ['Shift+B', 'Control+Shift+B', 'Meta+Shift+B']) {
 }
 
 
+test('custom wrapping leaves a user-selected input focused after delayed autofocus', async ({ page }) => {
+  await seed(page);
+  await page.evaluate(async () => {
+    MaweTextProcess.openWrapCharsModal([0]);
+    document.getElementById('wrap-chars-right').focus();
+    await new Promise(resolve => setTimeout(resolve, 100));
+  });
+  await expect(page.locator('#wrap-chars-right')).toBeFocused();
+});
+
 test('expanded wrapping menu stays inside a short viewport and keeps custom wrapping reachable', async ({ page }) => {
   await seed(page);
   await page.setViewportSize({ width: 1280, height: 500 });
@@ -312,6 +322,8 @@ test('expanded wrapping menu stays inside a short viewport and keeps custom wrap
   await expect(page.locator('#wrap-chars-modal')).toHaveClass(/show/);
   await page.locator('#wrap-chars-left').fill('【');
   await page.locator('#wrap-chars-right').fill('】');
+  await expect(page.locator('#wrap-chars-left')).toHaveValue('【');
+  await expect(page.locator('#wrap-chars-right')).toHaveValue('】');
   const fields = await page.locator('.wrap-chars-field').evaluateAll(elements => elements.map(el => el.getBoundingClientRect().toJSON()));
   expect(fields[0].top).toBeCloseTo(fields[1].top, 0);
   expect(fields[1].left - fields[0].right).toBeGreaterThanOrEqual(8);
