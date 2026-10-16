@@ -773,7 +773,7 @@ def burn_ass_video(
         duration_ms = sum(end - start for start, end in intervals)
         # A video frame can straddle the end of an interval. Independent audio
         # concatenation and explicit output duration keep it from moving joins.
-        filter_args = ["-filter_complex_script", str(graph_path), "-map", "[burn_video]"]
+        filter_args = ["-/filter_complex", str(graph_path), "-map", "[burn_video]"]
         for audio, stream in enumerate(audio_streams):
             filter_args.extend(("-map", f"[burn_audio_{audio}]",
                                 f"-map_metadata:s:a:{audio}", f"0:s:a:{audio}",
@@ -817,12 +817,21 @@ def burn_ass_video(
                     f"字幕字体「{family}」缺少字形{glyph}，已中止烧录以避免输出方框；"
                     "请在字幕样式中更换可用字体。", details=glyph_tail)
         try:
-            completed = job.run_command(command, timeout=86_400, duration_ms=duration_ms,
-                                        cwd=output_path.parent, on_stderr=inspect_glyphs) if job else subprocess.run(
-                command, capture_output=True, text=True, encoding="utf-8", errors="replace",
-                timeout=86_400, check=False, cwd=output_path.parent,
-                startupinfo=startupinfo(), creationflags=creationflags(),
-            )
+            def run_encode(args):
+                return job.run_command(args, timeout=86_400, duration_ms=duration_ms,
+                                       cwd=output_path.parent, on_stderr=inspect_glyphs) if job else subprocess.run(
+                    args, capture_output=True, text=True, encoding="utf-8", errors="replace",
+                    timeout=86_400, check=False, cwd=output_path.parent,
+                    startupinfo=startupinfo(), creationflags=creationflags(),
+                )
+            completed = run_encode(command)
+            # FFmpeg 9 removed filter_complex_script. Older installations that
+            # predate option-file syntax may still use it; retry only a parser
+            # rejection, before any media was decoded or encoded.
+            if (completed.returncode != 0 and "-/filter_complex" in command
+                    and "Unrecognized option '/filter_complex'" in (completed.stderr or "")):
+                command[command.index("-/filter_complex")] = "-filter_complex_script"
+                completed = run_encode(command)
         except BurnVideoExportError:
             output_path.unlink(missing_ok=True)
             raise

@@ -217,21 +217,16 @@
   // 全部由其它可收缩控件吸收；隐藏时机用「工具栏内容溢出」判定——此时
   // 其余控件都已被压到最小仍放不下，才轮到标签让位。若按「标签被压缩」
   // 判定，flex 按比例分摊收缩会让标签在轻微缺空间时就过早消失。
-  // 重新显示按「当前内容宽 + 标签预留位」估算：预留位取标签宽上限
-  // （中文「字幕」~30px、英文 "Subtitles" ~65px，再加间距），宁可晚一点
-  // 重现，也不出现「一显示就又溢出」的抖动。
+  // 每次在标签可见时同步测量真实溢出，再决定是否隐藏；恢复不依赖隐藏后
+  // 至少等于容器宽的 scrollWidth，也不需要猜不同语言的标签预留宽度。
   const cueListToolbar = document.querySelector('.cues-container > .cue-list-toolbar');
   const cueListToolbarLabel = cueListToolbar?.querySelector(':scope > .layout-toolbar-label') || null;
-  const CUE_LIST_LABEL_RESERVE_PX = 96;
   function syncCueListToolbarLabel() {
     if (!cueListToolbar || !cueListToolbarLabel) return;
-    if (cueListToolbarLabel.hidden) {
-      if (cueListToolbar.scrollWidth + CUE_LIST_LABEL_RESERVE_PX <= cueListToolbar.clientWidth) {
-        cueListToolbarLabel.hidden = false;
-      }
-      return;
-    }
-    if (cueListToolbar.scrollWidth > cueListToolbar.clientWidth + 1) cueListToolbarLabel.hidden = true;
+    // Measure the real layout with the label present. hidden would otherwise
+    // keep scrollWidth >= clientWidth and prevent restoration after widening.
+    cueListToolbarLabel.hidden = false;
+    cueListToolbarLabel.hidden = cueListToolbar.scrollWidth > cueListToolbar.clientWidth + 1;
   }
   syncCueListToolbarLabel();
   if (cueListToolbar && typeof ResizeObserver === 'function') {

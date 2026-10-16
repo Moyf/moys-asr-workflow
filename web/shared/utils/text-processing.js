@@ -692,6 +692,24 @@ export function createUtilsModule(dependencies) {
     return items;
   }
 
+  // Split against the whole remaining phrase so pairs spanning three or more
+  // rows remain visible at every cut. Callers supply rows from one source only.
+  function completeMassTextRows(rows, rule) {
+    if (!rule || rule === 'none' || rows.length < 2) return rows;
+    let remaining = rows.map(row => String(row.text || '')).join('');
+    for (let index = 0; index < rows.length - 1; index += 1) {
+      const current = rows[index];
+      remaining = remaining.slice(current.text.length);
+      const completed = completeSplitMassPairs(current.text, remaining, rule);
+      current.text = completed.left;
+      appendMassMarkersToLastItem(current.items, completed.leftAppend);
+      rows[index + 1].text = completed.rightPrepend + rows[index + 1].text;
+      prependMassMarkersToFirstItem(rows[index + 1].items, completed.rightPrepend);
+      remaining = completed.right;
+    }
+    return rows;
+  }
+
 
   // 合并折叠：前段以「已识别对的闭符号」结尾、后段以同符号的开符号开头时，
   // 优先整体折叠——前段尾闭与后段首开一并移除，两段内容合成一个跨 junction
@@ -780,9 +798,11 @@ export function createUtilsModule(dependencies) {
     const items = [];
     source.forEach((segment, index) => {
       const owned = Array.isArray(segment?.items) ? segment.items : [];
+      const ownedText = owned.map(item => String(item?.text || '')).join('');
       // 先从尾部裁掉折叠掉的闭符号，再从头部裁掉开符号；被裁空的 item 一并
       // 移除（纯符号 item 没有可保留的时间语义）。
-      let endCut = trailingSlices[index];
+      const removedEnd = texts[index].slice(texts[index].length - trailingSlices[index]);
+      let endCut = removedEnd && ownedText.endsWith(removedEnd) ? removedEnd.length : 0;
       const trimmedEnd = [];
       for (let cursor = owned.length - 1; cursor >= 0; cursor -= 1) {
         const itemText = String(owned[cursor]?.text || '');
@@ -798,7 +818,8 @@ export function createUtilsModule(dependencies) {
         }
         trimmedEnd.unshift(owned[cursor]);
       }
-      let startCut = leadingSlices[index];
+      const removedStart = texts[index].slice(0, leadingSlices[index]);
+      let startCut = removedStart && ownedText.startsWith(removedStart) ? removedStart.length : 0;
       for (const item of trimmedEnd) {
         const itemText = String(item?.text || '');
         if (startCut > 0) {
@@ -874,6 +895,7 @@ export function createUtilsModule(dependencies) {
     parseSentenceShakeMarkers,
     stripSentenceShakeMarkers,
     completeSplitMassPairs,
+    completeMassTextRows,
     appendMassMarkersToLastItem,
     prependMassMarkersToFirstItem,
     foldMassPairJunction,

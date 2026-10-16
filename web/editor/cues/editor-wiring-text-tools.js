@@ -503,6 +503,7 @@ MaweDom.timedTextEditApply?.addEventListener('click', () => {
   const nextSegments = window.AsrEditorUtils.applyTimedTextEdit(
     draft.sourceSegments,
     effectiveTexts,
+    { rule: MaweSettings.EDITOR_SETTINGS.assSpecialSymbolRule },
   );
   if (!nextSegments) {
     MaweHint.flashHint('无法应用文本修改：字幕行结构发生了变化', 'warning');

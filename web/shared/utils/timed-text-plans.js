@@ -1,7 +1,7 @@
 // timed-text-plans: private helpers; dependencies are injected by editor-utils.js.
 export function createUtilsModule(dependencies) {
   'use strict';
-  const { appendMassMarkersToLastItem, cloneJsonValue, completeSplitMassPairs, countTextUnits, hasTimedTextContent, isTimedTextNeutralToken, prependMassMarkersToFirstItem, sameTimedTextTokens, timedTextItemLayout, timedTextItemsOrdered, timedTextItemsPartition, timedTextItemsSlice, timedTextNeutralInsertionItems, timedTextTokens, uniqueStableSegmentId } = dependencies;
+  const { cloneJsonValue, completeMassTextRows, countTextUnits, hasTimedTextContent, isTimedTextNeutralToken, sameTimedTextTokens, timedTextItemLayout, timedTextItemsOrdered, timedTextItemsPartition, timedTextItemsSlice, timedTextNeutralInsertionItems, timedTextTokens, uniqueStableSegmentId } = dependencies;
 
 
   function timedTextStructureRequested(segments, draftTexts) {
@@ -232,19 +232,17 @@ export function createUtilsModule(dependencies) {
   // helper 补齐（与 B 拆分路径同规则）；有 items 的行把符号挂到边界 item
   // （与 split 路径共用 append/prepend helper），无 items 的行只补文本层。
   // 补齐发生在行-原文匹配之后，只改输出行文本，不影响时间范围映射。
-  function completeStructureRowMassPairs(outputSegments, rule) {
+  function completeStructureRowMassPairs(outputSegments, rule, outputMeta) {
     const rows = Array.isArray(outputSegments) ? outputSegments : [];
     if (!rule || rule === 'none') return rows;
-    for (let index = 1; index < rows.length; index += 1) {
-      const previous = rows[index - 1];
-      const next = rows[index];
-      if (typeof previous?.text !== 'string' || typeof next?.text !== 'string') continue;
-      const completed = completeSplitMassPairs(previous.text, next.text, rule);
-      if (!completed.leftAppend && !completed.rightPrepend) continue;
-      previous.text = completed.left;
-      next.text = completed.right;
-      appendMassMarkersToLastItem(previous.items, completed.leftAppend);
-      prependMassMarkersToFirstItem(next.items, completed.rightPrepend);
+    for (let start = 0; start < rows.length;) {
+      const sources = outputMeta[start]?.sourceIndexes;
+      if (sources?.length !== 1) { start += 1; continue; }
+      let end = start + 1;
+      while (end < rows.length && outputMeta[end]?.sourceIndexes.length === 1
+        && outputMeta[end].sourceIndexes[0] === sources[0]) end += 1;
+      completeMassTextRows(rows.slice(start, end), rule);
+      start = end;
     }
     return rows;
   }
@@ -456,7 +454,7 @@ export function createUtilsModule(dependencies) {
 
     // 结构拆分出口的 MASS 补齐（账本 #21）：先完成行-原文匹配与时间映射，
     // 再对相邻输出行截断的 MASS 对补齐（预览与最终应用同一计划）。
-    completeStructureRowMassPairs(outputSegments, options.rule);
+    completeStructureRowMassPairs(outputSegments, options.rule, outputMeta);
 
     const usedSegments = [...source];
     outputMeta.forEach((meta, outputIndex) => {
