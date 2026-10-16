@@ -82,20 +82,33 @@ class MediaJob:
                     "cleanupError": self.cleanup_error, "cleanupErrorDetails": self.cleanup_error_details,
                     "cleanupComplete": self.disposed}
 
-    def run_command(self, command, *, timeout=120, duration_ms=None):
+    def run_command(self, command, *, timeout=120, duration_ms=None, cwd=None, on_stderr=None):
         """Drain both pipes while observing cancellation and FFmpeg progress."""
         self.check_cancelled()
+        if on_stderr is not None and not callable(on_stderr):
+            raise TypeError("on_stderr must be callable")
         process = popen_process_tree(command, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
-                                   text=True, encoding="utf-8", errors="replace",
+                                   text=True, encoding="utf-8", errors="replace", cwd=cwd,
                                    **process_group_kwargs())
         with self.manager.lock:
             self.process = process
         stdout, stderr = [], []
         output_overflow = threading.Event()
+        observer_errors = []
+        observer_failed = threading.Event()
 
         def drain(pipe, target, progress=False):
             retained_bytes = 0
             while line := pipe.readline(MEDIA_JOB_PIPE_READ_CHARS):
+                # Inspect every bounded chunk before the diagnostic tail evicts
+                # it. Observer failures belong to the controlling thread: keep
+                # draining until that thread terminates and reaps the process.
+                if not progress and on_stderr is not None and not observer_failed.is_set():
+                    try:
+                        on_stderr(line)
+                    except Exception as error:
+                        observer_errors.append(error)
+                        observer_failed.set()
                 # readline(size) bounds even a single line without a newline.
                 # FFmpeg progress is consumed live rather than retained for hours.
                 if progress and duration_ms and line.startswith("out_time_us="):
@@ -129,6 +142,8 @@ class MediaJob:
         try:
             while process.poll() is None:
                 self.check_cancelled()
+                if observer_failed.is_set():
+                    raise observer_errors[0]
                 if output_overflow.is_set():
                     raise RuntimeError("媒体进程标准输出超过安全大小上限")
                 if time.monotonic() >= deadline:
@@ -155,6 +170,8 @@ class MediaJob:
                 self.process = None
             if any(reader.is_alive() for reader in readers):
                 raise RuntimeError("无法关闭媒体进程输出")
+        if observer_failed.is_set():
+            raise observer_errors[0]
         if output_overflow.is_set():
             # FFprobe JSON is never silently truncated and then parsed.
             raise RuntimeError("媒体进程标准输出超过安全大小上限")
@@ -224,7 +241,7 @@ class MediaJobManager:
             if self.active and self.active.cleanup_error:
                 self._dispose(self.active)
             if not self.slot.acquire(blocking=False):
-                raise MediaJobBusy("另一个媒体重组任务正在进行，请完成或停止后再试")
+                raise MediaJobBusy("另一个媒体导出任务正在进行，请完成或停止后再试")
             try:
                 job = MediaJob(self, source, binding, intervals, output_extension=output_extension)
             except BaseException:
