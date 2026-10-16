@@ -62,6 +62,15 @@ class RecognitionPresetTests(unittest.TestCase):
         self.assertEqual({key: value for key, value in restored.items() if key != "promptContext"},
                          {key: value for key, value in self.options.items() if key != "promptContext"})
 
+    def test_legacy_preset_without_thumbnail_switch_loads_with_default_off(self):
+        path = self.library / "pre-thumbnails.json"
+        legacy_options = dict(self.options)
+        legacy_options.pop("generateThumbnails")
+        path.write_text(json.dumps({"schema": SCHEMA, "options": legacy_options}), encoding="utf-8")
+        restored = read_preset(path)
+        self.assertIs(restored["generateThumbnails"], False,
+            "两档缓存上线前保存的识别预设按默认关闭迁移，而不是整份拒绝加载")
+
     def test_legacy_per_provider_contexts_merge_into_shared_prompt_context(self):
         path = self.library / "merged.json"
         legacy_options = dict(self.options)

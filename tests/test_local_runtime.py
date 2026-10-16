@@ -43,6 +43,10 @@ class LocalRuntimeTests(unittest.TestCase):
                 package_root / "ffmpeg.py",
             )
             shutil.copyfile(
+                Path(__file__).resolve().parents[1] / "maw" / "gui_platform.py",
+                package_root / "gui_platform.py",
+            )
+            shutil.copyfile(
                 Path(__file__).resolve().parents[1] / "maw" / "language.py",
                 package_root / "language.py",
             )

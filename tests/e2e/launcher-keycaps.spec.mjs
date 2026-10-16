@@ -48,8 +48,9 @@ test('section badges survive language changes and follow light/dark themes with 
         expect(geometry.textGap).toBeGreaterThanOrEqual(6);
         expect(geometry.marginBottom).toBeGreaterThanOrEqual(8);
         if (geometry.nextGap !== null) expect(geometry.nextGap, id).toBeGreaterThanOrEqual(8);
-        expect(geometry.fill).toBe(theme === 'dark' ? 'rgb(108, 165, 232)' : 'rgb(56, 116, 201)');
-        expect(geometry.numberFill).toBe('rgb(255, 255, 255)');
+        // 改版品牌色：暗色黑橙（#f09a50，深色数字）、亮色红白（#c84545，与编辑器红一致，白色数字）。
+        expect(geometry.fill).toBe(theme === 'dark' ? 'rgb(240, 154, 80)' : 'rgb(200, 69, 69)');
+        expect(geometry.numberFill).toBe(theme === 'dark' ? 'rgb(28, 15, 5)' : 'rgb(255, 255, 255)');
         expect(geometry.hidden).toBe('true');
         measurements.push({theme, language, id, ...geometry});
         await heading.locator('..').screenshot({path:testInfo.outputPath(`section-${index + 1}-${language}-${theme}.png`)});

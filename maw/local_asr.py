@@ -34,6 +34,7 @@ from generate_subtitle_qwen_api import (
 )
 from maw.ffmpeg import resolve_ffmpeg_tool
 from maw.alignment_models import FIRERED_ASR2_CTC_MODEL_ID
+from maw.gui_platform import creationflags, startupinfo
 from maw.hub_download import prepare_hub_snapshot
 from maw.local_debug import debug_json_value
 from maw.punctuation import PunctuationError, punctuate_timed_tokens
@@ -905,7 +906,7 @@ class QwenAsrEngine:
             "-ac", "1",
             "-y", str(target_path),
         ]
-        subprocess.run(command, check=True, capture_output=True)
+        subprocess.run(command, check=True, capture_output=True, startupinfo=startupinfo(), creationflags=creationflags())
 
     @staticmethod
     def _shift_chunk_result(

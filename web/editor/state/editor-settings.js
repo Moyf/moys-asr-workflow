@@ -229,8 +229,8 @@
   // 界面主题：dark（默认）/ light / system。写入 <html data-theme>，模板 <head> 内联脚本负责首帧预应用。
   theme: 'dark',
   toastPosition: 'top-center',
-  // 界面强调色：blue（默认）/ red / orange / custom；自定义颜色单独保存为六位十六进制值。
-  accentColor: 'blue',
+  // 界面强调色：brand（默认，暗色橙 / 亮色红，与 Launcher 一致）/ blue / red / orange / custom；自定义颜色单独保存为六位十六进制值。
+  accentColor: 'brand',
   accentColorCustom: '#6ca5e8',
   // 波形形状来源：reapeaks（默认，有 .ReaPeaks 缓存时用其最细 wave 层，缺数据自动回退自研）/ self（自研 1000Hz 重采样缓存）。
   waveShapeSource: 'reapeaks',

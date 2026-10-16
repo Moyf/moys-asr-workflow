@@ -28,7 +28,7 @@ test('waveform ASS shortcuts mirror project settings and open the style library 
   await expect(camera).toHaveAttribute('aria-expanded', 'true');
   await page.keyboard.press('Escape');
   await expect(page.locator('#ass-frame-window')).toHaveAttribute('aria-hidden', 'true');
-  await expect(camera).toBeFocused();
+  await expect(camera).not.toBeFocused();
   await expect(camera).toHaveAttribute('aria-expanded', 'false');
   await palette.click();
   await expect(page.locator('#ass-style-window')).toHaveAttribute('aria-hidden', 'false');
@@ -80,7 +80,7 @@ for (const tool of ['select', 'razor']) {
     writeFileSync(testInfo.outputPath('camera-selected-escape.json'), JSON.stringify({ before, after }, null, 2));
     await page.screenshot({ path: testInfo.outputPath('camera-selected-escape.png') });
     await expect(page.locator('#ass-frame-window')).toHaveAttribute('aria-hidden', 'true');
-    await expect(camera).toBeFocused();
+    await expect(camera).not.toBeFocused();
     await expect(camera).toHaveAttribute('aria-expanded', 'false');
     expect(after.selection).toEqual(selection);
     expect(after.tool).toBe(tool);
@@ -451,7 +451,7 @@ test('waveform gap labels translate on language changes and newly rendered rows'
   await expect(labels).toHaveText(['空隙', '空隙（未激活）']);
 });
 
-test('region index opens each local panel and Esc returns focus to its visible gear', async ({ page }, testInfo) => {
+test('region index opens each local panel and Esc releases its controls and gear focus', async ({ page }, testInfo) => {
   const before = await page.evaluate(() => JSON.stringify(MaweBoot.DATA));
   await settings(page);
   await expect(page.locator('#settings-regions-introduction')).toHaveText('波形区用于查看音频和调整时间，编辑区用于修改字幕，字幕列表用于浏览、筛选与选择字幕。');
@@ -469,7 +469,7 @@ test('region index opens each local panel and Esc returns focus to its visible g
     expect(await page.locator(panel).evaluate(el => el.contains(document.activeElement))).toBe(true);
     await page.keyboard.press('Escape');
     await expect(page.locator(panel)).toBeHidden();
-    await expect(page.locator(gear)).toBeFocused();
+    await expect(page.locator(gear)).not.toBeFocused();
   }
   expect(await page.evaluate(() => JSON.stringify(MaweBoot.DATA))).toBe(before);
 });
@@ -526,7 +526,7 @@ test('bilingual settings are grouped and the index never enables the mode implic
   expect(await page.evaluate(() => MaweSettings.EDITOR_SETTINGS.crossTrackSnap)).toBe(false);
   await page.locator('#project-settings-panel').screenshot({ path: testInfo.outputPath('bilingual-settings.png') });
   await page.keyboard.press('Escape');
-  await expect(page.locator('#project-settings-toggle')).toBeFocused();
+  await expect(page.locator('#project-settings-toggle')).not.toBeFocused();
 });
 
 test('both OTIO menus route to one persistent configuration and never export on navigation', async ({ page }, testInfo) => {

@@ -29,11 +29,15 @@ export function createWaveformModule(dependencies) {
         this.thumbnailController.setPlayhead(this.currentTimeMs());
         this.thumbnailController.setPlaying(!this.player?.paused);
       };
-      const toggle = /** @type {HTMLInputElement | null} */ (document.getElementById('waveform-show-thumbnails'));
-      if (toggle) {
-        toggle.checked = this.thumbnailController.enabled;
-        toggle.disabled = !window.MaweBoot?.SERVER_CONFIG?.thumbnailBinding;
-        toggle.addEventListener('change', () => this.thumbnailController.setEnabled(toggle.checked));
+      const modeSelect = /** @type {HTMLSelectElement | null} */ (document.getElementById('waveform-thumbnail-mode'));
+      if (modeSelect) {
+        modeSelect.value = this.thumbnailController.mode;
+        modeSelect.addEventListener('change', () => this.thumbnailController.setMode(modeSelect.value));
+      }
+      const decodeToggle = /** @type {HTMLInputElement | null} */ (document.getElementById('waveform-thumbnail-decode'));
+      if (decodeToggle) {
+        decodeToggle.checked = this.thumbnailController.decodeEnabled;
+        decodeToggle.addEventListener('change', () => this.thumbnailController.setDecodeEnabled(decodeToggle.checked));
       }
       document.addEventListener('mawe:languagechange', () => this.updateThumbnailStatus());
       window.addEventListener('online', () => this.thumbnailController.retry());
@@ -63,18 +67,28 @@ export function createWaveformModule(dependencies) {
     }
     /** @this {import('./waveform-types.js').WaveformInstance} */
     updateThumbnailStatus() {
-      const toggle = /** @type {HTMLInputElement | null} */ (document.getElementById('waveform-show-thumbnails'));
+      const modeSelect = /** @type {HTMLSelectElement | null} */ (document.getElementById('waveform-thumbnail-mode'));
+      const decodeToggle = /** @type {HTMLInputElement | null} */ (document.getElementById('waveform-thumbnail-decode'));
       const status = document.getElementById('waveform-thumbnail-status');
       const hasBinding = !!window.MaweBoot?.SERVER_CONFIG?.thumbnailBinding;
+      const mode = this.thumbnailController.mode;
       const text = !hasBinding
         ? localizedWaveformMessage('从本机 Server 加载视频后可用', 'Available after loading video through the local Server')
-        : !this.thumbnailController.enabled
+        : mode === 'hidden'
           ? localizedWaveformMessage('视频画面已隐藏', 'Video pictures hidden')
-          : this.thumbnailStatusText();
-      if (toggle) {
-        toggle.checked = this.thumbnailController.enabled;
-        toggle.disabled = !hasBinding || ['unavailable', 'error'].includes(this.thumbnailController.state);
-        toggle.parentElement.title = text;
+          : mode === 'marks'
+            ? localizedWaveformMessage('显示关键帧标记', 'Showing keyframe marks')
+            : !this.thumbnailController.decodeEnabled
+              ? localizedWaveformMessage('仅显示缓存画面，不实时补帧', 'Cached pictures only; on-demand decoding off')
+              : this.thumbnailStatusText();
+      if (modeSelect) {
+        modeSelect.value = mode;
+        modeSelect.disabled = !hasBinding;
+        if (modeSelect.parentElement) modeSelect.parentElement.title = text;
+      }
+      if (decodeToggle) {
+        decodeToggle.checked = this.thumbnailController.decodeEnabled;
+        decodeToggle.disabled = !hasBinding || mode !== 'strip';
       }
       if (status && status.textContent !== text) status.textContent = text;
       for (const row of this.renderedRows) {
@@ -146,7 +160,7 @@ export function createWaveformModule(dependencies) {
       const dpr = Math.min(2, window.devicePixelRatio || 1);
       const start = Number(row.dataset.startMs), end = Number(row.dataset.endMs);
       const interval = this.thumbnailController.interval;
-      const renderKey = `${width}|${dpr}|${start}|${end}|${interval}`;
+      const renderKey = `${width}|${dpr}|${start}|${end}|${interval}|${this.thumbnailController.mode}`;
       if (!force && row._thumbnailRenderKey === renderKey) return;
       row._thumbnailRenderKey = renderKey;
       canvas.width = Math.round(width * dpr); canvas.height = height * dpr;
@@ -155,6 +169,38 @@ export function createWaveformModule(dependencies) {
       ctx.fillStyle = this._getWaveColors().rowBg; ctx.fillRect(0, 0, width, height);
       const pxPerMs = width / Math.max(1, end - start);
       const tileWidth = height * 160 / 90;
+      if (this.thumbnailController.mode === 'marks') {
+        // Keyframe marks: one tile per landmark position; gaps stay blank.
+        const markers = this.thumbnailController.keyframesInRange(start, end);
+        if (markers.length) {
+          for (const marker of markers) {
+            const left = Math.max(0, (marker.requested_ms - start) * pxPerMs);
+            if (left >= width) continue;
+            const [sx, sy, sw, sh] = marker.crop;
+            const visibleLeft = Math.max(0, left);
+            ctx.save(); ctx.beginPath(); ctx.rect(visibleLeft, 0, Math.min(tileWidth, width - visibleLeft), height); ctx.clip();
+            ctx.drawImage(marker.image, sx, sy, sw, sh, left, 0, tileWidth, height);
+            ctx.restore();
+          }
+        } else {
+          // Older caches without the landmark tier still show held grid cells.
+          const drawn = new Set();
+          for (let time = Math.floor(start / interval) * interval; time < end; time += interval) {
+            const picture = this.thumbnailController.picture(time, interval * 2);
+            if (!picture || picture.actual == null || drawn.has(picture.actual)) continue;
+            const left = (picture.actual - start) * pxPerMs;
+            if (left >= width) continue;
+            drawn.add(picture.actual);
+            const [sx, sy, sw, sh] = picture.crop;
+            const visibleLeft = Math.max(0, left);
+            ctx.save(); ctx.beginPath(); ctx.rect(visibleLeft, 0, Math.min(tileWidth, width - visibleLeft), height); ctx.clip();
+            ctx.drawImage(picture.image, sx, sy, sw, sh, left, 0, tileWidth, height);
+            ctx.restore();
+          }
+        }
+        canvas.title = this.thumbnailStatusText();
+        return;
+      }
       for (let time = Math.floor(start / interval) * interval; time < end; time += interval) {
         const left = Math.max(0, (time - start) * pxPerMs);
         const right = Math.min(width, (time + interval - start) * pxPerMs);

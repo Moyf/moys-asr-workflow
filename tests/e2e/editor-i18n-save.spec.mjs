@@ -159,6 +159,7 @@ test('English locale covers the editor shell and recent-project setting stays fi
   await expect(page.locator('[data-editor-theme="light"]')).toHaveText('Light');
   await expect(page.locator('[data-editor-theme="dark"]')).toHaveText('Dark');
   await expect(page.locator('[data-editor-theme="system"]')).toHaveText('Auto');
+  await expect(page.locator('[data-editor-accent="brand"]')).toHaveAttribute('aria-label', 'Brand (default)');
   await expect(page.locator('[data-editor-accent="blue"]')).toHaveText('Blue');
   await expect(page.locator('[data-editor-accent="red"]')).toHaveText('Red');
   await expect(page.locator('[data-editor-accent="orange"]')).toHaveText('Orange');
@@ -235,17 +236,30 @@ test('Interface settings applies preset and custom accent colors', async ({ page
   await page.goto(server.url);
   await page.locator('#editor-settings-toggle').click();
 
-  await expect(page.locator('html')).toHaveAttribute('data-accent', 'blue');
-  const blueBackground = await page.locator('[data-editor-accent="blue"]')
+  // 默认强调色是品牌色：暗色橙，与 Launcher 一致。
+  await expect(page.locator('html')).toHaveAttribute('data-accent', 'brand');
+  await expect(page.locator('html')).toHaveCSS('--accent', '#f09a50');
+  await expect(page.locator('[data-editor-accent="brand"]')).toHaveCSS('background-color', 'rgb(240, 154, 80)');
+  const brandBackground = await page.locator('[data-editor-accent="brand"]')
     .evaluate((element) => getComputedStyle(element).backgroundColor);
+  // 选中项的圆点与底色同色时要有描边环，不能融成一片。
+  const brandSwatchRing = await page.locator('[data-editor-accent="brand"] .editor-settings-accent-swatch')
+    .evaluate((element) => getComputedStyle(element).boxShadow);
+  expect(brandSwatchRing).not.toBe('none');
+
+  // 每个预设选中时，按钮底色就是该强调色（等背景过渡结束再读）。
+  await page.locator('[data-editor-accent="blue"]').click();
+  await page.mouse.move(0, 0); // 避开 :hover（hover 底色是 --accent-hover）
+  await expect(page.locator('html')).toHaveCSS('--accent', '#6ca5e8');
+  await expect(page.locator('[data-editor-accent="blue"]')).toHaveCSS('background-color', 'rgb(108, 165, 232)');
+  expect(brandBackground).toBe('rgb(240, 154, 80)');
 
   await page.locator('[data-editor-accent="red"]').click();
   await expect(page.locator('html')).toHaveAttribute('data-accent', 'red');
   await expect(page.locator('[data-editor-accent="red"]')).toHaveAttribute('aria-pressed', 'true');
+  await page.mouse.move(0, 0);
   await expect(page.locator('html')).toHaveCSS('--accent', '#c25656');
-  const redBackground = await page.locator('[data-editor-accent="red"]')
-    .evaluate((element) => getComputedStyle(element).backgroundColor);
-  expect(redBackground).not.toBe(blueBackground);
+  await expect(page.locator('[data-editor-accent="red"]')).toHaveCSS('background-color', 'rgb(194, 86, 86)');
 
   await page.locator('[data-editor-theme="light"]').click();
   await page.locator('[data-editor-accent="orange"]').click();

@@ -47,6 +47,13 @@
     return Boolean(target?.closest?.('button, input, select, textarea, a'));
   }
 
+  // Closing a tool must not leave focus in hidden controls or on its trigger:
+  // Space belongs to playback again. Do not steal focus from another open UI.
+  function releaseClosedUiFocus(surface, trigger = null) {
+    const active = document.activeElement;
+    if (surface?.contains(active) || trigger?.contains(active)) active?.blur?.();
+  }
+
   function subtitleTemporalOverlap(left, right) {
     if (!left || !right) return 0;
     return Math.max(0, Math.min(Number(left.end), Number(right.end))
@@ -128,6 +135,7 @@ MaweSelection.lastClickedIdx = nextIndex;
     isTextEditingTarget,
     isPlaybackKeyboardTarget,
     isNativeKeyboardControl,
+    releaseClosedUiFocus,
     subtitleTemporalOverlap,
     nearestSubtitleIndex,
     boundSegmentIndex,

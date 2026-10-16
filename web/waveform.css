@@ -1380,4 +1380,5 @@
 .waveform-filmstrip { display: block; position: absolute; top: 0; left: 1px; width: calc(100% - 2px); height: 48px; cursor: crosshair; border-radius: var(--radius-sm); }
 
 #waveform-thumbnail-setting { margin: 8px 0; flex-wrap: wrap; }
+#waveform-thumbnail-decode-setting { margin: 8px 0; padding-left: 22px; }
 .waveform-thumbnail-status { flex: 0 0 100%; margin-top: 8px; color: var(--text-muted); font-size: 11px; line-height: 1.4; white-space: normal; }

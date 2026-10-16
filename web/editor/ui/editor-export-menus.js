@@ -152,7 +152,7 @@
         positioner();
         requestAnimationFrame(positioner);
       }
-      if (!open && restoreFocus) btn.focus();
+      if (!open && restoreFocus) MaweKeyboardTargets.releaseClosedUiFocus(menu, btn);
     };
     btn.addEventListener('click', (e) => {
       e.stopPropagation();
@@ -267,7 +267,7 @@
       if (e.key === 'Enter' || e.key === ' ') {
         e.preventDefault();
         item.click();
-        if (!item.classList.contains('dropdown-submenu-toggle')) btn.focus();
+        if (!item.classList.contains('dropdown-submenu-toggle')) MaweKeyboardTargets.releaseClosedUiFocus(menu, btn);
       }
     });
     document.addEventListener('click', (e) => {

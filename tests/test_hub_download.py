@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import os
 import sys
 import tempfile
 import unittest
@@ -29,45 +28,58 @@ class ModelScopeRepoIdTests(unittest.TestCase):
 
 
 class PrepareHubSnapshotTests(unittest.TestCase):
+    def setUp(self) -> None:
+        cache = tempfile.TemporaryDirectory()
+        self.addCleanup(cache.cleanup)
+        self.hf_cache = Path(cache.name) / "huggingface"
+        self.ms_cache = Path(cache.name) / "modelscope"
+        # Keep actual snapshot discovery, but never inspect developer caches.
+        self.enterContext(mock.patch("maw.local_models._huggingface_cache_roots", return_value=[self.hf_cache]))
+        self.enterContext(mock.patch("maw.local_models._modelscope_cache_roots", return_value=[self.ms_cache]))
+
     def test_rejects_values_that_are_not_repo_ids(self) -> None:
         with self.assertRaises(ValueError):
             prepare_hub_snapshot("large-v3")
 
     def test_existing_huggingface_cache_is_reused_without_downloading(self) -> None:
-        with tempfile.TemporaryDirectory() as temp_dir:
-            cache = Path(temp_dir)
-            snapshot = cache / "models--Qwen--Qwen3-ASR-0.6B" / "snapshots" / "main"
-            snapshot.mkdir(parents=True)
-            (snapshot / "model.safetensors").write_bytes(b"weights")
-
-            with mock.patch.dict(os.environ, {"HF_HUB_CACHE": str(cache)}):
-                with mock.patch(
-                    "maw.hub_download._huggingface_snapshot_download"
-                ) as hf_download:
-                    result = prepare_hub_snapshot("Qwen/Qwen3-ASR-0.6B")
+        snapshot = self.hf_cache / "models--Qwen--Qwen3-ASR-0.6B" / "snapshots" / "main"
+        snapshot.mkdir(parents=True)
+        (snapshot / "model.safetensors").write_bytes(b"weights")
+        with mock.patch("maw.hub_download._huggingface_snapshot_download", side_effect=AssertionError("must reuse cache")) as hf_download, \
+                mock.patch("maw.hub_download._modelscope_snapshot_download", side_effect=AssertionError("must reuse cache")) as ms_download:
+            result = prepare_hub_snapshot("Qwen/Qwen3-ASR-0.6B")
 
         self.assertEqual(result.source, "cache")
         self.assertEqual(result.path.resolve(), snapshot.resolve())
         hf_download.assert_not_called()
+        ms_download.assert_not_called()
 
     def test_existing_modelscope_cache_is_reused_including_mirrored_org(self) -> None:
-        with tempfile.TemporaryDirectory() as temp_dir:
-            modelscope = Path(temp_dir) / "modelscope"
-            snapshot = (
-                modelscope
-                / "models"
-                / "OpenMOSS--MOSS-Transcribe-Diarize"
-                / "snapshots"
-                / "master"
-            )
-            snapshot.mkdir(parents=True)
-            (snapshot / "model.safetensors").write_bytes(b"weights")
-
-            with mock.patch.dict(os.environ, {"MODELSCOPE_CACHE": str(modelscope)}):
-                result = prepare_hub_snapshot("OpenMOSS-Team/MOSS-Transcribe-Diarize")
+        snapshot = self.ms_cache / "models" / "OpenMOSS--MOSS-Transcribe-Diarize" / "snapshots" / "master"
+        snapshot.mkdir(parents=True)
+        (snapshot / "model.safetensors").write_bytes(b"weights")
+        with mock.patch("maw.hub_download._huggingface_snapshot_download", side_effect=AssertionError("must reuse cache")) as hf_download, \
+                mock.patch("maw.hub_download._modelscope_snapshot_download", side_effect=AssertionError("must reuse cache")) as ms_download:
+            result = prepare_hub_snapshot("OpenMOSS-Team/MOSS-Transcribe-Diarize")
 
         self.assertEqual(result.source, "cache")
         self.assertEqual(result.path.resolve(), snapshot.resolve())
+        hf_download.assert_not_called()
+        ms_download.assert_not_called()
+
+    def test_huggingface_cache_has_priority_when_both_hubs_contain_the_model(self) -> None:
+        hf = self.hf_cache / "models--OpenMOSS-Team--MOSS-Transcribe-Diarize" / "snapshots" / "main"
+        ms = self.ms_cache / "models" / "OpenMOSS--MOSS-Transcribe-Diarize" / "snapshots" / "master"
+        for snapshot in (hf, ms):
+            snapshot.mkdir(parents=True)
+            (snapshot / "model.safetensors").write_bytes(b"weights")
+        with mock.patch("maw.hub_download._huggingface_snapshot_download", side_effect=AssertionError("must reuse cache")) as hf_download, \
+                mock.patch("maw.hub_download._modelscope_snapshot_download", side_effect=AssertionError("must reuse cache")) as ms_download:
+            result = prepare_hub_snapshot("OpenMOSS-Team/MOSS-Transcribe-Diarize")
+        self.assertEqual(result.source, "cache")
+        self.assertEqual(result.path.resolve(), hf.resolve())
+        hf_download.assert_not_called()
+        ms_download.assert_not_called()
 
     def test_huggingface_failure_falls_back_to_modelscope(self) -> None:
         events: list[str] = []

@@ -1452,6 +1452,16 @@ class GuiWorkflowTests(CompactContainerAssertions, unittest.TestCase):
         self.assertNotIn("-m", command)
         self.assertEqual(command[command.index("--port") + 1], "8765")
 
+    def test_build_serve_command_remembers_only_explicit_media_when_requested(self) -> None:
+        project = self.root / "project.mosp"
+        media = self.root / "clip.mp4"
+        for frozen in (False, True):
+            for remember in (False, True):
+                for selected_media in (None, media):
+                    with self.subTest(frozen=frozen, remember=remember, media=selected_media):
+                        command = build_serve_command(project, selected_media, 8765, frozen=frozen, remember_media=remember)
+                        self.assertEqual("--remember-media" in command, remember and selected_media is not None)
+
     def test_build_alignment_serve_command_source_mode_uses_standalone_server(self) -> None:
         project_path = self.root / "project.mosp"
         script_path = self.root / "script.txt"

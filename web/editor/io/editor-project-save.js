@@ -122,7 +122,7 @@ const saveUrl = MaweBoot.SERVER_CONFIG.saveUrl;
       // completed edits, while making clear that the bound JSON was not overwritten.
       if (!silent && error instanceof TypeError
           && confirm('无法连接本地编辑器服务器。是否改为导出工程文件，以免丢失改动？')) {
-        const saved = await MaweExportTimeline.downloadFile(projectJson, `${MaweBoot.FILENAME_BASE}.mosp`, 'application/json', {
+        const saved = await MaweExportTimeline.downloadFile(MaweJsonRepair.buildJson({ forFileExport: true }), `${MaweBoot.FILENAME_BASE}.mosp`, 'application/json', {
           desc: 'MOSE 工程文件', types: { 'application/json': ['.mosp', '.json'] }
         });
         if (saved) MaweHint.flashHint('服务器未连接；工程已导出为 .mosp，请重新打开该文件后继续', 'success');
@@ -140,7 +140,7 @@ const saveUrl = MaweBoot.SERVER_CONFIG.saveUrl;
     if (!MaweServerSave.projectFileHandle) return false;
 if (MaweServerSave.projectSaveInFlight || MaweServerSave.projectCheckpointInFlight) return false;
 flushInlineEditsForSave();
-const projectJson = MaweJsonRepair.buildJson();
+const projectJson = MaweJsonRepair.buildJson({ forFileExport: true });
 const fingerprint = projectSaveFingerprint();
 const contentFingerprint = MaweState.segmentsFingerprint();
 MaweServerSave.projectSaveInFlight = true;
@@ -182,7 +182,7 @@ markProjectSaved(MaweServerSave.projectFileHandle.name, null, { silent, fingerpr
     const suggested = `${MaweBoot.FILENAME_BASE}.mosp`;
     // 无原生保存对话框的浏览器：退化为普通下载（文件名不可考，标题保持不变）。
     if (!MaweHost.files.hasSavePicker()) {
-      await MaweExportTimeline.downloadFile(MaweJsonRepair.buildJson(), suggested, 'application/json', {
+      await MaweExportTimeline.downloadFile(MaweJsonRepair.buildJson({ forFileExport: true }), suggested, 'application/json', {
         desc: 'MOSE 工程文件', types: { 'application/json': ['.mosp', '.json'] }
       });
       return;
@@ -195,7 +195,7 @@ markProjectSaved(MaweServerSave.projectFileHandle.name, null, { silent, fingerpr
       let fingerprint, contentFingerprint;
       await MaweHost.files.writeBlob(handle, () => {
         flushInlineEditsForSave();
-        const projectJson = MaweJsonRepair.buildJson();
+        const projectJson = MaweJsonRepair.buildJson({ forFileExport: true });
         fingerprint = projectSaveFingerprint();
         contentFingerprint = MaweState.segmentsFingerprint();
         return new Blob([projectJson], { type: 'application/json;charset=utf-8' });

@@ -506,11 +506,12 @@ test('normalizes editor settings without preserving invalid persisted values', (
   assert.equal(settings.theme, 'light');
   assert.equal(helpers.normalizeEditorSettings({ theme: 'system' }).theme, 'system');
   assert.equal(helpers.normalizeEditorSettings({ theme: 'invalid' }).theme, 'dark');
-  assert.equal(settings.accentColor, 'blue');
+  assert.equal(settings.accentColor, 'brand');
   assert.equal(settings.accentColorCustom, '#6ca5e8');
   assert.equal(helpers.normalizeEditorSettings({ accentColor: 'red' }).accentColor, 'red');
+  assert.equal(helpers.normalizeEditorSettings({ accentColor: 'blue' }).accentColor, 'blue');
   assert.equal(helpers.normalizeEditorSettings({ accentColor: 'orange' }).accentColor, 'orange');
-  assert.equal(helpers.normalizeEditorSettings({ accentColor: 'invalid' }).accentColor, 'blue');
+  assert.equal(helpers.normalizeEditorSettings({ accentColor: 'invalid' }).accentColor, 'brand');
   assert.equal(
     helpers.normalizeEditorSettings({ accentColor: 'custom', accentColorCustom: '#A1b2C3' }).accentColorCustom,
     '#a1b2c3',
