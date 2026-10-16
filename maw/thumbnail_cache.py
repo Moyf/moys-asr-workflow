@@ -22,7 +22,7 @@ from typing import Sequence
 
 from maw.app_paths import default_app_data_root
 from maw.output_naming import waveform_dirs
-from maw.thumbnails import IMAGE_SPEC, FrameResult, ThumbnailCancelled, ThumbnailError, VideoInfo, base_interval_ms, batches, extract_frames, make_sprite, probe_video
+from maw.thumbnails import IMAGE_SPEC, FrameResult, ThumbnailCancelled, ThumbnailError, VideoInfo, base_interval_ms, batches, extract_frames, extract_keyframes, make_sprite, probe_video
 
 SCHEMA = "moy.asr.thumbnails.v1"
 GENERATOR_VERSION = 3
@@ -133,6 +133,7 @@ def _connect() -> sqlite3.Connection:
         db.executescript("""
             CREATE TABLE IF NOT EXISTS assets(media TEXT, asset TEXT, jpeg BLOB NOT NULL, size INTEGER NOT NULL, used REAL NOT NULL, PRIMARY KEY(media,asset));
             CREATE TABLE IF NOT EXISTS samples(media TEXT, requested INTEGER, actual INTEGER, status TEXT NOT NULL, asset TEXT, PRIMARY KEY(media,requested));
+            CREATE TABLE IF NOT EXISTS keyframes(media TEXT, pts INTEGER NOT NULL, PRIMARY KEY(media,pts));
             CREATE TABLE IF NOT EXISTS pins_leases(media TEXT, asset TEXT, owner TEXT, expires REAL NOT NULL, PRIMARY KEY(media,asset,owner));
             CREATE TABLE IF NOT EXISTS bases(path TEXT PRIMARY KEY,media TEXT,size INTEGER NOT NULL,used REAL NOT NULL);
             CREATE TABLE IF NOT EXISTS base_reservations(owner TEXT PRIMARY KEY,media TEXT,size INTEGER NOT NULL,expires REAL NOT NULL);
@@ -478,6 +479,43 @@ def _persistent_frames(key: str, values: Sequence[int]) -> dict[int, FrameResult
     return found
 
 
+def _persistent_markers(key: str, low_ms: int, high_ms: int) -> list[dict]:
+    """Landmark markers inside one time window; content is best-available.
+
+    Positions live in the dedicated keyframes table and survive exact
+    refinement; each position serves its preview row when present, else the
+    refined row that replaced it.
+    """
+    try:
+        with contextlib.closing(_connect()) as db:
+            positions = [row[0] for row in db.execute("SELECT pts FROM keyframes WHERE media=? AND pts>=? AND pts<=? ORDER BY pts", [key, low_ms, high_ms]).fetchall()]
+            if not positions:
+                return []
+            placeholders = ",".join("?" for _ in positions)
+            rows = db.execute(f"SELECT s.requested,s.actual,s.status,a.asset FROM samples s LEFT JOIN assets a ON s.media=a.media AND s.asset=a.asset WHERE s.media=? AND s.requested IN ({placeholders})", [key, *positions]).fetchall()
+    except (OSError, sqlite3.Error):
+        return []
+    markers = []
+    for requested, actual, status, asset in rows:
+        if not asset:
+            continue
+        markers.append({"requested_ms": requested, "actual_pts_ms": actual, "status": status or "preview", "asset": asset, "crop_rect": [0, 0, 160, 90]})
+    return sorted(markers, key=lambda marker: marker["requested_ms"])
+
+
+def register_keyframe_marks(media_path: Path | str, stamps_ms: Sequence[int], *, info: VideoInfo | None = None) -> None:
+    """Persist landmark positions once; exact refinement never removes them."""
+    video = info or _info(media_path)
+    if video is None or not stamps_ms:
+        return
+    key = identity_key(media_path, video)
+    try:
+        with contextlib.closing(_connect()) as db, db:
+            db.executemany("INSERT OR REPLACE INTO keyframes VALUES(?,?)", [(key, int(stamp)) for stamp in stamps_ms])
+    except (OSError, sqlite3.Error):
+        pass
+
+
 def lookup_frames(media_path: Path | str, requested_ms: Sequence[int], *, stream_index: int | None = None, ffmpeg_path=None) -> list[FrameResult | None]:
     """Metadata-only cache query: sprite hits never launch FFmpeg."""
     video = _info(media_path, ffmpeg_path=ffmpeg_path)
@@ -723,6 +761,26 @@ def load_base(media_path: Path | str) -> dict | None:
     return result
 
 
+def has_cached_frames(media_path: Path | str, *, ffmpeg_path=None) -> bool:
+    """True when any persisted picture exists: a base manifest or SQLite cells."""
+    if load_base(media_path) is not None:
+        return True
+    try:
+        video = _info(media_path, ffmpeg_path=ffmpeg_path)
+    except (OSError, ValueError, ThumbnailError):
+        # Unreadable media has no usable cache either; never fail a binding
+        # payload just because the source cannot be probed.
+        return False
+    if video is None:
+        return False
+    key = identity_key(media_path, video)
+    try:
+        with contextlib.closing(_connect()) as db:
+            return db.execute("SELECT 1 FROM samples WHERE media=? LIMIT 1", (key,)).fetchone() is not None
+    except (OSError, sqlite3.Error):
+        return False
+
+
 def read_asset(media_path: Path | str, asset_id: str, *, cache_revision: str | None = None) -> bytes | None:
     if not isinstance(asset_id, str) or len(asset_id) > 100:
         return None
@@ -781,6 +839,18 @@ def sample_manifest(media_path: Path | str, requested_ms: Sequence[int], *, stre
         local = {target: frame for (owner, target), frame in _session.items() if owner == key}
     local.update(persistent)
     assets = {a["id"]: a for a in base["assets"]} if base else {}
+    # Keyframe-tier landmarks live at their own keyframe PTS. Grid requests
+    # hold the nearest preceding landmark (even far back in long-GOP films or
+    # after decimation); marks-mode clients draw the in-span markers directly.
+    if requested_ms:
+        span_low, span_high = min(requested_ms), max(requested_ms)
+        in_span = _persistent_markers(key, span_low, span_high)
+        before = _persistent_markers(key, 0, span_low - 1) if span_low > 0 else []
+        nearest_before = before[-1] if before else None
+        previews = ([nearest_before] if nearest_before else []) + in_span
+        markers = in_span
+    else:
+        previews, markers = [], []
     for target in requested_ms:
         if target < video.video_start_ms:
             result["samples"].append(_sample(FrameResult(target, None, "unavailable", None), None))
@@ -791,17 +861,28 @@ def sample_manifest(media_path: Path | str, requested_ms: Sequence[int], *, stre
             frame = local[target]
             sample = _sample(frame, _asset_id(frame.jpeg) if frame.jpeg else None)
         else:
-            limit = min(max(0, nearby_ms), max(10000, 2 * result["sampling_interval"]))
-            nearby = [s for s in base_map.values() if abs(s["requested_ms"] - target) <= limit]
-            nearby += [_sample(f, _asset_id(f.jpeg)) for f in local.values() if f.jpeg and f.status == "target" and abs(f.requested_ms - target) <= limit]
-            if not nearby:
-                continue
-            sample = dict(min(nearby, key=lambda s: abs(s["requested_ms"] - target)))
-            sample["requested_ms"], sample["status"] = target, "preview"
+            covering = next((dict(row) for row in reversed(previews) if row["requested_ms"] <= target + 0.001), None)
+            if covering is not None:
+                sample = dict(covering)
+                sample["requested_ms"] = target
+            else:
+                limit = min(max(0, nearby_ms), max(10000, 2 * result["sampling_interval"]))
+                nearby = [s for s in base_map.values() if abs(s["requested_ms"] - target) <= limit]
+                nearby += [_sample(f, _asset_id(f.jpeg)) for f in local.values() if f.jpeg and f.status == "target" and abs(f.requested_ms - target) <= limit]
+                if not nearby:
+                    continue
+                sample = dict(min(nearby, key=lambda s: abs(s["requested_ms"] - target)))
+                sample["requested_ms"], sample["status"] = target, "preview"
         result["samples"].append(sample)
         if sample["asset"] and sample["asset"] not in assets:
             assets[sample["asset"]] = {"id": sample["asset"], "width": 160, "height": 90, "valid_count": 1}
     used = {s["asset"] for s in result["samples"] if s["asset"]}
+    if markers:
+        result["keyframes"] = list(markers)
+        used |= {row["asset"] for row in markers}
+        for row in markers:
+            if row["asset"] not in assets:
+                assets[row["asset"]] = {"id": row["asset"], "width": 160, "height": 90, "valid_count": 1}
     result["assets"] = [asset for ident, asset in assets.items() if ident in used]
     result["persisted"] = key not in _write_disabled
     return result
@@ -921,13 +1002,15 @@ def _publish_base(path, manifest, blobs, media_path, *, cancel=None):
         Path(name).unlink(missing_ok=True)
 
 
-def load_or_build_base(media_path: Path | str, *, cancel=None, progress=None, batch_extract=None, before_batch=None, batch_pack=None, target_interval: int | None = None, ffmpeg_path: str | None = None, timeout_s: float = 1200) -> dict:
+def load_or_build_base(media_path: Path | str, *, cancel=None, progress=None, batch_extract=None, before_batch=None, batch_pack=None, target_interval: int | None = None, ffmpeg_path: str | None = None, timeout_s: float = 1200, keyframes: bool = True, exact: bool = True, decode_threads: int = 2, keyframe_extract=None) -> dict:
     """Launcher grid generation with bounded staging and cancellable packing.
 
-    At most 64 source JPEGs are retained by the packer. Completed sprites are
-    staged on disk, then streamed into an atomic ZIP. Every short source batch
-    independently persists first, so cancellation can resume without tiling
-    unsealed frames after the cancellation signal.
+    The keyframe stage decodes only keyframes in one fast full-file pass and
+    registers the whole grid as preview cells; the exact stage then upgrades
+    them batch by batch. At most 64 source JPEGs are retained by the packer.
+    Completed sprites are staged on disk, then streamed into an atomic ZIP.
+    Every short source batch independently persists first, so cancellation can
+    resume without tiling unsealed frames after the cancellation signal.
     """
     video = _info(media_path, cancel=cancel, ffmpeg_path=ffmpeg_path)
     if video is None:
@@ -945,6 +1028,30 @@ def load_or_build_base(media_path: Path | str, *, cancel=None, progress=None, ba
         existing_targets = {s["requested_ms"] for s in existing["samples"]}
         if all(target in existing_targets for target in targets):
             return dict(existing, cache_hit=True)
+    keyframe_count = 0
+    if keyframes:
+        if progress:
+            progress("[thumbnails] 正在生成关键帧底图……")
+        try:
+            frames = (keyframe_extract() if keyframe_extract is not None else
+                extract_keyframes(media_path, stream_index=video.stream_index, cancel=cancel,
+                    ffmpeg_path=ffmpeg_path, info=video, threads=decode_threads,
+                    timeout_s=min(600, max(30, timeout_s))))
+            if frames:
+                # Keyframes are stored at their own PTS: the marker tier keeps
+                # true keyframe density, and grid requests hold the nearest
+                # preceding one. Identical JPEG bytes dedupe by content hash.
+                register_frames(media_path, frames, info=video, ffmpeg_path=ffmpeg_path, expected_source=signature)
+                register_keyframe_marks(media_path, [frame.requested_ms for frame in frames], info=video)
+                keyframe_count = len(frames)
+            if progress:
+                progress(f"[thumbnails] 关键帧底图完成：{keyframe_count} 格")
+        except (ThumbnailError, OSError) as exc:
+            if progress:
+                progress(f"[thumbnails] 警告: {exc}；已跳过关键帧底图")
+    if not exact:
+        return {"schema": SCHEMA, "state": "ready", "tier": "keyframes", "keyframe_count": keyframe_count,
+            "samples": [], "assets": [], "base_complete": False, "cache_hit": False, "persisted": True}
     completed, samples, assets, pending = set(), [], [], []
     empty_samples = {}
     failure = None

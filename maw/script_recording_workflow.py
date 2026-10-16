@@ -386,6 +386,16 @@ def load_recording_inputs(project_path: Path, script_path: Path, media: Path | N
     return project, script, value
 
 
+def _rebase_published_media(staged_project: Path, final_directory: Path, media: Path) -> None:
+    """Prepare a staged project's media reference for its final publication path."""
+    from maw.project_io import rebase_project_media
+
+    project = json.loads(staged_project.read_text(encoding="utf-8"))
+    published = rebase_project_media(project, final_directory / staged_project.name, media_path=media)
+    staged_project.write_text(json.dumps(published, ensure_ascii=False, indent=2) + "\n",
+                              encoding="utf-8", newline="\n")
+
+
 def run_recording_job(project_path: Path, script_path: Path, request: Mapping[str, Any], *,
                       media: Path | None = None, backend: AlignmentBackend | None = None,
                       model_path: Path | None = None, device: str = "auto", language: str = "zh",
@@ -410,6 +420,7 @@ def run_recording_job(project_path: Path, script_path: Path, request: Mapping[st
         artifact = write_artifacts(strip_inline_caches(output), source_project_path=project_path,
                                    source_srt_path=None, operation="script-reviewed", write_project=True,
                                    write_srt=True, output_directory=staging)
+        _rebase_published_media(artifact.project_path, final_directory, media)
         result = {"projectPath": str(final_directory / artifact.project_path.name),
                   "srtPath": str(final_directory / artifact.srt_path.name),
                   "reportPath": str(final_directory / "report.json"),
@@ -457,13 +468,14 @@ def run_source_items_job(project_path: Path, script_path: Path, request: Mapping
             raise RecordingWorkflowError("部分 ASR 源段补码失败；不发布部分工程，请保留原始 ASR 后重试。")
         if input_signature(project_path, script_path, media) != signature:
             raise RecordingWorkflowError("补码期间输入已变化；拒绝发布旧结果。")
-        # The result lives in a new directory, so its media binding must not
-        # retain a path relative to the original project's directory.
+        # Preserve the selected source while artifacts are written to staging;
+        # rebase to the published location before moving the whole directory.
         project["media"] = str(media.resolve())
         artifact = write_artifacts(strip_inline_caches(project), source_project_path=project_path,
                                    source_srt_path=None, operation="timestamps", write_project=True,
                                    write_srt=False, output_directory=staging, media_path=media,
                                    warnings=report.warnings)
+        _rebase_published_media(artifact.project_path, final_directory, media)
         result = {"projectPath": str(final_directory / artifact.project_path.name),
                   "reportPath": str(final_directory / "report.json"), "warnings": list(report.warnings)}
         payload = {"version": 1, "status": "complete", "operation": "source-items",

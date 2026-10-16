@@ -571,9 +571,13 @@ test('green-screen burn accepts subtitles without a video source', async ({ page
   await expect(page.locator('#toolboxUtilityMediaPath')).toBeDisabled();
   await expect(page.locator('#pickToolboxUtilityMedia')).toBeDisabled();
   await expect(page.locator('#runBurnSubtitle')).toHaveText('生成绿幕视频');
-  const gap = await page.locator('.toolbox-green-screen-option .hint').evaluate((element) =>
+  const option = page.locator('.toolbox-green-screen-option');
+  const fieldGap = await option.locator('#toolboxGreenScreenSizeField').evaluate((element) =>
     element.getBoundingClientRect().top - element.previousElementSibling.getBoundingClientRect().bottom);
-  expect(gap).toBeGreaterThanOrEqual(8);
+  expect(fieldGap).toBeGreaterThanOrEqual(8);
+  const hintGap = await option.locator('[data-i18n="toolbox_green_screen_hint"]').evaluate((element) =>
+    element.getBoundingClientRect().top - element.previousElementSibling.getBoundingClientRect().bottom);
+  expect(hintGap).toBeGreaterThanOrEqual(8);
   await page.locator('#toolboxBurnSubtitlePath').fill('D:\\Demo\\captions.ass');
   await page.locator('#runBurnSubtitle').click();
   await expect.poll(() => page.evaluate(() => window.__greenBurnCalls.length)).toBe(1);
@@ -1238,7 +1242,7 @@ test('launcher reports a server disconnect without manual refresh', async ({ pag
 
   await page.locator('#openMawe').click();
   await expect(page.locator('#status')).toContainText('字幕编辑服务器已断开', { timeout: 10_000 });
-  await expect(page.locator('#openMawe')).toContainText('🎬 打开编辑器');
+  await expect(page.locator('#openMawe')).toContainText('打开编辑器');
   await expect(page.locator('#stopServer')).toBeHidden();
   expect(await page.evaluate(() => window.__serverStatusCalls)).toBeGreaterThanOrEqual(2);
 });
@@ -1302,19 +1306,19 @@ test('restarting after a server disconnect does not reopen the editor page', asy
 
   // 先让服务器上线，使监控启动并处于 connected 状态。
   await page.locator('#openMawe').click();
-  await expect(page.locator('#openMawe')).toContainText('🎬 打开编辑器', { timeout: 10_000 });
+  await expect(page.locator('#openMawe')).toContainText('打开编辑器', { timeout: 10_000 });
   await page.waitForFunction(() => window.__openUrlCalls.length === 1);
 
   // 模拟断开。
   await page.evaluate(() => { window.__serverHealthy = false; });
   await expect(page.locator('#status')).toContainText('字幕编辑服务器已断开', { timeout: 10_000 });
-  await expect(page.locator('#openMawe')).toContainText('🎬 打开编辑器');
+  await expect(page.locator('#openMawe')).toContainText('打开编辑器');
 
   // 模拟重启成功：只更新提示，不再调用 open_url 打开新页面。
   await page.evaluate(() => { window.__serverHealthy = true; });
   await page.locator('#openMawe').click();
   await expect(page.locator('#status')).toContainText('回到原编辑器页面', { timeout: 10_000 });
-  await expect(page.locator('#openMawe')).toContainText('🎬 打开编辑器');
+  await expect(page.locator('#openMawe')).toContainText('打开编辑器');
   await expect(page.locator('#stopServer')).toBeVisible();
   await page.waitForFunction(() => window.__openUrlCalls.length === 1, undefined, { timeout: 5_000 });
   expect(await page.evaluate(() => window.__openUrlCalls[0])).toBe('http://127.0.0.1:8250/');
@@ -1656,6 +1660,8 @@ test('batch start delegates output allocation and batchDone reconciles every ter
   await page.locator('#batchMode').click();
   await page.evaluate(() => {
     window.__batchCalls = [];
+    // mock 环境没有 API Key：#208 起 startBatch 会先做 Key 校验，桩掉它以免静默早退。
+    window.MAWLauncher.validateApiKey = () => true;
     window.MAWLauncher.callBackend = async (method, payload) => {
       window.__batchCalls.push({ method, payload });
       return { ok: true };
@@ -1708,6 +1714,8 @@ test('batchDone fails rows that never reported when the batch was not cancelled'
   await page.waitForFunction(() => window.MAWLauncher?.config?.postprocessProviders?.length > 0);
   await page.locator('#batchMode').click();
   await page.evaluate(() => {
+    // mock 环境没有 API Key：#208 起 startBatch 会先做 Key 校验，桩掉它以免静默早退。
+    window.MAWLauncher.validateApiKey = () => true;
     window.MAWLauncher.callBackend = async () => ({ ok: true });
     const drop = new Event('drop', { bubbles: true, cancelable: true });
     Object.defineProperty(drop, 'dataTransfer', {
@@ -1845,21 +1853,21 @@ test('AI cleanup notes persist in the automatic plan and reach the manual reques
       return original(method, payload);
     };
   });
-  await page.locator('#toolboxMatchTab').click();
-  await expect(page.locator('#postprocessAiCleanupNotesField')).toBeHidden();
-  await page.locator('#postprocessAiCleanup').check();
-  await expect(page.locator('#postprocessAiCleanupNotesField')).toBeVisible();
-  await page.locator('#postprocessAiCleanupNotes').fill('  保留所有数字\n去除试麦  ');
+  // #224 起 AI 口播整理的备注统一走 LLM 工具箱的按任务提示词：自动计划的
+  // cleanup 步骤记录 customPrompt，手动请求把它作为 notes 发给 run_ai_cleanup。
+  await page.locator('#toolboxLlmTab').click();
+  await page.locator('#postprocessOperation').selectOption('ai_cleanup');
+  await page.locator('#postprocessPrompt').fill('  保留所有数字\n去除试麦  ');
+  // 计划按原文保存提示词（不裁剪）；trim 只发生在手动请求的 notes 上。
   await expect.poll(() => page.evaluate(() => window.__notesPlans.at(-1)?.steps
-    .find(s => s.id === 'match')?.aiCleanupNotes)).toBe('保留所有数字\n去除试麦');
+    .find(s => s.id === 'cleanup')?.customPrompt)).toBe('  保留所有数字\n去除试麦  ');
   await page.locator('#toolboxInputPath').fill('source.mosp');
-  await page.locator('#postprocessScriptPath').fill('script.txt');
-  await page.locator('#runScriptMatch').click();
+  await page.locator('#runLlmPostprocess').click();
   await expect.poll(() => page.evaluate(() => window.__cleanupPayload?.notes)).toBe('保留所有数字\n去除试麦');
-  await page.locator('#postprocessAiCleanup').uncheck();
-  await expect(page.locator('#postprocessAiCleanupNotesField')).toBeHidden();
-  await page.locator('#postprocessAiCleanup').check();
-  await expect(page.locator('#postprocessAiCleanupNotes')).toHaveValue('  保留所有数字\n去除试麦  ');
+  await page.locator('#postprocessOperation').selectOption('proofread');
+  await expect(page.locator('#postprocessPrompt')).toHaveValue('');
+  await page.locator('#postprocessOperation').selectOption('ai_cleanup');
+  await expect(page.locator('#postprocessPrompt')).toHaveValue('  保留所有数字\n去除试麦  ');
 });
 
 async function prepareDeferredAiLauncher(page, entry) {
@@ -1885,13 +1893,11 @@ async function prepareDeferredAiLauncher(page, entry) {
       return original(method, payload);
     };
   });
-  await page.locator(entry === 'cleanup' ? '#toolboxMatchTab' : '#toolboxLlmTab').click();
+  // #224 起 AI 口播整理并入 LLM 工具箱的任务下拉；两个入口都经 #runLlmPostprocess 启动。
+  await page.locator('#toolboxLlmTab').click();
   await page.locator('#toolboxInputPath').fill('D:\\Demo\\source.mosp');
-  if (entry === 'cleanup') {
-    await page.locator('#postprocessAiCleanup').check();
-    await page.locator('#postprocessScriptPath').fill('D:\\Demo\\script.txt');
-  }
-  return page.locator(entry === 'cleanup' ? '#runScriptMatch' : '#runLlmPostprocess');
+  if (entry === 'cleanup') await page.locator('#postprocessOperation').selectOption('ai_cleanup');
+  return page.locator('#runLlmPostprocess');
 }
 
 async function sendAiLifecycleEvents(page, index, events) {

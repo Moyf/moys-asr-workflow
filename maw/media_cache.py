@@ -7,6 +7,7 @@
 
 from __future__ import annotations
 
+import os
 import struct
 import time
 from dataclasses import dataclass
@@ -89,6 +90,7 @@ def embed_media_caches(
     *,
     source_media_path: Path | str | None = None,
     generate_spectral: bool = False,
+    generate_thumbnails: bool = True,
     ffmpeg_bin: str | None = None,
     audio_track: int = 0,
     default_audio_track: int = 0,
@@ -120,6 +122,10 @@ def embed_media_caches(
     纯音频跳过，缩略图失败不阻断字幕保存。取消信号只控制画面缓存子任务。
     ``generate_spectral`` 关闭时仍生成 reapeaks wave 层，但跳过频谱 FFT
     与工程内的 spectral payload。
+
+    ``generate_thumbnails`` 关闭（或环境变量 ``MAW_MEDIA_THUMBNAILS=0``，Launcher
+    用它把「生成高精度画面预览图」开关穿透转写子进程边界）时跳过精确网格阶段；
+    关键帧底图不受它影响，总是生成。编辑器打开工程后仍可按需补帧。
     """
     if not isinstance(audio_track, int) or isinstance(audio_track, bool) or audio_track < 0:
         raise ValueError("audio_track must be a non-negative integer")
@@ -272,6 +278,10 @@ def embed_media_caches(
             )
     thumbnail_manifest = None
     thumbnail_error = None
+    if generate_thumbnails and os.environ.get("MAW_MEDIA_THUMBNAILS", "1") == "0":
+        # 「生成高精度画面预览图」开关经子进程环境变量穿透转写管线，各 provider
+        # CLI 无需逐一透传；关键帧底图不受它影响，总是生成。
+        generate_thumbnails = False
     try:
         from maw.thumbnail_jobs import build_base
         from maw import thumbnail_cache
@@ -289,12 +299,15 @@ def embed_media_caches(
         # Keep explicit callbacks unchanged for embedded callers.
         progress = thumbnail_progress if thumbnail_progress is not None else lambda message: print(message, flush=True)
         thumbnail_manifest = build_base(source_path, cancel=cancel,
-            progress=progress, ffmpeg_path=ffmpeg_bin)
+            progress=progress, ffmpeg_path=ffmpeg_bin, exact=generate_thumbnails)
         if thumbnail_manifest is not None:
             if thumbnail_manifest.get("cache_hit"):
-                print("[thumbnails] 已复用原视频基础画面缓存")
+                print("[thumbnails] 已复用原视频画面缓存")
             elif thumbnail_manifest.get("state") == "unavailable":
                 print("[thumbnails] 无视频画面，已跳过")
+            elif thumbnail_manifest.get("tier") == "keyframes":
+                note = "" if generate_thumbnails else "（已按设置跳过高精度画面预览图）"
+                print(f"[thumbnails] 关键帧底图完成：{thumbnail_manifest.get('keyframe_count', 0)} 格{note}")
             else:
                 status = thumbnail_manifest.get("state", "ready")
                 persisted = "已保存" if thumbnail_manifest.get("persisted", True) else "仅本次会话"

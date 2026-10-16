@@ -150,7 +150,10 @@ def write_artifacts(
         from maw.postprocess_comparison import comparison_data, render_comparison
         comparison_html = render_comparison(comparison_data(comparison_source, normalized, operation, comparison_rows or [], translation=comparison_translation, line_order=bilingual_line_order, download_name=f"{base.stem}.核对后.mosp"))
     if project_path is not None:
-        _atomic_write(project_path, json.dumps(normalized, ensure_ascii=False, indent=2) + "\n")
+        from maw.project_io import rebase_project_media
+
+        portable = rebase_project_media(normalized, project_path, source_project_path=base)
+        _atomic_write(project_path, json.dumps(portable, ensure_ascii=False, indent=2) + "\n")
     if srt_path is not None:
         _atomic_write(srt_path, render_srt(normalized))
     if comparison_path is not None and comparison_html is not None:

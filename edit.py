@@ -33,6 +33,7 @@ import struct
 import sys
 from pathlib import Path
 from typing import NotRequired, TypedDict
+from urllib.parse import quote
 
 from maw.colors import COLOR_PALETTE
 from maw.console import configure_utf8_stdio
@@ -44,7 +45,7 @@ from maw.project_io import (
 )
 from maw.stickers import get_default_sticker_dir
 from maw.web_build import BundlePreflightError, ensure_bundle
-from maw.media import AUDIO_EXTENSIONS, VIDEO_EXTENSIONS, read_bwf_time_reference
+from maw.media import AUDIO_EXTENSIONS, VIDEO_EXTENSIONS, read_bwf_time_reference, resolve_project_media
 from maw.waveform import (
     DEFAULT_PEAKS_PER_SECOND,
     WaveformError,
@@ -58,7 +59,7 @@ VIDEO_EXTS = set(VIDEO_EXTENSIONS)
 AUDIO_EXTS = set(AUDIO_EXTENSIONS)
 IMAGE_EXTS = {".png", ".jpg", ".jpeg", ".gif", ".webp", ".bmp"}
 # Keep this aligned with pyproject.toml; release workflows synchronize it.
-BUNDLED_EDITOR_VERSION = "1.9.0-beta.1"
+BUNDLED_EDITOR_VERSION = "1.9.0-beta.2"
 
 
 class Sticker(TypedDict):
@@ -396,26 +397,10 @@ def main():
         print(f"错误: {exc}")
         return 1
 
-    # 媒体
-    media_path = None
-    if args.media:
-        media_path = Path(args.media).resolve()
-    else:
-        project_media = data.get("media")
-        if isinstance(project_media, str) and project_media:
-            candidate = Path(project_media)
-            if candidate.exists():
-                media_path = candidate.resolve()
-
-    if not media_path or not media_path.exists():
-        stem = json_path.stem.split(".")[0]
-        for ext in list(VIDEO_EXTS) + list(AUDIO_EXTS):
-            cand = json_path.parent / f"{stem}{ext}"
-            if cand.exists():
-                media_path = cand.resolve()
-                break
-
-    if not media_path or not media_path.exists():
+    # 与服务器采用同一个工程目录基准和有限的旧工程兜底。
+    resolution = resolve_project_media(json_path, data, args.media)
+    media_path = resolution.resolved_path
+    if not resolution.loadable or media_path is None:
         print("错误: 找不到媒体文件，请用 -m 参数指定")
         return 1
 
@@ -481,7 +466,7 @@ def main():
 
     # 媒体 URL
     try:
-        media_url = media_path.relative_to(output_path.parent).as_posix()
+        media_url = quote(Path(os.path.relpath(media_path, output_path.parent)).as_posix(), safe="/")
     except ValueError:
         media_url = media_path.as_uri()
 

@@ -86,10 +86,13 @@ function applyCanonicalProject(data, filename) {
   );
   MaweBoot.DATA.schema = window.AsrEditorUtils.PROJECT_SCHEMA;
   MaweBoot.DATA.media = typeof data.media === 'string' ? data.media : '';
+  // A browser-imported project is not the server's native media binding.
+  if (MaweBoot.SERVER_CONFIG) MaweBoot.SERVER_CONFIG.autoLoadedMediaPath = null;
   MaweBoot.DATA.language = data.language || '';
   MaweBoot.DATA.language_source = typeof data.language_source === 'string' ? data.language_source : undefined;
   MaweBoot.DATA.preserve_punctuation = typeof data.preserve_punctuation === 'boolean' ? data.preserve_punctuation : undefined;
   MaweBoot.DATA.split_mode = typeof data.split_mode === 'string' ? data.split_mode : undefined;
+  MaweBoot.DATA.timed_text_edit_view = data.timed_text_edit_view === 'single' ? 'single' : 'rows';
   MaweBoot.DATA.timestamp_granularity = typeof data.timestamp_granularity === 'string'
     ? data.timestamp_granularity : undefined;
   MaweBoot.DATA.model = data.model || '';
@@ -113,6 +116,7 @@ function applyCanonicalProject(data, filename) {
   MaweBoot.DATA.preview = (data.preview && typeof data.preview === 'object') ? data.preview : null;
   MaweHistory.gapRemoveDirty = false;
   MaweState.changes.markersDirty = false;
+  MaweState.changes.timedTextEditViewDirty = false;
   MaweAppearance.previewGeometryDirty = false;
   MaweServerSave.projectImportDirty = false;
   // 外部载入的工程没有页面持有的文件句柄；新建/另存为会在载入后重新绑定句柄。

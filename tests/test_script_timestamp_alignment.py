@@ -16,6 +16,7 @@ from maw.script_timestamp_alignment import (
     check_script_alignment, read_script_lines, run_script_alignment, speech_ranges, tokens_to_script_segments,
 )
 from maw.timestamp_alignment import TimedToken, TimestampAlignmentError
+from maw.media import resolve_project_media
 
 
 class ScriptTimestampTests(unittest.TestCase):
@@ -121,8 +122,10 @@ class ScriptTimestampTests(unittest.TestCase):
     def test_real_audio_pipeline_writes_loadable_artifacts_without_asr(self):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
-            media = root / "tone.wav"
-            script = root / "script.txt"
+            bundle = root / "bundle"
+            bundle.mkdir()
+            media = bundle / "tone.wav"
+            script = bundle / "script.txt"
             script.write_text("你好！\n世界。\n", encoding="utf-8")
             samples = array("h", (round(6000 * math.sin(i * 0.1)) for i in range(32000)))
             with wave.open(str(media), "wb") as wav:
@@ -142,11 +145,18 @@ class ScriptTimestampTests(unittest.TestCase):
             srt = read_srt(artifact.srt_path)
             self.assertEqual([cue["text"] for cue in srt["segments"]], ["你好！", "世界。"])
             self.assertEqual(project["segments"][1]["items"][0]["start"], 1000)
-            self.assertEqual(project["media"], str(media.resolve()))
+            self.assertEqual(project["media"], media.name)
+            self.assertEqual(resolve_project_media(artifact.project_path, project).resolved_path, media.resolve())
             self.assertEqual(project["media_metadata"]["selected_audio_track"], 0)
             self.assertTrue(project["preserve_punctuation"])
             self.assertTrue(report.warnings)
             self.assertIsNone(artifact.source_srt_path)
+            relative_project = artifact.project_path.relative_to(bundle)
+            moved = root / "moved-bundle"
+            bundle.rename(moved)
+            moved_project = moved / relative_project
+            self.assertEqual(read_project(moved_project)["media"], media.name)
+            self.assertEqual(resolve_project_media(moved_project, project).resolved_path, (moved / media.name).resolve())
 
     @unittest.skipUnless(shutil.which("ffmpeg"), "FFmpeg unavailable")
     def test_low_volume_and_nfd_input_align_without_silence_gate(self):

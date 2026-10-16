@@ -893,6 +893,11 @@
     $("pickToolboxUtilityMedia").disabled = disabled;
   }
 
+  // 绿幕尺寸下拉只在勾选「生成绿幕视频」时显示；默认 4K。
+  function syncGreenScreenSizeFieldState() {
+    $("toolboxGreenScreenSizeField").classList.toggle("hidden", !$("toolboxGreenScreen").checked);
+  }
+
   function selectToolboxSection(section) {
     activeToolboxSection = section;
     document.querySelectorAll("[data-toolbox-section]").forEach((tab) => {
@@ -2553,7 +2558,7 @@
       result = null;
     }
     if (!result?.ok) return;
-    // CRF 为空串时不能 Number("") 成 0，必须跳过、保留界面默认值 18。
+    // CRF 为空串时不能 Number("") 成 0，必须跳过、保留界面默认值 21。
     const crfText = String(result.crf ?? "").trim();
     if (crfText) {
       const crf = Number(crfText);
@@ -2610,6 +2615,7 @@
         mediaPath: greenScreen ? "" : mediaPath,
         subtitlePath,
         greenScreen,
+        greenScreenSize: $("toolboxGreenScreenSize")?.value || "4k",
         videoEncoder: $("toolboxBurnVideoEncoder")?.value || "auto",
         ...burnEncodingPayload(),
       });
@@ -2714,6 +2720,7 @@
     renderMediaToolAction();
     initializeAutoPostprocess();
     void restoreBurnSubtitleSettings();
+    syncGreenScreenSizeFieldState();
   }
 
   $("toolboxFab").addEventListener("click", () => {
@@ -2792,6 +2799,7 @@
   $("runBurnSubtitle").addEventListener("click", runBurnSubtitle);
   $("toolboxGreenScreen").addEventListener("change", () => {
     syncUtilityMediaFieldState();
+    syncGreenScreenSizeFieldState();
     setFieldError("toolboxUtilityMediaPath", "");
     renderMediaToolAction();
   });

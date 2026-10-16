@@ -10,7 +10,7 @@ from unittest import mock
 
 from maw.script_alignment import align_project_to_script
 from maw.script_recording_workflow import (
-    RecordingWorkflowError, evidence_errors, finalize_recording, input_signature,
+    RecordingWorkflowError, evidence_errors, finalize_recording, input_signature, load_recording_inputs,
     map_joined_items, recommend_recording, review_recording, run_recording_job, run_source_items_job,
 )
 from maw.timestamp_alignment import TimedToken, TimestampAlignmentCancelled
@@ -115,7 +115,7 @@ class RecordingReviewTests(unittest.TestCase):
                 audio.setparams((1, 2, 16000, 0, "NONE", "not compressed"))
                 audio.writeframes(array("h", (round(6000*math.sin(i*.1)) for i in range(96000))).tobytes())
             raw = project([cue("你好世界", 1000, 3000), cue("补充说明", 4000, 5000)])
-            raw["media"] = str(media)
+            raw["media"] = media.name
             raw["segments"][0]["speaker"] = "speaker-1"
             path, script = root / "raw.mosp", root / "script.txt"
             path.write_text(json.dumps(raw, ensure_ascii=False), encoding="utf-8")
@@ -130,6 +130,8 @@ class RecordingReviewTests(unittest.TestCase):
             with mock.patch("maw.local_asr.create_local_engine", side_effect=AssertionError("no ASR rerun")):
                 result = run_recording_job(path, script, request, backend=backend)
             final = json.loads(Path(result["projectPath"]).read_text(encoding="utf-8"))
+            self.assertEqual(final["media"], "../audio.wav")
+            self.assertEqual(load_recording_inputs(Path(result["projectPath"]), script)[2], media.resolve())
             generated = [c for c in final["segments"] if c["id"].startswith("script-recording-")]
             self.assertEqual(generated[0]["text"], "你好，世界。")
             self.assertEqual(generated[0]["items"][0]["start"], 1100)
@@ -252,8 +254,7 @@ class RecordingReviewTests(unittest.TestCase):
             self.assertEqual(output["segments"][0]["text"],"你好世界")
             self.assertEqual(output["segments"][0]["start"],500)
             self.assertTrue(output["segments"][0]["items"])
-            self.assertEqual(output["media"],str(media.resolve()))
-            from maw.script_recording_workflow import load_recording_inputs
+            self.assertEqual(output["media"], "../audio.wav")
             self.assertEqual(load_recording_inputs(Path(result["projectPath"]),script)[2],media.resolve())
             self.assertEqual(json.loads(Path(result["reportPath"]).read_text())["operation"],"source-items")
             published=list(root.glob("*.asr-items-reviewed-*"))

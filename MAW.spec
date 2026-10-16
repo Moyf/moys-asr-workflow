@@ -155,6 +155,7 @@ datas = [
     (str(ROOT / "maw" / "postprocess_resegment.py"), "ocr-runtime/maw"),
     (str(ROOT / "maw" / "postprocess_llm.py"), "ocr-runtime/maw"),
     (str(ROOT / "maw" / "postprocess_io.py"), "ocr-runtime/maw"),
+    (str(ROOT / "maw" / "project_io.py"), "ocr-runtime/maw"),
     (str(ROOT / "maw" / "postprocess_annotations.py"), "ocr-runtime/maw"),
     (str(ROOT / "maw" / "postprocess_translation_review.py"), "ocr-runtime/maw"),
     (str(ROOT / "maw" / "postprocess_comparison.py"), "ocr-runtime/maw"),
