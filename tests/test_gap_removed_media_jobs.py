@@ -188,6 +188,43 @@ class MediaJobsTests(unittest.TestCase):
         self.assertFalse(job.directory.exists())
         self.assertIn("timed out", job.error)
 
+    def test_terminal_worker_state_is_not_published_before_disposal(self):
+        observations = []
+        manager = self.manager
+        original_lock = manager.lock
+
+        class ObservedLock:
+            def __enter__(self):
+                original_lock.acquire()
+                return self
+
+            def __exit__(self, *exc):
+                try:
+                    if threading.current_thread().name.startswith("maw-media-"):
+                        for job in manager.jobs.values():
+                            if job.state in {"failed", "cancelled"}:
+                                observations.append((job.state, job.disposed, job.directory.exists()))
+                finally:
+                    original_lock.release()
+
+        manager.lock = ObservedLock()
+        for error, state in ((RuntimeError("failed"), "failed"),
+                             (MediaJobCancelled("cancelled"), "cancelled")):
+            with self.subTest(state=state):
+                observations.clear()
+
+                def runner(job):
+                    job.output.write_bytes(b"partial")
+                    raise error
+
+                job = self.start(runner)
+                job.thread.join(3)
+                self.assertFalse(job.thread.is_alive())
+                # Inspect every worker lock release, including the former gap
+                # between setting the terminal state and entering finally.
+                self.assertIn((state, True, False), observations)
+                self.assertTrue(all(disposed and not exists for _, disposed, exists in observations))
+
     def test_abandoned_ready_task_expires(self):
         self.manager.ready_timeout = 0.05
         job = self.start(lambda job: job.output.write_bytes(b"media"))

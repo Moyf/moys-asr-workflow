@@ -25,6 +25,7 @@
 | 1.9.0-beta.1 之后 | 2026-10-15 | [导出菜单、关闭焦点与测试增补](release1.9.0-beta.1/261015_导出菜单与关闭焦点/增补记录.md) | OTIO 留白、Esc/空格、测试隔离与 Tauri 退役 |
 | 1.9.0-beta.1 之后 | 2026-10-15 | [v1.9.0-beta.1 测试反馈与处理记录](release1.9.0-beta.1/261015_测试反馈/TEST_FEEDBACK_BETA1.md) | 30 项实测反馈账本，含 9 份调查报告；已汇总为 Issue #237 |
 | 1.9.0-beta.2 之后 | 2026-10-15 | [视频缩略图相关反馈与处理记录](release1.9.0-beta.2/261015_视频缩略图相关/TEST_FEEDBACK_视频缩略图.md) | 画面带主题独立分账：显示性能问答、实时补间开关、生成速度优化与 Launcher 开关 |
+| 1.9.0-beta.2 之后 | 2026-10-16 | [PR #233 脏录音审查回归修复](release1.9.0-beta.2/261016_脏录音审查回归修复/修复记录.md) | 补码选轨、媒体路径、原始 ASR 预检与人工核查页 |
 | unversioned | 2026-10-14 | [Launcher 现代化改版实施记录](unversioned/2026-10-14/LAUNCHER_REDESIGN_IMPLEMENTATION.md) | 分阶段实施账本、测试约束与验证记录 |
 | unversioned | 2026-10-11 | [AI 口播整理编辑稿改造](unversioned/2026-10-11/AI_CLEANUP_RC.md) | 模型编辑稿、固定转换与删除恢复的实现和验证 |
 | unversioned | 2026-10-11 | [AI 重新断句改进记录](unversioned/2026-10-11/AI_RESEGMENT.md) | 字数上限、复杂用例复测及主分支整合证据 |

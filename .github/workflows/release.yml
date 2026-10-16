@@ -90,6 +90,25 @@ jobs:
         # 显式构建（pnpm install 的 postinstall 也会构建，这里保持显式不依赖钩子）。
         run: pnpm install --frozen-lockfile && pnpm run build
 
+      - name: Install FFmpeg for media integration tests
+        shell: pwsh
+        # Test dependency only; release binaries are downloaded and verified below.
+        run: |
+          choco install ffmpeg --yes --no-progress
+          if ($LASTEXITCODE -ne 0) { throw 'FFmpeg installation failed.' }
+          # Launch the real binaries: killing a Chocolatey shim can orphan FFmpeg
+          # and leave the media locked during cancellation/temporary-file cleanup.
+          $FfmpegBinary = Get-ChildItem -LiteralPath "$env:ChocolateyInstall\lib\ffmpeg\tools" -Filter ffmpeg.exe -Recurse -File | Select-Object -First 1
+          if (-not $FfmpegBinary) { throw 'The FFmpeg package contains no executable.' }
+          $FfmpegBin = $FfmpegBinary.Directory.FullName
+          $FfprobeBinary = Join-Path $FfmpegBin 'ffprobe.exe'
+          if (-not (Test-Path -LiteralPath $FfprobeBinary -PathType Leaf)) { throw 'FFprobe is unavailable.' }
+          $FfmpegBin | Out-File -FilePath $env:GITHUB_PATH -Encoding utf8 -Append
+          & $FfmpegBinary.FullName -version
+          if ($LASTEXITCODE -ne 0) { throw 'FFmpeg is unavailable.' }
+          & $FfprobeBinary -version
+          if ($LASTEXITCODE -ne 0) { throw 'FFprobe is unavailable.' }
+
       - name: Run packaging contract tests
         run: uv run python scripts/run_tests.py tests/test_packaging_contract.py
 

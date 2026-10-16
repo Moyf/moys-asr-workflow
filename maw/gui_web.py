@@ -503,6 +503,7 @@ class LauncherApi:
         self.ocr_runtime_worker: threading.Thread | None = None
         self.server_process: subprocess.Popen[str] | None = None
         self.server_log_file: BinaryIO | None = None
+        self._recording_preparation = None
         self.alignment_process: subprocess.Popen[str] | None = None
         self.alignment_log_file: BinaryIO | None = None
         self.alignment_server_port: int | None = None
@@ -2482,6 +2483,40 @@ class LauncherApi:
             return {"ok": True, "stopped": True}
         return {"ok": True, "stopped": False}
 
+    def start_recording_review(self, payload: Mapping[str, object]) -> dict[str, object]:
+        from maw.recording_preparation import RecordingPreparation
+        from maw.script_timestamp_alignment import read_script_lines
+        if self.worker and self.worker.is_alive() or self.batch_worker and self.batch_worker.is_alive():
+            return {"ok": False, "error": "已有转写正在运行，请先完成或停止。"}
+        try:
+            script = Path(str(payload.get("scriptPath") or "")).expanduser().resolve()
+            read_script_lines(script)
+            config = payload.get("transcription")
+            if not isinstance(config, Mapping):
+                raise ValueError("缺少所选 ASR 配置。")
+            request = _request_from_payload({**dict(config), "testRun": False,
+                                            "autoPostprocess": None}, self.paths.env_path)
+            ffmpeg_error = _frozen_ffmpeg_preflight(self.paths.env_path)
+            if ffmpeg_error:
+                return ffmpeg_error
+            job = RecordingPreparation(request, script)
+        except (OSError, ValueError, PreflightError) as error:
+            return {"ok": False, "error": str(error)}
+        self._recording_preparation = job
+        self.worker = job.thread
+        job.thread.start()
+        return {"ok": True, **job.snapshot()}
+
+    def recording_review_status(self) -> dict[str, object]:
+        job = self._recording_preparation
+        return {"ok": True, **job.snapshot()} if job else {"ok": True, "status": "idle"}
+
+    def cancel_recording_review(self) -> dict[str, object]:
+        job = self._recording_preparation
+        if job:
+            job.cancel.set()
+        return {"ok": True}
+
     def start_transcription(self, payload: Mapping[str, object]) -> dict[str, object]:
         if self.batch_worker and self.batch_worker.is_alive():
             return {"ok": False, "error": "A batch transcription is already running."}
@@ -3140,6 +3175,7 @@ class LauncherApi:
         return _open_existing_path(directory.resolve())
 
     def shutdown(self) -> None:
+        self.cancel_recording_review()
         self.cancel_transcription()
         self.cancel_batch_transcription()
         self.cancel_media_tool()

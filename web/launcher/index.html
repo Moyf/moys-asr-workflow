@@ -638,6 +638,15 @@
 
       <section id="toolboxAlignmentPanel" class="toolbox-panel hidden toolbox-utility-panel" role="tabpanel" aria-labelledby="toolboxAlignmentTab">
         <p class="hint toolbox-panel-hint" data-i18n="toolbox_alignment_hint">适合初版 ASR 中有口吃、重录、重复或顺序混乱的口播；需要 MAW 工程和校对文稿，人工选择 take 后导出新工程。</p>
+        <div class="field" style="margin-bottom:12px">
+          <label for="toolboxRecordingInputMode">输入方式 / Input</label>
+          <select id="toolboxRecordingInputMode">
+            <option value="project">使用已有原始 ASR 工程 / Existing ASR project</option>
+            <option value="recording">从录音开始：先 ASR 再审查 / Transcribe then review</option>
+          </select>
+          <p class="hint" style="margin-top:10px">从录音开始会使用主界面当前 ASR 提供者、模型、音轨和输出位置；不执行文稿替换或 AI 自动后处理。额外内容默认保留。</p>
+          <button id="cancelRecordingPreparation" class="ghost hidden" type="button" style="margin-top:10px">停止 ASR 准备 / Stop ASR</button>
+        </div>
         <div id="toolboxAlignmentInputs" class="toolbox-alignment-inputs">
           <div id="toolboxAlignmentProjectDropZone" class="field toolbox-input">
             <div class="toolbox-input-heading">

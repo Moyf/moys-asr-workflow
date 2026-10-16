@@ -1357,7 +1357,7 @@
 
   function validateAlignmentInputs() {
     const paths = alignmentInputs();
-    if (!paths.projectPath || !ALIGNMENT_PROJECT_EXTS.has(extension(paths.projectPath))) {
+    if ($("toolboxRecordingInputMode").value !== "recording" && (!paths.projectPath || !ALIGNMENT_PROJECT_EXTS.has(extension(paths.projectPath)))) {
       const message = t("toolbox_alignment_project_invalid");
       setFieldError("toolboxAlignmentProjectPath", message);
       setResult(message, "error");
@@ -1388,7 +1388,30 @@
     const gapRemove = alignmentGapRemoveFromControls({ normalizeFields: true });
     setBusy(true, "toolbox_status_alignment_starting");
     try {
-      const result = await bridge("start_alignment_server", { ...paths, gapRemove, guiLang: document.documentElement.lang === "en" ? "en" : "zh" });
+      let inputs = paths;
+      if ($("toolboxRecordingInputMode").value === "recording") {
+        const transcription = window.MAWLauncher.getTranscriptionPayload();
+        if (paths.mediaPath) {
+          transcription.mediaPath = paths.mediaPath;
+          transcription.audioTrack = window.MAWLauncher.getAudioTrackForMedia(paths.mediaPath);
+        }
+        const started = await bridge("start_recording_review", {scriptPath:paths.scriptPath, transcription});
+        if (!started.ok) { setResult(started.error || postprocessErrorText(started), "error"); return; }
+        $("cancelRecordingPreparation").classList.remove("hidden");
+        let prepared;
+        try {
+          do {
+            await new Promise(resolve => setTimeout(resolve, 400));
+            prepared = await bridge("recording_review_status");
+            setResult(prepared.message || "", "info");
+          } while (prepared.status === "running");
+        } finally { $("cancelRecordingPreparation").classList.add("hidden"); }
+        if (prepared.status !== "ready") { setResult(prepared.message || "ASR 准备失败", "error"); return; }
+        inputs = {projectPath:prepared.projectPath, scriptPath:prepared.scriptPath, mediaPath:prepared.mediaPath};
+        $("toolboxAlignmentProjectPath").value = prepared.projectPath;
+        window.MAWLauncher.setJsonPath(prepared.projectPath);
+      }
+      const result = await bridge("start_alignment_server", { ...inputs, gapRemove, guiLang: document.documentElement.lang === "en" ? "en" : "zh" });
       if (!result.ok) {
         if (result.code?.startsWith("alignment_server_")) {
           alignmentRunning = false;
@@ -2774,6 +2797,10 @@
   $("llmModelChoicesToggle").addEventListener("click", () => setModelChoicesOpen(!modelChoicesOpen));
   $("generateWaveform").addEventListener("click", () => { void generateWaveformProject(false); });
   $("runWaveform").addEventListener("click", () => { void generateWaveformProject(true); });
+  $("toolboxRecordingInputMode").addEventListener("change", () => {
+    $("toolboxAlignmentProjectDropZone").classList.toggle("hidden", $("toolboxRecordingInputMode").value === "recording");
+  });
+  $("cancelRecordingPreparation").addEventListener("click", () => { void bridge("cancel_recording_review"); });
   $("runToolboxAlignment").addEventListener("click", () => { void runToolboxAlignment(); });
   $("stopToolboxAlignment").addEventListener("click", () => { void stopToolboxAlignment(); });
   $("runTimestampAlignment").addEventListener("click", () => { void runTimestampAlignment(); });

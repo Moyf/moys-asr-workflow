@@ -271,6 +271,7 @@ class MediaJobManager:
                 except MediaJobCancelled:
                     with self.lock:
                         job.state = "cancelled"
+                        self._dispose(job)
                 except Exception as error:
                     with self.lock:
                         job.state = "cancelled" if job.cancelled.is_set() else "failed"
@@ -278,10 +279,9 @@ class MediaJobManager:
                         job.error_details = None if job.cancelled.is_set() else getattr(error, "details", None)
                         if job.error_details:
                             job.error_details = str(job.error_details)[-4000:]
-                finally:
-                    with self.lock:
-                        if job.state in {"failed", "cancelled"}:
-                            self._dispose(job)
+                        # Do not publish the terminal state before attempting disposal.
+                        # Keep the state transition and cleanup under one lock.
+                        self._dispose(job)
 
             job.thread = threading.Thread(target=work, name="maw-media-" + job.id, daemon=True)
             job.thread.start()
