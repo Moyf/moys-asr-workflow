@@ -27,6 +27,40 @@ test.beforeEach(async ({ page }) => {
   await expect(page.locator('.waveform-row').first()).toBeVisible();
 });
 const word = (page, index) => page.locator(`.waveform-word-block[data-segment-idx="0"][data-item-idx="${index}"]`).first();
+
+test('Q preserves the viewed waveform time when the playhead is offscreen', async ({ page }) => {
+  const media = join(tempDir, 'long-wave.wav'), project = join(tempDir, 'long-wave.mosp');
+  generateWav(media, 120);
+  writeFileSync(project, JSON.stringify({ media, waveform: generateWaveformPayload(120000), segments: [] }));
+  const longServer = await startServer(project, media, await findFreePort());
+  try {
+    await page.goto(longServer.url);
+    await page.locator('[data-waveform-mode="multi"]').click();
+    await page.evaluate(() => {
+      const editor = MaweCoreState.waveformEditor;
+      editor.scroll.style.flex = '0 0 160px';
+      editor.scroll.style.height = '160px';
+      editor.setSecondsPerRow(20);
+      editor.setRowHeight(64);
+      editor.scroll.scrollTop = editor.scroll.scrollHeight;
+    });
+    await expect.poll(() => page.evaluate(() => MaweDisplaySettings.captureWaveformViewportCenterTimeMs(MaweCoreState.waveformEditor))).toBeGreaterThan(60000);
+    const anchor = await page.evaluate(() => MaweDisplaySettings.captureWaveformViewportCenterTimeMs(MaweCoreState.waveformEditor));
+    await page.keyboard.press('q');
+    await expect(page.locator('#word-timing-quick-toggle')).toHaveAttribute('aria-pressed', 'true');
+    await expect.poll(() => page.evaluate(time => {
+      const editor = MaweCoreState.waveformEditor;
+      const viewport = editor.scroll.getBoundingClientRect();
+      return [...editor.content.querySelectorAll('.waveform-row')].some(row => {
+        const box = row.getBoundingClientRect();
+        return Number(row.dataset.startMs) <= time && time <= Number(row.dataset.endMs)
+          && box.top < viewport.bottom && box.bottom > viewport.top;
+      });
+    }, anchor)).toBe(true);
+  } finally {
+    await longServer.stop();
+  }
+});
 test('word presets apply immediately and restore across bilingual mode changes', async ({ page }) => {
   await page.locator('[data-waveform-mode="multi"]').click();
   await page.evaluate(() => {
@@ -41,9 +75,9 @@ test('word presets apply immediately and restore across bilingual mode changes',
   });
   expect(await page.evaluate(() => MaweCoreState.waveformEditor.settings.secondsPerRow)).toBe(10);
   await page.locator('#multi-subtitle-quick-toggle').click();
-  expect(await page.evaluate(() => MaweCoreState.waveformEditor.getRowHeight())).toBe(168);
+  expect(await page.evaluate(() => MaweCoreState.waveformEditor.getRowHeight())).toBe(192);
   await setWordTiming(page, false);
-  expect(await page.evaluate(() => MaweCoreState.waveformEditor.getRowHeight())).toBe(168);
+  expect(await page.evaluate(() => MaweCoreState.waveformEditor.getRowHeight())).toBe(192);
   expect(await page.evaluate(() => MaweCoreState.waveformEditor.settings.secondsPerRow)).toBe(20);
   await page.locator('#multi-subtitle-quick-toggle').click();
   expect(await page.evaluate(() => MaweCoreState.waveformEditor.getRowHeight())).toBe(192);
@@ -88,7 +122,12 @@ test(`full word layout preserves sentence height, highlight and body dragging in
   await setWordTiming(page);
   const main = page.locator('.waveform-cue-block[data-track="main"][data-idx="0"]').first();
   await expect(main).toHaveClass(/word-timing-full/);
-  expect(await main.evaluate(el => el.getBoundingClientRect().height)).toBe(35);
+  // 多行行高的句块保持 35px；单行模式按「几何不随字词码变化」约定保留
+  // 原厚度 max(35px, min(72px, 40%))，不再压窄（条带改为浮在其上方）。
+  const expectedMainHeight = mode === 'basic'
+    ? await main.evaluate(el => Math.max(35, Math.min(72, el.closest('.waveform-row').clientHeight * 0.4)))
+    : 35;
+  expect(await main.evaluate(el => el.getBoundingClientRect().height)).toBeCloseTo(expectedMainHeight, 3);
   expect(await word(page, 0).evaluate(el => el.getBoundingClientRect().height)).toBe(35);
   await main.click({ position: { x: 20, y: 18 } });
   await expect(main).toHaveClass(/selected/);
@@ -152,7 +191,14 @@ test('word timing separation stays within multi-row single-track waveforms', asy
   await page.locator('[data-waveform-mode="basic"]').click();
   const basic = await word(page, 0).evaluate(el => ({
     height: parseFloat(getComputedStyle(el).height), bottom: parseFloat(getComputedStyle(el).bottom),
+    rowHeight: el.closest('.waveform-row').clientHeight,
   }));
+  // 单行模式条带与字幕块 y 不相交（几何新约定），仍在 basic 模式时读取。
+  const basicStripGap = await page.evaluate(() => {
+    const row = document.querySelector('.waveform-row[data-basic="true"]');
+    return row.querySelector('.waveform-cue-block[data-track="main"]').getBoundingClientRect().top
+      - row.querySelector('.waveform-word-block').getBoundingClientRect().bottom;
+  });
   await page.evaluate(() => {
     MaweBoot.DATA.multi_subtitle = { enabled: true, tracks: [{ id: 'timing-extension', segments: [
       { start: 500, end: 7000, text: 'extension text' },
@@ -175,7 +221,11 @@ test('word timing separation stays within multi-row single-track waveforms', asy
   console.log('word timing geometry', JSON.stringify({ multi, basic, lanes }));
   await page.locator('#waveform-pane').screenshot({ path: testInfo.outputPath('word-bilingual-lanes.png') });
   expect(multi).toEqual({ height: 35, bottom: 44 });
-  expect(basic).toEqual({ height: 35, bottom: 44 });
+  // 单行模式条带 bottom = 块底 7 + 间距 2 + 原厚度块高 max(35, min(72, 40%·行高))；
+  // 数值按行高推导（LayoutUnit 量化留 1px 容差），并验证条带与字幕块 y 不相交。
+  expect(basic.height).toBe(35);
+  expect(Math.abs(basic.bottom - (9 + Math.max(35, Math.min(72, basic.rowHeight * 0.4))))).toBeLessThanOrEqual(1);
+  expect(basicStripGap).toBeGreaterThanOrEqual(-0.5);
   expect(lanes.mainBottom).toBeGreaterThan(lanes.extensionBottom);
   expect(lanes.mainRectBottom).toBeLessThanOrEqual(lanes.extensionRectTop + 1);
 });
@@ -349,9 +399,11 @@ test('conversion reviews skips and bindings, is atomic and preserves items on sa
   await page.locator('.word-timing-advanced > .item').first().click();
   await page.locator('.word-timing-advanced .danger').click();
   await expect(page.locator('#word-conversion-summary')).toContainText('将转换1句，生成2条新的字幕（跳过2句，解除1个副字幕绑定）');
-  await expect(page.locator('#word-conversion-warning')).toHaveText('可通过撤销恢复；不提供反向转换工具。');
+  await expect(page.locator('#word-conversion-warning')).toHaveCount(0);
+  await expect(page.locator('#word-conversion-undo')).toHaveText('如果不满意可以撤销，或者多选字幕块后重新合并。');
+  expect(await page.locator('#word-conversion-summary').evaluate((el) => parseFloat(getComputedStyle(el).fontSize))).toBeGreaterThanOrEqual(15);
   await page.evaluate(() => MAWE_I18N.applyLanguage('en'));
-  await expect(page.locator('#word-conversion-warning')).toHaveText('You can undo this conversion; no reverse-conversion tool is provided.');
+  await expect(page.locator('#word-conversion-undo')).toHaveText('You can undo the result or select multiple subtitle blocks and merge them again.');
   await page.evaluate(() => MAWE_I18N.applyLanguage('zh'));
   await expect(page.locator('#word-conversion-skipped')).toContainText('文字未被完整覆盖');
   const spacing = await page.locator('.word-conversion-actions').evaluate(el => ({
@@ -757,7 +809,14 @@ test('context menu keeps clip actions up front and moves low-frequency entries i
   await page.locator('.waveform-cue-block[data-track="main"][data-idx="0"]').click({ button: 'right' });
   const menu = page.locator('#ctxmenu');
   await expect(menu.locator(':scope > .item > span').filter({ hasText: '转为叠加字幕' })).toHaveCount(0);
-  await expect(menu.locator(':scope > .item > span').filter({ hasText: '左右添加字符' })).toHaveCount(0);
+  // 「左右添加字符」是高频动作：顶层菜单行，位于「高级操作」上方。
+  const wrapRow = menu.locator(':scope > .ctxmenu-submenu').filter({ hasText: '左右添加字符' });
+  const advancedRow = menu.locator(':scope > .ctxmenu-submenu.word-timing-advanced');
+  await expect(wrapRow).toHaveCount(1);
+  await expect(advancedRow.locator('span').filter({ hasText: '左右添加字符' })).toHaveCount(0);
+  const wrapBox = await wrapRow.boundingBox();
+  const advancedBox = await advancedRow.boundingBox();
+  expect(wrapBox.y).toBeLessThan(advancedBox.y);
   await menu.locator('.word-timing-advanced > .item').first().click();
   await expect(menu.locator('.word-timing-advanced .danger')).toHaveCount(0);
   await page.evaluate(() => {
@@ -766,11 +825,9 @@ test('context menu keeps clip actions up front and moves low-frequency entries i
   });
   await menu.locator('.word-timing-advanced > .item').first().hover();
   const overlayButton = menu.locator('.word-timing-advanced button').filter({ hasText: '转为叠加字幕' });
-  const wrapHeading = menu.locator('.word-timing-advanced').locator('span', { hasText: '左右添加字符' });
   const convertButton = menu.locator('.word-timing-advanced .danger');
   await expect(overlayButton).toHaveCount(1);
   await expect(convertButton).toHaveCount(1);
-  await expect(wrapHeading).toBeVisible();
   const parentBox = await menu.boundingBox();
   const submenuBox = await menu.locator('.word-timing-advanced-list').boundingBox();
   expect(submenuBox.x).toBeGreaterThanOrEqual(parentBox.x + parentBox.width - 2);

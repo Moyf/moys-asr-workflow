@@ -163,7 +163,6 @@
     const cueBeforeFilter = MaweCoreState.container.querySelector(cueSelector);
     if (cueBeforeFilter?.classList.contains('hidden')) {
       MaweDom.searchEl.value = '';
-      MaweSearch.refreshSearchClearVisibility();
       const filterOver = document.getElementById('filter-over');
       if (filterOver?.classList.contains('active')) filterOver.classList.remove('active');
       MaweSearch.applySearch('');

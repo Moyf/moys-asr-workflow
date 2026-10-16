@@ -30,7 +30,7 @@ X264_PRESETS: Final = frozenset({"veryfast", "fast", "medium", "slow", "veryslow
 AUDIO_BITRATES: Final = frozenset({"96k", "128k", "160k", "192k", "224k", "256k", "320k"})
 MIN_BURN_CRF: Final = 0
 MAX_BURN_CRF: Final = 51
-DEFAULT_BURN_CRF: Final = 18
+DEFAULT_BURN_CRF: Final = 21
 DEFAULT_BURN_PRESET: Final = "medium"
 DEFAULT_BURN_AUDIO_BITRATE: Final = "192k"
 # 样式库的 SRT 烧录样式按 1080p 参考坐标系存储字号（与编辑器预览、前端 ASS
@@ -136,7 +136,7 @@ class BurnSubtitleRequest:
     srt_style: Mapping[str, object] | None = None
     video_encoder: str = "auto"
     # Optional encoding overrides exposed by the toolbox UI; None keeps the
-    # built-in defaults (CRF 18 / preset medium / audio 192k). CRF 与音频码率
+    # built-in defaults (CRF 21 / preset medium / audio 192k). CRF 与音频码率
     # 对所有编码器生效（硬件编码器映射到 cq/qp/global_quality）；preset 仅
     # libx264 支持，硬件编码器使用各自的固定预设。
     crf: int | None = None
@@ -379,6 +379,11 @@ def _video_encoder_options(mode: str, crf: int, preset: str) -> list[str]:
     if mode == "qsv":
         return ["-c:v", "h264_qsv", "-preset", "medium", "-global_quality", str(crf)]
     raise ValueError(f"unsupported video encoder mode: {mode}")
+
+
+# 编辑器整片烧录（server-editor）与工具箱压制字幕共用同一套编码器探测与参数映射。
+video_encoder_attempts = _video_encoder_attempts
+video_encoder_options = _video_encoder_options
 
 
 def _subtitle_time_ms(value: str) -> int | None:

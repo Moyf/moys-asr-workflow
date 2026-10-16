@@ -358,6 +358,12 @@ function mergeOverlaySegments(idxs) {
   const colorGroup = window.AsrEditorUtils.resolveMergedGroupInheritance(
     track.segments, sorted, 'color', 'color_ref',
   );
+  // 拼接后折叠相邻「闭符号+开符号」的同符号对，items 层同步守恒（与主/副合并同规则）。
+  const overlayJoin = window.AsrEditorUtils.joinSegmentTextsMassFold(
+    segments,
+    MaweMultiSubtitleCore.mergeJoinSeparatorForMode(MaweMultiSubtitleCore.getMainSubtitleSplitMode({ text: segments.map((s) => s.text || '').join('\n') })),
+    MaweSettings.EDITOR_SETTINGS.assSpecialSymbolRule,
+  );
   const merged = {
     id: MULTI_SUBTITLE_UTILS.uniqueStableSegmentId(
       track.segments,
@@ -366,11 +372,8 @@ function mergeOverlaySegments(idxs) {
     ),
     start: segments[0].start,
     end: segments[segments.length - 1].end,
-    text: window.AsrEditorUtils.joinSegmentTexts(
-      segments,
-      MaweMultiSubtitleCore.mergeJoinSeparatorForMode(MaweMultiSubtitleCore.getMainSubtitleSplitMode({ text: segments.map((s) => s.text || '').join('\n') })),
-    ),
-    items: segments.flatMap((segment) => segment.items || []),
+    text: overlayJoin.text,
+    items: overlayJoin.items,
     sticker: stickerGroup.head,
     sticker_ref: stickerGroup.ref,
     color: colorGroup.head,

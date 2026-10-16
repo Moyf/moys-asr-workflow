@@ -239,6 +239,16 @@ class ScriptMatchTests(CompactContainerAssertions, unittest.TestCase):
             "第一句\n第二句？\n第三句",
         )
 
+    def test_default_semicolon_and_opt_in_enumeration_follow_shared_policy(self) -> None:
+        self.assertEqual(processed_script_text(
+            "这个、那个，都不错;下一项", extra_split_punctuation=DEFAULT_EXTRA_SPLIT_PUNCTUATION,
+            preserve_punctuation=DEFAULT_PRESERVE_PUNCTUATION,
+        ), "这个、那个\n都不错\n下一项")
+        self.assertEqual(processed_script_text("这个、那个", extra_split_punctuation=("、",), preserve_punctuation=()),
+                         "这个\n那个")
+        self.assertEqual(processed_script_text("这个、那个", extra_split_punctuation=("、",), preserve_punctuation=("、",)),
+                         "这个、\n那个")
+
     def test_processed_script_text_keeps_closing_quotes_after_split_punctuation(self) -> None:
         text = "但是也有地平论者在发力\n「你有没有自主意识？」\n「AI 会不会统治地球？」"
 

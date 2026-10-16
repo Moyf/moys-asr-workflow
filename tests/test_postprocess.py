@@ -562,7 +562,7 @@ class PostprocessTests(unittest.TestCase):
 
     def test_failed_batch_and_unusable_response_do_not_write_output(self) -> None:
         calls = 0
-        before = set(self.root.iterdir())
+        before = {path for path in self.root.iterdir() if not path.name.endswith(".md")}
 
         def complete(_prompt, cues):
             nonlocal calls
@@ -576,7 +576,7 @@ class PostprocessTests(unittest.TestCase):
                 run_llm_postprocess(LlmPostprocessRequest(
                     project_path=self.project_path, srt_path=None, output_mode=OutputMode.JSON,
                     operation="proofread", custom_prompt=""), complete=complete)
-        self.assertEqual(set(self.root.iterdir()), before)
+        self.assertEqual({path for path in self.root.iterdir() if not path.name.endswith(".md")}, before)
 
     def test_llm_transient_provider_status_degrades_batch_to_original_text(self) -> None:
         # 429 / 5xx 是长任务中最常见的中途失败，与网络中断同等对待。
@@ -638,7 +638,7 @@ class PostprocessTests(unittest.TestCase):
         def complete(_prompt: str, _cues: list[dict[str, JsonValue]]) -> JsonDict:
             raise LlmClientError("LLM network request failed: timeout", category="network")
 
-        before = set(self.root.iterdir())
+        before = {path for path in self.root.iterdir() if not path.name.endswith(".md")}
         for operation in ["proofread", "translate_en", "resegment", "custom"]:
             with self.subTest(operation=operation), mock.patch("maw.postprocess.MAX_LLM_CUES_PER_REQUEST", 1):
                 with self.assertRaises(ValueError):
@@ -652,7 +652,7 @@ class PostprocessTests(unittest.TestCase):
                         ),
                         complete=complete,
                     )
-            self.assertEqual(set(self.root.iterdir()), before)
+            self.assertEqual({path for path in self.root.iterdir() if not path.name.endswith(".md")}, before)
 
     def test_llm_protocol_failure_still_aborts_the_run(self) -> None:
         def complete(_prompt: str, _cues: list[dict[str, JsonValue]]) -> JsonDict:
@@ -1434,9 +1434,9 @@ class PostprocessTests(unittest.TestCase):
                 self.assertEqual(session.post.call_count, 1, "cancellation must not retry")
                 self.assertEqual(observer_calls, [], "late Response must not reach the parser")
                 self.assertEqual(
-                    sorted(path.name for path in self.root.iterdir()),
+                    sorted(path.name for path in self.root.iterdir() if path.suffix != ".md"),
                     ["clip.mosp", "clip.mp4"],
-                    "cancelled work must not write artifacts",
+                    "cancelled work must not write subtitle artifacts; failure records are allowed",
                 )
             finally:
                 release_headers.set()
@@ -1545,9 +1545,9 @@ class PostprocessTests(unittest.TestCase):
                 self.assertEqual(session.post.call_count, 1, "cancelled stream must not retry")
                 self.assertGreaterEqual(response.close.call_count, 1)
                 self.assertEqual(
-                    sorted(path.name for path in self.root.iterdir()),
+                    sorted(path.name for path in self.root.iterdir() if path.suffix != ".md"),
                     ["clip.mosp", "clip.mp4"],
-                    "cancelled work must not write artifacts",
+                    "cancelled work must not write subtitle artifacts; failure records are allowed",
                 )
             finally:
                 release_stream.set()
@@ -2244,6 +2244,19 @@ class PostprocessTests(unittest.TestCase):
         self.assertIsNotNone(result.srt_path)
         self.assertEqual(result.srt_path.name, "clip.翻译为中文.回填.srt")
 
+    def test_llm_translation_majority_backfill_outputs_normal_translation(self) -> None:
+        result = run_llm_postprocess(
+            LlmPostprocessRequest(project_path=self.project_path, srt_path=None,
+                output_mode=OutputMode.BOTH, operation="translate_en", custom_prompt="",
+                embed_translations=True, generate_comparison=True),
+            complete=lambda _prompt, cues: {"groups": [{"id": cue["id"], "text": f"Translation {cue['id']}"} for cue in cues]},
+        )
+        self.assertNotIn("backfill", result.project_path.name)
+        self.assertEqual([segment["text"] for segment in project_segments(read_project(result.project_path))], ["Translation c0001", "Translation c0002"])
+        self.assertTrue(result.comparison_path.is_file())
+        self.assertIn("2/2", "\n".join(result.warnings))
+        self.assertIn("请关闭回填", "\n".join(result.warnings))
+
     def test_llm_translation_rejects_merge_bilingual_and_backfill_together(self) -> None:
         with self.assertRaisesRegex(ValueError, "不能同时启用"):
             _ = run_llm_postprocess(
@@ -2385,7 +2398,7 @@ class PostprocessTests(unittest.TestCase):
         def complete(_system_prompt: str, _cues: list[dict[str, JsonValue]]) -> JsonDict:
             return {"groups": [{"source_ids": ["c0001", "c0002"], "text": "Merged translation"}]}
 
-        before = set(self.root.iterdir())
+        before = {path for path in self.root.iterdir() if not path.name.endswith(".md")}
         with self.assertRaisesRegex(ValueError, "没有生成可用字幕") as raised:
             _ = run_llm_postprocess(
                 LlmPostprocessRequest(
@@ -2399,7 +2412,7 @@ class PostprocessTests(unittest.TestCase):
             )
         self.assertIn("c0001", str(raised.exception))
         self.assertIn("c0002", str(raised.exception))
-        self.assertEqual(set(self.root.iterdir()), before)
+        self.assertEqual({path for path in self.root.iterdir() if not path.name.endswith(".md")}, before)
 
     def test_llm_translation_retries_only_omitted_cues_before_writing(self) -> None:
         calls: list[list[str]] = []
@@ -2732,7 +2745,7 @@ class PostprocessTests(unittest.TestCase):
                     )
 
     def test_llm_translation_does_not_write_partial_output_after_missing_cue_retries(self) -> None:
-        before = set(self.root.iterdir())
+        before = {path for path in self.root.iterdir() if not path.name.endswith(".md")}
 
         def complete(_system_prompt: str, cues: list[dict[str, JsonValue]]) -> JsonDict:
             return {"groups": list[JsonValue](
@@ -2752,7 +2765,7 @@ class PostprocessTests(unittest.TestCase):
                 complete=complete,
             )
         self.assertIn("c0002", str(raised.exception))
-        self.assertEqual(set(self.root.iterdir()), before)
+        self.assertEqual({path for path in self.root.iterdir() if not path.name.endswith(".md")}, before)
 
     def test_llm_translation_all_failure_has_a_bounded_repair_budget(self) -> None:
         project = sample_project(self.media)
@@ -2772,7 +2785,7 @@ class PostprocessTests(unittest.TestCase):
             calls += 1
             return {"groups": []}
 
-        before = set(self.root.iterdir())
+        before = {path for path in self.root.iterdir() if not path.name.endswith(".md")}
         with self.assertRaisesRegex(ValueError, "翻译补救请求已达到上限") as raised:
             _ = run_llm_postprocess(
                 LlmPostprocessRequest(
@@ -2788,7 +2801,7 @@ class PostprocessTests(unittest.TestCase):
         self.assertEqual(calls, 1 + MAX_TRANSLATION_REPAIR_REQUESTS_PER_BATCH)
         self.assertIn("c0001", str(raised.exception))
         self.assertIn("c0040", str(raised.exception))
-        self.assertEqual(set(self.root.iterdir()), before)
+        self.assertEqual({path for path in self.root.iterdir() if not path.name.endswith(".md")}, before)
 
     def test_llm_custom_operation_has_no_preset_task_prompt(self) -> None:
         prompts: list[str] = []
@@ -3093,7 +3106,7 @@ class MediaToolTests(CompactContainerAssertions, unittest.TestCase):
         self.assertNotIn("clip.srt'", command[command.index("-vf") + 1])
         self.assertIn("libx264", command)
         self.assertEqual(command[command.index("-preset") + 1], "medium")
-        self.assertEqual(command[command.index("-crf") + 1], "18")
+        self.assertEqual(command[command.index("-crf") + 1], "21")
         self.assertEqual(command[command.index("-b:a") + 1], "192k")
         self.assertEqual(len(popen.call_args_list), 2)
         self.assertFalse(list(self.root.glob(".*.ass")))

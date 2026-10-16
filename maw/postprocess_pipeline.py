@@ -18,7 +18,8 @@ from pathlib import Path
 from threading import Event
 from typing import Final
 
-from maw.file_errors import file_write_operation, intermediate_file_operation
+from maw.file_errors import file_error_code, file_write_operation, intermediate_file_operation
+from maw.local_log import redact_sensitive_text
 from maw.gui_config import load_env
 from maw.output_naming import format_elapsed, operation_suffix, postprocess_workspace, resolve_lang, sanitize_component, translation_marker_name
 from maw.postprocess import (
@@ -26,12 +27,14 @@ from maw.postprocess import (
     FixedProcessRequest,
     LlmPostprocessRequest,
     OutputMode,
+    PostprocessStepError,
     Replacement,
     embed_translated_project,
     fixed_process_operation,
     merge_bilingual_project,
     run_fixed_process,
     run_llm_postprocess,
+    translation_backfill_warning,
 )
 from maw.postprocess_ai_cleanup import AiCleanupRequest, llm_complete, run_ai_cleanup
 from maw.postprocess_resegment import complete_boundaries, normalize_max_chars
@@ -39,6 +42,7 @@ from maw.postprocess_io import _available_output, SubtitleArtifact, read_project
 from maw.postprocess_llm import (
     DEFAULT_REASONING_MODE,
     LlmSettings,
+    LlmClientError,
     complete_subtitle_groups,
     normalize_reasoning_mode,
     preset_by_id,
@@ -96,7 +100,7 @@ def default_postprocess_plan() -> dict[str, object]:
                 "preservePunctuation": list(DEFAULT_PRESERVE_PUNCTUATION),
                 "cleanMarkdownSymbols": True,
             },
-            {"id": "cleanup", "enabled": False, "scriptPath": "", "providerId": "deepseek", "customPrompt": "", "generateComparison": False, "cleanMarkdownSymbols": True},
+            {"id": "cleanup", "enabled": False, "scriptPath": "", "providerId": "deepseek", "customPrompt": "", "generateComparison": False, "cleanMarkdownSymbols": True, "reviewEnabled": False},
             {"id": "replace", "enabled": False, "replacements": [], "replacementSeparator": "arrow", "replacementTrim": True, "replacementCustomSeparator": "", "conversion": TextConversion.OFF.value},
             {"id": "proofread", "enabled": False, "providerId": "deepseek", "customPrompt": "", "generateComparison": False},
             {"id": "resegment", "enabled": False, "providerId": "deepseek", "customPrompt": "", "generateComparison": False, "maxChars": 0},
@@ -168,7 +172,7 @@ def normalize_plan(raw: object) -> dict[str, object]:
                 step[key] = str(value or "") if str(value or "") in BILINGUAL_LINE_ORDERS else ""
             elif key in {"regionX1", "regionY1", "regionX2", "regionY2", "threshold"}:
                 step[key] = _number_or_default(value, step[key])
-            elif key in {"report", "generateComparison"}:
+            elif key in {"report", "generateComparison", "reviewEnabled"}:
                 step[key] = bool(value)
             elif key == "matchMode":
                 step[key] = str(value or "script") if str(value or "script") in {"script", "text"} else "script"
@@ -462,6 +466,7 @@ class PipelineResult:
     warnings: tuple[str, ...] = ()
     translated_srt_path: Path | None = None
     media_path: Path | None = None
+    skipped_steps: tuple[str, ...] = ()
 
 
 class PostprocessCancelled(RuntimeError):
@@ -724,6 +729,8 @@ def run_postprocess_pipeline(
             else None
         )
         if isinstance(previous_manifest_step, Mapping):
+            if previous_manifest_step.get("status") == "skipped":
+                continue
             previous_media = str(previous_manifest_step.get("mediaPath") or "").strip()
             if previous_media:
                 current_media = Path(previous_media).expanduser().resolve()
@@ -732,11 +739,14 @@ def run_postprocess_pipeline(
             bilingual_output = bool(previous_step.get("mergeBilingual"))
             embed_output = bool(previous_step.get("embedTranslations")) and not bilingual_output
             if isinstance(previous_manifest_step, Mapping):
+                embed_output = embed_output and previous_manifest_step.get("backfillApplied", True) is not False
                 previous_path = str(previous_manifest_step.get("translatedSrtPath") or "").strip()
                 if previous_path:
                     current_translated_srt = Path(previous_path).expanduser().resolve()
-    completed: list[str] = [str(step["id"]) for step in steps[:max(0, resume_from)]]
-    warnings: list[str] = []
+    previous = manifest.get("steps", [])[:resume_count]
+    skipped = [str(item["id"]) for item in previous if item.get("status") == "skipped"]
+    completed: list[str] = [str(step["id"]) for step in steps[:resume_count] if str(step["id"]) not in skipped]
+    warnings: list[str] = [str(item["warning"]) for item in previous if item.get("warning")]
     pipeline_t0 = time.perf_counter()
     try:
         for index, step in enumerate(steps[max(0, resume_from):], max(0, resume_from) + 1):
@@ -750,6 +760,7 @@ def run_postprocess_pipeline(
             step_t0 = time.perf_counter()
             translation_intermediate_project: Path | None = None
             translation_intermediate_srt: Path | None = None
+            translation_before = (translation_target, bilingual_output, embed_output)
             try:
                 artifact = _run_step(
                     step,
@@ -816,14 +827,17 @@ def run_postprocess_pipeline(
                             output_directory=run_directory,
                             media_path=media_path,
                         )
-                        artifact, artifact_index = _number_pipeline_artifact(
-                            artifact,
-                            run_directory=run_directory,
-                            source_stem=source_stem,
-                            index=artifact_index,
-                            operation=f"translate-{translation_target}-backfill",
-                            lang=language,
-                        )
+                        embed_output = artifact.srt_path != translation_intermediate_srt
+                        manifest_steps[index - 1]["backfillApplied"] = embed_output
+                        if embed_output:
+                            artifact, artifact_index = _number_pipeline_artifact(
+                                artifact,
+                                run_directory=run_directory,
+                                source_stem=source_stem,
+                                index=artifact_index,
+                                operation=f"translate-{translation_target}-backfill",
+                                lang=language,
+                            )
                     else:
                         artifact = _attach_translation_track(
                             source_project_path=current_project,
@@ -853,6 +867,34 @@ def run_postprocess_pipeline(
             except PostprocessCancelled:
                 raise
             except Exception as error:
+                _check_cancel(cancel_event)
+                if getattr(error, "category", "") == "cancelled":
+                    raise PostprocessCancelled(str(error)) from error
+                if step_id in {"cleanup", "proofread", "resegment", "translate"} and isinstance(error, (LlmClientError, PostprocessStepError, ValueError)) and not file_error_code(error):
+                    # Nothing from this failed step becomes the next input.
+                    # Keep its files and an exact pre-step input snapshot.
+                    translation_target, bilingual_output, embed_output = translation_before
+                    failed_directory = run_directory / f"failed-{index}-{step_id}"
+                    failed_directory.mkdir(exist_ok=True)
+                    _copy_atomic(current_project, failed_directory / "input.mosp", project_file=True)
+                    _copy_atomic(current_srt, failed_directory / "input.srt")
+                    detail = redact_sensitive_text(error)
+                    _atomic_failure_report(failed_directory, step_id, detail)
+                    warning = f"AI 步骤 {step_id} 失败，已跳过并沿用该步前结果。原因：{detail}\n失败资料：{run_directory}"
+                    skipped.append(step_id)
+                    warnings.append(warning)
+                    manifest_steps[index - 1].update({
+                        "status": "skipped", "error": detail, "warning": warning,
+                        "category": str(getattr(error, "category", "")),
+                        "httpStatus": getattr(error, "status_code", None),
+                        "failureDirectory": str(failed_directory),
+                        "projectPath": str(current_project), "srtPath": str(current_srt),
+                        "elapsedSeconds": round(time.perf_counter() - step_t0, 3),
+                    })
+                    manifest["nextArtifactIndex"] = artifact_index
+                    _write_manifest(run_directory, manifest)
+                    _emit(on_event, {"stage": "step_skipped", "index": index, "total": len(steps), "step": step_id, "warning": warning})
+                    continue
                 raise PostprocessPipelineError(
                     f"处理步骤 {step_id} 失败：{error}",
                     run_directory=run_directory,
@@ -906,6 +948,7 @@ def run_postprocess_pipeline(
                 "srtName": current_srt.name,
                 "translatedSrtName": current_translated_srt.name if current_translated_srt is not None else "",
                 "mediaName": current_media.name if current_media != media_path else "",
+                "warnings": list(artifact.warnings),
             })
         final_project, final_srt, final_translated_srt = _publish_final(
             project_path,
@@ -919,6 +962,8 @@ def run_postprocess_pipeline(
             ui_language=language,
         )
         manifest["status"] = "done"
+        manifest["skippedSteps"] = skipped
+        manifest["warnings"] = warnings
         manifest["finalProjectPath"] = str(final_project)
         manifest["finalSrtPath"] = str(final_srt)
         if current_media != media_path:
@@ -931,12 +976,20 @@ def run_postprocess_pipeline(
         print(f"后处理总用时: {format_elapsed(pipeline_elapsed)}")
         _emit(on_event, {
             "stage": "done",
+            "skippedSteps": skipped,
+            "warnings": warnings,
             "total": len(steps),
             "elapsedSeconds": round(pipeline_elapsed, 3),
             "projectName": final_project.name,
             "srtName": final_srt.name,
             "translatedSrtName": final_translated_srt.name if final_translated_srt is not None else "",
             "mediaName": current_media.name if current_media != media_path else "",
+            "comparisonPaths": [
+                str(item["comparisonPath"])
+                for item in manifest["steps"]
+                if item.get("comparisonPath")
+            ],
+            "outputDirectory": str(final_srt.parent),
         })
         result = PipelineResult(
             final_project,
@@ -946,8 +999,9 @@ def run_postprocess_pipeline(
             tuple(warnings),
             final_translated_srt,
             current_media if current_media != media_path else None,
+            tuple(skipped),
         )
-        if not bool(normalized.get("retainIntermediate")):
+        if not bool(normalized.get("retainIntermediate")) and not skipped:
             shutil.rmtree(run_directory, ignore_errors=True)
             # 中间产物清掉后，只为这次运行而建的「后处理」根目录如果是空的也一并移除；
             # 仍有其他运行的目录或用户文件时不动（rmdir 只在空目录时成功）。
@@ -978,6 +1032,13 @@ def run_postprocess_pipeline(
         _write_failure_manifest(run_directory, manifest)
         _emit(on_event, {"stage": "failed", "completed": len(completed), "total": len(steps), "runDirectory": str(run_directory)})
         raise
+
+
+@intermediate_file_operation
+def _atomic_failure_report(directory: Path, step: str, detail: str) -> None:
+    from maw.postprocess_io import _atomic_write
+
+    _atomic_write(directory / "failure.md", f"# AI 步骤失败：{step}\n\n已跳过本步骤，使用该步前的结果继续后续工序。\n\n{detail}\n")
 
 
 def _run_step(
@@ -1187,6 +1248,7 @@ def _run_ai_cleanup_step(
         clean_markdown_symbols=step.get("cleanMarkdownSymbols", True) is not False,
         notes=str(step.get("customPrompt") or step.get("aiCleanupNotes") or "").strip(),
         generate_comparison=bool(step.get("generateComparison")),
+        review_enabled=bool(step.get("reviewEnabled", False)),
     ), complete=complete, on_status=on_status)
 
 
@@ -1380,6 +1442,7 @@ def _attach_translation_track(
         srt_path=combined_artifact.srt_path,
         warnings=combined_artifact.warnings,
         translated_srt_path=translated_artifact.srt_path,
+        comparison_path=translated_artifact.comparison_path,
     )
 
 
@@ -1426,6 +1489,7 @@ def _merge_bilingual_subtitles(
         project_path=merged_artifact.project_path,
         srt_path=merged_artifact.srt_path,
         warnings=merged_artifact.warnings,
+        comparison_path=translated_artifact.comparison_path,
     )
 
 
@@ -1449,6 +1513,9 @@ def _embed_translated_subtitles(
     source_project = read_project(source_project_path)
     translated_project = read_project(translated_artifact.project_path)
     embedded = embed_translated_project(source_project, translated_project)
+    backfill_warning = translation_backfill_warning(source_project, embedded)
+    if backfill_warning:
+        return replace(translated_artifact, warnings=(*translated_artifact.warnings, backfill_warning))
     warnings = (
         *translated_artifact.warnings,
         "翻译前后的独立字幕已保留为中间产物，最终输出为回填后的单条字幕。",
@@ -1470,6 +1537,7 @@ def _embed_translated_subtitles(
         project_path=embedded_artifact.project_path,
         srt_path=embedded_artifact.srt_path,
         warnings=embedded_artifact.warnings,
+        comparison_path=translated_artifact.comparison_path,
     )
 
 

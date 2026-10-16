@@ -5,6 +5,8 @@ export function createThumbnailModule(dependencies) {
   const INTERVALS = [250, 500, 1000, 2000, 5000, 10000];
   const IMAGE_BUDGET = 48 * 1024 * 1024;
   const DISPLAY_WIDTH = 48 * 160 / 90;
+  // setView 节流窗口（账本 #22）：平移期间 demand 重算/在途取图作废的合并间隔。
+  const THROTTLE_VIEW_MS = 150;
 
   function chooseInterval(pxPerSecond, previous = 0) {
     const ideal = DISPLAY_WIDTH * 1000 / Math.max(0.001, pxPerSecond);
@@ -84,9 +86,15 @@ export function createThumbnailModule(dependencies) {
     try { decodeEnabled = storage.getItem('mawe-filmstrip-decode') !== 'false'; } catch (_) {}
     let available = false, playing = false, closed = false, state = 'idle', persisted = true;
     let samples = [], fallbackSamples = [], assets = [], keyframesData = [], demand = {interval_ms: 2000, ranges: [], representative_ms: []};
+    // [...samples, ...fallbackSamples] 的懒拼缓存（picture() 每格调用，
+    // 原先每次调用都新建拼接数组）；samples/fallbackSamples 任一变化即失效。
+    let combinedSamples = null;
     let demandKey = '', debounce = 0, pollTimer = 0, heartbeat = 0, requestEpoch = 0;
     let statusBusy = false, demandBusy = false, demandAgain = false;
     let networkSuspended = false;
+    // setView 节流（账本 #22）：滚轮/滚动热路径把 demand 重算与在途取图
+    // 作废合并到每 150ms 一次（首拍立即、尾拍收尾）。
+    let viewThrottleTimer = 0, pendingView = null, lastViewPushAt = 0;
     const failures = {status:0, demand:0, control:0};
     const dirtyRanges = [];
     const requests = new Set(), images = new Map(), imageQueue = new Map();
@@ -226,11 +234,12 @@ export function createThumbnailModule(dependencies) {
       if (expectedView !== view || Number(result.view) !== view) return;
       // A changed source cannot reuse decoded assets from the previous identity.
       const nextSource = JSON.stringify(result.source_identity || null);
-      if (source && nextSource !== source) { dropImages(); fallbackSamples = []; keyframesData = []; }
+      if (source && nextSource !== source) { dropImages(); fallbackSamples = []; keyframesData = []; combinedSamples = null; }
       source = nextSource;
       if (result.lease) lease = result.lease;
       if (revision && result.cache_revision !== revision) {
         fallbackSamples = [...samples, ...fallbackSamples].slice(0, 384);
+        combinedSamples = null;
       }
       revision = result.cache_revision || '';
       controller.assetTemplate = result.asset_url_template || '';
@@ -241,6 +250,7 @@ export function createThumbnailModule(dependencies) {
         && ((sample.status === 'unavailable' && sample.asset == null)
           || (typeof sample.asset === 'string' && Array.isArray(sample.crop_rect) && sample.crop_rect.length === 4)))
         .map(sample => ({...sample, cache_revision:sample.cache_revision || revision})) : [];
+      combinedSamples = null;
       keyframesData = Array.isArray(result.keyframes) ? result.keyframes.filter(marker =>
         Number.isFinite(marker.requested_ms) && typeof marker.asset === 'string'
         && Array.isArray(marker.crop_rect) && marker.crop_rect.length === 4)
@@ -313,6 +323,7 @@ export function createThumbnailModule(dependencies) {
     }
     function release(disposeImages = true) {
       browser.clearTimeout(debounce); browser.clearTimeout(pollTimer); browser.clearInterval(heartbeat);
+      browser.clearTimeout(viewThrottleTimer); viewThrottleTimer = 0; pendingView = null;
       requestEpoch += 1; abortRequests();
       if (binding && urls().release) {
         const body = {binding, lease, client_id:clientId, view, requestToken:config().requestToken || ''};
@@ -322,6 +333,28 @@ export function createThumbnailModule(dependencies) {
       }
       lease = ''; if (disposeImages) { demandKey = ''; dropImages(); }
       browser.cancelAnimationFrame(paintFrame); paintFrame = 0; dirtyRanges.length = 0;
+    }
+    // setView 的实际落盘逻辑（原实现整体后移）：节流尾拍/首拍到这里执行。
+    function applySetView() {
+      if (closed || !active() || !pendingView) return;
+      const { rows, duration } = pendingView;
+      pendingView = null;
+      const next = makeDemand(rows, duration, demand.interval_ms);
+      const key = JSON.stringify(next);
+      if (key === demandKey) { preload(); return; }
+      demandKey = key; demand = next; preloadRanges = prefetchRanges(next.ranges, duration);
+      // Admission pressure belongs to this view; a smaller/new view can evict old assets.
+      // Transport, corrupt-image and individually oversized failures retain their bounded guard.
+      imageCapacityFailures.clear();
+      if (networkSuspended) { resumeNetwork(); return; }
+      view += 1;
+      browser.clearTimeout(debounce);
+      // 账本 #22 评审条目 2：setView 入口已节流（150ms 首拍+尾拍收尾），
+      // 这里立即 submit。原来的 200ms 尾随去抖会被连续平移的节流推送
+      //（间隔 < 200ms）不断重置，demand 在持续滚动期间永远发不出去。
+      // setPlayback / setPlayhead 等其它入口的 debounce 语义保持不变。
+      preload();
+      void submit();
     }
     const controller = {
       assetTemplate: '',
@@ -337,6 +370,7 @@ export function createThumbnailModule(dependencies) {
       setBinding(next) {
         if (String(next || '') === binding) return;
         release(); binding = String(next || ''); source = ''; samples = []; fallbackSamples = []; keyframesData = []; state = 'idle'; persisted = true;
+        combinedSamples = null;
         available = !!binding && !!urls().status; networkSuspended = false;
         failures.status = failures.demand = failures.control = 0;
         view += 1; onChange(true);
@@ -407,24 +441,30 @@ export function createThumbnailModule(dependencies) {
       },
       setView(rows, duration) {
         if (!active()) return;
-        const next = makeDemand(rows, duration, demand.interval_ms);
-        const key = JSON.stringify(next);
-        if (key === demandKey) { preload(); return; }
-        demandKey = key; demand = next; preloadRanges = prefetchRanges(next.ranges, duration);
-        // Admission pressure belongs to this view; a smaller/new view can evict old assets.
-        // Transport, corrupt-image and individually oversized failures retain their bounded guard.
-        imageCapacityFailures.clear();
-        if (networkSuspended) { resumeNetwork(); return; }
-        view += 1;
-        browser.clearTimeout(debounce); preload();
-        debounce = browser.setTimeout(() => void submit(), 200);
+        // 平移热路径节流（账本 #22）：滚轮/滚动每帧都可能改视图，把
+        // demand 重算与在途取图作废合并到每 150ms 一次——首拍立即推送
+        // 保证非平移场景零延迟，节流窗口内的后续视图合并到尾拍收尾。
+        // drawThumbnails 的渲染不经过此处，不受节流影响。
+        pendingView = { rows, duration };
+        const now = Date.now();
+        if (viewThrottleTimer) return;
+        if (now - lastViewPushAt >= THROTTLE_VIEW_MS) {
+          lastViewPushAt = now;
+          applySetView();
+        }
+        viewThrottleTimer = browser.setTimeout(() => {
+          viewThrottleTimer = 0;
+          lastViewPushAt = Date.now();
+          applySetView();
+        }, THROTTLE_VIEW_MS);
       },
       picture(time, maxDistance) {
         // A known source-time cell without video is authoritative. Nearby/future pictures
         // and compatible older assets may fill a cache miss, but never this explicit gap.
         if (samples.some(sample => sample.status === 'unavailable' && sample.asset == null
             && time >= sample.requested_ms && time < sample.requested_ms + demand.interval_ms)) return null;        let best = null, distance = Infinity;
-        for (const sample of [...samples, ...fallbackSamples]) {
+        if (!combinedSamples) combinedSamples = [...samples, ...fallbackSamples];
+        for (const sample of combinedSamples) {
           if (typeof sample.asset !== 'string') continue;
           const delta = Math.abs(sample.requested_ms - time);
           if (delta > maxDistance || delta >= distance) continue;

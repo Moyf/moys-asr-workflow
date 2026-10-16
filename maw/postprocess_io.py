@@ -31,6 +31,7 @@ class SubtitleArtifact:
     # the toolbox bridge but never part of the written files themselves.
     stats: Mapping[str, int] | None = None
     comparison_path: Path | None = None
+    diagnostic_path: Path | None = None
 
 
 @dataclass(frozen=True, slots=True)

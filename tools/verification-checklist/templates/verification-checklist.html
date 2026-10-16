@@ -13,14 +13,15 @@
          <div class="body"> …内容… </div>
        </details>
      - open 控制默认展开；summary 中的纯文本（或 .sec-title 元素内容）自动进入左侧目录；
-     - 只读说明用 .plain / .note / <table> / .cmd；打勾项用
-       <div class="item"><input type="checkbox" id="唯一ID"><label for="唯一ID">…</label></div>；
+     - 只读说明用 .plain / .note / <table> / .cmd；打勾项由 build.py 生成四字段结构
+       （.item-purpose 目的 / .item-op 操作，首个冒号前的入口渲染为 .item-entry 胶囊 /
+       .item-exp 预期 / 可选 .item-hint 说明），data-copy 属性携带条目复制全文；
      - 徽标：.badge.pass（通过 / 已完成）.badge.fixed（已修复）.badge.todo（待办 / 阻塞）。
   3. 分区约定：A 实现 / 审查结论（只读）· B 修复与提交记录 · C 自动化验证结果（写明命令与已知环境性失败）
-     · D 人工核验打勾项（入口 → 操作 → 预期）· E 后续操作步骤；
+     · D 人工核验打勾项（目的 / 操作 / 预期 / 可选说明）· E 后续操作步骤；
    4. 左侧目录、分区进度徽标、总进度由脚本自动生成，无需手写；
       勾选与备注按页面标题存 localStorage；含核对项的分区可悬停标题一键忽略
-      （灰色折叠、计数按已处理、不进入未确认导出）；JSON 可导出全部或未确认项。
+      （灰色折叠、计数按已处理、不进入未确认导出）；JSON 可导出全部或未确认和备注项。
       详细使用与导出格式见工具目录 README.md；生成物不提交进仓库。
 -->
 <html lang="zh-CN">
@@ -107,6 +108,11 @@
   button.primary { border: 1px solid var(--accent); background: var(--accent); color: var(--paper);
     border-radius: 8px; padding: 8px 12px; font: inherit; font-size: 13px; font-weight: 600; cursor: pointer; }
   button.primary:hover { filter: brightness(.92); }
+  button.export-btn { border: 1px solid var(--line); background: var(--paper); color: var(--ink);
+    border-radius: 8px; padding: 8px 12px; font: inherit; font-size: 13px; font-weight: 600; cursor: pointer; }
+  button.export-btn:hover { border-color: var(--ink3); background: var(--chip); }
+  button.is-copied { color: var(--ok); border-color: var(--ok); }
+  button.is-copy-failed { color: var(--warn); border-color: var(--warn); }
   button:disabled { opacity: .5; cursor: default; }
   .export-panel { margin-top: 16px; padding-top: 16px; border-top: 1px solid var(--line);
     display: grid; gap: 10px; }
@@ -193,12 +199,27 @@
   .item.done label { color: var(--ink3); text-decoration: line-through;
     text-decoration-color: color-mix(in srgb, var(--ink3) 60%, transparent); }
   .item label { overflow-wrap: anywhere; }
+  .item-purpose, .item-op, .item-exp, .item-hint { display: block; }
+  .item-purpose { font-weight: 600; }
+  .item-op { margin-top: 2px; }
+  .item-entry { display: inline-block; margin-right: 8px; padding: 1px 8px;
+    border: 1px solid var(--line); border-radius: 999px; background: var(--chip);
+    color: var(--ink2); font-size: 12.5px; }
+  .item-exp { color: var(--ok); margin-top: 2px; text-decoration: underline;
+    text-underline-offset: 3px; text-decoration-thickness: 1px; }
+  .item-hint { color: var(--ink2); font-size: 13.5px; margin-top: 3px; }
+  .item.done .item-purpose, .item.done .item-op { color: var(--ink3); }
+  .item.done .item-exp { color: var(--ink3); text-decoration: line-through;
+    text-decoration-color: color-mix(in srgb, var(--ink3) 60%, transparent); }
+  .item.done .item-hint { color: var(--ink3); }
   .note-toggle { display: inline-flex; align-items: center; gap: 5px; border: 0; border-radius: 6px;
     background: transparent; color: var(--ink3); padding: 3px 6px; font: inherit;
     font-size: 12px; cursor: pointer; white-space: nowrap; }
   .note-toggle svg { width: 16px; height: 16px; }
   .note-toggle:hover, .note-toggle[aria-expanded="true"], .note-toggle.has-note {
     color: var(--accent); background: var(--accent-soft); }
+  .item-actions { display: flex; flex-direction: column; align-items: flex-end; gap: 8px; }
+  .item-actions > button { min-width: 68px; justify-content: center; }
   .item-note { grid-column: 2 / -1; min-width: 0; }
   .item-note[hidden] { display: none; }
   .item-note textarea { display: block; width: 100%; min-height: 80px; resize: vertical;
@@ -232,7 +253,7 @@
     .topbar, .sidebar, .side-actions { display: none !important; }
     .layout { display: block; padding: 0; }
     .section { box-shadow: none; break-inside: avoid; content-visibility: visible; }
-    .note-toggle, .item-note { display: none !important; }
+    .note-toggle, .item-copy, .item-note { display: none !important; }
     .print-note:not(:empty) { display: block; grid-column: 2 / -1; margin: 0;
       color: var(--ink2); white-space: pre-wrap; overflow-wrap: anywhere; font-size: 13px; }
   }
@@ -263,10 +284,10 @@
         <label for="export-scope">导出范围</label>
         <select id="export-scope">
           <option value="all">全部核对项</option>
-          <option value="unconfirmed">仅未确认项</option>
+          <option value="unconfirmed" selected>仅未确认和备注项</option>
         </select>
-        <button id="export-md" type="button">导出 Markdown</button>
-        <button id="copy-md" type="button">复制 Markdown</button>
+        <button class="export-btn" id="export-md" type="button">导出 Markdown</button>
+        <button class="export-btn" id="copy-md" type="button">复制 Markdown</button>
         <button class="primary" id="export-json" type="button">导出 JSON</button>
       </div>
       <p class="save-status" id="save-status" role="status" aria-live="polite">勾选与备注自动保存在本机</p>
@@ -319,7 +340,7 @@
   var ignored = load(IGNORE_KEY);
   var view = load(VIEW_KEY);
   var hideConfirmed = view.hideConfirmed === true;
-  var autoCollapseCompleted = view.autoCollapseCompleted === true;
+  var autoCollapseCompleted = view.autoCollapseCompleted !== false;
   var records = [];
 
   // 从 summary 提取纯文本标题（跳过徽标 / 进度等元素），优先取 .sec-title。
@@ -403,6 +424,22 @@
     links.forEach(function (a, i) { a.classList.toggle('active', i === idx); });
   }
 
+  function recordNote(record) {
+    return record.textarea ? record.textarea.value : record.note;
+  }
+  function includeRecord(record, scope) {
+    return scope === 'all' || (ignored[record.section.id] !== true
+      && (!record.box.checked || recordNote(record).trim().length > 0));
+  }
+  function refreshExport() {
+    var scope = document.getElementById('export-scope').value;
+    var disabled = !records.some(function (record) {
+      return includeRecord(record, scope);
+    });
+    ['export-json', 'export-md', 'copy-md'].forEach(function (id) {
+      document.getElementById(id).disabled = disabled;
+    });
+  }
   function refresh() {
     var doneAll = 0;
     sections.forEach(function (sec, i) {
@@ -448,29 +485,37 @@
     pctEl.classList.toggle('full', pct === 100 && boxes.length > 0);
     document.getElementById('bar').style.width = pct + '%';
     document.getElementById('topbar-i').style.width = pct + '%';
-    var pendingOnly = document.getElementById('export-scope').value === 'unconfirmed';
-    var exportDisabled = pendingOnly ? doneAll === boxes.length : !boxes.length;
-    document.getElementById('export-json').disabled = exportDisabled;
-    document.getElementById('export-md').disabled = exportDisabled;
-    document.getElementById('copy-md').disabled = exportDisabled;
+    refreshExport();
   }
 
   boxes.forEach(function (box, index) {
     var item = box.closest('.item');
     var label = item.querySelector('label');
-    var text = label.textContent.replace(/\s+/g, ' ').trim();
+    var purposeNode = label.querySelector('.item-purpose');
+    var text = (purposeNode ? purposeNode.textContent : label.textContent).replace(/\s+/g, ' ').trim();
+    var copyText = item.getAttribute('data-copy') || text;
     var toggle = document.createElement('button');
     toggle.type = 'button';
     toggle.className = 'note-toggle';
     toggle.setAttribute('aria-label', '备注：' + text);
     toggle.innerHTML = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M14 3H5a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-9M17 3l4 4-9 9-4 1 1-4Z"/></svg><span>备注</span>';
-    var record = { box: box, section: item.closest('details.section'), text: text,
+    var record = { box: box, section: item.closest('details.section'), text: copyText,
       textarea: null, note: typeof notes[box.id] === 'string' ? notes[box.id] : '' };
     var panel, textarea, printNote;
     toggle.setAttribute('aria-expanded', 'false');
     toggle.classList.toggle('has-note', !!record.note);
-    item.appendChild(toggle);
+    var actions = document.createElement('div');
+    actions.className = 'item-actions';
+    actions.appendChild(toggle);
+    item.appendChild(actions);
     records.push(record);
+    var copy = document.createElement('button');
+    copy.type = 'button';
+    copy.className = 'ghost item-copy';
+    copy.textContent = '复制';
+    copy.setAttribute('aria-label', '复制条目：' + text);
+    copy.setAttribute('data-copy-index', String(index));
+    actions.appendChild(copy);
     // 长清单只为正在编辑或已有备注的项目创建输入框，避免几千个隐藏控件参与样式计算。
     function ensureNoteEditor() {
       if (textarea) return;
@@ -498,6 +543,7 @@
         save(NOTES_KEY, notes);
         toggle.classList.toggle('has-note', !!textarea.value);
         printNote.textContent = textarea.value ? '备注：' + textarea.value : '';
+        refreshExport();
       });
     }
     toggle.addEventListener('click', function () {
@@ -525,6 +571,7 @@
     });
   });
   document.getElementById('reset').addEventListener('click', function () {
+    if (!window.confirm('确定重置全部勾选与忽略状态？备注将保留。')) return;
     state = load(KEY, state);
     boxes.forEach(function (box) { box.checked = false; state[box.id] = false; });
     save(KEY, state);
@@ -553,21 +600,55 @@
     save(VIEW_KEY, view);
     refresh();
   });
-  document.getElementById('export-scope').addEventListener('change', refresh);
+  // 复制反馈：按钮短暂变为「已复制」或红色失败态后还原；重复点击重置计时器。
+  function flashCopyButton(button, ok) {
+    if (!button._copyLabel) button._copyLabel = button.textContent;
+    if (button._copyResetTimer) clearTimeout(button._copyResetTimer);
+    button.classList.remove('is-copied', 'is-copy-failed');
+    if (ok) {
+      button.textContent = '已复制';
+      button.classList.add('is-copied');
+    } else {
+      button.classList.add('is-copy-failed');
+    }
+    button._copyResetTimer = setTimeout(function () {
+      button.textContent = button._copyLabel;
+      button.classList.remove('is-copied', 'is-copy-failed');
+      delete button._copyResetTimer;
+    }, ok ? 1600 : 1200);
+  }
+  // 单个委托处理器供整张长清单复用，不给每个复制按钮挂监听。
+  document.querySelector('main.content').addEventListener('click', async function (event) {
+    var button = event.target.closest && event.target.closest('button.item-copy');
+    if (!button) return;
+    var record = records[Number(button.getAttribute('data-copy-index'))];
+    if (!record) return;
+    try {
+      await navigator.clipboard.writeText(record.text);
+      flashCopyButton(button, true);
+      if (!storageFailed) status.textContent = '已复制条目文本';
+    } catch (e) {
+      flashCopyButton(button, false);
+      if (storageFailed) storageWarning();
+      status.textContent = (storageFailed ? status.textContent + '；' : '')
+        + '复制失败，请手动选择并复制条目文本';
+    }
+  });
+  document.getElementById('export-scope').addEventListener('change', refreshExport);
 
-  // 导出结果快照：JSON 为机器可读契约，Markdown 为人可读副本（可贴 PR / 文档）。
+  // JSON 和 Markdown 共用同一结果快照与过滤规则。
   function buildResult(scope) {
     var confirmed = boxes.filter(function (b) { return b.checked; }).length;
     var ignoredCount = records.filter(function (r) { return ignored[r.section.id] === true; }).length;
     var exportedSections = sections.map(function (sec) {
-      // 「仅未确认项」同时排除已勾选与被忽略分组的核对项；全部导出时忽略项
+      // 默认导出未确认项与有备注项的并集，排除忽略组；全部导出时忽略项
       // 原样带出并标记 ignored，核对结果快照不丢信息。
       var items = records.filter(function (r) {
-        return r.section === sec && (scope === 'all' || (!r.box.checked && ignored[sec.id] !== true));
+        return r.section === sec && includeRecord(r, scope);
       }).map(function (r) {
         return { id: r.box.id, text: r.text, confirmed: r.box.checked,
           ignored: ignored[sec.id] === true,
-          note: r.textarea ? r.textarea.value : r.note };
+          note: recordNote(r) };
       });
       return { id: sec.id, title: summaryTitle(sec.querySelector('summary')), items: items };
     }).filter(function (sec) { return sec.items.length; });
@@ -577,15 +658,15 @@
       subtitle: document.querySelector('.page-head .sub').textContent.trim(),
       exportedAt: new Date().toISOString(), scope: scope,
       summary: { total: boxes.length, confirmed: confirmed, ignored: ignoredCount,
-        unconfirmed: boxes.length - confirmed - ignoredCount, exported: exportedCount },
+        unconfirmed: records.filter(function (r) { return !r.box.checked && ignored[r.section.id] !== true; }).length, exported: exportedCount },
       sections: exportedSections
     };
   }
 
-  // 结果 Markdown：勾选态用任务列表（- [x] / - [ ]），核对项 ID 以 HTML 注释放行尾
-  // （GitHub 渲染不可见），多行备注缩进为引用行。与 build.py 的源格式注释约定一致。
+  // 结果 Markdown：勾选态用任务列表（- [x] / - [ ]），v2 核对项按源格式输出为
+  // 缩进字段块，ID 注释放块尾（GitHub 渲染不可见），多行备注缩进为引用行。
   function buildResultMarkdown(result) {
-    var scopeText = result.scope === 'all' ? '全部核对项' : '仅未确认项';
+    var scopeText = result.scope === 'all' ? '全部核对项' : '仅未确认和备注项';
     var lines = ['# ' + result.title + ' · 核对结果', '',
       '> ' + result.subtitle,
       '> 导出范围：' + scopeText + ' · 导出时间 ' + result.exportedAt
@@ -596,9 +677,11 @@
       var ignoredSection = section.items.some(function (item) { return item.ignored; });
       lines.push('', '## ' + section.title + (ignoredSection ? '（已忽略）' : ''));
       section.items.forEach(function (item) {
-        lines.push('- [' + (item.confirmed ? 'x' : ' ') + '] ' + item.text
-          + ' <!-- id: ' + item.id + ' -->');
-        var note = String(item.note || '').replace(/\s+$/, '');
+        var textLines = String(item.text).split('\n');
+        lines.push('- [' + (item.confirmed ? 'x' : ' ') + '] ' + textLines[0]);
+        for (var k = 1; k < textLines.length; k++) lines.push('  ' + textLines[k]);
+        lines.push('  <!-- id: ' + item.id + ' -->');
+        var note = String(item.note || '');
         if (note) note.split(/\r?\n/).forEach(function (noteLine) {
           lines.push('  > ' + noteLine);
         });
@@ -616,14 +699,16 @@
       anchor = document.createElement('a');
       anchor.href = url;
       var filename = document.title.replace(/[<>:"/\\|?*\u0000-\u001f]/g, '-').replace(/[. ]+$/g, '').slice(0, 100) || 'verification';
-      anchor.download = filename + (result.scope === 'all' ? '-全部' : '-未确认') + '-'
+      anchor.download = filename + (result.scope === 'all' ? '-全部' : '-未确认和备注') + '-'
         + result.exportedAt.slice(0, 10) + extension;
       document.body.appendChild(anchor);
       anchor.click();
       if (!storageFailed) status.textContent = statusText;
     } catch (e) {
       status.classList.add('warning');
-      status.textContent = '导出失败，请重试；当前勾选与备注仍保留在页面';
+      if (storageFailed) storageWarning();
+      status.textContent = (storageFailed ? status.textContent + '；' : '')
+        + '导出失败，请重试；当前勾选与备注仍保留在页面';
     } finally {
       if (anchor) anchor.remove();
       if (url) setTimeout(function () { URL.revokeObjectURL(url); }, 1000);
@@ -633,7 +718,8 @@
   document.getElementById('export-json').addEventListener('click', function () {
     var result = buildResult(document.getElementById('export-scope').value);
     downloadResult(result, JSON.stringify(result, null, 2) + '\n',
-      'application/json;charset=utf-8', '.json', '已发起导出 ' + result.summary.exported + ' 项（含备注）');
+      'application/json;charset=utf-8', '.json', '已发起导出 ' + result.summary.exported + ' 项（'
+        + (result.scope === 'all' ? '全部核对项' : '仅未确认和备注项') + '）');
   });
 
   document.getElementById('export-md').addEventListener('click', function () {
@@ -646,11 +732,15 @@
     var result = buildResult(document.getElementById('export-scope').value);
     var markdown = buildResultMarkdown(result);
     var finish = function () {
+      flashCopyButton(document.getElementById('copy-md'), true);
       if (!storageFailed) status.textContent = '已复制 ' + result.summary.exported + ' 项的 Markdown（含备注）';
     };
     var fail = function () {
+      flashCopyButton(document.getElementById('copy-md'), false);
       status.classList.add('warning');
-      status.textContent = '复制失败，请改用「导出 Markdown」保存结果';
+      if (storageFailed) storageWarning();
+      status.textContent = (storageFailed ? status.textContent + '；' : '')
+        + '复制失败，请改用「导出 Markdown」保存结果';
     };
     var fallback = function () {
       try {
