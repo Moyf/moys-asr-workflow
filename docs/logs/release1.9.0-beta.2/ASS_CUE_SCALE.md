@@ -1,6 +1,6 @@
 # 主字幕单句缩放
 
-基线：`feat/ass-cue-scale`，起始 HEAD `2cc67041`。fetch 后 `origin/main` 仍为 `2cc67041`，分支与 main ahead/behind 均为 0；PR #231 已合并。本功能尚未提交或建 PR；当前改动是单一功能 diff，无旧分支历史需要重放。账本按维护者本轮要求放在 release 基线目录，不增加日期目录。
+基线：`feat/ass-cue-scale`，起始 HEAD `2cc67041`。fetch 后 `origin/main` 仍为 `2cc67041`，分支与 main ahead/behind 均为 0；PR #231 已合并。本功能提交为 `2d5333fd`，PR #248 已打开，初始 PR 文件差异为 23 个文件、786 行新增、108 行删除，无旧分支历史需要重放。账本按维护者本轮要求放在 release 基线目录，不增加日期目录。
 
 ## 方案
 
@@ -20,8 +20,8 @@
 | handle 与滚轮 | 已修复 | 四角 handle、整数坐标、滚轮合并撤销、独立重置与取消事务完成；完整定位 e2e 13/13 通过，本地浏览器实测滚轮、拖动和两种重置 |
 | 紧凑控件 | 已修复 | 倍率在 X/Y 左侧独立显隐；e2e 和本地页面测量确认间距、单行标签、编辑区高度与视频顶部位置稳定，并完成截图自查 |
 | 测试与文档 | 已修复 | JSON 契约、用户指南、CHANGELOG、官网 JSON Schema 副本和开发方案已更新；bundle、类型检查、Node/Python 测试通过；未重生成 `blank-editor.html` |
-| 提交与 PR | 进行中 | 维护者已授权。待最终路径/暂存核对后提交、推送并创建新 PR；fetch 确认 origin/main 仍为起始 HEAD，无上游差异需要合并或重放 |
-| 一轮 PR 反馈 | 待处理 | PR 创建后检查 CI/审查意见，有可确认问题则修复并补验；尚无外部反馈 |
+| 提交与 PR | 已修复 | 提交 `2d5333fd`，普通推送至 `feat/ass-cue-scale`，已创建 PR #248；GitHub 文件清单与本地预期的 23 个文件一致 |
+| 一轮 PR 反馈 | 进行中 | 最近快照：Python lint 已通过；Editor build and contracts、Preview Windows Release 仍在运行；尚无 review、inline thread 或普通 comment |
 
 验证记录逐层回写。用户真实素材、其它系统、完整视频编码与发行包不由合成页自动化代替。
 

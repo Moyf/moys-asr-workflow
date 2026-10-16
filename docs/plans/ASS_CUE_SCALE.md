@@ -2,7 +2,7 @@
 
 ## 实现状态
 
-功能已在 `feat/ass-cue-scale` 实现并通过本地自动化与浏览器交互验证。基线 `2cc67041` 与 fetch 后的 `origin/main` 一致；PR #231 已合并，本功能尚未提交或创建 PR。
+功能已在 `feat/ass-cue-scale` 实现、提交并推送，PR #248 已打开。基线 `2cc67041` 与 fetch 后的 `origin/main` 一致；PR #231 已合并，本功能正在等待 CI 与 reviewer 反馈。
 
 本方案记录最终行为和数据契约；逐项验证、截图自查和提交状态见[进度账本](../logs/release1.9.0-beta.2/ASS_CUE_SCALE.md)与[人工核对清单](../logs/release1.9.0-beta.2/ASS_CUE_SCALE.checklist.md)。源码使用 `web/`，editor bundle 已重建且不进 Git；按仓库约定未重生成 `blank-editor.html`。
 

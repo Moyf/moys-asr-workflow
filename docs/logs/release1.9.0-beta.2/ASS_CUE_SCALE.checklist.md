@@ -1,5 +1,6 @@
 ---
 task: ass-cue-scale
+pr: 248
 date: 2026-10-16
 updated: 2026-10-16
 status: partial
@@ -7,7 +8,7 @@ status: partial
 
 # 主字幕单句缩放核对
 
-> 基线 `2cc67041`；自动化与本机合成工程交互已通过。此清单保留给维护者复核四角手势、真实工程及 PR 反馈。
+> 基线 `2cc67041`；PR #248 已打开。自动化与本机合成工程交互已通过；此清单保留给维护者复核四角手势、真实工程及 PR 反馈。
 
 ## 实现 / 审查结论
 <!-- id: implementation-review -->
@@ -37,7 +38,7 @@ status: partial
 ## 修复与提交记录
 <!-- id: fixes-and-pr -->
 
-- [ ] **提交与 PR**：查看本分支提交和 PR 文件列表；预期：只包含本功能源码、测试、文档和本清单，没有 bundle、便携页、媒体或个人路径 <!-- id: review-pr-scope -->
+- [x] **提交与 PR**：查看本分支提交和 PR 文件列表；预期：只包含本功能源码、测试、文档和本清单，没有 bundle、便携页、媒体或个人路径 <!-- id: review-pr-scope -->
 - [ ] **PR CI 与反馈**：查看一轮 CI 与 reviewer 反馈；预期：记录实际结果，有可复现问题时修复并补测，不把未反馈写成通过 <!-- id: review-feedback -->
 
 ## 后续操作
