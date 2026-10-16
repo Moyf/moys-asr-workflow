@@ -219,8 +219,10 @@ MaweTextProcess.textProcessConfirm?.addEventListener('click', () => {
   const customPreset = { id: 'custom', label: '自定义', left: '', right: '' };
   const localizedPresetLabels = { note: '♪音符♪', music: '♬双音符♬', bracket: '[中括号]' };
   function selectPreset(preset) {
-    const selected = MaweTextProcess.textProcessWrapPreset?.id === preset.id;
-    MaweTextProcess.textProcessWrapPreset = selected ? null : preset;
+    const presets = MaweTextProcess.textProcessWrapPresets;
+    const selected = presets.some((item) => item.id === preset.id);
+    MaweTextProcess.textProcessWrapPresets = selected
+      ? presets.filter((item) => item.id !== preset.id) : [...presets, preset];
     MaweTextProcess.refreshTextProcessInputState();
     MaweTextProcess.renderTextProcessPreview();
     if (!selected && preset.id === 'custom') MaweTextProcess.textProcessPrefixInput?.focus();
@@ -245,9 +247,9 @@ MaweTextProcess.textProcessConfirm?.addEventListener('click', () => {
   function refreshWrapPresetVisibility() {
     const assMode = MaweSettings.EDITOR_SETTINGS.assMode === true;
     presetRows.forEach((row) => { row.hidden = !assMode; });
-    const selectedPreset = MaweTextProcess.textProcessWrapPreset;
-    if (!assMode && selectedPreset?.ass) {
-      MaweTextProcess.textProcessWrapPreset = null;
+    const presets = MaweTextProcess.textProcessWrapPresets;
+    if (!assMode && presets.some((preset) => preset.ass)) {
+      MaweTextProcess.textProcessWrapPresets = presets.filter((preset) => !preset.ass);
       MaweTextProcess.refreshTextProcessInputState();
       MaweTextProcess.renderTextProcessPreview();
     }
@@ -407,6 +409,11 @@ MaweDom.timedTextEditView?.addEventListener('click', (event) => {
     return;
   }
   MaweDom.timedTextEditDraft.view = nextView;
+  if ((MaweBoot.DATA.timed_text_edit_view === 'single' ? 'single' : 'rows') !== nextView) {
+    MaweBoot.DATA.timed_text_edit_view = nextView;
+    MaweState.changes.timedTextEditViewDirty = true;
+    MaweViewUpdates.invalidate({ save: true });
+  }
   if (nextView === 'single') MaweDom.timedTextEditDraft.singleText = MaweDom.timedTextEditDraft.texts.join('\n');
   else MaweTimedTextEdit.renderTimedTextEditRows();
   MaweTimedTextEdit.renderTimedTextEditView();

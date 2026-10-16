@@ -22,6 +22,9 @@ function playbackHarness() {
     window: {}, document: {},
     setTimeout(fn) { timers.set(++nextTimer, fn); return nextTimer; },
     clearTimeout(id) { timers.delete(id); }, cancelAnimationFrame() {},
+    // ASS geometry observation belongs to the keyboard-guards module; this
+    // isolated playback fixture exercises audition timing, not that scheduler.
+    observeAssSubtitlePreviewPlayer() {},
     MaweCoreState: { player }, MaweDom: {},
     MaweTimeline: { timelineMediaSeekStepValue: () => 100, timelineIsFrameMode: () => false },
     MaweJklPlayback: { stopJklReversePlayback() {}, isJklDirectionMode: () => false },

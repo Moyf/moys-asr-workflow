@@ -63,11 +63,12 @@ source: "JSON_SCHEMA.md"
 |---|---|---|---|
 | `schema` | `string` | 否（写出时必填） | 当前值为 `moy.asr.project.v1`。没有该字段的历史工程按 v1 读取并在下次保存时补写；无法识别的版本会被拒绝，防止旧客户端破坏未来格式 |
 | `segments` | `array<object>` | **必填** | 字幕段数组。**缺失或不是数组时，页面直接弹「文件格式不对，缺少 segments 字段」并拒绝加载** |
-| `media` | `string` | 否 | 媒体文件路径（绝对/相对均可）。便携 HTML 会在“打开工程”时用它的文件名匹配同一次选择的媒体；只选工程文件时会提示用户继续选择媒体。浏览器安全限制下不能自行读取该路径或跳转其目录。服务器编辑器可按该路径自动加载 |
+| `media` | `string` | 否 | 媒体文件路径（绝对/相对均可），相对路径以工程文件所在目录为基准。生成与服务器保存优先写相对路径（如 `_maw/clip.mosp` 引用 `../clip.mp4`），跨盘无法相对引用时写绝对路径。便携 HTML 会在“打开工程”时用它的文件名匹配同一次选择的媒体；只选工程文件时会提示用户继续选择媒体。浏览器安全限制下不能自行读取该路径或跳转其目录。服务器编辑器可按该路径自动加载 |
 | `language` | `string` | 否 | 统一后的语言代码，如 `zh`、`en`、`ja`；无法确定时为空字符串。仅用于显示与选择切句计量方式 |
 | `language_source` | `string` | 否 | 语言来源：`detected`（模型返回）、`hint`（用户提示）、`inferred`（从文字脚本推断）或 `unknown`（未知） |
 | `preserve_punctuation` | `boolean` | 否 | 为 `true` 时，MAWE 启动不执行历史中文逗号 / 句号清理，保留字幕与 items 的原文；保存和重新加载保留此策略。文稿驱动对齐写入 `true`。省略或为 `false` 时保持历史行为；不限制用户后续主动编辑 / 文本处理。此字段是 v1 的可选扩展，不改变整数毫秒契约 |
 | `split_mode` | `string` | 否 | 切句计量方式：`continuous`（字符型，如中文）或 `word`（单词型，如英文） |
+| `timed_text_edit_view` | `string` | 否 | 纯文本编辑视图：`rows`（逐条，默认）或 `single`（整体）。默认 `rows` 保存时省略；当前字幕含换行而不能整体编辑时，仅在界面暂用逐条视图，不覆盖工程偏好 |
 | `timestamp_granularity` | `string` | 否 | 时间码粒度：`char`、`word`、`segment` 或 `unknown`。只有整段 start/end 的模型使用 `segment`；这类工程的字幕段可以没有 `items`，超长段可能已按标点（连续语言）或单词数（单词型）二次拆分，段内时间是插值近似值（不携带 `items` 冒充词级精度） |
 | `model` | `string` | 否 | ASR 模型名，如 `qwen3-asr`。仅用于显示 |
 | `media_metadata` | `object` | 否 | 源媒体元数据。可包含视频 `video_fps`（1–240 的数字）、`video_fps_ratio`（FFprobe 原始帧率比例字符串）、成对的正整数 `video_width` / `video_height`、非负整数 `selected_audio_track` 和 `audio_tracks` 音轨清单；缺失时按旧工程处理 |
@@ -428,7 +429,7 @@ source: "JSON_SCHEMA.md"
     "x": 0.1, "y": 0.76, "width": 0.8, "height": 0.16, "font_size": 32, "font_family": "yahei", "color": "#ffffff",
     "speaker_labels": { "mapping_enabled": true, "enabled": true, "separator": "：", "names": { "yellow": "SP1", "green": "SP2", "red": "SP3", "purple": "SP4", "blue": "SP5" } }
   },
-  "extension_subtitle": { "font_size": 30, "font_family": "yahei", "color": "#eac953" },
+  "extension_subtitle": { "font_size": 30, "font_family": "yahei", "color": "#f9ca1f" },
   "sticker": { "x": 0.73, "y": 0.04, "width": 0.24, "height": 0.3 }
 }
 ```
@@ -443,7 +444,7 @@ source: "JSON_SCHEMA.md"
 | `font_family` | `string` | 否 | 字幕预览字体族：内置键 `default`、`yahei`、`hei`、`song`、`sans`，或本机字体族名称（最长 128 个字符） |
 | `background_color` | `string` | 否 | 字幕预览背景色，6 位十六进制颜色 `#RRGGBB`；缺失时使用黑色 |
 | `background_alpha` | `number` | 否 | 字幕预览背景不透明度，范围 `[0, 1]`；缺失时使用 `0.65`，设为 `0` 时隐藏背景 |
-| `color` | `string` | 否 | 六位十六进制颜色，如 `#ffffff`；主字幕默认白色，副字幕默认黄色 `#eac953` |
+| `color` | `string` | 否 | 六位十六进制颜色，如 `#ffffff`；主字幕默认白色，副字幕默认黄色 `#f9ca1f` |
 | `color_underline` | `boolean` | 否 | 播放预览是否按字幕颜色快照应用颜色样式；缺失时视为 `true`（默认开启），设为 `false` 时关闭颜色预览。保留该字段以兼容旧工程 |
 | `color_style` | `string` | 否 | CSS 预览的颜色样式：`underline`（下划线，默认）、`text`（文字颜色）或 `stroke`（描边）；历史值 `shadow` 保留读取兼容 |
 | `ass_color_style` | `string` | 否 | ASS 导出与 ASS 预览中颜色字幕的应用方式：`text`（作为字幕颜色，默认）、`speaker`（仅作为说话人名称颜色）、`stroke`（作为描边颜色）或 `none`（无影响，颜色字幕使用统一样式） |
@@ -759,7 +760,7 @@ source: "JSON_SCHEMA.md"
 
 | name | value |
 |---|---|
-| `yellow` | `#c4a019` |
+| `yellow` | `#f9ca1f` |
 | `green` | `#66bb6a` |
 | `red` | `#f07f6f` |
 | `purple` | `#bf89e6` |
@@ -919,6 +920,7 @@ uv run python edit.py your_generated.mosp
 | `segments[i]._dirty` | bool | ❌ | 生成时不要写 |
 | `media` | string | ❌ | 媒体文件路径 |
 | `language` | string | ❌ | 语言代码 |
+| `timed_text_edit_view` | string | ❌ | 纯文本编辑视图 `rows` / `single`；缺失为 `rows`，默认值省略 |
 | `model` | string | ❌ | 模型名 |
 | `sticker_root` | string | ❌ | 工程表情包覆盖目录；缺失或为空时使用本机默认目录 |
 | `waveform` | object | ❌ | 可丢弃的 `moy.asr.waveform.v1` 峰值缓存 |
@@ -946,7 +948,7 @@ uv run python edit.py your_generated.mosp
 | `preview.extension_subtitle` | object | ❌ | 副字幕样式；沿用主字幕预览框 |
 | `preview.extension_subtitle.font_size` | number | ❌ | px，范围 `[12,96]`；缺失时默认比主字幕小 2px |
 | `preview.extension_subtitle.font_family` | string | ❌ | `default` / `yahei` / `hei` / `song` / `sans` |
-| `preview.extension_subtitle.color` | string | ❌ | `#RRGGBB` 六位十六进制颜色，默认 `#eac953` |
+| `preview.extension_subtitle.color` | string | ❌ | `#RRGGBB` 六位十六进制颜色，默认 `#f9ca1f` |
 | `preview.sticker.x` | number | ❌ | 归一化 `[0,1]`，`x + width <= 1` |
 | `preview.sticker.y` | number | ❌ | 归一化 `[0,1]`，`y + height <= 1` |
 | `preview.sticker.width` | number | ❌ | 归一化 `[0,1]`，编辑器最小 0.20 |

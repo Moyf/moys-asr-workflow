@@ -199,6 +199,7 @@
 
   function bindPlayerEvents(mediaElement) {
     if (!mediaElement) return;
+    observeAssSubtitlePreviewPlayer(mediaElement);
     mediaElement.addEventListener('timeupdate', MawePlaybackLoop.update);
     mediaElement.addEventListener('timeupdate', () => watchAuditionBoundary(mediaElement));
     mediaElement.addEventListener('seeking', () => {
@@ -217,6 +218,7 @@
     mediaElement.addEventListener('seeked', MawePlaybackLoop.update);
     mediaElement.addEventListener('loadedmetadata', () => {
       MaweTimeline.captureProjectVideoDimensions(mediaElement);
+      scheduleAssSubtitlePreviewRefresh();
       MaweTextCleanup.notifyAutoLoadedMediaReady(mediaElement);
       MaweTextCleanup.flushPendingMediaSeek(mediaElement);
     });

@@ -53,6 +53,8 @@
   if (typeof MaweBoot.DATA.language_source === 'string') out.language_source = MaweBoot.DATA.language_source;
   if (typeof MaweBoot.DATA.preserve_punctuation === 'boolean') out.preserve_punctuation = MaweBoot.DATA.preserve_punctuation;
   if (typeof MaweBoot.DATA.split_mode === 'string') out.split_mode = MaweBoot.DATA.split_mode;
+  // rows is the legacy default; omit it to keep untouched projects compact.
+  if (MaweBoot.DATA.timed_text_edit_view === 'single') out.timed_text_edit_view = 'single';
   if (typeof MaweBoot.DATA.timestamp_granularity === 'string') {
     out.timestamp_granularity = MaweBoot.DATA.timestamp_granularity;
   }

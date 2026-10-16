@@ -32,6 +32,7 @@ from maw.postprocess import (
     merge_bilingual_project,
     run_fixed_process,
     run_llm_postprocess,
+    translation_backfill_warning,
 )
 from maw.postprocess_ai_cleanup import AiCleanupRequest, llm_complete, run_ai_cleanup
 from maw.postprocess_resegment import complete_boundaries, normalize_max_chars
@@ -732,6 +733,7 @@ def run_postprocess_pipeline(
             bilingual_output = bool(previous_step.get("mergeBilingual"))
             embed_output = bool(previous_step.get("embedTranslations")) and not bilingual_output
             if isinstance(previous_manifest_step, Mapping):
+                embed_output = embed_output and previous_manifest_step.get("backfillApplied", True) is not False
                 previous_path = str(previous_manifest_step.get("translatedSrtPath") or "").strip()
                 if previous_path:
                     current_translated_srt = Path(previous_path).expanduser().resolve()
@@ -816,14 +818,17 @@ def run_postprocess_pipeline(
                             output_directory=run_directory,
                             media_path=media_path,
                         )
-                        artifact, artifact_index = _number_pipeline_artifact(
-                            artifact,
-                            run_directory=run_directory,
-                            source_stem=source_stem,
-                            index=artifact_index,
-                            operation=f"translate-{translation_target}-backfill",
-                            lang=language,
-                        )
+                        embed_output = artifact.srt_path != translation_intermediate_srt
+                        manifest_steps[index - 1]["backfillApplied"] = embed_output
+                        if embed_output:
+                            artifact, artifact_index = _number_pipeline_artifact(
+                                artifact,
+                                run_directory=run_directory,
+                                source_stem=source_stem,
+                                index=artifact_index,
+                                operation=f"translate-{translation_target}-backfill",
+                                lang=language,
+                            )
                     else:
                         artifact = _attach_translation_track(
                             source_project_path=current_project,
@@ -906,6 +911,7 @@ def run_postprocess_pipeline(
                 "srtName": current_srt.name,
                 "translatedSrtName": current_translated_srt.name if current_translated_srt is not None else "",
                 "mediaName": current_media.name if current_media != media_path else "",
+                "warnings": list(artifact.warnings),
             })
         final_project, final_srt, final_translated_srt = _publish_final(
             project_path,
@@ -937,6 +943,12 @@ def run_postprocess_pipeline(
             "srtName": final_srt.name,
             "translatedSrtName": final_translated_srt.name if final_translated_srt is not None else "",
             "mediaName": current_media.name if current_media != media_path else "",
+            "comparisonPaths": [
+                str(item["comparisonPath"])
+                for item in manifest["steps"]
+                if item.get("comparisonPath")
+            ],
+            "outputDirectory": str(final_srt.parent),
         })
         result = PipelineResult(
             final_project,
@@ -1380,6 +1392,7 @@ def _attach_translation_track(
         srt_path=combined_artifact.srt_path,
         warnings=combined_artifact.warnings,
         translated_srt_path=translated_artifact.srt_path,
+        comparison_path=translated_artifact.comparison_path,
     )
 
 
@@ -1426,6 +1439,7 @@ def _merge_bilingual_subtitles(
         project_path=merged_artifact.project_path,
         srt_path=merged_artifact.srt_path,
         warnings=merged_artifact.warnings,
+        comparison_path=translated_artifact.comparison_path,
     )
 
 
@@ -1449,6 +1463,9 @@ def _embed_translated_subtitles(
     source_project = read_project(source_project_path)
     translated_project = read_project(translated_artifact.project_path)
     embedded = embed_translated_project(source_project, translated_project)
+    backfill_warning = translation_backfill_warning(source_project, embedded)
+    if backfill_warning:
+        return replace(translated_artifact, warnings=(*translated_artifact.warnings, backfill_warning))
     warnings = (
         *translated_artifact.warnings,
         "翻译前后的独立字幕已保留为中间产物，最终输出为回填后的单条字幕。",
@@ -1470,6 +1487,7 @@ def _embed_translated_subtitles(
         project_path=embedded_artifact.project_path,
         srt_path=embedded_artifact.srt_path,
         warnings=embedded_artifact.warnings,
+        comparison_path=translated_artifact.comparison_path,
     )
 
 
