@@ -282,7 +282,7 @@ window.AsrWaveform = {
       // waveform-markers 的纯函数单测入口：跨行挑选与行内时间换算。
       pickMarkerRow: markerDescriptors.pickMarkerRow.value,
       markerRowTimeMs: markerDescriptors.markerRowTimeMs.value,
-      // 字词气泡布局纯函数（不读 this）：截断过滤 / 上限 / 叠行 / 优先级。
+      // 字词气泡布局纯函数（不读 this）：候选全量 / 上限 / 叠行 / 优先级。
       computeWordChipLayout: WaveformEditor.prototype.computeWordChipLayout,
     },
   };

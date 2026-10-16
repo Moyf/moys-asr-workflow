@@ -402,7 +402,8 @@
       });
     }
     // 「左右添加字符」提为顶层菜单行，放「高级操作」上方：预设是高频动作；
-    // 叠加轨迁移与字词转换等低频动作仍留在高级操作内。
+    // 叠加轨迁移与字词转换等低频动作仍留在高级操作内。两行同组（账本 #31），
+    // 行间不加分隔线，这里只画组前的分隔线。
     addSep();
     addWrapCharsSubmenu(targetIdxs);
     addAdvancedOverlayConvert([idx]);
@@ -439,7 +440,8 @@
   }
 
   if (MaweWordTiming.enabled) advancedList.appendChild(convertWords);
-  addSep();
+  // 「左右添加字符」与「高级操作」同组不加分隔线（账本 #31）；组前的
+  // 分隔线已由上方各分支在 addWrapCharsSubmenu 之前画好。
   MaweDom.ctxmenu.appendChild(advanced);
   // 调整 ctxmenu 位置（避免溢出）
   MaweDom.ctxmenu.classList.add('show');

@@ -531,5 +531,15 @@ export function createUtilsModule(dependencies) {
     });
   }
 
-  return Object.freeze({ applyTimedTextEdit, buildTimedTextEditReport, timedTextEditDirtyFlags });
+  // 整体编辑（single）行号列的纯函数：把 textarea 的当前值拆成可视行，
+  // 每行给一个字幕行序号（1 起）。单视图关闭软换行（white-space: pre +
+  // wrap="off"），可视行与字幕行一一对应，行号即「第 N 条」；行号按位置
+  // 编号，末尾因输入习惯多出的空行同样占一个序号。CRLF 先归一成 LF，
+  // 避免拆出带 \r 的伪空行。
+  function timedTextEditGutterNumbers(value) {
+    const normalized = String(value == null ? '' : value).replace(/\r\n?/g, '\n');
+    return normalized.split('\n').map((_line, index) => index + 1);
+  }
+
+  return Object.freeze({ applyTimedTextEdit, buildTimedTextEditReport, timedTextEditDirtyFlags, timedTextEditGutterNumbers });
 }

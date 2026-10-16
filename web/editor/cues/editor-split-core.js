@@ -236,12 +236,15 @@
     right = rightClosures + right;
     // items 层同步需要知道 styled 在两侧端点追加了什么：左 = crossing 闭符号
     // （原文嵌套逆序）[+ fade 收口]；右 = [fade 起手 +] crossing 开符号。
+    // displayEdits 只指「同符号重叠合并渲染」类编辑（text 为替换 marker）；
+    // fade 剥除类编辑（text 为空串）不算——它们由下方 fade 重包统一还原。
+    const coalescedEdits = [...display.edits.values()].some((edit) => edit.text !== '');
     if (fadeTokens.length) {
       left = `>>${left}<<`;
       right = `>>${right}<<`;
-      return { left, right, offset, leftClosures: `${leftClosures}<<`, rightClosures: `>>${rightClosures}` };
+      return { left, right, offset, leftClosures: `${leftClosures}<<`, rightClosures: `>>${rightClosures}`, displayEdits: coalescedEdits };
     }
-    return { left, right, offset, leftClosures, rightClosures };
+    return { left, right, offset, leftClosures, rightClosures, displayEdits: coalescedEdits };
   }
 
   function currentSplitStyleSettings() {
@@ -702,10 +705,18 @@
   }
   // items 层追加符号 = styled 端点闭符号 + 补齐符号，顺序与最终两侧文本的
   // 字符顺序一致（左：styled 闭符号在前、补齐在后；右：补齐在前、styled 在前）。
-  const styledLeftAppend = styledClosures?.leftClosures || '';
-  const styledRightPrepend = styledClosures?.rightClosures || '';
-  const leftAppend = `${styledLeftAppend}${massCompletion?.leftAppend || ''}`;
-  const rightPrepend = `${massCompletion?.rightPrepend || ''}${styledRightPrepend}`;
+  // 仅当拆分前 items 拼接 === segment.text（符号与文字同层的守恒形态）时才
+  // 落到 items——item 文本不含符号的 visible 形态（符号只在句文本层）保持
+  // 纯文字切片，closure 留在句文本层，避免产出 `甲****乙` 一类的混合拼接。
+  // 另要求无 display edits（同符号重叠合并渲染）：合并渲染与逐字 items 切片
+  // 天然不一致，此时 items 保持原切片原样（文字守恒由渲染等价保证）。
+  const itemsFollowText = Array.isArray(segment?.items)
+    && segment.items.map((item) => String(item?.text || '')).join('') === text
+    && !styledClosures?.displayEdits;
+  const styledLeftAppend = itemsFollowText ? (styledClosures?.leftClosures || '') : '';
+  const styledRightPrepend = itemsFollowText ? (styledClosures?.rightClosures || '') : '';
+  const leftAppend = `${styledLeftAppend}${itemsFollowText ? (massCompletion?.leftAppend || '') : ''}`;
+  const rightPrepend = `${itemsFollowText ? (massCompletion?.rightPrepend || '') : ''}${styledRightPrepend}`;
   const itemParts = splitItemsAtChar(
     includeItems ? segment : { ...segment, items: [] },
     parts.offset,
@@ -2136,11 +2147,15 @@
     // 字幕列表手工拆分允许用户指定任意字符位置，但时间码必须落在实际 item
     // 的安全范围内；当切点在 item 内时，splitItemsAtChar 已为两侧生成 item 副本。
     // 左右边界已在上文（含强制重试的降级调和）结算完毕，这里直接消费。
-    // items 层追加符号 = styled 端点闭符号 + 补齐符号（顺序与最终文本一致）。
-    const styledLeftAppend = styledClosures?.leftClosures || '';
-    const styledRightPrepend = styledClosures?.rightClosures || '';
-    const leftAppend = `${styledLeftAppend}${massCompletion?.leftAppend || ''}`;
-    const rightPrepend = `${massCompletion?.rightPrepend || ''}${styledRightPrepend}`;
+    // items 层追加符号 = styled 端点闭符号 + 补齐符号（顺序与最终文本一致）；
+    // 与 buildSplitPair 相同，仅守恒形态且无 display edits 时才落到 items。
+    const itemsFollowText = Array.isArray(seg?.items)
+      && seg.items.map((item) => String(item?.text || '')).join('') === fullText
+      && !styledClosures?.displayEdits;
+    const styledLeftAppend = itemsFollowText ? (styledClosures?.leftClosures || '') : '';
+    const styledRightPrepend = itemsFollowText ? (styledClosures?.rightClosures || '') : '';
+    const leftAppend = `${styledLeftAppend}${itemsFollowText ? (massCompletion?.leftAppend || '') : ''}`;
+    const rightPrepend = `${itemsFollowText ? (massCompletion?.rightPrepend || '') : ''}${styledRightPrepend}`;
     const leftItemsClean = MULTI_SUBTITLE_UTILS.appendMassMarkersToLastItem(cleanSplitItems(itemSplit.leftItems, 'left'), leftAppend);
     const rightItemsClean = MULTI_SUBTITLE_UTILS.prependMassMarkersToFirstItem(cleanSplitItems(itemSplit.rightItems, 'right'), rightPrepend);
     // 复制拆分两侧都是全文、渐进拆分后半句带上复制来的前缀：逐词时间码再也

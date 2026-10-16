@@ -3,14 +3,33 @@ export function createWordBlocks(dependencies) {
   const { colorForSegment, firstCueIndexOverlapping, resolveTiming, localizedWaveformMessage } = dependencies;
   // 全文预览气泡（仅基础模式单行 + 字词码全条带）的密度控制旋钮：
   // 同屏 chip 硬上限与最多向上叠的行数；超限按优先级丢弃。
-  const WORD_CHIP_MAX_COUNT = 24;
+  // 上限评估（账本 #29）：canvas 同 pass 绘制 64 个 chip ~1-2ms，相对整行
+  // 重绘是零头；密度实际由「3 行 + 水平不重叠」自限，64 只是防病态保险丝。
+  const WORD_CHIP_MAX_COUNT = 64;
   const WORD_CHIP_MAX_ROWS = 3;
   const WORD_CHIP_HEIGHT = 16;
   const WORD_CHIP_PAD_X = 6;      // chip 内左右留白
   const WORD_CHIP_GAP_X = 4;      // chip 之间与行边缘的水平最小间距
   const WORD_CHIP_ROW_GAP = 2;    // 相邻两行 chip 的垂直间距
-  const WORD_CHIP_STRIP_GAP = 2;  // chip 首行与字词条带顶部的间距
-  const WORD_CHIP_LABEL_INSET = 14; // 字词块内 label 的左右 padding（2px 7px）
+  const WORD_CHIP_STRIP_GAP = 6;  // 最底层 chip 行与字词条带顶部的间距（紧贴难看，账本 #29）
+  // 每帧重复的 measureText 消除：(font\0text) → 宽度。字号/字体随行样式变化，
+  // 所以 key 必须带 font；超长文本兜底裁剪不依赖这里的精确值，脏了也只是宽度误差。
+  const wordChipMeasureCache = new Map();
+  const WORD_CHIP_MEASURE_CACHE_LIMIT = 4096;
+
+  // 气泡文字测量缓存：drawWordChips 每帧对同批字词重复 measureText，这里按
+  // (font, text) 记忆宽度。字词被编辑后旧 key 自然失配淘汰；超限整表清空，
+  // 避免长会话缓慢膨胀（宽度本身可随时重测，无正确性风险）。
+  function measureWordChipText(ctx, text, font) {
+    const key = `${font}\u0000${text}`;
+    let width = wordChipMeasureCache.get(key);
+    if (width === undefined) {
+      width = ctx.measureText(text).width;
+      if (wordChipMeasureCache.size >= WORD_CHIP_MEASURE_CACHE_LIMIT) wordChipMeasureCache.clear();
+      wordChipMeasureCache.set(key, width);
+    }
+    return width;
+  }
 
   // 圆角矩形路径（canvas.roundRect 在旧 webview 上不可用，手写 arcTo 兜底）。
   function traceChipRect(ctx, x, y, width, height, radius) {
@@ -360,7 +379,7 @@ export function createWordBlocks(dependencies) {
         if (!Number.isFinite(leftPct) || !Number.isFinite(widthPct)) return;
         items.push({
           text,
-          textWidth: ctx.measureText(text).width,
+          textWidth: measureWordChipText(ctx, text, ctx.font),
           leftPx: (leftPct / 100) * width,
           widthPx: Math.max(1, (widthPct / 100) * width),
           order,
@@ -401,21 +420,22 @@ export function createWordBlocks(dependencies) {
 
     /**
      * 纯函数（不读 this，供单测直调）：把已测量的字词块信息变成气泡布局。
-     * 决策分四步：截断过滤（textWidth > 块内可用宽度）→ 优先级排序
-     * （当前播放字 > 距参考点近 > 行序稳定）→ 同屏上限截断 → 自下向上
-     * 找第一个水平不重叠的行（行数受 maxRows 与行内剩余空间双重限制）。
+     * 决策分三步：候选 = 全部可见字词块（不做文本截断过滤，账本 #29——
+     * 显示就都显示，密度交给上限与行堆叠）→ 优先级排序（当前播放字 >
+     * 距参考点近 > 行序稳定）→ 同屏上限截断 → 自下向上找第一个水平
+     * 不重叠的行（行数受 maxRows 与行内剩余空间双重限制）。
      * 坐标约定：leftPx/widthPx/referenceX 以行左缘为原点；stripTopPx 是
      * 条带顶边到行底边的距离；返回 y 为 chip 顶边的画布 y（原点行顶）。
      * @this {void}
      * @param {Array<{text: string, textWidth: number, leftPx: number, widthPx: number, isPlaying?: boolean, centerX?: number, order?: number}>} blocks
-     * @param {{rowWidth: number, rowHeight: number, stripTopPx: number, referenceX?: number, chipHeight?: number, padX?: number, gapX?: number, rowGap?: number, stripGap?: number, labelInset?: number, maxCount?: number, maxRows?: number}} options
+     * @param {{rowWidth: number, rowHeight: number, stripTopPx: number, referenceX?: number, chipHeight?: number, padX?: number, gapX?: number, rowGap?: number, stripGap?: number, maxCount?: number, maxRows?: number}} options
      */
     computeWordChipLayout(blocks, options) {
       const {
         rowWidth, rowHeight, stripTopPx, referenceX = rowWidth / 2,
         chipHeight = WORD_CHIP_HEIGHT, padX = WORD_CHIP_PAD_X, gapX = WORD_CHIP_GAP_X,
         rowGap = WORD_CHIP_ROW_GAP, stripGap = WORD_CHIP_STRIP_GAP,
-        labelInset = WORD_CHIP_LABEL_INSET, maxCount = WORD_CHIP_MAX_COUNT,
+        maxCount = WORD_CHIP_MAX_COUNT,
         maxRows = WORD_CHIP_MAX_ROWS,
       } = options || {};
       const placed = [];
@@ -429,7 +449,6 @@ export function createWordBlocks(dependencies) {
       blocks.forEach((block, index) => {
         const centerX = Number.isFinite(block.centerX)
           ? block.centerX : block.leftPx + block.widthPx / 2;
-        if (!(block.textWidth > block.widthPx - labelInset)) return;
         const chipWidth = Math.min(block.textWidth + padX * 2,
           Math.max(padX * 2 + 8, rowWidth - gapX * 2));
         const x = Math.round(Math.min(
@@ -461,7 +480,7 @@ export function createWordBlocks(dependencies) {
           !intervals.some(([lo, hi]) => from < hi && to > lo));
         if (targetRow < 0) { dropped += 1; continue; }
         rowIntervals[targetRow].push([from, to]);
-        // chip 顶边到行底边的距离：首行贴条带上缘，其后逐行向上。
+        // chip 顶边到行底边的距离：首行与条带留 stripGap 间距，其后逐行向上。
         const topFromBottom = stripTopPx + stripGap + targetRow * rowPitch + chipHeight;
         placed.push({
           text: chip.text, x: chip.x, chipWidth: chip.chipWidth,

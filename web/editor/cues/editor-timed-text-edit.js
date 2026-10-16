@@ -10,6 +10,7 @@
   const timedTextEditSearchCount = document.getElementById('timed-text-edit-search-count');
   const timedTextEditSearchError = document.getElementById('timed-text-edit-search-error');
   const timedTextEditSearchMirror = document.getElementById('timed-text-edit-search-mirror');
+  const timedTextEditGutter = document.getElementById('timed-text-edit-gutter');
   const timedTextEditSearchReplaceToggle = document.getElementById('timed-text-edit-replace-toggle');
   const timedTextEditSearchReplaceRow = document.getElementById('timed-text-edit-replace-row');
   const timedTextEditSearchCase = document.getElementById('timed-text-edit-case');
@@ -416,7 +417,31 @@
       MaweDom.timedTextEditSingleTextarea.value = MaweDom.timedTextEditDraft.singleText;
       MaweCueElements.updateTimedTextEditSingleGuide();
     }
+    updateTimedTextEditGutter();
     refreshTimedTextEditSearch({ preserveIndex: true });
+  }
+
+
+  // 整体编辑行号列（账本 #33）：textarea 左侧的字幕行序号。单视图关闭软换行
+  // （white-space: pre + wrap="off"），可视行与字幕行一一对应，序号即「第 N 条」；
+  // 行号取自 textarea 当前值（含末尾因输入习惯多出的空行），与草稿的规范化
+  // 结果无关。数字列不横向滚动：只在 textarea 滚动时同步 scrollTop。
+  function updateTimedTextEditGutter() {
+    if (!timedTextEditGutter || !MaweDom.timedTextEditDraft) return;
+    const numbers = window.AsrEditorUtils.timedTextEditGutterNumbers(
+      MaweDom.timedTextEditSingleTextarea?.value ?? '',
+    );
+    // 序号始终是 1..N 的位置编号，行数没变就没有任何可见变化。
+    if (timedTextEditGutter.childElementCount === numbers.length) return;
+    const fragment = document.createDocumentFragment();
+    numbers.forEach((number) => {
+      const line = document.createElement('div');
+      line.className = 'timed-text-edit-gutter-line';
+      line.textContent = String(number);
+      fragment.appendChild(line);
+    });
+    timedTextEditGutter.replaceChildren(fragment);
+    timedTextEditGutter.scrollTop = MaweDom.timedTextEditSingleTextarea?.scrollTop || 0;
   }
 
 
@@ -1252,10 +1277,14 @@
   timedTextEditSearchReplaceOne?.addEventListener('click', () => applyTimedTextEditSearchReplacement(false));
   timedTextEditSearchReplaceAll?.addEventListener('click', () => applyTimedTextEditSearchReplacement(true));
   MaweDom.timedTextEditSingleTextarea?.addEventListener('scroll', () => {
+    if (timedTextEditGutter) timedTextEditGutter.scrollTop = MaweDom.timedTextEditSingleTextarea.scrollTop;
     if (!timedTextEditSearchMirror) return;
     timedTextEditSearchMirror.scrollTop = MaweDom.timedTextEditSingleTextarea.scrollTop;
     timedTextEditSearchMirror.scrollLeft = MaweDom.timedTextEditSingleTextarea.scrollLeft;
   });
+  // 输入过程中的增删行要立刻反映到行号列；行数不变时 updateTimedTextEditGutter
+  // 直接跳过，逐键成本可以忽略。
+  MaweDom.timedTextEditSingleTextarea?.addEventListener('input', updateTimedTextEditGutter);
   // 逐条行 textarea 滚动时同步各自的高亮镜像（捕获阶段委托，行可随时增删）。
   MaweDom.timedTextEditRows?.addEventListener('scroll', (event) => {
     const textarea = event.target;

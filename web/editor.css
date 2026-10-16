@@ -966,6 +966,10 @@
   }
   /* 左侧操作单独滚动，右侧设置始终留在工具栏内；焦点导航也会滚动到对应按钮。 */
   .toolbar.waveform-toolbar > .layout-toolbar-label { flex: 0 0 auto; white-space: nowrap; }
+  /* 「字幕」标签同样不收缩不换行（挤成竖排很难看，账本 #32）；空间不足时由
+     editor-cue-list-anchor 的 ResizeObserver 直接隐藏整个标签让位给功能控件。 */
+  .toolbar.cue-list-toolbar > .layout-toolbar-label { flex: 0 0 auto; white-space: nowrap; }
+  .toolbar.cue-list-toolbar > .layout-toolbar-label[hidden] { display: none; }
   .toolbar.waveform-toolbar > .waveform-toolbar-controls {
     display: flex; align-items: center; gap: 6px;
     flex: 1 1 auto; min-width: 0;
@@ -3596,9 +3600,27 @@
     font: inherit;
   }
   .timed-text-edit-single-editor[hidden] { display: none; }
+  /* 行号 gutter（账本 #33）：绝对定位数字列，随 textarea 滚动（JS 同步
+     scrollTop），不参与横向滚动。宽度与文字让位统一由
+     --timed-text-edit-gutter-w 驱动：数字列 ~3ch 右对齐 + 12px 与正文的间隔。 */
+  .timed-text-edit-single-editor { --timed-text-edit-gutter-w: calc(3ch + 12px); }
+  .timed-text-edit-gutter {
+    position: absolute; z-index: 2; top: 1px; bottom: 1px; left: 0;
+    width: var(--timed-text-edit-gutter-w); box-sizing: border-box; overflow: hidden;
+    padding: 10px 8px 10px 0;
+    color: var(--text-muted); font: inherit; line-height: 1.65;
+    text-align: right; font-variant-numeric: tabular-nums;
+    background: var(--bg-input); border-right: 1px solid var(--border-subtle);
+    border-radius: var(--radius-sm) 0 0 var(--radius-sm);
+    pointer-events: none; user-select: none;
+  }
+  /* 行号行盒与镜像层文字行严格同高：同样的 font: inherit + line-height 1.65，
+     首行同样从 padding-top 10px 起（top/bottom 已对齐镜像 1px 边框）。 */
+  .timed-text-edit-gutter-line { line-height: 1.65; }
   .timed-text-edit-search-mirror {
     position: absolute; z-index: 1; inset: 0; overflow: hidden; box-sizing: border-box;
-    padding: 10px 12px; color: var(--text-primary); background: var(--bg-input);
+    padding: 10px 12px; padding-left: calc(var(--timed-text-edit-gutter-w) + 12px);
+    color: var(--text-primary); background: var(--bg-input);
     border: 1px solid var(--border); border-radius: var(--radius-sm);
     font: inherit; line-height: 1.65; white-space: pre; overflow-wrap: normal; pointer-events: none;
   }
@@ -3607,7 +3629,9 @@
   .timed-text-edit-search-mirror .search-match.is-zero-length { display: inline-block; width: 0; height: 1em; margin-right: -2px; border-left: 2px solid var(--accent); vertical-align: text-bottom; }
   .timed-text-edit-single-textarea {
     display: block; flex: 1 1 auto; width: 100%; min-height: 0; height: 100%; margin: 0;
-    position: relative; z-index: 2; box-sizing: border-box; resize: none; padding: 10px 12px; color: transparent;
+    position: relative; z-index: 2; box-sizing: border-box; resize: none; padding: 10px 12px;
+    padding-left: calc(var(--timed-text-edit-gutter-w) + 12px);
+    color: transparent;
     -webkit-text-fill-color: transparent; caret-color: var(--text-primary);
     background: transparent; border: 1px solid transparent; border-radius: var(--radius-sm);
     font: inherit; line-height: 1.65; white-space: pre; overflow: auto;
@@ -3616,7 +3640,7 @@
   .timed-text-edit-single-textarea:focus { outline: none; }
   .timed-text-edit-single-guide {
     position: absolute; z-index: 3; top: 1px; bottom: 1px;
-    left: calc(13px + var(--timed-text-edit-line-width, 16em)); width: 1px;
+    left: calc(var(--timed-text-edit-gutter-w) + 13px + var(--timed-text-edit-line-width, 16em)); width: 1px;
     background: var(--accent-line); opacity: .55; pointer-events: none;
     transition: left 100ms ease;
   }

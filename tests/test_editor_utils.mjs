@@ -2679,6 +2679,19 @@ test('does not require word timings for an unchanged trailing line break', () =>
     .map((segment) => segment.text), ['就是', '这颗']);
 });
 
+test('numbers timed-text-edit gutter lines by subtitle order', () => {
+  const gutterNumbers = (value) => Array.from(helpers.timedTextEditGutterNumbers(value));
+  // 可视行与字幕行一一对应：第 N 行 = 第 N 条（与逐条编辑的「第 N 条」一致）。
+  assert.deepEqual(gutterNumbers('就是\n这颗\n呀'), [1, 2, 3]);
+  // 空值也是一行（一条空字幕），而不是没有行号。
+  assert.deepEqual(gutterNumbers(''), [1]);
+  assert.deepEqual(gutterNumbers(null), [1]);
+  // 末尾因输入习惯多出的空行是可视行，占一个序号。
+  assert.deepEqual(gutterNumbers('就是\n这颗\n'), [1, 2, 3]);
+  // CRLF 先归一成 LF，避免拆出带 \r 的伪行。
+  assert.deepEqual(gutterNumbers('就是\r\n这颗\r呀'), [1, 2, 3]);
+});
+
 test('estimates a structural split when the source has no usable word timings', () => {
   const source = [{ id: 'cue-1', start: 0, end: 1000, text: '就是这颗' }];
   const report = helpers.buildTimedTextEditReport(source, ['就是', '这颗']);
