@@ -17,6 +17,7 @@ import unittest
 import urllib.error
 import urllib.request
 import zipfile
+from decimal import Decimal
 from dataclasses import replace
 from pathlib import Path
 from unittest import mock
@@ -32,6 +33,15 @@ assert SPEC and SPEC.loader
 server_editor = importlib.util.module_from_spec(SPEC)
 sys.modules[SPEC.name] = server_editor
 SPEC.loader.exec_module(server_editor)
+
+
+def fake_video_copy_plan(source, intervals, streams, origin, directory, *_args, **_kwargs):
+    """Command/metadata tests isolate the real packet planner tested separately."""
+    from maw.media_export_video import VideoCopyPlan
+    windows = [(origin + Decimal(start) / 1000, origin + Decimal(end) / 1000, origin)
+               for start, end in intervals]
+    return VideoCopyPlan({"intervals": [{"outputEndMs": sum(end - start for start, end in intervals)}]},
+                         [windows] * len(streams), directory / "index", [None] * len(streams))
 
 
 def _write_reapeaks_for(media_path: Path) -> Path:
@@ -81,6 +91,8 @@ class LocalEditorServerTests(CompactContainerAssertions, unittest.TestCase):
             with self.subTest(intervals=bad_intervals), self.assertRaises(server_editor.GapRemovedVideoExportError):
                 server_editor.normalize_gap_removed_intervals(bad_intervals)
 
+    @mock.patch.object(server_editor, "prepare_video_copy", new=fake_video_copy_plan)
+    @mock.patch.object(server_editor, "verify_video_packets", new=lambda *_: None)
     def test_rebuild_gap_removed_video_stream_copies_and_checks_every_stream(self) -> None:
         source = self.root / "clip's source.mp4"
         source.write_bytes(b"source")
@@ -110,11 +122,11 @@ class LocalEditorServerTests(CompactContainerAssertions, unittest.TestCase):
         self.assertEqual(ffmpeg_command[ffmpeg_command.index("-map") + 1], "0")
         self.assertEqual(ffmpeg_command[ffmpeg_command.index("-c") + 1], "copy")
         self.assertEqual(len([command for command in calls if command[0] == "ffprobe"]), 2)
-        concat_text = output.with_suffix(".ffconcat").read_text(encoding="utf-8")
-        self.assertIn("inpoint 0.000\noutpoint 1.250", concat_text)
-        self.assertIn("inpoint 2.000\noutpoint 3.500", concat_text)
-        self.assertIn("'\\''", concat_text)
+        self.assertIn("-copyts", ffmpeg_command)
+        self.assertIn("noise=amount=0:drop=", ffmpeg_command[ffmpeg_command.index("-bsf:0") + 1])
+        self.assertNotIn("concat", ffmpeg_command)
 
+    @mock.patch.object(server_editor, "prepare_video_copy", new=fake_video_copy_plan)
     def test_rebuild_gap_removed_video_rejects_a_dropped_audio_stream(self) -> None:
         source = self.root / "clip.mp4"
         source.write_bytes(b"source")
@@ -137,7 +149,7 @@ class LocalEditorServerTests(CompactContainerAssertions, unittest.TestCase):
                 )
         self.assertFalse(output.exists())
 
-    def test_rebuild_gap_removed_video_maps_project_intervals_to_file_timestamps(self) -> None:
+    def test_video_probe_preserves_file_origin_for_project_timeline_mapping(self) -> None:
         source = self.root / "clip.mp4"
         source.write_bytes(b"source")
         streams = [
@@ -158,33 +170,11 @@ class LocalEditorServerTests(CompactContainerAssertions, unittest.TestCase):
         ]
         for index, (metadata, expected) in enumerate(cases):
             with self.subTest(metadata=metadata):
-                output = self.root / f"rebuilt-{index}.mp4"
-                calls: list[list[str]] = []
-
-                def run(command, **kwargs):
-                    calls.append(command)
-                    if command[0] == "ffprobe":
-                        # The output muxer may choose a different origin; only
-                        # the source file's origin can locate the kept content.
-                        probe_metadata = metadata if command[-1] == str(source.resolve()) else {"format": {"start_time": "0.000000"}}
-                        return subprocess.CompletedProcess(command, 0, stdout=json.dumps({"streams": streams, **probe_metadata}), stderr="")
-                    Path(command[-1]).write_bytes(b"rebuilt-media")
-                    return subprocess.CompletedProcess(command, 0, stdout="", stderr="")
-
-                with mock.patch.object(server_editor.subprocess, "run", side_effect=run):
-                    server_editor.rebuild_gap_removed_video(
-                        source, [(0, 1), (2000, 3500)], output,
-                        ffmpeg_path=Path("ffmpeg"), ffprobe_path=Path("ffprobe"),
-                    )
-                actual = [
-                    line.split(" ", 1)[1] for line in output.with_suffix(".ffconcat").read_text(encoding="utf-8").splitlines()
-                    if line.startswith(("inpoint ", "outpoint "))
-                ]
-                self.assertEqual(actual, expected)
-                probe_calls = [command for command in calls if command[0] == "ffprobe"]
-                self.assertEqual(len(probe_calls), 2)
-                self.assertIn(":format=start_time", probe_calls[0][probe_calls[0].index("-show_entries") + 1])
-                self.assertEqual(len([command for command in calls if command[0] == "ffmpeg"]), 1)
+                with mock.patch.object(server_editor.subprocess, "run", return_value=subprocess.CompletedProcess(
+                    [], 0, json.dumps({"streams": streams, **metadata}), "")) as run:
+                    probe = server_editor._probe_gap_removed_video(source, Path("ffprobe"))
+                self.assertEqual(probe.start_time, Decimal(expected[0]))
+                self.assertEqual(run.call_count, 1)
 
     def test_rebuild_gap_removed_video_rejects_invalid_file_start_times_before_ffmpeg(self) -> None:
         source = self.root / "clip.mp4"
@@ -212,6 +202,8 @@ class LocalEditorServerTests(CompactContainerAssertions, unittest.TestCase):
                 self.assertFalse(output.exists())
                 self.assertFalse(output.with_suffix(".ffconcat").exists())
 
+    @mock.patch.object(server_editor, "prepare_video_copy", new=fake_video_copy_plan)
+    @mock.patch.object(server_editor, "verify_video_packets", new=lambda *_: None)
     def test_rebuild_gap_removed_video_preserves_track_dispositions_and_metadata(self) -> None:
         source = self.root / "clip.mp4"
         source.write_bytes(b"source")
@@ -264,6 +256,7 @@ class LocalEditorServerTests(CompactContainerAssertions, unittest.TestCase):
         self.assertIn(":stream_disposition:stream_tags", probe_command[probe_command.index("-show_entries") + 1])
         self.assertTrue(output.is_file())
 
+    @mock.patch.object(server_editor, "prepare_video_copy", new=fake_video_copy_plan)
     def test_rebuild_gap_removed_video_rejects_changed_track_flags_and_metadata(self) -> None:
         source = self.root / "clip.mp4"
         source.write_bytes(b"source")
