@@ -199,7 +199,25 @@ class RecordingPreparationTests(unittest.TestCase):
                 result=api.start_recording_review({"scriptPath":str(script),"transcription":{"providerId":"selected","testRun":True}})
                 self.assertTrue(result["ok"])
                 api.worker.join(timeout=3)
-                self.assertEqual(convert.call_args.args[0],{"providerId":"selected","testRun":False})
+                self.assertEqual(convert.call_args.args[0],{"providerId":"selected","testRun":False,"autoPostprocess":None})
                 self.assertEqual(api.recording_review_status()["status"],"ready")
                 api.cancel_recording_review()
                 self.assertTrue(api._recording_preparation.cancel.is_set())
+
+    def test_recording_preflight_ignores_unused_invalid_auto_postprocessing(self):
+        from maw.gui_web import LauncherApi, LauncherPaths
+        with tempfile.TemporaryDirectory() as directory:
+            root=Path(directory);script=root/"script.txt";media=root/"audio.wav"
+            script.write_text("你好",encoding="utf-8");media.write_bytes(b"fixture")
+            api=LauncherApi(paths=LauncherPaths(root=root,env_path=root/"unused-config",launcher_html=root/"launcher.html"),window_getter=lambda:None)
+            transcription={"mediaPath":str(media),"srtPath":str(root/"raw.srt"),"apiKey":"sk-test",
+                "audioTrack":0,"autoPostprocess":{"enabled":True,"steps":[
+                    {"id":"match","enabled":True,"scriptPath":str(root/"missing-old-script.txt")}]}}
+            with mock.patch("maw.gui_web._frozen_ffmpeg_preflight",return_value=None), mock.patch(
+                    "maw.recording_preparation.run_transcription",
+                    return_value=SimpleNamespace(json_path=root/"raw.mosp",srt_path=root/"raw.srt")) as transcribe:
+                result=api.start_recording_review({"scriptPath":str(script),"transcription":transcription})
+                self.assertTrue(result["ok"],result)
+                api.worker.join(timeout=3)
+            self.assertEqual(api.recording_review_status()["status"],"ready")
+            self.assertIsNone(transcribe.call_args.args[0].postprocess_plan)

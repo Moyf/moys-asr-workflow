@@ -267,6 +267,24 @@ def map_joined_items(items: list[dict[str, Any]], ranges: list[tuple[int, int]])
     return mapped
 
 
+def _decode_recording_audio(project: Mapping[str, Any], media: Path, audio: Path, *,
+                            cancel_event: Any = None, on_event: Callable[[str], None] | None = None) -> None:
+    """Decode the evidence track without changing its source-time origin."""
+    from maw.local_runtime import LocalRuntimeCancelled, LocalRuntimeError, _run_process
+    from threading import Event
+    ffmpeg = resolve_ffmpeg_tool("ffmpeg")
+    if not ffmpeg:
+        raise RecordingWorkflowError("找不到 FFmpeg，无法准备选中的声音。")
+    metadata = project.get("media_metadata") or {}
+    track = resolve_default_audio_track(media, metadata.get("selected_audio_track"))
+    _run_process([str(ffmpeg), "-v", "error", "-i", str(media), "-map", f"0:a:{track}",
+                  "-vn", "-ac", "1", "-ar", "16000", "-c:a", "pcm_s16le", "-y", str(audio)],
+                 cancel=cancel_event or Event(), on_line=on_event or (lambda _: None),
+                 cwd=str(audio.parent), env=dict(os.environ),
+                 error_class=LocalRuntimeError, cancelled_class=LocalRuntimeCancelled,
+                 cancelled_message="文稿生成已取消。", message_prefix="声音准备")
+
+
 def finalize_recording(project: Mapping[str, Any], alignment: dict[str, Any], request: Mapping[str, Any],
                        media: Path, *, backend: AlignmentBackend | None = None,
                        model_path: Path | None = None, device: str = "auto", language: str = "zh",
@@ -276,31 +294,19 @@ def finalize_recording(project: Mapping[str, Any], alignment: dict[str, Any], re
                                                     gap_remove=request.get("gapRemove"))
     if not review["ready"]:
         raise RecordingWorkflowError("; ".join(f'{b["lineId"]}: {b["reason"]}' for b in review["blockers"]))
-    ffmpeg = resolve_ffmpeg_tool("ffmpeg")
-    if not ffmpeg:
-        raise RecordingWorkflowError("找不到 FFmpeg，无法准备选中的声音。")
     from maw.language import normalize_language_code
     from maw.alignment_models import QWEN_FORCED_ALIGNER_MODEL_ID, alignment_model_by_id
     language = normalize_language_code(project.get("language") or language)
     if language not in alignment_model_by_id(QWEN_FORCED_ALIGNER_MODEL_ID).languages:
         raise RecordingWorkflowError("请在 ASR 工程中指定对齐器支持的语言。")
-    metadata = project.get("media_metadata") or {}
-    track = resolve_default_audio_track(media, metadata.get("selected_audio_track"))
     aligner = backend or QwenForcedAlignerBackend(model_path=model_path or "", device=device)
     emit = on_event or (lambda _: None)
     generated = []
     used_ranges = []
     with tempfile.TemporaryDirectory(prefix="maw-recording-align-") as directory:
         root = Path(directory)
-        # Decode exactly the selected track once; reuse the existing cancellable process runner.
-        from maw.local_runtime import LocalRuntimeCancelled, LocalRuntimeError, _run_process
-        from threading import Event
         audio = root / "source.wav"
-        _run_process([str(ffmpeg), "-v", "error", "-i", str(media), "-map", f"0:a:{track}",
-                      "-vn", "-ac", "1", "-ar", "16000", "-c:a", "pcm_s16le", "-y", str(audio)],
-                     cancel=cancel_event or Event(), on_line=emit, cwd=str(root), env=dict(os.environ),
-                     error_class=LocalRuntimeError, cancelled_class=LocalRuntimeCancelled,
-                     cancelled_message="文稿生成已取消。", message_prefix="声音准备")
+        _decode_recording_audio(project, media, audio, cancel_event=cancel_event, on_event=emit)
         gaps = reviewed.get("gap_remove", {}).get("gaps", [])
         for index, line in enumerate(review["lines"]):
             _check_cancel(cancel_event)
@@ -441,7 +447,9 @@ def run_source_items_job(project_path: Path, script_path: Path, request: Mapping
     with tempfile.TemporaryDirectory(prefix=".maw-recording-stage-", dir=project_path.parent) as directory:
         staging = Path(directory) / "result"
         staging.mkdir()
-        report = align_project(project, media_path=media, model_id=QWEN_FORCED_ALIGNER_MODEL_ID,
+        audio = Path(directory) / "source.wav"
+        _decode_recording_audio(project, media, audio, cancel_event=cancel_event, on_event=emit)
+        report = align_project(project, media_path=audio, model_id=QWEN_FORCED_ALIGNER_MODEL_ID,
                                mode="fill", model_path=model_path or "", device=device,
                                cancel_event=cancel_event, on_event=emit)
         _check_cancel(cancel_event)
@@ -449,6 +457,9 @@ def run_source_items_job(project_path: Path, script_path: Path, request: Mapping
             raise RecordingWorkflowError("部分 ASR 源段补码失败；不发布部分工程，请保留原始 ASR 后重试。")
         if input_signature(project_path, script_path, media) != signature:
             raise RecordingWorkflowError("补码期间输入已变化；拒绝发布旧结果。")
+        # The result lives in a new directory, so its media binding must not
+        # retain a path relative to the original project's directory.
+        project["media"] = str(media.resolve())
         artifact = write_artifacts(strip_inline_caches(project), source_project_path=project_path,
                                    source_srt_path=None, operation="timestamps", write_project=True,
                                    write_srt=False, output_directory=staging, media_path=media,

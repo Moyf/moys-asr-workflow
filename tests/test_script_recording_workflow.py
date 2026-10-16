@@ -240,7 +240,7 @@ class RecordingReviewTests(unittest.TestCase):
             with wave.open(str(media),"wb") as audio:
                 audio.setparams((1,2,16000,0,"NONE","not compressed"))
                 audio.writeframes(array("h",(round(5000*math.sin(i*.1)) for i in range(48000))).tobytes())
-            raw={**project([cue("你好世界",500,2000)]),"media":str(media)}
+            raw={**project([cue("你好世界",500,2000)]),"media":media.name}
             source.write_text(json.dumps(raw,ensure_ascii=False),encoding="utf-8")
             script.write_text("你好，世界。",encoding="utf-8")
             request={"sourceConfirmed":True,"inputSignature":input_signature(source,script,media)}
@@ -252,6 +252,9 @@ class RecordingReviewTests(unittest.TestCase):
             self.assertEqual(output["segments"][0]["text"],"你好世界")
             self.assertEqual(output["segments"][0]["start"],500)
             self.assertTrue(output["segments"][0]["items"])
+            self.assertEqual(output["media"],str(media.resolve()))
+            from maw.script_recording_workflow import load_recording_inputs
+            self.assertEqual(load_recording_inputs(Path(result["projectPath"]),script)[2],media.resolve())
             self.assertEqual(json.loads(Path(result["reportPath"]).read_text())["operation"],"source-items")
             published=list(root.glob("*.asr-items-reviewed-*"))
             backend.align.side_effect=RuntimeError("model failed")
@@ -346,3 +349,60 @@ class RecordingReviewTests(unittest.TestCase):
             backend.align.side_effect=align
             output,_=finalize_recording(raw,alignment,request_for(alignment),media,backend=backend)
             self.assertEqual(output["media_metadata"]["selected_audio_track"],1)
+
+    def test_source_items_fill_uses_selected_audio_track_and_original_offsets(self):
+        import subprocess
+        from maw.ffmpeg import resolve_ffmpeg_tool
+        with tempfile.TemporaryDirectory() as directory:
+            root=Path(directory)
+            for index,amplitude in enumerate((1000,5000)):
+                with wave.open(str(root/f"track{index}.wav"),"wb") as audio:
+                    audio.setparams((1,2,16000,0,"NONE","not compressed"))
+                    audio.writeframes(array("h",[amplitude]*48000).tobytes())
+            media=root/"two.mka"
+            subprocess.run([str(resolve_ffmpeg_tool("ffmpeg")),"-v","error","-i",str(root/"track0.wav"),
+                "-i",str(root/"track1.wav"),"-map","0:a","-map","1:a","-c:a","pcm_s16le",str(media)],check=True)
+            raw={**project([cue("你好世界",1000,2000)]),"media":str(media),
+                 "media_metadata":{"selected_audio_track":1}}
+            source,script=root/"raw.mosp",root/"script.txt"
+            source.write_text(json.dumps(raw,ensure_ascii=False),encoding="utf-8")
+            script.write_text("你好世界",encoding="utf-8")
+            backend=mock.Mock()
+            def align(path,text,**kwargs):
+                with wave.open(str(path),"rb") as audio:
+                    self.assertEqual(array("h",audio.readframes(1))[0],5000)
+                return [TimedToken("你好世界",100,900)]
+            backend.align.side_effect=align
+            request={"sourceConfirmed":True,"inputSignature":input_signature(source,script,media)}
+            with mock.patch("maw.timestamp_alignment.create_alignment_backend",return_value=backend):
+                result=run_source_items_job(source,script,request)
+            output=json.loads(Path(result["projectPath"]).read_text(encoding="utf-8"))
+            self.assertEqual(output["media_metadata"]["selected_audio_track"],1)
+            self.assertEqual(output["segments"][0]["start"],1000)
+            self.assertEqual(output["segments"][0]["items"][0]["start"],1100)
+            self.assertEqual(output["segments"][0]["items"][0]["end"],1900)
+            self.assertEqual(json.loads(source.read_text(encoding="utf-8")),raw)
+
+    def test_source_fill_cancel_during_decode_publishes_nothing(self):
+        from threading import Event
+        from maw.local_runtime import LocalRuntimeCancelled
+        with tempfile.TemporaryDirectory() as directory:
+            root=Path(directory);media=root/"audio.wav";source=root/"raw.mosp";script=root/"script.txt"
+            media.write_bytes(b"fixture");script.write_text("你好",encoding="utf-8")
+            raw={**project([cue("你好",0,1000)]),"media":str(media),
+                 "media_metadata":{"selected_audio_track":0}}
+            source.write_text(json.dumps(raw,ensure_ascii=False),encoding="utf-8")
+            request={"sourceConfirmed":True,"inputSignature":input_signature(source,script,media)}
+            cancel=Event()
+            def stop_decode(command,**kwargs):
+                self.assertIs(kwargs["cancel"],cancel)
+                cancel.set()
+                raise LocalRuntimeCancelled("cancelled")
+            with mock.patch("maw.local_runtime._run_process",side_effect=stop_decode), mock.patch(
+                    "maw.timestamp_alignment.align_project") as align:
+                with self.assertRaises(LocalRuntimeCancelled):
+                    run_source_items_job(source,script,request,cancel_event=cancel)
+            align.assert_not_called()
+            self.assertFalse(list(root.glob("*.asr-items-reviewed-*")))
+            self.assertFalse(list(root.glob(".maw-recording-stage-*")))
+            self.assertEqual(json.loads(source.read_text(encoding="utf-8")),raw)

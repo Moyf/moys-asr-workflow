@@ -2482,7 +2482,8 @@ class LauncherApi:
             config = payload.get("transcription")
             if not isinstance(config, Mapping):
                 raise ValueError("缺少所选 ASR 配置。")
-            request = _request_from_payload({**dict(config), "testRun": False}, self.paths.env_path)
+            request = _request_from_payload({**dict(config), "testRun": False,
+                                            "autoPostprocess": None}, self.paths.env_path)
             ffmpeg_error = _frozen_ffmpeg_preflight(self.paths.env_path)
             if ffmpeg_error:
                 return ffmpeg_error
