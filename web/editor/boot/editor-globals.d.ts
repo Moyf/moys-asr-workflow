@@ -244,6 +244,7 @@ interface MaweCommandsApi {
   begin(label: string, options?: { captureView?: boolean }): EditorTransaction;
   run<T>(label: string, mutate: (command: EditorTransaction) => T,
     options?: { captureView?: boolean; invalidate?: ViewInvalidation }): T;
+  onBeforeBegin(listener: (label: string, options: { captureView?: boolean }) => void): () => boolean;
 }
 declare var MaweCommands: MaweCommandsApi;
 declare var MaweViewUpdates: { invalidate(options?: ViewInvalidation): void };

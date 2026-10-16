@@ -208,10 +208,14 @@
     event.preventDefault(); event.stopPropagation();
   }
   function wheelScale(event) {
-    if (!enabled() || event.ctrlKey || event.metaKey || event.altKey || event.shiftKey) return;
+    if (!enabled() || drag || scaleDrag || event.ctrlKey || event.metaKey || event.altKey || event.shiftKey) return;
     const current = target();
     if (!current || !singleSelected(current.segment.id)) return;
-    const rect = global.MaweDom.overlayEl.getBoundingClientRect();
+    const overlay = global.MaweDom.overlayEl;
+    const record = recordFor(current.segment);
+    if (global.MaweDom.overlayToggle?.checked !== true || overlay.dataset.assMode !== 'true'
+        || overlay.classList.contains('hidden') || !record || !(record.opacity > 0)) return;
+    const rect = overlay.getBoundingClientRect();
     if (event.clientX < rect.left || event.clientX >= rect.right || event.clientY < rect.top || event.clientY >= rect.bottom) return;
     const blocked = event.target?.closest?.('input,textarea,select,button:not(.ass-cue-drag-target):not(.ass-cue-scale-handle),[contenteditable="true"]');
     if (blocked) return;
@@ -370,6 +374,9 @@
   function currentTargetId() { return target()?.segment.id; }
   global.addEventListener('blur', () => {
     finish(true); finishScaleDrag(true); finishScaleWheel();
+  });
+  global.MaweCommands.onBeforeBegin(() => {
+    if (scaleWheel) finishScaleWheel();
   });
   global.MaweAssCuePosition = Object.freeze({ sync,
     get dragging() { return Boolean(drag || scaleDrag || scaleWheel); },

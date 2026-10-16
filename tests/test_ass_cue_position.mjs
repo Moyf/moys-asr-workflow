@@ -75,6 +75,32 @@ test('scale-only overrides keep the global anchor and remain in automatic layout
   assert.doesNotMatch(output, /\\pos\(/, 'scale alone does not create a per-cue position');
 });
 
+test('scaled automatic stack export keeps measured offsets at group scale', () => {
+  const measure = (style, fontSize, run, text) => ({ width: [...text].length * fontSize / 2,
+    ascent: fontSize * 0.8, descent: fontSize * 0.2 });
+  const segments = [
+    { id: 'base', start: 0, end: 2000, text: Array(10).fill('BASE').join('\n') },
+    { id: 'scaled', start: 0, end: 2000, text: Array(10).fill('SCALED').join('\n'), assOverride: { scale: 0.62 } },
+  ];
+  let plan;
+  const output = h.buildAssPayload(segments, { assProfile: {}, assStyle: { fontSize: 72, alignment: 2 },
+    measureAssRun: measure, onAssPlan: value => { plan = value; } });
+  const slice = plan.slices[0];
+  const item = slice.items.find(entry => entry.segment.id === 'scaled');
+  const frameItem = h.assStackFrame(plan, 500).items.find(entry => entry.segment.id === 'scaled');
+  const line = output.split('\n').find(entry => entry.startsWith('Dialogue: 0,') && entry.includes('SCALED'));
+  const position = line.match(/\\pos\(([-\d.]+),([-\d.]+)\)/);
+  assert.equal(slice.legacy, false);
+  assert.ok(slice.scale < 1, 'fixture exercises both group fitting and per-cue scale');
+  assert.ok(Math.abs(item.offset.y) > 1, 'automatic stack gives the cue a measured nonzero offset');
+  assert.ok(position, 'automatic stacked cue uses an explicit exported position');
+  for (const [index, axis] of ['x', 'y'].entries()) {
+    assert.ok(Math.abs(Number(position[index + 1]) - frameItem.anchor[axis]) < 0.0001,
+      `${axis} offset agrees with the shared preview layout`);
+  }
+  assert.match(line, /\\fs[\d.]+/, 'the cue scale still applies to emitted text');
+});
+
 test('global alignments and explicit anchors override profile move without losing fade or transform', () => {
   for (let an = 1; an <= 9; an++) {
     let plan;

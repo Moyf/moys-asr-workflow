@@ -273,6 +273,26 @@ test('shake phase survives overlapping cue start and end between original phase 
     [[100, 160], [160, 200], [200, 220], [220, 280], [280, 300], [300, 340], [340, 400]]);
 });
 
+test('scaled automatic shake uses group scale for its offset and combined scale for amplitude', () => {
+  let plan;
+  const output = h.buildAssPayload([
+    { id: 'base', start: 0, end: 180, text: Array(8).fill('base').join('\n') },
+    { id: 'scaled-shake', start: 0, end: 180,
+      text: `!!${Array(8).fill('shake').join('\n')}!!`, assOverride: { scale: 0.62 } },
+  ], { assProfile: {}, assStyle: { fontSize: 150 }, playResX: 640, playResY: 360,
+    onAssPlan: value => { plan = value; } });
+  const slice = plan.slices[0];
+  const item = slice.items.find(entry => entry.segment.id === 'scaled-shake');
+  const frame = h.assStackFrame(plan, 0).items.find(entry => entry.segment.id === 'scaled-shake');
+  const combinedAmplitude = h.assShakeAmplitude(slice.height) * slice.scale * item.cueScale;
+  assert.equal(slice.legacy, false);
+  assert.ok(slice.scale < 1, `expected group fitting but got scale ${slice.scale} in ${JSON.stringify(slice.box)}`);
+  assert.ok(Math.abs(item.offset.y) > 1);
+  assert.equal(item.cueScale, 0.62);
+  assert.deepEqual(plain(frame.shakeOffset), plain(h.assShakeOffsetFor(0, combinedAmplitude)));
+  assertShakeCoverageAndPhase(plan, shakeEvents(output, 'shake'), 'scaled-shake');
+});
+
 test('shake phase uses the ASS-quantized cue origin for non-centisecond input', () => {
   let plan;
   const output = h.buildAssPayload([

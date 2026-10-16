@@ -21,9 +21,17 @@
 | 紧凑控件 | 已修复 | 倍率在 X/Y 左侧独立显隐；e2e 和本地页面测量确认间距、单行标签、编辑区高度与视频顶部位置稳定，并完成截图自查 |
 | 测试与文档 | 已修复 | JSON 契约、用户指南、CHANGELOG、官网 JSON Schema 副本和开发方案已更新；bundle、类型检查、Node/Python 测试通过；未重生成 `blank-editor.html` |
 | 提交与 PR | 已修复 | 提交 `2d5333fd`，普通推送至 `feat/ass-cue-scale`，已创建 PR #248；GitHub 文件清单与本地预期的 23 个文件一致 |
-| 一轮 PR 反馈 | 进行中 | 最近快照：Python lint 已通过；Editor build and contracts、Preview Windows Release 仍在运行；尚无 review、inline thread 或普通 comment |
+| 一轮 PR 反馈 | 进行中 | 三处代码修正及回归用例已补；Node 57 项、Python 4 项、类型检查和 bundle 新鲜度通过。新增浏览器 e2e 未能在本机完成：临时服务已启动，测试端 30 秒内未收到 127.0.0.1 探活响应；待 PR CI 验证 |
 
 验证记录逐层回写。用户真实素材、其它系统、完整视频编码与发行包不由合成页自动化代替。
+
+## PR #248 首轮审查反馈
+
+| 条目 | 反馈 | 状态 | 处理与实际验证 |
+| --- | --- | --- | --- |
+| 1 | 预览关闭或选中字幕当前未渲染时，视频区滚轮仍修改保存倍率。 | 进行中 | 已要求 ASS 模式主字幕开关、overlay 可见、当前 cue 有非零透明度且未跳过的 Canvas 记录；隐藏预览/离屏 e2e 已补，语法检查通过，但本机 e2e 服务探活失败，待 PR CI 验证。 |
+| 2 | 240ms 滚轮事务可与颜色编辑或定位/缩放拖动重叠，Esc 可能恢复过期快照。 | 进行中 | 新命令捕获快照前提交未结束的滚轮事务；定位或 handle 指针事务期间拒绝滚轮。`test_editor_commands.mjs` 7/7 通过，浏览器事务回归已补但本机 e2e 服务探活失败，待 PR CI 验证。 |
+| 3 | ASS 导出将已按单句倍率测量的自动排布偏移再次乘以单句倍率，造成导出位置偏离预览。 | 进行中 | 位置偏移现在只使用组适配倍率，字体/效果/动画/震动幅度保留组合倍率。`test_ass_cue_position.mjs` 9/9、`test_ass_shake.mjs` 17/17 通过；Canvas/libass/导出帧堆叠 e2e 已补，但本机 e2e 服务探活失败，待 PR CI 验证。 |
 
 ## 最终验证
 
@@ -35,6 +43,20 @@
 - 本地浏览器人工操作：实际视频区滚轮改变倍率；拖动字幕后显示整数 X/Y，缩放与定位互不覆盖；分别重置大小和定位均保留另一字段；清除后两组控件隐藏，编辑区高 `191.33px`、视频顶部 `116.67px` 未改变。截图仅用于本地自查，未入库。
 - `git diff --check`：通过。
 
-环境记录：`uv run --no-sync` 的解释器缓存和 `pnpm exec` 的包管理器自更新都被本机沙箱权限挡住；改用已安装解释器和本地 Playwright CLI。第一轮 e2e 的帧对比环境缺少 Pillow，改用已有 Pillow 的解释器后完整 13/13 通过。核对清单 HTML 已生成且源文档通过校验，但本地浏览器策略拒绝打开 `file://` 页面（该策略只允许 `http:` / `https:`，并禁止换入口绕过），所以 HTML 的浏览器预览未完成。初次测试失败均为环境启动问题，不是产品断言失败；最终仍需以 PR CI 结果为准。
+### PR #248 首轮反馈修正验证
+
+验证对应 `feat/ass-cue-scale` 的提交前 HEAD `cb8d3b80` 加本轮 11 个暂存修改文件；以下命令与结果路径均对应此工作树内容。
+
+- `node scripts/build-editor.mjs --write` 后 `node scripts/build-editor.mjs --check`：通过，bundle 新鲜。
+- `node node_modules/typescript/bin/tsc --project tsconfig.typecheck.json`：通过。
+- `python scripts/run_check.py --timeout 180 -- node --test tests/test_editor_script_syntax.mjs tests/test_editor_script_order.mjs tests/test_editor_commands.mjs tests/test_ass_cue_position.mjs tests/test_ass_canvas_layout.mjs tests/test_ass_shake.mjs`：通过，57 项。
+- `python scripts/run_check.py --timeout 180 -- python scripts/run_tests.py tests/test_ass_cue_position.py`：通过，4 项。
+- `node --check tests/e2e/ass-cue-position.spec.mjs` 与 `git diff --check`：通过。
+- `node node_modules/playwright/cli.js test tests/e2e/ass-cue-position.spec.mjs --project=chromium` 的新反馈用例：未完成。本机 runner 能启动 MAWE 并加载临时工程，但 30 秒内无法通过 `127.0.0.1` 探活；停止了本 worktree 的测试服务进程。该层等待 PR CI 结果，不计为通过。
+- `python scripts/run_check.py --timeout 180 -- node --test tests/*.mjs`：未通过，180 秒超时。日志显示本机缺少 Playwright Chromium 可执行文件，服务/网络相关测试失败，进程生命周期用例超时；不能视为全量 Node 通过。结果 `.artifacts/checks/20261016T071959Z-d7aa39f3/result.json`；随后单独重跑本次受影响的 6 个 Node 文件，57/57 通过，结果 `.artifacts/checks/20261016T072354Z-18b3697f/result.json`。
+- 本轮重新验证：Python 定位契约 4/4 通过（`.artifacts/checks/20261016T071959Z-6c9622ef/result.json`）；类型检查、bundle 新鲜度、清单源校验与 `git diff --check` 通过。`--diff-ref main` 个人路径扫描通过（`.artifacts/checks/20261016T071959Z-4e8094a2/result.json`）。
+- 按源清单重建 `.artifacts/ass-cue-scale/verification.html`；源 Markdown 校验通过。浏览器策略拒绝打开 `file://` 页面，因此交互页浏览器预览仍未完成。
+
+环境记录：`uv run --no-sync` 的解释器缓存和 `pnpm exec` 的包管理器自更新都被本机沙箱权限挡住；改用已安装解释器和本地 Playwright CLI。第一轮 e2e 的帧对比环境缺少 Pillow，改用已有 Pillow 的解释器后完整 13/13 通过。此次新增浏览器用例仍因本机回环探活失败而未完成；完整 Node 单测还因 Playwright 浏览器缺失及服务型用例超时而在 180 秒上限退出，具体如上，均不计为通过。核对清单 HTML 已生成且源文档通过校验，但浏览器策略拒绝 `file://` 页面，所以交互页预览未完成；最终仍需以 PR CI 结果为准。
 
 未验证边界：维护者真实工程和目标播放器表现、完整视频烧录、外部 CI / reviewer 反馈。便携内联副本 `blank-editor.html` 按仓库约定留待发布前统一重生成。

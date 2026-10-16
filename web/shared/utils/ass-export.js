@@ -403,7 +403,8 @@ export function createUtilsModule(dependencies) {
         for (const piece of slice.pieces) for (const item of slice.items) {
           // Fixed extensions keep their own scale in every override, including
           // inline font-size resets and animation targets.
-          const scale = (item.absolute ? 1 : slice.scale) * item.cueScale;
+          const groupScale = item.absolute ? 1 : slice.scale;
+          const scale = groupScale * item.cueScale;
           const scaledStyle = { ...item.style, spacing: item.style.spacing * scale,
             outline: item.style.outline * scale, shadow: item.style.shadow * scale };
           const transformTargets = profile.animations.t.enabled
@@ -463,7 +464,7 @@ export function createUtilsModule(dependencies) {
                 shakeBase = { x: anchor.x, y: anchor.y };
               } else {
                 const root = dependencies.assStackPieceRootAt(piece, shakeStart);
-                shakeBase = { x: root.x + item.offset.x * scale, y: root.y + item.offset.y * scale };
+                shakeBase = { x: root.x + item.offset.x * groupScale, y: root.y + item.offset.y * groupScale };
               }
               let shakePosition = `\\an${item.alignment}\\q2\\pos(${number(shakeBase.x + offset.x)},${number(shakeBase.y + offset.y)})`;
               // 堆叠组内非固定层句沿用既有内联字号/描边/阴影重置。
@@ -486,8 +487,8 @@ export function createUtilsModule(dependencies) {
             position = `\\an${item.alignment}\\q2\\pos(${number(item.offset.x)},${number(item.offset.y)})`
               + `\\fs${fixedSize}\\fsp${number(fixedStyle.spacing)}\\bord${number(fixedStyle.outline)}\\shad${number(fixedStyle.shadow)}`;
           } else if (!slice.legacy) {
-            const from = { x: number(piece.from.x + item.offset.x * scale), y: number(piece.from.y + item.offset.y * scale) };
-            const to = { x: number(piece.to.x + item.offset.x * scale), y: number(piece.to.y + item.offset.y * scale) };
+            const from = { x: number(piece.from.x + item.offset.x * groupScale), y: number(piece.from.y + item.offset.y * groupScale) };
+            const to = { x: number(piece.to.x + item.offset.x * groupScale), y: number(piece.to.y + item.offset.y * groupScale) };
             const instant = piece.instant === null || piece.instant === undefined ? null : piece.instant - piece.start;
             const moveStart = instant === null ? 0 : instant;
             const moveEnd = instant === null ? piece.end - piece.start : instant === 0 ? 1 : instant;

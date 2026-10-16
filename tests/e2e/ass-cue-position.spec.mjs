@@ -220,6 +220,94 @@ test('scale handles and video wheel use one scale-only transaction and independe
   expect(await snapshot(page)).toEqual(beforeLetterboxWheel);
 });
 
+test('wheel resize requires a visible current main-cue preview', async ({ page }) => {
+  const video = await page.locator('#overlay').boundingBox();
+  const point = { x: video.x + video.width / 2, y: video.y + video.height / 2 };
+  const before = await snapshot(page);
+
+  await page.evaluate(() => {
+    MaweDom.overlayToggle.checked = false;
+    MawePlaybackLoop.refreshSubtitlePreview(1000, 0);
+  });
+  await page.mouse.move(point.x, point.y); await page.mouse.wheel(0, -100);
+  await page.waitForTimeout(280);
+  expect(await snapshot(page)).toEqual(before);
+
+  await page.evaluate(() => {
+    MaweDom.overlayToggle.checked = true;
+    MaweCoreState.player.currentTime = 3;
+    MaweCuePanelState.currentCuePanelKind = 'main';
+    MaweCuePanelState.currentCuePanelIdx = 0;
+    MaweSelection.selectOnly(0);
+    MawePlaybackLoop.refreshSubtitlePreview(3000, 0);
+  });
+  const preview = await page.evaluate(() => ({
+    target: MaweCuePanel.getCurrentCuePanelTarget()?.segment.id,
+    selectedRecordVisible: MaweAssCanvas.lastRender?.tracks.some(record =>
+      record.role === 'main' && record.cueId === 'main' && !record.skipped && record.opacity > 0),
+  }));
+  expect(preview).toEqual({ target: 'main', selectedRecordVisible: false });
+  await page.mouse.move(point.x, point.y); await page.mouse.wheel(0, -100);
+  await page.waitForTimeout(280);
+  expect(await snapshot(page)).toEqual(before);
+});
+
+test('wheel resize commits before other edits and stays out of pointer transactions', async ({ page }) => {
+  const historyState = () => page.evaluate(() => ({
+    project: MaweHistory.snapshotSegments(),
+    undo: MaweHistory.editorHistory.undoLength(),
+    redo: MaweHistory.editorHistory.redoLength(),
+    active: MaweAssCuePosition.dragging,
+  }));
+  const video = await page.locator('#overlay').boundingBox();
+  const center = { x: video.x + video.width / 2, y: video.y + video.height / 2 };
+  await page.locator('.ass-cue-drag-target.selected').focus();
+  const initial = await historyState();
+  await page.mouse.move(center.x, center.y); await page.mouse.wheel(0, -100);
+  const scalePreview = await historyState();
+  expect(scalePreview.project).not.toEqual(initial.project);
+  expect(scalePreview.undo).toBe(initial.undo);
+
+  await page.keyboard.press('2');
+  const colored = await historyState();
+  expect(colored.project).not.toEqual(scalePreview.project);
+  expect(colored.undo).toBe(initial.undo + 2);
+  await page.keyboard.press('Escape');
+  expect(await historyState()).toEqual(colored);
+  await page.keyboard.press('Control+z');
+  expect((await historyState()).project).toEqual(scalePreview.project);
+  await page.keyboard.press('Control+z');
+  const restored = await historyState();
+  expect(restored.project).toEqual(initial.project);
+  expect(restored.undo).toBe(initial.undo);
+  await page.evaluate(() => { MaweSelection.selectOnly(0); MawePlaybackLoop.refreshSubtitlePreview(1000, 0); });
+  const baseline = await historyState();
+
+  const box = page.locator('.ass-cue-drag-target.selected').first();
+  let bounds = await box.boundingBox();
+  let pointer = { x: bounds.x + bounds.width / 2, y: bounds.y + bounds.height / 2 };
+  await page.mouse.move(pointer.x, pointer.y); await page.mouse.down();
+  await page.mouse.move(pointer.x + 12, pointer.y + 8, { steps: 2 });
+  const positionPreview = await historyState();
+  expect(positionPreview.active).toBe(true);
+  await page.mouse.wheel(0, -100);
+  expect(await historyState()).toEqual(positionPreview);
+  await page.keyboard.press('Escape'); await page.mouse.up();
+  expect(await historyState()).toEqual(baseline);
+
+  const handle = page.locator('.ass-cue-scale-handle--se:not([hidden])');
+  bounds = await handle.boundingBox();
+  pointer = { x: bounds.x + bounds.width / 2, y: bounds.y + bounds.height / 2 };
+  await page.mouse.move(pointer.x, pointer.y); await page.mouse.down();
+  await page.mouse.move(pointer.x + 14, pointer.y + 14, { steps: 2 });
+  const sizePreview = await historyState();
+  expect(sizePreview.active).toBe(true);
+  await page.mouse.wheel(0, -100);
+  expect(await historyState()).toEqual(sizePreview);
+  await page.keyboard.press('Escape'); await page.mouse.up();
+  expect(await historyState()).toEqual(baseline);
+});
+
 test('box drag maps letterbox and scaled portrait/landscape canvases into one undo, cancel and no-op', async ({ page }, info) => {
   for (const [width, height, boxWidth, boxHeight] of [[640,360,440,300],[360,640,340,280]]) {
     await page.evaluate(({ width, height, boxWidth, boxHeight }) => {
@@ -541,6 +629,44 @@ test('scaled main cue matches Canvas, Server libass and exported frame boxes', a
   const path = info.outputPath('scale.ass'); writeFileSync(path, frame.ass);
   const result = JSON.parse(execFileSync(process.env.MAW_PIXEL_PYTHON || process.env.MAW_E2E_PYTHON || 'python',
     [resolve('tests/helpers/ass-stacking-pixel-oracle.py'), path, '1000', info.outputPath('scale-export')],
+    { encoding: 'utf8', timeout: 40000, windowsHide: true }));
+  const exportBox = result.nativeTracks.main.box;
+  expect(frame.box).not.toBeNull(); expect(serverBox).not.toBeNull(); expect(exportBox).not.toBeNull();
+  for (let axis = 0; axis < 4; axis++) {
+    expect(Math.abs(frame.box[axis] - exportBox[axis])).toBeLessThanOrEqual(5);
+    expect(Math.abs(serverBox[axis] - exportBox[axis])).toBeLessThanOrEqual(1);
+  }
+});
+
+test('scaled automatic stack matches Canvas, Server libass and exported frame boxes', async ({ page }, info) => {
+  const frame = await page.evaluate(({ paintedBox }) => {
+    const [base, scaled] = MaweBoot.DATA.segments;
+    Object.assign(base, { start: 0, end: 2000, text: Array(5).fill('BASE').join('\n') });
+    delete base.assOverride;
+    Object.assign(scaled, { start: 0, end: 2000, text: Array(4).fill('SCALED').join('\n'), assOverride: { scale: 0.62 } });
+    MaweSelection.selectOnly(0);
+    MawePlaybackLoop.refreshSubtitlePreview(1000, 0);
+    const canvas = document.querySelector('.ass-preview-canvas');
+    const slice = MaweAssPreview.stackPlan.slices.find(item => item.start <= 1000 && 1000 < item.end);
+    const automatic = slice.items.find(item => item.segment.id === 'next');
+    return { box: (0, eval)(`(${paintedBox})`)(canvas), ass: MaweExportSrt.buildAss(),
+      groupScale: slice.scale, automaticOffset: automatic.offset,
+      records: MaweAssCanvas.lastRender.tracks.filter(record => record.role === 'main' && !record.skipped).length };
+  }, { paintedBox: paintedBox.toString() });
+  expect(frame.groupScale).toBeLessThan(1);
+  expect(Math.abs(frame.automaticOffset.y)).toBeGreaterThan(1);
+  expect(frame.records).toBe(2);
+  await page.evaluate(() => MaweAssFrame.renderAssFrame());
+  await expect(page.locator('#ass-frame-window-status')).toHaveText('渲染完成');
+  const serverBox = await page.evaluate(paintedBox => {
+    const image = document.getElementById('ass-frame-image'), canvas = document.createElement('canvas');
+    canvas.width = image.naturalWidth; canvas.height = image.naturalHeight;
+    canvas.getContext('2d').drawImage(image, 0, 0);
+    return (0, eval)(`(${paintedBox})`)(canvas);
+  }, paintedBox.toString());
+  const path = info.outputPath('scaled-stack.ass'); writeFileSync(path, frame.ass);
+  const result = JSON.parse(execFileSync(process.env.MAW_PIXEL_PYTHON || process.env.MAW_E2E_PYTHON || 'python',
+    [resolve('tests/helpers/ass-stacking-pixel-oracle.py'), path, '1000', info.outputPath('scaled-stack-export')],
     { encoding: 'utf8', timeout: 40000, windowsHide: true }));
   const exportBox = result.nativeTracks.main.box;
   expect(frame.box).not.toBeNull(); expect(serverBox).not.toBeNull(); expect(exportBox).not.toBeNull();

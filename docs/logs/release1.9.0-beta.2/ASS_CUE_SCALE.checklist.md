@@ -13,16 +13,16 @@ status: partial
 ## 实现 / 审查结论
 <!-- id: implementation-review -->
 
-单句倍率保存在 `assOverride.scale`，与 `pos` 分开；仅缩放时继续沿用全局 anchor 和自动排布。画布预览、ASS 导出与震动使用同一基准几何。X/Y 为整数，倍率显示两位小数。功能尚未发布，因此没有旧工程迁移步骤。
+单句倍率保存在 `assOverride.scale`，与 `pos` 分开；仅缩放时继续沿用全局 anchor 和自动排布。ASS 导出偏移只应用组适配倍率一次，文字效果和震动幅度应用组适配倍率与单句倍率的乘积。滚轮要求当前选中主字幕可见；滚轮事务在其它命令快照开始前提交。X/Y 为整数，倍率显示两位小数。功能尚未发布，因此没有旧工程迁移步骤。
 
 ## 自动化验证结果
 <!-- id: automated-verification -->
 
 - [x] **编辑器 bundle**：重建后运行 `node scripts/build-editor.mjs --check`；预期：显示 `Editor bundle is fresh` <!-- id: bundle-freshness -->
 - [x] **类型检查**：运行 `node node_modules/typescript/bin/tsc --project tsconfig.typecheck.json`；预期：以退出码 0 完成 <!-- id: typecheck -->
-- [x] **Node 契约测试**：用 `scripts/run_check.py --timeout 180` 运行编辑器脚本顺序、缩放定位、Canvas 排布与震动测试；预期：48 项通过 <!-- id: node-tests -->
+- [x] **Node 契约测试**：用 `scripts/run_check.py --timeout 180` 运行编辑器脚本顺序、缩放定位、Canvas 排布、命令隔离与震动测试；预期：57 项通过 <!-- id: node-tests -->
 - [x] **Python 契约测试**：用 `scripts/run_check.py --timeout 180` 运行 `scripts/run_tests.py tests/test_ass_cue_position.py`；预期：4 项通过 <!-- id: python-tests -->
-- [x] **浏览器 e2e**：运行 `tests/e2e/ass-cue-position.spec.mjs --project=chromium`；预期：13 项通过，涵盖九锚点、横竖屏、震动、libass / ASS 帧、缩放、滚轮、撤销与取消 <!-- id: e2e -->
+- [ ] **浏览器 e2e**：运行 `tests/e2e/ass-cue-position.spec.mjs --project=chromium`；预期：16 项通过，涵盖九锚点、横竖屏、震动、libass / ASS 帧、滚轮可见性、命令事务与缩放堆叠；本机服务已启动但 30 秒内未通过 `127.0.0.1` 探活，待 PR CI 或可访问本地服务的环境验证 <!-- id: e2e -->
 - [x] **差异空白检查**：运行 `git diff --check`；预期：无空白错误 <!-- id: diff-check -->
 
 ## 人工核验
@@ -39,7 +39,7 @@ status: partial
 <!-- id: fixes-and-pr -->
 
 - [x] **提交与 PR**：查看本分支提交和 PR 文件列表；预期：只包含本功能源码、测试、文档和本清单，没有 bundle、便携页、媒体或个人路径 <!-- id: review-pr-scope -->
-- [ ] **PR CI 与反馈**：查看一轮 CI 与 reviewer 反馈；预期：记录实际结果，有可复现问题时修复并补测，不把未反馈写成通过 <!-- id: review-feedback -->
+- [ ] **PR CI 与反馈**：查看更新后 CI 与三条 Greptile inline thread；预期：确认新增 e2e 与缩放后自动堆叠帧对照通过，记录实际结果，再回复或解决已验证的线程 <!-- id: review-feedback -->
 
 ## 后续操作
 <!-- id: follow-up -->
