@@ -214,24 +214,81 @@
 
   // 「字幕」标签空间不足时直接隐藏（账本 #32）。标签只是装饰，跟随/搜索/
   // 批量/设置等功能控件优先。CSS 侧已让标签不收缩不换行，因此 flex 缺口
-  // 全部由其它可收缩控件吸收；隐藏时机用「工具栏内容溢出」判定——此时
-  // 其余控件都已被压到最小仍放不下，才轮到标签让位。若按「标签被压缩」
-  // 判定，flex 按比例分摊收缩会让标签在轻微缺空间时就过早消失。
-  // 重新显示按「当前内容宽 + 标签预留位」估算：预留位取标签宽上限
-  // （中文「字幕」~30px、英文 "Subtitles" ~65px，再加间距），宁可晚一点
-  // 重现，也不出现「一显示就又溢出」的抖动。
+  // 全部由其它可收缩控件吸收；隐藏时机用「工具栏内容溢出」判定——flex
+  // 已把其余控件压到最小仍放不下（scrollWidth > clientWidth），才轮到
+  // 标签让位。若按「标签被压缩」判定，flex 按比例分摊收缩会让标签在
+  // 轻微缺空间时就过早消失。
+  // 重现用双阈值迟滞：scrollWidth 恒 ≥ clientWidth，旧实现
+  // 「scrollWidth + 96 ≤ clientWidth」数学上不可能成立，标签一旦隐藏就
+  // 永不恢复（账本 #32 评审追加）。且重现不能要求「其余控件自然宽度 +
+  // 标签」放得下——标签回归后 flex 会把它们重新压回最小占宽，正确判据
+  // 是与隐藏对称的「其余控件最小占宽 + 标签」放得下。最小占宽只在隐藏
+  // 瞬间（flex 压缩到底仍溢出）可测，测得后缓存；标签自身宽度在可见时
+  // 缓存（hidden 后 offsetWidth 不可测）。两个缓存偏大时都只会推迟重现
+  // （宁可晚一点重现，也不「一显示就又溢出」地闪烁）。
   const cueListToolbar = document.querySelector('.cues-container > .cue-list-toolbar');
   const cueListToolbarLabel = cueListToolbar?.querySelector(':scope > .layout-toolbar-label') || null;
-  const CUE_LIST_LABEL_RESERVE_PX = 96;
+  const CUE_LIST_LABEL_RESERVE_PX = 10;
+  let cueListLabelWidth = 0;
+  let cueListOthersMinWidth = 0;
+  // 纯函数（供单测）：按测得的几何决定「字幕」标签的显隐。
+  function resolveCueListLabelState({ hidden, scrollWidth, clientWidth, contentWidth, gap, othersWidth, othersMinWidth, childCount, labelWidth, reserve }) {
+    if (hidden) {
+      // 其余控件自身仍在溢出时不重现，避免「显示→溢出→隐藏」抖动。
+      if (scrollWidth > clientWidth) return 'keep-hidden';
+      const floorWidth = Math.min(othersWidth, othersMinWidth || othersWidth);
+      // 标签回归会多占一个 gap 槽位（childCount = 不含标签的子元素数）。
+      return floorWidth + labelWidth + gap * childCount + reserve <= contentWidth
+        ? 'show' : 'keep-hidden';
+    }
+    return scrollWidth > clientWidth + 1 ? 'hide' : 'keep-visible';
+  }
+  function measureCueListToolbarGeometry() {
+    const style = getComputedStyle(cueListToolbar);
+    const contentWidth = cueListToolbar.clientWidth
+      - Number.parseFloat(style.paddingLeft) - Number.parseFloat(style.paddingRight);
+    const gap = Number.parseFloat(style.columnGap) || 0;
+    let othersWidth = 0;
+    let childCount = 0;
+    for (const child of cueListToolbar.children) {
+      if (child === cueListToolbarLabel) continue;
+      othersWidth += child.offsetWidth;
+      childCount += 1;
+    }
+    return { contentWidth, gap, othersWidth, childCount, scrollWidth: cueListToolbar.scrollWidth, clientWidth: cueListToolbar.clientWidth };
+  }
   function syncCueListToolbarLabel() {
     if (!cueListToolbar || !cueListToolbarLabel) return;
+    const geometry = measureCueListToolbarGeometry();
     if (cueListToolbarLabel.hidden) {
-      if (cueListToolbar.scrollWidth + CUE_LIST_LABEL_RESERVE_PX <= cueListToolbar.clientWidth) {
+      const state = resolveCueListLabelState({
+        hidden: true,
+        scrollWidth: geometry.scrollWidth,
+        clientWidth: geometry.clientWidth,
+        contentWidth: geometry.contentWidth,
+        gap: geometry.gap,
+        othersWidth: geometry.othersWidth,
+        othersMinWidth: cueListOthersMinWidth,
+        childCount: geometry.childCount,
+        labelWidth: cueListLabelWidth,
+        reserve: CUE_LIST_LABEL_RESERVE_PX,
+      });
+      if (state === 'show') {
         cueListToolbarLabel.hidden = false;
+        cueListLabelWidth = cueListToolbarLabel.offsetWidth;
       }
       return;
     }
-    if (cueListToolbar.scrollWidth > cueListToolbar.clientWidth + 1) cueListToolbarLabel.hidden = true;
+    cueListLabelWidth = cueListToolbarLabel.offsetWidth;
+    if (resolveCueListLabelState({
+      hidden: false,
+      scrollWidth: geometry.scrollWidth,
+      clientWidth: geometry.clientWidth,
+    }) === 'hide') {
+      // 隐藏瞬间其余子元素正处于被压缩的最小占宽，缓存供重现判定使用。
+      cueListOthersMinWidth = geometry.othersWidth;
+      cueListToolbarLabel.hidden = true;
+    }
   }
   syncCueListToolbarLabel();
   if (cueListToolbar && typeof ResizeObserver === 'function') {
@@ -379,6 +436,8 @@
     restoreCueListRenderAnchor,
     restoreCueListVisualAnchor,
     scrollCueToCenter,
-    scrollCueIntoViewIfNeeded
+    scrollCueIntoViewIfNeeded,
+    // 纯函数单测入口：字幕标签显隐的双阈值迟滞判定（账本 #32 评审）。
+    resolveCueListLabelState
   });
 })(typeof window !== 'undefined' ? window : globalThis);

@@ -775,6 +775,7 @@
     const report = window.AsrEditorUtils.buildTimedTextEditReport(
       MaweDom.timedTextEditDraft.sourceSegments,
       draftTexts,
+      { rule: MaweSettings.EDITOR_SETTINGS.assSpecialSymbolRule },
     );
     MaweDom.timedTextEditDraft.report = report;
     const { stats } = report;

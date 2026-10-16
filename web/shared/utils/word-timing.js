@@ -268,6 +268,7 @@ export function createWordTiming(dependencies) {
     const rows = Array.isArray(output) ? output : [];
     const sources = Array.isArray(outputSources) ? outputSources : [];
     if (!rule || rule === 'none') return rows;
+    // 相邻 junction 补齐（2 行拆断场景）：同源相邻行的断对两侧补全。
     for (let index = 1; index < rows.length; index += 1) {
       const previous = rows[index - 1];
       const next = rows[index];
@@ -283,6 +284,28 @@ export function createWordTiming(dependencies) {
       next.text = completed.right;
       appendMassMarkersToLastItem(previous.items, completed.leftAppend);
       prependMassMarkersToFirstItem(next.items, completed.rightPrepend);
+    }
+    // 跨 3+ 行的样式（Greptile P1：__one two three__ 拆三行，任意相邻对都
+    // 不含两端符号）：按每个转换源的完整行 span 处理——首行补闭、末行补开
+    // （completeSplitMassPairs 对 span 首尾文本的 combined 复验跨行成立），
+    // 中间行不动。与相邻 junction 补齐幂等（已补齐的 span 复验失败即跳过）。
+    let spanStart = -1;
+    for (let index = 0; index <= rows.length; index += 1) {
+      const source = index < rows.length ? sources[index] : -1;
+      if (source !== -1 && spanStart >= 0 && source === sources[spanStart]) continue;
+      // span [spanStart, index-1] 在此收口
+      if (spanStart >= 0 && index - spanStart >= 2) {
+        const first = rows[spanStart];
+        const last = rows[index - 1];
+        const completed = completeSplitMassPairs(first.text, last.text, rule);
+        if (completed.leftAppend || completed.rightPrepend) {
+          first.text = completed.left;
+          last.text = completed.right;
+          appendMassMarkersToLastItem(first.items, completed.leftAppend);
+          prependMassMarkersToFirstItem(last.items, completed.rightPrepend);
+        }
+      }
+      spanStart = source !== -1 ? index : -1;
     }
     return rows;
   }
