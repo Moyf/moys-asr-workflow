@@ -3,7 +3,12 @@ from __future__ import annotations
 from tests.compact_assertions import CompactContainerAssertions
 
 import ast
+import os
 import re
+import shutil
+import subprocess
+import sys
+import tempfile
 import tomllib
 import unittest
 from pathlib import Path
@@ -390,6 +395,45 @@ class PackagingContractTests(CompactContainerAssertions, unittest.TestCase):
         self.assertIn("maw/qwen_audio.py", bundled_paths)
         for relative_path in sorted(bundled_paths):
             self.assertIn(_local_runtime_spec_entry(relative_path), spec)
+
+    def test_spec_local_runtime_can_import_the_transcription_entrypoint(self) -> None:
+        """Run the real entrypoint using only source files copied by the spec."""
+        tree = ast.parse(read_text("MAW.spec"))
+        assignment = next(
+            node for node in tree.body
+            if isinstance(node, ast.Assign)
+            and any(isinstance(target, ast.Name) and target.id == "datas" for target in node.targets)
+        )
+        # Evaluate only the literal datas declaration, without running the
+        # spec's build checks or PyInstaller. Keep the file selection identical
+        # to the package instead of masking omissions by copying all of maw/.
+        data_files = eval(
+            compile(ast.Expression(assignment.value), "MAW.spec datas", "eval"),
+            {"ROOT": ROOT, "str": str},
+        )
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            for source, destination in data_files:
+                if destination == "local-runtime" or destination.startswith("local-runtime/"):
+                    target = root / destination / Path(source).name
+                    target.parent.mkdir(parents=True, exist_ok=True)
+                    shutil.copyfile(source, target)
+            environment = dict(os.environ)
+            environment.pop("PYTHONPATH", None)
+            result = subprocess.run(
+                [sys.executable, "-I", str(root / "local-runtime" / "generate_subtitle_local.py"), "--help"],
+                cwd=root,
+                env=environment,
+                capture_output=True,
+                text=True,
+                encoding="utf-8",
+                errors="replace",
+                timeout=30,
+                check=False,
+            )
+
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertIn("usage:", result.stdout.lower())
 
     def test_local_runtime_stays_out_of_the_editor_stack(self) -> None:
         """Given local ASR entrypoints, When the import graph is built, Then the editor generator is absent.

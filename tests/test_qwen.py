@@ -604,6 +604,23 @@ class QwenExtraStrongPunctTests(unittest.TestCase):
         segments = split_words_to_segments_western(items, max_words=13, min_words=1, gap_split_ms=0)
         self.assertEqual([segment["text"] for segment in segments], ["Hello~", "worldgreat"])
 
+    def test_saved_semicolon_configuration_still_breaks_western_sentences(self) -> None:
+        items = [
+            {"text": text, "start": index * 200, "end": index * 200 + 150}
+            for index, text in enumerate(["This", " is", " first;", " This", " is", " second."])
+        ]
+        for punctuation in ("，。？！；,.;", ";", "，。？！；,.", ""):
+            with self.subTest(punctuation=punctuation):
+                configure_extra_strong_punct(punctuation)
+                segments = split_words_to_segments_western(
+                    items, max_words=13, min_words=3, gap_split_ms=500,
+                )
+                expected = (
+                    ["This is first;", " This is second."]
+                    if ";" in punctuation else ["This is first; This is second."]
+                )
+                self.assertEqual([segment["text"] for segment in segments], expected)
+
     def test_default_punct_set_does_not_break_on_tilde(self) -> None:
         items = [
             {"text": "你", "start": 0, "end": 100},

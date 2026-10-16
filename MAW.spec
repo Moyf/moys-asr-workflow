@@ -137,6 +137,7 @@ datas = [
     (str(ROOT / "maw" / "media_export_audio.py"), "local-runtime/maw"),
     (str(ROOT / "maw" / "project.py"), "local-runtime/maw"),
     (str(ROOT / "maw" / "language.py"), "local-runtime/maw"),
+    (str(ROOT / "maw" / "subtitle_segmentation.py"), "local-runtime/maw"),
     (str(ROOT / "maw" / "project_preview.py"), "local-runtime/maw"),
     (str(ROOT / "maw" / "qwen_audio.py"), "local-runtime/maw"),
     (str(ROOT / "maw" / "colors.py"), "local-runtime/maw"),

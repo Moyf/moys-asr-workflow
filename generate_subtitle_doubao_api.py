@@ -141,7 +141,7 @@ def main() -> int:
         help="保留每条字幕末尾的逗号和句号（默认去除）",
     )
     parser.add_argument(
-        "--strip-tail-punct", default="，。；,.",
+        "--strip-tail-punct", default="，。；,.;",
         help="句尾剥除的标点集合；传空串禁用剥除（默认 = 共享断句配置默认清单 − 默认保留符号）",
     )
     parser.add_argument(

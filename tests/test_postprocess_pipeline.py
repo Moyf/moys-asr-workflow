@@ -300,7 +300,7 @@ class PostprocessPipelineTests(CompactContainerAssertions, unittest.TestCase):
         translate_step = next(step for step in plan["steps"] if step["id"] == "translate")
         self.assertFalse(translate_step["mergeBilingual"])
         self.assertEqual(plan["steps"][0]["matchMode"], "script")
-        self.assertEqual(plan["steps"][0]["extraSplitPunctuation"], ["，", "。", "？", "！", "；", ",", "."])
+        self.assertEqual(plan["steps"][0]["extraSplitPunctuation"], ["，", "。", "？", "！", "；", ",", ".", ";"])
         self.assertEqual(plan["steps"][0]["preservePunctuation"], ["？", "！"])
         self.assertTrue(plan["steps"][0]["cleanMarkdownSymbols"])
         self.assertEqual(plan["steps"][-1]["videoEncoder"], "auto")
@@ -333,7 +333,7 @@ class PostprocessPipelineTests(CompactContainerAssertions, unittest.TestCase):
 
         self.assertEqual(
             normalized["steps"][0]["extraSplitPunctuation"],
-            ["？", "！", ",", "，", "。", "；", "."],
+            ["？", "！", ",", "，", "。", "；", ".", ";"],
         )
 
     def test_normalize_plan_keeps_customized_current_plan_split_symbols(self) -> None:
@@ -1580,16 +1580,16 @@ class PostprocessPreflightTests(CompactContainerAssertions, unittest.TestCase):
             ["？", "！"],
         )
         # 默认保留 ？！ → 转写剥尾剥其余断句符号（，。；,.）。
-        self.assertEqual(_transcribe_strip_tail_punct(self.env_path), "，。；,.")
+        self.assertEqual(_transcribe_strip_tail_punct(self.env_path), "，。；,.;")
 
     def test_transcribe_strip_tail_punct_follows_saved_preserve_symbols(self) -> None:
         plan = default_postprocess_plan()
         plan["steps"][0]["preservePunctuation"] = ["。"]
         save_postprocess_plan(self.env_path, plan)
 
-        self.assertEqual(_transcribe_strip_tail_punct(self.env_path), "，？！；,.")
+        self.assertEqual(_transcribe_strip_tail_punct(self.env_path), "，？！；,.;")
 
         plan["steps"][0]["preservePunctuation"] = ["。", "，"]
         save_postprocess_plan(self.env_path, plan)
 
-        self.assertEqual(_transcribe_strip_tail_punct(self.env_path), "？！；,.")
+        self.assertEqual(_transcribe_strip_tail_punct(self.env_path), "？！；,.;")

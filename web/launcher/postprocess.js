@@ -449,11 +449,11 @@
 
   function defaultAutoPlan() {
     return {
-      version: 1,
+      version: 2,
       enabled: false,
       retainIntermediate: true,
       steps: [
-        { id: "match", enabled: false, scriptPath: "", matchMode: "script", extraSplitPunctuation: ["，", "。", "？", "！", "；", ",", "."], preservePunctuation: ["？", "！"], cleanMarkdownSymbols: true },
+        { id: "match", enabled: false, scriptPath: "", matchMode: "script", extraSplitPunctuation: ["，", "。", "？", "！", "；", ",", ".", ";"], preservePunctuation: ["？", "！"], cleanMarkdownSymbols: true },
         { id: "cleanup", enabled: false, scriptPath: "", providerId: "deepseek", customPrompt: "", generateComparison: false },
         { id: "replace", enabled: false, replacements: [], conversion: "off" },
         { id: "proofread", enabled: false, providerId: "deepseek", customPrompt: "" },
@@ -1789,7 +1789,7 @@
     // 各 LLM 步骤用自己任务记住的供应商（见 stepProviderId）；没有记录时沿用当前选中项。
     const ocr = ocrRegionPayload();
     return {
-      version: 1,
+      version: 2,
       enabled: Boolean($("autoPostprocessEnabled")?.checked),
       retainIntermediate: Boolean($("autoPostprocessRetain")?.checked),
       steps: [

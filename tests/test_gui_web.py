@@ -4548,7 +4548,7 @@ class GuiWebBridgeTests(CompactContainerAssertions, unittest.TestCase):
             "apiKey": "sk-test",
         }, self.env_path)
 
-        self.assertEqual(request.extra_strong_punct, "?!——，。？！；,.")
+        self.assertEqual(request.extra_strong_punct, "?!——，。？！；,.;")
         # 无 version 的旧计划会并入默认断句清单（与保留符号互不影响剥尾集合）。
         self.assertIn("，", request.strip_tail_punct)
 
@@ -5894,7 +5894,7 @@ class LauncherAssetContractTests(CompactContainerAssertions, unittest.TestCase):
         stylesheet = (ROOT / "web" / "launcher" / "launcher.css").read_text(encoding="utf-8")
 
         self.assertIn(
-            '{ id: "match", enabled: false, scriptPath: "", matchMode: "script", extraSplitPunctuation: ["，", "。", "？", "！", "；", ",", "."], preservePunctuation: ["？", "！"], cleanMarkdownSymbols: true },',
+            '{ id: "match", enabled: false, scriptPath: "", matchMode: "script", extraSplitPunctuation: ["，", "。", "？", "！", "；", ",", ".", ";"], preservePunctuation: ["？", "！"], cleanMarkdownSymbols: true },',
             script,
         )
         self.assertIn('subtitle_invalid: (detail) => `字幕或工程解析失败：', launcher_script)
