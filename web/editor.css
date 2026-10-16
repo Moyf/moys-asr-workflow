@@ -606,7 +606,7 @@
   .server-connection-banner-icon {
     flex: 0 0 auto; display: grid; place-items: center;
     width: 22px; height: 22px; margin-top: 1px;
-    color: var(--danger-hover-fg); background: var(--red);
+    color: #fff; background: var(--red);
     border-radius: 50%; font-size: 15px; font-weight: 800; line-height: 1;
   }
   .server-connection-banner-copy { display: grid; gap: 2px; min-width: 0; }
