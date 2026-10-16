@@ -35,6 +35,7 @@ from maw.alignment_models import (
     resolve_alignment_model_path,
 )
 from maw.ffmpeg import resolve_ffmpeg_tool
+from maw.gui_platform import creationflags, startupinfo
 from maw.hub_download import prepare_hub_snapshot
 from maw.language import (
     normalize_language_code,
@@ -624,7 +625,7 @@ def _extract_audio_span(
         "-y", str(output_path),
     ]
     try:
-        subprocess.run(command, check=True, capture_output=True)
+        subprocess.run(command, check=True, capture_output=True, startupinfo=startupinfo(), creationflags=creationflags())
     except subprocess.CalledProcessError as error:
         detail = error.stderr.decode("utf-8", errors="replace") if isinstance(error.stderr, bytes) else str(error.stderr or "")
         raise TimestampAlignmentError(f"FFmpeg 切分对齐音频失败：{detail[-400:]}") from error

@@ -1572,6 +1572,7 @@ class LauncherApi:
                     media_path=Path(str(payload.get("mediaPath"))) if payload.get("mediaPath") else None,
                     subtitle_path=Path(str(payload.get("subtitlePath") or "")),
                     green_screen=payload.get("greenScreen") is True,
+                    green_screen_size=str(payload.get("greenScreenSize") or ""),
                     srt_style=srt_style,
                     video_encoder=str(payload.get("videoEncoder") or "auto"),
                     crf=_burn_crf_override(payload.get("crf")),
@@ -1579,6 +1580,7 @@ class LauncherApi:
                     audio_bitrate=str(payload.get("audioBitrate") or "").strip() or None,
                 ),
                 ffmpeg_path=tools.ffmpeg,
+                ffprobe_path=tools.ffprobe,
                 cancel_event=cancel_event,
                 on_process=self._set_media_tool_process,
                 on_progress=lambda details: self._emit_media_tool_progress("toolbox_status_burning", details),
@@ -2112,6 +2114,8 @@ class LauncherApi:
             probe_path=EDITOR_HEALTH_PROBE_PATH,
             probe_timeout=EDITOR_HEALTH_PROBE_TIMEOUT,
         ) and (not json_text or not owned_server_running):
+            if json_text and str(payload.get("mediaPath") or "").strip():
+                return _error_result("port", "server_media_busy", "")
             return {"ok": True, "url": launch_url, "serverAlreadyRunning": True}
         if not json_text:
             # 无工程：不带 JSON 路径启动，由服务器按「自动打开上次工程」设置恢复最近工程或回落为空白编辑器
@@ -2127,7 +2131,7 @@ class LauncherApi:
                 media_path = None
             if (not media_state.get("hasMedia") or not media_state.get("mediaExists")) and media_path is None:
                 return _error_result("serverMediaPath", "server_media_missing", str(media_state.get("mediaPath") or ""))
-            command = build_serve_command(json_path, media_path, port)
+            command = build_serve_command(json_path, media_path, port, remember_media=payload.get("rememberMedia") is True)
         command.append("--no-open")
         _ = self._stop_owned_server()
         self.server_log_file = tempfile.TemporaryFile(mode="w+b")

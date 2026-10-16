@@ -432,6 +432,7 @@ def build_serve_command(
     *,
     executable: Path | str | None = None,
     frozen: bool | None = None,
+    remember_media: bool = False,
 ) -> list[str]:
     exe = str(executable or sys.executable)
     is_frozen = bool(getattr(sys, "frozen", False) if frozen is None else frozen)
@@ -445,6 +446,8 @@ def build_serve_command(
         command.append(str(json_path))
         if media_path:
             command.extend(["-m", str(media_path)])
+            if remember_media:
+                command.append("--remember-media")
     command.extend(["--port", str(port)])
     return command
 

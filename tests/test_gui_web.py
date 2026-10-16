@@ -1701,7 +1701,7 @@ class GuiWebBridgeTests(CompactContainerAssertions, unittest.TestCase):
         self.assertEqual(project_path.name, "clip.waveform.mosp")
         project = json.loads(project_path.read_text(encoding="utf-8"))
         self.assertEqual(project["segments"], [])
-        self.assertEqual(project["media"], str(media.resolve()))
+        self.assertEqual((project_path.parent / project["media"]).resolve(), media.resolve())
         # 工程去内联：波形缓存不再写进工程文件，只保留在 embed 结果的运行态里。
         self.assertNotIn("waveform", project)
         self.assertNotIn("spectral", project)
@@ -2370,7 +2370,7 @@ class GuiWebBridgeTests(CompactContainerAssertions, unittest.TestCase):
         scripts = "\n".join(self.window.scripts)
         self.assertTrue(result["ok"])
         output_project = Path(str(result["projectPath"]))
-        self.assertEqual(json.loads(output_project.read_text(encoding="utf-8"))["media"], str(media.resolve()))
+        self.assertEqual((output_project.parent / json.loads(output_project.read_text(encoding="utf-8"))["media"]).resolve(), media.resolve())
         self.assertIn('"type": "postprocess_stream"', scripts)
         self.assertIn('"kind": "reset"', scripts)
         self.assertIn('"kind": "reasoning"', scripts)
@@ -2836,6 +2836,7 @@ class GuiWebBridgeTests(CompactContainerAssertions, unittest.TestCase):
 
         self.assertTrue(result["ok"])
         self.assertEqual(burn.call_args.kwargs["ffmpeg_path"], ffmpeg)
+        self.assertIsNone(burn.call_args.kwargs["ffprobe_path"])
         self.assertEqual(burn.call_args.args[0].srt_style["fontName"], "Microsoft YaHei")
         self.assertEqual(burn.call_args.args[0].video_encoder, "auto")
         self.assertIsNone(burn.call_args.args[0].crf)
@@ -2856,12 +2857,29 @@ class GuiWebBridgeTests(CompactContainerAssertions, unittest.TestCase):
             with mock.patch("maw.gui_web.process_burn_subtitles") as burn:
                 burn.return_value = SimpleNamespace(source_media_path=None, subtitle_path=subtitle,
                                                     media_path=output, video_encoder="cpu")
-                result = self.api.run_burn_subtitles({"subtitlePath": str(subtitle), "greenScreen": True})
+                result = self.api.run_burn_subtitles(
+                    {"subtitlePath": str(subtitle), "greenScreen": True, "greenScreenSize": "1080p"})
         self.assertTrue(result["ok"])
         self.assertIsNone(burn.call_args.args[0].media_path)
         self.assertTrue(burn.call_args.args[0].green_screen)
+        self.assertEqual(burn.call_args.args[0].green_screen_size, "1080p")
         self.assertEqual(result["sourceMediaPath"], "")
         self.assertEqual(result["mediaPath"], str(output))
+
+    def test_green_screen_burn_bridge_passes_size_selection_through(self) -> None:
+        subtitle = self.root / "green.srt"
+        subtitle.write_text("1\n00:00:00,000 --> 00:00:01,000\n你好\n", encoding="utf-8")
+        ffmpeg = self.root / ("ffmpeg.exe" if os.name == "nt" else "ffmpeg")
+        ffmpeg.write_bytes(b"exe")
+        output = self.root / "green.green-screen.mp4"
+        with mock.patch("maw.gui_web._postprocess_ffmpeg_tools", return_value=FfmpegTools(ffmpeg=ffmpeg, ffprobe=None)):
+            with mock.patch("maw.gui_web.process_burn_subtitles") as burn:
+                burn.return_value = SimpleNamespace(source_media_path=None, subtitle_path=subtitle,
+                                                    media_path=output, video_encoder="cpu")
+                result = self.api.run_burn_subtitles({"subtitlePath": str(subtitle), "greenScreen": True})
+        self.assertTrue(result["ok"])
+        # 未选择尺寸时桥接透传空串；默认档位（4K）由后端统一裁决。
+        self.assertEqual(burn.call_args.args[0].green_screen_size, "")
 
     def test_media_tool_progress_is_compact_and_latest_message_ready(self) -> None:
         self.assertEqual(
@@ -3055,12 +3073,14 @@ class GuiWebBridgeTests(CompactContainerAssertions, unittest.TestCase):
                     "mediaPath": str(media),
                     "port": "9876",
                     "guiLang": "en",
+                    "rememberMedia": True,
                 })
 
         command = popen.call_args.args[0]
         self.assertIn("serve.py", command[1])
         self.assertEqual(command[2], str(project))
         self.assertEqual(command[command.index("-m") + 1], str(media))
+        self.assertIn("--remember-media", command)
         self.assertEqual(command[command.index("--port") + 1], "9876")
         self.assertEqual(result["url"], "http://127.0.0.1:9876/?lang=en")
         self.assertEqual(
@@ -3608,6 +3628,19 @@ class GuiWebBridgeTests(CompactContainerAssertions, unittest.TestCase):
         self.assertTrue(result["ok"])
         self.assertTrue(result["serverAlreadyRunning"])
         self.assertEqual(result["url"], "http://127.0.0.1:9876/?lang=zh")
+        popen.assert_not_called()
+
+    def test_start_server_does_not_silently_ignore_manual_media_on_another_server(self) -> None:
+        with mock.patch("maw.gui_web._wait_for_server", return_value=True), \
+                mock.patch("maw.gui_web.subprocess.Popen") as popen:
+            result = self.api.start_server({
+                "jsonPath": str(self.root / "captions.mosp"),
+                "mediaPath": str(self.root / "clip.mp4"),
+                "rememberMedia": True,
+                "port": "9876",
+            })
+        self.assertFalse(result["ok"])
+        self.assertEqual(result["code"], "server_media_busy")
         popen.assert_not_called()
 
     def test_stop_owned_server_releases_completed_process_tree_handle(self) -> None:
@@ -6107,9 +6140,39 @@ class LauncherAssetContractTests(CompactContainerAssertions, unittest.TestCase):
         self.assertNotIn("openMose", script)
         self.assertNotIn("open_mose", script)
         self.assertFalse(hasattr(LauncherApi, 'open_mose'))
-        self.assertFalse((ROOT / 'desktop' / 'src-tauri').exists())
         self.assertIn('function openServerEditor()', script)
         self.assertIn('bridge("start_server"', script)
+
+    def _assert_retired_tauri_entrypoints_absent(self, root: Path) -> None:
+        # Local target/binaries caches are not maintained source or build inputs.
+        # Do not require their parent directory to vanish to prove retirement.
+        tauri = root / "desktop" / "src-tauri"
+        for name in ("src", "Cargo.toml", "Cargo.lock", "build.rs", "tauri.conf.json", "tauri.conf.json5", "Tauri.toml"):
+            self.assertFalse((tauri / name).exists(), f"Retired Tauri entrypoint is still present: {name}")
+        if tauri.is_dir():
+            self.assertEqual(list(tauri.glob("tauri.*.conf.json")), [])
+        for package_path in (root / "package.json", root / "desktop" / "package.json"):
+            if not package_path.is_file():
+                continue
+            package = json.loads(package_path.read_text(encoding="utf-8"))
+            for command in package.get("scripts", {}).values():
+                self.assertNotIn("tauri", command.lower())
+            for group in ("dependencies", "devDependencies"):
+                self.assertFalse(any(name.startswith("@tauri-apps/") for name in package.get(group, {})))
+
+    def test_retired_tauri_source_and_build_entrypoints_are_absent(self) -> None:
+        self._assert_retired_tauri_entrypoints_absent(ROOT)
+
+    def test_tauri_retirement_check_allows_build_residue_but_rejects_active_entrypoints(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            tauri = root / "desktop" / "src-tauri"
+            (tauri / "target").mkdir(parents=True)
+            (tauri / "binaries").mkdir()
+            self._assert_retired_tauri_entrypoints_absent(root)
+            (tauri / "Cargo.toml").write_text('[package]\nname = "retired"\n', encoding="utf-8")
+            with self.assertRaises(AssertionError):
+                self._assert_retired_tauri_entrypoints_absent(root)
 
     def test_project_change_marks_server_editor_action_for_rebinding(self) -> None:
         script = launcher_sources_text(ROOT)

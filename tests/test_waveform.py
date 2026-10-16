@@ -847,7 +847,7 @@ class EditorAssetTests(CompactContainerAssertions, unittest.TestCase):
         self.assertIn('function syncProjectTimebaseAndBindingOffsets(', source)
         self.assertIn('window.AsrEditorUtils.normalizeFrameItemTimingRanges(segment);', source)
         self.assertIn(
-            'function buildJson() {\n'
+            'function buildJson({ forFileExport = false } = {}) {\n'
             '  MaweTimeline.syncProjectTimebaseAndBindingOffsets(MaweBoot.DATA, { preferFrames: false });',
             edit.read_web_asset("editor/io/editor-json-repair.js"),
         )

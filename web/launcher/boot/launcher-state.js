@@ -14,6 +14,7 @@ const ERROR_TEXT = {
     json_not_found: "工程文件不存在，请检查路径。",
     media_not_found: "媒体文件不存在，请重新选择。",
     server_media_missing: "工程无可用媒体，请手动选择媒体文件。",
+    server_media_busy: "该端口已有其他编辑器实例，无法应用新的媒体关联；请关闭该实例或更换端口。",
     server_stop_not_maw: "当前端口上的进程不是 MAW 字幕编辑服务器，未执行停止。",
     server_stop_failed: "无法停止当前端口上的 MAW 字幕编辑服务器。",
     api_key_missing: "请填写 API Key，或先在 ⚙ 配置/密钥区保存。",
@@ -107,6 +108,7 @@ const ERROR_TEXT = {
     json_not_found: "Project file does not exist. Check the path.",
     media_not_found: "Media file does not exist. Choose it again.",
     server_media_missing: "The project has no usable media. Choose the media file manually.",
+    server_media_busy: "Another editor is using this port. Close it or choose another port to apply the new media association.",
     server_stop_not_maw: "The current port is not used by a MAW subtitle editor server, so it was not stopped.",
     server_stop_failed: "Unable to stop the MAW subtitle editor server on the current port.",
     api_key_missing: "Enter an API Key, or save one first in Settings / API key.",
@@ -214,7 +216,7 @@ Object.assign(ERROR_TEXT.en, {
   alignment_failed: (detail) => `Word/character timestamp generation failed: ${detail || "check the media, subtitle text, and aligner."}`,
 });
 Object.assign(STRINGS.zh, {
-  start_server_editor: "🎬 打开编辑器",
+  start_server_editor: "打开编辑器",
   toolbox_chain_hint: "每次生成新文件，并自动作为下一步输入；选择工具后运行。",
   error_notice_title: "任务未完成",
   error_notice_close: "关闭提示",
@@ -230,7 +232,7 @@ Object.assign(STRINGS.zh, {
   error_copy_report_failed: "复制失败，请手动复制日志。",
 });
 Object.assign(STRINGS.en, {
-  start_server_editor: "🎬 Open editor",
+  start_server_editor: "Open editor",
   toolbox_chain_hint: "Choose a tool to run; each run creates a new file and uses it as the next input.",
   error_notice_title: "Task not completed",
   error_notice_close: "Dismiss message",

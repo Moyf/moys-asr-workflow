@@ -88,7 +88,7 @@ from maw.media import (  # noqa: E402
     read_bwf_time_reference,
     resolve_project_media,
 )
-from maw.project_io import INLINE_CACHE_KEYS, strip_inline_caches  # noqa: E402
+from maw.project_io import INLINE_CACHE_KEYS, rebase_project_media, strip_inline_caches  # noqa: E402
 from maw.waveform import (  # noqa: E402
     audio_track_from_payloads,
 )
@@ -349,20 +349,17 @@ def _loaded_media_reference(
     resolution: MediaResolution,
     explicit_media: str | None,
 ) -> str:
-    """保留有效的便携引用，并修复已经触发同目录兜底的引用。"""
+    """保留原媒体身份，以工程目录为基准生成可移动的引用。"""
 
-    if explicit_media is not None:
-        return str(source_media_path)
     if (
-        isinstance(media_value, str)
+        explicit_media is None
+        and isinstance(media_value, str)
         and media_value.strip()
         and resolution.requested_path is not None
         and resolution.requested_path.is_file()
     ):
-        return media_value.strip()
-    if source_media_path.parent == json_path.parent:
-        return source_media_path.name
-    return str(source_media_path)
+        source_media_path = resolution.requested_path
+    return rebase_project_media({}, json_path, media_path=source_media_path)["media"]
 
 
 class AssFrameError(ValueError):
@@ -662,6 +659,7 @@ def ffmpeg_supports_libass(ffmpeg: Path) -> bool:
         probe = subprocess.run(
             [str(ffmpeg), "-hide_banner", "-loglevel", "error", "-filters"],
             capture_output=True, text=True, timeout=30,
+            startupinfo=startupinfo(), creationflags=creationflags(),
         )
     except (OSError, subprocess.SubprocessError):
         return False
@@ -707,6 +705,7 @@ def render_ass_frame_png(
         try:
             result = subprocess.run(  # noqa: S603 - 固定参数的单帧渲染
                 command, cwd=tmp, capture_output=True, timeout=ASS_FRAME_RENDER_TIMEOUT_SEC,
+                startupinfo=startupinfo(), creationflags=creationflags(),
             )
         except subprocess.TimeoutExpired as error:
             raise AssFrameError("渲染当前帧超时；请重试，或检查媒体文件是否异常。") from error
@@ -744,6 +743,7 @@ def load_project(
     load_reapeaks: bool = True,
     peaks_per_second: int,
     progress: ProjectLoadProgressCallback | None = None,
+    remember_media: bool = False,
 ) -> ServerProject:
     def report(stage: str, progress_value: int) -> None:
         if progress is not None:
@@ -815,7 +815,7 @@ def load_project(
         except MediaConversionError as error:
             raise MediaConversionError(f"{error}（源文件：{source_media_path}）") from error
         print(f"[media] 已为浏览器准备播放缓存: {media_path}")
-    # 同目录工程保留相对引用以便整套移动；显式 -m 覆盖和目录外媒体仍记录绝对路径。
+    # 运行态和落盘都以工程目录为媒体相对路径基准，显式 -m 也不例外。
     data["media"] = _loaded_media_reference(
         json_path,
         media_value,
@@ -911,6 +911,8 @@ def load_project(
         report("waveform_skipped", 60)
 
     report("finalizing", 95)
+    if remember_media and explicit_media is not None:
+        remember_project_media(json_path, data["media"])
     return ServerProject(
         data,
         json_path,
@@ -1084,6 +1086,7 @@ def build_server_page(
             "canLottieExport": project.json_path is not None,
             "canOgrafExport": project.json_path is not None,
             "autoLoadedMediaName": (project.source_media_path or project.media_path).name if project.media_path else None,
+            "autoLoadedMediaPath": str(project.source_media_path or project.media_path) if project.media_path else None,
             "recentProjectsUrl": "/api/recent-projects/open",
             "attachUrl": "/api/project/attach",
             "settingsUrl": "/api/settings",
@@ -1680,6 +1683,9 @@ class EditorServer(ThreadingHTTPServer):
         target = self.project.json_path
         if filename is not None:
             target = safe_project_filename(target.parent, filename)
+        normalized_project = rebase_project_media(
+            normalized_project, target, source_project_path=self.project.json_path,
+        )
         if not self.save_lock.acquire(blocking=False):
             raise ProjectMutationInProgressError("另一个工程保存操作正在进行")
         try:
@@ -2153,7 +2159,21 @@ def export_ograf(project: ServerProject, graphic: dict) -> tuple[bytes, str]:
     return buffer.getvalue(), f"{project.json_path.stem}_dynamic-caption.ograf.zip"
 
 
-def write_project_json(target: Path, project_data: dict) -> Path | None:
+def remember_project_media(target: Path, media_reference: str) -> None:
+    """Persist only an explicitly confirmed association, preserving other fields."""
+    try:
+        original = json.loads(target.read_text(encoding="utf-8-sig"))
+        if not isinstance(original, dict):
+            raise ValueError("工程必须是 JSON 对象")
+        if original.get("media") == media_reference:
+            return
+        original["media"] = media_reference
+        write_project_json(target, original, strip_caches=False)
+    except (OSError, ValueError) as error:
+        raise ValueError(f"已找到媒体，但无法记住关联；原工程未更新，请检查写入权限后重试：{error}") from error
+
+
+def write_project_json(target: Path, project_data: dict, *, strip_caches: bool = True) -> Path | None:
     """Atomically write LF JSON and retain the immediately previous file as .bak.
 
     落盘前剥掉内联波形缓存：磁盘工程的波形真源在媒体旁的 ``.quapeaks`` /
@@ -2168,7 +2188,8 @@ def write_project_json(target: Path, project_data: dict) -> Path | None:
     fd, temp_name = tempfile.mkstemp(prefix=f".{target.stem}.", suffix=".tmp", dir=target.parent)
     try:
         with os.fdopen(fd, "w", encoding="utf-8", newline="\n") as output:
-            json.dump(strip_inline_caches(project_data), output, ensure_ascii=False, indent=2)
+            portable = rebase_project_media(project_data, target)
+            json.dump(strip_inline_caches(portable) if strip_caches else portable, output, ensure_ascii=False, indent=2)
             output.write("\n")
         os.replace(temp_name, target)
     except Exception:
@@ -3303,6 +3324,7 @@ def main() -> int:
     )
     parser.add_argument("json_path", nargs="?", help="字幕工程 JSON；省略时默认尝试恢复上次打开的工程")
     parser.add_argument("-m", "--media", help="媒体文件路径（默认按 JSON.media / 同目录探测）")
+    parser.add_argument("--remember-media", action="store_true", help="加载成功后将 -m 媒体关联写回工程（保留备份）")
     parser.add_argument("-s", "--stickers", help="表情包目录（默认读取 .env 的 STICKER_DIR）")
     parser.add_argument("--blank", action="store_true", help="启动空白编辑器，之后在页面中选择 JSON 与媒体")
     parser.add_argument(
@@ -3318,6 +3340,8 @@ def main() -> int:
     args = parser.parse_args()
     if args.blank and args.json_path:
         parser.error("--blank 不能与 json_path 同时使用")
+    if args.remember_media and (not args.json_path or not args.media):
+        parser.error("--remember-media 需要 json_path 与 --media")
 
     settings_path = default_settings_path()
     settings = load_default_server_settings()
@@ -3334,6 +3358,7 @@ def main() -> int:
                 load_reapeaks=not defer_reapeaks,
                 peaks_per_second=args.waveform_peaks_per_second,
                 progress=progress,
+                remember_media=args.remember_media,
             )
 
         project_loader = load_requested_project

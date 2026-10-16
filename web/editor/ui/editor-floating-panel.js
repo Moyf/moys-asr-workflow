@@ -172,6 +172,7 @@
       drag = null;
       manageButton?.classList.remove('active');
       manageButton?.setAttribute('aria-expanded', 'false');
+      MaweKeyboardTargets.releaseClosedUiFocus(panel, manageButton);
       syncFloatingSurfaceLayers();
     }
 
@@ -220,7 +221,6 @@
           || floatingSurfaceStack.filter(floatingSurfaceIsOpen).at(-1) !== panel) return;
       event.preventDefault();
       close();
-      manageButton?.focus();
     });
     return { open, close, toggle, isOpen, reclamp };
   }

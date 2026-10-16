@@ -572,9 +572,13 @@ test('green-screen burn accepts subtitles without a video source', async ({ page
   await expect(page.locator('#toolboxUtilityMediaPath')).toBeDisabled();
   await expect(page.locator('#pickToolboxUtilityMedia')).toBeDisabled();
   await expect(page.locator('#runBurnSubtitle')).toHaveText('生成绿幕视频');
-  const gap = await page.locator('.toolbox-green-screen-option .hint').evaluate((element) =>
+  const option = page.locator('.toolbox-green-screen-option');
+  const fieldGap = await option.locator('#toolboxGreenScreenSizeField').evaluate((element) =>
     element.getBoundingClientRect().top - element.previousElementSibling.getBoundingClientRect().bottom);
-  expect(gap).toBeGreaterThanOrEqual(8);
+  expect(fieldGap).toBeGreaterThanOrEqual(8);
+  const hintGap = await option.locator('[data-i18n="toolbox_green_screen_hint"]').evaluate((element) =>
+    element.getBoundingClientRect().top - element.previousElementSibling.getBoundingClientRect().bottom);
+  expect(hintGap).toBeGreaterThanOrEqual(8);
   await page.locator('#toolboxBurnSubtitlePath').fill('D:\\Demo\\captions.ass');
   await page.locator('#runBurnSubtitle').click();
   await expect.poll(() => page.evaluate(() => window.__greenBurnCalls.length)).toBe(1);

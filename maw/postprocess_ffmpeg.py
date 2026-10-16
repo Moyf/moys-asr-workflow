@@ -18,6 +18,8 @@ from typing import Callable, Final, Mapping
 from maw.gui_platform import creationflags, release_process_tree, startupinfo, terminate_process_tree
 from maw.output_naming import media_suffix
 from maw.ass_styles import DEFAULT_SRT_STYLE, ass_style_force_style, ass_style_line, find_ass_style, load_ass_style_library
+from maw.ffmpeg import resolve_ffmpeg_tool
+from maw.media import probe_video_fps
 
 
 ALLOWED_DIRECTIVES: Final = frozenset({"ffconcat", "file", "inpoint", "outpoint", "duration"})
@@ -31,6 +33,10 @@ MAX_BURN_CRF: Final = 51
 DEFAULT_BURN_CRF: Final = 18
 DEFAULT_BURN_PRESET: Final = "medium"
 DEFAULT_BURN_AUDIO_BITRATE: Final = "192k"
+# 样式库的 SRT 烧录样式按 1080p 参考坐标系存储字号（与编辑器预览、前端 ASS
+# 导出共用的参考高度一致）；烧录时按目标 PlayResY 等比换算。
+ASS_REFERENCE_PLAY_RES_Y: Final = 1080
+ASS_FALLBACK_PLAY_RESOLUTION: Final[tuple[int, int]] = (1920, 1080)
 VIDEO_ENCODER_MODES: Final[frozenset[str]] = frozenset({"auto", "cpu", "nvenc", "amf", "qsv"})
 VIDEO_ENCODER_CODECS: Final[dict[str, str]] = {
     "nvenc": "h264_nvenc",
@@ -38,6 +44,13 @@ VIDEO_ENCODER_CODECS: Final[dict[str, str]] = {
     "qsv": "h264_qsv",
 }
 AUTO_VIDEO_ENCODER_ORDER: Final[tuple[str, ...]] = ("nvenc", "amf", "qsv", "cpu")
+# 绿幕画布尺寸档位：键名与 Launcher 下拉值一致，默认 4K。
+GREEN_SCREEN_SIZES: Final[dict[str, tuple[int, int]]] = {
+    "1080p": (1920, 1080),
+    "2k": (2560, 1440),
+    "4k": (3840, 2160),
+}
+GREEN_SCREEN_SIZE_DEFAULT: Final = "4k"
 
 
 @dataclass(frozen=True, slots=True)
@@ -115,6 +128,9 @@ class BurnSubtitleRequest:
     media_path: Path | None
     subtitle_path: Path
     green_screen: bool = False
+    # 绿幕画布尺寸档位（GREEN_SCREEN_SIZES 键名），仅 green_screen 生效；
+    # 空值按 GREEN_SCREEN_SIZE_DEFAULT 处理。
+    green_screen_size: str = GREEN_SCREEN_SIZE_DEFAULT
     # Optional normalized style supplied by a caller; when omitted, the
     # shared user-level SRT default slot is loaded automatically.
     srt_style: Mapping[str, object] | None = None
@@ -375,26 +391,41 @@ def _subtitle_time_ms(value: str) -> int | None:
     return ((int(hours) * 60 + int(minutes)) * 60 + int(seconds)) * 1000 + int(fraction.ljust(3, "0"))
 
 
-def _green_screen_input(subtitle: Path) -> list[str]:
-    """Make a finite green canvas from subtitle timing; no source video is needed."""
+def _green_screen_size_resolution(value: object) -> tuple[int, int]:
+    """Map the selected green-screen size preset to a canvas resolution.
+
+    空值回退默认档位；未知值显式报错，避免静默生成错误尺寸的绿幕视频。
+    """
+    key = str(value or "").strip().lower()
+    if not key:
+        key = GREEN_SCREEN_SIZE_DEFAULT
+    resolution = GREEN_SCREEN_SIZES.get(key)
+    if resolution is None:
+        options = " / ".join(f"{name}（{size[0]}×{size[1]}）" for name, size in sorted(GREEN_SCREEN_SIZES.items()))
+        raise MediaToolError(f"不支持的绿幕视频尺寸：{key}（可选 {options}）")
+    return resolution
+
+
+def _green_screen_input(subtitle: Path, play_resolution: tuple[int, int]) -> tuple[list[str], tuple[int, int]]:
+    """Make a finite green canvas from subtitle timing; no source video is needed.
+
+    Returns the lavfi input arguments plus the canvas size: the caller reuses
+    the size as the burn PlayRes so a converted SRT style lands on the same
+    coordinate system as the canvas.  画布尺寸来自用户选择的尺寸档位，
+    与编辑器按实际视频分辨率预览的约定一致。
+    """
     try:
         contents = subtitle.read_text(encoding="utf-8-sig", errors="replace")
     except OSError as error:
         raise MediaToolError(f"无法读取字幕时间轴：{error}") from error
     ends: list[int] = []
-    width, height = 1920, 1080
+    width, height = play_resolution
     if subtitle.suffix.lower() == ".srt":
         for match in re.finditer(r"-->\s*(\d+:\d{2}:\d{2}[.,]\d{1,3})", contents):
             end = _subtitle_time_ms(match.group(1))
             if end is not None:
                 ends.append(end)
     else:
-        resolution = re.search(r"(?im)^PlayResX:\s*(\d+)\s*$", contents)
-        vertical = re.search(r"(?im)^PlayResY:\s*(\d+)\s*$", contents)
-        if resolution and vertical:
-            raw_width, raw_height = int(resolution.group(1)), int(vertical.group(1))
-            if 16 <= raw_width <= 3840 and 16 <= raw_height <= 2160:
-                width, height = raw_width + raw_width % 2, raw_height + raw_height % 2
         fields = ["layer", "start", "end"]
         in_events = False
         for raw_line in contents.splitlines():
@@ -417,18 +448,29 @@ def _green_screen_input(subtitle: Path) -> list[str]:
         raise MediaToolError("字幕文件没有可用的结束时间，无法确定绿幕视频时长。")
     # Keep half a second after the last cue so its final frame is fully visible.
     frame_count = max(30, math.ceil(max(ends) * 30 / 1000) + 15)
-    return ["-f", "lavfi", "-i", f"color=c=0x00ff00:s={width}x{height}:r=30:d={frame_count / 30:.3f}"]
+    return (
+        ["-f", "lavfi", "-i", f"color=c=0x00ff00:s={width}x{height}:r=30:d={frame_count / 30:.3f}"],
+        (width, height),
+    )
 
 
 def run_burn_subtitles(
     request: BurnSubtitleRequest,
     *,
     ffmpeg_path: Path,
+    ffprobe_path: Path | None = None,
     cancel_event: Event | None = None,
     on_process: Callable[[subprocess.Popen[str]], None] | None = None,
     on_progress: Callable[[Mapping[str, str]], None] | None = None,
 ) -> BurnSubtitleResult:
-    """Render SRT/ASS subtitles into a new H.264 MP4."""
+    """Render SRT/ASS subtitles into a new H.264 MP4.
+
+    SRT 烧录前会转换成临时 ASS 并把样式库样式写入 Default 行；PlayRes 取视频
+    实际分辨率（绿幕取所选尺寸档位的画布尺寸），使烧录样式与编辑器预览一致。
+    只有 SRT 输入需要探测 PlayRes；ASS/SSA 沿用自身样式，不启动 ffprobe。
+    ``ffprobe_path`` 仅用于读取视频尺寸，缺省时沿 ``ffmpeg_path`` 同目录解析，
+    再回退 FFMPEG_PATH/PATH；探测失败回退 1080p 参考坐标系。
+    """
     subtitle = _validated_media_path(request.subtitle_path, extensions=SUBTITLE_EXTENSIONS, label="subtitle")
     green_screen = request.green_screen is True
     media = None if green_screen else _validated_media_path(
@@ -445,7 +487,20 @@ def run_burn_subtitles(
     temporary = output.with_name(f"{output.stem}.part{output.suffix}")
     requested_encoder = normalize_video_encoder(request.video_encoder)
     attempts = _video_encoder_attempts(ffmpeg_path, requested_encoder)
-    green_input = _green_screen_input(subtitle) if green_screen else []
+    green_input: list[str] = []
+    play_resolution: tuple[int, int] = ASS_FALLBACK_PLAY_RESOLUTION
+    if green_screen:
+        green_input, play_resolution = _green_screen_input(
+            subtitle, _green_screen_size_resolution(request.green_screen_size),
+        )
+    elif subtitle.suffix.lower() == ".srt":
+        # PlayRes 重写只发生在 SRT 转换；ASS/SSA 沿用自身样式，跳过探测。
+        # 探测前先看取消标记，避免取消请求时还要等一次 ffprobe。
+        if cancel_event is None or not cancel_event.is_set():
+            probe_tool = ffprobe_path if ffprobe_path is not None else resolve_ffmpeg_tool(
+                "ffprobe", configured_path=ffmpeg_path,
+            )
+            play_resolution = _probe_play_resolution(media, ffprobe_path=probe_tool)
     prepared_subtitle = subtitle
     converted_subtitle: Path | None = None
     last_error: MediaToolError | None = None
@@ -455,6 +510,7 @@ def run_burn_subtitles(
                 subtitle,
                 ffmpeg_path=ffmpeg_path,
                 srt_style=request.srt_style,
+                play_resolution=play_resolution,
                 cancel_event=cancel_event,
                 on_process=on_process,
                 on_progress=on_progress,
@@ -662,7 +718,40 @@ def _srt_burn_style(srt_style: Mapping[str, object] | None) -> Mapping[str, obje
     return find_ass_style(library, style_id)
 
 
-def _rewrite_ass_default_style(ass_path: Path, srt_style: Mapping[str, object] | None) -> None:
+def _rewrite_ass_play_resolution(lines: list[str], play_resolution: tuple[int, int]) -> None:
+    """Replace (or insert) the converted ASS header's PlayResX/PlayResY.
+
+    FFmpeg 把 SRT 转成 ASS 时写死 PlayResX: 384 / PlayResY: 288；样式库字段
+    按 1080p 参考坐标系存储，必须把坐标系一并归一到实际视频分辨率，否则
+    libass 会在 288 高的坐标系里解释 86 的字号（视觉放大 1080/288 ≈ 3.75 倍）。
+    """
+    values = {
+        "playresx": f"PlayResX: {play_resolution[0]}",
+        "playresy": f"PlayResY: {play_resolution[1]}",
+    }
+    script_info_index: int | None = None
+    for index, line in enumerate(lines):
+        key = line.split(":", 1)[0].strip().lower()
+        if key in values:
+            lines[index] = values.pop(key)
+        elif line.strip().lower() == "[script info]":
+            script_info_index = index
+    if not values:
+        return
+    if script_info_index is None:
+        # 缺段时补写完整段头（PlayRes 属于 [Script Info]，必须位于样式段之前）。
+        lines[:0] = ["[Script Info]", values["playresx"], values["playresy"]]
+        return
+    for name in sorted(values, reverse=True):
+        lines.insert(script_info_index + 1, values[name])
+
+
+def _rewrite_ass_default_style(
+    ass_path: Path,
+    srt_style: Mapping[str, object] | None,
+    *,
+    play_resolution: tuple[int, int] = ASS_FALLBACK_PLAY_RESOLUTION,
+) -> None:
     try:
         content = ass_path.read_text(encoding="utf-8-sig")
     except (OSError, UnicodeError) as error:
@@ -670,8 +759,17 @@ def _rewrite_ass_default_style(ass_path: Path, srt_style: Mapping[str, object] |
     if not content.strip():
         raise MediaToolError("FFmpeg 生成了空的 ASS 字幕文件。")
     style = {**DEFAULT_SRT_STYLE, **dict(_srt_burn_style(srt_style))}
+    # 与编辑器预览/前端 ASS 导出同一约定：库样式字号按 1080p 参考存储，
+    # 按目标 PlayResY 等比换算；描边、边距等其余字段保持原值。
+    # 前端 Math.round 是 half-up，而 Python round 是银行家舍入，半值
+    # （如 540p 的 33 → 16.5）会差 1px，因此先按 half-up 取整再交给
+    # _normalize_style（clamp 1..512 与前端 normalizeAssFontSize 一致）。
+    style["fontSize"] = math.floor(
+        float(style["fontSize"]) * play_resolution[1] / ASS_REFERENCE_PLAY_RES_Y + 0.5,
+    )
     replacement = ass_style_line(style, name="Default")
     lines = content.splitlines()
+    _rewrite_ass_play_resolution(lines, play_resolution)
     for index, line in enumerate(lines):
         if line.startswith("Style: Default,"):
             lines[index] = replacement
@@ -685,11 +783,29 @@ def _rewrite_ass_default_style(ass_path: Path, srt_style: Mapping[str, object] |
         raise MediaToolError(f"无法写入临时 ASS 字幕：{error}") from error
 
 
+def _probe_play_resolution(media: Path | None, *, ffprobe_path: Path | None) -> tuple[int, int]:
+    """Burn PlayRes from the video dimensions; probe failure falls back to 1080p.
+
+    编辑器预览与前端 ASS 导出都用实际视频分辨率作 PlayRes（media_metadata 的
+    video_width/height 由同一个 probe_video_fps 产出），这里复用同一探测，
+    保证烧录结果与预览一致。
+    """
+    if media is None:
+        return ASS_FALLBACK_PLAY_RESOLUTION
+    metadata = probe_video_fps(media, ffprobe_path=ffprobe_path)
+    width = metadata.get("video_width") if metadata else None
+    height = metadata.get("video_height") if metadata else None
+    if isinstance(width, int) and isinstance(height, int) and width > 0 and height > 0:
+        return width, height
+    return ASS_FALLBACK_PLAY_RESOLUTION
+
+
 def _convert_srt_to_ass(
     subtitle: Path,
     *,
     ffmpeg_path: Path,
     srt_style: Mapping[str, object] | None,
+    play_resolution: tuple[int, int],
     cancel_event: Event | None,
     on_process: Callable[[subprocess.Popen[str]], None] | None,
     on_progress: Callable[[Mapping[str, str]], None] | None,
@@ -731,7 +847,7 @@ def _convert_srt_to_ass(
             on_process=on_process,
             on_progress=on_progress,
         )
-        _rewrite_ass_default_style(converted, srt_style)
+        _rewrite_ass_default_style(converted, srt_style, play_resolution=play_resolution)
     except (MediaToolError, OSError):
         converted.unlink(missing_ok=True)
         raise

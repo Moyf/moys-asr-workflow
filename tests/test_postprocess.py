@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from collections.abc import Iterable
+from collections.abc import Iterable, Mapping
 import json
 import subprocess
 import tempfile
@@ -39,6 +39,7 @@ from maw.postprocess_io import PostprocessFileError, _atomic_write, read_project
 from maw.postprocess_llm import MAX_PROVIDER_DIAGNOSTIC_CHARS, LlmClientError, LlmSettings, _chat_endpoint, _models_endpoint, _reasoning_parameters, complete_subtitle_groups, list_llm_models, normalize_reasoning_mode, test_llm_connection as check_llm_connection
 from maw.project_preview import JsonDict, JsonValue
 from maw.text_conversion import TextConversion
+from tests.compact_assertions import CompactContainerAssertions
 
 
 def sample_project(media: Path) -> JsonDict:
@@ -429,7 +430,7 @@ class PostprocessTests(unittest.TestCase):
 
         if result.project_path is None:
             self.fail("JSON output mode must create a project")
-        self.assertEqual(read_project(result.project_path)["media"], str(self.media.resolve()))
+        self.assertEqual((result.project_path.parent / read_project(result.project_path)["media"]).resolve(), self.media.resolve())
 
     def test_media_path_fallback_does_not_override_existing_project_media(self) -> None:
         other_media = self.root / "other.mp4"
@@ -449,7 +450,7 @@ class PostprocessTests(unittest.TestCase):
 
         if result.project_path is None:
             self.fail("JSON output mode must create a project")
-        self.assertEqual(read_project(result.project_path)["media"], str(self.media))
+        self.assertEqual((result.project_path.parent / read_project(result.project_path)["media"]).resolve(), self.media.resolve())
 
     def test_llm_network_failure_degrades_batch_to_original_text(self) -> None:
         calls: list[list[dict[str, JsonValue]]] = []
@@ -2956,7 +2957,7 @@ class FfconcatTests(unittest.TestCase):
 
 
 @final
-class MediaToolTests(unittest.TestCase):
+class MediaToolTests(CompactContainerAssertions, unittest.TestCase):
     def setUp(self) -> None:
         self.temp_dir = tempfile.TemporaryDirectory()
         self.root = Path(self.temp_dir.name)
@@ -2968,6 +2969,11 @@ class MediaToolTests(unittest.TestCase):
         lang_patcher = mock.patch("maw.output_naming.resolve_lang", return_value="en")
         lang_patcher.start()
         self.addCleanup(lang_patcher.stop)
+        # 烧录 PlayRes 的视频探测统一打桩：单测不真实调用 ffprobe，默认走
+        # 1080p 回退；需要具体分辨率的测试在用例内自行覆盖此桩。
+        probe_patcher = mock.patch("maw.postprocess_ffmpeg.probe_video_fps", return_value=None)
+        probe_patcher.start()
+        self.addCleanup(probe_patcher.stop)
 
     def tearDown(self) -> None:
         self.temp_dir.cleanup()
@@ -3095,6 +3101,69 @@ class MediaToolTests(unittest.TestCase):
         self.assertTrue(result.media_path.read_bytes())
         self.assertEqual(self.media.read_bytes(), b"media")
 
+    def test_burn_subtitles_rewrites_converted_ass_to_video_playres(self) -> None:
+        rewritten: list[str] = []
+        real_rewrite = _rewrite_ass_default_style
+
+        def record_rewrite(ass_path: Path, srt_style: Mapping[str, object] | None, **kwargs: object) -> None:
+            real_rewrite(ass_path, srt_style, **kwargs)
+            rewritten.append(ass_path.read_text(encoding="utf-8"))
+
+        # probe 返回 4K 视频尺寸：PlayRes 归一到 3840×2160，库字号 86（1080p
+        # 参考）按高度等比换算为 172，与编辑器预览同一约定。
+        with mock.patch(
+            "maw.postprocess_ffmpeg.probe_video_fps",
+            return_value={"video_width": 3840, "video_height": 2160},
+        ), mock.patch(
+            "maw.postprocess_ffmpeg._rewrite_ass_default_style", side_effect=record_rewrite,
+        ), mock.patch(
+            "maw.postprocess_ffmpeg.subprocess.Popen", side_effect=self._fake_process,
+        ):
+            _ = run_burn_subtitles(
+                BurnSubtitleRequest(
+                    media_path=self.media,
+                    subtitle_path=self.subtitle,
+                    srt_style={"fontName": "Microsoft YaHei", "fontSize": 86},
+                    video_encoder="cpu",
+                ),
+                ffmpeg_path=Path("ffmpeg"),
+            )
+
+        self.assertEqual(len(rewritten), 1)
+        self.assertIn("PlayResX: 3840", rewritten[0])
+        self.assertIn("PlayResY: 2160", rewritten[0])
+        self.assertIn("Style: Default,Microsoft YaHei,172,", rewritten[0])
+
+    def test_burn_subtitles_falls_back_to_1080p_playres_without_probe(self) -> None:
+        rewritten: list[str] = []
+        real_rewrite = _rewrite_ass_default_style
+
+        def record_rewrite(ass_path: Path, srt_style: Mapping[str, object] | None, **kwargs: object) -> None:
+            real_rewrite(ass_path, srt_style, **kwargs)
+            rewritten.append(ass_path.read_text(encoding="utf-8"))
+
+        # setUp 默认把 probe_video_fps 打桩为 None：ffprobe 缺失或探测失败时
+        # 回退 1080p 参考坐标系，库字号不缩放。
+        with mock.patch(
+            "maw.postprocess_ffmpeg._rewrite_ass_default_style", side_effect=record_rewrite,
+        ), mock.patch(
+            "maw.postprocess_ffmpeg.subprocess.Popen", side_effect=self._fake_process,
+        ):
+            _ = run_burn_subtitles(
+                BurnSubtitleRequest(
+                    media_path=self.media,
+                    subtitle_path=self.subtitle,
+                    srt_style={"fontName": "Microsoft YaHei", "fontSize": 86},
+                    video_encoder="cpu",
+                ),
+                ffmpeg_path=Path("ffmpeg"),
+            )
+
+        self.assertEqual(len(rewritten), 1)
+        self.assertIn("PlayResX: 1920", rewritten[0])
+        self.assertIn("PlayResY: 1080", rewritten[0])
+        self.assertIn("Style: Default,Microsoft YaHei,86,", rewritten[0])
+
     def test_green_screen_burn_uses_subtitle_timing_without_source_video(self) -> None:
         subtitle = self.root / "green.ass"
         subtitle.write_text(
@@ -3110,7 +3179,8 @@ class MediaToolTests(unittest.TestCase):
                 ffmpeg_path=Path("ffmpeg"),
             )
         command = popen.call_args.args[0]
-        self.assertIn("color=c=0x00ff00:s=322x182:r=30:d=2.500", command)
+        # 画布尺寸来自所选尺寸档位（默认 4K），ASS 自身 PlayRes 不再决定画布。
+        self.assertIn("color=c=0x00ff00:s=3840x2160:r=30:d=2.500", command)
         self.assertIn("-an", command)
         self.assertNotIn(str(self.media), command)
         self.assertEqual(result.source_media_path, None)
@@ -3121,10 +3191,62 @@ class MediaToolTests(unittest.TestCase):
         with mock.patch("maw.postprocess_ffmpeg.subprocess.Popen", side_effect=self._fake_process) as popen:
             run_burn_subtitles(
                 BurnSubtitleRequest(media_path=None, subtitle_path=self.subtitle,
-                                    green_screen=True, video_encoder="cpu"),
+                                    green_screen=True, green_screen_size="1080p", video_encoder="cpu"),
                 ffmpeg_path=Path("ffmpeg"),
             )
         self.assertIn("color=c=0x00ff00:s=1920x1080:r=30:d=3.767", popen.call_args.args[0])
+        with mock.patch("maw.postprocess_ffmpeg.subprocess.Popen", side_effect=self._fake_process) as popen:
+            run_burn_subtitles(
+                BurnSubtitleRequest(media_path=None, subtitle_path=self.subtitle,
+                                    green_screen=True, green_screen_size="2k", video_encoder="cpu"),
+                ffmpeg_path=Path("ffmpeg"),
+            )
+        self.assertIn("color=c=0x00ff00:s=2560x1440:r=30:d=3.767", popen.call_args.args[0])
+        with mock.patch("maw.postprocess_ffmpeg.subprocess.Popen", side_effect=self._fake_process) as popen:
+            run_burn_subtitles(
+                BurnSubtitleRequest(media_path=None, subtitle_path=self.subtitle,
+                                    green_screen=True, video_encoder="cpu"),
+                ffmpeg_path=Path("ffmpeg"),
+            )
+        self.assertIn("color=c=0x00ff00:s=3840x2160:r=30:d=3.767", popen.call_args.args[0])
+
+    def test_green_screen_rejects_unknown_size_preset(self) -> None:
+        self.subtitle.write_text("1\n00:00:00,000 --> 00:00:03,250\nHello\n", encoding="utf-8")
+        with self.assertRaisesRegex(MediaToolError, "不支持的绿幕视频尺寸"):
+            run_burn_subtitles(
+                BurnSubtitleRequest(media_path=None, subtitle_path=self.subtitle,
+                                    green_screen=True, green_screen_size="8k", video_encoder="cpu"),
+                ffmpeg_path=Path("ffmpeg"),
+            )
+
+    def test_green_screen_srt_burn_scales_style_to_selected_size(self) -> None:
+        rewritten: list[str] = []
+        real_rewrite = _rewrite_ass_default_style
+
+        def record_rewrite(ass_path: Path, srt_style: Mapping[str, object] | None, **kwargs: object) -> None:
+            real_rewrite(ass_path, srt_style, **kwargs)
+            rewritten.append(ass_path.read_text(encoding="utf-8"))
+
+        self.subtitle.write_text("1\n00:00:00,000 --> 00:00:03,250\nHello\n", encoding="utf-8")
+        with mock.patch(
+            "maw.postprocess_ffmpeg._rewrite_ass_default_style", side_effect=record_rewrite,
+        ), mock.patch(
+            "maw.postprocess_ffmpeg.subprocess.Popen", side_effect=self._fake_process,
+        ):
+            _ = run_burn_subtitles(
+                BurnSubtitleRequest(media_path=None, subtitle_path=self.subtitle,
+                                    green_screen=True,
+                                    srt_style={"fontName": "Microsoft YaHei", "fontSize": 86},
+                                    video_encoder="cpu"),
+                ffmpeg_path=Path("ffmpeg"),
+            )
+
+        self.assertEqual(len(rewritten), 1)
+        # 绿幕默认 4K：转换后的 ASS 坐标系与画布一致，库字号按高度等比换算，
+        # 与编辑器按 4K 视频分辨率预览的效果一致。
+        self.assertIn("PlayResX: 3840", rewritten[0])
+        self.assertIn("PlayResY: 2160", rewritten[0])
+        self.assertIn("Style: Default,Microsoft YaHei,172,", rewritten[0])
 
     def test_green_screen_rejects_subtitles_without_timing(self) -> None:
         subtitle = self.root / "empty.ass"
@@ -3138,13 +3260,46 @@ class MediaToolTests(unittest.TestCase):
     def test_burn_subtitles_applies_selected_srt_style_to_converted_ass(self) -> None:
         generated = self.root / "generated.ass"
         generated.write_text(
+            "[Script Info]\nPlayResX: 384\nPlayResY: 288\n"
             "[V4+ Styles]\nStyle: Default,Arial,16,old\n",
             encoding="utf-8",
         )
 
         _rewrite_ass_default_style(generated, {"fontName": "Microsoft YaHei", "fontSize": 24})
 
-        self.assertIn("Style: Default,Microsoft YaHei,24", generated.read_text(encoding="utf-8"))
+        contents = generated.read_text(encoding="utf-8")
+        self.assertIn("Style: Default,Microsoft YaHei,24", contents)
+        # FFmpeg 生成的 384×288 头被归一到 1080p 参考坐标系。
+        self.assertIn("PlayResX: 1920", contents)
+        self.assertIn("PlayResY: 1080", contents)
+
+    def test_rewrite_ass_default_style_scales_fontsize_to_target_playres(self) -> None:
+        generated = self.root / "generated-4k.ass"
+        generated.write_text("[V4+ Styles]\nStyle: Default,Arial,16,old\n", encoding="utf-8")
+
+        _rewrite_ass_default_style(
+            generated, {"fontName": "Microsoft YaHei", "fontSize": 24}, play_resolution=(3840, 2160),
+        )
+
+        contents = generated.read_text(encoding="utf-8")
+        self.assertIn("Style: Default,Microsoft YaHei,48", contents)
+        self.assertIn("PlayResX: 3840", contents)
+        self.assertIn("PlayResY: 2160", contents)
+        # 原文件没有 [Script Info] 段：补写完整段头，PlayRes 仍位于样式段之前。
+        self.assertIn("[Script Info]", contents)
+        self.assertLess(contents.index("[Script Info]"), contents.index("[V4+ Styles]"))
+
+    def test_rewrite_ass_default_style_rounds_half_up_like_preview(self) -> None:
+        # 540p 参考下库字号 33 → 16.5：前端 Math.round 为 half-up 写 17，
+        # Python round 的银行家舍入会写 16；烧录必须与预览一致。
+        generated = self.root / "generated-540p.ass"
+        generated.write_text("[V4+ Styles]\nStyle: Default,Arial,16,old\n", encoding="utf-8")
+
+        _rewrite_ass_default_style(
+            generated, {"fontName": "Microsoft YaHei", "fontSize": 33}, play_resolution=(960, 540),
+        )
+
+        self.assertIn("Style: Default,Microsoft YaHei,17,", generated.read_text(encoding="utf-8"))
 
     def test_burn_subtitles_keeps_existing_ass_input_without_conversion(self) -> None:
         subtitle = self.root / "clip.ass"
@@ -3158,6 +3313,51 @@ class MediaToolTests(unittest.TestCase):
         self.assertEqual(len(popen.call_args_list), 1)
         command = popen.call_args.args[0]
         self.assertEqual(command[command.index("-vf") + 1], "ass=filename='clip.ass'")
+
+    def test_burn_subtitles_skips_playres_probe_for_ass_subtitles(self) -> None:
+        # ASS/SSA 沿用自身样式，PlayRes 重写不会发生，不应启动 ffprobe。
+        subtitle = self.root / "clip.ass"
+        _ = subtitle.write_text("[Script Info]\n", encoding="utf-8")
+        with mock.patch(
+            "maw.postprocess_ffmpeg.probe_video_fps",
+            side_effect=AssertionError("ASS 烧录不应探测 PlayRes"),
+        ), mock.patch("maw.postprocess_ffmpeg.subprocess.Popen", side_effect=self._fake_process):
+            _ = run_burn_subtitles(
+                BurnSubtitleRequest(media_path=self.media, subtitle_path=subtitle, video_encoder="cpu"),
+                ffmpeg_path=Path("ffmpeg"),
+            )
+
+    def test_burn_subtitles_skips_playres_probe_when_already_cancelled(self) -> None:
+        # 取消请求先于探测：跳过 ffprobe，直接进入取消路径。
+        cancel_event = Event()
+        cancel_event.set()
+
+        def cancelled_process(command: list[str], **_kwargs: object):
+            class CancelledProcess:
+                pid = None
+
+                def __init__(self) -> None:
+                    self.stdout = StringIO("")
+                    self.stderr = StringIO("")
+
+                def poll(self) -> int:
+                    return 0
+
+                def wait(self, timeout: float | None = None) -> int:
+                    return 0
+
+            return CancelledProcess()
+
+        with mock.patch(
+            "maw.postprocess_ffmpeg.probe_video_fps",
+            side_effect=AssertionError("已取消时不应探测"),
+        ), mock.patch("maw.postprocess_ffmpeg.subprocess.Popen", side_effect=cancelled_process):
+            with self.assertRaises(MediaToolError):
+                _ = run_burn_subtitles(
+                    BurnSubtitleRequest(media_path=self.media, subtitle_path=self.subtitle, video_encoder="cpu"),
+                    ffmpeg_path=Path("ffmpeg"),
+                    cancel_event=cancel_event,
+                )
 
     def test_burn_subtitles_aborts_when_libass_reports_a_missing_glyph(self) -> None:
         subtitle = self.root / "clip.ass"

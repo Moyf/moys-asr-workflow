@@ -2574,6 +2574,8 @@ textarea::placeholder {
 
 .toolbox-green-screen-option { margin: 10px 0 12px; }
 .toolbox-green-screen-option .hint { margin: 8px 0 0; }
+/* 尺寸下拉是块内第一个 div.field，会被 .field:first-of-type 归零上边距；显式恢复间隔。 */
+.toolbox-green-screen-option .field { margin-top: 8px; }
 
 .toolbox-waveform-spectral-field {
   margin-top: 14px;

@@ -7,7 +7,7 @@
 
 
 
-  function buildJson() {
+  function buildJson({ forFileExport = false } = {}) {
   MaweTimeline.syncProjectTimebaseAndBindingOffsets(MaweBoot.DATA, { preferFrames: false });
   const repairedTimingCount = repairCurrentProjectTimings();
   if (repairedTimingCount > 0) {
@@ -43,6 +43,13 @@
       return o;
     }),
   };
+  // File pickers hide the destination directory. A server-known native source
+  // is safer than copying a relative reference whose base directory has changed.
+  // Browser-local replacements have no native path: never reuse the old one.
+  if (forFileExport && !MaweProjectMediaInputs.currentMediaBlobUrl
+      && MaweBoot.SERVER_CONFIG?.autoLoadedMediaPath) {
+    out.media = MaweBoot.SERVER_CONFIG.autoLoadedMediaPath;
+  }
   if (typeof MaweBoot.DATA.language_source === 'string') out.language_source = MaweBoot.DATA.language_source;
   if (typeof MaweBoot.DATA.preserve_punctuation === 'boolean') out.preserve_punctuation = MaweBoot.DATA.preserve_punctuation;
   if (typeof MaweBoot.DATA.split_mode === 'string') out.split_mode = MaweBoot.DATA.split_mode;

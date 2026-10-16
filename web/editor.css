@@ -2309,6 +2309,10 @@
     transition: background var(--t-fast), color var(--t-fast);
   }
   .toolbar .dropdown-item:hover { background: var(--accent-tint); color: var(--text-primary); }
+  .toolbar .dropdown-submenu-menu > button[data-settings-page] {
+    display: block; width: calc(100% - 16px); box-sizing: border-box;
+    margin: 4px 8px; text-align: left;
+  }
   .toolbar .dropdown-item.disabled { opacity: .42; cursor: not-allowed; pointer-events: none; }
   /* 表情包导出按模式互斥灰显：保留 hover 与 click（title 提示原因、点击给 flashHint 指引） */
   .toolbar .dropdown-item.sticker-disabled { opacity: .42; cursor: not-allowed; }

@@ -894,6 +894,11 @@
     $("pickToolboxUtilityMedia").disabled = disabled;
   }
 
+  // 绿幕尺寸下拉只在勾选「生成绿幕视频」时显示；默认 4K。
+  function syncGreenScreenSizeFieldState() {
+    $("toolboxGreenScreenSizeField").classList.toggle("hidden", !$("toolboxGreenScreen").checked);
+  }
+
   function selectToolboxSection(section) {
     activeToolboxSection = section;
     document.querySelectorAll("[data-toolbox-section]").forEach((tab) => {
@@ -2531,6 +2536,7 @@
         mediaPath: greenScreen ? "" : mediaPath,
         subtitlePath,
         greenScreen,
+        greenScreenSize: $("toolboxGreenScreenSize")?.value || "4k",
         videoEncoder: $("toolboxBurnVideoEncoder")?.value || "auto",
         ...burnEncodingPayload(),
       });
@@ -2637,6 +2643,7 @@
     redesignUI.initialize(config.postprocessAutoPlan || defaultAutoPlan());
     syncTranslationControls("auto", { persist: false });
     void restoreBurnSubtitleSettings();
+    syncGreenScreenSizeFieldState();
   }
 
   redesignUI = window.MAWLauncher.createPostprocessUI({
@@ -2730,6 +2737,7 @@
   $("runBurnSubtitle").addEventListener("click", runBurnSubtitle);
   $("toolboxGreenScreen").addEventListener("change", () => {
     syncUtilityMediaFieldState();
+    syncGreenScreenSizeFieldState();
     setFieldError("toolboxUtilityMediaPath", "");
     renderMediaToolAction();
   });
