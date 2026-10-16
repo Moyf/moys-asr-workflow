@@ -515,11 +515,11 @@ test('bilingual settings are grouped and the index never enables the mode implic
   await page.locator('#project-settings-toggle').click();
   // 双语字幕是独立标签页；字词码设置归属字幕轨道。
   await page.locator('#editor-settings-tab-project-tracks').click();
-  await expect(page.locator('#editor-settings-page-project-tracks #multi-subtitle-toggle')).toBeVisible();
+  await expect(page.locator('#editor-settings-page-project-tracks #multi-subtitle-toggle')).toHaveCount(0);
   await expect(page.locator('#editor-settings-page-project-tracks #word-timing-row-height')).toHaveValue('168');
   await expect(page.locator('#editor-settings-page-project-tracks #word-timing-seconds-per-row')).toBeVisible();
-  await page.locator('#multi-subtitle-toggle').check();
   await page.locator('#editor-settings-tab-multi-subtitle').click();
+  await page.locator('#multi-subtitle-toggle').check();
   await expect(page.locator('#editor-settings-page-multi-subtitle')).toBeVisible();
   await expect(page.locator('#editor-settings-page-multi-subtitle .settings-panel-title')).toHaveText(['联动', '字幕管理']);
   await page.locator('#multi-subtitle-cross-track-snap').uncheck();

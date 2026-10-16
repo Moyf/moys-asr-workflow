@@ -218,7 +218,7 @@ function syncAssStyleForm(style) {
   if (assStylePreviewSample) {
     // 样例与视频预览共用 Canvas 光栅管线：描边/底框/阴影观感一致。
     // style.fontSize 即样例画布上的字形高度（ascent+descent 语义）。
-    window.MaweAssCanvas?.renderSample(assStylePreviewSample, safeStyle, 'Aa 字幕预览 / 字幕样例');
+    window.MaweAssCanvas?.renderSample(assStylePreviewSample, safeStyle, 'ASS 字幕预览 OwO');
   }
   updateAssStylePreviewModeHints();
 }

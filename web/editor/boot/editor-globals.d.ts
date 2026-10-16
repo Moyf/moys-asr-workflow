@@ -67,6 +67,7 @@ interface ProjectData {
   language?: string;
   language_source?: string;
   split_mode?: string;
+  timed_text_edit_view?: 'rows' | 'single';
   timestamp_granularity?: string;
   model?: string;
   media_metadata?: ProjectMediaMetadata;

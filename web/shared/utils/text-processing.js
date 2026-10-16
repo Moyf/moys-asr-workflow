@@ -371,7 +371,9 @@ export function createUtilsModule(dependencies) {
     if (options.addWrapChars) {
       const left = String(options.wrapLeft == null ? '' : options.wrapLeft);
       const right = String(options.wrapRight == null ? '' : options.wrapRight);
-      const wrapped = wrapPreservingSentenceShells(result, left, right, options.skipWrapped);
+      const wrapped = Array.isArray(options.wrapPairs)
+        ? wrapTextWithPairs(result, options.wrapPairs, options.skipWrapped)
+        : wrapPreservingSentenceShells(result, left, right, options.skipWrapped);
       result = wrapped.text;
     }
     if (options.skipWrapped && options.addPrefix && options.addSuffix
@@ -480,6 +482,33 @@ export function createUtilsModule(dependencies) {
 
   function isSentenceLevelWrapPair(left, right) {
     return SENTENCE_LEVEL_WRAP_PAIRS.some(([l, r]) => l === left && r === right);
+  }
+
+  // Preserve existing sentence effects while nesting the selected wrappers in click order.
+  // Reuse selected shells instead of doubling an already present individual style.
+  // 句级对（fade/shake）恒重建在现有句级壳之外（最新最外，与单对路径一致），
+  // 行内对落回现有壳之内——分层规则与 wrapPreservingSentenceShells 相同。
+  function wrapTextWithPairs(source, pairs, skipWrapped) {
+    const wraps = pairs.map(({ left, right }) => ({ left: String(left ?? ''), right: String(right ?? '') }))
+      .filter(({ left, right }) => left || right);
+    if (!wraps.length || !source) return { text: source, skipped: false };
+    const parsed = sentenceShells(source);
+    const selected = (shell) => wraps.some((wrap) => wrap.left === shell.left && wrap.right === shell.right);
+    const retained = skipWrapped ? parsed.shells.filter((shell) => !selected(shell)) : parsed.shells;
+    let body = parsed.body;
+    // Custom/common pairs are not ASS sentence shells but may already wrap the body.
+    if (skipWrapped) {
+      const remaining = [...wraps];
+      while (remaining.length) {
+        const index = remaining.findIndex(({ left, right }) => isTextWrappedBy(body, left, right));
+        if (index < 0) break;
+        const [{ left, right }] = remaining.splice(index, 1);
+        body = body.slice(left.length, -right.length);
+      }
+    }
+    const sentenceWraps = wraps.filter(({ left, right }) => isSentenceLevelWrapPair(left, right));
+    const inlineWraps = wraps.filter(({ left, right }) => !isSentenceLevelWrapPair(left, right));
+    return { text: rebuildShells(rebuildShells(rebuildShells(body, inlineWraps), retained), sentenceWraps), skipped: false };
   }
 
   function wrapPreservingSentenceShells(source, left, right, skipWrapped) {

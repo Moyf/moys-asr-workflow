@@ -49,8 +49,16 @@ export function createWaveformModule(dependencies) {
     }
     /** @this {import('./waveform-types.js').WaveformInstance} */
     thumbnailStatusText() {
+      // Settings and freshly painted rows share the same display status; a
+      // repaint must not replace marks/cache-only hints with the worker state.
+      const mode = this.thumbnailController.mode;
+      if (mode === 'hidden') return localizedWaveformMessage('视频缩略图已隐藏', 'Video thumbnails hidden');
+      if (mode === 'marks') return localizedWaveformMessage('显示关键帧标记', 'Showing keyframe marks');
+      if (mode === 'strip' && !this.thumbnailController.decodeEnabled) {
+        return localizedWaveformMessage('仅显示缓存缩略图，不实时补帧', 'Cached thumbnails only; on-demand decoding off');
+      }
       const labels = {
-        idle: ['正在准备视频画面', 'Preparing video pictures'],
+        idle: ['正在准备视频缩略图', 'Preparing video thumbnails'],
         queued: ['等待补齐画面', 'Pictures queued'],
         generating: ['正在补齐画面', 'Loading pictures'],
         partial: ['画面逐步补齐', 'Pictures loading progressively'],
@@ -77,13 +85,7 @@ export function createWaveformModule(dependencies) {
       const mode = this.thumbnailController.mode;
       const text = !hasBinding
         ? localizedWaveformMessage('从本机 Server 加载视频后可用', 'Available after loading video through the local Server')
-        : mode === 'hidden'
-          ? localizedWaveformMessage('视频画面已隐藏', 'Video pictures hidden')
-          : mode === 'marks'
-            ? localizedWaveformMessage('显示关键帧标记', 'Showing keyframe marks')
-            : !this.thumbnailController.decodeEnabled
-              ? localizedWaveformMessage('仅显示缓存画面，不实时补帧', 'Cached pictures only; on-demand decoding off')
-              : this.thumbnailStatusText();
+        : this.thumbnailStatusText();
       if (modeSelect) {
         modeSelect.value = mode;
         modeSelect.disabled = !hasBinding;
@@ -115,7 +117,7 @@ export function createWaveformModule(dependencies) {
       if (basic) shell.classList.add('waveform-row-shell-basic');
       const canvas = document.createElement('canvas');
       canvas.className = 'waveform-filmstrip';
-      canvas.setAttribute('aria-label', '视频画面导航，点击或拖动定位');
+      canvas.setAttribute('aria-label', '视频缩略图导航，点击或拖动定位');
       shell.appendChild(canvas); shell.appendChild(row);
       row._thumbnailShell = shell; row._thumbnailCanvas = canvas;
       canvas.addEventListener('pointerdown', event => {
@@ -138,8 +140,11 @@ export function createWaveformModule(dependencies) {
         row.style.top = '48px'; row.style.width = '100%';
       }
       if (shell !== row && basic) {
-        shell.style.height = `${Math.max(1, this.scroll.clientHeight - 16) + 48}px`;
-        row.style.height = `${Math.max(1, this.scroll.clientHeight - 16)}px`;
+        // content begins below the waveform toolbar; scroll.clientHeight also
+        // includes that reserved area. Percent geometry keeps resize in sync
+        // without measuring a stale content height during the mode transition.
+        shell.style.bottom = '8px';
+        row.style.height = `calc(100% - ${this.thumbnailHeight()}px)`;
       }
       this.content.appendChild(shell);
       return row;

@@ -263,13 +263,7 @@ MaweDom.wordTimingSecondsPerRow?.addEventListener('change', () => {
   const next = Number(MaweDom.wordTimingSecondsPerRow.value);
   const before = MaweSettings.EDITOR_SETTINGS.wordTimingSecondsPerRow;
   MaweSettings.updateEditorSettings({ wordTimingSecondsPerRow: next });
-  if (window.MaweWordTiming?.enabled === true && next !== before) {
-    const editor = MaweCoreState.waveformEditor;
-    if (!editor) return;
-    editor.setSecondsPerRow(next);
-    // 每行长度变化重建几何后，原像素 scrollTop 不再对准原时间，滚回播放头。
-    MaweDisplaySettings.revealPlayheadAfterWaveformGeometryChange(editor);
-  }
+  if (window.MaweWordTiming?.enabled === true) MaweDisplaySettings.applyWordTimingSecondsPerRow();
 });
 // 波形工具栏的「双语 / 重叠」快捷开关：复用工程设置开关的 change 逻辑。
 document.getElementById('multi-subtitle-quick-toggle')?.addEventListener('click', () => {

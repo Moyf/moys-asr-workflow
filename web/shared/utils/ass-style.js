@@ -38,7 +38,7 @@ export function createUtilsModule(dependencies) {
   // this module runs. Keep a small fallback so the utility remains usable in
   // standalone tests and integrations that do not render the full template.
   const ASS_FALLBACK_COLOR_PALETTE = Object.freeze([
-    Object.freeze({ name: 'yellow', value: '#c4a019' }),
+    Object.freeze({ name: 'yellow', value: '#f9ca1f' }),
     Object.freeze({ name: 'green', value: '#66bb6a' }),
     Object.freeze({ name: 'red', value: '#f07f6f' }),
     Object.freeze({ name: 'purple', value: '#bf89e6' }),
@@ -208,7 +208,7 @@ export function createUtilsModule(dependencies) {
   const ASS_DEFAULT_EXTENSION_STYLE = Object.freeze({
     ...ASS_DEFAULT_STYLE,
     id: 'ass-extension', name: 'ASS 副字幕样式',
-    primaryColor: '#eac953', emphasisColor: '#ffaa00',
+    primaryColor: '#f9ca1f', emphasisColor: '#ffaa00',
     fontSize: 64, outline: 2, marginV: 36,
   });
 

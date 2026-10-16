@@ -505,9 +505,10 @@
     locateButton.type = 'button';
     locateButton.textContent = '定位试听';
     locateButton.addEventListener('click', () => {
-      // 「定位试听」= 跳转并播放；列表项点击 / 波形点击仍只跳转。
-      MaweMarkerEditing.locateMarker(marker.id, { play: true });
-      MaweHint.flashHint(`已定位到 ${formatMarkerTime(marker.start)} 并播放`, 'success');
+      // 区段到终点暂停；单点从标记位置播放，列表项 / 波形点击仍只定位。
+      if (MaweMarkerEditing.locateMarker(marker.id, { play: true })) {
+        MaweHint.flashHint(`已定位到 ${formatMarkerTime(marker.start)} 并播放`, 'success');
+      }
     });
     actions.appendChild(locateButton);
     const deleteButton = document.createElement('button');

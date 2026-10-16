@@ -55,16 +55,10 @@ export function createWordBlocks(dependencies) {
         label.textContent = entry.text;
         block.append(label);
         if (range.start >= startMs) {
-          const handle = document.createElement('span');
-          handle.className = 'waveform-cue-handle left';
-          handle.title = localizedWaveformMessage('调整字词起点', 'Adjust timed text start');
-          block.append(handle);
+          this.appendWordHandle(block, 'left');
         }
         if (range.end <= endMs) {
-          const handle = document.createElement('span');
-          handle.className = 'waveform-cue-handle right';
-          handle.title = localizedWaveformMessage('调整字词终点', 'Adjust timed text end');
-          block.append(handle);
+          this.appendWordHandle(block, 'right');
         }
         this.layoutBlock(block, range, startMs, endMs, row);
         block.addEventListener('pointerdown', event => this.beginWordDrag(event, index, entry.index, row));
@@ -92,6 +86,18 @@ export function createWordBlocks(dependencies) {
         row.append(zone);
       });
     }
+
+    /** @this {import('./waveform-types.js').WaveformInstance} */
+    appendWordHandle(block, side) {
+      const handle = document.createElement('span');
+      handle.className = `waveform-cue-handle ${side}`;
+      handle.title = side === 'left'
+        ? localizedWaveformMessage('调整字词起点', 'Adjust timed text start')
+        : localizedWaveformMessage('调整字词终点', 'Adjust timed text end');
+      block.append(handle);
+      return handle;
+    }
+
 
     /** @this {import('./waveform-types.js').WaveformInstance} */
     refreshWordBlocks() {
@@ -513,12 +519,16 @@ export function createWordBlocks(dependencies) {
         const entry = entries.find(candidate => candidate.index === Number(block.dataset.itemIdx));
         if (!entry) return false;
         const range = { start: timing.toMs(entry.start), end: timing.toMs(entry.end) };
-        // 手柄存在性由条目与窗口边界的包含关系决定（见 appendWordBlocks）；
-        // 条目跨越边界时需要增删手柄，只能整层重建。
-        if ((range.start >= startMs) !== Boolean(block.querySelector('.waveform-cue-handle.left'))
-          || (range.end <= endMs) !== Boolean(block.querySelector('.waveform-cue-handle.right'))) {
-          return false;
+        // 手柄是可原位增删的 span（无独立监听器，命中经块级 pointerdown 的
+        // closest 解析）；条目跨越窗口边界时原位增删，避免回退整层重建。
+        if (range.start >= startMs && !block.querySelector('.waveform-cue-handle.left')) {
+          this.appendWordHandle(block, 'left');
         }
+        if (range.end <= endMs && !block.querySelector('.waveform-cue-handle.right')) {
+          this.appendWordHandle(block, 'right');
+        }
+        if (range.start < startMs) block.querySelector('.waveform-cue-handle.left')?.remove();
+        if (range.end > endMs) block.querySelector('.waveform-cue-handle.right')?.remove();
         this.layoutBlock(block, range, startMs, endMs, row);
       }
       // 新窗口内的每个条目都必须已有 DOM 块；缺失 → 结构变化。

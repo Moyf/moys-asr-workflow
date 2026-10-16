@@ -178,17 +178,19 @@
 
   function renderTimedTextEditRowDiff(rowElement, reportRow) {
     const diffElement = rowElement.querySelector('.timed-text-edit-row-diff');
-    if (!diffElement) return;
+    const timingElement = rowElement.querySelector('.timed-text-edit-row-timing');
+    if (!diffElement || !timingElement) return;
     diffElement.replaceChildren();
-    diffElement.hidden = !reportRow.changed && !reportRow.timingChanged
-      && !reportRow.timingEstimated && !reportRow.deleted;
+    timingElement.replaceChildren();
+    diffElement.hidden = !reportRow.changed;
+    timingElement.hidden = !reportRow.timingChanged && !reportRow.timingEstimated && !reportRow.deleted;
     if (reportRow.changed) {
       appendTimedTextEditDiffLine(diffElement, '修改前：', reportRow.diff.before, 'before');
       appendTimedTextEditDiffLine(diffElement, '修改后：', reportRow.diff.after, 'after');
     }
     if (reportRow.timingChanged || reportRow.timingEstimated) {
       appendTimedTextEditTimingChange(
-        diffElement,
+        timingElement,
         reportRow.beforeStart,
         reportRow.beforeEnd,
         reportRow.afterStart,
@@ -200,7 +202,7 @@
       const deleted = document.createElement('div');
       deleted.className = 'timed-text-edit-deleted-label';
       deleted.textContent = '整句删除（时间码已转移到其他字幕）';
-      diffElement.appendChild(deleted);
+      timingElement.appendChild(deleted);
     }
   }
 
@@ -369,7 +371,10 @@
       mirror.className = 'timed-text-edit-row-search-mirror';
       mirror.setAttribute('aria-hidden', 'true');
       editor.append(mirror, textarea);
-      main.append(editor, diff);
+      const timing = document.createElement('div');
+      timing.className = 'timed-text-edit-row-timing';
+      timing.hidden = true;
+      main.append(editor, diff, timing);
       row.append(meta, main);
       MaweDom.timedTextEditRows.appendChild(row);
     });
@@ -895,7 +900,7 @@
       allSourceSegments: JSON.parse(JSON.stringify(selection.allSegments || [])),
       sourceSegments: JSON.parse(JSON.stringify(sourceSegments || [])),
       texts: (sourceSegments || []).map((segment) => String(segment?.text || '')),
-      view: 'rows',
+      view: MaweBoot.DATA.timed_text_edit_view === 'single' ? 'single' : 'rows',
       filter: null,
       trimWhitespace: false,
       singleText: (sourceSegments || []).map((segment) => String(segment?.text || '')).join('\n'),

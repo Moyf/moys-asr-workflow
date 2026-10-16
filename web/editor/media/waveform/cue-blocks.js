@@ -335,18 +335,10 @@ export function createWaveformModule(dependencies) {
         // 等高分层（full）时字幕块保持全功能：手柄常显、拖动行为与常规一致。
         const sentenceHandles = !this.options.wordTiming?.enabled || wordTimingFullLane || selected.has(index);
         if (sentenceHandles && segment.start >= startMs) {
-          const leftHandle = document.createElement('span');
-          leftHandle.className = 'waveform-cue-handle left';
-          leftHandle.title = localizedWaveformMessage('调节字幕的左边界（开始时间）', 'Adjust subtitle left boundary (start time)');
-          block.appendChild(leftHandle);
-          if (this.options.wordTiming?.enabled) this.bindWordModeSentenceHandle(leftHandle, index, row);
+          this.appendCueHandle(block, index, row, 'left');
         }
         if (sentenceHandles && segment.end <= endMs) {
-          const rightHandle = document.createElement('span');
-          rightHandle.className = 'waveform-cue-handle right';
-          rightHandle.title = localizedWaveformMessage('调节字幕的右边界（结束时间）', 'Adjust subtitle right boundary (end time)');
-          block.appendChild(rightHandle);
-          if (this.options.wordTiming?.enabled) this.bindWordModeSentenceHandle(rightHandle, index, row);
+          this.appendCueHandle(block, index, row, 'right');
         }
         this.layoutBlock(block, segment, startMs, endMs, row);
         block.dataset.track = 'main';
@@ -683,6 +675,19 @@ export function createWaveformModule(dependencies) {
     }
 
 
+    /** @this {import('./waveform-types.js').WaveformInstance} */
+    appendCueHandle(block, index, row, side) {
+      const handle = document.createElement('span');
+      handle.className = `waveform-cue-handle ${side}`;
+      handle.title = side === 'left'
+        ? localizedWaveformMessage('调节字幕的左边界（开始时间）', 'Adjust subtitle left boundary (start time)')
+        : localizedWaveformMessage('调节字幕的右边界（结束时间）', 'Adjust subtitle right boundary (end time)');
+      if (this.options.wordTiming?.enabled) this.bindWordModeSentenceHandle(handle, index, row);
+      block.appendChild(handle);
+      return handle;
+    }
+
+
     // 平移期轻量重排（账本 #22 批次 2）：句块与徽章按新窗口原位重算
     // left/width/hidden，不重建 DOM。返回 false 表示存在无法原位表达的
     // 结构差异（新窗口出现无 DOM 块的字幕、segment 丢失、句块手柄存在性
@@ -708,11 +713,20 @@ export function createWaveformModule(dependencies) {
         const sentenceHandles = !wordTimingEnabled || fullLane || selected.has(index);
         const expectLeft = sentenceHandles && wantLeft;
         const expectRight = sentenceHandles && wantRight;
-        if (expectLeft !== Boolean(block.querySelector('.waveform-cue-handle.left'))
-          || expectRight !== Boolean(block.querySelector('.waveform-cue-handle.right'))) {
-          return false;
-        }
+        const hasLeft = Boolean(block.querySelector('.waveform-cue-handle.left'));
+        const hasRight = Boolean(block.querySelector('.waveform-cue-handle.right'));
+        // 句块手柄是可原位增删的 span（命中经 closest 解析，创建走
+        // appendCueHandle 与整层重建同一结构）；segment 跨越窗口边界时
+        // 原位增删，避免每次跨边都回退全量重建。
+        if (expectLeft && !hasLeft) this.appendCueHandle(block, index, row, 'left');
+        if (expectRight && !hasRight) this.appendCueHandle(block, index, row, 'right');
+        if (!expectLeft && hasLeft) block.querySelector('.waveform-cue-handle.left')?.remove();
+        if (!expectRight && hasRight) block.querySelector('.waveform-cue-handle.right')?.remove();
         this.layoutBlock(block, segment, startMs, endMs, row);
+        // 完全滑出窗口的句块直接移除，维持「DOM 块只覆盖窗口内字幕」的
+        // 不变量（与 appendCueBlocks 的创建条件一致）；重新进入窗口走
+        // 缺块检测回退全量重建。
+        if (block.hidden) block.remove();
       }
       // 新窗口内每条可见字幕都必须已有 DOM 块；缺失 → 结构变化。
       const hideDisabled = this.options.getHideDisabled?.() || this.settings.disabledDisplay === 'hidden';
@@ -739,6 +753,17 @@ export function createWaveformModule(dependencies) {
           badge.style.left = `${((visibleStart - startMs) / duration) * 100}%`;
         }
       }
+      // 双语行的叠加轨块同样原位重排（缺失块等整行精绘时补齐，短暂滞后可接受）。
+      const overlaySegments = this.options.getSegments('overlay') || [];
+      if (overlaySegments.length) {
+        const overlayBlocks = [.../** @type {NodeListOf<HTMLElement>} */ (row.querySelectorAll('.waveform-cue-block[data-track="overlay"]'))];
+        for (const block of overlayBlocks) {
+          const segment = overlaySegments[Number(block.dataset.overlayIdx)];
+          if (!segment) return false;
+          this.layoutBlock(block, segment, startMs, endMs, row);
+          if (block.hidden) block.remove();
+        }
+      }
       return true;
     }
 
@@ -763,12 +788,19 @@ export function createWaveformModule(dependencies) {
         const entry = expected.find(candidate => candidate.index === Number(block.dataset.gapIndex));
         if (!entry) return false;
         if (boundaryEnabled) {
-          const wantLeft = entry.gap.start >= startMs;
-          const wantRight = entry.gap.end <= endMs;
-          if (wantLeft !== Boolean(block.querySelector('.waveform-gap-handle.left'))
-            || wantRight !== Boolean(block.querySelector('.waveform-gap-handle.right'))) {
-            return false;
+          // 空隙手柄同样是可原位增删的纯 span（无独立监听器）。
+          if (entry.gap.start >= startMs && !block.querySelector('.waveform-gap-handle.left')) {
+            const handle = document.createElement('span');
+            handle.className = 'waveform-gap-handle left';
+            block.appendChild(handle);
           }
+          if (entry.gap.end <= endMs && !block.querySelector('.waveform-gap-handle.right')) {
+            const handle = document.createElement('span');
+            handle.className = 'waveform-gap-handle right';
+            block.appendChild(handle);
+          }
+          if (entry.gap.start < startMs) block.querySelector('.waveform-gap-handle.left')?.remove();
+          if (entry.gap.end > endMs) block.querySelector('.waveform-gap-handle.right')?.remove();
         }
         this.layoutGapBlock(block, entry.gap, startMs, endMs);
       }

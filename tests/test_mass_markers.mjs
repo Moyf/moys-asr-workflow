@@ -15,7 +15,7 @@ const splitContext = () => ({
   window: { AsrEditorUtils: h },
   MULTI_SUBTITLE_UTILS: h,
   MaweMultiSubtitleCore: { SUBTITLE_MIN_DURATION_MS: 100 },
-  MaweSettings: { EDITOR_SETTINGS: { assSpecialSymbolRule: 'both' } },
+  MaweSettings: { EDITOR_SETTINGS: { assMode: true, assSpecialSymbolRule: 'both', assEmphasisSyntax: 'both' } },
 });
 const mergeContext = (segments) => ({
   window: { AsrEditorUtils: h },

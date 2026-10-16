@@ -222,7 +222,9 @@ export function createWaveformModule(dependencies) {
       this.basicWindowStartMs = newStart;
       if (appliedMs === 0) return;
       const row = this.renderedRows[0];
-      const canvas = row ? row.querySelector('canvas.waveform-canvas') : null;
+      const canvas = row
+        ? /** @type {HTMLCanvasElement | null} */ (row.querySelector('canvas.waveform-canvas'))
+        : null;
       const width = row ? Number(row._waveformCanvasWidth) : NaN;
       const height = row ? Number(row._waveformCanvasHeight) : NaN;
       if (this.settings.mode !== 'basic' || !row || row.dataset.basic !== 'true' || !canvas
@@ -242,6 +244,16 @@ export function createWaveformModule(dependencies) {
       }
       // 布局读取放在写样式之前，避免同帧读写强制回流。
       const rect = row.getBoundingClientRect();
+      row.dataset.startMs = String(newStart);
+      row.dataset.endMs = String(endMs);
+      const timeLabel = row.querySelector('.waveform-row-time');
+      if (timeLabel) timeLabel.textContent = `${formatCompact(newStart)} → ${formatCompact(endMs)}`;
+      // 块层先原位重排（失败 = 存在无法原位表达的结构差异，如块进出窗口）；
+      // 回退 scheduleBasicRender（rAF 合并）走全量重建，与旧路径一致。
+      if (!this.relayoutBasicOverlays(row, newStart, endMs, oldStart, oldEndMs)) {
+        this.scheduleBasicRender();
+        return;
+      }
       const dpr = Math.min(2, window.devicePixelRatio || 1);
       const backShift = Math.round(shift * dpr);
       const ctx = canvas.getContext('2d', { alpha: false });
@@ -257,19 +269,10 @@ export function createWaveformModule(dependencies) {
           back, 0, canvas.width - back, canvas.height);
       }
       ctx.restore();
-      row.dataset.startMs = String(newStart);
-      row.dataset.endMs = String(endMs);
-      const timeLabel = row.querySelector('.waveform-row-time');
-      if (timeLabel) timeLabel.textContent = `${formatCompact(newStart)} → ${formatCompact(endMs)}`;
       // 补画露出的窄条；多画 1px 盖住位图平移的取整接缝。
       const stripSpan = Math.min(width, Math.abs(shift) + 1);
       const stripX = shift > 0 ? width - stripSpan : 0;
       this.paintWaveRow(row, ctx, width, height, newStart, endMs, stripX, stripSpan, { withChips: false });
-      // 块层原位重排；结构性变化（块缺失、窗口边界手柄增删）回退全量重建。
-      if (!this.relayoutBasicOverlays(row, newStart, endMs, oldStart, oldEndMs)) {
-        this.scheduleBasicRender();
-        return;
-      }
       this.rebuildMarkerTrackForPan(row, newStart, endMs);
       this.panThumbnailStrip(row, shift, newStart, endMs, width);
       this.positionPlayheads();

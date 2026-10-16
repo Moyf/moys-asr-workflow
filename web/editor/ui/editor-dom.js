@@ -685,6 +685,8 @@
 
   const multiSubtitleExtensionRowHeightSetting = document.getElementById('multi-subtitle-extension-row-height-setting');
 
+  const multiSubtitleDisplaySection = document.getElementById('multi-subtitle-display-section');
+
 
   const multiSubtitleExtensionRowHeight = document.getElementById('multi-subtitle-extension-row-height');
 
@@ -1254,6 +1256,7 @@
     multiSubtitleMainLanguageMode,
     multiSubtitleExtensionLanguageMode,
     multiSubtitleExtensionRowHeightSetting,
+    multiSubtitleDisplaySection,
     multiSubtitleExtensionRowHeight,
     wordTimingRowHeight,
     wordTimingSecondsPerRow,
