@@ -145,6 +145,59 @@ class CjkNaturalLimitTests(unittest.TestCase):
                 texts = self.split("这里设置成" + expression + "之后再继续检查", natural=True)
                 self.assertTrue(any(expression in text for text in texts), texts)
 
+    def test_punctuation_inside_coarse_item_cannot_cut_a_protected_expression(self) -> None:
+        for pieces in (["完成。19", "99元继续"], ["完成。3.", "14元继续"],
+                       ["完成。1999", "元继续"], ["完成。Open", "AI继续"]):
+            for minimum in (1, 5):
+                for natural in (False, True):
+                    with self.subTest(pieces=pieces, minimum=minimum, natural=natural):
+                        items = CjkWordBoundaryTests.items(pieces)
+                        items[0]["speaker"] = "S01"
+                        items[1]["confidence"] = 0.9
+                        segments = split_words_to_segments(
+                            items, max_len=18, min_len=minimum,
+                            natural_target_len=13 if natural else None,
+                        )
+                        self.assertEqual([s["text"] for s in segments], ["".join(pieces)])
+                        self.assertEqual([i for s in segments for i in s["items"]], items)
+                        self.assertEqual((segments[0]["start"], segments[0]["end"]),
+                                         (items[0]["start"], items[-1]["end"]))
+
+    def test_legal_punctuation_cut_before_coarse_number_is_preserved(self) -> None:
+        items = CjkWordBoundaryTests.items(["第一句。", "完成。19", "99元继续"])
+        for natural in (False, True):
+            with self.subTest(natural=natural):
+                segments = split_words_to_segments(
+                    items, max_len=18, min_len=1,
+                    natural_target_len=13 if natural else None,
+                )
+                self.assertEqual([s["text"] for s in segments], ["第一句。", "完成。1999元继续"])
+                self.assertEqual([i for s in segments for i in s["items"]], items)
+
+    def test_coarse_protected_block_overflow_preserves_items_and_warns(self) -> None:
+        items = CjkWordBoundaryTests.items(["完成。123456", "78901234567890元"])
+        for natural in (False, True):
+            with self.subTest(natural=natural), redirect_stdout(io.StringIO()) as output:
+                segments = split_words_to_segments(
+                    items, max_len=8, min_len=1,
+                    natural_target_len=8 if natural else None,
+                )
+                self.assertEqual([s["text"] for s in segments], ["完成。12345678901234567890元"])
+                self.assertEqual([i for s in segments for i in s["items"]], items)
+                self.assertIn("超过单句上限 8 字", output.getvalue())
+
+    def test_long_pause_still_splits_coarse_number_items(self) -> None:
+        items = CjkWordBoundaryTests.items(["完成。19", "99元继续"])
+        items[1].update(start=2000, end=2450)
+        for natural in (False, True):
+            with self.subTest(natural=natural):
+                segments = split_words_to_segments(
+                    items, max_len=18, min_len=1, gap_split_ms=1000,
+                    natural_target_len=13 if natural else None,
+                )
+                self.assertEqual([s["text"] for s in segments], ["完成。19", "99元继续"])
+                self.assertEqual([i for s in segments for i in s["items"]], items)
+
     def test_real_sentence_punctuation_still_splits_after_decimal(self) -> None:
         self.assertEqual(self.split("速度是1.25倍。下一步！", 30), ["速度是1.25倍。", "下一步！"])
 

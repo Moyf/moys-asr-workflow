@@ -33,9 +33,14 @@ def punctuation_item_ends(items: list[dict], punctuation: set[str]) -> set[int]:
     result, offset = set(), 0
     for index, item in enumerate(items):
         text = item["text"]
-        if any(char in punctuation and offset + pos + 1 not in protected for pos, char in enumerate(text)):
+        # The caller cuts after the whole item, even when punctuation is inside it.
+        item_end = offset + len(text)
+        if item_end not in protected and any(
+            char in punctuation and offset + pos + 1 not in protected
+            for pos, char in enumerate(text)
+        ):
             result.add(index + 1)
-        offset += len(text)
+        offset = item_end
     return result
 
 
