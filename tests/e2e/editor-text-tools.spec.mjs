@@ -27,7 +27,9 @@ test.beforeEach(async ({ page }) => {
 async function seed(page, { text = '甲乙丙丁', timed = true, linked = false } = {}) {
   await page.evaluate(({ text, timed, linked }) => {
     MaweBoot.DATA.segments = [{ id: 'main-1', start: 1000, end: 5000, text,
-      items: timed ? Array.from(text, (text, i) => ({ text, start: 1000 + i * 1000, end: 2000 + i * 1000 })) : null }];
+      items: timed ? Array.from(text, (text, i) => ({ text,
+        start: i === 2 ? 3500 : 1000 + i * 1000,
+        end: i === 2 ? 4000 : 2000 + i * 1000 })) : null }];
     MaweBoot.DATA.multi_subtitle = { schema: 'moy.asr.multi_subtitle.v1', enabled: linked, display_mode: 'both',
       tracks: linked ? [{ id: 'ext-1', role: 'extension', name: '译文', split_mode: 'character',
         segments: [{ id: 'ext-cue', start: 1000, end: 5000, text: '一二三四' }] }] : [],
@@ -38,6 +40,58 @@ async function seed(page, { text = '甲乙丙丁', timed = true, linked = false 
     MaweCuePanel.renderAll({ waveform: 'full' });
   }, { text, timed, linked });
 }
+
+test('progressive right halves realign repeated timed suffix items from the end', async ({ page }) => {
+  const result = await page.evaluate(() => {
+    const source = { start: 1000, end: 5000, text: '甲乙甲乙', items: [
+      { text: '甲', start: 1000, end: 2000 }, { text: '乙', start: 2000, end: 3000 },
+      { text: '甲', start: 3000, end: 4000 }, { text: '乙', start: 4000, end: 5000 },
+    ] };
+    const first = MaweSplitCore.splitItemsAtChar(source, 2, 3000);
+    const right = { ...source, start: first.splitMs, items: first.rightItems };
+    const second = MaweSplitCore.splitItemsAtChar(right, 3);
+    return { first: first.rightItems.map(({ text, start, end }) => [text, start, end]),
+      splitMs: second.splitMs,
+      left: second.leftItems.map(({ text, start, end }) => [text, start, end]),
+      right: second.rightItems.map(({ text, start, end }) => [text, start, end]) };
+  });
+  expect(result.first).toEqual([['甲', 3000, 4000], ['乙', 4000, 5000]]);
+  expect(result.splitMs).toBe(4000);
+  expect(result.left).toEqual([['甲', 3000, 4000]]);
+  expect(result.right).toEqual([['乙', 4000, 5000]]);
+});
+
+test('progressive suffix timings preserve the DE|F cut in a partially timed cue', async ({ page }) => {
+  const result = await page.evaluate(() => {
+    const segment = { start: 3000, end: 6000, text: 'ABCDEF', items: [
+      { text: 'D', start: 3000, end: 4000 }, { text: 'E', start: 4000, end: 5000 },
+      { text: 'F', start: 5000, end: 6000 },
+    ] };
+    const split = MaweSplitCore.splitItemsAtChar(segment, 5);
+    return { splitMs: split.splitMs,
+      left: split.leftItems.map(({ text, start, end }) => [text, start, end]),
+      right: split.rightItems.map(({ text, start, end }) => [text, start, end]) };
+  });
+  expect(result.splitMs).toBe(5000);
+  expect(result.left).toEqual([['D', 3000, 4000], ['E', 4000, 5000]]);
+  expect(result.right).toEqual([['F', 5000, 6000]]);
+});
+
+test('progressive repeated multi-character words keep the suffix cut and timing', async ({ page }) => {
+  const result = await page.evaluate(() => {
+    const segment = { start: 3000, end: 5000, text: '上海上海前进', items: [
+      { text: '上海', start: 3000, end: 4000 },
+      { text: '前进', start: 4000, end: 5000 },
+    ] };
+    const split = MaweSplitCore.splitItemsAtChar(segment, 4);
+    return { splitMs: split.splitMs,
+      left: split.leftItems.map(({ text, start, end }) => [text, start, end]),
+      right: split.rightItems.map(({ text, start, end }) => [text, start, end]) };
+  });
+  expect(result.splitMs).toBe(4000);
+  expect(result.left).toEqual([['上海', 3000, 4000]]);
+  expect(result.right).toEqual([['前进', 4000, 5000]]);
+});
 
 for (const mode of ['progressive', 'duplicate']) {
   for (const path of ['timed', 'untimed', 'linked']) {
@@ -53,7 +107,14 @@ for (const mode of ['progressive', 'duplicate']) {
       const result = await page.evaluate(() => MaweBoot.DATA.segments);
       expect(result.map(s => s.text)).toEqual(mode === 'progressive' ? ['甲乙', '甲乙丙丁'] : ['甲乙丙丁', '甲乙丙丁']);
       expect(result.map(s => [s.start, s.end])).toEqual([[1000, 3000], [3000, 5000]]);
-      expect(result[1].items).toBeNull();
+      expect(result[1].start).toBe(result[0].end);
+      if (mode === 'duplicate') expect(result[1].items).toBeNull();
+      else if (path === 'timed') {
+        expect(result[1].items.map(({ text, start, end }) => ({ text, start, end }))).toEqual([
+          { text: '丙', start: 3500, end: 4000 },
+          { text: '丁', start: 4000, end: 5000 },
+        ]);
+      }
       if (mode === 'duplicate') expect(result[0].items).toBeNull();
       else if (path === 'timed') expect(result[0].items.map(i => i.text)).toEqual(['甲', '乙']);
       await page.locator('#undo-btn').click();
@@ -132,9 +193,10 @@ test('text processing uses the custom wrapping row and allows one-sided characte
   await seed(page);
   await page.locator('#batch-operations-btn').click();
   await page.locator('#text-process-btn').click();
-  await expect(page.locator('.text-process-wrap-preset-row-ass')).toBeHidden();
-  await expect(page.locator('#text-process-wrap-presets-common')).toContainText('♪音符♪');
-  await expect(page.locator('.text-process-wrap-preset-row-ass')).toBeHidden();
+  const assPresetRows = page.locator('.text-process-wrap-preset-row-ass');
+  await expect(assPresetRows).toHaveCount(2);
+  await expect(assPresetRows.nth(0)).toBeHidden();
+  await expect(assPresetRows.nth(1)).toBeHidden();
   await expect(page.locator('#text-process-wrap-presets-common')).toContainText('♪音符♪');
   const custom = page.locator('#text-process-wrap-presets-common').getByRole('button', { name: '自定义' });
   await custom.click();
@@ -237,6 +299,16 @@ for (const gesture of ['Shift+B', 'Control+Shift+B', 'Meta+Shift+B']) {
 }
 
 
+test('custom wrapping leaves a user-selected input focused after delayed autofocus', async ({ page }) => {
+  await seed(page);
+  await page.evaluate(async () => {
+    MaweTextProcess.openWrapCharsModal([0]);
+    document.getElementById('wrap-chars-right').focus();
+    await new Promise(resolve => setTimeout(resolve, 100));
+  });
+  await expect(page.locator('#wrap-chars-right')).toBeFocused();
+});
+
 test('expanded wrapping menu stays inside a short viewport and keeps custom wrapping reachable', async ({ page }) => {
   await seed(page);
   await page.setViewportSize({ width: 1280, height: 500 });
@@ -250,6 +322,8 @@ test('expanded wrapping menu stays inside a short viewport and keeps custom wrap
   await expect(page.locator('#wrap-chars-modal')).toHaveClass(/show/);
   await page.locator('#wrap-chars-left').fill('【');
   await page.locator('#wrap-chars-right').fill('】');
+  await expect(page.locator('#wrap-chars-left')).toHaveValue('【');
+  await expect(page.locator('#wrap-chars-right')).toHaveValue('】');
   const fields = await page.locator('.wrap-chars-field').evaluateAll(elements => elements.map(el => el.getBoundingClientRect().toJSON()));
   expect(fields[0].top).toBeCloseTo(fields[1].top, 0);
   expect(fields[1].left - fields[0].right).toBeGreaterThanOrEqual(8);
