@@ -87,6 +87,7 @@
   let audioProbeRequest = 0;
   let scriptPreviewRequest = 0;
   let splitPreviewRequest = 0;
+  let redesignUI = null;
 
   function t(key) {
     return window.MAWLauncher.translate(key);
@@ -107,14 +108,12 @@
     const display = $("postprocessTaskPrompt");
     display.textContent = prompt || t("toolbox_task_none");
     display.classList.toggle("empty", !prompt);
+    const promptLabel = document.querySelector('label[for="postprocessPrompt"]');
+    if (promptLabel) promptLabel.textContent = t(operation === "custom" ? "redesign_custom_prompt" : "toolbox_prompt");
     $("postprocessCleanupOptions")?.classList.toggle("hidden", operation !== "ai_cleanup");
     $("postprocessResegmentOptions")?.classList.toggle("hidden", operation !== "resegment");
     const translateOperation = ["translate_zh", "translate_en"].includes(operation);
     $("postprocessTranslationOptions")?.classList.toggle("hidden", !translateOperation);
-    if (translateOperation) {
-      // 切换翻译目标时行序回到该目标的默认（中文目标译文在上，英文目标原文在上）。
-      $("postprocessBilingualOrder").value = operation === "translate_en" ? "original_first" : "translation_first";
-    }
     $("postprocessBilingualOrder")?.classList.toggle("hidden", !(translateOperation && $("postprocessMergeBilingual")?.checked));
     updateBackfillLabels();
   }
@@ -319,6 +318,8 @@
     renderTaskPrompt(next);
     setFieldError("postprocessPrompt", "");
     restoreProviderForTask(next);
+    redesignUI?.select(activeToolId, next);
+    syncSharedOutputVisibility();
     renderAutoPostprocessState();
     persistAutoPlanSoon();
   }
@@ -877,20 +878,23 @@
   }
 
   function activeToolboxView() {
-    // 两个分区的 tab 导航都位于各自的 primary view 内。
-    return activeToolboxSection === "postprocess" ? $("toolboxPostprocessView") : $("toolboxUtilitiesView");
+    return $("toolboxToolNav");
   }
 
   // 「处理结果」与「模型实时输出」是各工具标签共享的区域：只随产出它的工具
   // 标签显示，切到其他标签时隐藏、切回时恢复，避免旧结果被误读成当前工具的。
   function syncSharedOutputVisibility() {
-    const visible = Boolean(toolboxResultTool) && toolboxResultTool === activeToolId;
+    const visible = Boolean(toolboxResultTool) && toolboxResultTool === toolIdentity();
     $("toolboxResult").classList.toggle("hidden", !visible);
-    $("toolboxStreamOutput").classList.toggle("hidden", !toolboxStreamTool || toolboxStreamTool !== activeToolId);
+    $("toolboxStreamOutput").classList.toggle("hidden", !toolboxStreamTool || toolboxStreamTool !== toolIdentity());
+  }
+
+  function toolIdentity(tool = activeToolId) {
+    return tool === "llm" ? `llm:${$("postprocessOperation").value}` : tool;
   }
 
   function resultOwningTool() {
-    return busy && runningToolId ? runningToolId : activeToolId;
+    return busy && runningToolId ? runningToolId : toolIdentity();
   }
 
   // 实时输出区在工具箱顶部；运行按钮在面板下方，滚动回顶让用户看到 AI 输出。
@@ -927,7 +931,8 @@
     $("toolboxUtilitiesContent").classList.toggle("hidden", section !== "utilities");
     $("toolboxUtilitiesView").classList.toggle("hidden", section !== "utilities");
     $("toolboxPanel").classList.toggle("toolbox-utilities-active", section === "utilities");
-    const activeTab = activeToolboxView().querySelector(".toolbox-tab.active:not(.hidden)") || activeToolboxView().querySelector(".toolbox-tab:not(.hidden)");
+    const activeTab = [...activeToolboxView().querySelectorAll(".toolbox-tab:not(.hidden)")].find((tab) => toolboxSectionForTool(tab.dataset.tool) === section && tab.classList.contains("active"))
+      || [...activeToolboxView().querySelectorAll(".toolbox-tab:not(.hidden)")].find((tab) => toolboxSectionForTool(tab.dataset.tool) === section);
     if (activeTab) selectTool(activeTab.dataset.tool);
   }
 
@@ -935,8 +940,11 @@
     const targetTab = [...document.querySelectorAll(".toolbox-tab")].find((tab) => tab.dataset.tool === tool);
     if (targetTab?.classList.contains("hidden")) return;
     const section = toolboxSectionForTool(tool);
-    if (section !== activeToolboxSection) selectToolboxSection(section);
     activeToolId = tool;
+    activeToolboxSection = section;
+    $("toolboxPostprocessView").classList.toggle("hidden", section !== "postprocess");
+    $("toolboxUtilitiesContent").classList.toggle("hidden", section !== "utilities");
+    $("toolboxUtilitiesView").classList.toggle("hidden", section !== "utilities");
     document.querySelectorAll(".toolbox-tab").forEach((tab) => {
       const active = tab.dataset.tool === tool;
       tab.classList.toggle("active", active);
@@ -949,18 +957,22 @@
     document.querySelectorAll("[data-tool-action]").forEach((action) => {
       action.classList.toggle("hidden", action.dataset.toolAction !== tool || toolboxOpenMode === "auto-config");
     });
-    $("toolboxInputDropZone").classList.toggle("hidden", section !== "postprocess");
-    $("toolboxUtilityMediaDropZone").classList.toggle("hidden", section !== "utilities");
+    const configOnly = toolboxOpenMode === "auto-config";
+    // Upstream split script alignment into a standalone tool; move only existing-project input.
+    if (tool === "timestamps") $("toolboxTimestampsPanel").prepend($("toolboxInputDropZone"));
+    else $("toolboxPostprocessView").prepend($("toolboxInputDropZone"));
+    $("toolboxInputDropZone").classList.toggle("hidden", section !== "postprocess" || configOnly);
+    $("toolboxUtilityMediaDropZone").classList.toggle("hidden", !["scriptAlignment", "burnSubtitle", "extractAudio", "waveform"].includes(tool) || configOnly);
     $("toolboxAudioTrackField").classList.toggle("hidden", !(section === "utilities" && ["waveform", "extractAudio"].includes(tool)));
     $("toolboxChain").classList.toggle("hidden", section !== "postprocess" || !$("toolboxChainList").children.length);
-    const configOnly = toolboxOpenMode === "auto-config";
     $("toolboxOutputField").classList.toggle("hidden", section !== "postprocess" || configOnly);
     $("toolboxConfigOnlyHint")?.classList.toggle("hidden", !configOnly);
     renderMediaToolAction();
+    redesignUI?.select(tool, $("postprocessOperation").value);
   }
 
   function moveToolFocus(event) {
-    const tools = [...event.currentTarget.closest('[role="tablist"]').querySelectorAll(".toolbox-tab:not(.hidden)")];
+    const tools = [...event.currentTarget.closest('[role="tablist"]').querySelectorAll(".toolbox-tab:not(.hidden):not(:disabled)")];
     const currentIndex = tools.indexOf(event.currentTarget);
     if (currentIndex < 0) return;
     const offset = event.key === "ArrowRight" || event.key === "ArrowDown" ? 1 : -1;
@@ -972,6 +984,7 @@
     if (!target) return;
     event.preventDefault();
     selectTool(target.dataset.tool);
+    if (target.dataset.operation) switchLlmOperation(target.dataset.operation === "translate" ? autoLlmOperation("translate") : target.dataset.operation);
     target.focus();
   }
 
@@ -1159,7 +1172,7 @@
   function setBusy(nextBusy, statusKey = "toolbox_running") {
     busy = nextBusy;
     if (nextBusy) {
-      if (!runningToolId) runningToolId = activeToolId;
+      if (!runningToolId) runningToolId = toolIdentity();
       if (!activePostprocessOperationId) {
         displayedPostprocessOperationId = "";
         resetStreamOutput();
@@ -1394,6 +1407,7 @@
         setResult(postprocessErrorText(result), "error");
         return;
       }
+      window.MAWLauncher.rememberRecentProject?.(result.projectPath);
       if (openEditor) {
         window.MAWLauncher.setJsonPath(result.projectPath);
         await window.MAWLauncher.openServerEditor();
@@ -1526,6 +1540,7 @@
   }
 
   function addChainResult(chain, result) {
+    window.MAWLauncher.rememberRecentProject?.(result.projectPath);
     const artifacts = [
       { kind: "project", path: result.projectPath },
       { kind: "srt", path: result.srtPath },
@@ -1719,8 +1734,15 @@
       return conversion === "off" ? rules : `${rules} · ${t(`toolbox_conversion_${conversion}`)}`;
     }
     if (["cleanup", "proofread", "resegment", "translate"].includes(stepId)) {
-      const operation = autoLlmOperation(stepId);
-      return truncateHint(getLlmPrompt(operation) || taskPromptText(operation)) || t("toolbox_task_none");
+      const item = provider(stepProviderId(stepId));
+      const parts = [providerLabel(item), item?.model || ""];
+      if (stepId === "resegment" && $("postprocessResegmentMaxChars").value.trim()) parts.push(t("redesign_max_chars").replace("{count}", $("postprocessResegmentMaxChars").value.trim()));
+      if (stepId === "translate") {
+        parts.push(t($("autoTranslateTarget").value === "en" ? "auto_translate_en" : "auto_translate_zh"));
+        if ($("autoTranslateMergeBilingual").checked) parts.push(t("auto_merge_bilingual"));
+      }
+      if (stepId === "cleanup" && $("postprocessCleanupScriptPath").value.trim()) parts.push(fileName($("postprocessCleanupScriptPath").value));
+      return truncateHint(parts.filter(Boolean).join(" · "));
     }
     if (stepId === "ocr") {
       const video = $("ocrVideoPath").value.trim() || autoOcrVideoPath();
@@ -1738,7 +1760,7 @@
   function autoPlanFromControls() {
     // 各 LLM 步骤用自己任务记住的供应商（见 stepProviderId）；没有记录时沿用当前选中项。
     const ocr = ocrRegionPayload();
-    return {
+    const plan = {
       version: 2,
       enabled: Boolean($("autoPostprocessEnabled")?.checked),
       retainIntermediate: Boolean($("autoPostprocessRetain")?.checked),
@@ -1754,6 +1776,8 @@
         { id: "burn", enabled: Boolean($("autoStepBurn")?.checked), videoEncoder: "auto" },
       ],
     };
+    plan.steps.forEach((step) => { if (redesignUI && !redesignUI.isVisible(step.id)) step.enabled = false; });
+    return plan;
   }
 
   function autoLlmReady(providerId) {
@@ -1908,7 +1932,9 @@
       }
       row?.classList.toggle("needs-config", available && enabled && !ready);
       row?.classList.toggle("batch-unavailable", !available);
+      row?.classList.toggle("on", enabled && available);
     });
+    redesignUI?.refresh();
     const enabled = Boolean($("autoPostprocessEnabled")?.checked);
     $("autoPostprocessOptions")?.classList.toggle("hidden", !enabled);
     const translateEnabled = Boolean($("autoStepTranslate")?.checked);
@@ -1987,9 +2013,12 @@
   }
 
   function openAutoStep(stepId, invalidField = "", { highlightConnection = false } = {}) {
+    if (!AUTO_STEP_ORDER.includes(stepId)) return;
     pendingAutoStep = stepId;
     pendingAutoStepRequest = {};
     const llmStep = ["cleanup", "proofread", "resegment", "translate"].includes(stepId);
+    // LLM 步骤没有可用供应商时必须先去设置页补配置；
+    // 回落打开抽屉会把焦点错误地落在「追加要求」上。
     if (llmStep && !autoLlmReady(stepProviderId(stepId))) {
       // 弹窗展示并验证的就是门槛检查的供应商，避免「验证了 A、拦截的仍是 B」。
       const checkedProviderId = stepProviderId(stepId);
@@ -2008,10 +2037,8 @@
       return;
     }
     toolboxOpenMode = "auto-config";
-    setOpen(true);
-    selectTool(AUTO_STEP_TOOLS[stepId] || "match");
     setAutoStepsExpanded(true);
-    selectAutoLlmOperation(stepId);
+    redesignUI.open(stepId);
     const fieldId = invalidField || autoStepFocusField(stepId);
     focusAutoField(fieldId);
   }
@@ -2410,6 +2437,11 @@
     $("llmModel").value = item.model;
     fillProviderSelects(item.id);
     if (result.verified) bindPendingStepProvider(item.id, pendingRequest);
+    if (!pendingRequest && activeToolId === "llm") {
+      $("postprocessProvider").value = item.id;
+      rememberProviderForTask(activeLlmOperation, item.id);
+      persistAutoPlanSoon();
+    }
     renderProviderKeyStatus(item);
     renderAutoPostprocessState();
     maybeEnablePendingAutoStep(pendingRequest);
@@ -2447,6 +2479,11 @@
         $("llmModel").value = item.model;
         fillProviderSelects(item.id);
         bindPendingStepProvider(item.id, pendingRequest);
+        if (!pendingRequest && activeToolId === "llm") {
+          $("postprocessProvider").value = item.id;
+          rememberProviderForTask(activeLlmOperation, item.id);
+          persistAutoPlanSoon();
+        }
         renderProviderKeyStatus(item);
         setSettingsSaveStatus(result.saved ? t("llm_connection_saved") : t("llm_connection_success"), "success");
         renderAutoPostprocessState();
@@ -2819,10 +2856,36 @@
     renderAlignmentAction();
     renderMediaToolAction();
     initializeAutoPostprocess();
+    redesignUI.initialize(config.postprocessAutoPlan || defaultAutoPlan());
+    syncTranslationControls("auto", { persist: false });
     void restoreBurnSubtitleSettings();
     syncGreenScreenSizeFieldState();
   }
 
+  redesignUI = window.MAWLauncher.createPostprocessUI({
+    steps: AUTO_STEP_ORDER, checkboxes: AUTO_STEP_CHECKBOXES, tools: AUTO_STEP_TOOLS, panels,
+    label: autoStepLabel, ready: autoStepReady, selectTool, switchOperation: switchLlmOperation,
+    render: renderAutoPostprocessState, persist: persistAutoPlanSoon,
+    onClose: () => { toolboxOpenMode = "manual"; pendingAutoStep = ""; },
+  });
+  function syncTranslationControls(source, { persist = true } = {}) {
+    const pairs = [["autoTranslateMergeBilingual", "postprocessMergeBilingual"], ["autoTranslateBackfill", "postprocessBackfill"], ["autoTranslateBilingualOrder", "postprocessBilingualOrder"]];
+    pairs.forEach(([autoId, toolId]) => {
+      const from = $(source === "auto" ? autoId : toolId);
+      const to = $(source === "auto" ? toolId : autoId);
+      if (from.type === "checkbox") to.checked = from.checked;
+      else to.value = from.value;
+    });
+    renderTaskPrompt();
+    renderAutoPostprocessState();
+    if (persist) persistAutoPlanSoon();
+  }
+  ["postprocessMergeBilingual", "postprocessBackfill", "postprocessBilingualOrder"].forEach((id) => $(id).addEventListener("change", () => {
+    // 互斥处理先于同步，避免回填与合并同时进入计划。
+    if (id === "postprocessMergeBilingual" && $(id).checked) $("postprocessBackfill").checked = false;
+    if (id === "postprocessBackfill" && $(id).checked) $("postprocessMergeBilingual").checked = false;
+    syncTranslationControls("tool");
+  }));
   $("toolboxBackToTranscribe").addEventListener("click", () => setOpen(false));
   document.querySelectorAll("[data-toolbox-section]").forEach((tab) => {
     tab.addEventListener("click", () => selectToolboxSection(tab.dataset.toolboxSection));
@@ -2839,7 +2902,10 @@
     });
   });
   document.querySelectorAll(".toolbox-tab").forEach((tab) => {
-    tab.addEventListener("click", () => selectTool(tab.dataset.tool));
+    tab.addEventListener("click", () => {
+      selectTool(tab.dataset.tool);
+      if (tab.dataset.operation) switchLlmOperation(tab.dataset.operation === "translate" ? autoLlmOperation("translate") : tab.dataset.operation);
+    });
     tab.addEventListener("keydown", (event) => {
       if (["ArrowRight", "ArrowDown", "ArrowLeft", "ArrowUp", "Home", "End"].includes(event.key)) moveToolFocus(event);
     });
@@ -3065,25 +3131,24 @@
     persistAutoPlanSoon();
   });
   $("autoPostprocessRetain").addEventListener("change", () => { renderAutoPostprocessState(); persistAutoPlanSoon(); });
-  $("autoPostprocessStepsToggle").addEventListener("click", () => {
-    const expanded = $("autoPostprocessStepsCard").classList.contains("collapsed");
-    setAutoStepsExpanded(expanded);
-  });
   $("autoTranslateTarget").addEventListener("change", () => {
     if (["translate_zh", "translate_en"].includes(activeLlmOperation)) switchLlmOperation(autoLlmOperation("translate"));
     // 切换翻译目标时行序回到该目标的默认，回填文案跟随目标语言。
     $("autoTranslateBilingualOrder").value = $("autoTranslateTarget").value === "en" ? "original_first" : "translation_first";
     updateBackfillLabels();
+    syncTranslationControls("auto");
   });
   $("autoTranslateMergeBilingual").addEventListener("change", () => {
     if ($("autoTranslateMergeBilingual").checked) $("autoTranslateBackfill").checked = false;
     renderAutoPostprocessState();
     persistAutoPlanSoon();
+    syncTranslationControls("auto");
   });
   $("autoTranslateBackfill").addEventListener("change", () => {
     if ($("autoTranslateBackfill").checked) $("autoTranslateMergeBilingual").checked = false;
     renderAutoPostprocessState();
     persistAutoPlanSoon();
+    syncTranslationControls("auto");
   });
   $("postprocessMergeBilingual").addEventListener("change", () => {
     if ($("postprocessMergeBilingual").checked) $("postprocessBackfill").checked = false;
@@ -3198,6 +3263,7 @@
     selectTool("llm");
   };
   window.MAWLauncher.openToolbox = () => {
+    redesignUI.close({ focus: false });
     toolboxOpenMode = "manual";
     setOpen(true);
   };

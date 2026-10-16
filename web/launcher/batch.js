@@ -147,7 +147,10 @@
 
       const actions = document.createElement("div");
       actions.className = "batch-row-actions";
-      if (item.result?.jsonPath) actions.append(actionButton("batch_open_project", () => window.MAWLauncher.callBackend("open_file", { path: item.result.jsonPath })));
+      if (item.result?.jsonPath) actions.append(actionButton("batch_open_project", () => {
+        window.MAWLauncher.setJsonPath(item.result.jsonPath);
+        void window.MAWLauncher.openServerEditor();
+      }));
       if (item.result?.videoPath) actions.append(actionButton("batch_open_video", () => window.MAWLauncher.callBackend("open_file", { path: item.result.videoPath })));
       if (item.result?.srtPath || item.result?.jsonPath || item.result?.videoPath) {
         const resultPath = item.result.videoPath || item.result.jsonPath || item.result.srtPath;
@@ -164,6 +167,10 @@
     });
     $("batchEmpty").classList.toggle("hidden", state.items.length > 0);
     $("batchQueueCount").textContent = String(state.items.length);
+    const badge = $("navBatchCount");
+    badge.textContent = String(state.items.length);
+    badge.classList.toggle("hidden", !state.running || !state.items.length);
+    $("batchDropZone").setAttribute("aria-disabled", String(state.running));
     $("batchClear").disabled = state.running || state.items.length === 0;
     $("startBatch").disabled = state.running || state.items.length === 0;
   }
@@ -203,7 +210,7 @@
   }
 
   function lockControls(locked) {
-    ["mediaCard", "recognitionCard", "autoPostprocessCard"].forEach((id) => {
+    ["mediaCard", "recognitionCard", "autoPostprocessCard", "batchQueueCard"].forEach((id) => {
       $(id).querySelectorAll("button, input, select, textarea").forEach((control) => {
         control.disabled = locked;
       });
@@ -225,12 +232,11 @@
     $("singleMode").setAttribute("aria-pressed", String(!batch));
     $("batchMode").classList.toggle("active", batch);
     $("batchMode").setAttribute("aria-pressed", String(batch));
-    $("singleMediaFields").classList.toggle("hidden", batch);
-    $("batchMediaFields").classList.toggle("hidden", !batch);
+    $("batchMediaFields").classList.remove("hidden");
     $("start").classList.toggle("hidden", batch);
     $("startBatch").classList.toggle("hidden", !batch);
     $("modeHint").textContent = t(batch ? "mode_batch_hint" : "mode_single_hint");
-    $("dropZone").textContent = t(batch ? "batch_drop_zone" : "drop_hint");
+    // 批量有独立拖放区；不能覆写单文件拖放按钮的图标与多行文案。
     $("batchManuscriptNotice").classList.toggle("hidden", !batch);
     window.MAWLauncher.onBatchModeChanged?.(batch);
     window.MAWLauncher.onTranscribeModeChanged?.(mode);
@@ -328,6 +334,7 @@
       const detail = event.error || event.detail || nested.error || nested.detail || "";
       const code = event.code || nested.code || "";
       const nextStatus = event.status || nested.status || (item.result ? "done" : item.status);
+      if (nextStatus === "done" && item.result?.jsonPath) window.MAWLauncher.rememberRecentProject?.(item.result.jsonPath);
       if (nextStatus === "running") {
         $("status").textContent = t("batch_progress").replace("{current}", String(item.index + 1)).replace("{total}", String(state.progress.total)).replace("{name}", fileName(item.mediaPath));
         window.MAWLauncher.appendLog?.($("status").textContent);
@@ -349,6 +356,7 @@
         const htmlPath = outcome.htmlPath || outcome.html_path || result.htmlPath || result.html_path || "";
         const videoPath = outcome.videoPath || outcome.video_path || result.videoPath || result.video_path || "";
         if (srtPath || jsonPath || htmlPath || videoPath) item.result = { srtPath, jsonPath, htmlPath, videoPath };
+        if (outcome.status === "done" && jsonPath) window.MAWLauncher.rememberRecentProject?.(jsonPath);
         item.status = outcome.status || item.status;
         setItemDetail(item, outcome.error || outcome.detail || "", outcome.code || "");
       });
@@ -393,9 +401,17 @@
     $("startBatch").addEventListener("click", startBatch);
     $("stopBatch").addEventListener("click", stopBatch);
     $("mediaCard").addEventListener("drop", handleDrop, true);
+    $("batchQueueCard").addEventListener("drop", handleDrop, true);
     window.MAWLauncher.onBatchEvent = handleBatchEvent;
     window.MAWLauncher.setTranscribeMode = setMode;
     window.MAWLauncher.getTranscribeMode = () => state.mode;
+    window.MAWLauncher.addBatchPaths = (paths) => {
+      if (state.running) return false;
+      setMode("batch");
+      window.MAWLauncher.showPage("batch");
+      addPaths(paths);
+      return true;
+    };
     window.MAWLauncher.onBatchDrop = (path) => {
       if (state.mode !== "batch" || state.running || !path) return false;
       addPaths([path]);

@@ -90,6 +90,7 @@ async function openServerEditor() {
     if (result.ok) {
       $("serverMediaPath").value = "";
       serverRestartProjectPath = null;
+      if (projectPath && !result.serverAlreadyRunning) launcherProjects?.remember(projectPath);
       state.serverRunning = !result.serverAlreadyRunning;
       state.serverProjectPath = state.serverRunning ? projectPath : "";
       state.detectedServerUrl = result.serverAlreadyRunning ? result.url || "" : "";
@@ -175,5 +176,7 @@ async function init() {
   setStatus(t("ready"));
   revealLauncher();
   window.dispatchEvent(new CustomEvent("mawlauncherready"));
+  initializeLauncherWorkflow();
+  initializeLauncherProjects();
   refreshStartupState();
 }

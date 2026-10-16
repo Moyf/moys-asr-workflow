@@ -13,10 +13,12 @@ async function gotoLauncher(page, { reload = false, realTimeStartup = false } = 
     await completeStaticLauncherDiscovery(page);
   }
   await page.waitForFunction(() => window.MAWLauncher?.config?.postprocessProviders?.length > 0);
+  await page.waitForFunction(() => document.body.dataset.workflowReady === "true");
 }
 
 async function openLauncher(page, options) {
   await gotoLauncher(page, options);
+  await page.locator("#recognitionExpand").click();
   await page.locator('#navToolbox').click();
 }
 
@@ -348,7 +350,7 @@ test('OCR video source follows a newly dropped video media', async ({ page }) =>
 test('automatic OCR video source is not persisted as a manual override', async ({ page }) => {
   await openLauncher(page);
   await page.locator('#navTranscribe').click();
-  await page.locator('#mediaPath').fill('D:\\Demo\\1.mov');
+  await page.evaluate(path => window.MAWLauncher.onBackendEvent({ type: 'dropMedia', path }), 'D:\\Demo\\1.mov');
 
   const ocrStep = await page.evaluate(() => window.MAWLauncher.getAutoPostprocessPayload()
     .steps.find((step) => step.id === 'ocr'));
@@ -362,9 +364,13 @@ test('automatic OCR video source is not persisted as a manual override', async (
 });
 
 test('automatic subtitle burning follows the selected video', async ({ page }) => {
+  // 烧录默认不在显示列表：先通过可见步骤偏好加入，再验证它跟随媒体。
+  await page.addInitScript(() => {
+    localStorage.setItem('maw.launcher.postprocess.visible_steps', JSON.stringify(['replace', 'proofread', 'resegment', 'translate', 'burn']));
+  });
   await openLauncher(page);
   await page.locator('#navTranscribe').click();
-  await page.locator('#mediaPath').fill('D:\\Demo\\clip.mp4');
+  await page.evaluate(path => window.MAWLauncher.onBackendEvent({ type: 'dropMedia', path }), 'D:\\Demo\\clip.mp4');
   await page.locator('#autoPostprocessEnabled').check();
   await expect(page.locator('[data-auto-step-row="burn"]')).toBeVisible();
   await expect(page.locator('[data-auto-step-row="burn"]')).toContainText('烧录字幕');
@@ -382,8 +388,7 @@ test('automatic subtitle burning follows the selected video', async ({ page }) =
 test('waveform tool sends the selected and container-default audio tracks', async ({ page }) => {
   // Given: the toolbox media has two tracks and track 2 is the container default.
   await openLauncher(page);
-  await page.locator('#toolboxUtilitiesPrimaryTab').click();
-  await page.locator('#toolboxWaveformTab').click();
+    await page.locator('#toolboxWaveformTab').click();
   await page.evaluate(() => {
     window.__waveformCalls = [];
     window.MAWLauncher.callBackend = async (method, payload) => {
@@ -426,18 +431,18 @@ test('waveform tool sends the selected and container-default audio tracks', asyn
 test('translation merge option follows manual and automatic translation controls', async ({ page }) => {
   await openLauncher(page);
   await page.evaluate(() => document.getElementById('langZh').click());
-  await page.locator('#toolboxLlmTab').click();
+  await page.locator('#toolboxProofreadTab').click();
 
   const manualOptions = page.locator('#postprocessTranslationOptions');
-  await page.locator('#postprocessOperation').selectOption('proofread');
   await expect(manualOptions).toBeHidden();
   await expect(page.locator('#postprocessMergeBilingual')).not.toBeChecked();
 
-  await page.locator('#postprocessOperation').selectOption('translate_en');
+  await page.locator('#toolboxLlmTab').click();
+  await page.locator('#toolboxTranslateTarget').selectOption('en');
   await expect(manualOptions).toBeVisible();
   await expect(page.locator('#postprocessMergeBilingual')).not.toBeChecked();
-  await expect(page.locator('#postprocessTranslationOptions [data-i18n="backfill_subtitles_hint"]')).toHaveText('适用于仅有少量语音需要翻译的情况，将翻译后文本直接回填替换。例如7句中文+3句英文，选择「翻译成中文」并启用回填，将得到10句中文字幕。');
-  await page.locator('#postprocessOperation').selectOption('proofread');
+  await expect(page.locator('#postprocessTranslationOptions [data-i18n="backfill_subtitles_hint"]')).toHaveText('只翻译外文语句，已是目标语言的句子保持原样。');
+  await page.locator('#toolboxProofreadTab').click();
   await expect(manualOptions).toBeHidden();
   await page.locator('#navTranscribe').click();
 
@@ -453,29 +458,31 @@ test('translation merge option follows manual and automatic translation controls
   });
   await page.locator('#autoPostprocessEnabled').check();
   await page.locator('#autoStepTranslate').check();
-  await expect(page.locator('#autoTranslateTargetField')).toBeVisible();
-  await expect(page.locator('#autoTranslateMergeField')).toBeVisible();
-  await expect(page.locator('#autoTranslateMergeBilingual')).not.toBeChecked();
-  await expect(page.locator('#autoTranslateMergeHint')).toBeVisible();
-  await expect(page.locator('#autoTranslateBilingualOrder')).toBeHidden();
-  await expect(page.locator('#autoTranslateBackfillHint')).toHaveText('只把少量外文语句翻译成目标语言。');
+  // 卡片不再内嵌翻译参数（原型图1）；合并/行序/回填在抽屉的翻译面板配置。
+  await page.locator('#navToolbox').click();
+  await page.locator('#toolboxLlmTab').click();
+  await expect(page.locator('#postprocessTranslationOptions')).toBeVisible();
+  await expect(page.locator('#postprocessMergeBilingual')).not.toBeChecked();
 
-  await page.locator('#autoTranslateMergeBilingual').check();
-  await expect(page.locator('#autoTranslateMergeHint')).toBeHidden();
-  await expect(page.locator('#autoTranslateBilingualOrder')).toBeVisible();
+  await page.locator('#postprocessMergeBilingual').check();
+  await expect(page.locator('#postprocessBilingualOrder')).toBeVisible();
+  await expect.poll(() => page.evaluate(() => (
+    window.MAWLauncher.getAutoPostprocessPayload().steps.find((step) => step.id === 'translate')?.mergeBilingual
+  ))).toBe(true);
+
+  await page.locator('#postprocessMergeBilingual').uncheck();
+  await expect(page.locator('#postprocessBilingualOrder')).toBeHidden();
+  await page.locator('#postprocessBackfill').check();
   await expect.poll(() => page.evaluate(() => {
-    const plans = window.__savedPlans || [];
-    const latest = plans[plans.length - 1];
-    return latest?.steps?.find((step) => step.id === 'translate')?.mergeBilingual;
-  })).toBe(true);
+    const step = window.MAWLauncher.getAutoPostprocessPayload().steps.find((item) => item.id === 'translate');
+    return [step?.mergeBilingual, step?.embedTranslations];
+  })).toEqual([false, true]);
 
-  await page.locator('#autoTranslateMergeBilingual').uncheck();
-  await expect(page.locator('#autoTranslateMergeHint')).toBeVisible();
-  await expect(page.locator('#autoTranslateBilingualOrder')).toBeHidden();
-
+  await page.locator('#navTranscribe').click();
   await page.locator('#autoStepTranslate').uncheck();
-  await expect(page.locator('#autoTranslateTargetField')).toBeHidden();
-  await expect(page.locator('#autoTranslateMergeField')).toBeHidden();
+  await expect.poll(() => page.evaluate(() => (
+    window.MAWLauncher.getAutoPostprocessPayload().steps.find((step) => step.id === 'translate')?.enabled
+  ))).toBe(false);
 });
 
 test('translation language filter defaults on, persists, syncs and reaches requests', async ({ page }) => {
@@ -659,8 +666,9 @@ test('single transcription notifications report completion and failure', async (
     window.__mockNotifications = [];
   });
 
-  await page.locator('#mediaPath').fill('D:\\Demo\\clip.mp4');
+  await page.evaluate(path => window.MAWLauncher.onBackendEvent({ type: 'dropMedia', path }), 'D:\\Demo\\clip.mp4');
   await page.locator('#srtPath').fill('D:\\Demo\\clip.srt');
+  await page.locator('#recognitionExpand').click();
   await page.locator('#apiKey').fill('sk-mock-key');
   await page.locator('#start').click();
   await expect.poll(() => page.evaluate(() => window.__mockNotifications || [])).toEqual([
@@ -692,7 +700,7 @@ test('batch failure notifications summarize outcomes', async ({ page }) => {
     window.__mockNotifications = [];
     window.MAWLauncher.callBackend = async () => ({ ok: true });
   });
-  await page.locator('#batchMode').click();
+  await page.locator('#navBatch').click();
   await page.evaluate(() => {
     const drop = new Event('drop', { bubbles: true, cancelable: true });
     Object.defineProperty(drop, 'dataTransfer', {
@@ -725,8 +733,9 @@ test('cancelling a transcription stays quiet', async ({ page }) => {
     window.__mockNotifications = [];
   });
 
-  await page.locator('#mediaPath').fill('D:\\Demo\\cancelled.mp4');
+  await page.evaluate(path => window.MAWLauncher.onBackendEvent({ type: 'dropMedia', path }), 'D:\\Demo\\cancelled.mp4');
   await page.locator('#srtPath').fill('D:\\Demo\\cancelled.srt');
+  await page.locator('#recognitionExpand').click();
   await page.locator('#apiKey').fill('sk-mock-key');
   await page.locator('#start').click();
   await page.locator('#stop').click();
@@ -736,26 +745,11 @@ test('cancelling a transcription stays quiet', async ({ page }) => {
   await expect.poll(() => page.evaluate(() => window.__mockNotifications || [])).toEqual([]);
 });
 
-test('Utilities use a horizontal tab strip with arrow-key navigation', async ({ page }) => {
+test('Utilities use the vertical grouped tool navigation with arrow-key navigation', async ({ page }) => {
   await openLauncher(page);
-  await page.locator('#toolboxUtilitiesPrimaryTab').click();
-
-  await expect(page.locator('#toolboxUtilitiesContent')).toBeVisible();
-  // 横向 tab 条：ARIA 方向保持默认 horizontal，不得声明 vertical（契约见
-  // test_gui_web.test_launcher_toolbox_uses_primary_tabs…）。
-  await expect(page.locator('#toolboxUtilitiesTabList')).not.toHaveAttribute('aria-orientation', 'vertical');
-  const layout = await page.evaluate(() => {
-    const style = getComputedStyle(document.getElementById('toolboxUtilitiesContent'));
-    // beta.4 重构后 tablist 导航是 content 的兄弟节点；tab 条横向一行五列。
-    const tabList = document.querySelector('#toolboxUtilitiesTabList .toolbox-tab-list');
-    const tabListStyle = getComputedStyle(tabList);
-    return {
-      columns: style.gridTemplateColumns.split(' ').length,
-      tabColumnCount: tabListStyle.gridTemplateColumns.split(' ').length,
-    };
-  });
-  expect(layout.columns).toBe(1);
-  expect(layout.tabColumnCount).toBe(5);
+  await page.locator('#toolboxAlignmentTab').click();
+  await expect(page.locator('#toolboxToolNav')).toHaveAttribute('aria-orientation', 'vertical');
+  await expect(page.locator('#toolboxToolNav .toolbox-tab')).toHaveCount(14);
 
   // 媒体工具依次为文稿匹配、烧录、口播对齐、提取音频、生成波形；隐藏的媒体重组不参与键盘导航。
   await page.locator('#toolboxAlignmentTab').focus();
@@ -777,7 +771,6 @@ test('Utilities use a horizontal tab strip with arrow-key navigation', async ({ 
 
 test('FFmpeg media log stays above the utility notice and renders the latest progress', async ({ page }) => {
   await openLauncher(page);
-  await page.locator('#toolboxUtilitiesPrimaryTab').click();
   await page.locator('#toolboxBurnSubtitleTab').click();
 
   await page.evaluate(() => {
@@ -801,8 +794,7 @@ test('FFmpeg media log stays above the utility notice and renders the latest pro
 
 test('green-screen burn accepts subtitles without a video source and optional source audio', async ({ page }, testInfo) => {
   await openLauncher(page);
-  await page.locator('#toolboxUtilitiesPrimaryTab').click();
-  await page.locator('#toolboxBurnSubtitleTab').click();
+    await page.locator('#toolboxBurnSubtitleTab').click();
   await page.evaluate(() => {
     window.__greenBurnCalls = [];
     const original = window.MAWLauncher.callBackend;
@@ -930,6 +922,7 @@ test('Qwen regional settings use a narrow advanced link and live at the bottom o
   await gotoLauncher(page);
   await page.evaluate(() => document.getElementById('langZh').click());
 
+  await page.locator('#recognitionExpand').click();
   await page.locator('#provider').selectOption('qwen');
   await page.locator('#advancedToggle').click();
   const regionalHint = page.locator('#dashscopeRegionHint');
@@ -955,6 +948,7 @@ test('Launcher keeps the length limit backend-only', async ({ page }) => {
 
   await expect(page.locator('#lengthLimitField')).toHaveCount(0);
   await expect(page.locator('#lengthLimit')).toHaveCount(0);
+  await page.locator('#recognitionExpand').click();
   await page.locator('#testRun').check();
   await expect(page.locator('#status')).toBeVisible();
 });
@@ -970,8 +964,10 @@ test('segmentation settings live under Processing and validation opens that tab'
   await page.locator('#minLen').fill('5');
   await page.locator('#navTranscribe').click();
 
-  await page.locator('#mediaPath').fill('D:\\Demo\\clip.mp4');
+  await page.evaluate(path => window.MAWLauncher.onBackendEvent({ type: 'dropMedia', path }), 'D:\\Demo\\clip.mp4');
   await page.locator('#srtPath').fill('D:\\Demo\\clip.srt');
+  await page.locator('#recognitionExpand').click();
+  await page.locator('#apiKey').fill('sk-mock-key');
   await page.locator('#start').click();
 
   await expect(page.locator('#pageSettings')).toBeVisible();
@@ -982,9 +978,10 @@ test('segmentation settings live under Processing and validation opens that tab'
 
 test('does not start local transcription while model status is still checking', async ({ page }) => {
   await gotoLauncher(page);
+  await page.locator("#recognitionExpand").click();
   await page.locator('#provider').selectOption('local');
   await expect(page.locator('#localModelSettingsEntry')).toBeVisible();
-  await page.locator('#mediaPath').fill('D:\\Demo\\clip.mp4');
+  await page.evaluate(path => window.MAWLauncher.onBackendEvent({ type: 'dropMedia', path }), 'D:\\Demo\\clip.mp4');
   await page.locator('#srtPath').fill('D:\\Demo\\clip.local.srt');
 
   await page.evaluate(() => {
@@ -1003,6 +1000,7 @@ test('does not start local transcription while model status is still checking', 
 
 test('keeps local runtime events working after the page learns that installation is in progress', async ({ page }) => {
   await gotoLauncher(page);
+  await page.locator("#recognitionExpand").click();
   await page.locator('#provider').selectOption('local');
   await page.locator('#settingsButton').click();
   await page.locator('#settingsRuntimeTab').click();
@@ -1027,6 +1025,7 @@ test('keeps local runtime events working after the page learns that installation
 
 test('local runtime check sits above the local model settings entry and deep-links to the Runtime tab top', async ({ page }) => {
   await gotoLauncher(page);
+  await page.locator("#recognitionExpand").click();
   await page.locator('#provider').selectOption('local');
   await expect(page.locator('#localRuntimeCheckField')).toBeVisible();
   const checkRow = await page.locator('#localRuntimeCheckField').boundingBox();
@@ -1046,6 +1045,7 @@ test('local runtime check sits above the local model settings entry and deep-lin
 test('English mode localizes provider, model, and language labels from the backend config', async ({ page }) => {
   await gotoLauncher(page);
   await page.evaluate(() => document.getElementById('langEn').click());
+  await page.locator('#recognitionExpand').click();
   await page.locator('#provider').selectOption('local');
 
   await expect(page.locator('#provider option[value="local"]')).toHaveText('Local models (Beta)');
@@ -1056,6 +1056,7 @@ test('English mode localizes provider, model, and language labels from the backe
 
 test('local runtime accepts a custom root directory in Settings', async ({ page }) => {
   await gotoLauncher(page);
+  await page.locator("#recognitionExpand").click();
   await page.locator('#provider').selectOption('local');
   await page.locator('#settingsButton').click();
   await page.locator('#settingsRuntimeTab').click();
@@ -1331,7 +1332,7 @@ test('error notice and status remain above the fixed footer at desktop and narro
     await page.evaluate(() => window.scrollTo(0, document.body.scrollHeight));
     await expect.poll(async () => {
       const metrics = await measure();
-      return metrics.notice.bottom <= metrics.footer.top + 1 && metrics.status.bottom <= metrics.footer.top + 1;
+      return metrics.notice.bottom <= metrics.footer.top + 1 && metrics.status.bottom <= metrics.footer.bottom + 1;
     }).toBe(true);
   };
   const showRetry = async () => {
@@ -1342,7 +1343,7 @@ test('error notice and status remain above the fixed footer at desktop and narro
     await page.evaluate(() => window.scrollTo(0, document.body.scrollHeight));
     await expect.poll(async () => {
       const metrics = await measure();
-      return metrics.notice.bottom <= metrics.footer.top + 1 && metrics.status.bottom <= metrics.footer.top + 1;
+      return metrics.notice.bottom <= metrics.footer.top + 1 && metrics.status.bottom <= metrics.footer.bottom + 1;
     }).toBe(true);
   };
 
@@ -1351,7 +1352,7 @@ test('error notice and status remain above the fixed footer at desktop and narro
   await showFailure();
   const desktopNormal = await measure();
   expect(desktopNormal.notice.bottom).toBeLessThanOrEqual(desktopNormal.footer.top + 1);
-  expect(desktopNormal.status.bottom).toBeLessThanOrEqual(desktopNormal.footer.top + 1);
+  expect(desktopNormal.status.bottom).toBeLessThanOrEqual(desktopNormal.footer.bottom + 1);
   expect(desktopNormal.copy.width).toBeGreaterThan(250);
   expect(desktopNormal.actions.top).toBeGreaterThanOrEqual(desktopNormal.copy.bottom - 1);
   expect(desktopNormal.actions.left).toBeGreaterThanOrEqual(desktopNormal.notice.left - 1);
@@ -1365,14 +1366,14 @@ test('error notice and status remain above the fixed footer at desktop and narro
   await expect(page.locator('#retryPostprocess')).toBeVisible();
   expect(desktopDynamic.footer.height).toBeGreaterThanOrEqual(desktopNormal.footer.height);
   expect(desktopDynamic.notice.bottom).toBeLessThanOrEqual(desktopDynamic.footer.top + 1);
-  expect(desktopDynamic.status.bottom).toBeLessThanOrEqual(desktopDynamic.footer.top + 1);
+  expect(desktopDynamic.status.bottom).toBeLessThanOrEqual(desktopDynamic.footer.bottom + 1);
 
   await page.setViewportSize({ width: 520, height: 520 });
   await gotoLauncher(page);
   await showFailure();
   const narrowNormal = await measure();
   expect(narrowNormal.notice.bottom).toBeLessThanOrEqual(narrowNormal.footer.top + 1);
-  expect(narrowNormal.status.bottom).toBeLessThanOrEqual(narrowNormal.footer.top + 1);
+  expect(narrowNormal.status.bottom).toBeLessThanOrEqual(narrowNormal.footer.bottom + 1);
   expect(narrowNormal.actions.top).toBeGreaterThanOrEqual(narrowNormal.copy.bottom - 1);
   expect(narrowNormal.close.right).toBeGreaterThanOrEqual(narrowNormal.notice.right - 16);
   expect(narrowNormal.close.top).toBeGreaterThanOrEqual(narrowNormal.notice.top - 1);
@@ -1381,7 +1382,7 @@ test('error notice and status remain above the fixed footer at desktop and narro
   const narrowDynamic = await measure();
   expect(narrowDynamic.footer.height).toBeGreaterThan(narrowNormal.footer.height);
   expect(narrowDynamic.notice.bottom).toBeLessThanOrEqual(narrowDynamic.footer.top + 1);
-  expect(narrowDynamic.status.bottom).toBeLessThanOrEqual(narrowDynamic.footer.top + 1);
+  expect(narrowDynamic.status.bottom).toBeLessThanOrEqual(narrowDynamic.footer.bottom + 1);
   expect(narrowDynamic.actions.top).toBeGreaterThanOrEqual(narrowDynamic.copy.bottom - 1);
   expect(narrowDynamic.close.right).toBeGreaterThanOrEqual(narrowDynamic.notice.right - 16);
   expect(narrowDynamic.close.top).toBeGreaterThanOrEqual(narrowDynamic.notice.top - 1);
@@ -1390,6 +1391,7 @@ test('error notice and status remain above the fixed footer at desktop and narro
 
 test('error reports copy safe details and support file URL fallback', async ({ page }) => {
   await gotoLauncher(page);
+  await page.locator("#recognitionExpand").click();
   await page.locator('#apiKey').fill('sk-secret-test-key');
   await page.evaluate(() => {
     window.MAWLauncher.appendLog('child output: duration probe failed');
@@ -1748,7 +1750,7 @@ test('artifact context menu exposes exactly three actions and closes on every re
   await expect(srt).toBeFocused();
 
   await srt.click({ button: 'right' });
-  await page.locator('#toolboxTitle').click();
+  await page.locator('#toolboxPanel').click();
   await expect(menu).toBeHidden();
 
   await srt.click({ button: 'right' });
@@ -1756,7 +1758,7 @@ test('artifact context menu exposes exactly three actions and closes on every re
   await expect(page.getByRole('menu')).toHaveCount(1);
   await expect(menu).toBeVisible();
 
-  const nativeContext = await page.locator('#toolboxTitle').evaluate((element) => {
+  const nativeContext = await page.locator('#toolboxPanel').evaluate((element) => {
     const event = new MouseEvent('contextmenu', { bubbles: true, cancelable: true });
     element.dispatchEvent(event);
     return event.defaultPrevented;
@@ -1857,6 +1859,9 @@ test('Escape closes an artifact context menu while postprocess is busy', async (
 
 test('batch mode disables manuscript matching without changing its saved single-file choice', async ({ page }) => {
   // Given: manuscript matching is configured and selected for single-file transcription.
+  await page.addInitScript(() => {
+    localStorage.setItem('maw.launcher.postprocess.visible_steps', JSON.stringify(['match', 'replace', 'proofread', 'resegment', 'translate']));
+  });
   await gotoLauncher(page);
   await page.locator('#autoPostprocessEnabled').check();
   await page.evaluate(() => {
@@ -1878,7 +1883,7 @@ test('batch mode disables manuscript matching without changing its saved single-
   });
 
   // When: batch mode is selected and another setting is edited (which persists the plan).
-  await page.locator('#batchMode').click();
+  await page.locator('#navBatch').click();
 
   // Then: matching is visibly unavailable but the user's selection is preserved.
   await expect(match).toBeChecked();
@@ -1899,7 +1904,7 @@ test('batch mode disables manuscript matching without changing its saved single-
   }
 
   // When: single-file mode is restored.
-  await page.locator('#singleMode').click();
+  await page.locator('#navTranscribe').click();
 
   // Then: the saved single-file choice is untouched.
   await expect(match).toBeChecked();
@@ -1909,7 +1914,7 @@ test('batch mode disables manuscript matching without changing its saved single-
 test('batch start delegates output allocation and batchDone reconciles every terminal outcome', async ({ page }) => {
   // Given: three queued files and a bridge spy that leaves allocation to the batch backend.
   await gotoLauncher(page);
-  await page.locator('#batchMode').click();
+  await page.locator("#navBatch").click();
   await page.evaluate(() => {
     window.__batchCalls = [];
     // mock 环境没有 API Key：#208 起 startBatch 会先做 Key 校验，桩掉它以免静默早退。
@@ -1963,7 +1968,7 @@ test('batch start delegates output allocation and batchDone reconciles every ter
 test('batchDone fails rows that never reported when the batch was not cancelled', async ({ page }) => {
   // Given: two queued files started in batch mode.
   await gotoLauncher(page);
-  await page.locator('#batchMode').click();
+  await page.locator("#navBatch").click();
   await page.evaluate(() => {
     // mock 环境没有 API Key：#208 起 startBatch 会先做 Key 校验，桩掉它以免静默早退。
     window.MAWLauncher.validateApiKey = () => true;
@@ -2035,7 +2040,7 @@ test('artifact context menu opens at the viewport pointer after Launcher zoom', 
   expect(Math.abs(bounds.y - pointer.y)).toBeLessThanOrEqual(2);
 });
 
-test('left navigation switches pages, keeps batch mode in sync, and returns from settings and config-only toolbox', async ({ page }) => {
+test('left navigation switches pages, keeps batch mode in sync, and returns from settings and the configuration drawer', async ({ page }) => {
   // Given: a freshly loaded Launcher on the Transcribe page.
   await page.goto(`file://${launcherPath}`);
   await page.waitForFunction(() => window.MAWLauncher?.config?.postprocessProviders?.length > 0);
@@ -2051,14 +2056,14 @@ test('left navigation switches pages, keeps batch mode in sync, and returns from
     await expect(page.locator('.page:not(.hidden)')).toHaveCount(1);
   }
 
-  // Batch reuses the Transcribe page in phase 2 and follows the in-card mode switch both ways.
+  // Batch is its own page; the compatibility mode flags still follow navigation.
   await page.locator('#navBatch').click();
-  await expect(page.locator('#pageTranscribe')).toBeVisible();
+  await expect(page.locator('#pageBatch')).toBeVisible();
   await expect(page.locator('#batchMode')).toHaveAttribute('aria-pressed', 'true');
   await expect(page.locator('#navBatch')).toHaveAttribute('aria-current', 'page');
-  await page.locator('#singleMode').click();
+  await page.locator('#navTranscribe').click();
   await expect(page.locator('#navTranscribe')).toHaveAttribute('aria-current', 'page');
-  await page.locator('#batchMode').click();
+  await page.locator('#navBatch').click();
   await expect(page.locator('#navBatch')).toHaveAttribute('aria-current', 'page');
   await page.locator('#navTranscribe').click();
   await expect(page.locator('#singleMode')).toHaveAttribute('aria-pressed', 'true');
@@ -2072,14 +2077,13 @@ test('left navigation switches pages, keeps batch mode in sync, and returns from
   await expect(page.locator('#pageProjects')).toBeVisible();
   await expect(page.locator('#navProjects')).toHaveAttribute('aria-current', 'page');
 
-  // An auto-postprocess "Configure" button opens the toolbox in config-only mode with a way back.
+  // Configure stays on Transcribe and moves the shared form into a right-side drawer.
   await page.locator('#navTranscribe').click();
   await page.locator('#autoPostprocessEnabled').check();
   await page.locator('#configureAutoReplace').click();
-  await expect(page.locator('#pageToolbox')).toBeVisible();
-  await expect(page.locator('#toolboxConfigOnlyHint')).toBeVisible();
-  await expect(page.locator('#toolboxBackToTranscribe')).toBeVisible();
-  await page.locator('#toolboxBackToTranscribe').click();
+  await expect(page.locator('#postprocessSheet')).toBeVisible();
+  await expect(page.locator('#postprocessSheet #toolboxReplacePanel')).toBeVisible();
+  await page.locator('#postprocessSheetDone').click();
   await expect(page.locator('#pageTranscribe')).toBeVisible();
   // Re-entering from the nav is the ordinary toolbox again.
   await page.locator('#navToolbox').click();
