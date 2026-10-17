@@ -9,7 +9,7 @@ from maw.project_preview import JsonDict
 
 
 def attach_translation_project(source_project: JsonDict, translated_project: JsonDict, *, target: str) -> JsonDict:
-    """Preserve source cues and existing tracks, append validated translations."""
+    """Replace the editor's fixed secondary track after validating every cue."""
     source_segments = source_project.get("segments")
     translated_segments = translated_project.get("segments")
     if not isinstance(source_segments, list) or not isinstance(translated_segments, list):
@@ -36,6 +36,7 @@ def attach_translation_project(source_project: JsonDict, translated_project: Jso
     combined = copy.deepcopy(source_project)
     if "markers" in translated_project:
         combined["markers"] = copy.deepcopy(translated_project["markers"])
+    combined.pop("extensionSegments", None)
     multi = combined.get("multi_subtitle")
     if not isinstance(multi, dict):
         multi = {}
@@ -52,13 +53,15 @@ def attach_translation_project(source_project: JsonDict, translated_project: Jso
         bindings = []
         multi["bindings"] = bindings
 
-    used_track_ids = {str(track.get("id")) for track in tracks if isinstance(track, dict) and track.get("id")}
-    base_track_id = f"translation-{target if target in {'zh', 'en'} else 'zh'}"
-    track_id = base_track_id
-    track_suffix = 2
-    while track_id in used_track_ids:
-        track_id = f"{base_track_id}-{track_suffix}"
-        track_suffix += 1
+    # The editor previews and exports tracks[0]. Reuse that track's identity
+    # and presentation settings; never append a new translation behind it.
+    track = tracks[0] if tracks else {"id": f"translation-{target}", "role": "extension"}
+    track_id = str(track["id"])
+    track["language"] = target
+    if track.get("name") in (None, "中文翻译", "英文翻译"):
+        track["name"] = "中文翻译" if target == "zh" else "英文翻译"
+    track["split_mode"] = "continuous" if target == "zh" else "word"
+    track["source_name"] = f"translation-{target}.srt"
 
     extension_segments: list[dict[str, object]] = []
     extension_bindings: list[tuple[int, dict[str, object], dict[str, object]]] = []
@@ -87,15 +90,17 @@ def attach_translation_project(source_project: JsonDict, translated_project: Jso
         extension_segments.append(extension_segment)
         extension_bindings.append((index, source, extension_segment))
 
-    tracks.append({
-        "id": track_id,
-        "role": "extension",
-        "name": "中文翻译" if target == "zh" else "英文翻译",
-        "language": target,
-        "split_mode": "continuous" if target == "zh" else "word",
-        "source_name": f"translation-{target}.srt",
-        "segments": extension_segments,
-    })
+    # Assign a fresh list, including when the new result is shorter or empty.
+    track["segments"] = extension_segments
+    if tracks:
+        tracks[0] = track
+    else:
+        tracks.append(track)
+
+    old_bindings = {str(binding["main_segment_ids"][0]): binding
+                    for binding in bindings if binding.get("track_id") == track_id}
+    bindings = [binding for binding in bindings if binding.get("track_id") != track_id]
+    multi["bindings"] = bindings
 
     used_main_ids = {
         str(main_id)
@@ -108,13 +113,15 @@ def attach_translation_project(source_project: JsonDict, translated_project: Jso
         main_id = str(source["id"])
         if main_id in used_main_ids:
             continue
-        binding_id = f"translation-binding-{index:03d}"
+        previous = old_bindings.get(main_id)
+        binding = copy.deepcopy(previous) if previous is not None else {}
+        binding_id = str(binding.get("id") or f"translation-binding-{index:03d}")
         binding_suffix = 2
         while binding_id in used_binding_ids:
             binding_id = f"translation-binding-{index:03d}-{binding_suffix}"
             binding_suffix += 1
         used_binding_ids.add(binding_id)
-        bindings.append({
+        binding.update({
             "id": binding_id,
             "track_id": track_id,
             "main_segment_ids": [main_id],
@@ -122,6 +129,7 @@ def attach_translation_project(source_project: JsonDict, translated_project: Jso
             "start_offset_ms": int(extension["start"]) - int(source["start"]),
             "end_offset_ms": int(extension["end"]) - int(source["end"]),
         })
+        bindings.append(binding)
         used_main_ids.add(main_id)
 
     return normalize_project(combined)

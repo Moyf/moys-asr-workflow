@@ -316,7 +316,9 @@ def _run_llm_postprocess(
     if strict_translation:
         if request.merge_bilingual and request.embed_translations:
             raise ValueError("「将双语字幕合并为单个字幕」与「只翻译非中文（英文）的字幕」不能同时启用，请只选择一个输出方式。")
-        _reject_recursive_translation_input(source_project, source_srt, request.operation)
+        multi = project.get("multi_subtitle")
+        if source_project is None or not isinstance(multi, dict) or not multi.get("tracks"):
+            _reject_recursive_translation_input(source_project, source_srt, request.operation)
     item_aware_resegment = request.operation == "resegment" and _has_complete_items(project)
     system_prompt = _protocol_prompt(
         operation_prompt,
@@ -410,6 +412,8 @@ def _run_llm_postprocess(
         _notify_status(on_status, "toolbox_status_llm_batch_done", current=index, total=len(batches))
     if degraded_batches and degraded_batches == len(batches):
         raise ValueError("所有批次的网络/服务请求都失败，字幕没有任何改动，未写出输出产物。")
+    if strict_translation and degraded_batches:
+        raise ValueError("翻译批次未全部成功，未替换原有副字幕，未写出输出产物。")
     source_ids = {str(cue["id"]) for cue in cues} - degraded_source_ids
     if source_ids and skipped_source_ids >= source_ids:
         report = _format_skip_report(skipped_source_ids, response_warnings)

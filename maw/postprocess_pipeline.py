@@ -1307,7 +1307,7 @@ def _attach_translation_track(
     translated_project = translated_artifact.translation_project or read_project(translated_artifact.project_path)
     combined = attach_translation_project(source_project, translated_project, target=target)
     source_segments = source_project["segments"]
-    extension_segments = combined["multi_subtitle"]["tracks"][-1]["segments"]
+    extension_segments = combined["multi_subtitle"]["tracks"][0]["segments"]
 
     skipped_identical = len(source_segments) - len(extension_segments)
     warnings = (

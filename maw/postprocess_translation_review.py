@@ -23,15 +23,15 @@ def translation_review(source: Mapping, translated: Mapping, result: Mapping, op
     targets = {s["id"]: s for s in result["segments"]}
     track = None
     if mode != "backfill" and result.get("multi_subtitle", {}).get("tracks"):
-        candidate = result["multi_subtitle"]["tracks"][-1]
+        candidate = result["multi_subtitle"]["tracks"][0]
         language = "zh" if operation.startswith("translate_zh") else "en"
         if candidate.get("language") == language and candidate.get("role") == "extension":
             track = candidate
             mode = "tracks"
     track_segments = {s["id"]: s for s in track["segments"]} if track else {}
     # The writer reserves one stable ID per source position, including gaps
-    # where unchanged translations were omitted. Existing source bindings may
-    # belong to another track and must remain intact.
+    # where unchanged translations were omitted. The editor's first secondary
+    # track is the fixed translation destination.
     target_ids = {s["id"]: f"{track['id']}-segment-{index:03d}"
                   for index, s in enumerate(source["segments"], 1)} if track else {}
     if len(targets) != len(result["segments"]):

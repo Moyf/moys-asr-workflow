@@ -29,12 +29,12 @@ const plain = value => JSON.parse(JSON.stringify(value));
 function trackFixture() {
   const packet = JSON.parse(fixture().snapshot);
   packet.mode = 'tracks';
-  packet.translationTrackId = 'translation-zh';
+  packet.translationTrackId = 'track';
   packet.result.segments = structuredClone(packet.source.segments);
   packet.result.segments[0].items = [{ text: '原文\n第二行', start: 0, end: 1000 }];
-  packet.result.multi_subtitle.tracks.push({ id: 'translation-zh', role: 'extension', language: 'zh', segments: [
+  packet.result.multi_subtitle.tracks = [{ id: 'track', role: 'extension', language: 'zh', segments: [
     { id: 'translated-a', start: 0, end: 1000, text: '译文', items: [{ text: '译文', start: 0, end: 1000 }] },
-  ] });
+  ] }];
   packet.entries[0].targetId = 'translated-a';
   packet.entries[1].targetId = null;
   packet.entries[1].editable = false;
@@ -50,6 +50,7 @@ test('dual-track review edits only the translation and preserves editable source
   delete cue.items;
   cue._dirty = true;
   assert.equal(changed, 1);
+  assert.equal(project.multi_subtitle.tracks.length, 1);
   assert.deepEqual(plain(project), expected);
   assert.deepEqual(plain((await adapter.applyEdits(review, [])).project), original);
   await assert.rejects(adapter.applyEdits(review, [{ id: 'b', text: '不能改原文' }]));

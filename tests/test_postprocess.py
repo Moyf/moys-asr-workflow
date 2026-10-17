@@ -83,7 +83,7 @@ def project_segments(project: JsonDict) -> list[JsonDict]:
 def translation_segments(project: JsonDict) -> list[JsonDict]:
     """Read the translation projection from the actual editable MOSP."""
     main = project_segments(project)
-    track = project["multi_subtitle"]["tracks"][-1]
+    track = project["multi_subtitle"]["tracks"][0]
     extensions = {s["id"]: s for s in track["segments"]}
     result = []
     for index, source in enumerate(main, 1):
@@ -511,13 +511,12 @@ class PostprocessTests(unittest.TestCase):
             return {'groups': [{'id': cue['id'], 'text': 'Next sentence'} for cue in cues]}
 
         with mock.patch('maw.postprocess.MAX_LLM_CUES_PER_REQUEST', 1):
-            result = run_llm_postprocess(LlmPostprocessRequest(
-                project_path=self.project_path, srt_path=None, output_mode=OutputMode.JSON,
-                operation='translate_en', custom_prompt=''), complete=complete)
-        output = translation_segments(read_project(result.project_path))
-        self.assertEqual(output[0], original)
-        self.assertEqual(output[1]['text'], 'Next sentence')
-        self.assertIn('保留原文', '\n'.join(result.warnings))
+            with self.assertRaisesRegex(ValueError, '翻译批次未全部成功'):
+                run_llm_postprocess(LlmPostprocessRequest(
+                    project_path=self.project_path, srt_path=None, output_mode=OutputMode.JSON,
+                    operation='translate_en', custom_prompt=''), complete=complete)
+        self.assertEqual(project_segments(read_project(self.project_path))[0], original)
+        self.assertEqual(list(self.root.glob('*.mosp')), [self.project_path])
 
     def test_resegment_network_failure_preserves_source_with_both_success_protocols(self) -> None:
         for mode, failed_batch in [(mode, batch) for mode in ["cues", "atoms"] for batch in [1, 2]]:
@@ -570,12 +569,12 @@ class PostprocessTests(unittest.TestCase):
             return {"groups": [{"id": cue["id"], "text": "Last sentence"} for cue in cues]}
 
         with mock.patch("maw.postprocess.MAX_LLM_CUES_PER_REQUEST", 2):
-            result = run_llm_postprocess(LlmPostprocessRequest(
-                project_path=self.project_path, srt_path=None, output_mode=OutputMode.JSON,
-                operation="translate_en", custom_prompt=""), complete=complete)
-        output = translation_segments(read_project(result.project_path))
-        self.assertEqual(output[:2], original[:2])
-        self.assertEqual(output[2]["text"], "Last sentence")
+            with self.assertRaisesRegex(ValueError, "翻译批次未全部成功"):
+                run_llm_postprocess(LlmPostprocessRequest(
+                    project_path=self.project_path, srt_path=None, output_mode=OutputMode.JSON,
+                    operation="translate_en", custom_prompt=""), complete=complete)
+        self.assertEqual(project_segments(read_project(self.project_path)), original)
+        self.assertEqual(list(self.root.glob('*.mosp')), [self.project_path])
         self.assertEqual(calls, 3)
 
     def test_failed_batch_and_unusable_response_do_not_write_output(self) -> None:
@@ -2417,7 +2416,7 @@ class PostprocessTests(unittest.TestCase):
                 complete=lambda _prompt, _cues: self.fail("互斥选项不应请求翻译模型"),
             )
 
-    def test_bilingual_project_output_blocks_retranslation_and_marks_bilingual_suffix(self) -> None:
+    def test_bilingual_project_output_retranslates_main_into_the_same_secondary_track(self) -> None:
         result = run_llm_postprocess(
             LlmPostprocessRequest(
                 project_path=self.project_path,
@@ -2436,17 +2435,19 @@ class PostprocessTests(unittest.TestCase):
             self.fail("both output mode must create project and SRT files")
         self.assertEqual(result.project_path.name, "clip.translate-en-bilingual.mosp")
         self.assertEqual(result.srt_path.name, "clip.translate-en-bilingual.srt")
-        with self.assertRaisesRegex(ValueError, "双语字幕命名规则"):
-            _ = run_llm_postprocess(
-                LlmPostprocessRequest(
-                    project_path=result.project_path,
-                    srt_path=None,
-                    output_mode=OutputMode.JSON,
-                    operation="translate_zh",
-                    custom_prompt="",
-                ),
-                complete=lambda _prompt, _cues: self.fail("bilingual project must not be translated again"),
-            )
+        requested = []
+        def complete(_prompt, cues):
+            requested.extend(row['text'] for row in cues)
+            return {"groups": [{"id": row["id"], "text": f"New {row['id']}"} for row in cues]}
+        repeated = run_llm_postprocess(LlmPostprocessRequest(
+            result.project_path, None, OutputMode.JSON, "translate_zh", "", skip_target_language=False,
+        ), complete=complete)
+        saved = read_project(repeated.project_path)
+        self.assertEqual(requested, ["酒很好喝", "下一句"])
+        self.assertEqual(saved["segments"], read_project(self.project_path)["segments"])
+        self.assertEqual(len(saved["multi_subtitle"]["tracks"]), 1)
+        self.assertEqual(saved["multi_subtitle"]["tracks"][0]["id"], read_project(result.project_path)["multi_subtitle"]["tracks"][0]["id"])
+        self.assertEqual([s["text"] for s in translation_segments(saved)], ["New c0001", "New c0002"])
 
     def test_bilingual_srt_input_blocks_retranslation_and_marks_bilingual_suffix(self) -> None:
         source_srt = self.root / "captions.srt"
