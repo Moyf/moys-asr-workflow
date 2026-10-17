@@ -950,12 +950,12 @@ def ffmpeg_supports_libass(ffmpeg: Path) -> bool:
 
 
 def render_ass_frame_png(
-    media_path: Path,
+    media_path: Path | None,
     ass_text: str,
     time_ms: int,
     ffmpeg: Path,
 ) -> tuple[bytes, list[str]]:
-    """Render one video frame with the given ASS subtitles burned in.
+    """Render ASS on one video frame, or a 1080P green canvas without media.
 
     与烧录管线共用同一套调用约定：ASS 写入临时目录、滤镜参数只带文件名、
     进程 cwd 指向该目录，规避盘符冒号等路径转义差异。返回 PNG 字节与
@@ -966,18 +966,23 @@ def render_ass_frame_png(
         ass_path = Path(tmp) / "frame.ass"
         with ass_path.open("w", encoding="utf-8", newline="\n") as handle:
             handle.write(ass_text)
-        command = [
-            str(ffmpeg), "-hide_banner", "-nostdin", "-loglevel", "warning",
+        green_screen = media_path is None
+        input_args = ["-f", "lavfi", "-i", "color=c=0x00ff00:s=1920x1080:r=30"] if green_screen else [
             # 输入侧 -ss 是快速 seek；不加 -copyts 时 ffmpeg 会把时间戳重置为
             # 从 0 开始，libass 会按错误时间判断事件是否活动，导致字幕不渲染。
             "-ss", f"{seconds:.3f}", "-copyts",
             "-i", str(media_path),
+        ]
+        command = [
+            str(ffmpeg), "-hide_banner", "-nostdin", "-loglevel", "warning",
+            *input_args,
             # Pick the first real video stream, never a large embedded cover.
-            "-map", "0:V:0",
+            "-map", "0:v:0" if green_screen else "0:V:0",
             # Render coloured glyphs after conversion to full-resolution RGB;
             # drawing on YUV420 first subsamples their chroma before PNG encoding.
             "-sws_flags", "spline+accurate_rnd+full_chroma_int",
-            "-vf", "format=rgb24,ass=filename='frame.ass'",
+            # 绿幕直接把首帧 PTS 放到播放头位置，避免从 0 解码空白帧，也保持动画时钟。
+            "-vf", (f"settb=1/1000,setpts={max(0, int(time_ms))}," if green_screen else "") + "format=rgb24,ass=filename='frame.ass'",
             "-frames:v", "1",
             "-c:v", "png", "-pix_fmt", "rgb24", "-f", "image2pipe", "pipe:1",
         ]
@@ -3339,8 +3344,13 @@ class EditorRequestHandler(BaseHTTPRequestHandler):
                     or not 0 <= time_ms <= 9_007_199_254_740_991):
                 raise ValueError("时间格式不正确")
             media_path = self.editor_server.project.media_path
-            if media_path is None or not media_path.is_file():
-                raise ValueError("当前工程没有可用的媒体文件")
+            green_screen = request.get("greenScreen", False)
+            if type(green_screen) is not bool:
+                raise ValueError("绿幕预览选项必须是布尔值")
+            green_screen = (green_screen or media_path is None or not media_path.is_file()
+                            or media_path.suffix.lower() not in VIDEO_EXTENSIONS)
+            if green_screen:
+                media_path = None
             ffmpeg = editor_ffmpeg_binary()
             if ffmpeg is None:
                 raise AssFrameError("未找到 FFmpeg，无法渲染实际画面；请安装 FFmpeg 或配置 FFMPEG_PATH。",
@@ -3364,6 +3374,7 @@ class EditorRequestHandler(BaseHTTPRequestHandler):
             "image": base64.b64encode(png_bytes).decode("ascii"),
             "timeMs": time_ms,
             "warnings": warnings,
+            "greenScreen": green_screen,
         })
 
     def _apply_settings_request(self, request: dict[str, object]) -> bool:
