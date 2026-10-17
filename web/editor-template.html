@@ -1714,6 +1714,7 @@ __WAVEFORM_CSS__
             <span class="ass-style-builtin-badge" id="ass-style-builtin-badge" hidden>内置</span>
             <span class="ass-style-delete-slot" id="ass-style-delete-slot">
               <button type="button" class="ass-style-delete" id="ass-style-delete" title="删除当前样式或方案">删除当前</button>
+              <button type="button" class="ass-style-reset" id="ass-style-reset" title="恢复此内置条目的默认值" hidden>重置</button>
             </span>
           </div>
         </div>
@@ -1784,8 +1785,12 @@ __WAVEFORM_CSS__
           </div>
         </section>
         <section class="ass-style-form-section" id="ass-style-emphasis-section" aria-labelledby="ass-style-emphasis-heading" hidden>
-          <div class="ass-style-subheading" id="ass-style-emphasis-heading">特殊文本样式</div>
-          <small class="editor-settings-hint" id="ass-special-format-hint">你可以使用 **强调**、~~删除~~、--缩小--、++放大++、//注释// 等符号来对特定字词添加特殊样式。</small>
+          <div class="ass-style-subheading-row">
+            <div class="ass-style-subheading" id="ass-style-emphasis-heading">特殊文本样式（MASS）</div>
+            <button type="button" class="ass-style-mass-help" id="ass-style-mass-help" title="基于 Markdown 语法灵感的进阶式 ASS，也可以理解为 MAW-ASS。" aria-label="什么是 MASS？">?</button>
+          </div>
+          <small class="editor-settings-hint" id="ass-special-format-hint">你可以使用 **强调**、~~删除~~、--缩小--、++放大++、!!震动!!、>>淡入淡出<< 来添加特殊样式。</small>
+          <small class="editor-settings-hint" id="ass-special-format-menu-hint" hidden>详见字幕右键菜单「左右添加字符」部分。</small>
           <div id="ass-style-emphasis-options" class="ass-style-fields ass-style-fields-special ass-style-emphasis-options">
             <label class="ass-style-color-field">强调色<input type="color" id="ass-style-emphasis-color" data-ass-style-field="emphasisColor"></label>
             <label class="ass-style-field">强调样式<select id="ass-style-emphasis-style" data-ass-style-field="emphasisStyle"><option value="stroke">描边颜色</option><option value="text">文本颜色</option></select></label>

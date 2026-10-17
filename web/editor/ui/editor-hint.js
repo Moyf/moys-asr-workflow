@@ -134,9 +134,10 @@
       oldest.remove();
     }
     const card = document.createElement('div');
-    // type → 语义类：default 中性 / success 成功 / invalid 不可用提醒 / warning 失败。
+    // type → 语义类：default 中性 / success 成功 / info 信息 / invalid 不可用提醒 / warning 失败。
     // 仅在有效类型时追加类名，default 维持原 .hint-card 中性外观。
     const typeClass = type === 'success' ? 'hint-success'
+      : type === 'info' ? 'hint-info'
       : type === 'invalid' ? 'hint-invalid'
       : type === 'warning' ? 'hint-warning' : '';
     card.className = typeClass ? `hint-card ${typeClass}` : 'hint-card';

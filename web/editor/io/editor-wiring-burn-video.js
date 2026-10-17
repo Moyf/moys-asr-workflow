@@ -80,7 +80,7 @@ async function runBurnVideoJob({ button, label, buildRequest, suggestedName, sta
   }
   if (!request) return; // buildRequest 已经提示过原因（如没有可用的去空隙区间）。
 
-  MaweHint.flashHint(tr(startHint), 'warning');
+  MaweHint.flashHint(tr(startHint), 'info');
   let handle;
   try {
     handle = await MaweHost.files.pickSaveFile({

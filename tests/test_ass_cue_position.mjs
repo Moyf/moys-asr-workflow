@@ -12,16 +12,29 @@ const main = [{ start: 0, end: 2000, text: 'Plain **bold** _under_ //comment//',
   { start: 2500, end: 4000, text: 'Second\nline' }];
 
 test('unpositioned legacy and multi-track exports match original a34d502 bytes', () => {
-  // Pin the historical input colors: this protects positioning/export bytes
+  // Pin the historical input colors and layout: this protects positioning/export bytes
   // independently of intentional changes to defaults for new projects.
   const colorStyles = [{ name: 'yellow', value: '#c4a019' }];
-  const fixtures = [{ colorStyles }, { colorStyles, assStyle: { fontSize: 64, alignment: 8 }, assProfile: { animations: {
+  const fixtures = [{ colorStyles }, { colorStyles, assStyle: { fontSize: 64, alignment: 8, marginV: 88 }, assProfile: { animations: {
     move: { enabled: true, x1: 400, y1: 150, x2: 800, y2: 200, t1: 0, t2: 1000 },
-    t: { enabled: true, tags: String.raw`\fs96\bord3` } } }, assExtensionStyle: { fontSize: 36, primaryColor: '#eac953' },
+    t: { enabled: true, tags: String.raw`\fs96\bord3` } } }, assExtensionStyle: { fontSize: 36, primaryColor: '#eac953', outline: 2, marginV: 36 },
     extensionSegments: [{ start: 500, end: 1500, text: 'Translation' }], overlaySegments: [{ start: 1000, end: 3000, text: 'Overlay' }] }];
   const expected = ['a84bafdfbb8599b8b060c63b20b703bb70b9850d7af1a1749f12976f02d91341',
     '1488098ff538ae0dcfd7c16335f140b3fe2ee089343ace2a4b901fc151f625bf'];
   fixtures.forEach((options, index) => assert.equal(createHash('sha256').update(h.buildAssPayload(main, options)).digest('hex'), expected[index]));
+});
+
+test('new builtin layout defaults are independent of saved library values and historical fixtures', () => {
+  const library = h.normalizeAssStyleLibrary();
+  assert.deepEqual(plain(library.styles.map(({ id, fontSize, outline, shadow, marginV }) =>
+    ({ id, fontSize, outline, shadow, marginV }))), [
+    { id: 'default', fontSize: 80, outline: 6, shadow: 2, marginV: 124 },
+    { id: 'ass', fontSize: 86, outline: 6, shadow: 0, marginV: 180 },
+    { id: 'ass-extension', fontSize: 64, outline: 4, shadow: 0, marginV: 100 },
+  ]);
+  const saved = { ...library, styles: library.styles.map(style => ({ ...style,
+    fontSize: 51, outline: 3, shadow: 1, marginV: 67 })) };
+  assert.deepEqual(plain(h.normalizeAssStyleLibrary(saved)), plain(saved));
 });
 
 test('strict override normalization rejects coercion and returns independent canonical copies', () => {

@@ -275,7 +275,15 @@ test('translates the ASS style manager labels and dynamic summaries', () => {
   assert.equal(i18n.translateText('\\move', 'en'), '\\move');
   assert.equal(i18n.translateText('\\t', 'en'), '\\t');
   assert.equal(i18n.translateText('2 个样式 · 3 个 ASS 方案', 'en'), '2 styles · 3 ASS profiles');
-  assert.equal(i18n.translateText('SRT 默认', 'en'), 'SRT default');
+  assert.equal(i18n.translateText('SRT 渲染样式', 'en'), 'SRT render style');
+  for (const [name, translated] of [
+    ['SRT 渲染样式', 'SRT render style'], ['ASS 默认样式', 'ASS default style'],
+    ['ASS 副字幕样式', 'ASS extension subtitle style'], ['ASS 输出方案', 'ASS export profile'],
+  ]) {
+    const message = `确定将「${name}」恢复为默认值吗？`;
+    assert.equal(i18n.translateText(message, 'en'), `Reset “${translated}” to its defaults?`);
+    assert.equal(i18n.translateText(message, 'zh-CN'), message);
+  }
   assert.equal(i18n.translateText('工具箱的「烧录字幕」功能会使用这里选中的样式。', 'en'), 'The Toolbox “Burn subtitles” feature uses the style selected here.');
   assert.equal(i18n.translateText('需要启用 ASS 字幕模式来预览效果。', 'en'), 'Enable ASS subtitle mode to preview this style.');
   assert.equal(i18n.translateText('当前已启用。', 'en'), 'Currently enabled.');
@@ -312,6 +320,10 @@ test('translates the ASS style manager labels and dynamic summaries', () => {
     'Saved locally; server sync failed: HTTP 503',
   );
   assert.equal(
+    i18n.translateText('本地已保存，服务器同步失败：HTTP 403（页面已失效，请刷新网页后重试）', 'en'),
+    'Saved locally; server sync failed: HTTP 403 (the page is stale; refresh it and try again)',
+  );
+  assert.equal(
     i18n.translateText('仅保存在当前浏览器（便携模式）', 'en'),
     'Saved only in this browser (portable mode)',
   );
@@ -344,16 +356,12 @@ test('translates ASS special text format samples and rule hints for every symbol
   assert.equal(i18n.translateText('符号规则已关闭，字幕中的符号将保留原文。', 'en'),
     'Symbol rules are off; symbols in subtitles keep their literal text.');
   assert.equal(
-    i18n.translateText('你可以使用 *强调*、~删除~、-缩小-、+放大+ 等符号来对特定字词添加特殊样式。', 'en'),
-    'Use *emphasis*, ~strike~, -smaller-, and +larger+ to apply special styles to individual words.',
+    i18n.translateText('你可以使用 **强调**、~~删除~~、--缩小--、++放大++、!!震动!!、>>淡入淡出<< 来添加特殊样式。', 'en'),
+    'Use **emphasis**, ~~strike~~, --smaller--, ++larger++, !!shake!!, and >>fade in/out<< to apply special styles.',
   );
   assert.equal(
-    i18n.translateText('你可以使用 **强调**、~~删除~~、--缩小--、++放大++ 等符号来对特定字词添加特殊样式。', 'en'),
-    'Use **emphasis**, ~~strike~~, --smaller--, and ++larger++ to apply special styles to individual words.',
-  );
-  assert.equal(
-    i18n.translateText('你可以使用 *强调*/**强调**、~删除~/~~删除~~、-缩小-/--缩小--、+放大+/++放大++ 等符号来对特定字词添加特殊样式。', 'en'),
-    'Use *emphasis*/**emphasis**, ~strike~/~~strike~~, -smaller-/--smaller--, and +larger+/++larger++ to apply special styles to individual words.',
+    i18n.translateText('详见字幕右键菜单「左右添加字符」部分。', 'en'),
+    'See the "Wrap with characters" section in the subtitle right-click menu.',
   );
 });
 
@@ -3887,14 +3895,15 @@ test('migrates legacy builtin names while preserving custom names', () => {
   });
   assert.equal(helpers.assStyleForId(library, 'ass').name, 'ASS 默认样式');
   assert.equal(helpers.assProfileForId(library, 'ass').name, 'ASS 输出方案');
-  assert.equal(helpers.assStyleForId(library, 'default').name, 'SRT 默认');
+  assert.equal(helpers.assStyleForId(library, 'default').name, 'SRT 渲染样式');
 
   // 用户自定义过的名字不被迁移覆盖。
   const renamed = helpers.normalizeAssStyleLibrary({
-    styles: [{ id: 'ass', name: '我的字幕样式' }],
+    styles: [{ id: 'ass', name: '我的字幕样式' }, { id: 'default', name: '我的烧录样式' }],
     assProfiles: [{ id: 'ass', name: '我的方案' }],
   });
   assert.equal(helpers.assStyleForId(renamed, 'ass').name, '我的字幕样式');
+  assert.equal(helpers.assStyleForId(renamed, 'default').name, '我的烧录样式');
   assert.equal(helpers.assProfileForId(renamed, 'ass').name, '我的方案');
 });
 
@@ -4672,6 +4681,24 @@ test('maps source time and media intervals after restored gaps are excluded', ()
     { start: 1600, end: 4000 },
     { start: 4500, end: 6000 },
   ]);
+});
+
+test('detects subtitle ranges fully inside removed gaps', () => {
+  const gaps = [
+    { start: 1000, end: 1600, removed: true },
+    { start: 2400, end: 3000, removed: false },
+    { start: 4000, end: 4500, removed: true },
+  ];
+  // 完全位于已移除空隙内：整体丢弃（否则映射后与同空隙字幕挤在同一时刻）。
+  assert.equal(helpers.isRangeInsideRemovedGap(1100, 1500, gaps), true);
+  assert.equal(helpers.isRangeInsideRemovedGap(1000, 1600, gaps), true);
+  // 跨越切点、贴边与未移除空隙：保留，维持原映射规则。
+  assert.equal(helpers.isRangeInsideRemovedGap(900, 1700, gaps), false);
+  assert.equal(helpers.isRangeInsideRemovedGap(800, 1000, gaps), false);
+  assert.equal(helpers.isRangeInsideRemovedGap(2500, 2900, gaps), false);
+  assert.equal(helpers.isRangeInsideRemovedGap(1600, 2400, gaps), false);
+  // 退化区间（零/负时长）不算字幕。
+  assert.equal(helpers.isRangeInsideRemovedGap(1200, 1200, gaps), false);
 });
 
 test('maps dynamic caption segments and item timing without mutating the source', () => {

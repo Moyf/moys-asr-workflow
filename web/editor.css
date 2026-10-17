@@ -1813,6 +1813,13 @@
   .ass-style-delete:hover { color: var(--red-hover); border-color: color-mix(in srgb, var(--red) 55%, var(--border)); background: var(--red-soft); }
   .ass-style-delete:focus-visible { outline: 2px solid var(--accent-line); outline-offset: 1px; }
   .ass-style-delete:disabled { opacity: .45; cursor: not-allowed; }
+  .ass-style-reset {
+    min-height: 26px; padding: 4px 9px; color: var(--text-muted); background: transparent;
+    border: 1px solid var(--border-subtle); border-radius: var(--radius-sm); cursor: pointer; font-size: 11px;
+  }
+  .ass-style-reset:hover { color: var(--text-primary); background: var(--hover-bg); border-color: var(--border-strong); }
+  .ass-style-reset:focus-visible { outline: 2px solid var(--accent-line); outline-offset: 1px; }
+  .ass-style-delete[hidden], .ass-style-reset[hidden] { display: none; }
   .ass-style-editor-empty {
     display: grid; min-height: 100%; place-items: center; color: var(--text-muted); font-size: 12px; text-align: center;
   }
@@ -1869,6 +1876,14 @@
   .ass-style-field input[type="number"] { padding-right: 31px; font-family: var(--font-mono); }
   .ass-style-unit { position: absolute; right: 9px; bottom: 7px; color: var(--text-faint); font: 12px var(--font-mono); pointer-events: none; }
   .ass-style-subheading { color: var(--text-secondary); font-size: 11px; font-weight: 700; letter-spacing: .08em; text-transform: uppercase; }
+  .ass-style-subheading-row { display: flex; align-items: center; gap: 6px; }
+  .ass-style-mass-help {
+    display: inline-flex; flex: 0 0 auto; align-items: center; justify-content: center;
+    width: 15px; height: 15px; padding: 0; border-radius: 50%;
+    color: var(--text-muted); background: transparent; border: 1px solid var(--border);
+    font-size: 10px; font-weight: 700; line-height: 1; cursor: help;
+  }
+  .ass-style-mass-help:hover { color: var(--text-primary); border-color: var(--border-strong); }
   .ass-style-subheading-nested { margin-top: 3px; padding-top: 10px; border-top: 1px solid var(--border-subtle); }
   .ass-style-color-grid { grid-template-columns: repeat(4, minmax(0, 1fr)); }
   .ass-style-color-field {
@@ -2093,7 +2108,7 @@
   .ass-frame-stale[hidden] { display: none; }
   .ass-frame-stale span {
     padding: 4px 12px; color: var(--text-primary); font-size: 12px; font-weight: 600;
-    background: rgba(22, 24, 29, .78); border: 1px solid var(--border-subtle); border-radius: 99px;
+    background: var(--bg-overlay); border: 1px solid var(--border-strong); border-radius: 99px;
   }
   .ass-frame-caption-row { display: flex; flex: 0 0 auto; align-items: center; justify-content: space-between; gap: 8px; flex-wrap: wrap; font-size: 12px; }
   .ass-frame-caption-row .ass-preview-link { margin-left: auto; }
@@ -4044,6 +4059,12 @@
     border-color: color-mix(in srgb, var(--red) 35%, var(--border-strong));
     border-left: 3px solid var(--red);
   }
+  /* 信息提示（如烧录开始前的说明）：蓝色语义，与警告红区分。 */
+  .hint-card.hint-info {
+    background: color-mix(in srgb, var(--accent-blue) 12%, var(--bg-overlay) 88%);
+    border-color: color-mix(in srgb, var(--accent-blue) 35%, var(--border-strong));
+    border-left: 3px solid var(--accent-blue);
+  }
   .hint-card.hint-project-error {
     width: min(440px, calc(100vw - 32px));
     max-width: none;
@@ -4409,7 +4430,9 @@
   flex: 0 0 auto; padding: 1px 6px; border-radius: 3px;
   font-size: 10px; font-weight: 700; letter-spacing: .02em;
 }
-.markers-review-badge.pending { color: #241503; background: var(--amber, #f5a623); }
+/* 待复核是醒目徽章：--amber 在亮色主题被调成深棕（文字对比用），作填充会发闷，
+   固定亮琥珀 + 深字，明暗主题对比都成立（下方 pending 按钮同源）。 */
+.markers-review-badge.pending { color: #241503; background: #f5a623; }
 .markers-review-badge.confirmed { color: #d9f2e3; background: #2b5b3f; }
 .markers-item-editor {
   display: grid; gap: 8px; padding: 9px;
@@ -4471,7 +4494,7 @@
 .markers-item-actions > button.markers-review-toggle { margin-right: auto; }
 .markers-item-actions button.markers-review-toggle.has-review { color: var(--text-primary); }
 .markers-item-actions button.markers-review-toggle.pending {
-  color: #241503; background: var(--amber, #f5a623); border-color: var(--amber, #f5a623);
+  color: #241503; background: #f5a623; border-color: #f5a623;
 }
 .markers-item-actions button.markers-review-toggle.confirmed {
   color: #d9f2e3; background: #2b5b3f; border-color: #2b5b3f;
