@@ -1329,6 +1329,7 @@ def build_server_page(
         server_config_json=json.dumps({
             "saveUrl": "/api/project",
             "requestToken": request_token,
+            "projectSwitchPageId": secrets.token_urlsafe(24),
             "stickerRootUrl": "/api/stickers/root",
             "portableStickerExportUrl": "/api/exports/sticker-otio",
             "otiozStickerExportUrl": "/api/exports/sticker-otioz",
@@ -1469,6 +1470,8 @@ class EditorServer(ThreadingHTTPServer):
         self.lottie_lock = threading.Lock()
         self.ograf_lock = threading.Lock()
         self.settings_lock = threading.Lock()
+        # Same-page intent ordering is independent of the published binding.
+        self.project_switch_generations: dict[str, int] = {}
         self.binding_generation = 1
         self.source_media_id = secrets.token_urlsafe(24)
         self.reapeaks_lock = threading.Lock()
@@ -1547,6 +1550,36 @@ class EditorServer(ThreadingHTTPServer):
     def project_binding_payload(self) -> dict[str, object]:
         with self.settings_lock:
             return self._project_binding_payload_locked()
+
+    def _check_project_binding_locked(self, binding: dict | None) -> None:
+        if binding is None:  # Internal callers already own a server instance.
+            return
+        if (type(binding.get("bindingGeneration")) is not int
+                or binding.get("bindingGeneration") != self.binding_generation
+                or not isinstance(binding.get("sourceMediaId"), str)
+                or binding.get("sourceMediaId") != self.source_media_id):
+            raise ProjectBindingChangedError("工程绑定已变更，请重新打开工程后操作")
+
+    def advance_project_switch(self, request: dict) -> None:
+        page_id = request.get("switchPageId")
+        generation = request.get("switchGeneration")
+        if (not isinstance(page_id, str) or not 1 <= len(page_id) <= 128
+                or type(generation) is not int or not 0 <= generation <= 9007199254740991):
+            raise ValueError("工程切换标识无效")
+        with self.settings_lock:
+            previous = self.project_switch_generations.get(page_id, -1)
+            if generation < previous:
+                raise ProjectBindingChangedError("工程切换已过期")
+            self.project_switch_generations[page_id] = generation
+
+    def _check_project_switch_locked(self, request: dict | None) -> None:
+        if request is None:  # Internal callers retain their existing contract.
+            return
+        page_id = request.get("switchPageId")
+        generation = request.get("switchGeneration")
+        if (not isinstance(page_id, str) or type(generation) is not int
+                or self.project_switch_generations.get(page_id) != generation):
+            raise ProjectBindingChangedError("工程切换已过期，请重新打开工程")
 
     def gap_removed_video_source_snapshot(self, request: dict) -> Path:
         """Compatibility wrapper for callers which only need the source path."""
@@ -1686,7 +1719,9 @@ class EditorServer(ThreadingHTTPServer):
         if not self.defer_reapeaks:
             return
         with self.reapeaks_lock:
-            project = self.project
+            with self.settings_lock:
+                project = self.project
+                binding_generation = self.binding_generation
             if self.reapeaks_project is project:
                 return
             self.reapeaks_generation += 1
@@ -1696,14 +1731,14 @@ class EditorServer(ThreadingHTTPServer):
             self.reapeaks_payload = {}
         thread = threading.Thread(
             target=self._load_deferred_reapeaks,
-            args=(project, generation),
+            args=(project, generation, binding_generation),
             daemon=True,
             name="maw-load-reapeaks",
         )
         self.reapeaks_thread = thread
         thread.start()
 
-    def _load_deferred_reapeaks(self, project: ServerProject, generation: int) -> None:
+    def _load_deferred_reapeaks(self, project: ServerProject, generation: int, binding_generation: int | None = None) -> None:
         spectral = None
         reapeaks_wave = None
         loudness = None
@@ -1746,6 +1781,8 @@ class EditorServer(ThreadingHTTPServer):
             # Serialize replacement with binding publication: cache updates must
             # not restore an old project's source after another tab rebinds.
             with self.settings_lock:
+                if binding_generation is not None and binding_generation != self.binding_generation:
+                    return
                 current_project = self.project
                 data = dict(current_project.data)
                 if spectral is None:
@@ -1889,9 +1926,11 @@ class EditorServer(ThreadingHTTPServer):
                 self.settings = replace(self.settings, preset_workspaces=workspaces)
             self.persist_settings()
 
-    def open_recent_project(self, project_path: str) -> ServerProject:
+    def open_recent_project(self, project_path: str, *, binding: dict | None = None, binding_result: dict | None = None, switch_intent: dict | None = None) -> ServerProject:
         candidate = Path(project_path).expanduser().resolve()
         with self.settings_lock:
+            self._check_project_switch_locked(switch_intent)
+            self._check_project_binding_locked(binding)
             known = next((item for item in self.settings.recent_projects if item.path == candidate), None)
             if not known:
                 raise RecentProjectError("该工程不在本机最近打开记录中")
@@ -1906,13 +1945,17 @@ class EditorServer(ThreadingHTTPServer):
         if self.defer_reapeaks:
             project = without_deferred_reapeaks(project)
         with self.settings_lock:
+            self._check_project_switch_locked(switch_intent)
+            self._check_project_binding_locked(binding)
             self._bind_project_locked(project)
+            if binding_result is not None:
+                binding_result.update(self._project_binding_payload_locked())
             self.settings = remember_project(self.settings, project.json_path)
             self.persist_settings()
         self.start_deferred_reapeaks_load()
         return project
 
-    def attach_project(self, file_name: str, browser_project: dict) -> ServerProject:
+    def attach_project(self, file_name: str, browser_project: dict, *, binding: dict | None = None, binding_result: dict | None = None, switch_intent: dict | None = None) -> ServerProject:
         """Bind a project opened through the browser to its on-disk file.
 
         Browser file pickers never reveal real paths, but a MAW project records
@@ -1920,6 +1963,9 @@ class EditorServer(ThreadingHTTPServer):
         to that media and its segments match the browser copy, the server takes
         over: media auto-loads and Ctrl+S saves back to the project file.
         """
+        with self.settings_lock:
+            self._check_project_switch_locked(switch_intent)
+            self._check_project_binding_locked(binding)
         candidate = Path(file_name)
         if (
             not file_name
@@ -1964,13 +2010,39 @@ class EditorServer(ThreadingHTTPServer):
         if not _attach_segments_match(project.data, normalized_browser):
             raise AttachProjectError("媒体同目录的同名工程与打开的副本内容不一致，未接管")
         with self.settings_lock:
+            self._check_project_switch_locked(switch_intent)
+            self._check_project_binding_locked(binding)
             self._bind_project_locked(project)
+            if binding_result is not None:
+                binding_result.update(self._project_binding_payload_locked())
             self.settings = remember_project(self.settings, project.json_path)
             self.persist_settings()
         self.start_deferred_reapeaks_load()
         return project
 
-    def save_project(self, project_data: dict, filename: str | None = None, *, backup_limit: int | None = None, backup_only: bool = False) -> tuple[Path, Path | None]:
+    def save_project(self, project_data: dict, filename: str | None = None, *, backup_limit: int | None = None, backup_only: bool = False, binding: dict | None = None, binding_result: dict | None = None) -> tuple[Path, Path | None]:
+        if not self.save_lock.acquire(blocking=False):
+            raise ProjectMutationInProgressError("另一个工程保存操作正在进行")
+        binding_changed = False
+        try:
+            # Keep destination validation and disk writes atomic with binding
+            # publication, so a stale page cannot write into a newly opened file.
+            with self.settings_lock:
+                self._check_project_binding_locked(binding)
+                generation = self.binding_generation
+                try:
+                    result = self._save_project_locked(project_data, filename, backup_limit=backup_limit, backup_only=backup_only)
+                    if binding_result is not None:
+                        binding_result.update(self._project_binding_payload_locked())
+                    return result
+                finally:
+                    binding_changed = generation != self.binding_generation
+        finally:
+            self.save_lock.release()
+            if binding_changed:
+                self.start_deferred_reapeaks_load()
+
+    def _save_project_locked(self, project_data: dict, filename: str | None, *, backup_limit: int | None, backup_only: bool) -> tuple[Path, Path | None]:
         if not self.project.json_path:
             raise SaveProjectError("当前服务器没有绑定工程文件；请先导出 .mosp 工程，再重新打开该文件")
         if backup_limit is not None and (type(backup_limit) is not int or not 1 <= backup_limit <= 1000):
@@ -1992,27 +2064,22 @@ class EditorServer(ThreadingHTTPServer):
         normalized_project = rebase_project_media(
             normalized_project, target, source_project_path=self.project.json_path,
         )
-        if not self.save_lock.acquire(blocking=False):
-            raise ProjectMutationInProgressError("另一个工程保存操作正在进行")
-        try:
-            if backup_only:
-                return target, write_backup(target, normalized_project, backup_limit)
-            backup = write_project_json(target, normalized_project)
-            if backup_limit is not None:
-                backup = write_backup(target, normalized_project, backup_limit)
-            # 磁盘副本已剥离；运行态不能跟着丢缓存，否则保存→刷新后原生
-            # 波形被清空、被 /api/waveform 的 REAPER 峰静默顶替。同一媒体、
-            # 同一音轨时把运行态缓存合并回新工程，媒体/音轨变化则失效。
-            _restore_runtime_inline_caches(self.project.data, normalized_project)
-            with self.settings_lock:
-                saved_project = replace(self.project, data=normalized_project, json_path=target)
-                if target != self.project.json_path:
-                    self._bind_project_locked(saved_project)
-                else:
-                    self.project = saved_project
-            self.remember_project(target)
-        finally:
-            self.save_lock.release()
+        if backup_only:
+            return target, write_backup(target, normalized_project, backup_limit)
+        backup = write_project_json(target, normalized_project)
+        if backup_limit is not None:
+            backup = write_backup(target, normalized_project, backup_limit)
+        # 磁盘副本已剥离；运行态不能跟着丢缓存，否则保存→刷新后原生
+        # 波形被清空、被 /api/waveform 的 REAPER 峰静默顶替。同一媒体、
+        # 同一音轨时把运行态缓存合并回新工程，媒体/音轨变化则失效。
+        _restore_runtime_inline_caches(self.project.data, normalized_project)
+        saved_project = replace(self.project, data=normalized_project, json_path=target)
+        if target != self.project.json_path:
+            self._bind_project_locked(saved_project)
+        else:
+            self.project = saved_project
+        self.settings = remember_project(self.settings, target)
+        self.persist_settings()
         return target, backup
 
 
@@ -2570,6 +2637,10 @@ class EditorRequestHandler(BaseHTTPRequestHandler):
             self.save_project()
         elif path == "/api/project/backups/open":
             self.open_backup_directory()
+        elif path == "/api/project/binding":
+            self.read_project_binding()
+        elif path == "/api/project/switch-intent":
+            self.advance_project_switch()
         elif path == "/api/project/attach":
             self.attach_project()
         elif path == "/api/recent-projects/open":
@@ -2685,12 +2756,15 @@ class EditorRequestHandler(BaseHTTPRequestHandler):
             filename = request.get("filename")
             if filename is not None and not isinstance(filename, str):
                 raise SaveProjectError("文件名格式不正确")
+            binding_result = {}
             target, backup = self.editor_server.save_project(
                 request.get("project"), filename,
                 backup_limit=request.get("backupLimit"),
                 backup_only=request.get("backupOnly") is True,
+                binding=request,
+                binding_result=binding_result,
             )
-        except ProjectMutationInProgressError as error:
+        except (ProjectMutationInProgressError, ProjectBindingChangedError) as error:
             self.send_json(HTTPStatus.CONFLICT, {"ok": False, "error": str(error)})
             return
         except (UnicodeDecodeError, json.JSONDecodeError, SaveProjectError, ValueError) as error:
@@ -2703,12 +2777,41 @@ class EditorRequestHandler(BaseHTTPRequestHandler):
             "ok": True,
             "filename": target.name,
             "backup": backup.name if backup else None,
+            **binding_result,
         })
 
     def _check_request_token(self, request: dict) -> None:
         token = request.get("requestToken")
         if not isinstance(token, str) or not compare_digest(token, self.editor_server.request_token):
             raise PermissionError("请求令牌无效")
+
+    def read_project_binding(self) -> None:
+        try:
+            request = self.read_json_request()
+            self._check_request_token(request)
+        except PermissionError as error:
+            self.send_json(HTTPStatus.FORBIDDEN, {"ok": False, "error": str(error)})
+            return
+        except (UnicodeDecodeError, json.JSONDecodeError, ValueError) as error:
+            self.send_json(HTTPStatus.BAD_REQUEST, {"ok": False, "error": str(error)})
+            return
+        self.send_json(HTTPStatus.OK, {"ok": True, **self.editor_server.project_binding_payload()})
+
+    def advance_project_switch(self) -> None:
+        try:
+            request = self.read_json_request()
+            self._check_request_token(request)
+            self.editor_server.advance_project_switch(request)
+        except PermissionError as error:
+            self.send_json(HTTPStatus.FORBIDDEN, {"ok": False, "error": str(error)})
+            return
+        except ProjectBindingChangedError as error:
+            self.send_json(HTTPStatus.CONFLICT, {"ok": False, "error": str(error)})
+            return
+        except (UnicodeDecodeError, json.JSONDecodeError, ValueError) as error:
+            self.send_json(HTTPStatus.BAD_REQUEST, {"ok": False, "error": str(error)})
+            return
+        self.send_json(HTTPStatus.OK, {"ok": True})
 
     def open_backup_directory(self) -> None:
         try:
@@ -3251,7 +3354,11 @@ class EditorRequestHandler(BaseHTTPRequestHandler):
             project_path = request.get("path")
             if not isinstance(project_path, str) or not project_path:
                 raise RecentProjectError("工程路径格式不正确")
-            project = self.editor_server.open_recent_project(project_path)
+            binding_result = {}
+            project = self.editor_server.open_recent_project(project_path, binding=request, binding_result=binding_result, switch_intent=request)
+        except ProjectBindingChangedError as error:
+            self.send_json(HTTPStatus.CONFLICT, {"ok": False, "error": str(error)})
+            return
         except FileNotFoundError as error:
             self.send_json(HTTPStatus.BAD_REQUEST, {"ok": False, "error": str(error), "missing": True})
             return
@@ -3265,6 +3372,7 @@ class EditorRequestHandler(BaseHTTPRequestHandler):
             "ok": True,
             "name": project.json_path.name if project.json_path else "",
             "mediaName": (project.source_media_path or project.media_path).name if project.media_path else "",
+            **binding_result,
         })
 
     def attach_project(self) -> None:
@@ -3276,7 +3384,11 @@ class EditorRequestHandler(BaseHTTPRequestHandler):
             project_data = request.get("project")
             if not isinstance(project_data, dict):
                 raise AttachProjectError("工程内容必须是对象")
-            project = self.editor_server.attach_project(file_name, project_data)
+            binding_result = {}
+            project = self.editor_server.attach_project(file_name, project_data, binding=request, binding_result=binding_result, switch_intent=request)
+        except ProjectBindingChangedError as error:
+            self.send_json(HTTPStatus.CONFLICT, {"ok": False, "error": str(error)})
+            return
         except (UnicodeDecodeError, json.JSONDecodeError, FileNotFoundError, ValueError) as error:
             self.send_json(HTTPStatus.BAD_REQUEST, {"ok": False, "error": str(error)})
             return
@@ -3287,6 +3399,7 @@ class EditorRequestHandler(BaseHTTPRequestHandler):
             "ok": True,
             "name": project.json_path.name if project.json_path else "",
             "mediaName": (project.source_media_path or project.media_path).name if project.media_path else "",
+            **binding_result,
         })
 
     def update_settings(self) -> None:

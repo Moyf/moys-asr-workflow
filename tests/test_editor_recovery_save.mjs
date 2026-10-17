@@ -9,6 +9,7 @@ function fixture({accept = true, failure = new TypeError('Failed to fetch'), rep
   const calls = {build: [], posted: [], downloaded: [], errors: [], saved: 0, confirmed: 0};
   const data = {media: replacement ? 'replacement.mp4' : '../clip.mp4', segments: []};
   const context = vm.createContext({
+    Blob,
     TypeError,
     document: {getElementById: () => null},
     confirm: () => {calls.confirmed += 1; return accept;},
@@ -18,6 +19,7 @@ function fixture({accept = true, failure = new TypeError('Failed to fetch'), rep
     MaweHistory: {}, MaweAppearance: {},
     MaweCoreState: {container: {querySelectorAll: () => []}},
     MaweState: {segmentsFingerprint: () => 'segments', noteSavedSegments() {}, markSaved() {calls.saved += 1;}},
+    MaweProjectLoad: {projectBindingEpoch: 0},
     MaweServerSave: {serverProjectSavingEnabled: () => true, showProjectSaveError(error) {calls.errors.push(error);}},
     MaweJsonRepair: {buildJson(options) {
       calls.build.push(options?.forFileExport === true);
@@ -106,6 +108,70 @@ test('non-connection errors do not trigger the recovery-download branch', async 
   assert.equal(calls.confirmed, 0);
   assert.equal(calls.downloaded.length, 0);
   assert.deepEqual(calls.build, [false]);
+});
+
+test('all pending-load save entrances refuse before writing or opening a picker', async () => {
+  const {context, calls} = fixture({failure: null});
+  context.MaweState.projectLoadPending = true;
+  context.MaweServerSave.projectFileHandle = {name: 'old.mosp'};
+  for (const method of ['saveProjectToServer', 'saveProjectToHandle', 'saveCurrentProject', 'saveProjectAsToFile']) {
+    assert.equal(await context.MaweProjectSave[method](), false);
+  }
+  assert.equal(await context.MaweProjectSave.saveProjectToServer({silent: true, backupOnly: true}), false);
+  assert.deepEqual(calls.build, []);
+  assert.deepEqual(calls.posted, []);
+  assert.equal(calls.saved, 0);
+});
+
+test('old server success and failure never mark a newly opened project or offer its recovery download', async () => {
+  for (const failure of [false, true]) {
+    const {context, calls, save} = fixture();
+    let release;
+    context.MaweHost.server.fetch = () => new Promise((resolve, reject) => {
+      release = () => failure ? reject(new TypeError('offline'))
+        : resolve({ok: true, json: async () => ({ok: true, filename: 'old.mosp'})});
+    });
+    const pending = save();
+    context.MaweProjectLoad.projectBindingEpoch++;
+    release();
+    assert.equal(await pending, false);
+    assert.equal(calls.saved, 0);
+    assert.equal(calls.confirmed, 0);
+    assert.equal(calls.errors.length, 0);
+  }
+});
+
+test('old handle write completes only for its captured content and cannot rename a new project', async () => {
+  const {context, calls} = fixture();
+  let release;
+  context.MaweServerSave.projectFileHandle = {name: 'old.mosp'};
+  context.MaweHost.files = {writeBlob: async (handle, build) => {
+    assert.equal(handle.name, 'old.mosp');
+    assert.ok(build());
+    await new Promise(resolve => { release = resolve; });
+  }};
+  const pending = context.MaweProjectSave.saveProjectToHandle();
+  context.MaweProjectLoad.projectBindingEpoch++;
+  context.MaweServerSave.projectFileHandle = null;
+  release();
+  assert.equal(await pending, false);
+  assert.equal(calls.saved, 0);
+});
+
+test('save-as picker completing after a project switch cannot write or take its handle', async () => {
+  const {context, calls} = fixture();
+  let release;
+  let writes = 0;
+  context.MaweHost.files = {hasSavePicker: () => true,
+    pickSaveFile: () => new Promise(resolve => {release = resolve;}),
+    writeBlob: () => {writes++;},
+  };
+  const pending = context.MaweProjectSave.saveProjectAsToFile();
+  context.MaweProjectLoad.projectBindingEpoch++;
+  release({name: 'stale.mosp'});
+  assert.equal(await pending, false);
+  assert.equal(writes, 0);
+  assert.equal(calls.saved, 0);
 });
 
 // 脏态指示器事件层：模拟浏览器环境（window/document/setInterval 存在），

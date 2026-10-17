@@ -24,13 +24,14 @@
 
 
   function serverProjectSavingEnabled() {
-    return !!(MaweBoot.SERVER_CONFIG && MaweBoot.SERVER_CONFIG.saveUrl && MaweBoot.SERVER_CONFIG.canSave);
+    return !MaweState.projectLoadPending
+      && !!(MaweBoot.SERVER_CONFIG && MaweBoot.SERVER_CONFIG.saveUrl && MaweBoot.SERVER_CONFIG.canSave);
   }
 
 
 
   function projectSaveTargetEnabled() {
-    return serverProjectSavingEnabled() || projectFileHandle !== null;
+    return !MaweState.projectLoadPending && (serverProjectSavingEnabled() || projectFileHandle !== null);
   }
 
 
@@ -392,31 +393,111 @@
 
 
 
+  // A page serializes its server binding changes. Even a stale success advances
+  // this transport cursor, but it may never publish UI state or a save target.
+  let serverBinding = {
+    bindingGeneration: MaweBoot.SERVER_CONFIG?.bindingGeneration,
+    sourceMediaId: MaweBoot.SERVER_CONFIG?.sourceMediaId,
+  };
+  let serverSwitchQueue = Promise.resolve();
+  let serverBindingUnknown = false;
+  let serverSwitchIntent = null;
+  function notifyProjectSwitch() {
+    if (!MaweBoot.SERVER_CONFIG?.projectSwitchPageId) return null;
+    const generation = MaweState.projectLoadGeneration;
+    const payload = {
+      switchPageId: MaweBoot.SERVER_CONFIG.projectSwitchPageId,
+      switchGeneration: generation,
+    };
+    // Do not queue invalidation behind the slow operation it must invalidate.
+    const ready = (async () => {
+      try {
+        const response = await MaweHost.server.fetch('/api/project/switch-intent', {
+          method: 'POST', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ ...payload, requestToken: MaweBoot.SERVER_CONFIG.requestToken }),
+        });
+        const result = await response.json();
+        if (!response.ok || !result.ok) throw new Error('工程切换未确认');
+        return true;
+      } catch {
+        if (generation === MaweState.projectLoadGeneration) {
+          MaweProjectLoad.detachServerProjectSaving();
+          MaweHint.flashHint('无法确认工程切换，请先导出当前工程后刷新页面重试', 'warning');
+        }
+        return false;
+      }
+    })();
+    serverSwitchIntent = { payload, ready };
+    return serverSwitchIntent;
+  }
+  if (typeof MaweState !== 'undefined') MaweState.observeProjectLoad?.(notifyProjectSwitch);
+
+  function queueServerProjectSwitch(url, payload, isCurrent) {
+    const intent = serverSwitchIntent || notifyProjectSwitch();
+    const task = serverSwitchQueue.then(async () => {
+      if (!isCurrent()) return null;
+      if (!intent || !await intent.ready || !isCurrent()) return null;
+      // Only a later user-initiated switch may recover an uncertain transport
+      // cursor. Never retry a rejected mutation or enable saving from this read.
+      if (serverBindingUnknown) {
+        const status = await MaweHost.server.fetch('/api/project/binding', {
+          method: 'POST', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ requestToken: MaweBoot.SERVER_CONFIG.requestToken }),
+        });
+        const binding = await status.json();
+        if (!status.ok || !binding.ok) throw new Error(binding.error || '无法读取工程绑定，请重新打开页面');
+        serverBinding = { bindingGeneration: binding.bindingGeneration, sourceMediaId: binding.sourceMediaId };
+        serverBindingUnknown = false;
+        if (!isCurrent()) return null;
+      }
+      serverBindingUnknown = true;
+      const response = await MaweHost.server.fetch(url, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ ...payload, ...serverBinding, ...intent.payload }),
+      });
+      const result = await response.json().catch(() => ({}));
+      if (response.ok && result.ok) {
+        if (!Number.isInteger(result.bindingGeneration) || typeof result.sourceMediaId !== 'string') {
+          throw new Error('工程绑定响应无效，请重新打开页面');
+        }
+        serverBinding = { bindingGeneration: result.bindingGeneration, sourceMediaId: result.sourceMediaId };
+        serverBindingUnknown = false;
+      }
+      return { response, result };
+    });
+    serverSwitchQueue = task.then(() => {}, () => {});
+    return task;
+  }
+
   async function openRecentProject(project) {
     if (!MaweBoot.SERVER_CONFIG?.recentProjectsUrl) return;
     if (hasUnsavedProjectChanges()
         && !confirm('当前有未保存的改动，是否确定打开最近工程？将丢失未保存内容。')) {
       return;
     }
+    const generation = MaweState.beginProjectLoad();
+    const current = () => generation === MaweState.projectLoadGeneration;
     try {
-      const response = await MaweHost.server.fetch(MaweBoot.SERVER_CONFIG.recentProjectsUrl, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ path: project.path }),
-      });
-      const result = await response.json().catch(() => ({}));
+      const outcome = await MaweState.waitForProjectLoad(
+        queueServerProjectSwitch(MaweBoot.SERVER_CONFIG.recentProjectsUrl, { path: project.path }, current), generation);
+      if (!outcome || !current()) return;
+      const { response, result } = outcome;
       if (!response.ok || !result.ok) {
         const error = new Error(result.error || `服务器返回 ${response.status}`);
         error.missing = result.missing === true;
         throw error;
       }
+      MaweProjectLoad.detachServerProjectSaving();
       window.location.reload();
     } catch (error) {
+      if (!current()) return;
       if (error?.missing) {
         project.exists = false;
         markRecentProjectMissing(project);
       }
       MaweHint.flashHint(`打开工程失败：${error.message || error}`, 'warning');
+    } finally {
+      MaweState.finishProjectLoad(generation);
     }
   }
 
@@ -426,14 +507,15 @@
   // 把工程名与内容交给服务器，由它定位同目录同名工程并接管：
   // 成功后整页刷新，由服务器渲染出自动加载媒体且可直接保存的状态。
   // 任何失败都静默回退为「手动选择媒体」的便携流程。
-  async function attachProjectToServer(fileName, projectData) {
+  async function attachProjectToServer(fileName, projectData, { isCurrent } = {}) {
+    const epoch = MaweProjectLoad.projectBindingEpoch;
+    const generation = MaweState.projectLoadGeneration;
+    const current = isCurrent || (() => epoch === MaweProjectLoad.projectBindingEpoch && generation === MaweState.projectLoadGeneration);
     try {
-      const response = await MaweHost.server.fetch(MaweBoot.SERVER_CONFIG.attachUrl, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ fileName, project: projectData }),
-      });
-      const result = await response.json().catch(() => ({}));
+      const outcome = await MaweState.waitForProjectLoad(
+        queueServerProjectSwitch(MaweBoot.SERVER_CONFIG.attachUrl, { fileName, project: projectData }, current), generation);
+      if (!outcome || !current()) return false;
+      const { response, result } = outcome;
       if (!response.ok || !result.ok) return false;
       window.location.reload();
       return true;

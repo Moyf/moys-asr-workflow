@@ -147,7 +147,8 @@ export function createWaveformModule(dependencies) {
 
 
     /** @this {import('./waveform-types.js').WaveformInstance} */
-    async processFile(file) {
+    async processFile(file, { isCurrent = () => true } = {}) {
+      if (!isCurrent()) return null;
       const signature = sourceForFile(file);
       if (this.payload && sameSource(this.payload.source, signature)) {
         this.setStatus(`使用缓存 · ${this.payload.peak_count.toLocaleString()} peaks`);
@@ -164,6 +165,7 @@ export function createWaveformModule(dependencies) {
         throw new Error(message);
       }
       const durationSeconds = await this.waitForPlayerDuration();
+      if (!isCurrent()) return null;
       const estimatedPcmBytes = durationSeconds * 48000 * 2 * 4;
       if (durationSeconds > 0 && estimatedPcmBytes > BROWSER_PCM_ESTIMATE_LIMIT) {
         const message = localizedWaveformMessage(
@@ -188,7 +190,9 @@ export function createWaveformModule(dependencies) {
       try {
         context = new AudioContextClass();
         const bytes = await file.arrayBuffer();
+        if (!isCurrent()) return null;
         const buffer = await context.decodeAudioData(bytes);
+        if (!isCurrent()) return null;
         const peaksPerSecond = 100;
         const channels = Array.from(
           { length: buffer.numberOfChannels },
@@ -217,6 +221,7 @@ export function createWaveformModule(dependencies) {
           if (peakIndex > 0 && peakIndex % 20000 === 0) {
             this.setStatus(`正在分析波形：${Math.round((peakIndex / peakCount) * 100)}%`, 'busy');
             await new Promise((resolve) => requestAnimationFrame(resolve));
+            if (!isCurrent()) return null;
           }
         }
         const payload = {
@@ -236,6 +241,7 @@ export function createWaveformModule(dependencies) {
         this.setPayload(payload);
         return payload;
       } catch (error) {
+        if (!isCurrent()) return null;
         const detail = error.message || error;
         const message = localizedWaveformMessage(
           `浏览器无法解析音轨：${detail}；请使用 MAW GUI 预生成波形`,
