@@ -545,3 +545,205 @@ class BurnVideoDiagnosticTests(unittest.TestCase):
                 self.assertFalse(job.output.exists())
             finally:
                 manager.close()
+
+
+class BurnStickerTests(CompactContainerAssertions, unittest.TestCase):
+    """Sticker overlay burn: request parsing, filter graph, and command wiring."""
+
+    def setUp(self) -> None:
+        self.temp_dir = tempfile.TemporaryDirectory()
+        self.root = Path(self.temp_dir.name).resolve()
+        self.source = self.root / "clip.mp4"
+        self.source.write_bytes(b"source")
+        self.output = self.root / "private" / "restructured.mp4"
+        self.stickers_dir = self.root / "stickers"
+        self.stickers_dir.mkdir()
+        self.sticker_a = self.stickers_dir / "a.png"
+        self.sticker_a.write_bytes(b"png")
+        self.sticker_gif = self.stickers_dir / "b.gif"
+        self.sticker_gif.write_bytes(b"gif")
+        self.calls: list[list[str]] = []
+        attempts_patcher = mock.patch.object(server_editor, "video_encoder_attempts", return_value=("cpu",))
+        attempts_patcher.start()
+        self.addCleanup(attempts_patcher.stop)
+
+    def tearDown(self) -> None:
+        self.temp_dir.cleanup()
+
+    def _entry(self, rel: str = "a.png", intervals=None, **overrides) -> dict:
+        entry = {"rel": rel, "x": 200, "y": 30, "width": 100, "height": 75,
+                 "intervals": [{"start": 1000, "end": 2500}, {"start": 3000, "end": 4500}]
+                 if intervals is None else intervals}
+        entry.update(overrides)
+        return entry
+
+    def _run_full_video(self, stickers):
+        def run(command, **kwargs):
+            self.calls.append(command)
+            if command[0] == "ffprobe":
+                return subprocess.CompletedProcess(command, 0,
+                    stdout=json.dumps({"format": {"duration": "6.0"}}), stderr="")
+            Path(command[-1]).write_bytes(b"burned")
+            return subprocess.CompletedProcess(command, 0, stdout="", stderr="")
+
+        with mock.patch.object(server_editor.subprocess, "run", side_effect=run):
+            return server_editor.burn_ass_video(
+                self.source, [], ASS_TEXT, self.output,
+                ffmpeg_path=Path("ffmpeg"), ffprobe_path=Path("ffprobe"), stickers=stickers)
+
+    def test_parse_merges_intervals_by_rel_and_resolves_files(self) -> None:
+        stickers = server_editor._parse_burn_sticker_inputs(
+            [self._entry(), self._entry(intervals=[{"start": 5000, "end": 6000}])], self.stickers_dir)
+        self.assertEqual(len(stickers), 1)
+        entry = stickers[0]
+        self.assertEqual(entry["path"], self.sticker_a)
+        self.assertEqual(entry["intervals"], [(1000, 2500), (3000, 4500), (5000, 6000)])
+
+    def test_parse_keeps_loopless_inputs_out_of_static_branch(self) -> None:
+        args = server_editor._burn_sticker_input_args([
+            {"path": self.sticker_a}, {"path": self.sticker_gif}])
+        self.assertEqual(args, ["-loop", "1", "-i", str(self.sticker_a), "-i", str(self.sticker_gif)])
+
+    def test_parse_rejects_invalid_entries(self) -> None:
+        root = self.stickers_dir
+        cases = [
+            ({"rel": "a.png"}, "表情包烧录参数无效"),
+            ([None], "表情包烧录参数无效"),
+            ([self._entry(rel="")], "缺少相对路径"),
+            ([self._entry(rel="../a.png")], "表情包相对路径不安全"),
+            ([self._entry(rel="missing.png")], "表情包源文件不存在"),
+            ([self._entry(x=-1)], "几何参数无效"),
+            ([self._entry(width=0)], "几何尺寸无效"),
+            ([self._entry(intervals=[])], "显示区间为空"),
+            ([self._entry(intervals=[{"start": 100, "end": 50}])], "显示区间无效"),
+            ([self._entry(intervals=[{"start": -1, "end": 50}])], "显示区间无效"),
+        ]
+        for payload, message in cases:
+            with self.subTest(payload=payload):
+                with self.assertRaises(ValueError) as caught:
+                    server_editor._parse_burn_sticker_inputs(payload, root)
+                self.assertIn(message, str(caught.exception))
+        with self.assertRaises(ValueError):
+            server_editor._parse_burn_sticker_inputs([self._entry()], None)
+        with self.assertRaises(ValueError):
+            server_editor._parse_burn_sticker_inputs(
+                [self._entry() for _ in range(server_editor.MAX_BURN_STICKER_INPUTS + 1)], root)
+
+    def test_parse_empty_and_none_pass_through(self) -> None:
+        self.assertEqual(server_editor._parse_burn_sticker_inputs(None, None), [])
+        self.assertEqual(server_editor._parse_burn_sticker_inputs([], None), [])
+
+    def test_chain_lines_scale_center_enable_and_shortest(self) -> None:
+        stickers = server_editor._parse_burn_sticker_inputs(
+            [self._entry(), self._entry(rel="b.gif", intervals=[{"start": 0, "end": 800}])], self.stickers_dir)
+        lines = server_editor._burn_sticker_chain_lines(stickers, "[0:v:0]")
+        self.assertEqual(lines[0],
+            f"[1:v]scale=w=100:h=75:force_original_aspect_ratio=decrease[burn_stick0]")
+        self.assertIn(f"[0:v:0][burn_stick0]overlay=", lines[1])
+        self.assertIn("x='200+(100-W)/2':y='30+(75-H)/2'", lines[1])
+        self.assertIn("enable='between(t,1.000,2.500)+between(t,3.000,4.500)':shortest=1", lines[1])
+        self.assertEqual(lines[-1], "[burn_ovl1]ass=filename='burn.ass'[burn_video]")
+
+    def test_interval_filter_wraps_chain_between_setpts_and_ass(self) -> None:
+        stickers = server_editor._parse_burn_sticker_inputs([self._entry()], self.stickers_dir)
+        graph = server_editor._burn_interval_filter([(0, 2000), (3000, 5000)], 1, stickers)
+        lines = graph.strip().split(";\n")
+        self.assertIn("[burn_base]", lines[0])
+        self.assertNotIn("ass=", lines[0])
+        self.assertTrue(lines[1].startswith("[1:v]scale="))
+        self.assertTrue(lines[2].startswith("[burn_base][burn_stick0]overlay="))
+        self.assertEqual(lines[3], "[burn_ovl0]ass=filename='burn.ass'[burn_video]")
+        self.assertIn("[burn_audio_0]", graph)
+        legacy = server_editor._burn_interval_filter([(0, 2000)], 0, None)
+        self.assertIn("setpts=", legacy.split(";\n")[0])
+        self.assertIn("ass=filename='burn.ass'[burn_video]", legacy)
+
+    def test_full_video_burn_wires_sticker_inputs_and_filter_complex(self) -> None:
+        stickers = server_editor._parse_burn_sticker_inputs(
+            [self._entry(), self._entry(rel="b.gif", intervals=[{"start": 0, "end": 800}])], self.stickers_dir)
+        self._run_full_video(stickers)
+        command = next(command for command in self.calls if command[0] == "ffmpeg")
+        self.assertEqual(command[command.index("-loop") + 1], "1")
+        self.assertEqual(command[command.index("-i", command.index("-loop")) + 1], str(self.sticker_a))
+        self.assertEqual(command[command.index("-i", command.index(str(self.sticker_a))) + 1], str(self.sticker_gif))
+        self.assertIn("-/filter_complex", command)
+        self.assertEqual(command[command.index("-map") + 1], "[burn_video]")
+        self.assertEqual(command[command.index("-map", command.index("-map") + 1) + 1], "0:a?")
+        graph = Path(command[command.index("-/filter_complex") + 1]).read_text(encoding="utf-8")
+        self.assertIn("overlay=", graph)
+        self.assertIn("ass=filename='burn.ass'[burn_video]", graph)
+
+    def test_full_video_burn_without_stickers_keeps_vf_shortcut(self) -> None:
+        self._run_full_video([])
+        command = next(command for command in self.calls if command[0] == "ffmpeg")
+        self.assertEqual(command[command.index("-vf") + 1], "ass=filename='burn.ass'")
+        self.assertNotIn("-/filter_complex", command)
+
+    def test_http_burn_job_forwards_stickers_to_export(self) -> None:
+        from tests.test_local_editor_server import server_editor as loaded_server_editor
+        temp = tempfile.TemporaryDirectory()
+        self.addCleanup(temp.cleanup)
+        root = Path(temp.name).resolve()
+        stickers_dir = root / "stickers"
+        stickers_dir.mkdir()
+        sticker = stickers_dir / "a.png"
+        sticker.write_bytes(b"png")
+        source = root / "source.mp4"
+        source.write_bytes(b"source")
+        project = loaded_server_editor.ServerProject(data={"segments": []}, json_path=root / "project.json",
+            media_path=source, source_media_path=source, sticker_root=stickers_dir, stickers=[])
+        server = loaded_server_editor.EditorServer(("127.0.0.1", 0), project, no_waveform=True)
+        server.media_jobs.temp_root = root
+        thread = threading.Thread(target=server.serve_forever, daemon=True)
+        thread.start()
+        # addCleanup runs LIFO: shutdown → close → join keeps the socket valid while stopping.
+        self.addCleanup(thread.join, 2)
+        self.addCleanup(server.server_close)
+        self.addCleanup(server.shutdown)
+        base = "/api/exports/burned-video/jobs"
+        captured = {}
+
+        def burn(source_path, intervals, ass, output, **kwargs):
+            captured["stickers"] = kwargs.get("stickers")
+            output.write_bytes(b"burned-video")
+
+        def request(path, payload=None):
+            headers = {"Content-Type": "application/json", "X-MAW-Request-Token": server.request_token}
+            data = json.dumps(payload).encode() if payload is not None else None
+            req = urllib.request.Request(f"http://127.0.0.1:{server.server_address[1]}{path}",
+                data=data, headers=headers)
+            try:
+                with urllib.request.urlopen(req, timeout=5) as response:
+                    return response.status, json.loads(response.read())
+            except urllib.error.HTTPError as error:
+                return error.code, json.loads(error.read())
+
+        payload = {"requestToken": server.request_token, **server.project_binding_payload(),
+                   "ass": ASS_TEXT,
+                   "stickers": [{"rel": "a.png", "x": 10, "y": 20, "width": 30, "height": 40,
+                                 "intervals": [{"start": 0, "end": 900}]}]}
+        tools = mock.Mock(ffmpeg=Path("ffmpeg"), ffprobe=Path("ffprobe"))
+        with mock.patch.object(loaded_server_editor, "editor_ffmpeg_tools", return_value=tools), \
+             mock.patch.object(loaded_server_editor.EditorServer, "ensure_libass_supported", return_value=True), \
+             mock.patch.object(loaded_server_editor, "burn_ass_video", side_effect=burn):
+            status, job = request(base, payload)
+            self.assertEqual(status, 202)
+            deadline = time.monotonic() + 5
+            while time.monotonic() < deadline:
+                _, state = request(f"{base}/{job['jobId']}")
+                if state["state"] == "ready":
+                    break
+                time.sleep(.01)
+            self.assertEqual(state["state"], "ready")
+        self.assertEqual(len(captured["stickers"]), 1)
+        self.assertEqual(captured["stickers"][0]["path"], sticker)
+        self.assertEqual(captured["stickers"][0]["intervals"], [(0, 900)])
+
+        # Inactive sticker root: stickers cannot be burned and the request is rejected.
+        status, error = request(base, {**payload, "stickers": [{"rel": "a.png", "x": 1, "y": 1,
+            "width": 2, "height": 2, "intervals": [{"start": 0, "end": 1}]}]})
+        server.project = server_editor.replace(server.project, sticker_root=None)
+        status, error = request(base, {**payload, "stickers": [{"rel": "a.png", "x": 1, "y": 1,
+            "width": 2, "height": 2, "intervals": [{"start": 0, "end": 1}]}]})
+        self.assertEqual(status, 400)
+        self.assertIn("表情包", error["error"])
