@@ -602,6 +602,16 @@ export function createUtilsModule(dependencies) {
   }
 
 
+  // 整行句级 shake 外壳（!!…!!，仅双符号、不区分单双规则，与
+  // parseSentenceShakeMarkers 的识别范围一致）；没有完整对时返回 null。
+  function shakeShellPair(text) {
+    const source = String(text ?? '');
+    return source.length > 4 && source.startsWith('!!') && source.endsWith('!!')
+      ? { open: '!!', close: '!!' }
+      : null;
+  }
+
+
   // 拆分补齐（维护者拍板方案 2）：拆开后若某个 MASS 符号对的开口/闭口分处
   // 两侧片段，两侧各补齐成对——文本层加符号，leftAppend / rightPrepend 返回
   // 需要同步补进边界 item 的符号串。fade >>…<< 句级外壳与行内同符号对一起
@@ -714,19 +724,24 @@ export function createUtilsModule(dependencies) {
   // 合并折叠：前段以「已识别对的闭符号」结尾、后段以同符号的开符号开头时，
   // 优先整体折叠——前段尾闭与后段首开一并移除，两段内容合成一个跨 junction
   // 的完整对（样式取两段并集、无孤儿符号、拆分-合并往返无损；复验重 union
-  // 失败则退回仅移后段开符号）。fade 句级外壳同样按整体折叠合并回一个完整
-  // 外壳。不构成折叠时返回 null。
+  // 失败则退回仅移后段开符号）。fade / shake 句级外壳按整句壳折叠：两侧各
+  // 是完整外壳时合并回一个覆盖整句的外壳，复验走句级 parse-once 解析。
+  // 不构成折叠时返回 null。
+  // joiner 是 junction 处的分隔符（单词型合并的空格等）：重 union 复验按
+  // 「左段 + joiner + 右段」拼回的最终文本判定，折叠后由调用方把 joiner
+  // 插回两段之间。
   // leftTrimmed 是前段尾部被裁掉的字符数，供 items 层同步。
-  function foldMassPairJunction(leftText, rightText, rule) {
+  function foldMassPairJunction(leftText, rightText, rule, joiner = '') {
     const left = String(leftText ?? '');
     const right = String(rightText ?? '');
+    const join = String(joiner ?? '');
     if (!left || !right) return null;
     const leftFade = fadeShellPair(left, rule);
     const rightFade = fadeShellPair(right, rule);
     if (leftFade && rightFade) {
       const trimmedLeft = left.slice(0, left.length - leftFade.close.length);
       const trimmedRight = right.slice(rightFade.open.length);
-      const check = parseSentenceFadeMarkers(trimmedLeft + trimmedRight, rule);
+      const check = parseSentenceFadeMarkers(trimmedLeft + join + trimmedRight, rule);
       if (check.fadeIn && check.fadeOut) {
         return {
           left: trimmedLeft, right: trimmedRight,
@@ -734,11 +749,26 @@ export function createUtilsModule(dependencies) {
         };
       }
     }
+    const leftShake = shakeShellPair(left);
+    const rightShake = shakeShellPair(right);
+    if (leftShake && rightShake) {
+      const trimmedLeft = left.slice(0, left.length - leftShake.close.length);
+      const trimmedRight = right.slice(rightShake.open.length);
+      const check = parseSentenceShakeMarkers(trimmedLeft + join + trimmedRight);
+      if (check.shake) {
+        return {
+          left: trimmedLeft, right: trimmedRight,
+          removed: rightShake.open.length, leftTrimmed: leftShake.close.length,
+        };
+      }
+    }
     const markers = [];
     massSymbolWidths(rule).forEach((width) => {
       ['*', '_', '+', '-', '~'].forEach((symbol) => markers.push(symbol.repeat(width)));
     });
-    markers.push('//', '!!');
+    // `!!` 是整句壳（SENTENCE_LEVEL_WRAP_PAIRS），只走上面的句级折叠；
+    // 行内形式的 `!!` 不跨 junction 折叠——折出来也是句中死标记。
+    markers.push('//');
     // 双符号是「左右添加字符」预设的规范形式，优先判定。
     markers.sort((a, b) => b.length - a.length);
     for (const marker of markers) {
@@ -752,8 +782,8 @@ export function createUtilsModule(dependencies) {
       // 语法对被拆分补齐/独立包裹拆成的两侧，合并时还原为一个跨 junction 的
       // 完整对——样式取两段并集、不残留孤儿符号，拆分-合并往返无损。
       // （Greptile P1：只移后段开符号会留前段尾闭孤儿 `**甲**乙**`。）
-      const rejoined = left.slice(0, left.length - width) + right.slice(width);
-      const rejoinedCloseAt = left.length - width + (openPair.end - width);
+      const rejoined = left.slice(0, left.length - width) + join + right.slice(width);
+      const rejoinedCloseAt = left.length - width + join.length + (openPair.end - width);
       const reunited = assMarkedRanges(rejoined, marker).some((range) => (
         range.start === closePair.start && range.end === rejoinedCloseAt
       ));
@@ -772,9 +802,12 @@ export function createUtilsModule(dependencies) {
   }
 
 
-  // 三处合并路径（主/副/overlay）共用的「拼接 + 相邻同符号对折叠」：折叠只
-  // 作用于无分隔符的拼接边界（空格/换行分隔不会产生符号连跑），并同步返回
-  // items 层拼接结果——被折叠掉的符号从对应段边界 item 的文本里裁掉，
+  // 三处合并路径（主/副/overlay）共用的「拼接 + 相邻同符号对折叠」：无论有
+  // 无分隔符都在 junction 折叠「前段尾闭 + 后段首开」的同符号对——无分隔符
+  // 时防止符号连跑（`****`），有分隔符（单词型的空格等）时还原被拆分补齐
+  // 拆开的完整对（`!!This is a!!` + `!!short test video!!` →
+  // `!!This is a short test video!!`）；折叠后分隔符插回 junction，items 层
+  // 同步裁掉被折叠的符号、并把分隔符归位到后段首个存活 item 的开头，
   // 保证每段 items 拼接 == 其文本的守恒契约随文本一起成立。
   function joinSegmentTextsMassFold(segments, separator, rule) {
     const source = Array.isArray(segments) ? segments : [];
@@ -784,8 +817,8 @@ export function createUtilsModule(dependencies) {
     let text = texts[0] || '';
     for (let index = 1; index < texts.length; index += 1) {
       let part = texts[index];
-      if (separator === '' && text && part) {
-        const folded = foldMassPairJunction(text, part, rule);
+      if (text && part) {
+        const folded = foldMassPairJunction(text, part, rule, separator);
         if (folded) {
           text = folded.left;
           part = folded.right;
@@ -820,6 +853,10 @@ export function createUtilsModule(dependencies) {
       }
       const removedStart = texts[index].slice(0, leadingSlices[index]);
       let startCut = removedStart && ownedText.startsWith(removedStart) ? removedStart.length : 0;
+      // 折叠边界把 separator 插回文本层后，items 层把它归位到该段首个存活
+      // item 的开头（与词级 item 空格前置的约定一致），使 items 拼接与合并
+      // 文本继续守恒；未折叠的边界维持原状（分隔符不落 items）。
+      let pendingSeparator = index > 0 && separator !== '' && leadingSlices[index] > 0;
       for (const item of trimmedEnd) {
         const itemText = String(item?.text || '');
         if (startCut > 0) {
@@ -828,8 +865,15 @@ export function createUtilsModule(dependencies) {
             startCut -= itemText.length;
             continue;
           }
-          items.push({ ...item, text: itemText.slice(startCut) });
+          items.push({ ...item, text: `${pendingSeparator ? separator : ''}${itemText.slice(startCut)}` });
+          pendingSeparator = false;
           startCut = 0;
+          continue;
+        }
+        if (pendingSeparator) {
+          if (!itemText) continue;
+          items.push({ ...item, text: `${separator}${itemText}` });
+          pendingSeparator = false;
           continue;
         }
         items.push(item);
