@@ -125,6 +125,9 @@ jobs:
         shell: pwsh
         run: .\scripts\build-windows.ps1 -SkipTests
 
+      - name: Verify packaged ESM bundles and source hashes
+        run: uv run python scripts/verify_web_bundle_payload.py dist/MAW/_internal/web
+
       - name: Verify bundled FAQ
         shell: pwsh
         run: |
@@ -447,6 +450,10 @@ jobs:
           uv run python -m maw.runtimes.freezer freeze --force
           uv run --group build pyinstaller --noconfirm --clean MAW.spec
 
+      - name: Verify packaged ESM bundles and source hashes
+        if: matrix.platform == 'macos'
+        run: uv run python scripts/verify_web_bundle_payload.py dist/MAW.app/Contents/Resources/web
+
       - name: Verify bundled FAQ
         if: matrix.platform == 'macos'
         shell: bash
@@ -642,6 +649,7 @@ jobs:
           test -f squashfs-root/_internal/ocr-runtime/maw/text_conversion.py
           test -f squashfs-root/_internal/moss-runtime/requirements-moss.txt
           echo "OK: runtime requirements txt 随包分发"
+          python3 ../scripts/verify_web_bundle_payload.py squashfs-root/_internal/web
           rm -r squashfs-root
 
       - name: Diagnose AppImage libraries
