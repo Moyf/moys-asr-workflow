@@ -366,10 +366,13 @@ async function runBurnVideoJob({ button, label, buildRequest, suggestedName, sta
 
 // 普通和去空隙烧录分别使用原时间轴和收缩后的字幕。
 function buildBurnVideoSubtitles(gapRemoved = false) {
+  // The output video keeps the media timeline. The file export preference that
+  // extends the first cue to zero must not make burned captions appear early.
+  const options = { alignFirstStart: false };
   if (MaweSettings.EDITOR_SETTINGS.assMode === true) {
-    return { ass: gapRemoved ? MaweExportSrt.buildGapRemovedAss() : MaweExportSrt.buildAss() };
+    return { ass: gapRemoved ? MaweExportSrt.buildGapRemovedAss(options) : MaweExportSrt.buildAss(options) };
   }
-  return { srt: gapRemoved ? MaweExportSrt.buildGapRemovedSrt() : MaweExportSrt.buildSrt() };
+  return { srt: gapRemoved ? MaweExportSrt.buildGapRemovedSrt(options) : MaweExportSrt.buildSrt(options) };
 }
 
 document.getElementById('burn-video-export-btn')?.addEventListener('click', () => {
