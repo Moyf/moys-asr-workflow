@@ -584,17 +584,22 @@ class PackagingContractTests(CompactContainerAssertions, unittest.TestCase):
         self.assertIn("_internal/libreadline.so.*", workflow)
 
     def test_release_workflow_installs_ffmpeg_before_cross_platform_python_tests(self) -> None:
-        """Given macOS/Linux release jobs, When media tests run, Then FFmpeg is already installed."""
+        """Given macOS/Linux release jobs, When media tests run, Then the packaged FFmpeg 8.1 toolchain is verified and active."""
         workflow = read_text(".github/workflows/release.yml")
         matrix_at = workflow.index('  build-aux:')
         tests_at = workflow.index('- name: Run Python tests', matrix_at)
         macos_install = workflow.index('- name: Install FFmpeg for macOS media tests', matrix_at)
         linux_install = workflow.index('- name: Install Linux system dependencies', matrix_at)
+        linux_media_ffmpeg = workflow.index('- name: Install verified FFmpeg 8.1 for Linux media tests', matrix_at)
         self.assertLess(macos_install, tests_at)
         self.assertLess(linux_install, tests_at)
-        self.assertIn("if: matrix.platform == 'macos'\n        run: brew install ffmpeg", workflow)
+        self.assertLess(linux_media_ffmpeg, tests_at)
+        self.assertIn('"ebb82529562b71170807bbc6b0e7eb4f0b13af8cbb0e085bb9e8f6fe709598ad"', workflow[macos_install:tests_at])
+        self.assertIn('"9a08d61f9328e8164ba560ee7a79958e357307fcfeea6fe626b7d66cdc287028"', workflow[macos_install:tests_at])
         self.assertIn("if: matrix.platform == 'linux'", workflow[linux_install:tests_at])
         self.assertIn("ffmpeg squashfs-tools", workflow[linux_install:tests_at])
+        self.assertIn('scripts/verify_sha256.sh', workflow[linux_media_ffmpeg:tests_at])
+        self.assertIn('FfmpegBranch="8.1"', workflow[linux_media_ffmpeg:tests_at])
 
     def test_appimage_build_ships_ffmpeg_gpl_license_and_source_notice(self) -> None:
         """Given the AppImage build script, When the BtbN GPL ffmpeg build is bundled, Then the GPLv3 license text and a source notice are written into the bundle."""
