@@ -10,7 +10,6 @@
   const MEDIA_EXTS = new Set([".mp4", ".mkv", ".avi", ".mov", ".wmv", ".flv", ".webm", ".ts", ".m4v", ".mp3", ".wav", ".m4a", ".flac", ".aac", ".ogg"]);
   const VIDEO_EXTS = new Set([".mp4", ".mkv", ".avi", ".mov", ".wmv", ".flv", ".webm", ".ts", ".m4v"]);
   const SCRIPT_EXTS = new Set([".txt", ".md", ".markdown"]);
-  const TOOLBOX_SIZE_KEY = "maw.launcher.toolbox.size";
   const LLM_PROMPTS_KEY = "maw.launcher.llm.prompts";
   const LLM_PROVIDER_BY_TASK_KEY = "maw.launcher.llm.provider_by_task";
   // 各任务独立记忆供应商：两种翻译共用一个槽位，其余任务各自一个。
@@ -30,9 +29,6 @@
     lead_in_ms: 120,
     lead_out_ms: 80,
   });
-  const TOOLBOX_MIN_WIDTH = 360;
-  const TOOLBOX_MIN_HEIGHT = 320;
-  const TOOLBOX_MAX_HEIGHT = 680;
   const AUTO_STEP_ORDER = ["match", "cleanup", "replace", "proofread", "resegment", "ocr", "translate", "burn"];
   const AUTO_STEP_CHECKBOXES = {
     match: "autoStepMatch",
@@ -85,6 +81,7 @@
   let audioProbeRequest = 0;
   let scriptPreviewRequest = 0;
   let splitPreviewRequest = 0;
+  let redesignUI = null;
 
   function t(key) {
     return window.MAWLauncher.translate(key);
@@ -105,6 +102,8 @@
     const display = $("postprocessTaskPrompt");
     display.textContent = prompt || t("toolbox_task_none");
     display.classList.toggle("empty", !prompt);
+    const promptLabel = document.querySelector('label[for="postprocessPrompt"]');
+    if (promptLabel) promptLabel.textContent = t(operation === "custom" ? "redesign_custom_prompt" : "toolbox_prompt");
     $("postprocessCleanupOptions")?.classList.toggle("hidden", operation !== "ai_cleanup");
     $("postprocessResegmentOptions")?.classList.toggle("hidden", operation !== "resegment");
     const translateOperation = ["translate_zh", "translate_en"].includes(operation);
@@ -317,6 +316,8 @@
     renderTaskPrompt(next);
     setFieldError("postprocessPrompt", "");
     restoreProviderForTask(next);
+    redesignUI?.select(activeToolId, next);
+    syncSharedOutputVisibility();
     renderAutoPostprocessState();
     persistAutoPlanSoon();
   }
@@ -837,19 +838,20 @@
     void loadPostprocessApiKey(item.id, item.maskedApiKey || "");
   }
 
+  // 工具箱是独立页面：打开即切到工具箱页，关闭回到转写页。
+  // 「仅配置」模式（自动后处理的「配置」按钮）显示「返回转写」入口。
   function setOpen(open) {
-    const wasOpen = !$("toolboxDrawer").classList.contains("hidden");
-    $("toolboxDrawer").classList.toggle("hidden", !open);
-    $("toolboxFab").setAttribute("aria-expanded", String(open));
     if (!open) toolboxOpenMode = "manual";
+    $("toolboxBackToTranscribe").classList.toggle("hidden", toolboxOpenMode !== "auto-config");
     syncPaths();
     if (open) {
+      window.MAWLauncher.showPage("toolbox");
       const activeTab = activeToolboxView().querySelector(".toolbox-tab.active:not(.hidden)")
         || activeToolboxView().querySelector(".toolbox-tab:not(.hidden)");
       if (activeTab) selectTool(activeTab.dataset.tool);
+    } else if (window.MAWLauncher.getActivePage() === "toolbox") {
+      window.MAWLauncher.navigateTo("transcribe");
     }
-    if (open) $("toolboxClose").focus();
-    if (!open && wasOpen) $("toolboxFab").focus();
   }
 
   function setTestConnectionAttention(attention) {
@@ -861,25 +863,28 @@
   }
 
   function activeToolboxView() {
-    // 两个分区的 tab 导航都位于各自的 primary view 内。
-    return activeToolboxSection === "postprocess" ? $("toolboxPostprocessView") : $("toolboxUtilitiesView");
+    return $("toolboxToolNav");
   }
 
   // 「处理结果」与「模型实时输出」是各工具标签共享的区域：只随产出它的工具
   // 标签显示，切到其他标签时隐藏、切回时恢复，避免旧结果被误读成当前工具的。
   function syncSharedOutputVisibility() {
-    const visible = Boolean(toolboxResultTool) && toolboxResultTool === activeToolId;
+    const visible = Boolean(toolboxResultTool) && toolboxResultTool === toolIdentity();
     $("toolboxResult").classList.toggle("hidden", !visible);
-    $("toolboxStreamOutput").classList.toggle("hidden", !toolboxStreamTool || toolboxStreamTool !== activeToolId);
+    $("toolboxStreamOutput").classList.toggle("hidden", !toolboxStreamTool || toolboxStreamTool !== toolIdentity());
+  }
+
+  function toolIdentity(tool = activeToolId) {
+    return tool === "llm" ? `llm:${$("postprocessOperation").value}` : tool;
   }
 
   function resultOwningTool() {
-    return busy && runningToolId ? runningToolId : activeToolId;
+    return busy && runningToolId ? runningToolId : toolIdentity();
   }
 
   // 实时输出区在工具箱顶部；运行按钮在面板下方，滚动回顶让用户看到 AI 输出。
   function scrollToolboxContentToTop() {
-    document.querySelector("#toolboxDrawer .toolbox-content")?.scrollTo({ top: 0, behavior: "smooth" });
+    document.querySelector("#toolboxPanel .toolbox-content")?.scrollTo({ top: 0, behavior: "smooth" });
   }
 
   function syncUtilityMediaFieldState() {
@@ -909,8 +914,9 @@
     $("toolboxPostprocessView").classList.toggle("hidden", section !== "postprocess");
     $("toolboxUtilitiesContent").classList.toggle("hidden", section !== "utilities");
     $("toolboxUtilitiesView").classList.toggle("hidden", section !== "utilities");
-    $("toolboxDrawer").classList.toggle("toolbox-utilities-active", section === "utilities");
-    const activeTab = activeToolboxView().querySelector(".toolbox-tab.active:not(.hidden)") || activeToolboxView().querySelector(".toolbox-tab:not(.hidden)");
+    $("toolboxPanel").classList.toggle("toolbox-utilities-active", section === "utilities");
+    const activeTab = [...activeToolboxView().querySelectorAll(".toolbox-tab:not(.hidden)")].find((tab) => toolboxSectionForTool(tab.dataset.tool) === section && tab.classList.contains("active"))
+      || [...activeToolboxView().querySelectorAll(".toolbox-tab:not(.hidden)")].find((tab) => toolboxSectionForTool(tab.dataset.tool) === section);
     if (activeTab) selectTool(activeTab.dataset.tool);
   }
 
@@ -919,7 +925,10 @@
     if (targetTab?.classList.contains("hidden")) return;
     activeToolId = tool;
     const section = toolboxSectionForTool(tool);
-    if (section !== activeToolboxSection) selectToolboxSection(section);
+    activeToolboxSection = section;
+    $("toolboxPostprocessView").classList.toggle("hidden", section !== "postprocess");
+    $("toolboxUtilitiesContent").classList.toggle("hidden", section !== "utilities");
+    $("toolboxUtilitiesView").classList.toggle("hidden", section !== "utilities");
     document.querySelectorAll(".toolbox-tab").forEach((tab) => {
       const active = tab.dataset.tool === tool;
       tab.classList.toggle("active", active);
@@ -933,19 +942,23 @@
       action.classList.toggle("hidden", action.dataset.toolAction !== tool || toolboxOpenMode === "auto-config");
     });
     const scriptMode = tool === "timestamps" && $("toolboxTimestampMode").value === "script";
-    $("toolboxInputDropZone").classList.toggle("hidden", section !== "postprocess" || scriptMode);
-    $("toolboxUtilityMediaDropZone").classList.toggle("hidden", section !== "utilities");
+    const configOnly = toolboxOpenMode === "auto-config";
+    // 生成时间码自带输入：已有工程模式移动同一输入框到工具面板，脚本模式使用媒体 / 文稿输入。
+    if (tool === "timestamps") $("toolboxTimestampsPanel").prepend($("toolboxInputDropZone"));
+    else $("toolboxPostprocessView").prepend($("toolboxInputDropZone"));
+    $("toolboxInputDropZone").classList.toggle("hidden", section !== "postprocess" || scriptMode || configOnly);
+    $("toolboxUtilityMediaDropZone").classList.toggle("hidden", !["burnSubtitle", "extractAudio", "waveform"].includes(tool) || configOnly);
     $("toolboxAudioTrackField").classList.toggle("hidden", !(section === "utilities" && ["waveform", "extractAudio"].includes(tool)));
     $("toolboxChain").classList.toggle("hidden", section !== "postprocess" || scriptMode || !$("toolboxChainList").children.length);
-    const configOnly = toolboxOpenMode === "auto-config";
     $("toolboxOutputField").classList.toggle("hidden", section !== "postprocess" || configOnly || scriptMode);
     $("toolboxTimestampScriptInputs").classList.toggle("hidden", !scriptMode);
     $("toolboxConfigOnlyHint")?.classList.toggle("hidden", !configOnly);
     renderMediaToolAction();
+    redesignUI?.select(tool, $("postprocessOperation").value);
   }
 
   function moveToolFocus(event) {
-    const tools = [...event.currentTarget.closest('[role="tablist"]').querySelectorAll(".toolbox-tab:not(.hidden)")];
+    const tools = [...event.currentTarget.closest('[role="tablist"]').querySelectorAll(".toolbox-tab:not(.hidden):not(:disabled)")];
     const currentIndex = tools.indexOf(event.currentTarget);
     if (currentIndex < 0) return;
     const offset = event.key === "ArrowRight" || event.key === "ArrowDown" ? 1 : -1;
@@ -957,99 +970,10 @@
     if (!target) return;
     event.preventDefault();
     selectTool(target.dataset.tool);
+    if (target.dataset.operation) switchLlmOperation(target.dataset.operation === "translate" ? autoLlmOperation("translate") : target.dataset.operation);
     target.focus();
   }
 
-  function clampToolboxSize(width, height) {
-    const viewportWidth = window.MAWLauncher.viewportPixelsToPage(window.innerWidth);
-    const viewportHeight = window.MAWLauncher.viewportPixelsToPage(window.innerHeight);
-    const maxWidth = Math.max(TOOLBOX_MIN_WIDTH, viewportWidth - 40);
-    const maxHeight = Math.max(TOOLBOX_MIN_HEIGHT, Math.min(TOOLBOX_MAX_HEIGHT, viewportHeight - 156));
-    return {
-      width: Math.round(Math.min(Math.max(width, TOOLBOX_MIN_WIDTH), maxWidth)),
-      height: Math.round(Math.min(Math.max(height, TOOLBOX_MIN_HEIGHT), maxHeight)),
-    };
-  }
-
-  function applyToolboxSize(width, height) {
-    const size = clampToolboxSize(width, height);
-    const drawer = $("toolboxDrawer");
-    drawer.style.width = `${size.width}px`;
-    drawer.style.blockSize = `${size.height}px`;
-    return size;
-  }
-
-  function persistToolboxSize(size) {
-    try {
-      localStorage.setItem(TOOLBOX_SIZE_KEY, JSON.stringify(size));
-    } catch (error) { /* localStorage 不可用时仅本次会话生效 */ }
-  }
-
-  function restoreToolboxSize() {
-    let stored = null;
-    try {
-      stored = JSON.parse(localStorage.getItem(TOOLBOX_SIZE_KEY) || "null");
-    } catch (error) {
-      stored = null;
-    }
-    if (!stored || !Number.isFinite(stored.width) || !Number.isFinite(stored.height)) return;
-    applyToolboxSize(stored.width, stored.height);
-  }
-
-  // 抽屉右下锚定：顶边把手向上拉高、左边把手向左拉宽，拖拽结束写入 localStorage。
-  function bindToolboxResize(handle, axis) {
-    handle.addEventListener("pointerdown", (event) => {
-      if (event.button !== 0) return;
-      event.preventDefault();
-      const drawer = $("toolboxDrawer");
-      const style = getComputedStyle(drawer);
-      const start = {
-        x: event.clientX,
-        y: event.clientY,
-        width: Number.parseFloat(style.width),
-        height: Number.parseFloat(style.height),
-      };
-      let size = { width: start.width, height: start.height };
-      handle.setPointerCapture(event.pointerId);
-      handle.classList.add("dragging");
-      const onMove = (moveEvent) => {
-        size = axis === "y"
-          ? applyToolboxSize(start.width, start.height + window.MAWLauncher.viewportPixelsToPage(start.y - moveEvent.clientY))
-          : applyToolboxSize(start.width + window.MAWLauncher.viewportPixelsToPage(start.x - moveEvent.clientX), start.height);
-      };
-      const onEnd = () => {
-        handle.removeEventListener("pointermove", onMove);
-        handle.removeEventListener("pointerup", onEnd);
-        handle.removeEventListener("pointercancel", onEnd);
-        handle.classList.remove("dragging");
-        persistToolboxSize(size);
-      };
-      handle.addEventListener("pointermove", onMove);
-      handle.addEventListener("pointerup", onEnd);
-      handle.addEventListener("pointercancel", onEnd);
-    });
-    handle.addEventListener("keydown", (event) => {
-      const keys = axis === "y" ? ["ArrowUp", "ArrowDown"] : ["ArrowLeft", "ArrowRight"];
-      if (!keys.includes(event.key)) return;
-      event.preventDefault();
-      const step = event.shiftKey ? 96 : 24;
-      const grow = event.key === "ArrowUp" || event.key === "ArrowLeft";
-      const style = getComputedStyle($("toolboxDrawer"));
-      const width = Number.parseFloat(style.width);
-      const height = Number.parseFloat(style.height);
-      const size = axis === "y"
-        ? applyToolboxSize(width, height + (grow ? step : -step))
-        : applyToolboxSize(width + (grow ? step : -step), height);
-      persistToolboxSize(size);
-    });
-  }
-
-  function setupToolboxResize() {
-    bindToolboxResize($("toolboxResizeY"), "y");
-    bindToolboxResize($("toolboxResizeX"), "x");
-    restoreToolboxSize();
-    window.addEventListener("resize", restoreToolboxSize);
-  }
 
   function renderPostprocessResultActions() {
     const stop = $("stopToolboxPostprocess");
@@ -1234,7 +1158,7 @@
   function setBusy(nextBusy, statusKey = "toolbox_running") {
     busy = nextBusy;
     if (nextBusy) {
-      if (!runningToolId) runningToolId = activeToolId;
+      if (!runningToolId) runningToolId = toolIdentity();
       if (!activePostprocessOperationId) {
         displayedPostprocessOperationId = "";
         resetStreamOutput();
@@ -1468,6 +1392,7 @@
         setResult(postprocessErrorText(result), "error");
         return;
       }
+      window.MAWLauncher.rememberRecentProject?.(result.projectPath);
       if (openEditor) {
         window.MAWLauncher.setJsonPath(result.projectPath);
         await window.MAWLauncher.openServerEditor();
@@ -1599,6 +1524,7 @@
   }
 
   function addChainResult(chain, result) {
+    window.MAWLauncher.rememberRecentProject?.(result.projectPath);
     const artifacts = [
       { kind: "project", path: result.projectPath },
       { kind: "srt", path: result.srtPath },
@@ -1792,8 +1718,15 @@
       return conversion === "off" ? rules : `${rules} · ${t(`toolbox_conversion_${conversion}`)}`;
     }
     if (["cleanup", "proofread", "resegment", "translate"].includes(stepId)) {
-      const operation = autoLlmOperation(stepId);
-      return truncateHint(getLlmPrompt(operation) || taskPromptText(operation)) || t("toolbox_task_none");
+      const item = provider(stepProviderId(stepId));
+      const parts = [providerLabel(item), item?.model || ""];
+      if (stepId === "resegment" && $("postprocessResegmentMaxChars").value.trim()) parts.push(t("redesign_max_chars").replace("{count}", $("postprocessResegmentMaxChars").value.trim()));
+      if (stepId === "translate") {
+        parts.push(t($("autoTranslateTarget").value === "en" ? "auto_translate_en" : "auto_translate_zh"));
+        if ($("autoTranslateMergeBilingual").checked) parts.push(t("auto_merge_bilingual"));
+      }
+      if (stepId === "cleanup" && $("postprocessCleanupScriptPath").value.trim()) parts.push(fileName($("postprocessCleanupScriptPath").value));
+      return truncateHint(parts.filter(Boolean).join(" · "));
     }
     if (stepId === "ocr") {
       const video = $("ocrVideoPath").value.trim() || autoOcrVideoPath();
@@ -1811,7 +1744,7 @@
   function autoPlanFromControls() {
     // 各 LLM 步骤用自己任务记住的供应商（见 stepProviderId）；没有记录时沿用当前选中项。
     const ocr = ocrRegionPayload();
-    return {
+    const plan = {
       version: 2,
       enabled: Boolean($("autoPostprocessEnabled")?.checked),
       retainIntermediate: Boolean($("autoPostprocessRetain")?.checked),
@@ -1827,6 +1760,8 @@
         { id: "burn", enabled: Boolean($("autoStepBurn")?.checked), videoEncoder: "auto" },
       ],
     };
+    plan.steps.forEach((step) => { if (redesignUI && !redesignUI.isVisible(step.id)) step.enabled = false; });
+    return plan;
   }
 
   function autoLlmReady(providerId) {
@@ -1903,7 +1838,9 @@
       }
       row?.classList.toggle("needs-config", available && enabled && !ready);
       row?.classList.toggle("batch-unavailable", !available);
+      row?.classList.toggle("on", enabled && available);
     });
+    redesignUI?.refresh();
     const enabled = Boolean($("autoPostprocessEnabled")?.checked);
     $("autoPostprocessOptions")?.classList.toggle("hidden", !enabled);
     const translateEnabled = Boolean($("autoStepTranslate")?.checked);
@@ -1981,8 +1918,11 @@
   }
 
   function openAutoStep(stepId, invalidField = "", { highlightConnection = false } = {}) {
-    pendingAutoStep = stepId;
+    if (!AUTO_STEP_ORDER.includes(stepId)) return;
+    pendingAutoStep = $(AUTO_STEP_CHECKBOXES[stepId]).checked ? "" : stepId;
     const llmStep = ["cleanup", "proofread", "resegment", "translate"].includes(stepId);
+    // LLM 步骤没有可用供应商时必须先去设置页补配置；
+    // 回落打开抽屉会把焦点错误地落在「追加要求」上。
     if (llmStep && !autoLlmReady(stepProviderId(stepId))) {
       const item = provider(stepProviderId(stepId));
       const focusId = ["llmApiKey", "llmBaseUrl", "llmModel"].includes(invalidField)
@@ -1998,10 +1938,8 @@
       return;
     }
     toolboxOpenMode = "auto-config";
-    setOpen(true);
-    selectTool(AUTO_STEP_TOOLS[stepId] || "match");
     setAutoStepsExpanded(true);
-    selectAutoLlmOperation(stepId);
+    redesignUI.open(stepId);
     const fieldId = invalidField || autoStepFocusField(stepId);
     focusAutoField(fieldId);
   }
@@ -2364,6 +2302,11 @@
     item.maskedApiKey = result.maskedApiKey || item.maskedApiKey;
     item.verified = Boolean(result.verified);
     fillProviderSelects(item.id);
+    if (activeToolId === "llm") {
+      $("postprocessProvider").value = item.id;
+      rememberProviderForTask(activeLlmOperation, item.id);
+      persistAutoPlanSoon();
+    }
     renderProviderKeyStatus(item);
     renderAutoPostprocessState();
     setSettingsSaveStatus(t("toolbox_saved"), "success");
@@ -2399,6 +2342,11 @@
         item.maskedApiKey = result.maskedApiKey || item.maskedApiKey;
         item.hasApiKey = Boolean(result.maskedApiKey || $("llmApiKey").value.trim() || item.hasApiKey);
         fillProviderSelects(item.id);
+        if (activeToolId === "llm") {
+          $("postprocessProvider").value = item.id;
+          rememberProviderForTask(activeLlmOperation, item.id);
+          persistAutoPlanSoon();
+        }
         renderProviderKeyStatus(item);
         setSettingsSaveStatus(result.saved ? t("llm_connection_saved") : t("llm_connection_success"), "success");
         renderAutoPostprocessState();
@@ -2754,19 +2702,37 @@
     renderAlignmentAction();
     renderMediaToolAction();
     initializeAutoPostprocess();
+    redesignUI.initialize(config.postprocessAutoPlan || defaultAutoPlan());
+    syncTranslationControls("auto", { persist: false });
     void restoreBurnSubtitleSettings();
     syncGreenScreenSizeFieldState();
   }
 
-  $("toolboxFab").addEventListener("click", () => {
-    toolboxOpenMode = "manual";
-    setOpen($("toolboxDrawer").classList.contains("hidden"));
+  redesignUI = window.MAWLauncher.createPostprocessUI({
+    steps: AUTO_STEP_ORDER, checkboxes: AUTO_STEP_CHECKBOXES, tools: AUTO_STEP_TOOLS, panels,
+    label: autoStepLabel, ready: autoStepReady, selectTool, switchOperation: switchLlmOperation,
+    render: renderAutoPostprocessState, persist: persistAutoPlanSoon,
+    onClose: () => { toolboxOpenMode = "manual"; pendingAutoStep = ""; },
   });
-  $("toolboxClose").addEventListener("click", () => setOpen(false));
-  $("toolboxDrawer").addEventListener("wheel", (event) => {
-    event.stopPropagation();
-    if (!event.target?.closest?.(".toolbox-content")) event.preventDefault();
-  }, { passive: false });
+  function syncTranslationControls(source, { persist = true } = {}) {
+    const pairs = [["autoTranslateMergeBilingual", "postprocessMergeBilingual"], ["autoTranslateBackfill", "postprocessBackfill"], ["autoTranslateBilingualOrder", "postprocessBilingualOrder"]];
+    pairs.forEach(([autoId, toolId]) => {
+      const from = $(source === "auto" ? autoId : toolId);
+      const to = $(source === "auto" ? toolId : autoId);
+      if (from.type === "checkbox") to.checked = from.checked;
+      else to.value = from.value;
+    });
+    renderTaskPrompt();
+    renderAutoPostprocessState();
+    if (persist) persistAutoPlanSoon();
+  }
+  ["postprocessMergeBilingual", "postprocessBackfill", "postprocessBilingualOrder"].forEach((id) => $(id).addEventListener("change", () => {
+    // 互斥处理先于同步，避免回填与合并同时进入计划。
+    if (id === "postprocessMergeBilingual" && $(id).checked) $("postprocessBackfill").checked = false;
+    if (id === "postprocessBackfill" && $(id).checked) $("postprocessMergeBilingual").checked = false;
+    syncTranslationControls("tool");
+  }));
+  $("toolboxBackToTranscribe").addEventListener("click", () => setOpen(false));
   document.querySelectorAll("[data-toolbox-section]").forEach((tab) => {
     tab.addEventListener("click", () => selectToolboxSection(tab.dataset.toolboxSection));
     tab.addEventListener("keydown", (event) => {
@@ -2782,7 +2748,10 @@
     });
   });
   document.querySelectorAll(".toolbox-tab").forEach((tab) => {
-    tab.addEventListener("click", () => selectTool(tab.dataset.tool));
+    tab.addEventListener("click", () => {
+      selectTool(tab.dataset.tool);
+      if (tab.dataset.operation) switchLlmOperation(tab.dataset.operation === "translate" ? autoLlmOperation("translate") : tab.dataset.operation);
+    });
     tab.addEventListener("keydown", (event) => {
       if (["ArrowRight", "ArrowDown", "ArrowLeft", "ArrowUp", "Home", "End"].includes(event.key)) moveToolFocus(event);
     });
@@ -3007,25 +2976,24 @@
     persistAutoPlanSoon();
   });
   $("autoPostprocessRetain").addEventListener("change", () => { renderAutoPostprocessState(); persistAutoPlanSoon(); });
-  $("autoPostprocessStepsToggle").addEventListener("click", () => {
-    const expanded = $("autoPostprocessStepsCard").classList.contains("collapsed");
-    setAutoStepsExpanded(expanded);
-  });
   $("autoTranslateTarget").addEventListener("change", () => {
     if (["translate_zh", "translate_en"].includes(activeLlmOperation)) switchLlmOperation(autoLlmOperation("translate"));
     // 切换翻译目标时行序回到该目标的默认，回填文案跟随目标语言。
     $("autoTranslateBilingualOrder").value = $("autoTranslateTarget").value === "en" ? "original_first" : "translation_first";
     updateBackfillLabels();
+    syncTranslationControls("auto");
   });
   $("autoTranslateMergeBilingual").addEventListener("change", () => {
     if ($("autoTranslateMergeBilingual").checked) $("autoTranslateBackfill").checked = false;
     renderAutoPostprocessState();
     persistAutoPlanSoon();
+    syncTranslationControls("auto");
   });
   $("autoTranslateBackfill").addEventListener("change", () => {
     if ($("autoTranslateBackfill").checked) $("autoTranslateMergeBilingual").checked = false;
     renderAutoPostprocessState();
     persistAutoPlanSoon();
+    syncTranslationControls("auto");
   });
   $("postprocessMergeBilingual").addEventListener("change", () => {
     if ($("postprocessMergeBilingual").checked) $("postprocessBackfill").checked = false;
@@ -3098,9 +3066,16 @@
       setModelChoicesOpen(false);
       return;
     }
-    setOpen(false);
+    if (toolboxOpenMode === "auto-config" && window.MAWLauncher.getActivePage() === "toolbox") setOpen(false);
   });
-  setupToolboxResize();
+  window.addEventListener("mawpagechange", (event) => {
+    // 离开工具箱页即退出「仅配置」模式，下次从导航进入是普通工具箱。
+    if (event.detail.previous === "toolbox" && toolboxOpenMode === "auto-config") {
+      toolboxOpenMode = "manual";
+      $("toolboxBackToTranscribe").classList.add("hidden");
+      if (activeToolId) selectTool(activeToolId);
+    }
+  });
   window.addEventListener("mawlauncherready", initialize, { once: true });
   window.MAWLauncher.onPostprocessStatus = renderPostprocessStatus;
   window.MAWLauncher.onMediaToolLog = renderMediaToolLog;
@@ -3115,8 +3090,13 @@
   window.MAWLauncher.openToolboxAiProcessing = () => {
     // DeepSeek 彩蛋提示里的「AI处理」入口：打开工具箱并切到 AI 处理标签页。
     toolboxOpenMode = "manual";
-    if ($("toolboxDrawer").classList.contains("hidden")) setOpen(true);
+    setOpen(true);
     selectTool("llm");
+  };
+  window.MAWLauncher.openToolbox = () => {
+    redesignUI.close({ focus: false });
+    toolboxOpenMode = "manual";
+    setOpen(true);
   };
   window.MAWLauncher.onLanguageChanged = () => {
     clearScriptAlignmentCheck();

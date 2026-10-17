@@ -95,6 +95,7 @@ git diff --check
 - paseo `checkout-pr` 拉取 fork PR 可能因 gh GraphQL 调用直接报错：回退用 `git fetch origin pull/<N>/head:<本地分支>` + `git worktree add <路径> <分支>`；产物是普通 git worktree，不注册为 paseo workspace。
 - 已知时长：全量 Python 套件约 110s、单条 e2e spec 约 2 分钟，命令默认超时 120s 处于临界；这些命令显式设置更大的超时，或按文件拆分执行。
 - 新 worktree 先检查现有环境：锁文件一致时可只读复用主仓库 Python venv，显式设置 `MAW_TEST_PYTHON`（Node 跨语言测试）和 `MAW_E2E_PYTHON`（e2e）；不在共享 venv 上同步不同依赖。Node 在当前 worktree 按锁文件安装一次，e2e 还需浏览器。依赖缺失只记录一次并修复对应层，禁止为同一失败循环重建环境；e2e / Node 的 uv 默认路径使用 `--no-sync`。
+- Windows 上 Agent shell 统一用 **PowerShell 7（pwsh 7.6+）**；不用 Windows PowerShell 5.1（向原生 exe 传参会吞内嵌双引号），也不用 Git Bash（MSYS 路径改写，且与本文档的 PowerShell 命令不一致）。发现 `$PSVersionTable.PSVersion` 是 5.x 时先告知维护者，不要绕着 5.1 的缺陷写命令。长文本、含反引号或中文的内容仍走 UTF-8 文件传给原生 exe（`git commit -F`、`gh --body-file`）。
 - PowerShell 内联脚本（`node -e "..."`、多层嵌套引号）极易解析失败；复杂逻辑写成临时脚本文件再执行。命令输出为空时，先怀疑参数与引号，而不是重跑同一命令。
 
 自动化测试覆盖数据处理和服务器契约，不能替代真实浏览器中的拖动、播放、Seek 和布局体验。涉及编辑器交互的改动，应至少手动启动：

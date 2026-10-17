@@ -42,7 +42,7 @@ test('Launcher Ctrl+wheel zoom is bounded, persisted, and leaves ordinary wheel 
   });
   expect(ordinaryWheel).toEqual({ before: '150%', after: '150%', prevented: false });
 
-  await page.locator('#toolboxFab').click();
+  await page.locator('#navToolbox').click();
   const toolboxWheel = await page.locator('.toolbox-content').first().evaluate((element) => {
     const event = new WheelEvent('wheel', { bubbles: true, cancelable: true, deltaY: 120 });
     element.dispatchEvent(event);

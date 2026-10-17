@@ -7,7 +7,7 @@ const launcherPath = path.resolve(path.dirname(fileURLToPath(import.meta.url)), 
 async function openScriptMode(page) {
   await page.goto(`file://${launcherPath}`);
   await page.waitForFunction(() => window.MAWLauncher?.config?.postprocessProviders?.length > 0);
-  await page.locator('#toolboxFab').click();
+  await page.locator('#navToolbox').click();
   await page.locator('#toolboxTimestampsTab').click();
   await page.locator('#toolboxTimestampMode').selectOption('script');
 }

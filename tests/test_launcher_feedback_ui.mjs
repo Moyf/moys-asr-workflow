@@ -10,6 +10,7 @@ const strings = readFileSync(new URL("i18n/launcher-strings.js", launcherDir), "
 const stateSource = readFileSync(new URL("boot/launcher-state.js", launcherDir), "utf8");
 
 test("the editor action uses plain labels without emoji in both languages", () => {
+  // 改版后按钮保留线性 SVG 图标，文案去掉装饰 emoji。
   assert.match(strings, /open_editor:\s*"打开编辑器"/);
   assert.match(strings, /open_editor:\s*"Open editor"/);
   assert.match(stateSource, /start_server_editor:\s*"打开编辑器"/);
@@ -105,7 +106,7 @@ function aiLifecycleHarness() {
     setBusy(value, key) {
       context.busy = value;
       if (value) {
-        if (!context.runningToolId) context.runningToolId = context.activeToolId;
+        if (!context.runningToolId) context.runningToolId = context.toolIdentity();
         context.setResult(key);
       } else {
         context.runningToolId = "";
@@ -125,7 +126,7 @@ function aiLifecycleHarness() {
     "renderPostprocessResultActions", "setResult", "newPostprocessOperationId",
     "beginAiPostprocessOperation", "finishAiPostprocessOperation", "cancelAiPostprocess",
     "renderPostprocessStatus", "resetStreamOutput", "beginStreamOutput", "appendStreamText",
-    "renderPostprocessStream", "syncSharedOutputVisibility", "resultOwningTool",
+    "renderPostprocessStream", "syncSharedOutputVisibility", "toolIdentity", "resultOwningTool",
     "scrollToolboxContentToTop", "runAiCleanup", "runLlm",
   ];
   vm.runInContext(functions.map(launcherFunction).join("\n"), context);
@@ -313,7 +314,7 @@ function providerOwnershipHarness({ remembered = {} } = {}) {
     bridge(method, payload) { return new Promise(resolve => requests.push({ method, payload, resolve })); },
     renderModelChoices: noop, clearSettingsErrors: noop, setSettingsSaveStatus: noop,
     AUTO_STEP_ORDER: ["match", "cleanup"], AUTO_STEP_CHECKBOXES: { match: "autoStepMatch", cleanup: "autoStepCleanup" },
-    llmPrompts: {}, activeLlmOperation: "", ocrVideoManual: false,
+    llmPrompts: {}, activeLlmOperation: "", ocrVideoManual: false, redesignUI: null,
     defaultAutoPlan: () => ({ enabled: false, steps: [] }),
     renderAiCleanupMode: noop, validateMatchPunctuation: noop, refreshScriptPreview: noop,
     syncReplacementSeparator: noop, renderReplacementPreview: noop,

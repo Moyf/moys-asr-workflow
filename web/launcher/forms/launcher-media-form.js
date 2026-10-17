@@ -69,6 +69,7 @@ async function refreshAudioTracks(path) {
   renderAudioTracks(tracks);
   if (state.audioTrackCount === null && tracks.length === 0) $("audioTrackHint").textContent = t("audio_track_probe_failed");
   else if (tracks.length > 1) $("audioTrackHint").textContent = t("audio_track_hint");
+  launcherWorkflow?.refresh();
 }
 function scheduleAudioTrackProbe(path) {
   clearTimeout(state.audioTrackProbeTimer);
@@ -99,10 +100,14 @@ function getDefaultAudioTrackForMedia(path) {
   const defaultTrack = state.audioTracks.find(audioTrackIsDefault) || state.audioTracks[0];
   return audioTrackIndex(defaultTrack) ?? 0;
 }
-function setMedia(path, { refreshOcrVideo = false } = {}) { clearTimeout(state.audioTrackProbeTimer); $("mediaPath").value = path; setError("mediaPath", ""); setOutputNotice(""); syncFlvHints(); syncDefaultOutput(); void refreshAudioTracks(path); window.MAWLauncher?.onMediaPathChanged?.({ refreshOcrVideo }); }
+function setMedia(path, { refreshOcrVideo = false } = {}) { clearTimeout(state.audioTrackProbeTimer); $("mediaPath").value = path; setError("mediaPath", ""); setOutputNotice(""); syncFlvHints(); syncDefaultOutput(); void refreshAudioTracks(path); window.MAWLauncher?.onMediaPathChanged?.({ refreshOcrVideo }); launcherWorkflow?.refresh(); }
 function setDroppedPath(field, path, eventType = "input") {
   const value = String(path || "").trim();
   const input = $(field);
+  if (input?.closest("#recognitionSettingsBody")) { navigateTo("transcribe"); launcherWorkflow?.expandRecognition(); }
+  for (let parent = input?.parentElement; parent; parent = parent.parentElement) {
+    if (parent.classList.contains("collapsed")) { parent.classList.remove("collapsed"); if (parent.id) renderChevron(parent.id); }
+  }
   if (!input || !value) return false;
   input.value = value;
   input.dispatchEvent(new Event(eventType, { bubbles: true }));
@@ -124,7 +129,10 @@ function applyErrorResult(result, logDetail = true) {
   const diagnostics = diagnosticText(result.diagnostics);
   const message = errText(result.code, detail, result);
   const fieldMessage = result.code === "server_start_failed" ? t("server_start_failed_hint") : (result.code === "server_no_response" ? t("server_no_response_hint") : message);
-  if (result.field) setError(result.field, fieldMessage);
+  if (result.field) {
+    if ($(result.field)?.closest("#singleMediaFields")) launcherWorkflow?.revealMediaFields();
+    setError(result.field, fieldMessage);
+  }
   if (result.field === "port" || result.field === "serverMediaPath" || result.field === "jsonPath") expandServer();
   if (result.postprocessStep) window.MAWLauncher?.openAutoPostprocessStep?.(result.postprocessStep, result.field);
   else if (result.field === "autoPostprocessEnabled") $("autoPostprocessCard")?.scrollIntoView({ behavior: "smooth", block: "start" });
@@ -139,6 +147,7 @@ function fail(field, message) {
   setError(field, message);
   setStatus(message);
   const input = $(field);
+  if (input?.closest("#singleMediaFields")) launcherWorkflow?.revealMediaFields();
   const settingsSection = input?.closest?.(".settings-section");
   if (settingsSection?.id) openSettings(settingsSection.id, field);
   if (input && input.scrollIntoView) input.scrollIntoView({ behavior: "smooth", block: "center" });
@@ -153,4 +162,4 @@ function setupScrollbarFlash() {
   else bind(window, document.documentElement);
   document.querySelectorAll(".batch-queue, .batch-details pre, .llm-model-options, .script-preview pre, .replace-rule-preview pre, .log, .modal-card, .settings-scroll, .toolbox-content, .toolbox-chain-list, .toolbox-result, .toolbox-stream-text, select[multiple], textarea").forEach((el) => bind(el, el));
 }
-function expandServer() { $("serverCard").classList.remove("collapsed"); renderChevron("serverCard"); }
+function expandServer() { $("serverCard").classList.remove("collapsed"); renderChevron("serverCard"); showPage("projects"); }

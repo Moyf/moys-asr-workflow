@@ -12,7 +12,7 @@ for (const language of ['zh', 'en']) {
     if (language === 'en') {
       await page.evaluate(() => window.MAWLauncher.openSettings());
       await page.locator('#langEn').click();
-      await page.locator('#settingsClose').click();
+      await page.locator('#navTranscribe').click();
     }
     await page.evaluate(() => {
       window.__reports = [];

@@ -8,7 +8,7 @@ $("attachModelName").addEventListener("change", async () => { await saveOutputPr
 $("notifyOnComplete").addEventListener("change", async () => { const wasEnabled = completionNotificationsEnabled(); const result = await saveOutputPref("notifyOnComplete"); if (result.ok && !wasEnabled && completionNotificationsEnabled()) sendSystemNotification(t("notify_enabled_title"), t("notify_enabled_body")); });
 $("languageReset").addEventListener("click", () => { const el = $("language"); Array.from(el.options).forEach((o) => { o.selected = false; }); savePrefsDebounced({ language: "" }); });
 $("saveSettings").addEventListener("click", async () => { const payload = formPayload(); const result = await bridge("save_settings", payload); if (result.ok) { const current = provider(); current.apiKey = $("apiKey").value.trim(); current.maskedApiKey = result.maskedApiKey; state.config.apiKey = current.apiKey; state.config.maskedApiKey = result.maskedApiKey; if (current.id === "openai") { state.config.openaiBaseUrl = payload.openaiBaseUrl; state.config.openaiModel = payload.openaiModel; } renderKeyStatus(); setStatus(t("saved")); } else applyErrorResult(result); });
-$("start").addEventListener("click", async () => { if (!validateLocal()) return; hideErrorNotice(); $("retryPostprocess")?.classList.add("hidden"); $("log").textContent = ""; state.lastLogMessage = ""; const latest = $("logLatest"); latest.textContent = ""; latest.classList.add("hidden"); setRunning(true); $("logTitle").scrollIntoView({ behavior: "smooth", block: "start" }); const result = await bridge("start_transcription", formPayload()); if (!result.ok) { setRunning(false); applyErrorResult(result, false); } else if (result.outputPath) { $("srtPath").value = result.outputPath; if (result.outputRenamed) setOutputNotice(t("output_collision")); } });
+$("start").addEventListener("click", async () => { if (!validateLocal()) return; hideErrorNotice(); $("retryPostprocess")?.classList.add("hidden"); $("log").textContent = ""; state.lastLogMessage = ""; const latest = $("logLatest"); latest.textContent = ""; latest.classList.add("hidden"); setRunning(true); const result = await bridge("start_transcription", formPayload()); if (!result.ok) { setRunning(false); applyErrorResult(result, false); launcherWorkflow?.onEvent({ type: "error" }); } else if (result.outputPath) { $("srtPath").value = result.outputPath; if (result.outputRenamed) setOutputNotice(t("output_collision")); } });
 $("stop").addEventListener("click", async () => { if (!state.running) return; $("stop").disabled = true; setStatus(t("batch_stopping")); const result = await bridge("cancel_transcription"); if (!result.ok) { $("stop").disabled = false; setStatus(result.detail || result.error || t("failed")); } });
 $("retryPostprocess").addEventListener("click", async () => { hideErrorNotice(); $("retryPostprocess").classList.add("hidden"); setRunning(true); const result = await bridge("retry_postprocess"); if (!result.ok) { setRunning(false); applyErrorResult(result, false); } });
 $("openMawe").addEventListener("click", openServerEditor); $("stopServer").addEventListener("click", stopEditorServer); $("openFolder").addEventListener("click", () => bridge("open_output_folder")); $("openLogFolder").addEventListener("click", () => bridge("open_log_folder"));
@@ -44,6 +44,14 @@ document.addEventListener("drop", (event) => {
   if (window.MAWLauncher.backend === "real") return;
   const files = Array.from(event.dataTransfer?.files || []);
   const file = files[0];
+  if (files.length > 1 && (!state.dropTarget || state.dropTarget === "media")) {
+    const paths = files.map((item) => item.path || item.name || "");
+    if (paths.filter((path) => MEDIA_EXTS.has(ext(path))).length > 1) {
+      clearDropState();
+      window.MAWLauncher.addBatchPaths?.(paths);
+      return;
+    }
+  }
   if (state.dropTarget) {
     handleRoutedDrop(file?.path || file?.name || "");
     return;

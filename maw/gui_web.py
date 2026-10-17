@@ -67,6 +67,7 @@ from maw.gui_config import (
 from maw.gui_platform import apply_dark_title_bar, asset_path, creationflags, popen_process_tree, process_group_kwargs, release_process_tree, restore_host_library_path, startupinfo, terminate_process_tree
 from maw.gui_workflow import TranscriptionCancelledError, TranscriptionProcessError, TranscriptionRequest, TranscriptionResult, _child_environment, _ffmpeg_search_path, build_alignment_serve_command, build_output_paths, build_serve_command, default_srt_path, raw_response_path, run_transcription, unique_output_path, with_test_suffix
 from maw.launcher_batch import BatchItem, run_batch
+from maw.launcher_recent import RecentProjects
 from maw.output_naming import format_elapsed, maw_root
 from maw.local_log import LocalLogSink, TeeWriter, default_log_directory, install_stdio_tee, redact_sensitive_text
 from maw.diagnostics import app_version, error_context
@@ -512,6 +513,7 @@ class LauncherApi:
         self.alignment_media_path: Path | None = None
         self.alignment_gap_remove: dict[str, int | float] | None = None
         self._media_tool_lock = Lock()
+        self.recent_projects = RecentProjects(default_app_data_root() / "launcher-recent-projects.json")
         self.media_tool_process: subprocess.Popen[str] | None = None
         self.media_tool_cancel_event: Event | None = None
         self.result: TranscriptionResult | None = None
@@ -2092,6 +2094,15 @@ class LauncherApi:
         if not path.is_file():
             return {"ok": False, "error": f"File does not exist: {path}"}
         return _open_existing_path(path)
+
+    def get_recent_projects(self, _payload: Mapping[str, object] | None = None) -> dict[str, object]:
+        return self.recent_projects.get()
+
+    def update_recent_projects(self, payload: Mapping[str, object]) -> dict[str, object]:
+        try:
+            return self.recent_projects.update(dict(payload))
+        except (OSError, ValueError) as error:
+            return _error_result("recentProjectStatus", "recent_projects_failed", str(error))
 
     def open_containing_folder(self, payload: Mapping[str, object]) -> dict[str, object]:
         path = Path(str(payload.get("path") or "").strip()).expanduser()
@@ -3828,6 +3839,11 @@ class LauncherApi:
         self.pump.enqueue(event)
 
     def handle_drop_paths(self, paths: Sequence[str]) -> None:
+        media_paths = [path for path in paths if path and _route_dropped_path(path).get("type") == "dropMedia"]
+        if len(media_paths) > 1 and len(media_paths) == len([path for path in paths if path]):
+            self._emit({"type": "dropMediaBatch", "paths": media_paths})
+            self.pump.flush()
+            return
         for path in paths:
             if path:
                 self._emit(_route_dropped_path(path))

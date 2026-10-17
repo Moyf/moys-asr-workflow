@@ -25,6 +25,8 @@ const context = vm.createContext({
   parseReplacements: () => [],
   autoLlmOperation: (id) => id,
   ocrVideoManual: false,
+  // autoPlanFromControls 在改版 UI 就绪前按生产初值跳过可见性过滤。
+  redesignUI: null,
 });
 for (const name of ['punctuationLines', 'defaultAutoPlan', 'autoPlanFromControls']) {
   vm.runInContext(launcherFunction(name), context);
