@@ -585,6 +585,14 @@ def _normalize_multi_subtitle(
             if _valid_segment_time(segment):
                 previous_end = segment.get("end")
 
+    if "active_track_id" in raw:
+        active_track_id = raw["active_track_id"]
+        if not isinstance(active_track_id, str):
+            errors.append(ProjectValidationError("$.multi_subtitle.active_track_id", "must be a string"))
+        elif active_track_id not in track_by_id:
+            # Deleted/unknown selections fall back to the legacy first track.
+            raw["active_track_id"] = next(iter(track_by_id), "")
+
     main_ids = {
         segment.get("id").strip()
         for segment in main_segments

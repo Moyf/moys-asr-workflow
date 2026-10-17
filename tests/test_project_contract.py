@@ -13,6 +13,19 @@ from maw.project import (
 
 
 class ProjectContractTests(unittest.TestCase):
+    def test_active_subtitle_track_round_trips_and_stale_selection_falls_back(self) -> None:
+        for selected, expected in (("new", "new"), ("missing", "old")):
+            project = normalize_project({"segments": [], "multi_subtitle": {
+                "active_track_id": selected,
+                "tracks": [{"id": "old", "segments": []}, {"id": "new", "segments": []}],
+            }})
+            self.assertEqual(project["multi_subtitle"]["active_track_id"], expected)
+        empty = normalize_project({"segments": [], "multi_subtitle": {"active_track_id": "deleted"}})
+        self.assertEqual(empty["multi_subtitle"]["active_track_id"], "")
+        for invalid in (None, True, 12, [], {}):
+            result = validate_project({"segments": [], "multi_subtitle": {"active_track_id": invalid}})
+            self.assertIn("$.multi_subtitle.active_track_id", {error.path for error in result.errors})
+
     def test_timed_text_edit_view_round_trips_and_rejects_invalid_values(self) -> None:
         for view in ("rows", "single"):
             with self.subTest(view=view):

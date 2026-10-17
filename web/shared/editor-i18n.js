@@ -9,6 +9,8 @@
   // The editor keeps one source template. Exact UI strings are translated at
   // the DOM boundary; project content is excluded from traversal below.
   const EN_TEXT = {
+    '当前副字幕轨': 'Active secondary track',
+    '选择用于编辑、预览和导出的副字幕轨': 'Select the secondary track for editing, preview and export',
     '主字幕 ASS 定位': 'Main ASS cue positioning',
     '重置定位': 'Reset position', '重置大小': 'Reset size', '倍率': 'Scale',
     'ASS 字幕缩放倍率': 'ASS subtitle scale multiplier',

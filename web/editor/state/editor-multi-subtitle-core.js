@@ -61,7 +61,7 @@
 
 
   function getActiveExtensionTrack() {
-    return getExtensionTrack();
+    return getExtensionTrack(getMultiSubtitleState().active_track_id) || getExtensionTrack();
   }
 
 
@@ -124,7 +124,7 @@
     const trackIds = Array.isArray(state?.tracks)
       ? state.tracks.map((track) => String(track?.id || '')).join('|')
       : '';
-    return `${state?.enabled === true ? '1' : '0'}:${trackIds}`;
+    return `${state?.enabled === true ? '1' : '0'}:${state?.active_track_id || ''}:${trackIds}`;
   }
 
 
@@ -145,7 +145,8 @@
 
   function bindingForMainIndex(index) {
     const segment = MaweBoot.DATA.segments[index];
-    return segment ? window.AsrEditorUtils.bindingForSegment(getMultiSubtitleState(), segment.id, 'main') : null;
+    const track = getActiveExtensionTrack();
+    return segment && track ? window.AsrEditorUtils.bindingForSegment(getMultiSubtitleState(), segment.id, 'main', track.id) : null;
   }
 
 
@@ -573,7 +574,9 @@
 
   function syncBoundExtensionForMain(mainSegment, patch = {}) {
     if (!mainSegment || patch.independent || !multiSubtitleVisible()) return false;
-    const binding = window.AsrEditorUtils.bindingForSegment(getMultiSubtitleState(), mainSegment.id, 'main');
+    const binding = window.AsrEditorUtils.bindingForSegment(
+      getMultiSubtitleState(), mainSegment.id, 'main', getActiveExtensionTrack()?.id,
+    );
     const extension = binding
       ? extensionSegmentById(binding.extension_segment_ids?.[0], getExtensionTrack(binding.track_id))
       : null;

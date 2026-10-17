@@ -96,6 +96,7 @@ def attach_translation_project(source_project: JsonDict, translated_project: Jso
         "source_name": f"translation-{target}.srt",
         "segments": extension_segments,
     })
+    multi["active_track_id"] = track_id
 
     used_main_ids = {
         str(main_id)

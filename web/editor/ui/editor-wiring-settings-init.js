@@ -222,6 +222,21 @@ MaweDom.multiSubtitleDisplayMode?.addEventListener('change', () => {
     requestAnimationFrame(() => MaweCuePanel.renderAll({ waveform: 'none' }));
   });
 });
+MaweDom.multiSubtitleActiveTrack?.addEventListener('change', () => {
+  const next = MaweDom.multiSubtitleActiveTrack.value;
+  const track = MaweMultiSubtitleCore.getExtensionTrack(next);
+  if (!track || track === MaweMultiSubtitleCore.getActiveExtensionTrack()) return;
+  if (MaweInlineEdit.editingState) MaweInlineEdit.finishEdit(true);
+  if (MaweInlineEdit.extensionEditingState) MaweInlineEdit.finishExtensionEdit(true);
+  MaweCuePanel.commitCuePanelEdit();
+  return MaweCommands.run('切换副字幕轨', (command) => {
+    // Clear the old panel while its track is still active.
+    MaweSelection.clearSelection();
+    MaweMultiSubtitleCore.getMultiSubtitleState().active_track_id = next;
+    MaweMultiSubtitleCore.markMultiSubtitleStateDirty();
+    command.commit({ cueList: true, waveform: 'full', preview: 'update' });
+  });
+});
 MaweDom.multiSubtitleMainLanguageMode?.addEventListener('change', () => {
   const multi = MaweMultiSubtitleCore.getMultiSubtitleState();
   const next = MaweMultiSubtitleCore.isConfiguredSubtitleSplitMode(MaweDom.multiSubtitleMainLanguageMode.value)

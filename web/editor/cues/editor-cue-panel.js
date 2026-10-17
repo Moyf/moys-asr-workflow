@@ -48,7 +48,8 @@
     track.segments.forEach((seg, i) => rows.push({ start: seg.start, order: 0, el: MaweCueElements.buildExtensionCueEl(seg, i, track) }));
   } else {
     const track = MaweMultiSubtitleCore.getActiveExtensionTrack();
-    const displayRows = MULTI_SUBTITLE_UTILS.buildMultiDisplayRows(MaweBoot.DATA.segments, track.segments, MaweMultiSubtitleCore.getMultiSubtitleState().bindings);
+    const bindings = MaweMultiSubtitleCore.getMultiSubtitleState().bindings.filter((binding) => binding.track_id === track.id);
+    const displayRows = MULTI_SUBTITLE_UTILS.buildMultiDisplayRows(MaweBoot.DATA.segments, track.segments, bindings);
     displayRows.forEach((row) => {
       const mainSeg = row.mainIndex == null ? null : MaweBoot.DATA.segments[row.mainIndex];
       const extensionSeg = row.extensionIndex == null ? null : track.segments[row.extensionIndex];

@@ -166,6 +166,9 @@ export function createUtilsModule(dependencies) {
           .map((segment) => segment?.text || '').join('\n')),
       tracks,
       bindings: dedupedBindings,
+      ...(Object.hasOwn(source, 'active_track_id') ? {
+        active_track_id: tracks.find((track) => track.id === source.active_track_id)?.id || tracks[0]?.id || '',
+      } : {}),
     };
     rebuildBindingOffsets(normalized, mainSegments);
     return normalized;

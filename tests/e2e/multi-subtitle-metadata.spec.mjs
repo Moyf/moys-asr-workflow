@@ -37,6 +37,63 @@ async function saveAndReopen(page) {
   return project;
 }
 
+test('retranslated project opens the new track and switches, undoes and saves without losing the old track', async ({ page }) => {
+  await page.evaluate(() => {
+    MaweBoot.DATA.segments = [{ id: 'source', start: 1000, end: 2000, text: 'Original',
+      items: [{ start: 1000, end: 2000, text: 'Original' }] }];
+    MaweBoot.DATA.multi_subtitle = { enabled: true, display_mode: 'both', active_track_id: 'translation-zh-2',
+      tracks: [
+        { id: 'translation-zh', name: '中文翻译', segments: [{ id: 'old', start: 1000, end: 2000, text: '旧译文' }] },
+        { id: 'translation-zh-2', name: '中文翻译', segments: [{ id: 'new', start: 1000, end: 2000, text: '新译文' }] },
+      ], bindings: [{ id: 'old-binding', track_id: 'translation-zh', main_segment_ids: ['source'],
+        extension_segment_ids: ['old'], start_offset_ms: 0, end_offset_ms: 0 }] };
+    MaweSelection.clearSelection({ silent: true });
+    MaweMultiSubtitleCore.markMultiSubtitleStateDirty();
+    MaweCuePanel.renderAll();
+    MaweDisplaySettings.updateMultiSubtitleUi();
+  });
+  // Save the backend-shaped result and reopen it through the actual server.
+  const initial = await saveAndReopen(page);
+  expect(initial.multi_subtitle.active_track_id).toBe('translation-zh-2');
+  const extensionText = page.locator('.multi-cue-column.extension .text').first();
+  await expect(extensionText).toHaveText('新译文');
+  expect(await page.evaluate(() => MaweExportSrt.buildBilingualSrt())).toContain('Original\n新译文');
+  expect(await page.evaluate(() => MaweExportSrt.buildBilingualSrt())).not.toContain('旧译文');
+  await extensionText.dblclick();
+  await page.keyboard.press('Control+a');
+  await page.keyboard.insertText('新译文已编辑');
+  await page.keyboard.press('Control+Enter');
+  await openSettingsPage(page, 'multi-subtitle');
+  const select = page.locator('#multi-subtitle-active-track');
+  await expect(select).toBeVisible();
+  await expect(select).toHaveValue('translation-zh-2');
+  const spacing = await select.locator('..').evaluate(row => ({
+    top: parseFloat(getComputedStyle(row).marginTop), bottom: parseFloat(getComputedStyle(row).marginBottom),
+  }));
+  expect(spacing.top).toBeGreaterThanOrEqual(8);
+  expect(spacing.bottom).toBeGreaterThanOrEqual(8);
+  await page.screenshot({ path: test.info().outputPath('active-track-selector.png') });
+  await select.selectOption('translation-zh');
+  await expect(extensionText).toHaveText('旧译文');
+  expect(await page.evaluate(() => MaweExportSrt.buildBilingualSrt())).toContain('Original\n旧译文');
+  await page.evaluate(() => MaweHistory.performUndo());
+  await expect(select).toHaveValue('translation-zh-2');
+  await expect(extensionText).toHaveText('新译文已编辑');
+  await page.evaluate(() => MaweHistory.performRedo());
+  await expect(select).toHaveValue('translation-zh');
+  const saved = await saveAndReopen(page);
+  expect(saved.segments).toEqual(initial.segments);
+  expect(saved.multi_subtitle.active_track_id).toBe('translation-zh');
+  // Existing inline editing marks every secondary cue dirty; content and timing
+  // of the retained track must still be unchanged.
+  const withoutDirty = value => JSON.parse(JSON.stringify(value, (key, item) => key === '_dirty' ? undefined : item));
+  expect(withoutDirty(saved.multi_subtitle.tracks[0])).toEqual(withoutDirty(initial.multi_subtitle.tracks[0]));
+  expect(saved.multi_subtitle.bindings).toEqual(initial.multi_subtitle.bindings);
+  expect(saved.multi_subtitle.tracks[1].segments[0].text).toBe('新译文已编辑');
+  expect(await page.evaluate(() => MaweMultiSubtitleCore.getActiveExtensionTrack().id)).toBe('translation-zh');
+  expect(await page.evaluate(() => MaweExportSrt.buildBilingualSrt())).not.toContain('新译文');
+});
+
 test('swapping once and twice preserves speaker and discarded cues through save and reopen', async ({ page }) => {
   await page.evaluate(() => {
     const makeSegments = (prefix) => [

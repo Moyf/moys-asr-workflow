@@ -548,7 +548,8 @@
 | `multi_subtitle.enabled` | boolean | 否 | 默认 `false`；关闭只隐藏扩展数据，不删除数据 |
 | `multi_subtitle.display_mode` | string | 否 | `main` / `extension` / `both`，默认 `both` |
 | `multi_subtitle.main_split_mode` | string | 否 | 主字幕语言类型：`continuous`（字符型）或 `word`（单词型）；在单轨与双语模式下都生效；旧工程缺失时按主字幕文本自动判断 |
-| `multi_subtitle.tracks` | array | 否 | 扩展轨数组；当前 UI 只管理第一条轨道 |
+| `multi_subtitle.tracks` | array | 否 | 扩展轨数组；当前 UI 编辑、预览和导出选中的一条轨道 |
+| `multi_subtitle.active_track_id` | string | 否 | 当前副轨的稳定 ID；翻译后选中新译文。缺省或 ID 已不存在时使用第一条轨，无轨时为空字符串 |
 | `tracks[i].id` | string | 是 | 轨道稳定 ID |
 | `tracks[i].role` | string | 否 | 当前固定为 `extension` |
 | `tracks[i].name` | string | 否 | 用户可见轨道名 |

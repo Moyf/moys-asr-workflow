@@ -228,6 +228,19 @@
     MaweDom.multiSubtitleDisplayMode.value = MaweMultiSubtitleCore.getMultiSubtitleState().display_mode || 'both';
     MaweDom.multiSubtitleDisplayMode.disabled = !enabled;
   }
+  if (MaweDom.multiSubtitleActiveTrack) {
+    const select = MaweDom.multiSubtitleActiveTrack;
+    const tracks = MaweMultiSubtitleCore.getMultiSubtitleState().tracks || [];
+    select.replaceChildren(...tracks.map((candidate, index) => {
+      const option = document.createElement('option');
+      option.value = candidate.id;
+      option.textContent = `${index + 1}. ${candidate.name || candidate.source_name || '副字幕'}`;
+      return option;
+    }));
+    select.value = track?.id || '';
+    select.disabled = !enabled;
+    select.closest('.multi-subtitle-setting-row').hidden = tracks.length < 2;
+  }
   if (MaweDom.multiSubtitleMainLanguageMode) {
     MaweDom.multiSubtitleMainLanguageMode.value = MaweMultiSubtitleCore.getMainSubtitleSplitMode(MaweBoot.DATA.segments[0]);
     MaweDom.multiSubtitleMainLanguageMode.hidden = false;

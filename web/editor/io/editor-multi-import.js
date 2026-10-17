@@ -181,6 +181,7 @@
       );
     });
     multi.enabled = true;
+    multi.active_track_id = trackId;
     multi.display_mode = multi.display_mode || 'both';
     MaweMultiSubtitleCore.markMainSegmentsDirty(MaweBoot.DATA.segments.filter((_, index) => match.matches.some((candidate) => candidate.mainIndex === index)));
     MaweMultiSubtitleCore.markMultiSubtitleDirty();

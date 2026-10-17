@@ -675,6 +675,7 @@
 
 
   const multiSubtitleDisplayMode = document.getElementById('multi-subtitle-display-mode');
+  const multiSubtitleActiveTrack = document.getElementById('multi-subtitle-active-track');
 
 
   const multiSubtitleMainLanguageMode = document.getElementById('multi-subtitle-main-language-mode');
@@ -1253,6 +1254,7 @@
     multiSubtitleWaveformControls,
     multiSubtitleToggle,
     multiSubtitleDisplayMode,
+    multiSubtitleActiveTrack,
     multiSubtitleMainLanguageMode,
     multiSubtitleExtensionLanguageMode,
     multiSubtitleExtensionRowHeightSetting,

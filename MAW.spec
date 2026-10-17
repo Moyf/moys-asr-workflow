@@ -164,6 +164,7 @@ datas = [
     (str(ROOT / "maw" / "project_io.py"), "ocr-runtime/maw"),
     (str(ROOT / "maw" / "postprocess_annotations.py"), "ocr-runtime/maw"),
     (str(ROOT / "maw" / "postprocess_translation_review.py"), "ocr-runtime/maw"),
+    (str(ROOT / "maw" / "postprocess_translation.py"), "ocr-runtime/maw"),
     (str(ROOT / "maw" / "postprocess_comparison.py"), "ocr-runtime/maw"),
     (str(ROOT / "maw" / "postprocess_ai_cleanup_items.py"), "ocr-runtime/maw"),
     (str(ROOT / "maw" / "postprocess_ai_cleanup_safety.py"), "ocr-runtime/maw"),

@@ -63,6 +63,7 @@
     schema: multi.schema || MULTI_SUBTITLE_UTILS.MULTI_SUBTITLE_SCHEMA,
     enabled: multi.enabled === true,
     display_mode: multi.display_mode || 'both',
+    active_track_id: MaweMultiSubtitleCore.getActiveExtensionTrack()?.id || '',
     main_split_mode: MaweMultiSubtitleCore.isConfiguredSubtitleSplitMode(multi.main_split_mode)
       ? multi.main_split_mode : MaweMultiSubtitleCore.getMainSubtitleSplitMode(MaweBoot.DATA.segments[0]),
     tracks: (multi.tracks || []).map((track) => ({
