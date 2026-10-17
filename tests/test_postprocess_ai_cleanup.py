@@ -755,6 +755,25 @@ class SoleInterjectionDiscardTest(AiCleanupTestCase):
         assert stats is not None
         self.assertEqual(stats["pendingReview"], 1)
 
+    def test_sole_ya_clip_can_still_be_removed(self) -> None:
+        script = ["大家好欢迎回到我的频道"]
+        segments = [_segment(0, 800, "呀"), _segment(800, 5000, script[0])]
+        project_path, script_path = self.request(_project(segments), script)
+        artifact, output, _ = _run(
+            self.directory,
+            project_path,
+            script_path,
+            _decisions(
+                c001={"decision": "discard", "scriptLine": "", "reason": "语气词", "evidence": "呀"},
+                c002={"decision": "keep", "scriptLine": script[0], "reason": "对应文稿"},
+            ),
+        )
+        self.assertTrue(output["segments"][0].get("disabled"))
+        stats = artifact.stats
+        assert stats is not None
+        self.assertEqual(stats["removed"], 1)
+        self.assertEqual(stats["pendingReview"], 0)
+
     def test_interjection_covering_sole_script_line_stays_review(self) -> None:
         # 白名单不越过文稿保护：唯一覆盖文稿行的语气词仍需人工确认。
         script = ["哎"]
@@ -834,9 +853,33 @@ class ProcessTalkEvidenceTest(AiCleanupTestCase):
         self.assertEqual(stats["removed"], 1)
         self.assertEqual(stats["pendingReview"], 0)
 
+    def test_take_count_inside_instruction_stays_review(self) -> None:
+        # 流程模式匹配到正文的一小部分，不足以证明整句都是录制流程用语。
+        script = ["大家好欢迎回到我的频道"]
+        segments = [
+            _segment(0, 2500, "这个动作做第3遍时要停下来"),
+            _segment(2500, 6000, script[0]),
+        ]
+        project_path, script_path = self.request(_project(segments), script)
+        artifact, output, _ = _run(
+            self.directory,
+            project_path,
+            script_path,
+            _decisions(
+                c001={"decision": "discard", "scriptLine": "", "reason": "重录", "evidence": "第3遍"},
+                c002={"decision": "keep", "scriptLine": script[0], "reason": "对应文稿"},
+            ),
+        )
+        self.assertFalse(output["segments"][0].get("disabled"))
+        marker = output["markers"]["items"][0]
+        self.assertEqual(marker["review"]["reason"], "片段包含数字，需要人工确认")
+        stats = artifact.stats
+        assert stats is not None
+        self.assertEqual(stats["pendingReview"], 1)
+
 
 class EditPathFillerShortcutTest(unittest.TestCase):
-    """句内词项删除的口水词直通口径与整段白名单保持一致。"""
+    """句内词项删除需比整段语气词删除更严格。"""
 
     @staticmethod
     def _clip(clip_id: str, chars: list[str]):
@@ -876,6 +919,19 @@ class EditPathFillerShortcutTest(unittest.TestCase):
         resolved, reasons = _resolve_decisions(
             [clip],
             {"c001": {"decision": "edit", "deleteItems": [1], "evidence": "吧"}},
+        )
+        self.assertEqual(resolved["c001"], "review")
+        self.assertEqual(
+            reasons["c001"], "词项删除缺少可验证的重复、口水词或保留版本覆盖证据"
+        )
+
+    def test_ya_particle_item_deletion_stays_review(self) -> None:
+        from maw.postprocess_ai_cleanup import _resolve_decisions
+
+        clip = self._clip("c001", ["好", "呀", "我", "们", "开", "始"])
+        resolved, reasons = _resolve_decisions(
+            [clip],
+            {"c001": {"decision": "edit", "deleteItems": [1], "evidence": "呀"}},
         )
         self.assertEqual(resolved["c001"], "review")
         self.assertEqual(

@@ -22,6 +22,7 @@ from typing import Final
 from maw.postprocess import OutputMode
 from maw.postprocess_ai_cleanup_safety import (
     PURE_INTERJECTIONS,
+    WHOLE_UTTERANCE_INTERJECTIONS,
     information_loss_reason,
     protected_information_loss_reason,
 )
@@ -145,7 +146,7 @@ _PROCESS_TALK_PATTERN: Final[re.Pattern[str]] = re.compile(
 )
 # 整段只剩纯感叹词（哎、嗯等）时没有命题内容，无需重复或流程用语佐证即可移除；
 # 「对」「可以」这类可能承载应答的短词不在白名单内。
-_UTTERANCE_FILLER_PATTERN: Final[re.Pattern[str]] = re.compile(f"[{PURE_INTERJECTIONS}]+")
+_UTTERANCE_FILLER_PATTERN: Final[re.Pattern[str]] = re.compile(f"[{WHOLE_UTTERANCE_INTERJECTIONS}]+")
 
 _CONTROL_CHARS: Final[re.Pattern[str]] = re.compile(r"[\x00-\x1f\x7f]+")
 
@@ -881,9 +882,12 @@ def _resolve_decisions(
             or _is_repeated_text(clip, clips, resolved)
             or bool(_UTTERANCE_FILLER_PATTERN.fullmatch(clip.norm.value))
         )
-        # 报遍数本身的数字（第3遍）不算内容数字；流程用语之外的数字仍需人工确认。
+        # 仅整段是流程用语时豁免报遍数；夹在正文中的「第3遍」仍是受保护数字。
         outside_process_talk = _PROCESS_TALK_PATTERN.sub("", norms[clip.id])
-        has_digits = any(char.isdigit() for char in outside_process_talk)
+        pure_process_talk = not outside_process_talk or bool(
+            _UTTERANCE_FILLER_PATTERN.fullmatch(outside_process_talk)
+        )
+        has_digits = any(char.isdigit() for char in norms[clip.id]) and not pure_process_talk
         sole_script_line = clip.script_line_index >= 0 and not any(
             other.script_line_index == clip.script_line_index and other.id != clip.id
             for other in clips

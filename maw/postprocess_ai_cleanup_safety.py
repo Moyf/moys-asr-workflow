@@ -17,8 +17,9 @@ _CONDITIONS = re.compile(
 # 纯感叹/拟声词在任何位置都没有命题内容，可整体作为口水词移除；
 # 「吧呢呀」是语气助词，只在整段独立成句时无内容，不进入句中删除白名单
 # （「走吧」删「吧」会改变句义）。
-PURE_INTERJECTIONS = "哎啊呀呃嗯哦噢唉诶欸唔哟"
+PURE_INTERJECTIONS = "哎啊呃嗯哦噢唉诶欸唔哟"
 _TONE_PARTICLES = "吧呢呀"
+WHOLE_UTTERANCE_INTERJECTIONS = PURE_INTERJECTIONS + "呀"
 _FILLER_ONLY = re.compile(f"[{PURE_INTERJECTIONS}{_TONE_PARTICLES}]+")
 _RESTART_STRIP_CHARS = PURE_INTERJECTIONS + _TONE_PARTICLES
 _NEGATIONS = re.compile(r"不|没|未|无|除非|\b(?:not|never|no|without|unless)\b", re.I)
