@@ -3358,7 +3358,8 @@ class MediaToolTests(CompactContainerAssertions, unittest.TestCase):
 
     def test_green_screen_can_map_optional_audio_and_caps_output_to_canvas(self) -> None:
         self.subtitle.write_text("1\n00:00:00,000 --> 00:00:02,000\nHello\n", encoding="utf-8")
-        audio = self.root / "voice.mp3"
+        # Match the renderer's canonical path, including Windows TEMP 8.3 aliases.
+        audio = (self.root / "voice.mp3").resolve()
         audio.write_bytes(b"audio")
         with mock.patch("maw.postprocess_ffmpeg.subprocess.Popen", side_effect=self._fake_process) as popen:
             result = run_burn_subtitles(
