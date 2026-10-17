@@ -12,7 +12,8 @@ from maw.postprocess_ai_cleanup_items import cleaned_srt_segments, item_text_spa
 
 def comparison_data(before: Mapping[str, object], after: Mapping[str, object], operation: str, decisions: Sequence[Mapping[str, object]] = (), *, translation: Mapping[str, object] | None = None, line_order: str = "", download_name: str = "译文.核对后.mosp") -> dict[str, object]:
     source = [s for s in cleaned_srt_segments(before, before.get("segments", [])) if isinstance(s, Mapping) and not s.get("disabled")]
-    output = [s for s in cleaned_srt_segments(after, after.get("segments", [])) if isinstance(s, Mapping) and not s.get("disabled")]
+    display_after = translation if translation is not None else after
+    output = [s for s in cleaned_srt_segments(display_after, display_after.get("segments", [])) if isinstance(s, Mapping) and not s.get("disabled")]
     annotations = {str(row["id"]): row for row in decisions}
     markers = after.get("markers", {})
     review_markers = [m for m in markers.get("items", []) if isinstance(m, Mapping) and isinstance(m.get("review"), Mapping) and m["review"].get("status") == "pending"] if isinstance(markers, Mapping) else []
@@ -52,7 +53,9 @@ def comparison_data(before: Mapping[str, object], after: Mapping[str, object], o
         from maw.postprocess_translation_review import translation_review
         # Two-file rendering can infer single/backfill output. Stacked output
         # requires the validated intermediate translation, never split by newline.
-        if translation is not None or not operation.endswith("-bilingual"):
+        # Persisted dual-track input needs the validated translation snapshot;
+        # without it, keep the generic comparison rather than infer a track.
+        if translation is not None or (not operation.endswith("-bilingual") and not after.get("multi_subtitle", {}).get("tracks")):
             result["translationReview"] = translation_review(before, translation or after, after, operation, line_order, download_name)
     all_markers = markers.get("items", []) if isinstance(markers, Mapping) else []
     for row in rows:
