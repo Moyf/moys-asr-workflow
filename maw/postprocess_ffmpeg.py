@@ -20,12 +20,20 @@ from maw.output_naming import media_suffix
 from maw.ass_styles import DEFAULT_SRT_STYLE, ass_style_force_style, ass_style_line, find_ass_style, load_ass_style_library
 from maw.ffmpeg import resolve_ffmpeg_tool
 from maw.media import probe_video_fps
+from maw.project_ass_export import (
+    PROJECT_SUBTITLE_EXTENSIONS,
+    ProjectSubtitleError,
+    load_burn_project,
+    render_project_ass,
+)
 
 
 ALLOWED_DIRECTIVES: Final = frozenset({"ffconcat", "file", "inpoint", "outpoint", "duration"})
 VIDEO_EXTENSIONS: Final = frozenset({".mp4", ".mkv", ".avi", ".mov", ".wmv", ".flv", ".webm", ".ts", ".m4v"})
 MEDIA_EXTENSIONS: Final = frozenset((*VIDEO_EXTENSIONS, ".mp3", ".wav", ".m4a", ".flac", ".aac", ".ogg"))
 SUBTITLE_EXTENSIONS: Final = frozenset({".srt", ".ass", ".ssa"})
+# 烧录额外接受 mosp/json 工程：临时导出工程的基础 ASS 后按 ASS 烧录。
+BURN_SUBTITLE_EXTENSIONS: Final = frozenset((*SUBTITLE_EXTENSIONS, *PROJECT_SUBTITLE_EXTENSIONS))
 X264_PRESETS: Final = frozenset({"veryfast", "fast", "medium", "slow", "veryslow"})
 AUDIO_BITRATES: Final = frozenset({"96k", "128k", "160k", "192k", "224k", "256k", "320k"})
 MIN_BURN_CRF: Final = 0
@@ -468,15 +476,18 @@ def run_burn_subtitles(
     on_process: Callable[[subprocess.Popen[str]], None] | None = None,
     on_progress: Callable[[Mapping[str, str]], None] | None = None,
 ) -> BurnSubtitleResult:
-    """Render SRT/ASS subtitles into a new H.264 MP4.
+    """Render SRT/ASS subtitles or an .mosp/.json project into a new H.264 MP4.
 
     SRT 烧录前会转换成临时 ASS 并把样式库样式写入 Default 行；PlayRes 取视频
     实际分辨率（绿幕取所选尺寸档位的画布尺寸），使烧录样式与编辑器预览一致。
-    只有 SRT 输入需要探测 PlayRes；ASS/SSA 沿用自身样式，不启动 ffprobe。
+    mosp/json 工程输入会临时导出为工程自身基础样式的 ASS（编辑器非 ASS 模式
+    导出分支；强调语法、字级动画等完整效果以编辑器导出为准），PlayRes 同样取
+    探测到的视频分辨率。
+    只有 SRT 与工程输入需要探测 PlayRes；ASS/SSA 沿用自身样式，不启动 ffprobe。
     ``ffprobe_path`` 仅用于读取视频尺寸，缺省时沿 ``ffmpeg_path`` 同目录解析，
     再回退 FFMPEG_PATH/PATH；探测失败回退 1080p 参考坐标系。
     """
-    subtitle = _validated_media_path(request.subtitle_path, extensions=SUBTITLE_EXTENSIONS, label="subtitle")
+    subtitle = _validated_media_path(request.subtitle_path, extensions=BURN_SUBTITLE_EXTENSIONS, label="subtitle")
     green_screen = request.green_screen is True
     media = None if green_screen else _validated_media_path(
         request.media_path or Path(""), extensions=VIDEO_EXTENSIONS, label="video"
@@ -498,8 +509,8 @@ def run_burn_subtitles(
         green_input, play_resolution = _green_screen_input(
             subtitle, _green_screen_size_resolution(request.green_screen_size),
         )
-    elif subtitle.suffix.lower() == ".srt":
-        # PlayRes 重写只发生在 SRT 转换；ASS/SSA 沿用自身样式，跳过探测。
+    elif subtitle.suffix.lower() in {".srt", *PROJECT_SUBTITLE_EXTENSIONS}:
+        # PlayRes 重写只发生在 SRT 转换与工程导出；ASS/SSA 沿用自身样式，跳过探测。
         # 探测前先看取消标记，避免取消请求时还要等一次 ffprobe。
         if cancel_event is None or not cancel_event.is_set():
             probe_tool = ffprobe_path if ffprobe_path is not None else resolve_ffmpeg_tool(
@@ -520,6 +531,9 @@ def run_burn_subtitles(
                 on_process=on_process,
                 on_progress=on_progress,
             )
+            prepared_subtitle = converted_subtitle
+        elif subtitle.suffix.lower() in PROJECT_SUBTITLE_EXTENSIONS:
+            converted_subtitle = _convert_project_to_ass(subtitle, play_resolution=play_resolution)
             prepared_subtitle = converted_subtitle
         input_command = ["-i", str(media)] if media is not None else green_input
         common_command = [
@@ -857,6 +871,30 @@ def _convert_srt_to_ass(
         converted.unlink(missing_ok=True)
         raise
     return converted
+
+
+def _convert_project_to_ass(project_path: Path, *, play_resolution: tuple[int, int]) -> Path:
+    """Export an .mosp/.json project to a temporary basic-style ASS for burning."""
+
+    try:
+        project, title = load_burn_project(project_path)
+    except ProjectSubtitleError as error:
+        raise MediaToolError(str(error)) from error
+    try:
+        content = render_project_ass(project, title=title, play_resolution=play_resolution)
+    except ProjectSubtitleError as error:
+        raise MediaToolError(str(error)) from error
+    try:
+        descriptor, temporary_name = tempfile.mkstemp(
+            prefix=f".{project_path.stem}.maw-burn-",
+            suffix=".ass",
+            dir=project_path.parent,
+        )
+        with os.fdopen(descriptor, "w", encoding="utf-8", newline="\n") as handle:
+            handle.write(content)
+    except OSError as error:
+        raise MediaToolError(f"无法创建临时 ASS 字幕：{error}") from error
+    return Path(temporary_name)
 
 
 def _burn_encoding_settings(request: BurnSubtitleRequest) -> tuple[int, str, str]:

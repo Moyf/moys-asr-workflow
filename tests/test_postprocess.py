@@ -34,7 +34,7 @@ from maw.postprocess import (
     run_fixed_replacement,
     run_llm_postprocess,
 )
-from maw.postprocess_ffmpeg import AudioTrack, BurnSubtitleRequest, ExtractAudioRequest, FfconcatRequest, MediaToolError, _rewrite_ass_default_style, parse_ffconcat, probe_audio_tracks, run_burn_subtitles, run_extract_audio, run_ffconcat_rebuild
+from maw.postprocess_ffmpeg import AudioTrack, BurnSubtitleRequest, ExtractAudioRequest, FfconcatRequest, MediaToolError, _rewrite_ass_default_style, parse_ffconcat, probe_audio_tracks, render_project_ass, run_burn_subtitles, run_extract_audio, run_ffconcat_rebuild
 from maw.postprocess_io import PostprocessFileError, _atomic_write, read_project, read_srt, render_srt
 from maw.postprocess_llm import MAX_PROVIDER_DIAGNOSTIC_CHARS, LlmClientError, LlmSettings, _chat_endpoint, _models_endpoint, _reasoning_parameters, complete_subtitle_groups, list_llm_models, normalize_reasoning_mode, test_llm_connection as check_llm_connection
 from maw.project_preview import JsonDict, JsonValue
@@ -3113,6 +3113,59 @@ class MediaToolTests(CompactContainerAssertions, unittest.TestCase):
         self.assertEqual(result.media_path.name, "clip.subtitled.mp4")
         self.assertTrue(result.media_path.read_bytes())
         self.assertEqual(self.media.read_bytes(), b"media")
+
+    def test_burn_subtitles_exports_project_input_to_temporary_ass(self) -> None:
+        project = self.root / "demo.mosp"
+        _ = project.write_text(json.dumps({
+            "segments": [{"id": "a", "start": 0, "end": 1500, "text": "工程字幕"}],
+            "preview": {"subtitle": {"font_family": "yahei", "font_size": 20, "color": "#123456"}},
+        }), encoding="utf-8")
+        captured: dict[str, object] = {}
+        real_render = render_project_ass
+
+        def record_render(document: object, *, title: str, play_resolution: tuple[int, int]) -> str:
+            captured["title"] = title
+            captured["play_resolution"] = play_resolution
+            return real_render(document, title=title, play_resolution=play_resolution)  # type: ignore[arg-type]
+
+        # probe 返回 4K：工程导出的 PlayRes/字号按 3840×2160 换算（20×4×2=160）。
+        with mock.patch(
+            "maw.postprocess_ffmpeg.probe_video_fps",
+            return_value={"video_width": 3840, "video_height": 2160},
+        ), mock.patch(
+            "maw.postprocess_ffmpeg.render_project_ass", side_effect=record_render,
+        ), mock.patch(
+            "maw.postprocess_ffmpeg.subprocess.Popen", side_effect=self._fake_process,
+        ) as popen:
+            result = run_burn_subtitles(
+                BurnSubtitleRequest(media_path=self.media, subtitle_path=project, video_encoder="cpu"),
+                ffmpeg_path=Path("ffmpeg"),
+            )
+
+        # 工程输入不走 FFmpeg 字幕转换，只有一次烧录调用。
+        self.assertEqual(len(popen.call_args_list), 1)
+        command = popen.call_args_list[-1].args[0]
+        self.assertIn("ass=filename='.demo.maw-burn-", command[command.index("-vf") + 1])
+        self.assertEqual(captured["title"], "demo")
+        self.assertEqual(captured["play_resolution"], (3840, 2160))
+        self.assertFalse(list(self.root.glob(".*.ass")))
+        self.assertEqual(result.subtitle_path, project)
+        self.assertEqual(result.media_path.name, "clip.subtitled.mp4")
+
+    def test_burn_subtitles_rejects_invalid_project_input(self) -> None:
+        project = self.root / "broken.mosp"
+        _ = project.write_text("{broken", encoding="utf-8")
+        with mock.patch(
+            "maw.postprocess_ffmpeg.subprocess.Popen", side_effect=self._fake_process,
+        ) as popen:
+            with self.assertRaises(MediaToolError) as ctx:
+                run_burn_subtitles(
+                    BurnSubtitleRequest(media_path=self.media, subtitle_path=project, video_encoder="cpu"),
+                    ffmpeg_path=Path("ffmpeg"),
+                )
+        self.assertEqual(popen.call_args_list, [])
+        self.assertIn("JSON", str(ctx.exception))
+        self.assertFalse(list(self.root.glob(".*.ass")))
 
     def test_burn_subtitles_rewrites_converted_ass_to_video_playres(self) -> None:
         rewritten: list[str] = []
