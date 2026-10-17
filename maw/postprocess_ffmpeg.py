@@ -131,6 +131,7 @@ class BurnSubtitleRequest:
     # 绿幕画布尺寸档位（GREEN_SCREEN_SIZES 键名），仅 green_screen 生效；
     # 空值按 GREEN_SCREEN_SIZE_DEFAULT 处理。
     green_screen_size: str = GREEN_SCREEN_SIZE_DEFAULT
+    green_screen_include_audio: bool = False
     # Optional normalized style supplied by a caller; when omitted, the
     # shared user-level SRT default slot is loaded automatically.
     srt_style: Mapping[str, object] | None = None
@@ -478,9 +479,14 @@ def run_burn_subtitles(
     """
     subtitle = _validated_media_path(request.subtitle_path, extensions=SUBTITLE_EXTENSIONS, label="subtitle")
     green_screen = request.green_screen is True
-    media = None if green_screen else _validated_media_path(
-        request.media_path or Path(""), extensions=VIDEO_EXTENSIONS, label="video"
-    )
+    include_green_audio = green_screen and request.green_screen_include_audio is True
+    media = None
+    if not green_screen:
+        media = _validated_media_path(request.media_path or Path(""), extensions=VIDEO_EXTENSIONS, label="video")
+    elif include_green_audio:
+        media = _validated_media_path(
+            request.media_path or Path(""), extensions=MEDIA_EXTENSIONS, label="audio/video media"
+        )
     crf, preset, audio_bitrate = _burn_encoding_settings(request)
     output_source = subtitle if green_screen else media
     assert output_source is not None
@@ -521,7 +527,9 @@ def run_burn_subtitles(
                 on_progress=on_progress,
             )
             prepared_subtitle = converted_subtitle
-        input_command = ["-i", str(media)] if media is not None else green_input
+        input_command = [*green_input, "-i", str(media)] if include_green_audio and media is not None else (
+            green_input if green_screen else ["-i", str(media)]
+        )
         common_command = [
             str(ffmpeg_path),
             "-y",
@@ -536,8 +544,13 @@ def run_burn_subtitles(
             _subtitle_filter(prepared_subtitle),
             "-map",
             "0:v:0",
-            *([] if green_screen else ["-map", "0:a?", "-map_metadata", "0"]),
+            *(["-map", "1:a?"] if include_green_audio else ([] if green_screen else ["-map", "0:a?", "-map_metadata", "0"])),
         ]
+        green_duration = None
+        if green_screen:
+            duration_match = re.search(r":d=([0-9]+(?:\.[0-9]+)?)", green_input[-1])
+            if duration_match is not None:
+                green_duration = duration_match.group(1)
         for encoder in attempts:
             temporary.unlink(missing_ok=True)
             command = [
@@ -545,7 +558,8 @@ def run_burn_subtitles(
                 *_video_encoder_options(encoder, crf, preset),
                 "-pix_fmt",
                 "yuv420p",
-                *(["-an"] if green_screen else ["-c:a", "aac", "-b:a", audio_bitrate]),
+                *(["-c:a", "aac", "-b:a", audio_bitrate] if include_green_audio else (["-an"] if green_screen else ["-c:a", "aac", "-b:a", audio_bitrate])),
+                *(["-t", green_duration] if green_duration is not None else []),
                 "-movflags",
                 "+faststart",
                 str(temporary),

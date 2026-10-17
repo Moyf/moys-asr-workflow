@@ -3380,6 +3380,42 @@ class MediaToolTests(CompactContainerAssertions, unittest.TestCase):
                 ffmpeg_path=Path("ffmpeg"),
             )
 
+    def test_green_screen_can_map_optional_audio_and_caps_output_to_canvas(self) -> None:
+        self.subtitle.write_text("1\n00:00:00,000 --> 00:00:02,000\nHello\n", encoding="utf-8")
+        # Match the renderer's canonical path, including Windows TEMP 8.3 aliases.
+        audio = (self.root / "voice.mp3").resolve()
+        audio.write_bytes(b"audio")
+        with mock.patch("maw.postprocess_ffmpeg.subprocess.Popen", side_effect=self._fake_process) as popen:
+            result = run_burn_subtitles(
+                BurnSubtitleRequest(
+                    media_path=audio, subtitle_path=self.subtitle, green_screen=True,
+                    green_screen_include_audio=True, green_screen_size="1080p", video_encoder="cpu",
+                ),
+                ffmpeg_path=Path("ffmpeg"),
+            )
+        command = popen.call_args.args[0]
+        self.assertLess(command.index("color=c=0x00ff00:s=1920x1080:r=30:d=2.500"), command.index(str(audio)))
+        self.assertIn(str(audio), command)
+        self.assertIn("1:a?", command)
+        self.assertIn("-c:a", command)
+        self.assertIn("aac", command)
+        self.assertEqual(command[command.index("-t") + 1], "2.500")
+        self.assertNotIn("-shortest", command)
+        self.assertEqual(result.source_media_path, audio)
+
+    def test_green_screen_audio_rejects_unsupported_media_extension(self) -> None:
+        self.subtitle.write_text("1\n00:00:00,000 --> 00:00:02,000\nHello\n", encoding="utf-8")
+        unsupported = self.root / "voice.txt"
+        unsupported.write_text("audio", encoding="utf-8")
+        with self.assertRaisesRegex(MediaToolError, "媒体文件格式不支持：.txt"):
+            run_burn_subtitles(
+                BurnSubtitleRequest(
+                    media_path=unsupported, subtitle_path=self.subtitle,
+                    green_screen=True, green_screen_include_audio=True, video_encoder="cpu",
+                ),
+                ffmpeg_path=Path("ffmpeg"),
+            )
+
     def test_green_screen_srt_burn_scales_style_to_selected_size(self) -> None:
         rewritten: list[str] = []
         real_rewrite = _rewrite_ass_default_style

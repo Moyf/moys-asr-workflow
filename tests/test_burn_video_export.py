@@ -229,6 +229,32 @@ class BurnAssVideoTests(CompactContainerAssertions, unittest.TestCase):
                         ffmpeg_path=Path("ffmpeg"), ffprobe_path=Path("ffprobe"))
         self.assertFalse(self.output.exists())
 
+    def test_green_screen_audio_and_video_sources_keep_finite_canvas_and_optional_audio(self):
+        for extension in (".wav", ".mp4"):
+            source = self.root / ("source" + extension)
+            source.write_bytes(b"source")
+            for include_audio in (False, True):
+                calls = []
+                def run(command, **kwargs):
+                    calls.append(command)
+                    Path(command[-1]).write_bytes(b"green")
+                    return subprocess.CompletedProcess(command, 0, stdout="", stderr="")
+                with mock.patch.object(server_editor.subprocess, "run", side_effect=run):
+                    server_editor.burn_ass_video(source, [], ASS_TEXT, self.output,
+                        ffmpeg_path=Path("ffmpeg"), ffprobe_path=Path("ffprobe"),
+                        green_screen=True, include_audio=include_audio, audio_track=1)
+                command = calls[0]
+                self.assertIn("color=c=0x00ff00:s=1920x1080:r=30:d=1.500", command)
+                self.assertEqual(command[command.index("-t") + 1], "1.500")
+                self.assertNotIn("-shortest", command)
+                if include_audio:
+                    self.assertIn("1:a:1?", command)
+                    self.assertIn(str(source.resolve()), command)
+                    self.assertNotIn("-an", command)
+                else:
+                    self.assertIn("-an", command)
+                    self.assertNotIn(str(source.resolve()), command)
+
 
 class BurnVideoJobHttpTests(unittest.TestCase):
     def setUp(self):
@@ -361,6 +387,29 @@ class BurnVideoJobHttpTests(unittest.TestCase):
             self.assertEqual(status, 503)
             self.assertIn("libass", error["error"])
 
+    def test_http_green_screen_accepts_bound_audio_and_rejects_invalid_options(self):
+        audio = self.root / "song.wav"
+        audio.write_bytes(b"audio")
+        self.server.project = self.server_editor.ServerProject(data={"segments": [], "media_metadata": {"selected_audio_track": 1}},
+            json_path=self.root / "audio.json", media_path=audio,
+            source_media_path=audio, sticker_root=None, stickers=[], audio_track=1)
+        captured = {}
+        def burn(source, intervals, ass, output, **kwargs):
+            captured.update(kwargs)
+            output.write_bytes(b"green")
+        with mock.patch.object(self.server_editor, "editor_ffmpeg_tools", return_value=self.tools()), \
+             mock.patch.object(self.server_editor.EditorServer, "ensure_libass_supported", return_value=True), \
+             mock.patch.object(self.server_editor, "burn_ass_video", side_effect=burn):
+            for options in ({"greenScreen": "true"}, {"greenScreen": True, "includeAudio": 1},
+                            {"greenScreen": True, "intervals": [{"startMs": 0, "endMs": 100}]}):
+                self.assertEqual(self.request(self.base, self.payload(**options))[0], 400)
+            status, result = self.request(self.base, self.payload(greenScreen=True, includeAudio=True))
+            self.assertEqual(status, 202)
+            self.wait(result["jobId"], "ready")
+            self.assertTrue(captured["green_screen"])
+            self.assertTrue(captured["include_audio"])
+            self.assertEqual(captured["audio_track"], 1)
+
     def test_http_cancel_admission_and_expired_deadline_are_conflicts(self) -> None:
         token = "b" * 64
         cancel = {"requestToken": self.server.request_token, "admissionToken": token}
@@ -392,6 +441,25 @@ class BurnVideoPrecisionTests(CompactContainerAssertions, unittest.TestCase):
 
     def run_tool(self, args):
         return subprocess.run(args, capture_output=True, check=True, timeout=45)
+
+    def test_real_green_screen_optional_audio_and_caption_duration(self):
+        with tempfile.TemporaryDirectory() as folder:
+            root = Path(folder)
+            for source_duration in (0.3, 3):
+                source = root / f"tone-{source_duration}.wav"
+                self.run_tool([self.ffmpeg, "-y", "-v", "error", "-f", "lavfi", "-i",
+                               f"sine=frequency=440:duration={source_duration}", str(source)])
+                for include_audio in (False, True):
+                    output = root / f"green-{source_duration}-{include_audio}" / "out.mp4"
+                    with mock.patch.object(server_editor, "video_encoder_attempts", return_value=("cpu",)), \
+                         mock.patch.object(server_editor, "_green_screen_size_resolution", return_value=(160, 90)):
+                        server_editor.burn_ass_video(source, [], ASS_TEXT.replace("你好", "OK"), output,
+                            ffmpeg_path=Path(self.ffmpeg), ffprobe_path=Path(self.ffprobe),
+                            green_screen=True, include_audio=include_audio)
+                    probe = json.loads(self.run_tool([self.ffprobe, "-v", "error", "-show_streams",
+                        "-show_format", "-of", "json", str(output)]).stdout)
+                    self.assertEqual(sum(s["codec_type"] == "audio" for s in probe["streams"]), int(include_audio))
+                    self.assertLess(abs(float(probe["format"]["duration"]) - 1.5), .1)
 
     def test_long_gop_cuts_exclude_removed_frames_and_keep_audio_clock(self):
         with tempfile.TemporaryDirectory() as folder:
