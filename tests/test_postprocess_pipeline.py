@@ -744,7 +744,7 @@ class PostprocessPipelineTests(CompactContainerAssertions, unittest.TestCase):
         self.assertNotIn("双语", result.project_path.name)
         self.assertTrue(any(path.read_text(encoding="utf-8") == "not applied" for path in result.run_directory.glob("*.srt")))
 
-    def test_translation_merge_publishes_one_track_and_keeps_translation_intermediate(self) -> None:
+    def test_translation_merge_preserves_editable_tracks_and_translation_intermediate(self) -> None:
         translated_project = self.root / "translated.mosp"
         translated_srt = self.root / "translated.srt"
         translated_project.write_text(
@@ -794,8 +794,9 @@ class PostprocessPipelineTests(CompactContainerAssertions, unittest.TestCase):
             )
 
         merged = json.loads(result.project_path.read_text(encoding="utf-8"))
-        self.assertEqual([segment["text"] for segment in merged["segments"]], ["错字\nTranslation one", "保留\nTranslation two"])
-        self.assertNotIn("multi_subtitle", merged)
+        self.assertEqual([segment["text"] for segment in merged["segments"]], ["错字", "保留"])
+        self.assertEqual([s["text"] for s in merged["multi_subtitle"]["tracks"][-1]["segments"]], ["Translation one", "Translation two"])
+        self.assertIn("错字\nTranslation one", result.srt_path.read_text(encoding="utf-8"))
         self.assertIsNone(result.translated_srt_path)
         self.assertEqual(result.project_path.name, "clip.postprocess.bilingual.mosp")
         self.assertEqual(result.srt_path.name, "clip.postprocess.bilingual.srt")
@@ -827,7 +828,7 @@ class PostprocessPipelineTests(CompactContainerAssertions, unittest.TestCase):
         self.assertIn("Translation one", intermediate_srt.read_text(encoding="utf-8"))
         self.assertFalse((result.run_directory / translated_project.name).exists())
         self.assertFalse((result.run_directory / translated_srt.name).exists())
-        self.assertNotIn("multi_subtitle", json.loads(result.project_path.read_text(encoding="utf-8")))
+        self.assertIn("multi_subtitle", json.loads(result.project_path.read_text(encoding="utf-8")))
         self.assertFalse((self.root / "clip.postprocess.translate-en.srt").exists())
         manifest = json.loads((result.run_directory / "manifest.json").read_text(encoding="utf-8"))
         self.assertEqual(manifest["initialProjectPath"], str(initial_project.resolve()))
@@ -1026,7 +1027,8 @@ class PostprocessPipelineTests(CompactContainerAssertions, unittest.TestCase):
             )
 
         merged = json.loads(result.project_path.read_text(encoding="utf-8"))
-        self.assertEqual([segment["text"] for segment in merged["segments"]], ["中文一\n错字", "中文二\n保留"])
+        self.assertEqual([segment["text"] for segment in merged["segments"]], ["错字", "保留"])
+        self.assertEqual([s["text"] for s in merged["multi_subtitle"]["tracks"][-1]["segments"]], ["中文一", "中文二"])
         self.assertEqual(result.project_path.name, "clip.postprocess.bilingual.mosp")
         self.assertEqual(result.srt_path.name, "clip.postprocess.bilingual.srt")
         self.assertIn("中文一\n错字", result.srt_path.read_text(encoding="utf-8"))

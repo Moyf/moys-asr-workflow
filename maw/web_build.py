@@ -129,11 +129,16 @@ def bundle_status(root: Path, kind: str) -> tuple[str, str]:
         return "stale", f"清单 {spec.manifest.as_posix()} 含无效源文件路径"
     if files != source_files:
         return "stale", f"清单 {spec.manifest.as_posix()} 与构建时不一致"
-    if set(inputs) != set(files) or any(
+    if not set(files) <= set(inputs) or any(
         not isinstance(value, str) or not re.fullmatch(r"[0-9a-f]{64}", value)
         for value in inputs.values()
     ):
         return "stale", "构建信息未完整覆盖清单中的源码哈希"
+    # G00 接缝允许静态 import 图把清单之外的传递依赖拉进构建；
+    # 多出的 inputs 条目同样按源码哈希核对，缺失或漂移都判过期。
+    for relative in set(inputs) - set(files):
+        if not (root / "web" / relative).is_file():
+            return "stale", f"传递依赖账本包含清单外源码: {relative}"
 
     web_root = (root / "web").resolve()
     for relative, expected in inputs.items():

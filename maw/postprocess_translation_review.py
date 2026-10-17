@@ -21,6 +21,19 @@ def translation_review(source: Mapping, translated: Mapping, result: Mapping, op
     first = line_order == "translation_first" or not line_order and operation.startswith("translate_zh")
     translations = {s["id"]: s for s in translated["segments"]}
     targets = {s["id"]: s for s in result["segments"]}
+    track = None
+    if mode != "backfill" and result.get("multi_subtitle", {}).get("tracks"):
+        candidate = result["multi_subtitle"]["tracks"][0]
+        language = "zh" if operation.startswith("translate_zh") else "en"
+        if candidate.get("language") == language and candidate.get("role") == "extension":
+            track = candidate
+            mode = "tracks"
+    track_segments = {s["id"]: s for s in track["segments"]} if track else {}
+    # The writer reserves one stable ID per source position, including gaps
+    # where unchanged translations were omitted. The editor's first secondary
+    # track is the fixed translation destination.
+    target_ids = {s["id"]: f"{track['id']}-segment-{index:03d}"
+                  for index, s in enumerate(source["segments"], 1)} if track else {}
     if len(targets) != len(result["segments"]):
         raise ValueError("译文核对要求唯一的目标字幕ID。")
     entries = []
@@ -34,11 +47,22 @@ def translation_review(source: Mapping, translated: Mapping, result: Mapping, op
         if any(original[field] != target[field] or original[field] != translated_segment[field] for field in ("id", "start", "end")):
             raise ValueError("译文核对的源和结果ID或时间不一致。")
         text = translated_segment["text"]
-        if compose_translation(original["text"], text, mode, first) != target["text"]:
+        target_id = target_ids.get(original["id"])
+        extension = track_segments.get(target_id)
+        if extension is None:
+            target_id = None
+        if mode == "tracks":
+            if target["text"] != original["text"] or (
+                extension is None and text.strip() != original["text"].strip()
+            ) or (extension is not None and any(extension[field] != translated_segment[field] for field in ("start", "end", "text"))):
+                raise ValueError("译文核对的主副字幕映射不一致。")
+        elif compose_translation(original["text"], text, mode, first) != target["text"]:
             raise ValueError("译文核对结果与翻译组合格式不一致。")
         entries.append({"id": original["id"], "start": original["start"], "end": original["end"],
                         "source": original["text"], "translation": text,
-                        "editable": not original.get("disabled") and bool(original["text"].strip())})
+                        "editable": not original.get("disabled") and bool(original["text"].strip()) and (mode != "tracks" or extension is not None),
+                        **({"targetId": target_id} if mode == "tracks" else {})})
     snapshot = json.dumps({"schema": "maw.translation-review.v1", "source": copy.deepcopy(source), "result": copy.deepcopy(result),
-                           "entries": entries, "mode": mode, "translationFirst": first}, ensure_ascii=False, separators=(",", ":"))
+                           "entries": entries, "mode": mode, "translationFirst": first,
+                           **({"translationTrackId": track["id"]} if track else {})}, ensure_ascii=False, separators=(",", ":"))
     return {"snapshot": snapshot, "sha256": hashlib.sha256(snapshot.encode("utf-8")).hexdigest(), "filename": filename}

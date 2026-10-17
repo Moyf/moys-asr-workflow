@@ -54,6 +54,13 @@ class _FakeRepo:
     def source_text(self, relative: str) -> str:
         return (self.root / "web" / relative).read_text(encoding="utf-8")
 
+    def dependency_hash(self) -> str:
+        """与构建器一致：package.json 与 pnpm-lock.yaml 以换行拼接后哈希。"""
+        return _sha("\n".join(
+            (self.root / name).read_text(encoding="utf-8")
+            for name in ("package.json", "pnpm-lock.yaml")
+        ))
+
     def materialize(self) -> None:
         inputs = {relative: _sha(self.source_text(relative)) for relative in self.sources}
         builder_hash = _sha("\n".join(
@@ -65,10 +72,7 @@ class _FakeRepo:
             "inputs": inputs,
             "configHash": _sha(self.config.read_text(encoding="utf-8")),
             "builderHash": builder_hash,
-            "dependencyHash": _sha("\n".join(
-                (self.root / name).read_text(encoding="utf-8")
-                for name in ("package.json", "pnpm-lock.yaml")
-            )),
+            "dependencyHash": self.dependency_hash(),
             "bundleHash": _sha("/* fake artifact */\n"),
         }
         self.bundle.parent.mkdir(parents=True, exist_ok=True)
@@ -193,6 +197,40 @@ class BundleStatusTests(unittest.TestCase):
         metadata["inputs"] = {"../outside.js": _sha("outside")}
         self.repo.manifest.write_text("../outside.js\n", encoding="utf-8")
         self.repo.meta.write_text(json.dumps(metadata), encoding="utf-8")
+        self.assertEqual(web_build.bundle_status(self.root, "editor")[0], "stale")
+
+    def test_transitive_dependency_in_inputs_is_verified(self) -> None:
+        """Given 构建器在 inputs 中额外记录了一个清单外的传递依赖
+        （静态 import 图引入）, When 该依赖源码变更, Then 预检判定
+        stale 且说明指向该文件。"""
+        self.repo.materialize()
+        dependency = "src/seam-dep.js"
+        (self.root / "web" / dependency).write_text(
+            "// dep v1\n", encoding="utf-8", newline="\n")
+        metadata = json.loads(self.repo.meta.read_text(encoding="utf-8"))
+        metadata["inputs"][dependency] = _sha("// dep v1\n")
+        self.repo.meta.write_text(json.dumps(metadata) + "\n", encoding="utf-8")
+
+        self.assertEqual(web_build.bundle_status(self.root, "editor")[0], "fresh")
+
+        (self.root / "web" / dependency).write_text(
+            "// dep v2\n", encoding="utf-8", newline="\n")
+        status, reason = web_build.bundle_status(self.root, "editor")
+
+        self.assertEqual(status, "stale")
+        self.assertIn(dependency, reason)
+
+    def test_new_dependency_missing_from_ledger_is_stale(self) -> None:
+        """Given 构建器声称引入了新依赖但没有写入 inputs, When 预检,
+        Then 判定 stale——依赖账本不完整不能掩盖新增源码。"""
+        self.repo.materialize()
+        dependency = "src/seam-dep.js"
+        (self.root / "web" / dependency).write_text(
+            "// dep\n", encoding="utf-8", newline="\n")
+        metadata = json.loads(self.repo.meta.read_text(encoding="utf-8"))
+        metadata["inputs"].pop(self.repo.sources[0])
+        self.repo.meta.write_text(json.dumps(metadata) + "\n", encoding="utf-8")
+
         self.assertEqual(web_build.bundle_status(self.root, "editor")[0], "stale")
 
 
