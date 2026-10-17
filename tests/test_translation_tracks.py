@@ -8,6 +8,8 @@ from pathlib import Path
 from threading import Event
 from unittest.mock import patch
 
+from tests.compact_assertions import CompactContainerAssertions
+
 from maw.postprocess import LlmPostprocessRequest, OutputMode, run_llm_postprocess
 from maw.postprocess_io import read_project
 from maw.postprocess_pipeline import default_postprocess_plan, run_postprocess_pipeline
@@ -15,7 +17,7 @@ from maw.postprocess_translation import attach_translation_project
 from maw.project import normalize_project
 
 
-class TranslationTracksTests(unittest.TestCase):
+class TranslationTracksTests(CompactContainerAssertions, unittest.TestCase):
     def source(self, text):
         return normalize_project({
             "segments": [{"id": "source", "start": 0, "end": 1000, "text": text,
