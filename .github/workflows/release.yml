@@ -357,11 +357,29 @@ jobs:
       - name: Run packaging contract tests
         run: uv run python -m unittest tests/test_packaging_contract.py
 
+      - name: Install FFmpeg for macOS media tests
+        if: matrix.platform == 'macos'
+        run: brew install ffmpeg
+
       - name: Install Linux CJK test font
         if: matrix.platform == 'linux'
         run: |
           sudo apt-get update
           sudo apt-get install -y fonts-noto-cjk
+
+      - name: Install Linux system dependencies
+        if: matrix.platform == 'linux'
+        run: |
+          sudo apt-get update
+          # ffmpeg：生成 AppImage 图标；squashfs-tools：appimagetool 需要
+          # libnss3 等：PyInstaller 收集 QtWebEngine 的运行时依赖
+          sudo apt-get install -y \
+            ffmpeg squashfs-tools \
+            libnss3 libasound2 libxcomposite1 libxdamage1 libxrandr2 \
+            libxtst6 libxkbcommon0 libxkbcommon-x11-0 libpci3 libgl1 libegl1 \
+            libopengl0 libxcb-cursor0 libxcb-icccm4 libxcb-keysyms1 libxcb-xkb1 \
+            xvfb
+          sudo apt-get clean
 
       - name: Run Python tests
         run: uv run python -m unittest discover -s tests -p "test_*.py"
@@ -545,20 +563,6 @@ jobs:
           PY
 
       # ---------- Linux 专属 ----------
-
-      - name: Install system dependencies
-        if: matrix.platform == 'linux'
-        run: |
-          sudo apt-get update
-          # ffmpeg：生成 AppImage 图标；squashfs-tools：appimagetool 需要
-          # libnss3 等：PyInstaller 收集 QtWebEngine 的运行时依赖
-          sudo apt-get install -y \
-            ffmpeg squashfs-tools \
-            libnss3 libasound2 libxcomposite1 libxdamage1 libxrandr2 \
-            libxtst6 libxkbcommon0 libxkbcommon-x11-0 libpci3 libgl1 libegl1 \
-            libopengl0 libxcb-cursor0 libxcb-icccm4 libxcb-keysyms1 libxcb-xkb1 \
-            xvfb
-          sudo apt-get clean
 
       - name: Build AppImage
         if: matrix.platform == 'linux'
