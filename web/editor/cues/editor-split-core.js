@@ -1494,6 +1494,16 @@
 
 
 
+  function completeStyledSplitPreviewParts(text, parts) {
+    const styled = splitStyledTextParts(text, parts, currentSplitStyleSettings());
+    if (!styled) return null;
+    const completed = MULTI_SUBTITLE_UTILS.completeSplitMassPairs(
+      styled.left, styled.right, MaweSettings.EDITOR_SETTINGS.assSpecialSymbolRule,
+    );
+    return { ...styled, left: completed.left, right: completed.right };
+  }
+
+
   function updateLinkedSplitPreview(offset, lane = 'extension') {
   const state = pendingLinkedSplit;
   if (!state) return false;
@@ -1544,12 +1554,11 @@
   if (mainParts && state.splitTextMode !== 'duplicate') {
     // 渐进拆分与普通拆分同样做刀点吸附与符号补齐：预览里的左半句就是
     // 确认后落库的完整独立句（右半句由下方预览分支替换为整句原文）。
-    mainParts = splitStyledTextParts(main.text, mainParts, currentSplitStyleSettings());
+    mainParts = completeStyledSplitPreviewParts(main.text, mainParts);
   }
   const extensionParts = extension
-    ? splitStyledTextParts(extension.text,
-      MULTI_SUBTITLE_UTILS.splitSubtitleText(extension.text, state.offset, state.extensionMode),
-      currentSplitStyleSettings())
+    ? completeStyledSplitPreviewParts(extension.text,
+      MULTI_SUBTITLE_UTILS.splitSubtitleText(extension.text, state.offset, state.extensionMode))
     : null;
   const mainTextValid = !main || Boolean(mainParts);
   const extensionTextValid = !extension || Boolean(extensionParts);

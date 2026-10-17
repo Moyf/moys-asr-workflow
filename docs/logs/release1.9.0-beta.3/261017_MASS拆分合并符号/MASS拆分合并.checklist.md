@@ -1,12 +1,14 @@
 ---
 task: mass-split-merge-symbols
+pr: 264
 date: 2026-10-17
+updated: 2026-10-18
 status: pending
 ---
 
 # MASS 拆分/合并符号修复核对
 
-> 范围：单词型合并折叠句级/行内符号对、渐进拆分左半句补全、整句壳与行内标记区分。基线 `feat/ass-style-line-spacing` / `af141848`。自动化：单测 34 项、Node 全量 814 项（1 项既有失败与本任务无关）、e2e 9 项通过；以下为浏览器实操项。
+> 范围：单词型合并折叠句级/行内符号对、渐进拆分左半句补全、整句壳与行内标记区分。PR 基线 `f98311b0`：Linux CI Node 815 项、浏览器选定集 56 项通过；合并前补验见下文，以下勾选项仍为人工实操。
 
 ## 实现与审查结论
 <!-- id: implementation -->
@@ -23,8 +25,9 @@ status: pending
 <!-- badge: pass 通过 -->
 
 - 单元测试：`node --test tests/test_mass_markers.mjs tests/test_split_style_markers.mjs` 34 项通过（含新增维护者场景用例）。
-- Node 全量：814 通过 / 1 失败 / 1 跳过；失败为 ASS 导出字节哈希，回退本任务文件后依旧失败，属同工作树 `ass-style.js` 在途改动，非本任务引入。
+- PR 独立基线：`f98311b0` 的 [Linux CI](https://github.com/Moyf/moys-asr-workflow/actions/runs/39045077748) Node 815 项全部通过、无失败或跳过；选定浏览器集 56 项通过。开发期间混合工作树的 ASS 字节基线失败属于历史记录，不是当前 PR 的失败。
 - e2e：`editor-text-tools.spec.mjs` progressive/duplicate 9 项通过。
+- 合并前补验：`node --test tests/test_mass_markers.mjs tests/test_split_style_markers.mjs tests/test_editor_script_syntax.mjs tests/test_editor_script_order.mjs` 36 项通过；`split-style-markers.spec.mjs` 16 项通过（无跳过或重试），包含主轨和联动的普通/渐进/复制模式，覆盖 `!!` 预览与提交一致。
 - 产物：editor bundle 已重建，`pnpm run check:editor` 新鲜；`git diff --check` 干净。
 
 ## 人工核验
@@ -44,8 +47,8 @@ status: pending
   （预期）前者折叠为一个完整样式对（如 甲乙 共用一对），后者直接拼接为「甲乙」，与升级前一致。
   <!-- id: merge-continuous-regression -->
 - [ ] **渐进拆分两侧补全**
-  （操作）选中 `!!重新开始!!` 字幕，光标放在「重」之后按 Shift+B 渐进拆分；再用星号强调对包裹的同句重复一次。
-  （预期）左半句为 `!!重!!`（或星号对完整包裹的「重」），右半句保持整句原文；字词时间码不丢。
+  （操作）选中 `!!重新开始!!` 字幕，光标放在「重」之后按 Shift+B 渐进拆分；再用星号强调对包裹的同句重复一次，并在绑定副轨时检查拆分弹窗。
+  （预期）左半句为 `!!重!!`（或星号对完整包裹的「重」），右半句保持整句原文；弹窗预览与确认后的文本一致，副轨仍按普通拆分补齐；字词时间码不丢。
   <!-- id: progressive-complete -->
 - [ ] **渐进拆分切点贴符号时吸附**
   （操作）光标放在句首符号内部或紧贴符号处做渐进拆分。
@@ -62,4 +65,4 @@ status: pending
 
 1. 核验完成后把勾选项改为 `- [x]`，front-matter `status` 更新为 `partial` / `passed`。
 2. `blank-editor.html` 按约定发布前统一重生成，本任务不提交。
-3. `96685652` 改动 `ass-style.js` 后 `tests/test_ass_cue_position.mjs` 的导出字节 golden 哈希未同步（与本任务无关的既有红灯），请该工作收口时更新。
+3. 合入前在更新后的 main 上核对最终 head 的 CI；与其他 PR 组合后的验证另行记录。
