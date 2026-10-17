@@ -187,16 +187,19 @@ export async function compileSources(root, files, modules, read, options = {}) {
         return null;
       });
       build.onLoad({filter:/.*/,namespace:'file'}, args => {
-        const canonical = fs.realpathSync(args.path);
-        if (canonical !== webRoot && !canonical.startsWith(webRoot+path.sep)) {
+        const lexical = path.relative(path.resolve(root,'web'),args.path).replaceAll('\\','/');
+        // compileSources also accepts in-memory factory sources in unit tests.
+        // Imported files must exist so their canonical path can be checked.
+        const supplied = sources.has(lexical);
+        const canonical = supplied ? null : fs.realpathSync(args.path);
+        if (!supplied && canonical !== webRoot && !canonical.startsWith(webRoot+path.sep)) {
           throw new Error(`Static import escapes web/: ${args.path}`);
         }
-        const lexical = path.relative(path.resolve(root,'web'),args.path).replaceAll('\\','/');
-        const relative = sources.has(lexical) ? lexical : path.relative(webRoot,canonical).replaceAll('\\','/');
+        const relative = supplied ? lexical : path.relative(webRoot,canonical).replaceAll('\\','/');
         const loader = FILE_LOADERS[path.extname(args.path)];
         if (!loader) throw new Error(`Unsupported static import type: ${args.path}`);
-        const contents = sources.has(relative) ? sources.get(relative) : fs.readFileSync(canonical,'utf8');
-        if (!sources.has(relative)) options.onDependency?.(relative,contents);
+        const contents = supplied ? sources.get(relative) : fs.readFileSync(canonical,'utf8');
+        if (!supplied) options.onDependency?.(relative,contents);
         loadedInputs.set(path.normalize(args.path),relative);
         return {contents,loader,resolveDir:path.dirname(args.path)};
       });
