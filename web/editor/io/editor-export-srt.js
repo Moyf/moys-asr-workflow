@@ -353,6 +353,15 @@
 
 
 
+  // 完全位于已移除空隙内的字幕会被 mapGapRemovedTime 映射到同一时刻（开头
+  // 空隙即输出第一帧堆叠），去空隙导出/烧录前整体丢弃；跨越切点的字幕维持
+  // 原映射规则。
+  function filterSegmentsInsideRemovedGaps(segments, removed) {
+    return (Array.isArray(segments) ? segments : [])
+      .filter((segment) => segment
+        && !window.AsrEditorUtils.isRangeInsideRemovedGap(segment.start, segment.end, removed));
+  }
+
   function buildGapRemovedSrt() {
   const removed = MaweGapRemoveData.getRemovedGapRanges();
   if (!removed.length) {
@@ -360,11 +369,12 @@
     return null;
   }
   const { segments, overlaySet, overlaySegments } = cleanupMergedExportSegments();
+  const keptSegments = filterSegmentsInsideRemovedGaps(segments, removed);
   const firstEnabledIndex = window.AsrEditorUtils.getSrtExportFirstIndex(
-    segments,
+    keptSegments,
     MaweSettings.EDITOR_SETTINGS.exportStartAtZero,
   );
-  return window.AsrEditorUtils.buildSrtPayload(segments, {
+  return window.AsrEditorUtils.buildSrtPayload(keptSegments, {
     alignFirstStart: MaweSettings.EDITOR_SETTINGS.exportStartAtZero,
     firstEnabledIndex,
     mapTime: (timeMs) => window.AsrEditorUtils.mapGapRemovedTime(timeMs, removed),
@@ -384,20 +394,21 @@
     MaweHint.flashHint('没有已移除的静音空隙；请先在「静音空隙」中扫描', 'invalid');
     return null;
   }
+  const mainSegments = filterSegmentsInsideRemovedGaps(cleanupMainSegments(), removed);
   const firstEnabledIndex = window.AsrEditorUtils.getSrtExportFirstIndex(
-    cleanupMainSegments(),
+    mainSegments,
     MaweSettings.EDITOR_SETTINGS.exportStartAtZero,
   );
   // 去空隙 ASS 与常规 ASS 同一三轨契约：叠加轨与副字幕也随导出，
-  // 时间统一经 mapGapRemovedTime 压缩。
+  // 时间统一经 mapGapRemovedTime 压缩；完全在空隙内的字幕同样整体丢弃。
   const { overlaySegments } = cleanupMergedExportSegments();
   const extensionSegments = activeExtensionSegments();
-  return window.AsrEditorUtils.buildAssPayload(cleanupMainSegments(), {
+  return window.AsrEditorUtils.buildAssPayload(mainSegments, {
     ...assExportOptions(),
     alignFirstStart: MaweSettings.EDITOR_SETTINGS.exportStartAtZero,
     firstEnabledIndex,
-    overlaySegments,
-    extensionSegments,
+    overlaySegments: filterSegmentsInsideRemovedGaps(overlaySegments, removed),
+    extensionSegments: filterSegmentsInsideRemovedGaps(extensionSegments, removed),
     mapTime: (timeMs) => window.AsrEditorUtils.mapGapRemovedTime(timeMs, removed),
     ...MaweSpeakerLabels.speakerLabelExportOptions(),
   });

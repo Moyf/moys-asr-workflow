@@ -406,6 +406,7 @@ const assStylePreviewSample = document.getElementById('ass-style-preview-sample'
 const assProfilePreviewSummary = document.getElementById('ass-profile-preview-summary');
 const assStyleSaveButton = document.getElementById('ass-style-save');
 const assStyleDeleteButton = document.getElementById('ass-style-delete');
+const assStyleResetButton = document.getElementById('ass-style-reset');
 const assStyleLibraryPathHint = document.getElementById('ass-style-library-path-hint');
 
 
