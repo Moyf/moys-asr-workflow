@@ -112,6 +112,19 @@ MAX_GAP_REMOVED_INTERVALS = 100_000
 MAX_BURN_STICKER_INPUTS = 32
 # 静态位图用 -loop 1 提供连续帧；GIF/动态 WebP 按自带循环播放，不做静态化处理。
 BURN_STICKER_LOOP_EXTENSIONS = frozenset({".png", ".jpg", ".jpeg", ".bmp"})
+# overlay 的 shortest=1 在「任一输入终止」时截断输出，因此每个表情包输入都必须
+# 无限化，让主视频恒为最短输入：
+# - 静态位图用 -loop 1 提供无限帧；
+# - GIF demuxer 默认 ignore_loop=1（忽略文件循环元数据播一遍就停），动图表情包
+#   需要遵循自带循环次数（0 = 无限）与浏览器预览一致；再叠加 -stream_loop -1
+#   兜底有限循环（loop=N）GIF 的文件 EOF，避免成为短输入；
+# - WebP demuxer 没有循环机制（静态单帧即 EOF），用 -stream_loop -1 无限重放。
+BURN_STICKER_GIF_EXTENSION = ".gif"
+BURN_STICKER_WEBP_EXTENSION = ".webp"
+# FFmpeg 的 webp demuxer 不支持动画：动画 WebP 解码 0 帧会让 overlay 拿不到
+# 次输入帧、输出空文件。解析 RIFF 头检测 ANMF chunk，命中即拒绝并提示改格式。
+STICKER_ANIMATED_WEBP_CHUNK = b"ANMF"
+STICKER_WEBP_PROBE_BYTES = 64 * 1024
 MAX_SAFE_JSON_INTEGER = 9_007_199_254_740_991
 # libass 单帧渲染是交互动作，超时视为环境异常而不是让请求挂起。
 ASS_FRAME_RENDER_TIMEOUT_SEC = 120
@@ -727,6 +740,23 @@ def _burn_seconds(ms: int) -> str:
     return format(Decimal(ms).scaleb(-3), "f")
 
 
+def _fit_contain_box(box: dict, image_size: tuple[int, int] | None) -> dict:
+    """Compute the final on-video rectangle for one sticker inside its layer.
+
+    contain 语义与预览层 CSS 一致：按图片纵横比缩小适配层矩形（不放大），
+    层内居中。图片尺寸不可读时退化为整层拉伸（罕见损坏文件）。
+    """
+    box_w, box_h = box["width"], box["height"]
+    if image_size is None or image_size[0] < 1 or image_size[1] < 1:
+        return {"x": box["x"], "y": box["y"], "width": box_w, "height": box_h}
+    scale = min(box_w / image_size[0], box_h / image_size[1], 1.0)
+    width = max(1, round(image_size[0] * scale))
+    height = max(1, round(image_size[1] * scale))
+    return {"x": box["x"] + (box_w - width) // 2,
+            "y": box["y"] + (box_h - height) // 2,
+            "width": width, "height": height}
+
+
 def _parse_burn_sticker_inputs(raw_stickers: object, root: Path | None) -> list[dict]:
     """Parse and validate sticker overlay entries of one burn-video request.
 
@@ -771,10 +801,19 @@ def _parse_burn_sticker_inputs(raw_stickers: object, root: Path | None) -> list[
             if end > start:
                 intervals.append((start, end))
         path = _sticker_rel_path(rel.strip(), root)
+        if rel.strip().casefold().endswith(".webp") and _is_animated_webp(path):
+            raise ValueError(
+                f"表情包「{rel.strip()}」是动画 WebP，当前 FFmpeg 无法解码，暂不支持烧录；"
+                "请改用 GIF 格式（编辑器预览不受影响）。")
+        try:
+            image_size = edit.image_dimensions(path)
+        except (OSError, ValueError):
+            image_size = None
+        placed = _fit_contain_box(
+            {"x": box[0], "y": box[1], "width": box[2], "height": box[3]}, image_size)
         entry = merged.get(rel)
         if entry is None:
-            merged[rel] = {"path": path, "x": box[0], "y": box[1],
-                           "width": box[2], "height": box[3], "intervals": intervals}
+            merged[rel] = {"path": path, **placed, "intervals": intervals}
         else:
             entry["intervals"].extend(intervals)
     stickers = [entry for entry in merged.values() if entry["intervals"]]
@@ -786,36 +825,51 @@ def _parse_burn_sticker_inputs(raw_stickers: object, root: Path | None) -> list[
 def _burn_sticker_chain_lines(stickers: list[dict], entry_label: str) -> list[str]:
     """Overlay sticker inputs between the video entry and the ass filter.
 
-    scale 按层矩形缩小不放大（contain，与预览一致），overlay 表达式用缩放后
-    的图片尺寸 W/H 在层内居中；enable 取该图合并后的全部显示区间。
+    坐标是解析阶段按图片尺寸静态算好的 contain 显示矩形（整数）——不用
+    overlay 的 W/H 表达式：表达式坐标在 -stream_loop 输入下会被静默丢弃
+    （FFmpeg 实测行为），纯数字坐标可靠。enable 取该图合并后的全部显示区间。
     """
     lines: list[str] = []
     previous = entry_label
     for index, sticker in enumerate(stickers):
         image_label = f"[burn_stick{index}]"
         output_label = f"[burn_ovl{index}]"
-        lines.append(f"[{index + 1}:v]scale=w={sticker['width']}:h={sticker['height']}:"
-                     f"force_original_aspect_ratio=decrease{image_label}")
+        lines.append(f"[{index + 1}:v]scale=w={sticker['width']}:h={sticker['height']}{image_label}")
         enable = "+".join(f"between(t,{_burn_seconds(start)},{_burn_seconds(end)})"
                           for start, end in sticker["intervals"])
-        # shortest=1：主视频 EOF 即终止输出；静态图 -loop 1 与循环 GIF 都是
-        # 无限输入，缺省 shortest=0 会让 FFmpeg 永不退出。
+        # shortest=1：主视频 EOF 即终止输出；所有表情包输入都已被无限化，
+        # 主视频恒为最短输入，缺省 shortest=0 会让 FFmpeg 永不退出。
         lines.append(f"{previous}{image_label}overlay="
-                     f"x='{sticker['x']}+({sticker['width']}-W)/2'"
-                     f":y='{sticker['y']}+({sticker['height']}-H)/2'"
+                     f"x={sticker['x']}:y={sticker['y']}"
                      f":enable='{enable}':shortest=1{output_label}")
         previous = output_label
     lines.append(f"{previous}ass=filename='burn.ass'[burn_video]")
     return lines
 
 
+def _is_animated_webp(path: Path) -> bool:
+    """Probe the RIFF header for ANMF chunks (animation frames)."""
+    try:
+        with path.open("rb") as handle:
+            return STICKER_ANIMATED_WEBP_CHUNK in handle.read(STICKER_WEBP_PROBE_BYTES)
+    except OSError:
+        return False
+
+
 def _burn_sticker_input_args(stickers: list[dict]) -> list[str]:
-    """Build FFmpeg input arguments: one input per unique sticker image."""
+    """Build FFmpeg input arguments: one infinitely-supplied input per sticker image."""
     args: list[str] = []
     for sticker in stickers:
         path = sticker["path"]
-        args.extend(("-loop", "1", "-i", str(path)) if path.suffix.casefold() in BURN_STICKER_LOOP_EXTENSIONS
-                    else ("-i", str(path)))
+        suffix = path.suffix.casefold()
+        if suffix in BURN_STICKER_LOOP_EXTENSIONS:
+            args.extend(("-loop", "1", "-i", str(path)))
+        elif suffix == BURN_STICKER_GIF_EXTENSION:
+            args.extend(("-stream_loop", "-1", "-ignore_loop", "0", "-i", str(path)))
+        elif suffix == BURN_STICKER_WEBP_EXTENSION:
+            args.extend(("-stream_loop", "-1", "-i", str(path)))
+        else:
+            args.extend(("-loop", "1", "-i", str(path)))
     return args
 
 

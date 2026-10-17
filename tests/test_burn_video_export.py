@@ -599,10 +599,27 @@ class BurnStickerTests(CompactContainerAssertions, unittest.TestCase):
         self.assertEqual(entry["path"], self.sticker_a)
         self.assertEqual(entry["intervals"], [(1000, 2500), (3000, 4500), (5000, 6000)])
 
-    def test_parse_keeps_loopless_inputs_out_of_static_branch(self) -> None:
+    def test_parse_keeps_infinite_inputs_per_format(self) -> None:
         args = server_editor._burn_sticker_input_args([
-            {"path": self.sticker_a}, {"path": self.sticker_gif}])
-        self.assertEqual(args, ["-loop", "1", "-i", str(self.sticker_a), "-i", str(self.sticker_gif)])
+            {"path": self.sticker_a}, {"path": self.sticker_gif},
+            {"path": self.stickers_dir / "still.webp"}])
+        self.assertEqual(args, [
+            "-loop", "1", "-i", str(self.sticker_a),
+            "-stream_loop", "-1", "-ignore_loop", "0", "-i", str(self.sticker_gif),
+            "-stream_loop", "-1", "-i", str(self.stickers_dir / "still.webp")])
+
+    def test_parse_rejects_animated_webp_but_accepts_static(self) -> None:
+        riff_header = b"RIFF" + (4).to_bytes(4, "little") + b"WEBP"
+        animated = self.stickers_dir / "animated.webp"
+        animated.write_bytes(riff_header + b"VP8X" + (16).to_bytes(4, "little") + b"\x00" * 10
+                             + b"ANMF" + (0).to_bytes(4, "little"))
+        still = self.stickers_dir / "still.webp"
+        still.write_bytes(riff_header + b"VP8 " + (0).to_bytes(4, "little"))
+        with self.assertRaises(ValueError) as caught:
+            server_editor._parse_burn_sticker_inputs([self._entry(rel="animated.webp")], self.stickers_dir)
+        self.assertIn("动画 WebP", str(caught.exception))
+        stickers = server_editor._parse_burn_sticker_inputs([self._entry(rel="still.webp")], self.stickers_dir)
+        self.assertEqual(stickers[0]["path"], still)
 
     def test_parse_rejects_invalid_entries(self) -> None:
         root = self.stickers_dir
@@ -633,16 +650,27 @@ class BurnStickerTests(CompactContainerAssertions, unittest.TestCase):
         self.assertEqual(server_editor._parse_burn_sticker_inputs(None, None), [])
         self.assertEqual(server_editor._parse_burn_sticker_inputs([], None), [])
 
-    def test_chain_lines_scale_center_enable_and_shortest(self) -> None:
+    def test_chain_lines_use_static_contain_coordinates(self) -> None:
         stickers = server_editor._parse_burn_sticker_inputs(
             [self._entry(), self._entry(rel="b.gif", intervals=[{"start": 0, "end": 800}])], self.stickers_dir)
         lines = server_editor._burn_sticker_chain_lines(stickers, "[0:v:0]")
-        self.assertEqual(lines[0],
-            f"[1:v]scale=w=100:h=75:force_original_aspect_ratio=decrease[burn_stick0]")
-        self.assertIn(f"[0:v:0][burn_stick0]overlay=", lines[1])
-        self.assertIn("x='200+(100-W)/2':y='30+(75-H)/2'", lines[1])
+        # 假字节文件读不到尺寸，退化为整层矩形（仍是纯数字坐标）。
+        self.assertEqual(lines[0], "[1:v]scale=w=100:h=75[burn_stick0]")
+        self.assertIn("[0:v:0][burn_stick0]overlay=x=200:y=30:", lines[1])
         self.assertIn("enable='between(t,1.000,2.500)+between(t,3.000,4.500)':shortest=1", lines[1])
         self.assertEqual(lines[-1], "[burn_ovl1]ass=filename='burn.ass'[burn_video]")
+        self.assertNotIn("force_original_aspect_ratio", "\n".join(lines))
+        self.assertNotIn("(120-W)", "\n".join(lines))
+
+    def test_parse_computes_static_contain_box_from_image_size(self) -> None:
+        ihdr = (b"\x89PNG\r\n\x1a\n" + b"\x00\x00\x00\rIHDR"
+                + struct.pack(">II", 200, 100) + b"\x08\x06\x00\x00\x00")
+        wide = self.stickers_dir / "wide.png"
+        wide.write_bytes(ihdr)
+        stickers = server_editor._parse_burn_sticker_inputs([self._entry(rel="wide.png")], self.stickers_dir)
+        # fit = min(100/200, 75/100, 1) = 0.5 → 100x50，层内水平居中、垂直居中。
+        self.assertEqual((stickers[0]["x"], stickers[0]["y"],
+                          stickers[0]["width"], stickers[0]["height"]), (200, 42, 100, 50))
 
     def test_interval_filter_wraps_chain_between_setpts_and_ass(self) -> None:
         stickers = server_editor._parse_burn_sticker_inputs([self._entry()], self.stickers_dir)
