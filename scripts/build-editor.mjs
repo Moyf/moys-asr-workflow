@@ -97,13 +97,36 @@ function validateModule(source, item) {
 
 function validateInitModule(source, item) {
   if (item.kind !== 'init') return;
-  // An init module replaces a manifest slot in place: the classic body moves
-  // into one exported initializer that the assembler calls at the same
-  // position, so evaluation order and classic-scope visibility stay identical.
+  // The initializer body runs at this file's manifest position. Imported
+  // modules follow normal ESM evaluation and should keep top-level work declarative.
   const ast = parse(source,'module');
-  if (ast.body.length !== 1 || ast.body[0]?.type !== 'ExportNamedDeclaration'
-      || ast.body[0].declaration?.type !== 'FunctionDeclaration') {
+  const imports = ast.body.filter(node => node.type === 'ImportDeclaration');
+  const exports = ast.body.filter(node => node.type === 'ExportNamedDeclaration');
+  const initializer = exports[0]?.declaration;
+  if (imports.length + exports.length !== ast.body.length || exports.length !== 1
+      || initializer?.type !== 'FunctionDeclaration'
+      || initializer.id?.name !== item.exportName
+      || initializer.async || initializer.generator) {
     throw new Error(`Init module must export exactly one function: ${item.file}`);
+  }
+}
+
+export function captureMetafileInputs(root, result, files, inputHashes, snapshot) {
+  const webRoot = path.resolve(root, 'web') + path.sep;
+  for (const input of Object.keys(result.metafile.inputs)) {
+    const normalized = input.replace(/\\/g,'/');
+    // esbuild reports stdin.sourcefile as an input too, but it is virtual and
+    // has no corresponding source file under web/.
+    if (normalized === 'web/editor-entry.mjs') continue;
+    const relative = normalized.startsWith('web/') ? normalized.slice(4) : null;
+    if (!relative || relative in inputHashes || files.includes(relative)) continue;
+    const absolute = path.resolve(root, 'web', relative);
+    if (!absolute.startsWith(webRoot)) {
+      throw new Error(`Static import escapes web/: ${relative}`);
+    }
+    const original = fs.readFileSync(absolute, 'utf8');
+    snapshot['web/'+relative] = original;
+    inputHashes[relative] = sha(original);
   }
 }
 
@@ -156,6 +179,14 @@ export async function compileSources(root, files, modules, read, options = {}) {
     stdin:{contents:entry,resolveDir:path.resolve(root,'web'),sourcefile:'editor-entry.mjs',loader:'js'},
     plugins:[{name:'maw-factories',setup(build) {
       build.onResolve({filter:/^maw-factory:/}, args => ({path:path.resolve(root,'web',args.path.slice(12))}));
+      build.onResolve({filter:/^\.{1,2}\//}, args => {
+        const webRoot = path.resolve(root,'web');
+        const resolved = path.resolve(args.resolveDir,args.path);
+        if (resolved !== webRoot && !resolved.startsWith(webRoot+path.sep)) {
+          return {errors:[{text:`Static import escapes web/: ${args.path}`}]};
+        }
+        return null;
+      });
       build.onLoad({filter:/\.js$/}, args => {
         const file = path.relative(path.resolve(root,'web'),args.path).replaceAll('\\','/');
         if (!byFile.has(file)) return null;
@@ -177,20 +208,9 @@ export async function buildEditor(root = ROOT, options = {}) {
     const source = options.transform ? options.transform(file,original) : original;
     inputHashes[file] = sha(source); return source;
   },{bridges:config.externalBridges,trace:true});
-  // New dependencies pulled in through a static import graph are build
-  // inputs too: hash every web/ module the metafile recorded beyond the
-  // manifest so adding, editing or deleting any of them invalidates the
-  // artifact exactly like a manifest source would.
-  for (const input of Object.keys(result.metafile.inputs)) {
-    const web = input.replace(/\\/g,'/');
-    const relative = web.startsWith('web/') && web.endsWith('.js') ? web.slice(4) : null;
-    if (!relative || relative in inputHashes) continue;
-    if (!files.includes(relative)) {
-      const original = fs.readFileSync(path.join(root,'web',relative),'utf8');
-      snapshot['web/'+relative] = original;
-      inputHashes[relative] = sha(original);
-    }
-  }
+  // Static imports may pull in modules outside the ordered manifest. Record
+  // them as build inputs so source changes invalidate the artifact too.
+  captureMetafileInputs(root,result,files,inputHashes,snapshot);
   assertBuildInputsUnchanged(root, snapshot);
   const metadata = {format:1,esbuild:esbuild.version,sourceFiles:files,esmFactories:modules.length,
     inputs:inputHashes,configHash:sha(configText),builderHash:sha(snapshot['scripts/build-editor.mjs']),

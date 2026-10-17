@@ -75,6 +75,32 @@ for (let i = 0; i < 100; i++) {
 });
 
 for (const [kind, build] of [['editor', buildEditor], ['launcher', buildLauncher]]) {
+  test(`${kind} records and hashes an imported module outside its source list`, async t => {
+    const root = fixture(t);
+    fs.mkdirSync(path.join(root,'web'),{recursive:true});
+    fs.mkdirSync(path.join(root,'scripts'),{recursive:true});
+    fs.writeFileSync(path.join(root,`web/${kind}-scripts.txt`),'seam.js\n');
+    fs.writeFileSync(path.join(root,`web/${kind}-modules.json`),JSON.stringify({format:1,
+      modules:[{file:'seam.js',kind:'init',name:'seam',exportName:'runSeam'}],externalBridges:[]}));
+    fs.writeFileSync(path.join(root,'web/seam.js'),
+      `import { value } from './helper.js';\nexport function runSeam() { window.result = value; }\n`);
+    fs.writeFileSync(path.join(root,'web/helper.js'),"export const value = 'first';\n");
+    for (const name of ['scripts/build-editor.mjs','scripts/build-launcher.mjs','pnpm-lock.yaml']) {
+      fs.writeFileSync(path.join(root,name),'fixture input\n');
+    }
+    fs.writeFileSync(path.join(root,'package.json'),'{}\n');
+
+    const first = await build(root);
+    assert.ok(first.metafile.inputs['web/helper.js']);
+    assert.ok(first.metadata.inputs['helper.js']);
+    fs.writeFileSync(path.join(root,'web/helper.js'),"export const value = 'second';\n");
+    const second = await build(root);
+    assert.notEqual(first.metadata.inputs['helper.js'],second.metadata.inputs['helper.js']);
+    assert.notEqual(first.code,second.code);
+  });
+}
+
+for (const [kind, build] of [['editor', buildEditor], ['launcher', buildLauncher]]) {
   for (const changed of [`web/${kind}-modules.json`, 'scripts/build-editor.mjs', 'pnpm-lock.yaml', 'web/source.js']) {
     test(`${kind} rejects ${changed} changing while compilation yields`, async t => {
       const root = fixture(t);

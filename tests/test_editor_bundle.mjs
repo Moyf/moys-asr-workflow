@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
+import os from 'node:os';
 import path from 'node:path';
 import vm from 'node:vm';
 import test from 'node:test';
@@ -106,37 +107,45 @@ test('assembly rejects invalid exports, effects, duplicate/unsafe paths and omit
 
 test('init module replaces its manifest slot in place with unchanged order', async () => {
   const { compileSources } = await import(builder);
+  const project = fs.mkdtempSync(path.join(os.tmpdir(),'maw-init-order-'));
   const files = ['first.js', 'seam.js', 'helper.js', 'last.js'];
   const source = new Map([
     // first.js sees the classic scope and runs before the seam slot.
     ['first.js', `window.events=['first'];
       window.MAWE={register(name, factory) { window.events.push(name); }};`],
-    // seam.js is the same classic body wrapped in one exported initializer.
-    ['seam.js', `export function runSeam() {
-      window.seamState='from-init';
+    // The initializer imports a helper, then runs at its manifest position.
+    ['seam.js', `import { createHelper } from './helper.js';
+      export function runSeam() {
+      window.seamState=createHelper();
       window.events.push('seam');
     }`],
-    // A plain factory that the init module imports explicitly; its helper
-    // must be available to the classic scope after the seam runs.
-    ['helper.js', `export function createHelper(deps) { return deps; }`],
+    // The initializer uses an explicitly imported helper when called at its
+    // manifest position. The import itself must not run the initializer.
+    ['helper.js', `export function createHelper() { return 'from-import'; }`],
     ['last.js', `window.afterSeam=window.seamState; window.events.push('last');`],
   ]);
   const modules = [
     {file:'seam.js', kind:'init', name:'seam', exportName:'runSeam'},
     {file:'helper.js', name:'helper', exportName:'createHelper'},
   ];
-  const { code, metafile } = await compileSources(root, files, modules,
-    file => source.get(file), {});
-  const context = {window:{}};
-  vm.runInNewContext(code, context);
-  // Same positional order: first -> seam (classic body in place) -> helper
-  // registration at its own manifest slot -> last.
-  assert.deepEqual([...context.window.events], ['first','seam','helper','last']);
-  assert.equal(context.window.seamState,'from-init');
-  assert.equal(context.window.afterSeam,'from-init');
-  // Both seam modules are explicit esbuild inputs.
-  assert.ok(metafile.inputs['web/seam.js']);
-  assert.ok(metafile.inputs['web/helper.js']);
+  try {
+    fs.mkdirSync(path.join(project,'web'),{recursive:true});
+    for (const [file,contents] of source) fs.writeFileSync(path.join(project,'web',file),contents);
+    const { code, metafile } = await compileSources(project, files, modules,
+      file => fs.readFileSync(path.join(project,'web',file),'utf8'), {});
+    const context = {window:{}};
+    vm.runInNewContext(code, context);
+    // Same positional order: first -> seam initializer -> helper registration -> last.
+    assert.deepEqual([...context.window.events], ['first','seam','helper','last']);
+    assert.equal(context.window.seamState,'from-import');
+    assert.equal(context.window.afterSeam,'from-import');
+    // Both the initializer and its imported helper are explicit build inputs.
+    assert.ok(metafile.inputs['web/seam.js']);
+    assert.ok(metafile.inputs['web/helper.js']);
+    assert.match(code, /from-import/);
+  } finally {
+    fs.rmSync(project,{recursive:true,force:true});
+  }
 });
 
 test('init module rejects extra statements and factories reject kind misuse', async () => {
@@ -147,18 +156,38 @@ test('init module rejects extra statements and factories reject kind misuse', as
   await assert.rejects(compileSources(root,['seam.js'],
     [{file:'seam.js', kind:'init', name:'seam', exportName:'runSeam'}],
     () => 'const extra=1;\nexport function runSeam() {}\nfunction second() {}'), /exactly one function/i);
+  await assert.rejects(compileSources(root,['seam.js'],
+    [{file:'seam.js', kind:'init', name:'seam', exportName:'runSeam'}],
+    () => 'import { value } from "./helper.js";\nexport function wrongName() {}'), /exactly one function/i);
+  await assert.rejects(compileSources(root,['seam.js'],
+    [{file:'seam.js', kind:'init', name:'seam', exportName:'runSeam'}],
+    () => 'import { value } from "../outside.js";\nexport function runSeam() {}'), /escapes web/i);
 });
 
 test('transitive imports invalidate the artifact like manifest sources', async () => {
   const { buildEditor } = await import(builder);
-  // Fonts is an ESM factory in the manifest whose source feeds the bundle
-  // through the explicit import graph; editing it must change the produced
-  // code, the inputs ledger and therefore the identity of the artifact.
-  const transform = marker => (file, source) =>
-    file === 'shared/utils/fonts.js' ? source.replace('Microsoft YaHei', marker) : source;
-  const first = await buildEditor(root, {transform: transform('MAWTransitiveV1')});
-  const second = await buildEditor(root, {transform: transform('MAWTransitiveV2')});
-  assert.notEqual(first.code, second.code);
-  assert.ok(second.metadata.inputs['shared/utils/fonts.js']);
-  assert.ok(second.metafile.inputs['web/shared/utils/fonts.js']);
+  const project = fs.mkdtempSync(path.join(os.tmpdir(),'maw-esm-dependency-'));
+  try {
+    fs.mkdirSync(path.join(project,'web'),{recursive:true});
+    fs.mkdirSync(path.join(project,'scripts'),{recursive:true});
+    fs.writeFileSync(path.join(project,'web/editor-scripts.txt'),'seam.js\n');
+    fs.writeFileSync(path.join(project,'web/editor-modules.json'),JSON.stringify({format:1,
+      modules:[{file:'seam.js',kind:'init',name:'seam',exportName:'runSeam'}],externalBridges:[]}));
+    fs.writeFileSync(path.join(project,'web/seam.js'),
+      `import { value } from './helper.js';\nexport function runSeam() { window.result = value; }\n`);
+    fs.writeFileSync(path.join(project,'web/helper.js'),"export const value = 'v1';\n");
+    fs.writeFileSync(path.join(project,'scripts/build-editor.mjs'),fs.readFileSync(fileURLToPath(builder),'utf8'));
+    fs.writeFileSync(path.join(project,'package.json'),'{}\n');
+    fs.writeFileSync(path.join(project,'pnpm-lock.yaml'),'lockfileVersion: 9\n');
+
+    const first = await buildEditor(project);
+    assert.ok(first.metadata.inputs['helper.js']);
+    assert.ok(first.metafile.inputs['web/helper.js']);
+    fs.writeFileSync(path.join(project,'web/helper.js'),"export const value = 'v2';\n");
+    const second = await buildEditor(project);
+    assert.notEqual(first.code,second.code);
+    assert.notEqual(first.metadata.inputs['helper.js'],second.metadata.inputs['helper.js']);
+  } finally {
+    fs.rmSync(project,{recursive:true,force:true});
+  }
 });

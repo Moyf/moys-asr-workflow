@@ -7,7 +7,7 @@ import { createHash } from 'node:crypto';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import * as esbuild from 'esbuild';
 import { assertBuildInputsUnchanged, captureBuildInputs, compileSources,
-  dependencyHash, validateSources, writeArtifact } from './build-editor.mjs';
+  captureMetafileInputs, dependencyHash, validateSources, writeArtifact } from './build-editor.mjs';
 
 const ROOT = fileURLToPath(new URL('../', import.meta.url));
 export const BUNDLE = 'launcher/boot/launcher-bundle.js';
@@ -47,6 +47,7 @@ export async function buildLauncher(root = ROOT) {
     inputHashes[file] = sha(source);
     return source;
   }, { bridges: config.externalBridges ?? [], trace: true });
+  captureMetafileInputs(root,result,files,inputHashes,snapshot);
   assertBuildInputsUnchanged(root, snapshot);
   const metadata = {
     format: 1,
