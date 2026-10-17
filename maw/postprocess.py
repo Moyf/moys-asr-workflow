@@ -17,6 +17,7 @@ from maw.postprocess_io import SubtitleArtifact, read_project, read_srt, write_a
 from maw.postprocess_annotations import ANNOTATION_PROMPT, validate_annotations, write_annotations
 from maw.postprocess_llm import LlmClientError
 from maw.project import normalize_project
+from maw.postprocess_translation import attach_translation_project
 from maw.project_preview import JsonDict, JsonValue
 from maw.text_conversion import TextConversion, apply_text_conversion
 
@@ -505,13 +506,22 @@ def _run_llm_postprocess(
             warnings = ("已将翻译结果回填进原字幕，输出为单条字幕。", *warnings)
     if "markers" in (translation_snapshot or {}):
         processed["markers"] = copy.deepcopy(translation_snapshot["markers"])
+    srt_project = None
+    if translation_snapshot is not None and not output_operation.endswith(f"-{BACKFILL_ARTIFACT_MARKER}"):
+        # MOSP is the editable source; only SRT receives translated/stacked text.
+        srt_project = processed
+        processed = attach_translation_project(
+            project, translation_snapshot,
+            target="zh" if request.operation == "translate_zh" else "en",
+        )
+        warnings = (*warnings, "MOSP 保留原文主字幕、字词时间码和可编辑的译文副字幕。")
     _raise_if_cancelled(is_cancelled)
     _notify_status(on_status, "toolbox_status_writing")
     if begin_commit is not None and not begin_commit():
         raise LlmClientError(
             "操作已取消。", category="cancelled", operation="postprocess"
         )
-    return _write(
+    artifact = _write(
         processed,
         source_project,
         source_srt,
@@ -523,7 +533,9 @@ def _run_llm_postprocess(
         comparison_source=project if request.generate_comparison else None,
         comparison_translation=translation_snapshot if request.generate_comparison else None,
         bilingual_line_order=request.bilingual_line_order,
+        srt_project=srt_project,
     )
+    return replace(artifact, translation_project=translation_snapshot)
 
 
 def _raise_if_cancelled(is_cancelled: Callable[[], bool] | None) -> None:
@@ -1917,6 +1929,7 @@ def _write(
     comparison_source: Mapping[str, object] | None = None,
     comparison_translation: Mapping[str, object] | None = None,
     bilingual_line_order: str = "",
+    srt_project: JsonDict | None = None,
 ) -> SubtitleArtifact:
     return write_artifacts(
         project,
@@ -1931,6 +1944,7 @@ def _write(
         comparison_source=comparison_source,
         comparison_translation=comparison_translation,
         bilingual_line_order=bilingual_line_order,
+        srt_project=srt_project,
     )
 
 
