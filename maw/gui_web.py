@@ -1484,6 +1484,7 @@ class LauncherApi:
                     merge_bilingual=bool(payload.get("mergeBilingual")),
                     embed_translations=bool(payload.get("embedTranslations")),
                     bilingual_line_order=str(payload.get("bilingualLineOrder") or ""),
+                    skip_target_language=payload.get("skipTargetLanguage") is not False,
                     generate_comparison=bool(payload.get("generateComparison")),
                     max_chars=max_chars,
                 ),

@@ -46,6 +46,7 @@ def sample_project(media: Path) -> JsonDict:
     return {
         "media": str(media),
         "language": "zh",
+        "language_source": "detected",
         "segments": [
             {
                 "start": 100,
@@ -1982,6 +1983,127 @@ class PostprocessTests(unittest.TestCase):
         self.assertEqual([segment["text"] for segment in translated], ["Translation c0001", "Translation c0002"])
         self.assertNotIn("已是英文的字幕", "\n".join(result.warnings))
 
+    def test_llm_chinese_translation_sends_ambiguous_han_cues(self) -> None:
+        # 汉字不是中文的充分证据：日/韩文工程、仅脚本推断或无来源的旧工程、
+        # 无语言元数据的 SRT 都必须真的发请求并生成译文，不能全量误拦截。
+        cases = (
+            ("ja", "detected"), ("Japanese", "hint"), ("ko", "detected"),
+            ("zh", "inferred"), ("zh", "unknown"), ("zh", None), (None, None),
+        )
+        for language, language_source in cases:
+            with self.subTest(language=language, language_source=language_source):
+                source = sample_project(self.media)
+                if language is None:
+                    source.pop("language")
+                else:
+                    source["language"] = language
+                if language_source is None:
+                    source.pop("language_source")
+                else:
+                    source["language_source"] = language_source
+                for segment, text in zip(source["segments"], ("今日", "東京")):
+                    segment["text"] = text
+                    segment.pop("items", None)
+                self.project_path.write_text(json.dumps(source, ensure_ascii=False), encoding="utf-8")
+                self._assert_han_cues_are_translated(project_path=self.project_path, srt_path=None)
+
+        srt_path = self.root / "japanese.srt"
+        srt_path.write_text("1\n00:00:00,100 --> 00:00:00,900\n今日\n\n2\n00:00:01,200 --> 00:00:02,200\n東京\n", encoding="utf-8")
+        self._assert_han_cues_are_translated(project_path=None, srt_path=srt_path)
+
+    def _assert_han_cues_are_translated(self, *, project_path: Path | None, srt_path: Path | None) -> None:
+        requested: list[list[str]] = []
+
+        def complete(_prompt: str, cues: list[dict[str, JsonValue]]) -> JsonDict:
+            requested.append([str(cue["text"]) for cue in cues])
+            return {"groups": [{"id": cue["id"], "text": f"译文 {cue['id']}"} for cue in cues]}
+
+        result = run_llm_postprocess(
+            LlmPostprocessRequest(project_path=project_path, srt_path=srt_path,
+                                  output_mode=OutputMode.BOTH, operation="translate_zh", custom_prompt=""),
+            complete=complete,
+        )
+        self.assertEqual(requested, [["今日", "東京"]])
+        if result.project_path is None or result.srt_path is None:
+            self.fail("both translation outputs must be created")
+        translated = project_segments(read_project(result.project_path))
+        self.assertEqual([segment["text"] for segment in translated], ["译文 c0001", "译文 c0002"])
+        self.assertEqual([(segment["start"], segment["end"]) for segment in translated], [(100, 900), (1200, 2200)])
+        self.assertEqual([segment["text"] for segment in project_segments(read_srt(result.srt_path))],
+                         ["译文 c0001", "译文 c0002"])
+        self.assertNotIn("已是中文的字幕", "\n".join(result.warnings))
+
+    def test_llm_chinese_translation_uses_whole_input_script_evidence(self) -> None:
+        # 即便错误/过期的元数据说中文，也不能跳过同一日/韩文输入里的纯汉字句。
+        for foreign_text in ("これは日本語です", "ﾄｳｷｮｳ", "\U0001b001", "한국어", "한글", "\uffbe\uffc2"):
+            with self.subTest(foreign_text=foreign_text):
+                source = sample_project(self.media)
+                source["segments"][0]["text"] = "今日"
+                source["segments"][0].pop("items", None)
+                source["segments"][1]["text"] = foreign_text
+                self.project_path.write_text(json.dumps(source, ensure_ascii=False), encoding="utf-8")
+                requested: list[list[str]] = []
+
+                def complete(_prompt: str, cues: list[dict[str, JsonValue]]) -> JsonDict:
+                    requested.append([str(cue["text"]) for cue in cues])
+                    return {"groups": [{"id": cue["id"], "text": "译文"} for cue in cues]}
+
+                result = run_llm_postprocess(
+                    LlmPostprocessRequest(project_path=self.project_path, srt_path=None,
+                                          output_mode=OutputMode.JSON, operation="translate_zh", custom_prompt=""),
+                    complete=complete,
+                )
+                self.assertEqual(requested, [["今日", foreign_text]])
+                self.assertIsNotNone(result.project_path)
+
+    def test_llm_translation_prefilters_with_explicit_chinese_hint_alias(self) -> None:
+        source = sample_project(self.media)
+        source["language"] = "zh-Hant"
+        source["language_source"] = "hint"
+        source["segments"][1]["text"] = "This line is English."
+        self.project_path.write_text(json.dumps(source, ensure_ascii=False), encoding="utf-8")
+        requested: list[list[str]] = []
+
+        def complete(_prompt: str, cues: list[dict[str, JsonValue]]) -> JsonDict:
+            requested.append([str(cue["id"]) for cue in cues])
+            return {"groups": [{"id": cue["id"], "text": "译文"} for cue in cues]}
+
+        result = run_llm_postprocess(
+            LlmPostprocessRequest(project_path=self.project_path, srt_path=None,
+                                  output_mode=OutputMode.JSON, operation="translate_zh", custom_prompt=""),
+            complete=complete,
+        )
+        self.assertEqual(requested, [["c0002"]])
+        if result.project_path is None:
+            self.fail("project output must be created")
+        self.assertEqual(project_segments(read_project(result.project_path))[0], project_segments(read_project(self.project_path))[0])
+
+    def test_llm_translation_can_disable_target_language_prefilter(self) -> None:
+        for operation in ("translate_zh", "translate_en"):
+            with self.subTest(operation=operation):
+                source = sample_project(self.media)
+                source["segments"][1]["text"] = "3.5"
+                source["segments"].append({"start": 2300, "end": 2600, "text": ""})
+                self.project_path.write_text(json.dumps(source, ensure_ascii=False), encoding="utf-8")
+                requested: list[list[str]] = []
+
+                def complete(_prompt: str, cues: list[dict[str, JsonValue]]) -> JsonDict:
+                    requested.append([str(cue["text"]) for cue in cues])
+                    return {"groups": [{"id": cue["id"], "text": f"译文 {cue['id']}"} for cue in cues]}
+
+                result = run_llm_postprocess(
+                    LlmPostprocessRequest(project_path=self.project_path, srt_path=None,
+                                          output_mode=OutputMode.JSON, operation=operation, custom_prompt="",
+                                          skip_target_language=False),
+                    complete=complete,
+                )
+                self.assertEqual(requested, [["酒很好喝", "3.5"]])
+                if result.project_path is None:
+                    self.fail("project output must be created")
+                self.assertEqual([segment["text"] for segment in project_segments(read_project(result.project_path))],
+                                 ["译文 c0001", "译文 c0002", ""])
+                self.assertNotIn("已是中文的字幕", "\n".join(result.warnings))
+
     def test_llm_translation_errors_when_every_cue_is_already_target_language(self) -> None:
         def complete(_prompt: str, _cues: list[dict[str, JsonValue]]) -> JsonDict:
             self.fail("no request should be sent when every cue is already in the target language")
@@ -2018,7 +2140,9 @@ class PostprocessTests(unittest.TestCase):
         )
         for text, operation, expected in cases:
             with self.subTest(text=text, operation=operation):
-                self.assertEqual(_is_already_target_language(text, operation), expected)
+                self.assertEqual(_is_already_target_language(text, operation, source_is_chinese=True), expected)
+        # 缺少明确中文来源时，即便全是汉字也不能直接认作中文。
+        self.assertFalse(_is_already_target_language("今日", "translate_zh"))
 
     def test_llm_translation_can_merge_source_and_translation_into_one_subtitle(self) -> None:
         source = read_project(self.project_path)

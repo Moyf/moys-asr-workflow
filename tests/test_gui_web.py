@@ -2697,6 +2697,18 @@ class GuiWebBridgeTests(CompactContainerAssertions, unittest.TestCase):
         self.assertTrue(request.embed_translations)
         self.assertFalse(request.merge_bilingual)
 
+    def test_llm_bridge_forwards_target_language_prefilter_with_enabled_default(self) -> None:
+        artifact = SimpleNamespace(source_project_path=None, source_srt_path=None,
+                                   project_path=None, srt_path=None, translated_srt_path=None, warnings=())
+        for option, expected in (({}, True), ({"skipTargetLanguage": True}, True), ({"skipTargetLanguage": False}, False)):
+            with self.subTest(option=option), mock.patch("maw.gui_web.process_llm_postprocess", return_value=artifact) as process:
+                result = self.api.run_llm_postprocess({
+                    "operation": "translate_zh", "providerId": "deepseek", "apiKey": "sk-test",
+                    "baseUrl": "https://api.deepseek.com", "model": "deepseek-chat", **option,
+                })
+                self.assertTrue(result["ok"])
+                self.assertEqual(process.call_args.args[0].skip_target_language, expected)
+
     def test_llm_bridge_classifies_provider_http_error_without_exposing_secrets(self) -> None:
         provider_error = LlmClientError(
             "LLM provider returned HTTP 400: invalid request. This is a provider response, not a network outage.",

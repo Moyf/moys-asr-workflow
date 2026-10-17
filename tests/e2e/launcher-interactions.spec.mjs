@@ -282,6 +282,59 @@ test('translation merge option follows manual and automatic translation controls
   await expect(page.locator('#autoTranslateMergeField')).toBeHidden();
 });
 
+test('translation language filter defaults on, persists, syncs and reaches requests', async ({ page }) => {
+  await openLauncher(page);
+  await page.evaluate(() => {
+    Object.assign(window.MAWLauncher.config.postprocessProviders.find(p => p.id === 'deepseek'),
+      { verified: true, hasApiKey: true, hasBaseUrl: true, hasModel: true });
+    window.__filterPlans = [];
+    window.__filterRequests = [];
+    const original = window.MAWLauncher.callBackend;
+    window.MAWLauncher.callBackend = async (method, payload) => {
+      if (method === 'save_postprocess_plan') window.__filterPlans.push(payload.plan);
+      if (method === 'run_llm_postprocess') {
+        window.__filterRequests.push(payload);
+        return { ok: false, error: 'test stopped before sending to a model' };
+      }
+      return original(method, payload);
+    };
+  });
+  await page.locator('#toolboxLlmTab').click();
+  await page.locator('#postprocessOperation').selectOption('translate_zh');
+  await expect(page.locator('#postprocessSkipTarget')).toBeChecked();
+  await page.locator('#postprocessSkipTarget').uncheck();
+  await expect(page.locator('#autoTranslateSkipTarget')).not.toBeChecked();
+  await expect.poll(() => page.evaluate(() => window.__filterPlans.at(-1)?.steps
+    .find(s => s.id === 'translate')?.skipTargetLanguage)).toBe(false);
+  await page.locator('#toolboxInputPath').fill('source.mosp');
+  await page.locator('#runLlmPostprocess').click();
+  await expect.poll(() => page.evaluate(() => window.__filterRequests.at(-1)?.skipTargetLanguage)).toBe(false);
+  const manualGap = await page.locator('#postprocessSkipTarget').evaluate(input => {
+    const label = input.closest('label');
+    return label.nextElementSibling.getBoundingClientRect().top - label.getBoundingClientRect().bottom;
+  });
+  expect(manualGap).toBeGreaterThanOrEqual(8);
+  await page.locator('#postprocessSkipTarget').scrollIntoViewIfNeeded();
+  await page.screenshot({ path: '.artifacts/translation-filter-manual.png' });
+  await page.locator('#toolboxClose').click();
+  await page.locator('#autoPostprocessEnabled').check();
+  await page.locator('#autoStepTranslate').check();
+  await expect(page.locator('#autoTranslateSkipTargetField')).toBeVisible();
+  await page.locator('#autoTranslateSkipTarget').check();
+  await expect(page.locator('#postprocessSkipTarget')).toBeChecked();
+  await expect.poll(() => page.evaluate(() => window.__filterPlans.at(-1)?.steps
+    .find(s => s.id === 'translate')?.skipTargetLanguage)).toBe(true);
+  const autoGap = await page.locator('#autoTranslateSkipTargetField').evaluate(group => {
+    const [label, hint] = group.children;
+    return hint.getBoundingClientRect().top - label.getBoundingClientRect().bottom;
+  });
+  expect(autoGap).toBeGreaterThanOrEqual(8);
+  await page.locator('#autoTranslateSkipTargetField').scrollIntoViewIfNeeded();
+  await page.screenshot({ path: '.artifacts/translation-filter-auto.png' });
+  await page.locator('#autoStepTranslate').uncheck();
+  await expect(page.locator('#autoTranslateSkipTargetField')).toBeHidden();
+});
+
 test('automatic LLM setup highlights test connection until clicked', async ({ page }) => {
   await page.goto(`file://${launcherPath}`);
   await page.waitForFunction(() => window.MAWLauncher?.config?.postprocessProviders?.length > 0);

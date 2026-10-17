@@ -445,6 +445,13 @@
                 <span data-i18n="auto_backfill_subtitles">只翻译外文语句</span>
               </label>
               <p id="autoTranslateBackfillHint" class="hint auto-translate-merge hidden" data-i18n="auto_backfill_subtitles_hint">只把少量外文语句翻译成目标语言。</p>
+              <div id="autoTranslateSkipTargetField" class="translation-skip-target hidden">
+                <label class="check-field" for="autoTranslateSkipTarget">
+                  <input id="autoTranslateSkipTarget" type="checkbox" checked>
+                  <span data-i18n="translation_skip_target">跳过已是目标语言的字幕</span>
+                </label>
+                <p class="hint" data-i18n="translation_skip_target_hint">关闭后将所有非空字幕交给模型翻译；遇到误判时可关闭。</p>
+              </div>
             </div>
             <label class="check-field" for="autoPostprocessRetain">
               <input id="autoPostprocessRetain" type="checkbox">
@@ -1067,6 +1074,13 @@
             <span data-i18n="toolbox_backfill_subtitles">只翻译外文语句</span>
           </label>
           <p class="hint" data-i18n="backfill_subtitles_hint">适用于仅有少量语音需要翻译的情况，将翻译后文本直接回填替换。例如7句中文+3句英文，选择「翻译成中文」并启用回填，将得到10句中文字幕。</p>
+          <div class="translation-skip-target">
+            <label class="check-field" for="postprocessSkipTarget">
+              <input id="postprocessSkipTarget" type="checkbox" checked>
+              <span data-i18n="translation_skip_target">跳过已是目标语言的字幕</span>
+            </label>
+            <p class="hint" data-i18n="translation_skip_target_hint">关闭后将所有非空字幕交给模型翻译；遇到误判时可关闭。</p>
+          </div>
         </div>
         <p class="toolbox-settings-hint"><span id="postprocessProviderStatus" class="hint"></span> <button id="openLlmSettings" class="inline-link" type="button" data-i18n="toolbox_open_settings">在 ⚙️ 设置中配置 AI 处理用的模型</button></p>
       </div>
