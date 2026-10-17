@@ -53,7 +53,7 @@ const documents = [
   {
     source: 'docs/user/MULTI_SUBTITLE.md',
     slug: 'multi-subtitle',
-    title: '多重字幕',
+    title: '双语字幕',
     description: '主副字幕导入、绑定、联动与导出的完整规则。',
   },
   {

@@ -70,9 +70,10 @@ from maw.media_export_video import (  # noqa: E402
 from maw.gui_config import DEFAULT_ENV_PATH, load_env  # noqa: E402
 from maw.gui_platform import creationflags, restore_host_library_path, startupinfo  # noqa: E402
 from maw.postprocess_ffmpeg import (  # noqa: E402
-    DEFAULT_BURN_AUDIO_BITRATE, DEFAULT_BURN_CRF, DEFAULT_BURN_PRESET, libass_missing_glyphs,
-    normalize_video_encoder, video_encoder_attempts, video_encoder_options, _green_screen_input,
-    _green_screen_size_resolution,
+    ASS_FALLBACK_PLAY_RESOLUTION, DEFAULT_BURN_AUDIO_BITRATE, DEFAULT_BURN_CRF, DEFAULT_BURN_PRESET,
+    MediaToolError, convert_srt_to_ass, libass_missing_glyphs,
+    normalize_video_encoder, video_encoder_attempts, video_encoder_options,
+    _green_screen_input, _green_screen_size_resolution,
 )
 from maw.project import (  # noqa: E402
     ProjectValidationFailed,
@@ -767,8 +768,9 @@ def burn_ass_video(
     green_screen: bool = False,
     include_audio: bool = False,
     audio_track: int = 0,
+    subtitle_format: str = "ass",
 ) -> Path:
-    """Re-encode the source video with the given ASS subtitles burned in.
+    """Burn ASS, or convert SRT using the library's burn style before encoding.
 
     与「实际画面预览」和 Launcher 烧录共用约定：ASS 写入输出目录、滤镜参数
     只带文件名、进程 cwd 指向该目录，规避盘符冒号等路径转义差异。给定时
@@ -781,19 +783,45 @@ def burn_ass_video(
         raise BurnVideoExportError("当前工程的源媒体文件不存在") from error
     if not source.is_file() or source.suffix.lower() not in (MEDIA_EXTENSIONS if green_screen else VIDEO_EXTENSIONS):
         raise BurnVideoExportError("当前工程绑定的媒体不是受支持的视频文件")
+    if subtitle_format not in {"ass", "srt"}:
+        raise BurnVideoExportError("不支持的字幕格式")
     if not isinstance(ass_text, str) or not ass_text.strip():
-        raise BurnVideoExportError("缺少 ASS 字幕内容")
+        raise BurnVideoExportError("缺少字幕内容")
     if intervals and any(end <= start for start, end in intervals):
         raise BurnVideoExportError("去空隙保留区间无效")
     if green_screen and intervals:
         raise BurnVideoExportError("绿幕视频暂不支持去空隙区间")
     output_path.parent.mkdir(parents=True, exist_ok=True)
     ass_path = output_path.with_name("burn.ass")
-    with ass_path.open("w", encoding="utf-8", newline="\n") as handle:
-        handle.write(ass_text)
-
     if job:
         job.update("preparing")
+    probe = None
+    if subtitle_format == "srt":
+        probe = _probe_gap_removed_video(source, ffprobe_path, job=job)
+        video = next((stream for stream in probe.streams
+                      if stream.codec_signature[0] == "video" and "attached_pic" not in stream.disposition), None)
+        if video is None:
+            raise BurnVideoExportError("当前工程没有可用的视频画面")
+        # Width/height are part of the existing stream signature, after codec/tag.
+        width, height = video.codec_signature[4:6]
+        resolution = (width, height) if all(type(value) is int and value > 0 for value in (width, height)) else ASS_FALLBACK_PLAY_RESOLUTION
+        srt_path = output_path.with_name("burn.srt")
+        srt_path.write_text(ass_text, encoding="utf-8", newline="\n")
+
+        def run_conversion(command, *, cwd):
+            return job.run_command(command, cwd=cwd) if job else subprocess.run(
+                command, capture_output=True, text=True, encoding="utf-8", errors="replace",
+                timeout=120, check=False, cwd=cwd, startupinfo=startupinfo(), creationflags=creationflags(),
+            )
+
+        try:
+            converted = convert_srt_to_ass(srt_path, ffmpeg_path=ffmpeg_path, srt_style=None,
+                                           play_resolution=resolution, run_command=run_conversion)
+            converted.replace(ass_path)
+        except (MediaToolError, OSError, subprocess.SubprocessError) as error:
+            raise BurnVideoExportError("SRT 字幕转换失败，请检查字幕和样式", details=error) from error
+    else:
+        ass_path.write_text(ass_text, encoding="utf-8", newline="\n")
     input_args = ["-i", str(source)]
     if green_screen:
         input_args, _ = _green_screen_input(ass_path, _green_screen_size_resolution("1080p"))
@@ -809,7 +837,7 @@ def burn_ass_video(
         intervals = normalize_gap_removed_intervals([
             {"startMs": start, "endMs": end} for start, end in intervals
         ])
-        probe = _probe_gap_removed_video(source, ffprobe_path, job=job)
+        probe = probe or _probe_gap_removed_video(source, ffprobe_path, job=job)
         audio_streams = [stream for stream in probe.streams if stream.codec_signature[0] == "audio"]
         audio_count = len(audio_streams)
         # Input-side accurate seeking bounds decoding to the requested hull;
@@ -2979,11 +3007,14 @@ class EditorRequestHandler(BaseHTTPRequestHandler):
                 now = time.time() * 1000
                 if type(deadline) is not int or not now < deadline <= now + MEDIA_JOB_ADMISSION_TTL * 1000:
                     raise MediaJobCancelled("视频烧录已停止")
-            ass_text = request.get("ass")
+            if "ass" in request and "srt" in request:
+                raise ValueError("ASS 与 SRT 字幕内容不能同时提供")
+            subtitle_format = "srt" if "srt" in request else "ass"
+            ass_text = request.get(subtitle_format)
             if not isinstance(ass_text, str) or not ass_text.strip():
-                raise ValueError("缺少 ASS 字幕内容")
+                raise ValueError("缺少字幕内容")
             if len(ass_text.encode("utf-8")) > MAX_ASS_FRAME_TEXT_BYTES:
-                raise ValueError(f"ASS 字幕内容超过 {MAX_ASS_FRAME_TEXT_BYTES // (1024 * 1024)} MB")
+                raise ValueError(f"{subtitle_format.upper()} 字幕内容超过 {MAX_ASS_FRAME_TEXT_BYTES // (1024 * 1024)} MB")
             raw_intervals = request.get("intervals")
             if raw_intervals is None:
                 intervals = []
@@ -3020,7 +3051,8 @@ class EditorRequestHandler(BaseHTTPRequestHandler):
                 options = ({"green_screen": True, "include_audio": include_audio,
                             "audio_track": source_snapshot.audio_track} if green_screen else {})
                 burn_ass_video(job.source, list(job.intervals), ass_text, job.output,
-                    ffmpeg_path=tools.ffmpeg, ffprobe_path=tools.ffprobe, job=job, **options)
+                    ffmpeg_path=tools.ffmpeg, ffprobe_path=tools.ffprobe, job=job,
+                    subtitle_format=subtitle_format, **options)
 
             with self.editor_server.settings_lock:
                 if admission_token is not None and time.time() * 1000 >= deadline:

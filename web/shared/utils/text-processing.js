@@ -372,8 +372,8 @@ export function createUtilsModule(dependencies) {
       const left = String(options.wrapLeft == null ? '' : options.wrapLeft);
       const right = String(options.wrapRight == null ? '' : options.wrapRight);
       const wrapped = Array.isArray(options.wrapPairs)
-        ? wrapTextWithPairs(result, options.wrapPairs, options.skipWrapped)
-        : wrapPreservingSentenceShells(result, left, right, options.skipWrapped);
+        ? wrapTextWithPairs(result, options.wrapPairs, options.skipWrapped, options.assSpecialSymbolRule ?? 'both')
+        : wrapPreservingSentenceShells(result, left, right, options.skipWrapped, options.assSpecialSymbolRule ?? 'both');
       result = wrapped.text;
     }
     if (options.skipWrapped && options.addPrefix && options.addSuffix
@@ -488,13 +488,16 @@ export function createUtilsModule(dependencies) {
   // Reuse selected shells instead of doubling an already present individual style.
   // 句级对（fade/shake）恒重建在现有句级壳之外（最新最外，与单对路径一致），
   // 行内对落回现有壳之内——分层规则与 wrapPreservingSentenceShells 相同。
-  function wrapTextWithPairs(source, pairs, skipWrapped) {
+  function wrapTextWithPairs(source, pairs, skipWrapped, rule) {
     const wraps = pairs.map(({ left, right }) => ({ left: String(left ?? ''), right: String(right ?? '') }))
       .filter(({ left, right }) => left || right);
     if (!wraps.length || !source) return { text: source, skipped: false };
-    const parsed = sentenceShells(source);
+    const parsed = sentenceShells(source, rule);
+    const fade = parsed.shells.find(shell => shell.kind === 'fade');
+    const addsFade = wraps.some(({ left, right }) => left === '>>' && right === '<<');
     const selected = (shell) => wraps.some((wrap) => wrap.left === shell.left && wrap.right === shell.right);
-    const retained = skipWrapped ? parsed.shells.filter((shell) => !selected(shell)) : parsed.shells;
+    const retained = parsed.shells.filter(shell => !(addsFade && shell.kind === 'fade')
+      && (!skipWrapped || !selected(shell)));
     let body = parsed.body;
     // Custom/common pairs are not ASS sentence shells but may already wrap the body.
     if (skipWrapped) {
@@ -506,17 +509,27 @@ export function createUtilsModule(dependencies) {
         body = body.slice(left.length, -right.length);
       }
     }
-    const sentenceWraps = wraps.filter(({ left, right }) => isSentenceLevelWrapPair(left, right));
+    const sentenceWraps = wraps.filter(({ left, right }) => isSentenceLevelWrapPair(left, right))
+      .map(wrap => fade && wrap.left === '>>' && wrap.right === '<<'
+        ? { left: fade.left || wrap.left, right: fade.right || wrap.right } : wrap);
     const inlineWraps = wraps.filter(({ left, right }) => !isSentenceLevelWrapPair(left, right));
     return { text: rebuildShells(rebuildShells(rebuildShells(body, inlineWraps), retained), sentenceWraps), skipped: false };
   }
 
-  function wrapPreservingSentenceShells(source, left, right, skipWrapped) {
-    const parsed = sentenceShells(source);
+  function wrapPreservingSentenceShells(source, left, right, skipWrapped, rule) {
+    const parsed = sentenceShells(source, rule);
     const skipped = skipWrapped && (isTextWrappedBy(source, left, right)
       || parsed.shells.some(shell => shell.left === left && shell.right === right)
       || isTextWrappedBy(parsed.body, left, right));
     if (skipped) return { skipped: true, text: source };
+    if (left === '>>' && right === '<<') {
+      const fade = parsed.shells.find(shell => shell.kind === 'fade');
+      if (fade) {
+        const text = rebuildShells(parsed.body, parsed.shells.map(shell => shell === fade
+          ? { ...shell, left: shell.left || left, right: shell.right || right } : shell));
+        return { skipped: skipWrapped && text === source, text };
+      }
+    }
     // 句级预设恒包裹在最外层（先重建现有壳，再用句级对包住；重复应用同一
     // 句级对已在上方跳过）。行内预设维持现行行为：包住剥壳后的正文，重建时
     // 落回现有符号（含句级壳）之内。
@@ -914,12 +927,12 @@ export function createUtilsModule(dependencies) {
 
   // 在文本两端插入字符。已用同一对符号包裹时跳过（同一对双符号不重复包），
   // skipped 供调用方提示；空文本与空符号视为无操作。
-  function wrapCharsAroundText(text, left, right) {
+  function wrapCharsAroundText(text, left, right, rule = 'both') {
     const source = String(text == null ? '' : text);
     const l = String(left == null ? '' : left);
     const r = String(right == null ? '' : right);
     if (source === '' || (!l && !r)) return { changed: false, skipped: false, text: source };
-    const result = wrapPreservingSentenceShells(source, l, r, true);
+    const result = wrapPreservingSentenceShells(source, l, r, true, rule);
     return { changed: result.text !== source, ...result };
   }
 

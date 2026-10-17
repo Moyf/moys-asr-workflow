@@ -1,4 +1,4 @@
-// === 编辑器「烧录视频」：调用服务端 FFmpeg (libass) 把当前工程 ASS 字幕烧录进视频 ===
+// === 编辑器「烧录视频」：当前 ASS 或按库样式转换的 SRT，复用同一媒体任务 ===
 // 与「去空隙导出 → 重组后视频」同一套媒体任务生命周期（准入令牌 / 轮询 / 流式下载 /
 // 取消与临时文件确认），但只支持 jobs API：烧录总是重新编码并输出 MP4。
 // 三个入口共享本模块的 runBurnVideoJob：
@@ -52,6 +52,7 @@ async function runBurnVideoJob({ button, label, buildRequest, suggestedName, sta
   const config = MaweBoot.SERVER_CONFIG;
   if (window.__maweBurnVideoTask) return;
   if (MaweInlineEdit.editingState) MaweInlineEdit.finishEdit(true);
+  if (MaweInlineEdit.extensionEditingState) MaweInlineEdit.finishExtensionEdit(true);
   if (!burnVideoMediaCurrent(config, greenScreen) || !Number.isSafeInteger(config.bindingGeneration) || config.bindingGeneration < 1
       || typeof config.sourceMediaId !== 'string' || !config.sourceMediaId
       || typeof config.burnVideoSourceName !== 'string' || !config.burnVideoSourceName) {
@@ -75,7 +76,7 @@ async function runBurnVideoJob({ button, label, buildRequest, suggestedName, sta
   try {
     request = buildRequest();
   } catch (error) {
-    MaweHint.flashHint(`${tr('无法准备 ASS 字幕内容')}：${burnVideoSafeError(error, '请检查字幕样式后重试')}`, 'warning');
+    MaweHint.flashHint(`${tr('无法准备字幕内容')}：${burnVideoSafeError(error, '请检查字幕样式后重试')}`, 'warning');
     return;
   }
   if (!request) return; // buildRequest 已经提示过原因（如没有可用的去空隙区间）。
@@ -363,15 +364,22 @@ async function runBurnVideoJob({ button, label, buildRequest, suggestedName, sta
   }
 }
 
-// 入口一：工具栏「烧录视频」按钮（去空隙导出左侧）。完整源视频 + 原时间轴 ASS。
+// 普通和去空隙烧录分别使用原时间轴和收缩后的字幕。
+function buildBurnVideoSubtitles(gapRemoved = false) {
+  if (MaweSettings.EDITOR_SETTINGS.assMode === true) {
+    return { ass: gapRemoved ? MaweExportSrt.buildGapRemovedAss() : MaweExportSrt.buildAss() };
+  }
+  return { srt: gapRemoved ? MaweExportSrt.buildGapRemovedSrt() : MaweExportSrt.buildSrt() };
+}
+
 document.getElementById('burn-video-export-btn')?.addEventListener('click', () => {
   void runBurnVideoJob({
     button: document.getElementById('burn-video-export-btn'),
     label: '烧录视频',
-    startHint: 'FFmpeg 将重新编码源视频并烧录当前 ASS 字幕；长视频可能需要较长时间。',
+    startHint: 'FFmpeg 将重新编码源视频并烧录当前字幕；长视频可能需要较长时间。',
     successText: '烧录视频已保存',
     suggestedName: `${MaweBoot.FILENAME_BASE}_${window.MAWE_I18N?.exportTag?.('subtitled') || 'subtitled'}.mp4`,
-    buildRequest: () => ({ ass: MaweExportSrt.buildAss() }),
+    buildRequest: () => buildBurnVideoSubtitles(),
   });
 });
 
@@ -386,9 +394,9 @@ document.getElementById('download-gap-removed-burn-video')?.addEventListener('cl
     buildRequest: () => {
       const context = MaweExportSrt.gapRemovedExportContext();
       if (!context) return null;
-      const ass = MaweExportSrt.buildGapRemovedAss();
-      if (!ass) return null;
-      return { ass, intervals: context.intervals.map(({ start, end }) => ({ startMs: start, endMs: end })) };
+      const subtitles = buildBurnVideoSubtitles(true);
+      if (!(subtitles.ass || subtitles.srt)) return null;
+      return { ...subtitles, intervals: context.intervals.map(({ start, end }) => ({ startMs: start, endMs: end })) };
     },
   });
 });
@@ -414,11 +422,11 @@ document.getElementById('download-green-screen-video')?.addEventListener('click'
 });
 
 // 绿幕适用于音视频工程，不要求打开 ASS 预览模式。
+// 服务端视频工程可烧录：ASS 使用当前方案，SRT 由服务端应用样式库默认槽位。
 // ASS 模式切换由 editor-wiring-ass-manager.js 的 syncAssModeControl 调用 syncButton 同步。
 function updateBurnVideoButton() {
   const config = MaweBoot.SERVER_CONFIG;
-  const assMode = window.MaweSettings?.EDITOR_SETTINGS?.assMode === true;
-  const visible = burnVideoMediaCurrent(config) && assMode;
+  const visible = burnVideoMediaCurrent(config);
   const button = document.getElementById('burn-video-export-btn');
   if (button) button.hidden = !visible;
   const gapButton = document.getElementById('download-gap-removed-burn-video');
