@@ -180,13 +180,28 @@ class ProjectAssExportTests(unittest.TestCase):
 
     def test_load_burn_project_reads_mosp_and_json(self) -> None:
         for suffix in (".mosp", ".json"):
-            with self.subTest(suffix=suffix):
-                with tempfile.TemporaryDirectory() as root:
-                    path = Path(root) / f"demo{suffix}"
-                    path.write_text(json.dumps(_basic_project()), encoding="utf-8")
-                    document, stem = load_burn_project(path)
-                    self.assertEqual(stem, "demo")
-                    self.assertEqual(len(document["segments"]), 3)
+            for schema in (None, "moy.asr.project.v1"):
+                with self.subTest(suffix=suffix, schema=schema):
+                    with tempfile.TemporaryDirectory() as root:
+                        path = Path(root) / f"demo{suffix}"
+                        project = _basic_project()
+                        if schema is not None:
+                            project["schema"] = schema
+                        path.write_text(json.dumps(project), encoding="utf-8")
+                        document, stem = load_burn_project(path)
+                        self.assertEqual(stem, "demo")
+                        self.assertEqual(len(document["segments"]), 3)
+
+    def test_load_burn_project_rejects_unsupported_schema(self) -> None:
+        with tempfile.TemporaryDirectory() as root:
+            path = Path(root) / "future.mosp"
+            for schema in ("moy.asr.project.v2", "moy.asr.project.v99", None):
+                with self.subTest(schema=schema):
+                    project = _basic_project()
+                    project["schema"] = schema
+                    path.write_text(json.dumps(project), encoding="utf-8")
+                    with self.assertRaisesRegex(ProjectSubtitleError, "不支持的工程版本"):
+                        load_burn_project(path)
 
     def test_load_burn_project_rejects_invalid_payloads(self) -> None:
         with tempfile.TemporaryDirectory() as root:

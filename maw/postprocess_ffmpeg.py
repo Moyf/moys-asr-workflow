@@ -10,6 +10,7 @@ import os
 import re
 import subprocess
 import tempfile
+from contextlib import suppress
 from dataclasses import dataclass
 from threading import Event, Thread
 from pathlib import Path
@@ -506,9 +507,9 @@ def run_burn_subtitles(
     green_input: list[str] = []
     play_resolution: tuple[int, int] = ASS_FALLBACK_PLAY_RESOLUTION
     if green_screen:
-        green_input, play_resolution = _green_screen_input(
-            subtitle, _green_screen_size_resolution(request.green_screen_size),
-        )
+        play_resolution = _green_screen_size_resolution(request.green_screen_size)
+        if subtitle.suffix.lower() not in PROJECT_SUBTITLE_EXTENSIONS:
+            green_input, _ = _green_screen_input(subtitle, play_resolution)
     elif subtitle.suffix.lower() in {".srt", *PROJECT_SUBTITLE_EXTENSIONS}:
         # PlayRes 重写只发生在 SRT 转换与工程导出；ASS/SSA 沿用自身样式，跳过探测。
         # 探测前先看取消标记，避免取消请求时还要等一次 ffprobe。
@@ -535,6 +536,8 @@ def run_burn_subtitles(
         elif subtitle.suffix.lower() in PROJECT_SUBTITLE_EXTENSIONS:
             converted_subtitle = _convert_project_to_ass(subtitle, play_resolution=play_resolution)
             prepared_subtitle = converted_subtitle
+            if green_screen:
+                green_input, _ = _green_screen_input(prepared_subtitle, play_resolution)
         input_command = ["-i", str(media)] if media is not None else green_input
         common_command = [
             str(ffmpeg_path),
@@ -880,6 +883,8 @@ def _convert_project_to_ass(project_path: Path, *, play_resolution: tuple[int, i
         project, title = load_burn_project(project_path)
     except ProjectSubtitleError as error:
         raise MediaToolError(str(error)) from error
+    temporary_name: str | None = None
+    descriptor: int | None = None
     try:
         content = render_project_ass(project, title=title, play_resolution=play_resolution)
     except ProjectSubtitleError as error:
@@ -891,9 +896,17 @@ def _convert_project_to_ass(project_path: Path, *, play_resolution: tuple[int, i
             dir=project_path.parent,
         )
         with os.fdopen(descriptor, "w", encoding="utf-8", newline="\n") as handle:
+            descriptor = None
             handle.write(content)
     except OSError as error:
+        if descriptor is not None:
+            with suppress(OSError):
+                os.close(descriptor)
+        if temporary_name is not None:
+            with suppress(OSError):
+                Path(temporary_name).unlink(missing_ok=True)
         raise MediaToolError(f"无法创建临时 ASS 字幕：{error}") from error
+    assert temporary_name is not None
     return Path(temporary_name)
 
 

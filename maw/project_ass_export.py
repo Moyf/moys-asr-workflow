@@ -27,6 +27,7 @@ from maw.ass_styles import (
 )
 from maw.colors import COLOR_PALETTE
 from maw.postprocess_ai_cleanup_items import cleaned_srt_segments
+from maw.project import PROJECT_SCHEMA
 from maw.script_alignment import project_cleanup_retained_segments
 
 PROJECT_SUBTITLE_EXTENSIONS: frozenset[str] = frozenset({".mosp", ".json"})
@@ -311,4 +312,6 @@ def load_burn_project(path: Path) -> tuple[dict[str, object], str]:
         raise ProjectSubtitleError(f"工程文件不是有效的 JSON：{error}") from error
     if not isinstance(payload, dict):
         raise ProjectSubtitleError("工程文件内容不是 JSON 对象。")
+    if "schema" in payload and payload["schema"] != PROJECT_SCHEMA:
+        raise ProjectSubtitleError(f"不支持的工程版本；烧录仅支持 {PROJECT_SCHEMA}。")
     return payload, path.stem

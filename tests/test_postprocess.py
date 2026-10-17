@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from collections.abc import Iterable, Mapping
 import json
+import os
 import subprocess
 import tempfile
 from threading import Event, Lock, Thread
@@ -12,7 +13,7 @@ import unittest
 from io import StringIO
 from pathlib import Path
 from types import SimpleNamespace
-from typing import final
+from typing import TextIO, final
 from unittest import mock
 
 from requests.exceptions import HTTPError, RequestException
@@ -3167,6 +3168,40 @@ class MediaToolTests(CompactContainerAssertions, unittest.TestCase):
         self.assertIn("JSON", str(ctx.exception))
         self.assertFalse(list(self.root.glob(".*.ass")))
 
+    def test_burn_subtitles_removes_project_ass_after_failed_write(self) -> None:
+        project = self.root / "demo.mosp"
+        project.write_text(json.dumps({
+            "segments": [{"start": 0, "end": 1500, "text": "工程字幕"}],
+        }), encoding="utf-8")
+        real_fdopen = os.fdopen
+
+        class FailedWrite:
+            def __init__(self, handle: TextIO) -> None:
+                self.handle = handle
+
+            def __enter__(self) -> FailedWrite:
+                return self
+
+            def __exit__(self, *_args: object) -> None:
+                self.handle.close()
+
+            def write(self, _content: str) -> None:
+                raise OSError("write failed")
+
+        def failing_fdopen(descriptor: int, mode: str, *, encoding: str, newline: str) -> FailedWrite:
+            return FailedWrite(real_fdopen(descriptor, mode, encoding=encoding, newline=newline))
+
+        with mock.patch("maw.postprocess_ffmpeg.os.fdopen", side_effect=failing_fdopen), mock.patch(
+            "maw.postprocess_ffmpeg.subprocess.Popen", side_effect=self._fake_process,
+        ) as popen:
+            with self.assertRaisesRegex(MediaToolError, "无法创建临时 ASS 字幕"):
+                run_burn_subtitles(
+                    BurnSubtitleRequest(media_path=self.media, subtitle_path=project, video_encoder="cpu"),
+                    ffmpeg_path=Path("ffmpeg"),
+                )
+        self.assertEqual(popen.call_args_list, [])
+        self.assertFalse(list(self.root.glob(".*.ass")))
+
     def test_burn_subtitles_rewrites_converted_ass_to_video_playres(self) -> None:
         rewritten: list[str] = []
         real_rewrite = _rewrite_ass_default_style
@@ -3275,6 +3310,29 @@ class MediaToolTests(CompactContainerAssertions, unittest.TestCase):
                 ffmpeg_path=Path("ffmpeg"),
             )
         self.assertIn("color=c=0x00ff00:s=3840x2160:r=30:d=3.767", popen.call_args.args[0])
+
+    def test_green_screen_burn_exports_project_before_reading_timing(self) -> None:
+        for suffix in (".mosp", ".json"):
+            with self.subTest(suffix=suffix):
+                project = self.root / f"green-project{suffix}"
+                project.write_text(json.dumps({
+                    "segments": [{"start": 0, "end": 2000, "text": "工程字幕"}],
+                    "preview": {"subtitle": {"font_size": 20}},
+                }), encoding="utf-8")
+                with mock.patch("maw.postprocess_ffmpeg.subprocess.Popen", side_effect=self._fake_process) as popen:
+                    result = run_burn_subtitles(
+                        BurnSubtitleRequest(
+                            media_path=None, subtitle_path=project, green_screen=True,
+                            green_screen_size="2k", video_encoder="cpu",
+                        ),
+                        ffmpeg_path=Path("ffmpeg"),
+                    )
+                command = popen.call_args.args[0]
+                self.assertEqual(len(popen.call_args_list), 1)
+                self.assertIn("color=c=0x00ff00:s=2560x1440:r=30:d=2.500", command)
+                self.assertIn("ass=filename='.green-project.maw-burn-", command[command.index("-vf") + 1])
+                self.assertEqual(result.subtitle_path, project)
+                self.assertFalse(list(self.root.glob(".*.ass")))
 
     def test_green_screen_rejects_unknown_size_preset(self) -> None:
         self.subtitle.write_text("1\n00:00:00,000 --> 00:00:03,250\nHello\n", encoding="utf-8")
