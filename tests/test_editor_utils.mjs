@@ -19,6 +19,12 @@ const i18nContext = { window: {} };
 vm.runInNewContext(i18nSource, i18nContext);
 const i18n = i18nContext.window.MAWE_I18N;
 
+test('green screen audio is opt-in and survives settings normalization', () => {
+  assert.equal(helpers.normalizeEditorSettings().greenScreenIncludeAudio, false);
+  assert.equal(helpers.normalizeEditorSettings({ greenScreenIncludeAudio: true }).greenScreenIncludeAudio, true);
+  assert.equal(helpers.normalizeEditorSettings({ greenScreenIncludeAudio: 'true' }).greenScreenIncludeAudio, false);
+});
+
 test('translates word-timing audition, editing history and synced text feedback', () => {
   assert.equal(i18n.translateText('试听', 'en'), 'Audition');
   assert.equal(i18n.translateText('请先导入媒体，然后才能试听', 'en'), 'Import media before auditioning');

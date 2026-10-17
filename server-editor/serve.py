@@ -71,7 +71,8 @@ from maw.gui_config import DEFAULT_ENV_PATH, load_env  # noqa: E402
 from maw.gui_platform import creationflags, restore_host_library_path, startupinfo  # noqa: E402
 from maw.postprocess_ffmpeg import (  # noqa: E402
     DEFAULT_BURN_AUDIO_BITRATE, DEFAULT_BURN_CRF, DEFAULT_BURN_PRESET, libass_missing_glyphs,
-    normalize_video_encoder, video_encoder_attempts, video_encoder_options,
+    normalize_video_encoder, video_encoder_attempts, video_encoder_options, _green_screen_input,
+    _green_screen_size_resolution,
 )
 from maw.project import (  # noqa: E402
     ProjectValidationFailed,
@@ -763,6 +764,9 @@ def burn_ass_video(
     ffmpeg_path: Path,
     ffprobe_path: Path,
     job: MediaJob | None = None,
+    green_screen: bool = False,
+    include_audio: bool = False,
+    audio_track: int = 0,
 ) -> Path:
     """Re-encode the source video with the given ASS subtitles burned in.
 
@@ -775,12 +779,14 @@ def burn_ass_video(
         source = source_path.expanduser().resolve(strict=True)
     except OSError as error:
         raise BurnVideoExportError("当前工程的源媒体文件不存在") from error
-    if not source.is_file() or source.suffix.lower() not in VIDEO_EXTENSIONS:
+    if not source.is_file() or source.suffix.lower() not in (MEDIA_EXTENSIONS if green_screen else VIDEO_EXTENSIONS):
         raise BurnVideoExportError("当前工程绑定的媒体不是受支持的视频文件")
     if not isinstance(ass_text, str) or not ass_text.strip():
         raise BurnVideoExportError("缺少 ASS 字幕内容")
     if intervals and any(end <= start for start, end in intervals):
         raise BurnVideoExportError("去空隙保留区间无效")
+    if green_screen and intervals:
+        raise BurnVideoExportError("绿幕视频暂不支持去空隙区间")
     output_path.parent.mkdir(parents=True, exist_ok=True)
     ass_path = output_path.with_name("burn.ass")
     with ass_path.open("w", encoding="utf-8", newline="\n") as handle:
@@ -789,7 +795,17 @@ def burn_ass_video(
     if job:
         job.update("preparing")
     input_args = ["-i", str(source)]
-    if intervals:
+    if green_screen:
+        input_args, _ = _green_screen_input(ass_path, _green_screen_size_resolution("1080p"))
+        duration = input_args[-1].rsplit("d=", 1)[1]
+        duration_ms = round(float(duration) * 1000)
+        filter_args = ["-map", "0:v:0", "-vf", "ass=filename='burn.ass'", "-t", duration]
+        if include_audio:
+            input_args.extend(("-i", str(source)))
+            filter_args.extend(("-map", f"1:a:{audio_track}?"))
+        else:
+            filter_args.append("-an")
+    elif intervals:
         intervals = normalize_gap_removed_intervals([
             {"startMs": start, "endMs": end} for start, end in intervals
         ])
@@ -822,7 +838,7 @@ def burn_ass_video(
     attempts = video_encoder_attempts(ffmpeg_path, requested_encoder)
     common_command = [
         str(ffmpeg_path), "-y", "-nostdin", "-hide_banner", "-loglevel", "warning",
-        *input_args, *filter_args, "-map_metadata", "0",
+        *input_args, *filter_args, "-map_metadata", "-1" if green_screen else "0",
         "-sws_flags", "spline+accurate_rnd+full_chroma_int",
     ]
     last_error: BurnVideoExportError | None = None
@@ -1327,6 +1343,7 @@ def build_server_page(
             and gap_video_source is not None
             and gap_media_kind == "video"
         ),
+        "canGreenScreenExport": bool(project.json_path is not None and can_gap_media_export),
         "burnVideoSourceName": gap_video_source.name if gap_video_source else None,
         "gapRemovedMediaKind": gap_media_kind if can_gap_media_export else None,
         "gapRemovedMediaSourceName": gap_video_source.name if gap_video_source else None,
@@ -2970,7 +2987,13 @@ class EditorRequestHandler(BaseHTTPRequestHandler):
                 if not intervals:
                     raise ValueError("去空隙保留区间为空")
             source_snapshot = self.editor_server.gap_removed_media_source_snapshot(request)
-            if source_snapshot.kind != "video":
+            green_screen = request.get("greenScreen", False)
+            include_audio = request.get("includeAudio", False)
+            if type(green_screen) is not bool or type(include_audio) is not bool:
+                raise ValueError("绿幕视频和附带音轨选项必须是布尔值")
+            if green_screen and intervals:
+                raise ValueError("绿幕视频暂不支持去空隙区间")
+            if source_snapshot.kind != "video" and not green_screen:
                 raise BurnVideoExportError("当前工程绑定的是音频，烧录视频需要视频源")
             source = source_snapshot.path
             tools = editor_ffmpeg_tools()
@@ -2989,8 +3012,10 @@ class EditorRequestHandler(BaseHTTPRequestHandler):
             binding = (request["bindingGeneration"], request["sourceMediaId"])
 
             def burn(job: MediaJob) -> None:
+                options = ({"green_screen": True, "include_audio": include_audio,
+                            "audio_track": source_snapshot.audio_track} if green_screen else {})
                 burn_ass_video(job.source, list(job.intervals), ass_text, job.output,
-                    ffmpeg_path=tools.ffmpeg, ffprobe_path=tools.ffprobe, job=job)
+                    ffmpeg_path=tools.ffmpeg, ffprobe_path=tools.ffprobe, job=job, **options)
 
             with self.editor_server.settings_lock:
                 if admission_token is not None and time.time() * 1000 >= deadline:

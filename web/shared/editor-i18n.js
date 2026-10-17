@@ -587,6 +587,14 @@
     '关键帧扩展增加的保留时长；按合并后区间计算，实际文件可能有帧或音频包级差异。': 'Extra retained duration after merging keyframe-expanded intervals. The file may differ by individual frames or audio packets.',
     '重组后视频导出失败': 'Reconstructed video export failed',
     '烧录视频': 'Burn video',
+    '生成绿幕视频': 'Generate green screen video',
+    '绿幕视频导出': 'Green screen video export',
+    '附带音轨': 'Include audio track',
+    '正在生成绿幕字幕视频…': 'Generating green screen subtitle video…',
+    '绿幕视频已保存': 'Green screen video saved',
+    '默认导出静音绿幕视频；勾选后附带当前源媒体的音轨。输出 1080P，时长为最后字幕结束后半秒。': 'Exports a silent green screen video by default; enable to include the current source audio. Output is 1080P and ends half a second after the last subtitle.',
+    '绿幕视频和附带音轨选项必须是布尔值': 'Green screen and include audio options must be booleans',
+    '绿幕视频暂不支持去空隙区间': 'Green screen video does not support gap removal intervals',
     '重组后烧录视频': 'Burn reconstructed video',
     '请从启动器打开关联源媒体的工程，再烧录视频': 'Open a project with bound source media from the launcher before burning video',
     '当前浏览器或环境不支持烧录视频保存': 'This browser or environment does not support saving a burned video',
@@ -1562,7 +1570,7 @@
   // 颜色名也在此映射：中文界面导出的分色 SRT 用「_红色」而非「_red」；
   // 未标记颜色的默认组用「_默认」而非「_default」。
   const EXPORT_NAME_SEGMENTS = {
-    'gap-removed': '去空隙', 'stickers': '表情包', 'default': '默认', 'subtitled': '烧录字幕',
+    'gap-removed': '去空隙', 'stickers': '表情包', 'default': '默认', 'subtitled': '烧录字幕', 'green-screen': '绿幕',
     'yellow': '黄色', 'green': '绿色', 'red': '红色', 'purple': '紫色', 'blue': '蓝色',
   };
 

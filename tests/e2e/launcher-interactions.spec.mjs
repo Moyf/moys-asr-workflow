@@ -603,7 +603,7 @@ test('FFmpeg media log stays above the utility notice and renders the latest pro
   ))).toBeTruthy();
 });
 
-test('green-screen burn accepts subtitles without a video source', async ({ page }) => {
+test('green-screen burn accepts subtitles without a video source and optional source audio', async ({ page }, testInfo) => {
   await openLauncher(page);
   await page.locator('#toolboxUtilitiesPrimaryTab').click();
   await page.locator('#toolboxBurnSubtitleTab').click();
@@ -618,7 +618,10 @@ test('green-screen burn accepts subtitles without a video source', async ({ page
       return original(method, payload);
     };
   });
+  await expect(page.locator('#toolboxGreenScreenAudioField')).toBeHidden();
   await page.locator('#toolboxGreenScreen').check();
+  await expect(page.locator('#toolboxGreenScreenAudioField')).toBeVisible();
+  await expect(page.locator('#toolboxGreenScreenIncludeAudio')).not.toBeChecked();
   await expect(page.locator('#toolboxUtilityMediaDropZone')).toBeVisible();
   await expect(page.locator('#toolboxUtilityMediaDropZone')).toHaveAttribute('aria-disabled', 'true');
   await expect(page.locator('#toolboxUtilityMediaPath')).toBeDisabled();
@@ -635,14 +638,29 @@ test('green-screen burn accepts subtitles without a video source', async ({ page
   await page.locator('#runBurnSubtitle').click();
   await expect.poll(() => page.evaluate(() => window.__greenBurnCalls.length)).toBe(1);
   const call = await page.evaluate(() => window.__greenBurnCalls[0]);
-  expect(call).toMatchObject({ mediaPath: '', subtitlePath: 'D:\\Demo\\captions.ass', greenScreen: true });
+  expect(call).toMatchObject({ mediaPath: '', subtitlePath: 'D:\\Demo\\captions.ass', greenScreen: true,
+    greenScreenIncludeAudio: false });
   await expect(page.locator('#toolboxUtilityMediaPath')).toHaveValue('D:\\Demo\\captions.green-screen.mp4');
+  await page.locator('#toolboxGreenScreenIncludeAudio').check();
+  await expect(page.locator('#toolboxUtilityMediaPath')).toBeEnabled();
+  await page.locator('#toolboxUtilityMediaPath').fill('D:\\Demo\\voice.wav');
+  const audioGap = await page.locator('#toolboxGreenScreenAudioField').evaluate(el =>
+    el.getBoundingClientRect().left - el.previousElementSibling.getBoundingClientRect().right);
+  expect(audioGap).toBeGreaterThanOrEqual(8);
+  console.log(`Launcher green screen spacing: ${JSON.stringify({ fieldGap, hintGap, audioGap })}`);
+  await page.screenshot({ path: testInfo.outputPath('green-screen-audio-option.png') });
+  await page.locator('#runBurnSubtitle').click();
+  await expect.poll(() => page.evaluate(() => window.__greenBurnCalls.length)).toBe(2);
+  expect(await page.evaluate(() => window.__greenBurnCalls[1])).toMatchObject({
+    mediaPath: 'D:\\Demo\\voice.wav', greenScreen: true, greenScreenIncludeAudio: true });
+  await page.locator('#toolboxGreenScreenIncludeAudio').uncheck();
   await page.locator('#toolboxWaveformTab').click();
   await expect(page.locator('#toolboxUtilityMediaPath')).toBeEnabled();
   await expect(page.locator('#pickToolboxUtilityMedia')).toBeEnabled();
   await page.locator('#toolboxBurnSubtitleTab').click();
   await expect(page.locator('#toolboxUtilityMediaPath')).toBeDisabled();
   await page.locator('#toolboxGreenScreen').uncheck();
+  await expect(page.locator('#toolboxGreenScreenAudioField')).toBeHidden();
   await expect(page.locator('#toolboxUtilityMediaPath')).toBeEnabled();
   await expect(page.locator('#pickToolboxUtilityMedia')).toBeEnabled();
   await expect(page.locator('#runBurnSubtitle')).toHaveText('烧录字幕');
