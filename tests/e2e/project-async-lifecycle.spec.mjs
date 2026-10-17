@@ -44,6 +44,97 @@ test('stale attach success cannot reload a newer portable project', async ({ pag
   expect(await page.evaluate(() => MaweBoot.SERVER_CONFIG.canSave)).toBe(false);
 });
 
+for (const kind of ['attach', 'recent']) {
+  test(`local portable open invalidates an older ${kind} before the server can publish it`, async ({ page }) => {
+    const binding = await page.evaluate(() => ({
+      bindingGeneration: MaweBoot.SERVER_CONFIG.bindingGeneration,
+      sourceMediaId: MaweBoot.SERVER_CONFIG.sourceMediaId,
+      requestToken: MaweBoot.SERVER_CONFIG.requestToken,
+    }));
+    const before = [readFileSync(aPath, 'utf8'), readFileSync(bPath, 'utf8')];
+    const seen = deferred(), release = deferred(), finished = deferred();
+    const endpoint = kind === 'attach' ? '/api/project/attach' : '/api/recent-projects/open';
+    await page.route(`**${endpoint}`, async route => {
+      seen.resolve();
+      await release.promise;
+      const response = await route.fetch();
+      finished.resolve(response.status());
+      await route.fulfill({ response });
+    });
+    try {
+      if (kind === 'attach') {
+        await page.evaluate(text => { window.oldOpen = MaweMultiImport.openProjectFile(new File([text], 'b.mosp')); }, before[1]);
+      } else {
+        await page.evaluate(path => { window.oldOpen = MaweServerSave.openRecentProject({ path, name: 'a.mosp' }); }, aPath);
+      }
+      await seen.promise;
+      const notified = page.waitForResponse(r => r.url().endsWith('/api/project/switch-intent') && r.status() === 200);
+      expect(await page.evaluate(() => MaweMultiImport.openProjectFile(new File([
+        JSON.stringify({ segments: [{ start: 0, end: 1000, text: 'portable B' }] }),
+      ], 'portable.mosp')))).toBe(true);
+      await notified;
+      release.resolve();
+      expect(await finished.promise).toBe(409);
+      await page.evaluate(() => window.oldOpen);
+      expect(await page.evaluate(() => MaweBoot.DATA.segments[0].text)).toBe('portable B');
+      expect(await page.evaluate(() => MaweBoot.SERVER_CONFIG.canSave)).toBe(false);
+      expect(await page.evaluate(() => MaweProjectSave.saveCurrentProject())).toBe(false);
+      const status = await page.request.post(`${server.url}api/project/binding`, { data: { requestToken: binding.requestToken } });
+      const result = await status.json();
+      expect(result.bindingGeneration).toBe(binding.bindingGeneration);
+      expect(result.sourceMediaId).toBe(binding.sourceMediaId);
+      expect([readFileSync(aPath, 'utf8'), readFileSync(bPath, 'utf8')]).toEqual(before);
+      const reload = page.waitForEvent('load');
+      await page.evaluate(text => { void MaweMultiImport.openProjectFile(new File([text], 'a.mosp')); }, before[0]);
+      await reload;
+      await expect(page.locator('#json-name')).toHaveText('a.mosp');
+      await expect(page.locator('#save-project')).toBeEnabled();
+    } finally {
+      release.resolve();
+    }
+  });
+}
+
+test('failed switch notification keeps the local project exportable without server saving or attach', async ({ page }) => {
+  let attaches = 0;
+  page.on('request', request => { if (request.url().endsWith('/api/project/attach')) attaches++; });
+  await page.route('**/api/project/switch-intent', route => route.abort('failed'));
+  expect(await page.evaluate(text => MaweMultiImport.openProjectFile(new File([text], 'b.mosp'), {
+    suppressMediaPrompt: true,
+  }), readFileSync(bPath, 'utf8'))).toBe(true);
+  expect(attaches).toBe(0);
+  expect(await page.evaluate(() => MaweBoot.DATA.segments[0].text)).toBe('project b');
+  expect(await page.evaluate(() => MaweBoot.SERVER_CONFIG.canSave)).toBe(false);
+  expect(await page.evaluate(() => MaweProjectSave.saveCurrentProject())).toBe(false);
+  const exported = await page.evaluate(() => JSON.parse(MaweJsonRepair.buildJson({ forFileExport: true })));
+  expect(exported.segments[0].text).toBe('project b');
+});
+
+test('a later explicit open recovers after the switch intent was accepted but its response was lost', async ({ page }) => {
+  let notifications = 0, attaches = 0;
+  page.on('request', request => { if (request.url().endsWith('/api/project/attach')) attaches++; });
+  await page.route('**/api/project/switch-intent', async route => {
+    notifications++;
+    if (notifications > 1) return route.continue();
+    expect((await route.fetch()).status()).toBe(200); // Actual server registration.
+    await route.abort('failed');
+  });
+  expect(await page.evaluate(text => MaweMultiImport.openProjectFile(new File([text], 'b.mosp'), {
+    suppressMediaPrompt: true,
+  }), readFileSync(bPath, 'utf8'))).toBe(true);
+  expect(notifications).toBe(1);
+  expect(attaches).toBe(0);
+  expect(await page.evaluate(() => MaweBoot.SERVER_CONFIG.canSave)).toBe(false);
+  expect(await page.evaluate(() => MaweProjectSave.saveCurrentProject())).toBe(false);
+  const reload = page.waitForEvent('load');
+  await page.evaluate(text => { void MaweMultiImport.openProjectFile(new File([text], 'a.mosp')); }, readFileSync(aPath, 'utf8'));
+  await reload;
+  await expect(page.locator('#json-name')).toHaveText('a.mosp');
+  await expect(page.locator('#save-project')).toBeEnabled();
+  expect(notifications).toBe(2);
+  expect(attaches).toBe(1);
+});
+
 test('serialized old attach advances transport ownership while only the newer attach may reload', async ({page}) => {
   const seen = deferred(), release = deferred();
   let first = true;

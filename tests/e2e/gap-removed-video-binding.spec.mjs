@@ -141,7 +141,12 @@ test(`rendered editor rejects waiting media picker after ${change}`, async ({ pa
       // retains its old IDs; the actual Python endpoint must reject its POST.
       const binding = await page.evaluate(() => ({bindingGeneration: MaweBoot.SERVER_CONFIG.bindingGeneration,
         sourceMediaId: MaweBoot.SERVER_CONFIG.sourceMediaId}));
-      const response = await page.request.post(`${server.url}api/recent-projects/open`, { data: { ...binding, path: project } });
+      const intent = { switchPageId: 'other-tab-fixture', switchGeneration: 1 };
+      const requestToken = await page.evaluate(() => MaweBoot.SERVER_CONFIG.requestToken);
+      expect((await page.request.post(`${server.url}api/project/switch-intent`, {
+        data: { ...intent, requestToken },
+      })).status()).toBe(200);
+      const response = await page.request.post(`${server.url}api/recent-projects/open`, { data: { ...binding, ...intent, path: project } });
       expect(response.status()).toBe(200);
     }
     await page.evaluate(() => {

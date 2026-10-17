@@ -1045,6 +1045,7 @@ def build_server_page(
         server_config_json=json.dumps({
             "saveUrl": "/api/project",
             "requestToken": request_token,
+            "projectSwitchPageId": secrets.token_urlsafe(24),
             "stickerRootUrl": "/api/stickers/root",
             "portableStickerExportUrl": "/api/exports/sticker-otio",
             "otiozStickerExportUrl": "/api/exports/sticker-otioz",
@@ -1177,6 +1178,8 @@ class EditorServer(ThreadingHTTPServer):
         self.lottie_lock = threading.Lock()
         self.ograf_lock = threading.Lock()
         self.settings_lock = threading.Lock()
+        # Same-page intent ordering is independent of the published binding.
+        self.project_switch_generations: dict[str, int] = {}
         self.binding_generation = 1
         self.source_media_id = secrets.token_urlsafe(24)
         self.reapeaks_lock = threading.Lock()
@@ -1250,6 +1253,27 @@ class EditorServer(ThreadingHTTPServer):
                 or not isinstance(binding.get("sourceMediaId"), str)
                 or binding.get("sourceMediaId") != self.source_media_id):
             raise ProjectBindingChangedError("工程绑定已变更，请重新打开工程后操作")
+
+    def advance_project_switch(self, request: dict) -> None:
+        page_id = request.get("switchPageId")
+        generation = request.get("switchGeneration")
+        if (not isinstance(page_id, str) or not 1 <= len(page_id) <= 128
+                or type(generation) is not int or not 0 <= generation <= 9007199254740991):
+            raise ValueError("工程切换标识无效")
+        with self.settings_lock:
+            previous = self.project_switch_generations.get(page_id, -1)
+            if generation < previous:
+                raise ProjectBindingChangedError("工程切换已过期")
+            self.project_switch_generations[page_id] = generation
+
+    def _check_project_switch_locked(self, request: dict | None) -> None:
+        if request is None:  # Internal callers retain their existing contract.
+            return
+        page_id = request.get("switchPageId")
+        generation = request.get("switchGeneration")
+        if (not isinstance(page_id, str) or type(generation) is not int
+                or self.project_switch_generations.get(page_id) != generation):
+            raise ProjectBindingChangedError("工程切换已过期，请重新打开工程")
 
     def gap_removed_video_source_snapshot(self, request: dict) -> Path:
         """Compatibility wrapper for callers which only need the source path."""
@@ -1596,9 +1620,10 @@ class EditorServer(ThreadingHTTPServer):
                 self.settings = replace(self.settings, preset_workspaces=workspaces)
             self.persist_settings()
 
-    def open_recent_project(self, project_path: str, *, binding: dict | None = None, binding_result: dict | None = None) -> ServerProject:
+    def open_recent_project(self, project_path: str, *, binding: dict | None = None, binding_result: dict | None = None, switch_intent: dict | None = None) -> ServerProject:
         candidate = Path(project_path).expanduser().resolve()
         with self.settings_lock:
+            self._check_project_switch_locked(switch_intent)
             self._check_project_binding_locked(binding)
             known = next((item for item in self.settings.recent_projects if item.path == candidate), None)
             if not known:
@@ -1614,6 +1639,7 @@ class EditorServer(ThreadingHTTPServer):
         if self.defer_reapeaks:
             project = without_deferred_reapeaks(project)
         with self.settings_lock:
+            self._check_project_switch_locked(switch_intent)
             self._check_project_binding_locked(binding)
             self._bind_project_locked(project)
             if binding_result is not None:
@@ -1623,7 +1649,7 @@ class EditorServer(ThreadingHTTPServer):
         self.start_deferred_reapeaks_load()
         return project
 
-    def attach_project(self, file_name: str, browser_project: dict, *, binding: dict | None = None, binding_result: dict | None = None) -> ServerProject:
+    def attach_project(self, file_name: str, browser_project: dict, *, binding: dict | None = None, binding_result: dict | None = None, switch_intent: dict | None = None) -> ServerProject:
         """Bind a project opened through the browser to its on-disk file.
 
         Browser file pickers never reveal real paths, but a MAW project records
@@ -1631,6 +1657,9 @@ class EditorServer(ThreadingHTTPServer):
         to that media and its segments match the browser copy, the server takes
         over: media auto-loads and Ctrl+S saves back to the project file.
         """
+        with self.settings_lock:
+            self._check_project_switch_locked(switch_intent)
+            self._check_project_binding_locked(binding)
         candidate = Path(file_name)
         if (
             not file_name
@@ -1675,6 +1704,7 @@ class EditorServer(ThreadingHTTPServer):
         if not _attach_segments_match(project.data, normalized_browser):
             raise AttachProjectError("媒体同目录的同名工程与打开的副本内容不一致，未接管")
         with self.settings_lock:
+            self._check_project_switch_locked(switch_intent)
             self._check_project_binding_locked(binding)
             self._bind_project_locked(project)
             if binding_result is not None:
@@ -2303,6 +2333,8 @@ class EditorRequestHandler(BaseHTTPRequestHandler):
             self.open_backup_directory()
         elif path == "/api/project/binding":
             self.read_project_binding()
+        elif path == "/api/project/switch-intent":
+            self.advance_project_switch()
         elif path == "/api/project/attach":
             self.attach_project()
         elif path == "/api/recent-projects/open":
@@ -2452,6 +2484,22 @@ class EditorRequestHandler(BaseHTTPRequestHandler):
             self.send_json(HTTPStatus.BAD_REQUEST, {"ok": False, "error": str(error)})
             return
         self.send_json(HTTPStatus.OK, {"ok": True, **self.editor_server.project_binding_payload()})
+
+    def advance_project_switch(self) -> None:
+        try:
+            request = self.read_json_request()
+            self._check_request_token(request)
+            self.editor_server.advance_project_switch(request)
+        except PermissionError as error:
+            self.send_json(HTTPStatus.FORBIDDEN, {"ok": False, "error": str(error)})
+            return
+        except ProjectBindingChangedError as error:
+            self.send_json(HTTPStatus.CONFLICT, {"ok": False, "error": str(error)})
+            return
+        except (UnicodeDecodeError, json.JSONDecodeError, ValueError) as error:
+            self.send_json(HTTPStatus.BAD_REQUEST, {"ok": False, "error": str(error)})
+            return
+        self.send_json(HTTPStatus.OK, {"ok": True})
 
     def open_backup_directory(self) -> None:
         try:
@@ -2895,7 +2943,7 @@ class EditorRequestHandler(BaseHTTPRequestHandler):
             if not isinstance(project_path, str) or not project_path:
                 raise RecentProjectError("工程路径格式不正确")
             binding_result = {}
-            project = self.editor_server.open_recent_project(project_path, binding=request, binding_result=binding_result)
+            project = self.editor_server.open_recent_project(project_path, binding=request, binding_result=binding_result, switch_intent=request)
         except ProjectBindingChangedError as error:
             self.send_json(HTTPStatus.CONFLICT, {"ok": False, "error": str(error)})
             return
@@ -2925,7 +2973,7 @@ class EditorRequestHandler(BaseHTTPRequestHandler):
             if not isinstance(project_data, dict):
                 raise AttachProjectError("工程内容必须是对象")
             binding_result = {}
-            project = self.editor_server.attach_project(file_name, project_data, binding=request, binding_result=binding_result)
+            project = self.editor_server.attach_project(file_name, project_data, binding=request, binding_result=binding_result, switch_intent=request)
         except ProjectBindingChangedError as error:
             self.send_json(HTTPStatus.CONFLICT, {"ok": False, "error": str(error)})
             return

@@ -402,9 +402,42 @@
   };
   let serverSwitchQueue = Promise.resolve();
   let serverBindingUnknown = false;
+  let serverSwitchIntent = null;
+  function notifyProjectSwitch() {
+    if (!MaweBoot.SERVER_CONFIG?.projectSwitchPageId) return null;
+    const generation = MaweState.projectLoadGeneration;
+    const payload = {
+      switchPageId: MaweBoot.SERVER_CONFIG.projectSwitchPageId,
+      switchGeneration: generation,
+    };
+    // Do not queue invalidation behind the slow operation it must invalidate.
+    const ready = (async () => {
+      try {
+        const response = await MaweHost.server.fetch('/api/project/switch-intent', {
+          method: 'POST', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ ...payload, requestToken: MaweBoot.SERVER_CONFIG.requestToken }),
+        });
+        const result = await response.json();
+        if (!response.ok || !result.ok) throw new Error('工程切换未确认');
+        return true;
+      } catch {
+        if (generation === MaweState.projectLoadGeneration) {
+          MaweProjectLoad.detachServerProjectSaving();
+          MaweHint.flashHint('无法确认工程切换，请先导出当前工程后刷新页面重试', 'warning');
+        }
+        return false;
+      }
+    })();
+    serverSwitchIntent = { payload, ready };
+    return serverSwitchIntent;
+  }
+  if (typeof MaweState !== 'undefined') MaweState.observeProjectLoad?.(notifyProjectSwitch);
+
   function queueServerProjectSwitch(url, payload, isCurrent) {
+    const intent = serverSwitchIntent || notifyProjectSwitch();
     const task = serverSwitchQueue.then(async () => {
       if (!isCurrent()) return null;
+      if (!intent || !await intent.ready || !isCurrent()) return null;
       // Only a later user-initiated switch may recover an uncertain transport
       // cursor. Never retry a rejected mutation or enable saving from this read.
       if (serverBindingUnknown) {
@@ -421,7 +454,7 @@
       serverBindingUnknown = true;
       const response = await MaweHost.server.fetch(url, {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ ...payload, ...serverBinding }),
+        body: JSON.stringify({ ...payload, ...serverBinding, ...intent.payload }),
       });
       const result = await response.json().catch(() => ({}));
       if (response.ok && result.ok) {

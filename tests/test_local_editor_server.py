@@ -1208,7 +1208,9 @@ class LocalEditorServerTests(CompactContainerAssertions, unittest.TestCase):
         for token in ('__STICKER_URL_PREFIX_JSON__', '__NINJA_SFX_BASE_URL_JSON__', '__SERVER_CONFIG_JSON__'):
             self.assertNotIn(token, page)
         self.assertNotIn('createUrl', page)
-        self.assertIn('"requestToken": "", "stickerRootUrl": "/api/stickers/root", ', page)
+        self.assertIn('"requestToken": ""', page)
+        self.assertIn('"stickerRootUrl": "/api/stickers/root", ', page)
+        self.assertIn('"projectSwitchPageId": "', page)
         self.assertIn('"portableStickerExportUrl": "/api/exports/sticker-otio", ', page)
         self.assertIn('"otiozStickerExportUrl": "/api/exports/sticker-otioz", ', page)
         self.assertIn('"gapRemovedVideoExportUrl": "/api/exports/gap-removed-video", "gapRemovedVideoSourceName": "clip.mp3", "canGapRemovedVideoExport": false, ', page)
@@ -2266,9 +2268,11 @@ class LocalEditorServerTests(CompactContainerAssertions, unittest.TestCase):
                 base_url = f"http://127.0.0.1:{server.server_address[1]}"
 
                 def post(endpoint: str, payload: dict) -> tuple[int, dict]:
+                    intent = {"switchPageId": "http-test-page", "switchGeneration": 0}
+                    server.advance_project_switch(intent)
                     request = urllib.request.Request(
                         f"{base_url}{endpoint}",
-                        data=json.dumps({**server.project_binding_payload(), **payload}).encode("utf-8"),
+                        data=json.dumps({**server.project_binding_payload(), **intent, **payload}).encode("utf-8"),
                         headers={"Content-Type": "application/json"},
                         method="POST",
                     )
@@ -2952,9 +2956,11 @@ class LocalEditorServerTests(CompactContainerAssertions, unittest.TestCase):
                 base_url = f"http://127.0.0.1:{server.server_address[1]}"
 
                 def post(endpoint: str, payload: dict) -> tuple[int, dict]:
+                    intent = {"switchPageId": "http-test-page", "switchGeneration": 0}
+                    server.advance_project_switch(intent)
                     request = urllib.request.Request(
                         f"{base_url}{endpoint}",
-                        data=json.dumps({**server.project_binding_payload(), **payload}).encode("utf-8"),
+                        data=json.dumps({**server.project_binding_payload(), **intent, **payload}).encode("utf-8"),
                         headers={"Content-Type": "application/json"},
                         method="POST",
                     )

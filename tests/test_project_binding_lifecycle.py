@@ -20,7 +20,9 @@ class ProjectBindingLifecycleTests(unittest.TestCase):
         self.addCleanup(thread.join, 5)
         self.addCleanup(self.server.shutdown)
 
-    def post(self, endpoint, payload):
+    def post(self, endpoint, payload, *, add_intent=True):
+        if add_intent and endpoint in ("/api/project/attach", "/api/recent-projects/open"):
+            payload = {**self.http_intent, **payload}
         request = urllib.request.Request(
             f"http://127.0.0.1:{self.server.server_address[1]}{endpoint}",
             data=json.dumps(payload).encode(), headers={"Content-Type": "application/json"}, method="POST")
@@ -33,7 +35,7 @@ class ProjectBindingLifecycleTests(unittest.TestCase):
     def setUp(self):
         self.temp = tempfile.TemporaryDirectory()
         self.addCleanup(self.temp.cleanup)
-        self.root = Path(self.temp.name)
+        self.root = Path(self.temp.name).resolve()
         self.paths = {}
         for name in ("a", "b"):
             media = self.root / f"{name}.wav"
@@ -46,6 +48,8 @@ class ProjectBindingLifecycleTests(unittest.TestCase):
             self.paths[name] = path
         self.server = server_editor.EditorServer(("127.0.0.1", 0), self.load("a"), no_waveform=True)
         self.addCleanup(self.server.server_close)
+        self.http_intent = {"switchPageId": "http-fixture", "switchGeneration": 0}
+        self.server.advance_project_switch(self.http_intent)
 
     def load(self, name):
         return server_editor.load_project(self.paths[name], None, str(self.root), no_waveform=True, peaks_per_second=100)
@@ -108,6 +112,94 @@ class ProjectBindingLifecycleTests(unittest.TestCase):
 
     def load_data(self, name):
         return json.loads(self.paths[name].read_text(encoding="utf8"))
+
+    def test_local_switch_invalidates_old_http_attach_and_recent_before_publication(self):
+        self.start_http()
+        for endpoint in ("/api/project/attach", "/api/recent-projects/open"):
+            with self.subTest(endpoint=endpoint):
+                with self.server.settings_lock:
+                    self.server._bind_project_locked(self.load("b"))
+                self.server.settings = server_editor.remember_project(self.server.settings, self.paths["a"])
+                binding = self.server.project_binding_payload()
+                page_id = "page-" + endpoint.rsplit("/", 1)[-1]
+                intent = {"switchPageId": page_id, "switchGeneration": 1}
+                self.assertEqual(self.post("/api/project/switch-intent", {
+                    "requestToken": self.server.request_token, **intent})[0], 200)
+                started, release = threading.Event(), threading.Event()
+                real_load = server_editor.load_project
+                before_files = {n: p.read_bytes() for n, p in self.paths.items()}
+                before_settings = self.server.settings
+                result = []
+
+                def delayed(path, *args, **kwargs):
+                    if Path(path).resolve() == self.paths["a"]:
+                        started.set()
+                        if not release.wait(5):
+                            raise TimeoutError("old load was not released")
+                    return real_load(path, *args, **kwargs)
+
+                payload = {**binding, **intent, "fileName": "a.mosp",
+                           "project": self.load_data("a"), "path": str(self.paths["a"])}
+                with (mock.patch.object(server_editor, "load_project", side_effect=delayed),
+                      mock.patch.object(self.server, "_bind_project_locked") as publish,
+                      mock.patch.object(self.server, "persist_settings") as persist,
+                      mock.patch.object(self.server, "start_deferred_reapeaks_load") as loader):
+                    thread = threading.Thread(target=lambda: result.append(self.post(endpoint, payload)))
+                    thread.start()
+                    try:
+                        self.assertTrue(started.wait(5))
+                        # Local portable B sends only this notification, no attach.
+                        self.assertEqual(self.post("/api/project/switch-intent", {
+                            "requestToken": self.server.request_token,
+                            **intent, "switchGeneration": 2})[0], 200)
+                    finally:
+                        release.set()
+                        thread.join(5)
+                    self.assertFalse(thread.is_alive())
+                    self.assertEqual(result[0][0], 409)
+                    publish.assert_not_called()
+                    persist.assert_not_called()
+                    loader.assert_not_called()
+                self.assertEqual(self.server.project_binding_payload(), binding)
+                self.assertEqual(self.server.project.json_path, self.paths["b"])
+                self.assertEqual(self.server.settings, before_settings)
+                self.assertEqual({n: p.read_bytes() for n, p in self.paths.items()}, before_files)
+
+    def test_switch_intents_require_token_and_never_roll_back_or_publish_a_binding(self):
+        self.start_http()
+        binding = self.server.project_binding_payload()
+        intent = {"switchPageId": "page-a", "switchGeneration": 2}
+        self.assertEqual(self.post("/api/project/switch-intent", intent)[0], 403)
+        self.assertNotIn("page-a", self.server.project_switch_generations)
+        for generation, status in ((2, 200), (1, 409), (2, 200), (3, 200)):
+            self.assertEqual(self.post("/api/project/switch-intent", {
+                "requestToken": self.server.request_token, **intent, "switchGeneration": generation})[0], status)
+        for bad in ({}, {**intent, "switchGeneration": True}, {**intent, "switchGeneration": -1},
+                    {**intent, "switchPageId": []}, {**intent, "switchGeneration": 9007199254740992}):
+            self.assertEqual(self.post("/api/project/switch-intent", {
+                "requestToken": self.server.request_token, **bad})[0], 400)
+        self.assertEqual(self.server.project_binding_payload(), binding)
+        payload = {**binding, "fileName": "b.mosp", "project": self.load_data("b")}
+        with mock.patch.object(server_editor, "load_project") as load:
+            for invalid in ({}, intent, {**intent, "switchPageId": []}):
+                self.assertEqual(self.post("/api/project/attach", {**payload, **invalid}, add_intent=False)[0], 409)
+            load.assert_not_called()
+        self.assertEqual(self.post("/api/project/attach", {
+            **payload, **intent, "switchGeneration": 3})[0], 200)
+
+    def test_other_pages_intents_do_not_cancel_this_page_but_binding_cas_still_applies(self):
+        self.start_http()
+        binding = self.server.project_binding_payload()
+        first = {"switchPageId": "first-page", "switchGeneration": 1}
+        other = {"switchPageId": "other-page", "switchGeneration": 99}
+        for intent in (first, other):
+            self.assertEqual(self.post("/api/project/switch-intent", {
+                "requestToken": self.server.request_token, **intent})[0], 200)
+        self.assertEqual(self.post("/api/project/attach", {
+            **binding, **first, "fileName": "b.mosp", "project": self.load_data("b")})[0], 200)
+        self.assertEqual(self.post("/api/project/attach", {
+            **binding, **other, "fileName": "a.mosp", "project": self.load_data("a")})[0], 409)
+        self.assertEqual(self.server.project.json_path, self.paths["b"])
 
     def test_save_and_binding_publication_cannot_cross_destinations(self):
         started, release = threading.Event(), threading.Event()
