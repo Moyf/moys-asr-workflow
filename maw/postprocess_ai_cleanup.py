@@ -20,7 +20,11 @@ from pathlib import Path
 from typing import Final
 
 from maw.postprocess import OutputMode
-from maw.postprocess_ai_cleanup_safety import information_loss_reason, protected_information_loss_reason
+from maw.postprocess_ai_cleanup_safety import (
+    PURE_INTERJECTIONS,
+    information_loss_reason,
+    protected_information_loss_reason,
+)
 from maw.postprocess_ai_cleanup_timeline import parse_timeline, draft_line
 from maw.postprocess_ai_cleanup_diagnostics import CleanupTrace, record_raw_response
 from maw.postprocess_ai_cleanup_review import review_decisions
@@ -136,9 +140,12 @@ DECISION_EDIT: Final[str] = "edit"
 # 提供本地佐证；命中不了的降级为待复核，绝不因此扩大移除范围。
 _PROCESS_TALK_PATTERN: Final[re.Pattern[str]] = re.compile(
     "试麦|麦克风|话筒|听得到|听得见|能听见|测试一下|录一下|开始了吗|开始吧|"
-    "录好了|录完了吗|还在录吗|关了吗|重来|重新来|再来一遍|再来一次|刚才不算|"
+    "录好了|录完了吗|还在录吗|关了吗|重来|重新来|重新开始|重新录|再来一遍|再来一次|刚才不算|"
     "刚才那段|上一遍|这一遍|第[一二三四五六七八九十0-9]+遍|删掉|剪掉|不要这段|掐掉"
 )
+# 整段只剩纯感叹词（哎、嗯等）时没有命题内容，无需重复或流程用语佐证即可移除；
+# 「对」「可以」这类可能承载应答的短词不在白名单内。
+_UTTERANCE_FILLER_PATTERN: Final[re.Pattern[str]] = re.compile(f"[{PURE_INTERJECTIONS}]+")
 
 _CONTROL_CHARS: Final[re.Pattern[str]] = re.compile(r"[\x00-\x1f\x7f]+")
 
@@ -830,7 +837,7 @@ def _resolve_decisions(
             evidence_ok = bool(evidence) and _contains_normalized(_normalize_text(removed).value, evidence)
             shortcut_safe = protected_information_loss_reason(collapse_echo(clip.text), collapse_echo(kept)) is None and (
                 collapse_echo(clip.text) == collapse_echo(kept)
-                or bool(re.fullmatch(r"[嗯啊呃哦唉、，。\s]+|想一下|我重说", removed))
+                or bool(re.fullmatch(rf"[{PURE_INTERJECTIONS}、，。\s]+|想一下|我重说", removed))
             )
             safe = shortcut_safe or bool(replacement) and information_loss_reason(removed, replacement) is None
             if not evidence_ok or not safe:
@@ -869,10 +876,14 @@ def _resolve_decisions(
 
         # 没有备用片段时，本地必须能佐证这是一次可机械确认的移除。
         evidence_ok = bool(evidence) and _contains_normalized(norms[clip.id], evidence)
-        pattern_ok = bool(_PROCESS_TALK_PATTERN.search(clip.text)) or _is_repeated_text(
-            clip, clips, resolved
+        pattern_ok = (
+            bool(_PROCESS_TALK_PATTERN.search(clip.text))
+            or _is_repeated_text(clip, clips, resolved)
+            or bool(_UTTERANCE_FILLER_PATTERN.fullmatch(clip.norm.value))
         )
-        has_digits = any(char.isdigit() for char in norms[clip.id])
+        # 报遍数本身的数字（第3遍）不算内容数字；流程用语之外的数字仍需人工确认。
+        outside_process_talk = _PROCESS_TALK_PATTERN.sub("", norms[clip.id])
+        has_digits = any(char.isdigit() for char in outside_process_talk)
         sole_script_line = clip.script_line_index >= 0 and not any(
             other.script_line_index == clip.script_line_index and other.id != clip.id
             for other in clips
