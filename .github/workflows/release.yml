@@ -371,8 +371,8 @@ jobs:
           FfmpegArchive="$DownloadRoot/ffmpeg81arm.zip"
           FfprobeArchive="$DownloadRoot/ffprobe81arm.zip"
           mkdir -p "$DownloadRoot" "$ExtractRoot/ffmpeg" "$ExtractRoot/ffprobe" build/ci-ffmpeg/bin
-          curl --fail --location --retry 3 --silent --show-error --output "$FfmpegArchive" "https://www.osxexperts.net/ffmpeg81arm.zip"
-          curl --fail --location --retry 3 --silent --show-error --output "$FfprobeArchive" "https://www.osxexperts.net/ffprobe81arm.zip"
+          curl --fail --location --http1.1 --retry-all-errors --retry 5 --retry-delay 2 --silent --show-error --output "$FfmpegArchive" "https://www.osxexperts.net/ffmpeg81arm.zip"
+          curl --fail --location --http1.1 --retry-all-errors --retry 5 --retry-delay 2 --silent --show-error --output "$FfprobeArchive" "https://www.osxexperts.net/ffprobe81arm.zip"
           printf '%s  %s\n' "ebb82529562b71170807bbc6b0e7eb4f0b13af8cbb0e085bb9e8f6fe709598ad" "$FfmpegArchive" | shasum -a 256 -c -
           printf '%s  %s\n' "a6640a77d38a6f0527c5b597e599cb36a3427a6931444ed80bc62542421950a1" "$FfprobeArchive" | shasum -a 256 -c -
           unzip -q -o "$FfmpegArchive" -d "$ExtractRoot/ffmpeg"
@@ -519,8 +519,8 @@ jobs:
           FfprobeArchive="$DownloadRoot/ffprobe81arm.zip"
           mkdir -p "$DownloadRoot" "$ExtractRoot/ffmpeg" "$ExtractRoot/ffprobe"
 
-          curl --fail --location --retry 3 --silent --show-error --output "$FfmpegArchive" "$FfmpegArchiveUrl"
-          curl --fail --location --retry 3 --silent --show-error --output "$FfprobeArchive" "$FfprobeArchiveUrl"
+          curl --fail --location --http1.1 --retry-all-errors --retry 5 --retry-delay 2 --silent --show-error --output "$FfmpegArchive" "$FfmpegArchiveUrl"
+          curl --fail --location --http1.1 --retry-all-errors --retry 5 --retry-delay 2 --silent --show-error --output "$FfprobeArchive" "$FfprobeArchiveUrl"
           printf '%s  %s\n' "$FfmpegArchiveSha256" "$FfmpegArchive" | shasum -a 256 -c -
           printf '%s  %s\n' "$FfprobeArchiveSha256" "$FfprobeArchive" | shasum -a 256 -c -
           unzip -q -o "$FfmpegArchive" -d "$ExtractRoot/ffmpeg"

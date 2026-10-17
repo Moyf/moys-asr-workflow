@@ -599,6 +599,7 @@ class PackagingContractTests(CompactContainerAssertions, unittest.TestCase):
         self.assertLess(linux_media_ffmpeg, tests_at)
         self.assertIn('"ebb82529562b71170807bbc6b0e7eb4f0b13af8cbb0e085bb9e8f6fe709598ad"', workflow[macos_install:tests_at])
         self.assertIn('"9a08d61f9328e8164ba560ee7a79958e357307fcfeea6fe626b7d66cdc287028"', workflow[macos_install:tests_at])
+        self.assertIn('--http1.1 --retry-all-errors --retry 5', workflow[macos_install:tests_at])
         self.assertIn("if: matrix.platform == 'linux'", workflow[linux_install:tests_at])
         self.assertIn("ffmpeg squashfs-tools", workflow[linux_install:tests_at])
         self.assertIn('scripts/verify_sha256.sh', workflow[linux_media_ffmpeg:tests_at])
