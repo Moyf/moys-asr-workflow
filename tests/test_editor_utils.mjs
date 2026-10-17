@@ -6927,6 +6927,33 @@ test('wrap chars presets insert at both ends and skip already wrapped text', () 
   assert.equal(helpers.isTextWrappedBy('**文**', '>>', '<<'), false);
 });
 
+test('wrapping honors single-symbol rules and completes existing fade ends without duplication', () => {
+  const cases = [
+    ['>文字<', '++', '++', 'both', '>++文字++<'],
+    ['>文字', '//', '//', 'both', '>//文字//'],
+    ['文字<', '[', ']', 'both', '[文字]<'],
+    ['>文字<', '++', '++', 'double', '++>文字<++'],
+    ['>文字<', '++', '++', 'none', '++>文字<++'],
+    ['>>文字', '>>', '<<', 'both', '>>文字<<'],
+    ['文字<<', '>>', '<<', 'double', '>>文字<<'],
+    ['>文字', '>>', '<<', 'both', '>文字<<'],
+    ['文字<', '>>', '<<', 'both', '>>文字<'],
+    ['!!>文字<!!', '++', '++', 'both', '!!>++文字++<!!'],
+    ['>> hello <<', '++', '++', 'both', '>>++ hello ++<<'],
+  ];
+  for (const [before, left, right, rule, after] of cases) {
+    assert.equal(helpers.wrapCharsAroundText(before, left, right, rule).text, after);
+    const options = { addWrapChars: true, wrapLeft: left, wrapRight: right,
+      assSpecialSymbolRule: rule, skipWrapped: true };
+    assert.equal(helpers.applyTextProcessing(before, options), after);
+    assert.equal(helpers.applyTextProcessing(before, { ...options, wrapPairs: [{ left, right }] }), after);
+    assert.equal(helpers.buildTextProcessingPreview([{ text: before }], [0], options).rows[0].after, after);
+  }
+  assert.deepEqual({ ...helpers.wrapCharsAroundText('>文字<', '>>', '<<', 'both') },
+    { changed: false, skipped: true, text: '>文字<' });
+  assert.equal(helpers.wrapCharsAroundText('>文字<', '++', '').text, '>++文字<');
+});
+
 test('sentence-level wrap pairs stay outermost while inline presets nest inside', () => {
   const wrap = (text, left, right) => helpers.wrapCharsAroundText(text, left, right).text;
   // 句级预设（淡出淡入 / 原地震动）恒包裹在现有全部符号最外层，否则整句样式失效。

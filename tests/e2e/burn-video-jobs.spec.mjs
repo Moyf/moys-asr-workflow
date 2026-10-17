@@ -91,6 +91,8 @@ async function install(page, origin, mode) {
     window.MaweExportSrt = {
       buildAss: () => '[Script Info] full',
       buildGapRemovedAss: () => '[Script Info] gap-removed',
+      buildSrt: () => '1\n00:00:00,000 --> 00:00:01,000\nCURRENT SRT\n',
+      buildGapRemovedSrt: () => '1\n00:00:00,000 --> 00:00:01,000\nSHORTENED SRT\n',
       gapRemovedExportContext: () => ({ intervals: [{ start: 0, end: 1000 }] }),
     };
     window.MaweHint = { flashHint: (text) => window.hints.push(text) };
@@ -225,10 +227,10 @@ test('gap-removed entry without removed gaps or ASS content stays silent and fai
   });
 });
 
-test('toolbar burn button shows only in ASS mode with a bound video project', async ({ page }) => {
+test('toolbar burn button supports ASS and SRT with a bound video project', async ({ page }) => {
   await fixture('ready', async (origin) => {
     await install(page, origin, 'ass-off');
-    await expect(page.locator('#burn-video-export-btn')).toBeHidden();
+    await expect(page.locator('#burn-video-export-btn')).toBeVisible();
     await page.evaluate(() => {
       MaweSettings.EDITOR_SETTINGS.assMode = true;
       MaweBurnVideoExport.syncButton();
@@ -241,6 +243,28 @@ test('toolbar burn button shows only in ASS mode with a bound video project', as
     await expect(page.locator('#burn-video-export-btn')).toBeHidden();
   });
 });
+
+for (const [buttonId, text] of [['#burn-video-export-btn', 'CURRENT SRT'],
+  ['#download-gap-removed-burn-video', 'SHORTENED SRT']]) {
+  test(`SRT mode uses current text through the same job API: ${buttonId}`, async ({ page }) => {
+    await fixture('ready', async (origin, state) => {
+      await install(page, origin, 'ass-off');
+      await page.evaluate(() => {
+        window.commits = [];
+        MaweInlineEdit.editingState = {};
+        MaweInlineEdit.extensionEditingState = {};
+        MaweInlineEdit.finishEdit = () => commits.push('main');
+        MaweInlineEdit.finishExtensionEdit = () => commits.push('extension');
+      });
+      await page.click(buttonId);
+      await expect.poll(() => page.evaluate(() => window.saved)).toBe(true);
+      expect(state.payloads[0].srt).toContain(text);
+      expect(state.payloads[0].ass).toBeUndefined();
+      expect(await page.evaluate(() => commits)).toEqual(['main', 'extension']);
+      if (buttonId.includes('gap')) expect(state.payloads[0].intervals).toEqual([{ startMs: 0, endMs: 1000 }]);
+    });
+  });
+}
 
 
 test('picker resume rejects revoked burn capability before creating a job', async ({ page }) => {
