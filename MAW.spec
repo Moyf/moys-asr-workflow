@@ -153,6 +153,7 @@ datas = [
     (str(ROOT / "maw" / "media_jobs.py"), "ocr-runtime/maw"),
     (str(ROOT / "maw" / "media_export_audio.py"), "ocr-runtime/maw"),
     (str(ROOT / "maw" / "postprocess.py"), "ocr-runtime/maw"),
+    (str(ROOT / "maw" / "postprocess_translation.py"), "ocr-runtime/maw"),
     (str(ROOT / "maw" / "postprocess_resegment.py"), "ocr-runtime/maw"),
     (str(ROOT / "maw" / "postprocess_resegment_diagnostics.py"), "ocr-runtime/maw"),
     (str(ROOT / "maw" / "postprocess_draft.py"), "ocr-runtime/maw"),

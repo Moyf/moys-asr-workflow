@@ -71,7 +71,8 @@ from maw.gui_config import DEFAULT_ENV_PATH, load_env  # noqa: E402
 from maw.gui_platform import creationflags, restore_host_library_path, startupinfo  # noqa: E402
 from maw.postprocess_ffmpeg import (  # noqa: E402
     DEFAULT_BURN_AUDIO_BITRATE, DEFAULT_BURN_CRF, DEFAULT_BURN_PRESET, libass_missing_glyphs,
-    normalize_video_encoder, video_encoder_attempts, video_encoder_options,
+    normalize_video_encoder, video_encoder_attempts, video_encoder_options, _green_screen_input,
+    _green_screen_size_resolution,
 )
 from maw.project import (  # noqa: E402
     ProjectValidationFailed,
@@ -763,6 +764,9 @@ def burn_ass_video(
     ffmpeg_path: Path,
     ffprobe_path: Path,
     job: MediaJob | None = None,
+    green_screen: bool = False,
+    include_audio: bool = False,
+    audio_track: int = 0,
 ) -> Path:
     """Re-encode the source video with the given ASS subtitles burned in.
 
@@ -775,12 +779,14 @@ def burn_ass_video(
         source = source_path.expanduser().resolve(strict=True)
     except OSError as error:
         raise BurnVideoExportError("当前工程的源媒体文件不存在") from error
-    if not source.is_file() or source.suffix.lower() not in VIDEO_EXTENSIONS:
+    if not source.is_file() or source.suffix.lower() not in (MEDIA_EXTENSIONS if green_screen else VIDEO_EXTENSIONS):
         raise BurnVideoExportError("当前工程绑定的媒体不是受支持的视频文件")
     if not isinstance(ass_text, str) or not ass_text.strip():
         raise BurnVideoExportError("缺少 ASS 字幕内容")
     if intervals and any(end <= start for start, end in intervals):
         raise BurnVideoExportError("去空隙保留区间无效")
+    if green_screen and intervals:
+        raise BurnVideoExportError("绿幕视频暂不支持去空隙区间")
     output_path.parent.mkdir(parents=True, exist_ok=True)
     ass_path = output_path.with_name("burn.ass")
     with ass_path.open("w", encoding="utf-8", newline="\n") as handle:
@@ -789,7 +795,17 @@ def burn_ass_video(
     if job:
         job.update("preparing")
     input_args = ["-i", str(source)]
-    if intervals:
+    if green_screen:
+        input_args, _ = _green_screen_input(ass_path, _green_screen_size_resolution("1080p"))
+        duration = input_args[-1].rsplit("d=", 1)[1]
+        duration_ms = round(float(duration) * 1000)
+        filter_args = ["-map", "0:v:0", "-vf", "ass=filename='burn.ass'", "-t", duration]
+        if include_audio:
+            input_args.extend(("-i", str(source)))
+            filter_args.extend(("-map", f"1:a:{audio_track}?"))
+        else:
+            filter_args.append("-an")
+    elif intervals:
         intervals = normalize_gap_removed_intervals([
             {"startMs": start, "endMs": end} for start, end in intervals
         ])
@@ -822,7 +838,7 @@ def burn_ass_video(
     attempts = video_encoder_attempts(ffmpeg_path, requested_encoder)
     common_command = [
         str(ffmpeg_path), "-y", "-nostdin", "-hide_banner", "-loglevel", "warning",
-        *input_args, *filter_args, "-map_metadata", "0",
+        *input_args, *filter_args, "-map_metadata", "-1" if green_screen else "0",
         "-sws_flags", "spline+accurate_rnd+full_chroma_int",
     ]
     last_error: BurnVideoExportError | None = None
@@ -934,12 +950,12 @@ def ffmpeg_supports_libass(ffmpeg: Path) -> bool:
 
 
 def render_ass_frame_png(
-    media_path: Path,
+    media_path: Path | None,
     ass_text: str,
     time_ms: int,
     ffmpeg: Path,
 ) -> tuple[bytes, list[str]]:
-    """Render one video frame with the given ASS subtitles burned in.
+    """Render ASS on one video frame, or a 1080P green canvas without media.
 
     与烧录管线共用同一套调用约定：ASS 写入临时目录、滤镜参数只带文件名、
     进程 cwd 指向该目录，规避盘符冒号等路径转义差异。返回 PNG 字节与
@@ -950,18 +966,23 @@ def render_ass_frame_png(
         ass_path = Path(tmp) / "frame.ass"
         with ass_path.open("w", encoding="utf-8", newline="\n") as handle:
             handle.write(ass_text)
-        command = [
-            str(ffmpeg), "-hide_banner", "-nostdin", "-loglevel", "warning",
+        green_screen = media_path is None
+        input_args = ["-f", "lavfi", "-i", "color=c=0x00ff00:s=1920x1080:r=30"] if green_screen else [
             # 输入侧 -ss 是快速 seek；不加 -copyts 时 ffmpeg 会把时间戳重置为
             # 从 0 开始，libass 会按错误时间判断事件是否活动，导致字幕不渲染。
             "-ss", f"{seconds:.3f}", "-copyts",
             "-i", str(media_path),
+        ]
+        command = [
+            str(ffmpeg), "-hide_banner", "-nostdin", "-loglevel", "warning",
+            *input_args,
             # Pick the first real video stream, never a large embedded cover.
-            "-map", "0:V:0",
+            "-map", "0:v:0" if green_screen else "0:V:0",
             # Render coloured glyphs after conversion to full-resolution RGB;
             # drawing on YUV420 first subsamples their chroma before PNG encoding.
             "-sws_flags", "spline+accurate_rnd+full_chroma_int",
-            "-vf", "format=rgb24,ass=filename='frame.ass'",
+            # 绿幕直接把首帧 PTS 放到播放头位置，避免从 0 解码空白帧，也保持动画时钟。
+            "-vf", (f"settb=1/1000,setpts={max(0, int(time_ms))}," if green_screen else "") + "format=rgb24,ass=filename='frame.ass'",
             "-frames:v", "1",
             "-c:v", "png", "-pix_fmt", "rgb24", "-f", "image2pipe", "pipe:1",
         ]
@@ -1327,6 +1348,7 @@ def build_server_page(
             and gap_video_source is not None
             and gap_media_kind == "video"
         ),
+        "canGreenScreenExport": bool(project.json_path is not None and can_gap_media_export),
         "burnVideoSourceName": gap_video_source.name if gap_video_source else None,
         "gapRemovedMediaKind": gap_media_kind if can_gap_media_export else None,
         "gapRemovedMediaSourceName": gap_video_source.name if gap_video_source else None,
@@ -2970,7 +2992,13 @@ class EditorRequestHandler(BaseHTTPRequestHandler):
                 if not intervals:
                     raise ValueError("去空隙保留区间为空")
             source_snapshot = self.editor_server.gap_removed_media_source_snapshot(request)
-            if source_snapshot.kind != "video":
+            green_screen = request.get("greenScreen", False)
+            include_audio = request.get("includeAudio", False)
+            if type(green_screen) is not bool or type(include_audio) is not bool:
+                raise ValueError("绿幕视频和附带音轨选项必须是布尔值")
+            if green_screen and intervals:
+                raise ValueError("绿幕视频暂不支持去空隙区间")
+            if source_snapshot.kind != "video" and not green_screen:
                 raise BurnVideoExportError("当前工程绑定的是音频，烧录视频需要视频源")
             source = source_snapshot.path
             tools = editor_ffmpeg_tools()
@@ -2989,8 +3017,10 @@ class EditorRequestHandler(BaseHTTPRequestHandler):
             binding = (request["bindingGeneration"], request["sourceMediaId"])
 
             def burn(job: MediaJob) -> None:
+                options = ({"green_screen": True, "include_audio": include_audio,
+                            "audio_track": source_snapshot.audio_track} if green_screen else {})
                 burn_ass_video(job.source, list(job.intervals), ass_text, job.output,
-                    ffmpeg_path=tools.ffmpeg, ffprobe_path=tools.ffprobe, job=job)
+                    ffmpeg_path=tools.ffmpeg, ffprobe_path=tools.ffprobe, job=job, **options)
 
             with self.editor_server.settings_lock:
                 if admission_token is not None and time.time() * 1000 >= deadline:
@@ -3314,8 +3344,13 @@ class EditorRequestHandler(BaseHTTPRequestHandler):
                     or not 0 <= time_ms <= 9_007_199_254_740_991):
                 raise ValueError("时间格式不正确")
             media_path = self.editor_server.project.media_path
-            if media_path is None or not media_path.is_file():
-                raise ValueError("当前工程没有可用的媒体文件")
+            green_screen = request.get("greenScreen", False)
+            if type(green_screen) is not bool:
+                raise ValueError("绿幕预览选项必须是布尔值")
+            green_screen = (green_screen or media_path is None or not media_path.is_file()
+                            or media_path.suffix.lower() not in VIDEO_EXTENSIONS)
+            if green_screen:
+                media_path = None
             ffmpeg = editor_ffmpeg_binary()
             if ffmpeg is None:
                 raise AssFrameError("未找到 FFmpeg，无法渲染实际画面；请安装 FFmpeg 或配置 FFMPEG_PATH。",
@@ -3339,6 +3374,7 @@ class EditorRequestHandler(BaseHTTPRequestHandler):
             "image": base64.b64encode(png_bytes).decode("ascii"),
             "timeMs": time_ms,
             "warnings": warnings,
+            "greenScreen": green_screen,
         })
 
     def _apply_settings_request(self, request: dict[str, object]) -> bool:

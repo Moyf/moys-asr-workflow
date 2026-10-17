@@ -129,8 +129,39 @@ test('untimed fallback uses audible source length and duplicate/progressive bypa
   for (const splitTextMode of ['duplicate', 'progressive']) {
     const pair = core.buildSplitPair(segment, 3, 1000, 'a', false, 'continuous', { splitTextMode });
     assert.equal(pair.right.text, segment.text);
-    assert.equal(pair.left.text, splitTextMode === 'duplicate' ? segment.text : '甲++');
+    // 渐进拆分与普通拆分同样做刀点吸附：切点贴着 ++ 开符号时吸到符号之前，
+    // 左半句不留孤儿符号
+    assert.equal(pair.left.text, splitTextMode === 'duplicate' ? segment.text : '甲');
   }
+});
+
+test('progressive split completes the left half into a standalone marked sentence', () => {
+  // 维护者实测：渐进拆分 **重新开始** 应两侧补全成 **重** + **重新开始**，
+  // 左半句不能留 **重 这样的孤儿开符号
+  const pair = core.buildSplitPair(
+    { id: 'a', text: '**重新开始**', start: 0, end: 2000 },
+    3, 1000, 'a', false, 'continuous', { splitTextMode: 'progressive' },
+  );
+  assert.equal(pair.left.text, '**重**');
+  assert.equal(pair.right.text, '**重新开始**');
+  // 守恒形态下左段 items 同步落符号（items 拼接 == 左段文本）；右段保留
+  // 原文切片、不补右段符号（整句原文自带开符号，右段前缀属于左段时间区）
+  const timed = core.buildSplitPair(
+    { id: 'b', text: '**重新开始**', start: 0, end: 2000,
+      items: [{ text: '**重新开始**', start: 0, end: 2000 }] },
+    3, 1000, 'b', true, 'continuous', { splitTextMode: 'progressive' },
+  );
+  assert.equal(timed.left.text, '**重**');
+  assert.equal(timed.right.text, '**重新开始**');
+  assert.equal(timed.left.items[0].text, '**重**');
+  assert.equal(timed.right.items[0].text, '新开始**');
+  // 整句壳同样成立：!!重新开始!! → !!重!! + !!重新开始!!
+  const shake = core.buildSplitPair(
+    { id: 'c', text: '!!重新开始!!', start: 0, end: 2000 },
+    3, 1000, 'c', false, 'continuous', { splitTextMode: 'progressive' },
+  );
+  assert.equal(shake.left.text, '!!重!!');
+  assert.equal(shake.right.text, '!!重新开始!!');
 });
 
 test('ordered multiple wrappers include custom pairs and reuse existing individual styles', () => {

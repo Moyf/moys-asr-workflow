@@ -16,6 +16,23 @@ const fixture = t => {
   t.after(() => fs.rmSync(root, {recursive:true, force:true}));
   return root;
 };
+const seamFixture = (t, kind, specifier = './helper.js', imports = {}) => {
+  const root = fixture(t);
+  fs.mkdirSync(path.join(root,'web'),{recursive:true});
+  fs.mkdirSync(path.join(root,'scripts'),{recursive:true});
+  fs.writeFileSync(path.join(root,`web/${kind}-scripts.txt`),'seam.js\n');
+  fs.writeFileSync(path.join(root,`web/${kind}-modules.json`),JSON.stringify({format:1,
+    modules:[{file:'seam.js',kind:'init',name:'seam',exportName:'runSeam'}],externalBridges:[]}));
+  fs.writeFileSync(path.join(root,'web/seam.js'),
+    `import { value } from ${JSON.stringify(specifier)};\nexport function runSeam() { window.result = value; }\n`);
+  fs.writeFileSync(path.join(root,'web/helper.js'),"export const value = 'inside';\n");
+  fs.writeFileSync(path.join(root,'outside-helper.js'),"export const value = 'outside';\n");
+  for (const name of ['scripts/build-editor.mjs','scripts/build-launcher.mjs','pnpm-lock.yaml']) {
+    fs.writeFileSync(path.join(root,name),'fixture input\n');
+  }
+  fs.writeFileSync(path.join(root,'package.json'),JSON.stringify({imports})+'\n');
+  return root;
+};
 
 test('failed staging preserves the last complete artifact', async t => {
   const root = fixture(t);
@@ -73,6 +90,60 @@ for (let i = 0; i < 100; i++) {
   });
   await Promise.all([run('A'), run('B'), run('read')]);
 });
+
+for (const [kind, build] of [['editor', buildEditor], ['launcher', buildLauncher]]) {
+  test(`${kind} records and hashes an imported module outside its source list`, async t => {
+    const root = fixture(t);
+    fs.mkdirSync(path.join(root,'web'),{recursive:true});
+    fs.mkdirSync(path.join(root,'scripts'),{recursive:true});
+    fs.writeFileSync(path.join(root,`web/${kind}-scripts.txt`),'seam.js\n');
+    fs.writeFileSync(path.join(root,`web/${kind}-modules.json`),JSON.stringify({format:1,
+      modules:[{file:'seam.js',kind:'init',name:'seam',exportName:'runSeam'}],externalBridges:[]}));
+    fs.writeFileSync(path.join(root,'web/seam.js'),
+      `import { value } from './helper.js';\nexport function runSeam() { window.result = value; }\n`);
+    fs.writeFileSync(path.join(root,'web/helper.js'),"export const value = 'first';\n");
+    for (const name of ['scripts/build-editor.mjs','scripts/build-launcher.mjs','pnpm-lock.yaml']) {
+      fs.writeFileSync(path.join(root,name),'fixture input\n');
+    }
+    fs.writeFileSync(path.join(root,'package.json'),'{}\n');
+
+    const first = await build(root);
+    assert.ok(first.metafile.inputs['web/helper.js']);
+    assert.ok(first.metadata.inputs['helper.js']);
+    fs.writeFileSync(path.join(root,'web/helper.js'),"export const value = 'second';\n");
+    const second = await build(root);
+    assert.notEqual(first.metadata.inputs['helper.js'],second.metadata.inputs['helper.js']);
+    assert.notEqual(first.code,second.code);
+  });
+
+  test(`${kind} rejects a dependency changed after esbuild read its bytes`, async t => {
+    const root = seamFixture(t,kind);
+    const helper = path.resolve(root,'web/helper.js'), originalRead = fs.readFileSync;
+    let changed = false;
+    fs.readFileSync = (file,...args) => {
+      const source = originalRead(file,...args);
+      if (!changed && path.resolve(file) === helper) {
+        changed = true;
+        fs.writeFileSync(helper,"export const value = 'changed';\n");
+      }
+      return source;
+    };
+    try {
+      await assert.rejects(build(root), /Build input changed during compilation/);
+    } finally { fs.readFileSync = originalRead; }
+    assert.ok(changed, 'the dependency was read during compilation');
+  });
+
+  test(`${kind} captures in-web aliases and rejects aliases outside web`, async t => {
+    const root = seamFixture(t,kind,'#inside',
+      {'#inside':'./web/helper.js','#outside':'./outside-helper.js'});
+    const inside = await build(root);
+    assert.ok(inside.metadata.inputs['helper.js']);
+    fs.writeFileSync(path.join(root,'web/seam.js'),
+      `import { value } from '#outside';\nexport function runSeam() { window.result = value; }\n`);
+    await assert.rejects(build(root), /Static import escapes web/);
+  });
+}
 
 for (const [kind, build] of [['editor', buildEditor], ['launcher', buildLauncher]]) {
   for (const changed of [`web/${kind}-modules.json`, 'scripts/build-editor.mjs', 'pnpm-lock.yaml', 'web/source.js']) {

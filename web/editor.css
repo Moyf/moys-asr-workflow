@@ -2080,6 +2080,9 @@
   .ass-frame-window-status[data-state="pending"] { color: var(--amber-hover); }
   .ass-frame-window-status[data-state="error"] { color: var(--red-hover); }
   .ass-frame-window-status[data-state="success"] { color: var(--green-hover); }
+  .ass-frame-window-status.ass-frame-green-screen-hint {
+    white-space: normal; overflow: visible; text-align: right;
+  }
   .ass-frame-window-body {
     display: flex; flex: 1 1 auto; flex-direction: column; gap: 10px; min-height: 0;
     padding: 12px 14px; overflow-y: auto;

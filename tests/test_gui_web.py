@@ -2900,6 +2900,7 @@ class GuiWebBridgeTests(CompactContainerAssertions, unittest.TestCase):
         self.assertIsNone(burn.call_args.args[0].media_path)
         self.assertTrue(burn.call_args.args[0].green_screen)
         self.assertEqual(burn.call_args.args[0].green_screen_size, "1080p")
+        self.assertFalse(burn.call_args.args[0].green_screen_include_audio)
         self.assertEqual(result["sourceMediaPath"], "")
         self.assertEqual(result["mediaPath"], str(output))
 
@@ -2917,6 +2918,27 @@ class GuiWebBridgeTests(CompactContainerAssertions, unittest.TestCase):
         self.assertTrue(result["ok"])
         # 未选择尺寸时桥接透传空串；默认档位（4K）由后端统一裁决。
         self.assertEqual(burn.call_args.args[0].green_screen_size, "")
+
+    def test_green_screen_burn_bridge_forwards_selected_audio_media(self) -> None:
+        subtitle = self.root / "green.srt"
+        media = self.root / "voice.mp3"
+        subtitle.write_text("1\n00:00:00,000 --> 00:00:01,000\n你好\n", encoding="utf-8")
+        media.write_bytes(b"audio")
+        ffmpeg = self.root / ("ffmpeg.exe" if os.name == "nt" else "ffmpeg")
+        ffmpeg.write_bytes(b"exe")
+        output = self.root / "green.green-screen.mp4"
+        with mock.patch("maw.gui_web._postprocess_ffmpeg_tools", return_value=FfmpegTools(ffmpeg=ffmpeg, ffprobe=None)):
+            with mock.patch("maw.gui_web.process_burn_subtitles") as burn:
+                burn.return_value = SimpleNamespace(source_media_path=media, subtitle_path=subtitle,
+                                                    media_path=output, video_encoder="cpu")
+                result = self.api.run_burn_subtitles({
+                    "mediaPath": str(media), "subtitlePath": str(subtitle),
+                    "greenScreen": True, "greenScreenIncludeAudio": True,
+                })
+        self.assertTrue(result["ok"])
+        request = burn.call_args.args[0]
+        self.assertEqual(request.media_path, media)
+        self.assertTrue(request.green_screen_include_audio)
 
     def test_media_tool_progress_is_compact_and_latest_message_ready(self) -> None:
         self.assertEqual(

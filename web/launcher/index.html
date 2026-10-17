@@ -439,7 +439,7 @@
                 <option value="translation_first" data-i18n="bilingual_order_translation_first">译文在上</option>
                 <option value="original_first" data-i18n="bilingual_order_original_first">原文在上</option>
               </select>
-              <p id="autoTranslateMergeHint" class="hint auto-translate-merge hidden" data-i18n="merge_bilingual_hint">将双语字幕合并成一个字幕文件，上下换行显示。</p>
+              <p id="autoTranslateMergeHint" class="hint auto-translate-merge hidden" data-i18n="merge_bilingual_hint">SRT 将原文与译文上下合并；MOSP 始终保留可编辑的主副双轨。</p>
               <label id="autoTranslateBackfillField" class="check-field auto-translate-merge hidden" for="autoTranslateBackfill">
                 <input id="autoTranslateBackfill" type="checkbox">
                 <span data-i18n="auto_backfill_subtitles">只翻译外文语句</span>
@@ -736,7 +736,10 @@
           <p id="toolboxBurnSubtitlePathError" class="field-error"></p>
         </div>
         <div class="toolbox-green-screen-option">
-          <label class="check-field" for="toolboxGreenScreen"><input id="toolboxGreenScreen" type="checkbox"><span data-i18n="toolbox_green_screen">生成绿幕视频</span></label>
+          <div class="toolbox-green-screen-checks">
+            <label class="check-field" for="toolboxGreenScreen"><input id="toolboxGreenScreen" type="checkbox"><span data-i18n="toolbox_green_screen">生成绿幕视频</span></label>
+            <label id="toolboxGreenScreenAudioField" class="check-field hidden" for="toolboxGreenScreenIncludeAudio"><input id="toolboxGreenScreenIncludeAudio" type="checkbox"><span data-i18n="toolbox_green_screen_include_audio">附带音轨</span></label>
+          </div>
           <div id="toolboxGreenScreenSizeField" class="field hidden">
             <label for="toolboxGreenScreenSize" data-i18n="toolbox_green_screen_size">视频尺寸</label>
             <select id="toolboxGreenScreenSize">
@@ -746,7 +749,7 @@
             </select>
             <p class="hint" data-i18n="toolbox_green_screen_size_hint">绿幕画布按所选尺寸生成；SRT 烧录样式按该尺寸换算，与编辑器预览一致。ASS 使用自身画布坐标，随尺寸等比缩放。</p>
           </div>
-          <p class="hint" data-i18n="toolbox_green_screen_hint">无需视频源；用字幕时长生成带字幕的绿色背景视频，30 fps，不含音轨。默认 4K。</p>
+          <p class="hint" data-i18n="toolbox_green_screen_hint">用字幕时长生成带字幕的绿色背景视频，30 fps。默认 4K。</p>
         </div>
         <div id="toolboxBurnVideoEncoderField" class="field">
           <label for="toolboxBurnVideoEncoder" data-i18n="toolbox_burn_video_encoder">视频编码器</label>
@@ -1068,7 +1071,7 @@
               <option value="original_first" data-i18n="bilingual_order_original_first">原文在上</option>
             </select>
           </div>
-          <p class="hint" data-i18n="merge_bilingual_hint">将双语字幕合并成一个字幕文件，上下换行显示。</p>
+          <p class="hint" data-i18n="merge_bilingual_hint">SRT 将原文与译文上下合并；MOSP 始终保留可编辑的主副双轨。</p>
           <label class="check-field" for="postprocessBackfill">
             <input id="postprocessBackfill" type="checkbox">
             <span data-i18n="toolbox_backfill_subtitles">只翻译外文语句</span>

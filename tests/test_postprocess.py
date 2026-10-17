@@ -80,6 +80,23 @@ def project_segments(project: JsonDict) -> list[JsonDict]:
     return segments
 
 
+def translation_segments(project: JsonDict) -> list[JsonDict]:
+    """Read the translation projection from the actual editable MOSP."""
+    main = project_segments(project)
+    track = project["multi_subtitle"]["tracks"][0]
+    extensions = {s["id"]: s for s in track["segments"]}
+    result = []
+    for index, source in enumerate(main, 1):
+        extension = extensions.get(f"{track['id']}-segment-{index:03d}")
+        translated = dict(source)
+        if extension is not None:
+            translated["text"] = extension["text"]
+            if extension["text"] != source["text"]:
+                translated.pop("items", None)
+        result.append(translated)
+    return result
+
+
 def segment_items(segment: JsonDict) -> list[JsonDict]:
     raw_items = segment.get("items")
     if not isinstance(raw_items, list):
@@ -494,13 +511,12 @@ class PostprocessTests(unittest.TestCase):
             return {'groups': [{'id': cue['id'], 'text': 'Next sentence'} for cue in cues]}
 
         with mock.patch('maw.postprocess.MAX_LLM_CUES_PER_REQUEST', 1):
-            result = run_llm_postprocess(LlmPostprocessRequest(
-                project_path=self.project_path, srt_path=None, output_mode=OutputMode.JSON,
-                operation='translate_en', custom_prompt=''), complete=complete)
-        output = project_segments(read_project(result.project_path))
-        self.assertEqual(output[0], original)
-        self.assertEqual(output[1]['text'], 'Next sentence')
-        self.assertIn('保留原文', '\n'.join(result.warnings))
+            with self.assertRaisesRegex(ValueError, '翻译批次未全部成功'):
+                run_llm_postprocess(LlmPostprocessRequest(
+                    project_path=self.project_path, srt_path=None, output_mode=OutputMode.JSON,
+                    operation='translate_en', custom_prompt=''), complete=complete)
+        self.assertEqual(project_segments(read_project(self.project_path))[0], original)
+        self.assertEqual(list(self.root.glob('*.mosp')), [self.project_path])
 
     def test_resegment_network_failure_preserves_source_with_both_success_protocols(self) -> None:
         for mode, failed_batch in [(mode, batch) for mode in ["cues", "atoms"] for batch in [1, 2]]:
@@ -553,12 +569,12 @@ class PostprocessTests(unittest.TestCase):
             return {"groups": [{"id": cue["id"], "text": "Last sentence"} for cue in cues]}
 
         with mock.patch("maw.postprocess.MAX_LLM_CUES_PER_REQUEST", 2):
-            result = run_llm_postprocess(LlmPostprocessRequest(
-                project_path=self.project_path, srt_path=None, output_mode=OutputMode.JSON,
-                operation="translate_en", custom_prompt=""), complete=complete)
-        output = project_segments(read_project(result.project_path))
-        self.assertEqual(output[:2], original[:2])
-        self.assertEqual(output[2]["text"], "Last sentence")
+            with self.assertRaisesRegex(ValueError, "翻译批次未全部成功"):
+                run_llm_postprocess(LlmPostprocessRequest(
+                    project_path=self.project_path, srt_path=None, output_mode=OutputMode.JSON,
+                    operation="translate_en", custom_prompt=""), complete=complete)
+        self.assertEqual(project_segments(read_project(self.project_path)), original)
+        self.assertEqual(list(self.root.glob('*.mosp')), [self.project_path])
         self.assertEqual(calls, 3)
 
     def test_failed_batch_and_unusable_response_do_not_write_output(self) -> None:
@@ -1895,7 +1911,7 @@ class PostprocessTests(unittest.TestCase):
         if result.project_path is None or result.srt_path is None:
             self.fail("both output mode must create project and SRT files")
         source_segments = project_segments(read_project(self.project_path))
-        translated_segments = project_segments(read_project(result.project_path))
+        translated_segments = translation_segments(read_project(result.project_path))
         self.assertEqual(len(translated_segments), len(source_segments))
         self.assertEqual(
             [(segment["start"], segment["end"]) for segment in translated_segments],
@@ -1942,7 +1958,7 @@ class PostprocessTests(unittest.TestCase):
         if result.project_path is None:
             self.fail("output mode must create a project")
         self.assertEqual(requested_cues, [["c0002"]])
-        translated = project_segments(read_project(result.project_path))
+        translated = translation_segments(read_project(result.project_path))
         self.assertEqual([segment["text"] for segment in translated], ["酒很好喝", "译文 c0002"])
         self.assertEqual(
             segment_items(translated[0]),
@@ -1979,7 +1995,7 @@ class PostprocessTests(unittest.TestCase):
         if result.project_path is None:
             self.fail("JSON output mode must create a project")
         self.assertEqual(requested_cues, [["c0001", "c0002"]])
-        translated = project_segments(read_project(result.project_path))
+        translated = translation_segments(read_project(result.project_path))
         self.assertEqual([segment["text"] for segment in translated], ["Translation c0001", "Translation c0002"])
         self.assertNotIn("已是英文的字幕", "\n".join(result.warnings))
 
@@ -2026,7 +2042,9 @@ class PostprocessTests(unittest.TestCase):
         self.assertEqual(requested, [["今日", "東京"]])
         if result.project_path is None or result.srt_path is None:
             self.fail("both translation outputs must be created")
-        translated = project_segments(read_project(result.project_path))
+        saved = read_project(result.project_path)
+        self.assertEqual([segment["text"] for segment in project_segments(saved)], ["今日", "東京"])
+        translated = translation_segments(saved)
         self.assertEqual([segment["text"] for segment in translated], ["译文 c0001", "译文 c0002"])
         self.assertEqual([(segment["start"], segment["end"]) for segment in translated], [(100, 900), (1200, 2200)])
         self.assertEqual([segment["text"] for segment in project_segments(read_srt(result.srt_path))],
@@ -2100,7 +2118,7 @@ class PostprocessTests(unittest.TestCase):
                 self.assertEqual(requested, [["酒很好喝", "3.5"]])
                 if result.project_path is None:
                     self.fail("project output must be created")
-                self.assertEqual([segment["text"] for segment in project_segments(read_project(result.project_path))],
+                self.assertEqual([segment["text"] for segment in translation_segments(read_project(result.project_path))],
                                  ["译文 c0001", "译文 c0002", ""])
                 self.assertNotIn("已是中文的字幕", "\n".join(result.warnings))
 
@@ -2175,10 +2193,12 @@ class PostprocessTests(unittest.TestCase):
         merged = project_segments(read_project(result.project_path))
         self.assertEqual(
             [segment["text"] for segment in merged],
-            ["酒很好喝\nThe wine is delicious.", "下一句\nThe next sentence."],
+            ["酒很好喝", "下一句"],
         )
-        self.assertTrue(all("items" not in segment for segment in merged))
-        self.assertNotIn("extensionSegments", read_project(result.project_path))
+        saved = read_project(result.project_path)
+        self.assertEqual(merged, project_segments(read_project(self.project_path)))
+        self.assertEqual(saved["multi_subtitle"]["tracks"][0]["id"], "old-extension")
+        self.assertEqual([s["text"] for s in translation_segments(saved)], ["The wine is delicious.", "The next sentence."])
         self.assertEqual(merged[0]["speaker"], "speaker-1")
         self.assertEqual(merged[1]["color"], project_segments(read_project(self.project_path))[1]["color"])
         self.assertIsNone(result.translated_srt_path)
@@ -2376,7 +2396,7 @@ class PostprocessTests(unittest.TestCase):
             complete=lambda _prompt, cues: {"groups": [{"id": cue["id"], "text": f"Translation {cue['id']}"} for cue in cues]},
         )
         self.assertNotIn("backfill", result.project_path.name)
-        self.assertEqual([segment["text"] for segment in project_segments(read_project(result.project_path))], ["Translation c0001", "Translation c0002"])
+        self.assertEqual([segment["text"] for segment in translation_segments(read_project(result.project_path))], ["Translation c0001", "Translation c0002"])
         self.assertTrue(result.comparison_path.is_file())
         self.assertIn("2/2", "\n".join(result.warnings))
         self.assertIn("请关闭回填", "\n".join(result.warnings))
@@ -2396,7 +2416,7 @@ class PostprocessTests(unittest.TestCase):
                 complete=lambda _prompt, _cues: self.fail("互斥选项不应请求翻译模型"),
             )
 
-    def test_bilingual_project_output_blocks_retranslation_and_marks_bilingual_suffix(self) -> None:
+    def test_bilingual_project_output_retranslates_main_into_the_same_secondary_track(self) -> None:
         result = run_llm_postprocess(
             LlmPostprocessRequest(
                 project_path=self.project_path,
@@ -2415,17 +2435,19 @@ class PostprocessTests(unittest.TestCase):
             self.fail("both output mode must create project and SRT files")
         self.assertEqual(result.project_path.name, "clip.translate-en-bilingual.mosp")
         self.assertEqual(result.srt_path.name, "clip.translate-en-bilingual.srt")
-        with self.assertRaisesRegex(ValueError, "双语字幕命名规则"):
-            _ = run_llm_postprocess(
-                LlmPostprocessRequest(
-                    project_path=result.project_path,
-                    srt_path=None,
-                    output_mode=OutputMode.JSON,
-                    operation="translate_zh",
-                    custom_prompt="",
-                ),
-                complete=lambda _prompt, _cues: self.fail("bilingual project must not be translated again"),
-            )
+        requested = []
+        def complete(_prompt, cues):
+            requested.extend(row['text'] for row in cues)
+            return {"groups": [{"id": row["id"], "text": f"New {row['id']}"} for row in cues]}
+        repeated = run_llm_postprocess(LlmPostprocessRequest(
+            result.project_path, None, OutputMode.JSON, "translate_zh", "", skip_target_language=False,
+        ), complete=complete)
+        saved = read_project(repeated.project_path)
+        self.assertEqual(requested, ["酒很好喝", "下一句"])
+        self.assertEqual(saved["segments"], read_project(self.project_path)["segments"])
+        self.assertEqual(len(saved["multi_subtitle"]["tracks"]), 1)
+        self.assertEqual(saved["multi_subtitle"]["tracks"][0]["id"], read_project(result.project_path)["multi_subtitle"]["tracks"][0]["id"])
+        self.assertEqual([s["text"] for s in translation_segments(saved)], ["New c0001", "New c0002"])
 
     def test_bilingual_srt_input_blocks_retranslation_and_marks_bilingual_suffix(self) -> None:
         source_srt = self.root / "captions.srt"
@@ -2515,8 +2537,10 @@ class PostprocessTests(unittest.TestCase):
         merged = project_segments(read_project(result.project_path))
         self.assertEqual(
             [segment["text"] for segment in merged],
-            ["酒很好喝\nThe wine is delicious.", "下一句\nThe next sentence."],
+            ["The wine is delicious.", "The next sentence."],
         )
+        saved = read_project(result.project_path)
+        self.assertEqual([s["text"] for s in translation_segments(saved)], ["酒很好喝", "下一句"])
 
     def test_llm_translation_does_not_write_when_every_group_is_invalid(self) -> None:
         def complete(_system_prompt: str, _cues: list[dict[str, JsonValue]]) -> JsonDict:
@@ -2568,7 +2592,7 @@ class PostprocessTests(unittest.TestCase):
 
         if result.project_path is None or result.srt_path is None:
             self.fail("both output mode must create project and SRT files")
-        segments = project_segments(read_project(result.project_path))
+        segments = translation_segments(read_project(result.project_path))
         self.assertEqual([segment["text"] for segment in segments], ["Translate this line.", "Keep this line."])
         self.assertEqual(calls, [["c0001", "c0002"], ["c0001"]])
 
@@ -2597,7 +2621,7 @@ class PostprocessTests(unittest.TestCase):
 
         if result.project_path is None:
             self.fail("JSON output mode must create a project")
-        segments = project_segments(read_project(result.project_path))
+        segments = translation_segments(read_project(result.project_path))
         self.assertEqual([segment["text"] for segment in segments], ["Translation c0001", "Translation c0002"])
         self.assertEqual(calls, [["c0001", "c0002"]])
 
@@ -2620,7 +2644,7 @@ class PostprocessTests(unittest.TestCase):
 
         if result.project_path is None:
             self.fail("JSON output mode must create a project")
-        segments = project_segments(read_project(result.project_path))
+        segments = translation_segments(read_project(result.project_path))
         self.assertEqual([segment["text"] for segment in segments], ["First line.", "Second line."])
 
     def test_llm_translation_repairs_duplicate_id(self) -> None:
@@ -2652,7 +2676,7 @@ class PostprocessTests(unittest.TestCase):
 
         if result.project_path is None:
             self.fail("JSON output mode must create a project")
-        segments = project_segments(read_project(result.project_path))
+        segments = translation_segments(read_project(result.project_path))
         self.assertEqual(
             [segment["text"] for segment in segments],
             ["Repaired first line.", "Second line."],
@@ -2687,7 +2711,7 @@ class PostprocessTests(unittest.TestCase):
 
         if result.project_path is None:
             self.fail("JSON output mode must create a project")
-        segments = project_segments(read_project(result.project_path))
+        segments = translation_segments(read_project(result.project_path))
         self.assertEqual(
             [segment["text"] for segment in segments],
             ["First line.", "Repaired second line."],
@@ -2717,7 +2741,7 @@ class PostprocessTests(unittest.TestCase):
 
         if result.project_path is None:
             self.fail("JSON output mode must create a project")
-        segments = project_segments(read_project(result.project_path))
+        segments = translation_segments(read_project(result.project_path))
         self.assertEqual([segment["text"] for segment in segments], ["Translation c0001", "Translation c0002"])
         self.assertEqual(calls, [["c0001", "c0002"], ["c0001"], ["c0002"]])
 
@@ -2753,7 +2777,7 @@ class PostprocessTests(unittest.TestCase):
 
         if result.project_path is None:
             self.fail("JSON output mode must create a project")
-        segments = project_segments(read_project(result.project_path))
+        segments = translation_segments(read_project(result.project_path))
         self.assertEqual(calls, [["c0001", "c0003"]])
         self.assertEqual([segment["text"] for segment in segments], [
             "Translated c0001", " ", "Translated c0003",
@@ -3353,6 +3377,42 @@ class MediaToolTests(CompactContainerAssertions, unittest.TestCase):
             run_burn_subtitles(
                 BurnSubtitleRequest(media_path=None, subtitle_path=self.subtitle,
                                     green_screen=True, green_screen_size="8k", video_encoder="cpu"),
+                ffmpeg_path=Path("ffmpeg"),
+            )
+
+    def test_green_screen_can_map_optional_audio_and_caps_output_to_canvas(self) -> None:
+        self.subtitle.write_text("1\n00:00:00,000 --> 00:00:02,000\nHello\n", encoding="utf-8")
+        # Match the renderer's canonical path, including Windows TEMP 8.3 aliases.
+        audio = (self.root / "voice.mp3").resolve()
+        audio.write_bytes(b"audio")
+        with mock.patch("maw.postprocess_ffmpeg.subprocess.Popen", side_effect=self._fake_process) as popen:
+            result = run_burn_subtitles(
+                BurnSubtitleRequest(
+                    media_path=audio, subtitle_path=self.subtitle, green_screen=True,
+                    green_screen_include_audio=True, green_screen_size="1080p", video_encoder="cpu",
+                ),
+                ffmpeg_path=Path("ffmpeg"),
+            )
+        command = popen.call_args.args[0]
+        self.assertLess(command.index("color=c=0x00ff00:s=1920x1080:r=30:d=2.500"), command.index(str(audio)))
+        self.assertIn(str(audio), command)
+        self.assertIn("1:a?", command)
+        self.assertIn("-c:a", command)
+        self.assertIn("aac", command)
+        self.assertEqual(command[command.index("-t") + 1], "2.500")
+        self.assertNotIn("-shortest", command)
+        self.assertEqual(result.source_media_path, audio)
+
+    def test_green_screen_audio_rejects_unsupported_media_extension(self) -> None:
+        self.subtitle.write_text("1\n00:00:00,000 --> 00:00:02,000\nHello\n", encoding="utf-8")
+        unsupported = self.root / "voice.txt"
+        unsupported.write_text("audio", encoding="utf-8")
+        with self.assertRaisesRegex(MediaToolError, "媒体文件格式不支持：.txt"):
+            run_burn_subtitles(
+                BurnSubtitleRequest(
+                    media_path=unsupported, subtitle_path=self.subtitle,
+                    green_screen=True, green_screen_include_audio=True, video_encoder="cpu",
+                ),
                 ffmpeg_path=Path("ffmpeg"),
             )
 

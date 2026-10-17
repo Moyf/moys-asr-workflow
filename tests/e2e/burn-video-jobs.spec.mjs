@@ -20,7 +20,9 @@ async function fixture(mode, run) {
     requests.push(req.url);
     if (req.url === '/') {
       res.end('<button id="burn-video-export-btn">Burn</button>'
-        + '<button id="download-gap-removed-burn-video">Burn gap-removed</button>');
+        + '<button id="download-gap-removed-burn-video">Burn gap-removed</button>'
+        + '<button id="download-green-screen-video">Green screen</button>'
+        + '<input type="checkbox" id="green-screen-include-audio">');
       return;
     }
     res.setHeader('Content-Type', 'application/json');
@@ -81,8 +83,9 @@ async function install(page, origin, mode) {
     window.MaweInlineEdit = {};
     window.MaweCoreState = { player: { currentSrc: location.origin + '/media' } };
     window.MaweProjectLoad = { projectBindingEpoch: 1 };
-    window.MaweSettings = { EDITOR_SETTINGS: { assMode: mode !== 'ass-off' } };
-    window.MaweBoot = { FILENAME_BASE: 'fixture', SERVER_CONFIG: { canBurnVideoExport: true,
+    window.MaweSettings = { EDITOR_SETTINGS: { assMode: mode !== 'ass-off' },
+      updateEditorSettings: patch => Object.assign(MaweSettings.EDITOR_SETTINGS, patch) };
+    window.MaweBoot = { FILENAME_BASE: 'fixture', SERVER_CONFIG: { canBurnVideoExport: true, canGreenScreenExport: true,
       burnVideoSourceName: 'source.mp4', burnVideoJobsUrl: '/jobs',
       requestToken: 'fixture', bindingGeneration: 1, sourceMediaId: 'opaque-source' } };
     window.MaweExportSrt = {
@@ -128,6 +131,25 @@ for (const [buttonId, label, expected] of [
       expect(payload.sourceMediaId).toBe('opaque-source');
       expect(await page.evaluate(() => window.pickedName)).toMatch(/\.mp4$/);
       expect(state.requests.some(path => path.endsWith('/download'))).toBe(true);
+    });
+  });
+}
+
+for (const includeAudio of [false, true]) {
+  test(`green screen works without ASS preview and includeAudio=${includeAudio}`, async ({ page }) => {
+    await fixture('ready', async (origin, state) => {
+      await install(page, origin, 'ass-off');
+      await page.evaluate(() => {
+        MaweBoot.SERVER_CONFIG.canBurnVideoExport = false;
+        MaweBurnVideoExport.syncButton();
+      });
+      await expect(page.locator('#green-screen-include-audio')).not.toBeChecked();
+      if (includeAudio) await page.check('#green-screen-include-audio');
+      await page.click('#download-green-screen-video');
+      await expect.poll(() => page.evaluate(() => window.saved)).toBe(true);
+      expect(state.payloads[0]).toMatchObject({ greenScreen: true, includeAudio, ass: '[Script Info] full' });
+      await page.evaluate(() => MaweBurnVideoExport.invalidateBinding());
+      await expect(page.locator('#download-green-screen-video')).toBeHidden();
     });
   });
 }

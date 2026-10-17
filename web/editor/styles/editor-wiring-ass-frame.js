@@ -1,4 +1,4 @@
-// Paused Server video previews use the same native libass frame as the floating
+// Paused Server media previews use the same native libass frame as the floating
 // comparison window. Playback/file:// keep the immediate CSS approximation.
 (function initMaweAssFrame(global) {
   'use strict';
@@ -30,6 +30,7 @@
   let presentedTime = null;
   let presentedCursor = null;
   const REQUEST_TIMEOUT_MS = 165000;
+  const GREEN_SCREEN_HINT = '当前缺少视频画面，使用绿幕预览，可在「更多导出」中导出绿幕视频';
 
   const translate = (text) => global.MAWE_I18N?.translateText?.(text) || text;
   const enabled = () => Boolean(global.MaweBoot?.SERVER_CONFIG?.assFrameUrl)
@@ -50,10 +51,14 @@
     return url.origin === global.location.origin && url.pathname === '/media';
   }
 
+  const greenScreenPreview = () => player?.tagName !== 'VIDEO' || !player.videoWidth;
+  const frameAvailable = () => boundVideo() || greenScreenPreview();
+
   function setWindowStatus(text, state = '') {
     if (!windowStatus) return;
     windowStatus.textContent = text ? translate(text) : '';
     windowStatus.dataset.state = state;
+    windowStatus.classList.toggle('ass-frame-green-screen-hint', text === GREEN_SCREEN_HINT);
   }
 
   function setStageStatus(text, detail = '') {
@@ -69,7 +74,8 @@
   }
 
   function snapshot() {
-    if (!enabled() || !boundVideo()) return null;
+    if (!enabled() || !frameAvailable()) return null;
+    const greenScreen = greenScreenPreview();
     // currentTime can sit between two frames. Seek at/before the presented
     // frame's PTS; rounding up can make FFmpeg discard it and choose the next.
     // currentTime 的赋值早于 seeking 事件；尚未收到新帧回调时，
@@ -78,8 +84,8 @@
     const frameTimeMs = Math.max(0, (frameTime ?? (Number(player.currentTime) || 0)) * 1000);
     const timeMs = Math.floor(frameTimeMs + 0.000001);
     const ass = global.MaweExportSrt.buildAss({ preview: true });
-    return { ass, timeMs, frameTimeMs, generation: mediaGeneration, seek: seekGeneration, source: player.currentSrc,
-      key: JSON.stringify([mediaGeneration, player.currentSrc, ass, timeMs]) };
+    return { ass, timeMs, frameTimeMs, greenScreen, generation: mediaGeneration, seek: seekGeneration, source: player.currentSrc,
+      key: JSON.stringify([mediaGeneration, player.currentSrc, greenScreen, ass, timeMs]) };
   }
 
   function frameClock(ms) {
@@ -108,7 +114,7 @@
       warnings.textContent = frame.warnings.join('\n');
       warnings.hidden = !frame.warnings.length;
     }
-    setWindowStatus('渲染完成', 'success');
+    setWindowStatus(frame.greenScreen ? GREEN_SCREEN_HINT : '渲染完成', frame.greenScreen ? '' : 'success');
   }
 
   function showStageFrame(frame) {
@@ -130,7 +136,7 @@
   }
 
   function syncPreview() {
-    if (!enabled() || !previewNeeded() || !boundVideo()) {
+    if (!enabled() || !previewNeeded() || !frameAvailable()) {
       desired = null;
       hideStage();
       setStageStatus('');
@@ -168,7 +174,7 @@
   }
 
   function refreshDesired() {
-    if (!enabled() || !previewNeeded() || !boundVideo() || !player.paused || player.seeking) return;
+    if (!enabled() || !previewNeeded() || !frameAvailable() || !player.paused || player.seeking) return;
     if (autoRenderEnabled() && capabilityFailure) {
       hideStage();
       setStageStatus(stageOverlayEnabled() ? 'ASS 即时预览 · 实际渲染不可用' : '', failureMessage);
@@ -209,7 +215,7 @@
         headers: { 'Content-Type': 'application/json' },
         signal: controller.signal,
         body: JSON.stringify({ requestToken: global.MaweBoot.SERVER_CONFIG.requestToken || '',
-          ass: request.ass, timeMs: request.timeMs }),
+          ass: request.ass, timeMs: request.timeMs, greenScreen: request.greenScreen }),
       });
       const payload = await response.json().catch(() => null);
       if (!response.ok || !payload?.ok) {
@@ -228,6 +234,7 @@
         new Promise((resolve) => global.setTimeout(resolve, 5000)),
       ]);
       const frame = { key: request.key, url, timeMs: request.frameTimeMs,
+        greenScreen: payload.greenScreen === true,
         width: decoded.naturalWidth, height: decoded.naturalHeight,
         warnings: Array.isArray(payload.warnings) ? [...new Set(payload.warnings.filter(Boolean))] : [] };
       // Check live state after await, including edits and seeks during decode.
@@ -236,7 +243,8 @@
       // A manual capture freezes the clicked frame in the comparison window
       // even if playback advances, while media/style changes still invalidate it.
       const manualFrame = manual && live?.generation === request.generation
-        && live?.seek === request.seek && live?.source === request.source && live?.ass === request.ass;
+        && live?.seek === request.seek && live?.source === request.source && live?.ass === request.ass
+        && live?.greenScreen === request.greenScreen;
       if (current || manualFrame) {
         cached = frame;
         failedKey = '';
@@ -266,7 +274,7 @@
   async function renderAssFrame() {
     const request = snapshot();
     if (!request) {
-      setWindowStatus('请先加载 Server 工程的视频并启用 ASS 字幕模式。', 'error');
+      setWindowStatus('请启用 ASS 字幕模式；浏览器本地视频请通过 Server 工程打开。', 'error');
       return;
     }
     global.clearTimeout(timer);
@@ -283,6 +291,7 @@
     anchorButton: quickOpenButton || openButton,
     positionKey: 'moy.asr.ass_frame.window.v1',
     onOpen: () => {
+      if (greenScreenPreview()) setWindowStatus(GREEN_SCREEN_HINT);
       syncPreview();
       const request = snapshot();
       if (cached && request && cached.key === request.key) {

@@ -130,6 +130,7 @@ __WAVEFORM_CSS__
     <span class="dropdown" id="extra-export-dropdown">
       <button id="extra-export-btn" title="更多导出" aria-expanded="false" aria-controls="extra-export-menu" aria-haspopup="menu">更多导出 ▾</button>
       <div class="dropdown-menu" id="extra-export-menu" role="menu">
+        <div class="dropdown-item" id="download-green-screen-video" role="menuitem" tabindex="0" hidden>生成绿幕视频</div>
         <div class="dropdown-item" id="download-fcp7-export" role="menuitem" tabindex="0" title="实验性 Premiere 交接：导出 FCP 7 XML">Premiere FCP 7 XML</div>
         <div class="dropdown-submenu" role="none">
           <div class="dropdown-item dropdown-submenu-toggle" role="menuitem" tabindex="0" aria-haspopup="menu" aria-expanded="false" aria-controls="extra-otio-menu">OTIO</div>
@@ -1549,6 +1550,11 @@ __WAVEFORM_CSS__
       </label>
       <small class="editor-settings-hint" id="sticker-otio-export-mode-hint">选择引用原始表情包素材；选择便携模式时，服务器会将素材复制到工程同目录。</small>
 <small class="editor-settings-hint">这些选项同时用于原时间线和去空隙版本。</small>
+  </div></div><span class="editor-settings-group-heading" id="export-green-screen-title">绿幕视频导出</span>
+<div class="editor-settings-group" role="group" aria-labelledby="export-green-screen-title"><div class="editor-settings-sub-group">
+<label class="toggle editor-settings-item"><input type="checkbox" id="green-screen-include-audio"> 附带音轨</label>
+<small class="editor-settings-hint">默认导出静音绿幕视频；勾选后附带当前源媒体的音轨。输出 1080P，时长为最后字幕结束后半秒。</small>
+<button type="button" data-settings-export="download-green-screen-video">生成绿幕视频</button>
   </div></div><span class="editor-settings-group-heading" id="export-format-options-title">格式参数</span>
 <div class="editor-settings-group" role="group" aria-labelledby="export-format-options-title"><div class="editor-settings-sub-group">
 <small class="editor-settings-hint">轨道、尺寸与帧率在各格式的导出确认窗中配置；打开后仍需确认才会导出。</small>
