@@ -27,10 +27,10 @@ test.beforeEach(async ({ page }) => {
   });
 });
 
-async function seed(page, role = 'main') {
-  await page.evaluate((role) => {
-    const cue = (id) => ({ id, start: 1000, end: 5000, text: '**甲乙**',
-      items: [{ text: '**甲乙**', start: 1000, end: 5000 }] });
+async function seed(page, role = 'main', text = '**甲乙**') {
+  await page.evaluate(({ role, text }) => {
+    const cue = (id) => ({ id, start: 1000, end: 5000, text,
+      items: [{ text, start: 1000, end: 5000 }] });
     MaweBoot.DATA.segments = [cue('a')];
     MaweBoot.DATA.overlay_track = { enabled: true, segments: role === 'overlay' ? [cue('o')] : [] };
     MaweBoot.DATA.multi_subtitle = { schema: 'moy.asr.multi_subtitle.v1', enabled: ['extension', 'linked'].includes(role),
@@ -39,7 +39,41 @@ async function seed(page, role = 'main') {
     MaweMultiSubtitleCore.normalizeMultiSubtitleState();
     MaweSelection.clearSelection({ silent: true });
     MaweCuePanel.renderAll({ waveform: 'full' });
-  }, role);
+  }, { role, text });
+}
+
+for (const role of ['main', 'linked']) {
+  for (const mode of [null, 'progressive', 'duplicate']) {
+    test(`sentence-shake ${mode || 'normal'} ${role} modal preview matches committed text`, async ({ page }) => {
+      await seed(page, role, '!!重新开始!!');
+      await page.evaluate(({ role, mode }) => {
+        if (role === 'linked') {
+          MaweSplitContext.splitFromContextMenu(0, 10, 10, 3000, { splitTextMode: mode });
+          MaweSplitCore.updateLinkedSplitPreview(3, 'extension');
+        } else {
+          MaweSplitCore.openMainWaveformSplitModal(0, 3000, { splitTextMode: mode });
+        }
+        MaweSplitCore.updateLinkedSplitPreview(3, 'main');
+      }, { role, mode });
+      const mainExpected = mode === 'duplicate' ? ['!!重新开始!!', '!!重新开始!!']
+        : ['!!重!!', mode === 'progressive' ? '!!重新开始!!' : '!!新开始!!'];
+      const expected = role === 'linked' ? [mainExpected, ['!!重!!', '!!新开始!!']] : [mainExpected];
+      const rows = page.locator('#multi-subtitle-split-preview .multi-subtitle-split-preview-line');
+      for (let index = 0; index < expected.length; index++) {
+        await expect(rows.nth(index).locator('.multi-subtitle-split-preview-left')).toHaveText(expected[index][0]);
+        await expect(rows.nth(index).locator('.multi-subtitle-split-preview-right')).toHaveText(expected[index][1]);
+      }
+      await page.locator('#multi-subtitle-split-confirm').click();
+      expect(await page.evaluate((role) => {
+        const tracks = [MaweBoot.DATA.segments];
+        if (role === 'linked') tracks.push(MaweBoot.DATA.multi_subtitle.tracks[0].segments);
+        return tracks.map(segments => segments.map(segment => segment.text));
+      }, role)).toEqual(expected);
+      await page.locator('#undo-btn').click();
+      expect(await page.evaluate(() => MaweBoot.DATA.segments.map(segment => segment.text)))
+        .toEqual(['!!重新开始!!']);
+    });
+  }
 }
 
 for (const role of ['main', 'extension', 'overlay', 'linked']) {
@@ -70,7 +104,7 @@ for (const role of ['main', 'extension', 'overlay', 'linked']) {
     for (const segments of result) {
       expect(segments.map(s => s.text)).toEqual(['**甲**', '**乙**']);
       expect(segments.map(s => [s.start, s.end])).toEqual([[1000, 3000], [3000, 5000]]);
-      expect(segments.flatMap(s => s.items).map(i => i.text).join('')).toBe('**甲乙**');
+      expect(segments.map(s => s.items.map(i => i.text).join(''))).toEqual(['**甲**', '**乙**']);
       expect(segments[0].items[0].end).toBe(3000);
       expect(segments[1].items[0].start).toBe(3000);
     }

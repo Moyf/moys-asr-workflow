@@ -45,10 +45,20 @@ for (const mode of ['single', 'backfill', 'bilingual']) {
     await download.saveAs(output);
     const result = JSON.parse(readFileSync(output, 'utf8'));
     const expected = JSON.parse(readFileSync(cases[mode].project, 'utf8'));
-    expected.segments[0].text = mode === 'bilingual' ? '介绍 API。\nExplain the API clearly.' : 'Explain the API clearly.';
-    delete expected.segments[0].items;
-    expected.segments[0]._dirty = true;
+    const target = mode === 'backfill' ? expected.segments[0] : expected.multi_subtitle.tracks[0].segments[0];
+    target.text = 'Explain the API clearly.';
+    delete target.items;
+    target._dirty = true;
     expect(result).toEqual(expected);
+    if (mode !== 'backfill') {
+      const source = JSON.parse(readFileSync(cases[mode].source, 'utf8'));
+      expect(result.segments).toEqual(source.segments);
+      expect(result.multi_subtitle.tracks).toHaveLength(1);
+      expect(result.multi_subtitle.tracks[0].id).toBe('fixed-secondary');
+      expect(result.multi_subtitle.tracks[0].segments).toHaveLength(2);
+      expect(JSON.stringify(result.multi_subtitle)).not.toContain('过期译文');
+      expect(result.multi_subtitle.bindings[0].id).toBe('existing-binding');
+    }
     execFileSync(python, [helper, '--validate', output], { timeout: 30000, stdio: 'pipe' });
     await page.screenshot({ path: testInfo.outputPath('translation-review.png'), fullPage: true });
     await page.locator('#reset-translations').click();

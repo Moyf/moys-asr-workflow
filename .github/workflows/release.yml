@@ -125,6 +125,9 @@ jobs:
         shell: pwsh
         run: .\scripts\build-windows.ps1 -SkipTests
 
+      - name: Verify packaged ESM bundles and source hashes
+        run: uv run python scripts/verify_web_bundle_payload.py dist/MAW/_internal/web
+
       - name: Verify bundled FAQ
         shell: pwsh
         run: |
@@ -357,11 +360,77 @@ jobs:
       - name: Run packaging contract tests
         run: uv run python -m unittest tests/test_packaging_contract.py
 
+      - name: Install FFmpeg for macOS media tests
+        if: matrix.platform == 'macos'
+        shell: bash
+        run: |
+          set -euo pipefail
+          FfmpegVersion="8.1"
+          DownloadRoot="build/macos-ffmpeg/downloads"
+          ExtractRoot="build/macos-ffmpeg/test-tools"
+          FfmpegArchive="$DownloadRoot/ffmpeg81arm.zip"
+          FfprobeArchive="$DownloadRoot/ffprobe81arm.zip"
+          mkdir -p "$DownloadRoot" "$ExtractRoot/ffmpeg" "$ExtractRoot/ffprobe" build/ci-ffmpeg/bin
+          curl --fail --location --http1.1 --retry-all-errors --retry 5 --retry-delay 2 --silent --show-error --output "$FfmpegArchive" "https://www.osxexperts.net/ffmpeg81arm.zip"
+          curl --fail --location --http1.1 --retry-all-errors --retry 5 --retry-delay 2 --silent --show-error --output "$FfprobeArchive" "https://www.osxexperts.net/ffprobe81arm.zip"
+          printf '%s  %s\n' "ebb82529562b71170807bbc6b0e7eb4f0b13af8cbb0e085bb9e8f6fe709598ad" "$FfmpegArchive" | shasum -a 256 -c -
+          printf '%s  %s\n' "a6640a77d38a6f0527c5b597e599cb36a3427a6931444ed80bc62542421950a1" "$FfprobeArchive" | shasum -a 256 -c -
+          unzip -q -o "$FfmpegArchive" -d "$ExtractRoot/ffmpeg"
+          unzip -q -o "$FfprobeArchive" -d "$ExtractRoot/ffprobe"
+          FfmpegBinary="$(find "$ExtractRoot/ffmpeg" -type f -name ffmpeg ! -path '*/__MACOSX/*' -print -quit)"
+          FfprobeBinary="$(find "$ExtractRoot/ffprobe" -type f -name ffprobe ! -path '*/__MACOSX/*' -print -quit)"
+          test -n "$FfmpegBinary" && test -n "$FfprobeBinary"
+          chmod +x "$FfmpegBinary" "$FfprobeBinary"
+          file "$FfmpegBinary" | grep -q arm64
+          file "$FfprobeBinary" | grep -q arm64
+          printf '%s  %s\n' "9a08d61f9328e8164ba560ee7a79958e357307fcfeea6fe626b7d66cdc287028" "$FfmpegBinary" | shasum -a 256 -c -
+          printf '%s  %s\n' "aab17ac7379c1178aaf400c3ef36cdb67db0b75b1a23eeef2cb9f658be8844e6" "$FfprobeBinary" | shasum -a 256 -c -
+          cp "$FfmpegBinary" build/ci-ffmpeg/bin/ffmpeg
+          cp "$FfprobeBinary" build/ci-ffmpeg/bin/ffprobe
+          echo "$PWD/build/ci-ffmpeg/bin" >> "$GITHUB_PATH"
+          build/ci-ffmpeg/bin/ffmpeg -version | head -n 1
+
       - name: Install Linux CJK test font
         if: matrix.platform == 'linux'
         run: |
           sudo apt-get update
           sudo apt-get install -y fonts-noto-cjk
+
+      - name: Install Linux system dependencies
+        if: matrix.platform == 'linux'
+        run: |
+          sudo apt-get update
+          # ffmpeg：生成 AppImage 图标；squashfs-tools：appimagetool 需要
+          # libnss3 等：PyInstaller 收集 QtWebEngine 的运行时依赖
+          sudo apt-get install -y \
+            ffmpeg squashfs-tools \
+            libnss3 libasound2 libxcomposite1 libxdamage1 libxrandr2 \
+            libxtst6 libxkbcommon0 libxkbcommon-x11-0 libpci3 libgl1 libegl1 \
+            libopengl0 libxcb-cursor0 libxcb-icccm4 libxcb-keysyms1 libxcb-xkb1 \
+            xvfb
+          sudo apt-get clean
+
+      - name: Install verified FFmpeg 8.1 for Linux media tests
+        if: matrix.platform == 'linux'
+        shell: bash
+        run: |
+          set -euo pipefail
+          FfmpegBranch="8.1"
+          FfmpegAsset="ffmpeg-n${FfmpegBranch}-latest-linux64-gpl-${FfmpegBranch}.tar.xz"
+          mkdir -p build/ci-ffmpeg/download build/ci-ffmpeg/extracted
+          curl --fail --location --silent --show-error --retry 3 --retry-delay 2 \
+            -o "build/ci-ffmpeg/download/$FfmpegAsset" \
+            "https://github.com/BtbN/FFmpeg-Builds/releases/latest/download/$FfmpegAsset"
+          curl --fail --location --silent --show-error --retry 3 --retry-delay 2 \
+            -o build/ci-ffmpeg/download/checksums.sha256 \
+            https://github.com/BtbN/FFmpeg-Builds/releases/latest/download/checksums.sha256
+          bash scripts/verify_sha256.sh build/ci-ffmpeg/download/checksums.sha256 \
+            "$FfmpegAsset" "build/ci-ffmpeg/download/$FfmpegAsset"
+          tar -xf "build/ci-ffmpeg/download/$FfmpegAsset" -C build/ci-ffmpeg/extracted --strip-components=1
+          test -x build/ci-ffmpeg/extracted/bin/ffmpeg
+          test -x build/ci-ffmpeg/extracted/bin/ffprobe
+          build/ci-ffmpeg/extracted/bin/ffmpeg -version | head -n 1 | grep -F "$FfmpegBranch"
+          echo "$PWD/build/ci-ffmpeg/extracted/bin" >> "$GITHUB_PATH"
 
       - name: Run Python tests
         run: uv run python -m unittest discover -s tests -p "test_*.py"
@@ -380,6 +449,10 @@ jobs:
           mkdir -p build
           uv run python -m maw.runtimes.freezer freeze --force
           uv run --group build pyinstaller --noconfirm --clean MAW.spec
+
+      - name: Verify packaged ESM bundles and source hashes
+        if: matrix.platform == 'macos'
+        run: uv run python scripts/verify_web_bundle_payload.py dist/MAW.app/Contents/Resources/web
 
       - name: Verify bundled FAQ
         if: matrix.platform == 'macos'
@@ -446,8 +519,8 @@ jobs:
           FfprobeArchive="$DownloadRoot/ffprobe81arm.zip"
           mkdir -p "$DownloadRoot" "$ExtractRoot/ffmpeg" "$ExtractRoot/ffprobe"
 
-          curl --fail --location --retry 3 --silent --show-error --output "$FfmpegArchive" "$FfmpegArchiveUrl"
-          curl --fail --location --retry 3 --silent --show-error --output "$FfprobeArchive" "$FfprobeArchiveUrl"
+          curl --fail --location --http1.1 --retry-all-errors --retry 5 --retry-delay 2 --silent --show-error --output "$FfmpegArchive" "$FfmpegArchiveUrl"
+          curl --fail --location --http1.1 --retry-all-errors --retry 5 --retry-delay 2 --silent --show-error --output "$FfprobeArchive" "$FfprobeArchiveUrl"
           printf '%s  %s\n' "$FfmpegArchiveSha256" "$FfmpegArchive" | shasum -a 256 -c -
           printf '%s  %s\n' "$FfprobeArchiveSha256" "$FfprobeArchive" | shasum -a 256 -c -
           unzip -q -o "$FfmpegArchive" -d "$ExtractRoot/ffmpeg"
@@ -546,20 +619,6 @@ jobs:
 
       # ---------- Linux 专属 ----------
 
-      - name: Install system dependencies
-        if: matrix.platform == 'linux'
-        run: |
-          sudo apt-get update
-          # ffmpeg：生成 AppImage 图标；squashfs-tools：appimagetool 需要
-          # libnss3 等：PyInstaller 收集 QtWebEngine 的运行时依赖
-          sudo apt-get install -y \
-            ffmpeg squashfs-tools \
-            libnss3 libasound2 libxcomposite1 libxdamage1 libxrandr2 \
-            libxtst6 libxkbcommon0 libxkbcommon-x11-0 libpci3 libgl1 libegl1 \
-            libopengl0 libxcb-cursor0 libxcb-icccm4 libxcb-keysyms1 libxcb-xkb1 \
-            xvfb
-          sudo apt-get clean
-
       - name: Build AppImage
         if: matrix.platform == 'linux'
         run: bash scripts/build-appimage.sh
@@ -590,6 +649,7 @@ jobs:
           test -f squashfs-root/_internal/ocr-runtime/maw/text_conversion.py
           test -f squashfs-root/_internal/moss-runtime/requirements-moss.txt
           echo "OK: runtime requirements txt 随包分发"
+          python3 ../scripts/verify_web_bundle_payload.py squashfs-root/_internal/web
           rm -r squashfs-root
 
       - name: Diagnose AppImage libraries

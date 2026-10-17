@@ -13,6 +13,8 @@ export const BUILD_INFO = 'editor/boot/editor-bundle.meta.json';
 const sha = value => createHash('sha256').update(value).digest('hex');
 const json = value => JSON.stringify(value, null, 2) + '\n';
 const parse = (source, sourceType) => acorn.parse(source, {ecmaVersion:'latest', sourceType});
+const FILE_LOADERS = {'.js':'js','.mjs':'js','.cjs':'js','.jsx':'jsx',
+  '.ts':'ts','.tsx':'tsx','.json':'json','.css':'css','.txt':'text'};
 
 export const captureBuildInputs = (root, names) => Object.fromEntries(names
   .map(name => [name, fs.readFileSync(path.join(root, name), 'utf8')]));
@@ -95,8 +97,40 @@ function validateModule(source, item) {
   }
 }
 
+function validateInitModule(source, item) {
+  if (item.kind !== 'init') return;
+  // The initializer body runs at this file's manifest position. Imported
+  // modules follow normal ESM evaluation and should keep top-level work declarative.
+  const ast = parse(source,'module');
+  const imports = ast.body.filter(node => node.type === 'ImportDeclaration');
+  const exports = ast.body.filter(node => node.type === 'ExportNamedDeclaration');
+  const initializer = exports[0]?.declaration;
+  if (imports.length + exports.length !== ast.body.length || exports.length !== 1
+      || initializer?.type !== 'FunctionDeclaration'
+      || initializer.id?.name !== item.exportName
+      || initializer.async || initializer.generator) {
+    throw new Error(`Init module must export exactly one function: ${item.file}`);
+  }
+}
+
+export function assertMetafileInputsCaptured(root, result, inputHashes) {
+  for (const input of Object.keys(result.metafile.inputs)) {
+    const normalized = input.replace(/\\/g,'/');
+    // esbuild reports stdin.sourcefile as an input too, but it is virtual and
+    // has no corresponding source file under web/.
+    if (normalized === 'web/editor-entry.mjs') continue;
+    const absolute = path.normalize(path.resolve(root, normalized));
+    const relative = result.loadedInputs.get(absolute);
+    if (!relative || !(relative in inputHashes)) {
+      throw new Error(`Static import was not captured during compilation: ${input}`);
+    }
+  }
+}
+
 export async function compileSources(root, files, modules, read, options = {}) {
   validateSources(files);
+  const webRoot = fs.realpathSync(path.join(root,'web'));
+  const loadedInputs = new Map();
   const byFile = new Map(), names = new Set();
   for (const item of modules) {
     if (!files.includes(item.file) || byFile.has(item.file) || names.has(item.name)
@@ -108,7 +142,10 @@ export async function compileSources(root, files, modules, read, options = {}) {
   const sources = new Map(files.map(file => [file,read(file)]));
   const imports = modules.map((item,index) =>
     `import { ${item.exportName} as factory${index} } from ${JSON.stringify('maw-factory:'+item.file)};`);
-  for (const item of modules) validateModule(sources.get(item.file),item);
+  for (const item of modules) {
+    if (item.kind === 'init') validateInitModule(sources.get(item.file),item);
+    else validateModule(sources.get(item.file),item);
+  }
   // Keep lexical declarations INSIDE this function: esbuild otherwise lowers
   // module-level let/const to var and loses the classic scope's TDZ semantics.
   const body = ['function initializeLegacy() {'];
@@ -124,7 +161,10 @@ export async function compileSources(root, files, modules, read, options = {}) {
   for (const file of files) {
     const item = byFile.get(file);
     if (options.beforeEntry === file) body.push('globalThis.__mawBeforeFixture?.(window);');
-    if (item) body.push(`window.MAWE.register(${JSON.stringify(item.name)}, factory${modules.indexOf(item)});`);
+    if (item?.kind === 'init') {
+      const index = modules.indexOf(item);
+      body.push(`// Init module: ${file}\nfactory${index}();`);
+    } else if (item) body.push(`window.MAWE.register(${JSON.stringify(item.name)}, factory${modules.indexOf(item)});`);
     else {
       try { parse(sources.get(file),'script'); }
       catch (error) { throw new Error(`Legacy source must remain classic until explicitly migrated: ${file}: ${error.message}`); }
@@ -138,14 +178,34 @@ export async function compileSources(root, files, modules, read, options = {}) {
     stdin:{contents:entry,resolveDir:path.resolve(root,'web'),sourcefile:'editor-entry.mjs',loader:'js'},
     plugins:[{name:'maw-factories',setup(build) {
       build.onResolve({filter:/^maw-factory:/}, args => ({path:path.resolve(root,'web',args.path.slice(12))}));
-      build.onLoad({filter:/\.js$/}, args => {
-        const file = path.relative(path.resolve(root,'web'),args.path).replaceAll('\\','/');
-        if (!byFile.has(file)) return null;
-        return {contents:sources.get(file),loader:'js',resolveDir:path.dirname(args.path)};
+      build.onResolve({filter:/^\.{1,2}\//}, args => {
+        const webRoot = path.resolve(root,'web');
+        const resolved = path.resolve(args.resolveDir,args.path);
+        if (resolved !== webRoot && !resolved.startsWith(webRoot+path.sep)) {
+          return {errors:[{text:`Static import escapes web/: ${args.path}`}]};
+        }
+        return null;
+      });
+      build.onLoad({filter:/.*/,namespace:'file'}, args => {
+        const lexical = path.relative(path.resolve(root,'web'),args.path).replaceAll('\\','/');
+        // compileSources also accepts in-memory factory sources in unit tests.
+        // Imported files must exist so their canonical path can be checked.
+        const supplied = sources.has(lexical);
+        const canonical = supplied ? null : fs.realpathSync(args.path);
+        if (!supplied && canonical !== webRoot && !canonical.startsWith(webRoot+path.sep)) {
+          throw new Error(`Static import escapes web/: ${args.path}`);
+        }
+        const relative = supplied ? lexical : path.relative(webRoot,canonical).replaceAll('\\','/');
+        const loader = FILE_LOADERS[path.extname(args.path)];
+        if (!loader) throw new Error(`Unsupported static import type: ${args.path}`);
+        const contents = supplied ? sources.get(relative) : fs.readFileSync(canonical,'utf8');
+        if (!supplied) options.onDependency?.(relative,contents);
+        loadedInputs.set(path.normalize(args.path),relative);
+        return {contents,loader,resolveDir:path.dirname(args.path)};
       });
     }}], bundle:true,format:'iife',target:['es2022'],charset:'utf8',minify:true,write:false,
     metafile:true,logLevel:'silent',legalComments:'none',banner:{js:"'use strict';"}});
-  return {code:result.outputFiles[0].text,metafile:result.metafile,sourceFiles:files,modules,entry};
+  return {code:result.outputFiles[0].text,metafile:result.metafile,loadedInputs,sourceFiles:files,modules,entry};
 }
 
 export async function buildEditor(root = ROOT, options = {}) {
@@ -158,7 +218,16 @@ export async function buildEditor(root = ROOT, options = {}) {
     snapshot['web/'+file] = original;
     const source = options.transform ? options.transform(file,original) : original;
     inputHashes[file] = sha(source); return source;
-  },{bridges:config.externalBridges,trace:true});
+  },{bridges:config.externalBridges,trace:true,onDependency:(relative,original) => {
+    const key = 'web/'+relative;
+    if (Object.hasOwn(snapshot,key) && snapshot[key] !== original) {
+      throw new Error(`Build input changed during compilation: ${key}; retry the build`);
+    }
+    snapshot[key] = original;
+    inputHashes[relative] = sha(original);
+  }});
+  // The bytes hashed above are the bytes given to esbuild, not a later read.
+  assertMetafileInputsCaptured(root,result,inputHashes);
   assertBuildInputsUnchanged(root, snapshot);
   const metadata = {format:1,esbuild:esbuild.version,sourceFiles:files,esmFactories:modules.length,
     inputs:inputHashes,configHash:sha(configText),builderHash:sha(snapshot['scripts/build-editor.mjs']),

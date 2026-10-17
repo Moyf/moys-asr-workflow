@@ -21,6 +21,20 @@ import edit  # noqa: E402
 
 
 class EditorAssetContractTests(CompactContainerAssertions, unittest.TestCase):
+    def test_inline_project_json_keeps_literal_script_tags_as_text(self) -> None:
+        data = {"segments": [{"text": "原文 </script><script>window.__bad=true</script> & >"}],
+                "markers": {"note": "[AI] 注：字面 </script>"}}
+        template = '<script>const data=__DATA_JSON__;const filename=__FILENAME_BASE_JSON__;</script>'
+        with patch.object(edit, "read_web_asset", side_effect=lambda name: template if name == "editor-template.html" else ""), patch.object(edit, "build_editor_scripts", return_value=""):
+            page = edit.render_editor_page(title="", media_html="", data_json=json.dumps(data, ensure_ascii=False),
+                filename_base_json=json.dumps("原文&译文"), stickers_json="[]", sticker_root_json='""', app_version="test",
+                json_display="", json_name_class="", media_name_display="", media_name_title="", media_name_class="",
+                server_config_json="{}")
+        self.assertEqual(page.count("</script>"), 1)
+        encoded = page.split('const data=', 1)[1].split(';const filename=', 1)[0]
+        self.assertEqual(json.loads(encoded), data)
+        self.assertNotIn("<", encoded)
+
     def test_portable_about_gif_is_self_contained(self) -> None:
         page = edit.build_blank_html()
         match = re.search(r'src="data:image/gif;base64,([^"]+)"', page)
