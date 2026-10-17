@@ -13,6 +13,39 @@ import {
 
 const DURATION_MS = 4_000;
 
+test('English builtin reset confirmations translate names and preserve cancel and confirm behavior', async ({ page }) => {
+  await disableOnboarding(page);
+  await page.addInitScript(() => localStorage.setItem('mawe.language', 'en'));
+  await page.goto(server.url);
+  await openSettingsPage(page, 'subtitle-style');
+  await page.locator('#ass-style-manager-open').click();
+  for (const [id, name, size] of [
+    ['default', 'SRT render style', '80'], ['ass', 'ASS default style', '86'],
+    ['ass-extension', 'ASS extension subtitle style', '64'],
+  ]) {
+    await page.locator(`#ass-style-list [data-ass-selection-id="${id}"]`).click();
+    await page.locator('#ass-style-font-size').fill('123');
+    const messages = [];
+    page.once('dialog', async dialog => { messages.push(dialog.message()); await dialog.dismiss(); });
+    await page.locator('#ass-style-reset').click();
+    await expect(page.locator('#ass-style-font-size')).toHaveValue('123');
+    page.once('dialog', async dialog => { messages.push(dialog.message()); await dialog.accept(); });
+    await page.locator('#ass-style-reset').click();
+    await expect(page.locator('#ass-style-font-size')).toHaveValue(size);
+    expect(messages).toEqual([`Reset “${name}” to its defaults?`, `Reset “${name}” to its defaults?`]);
+  }
+  await page.locator('#ass-profile-list [data-ass-selection-id="ass"]').click();
+  await page.locator('#ass-animation-fad-in').fill('900');
+  const profileMessages = [];
+  page.once('dialog', async dialog => { profileMessages.push(dialog.message()); await dialog.dismiss(); });
+  await page.locator('#ass-style-reset').click();
+  await expect(page.locator('#ass-animation-fad-in')).toHaveValue('900');
+  page.once('dialog', async dialog => { profileMessages.push(dialog.message()); await dialog.accept(); });
+  await page.locator('#ass-style-reset').click();
+  await expect(page.locator('#ass-animation-fad-in')).toHaveValue('250');
+  expect(profileMessages).toEqual(Array(2).fill('Reset “ASS export profile” to its defaults?'));
+});
+
 test('sample Canvas contains scaled and rotated glyphs without edge clipping', async ({ page }) => {
   await disableOnboarding(page);
   await page.goto(server.url);

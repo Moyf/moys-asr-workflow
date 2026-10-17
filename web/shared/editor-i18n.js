@@ -1600,6 +1600,8 @@
     if (textChanges) return `Modified ${textChanges[1]} row(s)${textChanges[2] ? `; word-timing text synced in ${textChanges[2]} row(s)` : ''}`;
     const historyChange = /^已(撤销|重做)：(.+)（剩 (\d+) 步）$/.exec(text);
     if (historyChange) return `${historyChange[1] === '撤销' ? 'Undone' : 'Redone'}: ${translateText(historyChange[2], EN)} (${historyChange[3]} step(s) remaining)`;
+    const resetBuiltin = /^确定将「(.+)」恢复为默认值吗？$/.exec(text);
+    if (resetBuiltin) return `Reset “${translateText(resetBuiltin[1], EN)}” to its defaults?`;
     if (match) return `${match[1] === '过滤' ? 'Filtered' : 'Total'} ${match[2]}: markers ${match[3]} · regions ${match[4]}${match[5] ? `; pending review ${match[5]}` : ''}`;
     match = /^(标记|区段) (\d.*)$/.exec(text);
     if (match) return `${translateText(match[1], EN)} ${match[2]}`;

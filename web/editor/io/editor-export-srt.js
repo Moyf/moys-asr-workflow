@@ -112,13 +112,14 @@
     return;
   }
   const { segments, overlaySet, overlaySegments } = cleanupMergedExportSegments();
+  const keptSegments = gapRemoved ? filterSegmentsInsideRemovedGaps(segments, removed) : segments;
   const firstEnabledIndex = window.AsrEditorUtils.getSrtExportFirstIndex(
-    segments,
+    keptSegments,
     MaweSettings.EDITOR_SETTINGS.exportStartAtZero,
   );
   const gapSuffix = gapRemoved ? `_${window.MAWE_I18N?.exportTag?.('gap-removed') || 'gap-removed'}` : '';
   const speakerSettings = MaweSpeakerLabels.getSpeakerLabelSettings();
-  const buildPayload = (color) => window.AsrEditorUtils.buildSrtPayload(segments, {
+  const buildPayload = (color) => window.AsrEditorUtils.buildSrtPayload(keptSegments, {
     colorName: color.name,
     timeOffset: 0,
     alignFirstStart: MaweSettings.EDITOR_SETTINGS.exportStartAtZero,

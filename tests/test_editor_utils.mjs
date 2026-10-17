@@ -270,6 +270,14 @@ test('translates the ASS style manager labels and dynamic summaries', () => {
   assert.equal(i18n.translateText('\\t', 'en'), '\\t');
   assert.equal(i18n.translateText('2 个样式 · 3 个 ASS 方案', 'en'), '2 styles · 3 ASS profiles');
   assert.equal(i18n.translateText('SRT 渲染样式', 'en'), 'SRT render style');
+  for (const [name, translated] of [
+    ['SRT 渲染样式', 'SRT render style'], ['ASS 默认样式', 'ASS default style'],
+    ['ASS 副字幕样式', 'ASS extension subtitle style'], ['ASS 输出方案', 'ASS export profile'],
+  ]) {
+    const message = `确定将「${name}」恢复为默认值吗？`;
+    assert.equal(i18n.translateText(message, 'en'), `Reset “${translated}” to its defaults?`);
+    assert.equal(i18n.translateText(message, 'zh-CN'), message);
+  }
   assert.equal(i18n.translateText('工具箱的「烧录字幕」功能会使用这里选中的样式。', 'en'), 'The Toolbox “Burn subtitles” feature uses the style selected here.');
   assert.equal(i18n.translateText('需要启用 ASS 字幕模式来预览效果。', 'en'), 'Enable ASS subtitle mode to preview this style.');
   assert.equal(i18n.translateText('当前已启用。', 'en'), 'Currently enabled.');
