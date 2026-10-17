@@ -11,6 +11,7 @@ from enum import StrEnum
 from pathlib import Path
 from typing import Final
 
+from maw.language import normalize_language_code
 from maw.output_naming import TRANSLATION_TARGET_NAMES, translation_marker_name
 from maw.postprocess_io import SubtitleArtifact, read_project, read_srt, write_artifacts
 from maw.postprocess_annotations import ANNOTATION_PROMPT, validate_annotations, write_annotations
@@ -63,6 +64,7 @@ class LlmPostprocessRequest:
     bilingual_line_order: str = ""
     generate_comparison: bool = False
     max_chars: int = 0
+    skip_target_language: bool = True
 
 
 class PostprocessStepError(RuntimeError):
@@ -122,12 +124,16 @@ BILINGUAL_ARTIFACT_PATTERN: Final[re.Pattern[str]] = re.compile(
 )
 TIMING_FIELDS: Final = ("start", "end", "text", "items")
 ONE_TO_ONE_TRANSLATION_OPERATIONS: Final = frozenset({"translate_en", "translate_zh"})
-# 目标语言预过滤阈值：一条字幕的中文字符（不含假名/谚文等）占「中文 + 拉丁字母」
-# 的比例达到该值时，视为已是中文，翻译到中文时不再发送给模型。
+# 仅在有明确中文来源且全文无日/韩文字时使用占比；汉字本身不能区分中日文。
 CJK_TARGET_RATIO_THRESHOLD: Final[float] = 0.7
 _CJK_CHAR_PATTERN: Final[re.Pattern[str]] = re.compile(r"[\u3400-\u4dbf\u4e00-\u9fff\uf900-\ufaff]")
 _LATIN_CHAR_PATTERN: Final[re.Pattern[str]] = re.compile(r"[A-Za-z]")
 _ANY_LETTER_PATTERN: Final[re.Pattern[str]] = re.compile(r"[^\W\d_]", re.UNICODE)
+_JAPANESE_KOREAN_PATTERN: Final[re.Pattern[str]] = re.compile(
+    r"[\u3040-\u30ff\u31f0-\u31ff\uff66-\uff9f"
+    r"\U0001aff0-\U0001afff\U0001b000-\U0001b16f"
+    r"\u1100-\u11ff\u3130-\u318f\ua960-\ua97f\uac00-\ud7af\ud7b0-\ud7ff\uffa0-\uffdc]"
+)
 
 
 @dataclass(slots=True)
@@ -329,11 +335,14 @@ def _run_llm_postprocess(
         }
         if preserved_blank_source_ids:
             cues = [cue for cue in cues if str(cue["id"]) not in preserved_blank_source_ids]
-        if cues:
+        if cues and request.skip_target_language:
+            source_is_chinese = _can_prefilter_chinese(project, cues)
             preserved_target_source_ids = {
                 str(cue["id"])
                 for cue in cues
-                if _is_already_target_language(str(cue.get("text") or ""), request.operation)
+                if _is_already_target_language(
+                    str(cue.get("text") or ""), request.operation, source_is_chinese=source_is_chinese,
+                )
             }
             if preserved_target_source_ids:
                 cues = [cue for cue in cues if str(cue["id"]) not in preserved_target_source_ids]
@@ -832,12 +841,25 @@ def _merge_translation_response_parts(
     }
 
 
-def _is_already_target_language(text: str, operation: str) -> bool:
+def _can_prefilter_chinese(project: JsonDict, cues: Sequence[Mapping[str, JsonValue]]) -> bool:
+    """Only trust explicit Chinese metadata, with a whole-input script veto.
+
+    SRT and inferred/legacy language labels cannot distinguish all-Han Japanese
+    from Chinese. Even a Chinese hint must yield to kana/Hangul elsewhere in
+    the input so short Han-only cues in the same file are sent to the model.
+    """
+    return (
+        normalize_language_code(project.get("language")) == "zh"
+        and project.get("language_source") in ("detected", "hint")
+        and not any(_JAPANESE_KOREAN_PATTERN.search(str(cue.get("text") or "")) for cue in cues)
+    )
+
+
+def _is_already_target_language(text: str, operation: str, *, source_is_chinese: bool = False) -> bool:
     """判断一条字幕是否已是翻译目标语言（或不含可翻译文字），无需发送给模型。
 
-    纯字符脚本启发式只可靠地识别中文；没有可识别中文或出现其他文字（假名、
-    谚文、西里尔字母、拉丁文字等）时一律交给模型处理，避免把西语、法语等
-    拉丁文字误认为英文。
+    汉字占比只用于已有明确中文来源的输入；来源不明的汉字、其他文字脚本、
+    翻译成英文的拉丁文字均交给模型，避免把日文当中文或西语、法语当英文。
     """
     letters = len(_ANY_LETTER_PATTERN.findall(text))
     cjk = len(_CJK_CHAR_PATTERN.findall(text))
@@ -848,7 +870,7 @@ def _is_already_target_language(text: str, operation: str) -> bool:
         return cjk == 0 and latin == 0
     if cjk == 0:
         return latin == 0
-    return cjk / (cjk + latin) >= CJK_TARGET_RATIO_THRESHOLD
+    return source_is_chinese and cjk / (cjk + latin) >= CJK_TARGET_RATIO_THRESHOLD
 
 
 def _reject_recursive_translation_input(

@@ -1114,6 +1114,16 @@ label {
   margin: -4px 0 0;
 }
 
+.translation-skip-target {
+  display: grid;
+  gap: 8px;
+  flex-basis: 100%;
+}
+
+.translation-skip-target .hint {
+  margin: 0;
+}
+
 /* 双语行序与「合并字幕」勾选项同行；勾选后才出现。 */
 .toolbox-merge-row {
   display: flex;

@@ -255,6 +255,19 @@ class PostprocessPipelineTests(CompactContainerAssertions, unittest.TestCase):
         _, errors = validate_plan(plan, env_path=self.env_path, media_path=self.media, llm_settings=settings)
         self.assertEqual(errors[0]["field"], "postprocessResegmentMaxChars")
 
+    def test_translation_prefilter_default_and_false_survive_plan_and_request(self) -> None:
+        settings = {"deepseek": {"apiKey": "test-key", "baseUrl": "https://example.test/v1", "model": "test", "verified": "1"}}
+        for option, expected in (({}, True), ({"skipTargetLanguage": True}, True), ({"skipTargetLanguage": False}, False)):
+            with self.subTest(option=option):
+                plan = self.plan({"id": "translate", "enabled": True, "target": "zh", **option})
+                normalized = normalize_plan(plan)
+                self.assertEqual(next(s for s in normalized["steps"] if s["id"] == "translate")["skipTargetLanguage"], expected)
+                with mock.patch("maw.postprocess_pipeline.run_llm_postprocess",
+                                return_value=SubtitleArtifact(self.project, self.srt, self.project, self.srt)) as process:
+                    run_postprocess_pipeline(plan, media_path=self.media, project_path=self.project, srt_path=self.srt,
+                                             env_path=self.env_path, ffmpeg_path=None, cancel_event=Event(), llm_settings=settings)
+                self.assertEqual(process.call_args.args[0].skip_target_language, expected)
+
     def test_ai_cleanup_notes_survive_plan_normalization_and_request(self) -> None:
         step = self.match_step()
         step.update(aiCleanup=True, aiCleanupNotes="  保留所有数字  ")

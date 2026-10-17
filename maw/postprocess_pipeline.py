@@ -105,7 +105,7 @@ def default_postprocess_plan() -> dict[str, object]:
             {"id": "proofread", "enabled": False, "providerId": "deepseek", "customPrompt": "", "generateComparison": False},
             {"id": "resegment", "enabled": False, "providerId": "deepseek", "customPrompt": "", "generateComparison": False, "maxChars": 0},
             {"id": "ocr", "enabled": False, "videoPath": "", "videoPathMode": "", "regionMode": "full", "regionX1": 0, "regionY1": 0, "regionX2": 100, "regionY2": 100, "threshold": 0.5, "report": False},
-            {"id": "translate", "enabled": False, "providerId": "deepseek", "target": "zh", "mergeBilingual": False, "embedTranslations": False, "bilingualLineOrder": "", "customPrompt": "", "generateComparison": False},
+            {"id": "translate", "enabled": False, "providerId": "deepseek", "target": "zh", "mergeBilingual": False, "embedTranslations": False, "bilingualLineOrder": "", "customPrompt": "", "generateComparison": False, "skipTargetLanguage": True},
             {"id": "burn", "enabled": False, "videoEncoder": "auto"},
         ],
     }
@@ -168,6 +168,8 @@ def normalize_plan(raw: object) -> dict[str, object]:
                 step[key] = bool(value)
             elif key == "embedTranslations":
                 step[key] = bool(value)
+            elif key == "skipTargetLanguage":
+                step[key] = value is not False
             elif key == "bilingualLineOrder":
                 step[key] = str(value or "") if str(value or "") in BILINGUAL_LINE_ORDERS else ""
             elif key in {"regionX1", "regionY1", "regionX2", "regionY2", "threshold"}:
@@ -1200,6 +1202,7 @@ def _run_step(
         output_directory=output_directory,
         media_path=media_path,
         bilingual_line_order=str(step.get("bilingualLineOrder") or ""),
+        skip_target_language=step.get("skipTargetLanguage") is not False,
         max_chars=normalize_max_chars(step.get("maxChars")) if step_id == "resegment" else 0,
         generate_comparison=bool(step.get("generateComparison")),
     ), complete=complete, on_status=on_status)
